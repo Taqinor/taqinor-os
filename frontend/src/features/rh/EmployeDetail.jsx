@@ -13,7 +13,10 @@ import rhApi from '../../api/rhApi'
 import { openPdfInGesture } from '../../utils/pdfBlob'
 import { peutVoirSalaires } from './permissions.js'
 import ExternalLink from '../../ui/ExternalLink'
-import { StatutEmploye, TYPE_CONTRAT_LABELS } from './constants.jsx'
+import {
+  StatutEmploye, TYPE_CONTRAT_LABELS,
+  ATTRITION_BAND_LABELS, ATTRITION_BAND_TONES,
+} from './constants.jsx'
 
 /* ============================================================================
    UX22 + XRH1/4/5/6/15/16 + YHIRE2/ZRH12 — Dossier employé (détail).
@@ -99,6 +102,11 @@ export default function EmployeDetail() {
   const [formation, setFormation] = useState(null)
   const [integration, setIntegration] = useState(null)
   const [chatter, setChatter] = useState([])
+  // WIR241 — score de risque d'attrition (XRH31), échec non bloquant.
+  const [risqueAttrition, setRisqueAttrition] = useState(null)
+  // WIR240 — composeur de note du fil (XRH6).
+  const [noteTexte, setNoteTexte] = useState('')
+  const [noteSaving, setNoteSaving] = useState(false)
   // WIR131 — badges reçus (ZRH14) + catalogue société pour le formulaire.
   const [badgesRecus, setBadgesRecus] = useState([])
   const [badgesCatalogue, setBadgesCatalogue] = useState([])
@@ -146,6 +154,10 @@ export default function EmployeDetail() {
       rhApi.getAvantagesSociaux({ employe: id }),
       // ZRH15 — lignes de parcours du dossier.
       rhApi.getLignesParcours({ employe: id }),
+      // WIR241 (XRH31) — score de risque d'attrition de CE dossier. Dans le
+      // `allSettled` : l'appel est gaté RH et peut échouer (403/404) — un
+      // échec laisse la fiche parfaitement saine, il ne bloque rien.
+      rhApi.getRisqueAttrition(id),
     ]
     if (canSalaires) {
       calls.push(rhApi.getRemunerations({ employe: id }))
@@ -155,8 +167,11 @@ export default function EmployeDetail() {
       if (!vivant) return
       const [
         docRes, habRes, formRes, intRes, chatRes, badgeRes, ecartRes,
-        ayantsRes, avantagesRes, parcoursRes, remRes, compaRes,
+        ayantsRes, avantagesRes, parcoursRes, attritionRes, remRes, compaRes,
       ] = results
+      // WIR241 — non bloquant : un refus/absence laisse simplement la bande
+      // masquée, la fiche reste complète.
+      if (attritionRes?.status === 'fulfilled') setRisqueAttrition(attritionRes.value.data)
       if (ecartRes.status === 'fulfilled') setEcarts(unwrap(ecartRes.value.data))
       if (ayantsRes.status === 'fulfilled') setAyantsDroit(unwrap(ayantsRes.value.data))
       if (avantagesRes.status === 'fulfilled') setAvantages(unwrap(avantagesRes.value.data))
@@ -271,7 +286,25 @@ export default function EmployeDetail() {
   const estSorti = emp.statut === 'sorti'
 
   const identiteTab = (
-    <DefinitionList
+    <div className="flex flex-col gap-3">
+      {/* WIR241 (XRH31) — score de risque d'attrition du dossier, mêmes bandes
+          que le cockpit RH (constantes factorisées). Absent = simplement pas
+          rendu : l'appel est gaté et son échec ne casse rien. */}
+      {risqueAttrition && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2 text-sm">
+          <span className="font-medium">Risque d’attrition</span>
+          <span className="flex items-center gap-2">
+            <span className="text-muted-foreground">
+              {risqueAttrition.score != null
+                ? `${Math.round(risqueAttrition.score)}/100` : '—'}
+            </span>
+            <Badge tone={ATTRITION_BAND_TONES[risqueAttrition.band] ?? 'neutral'}>
+              {ATTRITION_BAND_LABELS[risqueAttrition.band] ?? risqueAttrition.band}
+            </Badge>
+          </span>
+        </div>
+      )}
+      <DefinitionList
       items={[
         { term: 'Matricule', description: emp.matricule || '—' },
         { term: 'Nom complet', description: nomComplet || '—' },
@@ -284,8 +317,9 @@ export default function EmployeDetail() {
         { term: 'Contact d’urgence', description: emp.urgence_nom
           ? `${emp.urgence_nom}${emp.urgence_lien ? ` (${emp.urgence_lien})` : ''}${emp.urgence_telephone ? ` — ${formatPhoneMA(emp.urgence_telephone)}` : ''}`
           : '—' },
-      ]}
-    />
+        ]}
+      />
+    </div>
   )
 
   // XRH1 (essai) + XRH5 (déclaration d'entrée CNSS/AMO) — encarts d'action.
@@ -446,26 +480,61 @@ export default function EmployeDetail() {
     </div>
   )
 
+  /* WIR240 (XRH6) — le fil du dossier rendait DÉJÀ la branche `type='note'`,
+     mais aucune note ne pouvait être écrite : `rhApi.noterEmploye` n'avait
+     aucun appelant. Le composeur ci-dessous la crée, puis RECHARGE le fil
+     depuis le serveur (jamais d'optimisme local : l'auteur et l'horodatage
+     sont posés côté serveur, seul le serveur dit la vérité). */
+  const publierNote = async (e) => {
+    e.preventDefault()
+    if (!noteTexte.trim()) return
+    setNoteSaving(true)
+    try {
+      await rhApi.noterEmploye(id, { message: noteTexte.trim() })
+      setNoteTexte('')
+      toast.success('Note ajoutée au fil.')
+      recharger()
+    } catch (err) {
+      toast.error(err?.response?.data?.message
+        ?? err?.response?.data?.detail ?? 'Ajout de la note impossible.')
+    } finally {
+      setNoteSaving(false)
+    }
+  }
+
   // XRH6 — chatter (timeline d'activité : logs automatiques + notes).
   const chatterTab = (
-    <Liste
-      rows={chatter}
-      loading={subLoading}
-      empty="Aucune activité enregistrée."
-      renderRow={(a) => (
-        <div className="min-w-0">
-          <p className="text-sm">
-            {a.type === 'note' || a.type === 'NOTE'
-              ? (a.message || '—')
-              : `${a.field || 'Champ'} : ${a.old_value ?? '—'} → ${a.new_value ?? '—'}`}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {a.auteur_nom || a.auteur || 'Système'}
-            {a.date_creation ? ` · ${formatDate(a.date_creation)}` : ''}
-          </p>
+    <div className="flex flex-col gap-3">
+      <form onSubmit={publierNote} className="flex flex-col gap-2" noValidate>
+        <Label htmlFor="ed-note">Ajouter une note</Label>
+        <Textarea id="ed-note" rows={2} value={noteTexte}
+          onChange={(e) => setNoteTexte(e.target.value)}
+          placeholder="Note libre — visible dans le fil du dossier" />
+        <div className="flex justify-end">
+          <Button type="submit" size="sm" disabled={!noteTexte.trim() || noteSaving}>
+            {noteSaving ? 'Envoi…' : 'Publier la note'}
+          </Button>
         </div>
-      )}
-    />
+      </form>
+      <Liste
+        rows={chatter}
+        loading={subLoading}
+        empty="Aucune activité enregistrée."
+        renderRow={(a) => (
+          <div className="min-w-0">
+            <p className="text-sm">
+              {a.type === 'note' || a.type === 'NOTE'
+                ? (a.message || '—')
+                : `${a.field || 'Champ'} : ${a.old_value ?? '—'} → ${a.new_value ?? '—'}`}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {a.auteur_nom || a.auteur || 'Système'}
+              {a.date_creation ? ` · ${formatDate(a.date_creation)}` : ''}
+            </p>
+          </div>
+        )}
+      />
+    </div>
   )
 
   // WIR131 — badges de reconnaissance (ZRH14) reçus par ce dossier.

@@ -34,6 +34,19 @@ vi.mock('../../../api/gestionProjetApi', () => ({
     })),
     getLienEvaluation: vi.fn(() => Promise.resolve({ data: { projet_id: 10, token: 'abc123', deja_soumis: false } })),
     getRapportAvancementPdf: vi.fn(() => Promise.resolve({ data: new Blob(['pdf']), headers: {} })),
+    // WIR203 — écriture des 6 ressources UX42 (16 fonctions CRUD jusqu'ici
+    // orphelines) + dépôt d'une révision de document.
+    createRisque: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
+    updateRisque: vi.fn(() => Promise.resolve({ data: {} })),
+    createAction: vi.fn(() => Promise.resolve({ data: { id: 2 } })),
+    updateAction: vi.fn(() => Promise.resolve({ data: {} })),
+    createCompteRendu: vi.fn(() => Promise.resolve({ data: { id: 3 } })),
+    updateCompteRendu: vi.fn(() => Promise.resolve({ data: {} })),
+    createDocument: vi.fn(() => Promise.resolve({ data: { id: 4 } })),
+    deposerVersionDocument: vi.fn(() => Promise.resolve({ data: { id: 5 } })),
+    createCommentaire: vi.fn(() => Promise.resolve({ data: { id: 6 } })),
+    createLotSousTraitance: vi.fn(() => Promise.resolve({ data: { id: 7 } })),
+    updateLotSousTraitance: vi.fn(() => Promise.resolve({ data: {} })),
   },
 }))
 
@@ -75,6 +88,62 @@ describe('RisquesPage — ZPRJ7-9', () => {
     await user.selectOptions(screen.getByLabelText('Projet'), '10')
     await user.click(await screen.findByRole('button', { name: /Rapport PDF/ }))
     await waitFor(() => expect(gestionProjetApi.getRapportAvancementPdf).toHaveBeenCalledWith('10'))
+  })
+})
+
+/* WIR203 — l'onglet était 100 % lecture seule : 16 fonctions CRUD sans aucun
+   appelant. Les 6 ressources sont désormais créables depuis l'écran, le projet
+   sélectionné est PRÉ-REMPLI (jamais saisi), et la page recharge après écriture
+   — donc la matrice P × I est recalculée par le serveur. */
+describe('RisquesPage — WIR203 : les 6 ressources sont écrivables', () => {
+  const choisirProjet = async (user) => {
+    withProviders(<RisquesPage />)
+    await screen.findByRole('option', { name: /Villa Fès/ })
+    await user.selectOptions(screen.getByLabelText('Projet'), '10')
+    await waitFor(() => expect(gestionProjetApi.getMatriceRisques).toHaveBeenCalledWith('10'))
+  }
+
+  it('crée un risque avec le projet pré-rempli (criticité laissée au serveur)', async () => {
+    const user = userEvent.setup()
+    await choisirProjet(user)
+
+    await user.click(await screen.findByRole('button', { name: /Nouveau risque/ }))
+    const dialog = await screen.findByRole('dialog')
+    await user.type(within(dialog).getByLabelText(/^Libellé/), 'Retard onduleur')
+    await user.click(within(dialog).getByRole('button', { name: 'Enregistrer' }))
+
+    await waitFor(() => expect(gestionProjetApi.createRisque).toHaveBeenCalledWith(
+      expect.objectContaining({ projet: '10', libelle: 'Retard onduleur' })))
+    const corps = gestionProjetApi.createRisque.mock.calls[0][0]
+    // Champs posés/calculés côté serveur : jamais envoyés.
+    expect(corps).not.toHaveProperty('criticite')
+    expect(corps).not.toHaveProperty('company')
+    // La matrice est rechargée après écriture (recalcul serveur).
+    await waitFor(() => expect(gestionProjetApi.getMatriceRisques.mock.calls.length)
+      .toBeGreaterThan(1))
+  })
+
+  it('crée une action avec le projet pré-rempli', async () => {
+    const user = userEvent.setup()
+    await choisirProjet(user)
+
+    await user.click(await screen.findByRole('tab', { name: 'Actions' }))
+    await user.click(await screen.findByRole('button', { name: /Nouvelle action/ }))
+    const dialog = await screen.findByRole('dialog')
+    await user.type(within(dialog).getByLabelText(/^Libellé/), 'Relancer le fournisseur')
+    await user.click(within(dialog).getByRole('button', { name: 'Enregistrer' }))
+
+    await waitFor(() => expect(gestionProjetApi.createAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projet: '10', libelle: 'Relancer le fournisseur',
+        priorite: 'moyenne', statut: 'a_faire',
+      })))
+    expect(gestionProjetApi.createAction.mock.calls[0][0]).not.toHaveProperty('company')
+  })
+
+  it('sans projet sélectionné, la création reste désactivée', async () => {
+    withProviders(<RisquesPage />)
+    expect((await screen.findAllByRole('button', { name: /Nouveau risque/ }))[0]).toBeDisabled()
   })
 })
 

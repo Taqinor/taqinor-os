@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Power, Trash2, Plus } from 'lucide-react'
+import { Power, Trash2, Plus, Check } from 'lucide-react'
 import { ListShell, EcheanceCenter } from '../../ui/module'
 import {
   Segmented, Badge, toast, Button,
@@ -153,6 +153,32 @@ export default function Competences() {
       .finally(() => { if (vivant) setLoading(false) })
     return () => { vivant = false }
   }, [reloadTick])
+
+  /* WIR239 — l'@action `satisfaire` d'un besoin de formation (FG…) n'avait
+     aucun appelant : un besoin restait « exprimé » à vie même après la
+     session. Le serveur refuse en 400 { session_liee } quand la session liée
+     n'est pas RÉALISÉE — ce message est affiché TEL QUEL sous la liste, pas
+     reformulé en « erreur ». */
+  const [besoinErreur, setBesoinErreur] = useState(null)
+
+  const satisfaireBesoin = async (b) => {
+    setBesoinErreur(null)
+    try {
+      await rhApi.satisfaireBesoinFormation(b.id)
+      toast.success('Besoin de formation satisfait.')
+      recharger()
+    } catch (err) {
+      const data = err?.response?.data
+      const message = data?.session_liee || data?.detail
+        || 'Impossible de satisfaire ce besoin.'
+      setBesoinErreur(Array.isArray(message) ? message.join(' ') : message)
+      toast.error(Array.isArray(message) ? message.join(' ') : message)
+    }
+  }
+
+  const besoinActions = (b) => (b.statut === 'satisfait'
+    ? []
+    : [{ id: 'satisfaire', label: 'Marquer satisfait', icon: Check, onClick: () => satisfaireBesoin(b) }])
 
   const basculerQuiz = async (q) => {
     try {
@@ -356,7 +382,11 @@ export default function Competences() {
                   { id: 'statut', header: 'Statut', width: 120, accessor: (b) => b.statut_display || b.statut || '', cell: (v) => v || '—' },
                 ]}
                 rows={besoins} loading={loading} error={error} searchable exportName="besoins-formation"
+                rowActions={besoinActions}
                 emptyTitle="Aucun besoin" emptyDescription="Aucun besoin de formation." />
+              {besoinErreur && (
+                <p className="text-sm text-destructive" role="alert">{besoinErreur}</p>
+              )}
             </>
           )}
           {vue === 'quiz' && (

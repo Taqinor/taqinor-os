@@ -48,6 +48,8 @@ export default function VehiculesPermis() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [reloadTick, setReloadTick] = useState(0)
+  // WIR241 — permis expirant bientôt (bandeau + badge de ligne).
+  const [permisExpirants, setPermisExpirants] = useState([])
   const [permisOpen, setPermisOpen] = useState(false)
   const [affectationOpen, setAffectationOpen] = useState(false)
 
@@ -64,13 +66,16 @@ export default function VehiculesPermis() {
       rhApi.getAffectationsVehicule(),
       rhApi.getEmployes(),
       flotteApi.vehicules.list(),
+      // WIR241 — permis expirant sous 30 jours (fenêtre posée par le serveur).
+      rhApi.getPermisExpirantBientot(),
     ])
-      .then(([p, a, e, v]) => {
+      .then(([p, a, e, v, exp]) => {
         if (!vivant) return
         setPermis(unwrapList(p))
         setAffectations(unwrapList(a))
         setEmployes(unwrapList(e))
         setVehicules(unwrapList(v))
+        setPermisExpirants(unwrapList(exp))
       })
       .catch(() => {
         if (!vivant) return
@@ -105,13 +110,29 @@ export default function VehiculesPermis() {
     }
   }
 
+  /* WIR241 — le rapprochement se fait par ID de permis (l'endpoint
+     `expirant-bientot` renvoie les MÊMES objets `PermisConduire` que la liste,
+     pas un agrégat) : jamais par nom, qui n'est pas une clé. */
+  const idsExpirants = useMemo(
+    () => new Set(permisExpirants.map((p) => p.id)), [permisExpirants])
+
   const permisColumns = useMemo(() => [
     { id: 'employe', header: 'Conducteur', width: 180, accessor: (p) => p.employe_nom || String(p.employe || ''), cell: (v) => <span className="font-medium">{v || '—'}</span> },
     { id: 'categorie', header: 'Catégorie', width: 160, accessor: (p) => p.categorie_display || p.categorie || '', cell: (v) => v || '—' },
     { id: 'numero', header: 'Numéro', width: 140, accessor: (p) => p.numero || '', cell: (v) => v || '—' },
     { id: 'expiration', header: 'Expiration', width: 130, searchable: false, accessor: (p) => p.date_expiration || '', cell: (v) => (v ? formatDate(v) : '—') },
-    { id: 'valide', header: 'État', width: 100, accessor: (p) => (p.valide ? 'valide' : 'expire'), cell: (_v, p) => <Badge tone={p.valide ? 'success' : 'danger'}>{p.valide ? 'Valide' : 'Expiré'}</Badge> },
-  ], [])
+    {
+      id: 'valide',
+      header: 'État',
+      width: 130,
+      accessor: (p) => (p.valide ? (idsExpirants.has(p.id) ? 'expire bientot' : 'valide') : 'expire'),
+      cell: (_v, p) => {
+        if (!p.valide) return <Badge tone="danger">Expiré</Badge>
+        if (idsExpirants.has(p.id)) return <Badge tone="warning">Expire bientôt</Badge>
+        return <Badge tone="success">Valide</Badge>
+      },
+    },
+  ], [idsExpirants])
 
   const affectationColumns = useMemo(() => [
     { id: 'employe', header: 'Conducteur', width: 180, accessor: (a) => a.employe_nom || String(a.employe || ''), cell: (v) => <span className="font-medium">{v || '—'}</span> },
@@ -132,6 +153,24 @@ export default function VehiculesPermis() {
       </div>
 
       <Segmented options={VUES} value={vue} onChange={setVue} aria-label="Vue véhicules & permis" />
+
+      {/* WIR241 — bandeau des permis expirant sous 30 jours : sans lui, un
+          permis à échéance ne se voyait qu'une fois DÉJÀ expiré (donc après
+          un refus d'affectation côté serveur). */}
+      {vue === 'permis' && permisExpirants.length > 0 && (
+        <div className="rounded-lg border border-warning/40 bg-card px-3 py-2 text-sm" role="alert">
+          <p className="font-medium">
+            {permisExpirants.length} permis expire(nt) dans les 30 prochains jours
+          </p>
+          <ul className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
+            {permisExpirants.map((p) => (
+              <li key={p.id}>
+                {p.employe_nom || `Employé #${p.employe}`} — {formatDate(p.date_expiration)}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {vue === 'permis' ? (
         <ListShell

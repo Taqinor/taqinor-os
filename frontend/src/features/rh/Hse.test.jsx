@@ -27,6 +27,9 @@ vi.mock('../../api/rhApi', () => {
       createAccidentTravail: vi.fn(),
       createPresquAccident: vi.fn(),
       createCauserieSecurite: vi.fn(),
+      // WIR239 — émargement d'une causerie + export CNSS des accidents.
+      emargerCauserie: vi.fn(),
+      exportCnssAccidents: vi.fn(),
     },
   }
 })
@@ -93,5 +96,51 @@ describe('Hse — déclarations manuelles (WIR36)', () => {
     await waitFor(() => expect(rhApi.createCauserieSecurite).toHaveBeenCalledWith(
       expect.objectContaining({ theme: 'Port des EPI', date_causerie: '2026-08-01' }),
     ))
+  })
+})
+
+/* WIR239 — deux @actions serveur sans consommateur : l'émargement d'une
+   causerie (la feuille de présence restait vierge) et l'export CSV de
+   déclaration CNSS des accidents du travail (le document exigé après un
+   accident du travail). */
+describe('Hse — WIR239 : émargement causerie & export CNSS', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('émarge un participant via rhApi.emargerCauserie', async () => {
+    rhApi.getCauseriesSecurite.mockResolvedValue({
+      data: [{
+        id: 12, theme: 'Port des EPI', date_causerie: '2026-08-01',
+        animateur: 9, animateur_nom: 'Bennani Youssef', lieu: 'Atelier',
+        participants: [{
+          id: 1, participant: 9, participant_nom: 'Bennani Youssef',
+          present: true, emarge: false,
+        }],
+      }],
+    })
+    rhApi.emargerCauserie.mockResolvedValueOnce({ data: { id: 1, emarge: true } })
+    renderHse()
+    await screen.findByText('HSE — Hygiène, sécurité & environnement')
+    fireEvent.click(screen.getByRole('radio', { name: 'Causeries' }))
+
+    // Action de ligne « Émarger » → dialogue listant les participants.
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Émarger' }))[0])
+    const boutons = await screen.findAllByRole('button', { name: 'Émarger' })
+    fireEvent.click(boutons[boutons.length - 1])
+
+    await waitFor(() => expect(rhApi.emargerCauserie).toHaveBeenCalledWith(
+      12, { participant: 9 },
+    ))
+    expect((await screen.findAllByText('Émargé'))[0]).toBeInTheDocument()
+  })
+
+  it('télécharge l’export CNSS via rhApi.exportCnssAccidents', async () => {
+    globalThis.URL.createObjectURL = vi.fn(() => 'blob:cnss')
+    globalThis.URL.revokeObjectURL = vi.fn()
+    rhApi.exportCnssAccidents.mockResolvedValueOnce({ data: new Blob(['x']) })
+    renderHse()
+    await screen.findByText('HSE — Hygiène, sécurité & environnement')
+
+    fireEvent.click((await screen.findAllByRole('button', { name: /Export CNSS/ }))[0])
+    await waitFor(() => expect(rhApi.exportCnssAccidents).toHaveBeenCalled())
   })
 })

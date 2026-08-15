@@ -35,6 +35,8 @@ vi.mock('../../api/rhApi', () => {
       createQuizFormation: vi.fn(),
       updateQuizFormation: vi.fn(),
       deleteQuizFormation: vi.fn(),
+      // WIR239 — « Marquer satisfait » un besoin de formation.
+      satisfaireBesoinFormation: vi.fn(),
     },
   }
 })
@@ -149,5 +151,51 @@ describe('Competences — saisie manuelle (WIR36)', () => {
       '4', { niveau_min: '2' },
     ))
     expect(await screen.findByText(/Bennani Youssef/)).toBeInTheDocument()
+  })
+})
+
+/* WIR239 — l'@action `satisfaire` d'un besoin de formation n'avait aucun
+   appelant : un besoin restait « exprimé » à vie. Le garde-fou serveur
+   (session liée non réalisée → 400 { session_liee }) doit s'afficher TEL QUEL. */
+describe('Competences — WIR239 : besoin de formation « satisfait »', () => {
+  const BESOIN = {
+    id: 8, employe: 9, employe_nom: 'Bennani Youssef', theme: 'Travail en hauteur',
+    priorite: 'haute', priorite_display: 'Haute',
+    statut: 'exprime', statut_display: 'Exprimé',
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    rhApi.getBesoinsFormation.mockResolvedValue({ data: [BESOIN] })
+  })
+
+  const ouvrirFormation = async () => {
+    renderCompetences()
+    await screen.findByText('Compétences & habilitations')
+    fireEvent.click(screen.getByRole('radio', { name: 'Formation' }))
+    await screen.findAllByText('Travail en hauteur')
+  }
+
+  it('marque le besoin satisfait via rhApi.satisfaireBesoinFormation', async () => {
+    rhApi.satisfaireBesoinFormation.mockResolvedValueOnce({ data: { ...BESOIN, statut: 'satisfait' } })
+    await ouvrirFormation()
+
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Marquer satisfait' }))[0])
+    await waitFor(() => expect(rhApi.satisfaireBesoinFormation).toHaveBeenCalledWith(8))
+  })
+
+  it('affiche TEL QUEL le 400 « session liée non réalisée »', async () => {
+    rhApi.satisfaireBesoinFormation.mockRejectedValueOnce({
+      response: {
+        status: 400,
+        data: { session_liee: 'La session liée doit être réalisée pour satisfaire le besoin.' },
+      },
+    })
+    await ouvrirFormation()
+
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Marquer satisfait' }))[0])
+    expect(await screen.findByText(
+      'La session liée doit être réalisée pour satisfaire le besoin.',
+    )).toBeInTheDocument()
   })
 })

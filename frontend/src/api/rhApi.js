@@ -162,8 +162,28 @@ const rhApi = {
   getFeuillesTemps: (params) => api.get('/rh/feuilles-temps/', { params }),
   getHeuresSupp: (params) => api.get('/rh/heures-supp/', { params }),
   getRoster: (params) => api.get('/rh/roster/', { params }),
+  // WIR238 — écriture du roster (FG169). `semaine_du` et `conflit_conge` sont
+  // CALCULÉS côté serveur (`services.appliquer_roster`) : ils ne sont JAMAIS
+  // envoyés depuis le client, sous peine d'inventer un conflit.
+  createAffectationRoster: (data) => api.post('/rh/roster/', data),
+  updateAffectationRoster: (id, data) => api.patch(`/rh/roster/${id}/`, data),
+  getConflitsRoster: (params) => api.get('/rh/roster/conflits/', { params }),
   getPresencesChantier: (params) => api.get('/rh/presences-chantier/', { params }),
+  // WIR239 — émargement d'une présence chantier (FG170/XRH12). Sans appelant,
+  // la colonne « Géofence » restait morte : `emarge`/`hors_zone` ne pouvaient
+  // jamais devenir vrais. L'horodatage et l'auteur sont posés serveur ; le GPS
+  // est optionnel et JAMAIS bloquant.
+  emargerPresenceChantier: (id, data) =>
+    api.post(`/rh/presences-chantier/${id}/emarger/`, data ?? {}),
   getIncidentsPresence: (params) => api.get('/rh/incidents-presence/', { params }),
+  // WIR195 — les incidents créés depuis « Absents du jour » n'étaient relus
+  // nulle part : la liste + la régularisation (motif) + le compteur par
+  // employé sont désormais consommés. `justifie_par`/`justifie_le` restent
+  // posés côté serveur.
+  justifierIncidentPresence: (id, data) =>
+    api.post(`/rh/incidents-presence/${id}/justifier/`, data ?? {}),
+  getCompteurIncidentsPresence: (params) =>
+    api.get('/rh/incidents-presence/compteur/', { params }),
   // XRH11 — correction d'un pointage (motif obligatoire) + audit immuable.
   updatePointage: (id, data) => api.patch(`/rh/pointages/${id}/`, data),
   getCorrectionsPointage: (id) =>
@@ -214,6 +234,10 @@ const rhApi = {
   marquerSessionRealisee: (id, data) =>
     api.post(`/rh/sessions-formation/${id}/marquer-realisee/`, data ?? {}),
   getBesoinsFormation: (params) => api.get('/rh/besoins-formation/', { params }),
+  // WIR239 — marque un besoin de formation SATISFAIT. Le serveur refuse en 400
+  // { session_liee: … } si la session liée n'est pas réalisée.
+  satisfaireBesoinFormation: (id, data) =>
+    api.post(`/rh/besoins-formation/${id}/satisfaire/`, data ?? {}),
   // ── XRH34 — Quiz builder (gestion RH — porte les bonnes réponses ; ARC44) ──
   getQuizFormation: (params) => quizFormationResource.list(params),
   createQuizFormation: (data) => quizFormationResource.create(data),
@@ -242,8 +266,28 @@ const rhApi = {
   // ── UX26 — EPI, recrutement & évaluations ──
   getEpiCatalogue: (params) => api.get('/rh/epi-catalogue/', { params }),
   getDotationsEpi: (params) => api.get('/rh/dotations-epi/', { params }),
+  // WIR194 — écriture des dotations EPI : la remise (create), la restitution
+  // (YHIRE13, réintègre le stock), l'émargement signé (FG180, preuve CNSS) et
+  // l'historique des émargements. `company`, l'utilisateur agissant et les
+  // preuves (IP, user agent) sont TOUJOURS posés côté serveur.
+  createDotationEpi: (data) => api.post('/rh/dotations-epi/', data),
+  restituerDotationEpi: (id) =>
+    api.post(`/rh/dotations-epi/${id}/restituer/`, {}),
+  emargerDotationEpi: (id, data) =>
+    api.post(`/rh/dotations-epi/${id}/emarger/`, data ?? {}),
+  getEmargementsDotationEpi: (id) =>
+    api.get(`/rh/dotations-epi/${id}/emargements/`),
   getOuverturesPoste: (params) => api.get('/rh/ouvertures-poste/', { params }),
   createOuverturePoste: (data) => api.post('/rh/ouvertures-poste/', data),
+  // WIR196 — cycle d'approbation YHIRE14 (brouillon → en approbation → ouvert).
+  // La séparation des tâches (approbateur ≠ demandeur) est arbitrée par le
+  // serveur : un refus d'auto-approbation revient en 400 { detail }.
+  soumettreOuverturePoste: (id, data) =>
+    api.post(`/rh/ouvertures-poste/${id}/soumettre/`, data ?? {}),
+  approuverOuverturePoste: (id, data) =>
+    api.post(`/rh/ouvertures-poste/${id}/approuver/`, data ?? {}),
+  refuserOuverturePoste: (id, data) =>
+    api.post(`/rh/ouvertures-poste/${id}/refuser/`, data ?? {}),
   getCandidatures: (params) => api.get('/rh/candidatures/', { params }),
   createCandidature: (data) => api.post('/rh/candidatures/', data),
   updateCandidature: (id, data) => api.patch(`/rh/candidatures/${id}/`, data),
@@ -281,6 +325,12 @@ const rhApi = {
     api.post(`/rh/candidatures/${id}/rattacher/`, data ?? {}),
   // CV parsing (XRH23) + comparatif candidats (XRH17).
   parserCv: (id) => api.post(`/rh/candidatures/${id}/parser-cv/`, {}),
+  // WIR241 — doublons de candidature (avertissement NON bloquant à la saisie)
+  // + fusion d'une candidature SOURCE dans une candidature CIBLE.
+  checkDuplicatesCandidature: (params) =>
+    api.get('/rh/candidatures/check-duplicates/', { params }),
+  fusionnerCandidature: (id, data) =>
+    api.post(`/rh/candidatures/${id}/fusionner/`, data ?? {}),
   getComparatifCandidats: (id) =>
     api.get(`/rh/candidatures/${id}/comparatif/`),
   getHistoriqueCandidature: (id) =>
@@ -307,6 +357,9 @@ const rhApi = {
     api.get('/rh/retours-feedback360/synthese/', { params }),
   getCampagnesEvaluation: (params) =>
     api.get('/rh/campagnes-evaluation/', { params }),
+  // WIR196 — clôture d'une campagne d'évaluation (@action serveur sans appelant).
+  cloturerCampagneEvaluation: (id, data) =>
+    api.post(`/rh/campagnes-evaluation/${id}/cloturer/`, data ?? {}),
   getEvaluationsEmploye: (params) =>
     api.get('/rh/evaluations-employe/', { params }),
   validerEvaluation: (id, data) =>
@@ -317,6 +370,10 @@ const rhApi = {
 
   // ── UX27 — HSE RH ──
   getAccidentsTravail: (params) => api.get('/rh/accidents-travail/', { params }),
+  // WIR239 — export CSV de déclaration CNSS (FG181), construit et filtré par le
+  // serveur : récupéré en blob, jamais re-sérialisé côté client.
+  exportCnssAccidents: (params) =>
+    api.get('/rh/accidents-travail/export-cnss/', { params, responseType: 'blob' }),
   // WIR36 — wrapper d'écriture manquant (ViewSet full CRUD, aucun appelant).
   createAccidentTravail: (data) => api.post('/rh/accidents-travail/', data),
   getPresquAccidents: (params) => api.get('/rh/presqu-accidents/', { params }),
@@ -325,6 +382,10 @@ const rhApi = {
   getCauseriesSecurite: (params) => api.get('/rh/causeries-securite/', { params }),
   // WIR36 — idem : causerie de sécurité (toolbox talk).
   createCauserieSecurite: (data) => api.post('/rh/causeries-securite/', data),
+  // WIR239 — émargement d'un participant à une causerie (FG183). L'horodatage
+  // est posé côté serveur ; seul l'id du participant remonte du client.
+  emargerCauserie: (id, data) =>
+    api.post(`/rh/causeries-securite/${id}/emarger/`, data ?? {}),
   getAnalysesRisques: (params) =>
     api.get('/rh/analyses-risques-chantier/', { params }),
   validerAnalyseRisques: (id, data) =>
@@ -380,6 +441,9 @@ const rhApi = {
   // ── PACT81 — Permis de conduire (FG197) & affectations véhicule (FG198) ──
   getPermisConduire: (params) => api.get('/rh/permis-conduire/', { params }),
   createPermisConduire: (data) => api.post('/rh/permis-conduire/', data),
+  // WIR241 — permis expirant dans les `within` jours (défaut serveur : 30).
+  getPermisExpirantBientot: (params) =>
+    api.get('/rh/permis-conduire/expirant-bientot/', { params }),
   getAffectationsVehicule: (params) =>
     api.get('/rh/affectations-vehicule/', { params }),
   createAffectationVehicule: (data) =>
@@ -438,6 +502,12 @@ const rhApi = {
     api.post('/rh/elements-variables-paie/', data),
   updateElementVariablePaie: (id, data) =>
     api.patch(`/rh/elements-variables-paie/${id}/`, data),
+  // WIR239 (PACT162) — bordereau de paie CSV construit par le SERVEUR : sa
+  // colonne Retenues consolide les avances sur salaire approuvées du mois,
+  // ce qu'un export client ne peut pas savoir. Récupéré en blob.
+  exportPaieCsvElementsVariables: (params) =>
+    api.get('/rh/elements-variables-paie/export-paie-csv/',
+      { params, responseType: 'blob' }),
   marquerExporteElementVariablePaie: (id) =>
     api.post(`/rh/elements-variables-paie/${id}/marquer-exporte/`, {}),
 

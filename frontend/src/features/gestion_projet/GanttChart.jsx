@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
-import { Flag } from 'lucide-react'
+import { Flag, Plus, Trash2 } from 'lucide-react'
 import { formatDate } from '../../lib/format'
-import { EmptyState } from '../../ui'
+import { EmptyState, Button, IconButton } from '../../ui'
 import { timelineBounds, barGeometry, markerGeometry, parseDate } from './gantt'
 
 /* ============================================================================
@@ -92,7 +92,34 @@ export function GanttChart({
   baseline = [],
   onReprogrammer,
   busyTacheId,
+  // WIR244 — écriture des dépendances (CPM). Absents = comportement d'avant
+  // strictement inchangé : la légende reste en lecture seule.
+  onCreerDependance,
+  onSupprimerDependance,
 }) {
+  // Formulaire d'ajout d'une dépendance (prédécesseur → successeur + type).
+  const [depOuvert, setDepOuvert] = useState(false)
+  const [pred, setPred] = useState('')
+  const [succ, setSucc] = useState('')
+  // Valeurs RÉELLES de `DependanceTache.TypeDependance` (minuscules serveur).
+  const [typeDep, setTypeDep] = useState('fs')
+  const [depBusy, setDepBusy] = useState(false)
+
+  const soumettreDependance = async (e) => {
+    e.preventDefault()
+    if (!pred || !succ || pred === succ) return
+    setDepBusy(true)
+    try {
+      // `projet` est DÉRIVÉ du prédécesseur côté serveur (lecture seule) : il
+      // n'est jamais envoyé. Les cycles/auto-dépendances sont refusés en 400.
+      await onCreerDependance?.({
+        predecesseur: Number(pred),
+        successeur: Number(succ),
+        type_dependance: typeDep,
+      })
+      setPred(''); setSucc(''); setDepOuvert(false)
+    } finally { setDepBusy(false) }
+  }
   const bounds = useMemo(() => {
     const bars = [
       ...taches.map((t) => ({
@@ -198,16 +225,67 @@ export function GanttChart({
         </div>
       )}
 
-      {/* Légende des dépendances (connecteurs évités pour la lisibilité) */}
-      {dependances.length > 0 && (
+      {/* Légende des dépendances (connecteurs évités pour la lisibilité).
+          WIR244 — elles sont désormais CRÉABLES et SUPPRIMABLES depuis le
+          Gantt : sans écran, `createDependance`/`deleteDependance` étaient
+          orphelines et le CPM ne pouvait jamais être alimenté. */}
+      {(dependances.length > 0 || onCreerDependance) && (
         <div className="mt-2 border-t border-border pt-2">
-          <p className="mb-1 text-xs font-medium text-muted-foreground">Dépendances</p>
+          <div className="mb-1 flex items-center justify-between">
+            <p className="text-xs font-medium text-muted-foreground">Dépendances</p>
+            {onCreerDependance && (
+              <Button size="sm" variant="outline" onClick={() => setDepOuvert((o) => !o)}>
+                <Plus className="size-3.5" aria-hidden="true" /> Ajouter une dépendance
+              </Button>
+            )}
+          </div>
+          {depOuvert && onCreerDependance && (
+            <form onSubmit={soumettreDependance} className="mb-2 flex flex-wrap items-end gap-2">
+              <label className="flex flex-col gap-1 text-xs">
+                Prédécesseur
+                <select value={pred} onChange={(e) => setPred(e.target.value)}
+                        className="h-8 rounded-md border border-border bg-card px-2 text-sm">
+                  <option value="">—</option>
+                  {taches.map((t) => <option key={t.id} value={t.id}>{t.libelle}</option>)}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-xs">
+                Successeur
+                <select value={succ} onChange={(e) => setSucc(e.target.value)}
+                        className="h-8 rounded-md border border-border bg-card px-2 text-sm">
+                  <option value="">—</option>
+                  {taches.map((t) => <option key={t.id} value={t.id}>{t.libelle}</option>)}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-xs">
+                Type
+                <select value={typeDep} onChange={(e) => setTypeDep(e.target.value)}
+                        className="h-8 rounded-md border border-border bg-card px-2 text-sm">
+                  <option value="fs">Fin → Début (FS)</option>
+                  <option value="ss">Début → Début (SS)</option>
+                  <option value="ff">Fin → Fin (FF)</option>
+                  <option value="sf">Début → Fin (SF)</option>
+                </select>
+              </label>
+              <Button type="submit" size="sm" disabled={!pred || !succ || pred === succ || depBusy}>
+                {depBusy ? 'Ajout…' : 'Ajouter'}
+              </Button>
+            </form>
+          )}
           <ul className="flex flex-col gap-0.5 text-xs text-muted-foreground">
             {dependances.map((d) => (
-              <li key={d.id}>
-                #{d.predecesseur} → #{d.successeur}
-                <span className="ml-1 uppercase">({d.type_dependance})</span>
-                {d.lag ? <span className="ml-1">lag {d.lag} j</span> : null}
+              <li key={d.id} className="flex items-center gap-2">
+                <span>
+                  #{d.predecesseur} → #{d.successeur}
+                  <span className="ml-1 uppercase">({d.type_dependance})</span>
+                  {d.lag ? <span className="ml-1">lag {d.lag} j</span> : null}
+                </span>
+                {onSupprimerDependance && (
+                  <IconButton size="sm" variant="ghost" label="Supprimer la dépendance"
+                              onClick={() => onSupprimerDependance(d)}>
+                    <Trash2 className="size-3.5" aria-hidden="true" />
+                  </IconButton>
+                )}
               </li>
             ))}
           </ul>

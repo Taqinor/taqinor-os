@@ -28,6 +28,19 @@ vi.mock('../../api/rhApi', () => {
       getAbsentsNonJustifies: vi.fn(empty),
       genererIncidentAbsence: vi.fn(() => Promise.resolve({ data: {} })),
       getRapportPresence: vi.fn(() => Promise.resolve({ data: { par_employe: [], totaux_departement: [] } })),
+      // WIR195 — incidents de présence : liste, régularisation et compteur.
+      getIncidentsPresence: vi.fn(empty),
+      getCompteurIncidentsPresence: vi.fn(empty),
+      justifierIncidentPresence: vi.fn(),
+      // WIR238 — écriture du roster + conflits de congé + référentiel employés.
+      createAffectationRoster: vi.fn(),
+      updateAffectationRoster: vi.fn(),
+      getConflitsRoster: vi.fn(empty),
+      // WIR239 — émargement d'une présence chantier (colonne Géofence morte).
+      emargerPresenceChantier: vi.fn(),
+      getEmployes: vi.fn(() => Promise.resolve({
+        data: [{ id: 9, nom: 'Bennani', prenom: 'Youssef' }],
+      })),
     },
   }
 })
@@ -143,6 +156,10 @@ describe('Temps — ZRH6/ZRH18 : absents non justifiés & rapport de présence',
 
     fireEvent.click((await screen.findAllByRole('button', { name: 'Créer un incident d’absence' }))[0])
     await waitFor(() => expect(rhApi.genererIncidentAbsence).toHaveBeenCalledWith({ employe: 9 }))
+    // WIR195 — l'écran bascule sur la vue qui montre ce qui vient d'être créé.
+    await waitFor(() => expect(
+      screen.getByRole('radio', { name: 'Incidents de présence' }),
+    ).toBeChecked())
   })
 
   it('affiche le rapport de présence du mois (ZRH18)', async () => {
@@ -162,5 +179,171 @@ describe('Temps — ZRH6/ZRH18 : absents non justifiés & rapport de présence',
     fireEvent.click(screen.getByRole('radio', { name: 'Rapport de présence' }))
     expect((await screen.findAllByText('Bennani Youssef'))[0]).toBeInTheDocument()
     expect(screen.getAllByText('90,0 %').length).toBeGreaterThan(0)
+  })
+})
+
+/* WIR239 — l'@action `emarger` d'une présence chantier n'avait aucun
+   appelant : `emarge` ne devenait jamais vrai, donc la colonne « Géofence »
+   affichait « — » pour l'éternité. */
+describe('Temps — WIR239 : émargement d’une présence chantier', () => {
+  const PRESENCE = {
+    id: 11, employe: 9, employe_nom: 'Bennani Youssef',
+    installation_id: 4, date: '2026-08-12',
+    statut: 'present', statut_display: 'Présent',
+    emarge: false, hors_zone: false,
+  }
+
+  beforeEach(() => vi.clearAllMocks())
+
+  it('émarge puis la colonne Géofence passe à « Dans la zone »', async () => {
+    rhApi.getPresencesChantier
+      .mockResolvedValueOnce({ data: [PRESENCE] })
+      .mockResolvedValue({ data: [{ ...PRESENCE, emarge: true, hors_zone: false }] })
+    rhApi.emargerPresenceChantier.mockResolvedValueOnce({ data: { emarge: true } })
+    renderTemps()
+    await screen.findAllByText('Temps & présence')
+    fireEvent.click(screen.getByRole('radio', { name: 'Présences chantier' }))
+
+    // Avant émargement : la colonne Géofence est muette.
+    expect((await screen.findAllByText('Bennani Youssef'))[0]).toBeInTheDocument()
+    expect(screen.queryByText('Dans la zone')).toBeNull()
+
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Émarger' }))[0])
+    await waitFor(() => expect(rhApi.emargerPresenceChantier).toHaveBeenCalledWith(11))
+    expect((await screen.findAllByText('Dans la zone'))[0]).toBeInTheDocument()
+  })
+})
+
+/* WIR238 — le roster était en lecture seule et le drapeau `conflit_conge`
+   calculé par le serveur n'apparaissait nulle part : on pouvait planifier un
+   technicien sur un congé validé sans jamais le voir. */
+describe('Temps — WIR238 : roster écrivable et conflits de congé visibles', () => {
+  const AFFECTATION = {
+    id: 21, employe: 9, employe_nom: 'Bennani Youssef', equipe: 'Camionnette 2',
+    date: '2026-08-20', creneau: 'journee', creneau_display: 'Journée',
+    conflit_conge: true,
+  }
+
+  beforeEach(() => vi.clearAllMocks())
+
+  it('crée une affectation sans jamais envoyer semaine_du ni conflit_conge', async () => {
+    rhApi.createAffectationRoster.mockResolvedValueOnce({ data: { id: 22 } })
+    renderTemps()
+    await screen.findAllByText('Temps & présence')
+    fireEvent.click(screen.getByRole('radio', { name: 'Roster' }))
+
+    fireEvent.click((await screen.findAllByRole('button', { name: /Nouvelle affectation/ }))[0])
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Employé'), { target: { value: '9' } })
+    fireEvent.change(screen.getByLabelText('Équipe'), { target: { value: 'Camionnette 2' } })
+    fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2026-08-20' } })
+    fireEvent.click(screen.getAllByRole('button', { name: 'Enregistrer' })[0])
+
+    await waitFor(() => expect(rhApi.createAffectationRoster).toHaveBeenCalled())
+    const corps = rhApi.createAffectationRoster.mock.calls[0][0]
+    expect(corps).toMatchObject({ employe: '9', equipe: 'Camionnette 2', date: '2026-08-20', creneau: 'journee' })
+    // Les deux champs CALCULÉS serveur ne doivent jamais partir du client.
+    expect(corps).not.toHaveProperty('semaine_du')
+    expect(corps).not.toHaveProperty('conflit_conge')
+    expect(corps).not.toHaveProperty('company')
+  })
+
+  it('affiche le conflit de congé en colonne ET le bandeau 30 jours', async () => {
+    rhApi.getRoster.mockResolvedValueOnce({ data: [AFFECTATION] })
+    rhApi.getConflitsRoster.mockResolvedValueOnce({ data: [AFFECTATION] })
+    renderTemps()
+    await screen.findAllByText('Temps & présence')
+    fireEvent.click(screen.getByRole('radio', { name: 'Roster' }))
+
+    expect((await screen.findAllByText('Congé validé'))[0]).toBeInTheDocument()
+    expect(screen.getByText(/1 affectation\(s\) en conflit de congé sur les 30 prochains jours/))
+      .toBeInTheDocument()
+  })
+
+  it('modifie une affectation existante via updateAffectationRoster', async () => {
+    rhApi.getRoster.mockResolvedValueOnce({ data: [AFFECTATION] })
+    rhApi.updateAffectationRoster.mockResolvedValueOnce({ data: {} })
+    renderTemps()
+    await screen.findAllByText('Temps & présence')
+    fireEvent.click(screen.getByRole('radio', { name: 'Roster' }))
+
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Modifier' }))[0])
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Équipe'), { target: { value: 'Camionnette 3' } })
+    fireEvent.click(screen.getAllByRole('button', { name: 'Enregistrer' })[0])
+
+    await waitFor(() => expect(rhApi.updateAffectationRoster).toHaveBeenCalledWith(
+      21, expect.objectContaining({ equipe: 'Camionnette 3' }),
+    ))
+  })
+})
+
+/* WIR195 — un incident de présence créé n'était relisible NULLE PART : ni
+   liste, ni régularisation. La vue « Incidents de présence » les affiche et
+   les fait passer en « Justifié » via l'@action serveur. */
+describe('Temps — WIR195 : incidents de présence relisibles et justifiables', () => {
+  const INCIDENT = {
+    id: 42, employe: 9, employe_nom: 'Bennani Youssef',
+    type_incident: 'absence_injustifiee',
+    type_incident_display: 'Absence injustifiée',
+    date: '2026-08-12', minutes_retard: 0, justifie: false, motif: '',
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    rhApi.getIncidentsPresence.mockResolvedValue({ data: [INCIDENT] })
+    rhApi.getCompteurIncidentsPresence.mockResolvedValue({
+      data: [{
+        employe_id: 9, retards: 0, absences: 1,
+        departs_anticipes: 0, total: 1, minutes_retard_total: 0,
+      }],
+    })
+  })
+
+  it('charge la liste + le compteur et rend l’onglet', async () => {
+    renderTemps()
+    await screen.findAllByText('Temps & présence')
+    expect(rhApi.getIncidentsPresence).toHaveBeenCalled()
+    expect(rhApi.getCompteurIncidentsPresence).toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Incidents de présence' }))
+    expect((await screen.findAllByText('Absence injustifiée'))[0]).toBeInTheDocument()
+    // Le compteur serveur est rendu sous le nom résolu depuis la liste.
+    expect(screen.getByText(/Incidents non justifiés par employé/)).toBeInTheDocument()
+  })
+
+  it('justifie un incident via rhApi.justifierIncidentPresence (motif requis)', async () => {
+    rhApi.justifierIncidentPresence.mockResolvedValueOnce({
+      data: { ...INCIDENT, justifie: true, motif: 'Certificat médical' },
+    })
+    renderTemps()
+    await screen.findAllByText('Temps & présence')
+    fireEvent.click(screen.getByRole('radio', { name: 'Incidents de présence' }))
+
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Justifier' }))[0])
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Motif de la régularisation'), {
+      target: { value: 'Certificat médical' },
+    })
+    const valider = screen.getAllByRole('button', { name: 'Justifier' })
+      .find((b) => b.getAttribute('type') === 'submit')
+    fireEvent.click(valider)
+
+    await waitFor(() => expect(rhApi.justifierIncidentPresence).toHaveBeenCalledWith(
+      42, { motif: 'Certificat médical' },
+    ))
+  })
+
+  it('un incident déjà justifié n’expose plus l’action', async () => {
+    rhApi.getIncidentsPresence.mockResolvedValue({
+      data: [{ ...INCIDENT, justifie: true, motif: 'Certificat médical' }],
+    })
+    renderTemps()
+    await screen.findAllByText('Temps & présence')
+    fireEvent.click(screen.getByRole('radio', { name: 'Incidents de présence' }))
+    expect((await screen.findAllByText('Justifié'))[0]).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Justifier' })).toBeNull()
   })
 })

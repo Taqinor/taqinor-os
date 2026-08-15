@@ -61,7 +61,12 @@ export const EtapeCandidature = statusPill({
 })
 
 // Statut d'une ouverture de poste.
+// WIR196 — le cycle amont YHIRE14 (brouillon → en approbation → ouvert)
+// manquait ici : une ouverture soumise s'affichait sans pastille, donc
+// invisible. Les six statuts du modèle `OuverturePoste.Statut` sont couverts.
 export const StatutPoste = statusPill({
+  brouillon: { label: 'Brouillon', tone: 'neutral' },
+  en_approbation: { label: 'En approbation', tone: 'warning' },
   ouvert: { label: 'Ouvert', tone: 'success' },
   pourvu: { label: 'Pourvu', tone: 'neutral' },
   clos: { label: 'Clos', tone: 'neutral' },
@@ -126,4 +131,16 @@ export const ECHEANCE_TYPE_LABELS = {
   dotation_epi: 'Renouvellement EPI',
   epi_peremption: 'Péremption EPI',
   epi_controle: 'Contrôle EPI',
+}
+
+/* WIR241 (XRH31) — bandes de risque d'attrition, FACTORISÉES depuis
+   `RhCockpit.jsx` : la fiche employé affiche désormais le même score, et deux
+   copies des mêmes clés auraient divergé au premier changement. Clés RÉELLES
+   de `core/attrition_risk.py` (faible / moyen / élevé — accentué côté serveur,
+   ne jamais les réécrire). */
+export const ATTRITION_BAND_LABELS = {
+  faible: 'Faible', moyen: 'Moyen', 'élevé': 'Élevé',
+}
+export const ATTRITION_BAND_TONES = {
+  faible: 'success', moyen: 'warning', 'élevé': 'danger',
 }

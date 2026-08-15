@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Plus, CheckCircle2, UploadCloud } from 'lucide-react'
+import { Plus, CheckCircle2, UploadCloud, Download } from 'lucide-react'
 import { ListShell } from '../../ui/module'
 import {
   Badge, toast, Button,
@@ -18,6 +18,14 @@ import rhApi from '../../api/rhApi'
    prestataire de paie externe (le moteur interne a ses propres sélecteurs),
    cycle brouillon → validé → exporté. Les quantités/montants affichés
    viennent TELS QUELS du serveur — aucun total n'est recalculé côté client.
+
+   WIR239 (PACT162) — l'export CSV de cet écran était l'export CLIENT générique
+   du tableau : il recopiait la colonne `retenues` telle qu'affichée, donc SANS
+   les avances sur salaire approuvées à déduire du même mois. Le prestataire de
+   paie recevait un montant de retenues incomplet — de l'argent réel. Le
+   bordereau part désormais de `/rh/elements-variables-paie/export-paie-csv/`,
+   qui consolide ces avances côté serveur ; l'export client trompeur est retiré
+   (plus de `exportName` sur la liste) pour qu'il n'y ait qu'UNE sortie possible.
    ========================================================================== */
 
 export default function ElementsVariablesPaie() {
@@ -71,6 +79,31 @@ export default function ElementsVariablesPaie() {
     }
   }
 
+  // WIR239 (PACT162) — bordereau CSV construit par le SERVEUR (colonne Retenues
+  // consolidée avec les avances approuvées du mois). `params` restreint
+  // l'export à une période quand il part d'une ligne.
+  const [exportEnCours, setExportEnCours] = useState(false)
+
+  const telechargerBordereau = async (params) => {
+    setExportEnCours(true)
+    try {
+      const res = await rhApi.exportPaieCsvElementsVariables(params)
+      const url = window.URL.createObjectURL(new Blob([res.data]))
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'elements-variables-paie.csv'
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      window.URL.revokeObjectURL(url)
+      toast.success('Bordereau téléchargé.')
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Téléchargement du bordereau impossible.')
+    } finally {
+      setExportEnCours(false)
+    }
+  }
+
   const tone = (statut) => (statut === 'exporte' ? 'success' : statut === 'valide' ? 'info' : 'neutral')
 
   const columns = useMemo(() => [
@@ -89,7 +122,12 @@ export default function ElementsVariablesPaie() {
       return [{ id: 'valider', label: 'Valider', icon: CheckCircle2, onClick: () => valider(l) }]
     }
     if (l.statut === 'valide') {
-      return [{ id: 'exporter', label: 'Marquer exporté', icon: UploadCloud, onClick: () => marquerExporte(l) }]
+      // WIR239 — le téléchargement du VRAI bordereau vient AVANT « Marquer
+      // exporté » : on ne marque pas exporté ce qu'on n'a pas téléchargé.
+      return [
+        { id: 'telecharger', label: 'Télécharger le bordereau (CSV)', icon: Download, onClick: () => telechargerBordereau({ annee: l.annee, mois: l.mois }) },
+        { id: 'exporter', label: 'Marquer exporté', icon: UploadCloud, onClick: () => marquerExporte(l) },
+      ]
     }
     return []
   }
@@ -107,9 +145,16 @@ export default function ElementsVariablesPaie() {
         loading={loading}
         error={error}
         searchable
-        exportName="elements-variables-paie"
         rowActions={rowActions}
-        actions={<Button onClick={() => setOpen(true)}><Plus size={15} strokeWidth={1.75} aria-hidden="true" />Nouvelle ligne</Button>}
+        actions={(
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => telechargerBordereau()} disabled={exportEnCours}>
+              <Download size={15} strokeWidth={1.75} aria-hidden="true" />
+              {exportEnCours ? 'Téléchargement…' : 'Télécharger le bordereau (CSV)'}
+            </Button>
+            <Button onClick={() => setOpen(true)}><Plus size={15} strokeWidth={1.75} aria-hidden="true" />Nouvelle ligne</Button>
+          </div>
+        )}
         emptyTitle="Aucune ligne"
         emptyDescription="Aucun élément variable de paie saisi."
       />

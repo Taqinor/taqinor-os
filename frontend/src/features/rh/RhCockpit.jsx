@@ -6,7 +6,12 @@ import { Link } from 'react-router-dom'
 import { Badge, toast } from '../../ui'
 import { formatNumber, formatDate } from '../../lib/format'
 import rhApi from '../../api/rhApi'
-import { ECHEANCE_TYPE_LABELS, TYPE_CONTRAT_LABELS } from './constants.jsx'
+import {
+  ECHEANCE_TYPE_LABELS, TYPE_CONTRAT_LABELS,
+  // WIR241 — bandes d'attrition factorisées (partagées avec la fiche employé).
+  ATTRITION_BAND_LABELS as BAND_LABELS,
+  ATTRITION_BAND_TONES as BAND_TONES,
+} from './constants.jsx'
 
 /* ============================================================================
    UX21 — Cockpit RH + centre d'échéances.
@@ -17,11 +22,6 @@ import { ECHEANCE_TYPE_LABELS, TYPE_CONTRAT_LABELS } from './constants.jsx'
    HSE (`/rh/tableau-bord-hse/`). Aucune écriture. Réservé
    Responsable/Administrateur (gaté par la route).
    ========================================================================== */
-
-/* XRH31 — bandes RÉELLES de `core/attrition_risk.py` : faible / moyen / élevé
-   (accentué côté serveur — ne jamais réécrire ces clés). */
-const BAND_LABELS = { faible: 'Faible', moyen: 'Moyen', 'élevé': 'Élevé' }
-const BAND_TONES = { faible: 'success', moyen: 'warning', 'élevé': 'danger' }
 
 /* ZRH16 — lieux RÉELS de `localisation_hebdo` (défaut serveur : bureau). */
 const LOCALISATION_LABELS = {

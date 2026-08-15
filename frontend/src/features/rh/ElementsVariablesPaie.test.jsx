@@ -22,6 +22,8 @@ vi.mock('../../api/rhApi', () => ({
     createElementVariablePaie: vi.fn(),
     updateElementVariablePaie: vi.fn(),
     marquerExporteElementVariablePaie: vi.fn(),
+    // WIR239 (PACT162) — bordereau CSV SERVEUR (Retenues consolidées).
+    exportPaieCsvElementsVariables: vi.fn(),
   },
 }))
 
@@ -67,6 +69,44 @@ describe('ElementsVariablesPaie (PACT86)', () => {
 
     await waitFor(() => expect(rhApi.createElementVariablePaie).toHaveBeenCalledWith(
       expect.objectContaining({ employe: '9' }),
+    ))
+  })
+})
+
+/* WIR239 (PACT162) — l'export CSV de cet écran était l'export CLIENT du
+   tableau : il recopiait `retenues` sans les avances sur salaire approuvées du
+   mois, donc un montant faux envoyé au prestataire de paie. Seul le bordereau
+   SERVEUR subsiste, et il vient AVANT « Marquer exporté ». */
+describe('ElementsVariablesPaie — WIR239 : bordereau CSV serveur', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    globalThis.URL.createObjectURL = vi.fn(() => 'blob:evp')
+    globalThis.URL.revokeObjectURL = vi.fn()
+  })
+
+  it('télécharge le bordereau serveur (et non un export client)', async () => {
+    rhApi.exportPaieCsvElementsVariables.mockResolvedValueOnce({ data: new Blob(['x']) })
+    renderScreen()
+    await screen.findAllByText('Éléments variables de paie')
+
+    fireEvent.click((await screen.findAllByRole('button', { name: /Télécharger le bordereau/ }))[0])
+    await waitFor(() => expect(rhApi.exportPaieCsvElementsVariables).toHaveBeenCalled())
+  })
+
+  it('propose le téléchargement AVANT « Marquer exporté » sur une ligne validée', async () => {
+    rhApi.exportPaieCsvElementsVariables.mockResolvedValueOnce({ data: new Blob(['x']) })
+    renderScreen()
+    await screen.findAllByText('Éléments variables de paie')
+
+    const telecharger = (await screen.findAllByRole('button', { name: 'Télécharger le bordereau (CSV)' }))[0]
+    const marquer = screen.getAllByRole('button', { name: 'Marquer exporté' })[0]
+    // Ordre du DOM : le téléchargement précède le marquage.
+    expect(telecharger.compareDocumentPosition(marquer)
+      & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
+    fireEvent.click(telecharger)
+    await waitFor(() => expect(rhApi.exportPaieCsvElementsVariables).toHaveBeenCalledWith(
+      { annee: 2026, mois: 7 },
     ))
   })
 })

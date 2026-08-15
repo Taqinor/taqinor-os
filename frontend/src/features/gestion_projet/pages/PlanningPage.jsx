@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
-import { CalendarRange, Flag, Camera } from 'lucide-react'
-import { Card, Button, Spinner, EmptyState, Badge, toast } from '../../../ui'
+import { CalendarRange, Flag, Camera, Plus, Sparkles } from 'lucide-react'
+import {
+  Card, Button, Spinner, EmptyState, Badge, toast,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+  Form, FormField, Input,
+} from '../../../ui'
 import { formatDate } from '../../../lib/format'
 import gestionProjetApi from '../../../api/gestionProjetApi'
 import { errMessage, StatutJalon } from '../constants'
@@ -17,6 +21,9 @@ export default function PlanningPage() {
   const [error, setError] = useState(null)
   const [busy, setBusy] = useState(false)
   const [busyTacheId, setBusyTacheId] = useState(null)
+  // WIR244 — écriture du calendrier ouvré & des jours fériés.
+  const [ferieOpen, setFerieOpen] = useState(false)
+  const [calBusy, setCalBusy] = useState(false)
 
   const load = useCallback(async (pid) => {
     if (!pid) { setData(null); return }
@@ -82,6 +89,79 @@ export default function PlanningPage() {
     }
   }
 
+  /* WIR244 — le calendrier ouvré, les jours fériés et les dépendances CPM
+     n'étaient créables NULLE PART : le planning lisait un calendrier qu'aucun
+     écran ne permettait de créer. `company` reste posée côté serveur. */
+  const creerCalendrier = async () => {
+    setCalBusy(true)
+    try {
+      // Semaine ouvrée marocaine par défaut : lundi→vendredi.
+      await gestionProjetApi.createCalendrier({
+        projet: projetId,
+        lundi: true, mardi: true, mercredi: true, jeudi: true, vendredi: true,
+        samedi: false, dimanche: false,
+      })
+      toast.success('Calendrier créé (semaine 5 jours).')
+      load(projetId)
+    } catch (err) {
+      toast.error(errMessage(err, 'Création du calendrier impossible.'))
+    } finally { setCalBusy(false) }
+  }
+
+  const basculerJour = async (cle, valeur) => {
+    if (!data?.calendrier) return
+    setCalBusy(true)
+    try {
+      await gestionProjetApi.updateCalendrier(data.calendrier.id, { [cle]: valeur })
+      load(projetId)
+    } catch (err) {
+      toast.error(errMessage(err, 'Mise à jour du calendrier impossible.'))
+    } finally { setCalBusy(false) }
+  }
+
+  // Pré-remplissage IDEMPOTENT côté serveur : le compte des doublons évités
+  // vient de sa réponse, jamais d'un calcul client.
+  const seederFeries = async () => {
+    if (!data?.calendrier) return
+    setCalBusy(true)
+    try {
+      const res = await gestionProjetApi.seedFeriesCalendrier(
+        data.calendrier.id, new Date().getFullYear())
+      const d = res.data || {}
+      toast.success(
+        `${d.nb_crees ?? 0} jour(s) férié(s) ajouté(s)`
+        + `${d.nb_deja_presents ? `, ${d.nb_deja_presents} déjà présent(s)` : ''}.`)
+      load(projetId)
+    } catch (err) {
+      toast.error(errMessage(err, 'Pré-remplissage des fériés impossible.'))
+    } finally { setCalBusy(false) }
+  }
+
+  /* WIR244 — dépendances CPM : `createDependance`/`deleteDependance` étaient
+     orphelines, le chemin critique ne pouvait donc jamais être alimenté. Le
+     serveur refuse en 400 l'auto-dépendance, le cycle direct et deux tâches de
+     projets différents — son message est affiché tel quel. Le rechargement
+     complet ramène le planning recalculé. */
+  const creerDependance = async (payload) => {
+    try {
+      await gestionProjetApi.createDependance(payload)
+      toast.success('Dépendance ajoutée.')
+      await load(projetId)
+    } catch (err) {
+      toast.error(errMessage(err, 'Création de la dépendance impossible.'))
+    }
+  }
+
+  const supprimerDependance = async (dep) => {
+    try {
+      await gestionProjetApi.deleteDependance(dep.id)
+      toast.success('Dépendance supprimée.')
+      await load(projetId)
+    } catch (err) {
+      toast.error(errMessage(err, 'Suppression impossible.'))
+    }
+  }
+
   const prendreBaseline = async () => {
     setBusy(true)
     try {
@@ -128,6 +208,8 @@ export default function PlanningPage() {
               baseline={[]}
               onReprogrammer={reprogrammerTache}
               busyTacheId={busyTacheId}
+              onCreerDependance={creerDependance}
+              onSupprimerDependance={supprimerDependance}
             />
           </Card>
 
@@ -149,13 +231,35 @@ export default function PlanningPage() {
             </Card>
 
             <Card className="p-4 sm:p-5">
-              <h3 className="mb-3 font-display text-base font-semibold">Calendrier & jours fériés</h3>
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <h3 className="font-display text-base font-semibold">Calendrier & jours fériés</h3>
+                {data?.calendrier && (
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" variant="outline" disabled={calBusy} onClick={seederFeries}>
+                      <Sparkles className="size-3.5" aria-hidden="true" /> Pré-remplir les fériés
+                    </Button>
+                    <Button size="sm" onClick={() => setFerieOpen(true)}>
+                      <Plus className="size-3.5" aria-hidden="true" /> Jour férié
+                    </Button>
+                  </div>
+                )}
+              </div>
               {data?.calendrier ? (
                 <div className="flex flex-col gap-2 text-sm">
+                  {/* WIR244 — les jours ouvrés se BASCULENT (updateCalendrier) :
+                      ils n'étaient qu'affichés. */}
                   <div className="flex flex-wrap gap-1.5">
-                    {[['Lun', data.calendrier.lundi], ['Mar', data.calendrier.mardi], ['Mer', data.calendrier.mercredi], ['Jeu', data.calendrier.jeudi], ['Ven', data.calendrier.vendredi], ['Sam', data.calendrier.samedi], ['Dim', data.calendrier.dimanche]].map(([lbl, on]) => (
-                      <Badge key={lbl} tone={on ? 'success' : 'neutral'}>{lbl}</Badge>
-                    ))}
+                    {[['Lun', 'lundi'], ['Mar', 'mardi'], ['Mer', 'mercredi'], ['Jeu', 'jeudi'], ['Ven', 'vendredi'], ['Sam', 'samedi'], ['Dim', 'dimanche']].map(([lbl, cle]) => {
+                      const on = data.calendrier[cle]
+                      return (
+                        <button key={cle} type="button" disabled={calBusy}
+                                aria-pressed={Boolean(on)}
+                                onClick={() => basculerJour(cle, !on)}
+                                title={`${lbl} — ${on ? 'ouvré' : 'chômé'}`}>
+                          <Badge tone={on ? 'success' : 'neutral'}>{lbl}</Badge>
+                        </button>
+                      )
+                    })}
                   </div>
                   {(data.feries ?? []).length ? (
                     <ul className="mt-2 flex flex-col gap-1 text-xs text-muted-foreground">
@@ -165,7 +269,14 @@ export default function PlanningPage() {
                     </ul>
                   ) : <span className="text-xs text-muted-foreground">Aucun jour férié déclaré.</span>}
                 </div>
-              ) : <p className="text-sm text-muted-foreground">Aucun calendrier défini pour ce projet.</p>}
+              ) : (
+                <div className="flex flex-col items-start gap-2">
+                  <p className="text-sm text-muted-foreground">Aucun calendrier défini pour ce projet.</p>
+                  <Button size="sm" disabled={calBusy} onClick={creerCalendrier}>
+                    <Plus className="size-3.5" aria-hidden="true" /> Créer le calendrier (5 jours)
+                  </Button>
+                </div>
+              )}
             </Card>
           </div>
 
@@ -185,6 +296,65 @@ export default function PlanningPage() {
           )}
         </>
       )}
+
+      {ferieOpen && data?.calendrier && (
+        <JourFerieForm
+          calendrierId={data.calendrier.id}
+          onClose={() => setFerieOpen(false)}
+          onSaved={() => { setFerieOpen(false); load(projetId) }}
+        />
+      )}
     </div>
+  )
+}
+
+/* WIR244 — Ajouter un jour férié à un calendrier. `company` posée serveur ;
+   l'unicité (calendrier, date) est garantie côté serveur (400 sur doublon). */
+function JourFerieForm({ calendrierId, onClose, onSaved }) {
+  const [date, setDate] = useState('')
+  const [libelle, setLibelle] = useState('')
+  const [error, setError] = useState(null)
+  const [saving, setSaving] = useState(false)
+
+  const submit = async (ev) => {
+    ev.preventDefault()
+    if (!date) { setError('La date est requise.'); return }
+    setSaving(true)
+    setError(null)
+    try {
+      await gestionProjetApi.createJourFerie({
+        calendrier: calendrierId, date, libelle: libelle.trim(),
+      })
+      onSaved?.()
+    } catch (err) {
+      setError(errMessage(err, "L'enregistrement a échoué."))
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader><DialogTitle>Nouveau jour férié</DialogTitle></DialogHeader>
+        <Form onSubmit={submit} className="gap-4">
+          <FormField label="Date" required htmlFor="jf-date" fullWidth>
+            <Input id="jf-date" type="date" value={date}
+                   onChange={(e) => setDate(e.target.value)} />
+          </FormField>
+          <FormField label="Libellé" htmlFor="jf-libelle" fullWidth>
+            <Input id="jf-libelle" value={libelle}
+                   onChange={(e) => setLibelle(e.target.value)} />
+          </FormField>
+          {error && (
+            <div role="alert" className="sm:col-span-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              {error}
+            </div>
+          )}
+          <DialogFooter className="sm:col-span-2">
+            <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
+            <Button type="submit" loading={saving}>{saving ? 'Enregistrement…' : 'Enregistrer'}</Button>
+          </DialogFooter>
+        </Form>
+      </DialogContent>
+    </Dialog>
   )
 }
