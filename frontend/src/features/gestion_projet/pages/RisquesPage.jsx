@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link2, FileDown, Plus, Pencil } from 'lucide-react'
+import { Link2, FileDown, Plus, Pencil, Upload } from 'lucide-react'
 import {
   Card, Button, IconButton, Spinner, EmptyState, Badge, DataTable, Tabs,
   TabsList, TabsTrigger, TabsContent, toast,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
-  DialogFooter, Form, FormField, Input,
+  DialogFooter, Form, FormField, Input, Textarea,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../../ui'
 import { formatMAD, formatDate } from '../../../lib/format'
@@ -12,7 +12,7 @@ import { filenameFromResponse } from '../../../utils/downloadBlob'
 import gestionProjetApi from '../../../api/gestionProjetApi'
 import {
   errMessage, StatutRisque, StatutAction, PrioriteAction, StatutLot,
-  CATEGORIES_RISQUE, TYPES_DOC,
+  CATEGORIES_RISQUE, TYPES_DOC, CIBLE_TYPES,
 } from '../constants'
 import ProjetPicker from '../components/ProjetPicker'
 import RiskHeatmap from '../components/RiskHeatmap'
@@ -129,6 +129,301 @@ function SousTraitantForm({ sousTraitant, onClose, onSaved }) {
   )
 }
 
+/* ── WIR203 — Écriture des 6 ressources UX42 ──────────────────────────────────
+   L'onglet était 100 % lecture seule : 16 fonctions CRUD de `gestionProjetApi`
+   (risques, actions, comptes-rendus, documents + dépôt de version,
+   commentaires, lots de sous-traitance) n'avaient AUCUN appelant — on pouvait
+   consulter un registre de risques qu'aucun écran ne permettait de remplir.
+   `projet` est TOUJOURS pré-rempli depuis le projet sélectionné (jamais saisi),
+   et `company`/`auteur`/`criticite` restent posés côté serveur. Après chaque
+   écriture, la page recharge — donc la matrice P × I est recalculée par le
+   serveur, jamais dérivée côté client. */
+
+const STATUTS_RISQUE_OPT = [
+  { value: 'ouvert', label: 'Ouvert' },
+  { value: 'surveille', label: 'Surveillé' },
+  { value: 'maitrise', label: 'Maîtrisé' },
+  { value: 'clos', label: 'Clos' },
+]
+const STATUTS_ACTION_OPT = [
+  { value: 'a_faire', label: 'À faire' },
+  { value: 'en_cours', label: 'En cours' },
+  { value: 'fait', label: 'Fait' },
+  { value: 'annule', label: 'Annulé' },
+]
+const PRIORITES_ACTION_OPT = [
+  { value: 'basse', label: 'Basse' },
+  { value: 'moyenne', label: 'Moyenne' },
+  { value: 'haute', label: 'Haute' },
+]
+const STATUTS_LOT_OPT = [
+  { value: 'prevu', label: 'Prévu' },
+  { value: 'en_cours', label: 'En cours' },
+  { value: 'receptionne', label: 'Réceptionné' },
+  { value: 'annule', label: 'Annulé' },
+]
+
+/* Spécification déclarative des 6 formulaires : titre, champs, payload et
+   appels API. Une seule mécanique de dialogue au lieu de six copies. */
+const SPECS = {
+  risque: {
+    titre: 'risque',
+    defauts: { libelle: '', categorie: 'technique', probabilite: '3', impact: '3', statut: 'ouvert', mitigation: '' },
+    champs: [
+      { k: 'libelle', label: 'Libellé', required: true },
+      { k: 'categorie', label: 'Catégorie', options: CATEGORIES_RISQUE },
+      { k: 'probabilite', label: 'Probabilité (1–5)', type: 'number' },
+      { k: 'impact', label: 'Impact (1–5)', type: 'number' },
+      { k: 'statut', label: 'Statut', options: STATUTS_RISQUE_OPT },
+      { k: 'mitigation', label: 'Mitigation', textarea: true },
+    ],
+    // `criticite` est CALCULÉE serveur : jamais envoyée.
+    payload: (f, projetId) => ({
+      projet: projetId, libelle: f.libelle.trim(), categorie: f.categorie,
+      probabilite: Number(f.probabilite) || 1, impact: Number(f.impact) || 1,
+      statut: f.statut, mitigation: f.mitigation || '',
+    }),
+    create: (d) => gestionProjetApi.createRisque(d),
+    update: (id, d) => gestionProjetApi.updateRisque(id, d),
+  },
+  action: {
+    titre: 'action',
+    defauts: { libelle: '', priorite: 'moyenne', statut: 'a_faire', echeance: '', description: '' },
+    champs: [
+      { k: 'libelle', label: 'Libellé', required: true },
+      { k: 'priorite', label: 'Priorité', options: PRIORITES_ACTION_OPT },
+      { k: 'statut', label: 'Statut', options: STATUTS_ACTION_OPT },
+      { k: 'echeance', label: 'Échéance', type: 'date' },
+      { k: 'description', label: 'Description', textarea: true },
+    ],
+    payload: (f, projetId) => ({
+      projet: projetId, libelle: f.libelle.trim(), priorite: f.priorite,
+      statut: f.statut, echeance: f.echeance || null,
+      description: f.description || '',
+    }),
+    create: (d) => gestionProjetApi.createAction(d),
+    update: (id, d) => gestionProjetApi.updateAction(id, d),
+  },
+  cr: {
+    titre: 'compte-rendu',
+    defauts: { titre: '', date_reunion: '', lieu: '', ordre_du_jour: '', decisions: '' },
+    champs: [
+      { k: 'titre', label: 'Titre', required: true },
+      { k: 'date_reunion', label: 'Date de réunion', type: 'date' },
+      { k: 'lieu', label: 'Lieu' },
+      { k: 'ordre_du_jour', label: 'Ordre du jour', textarea: true },
+      { k: 'decisions', label: 'Décisions', textarea: true },
+    ],
+    // `redacteur` est posé côté serveur — jamais envoyé.
+    payload: (f, projetId) => ({
+      projet: projetId, titre: f.titre.trim(),
+      date_reunion: f.date_reunion || null, lieu: f.lieu || '',
+      ordre_du_jour: f.ordre_du_jour || '', decisions: f.decisions || '',
+    }),
+    create: (d) => gestionProjetApi.createCompteRendu(d),
+    update: (id, d) => gestionProjetApi.updateCompteRendu(id, d),
+  },
+  document: {
+    titre: 'document',
+    defauts: { nom: '', type_doc: 'plan', description: '' },
+    champs: [
+      { k: 'nom', label: 'Nom', required: true },
+      { k: 'type_doc', label: 'Type', options: TYPES_DOC },
+      { k: 'description', label: 'Description', textarea: true },
+    ],
+    // `derniere_version` est posée serveur au dépôt : jamais envoyée ici.
+    payload: (f, projetId) => ({
+      projet: projetId, nom: f.nom.trim(), type_doc: f.type_doc,
+      description: f.description || '',
+    }),
+    create: (d) => gestionProjetApi.createDocument(d),
+  },
+  commentaire: {
+    titre: 'commentaire',
+    defauts: { texte: '', cible_type: 'projet', cible_id: '' },
+    champs: [
+      { k: 'texte', label: 'Commentaire', required: true, textarea: true },
+      { k: 'cible_type', label: 'Cible', options: CIBLE_TYPES },
+      { k: 'cible_id', label: 'Id de la cible (optionnel)', type: 'number' },
+    ],
+    // `auteur` est posé côté serveur — jamais envoyé.
+    payload: (f, projetId) => ({
+      projet: projetId, texte: f.texte.trim(), cible_type: f.cible_type,
+      cible_id: f.cible_id ? Number(f.cible_id) : null,
+    }),
+    create: (d) => gestionProjetApi.createCommentaire(d),
+  },
+  lot: {
+    titre: 'lot de sous-traitance',
+    defauts: { libelle: '', sous_traitant: '', montant: '', statut: 'prevu', date_debut: '', date_fin: '' },
+    champs: [
+      { k: 'libelle', label: 'Libellé', required: true },
+      { k: 'sous_traitant', label: 'Sous-traitant', source: 'sousTraitants' },
+      { k: 'montant', label: 'Montant (interne)', type: 'number' },
+      { k: 'statut', label: 'Statut', options: STATUTS_LOT_OPT },
+      { k: 'date_debut', label: 'Début', type: 'date' },
+      { k: 'date_fin', label: 'Fin', type: 'date' },
+    ],
+    payload: (f, projetId) => ({
+      projet: projetId, libelle: f.libelle.trim(),
+      sous_traitant: f.sous_traitant ? Number(f.sous_traitant) : null,
+      montant: f.montant || null, statut: f.statut,
+      date_debut: f.date_debut || null, date_fin: f.date_fin || null,
+    }),
+    create: (d) => gestionProjetApi.createLotSousTraitance(d),
+    update: (id, d) => gestionProjetApi.updateLotSousTraitance(id, d),
+  },
+}
+
+function RessourceForm({ kind, projetId, initial, sousTraitants, onClose, onSaved }) {
+  const spec = SPECS[kind]
+  const isNew = !initial?.id
+  const [fields, setFields] = useState(() => {
+    const base = { ...spec.defauts }
+    Object.keys(base).forEach((k) => {
+      const v = initial?.[k]
+      if (v !== undefined && v !== null) base[k] = String(v)
+    })
+    return base
+  })
+  const [error, setError] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const setField = (k, v) => setFields((f) => ({ ...f, [k]: v }))
+
+  const submit = async (ev) => {
+    ev.preventDefault()
+    const requis = spec.champs.find((c) => c.required)
+    if (requis && !String(fields[requis.k] || '').trim()) {
+      setError(`${requis.label} est requis.`)
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      const payload = spec.payload(fields, projetId)
+      if (isNew) await spec.create(payload)
+      else await spec.update(initial.id, payload)
+      onSaved?.()
+      onClose()
+    } catch (err) {
+      setError(errMessage(err, "L'enregistrement a échoué."))
+    } finally { setSaving(false) }
+  }
+
+  const listes = { sousTraitants }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{isNew ? `Nouveau ${spec.titre}` : `Modifier le ${spec.titre}`}</DialogTitle>
+          <DialogDescription>
+            Le projet sélectionné est pré-rempli ; la société et les champs
+            dérivés sont posés côté serveur.
+          </DialogDescription>
+        </DialogHeader>
+        <Form onSubmit={submit} className="gap-4">
+          {spec.champs.map((c) => (
+            <FormField key={c.k} label={c.label} required={c.required}
+                       htmlFor={`wr-${kind}-${c.k}`} fullWidth={Boolean(c.textarea)}>
+              {c.options ? (
+                <Select value={fields[c.k]} onValueChange={(v) => setField(c.k, v)}>
+                  <SelectTrigger id={`wr-${kind}-${c.k}`}><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {c.options.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : c.source ? (
+                <Select value={fields[c.k]} onValueChange={(v) => setField(c.k, v)}>
+                  <SelectTrigger id={`wr-${kind}-${c.k}`}><SelectValue placeholder="— Choisir —" /></SelectTrigger>
+                  <SelectContent>
+                    {(listes[c.source] ?? []).map((o) => (
+                      <SelectItem key={o.id} value={String(o.id)}>
+                        {o.raison_sociale || o.nom}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : c.textarea ? (
+                <Textarea id={`wr-${kind}-${c.k}`} rows={3} value={fields[c.k]}
+                          onChange={(e) => setField(c.k, e.target.value)} />
+              ) : (
+                <Input id={`wr-${kind}-${c.k}`} type={c.type || 'text'}
+                       step={c.type === 'number' ? 'any' : undefined}
+                       value={fields[c.k]}
+                       onChange={(e) => setField(c.k, e.target.value)} />
+              )}
+            </FormField>
+          ))}
+          {error && (
+            <div role="alert" className="sm:col-span-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              {error}
+            </div>
+          )}
+          <DialogFooter className="sm:col-span-2">
+            <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
+            <Button type="submit" loading={saving}>{saving ? 'Enregistrement…' : 'Enregistrer'}</Button>
+          </DialogFooter>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/* WIR203 — dépôt d'une RÉVISION de document (multipart). Le numéro de version
+   et l'auteur sont posés côté serveur ; le client n'envoie que le fichier. */
+function DeposerVersionForm({ document: doc, onClose, onSaved }) {
+  const [fichier, setFichier] = useState(null)
+  const [commentaire, setCommentaire] = useState('')
+  const [error, setError] = useState(null)
+  const [saving, setSaving] = useState(false)
+
+  const submit = async (ev) => {
+    ev.preventDefault()
+    if (!fichier) { setError('Un fichier est obligatoire.'); return }
+    setSaving(true)
+    setError(null)
+    try {
+      await gestionProjetApi.deposerVersionDocument(doc.id, { fichier, commentaire })
+      onSaved?.()
+      onClose()
+    } catch (err) {
+      setError(errMessage(err, 'Le dépôt a échoué.'))
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Déposer une version — {doc.nom}</DialogTitle>
+        </DialogHeader>
+        <Form onSubmit={submit} className="gap-4">
+          <FormField label="Fichier" required htmlFor="wr-doc-fichier" fullWidth>
+            <input id="wr-doc-fichier" type="file"
+                   onChange={(e) => setFichier(e.target.files?.[0] ?? null)} />
+          </FormField>
+          <FormField label="Commentaire de révision" htmlFor="wr-doc-com" fullWidth>
+            <Input id="wr-doc-com" value={commentaire}
+                   onChange={(e) => setCommentaire(e.target.value)} />
+          </FormField>
+          {error && (
+            <div role="alert" className="sm:col-span-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              {error}
+            </div>
+          )}
+          <DialogFooter className="sm:col-span-2">
+            <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
+            <Button type="submit" loading={saving}>{saving ? 'Dépôt…' : 'Déposer'}</Button>
+          </DialogFooter>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 /* UX42 — Risques, actions & CR : registre des risques, plan d'actions,
    comptes-rendus, documents/commentaires, modèles de projet, sous-traitants &
    lots. Tout est groupé sous onglets. Le `montant` des lots est INTERNE. */
@@ -150,6 +445,9 @@ export default function RisquesPage() {
   // WIR87 — édition du carnet (master DC34) : null = fermé, {} = création,
   // objet = édition.
   const [stEditing, setStEditing] = useState(null)
+  // WIR203 — écriture des 6 ressources : { kind, initial } ; null = fermé.
+  const [editing, setEditing] = useState(null)
+  const [deposerFor, setDeposerFor] = useState(null)
 
   const asList = (r) => (Array.isArray(r.data) ? r.data : r.data?.results ?? [])
 
@@ -278,8 +576,13 @@ export default function RisquesPage() {
 
           <TabsContent value="risques">
             <Card className="p-4 sm:p-5">
+              <EnTeteEcriture titre="Registre des risques" libelle="Nouveau risque"
+                              projetId={projetId} onClick={() => setEditing({ kind: 'risque' })} />
               <DataTable
                 data={state.risques}
+                rowActions={(r) => [
+                  { id: 'edit', label: 'Modifier', icon: Pencil, onClick: () => setEditing({ kind: 'risque', initial: r }) },
+                ]}
                 getRowId={(r) => r.id}
                 columns={[
                   { id: 'libelle', header: 'Risque', accessor: (r) => r.libelle, cell: (v) => <span className="font-medium">{v}</span> },
@@ -308,8 +611,13 @@ export default function RisquesPage() {
 
           <TabsContent value="actions">
             <Card className="p-4 sm:p-5">
+              <EnTeteEcriture titre="Plan d’actions" libelle="Nouvelle action"
+                              projetId={projetId} onClick={() => setEditing({ kind: 'action' })} />
               <DataTable
                 data={state.actions}
+                rowActions={(a) => [
+                  { id: 'edit', label: 'Modifier', icon: Pencil, onClick: () => setEditing({ kind: 'action', initial: a }) },
+                ]}
                 getRowId={(a) => a.id}
                 columns={[
                   { id: 'libelle', header: 'Action', accessor: (a) => a.libelle, cell: (v) => <span className="font-medium">{v}</span> },
@@ -326,6 +634,8 @@ export default function RisquesPage() {
 
           <TabsContent value="cr">
             <Card className="p-4 sm:p-5">
+              <EnTeteEcriture titre="Comptes-rendus de réunion" libelle="Nouveau compte-rendu"
+                              projetId={projetId} onClick={() => setEditing({ kind: 'cr' })} />
               {state.crs.length ? (
                 <ul className="flex flex-col gap-2">
                   {state.crs.map((c) => (
@@ -336,6 +646,12 @@ export default function RisquesPage() {
                       </div>
                       {c.lieu && <p className="text-xs text-muted-foreground">Lieu : {c.lieu}</p>}
                       {c.decisions && <p className="mt-1 whitespace-pre-wrap text-sm">{c.decisions}</p>}
+                      <div className="mt-2 flex justify-end">
+                        <Button size="sm" variant="ghost"
+                                onClick={() => setEditing({ kind: 'cr', initial: c })}>
+                          <Pencil className="size-3.5" aria-hidden="true" /> Modifier
+                        </Button>
+                      </div>
                     </li>
                   ))}
                 </ul>
@@ -345,8 +661,13 @@ export default function RisquesPage() {
 
           <TabsContent value="documents">
             <Card className="p-4 sm:p-5">
+              <EnTeteEcriture titre="Documents versionnés" libelle="Nouveau document"
+                              projetId={projetId} onClick={() => setEditing({ kind: 'document' })} />
               <DataTable
                 data={state.documents}
+                rowActions={(d) => [
+                  { id: 'deposer', label: 'Déposer une version', icon: Upload, onClick: () => setDeposerFor(d) },
+                ]}
                 getRowId={(d) => d.id}
                 columns={[
                   { id: 'nom', header: 'Document', accessor: (d) => d.nom, cell: (v) => <span className="font-medium">{v}</span> },
@@ -358,8 +679,12 @@ export default function RisquesPage() {
                 emptyTitle="Aucun document"
                 emptyDescription={projetId ? 'Aucun document versionné.' : 'Sélectionnez un projet.'}
               />
+              <div className="mt-4 border-t border-border pt-3">
+                <EnTeteEcriture titre="Commentaires" libelle="Nouveau commentaire"
+                                projetId={projetId} onClick={() => setEditing({ kind: 'commentaire' })} />
+              </div>
               {state.commentaires.length > 0 && (
-                <div className="mt-4 border-t border-border pt-3">
+                <div className="mt-2">
                   <p className="mb-2 text-sm font-medium">Commentaires récents</p>
                   <ul className="flex flex-col gap-1 text-sm">
                     {state.commentaires.slice(0, 8).map((cm) => (
@@ -426,10 +751,18 @@ export default function RisquesPage() {
                 emptyTitle="Aucun sous-traitant"
                 emptyDescription="Ajoutez des sous-traitants avec « Nouveau sous-traitant »."
               />
-              <h3 className="mb-2 mt-5 font-display text-base font-semibold">Lots de sous-traitance</h3>
+              <div className="mb-2 mt-5 flex items-center justify-between">
+                <h3 className="font-display text-base font-semibold">Lots de sous-traitance</h3>
+                <Button size="sm" disabled={!projetId} onClick={() => setEditing({ kind: 'lot' })}>
+                  <Plus className="size-4" aria-hidden="true" /> Nouveau lot
+                </Button>
+              </div>
               <DataTable
                 data={state.lots}
                 getRowId={(l) => l.id}
+                rowActions={(l) => [
+                  { id: 'edit', label: 'Modifier', icon: Pencil, onClick: () => setEditing({ kind: 'lot', initial: l }) },
+                ]}
                 columns={[
                   { id: 'libelle', header: 'Lot', accessor: (l) => l.libelle, cell: (v) => <span className="font-medium">{v}</span> },
                   { id: 'st', header: 'Sous-traitant', accessor: (l) => l.sous_traitant_nom || `#${l.sous_traitant}` },
@@ -450,6 +783,38 @@ export default function RisquesPage() {
                           onClose={() => setStEditing(null)}
                           onSaved={reloadSousTraitants} />
       )}
+      {/* WIR203 — après chaque écriture, `load(projetId)` recharge TOUT, y
+          compris la matrice P × I : elle est recalculée par le serveur. */}
+      {editing && (
+        <RessourceForm
+          kind={editing.kind}
+          projetId={projetId}
+          initial={editing.initial}
+          sousTraitants={state.sousTraitants}
+          onClose={() => setEditing(null)}
+          onSaved={() => load(projetId)}
+        />
+      )}
+      {deposerFor && (
+        <DeposerVersionForm
+          document={deposerFor}
+          onClose={() => setDeposerFor(null)}
+          onSaved={() => load(projetId)}
+        />
+      )}
+    </div>
+  )
+}
+
+/* WIR203 — en-tête d'une section écrivable : le bouton reste DÉSACTIVÉ tant
+   qu'aucun projet n'est choisi (le `projet` est pré-rempli, jamais saisi). */
+function EnTeteEcriture({ titre, libelle, projetId, onClick }) {
+  return (
+    <div className="mb-2 flex items-center justify-between">
+      <h3 className="font-display text-base font-semibold">{titre}</h3>
+      <Button size="sm" disabled={!projetId} onClick={onClick}>
+        <Plus className="size-4" aria-hidden="true" /> {libelle}
+      </Button>
     </div>
   )
 }
