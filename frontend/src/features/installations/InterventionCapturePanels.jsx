@@ -78,11 +78,29 @@ export function SerialsPanel({ intervention, onChanged, knownSeries = [] }) {
       // respecte la préférence « Qualité photo » (Mes préférences).
       const rawFile = fileRef.current?.files?.[0]
       const file = rawFile ? await compressPhotoForUpload(rawFile) : rawFile
-      await installationsApi.ajouterSerial(id, {
-        designation, numero_serie: numero, file })
+      // WIR210 — hors réseau, le n° de série était PERDU (le handler existait,
+      // mais l'appel n'était pas enveloppé). Il part désormais dans l'outbox
+      // terrain sous FIELD_OPS.SERIAL. Une erreur APPLICATIVE (4xx) reste
+      // levée telle quelle par withOfflineFallback : elle doit rester visible.
+      const r = await withOfflineFallback(
+        () => installationsApi.ajouterSerial(id, {
+          designation, numero_serie: numero, file }),
+        FIELD_OPS.SERIAL, { intervention: id, designation, numero_serie: numero })
       setDesignation(''); setNumero('')
       if (fileRef.current) fileRef.current.value = ''
-      toast.success('N° de série enregistré.')
+      if (r.queued) {
+        toast.success(QUEUED_MSG)
+        // La file JSON ne transporte pas de binaire, et le rejeu serveur crée
+        // le relevé SANS photo (`_h_serial` : « la plaque est téléversée à
+        // part »). On le DIT plutôt que de laisser croire que la photo est
+        // partie — elle serait sinon silencieusement perdue.
+        if (file) {
+          toast.warning('Photo de plaque non enfilée : reprenez-la une fois '
+            + 'le réseau revenu.')
+        }
+      } else {
+        toast.success('N° de série enregistré.')
+      }
       firstFieldRef.current?.focus()
       await load(); onChanged?.()
     } catch (err) {
@@ -164,9 +182,20 @@ export function ConsommationPanel({ intervention, onChanged }) {
     .finally(() => setLoading(false)), [id])
   useEffect(() => { load() }, [load])
 
+  // WIR210 — hors réseau, la quantité réellement consommée était PERDUE alors
+  // que le handler serveur `intervention.consommation_ligne` existait déjà.
+  // `validerConsommation` reste HORS périmètre : la réconciliation est une
+  // action EN LIGNE explicite (le serveur le dit aussi : le rejeu ne valide
+  // jamais). `addExtra` reste hors périmètre pour la même raison.
   const patchLigne = async (payload) => {
     setBusy(true)
-    try { await installationsApi.modifierLigneConsommation(id, payload); await load() }
+    try {
+      const r = await withOfflineFallback(
+        () => installationsApi.modifierLigneConsommation(id, payload),
+        FIELD_OPS.CONSOMMATION_LIGNE, { intervention: id, ...payload })
+      if (r.queued) toast.success(QUEUED_MSG)
+      await load()
+    }
     catch { toast.error('Mise à jour impossible.') } finally { setBusy(false) }
   }
   const addExtra = async () => {
