@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import {
   ShieldAlert, ListChecks, CheckCircle2, QrCode, Plus, Wrench, AlertOctagon,
-  Lock, LockOpen, XCircle,
+  Lock, LockOpen, XCircle, FileText,
 } from 'lucide-react'
 import qhseApi from '../../api/qhseApi'
 import { downloadBlobInGesture } from '../../utils/downloadBlob'
@@ -606,6 +606,19 @@ function CreerLienSignalementDialog({ onClose, onCreated }) {
   )
 }
 
+// WIR235 — helper blob factorisé pour les documents terrain bilingues
+// XQHS27 (permis de travail, induction sécurité — patron de la causerie,
+// frontend/src/features/rh/Hse.jsx:telechargerCauseriePdf).
+async function telechargerPdfTerrain(pdfFn, item, filenamePrefix, lang) {
+  const pending = downloadBlobInGesture()
+  try {
+    const res = await pdfFn(item.id, { lang })
+    pending.deliver(new Blob([res.data]), `${filenamePrefix}-${item.id}-${lang}.pdf`)
+  } catch {
+    toast.error('Génération du PDF impossible.')
+  }
+}
+
 async function telechargerQr(lien) {
   const pending = downloadBlobInGesture()
   try {
@@ -1067,6 +1080,14 @@ export default function Risques() {
               ...(r.statut === 'brouillon' || r.statut === 'valide'
                 ? [{ id: 'cloturer', label: 'Clôturer', icon: XCircle, onClick: () => cloturerPermis(r) }]
                 : []),
+              {
+                id: 'pdf-fr', label: 'PDF (FR)', icon: FileText,
+                onClick: () => telechargerPdfTerrain(qhseApi.permisTravail.pdf, r, 'permis-travail', 'fr'),
+              },
+              {
+                id: 'pdf-ar', label: 'PDF (AR)', icon: FileText,
+                onClick: () => telechargerPdfTerrain(qhseApi.permisTravail.pdf, r, 'permis-travail', 'ar'),
+              },
             ]}
           />
           <QhseResourceList
@@ -1095,6 +1116,16 @@ export default function Risques() {
             fetcher={() => qhseApi.inductionsSecurite.list()}
             columns={inductionsCols}
             exportName="qhse-inductions"
+            rowActions={(r) => [
+              {
+                id: 'pdf-fr', label: 'PDF (FR)', icon: FileText,
+                onClick: () => telechargerPdfTerrain(qhseApi.inductionsSecurite.pdf, r, 'induction-securite', 'fr'),
+              },
+              {
+                id: 'pdf-ar', label: 'PDF (AR)', icon: FileText,
+                onClick: () => telechargerPdfTerrain(qhseApi.inductionsSecurite.pdf, r, 'induction-securite', 'ar'),
+              },
+            ]}
           />
           <QhseResourceList
             title="Plans d’urgence"

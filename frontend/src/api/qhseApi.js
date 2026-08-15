@@ -123,6 +123,9 @@ const qhseApi = {
     cloturer: (id) => api.post(`/qhse/permis-travail/${id}/cloturer/`),
     // Permis qui expirent bientôt ou sont déjà expirés.
     expirant: (params) => api.get('/qhse/permis-travail/expirant/', { params }),
+    // WIR235 — PDF terrain bilingue (?lang=fr|ar), gabarit XQHS27.
+    pdf: (id, params) =>
+      api.get(`/qhse/permis-travail/${id}/pdf/`, { params, responseType: 'blob' }),
   },
   consignationsLoto: {
     ...crud('consignations-loto'),
@@ -132,6 +135,9 @@ const qhseApi = {
     ...crud('inductions-securite'),
     acquitter: (id, data) =>
       api.post(`/qhse/inductions-securite/${id}/acquitter/`, data),
+    // WIR235 — PDF terrain bilingue (?lang=fr|ar), gabarit XQHS27.
+    pdf: (id, params) =>
+      api.get(`/qhse/inductions-securite/${id}/pdf/`, { params, responseType: 'blob' }),
   },
   plansUrgence: crud('plans-urgence'),
   contactsUrgence: crud('contacts-urgence'),
