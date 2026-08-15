@@ -60,7 +60,11 @@ const flotteApi = {
   ceder: (id, data) => api.post(`/flotte/vehicules/${id}/ceder/`, data),
 
   // ── Conducteurs & mobilité ──
-  conducteurs: crud('conducteurs'),
+  conducteurs: {
+    ...crud('conducteurs'),
+    // WIR236 — divergences permis flotte↔RH (YHIRE11), lecture tout rôle.
+    divergencesPermis: () => api.get('/flotte/conducteurs/divergences-permis/'),
+  },
   affectations: {
     ...crud('affectations'),
     // XFLT22 — réaffectation conducteur en masse.
@@ -131,17 +135,28 @@ const flotteApi = {
     ocr: (formData) => api.post('/flotte/pleins/ocr/', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }),
+    // WIR236 — XFLT8 : synthèse mensuelle TVA carburant récupérable/non déductible.
+    syntheseTva: (params) => api.get('/flotte/pleins/synthese-tva/', { params }),
   },
   cartes: {
     ...crud('cartes'),
     // FLOTTE14/WIR6 — pleins suspects (km incohérent / fraude / plafond dépassé).
     anomalies: (params) => api.get('/flotte/cartes/anomalies/', { params }),
+    // WIR236 — XFLT6 : import relevé CSV (carte carburant/Jawaz), multipart.
+    importerReleve: (id, formData) =>
+      api.post(`/flotte/cartes/${id}/importer-releve/`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      }),
   },
   sinistres: crud('sinistres'),
   infractions: crud('infractions'),
   relevesTelematiques: crud('releves-telematiques'),
   trajetsTelematiques: crud('trajets-telematiques'),
-  trajetsChantier: crud('trajets-chantier'),
+  trajetsChantier: {
+    ...crud('trajets-chantier'),
+    // WIR236 — journal kilométrique par chantier (lecture tout rôle).
+    journal: (params) => api.get('/flotte/trajets-chantier/journal/', { params }),
+  },
   // XFLT24 — zones de géofencing + évaluation des relevés télématiques.
   zonesGeographiques: {
     ...crud('zones-geographiques'),

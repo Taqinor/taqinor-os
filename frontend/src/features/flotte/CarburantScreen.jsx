@@ -21,8 +21,57 @@ import PleinDialog from './PleinDialog'
    chantier. Coûts = coûts d'exploitation internes (jamais prix client / achat).
    ========================================================================== */
 
+// WIR236 — XFLT8 : synthèse mensuelle TVA carburant (récupérable/non
+// déductible), backend prêt (`pleins.synthese-tva`) sans consommateur écran.
+function SyntheseTvaCard() {
+  const [state, setState] = useState({ loading: true, error: null, data: null })
+
+  const load = useCallback(() => {
+    let cancelled = false
+    setState({ loading: true, error: null, data: null })
+    flotteApi.pleins.syntheseTva()
+      .then((res) => { if (!cancelled) setState({ loading: false, error: null, data: res?.data || null }) })
+      .catch((err) => {
+        if (!cancelled) setState({ loading: false, error: err?.response?.data?.detail || 'Synthèse indisponible.', data: null })
+      })
+    return () => { cancelled = true }
+  }, [])
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  useEffect(() => { load() }, [load])
+
+  if (state.loading) {
+    return <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground"><Spinner className="size-4" /> Calcul en cours…</div>
+  }
+  if (state.error) {
+    return <EmptyState title="Indisponible" description={state.error} />
+  }
+  const d = state.data || {}
+  return (
+    <div className="grid grid-cols-2 gap-3 rounded-md border border-border p-3 text-sm sm:grid-cols-4">
+      <div>
+        <p className="text-muted-foreground">Total TTC</p>
+        <p className="font-medium">{formatNumber(d.total_ttc ?? 0, { decimals: 2 })} MAD</p>
+      </div>
+      <div>
+        <p className="text-muted-foreground">TVA récupérable</p>
+        <p className="font-medium">{formatNumber(d.tva_recuperable ?? 0, { decimals: 2 })} MAD</p>
+      </div>
+      <div>
+        <p className="text-muted-foreground">TVA non déductible</p>
+        <p className="font-medium">{formatNumber(d.tva_non_deductible ?? 0, { decimals: 2 })} MAD</p>
+      </div>
+      <div>
+        <p className="text-muted-foreground">Pleins analysés</p>
+        <p className="font-medium">{d.nb_pleins ?? 0}</p>
+      </div>
+    </div>
+  )
+}
+
 function PleinsTab() {
   const [showForm, setShowForm] = useState(false)
+  const [showTva, setShowTva] = useState(false)
   const { data, loading, error, reload } = useFlotteResource(flotteApi.pleins.list, {})
   const { data: vehicules } = useFlotteResource(flotteApi.vehicules.list, {})
   const columns = useMemo(() => [
@@ -34,10 +83,16 @@ function PleinsTab() {
     { id: 'station', header: 'Station', width: 150, accessor: (r) => r.station, cell: (v) => v || '—' },
   ], [])
   const actions = (
-    <Button onClick={() => setShowForm(true)}>Nouveau plein</Button>
+    <>
+      <Button variant={showTva ? 'default' : 'outline'} onClick={() => setShowTva((v) => !v)}>
+        Synthèse TVA
+      </Button>
+      <Button onClick={() => setShowForm(true)}>Nouveau plein</Button>
+    </>
   )
   return (
     <>
+      {showTva && <SyntheseTvaCard />}
       <ListShell title="Pleins de carburant" actions={actions} columns={columns} rows={data} loading={loading} error={error}
         exportName="pleins" searchable searchPlaceholder="Rechercher station…"
         emptyTitle="Aucun plein" emptyDescription="Aucun plein enregistré." />
@@ -229,11 +284,58 @@ function CarteCarburantDialog({ carte, vehicules = [], conducteurs = [], onClose
   )
 }
 
+// WIR236 — XFLT6 : import relevé CSV (carte carburant/Jawaz), rapprochement
+// côté serveur (`cartes.importerReleve`), sans consommateur écran jusqu'ici.
+function ImporterReleveDialog({ carte, onClose, onDone }) {
+  const [fichier, setFichier] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [rapport, setRapport] = useState(null)
+
+  const importer = async () => {
+    if (!fichier) { toast.error('Choisissez un fichier CSV.'); return }
+    setBusy(true)
+    try {
+      const form = new FormData()
+      form.append('fichier', fichier)
+      const { data } = await flotteApi.cartes.importerReleve(carte.id, form)
+      setRapport(data)
+      toast.success('Relevé importé.')
+      onDone()
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Import impossible.')
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Importer un relevé — {carte.numero}</DialogTitle>
+        </DialogHeader>
+        <div className="flex flex-col gap-3">
+          <Input type="file" accept=".csv"
+            onChange={(e) => setFichier(e.target.files?.[0] || null)} />
+          {rapport && (
+            <p className="text-sm text-muted-foreground">
+              {rapport.lignes_creees ?? 0} ligne(s) créée(s), {rapport.lignes_non_rapprochees ?? 0} non rapprochée(s).
+            </p>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Fermer</Button>
+          <Button onClick={importer} loading={busy}>Importer</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function CartesTab() {
   const { data, loading, error, reload } = useFlotteResource(flotteApi.cartes.list, {})
   const { data: vehicules } = useFlotteResource(flotteApi.vehicules.list, {})
   const { data: conducteurs } = useFlotteResource(flotteApi.conducteurs.list, {})
   const [editing, setEditing] = useState(null) // carte en édition, ou {} pour création
+  const [importingCarte, setImportingCarte] = useState(null)
   const columns = useMemo(() => [
     { id: 'numero', header: 'N° carte', width: 160, accessor: (r) => r.numero, cell: (v) => (v ? <span className="font-mono text-xs">{v}</span> : '—') },
     { id: 'vehicule', header: 'Véhicule', width: 160, accessor: (r) => r.vehicule_label, cell: (v) => v || '—' },
@@ -253,6 +355,7 @@ function CartesTab() {
   )
   const rowActions = (row) => [
     { id: 'modifier', label: 'Modifier', onClick: () => setEditing(row) },
+    { id: 'importer', label: 'Importer un relevé (CSV)', onClick: () => setImportingCarte(row) },
   ]
 
   return (
@@ -267,6 +370,13 @@ function CartesTab() {
           conducteurs={conducteurs}
           onClose={() => setEditing(null)}
           onSaved={() => { setEditing(null); reload(); toast.success(editing.id ? 'Carte modifiée.' : 'Carte créée.') }}
+        />
+      )}
+      {importingCarte && (
+        <ImporterReleveDialog
+          carte={importingCarte}
+          onClose={() => setImportingCarte(null)}
+          onDone={reload}
         />
       )}
     </div>
@@ -624,8 +734,57 @@ function TelematiqueTab() {
   )
 }
 
+// WIR236 — FLOTTE29 : journal kilométrique agrégé par chantier
+// (`trajetsChantier.journal`), backend prêt sans consommateur écran.
+function JournalKilometriqueCard() {
+  const [state, setState] = useState({ loading: true, error: null, data: null })
+
+  const load = useCallback(() => {
+    let cancelled = false
+    setState({ loading: true, error: null, data: null })
+    flotteApi.trajetsChantier.journal()
+      .then((res) => { if (!cancelled) setState({ loading: false, error: null, data: res?.data || null }) })
+      .catch((err) => {
+        if (!cancelled) setState({ loading: false, error: err?.response?.data?.detail || 'Journal indisponible.', data: null })
+      })
+    return () => { cancelled = true }
+  }, [])
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  useEffect(() => { load() }, [load])
+
+  if (state.loading) {
+    return <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground"><Spinner className="size-4" /> Calcul en cours…</div>
+  }
+  if (state.error) {
+    return <EmptyState title="Indisponible" description={state.error} />
+  }
+  const d = state.data || {}
+  const parChantier = d.par_chantier || []
+  return (
+    <div className="flex flex-col gap-2 rounded-md border border-border p-3 text-sm">
+      <p className="font-medium">
+        {d.nb_trajets ?? 0} trajet(s) — {formatNumber(d.distance_totale_km ?? 0, { decimals: 1 })} km au total
+      </p>
+      {parChantier.length > 0 && (
+        <ul className="flex flex-col gap-1">
+          {parChantier.map((c) => (
+            <li key={c.installation_id ?? 'non-impute'} className="flex items-center justify-between border-t border-border pt-1">
+              <span>{c.chantier_reference || 'Non imputé'}</span>
+              <span className="text-muted-foreground">
+                {c.nb_trajets} trajet(s) — {formatNumber(c.distance_km ?? 0, { decimals: 1 })} km
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 function TrajetsChantierTab() {
   const [showForm, setShowForm] = useState(false)
+  const [showJournal, setShowJournal] = useState(false)
   const { data, loading, error, reload } = useFlotteResource(flotteApi.trajetsChantier.list, {})
   const { data: actifs } = useFlotteResource(flotteApi.actifs.list, {})
   const columns = useMemo(() => [
@@ -636,8 +795,16 @@ function TrajetsChantierTab() {
   ], [])
   return (
     <>
+      {showJournal && <JournalKilometriqueCard />}
       <ListShell title="Trajets chantier" columns={columns} rows={data} loading={loading} error={error}
-        actions={<Button onClick={() => setShowForm(true)}>Nouveau trajet chantier</Button>}
+        actions={(
+          <>
+            <Button variant={showJournal ? 'default' : 'outline'} onClick={() => setShowJournal((v) => !v)}>
+              Journal kilométrique
+            </Button>
+            <Button onClick={() => setShowForm(true)}>Nouveau trajet chantier</Button>
+          </>
+        )}
         exportName="trajets-chantier" emptyTitle="Aucun trajet" emptyDescription="Aucun trajet chantier enregistré." />
       {showForm && (
         <TrajetChantierDialog

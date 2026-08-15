@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../ui'
+import { Tabs, TabsList, TabsTrigger, TabsContent, Button } from '../../ui'
 import { EcheanceCenter, ListShell } from '../../ui/module'
 import flotteApi from '../../api/flotteApi'
 import { formatDate } from '../../lib/format'
@@ -136,6 +136,45 @@ function BaremesTab() {
   )
 }
 
+// WIR236 — bascule « Contrats expirants 30 j » (XFLT1, `contratsVehicule.
+// expirants`), backend prêt sans consommateur écran.
+function ContratsTab() {
+  const [expirantOnly, setExpirantOnly] = useState(false)
+  const fetcher = useMemo(
+    () => (expirantOnly
+      ? () => flotteApi.contratsVehicule.expirants({ within: 30 })
+      : flotteApi.contratsVehicule.list),
+    [expirantOnly],
+  )
+  const { data, loading, error } = useFlotteResource(fetcher, {}, [expirantOnly])
+  const columns = useMemo(() => [
+    { id: 'vehicule', header: 'Véhicule', width: 170, accessor: (r) => r.vehicule_label, cell: (v) => v || '—' },
+    { id: 'type', header: 'Type', width: 140, accessor: (r) => r.type_contrat_display || r.type_contrat, cell: (v) => v || '—' },
+    { id: 'fournisseur', header: 'Fournisseur', width: 160, accessor: (r) => r.fournisseur, cell: (v) => v || '—' },
+    { id: 'date_fin', header: 'Fin de contrat', width: 130, accessor: (r) => r.date_fin, cell: (v) => (v ? formatDate(v) : '—') },
+    { id: 'statut', header: 'Statut', width: 120, accessor: (r) => r.statut_calcule || r.statut, cell: (v) => v || '—' },
+  ], [])
+  return (
+    <ListShell
+      title="Contrats véhicule"
+      subtitle="Leasing / LLD / location / entretien."
+      columns={columns}
+      rows={data}
+      loading={loading}
+      error={error}
+      exportName="contrats-vehicule"
+      emptyTitle="Aucun contrat"
+      emptyDescription="Aucun contrat véhicule enregistré."
+      actions={(
+        <Button variant={expirantOnly ? 'default' : 'outline'}
+          onClick={() => setExpirantOnly((v) => !v)}>
+          Contrats expirants 30 j
+        </Button>
+      )}
+    />
+  )
+}
+
 export default function ConformiteScreen() {
   return (
     <div className="page flex flex-col gap-4">
@@ -148,12 +187,14 @@ export default function ConformiteScreen() {
           <TabsTrigger value="visites">Visites techniques</TabsTrigger>
           <TabsTrigger value="cartes">Cartes grises</TabsTrigger>
           <TabsTrigger value="baremes">Barème TSAV</TabsTrigger>
+          <TabsTrigger value="contrats">Contrats</TabsTrigger>
         </TabsList>
         <TabsContent value="echeances"><EcheancesReglementairesTab /></TabsContent>
         <TabsContent value="assurances"><AssurancesTab /></TabsContent>
         <TabsContent value="visites"><VisitesTab /></TabsContent>
         <TabsContent value="cartes"><CartesGrisesTab /></TabsContent>
         <TabsContent value="baremes"><BaremesTab /></TabsContent>
+        <TabsContent value="contrats"><ContratsTab /></TabsContent>
       </Tabs>
     </div>
   )

@@ -1,9 +1,9 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { UserPlus, AlertTriangle, FileCheck } from 'lucide-react'
 import {
   Button, Badge, Segmented, Tabs, TabsList, TabsTrigger, TabsContent,
   toast, Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-  Label, Input, Textarea, confirmLeaveIfDirty,
+  Label, Input, Textarea, confirmLeaveIfDirty, Spinner,
 } from '../../ui'
 import { ListShell } from '../../ui/module'
 import flotteApi from '../../api/flotteApi'
@@ -44,9 +44,60 @@ function PermisBadge({ dateExpiration }) {
   return <Badge tone={tone}>{d <= 30 ? `Expire J-${d}` : 'Valide'}</Badge>
 }
 
+// WIR236 — YHIRE11 : divergences permis flotte↔RH, backend prêt
+// (`conducteurs.divergencesPermis`) sans consommateur écran.
+function DivergencesPermisCard() {
+  const [state, setState] = useState({ loading: true, error: null, data: null })
+
+  useEffect(() => {
+    let cancelled = false
+    flotteApi.conducteurs.divergencesPermis()
+      .then((res) => { if (!cancelled) setState({ loading: false, error: null, data: res?.data || null }) })
+      .catch((err) => {
+        if (!cancelled) setState({ loading: false, error: err?.response?.data?.detail || 'Rapport indisponible.', data: null })
+      })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- chargement au montage
+  }, [])
+
+  if (state.loading) {
+    return <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground"><Spinner className="size-4" /> Chargement…</div>
+  }
+  if (state.error) {
+    return <div className="rounded-md border border-border p-3 text-sm text-muted-foreground">{state.error}</div>
+  }
+  const d = state.data || {}
+  const divergences = d.divergences || []
+  if (divergences.length === 0) {
+    return (
+      <div className="rounded-md border border-border p-3 text-sm text-muted-foreground">
+        Aucune divergence sur {d.nb_conducteurs_lies ?? 0} conducteur(s) lié(s) à un dossier RH.
+      </div>
+    )
+  }
+  return (
+    <div className="flex flex-col gap-2 rounded-md border border-warning/40 p-3">
+      <p className="text-sm font-medium text-warning">
+        {divergences.length} divergence(s) sur {d.nb_conducteurs_lies ?? 0} conducteur(s) lié(s)
+      </p>
+      <ul className="flex flex-col gap-1.5">
+        {divergences.map((dv) => (
+          <li key={dv.conducteur_id} className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm">
+            <span>{dv.conducteur_nom}</span>
+            <span className="text-xs text-muted-foreground">
+              Flotte : {dv.local_valide ? 'valide' : 'invalide'} — RH : {dv.rh_valide ? 'valide' : 'invalide'}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 function ConducteursTab() {
   const [actif, setActif] = useState('')
   const [showForm, setShowForm] = useState(false)
+  const [showDivergences, setShowDivergences] = useState(false)
   const params = useMemo(() => (actif ? { actif } : {}), [actif])
   const { data, loading, error, reload } = useFlotteResource(flotteApi.conducteurs.list, params)
 
@@ -95,13 +146,19 @@ function ConducteursTab() {
   )
 
   const actions = (
-    <Button onClick={() => setShowForm(true)}>
-      <UserPlus /> Nouveau conducteur
-    </Button>
+    <>
+      <Button variant={showDivergences ? 'default' : 'outline'} onClick={() => setShowDivergences((v) => !v)}>
+        Divergences permis flotte↔RH
+      </Button>
+      <Button onClick={() => setShowForm(true)}>
+        <UserPlus /> Nouveau conducteur
+      </Button>
+    </>
   )
 
   return (
     <>
+      {showDivergences && <DivergencesPermisCard />}
       <ListShell
         title="Conducteurs"
         subtitle="Chauffeurs et validité de leur permis."
