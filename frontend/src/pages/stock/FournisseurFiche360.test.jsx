@@ -27,6 +27,8 @@ vi.mock('../../api/stockApi', () => ({
     getBonsCommandeFournisseurDe: vi.fn(),
     getFacturesFournisseurDe: vi.fn(),
     getRetoursFournisseurDe: vi.fn(),
+    // WIR222 — avoir généré depuis un retour validé (onglet Retours).
+    genererAvoirRetourFournisseur: vi.fn(),
     getDocumentsConformiteFournisseur: vi.fn(),
     // WIR108 — acomptes/avoirs/contacts.
     getAcomptesFournisseurDe: vi.fn(),

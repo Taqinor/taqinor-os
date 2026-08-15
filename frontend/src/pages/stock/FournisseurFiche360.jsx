@@ -192,9 +192,20 @@ function OngletFactures({ fournisseurId }) {
 }
 
 // ── Onglet Retours / avoirs ───────────────────────────────────────────────
-function OngletRetours({ fournisseurId }) {
+function OngletRetours({ fournisseurId, canWrite }) {
   const [items, setItems] = useState(null)
   const [error, setError] = useState(null)
+  // XPUR9 / WIR222 — génération de l'avoir depuis un retour VALIDÉ (le second
+  // clic est refusé côté serveur : garde anti-double-avoir).
+  const [avoirMsg, setAvoirMsg] = useState(null)
+  const [avoirErr, setAvoirErr] = useState(null)
+  const [busyId, setBusyId] = useState(null)
+
+  const charger = () => {
+    stockApi.getRetoursFournisseurDe(fournisseurId)
+      .then((r) => setItems(r.data?.results ?? r.data ?? []))
+      .catch((e) => setError(frErr(e, 'Retours indisponibles.')))
+  }
 
   useEffect(() => {
     let active = true
@@ -204,19 +215,50 @@ function OngletRetours({ fournisseurId }) {
     return () => { active = false }
   }, [fournisseurId])
 
+  const genererAvoir = async (retour) => {
+    setBusyId(retour.id); setAvoirErr(null); setAvoirMsg(null)
+    try {
+      const r = await stockApi.genererAvoirRetourFournisseur(retour.id)
+      setAvoirMsg(`Avoir ${r.data?.reference ?? ''} généré (brouillon).`)
+      charger()
+    } catch (e) {
+      setAvoirErr(frErr(e, "La génération de l'avoir a échoué."))
+    } finally { setBusyId(null) }
+  }
+
   if (error) return <Indisponible message={error} />
   if (items === null) return <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground"><Spinner /> Chargement…</div>
   if (items.length === 0) return <Indisponible message="Aucun retour." />
 
   return (
-    <ul className="flex flex-col gap-2">
-      {items.map((r) => (
-        <li key={r.id} className="flex items-center justify-between rounded-md border border-border p-2 text-sm">
-          <span>{r.reference ?? `Retour #${r.id}`}</span>
-          <span className="text-muted-foreground">{r.statut ?? '—'}</span>
-        </li>
-      ))}
-    </ul>
+    <div className="flex flex-col gap-2">
+      {avoirErr && (
+        <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-sm text-destructive">
+          {avoirErr}
+        </div>
+      )}
+      {avoirMsg && (
+        <div className="rounded-lg border border-success/30 bg-success/10 p-2 text-sm text-success">
+          {avoirMsg}
+        </div>
+      )}
+      <ul className="flex flex-col gap-2">
+        {items.map((r) => (
+          <li key={r.id} className="flex items-center justify-between gap-2 rounded-md border border-border p-2 text-sm">
+            <span>{r.reference ?? `Retour #${r.id}`}</span>
+            <span className="flex items-center gap-2">
+              <span className="text-muted-foreground">{r.statut ?? '—'}</span>
+              {canWrite && r.statut === 'valide' && (
+                <Button size="sm" variant="outline" loading={busyId === r.id}
+                        onClick={() => genererAvoir(r)}>
+                  Générer l&apos;avoir
+                </Button>
+              )}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
   )
 }
 
