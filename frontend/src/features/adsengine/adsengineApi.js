@@ -141,6 +141,12 @@ const adsengineApi = {
   creatives: {
     ...resource('creatifs'),
     upload: (formData) => api.post('/adsengine/creatifs/upload/', formData),
+    // WIR170 — la check-list policy est SERVEUR (`policy.build_checklist`,
+    // `{forbidden, allowed}`) : l'écran ne devine jamais les clés de règles.
+    checklist: () => api.get('/adsengine/creatifs/checklist/'),
+    // WIR170 — la seule clé lue par `policy_check` (views.py) est
+    // `confirmed_keys` ; tout autre nom était ignoré EN SILENCE (le serveur
+    // enregistrait alors 0 règle confirmée et `passed` restait faux).
     policyCheck: (id, payload) =>
       api.post(`/adsengine/creatifs/${id}/policy-check/`, payload),
     generateVariants: (id) => api.post(`/adsengine/creatifs/${id}/variantes/`),
