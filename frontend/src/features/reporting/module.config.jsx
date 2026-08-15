@@ -109,6 +109,14 @@ const config = {
       { to: '/reporting/field-service', label: 'Analytics terrain', k: 'nav.field_service', icon: navIcon(BarChart3), roles: ['responsable','admin'] },
       // XFSM17 — scorecard coaching par technicien vs moyenne équipe.
       { to: '/reporting/scorecard-technicien', label: 'Scorecard technicien', k: 'nav.scorecard_technicien', icon: navIcon(BarChart3), roles: ['responsable','admin'] },
+      // WIR283 — la CONFIGURATION des dashboards (`/reporting/dashboards`,
+      // DashboardConfigPage) était routée mais sans aucune entrée de nav : elle
+      // ne s'atteignait qu'en tapant l'URL, alors que ses deux compagnons (TV,
+      // partage) étaient au menu. Placée JUSTE AVANT « Dashboards TV », mêmes
+      // rôles — on configure avant de diffuser.
+      // (Pas de clé i18n `k` : elle n'existe dans aucun catalogue, et `t()`
+      // rendrait la CLÉ BRUTE dans le menu — le libellé FR est le repli sûr.)
+      { to: '/reporting/dashboards', label: 'Dashboards',       icon: navIcon(BarChart3), roles: ['responsable','admin'] },
       // XPLT10 — kiosque TV plein écran des dashboards partagés.
       { to: '/dashboards-tv',        label: 'Dashboards TV',    k: 'nav.dashboards_tv', icon: navIcon(Tv), roles: ['responsable','admin'] },
       // XPLT10 — gestion des liens de partage (créer/révoquer).

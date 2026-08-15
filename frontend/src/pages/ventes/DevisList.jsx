@@ -366,6 +366,8 @@ function DevisRow({ d, ctx }) {
     selectedIds, toggleSelected,
     versionsOpenId, setVersionsOpenId, roofOpenId, setRoofOpenId,
     histoOpenId, toggleHistorique, histoCache, histoLoadingId,
+    // WIR274 — composeur de note manuelle du panneau Historique.
+    peutNoter, noteTexte, setNoteTexte, noteBusy, envoyerNote,
     suiviOpenId, toggleSuiviPartage, suiviCache, suiviLoadingId,
     conceptionOpenId, setConceptionOpenId,
     etudeOpenId, setEtudeOpenId,
@@ -1112,6 +1114,36 @@ function DevisRow({ d, ctx }) {
                 ))}
               </ul>
             )}
+            {/* WIR274 — composeur de note MANUELLE. `noterDevis` n'avait
+                jusqu'ici qu'un seul appelant : l'auto-note WhatsApp (VX222).
+                Réservé au même palier que le reste des écritures de l'écran ;
+                le feed est relu du SERVEUR après envoi. */}
+            {peutNoter && (
+              <div className="mt-2 flex items-start gap-2">
+                <Input
+                  data-testid="devis-note-input"
+                  aria-label={`Ajouter une note au devis ${d.reference}`}
+                  placeholder="Ajouter une note…"
+                  value={noteTexte}
+                  disabled={noteBusy}
+                  onChange={(e) => setNoteTexte(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault()
+                      envoyerNote(d.id)
+                    }
+                  }}
+                />
+                <Button
+                  size="sm" variant="outline"
+                  data-testid="devis-note-envoyer"
+                  disabled={noteBusy || !noteTexte.trim()}
+                  onClick={() => envoyerNote(d.id)}
+                >
+                  Noter
+                </Button>
+              </div>
+            )}
           </div>
         </td>
       </tr>
@@ -1217,6 +1249,9 @@ export default function DevisList() {
   const { devis, loading, error } = useSelector(s => s.ventes)
   const role = useSelector(s => s.auth.role)
   const canDelete = role === 'admin'  // règle existante : destroy = admin
+  // WIR274 — `noter` est dans le groupe responsable/admin de
+  // `DevisViewSet.get_permissions` : le composeur reflète EXACTEMENT ce palier.
+  const peutNoter = ['responsable', 'admin'].includes(role)
   // QG10 — seul le Directeur / Commercial responsable peut MODIFIER le
   // pourcentage des variantes (le backend variante-config renvoie 403 sinon).
   // Les autres rôles voient la valeur par défaut en lecture seule.
@@ -1243,6 +1278,27 @@ export default function DevisList() {
   // et le polling se poursuit à un rythme plus espacé, sans jamais relancer un
   // second job (un seul dispatch(genererPdfDevis) par appel de genererUnPdf).
   const [pdfSlowPoll, setPdfSlowPoll] = useState({}) // id → true
+  // WIR217(b) — le sondage PDF se replanifiait par `setTimeout` sans jamais
+  // être annulé : quitter l'écran laissait la boucle tourner (appels réseau et
+  // `setState` sur un composant démonté, à l'infini si le PDF n'arrivait pas).
+  // On garde les minuteries en cours et un drapeau de montage : au démontage,
+  // tout est annulé et aucun tour supplémentaire n'est planifié.
+  const pdfPollTimers = useRef(new Set())
+  const pdfPollMonte = useRef(true)
+  useEffect(() => {
+    pdfPollMonte.current = true
+    const timers = pdfPollTimers.current
+    return () => {
+      pdfPollMonte.current = false
+      timers.forEach((t) => clearTimeout(t))
+      timers.clear()
+    }
+  }, [])
+  // Retient la minuterie rendue par un `setTimeout(poll, …)` pour pouvoir
+  // l'annuler au démontage. Le `setTimeout` reste écrit EN CLAIR sur son site
+  // d'appel : le contrat QX21 (DevisListPdfPolling.test.mjs) l'affirme
+  // littéralement, et il n'a pas à changer pour une correction de cycle de vie.
+  const retenirTimerPdf = (id) => { pdfPollTimers.current.add(id); return id }
   const [pdfDownloading, setPdfDownloading] = useState({}) // id → true
   const [statutActionId, setStatutActionId] = useState(null) // envoi/refus en cours
   // APX14 — le devis dont l'aperçu inline est ouvert (null = panneau fermé).
@@ -1278,8 +1334,16 @@ export default function DevisList() {
 
   // VX97 — Panneau « Historique » (journal des changements DevisActivity : qui a
   // fait quoi / ancien→nouveau) — distinct de la chaîne de VERSIONS ci-dessus.
-  // Feed existant monté en section repliable ; migrera vers ChatterTimeline (VX23)
-  // quand il atterrira. `prix_achat` n'apparaît jamais (le journal ne le porte pas).
+  // `prix_achat` n'apparaît jamais (le journal ne le porte pas).
+  //
+  // WIR274 — le commentaire VX23 annonçait une migration vers ChatterTimeline
+  // « quand elle atterrira » : elle est là, et le panneau reste ce feed-ci
+  // (rendu maison, colonne 8, contrat DOM des tests d'écran). Ce qui MANQUAIT
+  // n'était pas le composant mais le COMPOSEUR : `noterDevis` existait, wrappé
+  // et servi, mais son seul appelant était l'auto-note WhatsApp (VX222) — un
+  // commercial ne pouvait consigner AUCUNE note manuelle depuis l'écran. Le
+  // composeur ci-dessous est ce point d'entrée ; l'auto-note VX222 est
+  // strictement inchangée (même endpoint, deux appelants).
   const [histoOpenId, setHistoOpenId] = useState(null)
   const [histoCache, setHistoCache] = useState({})   // id → entrées
   const [histoLoadingId, setHistoLoadingId] = useState(null)
@@ -1292,6 +1356,27 @@ export default function DevisList() {
         .then(res => setHistoCache(c => ({ ...c, [id]: res.data || [] })))
         .catch(() => setHistoCache(c => ({ ...c, [id]: [] })))
         .finally(() => setHistoLoadingId(l => (l === id ? null : l)))
+    }
+  }
+
+  // WIR274 — composeur de note manuelle du panneau Historique.
+  const [noteTexte, setNoteTexte] = useState('')
+  const [noteBusy, setNoteBusy] = useState(false)
+  const envoyerNote = async (id) => {
+    const corps = noteTexte.trim()
+    if (!corps) return
+    setNoteBusy(true)
+    try {
+      await ventesApi.noterDevis(id, corps)
+      setNoteTexte('')
+      // Le feed est RELU DU SERVEUR (jamais une ligne bricolée côté écran :
+      // l'acteur, l'horodatage et la société sont posés côté serveur).
+      const res = await ventesApi.historiqueDevis(id)
+      setHistoCache(c => ({ ...c, [id]: res.data || [] }))
+    } catch (err) {
+      toast.error(frenchError(err, "La note n'a pas pu être enregistrée."))
+    } finally {
+      setNoteBusy(false)
     }
   }
 
@@ -1955,15 +2040,37 @@ export default function DevisList() {
       // on continue simplement à interroger, plus espacé (10 s), et on affiche
       // « toujours en cours » au lieu d'abandonner silencieusement.
       const FAST_ATTEMPTS = 15
+      // WIR217(a) — le drapeau « lent » était testé sur `pdfSlowPoll[d.id]`,
+      // lu dans la CLÔTURE PÉRIMÉE de ce rendu : il valait `false` à chaque
+      // tour, donc le toast « toujours en cours » repartait TOUS LES 10 s.
+      // Une variable locale au job dit la vérité, elle : une seule annonce.
+      let lentAnnonce = false
       const poll = async () => {
+        // WIR217(b) — plus AUCUN tour après le démontage de l'écran.
+        if (!pdfPollMonte.current) return
         const slow = attempts >= FAST_ATTEMPTS
         attempts += 1
-        if (slow && !pdfSlowPoll[d.id]) {
+        if (slow && !lentAnnonce) {
+          lentAnnonce = true
           setPdfSlowPoll(prev => ({ ...prev, [d.id]: true }))
           if (autoOpen) {
             toast(`${d.reference} : le PDF est toujours en cours de génération — la page continue de vérifier automatiquement.`)
           }
         }
+        // WIR217(c) — ÉCHEC TERMINAL : le serveur consigne désormais l'abandon
+        // de la tâche Celery (retries épuisés). Sans cette lecture, le sondage
+        // ne s'arrêtait JAMAIS — il attendait un fichier qui ne viendrait pas.
+        try {
+          const { data: st } = await ventesApi.getDevisPdfStatut(d.id)
+          if (st?.statut === 'echec') {
+            setPdfSlowPoll(prev => ({ ...prev, [d.id]: false }))
+            toast.error(
+              `${d.reference} : la génération du PDF a échoué${st.erreur ? ` — ${st.erreur}` : '.'}`,
+              { action: { label: 'Réessayer', onClick: () => genererUnPdf(d, { autoOpen }) } },
+            )
+            return // on ARRÊTE le sondage : plus aucun setTimeout replanifié.
+          }
+        } catch { /* statut indisponible : on continue comme avant */ }
         try {
           const res = await ventesApi.getDevisById(d.id)
           if (res.data.fichier_pdf) {
@@ -1995,11 +2102,11 @@ export default function DevisList() {
               }
             }
           } else {
-            setTimeout(poll, slow ? 10000 : 2000)
+            retenirTimerPdf(setTimeout(poll, slow ? 10000 : 2000))
           }
         } catch { /* ignore poll errors — la boucle continue */ }
       }
-      setTimeout(poll, 2000)
+      retenirTimerPdf(setTimeout(poll, 2000))
       return true
     } catch (err) {
       // T11 — surface claire de l'absence d'onduleur (ValueError moteur premium).
@@ -2219,6 +2326,8 @@ export default function DevisList() {
     selectedIds, toggleSelected,
     versionsOpenId, setVersionsOpenId, roofOpenId, setRoofOpenId,
     histoOpenId, toggleHistorique, histoCache, histoLoadingId,
+    // WIR274 — composeur de note manuelle du panneau Historique.
+    peutNoter, noteTexte, setNoteTexte, noteBusy, envoyerNote,
     suiviOpenId, toggleSuiviPartage, suiviCache, suiviLoadingId,
     conceptionOpenId, setConceptionOpenId,
     etudeOpenId, setEtudeOpenId,

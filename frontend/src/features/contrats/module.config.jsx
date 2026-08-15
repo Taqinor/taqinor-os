@@ -19,11 +19,21 @@ import { appGlyph } from '../../lib/apps/appGlyph'
    NB : `/contrats` (ce module CLM) est DISTINCT de `/sav/contrats` (page de
    maintenance SAV) — deux modules séparés.
 
-   Accès gaté au palier responsable/admin (les mêmes rôles que le backend
-   `IsResponsableOrAdmin`).
+   WIR171 — la LECTURE n'est pas gatée « responsable/admin » côté serveur : les
+   viewsets contrats exposent `read_permission = 'contrat_voir'`
+   (`HasPermissionOrLegacy`), permission accordée aux 7 rôles. Les écrans de
+   consultation portent donc `...LECTURE` (palier élargi + permission + repli
+   palier pour les comptes hérités) ; seuls les écrans de CONFIGURATION restent
+   au palier `ROLES`. Règle unique : `router/navPermission.js`.
    ========================================================================== */
 
 const ROLES = ['responsable', 'admin']
+// WIR171 — sémantique serveur `HasPermissionOrLegacy('contrat_voir')`.
+const LECTURE = {
+  roles: ['normal', 'responsable', 'admin'],
+  perm: 'contrat_voir',
+  permLegacyRoles: ROLES,
+}
 
 const ContratsList = lazy(() => import('./ContratsList'))
 const ContratDetail = lazy(() => import('./ContratDetail'))
@@ -60,14 +70,15 @@ export default {
     icon: appGlyph(FileSignature),
     accent: 'lune', // VX8 — documentaire/juridique = accent lune (dérivé)
     items: [
-      { to: '/contrats/tableau-de-bord', label: 'Tableau de bord', icon: LD, roles: ROLES },
-      { to: '/contrats', label: 'Contrats', icon: FS, roles: ROLES },
-      { to: '/contrats/location', label: 'Location matériel', icon: PO, roles: ROLES },
-      { to: '/contrats/modeles', label: 'Modèles & clauses', icon: LB, roles: ROLES },
-      { to: '/contrats/echeances', label: 'Échéances & alertes', icon: BR, roles: ROLES },
-      { to: '/contrats/finances', label: 'Finances', icon: WL, roles: ROLES },
-      { to: '/contrats/abonnements', label: 'Abonnements', icon: CC, roles: ROLES },
-      { to: '/contrats/relances-impayes', label: 'Relances impayés', icon: BR, roles: ROLES },
+      { to: '/contrats/tableau-de-bord', label: 'Tableau de bord', icon: LD, ...LECTURE },
+      { to: '/contrats', label: 'Contrats', icon: FS, ...LECTURE },
+      { to: '/contrats/location', label: 'Location matériel', icon: PO, ...LECTURE },
+      { to: '/contrats/modeles', label: 'Modèles & clauses', icon: LB, ...LECTURE },
+      { to: '/contrats/echeances', label: 'Échéances & alertes', icon: BR, ...LECTURE },
+      { to: '/contrats/finances', label: 'Finances', icon: WL, ...LECTURE },
+      { to: '/contrats/abonnements', label: 'Abonnements', icon: CC, ...LECTURE },
+      { to: '/contrats/relances-impayes', label: 'Relances impayés', icon: BR, ...LECTURE },
+      // Écran de CONFIGURATION : reste au palier responsable/admin.
       { to: '/contrats/config-location', label: 'Réglages location', icon: PO, roles: ROLES },
     ],
   },
@@ -85,15 +96,15 @@ export default {
   ],
   sectionLabels: { contrats: 'Contrats' },
   routes: [
-    { path: '/contrats/tableau-de-bord', component: DashboardPage, roles: ROLES },
-    { path: '/contrats', component: ContratsList, roles: ROLES },
-    { path: '/contrats/location', component: LocationPage, roles: ROLES },
+    { path: '/contrats/tableau-de-bord', component: DashboardPage, ...LECTURE },
+    { path: '/contrats', component: ContratsList, ...LECTURE },
+    { path: '/contrats/location', component: LocationPage, ...LECTURE },
     { path: '/contrats/config-location', component: ConfigLocationPage, roles: ROLES },
-    { path: '/contrats/modeles', component: ModelesPage, roles: ROLES },
-    { path: '/contrats/echeances', component: EcheancesPage, roles: ROLES },
-    { path: '/contrats/finances', component: FinancesPage, roles: ROLES },
-    { path: '/contrats/abonnements', component: AbonnementsPage, roles: ROLES },
-    { path: '/contrats/relances-impayes', component: DunningPage, roles: ROLES },
-    { path: '/contrats/:id', component: ContratDetail, roles: ROLES },
+    { path: '/contrats/modeles', component: ModelesPage, ...LECTURE },
+    { path: '/contrats/echeances', component: EcheancesPage, ...LECTURE },
+    { path: '/contrats/finances', component: FinancesPage, ...LECTURE },
+    { path: '/contrats/abonnements', component: AbonnementsPage, ...LECTURE },
+    { path: '/contrats/relances-impayes', component: DunningPage, ...LECTURE },
+    { path: '/contrats/:id', component: ContratDetail, ...LECTURE },
   ],
 }

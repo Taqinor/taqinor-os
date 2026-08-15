@@ -1,0 +1,37 @@
+{
+  "endpoint": "POST /api/django/compta/emprunts/<int:pk>/generer-tableau/",
+  "pourquoi": "WIR279/XACC14 — Génère (et PERSISTE) le tableau d'amortissement complet d'un emprunt ou crédit-bail contracté par la société : une EcheanceEmprunt par mois, annuité constante (même maths que la simulation client FG217). Source de vérité : apps/compta/services.py::generer_tableau_amortissement, exposée telle quelle — le viewset ne recalcule RIEN. La réponse est un OBJET (jamais une liste nue) : `echeances` ordonnées par `numero` (1..N) et `nb` leur nombre. Régénérer est autorisé tant qu'AUCUNE échéance n'est postée au grand livre ; dès qu'une l'est, le service refuse en 400 FR — le tableau devient immuable. `capital_restant_du` est le solde APRÈS l'échéance ; `posted`/`ecriture` restent false/null tant que l'échéance n'a pas été comptabilisée par `echeances-emprunt/<id>/poster/`.",
+  "exemple": {
+    "nb": 2,
+    "echeances": [
+      {
+        "id": 41,
+        "emprunt": 7,
+        "numero": 1,
+        "date_echeance": "2026-02-01",
+        "principal": "8012.35",
+        "interets": "500.00",
+        "mensualite": "8512.35",
+        "capital_restant_du": "91987.65",
+        "posted": false,
+        "ecriture": null
+      },
+      {
+        "id": 42,
+        "emprunt": 7,
+        "numero": 2,
+        "date_echeance": "2026-03-01",
+        "principal": "8052.41",
+        "interets": "459.94",
+        "mensualite": "8512.35",
+        "capital_restant_du": "83935.24",
+        "posted": false,
+        "ecriture": null
+      }
+    ]
+  },
+  "exemple_vide": {
+    "nb": 0,
+    "echeances": []
+  }
+}

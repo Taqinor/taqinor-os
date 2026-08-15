@@ -1,0 +1,35 @@
+{
+  "endpoint": "POST /api/django/compta/etats-personnalises/<int:pk>/evaluer/",
+  "pourquoi": "WIR279/XACC19 — Évalue un état financier PARAMÉTRABLE (défini en données, sans code) : une valeur par (ligne, colonne). Source de vérité : apps/compta/selectors.py::evaluer_etat_personnalise, exposée telle quelle. La réponse porte DEUX clés et deux seulement — `colonnes` (l'en-tête, dans l'ordre) et `lignes` (le corps). Dans une ligne, `valeurs` est un OBJET indexé par l'ID DE COLONNE (jamais un tableau positionnel) ; une ligne de type `titre` est un intitulé de section et porte un `valeurs` VIDE — l'écran ne doit donc jamais supposer qu'une ligne a une valeur par colonne. Une formule illégale ne renvoie JAMAIS 500 : le viewset transforme FormuleEtatInvalideError en 400 avec un `detail` français.",
+  "exemple": {
+    "colonnes": [
+      { "id": 12, "libelle": "2026", "type_colonne": "periode" },
+      { "id": 13, "libelle": "2025", "type_colonne": "comparatif_n1" },
+      { "id": 14, "libelle": "Écart %", "type_colonne": "ecart_pct" }
+    ],
+    "lignes": [
+      {
+        "id": 90,
+        "libelle": "PRODUITS D'EXPLOITATION",
+        "type_ligne": "titre",
+        "valeurs": {}
+      },
+      {
+        "id": 91,
+        "libelle": "Chiffre d'affaires",
+        "type_ligne": "total",
+        "valeurs": { "12": "1250000.00", "13": "980000.00", "14": "27.55" }
+      },
+      {
+        "id": 92,
+        "libelle": "Achats consommés",
+        "type_ligne": "total",
+        "valeurs": { "12": "-742000.00", "13": "-611000.00", "14": "21.44" }
+      }
+    ]
+  },
+  "exemple_vide": {
+    "colonnes": [],
+    "lignes": []
+  }
+}

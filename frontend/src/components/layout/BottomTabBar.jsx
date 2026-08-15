@@ -37,6 +37,8 @@ import { NAV_SECTIONS, LEGACY_NAV_KEYS } from './Sidebar'
 import { moduleNavSections } from '../../router/moduleRoutes'
 // ODX6 — même gating par module actif/désactivé que la Sidebar desktop.
 import { filterNavSections, selectModulesDesactives } from '../../router/moduleGating'
+// WIR171 — règle d'autorisation PARTAGÉE (miroir de la garde serveur).
+import { itemAutorise } from '../../router/navPermission'
 // ODY4/ODY6 — l'app active (dérivée de la ROUTE, jamais d'un état mémorisé) et
 // la sortie canonique vers le Menu d'accueil.
 import { useActiveApp, APPS_SHELL_ENABLED, HOME_MENU_PATH } from '../../lib/apps/ActiveAppContext'
@@ -230,6 +232,8 @@ function AppGridDrawer({ onClose }) {
   const permissions = useSelector((s) => s.auth.permissions) || EMPTY_PERMISSIONS
   // ODX6 — clés de modules désactivés pour la société ([] par défaut).
   const modulesOff = useSelector(selectModulesDesactives)
+  // WIR171 — rôle FIN (null = compte hérité), cf. `router/navPermission.js`.
+  const roleNom = useSelector((s) => s.auth.role_nom) || null
   const [activeSection, setActiveSection] = useState(null)
 
   // Mêmes règles de gating que la Sidebar (role + perm + module actif), mêmes
@@ -250,11 +254,11 @@ function AppGridDrawer({ onClose }) {
       .map((section) => ({
         ...section,
         items: section.items.filter(
-          (it) => it.roles.includes(role) && (!it.perm || permissions.includes(it.perm)),
+          (it) => itemAutorise(it, { tier: role, roleNom, permissions }),
         ),
       }))
       .filter((section) => section.items.length > 0 && section.label)
-  }, [role, permissions, modulesOff])
+  }, [role, permissions, roleNom, modulesOff])
 
   const current = sections.find((s) => s.label === activeSection) || null
 

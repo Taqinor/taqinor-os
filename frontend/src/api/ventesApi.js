@@ -28,6 +28,12 @@ const ventesApi = {
   // AbortController câblée depuis fetchDevis (createAsyncThunk {signal}).
   getDevis: (params, config) => api.get('/ventes/devis/', { params, ...config }),
   getDevisById: (id) => api.get(`/ventes/devis/${id}/`),
+  // WIR217 — état TERMINAL du rendu PDF d'un devis : `pret` | `echec` |
+  // `en_cours`. Seul `echec` est une information positive (retries Celery
+  // épuisés) : c'est lui qui permet à l'écran d'ARRÊTER de sonder et de
+  // proposer « Réessayer », au lieu d'attendre à jamais un fichier qui ne
+  // viendra pas. Contrat : apps/ventes/contract_samples/devis_pdf_statut.json.
+  getDevisPdfStatut: (id) => api.get(`/ventes/devis/${id}/pdf-statut/`),
   createDevis: (data) => api.post('/ventes/devis/', data),
   // QX21 — création ATOMIQUE (devis + lignes en un seul commit serveur) : plus
   // de brouillons orphelins/partiels si la connexion est coupée en cours de
@@ -242,6 +248,36 @@ const ventesApi = {
   dgiConformiteFacture: (id) => api.get(`/ventes/factures/${id}/dgi-conformite/`),
   // FG43/WR2 — actions en masse (émettre/relancer/email/pdf) sur une sélection.
   bulkFactures: (action, ids) => api.post('/ventes/factures/bulk/', { action, ids }),
+
+  // ── WIR183 — six actions Facture complètes côté serveur, jusqu'ici SANS
+  // aucun point d'entrée client (aucun wrapper, aucun bouton). Toutes sont
+  // gardées `IsResponsableOrAdmin` côté serveur ; les messages d'erreur FR du
+  // serveur sont affichés TELS QUELS par l'écran (jamais réécrits ici).
+  //
+  // ZFAC1 — repasse une facture ÉMISE en brouillon (numéro CONSERVÉ). Refusé
+  // dès qu'il existe un paiement/avoir ou que la période est verrouillée.
+  remettreBrouillonFacture: (id) =>
+    api.post(`/ventes/factures/${id}/remettre-brouillon/`, {}),
+  // XFAC13 — abandon du résiduel (write-off). `motif` OBLIGATOIRE :
+  // irrecouvrable | geste_commercial | ecart_reglement | liquidation.
+  abandonnerSoldeFacture: (id, motif) =>
+    api.post(`/ventes/factures/${id}/abandonner-solde/`, { motif }),
+  // XPOS7 — retour client : lignes + quantités retournées → avoir (+ option
+  // de remise en stock). `motif` obligatoire.
+  retourClientFacture: (id, data) =>
+    api.post(`/ventes/factures/${id}/retour-client/`, data),
+  // XFAC6 — matérialise la pénalité de retard du niveau de relance courant
+  // en une facture de frais SÉPARÉE (la facture d'origine n'est pas touchée).
+  facturerPenalitesFacture: (id) =>
+    api.post(`/ventes/factures/${id}/facturer-penalites/`, {}),
+  // XFAC11 — UNE facture consolidée à partir de plusieurs devis acceptés du
+  // MÊME client (l'action prend des devis_ids, jamais des factures).
+  consoliderFactures: (devisIds) =>
+    api.post('/ventes/factures/consolider/', { devis_ids: devisIds }),
+  // ZFAC6 — un règlement client unique réparti (FIFO par échéance) sur
+  // plusieurs factures.
+  encaissementGroupeFactures: (data) =>
+    api.post('/ventes/factures/encaissement-groupe/', data),
   // Encaissements : liste lecture seule de TOUS les paiements de la société
   // (PaiementViewSet), bornée serveur. ?ordering= pour le tri.
   getPaiements: (params) => api.get('/ventes/paiements/', { params }),

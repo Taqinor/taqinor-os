@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import ventesApi from '../../api/ventesApi'
 import PageHeader from '../../components/layout/PageHeader'
-import { Card, CardContent, EmptyState, Segmented, Skeleton } from '../../ui'
-import { formatDateTime } from '../../lib/format'
+import { Badge, Card, CardContent, EmptyState, Segmented, Skeleton } from '../../ui'
+import { formatDate, formatDateTime } from '../../lib/format'
 
 /* ============================================================================
    WIR104 — Écran unique du cluster réglementaire / mise en service de ventes.
@@ -41,6 +41,23 @@ const RESSOURCES = [
 const COLONNES_PREFEREES = [
   'reference', 'nom', 'libelle', 'designation', 'etape', 'type',
   'operateur', 'regime', 'statut', 'echeance', 'date', 'date_creation',
+]
+
+/* ── WIR224 / FG273 — Panneau « Échéances à venir » ──────────────────────────
+   `GET /ventes/calendrier-reglementaire/` calculait déjà tout (statut d'alerte
+   par échéance + résumé), et `getCalendrierReglementaire` était wrappé… mais
+   AUCUN écran ne l'appelait : les alertes d'expiration n'étaient jamais rendues.
+   Ce panneau est ce consommateur.
+
+   Le statut vient à 100 % du SERVEUR (`statut_alerte`) : rien n'est recalculé
+   ici à partir des dates — sinon l'écran et le serveur pourraient diverger sur
+   le seuil « imminent » (paramétrable par `?seuil=`). Cliquer un compteur
+   RECHARGE depuis le serveur avec `?statut=…` (le filtrage aussi est serveur),
+   jamais un filtre local sur une liste déjà réduite. */
+const ALERTES = [
+  { cle: 'expire', label: 'Expiré', tone: 'destructive' },
+  { cle: 'imminent', label: 'Imminent', tone: 'warning' },
+  { cle: 'a_venir', label: 'À venir', tone: 'info' },
 ]
 
 const estAffichable = (v) =>
@@ -101,6 +118,60 @@ export default function DossiersReglementairesPage() {
       .finally(() => { if (latestRef.current === v) setLoading(false) })
   }, [])
 
+  /* ── WIR224 — état du panneau d'échéances (indépendant de la ressource
+     affichée en dessous : c'est une vue transverse). ── */
+  const [calendrier, setCalendrier] = useState(null)
+  const [calLoading, setCalLoading] = useState(true)
+  const [calError, setCalError] = useState(false)
+  const [calStatut, setCalStatut] = useState(null) // null = tout
+  // Le RÉSUMÉ vient du serveur. Sous filtre, le serveur ne résume que les
+  // lignes filtrées : on retient donc le dernier résumé NON filtré pour que
+  // les compteurs ne se vident pas sous le doigt de l'utilisateur.
+  const [resume, setResume] = useState(null)
+  const calRef = useRef(null)
+
+  const chargerCalendrier = (statut) => {
+    calRef.current = statut ?? null
+    setCalLoading(true)
+    setCalError(false)
+    ventesApi.getCalendrierReglementaire(statut ? { statut } : undefined)
+      .then((r) => {
+        if (calRef.current !== (statut ?? null)) return
+        setCalendrier(r.data || null)
+        if (!statut && r.data?.resume) setResume(r.data.resume)
+      })
+      .catch(() => {
+        if (calRef.current !== (statut ?? null)) return
+        setCalendrier(null)
+        setCalError(true)
+      })
+      .finally(() => {
+        if (calRef.current === (statut ?? null)) setCalLoading(false)
+      })
+  }
+
+  useEffect(() => {
+    // Chargement initial du calendrier (aucun filtre) — même patron que le
+    // chargement de la ressource par défaut ci-dessus : pas de reset d'état
+    // synchrone dans l'effet, les changements passent par le handler.
+    ventesApi.getCalendrierReglementaire()
+      .then((r) => {
+        if (calRef.current !== null) return
+        setCalendrier(r.data || null)
+        if (r.data?.resume) setResume(r.data.resume)
+      })
+      .catch(() => { if (calRef.current === null) setCalError(true) })
+      .finally(() => { if (calRef.current === null) setCalLoading(false) })
+  }, [])
+
+  // Le compteur cliqué RECHARGE du serveur ; re-cliquer le même compteur
+  // enlève le filtre (aucun état « filtré sur rien » possible).
+  const basculerFiltreAlerte = (cle) => {
+    const suivant = calStatut === cle ? null : cle
+    setCalStatut(suivant)
+    chargerCalendrier(suivant)
+  }
+
   // Colonnes dérivées des données réelles (jamais d'un schéma deviné).
   const colonnes = useMemo(() => {
     if (rows.length === 0) return []
@@ -117,6 +188,80 @@ export default function DossiersReglementairesPage() {
         title="Dossiers réglementaires & mise en service"
         subtitle="Dossiers de raccordement, checklists, échanges opérateur, subventions, régularisation 82-21, recette IEC 62446, courbes I-V, packs as-built et attestations."
       />
+
+      {/* ── WIR224 / FG273 — Échéances à venir (alertes d'expiration) ── */}
+      <Card className="mt-4" data-testid="calendrier-reglementaire">
+        <CardContent>
+          <h2 className="text-base font-semibold text-foreground">Échéances à venir</h2>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            Pièces datées, dépôts en instruction et validité des accords de raccordement.
+            Les statuts sont calculés par le serveur.
+          </p>
+
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {ALERTES.map(({ cle, label, tone }) => (
+              <button
+                key={cle}
+                type="button"
+                data-testid={`alerte-${cle}`}
+                aria-pressed={calStatut === cle}
+                onClick={() => basculerFiltreAlerte(cle)}
+                className={`inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm transition-colors ${
+                  calStatut === cle ? 'border-primary bg-primary/10' : 'border-border hover:bg-muted'
+                }`}
+              >
+                <Badge tone={tone}>{label}</Badge>
+                <span className="tabular-nums font-semibold">{resume?.[cle] ?? 0}</span>
+              </button>
+            ))}
+            {calStatut && (
+              <button
+                type="button"
+                onClick={() => basculerFiltreAlerte(calStatut)}
+                className="text-sm text-muted-foreground underline underline-offset-2"
+              >
+                Tout afficher
+              </button>
+            )}
+          </div>
+
+          {calLoading && <Skeleton className="mt-3 h-16" />}
+          {!calLoading && calError && (
+            <p className="mt-3 text-sm text-muted-foreground" role="alert">
+              Le calendrier réglementaire n&apos;a pas pu être chargé.
+            </p>
+          )}
+          {!calLoading && !calError && (calendrier?.echeances ?? []).length === 0 && (
+            <p className="mt-3 text-sm text-muted-foreground">
+              Aucune échéance {calStatut ? `« ${ALERTES.find((a) => a.cle === calStatut)?.label} »` : ''} à ce jour.
+            </p>
+          )}
+          {!calLoading && !calError && (calendrier?.echeances ?? []).length > 0 && (
+            <ul className="mt-3 divide-y divide-border/60">
+              {calendrier.echeances.map((e, i) => {
+                const meta = ALERTES.find((a) => a.cle === e.statut_alerte)
+                return (
+                  <li key={`${e.type}-${e.dossier_id}-${i}`}
+                      className="flex flex-wrap items-center gap-2 py-2 text-sm">
+                    <Badge tone={meta?.tone ?? 'neutral'}>{meta?.label ?? e.statut_alerte}</Badge>
+                    <span className="flex-1 text-foreground">{e.libelle}</span>
+                    <span className="tabular-nums text-muted-foreground">
+                      {formatDate(e.date_echeance)}
+                    </span>
+                    {typeof e.jours_restants === 'number' && (
+                      <span className="tabular-nums text-xs text-muted-foreground">
+                        {e.jours_restants < 0
+                          ? `en retard de ${Math.abs(e.jours_restants)} j`
+                          : `dans ${e.jours_restants} j`}
+                      </span>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
 
       <Segmented
         options={RESSOURCES.map((r) => ({ value: r.value, label: r.label }))}

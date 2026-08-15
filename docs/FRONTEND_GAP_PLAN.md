@@ -38,9 +38,11 @@ a focused test, calling the EXISTING backend endpoint.
   merges land on `main`, rebase the frontend `dev` onto `main` before the single frontend merge.
 
 ## GATED / NOT HERE
-- **XACC14 Emprunt** and **XACC19 EtatPersonnalise** — marked `[x]` but have NO Django viewset/URL at
-  all (model+service only). BACKEND-INCOMPLETE → build the viewset/serializer/url in `docs/PLAN.md`
-  first, then the frontend. Not a frontend-only task.
+- ~~**XACC14 Emprunt** and **XACC19 EtatPersonnalise** — no Django viewset/URL at all.~~ **LEVÉ par
+  WIR279** : `EmpruntViewSet` (+ `generer-tableau/`), `EcheanceEmpruntViewSet` (lecture seule +
+  `poster/`) et `EtatPersonnaliseViewSet` (+ `evaluer/`, route `etats-personnalises/`) sont routés
+  sous `/api/django/compta/`, contrats dans `apps/compta/contract_samples/`. Le frontend est
+  désormais constructible (WIR280).
 - **XRH33 careers public page** — deferred to `WEB_PLAN` (apps/web), not ERP frontend. (An in-app
   "publier" toggle IS in scope — see RH lane.)
 

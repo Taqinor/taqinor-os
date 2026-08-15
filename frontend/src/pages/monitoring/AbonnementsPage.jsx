@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { CircleSlash, Plus, Receipt, XOctagon } from 'lucide-react'
+import { CircleSlash, PlayCircle, Plus, Receipt, XOctagon } from 'lucide-react'
 import crmApi from '../../api/crmApi'
 import monitoringApi from '../../api/monitoringApi'
 import {
@@ -114,6 +114,17 @@ export default function AbonnementsPage() {
       .finally(() => setBusyId(null))
   }
 
+  // WIR237 — la suspension n'avait aucune porte de sortie : un abonnement
+  // suspendu l'était à vie (le PATCH direct du statut est proscrit depuis
+  // YSUBS4). « Reprendre » appelle la transition serveur suspendu → actif.
+  const reprendre = (a) => {
+    setBusyId(a.id)
+    monitoringApi.reactiverAbonnement(a.id)
+      .then(() => { toast.success('Abonnement repris.'); reload() })
+      .catch((err) => toast.error(err?.response?.data?.detail ?? 'Reprise impossible.'))
+      .finally(() => setBusyId(null))
+  }
+
   const openResilier = (a) => { setResiliation(a); setMotif('') }
 
   const confirmerResiliation = () => {
@@ -172,6 +183,14 @@ export default function AbonnementsPage() {
               </IconButton>
             </>
           )}
+          {r.statut === 'suspendu' && (
+            <IconButton
+              variant="ghost" label="Reprendre" disabled={busyId === r.id}
+              onClick={() => reprendre(r)}
+            >
+              <PlayCircle />
+            </IconButton>
+          )}
           {r.statut !== 'resilie' && (
             <IconButton
               variant="ghost" label="Résilier" disabled={busyId === r.id}
@@ -183,7 +202,7 @@ export default function AbonnementsPage() {
         </span>
       ),
     },
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- facturer/suspendre/openResilier recréés à chaque rendu
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- facturer/suspendre/reprendre/openResilier recréés à chaque rendu
   ], [clientName, busyId])
 
   return (

@@ -12,7 +12,12 @@ import { appGlyph } from '../../lib/apps/appGlyph'
    UX29–UX33 — Configuration du module QHSE (Qualité · Hygiène · Sécurité ·
    Environnement). Déposé ici, il est collecté automatiquement par
    `router/moduleRoutes.jsx` (glob) — aucune modification du routeur/Sidebar.
-   Toutes les routes et entrées de menu sont gatées `['responsable','admin']`.
+   WIR171 — les routes/entrées de menu étaient gatées `['responsable','admin']`
+   alors que le serveur gate la LECTURE par `qhse_voir`
+   (`HasPermissionOrLegacy`, permission accordée aux 7 rôles) : un Commercial
+   recevait 200 et ne voyait rien. Elles portent désormais `...LECTURE` (palier
+   élargi + permission + repli palier pour les comptes hérités sans rôle fin).
+   Règle unique : `router/navPermission.js`.
    ========================================================================== */
 
 const QhseCockpit = lazy(() => import('./QhseCockpit'))
@@ -26,6 +31,12 @@ const NotationFinChantier = lazy(() => import('./NotationFinChantier'))
 const CheckinsSecurite = lazy(() => import('./CheckinsSecurite'))
 
 const ROLES = ['responsable', 'admin']
+// WIR171 — sémantique serveur `HasPermissionOrLegacy('qhse_voir')`.
+const LECTURE = {
+  roles: ['normal', 'responsable', 'admin'],
+  perm: 'qhse_voir',
+  permLegacyRoles: ROLES,
+}
 
 const config = {
   key: 'qhse',
@@ -39,13 +50,13 @@ const config = {
     icon: appGlyph(ShieldCheck),
     accent: 'destructive', // VX8 — sécurité/risque = accent destructive (dérivé)
     items: [
-      { to: '/qhse', label: 'Cockpit QHSE', icon: <ShieldCheck size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
-      { to: '/qhse/non-conformites', label: 'Non-conformités', icon: <AlertOctagon size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
-      { to: '/qhse/inspections', label: 'Inspections & audits', icon: <ClipboardCheck size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
-      { to: '/qhse/risques', label: 'Risques & permis', icon: <ShieldAlert size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
-      { to: '/qhse/environnement', label: 'Environnement & ESG', icon: <Leaf size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
-      { to: '/qhse/notations', label: 'Notation fin de chantier', icon: <Star size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
-      { to: '/qhse/checkins-securite', label: 'Check-ins sécurité', icon: <UserCheck size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      { to: '/qhse', label: 'Cockpit QHSE', icon: <ShieldCheck size={17} strokeWidth={1.75} aria-hidden="true" />, ...LECTURE },
+      { to: '/qhse/non-conformites', label: 'Non-conformités', icon: <AlertOctagon size={17} strokeWidth={1.75} aria-hidden="true" />, ...LECTURE },
+      { to: '/qhse/inspections', label: 'Inspections & audits', icon: <ClipboardCheck size={17} strokeWidth={1.75} aria-hidden="true" />, ...LECTURE },
+      { to: '/qhse/risques', label: 'Risques & permis', icon: <ShieldAlert size={17} strokeWidth={1.75} aria-hidden="true" />, ...LECTURE },
+      { to: '/qhse/environnement', label: 'Environnement & ESG', icon: <Leaf size={17} strokeWidth={1.75} aria-hidden="true" />, ...LECTURE },
+      { to: '/qhse/notations', label: 'Notation fin de chantier', icon: <Star size={17} strokeWidth={1.75} aria-hidden="true" />, ...LECTURE },
+      { to: '/qhse/checkins-securite', label: 'Check-ins sécurité', icon: <UserCheck size={17} strokeWidth={1.75} aria-hidden="true" />, ...LECTURE },
     ],
   },
   // routes.meta — du plus spécifique au plus général.
@@ -60,13 +71,13 @@ const config = {
   ],
   sectionLabels: { qhse: 'QHSE' },
   routes: [
-    { path: '/qhse', component: QhseCockpit, roles: ROLES },
-    { path: '/qhse/non-conformites', component: NonConformites, roles: ROLES },
-    { path: '/qhse/inspections', component: Inspections, roles: ROLES },
-    { path: '/qhse/risques', component: Risques, roles: ROLES },
-    { path: '/qhse/environnement', component: Environnement, roles: ROLES },
-    { path: '/qhse/notations', component: NotationFinChantier, roles: ROLES },
-    { path: '/qhse/checkins-securite', component: CheckinsSecurite, roles: ROLES },
+    { path: '/qhse', component: QhseCockpit, ...LECTURE },
+    { path: '/qhse/non-conformites', component: NonConformites, ...LECTURE },
+    { path: '/qhse/inspections', component: Inspections, ...LECTURE },
+    { path: '/qhse/risques', component: Risques, ...LECTURE },
+    { path: '/qhse/environnement', component: Environnement, ...LECTURE },
+    { path: '/qhse/notations', component: NotationFinChantier, ...LECTURE },
+    { path: '/qhse/checkins-securite', component: CheckinsSecurite, ...LECTURE },
   ],
 }
 

@@ -36,6 +36,8 @@ import { writeResume, writeLastApp } from './appPrefs'
 // deux lecteurs — ce fichier et `Layout.jsx` — sont liés par la chaîne
 // Layout → Sidebar → ActiveAppContext : le définir ici ou là créerait un cycle.
 import { APPS_SHELL_ENABLED } from './appsShellFlag'
+// WIR171 — règle d'autorisation PARTAGÉE (miroir de la garde serveur).
+import { itemAutorise } from '../../router/navPermission'
 
 export { APPS_SHELL_ENABLED }
 
@@ -143,21 +145,23 @@ export const ORPHAN_NAV_ITEMS = {
   ],
 }
 
-// Même règle de visibilité qu'ailleurs dans la coquille (palier + permission
-// ERP fine optionnelle) — cf. `useInstalledApps.js`, `Sidebar.jsx`.
-function isItemVisible(item, role, permissions) {
-  return !!item?.roles?.includes(role) && (!item.perm || permissions.includes(item.perm))
-}
-
 /**
  * appNavItems — items de menu d'une app, dans l'ordre de son `module.config`,
  * filtrés par rôle/permission. PURE (testable sans React).
+ *
+ * WIR171 — la règle de visibilité n'est PLUS recopiée ici : elle vient de
+ * `router/navPermission.js` (miroir de la garde serveur), partagée avec le
+ * roleLoader, la Sidebar et `useInstalledApps`. `roleNom` (nom du rôle FIN,
+ * `null` pour un compte hérité) est optionnel : omis, le comportement est
+ * strictement celui d'avant pour tous les items sans `permLegacyRoles`.
  */
-export function appNavItems(config, role, permissions = EMPTY_PERMISSIONS) {
+export function appNavItems(config, role, permissions = EMPTY_PERMISSIONS, roleNom = null) {
   if (!config) return []
   const declared = config.nav?.items ?? []
   const orphans = ORPHAN_NAV_ITEMS[config.key] ?? []
-  return [...declared, ...orphans].filter((it) => isItemVisible(it, role, permissions))
+  return [...declared, ...orphans].filter(
+    (it) => itemAutorise(it, { tier: role, roleNom, permissions }),
+  )
 }
 
 /* ODY29 — `useActiveApp` a plusieurs consommateurs montés en même temps
@@ -234,6 +238,9 @@ export function useActiveApp() {
   const apps = useInstalledApps()
   const role = useSelector((s) => s.auth.role) || 'normal'
   const permissions = useSelector((s) => s.auth.permissions) || EMPTY_PERMISSIONS
+  // WIR171 — rôle FIN (null pour un compte hérité) : distingue « la permission
+  // décide » du repli palier (cf. `router/navPermission.js`).
+  const roleNom = useSelector((s) => s.auth.role_nom) || null
   // ODY29 — la mémoire de reprise est propre à l'utilisateur : deux comptes qui
   // se succèdent sur le même poste ne reprennent jamais la session de l'autre.
   const userId = useSelector((s) => s.auth.user?.id)
@@ -248,8 +255,8 @@ export function useActiveApp() {
     // serait la 2e source d'apps interdite) — coquille neutre.
     if (!trouvee) return null
     const config = moduleConfigs.find((c) => c.key === key)
-    return { ...trouvee, items: appNavItems(config, role, permissions) }
-  }, [pathname, apps, role, permissions])
+    return { ...trouvee, items: appNavItems(config, role, permissions, roleNom) }
+  }, [pathname, apps, role, permissions, roleNom])
 
   const appKey = app?.key
   const appLabel = app?.label

@@ -25,6 +25,9 @@ import RouteErrorBoundary from '../components/RouteErrorBoundary'
 // remontage de l'écran pour que la bascule filtre les listes sans reload.
 import { useEntiteActive } from '../lib/entiteActive'
 import { buildModuleRoutes } from './moduleRoutes'
+// WIR171 — sémantique d'autorisation PARTAGÉE (miroir de la garde serveur),
+// unique implémentation lue aussi par Sidebar / ActiveAppContext / useInstalledApps.
+import { itemAutorise } from './navPermission'
 // ODX6 — source unique des modules désactivés (état /auth/me/ → store).
 import { isModuleDisabled } from './moduleGating'
 // ODY3 — résolution de l'atterrissage (préférence VX46 → dernier module VX11 →
@@ -211,16 +214,24 @@ const notFoundLoader = async () => {
 // qu'elle est présente dans les permissions de l'utilisateur.
 // VX131(c) — un refus rebondissait en SILENCE vers `/dashboard` (aucun écran
 // dédié, aucune explication) : redirige désormais vers `/403` (ui/Forbidden.jsx).
-const roleLoader = (roles, perm) => async ({ request }) => {
+// WIR171 — le troisième argument `permLegacyRoles` porte le REPLI palier des
+// gardes serveur `HasPermissionOrLegacy` : un compte hérité SANS rôle fin n'a
+// aucune permission dans /auth/me/, exiger `perm` de lui lui retirerait un
+// accès qu'il a côté serveur. Toute la règle vit dans `navPermission.js` —
+// aucune copie ici (ni dans la Sidebar, ni dans le mode Apps).
+const roleLoader = (roles, perm, permLegacyRoles) => async ({ request }) => {
   const user = await ensurePortalScope()
   if (!user) return buildLoginRedirect(request)
   // NTPRT8 — un compte portail externe ne franchit jamais une route interne,
   // même gardée par rôle : il rejoint son propre shell.
   const versPortail = redirectSiPortail(user)
   if (versPortail) return versPortail
-  const { role, permissions } = store.getState().auth
+  const { role, permissions, role_nom: roleNom } = store.getState().auth
   const tier = role || 'normal'
-  const allowed = roles.includes(tier) && (!perm || (permissions || []).includes(perm))
+  const allowed = itemAutorise(
+    { roles, perm, permLegacyRoles },
+    { tier, roleNom, permissions: permissions || [] },
+  )
   return allowed ? null : redirect('/403')
 }
 
