@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { FileCode, Download, ShieldCheck, Send } from 'lucide-react'
 import einvoiceApi from '../api/einvoiceApi'
 import { Badge, Button } from '../ui'
@@ -23,6 +23,36 @@ export default function EinvoiceActions({ factureId }) {
   const [controle, setControle] = useState(null)
   // PACT54 — transmission déclenchée (statut renvoyé par le serveur).
   const [transmission, setTransmission] = useState(null)
+
+  /* WIR223 — RÉHYDRATATION AU MONTAGE.
+     `state.fe` ne vivait qu'en mémoire : au moindre rechargement de page, les
+     boutons Télécharger / Contrôler / Transmettre DISPARAISSAIENT alors que
+     l'e-facture existait bel et bien côté serveur. Le seul moyen de les
+     retrouver était de re-cliquer « Générer » — ce qui crée une VERSION DE
+     PLUS pour rien et pollue l'historique des versions de cette facture.
+     On lit donc les versions déjà générées et on se pose sur la PLUS RÉCENTE
+     (version max ; à égalité, l'id le plus grand). Aucune écriture, aucune
+     génération implicite : une facture sans e-facture reste exactement dans
+     l'état d'avant (rien d'affiché, seul « Générer » disponible). */
+  useEffect(() => {
+    if (!factureId) return undefined
+    let actif = true
+    einvoiceApi.list({ facture_id: factureId })
+      .then((res) => {
+        if (!actif) return
+        const versions = res.data?.results ?? res.data ?? []
+        if (!Array.isArray(versions) || versions.length === 0) return
+        const derniere = versions.reduce((a, b) => (
+          ((b.version ?? 0) > (a.version ?? 0)
+            || ((b.version ?? 0) === (a.version ?? 0) && (b.id ?? 0) > (a.id ?? 0)))
+            ? b : a))
+        setState({ fe: derniere })
+      })
+      // Liste indisponible (droits, réseau) : on ne casse RIEN — l'écran
+      // retombe sur le comportement d'avant (seul « Générer » proposé).
+      .catch(() => {})
+    return () => { actif = false }
+  }, [factureId])
 
   const generer = async () => {
     setBusy(true)
