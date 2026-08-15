@@ -143,6 +143,97 @@ class ValiderEndpointTests(TestCase):
         self.assertEqual(resp.status_code, 403)
 
 
+class SaisieEcritureGateTests(TestCase):
+    """WIR175 — le CRUD des écritures et l'extourne exigent ``compta_saisir``.
+
+    Avant : seul ``valider`` était gardé par un code fin ; create/update/
+    destroy/extourner ne passaient que par le grossier ``IsResponsableOrAdmin``.
+    Un rôle fin portant ``compta_valider`` SEUL pouvait donc créer les écritures
+    qu'il validerait ensuite — la séparation des tâches se contournait par le
+    haut.
+
+    Les 403 sont rendus par ``check_permissions`` AVANT toute validation de
+    corps : un payload vide suffit, et le cas « autorisé » vérifie seulement
+    l'ABSENCE de 403 (un corps vide finit en 400 métier, jamais en 403 RBAC).
+    """
+
+    def setUp(self):
+        self.co = make_company('wir175-co', 'WIR175 Co')
+        services.seed_plan_comptable(self.co)
+        services.seed_journaux(self.co)
+        self.saisisseur = make_user(self.co, 'wir175-saisi')
+        self.ecriture = make_ecriture(
+            self.co, date(2026, 3, 1), 'Vente', '1000',
+            created_by=self.saisisseur)
+
+    def _avec_role(self, username, nom_role, permissions):
+        role = Role.objects.create(
+            company=self.co, nom=nom_role, permissions=permissions)
+        user = make_user(self.co, username)
+        user.role = role
+        user.save()
+        return user
+
+    def test_commercial_403_sur_tout_le_crud_et_extourne(self):
+        commercial = self._avec_role(
+            'wir175-commercial', 'Commercial WIR175', ['ventes_creer'])
+        api = auth(commercial)
+        base = '/api/django/compta/ecritures/'
+        detail = f'{base}{self.ecriture.pk}/'
+        self.assertEqual(api.post(base, {}, format='json').status_code, 403)
+        self.assertEqual(api.patch(detail, {}, format='json').status_code, 403)
+        self.assertEqual(api.delete(detail).status_code, 403)
+        self.assertEqual(
+            api.post(f'{detail}extourner/', {}, format='json').status_code, 403)
+        # Rien n'a bougé en base.
+        self.assertTrue(
+            EcritureComptable.objects.filter(pk=self.ecriture.pk).exists())
+
+    def test_compta_valider_seul_ne_cree_pas(self):
+        """Un valideur pur ne doit pas pouvoir saisir ce qu'il validera."""
+        valideur = self._avec_role(
+            'wir175-valid-seul', 'Valideur seul WIR175', ['compta_valider'])
+        api = auth(valideur)
+        base = '/api/django/compta/ecritures/'
+        self.assertEqual(api.post(base, {}, format='json').status_code, 403)
+        self.assertEqual(
+            api.post(f'{base}{self.ecriture.pk}/extourner/', {},
+                     format='json').status_code, 403)
+
+    def test_compta_saisir_passe_la_garde(self):
+        saisie = self._avec_role(
+            'wir175-saisie', 'Saisie WIR175', ['compta_saisir'])
+        resp = auth(saisie).post(
+            '/api/django/compta/ecritures/', {}, format='json')
+        self.assertNotEqual(resp.status_code, 403)
+
+    def test_lecture_reste_ouverte_au_palier(self):
+        """Le resserrage ne touche QUE l'écriture : la liste reste lisible au
+        palier responsable/admin, comme avant."""
+        resp = auth(self.saisisseur).get('/api/django/compta/ecritures/')
+        self.assertEqual(resp.status_code, 200)
+
+    def test_compte_legacy_responsable_inchange(self):
+        """Compte SANS rôle fin : repli historique ``is_responsable`` intact."""
+        legacy = make_user(self.co, 'wir175-legacy', role='responsable')
+        api = auth(legacy)
+        base = '/api/django/compta/ecritures/'
+        self.assertNotEqual(
+            api.post(base, {}, format='json').status_code, 403)
+        self.assertNotEqual(
+            api.post(f'{base}{self.ecriture.pk}/extourner/', {},
+                     format='json').status_code, 403)
+
+    def test_valider_garde_sa_propre_permission(self):
+        """WIR175 ne doit RIEN changer à ``valider`` : ``compta_saisir`` seul
+        n'ouvre pas la validation (et la séparation des tâches reste 400)."""
+        saisie = self._avec_role(
+            'wir175-saisie-only', 'Saisie only WIR175', ['compta_saisir'])
+        resp = auth(saisie).post(
+            f'/api/django/compta/ecritures/{self.ecriture.pk}/valider/')
+        self.assertEqual(resp.status_code, 403)
+
+
 class ClotureGateTests(TestCase):
     def setUp(self):
         self.co = make_company('compta40-clo', 'COMPTA40 CLO')

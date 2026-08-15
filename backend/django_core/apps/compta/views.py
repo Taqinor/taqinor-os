@@ -284,6 +284,33 @@ class EcritureComptableViewSet(_ComptaBaseViewSet):
         serializer.save(
             company=self.request.user.company, created_by=self.request.user)
 
+    def get_permissions(self):
+        """WIR175 — le CRUD des écritures et l'extourne exigent ``compta_saisir``.
+
+        Trou constaté : ``valider`` vérifiait bien ``compta_valider`` (COMPTA40)
+        mais la SAISIE elle-même — create/update/partial_update/destroy — et
+        l'extourne (qui passe une écriture inverse au grand livre) n'étaient
+        gardées que par le grossier ``IsResponsableOrAdmin`` de la base. Un rôle
+        fin privé de ``compta_saisir`` pouvait donc écrire au GL, et un rôle
+        portant ``compta_valider`` SEUL pouvait créer les écritures qu'il
+        validerait ensuite — la séparation des tâches était contournable par le
+        haut.
+
+        ``HasPermissionOrLegacy`` (même sémantique que le helper ``_peut``
+        utilisé par ``valider``) garde le repli historique intact : un compte
+        SANS rôle fin reste jugé sur ``is_responsable``. ``compta_saisir`` est
+        déjà octroyé par défaut au Responsable/Directeur ⇒ aucune régression.
+
+        ``valider`` n'est délibérément PAS listée ici : elle garde sa garde
+        ``compta_valider`` posée dans le corps de l'action (et un valideur ne
+        doit surtout pas hériter du droit de saisir). Les lectures (list,
+        retrieve) restent au palier de base.
+        """
+        if self.action in ('create', 'update', 'partial_update', 'destroy',
+                           'extourner'):
+            return [HasPermissionOrLegacy('compta_saisir')()]
+        return super().get_permissions()
+
     @action(detail=True, methods=['post'])
     def extourner(self, request, pk=None):
         """COMPTA11 — Passe l'écriture d'extourne (contre-passation).
