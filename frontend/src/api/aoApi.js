@@ -102,6 +102,9 @@ const aoApi = {
       fd.append('fichier', fichier)
       return api.post('/ao/toitures/dxf/analyser/', fd)
     },
+    // WIR207 — AOF27 : applique un preset EN UN APPEL, jamais un PATCH nu.
+    appliquerPreset: (id, presetId) =>
+      api.post(`/ao/toitures/${id}/appliquer-preset/`, { preset: presetId }),
   },
   // RÉPARATION 03/08/2026 — le routeur enregistre `plans-source` et
   // `chaines-cotes` (AU SINGULIER pour le premier) ; le front appelait
@@ -258,7 +261,13 @@ const aoApi = {
      `texte`, et AU MOINS un impact chiffré (`impact_min_modules` et/ou
      `impact_max_modules`) — le sérialiseur refuse le reste, et c'est la règle
      produit : on ne pose une question que si sa réponse change le compte. */
-  questions: crud('questions'),
+  // WIR207 — `trancher` APPLIQUE réellement la décision côté serveur
+  // (obstacle écarté/confirmé, cote requalifiée, variantes dépendantes
+  // PÉRIMÉES) : jamais un PATCH nu de `decision` sur la ressource.
+  questions: {
+    ...crud('questions'),
+    trancher: (id, data) => api.post(`/ao/questions/${id}/trancher/`, data),
+  },
   /* ── `equipements` — CONSTRUIT le 03/08/2026 (AOF118 + AOF141) ───────────
      Le trou est comblé : `EquipementAO` a désormais son sérialiseur, son
      ViewSet `equipements` et l'action atomique `bascule`

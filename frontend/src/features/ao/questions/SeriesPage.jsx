@@ -235,7 +235,24 @@ export function SeriesPage({ affaireId }) {
     setEnregistrementQuestion(true)
     try {
       if (questionCourante.id) {
-        await aoApi.questions.update(questionCourante.id, patch)
+        // WIR207 — une `decision` non vide n'est JAMAIS un PATCH de champ nu :
+        // `trancher` APPLIQUE réellement la décision côté serveur (obstacle
+        // écarté/confirmé, cote requalifiée, variantes dépendantes PÉRIMÉES).
+        // `reponse`/`date_decision` restent une écriture directe (aucune
+        // logique métier ne leur est attachée côté serveur).
+        const { decision, ...champsDirects } = patch
+        if (Object.keys(champsDirects).length > 0) {
+          await aoApi.questions.update(questionCourante.id, champsDirects)
+        }
+        if (decision && decision.trim() && decision !== questionCourante.decision) {
+          const res = await aoApi.questions.trancher(questionCourante.id, { decision })
+          const perimees = res?.data?.variantes_perimees ?? []
+          if (perimees.length > 0) {
+            toast.warning(
+              `${perimees.length} variante(s) de calepinage périmée(s) par cette décision.`,
+            )
+          }
+        }
       } else {
         await aoApi.questions.create({
           serie: serieOuverte.id,

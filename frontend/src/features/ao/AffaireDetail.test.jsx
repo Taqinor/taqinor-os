@@ -68,7 +68,10 @@ vi.mock('../../api/aoApi', () => ({
       changerStatut: vi.fn(), rattacherLead: vi.fn(),
     },
     // Ce que le serveur persiste réellement pour un calepinage (AOF28).
-    toitures: { list: mocks.toituresList, create: mocks.toituresCreate },
+    // WIR207 — `appliquerPreset` : bouchon défensif, au cas où un flux de
+    // test ouvre l'atelier d'une toiture (PresetToitureSelector).
+    toitures: { list: mocks.toituresList, create: mocks.toituresCreate, appliquerPreset: vi.fn() },
+    bibliotheque: { list: () => Promise.resolve({ data: [] }) },
     // Le panneau Toitures ouvre le wizard de création : une toiture se
     // rattache à un BÂTIMENT (ToitureAO n'a aucune FK vers l'affaire).
     batiments: { list: mocks.batimentsList },

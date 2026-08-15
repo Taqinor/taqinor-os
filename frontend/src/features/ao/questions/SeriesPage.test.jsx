@@ -37,7 +37,12 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../../../api/aoApi', () => ({
   default: {
     seriesQR: { list: mocks.seriesList, create: mocks.seriesCreate },
-    questions: { create: mocks.questionsCreate, update: mocks.questionsUpdate },
+    // WIR207 — `trancher` APPLIQUE la décision (jamais un PATCH nu de
+    // `decision`) : bouchon défensif pour tout flux qui la renseignerait.
+    questions: {
+      create: mocks.questionsCreate, update: mocks.questionsUpdate,
+      trancher: vi.fn().mockResolvedValue({ data: { variantes_perimees: [] } }),
+    },
   },
 }))
 

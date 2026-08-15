@@ -26,11 +26,12 @@ import {
    charger. La sauvegarde est un PATCH sur le MÊME `id` (`update()`, jamais
    `create()`) : aucune duplication silencieuse de texte.
 
-   « Appliquer » n'existe PLUS ici : côté serveur, appliquer un jeu de
-   paramètres écrit sur une TOITURE (`services.appliquer_preset`) et cet écran
-   global n'en désigne aucune. Le bouton d'origine appelait un endpoint
-   inventé ; plutôt que de deviner une cible, l'écran dit d'où l'application
-   se fait réellement. Endpoint à construire le jour où la cible est tranchée.
+   « Appliquer » n'existe PAS ici : côté serveur, appliquer un jeu de
+   paramètres écrit sur une TOITURE (`ToitureAOViewSet.appliquer_preset`,
+   `aoApi.toitures.appliquerPreset`, WIR207) et cet écran global n'en désigne
+   aucune. Le sélecteur de preset vit dans l'atelier (`ToituresPage.jsx`, onglet
+   « Géométrie ») — la SEULE cible réelle — jamais un bouton ici qui devrait
+   deviner une toiture, et jamais un PATCH nu de la ressource preset.
    ========================================================================== */
 
 const errMsg = (e, fallback) => e?.response?.data?.detail || fallback

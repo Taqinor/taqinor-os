@@ -16,6 +16,9 @@ import { MemoryRouter } from 'react-router-dom'
 const mocks = vi.hoisted(() => ({
   get: vi.fn(),
   genererPiece: vi.fn(),
+  // WIR207 — le suivi de `genererPiece` passe par `useGenerationJob`, qui
+  // sonde `statut-de-job` (même patron que le bouton ZIP, AOF177).
+  statutJob: vi.fn(),
   controlesAvantDepot: vi.fn(),
   // PACT71 — `ChecklistPartenaire` est désormais monté PAR DÉFAUT (pleine
   // largeur, sous la grille) : sans ces bouchons, l'écran appellerait des
@@ -36,6 +39,7 @@ vi.mock('../../../api/aoApi', () => ({
     dossiers: {
       get: mocks.get,
       genererPiece: mocks.genererPiece,
+      statutJob: mocks.statutJob,
       // AOF176 — endpoint RÉEL, appelé par le contenu par défaut de
       // l'emplacement « actions ».
       controlesAvantDepot: mocks.controlesAvantDepot,
@@ -106,8 +110,16 @@ const ligneP = async (code) => {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // WIR207 — `useGenerationJob` mémorise le job en cours en localStorage
+  // (clé par dossier) : sans purge, un job « repris » d'un test précédent
+  // fausserait `enCours` au montage suivant.
+  globalThis.localStorage?.clear()
   mocks.get.mockResolvedValue({ data: DOSSIER_V1 })
-  mocks.genererPiece.mockResolvedValue({ data: {} })
+  // WIR207 — réponse RÉELLE du serveur : 202 + job_id (async), jamais un
+  // succès synchrone `{}`. `statutJob` reste `queued` par défaut (les tests
+  // qui veulent une fin de job la mockent explicitement).
+  mocks.genererPiece.mockResolvedValue({ data: { job_id: 'job-1', statut: 'queued', dossier: 7 } })
+  mocks.statutJob.mockResolvedValue({ data: { statut: 'queued' } })
   mocks.controlesAvantDepot.mockResolvedValue({
     data: { controles: [{ id: 1, code: 'caution', libelle: 'Caution constituée', severite: 'ok' }] },
   })
@@ -156,16 +168,26 @@ describe('DossierPage (AOF174)', () => {
     expect(
       screen.getByText(/le calepinage du bâtiment C est passé de 264 à 314/),
     ).toBeInTheDocument()
+    // WIR207 — le libellé dit maintenant ce que le clic fait vraiment : TOUT
+    // le dossier repart, jamais « cette » pièce (l'ancien libellé mentait).
     expect(
-      screen.getAllByRole('button', { name: /Régénérer « Mémoire technique »/ })[0],
+      screen.getAllByRole('button', { name: 'Régénérer le dossier complet' })[0],
     ).toBeInTheDocument()
   })
 
-  it('« Régénérer » appelle le service serveur de génération de pièce', async () => {
+  it('« Régénérer » lance le job serveur SANS argument de pièce mort et suit sa fin réelle avant d’annoncer le succès', async () => {
     mocks.get.mockResolvedValue({ data: DOSSIER_V2 })
     renderScreen()
-    fireEvent.click((await screen.findAllByRole('button', { name: /Régénérer « Mémoire technique »/ }))[0])
-    await waitFor(() => expect(mocks.genererPiece).toHaveBeenCalledWith('7', 'memoire'))
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Régénérer le dossier complet' }))[0])
+    // WIR207 — `generer-piece` IGNORE tout argument de pièce côté serveur :
+    // l'appel client ne doit plus en fabriquer un (argument mort retiré).
+    await waitFor(() => expect(mocks.genererPiece).toHaveBeenCalledWith('7'))
+    // Le job est « en cours » (queued) : le succès n'est PAS encore annoncé.
+    await waitFor(() => {
+      expect(
+        screen.getAllByRole('button', { name: 'Régénération…' })[0],
+      ).toBeDisabled()
+    })
   })
 
   it('le verrou de dossier (AOF155) est affiché et suspend les actions d’écriture', async () => {
@@ -182,7 +204,7 @@ describe('DossierPage (AOF174)', () => {
     expect((await screen.findAllByText(/Opération en cours sur ce dossier/)).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/Sami B\./).length).toBeGreaterThan(0)
     expect(
-      screen.getAllByRole('button', { name: /Régénérer « Mémoire technique »/ })[0],
+      screen.getAllByRole('button', { name: 'Régénérer le dossier complet' })[0],
     ).toBeDisabled()
   })
 })
