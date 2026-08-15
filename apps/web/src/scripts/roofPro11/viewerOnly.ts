@@ -71,8 +71,14 @@ import {
 /** Hauteur de mur (m) — même lecture visuelle que le builder (2 niveaux × 3 m),
  *  valeur dupliquée (constants.ts appartient au builder — non importé). */
 const WALL_H_M = 6;
-const PANEL_THICK_M = 0.04;
-const FLAT_STAND_M = 0.12;
+/** WJ130 — Épaisseur du panneau (m) : la VALEUR DU BUILDER
+ *  (`PANEL2_THICK_M = 0.033`, lib/roofPro2.ts, utilisée par scene3d.ts pour la
+ *  `BoxGeometry` du panneau), plus une épaisseur d'à-peu-près. */
+const PANEL_THICK_M = 0.033;
+/** WJ130 — Hauteur du châssis avant sur toit plat (m) : le `frontStrut` de
+ *  roofPro11/scene3d.ts, pour que le panneau soit posé à la MÊME altitude que
+ *  dans le builder (`frontStrut + montée/2 + 0,07` au-dessus de la dalle). */
+const FLAT_STAND_M = 0.1;
 const DEG2RAD = Math.PI / 180;
 /** Mètres par degré de latitude — DOIT valoir VIEWER_DEG2M (lib/proposition.ts,
  *  111 320, non exporté) : c'est l'inverse exact du `toENU` de buildViewerModel,
@@ -596,23 +602,41 @@ function buildZone(
   }
 
   // Panneaux : InstancedMesh unique (verre sombre — lecture immédiate « panneau »).
+  //
+  // WJ130 — Le RECTANGLE dessiné est celui du builder, pas une règle générique :
+  // `BoxGeometry(rowWidthM, slopeLenM, PANEL2_THICK_M)` tournée de `rowAngle`
+  // (axe des rangées, ⟂ à la face) puis inclinée de `tiltDeg` — exactement la
+  // composition de roofPro11/scene3d.ts. `panelAlongM`/`panelSlopeM` portent la
+  // POSE réelle (portrait ↔ paysage) déduite des centres posés côté
+  // lib/proposition.ts, donc à données égales les deux rendus se superposent.
   if (zone.panels.length > 0) {
-    const panelGeo = new THREE.BoxGeometry(zone.panelAlongM, zone.panelDepthM / Math.cos(tiltRad) || zone.panelDepthM, PANEL_THICK_M);
+    const slopeLenM = zone.panelSlopeM;
+    const panelGeo = new THREE.BoxGeometry(zone.panelAlongM, slopeLenM, PANEL_THICK_M);
     const panelMat = new THREE.MeshStandardMaterial({ color: 0x14263f, roughness: 0.25, metalness: 0.35 });
     const im = new THREE.InstancedMesh(panelGeo, panelMat, zone.panels.length);
     const rowAngle = Math.atan2(f[0], -f[1]); // rangée ⟂ face
     const qz = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), rowAngle);
-    const qx = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), tiltRad);
-    const q = qz.clone().multiply(qx);
+    const axisX = new THREE.Vector3(1, 0, 0);
+    // Est-Ouest : chevrons DOS À DOS — la face 'E' s'incline dans l'autre sens
+    // (`signedTilt = face === 'E' ? -tilt : tilt`, scene3d.ts). Deux quaternions
+    // suffisent ; en famille sud seul `qUp` sert (rendu inchangé).
+    const qUp = qz.clone().multiply(new THREE.Quaternion().setFromAxisAngle(axisX, tiltRad));
+    const qDown = zone.family === 'eastwest'
+      ? qz.clone().multiply(new THREE.Quaternion().setFromAxisAngle(axisX, -tiltRad))
+      : qUp;
     const scl = new THREE.Vector3(1, 1, 1);
-    const rise = (zone.panelDepthM / Math.cos(tiltRad) || zone.panelDepthM) * Math.sin(tiltRad);
+    // Montée du panneau incliné : identique dans les deux sens (|sin|), donc les
+    // deux versants d'un chevron sont posés à la même altitude — comme le builder.
+    const rise = slopeLenM * Math.abs(Math.sin(tiltRad));
     const m = new THREE.Matrix4();
+    const pos = new THREE.Vector3();
     for (let i = 0; i < zone.panels.length; i++) {
       const p = zone.panels[i];
       const zBase = pitched
         ? WALL_H_M + 0.02 + pitchedRiseAt(p.x, p.y, f, dEave, tiltRad) + 0.06
         : WALL_H_M + FLAT_STAND_M + rise / 2 + 0.07;
-      m.compose(new THREE.Vector3(p.x, p.y, zBase), q, scl);
+      pos.set(p.x, p.y, zBase);
+      m.compose(pos, p.face === 'E' ? qDown : qUp, scl);
       im.setMatrixAt(i, m);
     }
     im.instanceMatrix.needsUpdate = true;
