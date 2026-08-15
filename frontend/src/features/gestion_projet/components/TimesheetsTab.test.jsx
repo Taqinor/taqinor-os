@@ -96,3 +96,32 @@ describe('TimesheetsTab', () => {
     expect(screen.getAllByText(/12 h/).length).toBeGreaterThan(0)
   })
 })
+
+/* WIR245 (ZPRJ6) — les colonnes du classement lisaient `heures` et
+   `completude_pct`, deux clés absentes de la réponse serveur : elles étaient
+   donc à 0 pour l'éternité. Le mock ci-dessous reprend les clés RÉELLES de
+   `selectors.classement_temps`. */
+describe('TimesheetsTab — WIR245 : classement des temps', () => {
+  it('rend total_heures et taux_completude_pct, et « — » sur un taux null', async () => {
+    gestionProjetApi.getClassementTemps.mockResolvedValue({
+      data: {
+        debut: '2026-07-01', fin: '2026-07-31',
+        lignes: [
+          { ressource_id: 7, ressource_nom: 'Amine', total_heures: 12.5, taux_completude_pct: 80.0, jours_de_retard: 3 },
+          { ressource_id: 8, ressource_nom: 'Sara', total_heures: 0, taux_completude_pct: null, jours_de_retard: 0 },
+        ],
+      },
+    })
+    const user = userEvent.setup()
+    withProviders(<TimesheetsTab timesheets={timesheets} onChanged={vi.fn()} />)
+    await user.click(await screen.findByRole('tab', { name: 'Classement' }))
+
+    expect((await screen.findAllByText('12,5')).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('80 %').length).toBeGreaterThan(0)
+    // `taux_completude_pct: null` → « — », jamais un 0 inventé.
+    expect(screen.getAllByText('—').length).toBeGreaterThan(0)
+    // WIR245 — la colonne `jours_de_retard` du serveur est enfin affichée.
+    expect(screen.getAllByText('Jours de retard').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('3').length).toBeGreaterThan(0)
+  })
+})

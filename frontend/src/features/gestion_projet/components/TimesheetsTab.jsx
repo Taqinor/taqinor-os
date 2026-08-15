@@ -250,9 +250,17 @@ export default function TimesheetsTab({ timesheets, onChanged, ressources = [] }
                   getRowId={(l, i) => l.ressource_id ?? i}
                   searchable={false}
                   columns={[
+                    /* WIR245 — les deux colonnes lisaient `heures` et
+                       `completude_pct`, deux clés que `selectors.
+                       classement_temps` (ZPRJ6) ne renvoie PAS : il sert
+                       `total_heures`, `taux_completude_pct` (qui vaut `null`
+                       quand aucun jour n'est attendu — un « — », jamais 0) et
+                       `jours_de_retard`, jusqu'ici non affiché. Les colonnes
+                       étaient donc figées à 0 quoi qu'il arrive. */
                     { id: 'ressource', header: 'Ressource', accessor: (l) => l.ressource_nom ?? l.nom },
-                    { id: 'heures', header: 'Heures saisies', align: 'right', numeric: true, accessor: (l) => Number(l.heures ?? 0), cell: (v) => formatNumber(v) },
-                    { id: 'completude', header: 'Complétude', align: 'right', numeric: true, accessor: (l) => Number(l.completude_pct ?? l.completude ?? 0), cell: (v) => `${v} %` },
+                    { id: 'heures', header: 'Heures saisies', align: 'right', numeric: true, accessor: (l) => Number(l.total_heures ?? 0), cell: (v) => formatNumber(v) },
+                    { id: 'completude', header: 'Complétude', align: 'right', numeric: true, accessor: (l) => (l.taux_completude_pct == null ? -1 : Number(l.taux_completude_pct)), cell: (_v, l) => (l.taux_completude_pct == null ? '—' : `${formatNumber(l.taux_completude_pct)} %`) },
+                    { id: 'retard', header: 'Jours de retard', align: 'right', numeric: true, accessor: (l) => Number(l.jours_de_retard ?? 0), cell: (v) => v },
                   ]}
                   emptyTitle="Aucune donnée"
                 />
