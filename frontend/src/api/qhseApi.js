@@ -94,6 +94,10 @@ const qhseApi = {
     // courant (accusés de lecture en attente), scopées société.
     mesLecturesEnAttente: () =>
       api.get('/qhse/procedures-qualite/mes-lectures-en-attente/'),
+    // WIR277/278 — diffuse CETTE version à une population d'utilisateurs
+    // ({ user_ids }), validée serveur (même société uniquement).
+    diffuser: (id, data) =>
+      api.post(`/qhse/procedures-qualite/${id}/diffuser/`, data),
   },
   retoursClient: {
     ...crud('retours-client'),
@@ -301,6 +305,61 @@ const qhseApi = {
     api.get(`/qhse/causeries/${causerieId}/pdf/`, {
       params, responseType: 'blob',
     }),
+
+  // ── WIR275/276 — Registres ISO jusqu'ici sans écran (campagnes de rappel,
+  //    certifications + audits externes, programme d'audit interne,
+  //    réunions/revues de direction, objectifs 6.2). ─────────────────────
+  campagnesRappel: {
+    ...crud('campagnes-rappel'),
+    peupler: (id) => api.post(`/qhse/campagnes-rappel/${id}/peupler/`),
+    notifier: (id) => api.post(`/qhse/campagnes-rappel/${id}/notifier/`),
+    cloturer: (id, data) =>
+      api.post(`/qhse/campagnes-rappel/${id}/cloturer/`, data),
+  },
+  elementsRappel: crud('elements-rappel'),
+  certifications: crud('certifications'),
+  auditsCertification: {
+    ...crud('audits-certification'),
+    leverNcr: (id) => api.post(`/qhse/audits-certification/${id}/lever-ncr/`),
+  },
+  programmesAudit: crud('programmes-audit'),
+  auditsPlanifies: {
+    ...crud('audits-planifies'),
+    // Matérialise l'Audit réel une fois l'audit planifié tenu (idempotent).
+    instancier: (id) => api.post(`/qhse/audits-planifies/${id}/instancier/`),
+  },
+  clausesNorme: crud('clauses-norme'),
+  reunionsQhse: {
+    ...crud('reunions'),
+    cloturer: (id) => api.post(`/qhse/reunions/${id}/cloturer/`),
+  },
+  decisionsReunion: {
+    ...crud('decisions-reunion'),
+    creerCapa: (id, data) =>
+      api.post(`/qhse/decisions-reunion/${id}/creer-capa/`, data),
+  },
+  objectifsQhse: crud('objectifs'),
+  revuesObjectif: crud('revues-objectif'),
+
+  // ── WIR277/278 — Contexte SMQ ISO 4.1/4.2 + diffusion des procédures ───
+  partiesInteressees: crud('parties-interessees'),
+  contexteOrganisation: {
+    get: () => api.get('/qhse/contexte-organisation/'),
+    update: (data) => api.put('/qhse/contexte-organisation/', data),
+  },
+  // LECTURE SEULE côté serveur (ReadOnlyModelViewSet) : une diffusion se
+  // crée uniquement via `proceduresQualite.diffuser`, jamais par POST direct.
+  diffusionsProcedure: {
+    list: (params) => api.get('/qhse/diffusions-procedure/', { params }),
+    get: (id) => api.get(`/qhse/diffusions-procedure/${id}/`),
+    accuses: (id) => api.get(`/qhse/diffusions-procedure/${id}/accuses/`),
+    // Élargit la population d'une diffusion existante (idempotent).
+    ajouterLecteurs: (id, data) =>
+      api.post(`/qhse/diffusions-procedure/${id}/ajouter-lecteurs/`, data),
+    // N'accuse la lecture QUE pour l'utilisateur courant.
+    marquerLu: (id) =>
+      api.post(`/qhse/diffusions-procedure/${id}/marquer-lu/`),
+  },
 }
 
 // ── XQHS2/XQHS23 — actions complémentaires sur `nonConformites` (UX30) ────
@@ -320,6 +379,9 @@ qhseApi.nonConformites.tauxDefaillanceProduit = () =>
 // complète (merge sur les disciplines fournies).
 qhseApi.nonConformites.analyse = (id, data) =>
   api.post(`/qhse/non-conformites/${id}/analyse/`, data ?? {})
+// WIR276 — PDF imprimable de l'analyse (5-Pourquoi/8D) d'une NCR.
+qhseApi.nonConformites.analysePdf = (id) =>
+  api.get(`/qhse/non-conformites/${id}/analyse/pdf/`, { responseType: 'blob' })
 
 // ── WIR115 — Check-in sécurité (technicien seul sur site) ────────────────────
 qhseApi.checkinsSecurite = {

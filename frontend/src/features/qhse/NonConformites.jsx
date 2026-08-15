@@ -4,6 +4,7 @@ import {
   Wrench, ShieldAlert, MessageSquare,
 } from 'lucide-react'
 import qhseApi from '../../api/qhseApi'
+import { downloadBlobInGesture } from '../../utils/downloadBlob'
 import { ListShell, DetailShell } from '../../ui/module'
 import {
   Button, Badge, Dialog, DialogContent, DialogTitle, Input, Textarea, Label,
@@ -451,6 +452,23 @@ function AnalyseNcrPanel({ ncrId }) {
   const [huitD, setHuitD] = useState({})
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  // WIR276 — PDF imprimable de l'analyse (route `analyse/pdf/`, WIR275).
+  const [downloading, setDownloading] = useState(false)
+
+  async function telechargerPdf() {
+    // VX172 — pré-ouvre l'onglet DANS le geste de tap (avant tout `await`) :
+    // sinon iOS/PWA standalone télécharge le PDF dans un dossier invisible.
+    const pending = downloadBlobInGesture()
+    setDownloading(true)
+    try {
+      const res = await qhseApi.nonConformites.analysePdf(ncrId)
+      pending.deliver(res.data, `analyse-ncr-${ncrId}.pdf`)
+    } catch {
+      toast.error('Téléchargement du PDF impossible.')
+    } finally {
+      setDownloading(false)
+    }
+  }
 
   useEffect(() => {
     let vivant = true
@@ -542,7 +560,10 @@ function AnalyseNcrPanel({ ncrId }) {
         ))}
       </section>
 
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
+        <Button variant="outline" onClick={telechargerPdf} disabled={downloading}>
+          {downloading ? 'Génération…' : 'Télécharger le PDF (5-Pourquoi/8D)'}
+        </Button>
         <Button onClick={enregistrer} disabled={saving}>
           {saving ? 'Enregistrement…' : 'Enregistrer l’analyse'}
         </Button>

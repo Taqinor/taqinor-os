@@ -34,7 +34,7 @@ const NCR_ROW = {
   date_creation: '2026-07-01', disposition: null,
 }
 
-const { empty, analyse, depuisTicketSav } = vi.hoisted(() => ({
+const { empty, analyse, depuisTicketSav, analysePdf } = vi.hoisted(() => ({
   empty: () => Promise.resolve({ data: [] }),
   depuisTicketSav: vi.fn(() => Promise.resolve({
     data: { id: 9, reference: 'NCR-0009' },
@@ -45,6 +45,8 @@ const { empty, analyse, depuisTicketSav } = vi.hoisted(() => ({
       huit_d: { D4: { texte: 'Cause racine identifiée' } },
     },
   })),
+  // WIR276 — route `analyse/pdf/` (WIR275), jusqu'ici sans bouton d'écran.
+  analysePdf: vi.fn(() => Promise.resolve({ data: new Blob(['pdf']) })),
 }))
 
 vi.mock('../../api/qhseApi', () => ({
@@ -54,6 +56,7 @@ vi.mock('../../api/qhseApi', () => ({
       historique: empty,
       analyse: (...a) => analyse(...a),
       depuisTicketSav: (...a) => depuisTicketSav(...a),
+      analysePdf: (...a) => analysePdf(...a),
     },
     capa: { list: empty, enRetard: empty },
     derogations: { list: empty },
@@ -123,6 +126,20 @@ describe('NcrDetail — analyse 5-Pourquoi / 8D (FE-XQHS7)', () => {
         { pourquoi: 'Pourquoi la manutention ?', reponse: '' },
       ],
     })))
+  })
+
+  // WIR276 — bouton PDF sur le détail NCR (route `analyse/pdf/`, WIR275).
+  it('télécharge le PDF de l’analyse via la route analyse/pdf/', async () => {
+    globalThis.URL.createObjectURL = vi.fn(() => 'blob:fake')
+    globalThis.URL.revokeObjectURL = vi.fn()
+    const user = userEvent.setup()
+    await ouvrirAnalyse(user)
+
+    await user.click(await screen.findByRole(
+      'button', { name: /Télécharger le PDF \(5-Pourquoi\/8D\)/ }))
+
+    await waitFor(() => expect(analysePdf).toHaveBeenCalledWith(7))
+    expect(globalThis.URL.createObjectURL).toHaveBeenCalled()
   })
 })
 

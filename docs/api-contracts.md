@@ -750,6 +750,8 @@
     detail:texte, devis_id:inconnu, devis_reference:inconnu, lead_id:inconnu, mode:inconnu
 - frontend/src/api/publicapiApi.js :: sandboxTry -> /api/django/publicapi/sandbox/try
     detail:texte, resource:inconnu, results:inconnu, sandbox:booleen
+- frontend/src/api/qhseApi.js :: ajouterLecteurs -> /api/django/qhse/diffusions-procedure/<>/ajouter-lecteurs
+    ajoutes:nombre, detail:texte, diffusion:inconnu
 - frontend/src/api/qhseApi.js :: calendrier -> /api/django/qhse/calendrier
     declarations_cnss:inconnu, evenements:inconnu, inspections:inconnu, permis:inconnu, today:texte, total:nombre, within_days:inconnu
 - frontend/src/api/qhseApi.js :: compteurs -> /api/django/qhse/observations-securite/compteurs
@@ -766,8 +768,12 @@
     criteres:inconnu, nb_criteres:nombre, nb_criteres_sans_donnee:nombre, niveau:inconnu, score_global:inconnu
 - frontend/src/api/qhseApi.js :: moyenne -> /api/django/qhse/retours-client/moyenne
     moyenne:inconnu, total:nombre
+- frontend/src/api/qhseApi.js :: notifier -> /api/django/qhse/campagnes-rappel/<>/notifier
+    notifies:nombre
 - frontend/src/api/qhseApi.js :: paretoDefauts -> /api/django/qhse/pareto-defauts
     pareto:inconnu, premier_passage:objet
+- frontend/src/api/qhseApi.js :: peupler -> /api/django/qhse/campagnes-rappel/<>/peupler
+    crees:nombre, elements:inconnu
 - frontend/src/api/qhseApi.js :: peutCloturer -> /api/django/qhse/notations-fin-chantier/peut-cloturer
     chantier_id:inconnu, detail:texte, peut_cloturer:inconnu
 - frontend/src/api/qhseApi.js :: relancerNotifications -> /api/django/qhse/incidents/relancer-notifications
