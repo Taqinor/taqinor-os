@@ -135,6 +135,12 @@ const gedApi = {
     api.get('/ged/demandes-signature/', { params }),
   // Crée une demande de signature. `data` : { document, signataire_nom, signataire_email }.
   createDemandeSignature: (data) => api.post('/ged/demandes-signature/', data),
+  // WIR204/XGED3 — PDF FINAL signé, champs APLATIS (valeurs + signature).
+  // Blob obligatoire : sans `responseType: 'blob'`, axios décodait le PDF en
+  // texte et le fichier écrit était corrompu. 409 = demande pas encore signée,
+  // 404 = contenu introuvable (jamais un 500).
+  pdfSigneDemande: (id) =>
+    api.get(`/ged/demandes-signature/${id}/pdf-signe/`, { responseType: 'blob' }),
   // Enregistre la complétion d'une signature (webhook/manuel). `data` : { provider_ref? }.
   marquerSigne: (id, data) =>
     api.post(`/ged/demandes-signature/${id}/marquer-signe/`, data ?? {}),
@@ -331,6 +337,18 @@ const gedApi = {
   // `data` : { documents:[<id>,...], operation:'tagger'|'detaguer'|'deplacer'|
   // 'corbeille'|'partager'|'demander_signature'|'demander_revue', params?:{} }.
   operationsLot: (data) => api.post('/ged/documents/operations-lot/', data),
+  // WIR204/GED15 — restaure une VERSION antérieure (additif : crée une nouvelle
+  // version copiée depuis `version`, l'historique reste intact). À ne pas
+  // confondre avec `restaurerCorbeille` (qui sort le document de la corbeille).
+  restaurerVersionDocument: (id, versionId) =>
+    api.post(`/ged/documents/${id}/restaurer/`, { version: versionId }),
+  // WIR204/XGED14 — le ZIP d'un lot est le SEUL cas d'`operations-lot` qui
+  // renvoie du BINAIRE : passer par `operationsLot` (JSON) corrompait l'archive.
+  // Wrapper DÉDIÉ, jamais l'appel générique.
+  telechargerZipLot: (ids) =>
+    api.post('/ged/documents/operations-lot/',
+      { documents: ids, operation: 'telecharger_zip' },
+      { responseType: 'blob' }),
 
   // ══════════════════════════════════════════════════════════════════════
   // WIR70 — surfaces GED déjà exposées mais sans consommateur frontend.

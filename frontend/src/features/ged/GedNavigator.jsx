@@ -14,9 +14,13 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   Folder, FolderOpen, ChevronRight, ChevronDown, FileText, Loader2, Inbox,
   RefreshCw, Plus, FolderPlus, Pencil, Upload, MoveRight, Eye, Lock, LockOpen,
-  Trash2, Info, Link2, EyeOff, X,
+  Trash2, Info, Link2, EyeOff, X, Archive, Tag as TagIcon, Undo2,
 } from 'lucide-react'
 import gedApi from '../../api/gedApi'
+// WIR204 — un ZIP de lot / un PDF signé arrivent en BINAIRE : la remise passe
+// par le helper commun (pré-ouverture d'onglet iOS/PWA incluse), jamais par un
+// `<a download>` ad hoc.
+import { downloadBlobInGesture } from '../../utils/downloadBlob'
 // APX32 (e) — en-tête UNIQUE de l'app (VX28), fin du 4ᵉ idiome.
 import { PageHeader } from '../../ui/PageHeader'
 import { formatDate } from '../../lib/format'
@@ -105,6 +109,9 @@ export default function GedNavigator() {
   const [bulkBusy, setBulkBusy] = useState(false)
   // XGED10 — fusion de plusieurs PDF sélectionnés (dialogue de confirmation).
   const [mergeDlg, setMergeDlg] = useState(false)
+  // WIR204/XGED14 — dialogue d'opération de lot ('tagger'|'detaguer'|'deplacer').
+  const [bulkDlg, setBulkDlg] = useState(null)
+  const [tags, setTags] = useState([])
 
   // ── Chargement des cabinets (armoires racines) ──
   const loadCabinets = (preferId) => {
@@ -175,6 +182,17 @@ export default function GedNavigator() {
     return () => { alive = false }
   }, [selected])
 
+  // WIR204 — taxonomie de tags (GED9), nécessaire aux opérations de lot
+  // tagger/détaguer. Chargée une fois : une liste vide désactive l'action au
+  // lieu de proposer un formulaire qui ne peut rien envoyer.
+  useEffect(() => {
+    let alive = true
+    gedApi.getTags()
+      .then((r) => { if (alive) setTags(rows(r)) })
+      .catch(() => { if (alive) setTags([]) })
+    return () => { alive = false }
+  }, [])
+
   const toggle = (id) => setExpanded((prev) => {
     const next = new Set(prev)
     if (next.has(id)) next.delete(id)
@@ -215,6 +233,47 @@ export default function GedNavigator() {
       } else {
         toast.success(`${selectedIds.size} document(s) mis en corbeille.`)
       }
+      setSelectedIds(new Set())
+      reloadDocuments()
+    } catch (err) {
+      toast.error(errText(err, 'Opération en lot impossible.'))
+    } finally { setBulkBusy(false) }
+  }
+
+  // WIR204/XGED14 — le ZIP est le SEUL retour BINAIRE d'`operations-lot` : il
+  // passe par un wrapper blob DÉDIÉ (l'appel générique JSON corrompait
+  // l'archive), avec pré-ouverture d'onglet dans le geste de clic.
+  const bulkZip = async () => {
+    if (selectedIds.size === 0) return
+    const pending = downloadBlobInGesture()
+    setBulkBusy(true)
+    try {
+      const res = await gedApi.telechargerZipLot([...selectedIds])
+      pending.deliver(res.data, 'documents.zip')
+      toast.success(`${selectedIds.size} document(s) dans l'archive.`)
+    } catch (err) {
+      toast.error(errText(err, 'Téléchargement du ZIP impossible.'))
+    } finally { setBulkBusy(false) }
+  }
+
+  // WIR204/XGED14 — tagger / détaguer / déplacer par lot. Le serveur valide
+  // CHAQUE document séparément : un item bloqué (archivé, hold légal) revient
+  // dans `erreurs` — on le DIT, on ne le tait jamais derrière un succès global.
+  const bulkOperation = async (operation, params, labelSucces) => {
+    if (selectedIds.size === 0) return
+    setBulkBusy(true)
+    try {
+      const res = await gedApi.operationsLot({
+        documents: [...selectedIds], operation, params,
+      })
+      const erreurs = res?.data?.erreurs || []
+      const resultats = res?.data?.resultats || []
+      if (erreurs.length) {
+        toast.error(`${erreurs.length} document(s) non traité(s) : `
+          + `${erreurs.map((e) => e.erreur).filter(Boolean).join(' · ')}`)
+      }
+      if (resultats.length) toast.success(`${resultats.length} ${labelSucces}`)
+      setBulkDlg(null)
       setSelectedIds(new Set())
       reloadDocuments()
     } catch (err) {
@@ -422,6 +481,24 @@ export default function GedNavigator() {
                             <FileText className="size-4" aria-hidden="true" /> Fusionner
                           </Button>
                         )}
+                        {/* WIR204/XGED14 — archive ZIP de la sélection (blob dédié). */}
+                        <Button size="sm" variant="outline" data-testid="ged-bulk-zip"
+                          onClick={bulkZip} disabled={bulkBusy}>
+                          <Archive className="size-4" aria-hidden="true" /> Télécharger (ZIP)
+                        </Button>
+                        {/* WIR204/XGED14 — tagger / détaguer / déplacer par lot. */}
+                        <Button size="sm" variant="outline" data-testid="ged-bulk-tag"
+                          onClick={() => setBulkDlg('tagger')} disabled={bulkBusy || tags.length === 0}>
+                          <TagIcon className="size-4" aria-hidden="true" /> Tagger
+                        </Button>
+                        <Button size="sm" variant="outline" data-testid="ged-bulk-untag"
+                          onClick={() => setBulkDlg('detaguer')} disabled={bulkBusy || tags.length === 0}>
+                          <TagIcon className="size-4" aria-hidden="true" /> Détaguer
+                        </Button>
+                        <Button size="sm" variant="outline" data-testid="ged-bulk-move"
+                          onClick={() => setBulkDlg('deplacer')} disabled={bulkBusy || folders.length === 0}>
+                          <MoveRight className="size-4" aria-hidden="true" /> Déplacer
+                        </Button>
                         <Button size="sm" variant="destructive"
                           onClick={bulkCorbeille} disabled={bulkBusy}>
                           {bulkBusy ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Trash2 className="size-4" aria-hidden="true" />}
@@ -558,6 +635,17 @@ export default function GedNavigator() {
         folder={selected} onUploaded={onDocumentUploaded} />
       <DocumentPreviewDialog document={previewDoc} onClose={() => setPreviewDoc(null)}
         onCaviarde={reloadDocuments} />
+      {/* WIR204/XGED14 — tagger / détaguer / déplacer la sélection. */}
+      {bulkDlg && (
+        <BulkOperationDialog
+          operation={bulkDlg} count={selectedIds.size} tags={tags} folders={folders}
+          busy={bulkBusy} onClose={() => setBulkDlg(null)}
+          onSubmit={(params) => bulkOperation(
+            bulkDlg, params,
+            bulkDlg === 'deplacer' ? 'document(s) déplacé(s).'
+              : bulkDlg === 'tagger' ? 'document(s) taggé(s).'
+                : 'document(s) détaggé(s).')} />
+      )}
       {/* XGED10 — fusion des documents sélectionnés (bordure de la barre en lot). */}
       {mergeDlg && (
         <MergeDocumentsDialog
@@ -571,6 +659,50 @@ export default function GedNavigator() {
         <GedDocumentInsights document={insightsDoc} onClose={() => setInsightsDoc(null)} />
       )}
     </div>
+  )
+}
+
+// ── WIR204/XGED14 — Opération de lot paramétrée (tagger/détaguer/déplacer) ──
+// Le serveur valide CHAQUE document séparément : le rapport `erreurs` est
+// remonté tel quel par l'appelant — jamais un « tout s'est bien passé » global.
+function BulkOperationDialog({ operation, count, tags, folders, busy, onClose, onSubmit }) {
+  const isMove = operation === 'deplacer'
+  const options = isMove ? folders : tags
+  const [value, setValue] = useState(String(options[0]?.id ?? ''))
+  const titres = {
+    tagger: 'Tagger la sélection',
+    detaguer: 'Détaguer la sélection',
+    deplacer: 'Déplacer la sélection',
+  }
+  return (
+    <Dialog open onOpenChange={(v) => { if (!v) onClose() }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{titres[operation] || 'Opération en lot'}</DialogTitle>
+          <DialogDescription>
+            {count} document(s) sélectionné(s). Chaque document est traité
+            individuellement : ceux qui sont bloqués (archivés, conservation
+            légale) seront listés à part.
+          </DialogDescription>
+        </DialogHeader>
+        <Select value={value} onValueChange={setValue}>
+          <SelectTrigger aria-label={isMove ? 'Dossier cible' : 'Tag'}
+            data-testid="ged-bulk-target"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {options.map((o) => (
+              <SelectItem key={o.id} value={String(o.id)}>{o.nom}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <DialogFooter>
+          <DialogClose asChild><Button variant="ghost">Annuler</Button></DialogClose>
+          <Button type="button" disabled={busy || !value} data-testid="ged-bulk-confirm"
+            onClick={() => onSubmit(isMove ? { folder: value } : { tag: value })}>
+            {busy && <Loader2 className="size-4 animate-spin" aria-hidden="true" />} Confirmer
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -690,6 +822,7 @@ function DocumentPreviewDialog({ document: doc, onClose, onCaviarde }) {
           documentId={doc.id}
           versions={allVersions}
           onClose={() => setCompareOpen(false)}
+          onRestored={() => { onClose(); onCaviarde?.() }}
         />
       )}
     </Dialog>
@@ -850,12 +983,28 @@ function SplitDocumentDialog({ documentId, versionId, onClose, onDone }) {
 }
 
 // ── XGED17 — Dialogue : comparer deux versions d'un document ───────────────
-function CompareVersionsDialog({ documentId, versions, onClose }) {
+function CompareVersionsDialog({ documentId, versions, onClose, onRestored }) {
   const sorted = [...versions].sort((a, b) => (b.numero || 0) - (a.numero || 0))
   const [v1, setV1] = useState(String(sorted[1]?.id ?? sorted[0]?.id ?? ''))
   const [v2, setV2] = useState(String(sorted[0]?.id ?? ''))
   const [diff, setDiff] = useState(null)
   const [busy, setBusy] = useState(false)
+  // WIR204/GED15 — restauration d'une version antérieure. Opération ADDITIVE :
+  // le serveur crée une NOUVELLE version copiée depuis la source, l'historique
+  // reste entier (rien n'est écrasé ni supprimé).
+  const [restoreBusy, setRestoreBusy] = useState(false)
+  const restaurer = async () => {
+    if (!v1) return
+    setRestoreBusy(true)
+    try {
+      await gedApi.restaurerVersionDocument(documentId, v1)
+      toast.success('Version restaurée : une nouvelle version a été créée.')
+      onRestored?.()
+      onClose()
+    } catch (err) {
+      toast.error(errText(err, 'Restauration de version impossible.'))
+    } finally { setRestoreBusy(false) }
+  }
 
   const compare = async () => {
     if (!v1 || !v2) return
@@ -901,6 +1050,14 @@ function CompareVersionsDialog({ documentId, versions, onClose }) {
           </div>
           <Button type="button" onClick={compare} disabled={busy || v1 === v2}>
             {busy && <Loader2 className="size-4 animate-spin" aria-hidden="true" />} Comparer
+          </Button>
+          {/* WIR204/GED15 — restaurer la version A (additif, jamais destructif). */}
+          <Button type="button" variant="outline" data-testid="ged-restaurer-version"
+            onClick={restaurer} disabled={restoreBusy || !v1}>
+            {restoreBusy
+              ? <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+              : <Undo2 className="size-4" aria-hidden="true" />}
+            Restaurer la version A
           </Button>
         </div>
         {diff && (

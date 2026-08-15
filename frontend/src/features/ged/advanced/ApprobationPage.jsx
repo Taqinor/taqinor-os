@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   CheckCircle2, XCircle, FileSignature, FilePlus2, Send, ClipboardCheck,
-  Users, Plus, Trash2, XSquare, Mail, BarChart3, Kanban as KanbanIcon,
+  Users, Plus, Trash2, XSquare, Mail, BarChart3, Kanban as KanbanIcon, Download,
 } from 'lucide-react'
 import { ListShell } from '../../../ui/module'
 import {
@@ -15,6 +15,9 @@ import { formatDateTime } from '../../../lib/format'
 import gedApi from '../../../api/gedApi'
 import crmApi from '../../../api/crmApi'
 import { StatutApprobation, StatutSignature, errMessage } from './shared.js'
+// WIR204 — le PDF signé arrive en BINAIRE : remise par le helper commun
+// (pré-ouverture d'onglet iOS/PWA), nom de fichier posé par le serveur.
+import { downloadBlobInGesture, filenameFromResponse } from '../../../utils/downloadBlob'
 
 /* ============================================================================
    UX45 — Approbation & signature électronique.
@@ -163,6 +166,11 @@ export default function ApprobationPage() {
     { id: 'signe', label: 'Marquer comme signée', icon: ClipboardCheck, onClick: () => markSigned(r) },
     // XGED2 — annulation émetteur d'une demande encore en attente.
     { id: 'annuler', label: 'Annuler la demande', icon: XSquare, destructive: true, onClick: () => cancelSignature(r) },
+  ] : r.statut === 'signe' ? [
+    // WIR204/XGED3 — le PDF FINAL (champs aplatis) n'était récupérable par
+    // AUCUN écran : la demande se terminait sans jamais rendre son artefact.
+    { id: 'pdf-signe', label: 'Télécharger le PDF signé', icon: Download,
+      onClick: () => downloadPdfSigne(r) },
   ] : [])
 
   const modeleActions = (r) => [
@@ -184,6 +192,28 @@ export default function ApprobationPage() {
       toast.success('Demande annulée.')
       load()
     } catch (err) { toast.error(errMessage(err)) }
+  }
+
+  // WIR204/XGED3 — PDF final signé (champs aplatis). Le serveur répond 409 tant
+  // que la demande n'est pas `signe` et 404 si le contenu est introuvable :
+  // les deux se DISENT en français, jamais un téléchargement vide.
+  const downloadPdfSigne = async (r) => {
+    const pending = downloadBlobInGesture()
+    try {
+      const res = await gedApi.pdfSigneDemande(r.id)
+      pending.deliver(res.data,
+        filenameFromResponse(res, `${r.document_nom || 'document'}-signe.pdf`))
+    } catch (err) {
+      const code = err?.response?.status
+      if (code === 409) {
+        toast.error("Cette demande n'est pas encore signée : le PDF final "
+          + "n'existe pas tant que la signature n'est pas complète.")
+      } else if (code === 404) {
+        toast.error('Contenu du document introuvable.')
+      } else {
+        toast.error(errMessage(err))
+      }
+    }
   }
 
   return (
