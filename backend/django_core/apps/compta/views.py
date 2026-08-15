@@ -94,6 +94,8 @@ from .models import (
     ModeleCloture, TacheClotureModele, InstanceCloture, TacheCloture,
     AccrualCloture, JustificationVariation, ModeleEcriture,
     LigneModeleEcriture, AbonnementEcriture,
+    # WIR279 — XACC14 (emprunts/crédits-bails) et XACC19 (états paramétrables).
+    Emprunt, EcheanceEmprunt, EtatPersonnalise,
     RapprochementCompte, LigneJustificationCompte,
     ComposantImmobilisation, DepreciationImmobilisation,
     MutationImmobilisation, ImmobilisationEnCours, LigneImmobilisationEnCours,
@@ -188,6 +190,8 @@ from .serializers import (
     EcheancierReconnaissanceSerializer, EtapeAuditConsolidationSerializer,
     ModeleEcritureSerializer, LigneModeleEcritureSerializer,
     AbonnementEcritureSerializer,
+    # WIR279 — sérialiseurs des deux surfaces REST ajoutées.
+    EmpruntSerializer, EcheanceEmpruntSerializer, EtatPersonnaliseSerializer,
 )
 
 
@@ -9764,5 +9768,185 @@ class AbonnementEcritureViewSet(_ComptaBaseViewSet):
             resultat = services.generer_ecritures_recurrentes(
                 request.user.company, jusqua=jusqua, user=request.user)
         except (DjangoValidationError, ValueError, TypeError) as exc:
+            return _err400(exc)
+        return Response(resultat)
+
+
+# ── WIR279 / XACC14 — Emprunts & crédits-bails : la surface REST ────────────
+#
+# Les services (``generer_tableau_amortissement``, ``poster_echeance_emprunt``)
+# et les modèles existaient et étaient testés depuis XACC14 ; il n'y avait
+# simplement AUCUN viewset — donc aucun moyen d'y toucher autrement qu'en shell
+# Django. Ces vues n'ajoutent AUCUNE logique métier : elles branchent les
+# services existants (le calcul du tableau et l'écriture au grand livre
+# restent leur unique implémentation).
+
+
+class EmpruntViewSet(_ComptaBaseViewSet):
+    """Emprunts bancaires & crédits-bails contractés par la société (XACC14).
+
+    CRUD scopé société (``TenantMixin``) ; ``generer-tableau/`` (re)génère le
+    tableau d'amortissement. Filtres : ``?type_financement=emprunt|leasing``,
+    ``?banque=``.
+    """
+    queryset = Emprunt.objects.prefetch_related('echeances').all()
+    serializer_class = EmpruntSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['reference', 'banque']
+    ordering_fields = ['date_debut', 'capital', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        type_financement = self.request.query_params.get('type_financement')
+        if type_financement:
+            qs = qs.filter(type_financement=type_financement)
+        banque = self.request.query_params.get('banque')
+        if banque:
+            qs = qs.filter(banque__icontains=banque)
+        return qs
+
+    def get_permissions(self):
+        # Le tableau d'amortissement conditionne les écritures à venir → même
+        # garde que les autres saisies comptables. La lecture reste au palier
+        # de base.
+        if self.action in ('create', 'update', 'partial_update', 'destroy',
+                           'generer_tableau'):
+            return [HasPermissionOrLegacy('compta_saisir')()]
+        return super().get_permissions()
+
+    @action(detail=True, methods=['post'], url_path='generer-tableau')
+    def generer_tableau(self, request, pk=None):
+        """(Re)génère le tableau d'amortissement complet — service XACC14.
+
+        Refuse explicitement (400 FR) dès qu'une échéance est POSTÉE : on ne
+        régénère jamais un historique déjà au grand livre.
+
+        Réponse : un OBJET ``{echeances, nb}`` — jamais une liste nue, pour que
+        le contrat (``contract_samples/emprunt_tableau_amortissement.json``)
+        soit vérifiable par ``scripts/check_api_shapes.py`` et que l'écran
+        puisse gagner des champs d'en-tête sans casser sa forme.
+        """
+        emprunt = self.get_object()
+        try:
+            echeances = services.generer_tableau_amortissement(emprunt)
+        except DjangoValidationError as exc:
+            return _err400(exc)
+        donnees = EcheanceEmpruntSerializer(echeances, many=True).data
+        return Response(
+            {'echeances': donnees, 'nb': len(donnees)},
+            status=status.HTTP_201_CREATED)
+
+
+class EcheanceEmpruntViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
+    """Échéances d'emprunt — LECTURE SEULE + action ``poster/`` (XACC14).
+
+    En lecture seule par construction : une échéance est un rang CALCULÉ du
+    tableau d'amortissement, jamais une saisie — la modifier à la main
+    désolderait le capital. ``?emprunt=`` filtre le tableau d'un emprunt ;
+    ``?posted=true|false`` sépare le comptabilisé du reste à venir.
+    """
+    permission_classes = [IsResponsableOrAdmin]
+    queryset = EcheanceEmprunt.objects.select_related('emprunt').all()
+    serializer_class = EcheanceEmpruntSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_echeance', 'numero', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        emprunt = self.request.query_params.get('emprunt')
+        if emprunt:
+            qs = qs.filter(emprunt_id=emprunt)
+        posted = self.request.query_params.get('posted')
+        if posted in ('true', 'false'):
+            qs = qs.filter(posted=(posted == 'true'))
+        return qs
+
+    def get_permissions(self):
+        if self.action == 'poster':
+            return [HasPermissionOrLegacy('compta_saisir')()]
+        return super().get_permissions()
+
+    @action(detail=True, methods=['post'])
+    def poster(self, request, pk=None):
+        """Comptabilise l'échéance au grand livre (service XACC14).
+
+        Le service est idempotent (il renvoie l'écriture existante) : ici on
+        REFUSE EXPLICITEMENT un second post (400 FR) plutôt que de laisser
+        croire qu'une deuxième écriture vient d'être passée.
+        """
+        echeance = self.get_object()
+        if echeance.posted:
+            return Response(
+                {'detail': "Cette échéance est déjà postée au grand livre."},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            ecriture = services.poster_echeance_emprunt(
+                echeance, user=request.user)
+        except DjangoValidationError as exc:
+            return _err400(exc)
+        echeance.refresh_from_db()
+        return Response(
+            {'echeance': EcheanceEmpruntSerializer(echeance).data,
+             'ecriture_id': ecriture.id},
+            status=status.HTTP_201_CREATED)
+
+
+# ── WIR279 / XACC19 — États comptables paramétrables : la surface REST ──────
+
+
+class EtatPersonnaliseViewSet(_ComptaBaseViewSet):
+    """États financiers PARAMÉTRABLES définis en données (XACC19).
+
+    Route ``etats-personnalises/`` — DISTINCTE de ``etats/``
+    (``EtatsComptablesViewSet``, les états FIGÉS grand livre/balance/CPC/bilan).
+    Les deux coexistent : ceci est un état ADDITIONNEL, jamais un remplacement.
+
+    La création est routée par ``services.creer_etat_personnalise`` (lignes +
+    colonnes en UN appel, chaque formule validée AVANT toute écriture) ;
+    ``evaluer/`` délègue à ``selectors.evaluer_etat_personnalise``. Une formule
+    illégale rend 400 avec un message français — jamais 500.
+    """
+    queryset = EtatPersonnalise.objects.prefetch_related(
+        'lignes', 'colonnes').all()
+    serializer_class = EtatPersonnaliseSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['libelle', 'description']
+    ordering_fields = ['libelle', 'id']
+
+    def get_permissions(self):
+        if self.action in ('create', 'update', 'partial_update', 'destroy'):
+            return [HasPermissionOrLegacy('compta_saisir')()]
+        return super().get_permissions()
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        donnees = serializer.validated_data
+        try:
+            etat = services.creer_etat_personnalise(
+                request.user.company,
+                libelle=donnees['libelle'],
+                description=donnees.get('description', ''),
+                lignes=donnees.get('lignes') or [],
+                colonnes=donnees.get('colonnes') or [],
+                user=request.user,
+            )
+        except DjangoValidationError as exc:
+            return _err400(exc)
+        return Response(
+            self.get_serializer(etat).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get', 'post'])
+    def evaluer(self, request, pk=None):
+        """Évalue l'état : une valeur par (ligne, colonne) — selector XACC19."""
+        from .selectors import (
+            FormuleEtatInvalideError, evaluer_etat_personnalise)
+        etat = self.get_object()
+        try:
+            resultat = evaluer_etat_personnalise(etat)
+        except FormuleEtatInvalideError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except DjangoValidationError as exc:
             return _err400(exc)
         return Response(resultat)

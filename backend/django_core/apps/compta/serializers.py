@@ -75,6 +75,8 @@ from .models import (
     ContratRevenu, ObligationPerformance, EcheancierReconnaissance,
     EtapeAuditConsolidation,
     ModeleEcriture, LigneModeleEcriture, AbonnementEcriture,
+    Emprunt, EcheanceEmprunt,
+    EtatPersonnalise, LigneEtatPersonnalise, ColonneEtatPersonnalise,
 )
 
 
@@ -3530,3 +3532,105 @@ class AbonnementEcritureSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {'date_fin': "La date de fin précède la prochaine échéance."})
         return attrs
+
+
+# ── WIR279 / XACC14 — Emprunts & crédits-bails contractés par la société ────
+
+class EcheanceEmpruntSerializer(serializers.ModelSerializer):
+    """Ligne du tableau d'amortissement (LECTURE SEULE).
+
+    Le tableau est calculé et persisté par
+    ``services.generer_tableau_amortissement`` : aucune échéance ne se saisit
+    ni ne se modifie à la main — sinon la somme des principaux cesserait
+    d'égaler le capital. ``posted``/``ecriture`` tracent le posting au GL.
+    """
+    class Meta:
+        model = EcheanceEmprunt
+        fields = [
+            'id', 'emprunt', 'numero', 'date_echeance', 'principal',
+            'interets', 'mensualite', 'capital_restant_du', 'posted',
+            'ecriture',
+        ]
+        read_only_fields = fields
+
+
+class EmpruntSerializer(serializers.ModelSerializer):
+    """Emprunt bancaire ou crédit-bail CONTRACTÉ par la société (XACC14).
+
+    ``company`` n'est jamais exposée (posée par ``perform_create``). Les trois
+    comptes FK sont optionnels (un défaut est déterminé côté service selon le
+    type) et validés comme appartenant à la société.
+    """
+    type_financement_display = serializers.CharField(
+        source='get_type_financement_display', read_only=True)
+    encours_restant_du = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+    nb_echeances = serializers.SerializerMethodField()
+    nb_echeances_postees = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Emprunt
+        fields = [
+            'id', 'reference', 'banque', 'type_financement',
+            'type_financement_display', 'capital', 'taux_annuel',
+            'duree_mois', 'date_debut', 'compte_capital', 'compte_interets',
+            'compte_tresorerie', 'encours_restant_du', 'nb_echeances',
+            'nb_echeances_postees', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def get_nb_echeances(self, obj):
+        return obj.echeances.count()
+
+    def get_nb_echeances_postees(self, obj):
+        return obj.echeances.filter(posted=True).count()
+
+    def validate_compte_capital(self, value):
+        return _meme_societe(self, value, 'Compte de capital')
+
+    def validate_compte_interets(self, value):
+        return _meme_societe(self, value, "Compte d'intérêts")
+
+    def validate_compte_tresorerie(self, value):
+        return _meme_societe(self, value, 'Compte de trésorerie')
+
+
+# ── WIR279 / XACC19 — États comptables paramétrables ───────────────────────
+
+class LigneEtatPersonnaliseSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = LigneEtatPersonnalise
+        fields = ['id', 'ordre', 'libelle', 'type_ligne', 'formule']
+        read_only_fields = ['id']
+
+
+class ColonneEtatPersonnaliseSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ColonneEtatPersonnalise
+        fields = [
+            'id', 'ordre', 'libelle', 'type_colonne', 'date_debut',
+            'date_fin', 'budget',
+        ]
+        read_only_fields = ['id']
+
+    def validate_budget(self, value):
+        return _meme_societe(self, value, 'Budget')
+
+
+class EtatPersonnaliseSerializer(serializers.ModelSerializer):
+    """État financier paramétrable + ses lignes et colonnes (XACC19).
+
+    ``lignes``/``colonnes`` sont acceptées EN ÉCRITURE (création en un appel,
+    routée par ``services.creer_etat_personnalise`` qui valide chaque formule
+    AVANT de persister quoi que ce soit) et rendues en lecture.
+    """
+    lignes = LigneEtatPersonnaliseSerializer(many=True, required=False)
+    colonnes = ColonneEtatPersonnaliseSerializer(many=True, required=False)
+
+    class Meta:
+        model = EtatPersonnalise
+        fields = [
+            'id', 'libelle', 'description', 'lignes', 'colonnes',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
