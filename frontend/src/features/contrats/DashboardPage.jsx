@@ -138,6 +138,9 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {/* WIR252 / NTSUB12 — métriques SaaS niveau investisseur. */}
+      {!loading && !error && <MetriquesSaasCard />}
+
       {/* WIR77 / XCTR9 — valeur vie client (CLV) par client. */}
       {!loading && !error && <ClvCard />}
 
@@ -202,6 +205,114 @@ function CohortesHeatmap({ cohortes }) {
 // WIR77 / XCTR9 — carte CLV : saisir un client → ARPC, durée de vie, CLV.
 // L'endpoint exige un client_id (lien lâche Contrat.client_id) ; clv=null
 // quand le calcul est impossible (churn nul/inconnu) — jamais une fausse valeur.
+/* WIR252 / NTSUB12 — Métriques SaaS niveau investisseur.
+   ----------------------------------------------------------------------------
+   `metriques-saas` (ARR bridge, Quick Ratio, Rule of 40) existait côté serveur
+   sans aucun écran. Trois indicateurs, période ajustable. Les valeurs
+   INDÉFINIES (division par zéro gardée côté serveur) arrivent à `null` : on
+   rend « — », JAMAIS un 0 qui se lirait comme un vrai chiffre. Un 400
+   (période invalide) est annoncé sans faire tomber la page. */
+function MetriquesSaasCard() {
+  const [debut, setDebut] = useState('')
+  const [fin, setFin] = useState('')
+  const [data, setData] = useState(null)
+  const [busy, setBusy] = useState(true)
+  const [err, setErr] = useState(null)
+
+  const charger = async (params) => {
+    setBusy(true)
+    setErr(null)
+    try {
+      const r = await contratsApi.getMetriquesSaas(params)
+      setData(r.data)
+    } catch (e) {
+      setData(null)
+      setErr(e?.response?.data?.detail || 'Métriques SaaS indisponibles.')
+    } finally { setBusy(false) }
+  }
+
+  // Chargement au montage sur la période par défaut du serveur (mois courant).
+  // `vivant` évite toute mise à jour d'état après démontage.
+  useEffect(() => {
+    let vivant = true
+    contratsApi.getMetriquesSaas(undefined)
+      .then((r) => { if (vivant) setData(r.data) })
+      .catch((e) => {
+        if (vivant) setErr(e?.response?.data?.detail || 'Métriques SaaS indisponibles.')
+      })
+      .finally(() => { if (vivant) setBusy(false) })
+    return () => { vivant = false }
+  }, [])
+
+  const appliquer = (e) => {
+    e.preventDefault()
+    const params = {}
+    if (debut) params.debut = debut
+    if (fin) params.fin = fin
+    charger(Object.keys(params).length ? params : undefined)
+  }
+
+  // `null` (indéfini côté serveur) → « — ». Jamais un 0 inventé.
+  // Le serveur renvoie déjà des POINTS de pourcentage (ex. « 12.50 » = 12,5 %).
+  const pct = (v) => (v == null ? '—' : formatPercent(Number(v), { decimals: 1 }))
+  const bridge = data?.arr_bridge || {}
+  const ro40 = data?.rule_of_40 || {}
+
+  return (
+    <Card className="p-4 sm:p-5">
+      <h3 className="mb-3 flex items-center gap-2 font-display text-base font-semibold">
+        <TrendingUp className="size-4 text-muted-foreground" aria-hidden="true" /> Métriques SaaS
+      </h3>
+      <form onSubmit={appliquer} className="flex flex-wrap items-end gap-3" noValidate>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="saas-debut">Début</Label>
+          <Input id="saas-debut" type="date" value={debut}
+                 onChange={(e) => setDebut(e.target.value)} className="w-44" />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="saas-fin">Fin</Label>
+          <Input id="saas-fin" type="date" value={fin}
+                 onChange={(e) => setFin(e.target.value)} className="w-44" />
+        </div>
+        <Button type="submit" variant="outline" disabled={busy}>
+          {busy ? 'Calcul…' : 'Appliquer'}
+        </Button>
+      </form>
+      {err && <p className="mt-2 text-sm text-destructive" role="alert">{err}</p>}
+      {data && (
+        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+          <div className="rounded-lg border bg-muted/30 p-3">
+            <p className="text-xs text-muted-foreground">ARR (fin de période)</p>
+            <p className="font-display text-lg font-semibold tabular-nums">
+              {bridge.arr_fin != null ? formatMAD(bridge.arr_fin) : '—'}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Début {bridge.arr_debut != null ? formatMAD(bridge.arr_debut) : '—'} ·
+              New {bridge.new != null ? formatMAD(bridge.new) : '—'} ·
+              Churn {bridge.churn != null ? formatMAD(bridge.churn) : '—'}
+            </p>
+          </div>
+          <div className="rounded-lg border bg-muted/30 p-3">
+            <p className="text-xs text-muted-foreground">Quick Ratio</p>
+            <p className="font-display text-lg font-semibold tabular-nums">
+              {data.quick_ratio == null ? '—' : formatNumber(Number(data.quick_ratio))}
+            </p>
+          </div>
+          <div className="rounded-lg border bg-muted/30 p-3">
+            <p className="text-xs text-muted-foreground">Rule of 40</p>
+            <p className="font-display text-lg font-semibold tabular-nums">
+              {pct(ro40.rule_of_40)}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Croissance {pct(ro40.croissance_arr_pct)} · Marge {pct(ro40.marge_pct)}
+            </p>
+          </div>
+        </div>
+      )}
+    </Card>
+  )
+}
+
 function ClvCard() {
   const [clientId, setClientId] = useState('')
   const [data, setData] = useState(null)

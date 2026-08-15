@@ -21,7 +21,7 @@ beforeAll(() => {
 
 const {
   createRegleApprobation, createJalon, createObligation, createSla,
-  getJalons, getObligations, getSla, getReglesApprobation,
+  getJalons, getObligations, getSla, getReglesApprobation, penaliteSla,
 } = vi.hoisted(() => ({
   createRegleApprobation: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
   createJalon: vi.fn(() => Promise.resolve({ data: { id: 2 } })),
@@ -30,6 +30,12 @@ const {
   getJalons: vi.fn(() => Promise.resolve({ data: [] })),
   getObligations: vi.fn(() => Promise.resolve({ data: [] })),
   getSla: vi.fn(() => Promise.resolve({ data: [] })),
+  penaliteSla: vi.fn(() => Promise.resolve({
+    data: {
+      penalite: '1250.00', respecte: false,
+      taux_cible: '98.00', taux_realise: '95.00',
+    },
+  })),
   getReglesApprobation: vi.fn(() => Promise.resolve({ data: [] })),
 }))
 
@@ -54,6 +60,7 @@ vi.mock('../../api/contratsApi', () => {
       createJalon,
       createObligation,
       createSla,
+      penaliteSla,
     },
   }
 })
@@ -135,5 +142,57 @@ describe('EcheancesPage — création depuis les onglets (WIR74)', () => {
       contrat: 7, libelle: 'Disponibilité ≥ 98 %', mode_penalite: 'fixe',
     }))
     await waitFor(() => expect(getSla).toHaveBeenCalledTimes(2))
+  })
+})
+
+/* WIR252 — la calculette de pénalité SLA (`penaliteSla`, CONTRAT27) était
+   exposée par contratsApi.js sans AUCUN écran : l'engagement se lisait sans
+   jamais pouvoir chiffrer ce qu'il coûte. Ce qui est verrouillé ici : le
+   résultat s'affiche, et le calcul est DÉCLARATIF — aucune requête d'écriture
+   n'accompagne le POST de calcul. */
+describe('EcheancesPage — calculette de pénalité SLA (WIR252)', () => {
+  const SLA = {
+    id: 42, libelle: 'Disponibilité ≥ 98 %', taux_cible: '98.00',
+    mode_penalite: 'fixe', mode_penalite_display: 'Montant fixe', actif: true,
+  }
+
+  it('calcule et affiche la pénalité sans aucune écriture', async () => {
+    getSla.mockResolvedValue({ data: [SLA] })
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Échéances & alertes')).toBeInTheDocument())
+
+    await userEvent.click(screen.getByRole('tab', { name: /^SLA/ }))
+    fireEvent.click(await screen.findByRole('button', { name: /Calculer la pénalité/ }))
+
+    fireEvent.change(await screen.findByLabelText(/Taux réalisé/), { target: { value: '95' } })
+    fireEvent.change(screen.getByLabelText(/Montant du contrat/), { target: { value: '50000' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Calculer' }))
+
+    await waitFor(() => expect(penaliteSla).toHaveBeenCalledWith(42, {
+      taux_realise: 95, montant_contrat: 50000,
+    }))
+    const bloc = await screen.findByTestId('resultat-penalite-sla')
+    expect(bloc).toHaveTextContent('1250.00')
+    expect(bloc).toHaveTextContent('non respecté')
+
+    // Déclaratif : aucune création n'a été déclenchée par le calcul.
+    expect(createSla).not.toHaveBeenCalled()
+    expect(createJalon).not.toHaveBeenCalled()
+    expect(createObligation).not.toHaveBeenCalled()
+    expect(createRegleApprobation).not.toHaveBeenCalled()
+    // La liste SLA n'est pas rechargée : rien n'a changé côté serveur.
+    expect(getSla).toHaveBeenCalledTimes(1)
+  })
+
+  it('n’envoie que les champs saisis (aucun 0 inventé)', async () => {
+    getSla.mockResolvedValue({ data: [SLA] })
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Échéances & alertes')).toBeInTheDocument())
+
+    await userEvent.click(screen.getByRole('tab', { name: /^SLA/ }))
+    fireEvent.click(await screen.findByRole('button', { name: /Calculer la pénalité/ }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Calculer' }))
+
+    await waitFor(() => expect(penaliteSla).toHaveBeenCalledWith(42, {}))
   })
 })

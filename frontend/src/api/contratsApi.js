@@ -29,6 +29,13 @@ const contratsApi = {
   getCohortesRetention: () =>
     api.get('/contrats/contrats/cohortes-retention/'),
   getClv: (params) => api.get('/contrats/contrats/clv/', { params }),
+  /* NTSUB12 (WIR252) — métriques SaaS niveau investisseur : ARR bridge,
+     Quick Ratio, Rule of 40. Lecture seule, scopée société ; `debut`/`fin`
+     optionnels (défaut serveur : mois courant). Div-by-zéro gardée côté
+     serveur — `quick_ratio` / les composantes Rule of 40 peuvent être `null`,
+     et l'écran doit rendre « — » plutôt que d'inventer un chiffre. */
+  getMetriquesSaas: (params) =>
+    api.get('/contrats/contrats/metriques-saas/', { params }),
   campagneRevision: (data) =>
     api.post('/contrats/contrats/campagne-revision/', data),
   campagneRevisionRollback: (data) =>
