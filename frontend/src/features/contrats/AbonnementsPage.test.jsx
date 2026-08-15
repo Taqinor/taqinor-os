@@ -18,9 +18,12 @@ beforeAll(() => {
   }
 })
 
-const { apiGet, apiPost } = vi.hoisted(() => ({
+const { apiGet, apiPost, exportCatalogue, importCsv, downloadBlob } = vi.hoisted(() => ({
   apiGet: vi.fn(),
   apiPost: vi.fn(() => Promise.resolve({ data: { id: 99 } })),
+  exportCatalogue: vi.fn(),
+  importCsv: vi.fn(),
+  downloadBlob: vi.fn(),
 }))
 
 vi.mock('../../api/axios', () => ({
@@ -32,7 +35,14 @@ vi.mock('../../api/contratsApi', () => ({
     getPlansRecurrents: () => Promise.resolve({
       data: [{ id: 5, nom: 'Mensuel' }],
     }),
+    // WIR251 — les deux demi-câblages NTSUB21/NTSUB31.
+    exportCatalogueAbonnement: (...args) => exportCatalogue(...args),
+    importCompteursUsageCsv: (...args) => importCsv(...args),
   },
+}))
+
+vi.mock('../../api/comptaApi', () => ({
+  downloadBlob: (...args) => downloadBlob(...args),
 }))
 
 import AbonnementsPage from './AbonnementsPage'
@@ -74,6 +84,13 @@ function setupApiGet(overrides = {}) {
 beforeEach(() => {
   vi.clearAllMocks()
   apiPost.mockResolvedValue({ data: { id: 99 } })
+  exportCatalogue.mockResolvedValue({ data: new Blob(['xlsx']) })
+  importCsv.mockResolvedValue({
+    data: {
+      apercu: true, ecraser: false, inserees: 2, mises_a_jour: 0,
+      ecrasements: 0, refuses: [], erreurs: [],
+    },
+  })
   setupApiGet()
 })
 
@@ -180,5 +197,83 @@ describe('AbonnementsPage (PACT138)', () => {
       type_cible: 'contrat', cible_id: 7, code_compteur: 'appels_api',
       periode_debut: '2026-08-01', periode_fin: '2026-08-31', quantite: 0, source: 'manuel',
     }))
+  })
+})
+
+/* WIR251 — les deux demi-câblages : NTSUB21 (export .xlsx du catalogue) et
+   NTSUB31 (import CSV des compteurs) existaient côté serveur sans le moindre
+   bouton. Ce qui est verrouillé ici : l'aperçu n'écrit rien, `ecraser` n'est
+   envoyé QUE si la case est cochée, et le .xlsx est bien téléchargé. */
+describe('AbonnementsPage — import CSV / export .xlsx (WIR251)', () => {
+  it('exporte le catalogue en .xlsx et déclenche le téléchargement', async () => {
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Maintenance standard')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: /Exporter \(\.xlsx\)/ }))
+
+    await waitFor(() => expect(exportCatalogue).toHaveBeenCalled())
+    await waitFor(() => expect(downloadBlob).toHaveBeenCalled())
+    expect(downloadBlob.mock.calls[0][1]).toBe('catalogue-abonnements.xlsx')
+  })
+
+  const ouvrirImport = async () => {
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Maintenance standard')).toBeInTheDocument())
+    await userEvent.click(screen.getByRole('tab', { name: /Compteurs/ }))
+    fireEvent.click(await screen.findByRole('button', { name: /Importer \(CSV\)/ }))
+    const zone = await screen.findByLabelText(/coller le CSV/)
+    fireEvent.change(zone, {
+      target: { value: 'cible_id,code_compteur\n7,interventions\n' },
+    })
+    return zone
+  }
+
+  it('l’aperçu part avec apercu=true et n’écrit rien', async () => {
+    await ouvrirImport()
+    fireEvent.click(screen.getByRole('button', { name: 'Aperçu' }))
+
+    await waitFor(() => expect(importCsv).toHaveBeenCalledTimes(1))
+    const [, options] = importCsv.mock.calls[0]
+    expect(options.apercu).toBe(true)
+    // Aucune écriture : le seul appel du composant est l'aperçu.
+    expect(apiPost).not.toHaveBeenCalled()
+    expect(await screen.findByTestId('rapport-import-compteurs')).toBeInTheDocument()
+  })
+
+  it('`ecraser` n’est envoyé que si la case est cochée', async () => {
+    await ouvrirImport()
+
+    // Case décochée → l'option part à false (la couche API n'ajoute alors
+    // même pas la clé au corps de la requête).
+    fireEvent.click(screen.getByRole('button', { name: 'Aperçu' }))
+    await waitFor(() => expect(importCsv).toHaveBeenCalledTimes(1))
+    expect(importCsv.mock.calls[0][1].ecraser).toBe(false)
+
+    // Case cochée → l'option devient true.
+    fireEvent.click(screen.getByLabelText(/Écraser les relevés déjà saisis/))
+    fireEvent.click(screen.getByRole('button', { name: 'Aperçu' }))
+    await waitFor(() => expect(importCsv).toHaveBeenCalledTimes(2))
+    expect(importCsv.mock.calls[1][1].ecraser).toBe(true)
+  })
+
+  it('la confirmation n’est possible qu’après un aperçu, et elle écrit', async () => {
+    await ouvrirImport()
+    const confirmer = screen.getByRole('button', { name: /Confirmer l’import/ })
+    expect(confirmer).toBeDisabled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Aperçu' }))
+    await waitFor(() => expect(importCsv).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(
+      screen.getByRole('button', { name: /Confirmer l’import/ })).toBeEnabled())
+
+    importCsv.mockResolvedValueOnce({
+      data: {
+        apercu: false, ecraser: false, inserees: 2, mises_a_jour: 0,
+        ecrasements: 0, refuses: [], erreurs: [],
+      },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Confirmer l’import/ }))
+    await waitFor(() => expect(importCsv).toHaveBeenCalledTimes(2))
+    expect(importCsv.mock.calls[1][1].apercu).toBe(false)
   })
 })

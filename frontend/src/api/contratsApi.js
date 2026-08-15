@@ -279,6 +279,25 @@ const contratsApi = {
   getBonRestitution: (id) =>
     api.get(`/contrats/ordres-location/${id}/bon-restitution/`, { responseType: 'blob' }),
 
+  /* ---------------- Abonnements : import / export (WIR251) ----------------
+     NTSUB21 — export .xlsx du catalogue (plans / add-ons / paliers), un onglet
+     par catalogue, lecture seule (gardé `contrat_voir` côté serveur).
+     NTSUB31 — import CSV des compteurs d'usage EN DEUX TEMPS : `apercu: true`
+     rejoue le rapprochement SANS RIEN ÉCRIRE, puis la confirmation écrit.
+     `ecraser` n'est envoyé QUE s'il est explicitement demandé — un relevé déjà
+     saisi (souvent à la main) n'est jamais remplacé par omission. */
+  exportCatalogueAbonnement: () =>
+    api.get('/contrats/plans-abonnement/export/', { responseType: 'blob' }),
+  importCompteursUsageCsv: (contenu, options = {}) => {
+    const data = { contenu }
+    if (options.apercu) data.apercu = 'true'
+    // JAMAIS `ecraser: 'false'` : le serveur n'active le garde-fou que sur un
+    // « vrai » explicite, et n'envoyer la clé que si cochée rend l'intention
+    // lisible dans la requête elle-même.
+    if (options.ecraser) data.ecraser = 'true'
+    return api.post('/contrats/compteurs-usage/import-csv/', data)
+  },
+
   /* ---------------- Config location (ZCTR1/3/4) ---------------- */
   getPlansRecurrents: (params) =>
     api.get('/contrats/plans-recurrents/', { params }),

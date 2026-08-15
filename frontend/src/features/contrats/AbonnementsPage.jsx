@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { CreditCard, Plus } from 'lucide-react'
+import { CreditCard, Download, Plus, Upload } from 'lucide-react'
 import api from '../../api/axios'
 import contratsApi from '../../api/contratsApi'
+import { downloadBlob } from '../../api/comptaApi'
 import {
   Badge, Button, Tabs, TabsList, TabsTrigger, TabsContent, toast,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
@@ -86,6 +87,21 @@ export default function AbonnementsPage() {
     load()
   }
 
+  // WIR251 / NTSUB21 — export .xlsx du catalogue (lecture seule côté serveur).
+  const [exporting, setExporting] = useState(false)
+  const exporterCatalogue = async () => {
+    setExporting(true)
+    try {
+      const res = await contratsApi.exportCatalogueAbonnement()
+      downloadBlob(res.data, 'catalogue-abonnements.xlsx')
+      toast.success('Catalogue exporté (.xlsx).')
+    } catch (e) {
+      toast.error(errMsg(e, 'Export du catalogue impossible.'))
+    } finally {
+      setExporting(false)
+    }
+  }
+
   const nomPlan = (id) => plans.find((p) => p.id === id)?.nom || `Plan #${id}`
   const nomAddon = (id) => addons.find((a) => a.id === id)?.nom || `Add-on #${id}`
 
@@ -96,6 +112,11 @@ export default function AbonnementsPage() {
           <CreditCard className="size-5 text-muted-foreground" aria-hidden="true" />
           <h1 className="font-display text-xl font-semibold tracking-tight">Abonnements</h1>
         </div>
+        {/* WIR251 — NTSUB21 livrait l'export .xlsx du catalogue sans aucun
+            bouton pour le déclencher. */}
+        <Button size="sm" variant="outline" disabled={exporting} onClick={exporterCatalogue}>
+          <Download /> {exporting ? 'Export…' : 'Exporter (.xlsx)'}
+        </Button>
       </div>
 
       {/* L'echec de chargement etait CAPTURE mais jamais rendu : le catalogue
@@ -189,7 +210,11 @@ export default function AbonnementsPage() {
         </TabsContent>
 
         <TabsContent value="compteurs">
-          <div className="mb-2 flex justify-end">
+          <div className="mb-2 flex justify-end gap-2">
+            {/* WIR251 — NTSUB31 : import CSV en masse, en DEUX TEMPS. */}
+            <Button size="sm" variant="outline" onClick={() => setDialog('import-compteurs')}>
+              <Upload /> Importer (CSV)
+            </Button>
             <Button size="sm" variant="outline" onClick={() => setDialog('compteur')}><Plus /> Nouveau relevé</Button>
           </div>
           <SimpleTable
@@ -233,6 +258,12 @@ export default function AbonnementsPage() {
           plans={plans}
           onClose={() => setDialog(null)}
           onDone={() => onCreated('Palier créé.')}
+        />
+      )}
+      {dialog === 'import-compteurs' && (
+        <ImportCompteursDialog
+          onClose={() => setDialog(null)}
+          onDone={() => onCreated('Import des compteurs d’usage terminé.')}
         />
       )}
       {dialog === 'compteur' && (
@@ -598,6 +629,139 @@ function PalierDialog({ addons, plans, onClose, onDone }) {
             <Button type="submit" disabled={saving}>{saving ? 'Création…' : 'Créer le palier'}</Button>
           </DialogFooter>
         </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/* WIR251 / NTSUB31 — Import CSV des compteurs d'usage, EN DEUX TEMPS.
+   ----------------------------------------------------------------------------
+   1. « Aperçu » : `apercu=true` — le serveur rejoue EXACTEMENT le même
+      rapprochement SANS RIEN ÉCRIRE et renvoie ce que le fichier remplacerait.
+   2. « Confirmer l'import » : écrit. La case « Écraser… » est un opt-in
+      EXPLICITE ; décochée, un relevé déjà saisi (souvent à la main) repart
+      dans `refuses` au lieu d'être remplacé en silence. La clé `ecraser`
+      n'est même pas envoyée tant que la case n'est pas cochée. */
+function ImportCompteursDialog({ onClose, onDone }) {
+  const [contenu, setContenu] = useState('')
+  const [ecraser, setEcraser] = useState(false)
+  const [rapport, setRapport] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState(null)
+
+  const lireFichier = (e) => {
+    const fichier = e.target.files?.[0]
+    if (!fichier) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      setContenu(String(reader.result || ''))
+      setRapport(null)
+    }
+    reader.readAsText(fichier)
+  }
+
+  const lancer = async (enApercu) => {
+    if (!contenu.trim()) { setErr('Aucun contenu CSV à importer.'); return }
+    setBusy(true)
+    setErr(null)
+    try {
+      const res = await contratsApi.importCompteursUsageCsv(contenu, {
+        apercu: enApercu,
+        // Décochée → la clé n'est PAS envoyée (garde-fou par défaut).
+        ecraser,
+      })
+      setRapport(res.data)
+      if (!enApercu) onDone()
+    } catch (e) {
+      setErr(errMsg(e, 'Import impossible.'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Importer des compteurs d’usage (CSV)</DialogTitle>
+        </DialogHeader>
+        <div className="flex flex-col gap-3">
+          <p className="text-xs text-muted-foreground">
+            Colonnes attendues : <code>cible_id</code>, <code>code_compteur</code>,{' '}
+            <code>periode_debut</code>, <code>periode_fin</code>, <code>quantite</code>{' '}
+            (et <code>type_cible</code>, optionnel).
+          </p>
+          <div className="grid gap-1.5">
+            <Label htmlFor="import-compteurs-fichier">Fichier CSV</Label>
+            <input
+              id="import-compteurs-fichier"
+              type="file"
+              accept=".csv,text/csv"
+              onChange={lireFichier}
+              disabled={busy}
+              className="text-sm"
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="import-compteurs-contenu">…ou coller le CSV</Label>
+            <Textarea
+              id="import-compteurs-contenu"
+              rows={6}
+              value={contenu}
+              onChange={(e) => { setContenu(e.target.value); setRapport(null) }}
+              disabled={busy}
+            />
+          </div>
+          <label className="flex items-start gap-2 text-[13px]">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={ecraser}
+              onChange={(e) => { setEcraser(e.target.checked); setRapport(null) }}
+              disabled={busy}
+            />
+            <span>
+              Écraser les relevés déjà saisis
+              <span className="block text-xs text-muted-foreground">
+                Décoché (recommandé) : un relevé déjà saisi n’est jamais remplacé —
+                la valeur entrante est listée dans « refusées ».
+              </span>
+            </span>
+          </label>
+
+          {rapport && (
+            <div className="rounded-lg border bg-muted/40 p-3 text-sm" data-testid="rapport-import-compteurs">
+              <p className="font-medium">
+                {rapport.apercu ? 'Aperçu (rien n’a été écrit)' : 'Import effectué'}
+              </p>
+              <ul className="mt-1 space-y-0.5 text-xs">
+                <li>Créés : {rapport.inserees ?? 0}</li>
+                <li>Mis à jour : {rapport.mises_a_jour ?? 0}</li>
+                <li>Écrasements : {rapport.ecrasements ?? 0}</li>
+                <li>Refusés : {(rapport.refuses || []).length}</li>
+                <li>Erreurs : {(rapport.erreurs || []).length}</li>
+              </ul>
+              {(rapport.erreurs || []).length > 0 && (
+                <ul className="mt-2 space-y-0.5 text-xs text-destructive">
+                  {rapport.erreurs.map((er, i) => (
+                    <li key={i}>Ligne {er.ligne} : {er.erreur}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+
+          {err && <p className="text-sm text-destructive" role="alert">{err}</p>}
+        </div>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
+          <Button type="button" variant="outline" disabled={busy} onClick={() => lancer(true)}>
+            Aperçu
+          </Button>
+          <Button type="button" disabled={busy || !rapport} onClick={() => lancer(false)}>
+            Confirmer l’import
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )
