@@ -56,6 +56,19 @@ export interface Scene3dDeps {
   lowEnd: boolean;
   /** Côté de la carte d'ombre (1024 en bas de gamme, 2048 sinon). */
   shadowSize: number;
+  /**
+   * VISIONNEUSE (lecture seule, page publique /proposition) — additif, défaut
+   * false : le rendu de l'ERP reste octet pour octet inchangé sans ce drapeau.
+   * Le module n'écoute AUCUN geste utilisateur (il ne fait que dessiner), donc
+   * ce drapeau ne coupe aucune interaction ; il retire les deux marques qui
+   * n'ont de sens que pendant l'ÉDITION :
+   *  1. les pans NON actifs ne sont plus atténués (dans l'ERP le pan en cours
+   *     d'édition ressort ; le client, lui, doit voir TOUTE son installation
+   *     avec les mêmes matériaux — mêmes panneaux, mêmes rails, même éclat) ;
+   *  2. les étiquettes de TAILLE posées sur les boîtes d'obstacle (« 2,0 × 1,2 m »,
+   *     l'aide au placement) ne sont plus dessinées — les boîtes, elles, restent.
+   */
+  readOnly?: boolean;
 }
 
 export interface Scene3d {
@@ -233,6 +246,8 @@ export function computeRidgeLifts(pans: RidgePan[]): number[] {
 
 export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
   const { map, lowEnd, shadowSize } = deps;
+  // Absent (ERP) → false : toutes les branches gardées ci-dessous sont inertes.
+  const readOnly = deps.readOnly === true;
   const opts = ctx.opts;
 
   const fmt1 = (n: number) => n.toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
@@ -662,6 +677,14 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     offY: number,
     dim: boolean,
     occupiedSet?: Set<number>,
+    // `isOtherZone` = « ce n'est PAS le pan actif ». C'était jusqu'ici la même
+    // chose que `dim` (seuls les autres pans étaient atténués) et le défaut le
+    // garde tel quel — les deux appelants historiques passent donc exactement la
+    // même valeur qu'avant. Les deux notions ne se séparent qu'en mode
+    // VISIONNEUSE, où les autres pans ne sont plus atténués mais restent « autres »
+    // (ils ne doivent ni voler la référence de pick des panneaux à la zone active,
+    // ni perdre leurs propres obstacles).
+    isOtherZone: boolean = dim,
   ): { deck: THREE.Mesh; deckMat: THREE.MeshStandardMaterial; ring: [number, number][] } {
     const { pack, grid, tiltDeg, family, flush } = plan;
     const wallH = FLOORS * FLOOR_HEIGHT_M;
@@ -890,7 +913,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     // MeshStandardMaterial multiplie sa couleur par instanceColor) pour pouvoir surligner un
     // panneau sans recréer le mesh, et on mémorise sur ctx le mesh + le mapping instance→cellule
     // afin que l'éditeur de disposition relie un panneau 3D à sa cellule de lattice.
-    if (!dim) {
+    if (!isOtherZone) {
       if (panelIM) {
         panelIM.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(panelCellIndices.length * 3).fill(1), 3);
         panelIM.instanceColor.needsUpdate = true;
@@ -901,19 +924,22 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
 
     // Zones NON actives : obstacles rendus en boîtes subduées (sans étiquette ni drag),
     // à leur vraie position relative. La zone active gère ses obstacles vivants ailleurs.
-    if (dim && plan.obstacles.length) {
+    // En VISIONNEUSE (autre pan non atténué), les mêmes boîtes prennent la teinte
+    // « vive » de la zone active — l'unique différence, et elle est cohérente : le
+    // client voit tous ses pans avec le même rendu.
+    if (isOtherZone && plan.obstacles.length) {
       const cosLat = Math.cos(pack.origin[1] * DEG2RAD);
       for (const o of plan.obstacles) {
         const ox = (o.centerLng - pack.origin[0]) * DEG2M * cosLat + offX;
         const oy = (o.centerLat - pack.origin[1]) * DEG2M + offY;
-        const tint = 0xc06464;
+        const tint = dim ? 0xc06464 : 0xff6b6b;
         const geo = new THREE.BoxGeometry(o.widthM, o.lengthM, OBSTACLE_BOX_H_M);
         const mat = new THREE.MeshStandardMaterial({
           color: tint,
           metalness: 0.1,
           roughness: 0.7,
           transparent: true,
-          opacity: 0.3,
+          opacity: dim ? 0.3 : 0.42,
           depthWrite: false,
         });
         const mesh = new THREE.Mesh(geo, mat);
@@ -921,7 +947,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
         mesh.renderOrder = 3;
         const edges = new THREE.LineSegments(
           new THREE.EdgesGeometry(geo),
-          new THREE.LineBasicMaterial({ color: tint, transparent: true, opacity: 0.6 }),
+          new THREE.LineBasicMaterial({ color: tint, transparent: true, opacity: dim ? 0.6 : 0.95 }),
         );
         mesh.add(edges);
         sceneRoot!.add(mesh);
@@ -1018,7 +1044,10 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
         // W107 — applique le lift de faîtière commune de cette zone (copie superficielle pour
         // ne pas muter le renderPlan stocké). 0 par défaut → rendu inchangé.
         const liftedPlan: ZoneRenderPlan = { ...plan, ridgeLiftM: ridgeLifts.get(a.id) ?? 0 };
-        const built = buildZoneMeshes(liftedPlan, offX, offY, true);
+        // VISIONNEUSE : `dim` false → ce pan est bâti avec les MÊMES matériaux que
+        // le pan actif (verre, cadres, rails, châssis) ; `isOtherZone` reste true →
+        // il ne touche pas la référence de pick et garde ses propres obstacles.
+        const built = buildZoneMeshes(liftedPlan, offX, offY, !readOnly, undefined, true);
         rings.push(built.ring);
       } else {
         // W78 — pas de plan de rendu (zone finie à 0 panneau) : on dessine son volume nu.
@@ -1110,9 +1139,13 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
         mesh.add(edges);
         // Change B : taille affichée SUR la boîte, en 3D (plus de libellé « en
         // dessous » sur la carte). Enfant du mesh → suit la boîte au déplacement.
-        const label = makeDimSprite(dimsLabel(o));
-        label.position.set(0, 0, OBSTACLE_BOX_H_M / 2 + 0.6);
-        mesh.add(label);
+        // VISIONNEUSE : aucune étiquette de cote — c'est une aide au PLACEMENT
+        // (l'obstacle lui-même reste visible, à sa vraie taille).
+        if (!readOnly) {
+          const label = makeDimSprite(dimsLabel(o));
+          label.position.set(0, 0, OBSTACLE_BOX_H_M / 2 + 0.6);
+          mesh.add(label);
+        }
         sceneRoot.add(mesh);
         ctx.obstacleMeshes.set(o.id, mesh);
       }
