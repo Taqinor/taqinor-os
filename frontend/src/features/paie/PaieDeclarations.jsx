@@ -395,6 +395,11 @@ function DeclarationsTab() {
             onClick={() => gen('livre', paieApi.livreDePaie, 'livre_de_paie')}>
             <FileSpreadsheet size={16} aria-hidden="true" /> Livre de paie
           </Button>
+          {/* WIR242 — détail des provisions (13e mois/IFC) de la période. */}
+          <Button variant="outline" loading={busy === 'provisions'}
+            onClick={() => gen('provisions', paieApi.provisions, 'provisions')}>
+            <FileDown size={16} aria-hidden="true" /> Provisions (13e mois/IFC)
+          </Button>
         </div>
         <div className="flex flex-wrap items-end gap-2 border-t border-border pt-3">
           <Button variant="outline" loading={busy === 'bds-principal'}

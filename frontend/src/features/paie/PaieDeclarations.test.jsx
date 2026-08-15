@@ -50,6 +50,9 @@ vi.mock('../../api/paieApi', () => {
     journalVentile: vi.fn(() => Promise.resolve({
       data: { id: 92, reference: 'PAIE-2026-07-V' },
     })),
+    provisions: vi.fn(() => Promise.resolve({
+      data: { treizieme_mois: 1200, ifc: 300 },
+    })),
   }
   const handler = {
     get(target, prop) {
@@ -95,6 +98,23 @@ describe('PaieDeclarations — Charges & GL (WIR37, journal de paie → comptabi
       await waitFor(() => expect(paieApi.journalDePaie).toHaveBeenCalledWith(3))
       expect(await screen.findByText(/PAIE-2026-07/)).toBeInTheDocument()
     })
+})
+
+describe('PaieDeclarations — Provisions 13e mois/IFC (WIR242)', () => {
+  beforeEach(() => { paieApi.provisions.mockClear() })
+
+  it('génère les provisions de la période sélectionnée', async () => {
+    wrap(<PaieDeclarations />)
+    await userEvent.click(screen.getByRole('tab', { name: 'Déclarations' }))
+
+    const select = await screen.findByRole('combobox')
+    await userEvent.selectOptions(select, '3')
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /Provisions \(13e mois\/IFC\)/ }))
+
+    await waitFor(() => expect(paieApi.provisions).toHaveBeenCalledWith(3))
+  })
 })
 
 describe('PaieDeclarations — Cumuls annuels (PACT154, reprise go-live)', () => {
