@@ -10,7 +10,7 @@
 import { useEffect, useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import {
-  Card, CardContent, Input, Badge, IconButton, Button, Spinner,
+  Card, CardContent, Input, Badge, IconButton, Button, Spinner, Checkbox,
 } from '../../ui'
 import { SectionTitle, Field } from './peComponents'
 import installationsApi from '../../api/installationsApi'
@@ -109,7 +109,15 @@ function TemplateBlock({ template, busy, onDelete, onChanged }) {
   const [libelle, setLibelle] = useState('')
   const [typeChamp, setTypeChamp] = useState('texte')
   const [unite, setUnite] = useState('')
+  /* WIR266 — `obligatoire` (le gate de clôture ZFSM1 : un champ obligatoire non
+     renseigné BLOQUE la clôture de l'intervention) était rendu en badge sur les
+     champs existants… et n'était réglable NULLE PART. Le formulaire d'ajout ne
+     l'envoyait pas (donc tout champ naissait facultatif) et aucune bascule
+     n'existait ensuite : la gate ZFSM1 était en pratique inutilisable depuis
+     l'ERP. Aucun changement backend — `saveFicheChamp` accepte déjà le champ. */
+  const [obligatoire, setObligatoire] = useState(false)
   const [error, setError] = useState(null)
+  const [bascule, setBascule] = useState(null) // id du champ en cours de bascule
   const champs = template.champs ?? []
 
   const addChamp = async () => {
@@ -119,11 +127,27 @@ function TemplateBlock({ template, busy, onDelete, onChanged }) {
         template: template.id, cle: cle.trim(), libelle: libelle.trim(),
         type_champ: typeChamp, unite: typeChamp === 'mesure' ? (unite || '') : '',
         ordre: champs.length,
+        obligatoire,
       })
-      setCle(''); setLibelle(''); setUnite(''); setError(null)
+      setCle(''); setLibelle(''); setUnite(''); setObligatoire(false); setError(null)
       onChanged?.()
     } catch (e) {
       setError(e?.response?.data?.detail || "Ajout du champ impossible.")
+    }
+  }
+
+  // WIR266 — bascule d'un champ EXISTANT (PATCH partiel : rien d'autre n'est
+  // renvoyé, donc aucun risque d'écraser libellé/type/unité au passage).
+  const basculerObligatoire = async (champ) => {
+    setBascule(champ.id)
+    try {
+      await installationsApi.saveFicheChamp(champ.id, { obligatoire: !champ.obligatoire })
+      setError(null)
+      onChanged?.()
+    } catch (e) {
+      setError(e?.response?.data?.detail || "Modification du champ impossible.")
+    } finally {
+      setBascule(null)
     }
   }
 
@@ -156,6 +180,18 @@ function TemplateBlock({ template, busy, onDelete, onChanged }) {
               <span className="font-medium text-foreground">{c.libelle}</span>
               <Badge tone="neutral">{c.type_champ}{c.unite ? ` (${c.unite})` : ''}</Badge>
               {c.obligatoire && <Badge tone="warning">obligatoire</Badge>}
+              {/* WIR266 — la bascule qui manquait : le gate de clôture ZFSM1
+                  devient réglable après coup, sans recréer le champ. */}
+              <label className="flex items-center gap-1">
+                <Checkbox
+                  data-testid={`champ-obligatoire-${c.id}`}
+                  checked={!!c.obligatoire}
+                  disabled={bascule === c.id}
+                  onCheckedChange={() => basculerObligatoire(c)}
+                  aria-label={`Rendre « ${c.libelle} » obligatoire (bloque la clôture)`}
+                />
+                <span>Obligatoire</span>
+              </label>
               <IconButton size="sm" variant="ghost" label="Retirer le champ"
                 className="ml-auto text-destructive hover:text-destructive"
                 onClick={() => delChamp(c)}>
@@ -187,6 +223,17 @@ function TemplateBlock({ template, busy, onDelete, onChanged }) {
             <Input id={`ch-unite-${template.id}`} value={unite} onChange={(e) => setUnite(e.target.value)} placeholder="V, A, °C…" />
           </Field>
         )}
+        {/* WIR266 — le formulaire d'ajout n'envoyait PAS `obligatoire` : tout
+            champ naissait facultatif, gate ZFSM1 comprise. */}
+        <label className="flex items-center gap-1.5 pb-1 text-sm">
+          <Checkbox
+            data-testid={`nouveau-champ-obligatoire-${template.id}`}
+            checked={obligatoire}
+            onCheckedChange={(v) => setObligatoire(!!v)}
+            aria-label="Obligatoire (bloque la clôture)"
+          />
+          <span>Obligatoire (bloque la clôture)</span>
+        </label>
         <Button type="button" size="sm" onClick={addChamp}>
           <Plus className="size-4" aria-hidden="true" /> Champ
         </Button>
