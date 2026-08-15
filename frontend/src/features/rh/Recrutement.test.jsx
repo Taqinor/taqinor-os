@@ -55,6 +55,13 @@ vi.mock('../../api/rhApi', () => {
       getCandidatsInternes: vi.fn(empty),
       // WIR194 — écriture des dotations EPI (create / restituer / emarger /
       // emargements) : quatre routes serveur jusqu'ici sans aucun appelant.
+      // WIR196 — cycle d'approbation d'une ouverture de poste + clôture de
+      // campagne d'évaluation (quatre @actions sans appelant).
+      createOuverturePoste: vi.fn(),
+      soumettreOuverturePoste: vi.fn(),
+      approuverOuverturePoste: vi.fn(),
+      refuserOuverturePoste: vi.fn(),
+      cloturerCampagneEvaluation: vi.fn(),
       createDotationEpi: vi.fn(),
       restituerDotationEpi: vi.fn(),
       emargerDotationEpi: vi.fn(),
@@ -162,6 +169,120 @@ describe('Recrutement — ATS (XRH17-23)', () => {
     await waitFor(() => expect(rhApi.createRetourFeedback360).toHaveBeenCalledWith({
       evaluation: 9, repondant: 12, relation: 'pair',
     }))
+  })
+})
+
+/* WIR196 — une ouverture de poste n'était créable nulle part et restait
+   bloquée à vie en brouillon : le workflow d'approbation YHIRE14 (soumettre →
+   approuver / refuser, séparation des tâches côté serveur) était injouable. */
+describe('Recrutement — WIR196 : cycle d’approbation des ouvertures de poste', () => {
+  const OUVERTURE = (statut) => ({
+    id: 5, intitule: 'Technicien PV', nombre_postes: 1,
+    statut, statut_display: statut,
+  })
+
+  beforeEach(() => { vi.clearAllMocks(); armerStatistiques() })
+
+  const ouvrirRecrutement = async () => {
+    renderRecrutement()
+    await screen.findAllByText('EPI, recrutement & évaluations')
+    fireEvent.click(screen.getByRole('radio', { name: 'Recrutement' }))
+    await screen.findAllByText('Technicien PV')
+  }
+
+  it('crée une ouverture (brouillon serveur — aucun statut envoyé)', async () => {
+    rhApi.createOuverturePoste.mockResolvedValueOnce({ data: { id: 6 } })
+    renderRecrutement()
+    await screen.findAllByText('EPI, recrutement & évaluations')
+    fireEvent.click(screen.getByRole('radio', { name: 'Recrutement' }))
+
+    fireEvent.click((await screen.findAllByRole('button', { name: /Nouvelle ouverture/ }))[0])
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Intitulé'), { target: { value: 'Technicien PV' } })
+    fireEvent.click(screen.getAllByRole('button', { name: 'Créer l’ouverture' })[0])
+
+    await waitFor(() => expect(rhApi.createOuverturePoste).toHaveBeenCalledWith(
+      expect.objectContaining({ intitule: 'Technicien PV', nombre_postes: 1 }),
+    ))
+    const corps = rhApi.createOuverturePoste.mock.calls[0][0]
+    expect(corps).not.toHaveProperty('statut')
+    expect(corps).not.toHaveProperty('company')
+  })
+
+  it('soumet un brouillon à approbation', async () => {
+    rhApi.getOuverturesPoste.mockResolvedValue({ data: [OUVERTURE('brouillon')] })
+    rhApi.soumettreOuverturePoste.mockResolvedValueOnce({ data: {} })
+    await ouvrirRecrutement()
+
+    // En brouillon : seule la soumission est offerte.
+    expect(screen.queryByRole('button', { name: 'Approuver' })).toBeNull()
+    fireEvent.click(screen.getAllByRole('button', { name: 'Soumettre à approbation' })[0])
+    await waitFor(() => expect(rhApi.soumettreOuverturePoste).toHaveBeenCalledWith(5))
+  })
+
+  it('approuve une ouverture soumise et affiche le 400 de séparation des tâches', async () => {
+    rhApi.getOuverturesPoste.mockResolvedValue({ data: [OUVERTURE('en_approbation')] })
+    rhApi.approuverOuverturePoste.mockRejectedValueOnce({
+      response: { status: 400, data: { detail: 'Le demandeur ne peut pas approuver sa propre ouverture.' } },
+    })
+    await ouvrirRecrutement()
+
+    // En approbation : plus de soumission, mais Approuver / Refuser.
+    expect(screen.queryByRole('button', { name: 'Soumettre à approbation' })).toBeNull()
+    fireEvent.click(screen.getAllByRole('button', { name: 'Approuver' })[0])
+
+    await waitFor(() => expect(rhApi.approuverOuverturePoste).toHaveBeenCalledWith(5))
+    // Le détail 400 part au toast (aucun `Toaster` monté dans ce rendu) ; la
+    // preuve DOM que le détail serveur est affiché TEL QUEL est faite par le
+    // dialogue de refus ci-dessous, qui le rend en ligne.
+  })
+
+  it('affiche TEL QUEL le 400 de séparation des tâches au refus', async () => {
+    rhApi.getOuverturesPoste.mockResolvedValue({ data: [OUVERTURE('en_approbation')] })
+    rhApi.refuserOuverturePoste.mockRejectedValueOnce({
+      response: { status: 400, data: { detail: 'Le demandeur ne peut pas décider de sa propre ouverture.' } },
+    })
+    await ouvrirRecrutement()
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Refuser' })[0])
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+    fireEvent.click(screen.getAllByRole('button', { name: 'Refuser' })
+      .find((b) => b.getAttribute('type') === 'submit'))
+
+    expect(
+      await screen.findByText('Le demandeur ne peut pas décider de sa propre ouverture.'),
+    ).toBeInTheDocument()
+  })
+
+  it('refuse une ouverture soumise avec un motif', async () => {
+    rhApi.getOuverturesPoste.mockResolvedValue({ data: [OUVERTURE('en_approbation')] })
+    rhApi.refuserOuverturePoste.mockResolvedValueOnce({ data: {} })
+    await ouvrirRecrutement()
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Refuser' })[0])
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Motif du refus'), { target: { value: 'Budget non validé' } })
+    fireEvent.click(screen.getAllByRole('button', { name: 'Refuser' })
+      .find((b) => b.getAttribute('type') === 'submit'))
+
+    await waitFor(() => expect(rhApi.refuserOuverturePoste).toHaveBeenCalledWith(
+      5, { motif_refus: 'Budget non validé' },
+    ))
+  })
+
+  it('clôture une campagne d’évaluation encore ouverte', async () => {
+    rhApi.getCampagnesEvaluation.mockResolvedValue({
+      data: [{ id: 3, intitule: 'Campagne 2026', annee: 2026, statut: 'ouverte', statut_display: 'Ouverte' }],
+    })
+    rhApi.cloturerCampagneEvaluation.mockResolvedValueOnce({ data: {} })
+    renderRecrutement()
+    await screen.findAllByText('EPI, recrutement & évaluations')
+    fireEvent.click(screen.getByRole('radio', { name: 'Évaluations' }))
+    await screen.findAllByText('Campagne 2026')
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Clôturer' })[0])
+    await waitFor(() => expect(rhApi.cloturerCampagneEvaluation).toHaveBeenCalledWith(3))
   })
 })
 

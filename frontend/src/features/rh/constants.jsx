@@ -61,7 +61,12 @@ export const EtapeCandidature = statusPill({
 })
 
 // Statut d'une ouverture de poste.
+// WIR196 — le cycle amont YHIRE14 (brouillon → en approbation → ouvert)
+// manquait ici : une ouverture soumise s'affichait sans pastille, donc
+// invisible. Les six statuts du modèle `OuverturePoste.Statut` sont couverts.
 export const StatutPoste = statusPill({
+  brouillon: { label: 'Brouillon', tone: 'neutral' },
+  en_approbation: { label: 'En approbation', tone: 'warning' },
   ouvert: { label: 'Ouvert', tone: 'success' },
   pourvu: { label: 'Pourvu', tone: 'neutral' },
   clos: { label: 'Clos', tone: 'neutral' },

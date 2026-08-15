@@ -263,6 +263,15 @@ const rhApi = {
     api.get(`/rh/dotations-epi/${id}/emargements/`),
   getOuverturesPoste: (params) => api.get('/rh/ouvertures-poste/', { params }),
   createOuverturePoste: (data) => api.post('/rh/ouvertures-poste/', data),
+  // WIR196 — cycle d'approbation YHIRE14 (brouillon → en approbation → ouvert).
+  // La séparation des tâches (approbateur ≠ demandeur) est arbitrée par le
+  // serveur : un refus d'auto-approbation revient en 400 { detail }.
+  soumettreOuverturePoste: (id, data) =>
+    api.post(`/rh/ouvertures-poste/${id}/soumettre/`, data ?? {}),
+  approuverOuverturePoste: (id, data) =>
+    api.post(`/rh/ouvertures-poste/${id}/approuver/`, data ?? {}),
+  refuserOuverturePoste: (id, data) =>
+    api.post(`/rh/ouvertures-poste/${id}/refuser/`, data ?? {}),
   getCandidatures: (params) => api.get('/rh/candidatures/', { params }),
   createCandidature: (data) => api.post('/rh/candidatures/', data),
   updateCandidature: (id, data) => api.patch(`/rh/candidatures/${id}/`, data),
@@ -326,6 +335,9 @@ const rhApi = {
     api.get('/rh/retours-feedback360/synthese/', { params }),
   getCampagnesEvaluation: (params) =>
     api.get('/rh/campagnes-evaluation/', { params }),
+  // WIR196 — clôture d'une campagne d'évaluation (@action serveur sans appelant).
+  cloturerCampagneEvaluation: (id, data) =>
+    api.post(`/rh/campagnes-evaluation/${id}/cloturer/`, data ?? {}),
   getEvaluationsEmploye: (params) =>
     api.get('/rh/evaluations-employe/', { params }),
   validerEvaluation: (id, data) =>

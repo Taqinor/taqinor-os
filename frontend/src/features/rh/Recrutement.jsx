@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   UserPlus, Ban, ScanText, Star, BarChart3, FileSignature, CalendarClock, Users,
-  ShieldCheck, PenLine, Undo2, History,
+  ShieldCheck, PenLine, Undo2, History, Send, Check, X, Lock, Briefcase,
 } from 'lucide-react'
 import { ListShell } from '../../ui/module'
 import {
@@ -83,6 +83,9 @@ export default function Recrutement() {
   const [modeleOpen, setModeleOpen] = useState(false)
   // WIR131 — invitations feedback 360° d'une évaluation.
   const [feedbackFor, setFeedbackFor] = useState(null)
+  // WIR196 — création d'une ouverture de poste + refus motivé.
+  const [ouvertureOpen, setOuvertureOpen] = useState(false)
+  const [refusFor, setRefusFor] = useState(null)
   // WIR194 — écriture des dotations EPI.
   const [dotationOpen, setDotationOpen] = useState(false)
   const [emargerFor, setEmargerFor] = useState(null)
@@ -148,6 +151,42 @@ export default function Recrutement() {
       recharger()
     } catch (err) {
       toast.error(err?.response?.data?.detail ?? 'Embauche impossible (matricule/contrat requis).')
+    }
+  }
+
+  /* WIR196 — cycle d'approbation d'une ouverture de poste (YHIRE14). Le
+     serveur arbitre TOUT : transition légale et séparation des tâches
+     (approbateur ≠ demandeur). Son 400 { detail } — « Vous ne pouvez pas
+     approuver votre propre demande », par exemple — est affiché TEL QUEL,
+     jamais remplacé par un message générique qui masquerait la vraie règle. */
+  const soumettreOuverture = async (o) => {
+    try {
+      await rhApi.soumettreOuverturePoste(o.id)
+      toast.success('Ouverture soumise à approbation.')
+      recharger()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Soumission impossible.')
+    }
+  }
+
+  const approuverOuverture = async (o) => {
+    try {
+      await rhApi.approuverOuverturePoste(o.id)
+      toast.success('Ouverture approuvée — poste ouvert.')
+      recharger()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Approbation impossible.')
+    }
+  }
+
+  // WIR196 — clôture d'une campagne d'évaluation (idempotente côté serveur).
+  const cloturerCampagne = async (c) => {
+    try {
+      await rhApi.cloturerCampagneEvaluation(c.id)
+      toast.success('Campagne clôturée.')
+      recharger()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Clôture impossible.')
     }
   }
 
@@ -344,14 +383,32 @@ export default function Recrutement() {
   // XRH15 — candidats INTERNES d'une ouverture : classement des employés par
   // couverture du profil requis du `poste_ref` (mobilité interne avant
   // sourcing externe). Sans `poste_ref`, l'action n'a pas de cible.
-  const ouvertureActions = (o) => (o.poste_ref
-    ? [{
-      id: 'candidats-internes',
-      label: 'Candidats internes',
-      icon: Users,
-      onClick: () => setInternesFor(o),
-    }]
-    : [])
+  // WIR196 — les actions du cycle YHIRE14 sont CONDITIONNÉES au statut : une
+  // ouverture ne pouvait pas quitter l'état brouillon, le workflow était
+  // injouable. « Candidats internes » reste conditionnée au poste_ref.
+  const ouvertureActions = (o) => {
+    const actions = []
+    if (o.statut === 'brouillon') {
+      actions.push({ id: 'soumettre', label: 'Soumettre à approbation', icon: Send, onClick: () => soumettreOuverture(o) })
+    }
+    if (o.statut === 'en_approbation') {
+      actions.push({ id: 'approuver', label: 'Approuver', icon: Check, onClick: () => approuverOuverture(o) })
+      actions.push({ id: 'refuser', label: 'Refuser', icon: X, destructive: true, onClick: () => setRefusFor(o) })
+    }
+    if (o.poste_ref) {
+      actions.push({
+        id: 'candidats-internes',
+        label: 'Candidats internes',
+        icon: Users,
+        onClick: () => setInternesFor(o),
+      })
+    }
+    return actions
+  }
+  // WIR196 — clôture d'une campagne d'évaluation encore ouverte.
+  const campagneActions = (c) => (c.statut === 'cloturee'
+    ? []
+    : [{ id: 'cloturer', label: 'Clôturer', icon: Lock, onClick: () => cloturerCampagne(c) }])
   const evalActions = (e) => [
     ...(e.statut === 'brouillon'
       ? [{ id: 'valider', label: 'Valider', icon: UserPlus, onClick: () => validerEval(e) }]
@@ -388,6 +445,7 @@ export default function Recrutement() {
         <div className="flex flex-col gap-4">
           <ListShell title="Ouvertures de poste" columns={posteColumns} rows={postes} loading={loading} error={error}
             searchable rowActions={ouvertureActions} exportName="ouvertures-poste"
+            actions={<Button onClick={() => setOuvertureOpen(true)}><Briefcase size={15} strokeWidth={1.75} aria-hidden="true" />Nouvelle ouverture</Button>}
             emptyTitle="Aucune ouverture" emptyDescription="Aucun poste ouvert." />
           <ListShell title="Candidatures" columns={candidatureColumns} rows={candidatures} loading={loading} error={error}
             searchable rowActions={candidatureActions} exportName="candidatures"
@@ -423,6 +481,7 @@ export default function Recrutement() {
               { id: 'statut', header: 'Statut', width: 120, accessor: (c) => c.statut_display || c.statut || '', cell: (v) => v || '—' },
             ]}
             rows={campagnes} loading={loading} error={error} searchable exportName="campagnes-evaluation"
+            rowActions={campagneActions}
             emptyTitle="Aucune campagne" emptyDescription="Aucune campagne d’évaluation." />
           <ListShell title="Évaluations" columns={evalColumns} rows={evaluations} loading={loading} error={error}
             searchable rowActions={evalActions} exportName="evaluations"
@@ -480,6 +539,19 @@ export default function Recrutement() {
           onClose={() => setFeedbackFor(null)}
         />
       )}
+      {ouvertureOpen && (
+        <OuverturePosteDialog
+          onClose={() => setOuvertureOpen(false)}
+          onSaved={() => { setOuvertureOpen(false); recharger() }}
+        />
+      )}
+      {refusFor && (
+        <RefusOuvertureDialog
+          ouverture={refusFor}
+          onClose={() => setRefusFor(null)}
+          onSaved={() => { setRefusFor(null); recharger() }}
+        />
+      )}
       {dotationOpen && (
         <DotationEpiDialog
           employes={employes}
@@ -502,6 +574,136 @@ export default function Recrutement() {
         />
       )}
     </div>
+  )
+}
+
+/* ── WIR196 (FG189/YHIRE14) — Créer une ouverture de poste ────────────────────
+   L'ouverture naît BROUILLON côté serveur (défaut du modèle) : le formulaire
+   n'envoie donc AUCUN statut — le cycle appartient aux @actions. `company` est
+   posée dans `perform_create`. */
+function OuverturePosteDialog({ onClose, onSaved }) {
+  const [intitule, setIntitule] = useState('')
+  const [nombrePostes, setNombrePostes] = useState('1')
+  const [ville, setVille] = useState('')
+  const [dateCible, setDateCible] = useState('')
+  const [description, setDescription] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [serverError, setServerError] = useState(null)
+
+  const dirty = Boolean(intitule || ville || dateCible || description)
+  const closeIfConfirmed = () => { if (confirmLeaveIfDirty(dirty)) onClose?.() }
+  const valide = Boolean(intitule.trim())
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!valide) return
+    setSaving(true)
+    setServerError(null)
+    try {
+      await rhApi.createOuverturePoste({
+        intitule: intitule.trim(),
+        nombre_postes: Number(nombrePostes) || 1,
+        ville: ville || '',
+        date_cible: dateCible || null,
+        description: description || '',
+      })
+      toast.success('Ouverture créée (brouillon).')
+      onSaved?.()
+    } catch (err) {
+      const data = err?.response?.data
+      setServerError(data?.detail || data?.intitule
+        || 'Création de l’ouverture impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) closeIfConfirmed() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Nouvelle ouverture de poste</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="op-intitule">Intitulé</Label>
+            <Input id="op-intitule" autoFocus value={intitule} onChange={(e) => setIntitule(e.target.value)}
+              placeholder="Ex. Technicien photovoltaïque" />
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="op-nb">Postes à pourvoir</Label>
+              <Input id="op-nb" type="number" step="any" value={nombrePostes} onChange={(e) => setNombrePostes(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="op-ville">Ville</Label>
+              <Input id="op-ville" value={ville} onChange={(e) => setVille(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="op-cible">Date cible</Label>
+              <Input id="op-cible" type="date" value={dateCible} onChange={(e) => setDateCible(e.target.value)} />
+            </div>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="op-desc">Profil recherché</Label>
+            <Textarea id="op-desc" rows={4} value={description} onChange={(e) => setDescription(e.target.value)} />
+          </div>
+          {serverError && <p className="text-sm text-destructive" role="alert">{serverError}</p>}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={closeIfConfirmed}>Annuler</Button>
+            <Button type="submit" disabled={!valide || saving}>
+              {saving ? 'Création…' : 'Créer l’ouverture'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/* ── WIR196 (YHIRE14) — Refuser une ouverture soumise (motif) ─────────────────
+   Le 400 { detail } du serveur — notamment le refus d'auto-approbation
+   (séparation des tâches) — est affiché TEL QUEL dans le dialogue. */
+function RefusOuvertureDialog({ ouverture, onClose, onSaved }) {
+  const [motif, setMotif] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [serverError, setServerError] = useState(null)
+
+  const submit = async (e) => {
+    e.preventDefault()
+    setSaving(true)
+    setServerError(null)
+    try {
+      await rhApi.refuserOuverturePoste(ouverture.id, { motif_refus: motif })
+      toast.success('Ouverture refusée.')
+      onSaved?.()
+    } catch (err) {
+      setServerError(err?.response?.data?.detail ?? 'Refus impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose?.() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Refuser l’ouverture — {ouverture.intitule}</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="ro-motif">Motif du refus</Label>
+            <Input id="ro-motif" autoFocus value={motif} onChange={(e) => setMotif(e.target.value)}
+              placeholder="Ex. Budget non validé" />
+          </div>
+          {serverError && <p className="text-sm text-destructive" role="alert">{serverError}</p>}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
+            <Button type="submit" disabled={saving}>{saving ? 'Refus…' : 'Refuser'}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }
 
