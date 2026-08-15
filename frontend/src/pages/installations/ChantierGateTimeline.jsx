@@ -15,6 +15,8 @@ import {
   Button, Badge, HelpTip, Spinner, Progress, NextActionBanner,
 } from '../../ui'
 import ChantierTimeline from './ChantierTimeline'
+// WIR202/CH3 — formulaire de saisie de la fiche de recette IEC 62446-1.
+import RecetteCommissioningDialog from './RecetteCommissioningDialog'
 
 function StageIcon({ satisfait, courante, bloquant }) {
   if (satisfait && !courante) {
@@ -91,6 +93,9 @@ export default function ChantierGateTimeline({ installationId, installation, onA
   // CH3 — recette de mise en service (IEC 62446-1).
   const [recette, setRecette] = useState(null)
   const [recetteBusy, setRecetteBusy] = useState(false)
+  // WIR202 — dialog de SAISIE de la fiche (la fiche se créait vide, sans
+  // aucun formulaire pour la remplir).
+  const [recetteFormOpen, setRecetteFormOpen] = useState(false)
 
   // CH4 — pack de remise client.
   const [pack, setPack] = useState(null)
@@ -143,11 +148,17 @@ export default function ChantierGateTimeline({ installationId, installation, onA
     }
   }
 
+  // WIR202 — le bouton créait une fiche VIDE et s'arrêtait là : elle restait
+  // `en_cours` pour toujours et le gate « Mise en service » ne se franchissait
+  // jamais. Il ouvre désormais le FORMULAIRE de saisie (en créant la fiche
+  // d'abord si elle n'existe pas encore).
   const ouvrirRecette = async () => {
+    if (recette?.record?.id) { setRecetteFormOpen(true); return }
     setRecetteBusy(true)
     try {
       const r = await installationsApi.ouvrirRecette(installationId)
       setRecette(r.data)
+      if (r.data?.record?.id) setRecetteFormOpen(true)
     } catch { /* 403 si non Responsable/Admin — bouton reste visible, l'action échoue proprement */ }
     finally { setRecetteBusy(false) }
   }
@@ -285,12 +296,23 @@ export default function ChantierGateTimeline({ installationId, installation, onA
         ) : (
           <Badge tone="neutral">Aucune fiche</Badge>
         )}
-        {!recette?.record && (
-          <Button size="sm" variant="outline" className="ml-auto" loading={recetteBusy} onClick={ouvrirRecette}>
-            Ouvrir la fiche de recette
-          </Button>
-        )}
+        {/* WIR202 — l'affordance existe MAINTENANT aussi quand la fiche est
+            déjà ouverte : c'est la seule façon de la remplir (et donc de
+            franchir le gate). */}
+        <Button size="sm" variant="outline" className="ml-auto" loading={recetteBusy} onClick={ouvrirRecette}>
+          {recette?.record ? 'Remplir la fiche de recette' : 'Ouvrir la fiche de recette'}
+        </Button>
       </div>
+
+      {recetteFormOpen && recette?.record?.id && (
+        <RecetteCommissioningDialog
+          recordId={recette.record.id}
+          onClose={() => setRecetteFormOpen(false)}
+          // La fiche enregistrée peut franchir le gate : on recharge étapes +
+          // recette + pack, exactement comme après un avancement.
+          onSaved={() => { load(); onAdvanced?.() }}
+        />
+      )}
 
       {/* ── CH4 — pack de remise client, gate mis en avant ── */}
       <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border p-3" data-testid="ch6-pack-remise">

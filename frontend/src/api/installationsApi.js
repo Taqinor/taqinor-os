@@ -62,6 +62,16 @@ const installationsApi = {
   // CH3 — fiche de recette IEC 62446-1 (mise en service structurée).
   getRecette: (id) => api.get(`/installations/chantiers/${id}/recette/`),
   ouvrirRecette: (id) => api.post(`/installations/chantiers/${id}/recette/`, {}),
+  // WIR202/CH3 — la fiche se créait VIDE et bloquait le gate « Mise en
+  // service » à jamais : rien ne permettait de la remplir. Ces trois wrappers
+  // adressent le CommissioningRecord lui-même (contrôles documentaires,
+  // visuels, électriques, sécurité) et ses relevés I-V par string.
+  getRecetteRecord: (recordId) =>
+    api.get(`/installations/recettes-commissioning/${recordId}/`),
+  updateRecette: (recordId, data) =>
+    api.patch(`/installations/recettes-commissioning/${recordId}/`, data),
+  ajouterReleveIv: (recordId, data) =>
+    api.post(`/installations/recettes-commissioning/${recordId}/ajouter-iv/`, data),
 
   // CH4 — pack de remise client (handover). GET aperçoit à blanc si absent.
   getPackRemise: (id) => api.get(`/installations/chantiers/${id}/pack-remise/`),

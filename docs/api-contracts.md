@@ -2490,6 +2490,9 @@
     statut ∈ {brouillon, cloturee, envoyee}
 - frontend/src/api/installationsApi.js :: getReceptionsNonFacturees -> /api/django/installations/receptions-non-facturees  [ReceptionNonFactureeSerializer]
     champs: bon_commande, created_by, date_creation, date_lettrage, date_modification, date_reception, facture, id, lettre, libelle, montant_a_provisionner, montant_provision, note, reception
+- frontend/src/api/installationsApi.js :: getRecetteRecord -> /api/django/installations/recettes-commissioning/<>  [CommissioningRecordSerializer]
+    champs: continuite_terre_ohm, continuite_terre_ok, date_essai, doc_datasheets_ok, doc_dossier_ok, doc_schema_ok, id, installation, instrument_etalonnage_expire, instrument_id, instrument_nom, instrument_numero_serie, isolement_mohm, isolement_ok, iv_readings, observations, passe, performance_ok, polarite_ok, production_attendue_kw, production_test_kw, resultat, resultat_display, securite_coupure_ok, securite_signalisation_ok, technicien, ventes_recette_id, visuel_cablage_ok, visuel_structure_ok, visuel_terre_ok
+    resultat ∈ {conforme, en_cours, non_conforme, reserves}
 - frontend/src/api/installationsApi.js :: getRecurrencesIntervention -> /api/django/installations/recurrences-intervention  [RecurrenceInterventionSerializer]
     champs: actif, date_creation, date_fin, id, installation, installation_reference, intervalle, nb_generees, nb_occurrences, prochaine_echeance, regle, regle_display, technicien_defaut, technicien_defaut_nom, type_intervention
     regle ∈ {annuelle, mensuelle, semestrielle, trimestrielle}
@@ -2575,6 +2578,9 @@
     champs: bin, bin_code, designation, id, ordre, pick_list, preleve, produit, produit_nom, quantite_demandee, quantite_prelevee
 - frontend/src/api/installationsApi.js :: updatePreuveLivraison -> /api/django/installations/preuves-livraison/<>  [PreuveLivraisonSerializer]
     champs: created_by, date_creation, date_modification, gps_lat, gps_lng, horodatage, id, livraison, note, photo, signataire_nom, signature_data
+- frontend/src/api/installationsApi.js :: updateRecette -> /api/django/installations/recettes-commissioning/<>  [CommissioningRecordSerializer]
+    champs: continuite_terre_ohm, continuite_terre_ok, date_essai, doc_datasheets_ok, doc_dossier_ok, doc_schema_ok, id, installation, instrument_etalonnage_expire, instrument_id, instrument_nom, instrument_numero_serie, isolement_mohm, isolement_ok, iv_readings, observations, passe, performance_ok, polarite_ok, production_attendue_kw, production_test_kw, resultat, resultat_display, securite_coupure_ok, securite_signalisation_ok, technicien, ventes_recette_id, visuel_cablage_ok, visuel_structure_ok, visuel_terre_ok
+    resultat ∈ {conforme, en_cours, non_conforme, reserves}
 - frontend/src/api/installationsApi.js :: updateSessionComptage -> /api/django/installations/sessions-comptage/<>  [SessionComptageSerializer]
     champs: classe_abc, classe_abc_display, created_by, date_creation, date_modification, date_planifiee, emplacement, id, intitule, lignes, note, reference, statut, statut_display
     classe_abc ∈ {A, B, C, toutes}
