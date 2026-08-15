@@ -86,7 +86,7 @@ import {
 import {
   renderYearCurve,
   resolveProposalCurveMode,
-  consumptionProfile,
+  consumptionShapeHours,
   solarProfile,
   type ProposalCurveVariant,
   type ProposalCurveMode,
@@ -397,9 +397,11 @@ const avecTtc = ok && offerBattery.present && hasRealPrice(data!, 'avec_batterie
   : null;
 const showBatterySim = batterySimEligible && dailyConsKwh > 0 && dailyProdKwh > 0;
 // Silhouettes horaires (mode courant, variante NORMALE) — passées au client pour un
-// recalcul 100 % local au curseur (aucun re-fetch, aucun proposalCurve côté client).
+// recalcul 100 % local au curseur (aucun re-fetch). Rendu serveur INCHANGÉ : toujours
+// la variante 'normal' ; l'hydratation (script client) prend le relais pour recalculer
+// avec la variante active des onglets Standard/Été/Ramadan (PACT-battery, 2026-08-15).
 const batteryConsShape = showBatterySim
-  ? Array.from({ length: HOURS_PER_DAY }, (_, h) => consumptionProfile(h, { mode: curveMode, variant: 'normal' }))
+  ? consumptionShapeHours(HOURS_PER_DAY, { mode: curveMode, variant: 'normal' })
   : [];
 const batterySolarShape = showBatterySim
   ? Array.from({ length: HOURS_PER_DAY }, (_, h) => solarProfile(h))
@@ -424,6 +426,9 @@ const batteryInitialPrice = batterySimInitialN === offeredUnits && avecTtc !== n
     ? formatMAD(sansTtc)
     : null;
 // Config sérialisée pour le script client (recalcul au curseur, sans réseau).
+// PACT-battery — `mode` (curveMode) permet au client de recalculer `consShape`
+// via consumptionShapeHours() pour la variante active des onglets Standard/
+// Été/Ramadan, exactement comme au changement d'onglet de la courbe nue.
 const batterySimConfig = showBatterySim
   ? JSON.stringify({
       consShape: batteryConsShape,
@@ -436,6 +441,7 @@ const batterySimConfig = showBatterySim
       offeredUnits,
       sansTtc,
       avecTtc,
+      mode: curveMode,
     })
   : '';
 
@@ -1503,23 +1509,6 @@ const signConfig = ok
               <!-- WJ80 — tap-to-reveal du repère pic/moyenne (même discipline que
                    le graphe ci-dessus — le survol est invisible au tactile). -->
               <p id="curve-tap-caption" class="mt-2 min-h-[1.25rem] text-sm text-brass-300" aria-live="polite"></p>
-              <!-- WJ119 — toggle DISCRET été/Ramadan (résidentiel/commercial
-                   uniquement — un poste industriel ou un pompage agricole ne
-                   varient pas avec la clim/le jeûne). Change uniquement la
-                   SILHOUETTE de consommation affichée ; jamais un chiffre. -->
-              {curveVariantToggle && (
-                <div class="mt-3 flex flex-wrap items-center gap-2" role="group" aria-label="Variante du profil de consommation">
-                  <button type="button" id="curve-variant-normal" data-curve-variant-btn="normal" aria-pressed="true"
-                    class="btn-pill px-3 py-1 text-xs" style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)"
-                    data-i18n data-fr="Standard" data-en="Standard" data-ar="عادي">Standard</button>
-                  <button type="button" id="curve-variant-ete" data-curve-variant-btn="ete" aria-pressed="false"
-                    class="btn-pill px-3 py-1 text-xs"
-                    data-i18n data-fr="Été (clim)" data-en="Summer (AC)" data-ar="الصيف (تكييف)">Été (clim)</button>
-                  <button type="button" id="curve-variant-ramadan" data-curve-variant-btn="ramadan" aria-pressed="false"
-                    class="btn-pill px-3 py-1 text-xs"
-                    data-i18n data-fr="Ramadan" data-en="Ramadan" data-ar="رمضان">Ramadan</button>
-                </div>
-              )}
               <div class="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
                 <span class="inline-flex items-center gap-2 text-lune-soft">
                   <span class="inline-block h-3 w-3 rounded-sm" style="background: var(--color-brass-400)" aria-hidden="true"></span>
@@ -1633,6 +1622,31 @@ const signConfig = ok
                 data-ar="الافتراضات: بطارية ليثيوم LFP، عمق تفريغ 90٪، كفاءة ذهاب وإياب ≈ 92٪. نمط نموذجي في المغرب معدّل حسب فاتورتكم — وليس رقماً مقيساً. السعر المعروض للبطارية هو سعر عرضكم؛ أي تكوين آخر يُسعّر حسب الدراسة.">
                 Hypothèses : batterie lithium LFP, décharge 90 %, rendement aller-retour ≈ 92 %. Profil type au Maroc ajusté à votre facture — jamais un chiffre mesuré. Le prix batterie affiché est celui de votre devis ; toute autre configuration est chiffrée sur étude.
               </p>
+              </div>
+            )}
+
+            {/* ── Onglets de profil Standard/Été/Ramadan : COMMUNS aux deux
+                   calques de la vue journée (courbe nue ET batterie) — le
+                   fondateur a demandé que « Avec batterie » se COMBINE avec
+                   ces onglets plutôt que les faire disparaître. Ils vivaient
+                   avant DANS le calque « daily » (donc masqués dès que la
+                   batterie remplaçait ce calque) ; ils sont désormais un
+                   frère commun, visible tant que productionLayers dit
+                   showVariantTabs — quel que soit le dessin affiché. Changer
+                   d'onglet pendant que la batterie est active recalcule la
+                   silhouette de consommation ET rejoue le simulateur (script
+                   client), jamais un chiffre inventé ici. -->
+            {curveVariantToggle && (
+              <div data-prod-variant-control class="mt-3 flex flex-wrap items-center gap-2" role="group" aria-label="Variante du profil de consommation" hidden={!prodLayers.showVariantTabs}>
+                <button type="button" id="curve-variant-normal" data-curve-variant-btn="normal" aria-pressed="true"
+                  class="btn-pill px-3 py-1 text-xs" style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)"
+                  data-i18n data-fr="Standard" data-en="Standard" data-ar="عادي">Standard</button>
+                <button type="button" id="curve-variant-ete" data-curve-variant-btn="ete" aria-pressed="false"
+                  class="btn-pill px-3 py-1 text-xs"
+                  data-i18n data-fr="Été (clim)" data-en="Summer (AC)" data-ar="الصيف (تكييف)">Été (clim)</button>
+                <button type="button" id="curve-variant-ramadan" data-curve-variant-btn="ramadan" aria-pressed="false"
+                  class="btn-pill px-3 py-1 text-xs"
+                  data-i18n data-fr="Ramadan" data-en="Ramadan" data-ar="رمضان">Ramadan</button>
               </div>
             )}
 
@@ -2984,6 +2998,7 @@ const signConfig = ok
     initialProductionState,
     productionLayers,
     setProductionView,
+    setCurveVariant,
     setBatteryLayer,
   } from '../../lib/propositionPage';
 
@@ -3126,10 +3141,14 @@ const signConfig = ok
     });
     applyCurveVisibility();
   }
-  document.querySelectorAll<HTMLElement>('[data-curve-variant-btn]').forEach((btn) => {
-    const variant = btn.getAttribute('data-curve-variant-btn') as CurveVariantId | null;
-    if (variant) btn.addEventListener('click', () => applyCurveVariant(variant));
-  });
+  // PACT-battery (2026-08-15) — les clics sur les onglets Standard/Été/Ramadan
+  // ne bougent plus `currentCurveVariant` directement : ils passent par la MÊME
+  // machine à états que le sélecteur de vue et la case batterie (setCurveVariant,
+  // lib/propositionPage), câblée juste en dessous dans setupProductionChart. Ça
+  // corrige un double défaut : (1) l'onglet cliqué était oublié au prochain
+  // `apply()` (le state ne changeait jamais, donc un futur clic sur la vue ou la
+  // batterie ramenait « Standard ») et (2) le calque batterie ne réagissait pas
+  // du tout au changement de profil — voir __propSetBatteryVariant plus bas.
 
   // ── PV80 — LE GRAPHIQUE FUSIONNÉ « Votre production » ──────────────────────
   // Le serveur a déjà posé le bon calque au premier rendu ; ce bloc rejoue
@@ -3168,8 +3187,21 @@ const signConfig = ok
       });
       const control = section!.querySelector<HTMLElement>('[data-prod-battery-control]');
       if (control) control.hidden = !layers.showBatteryToggle;
+      // PACT-battery — les onglets Standard/Été/Ramadan sont désormais un frère
+      // commun aux deux calques (daily ET battery, cf. data-prod-variant-control) :
+      // visibles tant que la vue journée les rend, quel que soit le dessin actif.
+      const variantControl = section!.querySelector<HTMLElement>('[data-prod-variant-control]');
+      if (variantControl) variantControl.hidden = !layers.showVariantTabs;
       // La courbe journalière reste synchrone de l'onglet de profil actif.
       if (layers.variant !== currentCurveVariant) applyCurveVariant(layers.variant);
+      // PACT-battery — le calque batterie REMPLACE la courbe nue mais doit
+      // continuer à réagir à l'onglet de profil : on rejoue le simulateur (autre
+      // île <script>, pont window comme __propApplyLang ci-dessous) avec la MÊME
+      // variante, exactement comme au déplacement du curseur d'unités.
+      if (layers.battery) {
+        (window as unknown as { __propSetBatteryVariant?: (v: CurveVariantId) => void })
+          .__propSetBatteryVariant?.(layers.variant);
+      }
     }
 
     section.querySelectorAll<HTMLElement>('[data-prod-view-btn]').forEach((btn) => {
@@ -3177,6 +3209,17 @@ const signConfig = ok
       if (!view) return;
       btn.addEventListener('click', () => {
         state = setProductionView(state, view, availability);
+        apply();
+      });
+    });
+    // PACT-battery — les onglets Standard/Été/Ramadan passent par la même
+    // machine à états (setCurveVariant) que la vue et la case batterie : le
+    // calque affiché (courbe nue OU batterie) suit toujours le même profil.
+    section.querySelectorAll<HTMLElement>('[data-curve-variant-btn]').forEach((btn) => {
+      const variant = btn.getAttribute('data-curve-variant-btn') as CurveVariantId | null;
+      if (!variant) return;
+      btn.addEventListener('click', () => {
+        state = setCurveVariant(state, variant, availability);
         apply();
       });
     });
@@ -3843,7 +3886,12 @@ const signConfig = ok
   // WJ120 — moteur du simulateur batterie (PUR) importé ES pour un recalcul 100 %
   // local au curseur (aucun re-fetch). Regroupé dans CE script (cf. note WJ34/WJ53
   // ci-dessous) ; batterySim n'a aucune dépendance runtime lourde.
-  import { simulateBattery, renderBatterySplitSvg } from '../../lib/batterySim';
+  import { simulateBattery, renderBatterySplitSvg, HOURS_PER_DAY } from '../../lib/batterySim';
+  // PACT-battery (2026-08-15) — MÊME fonction pure que le rendu serveur initial
+  // (voir l'astro plus haut, `batteryConsShape`) : reconstruit la silhouette de
+  // consommation pour la variante active des onglets Standard/Été/Ramadan, sans
+  // jamais diverger entre les deux passes.
+  import { consumptionShapeHours, type ProposalCurveVariant, type ProposalCurveMode } from '../../lib/proposalCurve';
   // WJ129 — géométrie PURE (testée sous vitest, propositionSldViewerWJ129.test.ts)
   // de la visionneuse plein écran du schéma électrique. Regroupée dans CE
   // script (cf. note WJ34/WJ53 ci-dessous : un <script> supplémentaire isolé
@@ -4170,6 +4218,10 @@ const signConfig = ok
       offeredUnits: number;
       sansTtc: number | null;
       avecTtc: number | null;
+      // PACT-battery — mode courant (résidentiel/commercial, seuls modes
+      // éligibles au simulateur batterie) : nécessaire pour recalculer
+      // consShape via consumptionShapeHours() à chaque onglet de profil.
+      mode: ProposalCurveMode;
     }
     const section = document.getElementById('battery-sim');
     if (!section) return;
@@ -4216,6 +4268,12 @@ const signConfig = ok
 
     let currentN = Math.max(0, Math.min(cfg.maxUnits, Math.trunc(cfg.initialN)));
     let lastHourly: { direct: number[]; battery: number[]; grid: number[] } | null = null;
+    // PACT-battery — onglet de profil actif (Standard/Été/Ramadan). Le rendu
+    // serveur initial est TOUJOURS 'normal' (cfg.consShape en hérite) ; ce
+    // n'est qu'après hydratation qu'un clic sur un autre onglet, pendant que
+    // ce calque batterie est actif, fait bouger cette variable (pont
+    // __propSetBatteryVariant, exposé plus bas).
+    let currentVariant: ProposalCurveVariant = 'normal';
 
     function renderPrice(n: number): void {
       const el = document.getElementById('battery-sim-price');
@@ -4225,10 +4283,20 @@ const signConfig = ok
       else el.textContent = ON_STUDY[curLang()];
     }
 
+    // Silhouette de consommation active : le rendu serveur ('normal') reste
+    // cfg.consShape tel quel (zéro recalcul redondant) ; toute autre variante
+    // passe par la MÊME fonction pure que le rendu serveur (consumptionShapeHours,
+    // proposalCurve.ts) — jamais un chiffre inventé ici.
+    function activeConsShape(): number[] {
+      return currentVariant === 'normal'
+        ? cfg.consShape
+        : consumptionShapeHours(HOURS_PER_DAY, { mode: cfg.mode, variant: currentVariant });
+    }
+
     function update(n: number): void {
       currentN = n;
       const res = simulateBattery({
-        consumptionShape: cfg.consShape,
+        consumptionShape: activeConsShape(),
         productionShape: cfg.solarShape,
         dailyConsumptionKwh: cfg.dailyConsKwh,
         dailyProductionKwh: cfg.dailyProdKwh,
@@ -4273,6 +4341,18 @@ const signConfig = ok
 
     // Recalcule une fois au chargement (idempotent avec le rendu serveur).
     update(currentN);
+
+    // PACT-battery — pont exposé à l'AUTRE île <script> (setupProductionChart,
+    // productionLayers/lib/propositionPage) : appelé quand le calque batterie
+    // est affiché ET que l'onglet Standard/Été/Ramadan change, pour rejouer
+    // EXACTEMENT le même chemin que le curseur d'unités (activeConsShape →
+    // simulateBattery → renderBatterySplitSvg), jamais un second moteur.
+    (window as unknown as { __propSetBatteryVariant?: (v: ProposalCurveVariant) => void }).__propSetBatteryVariant =
+      (v: ProposalCurveVariant) => {
+        if (v === currentVariant) return;
+        currentVariant = v;
+        update(currentN);
+      };
   })();
 
   // ── WJ128 — « Télécharger le schéma (SVG) » : Blob + URL.createObjectURL,

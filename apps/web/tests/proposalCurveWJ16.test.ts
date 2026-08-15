@@ -7,6 +7,7 @@ import {
   renderYearCurve,
   solarProfile,
   consumptionProfile,
+  consumptionShapeHours,
 } from '../src/lib/proposalCurve';
 
 describe('WJ16 — profils horaires normalisés', () => {
@@ -43,6 +44,32 @@ describe('WJ16 — profils horaires normalisés', () => {
     expect(consumptionProfile(13)).toBeCloseTo(1 / 2.4, 6);
     // Appel sans options === repli explicite { mode: 'residentiel', variant: 'normal' }.
     expect(consumptionProfile(20)).toBe(consumptionProfile(20, { mode: 'residentiel', variant: 'normal' }));
+  });
+
+  // PACT-battery (2026-08-15) — consumptionShapeHours est la SEULE fonction qui
+  // échantillonne la silhouette pour le simulateur batterie (rendu serveur
+  // initial ET recalcul client au changement d'onglet Standard/Été/Ramadan
+  // pendant que le calque batterie est actif) : elle doit rester un simple
+  // échantillonnage heure par heure de consumptionProfile, sans rien inventer.
+  it('consumptionShapeHours — échantillonne consumptionProfile heure par heure', () => {
+    const shape = consumptionShapeHours(24, { mode: 'residentiel', variant: 'normal' });
+    expect(shape).toHaveLength(24);
+    for (let h = 0; h < 24; h++) {
+      expect(shape[h]).toBe(consumptionProfile(h, { mode: 'residentiel', variant: 'normal' }));
+    }
+  });
+
+  it('consumptionShapeHours — la variante change bien le tableau produit', () => {
+    const normal = consumptionShapeHours(24, { mode: 'residentiel', variant: 'normal' });
+    const ete = consumptionShapeHours(24, { mode: 'residentiel', variant: 'ete' });
+    const ramadan = consumptionShapeHours(24, { mode: 'residentiel', variant: 'ramadan' });
+    expect(ete).not.toEqual(normal);
+    expect(ramadan).not.toEqual(normal);
+  });
+
+  it('consumptionShapeHours — repli sur un tableau vide pour une longueur nulle/négative', () => {
+    expect(consumptionShapeHours(0)).toEqual([]);
+    expect(consumptionShapeHours(-3)).toEqual([]);
   });
 });
 
