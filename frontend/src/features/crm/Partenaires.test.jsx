@@ -21,6 +21,7 @@ beforeAll(() => {
 const {
   getPartenaires, createPartenaire, activerPartenaire,
   getSoumissions, qualifierSoumission, getCommissions, marquerPayee,
+  createCommission, getReleve,
 } = vi.hoisted(() => ({
   getPartenaires: vi.fn(),
   createPartenaire: vi.fn(() => Promise.resolve({ data: { id: 3 } })),
@@ -29,6 +30,8 @@ const {
   qualifierSoumission: vi.fn(),
   getCommissions: vi.fn(),
   marquerPayee: vi.fn(),
+  createCommission: vi.fn(() => Promise.resolve({ data: { id: 21 } })),
+  getReleve: vi.fn(() => Promise.resolve({ data: [] })),
 }))
 
 vi.mock('../../api/crmApi', () => ({
@@ -40,7 +43,8 @@ vi.mock('../../api/crmApi', () => ({
     qualifierSoumissionLeadPartenaire: (...args) => qualifierSoumission(...args),
     getCommissionsPartenaire: (...args) => getCommissions(...args),
     marquerPayeeCommissionPartenaire: (...args) => marquerPayee(...args),
-    getReleveCommissionsPartenaire: vi.fn(() => Promise.resolve({ data: [] })),
+    createCommissionPartenaire: (...args) => createCommission(...args),
+    getReleveCommissionsPartenaire: (...args) => getReleve(...args),
   },
 }))
 
@@ -133,5 +137,51 @@ describe('Partenaires (PACT102)', () => {
     await user.click((await screen.findAllByRole('button', { name: 'Marquer payée' }))[0])
 
     await waitFor(() => expect(marquerPayee).toHaveBeenCalledWith(20))
+  })
+
+  // WIR228 — le tableau des commissions n'avait aucun chemin de création :
+  // `createCommissionPartenaire` existait côté API mais aucun formulaire ne
+  // l'appelait.
+  it('crée une commission pour le partenaire sélectionné puis elle apparaît', async () => {
+    getCommissions
+      .mockResolvedValueOnce({
+        data: [{ id: 20, partenaire: 1, base_ht: '10000.00', taux: '5.00', montant: '500.00', statut: 'due' }],
+      })
+      .mockResolvedValueOnce({
+        data: [
+          { id: 20, partenaire: 1, base_ht: '10000.00', taux: '5.00', montant: '500.00', statut: 'due' },
+          { id: 21, partenaire: 1, base_ht: '8000.00', taux: '5.00', montant: '400.00', statut: 'due' },
+        ],
+      })
+    const user = userEvent.setup()
+    withProviders(<Partenaires />)
+    await waitFor(() => expect(screen.getAllByText('SolarZen SARL').length).toBeGreaterThan(0))
+
+    await user.click(screen.getAllByRole('button', { name: 'Détails' })[0])
+    await screen.findAllByRole('button', { name: 'Agréer ce partenaire' })
+
+    await user.type(screen.getByLabelText('Base HT de la commission'), '8000')
+    await user.click(screen.getByRole('button', { name: 'Créer la commission' }))
+
+    await waitFor(() => expect(createCommission).toHaveBeenCalledWith(expect.objectContaining({
+      partenaire: 1, base_ht: '8000',
+    })))
+    expect((await screen.findAllByText('400.00')).length).toBeGreaterThan(0)
+  })
+
+  // WIR228 — le relevé (dû/payé/total par partenaire) n'avait aucun bouton
+  // pour l'afficher, bien que l'appel API existait déjà.
+  it('affiche le relevé dû/payé/total par partenaire', async () => {
+    getReleve.mockResolvedValueOnce({
+      data: [{ partenaire: 1, nom: 'SolarZen SARL', due: 500, payee: 1200, total: 1700 }],
+    })
+    const user = userEvent.setup()
+    withProviders(<Partenaires />)
+    await waitFor(() => expect(screen.getAllByText('SolarZen SARL').length).toBeGreaterThan(0))
+
+    await user.click(screen.getByRole('button', { name: 'Relevé' }))
+
+    await waitFor(() => expect(getReleve).toHaveBeenCalled())
+    expect(await screen.findByText('1700')).toBeInTheDocument()
   })
 })

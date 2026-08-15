@@ -132,12 +132,84 @@ export default function Partenaires() {
     }
   }
 
+  // ── WIR228 — création directe d'une commission (le tableau était
+  // structurellement vide : `createCommissionPartenaire` existait déjà côté
+  // API mais aucun formulaire ne l'appelait). Le taux est optionnel : laissé
+  // vide, le serveur retombe sur le taux du partenaire (`enregistrer_commission`).
+  const [commissionForm, setCommissionForm] = useState({ base_ht: '', taux: '', lead_id: '', devis_id: '' })
+  const [creatingCommission, setCreatingCommission] = useState(false)
+
+  const creerCommission = async (event) => {
+    event.preventDefault()
+    if (!selected || !commissionForm.base_ht) return
+    setCreatingCommission(true)
+    try {
+      await crmApi.createCommissionPartenaire({
+        partenaire: selected.id,
+        base_ht: commissionForm.base_ht,
+        taux: commissionForm.taux || undefined,
+        lead_id: commissionForm.lead_id || undefined,
+        devis_id: commissionForm.devis_id || undefined,
+      })
+      toast.success('Commission créée.')
+      setCommissionForm({ base_ht: '', taux: '', lead_id: '', devis_id: '' })
+      const res = await crmApi.getCommissionsPartenaire({ partenaire: selected.id })
+      setCommissions(res.data?.results ?? res.data ?? [])
+    } catch (err) {
+      toast.error(frenchError(err, 'Impossible de créer cette commission.'))
+    } finally {
+      setCreatingCommission(false)
+    }
+  }
+
+  // ── WIR228 — relevé agrégé dû/payé/total par partenaire, jamais consommé
+  // jusqu'ici bien que `getReleveCommissionsPartenaire` existait déjà. ──────
+  const [releve, setReleve] = useState(null)
+  const [releveLoading, setReleveLoading] = useState(false)
+
+  const ouvrirReleve = async () => {
+    setReleveLoading(true)
+    try {
+      const res = await crmApi.getReleveCommissionsPartenaire()
+      setReleve(res.data?.results ?? res.data ?? [])
+    } catch (err) {
+      toast.error(frenchError(err, 'Impossible de charger le relevé des commissions.'))
+    } finally {
+      setReleveLoading(false)
+    }
+  }
+
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
         <Handshake size={20} strokeWidth={1.75} aria-hidden="true" />
         <h1 style={{ fontSize: 18, fontWeight: 600, margin: 0 }}>Partenaires</h1>
+        <Button type="button" variant="outline" size="sm" onClick={ouvrirReleve} disabled={releveLoading} style={{ marginLeft: 'auto' }}>
+          {releveLoading ? 'Chargement…' : 'Relevé'}
+        </Button>
       </div>
+
+      {releve && (
+        <div style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: 16, marginBottom: 16 }}>
+          <h2 style={{ fontSize: 15, fontWeight: 600, marginTop: 0 }}>Relevé des commissions</h2>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead><tr><th>Partenaire</th><th>Dû</th><th>Payé</th><th>Total</th></tr></thead>
+            <tbody>
+              {releve.map((r) => (
+                <tr key={r.partenaire}>
+                  <td>{r.nom}</td>
+                  <td>{r.due}</td>
+                  <td>{r.payee}</td>
+                  <td>{r.total}</td>
+                </tr>
+              ))}
+              {releve.length === 0 && (
+                <tr><td colSpan={4} style={{ textAlign: 'center', color: '#64748b' }}>Aucune commission enregistrée</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       <form onSubmit={creerPartenaire} style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
         <input
@@ -243,6 +315,41 @@ export default function Partenaires() {
           </table>
 
           <h3 style={{ fontSize: 13, fontWeight: 600 }}>Commissions</h3>
+          <form onSubmit={creerCommission} style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+            <input
+              type="number" step="0.01"
+              placeholder="Base HT (MAD)"
+              value={commissionForm.base_ht}
+              onChange={(e) => setCommissionForm({ ...commissionForm, base_ht: e.target.value })}
+              aria-label="Base HT de la commission"
+              required
+            />
+            <input
+              type="number" step="0.01"
+              placeholder={`Taux (% — défaut ${selected.taux_commission}%)`}
+              value={commissionForm.taux}
+              onChange={(e) => setCommissionForm({ ...commissionForm, taux: e.target.value })}
+              aria-label="Taux de la commission"
+              style={{ width: 90 }}
+            />
+            <input
+              placeholder="Id lead"
+              value={commissionForm.lead_id}
+              onChange={(e) => setCommissionForm({ ...commissionForm, lead_id: e.target.value })}
+              aria-label="Id du lead"
+              style={{ width: 90 }}
+            />
+            <input
+              placeholder="Id devis"
+              value={commissionForm.devis_id}
+              onChange={(e) => setCommissionForm({ ...commissionForm, devis_id: e.target.value })}
+              aria-label="Id du devis"
+              style={{ width: 90 }}
+            />
+            <Button type="submit" disabled={creatingCommission}>
+              {creatingCommission ? 'Création…' : 'Créer la commission'}
+            </Button>
+          </form>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead><tr><th>Base HT</th><th>Taux</th><th>Montant</th><th>Statut</th><th /></tr></thead>
             <tbody>
