@@ -20,7 +20,7 @@ import { BulkDestructiveConfirm } from '../../../ui/BulkDestructiveConfirm'
 const NO_OWNER = '__none'
 
 export default function BulkActionBar({
-  count, users = [], canDelete, hasArchivedSelected = false,
+  count, users = [], messageTemplates = [], canDelete, hasArchivedSelected = false,
   busy, onAction, onExport, onClear,
 }) {
   // panneau ouvert ('reassign' | 'stage' | 'tag' | 'relance' | 'perdu' | null)
@@ -32,6 +32,11 @@ export default function BulkActionBar({
   const [tag, setTag] = useState('')
   const [relance, setRelance] = useState('')
   const [motif, setMotif] = useState('')
+  // WIR229/FG33 — panneau « WhatsApp en masse » : choix d'un modèle (optionnel,
+  // sinon texte libre) puis `prepare_whatsapp` (jamais un envoi auto — juste
+  // une file de liens wa.me que la commerciale ouvre elle-même).
+  const [waTemplateId, setWaTemplateId] = useState('')
+  const [waBody, setWaBody] = useState('')
   // Planifier une activité en masse (records.Activity) : intitulé + échéance.
   const [actSummary, setActSummary] = useState('Appeler')
   const [actDue, setActDue] = useState('')
@@ -94,6 +99,9 @@ export default function BulkActionBar({
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => toggle('activity')}>
               Planifier activité
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => toggle('whatsapp')}>
+              WhatsApp en masse
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => toggle('perdu')}>
               Perdu
@@ -244,6 +252,36 @@ export default function BulkActionBar({
           </Button>
           <span className="bulk-hint">
             Crée une activité ouverte sur chaque lead, assignée à son responsable.
+          </span>
+        </div>
+      )}
+
+      {panel === 'whatsapp' && (
+        <div className="bulk-panel">
+          <Select
+            value={waTemplateId || NO_OWNER}
+            onValueChange={(v) => setWaTemplateId(v === NO_OWNER ? '' : v)}
+          >
+            <SelectTrigger className="bulk-field"><SelectValue placeholder="Modèle (optionnel)" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NO_OWNER}>Texte libre</SelectItem>
+              {messageTemplates.map((t) => (
+                <SelectItem key={t.id} value={String(t.id)}>{t.nom}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Input className="bulk-field" placeholder="Texte libre (si aucun modèle)"
+                 value={waBody} onChange={(e) => setWaBody(e.target.value)}
+                 disabled={!!waTemplateId} />
+          <Button type="button" size="sm"
+                  onClick={() => run('prepare_whatsapp', {
+                    template_id: waTemplateId || undefined,
+                    body: waTemplateId ? undefined : waBody.trim(),
+                  })}>
+            Préparer la file
+          </Button>
+          <span className="bulk-hint">
+            Ouvre une file de liens WhatsApp pré-remplis — aucun envoi automatique.
           </span>
         </div>
       )}

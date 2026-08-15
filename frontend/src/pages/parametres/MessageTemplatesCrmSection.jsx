@@ -4,13 +4,19 @@
 // XSAL17 — {lien_rdv} : résolu UNIQUEMENT côté serveur (render/) quand un
 // lead_id est fourni ; ici on documente juste le placeholder disponible.
 import { useEffect, useState } from 'react'
-import { Plus, Trash2, Archive, ArchiveRestore } from 'lucide-react'
+import { Plus, Trash2, Archive, ArchiveRestore, Eye } from 'lucide-react'
 import {
   Card, CardContent, Input, Textarea, Select, SelectTrigger, SelectValue,
   SelectContent, SelectItem, Button, IconButton, Spinner,
 } from '../../ui'
 import { SectionTitle, Field } from './peComponents'
 import crmApi from '../../api/crmApi'
+import { frenchError } from '../../lib/frenchError'
+
+// WIR229 — valeurs d'exemple pour l'aperçu (jamais un lead réel : aucun
+// `lead_id` transmis, donc `{lien_rdv}` disparaît simplement s'il est
+// présent — comportement documenté côté serveur, render_template).
+const APERCU_EXEMPLE = { prenom: 'Karim', ville: 'Casablanca', lien: 'https://taqinor.ma/proposition/exemple' }
 
 // Placeholders disponibles au rendu (render_template, apps/crm/views.py) :
 // {prenom}/{ville}/{lien} toujours substituables ; {lien_rdv} (XSAL17) exige
@@ -63,6 +69,24 @@ export default function MessageTemplatesCrmSection() {
     load()
   }
 
+  // WIR229 — l'aperçu SERVEUR (render_template) n'était jamais câblé : le
+  // texte affiché est TOUJOURS celui rendu par le serveur, jamais recalculé
+  // côté écran (placeholders, {lien_rdv} conditionnel…).
+  const [apercus, setApercus] = useState({})
+  const [apercuLoading, setApercuLoading] = useState(null)
+
+  const voirApercu = async (tpl) => {
+    setApercuLoading(tpl.id)
+    try {
+      const res = await crmApi.renderMessageTemplate(tpl.id, APERCU_EXEMPLE)
+      setApercus((a) => ({ ...a, [tpl.id]: res.data?.texte ?? '' }))
+    } catch (err) {
+      setApercus((a) => ({ ...a, [tpl.id]: frenchError(err, "Aperçu indisponible.") }))
+    } finally {
+      setApercuLoading(null)
+    }
+  }
+
   return (
     <Card>
       <CardContent className="pt-4 sm:pt-5">
@@ -103,6 +127,12 @@ export default function MessageTemplatesCrmSection() {
                   ))}
                 </SelectContent>
               </Select>
+              <Button type="button" variant="outline" size="sm"
+                      disabled={apercuLoading === t.id}
+                      onClick={() => voirApercu(t)}>
+                <Eye className="size-4" aria-hidden="true" />
+                {apercuLoading === t.id ? 'Aperçu…' : 'Aperçu'}
+              </Button>
               <IconButton size="md" variant="outline"
                           label={t.archived ? 'Réactiver' : 'Archiver'}
                           onClick={() => archiveTemplate(t)}>
@@ -125,6 +155,11 @@ export default function MessageTemplatesCrmSection() {
                           }
                         }} />
             </Field>
+            {apercus[t.id] != null && (
+              <p className="mt-2 rounded-md border border-border bg-muted/40 p-2 text-xs" data-testid={`mtc-apercu-${t.id}`}>
+                {apercus[t.id]}
+              </p>
+            )}
           </div>
         ))}
 

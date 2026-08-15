@@ -149,6 +149,14 @@ export default function LeadsPage() {
       .then(r => setUsers(r.data.results ?? r.data)).catch(() => {})
   }, [])
 
+  // WIR229 — modèles de messages pour le panneau « WhatsApp en masse »
+  // (bulk `prepare_whatsapp`, FG33) — jamais consommé côté LeadsPage jusqu'ici.
+  const [messageTemplates, setMessageTemplates] = useState([])
+  useEffect(() => {
+    crmApi.getMessageTemplates()
+      .then(r => setMessageTemplates(r.data.results ?? r.data)).catch(() => {})
+  }, [])
+
   // Vue active, persistée (kanban par défaut, façon Odoo).
   // LB22 — priorité URL > localStorage > défaut (blueprint D5/I7) : une URL
   // collée (`?view=liste`) gagne toujours sur la vue persistée localement —
@@ -499,12 +507,22 @@ export default function LeadsPage() {
   // Action en masse : la règle métier (funnel, garde-fous, Historique) vit
   // côté serveur. On rafraîchit, on affiche le bilan et on garde la sélection
   // (élaguée aux leads encore présents par l'effet ci-dessus).
+  // WIR229/FG33 — la file WhatsApp en masse (résultat spécial `{queue,
+  // count}`, aucun `updated`/`unchanged`) : liens wa.me à ouvrir un par un,
+  // jamais un envoi auto. `bulkResultMessage` ne s'applique pas à cette
+  // forme de réponse — traité à part, sans toucher au reste du bilan.
+  const [waQueue, setWaQueue] = useState(null)
+
   const runBulk = async (action, params = {}) => {
     if (!visibleSelected.size) return
     const ids = [...visibleSelected]
     setBulkBusy(true)
     try {
       const { data } = await crmApi.bulkLeads({ ids, action, ...params })
+      if (action === 'prepare_whatsapp') {
+        setWaQueue(data.queue ?? [])
+        return
+      }
       setBulkMsg(bulkResultMessage(data))
       refetch()
       // VX95 — archivage en masse déjà commis serveur : « Annuler » relance
@@ -979,6 +997,7 @@ export default function LeadsPage() {
           <BulkActionBar
             count={visibleSelected.size}
             users={users}
+            messageTemplates={messageTemplates}
             canDelete={canDelete}
             hasArchivedSelected={hasArchivedSelected}
             busy={bulkBusy}
@@ -986,6 +1005,37 @@ export default function LeadsPage() {
             onExport={exportSelection}
             onClear={clearSelection}
           />
+        </div>
+      )}
+
+      {/* WIR229/FG33 — file WhatsApp en masse : liens wa.me pré-remplis,
+          ouverts UN PAR UN par la commerciale — aucun envoi automatique. */}
+      {waQueue && (
+        <div className="lp-bulk-msg" role="status" data-testid="wa-bulk-queue">
+          <span>
+            {waQueue.length > 0
+              ? `${waQueue.length} lien(s) WhatsApp prêt(s) — ouvrez-les un par un.`
+              : "Aucun lead sélectionné n'a de numéro WhatsApp/téléphone."}
+          </span>
+          {waQueue.length > 0 && (
+            <ul className="lp-wa-queue-list">
+              {waQueue.map((item) => (
+                <li key={item.lead_id}>
+                  <a href={item.wa_url} target="_blank" rel="noopener noreferrer">
+                    Ouvrir WhatsApp — {item.nom}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )}
+          <IconButton
+            variant="ghost"
+            className="lp-stage-error-close"
+            label="Fermer la file WhatsApp"
+            onClick={() => setWaQueue(null)}
+          >
+            <X />
+          </IconButton>
         </div>
       )}
 
