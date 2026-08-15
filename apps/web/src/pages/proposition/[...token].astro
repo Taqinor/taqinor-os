@@ -530,7 +530,7 @@ const show3d = !!viewerModel && viewerModel.totalPanels >= 0;
 // draper la VRAIE photo satellite sur la 3D (buildPublicRoofImageSpec) ; vide
 // si aucun roof_layout exploitable, le client saute alors l'appel réseau.
 const roofOutlineLatLng = roofLayout ? roofLayoutOutlineLatLng(roofLayout) : [];
-const viewerConfig = show3d ? JSON.stringify({ model: viewerModel, roofOutlineLatLng }) : null;
+const viewerConfig = show3d ? JSON.stringify({ model: viewerModel, roofOutlineLatLng, layout: roofLayout }) : null;
 
 // ── WJ128 — Schéma électrique (SLD) : rendu UNIQUEMENT quand le backend
 // fournit `sld_svg` (étude électrique du devis existante) — absent/null →
@@ -3721,7 +3721,7 @@ const signConfig = ok
   // Three.js est chargé par import() dynamique : au scroll (IntersectionObserver)
   // en conditions normales, UNIQUEMENT au tap en reduced-motion / Save-Data.
   // Échec WebGL / import → le poster (photo d'étude) reste, avec une note claire.
-  import type { ViewerModel } from '../../lib/proposition';
+  import type { RoofLayout, ViewerModel } from '../../lib/proposition';
   import type { RoofImageSpec } from '../../scripts/roofPro11/viewerOnly';
 
   const section3d = document.getElementById('roof3d');
@@ -3738,15 +3738,21 @@ const signConfig = ok
     // photo satellite drapée sur la 3D ; vide si aucun roof_layout exploitable
     // (le client saute alors l'appel réseau de buildPublicRoofImageSpec).
     let roofOutlineLatLng: Array<[number, number]> = [];
+    // Le layout PUBLIC brut (parseRoofLayout côté serveur) : il porte le
+    // calepinage RÉEL, seule source de la visionneuse PLEINE (le vrai builder).
+    let layout: RoofLayout | null = null;
     try {
       const parsed = JSON.parse(section3d.dataset.viewerConfig) as {
         model: ViewerModel;
         roofOutlineLatLng?: Array<[number, number]>;
+        layout?: RoofLayout | null;
       };
       model = parsed.model;
       roofOutlineLatLng = Array.isArray(parsed.roofOutlineLatLng) ? parsed.roofOutlineLatLng : [];
+      layout = parsed.layout ?? null;
     } catch {
       model = null;
+      layout = null;
     }
 
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -3778,6 +3784,43 @@ const signConfig = ok
         if (!strategy.canBoot) {
           showFallback(strategy.fallbackMessage ?? 'Vue 3D indisponible sur cet appareil — voici la photo de votre étude.');
           return;
+        }
+        // VISIONNEUSE PLEINE : le VRAI rendu de l'ERP (scene3d) sur la carte
+        // satellite complète. Tout refus (ancien lien sans calepinage réel, pas
+        // de clé d'imagerie, WebGL absent) renvoie null → on garde EXACTEMENT le
+        // chemin viewerOnly ci-dessous, inchangé.
+        const fullLayout = layout;
+        if (fullLayout) {
+          const cfg = (await fetch('/api/roof-config', { signal: AbortSignal.timeout(10_000) })
+            .then((r) => (r.ok ? r.json() : null))
+            .catch(() => null)) as { maptilerKey?: string; mapboxToken?: string } | null;
+          if (cfg && (cfg.maptilerKey || cfg.mapboxToken)) {
+            const full = await import('../../scripts/roofPro11/viewerFullBoot');
+            const fullHandle = full.bootViewerFull(stage, fullLayout, {
+              maptilerKey: cfg.maptilerKey,
+              mapboxToken: cfg.mapboxToken,
+              reducedMotion: reduced,
+              lowEnd: strategy.lowEnd,
+              onReady: () => {
+                if (overlay) overlay.hidden = true;
+                if (hintEl) {
+                  hintEl.hidden = false;
+                  // Gestes carte ≠ gestes Three : réécrit data-i18n ET le texte,
+                  // sinon le sélecteur de langue remet l'ancien libellé.
+                  hintEl.dataset.fr = 'Deux doigts pour déplacer et zoomer · clic droit ou Ctrl + glisser pour tourner';
+                  hintEl.dataset.en = 'Two fingers to pan and zoom · right-click or Ctrl + drag to rotate';
+                  hintEl.dataset.ar = 'إصبعان للتحريك والتكبير · زر أيمن أو Ctrl + سحب للتدوير';
+                  hintEl.textContent = hintEl.dataset.fr;
+                }
+                stage.classList.add('roof3d-stage--sky', 'roof3d-stage--map');
+              },
+              onMapError: () => showFallback('Vue 3D interrompue — voici la photo de votre étude.'),
+            });
+            if (fullHandle) {
+              handle = { dispose: () => fullHandle.destroy() };
+              return;
+            }
+          }
         }
         // WJ118 — photo satellite RÉELLE du toit du client (contrat viewerOnly
         // ci-dessus) : TOUT échec (pas de clé MAPTILER/MAPBOX, contour < 3
@@ -4983,6 +5026,15 @@ const signConfig = ok
   }
   .roof3d-stage :global(canvas:active) {
     cursor: grabbing;
+  }
+  /* VISIONNEUSE PLEINE : MapLibre gère lui-même curseur et `touch-action`
+     (gestes coopératifs — un doigt fait défiler la PAGE, deux doigts déplacent
+     la carte). Les deux règles ci-dessus, écrites pour le canvas Three.js seul,
+     doivent être neutralisées quand la carte est montée, sinon un doigt posé sur
+     la carte bloque le défilement de la proposition. */
+  .roof3d-stage.roof3d-stage--map :global(canvas) {
+    touch-action: unset;
+    cursor: unset;
   }
   /* Scrim léger pour la lisibilité du bouton/note posés sur la photo. */
   .roof3d-scrim {
