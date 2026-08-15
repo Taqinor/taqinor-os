@@ -105,8 +105,22 @@ const aoApi = {
     },
   },
   releves: crud('releves'),
-  obstacles: crud('obstacles'),
-  chaines: crud('chaines-cotes'),
+  // WIR205 — un obstacle « écarté » n'est JAMAIS supprimé (géométrie
+  // conservée pour la marche de décomposition) ; motif obligatoire côté
+  // serveur (400 sans lui). `reintegrer` accepte une `provenance` optionnelle.
+  obstacles: {
+    ...crud('obstacles'),
+    ecarter: (id, motif) => api.post(`/ao/obstacles/${id}/ecarter/`, { motif }),
+    reintegrer: (id, data) => api.post(`/ao/obstacles/${id}/reintegrer/`, data || {}),
+  },
+  // WIR205 — `compensation` PROPOSE une répartition au prorata sans rien
+  // appliquer (jamais recalculé client) : le front lit cette proposition,
+  // ne la recalcule jamais localement.
+  chaines: {
+    ...crud('chaines-cotes'),
+    deduire: (id, index) => api.post(`/ao/chaines-cotes/${id}/deduire/`, { index }),
+    compensation: (id) => api.get(`/ao/chaines-cotes/${id}/compensation/`),
+  },
   // PV54/PV56 — `ZoneAO` existe désormais (contour NOMMÉ : enveloppe /
   // interdite / réservée / préférée), routée sous `zones` (`apps/ao/urls.py`,
   // `router.register(r'zones', ZoneAOViewSet, …)`). L'atelier de traçage
