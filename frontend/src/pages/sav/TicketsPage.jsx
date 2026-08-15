@@ -505,6 +505,46 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
     savApi.getTicketPieces(id).then((r) => setPieces(r.data)).catch(() => {})
   }
 
+  // WIR232/ZMFG8/XMFG10 — vue unifiée Ajout/Retrait/Recyclage
+  // (`getTicketPiecesUnifiees`, jamais consommée jusqu'ici) + formulaire de
+  // retrait TRACÉ (rebut/RMA/stock occasion) — contrairement au bouton
+  // « Retirer » historique (ci-dessous) qui SUPPRIME la ligne de consommation
+  // sans aucune trace.
+  const [piecesUnifiees, setPiecesUnifiees] = useState({ lignes: [], sous_totaux: {} })
+  const loadPiecesUnifiees = () => {
+    savApi.getTicketPiecesUnifiees(id)
+      .then((r) => setPiecesUnifiees(r.data ?? { lignes: [], sous_totaux: {} }))
+      .catch(() => {})
+  }
+  const [retraitForm, setRetraitForm] = useState(
+    { produit: '', quantite: '1', destination: 'rebut', operation: 'retrait', numero_serie: '' })
+  const [retraitBusy, setRetraitBusy] = useState(false)
+  const [retraitError, setRetraitError] = useState(null)
+
+  const retirerPiece = async () => {
+    if (!retraitForm.produit) return
+    setRetraitBusy(true)
+    setRetraitError(null)
+    try {
+      await savApi.retirerTicketPiece(id, {
+        produit: retraitForm.produit,
+        quantite: retraitForm.quantite || '1',
+        destination: retraitForm.destination,
+        operation: retraitForm.operation,
+        numero_serie: retraitForm.numero_serie,
+      })
+      // WIR232 — le formulaire ne se vide QU'en cas de succès (un 400 garde
+      // les valeurs saisies, jamais une re-saisie complète).
+      setRetraitForm({ produit: '', quantite: '1', destination: 'rebut', operation: 'retrait', numero_serie: '' })
+      loadPiecesUnifiees()
+      loadHistorique()
+    } catch (err) {
+      setRetraitError(frError(err, 'Échec du retrait de la pièce.'))
+    } finally {
+      setRetraitBusy(false)
+    }
+  }
+
   const reloadAll = async () => {
     try {
       const r = await savApi.getTicket(id)
@@ -523,6 +563,7 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
     loadHistorique()
     loadInterventions()
     loadPieces()
+    loadPiecesUnifiees()
     api.get('/stock/produits/')
       .then((r) => setProduits(r.data?.results ?? r.data ?? [])).catch(() => {})
     // WIR117/XSAV25 — pièces compatibles avec l'équipement lié (compatibles
@@ -1298,6 +1339,88 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
               <Plus /> Ajouter la pièce
             </Button>
           </div>
+        </CollapsibleSection>
+
+        {/* ── WIR232/ZMFG8/XMFG10 — vue unifiée Ajout/Retrait/Recyclage
+            (le bouton « Retirer » ci-dessus SUPPRIME la ligne de consommation
+            sans trace ; cette section trace un vrai retrait — rebut/RMA/
+            stock occasion, n° série optionnel). ── */}
+        <CollapsibleSection icon={Wrench} title="Pièces — vue unifiée (Ajout/Retrait/Recyclage)">
+          {piecesUnifiees.lignes.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Aucun mouvement de pièce enregistré.</p>
+          ) : (
+            <ul className="flex flex-col divide-y divide-border rounded-lg border border-border" data-testid="pieces-unifiees-liste">
+              {piecesUnifiees.lignes.map((l) => (
+                <li key={`${l.operation}-${l.id}`} className="flex items-center gap-2 p-2.5 text-sm">
+                  <Badge tone={l.operation === 'ajout' ? 'info' : l.operation === 'recyclage' ? 'success' : 'warning'}>
+                    {l.operation === 'ajout' ? 'Ajout' : l.operation === 'recyclage' ? 'Recyclage' : 'Retrait'}
+                  </Badge>
+                  <span className="flex-1">
+                    {l.produit_nom} × {l.quantite}
+                    {l.destination && ` — ${l.destination}`}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="text-xs text-muted-foreground">
+            Sous-totaux — ajout {piecesUnifiees.sous_totaux?.ajout ?? 0}, retrait {piecesUnifiees.sous_totaux?.retrait ?? 0}, recyclage {piecesUnifiees.sous_totaux?.recyclage ?? 0}
+          </p>
+
+          <div className="grid items-end gap-3 sm:grid-cols-[2fr_auto_auto_auto_auto]">
+            <FormField label="Produit">
+              <Select value={retraitForm.produit ? String(retraitForm.produit) : '__none'}
+                      onValueChange={(v) => setRetraitForm((s) => ({ ...s, produit: v === '__none' ? '' : v }))}>
+                <SelectTrigger><SelectValue placeholder="— Produit —" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none">— Produit —</SelectItem>
+                  {produits.map((pr) => (
+                    <SelectItem key={pr.id} value={String(pr.id)}>
+                      {pr.nom}{pr.sku ? ` (${pr.sku})` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormField>
+            <FormField label="Qté" className="w-24">
+              <Input type="number" min="0" step="any" value={retraitForm.quantite}
+                     onChange={(e) => setRetraitForm((s) => ({ ...s, quantite: e.target.value }))} />
+            </FormField>
+            <FormField label="Destination">
+              <Select value={retraitForm.destination}
+                      onValueChange={(v) => setRetraitForm((s) => ({ ...s, destination: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="rebut">Rebut</SelectItem>
+                  <SelectItem value="retour_fournisseur">Retour fournisseur</SelectItem>
+                  <SelectItem value="stock_occasion">Stock occasion</SelectItem>
+                </SelectContent>
+              </Select>
+            </FormField>
+            <FormField label="Opération">
+              <Select value={retraitForm.operation}
+                      onValueChange={(v) => setRetraitForm((s) => ({ ...s, operation: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="retrait">Retrait</SelectItem>
+                  <SelectItem value="recyclage">Recyclage</SelectItem>
+                </SelectContent>
+              </Select>
+            </FormField>
+            <FormField label="N° série" hint="optionnel">
+              <Input value={retraitForm.numero_serie}
+                     onChange={(e) => setRetraitForm((s) => ({ ...s, numero_serie: e.target.value }))} />
+            </FormField>
+          </div>
+          <div>
+            <Button type="button" variant="outline" size="sm"
+                    loading={retraitBusy} disabled={!retraitForm.produit} onClick={retirerPiece}>
+              <Trash2 /> Retirer une pièce
+            </Button>
+          </div>
+          {retraitError && (
+            <p className="text-sm text-destructive" role="alert">{retraitError}</p>
+          )}
         </CollapsibleSection>
 
         {/* ── Historique (chatter) — L313 repliable ── */}

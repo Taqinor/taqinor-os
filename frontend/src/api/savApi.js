@@ -98,6 +98,11 @@ const savApi = {
     api.delete(`/sav/tickets/${id}/pieces/${pieceId}/`),
   // ZMFG8 — vue unifiée Ajout/Retrait/Recyclage des pièces du ticket.
   getTicketPiecesUnifiees: (id) => api.get(`/sav/tickets/${id}/pieces-unifiees/`),
+  // WIR232/XMFG10 — pièces RETIRÉES du ticket (rebut/RMA/stock occasion, PAS
+  // une suppression de la consommation) : GET liste, POST trace un retrait
+  // avec sa destination + opération (retrait/recyclage) + n° série optionnel.
+  getTicketPiecesRetirees: (id) => api.get(`/sav/tickets/${id}/pieces-retirees/`),
+  retirerTicketPiece: (id, body) => api.post(`/sav/tickets/${id}/pieces-retirees/`, body),
 
   // XSAV12 — fusionne un ticket doublon dans ce ticket (principal).
   fusionnerTicket: (id, doublonId) =>
