@@ -1569,6 +1569,18 @@ export const VIEWER_PANEL_LONG_M = 2.384;
 export const VIEWER_PANEL_SHORT_M = 1.303;
 /** Retrait de rive (m) — même valeur que lib/roofPro2 PERIMETER_SETBACK_M. */
 export const VIEWER_SETBACK_M = 0.5;
+/** Épaisseur du panneau (m) — même valeur que lib/roofPro2 PANEL2_THICK_M. */
+export const VIEWER_PANEL_THICK_M = 0.033;
+/** Jeu entre panneaux d'une MÊME rangée (m) — même valeur que le
+ *  `PANEL_SIDE_GAP_M` de lib/estimatorBrainV2 : le pas de colonne du calepinage
+ *  du builder vaut EXACTEMENT `rowWidthM + VIEWER_PANEL_SIDE_GAP_M`. */
+export const VIEWER_PANEL_SIDE_GAP_M = 0.02;
+/** Hauteur du châssis avant sur toit plat (m) — `frontStrut` de
+ *  roofPro11/scene3d.ts (le panneau y est posé à frontStrut + montée/2 + 0,07). */
+export const VIEWER_FLAT_STAND_M = 0.1;
+/** Déport du panneau au-dessus du pan en pose affleurante (m) — même valeur que
+ *  lib/estimatorBrainV6 PITCHED_FLUSH_STANDOFF_M. */
+export const VIEWER_FLUSH_STANDOFF_M = 0.06;
 /** Inclinaison VISUELLE des châssis sur toit plat (°) — représentation 3D
  *  uniquement (aucune valeur affichée n'en dérive). */
 export const VIEWER_FLAT_TILT_DEG = 15;
@@ -1595,7 +1607,19 @@ export function viewerPointInRing(pt: [number, number], ring: Array<[number, num
 export interface ViewerPanel {
   x: number;
   y: number;
+  /**
+   * WJ130 — Face du panneau dans un chevron Est-Ouest dos à dos (`family:
+   * 'eastwest'`), telle que posée par le builder. Le rendu incline le panneau
+   * dans le sens OPPOSÉ pour la face 'E' (roofPro11/scene3d.ts : `signedTilt =
+   * face === 'E' ? -tilt : tilt`). Absente en famille sud (tilt simple).
+   */
+  face?: RoofLayoutPanelFace;
 }
+
+/** Pose d'un panneau dans le calepinage : grand côté dans la pente (portrait)
+ *  ou le long de la rangée (paysage) — mêmes deux poses que le builder
+ *  (`PanelGrid.panelOrientation` de lib/estimatorBrainV2). */
+export type ViewerPanelPose = 'portrait' | 'landscape';
 
 /** Une zone prête à dessiner (tout en mètres ENU, origine = centroïde global). */
 export interface ViewerZone {
@@ -1609,6 +1633,21 @@ export interface ViewerZone {
   /** Empreinte du panneau : le long de la rangée / dans la pente (m). */
   panelAlongM: number;
   panelDepthM: number;
+  /**
+   * WJ130 — Longueur du panneau DANS LE SENS DE LA PENTE (m), NON projetée :
+   * c'est le `slopeLenM` du builder, la vraie dimension de la boîte 3D avant
+   * l'inclinaison (`panelDepthM = panelSlopeM · cos(tilt)` en est l'empreinte
+   * au sol). Le rendu la lit telle quelle au lieu de diviser l'empreinte par
+   * `cos(tilt)` — même géométrie que roofPro11/scene3d.ts
+   * (`BoxGeometry(rowWidthM, slopeLenM, PANEL2_THICK_M)`).
+   */
+  panelSlopeM: number;
+  /** WJ130 — Pose du panneau, celle du pack gagnant côté builder. */
+  panelPose: ViewerPanelPose;
+  /** WJ130 — Famille de config posée : 'eastwest' = chevrons dos à dos. */
+  family: 'south' | 'eastwest';
+  /** WJ130 — Pose affleurante (panneaux coplanaires au pan) ? */
+  flush: boolean;
 }
 
 /** Modèle complet consommé par roofPro11/viewerOnly.ts. JSON pur. */
@@ -1617,6 +1656,93 @@ export interface ViewerModel {
   /** Rayon englobant (m) — cadre la caméra sans calcul côté client. */
   radiusM: number;
   totalPanels: number;
+}
+
+/** Empreinte de panneau d'une zone : les panneaux + les dimensions du RECTANGLE
+ *  à dessiner (le long de la rangée / au sol dans la pente / longueur réelle de
+ *  pente) et la pose qui les a produites. */
+export interface ZonePanelFootprint {
+  panels: ViewerPanel[];
+  /** Côté du panneau le long de la rangée (m) = `rowWidthM` du builder. */
+  alongM: number;
+  /** Empreinte AU SOL dans le sens de la pente (m) = `slopeM · cos(tilt)`. */
+  depthM: number;
+  /** Côté du panneau dans le sens de la pente (m) = `slopeLenM` du builder. */
+  slopeM: number;
+  pose: ViewerPanelPose;
+}
+
+/** Pose de REPLI (aucune géométrie réelle exploitable) : portrait sur pan
+ *  incliné (pose affleurante courante), paysage sur toit plat. Règle
+ *  HISTORIQUE du calepinage illustratif — inchangée. */
+function defaultViewerPose(roofType: 'flat' | 'pitched'): ViewerPanelPose {
+  return roofType === 'pitched' ? 'portrait' : 'landscape';
+}
+
+/**
+ * WJ130 — Écart maximal toléré (m) entre le pas de colonne MESURÉ sur les
+ * centres réels et l'un des deux pas théoriques du builder
+ * (`VIEWER_PANEL_SHORT_M + jeu` = 1,323 m en portrait, `VIEWER_PANEL_LONG_M +
+ * jeu` = 2,404 m en paysage). Assez large pour absorber le bruit flottant du
+ * repère ENU, assez serré pour REFUSER un pas double (une colonne sautée en
+ * portrait donne 2,646 m, à 0,242 m du pas paysage : sans cette borne on
+ * conclurait « paysage » sur un calepinage portrait troué).
+ */
+const VIEWER_POSE_PITCH_TOL_M = 0.15;
+
+/**
+ * WJ130 — Retrouve la POSE (portrait / paysage) du calepinage RÉEL à partir des
+ * seuls centres de panneaux sérialisés par le builder.
+ *
+ * Pourquoi c'est nécessaire : `serializeLayout` (roofPro11/prefill.ts) n'exporte
+ * que `{cx, cy, face}` par panneau — jamais `rowWidthM`/`slopeLenM` ni la pose
+ * du pack gagnant. Or l'ERP dessine chaque panneau
+ * `BoxGeometry(rowWidthM, slopeLenM, …)`, avec {rowWidth, slopeLen} = (petit,
+ * grand) en portrait et (grand, petit) en paysage : sans la pose, le site
+ * dessinerait des rectangles tournés de 90° aux BONNES positions.
+ *
+ * Comment : le pavage du builder (`packCells` de lib/estimatorBrainV2) pose les
+ * centres sur un lattice de PHASE FIXE le long de l'axe de rangée
+ * `u = [-cos(az), sin(az)]`, au pas `rowWidthM + PANEL_SIDE_GAP_M` — le même
+ * pour TOUTES les rangées. Le plus petit écart NON NUL entre deux projections
+ * `u` distinctes vaut donc exactement ce pas (deux colonnes voisines occupées
+ * suffisent), et il n'est jamais plus PETIT que lui. On le compare aux deux pas
+ * théoriques et on tranche.
+ *
+ * Renvoie `null` (l'appelant garde alors la pose de repli) dès que la mesure
+ * n'est pas concluante : une seule colonne occupée, ou un pas qui ne tombe sur
+ * aucun des deux (pavage MIXTE PV62, où la pose change de rangée en rangée et
+ * n'est de toute façon pas exportée). Pur, ne jette jamais.
+ */
+export function inferPanelPose(g: RoofLayoutZoneGeometry): ViewerPanelPose | null {
+  if (g.panels.length < 2) return null;
+  const az = g.azimuthDeg * VIEWER_DEG2RAD;
+  // Axe des rangées, MÊME convention que packCells : f = [sin az, cos az]
+  // (direction de visée), u = [-f[1], f[0]].
+  const ux = -Math.cos(az);
+  const uy = Math.sin(az);
+  const us: number[] = [];
+  for (const p of g.panels) {
+    const u = p.cx * ux + p.cy * uy;
+    if (Number.isFinite(u)) us.push(u);
+  }
+  if (us.length < 2) return null;
+  us.sort((a, b) => a - b);
+  let minGap = Infinity;
+  for (let i = 1; i < us.length; i++) {
+    const gap = us[i] - us[i - 1];
+    // Écarts ~0 = panneaux d'une MÊME colonne (rangées empilées, ou les deux
+    // versants d'un chevron Est-Ouest) : ils ne mesurent pas le pas de colonne.
+    if (gap > 1e-3 && gap < minGap) minGap = gap;
+  }
+  if (!Number.isFinite(minGap)) return null;
+  const portraitPitch = VIEWER_PANEL_SHORT_M + VIEWER_PANEL_SIDE_GAP_M;
+  const landscapePitch = VIEWER_PANEL_LONG_M + VIEWER_PANEL_SIDE_GAP_M;
+  const dP = Math.abs(minGap - portraitPitch);
+  const dL = Math.abs(minGap - landscapePitch);
+  if (dP <= VIEWER_POSE_PITCH_TOL_M && dP <= dL) return 'portrait';
+  if (dL <= VIEWER_POSE_PITCH_TOL_M) return 'landscape';
+  return null;
 }
 
 /**
@@ -1632,8 +1758,9 @@ export function packZonePanels(
   roofType: 'flat' | 'pitched',
   neededPanels: number,
   obstaclesENU: Array<{ x: number; y: number; widthM: number; lengthM: number }> = [],
-): { panels: ViewerPanel[]; alongM: number; depthM: number } {
+): ZonePanelFootprint {
   // Portrait sur pan incliné (pose affleurante courante), paysage sur toit plat.
+  const pose = defaultViewerPose(roofType);
   const alongM = roofType === 'pitched' ? VIEWER_PANEL_SHORT_M : VIEWER_PANEL_LONG_M;
   const slopeM = roofType === 'pitched' ? VIEWER_PANEL_LONG_M : VIEWER_PANEL_SHORT_M;
   const tilt = tiltDeg * VIEWER_DEG2RAD;
@@ -1656,7 +1783,7 @@ export function packZonePanels(
     if (b > bMax) bMax = b;
   }
   if (!Number.isFinite(aMin) || aMax - aMin < alongM || bMax - bMin < depthM) {
-    return { panels: [], alongM, depthM };
+    return { panels: [], alongM, depthM, slopeM, pose };
   }
 
   const inObstacle = (x: number, y: number): boolean => {
@@ -1687,10 +1814,10 @@ export function packZonePanels(
       if (!corners.every((c) => viewerPointInRing(c, ringENU))) continue;
       if (inObstacle(cx, cy) || corners.some(([x, y]) => inObstacle(x, y))) continue;
       panels.push({ x: cx, y: cy });
-      if (panels.length >= cap) return { panels, alongM, depthM };
+      if (panels.length >= cap) return { panels, alongM, depthM, slopeM, pose };
     }
   }
-  return { panels, alongM, depthM };
+  return { panels, alongM, depthM, slopeM, pose };
 }
 
 /**
@@ -1709,7 +1836,7 @@ export function packZonePanels(
 export function realZonePanels(
   zone: RoofLayoutZone,
   toGlobalENU: (pt: [number, number]) => [number, number],
-): { panels: ViewerPanel[]; alongM: number; depthM: number } | null {
+): ZonePanelFootprint | null {
   const g = zone.geometry;
   if (!g || g.panels.length === 0) return null;
   const [olng, olat] = g.origin;
@@ -1720,19 +1847,24 @@ export function realZonePanels(
     const lng = olng + p.cx / (VIEWER_DEG2M * cosOriginLat);
     const lat = olat + p.cy / VIEWER_DEG2M;
     const [x, y] = toGlobalENU([lng, lat]);
-    panels.push({ x, y });
+    // WJ130 — la FACE du chevron Est-Ouest suit le panneau jusqu'au rendu :
+    // c'est elle qui donne le SENS d'inclinaison (dos à dos), exactement comme
+    // dans roofPro11/scene3d.ts. Jamais inventée : seulement recopiée.
+    panels.push(p.face ? { x, y, face: p.face } : { x, y });
     if (panels.length >= VIEWER_MAX_PANELS) break;
   }
   if (panels.length === 0) return null;
-  // Empreinte du panneau : même règle que le repli illustratif (portrait sur
-  // pan incliné affleurant, paysage sur toit plat) — l'orientation par-panneau
-  // (mixte) n'est pas exportée par `serializeLayout`, seule la position l'est ;
-  // seule l'inclinaison RÉELLE (`g.tiltDeg`) change vs. le repli.
+  // WJ130 — Empreinte du panneau : la POSE du pack gagnant, RETROUVÉE sur les
+  // centres réels (`inferPanelPose`), et non plus la règle générique du repli —
+  // c'est ce qui faisait dessiner au site des rectangles tournés de 90° par
+  // rapport à l'ERP. Mesure non concluante (colonne unique, pavage mixte) →
+  // pose de repli historique, positions toujours exactes.
+  const pose = inferPanelPose(g) ?? defaultViewerPose(zone.roofType);
   const tilt = g.tiltDeg * VIEWER_DEG2RAD;
-  const alongM = zone.roofType === 'pitched' ? VIEWER_PANEL_SHORT_M : VIEWER_PANEL_LONG_M;
-  const slopeM = zone.roofType === 'pitched' ? VIEWER_PANEL_LONG_M : VIEWER_PANEL_SHORT_M;
+  const alongM = pose === 'portrait' ? VIEWER_PANEL_SHORT_M : VIEWER_PANEL_LONG_M;
+  const slopeM = pose === 'portrait' ? VIEWER_PANEL_LONG_M : VIEWER_PANEL_SHORT_M;
   const depthM = slopeM * Math.cos(tilt);
-  return { panels, alongM, depthM };
+  return { panels, alongM, depthM, slopeM, pose };
 }
 
 /**
@@ -1792,6 +1924,13 @@ export function buildViewerModel(layout: RoofLayout | null): ViewerModel | null 
       panels,
       panelAlongM: packed.alongM,
       panelDepthM: packed.depthM,
+      panelSlopeM: packed.slopeM,
+      panelPose: packed.pose,
+      // WJ130 — famille / pose affleurante RÉELLES quand le builder les a
+      // sérialisées ; sinon les valeurs implicites du repli illustratif (sud,
+      // affleurant sur pan incliné) — rendu du repli strictement inchangé.
+      family: real && z.geometry ? z.geometry.family : 'south',
+      flush: real && z.geometry ? z.geometry.flush : z.roofType === 'pitched',
     });
   }
   if (zones.length === 0) return null;
