@@ -166,6 +166,14 @@ function PositionPanel() {
 
       <Card className="p-4 sm:p-5">
         <h3 className="mb-3 font-display text-base font-semibold">Prévisionnel roulant (13 semaines)</h3>
+        {/* WIR182 — NTTRE18 : première semaine où le solde projeté passe sous
+            zéro (`date_rupture_estimee`, racine de la réponse — jamais recalculé
+            côté client). Absente/`null` = aucune rupture projetée. */}
+        {previsionnel?.date_rupture_estimee && (
+          <div className="mb-3 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-warning">
+            Rupture de trésorerie projetée à partir du {formatDate(previsionnel.date_rupture_estimee)}.
+          </div>
+        )}
         {!semaines.length ? (
           <EmptyState title="Aucune donnée" description="Aucune ligne prévisionnelle." />
         ) : (
@@ -176,11 +184,18 @@ function PositionPanel() {
             getRowKey={(s, i) => i}
             columns={[
               { key: 'semaine', label: 'Semaine',
-                sortValue: (s) => s.date_debut || s.semaine || '',
-                cell: (s, i) => s.date_debut || s.semaine || `S${i + 1}` },
-              { key: 'solde_projete', label: 'Solde projeté', align: 'right', numeric: true,
-                sortValue: (s) => Number(s.solde_projete ?? s.solde ?? s.montant) || 0,
-                cell: (s) => formatMAD(s.solde_projete ?? s.solde ?? s.montant) },
+                sortValue: (s) => s.date_debut || '',
+                cell: (s, i) => s.date_debut || `S${i + 1}` },
+              { key: 'entrees', label: 'Entrées', align: 'right', numeric: true,
+                sortValue: (s) => Number(s.entrees) || 0, cell: (s) => formatMAD(s.entrees) },
+              { key: 'sorties', label: 'Sorties', align: 'right', numeric: true,
+                sortValue: (s) => Number(s.sorties) || 0, cell: (s) => formatMAD(s.sorties) },
+              { key: 'flux_net', label: 'Flux net', align: 'right', numeric: true,
+                sortValue: (s) => Number(s.flux_net) || 0, cell: (s) => formatMAD(s.flux_net) },
+              // WIR182 — la clé réelle est `solde_fin` (jamais `solde_projete`,
+              // qui n'existe pas côté serveur : la colonne affichait « — »).
+              { key: 'solde_fin', label: 'Solde projeté', align: 'right', numeric: true,
+                sortValue: (s) => Number(s.solde_fin) || 0, cell: (s) => formatMAD(s.solde_fin) },
             ]}
           />
         )}

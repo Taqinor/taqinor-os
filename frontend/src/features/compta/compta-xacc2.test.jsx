@@ -45,7 +45,20 @@ vi.mock('../../api/comptaApi', () => {
       etats: {
         balance: empty, grandLivre: empty, cpc: empty, bilan: empty, esg: empty, etic: empty,
         positionTresorerie: () => Promise.resolve({ data: { comptes: [], total: 0 } }),
-        previsionnelTresorerie: () => Promise.resolve({ data: { semaines: [] } }),
+        // WIR182 — une semaine réelle (contrat apps/compta/contract_samples/
+        // previsionnel_tresorerie.json) : la clé réelle est `solde_fin`, jamais
+        // `solde_projete` (qui n'existe pas côté serveur) — un mock `{semaines:[]}`
+        // ne peut pas prouver la lecture de la bonne clé.
+        previsionnelTresorerie: () => Promise.resolve({
+          data: {
+            solde_initial: 12000, date_debut: '2026-08-10', nb_semaines: 13,
+            semaines: [{
+              index: 1, date_debut: '2026-08-10', date_fin: '2026-08-16',
+              entrees: 5000, sorties: 1000, flux_net: 8000, solde_fin: 4000, lignes: [],
+            }],
+            date_rupture_estimee: null,
+          },
+        }),
         balanceAgeeFournisseurs: empty,
         releveFournisseur: empty,
         tableauFlux: empty,
@@ -216,5 +229,19 @@ describe('TresoreriePage — onglet Position & projection (FG122/FG126)', () => 
       expect(screen.getByRole('heading', { name: /Trésorerie & prévisionnel/ })).toBeInTheDocument()
     })
     expect(screen.getByText('Position & projection')).toBeInTheDocument()
+  }, 30000)
+
+  it('lit `solde_fin` (jamais `solde_projete`, absent du serveur) sur le prévisionnel 13 semaines', async () => {
+    const { default: TresoreriePage } = await import('./pages/TresoreriePage.jsx')
+    mount(<TresoreriePage />)
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /Trésorerie & prévisionnel/ })).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByText('Position & projection'))
+    // WIR182 — une semaine `solde_fin:4000` doit afficher « 4 000,00 MAD », plus
+    // jamais « — » (régression : lisait la clé inexistante `solde_projete`).
+    await waitFor(() => {
+      expect(screen.getByText(/4.000,00 MAD/)).toBeInTheDocument()
+    })
   }, 30000)
 })
