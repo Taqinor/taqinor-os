@@ -114,6 +114,9 @@ import {
   equipmentDelta,
   EQUIPMENT_GROUP_LABELS,
 } from '../../lib/propositionPage';
+// WJ131 — appariement PUR « ligne de devis → fiche technique /produits/<slug> »
+// (aucune correspondance certaine → aucun lien, jamais la fiche d'une autre marque).
+import { ficheSlugPourLigne } from '../../lib/ficheMatcher';
 import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
 // W342 — « installation la plus proche » : haversine sur un point GPS réel
 // (premier sommet du premier pan de toiture, quand roof_layout est exposé) ou,
@@ -560,7 +563,16 @@ const nearestInstallHref = nearestInstall ? `/realisations/${nearestInstall.slug
 // ajoute, au lieu d'un second tableau.
 const equipmentOption: OptionKey = reco ?? 'sans_batterie';
 const equipmentItems = ok ? optionItems(data!, equipmentOption) : [];
-const equipmentGroups = groupEquipment(equipmentItems);
+// WJ131 — chaque ligne emporte le slug de SA fiche technique, calculé UNE fois
+// ici (fonction pure, testée) : le tableau se contente d'afficher le lien quand
+// il existe. `null` = ligne sans lien, l'affichage ne change pas d'un pixel.
+const equipmentGroups = groupEquipment(equipmentItems).map((group) => ({
+  id: group.id,
+  lines: group.lines.map((it) => ({
+    ...it,
+    ficheSlug: ficheSlugPourLigne(it.designation, it.marque),
+  })),
+}));
 const equipmentExtra = ok && twoOptions && equipmentOption === 'sans_batterie'
   ? equipmentDelta(equipmentItems, optionItems(data!, 'avec_batterie'))
   : [];
@@ -1110,6 +1122,24 @@ const signConfig = ok
                                 data-fr={`Garantie : ${it.garantie}`}
                                 data-en={`Warranty: ${it.garantie}`}
                                 data-ar={`الضمان: ${it.garantie}`}>Garantie : {it.garantie}</p>
+                            ) : null}
+                            {/* WJ131 — « Fiche technique ↗ » : le client peut enfin
+                                VÉRIFIER chaque ligne qu'il paie, y compris les deux
+                                postes génériques (tableau de protection, accessoires)
+                                dont la fiche est EXPLICATIVE. Discret par construction :
+                                pas de lien du tout quand l'appariement n'est pas
+                                certain. La flèche vit HORS du span traduit — sinon la
+                                bascule EN/AR (textContent) l'effacerait. */}
+                            {it.ficheSlug ? (
+                              <a
+                                href={`/produits/${it.ficheSlug}`}
+                                target="_blank"
+                                rel="noopener"
+                                class="mt-1 inline-flex items-center gap-1 text-xs text-brass-300 underline-offset-2 transition-colors hover:text-brass-200 hover:underline"
+                              >
+                                <span data-i18n data-fr="Fiche technique" data-en="Datasheet" data-ar="الورقة التقنية">Fiche technique</span>
+                                <span aria-hidden="true">&#8599;</span>
+                              </a>
                             ) : null}
                           </div>
                           <span class="fig shrink-0 text-sm text-lune-soft" dir="ltr">×{formatNumber(it.quantite)}</span>
