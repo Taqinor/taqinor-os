@@ -1390,15 +1390,17 @@ const signConfig = ok
           <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6">
             {/* Sélecteur d'échelle — masqué quand une seule vue est rendue. */}
             {prodLayers.showViewTabs && (
+              {/* Fondateur 2026-08-15 : la JOURNÉE d'abord (onglet ET défaut —
+                  availableViews la classe en tête), l'année en second. */}
               <div class="mb-4 flex flex-wrap items-center gap-2" role="group" aria-label="Échelle du graphique">
-                <button type="button" id="prod-view-annee" data-prod-view-btn="annee" aria-pressed={prodLayers.monthly ? 'true' : 'false'}
-                  class="btn-pill px-3 py-1 text-xs"
-                  style={prodLayers.monthly ? 'background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)' : undefined}
-                  data-i18n data-fr="Sur l’année" data-en="Over the year" data-ar="على مدار السنة">Sur l’année</button>
                 <button type="button" id="prod-view-journee" data-prod-view-btn="journee" aria-pressed={prodLayers.monthly ? 'false' : 'true'}
                   class="btn-pill px-3 py-1 text-xs"
                   style={prodLayers.monthly ? undefined : 'background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)'}
                   data-i18n data-fr="Sur une journée" data-en="Over a day" data-ar="خلال يوم">Sur une journée</button>
+                <button type="button" id="prod-view-annee" data-prod-view-btn="annee" aria-pressed={prodLayers.monthly ? 'true' : 'false'}
+                  class="btn-pill px-3 py-1 text-xs"
+                  style={prodLayers.monthly ? 'background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)' : undefined}
+                  data-i18n data-fr="Sur l’année" data-en="Over the year" data-ar="على مدار السنة">Sur l’année</button>
               </div>
             )}
 

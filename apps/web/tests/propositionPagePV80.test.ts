@@ -34,7 +34,8 @@ const FULL: ProductionAvailability = {
 
 describe('PV80 — graphique fusionné : vues disponibles', () => {
   it('propose année puis journée quand les deux sont rendues', () => {
-    expect(availableViews(FULL)).toEqual(['annee', 'journee']);
+    // Fondateur 2026-08-15 : la journée d'abord (défaut), l'année ensuite.
+    expect(availableViews(FULL)).toEqual(['journee', 'annee']);
     expect(hasProductionBlock(FULL)).toBe(true);
   });
 
@@ -63,7 +64,7 @@ describe('PV80 — graphique fusionné : vues disponibles', () => {
 
 describe('PV80 — graphique fusionné : état initial', () => {
   it('démarre sur l’année, profil standard, batterie décochée', () => {
-    expect(initialProductionState(FULL)).toEqual({ view: 'annee', variant: 'normal', battery: false });
+    expect(initialProductionState(FULL)).toEqual({ view: 'journee', variant: 'normal', battery: false });
   });
 
   it('démarre sur la journée quand les barres mensuelles manquent', () => {
