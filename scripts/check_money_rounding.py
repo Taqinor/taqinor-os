@@ -120,10 +120,14 @@ BASELINE_ALLOWLIST = {
     "backend/django_core/apps/ventes/quote_engine/builder.py:769",
     "backend/django_core/apps/ventes/quote_engine/builder.py:913",
     "backend/django_core/apps/ventes/quote_engine/builder.py:926",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1518",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1524",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1577",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1578",
+    # PV84 (chemin_proposition — nom du client dans le lien) — l'import
+    # chemin_proposition + son commentaire ajoutés au bloc "signer" ont
+    # décalé les MÊMES 4 arrondis d'affichage (PU/total ligne) de +2 lignes ;
+    # aucune logique déplacée, aucun NOUVEAU site — bug-class #34.
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1520",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1526",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1579",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1580",
 }
 
 TARGET_FILES = [
