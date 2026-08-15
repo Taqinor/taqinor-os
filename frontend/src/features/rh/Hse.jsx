@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Check, FileText, Plus } from 'lucide-react'
+import { Check, FileText, Plus, PenLine, Download } from 'lucide-react'
 import { ListShell } from '../../ui/module'
 import {
   Segmented, Badge, toast, Button,
@@ -65,6 +65,9 @@ export default function Hse() {
   const [accidentOpen, setAccidentOpen] = useState(false)
   const [presquOpen, setPresquOpen] = useState(false)
   const [causerieOpen, setCauserieOpen] = useState(false)
+  // WIR239 — émargement des participants d'une causerie + export CNSS.
+  const [emargerCauserieFor, setEmargerCauserieFor] = useState(null)
+  const [exportCnssEnCours, setExportCnssEnCours] = useState(false)
 
   const recharger = () => {
     let vivant = true
@@ -104,6 +107,29 @@ export default function Hse() {
       recharger()
     } catch (err) {
       toast.error(err?.response?.data?.detail ?? 'Validation impossible.')
+    }
+  }
+
+  /* WIR239 — l'export CSV de déclaration CNSS (FG181) existait côté serveur
+     sans aucun bouton : c'est LE document exigé après un accident du travail.
+     Le CSV est construit et filtré par le serveur — on ne re-sérialise rien. */
+  const exporterCnss = async () => {
+    setExportCnssEnCours(true)
+    try {
+      const res = await rhApi.exportCnssAccidents()
+      const url = window.URL.createObjectURL(new Blob([res.data]))
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'declaration-accidents-cnss.csv'
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      window.URL.revokeObjectURL(url)
+      toast.success('Export CNSS téléchargé.')
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Export CNSS impossible.')
+    } finally {
+      setExportCnssEnCours(false)
     }
   }
 
@@ -154,7 +180,15 @@ export default function Hse() {
       {vue === 'accidents' && (
         <ListShell title="Accidents du travail" columns={accidentColumns} rows={accidents} loading={loading} error={error}
           searchable exportName="accidents-travail"
-          actions={<Button onClick={() => setAccidentOpen(true)}><Plus size={15} strokeWidth={1.75} aria-hidden="true" />Déclarer un accident</Button>}
+          actions={(
+            <div className="flex items-center gap-2">
+              <Button variant="outline" onClick={exporterCnss} disabled={exportCnssEnCours}>
+                <Download size={15} strokeWidth={1.75} aria-hidden="true" />
+                {exportCnssEnCours ? 'Export en cours…' : 'Export CNSS (CSV)'}
+              </Button>
+              <Button onClick={() => setAccidentOpen(true)}><Plus size={15} strokeWidth={1.75} aria-hidden="true" />Déclarer un accident</Button>
+            </div>
+          )}
           emptyTitle="Aucun accident" emptyDescription="Aucun accident déclaré." />
       )}
       {vue === 'presqu' && (
@@ -169,6 +203,9 @@ export default function Hse() {
           actions={<Button onClick={() => setCauserieOpen(true)}><Plus size={15} strokeWidth={1.75} aria-hidden="true" />Nouvelle causerie</Button>}
           emptyTitle="Aucune causerie" emptyDescription="Aucune causerie enregistrée."
           rowActions={(c) => [
+            // WIR239 — émargement des participants (FG183) : l'@action serveur
+            // n'avait aucun appelant, la feuille de présence restait vierge.
+            { id: 'emarger', label: 'Émarger', icon: PenLine, onClick: () => setEmargerCauserieFor(c) },
             { id: 'pdf-fr', label: 'PDF (FR)', icon: FileText, onClick: () => telechargerCauseriePdf(c, 'fr') },
             { id: 'pdf-ar', label: 'PDF (AR)', icon: FileText, onClick: () => telechargerCauseriePdf(c, 'ar') },
           ]} />
@@ -189,6 +226,12 @@ export default function Hse() {
         <PresquAccidentDialog
           onClose={() => setPresquOpen(false)}
           onSaved={() => { setPresquOpen(false); recharger() }}
+        />
+      )}
+      {emargerCauserieFor && (
+        <EmargerCauserieDialog
+          causerie={emargerCauserieFor}
+          onSaved={() => { setEmargerCauserieFor(null); recharger() }}
         />
       )}
       {causerieOpen && (
@@ -352,6 +395,76 @@ function PresquAccidentDialog({ onClose, onSaved }) {
             <Button type="submit" disabled={!valide || saving}>{saving ? 'Envoi…' : 'Signaler'}</Button>
           </DialogFooter>
         </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/* ── WIR239 (FG183) — Émarger les participants d'une causerie ─────────────────
+   Le serveur n'accepte QUE des participants déjà inscrits sur la feuille
+   (sinon 400 { detail }) et pose lui-même l'horodatage. La liste vient de la
+   causerie chargée — aucun participant n'est inventé côté client. */
+function EmargerCauserieDialog({ causerie, onSaved }) {
+  const participants = Array.isArray(causerie.participants)
+    ? causerie.participants : []
+  const [enCours, setEnCours] = useState(null)
+  const [serverError, setServerError] = useState(null)
+  const [emarges, setEmarges] = useState(
+    () => participants.filter((p) => p.emarge).map((p) => p.participant))
+
+  const emarger = async (ligne) => {
+    setEnCours(ligne.participant)
+    setServerError(null)
+    try {
+      await rhApi.emargerCauserie(causerie.id, { participant: ligne.participant })
+      setEmarges((prev) => [...prev, ligne.participant])
+      toast.success('Participant émargé.')
+    } catch (err) {
+      setServerError(err?.response?.data?.detail ?? 'Émargement impossible.')
+    } finally {
+      setEnCours(null)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onSaved?.() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Émargement — {causerie.theme}</DialogTitle>
+        </DialogHeader>
+        {participants.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            Aucun participant inscrit sur cette causerie.
+          </p>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {participants.map((p) => {
+              const signe = emarges.includes(p.participant)
+              return (
+                <li key={p.id ?? p.participant}
+                  className="flex items-center justify-between rounded-lg border border-border bg-card px-3 py-2 text-sm">
+                  <span className="font-medium">
+                    {p.participant_nom || `Employé #${p.participant}`}
+                  </span>
+                  {signe ? (
+                    <Badge tone="success">Émargé</Badge>
+                  ) : (
+                    <Button size="sm" variant="outline"
+                      disabled={enCours === p.participant}
+                      onClick={() => emarger(p)}>
+                      {enCours === p.participant ? 'Émargement…' : 'Émarger'}
+                    </Button>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        )}
+        {serverError && <p className="text-sm text-destructive" role="alert">{serverError}</p>}
+        <DialogFooter>
+          {/* Fermer RECHARGE : les émargements posés doivent se voir en liste. */}
+          <Button type="button" variant="outline" onClick={onSaved}>Fermer</Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )

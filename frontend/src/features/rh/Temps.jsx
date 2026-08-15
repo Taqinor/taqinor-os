@@ -374,6 +374,25 @@ export default function Temps() {
     },
   ], [])
 
+  /* WIR239 — l'@action `emarger` d'une présence chantier n'avait AUCUN
+     appelant : `emarge` ne pouvait jamais devenir vrai, donc la colonne
+     « Géofence » affichait « — » pour l'éternité. L'émarger la fait passer à
+     « Dans la zone » (ou « Hors zone » si le serveur flague le géofence — un
+     signal, jamais un blocage). */
+  const emargerPresence = async (p) => {
+    try {
+      await rhApi.emargerPresenceChantier(p.id)
+      toast.success('Présence émargée.')
+      recharger()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Émargement impossible.')
+    }
+  }
+
+  const presenceActions = (p) => (p.emarge
+    ? []
+    : [{ id: 'emarger', label: 'Émarger', icon: ShieldCheck, onClick: () => emargerPresence(p) }])
+
   const heuresColumns = useMemo(() => [
     { id: 'employe', header: 'Employé', width: 180, accessor: (h) => h.employe_nom || String(h.employe || ''), cell: (v) => <span className="font-medium">{v || '—'}</span> },
     { id: 'date', header: 'Date', width: 120, searchable: false, accessor: (h) => h.date || '', cell: (v) => formatDate(v) },
@@ -410,7 +429,7 @@ export default function Temps() {
           Nouvelle affectation
         </Button>
       ) },
-    presences: { title: 'Présences chantier', columns: presenceColumns, rows: presences, exportName: 'presences-chantier' },
+    presences: { title: 'Présences chantier', columns: presenceColumns, rows: presences, rowActions: presenceActions, exportName: 'presences-chantier' },
     heures_supp: { title: 'Heures supplémentaires', columns: heuresColumns, rows: heuresSupp, exportName: 'heures-supp',
       actions: heuresSuppActions },
     devices: { title: 'Devices kiosque', columns: deviceColumns, rows: devices, rowActions: deviceActions, exportName: 'devices-kiosque',

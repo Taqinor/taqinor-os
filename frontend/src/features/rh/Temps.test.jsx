@@ -36,6 +36,8 @@ vi.mock('../../api/rhApi', () => {
       createAffectationRoster: vi.fn(),
       updateAffectationRoster: vi.fn(),
       getConflitsRoster: vi.fn(empty),
+      // WIR239 — émargement d'une présence chantier (colonne Géofence morte).
+      emargerPresenceChantier: vi.fn(),
       getEmployes: vi.fn(() => Promise.resolve({
         data: [{ id: 9, nom: 'Bennani', prenom: 'Youssef' }],
       })),
@@ -177,6 +179,38 @@ describe('Temps — ZRH6/ZRH18 : absents non justifiés & rapport de présence',
     fireEvent.click(screen.getByRole('radio', { name: 'Rapport de présence' }))
     expect((await screen.findAllByText('Bennani Youssef'))[0]).toBeInTheDocument()
     expect(screen.getAllByText('90,0 %').length).toBeGreaterThan(0)
+  })
+})
+
+/* WIR239 — l'@action `emarger` d'une présence chantier n'avait aucun
+   appelant : `emarge` ne devenait jamais vrai, donc la colonne « Géofence »
+   affichait « — » pour l'éternité. */
+describe('Temps — WIR239 : émargement d’une présence chantier', () => {
+  const PRESENCE = {
+    id: 11, employe: 9, employe_nom: 'Bennani Youssef',
+    installation_id: 4, date: '2026-08-12',
+    statut: 'present', statut_display: 'Présent',
+    emarge: false, hors_zone: false,
+  }
+
+  beforeEach(() => vi.clearAllMocks())
+
+  it('émarge puis la colonne Géofence passe à « Dans la zone »', async () => {
+    rhApi.getPresencesChantier
+      .mockResolvedValueOnce({ data: [PRESENCE] })
+      .mockResolvedValue({ data: [{ ...PRESENCE, emarge: true, hors_zone: false }] })
+    rhApi.emargerPresenceChantier.mockResolvedValueOnce({ data: { emarge: true } })
+    renderTemps()
+    await screen.findAllByText('Temps & présence')
+    fireEvent.click(screen.getByRole('radio', { name: 'Présences chantier' }))
+
+    // Avant émargement : la colonne Géofence est muette.
+    expect((await screen.findAllByText('Bennani Youssef'))[0]).toBeInTheDocument()
+    expect(screen.queryByText('Dans la zone')).toBeNull()
+
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Émarger' }))[0])
+    await waitFor(() => expect(rhApi.emargerPresenceChantier).toHaveBeenCalledWith(11))
+    expect((await screen.findAllByText('Dans la zone'))[0]).toBeInTheDocument()
   })
 })
 
