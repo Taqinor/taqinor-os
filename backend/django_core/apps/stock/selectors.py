@@ -1189,7 +1189,7 @@ def specs_for_produit(produit):
         temp_coeff_voc_pct_c, temp_coeff_pmax_pct_c, longueur_mm,
         largeur_mm}`` ;
       * ``onduleur`` → ``{n_mppt, mppt_v_min, mppt_v_max, v_max_abs,
-        i_max_mppt_a, ac_kw, phases}`` ;
+        i_max_mppt_a, ac_kw, phases, rendement_euro_pct}`` ;
       * ``batterie`` → ``{kwh_nominal, kwh_usable, dod_pct, v_nominal,
         max_charge_kw}``.
 
@@ -1227,6 +1227,7 @@ def specs_for_produit(produit):
             ('i_max_mppt_a', fiche.ond_i_max_mppt_a),
             ('ac_kw', fiche.ond_ac_kw),
             ('phases', fiche.ond_phases),
+            ('rendement_euro_pct', fiche.ond_rendement_euro_pct),
         ):
             _put(out, key, value)
     elif fiche.type_fiche == 'batterie':

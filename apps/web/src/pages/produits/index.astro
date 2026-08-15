@@ -58,7 +58,10 @@ const groups = fichesByCategorie();
                 </ul>
                 <div class="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-white/10 pt-4">
                   <a href={`/produits/${f.slug}`} class="text-sm font-bold text-white transition-colors hover:text-brass-300">Détails &rsaquo;</a>
-                  <a href={ficheDownloadHref(f)} target="_blank" rel="noopener" class="text-sm font-semibold text-brass-300 transition-colors hover:text-brass-200">Fiche technique (PDF) &rsaquo;</a>
+                  {/* WJ131 — « (PDF) » n'est promis que si la cible en est un : les
+                      deux postes génériques (protection, câblage) renvoient vers la
+                      NORME officielle, une page, pas un PDF constructeur. */}
+                  <a href={ficheDownloadHref(f)} target="_blank" rel="noopener" class="text-sm font-semibold text-brass-300 transition-colors hover:text-brass-200">{ficheDownloadHref(f).toLowerCase().endsWith('.pdf') ? 'Fiche technique (PDF)' : 'La norme de référence'} &rsaquo;</a>
                 </div>
               </div>
             </article>

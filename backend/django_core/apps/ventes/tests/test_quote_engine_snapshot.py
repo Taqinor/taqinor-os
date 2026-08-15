@@ -110,7 +110,16 @@ FULL_LINES = [
     ('Transport', '1', '1000'),
 ]
 
+# PV86 — DÉCLARATION d'alternative : un document à deux options n'existe que
+# lorsque le devis l'exprime (``scenario``, ce que le générateur persiste
+# toujours). Les cas résidentiel/industriel ci-dessous rendent le document à
+# deux options — ils le déclarent donc, et leurs baselines restent valides.
+# Sans déclaration, deux onduleurs en lignes non optionnelles seraient un
+# artefact de données rendu en UNE présentation (cf. test_pv86_verite_unique_devis).
+DEUX_OPTIONS = {'scenario': 'Les deux (Sans + Avec)'}
+
 ETUDE_PARAMS = {
+    **DEUX_OPTIONS,
     'kwc': 9.94, 'production_annuelle': 12486, 'conso_annuelle': 120000,
     'taux_autoconso': 100, 'taux_couverture': 10.4,
     'economies_annuelles': 21851, 'payback': 3.0, 'prix_kwc': 6543,
@@ -335,6 +344,7 @@ BASELINE_CASES = [
         'name': 'residentiel_full',
         'reference': 'DEV-SNAP-FULL',
         'lines': FULL_LINES,
+        'etude_params': DEUX_OPTIONS,
         'pdf_options': None,
         'page_count': 3,
         'check_totals': True,
@@ -353,6 +363,7 @@ BASELINE_CASES = [
         'name': 'residentiel_onepage',
         'reference': 'DEV-SNAP-1PG',
         'lines': FULL_LINES,
+        'etude_params': DEUX_OPTIONS,
         'pdf_options': {'pdf_mode': 'onepage'},
         'page_count': 1,
         'check_totals': True,

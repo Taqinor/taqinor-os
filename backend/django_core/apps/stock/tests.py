@@ -82,11 +82,19 @@ class TestSeedCatalogue(TestCase):
         self.assertEqual(fiche_cs.type_fiche, 'module')
         self.assertEqual(fiche_cs.longueur_mm, 2384)
         self.assertEqual(fiche_cs.largeur_mm, 1303)
-        self.assertEqual(fiche_cs.epaisseur_mm, 33)
+        self.assertEqual(fiche_cs.epaisseur_mm, 35)
         self.assertEqual(fiche_cs.temp_coeff_pmax_pct_c, Decimal('-0.290'))
-        # Rien d'inventé : coefficients module non sourcés restent NULL.
-        self.assertIsNone(fiche_cs.temp_coeff_voc_pct_c)
-        self.assertIsNone(fiche_cs.poids_kg)
+        # PV85 — datasheet CS7N-710TB-AG complète (valeurs STC).
+        self.assertEqual(fiche_cs.pmax_wc, Decimal('710.00'))
+        self.assertEqual(fiche_cs.voc_v, Decimal('48.30'))
+        self.assertEqual(fiche_cs.isc_a, Decimal('18.59'))
+        self.assertEqual(fiche_cs.vmp_v, Decimal('40.40'))
+        self.assertEqual(fiche_cs.imp_a, Decimal('17.59'))
+        self.assertEqual(fiche_cs.rendement_pct, Decimal('22.90'))
+        self.assertEqual(fiche_cs.poids_kg, Decimal('37.90'))
+        self.assertEqual(fiche_cs.temp_coeff_voc_pct_c, Decimal('-0.250'))
+        self.assertTrue(fiche_cs.bifacial)
+        self.assertIn('TOPCon', fiche_cs.techno_cellule)
 
         jk = Produit.objects.get(company=self.company, sku='PAN-JK-710')
         fiche_jk = FicheTechnique.objects.get(produit=jk)
@@ -109,20 +117,54 @@ class TestSeedCatalogue(TestCase):
         fiche.refresh_from_db()
         self.assertEqual(fiche.temp_coeff_pmax_pct_c, Decimal('-0.290'))
 
-    def test_pv9_never_overwrites_existing_fiche_technique(self):
+    def test_pv85_fiche_technique_reappliquee_sur_base_deja_seedee(self):
+        """PV85 — les champs SOURCÉS par le catalogue sont reposés à chaque run.
+
+        Sans cela, une correction de datasheet (le 10 kW triphasé passé de
+        SG04LP3 à SG05LP3 : 26 A/MPPT au lieu de 16 A) resterait bloquée sur
+        les bases déjà seedées. Ce qui reste intouchable : tout champ que le
+        catalogue ne source pas.
+        """
         from apps.stock.models import FicheTechnique
         seed(self.company)
         cs = Produit.objects.get(company=self.company, sku='PAN-CS-710')
         FicheTechnique.objects.filter(produit=cs).delete()
-        # Une fiche pré-existante (saisie manuellement) n'est jamais écrasée.
-        manuelle = FicheTechnique.objects.create(
+        ancienne = FicheTechnique.objects.create(
             company=self.company, produit=cs, type_fiche='module',
-            longueur_mm=1, largeur_mm=1)
+            longueur_mm=1, largeur_mm=1,
+            # Champ NON déclaré par le catalogue pour ce SKU : saisie manuelle.
+            bat_kwh_nominal=Decimal('42.00'))
         seed(self.company)
-        manuelle.refresh_from_db()
-        self.assertEqual(manuelle.longueur_mm, 1)
-        self.assertEqual(manuelle.largeur_mm, 1)
-        self.assertIsNone(manuelle.temp_coeff_pmax_pct_c)
+        ancienne.refresh_from_db()
+        # Champs SOURCÉS → ré-appliqués depuis la datasheet.
+        self.assertEqual(ancienne.longueur_mm, 2384)
+        self.assertEqual(ancienne.largeur_mm, 1303)
+        self.assertEqual(ancienne.temp_coeff_pmax_pct_c, Decimal('-0.290'))
+        # Champ NON sourcé → jamais touché par le seeder.
+        self.assertEqual(ancienne.bat_kwh_nominal, Decimal('42.00'))
+        # Toujours une seule fiche par produit.
+        self.assertEqual(
+            FicheTechnique.objects.filter(produit=cs).count(), 1)
+
+    def test_pv85_deye_10t_modele_confirme_fondateur(self):
+        """PV85 — SG05LP3 tranché par le fondateur : plus « supposé »."""
+        from apps.stock.models import FicheTechnique
+        seed(self.company)
+        p = Produit.objects.get(company=self.company, sku='OND-H-DEY-10T')
+        self.assertIn('Modèle confirmé fondateur : '
+                      'Deye SUN-10K-SG05LP3-EU-SM2', p.description)
+        self.assertNotIn('Modèle supposé', p.description)
+        self.assertNotIn('SG04LP3', p.description)
+        fiche = FicheTechnique.objects.get(produit=p)
+        self.assertEqual(fiche.ond_n_mppt, 2)
+        self.assertEqual(fiche.ond_mppt_v_min, Decimal('200.0'))
+        self.assertEqual(fiche.ond_mppt_v_max, Decimal('650.0'))
+        self.assertEqual(fiche.ond_v_max_abs, Decimal('800.0'))
+        # Révision actuelle du manuel (nov-2025) : 26 A par MPPT, pas 20 A.
+        self.assertEqual(fiche.ond_i_max_mppt_a, Decimal('26.0'))
+        self.assertEqual(fiche.ond_ac_kw, Decimal('10'))
+        self.assertEqual(fiche.ond_phases, 3)
+        self.assertEqual(fiche.ond_rendement_euro_pct, Decimal('97.0'))
 
     # ── PVG4 — Fiches techniques onduleurs/batteries (modèle supposé) ───────
     def test_pvg4_onduleur_fiche_sourced_values_only(self):
@@ -216,19 +258,21 @@ class TestSeedCatalogue(TestCase):
         self.assertEqual(fiche.ond_ac_kw, Decimal('10'))
         p.refresh_from_db()
         self.assertEqual(
-            p.description.count('Modèle supposé'), 1,
+            p.description.count('Modèle confirmé fondateur'), 1,
             "la mention ne doit jamais être dupliquée sur un second run")
 
-        # Une fiche onduleur pré-existante (saisie manuellement) n'est
-        # jamais écrasée, comme pour les modules PV9.
+        # PV85 — une fiche onduleur pré-existante voit ses champs SOURCÉS
+        # ré-alignés sur la datasheet (une valeur fantaisiste ne survit pas),
+        # mais rien d'autre n'est touché.
         p20t = Produit.objects.get(company=self.company, sku='OND-H-DEY-20T')
         FicheTechnique.objects.filter(produit=p20t).delete()
-        manuelle = FicheTechnique.objects.create(
+        ancienne = FicheTechnique.objects.create(
             company=self.company, produit=p20t, type_fiche='onduleur',
-            ond_ac_kw=Decimal('99'))
+            ond_ac_kw=Decimal('99'), bat_dod_pct=Decimal('77.0'))
         seed(self.company)
-        manuelle.refresh_from_db()
-        self.assertEqual(manuelle.ond_ac_kw, Decimal('99'))
+        ancienne.refresh_from_db()
+        self.assertEqual(ancienne.ond_ac_kw, Decimal('20'))
+        self.assertEqual(ancienne.bat_dod_pct, Decimal('77.0'))
 
     def test_veichi_seeded_with_real_buy_and_sell_prices(self):
         seed(self.company)

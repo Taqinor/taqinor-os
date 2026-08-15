@@ -98,6 +98,10 @@ class SpecModule:
     temp_coeff_voc_pct_c: float = -0.27
     #: γ(Pmax) en %/°C, NÉGATIF — sert de coefficient de dérive du Vmp.
     temp_coeff_pmax_pct_c: float = -0.35
+    #: Désignation COMMERCIALE du module (« Canadien Solar 710 Wc ») — purement
+    #: descriptive, elle ne participe à AUCUN calcul : elle sert à ce qu'un
+    #: schéma unifilaire NOMME le matériel au lieu d'écrire « Champ PV ».
+    designation: str = ""
 
     @property
     def temp_coeff_vmp_pct_c(self):
@@ -139,14 +143,32 @@ class SpecOnduleur:
     mppt_v_min: float
     mppt_v_max: float
     v_max_abs: float
+    #: Courant d'entrée maximal ADMISSIBLE par entrée MPPT (A) — c'est la
+    #: borne de FONCTIONNEMENT : au-delà, l'onduleur écrête en permanence. Elle
+    #: se compare à la somme des **Imp** des chaînes de l'entrée (le courant
+    #: réellement soutiré au point de puissance maximale), pas à leur Isc.
     i_max_mppt_a: float
     ac_kw: float
     #: 1 = monophasé 230 V, 3 = triphasé 400 V (NF C 15-100).
     phases: int = 1
     #: Rendement européen (%) — pondération EN 50530 des points de charge.
-    rendement_euro_pct: float = 97.0
+    #: AUCUN calcul du moteur ne le consomme : c'est une valeur PUBLIÉE. Elle
+    #: reste donc ``None`` tant qu'une fiche constructeur ne la donne pas —
+    #: un rendement par défaut imprimé sur une pièce technique se lirait comme
+    #: une caractéristique vérifiée de l'appareil.
+    rendement_euro_pct: Optional[float] = None
     #: Tension de DÉMARRAGE (V). À défaut, le bas de plage MPPT fait foi.
     v_demarrage_v: Optional[float] = None
+    #: Courant de COURT-CIRCUIT maximal admissible par entrée MPPT (A) — borne
+    #: MATÉRIELLE, distincte et toujours plus haute que ``i_max_mppt_a`` sur
+    #: les fiches qui publient les deux (Deye SG05LP3 : 26 A / Isc 39 A). À
+    #: défaut, ``i_max_mppt_a`` fait foi : c'est le repli PRUDENT, jamais une
+    #: borne inventée plus permissive que ce que la fiche garantit.
+    isc_max_mppt_a: Optional[float] = None
+    #: Désignation COMMERCIALE de l'appareil (« Deye SUN-10K-SG05LP3 ») —
+    #: purement descriptive, elle ne participe à AUCUN calcul : elle sert à ce
+    #: qu'un schéma unifilaire NOMME le matériel au lieu d'écrire « Onduleur ».
+    designation: str = ""
 
     @property
     def tension_demarrage_v(self):
@@ -154,6 +176,13 @@ class SpecOnduleur:
         if self.v_demarrage_v is None:
             return self.mppt_v_min
         return self.v_demarrage_v
+
+    @property
+    def courant_isc_max_a(self):
+        """Isc admissible par entrée MPPT — repli PRUDENT sur ``i_max_mppt_a``."""
+        if self.isc_max_mppt_a is None:
+            return self.i_max_mppt_a
+        return self.isc_max_mppt_a
 
 
 @dataclass(frozen=True)
@@ -194,6 +223,13 @@ class EntreeElectrique:
     #: Régime de neutre (NF C 15-100) — TT par défaut (raccordement BT public).
     regime: str = REGIME_TT
     batterie: bool = False
+    #: Identité du parc de stockage — descriptive, jamais calculatoire (le
+    #: booléen ``batterie`` ci-dessus reste la seule chose qui pilote les
+    #: règles). Elle existe pour que le bloc « Batterie » du schéma NOMME le
+    #: matériel et son énergie au lieu d'écrire « stockage DC ».
+    batterie_designation: str = ""
+    batterie_kwh: float = 0.0
+    batterie_v_nominal: float = 0.0
     temp_froid_c: float = TEMP_FROID_DEFAUT_C
     temp_chaud_c: float = TEMP_CHAUD_DEFAUT_C
     # ── contraintes optionnelles ──────────────────────────────────────────────

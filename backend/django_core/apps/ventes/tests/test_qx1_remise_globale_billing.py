@@ -50,11 +50,12 @@ class Qx1RemiseGlobaleBillingTests(TestCase):
             telephone='+212600000041')
 
     def _devis(self, lignes, *, remise_globale='0', num=1, taux='20',
-               option=None):
+               option=None, etude_params=None):
         devis = Devis.objects.create(
             company=self.company, reference=f'DEV-{MONTH}-QX1{num:03d}',
             client=self.client_obj, statut=Devis.Statut.ACCEPTE,
-            taux_tva=Decimal(taux), remise_globale=Decimal(remise_globale))
+            taux_tva=Decimal(taux), remise_globale=Decimal(remise_globale),
+            etude_params=etude_params)
         if option:
             devis.option_acceptee = option
             devis.save(update_fields=['option_acceptee'])
@@ -168,7 +169,12 @@ class Qx1RemiseGlobaleBillingTests(TestCase):
              ('Panneau mono 550W', '14', '1100', '0'),
              ('Batterie 5 kWh', '1', '14000', '0'),
              ('Installation', '1', '4000', '0')],
-            remise_globale='10', num=4, option='sans_batterie')
+            remise_globale='10', num=4, option='sans_batterie',
+            # PV86 — un document à deux options DÉCLARE son alternative
+            # (``scenario``, persisté par le générateur) ; sans déclaration,
+            # deux onduleurs non optionnels = un artefact de données rendu en
+            # une seule présentation, et l'aval ne filtre plus par option.
+            etude_params={'scenario': 'Les deux (Sans + Avec)'})
         # sans batterie : 11700 + 15400 + 4000 = 31100 HT ; −10 % = 27990 HT ;
         # TTC 33588.
         ref = option_totaux(devis)

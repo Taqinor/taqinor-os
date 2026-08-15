@@ -23,6 +23,11 @@ interface Props {
 }
 const { fiche } = Astro.props as Props;
 const downloadHref = ficheDownloadHref(fiche);
+// WJ131 — deux fiches sont EXPLICATIVES (postes génériques du devis : tableau de
+// protection, accessoires de câblage). Elles n'ont pas de fiche constructeur : leur
+// source faisant foi est la NORME, une page officielle, pas un PDF. On ne promet
+// donc « (PDF) » que quand la cible en est réellement un.
+const estPdf = downloadHref.toLowerCase().endsWith('.pdf');
 const pairings = relatedFiches(fiche);
 
 // W326 — Offer/availability : AUCUN prix inventé. Le prix dépend de l'étude
@@ -56,7 +61,7 @@ const jsonLd = {
 
 <Layout
   title={`${fiche.nom} — fiche technique | Taqinor`}
-  description={`${fiche.nom} (${fiche.modele}) : ${fiche.resume} Fiche technique constructeur officielle à télécharger.`}
+  description={`${fiche.nom} (${fiche.modele}) : ${fiche.resume} ${estPdf ? 'Fiche technique constructeur officielle à télécharger.' : 'Rôle, composition type et normes de référence.'}`}
   ogSlug="equipement"
 >
   <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
@@ -105,8 +110,10 @@ const jsonLd = {
             rel="noopener"
             class="inline-flex items-center gap-2 border border-white/25 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10"
           >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Fiche technique officielle (PDF)
+            {estPdf && (
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            )}
+            {estPdf ? 'Fiche technique officielle (PDF)' : 'La norme de référence (source officielle) ↗'}
           </a>
         </div>
 
@@ -155,7 +162,9 @@ const jsonLd = {
         )}
 
         <p class="mt-6 text-xs leading-relaxed text-lune-faint">
-          Les spécifications détaillées font foi dans la fiche constructeur officielle liée ci-dessus.
+          {estPdf
+            ? 'Les spécifications détaillées font foi dans la fiche constructeur officielle liée ci-dessus.'
+            : 'Ce poste n’a pas de fiche constructeur : c’est un ensemble monté sur mesure. Sa composition exacte est fixée par l’étude, dans le respect de la norme liée ci-dessus.'}
           Le raisonnement derrière chaque marque est expliqué sur
           <a href="/équipement" class="text-brass-300 underline underline-offset-2 hover:text-white">notre page Équipement</a>.
         </p>

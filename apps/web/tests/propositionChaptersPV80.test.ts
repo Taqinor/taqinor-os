@@ -169,6 +169,30 @@ describe('PV80 — chapitre 4 : UN SEUL bloc graphique', () => {
     expect(PROPOSITION).toContain('productionLayers(state, availability)');
   });
 
+  // PACT-battery (2026-08-15) — fondateur : « quand on active le bouton avec
+  // batterie on peut encore voir l'effet le ramadan et l'été ». Les onglets
+  // vivaient AVANT dans le calque « daily » (masqués dès que la batterie le
+  // remplaçait) ; ils sont désormais un frère commun aux deux calques.
+  it('les onglets de profil sont un frère COMMUN aux deux calques, plus un enfant du calque « daily »', () => {
+    const dailyStart = at('data-prod-layer="daily"');
+    const dailyEnd = PROPOSITION.indexOf('data-prod-layer="battery"', dailyStart);
+    const dailyBlock = PROPOSITION.slice(dailyStart, dailyEnd);
+    expect(dailyBlock).not.toContain('data-curve-variant-btn');
+    expect(PROPOSITION).toContain('data-prod-variant-control');
+    expect(PROPOSITION).toContain('hidden={!prodLayers.showVariantTabs}');
+  });
+
+  it('changer d’onglet pendant que la batterie est active recalcule le simulateur (même chemin que le curseur)', () => {
+    expect(PROPOSITION).toContain('setCurveVariant');
+    expect(PROPOSITION).toContain('__propSetBatteryVariant');
+    // Le pont n'est actionné QUE quand le calque batterie est affiché.
+    expect(CODE).toMatch(/if \(layers\.battery\) \{\s*\(window as unknown as \{ __propSetBatteryVariant/);
+    // Côté simulateur : la MÊME fonction pure que le rendu serveur initial
+    // (consumptionShapeHours) recalcule la silhouette, jamais un second moteur.
+    expect(PROPOSITION).toContain('consumptionShapeHours');
+    expect(PROPOSITION).toContain("from '../../lib/proposalCurve'");
+  });
+
   it('la classe .chart-svg (sonde du gate Lighthouse) survit à la fusion', () => {
     expect(PROPOSITION).toContain('class="chart-svg"');
   });

@@ -132,6 +132,20 @@ BASELINE_ALLOWLIST = {
     "backend/django_core/apps/ventes/quote_engine/builder.py:1526",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1579",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1580",
+    # PV86 (2026-08-15, « la seule vérité est le devis ») — le bloc qui exige
+    # qu'une alternative soit DÉCLARÉE avant de rendre deux options a inséré
+    # 46 lignes dans builder.py : les MÊMES arrondis d'affichage (HT brut,
+    # TTC exact, ROI/prix-kWc, ×N villas, total de ligne d'option) glissent
+    # tous de +46, à l'identique. Vérifié : le diff n'ajoute AUCUN round() —
+    # aucun NOUVEAU site, simple re-calage file:line (bug-class #34).
+    "backend/django_core/apps/ventes/quote_engine/builder.py:786",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:815",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:959",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:972",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1566",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1572",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1625",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1626",
 }
 
 TARGET_FILES = [

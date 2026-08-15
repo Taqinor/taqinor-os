@@ -29,6 +29,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import api from '../../api/axios'
 import ventesApi from '../../api/ventesApi'
+import { originFrom } from '../../api/origin'
 import { toastInfo } from '../../lib/toast'
 import '../../styles/roofbuilder.css'
 
@@ -62,6 +63,27 @@ function designMailto(email, name, proposalUrl) {
   return `mailto:${email}?subject=${subject}&body=${body}`
 }
 
+// PV86 — second choix WhatsApp (« Envoyer le PDF seul »). L'URL publique du
+// PDF suit EXACTEMENT le même schéma que les liens `public/proposal/...`
+// déjà construits côté backend (apps/ventes/public_views.py) : préfixe
+// `/api/django/public/proposal/<token>/pdf/` sur l'origine de l'API. Le
+// token est celui du lien frappé par `shareLinkDevis` — jamais reconstruit.
+function proposalPdfUrl(origin, token) {
+  const base = (origin || '').replace(/\/+$/, '')
+  return `${base}/api/django/public/proposal/${token}/pdf/`
+}
+function pdfWhatsappText(reference, pdfUrl) {
+  return `Voici votre devis Taqinor (réf. ${reference}) en PDF : ${pdfUrl}`
+}
+// Relit le numéro déjà validé dans un lien wa.me existant (`deliver.waUrl`,
+// normalisé côté serveur en mode devis ou construit ci-dessus en mode lead) :
+// le second choix WhatsApp utilise ainsi TOUJOURS le même numéro que le
+// premier, sans dupliquer une logique de normalisation téléphonique ici.
+function waNumberFromLink(waUrl) {
+  const m = /^https:\/\/wa\.me\/(\d+)/.exec(waUrl || '')
+  return m ? m[1] : ''
+}
+
 // Convertit un data URL PNG en Blob (upload multipart de la 3D).
 function dataUrlToBlob(dataUrl) {
   const m = /^data:([^;]+);base64,(.*)$/.exec(dataUrl)
@@ -78,6 +100,13 @@ function dataUrlToBlob(dataUrl) {
 // côté backend) ; le lien client vit sur le site public taqinor.ma (configurable
 // via VITE_PUBLIC_SITE_URL). Consommé TEL QUEL — jamais reconstruit ici.
 const PUBLIC_SITE_URL = import.meta.env.VITE_PUBLIC_SITE_URL || 'https://taqinor.ma'
+
+// PV86 — origine de l'API pour le lien PDF public (second choix WhatsApp).
+// Même résolution que `api/axios.js` (`ORIGIN`) : VITE_API_URL si posé,
+// sinon repli sur l'origine de LA PAGE — valide ici précisément parce que
+// cet écran est MÊME ORIGINE que le backend (cf. l'en-tête du fichier).
+const API_ORIGIN = originFrom(import.meta.env.VITE_API_URL) ||
+  (typeof window !== 'undefined' ? window.location.origin : '')
 
 // Le builder s'hydrate depuis un payload `LeadPayload` (roof_point/roof_outline/
 // bill_kwh + fullName/phone/city). Le lead ERP utilise des champs français : on
@@ -201,8 +230,10 @@ export default function ToitureDesign({ mode = 'lead' }) {
   const [sending, setSending] = useState(false)
   const [genError, setGenError] = useState(null)
   const [genStatus, setGenStatus] = useState(null)
-  const [deliver, setDeliver] = useState(null) // {reference, proposalUrl, waUrl, mailUrl}
+  const [deliver, setDeliver] = useState(null) // {reference, proposalUrl, token, waUrl, mailUrl}
   const [copied, setCopied] = useState(false)
+  // PV86 — petit menu de choix WhatsApp (proposition vs PDF seul), fermé par défaut.
+  const [waMenuOpen, setWaMenuOpen] = useState(false)
   // PV21 — conflit 409 renvoyé par sync-layout : {detail, revision_possible}.
   // Le texte est TOUJOURS celui du serveur ; l'écran choisit seulement entre
   // l'encart « Réviser (v2) » et le bandeau de document clos.
@@ -318,6 +349,43 @@ export default function ToitureDesign({ mode = 'lead' }) {
       if (cancelled) return
       setContexte(ctx)
 
+      // PV86 — le lien client vit EN PERMANENCE en bas de page, même sans
+      // enregistrement : frappe (idempotente, aucun statut touché) dès que
+      // le devis est identifié, best-effort et JAMAIS bloquante pour le
+      // boot carte/3D ci-dessous (appel non attendu). Un échec réseau reste
+      // silencieux (pas de panneau plutôt qu'une erreur bloquante) ; une
+      // réponse inexploitable (mock de test non configuré, etc.) reçoit le
+      // même repli.
+      async function chargerLivraisonDevis() {
+        let lien
+        try {
+          lien = await ventesApi.shareLinkDevis(devisId)
+        } catch {
+          return
+        }
+        if (cancelled) return
+        const path = lien?.data?.path
+        if (!path) return
+        setDeliver({
+          reference: ctx?.devis?.reference ?? '',
+          proposalUrl: designProposalUrl(PUBLIC_SITE_URL, path),
+          token: lien?.data?.token || '',
+          waUrl: null,
+          mailUrl: null,
+        })
+        // WhatsApp best-effort, séparé : un client sans numéro garde quand
+        // même son lien de proposition (le bouton WhatsApp disparaît seul).
+        try {
+          const apercu = await ventesApi.whatsappPreviewDevis(devisId)
+          if (cancelled) return
+          const waUrl = apercu?.data?.wa_url
+          if (waUrl) {
+            setDeliver((prev) => (prev ? { ...prev, waUrl } : prev))
+          }
+        } catch { /* pas de numéro chez ce client → pas de bouton WhatsApp */ }
+      }
+      chargerLivraisonDevis()
+
       const carte = ctx?.carte ?? {}
       if (!carte.available || !carte.maptilerKey) {
         setStatus('Carte indisponible (clé MapTiler manquante côté serveur).')
@@ -423,6 +491,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
       setDeliver({
         reference: devis.reference,
         proposalUrl,
+        token: devis.proposal_token || '',
         waUrl: phone ? whatsappLink(phone, designWhatsappText(name, proposalUrl)) : null,
         mailUrl: email ? designMailto(email, name, proposalUrl) : null,
       })
@@ -513,9 +582,11 @@ export default function ToitureDesign({ mode = 'lead' }) {
       //    l'aperçu ne marque jamais un devis « envoyé »).
       setGenStatus('Préparation du lien client…')
       let proposalUrl = ''
+      let token = ''
       try {
         const lien = await ventesApi.shareLinkDevis(devisId)
         proposalUrl = designProposalUrl(PUBLIC_SITE_URL, lien.data?.path)
+        token = lien.data?.token || ''
       } catch { /* le lien reste optionnel */ }
       let waUrl = null
       try {
@@ -526,6 +597,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
       setDeliver({
         reference: contexte?.devis?.reference ?? '',
         proposalUrl,
+        token,
         waUrl,
         mailUrl: null,
       })
@@ -610,7 +682,16 @@ export default function ToitureDesign({ mode = 'lead' }) {
   // conçu depuis sa propre fiche se livre exactement comme un devis né d'un
   // lead (mêmes liens, même bouton copier). Une seule différence : la phrase
   // qui dit ce qui vient de se passer.
-  const blocLivraison = () => (
+  const blocLivraison = () => {
+    // PV86 — second choix WhatsApp : même numéro que `deliver.waUrl` (relu
+    // depuis le lien déjà validé), texte pointant l'URL PDF publique (jamais
+    // reconstruite ailleurs que via le token frappé par shareLinkDevis).
+    const pdfUrl = deliver.token ? proposalPdfUrl(API_ORIGIN, deliver.token) : ''
+    const waNumber = waNumberFromLink(deliver.waUrl)
+    const waUrlPdf = waNumber && pdfUrl
+      ? whatsappLink(waNumber, pdfWhatsappText(deliver.reference, pdfUrl))
+      : null
+    return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <p className="tech-label rule-brass text-brass-300">Prêt à envoyer</p>
@@ -629,9 +710,29 @@ export default function ToitureDesign({ mode = 'lead' }) {
       )}
       <div className="flex flex-wrap items-center gap-3">
         {deliver.waUrl && (
-          <a href={deliver.waUrl} target="_blank" rel="noopener"
-            className="inline-flex items-center gap-2 px-5 py-3 text-base font-bold text-white"
-            style={{ background: 'var(--rp-ok-600)' }}>WhatsApp</a>
+          <div className="relative">
+            <button type="button" onClick={() => setWaMenuOpen((o) => !o)}
+              aria-haspopup="true" aria-expanded={waMenuOpen} aria-controls="rp9-wa-choix"
+              className="inline-flex items-center gap-2 px-5 py-3 text-base font-bold text-white"
+              style={{ background: 'var(--rp-ok-600)' }}>WhatsApp</button>
+            {waMenuOpen && (
+              <div id="rp9-wa-choix" role="group" aria-label="Choisir le message WhatsApp"
+                className="absolute left-0 top-full z-10 mt-2 flex w-72 flex-col gap-2 border border-white/15 bg-nuit-900 p-3">
+                <a href={deliver.waUrl} target="_blank" rel="noopener"
+                  onClick={() => setWaMenuOpen(false)}
+                  className="px-4 py-2 text-sm font-bold text-white" style={{ background: 'var(--rp-ok-600)' }}>
+                  Envoyer le lien de la proposition
+                </a>
+                {waUrlPdf && (
+                  <a href={waUrlPdf} target="_blank" rel="noopener"
+                    onClick={() => setWaMenuOpen(false)}
+                    className="border border-brass-400 px-4 py-2 text-sm font-bold text-brass-300">
+                    Envoyer le PDF seul
+                  </a>
+                )}
+              </div>
+            )}
+          </div>
         )}
         {deliver.mailUrl && (
           <a href={deliver.mailUrl}
@@ -648,7 +749,8 @@ export default function ToitureDesign({ mode = 'lead' }) {
         </a>
       )}
     </div>
-  )
+    )
+  }
 
   return (
     <div className="rp9-host">
@@ -697,7 +799,16 @@ export default function ToitureDesign({ mode = 'lead' }) {
           </ul>
         )}
 
-        {/* ÉTAPE FACTURE (alimente l'optimiseur). */}
+        {/* ÉTAPE FACTURE (alimente l'optimiseur) — MODE LEAD SEULEMENT. PV86 :
+            en mode devis le dimensionnement vient du devis (cible.panneaux,
+            imposée à l'optimiseur — voir roofPro11/prefill.ts hydrateFromDevis),
+            la facture y est redondante et le fondateur a demandé son retrait.
+            Retrait total (pas un simple masquage) : le builder lit ces deux
+            éléments via `$('rp9-bill')`/`$('rp9-bill-kwh')`, qui renvoie `null`
+            si absent (roofPro11/dom.ts) et TOUS les usages sont déjà gardés
+            (`billEl?.value`, `if (billKwhEl)`, `billEl?.addEventListener`) —
+            aucune casse à l'init sans ce bloc. */}
+        {!estDevis && (
         <div className="cine-card mt-6 p-5">
           <label htmlFor="rp9-bill" className="block text-sm text-lune-soft">
             Facture d'électricité moyenne par mois (MAD)
@@ -708,6 +819,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
             <span className="text-xs text-lune-faint">≈ <span id="rp9-bill-kwh" className="fig">—</span> par an</span>
           </div>
         </div>
+        )}
 
         {/* BUILDER — DOM complet (mêmes ids que la preview pro-11). */}
         <div className="cine-card mt-6 overflow-hidden">
@@ -887,52 +999,61 @@ export default function ToitureDesign({ mode = 'lead' }) {
             en lecture seule (l'action de sauvegarde disparaît, PV20). */}
         {estDevis && !lectureSeule && (
         <div className="cine-card mt-6 p-6">
-          {!deliver ? (
-            <div>
-              <button type="button" onClick={enregistrerConception} disabled={sending}
-                className="inline-flex w-full items-center justify-center gap-3 bg-ok-600 px-6 py-4 text-base font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
-                style={{ background: 'var(--rp-ok-600)' }}>
-                {sending && (
-                  <span aria-hidden="true"
-                    className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-white/30 border-t-white"></span>
-                )}
-                <span>{sending ? 'Enregistrement en cours…' : 'Enregistrer la conception'}</span>
-              </button>
-              <p className="mt-3 text-xs text-lune-faint">
-                Le nombre de panneaux, la batterie et l'onduleur suivent le calepinage,
-                et le kit manquant (structures, socles, tableau de protection…) est
-                ajouté : prix négociés, remises et notes du devis restent intacts.
-              </p>
-              {genStatus && <p className="mt-3 text-sm text-lune-soft" aria-live="polite">{genStatus}</p>}
-              {genError && <p className="mt-3 text-sm text-alert-300" aria-live="assertive">{genError}</p>}
-
-              {/* 409 « déjà envoyé » : le bon geste est une NOUVELLE version. */}
-              {conflit?.revision_possible && (
-                <div className="mt-4 border border-brass-400/40 p-4" data-testid="pv21-reviser">
-                  <p className="text-sm text-lune-soft" role="status">{conflit.detail}</p>
-                  <button type="button" onClick={reviser} disabled={sending}
-                    className="mt-3 inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-brass-300 disabled:cursor-not-allowed disabled:opacity-60">
-                    Réviser (v2)
-                  </button>
-                </div>
+          <div>
+            <button type="button" onClick={enregistrerConception} disabled={sending}
+              className="inline-flex w-full items-center justify-center gap-3 bg-ok-600 px-6 py-4 text-base font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
+              style={{ background: 'var(--rp-ok-600)' }}>
+              {sending && (
+                <span aria-hidden="true"
+                  className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-white/30 border-t-white"></span>
               )}
+              <span>{sending ? 'Enregistrement en cours…' : 'Enregistrer la conception'}</span>
+            </button>
+            <p className="mt-3 text-xs text-lune-faint">
+              Le nombre de panneaux, la batterie et l'onduleur suivent le calepinage,
+              et le kit manquant (structures, socles, tableau de protection…) est
+              ajouté : prix négociés, remises et notes du devis restent intacts.
+            </p>
+            {genStatus && <p className="mt-3 text-sm text-lune-soft" aria-live="polite">{genStatus}</p>}
+            {genError && <p className="mt-3 text-sm text-alert-300" aria-live="assertive">{genError}</p>}
 
-              {/* 409 document clos : plus aucune révision possible. */}
-              {conflit && !conflit.revision_possible && (
-                <div className="mt-4 border border-alert-300/40 p-4" data-testid="pv21-conflit-lecture-seule">
-                  <p className="tech-label text-alert-300">Lecture seule</p>
-                  <p className="mt-2 text-sm text-alert-300" role="alert">{conflit.detail}</p>
-                  <Link
-                    to={`/ventes/devis/${devisId}/3d`}
-                    className="mt-3 inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-brass-300"
-                  >
-                    Voir en 3D
-                  </Link>
-                </div>
-              )}
-            </div>
-          ) : blocLivraison()}
+            {/* 409 « déjà envoyé » : le bon geste est une NOUVELLE version. */}
+            {conflit?.revision_possible && (
+              <div className="mt-4 border border-brass-400/40 p-4" data-testid="pv21-reviser">
+                <p className="text-sm text-lune-soft" role="status">{conflit.detail}</p>
+                <button type="button" onClick={reviser} disabled={sending}
+                  className="mt-3 inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-brass-300 disabled:cursor-not-allowed disabled:opacity-60">
+                  Réviser (v2)
+                </button>
+              </div>
+            )}
+
+            {/* 409 document clos : plus aucune révision possible. */}
+            {conflit && !conflit.revision_possible && (
+              <div className="mt-4 border border-alert-300/40 p-4" data-testid="pv21-conflit-lecture-seule">
+                <p className="tech-label text-alert-300">Lecture seule</p>
+                <p className="mt-2 text-sm text-alert-300" role="alert">{conflit.detail}</p>
+                <Link
+                  to={`/ventes/devis/${devisId}/3d`}
+                  className="mt-3 inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-brass-300"
+                >
+                  Voir en 3D
+                </Link>
+              </div>
+            )}
+          </div>
           {blocAvertissements()}
+        </div>
+        )}
+
+        {/* PV86 — panneau de livraison TOUJOURS en bas de page en mode devis :
+            frappé dès le chargement (voir bootDevis, best-effort), mis à jour
+            après un enregistrement. Bloc séparé (jamais remplacé par le
+            précédent) : sans lui, un devis en lecture seule n'aurait plus
+            aucun moyen de renvoyer son lien au client. */}
+        {estDevis && deliver && (
+        <div className="cine-card mt-6 p-6">
+          {blocLivraison()}
         </div>
         )}
       </div>

@@ -217,6 +217,19 @@ export function consumptionProfile(hour: number, options: ConsumptionShapeOption
   return sampleShape(shape, hour);
 }
 
+/**
+ * PACT-battery (2026-08-15) — Construit un tableau d'heures (0..hours-1) de
+ * `consumptionProfile`, prêt à être injecté dans `simulateBattery`
+ * (batterySim.ts). SEULE fonction qui échantillonne la silhouette pour le
+ * simulateur batterie : le calcul SERVEUR initial (page, variante 'normal')
+ * ET le recalcul CLIENT (au changement d'onglet Standard/Été/Ramadan pendant
+ * que le calque batterie est actif) passent tous les deux par elle — aucune
+ * divergence possible entre les deux passes, aucun chiffre inventé.
+ */
+export function consumptionShapeHours(hours: number, options: ConsumptionShapeOptions = {}): number[] {
+  return Array.from({ length: Math.max(0, hours) }, (_, h) => consumptionProfile(h, options));
+}
+
 function esc(s: string): string {
   return String(s)
     .replace(/&/g, '&amp;')

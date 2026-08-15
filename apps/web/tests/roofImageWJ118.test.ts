@@ -117,7 +117,10 @@ describe('WJ118 — roofLayoutOutlineLatLng (aplati [lng,lat] → [lat,lng])', (
 describe('WJ118 — [token].astro câble roofImage sur la visionneuse 3D', () => {
   it('calcule roofOutlineLatLng côté serveur et le sérialise dans viewerConfig', () => {
     expect(PROPOSITION).toContain('roofLayoutOutlineLatLng');
-    expect(PROPOSITION).toMatch(/JSON\.stringify\(\{\s*model:\s*viewerModel,\s*roofOutlineLatLng\s*\}\)/);
+    // Visionneuse PLEINE (fondateur 2026-08-15) : viewerConfig transporte AUSSI
+    // le layout public brut — l'épingle suit, l'intention (roofOutlineLatLng
+    // sérialisé côté serveur) est inchangée.
+    expect(PROPOSITION).toMatch(/JSON\.stringify\(\{\s*model:\s*viewerModel,\s*roofOutlineLatLng,\s*layout:\s*roofLayout\s*\}\)/);
   });
 
   it('lit roofOutlineLatLng du dataset côté client', () => {

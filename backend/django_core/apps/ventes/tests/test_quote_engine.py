@@ -67,11 +67,24 @@ def make_produit(company, nom, sku, prix):
     )
 
 
-def make_devis(company, user, client, lignes, remise_globale='0', reference='DEV-QE-0001'):
+# PV86 — DÉCLARATION d'alternative. Un document à deux options n'existe que
+# lorsque le devis l'exprime : le générateur persiste TOUJOURS ce choix dans
+# ``etude_params['scenario']`` (garantie QF7). Sans déclaration, un devis qui
+# porte les deux onduleurs en lignes non optionnelles est un ARTEFACT de
+# données (une seule réalité, total = somme de TOUTES ses lignes) — cf.
+# ``test_pv86_verite_unique_devis``. Les fixtures ci-dessous qui testent
+# réellement le DOCUMENT À DEUX OPTIONS déclarent donc ce que le générateur
+# écrit en production ; leur rendu est inchangé au bit près.
+DEUX_OPTIONS = {'scenario': 'Les deux (Sans + Avec)'}
+
+
+def make_devis(company, user, client, lignes, remise_globale='0',
+               reference='DEV-QE-0001', etude_params=None):
     devis = Devis.objects.create(
         company=company, reference=reference, client=client,
         statut='brouillon', taux_tva=Decimal('20.00'),
         remise_globale=Decimal(remise_globale), created_by=user,
+        etude_params=etude_params,
     )
     for ligne in lignes:
         # (desig, qty, pu) historique ou (desig, qty, pu, taux_tva) réforme
@@ -209,7 +222,7 @@ class TestBuildQuoteData(TestCase):
             ('Panneau mono 550W', '14', '1100'),
             ('Batterie 5 kWh', '1', '14000'),
             ('Installation', '1', '4000'),
-        ])
+        ], etude_params=DEUX_OPTIONS)
         data = build_quote_data(devis)
         sans = [it['designation'].lower() for it in data['sans_items']]
         avec = [it['designation'].lower() for it in data['avec_items']]
@@ -295,7 +308,7 @@ class TestPremiumPdfRender(TestCase):
             ('Tableau De Protection AC/DC', '1', '1667'),
             ('Installation', '1', '4000'),
             ('Transport', '1', '1000'),
-        ])
+        ], etude_params=DEUX_OPTIONS)
         data = build_quote_data(devis)
 
         # Capture the generated HTML without writing a file.
@@ -352,8 +365,11 @@ class TestPdfFormats(TestCase):
         self.company = make_company()
         self.user = make_user(self.company)
         self.client_obj = make_client(self.company)
+        # PV86 — document à DEUX options : le devis le déclare (ce que le
+        # générateur persiste toujours). Rendu identique à l'historique.
         self.devis = make_devis(
-            self.company, self.user, self.client_obj, self.FULL_LINES)
+            self.company, self.user, self.client_obj, self.FULL_LINES,
+            etude_params=DEUX_OPTIONS)
 
     def _render(self, pdf_options=None, devis=None):
         from weasyprint import HTML
@@ -439,7 +455,7 @@ class TestPdfFormats(TestCase):
         from apps.ventes.quote_engine.builder import build_quote_data
         devis = make_devis(self.company, self.user, self.client_obj,
                            self.FULL_LINES, remise_globale='8',
-                           reference='DEV-QE-HT')
+                           reference='DEV-QE-HT', etude_params=DEUX_OPTIONS)
         data = build_quote_data(devis)
         for it in data['sans_items'] + data['avec_items']:
             self.assertAlmostEqual(
@@ -461,6 +477,7 @@ class TestPdfFormats(TestCase):
         carries étude data; degrades gracefully to 3 pages otherwise."""
         self.devis.mode_installation = 'industriel'
         self.devis.etude_params = {
+            **DEUX_OPTIONS,   # PV86 — l'alternative reste DÉCLARÉE
             'kwc': 9.94, 'production_annuelle': 12486, 'conso_annuelle': 120000,
             'taux_autoconso': 100, 'taux_couverture': 10.4,
             'economies_annuelles': 21851, 'payback': 3.0, 'prix_kwc': 6543,
@@ -579,6 +596,7 @@ class TestPdfFormats(TestCase):
     def test_annexe_and_etude_together_make_five_pages(self):
         self.devis.mode_installation = 'industriel'
         self.devis.etude_params = {
+            **DEUX_OPTIONS,   # PV86 — l'alternative reste DÉCLARÉE
             'kwc': 9.94, 'production_annuelle': 12486, 'conso_annuelle': 120000,
             'taux_autoconso': 100, 'taux_couverture': 10.4,
             'economies_annuelles': 21851, 'payback': 3.0, 'prix_kwc': 6543,
@@ -704,7 +722,7 @@ class TestPdfFormats(TestCase):
 
     def _devis_avec_etude(self, simulation=None):
         self.devis.mode_installation = 'industriel'
-        etude = dict(self._ETUDE_INDUSTRIELLE)
+        etude = {**DEUX_OPTIONS, **self._ETUDE_INDUSTRIELLE}
         if simulation is not None:
             etude['simulation'] = simulation
         self.devis.etude_params = etude
@@ -831,6 +849,7 @@ class TestPdfFormats(TestCase):
         """A pompage quote shows pump CV/débit/HMT in the one-page summary."""
         self.devis.mode_installation = 'agricole'
         self.devis.etude_params = {
+            **DEUX_OPTIONS,
             'pompe_cv': '5.5', 'pompe_kw': 4.05, 'type_pompe': 'immergee',
             'alim': 'tri', 'hmt_m': '80', 'debit_m3j': '45', 'champ_kwc': 5.68,
         }
@@ -845,6 +864,7 @@ class TestPdfFormats(TestCase):
         the HMT, and the m³/day with the hours assumption — exactly 1 page."""
         self.devis.mode_installation = 'agricole'
         self.devis.etude_params = {
+            **DEUX_OPTIONS,
             'pompe_cv': '10', 'pompe_kw': 7.5,
             'pompe_nom': 'Pompe immergée OSP 30/8 — 10 CV / 7.5 kW (3", 380V)',
             'type_pompe': 'immergee', 'alim': 'tri',
@@ -866,6 +886,7 @@ class TestPdfFormats(TestCase):
         is omitted entirely rather than faked."""
         self.devis.mode_installation = 'agricole'
         self.devis.etude_params = {
+            **DEUX_OPTIONS,
             'pompe_cv': '5.5', 'pompe_kw': 4.05, 'type_pompe': 'immergee',
             'alim': 'tri', 'hmt_m': '80', 'champ_kwc': 5.68,
             'debit_hmt_m3h': None, 'heures_pompage': None, 'm3_jour': None,
@@ -945,7 +966,8 @@ class TestPdfFormats(TestCase):
         from apps.ventes.quote_engine.builder import build_quote_data
         devis = make_devis(self.company, self.user, self.client_obj,
                            self.FULL_LINES, remise_globale='8',
-                           reference='DEV-QE-LEGTVA')
+                           reference='DEV-QE-LEGTVA',
+                           etude_params=DEUX_OPTIONS)
         data = build_quote_data(devis)
         self.assertFalse(data['per_line_tva'])
         self.assertIn('appliquée sur l\'ensemble', data['tva_note'])
@@ -970,7 +992,14 @@ class TestPdfFormats(TestCase):
     def test_two_option_quote_one_canonical_total_everywhere(self):
         """INTÉGRITÉ : pour un devis à DEUX options (remise incluse), le total
         de liste = total option 1 du premium = total du une-page, au dirham.
-        Le une-page ne mélange JAMAIS les deux options sur une même facture."""
+        Le une-page ne mélange JAMAIS les deux options sur une même facture.
+
+        PV86 — le devis DÉCLARE son alternative (``etude_params['scenario']``,
+        ce que le générateur persiste toujours). Sans cette déclaration, deux
+        onduleurs en lignes non optionnelles ne sont plus un document à deux
+        options mais un artefact de données rendu en UNE présentation au total
+        du devis (cf. ``test_pv86_verite_unique_devis``).
+        """
         from apps.ventes.quote_engine.builder import build_quote_data, display_totals
         devis = make_devis(self.company, self.user, self.client_obj, [
             ('Panneau Canadien Solar 710W', '14', '1272.73', '10'),
@@ -978,7 +1007,8 @@ class TestPdfFormats(TestCase):
             ('Onduleur hybride Deye 10kW Triphasé', '1', '23333.33', '20'),
             ('Batterie Deyness 10 kWh', '1', '25000', '20'),
             ('Installation', '1', '4000', '20'),
-        ], remise_globale='5', reference='DEV-QE-2OPT')
+        ], remise_globale='5', reference='DEV-QE-2OPT',
+            etude_params=DEUX_OPTIONS)
 
         dt = display_totals(devis)
         full = build_quote_data(devis)
@@ -1155,6 +1185,7 @@ class TestPdfFormats(TestCase):
         from apps.ventes.quote_engine.builder import build_quote_data
         self.devis.mode_installation = 'industriel'
         self.devis.etude_params = {
+            **DEUX_OPTIONS,
             'kwc': 9.94, 'production_annuelle': 156978, 'conso_annuelle': 120000,
             'taux_autoconso': 71.4, 'taux_couverture': 93.3,
             'economies_annuelles': 274711, 'payback': 2.1, 'prix_kwc': 4557,
@@ -1232,6 +1263,7 @@ class TestPdfFormats(TestCase):
         pas d'« autoconsommation 100 % » fabriquée)."""
         self.devis.mode_installation = 'industriel'
         self.devis.etude_params = {
+            **DEUX_OPTIONS,
             'kwc': 9.94, 'production_annuelle': 12486,
             'conso_annuelle': None, 'taux_autoconso': 100,
             'taux_couverture': None, 'economies_annuelles': 21851,
@@ -1544,6 +1576,12 @@ class TestGeneratorQuoteFlow(TestCase):
             self.assertEqual(line_resp.status_code, 201, line_resp.data)
 
         devis = Devis.objects.get(pk=devis_id)
+        # PV86 — comme les 13 autres fixtures « document à deux options » : le
+        # générateur DÉCLARE toujours son scénario (garantie QF7) ; sans la
+        # déclaration, deux onduleurs non optionnels = artefact mono-option et
+        # le split sans/avec n'existe plus.
+        devis.etude_params = {**(devis.etude_params or {}), **DEUX_OPTIONS}
+        devis.save(update_fields=['etude_params'])
         data = build_quote_data(devis)
 
         # Power from the catalogue panel line; both options split correctly.
@@ -2053,8 +2091,10 @@ class TestQuoteNumbersHonestyPack(TestCase):
         return cap['html']
 
     def _devis(self, ref='DEV-QX7-0'):
+        # PV86 — document à deux options : le devis le DÉCLARE (générateur).
         return make_devis(self.company, self.user, self.client_obj,
-                          self.FULL_LINES, reference=ref)
+                          self.FULL_LINES, reference=ref,
+                          etude_params=dict(DEUX_OPTIONS))
 
     # ── (a) couverture ──────────────────────────────────────────────────────
     def test_coverage_uses_real_consumption_when_known(self):
@@ -2063,7 +2103,8 @@ class TestQuoteNumbersHonestyPack(TestCase):
         from apps.ventes.quote_engine.builder import build_quote_data
         from apps.ventes.quote_engine.residential import renderer
         devis = self._devis(ref='DEV-QX7-COV')
-        devis.etude_params = {'conso_annuelle': 12000, 'distributeur': 'onee'}
+        devis.etude_params = {**DEUX_OPTIONS, 'conso_annuelle': 12000,
+                              'distributeur': 'onee'}
         devis.save(update_fields=['etude_params'])
         data = build_quote_data(devis)
         self.assertEqual(data['conso_annuelle_kwh'], 12000)
@@ -2163,7 +2204,7 @@ class TestQuoteNumbersHonestyPack(TestCase):
             ('Onduleur hybride Deye 10kW', '1', '23333.33'),
             ('Batterie Deyness 10 kWh', '1', '25000'),
             ('Installation', '1', '4000'),
-        ], reference='DEV-QX7-BRAND')
+        ], reference='DEV-QX7-BRAND', etude_params=DEUX_OPTIONS)
         for li in devis.lignes.all():
             if 'Canadien' in li.designation:
                 li.produit.marque = 'Canadian Solar'
@@ -2305,7 +2346,7 @@ class TestQuoteSignLinkAndPageNumbers(TestCase):
             ('Onduleur hybride Deye 10kW Triphasé', '1', '23333.33'),
             ('Batterie Deyness 10 kWh', '1', '25000'),
             ('Installation', '1', '4000'),
-        ], reference='DEV-QX6-1')
+        ], reference='DEV-QX6-1', etude_params=DEUX_OPTIONS)
 
     def test_builder_mints_tokenized_signer_link(self):
         from apps.ventes.models import ShareLink
@@ -2419,7 +2460,7 @@ class TestResidentialSingleOptionGate(TestCase):
             ('Onduleur hybride Deye 10kW Triphasé', '1', '23333.33'),
             ('Batterie Deyness 10 kWh', '1', '25000'),
             ('Installation', '1', '4000'),
-        ], reference='DEV-QX5-DEUX')
+        ], reference='DEV-QX5-DEUX', etude_params=DEUX_OPTIONS)
         html = self._resid_html(devis)
         # deux options → les deux cartes + le découpage delta subsistent
         self.assertIn('Option 1', html)
@@ -2676,7 +2717,7 @@ class TestBuilderWiresTenantSite(TestCase):
             ('Onduleur réseau 10kW', '1', '11700'),
             ('Onduleur hybride 5kW', '1', '24000'),
             ('Batterie 5 kWh', '1', '14000'),
-        ], reference=reference)
+        ], reference=reference, etude_params=DEUX_OPTIONS)
 
     def _set_site(self, site):
         from apps.parametres.models import CompanyProfile
@@ -2762,7 +2803,7 @@ class TestBuilderTenantSiteRendered(TestCase):
             ('Onduleur réseau 10kW', '1', '11700'),
             ('Onduleur hybride 5kW', '1', '24000'),
             ('Batterie 5 kWh', '1', '14000'),
-        ], reference='DEV-SCA27-REND')
+        ], reference='DEV-SCA27-REND', etude_params=DEUX_OPTIONS)
         data = build_quote_data(devis)
         d = renderer._augment(data)
         html = render.build_html(d)

@@ -74,10 +74,8 @@ import {
   parseRoofLayout,
   buildViewerModel,
   roofLayoutOutlineLatLng,
-  zoneAnnotations,
   hasSldSvg,
   sldSvgFilename,
-  walkthroughSteps,
   proposalVariants,
   nextSteps,
   proposalAssumptions,
@@ -88,7 +86,7 @@ import {
 import {
   renderYearCurve,
   resolveProposalCurveMode,
-  consumptionProfile,
+  consumptionShapeHours,
   solarProfile,
   type ProposalCurveVariant,
   type ProposalCurveMode,
@@ -116,6 +114,9 @@ import {
   equipmentDelta,
   EQUIPMENT_GROUP_LABELS,
 } from '../../lib/propositionPage';
+// WJ131 — appariement PUR « ligne de devis → fiche technique /produits/<slug> »
+// (aucune correspondance certaine → aucun lien, jamais la fiche d'une autre marque).
+import { ficheSlugPourLigne } from '../../lib/ficheMatcher';
 import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
 // W342 — « installation la plus proche » : haversine sur un point GPS réel
 // (premier sommet du premier pan de toiture, quand roof_layout est exposé) ou,
@@ -396,9 +397,11 @@ const avecTtc = ok && offerBattery.present && hasRealPrice(data!, 'avec_batterie
   : null;
 const showBatterySim = batterySimEligible && dailyConsKwh > 0 && dailyProdKwh > 0;
 // Silhouettes horaires (mode courant, variante NORMALE) — passées au client pour un
-// recalcul 100 % local au curseur (aucun re-fetch, aucun proposalCurve côté client).
+// recalcul 100 % local au curseur (aucun re-fetch). Rendu serveur INCHANGÉ : toujours
+// la variante 'normal' ; l'hydratation (script client) prend le relais pour recalculer
+// avec la variante active des onglets Standard/Été/Ramadan (PACT-battery, 2026-08-15).
 const batteryConsShape = showBatterySim
-  ? Array.from({ length: HOURS_PER_DAY }, (_, h) => consumptionProfile(h, { mode: curveMode, variant: 'normal' }))
+  ? consumptionShapeHours(HOURS_PER_DAY, { mode: curveMode, variant: 'normal' })
   : [];
 const batterySolarShape = showBatterySim
   ? Array.from({ length: HOURS_PER_DAY }, (_, h) => solarProfile(h))
@@ -423,6 +426,9 @@ const batteryInitialPrice = batterySimInitialN === offeredUnits && avecTtc !== n
     ? formatMAD(sansTtc)
     : null;
 // Config sérialisée pour le script client (recalcul au curseur, sans réseau).
+// PACT-battery — `mode` (curveMode) permet au client de recalculer `consShape`
+// via consumptionShapeHours() pour la variante active des onglets Standard/
+// Été/Ramadan, exactement comme au changement d'onglet de la courbe nue.
 const batterySimConfig = showBatterySim
   ? JSON.stringify({
       consShape: batteryConsShape,
@@ -435,6 +441,7 @@ const batterySimConfig = showBatterySim
       offeredUnits,
       sansTtc,
       avecTtc,
+      mode: curveMode,
     })
   : '';
 
@@ -523,7 +530,7 @@ const show3d = !!viewerModel && viewerModel.totalPanels >= 0;
 // draper la VRAIE photo satellite sur la 3D (buildPublicRoofImageSpec) ; vide
 // si aucun roof_layout exploitable, le client saute alors l'appel réseau.
 const roofOutlineLatLng = roofLayout ? roofLayoutOutlineLatLng(roofLayout) : [];
-const viewerConfig = show3d ? JSON.stringify({ model: viewerModel, roofOutlineLatLng }) : null;
+const viewerConfig = show3d ? JSON.stringify({ model: viewerModel, roofOutlineLatLng, layout: roofLayout }) : null;
 
 // ── WJ128 — Schéma électrique (SLD) : rendu UNIQUEMENT quand le backend
 // fournit `sld_svg` (étude électrique du devis existante) — absent/null →
@@ -549,8 +556,8 @@ const nearestInstallHref = nearestInstall ? `/realisations/${nearestInstall.slug
 // ── WJ26 — « Tout est expliqué » : légende par pan + visite guidée en 4 étapes.
 // Chaque chiffre vient du layout serveur ou du payload quote (les fonctions
 // renvoient null / « estimation indisponible » quand la donnée manque).
-const annotations = show3d && roofLayout ? zoneAnnotations(roofLayout, q?.watt_par_panneau ?? null) : [];
-const walkSteps = show3d && data ? walkthroughSteps(data) : [];
+// (fondateur 2026-08-15) zoneAnnotations/walkthroughSteps ne sont plus rendues
+// ici — cartes « ZONE n » et visite guidée retirées de la page.
 
 // ── PV80 · CHAPITRE 3 — « VOTRE INSTALLATION » (équipement STRUCTURÉ) ────────
 // Le reproche « beaucoup de données non structurées » visait exactement ceci :
@@ -562,7 +569,16 @@ const walkSteps = show3d && data ? walkthroughSteps(data) : [];
 // ajoute, au lieu d'un second tableau.
 const equipmentOption: OptionKey = reco ?? 'sans_batterie';
 const equipmentItems = ok ? optionItems(data!, equipmentOption) : [];
-const equipmentGroups = groupEquipment(equipmentItems);
+// WJ131 — chaque ligne emporte le slug de SA fiche technique, calculé UNE fois
+// ici (fonction pure, testée) : le tableau se contente d'afficher le lien quand
+// il existe. `null` = ligne sans lien, l'affichage ne change pas d'un pixel.
+const equipmentGroups = groupEquipment(equipmentItems).map((group) => ({
+  id: group.id,
+  lines: group.lines.map((it) => ({
+    ...it,
+    ficheSlug: ficheSlugPourLigne(it.designation, it.marque),
+  })),
+}));
 const equipmentExtra = ok && twoOptions && equipmentOption === 'sans_batterie'
   ? equipmentDelta(equipmentItems, optionItems(data!, 'avec_batterie'))
   : [];
@@ -1020,53 +1036,13 @@ const signConfig = ok
               <span data-i18n data-fr="Obstacles (cheminée, cage d’escalier…)" data-en="Obstacles (chimney, stairwell…)" data-ar="عوائق (مدخنة، بيت الدرج…)">Obstacles (cheminée, cage d’escalier…)</span>
             </span>
           </div>
-          {annotations.length > 0 && (
-            <div class={`mt-4 grid gap-3 ${annotations.length > 1 ? 'sm:grid-cols-2' : ''}`}>
-              {annotations.map((a) => (
-                <div class="cine-card rounded-xl p-4 text-sm">
-                  <p class="tech-label text-lune-faint">{a.label} · {a.roofTypeLabel}</p>
-                  <p class="mt-2 text-lune-soft" data-i18n
-                    data-fr={`Orientation ${a.orientation}${a.tiltDeg !== null ? ` · pente ${a.tiltDeg}°` : ''}${a.panels !== null ? ` · ${formatNumber(a.panels)} panneaux` : ''}${a.kwc !== null ? ` · ${formatNumber(a.kwc, 2)} kWc` : ''}`}
-                    data-en={`Orientation ${a.orientation}${a.tiltDeg !== null ? ` · slope ${a.tiltDeg}°` : ''}${a.panels !== null ? ` · ${formatNumber(a.panels)} panels` : ''}${a.kwc !== null ? ` · ${formatNumber(a.kwc, 2)} kWc` : ''}`}
-                    data-ar={`الاتجاه ${a.orientation}${a.tiltDeg !== null ? ` · الميل ${a.tiltDeg}°` : ''}${a.panels !== null ? ` · ${formatNumber(a.panels)} لوح` : ''}${a.kwc !== null ? ` · ${formatNumber(a.kwc, 2)} kWc` : ''}`}>
-                    Orientation <strong class="text-lune">{a.orientation}</strong>
-                    {a.tiltDeg !== null ? <> · pente <strong class="text-lune">{a.tiltDeg}°</strong></> : null}
-                    {a.panels !== null ? <> · <strong class="text-lune">{formatNumber(a.panels)} panneaux</strong></> : null}
-                    {a.kwc !== null ? <> · <strong class="text-brass-300">{formatNumber(a.kwc, 2)} kWc</strong></> : null}
-                  </p>
-                </div>
-              ))}
-            </div>
-          )}
+          {/* Cartes « ZONE n · … » retirées (fondateur 2026-08-15) : les chiffres
+              par pan vivent dans « Votre installation » ; zoneAnnotations reste
+              dans la lib (testée) pour un éventuel retour. */}
 
-          <!-- ── WJ26 · Visite guidée (4 étapes, skippable, sans mouvement) ──── -->
-          {walkSteps.length > 0 && (
-            <div id="roof3d-walk" class="mt-6" role="group" aria-label="Explication guidée de votre installation">
-              <div class="flex items-baseline justify-between gap-3">
-                <p class="tech-label text-lune-faint" data-i18n data-fr="Tout est expliqué, étape par étape" data-en="Everything is explained, step by step" data-ar="كل شيء موضّح، خطوة بخطوة">Tout est expliqué, étape par étape</p>
-                <a href="#options" class="text-xs text-lune-faint underline-offset-2 hover:underline" data-i18n data-fr="Passer l’explication" data-en="Skip the explanation" data-ar="تخطي الشرح">Passer l’explication</a>
-              </div>
-              <ol class="mt-3 space-y-3">
-                {walkSteps.map((s, i) => (
-                  <li
-                    class="walk-step cine-card rounded-xl p-4"
-                    data-walk-step={s.id}
-                    aria-current={i === 0 ? 'step' : undefined}
-                  >
-                    <p class="text-sm font-bold text-lune" data-i18n data-fr={`${i + 1}. ${s.title}`} data-en={`${i + 1}. ${s.title}`} data-ar={`${i + 1}. ${s.titleAr}`}>
-                      <span class="fig text-brass-300">{i + 1}.</span> {s.title}
-                    </p>
-                    <p class="v2-body mt-1.5 text-sm text-lune-soft">{s.body}</p>
-                  </li>
-                ))}
-              </ol>
-              <div class="mt-3 flex items-center gap-3">
-                <button id="roof3d-walk-prev" type="button" class="btn-pill px-4 py-1.5 text-sm" disabled data-i18n data-fr="Précédent" data-en="Previous" data-ar="السابق">Précédent</button>
-                <button id="roof3d-walk-next" type="button" class="btn-pill px-4 py-1.5 text-sm" data-i18n data-fr="Suivant" data-en="Next" data-ar="التالي">Suivant</button>
-                <span id="roof3d-walk-count" class="text-xs text-lune-faint" aria-live="polite" data-i18n data-fr={`Étape 1 sur ${walkSteps.length}`} data-en={`Step 1 of ${walkSteps.length}`} data-ar={`الخطوة 1 من ${walkSteps.length}`}>Étape 1 sur {walkSteps.length}</span>
-              </div>
-            </div>
-          )}
+          <!-- WJ26 retirée (fondateur 2026-08-15) : la « visite guidée » 4 étapes
+               et sa barre Précédent/Suivant quittent la page ; walkthroughSteps
+               reste dans la lib (testée) au cas où elle revient. -->
         </section>
         <div class="seam-soft" aria-hidden="true"></div>
         </>
@@ -1152,6 +1128,24 @@ const signConfig = ok
                                 data-fr={`Garantie : ${it.garantie}`}
                                 data-en={`Warranty: ${it.garantie}`}
                                 data-ar={`الضمان: ${it.garantie}`}>Garantie : {it.garantie}</p>
+                            ) : null}
+                            {/* WJ131 — « Fiche technique ↗ » : le client peut enfin
+                                VÉRIFIER chaque ligne qu'il paie, y compris les deux
+                                postes génériques (tableau de protection, accessoires)
+                                dont la fiche est EXPLICATIVE. Discret par construction :
+                                pas de lien du tout quand l'appariement n'est pas
+                                certain. La flèche vit HORS du span traduit — sinon la
+                                bascule EN/AR (textContent) l'effacerait. */}
+                            {it.ficheSlug ? (
+                              <a
+                                href={`/produits/${it.ficheSlug}`}
+                                target="_blank"
+                                rel="noopener"
+                                class="mt-1 inline-flex items-center gap-1 text-xs text-brass-300 underline-offset-2 transition-colors hover:text-brass-200 hover:underline"
+                              >
+                                <span data-i18n data-fr="Fiche technique" data-en="Datasheet" data-ar="الورقة التقنية">Fiche technique</span>
+                                <span aria-hidden="true">&#8599;</span>
+                              </a>
                             ) : null}
                           </div>
                           <span class="fig shrink-0 text-sm text-lune-soft" dir="ltr">×{formatNumber(it.quantite)}</span>
@@ -1430,17 +1424,22 @@ const signConfig = ok
           <p class="tech-label rule-brass text-brass-300" data-i18n
             data-fr="Votre production" data-en="Your production" data-ar="إنتاجكم">Votre production</p>
           <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6">
-            {/* Sélecteur d'échelle — masqué quand une seule vue est rendue. */}
+            {/* Sélecteur d'échelle — masqué quand une seule vue est rendue.
+                Fondateur 2026-08-15 : la JOURNÉE d'abord (onglet ET défaut —
+                availableViews la classe en tête), l'année en second.
+                Ce commentaire vit AU-DESSUS de l'expression : un `{/* … */}`
+                placé en PREMIER ENFANT d'un `&& (` casse le build Astro
+                (« Expected ")" but found … ») — il l'a réellement cassé ici. */}
             {prodLayers.showViewTabs && (
               <div class="mb-4 flex flex-wrap items-center gap-2" role="group" aria-label="Échelle du graphique">
-                <button type="button" id="prod-view-annee" data-prod-view-btn="annee" aria-pressed={prodLayers.monthly ? 'true' : 'false'}
-                  class="btn-pill px-3 py-1 text-xs"
-                  style={prodLayers.monthly ? 'background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)' : undefined}
-                  data-i18n data-fr="Sur l’année" data-en="Over the year" data-ar="على مدار السنة">Sur l’année</button>
                 <button type="button" id="prod-view-journee" data-prod-view-btn="journee" aria-pressed={prodLayers.monthly ? 'false' : 'true'}
                   class="btn-pill px-3 py-1 text-xs"
                   style={prodLayers.monthly ? undefined : 'background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)'}
                   data-i18n data-fr="Sur une journée" data-en="Over a day" data-ar="خلال يوم">Sur une journée</button>
+                <button type="button" id="prod-view-annee" data-prod-view-btn="annee" aria-pressed={prodLayers.monthly ? 'true' : 'false'}
+                  class="btn-pill px-3 py-1 text-xs"
+                  style={prodLayers.monthly ? 'background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)' : undefined}
+                  data-i18n data-fr="Sur l’année" data-en="Over the year" data-ar="على مدار السنة">Sur l’année</button>
               </div>
             )}
 
@@ -1510,23 +1509,6 @@ const signConfig = ok
               <!-- WJ80 — tap-to-reveal du repère pic/moyenne (même discipline que
                    le graphe ci-dessus — le survol est invisible au tactile). -->
               <p id="curve-tap-caption" class="mt-2 min-h-[1.25rem] text-sm text-brass-300" aria-live="polite"></p>
-              <!-- WJ119 — toggle DISCRET été/Ramadan (résidentiel/commercial
-                   uniquement — un poste industriel ou un pompage agricole ne
-                   varient pas avec la clim/le jeûne). Change uniquement la
-                   SILHOUETTE de consommation affichée ; jamais un chiffre. -->
-              {curveVariantToggle && (
-                <div class="mt-3 flex flex-wrap items-center gap-2" role="group" aria-label="Variante du profil de consommation">
-                  <button type="button" id="curve-variant-normal" data-curve-variant-btn="normal" aria-pressed="true"
-                    class="btn-pill px-3 py-1 text-xs" style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)"
-                    data-i18n data-fr="Standard" data-en="Standard" data-ar="عادي">Standard</button>
-                  <button type="button" id="curve-variant-ete" data-curve-variant-btn="ete" aria-pressed="false"
-                    class="btn-pill px-3 py-1 text-xs"
-                    data-i18n data-fr="Été (clim)" data-en="Summer (AC)" data-ar="الصيف (تكييف)">Été (clim)</button>
-                  <button type="button" id="curve-variant-ramadan" data-curve-variant-btn="ramadan" aria-pressed="false"
-                    class="btn-pill px-3 py-1 text-xs"
-                    data-i18n data-fr="Ramadan" data-en="Ramadan" data-ar="رمضان">Ramadan</button>
-                </div>
-              )}
               <div class="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
                 <span class="inline-flex items-center gap-2 text-lune-soft">
                   <span class="inline-block h-3 w-3 rounded-sm" style="background: var(--color-brass-400)" aria-hidden="true"></span>
@@ -1640,6 +1622,31 @@ const signConfig = ok
                 data-ar="الافتراضات: بطارية ليثيوم LFP، عمق تفريغ 90٪، كفاءة ذهاب وإياب ≈ 92٪. نمط نموذجي في المغرب معدّل حسب فاتورتكم — وليس رقماً مقيساً. السعر المعروض للبطارية هو سعر عرضكم؛ أي تكوين آخر يُسعّر حسب الدراسة.">
                 Hypothèses : batterie lithium LFP, décharge 90 %, rendement aller-retour ≈ 92 %. Profil type au Maroc ajusté à votre facture — jamais un chiffre mesuré. Le prix batterie affiché est celui de votre devis ; toute autre configuration est chiffrée sur étude.
               </p>
+              </div>
+            )}
+
+            {/* ── Onglets de profil Standard/Été/Ramadan : COMMUNS aux deux
+                   calques de la vue journée (courbe nue ET batterie) — le
+                   fondateur a demandé que « Avec batterie » se COMBINE avec
+                   ces onglets plutôt que les faire disparaître. Ils vivaient
+                   avant DANS le calque « daily » (donc masqués dès que la
+                   batterie remplaçait ce calque) ; ils sont désormais un
+                   frère commun, visible tant que productionLayers dit
+                   showVariantTabs — quel que soit le dessin affiché. Changer
+                   d'onglet pendant que la batterie est active recalcule la
+                   silhouette de consommation ET rejoue le simulateur (script
+                   client), jamais un chiffre inventé ici. -->
+            {curveVariantToggle && (
+              <div data-prod-variant-control class="mt-3 flex flex-wrap items-center gap-2" role="group" aria-label="Variante du profil de consommation" hidden={!prodLayers.showVariantTabs}>
+                <button type="button" id="curve-variant-normal" data-curve-variant-btn="normal" aria-pressed="true"
+                  class="btn-pill px-3 py-1 text-xs" style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)"
+                  data-i18n data-fr="Standard" data-en="Standard" data-ar="عادي">Standard</button>
+                <button type="button" id="curve-variant-ete" data-curve-variant-btn="ete" aria-pressed="false"
+                  class="btn-pill px-3 py-1 text-xs"
+                  data-i18n data-fr="Été (clim)" data-en="Summer (AC)" data-ar="الصيف (تكييف)">Été (clim)</button>
+                <button type="button" id="curve-variant-ramadan" data-curve-variant-btn="ramadan" aria-pressed="false"
+                  class="btn-pill px-3 py-1 text-xs"
+                  data-i18n data-fr="Ramadan" data-en="Ramadan" data-ar="رمضان">Ramadan</button>
               </div>
             )}
 
@@ -2991,6 +2998,7 @@ const signConfig = ok
     initialProductionState,
     productionLayers,
     setProductionView,
+    setCurveVariant,
     setBatteryLayer,
   } from '../../lib/propositionPage';
 
@@ -3133,10 +3141,14 @@ const signConfig = ok
     });
     applyCurveVisibility();
   }
-  document.querySelectorAll<HTMLElement>('[data-curve-variant-btn]').forEach((btn) => {
-    const variant = btn.getAttribute('data-curve-variant-btn') as CurveVariantId | null;
-    if (variant) btn.addEventListener('click', () => applyCurveVariant(variant));
-  });
+  // PACT-battery (2026-08-15) — les clics sur les onglets Standard/Été/Ramadan
+  // ne bougent plus `currentCurveVariant` directement : ils passent par la MÊME
+  // machine à états que le sélecteur de vue et la case batterie (setCurveVariant,
+  // lib/propositionPage), câblée juste en dessous dans setupProductionChart. Ça
+  // corrige un double défaut : (1) l'onglet cliqué était oublié au prochain
+  // `apply()` (le state ne changeait jamais, donc un futur clic sur la vue ou la
+  // batterie ramenait « Standard ») et (2) le calque batterie ne réagissait pas
+  // du tout au changement de profil — voir __propSetBatteryVariant plus bas.
 
   // ── PV80 — LE GRAPHIQUE FUSIONNÉ « Votre production » ──────────────────────
   // Le serveur a déjà posé le bon calque au premier rendu ; ce bloc rejoue
@@ -3175,8 +3187,21 @@ const signConfig = ok
       });
       const control = section!.querySelector<HTMLElement>('[data-prod-battery-control]');
       if (control) control.hidden = !layers.showBatteryToggle;
+      // PACT-battery — les onglets Standard/Été/Ramadan sont désormais un frère
+      // commun aux deux calques (daily ET battery, cf. data-prod-variant-control) :
+      // visibles tant que la vue journée les rend, quel que soit le dessin actif.
+      const variantControl = section!.querySelector<HTMLElement>('[data-prod-variant-control]');
+      if (variantControl) variantControl.hidden = !layers.showVariantTabs;
       // La courbe journalière reste synchrone de l'onglet de profil actif.
       if (layers.variant !== currentCurveVariant) applyCurveVariant(layers.variant);
+      // PACT-battery — le calque batterie REMPLACE la courbe nue mais doit
+      // continuer à réagir à l'onglet de profil : on rejoue le simulateur (autre
+      // île <script>, pont window comme __propApplyLang ci-dessous) avec la MÊME
+      // variante, exactement comme au déplacement du curseur d'unités.
+      if (layers.battery) {
+        (window as unknown as { __propSetBatteryVariant?: (v: CurveVariantId) => void })
+          .__propSetBatteryVariant?.(layers.variant);
+      }
     }
 
     section.querySelectorAll<HTMLElement>('[data-prod-view-btn]').forEach((btn) => {
@@ -3184,6 +3209,17 @@ const signConfig = ok
       if (!view) return;
       btn.addEventListener('click', () => {
         state = setProductionView(state, view, availability);
+        apply();
+      });
+    });
+    // PACT-battery — les onglets Standard/Été/Ramadan passent par la même
+    // machine à états (setCurveVariant) que la vue et la case batterie : le
+    // calque affiché (courbe nue OU batterie) suit toujours le même profil.
+    section.querySelectorAll<HTMLElement>('[data-curve-variant-btn]').forEach((btn) => {
+      const variant = btn.getAttribute('data-curve-variant-btn') as CurveVariantId | null;
+      if (!variant) return;
+      btn.addEventListener('click', () => {
+        state = setCurveVariant(state, variant, availability);
         apply();
       });
     });
@@ -3685,7 +3721,7 @@ const signConfig = ok
   // Three.js est chargé par import() dynamique : au scroll (IntersectionObserver)
   // en conditions normales, UNIQUEMENT au tap en reduced-motion / Save-Data.
   // Échec WebGL / import → le poster (photo d'étude) reste, avec une note claire.
-  import type { ViewerModel } from '../../lib/proposition';
+  import type { RoofLayout, ViewerModel } from '../../lib/proposition';
   import type { RoofImageSpec } from '../../scripts/roofPro11/viewerOnly';
 
   const section3d = document.getElementById('roof3d');
@@ -3702,15 +3738,21 @@ const signConfig = ok
     // photo satellite drapée sur la 3D ; vide si aucun roof_layout exploitable
     // (le client saute alors l'appel réseau de buildPublicRoofImageSpec).
     let roofOutlineLatLng: Array<[number, number]> = [];
+    // Le layout PUBLIC brut (parseRoofLayout côté serveur) : il porte le
+    // calepinage RÉEL, seule source de la visionneuse PLEINE (le vrai builder).
+    let layout: RoofLayout | null = null;
     try {
       const parsed = JSON.parse(section3d.dataset.viewerConfig) as {
         model: ViewerModel;
         roofOutlineLatLng?: Array<[number, number]>;
+        layout?: RoofLayout | null;
       };
       model = parsed.model;
       roofOutlineLatLng = Array.isArray(parsed.roofOutlineLatLng) ? parsed.roofOutlineLatLng : [];
+      layout = parsed.layout ?? null;
     } catch {
       model = null;
+      layout = null;
     }
 
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -3742,6 +3784,43 @@ const signConfig = ok
         if (!strategy.canBoot) {
           showFallback(strategy.fallbackMessage ?? 'Vue 3D indisponible sur cet appareil — voici la photo de votre étude.');
           return;
+        }
+        // VISIONNEUSE PLEINE : le VRAI rendu de l'ERP (scene3d) sur la carte
+        // satellite complète. Tout refus (ancien lien sans calepinage réel, pas
+        // de clé d'imagerie, WebGL absent) renvoie null → on garde EXACTEMENT le
+        // chemin viewerOnly ci-dessous, inchangé.
+        const fullLayout = layout;
+        if (fullLayout) {
+          const cfg = (await fetch('/api/roof-config', { signal: AbortSignal.timeout(10_000) })
+            .then((r) => (r.ok ? r.json() : null))
+            .catch(() => null)) as { maptilerKey?: string; mapboxToken?: string } | null;
+          if (cfg && (cfg.maptilerKey || cfg.mapboxToken)) {
+            const full = await import('../../scripts/roofPro11/viewerFullBoot');
+            const fullHandle = full.bootViewerFull(stage, fullLayout, {
+              maptilerKey: cfg.maptilerKey,
+              mapboxToken: cfg.mapboxToken,
+              reducedMotion: reduced,
+              lowEnd: strategy.lowEnd,
+              onReady: () => {
+                if (overlay) overlay.hidden = true;
+                if (hintEl) {
+                  hintEl.hidden = false;
+                  // Gestes carte ≠ gestes Three : réécrit data-i18n ET le texte,
+                  // sinon le sélecteur de langue remet l'ancien libellé.
+                  hintEl.dataset.fr = 'Deux doigts pour déplacer et zoomer · clic droit ou Ctrl + glisser pour tourner';
+                  hintEl.dataset.en = 'Two fingers to pan and zoom · right-click or Ctrl + drag to rotate';
+                  hintEl.dataset.ar = 'إصبعان للتحريك والتكبير · زر أيمن أو Ctrl + سحب للتدوير';
+                  hintEl.textContent = hintEl.dataset.fr;
+                }
+                stage.classList.add('roof3d-stage--sky', 'roof3d-stage--map');
+              },
+              onMapError: () => showFallback('Vue 3D interrompue — voici la photo de votre étude.'),
+            });
+            if (fullHandle) {
+              handle = { dispose: () => fullHandle.destroy() };
+              return;
+            }
+          }
         }
         // WJ118 — photo satellite RÉELLE du toit du client (contrat viewerOnly
         // ci-dessus) : TOUT échec (pas de clé MAPTILER/MAPBOX, contour < 3
@@ -3850,7 +3929,12 @@ const signConfig = ok
   // WJ120 — moteur du simulateur batterie (PUR) importé ES pour un recalcul 100 %
   // local au curseur (aucun re-fetch). Regroupé dans CE script (cf. note WJ34/WJ53
   // ci-dessous) ; batterySim n'a aucune dépendance runtime lourde.
-  import { simulateBattery, renderBatterySplitSvg } from '../../lib/batterySim';
+  import { simulateBattery, renderBatterySplitSvg, HOURS_PER_DAY } from '../../lib/batterySim';
+  // PACT-battery (2026-08-15) — MÊME fonction pure que le rendu serveur initial
+  // (voir l'astro plus haut, `batteryConsShape`) : reconstruit la silhouette de
+  // consommation pour la variante active des onglets Standard/Été/Ramadan, sans
+  // jamais diverger entre les deux passes.
+  import { consumptionShapeHours, type ProposalCurveVariant, type ProposalCurveMode } from '../../lib/proposalCurve';
   // WJ129 — géométrie PURE (testée sous vitest, propositionSldViewerWJ129.test.ts)
   // de la visionneuse plein écran du schéma électrique. Regroupée dans CE
   // script (cf. note WJ34/WJ53 ci-dessous : un <script> supplémentaire isolé
@@ -4177,6 +4261,10 @@ const signConfig = ok
       offeredUnits: number;
       sansTtc: number | null;
       avecTtc: number | null;
+      // PACT-battery — mode courant (résidentiel/commercial, seuls modes
+      // éligibles au simulateur batterie) : nécessaire pour recalculer
+      // consShape via consumptionShapeHours() à chaque onglet de profil.
+      mode: ProposalCurveMode;
     }
     const section = document.getElementById('battery-sim');
     if (!section) return;
@@ -4223,6 +4311,12 @@ const signConfig = ok
 
     let currentN = Math.max(0, Math.min(cfg.maxUnits, Math.trunc(cfg.initialN)));
     let lastHourly: { direct: number[]; battery: number[]; grid: number[] } | null = null;
+    // PACT-battery — onglet de profil actif (Standard/Été/Ramadan). Le rendu
+    // serveur initial est TOUJOURS 'normal' (cfg.consShape en hérite) ; ce
+    // n'est qu'après hydratation qu'un clic sur un autre onglet, pendant que
+    // ce calque batterie est actif, fait bouger cette variable (pont
+    // __propSetBatteryVariant, exposé plus bas).
+    let currentVariant: ProposalCurveVariant = 'normal';
 
     function renderPrice(n: number): void {
       const el = document.getElementById('battery-sim-price');
@@ -4232,10 +4326,20 @@ const signConfig = ok
       else el.textContent = ON_STUDY[curLang()];
     }
 
+    // Silhouette de consommation active : le rendu serveur ('normal') reste
+    // cfg.consShape tel quel (zéro recalcul redondant) ; toute autre variante
+    // passe par la MÊME fonction pure que le rendu serveur (consumptionShapeHours,
+    // proposalCurve.ts) — jamais un chiffre inventé ici.
+    function activeConsShape(): number[] {
+      return currentVariant === 'normal'
+        ? cfg.consShape
+        : consumptionShapeHours(HOURS_PER_DAY, { mode: cfg.mode, variant: currentVariant });
+    }
+
     function update(n: number): void {
       currentN = n;
       const res = simulateBattery({
-        consumptionShape: cfg.consShape,
+        consumptionShape: activeConsShape(),
         productionShape: cfg.solarShape,
         dailyConsumptionKwh: cfg.dailyConsKwh,
         dailyProductionKwh: cfg.dailyProdKwh,
@@ -4280,6 +4384,18 @@ const signConfig = ok
 
     // Recalcule une fois au chargement (idempotent avec le rendu serveur).
     update(currentN);
+
+    // PACT-battery — pont exposé à l'AUTRE île <script> (setupProductionChart,
+    // productionLayers/lib/propositionPage) : appelé quand le calque batterie
+    // est affiché ET que l'onglet Standard/Été/Ramadan change, pour rejouer
+    // EXACTEMENT le même chemin que le curseur d'unités (activeConsShape →
+    // simulateBattery → renderBatterySplitSvg), jamais un second moteur.
+    (window as unknown as { __propSetBatteryVariant?: (v: ProposalCurveVariant) => void }).__propSetBatteryVariant =
+      (v: ProposalCurveVariant) => {
+        if (v === currentVariant) return;
+        currentVariant = v;
+        update(currentN);
+      };
   })();
 
   // ── WJ128 — « Télécharger le schéma (SVG) » : Blob + URL.createObjectURL,
@@ -4910,6 +5026,15 @@ const signConfig = ok
   }
   .roof3d-stage :global(canvas:active) {
     cursor: grabbing;
+  }
+  /* VISIONNEUSE PLEINE : MapLibre gère lui-même curseur et `touch-action`
+     (gestes coopératifs — un doigt fait défiler la PAGE, deux doigts déplacent
+     la carte). Les deux règles ci-dessus, écrites pour le canvas Three.js seul,
+     doivent être neutralisées quand la carte est montée, sinon un doigt posé sur
+     la carte bloque le défilement de la proposition. */
+  .roof3d-stage.roof3d-stage--map :global(canvas) {
+    touch-action: unset;
+    cursor: unset;
   }
   /* Scrim léger pour la lisibilité du bouton/note posés sur la photo. */
   .roof3d-scrim {

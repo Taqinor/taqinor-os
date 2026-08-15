@@ -34,7 +34,8 @@ const FULL: ProductionAvailability = {
 
 describe('PV80 — graphique fusionné : vues disponibles', () => {
   it('propose année puis journée quand les deux sont rendues', () => {
-    expect(availableViews(FULL)).toEqual(['annee', 'journee']);
+    // Fondateur 2026-08-15 : la journée d'abord (défaut), l'année ensuite.
+    expect(availableViews(FULL)).toEqual(['journee', 'annee']);
     expect(hasProductionBlock(FULL)).toBe(true);
   });
 
@@ -63,7 +64,7 @@ describe('PV80 — graphique fusionné : vues disponibles', () => {
 
 describe('PV80 — graphique fusionné : état initial', () => {
   it('démarre sur l’année, profil standard, batterie décochée', () => {
-    expect(initialProductionState(FULL)).toEqual({ view: 'annee', variant: 'normal', battery: false });
+    expect(initialProductionState(FULL)).toEqual({ view: 'journee', variant: 'normal', battery: false });
   });
 
   it('démarre sur la journée quand les barres mensuelles manquent', () => {
@@ -180,6 +181,44 @@ describe('PV80 — graphique fusionné : transitions', () => {
   it('une variante devenue indisponible retombe sur la première rendue', () => {
     const avail = { monthly: true, daily: true, variants: ['normal' as const], battery: false };
     expect(productionLayers({ view: 'journee', variant: 'ramadan', battery: false }, avail).variant).toBe('normal');
+  });
+
+  // PACT-battery (2026-08-15) — fondateur : « quand on active le bouton avec
+  // batterie on peut encore voir l'effet le ramadan et l'été ». Le calque
+  // batterie REMPLACE la courbe nue (un seul dessin), mais les onglets de
+  // profil doivent rester visibles et actifs, et changer d'onglet doit
+  // continuer à changer la variante retenue par productionLayers — c'est ce
+  // que le script client relit pour recalculer le simulateur batterie.
+  it('les onglets Standard/Été/Ramadan restent actifs ET changent la silhouette quand la batterie est cochée', () => {
+    let s = setBatteryLayer(initialProductionState(FULL), true, FULL);
+    expect(s.battery).toBe(true);
+    let l = productionLayers(s, FULL);
+    // Un seul dessin : la batterie remplace la courbe, jamais un second graphe.
+    expect(l.battery).toBe(true);
+    expect(l.daily).toBe(false);
+    expect(l.monthly).toBe(false);
+    // Les onglets restent proposés ET utilisables pendant que la batterie est active.
+    expect(l.showVariantTabs).toBe(true);
+    expect(l.variant).toBe('normal');
+
+    s = setCurveVariant(s, 'ete', FULL);
+    l = productionLayers(s, FULL);
+    expect(l.battery).toBe(true);
+    expect(l.variant).toBe('ete');
+    expect([l.monthly, l.daily, l.battery].filter(Boolean)).toHaveLength(1);
+
+    s = setCurveVariant(s, 'ramadan', FULL);
+    l = productionLayers(s, FULL);
+    expect(l.battery).toBe(true);
+    expect(l.variant).toBe('ramadan');
+    expect([l.monthly, l.daily, l.battery].filter(Boolean)).toHaveLength(1);
+  });
+
+  it('changer de variante ne touche jamais à l’état de la case batterie', () => {
+    const s0 = setBatteryLayer(initialProductionState(FULL), true, FULL);
+    const s1 = setCurveVariant(s0, 'ete', FULL);
+    expect(s1.battery).toBe(true);
+    expect(s1.view).toBe('journee');
   });
 });
 

@@ -83,12 +83,15 @@ function normalize(a: Partial<ProductionAvailability> | null | undefined): Produ
   };
 }
 
-/** Les vues réellement proposables, dans l'ordre d'affichage. */
+/** Les vues réellement proposables, dans l'ordre d'affichage.
+ *  Fondateur 2026-08-15 : la JOURNÉE d'abord — le client ouvre sur « Sur une
+ *  journée » (le récit le plus parlant : le soleil produit, vous consommez),
+ *  puis peut passer à l'année. */
 export function availableViews(a: Partial<ProductionAvailability> | null | undefined): ProductionView[] {
   const av = normalize(a);
   const views: ProductionView[] = [];
-  if (av.monthly) views.push('annee');
   if (av.daily) views.push('journee');
+  if (av.monthly) views.push('annee');
   return views;
 }
 

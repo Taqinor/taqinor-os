@@ -23,7 +23,7 @@
  *   L'ancien « ≥ 84,8 % / 25 ans » est le barème PERC : il n'apparaît sur
  *   AUCUNE des fiches liées et ne doit plus être affiché.
  *
- *  ONDULEURS : 10 ans (Deye SUN-…-SG04LP, Huawei SUN2000).
+ *  ONDULEURS : 10 ans (Deye SUN-…-SG05LP, Huawei SUN2000).
  *   // pending WB5 distributor-doc confirmation
  *   Le terme varie selon le marché/canal : à confirmer/citer contre le
  *   certificat du distributeur marocain avant de le publier autrement.

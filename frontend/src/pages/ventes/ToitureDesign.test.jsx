@@ -239,7 +239,10 @@ describe('ToitureDesign — PV21 : enregistrer la conception', () => {
     // Livraison : lien tokenisé + aperçu WhatsApp LECTURE SEULE (aucun
     // marquage « envoyé »).
     expect(await screen.findByText('Prêt à envoyer')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'WhatsApp' }))
+    // PV86 — le bouton WhatsApp ouvre un choix (proposition / PDF seul) au
+    // lieu de naviguer directement.
+    await userEvent.click(screen.getByRole('button', { name: 'WhatsApp' }))
+    expect(screen.getByRole('link', { name: 'Envoyer le lien de la proposition' }))
       .toHaveAttribute('href', 'https://wa.me/212600000000?text=x')
     expect(screen.getByDisplayValue('https://taqinor.ma/proposition/tok'))
       .toBeInTheDocument()
@@ -248,6 +251,11 @@ describe('ToitureDesign — PV21 : enregistrer la conception', () => {
   })
 
   it('même calepinage : « Aucun changement », rien n\'est envoyé ni livré', async () => {
+    // PV86 — le lien client est désormais frappé DÈS LE CHARGEMENT (best-
+    // effort, indépendant du bouton) : on neutralise CET appel-là pour que
+    // ce test reste concentré sur le flux d'enregistrement — aucun panneau
+    // de livraison n'apparaît tant que le calepinage n'a pas changé.
+    ventesApi.shareLinkDevis.mockRejectedValueOnce(new Error('reseau'))
     ventesApi.syncDevisLayout.mockResolvedValue({
       data: {
         inchange: true, panneaux: 24, kwc: 17.04, scenario: 'reseau',
@@ -260,7 +268,9 @@ describe('ToitureDesign — PV21 : enregistrer la conception', () => {
 
     await waitFor(() => expect(toastInfo).toHaveBeenCalledWith('Aucun changement'))
     expect(api.post).not.toHaveBeenCalled()
-    expect(ventesApi.shareLinkDevis).not.toHaveBeenCalled()
+    // Un seul appel : celui du CHARGEMENT (lien permanent, PV86) — le flux
+    // « Aucun changement » n'en déclenche pas de second.
+    expect(ventesApi.shareLinkDevis).toHaveBeenCalledTimes(1)
     expect(screen.queryByText('Prêt à envoyer')).toBeNull()
   })
 
@@ -307,6 +317,95 @@ describe('ToitureDesign — PV21 : enregistrer la conception', () => {
     expect(bandeau).toHaveTextContent('Devis accepté — aucune révision de calepinage possible.')
     expect(screen.queryByTestId('pv21-reviser')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Réviser (v2)' })).toBeNull()
+  })
+})
+
+/* PV86 — trois demandes fondateur sur l'écran de conception : (1) le bloc
+   facture disparaît en mode devis (dimensionnement imposé par le devis, la
+   facture y est redondante) ; (2) le lien client vit EN PERMANENCE en bas de
+   page, frappé dès le chargement — pas seulement après un enregistrement ;
+   (3) le bouton WhatsApp du panneau ouvre un choix entre le lien de la
+   proposition et le PDF seul (même numéro, texte différent). */
+describe('ToitureDesign — PV86 : lien client permanent + choix WhatsApp', () => {
+  it('bloc facture retiré en mode devis (le dimensionnement vient du devis, pas de la facture)', async () => {
+    ventesApi.getDevisDesignContext.mockResolvedValue(
+      reponseContrat('ventes', 'devis_design_context'))
+    // Neutralise le lien permanent (hors sujet de ce test).
+    ventesApi.shareLinkDevis.mockRejectedValueOnce(new Error('reseau'))
+
+    rendreDevis(CTX.devis.id)
+
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    expect(screen.queryByLabelText(/Facture d'électricité/)).toBeNull()
+    // Les deux ids que le builder interroge via `$()` (roofPro11/dom.ts) sont
+    // gardés partout (`?.`) : absents du DOM, ils ne cassent pas l'init.
+    expect(document.getElementById('rp9-bill')).toBeNull()
+    expect(document.getElementById('rp9-bill-kwh')).toBeNull()
+  })
+
+  it('au chargement, frappe shareLinkDevis et affiche le panneau de livraison SANS enregistrement', async () => {
+    ventesApi.getDevisDesignContext.mockResolvedValue(
+      reponseContrat('ventes', 'devis_design_context'))
+    ventesApi.shareLinkDevis.mockResolvedValueOnce({
+      data: { token: 'tok-boot', path: '/proposition/tok-boot' },
+    })
+    ventesApi.whatsappPreviewDevis.mockResolvedValueOnce({
+      data: { wa_url: 'https://wa.me/212600000000?text=boot', phone: '0600000000' },
+    })
+
+    rendreDevis(CTX.devis.id)
+
+    await waitFor(() => expect(ventesApi.shareLinkDevis)
+      .toHaveBeenCalledWith(String(CTX.devis.id)))
+    expect(await screen.findByText('Prêt à envoyer')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('https://taqinor.ma/proposition/tok-boot'))
+      .toBeInTheDocument()
+    // Rien n'a été enregistré : le bouton d'action reste, LUI AUSSI, affiché
+    // (le panneau de livraison est un bloc séparé, jamais un remplacement).
+    expect(screen.getByRole('button', { name: /Enregistrer la conception/ }))
+      .toBeInTheDocument()
+    expect(ventesApi.syncDevisLayout).not.toHaveBeenCalled()
+  })
+
+  it('échec réseau au chargement du lien : aucun panneau, pas d\'erreur bloquante', async () => {
+    ventesApi.getDevisDesignContext.mockResolvedValue(
+      reponseContrat('ventes', 'devis_design_context'))
+    ventesApi.shareLinkDevis.mockRejectedValueOnce(new Error('reseau'))
+
+    rendreDevis(CTX.devis.id)
+
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    expect(screen.queryByText('Prêt à envoyer')).toBeNull()
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('clic WhatsApp : deux choix — lien de la proposition vs PDF seul, même numéro', async () => {
+    ventesApi.getDevisDesignContext.mockResolvedValue(
+      reponseContrat('ventes', 'devis_design_context'))
+    ventesApi.shareLinkDevis.mockResolvedValueOnce({
+      data: { token: 'tok42', path: '/proposition/tok42' },
+    })
+    ventesApi.whatsappPreviewDevis.mockResolvedValueOnce({
+      data: { wa_url: 'https://wa.me/212600000000?text=proposition', phone: '0600000000' },
+    })
+
+    rendreDevis(CTX.devis.id)
+
+    const boutonWa = await screen.findByRole('button', { name: 'WhatsApp' })
+    await userEvent.click(boutonWa)
+
+    const choixProposition = screen.getByRole('link', { name: 'Envoyer le lien de la proposition' })
+    expect(choixProposition).toHaveAttribute(
+      'href', 'https://wa.me/212600000000?text=proposition')
+
+    const choixPdf = screen.getByRole('link', { name: 'Envoyer le PDF seul' })
+    const hrefPdf = choixPdf.getAttribute('href')
+    // Même numéro que le premier choix (relu depuis le lien déjà validé) —
+    // seul le TEXTE change.
+    expect(hrefPdf.startsWith('https://wa.me/212600000000?text=')).toBe(true)
+    const texte = decodeURIComponent(hrefPdf.split('text=')[1])
+    expect(texte).toContain(`${window.location.origin}/api/django/public/proposal/tok42/pdf/`)
+    expect(texte).toContain(CTX.devis.reference)
   })
 })
 

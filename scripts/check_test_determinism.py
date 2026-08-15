@@ -42,7 +42,7 @@ WHITELISTED_LIVE_NOW: set[tuple[str, int]] = {
     ("apps/compta/tests/test_retenue_garantie_cautions.py", 96),
     ("apps/compta/tests/test_retenue_garantie_cautions.py", 142),
     ("apps/kb/tests/test_verification_verrou.py", 61),
-    ("apps/ventes/tests/test_acceptation.py", 89),
+    ("apps/ventes/tests/test_acceptation.py", 97),  # PV86 — +8 lignes au-dessus (déclaration du scénario), MÊME assertion
     ("apps/ventes/tests/test_qg8_devis_whatsapp.py", 159),
     ("apps/ventes/tests/test_refus.py", 67),
 }
