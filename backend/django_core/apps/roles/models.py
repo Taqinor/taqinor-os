@@ -222,6 +222,26 @@ ALL_PERMISSIONS = [
     'fpa_valider',
     'fpa_consulter_tout',
     'fpa_administrer',
+    # ── WIR174 — GED (apps/ged) : la GOUVERNANCE documentaire n'était gardée
+    # que par ``IsResponsableOrAdmin``, c'est-à-dire par tout porteur d'UNE
+    # écriture — or caviarder une pièce, poser ou LEVER une rétention légale
+    # (legal hold) et fixer une politique de rétention sont des actes à portée
+    # juridique, pas des écritures ordinaires. Trois codes :
+    #   * ``ged_voir``        — lire les REGISTRES de gouvernance (legal holds,
+    #     archivages légaux, politiques de rétention) ;
+    #   * ``ged_gerer``       — écriture documentaire ordinaire (documents,
+    #     dossiers, coffres…) ;
+    #   * ``ged_gouvernance`` — caviardage, legal hold (pose ET levée) et
+    #     rétention. RÉSERVÉ à la direction : mappé sur AUCUN rôle ci-dessous,
+    #     seuls Directeur/Administrateur le portent par héritage
+    #     d'ALL_PERMISSIONS. Défense en profondeur : ``apps/ged/services.py``
+    #     revérifie ce code, une garde de vue ne suffit pas pour un acte
+    #     juridique.
+    # La lecture ORDINAIRE de la GED (liste, recherche, téléchargement ZIP)
+    # reste ouverte à tout rôle interne (``IsAnyRole``) — inchangée.
+    'ged_voir',
+    'ged_gerer',
+    'ged_gouvernance',
     # ── AOF2 — Appels d'offres (apps/ao) : correction d'une régression de
     # confidentialité EXISTANTE. Les 8 ViewSets AO héritaient d'une base gardée
     # par le grossier ``IsResponsableOrAdmin`` : tout le palier Responsable
@@ -344,6 +364,9 @@ ELEVATED_PERMISSIONS = frozenset({
     'ao_rentabilite_voir',
     # NTCPQ36 — marge sous seuil CPQ (NTCPQ6/22) : même palier que marge_voir.
     'cpq_marge_voir',
+    # WIR174 — gouvernance documentaire (caviardage, legal hold, rétention) :
+    # actes à portée JURIDIQUE, octroi réservé à l'administrateur.
+    'ged_gouvernance',
 })
 
 RESPONSABLE_PERMISSIONS = [
@@ -397,6 +420,11 @@ RESPONSABLE_PERMISSIONS = [
     # complet (lecture + écriture) au back-office RH via le grossier
     # IsResponsableOrAdmin.
     'rh_voir', 'rh_gerer',
+    # WIR174 — comportement historique préservé pour l'écriture documentaire
+    # ordinaire et la lecture des registres. PAS ``ged_gouvernance`` :
+    # caviarder / poser-lever un legal hold / fixer une rétention se
+    # RESSERRENT sur la direction (Directeur/Administrateur).
+    'ged_voir', 'ged_gerer',
     # ENG — accès complet au moteur de publicités (y compris approbation).
     'adsengine_view', 'adsengine_manage', 'adsengine_approve',
     # VAO12 — veille AO : lecture ET réglage (mots-clés, sources, règles).
