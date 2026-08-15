@@ -24,6 +24,8 @@
     access:inconnu, detail:texte, session:inconnu
 - frontend/src/api/adminopsApi.js :: listAnnonces -> /api/django/adminops/annonces
     non_lues:nombre, results:inconnu
+- frontend/src/api/adminopsApi.js :: listFacturationLicences -> /api/django/adminops/facturation-licences
+    results:inconnu, total_du_ttc:inconnu
 - frontend/src/api/adminopsApi.js :: sessionImpersonationActive -> /api/django/adminops/impersonation/session-active
     active:booleen, expire_le:inconnu, id:inconnu, message:texte, motif:inconnu, support_nom:inconnu
 - frontend/src/api/agricultureApi.js :: coutIrrigation -> /api/django/agriculture/campagnes/<>/cout-irrigation
@@ -52,6 +54,8 @@
     crees:inconnu, deja_presents:inconnu
 - frontend/src/api/aoApi.js :: lancer -> /api/django/ao/calepinage/lancer
     id:inconnu, kind:inconnu, message_erreur:texte, progress_pct:inconnu, resultat:inconnu, statut:inconnu, variante:inconnu
+- frontend/src/api/aoApi.js :: lead -> /api/django/ao/appels-offres/<>/lead
+    fiche:inconnu, lead_id:inconnu
 - frontend/src/api/aoApi.js :: marches -> /api/django/ao/calepinage/variantes/<>/marches
     arrivee:inconnu, depart:inconnu, gain_total:inconnu, honnete:booleen, marches:liste, motifs:liste, recit:inconnu
 - frontend/src/api/aoApi.js :: resultat -> /api/django/ao/calepinage/resultat/<>
@@ -60,6 +64,8 @@
     gagnes:inconnu, perdus:inconnu, taux_reussite_pct:inconnu, total_decides:inconnu, total_resultats:nombre
 - frontend/src/api/aoApi.js :: tableauMarches -> /api/django/ao/tableau-marches
     capacite:objet, cautions:objet, echeances_dues:nombre, en_cours:objet, marches_en_execution:objet, reussite:objet
+- frontend/src/api/aoApi.js :: transitions -> /api/django/ao/appels-offres/<>/transitions
+    statut:inconnu, statut_display:inconnu, transitions:liste
 - frontend/src/api/aoApi.js :: verrouiller -> /api/django/ao/economie/<>/verrouiller
     verrouillee:booleen
 - frontend/src/api/auditApi.js :: getMeta -> /api/django/audit/meta
@@ -82,12 +88,22 @@
     detail:texte, reserve:inconnu, signature:inconnu
 - frontend/src/api/comptaApi.js :: accepterSuggestions -> /api/django/compta/rapprochements/<>/accepter-suggestions
     ignorees:inconnu, pointees:inconnu
+- frontend/src/api/comptaApi.js :: analyseVariation -> /api/django/compta/etats/analyse-variation
+    detail:inconnu, lignes:inconnu, nb_a_expliquer:nombre, seuil_materialite:inconnu
 - frontend/src/api/comptaApi.js :: annexes -> /api/django/compta/cycles-consolidation/<>/annexes
     cycle:inconnu, dettes_consolidees:inconnu, engagements_hors_bilan:nombre, immobilisations_consolidees:inconnu, perimetre:inconnu
+- frontend/src/api/comptaApi.js :: anomaliesEcritures -> /api/django/compta/etats/anomalies-ecritures
+    anomalies:inconnu, detail:inconnu, nb_bloquantes:nombre
 - frontend/src/api/comptaApi.js :: appliquer -> /api/django/compta/modeles-rapprochement/<>/appliquer
     detail:inconnu, ecriture_id:inconnu, reference:inconnu
 - frontend/src/api/comptaApi.js :: avancement -> /api/django/compta/contrats-avancement/<>/avancement
     constats:liste, contrat_id:inconnu, cout_total_estime:inconnu, dernier_pourcentage:inconnu, libelle:inconnu, marge_estimee:nombre, methode:inconnu, nb_constats:nombre, reference:inconnu, reste_a_reconnaitre:nombre, revenu_reconnu:inconnu, revenu_total:inconnu, statut:inconnu
+- frontend/src/api/comptaApi.js :: balanceAnalytique -> /api/django/compta/etats/balance-analytique
+    axes:inconnu, lignes:inconnu
+- frontend/src/api/comptaApi.js :: balanceReferentiel -> /api/django/compta/etats/balance-referentiel
+    equilibree:booleen, lignes:inconnu, referentiel:inconnu, total_credit:inconnu, total_debit:inconnu
+- frontend/src/api/comptaApi.js :: cockpitCloture -> /api/django/compta/etats/cockpit-cloture
+    accruals_postes:inconnu, close_status:texte, date_cible:inconnu, detail:texte, instance_id:inconnu, jours_depuis_cible:inconnu, pct_faites:inconnu, periode_id:inconnu, taches_faites:inconnu, taches_total:inconnu, variations_non_expliquees:inconnu
 - frontend/src/api/comptaApi.js :: collecter -> /api/django/compta/cycles-consolidation/<>/collecter
     cycle:inconnu, detail:inconnu, liasses:inconnu
 - frontend/src/api/comptaApi.js :: controlesCollecte -> /api/django/compta/cycles-consolidation/<>/controles-collecte
@@ -96,6 +112,10 @@
     bilan:inconnu, cpc:inconnu
 - frontend/src/api/comptaApi.js :: etic -> /api/django/compta/etats/etic
     date_debut:texte, date_fin:texte, detail:texte, engagements_hors_bilan:objet, exercice:texte, immobilisations:inconnu, principes_methodes:texte, provisions:inconnu, resultat:inconnu, sections:liste
+- frontend/src/api/comptaApi.js :: executionBudgetaire -> /api/django/compta/etats/execution-budgetaire
+    annee:inconnu, budget_id:inconnu, detail:texte, lignes:inconnu, total_budget:inconnu, total_disponible:inconnu, total_engage:inconnu, total_realise:inconnu
+- frontend/src/api/comptaApi.js :: fraisBancaires -> /api/django/compta/etats/frais-bancaires
+    par_compte:inconnu, total:inconnu
 - frontend/src/api/comptaApi.js :: genererDues -> /api/django/compta/abonnements-ecriture/generer-dues
     detail:inconnu, generees:inconnu, ignorees:inconnu
 - frontend/src/api/comptaApi.js :: genererFae -> /api/django/compta/provisions-periode/generer-fae
@@ -114,16 +134,28 @@
     concordant:booleen, detail:inconnu, ecart:inconnu, lignes:inconnu, lignes_creees:inconnu, releve:texte, solde_calcule:inconnu, solde_final_declare:inconnu, solde_initial:inconnu
 - frontend/src/api/comptaApi.js :: positionTresorerie -> /api/django/compta/etats/position-tresorerie
     comptes:inconnu, projection:inconnu, total:inconnu
+- frontend/src/api/comptaApi.js :: positionsContratRevenu -> /api/django/compta/etats/positions-contrat-revenu
+    lignes:inconnu, total_actif_sur_contrat:inconnu, total_produit_differe:inconnu
 - frontend/src/api/comptaApi.js :: posterMouvement -> /api/django/compta/caisses/<>/poster-mouvement
     detail:inconnu, ecriture_id:inconnu, mouvement:inconnu
+- frontend/src/api/comptaApi.js :: pretACloturer -> /api/django/compta/etats/pret-a-cloturer
+    detail:texte, instance_id:inconnu, pret:booleen, taches_manquantes:inconnu
 - frontend/src/api/comptaApi.js :: previsionnelTresorerie -> /api/django/compta/etats/previsionnel-tresorerie
     date_debut:inconnu, date_rupture_estimee:inconnu, nb_semaines:inconnu, semaines:inconnu, solde_initial:inconnu
+- frontend/src/api/comptaApi.js :: projectionDotations -> /api/django/compta/etats/projection-dotations
+    annees:inconnu, par_actif:inconnu, referentiel:inconnu, totaux_par_annee:inconnu
+- frontend/src/api/comptaApi.js :: rapprochementsEnRetard -> /api/django/compta/etats/rapprochements-en-retard
+    detail:texte, lignes:inconnu, nb_en_retard:nombre, periode_id:inconnu, total_ecart_non_justifie:inconnu
 - frontend/src/api/comptaApi.js :: refacturer -> /api/django/compta/notes-frais/refacturer
     detail:inconnu, facture_id:inconnu, refacture:booleen
+- frontend/src/api/comptaApi.js :: registreImmobilisations -> /api/django/compta/etats/registre-immobilisations
+    date_reference:inconnu, lignes:inconnu, referentiel:inconnu, total_vnc:inconnu
 - frontend/src/api/comptaApi.js :: releveFournisseur -> /api/django/compta/etats/releve-fournisseur/<>
     fournisseur:objet, lignes:inconnu, totaux:objet
 - frontend/src/api/comptaApi.js :: reschedule -> /api/django/compta/calendrier-marketing/reschedule
     detail:texte, ok:booleen
+- frontend/src/api/comptaApi.js :: resultatAnalytique -> /api/django/compta/etats/resultat-analytique
+    axe:inconnu, detail:texte, total_resultat:inconnu, valeurs:inconnu
 - frontend/src/api/comptaApi.js :: simuler -> /api/django/compta/cycles-consolidation/<>/simuler
     cycle:inconnu, detail:inconnu, part_minoritaires:inconnu, perimetre:inconnu, resultat_consolide:inconnu, resultat_part_groupe:nombre, simulation:booleen
 - frontend/src/api/comptaApi.js :: variationCapitaux -> /api/django/compta/cycles-consolidation/<>/variation-capitaux
@@ -152,6 +184,8 @@
     arpc:inconnu, client_id:inconnu, clv:inconnu, detail:texte, duree_vie_mois:inconnu, plafonnee:inconnu, used_fallback:inconnu
 - frontend/src/api/contratsApi.js :: getCohortesRetention -> /api/django/contrats/contrats/cohortes-retention
     cohortes:inconnu, mois_max:inconnu
+- frontend/src/api/contratsApi.js :: getMetriquesSaas -> /api/django/contrats/contrats/metriques-saas
+    arr_bridge:inconnu, detail:texte, quick_ratio:inconnu, rule_of_40:objet
 - frontend/src/api/contratsApi.js :: getMrrMouvements -> /api/django/contrats/contrats/mrr-mouvements
     churn:inconnu, churn_par_motif:inconnu, contraction:inconnu, debut:texte, detail:texte, expansion:inconnu, fin:texte, net:inconnu, net_par_responsable:inconnu, new:inconnu
 - frontend/src/api/contratsApi.js :: getReporting -> /api/django/contrats/contrats/reporting
@@ -264,12 +298,16 @@
     alertes:inconnu, buckets:inconnu, horizon_jours:inconnu, nb_echu:nombre, nb_j15:nombre, nb_j30:nombre, nb_j7:nombre, nb_total:nombre, today:inconnu
 - frontend/src/api/flotteApi.js :: anomalies -> /api/django/flotte/cartes/anomalies
     anomalies:inconnu, nb_anomalies:nombre, nb_pleins:nombre, vehicule:texte, vehicule_id:inconnu
+- frontend/src/api/flotteApi.js :: divergencesPermis -> /api/django/flotte/conducteurs/divergences-permis
+    divergences:inconnu, nb_conducteurs_lies:inconnu, nb_divergences:nombre
 - frontend/src/api/flotteApi.js :: echeances -> /api/django/flotte/plans-entretien/echeances
     nb_due:inconnu, nb_plans:nombre, nb_upcoming:inconnu, plans:inconnu
 - frontend/src/api/flotteApi.js :: evaluer -> /api/django/flotte/zones-geographiques/evaluer
     alertes:inconnu, nb_alertes:nombre
 - frontend/src/api/flotteApi.js :: generer -> /api/django/flotte/echeances-entretien/generer
     echeances:inconnu, nb_creees:inconnu, nb_existantes:inconnu, nb_plans_due:inconnu
+- frontend/src/api/flotteApi.js :: importerReleve -> /api/django/flotte/cartes/<>/importer-releve
+    crees:inconnu, detail:texte, doublons:inconnu, erreurs:inconnu, nb_lignes:inconnu, non_rapprochees:inconnu
 - frontend/src/api/flotteApi.js :: masse -> /api/django/flotte/affectations/masse
     detail:texte, echecs:inconnu, reussies:inconnu
 - frontend/src/api/flotteApi.js :: ocr -> /api/django/flotte/pleins/ocr
@@ -282,6 +320,8 @@
     nb_vin_matches:inconnu, signalements_crees:liste
 - frontend/src/api/flotteApi.js :: rollout -> /api/django/flotte/plans-entretien/<>/rollout
     crees:inconnu, detail:texte, ignores:inconnu
+- frontend/src/api/flotteApi.js :: syntheseTva -> /api/django/flotte/pleins/synthese-tva
+    par_mois:inconnu, par_vehicule:inconnu, periode:liste, total_non_deductible:nombre, total_recuperable:nombre
 - frontend/src/api/flotteApi.js :: tableauBord -> /api/django/flotte/vehicules/tableau-bord
     couts:objet, echeances:objet, engins:objet, entretien:objet, pool:objet, today:inconnu, vehicules:objet
 - frontend/src/api/flotteApi.js :: vehiculeAmortissement -> /api/django/flotte/vehicules/<>/amortissement
@@ -300,6 +340,10 @@
     detail:texte, points:inconnu, variable:inconnu
 - frontend/src/api/gedApi.js :: comparerVersions -> /api/django/ged/documents/<>/comparer
     detail:texte, diff_texte:inconnu, message:texte, metadonnees:inconnu, texte_disponible:booleen
+- frontend/src/api/gedApi.js :: docqa -> /api/django/ged/documents/docqa
+    enabled:inconnu, results:inconnu
+- frontend/src/api/gedApi.js :: dossierPreuveArchivage -> /api/django/ged/archivages-legaux/<>/dossier-preuve
+    archive_le:inconnu, controles:liste, document:inconnu, hash_integrite_au_depot:inconnu, motif:inconnu
 - frontend/src/api/gedApi.js :: genererModele -> /api/django/ged/modeles-document/<>/generer
     created:inconnu, detail:texte, document:inconnu, document_nom:inconnu
 - frontend/src/api/gedApi.js :: getAnalytique -> /api/django/ged/analytique
@@ -314,12 +358,20 @@
     colonnes:inconnu, total:inconnu
 - frontend/src/api/gedApi.js :: leverLegalHold -> /api/django/ged/legal-holds/<>/lever
     detail:texte, leves:inconnu
+- frontend/src/api/gedApi.js :: ocrPieceDocument -> /api/django/ged/documents/<>/ocr-piece
+    detail:inconnu, document:inconnu, metadonnees:inconnu, ocr_enabled:inconnu
+- frontend/src/api/gedApi.js :: officeOuvrirDocument -> /api/django/ged/documents/<>/office-ouvrir
+    detail:texte, document_id:inconnu, editor_url:inconnu
 - frontend/src/api/gedApi.js :: purgerDocument -> /api/django/ged/documents/<>/purger
     detail:texte
+- frontend/src/api/gedApi.js :: scanLot -> /api/django/ged/documents/scan-lot
+    detail:texte, documents:inconnu, erreurs:inconnu, files:texte, folder:texte
 - frontend/src/api/gedApi.js :: semanticSearch -> /api/django/ged/documents/semantique
     mode:texte, results:inconnu
 - frontend/src/api/gedApi.js :: toggleFavoriDocument -> /api/django/ged/documents/<>/favori
     favori:booleen
+- frontend/src/api/gedApi.js :: verifierIntegriteArchives -> /api/django/ged/archivages-legaux/verifier-integrite
+    altere:nombre, indisponible:nombre, ok:nombre, total:nombre
 - frontend/src/api/gestionProjetApi.js :: autoAffecter -> /api/django/gestion-projet/affectations/auto-affecter
     creations:inconnu, deplacements:inconnu, detail:texte, non_resolues:inconnu, simule:booleen
 - frontend/src/api/gestionProjetApi.js :: copierSemaineAffectations -> /api/django/gestion-projet/affectations/copier-semaine
@@ -366,6 +418,8 @@
     debut:texte, detail:texte, fin:texte, lignes:liste
 - frontend/src/api/gestionProjetApi.js :: publierAffectations -> /api/django/gestion-projet/affectations/publier
     detail:texte, nb_deja_publiees:inconnu, nb_notifies:inconnu, nb_publiees:nombre
+- frontend/src/api/gestionProjetApi.js :: seedFeriesCalendrier -> /api/django/gestion-projet/calendriers/<>/seed-feries
+    annee:texte, crees:liste, fetes_mobiles_manquantes:inconnu, nb_crees:nombre, nb_deja_presents:inconnu
 - frontend/src/api/gestionProjetApi.js :: versTicketSav -> /api/django/gestion-projet/taches/<>/vers-ticket-sav
     detail:texte, ticket_reference:inconnu, ticket_sav_id:inconnu
 - frontend/src/api/hospitalityApi.js :: tableauBord -> /api/django/hospitality/tableau-bord
@@ -482,6 +536,8 @@
     nb_descendants:nombre
 - frontend/src/api/kbApi.js :: marquerLu -> /api/django/kb/articles/<>/marquer-lu
     lecteurs:inconnu, nombre:nombre
+- frontend/src/api/kbApi.js :: rapportConformite -> /api/django/kb/articles/<>/rapport-conformite
+    article:inconnu, lus:inconnu, non_lus:inconnu
 - frontend/src/api/kbApi.js :: resumeLecture -> /api/django/kb/articles/<>/resume-lecture
     lecteurs:inconnu, nombre:nombre
 - frontend/src/api/kbApi.js :: togglerFavori -> /api/django/kb/articles/<>/toggler-favori
@@ -714,8 +770,6 @@
     pareto:inconnu, premier_passage:objet
 - frontend/src/api/qhseApi.js :: peutCloturer -> /api/django/qhse/notations-fin-chantier/peut-cloturer
     chantier_id:inconnu, detail:texte, peut_cloturer:inconnu
-- frontend/src/api/qhseApi.js :: relancer -> /api/django/qhse/demandes-changement/relancer
-    relances:nombre
 - frontend/src/api/qhseApi.js :: relancerNotifications -> /api/django/qhse/incidents/relancer-notifications
     relances:nombre
 - frontend/src/api/qhseApi.js :: relancerRetards -> /api/django/qhse/capa/relancer-retards
@@ -780,6 +834,8 @@
     detail:texte, id:inconnu, theme:inconnu
 - frontend/src/api/rhApi.js :: definirCodePointage -> /api/django/rh/employes/<>/definir-code-pointage
     code:texte, detail:texte
+- frontend/src/api/rhApi.js :: emargerDotationEpi -> /api/django/rh/dotations-epi/<>/emarger
+    accuse_remise:inconnu, date_accuse:inconnu, deja_accusee:inconnu, detail:texte, emargement:inconnu
 - frontend/src/api/rhApi.js :: getCockpit -> /api/django/rh/cockpit
     alertes:inconnu, effectif_total:inconnu, masse_salariale_mensuelle:inconnu, par_contrat:inconnu, par_departement:inconnu, par_statut:inconnu, pyramide_anciennete:inconnu, turnover:objet
 - frontend/src/api/rhApi.js :: getIntegration -> /api/django/rh/employes/<>/integration
@@ -812,12 +868,16 @@
     permissions:inconnu, routes:inconnu
 - frontend/src/api/rolesApi.js :: getPermissionsDisponibles -> /api/django/roles/permissions-disponibles
     permissions:inconnu
+- frontend/src/api/santeApi.js :: statistiques -> /api/django/sante/factures-sante/statistiques
+    par_acte:inconnu, par_convention:inconnu
 - frontend/src/api/savApi.js :: actionsGroupeesTickets -> /api/django/sav/tickets/actions-groupees
     echecs:inconnu, ids:texte, nb_echecs:nombre, nb_traites:nombre, operation:texte, priorite:texte, statut:texte, technicien:texte, traites:inconnu
 - frontend/src/api/savApi.js :: creerDevisTicket -> /api/django/sav/tickets/<>/creer-devis
     detail:texte, devis_id:inconnu, devis_reference:inconnu
 - frontend/src/api/savApi.js :: creerLeadDepuisTicket -> /api/django/sav/tickets/<>/creer-lead
     created:inconnu, lead_id:inconnu
+- frontend/src/api/savApi.js :: facturerContrat -> /api/django/sav/contrats-maintenance/<>/facturer
+    detail:texte, facture_id:inconnu, facture_reference:inconnu, ok:booleen
 - frontend/src/api/savApi.js :: facturerTicket -> /api/django/sav/tickets/<>/facturer
     couverture:inconnu, facture_id:inconnu, facture_reference:inconnu
 - frontend/src/api/savApi.js :: genererFactureTicket -> /api/django/sav/tickets/<>/generer-facture
@@ -830,6 +890,10 @@
     results:inconnu
 - frontend/src/api/savApi.js :: getPiecesCompatibles -> /api/django/sav/tickets/<>/pieces-compatibles
     results:inconnu
+- frontend/src/api/savApi.js :: getRentabiliteContrat -> /api/django/sav/contrats-maintenance/<>/rentabilite
+    client_id:inconnu, contrat_id:inconnu, cout:nombre, detail:texte, installation_id:inconnu, marge:nombre, marge_par_visite:inconnu, nb_visites:inconnu, revenu:nombre
+- frontend/src/api/savApi.js :: getRentabiliteContrats -> /api/django/sav/contrats-maintenance/rentabilite
+    detail:texte, results:inconnu
 - frontend/src/api/savApi.js :: getSavFiabiliteParc -> /api/django/sav/insights/sav-fiabilite
     couts_inclus:inconnu, results:inconnu
 - frontend/src/api/savApi.js :: getSavFileAction -> /api/django/sav/tickets/file-action
@@ -844,6 +908,8 @@
     token:inconnu, url:inconnu
 - frontend/src/api/savApi.js :: neplusSuivreTicket -> /api/django/sav/tickets/<>/suivre
     suivi:booleen
+- frontend/src/api/savApi.js :: planifierTournee -> /api/django/sav/contrats-maintenance/planifier-tournee
+    detail:inconnu, ok:booleen, tickets_planifies:inconnu
 - frontend/src/api/savApi.js :: removeTicketPiece -> /api/django/sav/tickets/<>/pieces/<>
     detail:texte
 - frontend/src/api/savApi.js :: suivreTicket -> /api/django/sav/tickets/<>/suivre
@@ -872,10 +938,14 @@
     detail:texte, ok:booleen, skipped:inconnu, total:nombre, updated:inconnu
 - frontend/src/api/stockApi.js :: comparerTcoFournisseurs -> /api/django/stock/produits/<>/comparer-tco
     cout_rupture_jour:texte, fournisseurs:inconnu, produit:inconnu
+- frontend/src/api/stockApi.js :: deciderCandidatureFournisseur -> /api/django/stock/fournisseurs/<>/decider-candidature
+    detail:texte, id:inconnu, statut_validation:inconnu
 - frontend/src/api/stockApi.js :: envoyerEmailBcf -> /api/django/stock/bons-commande-fournisseur/<>/envoyer-email
     detail:texte, email_statut:inconnu, log_id:inconnu, statut:inconnu
 - frontend/src/api/stockApi.js :: exploserKit -> /api/django/stock/kits/<>/exploser
     detail:texte, kit_id:inconnu, kit_nom:inconnu, lignes:inconnu, quantite_kit:inconnu
+- frontend/src/api/stockApi.js :: forceDeleteFournisseur -> /api/django/stock/fournisseurs/<>/force-delete
+    bloquants:inconnu, detail:texte
 - frontend/src/api/stockApi.js :: forceDeleteProduit -> /api/django/stock/produits/<>/force-delete
     bloquants:inconnu, detail:texte
 - frontend/src/api/stockApi.js :: getComptesAPayer -> /api/django/stock/factures-fournisseur/comptes-a-payer
@@ -894,6 +964,8 @@
     avg_lead_time_days:inconnu, fill_rate_pct:inconnu, fournisseur_id:inconnu, fournisseur_nom:inconnu, incidents_qualite_critiques_ouverts:inconnu, nb_bons:inconnu, nb_retours:inconnu, otd_a_lheure_pct:inconnu, otd_ecart_moyen_jours:inconnu, otif_nb_incomplet:inconnu, otif_nb_retard:inconnu, otif_total_livraisons:inconnu, return_rate_pct:inconnu, taux_otif_pct:inconnu, total_achats_ht:texte
 - frontend/src/api/stockApi.js :: produitPrevisionnel -> /api/django/stock/produits/<>/previsionnel
     disponible:inconnu, entrees_attendues:inconnu, produit_id:inconnu, solde_projete:inconnu, sorties_attendues:inconnu, timeline:inconnu
+- frontend/src/api/stockApi.js :: rebuterProduit -> /api/django/stock/produits/<>/rebuter
+    detail:texte, mouvement_id:inconnu, valeur_perdue:texte
 - frontend/src/api/stockApi.js :: resolveCode -> /api/django/stock/produits/resolve
     chantier:inconnu, client:inconnu, created:inconnu, date_fin_garantie:inconnu, date_peremption:inconnu, detail:texte, gs1:inconnu, id:inconnu, label:inconnu, nb_tickets_ouverts:inconnu, numero_lot:inconnu, numero_serie:inconnu, quantite:inconnu, quantite_restante:inconnu, reference:inconnu, route:texte, serie:texte, sku:texte, statut:inconnu, type:texte
 - frontend/src/api/stockApi.js :: scanGs1ReceptionFournisseur -> /api/django/stock/receptions-fournisseur/scan-gs1
@@ -974,10 +1046,18 @@
     custom_fields:inconnu, detail:texte, message_templates:inconnu, roles_custom:inconnu
 - frontend/src/features/adminops/adminopsApi.js :: previsualiserPackage -> /api/django/adminops/config-packages/previsualiser
     custom_fields:inconnu, detail:texte, message_templates:inconnu, roles_custom:inconnu
+- frontend/src/features/adsengine/adsengineApi.js :: backtest -> /api/django/adsengine/regles/<>/backtest
+    label_fr:inconnu, proposals:inconnu, range:objet, reason:texte, summary:objet, supported:booleen, template_key:inconnu
+- frontend/src/features/adsengine/adsengineApi.js :: checklist -> /api/django/adsengine/creatifs/checklist
+    allowed:inconnu, forbidden:inconnu
+- frontend/src/features/adsengine/adsengineApi.js :: conclude -> /api/django/adsengine/experiences/<>/conclure
+    decision_log:inconnu, detail:texte, node:inconnu, validated:inconnu
 - frontend/src/features/adsengine/adsengineApi.js :: createEngagement -> /api/django/adsengine/audiences/engagement
     audience_id:texte, detail:texte, error:inconnu, preset:inconnu, retention_days:inconnu
 - frontend/src/features/adsengine/adsengineApi.js :: deliveryEstimate -> /api/django/adsengine/audiences/delivery-estimate
     detail:texte, error:inconnu, estimate:inconnu
+- frontend/src/features/adsengine/adsengineApi.js :: detectors -> /api/django/adsengine/anomalies/detecteurs
+    detecteurs:inconnu
 - frontend/src/features/adsengine/adsengineApi.js :: dryRun -> /api/django/adsengine/regles/dry-run
     detail:texte, objets_touches:inconnu, resume_fr:inconnu
 - frontend/src/features/adsengine/adsengineApi.js :: engagementPresets -> /api/django/adsengine/audiences/engagement
@@ -2184,6 +2264,9 @@
     categorie_menu ∈ {boisson, dessert, entree, plat}
 - frontend/src/api/identityApi.js :: forget -> /api/django/identity/trusted-devices/<>  [TrustedDeviceSerializer]
     champs: approuve_le, expire_le, id, is_active, label, revoque_le
+- frontend/src/api/immobilierApi.js :: parEcheance -> /api/django/immobilier/relances-loyer  [RelanceLoyerSerializer]
+    champs: canal, canal_display, company, date_envoi, echeance_loyer, id, niveau, template_utilise
+    canal ∈ {courrier, email, whatsapp}
 - frontend/src/api/innovationApi.js :: retirerVote -> /api/django/innovation/votes/<>  [VoteIdeeSerializer]
     champs: date, id, idee, votant, votant_nom
 - frontend/src/api/innovationApi.js :: vote -> /api/django/innovation/votes  [VoteIdeeSerializer]
@@ -3034,6 +3117,9 @@
     target_kind ∈ {sales, service, stock}
 - frontend/src/api/rhApi.js :: attribuerBadge -> /api/django/rh/attributions-badge  [AttributionBadgeSerializer]
     champs: attribue_par, attribue_par_nom, badge, badge_icone, badge_nom, beneficiaire, beneficiaire_nom, date_creation, id, message
+- frontend/src/api/rhApi.js :: createAffectationRoster -> /api/django/rh/roster  [AffectationRosterSerializer]
+    champs: conflit_conge, creneau, creneau_display, date, date_creation, date_modification, employe, employe_nom, equipe, id, note, semaine_du, vehicule_id
+    creneau ∈ {apres_midi, journee, matin}
 - frontend/src/api/rhApi.js :: createAffectationVehicule -> /api/django/rh/affectations-vehicule  [AffectationVehiculeSerializer]
     champs: date_creation, date_debut, date_fin, date_modification, employe, employe_nom, id, note, permis_verifie, statut, statut_display, vehicule_id
     statut ∈ {active, terminee}
@@ -3055,6 +3141,8 @@
     statut ∈ {annulee, refusee, soumise, validee}
 - frontend/src/api/rhApi.js :: createDeviceEmployeMap -> /api/django/rh/devices-employe-map  [EmployeDeviceMapSerializer]
     champs: date_creation, device_user_id, employe, employe_nom, id
+- frontend/src/api/rhApi.js :: createDotationEpi -> /api/django/rh/dotations-epi  [DotationEpiSerializer]
+    champs: a_controler, accuse_remise, date_accuse, date_creation, date_dotation, date_modification, date_peremption, date_prochain_controle, date_renouvellement, date_restitution, employe, employe_nom, epi, epi_designation, id, note, perime, quantite, restituee, taille, type_epi, type_epi_display
 - frontend/src/api/rhApi.js :: createElementIntegration -> /api/django/rh/elements-integration  [ElementIntegrationSerializer]
     champs: date_creation, id, libelle, modele, ordre
 - frontend/src/api/rhApi.js :: createElementVariablePaie -> /api/django/rh/elements-variables-paie  [ElementsVariablesPaieSerializer]
@@ -3302,6 +3390,9 @@
 - frontend/src/api/rhApi.js :: getVisitesMedicales -> /api/django/rh/visites-medicales  [VisiteMedicaleSerializer]
     champs: a_jour, actif, aptitude, aptitude_display, date_creation, date_modification, date_visite, employe, employe_nom, id, medecin, note, organisme, prochaine_visite, restrictions
     aptitude ∈ {apte, apte_avec_restrictions, inapte}
+- frontend/src/api/rhApi.js :: updateAffectationRoster -> /api/django/rh/roster/<>  [AffectationRosterSerializer]
+    champs: conflit_conge, creneau, creneau_display, date, date_creation, date_modification, employe, employe_nom, equipe, id, note, semaine_du, vehicule_id
+    creneau ∈ {apres_midi, journee, matin}
 - frontend/src/api/rhApi.js :: updateCandidature -> /api/django/rh/candidatures/<>  [CandidatureSerializer]
     champs: cv_fichier, date_candidature, date_creation, date_modification, email, emails_auto, employe_cree, employe_cree_nom, etape, etape_display, id, nom, note, ouverture, ouverture_intitule, source, tags_vivier, telephone, vivier, vivier_origine
     etape ∈ {embauche, entretien, offre, preselection, recu, rejete}
