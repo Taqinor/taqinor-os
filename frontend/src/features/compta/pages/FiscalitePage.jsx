@@ -136,6 +136,9 @@ const EXPORTS = [
     hint: 'Récapitulatif des honoraires versés à des tiers non-salariés sur la période.' },
   { key: 'aideIs', label: 'Aide au calcul IS', fn: comptaApi.etats.aideIs, base: 'aide-is', ext: 'csv', needsExercice: true,
     hint: 'Base de calcul de l’Impôt sur les Sociétés (IS) à partir du résultat fiscal de l’exercice.' },
+  // WIR180 — télédéclaration SIMPL-IS (structure DGI, XML) d'un exercice.
+  { key: 'exportSimplIs', label: 'Export SIMPL-IS', fn: comptaApi.etats.exportSimplIs, base: 'simpl-is', ext: 'xml', needsExercice: true,
+    hint: 'Résultat fiscal, IS dû et 4 acomptes de l’exercice, au format DGI SIMPL-IS.' },
 ]
 
 // XACC9 — Calendrier des échéances fiscales : lecture seule + génération/rappels.
@@ -271,6 +274,11 @@ export default function FiscalitePage() {
           onClick: () => download(
             () => comptaApi.declarationsTva.export(row.id),
             `declaration_tva_${row.reference || row.id}.csv`) },
+        // WIR180 — télédéclaration SIMPL-TVA (structure DGI, XML).
+        { id: 'export-simpl', label: 'Export SIMPL-TVA', icon: FileText,
+          onClick: () => download(
+            () => comptaApi.declarationsTva.exportSimpl(row.id),
+            `simpl_tva_${row.reference || row.id}.xml`) },
         // VX231(d) — vérifier une déclaration TVA contre le Grand-livre sans
         // renoter deux chiffres à la main : ouvre le GL pré-filtré sur la MÊME
         // période (date_debut/date_fin de la déclaration).

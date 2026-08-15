@@ -48,6 +48,10 @@ const ETATS = [
   { value: 'continuite-sequences', label: 'Continuité séquences',
     fetch: comptaApi.etats.continuiteSequences },
   { value: 'controle-ice', label: 'Contrôle ICE/IF', fetch: comptaApi.etats.controleIce },
+  // WIR180 — XFAC2 loi 69-21 : factures fournisseur impayées au-delà du délai
+  // légal. Rendu générique (KeyValue/tableau) ; export CSV via le bouton
+  // existant (?export=csv, déjà géré par `exportCsv` ci-dessous).
+  { value: 'loi-69-21', label: 'Loi 69-21', fetch: comptaApi.etats.loi6921 },
 ]
 
 // Détecte les colonnes montant à formater en MAD.

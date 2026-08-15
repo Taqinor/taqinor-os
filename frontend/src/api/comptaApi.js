@@ -75,6 +75,12 @@ const comptaApi = {
     dossierCloture: (params) =>
       api.get('/compta/etats/dossier-cloture/',
         { params: { export: 'xlsx', ...params }, responseType: 'blob' }),
+    // WIR180 — SIMPL-IS (structure DGI, XML) d'un exercice. `?exercice=` requis.
+    exportSimplIs: (params) =>
+      api.get('/compta/etats/export-simpl-is/', { params, responseType: 'blob' }),
+    // WIR180 — XFAC2 conformité loi 69-21 (factures fournisseur impayées).
+    // `?periode=YYYY-MM` optionnel ; `?export=csv` télécharge.
+    loi6921: (params) => api.get('/compta/etats/loi-69-21/', { params }),
 
     // ── UX7 — Exports fichiers ──
     // Le backend renvoie un fichier UNIQUEMENT avec « ?export=... » (jamais
@@ -133,6 +139,10 @@ const comptaApi = {
       api.get(`/compta/declarations-tva/${id}/comparatif/`, { params }),
     bordereauPdf: (id) =>
       api.get(`/compta/declarations-tva/${id}/bordereau-pdf/`,
+        { responseType: 'blob' }),
+    // WIR180 — SIMPL-TVA (structure DGI, XML) d'une déclaration.
+    exportSimpl: (id) =>
+      api.get(`/compta/declarations-tva/${id}/export-simpl/`,
         { responseType: 'blob' }),
   },
   retenuesSource: {

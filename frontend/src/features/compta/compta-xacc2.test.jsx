@@ -56,10 +56,11 @@ vi.mock('../../api/comptaApi', () => {
         dossierCloture: empty,
         exportFec: empty, liasseFiscale: empty, exportFiduciaire: empty,
         releveDeductionsTva: empty, declarationHonoraires: empty, aideIs: empty,
+        exportSimplIs: empty, loi6921: empty,
       },
       declarationsTva: {
         ...res(), preparer: empty, export: empty, deposer: empty,
-        comparatif: empty, bordereauPdf: empty,
+        comparatif: empty, bordereauPdf: empty, exportSimpl: empty,
       },
       retenuesSource: { ...res(), verser: empty, bordereau: empty, attestation: empty, attestationAnnuelle: empty },
       timbresFiscaux: { ...res(), verser: empty },
@@ -175,6 +176,8 @@ describe('EtatsPage — nouveaux états ZACC round 2', () => {
     expect(screen.getByText('Tableau des flux')).toBeInTheDocument()
     expect(screen.getByText('Journal items')).toBeInTheDocument()
     expect(screen.getByText('Balance âgée fournisseurs')).toBeInTheDocument()
+    // WIR180 — télédéclaration loi 69-21 atteignable depuis le sélecteur d'états.
+    expect(screen.getByText('Loi 69-21')).toBeInTheDocument()
   }, 30000)
 })
 
@@ -186,6 +189,8 @@ describe('FiscalitePage — onglet Échéances fiscales (XACC9)', () => {
       expect(screen.getByRole('heading', { name: /Fiscalité & déclarations/ })).toBeInTheDocument()
     })
     expect(screen.getByText('Échéances fiscales')).toBeInTheDocument()
+    // WIR180 — SIMPL-IS proposé dans le bloc exports (exercice requis).
+    expect(screen.getByText('Export SIMPL-IS')).toBeInTheDocument()
   }, 30000)
 })
 
