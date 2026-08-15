@@ -8,6 +8,8 @@ import { formatDate } from '../../lib/format'
 import useMagasinResource from './useMagasinResource'
 import { sortPickListLignesByBin, pickListProgress } from './magasin'
 import { PickListStatutPill } from './statusPills'
+// WIR193/XSTK5 — panneau scan-first du prélèvement (construit + testé, jamais monté).
+import PickingScanPanel from './scan/PickingScanPanel'
 
 /* ============================================================================
    XSTK1 — Bons de prélèvement (`/magasin/prelevements`).
@@ -27,6 +29,10 @@ const STATUT_FILTERS = [
 function PickListDetail({ pickList, onClose, onChanged }) {
   const [lignes, setLignes] = useState(sortPickListLignesByBin(pickList.lignes))
   const [busyLigneId, setBusyLigneId] = useState(null)
+  // WIR193/XSTK5 — bascule « Scan » : le panneau scan-first était construit et
+  // testé mais monté nulle part. Scanner un article coche sa ligne ; un scan
+  // hors de ce bon est REFUSÉ (le panneau s'en charge, comportement testé).
+  const [scanOuvert, setScanOuvert] = useState(false)
   // XSTK1 — `PickListDetail` n'est pas remonté (pas de `key`) quand
   // `selected` change de bon : on resynchronise `lignes` PENDANT le rendu
   // (au lieu d'un effect qui déclenche un second rendu en cascade) en
@@ -85,6 +91,11 @@ function PickListDetail({ pickList, onClose, onChanged }) {
         </div>
         <div className="flex items-center gap-2">
           <PickListStatutPill status={pickList.statut} />
+          <Button size="sm" variant="outline"
+                  aria-expanded={scanOuvert}
+                  onClick={() => setScanOuvert(o => !o)}>
+            {scanOuvert ? 'Masquer le scan' : 'Scan'}
+          </Button>
           {pickList.statut === 'emis' && (
             <Button size="sm" onClick={demarrer}>Démarrer</Button>
           )}
@@ -94,6 +105,13 @@ function PickListDetail({ pickList, onClose, onChanged }) {
           <Button size="sm" variant="outline" onClick={onClose}>Fermer</Button>
         </div>
       </div>
+
+      {/* WIR193 — panneau scan-first du bon ouvert (XSTK5). */}
+      {scanOuvert && (
+        <div className="mb-3">
+          <PickingScanPanel pickListId={pickList.id} />
+        </div>
+      )}
 
       {lignes.length === 0 ? (
         <EmptyState title="Aucune ligne" description="Ce bon ne contient aucune ligne de prélèvement." />

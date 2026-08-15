@@ -7,6 +7,8 @@ import stockApi from '../../api/stockApi'
 import {
   SESSION_COMPTAGE_STATUTS, CLASSE_ABC, grouperLignesParEcart, progressionComptage,
 } from './logistique'
+// WIR193/XSTK6 — panneau de comptage scan-first (construit + testé, jamais monté).
+import ComptageScanPanel from '../magasin/scan/ComptageScanPanel'
 
 /* ============================================================================
    XSTK2 — Comptages cycliques (`/logistique/comptages`, FG324).
@@ -120,6 +122,10 @@ export default function ComptageCyclesScreen() {
 
 function SessionDetail({ session, onChanged }) {
   const [produits, setProduits] = useState([])
+  // WIR193/XSTK6 — bascule « Scan » : le panneau de comptage scan-first etait
+  // construit et teste mais monte nulle part. Un scan hors session est REFUSE
+  // (le panneau s'en charge, comportement teste).
+  const [scanOuvert, setScanOuvert] = useState(false)
   const [produitAAjouter, setProduitAAjouter] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
@@ -195,7 +201,15 @@ function SessionDetail({ session, onChanged }) {
             Clôturer (poste les écarts)
           </Button>
         )}
+        <Button size="sm" variant="outline"
+                aria-expanded={scanOuvert}
+                onClick={() => setScanOuvert(o => !o)}>
+          {scanOuvert ? 'Masquer le scan' : 'Scan'}
+        </Button>
       </div>
+
+      {/* WIR193 — panneau de comptage scan-first de la session ouverte. */}
+      {scanOuvert && <ComptageScanPanel sessionId={session.id} />}
 
       {enCours && (
         <div className="flex flex-wrap items-center gap-2">

@@ -17,6 +17,8 @@ import {
 // les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
 import { PageHeader } from '../../ui/PageHeader'
 import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
+// WIR193/XSTK5 — panneau de réception scan-first (construit + testé, jamais monté).
+import ReceptionScanPanel from '../../features/magasin/scan/ReceptionScanPanel'
 
 // G5 — Réceptions fournisseur (goods-in / entrée de marchandises).
 // La confirmation d'une réception incrémente le stock (MouvementStock ENTREE)
@@ -63,6 +65,8 @@ function NouvelleReception({ bonsRecevables, onClose, onSaved }) {
   const [dateReception, setDateReception] = useState(() => new Date().toISOString().slice(0, 10))
   const [note, setNote] = useState('')
   const [saisies, setSaisies] = useState({})   // { ligneCmdId: quantité }
+  // WIR193 — bascule du panneau de réception scan-first (XSTK5).
+  const [scanOuvert, setScanOuvert] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
 
@@ -173,6 +177,25 @@ function NouvelleReception({ bonsRecevables, onClose, onSaved }) {
                    onChange={(e) => setDateReception(e.target.value)} />
           </div>
         </div>
+
+        {/* WIR193/XSTK5 — réception scan-first du BCF choisi : le panneau était
+            construit et testé mais monté nulle part. Il écrit par l'action
+            serveur existante `recevoir` ; un scan hors de ce BCF est REFUSÉ
+            (comportement du panneau, testé). Onglet replié par défaut : la
+            saisie manuelle ci-dessous reste le chemin inchangé. */}
+        {bon && (
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold">Réception au scan</span>
+              <Button type="button" variant="outline" size="sm"
+                      aria-expanded={scanOuvert}
+                      onClick={() => setScanOuvert(o => !o)}>
+                {scanOuvert ? 'Masquer le scan' : 'Scan'}
+              </Button>
+            </div>
+            {scanOuvert && <ReceptionScanPanel bonCommandeId={Number(bonId)} />}
+          </div>
+        )}
 
         {bon && (
           <div className="flex flex-col gap-2">
