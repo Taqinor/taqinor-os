@@ -313,6 +313,26 @@ export function Component() {
 
   const nomContrat = (contratId) => rows.find((r) => r.id === contratId)?.client_nom ?? `Contrat #${contratId}`
 
+  // WIR233/FG40 — « Facturer maintenant » depuis l'écran (contrats
+  // `facturation_active`), au lieu du cul-de-sac de la file d'exceptions
+  // XCTR5 (jamais déclenchable manuellement jusqu'ici). Affiche la
+  // `facture_reference` renvoyée, jamais une inventée côté écran.
+  const [facturationBusyId, setFacturationBusyId] = useState(null)
+  const [dernieresFactures, setDernieresFactures] = useState({}) // { [contratId]: reference }
+
+  const facturerMaintenant = async (row) => {
+    setFacturationBusyId(row.id)
+    try {
+      const { data } = await savApi.facturerContrat(row.id)
+      toast.success(`Facture ${data.facture_reference} émise.`)
+      setDernieresFactures((f) => ({ ...f, [row.id]: data.facture_reference }))
+    } catch (err) {
+      toast.error(frenchError(err, 'Facturation impossible.'))
+    } finally {
+      setFacturationBusyId(null)
+    }
+  }
+
   const columns = [
     { id: 'client_nom', header: 'Client', width: 180, accessor: (r) => r.client_nom },
     {
@@ -446,6 +466,18 @@ export function Component() {
                   title={row.actif ? 'Désactiver' : 'Activer'}>
             {row.actif ? 'Désactiver' : 'Activer'}
           </Button>
+          {/* WIR233/FG40 — facturation immédiate, réservée aux contrats dont
+              la facturation récurrente est active (garde serveur, 400 sinon). */}
+          {row.facturation_active && (
+            <Button variant="outline" size="sm"
+                    loading={facturationBusyId === row.id}
+                    onClick={() => facturerMaintenant(row)}>
+              Facturer maintenant
+            </Button>
+          )}
+          {dernieresFactures[row.id] && (
+            <span className="text-xs text-muted-foreground">{dernieresFactures[row.id]}</span>
+          )}
         </span>
       )),
     },

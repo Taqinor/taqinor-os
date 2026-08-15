@@ -521,6 +521,49 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
   const [retraitBusy, setRetraitBusy] = useState(false)
   const [retraitError, setRetraitError] = useState(null)
 
+  // WIR233/ZMFG5 — section « Instructions » éditable (PATCH `instructions`
+  // direct, indépendant du gros formulaire d'édition) + « Suggestions KB »
+  // (insertion dans le champ SANS écriture auto — l'utilisateur enregistre
+  // lui-même, cf. le commentaire serveur `instructions_suggestions`).
+  const [instructionsText, setInstructionsText] = useState(current.instructions ?? '')
+  const [instructionsSaving, setInstructionsSaving] = useState(false)
+  const [kbSuggestions, setKbSuggestions] = useState([])
+  const [kbLoading, setKbLoading] = useState(false)
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- resynchro au changement de ticket
+  useEffect(() => { setInstructionsText(current.instructions ?? '') }, [id])
+
+  const saveInstructions = async () => {
+    setInstructionsSaving(true)
+    try {
+      const res = await savApi.updateTicket(id, { instructions: instructionsText })
+      setCurrent(res.data)
+      toast.success('Instructions enregistrées.')
+    } catch (err) {
+      toast.error(frError(err, "Échec de l'enregistrement des instructions."))
+    } finally {
+      setInstructionsSaving(false)
+    }
+  }
+
+  const chargerSuggestionsKb = async () => {
+    setKbLoading(true)
+    try {
+      const res = await savApi.getInstructionsSuggestions(id)
+      setKbSuggestions(res.data?.results ?? [])
+    } catch {
+      setKbSuggestions([])
+    } finally {
+      setKbLoading(false)
+    }
+  }
+
+  // Insertion pure côté écran, jamais de PATCH ici (l'utilisateur valide
+  // avec « Enregistrer » quand il est satisfait du texte final).
+  const insererSuggestion = (article) => {
+    setInstructionsText((t) => `${t ? `${t}\n\n` : ''}${article.titre}\n${article.extrait ?? ''}`)
+  }
+
   const retirerPiece = async () => {
     if (!retraitForm.produit) return
     setRetraitBusy(true)
@@ -1420,6 +1463,38 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
           </div>
           {retraitError && (
             <p className="text-sm text-destructive" role="alert">{retraitError}</p>
+          )}
+        </CollapsibleSection>
+
+        {/* ── WIR233/ZMFG5 — Instructions éditables (PATCH direct) +
+            Suggestions KB (insertion sans écriture auto). ── */}
+        <CollapsibleSection icon={Wrench} title="Instructions">
+          <Textarea rows={5} value={instructionsText}
+                    onChange={(e) => setInstructionsText(e.target.value)}
+                    placeholder="Instructions d'intervention pour ce ticket…" />
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="button" variant="outline" size="sm"
+                    loading={instructionsSaving} onClick={saveInstructions}>
+              Enregistrer les instructions
+            </Button>
+            <Button type="button" variant="ghost" size="sm"
+                    loading={kbLoading} onClick={chargerSuggestionsKb}>
+              Suggestions KB
+            </Button>
+          </div>
+          {kbSuggestions.length > 0 && (
+            <ul className="flex flex-col divide-y divide-border rounded-lg border border-border" data-testid="kb-suggestions-liste">
+              {kbSuggestions.map((a) => (
+                <li key={a.id} className="flex items-center gap-2 p-2.5 text-sm">
+                  <span className="flex-1">
+                    <strong>{a.titre}</strong>{a.extrait ? ` — ${a.extrait}` : ''}
+                  </span>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => insererSuggestion(a)}>
+                    Insérer
+                  </Button>
+                </li>
+              ))}
+            </ul>
           )}
         </CollapsibleSection>
 
