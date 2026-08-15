@@ -29,6 +29,9 @@ vi.mock('../../api/stockApi', () => ({
     getRetoursFournisseurDe: vi.fn(),
     // WIR222 — avoir généré depuis un retour validé (onglet Retours).
     genererAvoirRetourFournisseur: vi.fn(),
+    // WIR268 — tarif fournisseur xlsx (export + import avec aperçu).
+    exportTarifFournisseurXlsx: vi.fn(),
+    importTarifFournisseurXlsx: vi.fn(),
     getDocumentsConformiteFournisseur: vi.fn(),
     // WIR108 — acomptes/avoirs/contacts.
     getAcomptesFournisseurDe: vi.fn(),
@@ -45,7 +48,7 @@ vi.mock('../../api/stockApi', () => ({
 }))
 
 import stockApi from '../../api/stockApi'
-import FournisseurFiche360 from './FournisseurFiche360.jsx'
+import FournisseurFiche360, { BlocTarifFournisseur } from './FournisseurFiche360.jsx'
 
 function makeStore({ role = 'admin', permissions = [] } = {}) {
   return configureStore({
@@ -364,5 +367,56 @@ describe('WIR219 — candidature d\'auto-inscription au portail', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: 'Valider la candidature' }))
     expect(await screen.findByText(/Réservé à l'administrateur/)).toBeInTheDocument()
+  })
+})
+
+// ── XPUR14 / WIR268 — bloc « Tarif » (export + import avec aperçu) ──────────
+describe('WIR268 — tarif fournisseur xlsx', () => {
+  function renderBloc() {
+    return render(
+      <Provider store={makeStore()}>
+        <ThemeProvider><BlocTarifFournisseur fournisseurId="7" /></ThemeProvider>
+      </Provider>,
+    )
+  }
+
+  it('l\'aperçu n\'écrit RIEN : apercu=true, ecraser décoché par défaut', async () => {
+    stockApi.importTarifFournisseurXlsx.mockResolvedValue({
+      data: { created: 2, updated: 1, refuses: [{ sku: 'PAN-550' }], ecrasements_total: 1, apercu: true },
+    })
+    renderBloc()
+
+    const fichier = new File(['x'], 'tarif.xlsx', {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    })
+    await userEvent.upload(screen.getByLabelText('Fichier de tarif (xlsx)'), fichier)
+    await userEvent.click(screen.getByRole('button', { name: /Aperçu de l'import/ }))
+
+    await waitFor(() => expect(stockApi.importTarifFournisseurXlsx).toHaveBeenCalledWith(
+      '7', fichier, { apercu: true, ecraser: false }))
+    expect(await screen.findByText(/Rien n'a été écrit/)).toBeInTheDocument()
+  })
+
+  it('« Appliquer » repasse en écriture réelle (apercu=false)', async () => {
+    stockApi.importTarifFournisseurXlsx
+      .mockResolvedValueOnce({ data: { created: 2, updated: 1, refuses: [], apercu: true } })
+      .mockResolvedValueOnce({ data: { created: 2, updated: 1, refuses: [] } })
+    renderBloc()
+
+    const fichier = new File(['x'], 'tarif.xlsx')
+    await userEvent.upload(screen.getByLabelText('Fichier de tarif (xlsx)'), fichier)
+    await userEvent.click(screen.getByRole('button', { name: /Aperçu de l'import/ }))
+    await userEvent.click(await screen.findByRole('button', { name: /Appliquer l'import/ }))
+
+    await waitFor(() => expect(stockApi.importTarifFournisseurXlsx).toHaveBeenLastCalledWith(
+      '7', fichier, { apercu: false, ecraser: false }))
+    expect(await screen.findByText(/Import appliqué/)).toBeInTheDocument()
+  })
+
+  it('sans fichier, l\'aperçu refuse et n\'appelle pas le serveur', async () => {
+    renderBloc()
+    await userEvent.click(screen.getByRole('button', { name: /Aperçu de l'import/ }))
+    expect(await screen.findByText('Choisissez un fichier xlsx.')).toBeInTheDocument()
+    expect(stockApi.importTarifFournisseurXlsx).not.toHaveBeenCalled()
   })
 })

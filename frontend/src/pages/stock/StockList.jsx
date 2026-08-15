@@ -740,6 +740,12 @@ export default function StockList() {
   // XSTK10 / WIR221 — mise au rebut + rapport « pertes de la période ».
   const [showRebut, setShowRebut] = useState(false)
   const [showPertes, setShowPertes] = useState(false)
+  // XSTK20/XPOS17 / WIR268 — cartes kanban (par emplacement) + étiquettes
+  // showroom (jeton e-catalogue).
+  const [showKanban, setShowKanban] = useState(false)
+  const [kanbanEmplacement, setKanbanEmplacement] = useState('')
+  const [showShowroom, setShowShowroom] = useState(false)
+  const [catalogueToken, setCatalogueToken] = useState('')
   // VX33 — panneau « Pilotage stock » (analytics + auto-BCF) : la tour de
   // contrôle du stock, ouverte PAR DÉFAUT (le bouton reste pour la masquer).
   const [showPilotage, setShowPilotage] = useState(true)
@@ -815,6 +821,48 @@ export default function StockList() {
     } catch { toastError('Génération des étiquettes indisponible.') }
     finally { setLabelsBusy(false) }
   }
+  // XSTK20 / WIR268 — cartes kanban deux-bacs POUR UN EMPLACEMENT donné
+  // (jeton KANBAN:<produit>:<emplacement>). Sans emplacement choisi, on ne
+  // devine RIEN : le serveur exige la paire produit×emplacement.
+  const printKanban = async () => {
+    if (!visibleSelected.size || !kanbanEmplacement) return
+    const pending = openPdfInGesture()
+    setLabelsBusy(true)
+    try {
+      const res = await stockApi.etiquettesKanbanEmplacement(
+        kanbanEmplacement, [...visibleSelected])
+      const blob = new Blob([res.data], { type: 'application/pdf' })
+      if (!pending.deliver(blob, 'cartes-kanban.pdf')) {
+        toastError('Ouverture bloquée par le navigateur.')
+      }
+      setShowKanban(false)
+    } catch { toastError('Génération des cartes kanban indisponible.') }
+    finally { setLabelsBusy(false) }
+  }
+
+  // XPOS17 / WIR268 — étiquettes showroom : le QR pointe la fiche PUBLIQUE de
+  // l'e-catalogue tokenisé. Sans jeton, message FR explicite (jamais un PDF
+  // muet ni un jeton deviné).
+  const printShowroom = async () => {
+    if (!visibleSelected.size) return
+    if (!catalogueToken.trim()) {
+      toastError("Renseignez le jeton de l'e-catalogue (Paramètres → e-catalogue).")
+      return
+    }
+    const pending = openPdfInGesture()
+    setLabelsBusy(true)
+    try {
+      const res = await stockApi.etiquettesShowroom(
+        [...visibleSelected], catalogueToken.trim())
+      const blob = new Blob([res.data], { type: 'application/pdf' })
+      if (!pending.deliver(blob, 'etiquettes-showroom.pdf')) {
+        toastError('Ouverture bloquée par le navigateur.')
+      }
+      setShowShowroom(false)
+    } catch { toastError("E-catalogue introuvable pour ce jeton.") }
+    finally { setLabelsBusy(false) }
+  }
+
   // N20 — Résout un code scanné/saisi (PRODUIT:<id> / SYSTEME:<id>) et navigue
   // vers la fiche correspondante (lecture seule côté serveur).
   const runScan = async (rawCode) => {
@@ -1146,6 +1194,20 @@ export default function StockList() {
                 Pertes de la période
               </Button>
             )}
+            {/* XSTK20/XPOS17 / WIR268 — impressions avancées sur la SÉLECTION
+                courante (les étiquettes N20 restent dans la barre de masse). */}
+            {visibleSelected.size > 0 && (
+              <Button variant="outline" size="sm" onClick={() => setShowKanban(true)}
+                      title="Cartes kanban deux-bacs pour un emplacement">
+                <QrCode /> Cartes kanban
+              </Button>
+            )}
+            {visibleSelected.size > 0 && (
+              <Button variant="outline" size="sm" onClick={() => setShowShowroom(true)}
+                      title="Étiquettes showroom (QR vers la fiche publique de l'e-catalogue)">
+                <QrCode /> Étiquettes showroom
+              </Button>
+            )}
             <Button variant="outline" size="sm" onClick={() => setScanOpen(v => !v)}
                     title="Scanner un code QR / code-barres et ouvrir la fiche">
               <ScanLine /> Scanner
@@ -1294,6 +1356,65 @@ export default function StockList() {
       )}
       {showPertes && (
         <PertesModal onClose={() => setShowPertes(false)} />
+      )}
+
+      {/* XSTK20 / WIR268 — cartes kanban : le serveur exige la paire
+          produit × emplacement, on ne devine jamais l'emplacement. */}
+      {showKanban && (
+        <Dialog open onOpenChange={(o) => { if (!o) setShowKanban(false) }}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Cartes kanban</DialogTitle>
+              <DialogDescription>
+                Une carte deux-bacs par produit sélectionné, pour l&apos;emplacement
+                choisi. Aucun prix d&apos;achat n&apos;y figure.
+              </DialogDescription>
+            </DialogHeader>
+            <label className="text-sm font-medium" htmlFor="kanban-emplacement">Emplacement</label>
+            <select id="kanban-emplacement"
+                    className="h-9 rounded-md border border-border bg-background px-2 text-sm"
+                    value={kanbanEmplacement}
+                    onChange={(e) => setKanbanEmplacement(e.target.value)}>
+              <option value="">— Choisir un emplacement —</option>
+              {emplacementsList.map((e) => (
+                <option key={e.id} value={String(e.id)}>{e.nom}</option>
+              ))}
+            </select>
+            <DialogFooter>
+              <Button variant="ghost" onClick={() => setShowKanban(false)}>Annuler</Button>
+              <Button loading={labelsBusy} disabled={!kanbanEmplacement} onClick={printKanban}>
+                Générer les cartes
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* XPOS17 / WIR268 — étiquettes showroom (jeton e-catalogue requis). */}
+      {showShowroom && (
+        <Dialog open onOpenChange={(o) => { if (!o) setShowShowroom(false) }}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Étiquettes showroom</DialogTitle>
+              <DialogDescription>
+                Le QR renvoie le client vers la fiche PUBLIQUE de l&apos;e-catalogue
+                (prix TTC, garantie). Seuls les produits exposés par ce
+                catalogue sont imprimés.
+              </DialogDescription>
+            </DialogHeader>
+            <label className="text-sm font-medium" htmlFor="showroom-token">
+              Jeton de l&apos;e-catalogue
+            </label>
+            <Input id="showroom-token" value={catalogueToken}
+                   onChange={(e) => setCatalogueToken(e.target.value)} />
+            <DialogFooter>
+              <Button variant="ghost" onClick={() => setShowShowroom(false)}>Annuler</Button>
+              <Button loading={labelsBusy} onClick={printShowroom}>
+                Générer les étiquettes
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
 
       {archiveNotif && (

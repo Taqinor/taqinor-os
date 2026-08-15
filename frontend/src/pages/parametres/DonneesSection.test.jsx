@@ -18,6 +18,10 @@ vi.mock('../../api/stockApi', () => ({
     annulerInventaireSession: vi.fn(),
     getKits: vi.fn(),
     exploserKit: vi.fn(),
+    // WIR268 / XMFG18 — duplication + traçabilité de la nomenclature.
+    dupliquerKit: vi.fn(),
+    getKitRevisions: vi.fn(),
+    getKitCompositionAu: vi.fn(),
     getFichesTechniques: vi.fn(),
     createFicheTechnique: vi.fn(),
     updateFicheTechnique: vi.fn(),
@@ -107,6 +111,40 @@ describe('WR5 — explosion de kit', () => {
     fireEvent.click(btn)
     // Sans kit choisi → message d'erreur.
     expect(await screen.findByText(/Choisissez un kit/)).toBeVisible()
+  })
+
+  // ── WIR268 / XMFG18 — dupliquer + révisions + composition à une date ──
+  it('duplique le kit sélectionné avec le facteur d\'échelle saisi', async () => {
+    stockApi.dupliquerKit.mockResolvedValue({
+      data: { id: 6, nom: 'Kit résidentiel (copie)' },
+    })
+    renderSection()
+    await waitFor(() => { expect(stockApi.getKits).toHaveBeenCalled() })
+
+    // Sélectionne le kit (Radix Select : le déclencheur porte le placeholder).
+    await userEvent.click(screen.getByText('— Choisir un kit —').closest('button'))
+    await userEvent.click(await screen.findByRole('option', { name: /Kit résidentiel/ }))
+
+    await userEvent.type(screen.getByLabelText("Facteur d'échelle"), '1.67')
+    await userEvent.click(screen.getByRole('button', { name: 'Dupliquer le kit' }))
+
+    await waitFor(() => expect(stockApi.dupliquerKit).toHaveBeenCalledWith('5', '1.67'))
+    expect(await screen.findByText(/quantités × 1.67/)).toBeInTheDocument()
+  })
+
+  it('affiche l\'historique des révisions de nomenclature', async () => {
+    stockApi.getKitRevisions.mockResolvedValue({
+      data: [{ id: 1, numero: 2, user_username: 'reda', date_creation: '2026-08-01' }],
+    })
+    renderSection()
+    await waitFor(() => { expect(stockApi.getKits).toHaveBeenCalled() })
+
+    await userEvent.click(screen.getByText('— Choisir un kit —').closest('button'))
+    await userEvent.click(await screen.findByRole('option', { name: /Kit résidentiel/ }))
+    await userEvent.click(screen.getByRole('button', { name: 'Historique des révisions' }))
+
+    await waitFor(() => expect(stockApi.getKitRevisions).toHaveBeenCalledWith('5'))
+    expect(await screen.findByText('Révision n° 2')).toBeInTheDocument()
   })
 })
 

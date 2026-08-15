@@ -112,6 +112,23 @@ const stockApi = {
   updatePrixFournisseur: (id, data) =>
     api.patch(`/stock/prix-fournisseurs/${id}/`, data),
   deletePrixFournisseur: (id) => api.delete(`/stock/prix-fournisseurs/${id}/`),
+  // XPUR14 / WIR268 — tarif fournisseur en xlsx. L'import écrit sur la SEULE
+  // donnée non reconstructible du parc (prix d'achat saisis à la main) : d'où
+  // l'APERÇU obligatoire (`apercu=true` n'écrit RIEN) et `ecraser` décoché par
+  // défaut (un prix déjà saisi repart dans `refuses`, jamais avalé).
+  exportTarifFournisseurXlsx: (fournisseurId) =>
+    api.get('/stock/prix-fournisseurs/export-xlsx/',
+      { params: { fournisseur: fournisseurId }, responseType: 'blob' }),
+  importTarifFournisseurXlsx: (fournisseurId, file, { apercu = true, ecraser = false } = {}) => {
+    const fd = new FormData()
+    fd.append('fournisseur', fournisseurId)
+    fd.append('file', file)
+    fd.append('apercu', apercu ? 'true' : 'false')
+    fd.append('ecraser', ecraser ? 'true' : 'false')
+    return api.post('/stock/prix-fournisseurs/import-xlsx/', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
 
   // Marques gérées (Paramètres → Stock). Une marque utilisée n'est pas supprimable.
   getMarques: () => api.get('/stock/marques/'),
@@ -213,6 +230,21 @@ const stockApi = {
     }),
   resolveCode: (code) =>
     api.get('/stock/produits/resolve/', { params: { code } }),
+  // XSTK20 / WIR268 — cartes kanban deux-bacs POUR UN EMPLACEMENT (jeton
+  // KANBAN:<produit>:<emplacement>, jamais de prix d'achat).
+  etiquettesKanbanEmplacement: (emplacementId, ids, { symbology = 'qr' } = {}) =>
+    api.get(`/stock/emplacements/${emplacementId}/etiquettes-kanban/`, {
+      params: { ids: (ids ?? []).join(','), symbology },
+      responseType: 'blob',
+    }),
+  // XPOS17 / WIR268 — étiquettes showroom : le QR pointe la fiche PUBLIQUE de
+  // l'e-catalogue tokenisé. Le jeton est OBLIGATOIRE (400/404 sinon) et seuls
+  // les produits exposés par ce catalogue sont imprimés.
+  etiquettesShowroom: (ids, catalogueToken) =>
+    api.get('/stock/produits/etiquettes-showroom/', {
+      params: { ids: (ids ?? []).join(','), catalogue_token: catalogueToken, sortie: 'pdf' },
+      responseType: 'blob',
+    }),
 
   // N19 — retours fournisseur (articles défectueux/erronés). La validation
   // décrémente le stock. Usage INTERNE (prix d'achat jamais client-facing).
@@ -435,6 +467,14 @@ const stockApi = {
   // ZMFG9 — disponibilité multi-niveaux du kit (kits assemblables + goulots).
   getKitDisponibilite: (id) =>
     api.get(`/stock/kits/${id}/disponibilite/`),
+  // XMFG18 / WIR268 — historique des révisions de nomenclature (sans prix),
+  // composition EN VIGUEUR à une date, et duplication avec facteur d'échelle.
+  getKitRevisions: (id) => api.get(`/stock/kits/${id}/revisions/`),
+  getKitCompositionAu: (id, date) =>
+    api.get(`/stock/kits/${id}/composition-au/`, { params: { date } }),
+  dupliquerKit: (id, facteurEchelle) =>
+    api.post(`/stock/kits/${id}/dupliquer/`,
+      facteurEchelle ? { facteur_echelle: facteurEchelle } : {}),
 
   // DC35 / FG254 — fiches techniques (datasheets) rattachées aux produits.
   getFichesTechniques: (produitId) =>
