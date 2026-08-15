@@ -5,7 +5,7 @@
 import { lazy } from 'react'
 import {
   Bus, CalendarCheck, CalendarDays, ClipboardCheck, GraduationCap, School,
-  ShieldAlert, Upload, Users, Utensils, Wallet,
+  ShieldAlert, Upload, Users, Utensils, Wallet, FileText,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -33,6 +33,9 @@ const EmploiDuTempsPage = lazy(() => import('../../pages/education/EmploiDuTemps
 const CantinePage = lazy(() => import('../../pages/education/CantinePage'))
 const DisciplinePage = lazy(() => import('../../pages/education/DisciplinePage'))
 const ImportPage = lazy(() => import('../../pages/education/ImportPage'))
+// WIR212 — periodes & bulletins (NTEDU17/33) : l'action `publier` etait le SEUL
+// chemin d'ecriture de `publie` et n'avait aucun ecran ; le PDF de bulletin non plus.
+const BulletinsPage = lazy(() => import('../../pages/education/BulletinsPage'))
 // PACT80 — transport scolaire (NTEDU23) : le backend existait en entier,
 // le client education n'avait AUCUNE entree pour ce sujet.
 const TransportScolaire = lazy(() => import('./TransportScolaire'))
@@ -57,6 +60,7 @@ const config = {
       { to: '/education/echeancier', label: 'Échéancier scolarité', icon: <Wallet size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/education/presences', label: 'Présences', icon: <CalendarCheck size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/education/notes', label: 'Notes', icon: <GraduationCap size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      { to: '/education/bulletins', label: 'Périodes & bulletins', icon: <FileText size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
       { to: '/education/emploi-du-temps', label: 'Emploi du temps', icon: <CalendarDays size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/education/cantine', label: 'Cantine', icon: <Utensils size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/education/discipline', label: 'Discipline', icon: <ShieldAlert size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
@@ -71,6 +75,7 @@ const config = {
     ['/education/echeancier', 'Échéancier scolarité'],
     ['/education/presences', 'Présences'],
     ['/education/notes', 'Notes'],
+    ['/education/bulletins', 'Périodes & bulletins'],
     ['/education/emploi-du-temps', 'Emploi du temps'],
     ['/education/cantine', 'Cantine'],
     ['/education/discipline', 'Discipline'],
@@ -85,6 +90,7 @@ const config = {
     { path: '/education/echeancier', component: EcheancierPage, roles: ROLES },
     { path: '/education/presences', component: PresencesPage, roles: ROLES },
     { path: '/education/notes', component: NotesPage, roles: ROLES },
+    { path: '/education/bulletins', component: BulletinsPage, roles: ['responsable', 'admin'] },
     { path: '/education/emploi-du-temps', component: EmploiDuTempsPage, roles: ROLES },
     { path: '/education/cantine', component: CantinePage, roles: ROLES },
     { path: '/education/discipline', component: DisciplinePage, roles: ROLES },

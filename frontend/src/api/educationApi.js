@@ -52,6 +52,29 @@ const educationApi = {
         params: anneeScolaireId ? { annee_scolaire: anneeScolaireId } : {},
         responseType: 'blob',
       }),
+    // WIR212/NTEDU17 — bulletin scolaire PDF d'un élève pour UNE période
+    // (`?periode=<id>` obligatoire, 400 sinon). Blob : sans `responseType`,
+    // axios décoderait le PDF en texte. 503 = moteur PDF indisponible.
+    bulletinPdf: (id, periodeId) =>
+      api.get(`/education/eleves/${id}/bulletin/`, {
+        params: { periode: periodeId }, responseType: 'blob',
+      }),
+  },
+
+  // ── WIR212/NTEDU17 — Périodes de notation & bulletins ──
+  // Le SEUL chemin d'écriture de `publie` est l'action `publier` (le serializer
+  // déclare `publie`/`date_publication` en lecture seule) : sans écran, aucun
+  // bulletin ne pouvait être publié autrement que par l'admin Django.
+  periodes: {
+    list: (params) => api.get('/education/periodes/', { params }),
+    create: (data) => api.post('/education/periodes/', data),
+    update: (id, data) => api.patch(`/education/periodes/${id}/`, data),
+  },
+  bulletins: {
+    list: (params) => api.get('/education/bulletins/', { params }),
+    create: (data) => api.post('/education/bulletins/', data),
+    update: (id, data) => api.patch(`/education/bulletins/${id}/`, data),
+    publier: (id) => api.post(`/education/bulletins/${id}/publier/`),
   },
 
   // ── Inscriptions — NTEDU3/4/5 ──
