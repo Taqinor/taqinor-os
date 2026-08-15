@@ -31,7 +31,6 @@ inatteignable|frontend/src/features/ao/variantes/VariantesCompare.jsx
 inatteignable|frontend/src/features/compta/components/EcritureSourceLink.jsx
 inatteignable|frontend/src/features/credit/CreditWarningBanner.jsx
 inatteignable|frontend/src/features/credit/DemandeDerogationWizard.jsx
-inatteignable|frontend/src/features/marketing/CampagnesScreen.jsx
 inatteignable|frontend/src/features/messaging/RecordCard.jsx
 inatteignable|frontend/src/features/messaging/ShareRecord.jsx
 inatteignable|frontend/src/features/messaging/VoiceRecorder.jsx

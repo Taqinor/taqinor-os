@@ -65,6 +65,46 @@ export default function CampagneForm({ initial, onSave, onCancel, editing }) {
   const [corpsApercu, setCorpsApercu] = useState('')
   const [apercuLoading, setApercuLoading] = useState(false)
   const [apercuErr, setApercuErr] = useState('')
+  // ── WIR258/XMKT34 — Assistant IA (repris de CampagnesScreen, l'unique hôte
+  //    de la fonctionnalité, qui n'était routé nulle part). `iaDisponible`
+  //    reste FALSE tant que la sonde n'a pas confirmé une clé LLM : sans clé,
+  //    aucune trace de la fonctionnalité dans l'UI.
+  const [iaDisponible, setIaDisponible] = useState(false)
+  const [iaOptions, setIaOptions] = useState(
+    { segment_label: '', offre: '', instruction: '', langue: 'fr' })
+  const [iaLoading, setIaLoading] = useState(false)
+  const [iaErr, setIaErr] = useState('')
+
+  useEffect(() => {
+    let vivant = true
+    // Sonde de GATING : aucun appel LLM n'est fait ici.
+    marketingApi.campagnes.genererIaDisponible()
+      .then(r => { if (vivant) setIaDisponible(!!r.data?.configured) })
+      .catch(() => { if (vivant) setIaDisponible(false) })
+    return () => { vivant = false }
+  }, [])
+
+  const genererIa = async () => {
+    setIaLoading(true)
+    setIaErr('')
+    try {
+      const r = await marketingApi.campagnes.genererIa(iaOptions)
+      if (r.data?.ok) {
+        // SUGGESTION éditable : remplit objet/corps, ne sauvegarde rien.
+        setForm(f => ({
+          ...f,
+          objet: r.data.objet || f.objet,
+          corps: r.data.corps || f.corps,
+        }))
+      } else {
+        setIaErr('Génération indisponible.')
+      }
+    } catch {
+      setIaErr('Génération impossible.')
+    } finally {
+      setIaLoading(false)
+    }
+  }
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- resync le formulaire quand la prop initial change
   useEffect(() => { setForm(initial || emptyForm()) }, [initial])
@@ -184,6 +224,54 @@ export default function CampagneForm({ initial, onSave, onCancel, editing }) {
       <textarea className="form-input" data-testid="campagne-corps"
         placeholder="Corps du message ({{prenom}}, {{ville}}…)" rows={5}
         value={form.corps} onChange={setField('corps')} />
+
+      {/* WIR258/XMKT34 — Assistant IA. Le bloc vivait dans CampagnesScreen,
+          l'unique hôte de la fonctionnalité… qui n'était routé nulle part :
+          la génération IA était donc inatteignable. Il est ici, dans le
+          formulaire réellement monté.
+          GATING : la sonde `generer-ia-disponible` ne fait AUCUN appel LLM ;
+          sans clé configurée, rien n'est rendu — pas même un bouton grisé. */}
+      {iaDisponible && (
+        <fieldset
+          data-testid="campagne-ia"
+          style={{ border: '1px dashed #cbd5e1', borderRadius: 8,
+            padding: '0.6rem', display: 'grid', gap: '0.5rem' }}>
+          <legend style={{ fontSize: '0.8rem', color: '#475569', padding: '0 6px' }}>
+            Assistant IA (suggestion éditable — jamais envoyée seule)
+          </legend>
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <input className="form-input" data-testid="campagne-ia-segment"
+              placeholder="Segment ciblé (ex. leads froids résidentiel)"
+              value={iaOptions.segment_label}
+              onChange={e => setIaOptions(o => ({ ...o, segment_label: e.target.value }))}
+              style={{ flex: '1 1 220px' }} />
+            <input className="form-input" data-testid="campagne-ia-offre"
+              placeholder="Offre / contexte (ex. -20% panneaux)"
+              value={iaOptions.offre}
+              onChange={e => setIaOptions(o => ({ ...o, offre: e.target.value }))}
+              style={{ flex: '1 1 220px' }} />
+            <select className="form-input" data-testid="campagne-ia-langue"
+              value={iaOptions.langue}
+              onChange={e => setIaOptions(o => ({ ...o, langue: e.target.value }))}
+              style={{ flex: '0 1 120px' }}>
+              <option value="fr">Français</option>
+              <option value="ar">Arabe</option>
+            </select>
+          </div>
+          <input className="form-input" data-testid="campagne-ia-instruction"
+            placeholder="Consigne (ton, longueur, réécriture…)"
+            value={iaOptions.instruction}
+            onChange={e => setIaOptions(o => ({ ...o, instruction: e.target.value }))} />
+          <div>
+            <button type="button" className="btn btn-light"
+              data-testid="campagne-ia-generer"
+              disabled={iaLoading} onClick={genererIa}>
+              {iaLoading ? 'Génération…' : "Générer avec l'IA"}
+            </button>
+          </div>
+          {iaErr && <p style={{ color: '#dc2626', margin: 0 }}>{iaErr}</p>}
+        </fieldset>
+      )}
 
       {/* NTMKT23 — insertion d'un bloc réutilisable : COPIE du fragment dans
           le corps (snapshot) — modifier le bloc source ne rétro-modifie

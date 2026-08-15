@@ -9,6 +9,9 @@ const mocks = vi.hoisted(() => ({
   blocsList: vi.fn(),
   // NTMKT24 — heatmap d'engagement (suggestion informative).
   heatmap: vi.fn(),
+  // WIR258/XMKT34 — sonde de gating IA + generation (aucun appel LLM dans la sonde).
+  genererIaDisponible: vi.fn(),
+  genererIa: vi.fn(),
 }))
 
 vi.mock('../../api/marketingApi', () => ({
@@ -18,7 +21,11 @@ vi.mock('../../api/marketingApi', () => ({
       return Array.isArray(data) ? data : (data?.results || [])
     },
     listes: { list: mocks.listesList },
-    campagnes: { apercuFusion: mocks.apercuFusion },
+    campagnes: {
+      apercuFusion: mocks.apercuFusion,
+      genererIaDisponible: mocks.genererIaDisponible,
+      genererIa: mocks.genererIa,
+    },
     blocsContenu: { list: mocks.blocsList },
     heatmapEngagement: mocks.heatmap,
   },
@@ -31,6 +38,8 @@ beforeEach(() => {
   mocks.listesList.mockResolvedValue({ data: [{ id: 1, nom: 'Liste A' }] })
   mocks.blocsList.mockResolvedValue({ data: [] })
   mocks.heatmap.mockResolvedValue({ data: { cellules: [], meilleur: null, total_envois: 0 } })
+  // Defaut : AUCUNE cle LLM -> la fonctionnalite IA reste invisible.
+  mocks.genererIaDisponible.mockResolvedValue({ data: { configured: false } })
 })
 
 describe('emptyForm / formFromCampagne', () => {
@@ -160,5 +169,55 @@ describe('CampagneForm — blocs de contenu réutilisables (NTMKT23)', () => {
     // Le corps envoyé porte la COPIE du fragment, jamais un id de bloc.
     expect(onSave.mock.calls[0][0].corps).toContain('<a>RDV</a>')
     expect(JSON.stringify(onSave.mock.calls[0][0])).not.toContain('bloc')
+  })
+})
+
+/* WIR258/XMKT34 — l'assistant IA vivait dans CampagnesScreen, l'UNIQUE hôte de
+   la fonctionnalité… qui n'était routé nulle part : la génération était donc
+   inatteignable. Le bloc est désormais dans CampagneForm (l'écran réellement
+   monté) et CampagnesScreen a été supprimé. */
+describe('CampagneForm — assistant IA (WIR258)', () => {
+  it('sans clé LLM : AUCUNE trace de la fonctionnalité dans l’UI', async () => {
+    mocks.genererIaDisponible.mockResolvedValue({ data: { configured: false } })
+    render(<CampagneForm onSave={vi.fn()} onCancel={vi.fn()} />)
+
+    await waitFor(() => expect(mocks.genererIaDisponible).toHaveBeenCalled())
+    expect(screen.queryByTestId('campagne-ia')).toBeNull()
+    expect(screen.queryByTestId('campagne-ia-generer')).toBeNull()
+    // La sonde ne déclenche jamais d'appel LLM.
+    expect(mocks.genererIa).not.toHaveBeenCalled()
+  })
+
+  it('avec clé : le bouton remplit objet et corps (suggestion éditable)', async () => {
+    mocks.genererIaDisponible.mockResolvedValue({ data: { configured: true } })
+    mocks.genererIa.mockResolvedValue({
+      data: { ok: true, objet: 'Offre solaire', corps: 'Bonjour {{prenom}}' },
+    })
+    const onSave = vi.fn()
+    render(<CampagneForm onSave={onSave} onCancel={vi.fn()} />)
+
+    const bouton = await screen.findByTestId('campagne-ia-generer')
+    fireEvent.change(screen.getByTestId('campagne-ia-segment'),
+      { target: { value: 'leads froids' } })
+    fireEvent.click(bouton)
+
+    await waitFor(() => expect(screen.getByTestId('campagne-objet').value)
+      .toBe('Offre solaire'))
+    expect(screen.getByTestId('campagne-corps').value).toBe('Bonjour {{prenom}}')
+    expect(mocks.genererIa).toHaveBeenCalledWith(
+      expect.objectContaining({ segment_label: 'leads froids', langue: 'fr' }))
+    // SUGGESTION : rien n'est sauvegardé tant que l'utilisateur ne valide pas.
+    expect(onSave).not.toHaveBeenCalled()
+  })
+
+  it('génération en échec : message FR, champs inchangés', async () => {
+    mocks.genererIaDisponible.mockResolvedValue({ data: { configured: true } })
+    mocks.genererIa.mockRejectedValue(new Error('boom'))
+    render(<CampagneForm onSave={vi.fn()} onCancel={vi.fn()} />)
+
+    fireEvent.click(await screen.findByTestId('campagne-ia-generer'))
+    await waitFor(() => expect(screen.getByText(/Génération impossible/))
+      .toBeInTheDocument())
+    expect(screen.getByTestId('campagne-objet').value).toBe('')
   })
 })
