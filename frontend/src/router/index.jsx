@@ -74,6 +74,8 @@ const PublicDepotPage = lazy(() => import('../pages/ged/PublicDepotPage'))
 const KiosquePointage = lazy(() => import('../features/rh/Kiosque'))
 // XSAV19 — page publique « Signaler un problème » via QR équipement.
 const EquipementSignalerPage = lazy(() => import('../pages/sav/EquipementSignalerPage'))
+// WIR214 — page publique « Signalement chantier » via QR QHSE (XQHS16).
+const SignalementPublicPage = lazy(() => import('../pages/qhse/SignalementPublicPage'))
 // XSAV10/FG86 — page publique de suivi client d'un ticket SAV + CSAT.
 const TicketSuiviPage = lazy(() => import('../pages/sav/TicketSuiviPage'))
 // XKB19 — page publique de consultation d'un article KB partagé (lien tokenisé).
@@ -353,6 +355,7 @@ const router = createBrowserRouter([
   { path: '/kiosque', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><KiosquePointage /></Suspense></RouteErrorBoundary> },
   // XSAV19 — « Signaler un problème » via QR équipement (sans login, sans layout ERP).
   { path: '/e/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><EquipementSignalerPage /></Suspense></RouteErrorBoundary> },
+  { path: '/qhse/signalement/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><SignalementPublicPage /></Suspense></RouteErrorBoundary> },
   // XSAV10/FG86 — suivi client d'un ticket SAV + CSAT (sans login, sans layout ERP).
   { path: '/suivi/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><TicketSuiviPage /></Suspense></RouteErrorBoundary> },
   // XPLT10 — kiosque TV plein écran des dashboards partagés (authentifié,
