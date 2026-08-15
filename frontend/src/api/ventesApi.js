@@ -28,6 +28,12 @@ const ventesApi = {
   // AbortController câblée depuis fetchDevis (createAsyncThunk {signal}).
   getDevis: (params, config) => api.get('/ventes/devis/', { params, ...config }),
   getDevisById: (id) => api.get(`/ventes/devis/${id}/`),
+  // WIR217 — état TERMINAL du rendu PDF d'un devis : `pret` | `echec` |
+  // `en_cours`. Seul `echec` est une information positive (retries Celery
+  // épuisés) : c'est lui qui permet à l'écran d'ARRÊTER de sonder et de
+  // proposer « Réessayer », au lieu d'attendre à jamais un fichier qui ne
+  // viendra pas. Contrat : apps/ventes/contract_samples/devis_pdf_statut.json.
+  getDevisPdfStatut: (id) => api.get(`/ventes/devis/${id}/pdf-statut/`),
   createDevis: (data) => api.post('/ventes/devis/', data),
   // QX21 — création ATOMIQUE (devis + lignes en un seul commit serveur) : plus
   // de brouillons orphelins/partiels si la connexion est coupée en cours de

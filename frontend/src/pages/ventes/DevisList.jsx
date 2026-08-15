@@ -1243,6 +1243,27 @@ export default function DevisList() {
   // et le polling se poursuit à un rythme plus espacé, sans jamais relancer un
   // second job (un seul dispatch(genererPdfDevis) par appel de genererUnPdf).
   const [pdfSlowPoll, setPdfSlowPoll] = useState({}) // id → true
+  // WIR217(b) — le sondage PDF se replanifiait par `setTimeout` sans jamais
+  // être annulé : quitter l'écran laissait la boucle tourner (appels réseau et
+  // `setState` sur un composant démonté, à l'infini si le PDF n'arrivait pas).
+  // On garde les minuteries en cours et un drapeau de montage : au démontage,
+  // tout est annulé et aucun tour supplémentaire n'est planifié.
+  const pdfPollTimers = useRef(new Set())
+  const pdfPollMonte = useRef(true)
+  useEffect(() => {
+    pdfPollMonte.current = true
+    const timers = pdfPollTimers.current
+    return () => {
+      pdfPollMonte.current = false
+      timers.forEach((t) => clearTimeout(t))
+      timers.clear()
+    }
+  }, [])
+  // Retient la minuterie rendue par un `setTimeout(poll, …)` pour pouvoir
+  // l'annuler au démontage. Le `setTimeout` reste écrit EN CLAIR sur son site
+  // d'appel : le contrat QX21 (DevisListPdfPolling.test.mjs) l'affirme
+  // littéralement, et il n'a pas à changer pour une correction de cycle de vie.
+  const retenirTimerPdf = (id) => { pdfPollTimers.current.add(id); return id }
   const [pdfDownloading, setPdfDownloading] = useState({}) // id → true
   const [statutActionId, setStatutActionId] = useState(null) // envoi/refus en cours
   // APX14 — le devis dont l'aperçu inline est ouvert (null = panneau fermé).
@@ -1955,15 +1976,37 @@ export default function DevisList() {
       // on continue simplement à interroger, plus espacé (10 s), et on affiche
       // « toujours en cours » au lieu d'abandonner silencieusement.
       const FAST_ATTEMPTS = 15
+      // WIR217(a) — le drapeau « lent » était testé sur `pdfSlowPoll[d.id]`,
+      // lu dans la CLÔTURE PÉRIMÉE de ce rendu : il valait `false` à chaque
+      // tour, donc le toast « toujours en cours » repartait TOUS LES 10 s.
+      // Une variable locale au job dit la vérité, elle : une seule annonce.
+      let lentAnnonce = false
       const poll = async () => {
+        // WIR217(b) — plus AUCUN tour après le démontage de l'écran.
+        if (!pdfPollMonte.current) return
         const slow = attempts >= FAST_ATTEMPTS
         attempts += 1
-        if (slow && !pdfSlowPoll[d.id]) {
+        if (slow && !lentAnnonce) {
+          lentAnnonce = true
           setPdfSlowPoll(prev => ({ ...prev, [d.id]: true }))
           if (autoOpen) {
             toast(`${d.reference} : le PDF est toujours en cours de génération — la page continue de vérifier automatiquement.`)
           }
         }
+        // WIR217(c) — ÉCHEC TERMINAL : le serveur consigne désormais l'abandon
+        // de la tâche Celery (retries épuisés). Sans cette lecture, le sondage
+        // ne s'arrêtait JAMAIS — il attendait un fichier qui ne viendrait pas.
+        try {
+          const { data: st } = await ventesApi.getDevisPdfStatut(d.id)
+          if (st?.statut === 'echec') {
+            setPdfSlowPoll(prev => ({ ...prev, [d.id]: false }))
+            toast.error(
+              `${d.reference} : la génération du PDF a échoué${st.erreur ? ` — ${st.erreur}` : '.'}`,
+              { action: { label: 'Réessayer', onClick: () => genererUnPdf(d, { autoOpen }) } },
+            )
+            return // on ARRÊTE le sondage : plus aucun setTimeout replanifié.
+          }
+        } catch { /* statut indisponible : on continue comme avant */ }
         try {
           const res = await ventesApi.getDevisById(d.id)
           if (res.data.fichier_pdf) {
@@ -1995,11 +2038,11 @@ export default function DevisList() {
               }
             }
           } else {
-            setTimeout(poll, slow ? 10000 : 2000)
+            retenirTimerPdf(setTimeout(poll, slow ? 10000 : 2000))
           }
         } catch { /* ignore poll errors — la boucle continue */ }
       }
-      setTimeout(poll, 2000)
+      retenirTimerPdf(setTimeout(poll, 2000))
       return true
     } catch (err) {
       // T11 — surface claire de l'absence d'onduleur (ValueError moteur premium).

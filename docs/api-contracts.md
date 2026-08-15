@@ -942,6 +942,8 @@
     avoirs:inconnu, client:objet, detail:texte, lignes:inconnu, paiements:inconnu, totaux:objet
 - frontend/src/api/ventesApi.js :: getDevisActionBoard -> /api/django/ventes/devis/action-requise
     buckets:inconnu, devis:inconnu, wa_drafts:inconnu
+- frontend/src/api/ventesApi.js :: getDevisPdfStatut -> /api/django/ventes/devis/<>/pdf-statut
+    devis_id:inconnu, erreur:inconnu, fichier_pdf:booleen, statut:inconnu
 - frontend/src/api/ventesApi.js :: getPrefillSite -> /api/django/ventes/devis/prefill-site
     client:inconnu, detail:texte, profil:inconnu
 - frontend/src/api/ventesApi.js :: getSimulationStatus -> /api/django/ventes/devis/<>/simulation-status/<>

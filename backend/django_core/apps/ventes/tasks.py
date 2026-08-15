@@ -4,8 +4,64 @@ Each task retries up to 3 times with exponential backoff.
 """
 import logging
 from celery import shared_task
+from celery.exceptions import MaxRetriesExceededError
 
 logger = logging.getLogger(__name__)
+
+
+# ── WIR217 — l'ÉCHEC DÉFINITIF d'une génération de PDF de devis ─────────────
+#
+# `task_generate_devis_pdf` retente 3 fois puis abandonne… en silence : rien
+# n'était consigné nulle part. L'écran, lui, sonde `fichier_pdf` indéfiniment —
+# donc un PDF qui ne viendra JAMAIS produisait un sondage sans fin et un
+# « toujours en cours » éternel, sans le moindre échec visible ni actionnable.
+#
+# On consigne donc l'échec terminal dans le cache, sur le MÊME patron
+# qu'EXPORT_JOB (SCA41) : état + société, sous une clé par devis, et le
+# endpoint de lecture VÉRIFIE la société stockée avant de répondre — jamais
+# d'accès inter-tenant. Le cache (et non un champ modèle) parce que c'est un
+# état de JOB, volatile et sans valeur historique : aucune migration, aucune
+# donnée métier polluée.
+PDF_JOB_CACHE_PREFIX = 'ventes:devis_pdf_job:'
+PDF_JOB_CACHE_TTL = 24 * 3600  # 24 h
+
+
+def pdf_job_cache_key(devis_id):
+    return f'{PDF_JOB_CACHE_PREFIX}{devis_id}'
+
+
+def _company_id_du_devis(devis_id):
+    """Société propriétaire du devis (ou ``None``) — best-effort."""
+    try:
+        from .models import Devis
+        return (Devis.objects.filter(pk=devis_id)
+                .values_list('company_id', flat=True).first())
+    except Exception:  # noqa: BLE001 — jamais bloquant pour la tâche.
+        return None
+
+
+def enregistrer_echec_pdf_devis(devis_id, erreur):
+    """Consigne l'échec DÉFINITIF (retries épuisés) d'un rendu de PDF devis."""
+    from django.core.cache import cache
+    cache.set(
+        pdf_job_cache_key(devis_id),
+        {
+            'company_id': _company_id_du_devis(devis_id),
+            'devis_id': devis_id,
+            'statut': 'echec',
+            'erreur': str(erreur)[:500],
+        },
+        PDF_JOB_CACHE_TTL,
+    )
+
+
+def oublier_echec_pdf_devis(devis_id):
+    """Efface un échec consigné — appelé au (re)lancement d'une génération.
+
+    Sans cet oubli, un devis ayant échoué UNE fois resterait « en échec » pour
+    l'écran pendant 24 h, y compris après un nouveau clic réussi."""
+    from django.core.cache import cache
+    cache.delete(pdf_job_cache_key(devis_id))
 
 
 @shared_task(
@@ -51,7 +107,14 @@ def task_generate_devis_pdf(self, devis_id, pdf_options=None):
         return key
     except Exception as exc:
         logger.error('task_generate_devis_pdf failed devis_id=%s: %s', devis_id, exc)
-        raise self.retry(exc=exc, countdown=2 ** self.request.retries * 30)
+        try:
+            raise self.retry(exc=exc, countdown=2 ** self.request.retries * 30)
+        except MaxRetriesExceededError:
+            # WIR217 — dernier essai : l'échec devient LISIBLE (endpoint
+            # `pdf-statut/`) au lieu de disparaître dans les logs pendant que
+            # l'écran sonde un fichier qui ne viendra jamais.
+            enregistrer_echec_pdf_devis(devis_id, exc)
+            raise
 
 
 def _content_version(devis_id):

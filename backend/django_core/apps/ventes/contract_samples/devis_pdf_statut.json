@@ -1,0 +1,22 @@
+{
+  "endpoint": "GET /api/django/ventes/devis/<int:pk>/pdf-statut/",
+  "pourquoi": "WIR217 — état TERMINAL du rendu PDF d'un devis. `task_generate_devis_pdf` retente 3 fois puis abandonne EN SILENCE : rien n'était consigné, si bien que l'écran sondait `fichier_pdf` indéfiniment pour un PDF qui ne viendrait jamais (sondage sans fin, « toujours en cours » éternel, aucun échec visible ni actionnable). Source de vérité : apps/ventes/views/devis.py::DevisViewSet.pdf_statut, alimentée par apps/ventes/tasks.py::enregistrer_echec_pdf_devis (cache scopé société, patron EXPORT_JOB de SCA41 — l'entrée porte sa société et est comparée à celle de l'appelant AVANT d'être rendue). TROIS valeurs de `statut` et trois seulement : `pret` (fichier là), `echec` (retries épuisés — l'écran DOIT arrêter de sonder et proposer « Réessayer »), `en_cours` (défaut/inconnu — ne PROUVE pas qu'un job tourne). `erreur` est vide hors `echec`. C'est CE fichier que le test frontend importe : jamais un payload écrit à la main.",
+  "exemple": {
+    "devis_id": 42,
+    "statut": "echec",
+    "erreur": "Le devis n'a aucun onduleur : format 3 pages impossible.",
+    "fichier_pdf": false
+  },
+  "exemple_pret": {
+    "devis_id": 42,
+    "statut": "pret",
+    "erreur": "",
+    "fichier_pdf": true
+  },
+  "exemple_en_cours": {
+    "devis_id": 42,
+    "statut": "en_cours",
+    "erreur": "",
+    "fichier_pdf": false
+  }
+}

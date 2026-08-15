@@ -245,6 +245,11 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             # garde vit ICI car get_permissions PRIME sur le
             # ``permission_classes`` de l'@action, qui déclare la MÊME classe.
             'simuler', 'simulation_status',
+            # WIR217 — état terminal du rendu PDF : même périmètre que
+            # `generer_pdf` (responsable + admin). La garde vit ICI parce que
+            # get_permissions PRIME sur le `permission_classes` de l'@action —
+            # qui déclare la MÊME classe pour ne jamais mentir dessus.
+            'pdf_statut',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -2148,6 +2153,11 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         from ..tasks import task_generate_devis_pdf
         # Format options (simulator parity) — whitelisted server-side.
         pdf_options = clean_pdf_options(request.data)
+        # WIR217 — un nouveau lancement efface l'échec précédemment consigné :
+        # sans cela, un devis ayant échoué une fois resterait « en échec » 24 h
+        # pour l'écran, y compris après un clic qui réussit.
+        from ..tasks import oublier_echec_pdf_devis
+        oublier_echec_pdf_devis(devis.id)
         task = task_generate_devis_pdf.delay(devis.id, pdf_options)
         # M4 — événement découplé : ventes émet, le satellite audit journalise
         # (AuditLog.Action.PDF). ventes n'importe plus apps.audit ; le signal
@@ -2159,6 +2169,50 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             {'task_id': task.id, 'detail': 'Génération PDF lancée.'},
             status=status.HTTP_202_ACCEPTED,
         )
+
+    @action(
+        detail=True,
+        methods=['get'],
+        url_path='pdf-statut',
+        permission_classes=[IsResponsableOrAdmin],
+    )
+    def pdf_statut(self, request, pk=None):
+        """WIR217 — État TERMINAL du rendu PDF de ce devis (lecture seule).
+
+        Trois états et trois seulement :
+          - ``pret``    : ``fichier_pdf`` est là — plus rien à attendre ;
+          - ``echec``   : la tâche Celery a épuisé ses retries (consigné par
+            ``tasks.enregistrer_echec_pdf_devis``) — l'écran doit ARRÊTER de
+            sonder et proposer « Réessayer » ;
+          - ``en_cours``: ni l'un ni l'autre (aucune information d'échec).
+
+        « en_cours » ne PROUVE pas qu'un job tourne : c'est délibérément
+        l'état par défaut/inconnu (le cache peut avoir expiré, ou aucune
+        génération n'avoir jamais été lancée). Seul ``echec`` est une
+        information positive — c'est lui qui manquait.
+
+        L'entrée de cache porte sa société et est comparée à celle de
+        l'appelant AVANT d'être rendue : jamais d'échec d'un autre tenant.
+        """
+        from django.core.cache import cache
+        from ..tasks import pdf_job_cache_key
+
+        devis = self.get_object()
+        job = cache.get(pdf_job_cache_key(devis.pk)) or {}
+        if job.get('company_id') != devis.company_id:
+            job = {}
+        if devis.fichier_pdf:
+            statut, erreur = 'pret', ''
+        elif job.get('statut') == 'echec':
+            statut, erreur = 'echec', job.get('erreur') or ''
+        else:
+            statut, erreur = 'en_cours', ''
+        return Response({
+            'devis_id': devis.pk,
+            'statut': statut,
+            'erreur': erreur,
+            'fichier_pdf': bool(devis.fichier_pdf),
+        })
 
     @action(
         detail=True,
