@@ -1,9 +1,9 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { UserPlus, AlertTriangle, FileCheck } from 'lucide-react'
 import {
   Button, Badge, Segmented, Tabs, TabsList, TabsTrigger, TabsContent,
   toast, Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-  Label, Input, Textarea, confirmLeaveIfDirty,
+  Label, Input, Textarea, confirmLeaveIfDirty, Spinner,
 } from '../../ui'
 import { ListShell } from '../../ui/module'
 import flotteApi from '../../api/flotteApi'
@@ -44,9 +44,60 @@ function PermisBadge({ dateExpiration }) {
   return <Badge tone={tone}>{d <= 30 ? `Expire J-${d}` : 'Valide'}</Badge>
 }
 
+// WIR236 — YHIRE11 : divergences permis flotte↔RH, backend prêt
+// (`conducteurs.divergencesPermis`) sans consommateur écran.
+function DivergencesPermisCard() {
+  const [state, setState] = useState({ loading: true, error: null, data: null })
+
+  useEffect(() => {
+    let cancelled = false
+    flotteApi.conducteurs.divergencesPermis()
+      .then((res) => { if (!cancelled) setState({ loading: false, error: null, data: res?.data || null }) })
+      .catch((err) => {
+        if (!cancelled) setState({ loading: false, error: err?.response?.data?.detail || 'Rapport indisponible.', data: null })
+      })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- chargement au montage
+  }, [])
+
+  if (state.loading) {
+    return <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground"><Spinner className="size-4" /> Chargement…</div>
+  }
+  if (state.error) {
+    return <div className="rounded-md border border-border p-3 text-sm text-muted-foreground">{state.error}</div>
+  }
+  const d = state.data || {}
+  const divergences = d.divergences || []
+  if (divergences.length === 0) {
+    return (
+      <div className="rounded-md border border-border p-3 text-sm text-muted-foreground">
+        Aucune divergence sur {d.nb_conducteurs_lies ?? 0} conducteur(s) lié(s) à un dossier RH.
+      </div>
+    )
+  }
+  return (
+    <div className="flex flex-col gap-2 rounded-md border border-warning/40 p-3">
+      <p className="text-sm font-medium text-warning">
+        {divergences.length} divergence(s) sur {d.nb_conducteurs_lies ?? 0} conducteur(s) lié(s)
+      </p>
+      <ul className="flex flex-col gap-1.5">
+        {divergences.map((dv) => (
+          <li key={dv.conducteur_id} className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm">
+            <span>{dv.conducteur_nom}</span>
+            <span className="text-xs text-muted-foreground">
+              Flotte : {dv.local_valide ? 'valide' : 'invalide'} — RH : {dv.rh_valide ? 'valide' : 'invalide'}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 function ConducteursTab() {
   const [actif, setActif] = useState('')
   const [showForm, setShowForm] = useState(false)
+  const [showDivergences, setShowDivergences] = useState(false)
   const params = useMemo(() => (actif ? { actif } : {}), [actif])
   const { data, loading, error, reload } = useFlotteResource(flotteApi.conducteurs.list, params)
 
@@ -95,13 +146,19 @@ function ConducteursTab() {
   )
 
   const actions = (
-    <Button onClick={() => setShowForm(true)}>
-      <UserPlus /> Nouveau conducteur
-    </Button>
+    <>
+      <Button variant={showDivergences ? 'default' : 'outline'} onClick={() => setShowDivergences((v) => !v)}>
+        Divergences permis flotte↔RH
+      </Button>
+      <Button onClick={() => setShowForm(true)}>
+        <UserPlus /> Nouveau conducteur
+      </Button>
+    </>
   )
 
   return (
     <>
+      {showDivergences && <DivergencesPermisCard />}
       <ListShell
         title="Conducteurs"
         subtitle="Chauffeurs et validité de leur permis."
@@ -248,9 +305,68 @@ function ReservationsTab({ conducteurs, vehicules }) {
 
 // WIR41(b) — Demandes de véhicule du pool (FLOTTE32) : aucun consommateur
 // frontend n'existait pour `DemandeVehiculeViewSet` (full CRUD côté serveur).
+// WIR200 — décision (approuver avec véhicule attribué, ou refuser avec
+// motif) sur une demande de véhicule du pool, statut « demandee » uniquement.
+function DecisionDemandeDialog({ demande, decision, onClose, onSaved }) {
+  const [vehiculeId, setVehiculeId] = useState('')
+  const [motif, setMotif] = useState('')
+  const [saving, setSaving] = useState(false)
+  const approuve = decision === 'approuver'
+
+  async function save() {
+    setSaving(true)
+    try {
+      const body = approuve
+        ? { vehicule_attribue: vehiculeId || undefined, motif_decision: motif || undefined }
+        : { motif_decision: motif || undefined }
+      await flotteApi.demandesVehicule[decision](demande.id, body)
+      toast.success(approuve ? 'Demande approuvée.' : 'Demande refusée.')
+      onSaved()
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Décision impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{approuve ? 'Approuver la demande' : 'Refuser la demande'}</DialogTitle>
+        </DialogHeader>
+        <div className="flex flex-col gap-3">
+          {approuve && (
+            <div>
+              <Label>Véhicule attribué (id, optionnel)</Label>
+              <Input value={vehiculeId} onChange={(e) => setVehiculeId(e.target.value)}
+                inputMode="numeric" />
+            </div>
+          )}
+          <div>
+            <Label>Motif (optionnel)</Label>
+            <Textarea value={motif} onChange={(e) => setMotif(e.target.value)} rows={2} />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Annuler</Button>
+          <Button onClick={save} disabled={saving}>
+            {approuve ? 'Approuver' : 'Refuser'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function DemandesVehiculeTab() {
   const [showForm, setShowForm] = useState(false)
-  const { data, loading, error, reload } = useFlotteResource(flotteApi.demandesVehicule.list, {})
+  const [decidingRow, setDecidingRow] = useState(null) // { demande, decision }
+  const [aTraiter, setATraiter] = useState(false)
+  const { data, loading, error, reload } = useFlotteResource(
+    flotteApi.demandesVehicule.list,
+    aTraiter ? { statut: 'demandee' } : {},
+  )
   const columns = useMemo(() => [
     { id: 'besoin', header: 'Besoin', width: 220, accessor: (r) => r.besoin, cell: (v) => v || '—' },
     { id: 'demandeur', header: 'Demandeur', width: 160, accessor: (r) => r.demandeur_nom, cell: (v) => v || '—' },
@@ -260,8 +376,22 @@ function DemandesVehiculeTab() {
     { id: 'statut', header: 'Statut', width: 120, accessor: (r) => r.statut_display || r.statut, cell: (v) => v || '—' },
   ], [])
 
+  const rowActions = (row) => (
+    row.statut === 'demandee'
+      ? [
+        { id: 'approuver', label: 'Approuver', onClick: () => setDecidingRow({ demande: row, decision: 'approuver' }) },
+        { id: 'refuser', label: 'Refuser', onClick: () => setDecidingRow({ demande: row, decision: 'refuser' }) },
+      ]
+      : []
+  )
+
   const actions = (
-    <Button onClick={() => setShowForm(true)}>Demander un véhicule</Button>
+    <>
+      <Button variant={aTraiter ? 'default' : 'outline'} onClick={() => setATraiter((v) => !v)}>
+        À traiter
+      </Button>
+      <Button onClick={() => setShowForm(true)}>Demander un véhicule</Button>
+    </>
   )
 
   return (
@@ -274,6 +404,7 @@ function DemandesVehiculeTab() {
         rows={data}
         loading={loading}
         error={error}
+        rowActions={rowActions}
         exportName="demandes-vehicule"
         emptyTitle="Aucune demande"
         emptyDescription="Aucune demande de véhicule enregistrée."
@@ -282,6 +413,14 @@ function DemandesVehiculeTab() {
         <DemandeVehiculeDialog
           onClose={() => setShowForm(false)}
           onSaved={() => { setShowForm(false); reload(); toast.success('Demande enregistrée.') }}
+        />
+      )}
+      {decidingRow && (
+        <DecisionDemandeDialog
+          demande={decidingRow.demande}
+          decision={decidingRow.decision}
+          onClose={() => setDecidingRow(null)}
+          onSaved={() => { setDecidingRow(null); reload() }}
         />
       )}
     </>

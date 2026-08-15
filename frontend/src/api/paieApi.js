@@ -40,7 +40,7 @@ const paieApi = {
   etatIrAnnuel: (annee) =>
     api.get('/paie/periodes/etat-ir-annuel/', { params: { annee } }),
   etatIrAnnuelXml: (annee) =>
-    api.get('/paie/periodes/etat-ir-annuel-xml/', { params: { annee } }),
+    api.get('/paie/periodes/etat-ir-annuel-xml/', { params: { annee }, responseType: 'blob' }),
   runGratification: (id, data) =>
     api.post(`/paie/periodes/${id}/run-gratification/`, data),
   reporterElements: (id) =>
@@ -175,6 +175,13 @@ const paieApi = {
       : api.post('/paie/adhesions-mutuelle/', data),
   deleteAdhesionMutuelle: (id) =>
     api.delete(`/paie/adhesions-mutuelle/${id}/`),
+
+  // ── Rubriques récurrentes par employé (PAIE9/WIR243) ──
+  getRubriquesEmploye: (params) => api.get('/paie/rubriques-employe/', { params }),
+  saveRubriqueEmploye: (id, data) =>
+    id ? api.patch(`/paie/rubriques-employe/${id}/`, data)
+      : api.post('/paie/rubriques-employe/', data),
+  deleteRubriqueEmploye: (id) => api.delete(`/paie/rubriques-employe/${id}/`),
 
   // ── Structures de paie (gabarits, XPAI24) ──
   getStructures: (params) => api.get('/paie/structures/', { params }),

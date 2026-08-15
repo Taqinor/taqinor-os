@@ -33,7 +33,11 @@ function entryText(e) {
   return e.body || 'Enregistrement créé'
 }
 
-export default function NcrChatter({ ncrId }) {
+// WIR234 — chatter GÉNÉRIQUE (historique + note), factorisé pour pouvoir être
+// monté sur n'importe quelle entité exposant le patron `_ChatterMixin`
+// (`historique(id)`/`noter(id, body)`). `NcrChatter` (NCR) et `CapaChatter`
+// (CAPA, jumeau) ne sont plus que de fines enveloppes de ce composant.
+function EntityChatter({ entityId, historiqueFn, noterFn }) {
   const [entries, setEntries] = useState([])
   const [body, setBody] = useState('')
   const [loading, setLoading] = useState(false)
@@ -41,10 +45,10 @@ export default function NcrChatter({ ncrId }) {
   const taRef = useRef(null)
 
   const load = useCallback(async () => {
-    if (!ncrId) return
+    if (!entityId) return
     setLoading(true)
     try {
-      const res = await qhseApi.nonConformites.historique(ncrId)
+      const res = await historiqueFn(entityId)
       const data = res.data
       setEntries(Array.isArray(data) ? data : (data?.results ?? []))
     } catch {
@@ -52,7 +56,7 @@ export default function NcrChatter({ ncrId }) {
     } finally {
       setLoading(false)
     }
-  }, [ncrId])
+  }, [entityId, historiqueFn])
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount
   useEffect(() => { load() }, [load])
@@ -63,7 +67,7 @@ export default function NcrChatter({ ncrId }) {
     if (!text || submitting) return
     setSubmitting(true)
     try {
-      await qhseApi.nonConformites.noter(ncrId, text)
+      await noterFn(entityId, text)
       setBody('')
       await load()
       toast.success('Note ajoutée.')
@@ -122,5 +126,27 @@ export default function NcrChatter({ ncrId }) {
         </Button>
       </form>
     </Card>
+  )
+}
+
+export default function NcrChatter({ ncrId }) {
+  return (
+    <EntityChatter
+      entityId={ncrId}
+      historiqueFn={qhseApi.nonConformites.historique}
+      noterFn={qhseApi.nonConformites.noter}
+    />
+  )
+}
+
+// WIR234 — jumeau CAPA de NcrChatter : jusqu'ici `capa.historique`/`noter`
+// n'avaient aucun appelant côté écran (aucun panneau détail CAPA).
+export function CapaChatter({ capaId }) {
+  return (
+    <EntityChatter
+      entityId={capaId}
+      historiqueFn={qhseApi.capa.historique}
+      noterFn={qhseApi.capa.noter}
+    />
   )
 }

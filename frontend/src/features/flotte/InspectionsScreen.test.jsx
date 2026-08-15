@@ -19,6 +19,9 @@ beforeAll(() => {
 })
 
 const inspectionsCreate = vi.fn(() => Promise.resolve({ data: { id: 1 } }))
+const tauxCompletion = vi.fn(() => Promise.resolve({
+  data: [{ conducteur_id: 1, conducteur_nom: 'Karim', nb_inspections: 3, nb_items: 9, nb_pass: 8, taux_completion: 88.9 }],
+}))
 
 vi.mock('../../api/flotteApi', () => ({
   default: {
@@ -26,7 +29,11 @@ vi.mock('../../api/flotteApi', () => ({
     modelesInspection: { list: () => Promise.resolve({
       data: [{ id: 3, nom: 'Pré-départ', items: [{ libelle: 'Freins', bloquant: true }, { libelle: 'Pneus', bloquant: false }] }],
     }) },
-    inspections: { list: () => Promise.resolve({ data: [] }), create: (...args) => inspectionsCreate(...args) },
+    inspections: {
+      list: () => Promise.resolve({ data: [] }),
+      create: (...args) => inspectionsCreate(...args),
+      tauxCompletion: (...args) => tauxCompletion(...args),
+    },
   },
 }))
 
@@ -67,5 +74,14 @@ describe('InspectionsScreen (XFLT13)', () => {
         ]),
       }),
     ))
+  })
+
+  it('WIR236 — affiche le taux de complétion par conducteur au clic sur le bouton dédié', async () => {
+    const user = userEvent.setup()
+    withProviders(<InspectionsScreen />)
+
+    await user.click(screen.getByRole('button', { name: 'Taux de complétion' }))
+    await waitFor(() => expect(tauxCompletion).toHaveBeenCalled())
+    expect(await screen.findByText(/89% — 3 inspection\(s\)/)).toBeInTheDocument()
   })
 })

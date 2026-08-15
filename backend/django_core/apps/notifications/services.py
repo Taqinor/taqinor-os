@@ -862,7 +862,9 @@ def publish_annonce(annonce, *, now=None):
         return annonce
     now = now or timezone.now()
     recipients = annonce_recipients(annonce)
-    link = '/annonces/' + str(annonce.pk)
+    # WIR177 — pas d'écran `/annonces/<pk>` : la liste vit sur `/annonces`,
+    # l'annonce ciblée s'ouvre via `?annonce=<pk>`.
+    link = '/annonces?annonce=' + str(annonce.pk)
     for user in recipients:
         try:
             notify(
@@ -971,7 +973,9 @@ def sweep_annonce_reminders(company, *, delay_days=None, today=None):
             destinataires = list(annonce_recipients(annonce))
             lu_ids = set(AnnonceLecture.objects.filter(
                 annonce=annonce).values_list('utilisateur_id', flat=True))
-            link = '/annonces/' + str(annonce.pk)
+            # WIR177 — pas d'écran `/annonces/<pk>` : la liste vit sur
+            # `/annonces`, l'annonce ciblée s'ouvre via `?annonce=<pk>`.
+            link = '/annonces?annonce=' + str(annonce.pk)
             for user in destinataires:
                 if user.pk in lu_ids:
                     continue  # déjà lu → aucune relance.

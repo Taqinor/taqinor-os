@@ -31,11 +31,21 @@ const DEMANDES = [{
   email: 'karim@solaire-atlas.ma', statut: 'en_attente',
 }]
 
-// Routeur d'API : la console fait DEUX GET distincts (tenants + file).
-function routerGet(demandes = DEMANDES) {
+const FACTURES = [{
+  id: 91, reference: 'LIC-2026-0091', societe_nom: 'Client Alpha',
+  periode: '2026-08-01', plan_code: 'PRO', montant_ttc: 1200,
+  statut: 'emise', statut_libelle: 'Émise',
+}]
+
+// Routeur d'API : la console fait TROIS GET distincts (tenants + file +
+// facturation de licence, WIR267).
+function routerGet(demandes = DEMANDES, factures = FACTURES) {
   return (url) => {
     if (url.startsWith('/adminops/demandes-inscription/')) {
       return Promise.resolve({ data: { results: demandes, en_attente: demandes.length } })
+    }
+    if (url.startsWith('/adminops/facturation-licences/')) {
+      return Promise.resolve({ data: { results: factures, total_du_ttc: 1200 } })
     }
     return Promise.resolve({ data: TENANTS })
   }
@@ -140,5 +150,47 @@ describe('TenantsConsole — cockpit fondateur (N100/N101)', () => {
     })
     const lien = screen.getByRole('link', { name: 'Demander une session' })
     expect(lien).toHaveAttribute('href', '/admin/impersonation/demander')
+  })
+})
+
+describe('TenantsConsole — Facturation de licence (WIR267)', () => {
+  it('affiche le registre avec le total dû et pointe une facture payée', async () => {
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getByTestId('facturation-licences-table')).toBeInTheDocument()
+    })
+    expect(screen.getByText('Total dû (factures non payées) : 1200 MAD'))
+      .toBeInTheDocument()
+    expect(screen.getByText('LIC-2026-0091')).toBeInTheDocument()
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Marquer payée LIC-2026-0091' }))
+
+    await waitFor(() => {
+      expect(apiMock.post).toHaveBeenCalledWith(
+        '/adminops/facturation-licences/91/marquer-payee/', undefined)
+    })
+  })
+
+  it('exporte le CSV via un blob téléchargé', async () => {
+    const csvBlob = new Blob(['ref;periode'], { type: 'text/csv' })
+    apiMock.get.mockImplementation((url) => {
+      if (url === '/adminops/facturation-licences/export-csv/') {
+        return Promise.resolve({ data: csvBlob })
+      }
+      return routerGet()(url)
+    })
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getByTestId('facturation-licences-table')).toBeInTheDocument()
+    })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Exporter CSV' }))
+
+    await waitFor(() => {
+      expect(apiMock.get).toHaveBeenCalledWith(
+        '/adminops/facturation-licences/export-csv/',
+        expect.objectContaining({ responseType: 'blob' }))
+    })
   })
 })

@@ -27,8 +27,39 @@ vi.mock('../../api/paieApi', () => ({
     getAdhesionsMutuelle: vi.fn(() => Promise.resolve({ data: [] })),
     saveAdhesionMutuelle: vi.fn(() => Promise.resolve({ data: {} })),
     getPeriodes: vi.fn(() => Promise.resolve({ data: [] })),
+    // WIR243 — structures de paie + rubriques récurrentes.
+    getStructures: vi.fn(() => Promise.resolve({ data: [] })),
+    saveStructure: vi.fn(() => Promise.resolve({ data: {} })),
+    ensureStructuresStandard: vi.fn(() => Promise.resolve({ data: {} })),
+    appliquerStructure: vi.fn(() => Promise.resolve({ data: {} })),
+    getRubriquesEmploye: vi.fn(() => Promise.resolve({ data: [] })),
+    saveRubriqueEmploye: vi.fn(() => Promise.resolve({ data: {} })),
+    deleteRubriqueEmploye: vi.fn(() => Promise.resolve({ data: {} })),
   },
 }))
+// WIR243 — Radix Select ne s'ouvre pas de façon fiable sous jsdom (portail +
+// pointer events, pattern établi PaieDeclarations.test.jsx) : remplacé par un
+// <select> natif pour piloter le choix de rubrique du dialogue « Rubriques
+// récurrentes ». Le reste de `../../ui` reste réel.
+vi.mock('../../ui', async (importActual) => {
+  const actual = await importActual()
+  const Passthrough = ({ children }) => <>{children}</>
+  return {
+    ...actual,
+    Select: ({ value, onValueChange, children }) => (
+      <select role="combobox" value={value}
+        onChange={(e) => onValueChange(e.target.value)}>
+        <option value="" />
+        {children}
+      </select>
+    ),
+    SelectTrigger: Passthrough,
+    SelectValue: () => null,
+    SelectContent: Passthrough,
+    SelectItem: ({ value, children }) => <option value={value}>{children}</option>,
+  }
+})
+
 vi.mock('../../api/rhApi', () => ({
   default: {
     getEmployes: vi.fn(() => Promise.resolve({
@@ -236,4 +267,76 @@ describe('PaieParametres — MutuelleTab (WIR38, édition fine d’un régime)',
       await waitFor(() => expect(paieApi.saveRegimeMutuelle).toHaveBeenCalledWith(
         31, expect.objectContaining({ part_salariale: 75 })))
     })
+})
+
+/* WIR243 — Structures de paie (gabarits de rubriques par catégorie, XPAI24) :
+   la brique serveur (getStructures/saveStructure/ensureStructuresStandard/
+   appliquerStructure) n'avait aucun onglet. */
+describe('PaieParametres — StructuresTab (WIR243)', () => {
+  const STRUCTURE = { id: 8, code: 'OUVRIER', libelle: 'Ouvrier', rubriques_defaut: [] }
+  beforeEach(() => {
+    paieApi.getStructures.mockResolvedValue(ok([STRUCTURE]))
+    paieApi.ensureStructuresStandard.mockClear()
+    paieApi.appliquerStructure.mockClear()
+  })
+
+  it('sème les structures standard depuis le bouton dédié', async () => {
+    wrap(<PaieParametres />)
+    await userEvent.click(screen.getByRole('tab', { name: 'Structures' }))
+    await userEvent.click(await screen.findByRole('button', { name: /Structures standard/ }))
+
+    await waitFor(() => expect(paieApi.ensureStructuresStandard).toHaveBeenCalled())
+  })
+
+  it('applique une structure à un profil (id)', async () => {
+    wrap(<PaieParametres />)
+    await userEvent.click(screen.getByRole('tab', { name: 'Structures' }))
+    await screen.findAllByText('Ouvrier')
+
+    const row = (await screen.findAllByText('Ouvrier'))
+      .map((el) => el.closest('tr')).find(Boolean)
+    expect(row).toBeTruthy()
+    await userEvent.click(within(row).getByLabelText("Plus d'actions sur la ligne"))
+    await userEvent.click(await screen.findByText('Appliquer à un profil'))
+
+    const dialog = await screen.findByRole('dialog')
+    await userEvent.type(within(dialog).getByLabelText('ID du profil de paie'), '42')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Appliquer' }))
+
+    await waitFor(() => expect(paieApi.appliquerStructure).toHaveBeenCalledWith(8, 42))
+  })
+})
+
+/* WIR243 — Rubriques récurrentes (RubriqueEmploye) rattachables depuis
+   l'onglet Profils : la brique CRUD/moteur existait sans aucun appelant. */
+describe('PaieParametres — Rubriques récurrentes (WIR243)', () => {
+  beforeEach(() => {
+    paieApi.getProfils.mockResolvedValue(ok([PROFIL]))
+    paieApi.getRubriquesEmploye.mockResolvedValue(ok([]))
+    paieApi.getRubriques.mockResolvedValue(ok([
+      { id: 3, code: 'TRANSPORT', libelle: 'Prime transport' },
+    ]))
+    paieApi.saveRubriqueEmploye.mockClear()
+  })
+
+  it('rattache une rubrique récurrente à un profil avec une surcharge de montant', async () => {
+    wrap(<PaieParametres />)
+    await userEvent.click(screen.getByRole('tab', { name: 'Profils' }))
+
+    const row = (await screen.findAllByText('Amrani Yassine'))
+      .map((el) => el.closest('tr')).find(Boolean)
+    expect(row).toBeTruthy()
+    await userEvent.click(within(row).getByLabelText("Plus d'actions sur la ligne"))
+    await userEvent.click(await screen.findByText('Rubriques récurrentes'))
+
+    const dialog = await screen.findByRole('dialog')
+    const select = await within(dialog).findByRole('combobox')
+    await userEvent.selectOptions(select, '3')
+    await userEvent.type(within(dialog).getByLabelText('Montant (surcharge, optionnel)'), '500')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Rattacher' }))
+
+    await waitFor(() => expect(paieApi.saveRubriqueEmploye).toHaveBeenCalledWith(
+      null, expect.objectContaining({ profil: 42, rubrique: 3, montant: '500' }),
+    ))
+  })
 })

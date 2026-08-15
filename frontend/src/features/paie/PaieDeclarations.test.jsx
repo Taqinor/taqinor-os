@@ -50,6 +50,19 @@ vi.mock('../../api/paieApi', () => {
     journalVentile: vi.fn(() => Promise.resolve({
       data: { id: 92, reference: 'PAIE-2026-07-V' },
     })),
+    provisions: vi.fn(() => Promise.resolve({
+      data: { treizieme_mois: 1200, ifc: 300 },
+    })),
+    getAvances: vi.fn(() => Promise.resolve({
+      data: [{
+        id: 71, profil: 5, libelle: 'Avance mars', type: 'avance',
+        montant_total: '2000.00', solde_restant: '2000.00', soldee: false,
+        nombre_echeances: 1, date_debut: '2026-07-01',
+      }],
+    })),
+    getSaisies: vi.fn(() => Promise.resolve({ data: [] })),
+    saveAvance: vi.fn(() => Promise.resolve({ data: { id: 72 } })),
+    deleteAvance: vi.fn(() => Promise.resolve({ data: {} })),
   }
   const handler = {
     get(target, prop) {
@@ -97,6 +110,23 @@ describe('PaieDeclarations — Charges & GL (WIR37, journal de paie → comptabi
     })
 })
 
+describe('PaieDeclarations — Provisions 13e mois/IFC (WIR242)', () => {
+  beforeEach(() => { paieApi.provisions.mockClear() })
+
+  it('génère les provisions de la période sélectionnée', async () => {
+    wrap(<PaieDeclarations />)
+    await userEvent.click(screen.getByRole('tab', { name: 'Déclarations' }))
+
+    const select = await screen.findByRole('combobox')
+    await userEvent.selectOptions(select, '3')
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /Provisions \(13e mois\/IFC\)/ }))
+
+    await waitFor(() => expect(paieApi.provisions).toHaveBeenCalledWith(3))
+  })
+})
+
 describe('PaieDeclarations — Cumuls annuels (PACT154, reprise go-live)', () => {
   it('affiche le compte réel de lignes du dry-run (total_lignes, jamais 0 par défaut)', async () => {
     // dry_run_reprise_cumuls (apps/paie/services.py:6322-6356) renvoie
@@ -122,5 +152,56 @@ describe('PaieDeclarations — Cumuls annuels (PACT154, reprise go-live)', () =>
 
     await waitFor(() => expect(paieApi.repriseDryRun).toHaveBeenCalledWith(file))
     expect(await screen.findByText('137 ligne(s) à importer.')).toBeInTheDocument()
+  })
+})
+
+describe('PaieDeclarations — Avances/prêts (WIR197)', () => {
+  beforeEach(() => {
+    paieApi.saveAvance.mockClear()
+    paieApi.deleteAvance.mockClear()
+  })
+
+  it('crée une nouvelle avance depuis le bouton dédié', async () => {
+    wrap(<PaieDeclarations />)
+    await userEvent.click(screen.getByRole('tab', { name: 'Avances & saisies' }))
+
+    await userEvent.click(await screen.findByRole('button', { name: /Nouvelle avance/ }))
+    await userEvent.type(screen.getByLabelText('Profil (id)'), '9')
+    await userEvent.type(screen.getByLabelText('Montant total'), '3000')
+    await userEvent.type(screen.getByLabelText('Date de début'), '2026-08-01')
+    await userEvent.click(screen.getByRole('button', { name: 'Créer' }))
+
+    await waitFor(() => expect(paieApi.saveAvance).toHaveBeenCalledWith(
+      undefined, expect.objectContaining({ profil: 9, montant_total: 3000 }),
+    ))
+  })
+
+  it('modifie une avance existante non soldée', async () => {
+    wrap(<PaieDeclarations />)
+    await userEvent.click(screen.getByRole('tab', { name: 'Avances & saisies' }))
+    await screen.findAllByText('Avance mars')
+
+    await userEvent.click(screen.getAllByRole('button', { name: "Plus d'actions sur la ligne" })[0])
+    await userEvent.click(await screen.findByText('Modifier'))
+
+    const montantInput = await screen.findByLabelText('Montant total')
+    await userEvent.clear(montantInput)
+    await userEvent.type(montantInput, '2500')
+    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer' }))
+
+    await waitFor(() => expect(paieApi.saveAvance).toHaveBeenCalledWith(
+      71, expect.objectContaining({ montant_total: 2500 }),
+    ))
+  })
+
+  it('supprime une avance non soldée', async () => {
+    wrap(<PaieDeclarations />)
+    await userEvent.click(screen.getByRole('tab', { name: 'Avances & saisies' }))
+    await screen.findAllByText('Avance mars')
+
+    await userEvent.click(screen.getAllByRole('button', { name: "Plus d'actions sur la ligne" })[0])
+    await userEvent.click(await screen.findByText('Supprimer'))
+
+    await waitFor(() => expect(paieApi.deleteAvance).toHaveBeenCalledWith(71))
   })
 })

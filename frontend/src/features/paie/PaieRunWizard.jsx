@@ -232,6 +232,30 @@ export default function PaieRunWizard() {
     } finally { setControlesBusy(false) }
   }
 
+  // WIR242 — rejoue silencieusement les deux contrôles (sans rouvrir/fermer
+  // le dialogue) après une synchronisation, pour que l'écart disparaisse.
+  const rafraichirControles = async () => {
+    if (!periode) return
+    const [completude, ecarts] = await Promise.all([
+      paieApi.controleCompletude(periode.id),
+      paieApi.controleEcarts(periode.id),
+    ])
+    setControles({ completude: completude.data, ecarts: ecarts.data })
+  }
+
+  // WIR242 — « Synchroniser » un écart salaire profil ↔ rémunération RH
+  // depuis le dialogue de contrôles pré-run. 403 (salaires_voir manquante)
+  // affiché proprement, contrôles rejoués pour faire disparaître l'écart.
+  const synchroniserEcartSalaire = async (profilId) => {
+    try {
+      await paieApi.synchroniserSalaireProfil(profilId)
+      toast.success('Salaire synchronisé.')
+      await rafraichirControles()
+    } catch (e) {
+      toast.error(errMsg(e, 'Synchronisation impossible.'))
+    }
+  }
+
   // XPAI4 — run hors-cycle « 13e mois » : génère les bulletins de
   // gratification de tous les profils actifs sur la période sélectionnée.
   const runGratification = async () => {
@@ -344,6 +368,7 @@ export default function PaieRunWizard() {
         <ControlesPreRunDialog
           completude={controles.completude} ecarts={controles.ecarts}
           onClose={() => setControlesOpen(false)}
+          onSynchroniser={synchroniserEcartSalaire}
         />
       )}
     </div>
@@ -353,7 +378,7 @@ export default function PaieRunWizard() {
 /* ── WIR39 — Contrôles pré-run détaillés (complétude YHIRE3 + écarts XPAI15).
    Lecture seule, à la demande — distincts du panneau d'avertissements
    (ZPAI2, message plat) : ici chaque catégorie porte matricule/nom/contexte. */
-function ControlesPreRunDialog({ completude, ecarts, onClose }) {
+function ControlesPreRunDialog({ completude, ecarts, onClose, onSynchroniser }) {
   const groupes = [
     { key: 'actifs_sans_profil', titre: 'Actifs sans profil de paie',
       items: completude.actifs_sans_profil || [] },
@@ -398,8 +423,19 @@ function ControlesPreRunDialog({ completude, ecarts, onClose }) {
                     </p>
                     <ul className="flex flex-col gap-0.5 pl-3 text-muted-foreground">
                       {g.items.map((it, i) => (
-                        <li key={it.profil_id ?? it.dossier_id ?? i}>
-                          {it.matricule ? `${it.matricule} — ` : ''}{it.nom}
+                        <li key={it.profil_id ?? it.dossier_id ?? i}
+                          className="flex items-center justify-between gap-2">
+                          <span>
+                            {it.matricule ? `${it.matricule} — ` : ''}{it.nom}
+                          </span>
+                          {g.key === 'ecarts_remuneration' && (
+                            <Button
+                              type="button" size="sm" variant="outline"
+                              onClick={() => onSynchroniser?.(it.profil_id)}
+                            >
+                              Synchroniser
+                            </Button>
+                          )}
                         </li>
                       ))}
                     </ul>

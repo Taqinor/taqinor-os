@@ -36,6 +36,15 @@ const adminopsApi = {
   marquerAnnonceLue: (id) =>
     api.post(`/adminops/annonces/${id}/marquer-lu/`, null,
       { suppressErrorToast: true }),
+
+  // ── WIR267 — Registre de facturation de licence (N100(e), fondateur) ────
+  // Strictement superuser côté serveur — jamais une surface tenant.
+  listFacturationLicences: (params) =>
+    api.get('/adminops/facturation-licences/', { params }),
+  marquerLicencePayee: (id, data) =>
+    api.post(`/adminops/facturation-licences/${id}/marquer-payee/`, data),
+  exporterFacturationLicencesCsv: () =>
+    api.get('/adminops/facturation-licences/export-csv/', { responseType: 'blob' }),
 }
 
 export default adminopsApi

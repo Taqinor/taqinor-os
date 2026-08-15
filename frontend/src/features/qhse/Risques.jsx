@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import {
   ShieldAlert, ListChecks, CheckCircle2, QrCode, Plus, Wrench, AlertOctagon,
-  Lock, LockOpen, XCircle,
+  Lock, LockOpen, XCircle, FileText,
 } from 'lucide-react'
 import qhseApi from '../../api/qhseApi'
 import { downloadBlobInGesture } from '../../utils/downloadBlob'
@@ -606,6 +606,126 @@ function CreerLienSignalementDialog({ onClose, onCreated }) {
   )
 }
 
+// WIR235 — helper blob factorisé pour les documents terrain bilingues
+// XQHS27 (permis de travail, induction sécurité — patron de la causerie,
+// frontend/src/features/rh/Hse.jsx:telechargerCauseriePdf).
+async function telechargerPdfTerrain(pdfFn, item, filenamePrefix, lang) {
+  const pending = downloadBlobInGesture()
+  try {
+    const res = await pdfFn(item.id, { lang })
+    pending.deliver(new Blob([res.data]), `${filenamePrefix}-${item.id}-${lang}.pdf`)
+  } catch {
+    toast.error('Génération du PDF impossible.')
+  }
+}
+
+// WIR234 — planifier un exercice d'urgence (drill) rattaché à un plan.
+function PlanifierExerciceDialog({ onClose, onDone }) {
+  const [plan, setPlan] = useState('')
+  const [type, setType] = useState('evacuation')
+  const [datePrevue, setDatePrevue] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    if (!plan || !datePrevue) { toast.error('Plan et date prévue requis.'); return }
+    setSaving(true)
+    try {
+      await qhseApi.exercicesUrgence.create({
+        plan: Number(plan), type_exercice: type, date_prevue: datePrevue,
+      })
+      toast.success('Exercice planifié.')
+      onDone()
+      onClose()
+    } catch (e) {
+      toast.error(e?.response?.data?.detail ?? 'Planification impossible.')
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent>
+        <DialogTitle>Planifier un exercice d'urgence</DialogTitle>
+        <div className="flex flex-col gap-3">
+          <div>
+            <Label>Plan d'urgence (id)</Label>
+            <Input value={plan} onChange={(e) => setPlan(e.target.value)} inputMode="numeric" />
+          </div>
+          <div>
+            <Label>Type</Label>
+            <Select value={type} onValueChange={setType}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="evacuation">Évacuation</SelectItem>
+                <SelectItem value="incendie">Incendie</SelectItem>
+                <SelectItem value="deversement">Déversement</SelectItem>
+                <SelectItem value="autre">Autre</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label>Date prévue</Label>
+            <Input type="date" value={datePrevue} onChange={(e) => setDatePrevue(e.target.value)} />
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" onClick={onClose}>Annuler</Button>
+            <Button onClick={save} disabled={saving}>Planifier</Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// WIR234 — réaliser un exercice planifié (chronométrage évacuation + participants).
+function RealiserExerciceDialog({ exercice, onClose, onDone }) {
+  const [duree, setDuree] = useState('')
+  const [participants, setParticipants] = useState('')
+  const [observations, setObservations] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    setSaving(true)
+    try {
+      await qhseApi.exercicesUrgence.realiser(exercice.id, {
+        duree_evacuation_secondes: duree || undefined,
+        nb_participants: participants || undefined,
+        observations,
+      })
+      toast.success('Exercice réalisé.')
+      onDone()
+      onClose()
+    } catch (e) {
+      toast.error(e?.response?.data?.detail ?? 'Enregistrement impossible.')
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent>
+        <DialogTitle>Réaliser l'exercice</DialogTitle>
+        <div className="flex flex-col gap-3">
+          <div>
+            <Label>Durée d'évacuation (secondes)</Label>
+            <Input value={duree} onChange={(e) => setDuree(e.target.value)} inputMode="numeric" />
+          </div>
+          <div>
+            <Label>Nombre de participants</Label>
+            <Input value={participants} onChange={(e) => setParticipants(e.target.value)} inputMode="numeric" />
+          </div>
+          <div>
+            <Label>Observations / écarts</Label>
+            <Textarea rows={3} value={observations} onChange={(e) => setObservations(e.target.value)} />
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" onClick={onClose}>Annuler</Button>
+            <Button onClick={save} disabled={saving}>Enregistrer</Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 async function telechargerQr(lien) {
   const pending = downloadBlobInGesture()
   try {
@@ -702,6 +822,21 @@ export default function Risques() {
   const [lotoReload, setLotoReload] = useState(0)
   const [creatingIncident, setCreatingIncident] = useState(false)
   const [incidentsReload, setIncidentsReload] = useState(0)
+
+  // WIR234 — drills : planification + réalisation + CAPA d'écart.
+  const [planifiantExercice, setPlanifiantExercice] = useState(false)
+  const [realisantExercice, setRealisantExercice] = useState(null)
+  const [exercicesReload, setExercicesReload] = useState(0)
+
+  const creerCapaExercice = async (exercice) => {
+    try {
+      await qhseApi.exercicesUrgence.creerCapa(exercice.id, {})
+      toast.success('CAPA créée depuis l’écart.')
+      setExercicesReload((n) => n + 1)
+    } catch (e) {
+      toast.error(e?.response?.data?.detail ?? 'Création de CAPA impossible.')
+    }
+  }
 
   // XQHS17 — capture rapide d'une observation BBS (le registre n'était
   // jusqu'ici qu'en lecture + conversion).
@@ -1067,6 +1202,14 @@ export default function Risques() {
               ...(r.statut === 'brouillon' || r.statut === 'valide'
                 ? [{ id: 'cloturer', label: 'Clôturer', icon: XCircle, onClick: () => cloturerPermis(r) }]
                 : []),
+              {
+                id: 'pdf-fr', label: 'PDF (FR)', icon: FileText,
+                onClick: () => telechargerPdfTerrain(qhseApi.permisTravail.pdf, r, 'permis-travail', 'fr'),
+              },
+              {
+                id: 'pdf-ar', label: 'PDF (AR)', icon: FileText,
+                onClick: () => telechargerPdfTerrain(qhseApi.permisTravail.pdf, r, 'permis-travail', 'ar'),
+              },
             ]}
           />
           <QhseResourceList
@@ -1095,6 +1238,16 @@ export default function Risques() {
             fetcher={() => qhseApi.inductionsSecurite.list()}
             columns={inductionsCols}
             exportName="qhse-inductions"
+            rowActions={(r) => [
+              {
+                id: 'pdf-fr', label: 'PDF (FR)', icon: FileText,
+                onClick: () => telechargerPdfTerrain(qhseApi.inductionsSecurite.pdf, r, 'induction-securite', 'fr'),
+              },
+              {
+                id: 'pdf-ar', label: 'PDF (AR)', icon: FileText,
+                onClick: () => telechargerPdfTerrain(qhseApi.inductionsSecurite.pdf, r, 'induction-securite', 'ar'),
+              },
+            ]}
           />
           <QhseResourceList
             title="Plans d’urgence"
@@ -1114,6 +1267,20 @@ export default function Risques() {
             fetcher={() => qhseApi.exercicesUrgence.list()}
             columns={exercicesUrgenceCols}
             exportName="qhse-exercices-urgence"
+            deps={[exercicesReload]}
+            actions={
+              <Button onClick={() => setPlanifiantExercice(true)}>
+                <Plus size={16} /> Planifier un exercice
+              </Button>
+            }
+            rowActions={(r) => [
+              ...(r.statut === 'planifie'
+                ? [{ id: 'realiser', label: 'Réaliser', icon: CheckCircle2, onClick: () => setRealisantExercice(r) }]
+                : []),
+              ...(r.statut === 'realise'
+                ? [{ id: 'creer-capa', label: 'Créer CAPA', icon: ShieldAlert, onClick: () => creerCapaExercice(r) }]
+                : []),
+            ]}
           />
         </TabsContent>
 
@@ -1301,6 +1468,20 @@ export default function Risques() {
         <CaptureObservationDialog
           onClose={() => setCreatingObservation(false)}
           onCreated={() => setObservationsReload((n) => n + 1)}
+        />
+      )}
+
+      {planifiantExercice && (
+        <PlanifierExerciceDialog
+          onClose={() => setPlanifiantExercice(false)}
+          onDone={() => setExercicesReload((n) => n + 1)}
+        />
+      )}
+      {realisantExercice && (
+        <RealiserExerciceDialog
+          exercice={realisantExercice}
+          onClose={() => setRealisantExercice(null)}
+          onDone={() => setExercicesReload((n) => n + 1)}
         />
       )}
     </div>

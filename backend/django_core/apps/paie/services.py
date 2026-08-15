@@ -27,7 +27,7 @@ qu'ils restent à confirmer.
 from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
-from django.db import transaction
+from django.db import models, transaction
 from django.utils import timezone
 
 from .models import (
@@ -37,6 +37,7 @@ from .models import (
     ParametrePaie,
     PeriodePaie,
     Rubrique,
+    RubriqueEmploye,
     TrancheIR,
     TypeEntreePonctuelle,
 )
@@ -1926,6 +1927,50 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
             'type': Rubrique.TYPE_GAIN,
             'montant': prime_anciennete,
         })
+
+    # WIR243 — Rubriques récurrentes (``RubriqueEmploye``, PAIE9) : jusqu'ici
+    # la brique existait (CRUD + rattachement idempotent) sans jamais être LUE
+    # par le moteur de calcul. Fenêtre de dates (``date_debut``/``date_fin``,
+    # bornes incluses) + ``actif`` filtrent les rattachements en vigueur pour
+    # la période ; surcharge ``montant``/``taux`` prime sur la définition de
+    # la rubrique catalogue (sinon ``montant_fixe`` ou ``taux`` × salaire de
+    # base). Additif — aucun élément ponctuel existant n'est affecté.
+    rubriques_employe = list(
+        RubriqueEmploye.objects.filter(profil=profil, actif=True)
+        .filter(models.Q(date_debut__isnull=True) | models.Q(date_debut__lte=le_jour))
+        .filter(models.Q(date_fin__isnull=True) | models.Q(date_fin__gte=le_jour))
+        .select_related('rubrique')
+    )
+    for re_ in rubriques_employe:
+        rub = re_.rubrique
+        if re_.montant is not None:
+            montant_re = Decimal(re_.montant)
+        elif re_.taux is not None:
+            montant_re = (Decimal(re_.taux) / Decimal('100')) * salaire_base
+        elif rub.montant_fixe is not None:
+            montant_re = Decimal(rub.montant_fixe)
+        elif rub.taux is not None:
+            montant_re = (Decimal(rub.taux) / Decimal('100')) * salaire_base
+        else:
+            montant_re = Decimal('0')
+        montant_re = _q(montant_re)
+        if montant_re == 0:
+            continue
+        if rub.type == Rubrique.TYPE_RETENUE:
+            retenues_variables += montant_re
+            lignes.append({
+                'code': rub.code, 'libelle': rub.libelle,
+                'type': Rubrique.TYPE_RETENUE, 'montant': montant_re,
+            })
+        else:
+            gains_variables += montant_re
+            _, part_imposable_re = repartir_avantage(rub, montant_re)
+            if part_imposable_re > 0:
+                gains_imposables += part_imposable_re
+            lignes.append({
+                'code': rub.code, 'libelle': rub.libelle,
+                'type': Rubrique.TYPE_GAIN, 'montant': montant_re,
+            })
 
     for el in elements:
         montant = Decimal(el.montant or 0)

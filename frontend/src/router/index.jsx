@@ -74,11 +74,15 @@ const PublicDepotPage = lazy(() => import('../pages/ged/PublicDepotPage'))
 const KiosquePointage = lazy(() => import('../features/rh/Kiosque'))
 // XSAV19 — page publique « Signaler un problème » via QR équipement.
 const EquipementSignalerPage = lazy(() => import('../pages/sav/EquipementSignalerPage'))
+// WIR214 — page publique « Signalement chantier » via QR QHSE (XQHS16).
+const SignalementPublicPage = lazy(() => import('../pages/qhse/SignalementPublicPage'))
 // XSAV10/FG86 — page publique de suivi client d'un ticket SAV + CSAT.
 const TicketSuiviPage = lazy(() => import('../pages/sav/TicketSuiviPage'))
 // XKB19 — page publique de consultation d'un article KB partagé (lien tokenisé).
 const PublicArticlePage = lazy(() => import('../pages/kb/PublicArticlePage'))
 const ChatPage = lazy(() => import('../pages/messaging/ChatPage'))
+// WIR177 — annonces internes (XKB5/XKB6), jusqu'ici sans écran destinataire.
+const AnnoncesPage = lazy(() => import('../features/notifications/AnnoncesPage'))
 const DocumentsPage = lazy(() => import('../pages/ged/DocumentsPage'))
 // VX78 — Écran 404 déjà construit (ui/NotFound.jsx), jusqu'ici jamais importé
 // par le routeur : le catch-all rebondissait en silence vers /dashboard.
@@ -353,6 +357,7 @@ const router = createBrowserRouter([
   { path: '/kiosque', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><KiosquePointage /></Suspense></RouteErrorBoundary> },
   // XSAV19 — « Signaler un problème » via QR équipement (sans login, sans layout ERP).
   { path: '/e/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><EquipementSignalerPage /></Suspense></RouteErrorBoundary> },
+  { path: '/qhse/signalement/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><SignalementPublicPage /></Suspense></RouteErrorBoundary> },
   // XSAV10/FG86 — suivi client d'un ticket SAV + CSAT (sans login, sans layout ERP).
   { path: '/suivi/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><TicketSuiviPage /></Suspense></RouteErrorBoundary> },
   // XPLT10 — kiosque TV plein écran des dashboards partagés (authentifié,
@@ -408,6 +413,7 @@ const router = createBrowserRouter([
   // (lien programmatique, jamais un item de menu statique).
   { path: '/onboarding/demarrage', loader: authLoader, element: <WithLayout><DemarrageWizard /></WithLayout> },
   { path: '/messages', loader: authLoader, element: <WithLayout><ChatPage /></WithLayout> },
+  { path: '/annonces', loader: authLoader, element: <WithLayout><AnnoncesPage /></WithLayout> },
   // VX247(d) — glossaire métier (les HelpTip VX47 y pointent au lieu de dupliquer).
   { path: '/aide/lexique', loader: authLoader, element: <WithLayout><LexiquePage /></WithLayout> },
 
