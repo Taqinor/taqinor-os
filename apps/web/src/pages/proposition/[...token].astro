@@ -23,11 +23,6 @@ import TestimonialCarousel from '../../components/TestimonialCarousel.astro';
 import InstallCounter from '../../components/InstallCounter.astro';
 import CertLogoRow from '../../components/CertLogoRow.astro';
 import VideoCompteur from '../../components/VideoCompteur.astro';
-// WJ57 — « confiance au moment de la signature » : UN témoignage court (texte,
-// slot vidéo réservé pour quand WG6 fournira de vrais témoignages filmés) +
-// le bandeau certifications/garanties, juste au-dessus du bloc e-sign. Même
-// source unique de vérité que <TestimonialCarousel/> (aucun avis fabriqué).
-import { TESTIMONIALS, hasTestimonials } from '../../lib/testimonials';
 // WJ35 — grade « heure dorée » v3 (.v3-grade / .photo-grade), importé ici car
 // cette page ne monte pas <V2Enhance/> (qui l'importe pour les pages v2). La
 // feuille est dédupliquée par Vite si une autre page l'importe déjà ailleurs.
@@ -70,9 +65,6 @@ import {
   resolveValidity,
   savingsHeadline,
   environmentalImpact,
-  financingComparison,
-  installmentSplit,
-  INSTALLMENT_MONTH_OPTIONS,
   whatsappLink,
   whatsappLinkForIntent,
   whatsappShareLink,
@@ -84,7 +76,6 @@ import {
   hasSldSvg,
   sldSvgFilename,
   walkthroughSteps,
-  backendFinancing,
   proposalVariants,
   nextSteps,
   proposalAssumptions,
@@ -451,17 +442,16 @@ const headline = ok ? savingsHeadline(data!, reco ?? 'sans_batterie') : null;
 // ── WJ14 — Impact environnemental humain (CO₂ ≈ arbres), depuis la production ─
 const enviro = ok ? environmentalImpact(prodKwh) : null;
 
-// ── WJ10 — Comparatif de financement (cash backend + éco-prêt indicatif) ─────
-const financing = ok ? financingComparison(data!, reco ?? 'sans_batterie') : null;
-
-// ── WJ53 — Toggle « payer comptant / paiement échelonné » interactif ─────────
-// Le TTC de départ vient de l'option retenue (reco, ou sans_batterie par
-// défaut) ; le recalcul en direct (mois → mensualité) se fait CÔTÉ CLIENT via
-// installmentSplit (script de fin de page) — ce bloc ne rend RIEN sans prix
-// réel (même garde-fou zéro-total que le reste de la page).
-const installmentTtc = ok ? optionTtc(data!, reco ?? 'sans_batterie') : 0;
-const showInstallmentToggle = ok && Number.isFinite(installmentTtc) && installmentTtc > 0;
-const defaultInstallment = showInstallmentToggle ? installmentSplit(installmentTtc, 12) : null;
+// ── PV80 — AUCUN CRÉDIT, AUCUNE MENSUALITÉ, AUCUNE BANQUE SUR CETTE PAGE ────
+// Trois blocs « argent emprunté » y vivaient (comparatif éco-prêt WJ10, bloc
+// financement backend WJ32, toggle comptant/échelonné WJ53). Ils ont été
+// RETIRÉS : cette page vend une installation, pas un crédit — et un tableau de
+// mensualités indicatives « à confirmer avec votre banque » au milieu d'une
+// proposition affaiblit le seul chiffre qui compte (le prix TTC clé en main).
+// Les fonctions correspondantes de lib/proposition.ts (financingComparison,
+// backendFinancing, installmentSplit) restent INTACTES — d'autres surfaces
+// peuvent les utiliser ; seul leur USAGE ici disparaît. Rien n'est retiré du
+// payload backend : on choisit ce qu'on REND, pas ce qu'on reçoit.
 
 // ── WJ12 — Contact intégré : deep-link WhatsApp prérempli avec la réf devis ──
 // « Demander un rappel » = appeler le numéro TAQINOR (NAP), jamais le numéro du
@@ -537,10 +527,10 @@ const nearestInstallHref = nearestInstall ? `/realisations/${nearestInstall.slug
 const annotations = show3d && roofLayout ? zoneAnnotations(roofLayout, q?.watt_par_panneau ?? null) : [];
 const walkSteps = show3d && data ? walkthroughSteps(data) : [];
 
-// ── WJ32 — Complétude du contenu : financement backend réel, variantes,
-// « Et après ? », « Nos hypothèses », accompagnement, FAQ objections. Chaque
-// bloc dégrade proprement (masqué) quand sa donnée backend manque.
-const financingBlock = ok ? backendFinancing(data!) : null;
+// ── WJ32 — Complétude du contenu : variantes, « Et après ? », « Nos
+// hypothèses », accompagnement, FAQ objections. Chaque bloc dégrade proprement
+// (masqué) quand sa donnée backend manque. PV80 — le bloc financement backend
+// (backendFinancing) n'est plus rendu : aucune mention de crédit sur la page.
 const variants = ok ? proposalVariants(data!) : [];
 const steps = nextSteps();
 const assumptions = ok ? proposalAssumptions(data!) : [];
@@ -560,14 +550,11 @@ const faq = objectionFaq();
 const REAL_PROJECT_PHOTOS_AVAILABLE = false;
 const REAL_FOUNDER_QUOTE_AVAILABLE = false;
 
-// ── WJ57 — « confiance au moment de la signature ». Même discipline no-op :
-// tant qu'aucun témoignage FILMÉ réel n'existe (WG6), le slot vidéo ne rend
-// RIEN (pas de player vide, pas de mention "bientôt") ; le repli texte réutilise
-// la MÊME source unique de vérité (`TESTIMONIALS`) que <TestimonialCarousel/> —
-// jamais un avis fabriqué pour ce placement. `signTestimonial` = le premier avis
-// réel disponible (le plus court à lire juste avant de signer).
-const REAL_TESTIMONIAL_VIDEO_AVAILABLE = false;
-const signTestimonial = hasTestimonials() ? TESTIMONIALS[0] : null;
+// PV80 — le second bandeau « confiance » (témoignage + certifications) posé
+// juste au-dessus du formulaire de signature RÉPÉTAIT mot pour mot le chapitre
+// « Pourquoi nous faire confiance » (mêmes faits, même <CertLogoRow/>, même
+// source `TESTIMONIALS`) : 332 px de doublon à l'endroit exact où le client
+// doit décider. Supprimé — la preuve de confiance vit à UN seul endroit.
 
 const pageTitle = ok ? `Proposition ${reference} — ${clientName} | Taqinor` : 'Proposition | Taqinor';
 // WJ76 — fuite de confidentialité de l'aperçu de partage : cette page est un
@@ -1843,155 +1830,6 @@ const signConfig = ok
         </div>
       </section>
 
-      <!-- ── WJ53 · TOGGLE « PAYER COMPTANT / PAIEMENT ÉCHELONNÉ » ────────────
-           Recalcul EN DIRECT (côté client) d'une mensualité indicative en
-           divisant simplement le TTC de l'option retenue par le nombre de mois
-           choisi — AUCUN taux inventé, distinct de l'éco-prêt bancaire WJ10/
-           WJ32 juste en dessous. Rendu UNIQUEMENT si un prix réel existe. -->
-      {showInstallmentToggle && defaultInstallment && (
-        <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8" data-installment-ttc={installmentTtc}>
-          <p class="tech-label rule-brass text-brass-300" data-i18n
-            data-fr="Comptant ou échelonné ?" data-en="Cash or in installments?" data-ar="نقداً أم بالتقسيط؟">
-            Comptant ou échelonné ?
-          </p>
-          <div class="cine-card mt-5 rounded-2xl p-6 sm:p-7">
-            <div class="flex flex-wrap items-center gap-2" role="group" aria-label="Payer comptant ou en plusieurs fois">
-              <button
-                type="button"
-                id="installment-cash-btn"
-                class="btn-pill px-4 py-2 text-sm"
-                data-installment-mode="cash"
-                aria-pressed="true"
-                style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)"
-              >
-                <span data-i18n data-fr="Payer comptant" data-en="Pay cash" data-ar="الدفع نقداً">Payer comptant</span>
-              </button>
-              <button
-                type="button"
-                id="installment-split-btn"
-                class="btn-pill px-4 py-2 text-sm"
-                data-installment-mode="split"
-                aria-pressed="false"
-              >
-                <span data-i18n data-fr="Paiement échelonné" data-en="Pay in installments" data-ar="الدفع بالتقسيط">Paiement échelonné</span>
-              </button>
-            </div>
-
-            <!-- État « comptant » -->
-            <div id="installment-cash-view" class="mt-5">
-              <p class="fig fig-md lum" dir="ltr">{formatMAD(installmentTtc)}</p>
-              <p class="mt-1 text-sm text-lune-soft" data-i18n data-fr="TTC, en une fois." data-en="Incl. tax, in one payment." data-ar="شامل الضريبة، دفعة واحدة.">TTC, en une fois.</p>
-            </div>
-
-            <!-- État « échelonné » (masqué par défaut, JS bascule l'affichage) -->
-            <div id="installment-split-view" class="mt-5" hidden>
-              <label for="installment-months" class="tech-label text-lune-faint" data-i18n data-fr="Nombre de mois" data-en="Number of months" data-ar="عدد الأشهر">Nombre de mois</label>
-              <select
-                id="installment-months"
-                class="mt-2 rounded-xl border border-white/15 bg-nuit-800 px-4 py-2 text-lune"
-                dir="ltr"
-              >
-                {INSTALLMENT_MONTH_OPTIONS.map((m) => (
-                  <option value={m} selected={m === 12}>{m} {m === 1 ? 'mois' : 'mois'}</option>
-                ))}
-              </select>
-              <p class="mt-4">
-                <span class="fig fig-md text-lune" dir="ltr" id="installment-monthly-value">{formatMAD(defaultInstallment.monthly)}</span>
-                <span class="text-lg text-lune-soft" data-i18n data-fr="/mois" data-en="/month" data-ar="/شهرياً">/mois</span>
-              </p>
-              <p class="mt-2 text-sm text-brass-300" data-i18n
-                data-fr="à confirmer — hors offre bancaire ferme"
-                data-en="to confirm — not a firm bank offer"
-                data-ar="للتأكيد — ليس عرضاً بنكياً نهائياً">
-                à confirmer — hors offre bancaire ferme
-              </p>
-              <p class="mt-2 text-xs text-lune-faint" data-i18n
-                data-fr="Simple division du prix TTC par le nombre de mois choisi — aucun taux ni frais ajouté ici. Les modalités exactes (calendrier, garantie) sont à convenir avec votre conseiller Taqinor."
-                data-en="Simple division of the incl.-tax price by the number of months chosen — no rate or fee added here. Exact terms (schedule, guarantee) are to be agreed with your Taqinor advisor."
-                data-ar="تقسيم بسيط للثمن شامل الضريبة على عدد الأشهر المختار — دون أي معدل أو رسوم مضافة هنا. تُحدَّد الشروط الدقيقة (الجدول، الضمان) مع مستشاركم في تاقينور.">
-                Simple division du prix TTC par le nombre de mois choisi — aucun taux ni frais ajouté ici.
-                Les modalités exactes (calendrier, garantie) sont à convenir avec votre conseiller Taqinor.
-              </p>
-            </div>
-          </div>
-        </section>
-      )}
-
-      <!-- ── WJ10/WJ32 · COMPARATIF DE FINANCEMENT ───────────────────────────
-           Priorité au bloc BACKEND réel (QJ12, programme Tatwir/ISTIDAMA +
-           comparaison ONEE déjà rédigée serveur) quand il est présent ; repli
-           sur le calcul générique WJ10 sinon — jamais les deux à la fois. -->
-      {financingBlock ? (
-        <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
-          <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Comment financer" data-en="How to finance" data-ar="كيفية التمويل">Comment financer</p>
-          <div class="mt-5 grid gap-4 sm:grid-cols-2">
-            <div class="cine-card rounded-2xl p-6">
-              <p class="tech-label text-lune-faint">{financingBlock.cash.label}</p>
-              <p class="fig fig-md lum mt-2" dir="ltr">{formatMAD(financingBlock.cash.montant_ttc)}</p>
-              <p class="mt-2 text-sm text-lune-soft" data-i18n data-fr="Prix clé en main, TTC. L’investissement le plus rentable sur la durée." data-en="Turnkey price, incl. tax. The most cost-effective investment over time." data-ar="ثمن تسليم مفتاح في اليد، شامل الضريبة. الاستثمار الأكثر مردودية على المدى الطويل.">Prix clé en main, TTC. L’investissement le plus rentable sur la durée.</p>
-            </div>
-            <div class="cine-card rounded-2xl p-6">
-              <p class="tech-label text-lune-faint" data-i18n data-fr={financingBlock.credit.programme_label || 'À crédit'} data-en={financingBlock.credit.programme_label || 'On credit'} data-ar={financingBlock.credit.programme_label || 'بالتقسيط'}>{financingBlock.credit.programme_label || 'À crédit'}</p>
-              <p class="fig fig-md mt-2 text-lune" dir="ltr">
-                ≈ {formatMAD(financingBlock.credit.mensualite)}<span class="text-lg text-lune-soft">/mois</span>
-              </p>
-              <p class="mt-2 text-sm text-lune-soft" data-i18n
-                data-fr={`Sur ${Math.round(financingBlock.credit.duree_mois / 12)} ans, taux indicatif ${formatNumber(financingBlock.credit.taux_annuel_pct, 2)} %/an à confirmer avec votre banque.${financingBlock.onee_comparison.show && financingBlock.onee_comparison.message ? ` ${financingBlock.onee_comparison.message}` : ''}`}
-                data-en={`Over ${Math.round(financingBlock.credit.duree_mois / 12)} years, indicative rate ${formatNumber(financingBlock.credit.taux_annuel_pct, 2)} %/year to confirm with your bank.${financingBlock.onee_comparison.show && financingBlock.onee_comparison.message ? ` ${financingBlock.onee_comparison.message}` : ''}`}
-                data-ar={`على مدى ${Math.round(financingBlock.credit.duree_mois / 12)} سنة، معدل إرشادي ${formatNumber(financingBlock.credit.taux_annuel_pct, 2)} %/سنة يُؤكَّد مع بنككم.${financingBlock.onee_comparison.show && financingBlock.onee_comparison.message ? ` ${financingBlock.onee_comparison.message}` : ''}`}>
-                Sur {Math.round(financingBlock.credit.duree_mois / 12)} ans, taux indicatif {formatNumber(financingBlock.credit.taux_annuel_pct, 2)} %/an
-                <span class="text-brass-300"> à confirmer</span> avec votre banque.
-                {financingBlock.onee_comparison.show && financingBlock.onee_comparison.message
-                  ? <> {financingBlock.onee_comparison.message}</>
-                  : null}
-              </p>
-            </div>
-          </div>
-          {financingBlock.guidance_text && (
-            <p class="mt-3 text-sm text-lune-soft">{financingBlock.guidance_text}</p>
-          )}
-          <p class="mt-3 text-xs text-lune-faint" data-i18n
-            data-fr="Mensualités calculées à titre indicatif (taux et durée non contractuels). Le montant exact dépend de l’offre bancaire retenue."
-            data-en="Monthly payments calculated for guidance only (rate and duration non-contractual). The exact amount depends on the bank offer chosen."
-            data-ar="الأقساط الشهرية محسوبة على سبيل الإرشاد (المعدل والمدة غير تعاقديين). المبلغ الدقيق يتوقف على العرض البنكي المعتمد.">
-            Mensualités calculées à titre indicatif (taux et durée non contractuels). Le montant exact dépend de l’offre bancaire retenue.
-          </p>
-        </section>
-      ) : financing && (
-        <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
-          <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Comment financer" data-en="How to finance" data-ar="كيفية التمويل">Comment financer</p>
-          <div class="mt-5 grid gap-4 sm:grid-cols-2">
-            <div class="cine-card rounded-2xl p-6">
-              <p class="tech-label text-lune-faint" data-i18n data-fr="Au comptant" data-en="Cash" data-ar="نقداً">Au comptant</p>
-              <p class="fig fig-md lum mt-2" dir="ltr">{formatMAD(financing.cash)}</p>
-              <p class="mt-2 text-sm text-lune-soft" data-i18n data-fr="Prix clé en main, TTC. L’investissement le plus rentable sur la durée." data-en="Turnkey price, incl. tax. The most cost-effective investment over time." data-ar="ثمن تسليم مفتاح في اليد، شامل الضريبة. الاستثمار الأكثر مردودية على المدى الطويل.">Prix clé en main, TTC. L’investissement le plus rentable sur la durée.</p>
-            </div>
-            <div class="cine-card rounded-2xl p-6">
-              <p class="tech-label text-lune-faint" data-i18n data-fr="À crédit (éco-prêt)" data-en="On credit (eco-loan)" data-ar="بالتقسيط (قرض إيكولوجي)">À crédit (éco-prêt)</p>
-              <p class="fig fig-md mt-2 text-lune" dir="ltr">
-                ≈ {formatMAD(financing.monthlyLow)}<span class="text-lg text-lune-soft"> – {formatMAD(financing.monthlyHigh)}/mois</span>
-              </p>
-              <p class="mt-2 text-sm text-lune-soft" data-i18n
-                data-fr={`Sur ${Math.round(financing.months / 12)} ans, fourchette indicative à confirmer avec votre banque.${financing.beatsBill && financing.currentBillMonthly ? ` Souvent moins que votre facture actuelle (≈ ${formatMAD(financing.currentBillMonthly)}/mois).` : ''}`}
-                data-en={`Over ${Math.round(financing.months / 12)} years, indicative range to confirm with your bank.${financing.beatsBill && financing.currentBillMonthly ? ` Often less than your current bill (≈ ${formatMAD(financing.currentBillMonthly)}/month).` : ''}`}
-                data-ar={`على مدى ${Math.round(financing.months / 12)} سنة، شريحة إرشادية تُؤكَّد مع بنككم.${financing.beatsBill && financing.currentBillMonthly ? ` غالباً أقل من فاتورتكم الحالية (≈ ${formatMAD(financing.currentBillMonthly)}/شهر).` : ''}`}>
-                Sur {Math.round(financing.months / 12)} ans, fourchette indicative
-                <span class="text-brass-300"> à confirmer</span> avec votre banque.
-                {financing.beatsBill && financing.currentBillMonthly
-                  ? <> Souvent <strong class="text-lune">moins que votre facture actuelle</strong> (≈ {formatMAD(financing.currentBillMonthly)}/mois).</>
-                  : null}
-              </p>
-            </div>
-          </div>
-          <p class="mt-3 text-xs text-lune-faint" data-i18n
-            data-fr="Mensualités calculées à titre indicatif (taux et durée non contractuels). Le montant exact dépend de l’offre bancaire retenue."
-            data-en="Monthly payments calculated for guidance only (rate and duration non-contractual). The exact amount depends on the bank offer chosen."
-            data-ar="الأقساط الشهرية محسوبة على سبيل الإرشاد (المعدل والمدة غير تعاقديين). المبلغ الدقيق يتوقف على العرض البنكي المعتمد.">
-            Mensualités calculées à titre indicatif (taux et durée non contractuels). Le montant exact dépend de l’offre bancaire retenue.
-          </p>
-        </section>
-      )}
-
       <!-- ── WJ32 · VARIANTES CÔTE-À-CÔTE (« autres tailles ») ───────────────
            Résumés minimaux des devis frères/sœurs actifs (QJ15). Masqué si le
            devis est isolé (variants=[]) — jamais un chiffre calculé ici. -->
@@ -2322,37 +2160,6 @@ const signConfig = ok
           </div>
         </section>
       )}
-
-      <!-- ── WJ57 · CONFIANCE AU MOMENT DE SIGNER — juste au-dessus du bloc
-           e-sign (pas seulement dans la section « Pourquoi nous faire
-           confiance » plus haut). Un slot vidéo est réservé pour quand WG6
-           fournira de vrais témoignages filmés (no-op tant qu'absent — MÊME
-           discipline que REAL_FOUNDER_QUOTE_AVAILABLE) ; en attendant, repli
-           texte sur le même avis client réel (hasTestimonials()) que
-           <TestimonialCarousel/> plus haut, jamais un second avis fabriqué.
-           Les badges certifications/garanties (mêmes FAITS que CertLogoRow
-           plus haut) sont TOUJOURS affichés ici, qu'un témoignage soit
-           disponible ou non — ce sont des faits vérifiables, pas du contenu
-           gated. -->
-      <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
-        <div class="cine-card rounded-2xl p-6 sm:p-7">
-          {REAL_TESTIMONIAL_VIDEO_AVAILABLE ? (
-            <!-- Slot vidéo réservé (WG6) : à remplir par Reda avec le vrai
-                 témoignage filmé le jour où il devient disponible. -->
-            <div class="video-testimonial-slot" data-testimonial-video></div>
-          ) : signTestimonial ? (
-            <blockquote class="v2-body text-lune">
-              &ldquo;{signTestimonial.quote}&rdquo;
-              <footer class="mt-3 text-sm text-lune-faint not-italic">
-                <span class="font-bold text-lune">{signTestimonial.name}</span> · {signTestimonial.city} · {signTestimonial.system}
-              </footer>
-            </blockquote>
-          ) : null}
-          <div class={signTestimonial || REAL_TESTIMONIAL_VIDEO_AVAILABLE ? 'mt-5 border-t border-white/10 pt-5' : ''}>
-            <CertLogoRow />
-          </div>
-        </div>
-      </section>
 
       <!-- ── SIGNATURE EN LIGNE ───────────────────────────────────────────── -->
       <section id="signer" class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
@@ -3766,16 +3573,12 @@ const signConfig = ok
   // le navigateur suivre le lien normalement (tel:/wa.me s'ouvrent tout de
   // suite) et on poste en parallèle vers le proxy same-origin — un échec ne
   // gêne jamais le client, il garde de toute façon son canal instantané.
-  // QRES66 — installmentSplit est appelé PLUS BAS dans CE script client (échéancier
-  // au changement de durée) mais n'était importé que dans le frontmatter SERVEUR :
-  // ReferenceError au chargement sur toute page complète → TOUT le module mourait
-  // (échéancier ET curseur batterie muets, sans erreur visible). L'import client
-  // manquant est LA cause racine du curseur batterie mort.
+  // PV80 — l'échéancier « comptant / échelonné » a été retiré de la page (aucune
+  // mensualité, aucun crédit) : son import client `installmentSplit` disparaît
+  // avec lui. `formatMAD` reste importé ici — le curseur batterie le réutilise.
   import {
     buildContactBody,
-    installmentSplit,
     formatMAD,
-    type InstallmentMonths,
     type ContactChannel,
   } from '../../lib/proposition';
   // WJ120 — moteur du simulateur batterie (PUR) importé ES pour un recalcul 100 %
@@ -4010,60 +3813,6 @@ const signConfig = ok
       if (document.visibilityState === 'visible') setPdfLoading(false);
     });
   }
-
-  // ── WJ53 — Toggle « payer comptant / paiement échelonné », recalcul en
-  // direct (aucun appel réseau : simple division du TTC déjà connu côté
-  // client via data-installment-ttc). Utilise installmentSplit (même fonction
-  // PURE que testée sous vitest) pour garantir zéro divergence de calcul.
-  // Regroupé dans CE script (voir la note WJ34 ci-dessus sur le 4ᵉ <script>
-  // sans import ES qui perdait son chunk client) — un <script> supplémentaire
-  // isolé sur cette route reste un risque connu, pas seulement historique.
-  (function setupInstallmentToggle(): void {
-    const installmentSection = document.querySelector<HTMLElement>('[data-installment-ttc]');
-    if (!installmentSection) return;
-    const ttc = Number(installmentSection.dataset.installmentTtc || '0');
-    const cashBtn = document.getElementById('installment-cash-btn');
-    const splitBtn = document.getElementById('installment-split-btn');
-    const cashView = document.getElementById('installment-cash-view');
-    const splitView = document.getElementById('installment-split-view');
-    const monthsSelect = document.getElementById('installment-months') as HTMLSelectElement | null;
-    const monthlyValueEl = document.getElementById('installment-monthly-value');
-
-    function setMode(mode: 'cash' | 'split'): void {
-      const isCash = mode === 'cash';
-      if (cashView) cashView.hidden = !isCash;
-      if (splitView) splitView.hidden = isCash;
-      cashBtn?.setAttribute('aria-pressed', String(isCash));
-      splitBtn?.setAttribute('aria-pressed', String(!isCash));
-      if (cashBtn) {
-        cashBtn.setAttribute(
-          'style',
-          isCash
-            ? 'background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)'
-            : '',
-        );
-      }
-      if (splitBtn) {
-        splitBtn.setAttribute(
-          'style',
-          !isCash
-            ? 'background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)'
-            : '',
-        );
-      }
-    }
-    cashBtn?.addEventListener('click', () => setMode('cash'));
-    splitBtn?.addEventListener('click', () => setMode('split'));
-
-    function recompute(): void {
-      if (!monthsSelect || !monthlyValueEl) return;
-      const months = (Number(monthsSelect.value) || 12) as InstallmentMonths;
-      const split = installmentSplit(ttc, months);
-      if (split) monthlyValueEl.textContent = formatMAD(split.monthly);
-    }
-    monthsSelect?.addEventListener('change', recompute);
-    recompute();
-  })();
 
   // ── WJ56 — « Partager sur WhatsApp » : Web Share API native quand disponible
   // (feuille de partage système — la meilleure expérience sur mobile/tablette,
