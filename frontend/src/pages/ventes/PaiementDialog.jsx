@@ -22,6 +22,9 @@ import {
 import { formatMAD, formatDateTime } from '../../lib/format'
 // VX155 — jalon « facture payée » : un cran au-dessus du toast succès plat.
 import { toastMilestone } from '../../lib/toast'
+// WIR256 — lien vers l'écriture comptable auto-générée (WIR24), quand le
+// réglage société `comptabilite_auto_ecritures` est actif. Auto-masqué sinon.
+import EcritureSourceLink from '../../features/compta/components/EcritureSourceLink.jsx'
 
 const MODES_PAIEMENT = [
   { value: 'especes',     label: 'Espèces' },
@@ -192,6 +195,10 @@ export default function PaiementDialog({ facture, onOpenChange, onSaved }) {
               tout est pré-rempli : validez tel quel pour un paiement simple.
             </span>
           </DialogDescription>
+          {/* WIR256 — écriture comptable de la facture elle-même. */}
+          {facture?.id && (
+            <EcritureSourceLink sourceType="facture" sourceId={facture.id} />
+          )}
         </DialogHeader>
         <Form onSubmit={handleEnregistrerPaiement} className="gap-4">
           <FormField label="Montant (MAD)" required htmlFor="pay-montant" fullWidth>
@@ -267,13 +274,17 @@ export default function PaiementDialog({ facture, onOpenChange, onSaved }) {
           ) : (
             <ul className="space-y-1 text-sm">
               {facture.paiements.map(p => (
-                <li key={p.id} className="flex justify-between gap-3 tabular-nums">
-                  <span className="text-muted-foreground">
-                    {p.date_paiement ? new Date(p.date_paiement).toLocaleDateString('fr-FR') : '—'}
-                    {p.mode_display ? ` · ${p.mode_display}` : ''}
-                    {p.reference ? ` · ${p.reference}` : ''}
-                  </span>
-                  <strong>{formatMAD(p.montant)}</strong>
+                <li key={p.id} className="flex flex-col gap-0.5">
+                  <div className="flex justify-between gap-3 tabular-nums">
+                    <span className="text-muted-foreground">
+                      {p.date_paiement ? new Date(p.date_paiement).toLocaleDateString('fr-FR') : '—'}
+                      {p.mode_display ? ` · ${p.mode_display}` : ''}
+                      {p.reference ? ` · ${p.reference}` : ''}
+                    </span>
+                    <strong>{formatMAD(p.montant)}</strong>
+                  </div>
+                  {/* WIR256 — écriture comptable de ce paiement précis. */}
+                  <EcritureSourceLink sourceType="paiement" sourceId={p.id} />
                 </li>
               ))}
             </ul>
