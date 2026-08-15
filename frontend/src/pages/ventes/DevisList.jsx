@@ -369,7 +369,7 @@ function DevisRow({ d, ctx }) {
     suiviOpenId, toggleSuiviPartage, suiviCache, suiviLoadingId,
     conceptionOpenId, setConceptionOpenId,
     etudeOpenId, setEtudeOpenId,
-    versionChain, effStatutOf,
+    variantesRows, variantesLoading,
     navigate, dispatch,
     role, canDelete, canValiderVente, canSeePublicite, highlightId,
     deletingId, statutActionId, superieurBusyId, superieurStatus, shareBusyId, previewingId,
@@ -1035,37 +1035,70 @@ function DevisRow({ d, ctx }) {
         </div>
       </td>
     </tr>
+    {/* WIR225 — Comparaison des VARIANTES, alimentée par le serveur
+        (`GET /ventes/devis/<id>/variantes/`, QJ15) et non plus par une chaîne
+        reconstruite à partir des seuls devis déjà chargés en mémoire : les
+        variantes créées par `dupliquer-variante` partagent un `version_parent`
+        et n'apparaissaient donc pas toutes dans la liste filtrée. Le devis
+        SOURCE (racine du groupe) est repéré ; les totaux HT/TTC sont ceux du
+        serializer (jamais de prix d'achat ni de marge ici). */}
     {versionsOpenId === d.id && (
       <tr>
         <td colSpan={8} className="bg-muted/30">
           <div className="px-3 py-2">
             <p className="mb-1 text-xs font-medium text-muted-foreground">
-              Historique des versions
+              Comparaison des variantes
             </p>
-            {versionChain.length === 0 ? (
+            {variantesLoading ? (
+              <p className="text-xs text-muted-foreground">Chargement des variantes…</p>
+            ) : variantesRows.length === 0 ? (
               <p className="text-xs text-muted-foreground">
-                Aucune autre version trouvée parmi les devis chargés.
+                Ce devis n'a aucune variante à comparer.
               </p>
             ) : (
-              <ul className="space-y-1 text-sm">
-                {versionChain.map(v => (
-                  <li key={v.id}
-                      className="flex flex-wrap items-center gap-2">
-                    <Badge tone={v.id === d.id ? 'primary' : 'neutral'}>
-                      v{v.version || 1}
-                    </Badge>
-                    <strong>{v.reference}</strong>
-                    <span className="text-xs text-muted-foreground">
-                      {STATUT_DISPLAY[effStatutOf(v)] ?? v.statut}
-                      {v.date_creation
-                        ? ` · ${new Date(v.date_creation).toLocaleDateString('fr-FR')}` : ''}
-                    </span>
-                    {v.id === d.id && (
-                      <span className="text-xs text-primary">(version affichée)</span>
-                    )}
-                  </li>
-                ))}
-              </ul>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm" aria-label="Comparaison des variantes">
+                  <thead>
+                    <tr className="text-left text-xs text-muted-foreground">
+                      <th className="py-1 pr-3 font-medium">Référence</th>
+                      <th className="py-1 pr-3 font-medium">Libellé</th>
+                      <th className="py-1 pr-3 text-right font-medium">Total HT</th>
+                      <th className="py-1 pr-3 text-right font-medium">Total TTC</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {variantesRows.map((v, i) => (
+                      <tr key={v.id} className="border-t border-border/60">
+                        <td className="py-1 pr-3">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <Badge tone={v.id === d.id ? 'primary' : 'neutral'}>
+                              v{v.version || 1}
+                            </Badge>
+                            <strong>{v.reference}</strong>
+                            {/* Le premier élément renvoyé par l'endpoint est la
+                                racine du groupe : le devis SOURCE. */}
+                            {i === 0 && (
+                              <span className="text-xs text-muted-foreground">(source)</span>
+                            )}
+                            {v.id === d.id && (
+                              <span className="text-xs text-primary">(affiché)</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-1 pr-3 text-xs text-muted-foreground">
+                          {v.note || v.client_nom || '—'}
+                        </td>
+                        <td className="py-1 pr-3 text-right tabular-nums">
+                          {formatMAD(v.total_ht ?? 0)}
+                        </td>
+                        <td className="py-1 pr-3 text-right tabular-nums">
+                          {formatMAD(v.total_affiche ?? v.total_ttc ?? 0)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
         </td>
@@ -1259,6 +1292,29 @@ export default function DevisList() {
     const v = searchParams.get('variantes')
     return v ? Number(v) : null
   })
+  // WIR225 — cache des variantes renvoyées par le serveur (id → lignes) et id
+  // en cours de chargement. `getVariantes` est l'unique source du panneau.
+  const [variantesCache, setVariantesCache] = useState({})
+  const [variantesLoadingId, setVariantesLoadingId] = useState(null)
+  // Ids déjà demandés (résolus OU en vol) — évite de relancer l'appel à chaque
+  // rendu sans mettre le cache dans les dépendances de l'effet (le cache change
+  // à la résolution, ce qui déclencherait un nettoyage au mauvais moment).
+  const variantesAskedRef = useRef(new Set())
+  useEffect(() => {
+    const id = versionsOpenId
+    if (id == null || variantesAskedRef.current.has(id)) return
+    variantesAskedRef.current.add(id)
+    setVariantesLoadingId(id)
+    ventesApi.getVariantes(id)
+      .then(res => {
+        const rows = Array.isArray(res.data) ? res.data : (res.data?.results ?? [])
+        setVariantesCache(c => ({ ...c, [id]: rows }))
+      })
+      // 403 (rôle non responsable) ou 404 : dégradation silencieuse en état
+      // vide — le panneau affiche « aucune variante », jamais une trace JSON.
+      .catch(() => setVariantesCache(c => ({ ...c, [id]: [] })))
+      .finally(() => setVariantesLoadingId(l => (l === id ? null : l)))
+  }, [versionsOpenId])
 
   // ── QG10 — Modale « Variantes » : confirmer / éditer le pourcentage avant
   //    de créer les 3 variantes (−p / standard / +p) puis router vers la
@@ -2146,32 +2202,13 @@ export default function DevisList() {
     [devis],
   )
 
-  // Chaîne de révisions d'un devis : remonte version_parent_ref jusqu'au plus
-  // ancien, puis ajoute la version courante et descend via superseded_by_ref.
-  // Triée par numéro de version croissant pour un affichage lisible.
-  const versionChain = useMemo(() => {
-    if (versionsOpenId == null) return []
-    const byRef = new Map(devis.map(d => [d.reference, d]))
-    const cur = devis.find(d => d.id === versionsOpenId)
-    if (!cur) return []
-    const seen = new Set()
-    const chain = []
-    // Remonter vers les versions plus anciennes.
-    let node = cur
-    while (node && !seen.has(node.id)) {
-      seen.add(node.id)
-      chain.push(node)
-      node = node.version_parent_ref ? byRef.get(node.version_parent_ref) : null
-    }
-    // Descendre vers les versions plus récentes (remplaçantes).
-    node = cur.superseded_by_ref ? byRef.get(cur.superseded_by_ref) : null
-    while (node && !seen.has(node.id)) {
-      seen.add(node.id)
-      chain.push(node)
-      node = node.superseded_by_ref ? byRef.get(node.superseded_by_ref) : null
-    }
-    return chain.sort((a, b) => (a.version || 1) - (b.version || 1))
-  }, [versionsOpenId, devis])
+  // WIR225 — Variantes du devis ouvert, chargées depuis le SERVEUR (l'ancienne
+  // chaîne reconstruite localement ne voyait que les devis déjà chargés dans la
+  // liste, donc jamais les variantes filtrées ou paginées hors écran).
+  // Résultat mis en cache par id : rouvrir un panneau ne relance pas d'appel.
+  const variantesRows = variantesCache[versionsOpenId] ?? []
+  const variantesLoading = variantesLoadingId != null
+    && variantesLoadingId === versionsOpenId
 
   // T6 — Résumé : nombre + total TTC par statut effectif (sur les devis chargés).
   const summary = useMemo(() => {
@@ -2216,8 +2253,9 @@ export default function DevisList() {
 
   // ── ARC49 — Sac de contexte passé à chaque <DevisRow> (« lignes divisées »).
   // Regroupe l'état + les handlers que la ligne utilisait déjà depuis la clôture ;
-  // aucune valeur n'est transformée. `versionChain` est mémoïsé plus haut sur
-  // `versionsOpenId` (seule la ligne ouverte le rend), donc le partager est sûr.
+  // aucune valeur n'est transformée. `variantesRows` est dérivé plus haut du
+  // cache serveur sur `versionsOpenId` (seule la ligne ouverte le rend), donc
+  // le partager est sûr.
   const rowCtx = {
     selectedIds, toggleSelected,
     versionsOpenId, setVersionsOpenId, roofOpenId, setRoofOpenId,
@@ -2225,7 +2263,7 @@ export default function DevisList() {
     suiviOpenId, toggleSuiviPartage, suiviCache, suiviLoadingId,
     conceptionOpenId, setConceptionOpenId,
     etudeOpenId, setEtudeOpenId,
-    versionChain, effStatutOf,
+    variantesRows, variantesLoading,
     navigate, dispatch,
     role, canDelete, canValiderVente, canSeePublicite, highlightId,
     deletingId, statutActionId, superieurBusyId, superieurStatus, shareBusyId, previewingId,

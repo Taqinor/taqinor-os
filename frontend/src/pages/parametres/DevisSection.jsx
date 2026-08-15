@@ -1,12 +1,89 @@
 // Onglet « Devis & Factures » de la page Paramètres (échéancier, validité,
 // pompage, numérotation, commission, TVA/Taxes). Restylé sur le système de
 // design (@/ui) ; champs, libellés et comportement identiques.
+import { useEffect, useState } from 'react'
 import {
+  Button, toast,
   Card, CardContent, Input, Label, Switch,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import { SectionTitle, Field } from './peComponents'
 import { MODE_LABELS, DOC_TYPES } from './peConstants'
+import ventesApi from '../../api/ventesApi'
+import { useHasPermission } from '../../hooks/useHasPermission'
+import { frenchError } from '../../lib/frenchError'
+
+/* WIR225 — « % de variation par défaut » des variantes de devis. Le réglage
+   vit sur CompanyProfile.variante_pct mais s'écrit par l'endpoint dédié
+   `/ventes/devis/variante-config/` (QG9) et non par le formulaire paramètres :
+   ce bloc est donc auto-portant (chargement + enregistrement propres). La
+   LECTURE est ouverte à tous les rôles ; l'ÉCRITURE est réservée au Directeur
+   et au Commercial responsable — le backend renvoie 403 sinon, on n'affiche
+   donc pas d'affordance d'édition aux autres. */
+function VariantePctField() {
+  const canEdit = useHasPermission(null, ['Directeur', 'Commercial responsable'])
+  const [pct, setPct] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    let annule = false
+    ventesApi.getVarianteConfig()
+      .then(res => { if (!annule) setPct(String(res.data?.variante_pct ?? '')) })
+      .catch(() => {})
+      .finally(() => { if (!annule) setLoading(false) })
+    return () => { annule = true }
+  }, [])
+
+  const enregistrer = async () => {
+    setSaving(true)
+    try {
+      const res = await ventesApi.setVarianteConfig(pct)
+      setPct(String(res.data?.variante_pct ?? pct))
+      toast.success('Pourcentage de variation enregistré.')
+    } catch (err) {
+      toast.error(frenchError(err, 'Enregistrement impossible.'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <>
+      <div className="mb-1 mt-4 text-xs font-semibold text-foreground">
+        Variantes de devis
+      </div>
+      <p className="mb-2.5 text-[11.5px] text-muted-foreground">
+        Pourcentage appliqué de part et d'autre du devis source quand on génère
+        trois variantes de taille (réduite − p %, standard, augmentée + p %).
+        Il pré-remplit la modale « Créer des variantes ».
+      </p>
+      <div className="pe-grid-2">
+        <Field label="% de variation par défaut" htmlFor="pe-variante-pct">
+          <Input id="pe-variante-pct" type="number" step="any"
+                 name="variante_pct"
+                 value={loading ? '' : pct}
+                 disabled={!canEdit || loading}
+                 onChange={e => setPct(e.target.value)} />
+        </Field>
+        {canEdit && (
+          <div className="flex items-end">
+            <Button type="button" variant="secondary" size="sm"
+                    disabled={saving || loading} onClick={enregistrer}>
+              {saving ? 'Enregistrement…' : 'Enregistrer le %'}
+            </Button>
+          </div>
+        )}
+      </div>
+      {!canEdit && (
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          Seuls le Directeur et le Commercial responsable peuvent modifier ce
+          pourcentage.
+        </p>
+      )}
+    </>
+  )
+}
 
 export default function DevisSection({
   form, set, setForm, setPT, setPrefix, setNumbering, numberingPreview,
@@ -89,6 +166,8 @@ export default function DevisSection({
             « Annuelle » chaque année, « Continue » ne repart jamais. La
             numérotation reste sans trou et sans collision.
           </p>
+          {/* WIR225 — réglage du % de variation des variantes de devis. */}
+          <VariantePctField />
           <div className="mb-1 mt-4 text-xs font-semibold text-foreground">
             Commission commerciale
           </div>
