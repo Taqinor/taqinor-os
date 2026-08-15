@@ -149,6 +149,54 @@ def badge_credit(client):
     return 'vert'
 
 
+def credit_warning(client, montant_ttc_nouveau=None):
+    """WIR187 (reprend NTCRD7/8) — avertissement crédit à poser sur une
+    RÉPONSE d'action sensible (acceptation de devis…).
+
+    Lecture PURE : ce sélecteur n'écrit rien et ne BLOQUE rien. Le blocage dur
+    reste le moteur FG41/XFAC28 (``ventes.services.verifier_credit_hold``,
+    seul branché en production — cf. la note de coexistence WIR93) : ici on
+    ne fait que RENDRE VISIBLE au vendeur ce que la société a décidé.
+
+    ``mode`` est le mode de hold EFFECTIF : celui de la ``LimiteCredit`` du
+    client, à défaut celui de ``ReglageCredit`` de la société, à défaut
+    ``aucun``. ``mode='aucun'`` (ou aucune limite définie) ⇒ ``depassement``
+    reste ``False`` et rien n'est affiché — le comportement historique d'une
+    société qui n'a rien paramétré est strictement inchangé.
+
+    ``montant_ttc_nouveau`` (optionnel) simule l'engagement en cours : le
+    dépassement est alors évalué sur ``encours + montant``, ce qui permet
+    d'avertir AVANT de confirmer plutôt qu'après.
+
+    Renvoie ``{'mode': str, 'depassement': bool, 'disponible': Decimal|None}``.
+    """
+    from .models import LimiteCredit, ReglageCredit
+
+    dispo = disponible_credit(client)
+    limite_obj = LimiteCredit.objects.filter(client=client, actif=True).first()
+
+    if limite_obj is not None and limite_obj.mode_hold:
+        mode = limite_obj.mode_hold
+    else:
+        reglage = ReglageCredit.objects.filter(
+            company=client.company).first()
+        mode = (reglage.mode_hold_defaut if reglage is not None
+                else LimiteCredit.ModeHold.AUCUN)
+
+    disponible = dispo['disponible']
+    if disponible is None or mode == LimiteCredit.ModeHold.AUCUN:
+        # Sans limite définie, ou hold désactivé : aucun avertissement.
+        return {'mode': mode, 'depassement': False, 'disponible': disponible}
+
+    montant = Decimal(montant_ttc_nouveau or 0)
+    depassement = (disponible - montant) < 0
+    return {
+        'mode': mode,
+        'depassement': depassement,
+        'disponible': disponible,
+    }
+
+
 def badges_credit(company, client_ids):
     """NTCRD23 — pastilles d'état crédit pour une liste d'ids clients (batch,
     company-scopé). Renvoie ``{client_id: 'vert'|'orange'|'rouge'}``."""
