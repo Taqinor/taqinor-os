@@ -1099,9 +1099,11 @@ const signConfig = ok
           <!-- ── PV80 · CE QUI SERA POSÉ CHEZ VOUS — tableau STRUCTURÉ ────────
                Désignation × quantité, groupé par famille (production, stockage,
                protection, structure), SANS prix par ligne : le prix vit au
-               chapitre « Votre prix » et n'y est dit qu'UNE fois. Marque,
-               description et garantie restent affichées quand le devis les
-               porte — jamais inventées. Aucune ligne du devis n'est perdue :
+               chapitre « Votre prix » et n'y est dit qu'UNE fois. Marque et
+               garantie restent affichées quand le devis les porte — jamais la
+               DESCRIPTION (fiche produit brute du catalogue, avec ses notes
+               internes « à confirmer fondateur » : vue chez le client une fois,
+               plus jamais). Aucune ligne du devis n'est perdue :
                un libellé non reconnu tombe dans « Autres postes ». -->
           {equipmentGroups.length > 0 && (
             <div class="cine-card mt-4 rounded-2xl p-5 sm:p-6" id="equipement">
@@ -1136,9 +1138,11 @@ const signConfig = ok
                               {it.designation}
                               {it.marque ? <span class="text-lune-faint"> · {it.marque}</span> : null}
                             </p>
-                            {it.description ? (
-                              <p class="mt-0.5 text-xs text-lune-faint">{it.description}</p>
-                            ) : null}
+                            {/* JAMAIS it.description ici : c'est la fiche produit
+                                BRUTE du catalogue, avec ses notes internes
+                                (« Modèle supposé — à confirmer fondateur » a été
+                                vu chez le client). La fiche détaillée vit dans le
+                                PDF ; la page = désignation · marque · garantie. */}
                             {it.garantie ? (
                               <p class="mt-0.5 text-xs text-brass-300" data-i18n
                                 data-fr={`Garantie : ${it.garantie}`}
@@ -4584,6 +4588,16 @@ const signConfig = ok
     });
   })();
 </script>
+
+<style is:global>
+  /* Fondateur 2026-08-15 — « retirer tout crédit/financement pour l'instant » :
+     sur CETTE page uniquement, les entrées de navigation du site vers
+     /financement (en-tête ×2 + pied de page) sont masquées ; le composant
+     global Header/Footer reste intact pour tout le reste du site. */
+  a[href='/financement'] {
+    display: none !important;
+  }
+</style>
 
 <style>
   /* P2 — réserve le ratio du graphe (viewBox 360×150 = 2.4:1) AVANT le rendu du
