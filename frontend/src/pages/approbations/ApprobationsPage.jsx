@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { CheckCircle2, Inbox, Trash2, UserCog, XCircle } from 'lucide-react'
 import reportingApi from '../../api/reportingApi'
 import automationApi from '../../api/automationApi'
@@ -225,9 +225,16 @@ function DelegationsTab() {
 }
 
 function ApprobationsFileTab() {
+  // WIR176 — les notifications d'approbation (automation / installations /
+  // GED) pointent vers `/approbations?source=<clé>` : l'écran DOIT lire ce
+  // paramètre, sinon le lien atterrit sur une file non filtrée et l'item
+  // annoncé est noyé. Valeur ignorée si elle n'est pas une source connue.
+  const [searchParams] = useSearchParams()
+  const sourceInitiale = SOURCES.includes(searchParams.get('source'))
+    ? searchParams.get('source') : ''
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
-  const [source, setSource] = useState('')
+  const [source, setSource] = useState(sourceInitiale)
   const [priorite, setPriorite] = useState('')
   const [trier, setTrier] = useState('')
   const [decidingKey, setDecidingKey] = useState(null)
