@@ -2418,9 +2418,9 @@ export function objectionFaq(): FaqItem[] {
       question: 'Puis-je emporter mon installation si je déménage ?',
       questionAr: 'هل يمكنني نقل التركيب إذا انتقلت للسكن في مكان آخر؟',
       questionEn: 'Can I take my installation with me if I move?',
-      answer: 'L\'installation est fixée au bâtiment ; elle valorise généralement le bien lors d\'une revente plutôt que d\'être démontée.',
-      answerAr: 'التركيب مثبت بالمبنى؛ وعادة ما يرفع من قيمة العقار عند البيع بدل تفكيكه.',
-      answerEn: 'The installation is fixed to the building; it typically raises the property\'s value on resale rather than being removed.',
+      answer: 'Oui. L\'installation est posée sur des socles lestés, sans fixation au bâtiment : elle peut être démontée et remontée sur votre nouveau logement.',
+      answerAr: 'نعم. يُركَّب النظام على قواعد مثقّلة دون تثبيت بالمبنى؛ لذا يمكن تفكيكه وإعادة تركيبه في سكنكم الجديد.',
+      answerEn: 'Yes. The installation sits on ballasted mounts, with no fixing to the building: it can be dismantled and reinstalled at your new home.',
     },
     {
       id: 'toit-abime',

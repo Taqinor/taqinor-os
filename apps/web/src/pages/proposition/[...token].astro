@@ -1427,7 +1427,7 @@ const signConfig = ok
             {/* Sélecteur d'échelle — masqué quand une seule vue est rendue.
                 Fondateur 2026-08-15 : la JOURNÉE d'abord (onglet ET défaut —
                 availableViews la classe en tête), l'année en second.
-                Ce commentaire vit AU-DESSUS de l'expression : un `{/* … */}`
+                Ce commentaire vit AU-DESSUS de l'expression : un commentaire JSX
                 placé en PREMIER ENFANT d'un `&& (` casse le build Astro
                 (« Expected ")" but found … ») — il l'a réellement cassé ici. */}
             {prodLayers.showViewTabs && (
@@ -1635,7 +1635,7 @@ const signConfig = ok
                    showVariantTabs — quel que soit le dessin affiché. Changer
                    d'onglet pendant que la batterie est active recalcule la
                    silhouette de consommation ET rejoue le simulateur (script
-                   client), jamais un chiffre inventé ici. -->
+                   client), jamais un chiffre inventé ici. */}
             {curveVariantToggle && (
               <div data-prod-variant-control class="mt-3 flex flex-wrap items-center gap-2" role="group" aria-label="Variante du profil de consommation" hidden={!prodLayers.showVariantTabs}>
                 <button type="button" id="curve-variant-normal" data-curve-variant-btn="normal" aria-pressed="true"
