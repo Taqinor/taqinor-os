@@ -78,7 +78,7 @@ import {
   type PitchedLiveResult,
   type PitchedMarginAxis,
 } from '../lib/estimatorBrainV8';
-import { isSimplePolygon, roofAreaLabel, type LngLat } from '../lib/roof';
+import { isSimplePolygon, roofAreaLabel, zoomToFitRing, type LngLat } from '../lib/roof';
 import { inferZoneFacingAmong } from '../lib/roofAdjacency';
 import { obstacleRing, type Obstacle } from '../lib/obstacles';
 import { areaLabel } from '../lib/roofAreas';
@@ -1289,6 +1289,27 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     else if (!seeded) setStatus('Cherchez votre adresse, puis cliquez les coins de votre toit.');
   });
 
+  /** W120 — atterrissage fiable (même garde que le pin, W113) pour un CONTOUR complet
+   *  hydraté sans recherche d'adresse préalable : sans elle, `close()` → `go3DView()`
+   *  ne fixe jamais de zoom lui-même (il ne fait que recentrer/pitcher), donc la caméra
+   *  restait au zoom du BOOT (5, Maroc entier) même correctement CENTRÉE sur le toit —
+   *  le bug rapporté (« vue très loin du toit »). `zoomToFitRing` calcule un niveau qui
+   *  montre le contour ENTIER (indépendant de la taille du conteneur, pas fiable à
+   *  l'hydratation) ; `resize()` + `jumpTo` instantané + re-assertion `once('idle')`
+   *  protègent contre un redimensionnement React tardif, identique au pin. Appelée AVANT
+   *  `close()` : `go3DView()` (dans `close()`) recentre/pitche ensuite sans jamais toucher
+   *  au zoom posé ici, donc les deux s'accordent sans course ni animation concurrente. */
+  function landCameraOnRoof(ring: LngLat[]) {
+    if (ring.length < 3) return;
+    let lng = 0;
+    let lat = 0;
+    for (const [x, y] of ring) { lng += x; lat += y; }
+    const target = { center: [lng / ring.length, lat / ring.length] as LngLat, zoom: zoomToFitRing(ring), pitch: PITCH_VIEW } as const;
+    const land = () => { map.resize(); map.jumpTo(target); };
+    land();
+    map.once('idle', land);
+  }
+
   /** W113 — applique l'hydratation d'un lead à l'état d'édition (zone active) : sème le
    *  contour (ou un pin centré), recentre la carte, pré-remplit les champs contact du
    *  diagnostic, puis ferme + recalc si un vrai contour (≥3 sommets) est fourni. Renvoie
@@ -1308,6 +1329,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       // fige la géométrie sur la zone active puis ferme (lance l'optimiseur via close()).
       const a = activeArea();
       if (a) a.vertices = [...vertices];
+      landCameraOnRoof(vertices); // W120 — cadre le contour ENTIER avant la bascule 3D
       close();
       return true;
     }
@@ -1396,6 +1418,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       imposeTarget();
       redrawObstacles();
       if (vertices.length >= 3) {
+        landCameraOnRoof(vertices); // W120 — cadre le contour ENTIER avant la bascule 3D
         close(); // referme le tracé du devis → optimiseur + rendu
         // PV27 — le dossier porte la POSE EXACTE (liste des panneaux réellement posés) :
         // on la repose sur la lattice fraîchement pavée (re-snap au plus proche) au lieu
@@ -1411,6 +1434,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       const a = activeArea();
       if (a) a.vertices = [...vertices];
       imposeTarget();
+      landCameraOnRoof(vertices); // W120 — cadre le contour ENTIER avant la bascule 3D
       close();
       return true;
     }

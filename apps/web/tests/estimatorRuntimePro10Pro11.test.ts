@@ -1776,6 +1776,59 @@ describe('runtime W113 — marqueur du pin client à l\'hydratation', () => {
     expect(fakeMarkers.filter((m) => m.added).length).toBe(0);
   });
 
+  // W120 — REPRODUIT LE BUG RAPPORTÉ : un lead/devis avec un contour COMPLET (≥3 sommets,
+  // pas juste un pin) ouvrait l'outil avec la caméra très loin du toit, car `close()` →
+  // `go3DView()` ne fixe jamais de zoom lui-même (il ne fait que recentrer/pitcher) : sans
+  // recherche d'adresse préalable pour zoomer, la caméra restait au zoom du BOOT (5, Maroc
+  // entier) même correctement centrée sur le bon point GPS. La correction cadre
+  // explicitement sur le contour ENTIER (`landCameraOnRoof`/`zoomToFitRing`) AVANT `close()`.
+  it('un lead avec un VRAI contour cadre la caméra sur le toit ENTIER — pas le zoom du boot (Maroc)', async () => {
+    const init = await loadTool();
+    const sq = squareCorners(16); // carré 16 m centré sur (-7.62, 33.59)
+    init({
+      maptilerKey: 'test',
+      reducedMotion: true,
+      roofType: createRoofTypeSelect(document),
+      hydrate: { lead: { roof_outline: sq.map(([lng, lat]) => [lat, lng] as [number, number]) } },
+    });
+    fireLoad();
+    const map = fakeMaps[0];
+    // le conteneur est recalé AVANT le déplacement (même garde que le pin, W113).
+    expect(map.resizeCalls).toBeGreaterThanOrEqual(1);
+    // le jumpTo de cadrage (posé par landCameraOnRoof, seul à porter un `zoom`) atterrit
+    // sur le centre du contour, à un niveau « bâtiment » — jamais le zoom 5 du boot.
+    const jt = map.jumpToCalls.find(
+      (c) => typeof (c as { zoom?: number }).zoom === 'number',
+    ) as { center: [number, number]; zoom: number } | undefined;
+    expect(jt).toBeTruthy();
+    expect(jt!.center[0]).toBeCloseTo(-7.62, 5);
+    expect(jt!.center[1]).toBeCloseTo(33.59, 5);
+    expect(jt!.zoom).toBeGreaterThanOrEqual(15); // jamais le zoom 5 (Maroc entier) du bug
+    expect(jt!.zoom).toBeLessThanOrEqual(19); // jamais plus près que le niveau « toit » du pin
+  });
+
+  it('un lead avec un VRAI contour RE-CALE le cadrage au repos (once idle) — parité avec le pin', async () => {
+    const init = await loadTool();
+    const sq = squareCorners(16);
+    init({
+      maptilerKey: 'test',
+      reducedMotion: true,
+      roofType: createRoofTypeSelect(document),
+      hydrate: { lead: { roof_outline: sq.map(([lng, lat]) => [lat, lng] as [number, number]) } },
+    });
+    fireLoad();
+    const map = fakeMaps[0];
+    const resizesBeforeIdle = map.resizeCalls;
+    const jumpsBeforeIdle = map.jumpToCalls.length;
+    // le conteneur se redimensionne tard (React) puis la carte se stabilise → `idle`.
+    map.fire('idle', {});
+    expect(map.resizeCalls).toBe(resizesBeforeIdle + 1);
+    expect(map.jumpToCalls.length).toBe(jumpsBeforeIdle + 1);
+    const jt = map.jumpToCalls.at(-1) as { center: [number, number]; zoom: number };
+    expect(jt.center[0]).toBeCloseTo(-7.62, 5);
+    expect(jt.zoom).toBeGreaterThanOrEqual(15);
+  });
+
   it('« Effacer » retire le marqueur du pin client', async () => {
     const init = await loadTool();
     init({
