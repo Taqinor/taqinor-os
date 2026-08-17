@@ -196,7 +196,9 @@ class LaChaineCanoniqueSuitLesRegles(unittest.TestCase):
         # Décalée de l'aplomb de l'onduleur : c'est par là que le serpentin
         # redescend vers la rangée suivante.
         self.assertNotEqual(batterie[1], onduleur[1])
-        self.assertIn("branche DC",
+        # « ⇄ » : le courant batterie va dans LES DEUX sens (charge et
+        # décharge) — la pointe dessinée, elle, ne peut en montrer qu'un.
+        self.assertIn("branche DC ⇄",
                       _textes(rendre_schema(entree, concevoir(entree))))
 
     def test_la_barrette_de_terre_est_unique(self):
@@ -263,6 +265,203 @@ class AucunTraitNeTraverseUnOrgane(unittest.TestCase):
                                 and a[2] < b[4] and b[2] < a[4])
                     self.assertFalse(recouvre,
                                      "« %s » recouvre « %s »" % (a[0], b[0]))
+
+
+class ToutePointeDisposeDeSonDegagement(unittest.TestCase):
+    """PVSLD — la flèche onduleur → batterie était ÉCRASÉE par son équerre.
+
+    ``_BRANCHE_DY`` valait 96 en dur : l'équerre tombait 94 px sous le haut de
+    l'onduleur, la boîte batterie 96 px — soit 2 px pour loger une pointe de 9.
+    La pointe ÉTAIT bien émise ; elle était simplement tracée sous l'équerre,
+    donc invisible, pendant que le libellé « branche DC », posé au-dessus de
+    cette équerre, flottait au niveau de la gouttière de terre POINTILLÉE, qui
+    récupérait la lecture. Aucun test ne pouvait le voir : le texte était
+    présent, aucun trait ne traversait d'organe, le SVG restait bien formé.
+
+    Le verrou est donc un INVARIANT, pas une coordonnée : devant CHAQUE pointe
+    du rendu, le couloir « hauteur de pointe + marge » doit être libre de tout
+    trait qui la barre et de toute boîte. Reposer les anciennes constantes le
+    fait échouer.
+    """
+
+    POINTE = re.compile(r'<polygon points="([^"]+)"')
+    SEGMENT = re.compile(
+        r'<line x1="([-\d.]+)" y1="([-\d.]+)" x2="([-\d.]+)" y2="([-\d.]+)"')
+    #: Marge exigée EN AMONT de la base de la pointe, en plus de sa hauteur.
+    MARGE = 6.0
+    #: Deux coordonnées SVG écrites au dixième sont égales en deçà de ça.
+    EPS = 0.01
+
+    def _cas(self):
+        return (("mono", _mono_reseau()), ("tri", _triphase_deux_pans()),
+                ("hybride", _hybride_batterie()),
+                ("simple", _une_seule_chaine()))
+
+    def _boites(self, entree, resultat):
+        from core.electrique.schema import (_BLOC_H, _BLOC_L, _format_planche,
+                                            _positions)
+        blocs = blocs_du_schema(entree, resultat)
+        largeur = _format_planche(len(blocs))[0]
+        return [(place[0].clef, place[1], place[2],
+                 place[1] + _BLOC_L, place[2] + _BLOC_H)
+                for place in _positions(blocs, largeur)]
+
+    def _couloirs(self, svg):
+        """Le rectangle à garder LIBRE devant chaque pointe RÉELLEMENT émise."""
+        couloirs = []
+        for points in self.POINTE.findall(svg):
+            sommets = tuple(tuple(float(v) for v in couple.split(","))
+                            for couple in points.split())
+            self.assertEqual(len(sommets), 3, points)
+            couloirs.append(self._couloir(sommets))
+        return couloirs
+
+    def _couloir(self, sommets):
+        """``(axe, x1, y1, x2, y2)`` — la boîte du triangle ÉTIRÉE vers l'amont.
+
+        La base est la paire de sommets alignés ; le sommet restant est la
+        POINTE, et « l'amont » est le côté opposé à elle — celui d'où arrive le
+        conducteur, et le seul qui doive rester dégagé (la pointe TOUCHE par
+        construction la boîte qu'elle vise).
+        """
+        xs = [s[0] for s in sommets]
+        ys = [s[1] for s in sommets]
+        for index, sommet in enumerate(sommets):
+            base = sommets[:index] + sommets[index + 1:]
+            if abs(base[0][0] - base[1][0]) < self.EPS:       # base verticale
+                amont = -self.MARGE if sommet[0] > base[0][0] else self.MARGE
+                return ("horizontal", min(xs) + min(0.0, amont), min(ys),
+                        max(xs) + max(0.0, amont), max(ys))
+            if abs(base[0][1] - base[1][1]) < self.EPS:       # base horizontale
+                amont = -self.MARGE if sommet[1] > base[0][1] else self.MARGE
+                return ("vertical", min(xs), min(ys) + min(0.0, amont),
+                        max(xs), max(ys) + max(0.0, amont))
+        self.fail("pointe dégénérée : %r" % (sommets,))
+
+    def test_aucune_pointe_du_schema_n_est_recouverte(self):
+        """Le vrai garde-fou : il rejoue la géométrie de TOUS les dossiers."""
+        for nom, entree in self._cas():
+            resultat = concevoir(entree)
+            svg = rendre_schema(entree, resultat)
+            couloirs = self._couloirs(svg)
+            self.assertTrue(couloirs, "%s : aucune pointe dans le rendu" % nom)
+            boites = self._boites(entree, resultat)
+            segments = [tuple(float(v) for v in quadruplet)
+                        for quadruplet in self.SEGMENT.findall(svg)]
+            for axe, cx1, cy1, cx2, cy2 in couloirs:
+                for x1, y1, x2, y2 in segments:
+                    # Un trait PARALLÈLE au couloir est le fût de la flèche (ou
+                    # longe la branche) : il ne la cache pas. C'est le trait en
+                    # TRAVERS — l'équerre — qui l'écrase.
+                    if axe == "vertical" and abs(x1 - x2) < self.EPS:
+                        continue
+                    if axe == "horizontal" and abs(y1 - y2) < self.EPS:
+                        continue
+                    self.assertFalse(
+                        (min(x1, x2) < cx2 and cx1 < max(x1, x2)
+                         and min(y1, y2) < cy2 and cy1 < max(y1, y2)),
+                        "%s : le trait (%s,%s)-(%s,%s) barre une pointe"
+                        % (nom, x1, y1, x2, y2))
+                for clef, bx1, by1, bx2, by2 in boites:
+                    self.assertFalse(
+                        (bx1 < cx2 and cx1 < bx2 and by1 < cy2 and cy1 < by2),
+                        "%s : l'organe « %s » recouvre une pointe"
+                        % (nom, clef))
+
+    def test_la_branche_batterie_garde_le_degagement_de_reference(self):
+        """L'ancien réglage (``_BRANCHE_DY`` = 96) ne laissait que 2 px."""
+        from core.electrique.schema import (_BLOC_H, _BRANCHE_DY,
+                                            _BRANCHE_EQUERRE_DY,
+                                            _DEGAGEMENT_POINTE, _POINTE_H,
+                                            _format_planche, _positions)
+        degagement = _BRANCHE_DY - _BLOC_H - _BRANCHE_EQUERRE_DY
+        self.assertGreaterEqual(
+            degagement, _POINTE_H + self.MARGE,
+            "il reste %s px entre l'équerre et la batterie pour une pointe "
+            "de %s px" % (degagement, _POINTE_H))
+        self.assertGreaterEqual(degagement, _DEGAGEMENT_POINTE)
+        # Et sur la géométrie RÉELLE du dossier hybride, pas sur les seules
+        # constantes : une position calculée autrement le dirait aussi.
+        entree = _hybride_batterie()
+        blocs = blocs_du_schema(entree, concevoir(entree))
+        places = _positions(blocs, _format_planche(len(blocs))[0])
+        batterie = next(p for p in places if p[0].clef == "batterie")
+        onduleur = next(p for p in places if p[0].clef == "onduleur")
+        equerre = onduleur[2] + _BLOC_H + _BRANCHE_EQUERRE_DY
+        self.assertGreaterEqual(batterie[2] - equerre, _DEGAGEMENT_POINTE)
+
+    def test_la_rangee_a_branche_loge_la_branche_entiere(self):
+        """Descendre la branche SANS agrandir la rangée poserait la batterie
+        sur l'organe de la rangée suivante."""
+        from core.electrique.schema import (_BLOC_H, _BRANCHE_DY,
+                                            _RANGEE_H_AVEC_BRANCHE)
+        self.assertGreater(_RANGEE_H_AVEC_BRANCHE, _BRANCHE_DY + _BLOC_H)
+
+    def test_le_libelle_de_branche_ne_flotte_plus_sur_la_terre(self):
+        """Il doit se rattacher à l'équerre DC, pas à la gouttière pointillée.
+
+        Posé à ``equerre − 5``, il tombait entre la ligne de terre et l'équerre,
+        et l'œil le donnait à la ligne de terre. Il est maintenant SOUS
+        l'équerre, du côté de la batterie qu'il nomme.
+        """
+        from core.electrique.schema import (_BLOC_H, _BRANCHE_EQUERRE_DY,
+                                            _GOUTTIERE_DY, _format_planche,
+                                            _positions)
+        entree = _hybride_batterie()
+        resultat = concevoir(entree)
+        blocs = blocs_du_schema(entree, resultat)
+        places = _positions(blocs, _format_planche(len(blocs))[0])
+        onduleur = next(p for p in places if p[0].clef == "onduleur")
+        batterie = next(p for p in places if p[0].clef == "batterie")
+        equerre = onduleur[2] + _BLOC_H + _BRANCHE_EQUERRE_DY
+        terre = onduleur[2] + _BLOC_H + _GOUTTIERE_DY
+        espace = "{http://www.w3.org/2000/svg}"
+        racine = ET.fromstring(rendre_schema(entree, resultat))
+        libelles = [noeud for noeud in racine.iter(espace + "text")
+                    if (noeud.text or "").startswith("branche DC")]
+        self.assertEqual(len(libelles), 1)
+        y = float(libelles[0].get("y"))
+        self.assertGreater(
+            y, equerre,
+            "le libellé est repassé au-dessus de l'équerre, donc dans la "
+            "bande de la gouttière de terre")
+        self.assertLess(y, batterie[2])
+        # Et il est franchement plus près de son équerre que de la terre.
+        self.assertLess(abs(y - equerre), abs(y - terre))
+
+    def _points_dessines(self, racine, espace):
+        """Tous les points RÉELLEMENT posés sur la planche."""
+        points = []
+        for noeud in racine.iter():
+            balise = noeud.tag.replace(espace, "")
+            if balise == "rect":
+                x, y = float(noeud.get("x")), float(noeud.get("y"))
+                points.append((x, y))
+                points.append((x + float(noeud.get("width")),
+                               y + float(noeud.get("height"))))
+            elif balise == "line":
+                points.append((float(noeud.get("x1")), float(noeud.get("y1"))))
+                points.append((float(noeud.get("x2")), float(noeud.get("y2"))))
+            elif balise == "polygon":
+                for couple in noeud.get("points").split():
+                    x, y = couple.split(",")
+                    points.append((float(x), float(y)))
+            elif balise == "text":
+                points.append((float(noeud.get("x")), float(noeud.get("y"))))
+        return points
+
+    def test_le_dessin_tient_dans_la_planche(self):
+        """Agrandir la rangée à branche ne doit rien pousser hors du cadre."""
+        espace = "{http://www.w3.org/2000/svg}"
+        for nom, entree in self._cas():
+            racine = ET.fromstring(rendre_schema(entree, concevoir(entree)))
+            largeur, hauteur = [float(v)
+                                for v in racine.get("viewBox").split()[2:]]
+            for x, y in self._points_dessines(racine, espace):
+                self.assertTrue(0.0 <= x <= largeur,
+                                "%s : x=%s hors planche" % (nom, x))
+                self.assertTrue(0.0 <= y <= hauteur,
+                                "%s : y=%s hors planche" % (nom, y))
 
 
 class LesEtiquettesMpptNeMordentAucunOrgane(unittest.TestCase):
