@@ -125,7 +125,25 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "Resolved -> backend=$backend frontend=$frontend web=$web e2e(code)=$code"
 
-  backend-lint:
+  # ---------------------------------------------------------------------------
+  # WOW-CI2 (2026-08-18, run 32182877239) — `backend-lint` durait 8 min 25 s, et
+  # la mesure par étape a montré que TOUT tenait dans une seule : la génération
+  # du schéma OpenAPI (YAPIC6) a pris 5 min 53 s à elle seule, en silence, sans
+  # écrire une ligne. Sa vraie durée avait toujours été masquée par des rouges
+  # antérieurs qui coupaient le job avant d'y arriver. Les 23 gardes statiques,
+  # elles, coûtent 30 s EN TOUT.
+  #
+  # On sépare donc les deux moitiés en lanes parallèles : `backend-lint-fast`
+  # rend son verdict en ~2 min 30 s (c'est celui qui attrape 99 % des rouges),
+  # et `backend-openapi` paie seul sa génération. Le nom de check REQUIS
+  # `backend-lint` est préservé par l'agrégateur mince plus bas — NE PAS le
+  # renommer (protection de branche : contexte littéral).
+  #
+  # La génération elle-même n'est PAS raccourcie ici : elle est mono-thread et
+  # dans drf-spectacular, hors de portée de ce fichier. C'est aujourd'hui le
+  # plancher du gate (~6 min 50 s pour cette lane) — voir le rapport de run.
+  # ---------------------------------------------------------------------------
+  backend-lint-fast:
     needs: changes
     if: ${{ needs.changes.outputs.backend == 'true' }}
     runs-on: ubuntu-latest
@@ -134,8 +152,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'   # MUST match prod (django_core/fastapi Dockerfiles: python:3.11.x). A 3.12+/3.13 CI would not catch 3.11-only SyntaxErrors (e.g. backslash in f-string) that crash the live PDF generator.
-          cache: 'pip'   # YAPIC6 — ce job installe désormais aussi requirements.txt (génération du schéma OpenAPI) ; sans cache l'install serait payée en entier à chaque run.
-          cache-dependency-path: backend/django_core/requirements.txt
+          cache: 'pip'
+          cache-dependency-path: backend/django_core/requirements-dev.txt
       - name: Byte-compile on prod Python (catches 3.11-only SyntaxErrors, incl. in flake8-noqa files)
         run: python -m compileall -q backend/django_core/apps backend/django_core/erp_agentique backend/fastapi_ia
       - run: pip install flake8 import-linter==2.11
@@ -232,6 +250,22 @@ jobs:
       # DESACTIVER : corriger le client (ou creer la route), pas la garde.
       - name: Check ao API contract — frontend calls vs registered routes
         run: python scripts/check_ao_api_contract.py
+  # Lane dédiée : génération + validation du schéma OpenAPI. Mesurée à 5 min 53 s
+  # sur le run 32182877239 (une seule invocation de `manage.py spectacular
+  # --validate`, aucune sortie intermédiaire). Elle tourne EN PARALLÈLE de
+  # `backend-lint-fast` et des 8 lanes de tests, donc elle ne retarde plus les
+  # gardes rapides — mais elle fixe seule le plancher du gate.
+  backend-openapi:
+    needs: changes
+    if: ${{ needs.changes.outputs.backend == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'   # MUST match prod (django_core/fastapi Dockerfiles: python:3.11.x).
+          cache: 'pip'   # YAPIC6 — ce job installe requirements.txt en entier (le générateur importe tout l'URLconf) ; sans cache l'install serait payée à chaque run.
+          cache-dependency-path: backend/django_core/requirements.txt
       # YAPIC6 — le schéma OpenAPI (YAPIC5) doit rester GÉNÉRABLE, VALIDE
       # (validation OpenAPI 3 de drf-spectacular) et sans NOUVEL avertissement
       # de génération : un serializer non résolu ou une collision d'operationId
@@ -263,28 +297,55 @@ jobs:
       - name: OpenAPI schema — generate, validate, no NEW warning (YAPIC6)
         run: python scripts/check_openapi_schema.py
 
+
+  # Agrégateur mince qui PRÉSERVE le nom de check requis `backend-lint`
+  # (patron WOW6, identique à `backend-tests` et `frontend-lint`). Vert ssi
+  # aucune des deux lanes n'a échoué ; vert aussi quand elles SAUTENT
+  # (backend=false), ce qui conserve la sémantique « un check requis sauté
+  # compte comme réussi » du filtre de chemins.
+  backend-lint:
+    needs: [changes, backend-lint-fast, backend-openapi]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if a backend-lint lane failed or was cancelled
+        if: ${{ needs.backend-lint-fast.result == 'failure' || needs.backend-lint-fast.result == 'cancelled' || needs.backend-openapi.result == 'failure' || needs.backend-openapi.result == 'cancelled' }}
+        run: |
+          echo "backend-lint-fast=${{ needs.backend-lint-fast.result }} backend-openapi=${{ needs.backend-openapi.result }}"
+          echo "Une lane backend-lint n'est pas passée — voir les jobs ci-dessus."
+          exit 1
+      - name: All backend-lint lanes passed (or were skipped)
+        run: echo "backend-lint-fast=${{ needs.backend-lint-fast.result }} backend-openapi=${{ needs.backend-openapi.result }} — gate OK."
+
   # WOW6 — the fast backend suite is sharded across free public-repo runners
   # (matrix legs run concurrently, each on its own 4-vCPU runner + Postgres). The
   # REQUIRED `backend-tests` status check name is preserved by the thin
   # `backend-tests` aggregator job defined right after this one.
   #
-  # WOW-CI (2026-08-18) — 4 shards -> 6. Mesuré sur le run 32167530769 : avec le
-  # dump WOW8 restauré, la mise en place ne coûte plus que ~2 min 40 s par lane,
-  # mais l'EXÉCUTION des tests était très déséquilibrée (shard 0 : 5 min 23 s ;
-  # shard 2 : 9 min 46 s ; shard 3 : 3 min 51 s) — la lane la plus lourde fixait
-  # à elle seule le chemin critique du gate à ~12 min. `ci_shard.py` prend déjà
-  # le nombre total en paramètre et répartit en tourniquet sur la liste triée des
-  # applications, donc passer à 6 redécoupe sans rien retirer : l'union des lanes
-  # reste EXACTEMENT `apps authentication core`. On n'augmente PAS `--parallel`
-  # (resté à 1 depuis 0d66f6e1 : `--parallel 2` faisait sauter max_locks / OOM sur
-  # test_rls + QW10) — on ajoute des machines, on ne charge pas celles-ci.
+  # WOW-CI2 (2026-08-18, run 32182877239) — 6 lanes -> 8, et surtout un découpage
+  # ÉQUILIBRÉ. Le run à 6 lanes a mesuré des tests de 83 s à 767 s selon la lane :
+  # le tourniquet alphabétique avait mis les deux poids lourds (`apps.crm` ET
+  # `apps.ventes`) dans la MÊME lane. Comme le temps de mur = mise en place + la
+  # PIRE lane, ce seul hasard d'ordre alphabétique fixait le gate backend à
+  # ~12 min. `scripts/ci_shard.py` découpe désormais au MODULE de test (Django
+  # accepte `apps.ventes.tests.test_x`) et place les modules par LPT sur les
+  # durées MESURÉES (`scripts/ci_shard_timings.json`) : 1 692 s de tests répartis
+  # à 1,00x d'équilibre. La complétude de l'union des lanes est prouvée par
+  # `scripts/tests/test_ci_shard.py`, exécuté dans le job `stage-names` — un
+  # module qui tomberait du découpage ne serait plus jamais testé pendant que la
+  # CI resterait verte, c'est le seul risque que ce mécanisme doit interdire.
+  # On n'augmente toujours PAS `--parallel` (resté à 1 depuis 0d66f6e1 :
+  # `--parallel 2` faisait sauter max_locks / OOM sur test_rls + QW10).
+  # 8 et pas 12 : le chemin critique du gate est désormais `backend-openapi`
+  # (~6 min 50 s), donc descendre les lanes backend sous ~6 min ne gagnerait
+  # rien et dépasserait le plafond de 20 jobs simultanés du dépôt public.
   backend-tests-shard:
     needs: changes
     if: ${{ needs.changes.outputs.backend == 'true' }}
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3, 4, 5]
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -344,15 +405,17 @@ jobs:
       # Palier « par-merge » : tout SAUF les tests lourds étiquetés `pdf`/`slow`
       # (rendu WeasyPrint, golden PDF…). Ceux-ci tournent dans release-verify
       # (manuel + nightly), pour un retour rapide sur chaque merge.
-      # WOW6 — ce shard n'exécute QUE sa tranche des apps (tourniquet déterministe
-      # via scripts/ci_shard.py) ; l'union des 6 shards == `apps authentication
-      # core`. `--parallel 1` est VOLONTAIRE (cf. 0d66f6e1) ; `coverage` reste
-      # hors du gate (WOW3).
-      - name: Run Django test suite — shard ${{ matrix.shard }}/6 (fast tier — excludes pdf/slow)
+      # WOW6/WOW-CI2 — ce shard n'exécute QUE sa tranche de MODULES de test
+      # (placement LPT déterministe via scripts/ci_shard.py) ; l'union des 8
+      # shards == exactement l'ensemble des modules `test*.py` de `apps`,
+      # `authentication` et `core`, prouvé par scripts/tests/test_ci_shard.py.
+      # `--parallel 1` est VOLONTAIRE (cf. 0d66f6e1) ; `coverage` reste hors du
+      # gate (WOW3).
+      - name: Run Django test suite — shard ${{ matrix.shard }}/8 (fast tier — excludes pdf/slow)
         working-directory: backend/django_core
         run: |
-          LABELS=$(python ../../scripts/ci_shard.py ${{ matrix.shard }} 6)
-          echo "Shard ${{ matrix.shard }}/6 -> $LABELS"
+          LABELS=$(python ../../scripts/ci_shard.py ${{ matrix.shard }} 8)
+          echo "Shard ${{ matrix.shard }}/8 -> $(echo "$LABELS" | wc -w) modules"
           python manage.py test $LABELS -v 2 --exclude-tag=pdf --exclude-tag=slow --parallel 1 --keepdb
 
   # WOW6 — thin aggregator that PRESERVES the required `backend-tests` status
@@ -425,11 +488,27 @@ jobs:
         # --experimental-test-coverage : % visible de la logique pure couverte
         # (informatif — n'échoue que sur un test rouge, pas sur un seuil).
         run: node --test --experimental-test-coverage "src/**/*.test.mjs"
+      # YHARD7 — budget de performance du bundle SPA ERP : échoue si un chunk
+      # (ou le total gzippé) dépasse son budget. Dev-only
+      # (frontend/scripts/check_bundle_budget.mjs, Node stdlib pur).
+      #
+      # WOW-CI2 (2026-08-18) — REPLIÉ ICI depuis l'ancien job `frontend-perf`,
+      # qui mesurait 27 s et payait pourtant un runner entier (checkout +
+      # setup-node + npm ci). Le dépôt public plafonne à 20 jobs SIMULTANÉS et
+      # ce plafond était atteint : le slot libéré finance une lane de tests
+      # backend, ce qui raccourcit le chemin critique. Aucun contrôle n'est
+      # perdu — build et budget tournent ici, sur les dépendances déjà installées.
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+      - name: Check bundle budget
+        working-directory: frontend
+        run: npm run check-bundle-budget
 
   # Couche UX : rendu/interaction (Testing Library) + accessibilité (axe),
   # exécutée par Vitest (fichiers *.test.jsx, jsdom) + résumé de couverture.
-  # `--shard=i/6` découpe la liste de fichiers, jamais le contenu d'un fichier :
-  # l'union des 6 lanes est EXACTEMENT la suite complète d'aujourd'hui (Vitest
+  # `--shard=i/4` découpe la liste de fichiers, jamais le contenu d'un fichier :
+  # l'union des 4 lanes est EXACTEMENT la suite complète d'aujourd'hui (Vitest
   # trie les fichiers avant de les répartir, le découpage est donc déterministe).
   # `--coverage` reste sur chaque lane : le rapport devient un résumé par tranche
   # (il est purement informatif — aucun seuil ne gate, cf. vitest.config.js).
@@ -439,7 +518,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6]
+        shard: [1, 2, 3, 4]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -451,9 +530,9 @@ jobs:
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci --prefer-offline --no-audit --no-fund
-      - name: Frontend component + a11y tests — shard ${{ matrix.shard }}/6 (Vitest + Testing Library + axe)
+      - name: Frontend component + a11y tests — shard ${{ matrix.shard }}/4 (Vitest + Testing Library + axe)
         working-directory: frontend
-        run: npm run test:coverage -- --shard=${{ matrix.shard }}/6
+        run: npm run test:coverage -- --shard=${{ matrix.shard }}/4
 
   # Agrégateur mince qui PRÉSERVE le nom de check requis `frontend-lint` (patron
   # WOW6, identique à `backend-tests`). Vert ssi aucune lane n'a échoué ; vert
@@ -472,33 +551,6 @@ jobs:
           exit 1
       - name: All frontend lanes passed (or were skipped)
         run: echo "frontend-static=${{ needs.frontend-static.result }} frontend-vitest-shard=${{ needs.frontend-vitest-shard.result }} — gate OK."
-
-  # YHARD7 — budget de performance du bundle SPA ERP. Complète le
-  # `chunkSizeWarningLimit` (avertissement de build seulement) par un contrôle
-  # qui ÉCHOUE la CI si un chunk (ou le total gzippé) dépasse son budget.
-  # Dev-only (frontend/scripts/check_bundle_budget.mjs, Node stdlib pur —
-  # aucune dépendance ajoutée). Lighthouse-CI reste hors périmètre ici
-  # (optionnel/non bloquant) pour éviter la flakiness.
-  frontend-perf:
-    needs: changes
-    if: ${{ needs.changes.outputs.frontend == 'true' }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm ci --prefer-offline --no-audit --no-fund
-      - name: Build frontend
-        working-directory: frontend
-        run: npm run build
-      - name: Check bundle budget
-        working-directory: frontend
-        run: npm run check-bundle-budget
 
   stage-names:
     # Intentionally UNGATED: this is the fast, broad drift guard. It must run on
@@ -652,6 +704,14 @@ jobs:
         run: python -m unittest scripts.tests.test_check_build_order -v
       - name: Test the testdb-cache safety guard itself (WOW8 — a wrong DELTA verdict false-greens a stale schema)
         run: python -m unittest scripts.tests.test_ci_testdb_manifest_diff -v
+      # WOW-CI2 — le decoupage des tests backend decide QUELS tests tournent.
+      # Si un module tombait du split, ses tests cesseraient de tourner pendant
+      # que tous les checks requis resteraient VERTS : un gate qui a
+      # silencieusement cesse de garder. Ce test prouve que l'union des lanes
+      # est exactement l'ensemble des modules `test*.py`, sans doublon, pour
+      # plusieurs totaux de shards. Stdlib pure, ~6 s.
+      - name: Test the backend-test shard split itself (WOW-CI2 — completude du decoupage)
+        run: python -m unittest scripts.tests.test_ci_shard -v
 
   web-build-test:
     needs: changes
@@ -684,9 +744,22 @@ jobs:
   # Gated on `code` (backend OR frontend, incl. the STAGES.py contract): it is
   # the cross-surface integration net and must NOT skip on a backend- or
   # frontend-only change; it skips only on website-only and docs-only changes.
-  e2e:
+  # WOW-CI2 (2026-08-18, run 32182877239) — les specs prenaient 5 min 22 s :
+  # « Running 55 tests using 1 worker » (chromium, 4,0 min) puis « Running 16
+  # tests using 1 worker » (mobile-safari, 1,3 min). Le worker unique est
+  # DÉLIBÉRÉ et on n'y touche pas : les specs partagent un seul gunicorn et une
+  # seule base de démonstration, les paralléliser sur la même base est la
+  # recette à flakes. On garde donc 1 worker par base, et on donne à chaque lane
+  # SA base : deux lanes, `--shard` natif de Playwright sur la partie chromium.
+  # Le nom de check REQUIS `e2e` est préservé par l'agrégateur mince plus bas —
+  # NE PAS le renommer (protection de branche : contexte littéral).
+  e2e-shard:
     needs: changes
     if: ${{ needs.changes.outputs.code == 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -860,19 +933,54 @@ jobs:
           # transversal que ce commentaire promettait sans l'avoir : le
           # 03/08/2026, `/ao` était déclaré dans `e2e/helpers.js` et visité par
           # AUCUNE spec, nulle part. Ne le retirez pas de cette ligne.
-          npx playwright test --project=chromium \
+          npx playwright test --project=chromium --shard=${{ matrix.shard }}/2 \
             devis.spec.js health.spec.js fumee-ecrans.spec.js
           # VX68 — passage WebKit RÉEL (Safari) sur le spec mobile : capte les
           # régressions qui n'apparaissent que sur Safari (VX48 window.open
           # post-await, sticky, backdrop-blur). PR-only, hors matrice complète.
-          npx playwright test --project=mobile-safari
+          # Sur la lane 2 seulement : 1,3 min mesurées, c'est le contrepoids de
+          # la moitié chromium. Il n'est PAS shardé (16 tests, un seul worker).
+          if [ "${{ matrix.shard }}" = "2" ]; then
+            npx playwright test --project=mobile-safari
+          fi
       - name: Upload Playwright report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.shard }}
           path: frontend/playwright-report
           retention-days: 7
+      # WOW-CI2 — la sauvegarde du cache apt du round 1 a ÉCHOUÉ sur le run
+      # 32182877239 : « tar: ../../../apt-archives/lock: Cannot open: Permission
+      # denied », idem pour `partial/`. apt tourne en root et recrée ces deux
+      # entrées en root ; le tar de post-job, lancé en `runner`, ne peut pas les
+      # lire — donc RIEN n'était sauvegardé et chaque run repayait les 114 Mo.
+      # On retire les deux entrées qui ne sont pas des paquets et on rend le
+      # dossier lisible, juste avant l'étape post d'actions/cache.
+      # `if: always()` : le cache doit s'écrire même quand une spec est rouge,
+      # sinon un run rouge condamne le suivant à repayer le téléchargement.
+      - name: Make the apt store readable for the cache save
+        if: ${{ always() }}
+        run: |
+          set -uo pipefail
+          sudo rm -rf "$HOME/apt-archives/partial" "$HOME/apt-archives/lock" || true
+          sudo chown -R "$(id -u):$(id -g)" "$HOME/apt-archives" || true
+          exit 0
+
+  # Agrégateur mince qui PRÉSERVE le nom de check requis `e2e` (patron WOW6,
+  # identique à `backend-tests` / `frontend-lint` / `backend-lint`).
+  e2e:
+    needs: [changes, e2e-shard]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if an e2e lane failed or was cancelled
+        if: ${{ needs.e2e-shard.result == 'failure' || needs.e2e-shard.result == 'cancelled' }}
+        run: |
+          echo "Une lane e2e n'est pas passée (result=${{ needs.e2e-shard.result }})."
+          exit 1
+      - name: All e2e lanes passed (or were skipped)
+        run: echo "e2e-shard result=${{ needs.e2e-shard.result }} — gate OK."
 
   # ---------------------------------------------------------------------------
   # NTPLT5 — suite d'étanchéité RLS, job FACULTATIF (non-required). N'entre
@@ -953,28 +1061,32 @@ jobs:
     if: ${{ always() }}
     needs:
       - changes
+      - backend-lint-fast
+      - backend-openapi
       - backend-lint
       - backend-tests-shard
       - backend-tests
       - frontend-static
       - frontend-vitest-shard
       - frontend-lint
-      - frontend-perf
       - stage-names
       - web-build-test
+      - e2e-shard
       - e2e
     runs-on: ubuntu-latest
     steps:
       - name: Report job results
         run: |
           echo "changes=${{ needs.changes.result }}"
+          echo "backend-lint-fast=${{ needs.backend-lint-fast.result }}"
+          echo "backend-openapi=${{ needs.backend-openapi.result }}"
           echo "backend-lint=${{ needs.backend-lint.result }}"
           echo "backend-tests-shard=${{ needs.backend-tests-shard.result }}"
           echo "backend-tests=${{ needs.backend-tests.result }}"
           echo "frontend-static=${{ needs.frontend-static.result }}"
           echo "frontend-vitest-shard=${{ needs.frontend-vitest-shard.result }}"
           echo "frontend-lint=${{ needs.frontend-lint.result }}"
-          echo "frontend-perf=${{ needs.frontend-perf.result }}"
+          echo "e2e-shard=${{ needs.e2e-shard.result }}"
           echo "stage-names=${{ needs.stage-names.result }}"
           echo "web-build-test=${{ needs.web-build-test.result }}"
           echo "e2e=${{ needs.e2e.result }}"

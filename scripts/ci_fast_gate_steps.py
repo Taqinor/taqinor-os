@@ -74,9 +74,11 @@ _SKIPS = [
     ),
 ]
 
-# A job that suddenly yields fewer steps than this almost certainly means the parse
-# broke (or ci.yml was gutted) — either way, refuse rather than under-check.
-_MIN_STEPS = 10
+# Jobs whose steps preflight replays. `backend-lint` is now a thin aggregator
+# with no real checks of its own — the work lives in these two lanes (WOW-CI2,
+# 18/08/2026). Naming the LANES rather than the required check name is the
+# point: preflight must follow the work, not the branch-protection label.
+FAST_GATE_JOBS = ("backend-lint-fast", "backend-openapi", "stage-names")
 
 
 def _shq(text: str) -> str:
@@ -155,11 +157,15 @@ def extract(job: str, jobs: dict):
         workdir = str(step.get("working-directory") or ".")
         steps.append((label_for(run), workdir, run.strip()))
 
-    if len(steps) < _MIN_STEPS:
+    # Exact predicate, no magic threshold: if ci.yml declares `run:` steps for
+    # this job and we extracted none of them, the parse is broken. A silently
+    # empty list is the one outcome that would hand back a false green.
+    declared = sum(1 for st in jobs[job].get("steps") or [] if st.get("run"))
+    if declared and not steps:
         raise SystemExit(
-            f"ci_fast_gate_steps: seulement {len(steps)} etapes extraites pour "
-            f"'{job}' (seuil {_MIN_STEPS}) — la lecture de ci.yml est probablement "
-            "cassee. On refuse plutot que de rendre un preflight faussement vert."
+            f"ci_fast_gate_steps: '{job}' declare {declared} etape(s) `run:` dans "
+            "ci.yml mais aucune n'a ete extraite — la lecture est cassee. On "
+            "refuse plutot que de rendre un preflight faussement vert."
         )
     return steps
 
