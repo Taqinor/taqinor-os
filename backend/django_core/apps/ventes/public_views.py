@@ -393,7 +393,7 @@ def _monthly_consumption(devis) -> list:
 
     Lit les factures du lead du devis via le sélecteur CRM (cross-app lecture
     seule, jamais d'import direct de ``apps.crm.models``). QX7d — convertit
-    MAD→kWh par le MÊME barème progressif que le chemin ROI
+    MAD→kWh par le MÊME barème réel (progressif puis sélectif) que le chemin ROI
     (``quote_engine.pricing.kwh_from_bill`` : tranches ONEE/Lydec/Redal du
     distributeur, repli plat étiqueté sinon), au lieu de l'ancien prix plat
     figé 1,75 MAD/kWh qui contredisait le tarif ROI (~1,20) sur la même

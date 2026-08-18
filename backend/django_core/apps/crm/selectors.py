@@ -460,7 +460,7 @@ def lead_bills_for_devis(devis):
                         if lead.facture_ete not in (None, '') else None),
         'ete_differente': bool(lead.ete_differente),
         # QX7d — distributeur (onee/lydec/redal) pour convertir MAD→kWh par le
-        # barème progressif (mêmes tranches que le chemin ROI), pas un prix plat.
+        # barème réel progressif-puis-sélectif (mêmes tranches que le chemin ROI), pas un prix plat.
         'distributeur': (lead.distributeur or None),
     }
 
