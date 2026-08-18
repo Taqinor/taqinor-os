@@ -121,7 +121,14 @@ describe('PVMRQ — marque de panneau épinglée introuvable au stock', () => {
 
   it('bandeau « Marque épinglée introuvable » à l\'auto-remplissage, JAMAIS un repli sur Canadian Solar', async () => {
     renderGenerator()
-    await screen.findByDisplayValue(/Onduleur réseau Huawei/)
+    // Rendu réel une fois le stock chargé — même patron que
+    // DevisGeneratorTarif.test.jsx/DevisGeneratorLinesInput.test.jsx : on
+    // attend un produit TOUJOURS pré-rempli par `defaultProductLines` au
+    // montage (ici « Installation », seul candidat du rôle dans PRODUITS ;
+    // « Onduleur réseau » y reste un simple PLACEHOLDER — jamais choisi au
+    // montage, voir solar.js `defaultProductLines` — donc n'est PAS un anchor
+    // valable avant le clic Auto-remplir).
+    await screen.findByDisplayValue('Installation')
     await waitFor(() => expect(ventesApi.getParametresGammes).toHaveBeenCalled())
 
     fireEvent.change(screen.getByLabelText(/Nombre de panneaux/), { target: { value: '14' } })
@@ -133,12 +140,16 @@ describe('PVMRQ — marque de panneau épinglée introuvable au stock', () => {
     expect(screen.getByText(/Paramètres → Gammes/)).toBeInTheDocument()
     // Jamais de repli silencieux sur le panneau Canadian Solar pourtant en stock.
     expect(screen.queryByDisplayValue('Panneau Canadien Solar 710W')).not.toBeInTheDocument()
+    // La marque manquante n'ampute QUE le rôle panneau (seul rôle épinglé dans
+    // ce réglage) : l'onduleur réseau, sans marque épinglée, reste
+    // auto-rempli normalement avec le seul onduleur du stock.
+    expect(await screen.findByDisplayValue(/Onduleur réseau Huawei/)).toBeInTheDocument()
   })
 
   it('sans réglage « Gammes & marques » accessible (403/erreur) : comportement historique, aucun bandeau', async () => {
     ventesApi.getParametresGammes.mockRejectedValueOnce({ response: { status: 403 } })
     renderGenerator()
-    await screen.findByDisplayValue(/Onduleur réseau Huawei/)
+    await screen.findByDisplayValue('Installation')
     await waitFor(() => expect(ventesApi.getParametresGammes).toHaveBeenCalled())
 
     fireEvent.change(screen.getByLabelText(/Nombre de panneaux/), { target: { value: '14' } })
