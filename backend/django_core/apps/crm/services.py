@@ -2533,6 +2533,7 @@ def notify_lead_callback_requested(lead) -> None:
 
 
 PARRAINAGE_SIGNUP_MARKER = 'auto — filleul détecté (utm_source=parrainage)'
+PARRAINAGE_IGNORED_MARKER = '2e code de parrainage ignoré'
 
 
 def handle_parrainage_signup(lead) -> None:
@@ -2542,12 +2543,26 @@ def handle_parrainage_signup(lead) -> None:
     ``utm_campaign`` — voir ``apps/web/src/pages/parrainage.astro``, le lien
     personnel est `?utm_source=parrainage&utm_campaign=<code>`).
 
-    Idempotent (un seul ``Parrainage`` par ``filleul_lead``) ; no-op si
-    ``utm_source`` n'est pas ``'parrainage'``, si le code de parrain est
-    absent/inconnu, ou en cas d'auto-parrainage (le filleul est déjà le même
-    téléphone/email que le parrain — anti-abus minimal). Notifie les managers
-    de la société (repli ``_company_fallback_managers``, pas de owner dédié à
-    ce stade). Best-effort — jamais d'exception propagée."""
+    Idempotent PAR FILLEUL (18/08/2026 — décision fondateur). Depuis que
+    chaque soumission du site CRÉE un nouveau ``Lead`` (règle fondateur du
+    18/08/2026), le même filleul qui re-soumet /parrainage obtient une fiche
+    DIFFÉRENTE à chaque fois — la seule garde ``Parrainage.objects.filter(
+    filleul_lead=lead)`` (idempotente PAR LEAD, conservée ci-dessous pour le
+    replay du MÊME lead) ne voit donc plus ces reprises et laissait créer un
+    2e ``Parrainage en_attente`` pour la même personne. Le filleul est donc
+    aussi identifié par TÉLÉPHONE/E-MAIL normalisés parmi tous les
+    ``Parrainage`` déjà posés pour la société :
+      - même filleul, MÊME parrain → no-op silencieux (rien à recréer) ;
+      - même filleul, parrain DIFFÉRENT → cas ambigu : on GARDE le premier
+        parrainage (jamais réattribué) et on pose une note chatter sur le
+        NOUVEAU lead expliquant que son code a été ignoré.
+
+    no-op (comportement inchangé) si ``utm_source`` n'est pas
+    ``'parrainage'``, si le code de parrain est absent/inconnu, ou en cas
+    d'auto-parrainage (le filleul est déjà le même téléphone/email que le
+    parrain — anti-abus minimal). Notifie les managers de la société (repli
+    ``_company_fallback_managers``, pas de owner dédié à ce stade).
+    Best-effort — jamais d'exception propagée."""
     try:
         if (getattr(lead, 'utm_source', None) or '').strip().lower() != 'parrainage':
             return
@@ -2574,6 +2589,39 @@ def handle_parrainage_signup(lead) -> None:
         parrain_email = normalize_email(getattr(parrain, 'email', None))
         if ((lead_phone and lead_phone == parrain_phone)
                 or (lead_email and lead_email == parrain_email)):
+            return
+
+        # Idempotence PAR FILLEUL (voir docstring) : cherche un Parrainage
+        # déjà posé pour la société dont le filleul_lead partage le téléphone
+        # OU l'e-mail normalisé du lead courant — le PREMIER (plus ancien)
+        # fait foi.
+        existing_signup = None
+        if lead_phone or lead_email:
+            from django.db.models import Q
+            contact_q = Q()
+            if lead_phone:
+                contact_q |= Q(filleul_lead__phone_normalise=lead_phone)
+            if lead_email:
+                contact_q |= Q(filleul_lead__email_normalise=lead_email)
+            existing_signup = (
+                Parrainage.objects
+                .filter(company=lead.company)
+                .exclude(filleul_lead__isnull=True)
+                .filter(contact_q)
+                .order_by('date_creation')
+                .first()
+            )
+        if existing_signup is not None:
+            if existing_signup.parrain_id == parrain.pk:
+                return  # même filleul, même parrain — déjà traité.
+            # Parrain DIFFÉRENT sur re-soumission : cas ambigu — on GARDE le
+            # premier parrainage (jamais réattribué), on note l'ignoré.
+            LeadActivity.objects.create(
+                company=lead.company, lead=lead, user=None,
+                kind=LeadActivity.Kind.NOTE,
+                body=(f'{PARRAINAGE_IGNORED_MARKER} (déjà parrainé par '
+                      f'{existing_signup.parrain.nom}).'),
+            )
             return
 
         Parrainage.objects.create(

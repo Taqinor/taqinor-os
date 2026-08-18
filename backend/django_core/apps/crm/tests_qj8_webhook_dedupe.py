@@ -18,12 +18,20 @@ INVERSE :
   - le SEUL chemin qui touche encore un lead existant est la garde technique
     anti-rejeu < 60 s (double-clic / relance réseau).
 
+QW11 (18/08/2026, décision fondateur) ajoute une couche à ce contrat : un
+NOUVEAU lead qui EST un doublon à la création n'entre plus dans le
+round-robin/territoires — il HÉRITE du commercial (owner) du doublon le plus
+pertinent (priorité au match fort, sinon le doublon le plus récent qui a un
+owner ; sans owner sur aucun doublon, le round-robin/territoires s'applique
+inchangé). Couvert par ``TestHeritageCommercialSurDoublon`` ci-dessous.
+
 N.B. : `dedupe_event` (YDATA12) court-circuite deux POSTs au payload
 STRICTEMENT identique — chaque envoi de ces tests porte donc son propre
 `idempotencyKey`, comme le fait le site (un jeton par session de saisie).
 """
 import json
 
+from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -31,6 +39,10 @@ from django.utils import timezone
 from authentication.models import Company
 
 from apps.crm.models import Lead, LeadActivity
+from apps.parametres.models import CompanyProfile
+from apps.roles.models import Role
+
+User = get_user_model()
 
 SECRET = 'test-secret-qj8'
 
@@ -279,3 +291,116 @@ class TestSoumissionCreeToujoursUnNouveauLead(TestCase):
         plus_tard = self.post(payload_site(city='Agadir'))
         self.assertEqual(plus_tard.status_code, 201, plus_tard.content)
         self.assertEqual(Lead.objects.count(), 2)
+
+
+@override_settings(WEBSITE_LEAD_WEBHOOK_SECRET=SECRET)
+class TestHeritageCommercialSurDoublon(TestCase):
+    """QW11 (18/08/2026, décision fondateur) — un nouveau lead qui EST un
+    doublon à la création HÉRITE du commercial du doublon le plus pertinent
+    au lieu d'entrer dans le round-robin/territoires."""
+
+    def setUp(self):
+        self.company = Company.objects.create(
+            nom='Taqinor QW11', slug='taqinor-qw11')
+        self.role = Role.objects.create(
+            company=self.company, nom='Commercial',
+            permissions=['crm_creer', 'crm_voir'])
+        self.url = reverse('website-lead-webhook')
+        self._idem = 0
+
+    def _commercial(self, username, company=None):
+        role = self.role if company in (None, self.company) else Role.objects.create(
+            company=company, nom='Commercial', permissions=['crm_creer', 'crm_voir'])
+        return User.objects.create_user(
+            username=username, password='x', company=company or self.company,
+            role=role)
+
+    def _lead(self, company=None, jours=1, **extra):
+        lead = Lead.objects.create(
+            company=company or self.company, source=Lead.Source.SITE_WEB,
+            **extra)
+        Lead.objects.filter(pk=lead.pk).update(
+            date_creation=timezone.now() - timezone.timedelta(days=jours))
+        lead.refresh_from_db()
+        return lead
+
+    def post(self, data):
+        self._idem += 1
+        data = dict(data)
+        data.setdefault('idempotencyKey', f'idem-qw11-{self._idem}')
+        return self.client.post(
+            self.url, data=json.dumps(data), content_type='application/json',
+            HTTP_X_WEBHOOK_SECRET=SECRET)
+
+    def _notes(self, lead):
+        return list(LeadActivity.objects.filter(
+            lead=lead, kind=LeadActivity.Kind.NOTE))
+
+    def test_match_fort_herite_du_commercial_du_doublon(self):
+        commercial = self._commercial('qw11_com_fort')
+        existing = self._lead(
+            nom='Karim Alaoui', telephone='+212661000001',
+            email='karim@example.ma', owner=commercial)
+
+        res = self.post(payload_site(
+            email='Karim@Example.MA', phoneE164='+212661000001'))
+        self.assertEqual(res.status_code, 201, res.content)
+        nouveau = Lead.objects.get(pk=res.json()['lead_id'])
+
+        # Hérite du commercial du doublon — jamais le round-robin.
+        self.assertEqual(nouveau.owner_id, commercial.pk)
+
+        note = [n.body for n in self._notes(nouveau)
+                if n.body.startswith('Doublon possible')][0]
+        self.assertIn(f'attribué à {commercial.username}', note)
+        self.assertIn(f"comme la fiche d'origine #{existing.pk}", note)
+
+    def test_match_simple_avec_owner_herite_du_doublon_le_plus_recent(self):
+        # Deux doublons par TÉLÉPHONE seul (aucun n'a l'e-mail du nouveau
+        # lead — pas de match fort) : le PLUS RÉCENT qui a un owner l'emporte.
+        older_com = self._commercial('qw11_com_older')
+        newer_com = self._commercial('qw11_com_newer')
+        self._lead(
+            nom='Ancien Doublon', telephone='+212661000002',
+            owner=older_com, jours=5)
+        newer = self._lead(
+            nom='Doublon Récent', telephone='+212661000002',
+            owner=newer_com, jours=1)
+
+        res = self.post(payload_site(phoneE164='+212661000002'))
+        self.assertEqual(res.status_code, 201, res.content)
+        nouveau = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertEqual(nouveau.owner_id, newer_com.pk)
+
+        note = [n.body for n in self._notes(nouveau)
+                if n.body.startswith('Doublon possible')][0]
+        self.assertIn(f"comme la fiche d'origine #{newer.pk}", note)
+
+    def test_doublons_sans_owner_retombe_sur_round_robin(self):
+        CompanyProfile.objects.create(
+            company=self.company, round_robin_leads_actif=True,
+            round_robin_plafond_leads_ouverts=10)
+        commercial = self._commercial('qw11_com_rr')
+        # Doublon SANS owner : ne doit jamais bloquer le round-robin usuel.
+        self._lead(nom='Sans Owner', telephone='+212661000003')
+
+        res = self.post(payload_site(phoneE164='+212661000003'))
+        self.assertEqual(res.status_code, 201, res.content)
+        nouveau = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertEqual(nouveau.owner_id, commercial.pk)
+
+    def test_isolation_societe_aucun_heritage_cross_company(self):
+        other = Company.objects.create(nom='Autre QW11', slug='autre-qw11')
+        other_commercial = self._commercial('qw11_com_autre', company=other)
+        self._lead(
+            company=other, nom='Doublon Autre Société',
+            telephone='+212661000004', email='karim@example.ma',
+            owner=other_commercial)
+
+        res = self.post(payload_site(
+            phoneE164='+212661000004', email='karim@example.ma'))
+        self.assertEqual(res.status_code, 201, res.content)
+        nouveau = Lead.objects.get(pk=res.json()['lead_id'])
+        # Aucun doublon vu (borné à la société) → aucun héritage possible.
+        self.assertIsNone(nouveau.owner_id)
+        self.assertEqual(res.json()['doublons'], [])

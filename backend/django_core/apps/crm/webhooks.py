@@ -841,14 +841,45 @@ def _map_payload_to_fields(data: dict) -> dict:
     return fields
 
 
-def _flag_possible_duplicates(lead, *, telephone='', email=''):
+def _pick_owner_from_duplicates(dupes, *, telephone='', email=''):
+    """QW11 (héritage du commercial, 18/08/2026 — décision fondateur) —
+    Choisit l'owner à HÉRITER parmi les doublons trouvés À LA CRÉATION, avant
+    toute décision d'attribution : un lead qui EST un doublon n'entre jamais
+    dans le round-robin/territoires.
+
+    Priorité au doublon en IDENTITÉ FORTE (même e-mail ET même téléphone,
+    ``is_strong_identity_match``) qui A un owner ; à défaut, le doublon le
+    PLUS RÉCENT (``date_creation``, pk en départage) qui a un owner parmi
+    tous les doublons trouvés. Renvoie ``(None, None)`` si ``dupes`` est vide
+    ou si AUCUN doublon n'a d'owner — l'appelant replie alors sur le
+    comportement actuel (territoires/round-robin), strictement inchangé.
+
+    Renvoie ``(owner, doublon_origine)`` — ``doublon_origine`` est le Lead
+    dont l'owner est hérité, utile pour la note chatter."""
+    from .services import is_strong_identity_match
+
+    dupes_avec_owner = [d for d in dupes if d.owner_id]
+    if not dupes_avec_owner:
+        return None, None
+    forts = [d for d in dupes_avec_owner
+             if is_strong_identity_match(d, phone=telephone, email=email)]
+    pool = forts or dupes_avec_owner
+    origine = max(pool, key=lambda d: (d.date_creation, d.pk))
+    return origine.owner, origine
+
+
+def _flag_possible_duplicates(lead, *, telephone='', email='', dupes=None,
+                               inherited_owner=None, inherited_from=None):
     """Détection de doublon posée EN VISIBILITÉ sur le lead qui vient d'être
     créé — jamais une fusion (règle fondateur du 18/08/2026).
 
     On cherche les leads de la MÊME société partageant le téléphone OU l'e-mail
     normalisé et, s'il y en a, on pose UNE note chatter sobre sur le NOUVEAU
     lead. Aucun lead existant n'est lu en écriture : les fiches déjà en base
-    ressortent intactes de ce chemin.
+    ressortent intactes de ce chemin. ``dupes`` peut être fourni PRÉ-CALCULÉ
+    par l'appelant (``_map_and_link_lead`` les a déjà cherchés pour décider de
+    l'attribution, QW11) pour ne jamais interroger deux fois la même requête ;
+    sinon ils sont recherchés ici.
 
     « Identité forte » = un lead existant partage À LA FOIS l'e-mail exact ET
     le téléphone normalisé exact ; la note le dit alors explicitement (« très
@@ -856,12 +887,17 @@ def _flag_possible_duplicates(lead, *, telephone='', email=''):
     HTTP. Le rail identité (GET ``/crm/leads/<id>/duplicates/``) s'allume seul
     sur le nouveau lead — cette note ne fait que l'expliquer dans le chatter.
 
+    QW11 — quand ``inherited_owner``/``inherited_from`` sont fournis (l'owner
+    du nouveau lead a été HÉRITÉ d'un doublon, cf. ``_pick_owner_from_duplicates``),
+    la même note mentionne explicitement l'héritage.
+
     Renvoie ``(ids_des_doublons, match_fort)``."""
     from .services import find_duplicates_by_contact, is_strong_identity_match
 
-    dupes = find_duplicates_by_contact(
-        lead.company, phone=telephone or None, email=email or None,
-        exclude_pk=lead.pk)
+    if dupes is None:
+        dupes = find_duplicates_by_contact(
+            lead.company, phone=telephone or None, email=email or None,
+            exclude_pk=lead.pk)
     if not dupes:
         return [], False
     dupes = sorted(dupes, key=lambda le: le.pk)
@@ -879,6 +915,10 @@ def _flag_possible_duplicates(lead, *, telephone='', email=''):
     if match_fort:
         body += (' — même e-mail ET même téléphone : très probablement '
                  'le même client')
+    if inherited_owner is not None and inherited_from is not None:
+        owner_name = inherited_owner.get_full_name() or inherited_owner.username
+        body += (f" — attribué à {owner_name} comme la fiche d'origine "
+                 f"#{inherited_from.pk}")
     LeadActivity.objects.create(
         company=lead.company, lead=lead, user=None,
         kind=LeadActivity.Kind.NOTE, body=body)
@@ -979,12 +1019,29 @@ def _map_and_link_lead(raw, data, company):
                 'website_lead_webhook: recompute_lead_score échoué '
                 '(lead #%s) : %s', lead.pk, _exc)
     else:
-        # Responsable par défaut de la société (Paramètres) si configuré.
-        # NTCRM1 — le moteur de territoires est consulté EN PREMIER (via
-        # lead_attrs=fields) ; repli sur XSAL11 round-robin si aucun match.
-        from .services import default_responsable_for
-        fields.setdefault(
-            'owner', default_responsable_for(company, lead_attrs=fields))
+        # QW11 (18/08/2026, héritage du commercial — décision fondateur) — la
+        # recherche de doublons se fait ICI, AVANT toute décision
+        # d'attribution : un lead qui EST un doublon à la création N'ENTRE
+        # PAS dans le round-robin/territoires, il hérite du commercial du
+        # doublon le plus pertinent (priorité au match fort e-mail+téléphone,
+        # sinon le doublon le plus récent qui a un owner). Si aucun doublon
+        # n'a d'owner, comportement inchangé (territoires/round-robin,
+        # NTCRM1/XSAL11). `dupes` est réutilisé plus bas par
+        # `_flag_possible_duplicates` — jamais une 2e requête identique.
+        from .services import find_duplicates_by_contact
+        dupes = find_duplicates_by_contact(
+            company, phone=telephone or None, email=email or None)
+        inherited_owner, inherited_from = _pick_owner_from_duplicates(
+            dupes, telephone=telephone, email=email)
+        if inherited_owner is not None:
+            fields.setdefault('owner', inherited_owner)
+        else:
+            # Responsable par défaut de la société (Paramètres) si configuré.
+            # NTCRM1 — le moteur de territoires est consulté EN PREMIER (via
+            # lead_attrs=fields) ; repli sur XSAL11 round-robin si aucun match.
+            from .services import default_responsable_for
+            fields.setdefault(
+                'owner', default_responsable_for(company, lead_attrs=fields))
         lead = Lead.objects.create(company=company, **fields)
         created = True
         LeadActivity.objects.create(
@@ -992,7 +1049,9 @@ def _map_and_link_lead(raw, data, company):
             kind=LeadActivity.Kind.CREATION,
             body='Lead créé via le site web',
         )
-        # QJ2 (a) — speed-to-lead : notifie le owner dès la création.
+        # QJ2 (a) — speed-to-lead : notifie le owner dès la création (voit
+        # déjà l'owner hérité ci-dessus s'il y en a un — jamais un round-robin
+        # notifié puis contredit par la note de doublon qui suit).
         try:
             from .services import notify_new_lead
             notify_new_lead(lead)
@@ -1033,11 +1092,15 @@ def _map_and_link_lead(raw, data, company):
                 '(lead #%s) : %s', lead.pk, _exc)
         # Détection de doublon EN VISIBILITÉ (remplace l'ancienne fusion
         # silencieuse « visiteur revenant ») : note chatter sur le NOUVEAU
-        # lead + signal « identité forte ». Best-effort — un rapprochement
-        # en échec ne remet jamais la capture du lead en cause.
+        # lead + signal « identité forte » — et, si l'attribution ci-dessus a
+        # hérité d'un owner, la mention de l'héritage sur la MÊME note.
+        # Réutilise `dupes` déjà calculés ci-dessus (jamais une 2e requête).
+        # Best-effort — un rapprochement en échec ne remet jamais la capture
+        # du lead en cause.
         try:
             dup_ids, match_fort = _flag_possible_duplicates(
-                lead, telephone=telephone, email=email)
+                lead, telephone=telephone, email=email, dupes=dupes,
+                inherited_owner=inherited_owner, inherited_from=inherited_from)
         except Exception as _exc:  # noqa: BLE001 — best-effort
             logger.warning(
                 'website_lead_webhook: détection de doublon échouée '
