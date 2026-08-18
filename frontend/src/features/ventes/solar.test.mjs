@@ -14,6 +14,8 @@ import {
   multiPropertyPreviewTTC,
   productibleForCity, PRODUCTIBLE_PAR_VILLE, DEFAULT_PRODUCTIBLE,
   computeCashflowPayback,
+  computeEtudeIndustrielle,
+  TARIF_MT_ONEE, tarifMtDisponible, tarifMtMoyen, normaliserRepartitionMt,
 } from './solar.js'
 
 // Reflet du catalogue seedé (prix HT = TTC simulateur / 1.2, 2 décimales)
@@ -998,4 +1000,136 @@ test('QJ31 — le multiplicateur (>1) prime sur les groupes si les deux sont pr�
   const lines = [L('X', 1, 1000, { groupeIndex: 1, groupeLabel: 'Villa 1' })]
   const r = multiPropertyPreviewTTC(lines, { nombreProprietes: '4' })
   assert.equal(r.mode, 'multiplicateur')
+})
+
+// ══ QXMT — Barème MOYENNE TENSION ONEE + étude industrielle en MT ════════════
+// Miroir strict de quote_engine/constants_82_21.py (parité vérifiée côté
+// backend par test_qx50_injection_82_21.py, qui relit CE fichier-ci).
+
+test('QXMT — les trois postes horaires portent les valeurs ONEE sourcées', () => {
+  // ONEE « Tarif Général (MT) », one.org.ma, consulté le 18/08/2026.
+  assert.equal(TARIF_MT_ONEE.POINTE, 1.4157)
+  assert.equal(TARIF_MT_ONEE.PLEINES, 1.0101)
+  assert.equal(TARIF_MT_ONEE.CREUSES, 0.7398)
+  assert.equal(TARIF_MT_ONEE.PRIME_PUISSANCE_DH_KVA_AN, 512.62)
+  assert.equal(TARIF_MT_ONEE.TVA_INCLUSE_PCT, 18)
+  assert.ok(tarifMtDisponible())
+  // pointe > pleines > creuses, toujours
+  assert.ok(TARIF_MT_ONEE.POINTE > TARIF_MT_ONEE.PLEINES)
+  assert.ok(TARIF_MT_ONEE.PLEINES > TARIF_MT_ONEE.CREUSES)
+})
+
+test('QXMT — la mention porte la source ET la date de consultation', () => {
+  assert.match(TARIF_MT_ONEE.MENTION, /Tarif Général \(MT\)/)
+  assert.match(TARIF_MT_ONEE.MENTION, /one\.org\.ma/)
+  assert.match(TARIF_MT_ONEE.MENTION, /18\/08\/2026/)
+})
+
+test('QXMT — les plages horaires MT restent ABSENTES (jamais inventées)', () => {
+  // La page ONEE ne les publie que dans une image : aucune heure « raisonnable »
+  // ne doit apparaître ici. Ce test tombe si quelqu'un en invente.
+  assert.equal(TARIF_MT_ONEE.PLAGES_H, null)
+})
+
+test('QXMT — répartition horaire normalisée à 100 %, sinon null', () => {
+  assert.deepEqual(
+    normaliserRepartitionMt({ pointe: 10, pleines: 20, creuses: 20 }),
+    { pointe: 20, pleines: 40, creuses: 40 })
+  // saisies libres (chaînes) acceptées telles quelles
+  assert.deepEqual(
+    normaliserRepartitionMt({ pointe: '25', pleines: '50', creuses: '25' }),
+    { pointe: 25, pleines: 50, creuses: 25 })
+  // rien d'exploitable → null : AUCUNE répartition par défaut n'est inventée
+  assert.equal(normaliserRepartitionMt(null), null)
+  assert.equal(normaliserRepartitionMt({}), null)
+  assert.equal(normaliserRepartitionMt({ pointe: 0, pleines: 0, creuses: 0 }), null)
+  assert.equal(normaliserRepartitionMt({ pointe: 'x', pleines: null, creuses: -5 }), null)
+})
+
+test('QXMT — prix moyen pondéré du barème MT', () => {
+  // 20 % / 40 % / 40 % = 0,2×1,4157 + 0,4×1,0101 + 0,4×0,7398 = 0,98310
+  assert.equal(
+    Math.round(tarifMtMoyen({ pointe: 10, pleines: 20, creuses: 20 }) * 100000) / 100000,
+    0.9831)
+  // un seul poste = son propre tarif
+  assert.equal(Math.round(tarifMtMoyen({ creuses: 100 }) * 10000) / 10000, 0.7398)
+  assert.equal(Math.round(tarifMtMoyen({ pointe: 100 }) * 10000) / 10000, 1.4157)
+  // sans répartition : null — jamais un tarif de repli
+  assert.equal(tarifMtMoyen(null), null)
+  assert.equal(tarifMtMoyen({}), null)
+})
+
+const ETUDE_BASE = {
+  kwp: 300, consoMensuelleKwh: 20000, dayUsagePct: 80,
+  totalTtc: 900000, kwhPrice: 1.4, efficiency: 0.8,
+}
+
+test('QXMT — BT : sortie STRICTEMENT identique à l\'historique', () => {
+  const implicite = computeEtudeIndustrielle(ETUDE_BASE)
+  const explicite = computeEtudeIndustrielle({ ...ETUDE_BASE, tensionRaccordement: 'bt' })
+  assert.deepEqual(explicite, implicite)
+  // aucune clé MT ne pollue une étude BT
+  for (const k of ['tension_raccordement', 'tarif_mt_dh_kwh', 'tarif_mt_mention',
+    'repartition_mt', 'etude_mt_incomplete', 'etude_mt_motif']) {
+    assert.equal(implicite[k], undefined, `clé MT ${k} présente en BT`)
+  }
+  // le tarif BT reste celui passé en paramètre (kwhPrice = 1,40), pas le
+  // barème MT : autoconso 20 000 × 12 × 80 % = 192 000 kWh × 1,40 = 268 800.
+  assert.equal(implicite.economies_annuelles, 268800)
+  // une répartition MT fournie SANS déclarer 'mt' ne change rien
+  assert.deepEqual(
+    computeEtudeIndustrielle({ ...ETUDE_BASE, repartitionMt: { pointe: 20, pleines: 40, creuses: 40 } }),
+    implicite)
+})
+
+test('QXMT — MT avec répartition : énergie valorisée au barème MT', () => {
+  const repartitionMt = { pointe: 20, pleines: 40, creuses: 40 }
+  const bt = computeEtudeIndustrielle(ETUDE_BASE)
+  const mt = computeEtudeIndustrielle({ ...ETUDE_BASE, tensionRaccordement: 'mt', repartitionMt })
+  // la physique ne change pas : même production, même autoconsommation
+  assert.equal(mt.production_annuelle, bt.production_annuelle)
+  assert.equal(mt.taux_autoconso, bt.taux_autoconso)
+  assert.equal(mt.taux_couverture, bt.taux_couverture)
+  assert.equal(mt.prix_kwc, bt.prix_kwc)
+  // seule la VALORISATION change (0,9831 DH/kWh MT vs 1,40 DH/kWh BT)
+  assert.equal(mt.tension_raccordement, 'mt')
+  assert.equal(mt.tarif_mt_dh_kwh, 0.9831)
+  assert.deepEqual(mt.repartition_mt, { pointe: 20, pleines: 40, creuses: 40 })
+  assert.equal(mt.etude_mt_incomplete, undefined)
+  assert.ok(mt.economies_annuelles < bt.economies_annuelles)
+  assert.equal(mt.economies_annuelles,
+    Math.round(bt.economies_annuelles / 1.4 * 0.9831))
+  // payback recalculé sur les économies MT (plus long, jamais celui du BT)
+  assert.ok(mt.payback > bt.payback)
+  // aucun chiffre MT ne circule sans sa source
+  assert.match(mt.tarif_mt_mention, /one\.org\.ma/)
+})
+
+test('QXMT — MT sans répartition : économies et payback OMIS, jamais inventés', () => {
+  const mt = computeEtudeIndustrielle({ ...ETUDE_BASE, tensionRaccordement: 'mt' })
+  // le reste de l'étude est publié normalement
+  assert.ok(mt.production_annuelle > 0)
+  assert.ok(mt.taux_autoconso > 0)
+  assert.ok(mt.prix_kwc > 0)
+  // SEULS les calculs qui dépendent d'un tarif manquant disparaissent
+  assert.equal(mt.economies_annuelles, null)
+  assert.equal(mt.payback, null)
+  assert.equal(mt.tarif_mt_dh_kwh, null)
+  assert.equal(mt.etude_mt_incomplete, true)
+  assert.match(mt.etude_mt_motif, /répartition horaire/)
+  // surtout : PAS de repli silencieux sur le tarif BT
+  const bt = computeEtudeIndustrielle(ETUDE_BASE)
+  assert.notEqual(mt.economies_annuelles, bt.economies_annuelles)
+})
+
+test('QXMT — MT : l\'injection 82-21 reste calculable (barème ANRE distinct)', () => {
+  const mt = computeEtudeIndustrielle({
+    ...ETUDE_BASE, tensionRaccordement: 'mt', injectionEnabled: true,
+  })
+  // pas de tarif MT → économies omises…
+  assert.equal(mt.economies_annuelles, null)
+  // …mais l'injection a SON propre tarif ANRE sourcé : elle reste chiffrée.
+  assert.equal(mt.injection_82_21, true)
+  assert.ok(mt.injection_kwh_an >= 0)
+  assert.ok(mt.injection_dh_an >= 0)
 })

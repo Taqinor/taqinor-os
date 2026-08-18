@@ -954,9 +954,114 @@ export function injection8221(productionKwh, autoconsommeKwh, pointe = false) {
   return { kwh: Math.round(kwh), dh: Math.round(dh) }
 }
 
+// ══ QXMT — Tarifs MOYENNE TENSION ONEE (raccordement MT, dossiers > 50 kW) ═══
+// Miroir STRICT de quote_engine/constants_82_21.py `TARIF_MT_ONEE` — un test de
+// parité backend (test_qx50_injection_82_21.py) échoue si l'un des deux dérive.
+//
+// RÈGLE FONDATEUR — ZÉRO CHIFFRE INVENTÉ (PLAN2 QXG6, contrainte « chaque
+// constante tarifaire porte sa source en commentaire »). Une valeur n'apparaît
+// ici QUE si une source OFFICIELLE ou de premier rang la publie (ONEE
+// one.org.ma, Bulletin officiel, ministère de l'énergie, ANRE), avec sa source
+// et sa date citées sur la ligne. Toute valeur non sourcée reste `null` :
+// l'étude OMET alors le calcul correspondant (économies / payback) au lieu
+// d'afficher un chiffre douteux. JAMAIS de placeholder chiffré, JAMAIS de
+// reprise d'une estimation « ordre de grandeur » (le site porte un blend
+// indicatif TARIF_MT_MAD_KWH = 1,15 dans apps/web/src/lib/estimatorPro.ts —
+// explicitement une hypothèse, donc INUTILISABLE pour une étude chiffrée).
+//
+// SOURCE DES TROIS PRIX + DE LA PRIME (relevée ET vérifiée le 18/08/2026) :
+//   ONEE — Branche Électricité, page officielle « Tarif Général (MT) »
+//   https://www.one.org.ma/fr/pages/interne.asp?esp=1&id1=14&id2=114&t2=1
+//   La page précise : « Les tarifs sont exprimés en dirhams TVA comprise
+//   (TVA est de 18 %) ». Elle n'affiche NI date d'entrée en vigueur NI numéro
+//   d'arrêté — d'où la mention de consultation portée par MENTION ci-dessous.
+// NON RETENU volontairement : la page ONEE « Grands Comptes » sans tag de
+// tension (494,09 DH/kVA ; 1,3645 / 0,9736 / 0,7131) est citée ailleurs comme
+// « MT » mais ne porte aucun libellé de tension et vit dans l'arborescence
+// THT/HT — ambiguë, donc écartée. Le TURD ANRE (5,92 c/kWh, décision
+// n°02-25-TURD, BO n°7400 du 01/05/2025) est un tarif d'ACCÈS au réseau payé
+// entre opérateurs, PAS un tarif de vente au client final : jamais mélangé ici.
+export const TARIF_MT_ONEE = {
+  // Redevance de consommation par poste horaire, DH/kWh TVA (18 %) comprise.
+  // ONEE « Tarif Général (MT) », one.org.ma, consulté le 18/08/2026.
+  POINTE: 1.4157,
+  PLEINES: 1.0101,
+  CREUSES: 0.7398,
+  // Prime fixe / redevance de puissance, DH par kVA souscrit et par an.
+  // Même source et même date. DÉLIBÉRÉMENT NON déduite des économies : le
+  // solaire ne réduit pas la puissance souscrite, la compter en économie
+  // gonflerait le gain. Exposée pour que personne n'ait à la réinventer.
+  PRIME_PUISSANCE_DH_KVA_AN: 512.62,
+  TVA_INCLUSE_PCT: 18,
+  // Durées officielles des plages horaires (heures/jour). Elles serviraient à
+  // répartir une consommation à profil plat quand le client ne fournit pas sa
+  // propre répartition. La page MT ne les publie QUE dans un diagramme image
+  // (non extractible) — plages MT à fournir par le fondateur (source
+  // officielle introuvable au 18/08/2026). `null` = AUCUNE répartition par
+  // défaut n'est inventée : le client doit saisir la sienne, sinon l'étude
+  // OMET la valorisation. (Les seules plages publiées en clair sur one.org.ma
+  // — 17h-22h etc. — appartiennent au tarif Optionnel « Super Pointe » THT/HT,
+  // explicitement PAS à la MT : les transposer serait un chiffre inventé.)
+  PLAGES_H: null,
+  // Mention affichée avec TOUT chiffre issu de ce barème (jamais un chiffre nu).
+  MENTION: 'Barème ONEE « Tarif Général (MT) », TVA 18 % comprise — '
+    + 'one.org.ma, consulté le 18/08/2026 (la page ne publie pas de date '
+    + "d'entrée en vigueur)",
+}
+
+// Le barème MT est-il exploitable ? true seulement si les TROIS postes horaires
+// portent un prix > 0 sourcé. Tant que c'est false, l'étude MT omet toute
+// valorisation monétaire plutôt que d'utiliser un chiffre de repli.
+export function tarifMtDisponible() {
+  return ['POINTE', 'PLEINES', 'CREUSES'].every((k) => {
+    const v = Number(TARIF_MT_ONEE[k])
+    return Number.isFinite(v) && v > 0
+  })
+}
+
+// Répartition horaire du client `{ pointe, pleines, creuses }` (en %, saisie
+// libre) → parts normalisées à 100 %. Retourne `null` si rien d'exploitable
+// n'est saisi : les plages MT officielles n'étant pas publiées, AUCUNE
+// répartition par défaut n'est inventée. Les valeurs non numériques ou
+// négatives comptent pour 0 (la saisie de l'utilisateur n'est jamais rejetée
+// ni corrigée à l'écran — seul le calcul les ignore).
+export function normaliserRepartitionMt(repartition) {
+  const part = (v) => {
+    const n = parseFloat(v)
+    return Number.isFinite(n) && n > 0 ? n : 0
+  }
+  const pointe = part(repartition?.pointe)
+  const pleines = part(repartition?.pleines)
+  const creuses = part(repartition?.creuses)
+  const somme = pointe + pleines + creuses
+  if (!(somme > 0)) return null
+  const pct = (v) => Math.round((v / somme) * 1000) / 10
+  return { pointe: pct(pointe), pleines: pct(pleines), creuses: pct(creuses) }
+}
+
+// Prix moyen pondéré (DH/kWh TTC) du barème MT pour une répartition horaire.
+// Retourne `null` — jamais un nombre de repli — si le barème n'est pas sourcé
+// ou si la répartition est absente/vide. C'est ce `null` qui fait OMETTRE le
+// calcul dans l'étude plutôt que d'inventer un tarif.
+export function tarifMtMoyen(repartition) {
+  if (!tarifMtDisponible()) return null
+  const parts = normaliserRepartitionMt(repartition)
+  if (!parts) return null
+  const moyen = (parts.pointe * TARIF_MT_ONEE.POINTE
+    + parts.pleines * TARIF_MT_ONEE.PLEINES
+    + parts.creuses * TARIF_MT_ONEE.CREUSES) / 100
+  return Number.isFinite(moyen) && moyen > 0 ? moyen : null
+}
+
 // QX50 — `injectionEnabled` (défaut false, OFF) ajoute la ligne d'injection
 // 82-21 SANS toucher l'étude d'autoconsommation : étude avec = étude sans + ligne.
-export function computeEtudeIndustrielle({ kwp, consoMensuelleKwh, dayUsagePct, totalTtc, kwhPrice, efficiency, injectionEnabled = false }) {
+// QXMT — `tensionRaccordement` ('bt' par défaut) : tant qu'il vaut autre chose
+// que 'mt', CHAQUE sortie de cette fonction est identique à l'historique (le
+// comportement BT est strictement inchangé). En 'mt', l'énergie est valorisée
+// au barème MT pondéré par `repartitionMt` ; si ce barème OU cette répartition
+// manque, les économies et le payback sont OMIS (null) et l'étude porte le
+// motif — jamais un chiffre BT déguisé en chiffre MT.
+export function computeEtudeIndustrielle({ kwp, consoMensuelleKwh, dayUsagePct, totalTtc, kwhPrice, efficiency, injectionEnabled = false, tensionRaccordement = 'bt', repartitionMt = null }) {
   if (!kwp || kwp <= 0) return null
   const PRICE = (Number.isFinite(Number(kwhPrice)) && Number(kwhPrice) > 0) ? Number(kwhPrice) : KWH_PRICE
   const EFF = (Number.isFinite(Number(efficiency)) && Number(efficiency) > 0) ? Number(efficiency) : EFFICIENCY
@@ -975,7 +1080,16 @@ export function computeEtudeIndustrielle({ kwp, consoMensuelleKwh, dayUsagePct, 
     autoconsomme = prodA * dayPct
     tauxAuto = dayPct * 100
   }
-  const economies = autoconsomme * PRICE
+  // QXMT — valorisation de l'énergie autoconsommée.
+  //  · BT (défaut) : tarif ONEE historique — chemin STRICTEMENT inchangé, et
+  //    aucune clé MT n'est ajoutée à la sortie.
+  //  · MT : barème ONEE « Tarif Général (MT) » pondéré par la répartition
+  //    horaire du client. Sans répartition exploitable, le prix vaut `null` et
+  //    les économies + le payback sont OMIS (jamais un chiffre BT déguisé).
+  const estMt = String(tensionRaccordement || '').toLowerCase() === 'mt'
+  const prixMt = estMt ? tarifMtMoyen(repartitionMt) : null
+  const prixEnergie = estMt ? prixMt : PRICE
+  const economies = prixEnergie != null ? autoconsomme * prixEnergie : null
   const payback = (economies > 0 && totalTtc > 0)
     ? Math.round(totalTtc / economies * 10) / 10 : null
   const out = {
@@ -984,11 +1098,32 @@ export function computeEtudeIndustrielle({ kwp, consoMensuelleKwh, dayUsagePct, 
     conso_annuelle: consoA ? Math.round(consoA) : null,
     taux_autoconso: Math.round(tauxAuto * 10) / 10,
     taux_couverture: tauxCouv != null ? Math.round(tauxCouv * 10) / 10 : null,
-    economies_annuelles: Math.round(economies),
+    economies_annuelles: economies != null ? Math.round(economies) : null,
     payback,
     prix_kwc: (kwp > 0 && totalTtc > 0) ? Math.round(totalTtc / kwp) : null,
     prod_mensuelle: prodM.map(v => Math.round(v)),
     conso_mensuelle: consoA ? Array(12).fill(Math.round(consoMois)) : null,
+  }
+  // QXMT — traçabilité MT : le barème, la répartition retenue et la mention
+  // réglementaire voyagent avec l'étude (etude_params → écran, PDF, proposition)
+  // pour qu'aucun chiffre MT ne circule jamais sans sa source.
+  if (estMt) {
+    out.tension_raccordement = 'mt'
+    out.tarif_mt_mention = TARIF_MT_ONEE.MENTION
+    out.tarif_mt_dh_kwh = prixMt != null ? Math.round(prixMt * 10000) / 10000 : null
+    const parts = normaliserRepartitionMt(repartitionMt)
+    if (parts) out.repartition_mt = parts
+    if (prixMt == null) {
+      // L'étude reste publiée (production, taux, prix/kWc) : SEUL le calcul qui
+      // dépend d'un tarif manquant est omis, avec son motif explicite.
+      out.etude_mt_incomplete = true
+      out.etude_mt_motif = tarifMtDisponible()
+        ? 'Raccordement MT : renseignez la répartition horaire (pointe / '
+          + 'pleines / creuses) — économies et payback omis sans elle, les '
+          + 'plages horaires MT officielles n’étant pas publiées.'
+        : 'Raccordement MT : barème MT ONEE indisponible en source officielle '
+          + '— économies et payback omis (à fournir par le fondateur).'
+    }
   }
   // QX50 — injection 82-21 : ligne SÉPARÉE (ne modifie pas l'étude ci-dessus).
   // OFF par défaut ; activée par devis. La mention est portée par le renderer.
