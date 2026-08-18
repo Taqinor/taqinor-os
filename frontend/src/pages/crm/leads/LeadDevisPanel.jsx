@@ -77,6 +77,7 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
   const [includeEtude, setIncludeEtude] = useState(false)
   const [downloading, setDownloading] = useState(false)
   const produitsRef = useRef(null)
+  const marquesRef = useRef(undefined) // PVMRQ — cache du réglage marques
   const startedRef = useRef(false)
 
   // Octets du PDF (Blob) récupérés via axios — voir l'en-tête. PDF.js les
@@ -152,8 +153,21 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
         const r = await stockApi.getProduits()
         produitsRef.current = r.data.results ?? r.data
       }
+      // PVMRQ — les marques épinglées (Paramètres → Gammes) s'appliquent AUSSI
+      // au devis automatique du lead : sans ce fil, ce chemin rapide recomposait
+      // hors préférence (le trou « panneau 500 W » par la porte de côté). Best-
+      // effort : réglage illisible → aucune préférence, jamais un échec du devis.
+      if (marquesRef.current === undefined) {
+        try {
+          const r = await ventesApi.getParametresGammes()
+          marquesRef.current = (r.data?.marques || {})['Essentielle'] || null
+        } catch {
+          marquesRef.current = null
+        }
+      }
       const id = await createAutoQuote({
         lead, produits: produitsRef.current, discountStr, dispatch, targetKwc,
+        marques: marquesRef.current || undefined,
       })
       setDevisId(id)
       onDevisChanged?.()

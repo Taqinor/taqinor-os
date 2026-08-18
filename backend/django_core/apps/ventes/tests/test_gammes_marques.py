@@ -350,3 +350,36 @@ class DeuxGammesToggleTests(ParametresGammesBase):
 class SlotsMiroirServicesTests(TestCase):
     def test_slots_fixes_miroir_exact_de_gamme_noms_defaut(self):
         self.assertEqual(ParametresGammes.SLOTS, services.GAMME_NOMS_DEFAUT)
+
+
+class ParametresGammesLecturePourTousTests(TestCase):
+    """PVMRQ (suivi 18/08) — la LECTURE du réglage est ouverte à tout
+    utilisateur authentifié de la société : l'épinglage de marque doit
+    s'appliquer aux devis de TOUS les commerciaux (un GET réservé au
+    responsable faisait retomber leurs compositions en « aucune préférence »
+    en silence). L'ÉCRITURE reste Admin/Responsable."""
+
+    def _user(self, company, username, role):
+        from django.contrib.auth import get_user_model
+        return get_user_model().objects.create_user(
+            username=username, password='x', company=company,
+            role_legacy=role)
+
+    def test_commercial_lit_mais_ne_modifie_pas(self):
+        from rest_framework.test import APIClient
+        from authentication.models import Company
+        company = Company.objects.create(slug='pvmrq-lecture', nom='PVMRQ L')
+        commercial = self._user(company, 'pvmrq-commercial', 'commercial')
+        api = APIClient()
+        api.force_authenticate(commercial)
+        resp = api.get('/api/django/ventes/parametres-gammes/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn('marques', resp.json())
+        patch = api.patch('/api/django/ventes/parametres-gammes/',
+                          {'deux_gammes': True}, format='json')
+        self.assertEqual(patch.status_code, 403)
+
+    def test_anonyme_toujours_refuse(self):
+        from rest_framework.test import APIClient
+        resp = APIClient().get('/api/django/ventes/parametres-gammes/')
+        self.assertIn(resp.status_code, (401, 403))
