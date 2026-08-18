@@ -2407,7 +2407,18 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             )
         try:
             from ..utils.pdf import download_pdf
-            pdf_bytes = download_pdf(devis.fichier_pdf)
+            # PVFRESH — ce bouton livrait les octets du DERNIER rendu, quelle
+            # que soit l'ancienneté de ce rendu : « Générer PDF », puis on
+            # corrige une quantité, puis « Télécharger » → le commercial
+            # repartait avec le PDF d'AVANT la correction et l'envoyait au
+            # client, pendant que la page /proposition (qui, elle, re-rend à
+            # chaque appel) montrait les chiffres à jour. C'est exactement la
+            # divergence page/PDF signalée le 18/08/2026. On compare donc
+            # l'empreinte des données à celle du fichier stocké : identiques →
+            # aucun re-rendu (le cache garde tout son intérêt), différentes →
+            # re-rendu dans LE MÊME format avant de servir.
+            from ..quote_engine import cle_pdf_a_jour
+            pdf_bytes = download_pdf(cle_pdf_a_jour(devis))
         except Exception:
             return Response(
                 {'detail': 'Fichier introuvable. Régénérez le PDF.'},

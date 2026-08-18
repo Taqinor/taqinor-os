@@ -1130,6 +1130,18 @@ def proposal_data(request, token):
             # jamais de prix/marge/champ interne). None quand absent → le PNG
             # poster (roof_image_url) reste le repli.
             'roof_layout': _safe_roof_layout(devis),
+            # PVUNI (fondateur, 18/08/2026) — LE CALEPINAGE NE COLLE PLUS AUX
+            # LIGNES. La vue 3D montre le compte de panneaux pour lequel elle a
+            # été jouée ; les lignes, elles, peuvent avoir bougé depuis (édition
+            # manuelle d'une quantité, seconde marque ajoutée) sans que
+            # personne ne rejoue la 3D. Plutôt que de laisser le client compter
+            # les panneaux à l'écran et trouver un autre nombre dans son devis,
+            # la page le DIT. False (ou clé sans effet) sur un devis sain et sur
+            # un devis sans calepinage : rendu inchangé dans les deux cas.
+            # Le chiffre du calepinage accompagne le drapeau pour que la page
+            # puisse être précise sans rien recalculer elle-même.
+            'layout_stale': bool(data.get('layout_stale')),
+            'layout_nb_panneaux': data.get('layout_nb_panneaux'),
             # PV81 — schéma unifilaire de l'installation (SVG texte), rendu par
             # le moteur électrique SANS AUCUN PRIX (il n'en connaît aucun).
             # None tant que la conception électrique (PV41) n'a pas été faite :

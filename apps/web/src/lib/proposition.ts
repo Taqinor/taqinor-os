@@ -139,6 +139,21 @@ export interface ProposalResponse {
   mode_kpis?: ProposalModeKpis | null;
   roof_image_url: string | null;
   /**
+   * PVUNI (fondateur 2026-08-18) — LE CALEPINAGE 3D NE COLLE PLUS AUX LIGNES.
+   *
+   * La vue 3D montre le calepinage tel qu'il a été JOUÉ ; les lignes du devis,
+   * elles, peuvent avoir bougé depuis (une quantité corrigée à la main, une
+   * seconde marque ajoutée) sans que personne ne rejoue la 3D. Le serveur
+   * compare les deux comptes et pose ce drapeau : la page ne recalcule RIEN,
+   * elle se contente de le dire honnêtement sous la vue.
+   *
+   * `false`/absent = les deux concordent, ou le devis n'a pas de calepinage :
+   * rendu strictement inchangé. `layout_nb_panneaux` porte le compte pour
+   * lequel la 3D a été étudiée (celui des lignes reste `quote.nb_panneaux`).
+   */
+  layout_stale?: boolean | null;
+  layout_nb_panneaux?: number | null;
+  /**
    * Production solaire estimée, kWh/mois (12 valeurs, index 0 = janvier). Peut
    * être absent ou `[]` — le graphe se masque alors gracieusement (P2).
    */

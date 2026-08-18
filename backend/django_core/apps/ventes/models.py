@@ -208,6 +208,20 @@ class Devis(models.Model):
     # mais on plafonne à 64 pour la cohérence). Index ≤ 30 chars : lyt_hash_idx.
     layout_hash = models.CharField(max_length=64, null=True, blank=True, db_index=True)
 
+    # ── PVFRESH — de QUELLES DONNÉES le PDF stocké a-t-il été rendu ? ──
+    # ``fichier_pdf`` pointe une clé MinIO DÉTERMINISTE (devis/<société>/<réf>)
+    # : elle ne change jamais, même quand le devis change. Les chemins qui
+    # SERVENT ce fichier sans re-rendre (téléchargement interne, pièce jointe
+    # email) livraient donc les octets du DERNIER rendu, fût-il antérieur à une
+    # édition des lignes — un client pouvait tenir un PDF disant 8 panneaux
+    # pendant que sa page en affichait 9. On mémorise donc ICI l'empreinte des
+    # données rendues (même mécanisme que le cache QX8) + les options de format
+    # utilisées : servir devient « comparer, puis re-rendre si ça a bougé ».
+    # ``{'empreinte': '<sha256>', 'options': {...}}`` — null pour les devis
+    # antérieurs (l'empreinte manquante force alors un re-rendu, jamais un
+    # fichier périmé).
+    pdf_render_meta = models.JSONField(null=True, blank=True)
+
     # ── PV41 — Conception ÉLECTRIQUE du devis (additif, optionnel) ──
     # Sortie COMPLÈTE de ``core.electrique.concevoir()`` projetée sur le contrat
     # ``contract_samples/conception_electrique.json`` : chaînes, conformité, les

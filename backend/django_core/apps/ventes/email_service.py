@@ -180,6 +180,27 @@ def _document_pdf(document):
         signed_key = None
     chosen = signed_key or key
     ref = getattr(document, 'reference', 'document')
+    # PVFRESH — le repli ``fichier_pdf`` livrait les octets du DERNIER rendu,
+    # même si les lignes avaient bougé depuis : le client recevait en pièce
+    # jointe un devis que sa propre page /proposition contredisait. On passe
+    # donc par la clé GARANTIE à jour (empreinte des données comparée à celle du
+    # fichier stocké ; re-rendu seulement si ça a bougé).
+    #
+    # L'exemplaire SIGNÉ (``signed_pdf_key``) est délibérément EXCLU de ce
+    # rafraîchissement : c'est le document que le client a signé, un instantané
+    # juridique (loi 43-20) — le re-rendre le falsifierait. Les factures gardent
+    # aussi leur chemin propre (règle #4 : seul le PDF de DEVIS a changé de
+    # moteur).
+    if not signed_key and key:
+        try:
+            from apps.ventes.models import Devis
+            if isinstance(document, Devis):
+                from .quote_engine import cle_pdf_a_jour
+                chosen = cle_pdf_a_jour(document)
+        except Exception as exc:  # noqa: BLE001 — best-effort, jamais bloquant
+            logger.warning(
+                'PVFRESH: rafraîchissement du PDF impossible pour %s (%s) — '
+                'pièce jointe servie depuis le fichier stocké', ref, exc)
     if not chosen:
         logger.warning(
             'QX9: aucun PDF disponible en pièce jointe pour %s '
