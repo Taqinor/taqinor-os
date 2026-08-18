@@ -36,7 +36,29 @@ from apps.ventes.quote_engine.pricing import ONEE_TRANCHES, _monthly_bill_from_k
 # progressif 0-100 / 101-150, puis sélectif (tout le mois au tarif de sa
 # tranche, tolérance 10 kWh déjà repliée dans les bornes 210/310/510) :
 # 151-210 / 211-310 / 311-510 / >510.
-PROBE_KWH = [100, 150, 151, 210, 211, 310, 311, 499, 500, 501, 510, 511, 700, 1250]
+#
+# Sondes FRACTIONNAIRES (F2, revue Fable pré-merge) — ``apps/ventes/etude.py``
+# ``_annual_savings_year1`` calcule ``self_consumed_kwh/12``, presque jamais un
+# entier : ``apps/parametres/tariff.py`` tronquait ce kWh en ``int()`` avant de
+# choisir la tranche sélective, alors que la multiplication finale gardait le
+# kWh réel — un client à 210,5 kWh/mois retombait (via l'``int()``) dans la
+# tranche 151–210 (1,0732 MAD/kWh) au lieu de 211–310 (1,1676 MAD/kWh) : SEULE
+# la SÉLECTION de tranche doit lire le kWh exact, jamais sa troncature.
+#
+# Dérivation à la main de 210,5 kWh (bornes opératoires 210/310/510, barème
+# DEFAULT_RESIDENTIAL_TIERS) : 210,5 > 210 ⇒ tranche 211–310 (1,1676 MAD/kWh)
+# ⇒ 210,5 × 1,1676 = 245,7798 → arrondi 245,78 MAD (PAS 210,5 × 1,0732 =
+# 225,9086 → 225,91 MAD, la valeur bogue par troncature — écart −8,1 %).
+# Même mécanique à 310,7 (> 310 ⇒ tranche 311–510, 1,3817 ⇒ 429,29 MAD, contre
+# 362,77 MAD tronqué, −15,5 %) et à 510,3 (> 510 ⇒ palier ouvert, 1,5958 ⇒
+# 814,34 MAD, contre 705,08 MAD tronqué, −13,4 %). Les autres sondes
+# fractionnaires (150,5 / 211,3 / 499,5 / 700,25) ne franchissent aucune borne
+# entière : elles n'auraient PAS détecté le bug seules — gardées pour couvrir
+# l'intérieur de chaque tranche, pas seulement ses abords.
+PROBE_KWH = [
+    100, 150, 151, 210, 211, 310, 311, 499, 500, 501, 510, 511, 700, 1250,
+    150.5, 210.5, 211.3, 310.7, 499.5, 510.3, 700.25,
+]
 
 
 class TestTariffDriftLock(SimpleTestCase):
