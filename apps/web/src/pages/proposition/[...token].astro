@@ -80,6 +80,7 @@ import {
   sldSvgFilename,
   parseConceptionElectrique,
   conceptionPourLigne,
+  indexHoteDesCables,
   chaineLabel,
   protectionLabel,
   cableLabel,
@@ -92,6 +93,7 @@ import {
   monitoringPoints,
   objectionFaq,
   sellerNote,
+  resyncApresEnvoi,
 } from '../../lib/proposition';
 import {
   renderYearCurve,
@@ -250,6 +252,12 @@ const heroTtc = ok && heroHasRealPrice ? optionTtc(data!, reco ?? 'sans_batterie
 // WJ114 — note personnelle du vendeur (lecture défensive, backend pas encore
 // livré aujourd'hui) : n'affiche RIEN tant que l'ERP ne fournit pas ce bloc.
 const seller = ok ? sellerNote(data!) : null;
+// COUTURE — devis ENVOYÉ puis RESYNCHRONISÉ (prix catalogue corrigé après
+// coup) : la page rend les lignes en direct, elle peut donc afficher un total
+// différent du PDF déjà reçu par le client. Le backend pose la date dans
+// `resync_apres_envoi`, la page la dit en une ligne discrète près du total.
+// Clé absente (cas normal) → `null` → rien de rendu.
+const resyncDate = ok ? resyncApresEnvoi(data!) : null;
 
 // ── WJ82 — État explicite de l'offre (live/accepted/refused/expired/withdrawn).
 // Calculé UNE fois côté serveur à partir du même statut backend + de la même
@@ -628,11 +636,37 @@ const equipmentItems = ok ? optionItems(data!, equipmentOption) : [];
 // sections de câble / chaînage), ou `null` — et un `null` ne rend aucun
 // dépliant : jamais un volet vide sous une ligne.
 const conception = ok ? parseConceptionElectrique(data!) : null;
-const equipmentGroups = groupEquipment(equipmentItems).map((group) => ({
+// Deux corrections de CATALOGUE RÉEL (le devis résidentiel type ne porte comme
+// postes génériques que « Tableau De Protection AC/DC », « Accessoires »,
+// « Socles », « Structures acier/aluminium ») :
+//  · la ligne « AC/DC » tombe sur la fiche protection-dc, donc le dépliant
+//    n'aurait montré que le côté continu — la moitié AC (disjoncteur, parafoudre,
+//    différentiel, terre, liaison équipotentielle) disparaissait sous une ligne
+//    qui s'appelle pourtant « AC/DC » : `estProtectionAcDc` la rend entière ;
+//  · aucune ligne « câble » n'est facturée, donc les sections et longueurs
+//    calculées par l'étude n'apparaissaient nulle part : `indexHoteDesCables`
+//    les accroche à UNE seule ligne de protection (jamais deux), sous un
+//    intertitre « Câblage ». Dès qu'un devis porte une vraie ligne câblage, il
+//    rend -1 et rien ne change.
+const equipmentGrouped = groupEquipment(equipmentItems);
+const equipmentRendered = equipmentGrouped.flatMap((group) => group.lines);
+const equipmentSlugs = equipmentRendered.map((it) => ficheSlugPourLigne(it.designation, it.marque));
+const cableHostIndex = indexHoteDesCables(equipmentSlugs);
+// La ligne hôte est désignée PAR IDENTITÉ (jamais par un index recalculé) :
+// `null` quand il n'y en a pas, et alors aucune ligne ne se compare vraie.
+const cableHostLine = cableHostIndex >= 0 ? equipmentRendered[cableHostIndex] : null;
+const equipmentGroups = equipmentGrouped.map((group) => ({
   id: group.id,
   lines: group.lines.map((it) => {
     const ficheSlug = ficheSlugPourLigne(it.designation, it.marque);
-    return { ...it, ficheSlug, detail: conceptionPourLigne(conception, ficheSlug) };
+    return {
+      ...it,
+      ficheSlug,
+      detail: conceptionPourLigne(conception, ficheSlug, {
+        designation: it.designation,
+        rattacherCables: it === cableHostLine,
+      }),
+    };
   }),
 }));
 const equipmentExtra = ok && twoOptions && equipmentOption === 'sans_batterie'
@@ -665,6 +699,22 @@ const certHrefs = {
   panneaux: '/garanties',
   onduleur: '/garanties',
 };
+
+/**
+ * « N ans » en arabe, avec le DUEL. L'arabe ne pluralise pas comme le français :
+ * 1 → سنة واحدة, 2 → سنتان (duel, pas « 2 سنة »), 3 à 10 → N سنوات (pluriel de
+ * petit nombre), au-delà → N سنة. La durée de pose était écrite « سنتان » EN
+ * DUR : passer INSTALL_WARRANTY_YEARS à 3 dans warranty.ts affichait « 3 ans /
+ * 3 years » en FR/EN et laissait le client arabophone lire « deux ans » —
+ * exactement la divergence que warranty.ts existe pour empêcher. Les trois
+ * durées du bloc confiance passent donc par ici.
+ */
+function anneesAr(n: number): string {
+  if (n === 1) return 'سنة واحدة';
+  if (n === 2) return 'سنتان';
+  if (n >= 3 && n <= 10) return `${n} سنوات`;
+  return `${n} سنة`;
+}
 
 // ── WJ32 — Complétude du contenu : variantes, « Et après ? », « Nos
 // hypothèses », accompagnement, FAQ objections. Chaque bloc dégrade proprement
@@ -1271,6 +1321,15 @@ const signConfig = ok
                                       ) : null}
                                     </li>
                                   ))}
+                                  {/* Câbles RATTACHÉS (le devis ne facture aucune
+                                      ligne « câblage ») : ils s'ouvrent par un
+                                      intertitre, sinon on lirait une section de
+                                      6 mm² comme un organe du coffret. Sous une
+                                      vraie ligne câblage, aucun intertitre. */}
+                                  {it.detail.cablesRattaches ? (
+                                    <li class="pt-1 text-[0.65rem] uppercase tracking-[0.12em] text-lune-faint" data-i18n
+                                      data-fr="Câblage" data-en="Cabling" data-ar="الكابلات">Câblage</li>
+                                  ) : null}
                                   {it.detail.cables.map((c) => (
                                     <li class="text-xs text-lune-soft">{cableLabel(c)}</li>
                                   ))}
@@ -2059,21 +2118,22 @@ const signConfig = ok
             « 25 ans » du cumul d'économies plus haut. Le chiffre orphelin part ;
             restent les DEUX garanties constructeur réelles + l'engagement de
             pose, désormais chiffré lui aussi (2 ans, comme le PDF). Les
-            certifications ne sont pas répétées ici : le bandeau de badges juste
-            en dessous porte l'IEC — et lui seul, la loi 82-21 n'ayant aucune
-            page dédiée à laquelle un badge cliquable pourrait renvoyer. */}
+            certifications ne sont pas répétées ici : elles vivent dans le
+            bandeau de badges juste en dessous (IEC → la fiche du panneau
+            devisé, « Loi 82-21 » → /loi-82-21, page dédiée FR/EN/AR qui
+            existe bel et bien — voir `certKeys`/`certHrefs` plus haut). */}
         <div class="cine-card mt-5 rounded-xl p-5">
           <p class="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-lune-soft">
             <span class="fig text-lune" dir="ltr" data-i18n
               data-fr={`${PANEL_PERFORMANCE_WARRANTY_YEARS} ans`}
               data-en={`${PANEL_PERFORMANCE_WARRANTY_YEARS} years`}
-              data-ar={`${PANEL_PERFORMANCE_WARRANTY_YEARS} سنة`}>{PANEL_PERFORMANCE_WARRANTY_YEARS} ans</span>
+              data-ar={anneesAr(PANEL_PERFORMANCE_WARRANTY_YEARS)}>{PANEL_PERFORMANCE_WARRANTY_YEARS} ans</span>
             <span data-i18n data-fr="de performance panneaux" data-en="of panel performance" data-ar="أداء الألواح">de performance panneaux</span>
             <span class="text-lune-faint" aria-hidden="true">·</span>
             <span class="fig text-lune" dir="ltr" data-i18n
               data-fr={`${INVERTER_WARRANTY_YEARS} ans`}
               data-en={`${INVERTER_WARRANTY_YEARS} years`}
-              data-ar={`${INVERTER_WARRANTY_YEARS} سنوات`}>{INVERTER_WARRANTY_YEARS} ans</span>
+              data-ar={anneesAr(INVERTER_WARRANTY_YEARS)}>{INVERTER_WARRANTY_YEARS} ans</span>
             <span data-i18n data-fr="onduleur" data-en="inverter" data-ar="العاكس">onduleur</span>
             <span class="text-lune-faint" aria-hidden="true">·</span>
             {/* La pose porte désormais SA durée, exactement comme le PDF
@@ -2081,7 +2141,7 @@ const signConfig = ok
             <span class="fig text-lune" dir="ltr" data-i18n
               data-fr={`${INSTALL_WARRANTY_YEARS} ans`}
               data-en={`${INSTALL_WARRANTY_YEARS} years`}
-              data-ar="سنتان">{INSTALL_WARRANTY_YEARS} ans</span>
+              data-ar={anneesAr(INSTALL_WARRANTY_YEARS)}>{INSTALL_WARRANTY_YEARS} ans</span>
             <span class="text-lune" data-i18n data-fr="de pose Taqinor" data-en="of Taqinor installation work" data-ar="على تركيب تاقينور">de pose Taqinor</span>
           </p>
           {/* (fondateur 2026-08-17) réassurance : ce que vaut une garantie
@@ -2151,9 +2211,12 @@ const signConfig = ok
 
         <!-- WJ35 — bandeau certifications/garanties (texte, sobre — aucun logo
              fabriqué). (fondateur 2026-08-17) chaque badge rendu ici est un LIEN
-             vers une page réelle : garanties → /garanties, IEC → la fiche du
-             panneau devisé ; le badge « Loi 82-21 », sans page dédiée digne d'un
-             clic, n'est plus rendu sur cette proposition. -->
+             vers une page réelle : garanties panneaux/onduleur → /garanties,
+             IEC → la fiche du panneau réellement devisé, « Loi 82-21 » →
+             /loi-82-21 (page dédiée FR/EN/AR + guide, dans la nav). Le badge
+             IEC est le seul OMIS quand sa cible manque — aucun panneau apparié,
+             donc aucun lien honnête. Ne retirez pas 'loi8221' de `certKeys` :
+             sa page existe et le fondateur a demandé ce badge. -->
         <div class="mt-4">
           <CertLogoRow keys={certKeys} hrefs={certHrefs} />
         </div>
@@ -2327,6 +2390,20 @@ const signConfig = ok
             );
           })}
         </div>
+        {/* COUTURE — le devis avait été ENVOYÉ, puis resynchronisé (prix
+            catalogue corrigé côté Stock). Les montants ci-dessus sont rendus
+            en direct depuis les lignes : ils peuvent donc différer du PDF déjà
+            reçu par le client. On le dit ici, sobrement, plutôt que de laisser
+            l'écart se découvrir au moment de signer. Sans la clé backend
+            `resync_apres_envoi` — le cas normal — rien n'est rendu. */}
+        {resyncDate && (
+          <p class="mt-4 text-xs text-lune-faint" data-i18n
+            data-fr={`Document mis à jour le ${resyncDate}`}
+            data-en={`Document updated on ${resyncDate}`}
+            data-ar={`تم تحديث الوثيقة بتاريخ ${resyncDate}`}>
+            Document mis à jour le {resyncDate}
+          </p>
+        )}
       </section>
 
       <!-- ── GAMMES · CHOIX DE GAMME (fondateur 2026-08-18) ──────────────────

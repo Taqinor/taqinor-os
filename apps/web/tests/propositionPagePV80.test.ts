@@ -11,6 +11,9 @@ import { fileURLToPath } from 'node:url';
 import {
   parseConceptionElectrique,
   conceptionPourLigne,
+  estProtectionAcDc,
+  indexHoteDesCables,
+  resyncApresEnvoi,
   chaineLabel,
   protectionLabel,
   cableLabel,
@@ -471,6 +474,78 @@ describe('détail électrique — chaque ligne d’équipement reçoit SA part',
   });
 });
 
+// Le CATALOGUE RÉEL n'a pas la forme des fixtures : le devis résidentiel type
+// porte UNE ligne générique « Tableau De Protection AC/DC » (qui tombe sur la
+// fiche protection-dc) et AUCUNE ligne câble. Sans les deux règles ci-dessous,
+// le client ouvrait un dépliant qui perdait tout le côté alternatif et ne
+// montrait jamais une seule section de câble.
+describe('détail électrique — le catalogue réel (poste AC/DC, aucune ligne câble)', () => {
+  const c = parseConceptionElectrique(AVEC);
+
+  it('une ligne dont la désignation dit « AC/DC » montre LES DEUX familles', () => {
+    const bloc = conceptionPourLigne(c, 'protection-dc', { designation: 'Tableau De Protection AC/DC' })!;
+    expect(bloc.protections.map((o) => o.repere)).toEqual(['Q1', 'F1', 'Q10']);
+  });
+
+  it('les trois graphies sont reconnues, casse comprise', () => {
+    for (const d of ['Tableau De Protection AC/DC', 'Coffret ac-dc 6 modules', 'Protection AC DC']) {
+      expect(estProtectionAcDc(d), d).toBe(true);
+      expect(conceptionPourLigne(c, 'protection-dc', { designation: d })!.protections, d).toHaveLength(3);
+    }
+    for (const d of ['Coffret DC', 'Disjoncteur AC', '', null, undefined]) {
+      expect(estProtectionAcDc(d), String(d)).toBe(false);
+    }
+  });
+
+  it('sans désignation combinée, chaque côté reste séparé (comportement d’origine)', () => {
+    expect(conceptionPourLigne(c, 'protection-dc', { designation: 'Coffret DC 2 chaînes' })!
+      .protections.map((o) => o.repere)).toEqual(['Q1', 'F1']);
+    expect(conceptionPourLigne(c, 'protection-ac', { designation: 'Coffret AC' })!
+      .protections.map((o) => o.repere)).toEqual(['Q10']);
+  });
+
+  it('la ligne HÔTE des câbles : la 1ʳᵉ protection, et seulement faute de ligne câblage', () => {
+    // Le devis résidentiel réel : protection générique, accessoires, socles, structures.
+    expect(indexHoteDesCables(['canadian-solar-710', 'protection-dc', 'accessoires-pose'])).toBe(1);
+    // Un devis QUI porte une ligne câblage garde le comportement d'origine.
+    expect(indexHoteDesCables(['protection-dc', 'cablage'])).toBe(-1);
+    // Deux protections : une SEULE les porte (jamais les liaisons en double).
+    expect(indexHoteDesCables(['protection-ac', 'protection-dc'])).toBe(0);
+    // Aucune protection : rien à accrocher.
+    expect(indexHoteDesCables(['canadian-solar-710', null, undefined])).toBe(-1);
+    expect(indexHoteDesCables([])).toBe(-1);
+  });
+
+  it('rattachés, les câbles arrivent sous la protection et se disent rattachés', () => {
+    const bloc = conceptionPourLigne(c, 'protection-dc', {
+      designation: 'Tableau De Protection AC/DC',
+      rattacherCables: true,
+    })!;
+    expect(bloc.cables).toHaveLength(2);
+    expect(bloc.cablesRattaches).toBe(true);
+    expect(bloc.protections).toHaveLength(3);
+  });
+
+  it('sous une VRAIE ligne câblage, rien n’est « rattaché » (aucun intertitre)', () => {
+    expect(conceptionPourLigne(c, 'cablage')!.cablesRattaches).toBe(false);
+    expect(conceptionPourLigne(c, 'protection-dc')!.cablesRattaches).toBe(false);
+  });
+
+  it('le rattachement ne FABRIQUE rien : sans liaison à l’étude, aucun câble', () => {
+    const sansCable = parseConceptionElectrique({
+      conception_electrique: { chaines: [], protections: CONCEPTION.protections, cables: [] },
+    } as unknown as ProposalResponse);
+    const bloc = conceptionPourLigne(sansCable, 'protection-dc', {
+      designation: 'Tableau De Protection AC/DC',
+      rattacherCables: true,
+    })!;
+    expect(bloc.cables).toHaveLength(0);
+    expect(bloc.cablesRattaches).toBe(false);
+    // …et une ligne qui n'est PAS une protection ne reçoit jamais les câbles.
+    expect(conceptionPourLigne(c, 'canadian-solar-710', { rattacherCables: true })!.cables).toHaveLength(0);
+  });
+});
+
 describe('détail électrique — libellés affichés', () => {
   it('la chaîne est le SEUL libellé traduit (un calibre ne se traduit pas)', () => {
     expect(chaineLabel({ nb_modules: 16, mppt: 1, pan: 2 }, 'fr')).toBe('16 modules · MPPT 1 · pan 2');
@@ -504,7 +579,16 @@ describe('détail électrique — rendu dans le tableau d’équipement', () => 
 
   it('la page lit le bloc backend par la fonction pure, une seule fois', () => {
     expect(PAGE).toContain('parseConceptionElectrique(data!)');
-    expect(PAGE).toContain('conceptionPourLigne(conception, ficheSlug)');
+    expect(PAGE).toContain('conceptionPourLigne(conception, ficheSlug, {');
+    // …avec la désignation FACTURÉE (poste combiné AC/DC) et l'hôte des câbles.
+    expect(PAGE).toContain('designation: it.designation');
+    expect(PAGE).toContain('indexHoteDesCables(equipmentSlugs)');
+    expect(PAGE).toContain('rattacherCables: it === cableHostLine');
+  });
+
+  it('les câbles RATTACHÉS s’annoncent par un intertitre « Câblage » trilingue', () => {
+    expect(PAGE).toContain('{it.detail.cablesRattaches ? (');
+    expect(PAGE).toContain('data-fr="Câblage" data-en="Cabling" data-ar="الكابلات"');
   });
 
   it('le dépliant est STRICTEMENT conditionnel (pas de détail → rien du tout)', () => {
@@ -537,6 +621,59 @@ describe('détail électrique — rendu dans le tableau d’équipement', () => 
     for (const interdit of ['formatMAD', 'prix_unit', 'prix_achat', 'remise', 'MAD', 'ttc']) {
       expect(bloc, `« ${interdit} » dans le dépliant`).not.toContain(interdit);
     }
+  });
+});
+
+// ── COUTURE « resync après envoi » ───────────────────────────────────────────
+// Un devis ENVOYÉ (PDF en pièce jointe, lien /proposition entre les mains du
+// client) peut être resynchronisé ensuite si un prix catalogue change : la page
+// re-rend les lignes en direct et affiche alors un total qui ne correspond plus
+// au PDF reçu. Le backend pose la date dans `resync_apres_envoi` ; la page le
+// dit en une ligne discrète. Clé absente = cas normal = page inchangée.
+describe('resync après envoi — une ligne discrète, jamais une date inventée', () => {
+  const avec = (v: unknown) => resyncApresEnvoi({ resync_apres_envoi: v } as unknown as ProposalResponse);
+
+  it('date ISO → libellé FR près du total', () => {
+    expect(avec({ date: '2026-08-18' })).toBe('18 août 2026');
+    // …y compris quand le backend envoie un horodatage complet.
+    expect(avec({ date: '2026-08-18T14:32:05Z' })).toBe('18 août 2026');
+  });
+
+  it('clé absente ou nulle → rien du tout (le cas normal)', () => {
+    expect(resyncApresEnvoi({} as unknown as ProposalResponse)).toBeNull();
+    expect(avec(null)).toBeNull();
+    expect(avec(undefined)).toBeNull();
+  });
+
+  it('donnée illisible → rien, jamais une date fabriquée', () => {
+    for (const v of [{}, { date: '' }, { date: 'bientôt' }, { date: 42 }, { date: null }, 'oui', 7, []]) {
+      expect(avec(v), JSON.stringify(v)).toBeNull();
+    }
+  });
+});
+
+describe('resync après envoi — rendu de la page', () => {
+  const PAGE = readFileSync(
+    fileURLToPath(new URL('../src/pages/proposition/[...token].astro', import.meta.url)),
+    'utf-8',
+  );
+
+  it('la page lit la clé par la fonction pure et n’affiche la ligne que si elle existe', () => {
+    expect(PAGE).toContain('resyncApresEnvoi(data!)');
+    expect(PAGE).toContain('{resyncDate && (');
+  });
+
+  it('la ligne est trilingue et vit dans le chapitre du prix, près du total', () => {
+    expect(PAGE).toContain('data-fr={`Document mis à jour le ${resyncDate}`}');
+    expect(PAGE).toContain('data-en={`Document updated on ${resyncDate}`}');
+    expect(PAGE).toContain('data-ar={`تم تحديث الوثيقة بتاريخ ${resyncDate}`}');
+    // Le chapitre du prix garde son ancre historique id="options".
+    const prix = PAGE.indexOf('<section id="options"');
+    const gammes = PAGE.indexOf('<section id="gammes"');
+    const ligne = PAGE.indexOf('{resyncDate && (');
+    expect(prix).toBeGreaterThan(0);
+    expect(ligne).toBeGreaterThan(prix);
+    expect(ligne).toBeLessThan(gammes);
   });
 });
 

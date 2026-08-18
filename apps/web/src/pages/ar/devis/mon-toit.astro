@@ -3621,8 +3621,11 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       // WJ30 — le type de projet et la langue active partent aussi au webhook.
       mode,
       langue_preferee: currentLang,
-      // OMBRAGE — seul rescapé de l'ancien étage « Affiner mon estimation » :
-      // c'est le seul de ces champs qui changeait un chiffre affiché.
+      // OMBRAGE — seul rescapé de l'ancien étage facultatif de précision
+      // (retiré le 18/08) : c'est le seul de ces champs qui changeait un
+      // chiffre affiché. (Le libellé de cet étage est épinglé ABSENT de la
+      // page FR par tests/rtlToggleWJ17.test.ts — ne pas le réintroduire,
+      // même en commentaire.)
       ombrage: ombrage || undefined,
       // Retirés du tunnel (coupe fondateur 18/08) — le commercial les complète
       // dans l'ERP, leurs clés sont simplement ABSENTES du corps (lib/lead.ts
@@ -3680,9 +3683,11 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       // revenait à l'étape 1 pour vérifier) voyait ses réponses silencieusement
       // effacées du payload — alors qu'il les avait bien données. Règle unique
       // désormais, la même que `raisonSociale` ci-dessus : TOUTE VALEUR SAISIE
-      // NON VIDE PART. Rien n'est fabriqué pour autant — un champ jamais rempli
-      // reste `undefined`, et validateLead borne/écarte chaque clé séparément,
-      // indépendamment du mode.
+      // NON VIDE PART. Un champ de saisie jamais rempli reste `undefined`, et
+      // validateLead borne/écarte chaque clé séparément, indépendamment du
+      // mode. UNE SEULE EXCEPTION, gardée gatée plus bas : `heuresPompage` est
+      // un <input type="range" value="7">, sa `.value` vaut « 7 » AVANT toute
+      // saisie — la dégater fabriquerait une réponse que personne n'a donnée.
       equipes: equipes || undefined,
       // surface_toiture_m2 = surface de TOIT au sens strict (le backend distingue
       // le sol : webhooks.py:303-304) — ne l'envoyer que pour une vraie toiture ;
@@ -3698,9 +3703,12 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       hmtM: num('mt-hmt') ?? undefined,
       debitM3h: waterUnit === 'm3h' ? (num('mt-water-need') ?? undefined) : undefined,
       besoinM3j: waterUnit === 'm3j' ? (num('mt-water-need') ?? undefined) : undefined,
-      // Dégaté comme les champs industriels ci-dessus : un nombre d'heures de
-      // pompage saisi part, même si le visiteur a changé de profil depuis.
-      heuresPompage: num('mt-heures-pompage') ?? undefined,
+      // SEUL champ qui GARDE son gate de mode, et c'est un choix : les autres
+      // sont des saisies vides par défaut, celui-ci est un curseur qui part
+      // avec value="7" (#mt-heures-pompage). Sans le gate, un lead résidentiel
+      // ou industriel transporterait « 7 h/j » que personne n'a saisi, et le
+      // CRM l'afficherait comme une réponse du visiteur sur une villa.
+      heuresPompage: mode === 'agricole' ? (num('mt-heures-pompage') ?? undefined) : undefined,
       // `irrigation` retirée du tunnel (coupe fondateur 18/08) — le moteur eau
       // retombe sur son efficience par défaut ; le commercial la complète dans l'ERP.
       culture: val('mt-culture') || undefined,

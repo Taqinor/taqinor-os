@@ -337,6 +337,18 @@ export function bootCaptureOnly(opts: CaptureOptions): void {
   // convertit le pin en 1ᵉʳ sommet ; les suivants ferment le contour (≥3 sommets).
   map.on('dblclick', (e) => {
     e.preventDefault();
+    // …mais UNIQUEMENT dans le geste « dessiner ». En mode « pointer », la page
+    // masque « Terminer le tracé » (syncRoofModeCards : finishBtn.hidden =
+    // roofInputMode !== 'draw') : un double-clic ouvrait donc un contour que le
+    // visiteur n'avait pas choisi, SANS le bouton pour en sortir — et tant que
+    // ce contour a moins de 3 sommets, currentPin() rend null, ce qui faisait
+    // aussi disparaître la confirmation « C'est bien votre toit ? ». Ici, un
+    // double-clic n'est qu'un repère de plus : les deux clics qui le composent
+    // sont déjà passés par le handler `click` ci-dessus, qui a posé le repère.
+    // Le flux HISTORIQUE (pas de cartes de geste, donc `roofInputMode` absent)
+    // garde le double-clic traceur, inchangé.
+    const inputMode = opts.roofInputMode?.();
+    if (inputMode && inputMode !== 'draw') return;
     if (closed) return;
     if (vertices.length >= 3 && isSimplePolygon(vertices)) {
       closed = true;

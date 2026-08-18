@@ -264,6 +264,20 @@ describe('PV81 — polish : rien de vide, rien qui se contredit', () => {
     expect(bloc).toContain('INSTALL_WARRANTY_YEARS');
     expect(bloc).toContain('data-fr="de pose Taqinor"');
     expect(bloc).not.toContain('data-fr="pose garantie Taqinor"');
+    // …Y COMPRIS EN ARABE. La pose disait « سنتان » (« deux ans ») en dur :
+    // porter INSTALL_WARRANTY_YEARS à 3 corrigeait FR/EN et laissait le client
+    // arabophone lire deux ans. Les trois durées passent par `anneesAr`, qui
+    // applique le DUEL arabe (1 → سنة واحدة, 2 → سنتان, 3-10 → N سنوات, au-delà
+    // → N سنة) : aucune durée n'est plus écrite en dur dans le bloc.
+    expect(bloc).toContain('data-ar={anneesAr(INSTALL_WARRANTY_YEARS)}');
+    expect(bloc).toContain('data-ar={anneesAr(PANEL_PERFORMANCE_WARRANTY_YEARS)}');
+    expect(bloc).toContain('data-ar={anneesAr(INVERTER_WARRANTY_YEARS)}');
+    expect(bloc).not.toContain('data-ar="سنتان"');
+    // La fonction couvre bien les quatre cas (une seule définition, en tête).
+    expect(PROPOSITION).toContain('function anneesAr(n: number): string');
+    for (const forme of ['سنة واحدة', 'سنتان', 'سنوات', 'سنة']) {
+      expect(PROPOSITION, forme).toContain(forme);
+    }
   });
 
   it('la réassurance « garantie attachée au matériel » est dite en FR/EN/AR', () => {

@@ -210,6 +210,18 @@ export interface ProposalResponse {
    */
   gammes?: ProposalGammes | null;
   /**
+   * COUTURE BACKEND (clé convenue, 2026-08-18) — RESYNCHRONISATION APRÈS ENVOI.
+   * Le backend ajoute cette clé quand un devis DÉJÀ ENVOYÉ a été resynchronisé
+   * après coup (prix catalogue corrigé côté Stock) : la page est re-rendue en
+   * direct depuis les lignes, elle peut donc afficher un total qui ne
+   * correspond plus au PDF que le client a reçu en pièce jointe. On le DIT en
+   * une ligne discrète près du total, au lieu de laisser l'écart se découvrir à
+   * la signature. Clé ABSENTE — le cas normal — ⇒ rien n'est rendu, la page ne
+   * bouge pas d'un pixel. Lue défensivement par `resyncApresEnvoi` : une date
+   * illisible n'affiche rien plutôt qu'une date inventée.
+   */
+  resync_apres_envoi?: { date?: string | null } | null;
+  /**
    * WJ114 — bloc vendeur OPTIONNEL (note personnelle + identité), pas encore
    * exposé par le backend aujourd'hui : lu défensivement (`sellerNote` ci-
    * dessous) pour qu'il s'allume dès que l'ERP le fournira, sans crash ni
@@ -923,11 +935,58 @@ function estOrganeDc(o: ConceptionProtection): boolean {
   return MARQUEURS_DC.some((m) => libelle.includes(m));
 }
 
+/**
+ * Marqueurs d'une ligne de protection COMBINÉE (les deux côtés dans un même
+ * poste). Le catalogue réel ne facture pas deux coffrets : il porte UNE ligne
+ * « Tableau De Protection AC/DC ». Cette ligne tombe sur la fiche
+ * `protection-dc` (marqueur « dc », règle 1 de ficheMatcher) — si le dépliant
+ * s'en tenait au côté continu, le client verrait ses disjoncteurs DC et
+ * PERDRAIT tout le côté alternatif (disjoncteur AC, parafoudre type 2,
+ * différentiel type A, prise de terre, liaison équipotentielle) sous une ligne
+ * qui s'appelle pourtant « AC/DC ». Trois graphies observées.
+ */
+const MARQUEURS_AC_DC: readonly string[] = ['ac/dc', 'ac-dc', 'ac dc'];
+
+/** La désignation annonce-t-elle un poste qui porte LES DEUX côtés ? */
+export function estProtectionAcDc(designation?: string | null): boolean {
+  const libelle = String(designation ?? '').toLowerCase();
+  return MARQUEURS_AC_DC.some((m) => libelle.includes(m));
+}
+
 /** Ce qu'un dépliant « Dans votre installation » montre pour une famille donnée. */
 export interface ConceptionPourLigne {
   chaines: ConceptionChaine[];
   protections: ConceptionProtection[];
   cables: ConceptionCable[];
+  /** Les câbles montrés ici sont RATTACHÉS (le devis n'a pas de ligne câblage) :
+   *  la page les annonce alors par un intertitre « Câblage », pour qu'on ne les
+   *  lise pas comme des organes de protection. Faux sous une ligne câblage. */
+  cablesRattaches: boolean;
+}
+
+/** Options de rattachement d'une ligne d'équipement (toutes facultatives). */
+export interface ConceptionPourLigneOpts {
+  /** La désignation TELLE QU'ELLE EST FACTURÉE (décide du poste combiné AC/DC). */
+  designation?: string | null;
+  /** Cette ligne accueille-t-elle les câbles faute de ligne « câblage » dédiée ?
+   *  Le choix de la ligne hôte appartient à l'appelant (`indexHoteDesCables`),
+   *  pour qu'une seule ligne les porte — jamais les deux protections. */
+  rattacherCables?: boolean;
+}
+
+/**
+ * Index de la ligne de protection qui ACCUEILLE les câbles, dans l'ordre des
+ * lignes rendues. Le catalogue résidentiel réel ne porte AUCUN poste « câble »
+ * (ses postes génériques sont « Tableau De Protection AC/DC », « Accessoires »,
+ * « Socles », « Structures acier/aluminium ») : sans ce rattachement, les
+ * sections et longueurs calculées par l'étude n'apparaissaient NULLE PART.
+ * Rend -1 — donc aucun rattachement — dès qu'une vraie ligne « câblage »
+ * existe (les câbles ont alors leur propre dépliant) ou qu'aucune ligne de
+ * protection n'existe.
+ */
+export function indexHoteDesCables(slugs: ReadonlyArray<string | null | undefined>): number {
+  if (slugs.some((s) => s === 'cablage')) return -1;
+  return slugs.findIndex((s) => s === 'protection-dc' || s === 'protection-ac');
 }
 
 /**
@@ -936,24 +995,36 @@ export interface ConceptionPourLigne {
  *
  *  · `protection-dc`  → ses organes du côté continu (repère + calibre) ;
  *  · `protection-ac`  → ses organes du côté alternatif ;
+ *  · une protection dont la DÉSIGNATION dit « AC/DC » → LES DEUX familles,
+ *    dans l'ordre où l'étude les a posées (c'est un seul coffret facturé) ;
  *  · `cablage`        → les sections et longueurs de liaison ;
  *  · panneaux/onduleur → le chaînage (modules par MPPT).
+ *
+ * Faute de ligne « câblage » au devis, `rattacherCables` accroche les liaisons
+ * sous la ligne de protection (intertitre « Câblage » côté page).
  *
  * Toute autre famille (batterie, structure, accessoires de pose, supervision,
  * grands projets) n'a rien à dire ici : `null`, et aucun dépliant n'est rendu.
  * `null` aussi quand la famille est concernée mais que l'étude ne porte AUCUNE
- * valeur pour elle — jamais un dépliant vide.
+ * valeur pour elle — jamais un dépliant vide. Une valeur absente reste OMISE :
+ * ce rattachement ne fabrique rien, il montre ce que l'étude a déjà calculé.
  */
 export function conceptionPourLigne(
   conception: ConceptionElectrique | null,
   ficheSlug: string | null | undefined,
+  opts?: ConceptionPourLigneOpts,
 ): ConceptionPourLigne | null {
   if (!conception || !ficheSlug) return null;
   // Une FABRIQUE, pas une constante partagée : chaque appel repart de trois
   // tableaux neufs (aucun aliasing possible entre deux lignes du devis).
-  const vide = (): ConceptionPourLigne => ({ chaines: [], protections: [], cables: [] });
+  const vide = (): ConceptionPourLigne => ({ chaines: [], protections: [], cables: [], cablesRattaches: false });
+  const estProtection = ficheSlug === 'protection-dc' || ficheSlug === 'protection-ac';
   let bloc: ConceptionPourLigne;
-  if (ficheSlug === 'protection-dc') {
+  if (estProtection && estProtectionAcDc(opts?.designation)) {
+    // Un seul coffret facturé « AC/DC » : on ne coupe pas son contenu en deux.
+    // Ordre du moteur électrique conservé — c'est l'ordre du schéma.
+    bloc = { ...vide(), protections: [...conception.protections] };
+  } else if (ficheSlug === 'protection-dc') {
     bloc = { ...vide(), protections: conception.protections.filter(estOrganeDc) };
   } else if (ficheSlug === 'protection-ac') {
     bloc = { ...vide(), protections: conception.protections.filter((o) => !estOrganeDc(o)) };
@@ -968,6 +1039,11 @@ export function conceptionPourLigne(
     bloc = { ...vide(), chaines: conception.chaines };
   } else {
     return null;
+  }
+  // Rattachement des câbles orphelins : sous la protection choisie par
+  // l'appelant, et seulement s'il y a vraiment des liaisons à montrer.
+  if (estProtection && opts?.rattacherCables && conception.cables.length) {
+    bloc = { ...bloc, cables: conception.cables, cablesRattaches: true };
   }
   const rien = !bloc.chaines.length && !bloc.protections.length && !bloc.cables.length;
   return rien ? null : bloc;
@@ -1185,6 +1261,27 @@ export function resolveValidity(
   if (!dt) return { label: null, fromBackend: false, expired: false };
   const expired = dt.getTime() < now.getTime();
   return { label: formatFrenchDate(dt), fromBackend: true, expired };
+}
+
+/**
+ * Date de RESYNCHRONISATION APRÈS ENVOI, formatée FR (« 18 août 2026 »), ou
+ * `null`. Le devis a été envoyé au client avec un PDF, puis resynchronisé
+ * (correction d'un prix catalogue) : la page rend les lignes en direct, elle
+ * peut donc montrer un total différent de la pièce jointe reçue. La page
+ * l'annonce alors près du total.
+ *
+ * Défensif de bout en bout : clé absente, `null`, type inattendu ou date non
+ * parsable ⇒ `null` ⇒ AUCUNE ligne rendue. Jamais une date fabriquée, jamais
+ * une mention sur un devis qui n'a pas bougé.
+ */
+export function resyncApresEnvoi(
+  p: Pick<ProposalResponse, 'resync_apres_envoi'>,
+): string | null {
+  const brut = p?.resync_apres_envoi;
+  if (!brut || typeof brut !== 'object') return null;
+  const raw = (brut as { date?: unknown }).date;
+  const dt = parseBackendDate(typeof raw === 'string' ? raw : null);
+  return dt ? formatFrenchDate(dt) : null;
 }
 
 // ── WJ42 · Horodatage de signature localisé (FR/AR/EN) ───────────────────────
@@ -2729,9 +2826,14 @@ export function objectionFaq(): FaqItem[] {
       question: 'Puis-je emporter mon installation si je déménage ?',
       questionAr: 'هل يمكنني نقل التركيب إذا انتقلت للسكن في مكان آخر؟',
       questionEn: 'Can I take my installation with me if I move?',
-      answer: 'Oui. L\'installation est posée sur des socles lestés, sans fixation au bâtiment : elle peut être démontée et remontée sur votre nouveau logement.',
-      answerAr: 'نعم. يُركَّب النظام على قواعد مثقّلة دون تثبيت بالمبنى؛ لذا يمكن تفكيكه وإعادة تركيبه في سكنكم الجديد.',
-      answerEn: 'Yes. The installation sits on ballasted mounts, with no fixing to the building: it can be dismantled and reinstalled at your new home.',
+      // La réponse doit tenir DEVANT la fiche technique « structure-fixation »
+      // atteignable depuis la même page : celle-ci dit que sur toiture inclinée
+      // les fixations traversent la couverture et sont étanchées point par
+      // point. Promettre à tout le monde une pose lestée démontable contredisait
+      // donc la fiche du même devis — on distingue les deux cas.
+      answer: 'Sur toiture-terrasse — la grande majorité de nos poses — l\'installation repose sur des socles lestés, sans fixation au bâtiment : elle peut être démontée et remontée. Sur toiture inclinée, les fixations sont étanchées point par point : le démontage se fait alors sur étude.',
+      answerAr: 'على السطح المستوي — وهو حال الغالبية العظمى من تركيباتنا — يرتكز النظام على قواعد مثقّلة دون تثبيت بالمبنى: يمكن تفكيكه وإعادة تركيبه. أما على السطح المائل، فالتثبيتات معزولة نقطة بنقطة: عندئذ يتم التفكيك بعد دراسة.',
+      answerEn: 'On a flat roof — the vast majority of our installations — the system rests on ballasted mounts, with no fixing to the building: it can be dismantled and reinstalled. On a pitched roof, the fixings are sealed point by point: dismantling is then subject to a survey.',
     },
     {
       id: 'toit-abime',

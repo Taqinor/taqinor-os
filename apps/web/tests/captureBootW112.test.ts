@@ -259,6 +259,71 @@ describe('capture — choix explicite du geste (pointer / dessiner)', () => {
     expect(map.cameraTargets[0].zoom).toBe(21);
   });
 
+  it('mode « pointer » : un double-clic reste un simple repère, il n\'ouvre AUCUN contour', async () => {
+    // « Terminer le tracé » est masqué hors du geste « dessiner » : un contour
+    // ouvert par mégarde n'aurait plus de sortie, et sous 3 sommets currentPin()
+    // rend null — la confirmation « C'est bien votre toit ? » disparaissait avec
+    // le repère. En « pointer », le double-clic ne doit donc rien tracer.
+    const init = await loadTool();
+    let last: { pin: { lat: number; lng: number } | null; outline: Array<[number, number]> } | null = null;
+    init({
+      maptilerKey: 'test',
+      reducedMotion: true,
+      captureOnly: true,
+      roofInputMode: () => 'point' as const,
+      onCaptureChange: (s) => { last = s; },
+    });
+    const map = fakeMaps[0];
+    map.fire('load', {});
+    // Un vrai double-clic = deux `click` puis un `dblclick` (MapLibre).
+    map.fire('click', { lngLat: { lng: -7.6, lat: 33.59 }, point: { x: 0, y: 0 } });
+    map.fire('click', { lngLat: { lng: -7.6, lat: 33.59 }, point: { x: 0, y: 0 } });
+    map.fire('dblclick', { lngLat: { lng: -7.6, lat: 33.59 }, point: { x: 0, y: 0 }, preventDefault() {} });
+    expect(last).not.toBeNull();
+    expect(last!.outline).toEqual([]);
+    expect(last!.pin).toEqual({ lat: 33.59, lng: -7.6 });
+  });
+
+  it('mode « dessiner » : le double-clic ferme bien le contour (le geste traceur est intact)', async () => {
+    const init = await loadTool();
+    let last: { pin: { lat: number; lng: number } | null; outline: Array<[number, number]> } | null = null;
+    init({
+      maptilerKey: 'test',
+      reducedMotion: true,
+      captureOnly: true,
+      roofInputMode: () => 'draw' as const,
+      onCaptureChange: (s) => { last = s; },
+    });
+    const map = fakeMaps[0];
+    map.fire('load', {});
+    map.fire('click', { lngLat: { lng: -7.6, lat: 33.59 }, point: { x: 0, y: 0 } });
+    map.fire('click', { lngLat: { lng: -7.599, lat: 33.59 }, point: { x: 0, y: 0 } });
+    map.fire('click', { lngLat: { lng: -7.599, lat: 33.591 }, point: { x: 0, y: 0 } });
+    map.fire('dblclick', { lngLat: { lng: -7.599, lat: 33.591 }, point: { x: 0, y: 0 }, preventDefault() {} });
+    expect(last!.outline.length).toBe(3);
+    const finish = document.getElementById('rp9-finish') as HTMLButtonElement;
+    expect(finish.disabled).toBe(true); // contour fermé : plus rien à terminer
+  });
+
+  it('sans `roofInputMode` (flux historique), le double-clic ouvre TOUJOURS un contour', async () => {
+    const init = await loadTool();
+    let last: { pin: { lat: number; lng: number } | null; outline: Array<[number, number]> } | null = null;
+    init({
+      maptilerKey: 'test',
+      reducedMotion: true,
+      captureOnly: true,
+      onCaptureChange: (s) => { last = s; },
+    });
+    const map = fakeMaps[0];
+    map.fire('load', {});
+    map.fire('click', { lngLat: { lng: -7.6, lat: 33.59 }, point: { x: 0, y: 0 } });
+    map.fire('dblclick', { lngLat: { lng: -7.599, lat: 33.59 }, point: { x: 0, y: 0 }, preventDefault() {} });
+    // Le repère devient le 1ᵉʳ sommet et le double-clic en ajoute un 2ᵉ : sous
+    // 3 sommets, currentPin() rend null — comportement historique, inchangé.
+    expect(last!.outline).toEqual([]);
+    expect(last!.pin).toBeNull();
+  });
+
   it('sans `roofInputMode` (flux historique), un clic pose le repère SANS bouger la caméra', async () => {
     const init = await loadTool();
     let last: { pin: { lat: number; lng: number } | null; outline: Array<[number, number]> } | null = null;

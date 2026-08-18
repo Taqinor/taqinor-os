@@ -103,6 +103,18 @@ describe('WJ35 — CertLogoRow : faits vérifiables uniquement, aucun logo fabri
     expect(CERT_LOGO_ROW).toContain('href={hrefs[c.key]}');
   });
 
+  // `role="listitem"` posé SUR une ancre REMPLACE son rôle natif `link` : sous
+  // NVDA/VoiceOver le badge cliquable était annoncé comme un simple élément de
+  // liste, absent de la liste des liens et de la navigation « lien suivant » —
+  // la règle fondateur (« un badge n'existe que s'il est cliquable ») devenait
+  // invisible exactement là où elle compte. Le rôle vit sur un CONTENEUR.
+  it('l’ancre garde son rôle natif de lien (role="listitem" porté par un conteneur)', () => {
+    expect(CERT_LOGO_ROW).toContain('<div class="cert-row__cell" role="listitem"');
+    expect(CERT_LOGO_ROW).not.toMatch(/<a\s[^>]*role="listitem"/);
+    // …et le badge NON cliquable reste, lui, un vrai élément de liste.
+    expect(CERT_LOGO_ROW).toContain('<div class="cert-row__item" role="listitem"');
+  });
+
   it('[token].astro ne rend QUE des badges cliquables (garanties, fiche panneau, loi 82-21)', () => {
     expect(PROPOSITION).toContain('<CertLogoRow keys={certKeys} hrefs={certHrefs} />');
     expect(PROPOSITION).toContain("panneaux: '/garanties'");

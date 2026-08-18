@@ -1975,6 +1975,22 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   // is simply omitted from the submitted body below — the webhook contract
   // stays unchanged (the field is optional).
 
+  // ——— WJ45: offline banner (navigator.onLine + online/offline) ———
+  // A dropped mobile connection must never look like a silent failure: the
+  // banner appears/disappears live, independently of any submission. It is
+  // ALSO called from the submit `catch` below — the FR/AR variants declare it
+  // here and this page did not, so any failed submission (network cut,
+  // AbortSignal timeout) threw `syncOfflineBanner is not defined` BEFORE the
+  // error message and `setSubmitPending(false)`, leaving the button stuck on
+  // "sending". Same three lines as the FR/AR twins — keep them in sync.
+  const offlineBanner = $('mt-offline-banner');
+  function syncOfflineBanner() {
+    if (offlineBanner) offlineBanner.hidden = navigator.onLine;
+  }
+  syncOfflineBanner();
+  window.addEventListener('online', syncOfflineBanner);
+  window.addEventListener('offline', syncOfflineBanner);
+
   // ——— WJ61 : the wizard's state survives a refresh/back navigation ———
   // A phone call or an accidental back-swipe used to silently destroy
   // everything typed — the costliest UX failure in the funnel. We persist a
@@ -3933,9 +3949,12 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       // industrial site and then switched back to "commercial" (or stepped back
       // to check something) had those answers silently erased from the payload —
       // even though they really gave them. One rule now, the same as
-      // `raisonSociale` above: ANY NON-EMPTY ANSWER GOES. Nothing is fabricated
-      // for it — an untouched field stays `undefined`, and validateLead bounds
-      // and screens each key on its own, independently of the mode.
+      // `raisonSociale` above: ANY NON-EMPTY ANSWER GOES. An untouched INPUT
+      // stays `undefined`, and validateLead bounds and screens each key on its
+      // own, independently of the mode. ONE EXCEPTION, kept gated below:
+      // `heuresPompage` is an <input type="range" value="7">, its `.value`
+      // reads "7" BEFORE any interaction — ungating it would fabricate an
+      // answer nobody gave.
       equipes: equipes || undefined,
       // surface_toiture_m2 = roof surface in the strict sense (the backend
       // distinguishes ground: webhooks.py:303-304) — only send it for a real roof;
@@ -3951,9 +3970,12 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       hmtM: num('mt-hmt') ?? undefined,
       debitM3h: waterUnit === 'm3h' ? (num('mt-water-need') ?? undefined) : undefined,
       besoinM3j: waterUnit === 'm3j' ? (num('mt-water-need') ?? undefined) : undefined,
-      // Ungated like the industrial fields above: an entered pumping-hours value
-      // goes out even if the visitor has since switched profile.
-      heuresPompage: num('mt-heures-pompage') ?? undefined,
+      // The ONLY field that KEEPS its mode gate, deliberately: the others are
+      // inputs that start empty, this one is a slider shipped with value="7"
+      // (#mt-heures-pompage). Without the gate a residential or industrial lead
+      // would carry "7 h/day" nobody entered, and the CRM would show it as a
+      // visitor answer on a villa.
+      heuresPompage: mode === 'agricole' ? (num('mt-heures-pompage') ?? undefined) : undefined,
       // `irrigation` is removed from the funnel (founder cut 18/08) — the
       // water engine falls back to its default efficiency; the sales rep
       // fills it in the ERP.

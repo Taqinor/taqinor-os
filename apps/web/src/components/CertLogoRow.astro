@@ -16,8 +16,14 @@
  * badge pointe). La règle fondateur — « un badge n'existe que s'il est
  * cliquable vers une page réelle et bien remplie » — est appliquée par la page
  * hôte, qui SEULE connaît les cibles pertinentes de son contexte (la
- * proposition client lie garanties → /garanties et IEC → la fiche du panneau
- * réellement devisé, et ne rend pas « Loi 82-21 », faute de page dédiée digne).
+ * proposition client lie garanties → /garanties, IEC → la fiche du panneau
+ * réellement devisé, et « Loi 82-21 » → /loi-82-21, page dédiée FR/EN/AR qui
+ * existe bel et bien). Une page hôte sans cible honnête pour un badge ne le
+ * passe simplement pas dans `keys`.
+ *
+ * ACCESSIBILITÉ : la variante liée enveloppe l'ancre dans un conteneur
+ * `role="listitem"` — poser ce rôle SUR l'ancre écrase son rôle natif `link`,
+ * et le badge sort alors de la liste des liens des lecteurs d'écran.
  */
 import {
   PANEL_PERFORMANCE_WARRANTY_YEARS,
@@ -89,10 +95,19 @@ const items = (keys && keys.length ? keys : CERTS.map((c) => c.key))
       (see v2.css); --i orders the four items left→right. */}
   {items.map((c, i) => (
     hrefs[c.key] ? (
-      <a class="cert-row__item cert-row__item--link" role="listitem" style={`--i:${i}`} href={hrefs[c.key]}>
-        <p class="cert-row__label">{c.label}</p>
-        <p class="cert-row__detail" data-i18n data-fr={c.detail} data-en={c.detailEn} data-ar={c.detailAr}>{c.detail}</p>
-      </a>
+      /* Le rôle de liste vit sur un CONTENEUR, jamais sur l'ancre : posé sur
+         l'ancre, `role="listitem"` REMPLACE son rôle natif `link` — sous
+         NVDA/VoiceOver le badge était annoncé comme un simple élément de liste,
+         absent de la liste des liens de la page et de la navigation « lien
+         suivant ». C'est exactement la règle fondateur (« un badge n'existe que
+         s'il est cliquable ») rendue invisible au lecteur d'écran. Le conteneur
+         porte aussi `--i` : [data-choreo] n'anime que les enfants DIRECTS. */
+      <div class="cert-row__cell" role="listitem" style={`--i:${i}`}>
+        <a class="cert-row__item cert-row__item--link" href={hrefs[c.key]}>
+          <p class="cert-row__label">{c.label}</p>
+          <p class="cert-row__detail" data-i18n data-fr={c.detail} data-en={c.detailEn} data-ar={c.detailAr}>{c.detail}</p>
+        </a>
+      </div>
     ) : (
       <div class="cert-row__item" role="listitem" style={`--i:${i}`}>
         <p class="cert-row__label">{c.label}</p>
@@ -130,10 +145,18 @@ const items = (keys && keys.length ? keys : CERTS.map((c) => c.key))
     padding: 0.9rem 1rem;
     text-align: center;
   }
+  /* Maille de grille du badge cliquable : elle ne porte QUE le rôle de liste et
+     l'index de chorégraphie ; toute l'apparence reste sur l'ancre. */
+  .cert-row__cell {
+    display: block;
+  }
   /* Badge CLIQUABLE (fondateur 2026-08-17) : même bloc, plus un état de survol
-     et un focus visible au clavier — jamais une couleur de lien par défaut. */
+     et un focus visible au clavier — jamais une couleur de lien par défaut.
+     `height: 100%` : l'ancre n'est plus la maille de grille, elle doit donc
+     remplir sa case pour que les badges gardent la même hauteur qu'avant. */
   a.cert-row__item--link {
     display: block;
+    height: 100%;
     color: inherit;
     text-decoration: none;
     transition: border-color 0.15s ease, background-color 0.15s ease;

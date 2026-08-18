@@ -238,4 +238,19 @@ describe('WJ32 — objectionFaq (4–5 objections)', () => {
     const ids = objectionFaq().map((f) => f.id);
     expect(new Set(ids).size).toBe(ids.length);
   });
+
+  // La réponse « déménagement » est lue À CÔTÉ de la fiche technique
+  // structure-fixation, atteignable depuis la même page : celle-ci dit que sur
+  // toiture inclinée les fixations traversent la couverture et sont étanchées
+  // point par point. Promettre une pose lestée démontable à TOUS contredisait
+  // la fiche du même devis — la réponse distingue donc les deux toitures.
+  it('« déménagement » distingue toiture-terrasse et toiture inclinée (FR/EN/AR)', () => {
+    const item = objectionFaq().find((f) => f.id === 'demenagement')!;
+    expect(item.answer).toContain('toiture-terrasse');
+    expect(item.answer).toContain('toiture inclinée');
+    expect(item.answerEn.toLowerCase()).toContain('flat roof');
+    expect(item.answerEn.toLowerCase()).toContain('pitched roof');
+    expect(item.answerAr).toContain('المستوي');
+    expect(item.answerAr).toContain('المائل');
+  });
 });

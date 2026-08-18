@@ -400,7 +400,7 @@ describe('Chantier 2 — tout ce qui est collecté atteint bien l’ERP', () => 
     // profil ne doit plus perdre ses réponses : ce qui est SAISI part, point.
     // (La liste a maigri avec la coupe du 18/08 — weekend / cos φ / groupe
     // électrogène / diesel ne sont tout simplement plus demandés.)
-    const UNGATED = ['equipes', 'surfaceToitureM2', 'ombriere', 'terrain', 'heuresPompage'];
+    const UNGATED = ['equipes', 'surfaceToitureM2', 'ombriere', 'terrain'];
     for (const key of UNGATED) {
       it(`${lang} — ${key} ne dépend plus du profil actif au moment de l'envoi`, () => {
         const line = payloadLine(src, key);
@@ -411,6 +411,38 @@ describe('Chantier 2 — tout ce qui est collecté atteint bien l’ERP', () => 
         expect(line).not.toContain('isProMode(mode)');
       });
     }
+
+    // …mais le dégattage s'arrête EXACTEMENT là où il fabriquerait une réponse.
+    // `heuresPompage` n'est pas une saisie vide par défaut : c'est un curseur
+    // <input type="range" value="7">, donc sa `.value` vaut « 7 » même si le
+    // panneau agricole n'a jamais été ouvert. Sans gate, un lead résidentiel
+    // partait avec « 7 h/j » que personne n'avait saisi, et le CRM l'affichait
+    // comme une réponse du visiteur (webhooks _num('heuresPompage') → note
+    // chatter + section « Réponses du questionnaire web »).
+    it(`${lang} — heuresPompage RESTE gaté sur le mode agricole (le curseur part à 7)`, () => {
+      const line = payloadLine(src, 'heuresPompage');
+      expect(line.length).toBeGreaterThan(0);
+      expect(line).toContain("mode === 'agricole'");
+      // …et le curseur porte bien la valeur par défaut qui rend ce gate
+      // nécessaire (si un jour l'attribut disparaît, ce test le dira).
+      const slider = stripHtmlComments(src).match(/<input id="mt-heures-pompage"[^>]*>/);
+      expect(slider).not.toBeNull();
+      expect(slider?.[0]).toContain('type="range"');
+      expect(slider?.[0]).toContain('value="7"');
+    });
+
+    // Une fonction appelée dans le `catch` de soumission doit être DÉCLARÉE
+    // dans la même page : la variante EN appelait `syncOfflineBanner()` sans
+    // jamais la définir (FR/AR l'avaient), donc toute soumission en échec
+    // (coupure réseau, AbortSignal.timeout) levait un ReferenceError AVANT le
+    // message d'erreur et `setSubmitPending(false)` — bouton figé sur « envoi
+    // en cours », sans un mot au visiteur.
+    it(`${lang} — syncOfflineBanner est déclarée dans la page qui l'appelle`, () => {
+      const code = stripLineComments(stripHtmlComments(src));
+      expect(code).toContain('syncOfflineBanner()');
+      expect(code).toContain('function syncOfflineBanner()');
+      expect(code).toContain('id="mt-offline-banner"');
+    });
 
     it(`${lang} — mais le gate SÉMANTIQUE sur le type de surface est conservé`, () => {
       // surface_toiture_m2 = surface de TOIT au sens strict : une ombrière ou un
