@@ -220,8 +220,12 @@ class TestSeedCatalogue(TestCase):
         self.assertEqual(p.prix_achat, Decimal('0'))
         self.assertEqual(p.categorie.nom, 'Onduleurs hybrides')
         self.assertEqual(p.marque, 'Deye')
-        # Modèle SUPPOSÉ (non tranché par le fondateur, à la différence du 15K).
-        self.assertIn('Modèle supposé : Deye SUN-20K-SG05LP3-EU-SM2', p.description)
+        # Modèle CONFIRMÉ fondateur (18/08/2026 : « there is a deye 15kw and
+        # 20kw with low voltage ») — même marquage que le 15K LV, et c'est
+        # cette mention qui autorise le moteur électrique à NOMMER l'appareil.
+        self.assertIn('Modèle confirmé fondateur : Deye SUN-20K-SG05LP3-EU-SM2',
+                      p.description)
+        self.assertNotIn('Modèle supposé', p.description)
         # Prix vide → exclu du chiffrage automatique (garde des pompes OSP).
         self.assertFalse(_has_price(p))
         # Basse tension : la plage batterie 48 V de la famille SG05LP3.

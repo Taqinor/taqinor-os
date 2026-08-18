@@ -288,7 +288,9 @@ CABLES_PROTECTIONS_VIDES = [
 # INCOMPATIBLE avec les batteries Dyness 51,2 V de la maison. Sans son jumeau
 # basse tension, un devis 20 kW « avec batterie » n'avait aucun onduleur
 # apparaissable au catalogue. Même patron exact que le 15 kW : SKU et nom
-# distincts, prix VIDES (jamais inventés), modèle « supposé — à confirmer ».
+# distincts et prix VIDES (jamais inventés). Les DEUX paliers basse tension
+# (15 ET 20 kW) sont des produits que le fondateur porte RÉELLEMENT — confirmé
+# le 18/08/2026 — d'où « Modèle confirmé fondateur » sur les deux.
 # (nom, sku, qte, seuil)
 ONDULEUR_DEYE_15K_LV_VIDE = [
     ('Onduleur hybride Deye 15kW Triphasé Basse Tension', 'OND-DEY-15K-LV', 500, 5),
