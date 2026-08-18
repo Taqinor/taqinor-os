@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 9405, operations: 16914, components: 4937}
+counts: {paths: 9407, operations: 16918, components: 4939}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -8418,6 +8418,8 @@ operations:
 - get /api/django/ventes/parametrages-relance-client/{id}/ -> django_ventes_parametrages_relance_client_retrieve
 - patch /api/django/ventes/parametrages-relance-client/{id}/ -> django_ventes_parametrages_relance_client_partial_update
 - put /api/django/ventes/parametrages-relance-client/{id}/ -> django_ventes_parametrages_relance_client_update
+- get /api/django/ventes/parametres-gammes/ -> django_ventes_parametres_gammes_retrieve
+- patch /api/django/ventes/parametres-gammes/ -> django_ventes_parametres_gammes_partial_update
 - get /api/django/ventes/presets/ -> django_ventes_presets_list
 - delete /api/django/ventes/presets/{id}/ -> django_ventes_presets_destroy
 - get /api/django/ventes/prix-applicable/ -> django_ventes_prix_applicable_retrieve
@@ -16867,6 +16869,8 @@ operations:
 - get /api/v1/ventes/parametrages-relance-client/{id}/ -> v1_ventes_parametrages_relance_client_retrieve
 - patch /api/v1/ventes/parametrages-relance-client/{id}/ -> v1_ventes_parametrages_relance_client_partial_update
 - put /api/v1/ventes/parametrages-relance-client/{id}/ -> v1_ventes_parametrages_relance_client_update
+- get /api/v1/ventes/parametres-gammes/ -> v1_ventes_parametres_gammes_retrieve
+- patch /api/v1/ventes/parametres-gammes/ -> v1_ventes_parametres_gammes_partial_update
 - get /api/v1/ventes/presets/ -> v1_ventes_presets_list
 - delete /api/v1/ventes/presets/{id}/ -> v1_ventes_presets_destroy
 - get /api/v1/ventes/prix-applicable/ -> v1_ventes_prix_applicable_retrieve
@@ -19802,6 +19806,7 @@ components:
 - ParametresDouane
 - ParametresEducation
 - ParametresEducationRequest
+- ParametresGammes
 - ParametresLocation
 - ParametresLocationRequest
 - ParametresMRP
@@ -20406,6 +20411,7 @@ components:
 - PatchedParametresCPQRequest
 - PatchedParametresDouaneRequest
 - PatchedParametresEducationRequest
+- PatchedParametresGammesRequest
 - PatchedParametresLocationRequest
 - PatchedParametresMarketingRequest
 - PatchedParametresPosRequest
