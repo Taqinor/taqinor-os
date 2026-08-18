@@ -610,6 +610,91 @@ def _safe_sld_svg(devis):
         return None
 
 
+#: Décision fondateur 2026-08-18 — LE DÉTAIL ÉLECTRIQUE EST EXPOSÉ AU CLIENT,
+#: SANS PRIX. Le contrat interne ``contract_samples/conception_electrique.json``
+#: porte déjà zéro montant (le moteur ``core.electrique`` ignore jusqu'à
+#: l'existence d'un prix), mais il porte AUSSI de l'ingénierie qui n'est pas
+#: destinée au client : la nomenclature d'achat (``bom``), les paramètres
+#: d'entrée du calcul (``parametres``), les verdicts de conformité et les ratios
+#: de dimensionnement, les tensions de chaîne aux températures extrêmes, la
+#: chute de tension par liaison.
+#:
+#: Ces trois tuples sont donc une WHITELIST au sens strict — même discipline que
+#: ``_mode_kpis`` : on ÉNUMÈRE ce qui sort, on ne filtre pas ce qui reste. Un
+#: champ ajouté demain au contrat interne n'atteint le client que si quelqu'un
+#: l'écrit ici, volontairement. Un test l'arme (``test_pv81_proposition_sld``).
+_PUBLIC_CHAINE = ('pan', 'mppt', 'nb_modules')
+#: ``repere`` + ``designation`` + ``calibre`` : ce qui est écrit sur l'organe et
+#: sur le schéma, donc ce que le client peut aller vérifier dans son coffret.
+_PUBLIC_PROTECTION = ('repere', 'designation', 'calibre', 'quantite')
+#: ``liaison`` = le libellé du tronçon (« Chaîne 1 → coffret DC ») : sans lui, une
+#: section et une longueur ne veulent rien dire sur une page client.
+_PUBLIC_CABLE = ('liaison', 'section_mm2', 'longueur_m')
+
+
+def _liste_blanche(source, champs):
+    """Projette une liste de dicts sur ``champs`` — valeur absente = clé OMISE.
+
+    Aucune valeur inventée, aucun zéro de remplissage : la page web applique la
+    règle dure « valeur absente ⇒ rien affiché », elle a donc besoin que la clé
+    manque plutôt que de valoir ``None``.
+    """
+    sortie = []
+    for element in source if isinstance(source, list) else []:
+        if not isinstance(element, dict):
+            continue
+        propre = {c: element[c] for c in champs
+                  if element.get(c) is not None}
+        if propre:
+            sortie.append(propre)
+    return sortie
+
+
+def _conception_electrique_publique(devis):
+    """Le détail électrique CLIENT-SAFE du devis, ou ``None``.
+
+    Même portail que ``_safe_sld_svg`` : sans ``Devis.electrical_design``
+    (PV41), on retourne ``None`` — le client ne voit un détail que lorsque
+    l'étude a réellement été faite, jamais une composition fabriquée pour
+    remplir la page.
+
+    Ce que le client obtient, et RIEN d'autre :
+      · ``chaines``     — combien de modules sur quel MPPT, pan par pan ;
+      · ``protections`` — les organes réellement posés : repère, désignation,
+                          calibre, quantité ;
+      · ``cables``      — la section et la longueur de chaque liaison.
+
+    Ce qui NE SORT JAMAIS : ``bom`` (nomenclature d'achat), ``parametres``
+    (entrées du calcul), ``conformite``/``ratio_*`` (verdicts d'ingénierie),
+    les tensions de chaîne et la chute de tension par liaison — et, cela va de
+    soi, aucun montant (règle #4 ; le moteur électrique n'en connaît aucun).
+
+    Lecture PURE : rien n'est écrit. Jamais bloquant : une étude illisible rend
+    ``None``, pas une erreur 500.
+    """
+    try:
+        from .electrical_service import conception_electrique_stockee
+
+        design = conception_electrique_stockee(devis)
+        if not design:
+            return None
+        public = {
+            'chaines': _liste_blanche(design.get('chaines'), _PUBLIC_CHAINE),
+            'protections': _liste_blanche(design.get('protections'),
+                                          _PUBLIC_PROTECTION),
+            'cables': _liste_blanche(design.get('cables'), _PUBLIC_CABLE),
+        }
+        # Une étude qui ne dit rien de montrable ne mérite pas un bloc vide.
+        if not any(public.values()):
+            return None
+        return public
+    except Exception:  # noqa: BLE001 — un détail absent ne casse pas la page
+        logger.warning(
+            "Détail électrique public indisponible pour le devis %s",
+            getattr(devis, "pk", None))
+        return None
+
+
 def _variant_summaries(devis) -> list:
     """QJ15 — côte-à-côte : résumé minimal de chaque variante du devis.
 
@@ -858,6 +943,13 @@ def proposal_data(request, token):
             # None tant que la conception électrique (PV41) n'a pas été faite :
             # le client ne voit un schéma que lorsqu'il en existe un vrai.
             'sld_svg': _safe_sld_svg(devis),
+            # Fondateur 2026-08-18 — le DÉTAIL ÉLECTRIQUE, exposé au client
+            # SANS PRIX : chaînes (modules/MPPT), protections nominatives
+            # (repère, désignation, calibre, quantité) et câbles (section,
+            # longueur). Whitelist STRICTE (_PUBLIC_CHAINE/_PROTECTION/_CABLE) :
+            # ni nomenclature d'achat, ni paramètres internes, ni montant.
+            # None tant que la conception électrique (PV41) n'a pas été faite.
+            'conception_electrique': _conception_electrique_publique(devis),
             'option_totals': {
                 'sans_batterie': data.get('totaux_sans'),
                 'avec_batterie': data.get('totaux_avec'),

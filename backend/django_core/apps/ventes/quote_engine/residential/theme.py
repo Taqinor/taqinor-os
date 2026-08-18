@@ -229,24 +229,54 @@ def join_meta(*parts, sep=" · ") -> str:
     return sep.join(out)
 
 
+#: Organes d'appareillage — communs aux deux côtés (continu et alternatif).
+_ORGANES_PROTECTION = (
+    "tableau", "coffret", "parafoudre", "sectionneur", "disjoncteur",
+    "différentiel", "differentiel", "ddr", "interrupteur", "protection",
+    "fusible",
+)
+
+#: Marqueurs du CÔTÉ CONTINU. Testés en premier : un coffret combiné
+#: « AC/DC » est majoritairement le poste photovoltaïque, et c'est aussi la
+#: cible de l'alias de l'ancien slug `tableau-protection-ac-dc`.
+_MARQUEURS_DC = ("dc", "continu", "gpv", "string", "chaîne", "chaine")
+
+
 def fiche_slug(designation, marque="") -> str:
     """Map an equipment line to its fiche-technique page slug on taqinor.ma.
 
-    Keyword-classified on the designation + brand, EXACTLY mirroring the slugs
-    built by docs/WEB_PLAN.md W141–W145 (the /produits/<slug> pages), so a quote
-    link always points at a real datasheet page. Returns '' when no datasheet is
-    known (TAQINOR's own structures/socles/installation/transport/services)."""
+    CONTRAT UNIQUE (fondateur 2026-08-18). Cette fonction et son jumeau web
+    ``apps/web/src/lib/ficheMatcher.ts::ficheSlugPourLigne`` doivent rendre LE
+    MÊME slug pour la même désignation — sinon le PDF et la page proposition
+    envoient le client sur deux fiches différentes. Le porteur partagé de cette
+    obligation est ``apps/ventes/contract_samples/ligne_fiche_mapping.json``,
+    que les DEUX tests de conformité lisent (ici
+    ``tests/test_quote_engine.py::test_fiche_slug_mapping``).
+
+    Keyword-classified on the designation + brand. L'ORDRE est celui du jumeau
+    web : la PROTECTION passe avant la production, parce qu'un « coffret DC pour
+    onduleur » contient aussi un mot de production et que le poste le plus précis
+    doit gagner. Returns '' when no datasheet is known (pose, mise en service,
+    étude, transport, services).
+    """
     blob = f"{designation} {marque}".lower()
-    if "panneau" in blob or "panel" in blob:
-        return "jinko-710" if "jinko" in blob else "canadian-solar-710"
+
+    # ── Protection : le côté continu d'abord (il porte un marqueur explicite) ──
+    if any(o in blob for o in _ORGANES_PROTECTION):
+        if any(m in blob for m in _MARQUEURS_DC):
+            return "protection-dc"
+        return "protection-ac"
+
+    if "batterie" in blob or "battery" in blob:
+        return "batterie-dyness"
     if "onduleur" in blob or "inverter" in blob:
         if "hybride" in blob or "hybrid" in blob:
             return "onduleur-deye-hybride"
         if "réseau" in blob or "reseau" in blob or "injection" in blob:
             return "onduleur-huawei-reseau"
         return "onduleur-huawei-reseau"
-    if "batterie" in blob or "battery" in blob:
-        return "batterie-dyness"
+    if "panneau" in blob or "panel" in blob:
+        return "jinko-710" if "jinko" in blob else "canadian-solar-710"
     # QF9 — le Smart Meter et la Clé Wifi (dongle) sont des accessoires Huawei :
     # le builder retire déjà ces lignes d'un devis non-Huawei. Garde-fou : ne
     # renvoyer leur fiche Huawei que si la ligne est bien Huawei, pour qu'une
@@ -255,6 +285,21 @@ def fiche_slug(designation, marque="") -> str:
         return "smart-meter-huawei" if "huawei" in blob else ""
     if "dongle" in blob or "wifi" in blob:
         return "wifi-dongle-huawei" if "huawei" in blob else ""
+    # ── Postes de pose : accessoires AVANT câblage (la ligne catalogue
+    # générique « Accessoires » désigne les fournitures de pose, pas le câble) ──
+    if any(mot in blob for mot in (
+            "accessoire", "goulotte", "presse-étoupe", "presse etoupe",
+            "étoupe", "etoupe", "chemin de câble", "chemin de cable",
+            "gaine", "visserie", "mise à la terre", "mise a la terre")):
+        return "accessoires-pose"
+    if any(mot in blob for mot in (
+            "câblage", "cablage", "câble", "cable", "connecteur", "mc4",
+            "h1z2z2")):
+        return "cablage"
+    if any(mot in blob for mot in (
+            "structure", "rail", "fixation", "lestage", "socle", "châssis",
+            "chassis", "plot")):
+        return "structure-fixation"
     return ""
 
 

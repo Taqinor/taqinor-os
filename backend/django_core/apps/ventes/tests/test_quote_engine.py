@@ -1737,22 +1737,83 @@ class TestResidentialRenderer(TestCase):
                      'onduleur-deye-hybride', 'batterie-dyness',
                      'smart-meter-huawei', 'wifi-dongle-huawei'):
             self.assertIn(f'/produits/{slug}', html)
-        # an own-component line is not turned into a datasheet link
-        self.assertNotIn('produits/structures', html)
+        # Découpage fondateur 2026-08-18 : la structure a désormais SA fiche
+        # explicative (`structure-fixation`) — mais aucune URL de fiche n'est
+        # inventée à partir du libellé de la ligne (« produits/structures »
+        # n'existe pas et ne doit jamais apparaître).
+        self.assertNotIn('produits/structures/', html)
+        self.assertNotIn('produits/structures-acier', html)
 
     def test_fiche_slug_mapping(self):
+        """CONTRAT UNIQUE « ligne → fiche » — la moitié DJANGO (PACT10).
+
+        Le fichier partagé ``contract_samples/ligne_fiche_mapping.json`` est LE
+        porteur de l'obligation : la moitié web (apps/web/tests/
+        ficheMatcherWJ131.test.ts) lit EXACTEMENT le même fichier et vérifie son
+        propre matcher dessus. Si les deux tests passent, le PDF et la page
+        proposition envoient forcément le client sur la MÊME fiche — c'est ce
+        lien-là qui manquait le 03/08/2026.
+        """
+        import json
+        import os
+
         from apps.ventes.quote_engine.residential import theme
-        self.assertEqual(theme.fiche_slug('Panneau Canadien Solar 710W'),
-                         'canadian-solar-710')
-        self.assertEqual(theme.fiche_slug('Panneau Jinko 710W'), 'jinko-710')
-        self.assertEqual(theme.fiche_slug('Onduleur hybride Deye 10kW'),
-                         'onduleur-deye-hybride')
-        self.assertEqual(theme.fiche_slug('Onduleur réseau Huawei 10kW'),
-                         'onduleur-huawei-reseau')
-        self.assertEqual(theme.fiche_slug('Batterie Dyness 10 kWh'),
-                         'batterie-dyness')
-        self.assertEqual(theme.fiche_slug('Structures acier'), '')
-        self.assertEqual(theme.fiche_slug('Installation'), '')
+
+        contrat_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            'contract_samples', 'ligne_fiche_mapping.json')
+        with open(contrat_path, encoding='utf-8') as fh:
+            contrat = json.load(fh)
+
+        for designation, attendu in contrat['exemple'].items():
+            self.assertEqual(theme.fiche_slug(designation), attendu,
+                             f'contrat rompu sur « {designation} »')
+
+        # Le découpage fondateur du 18/08 : 8 familles résidentielles + 3
+        # postes de grands projets. Un ajout silencieux casse ici.
+        decoupage = contrat['decoupage']
+        self.assertEqual(len(decoupage['residentiel']), 8)
+        self.assertEqual(len(decoupage['grands_projets']), 3)
+
+        # Les postes qui ne sont pas du MATÉRIEL n'ont pas de fiche : pose,
+        # étude, transport, services.
+        for designation in ('Installation', 'Transport',
+                            'Main-d’œuvre et mise en service',
+                            'Étude technique'):
+            self.assertEqual(theme.fiche_slug(designation), '', designation)
+
+    def test_fiche_slug_scinde_protection_dc_et_ac(self):
+        """Le continu et l'alternatif ne se coupent pas de la même façon : leurs
+        deux fiches sont distinctes, et un coffret combiné va du côté DC (la
+        moitié spécifiquement photovoltaïque, cible de l'alias de l'ancien
+        slug `tableau-protection-ac-dc`)."""
+        from apps.ventes.quote_engine.residential import theme
+        for designation in ('Tableau De Protection AC/DC', 'Coffret DC 2 strings',
+                            'Parafoudre DC type 2 1000 V',
+                            'Sectionneur DC 1000 V 25 A',
+                            'Fusible gPV 1000 VDC 15 A'):
+            self.assertEqual(theme.fiche_slug(designation), 'protection-dc',
+                             designation)
+        for designation in ('Coffret AC', 'Parafoudre AC type 2',
+                            'Disjoncteur AC courbe C 16 A monophasé',
+                            'Différentiel (DDR) type A 300 mA 40 A'):
+            self.assertEqual(theme.fiche_slug(designation), 'protection-ac',
+                             designation)
+
+    def test_fiche_slug_separe_cablage_et_accessoires_de_pose(self):
+        """Le CÂBLE d'un côté, ce qui le porte de l'autre — le client payait les
+        deux sur une seule ligne « Accessoires » sans savoir ce qu'elle
+        contenait."""
+        from apps.ventes.quote_engine.residential import theme
+        self.assertEqual(
+            theme.fiche_slug('Câble solaire H1Z2Z2-K 6 mm² (au mètre)'),
+            'cablage')
+        self.assertEqual(theme.fiche_slug('Connecteurs MC4'), 'cablage')
+        self.assertEqual(theme.fiche_slug('Accessoires'), 'accessoires-pose')
+        self.assertEqual(theme.fiche_slug('Presse-étoupes'), 'accessoires-pose')
+        self.assertEqual(theme.fiche_slug('Structures aluminium'),
+                         'structure-fixation')
+        self.assertEqual(theme.fiche_slug('Socles'), 'structure-fixation')
 
     def test_scan_to_sign_qr_when_qrcode_available(self):
         """The premium scan-to-sign QR renders on page 3 (qrcode is a pinned

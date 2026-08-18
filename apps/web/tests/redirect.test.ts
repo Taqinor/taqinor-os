@@ -5,6 +5,8 @@ import { describe, expect, it } from 'vitest';
 import { canonicalTarget, canonicalRedirectStatus, CANONICAL_ORIGIN } from '../worker/canonical.mjs';
 // @ts-expect-error — module JS pur sans déclaration de types (copié dans dist/server au build)
 import { pathRedirect, trailingSlashRedirect } from '../worker/redirects.mjs';
+// Le catalogue des fiches déclare les MÊMES alias que la table du Worker.
+import { FICHE_ALIASES } from '../src/lib/fiches';
 
 describe('canonicalTarget', () => {
   it('redirige la racine workers.dev vers taqinor.ma', () => {
@@ -162,5 +164,53 @@ describe('trailingSlashRedirect — forme canonique = avec barre finale', () => 
       target: 'https://taqinor.ma/preview/toiture-3d-pro-3/',
       status: 301,
     });
+  });
+});
+
+// ── Fiches techniques : les ANCIENS slugs atterrissent (fondateur 18/08/2026) ─
+//
+// Le découpage en 11 familles a éclaté `tableau-protection-ac-dc` en deux
+// fiches et renommé `accessoires-cablage`. Des devis PDF et des e-mails DÉJÀ
+// ENVOYÉS portent les anciennes URL : un 404 chez un client qui vient de
+// recevoir sa proposition serait le pire moment possible.
+//
+// DEUX PORTEURS, UNE SEULE VÉRITÉ : `FICHE_ALIASES` (résolution côté code) et
+// la table `EXACT` du Worker (le 301 avant Astro). Ce test les compare — en
+// ajouter un d'un côté sans l'autre casse ici, pas en production.
+describe('pathRedirect — anciens slugs de fiches techniques', () => {
+  it('l’ancien coffret combiné atterrit sur la fiche protection DC', () => {
+    expect(pathRedirect('https://taqinor.ma/produits/tableau-protection-ac-dc')).toEqual({
+      target: 'https://taqinor.ma/produits/protection-dc',
+      status: 301,
+    });
+  });
+
+  it('les anciens accessoires de câblage atterrissent sur la fiche câblage', () => {
+    expect(pathRedirect('https://taqinor.ma/produits/accessoires-cablage')).toEqual({
+      target: 'https://taqinor.ma/produits/cablage',
+      status: 301,
+    });
+  });
+
+  it('la barre finale et la querystring d’un vieux lien sont tolérées/préservées', () => {
+    expect(pathRedirect('https://taqinor.ma/produits/accessoires-cablage/?utm_source=devis')).toEqual({
+      target: 'https://taqinor.ma/produits/cablage?utm_source=devis',
+      status: 301,
+    });
+  });
+
+  it('les slugs ACTUELS ne sont jamais redirigés', () => {
+    for (const slug of ['protection-dc', 'protection-ac', 'cablage', 'accessoires-pose', 'structure-fixation']) {
+      expect(pathRedirect(`https://taqinor.ma/produits/${slug}`), slug).toBeNull();
+    }
+  });
+
+  it('le Worker et le catalogue déclarent EXACTEMENT les mêmes alias', () => {
+    for (const [ancien, actuel] of Object.entries(FICHE_ALIASES)) {
+      expect(
+        pathRedirect(`https://taqinor.ma/produits/${ancien}`),
+        `alias « ${ancien} » absent de worker/redirects.mjs`,
+      ).toEqual({ target: `https://taqinor.ma/produits/${actuel}`, status: 301 });
+    }
   });
 });

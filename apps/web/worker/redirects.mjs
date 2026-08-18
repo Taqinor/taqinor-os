@@ -23,6 +23,16 @@ const EXACT = {
   '/mentions': { to: '/mentions-legales', status: 301 },
   '/confidentialite': { to: '/politique-de-confidentialite', status: 301 },
   '/privacy': { to: '/politique-de-confidentialite', status: 301 },
+  // ── Fiches techniques : ANCIENS SLUGS (découpage fondateur du 18/08/2026) ──
+  // `tableau-protection-ac-dc` a été éclaté en deux fiches (protection DC et
+  // protection AC) et `accessoires-cablage` renommé `cablage`. Des devis PDF et
+  // des e-mails DÉJÀ ENVOYÉS portent les anciennes URL : elles doivent atterrir,
+  // pas tomber en 404. Le coffret combiné pointe sur la moitié spécifiquement
+  // photovoltaïque, qui renvoie vers la moitié AC.
+  // MIROIR OBLIGATOIRE de `FICHE_ALIASES` (src/lib/fiches.ts) — `tests/redirect.test.ts`
+  // compare les deux listes : en ajouter un ici sans l'ajouter là-bas casse le test.
+  '/produits/tableau-protection-ac-dc': { to: '/produits/protection-dc', status: 301 },
+  '/produits/accessoires-cablage': { to: '/produits/cablage', status: 301 },
 };
 
 /**

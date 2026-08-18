@@ -20,13 +20,24 @@ from django.test import Client as DjangoClient, TestCase
 from apps.crm.models import Client
 from apps.stock.models import Produit
 from apps.ventes.models import Devis, LigneDevis, ShareLink
-from apps.ventes.public_views import _safe_sld_svg
+from apps.ventes.public_views import (
+    _conception_electrique_publique,
+    _PUBLIC_CABLE,
+    _PUBLIC_CHAINE,
+    _PUBLIC_PROTECTION,
+    _safe_sld_svg,
+)
 from authentication.models import Company
 
 User = get_user_model()
 
 
-class PropositionSldTest(TestCase):
+class MontageDevisElectrique:
+    """Montage PARTAGÉ (pas un TestCase) : un devis réel avec sa toiture, son
+    panneau et son onduleur, plus les deux raccourcis « concevoir » et
+    « jeton ». En faire un mixin plutôt qu'une classe parente évite qu'une
+    sous-classe RE-JOUE les tests de l'autre."""
+
     def setUp(self):
         self.company = Company.objects.create(nom="Acme", slug="pv81-acme")
         self.crm_client = Client.objects.create(
@@ -64,6 +75,8 @@ class PropositionSldTest(TestCase):
             company=self.company, devis=self.devis, token=jeton)
         return jeton
 
+
+class PropositionSldTest(MontageDevisElectrique, TestCase):
     def test_none_sans_conception_electrique(self):
         self.assertIsNone(self.devis.electrical_design)
         self.assertIsNone(_safe_sld_svg(self.devis))
@@ -113,6 +126,122 @@ class PropositionSldTest(TestCase):
         self.devis.refresh_from_db()
         statut, empreinte = self.devis.statut, self.devis.electrical_design_hash
         _safe_sld_svg(self.devis)
+        self.devis.refresh_from_db()
+        self.assertEqual(self.devis.statut, statut)
+        self.assertEqual(self.devis.electrical_design_hash, empreinte)
+        self.assertEqual(self.devis.lignes.count(), 2)
+
+
+class ConceptionElectriquePubliqueTest(MontageDevisElectrique, TestCase):
+    """Décision fondateur 2026-08-18 — LE DÉTAIL ÉLECTRIQUE EST EXPOSÉ AU CLIENT.
+
+    Le client paie « Tableau De Protection AC/DC » et « Accessoires » sans
+    jamais savoir ce qu'il y a dedans. Le bloc `conception_electrique` de la
+    charge utile publique le lui dit — chaînes, organes nominatifs avec leurs
+    calibres, sections et longueurs de câble — et RIEN d'autre.
+
+    Trois garanties, exactement celles demandées :
+      1. le bloc apparaît quand l'étude électrique existe ;
+      2. il est absent (None) sinon — jamais une composition fabriquée ;
+      3. aucun champ hors liste blanche ne franchit la frontière publique.
+
+    Réutilise le montage de PropositionSldTest (même devis, même jeton).
+    """
+
+    #: Ce qui ne doit JAMAIS sortir : nomenclature d'achat, paramètres du
+    #: calcul, verdicts d'ingénierie, tensions de chaîne, chute de tension.
+    INTERDITS_RACINE = ('bom', 'parametres', 'conformite',
+                        'ratio_dc_ac', 'ratio_ac_dc', 'note')
+
+    def test_absent_sans_conception_electrique(self):
+        self.assertIsNone(self.devis.electrical_design)
+        self.assertIsNone(_conception_electrique_publique(self.devis))
+
+    def test_present_apres_conception(self):
+        self._concevoir()
+        bloc = _conception_electrique_publique(self.devis)
+        self.assertIsNotNone(bloc)
+        self.assertEqual(set(bloc), {'chaines', 'protections', 'cables'})
+        # Les trois clés sont TOUJOURS là (une page qui ferait `.map()` sur
+        # `undefined` planterait), et l'étude dit au moins quelque chose.
+        for cle in ('chaines', 'protections', 'cables'):
+            self.assertIsInstance(bloc[cle], list)
+        self.assertTrue(any(bloc.values()), 'bloc public entièrement vide')
+
+    def test_aucun_champ_hors_liste_blanche(self):
+        self._concevoir()
+        bloc = _conception_electrique_publique(self.devis)
+        interne = self.devis.electrical_design
+        # (a) rien de l'étude interne ne s'invite à la racine du bloc public…
+        for cle in self.INTERDITS_RACINE:
+            self.assertNotIn(cle, bloc, f"« {cle} » ne doit pas être publié")
+        # …et ces clés existent BIEN dans le contrat interne : le test prouve
+        # donc un retrait, pas une absence de départ.
+        self.assertIn('bom', interne)
+        self.assertIn('parametres', interne)
+        # (b) chaque élément est projeté sur SA liste blanche, clé par clé.
+        for chaine in bloc['chaines']:
+            self.assertTrue(set(chaine) <= set(_PUBLIC_CHAINE), chaine)
+        for organe in bloc['protections']:
+            self.assertTrue(set(organe) <= set(_PUBLIC_PROTECTION), organe)
+        for cable in bloc['cables']:
+            self.assertTrue(set(cable) <= set(_PUBLIC_CABLE), cable)
+        # (c) les grandeurs d'ingénierie par élément restent côté vendeur.
+        for chaine in bloc['chaines']:
+            for cle in ('vmp_froid_v', 'voc_froid_v', 'vmp_chaud_v', 'conforme'):
+                self.assertNotIn(cle, chaine)
+        for cable in bloc['cables']:
+            self.assertNotIn('chute_pct', cable)
+
+    def test_aucun_prix_dans_le_bloc_public(self):
+        self._concevoir()
+        texte = str(_conception_electrique_publique(self.devis)).lower()
+        for interdit in ('prix', 'marge', 'mad', 'ttc', 'remise', 'total',
+                         'achat'):
+            self.assertNotIn(interdit, texte)
+        # Les montants du devis, tels qu'ils s'écriraient s'ils fuyaient.
+        for montant in ('1234', '12345', '1 234', '12 345'):
+            self.assertNotIn(montant, texte)
+
+    def test_servi_par_le_jeton_public(self):
+        self._concevoir()
+        resp = DjangoClient().get(
+            '/api/django/public/proposal/%s/data/' % self._token())
+        self.assertEqual(resp.status_code, 200)
+        bloc = resp.json()['conception_electrique']
+        self.assertIsNotNone(bloc)
+        self.assertEqual(set(bloc), {'chaines', 'protections', 'cables'})
+
+    def test_cle_toujours_presente_meme_sans_design(self):
+        # Une clé absente forcerait la page publique à deviner : elle vaut
+        # None, jamais rien.
+        resp = DjangoClient().get(
+            '/api/django/public/proposal/%s/data/' % self._token())
+        self.assertEqual(resp.status_code, 200)
+        charge = resp.json()
+        self.assertIn('conception_electrique', charge)
+        self.assertIsNone(charge['conception_electrique'])
+
+    def test_valeur_absente_omise_jamais_un_zero(self):
+        # Le contrat interne peut porter un None (grandeur non calculée) : la
+        # clé DISPARAÎT du bloc public plutôt que de valoir 0 — la page web
+        # applique la règle dure « valeur absente ⇒ rien affiché ».
+        self._concevoir()
+        design = dict(self.devis.electrical_design)
+        design['cables'] = [{'liaison': 'Chaîne 1 → coffret DC',
+                             'longueur_m': None, 'section_mm2': 6,
+                             'chute_pct': 0.62}]
+        self.devis.electrical_design = design
+        self.devis.save(update_fields=['electrical_design'])
+        cable = _conception_electrique_publique(self.devis)['cables'][0]
+        self.assertEqual(cable, {'liaison': 'Chaîne 1 → coffret DC',
+                                 'section_mm2': 6})
+
+    def test_lecture_pure_aucune_ecriture_du_bloc_public(self):
+        self._concevoir()
+        self.devis.refresh_from_db()
+        statut, empreinte = self.devis.statut, self.devis.electrical_design_hash
+        _conception_electrique_publique(self.devis)
         self.devis.refresh_from_db()
         self.assertEqual(self.devis.statut, statut)
         self.assertEqual(self.devis.electrical_design_hash, empreinte)

@@ -179,6 +179,16 @@ export interface ProposalResponse {
    */
   sld_svg?: string | null;
   /**
+   * 2026-08-18 — DÉTAIL ÉLECTRIQUE public (chaînes, protections nominatives,
+   * câbles), whitelist STRICTE côté serveur
+   * (`public_views._conception_electrique_publique`) : jamais la nomenclature
+   * d'achat, jamais les paramètres de calcul, jamais un montant. `null`/absent
+   * tant que l'étude électrique n'existe pas — aucun dépliant ne s'affiche
+   * alors. Typé `unknown` À DESSEIN : il n'entre dans la page qu'à travers
+   * `parseConceptionElectrique`, qui valide et OMET toute valeur absente.
+   */
+  conception_electrique?: unknown;
+  /**
    * WJ32 — bloc de financement backend (QJ12, `compute_financing_block`),
    * DIFFÉRENT du calcul générique `financingComparison` ci-dessus : porte un
    * programme réel (Tatwir Croissance Verte / ISTIDAMA…) et une comparaison
@@ -705,6 +715,231 @@ export function sldSvgFilename(reference: string | null | undefined): string {
   const raw = (reference ?? '').trim();
   const safe = raw.replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '');
   return `schema-electrique-${safe || 'devis'}.svg`;
+}
+
+// ── 2026-08-18 · « Dans votre installation » — le DÉTAIL ÉLECTRIQUE, SANS PRIX ─
+//
+// Décision fondateur : le client voit enfin ce que contiennent les lignes qu'il
+// paie. Le backend (`public_views._conception_electrique_publique`) expose un
+// bloc `conception_electrique` sur liste blanche STRICTE — chaînes, protections
+// nominatives, câbles — et RIEN d'autre : pas de nomenclature d'achat, pas de
+// paramètres de calcul, aucun montant (règle #4 ; le moteur électrique n'en
+// connaît aucun). Le bloc n'existe que lorsque l'étude électrique a réellement
+// été faite ; `null`/absent ⇒ aucun dépliant ne s'affiche.
+//
+// TOUT EST LU DÉFENSIVEMENT et TOUTE VALEUR ABSENTE EST OMISE (règle dure) :
+// une chaîne sans nombre de modules ne devient jamais « 0 module ».
+
+/** Une chaîne de modules : combien de modules, sur quel MPPT, sur quel pan. */
+export interface ConceptionChaine {
+  pan?: number;
+  mppt?: number;
+  nb_modules?: number;
+}
+
+/** Un organe de protection réellement posé (ce qui est écrit dans le coffret). */
+export interface ConceptionProtection {
+  repere?: string;
+  designation?: string;
+  calibre?: string;
+  quantite?: number;
+}
+
+/** Une liaison câblée : ce qu'elle relie, sa section, sa longueur. */
+export interface ConceptionCable {
+  liaison?: string;
+  section_mm2?: number;
+  longueur_m?: number;
+}
+
+export interface ConceptionElectrique {
+  chaines: ConceptionChaine[];
+  protections: ConceptionProtection[];
+  cables: ConceptionCable[];
+}
+
+/** Nombre fini et strictement positif, sinon `undefined` (jamais un 0 inventé). */
+function nombrePositif(v: unknown): number | undefined {
+  const n = typeof v === 'number' ? v : Number(v);
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+
+/** Chaîne non vide, taillée, sinon `undefined`. */
+function texteNonVide(v: unknown): string | undefined {
+  if (typeof v !== 'string') return undefined;
+  const t = v.trim();
+  return t.length ? t : undefined;
+}
+
+/**
+ * Pose la clé UNIQUEMENT si la valeur existe. C'est le cœur de la règle dure :
+ * un objet public ne porte jamais `{ mppt: undefined }` ni `{ mppt: 0 }` — la
+ * clé est simplement absente, et le rendu n'a donc rien à afficher.
+ */
+function poser(cible: Record<string, unknown>, cle: string, valeur: unknown): void {
+  if (valeur !== undefined) cible[cle] = valeur;
+}
+
+/**
+ * Lecture défensive du bloc `conception_electrique`. Renvoie `null` quand le
+ * backend ne l'a pas envoyé, l'a envoyé à `null`, ou quand il ne reste RIEN
+ * d'affichable après nettoyage — jamais un bloc à moitié vide.
+ */
+export function parseConceptionElectrique(
+  p: Pick<ProposalResponse, 'conception_electrique'>,
+): ConceptionElectrique | null {
+  const brut = p?.conception_electrique;
+  if (!brut || typeof brut !== 'object') return null;
+  const src = brut as Record<string, unknown>;
+  const liste = (v: unknown): Record<string, unknown>[] =>
+    Array.isArray(v) ? v.filter((e): e is Record<string, unknown> => !!e && typeof e === 'object') : [];
+
+  // Une CHAÎNE sans nombre de modules ne dit rien : elle est écartée.
+  const chaines: ConceptionChaine[] = [];
+  for (const c of liste(src.chaines)) {
+    const item: Record<string, unknown> = {};
+    poser(item, 'pan', nombrePositif(c.pan));
+    poser(item, 'mppt', nombrePositif(c.mppt));
+    poser(item, 'nb_modules', nombrePositif(c.nb_modules));
+    if (item.nb_modules !== undefined) chaines.push(item as ConceptionChaine);
+  }
+
+  // Un ORGANE sans désignation ne serait qu'un repère orphelin : écarté.
+  const protections: ConceptionProtection[] = [];
+  for (const o of liste(src.protections)) {
+    const item: Record<string, unknown> = {};
+    poser(item, 'repere', texteNonVide(o.repere));
+    poser(item, 'designation', texteNonVide(o.designation));
+    poser(item, 'calibre', texteNonVide(o.calibre));
+    poser(item, 'quantite', nombrePositif(o.quantite));
+    if (item.designation !== undefined) protections.push(item as ConceptionProtection);
+  }
+
+  // Une LIAISON sans section NI longueur n'apprend rien : écartée.
+  const cables: ConceptionCable[] = [];
+  for (const c of liste(src.cables)) {
+    const item: Record<string, unknown> = {};
+    poser(item, 'liaison', texteNonVide(c.liaison));
+    poser(item, 'section_mm2', nombrePositif(c.section_mm2));
+    poser(item, 'longueur_m', nombrePositif(c.longueur_m));
+    if (item.section_mm2 !== undefined || item.longueur_m !== undefined) {
+      cables.push(item as ConceptionCable);
+    }
+  }
+
+  if (!chaines.length && !protections.length && !cables.length) return null;
+  return { chaines, protections, cables };
+}
+
+/**
+ * Marqueurs du CÔTÉ CONTINU sur un libellé d'organe. Test par SOUS-CHAÎNE, avec
+ * les deux graphies de « chaîne » — exactement la règle du moteur de devis
+ * Django (`quote_engine/residential/theme.py::_MARQUEURS_DC`), pour que la page
+ * et le PDF rangent le même organe du même côté.
+ */
+const MARQUEURS_DC: readonly string[] = [
+  'dc', 'continu', 'gpv', 'string', 'chaîne', 'chaine',
+];
+
+/** Un organe appartient-il au côté continu ? (sinon : côté alternatif). */
+function estOrganeDc(o: ConceptionProtection): boolean {
+  const libelle = `${o.repere ?? ''} ${o.designation ?? ''} ${o.calibre ?? ''}`.toLowerCase();
+  return MARQUEURS_DC.some((m) => libelle.includes(m));
+}
+
+/** Ce qu'un dépliant « Dans votre installation » montre pour une famille donnée. */
+export interface ConceptionPourLigne {
+  chaines: ConceptionChaine[];
+  protections: ConceptionProtection[];
+  cables: ConceptionCable[];
+}
+
+/**
+ * Le détail à déplier SOUS une ligne d'équipement, choisi par la FAMILLE de sa
+ * fiche technique (le slug rendu par `ficheSlugPourLigne`) :
+ *
+ *  · `protection-dc`  → ses organes du côté continu (repère + calibre) ;
+ *  · `protection-ac`  → ses organes du côté alternatif ;
+ *  · `cablage`        → les sections et longueurs de liaison ;
+ *  · panneaux/onduleur → le chaînage (modules par MPPT).
+ *
+ * Toute autre famille (batterie, structure, accessoires de pose, supervision,
+ * grands projets) n'a rien à dire ici : `null`, et aucun dépliant n'est rendu.
+ * `null` aussi quand la famille est concernée mais que l'étude ne porte AUCUNE
+ * valeur pour elle — jamais un dépliant vide.
+ */
+export function conceptionPourLigne(
+  conception: ConceptionElectrique | null,
+  ficheSlug: string | null | undefined,
+): ConceptionPourLigne | null {
+  if (!conception || !ficheSlug) return null;
+  // Une FABRIQUE, pas une constante partagée : chaque appel repart de trois
+  // tableaux neufs (aucun aliasing possible entre deux lignes du devis).
+  const vide = (): ConceptionPourLigne => ({ chaines: [], protections: [], cables: [] });
+  let bloc: ConceptionPourLigne;
+  if (ficheSlug === 'protection-dc') {
+    bloc = { ...vide(), protections: conception.protections.filter(estOrganeDc) };
+  } else if (ficheSlug === 'protection-ac') {
+    bloc = { ...vide(), protections: conception.protections.filter((o) => !estOrganeDc(o)) };
+  } else if (ficheSlug === 'cablage') {
+    bloc = { ...vide(), cables: conception.cables };
+  } else if (
+    ficheSlug === 'canadian-solar-710'
+    || ficheSlug === 'jinko-710'
+    || ficheSlug === 'onduleur-deye-hybride'
+    || ficheSlug === 'onduleur-huawei-reseau'
+  ) {
+    bloc = { ...vide(), chaines: conception.chaines };
+  } else {
+    return null;
+  }
+  const rien = !bloc.chaines.length && !bloc.protections.length && !bloc.cables.length;
+  return rien ? null : bloc;
+}
+
+/**
+ * Libellé d'une chaîne, dans la langue active. C'est le SEUL des trois qui a
+ * besoin de mots (« modules ») — un repère, un calibre, une section et une
+ * longueur s'écrivent pareil dans les trois langues. Chaque morceau est OMIS
+ * quand la valeur manque : « MPPT 1 » ne devient jamais « MPPT — ».
+ */
+const CHAINE_MOTS: Record<PropLang, { modules: string; pan: string }> = {
+  fr: { modules: 'modules', pan: 'pan' },
+  en: { modules: 'modules', pan: 'roof section' },
+  ar: { modules: 'لوحاً', pan: 'جهة' },
+};
+
+export function chaineLabel(c: ConceptionChaine, lang: PropLang = 'fr'): string {
+  const mots = CHAINE_MOTS[lang] || CHAINE_MOTS.fr;
+  const parts: string[] = [];
+  if (c.nb_modules !== undefined) parts.push(`${formatNumber(c.nb_modules)} ${mots.modules}`);
+  if (c.mppt !== undefined) parts.push(`MPPT ${formatNumber(c.mppt)}`);
+  if (c.pan !== undefined) parts.push(`${mots.pan} ${formatNumber(c.pan)}`);
+  return parts.join(' · ');
+}
+
+/**
+ * Libellé d'un organe de protection : repère, désignation et calibre tels que
+ * le moteur électrique les a posés — donc tels qu'ils sont écrits dans le
+ * coffret et sur le schéma, ce que le client peut aller vérifier. Neutre en
+ * langue (un repère et un calibre ne se traduisent pas). La QUANTITÉ n'est PAS
+ * dans ce libellé : la page l'affiche à part, comme sur les lignes de devis.
+ */
+export function protectionLabel(o: ConceptionProtection): string {
+  return [o.repere, o.designation, o.calibre].filter((v) => !!v).join(' · ');
+}
+
+/**
+ * Libellé d'une liaison câblée : ce qu'elle relie, sa section, sa longueur.
+ * Neutre en langue. Section et longueur sont formatées comme tous les nombres
+ * de la page (virgule décimale) ; une valeur absente est OMISE.
+ */
+export function cableLabel(c: ConceptionCable): string {
+  const parts: string[] = [];
+  if (c.liaison) parts.push(c.liaison);
+  if (c.section_mm2 !== undefined) parts.push(`${formatNumber(c.section_mm2, 2)} mm²`);
+  if (c.longueur_m !== undefined) parts.push(`${formatNumber(c.longueur_m, 1)} m`);
+  return parts.join(' · ');
 }
 
 /**

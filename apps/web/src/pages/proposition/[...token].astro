@@ -78,6 +78,11 @@ import {
   roofLayoutOutlineLatLng,
   hasSldSvg,
   sldSvgFilename,
+  parseConceptionElectrique,
+  conceptionPourLigne,
+  chaineLabel,
+  protectionLabel,
+  cableLabel,
   proposalVariants,
   nextSteps,
   proposalAssumptions,
@@ -613,12 +618,19 @@ const equipmentItems = ok ? optionItems(data!, equipmentOption) : [];
 // WJ131 — chaque ligne emporte le slug de SA fiche technique, calculé UNE fois
 // ici (fonction pure, testée) : le tableau se contente d'afficher le lien quand
 // il existe. `null` = ligne sans lien, l'affichage ne change pas d'un pixel.
+// (fondateur 2026-08-18) « DANS VOTRE INSTALLATION » — le détail électrique du
+// devis, exposé SANS PRIX. Le backend n'envoie ce bloc que lorsque l'étude
+// électrique existe ; sinon `null` et rien ne change sur la page. Chaque ligne
+// d'équipement reçoit la PART qui la concerne (protections DC / protections AC /
+// sections de câble / chaînage), ou `null` — et un `null` ne rend aucun
+// dépliant : jamais un volet vide sous une ligne.
+const conception = ok ? parseConceptionElectrique(data!) : null;
 const equipmentGroups = groupEquipment(equipmentItems).map((group) => ({
   id: group.id,
-  lines: group.lines.map((it) => ({
-    ...it,
-    ficheSlug: ficheSlugPourLigne(it.designation, it.marque),
-  })),
+  lines: group.lines.map((it) => {
+    const ficheSlug = ficheSlugPourLigne(it.designation, it.marque);
+    return { ...it, ficheSlug, detail: conceptionPourLigne(conception, ficheSlug) };
+  }),
 }));
 const equipmentExtra = ok && twoOptions && equipmentOption === 'sans_batterie'
   ? equipmentDelta(equipmentItems, optionItems(data!, 'avec_batterie'))
@@ -1198,9 +1210,10 @@ const signConfig = ok
                                 data-ar={`الضمان: ${it.garantie}`}>Garantie : {it.garantie}</p>
                             ) : null}
                             {/* WJ131 — « Fiche technique ↗ » : le client peut enfin
-                                VÉRIFIER chaque ligne qu'il paie, y compris les deux
-                                postes génériques (tableau de protection, accessoires)
-                                dont la fiche est EXPLICATIVE. Discret par construction :
+                                VÉRIFIER chaque ligne qu'il paie, y compris les
+                                postes génériques (protection DC, protection AC,
+                                câblage, accessoires de pose, structure) dont la
+                                fiche est EXPLICATIVE. Discret par construction :
                                 pas de lien du tout quand l'appariement n'est pas
                                 certain. La flèche vit HORS du span traduit — sinon la
                                 bascule EN/AR (textContent) l'effacerait. */}
@@ -1214,6 +1227,42 @@ const signConfig = ok
                                 <span data-i18n data-fr="Fiche technique" data-en="Datasheet" data-ar="الورقة التقنية">Fiche technique</span>
                                 <span aria-hidden="true">&#8599;</span>
                               </a>
+                            ) : null}
+                            {/* (fondateur 2026-08-18) « DANS VOTRE INSTALLATION » —
+                                le détail électrique de CETTE ligne, sans prix :
+                                les organes et leurs calibres sous la protection,
+                                les sections et longueurs sous le câblage, le
+                                chaînage sous les panneaux et l'onduleur. Replié
+                                par défaut (<details> natif, aucun JS) et
+                                ENTIÈREMENT absent quand l'étude électrique
+                                n'existe pas ou ne dit rien de cette ligne —
+                                jamais un volet vide, jamais une valeur inventée. */}
+                            {it.detail ? (
+                              <details class="conception-fold mt-1.5">
+                                <summary class="cursor-pointer list-none text-xs text-lune-faint transition-colors marker:content-none hover:text-lune-soft">
+                                  <span class="me-1 text-brass-300" aria-hidden="true">+</span>
+                                  <span data-i18n data-fr="Dans votre installation" data-en="In your installation" data-ar="في تركيبكم">Dans votre installation</span>
+                                </summary>
+                                <ul class="mt-1.5 space-y-1 border-s border-white/10 ps-3">
+                                  {it.detail.chaines.map((c) => (
+                                    <li class="text-xs text-lune-soft" data-i18n
+                                      data-fr={chaineLabel(c, 'fr')}
+                                      data-en={chaineLabel(c, 'en')}
+                                      data-ar={chaineLabel(c, 'ar')}>{chaineLabel(c, 'fr')}</li>
+                                  ))}
+                                  {it.detail.protections.map((o) => (
+                                    <li class="flex items-baseline justify-between gap-3 text-xs text-lune-soft">
+                                      <span class="min-w-0">{protectionLabel(o)}</span>
+                                      {o.quantite !== undefined ? (
+                                        <span class="fig shrink-0 text-lune-faint" dir="ltr">×{formatNumber(o.quantite)}</span>
+                                      ) : null}
+                                    </li>
+                                  ))}
+                                  {it.detail.cables.map((c) => (
+                                    <li class="text-xs text-lune-soft">{cableLabel(c)}</li>
+                                  ))}
+                                </ul>
+                              </details>
                             ) : null}
                           </div>
                           <span class="fig shrink-0 text-sm text-lune-soft" dir="ltr">×{formatNumber(it.quantite)}</span>
