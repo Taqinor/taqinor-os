@@ -46,9 +46,22 @@ class FakeMap {
   }
   getLayer() { return null; }
   removeLayer() {}
+  // Caméra : `getZoom` existe sur la vraie carte MapLibre et `landOn`
+  // (captureBoot) s'en sert comme PLANCHER de zoom — on enregistre les cibles
+  // pour prouver l'atterrissage serré du flux « pointer ».
+  zoom = 5;
+  cameraTargets: Array<{ center?: unknown; zoom?: number }> = [];
+  getZoom() { return this.zoom; }
+  private moveTo(t?: { center?: unknown; zoom?: number }) {
+    if (t) {
+      this.cameraTargets.push(t);
+      if (typeof t.zoom === 'number') this.zoom = t.zoom;
+    }
+    return this;
+  }
   easeTo() { return this; }
-  flyTo() { return this; }
-  jumpTo() { return this; }
+  flyTo(t?: { center?: unknown; zoom?: number }) { return this.moveTo(t); }
+  jumpTo(t?: { center?: unknown; zoom?: number }) { return this.moveTo(t); }
   getBearing() { return 0; }
   getCanvas() { return { style: {} as Record<string, string>, width: 800, height: 600 }; }
   getContainer() { return document.getElementById('rp9-map'); }
@@ -170,5 +183,96 @@ describe('W112 — captureOnly : carte + repère, JAMAIS de 3D ni d\'optimiseur'
     const map = fakeMaps[0];
     map.fire('load', {});
     expect(map.addedLayers).toContain('rp9-3d');
+  });
+});
+
+// ——— POINTER ou DESSINER : un CHOIX explicite, plus un flux deviné ———
+// Le geste était implicite : clic = repère, et seul un DOUBLE-clic (qui n'existe
+// pas au doigt) démarrait un contour, sans que rien ne l'annonce. `roofInputMode`
+// rend le choix explicite ; en « pointer », la carte atterrit serrée sur le
+// repère pour que la page puisse demander « C'est bien votre toit ? » sur une
+// image lisible.
+describe('capture — choix explicite du geste (pointer / dessiner)', () => {
+  beforeEach(() => {
+    fakeMaps.length = 0;
+    setupCaptureDom();
+  });
+  afterEach(() => {
+    vi.resetModules();
+    vi.unstubAllGlobals();
+  });
+
+  it('mode « dessiner » : le PREMIER clic ouvre le contour (plus de double-clic à deviner)', async () => {
+    const init = await loadTool();
+    let last: { pin: { lat: number; lng: number } | null; outline: Array<[number, number]> } | null = null;
+    init({
+      maptilerKey: 'test',
+      reducedMotion: true,
+      captureOnly: true,
+      roofInputMode: () => 'draw' as const,
+      onCaptureChange: (s) => { last = s; },
+    });
+    const map = fakeMaps[0];
+    map.fire('load', {});
+    map.fire('click', { lngLat: { lng: -7.6, lat: 33.59 }, point: { x: 0, y: 0 } });
+    map.fire('click', { lngLat: { lng: -7.599, lat: 33.59 }, point: { x: 0, y: 0 } });
+    map.fire('click', { lngLat: { lng: -7.599, lat: 33.591 }, point: { x: 0, y: 0 } });
+    expect(last).not.toBeNull();
+    // 3 sommets tracés — et AUCUN repère simple posé au passage.
+    expect(last!.outline.length).toBe(3);
+    expect(last!.pin).not.toBeNull(); // le pin remonté est le CENTROÏDE du contour
+    const finish = document.getElementById('rp9-finish') as HTMLButtonElement;
+    expect(finish.disabled).toBe(false); // « Terminer le tracé » devient utilisable
+  });
+
+  it('mode « pointer » : un clic pose le repère ET fait atterrir la carte serrée dessus', async () => {
+    const init = await loadTool();
+    init({
+      maptilerKey: 'test',
+      reducedMotion: true,
+      captureOnly: true,
+      roofInputMode: () => 'point' as const,
+    });
+    const map = fakeMaps[0];
+    map.fire('load', {});
+    expect(map.cameraTargets.length).toBe(0);
+    map.fire('click', { lngLat: { lng: -7.6, lat: 33.59 }, point: { x: 0, y: 0 } });
+    // La confirmation visuelle repose sur cet atterrissage : sans lui, le
+    // visiteur valide « oui c'est mon toit » sur une vue large.
+    expect(map.cameraTargets.length).toBe(1);
+    expect(map.cameraTargets[0].center).toEqual([-7.6, 33.59]);
+    expect(map.cameraTargets[0].zoom).toBeGreaterThanOrEqual(19);
+  });
+
+  it('`landOn` ne DÉZOOME jamais un visiteur déjà plus près que le plancher', async () => {
+    const init = await loadTool();
+    init({
+      maptilerKey: 'test',
+      reducedMotion: true,
+      captureOnly: true,
+      roofInputMode: () => 'point' as const,
+    });
+    const map = fakeMaps[0];
+    map.fire('load', {});
+    map.zoom = 21;
+    map.fire('click', { lngLat: { lng: -7.6, lat: 33.59 }, point: { x: 0, y: 0 } });
+    expect(map.cameraTargets[0].zoom).toBe(21);
+  });
+
+  it('sans `roofInputMode` (flux historique), un clic pose le repère SANS bouger la caméra', async () => {
+    const init = await loadTool();
+    let last: { pin: { lat: number; lng: number } | null; outline: Array<[number, number]> } | null = null;
+    init({
+      maptilerKey: 'test',
+      reducedMotion: true,
+      captureOnly: true,
+      onCaptureChange: (s) => { last = s; },
+    });
+    const map = fakeMaps[0];
+    map.fire('load', {});
+    map.fire('click', { lngLat: { lng: -7.6, lat: 33.59 }, point: { x: 0, y: 0 } });
+    expect(last!.pin).toEqual({ lat: 33.59, lng: -7.6 });
+    expect(last!.outline).toEqual([]);
+    expect(map.cameraTargets.length).toBe(0);
   });
 });

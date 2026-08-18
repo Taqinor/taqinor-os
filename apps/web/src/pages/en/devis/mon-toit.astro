@@ -262,6 +262,29 @@ const noscriptTelHref = `tel:${NAP.phone}`;
           </label>
         </div>
 
+        <!-- EXPLICIT CHOICE of the roof-marking gesture. The journey used to be
+             IMPLICIT: a click dropped a pin, and only a double-click (an
+             interaction that does not exist on touch) started an outline —
+             nothing announced it, so almost nobody ever drew. We ask the
+             question plainly, with a safe default ("point"). -->
+        <div id="mt-roof-mode-group" class="mt-5" role="group" aria-labelledby="mt-roof-mode-label">
+          <p id="mt-roof-mode-label" class="text-sm text-lune-soft">
+            How would you like to show us your roof?
+          </p>
+          <div class="mt-2 grid gap-2 sm:grid-cols-2">
+            <button type="button" id="mt-roof-mode-point" data-value="point" aria-pressed="true"
+              class="mt-roof-mode cine-card flex flex-col items-start gap-0.5 border border-white/15 p-3 text-left transition-colors">
+              <span class="text-sm font-semibold text-white">📍 Point at my roof</span>
+              <span class="text-xs text-lune-faint">A single tap on your roof — the quickest.</span>
+            </button>
+            <button type="button" id="mt-roof-mode-draw" data-value="draw" aria-pressed="false"
+              class="mt-roof-mode cine-card flex flex-col items-start gap-0.5 border border-white/15 p-3 text-left transition-colors">
+              <span class="text-sm font-semibold text-white">✏️ Draw my roof</span>
+              <span class="text-xs text-lune-faint">Trace the outline — more precise for the study.</span>
+            </button>
+          </div>
+        </div>
+
         <!-- MAP — address search + pin (ids rp9-* wired by captureBoot). -->
         <div id="mt-stage" class="cine-card mt-5 overflow-hidden">
           <form id="rp9-search" class="flex flex-col gap-3 border-b border-white/10 p-4 sm:flex-row">
@@ -310,6 +333,29 @@ const noscriptTelHref = `tel:${NAP.phone}`;
           <p id="rp9-status" class="border-t border-white/10 px-4 py-3 text-sm text-lune-faint" aria-live="polite">
             Search for your address, then drop a pin on your roof (optional).
           </p>
+
+          <!-- VISUAL CONFIRMATION of the pin ("point" flow only). Visitors used to
+               drop a point on a wide view and move on without ever seeing WHAT
+               they had designated; the map now lands tight on their pin
+               (captureBoot.landOn) and we ask the question next to the image.
+               The "draw" flow keeps its own visual feedback: the outline. -->
+          <div id="mt-pin-confirm" hidden class="border-t border-white/10 p-4">
+            <p class="text-sm font-semibold text-white">Is this your roof?</p>
+            <p class="mt-1 text-xs text-lune-faint">The map is centred on the pin you just dropped.</p>
+            <!-- Address filled ONLY if reverse geocoding found one (W2) — never a
+                 guessed address, never an empty line. -->
+            <p id="mt-pin-confirm-address" hidden class="mt-2 text-sm text-lune-soft"></p>
+            <div class="mt-3 flex flex-wrap gap-2">
+              <button type="button" id="mt-pin-confirm-yes"
+                class="bg-brass-400 px-4 py-2.5 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300">
+                Yes, that's my roof
+              </button>
+              <button type="button" id="mt-pin-confirm-adjust"
+                class="border border-white/25 px-4 py-2.5 text-sm font-semibold text-lune-soft transition-colors hover:border-brass-400 hover:text-brass-300">
+                No, move the pin
+              </button>
+            </div>
+          </div>
         </div>
 
         <div class="mt-5 flex justify-end">
@@ -530,10 +576,13 @@ const noscriptTelHref = `tel:${NAP.phone}`;
           </p>
         </details>
 
-        <!-- Group 3/3 — for financing (3 fields). -->
+        <!-- Group 3/3 — to advise you better (2 fields). The `mt-more-financing`
+             id is KEPT as-is: it is an already-wired DOM anchor (persistence,
+             tests, styles) and renaming it would change nothing for the visitor,
+             who only ever sees the summary label. -->
         <details id="mt-more-financing" class="cine-card mt-3 p-5 sm:p-6">
           <summary class="cursor-pointer select-none text-sm font-semibold text-brass-300">
-            For financing
+            To advise you better
           </summary>
 
           <div class="mt-4 grid gap-4 sm:grid-cols-2">
@@ -556,16 +605,12 @@ const noscriptTelHref = `tel:${NAP.phone}`;
               </select>
             </label>
           </div>
-
-          <label class="mt-4 block text-sm text-lune-soft">
-            <span>Financing method envisaged</span>
-            <select id="mt-financing-intent" name="financingIntent" class={`${inputClass} mt-1`}>
-              <option value="">Choose…</option>
-              <option value="comptant">Cash</option>
-              <option value="financement">Financing / credit</option>
-              <option value="indecis">Not decided yet</option>
-            </select>
-          </label>
+          <!-- The "Financing method envisaged" question (mt-financing-intent) was
+               REMOVED by founder decision: we no longer ask a visitor how they
+               intend to pay before we have even spoken to them. The ERP field
+               `financing_intent` still exists (other sources feed it) and
+               lib/lead.ts still validates it if it arrives — this funnel simply
+               no longer sends it. -->
         </details>
         </div>
 
@@ -2052,7 +2097,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   import { billRangeFromExact, type BillRangeId } from '../../../lib/billRange';
   import { captureWhatsappText, whatsappLink } from '../../../lib/whatsapp';
   import { WHATSAPP_LEADS } from '../../../lib/nap';
-  import { buildClientRef, validateLead, MAX_BILL_BY_MODE } from '../../../lib/lead';
+  import { buildClientRef, buildIdempotencyKey, validateLead, MAX_BILL_BY_MODE } from '../../../lib/lead';
   // QX/Lane C — TYPE only (erased at build: Three.js/viewerOnly NEVER joins
   // the initial bundle — WJ18; the real module stays a lazy import()).
   import type { RoofImageSpec } from '../../../scripts/roofPro11/viewerOnly';
@@ -2224,11 +2269,18 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     captureOutline?: Array<[number, number]>;
     fields?: Record<string, string>;
     checks?: Record<string, boolean>;
+    // Dedup tokens: persisted WITH the rest of the draft so a refresh/back
+    // navigation does not mint a second technical identity for the SAME entry
+    // (which is exactly the duplicate they are meant to prevent).
+    idempotencyKey?: string;
+    eventId?: string;
   }
   const PERSISTED_TEXT_FIELDS = [
     'mt-name', 'mt-phone', 'mt-city', 'mt-email', 'mt-facture-hiver', 'mt-facture-ete',
     'mt-bill', 'mt-roof', 'mt-raccordement', 'mt-distributeur', 'mt-bill-kwh', 'mt-roof-age',
-    'mt-occupant-type', 'mt-project-timing', 'mt-financing-intent', 'mt-fallback-address',
+    // 'mt-financing-intent' removed along with the question itself (the field is
+    // no longer in the DOM: persisting it would have nothing to read).
+    'mt-occupant-type', 'mt-project-timing', 'mt-fallback-address',
     'rp9-address',
     // WJ68 — professional mode (optional, additive).
     'mt-raison-sociale', 'mt-facility-type', 'mt-site-count',
@@ -2261,9 +2313,10 @@ const noscriptTelHref = `tel:${NAP.phone}`;
         step, mode, ombrage,
         visitWindowPart, visitWindowWeek,
         futureLoads: Array.from(futureLoads),
-        sel: { proUnit, tension, activity, surfaceType, generator, waterSource, irrigation, waterUnit, commercialCategory, ccUnit, equipes, regionAgricole },
+        sel: { proUnit, tension, activity, surfaceType, generator, waterSource, irrigation, waterUnit, commercialCategory, ccUnit, equipes, regionAgricole, roofInputMode },
         capturePin, captureOutline,
         fields, checks,
+        idempotencyKey: dedupIdempotencyKey, eventId: dedupEventId,
       };
       sessionStorage.setItem(WIZARD_STORAGE_KEY, JSON.stringify(snapshot));
     } catch {
@@ -2294,6 +2347,31 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   });
 
   const savedWizard = loadWizardState();
+
+  // ——— Technical DEDUPLICATION tokens (CRM + Meta CAPI) ———
+  // `idempotencyKey` (CRM dedup signal) and `eventId` (the Meta CAPI spec's
+  // `event_id` field) have been validated by lib/lead.ts from the start, but
+  // this funnel never emitted them: the CRM could not recognise two sends of the
+  // same entry, and `fireCapi` fell back to a timestamp-derived id — DIFFERENT
+  // on every resend, so it deduplicated nothing on Meta's side.
+  // Minted on FIRST display, taken from the draft when one exists, stable after.
+  // Two DISTINCT tokens: they do not serve the same system.
+  function newDedupToken(): string {
+    try {
+      const c = globalThis.crypto;
+      // `randomUUID` only exists in a secure context: fall back to the in-house
+      // generator, already bounded by the same regex (^[A-Za-z0-9_-]{8,64}$).
+      if (c && typeof c.randomUUID === 'function') return c.randomUUID();
+    } catch { /* crypto access denied: take the fallback */ }
+    return buildIdempotencyKey();
+  }
+  let dedupIdempotencyKey = savedWizard?.idempotencyKey || newDedupToken();
+  let dedupEventId = savedWizard?.eventId || newDedupToken();
+  function getOrCreateDedupTokens(): { idempotencyKey: string; eventId: string } {
+    if (!dedupIdempotencyKey) dedupIdempotencyKey = newDedupToken();
+    if (!dedupEventId) dedupEventId = newDedupToken();
+    return { idempotencyKey: dedupIdempotencyKey, eventId: dedupEventId };
+  }
 
   // ——— WJ6/QX : mode selector — no default at all (the profile drives an
   // entirely different step-2 questionnaire); "Continue" requires an
@@ -2558,6 +2636,10 @@ const noscriptTelHref = `tel:${NAP.phone}`;
         // silent failure.
         geolocateErrorMsg: 'Location denied — search for your address or drop the pin by hand.',
         onReady: clearMapSkeleton,
+        // The gesture the visitor chose, read on EVERY click (they may change
+        // their mind): "draw" opens the outline from the first tap, "point"
+        // lands the map tight on the pin for the confirmation below.
+        roofInputMode: () => roofInputMode,
         // WJ61 — a pin/outline restored from sessionStorage (refresh or
         // browser back mid-journey) is seeded straight into the map at boot,
         // via the same mechanism as hydrating from an existing lead (W113):
@@ -2575,6 +2657,11 @@ const noscriptTelHref = `tel:${NAP.phone}`;
             const fromMap = (s.address && s.address.trim()) || addressEl?.value.trim() || '';
             if (fromMap) cityEl.value = fromMap;
           }
+          // Pin confirmation: the address often arrives AFTER the pin (async
+          // reverse geocoding), hence the re-sync on every notification.
+          // Hoisted functions, declared below.
+          setPinConfirmAddress(s.address);
+          syncPinConfirm();
           // WJ2 — the outline can arrive/change AFTER the estimate is
           // computed: re-evaluate the "see the panels" button's eligibility
           // on every trace change (function declared below, hoisted by `function`).
@@ -2595,6 +2682,11 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     if (fallback) fallback.hidden = false;
     const stage = $('mt-stage');
     if (stage) stage.hidden = true;
+    // …and the "point / draw" choice with it: offering a map gesture above an
+    // address fallback would be exactly the lying UI that hiding #mt-stage
+    // just removed.
+    const roofModeGroup = $('mt-roof-mode-group');
+    if (roofModeGroup) roofModeGroup.hidden = true;
   }
 
   // WJ60 — on slow 3G, a fetch with no timeout could hang indefinitely (the UI
@@ -2782,6 +2874,84 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   let equipes = savedSel.equipes || '';
   // WJ124 — AGRICULTURAL mode: agronomy region (drives the FAO-56 water engine).
   let regionAgricole = savedSel.regionAgricole || '';
+
+  // ——— EXPLICIT "point" / "draw" choice + VISUAL CONFIRMATION ———
+  // The marking gesture was implicit (click = pin, double-click = outline,
+  // nothing said so), and a visitor who pointed NEVER saw what they had just
+  // designated: they validated a dot on a wide view. So we ask for the gesture,
+  // then — in "point" mode — the map lands tight on the pin
+  // (captureBoot.landOn) and we put the question right next to the image.
+  let roofInputMode: 'point' | 'draw' = savedSel.roofInputMode === 'draw' ? 'draw' : 'point';
+  const pinConfirmEl = $('mt-pin-confirm');
+  const pinConfirmAddrEl = $('mt-pin-confirm-address');
+  /** Key of the ALREADY-confirmed pin: moving the pin asks again, a mere
+   *  re-render (address arriving later) does not. */
+  let confirmedPinKey = '';
+  const pinKey = (p: { lat: number; lng: number } | null) =>
+    p ? `${p.lat.toFixed(6)},${p.lng.toFixed(6)}` : '';
+  function setMapStatus(msg: string) {
+    const el = $('rp9-status');
+    if (el) el.textContent = msg;
+  }
+  function syncRoofModeCards() {
+    document.querySelectorAll<HTMLButtonElement>('.mt-roof-mode').forEach((b) => {
+      const on = b.dataset.value === roofInputMode;
+      b.setAttribute('aria-pressed', String(on));
+      b.classList.toggle('border-brass-400', on);
+      b.classList.toggle('border-white/15', !on);
+    });
+    // "Finish tracing" means nothing when you are not tracing.
+    const finishBtn = $('rp9-finish');
+    if (finishBtn) finishBtn.hidden = roofInputMode !== 'draw';
+  }
+  /** Show the confirmation ONLY when it means something: "point" gesture, a pin
+   *  dropped, no outline traced, and not already confirmed for that pin. */
+  function syncPinConfirm() {
+    if (!pinConfirmEl) return;
+    pinConfirmEl.hidden = !(
+      roofInputMode === 'point'
+      && capturePin != null
+      && captureOutline.length < 3
+      && pinKey(capturePin) !== confirmedPinKey
+    );
+  }
+  /** Pin address — shown only if reverse geocoding returned one (W2): never a
+   *  guessed address, never an empty line. */
+  function setPinConfirmAddress(addr?: string | null) {
+    if (!pinConfirmAddrEl) return;
+    const a = (addr || '').trim();
+    pinConfirmAddrEl.textContent = a;
+    pinConfirmAddrEl.hidden = a === '';
+  }
+  document.querySelectorAll<HTMLButtonElement>('.mt-roof-mode').forEach((b) => {
+    b.addEventListener('click', () => {
+      const v: 'point' | 'draw' = b.dataset.value === 'draw' ? 'draw' : 'point';
+      if (v === roofInputMode) return;
+      roofInputMode = v;
+      syncRoofModeCards();
+      syncPinConfirm();
+      setMapStatus(roofInputMode === 'draw'
+        ? 'Trace your roof outline: tap each corner, then "Finish tracing".'
+        : 'Tap your roof to drop the pin on it.');
+      markDataEntered();
+      saveWizardState();
+    });
+  });
+  $('mt-pin-confirm-yes')?.addEventListener('click', () => {
+    confirmedPinKey = pinKey(capturePin);
+    syncPinConfirm();
+    setMapStatus('Pin confirmed. Carry on with your contact details below.');
+  });
+  $('mt-pin-confirm-adjust')?.addEventListener('click', () => {
+    // We do NOT delete the pin: the visitor simply drops another one, and if
+    // they change their mind nothing has been lost.
+    confirmedPinKey = '';
+    if (pinConfirmEl) pinConfirmEl.hidden = true;
+    setMapStatus('Tap the right spot on your roof to move the pin.');
+    $('rp9-map')?.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'center' });
+  });
+  syncRoofModeCards();
+
   function wireCardGroup(
     selector: string,
     getCurrent: () => string,
@@ -3200,6 +3370,10 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       const s: Record<string, number | string> = {};
       const kOk = Number.isFinite(est.kwc) && est.kwc > 0;
       if (kOk) s.kwc = est.kwc;
+      // The module count behind the announced sizing (n × 710 Wc = that kWc).
+      // estimatorPro has always computed it; the CRM never received it, so the
+      // adviser recounted it by hand from the kWc.
+      if (Number.isFinite(est.nbPanneaux) && est.nbPanneaux > 0) s.nbPanneaux = est.nbPanneaux;
       if (Number.isFinite(est.prodAnnuelleKwh) && est.prodAnnuelleKwh > 0) s.prodKwh = Math.round(est.prodAnnuelleKwh);
       if (Number.isFinite(est.tauxAutoconso) && est.tauxAutoconso > 0) s.tauxAutoconso = pct(est.tauxAutoconso);
       if (Number.isFinite(est.tauxCouverture) && est.tauxCouverture > 0) s.tauxCouverture = pct(est.tauxCouverture);
@@ -3230,6 +3404,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     const kwcOk = Number.isFinite(est.kwc) && est.kwc > 0;
     setCard('mt-pro-kwc-card', 'mt-pro-kwc', kwcOk ? formatKwc(est.kwc) : null);
     if (kwcOk) shown.kwc = est.kwc;
+    if (Number.isFinite(est.nbPanneaux) && est.nbPanneaux > 0) shown.nbPanneaux = est.nbPanneaux;
     const prodOk = Number.isFinite(est.prodAnnuelleKwh) && est.prodAnnuelleKwh > 0;
     setCard('mt-pro-prod-card', 'mt-pro-prod', prodOk ? formatMad(Math.round(est.prodAnnuelleKwh)) : null);
     if (prodOk) shown.prodKwh = Math.round(est.prodAnnuelleKwh);
@@ -3345,6 +3520,9 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       if (ag.pompeCv > 0) s.pompeCv = ag.pompeCv;
       const cOk = ag.champKwc > 0;
       if (cOk) s.champKwc = ag.champKwc;
+      // The PV array's panel count — this one is even SHOWN to the visitor
+      // ("… kWc · N panels") and still never reached the ERP.
+      if (ag.nbPanneaux > 0) s.nbPanneaux = ag.nbPanneaux;
       if (ag.m3Jour > 0) s.m3Jour = ag.m3Jour;
       // WJ124 — suggested reservoir = daily need (1×), low end of the 1-3× range.
       if (ag.m3Jour > 0) s.bassinM3 = ag.m3Jour;
@@ -3372,6 +3550,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     const champLabel = champOk ? `${formatKwc(ag.champKwc)} kWc${ag.nbPanneaux > 0 ? ` · ${ag.nbPanneaux} panels` : ''}` : null;
     setCard('mt-agri-champ-card', 'mt-agri-champ', champLabel);
     if (champOk) shown.champKwc = ag.champKwc;
+    if (ag.nbPanneaux > 0) shown.nbPanneaux = ag.nbPanneaux;
     const eauOk = ag.m3Jour > 0;
     const eauLabel = eauOk
       ? `${fmtNum(ag.m3Jour)} m³${ag.hmtM > 0 ? ` at TDH ${fmtNum(ag.hmtM)} m${ag.hmtEstimated ? ' (estimated)' : ''}` : ''}`
@@ -4018,9 +4197,11 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   }
 
   // WJ122 — active commercial category answers, mapped snake_case → the webhook
-  // whitelist camelCase (QX51). Only questions with a webhook key are sent
-  // (hammam surface_m2 ⇒ never sent); a boolean is joined only when checked, a
-  // number/select only when filled.
+  // whitelist camelCase (QX51). Only questions with a webhook key are sent — and
+  // they ALL have one now (`surface_m2` for hammam/spa/gym, the mapping's only
+  // hole, goes out as `surfaceM2`). A boolean is joined only when checked, a
+  // number/select only when filled. In commercial mode the PRO `mt-surface-m2`
+  // field does not exist: the two sources of `surfaceM2` never collide.
   function readCommercialAnswers(): Record<string, unknown> {
     const out: Record<string, unknown> = {};
     if (mode !== 'commercial' || !commercialCategory) return out;
@@ -4090,11 +4271,21 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       batteryInterest: ($('mt-battery-interest') as HTMLInputElement | null)?.checked === true,
       occupantType: val('mt-occupant-type') || undefined,
       projectTiming: val('mt-project-timing') || undefined,
-      financingIntent: val('mt-financing-intent') || undefined,
+      // `financingIntent` is NO LONGER sent (question removed, see the "To advise
+      // you better" accordion). validateLead still accepts it for other sources —
+      // the webhook contract is intact, the key is simply absent.
       hasMeterPhoto,
       // WJ52 — short reference for the post-submission artefact (echoed as-is,
       // never a server uniqueness key — see lib/lead.ts).
       clientRef: getOrCreateClientRef(),
+      // DEDUPLICATION tokens (CRM + Meta CAPI): minted on first display, stable
+      // for the whole entry session, so a resend (network failure, double-click,
+      // back button then re-submit) carries the SAME pair. lib/lead.ts already
+      // validated them — but the funnel never sent them: on the CAPI side
+      // `fireCapi` fell back to a timestamp-derived id, DIFFERENT on every
+      // resend, which deduplicates nothing.
+      idempotencyKey: getOrCreateDedupTokens().idempotencyKey,
+      eventId: getOrCreateDedupTokens().eventId,
       // W353 — technical visit slot preference (optional, STATIC).
       visitWindowPart: visitWindowPart || undefined,
       visitWindowWeek: visitWindowWeek || undefined,
@@ -4125,24 +4316,37 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       ...readCommercialAnswers(),
       // WJ123 — INDUSTRIAL v2: shifts + weekend + context (webhook whitelist QX51).
       // `weekend` is a SEPARATE boolean, never a 5th shift value.
-      equipes: (mode === 'industriel' || mode === 'professionnel') ? (equipes || undefined) : undefined,
-      weekend: (mode === 'industriel' || mode === 'professionnel') && (($('mt-weekend') as HTMLInputElement | null)?.checked === true) ? true : undefined,
-      cosPhiConnu: (mode === 'industriel' || mode === 'professionnel') ? (num('mt-cos-phi') ?? undefined) : undefined,
-      groupeKva: (mode === 'industriel' || mode === 'professionnel') ? (num('mt-groupe-kva') ?? undefined) : undefined,
-      dieselDhMois: (mode === 'industriel' || mode === 'professionnel') ? (num('mt-diesel-dh') ?? undefined) : undefined,
+      //
+      // NO MORE GATE ON THE CURRENT MODE. These fields only went out if the
+      // profile active AT SUBMIT TIME matched: a visitor who described their
+      // industrial site and then switched back to "commercial" (or stepped back
+      // to check something) had those answers silently erased from the payload —
+      // even though they really gave them. One rule now, the same as
+      // `raisonSociale` above: ANY NON-EMPTY ANSWER GOES. Nothing is fabricated
+      // for it — an untouched field stays `undefined`, and validateLead bounds
+      // and screens each key on its own, independently of the mode.
+      equipes: equipes || undefined,
+      weekend: (($('mt-weekend') as HTMLInputElement | null)?.checked === true) ? true : undefined,
+      cosPhiConnu: num('mt-cos-phi') ?? undefined,
+      groupeKva: num('mt-groupe-kva') ?? undefined,
+      dieselDhMois: num('mt-diesel-dh') ?? undefined,
       // surface_toiture_m2 = roof surface in the strict sense (the backend
       // distinguishes ground: webhooks.py:303-304) — only send it for a real roof;
       // ombrière/terrain are described by their booleans, never a fake roof.
-      surfaceToitureM2: (mode === 'industriel' || mode === 'professionnel') && (surfaceType === 'bac_acier' || surfaceType === 'terrasse') ? (num('mt-surface-m2') ?? undefined) : undefined,
-      ombriere: (mode === 'industriel' || mode === 'professionnel') && surfaceType === 'ombriere' ? true : undefined,
-      terrain: (mode === 'industriel' || mode === 'professionnel') && surfaceType === 'terrain' ? true : undefined,
+      // The SURFACE-TYPE gate stays (that is semantics, not mode); only the
+      // current-mode gate goes away.
+      surfaceToitureM2: (surfaceType === 'bac_acier' || surfaceType === 'terrasse') ? (num('mt-surface-m2') ?? undefined) : undefined,
+      ombriere: surfaceType === 'ombriere' ? true : undefined,
+      terrain: surfaceType === 'terrain' ? true : undefined,
       // QX — AGRICULTURAL sub-panel (pumping).
       waterSource: waterSource || undefined,
       profondeurM: num('mt-profondeur') ?? undefined,
       hmtM: num('mt-hmt') ?? undefined,
       debitM3h: waterUnit === 'm3h' ? (num('mt-water-need') ?? undefined) : undefined,
       besoinM3j: waterUnit === 'm3j' ? (num('mt-water-need') ?? undefined) : undefined,
-      heuresPompage: mode === 'agricole' ? (num('mt-heures-pompage') ?? undefined) : undefined,
+      // Ungated like the industrial fields above: an entered pumping-hours value
+      // goes out even if the visitor has since switched profile.
+      heuresPompage: num('mt-heures-pompage') ?? undefined,
       irrigation: irrigation || undefined,
       culture: val('mt-culture') || undefined,
       // WJ124 — agronomy region (drives the FAO-56 water engine on the proposal).

@@ -6,7 +6,9 @@
 //    une fourchette PLAUSIBLE non fabriquée, à partir de la facture SEULE ;
 //  - WJ3 : le deeplink WhatsApp est correctement construit avec l'estimation ;
 //  - WJ4 : le contrat webhook + le seuil 1 000 MAD restent intacts (capture-lead) ;
-//  - WJ5 : un lead sous le seuil n'atteint jamais le CRM (réponse honnête).
+//  - WJ5 : un lead sous le seuil reste NON QUALIFIÉ pour le visiteur (réponse
+//    honnête) mais atteint désormais le CRM avec son drapeau `qualified: false`
+//    — ses réponses ne sont plus perdues.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { estimateFromBill, formatMadRange } from '../src/lib/billEstimate';
@@ -315,16 +317,25 @@ describe('WJ4/WJ5 — capture-lead : contrat webhook + seuil 1 000 MAD intacts',
     expect(json.qualified).toBe(true);
   });
 
-  it('WJ5 — un lead SOUS le seuil renvoie qualified=false et ne touche pas le CRM', async () => {
-    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({}) }) as unknown as Response);
+  it('WJ5 — un lead SOUS le seuil renvoie qualified=false MAIS atteint quand même le CRM', async () => {
+    let forwarded: Record<string, unknown> | null = null;
+    const fetchMock = vi.fn(async (url: string, init?: { body?: string }) => {
+      if (String(url).includes('crm.example/hook') && init?.body) forwarded = JSON.parse(init.body);
+      return { ok: true, json: async () => ({}) } as unknown as Response;
+    });
     vi.stubGlobal('fetch', fetchMock);
     const { status, json } = await call({ ...qualified, billRange: 'lt800' });
     expect(status).toBe(200);
     expect(json.ok).toBe(true);
     // Honnêteté WJ5 : la réponse expose qualified=false → l'écran montre le chemin
-    // « sous le seuil » au lieu d'un faux « demande enregistrée ».
+    // « sous le seuil » au lieu d'un faux « demande enregistrée ». INCHANGÉ.
     expect(json.qualified).toBe(false);
     expect(qualifiesForCrm('lt800')).toBe(false);
-    expect(fetchMock.mock.calls.filter((c) => String(c[0]).includes('crm.example/hook')).length).toBe(0);
+    // Ce qui CHANGE : le lead n'est plus jeté. Il part au webhook avec son
+    // drapeau, et c'est le récepteur qui décide quoi en faire.
+    expect(fetchMock.mock.calls.filter((c) => String(c[0]).includes('crm.example/hook')).length).toBe(1);
+    const rec = forwarded as unknown as Record<string, unknown>;
+    expect(rec.qualified).toBe(false);
+    expect(rec.city).toBe('Casablanca');
   });
 });

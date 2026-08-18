@@ -149,8 +149,15 @@ export const COMMERCIAL_CATEGORY_QUESTIONS: Record<string, CommercialQuestion[]>
  * WJ122 — mapping clé de question snake_case → clé webhook camelCase (QX51,
  * SOURCE: backend/django_core/apps/crm/webhooks.py `_extract_web_questionnaire`).
  * Seules les clés ici présentes sont envoyées au webhook (lead.ts les whiteliste
- * aussi) ; `surface_m2` (hammam) n'a PAS de destination webhook dédiée — il n'est
- * donc jamais transmis (jamais mappé sur le `surfaceM2` PRO, sémantique différente).
+ * aussi).
+ *
+ * `surface_m2` (hammam / spa / salle de sport) était le SEUL trou de ce mapping :
+ * la question s'affiche, le visiteur la remplit, et la réponse n'allait nulle
+ * part. Elle est désormais mappée sur `surfaceM2` — la même sémantique que le
+ * champ PRO (surface du SITE en m², jamais la surface de toiture stricte qui a
+ * sa propre clé `surfaceToitureM2`), donc pas de sens détourné. Les deux champs
+ * ne coexistent jamais : `mt-surface-m2` (PRO) n'existe pas dans le panneau
+ * commercial.
  */
 export const COMMERCIAL_QUESTION_WEBHOOK_KEY: Record<string, string> = {
   chambres: 'chambres',
@@ -172,5 +179,5 @@ export const COMMERCIAL_QUESTION_WEBHOOK_KEY: Record<string, string> = {
   temperature_consigne: 'temperatureConsigne',
   volume_m3: 'volumeM3',
   saisonnalite_recolte: 'saisonnaliteRecolte',
-  // surface_m2 : volontairement ABSENT (pas de clé webhook — jamais transmis).
+  surface_m2: 'surfaceM2',
 };

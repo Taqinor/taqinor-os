@@ -267,6 +267,37 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
           </label>
         </div>
 
+        <!-- CHOIX EXPLICITE du geste de repérage. Avant, le parcours était
+             IMPLICITE : un clic posait un repère, et seul un double-clic (une
+             interaction qui n'existe pas au doigt) démarrait un contour — rien
+             ne l'annonçait, donc quasiment personne ne dessinait. On pose la
+             question franchement, avec un défaut sûr (« pointer »). -->
+        <div id="mt-roof-mode-group" class="mt-5" role="group" aria-labelledby="mt-roof-mode-label">
+          <p id="mt-roof-mode-label" class="text-sm text-lune-soft" data-i18n
+            data-fr="Comment souhaitez-vous nous montrer votre toit ?"
+            data-ar="كيف تريدون أن تُرونا سطحكم؟">
+            Comment souhaitez-vous nous montrer votre toit ?
+          </p>
+          <div class="mt-2 grid gap-2 sm:grid-cols-2">
+            <button type="button" id="mt-roof-mode-point" data-value="point" aria-pressed="true"
+              class="mt-roof-mode cine-card flex flex-col items-start gap-0.5 border border-white/15 p-3 text-left transition-colors">
+              <span class="text-sm font-semibold text-white" data-i18n
+                data-fr="📍 Pointer mon toit" data-ar="📍 تحديد سطحي بنقطة">📍 Pointer mon toit</span>
+              <span class="text-xs text-lune-faint" data-i18n
+                data-fr="Un seul appui sur votre toit — le plus rapide."
+                data-ar="ضغطة واحدة على سطحكم — الأسرع.">Un seul appui sur votre toit — le plus rapide.</span>
+            </button>
+            <button type="button" id="mt-roof-mode-draw" data-value="draw" aria-pressed="false"
+              class="mt-roof-mode cine-card flex flex-col items-start gap-0.5 border border-white/15 p-3 text-left transition-colors">
+              <span class="text-sm font-semibold text-white" data-i18n
+                data-fr="✏️ Dessiner mon toit" data-ar="✏️ رسم سطحي">✏️ Dessiner mon toit</span>
+              <span class="text-xs text-lune-faint" data-i18n
+                data-fr="Tracez le contour — plus précis pour l'étude."
+                data-ar="ارسموا المحيط — أدق للدراسة.">Tracez le contour — plus précis pour l'étude.</span>
+            </button>
+          </div>
+        </div>
+
         <!-- CARTE — recherche d'adresse + repère (ids rp9-* câblés par captureBoot). -->
         <div id="mt-stage" class="cine-card mt-5 overflow-hidden">
           <form id="rp9-search" class="flex flex-col gap-3 border-b border-white/10 p-4 sm:flex-row">
@@ -323,6 +354,35 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
           <p id="rp9-status" class="border-t border-white/10 px-4 py-3 text-sm text-lune-faint" aria-live="polite">
             Cherchez votre adresse, puis posez un repère sur votre toit (facultatif).
           </p>
+
+          <!-- CONFIRMATION VISUELLE du repère (flux « pointer » uniquement). Le
+               visiteur posait un point sur une vue large et continuait sans
+               jamais voir CE qu'il avait désigné ; la carte atterrit maintenant
+               serrée sur son repère (captureBoot.landOn) et on lui pose la
+               question. Le flux « dessiner » garde son propre retour visuel :
+               le contour lui-même. -->
+          <div id="mt-pin-confirm" hidden class="border-t border-white/10 p-4">
+            <p class="text-sm font-semibold text-white" data-i18n
+              data-fr="C'est bien votre toit ?" data-ar="هل هذا هو سطحكم؟">C'est bien votre toit ?</p>
+            <p class="mt-1 text-xs text-lune-faint" data-i18n
+              data-fr="La carte est centrée sur le repère que vous venez de poser."
+              data-ar="الخريطة متمركزة على العلامة التي وضعتموها للتو.">
+              La carte est centrée sur le repère que vous venez de poser.
+            </p>
+            <!-- Adresse REMPLIE seulement si le géocodage inverse en a trouvé une
+                 (W2) — jamais une adresse devinée, jamais une ligne vide. -->
+            <p id="mt-pin-confirm-address" hidden class="mt-2 text-sm text-lune-soft"></p>
+            <div class="mt-3 flex flex-wrap gap-2">
+              <button type="button" id="mt-pin-confirm-yes"
+                class="bg-brass-400 px-4 py-2.5 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300">
+                <span data-i18n data-fr="Oui, c'est mon toit" data-ar="نعم، هذا سطحي">Oui, c'est mon toit</span>
+              </button>
+              <button type="button" id="mt-pin-confirm-adjust"
+                class="border border-white/25 px-4 py-2.5 text-sm font-semibold text-lune-soft transition-colors hover:border-brass-400 hover:text-brass-300">
+                <span data-i18n data-fr="Non, déplacer le repère" data-ar="لا، غيّروا موضع العلامة">Non, déplacer le repère</span>
+              </button>
+            </div>
+          </div>
         </div>
 
         <div class="mt-5 flex justify-end">
@@ -574,11 +634,14 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
           </p>
         </details>
 
-        <!-- Groupe 3/3 — pour le financement (3 champs). -->
+        <!-- Groupe 3/3 — pour mieux conseiller (2 champs). L'id `mt-more-financing`
+             est CONSERVÉ tel quel : c'est un point d'ancrage DOM déjà câblé
+             (persistance, tests, styles) et le renommer ne changerait rien pour
+             le visiteur, qui ne voit que l'intitulé. -->
         <details id="mt-more-financing" class="cine-card mt-3 p-5 sm:p-6">
           <summary class="cursor-pointer select-none text-sm font-semibold text-brass-300" data-i18n
-            data-fr="Pour le financement" data-ar="للتمويل">
-            Pour le financement
+            data-fr="Pour mieux vous conseiller" data-ar="لتقديم نصيحة أفضل">
+            Pour mieux vous conseiller
           </summary>
 
           <div class="mt-4 grid gap-4 sm:grid-cols-2">
@@ -601,16 +664,12 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
               </select>
             </label>
           </div>
-
-          <label class="mt-4 block text-sm text-lune-soft">
-            <span data-i18n data-fr="Mode de financement envisagé" data-ar="طريقة التمويل المتوقعة">Mode de financement envisagé</span>
-            <select id="mt-financing-intent" name="financingIntent" class={`${inputClass} mt-1`}>
-              <option value="">Choisir…</option>
-              <option value="comptant" data-i18n data-fr="Comptant" data-ar="نقداً">Comptant</option>
-              <option value="financement" data-i18n data-fr="Financement / crédit" data-ar="تمويل / قرض">Financement / crédit</option>
-              <option value="indecis" data-i18n data-fr="Pas encore décidé" data-ar="لم أقرر بعد">Pas encore décidé</option>
-            </select>
-          </label>
+          <!-- La question « Mode de financement envisagé » (mt-financing-intent)
+               a été RETIRÉE sur décision du fondateur : on ne demande plus au
+               visiteur comment il compte payer avant même de lui avoir parlé.
+               Le champ ERP `financing_intent` existe toujours (d'autres sources
+               l'alimentent) et lib/lead.ts continue de le valider s'il arrive —
+               le tunnel ne l'envoie simplement plus. -->
         </details>
         </div>
 
@@ -2161,7 +2220,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   import { billRangeFromExact, billRangeLabel, type BillRangeId } from '../../lib/billRange';
   import { captureWhatsappText, whatsappLink } from '../../lib/whatsapp';
   import { WHATSAPP_LEADS } from '../../lib/nap';
-  import { buildClientRef, validateLead, MAX_BILL_BY_MODE } from '../../lib/lead';
+  import { buildClientRef, buildIdempotencyKey, validateLead, MAX_BILL_BY_MODE } from '../../lib/lead';
   // QX/Lane C — TYPE seul (effacé au build : Three.js/viewerOnly ne rejoint
   // JAMAIS le bundle initial — WJ18 ; le module réel reste en import() lazy).
   import type { RoofImageSpec } from '../../scripts/roofPro11/viewerOnly';
@@ -2347,11 +2406,18 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     captureOutline?: Array<[number, number]>;
     fields?: Record<string, string>;
     checks?: Record<string, boolean>;
+    // Jetons de dédoublonnage : persistés AVEC le reste du brouillon pour qu'un
+    // rafraîchissement/retour arrière ne fabrique pas une 2ᵉ identité technique
+    // pour la MÊME saisie (c'est exactement le doublon qu'ils doivent empêcher).
+    idempotencyKey?: string;
+    eventId?: string;
   }
   const PERSISTED_TEXT_FIELDS = [
     'mt-name', 'mt-phone', 'mt-city', 'mt-email', 'mt-facture-hiver', 'mt-facture-ete',
     'mt-bill', 'mt-roof', 'mt-raccordement', 'mt-distributeur', 'mt-bill-kwh', 'mt-roof-age',
-    'mt-occupant-type', 'mt-project-timing', 'mt-financing-intent', 'mt-fallback-address',
+    // 'mt-financing-intent' retiré avec la question elle-même (le champ n'existe
+    // plus dans le DOM : le persister n'aurait rien à lire).
+    'mt-occupant-type', 'mt-project-timing', 'mt-fallback-address',
     'rp9-address',
     // WJ68 — mode professionnel (facultatif, additif).
     'mt-raison-sociale', 'mt-facility-type', 'mt-site-count',
@@ -2384,9 +2450,10 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
         step, mode, ombrage,
         visitWindowPart, visitWindowWeek,
         futureLoads: Array.from(futureLoads),
-        sel: { proUnit, tension, activity, surfaceType, generator, waterSource, irrigation, waterUnit, commercialCategory, ccUnit, equipes, regionAgricole },
+        sel: { proUnit, tension, activity, surfaceType, generator, waterSource, irrigation, waterUnit, commercialCategory, ccUnit, equipes, regionAgricole, roofInputMode },
         capturePin, captureOutline,
         fields, checks,
+        idempotencyKey: dedupIdempotencyKey, eventId: dedupEventId,
       };
       sessionStorage.setItem(WIZARD_STORAGE_KEY, JSON.stringify(snapshot));
     } catch {
@@ -2417,6 +2484,31 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   });
 
   const savedWizard = loadWizardState();
+
+  // ——— Jetons de DÉDOUBLONNAGE technique (CRM + Meta CAPI) ———
+  // `idempotencyKey` (signal de dédup CRM) et `eventId` (champ `event_id` de la
+  // spec Meta CAPI) sont validés par lib/lead.ts DEPUIS LE DÉBUT, mais ce tunnel
+  // ne les a jamais émis : le CRM ne pouvait pas reconnaître deux envois d'une
+  // même saisie, et `fireCapi` retombait sur un id dérivé de l'horodatage — donc
+  // DIFFÉRENT à chaque renvoi, ce qui ne déduplique rien côté Meta.
+  // Générés au PREMIER affichage, repris du brouillon s'il en existe un, stables
+  // ensuite. Deux jetons DISTINCTS : ils ne servent pas le même système.
+  function newDedupToken(): string {
+    try {
+      const c = globalThis.crypto;
+      // `randomUUID` n'existe qu'en contexte sécurisé : repli sur le générateur
+      // maison déjà validé par le même regex (^[A-Za-z0-9_-]{8,64}$).
+      if (c && typeof c.randomUUID === 'function') return c.randomUUID();
+    } catch { /* accès crypto refusé : on prend le repli */ }
+    return buildIdempotencyKey();
+  }
+  let dedupIdempotencyKey = savedWizard?.idempotencyKey || newDedupToken();
+  let dedupEventId = savedWizard?.eventId || newDedupToken();
+  function getOrCreateDedupTokens(): { idempotencyKey: string; eventId: string } {
+    if (!dedupIdempotencyKey) dedupIdempotencyKey = newDedupToken();
+    if (!dedupEventId) dedupEventId = newDedupToken();
+    return { idempotencyKey: dedupIdempotencyKey, eventId: dedupEventId };
+  }
 
   // ——— WJ6/QX : sélecteur de mode — plus AUCUN défaut silencieux (le profil
   // pilote des questions d'étape 2 entièrement différentes) ; « Continuer »
@@ -2679,6 +2771,11 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
         mapboxToken: mapboxToken || undefined,
         reducedMotion,
         onReady: clearMapSkeleton,
+        // Le geste choisi par le visiteur, lu à CHAQUE clic (il peut changer
+        // d'avis) : « dessiner » ouvre le contour dès le premier appui, «
+        // pointer » fait atterrir la carte serrée sur le repère pour la
+        // confirmation ci-dessous.
+        roofInputMode: () => roofInputMode,
         // WJ61 — un repère/contour restauré depuis sessionStorage (rafraîchissement
         // ou retour navigateur en cours de parcours) est semé directement dans la
         // carte au boot, via le même mécanisme que l'hydratation depuis un lead
@@ -2696,6 +2793,11 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
             const fromMap = (s.address && s.address.trim()) || addressEl?.value.trim() || '';
             if (fromMap) cityEl.value = fromMap;
           }
+          // Confirmation visuelle du repère : l'adresse arrive souvent APRÈS le
+          // repère (géocodage inverse asynchrone), d'où la re-synchronisation à
+          // chaque notification. Fonctions hissées, déclarées plus bas.
+          setPinConfirmAddress(s.address);
+          syncPinConfirm();
           // WJ2 — le contour peut arriver/changer APRÈS le calcul d'estimation :
           // on ré-évalue l'éligibilité du bouton « voir les panneaux » à chaque
           // changement de tracé (fonction déclarée plus bas, hissée par `function`).
@@ -2716,6 +2818,11 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     if (fallback) fallback.hidden = false;
     const stage = $('mt-stage');
     if (stage) stage.hidden = true;
+    // …et le choix « pointer / dessiner » avec : proposer un geste de carte
+    // au-dessus d'un repli adresse serait exactement l'UI mensongère que le
+    // masquage de #mt-stage vient d'éliminer.
+    const roofModeGroup = $('mt-roof-mode-group');
+    if (roofModeGroup) roofModeGroup.hidden = true;
   }
 
   // WJ60 — sur 3G lente, un fetch sans délai peut rester en attente indéfiniment
@@ -2906,6 +3013,84 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   let equipes = savedSel.equipes || '';
   // WJ124 — mode AGRICOLE : région agronomique (pilote le moteur eau FAO-56).
   let regionAgricole = savedSel.regionAgricole || '';
+
+  // ——— CHOIX EXPLICITE « pointer » / « dessiner » + CONFIRMATION VISUELLE ———
+  // Le geste de repérage était implicite (clic = repère, double-clic = contour,
+  // rien ne le disait), et un visiteur qui pointait ne voyait JAMAIS ce qu'il
+  // venait de désigner : il validait un point sur une vue large. On demande donc
+  // le geste, puis — en mode « pointer » — la carte atterrit serrée sur le
+  // repère (captureBoot.landOn) et on lui pose la question à côté de l'image.
+  let roofInputMode: 'point' | 'draw' = savedSel.roofInputMode === 'draw' ? 'draw' : 'point';
+  const pinConfirmEl = $('mt-pin-confirm');
+  const pinConfirmAddrEl = $('mt-pin-confirm-address');
+  /** Clé du repère DÉJÀ confirmé : déplacer le repère redemande confirmation,
+   *  un simple re-rendu (adresse qui arrive plus tard) ne la redemande pas. */
+  let confirmedPinKey = '';
+  const pinKey = (p: { lat: number; lng: number } | null) =>
+    p ? `${p.lat.toFixed(6)},${p.lng.toFixed(6)}` : '';
+  function setMapStatus(msg: string) {
+    const el = $('rp9-status');
+    if (el) el.textContent = msg;
+  }
+  function syncRoofModeCards() {
+    document.querySelectorAll<HTMLButtonElement>('.mt-roof-mode').forEach((b) => {
+      const on = b.dataset.value === roofInputMode;
+      b.setAttribute('aria-pressed', String(on));
+      b.classList.toggle('border-brass-400', on);
+      b.classList.toggle('border-white/15', !on);
+    });
+    // « Terminer le tracé » ne veut rien dire quand on ne trace pas.
+    const finishBtn = $('rp9-finish');
+    if (finishBtn) finishBtn.hidden = roofInputMode !== 'draw';
+  }
+  /** Montre la confirmation UNIQUEMENT quand elle a un sens : geste « pointer »,
+   *  un repère posé, aucun contour tracé, et pas déjà confirmé pour ce repère. */
+  function syncPinConfirm() {
+    if (!pinConfirmEl) return;
+    pinConfirmEl.hidden = !(
+      roofInputMode === 'point'
+      && capturePin != null
+      && captureOutline.length < 3
+      && pinKey(capturePin) !== confirmedPinKey
+    );
+  }
+  /** Adresse du repère — affichée seulement si le géocodage inverse en a rendu
+   *  une (W2) : jamais une adresse devinée, jamais une ligne vide. */
+  function setPinConfirmAddress(addr?: string | null) {
+    if (!pinConfirmAddrEl) return;
+    const a = (addr || '').trim();
+    pinConfirmAddrEl.textContent = a;
+    pinConfirmAddrEl.hidden = a === '';
+  }
+  document.querySelectorAll<HTMLButtonElement>('.mt-roof-mode').forEach((b) => {
+    b.addEventListener('click', () => {
+      const v: 'point' | 'draw' = b.dataset.value === 'draw' ? 'draw' : 'point';
+      if (v === roofInputMode) return;
+      roofInputMode = v;
+      syncRoofModeCards();
+      syncPinConfirm();
+      setMapStatus(roofInputMode === 'draw'
+        ? 'Tracez le contour de votre toit : appuyez sur chaque coin, puis « Terminer le tracé ».'
+        : 'Appuyez sur votre toit pour y poser le repère.');
+      markDataEntered();
+      saveWizardState();
+    });
+  });
+  $('mt-pin-confirm-yes')?.addEventListener('click', () => {
+    confirmedPinKey = pinKey(capturePin);
+    syncPinConfirm();
+    setMapStatus('Repère confirmé. Continuez avec vos coordonnées ci-dessous.');
+  });
+  $('mt-pin-confirm-adjust')?.addEventListener('click', () => {
+    // On ne SUPPRIME pas le repère : le visiteur en pose simplement un autre,
+    // et s'il change d'avis il n'a rien perdu.
+    confirmedPinKey = '';
+    if (pinConfirmEl) pinConfirmEl.hidden = true;
+    setMapStatus('Appuyez sur le bon endroit de votre toit pour déplacer le repère.');
+    $('rp9-map')?.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'center' });
+  });
+  syncRoofModeCards();
+
   function wireCardGroup(
     selector: string,
     getCurrent: () => string,
@@ -3326,6 +3511,10 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
       const s: Record<string, number | string> = {};
       const kOk = Number.isFinite(est.kwc) && est.kwc > 0;
       if (kOk) s.kwc = est.kwc;
+      // Le nombre de modules du dimensionnement annoncé (nb × 710 Wc = ce kWc).
+      // estimatorPro le calcule depuis toujours ; le CRM ne le recevait jamais et
+      // le conseiller le recomptait à la main depuis le kWc.
+      if (Number.isFinite(est.nbPanneaux) && est.nbPanneaux > 0) s.nbPanneaux = est.nbPanneaux;
       if (Number.isFinite(est.prodAnnuelleKwh) && est.prodAnnuelleKwh > 0) s.prodKwh = Math.round(est.prodAnnuelleKwh);
       if (Number.isFinite(est.tauxAutoconso) && est.tauxAutoconso > 0) s.tauxAutoconso = pct(est.tauxAutoconso);
       if (Number.isFinite(est.tauxCouverture) && est.tauxCouverture > 0) s.tauxCouverture = pct(est.tauxCouverture);
@@ -3356,6 +3545,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     const kwcOk = Number.isFinite(est.kwc) && est.kwc > 0;
     setCard('mt-pro-kwc-card', 'mt-pro-kwc', kwcOk ? formatKwc(est.kwc) : null);
     if (kwcOk) shown.kwc = est.kwc;
+    if (Number.isFinite(est.nbPanneaux) && est.nbPanneaux > 0) shown.nbPanneaux = est.nbPanneaux;
     const prodOk = Number.isFinite(est.prodAnnuelleKwh) && est.prodAnnuelleKwh > 0;
     setCard('mt-pro-prod-card', 'mt-pro-prod', prodOk ? formatMad(Math.round(est.prodAnnuelleKwh)) : null);
     if (prodOk) shown.prodKwh = Math.round(est.prodAnnuelleKwh);
@@ -3472,6 +3662,9 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
       if (ag.pompeCv > 0) s.pompeCv = ag.pompeCv;
       const cOk = ag.champKwc > 0;
       if (cOk) s.champKwc = ag.champKwc;
+      // Le nombre de panneaux du champ PV — celui-là est même AFFICHÉ au visiteur
+      // (« … kWc · N panneaux ») et n'atteignait pourtant jamais l'ERP.
+      if (ag.nbPanneaux > 0) s.nbPanneaux = ag.nbPanneaux;
       if (ag.m3Jour > 0) s.m3Jour = ag.m3Jour;
       // WJ124 — bassin suggéré = besoin journalier (1×), borne basse de la fourchette 1-3×.
       if (ag.m3Jour > 0) s.bassinM3 = ag.m3Jour;
@@ -3499,6 +3692,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     const champLabel = champOk ? `${formatKwc(ag.champKwc)} kWc${ag.nbPanneaux > 0 ? ` · ${ag.nbPanneaux} panneaux` : ''}` : null;
     setCard('mt-agri-champ-card', 'mt-agri-champ', champLabel);
     if (champOk) shown.champKwc = ag.champKwc;
+    if (ag.nbPanneaux > 0) shown.nbPanneaux = ag.nbPanneaux;
     const eauOk = ag.m3Jour > 0;
     const eauLabel = eauOk
       ? `${fmtNum(ag.m3Jour)} m³${ag.hmtM > 0 ? ` à HMT ${fmtNum(ag.hmtM)} m${ag.hmtEstimated ? ' (estimée)' : ''}` : ''}`
@@ -4150,8 +4344,11 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
 
   // WJ122 — réponses de la catégorie commerciale ACTIVE, mappées snake_case →
   // camelCase de la liste blanche webhook (QX51). Seules les questions dotées
-  // d'une clé webhook sont transmises (surface_m2 hammam ⇒ jamais envoyée) ; un
-  // booléen n'est joint que s'il est coché, un nombre/select que s'il est saisi.
+  // d'une clé webhook sont transmises — et elles en ont TOUTES une désormais
+  // (`surface_m2` hammam/spa/salle de sport, seul trou du mapping, part sur
+  // `surfaceM2`). Un booléen n'est joint que s'il est coché, un nombre/select
+  // que s'il est saisi. En mode commercial, `mt-surface-m2` (PRO) n'existe pas :
+  // les deux sources de `surfaceM2` ne se marchent jamais dessus.
   function readCommercialAnswers(): Record<string, unknown> {
     const out: Record<string, unknown> = {};
     if (mode !== 'commercial' || !commercialCategory) return out;
@@ -4221,11 +4418,22 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
       batteryInterest: ($('mt-battery-interest') as HTMLInputElement | null)?.checked === true,
       occupantType: val('mt-occupant-type') || undefined,
       projectTiming: val('mt-project-timing') || undefined,
-      financingIntent: val('mt-financing-intent') || undefined,
+      // `financingIntent` n'est PLUS envoyé (question retirée, cf. l'accordéon
+      // « Pour mieux vous conseiller »). validateLead l'accepte toujours pour
+      // les autres sources — le contrat webhook est intact, la clé est
+      // simplement absente.
       hasMeterPhoto,
       // WJ52 — référence courte pour l'artefact post-soumission (échoée telle
       // quelle, jamais une clé d'unicité serveur — cf. lib/lead.ts).
       clientRef: getOrCreateClientRef(),
+      // Jetons de DÉDOUBLONNAGE (CRM + Meta CAPI) : générés au premier
+      // affichage, stables pour toute la session de saisie, donc un renvoi
+      // (échec réseau, double-clic, retour arrière puis re-soumission) porte le
+      // MÊME couple. lib/lead.ts les validait déjà — mais le tunnel ne les
+      // envoyait jamais : côté CAPI, `fireCapi` retombait sur un id dérivé de
+      // l'horodatage, qui DIFFÈRE à chaque renvoi et ne déduplique donc rien.
+      idempotencyKey: getOrCreateDedupTokens().idempotencyKey,
+      eventId: getOrCreateDedupTokens().eventId,
       // W353 — préférence de créneau de visite technique (facultative, STATIQUE).
       visitWindowPart: visitWindowPart || undefined,
       visitWindowWeek: visitWindowWeek || undefined,
@@ -4256,24 +4464,38 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
       ...readCommercialAnswers(),
       // WJ123 — mode INDUSTRIEL v2 : équipes + weekend + contexte (liste blanche
       // webhook QX51). `weekend` est un booléen SÉPARÉ, jamais une 5e équipe.
-      equipes: (mode === 'industriel' || mode === 'professionnel') ? (equipes || undefined) : undefined,
-      weekend: (mode === 'industriel' || mode === 'professionnel') && (($('mt-weekend') as HTMLInputElement | null)?.checked === true) ? true : undefined,
-      cosPhiConnu: (mode === 'industriel' || mode === 'professionnel') ? (num('mt-cos-phi') ?? undefined) : undefined,
-      groupeKva: (mode === 'industriel' || mode === 'professionnel') ? (num('mt-groupe-kva') ?? undefined) : undefined,
-      dieselDhMois: (mode === 'industriel' || mode === 'professionnel') ? (num('mt-diesel-dh') ?? undefined) : undefined,
+      //
+      // PLUS DE GATE SUR LE MODE COURANT. Ces champs ne partaient que si le
+      // profil actif AU MOMENT DE L'ENVOI correspondait : un visiteur qui
+      // décrivait son site industriel puis rebasculait sur « commercial » (ou
+      // revenait à l'étape 1 pour vérifier) voyait ses réponses silencieusement
+      // effacées du payload — alors qu'il les avait bien données. Règle unique
+      // désormais, la même que `raisonSociale` ci-dessus : TOUTE VALEUR SAISIE
+      // NON VIDE PART. Rien n'est fabriqué pour autant — un champ jamais rempli
+      // reste `undefined`, et validateLead borne/écarte chaque clé séparément,
+      // indépendamment du mode.
+      equipes: equipes || undefined,
+      weekend: (($('mt-weekend') as HTMLInputElement | null)?.checked === true) ? true : undefined,
+      cosPhiConnu: num('mt-cos-phi') ?? undefined,
+      groupeKva: num('mt-groupe-kva') ?? undefined,
+      dieselDhMois: num('mt-diesel-dh') ?? undefined,
       // surface_toiture_m2 = surface de TOIT au sens strict (le backend distingue
       // le sol : webhooks.py:303-304) — ne l'envoyer que pour une vraie toiture ;
       // ombrière/terrain sont décrits par leurs booléens, jamais une fausse toiture.
-      surfaceToitureM2: (mode === 'industriel' || mode === 'professionnel') && (surfaceType === 'bac_acier' || surfaceType === 'terrasse') ? (num('mt-surface-m2') ?? undefined) : undefined,
-      ombriere: (mode === 'industriel' || mode === 'professionnel') && surfaceType === 'ombriere' ? true : undefined,
-      terrain: (mode === 'industriel' || mode === 'professionnel') && surfaceType === 'terrain' ? true : undefined,
+      // Le gate sur le TYPE DE SURFACE reste (c'est de la sémantique, pas du
+      // mode) ; seul le gate sur le mode courant disparaît.
+      surfaceToitureM2: (surfaceType === 'bac_acier' || surfaceType === 'terrasse') ? (num('mt-surface-m2') ?? undefined) : undefined,
+      ombriere: surfaceType === 'ombriere' ? true : undefined,
+      terrain: surfaceType === 'terrain' ? true : undefined,
       // QX — sous-panneau AGRICOLE (pompage).
       waterSource: waterSource || undefined,
       profondeurM: num('mt-profondeur') ?? undefined,
       hmtM: num('mt-hmt') ?? undefined,
       debitM3h: waterUnit === 'm3h' ? (num('mt-water-need') ?? undefined) : undefined,
       besoinM3j: waterUnit === 'm3j' ? (num('mt-water-need') ?? undefined) : undefined,
-      heuresPompage: mode === 'agricole' ? (num('mt-heures-pompage') ?? undefined) : undefined,
+      // Dégaté comme les champs industriels ci-dessus : un nombre d'heures de
+      // pompage saisi part, même si le visiteur a changé de profil depuis.
+      heuresPompage: num('mt-heures-pompage') ?? undefined,
       irrigation: irrigation || undefined,
       culture: val('mt-culture') || undefined,
       // WJ124 — région agronomique (pilote le moteur eau FAO-56 côté proposition).

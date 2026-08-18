@@ -231,11 +231,21 @@ export interface EstimateShown {
   // WJ124 — bassin de stockage suggéré (m³) : besoin journalier de pointe (1×),
   // borne basse de la fourchette 1-3× montrée au client.
   bassinM3?: number;
+  /**
+   * Nombre de panneaux du dimensionnement ANNONCÉ. Jusqu'ici le CRM recevait le
+   * kWc mais jamais le nombre de modules qui le compose, alors que les moteurs
+   * le calculent (`estimatorPro.nbPanneaux`, `estimatorAgricole.nbPanneaux`) et
+   * que le parcours agricole l'AFFICHE (« … kWc · N panneaux »). Le conseiller
+   * repartait donc du kWc pour recompter à la main. Jamais fabriqué : la page
+   * ne le joint que lorsque le moteur l'a réellement produit (le résidentiel,
+   * dont `estimateFromBill` n'en produit pas, ne l'envoie jamais).
+   */
+  nbPanneaux?: number;
 }
 const ESTIMATE_SHOWN_NUMERIC_KEYS = [
   'kwc', 'prodKwh', 'ecoMadMonthLow', 'ecoMadMonthHigh', 'ecoMadYearLow',
   'ecoMadYearHigh', 'tauxAutoconso', 'tauxCouverture', 'pompeCv', 'champKwc', 'm3Jour',
-  'bassinM3',
+  'bassinM3', 'nbPanneaux',
 ] as const;
 
 /**
@@ -593,6 +603,10 @@ function validateOptionalFields(b: Record<string, unknown>): Partial<ValidatedLe
   const projectTiming = cleanEnum(b.projectTiming, PROJECT_TIMINGS);
   if (projectTiming) opt.projectTiming = projectTiming;
 
+  // NE PAS SUPPRIMER faute d'appelant visible : le tunnel /devis/mon-toit a
+  // retiré la question « Mode de financement envisagé » (décision fondateur) et
+  // n'envoie donc plus cette clé, mais le champ ERP `financing_intent` reste
+  // alimenté par d'AUTRES sources, qui passent par cette même validation.
   const financingIntent = cleanEnum(b.financingIntent, FINANCING_INTENTS);
   if (financingIntent) opt.financingIntent = financingIntent;
 
@@ -656,6 +670,11 @@ function validateOptionalFields(b: Record<string, unknown>): Partial<ValidatedLe
   const surfaceType = cleanEnum(b.surfaceType, SURFACE_TYPES);
   if (surfaceType) opt.surfaceType = surfaceType;
 
+  // `surfaceM2` = surface du SITE en m² (jamais la surface de toiture stricte,
+  // qui a sa propre clé `surfaceToitureM2`). Deux sources désormais : le champ
+  // PRO `mt-surface-m2` et la question « Surface (m²) » des catégories
+  // commerciales hammam/spa/salle de sport (WJ122 mappait tout SAUF celle-là,
+  // qui était donc collectée puis jetée). Même sémantique, même borne.
   const surfaceM2 = cleanPositiveNumber(b.surfaceM2, 1_000_000);
   if (surfaceM2 != null) opt.surfaceM2 = surfaceM2;
 
@@ -1035,9 +1054,12 @@ export function redactLeadForLog(record: LeadRecord): Record<string, unknown> {
  * Compteur EN MÉMOIRE (même idiome que `rateLimit.ts` : Map au niveau du
  * module, best-effort, borné à l'isolat Worker courant — pas un quota/état
  * global durable, cf. limitation documentée dans rateLimit.ts). On ne compte
- * QUE les échecs de livraison d'un lead QUALIFIÉ avec un webhook CONFIGURÉ
- * (`webhook-status-*` / `webhook-error-*`) : jamais `below-threshold` ni
- * `no-webhook-configured`, qui sont des états normaux, pas des pannes.
+ * QUE les échecs de livraison d'un lead RÉELLEMENT TRANSMIS avec un webhook
+ * CONFIGURÉ (`webhook-status-*` / `webhook-error-*`) : jamais `below-threshold`
+ * ni `no-webhook-configured`, qui sont des états normaux, pas des pannes.
+ * (`below-threshold` ne remonte plus du tunnel /devis/mon-toit, qui transmet
+ * désormais aussi les non-qualifiés — le motif reste géré pour les autres
+ * points d'entrée, qui gardent le court-circuit.)
  * Un succès réinitialise le compteur (la panne n'est plus active).
  */
 const FORWARD_LEAD_ALERT_THRESHOLD = 3;
@@ -1071,6 +1093,24 @@ export function trackForwardLeadOutcome(delivered: boolean, reason?: string): { 
 }
 
 /**
+ * Options de transfert. `includeUnqualified` DÉSACTIVE le court-circuit
+ * « sous le seuil » pour l'appelant qui le demande explicitement.
+ *
+ * POURQUOI un opt-in plutôt qu'un changement global : un visiteur du tunnel
+ * /devis/mon-toit qui déclare une facture < 1 000 MAD répond quand même à tout
+ * le questionnaire (toit repéré, ville, profil, créneau de visite…) et TOUT
+ * cela était jeté — le CRM n'a jamais su que ces gens existaient. Le récepteur
+ * accepte déjà le drapeau `qualified: false` (chantier parallèle du même lot),
+ * donc on le lui transmet tel quel et c'est LUI qui trie. Les autres points
+ * d'entrée (`/api/preview-lead`, `/api/simulate`) gardent EXACTEMENT leur
+ * comportement historique : sans option, `forwardLead` est byte-identique.
+ */
+export interface ForwardLeadOptions {
+  /** true → transmettre aussi les leads `qualified: false`. Défaut : false. */
+  includeUnqualified?: boolean;
+}
+
+/**
  * Transfert CRM (LEAD_WEBHOOK_URL). Tolère l'absence de configuration et les
  * pannes : ne lève jamais, retourne l'état de livraison pour le log.
  */
@@ -1078,8 +1118,11 @@ export async function forwardLead(
   record: LeadRecord,
   env: LeadEnv,
   fetchFn: typeof fetch = fetch,
+  opts: ForwardLeadOptions = {},
 ): Promise<{ delivered: boolean; reason?: string }> {
-  if (!record.qualified) return { delivered: false, reason: 'below-threshold' };
+  if (!record.qualified && !opts.includeUnqualified) {
+    return { delivered: false, reason: 'below-threshold' };
+  }
   const url = env.LEAD_WEBHOOK_URL?.trim();
   if (!url) return { delivered: false, reason: 'no-webhook-configured' };
   try {
