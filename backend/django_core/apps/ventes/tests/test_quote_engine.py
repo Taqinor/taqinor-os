@@ -1871,6 +1871,32 @@ class TestResidentialQRESRound(TestCase):
         self.assertIn("Estimations non contractuelles", html)
         self.assertIn("proposition en ligne", html)
 
+    def test_row_has_two_boxes_equal_by_construction_method_flat_below(self):
+        """QRES65 (fondateur, 2026-08-18) — la rangée « Conditions / Prochaines
+        étapes » de la page 3 ne porte plus que DEUX boîtes : le financement en
+        est la bande de pied (.p3-finsec), plus une troisième carte flottante.
+        Ces deux boîtes sont deux cellules d'une MÊME ligne de tableau : leurs
+        hauteurs s'égalisent par construction (la plus courte est étirée sur la
+        hauteur commune de la ligne), et non plus parce que le texte de la
+        méthode remplissait la colonne de gauche. Ce texte est désormais posé À
+        PLAT sous la rangée, sans boîte."""
+        html, _ = self._render("deux")
+        # exactement deux boîtes, dans UNE ligne de tableau (plus de rowspan
+        # qui répartissait la surhauteur entre trois lignes)
+        self.assertEqual(html.count('class="p3-tdcard"'), 2)
+        self.assertNotIn('rowspan', html)
+        self.assertNotIn('p3-tdfin', html)
+        self.assertNotIn('p3-rgap', html)
+        # le financement reste visible, en bande de pied de la boîte de droite
+        self.assertIn('class="p3-finsec"', html)
+        self.assertIn('Financement possible', html)
+        # la méthode a quitté la carte Conditions pour un texte plat sous la
+        # rangée (aucune boîte : ni p3-tdcard, ni p3-card, ni fond/bordure)
+        self.assertNotIn('p3-cond-k">Comment nous calculons', html)
+        i_row = html.index('class="p3-cols')
+        i_flat = html.index('class="p3-method"')
+        self.assertLess(html.index('</table>', i_row), i_flat)
+
     def test_sign_link_token_never_displayed_as_text(self):
         """Le lien tokenisé vit dans le href et le QR ; le bouton n'affiche que
         « hôte/segment » (l'URL complète débordait sous le QR)."""
