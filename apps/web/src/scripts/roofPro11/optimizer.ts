@@ -569,7 +569,12 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       if (el) el.textContent = v;
     };
     set('rp9-reco-title', d.isReco ? `${d.title}  ·  ✓ recommandé` : d.title);
-    set('rp9-reco-kwc', `${d.kwc.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} kWc`);
+    // W97 §2 — kWc = panneaux × 0,72 (PANEL2_WATT) : toujours ≤ 2 décimales exactes.
+    // 1 décimale arrondissait CHAQUE zone indépendamment, si bien que la somme des
+    // deux cartes affichées pouvait diverger jusqu'à 0,1 kWc du total agrégé
+    // (round(a) + round(b) ≠ round(a+b)) — cf. zones.ts. 2 décimales affichent la
+    // valeur exacte (aucune perte), donc la somme affichée == le total affiché.
+    set('rp9-reco-kwc', `${d.kwc.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} kWc`);
     set('rp9-reco-panels', `${fmt(d.count)} × 720 W`);
     set('rp9-reco-prod', d.annualKwh > 0 ? `${fmt(Math.round(d.annualKwh))} kWh/an` : '—');
     set('rp9-reco-cover', d.pct > 0 ? `${Math.round(d.pct)} %` : '—');
