@@ -2417,8 +2417,22 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             # l'empreinte des données à celle du fichier stocké : identiques →
             # aucun re-rendu (le cache garde tout son intérêt), différentes →
             # re-rendu dans LE MÊME format avant de servir.
+            #
+            # DÉGRADATION : si le rafraîchissement lui-même échoue (moteur ou
+            # stockage momentanément indisponible), on retombe sur le fichier
+            # stocké plutôt que de refuser le téléchargement — ce bouton
+            # fonctionnait avant PVFRESH, il doit continuer de fonctionner.
             from ..quote_engine import cle_pdf_a_jour
-            pdf_bytes = download_pdf(cle_pdf_a_jour(devis))
+            try:
+                cle = cle_pdf_a_jour(devis)
+            except Exception:  # noqa: BLE001
+                import logging as _logging
+                _logging.getLogger(__name__).warning(
+                    'PVFRESH: rafraîchissement impossible pour %s — le fichier '
+                    'stocké est servi tel quel', devis.reference,
+                    exc_info=True)
+                cle = devis.fichier_pdf
+            pdf_bytes = download_pdf(cle)
         except Exception:
             return Response(
                 {'detail': 'Fichier introuvable. Régénérez le PDF.'},
