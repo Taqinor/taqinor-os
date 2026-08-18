@@ -66,6 +66,13 @@ class PvSyncBase(TestCase):
             company=self.company, nom=ANCIEN_NOM, sku='PVSYNC-PAN',
             prix_achat=Decimal('700.00'), prix_vente=ANCIEN_PRIX,
             quantite_stock=10)
+        # Produit DISTINCT pour la ligne onduleur de fixture : lie au meme
+        # produit que le panneau, elle entrait dans le queryset de resync
+        # (filter(produit=...)) et gonflait lignes_conservees (CI round 3).
+        self.onduleur = Produit.objects.create(
+            company=self.company, nom='Onduleur hybride 5kW',
+            sku='PVSYNC-OND', prix_achat=Decimal('6000.00'),
+            prix_vente=Decimal('9000.00'), quantite_stock=5)
         self.client_obj = Client.objects.create(
             company=self.company, nom='Bennani', prenom='Karim',
             email='pvsync@example.com', telephone='+212600000009')
@@ -93,9 +100,10 @@ class PvSyncBase(TestCase):
             prix_unitaire=prix, remise=remise)
         # Le moteur de proposition refuse un devis sans onduleur (garde-fou
         # PV86) : chaque devis de fixture porte une ligne onduleur stable,
-        # hors du perimetre des resynchronisations testees.
+        # sur son PROPRE produit — donc reellement hors du queryset de resync
+        # (filter(produit=...)), contrairement a la premiere version.
         LigneDevis.objects.create(
-            devis=devis, produit=produit or self.produit,
+            devis=devis, produit=self.onduleur,
             designation='Onduleur hybride 5kW (fixture)',
             quantite=Decimal('1'), prix_unitaire=Decimal('9000'),
             remise=Decimal('0'))
