@@ -144,7 +144,10 @@ run_job() {
 echo "-> installing flake8 + import-linter (CI backend-lint deps)..."
 pip install -q flake8 import-linter==2.11
 
-run_job backend-lint
+# `backend-lint` est devenu un agregateur mince (WOW-CI2) : ses controles
+# reels vivent dans ces deux lanes. On suit le TRAVAIL, pas le nom du check.
+run_job backend-lint-fast
+run_job backend-openapi
 # Pre-etape du job backend-tests-shard (derive modele<->migration, la classe de
 # rouge CI n1). Elle n'appartient ni a backend-lint ni a stage-names, donc elle
 # reste declaree explicitement ici.
