@@ -154,6 +154,21 @@ describe('ToitureDesign — mode devis (PV20)', () => {
       { name: /Générer le devis & envoyer au client/ })).toBeNull()
   })
 
+  it('fondateur 18/08 — bouton Fermer (X) en haut à droite referme la fenêtre (retour SPA)', async () => {
+    ventesApi.getDevisDesignContext.mockResolvedValue(
+      reponseContrat('ventes', 'devis_design_context'))
+
+    rendreDevis(CTX.devis.id)
+
+    const fermer = await screen.findByRole('button', { name: 'Fermer la conception 3D' })
+    expect(fermer).toBeInstanceOf(HTMLButtonElement)
+    await userEvent.click(fermer)
+    // `navigate(-1)` : on referme exactement comme le geste qui a ouvert cet
+    // écran (lead, liste des devis, générateur…) l'a amené — jamais une
+    // cible en dur.
+    expect(navigateMock).toHaveBeenCalledWith(-1)
+  })
+
   it('lecture seule : le MOTIF vient du serveur et le CTA renvoie vers la 3D', async () => {
     ventesApi.getDevisDesignContext.mockResolvedValue(
       reponseContrat('ventes', 'devis_design_context', 'exemple_lecture_seule'))

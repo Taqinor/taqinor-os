@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   HandCoins,
   CreditCard, Banknote,
+  Box,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -51,6 +52,11 @@ const DevisList = lazy(() => import('../../pages/ventes/DevisList'))
 // QX29 — « Relances du jour » : tableau d'action des devis (miroir ZSAV6).
 const DevisActionBoardPage = lazy(() => import('../../pages/ventes/DevisActionBoardPage'))
 const DevisGenerator = lazy(() => import('../../pages/ventes/DevisGenerator'))
+// Fondateur 18/08 — « une vraie app pour ça » : entrée de nav de plein droit
+// pour le layouteur 3D (jusqu'ici atteignable seulement depuis une fiche lead
+// ou une ligne de la liste des devis). Choisit un devis brouillon puis ouvre
+// LE MÊME écran ToitureDesign (`/ventes/devis/:id/design`) — aucun doublon.
+const Conception3DPage = lazy(() => import('../../pages/ventes/Conception3DPage'))
 // APX15 — le fichier portait un nom qui MENTAIT (« VentesKanban ») alors
 // qu'il rend la LISTE des bons de commande : renomme honnetement, URL
 // `/ventes/bons-commande` strictement inchangee.
@@ -88,6 +94,11 @@ const config = {
       // AppLauncher/PinnedApps/la préférence d'atterrissage VX46).
       { to: '/ventes/cockpit',       label: 'Cockpit',          k: 'nav.ventes_cockpit', icon: navIcon(LayoutDashboard), roles: ['normal','responsable','admin'] },
       { to: '/ventes/devis',         label: 'Devis',            k: 'nav.devis',      icon: navIcon(FileText),        roles: ['normal','responsable','admin'] },
+      // Fondateur 18/08 — le layouteur 3D en item de nav de plein droit
+      // (jusqu'ici atteignable seulement depuis une fiche lead ou une ligne
+      // de la liste des devis) ; ouvert sans contexte, il fait choisir un
+      // devis brouillon (ChoisirDevisPourDesign) avant de calepiner.
+      { to: '/ventes/conception-3d', label: 'Conception 3D',    k: 'nav.conception_3d', icon: navIcon(Box), roles: ['normal','responsable','admin'] },
       { to: '/ventes/bons-commande', label: 'Bons de commande', k: 'nav.bons_commande', icon: navIcon(ShoppingCart),  roles: ['normal','responsable','admin'] },
       // ODY16 — sous-groupe « Facturation » (Factures/Avoirs/Encaissements/
       // Relances) : reste DANS Ventes tant qu'ODX18 n'a pas livré
@@ -129,6 +140,9 @@ const config = {
     // QX29 — « Relances du jour » : tableau d'action des devis (miroir ZSAV6).
     { path: '/ventes/devis/action-requise', component: DevisActionBoardPage },
     { path: '/ventes/devis/nouveau', component: DevisGenerator },
+    // Fondateur 18/08 — entrée standalone du layouteur 3D (choisit un devis
+    // brouillon puis ouvre `/ventes/devis/:id/design`).
+    { path: '/ventes/conception-3d', component: Conception3DPage },
     { path: '/ventes/bons-commande', component: BonCommandeList },
     { path: '/ventes/factures', component: FactureList },
     { path: '/ventes/avoirs', component: AvoirsPage },
