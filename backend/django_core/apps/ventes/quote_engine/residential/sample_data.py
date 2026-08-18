@@ -289,8 +289,9 @@ def build(variant: str = "deux") -> dict:
             "facture_avec_solaire": 21400 - eco_a_ann,
             "economie": eco_a_ann,
             "ligne_methode": (
-                "Chaque kWh est valorisé au prix de SA tranche (barème "
-                "progressif du distributeur) : facture actuelle moins facture "
+                "Facture recalculée au barème réel du distributeur "
+                "(progressif ≤ 150 kWh/mois, puis sélectif : toute la conso du "
+                "mois au tarif de SA tranche) : facture actuelle moins facture "
                 "résiduelle après autoconsommation — jamais un prix moyen "
                 "inventé."),
             "exemple": (f"Facture actuelle ≈ 21 400 MAD/an → avec solaire "

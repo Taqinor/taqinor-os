@@ -325,6 +325,88 @@ def regler_envoi_gamme(devis, mode):
     return mode
 
 
+# ── PVMRQ — marque préférée par gamme/rôle (fondateur 18/08/2026) ──────────
+#
+# ``ParametresGammes`` (apps/ventes/models.py) porte le réglage ; ces deux
+# fonctions en sont la SEULE voie de lecture — aucun autre code ne doit lire
+# ``ParametresGammes.marques`` directement (le contrat JSON n'a qu'un seul
+# lecteur, donc qu'un seul endroit à faire évoluer si sa forme change).
+
+def get_parametres_gammes(company):
+    """Réglages « gammes » de la société (get-or-create singleton, NTTRE27-like).
+
+    Une société sans réglage explicite obtient les valeurs par défaut
+    (``deux_gammes=False``, ``marques={}``) — aucune régression sur la
+    composition automatique tant que le fondateur n'a rien configuré."""
+    from .models import ParametresGammes
+    params, _ = ParametresGammes.objects.get_or_create(company=company)
+    return params
+
+
+def marque_preferee(company, gamme_nom, role):
+    """La marque préférée pour ce (société, gamme, rôle), ou ``None``.
+
+    LA seule voie par laquelle un appelant apprend une préférence de marque —
+    ``_pick_product`` la consulte, rien d'autre ne doit lire
+    ``ParametresGammes.marques`` en direct. Ne lève JAMAIS : société sans
+    réglage, rôle inconnu ou marque vide renvoient tous ``None`` (le caller
+    retombe alors sur le comportement historique, sans préférence).
+
+    RÉSOLUTION DU SLOT (F4/F7, fondateur 18/08/2026) — ``gamme_nom`` est le
+    libellé LIBRE de la gamme du devis (celui que renvoie ``gamme_nom(devis)``
+    plus haut dans ce fichier), résolu ici contre le réglage société pour
+    retrouver le SLOT FIXE ('Essentielle'/'Premium') qui indexe réellement
+    ``marques`` (ces clés ne bougent jamais, même si le libellé affiché est
+    renommé) :
+
+    * ``deux_gammes=False`` (offre à UNE seule gamme) — TOUJOURS le slot
+      Essentielle, quel que soit ``gamme_nom`` (y compris un devis encore
+      étiqueté « Premium » : une société à une gamme n'a qu'UNE carte de
+      marques active — voir ``ParametresGammes``) ;
+    * ``gamme_nom`` vide/``None``, ou égal (sans casse) à ``nom_essentielle``
+      — slot Essentielle ;
+    * ``gamme_nom`` égal (sans casse) à ``nom_premium`` — slot Premium ;
+    * tout autre libellé (gamme inconnue de ce réglage — p. ex. un devis
+      encore étiqueté « Premium » après un renommage fondateur Premium →
+      Luxe) — slot Essentielle, JAMAIS ``None`` : un ``None`` laisserait
+      ``_pick_product`` composer SANS aucune marque épinglée, alors que
+      l'écran (DevisGenerator ``marquesActives``) retombe déjà sur la carte
+      Essentielle dans ce cas — la composition automatique DÉSÉPINGLERAIT
+      alors la marque en silence, l'exact inverse de l'ordre fondateur #5
+      (jamais de substitution silencieuse).
+    """
+    from .models import ParametresGammes, ROLES_AUTO_COMPOSITION
+
+    role = str(role or '').strip()
+    if role not in ROLES_AUTO_COMPOSITION:
+        return None
+    params = ParametresGammes.objects.filter(company=company).first()
+    if params is None:
+        return None
+    nom = str(gamme_nom or '').strip()
+    if not params.deux_gammes:
+        # F7 — offre à UNE gamme : une seule carte de marques est
+        # significative, quel que soit le libellé passé.
+        slot = ParametresGammes.SLOT_ESSENTIELLE
+    elif not nom:
+        slot = ParametresGammes.SLOT_ESSENTIELLE
+    elif nom.casefold() == (params.nom_essentielle or '').strip().casefold():
+        slot = ParametresGammes.SLOT_ESSENTIELLE
+    elif nom.casefold() == (params.nom_premium or '').strip().casefold():
+        slot = ParametresGammes.SLOT_PREMIUM
+    else:
+        # F4 — gamme inconnue de ce réglage (renommage, libellé périmé…) :
+        # repli explicite sur Essentielle, jamais un None qui désépinglerait
+        # la composition en silence (voir la docstring ci-dessus).
+        slot = ParametresGammes.SLOT_ESSENTIELLE
+    marques = params.marques if isinstance(params.marques, dict) else {}
+    carte = marques.get(slot)
+    if not isinstance(carte, dict):
+        return None
+    marque = str(carte.get(role) or '').strip()
+    return marque or None
+
+
 def create_devis_from_reserve(*, reserve, user):
     """XFSM18 — crée un DEVIS brouillon de réparation à partir d'une réserve
     d'intervention (`installations.Reserve`), pour donner un chemin de devis
@@ -414,6 +496,45 @@ def _is_panel(name: str) -> bool:
 
 def _is_battery(name: str) -> bool:
     return "batterie" in (name or "").lower()
+
+
+# ── PVCBL — les CÂBLES suivent la taille du calepinage (F8, fondateur
+# 18/08/2026) ────────────────────────────────────────────────────────────
+#
+# Métrés — MIROIR EXACT de ``solar.js`` (CABLE_DC_M_PAR_PALIER/
+# CABLE_TERRE_M_BASE/CABLE_TERRE_M_PAR_PALIER) : câble solaire DC 6 mm² à
+# 60 m par palier de 5 kWc (strictement proportionnel), câble de terre AC
+# 6 mm² à 25 m de base + 15 m par palier — 40 m pour 5 kWc, 55 m pour 10 kWc.
+CABLE_DC_M_PAR_PALIER = 60
+CABLE_TERRE_M_BASE = 25
+CABLE_TERRE_M_PAR_PALIER = 15
+
+
+def metre_cable_dc(paliers):
+    """Longueur (m) de câble solaire DC pour ``paliers`` blocs de 5 kWc."""
+    n = max(1, int(round(float(paliers or 0))))
+    return n * CABLE_DC_M_PAR_PALIER
+
+
+def metre_cable_terre(paliers):
+    """Longueur (m) de câble de terre AC pour ``paliers`` blocs de 5 kWc."""
+    n = max(1, int(round(float(paliers or 0))))
+    return CABLE_TERRE_M_BASE + n * CABLE_TERRE_M_PAR_PALIER
+
+
+# Classification — même mot-clé que ``solar.js::classifyProduct`` : un câble
+# de TERRE se reconnaît à « terre »/« mise à la terre », tout autre « câble »
+# est un câble solaire DC (accents retirés — ``_sans_accents`` plus bas dans
+# ce fichier, chargé par NOM au moment de l'appel, jamais au chargement du
+# module).
+def _is_cable_terre(name: str) -> bool:
+    n = _sans_accents(name)
+    return "cable" in n and ("terre" in n or "mise a la terre" in n)
+
+
+def _is_cable_dc(name: str) -> bool:
+    n = _sans_accents(name)
+    return "cable" in n and not _is_cable_terre(name)
 
 
 # ── PVG4 — Batterie Dyness HAUTE TENSION (16 kWh, décision fondateur
@@ -510,17 +631,19 @@ def _batterie_compatible(batterie, plage):
     return v_min <= tension <= v_max
 
 
-def _pick_batterie(company, *, onduleur=None):
+def _pick_batterie(company, *, onduleur=None, gamme=None):
     """La batterie du catalogue COMPATIBLE avec l'onduleur de la composition.
 
     Même sélection que ``_pick_product`` (produits tarifés de la société et
-    globaux, la moins chère l'emporte) mais avec le garde data-driven ci-dessus
-    au lieu du prédicat par mot-clé. ``onduleur=None`` (composition qui n'en a
-    pas encore) ⇒ repli mot-clé, donc comportement historique intact.
+    globaux, la moins chère l'emporte, PVMRQ : marque préférée en priorité)
+    mais avec le garde data-driven ci-dessus au lieu du prédicat par mot-clé.
+    ``onduleur=None`` (composition qui n'en a pas encore) ⇒ repli mot-clé, donc
+    comportement historique intact. ``gamme`` (PVMRQ) est le libellé de gamme
+    du devis appelant, transmis tel quel à ``_pick_product``.
     """
     plage = _plage_batterie_de_l_onduleur(onduleur)
     return _pick_product(
-        company, _is_battery,
+        company, _is_battery, role='batterie', gamme=gamme,
         produit_predicate=lambda p: _batterie_compatible(p, plage))
 
 
@@ -609,7 +732,25 @@ def _has_price(produit) -> bool:
     return bool(produit.prix_vente and Decimal(produit.prix_vente) > 0)
 
 
-def _pick_product(company, predicate, *, watt=None, produit_predicate=None):
+def _marque_correspond(produit, marque):
+    """PVMRQ — ``produit`` porte-t-il la marque préférée, sans tenir compte de
+    la casse ?
+
+    ``Produit.marque`` (champ structuré) prioritaire, exact une fois normalisé
+    (espaces/casse) ; à défaut (marque non renseignée sur la fiche), son
+    ``nom`` — une désignation complète comme « Panneau Jinko 550W Mono » — DOIT
+    seulement CONTENIR la marque, jamais l'égaler."""
+    cible = str(marque or '').strip().casefold()
+    if not cible:
+        return False
+    marque_produit = str(getattr(produit, 'marque', '') or '').strip()
+    if marque_produit:
+        return marque_produit.casefold() == cible
+    return cible in str(getattr(produit, 'nom', '') or '').casefold()
+
+
+def _pick_product(company, predicate, *, watt=None, produit_predicate=None,
+                  role=None, gamme=None):
     """Smallest-suitable quotable catalogue product matching ``predicate``.
 
     Scans the company's (and global) products, keeps only priced ones, and —
@@ -620,6 +761,17 @@ def _pick_product(company, predicate, *, watt=None, produit_predicate=None):
     son seul nom : le garde batterie data-driven a besoin de la fiche technique
     (tension nominale), pas d'un mot-clé. Il s'AJOUTE à ``predicate`` ; absent,
     la sélection est byte-identique à l'historique.
+
+    ``role``/``gamme`` (PVMRQ, fondateur 18/08/2026) — quand ``role`` est
+    fourni et qu'une marque préférée est réglée pour ce (société, gamme, rôle)
+    via ``ParametresGammes``/``marque_preferee``, cette marque GAGNE
+    TOUJOURS : les candidats sont restreints à elle AVANT toute logique de
+    wattage/prix (inchangée, byte-identique à l'historique en aval). Si la
+    marque est réglée mais qu'AUCUN candidat ne la porte, la fonction renvoie
+    ``None`` sans jamais retomber en silence sur une autre marque — c'est
+    l'appelant qui doit alors signaler le trou (comme il le fait déjà pour
+    « aucun produit disponible »). ``role=None`` (défaut) laisse la sélection
+    strictement inchangée — aucun appelant non migré ne régresse.
     """
     from apps.stock.models import Produit
     from django.db.models import Q
@@ -640,6 +792,14 @@ def _pick_product(company, predicate, *, watt=None, produit_predicate=None):
     candidates = _filtrer_onduleurs_complets(candidates)
     if not candidates:
         return None
+    if role:
+        marque = marque_preferee(company, gamme, role)
+        if marque:
+            candidats_marque = [p for p in candidates
+                                if _marque_correspond(p, marque)]
+            if not candidats_marque:
+                return None  # marque réglée, aucun match ⇒ JAMAIS un repli
+            candidates = candidats_marque
     if watt:
         exact = [p for p in candidates
                  if _parse_watt(p.nom) == int(watt)]
@@ -823,7 +983,10 @@ def validate_composition_for_layout(layout, company):
                      or bool(layout.get('battery')))
 
     if wants_battery:
-        inv = _pick_product(company, _is_hybrid_inverter)
+        # PVMRQ — pas de devis ici (pré-vol AVANT création) ⇒ pas de gamme
+        # connue : ``marque_preferee`` retombe explicitement sur le slot
+        # Essentielle.
+        inv = _pick_product(company, _is_hybrid_inverter, role='onduleur_hybride')
         # PVOND — garde batterie PILOTÉ PAR LA DONNÉE : la batterie retenue doit
         # entrer dans la plage batterie de l'onduleur hybride effectivement
         # choisi ci-dessus. Sans plage déclarée (ou sans fiche batterie), repli
@@ -850,7 +1013,7 @@ def validate_composition_for_layout(layout, company):
                     'catalogue. Ajoutez une batterie tarifée avant de générer '
                     'ce devis.')
     else:
-        inv = _pick_product(company, _is_reseau_inverter)
+        inv = _pick_product(company, _is_reseau_inverter, role='onduleur_reseau')
         if inv is None:
             errors.append(
                 'Aucun onduleur réseau disponible (ou sans prix) dans le catalogue. '
@@ -1218,7 +1381,11 @@ def _panneau_pour_calepinage(layout, *, company=None, devis=None):
             if panneaux and kwc:
                 watt = int(round(kwc * 1000 / panneaux / 10) * 10)
         try:
-            produit = _pick_product(company, _is_panel, watt=watt)
+            # PVMRQ — le devis (s'il en existe déjà un) donne sa gamme réelle ;
+            # sans lui, ``marque_preferee`` retombe sur le slot Essentielle.
+            produit = _pick_product(
+                company, _is_panel, watt=watt, role='panneau',
+                gamme=gamme_nom(devis) if devis is not None else None)
         except Exception:      # pragma: no cover - catalogue indisponible
             produit = None
     if produit is None:
@@ -2220,6 +2387,10 @@ def sync_devis_from_layout(devis, layout, user=None):
         if verrou is None:
             raise SyncLayoutError('Devis introuvable.')
 
+        # PVMRQ — gamme RÉELLE de ce devis, calculée une fois et transmise à
+        # chaque ``_pick_product``/``_pick_batterie`` de cette resynchro.
+        gamme = gamme_nom(verrou)
+
         # ── Garde de statut : LECTURE du statut, jamais une écriture ──
         if verrou.statut == Devis.Statut.ENVOYE:
             raise SyncLayoutError(
@@ -2269,10 +2440,16 @@ def sync_devis_from_layout(devis, layout, user=None):
             }
 
         lignes_modifiees = 0
+        # F8 — vrai UNIQUEMENT quand le compte de panneaux a réellement bougé
+        # (ligne créée, ou ligne dominante réajustée) : c'est ce qui déclenche
+        # la resynchro des câbles plus bas, jamais un layout qui ne change
+        # rien aux panneaux.
+        panneaux_ont_change = False
 
         # ── Panneaux : porter le compte à la cible ──
         if cible_panneaux > 0 and not lignes_panneau:
-            panneau = _pick_product(verrou.company, _is_panel, watt=watt)
+            panneau = _pick_product(verrou.company, _is_panel, watt=watt,
+                                    role='panneau', gamme=gamme)
             if panneau is None:
                 avertissements.append(
                     'Aucun panneau tarifé au catalogue : la ligne de panneaux '
@@ -2285,6 +2462,7 @@ def sync_devis_from_layout(devis, layout, user=None):
                     remise=Decimal('0'))
                 lignes_modifiees += 1
                 total_panneaux = cible_panneaux
+                panneaux_ont_change = True
         elif cible_panneaux <= 0:
             # Un layout sans compte de panneaux ne DÉTRUIT pas les lignes en
             # place : « 0 » veut dire « inconnu », pas « enlève tout ».
@@ -2311,6 +2489,60 @@ def sync_devis_from_layout(devis, layout, user=None):
             lignes_modifiees += 1
             total_panneaux = sum(
                 int(li.quantite or 0) for li in lignes_panneau)
+            panneaux_ont_change = True
+
+        # ── Kilowattage RETENU — déplacé ICI (F8) : le kit (PVHEAL) ET les
+        # câbles (PVCBL, juste en dessous) en ont tous les deux besoin, et le
+        # panel count qui vient d'être arrêté ci-dessus est son unique
+        # dépendance restante.
+        result = dict(layout.get('result') or {})
+        kwc = float(result.get('kwc') or toiture.get('kwc') or 0.0)
+        if not kwc and total_panneaux:
+            kwc = round(total_panneaux * watt / 1000.0, 3)
+
+        # ── PVCBL — LES CÂBLES SUIVENT LA TAILLE DU CALEPINAGE (F8, fondateur
+        # 18/08/2026) ──
+        #
+        # Le compte de panneaux, la batterie et l'onduleur se resynchronisaient
+        # déjà ; les DEUX lignes de câble (DC solaire + terre AC), elles,
+        # restaient au métrage du premier calepinage — un devis ramené de
+        # 10 à 5 kWc gardait ses 120 m de câble DC (60 m/palier × 2 paliers)
+        # alors que 5 kWc n'en réclame que 60. Mêmes métrés que ``solar.js``
+        # (paliers = max(1, round(kWc / 5))).
+        #
+        # Ne touche QUE des lignes DÉJÀ PRÉSENTES, classées par le même
+        # mot-clé que l'écran et rattachées à un PRODUIT catalogue (au mètre)
+        # — jamais une note texte, et jamais une ligne INVENTÉE : un devis
+        # sans câble hier n'en gagne pas un ici (ce trou reste à la charge de
+        # PVHEAL/``composition_residentielle``, hors périmètre de cette
+        # resynchro). Ne se déclenche QUE si le compte de panneaux a bougé —
+        # un layout qui ne change rien aux panneaux ne touche pas aux câbles
+        # non plus.
+        def _resynchroniser_cable(predicat, cible_metres):
+            candidats = [li for li in lignes
+                         if getattr(li, 'produit', None) is not None
+                         and _classe_ligne(li, predicat)]
+            if not candidats:
+                return False
+            # Plusieurs lignes de la même famille (rare) : seule la PLUS
+            # GROSSE bouge, même politique que les panneaux ci-dessus.
+            dominante = max(candidats,
+                            key=lambda li: Decimal(str(li.quantite or 0)))
+            nouvelle = Decimal(str(cible_metres))
+            if Decimal(str(dominante.quantite or 0)) == nouvelle:
+                return False
+            dominante.quantite = nouvelle
+            dominante.save(update_fields=['quantite'])
+            return True
+
+        if panneaux_ont_change and kwc > 0:
+            paliers = max(1, _arrondi_js(kwc / 5))
+            if _resynchroniser_cable(_is_cable_dc,
+                                     metre_cable_dc(paliers)):
+                lignes_modifiees += 1
+            if _resynchroniser_cable(_is_cable_terre,
+                                     metre_cable_terre(paliers)):
+                lignes_modifiees += 1
 
         # ── Batterie : présente si (et seulement si) le layout en veut une ──
         if veut_batterie and not a_batterie:
@@ -2325,9 +2557,10 @@ def sync_devis_from_layout(devis, layout, user=None):
                  and getattr(li, 'produit', None) is not None), None)
             if _hybride_du_devis is None:
                 _hybride_du_devis = _pick_product(
-                    verrou.company, _is_hybrid_inverter)
+                    verrou.company, _is_hybrid_inverter,
+                    role='onduleur_hybride', gamme=gamme)
             batterie = _pick_batterie(
-                verrou.company, onduleur=_hybride_du_devis)
+                verrou.company, onduleur=_hybride_du_devis, gamme=gamme)
             if batterie is None:
                 _plage_devis = _plage_batterie_de_l_onduleur(_hybride_du_devis)
                 if _plage_devis and _plage_devis[1] > 0:
@@ -2407,8 +2640,9 @@ def sync_devis_from_layout(devis, layout, user=None):
             else:
                 lignes_hybride = conserves
 
-        def _permuter_onduleur(ligne, predicat, motif_absence):
-            remplacant = _pick_product(verrou.company, predicat)
+        def _permuter_onduleur(ligne, predicat, role, motif_absence):
+            remplacant = _pick_product(verrou.company, predicat, role=role,
+                                       gamme=gamme)
             if remplacant is None:
                 avertissements.append(motif_absence)
                 return False
@@ -2421,7 +2655,7 @@ def sync_devis_from_layout(devis, layout, user=None):
 
         if a_batterie and lignes_reseau and not lignes_hybride:
             if _permuter_onduleur(
-                    lignes_reseau[0], _is_hybrid_inverter,
+                    lignes_reseau[0], _is_hybrid_inverter, 'onduleur_hybride',
                     'Aucun onduleur hybride tarifé au catalogue : l\'onduleur '
                     'réseau a été conservé. La proposition ne pourra pas '
                     'présenter l\'option avec batterie.'):
@@ -2429,17 +2663,16 @@ def sync_devis_from_layout(devis, layout, user=None):
                 lignes_modifiees += 1
         elif not a_batterie and lignes_hybride and not lignes_reseau:
             if _permuter_onduleur(
-                    lignes_hybride[0], _is_reseau_inverter,
+                    lignes_hybride[0], _is_reseau_inverter, 'onduleur_reseau',
                     'Aucun onduleur réseau tarifé au catalogue : l\'onduleur '
                     'hybride a été conservé alors que la batterie a été '
                     'retirée.'):
                 lignes_reseau, lignes_hybride = [lignes_hybride[0]], []
                 lignes_modifiees += 1
 
-        result = dict(layout.get('result') or {})
-        kwc = float(result.get('kwc') or toiture.get('kwc') or 0.0)
-        if not kwc and total_panneaux:
-            kwc = round(total_panneaux * watt / 1000.0, 3)
+        # ``result``/``kwc`` sont déjà résolus plus haut (F8, juste après le
+        # bloc panneaux) — le kit ci-dessous et l'étude plus bas les
+        # réutilisent tels quels.
 
         # ── PVHEAL — COMPLÉTER le kit manquant (structures, socles, tableau…) ──
         #

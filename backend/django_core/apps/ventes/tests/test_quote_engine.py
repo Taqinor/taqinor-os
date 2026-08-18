@@ -2130,14 +2130,15 @@ class TestResidentialQRESRound(TestCase):
         self.assertIn("proposition en ligne", html)
 
     def test_row_has_two_boxes_equal_by_construction_method_flat_below(self):
-        """QRES65 (fondateur, 2026-08-18) — la rangée « Conditions / Prochaines
-        étapes » de la page 3 ne porte plus que DEUX boîtes : le financement en
-        est la bande de pied (.p3-finsec), plus une troisième carte flottante.
-        Ces deux boîtes sont deux cellules d'une MÊME ligne de tableau : leurs
-        hauteurs s'égalisent par construction (la plus courte est étirée sur la
-        hauteur commune de la ligne), et non plus parce que le texte de la
-        méthode remplissait la colonne de gauche. Ce texte est désormais posé À
-        PLAT sous la rangée, sans boîte."""
+        """QRES65 + QRES66 (fondateur, 2026-08-18) — la rangée « Conditions /
+        Prochaines étapes » de la page 3 porte DEUX boîtes, et RIEN d'autre :
+        le bloc « Financement possible » est SUPPRIMÉ (ordre fondateur du
+        18/08, demandé plusieurs fois — ni bande de pied .p3-finsec, ni carte,
+        ni mensualité ; ne pas le réintroduire sous une autre forme). Les deux
+        boîtes sont deux cellules d'une MÊME ligne de tableau : leurs hauteurs
+        s'égalisent par construction (la plus courte est étirée sur la hauteur
+        commune de la ligne). Le texte de la méthode reste posé À PLAT sous la
+        rangée, sans boîte."""
         html, _ = self._render("deux")
         # exactement deux boîtes, dans UNE ligne de tableau (plus de rowspan
         # qui répartissait la surhauteur entre trois lignes)
@@ -2145,9 +2146,12 @@ class TestResidentialQRESRound(TestCase):
         self.assertNotIn('rowspan', html)
         self.assertNotIn('p3-tdfin', html)
         self.assertNotIn('p3-rgap', html)
-        # le financement reste visible, en bande de pied de la boîte de droite
-        self.assertIn('class="p3-finsec"', html)
-        self.assertIn('Financement possible', html)
+        # QRES66 — plus AUCUNE trace du financement en page 3 (classes p3-fin*,
+        # bande de pied, variante .p3-cols-fin) même quand la fixture porte des
+        # données de financement.
+        self.assertNotIn('p3-finsec', html)
+        self.assertNotIn('p3-fin', html)
+        self.assertNotIn('p3-cols-fin', html)
         # la méthode a quitté la carte Conditions pour un texte plat sous la
         # rangée (aucune boîte : ni p3-tdcard, ni p3-card, ni fond/bordure)
         self.assertNotIn('p3-cond-k">Comment nous calculons', html)
@@ -2274,11 +2278,15 @@ class TestCanonicalProductible(TestCase):
                          round(7.1 * 1687 * PRODUCTION_DERATE))
 
     def test_onee_tranche_ceilings_aligned(self):
-        """QX38 — les plafonds ONEE représentent les vraies bandes cumulées
-        (100 / 250 / 400 / ∞), plus la bande 101-250 écrasée."""
+        """Les plafonds ONEE sont ceux de la grille officielle publiée
+        (100 / 150 / 200 / 300 / 500 / ∞), et la table porte la règle SÉLECTIVE
+        (progressif ≤ 150, puis toute la conso au tarif de sa tranche, avec la
+        tolérance officielle de 10 kWh → bornes effectives 210/310/510)."""
         from apps.ventes.quote_engine.pricing import ONEE_TRANCHES
         ceilings = [c for c, _ in ONEE_TRANCHES]
-        self.assertEqual(ceilings, [100, 250, 400, None])
+        self.assertEqual(ceilings, [100, 150, 200, 300, 500, None])
+        self.assertEqual(ONEE_TRANCHES.selective_threshold, 150)
+        self.assertEqual(ONEE_TRANCHES.boundary_tolerance, 10)
 
 
 class TestHonestCashflowPayback(TestCase):

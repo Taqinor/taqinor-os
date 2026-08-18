@@ -268,7 +268,7 @@ export const FICHES: Fiche[] = [
     faits: [
       'Acier galvanisé à chaud ou aluminium anodisé anticorrosion, selon l’exposition du site',
       'Visserie inox, mise à la terre de la structure incluse',
-      'Plots béton préfabriqués pour le lestage des toitures-terrasses (pose sans percement)',
+      'Plots béton préfabriqués CARRÉS de 30 × 30 × 20 cm, un sous chaque pied, pour le lestage des toitures-terrasses (pose sans percement)',
       'Le profil, l’entraxe et la charge de lestage sont fixés par l’étude — jamais un catalogue',
     ],
     normes: [
@@ -290,7 +290,7 @@ export const FICHES: Fiche[] = [
     faq: [
       {
         q: 'Faut-il percer ma toiture ?',
-        r: 'Sur toiture-terrasse, non : la structure est lestée par plots béton. Sur toiture inclinée, les fixations traversent la couverture et sont étanchées point par point — c’est l’étude qui tranche.',
+        r: 'Sur toiture-terrasse, non : la structure est lestée par plots béton carrés (30 × 30 × 20 cm), un sous chaque pied. Sur toiture inclinée, les fixations traversent la couverture et sont étanchées point par point — c’est l’étude qui tranche.',
       },
       {
         q: 'Acier ou aluminium ?',

@@ -290,6 +290,56 @@ export function equipmentLineCount(items: readonly EquipmentLine[] | null | unde
   return groupEquipment(items).reduce((n, g) => n + g.lines.length, 0);
 }
 
+// ── (fondateur 2026-08-18) « La page ne montre QUE ce qui est dans le devis » ─
+
+/**
+ * Ce que le devis contient RÉELLEMENT, pour les seules familles dont la page
+ * tire une PROMESSE au client (garantie de performance panneaux, garantie
+ * onduleur, suivi de production par l'application de l'onduleur).
+ *
+ * RÈGLE FONDATEUR : une promesse ne s'affiche que si la ligne correspondante
+ * existe au devis. Un devis de POMPAGE (pompe + variateur, aucun onduleur)
+ * annonçait « N ans onduleur » et poussait le badge « Garantie onduleur » —
+ * une promesse sur un matériel qui n'est pas vendu.
+ */
+export interface EquipmentPresence {
+  /** Au moins une ligne PANNEAU photovoltaïque. */
+  panneaux: boolean;
+  /** Au moins une ligne ONDULEUR (un variateur/VFD de pompage n'en est PAS un). */
+  onduleur: boolean;
+}
+
+/**
+ * Mots d'une ligne PANNEAU / ONDULEUR, cherchés UNIQUEMENT dans le groupe
+ * `production` déjà constitué par `groupEquipment` — on ne re-classe rien. Ce
+ * détour par le groupe est ce qui évite les faux positifs : « coffret DC pour
+ * onduleur » ou « câble batterie » tombent respectivement dans `protection` et
+ * `stockage`, donc n'entrent jamais ici. Le `variateur`/`vfd` du pompage reste
+ * dans `production` mais ne porte aucun de ces mots : ce n'est pas un onduleur.
+ */
+const PANEL_WORDS: readonly string[] = ['panneau', 'photovolta'];
+const INVERTER_WORDS: readonly string[] = ['onduleur', 'ondulateur', 'inverter'];
+
+/**
+ * Lit la présence panneau/onduleur sur les LIGNES du devis (jamais sur le mode
+ * d'installation, jamais sur une hypothèse). Aucune ligne → tout à `false` : la
+ * page omet alors la promesse correspondante plutôt que de l'inventer.
+ */
+export function equipmentPresence(
+  items: readonly EquipmentLine[] | null | undefined,
+): EquipmentPresence {
+  const production = groupEquipment(items).find((g) => g.id === 'production')?.lines ?? [];
+  let panneaux = false;
+  let onduleur = false;
+  for (const line of production) {
+    const d = line.designation.toLowerCase();
+    if (!panneaux && PANEL_WORDS.some((w) => d.includes(w))) panneaux = true;
+    if (!onduleur && INVERTER_WORDS.some((w) => d.includes(w))) onduleur = true;
+    if (panneaux && onduleur) break;
+  }
+  return { panneaux, onduleur };
+}
+
 /**
  * Ce que la SECONDE option ajoute par rapport à la première (devis à deux
  * options : le tableau montre l'option retenue, cette liste dit honnêtement ce

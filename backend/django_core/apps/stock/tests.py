@@ -36,7 +36,7 @@ class TestSeedCatalogue(TestCase):
         qs = Produit.objects.filter(company=self.company)
         # 31 solaire + 9 pompage + 16 VEICHI + 11 pompes OSP + 22 câbles/protections
         # + 1 onduleur Deye 15kW LV (PVG4) + 1 batterie Dyness HV 16 kWh (PVG4)
-        self.assertEqual(qs.count(), 91)
+        self.assertEqual(qs.count(), 93)
         # Spot-check key items: HT price = simulator TTC / 1.2
         huawei_10t = qs.get(sku='OND-R-HUA-10T')
         self.assertEqual(huawei_10t.nom, 'Onduleur réseau Huawei 10kW Triphasé')
@@ -54,7 +54,7 @@ class TestSeedCatalogue(TestCase):
         # Traceability: one entry movement per product
         self.assertEqual(
             MouvementStock.objects.filter(
-                company=self.company, reference='SEED-CATALOGUE').count(), 91,
+                company=self.company, reference='SEED-CATALOGUE').count(), 93,
         )
 
     def test_fiches_and_pompage_seeded(self):
@@ -503,7 +503,7 @@ class TestSeedCatalogue(TestCase):
         out = seed(self.company)
         self.assertEqual(
             Produit.objects.filter(company=self.company).count(), count_after_first)
-        self.assertIn('0 created, 91 already present', out)
+        self.assertIn('0 created, 93 already present', out)
 
     def test_never_overwrites_existing_product(self):
         # Pre-existing product with the same name but a different price

@@ -239,19 +239,29 @@ export function createConsumption(ctx: Ctx, dom: ConsumptionDom, deps: Consumpti
    *  ré-entrance ET on FIGE le besoin issu de la conso (`neededAuto = false`) pour que
    *  liveResolveFlat ne le rebascule pas — la boucle se termine en un seul cycle. */
   let inConsSizing = false;
+  // ORDRE FONDATEUR (2026-08-18) — « la logique du calepinage 3D ne part jamais du prix,
+  // toujours du nombre de panneaux du DEVIS ». Un besoin FIGÉ (`neededAuto === false`) SANS
+  // que ce soit NOUS qui l'ayons figé est une CIBLE VENDUE (devis `cible.panneaux`, PV19) ou
+  // un verrou posé À LA MAIN sur le champ « panneaux nécessaires » — dans les deux cas, une
+  // cible IMPOSÉE en amont, jamais dérivée de la facture. Ce module ne doit alors JAMAIS
+  // l'écraser avec un besoin recalculé depuis la facture/les appareils. On ne distingue ce cas
+  // du LATCH que NOUS posons ci-dessous (réversibilité W83, tunnel public SANS devis) qu'avec
+  // ce drapeau local : vrai seulement après que CE module a lui-même figé le besoin.
+  let consOwnsLock = false;
   function applyConsumptionToSizing(annualConsKwh?: number) {
-    // W83 — RÉVERSIBLE (correctif du cliquet à sens unique). L'ancienne garde
-    // `if (!ctx.neededAuto) return` rendait le besoin IRRÉVERSIBLE : le premier appareil
-    // « en plus » latchait `neededAuto = false`, et le besoin n'était plus jamais RECALCULÉ —
-    // supprimer l'appareil ne rétrécissait donc jamais les panneaux/la batterie. On REDÉRIVE
-    // maintenant le besoin à CHAQUE rendu = max(besoin facture, besoin dicté par la conso).
-    // Retirer un appareil « en plus » fait baisser le besoin conso → le système RÉTRÉCIT ;
-    // sans appareil en plus le besoin conso ≈ le besoin facture → rien ne change.
-    //
-    // On garde le LATCH `neededAuto = false` (sinon `liveResolveFlat`, en mode auto, réécrit
-    // `neededPanels` depuis la facture et écrase notre max), mais on n'en fait PLUS une
-    // condition de sortie : la réversibilité vient du recalcul, pas du flag.
     if (inConsSizing) return;
+    // Cible IMPOSÉE par un tiers (devis vendu / verrou manuel) et jamais par nous : on ne la
+    // touche pas — c'est elle qui pilote le calepinage, jamais la facture ni les appareils.
+    if (!ctx.neededAuto && !consOwnsLock) return;
+    // W83 — RÉVERSIBLE (correctif du cliquet à sens unique, tunnel public SANS devis).
+    // L'ancienne garde `if (!ctx.neededAuto) return` rendait le besoin IRRÉVERSIBLE : le
+    // premier appareil « en plus » latchait `neededAuto = false`, et le besoin n'était plus
+    // jamais RECALCULÉ — supprimer l'appareil ne rétrécissait donc jamais les panneaux/la
+    // batterie. On REDÉRIVE le besoin à CHAQUE rendu = max(besoin facture, besoin dicté par la
+    // conso). Retirer un appareil « en plus » fait baisser le besoin conso → le système
+    // RÉTRÉCIT ; sans appareil en plus le besoin conso ≈ le besoin facture → rien ne change.
+    // Ce recalcul ne s'exécute QUE si le besoin est encore en mode auto, ou déjà sous NOTRE
+    // propre latch (`consOwnsLock`) — jamais sous une cible devis/manuelle (garde ci-dessus).
     const annualCons = annualConsKwh ?? annualSummary().annualConsKwh;
     // Besoin DICTÉ PAR LA FACTURE seule (le socle, sans les « en plus »).
     const annualBill = annualConsumptionFromDaily(billDailyKwh());
@@ -264,6 +274,7 @@ export function createConsumption(ctx: Ctx, dom: ConsumptionDom, deps: Consumpti
     ctx.neededPanels = target;
     ctx.neededAuto = false; // figé pour que liveResolveFlat ne réécrive pas notre max ;
     //                         la réversibilité vient du recalcul ci-dessus à chaque rendu.
+    consOwnsLock = true; // CE module possède désormais le latch — recalculs futurs autorisés.
     renderActive(); // re-résout l'optimiseur avec le nouveau besoin (chemin existant)
     inConsSizing = false;
   }

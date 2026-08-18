@@ -273,7 +273,7 @@ describe('pro-11 — structures RÉELLES TAQINOR (triangle à chaque jointure, s
   // Le rendu du toit plat ne montre plus 3 montants + 3 rails PAR PANNEAU sur un bac de
   // 4 lests, mais la structure relevée sur les photos de chantier du dépôt : un triangle
   // rectangle en profilé C galvanisé perforé à CHAQUE jointure de panneaux, chaque pied
-  // boulonné sur sa propre bordure béton préfabriquée. (Sources : photos
+  // boulonné sur son propre plot béton CARRÉ préfabriqué. (Sources : photos
   // `equipe-pose-structure`/`mesure-rails`/`champ-villa` + fiche géométrique du 18/08.)
   const scene = read('../src/scripts/roofPro11/scene3d.ts');
 
@@ -282,11 +282,13 @@ describe('pro-11 — structures RÉELLES TAQINOR (triangle à chaque jointure, s
     expect(scene).toContain('const PLATINE_L_M = 0.12'); // platine acier 120 × 60 × 8 mm
     expect(scene).toContain('const PLATINE_W_M = 0.06');
     expect(scene).toContain('const PLATINE_T_M = 0.008');
-    expect(scene).toContain('const SOCLE_L_M = 1.0'); // bordure béton 100 × 20 × 12 cm
-    expect(scene).toContain('const SOCLE_W_M = 0.2');
-    expect(scene).toContain('const SOCLE_H_M = 0.12');
-    // Le pied avant n'est plus un 0,1 arbitraire : c'est la PILE bordure + platine + demi-
-    // profilé (≈ 0,149 m), donc un montant arrière de 0,77 m à 15° sur un module de 2,40 m.
+    // SOCLE CARRÉ 30 × 30 × 20 cm — cote réelle donnée par le fondateur le 18/08. Le socle
+    // n'est PAS une bordure allongée : L et W sont ÉGAUX, c'est ce que ce test verrouille.
+    expect(scene).toContain('const SOCLE_L_M = 0.3');
+    expect(scene).toContain('const SOCLE_W_M = 0.3');
+    expect(scene).toContain('const SOCLE_H_M = 0.2');
+    // Le pied avant n'est pas un 0,1 arbitraire : c'est la PILE plot + platine + demi-
+    // profilé (≈ 0,229 m) — elle suit mécaniquement la hauteur réelle du plot.
     expect(scene).toContain('const frontStrut = SOCLE_H_M + PLATINE_T_M + PROFILE_M / 2');
   });
 
@@ -322,7 +324,7 @@ describe('pro-11 — structures RÉELLES TAQINOR (triangle à chaque jointure, s
     // Platines aux DEUX pieds, posées SUR la bordure (z = socle + demi-platine).
     expect(scene).toContain('const plateZ = baseZ + SOCLE_H_M + PLATINE_T_M / 2');
     expect(scene.match(/plateMats\.push\(/g)?.length).toBe(2);
-    // Socles DISCONTINUS : une bordure sous le pied avant, une sous le pied arrière — plus
+    // Socles DISCONTINUS : un plot sous le pied avant, un sous le pied arrière — plus
     // aucun lest ni bac continu nulle part dans la scène.
     expect(scene).toContain('const socleZ = baseZ + SOCLE_H_M / 2');
     expect(scene.match(/socleMats\.push\(/g)?.length).toBe(2);

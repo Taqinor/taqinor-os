@@ -760,3 +760,149 @@ class TestCompletionDuKit(TestCase):
         self.assertTrue(any('chaque villa a le sien' in a
                             for a in resp.data['avertissements']),
                         resp.data['avertissements'])
+
+
+# ── PVCBL — F8 : les câbles suivent la taille du calepinage ─────────────────
+#
+# Le panneau, la batterie et l'onduleur se resynchronisaient déjà ; les DEUX
+# lignes de câble (DC solaire + terre AC), elles, restaient au métrage du
+# PREMIER calepinage. Un devis ramené de 10 à 5 kWc gardait donc ses 120 m de
+# câble DC — la moitié de trop, facturée pour rien. Ces tests verrouillent le
+# métrage fondateur du 18/08 (60 m/palier de 5 kWc pour le DC, 25 m de base +
+# 15 m/palier pour la terre) ET l'interdit : jamais une ligne câble INVENTÉE.
+
+DESIGNATION_CABLE_DC = 'Câble solaire Nexans 6 mm² (au mètre)'
+DESIGNATION_CABLE_TERRE = 'Câble de terre Nexans 6 mm² (au mètre)'
+
+
+class TestSyncLayoutCables(TestCase):
+    def setUp(self):
+        self.company = make_company('pv18-cable')
+        self.user = User.objects.create_user(
+            username='pv18cableuser', password='x', role_legacy='responsable',
+            company=self.company)
+        self.api = auth_client(self.user)
+        self.client_obj = Client.objects.create(
+            company=self.company, nom='Client PV18 Câble')
+        self.panneau = Produit.objects.create(
+            company=self.company, nom='Panneau Jinko 550W', sku='PV18C-PAN',
+            prix_vente=Decimal('1100'), prix_achat=Decimal('700'),
+            quantite_stock=100)
+        self.onduleur = Produit.objects.create(
+            company=self.company, nom='Onduleur réseau Huawei 5kW',
+            sku='PV18C-ONDR', prix_vente=Decimal('14000'),
+            prix_achat=Decimal('9000'), quantite_stock=100)
+        self.cable_dc = Produit.objects.create(
+            company=self.company, nom=DESIGNATION_CABLE_DC, sku='PV18C-CDC',
+            prix_vente=Decimal('12'), prix_achat=Decimal('8'),
+            quantite_stock=1000)
+        self.cable_terre = Produit.objects.create(
+            company=self.company, nom=DESIGNATION_CABLE_TERRE,
+            sku='PV18C-CTE', prix_vente=Decimal('9'), prix_achat=Decimal('6'),
+            quantite_stock=1000)
+        self.compteur = 0
+
+    def _devis(self, *, panneaux=18, cable_dc_m=None, cable_terre_m=None,
+               ref=None):
+        self.compteur += 1
+        devis = Devis.objects.create(
+            company=self.company,
+            reference=ref or f'DEV-PV18-CABLE-{self.compteur}',
+            client=self.client_obj, statut=Devis.Statut.BROUILLON,
+            created_by=self.user)
+        devis.lignes.create(
+            produit=self.panneau, designation='Panneau Jinko 550W',
+            quantite=Decimal(str(panneaux)), prix_unitaire=Decimal('1100'),
+            ordre=1)
+        devis.lignes.create(
+            produit=self.onduleur, designation='Onduleur réseau Huawei 5kW',
+            quantite=Decimal('1'), prix_unitaire=Decimal('14000'), ordre=2)
+        if cable_dc_m is not None:
+            devis.lignes.create(
+                produit=self.cable_dc, designation=DESIGNATION_CABLE_DC,
+                quantite=Decimal(str(cable_dc_m)), prix_unitaire=Decimal('12'),
+                ordre=3)
+        if cable_terre_m is not None:
+            devis.lignes.create(
+                produit=self.cable_terre, designation=DESIGNATION_CABLE_TERRE,
+                quantite=Decimal(str(cable_terre_m)), prix_unitaire=Decimal('9'),
+                ordre=4)
+        return devis
+
+    def _post(self, devis, corps):
+        return self.api.post(
+            f'/api/django/ventes/devis/{devis.id}/sync-layout/',
+            corps, format='json')
+
+    def test_sync_10_vers_5_kwc_ajuste_les_deux_cables(self):
+        """Le cas F8 littéral : 10 kWc (2 paliers, 120 m DC / 55 m terre)
+        ramené à 5 kWc (1 palier) par une toiture plus petite — les DEUX
+        lignes de câble suivent : 120 → 60, 55 → 40."""
+        devis = self._devis(panneaux=18, cable_dc_m=120, cable_terre_m=55)
+        resp = self._post(devis, layout(panels=9, kwc=5.0))
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(
+            int(devis.lignes.get(designation=DESIGNATION_CABLE_DC).quantite),
+            60)
+        self.assertEqual(
+            int(devis.lignes.get(
+                designation=DESIGNATION_CABLE_TERRE).quantite),
+            40)
+
+    def test_sync_5_vers_10_kwc_augmente_les_deux_cables(self):
+        """Sens inverse : une toiture agrandie fait MONTER le métrage,
+        60 → 120 et 40 → 55."""
+        devis = self._devis(panneaux=9, cable_dc_m=60, cable_terre_m=40)
+        resp = self._post(devis, layout(panels=18, kwc=10.0))
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(
+            int(devis.lignes.get(designation=DESIGNATION_CABLE_DC).quantite),
+            120)
+        self.assertEqual(
+            int(devis.lignes.get(
+                designation=DESIGNATION_CABLE_TERRE).quantite),
+            55)
+
+    def test_cable_absent_n_est_jamais_invente(self):
+        """Un devis SANS ligne de câble n'en gagne pas une par la
+        resynchro : seules les lignes AUTO-COMPOSÉES déjà présentes sont
+        ajustées, jamais créées ici (PVHEAL/composition_residentielle est
+        hors périmètre de ce chemin)."""
+        devis = self._devis(panneaux=18, cable_dc_m=None, cable_terre_m=None)
+        resp = self._post(devis, layout(panels=9, kwc=5.0))
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertFalse(
+            devis.lignes.filter(designation__icontains='Câble').exists())
+
+    def test_compte_de_panneaux_inchange_les_cables_ne_bougent_pas(self):
+        """Aucun écart de calepinage (même compte de panneaux) : les câbles
+        ne sont PAS recalculés — seul un vrai changement de panneaux
+        déclenche la resynchro câble."""
+        devis = self._devis(panneaux=18, cable_dc_m=120, cable_terre_m=55)
+        resp = self._post(devis, layout(panels=18, kwc=10.0))
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(
+            int(devis.lignes.get(designation=DESIGNATION_CABLE_DC).quantite),
+            120)
+        self.assertEqual(
+            int(devis.lignes.get(
+                designation=DESIGNATION_CABLE_TERRE).quantite),
+            55)
+
+    def test_cable_deja_au_bon_metrage_n_est_pas_recompte_en_modifie(self):
+        """Le câble DÉJÀ au métrage cible ne doit pas gonfler
+        ``lignes_modifiees`` — l'ajustement est un no-op silencieux."""
+        devis = self._devis(panneaux=18, cable_dc_m=60, cable_terre_m=40)
+        resp = self._post(devis, layout(panels=9, kwc=5.0))
+        self.assertEqual(resp.status_code, 200, resp.content)
+        # Seule la ligne panneau a bougé (18 → 9) : aucun câble.
+        self.assertEqual(
+            int(devis.lignes.get(designation=DESIGNATION_CABLE_DC).quantite),
+            60)
+        self.assertEqual(
+            int(devis.lignes.get(
+                designation=DESIGNATION_CABLE_TERRE).quantite),
+            40)
+        # lignes_modifiees ne compte QUE le panneau : les deux câbles étaient
+        # déjà au métrage cible, donc chacun est un no-op (jamais compté).
+        self.assertEqual(resp.data['lignes_modifiees'], 1)

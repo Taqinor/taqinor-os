@@ -48,6 +48,7 @@ const BASE_PAGE_TITLES = [
   // Ventes
   ['/ventes/devis/nouveau', 'Nouveau devis solaire'],
   ['/ventes/devis', 'Devis'],
+  ['/ventes/conception-3d', 'Conception 3D'],
   ['/ventes/bons-commande', 'Bons de commande'],
   ['/ventes/factures', 'Factures'],
   ['/ventes/avoirs', 'Avoirs'],
@@ -132,6 +133,7 @@ const TITLE_KEYS = {
   '/calendrier': 'title.calendrier',
   '/ventes/devis/nouveau': 'title.ventes.devis_nouveau',
   '/ventes/devis': 'title.ventes.devis',
+  '/ventes/conception-3d': 'title.ventes.conception_3d',
   '/ventes/bons-commande': 'title.ventes.bons_commande',
   '/ventes/factures': 'title.ventes.factures',
   '/ventes/avoirs': 'title.ventes.avoirs',

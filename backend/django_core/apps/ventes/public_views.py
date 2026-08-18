@@ -393,7 +393,7 @@ def _monthly_consumption(devis) -> list:
 
     Lit les factures du lead du devis via le sélecteur CRM (cross-app lecture
     seule, jamais d'import direct de ``apps.crm.models``). QX7d — convertit
-    MAD→kWh par le MÊME barème progressif que le chemin ROI
+    MAD→kWh par le MÊME barème réel (progressif puis sélectif) que le chemin ROI
     (``quote_engine.pricing.kwh_from_bill`` : tranches ONEE/Lydec/Redal du
     distributeur, repli plat étiqueté sinon), au lieu de l'ancien prix plat
     figé 1,75 MAD/kWh qui contredisait le tarif ROI (~1,20) sur la même
@@ -1057,6 +1057,27 @@ def proposal_data(request, token):
         # ci-dessous en sort. Devis sans simulation → dict inchangé.
         bankable = _bankable_headline(devis, data)
         data = _sans_internes_bancables(data)
+        # PVCOV — synthèse économies/couverture, calculée par LE code de la
+        # page 1 du PDF (import paresseux : frontière quote_engine).
+        from .quote_engine.residential.renderer import (
+            is_residential, synthese_economies,
+        )
+        # F5 (revue Fable, pré-merge 18/08/2026) — cette synthèse (« −N % »,
+        # avant/après annuel, donut de couverture) EST la page 1 du PDF
+        # RÉSIDENTIEL ; elle n'a de sens que là. Le builder calcule pourtant
+        # `eco_a_monthly` (donc un `factures_mensuelles` PROXY) pour TOUT mode
+        # via `calculate_savings_roi` — un devis industriel/commercial (qui a
+        # SA propre étude, servie par `_mode_kpis` ci-dessous) faisait donc
+        # renvoyer `synthese_economies(data)` une valeur NON None : la page
+        # affichait alors une facture avant/après fabriquée à côté des KPIs de
+        # l'étude — deux histoires d'argent, dont une qu'aucun document remis
+        # au client (son PDF) ne montre. Discriminateur : `is_residential`, LA
+        # fonction pure (mode_installation + format de rendu, aucun accès BD)
+        # qui décide déjà si LE renderer résidentiel — celui qui rend cette
+        # page 1 — s'applique à ce devis : c'est donc l'autorité correcte, et
+        # la plus économe (déjà importée juste au-dessus, zéro calcul de plus).
+        synthese = (synthese_economies(data)
+                    if is_residential(devis, {'pdf_mode': 'full'}) else None)
         # PV86 — VÉRITÉ UNIQUE : la charge utile publique ne transporte QUE les
         # totaux/lignes de l'option réellement proposée. Un devis mono-option
         # laissait passer le second panier (calculé pour le découpage interne) :
@@ -1065,6 +1086,19 @@ def proposal_data(request, token):
         # AUCUN document ne franchit plus la frontière publique. Les
         # avertissements internes (devis à assainir) restent côté vendeur.
         data.pop('avertissements_internes', None)
+        # F6 (revue Fable, pré-merge 18/08/2026) — QJ12 calcule un bloc
+        # `financing` INTERNE (indicatif) ; le fondateur a retiré le crédit de
+        # toute surface client à QUATRE reprises (PV80 : plus aucune mensualité
+        # ni banque sur la page /proposition, `financingComparison`/
+        # `backendFinancing` gardées mais plus IMPORTÉES par la page). Rien ne
+        # le rend plus nulle part — mais il restait SERVI, en clair, sur le lien
+        # public tokenisé : un JSON récupérable contredisait la décision même
+        # sans qu'aucun écran ne l'affiche. On le retire ici, sur `data` lui-même
+        # (jamais sur une copie) : `'quote': data` plus bas republie ce même
+        # dict, donc le laisser dedans aurait fui la MÊME donnée sous un second
+        # nom. Le calcul interne du builder (`compute_financing_block`) n'est
+        # pas touché — seule la republication publique s'arrête.
+        data.pop('financing', None)
         if data.get('nb_options') == 1:
             if not data.get('avec_ok'):
                 data['totaux_avec'] = None
@@ -1124,11 +1158,13 @@ def proposal_data(request, token):
             # Consommation : factures RÉELLES du lead (MAD→kWh, tarif interne),
             # [] sans facture → la page masque le graphe.
             'monthly_consumption': _monthly_consumption(devis),
-            # QJ12 — financing block (indicatif / à confirmer).
-            # Present when build_quote_data produced a non-None financing dict;
-            # absent (key not sent) when total is unknown — frontend must check.
-            # NOTE: also nested inside data['quote']['financing'] for the PDF engine.
-            'financing': data.get('financing'),
+            # F6 (revue Fable, 18/08/2026) — 'financing' n'est PLUS servi ici :
+            # le fondateur a retiré le crédit de toute surface client (PV80),
+            # rien ne le rend, et `data.pop('financing', None)` ci-dessus a déjà
+            # retiré la copie imbriquée sous 'quote'. Voir le commentaire à cet
+            # endroit pour le détail — le calcul interne du builder (QJ12,
+            # `compute_financing_block`) reste intact, seule la publication
+            # s'arrête.
             # QF3 — bloc « Comment nous calculons vos économies » (méthode +
             # exemple chiffré). Présent quand le builder l'a produit ; jamais de
             # prix d'achat/marge (RULE #4). Aussi imbriqué dans data['quote'].
@@ -1142,6 +1178,18 @@ def proposal_data(request, token):
             'facture_sans_solaire': data.get('facture_sans_solaire'),
             'facture_avec_solaire_s': data.get('facture_avec_solaire_s'),
             'facture_avec_solaire_a': data.get('facture_avec_solaire_a'),
+            # PVCOV (fondateur, 18/08/2026) — le « −N % », l'avant/après annuel
+            # et la donut de couverture viennent du MÊME calcul que la page 1
+            # du PDF (residential/renderer.synthese_economies) : la page web ne
+            # recalcule RIEN, elle affiche ces valeurs servies — PDF et lien
+            # client ne peuvent plus diverger. None quand le devis n'a pas la
+            # forme requise (la page n'affiche alors rien, jamais un chiffre
+            # inventé). Jamais de prix d'achat/marge (RULE #4).
+            'pct_cut': (synthese or {}).get('pct_cut'),
+            'annual_before': (synthese or {}).get('annual_before'),
+            'annual_after': (synthese or {}).get('annual_after'),
+            'coverage_pct': (synthese or {}).get('coverage_pct'),
+            'coverage_estimated': (synthese or {}).get('coverage_estimated'),
             # QJ29/QJ30 — multi-propriétés (rendu web) : ×N villas identiques
             # (multiplicateur + totaux mis à l'échelle) et/ou sections par-villa
             # (sous-totaux + total général). Absents quand le devis n'est pas

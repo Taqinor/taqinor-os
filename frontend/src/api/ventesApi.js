@@ -126,6 +126,16 @@ const ventesApi = {
   // pourcentage par défaut des variantes de devis.
   getVarianteConfig: () => api.get('/ventes/devis/variante-config/'),
   setVarianteConfig: (variante_pct) => api.put('/ventes/devis/variante-config/', { variante_pct }),
+  // PVMRQ (fondateur 18/08/2026) — réglages « offre à deux gammes » de la
+  // société (`ventes.ParametresGammes`, singleton get-or-create, comme
+  // `variante-config` ci-dessus) : bascule une/deux gammes, libellés
+  // renommables, marques préférées par gamme ET par rôle de composition
+  // automatique (`marques`, contrat `contract_samples/parametres_gammes.json`).
+  // Endpoint SANS id dans l'URL (`get_object` résout le singleton côté serveur,
+  // même patron que compta `ParametresTresorerieView`) — le PATCH ne prend
+  // donc jamais d'id, contrairement à `updateAchatsParametres`.
+  getParametresGammes: () => api.get('/ventes/parametres-gammes/'),
+  updateParametresGammes: (data) => api.patch('/ventes/parametres-gammes/', data),
   // Approbation admin de la remise (T17) — débloque l'envoi.
   approuverRemise: (id) => api.post(`/ventes/devis/${id}/approuver-remise/`),
   // N25 — acceptation explicite (date + nom), déclencheur de chantier + chatter.

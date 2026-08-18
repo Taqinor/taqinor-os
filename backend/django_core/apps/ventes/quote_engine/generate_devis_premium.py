@@ -603,7 +603,6 @@ def _hypotheses_html():
 
 # QK3 — bloc financement (indicatif, QJ12), posé depuis data["financing"].
 # Vide → aucun bloc rendu (byte-identique).
-FINANCING = None
 
 # QJ30 — multi-propriétés (rendu). NB_PROPRIETES = ×N villas identiques (défaut
 # 1 → aucun rendu). MULTI_VILLA = sections par-villa (sous-totaux + total
@@ -671,35 +670,8 @@ def _multi_villa_html():
         f'</tr></thead><tbody>{rows}</tbody></table></div>')
 
 
-def _financing_html():
-    """QK3 — bloc « Financement possible » (mensualité indicative + programme).
-    Rendu UNIQUEMENT quand data["financing"] est fourni (QJ12). Indicatif ; le
-    texte vient du builder, jamais de prix d'achat/marge."""
-    f = FINANCING
-    if not isinstance(f, dict) or not f.get("indicatif"):
-        return ""
-    credit = f.get("credit") or {}
-    mens = credit.get("mensualite")
-    if not mens:
-        return ""
-    mens_txt = f"{int(round(mens)):,}".replace(",", " ")
-    duree_ans = round((credit.get("duree_mois") or 0) / 12)
-    prog = _esc(credit.get("programme_nom") or "crédit vert")
-    comp = f.get("onee_comparison") or {}
-    comp_txt = ""
-    if comp.get("show") and comp.get("message"):
-        comp_txt = (f'<div style="margin-top:3px;font-size:7.3pt;color:{CGR};'
-                    f'font-weight:700;">{_esc(comp["message"])}</div>')
-    return (
-        f'<div style="background:{CG1};border-radius:8px;padding:7px 12px;'
-        f'border:1px solid {CG2};border-left:4px solid {CGR};margin-bottom:5px;">'
-        f'<div style="font-size:9pt;font-weight:700;color:{CN};'
-        f'text-transform:uppercase;letter-spacing:.8px;margin-bottom:3px;">'
-        f'Financement possible</div>'
-        f'<div style="font-size:7.5pt;color:{CG7};line-height:1.4;">'
-        f'À partir de ≈ <b>{mens_txt} MAD/mois</b> sur {duree_ans} ans '
-        f'({prog}) — indicatif, à confirmer avec votre banque.</div>'
-        f'{comp_txt}</div>')
+# QRES66 (fondateur, 18/08/2026) — le bloc « Financement possible » (QK3)
+# est SUPPRIMÉ du rendu legacy. Ne pas le réintroduire.
 
 
 def _doc_text(key):
@@ -1873,7 +1845,6 @@ def page3():
   <div style="padding:0 24px;">{_hypotheses_html()}</div>
 
   <!-- QK3 — FINANCEMENT (indicatif) -->
-  <div style="padding:0 24px;">{_financing_html()}</div>
 
   <!-- QJ30 — MULTI-PROPRIÉTÉS (×N identiques / sections par-villa) -->
   <div style="padding:0 24px;">{_multi_proprietes_line_html()}{_multi_villa_html()}</div>
@@ -2719,8 +2690,6 @@ def _render_premium_pdf(data: dict, out_path) -> str:
     TARIF_MT_MENTION = data.get("tarif_mt_mention") or ""
     global HYPOTHESES  # QK4 — bloc « Nos hypothèses »
     HYPOTHESES = data.get("hypotheses")
-    global FINANCING  # QK3 — bloc financement (QJ12)
-    FINANCING = data.get("financing")
     global NB_PROPRIETES, DISPLAY_TOTAL_MULTI, MULTI_VILLA  # QJ30 multi-propriétés
     try:
         NB_PROPRIETES = int(data.get("nombre_proprietes") or 1)

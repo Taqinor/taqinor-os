@@ -68,6 +68,8 @@ import {
   formatPercent,
   resolveValidity,
   savingsHeadline,
+  syntheseEconomies,
+  couvertureSolaire,
   environmentalImpact,
   whatsappLink,
   whatsappLinkForIntent,
@@ -124,6 +126,7 @@ import {
   productionLayers,
   groupEquipment,
   equipmentDelta,
+  equipmentPresence,
   EQUIPMENT_GROUP_LABELS,
 } from '../../lib/propositionPage';
 // WJ131 — appariement PUR « ligne de devis → fiche technique /produits/<slug> »
@@ -414,11 +417,17 @@ const consMonthly = ok ? monthlySeries(data?.monthly_consumption) : null;
 const annualConsKwh = consMonthly ? consMonthly.reduce((a, b) => a + b, 0) : 0;
 const dailyConsKwh = annualConsKwh > 0 ? annualConsKwh / 365 : 0;
 const dailyProdKwh = prodKwh && prodKwh > 0 ? prodKwh / 365 : 0;
-// La batterie OFFERTE au devis (avec_items) : capacité/unité (réf catalogue) + nb
-// d'unités. Sans batterie au devis → l'unité de base catalogue (BAT-DEY-5, 5 kWh).
-const offerBattery = ok
-  ? resolveOfferBattery(q?.avec_items ?? null)
-  : { present: false, capacityKwhPerUnit: null, units: 0, designation: '' };
+// La batterie RÉELLEMENT au devis : capacité/unité (réf catalogue) + nb d'unités,
+// cherchée dans les DEUX options (l'option « avec batterie » d'abord ; un devis
+// mono-option porte parfois sa batterie dans `sans_items`).
+// (fondateur 2026-08-18) « La page ne doit contenir QUE ce qui est dans le devis » :
+// c'est cette lecture — et elle seule — qui décide si le simulateur existe.
+const offerBatteryAvec = resolveOfferBattery(ok ? (q?.avec_items ?? null) : null);
+const offerBatterySans = resolveOfferBattery(ok ? (q?.sans_items ?? null) : null);
+const offerBattery = offerBatteryAvec.present ? offerBatteryAvec : offerBatterySans;
+// Capacité du curseur : TOUJOURS celle de la ligne du devis ; le repli catalogue
+// ne sert plus qu'à une ligne batterie dont la désignation ne dit pas ses kWh
+// (le simulateur, lui, n'existe plus du tout sans ligne batterie).
 const batteryUnitCapacityKwh = offerBattery.capacityKwhPerUnit ?? DEFAULT_UNIT_CAPACITY_KWH;
 const offeredUnits = offerBattery.present && offerBattery.units > 0 ? offerBattery.units : 0;
 const BATTERY_SIM_MAX_UNITS = 3;
@@ -428,10 +437,15 @@ const batterySimInitialN = offeredUnits >= 1 ? Math.min(offeredUnits, BATTERY_SI
 // Prix RÉELS des options (jamais recalculés/inventés) : N=0 ↔ option sans batterie,
 // N = unités offertes ↔ option avec batterie (cohérent avec totaux_sans/totaux_avec).
 const sansTtc = ok && hasRealPrice(data!, 'sans_batterie') ? optionTtc(data!, 'sans_batterie') : null;
-const avecTtc = ok && offerBattery.present && hasRealPrice(data!, 'avec_batterie')
+const avecTtc = ok && offerBatteryAvec.present && hasRealPrice(data!, 'avec_batterie')
   ? optionTtc(data!, 'avec_batterie')
   : null;
-const showBatterySim = batterySimEligible && dailyConsKwh > 0 && dailyProdKwh > 0;
+// (fondateur 2026-08-18) SANS LIGNE BATTERIE AU DEVIS, LE SIMULATEUR NE REND RIEN.
+// Il s'affichait dès que le mode était résidentiel/commercial et retombait sur une
+// capacité catalogue par défaut : un devis sans batterie exhibait donc un curseur
+// « et avec 1 batterie ? » construit sur une unité que le client n'achète pas.
+const showBatterySim = batterySimEligible && offerBattery.present
+  && dailyConsKwh > 0 && dailyProdKwh > 0;
 // Silhouettes horaires (mode courant, variante NORMALE) — passées au client pour un
 // recalcul 100 % local au curseur (aucun re-fetch). Rendu serveur INCHANGÉ : toujours
 // la variante 'normal' ; l'hydratation (script client) prend le relais pour recalculer
@@ -505,7 +519,30 @@ const productionConfig = showProduction ? JSON.stringify(productionAvailability)
 const validity = ok ? resolveValidity(data!) : { label: null, fromBackend: false, expired: false };
 
 // ── WJ9 — Argent dans le temps : cumul 25 ans + payback + cadrage mensuel ────
+// Tous ces nombres SONT ceux du moteur : `annual` = backend `eco_s_ann`/`eco_a_ann`,
+// `payback` = backend `roi_s`/`roi_a`, `cumulative` = taux backend `eco_a_cumul`
+// × horizon (la MÊME multiplication linéaire que le PDF). La page n'a aucun
+// modèle d'économies à elle — le moteur corrigé se propage tout seul ici.
 const headline = ok ? savingsHeadline(data!, reco ?? 'sans_batterie') : null;
+// ── PVCOV (fondateur 2026-08-18) — LA SYNTHÈSE DE LA PAGE 1 DU PDF, SERVIE ──
+// Le « −N % », la facture avant/après et la couverture solaire ne sont plus
+// calculés nulle part sur cette page : ils sont LUS depuis les champs servis
+// (`pct_cut` / `annual_before` / `annual_after` / `coverage_pct` /
+// `coverage_estimated`), produits par la MÊME fonction moteur que la page 1 du
+// devis PDF. Le PDF et le lien client ne peuvent donc plus afficher deux
+// chiffres différents. Backend `null` (devis hors forme résidentielle) ⇒ les
+// blocs ne rendent rien du tout, jamais un chiffre inventé.
+const synthese = ok ? syntheseEconomies(data!) : null;
+const couverture = ok ? couvertureSolaire(data!) : null;
+// La donut « ÉNERGIE SOLAIRE » est le récit RÉSIDENTIEL. L'industriel et le
+// commercial gardent leur propre « Taux de couverture » (bloc KPI d'étude,
+// `auto.taux_couverture`) — jamais les deux sur la même page.
+const showCouvertureDonut = installMode === 'residentiel' && !!couverture;
+// Géométrie de l'anneau : rayon 42 sur un viewBox 100×100 → circonférence 2πr.
+// C'est du DESSIN (longueur d'arc), pas un recalcul du pourcentage servi.
+const DONUT_R = 42;
+const donutCirc = 2 * Math.PI * DONUT_R;
+const donutDash = couverture ? (donutCirc * couverture.pct) / 100 : 0;
 
 // ── WJ14 — Impact environnemental humain (CO₂ ≈ arbres), depuis la production ─
 const enviro = ok ? environmentalImpact(prodKwh) : null;
@@ -687,17 +724,27 @@ const panelFicheSlug = equipmentGroups
   .flatMap((group) => group.lines)
   .map((line) => line.ficheSlug)
   .find((slug) => !!slug && ficheBySlug(slug)?.categorie === 'Panneaux photovoltaïques') ?? null;
+// (fondateur 2026-08-18) LES GARANTIES NE PARLENT QUE DU MATÉRIEL DEVISÉ.
+// Le bloc annonçait « N ans de performance panneaux · N ans onduleur » et poussait
+// les deux badges correspondants sur TOUS les devis — y compris un pompage
+// (pompe + variateur, aucun onduleur). La présence est désormais lue sur les
+// LIGNES RÉELLES des deux options (`equipmentPresence`, qui réutilise le
+// classement déjà line-driven de `groupEquipment`) : pas de ligne ⇒ pas de
+// promesse, ni dans la phrase, ni en badge.
+const equipPresence = equipmentPresence(
+  ok ? [...optionItems(data!, 'sans_batterie'), ...optionItems(data!, 'avec_batterie')] : [],
+);
 const certKeys = [
   ...(panelFicheSlug ? ['iec' as const] : []),
   'loi8221' as const,
-  'panneaux' as const,
-  'onduleur' as const,
+  ...(equipPresence.panneaux ? ['panneaux' as const] : []),
+  ...(equipPresence.onduleur ? ['onduleur' as const] : []),
 ];
 const certHrefs = {
   ...(panelFicheSlug ? { iec: `/produits/${panelFicheSlug}` } : {}),
   loi8221: '/loi-82-21',
-  panneaux: '/garanties',
-  onduleur: '/garanties',
+  ...(equipPresence.panneaux ? { panneaux: '/garanties' } : {}),
+  ...(equipPresence.onduleur ? { onduleur: '/garanties' } : {}),
 };
 
 /**
@@ -733,7 +780,11 @@ const gammeEcart = gammes ? gammeEcartLabel(gammes.soeur.ecart_ttc) : null;
 const gammeRows = gammeComparatif(gammes);
 const steps = nextSteps();
 const assumptions = ok ? proposalAssumptions(data!) : [];
-const monitoring = monitoringPoints();
+// (fondateur 2026-08-18) « Suivi de production via l'application de votre
+// onduleur » n'est plus un point inconditionnel : il n'est dit que si le devis
+// porte vraiment une ligne onduleur (un pompage n'en a pas). Les points
+// génériques de maintenance/SAV restent, eux, toujours vrais.
+const monitoring = monitoringPoints(equipPresence);
 const faq = objectionFaq();
 
 // ── WJ86 — « Nos chantiers » (photos réelles) et « Le mot du fondateur »
@@ -1890,7 +1941,7 @@ const signConfig = ok
       <!-- WJ126 — jamais en pompage (agricole) : la valeur d'un pompage solaire est
            l'eau livrée + le carburant évité, pas un cumul de facture réseau ; le
            cadrage « économies cumulées 25 ans » est résidentiel/autoconso. -->
-      {!isAgricole && headline && (headline.cumulative || headline.annual || paybackHero || prodKwh) && (
+      {!isAgricole && headline && (headline.cumulative || headline.annual || paybackHero || prodKwh || synthese || showCouvertureDonut) && (
         <section id="financing-headline" class="mx-auto max-w-4xl px-5 pt-12 sm:px-8 sm:pt-16">
           <span id="economies" aria-hidden="true"></span>
           <p class="tech-label rule-brass mb-5 text-brass-300" data-i18n
@@ -1925,6 +1976,83 @@ const signConfig = ok
               </p>
             </div>
           ) : null}
+
+          {/* ── PVCOV (fondateur 2026-08-18) · CE QUE LE SOLAIRE CHANGE POUR VOUS
+                 Le « −N % », la facture avant/après et la couverture solaire
+                 sont les valeurs SERVIES par le backend, produites par la MÊME
+                 fonction moteur que la page 1 du devis PDF
+                 (`residential/renderer.synthese_economies`). La page ne connaît
+                 ni tarif, ni barème, ni taux d'autoconsommation : elle affiche
+                 ce qu'on lui sert, la seule arithmétique étant « ÷ 12 » pour la
+                 lecture mensuelle et la longueur d'arc de l'anneau. PDF et lien
+                 client ne peuvent donc plus diverger — et corriger le moteur
+                 corrige cette page sans y toucher. Champs `null` (devis hors
+                 forme résidentielle) ⇒ le bloc entier disparaît. */}
+          {(synthese || showCouvertureDonut) && (
+            <div class="cine-card mt-4 rounded-xl p-5 sm:p-6">
+              <p class="tech-label text-lune-faint" data-i18n
+                data-fr="Ce que le solaire change pour vous" data-en="What solar changes for you" data-ar="ما تغيّره الطاقة الشمسية بالنسبة لكم">Ce que le solaire change pour vous</p>
+              <div class="mt-4 grid gap-5 sm:grid-cols-[1fr_auto] sm:items-center sm:gap-8">
+                <div>
+                  {synthese && (
+                    <>
+                      <p class="fig lum text-4xl sm:text-5xl" dir="ltr">−{formatNumber(synthese.pctCut, 0)} %</p>
+                      <p class="mt-1 text-sm text-lune-soft" data-i18n
+                        data-fr="sur votre facture d’électricité" data-en="on your electricity bill" data-ar="على فاتورة الكهرباء">
+                        sur votre facture d’électricité
+                      </p>
+                      <p class="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                        <span class="fig fig-md text-lune-faint line-through" dir="ltr">{formatMAD(synthese.mensuelAvant)}</span>
+                        <span class="text-lune-faint" aria-hidden="true">→</span>
+                        <span class="fig fig-md text-lune" dir="ltr">{formatMAD(synthese.mensuelApres)}</span>
+                        <span class="text-sm text-lune-soft" data-i18n data-fr="par mois" data-en="per month" data-ar="شهرياً">par mois</span>
+                      </p>
+                      <p class="mt-1 text-sm text-lune-soft" data-i18n
+                        data-fr={`Soit ${formatMAD(synthese.annuelAvant)} par an aujourd’hui, contre ${formatMAD(synthese.annuelApres)} par an avec votre installation.`}
+                        data-en={`That is ${formatMAD(synthese.annuelAvant)} per year today, against ${formatMAD(synthese.annuelApres)} per year with your installation.`}
+                        data-ar={`أي ${formatMAD(synthese.annuelAvant)} سنوياً اليوم، مقابل ${formatMAD(synthese.annuelApres)} سنوياً مع تركيبكم.`}>
+                        Soit {formatMAD(synthese.annuelAvant)} par an aujourd’hui, contre {formatMAD(synthese.annuelApres)} par an avec votre installation.
+                      </p>
+                    </>
+                  )}
+                </div>
+
+                {/* Donut « ÉNERGIE SOLAIRE » — l'anneau ne fait que DESSINER le
+                    pourcentage servi (longueur d'arc = circonférence × pct/100).
+                    Le moteur borne déjà 1..100 : 100 % ne s'affiche que si le
+                    backend dit production ≥ consommation. */}
+                {showCouvertureDonut && couverture && (
+                  <div class="flex items-center gap-4 sm:flex-col sm:gap-2">
+                    <svg viewBox="0 0 100 100" width="112" height="112" class="shrink-0" role="img"
+                      aria-label={`Couverture solaire : ${formatNumber(couverture.pct, 0)} %`}>
+                      <circle cx="50" cy="50" r={DONUT_R} fill="none" stroke="var(--color-lune-faint)" stroke-opacity="0.22" stroke-width="10" />
+                      <circle cx="50" cy="50" r={DONUT_R} fill="none" stroke="var(--color-brass-400)" stroke-width="10"
+                        stroke-linecap="round" stroke-dasharray={`${donutDash.toFixed(2)} ${(donutCirc - donutDash).toFixed(2)}`}
+                        transform="rotate(-90 50 50)" />
+                      <text x="50" y="50" text-anchor="middle" dominant-baseline="central"
+                        font-size="24" font-weight="700" fill="var(--color-lune)" dir="ltr">{formatNumber(couverture.pct, 0)}%</text>
+                    </svg>
+                    <div class="sm:text-center">
+                      <p class="tech-label text-brass-300" data-i18n
+                        data-fr="Énergie solaire" data-en="Solar energy" data-ar="الطاقة الشمسية">Énergie solaire</p>
+                      <p class="mt-1 text-sm text-lune-soft" data-i18n
+                        data-fr="de vos besoins couverts" data-en="of your needs covered" data-ar="من احتياجاتكم مغطاة">
+                        de vos besoins couverts
+                      </p>
+                      {couverture.estimated && (
+                        <p class="mt-1 text-xs text-lune-faint" data-i18n
+                          data-fr="(estimation — consommation déduite de votre facture)"
+                          data-en="(estimate — consumption derived from your bill)"
+                          data-ar="(تقدير — استهلاك مستنتج من فاتورتكم)">
+                          (estimation — consommation déduite de votre facture)
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* PV80 — cette grille répétait les DEUX chiffres désormais posés sous
                  le graphique du chapitre « Votre production » (économie/an et
@@ -2122,20 +2250,34 @@ const signConfig = ok
             bandeau de badges juste en dessous (IEC → la fiche du panneau
             devisé, « Loi 82-21 » → /loi-82-21, page dédiée FR/EN/AR qui
             existe bel et bien — voir `certKeys`/`certHrefs` plus haut). */}
+        {/* (fondateur 2026-08-18) CHAQUE GARANTIE EST GATÉE SUR SA LIGNE DE DEVIS.
+            Les deux garanties constructeur ne sont annoncées que si le devis
+            porte effectivement un panneau / un onduleur (`equipmentPresence`,
+            lu sur les lignes des deux options). Un devis de POMPAGE promettait
+            sinon une garantie onduleur pour un matériel absent du devis. La
+            garantie de POSE, elle, est l'engagement de Taqinor : toujours vraie. */}
         <div class="cine-card mt-5 rounded-xl p-5">
           <p class="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-lune-soft">
-            <span class="fig text-lune" dir="ltr" data-i18n
-              data-fr={`${PANEL_PERFORMANCE_WARRANTY_YEARS} ans`}
-              data-en={`${PANEL_PERFORMANCE_WARRANTY_YEARS} years`}
-              data-ar={anneesAr(PANEL_PERFORMANCE_WARRANTY_YEARS)}>{PANEL_PERFORMANCE_WARRANTY_YEARS} ans</span>
-            <span data-i18n data-fr="de performance panneaux" data-en="of panel performance" data-ar="أداء الألواح">de performance panneaux</span>
-            <span class="text-lune-faint" aria-hidden="true">·</span>
-            <span class="fig text-lune" dir="ltr" data-i18n
-              data-fr={`${INVERTER_WARRANTY_YEARS} ans`}
-              data-en={`${INVERTER_WARRANTY_YEARS} years`}
-              data-ar={anneesAr(INVERTER_WARRANTY_YEARS)}>{INVERTER_WARRANTY_YEARS} ans</span>
-            <span data-i18n data-fr="onduleur" data-en="inverter" data-ar="العاكس">onduleur</span>
-            <span class="text-lune-faint" aria-hidden="true">·</span>
+            {equipPresence.panneaux && (
+              <>
+                <span class="fig text-lune" dir="ltr" data-i18n
+                  data-fr={`${PANEL_PERFORMANCE_WARRANTY_YEARS} ans`}
+                  data-en={`${PANEL_PERFORMANCE_WARRANTY_YEARS} years`}
+                  data-ar={anneesAr(PANEL_PERFORMANCE_WARRANTY_YEARS)}>{PANEL_PERFORMANCE_WARRANTY_YEARS} ans</span>
+                <span data-i18n data-fr="de performance panneaux" data-en="of panel performance" data-ar="أداء الألواح">de performance panneaux</span>
+                <span class="text-lune-faint" aria-hidden="true">·</span>
+              </>
+            )}
+            {equipPresence.onduleur && (
+              <>
+                <span class="fig text-lune" dir="ltr" data-i18n
+                  data-fr={`${INVERTER_WARRANTY_YEARS} ans`}
+                  data-en={`${INVERTER_WARRANTY_YEARS} years`}
+                  data-ar={anneesAr(INVERTER_WARRANTY_YEARS)}>{INVERTER_WARRANTY_YEARS} ans</span>
+                <span data-i18n data-fr="onduleur" data-en="inverter" data-ar="العاكس">onduleur</span>
+                <span class="text-lune-faint" aria-hidden="true">·</span>
+              </>
+            )}
             {/* La pose porte désormais SA durée, exactement comme le PDF
                 (theme.WARRANTIES : « 2 ans — Installation »). */}
             <span class="fig text-lune" dir="ltr" data-i18n

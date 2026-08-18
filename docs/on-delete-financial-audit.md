@@ -731,7 +731,7 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/parametres/models_pos.py:30` | ParametresPos.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/parametres/models_pos.py:82` | BoutiquePos.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/parametres/models_statuses.py:31` | StatutConfig.company | authentication.Company | CASCADE |
-| `backend/django_core/apps/parametres/models_tariff.py:59` | TariffSettings.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/parametres/models_tariff.py:67` | TariffSettings.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/parametres/models_taxes.py:44` | TauxTVA.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/parametres/models_translations.py:31` | TranslationOverride.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/parametres/models_units.py:38` | UniteMesure.company | authentication.Company | CASCADE |

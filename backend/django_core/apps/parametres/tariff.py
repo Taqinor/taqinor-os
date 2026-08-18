@@ -89,6 +89,14 @@ def monthly_bill_residentiel(settings, kwh):
 
     ≤ seuil (150) → PROGRESSIF (chaque tranche à son prix).
     > seuil       → SÉLECTIF (mois entier au prix de la tranche atteinte).
+
+    SECONDE IMPLÉMENTATION INDÉPENDANTE — apps/ventes/quote_engine/pricing.py
+    ``_monthly_bill_from_kwh``/``ONEE_TRANCHES`` (consommée par le moteur de
+    devis/PDF ; celle-ci sert ``apps/ventes/etude.py`` pour l'étude bancable
+    et l'écran Tarification & ROI) calcule la MÊME grille/règle. Volontairement
+    PAS unifiées (hors périmètre) — verrouillées d'accord par
+    apps/ventes/tests/test_tariff_drift_lock.py : si l'une bouge seule, ce
+    test passe au rouge.
     """
     kwh = Decimal(str(kwh or 0))
     if kwh <= 0:
@@ -116,8 +124,15 @@ def monthly_bill_residentiel(settings, kwh):
                 break
         return _q(total)
 
-    # SÉLECTIF : mois entier au prix unique de la tranche atteinte.
-    price = _selective_price(settings, tiers, int(kwh))
+    # SÉLECTIF : mois entier au prix unique de la tranche atteinte. ``kwh`` est
+    # déjà un Decimal exact (ligne 101) : ne JAMAIS le tronquer en int() ici —
+    # un int(210.5) → 210 fait retomber une conso à 210,5 dans la tranche
+    # 151–210 (1,0732) au lieu de 211–310 (1,1676), sous-facturant le mois
+    # entier (225,91 MAD au lieu de 245,78 MAD à 210,5 kWh — régression
+    # F2 constatée en revue). La comparaison Decimal <= int (dans
+    # ``_selective_price``/``_tier_price_at``) est exacte, pas besoin d'un
+    # second cast.
+    price = _selective_price(settings, tiers, kwh)
     return _q(kwh * price)
 
 

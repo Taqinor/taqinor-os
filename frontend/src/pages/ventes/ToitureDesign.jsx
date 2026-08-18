@@ -27,6 +27,7 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { X } from 'lucide-react'
 import api from '../../api/axios'
 import ventesApi from '../../api/ventesApi'
 import aoApi from '../../api/aoApi'
@@ -790,6 +791,16 @@ export default function ToitureDesign({ mode = 'lead' }) {
     } catch { /* presse-papier indispo */ }
   }
 
+  // Fondateur 18/08 — bouton Fermer (X, haut-droite) : cette fenêtre de
+  // calepinage 3D n'avait aucune sortie visible une fois ouverte (lead,
+  // liste des devis, générateur, ou la nouvelle entrée « Conception 3D » du
+  // nav Ventes en amènent tous ici par un `navigate()` SPA). `navigate(-1)`
+  // referme exactement comme le geste qui a ouvert l'écran l'a amené — jamais
+  // une cible en dur qui pourrait diverger d'un appelant à l'autre. Le tracé
+  // en cours n'est jamais perdu silencieusement : rien n'est envoyé ici, on
+  // quitte seulement la vue (comme un retour navigateur).
+  const fermer = () => navigate(-1)
+
   // PVHEAL — le bandeau d'avertissements du serveur, partagé par les deux
   // modes. Il reste affiché APRÈS le passage au bloc « Prêt à envoyer » : un
   // kit incomplet doit se voir au moment où l'on s'apprête à envoyer.
@@ -899,7 +910,22 @@ export default function ToitureDesign({ mode = 'lead' }) {
 
   return (
     <div className="rp9-host">
-      <p className="tech-label rule-brass text-brass-300">Interne · conception toiture</p>
+      {/* Fondateur 18/08 — barre haute : le libellé d'origine à gauche, le
+          bouton Fermer (X) à droite. Toujours présent, quel que soit le mode
+          (lead/devis/AO) — c'est LE MÊME écran, jamais une fenêtre qu'on ne
+          peut refermer que par le bouton retour du navigateur. */}
+      <div className="rp9-topbar">
+        <p className="tech-label rule-brass text-brass-300">Interne · conception toiture</p>
+        <button
+          type="button"
+          onClick={fermer}
+          className="rp9-close"
+          aria-label="Fermer la conception 3D"
+          data-testid="rp9-fermer"
+        >
+          <X className="size-5" aria-hidden="true" />
+        </button>
+      </div>
 
       <div className="mt-6">
         <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">

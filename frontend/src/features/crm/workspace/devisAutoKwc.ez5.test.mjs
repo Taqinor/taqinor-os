@@ -83,14 +83,20 @@ test('LeadWorkspace lit les DEUX formes, sans casser `devisPanel`', () => {
 
 test('la cible traverse le panneau jusqu’au calcul partagé', () => {
   assert.match(panel, /targetKwc = null/)
-  assert.match(panel, /createAutoQuote\(\{[\s\S]{0,160}?targetKwc,?\s*\}\)/)
-  assert.match(autoQuote, /pumpHours, onEtude,\s*\n\s*targetKwc \}\)/)
+  // PVMRQ (18/08) — `marques` suit `targetKwc` dans l'appel : la cible traverse
+  // toujours, accompagnée des marques épinglées.
+  assert.match(panel, /createAutoQuote\(\{[\s\S]{0,200}?targetKwc,[\s\S]{0,120}?\}\)/)
+  // PVMRQ (18/08) — la signature porte aussi `marques` après `targetKwc`.
+  assert.match(autoQuote, /pumpHours, onEtude,\s*\n\s*targetKwc, marques \}\)/)
 })
 
 test('la cible prime sur la fiche, mais ne l’écrase jamais', () => {
   // Priorité : cible ponctuelle > taille souhaitée du lead > facture d'hiver.
   assert.match(autoQuote, /const cibleKwc = parseFloat\(targetKwc\) \|\| 0/)
-  assert.match(autoQuote, /const tailleKwc = cibleKwc > 0 \? cibleKwc : \(parseFloat\(lead\.taille_souhaitee_kwc\) \|\| 0\)/)
+  // Règle des paliers (18/08) : la cible explicite garde sa priorité mais est
+  // RAMENÉE au palier de 5 kWc — aucun devis auto hors palier.
+  assert.match(autoQuote, /const explicitKwc = cibleKwc > 0 \? cibleKwc : \(parseFloat\(lead\.taille_souhaitee_kwc\) \|\| 0\)/)
+  assert.match(autoQuote, /const tailleKwc = explicitKwc > 0 \? arrondirAuPasKwc\(explicitKwc\) : 0/)
   // Rien n'est écrit sur le lead : `taille_souhaitee_kwc` n'apparaît nulle
   // part en écriture dans le chemin du devis auto.
   assert.doesNotMatch(autoQuote, /taille_souhaitee_kwc:/)

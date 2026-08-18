@@ -36,6 +36,7 @@
 import { geodesicAreaM2, geodesicPerimeterM, pointInPolygon, type LngLat } from './roof';
 import { PANEL2_LONG_M, PANEL2_SHORT_M, PANEL2_WATT, PERIMETER_SETBACK_M, resolveSetbacks, type PerimeterSetbacks } from './roofPro2';
 import { YIELD_TABLE } from './yieldTable';
+import { PRODUCTION_NET_FACTOR } from './systemLoss';
 
 export { PANEL2_WATT };
 
@@ -453,11 +454,26 @@ export function climateDerateFactor(
 }
 
 /**
- * Fourchette de production annuelle HONNÊTE (kWh) autour d'un chiffre PVGIS/estimé :
- *  - `high` = le chiffre nu (PVGIS, hiver/moyenne — le meilleur cas déjà net des pertes
- *    génériques PVGIS) ;
- *  - `low`  = ce même chiffre × climateDerateFactor (été côtier, pertes réelles en plus) ;
- *  - `point` = moyenne géométrique des deux (le milieu honnête présenté par défaut).
+ * Fourchette de production annuelle HONNÊTE (kWh) AUTOUR DU CENTRAL À 20 %.
+ *
+ * COMPOSITION DES PERTES (audit du double comptage, 18/08) — à lire avant toute
+ * modification. L'entrée `annualKwh` est désormais le chiffre CENTRAL, déjà net
+ * des 20 % de pertes totales du fondateur (il vient de `specificYield`, rebasé).
+ * Les bornes se déduisent de ce central, elles ne s'empilent PAS dessus :
+ *  - `point` = `annualKwh` EXACTEMENT — la base 20 % ordonnée par le fondateur,
+ *    donc le même chiffre que le devis ERP pour la même ville/puissance ;
+ *  - `high`  = central ÷ PRODUCTION_NET_FACTOR = le chiffre PVGIS nu (pertes
+ *    génériques 14 %), borne optimiste ;
+ *  - `low`   = high × climateDerateFactor (été côtier : thermique + salissure +
+ *    brume), borne pessimiste.
+ * Les DEUX BORNES sont numériquement INCHANGÉES par le rebasage (high est le même
+ * chiffre PVGIS qu'avant, low le même produit) : seul le central bouge, et de
+ * +0,43 % seulement — l'ancien `point` était la moyenne géométrique high×low,
+ * soit ≈ 7,37 % de pertes en plus des 14 % PVGIS ≈ 20,4 % au total. Autrement
+ * dit le site estimait DÉJÀ à ~20 % : on ne change pas la promesse, on la met
+ * exactement sur la base du fondateur et on l'aligne sur l'ERP.
+ * Empiler PRODUCTION_NET_FACTOR ET l'ancienne moyenne géométrique aurait donné
+ * ~26 % de pertes cumulées — c'est précisément ce que cette fonction évite.
  * `low ≤ point ≤ high` par construction. Chiffre ≤ 0 → fourchette nulle. PUR.
  */
 export interface ProductionBand {
@@ -468,10 +484,16 @@ export interface ProductionBand {
 export function productionConfidenceBand(annualKwh: number, derate = climateDerateFactor()): ProductionBand {
   if (!Number.isFinite(annualKwh) || annualKwh <= 0) return { low: 0, point: 0, high: 0 };
   const d = Number.isFinite(derate) ? Math.max(0, Math.min(1, derate)) : 1;
-  const high = annualKwh;
-  const low = annualKwh * d;
-  const point = Math.sqrt(high * low); // moyenne géométrique : entre low et high
-  return { low, point, high };
+  // `annualKwh` EST le central (base 20 %). On remonte à la borne PVGIS nue,
+  // puis on redescend à la borne « été côtier » — jamais un second dérate sur
+  // le central lui-même (cf. l'audit du double comptage ci-dessus).
+  const point = annualKwh;
+  const high = annualKwh / PRODUCTION_NET_FACTOR;
+  const low = high * d;
+  // Garde-fou : la fourchette reste ordonnée même si un dérate exotique est
+  // passé (un `derate` proche de 1 pourrait sinon faire remonter low au-dessus
+  // du central). On ne fabrique jamais un central hors de ses propres bornes.
+  return { low: Math.min(low, point), point, high: Math.max(high, point) };
 }
 
 // ═══════════ WJ24 — MODÈLE DE BATTERIE APPROFONDI (LFP) + CASHFLOW 25 ANS (opt-in) ═══════════
@@ -687,9 +709,43 @@ function interpTilt(row: Record<string, number>, tiltDeg: number): number {
   return row[String(tilts[0])];
 }
 
-/** Productible (kWh/kWc/an, face avant, pertes 14 %) depuis la table committée.
+// ═══════════ PERTES SYSTÈME : 20 % AU TOTAL (ordre fondateur, 18/08) ═══════════
+// « We introduce a system loss of 20% total. » Une SEULE base de production pour
+// tout le groupe : la page marketing, le tunnel et le devis ERP doivent annoncer
+// le MÊME chiffre central pour la même ville et la même puissance.
+//
+// La table committée (`yieldTable.ts`) est une sortie PVGIS demandée à `loss=14`
+// (cf. apps/web/scripts/generate-yield-table.mjs, `const LOSS = 14`) : 14 % de
+// pertes sont DÉJÀ dedans. On n'applique donc que le COMPLÉMENT pour atteindre
+// 20 % au total — jamais 20 % de plus, qui ferait 31 % cumulés.
+//
+// MIROIR EXACT de l'ERP : frontend/src/features/ventes/solar.js
+// (SYSTEM_LOSS_TOTAL / PVGIS_BUILTIN_LOSS / PRODUCTIBLE_NET_FACTOR) et
+// backend/django_core/apps/ventes/quote_engine/pricing.py (PRODUCTION_DERATE).
+// Les trois DOIVENT rester alignés : un test de parité le verrouille.
+//
+// Les constantes vivent dans `systemLoss.ts` (module SANS aucun import, donc
+// importable aussi par `roof.ts` — que ce fichier importe — sans cycle). On les
+// RÉ-EXPORTE ici pour que tous les appelants historiques du cerveau continuent
+// de les lire au même endroit.
+export {
+  PRODUCTION_NET_FACTOR,
+  PVGIS_BUILTIN_LOSS,
+  SYSTEM_LOSS_TOTAL,
+} from './systemLoss';
+
+/** Productible CENTRAL (kWh/kWc/an, face avant) depuis la table committée, ramené
+ * aux 20 % de pertes TOTALES du fondateur (la table est stockée à 14 %).
+ * C'est LE chiffre central du site : identique à celui du devis ERP.
  * @param aspect azimut PVGIS : 0=Sud, −90=Est, 90=Ouest. */
 export function specificYield(latitudeDeg: number, tiltDeg: number, aspect: number): number {
+  return specificYieldPvgis14(latitudeDeg, tiltDeg, aspect) * PRODUCTION_NET_FACTOR;
+}
+
+/** Productible BRUT de la table (base PVGIS `loss=14`), AVANT rebasage à 20 %.
+ * Réservé aux bornes de fourchette et aux pages qui citent la donnée PVGIS
+ * elle-même ; toute ESTIMATION client passe par `specificYield`. */
+export function specificYieldPvgis14(latitudeDeg: number, tiltDeg: number, aspect: number): number {
   const cities = Object.values(YIELD_TABLE).sort((a, b) => a.lat - b.lat);
   if (latitudeDeg <= cities[0].lat) return interpAspect(cities[0].grid, aspect, tiltDeg);
   if (latitudeDeg >= cities[cities.length - 1].lat)

@@ -249,7 +249,7 @@ export function computeRidgeLifts(pans: RidgePan[]): number[] {
 // `champ-villa`) : la structure n'appartient PAS au panneau. Ce n'est ni un bac lesté
 // continu ni un trio de montants par module, mais un TRIANGLE RECTANGLE assemblé sur
 // place — trois pièces boulonnées en profilé C galvanisé PERFORÉ — posé à CHAQUE
-// jointure de panneaux, chaque pied sur sa propre bordure béton préfabriquée.
+// jointure de panneaux, chaque pied sur son propre plot béton carré préfabriqué.
 
 /** Profilé C galvanisé perforé : section 41 × 41 mm (rail type Unistrut — la seule
  *  section vue sur TOUS les chantiers : ni tube rond, ni cornière alu). */
@@ -258,10 +258,12 @@ const PROFILE_M = 0.041;
 const PLATINE_L_M = 0.12;
 const PLATINE_W_M = 0.06;
 const PLATINE_T_M = 0.008;
-/** Bordure béton préfabriquée = le SOCLE, discontinu : 100 × 20 × 12 cm, gris clair. */
-const SOCLE_L_M = 1.0;
-const SOCLE_W_M = 0.2;
-const SOCLE_H_M = 0.12;
+/** Plot béton préfabriqué = le SOCLE, CARRÉ et discontinu : 30 × 30 × 20 cm, gris clair.
+ *  Cote donnée par le fondateur le 18/08 sur ses poses réelles — ce n'est PAS une bordure
+ *  allongée : chaque pied repose sur son propre plot carré. */
+const SOCLE_L_M = 0.3;
+const SOCLE_W_M = 0.3;
+const SOCLE_H_M = 0.2;
 /** Perforation du profilé : fentes oblongues ~11 mm de large, une tous les 30 mm ;
  *  ~20 mm de fente laissent ~10 mm de matière entre deux trous, comme sur les rails
  *  photographiés. C'est LA signature visuelle de la structure. */
@@ -469,7 +471,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     jboxMat: THREE.MeshStandardMaterial;
     /** Profilé C galvanisé perforé — rails inclinés, montants, traverses ET platines. */
     rackMat: THREE.MeshStandardMaterial;
-    /** Bordure béton préfabriquée (le socle discontinu sous chaque pied). */
+    /** Plot béton carré préfabriqué (le socle discontinu sous chaque pied). */
     socleMat: THREE.MeshStandardMaterial;
   }
   const buildPanelMatSet = (dim: boolean): PanelMatSet => {
@@ -491,7 +493,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
       metalness: 0.78,
       roughness: 0.38,
     });
-    // Béton préfabriqué gris CLAIR (bordure de chantier), totalement mat.
+    // Béton préfabriqué gris CLAIR (plot de chantier), totalement mat.
     const socleMat = new THREE.MeshStandardMaterial({ color: 0xc2c0b6, metalness: 0, roughness: 0.95 });
     for (const m of [glassMat, frameMat, backMat, jboxMat, rackMat, socleMat]) sharedResources.add(m);
     return { glassMat, frameMat, backMat, panelMats: [frameMat, frameMat, frameMat, frameMat, glassMat, backMat], jboxMat, rackMat, socleMat };
@@ -521,7 +523,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     if (!plateGeoCache) sharedResources.add((plateGeoCache = new THREE.BoxGeometry(PLATINE_L_M, PLATINE_W_M, PLATINE_T_M)));
     return plateGeoCache;
   };
-  /** Bordure béton préfabriquée (100 × 20 × 12 cm), longueur ALIGNÉE sur la rangée. */
+  /** Plot béton préfabriqué CARRÉ (30 × 30 × 20 cm), un par pied. */
   const socleGeoOf = (): THREE.BoxGeometry => {
     if (!socleGeoCache) sharedResources.add((socleGeoCache = new THREE.BoxGeometry(SOCLE_L_M, SOCLE_W_M, SOCLE_H_M)));
     return socleGeoCache;
@@ -957,11 +959,10 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     const tilt = tiltDeg * DEG2RAD;
     const rise = slope * Math.sin(tilt);
     const depthFootprint = slope * Math.cos(tilt);
-    // Hauteur libre du pied AVANT (m) = la PILE réelle sous le rail incliné : bordure béton
-    // (12 cm) + platine (8 mm) + demi-section du profilé C (20,5 mm) ≈ 0,149 m. C'est la cote
-    // « pied avant 0,10-0,15 m » de la fiche du 18/08, et elle redonne exactement le montant
-    // arrière de 0,77 m relevé à Marrakech (0,62 de montée + 0,15 de socle) sur un module de
-    // 2,40 m incliné à 15°.
+    // Hauteur libre du pied AVANT (m) = la PILE réelle sous le rail incliné : plot béton
+    // carré (20 cm) + platine (8 mm) + demi-section du profilé C (20,5 mm) ≈ 0,229 m, sur la
+    // cote de plot 30 × 30 × 20 cm donnée par le fondateur le 18/08. Le montant arrière suit
+    // mécaniquement (0,62 m de montée + la pile) sur un module de 2,40 m incliné à 15°.
     const frontStrut = SOCLE_H_M + PLATINE_T_M + PROFILE_M / 2;
     const halfAlong = alongRow / 2;
     const halfDepth = depthFootprint / 2;
@@ -1099,9 +1100,9 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
         const plateZ = baseZ + SOCLE_H_M + PLATINE_T_M / 2;
         plateMats.push(compose(foot[0], foot[1], plateZ, rowAngleRad, 0));
         plateMats.push(compose(heel[0], heel[1], plateZ, rowAngleRad, 0));
-        // 5. SOCLES DISCONTINUS — une bordure béton (100 × 20 × 12 cm) sous le pied AVANT,
-        //    une sous le pied ARRIÈRE. Longue de 1 m pour un entraxe de ~1,15 m : la ligne
-        //    de socles reste VISIBLEMENT interrompue, comme sur les photos de chantier.
+        // 5. SOCLES DISCONTINUS — un plot béton CARRÉ (30 × 30 × 20 cm) sous le pied AVANT,
+        //    un sous le pied ARRIÈRE. Un plot de 30 cm pour un entraxe de ~1,15 m : la ligne
+        //    de socles est franchement interrompue, comme sur les poses réelles TAQINOR.
         const socleZ = baseZ + SOCLE_H_M / 2;
         socleMats.push(compose(foot[0], foot[1], socleZ, rowAngleRad, 0));
         socleMats.push(compose(heel[0], heel[1], socleZ, rowAngleRad, 0));
@@ -1508,6 +1509,46 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     map3dRepaint();
   }
 
+  /**
+   * PV29 — surligne une SÉLECTION (plusieurs cellules) + le panneau SURVOLÉ, en un seul
+   * passage sur le buffer d'instances. `setPanelHighlight` ci-dessus ne connaît qu'UNE
+   * cellule : la sélection multiple / la rangée étaient donc invisibles en 3D (elles ne
+   * vivaient que dans le mini-plan tactile). On garde `setPanelHighlight` intact (c'est
+   * le chemin du survol seul, W88) et on ajoute CETTE fonction pour l'éditeur.
+   *
+   *  - `selected` : cellules de la sélection → laiton (GOLD), la même teinte que W88 ;
+   *  - `hover`    : cellule survolée → laiton CLAIR (elle reste distinguable dans un
+   *                 groupe déjà doré) ;
+   *  - `refused`  : true → la sélection vire au ROUGE (refus visible d'un déplacement
+   *                 impossible ; l'appelant la remet à sa teinte normale après un délai).
+   * Tout le reste revient à blanc (teinte d'origine). No-op sans mesh de panneaux.
+   */
+  function setPanelSelection(
+    selected: readonly number[] | null,
+    hover: number | null = null,
+    refused = false,
+  ) {
+    const mesh = ctx.activePanelMesh;
+    if (!mesh || !mesh.instanceColor) return;
+    const col = mesh.instanceColor as THREE.InstancedBufferAttribute;
+    const map = ctx.activePanelCellIndex;
+    const sel = new Set(selected ?? []);
+    for (let i = 0; i < map.length; i++) {
+      const cell = map[i];
+      if (sel.has(cell)) {
+        // ROUGE = refus (rien n'a bougé), sinon laiton (sélectionné).
+        if (refused) col.setXYZ(i, 1.0, 0.36, 0.32);
+        else col.setXYZ(i, 1.0, 0.78, 0.32);
+      } else if (hover != null && cell === hover) {
+        col.setXYZ(i, 1.0, 0.92, 0.72); // laiton clair = survol
+      } else {
+        col.setXYZ(i, 1, 1, 1); // teinte d'origine (instanceColor neutre)
+      }
+    }
+    col.needsUpdate = true;
+    map3dRepaint();
+  }
+
   /** WJ21 — teinte les instances de panneaux de la zone active par leur accès solaire.
    *  `colorFor(cellIndex)` renvoie une couleur RVB (0–1) par cellule de lattice ; null
    *  remet toutes les instances à blanc (teinte d'origine, heatmap OFF). Réutilise le
@@ -1549,5 +1590,5 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     }
   }
 
-  return { customLayer, disposeScene, setOrigin, appendOtherZones, renderScene, resetTextures, setPanelHighlight, setSolarAccessHeatmap, snapshot };
+  return { customLayer, disposeScene, setOrigin, appendOtherZones, renderScene, resetTextures, setPanelHighlight, setPanelSelection, setSolarAccessHeatmap, snapshot };
 }

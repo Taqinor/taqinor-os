@@ -2568,6 +2568,133 @@ class LigneLivraisonBC(models.Model):
         return f'{self.livraison_id} / ligne {self.ligne_devis_id} = {self.quantite_livree}'
 
 
+# ── PVMRQ — Offre à DEUX GAMMES paramétrable (fondateur 18/08/2026) ─────────
+#
+# Miroir EXACT de ``frontend/src/features/ventes/solar.js::PRODUCT_CATEGORIES``
+# (clés uniquement) : le rôle de composition automatique auquel une marque
+# préférée peut être épinglée. Synchronisation MANUELLE — aucun import
+# cross-stack possible ; un rôle hors de ce tuple est rejeté par
+# ``ParametresGammes.clean()``/``ParametresGammesSerializer``.
+ROLES_AUTO_COMPOSITION = (
+    'onduleur_reseau', 'onduleur_hybride', 'panneau', 'batterie',
+    'structure_acier', 'structure_alu', 'socle', 'cable_dc', 'cable_terre',
+    'smart_meter', 'wifi_dongle', 'accessoires', 'tableau', 'installation',
+    'transport', 'suivi',
+)
+
+
+def _erreurs_marques(marques):
+    """Liste d'erreurs de forme de ``ParametresGammes.marques`` (vide = valide).
+
+    Ne lève jamais : clés externes ⊆ ``ParametresGammes.SLOTS`` (les SLOTS
+    fixes 'Essentielle'/'Premium', jamais un libellé renommé), clés internes ⊆
+    ``ROLES_AUTO_COMPOSITION``, valeurs textuelles."""
+    erreurs = []
+    if not isinstance(marques, dict):
+        return ["« marques » doit être un objet {gamme: {rôle: marque}}."]
+    for gamme, roles in marques.items():
+        if gamme not in ParametresGammes.SLOTS:
+            erreurs.append(
+                'gamme inconnue « %s » — attendu : %s.'
+                % (gamme, ', '.join(ParametresGammes.SLOTS)))
+            continue
+        if not isinstance(roles, dict):
+            erreurs.append(
+                '« %s » doit être un objet {rôle: marque}.' % gamme)
+            continue
+        for role, marque in roles.items():
+            if role not in ROLES_AUTO_COMPOSITION:
+                erreurs.append(
+                    'rôle inconnu « %s » pour la gamme « %s » — voir '
+                    'ROLES_AUTO_COMPOSITION.' % (role, gamme))
+            elif not isinstance(marque, str):
+                erreurs.append(
+                    '« %s.%s » doit être une marque texte.' % (gamme, role))
+    return erreurs
+
+
+class ParametresGammes(TenantModel):
+    """Réglages de l'offre à DEUX GAMMES par société (fondateur 18/08/2026).
+
+    Un devis peut être proposé en UNE seule gamme (comportement historique,
+    ``deux_gammes=False``) ou en DEUX (Essentielle/Premium — la paire de devis
+    frères posée par ``services.creer_variante_gamme``, voir
+    ``services.GAMME_NOMS_DEFAUT``). ``nom_essentielle``/``nom_premium`` sont
+    les LIBELLÉS affichés — le fondateur peut renommer « Premium » en « Luxe »
+    sans toucher au code. Les clés internes de ``marques`` restent les SLOTS
+    FIXES ``SLOT_ESSENTIELLE``/``SLOT_PREMIUM`` ('Essentielle'/'Premium'),
+    JAMAIS le libellé renommé : renommer l'affichage ne ré-indexe donc jamais
+    le JSON. Singleton par société (contrainte d'unicité sur ``company``,
+    accès ``services.get_parametres_gammes`` en get-or-create).
+
+    ``marques`` — carte des marques préférées, par gamme ET par rôle de
+    composition automatique ::
+
+        {"Essentielle": {"panneau": "Jinko", "onduleur_reseau": "Huawei"},
+         "Premium": {"panneau": "Canadian Solar", ...}}
+
+    Les clés internes sont les rôles ``ROLES_AUTO_COMPOSITION`` (miroir de
+    ``PRODUCT_CATEGORIES`` côté frontend). Un rôle absent, ou une gamme
+    absente/vide, signifient « aucune préférence, choisir comme aujourd'hui ».
+
+    Quand ``deux_gammes`` est False (offre à UNE seule gamme), le sélecteur de
+    lecture (``services.marque_preferee``) résout TOUJOURS le slot
+    Essentielle, quel que soit le libellé de gamme passé par l'appelant — y
+    compris un devis encore étiqueté « Premium ». La carte 'Premium' du JSON
+    n'est alors JAMAIS supprimée (un futur retour à ``deux_gammes=True`` la
+    retrouve intacte), simplement plus jamais lue tant que la société reste à
+    une seule gamme.
+    """
+
+    SLOT_ESSENTIELLE = 'Essentielle'
+    SLOT_PREMIUM = 'Premium'
+    # Miroir exact de ``services.GAMME_NOMS_DEFAUT`` — deux constantes plutôt
+    # qu'un import au niveau module (``services.py`` importe
+    # ``apps.stock.services`` ; ``models.py`` reste sans dépendance d'import à
+    # l'échelle du module, comme le reste du fichier). Un test croise les deux
+    # tuples pour empêcher toute divergence silencieuse.
+    SLOTS = (SLOT_ESSENTIELLE, SLOT_PREMIUM)
+
+    deux_gammes = models.BooleanField(
+        default=False, verbose_name='Offre à deux gammes',
+        help_text="False = le devis n'utilise QU'UNE gamme (comportement "
+                  "historique). True = les deux gammes Essentielle/Premium "
+                  "sont produites (paire de devis frères).")
+    nom_essentielle = models.CharField(
+        max_length=60, default=SLOT_ESSENTIELLE,
+        verbose_name='Libellé de la gamme Essentielle',
+        help_text="Libellé affiché, renommable sans changement de code "
+                  "(ex. « Standard »).")
+    nom_premium = models.CharField(
+        max_length=60, default=SLOT_PREMIUM,
+        verbose_name='Libellé de la gamme Premium',
+        help_text="Libellé affiché, renommable sans changement de code "
+                  "(ex. « Luxe »).")
+    marques = models.JSONField(
+        default=dict, blank=True,
+        verbose_name='Marques préférées par gamme et par rôle',
+        help_text="{'Essentielle': {rôle: marque}, 'Premium': {rôle: marque}} "
+                  "— voir la docstring de la classe.")
+
+    class Meta:
+        verbose_name = 'Paramètres gammes'
+        verbose_name_plural = 'Paramètres gammes'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company'], name='uniq_parametres_gammes_company'),
+        ]
+
+    def __str__(self):
+        return f'Paramètres gammes — société {self.company_id}'
+
+    def clean(self):
+        super().clean()
+        erreurs = _erreurs_marques(self.marques)
+        if erreurs:
+            from django.core.exceptions import ValidationError
+            raise ValidationError({'marques': erreurs})
+
+
 # ── ODX17 — MODULE FACTURATION (déplacé) ─────────────────────────────────────
 # Facture, LigneFacture, Paiement, Avoir, LigneAvoir, FollowupLevel et
 # RelanceLog vivent désormais dans ``apps.facturation`` (équivalent Odoo

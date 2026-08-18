@@ -32,6 +32,9 @@ import {
   type SeriesHourlyPoint,
   type DrcalcDailyPoint,
 } from './roofEstimate';
+// Base de pertes système COMMUNE (20 % au total, ordre fondateur 18/08) —
+// source unique du site, sans dépendance (src/lib/systemLoss.ts).
+import { PRODUCTION_NET_FACTOR } from './systemLoss';
 
 /** Puissance crête d'un panneau Canadian Solar 720 W (kWc). */
 export const PANEL_KWC = 0.72;
@@ -279,15 +282,31 @@ export function shapeFromDailyProfiles(profiles: DrcalcDailyPoint[]): HourlyProf
   return byMonth.map((prof, mi) => prof.map((s, h) => (cntByMonth[mi][h] > 0 ? s / cntByMonth[mi][h] : 0)));
 }
 
+/** Repli prudent EXPRIMÉ EN BASE PVGIS 14 % (même base que la table committée). */
+export const FALLBACK_SPECIFIC_YIELD_PVGIS14 = 1600;
+/** Le même repli ramené à la base 20 % du fondateur (≈ 1488 kWh/kWc/an). */
+export const FALLBACK_SPECIFIC_YIELD_KWH_PER_KWC =
+  FALLBACK_SPECIFIC_YIELD_PVGIS14 * PRODUCTION_NET_FACTOR;
+
 /**
  * Repli INTERNE « estimé » (clairement étiqueté) quand PVGIS est injoignable :
  * un rendement spécifique conservateur pour le Maroc (kWh/kWc/an) réparti sur
  * une saisonnalité plausible, avec des jours types en cloche. JAMAIS présenté
  * comme une mesure PVGIS — source:'estimate'.
  *
- * @param specificYieldKwhPerKwc rendement annuel par kWc (défaut 1600, prudent).
+ * PERTES SYSTÈME 20 % AU TOTAL (ordre fondateur 18/08) : le repli prudent 1600
+ * kWh/kWc/an était exprimé sur la même base que la table PVGIS committée (pertes
+ * génériques 14 %). Il porte désormais le COMPLÉMENT `PRODUCTION_NET_FACTOR`
+ * (≈ 0,9302) pour tomber sur la base 20 % — la même que `specificYield` et que
+ * le devis ERP. Un appelant qui passe explicitement une valeur reste maître de
+ * son chiffre (les tests passent 1600/1500 en clair : comportement inchangé).
+ *
+ * @param specificYieldKwhPerKwc rendement annuel par kWc
+ *        (défaut : 1600 base PVGIS 14 % → ≈ 1488 base 20 %, prudent).
  */
-export function fallbackPerKwc(specificYieldKwhPerKwc = 1600): PerKwcProduction {
+export function fallbackPerKwc(
+  specificYieldKwhPerKwc = FALLBACK_SPECIFIC_YIELD_KWH_PER_KWC,
+): PerKwcProduction {
   const annualKwh = specificYieldKwhPerKwc;
   // Saisonnalité Maroc plausible (poids relatifs, normalisés ensuite).
   const seasonWeights = [0.72, 0.8, 0.95, 1.05, 1.15, 1.2, 1.22, 1.18, 1.05, 0.92, 0.78, 0.68];

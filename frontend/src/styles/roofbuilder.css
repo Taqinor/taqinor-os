@@ -103,6 +103,41 @@
 .rp9-host .text-ok-400 { color: var(--rp-ok-400); }
 .rp9-host .text-azur-950 { color: var(--rp-azur-950); }
 
+/* ── Bouton Fermer (fondateur 18/08) — la fenêtre de calepinage 3D n'avait
+   aucune sortie visible. Barre haute avec le X en haut à droite, propre à
+   ToitureDesign.jsx : `.rp9-topbar`/`.rp9-close` n'existent pas dans le DOM de
+   RepriseCarte.jsx (panneau AO qui réutilise `.rp9-host` sans cette barre),
+   donc cette règle est sans effet sur l'atelier AO — aucune règle existante
+   modifiée. ──────────────────────────────────────────────────────────────── */
+.rp9-host .rp9-topbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.rp9-host .rp9-close {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 9999px;
+  border: 1px solid rgb(255 255 255 / 0.20);
+  color: var(--rp-lune-soft);
+  background: rgb(7 11 29 / 0.72);
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+.rp9-host .rp9-close:hover {
+  border-color: var(--rp-brass-400);
+  color: var(--rp-brass-300);
+}
+.rp9-host .rp9-close:focus-visible {
+  outline: 2px solid var(--rp-brass-400);
+  outline-offset: 2px;
+}
+
 /* ── Compas + dimensionnement de la carte (FONCTIONNEL) ─────────────────── */
 .rp9-host #rp9-map { position: relative; }
 .rp9-host #rp9-map .maplibregl-map { position: absolute; inset: 0; }

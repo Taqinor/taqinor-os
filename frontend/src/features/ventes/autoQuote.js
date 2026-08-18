@@ -11,6 +11,11 @@ import {
   autoFillLines, computeEtudeIndustrielle, panneauxPourKwc,
   autoFillPompage, pompageSelection, HEURES_POMPAGE_DEFAUT,
   KWH_PRICE, EFFICIENCY, DAY_USAGE_DEFAULTS,
+  // Règle fondateur du 18/08 — dimensionnement par PALIERS de 5 kWc, retenus
+  // au payback le plus court (jamais un panneau/900 MAD nu).
+  estimerKwcDepuisFacture, arrondirAuPasKwc, optimalKwcByPayback,
+  // PVMRQ — libellé FR d'un rôle, pour dire QUELLE marque épinglée manque.
+  roleLabel,
 } from './solar'
 
 // QX19 — préférence de structure du lead (acier/aluminium) → structureType
@@ -73,10 +78,15 @@ export const buildEtudePompage = (sel, { typePompe, alim, hmt, debit, heures,
  *                                CE devis-là, sans toucher la fiche du lead.
  *                                Vide/absent = comportement historique (la
  *                                taille souhaitée du lead, sinon la facture).
+ * @param {object}   marques      PVMRQ — marques préférées par rôle (gamme
+ *                                active, `ParametresGammes.marques[slot]`) ;
+ *                                transmise telle quelle à `optimalKwcByPayback`
+ *                                et `autoFillLines`. Absente/vide = comportement
+ *                                historique (aucune préférence).
  */
 export async function createAutoQuote({ lead, produits, discountStr, dispatch,
                                         quoteLogic, pumpHours, onEtude,
-                                        targetKwc }) {
+                                        targetKwc, marques }) {
   // Logique de devis éditable (Paramètres → Avancé) ; sans valeur = défauts.
   const kwhPrice = (Number(quoteLogic?.kwhPrice) > 0) ? Number(quoteLogic.kwhPrice) : KWH_PRICE
   const efficiency = (Number(quoteLogic?.efficiency) > 0) ? Number(quoteLogic.efficiency) : EFFICIENCY
@@ -110,22 +120,73 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
   } else {
     const hiver = parseFloat(lead.facture_hiver) || 0
     // QX19 — priorité à la taille souhaitée par le lead (kWc) quand elle est
-    // renseignée ; sinon dérivation historique depuis la facture d'hiver.
-    // EZ5 — une cible saisie POUR CE DEVIS (« Devis automatique » de la fiche
-    // lead) passe devant les deux : c'est un choix ponctuel du commercial, il
-    // ne réécrit jamais `taille_souhaitee_kwc` sur le lead. Même conversion
-    // partagée `panneauxPourKwc` — aucune formule recopiée.
+    // renseignée ; sinon dérivation depuis la facture d'hiver. EZ5 — une cible
+    // saisie POUR CE DEVIS (« Devis automatique » de la fiche lead) passe
+    // devant les deux : c'est un choix ponctuel du commercial, il ne réécrit
+    // jamais `taille_souhaitee_kwc` sur le lead. Même conversion partagée
+    // `panneauxPourKwc` — aucune formule recopiée.
+    // Règle fondateur du 18/08 — une taille EXPLICITE (cible du devis ou
+    // taille souhaitée du lead) est ramenée au palier de 5 kWc le plus proche
+    // (`arrondirAuPasKwc`) : aucun devis auto ne peut sortir une taille hors
+    // palier. Sans taille explicite, le besoin se lit sur la facture d'hiver
+    // (`estimerKwcDepuisFacture`) et la taille retenue est le palier au
+    // payback le plus court (`optimalKwcByPayback`) — jamais le plus gros qui
+    // rentre sur le toit.
     const cibleKwc = parseFloat(targetKwc) || 0
-    const tailleKwc = cibleKwc > 0 ? cibleKwc : (parseFloat(lead.taille_souhaitee_kwc) || 0)
-    const panels = tailleKwc > 0
-      ? panneauxPourKwc(tailleKwc, 710)
-      : (estimerPanneaux(hiver, perTranche) || 8)
+    const explicitKwc = cibleKwc > 0 ? cibleKwc : (parseFloat(lead.taille_souhaitee_kwc) || 0)
+    const tailleKwc = explicitKwc > 0 ? arrondirAuPasKwc(explicitKwc) : 0
+    let panels
+    if (tailleKwc > 0) {
+      panels = panneauxPourKwc(tailleKwc, 710)
+    } else {
+      const besoinKwc = estimerKwcDepuisFacture(hiver)
+      if (besoinKwc > 0) {
+        const eteVal = (lead.ete_differente && lead.facture_ete)
+          ? parseFloat(lead.facture_ete) : hiver
+        const dayUsagePct = mode === 'commercial' ? DAY_USAGE_DEFAULTS['Commerciale']
+          : mode === 'industriel' ? DAY_USAGE_DEFAULTS['Industrielle']
+            : DAY_USAGE_DEFAULTS['Résidentielle']
+        const opt = optimalKwcByPayback({
+          produits, factures: estimerMois(hiver, eteVal), dayUsagePct,
+          panelW: 710, structureType: structFromLead(lead),
+          discountPct: discountStr || '0', kwhPrice, efficiency, besoinKwc,
+          marques,
+        })
+        panels = opt.nbPanneaux > 0 ? opt.nbPanneaux : (estimerPanneaux(hiver, perTranche) || 8)
+      } else {
+        panels = estimerPanneaux(hiver, perTranche) || 8
+      }
+    }
     const kwpAuto = panels * 710 / 1000
     rows = autoFillLines(produits, {
       kwp: kwpAuto, panelW: 710, nbPanneaux: panels,
       // QX19 — respecte la préférence de structure du lead (défaut acier).
       structureType: structFromLead(lead),
+      marques,
     })
+    // PVMRQ — GARDE : une marque épinglée sans AUCUN candidat en stock laisse
+    // des lignes PLACEHOLDER (aucun produit, 0 MAD) que le filtre
+    // d'enregistrement plus bas (`r.produit && quantite > 0`) écarte
+    // silencieusement — le devis partait SANS panneaux, à un prix effondré.
+    // On refuse, avec EXACTEMENT le message du bandeau de DevisGenerator
+    // (LeadDevisPanel rend `err.detail` tel quel).
+    const marquesAbsentes = rows.marquesManquantes ?? []
+    const panneauxSansProduit = rows.some(
+      r => !r.produit && /panneau/i.test(r.designation || '')
+        && parseFloat(r.quantite) > 0)
+    if (marquesAbsentes.length) {
+      throw {
+        detail: `Marque épinglée introuvable au stock : ${marquesAbsentes
+          .map(m => `${m.marque} (${roleLabel(m.role)})`).join(', ')}. `
+          + 'Ajoutez le produit ou changez la marque dans Paramètres → Gammes.',
+      }
+    }
+    if (panneauxSansProduit) {
+      throw {
+        detail: 'Devis auto impossible : aucun panneau du stock ne correspond '
+          + 'à cette composition. Complétez le catalogue, puis réessayez.',
+      }
+    }
     // QX19 — scénario batterie SEMÉ depuis batterie_souhaitee du lead : porté
     // dans etude_params pour que le PDF (builder QF6) restreigne le document au
     // choix du client (« sans »/« avec »/« les deux »). Défaut « les deux »

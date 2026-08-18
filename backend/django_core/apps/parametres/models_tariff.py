@@ -39,6 +39,14 @@ from django.db import models
 # Le service de calcul applique le MODÈLE (progressif ≤150 / sélectif >150 avec
 # tolérance 10 kWh décalant les bornes opératoires à 210/310/510). Le barème ici
 # n'est que la liste des paliers + prix ; la logique vit dans ``tariff.py``.
+#
+# SECONDE IMPLÉMENTATION INDÉPENDANTE — apps/ventes/quote_engine/pricing.py
+# ``ONEE_TRANCHES`` (consommée par le moteur de devis/PDF, pas par l'étude)
+# porte la MÊME grille/règle, en float, avec des bornes NOMINALES
+# (200/300/500) + ``boundary_tolerance`` repliée au calcul plutôt que des
+# bornes déjà effectives. Volontairement PAS unifiées (hors périmètre) —
+# verrouillées d'accord par apps/ventes/tests/test_tariff_drift_lock.py : si
+# l'une bouge seule, ce test passe au rouge.
 DEFAULT_RESIDENTIAL_TIERS = [
     {"max_kwh": 100, "prix_kwh_ttc": "0.9010"},
     {"max_kwh": 150, "prix_kwh_ttc": "1.0732"},

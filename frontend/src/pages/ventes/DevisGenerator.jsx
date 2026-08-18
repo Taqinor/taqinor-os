@@ -62,6 +62,12 @@ import {
   productibleForCity,
   COMMERCIAL_CATEGORIES, COMMERCIAL_CATEGORY_QUESTIONS, commercialDayShare,
   TARIF_MT_ONEE, tarifMtDisponible, tarifMtMoyen,
+  // Règle fondateur du 18/08 — dimensionnement par PALIERS de 5 kWc, retenus
+  // au payback le plus court (jamais un panneau/900 MAD nu).
+  estimerKwcDepuisFacture, optimalKwcByPayback,
+  // PVMRQ — libellé FR d'un rôle ROLES_AUTO_COMPOSITION, pour le bandeau
+  // « marque épinglée introuvable ».
+  roleLabel,
 } from '../../features/ventes/solar'
 import { formatNumber, formatMAD, formatDateTime } from '../../lib/format'
 
@@ -357,6 +363,15 @@ export default function DevisGenerator({
   const [panelW, setPanelW] = useState('710')
   const [structureType, setStructureType] = useState('acier')
   const [dayUsage, setDayUsage] = useState(DAY_USAGE_DEFAULTS['Résidentielle'])
+  // Règle fondateur du 18/08 — justificatif du palier retenu (kWc, besoin lu
+  // sur la facture, payback) quand le nombre de panneaux vient du nouveau
+  // dimensionnement facture → paliers. Null = pas de justificatif à montrer
+  // (taille posée à la main, ou sous le seuil de 900 MAD → repli historique).
+  const [sizingInfo, setSizingInfo] = useState(null)
+  // Cache du dernier calcul (optimalKwcByPayback chiffre CHAQUE palier avec
+  // le catalogue réel — pas gratuit) : évite de le rejouer à chaque frappe
+  // de `syncBillEstimator` quand rien de pertinent n'a changé depuis.
+  const sizingCacheRef = useRef({ key: '', result: null })
 
   // ── Lignes (prix TTC, comme le simulateur) & remise ──
   const [lines, setLines] = useState([])
@@ -369,6 +384,16 @@ export default function DevisGenerator({
   // garantie). Chaque entrée porte {id, nom, manquantes[]} et s'affiche avec
   // son motif, comme « prix à renseigner » pour un produit non tarifé.
   const [onduleursIncomplets, setOnduleursIncomplets] = useState([])
+  // PVMRQ — réglages « Gammes & marques » de la société (chargés UNE fois,
+  // best-effort : une société sans réglage ou un rôle non responsable/admin
+  // — l'endpoint est `IsResponsableOrAdmin` — retombe sur `{}` silencieusement,
+  // donc sur le comportement historique SANS préférence de marque).
+  const [gammesConfig, setGammesConfig] = useState(null)
+  // Gamme du devis rouvert (`etude_params.gamme.nom`, QJ29/services.gamme_nom) —
+  // round-trip minimal : le générateur ne construit PAS de choix de gamme,
+  // il lit seulement celle déjà posée par un devis existant pour résoudre la
+  // bonne carte de marques (slot Essentielle par défaut, voir marquesActives).
+  const [gammeNomDevis, setGammeNomDevis] = useState('')
   const [previewCollapsed, setPreviewCollapsed] = useState(false)
   const [tauxTva, setTauxTva] = useState('20.00')
   const [discountPct, setDiscountPct] = useState('0')
@@ -634,6 +659,9 @@ export default function DevisGenerator({
     if (n > 0) {
       nbPanneauxTouched.current = true
       setNbPanneaux(String(n))
+      // Taille posée à la main : le justificatif « palier retenu » de
+      // l'auto-dimensionnement ne s'applique plus à cette valeur.
+      setSizingInfo(null)
     }
   }
   const onNbPanneauxChange = (v) => {
@@ -641,6 +669,7 @@ export default function DevisGenerator({
     setNbPanneaux(v)
     const puissance = (parseFloat(v) || 0) * (parseFloat(panelW) || 0) / 1000
     setKwcCible(puissance > 0 ? String(Math.round(puissance * 100) / 100) : '')
+    setSizingInfo(null)
   }
   // Le nombre de panneaux peut aussi être posé SANS passer par le champ
   // (pré-remplissage depuis un lead, dimensionnement pompage, reprise de
@@ -817,6 +846,76 @@ export default function DevisGenerator({
     return `${selectedLead.nom} ${selectedLead.prenom || ''} (sera créé automatiquement depuis le lead)`.trim()
   }, [selectedLead, clients])
 
+  // ── PVMRQ — réglages « Gammes & marques » (Paramètres → Gammes & marques) ──
+  // Chargés UNE fois, en CRÉATION comme en ÉDITION (une marque épinglée
+  // s'applique à chaque auto-remplissage, pas seulement au premier chargement
+  // d'un devis neuf). Best-effort : la LECTURE est ouverte à tout utilisateur
+  // authentifié de la société (`IsAuthenticated` — l'épinglage doit s'appliquer
+  // aux devis de TOUS les commerciaux ; seule l'ÉCRITURE reste
+  // Admin/Responsable, cf. `views/parametres_gammes.py`). Un échec réseau
+  // retombe silencieusement sur `{}` (aucune préférence, comportement
+  // historique), jamais un blocage de l'écran. Déclaré AVANT
+  // `computeAutoSizing` ci-dessous : `marquesActives` entre dans sa clé de
+  // cache/dépendances, donc doit déjà être initialisé à ce point du rendu.
+  const gammesLoaded = useRef(false)
+  useEffect(() => {
+    if (gammesLoaded.current) return
+    gammesLoaded.current = true
+    ventesApi.getParametresGammes()
+      .then(({ data }) => setGammesConfig(data || {}))
+      .catch(() => setGammesConfig({}))
+  }, [])
+
+  // Carte de marques ACTIVE pour ce devis : la gamme du devis rouvert
+  // (`gammeNomDevis`, résolue contre les libellés `nom_essentielle`/
+  // `nom_premium` du réglage — MIROIR du backend `services.marque_preferee`)
+  // si elle correspond au libellé Premium, sinon le slot Essentielle par
+  // défaut (comportement pour un devis neuf/sans gamme, ou tant que le
+  // réglage n'est pas encore chargé). Les clés internes de `marques` sont
+  // TOUJOURS les slots fixes 'Essentielle'/'Premium', jamais le libellé
+  // renommé (voir ParametresGammes, apps/ventes/models.py).
+  const marquesActives = useMemo(() => {
+    const marques = gammesConfig?.marques
+    if (!marques || typeof marques !== 'object') return {}
+    const nomActuel = (gammeNomDevis || '').trim().toLowerCase()
+    const nomPremium = (gammesConfig?.nom_premium || '').trim().toLowerCase()
+    const slot = (nomActuel && nomActuel === nomPremium) ? 'Premium' : 'Essentielle'
+    return marques[slot] || {}
+  }, [gammesConfig, gammeNomDevis])
+
+  // Règle fondateur du 18/08 — dimensionnement par PALIERS de 5 kWc au
+  // payback le plus court, partagé par les trois pré-remplissages (lead,
+  // profil site, saisie manuelle des factures). Retourne null quand la
+  // facture d'hiver est sous le seuil de 900 MAD (aucun palier chiffrable —
+  // les appelants gardent alors le repli historique `estimerPanneaux`).
+  // Mémoïsé via `sizingCacheRef` : `syncBillEstimator` tourne à chaque frappe
+  // sur le champ facture, or chaque palier est chiffré avec le catalogue
+  // réel (autoFillLines + ROI) — pas gratuit à rejouer si rien n'a changé.
+  const computeAutoSizing = useCallback((hiverVal, eteVal) => {
+    const hiver = parseFloat(hiverVal) || 0
+    const besoinKwc = estimerKwcDepuisFacture(hiver)
+    if (besoinKwc <= 0) return null
+    const eteVale = parseFloat(eteVal) || 0
+    const eteEff = eteVale > 0 ? eteVale : hiver
+    const dayUsagePct = modeInstallation === 'commercial' ? DAY_USAGE_DEFAULTS['Commerciale']
+      : modeInstallation === 'industriel' ? DAY_USAGE_DEFAULTS['Industrielle']
+        : DAY_USAGE_DEFAULTS['Résidentielle']
+    // PVMRQ — la marque épinglée entre dans la clé de cache : un changement de
+    // réglage (ou de gamme du devis) doit rejouer le balayage des paliers.
+    const key = [hiver, eteEff, besoinKwc, dayUsagePct, panelW, structureType,
+      discountPct, produits.length, JSON.stringify(marquesActives)].join('|')
+    if (sizingCacheRef.current.key === key) return sizingCacheRef.current.result
+    const opt = optimalKwcByPayback({
+      produits, factures: estimerMois(hiver, eteEff), dayUsagePct,
+      panelW, structureType, discountPct,
+      kwhPrice: quoteLogic.kwhPrice, efficiency: quoteLogic.efficiency,
+      besoinKwc, marques: marquesActives,
+    })
+    const result = (opt.nbPanneaux > 0) ? { besoinKwc, ...opt } : null
+    sizingCacheRef.current = { key, result }
+    return result
+  }, [modeInstallation, panelW, structureType, discountPct, produits, quoteLogic, marquesActives])
+
   const applyLead = (id) => {
     setLeadId(id)
     if (!id) return
@@ -869,10 +968,19 @@ export default function DevisGenerator({
       setFHiver(String(lead.facture_hiver))
       setFEte(lead.ete_differente && lead.facture_ete ? String(lead.facture_ete) : '')
       // L'estimation par facture ne s'applique que si la taille souhaitée n'a
-      // pas déjà fourni un nombre de panneaux (taille prioritaire).
+      // pas déjà fourni un nombre de panneaux (taille prioritaire). Règle
+      // fondateur du 18/08 — dimensionnement par paliers de 5 kWc au payback
+      // le plus court ; sous le seuil de 900 MAD, repli sur `estimerPanneaux`.
       if (fromTaille <= 0) {
-        const suggested = estimerPanneaux(hiver, quoteLogic.panneauxParTranche)
-        if (suggested > 0) setNbPanneaux(String(suggested))
+        const sizing = computeAutoSizing(hiver, ete)
+        if (sizing) {
+          setNbPanneaux(String(sizing.nbPanneaux))
+          setSizingInfo(sizing)
+        } else {
+          const suggested = estimerPanneaux(hiver, quoteLogic.panneauxParTranche)
+          if (suggested > 0) setNbPanneaux(String(suggested))
+          setSizingInfo(null)
+        }
       }
       setMonthly(estimerMois(hiver, ete))
     }
@@ -905,9 +1013,18 @@ export default function DevisGenerator({
       const ete = (p.ete_differente && p.facture_ete) ? parseFloat(p.facture_ete) : hiver
       setFHiver(String(p.facture_hiver))
       setFEte(p.ete_differente && p.facture_ete ? String(p.facture_ete) : '')
+      // Règle fondateur du 18/08 — même chaîne palier/payback que applyLead
+      // (voir computeAutoSizing) ; repli sur estimerPanneaux sous le seuil.
       if (!nbPanneauxTouched.current) {
-        const suggested = estimerPanneaux(hiver, quoteLogic.panneauxParTranche)
-        if (suggested > 0) setNbPanneaux(String(suggested))
+        const sizing = computeAutoSizing(hiver, ete)
+        if (sizing) {
+          setNbPanneaux(String(sizing.nbPanneaux))
+          setSizingInfo(sizing)
+        } else {
+          const suggested = estimerPanneaux(hiver, quoteLogic.panneauxParTranche)
+          if (suggested > 0) setNbPanneaux(String(suggested))
+          setSizingInfo(null)
+        }
       }
       setMonthly(estimerMois(hiver, ete))
     }
@@ -960,6 +1077,9 @@ export default function DevisGenerator({
             + ` · économies ${fmtNum(et.economies_annuelles)} MAD/an`
             + (et.payback != null ? ` · retour ${et.payback} ans` : ''),
         })),
+        // PVMRQ — marques préférées (gamme active) : même contrainte que
+        // l'auto-remplissage manuel (handleAutoFill).
+        marques: marquesActives,
       })
       finish(devisId)
     } catch (err) {
@@ -1018,6 +1138,13 @@ export default function DevisGenerator({
         .reduce((s, r) => s + (parseFloat(r.quantite) || 0), 0)
       if (panneaux > 0) setNbPanneaux(String(panneaux))
       const e = d.etude_params || {}
+      // PVMRQ — round-trip de la gamme du devis (`etude_params.gamme.nom`,
+      // posée par `services.creer_variante_gamme`/`gamme_nom`) : résout la
+      // carte de marques Essentielle/Premium à réappliquer aux
+      // auto-remplissages suivants de CE devis (voir `marquesActives`).
+      if (e.gamme && typeof e.gamme === 'object' && e.gamme.nom) {
+        setGammeNomDevis(String(e.gamme.nom))
+      }
       // QX50 — round-trip de l'injection 82-21 (flag activé si l'étude la porte).
       if (e.injection_82_21 || e.injection_dh_an != null) setInjectionEnabled(true)
       // QXMT — round-trip du raccordement MT + de la répartition horaire, pour
@@ -1143,12 +1270,23 @@ export default function DevisGenerator({
   }, [leads, produits]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Factures : estimation hiver/été + suggestion panneaux ──
+  // Règle fondateur du 18/08 — même chaîne palier/payback que applyLead/
+  // applySiteProfile (computeAutoSizing, mémoïsée — cette fonction tourne à
+  // chaque frappe sur le champ facture) ; repli sur estimerPanneaux sous le
+  // seuil de 900 MAD.
   const syncBillEstimator = (hiverVal, eteVal) => {
     const hiver = parseFloat(hiverVal) || 0
     const ete = parseFloat(eteVal) || 0
     if (hiver <= 0) return
-    const suggested = estimerPanneaux(hiver)
-    if (suggested > 0) setNbPanneaux(String(suggested))
+    const sizing = computeAutoSizing(hiver, ete)
+    if (sizing) {
+      setNbPanneaux(String(sizing.nbPanneaux))
+      setSizingInfo(sizing)
+    } else {
+      const suggested = estimerPanneaux(hiver)
+      if (suggested > 0) setNbPanneaux(String(suggested))
+      setSizingInfo(null)
+    }
     setMonthly(estimerMois(hiver, ete > 0 ? ete : hiver))
   }
 
@@ -1427,7 +1565,7 @@ export default function DevisGenerator({
         setErrors(e => ({ ...e, autofill: 'Renseignez la puissance pompe (CV) ou HMT + débit souhaité.' }))
         return
       }
-      setErrors(e => ({ ...e, autofill: null }))
+      setErrors(e => ({ ...e, autofill: null, marquesManquantes: null }))
       setLines(withKeys(generated))
       if (pompageSel) setNbPanneaux(String(pompageSel.dims.nbPanneaux))
       setPompageAutoFilled(true)
@@ -1441,6 +1579,10 @@ export default function DevisGenerator({
       kwp,
       panelW: parseFloat(panelW) || 710,
       structureType,
+      // PVMRQ — marques préférées (Paramètres → Gammes & marques, gamme
+      // active de ce devis) : une marque épinglée gagne toujours, jamais de
+      // repli silencieux sur une autre marque (voir marquesManquantes ci-dessous).
+      marques: marquesActives,
     })
     // Les MÉTADONNÉES du tableau (wattage réel, kWc réel, onduleurs grisés)
     // sont relevées ICI, avant tout `.map()` : un `.map()` rend un tableau NEUF
@@ -1449,6 +1591,7 @@ export default function DevisGenerator({
     const metaPanelW = generated.actualPanelW
     const metaKwcReel = generated.kwcReel
     const metaOnduleursIncomplets = generated.onduleursIncomplets ?? []
+    const metaMarquesManquantes = generated.marquesManquantes ?? []
     // Modes industriel ET commercial (QX44) : sans batterie par défaut
     // (autoconsommation réseau, pas de stockage).
     if (modeInstallation === 'industriel' || modeInstallation === 'commercial') {
@@ -1479,6 +1622,16 @@ export default function DevisGenerator({
         + `${kwcReel} kWc (et non ${kwp} kWc). Ajustez le nombre de panneaux ou le `
         + 'wattage pour la cible voulue.'
     }
+    // PVMRQ — une marque épinglée sans AUCUN candidat en stock : même patron
+    // visuel que le message « Aucun produit du stock ne correspond à… »
+    // ci-dessus, mais un message DISTINCT (la cause n'est pas « rôle non
+    // reconnu », c'est « cette marque précise n'est pas au catalogue ») —
+    // jamais un repli silencieux sur une autre marque.
+    const marquesMsg = metaMarquesManquantes.length
+      ? `Marque épinglée introuvable au stock : ${metaMarquesManquantes
+          .map(m => `${m.marque} (${roleLabel(m.role)})`).join(', ')}. `
+        + 'Ajoutez le produit ou changez la marque dans Paramètres → Gammes.'
+      : null
     setErrors(e => ({
       ...e,
       autofill: manquants.length
@@ -1486,6 +1639,7 @@ export default function DevisGenerator({
           + 'Complétez le catalogue ou choisissez ces produits à la main dans les lignes.'
         : null,
       autofillKwc: mismatch,
+      marquesManquantes: marquesMsg,
     }))
     // PVOND — onduleurs ÉCARTÉS de l'auto-composition faute de contrat complet
     // (même patron que « prix à renseigner ») : on les nomme avec leur motif
@@ -2749,6 +2903,44 @@ export default function DevisGenerator({
                 />
               </div>
             </div>
+            {/* Règle fondateur du 18/08 — justifie la taille retenue par le
+                dimensionnement facture → paliers : palier de 5 kWc, besoin lu
+                sur la facture d'hiver, payback le plus court parmi les
+                paliers testés (`optimalKwcByPayback`, voir `sizingInfo.paliers`). */}
+            {sizingInfo?.kwcOptimal > 0 && (() => {
+              // PVMRQ — REPLI : une marque épinglée introuvable au stock ampute
+              // CHAQUE palier (lignes placeholder à 0 MAD) ; leur payback serait
+              // FABRIQUÉ, donc aucun n'est comparable et la taille retombe sur
+              // le besoin lu sur la facture. On le DIT, jamais en silence — et
+              // surtout on ne prétend pas avoir classé par retour sur
+              // investissement.
+              if (sizingInfo.repliMarqueManquante) {
+                const mm = sizingInfo.marquesManquantes ?? []
+                return (
+                  <div className="mt-3 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
+                    Taille retenue : palier de <strong>{sizingInfo.kwcOptimal} kWc</strong>
+                    {' '}— besoin lu sur la facture d'hiver ≈ {sizingInfo.besoinKwc} kWc.
+                    {' '}Le classement par retour sur investissement est <strong>suspendu</strong> :
+                    {' '}marque épinglée introuvable au stock
+                    {mm.length > 0 && (
+                      <> ({mm.map(m => `${m.marque} (${roleLabel(m.role)})`).join(', ')})</>
+                    )}, les paliers chiffrés seraient incomplets.
+                    {' '}Ajoutez le produit ou changez la marque dans Paramètres → Gammes.
+                  </div>
+                )
+              }
+              const retenu = sizingInfo.paliers?.find(p => p.kwc === sizingInfo.kwcOptimal)
+              return (
+                <div className="mt-3 rounded-lg border border-info/30 bg-info/10 p-3 text-sm text-info">
+                  Taille retenue : palier de <strong>{sizingInfo.kwcOptimal} kWc</strong>
+                  {' '}— besoin lu sur la facture d'hiver ≈ {sizingInfo.besoinKwc} kWc,
+                  {' '}retour sur investissement le plus court parmi les paliers testés
+                  {Number.isFinite(retenu?.payback) && (
+                    <> (<strong>{retenu.payback} ans</strong>)</>
+                  )}.
+                </div>
+              )
+            })()}
             <div className="gen-slider-row">
               <span className="gen-slider-label">Consommation diurne (%)</span>
               <input type="range" min="10" max="100" step="5" value={dayUsage}
@@ -2758,6 +2950,8 @@ export default function DevisGenerator({
             <div className="mt-3 flex flex-wrap items-center justify-end gap-3">
               {errors.autofill && <span className="text-xs text-destructive">{errors.autofill}</span>}
               {errors.autofillKwc && <span className="text-xs text-warning">{errors.autofillKwc}</span>}
+              {/* PVMRQ — même patron visuel que `errors.autofill` ci-dessus. */}
+              {errors.marquesManquantes && <span className="text-xs text-destructive">{errors.marquesManquantes}</span>}
               <Button type="button" className="bg-brass-400 text-nuit hover:bg-brass-500" onClick={handleAutoFill}>
                 <Zap /> Auto-remplir depuis le stock
               </Button>

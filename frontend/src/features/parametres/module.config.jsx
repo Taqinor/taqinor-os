@@ -5,7 +5,7 @@ import { lazy } from 'react'
 import {
   MapPin, ListChecks, LayoutList, Copy, Sparkles, Settings, UserCog, Shield,
   Key, ShieldCheck, DownloadCloud, AlertTriangle, Percent, ShoppingCart, Boxes,
-  Ship, Route, Factory,
+  Ship, Route, Factory, Layers,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -108,6 +108,15 @@ const TaxeSejourHospitality = lazy(() => import('./TaxeSejourHospitality'))
 // (XPUR10). Écriture réservée responsable/admin (le backend applique déjà
 // `stock_modifier`/legacy responsable ; lecture ouverte à tout rôle).
 const AchatsParametresPage = lazy(() => import('../../pages/parametres/AchatsParametresPage'))
+// PVMRQ (fondateur 18/08/2026) — Paramètres → Gammes & marques
+// (`ventes.ParametresGammes`, singleton par société) : bascule une/deux
+// gammes, libellés renommables, marque préférée par gamme ET par rôle de
+// composition automatique (lue par `solar.js::autoFillLines` côté générateur
+// de devis). Écriture (ET lecture — même `permission_classes` sur le GET et
+// le PATCH) réservée responsable/admin côté backend (`IsResponsableOrAdmin`)
+// — nav ET route déclarées ensemble (motif PACT150, même précédent que
+// NTLOG35/36 ci-dessous).
+const GammesMarquesPage = lazy(() => import('../../pages/parametres/GammesMarquesPage'))
 // NTLOG36 — Paramètres → Douane (`douane.ParametresDouane`, singleton par
 // société) : régime par défaut, rappels d'échéance (NTLOG22/23), mention
 // estimation droits/taxes (NTLOG13/30). Écriture réservée douane_responsable
@@ -181,6 +190,8 @@ const config = {
       // PACT150 — même défaut que ODY23(c) : route déclarée (WIR26), aucune
       // entrée de menu, écran réel de 182 lignes invisible pour toujours.
       { to: '/parametres/achats', label: 'Achats', icon: <ShoppingCart size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
+      // PVMRQ — nav ET route ensemble (voir commentaire du lazy import ci-dessus).
+      { to: '/parametres/gammes', label: 'Gammes & marques', icon: <Layers size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
       // NTLOG36 — nav ET route ensemble (voir commentaire du lazy import ci-dessus).
       { to: '/parametres/douane', label: 'Douane', icon: <Ship size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
       // NTLOG35 — nav ET route ensemble (voir commentaire du lazy import ci-dessus).
@@ -203,6 +214,7 @@ const config = {
     { path: '/parametres/playbooks', component: Playbooks, roles: ['responsable', 'admin'] },
     { path: '/parametres/hospitality/taxe-sejour', component: TaxeSejourHospitality, roles: ['responsable', 'admin'] },
     { path: '/parametres/achats', component: AchatsParametresPage, roles: ['responsable', 'admin'] },
+    { path: '/parametres/gammes', component: GammesMarquesPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/douane', component: DouaneParametresPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/transport', component: TransportParametresPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/mrp', component: MrpParametresPage, roles: ['admin'] },

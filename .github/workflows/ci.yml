@@ -263,17 +263,28 @@ jobs:
       - name: OpenAPI schema — generate, validate, no NEW warning (YAPIC6)
         run: python scripts/check_openapi_schema.py
 
-  # WOW6 — the fast backend suite is sharded 4× across free public-repo runners
+  # WOW6 — the fast backend suite is sharded across free public-repo runners
   # (matrix legs run concurrently, each on its own 4-vCPU runner + Postgres). The
   # REQUIRED `backend-tests` status check name is preserved by the thin
   # `backend-tests` aggregator job defined right after this one.
+  #
+  # WOW-CI (2026-08-18) — 4 shards -> 6. Mesuré sur le run 32167530769 : avec le
+  # dump WOW8 restauré, la mise en place ne coûte plus que ~2 min 40 s par lane,
+  # mais l'EXÉCUTION des tests était très déséquilibrée (shard 0 : 5 min 23 s ;
+  # shard 2 : 9 min 46 s ; shard 3 : 3 min 51 s) — la lane la plus lourde fixait
+  # à elle seule le chemin critique du gate à ~12 min. `ci_shard.py` prend déjà
+  # le nombre total en paramètre et répartit en tourniquet sur la liste triée des
+  # applications, donc passer à 6 redécoupe sans rien retirer : l'union des lanes
+  # reste EXACTEMENT `apps authentication core`. On n'augmente PAS `--parallel`
+  # (resté à 1 depuis 0d66f6e1 : `--parallel 2` faisait sauter max_locks / OOM sur
+  # test_rls + QW10) — on ajoute des machines, on ne charge pas celles-ci.
   backend-tests-shard:
     needs: changes
     if: ${{ needs.changes.outputs.backend == 'true' }}
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3]
+        shard: [0, 1, 2, 3, 4, 5]
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -333,15 +344,15 @@ jobs:
       # Palier « par-merge » : tout SAUF les tests lourds étiquetés `pdf`/`slow`
       # (rendu WeasyPrint, golden PDF…). Ceux-ci tournent dans release-verify
       # (manuel + nightly), pour un retour rapide sur chaque merge.
-      # WOW6 — ce shard n'exécute QUE son quart des apps (round-robin déterministe
-      # via scripts/ci_shard.py) ; l'union des 4 shards == `apps authentication
-      # core` (garanti par un test d'égalité d'ensembles). --parallel 4 (WOW1)
-      # exploite les 4 vCPU du runner ; `coverage` reste hors du gate (WOW3).
-      - name: Run Django test suite — shard ${{ matrix.shard }}/4 (fast tier — excludes pdf/slow)
+      # WOW6 — ce shard n'exécute QUE sa tranche des apps (tourniquet déterministe
+      # via scripts/ci_shard.py) ; l'union des 6 shards == `apps authentication
+      # core`. `--parallel 1` est VOLONTAIRE (cf. 0d66f6e1) ; `coverage` reste
+      # hors du gate (WOW3).
+      - name: Run Django test suite — shard ${{ matrix.shard }}/6 (fast tier — excludes pdf/slow)
         working-directory: backend/django_core
         run: |
-          LABELS=$(python ../../scripts/ci_shard.py ${{ matrix.shard }} 4)
-          echo "Shard ${{ matrix.shard }}/4 -> $LABELS"
+          LABELS=$(python ../../scripts/ci_shard.py ${{ matrix.shard }} 6)
+          echo "Shard ${{ matrix.shard }}/6 -> $LABELS"
           python manage.py test $LABELS -v 2 --exclude-tag=pdf --exclude-tag=slow --parallel 1 --keepdb
 
   # WOW6 — thin aggregator that PRESERVES the required `backend-tests` status
@@ -363,7 +374,27 @@ jobs:
       - name: All shards passed (or were skipped)
         run: echo "backend-tests-shard result=${{ needs.backend-tests-shard.result }} — gate OK."
 
-  frontend-lint:
+  # ---------------------------------------------------------------------------
+  # WOW-CI (2026-08-18) — le job `frontend-lint` était MESURÉ à 19 min 33 s sur le
+  # run 32167530769, et 15 min 59 s de ce total étaient la SEULE étape Vitest :
+  # 792 fichiers *.test.jsx sous jsdom, dont le rapport interne dit
+  # « transform 38 s, setup 207 s, import 470 s, tests 978 s, environment 843 s ».
+  # Le poste dominant (`environment`) est le montage d'un jsdom NEUF par fichier :
+  # c'est du CPU pur, donc ça se divise en ajoutant des machines, pas en changeant
+  # la config. On applique donc à la lettre le patron WOW6 déjà éprouvé côté
+  # backend : la charge part dans une matrice `frontend-vitest-shard` (Vitest
+  # `--shard`, découpage par fichier, aucun test retiré ni ignoré), les gardes
+  # statiques (eslint + check-hex + node:test) partent dans `frontend-static` pour
+  # rendre leur verdict en ~3 min au lieu d'attendre derrière les tests, et le nom
+  # de check REQUIS `frontend-lint` est préservé à l'identique par l'agrégateur
+  # mince défini juste après.
+  #
+  # NE RENOMMEZ PAS `frontend-lint` : la protection de branche exige le contexte
+  # LITTÉRAL `frontend-lint` (avec e2e/backend-lint/backend-tests/stage-names/
+  # web-build-test). Un renommage laisserait ce check « Pending » pour toujours et
+  # bloquerait toute fusion.
+  # ---------------------------------------------------------------------------
+  frontend-static:
     needs: changes
     if: ${{ needs.changes.outputs.frontend == 'true' }}
     runs-on: ubuntu-latest
@@ -376,7 +407,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - name: Install frontend dependencies
         working-directory: frontend
-        run: npm ci
+        run: npm ci --prefer-offline --no-audit --no-fund
       - name: Lint frontend (eslint)
         working-directory: frontend
         run: npm run lint
@@ -394,11 +425,53 @@ jobs:
         # --experimental-test-coverage : % visible de la logique pure couverte
         # (informatif — n'échoue que sur un test rouge, pas sur un seuil).
         run: node --test --experimental-test-coverage "src/**/*.test.mjs"
-      # Couche UX : rendu/interaction (Testing Library) + accessibilité (axe),
-      # exécutée par Vitest (fichiers *.test.jsx, jsdom) + résumé de couverture.
-      - name: Frontend component + a11y tests (Vitest + Testing Library + axe)
+
+  # Couche UX : rendu/interaction (Testing Library) + accessibilité (axe),
+  # exécutée par Vitest (fichiers *.test.jsx, jsdom) + résumé de couverture.
+  # `--shard=i/6` découpe la liste de fichiers, jamais le contenu d'un fichier :
+  # l'union des 6 lanes est EXACTEMENT la suite complète d'aujourd'hui (Vitest
+  # trie les fichiers avant de les répartir, le découpage est donc déterministe).
+  # `--coverage` reste sur chaque lane : le rapport devient un résumé par tranche
+  # (il est purement informatif — aucun seuil ne gate, cf. vitest.config.js).
+  frontend-vitest-shard:
+    needs: changes
+    if: ${{ needs.changes.outputs.frontend == 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend dependencies
         working-directory: frontend
-        run: npm run test:coverage
+        run: npm ci --prefer-offline --no-audit --no-fund
+      - name: Frontend component + a11y tests — shard ${{ matrix.shard }}/6 (Vitest + Testing Library + axe)
+        working-directory: frontend
+        run: npm run test:coverage -- --shard=${{ matrix.shard }}/6
+
+  # Agrégateur mince qui PRÉSERVE le nom de check requis `frontend-lint` (patron
+  # WOW6, identique à `backend-tests`). Vert ssi aucune lane n'a échoué ; vert
+  # aussi quand les lanes sont SAUTÉES (frontend=false), ce qui conserve la
+  # sémantique « un check requis sauté compte comme réussi » du filtre de chemins.
+  frontend-lint:
+    needs: [changes, frontend-static, frontend-vitest-shard]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if a frontend lane failed or was cancelled
+        if: ${{ needs.frontend-static.result == 'failure' || needs.frontend-static.result == 'cancelled' || needs.frontend-vitest-shard.result == 'failure' || needs.frontend-vitest-shard.result == 'cancelled' }}
+        run: |
+          echo "frontend-static=${{ needs.frontend-static.result }} frontend-vitest-shard=${{ needs.frontend-vitest-shard.result }}"
+          echo "Une lane frontend n'est pas passée — voir les jobs ci-dessus."
+          exit 1
+      - name: All frontend lanes passed (or were skipped)
+        run: echo "frontend-static=${{ needs.frontend-static.result }} frontend-vitest-shard=${{ needs.frontend-vitest-shard.result }} — gate OK."
 
   # YHARD7 — budget de performance du bundle SPA ERP. Complète le
   # `chunkSizeWarningLimit` (avertissement de build seulement) par un contrôle
@@ -419,7 +492,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - name: Install frontend dependencies
         working-directory: frontend
-        run: npm ci
+        run: npm ci --prefer-offline --no-audit --no-fund
       - name: Build frontend
         working-directory: frontend
         run: npm run build
@@ -593,7 +666,7 @@ jobs:
           cache-dependency-path: apps/web/package-lock.json
       - name: Install apps/web dependencies
         working-directory: apps/web
-        run: npm ci
+        run: npm ci --prefer-offline --no-audit --no-fund
       - name: Type-check apps/web logic (tsc — src/lib estimator/math surface)
         working-directory: apps/web
         run: npm run check
@@ -671,6 +744,55 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+      # -----------------------------------------------------------------------
+      # WOW-CI (2026-08-18) — CACHE DES PAQUETS APT. Mesuré sur le run
+      # 32167530769 : l'étape « Install Playwright browsers » a duré 9 min 10 s,
+      # et son propre journal dit « Fetched 114 MB in 8min 41s (219 kB/s) ».
+      # Autrement dit 95 % du coût est le TÉLÉCHARGEMENT APT des dépendances
+      # système de WebKit (fontes CJK, gstreamer, libavcodec, librsvg…) — pas les
+      # navigateurs : leurs binaires (177 Mo + 101 Mo depuis le CDN Playwright)
+      # descendent en ~14 s. On redirige donc le magasin de .deb d'apt vers un
+      # dossier que `actions/cache` sait restaurer : sur un cache chaud apt trouve
+      # tous les paquets sur place (il revérifie leurs sommes de contrôle) et ne
+      # télécharge RIEN — il ne reste que le dépaquetage. Sur un cache froid, le
+      # comportement est EXACTEMENT celui d'avant : rien n'est sauté, aucune
+      # dépendance n'est retirée, WebKit reste installé et testé.
+      #
+      # Placé AVANT `backend-env` à dessein : ses paquets WeasyPrint passent par
+      # le même magasin et deviennent gratuits eux aussi.
+      #
+      # On ne met VOLONTAIREMENT PAS `~/.cache/ms-playwright` dans le cache :
+      # ~450 Mo pour ~14 s gagnées, alors que le quota de cache du dépôt est déjà
+      # saturé (10,49 Go pour 10 Go au 18/08) — et évincer un dump testdb (WOW8)
+      # coûterait un rebuild à froid d'environ 40 min.
+      # -----------------------------------------------------------------------
+      - name: Redirect apt's .deb store into a cacheable directory
+        # JAMAIS BLOQUANT : ce n'est qu'une optimisation. Si quoi que ce soit
+        # échoue ici, apt reprend son magasin par défaut et le job se comporte
+        # exactement comme avant — une accélération ne doit pas pouvoir faire
+        # rougir un check REQUIS.
+        run: |
+          set -uo pipefail
+          mkdir -p "$HOME/apt-archives/partial" || true
+          # apt abandonne ses privilèges vers l'utilisateur `_apt` pour écrire
+          # dans `partial/` : sans droits larges il retombe (bruyamment) sur un
+          # téléchargement non bac-à-sable, ou échoue.
+          chmod -R 777 "$HOME/apt-archives" || true
+          printf 'Dir::Cache::archives "%s";\nBinary::apt::APT::Keep-Downloaded-Packages "true";\n' \
+            "$HOME/apt-archives" | sudo tee /etc/apt/apt.conf.d/99-ci-archive-cache >/dev/null \
+            || echo "AVERTISSEMENT : redirection du cache apt impossible — on continue sans."
+          exit 0
+      - name: Cache apt packages (Playwright system deps + WeasyPrint)
+        uses: actions/cache@v4
+        with:
+          path: ~/apt-archives
+          # La liste de paquets dépend de la version de Playwright (package-lock)
+          # et de la liste WeasyPrint (action backend-env). `restore-keys` permet
+          # à un lock modifié de repartir du magasin précédent : apt ne
+          # télécharge alors que le delta réellement manquant.
+          key: apt-e2e-v1-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json', '.github/actions/backend-env/action.yml') }}
+          restore-keys: |
+            apt-e2e-v1-${{ runner.os }}-
       # WOW7 — shared WeasyPrint + pip (requirements-dev.txt) + MinIO setup.
       # WOW8 — restore the cached pre-migrated dump straight into erp_db
       # (measured: this job's migrate+seed step was 1796s of a 1915s total —
@@ -695,11 +817,14 @@ jobs:
           python manage.py seed_ao_demo --company taqinor-demo --confirmer
       - name: Install frontend dependencies
         working-directory: frontend
-        run: npm ci
+        run: npm ci --prefer-offline --no-audit --no-fund
       - name: Install Playwright browsers (chromium + webkit)
         working-directory: frontend
         # VX68 — WebKit (Safari réel) en plus de Chromium : le smoke ajoute un
         # passage `mobile-safari` pour attraper ce qui ne casse QUE sur Safari.
+        # `--with-deps` est CONSERVÉ tel quel (mêmes navigateurs, mêmes
+        # dépendances système) ; c'est le magasin apt caché plus haut qui rend
+        # sa partie « téléchargement » gratuite sur un cache chaud.
         run: npx playwright install --with-deps chromium webkit
       - name: Build frontend (no service worker for E2E)
         working-directory: frontend
@@ -831,6 +956,8 @@ jobs:
       - backend-lint
       - backend-tests-shard
       - backend-tests
+      - frontend-static
+      - frontend-vitest-shard
       - frontend-lint
       - frontend-perf
       - stage-names
@@ -844,6 +971,8 @@ jobs:
           echo "backend-lint=${{ needs.backend-lint.result }}"
           echo "backend-tests-shard=${{ needs.backend-tests-shard.result }}"
           echo "backend-tests=${{ needs.backend-tests.result }}"
+          echo "frontend-static=${{ needs.frontend-static.result }}"
+          echo "frontend-vitest-shard=${{ needs.frontend-vitest-shard.result }}"
           echo "frontend-lint=${{ needs.frontend-lint.result }}"
           echo "frontend-perf=${{ needs.frontend-perf.result }}"
           echo "stage-names=${{ needs.stage-names.result }}"

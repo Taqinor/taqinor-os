@@ -239,8 +239,8 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/parametres/models_documents.py:102` | get_or_create | cls.objects | pk |
 | `backend/django_core/apps/parametres/models_payment_terms.py:89` | get_or_create | cls.objects | company, delai_jours, escompte_pct, fin_de_mois |
 | `backend/django_core/apps/parametres/models_pos.py:72` | get_or_create | cls.objects | company |
-| `backend/django_core/apps/parametres/models_tariff.py:137` | get_or_create | cls.objects | company |
-| `backend/django_core/apps/parametres/models_tariff.py:139` | get_or_create | cls.objects | pk |
+| `backend/django_core/apps/parametres/models_tariff.py:145` | get_or_create | cls.objects | company |
+| `backend/django_core/apps/parametres/models_tariff.py:147` | get_or_create | cls.objects | pk |
 | `backend/django_core/apps/parametres/models_taxes.py:103` | get_or_create | cls.objects | code, company |
 | `backend/django_core/apps/parametres/models_units.py:83` | get_or_create | cls.objects | code, company |
 | `backend/django_core/apps/parametres/views_config.py:163` | get_or_create | DocumentTemplates.objects | company |
@@ -295,8 +295,8 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/scm/services.py:797` | get_or_create | ParametresSCM.objects | company |
 | `backend/django_core/apps/scm/services.py:1039` | get_or_create | PolitiqueStock.objects | company, produit |
 | `backend/django_core/apps/stock/management/commands/backfill_unites_mesure.py:52` | get_or_create | UniteMesure.objects | code, company |
-| `backend/django_core/apps/stock/management/commands/seed_catalogue.py:980` | get_or_create | Categorie.objects | company, nom |
-| `backend/django_core/apps/stock/management/commands/seed_catalogue.py:1253` | get_or_create | Categorie.objects | company, nom |
+| `backend/django_core/apps/stock/management/commands/seed_catalogue.py:986` | get_or_create | Categorie.objects | company, nom |
+| `backend/django_core/apps/stock/management/commands/seed_catalogue.py:1259` | get_or_create | Categorie.objects | company, nom |
 | `backend/django_core/apps/stock/models.py:476` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/stock/models_negoce_params.py:64` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/stock/services.py:197` | get_or_create | EmplacementStock.objects | company, nom |
@@ -321,8 +321,9 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/transport/models.py:373` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/uxviews/models.py:174` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/veille_ao/services.py:895` | get_or_create | SourceVeille.objects | code, company |
-| `backend/django_core/apps/ventes/services.py:4984` | get_or_create | Produit.objects | company, nom |
-| `backend/django_core/apps/ventes/services.py:6354` | get_or_create | Produit.objects | company, sku |
+| `backend/django_core/apps/ventes/services.py:342` | get_or_create | ParametresGammes.objects | company |
+| `backend/django_core/apps/ventes/services.py:5217` | get_or_create | Produit.objects | company, nom |
+| `backend/django_core/apps/ventes/services.py:6587` | get_or_create | Produit.objects | company, sku |
 | `backend/django_core/apps/ventes/views/liste_prix.py:72` | update_or_create | LignePrixListe.objects | liste, produit_id |
 | `backend/django_core/apps/ventes/views/remise_encaissement.py:81` | get_or_create | LigneRemiseEncaissement.objects | paiement, remise |
 | `backend/django_core/apps/voip/services.py:26` | get_or_create | VoipParametres.objects | company |

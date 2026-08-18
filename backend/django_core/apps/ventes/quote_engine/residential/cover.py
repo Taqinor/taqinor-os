@@ -73,7 +73,11 @@ def build(ctx):
     annual_before = d["annual_before"]
     annual_after = d["annual_after"]
     coverage_pct = d["coverage_pct"]
-    pct_cut = round((1 - annual_after / max(1, annual_before)) * 100)
+    # PVCOV — même valeur que la proposition en ligne (synthese_economies) ;
+    # repli sur la formule historique si un appelant fournit un d incomplet.
+    pct_cut = d.get("pct_cut")
+    if pct_cut is None:
+        pct_cut = round((1 - annual_after / max(1, annual_before)) * 100)
     # Tangible monthly framing (research: a monthly figure lands harder than an
     # annual one) — derived straight from the annual before/after, never invented.
     month_before = round(annual_before / 12)

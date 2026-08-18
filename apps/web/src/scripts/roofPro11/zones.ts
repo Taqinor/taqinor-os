@@ -89,7 +89,11 @@ export function createZones(ctx: Ctx): Zones {
     const targetAnnualKwh = ctx.roofType === 'pitched' ? ctx.pitchedRec?.targetAnnualKwh : ctx.rec?.targetAnnualKwh;
     const total = aggregateAreas(results, targetAnnualKwh, annualSavingsMad);
     if (areasTotalPanelsEl) areasTotalPanelsEl.textContent = `${fmt(total.panels)} × 720 W`;
-    if (areasTotalKwcEl) areasTotalKwcEl.textContent = `${total.kwc.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} kWc`;
+    // W97 §2 — 2 décimales, pas 1 : kwc = panneaux × 0,72 tient toujours en 2
+    // décimales exactes, donc le total agrégé et chaque carte de zone (rp9-reco-kwc,
+    // même règle) affichent leur valeur RÉELLE sans arrondi indépendant — la somme
+    // des zones affichées == le total affiché, par construction (cf. optimizer.ts).
+    if (areasTotalKwcEl) areasTotalKwcEl.textContent = `${total.kwc.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} kWc`;
     if (areasTotalProdEl) areasTotalProdEl.textContent = total.annualKwh > 0 ? `${fmt(Math.round(total.annualKwh))} kWh/an` : '—';
     if (areasTotalSavingsEl) areasTotalSavingsEl.textContent = total.savingsHigh > 0 ? `${fmtMad(total.savingsLow)} – ${fmtMad(total.savingsHigh)}/an` : '—';
     if (!areasListEl) return;
@@ -98,7 +102,7 @@ export function createZones(ctx: Ctx): Zones {
         const r = a.id === activeAreaId ? liveActive : a.result;
         const active = a.id === activeAreaId;
         const panels = r ? fmt(r.panels) : '—';
-        const kwc = r ? `${r.kwc.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} kWc` : 'à tracer';
+        const kwc = r ? `${r.kwc.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} kWc` : 'à tracer';
         const rowClass = active
           ? 'border-brass-400 bg-brass-400/10'
           : 'border-white/10 bg-nuit-900/40';

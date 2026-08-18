@@ -30,6 +30,12 @@ export interface LayoutHistory {
   undo: (current: ReadonlySet<number>) => LayoutSnapshot | null;
   /** Rétablit : renvoie l'occupation à ré-appliquer (et empile `current` côté undo), ou null. */
   redo: (current: ReadonlySet<number>) => LayoutSnapshot | null;
+  /** PV29 — JETTE la dernière photo empilée SANS la rejouer et SANS toucher au « rétablir ».
+   *  Sert exactement à un cas : l'action a été photographiée puis REFUSÉE (déplacement de
+   *  groupe/rangée qui ne tient pas). Un geste refusé n'a rien changé, donc il n'a rien à
+   *  annuler — sans ça, « annuler » consomme un pas pour ne rien faire et « rétablir »
+   *  s'allume pour rien. Renvoie true si une photo a été jetée. */
+  drop: () => boolean;
   /** Oublie tout (changement de toit / de zone / sortie du mode disposition). */
   clear: () => void;
   /** Profondeur des deux piles (diagnostic + tests). */
@@ -72,6 +78,11 @@ export function createLayoutHistory(limit: number = LAYOUT_HISTORY_LIMIT): Layou
       undoStack.push(snapshotOf(current));
       if (undoStack.length > cap) undoStack = undoStack.slice(undoStack.length - cap);
       return next;
+    },
+    drop() {
+      // On ne touche PAS à `redoStack` : `push` l'avait déjà vidé, et le geste refusé n'a
+      // rien produit à rétablir. C'est toute la différence avec `undo`.
+      return undoStack.pop() !== undefined;
     },
     clear() {
       undoStack = [];

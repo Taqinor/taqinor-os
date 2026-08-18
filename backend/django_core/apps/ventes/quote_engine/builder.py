@@ -210,6 +210,42 @@ def _is_battery(designation: str) -> bool:
     return "batterie" in (designation or "").lower()
 
 
+# Capacité batterie lisible sur une désignation (« Batterie 5 kWh », « 10kwh »).
+# Miroir de solar.js KWH_RE / parseKwh — même regex, même défaut 5 kWh par
+# ligne batterie sans capacité écrite (ordre fondateur 18/08 : « chaque
+# batterie apporte 5 kWh par jour »).
+_KWH_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*kwh\b", re.IGNORECASE)
+BATTERY_DEFAULT_KWH = 5.0
+
+
+def _parse_kwh(text: str):
+    m = _KWH_RE.search(text or "")
+    if not m:
+        return None
+    try:
+        return float(m.group(1).replace(",", "."))
+    except ValueError:  # pragma: no cover — regex garantit le format
+        return None
+
+
+def _battery_kwh_from_items(rows, blob=None) -> float:
+    """Capacité batterie TOTALE (kWh) d'une liste d'items — miroir
+    ``solar.js batteryKwhFromLines`` (quantité × kWh lus, défaut 5 kWh)."""
+    total = 0.0
+    for it in rows or []:
+        text = blob(it) if blob else (it.get("designation") or "")
+        if not _is_battery(text):
+            continue
+        try:
+            qty = float(it.get("quantite") or 0)
+        except (TypeError, ValueError):
+            qty = 0.0
+        if qty <= 0:
+            continue
+        total += qty * (_parse_kwh(text) or BATTERY_DEFAULT_KWH)
+    return total
+
+
 def _is_hybrid_inverter(designation: str) -> bool:
     d = (designation or "").lower()
     return "onduleur" in d and "hybride" in d
@@ -957,6 +993,13 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         tranches_override=_tranches_override or None,
         autoconso_sans=_autoconso_sans if _autoconso_sans else AUTOCONSO_SANS,
         autoconso_avec=_autoconso_avec if _autoconso_avec else AUTOCONSO_AVEC,
+        # ORDRE FONDATEUR (18/08) — capacité batterie RÉELLE de l'option 2 :
+        # le taux d'autoconsommation « avec batterie » en est dérivé
+        # (60 % + capacité × 1 cycle/jour) au lieu d'un forfait 85 %. Un taux
+        # explicitement forcé par le vendeur (etude_params.autoconso_avec)
+        # reste souverain : on ne dérive alors rien.
+        battery_kwh=(None if _autoconso_avec
+                     else (_battery_kwh_from_items(avec_items, _blob) or None)),
         productible=_productible,
         fallback_tarif_kwh=_onee_tarif,
     )
@@ -1049,9 +1092,16 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             "facture_avec_solaire": _sm_avec,
             "economie": roi["facture_sans"] - _sm_avec,
             "approximatif": bool(roi.get("factures_approximatif")),
+            # Le barème résidentiel n'est PAS purement progressif : au-delà de
+            # 150 kWh/mois il est SÉLECTIF (toute la consommation du mois au
+            # tarif de sa tranche), et c'est exactement ce qui rend l'économie
+            # réelle plus grande — en repassant sous une marche, le client
+            # re-tarife TOUT son résiduel. La phrase doit dire ce que le moteur
+            # fait (pricing.ONEE_TRANCHES), pas l'inverse.
             "ligne_methode": (
-                "Chaque kWh est valorisé au prix de SA tranche (barème "
-                "progressif du distributeur) : facture actuelle moins facture "
+                "Facture recalculée au barème réel du distributeur "
+                "(progressif ≤ 150 kWh/mois, puis sélectif : toute la conso du "
+                "mois au tarif de SA tranche) : facture actuelle moins facture "
                 "résiduelle après autoconsommation — jamais un prix moyen "
                 "inventé."),
             # QRES40 — MAD partout (le document n'emploie jamais « DH » :
@@ -1145,12 +1195,17 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "surplus injecté n'est pas rémunéré (plafond d'injection 20 % "
         "intégré, rachat BT non publié).")
     if _prod_factor:
-        # QRES54 — production NETTE affichée : pertes système de 14 % déduites
-        # (PRODUCTION_DERATE), la même que TOUS les calculs du document.
+        # Production NETTE affichée, la même que TOUS les calculs du document :
+        # pertes système de 20 % AU TOTAL (ordre fondateur 18/08). Le chiffre
+        # rendu doit dire le total réel — l'ancienne mention « 14 % » était
+        # doublement fausse (elle nommait les seules pertes PVGIS alors que le
+        # moteur en retranchait 14 % de plus, soit 26 % cumulés).
         from .pricing import PRODUCTION_DERATE as _DERATE
+        from .pricing import SYSTEM_LOSS_TOTAL as _LOSS
         hypotheses.append(
             f"Production estimée : ≈ {_fr_int(_prod_factor * _DERATE)} "
-            "kWh par kWc et par an, pertes système de 14 % déduites.")
+            f"kWh par kWc et par an, pertes système de "
+            f"{int(round(_LOSS * 100))} % déduites.")
     _ac_s = roi.get("autoconso_sans")
     _ac_a = roi.get("autoconso_avec")
     if _ac_s and _ac_a:
@@ -1186,9 +1241,14 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                                 else None),
     }
 
-    # ONEE monthly bill proxy (bars sit above the savings curves): full-price bill
-    # ≈ Option-2 monthly savings / 0.85 autoconsumption.
-    factures_mensuelles = [round(v / 0.85) for v in roi["eco_a_monthly"]]
+    # ONEE monthly bill proxy (bars sit above the savings curves): full-price
+    # bill ≈ économies mensuelles option 2 / taux d'autoconsommation RETENU.
+    # Le taux vient de ``roi`` (dérivé de la capacité batterie depuis l'ordre
+    # fondateur du 18/08) — plus de 0,85 codé en dur qui contredirait le calcul.
+    _ac_a_proxy = roi.get("autoconso_avec") or AUTOCONSO_AVEC
+    if not (0 < _ac_a_proxy <= 1):
+        _ac_a_proxy = AUTOCONSO_AVEC
+    factures_mensuelles = [round(v / _ac_a_proxy) for v in roi["eco_a_monthly"]]
 
     client_name = f"{(client.prenom or '').strip()} {(client.nom or '').strip()}".strip()
 

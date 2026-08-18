@@ -209,54 +209,11 @@ def build(ctx) -> str:
     # disclosure « Nos hypothèses » WJ32 + page méthodologie W359, données
     # déjà servies par proposal-data/QK4). Le papier garde UNE clause
     # non-contractuelle dans la bande légale, rien d'autre.
-    # QK3 / QRES14/65 — financement (indicatif) : mensualité + programme, rendu
-    # en BANDE DE PIED de la boîte « Prochaines étapes » (colonne droite) — la
-    # mensualité garde sa visibilité commerciale, la carte Conditions reste
-    # courte (c'est elle qui poussait la page en débordement) et la colonne
-    # droite se remplit jusqu'en bas. Jamais de prix d'achat/marge.
-    fin = d.get("financing") or {}
-    fin_credit = fin.get("credit") or {}
-    fin_card_html = ""
-    if fin.get("indicatif") and fin_credit.get("mensualite"):
-        _mens = int(round(fin_credit["mensualite"]))
-        _mens_txt = theme.fmt(_mens)
-        _duree_ans = round((fin_credit.get("duree_mois") or 0) / 12)
-        _prog = fin_credit.get("programme_nom") or "crédit vert"
-        # QRES32 — la juxtaposition qui vend : quand les économies mensuelles
-        # estimées COUVRENT la mensualité, on le dit (calculé, jamais promis).
-        _deux_fin = bool(d.get("deux_options", True))
-        _avec_fin = bool(d.get("avec_ok", True))
-        _eco_ref_fin = (d.get("eco_a_ann") if (_deux_fin or _avec_fin)
-                        else d.get("eco_s_ann")) or 0
-        _eco_mois = int(round(_eco_ref_fin / 12)) if _eco_ref_fin else 0
-        # QRES45 — mini-grand-livre à 3 lignes : crédit / économies / reste en
-        # poche (la juxtaposition qui vend, chiffrée — jamais promise).
-        _ledger = ""
-        # QRES64/65 — contenu SANS enveloppe propre : le financement est la
-        # BANDE DE PIED de la boîte « Prochaines étapes » (.p3-finsec), plus une
-        # troisième carte flottante — la rangée ne compte ainsi que deux boîtes,
-        # deux cellules d'une même ligne de tableau donc de hauteur identique.
-        if _eco_mois > _mens:
-            _reste = _eco_mois - _mens
-            _ledger = (
-                '<div class="p3-fin-row"><span>Crédit</span>'
-                f'<span>≈ {_mens_txt} MAD/mois</span></div>'
-                '<div class="p3-fin-row"><span>Économies estimées</span>'
-                f'<span>≈ {theme.fmt(_eco_mois)} MAD/mois</span></div>'
-                '<div class="p3-fin-row p3-fin-net"><span>Dans votre poche'
-                f'</span><span>≈ +{theme.fmt(_reste)} MAD/mois</span></div>')
-            fin_card_html = (
-                '<div class="p3-fin-k">Financement possible</div>'
-                f'{_ledger}'
-                f'<div class="p3-fin-s">sur {_duree_ans} ans ({_prog}) — '
-                'indicatif, à confirmer avec votre banque.</div>')
-        else:
-            fin_card_html = (
-                '<div class="p3-fin-k">Financement possible</div>'
-                f'<div class="p3-fin-v">≈ {_mens_txt} '
-                '<small>MAD/mois</small></div>'
-                f'<div class="p3-fin-s">sur {_duree_ans} ans ({_prog}) — '
-                'indicatif, à confirmer avec votre banque.</div>')
+    # QRES66 (fondateur, 18/08/2026) — le bloc « Financement possible » est
+    # SUPPRIMÉ de la page : ni bande de pied, ni carte, ni mensualité. La
+    # rangée ne porte que les deux boîtes « Conditions » / « Prochaines
+    # étapes », égales en hauteur par construction (cellules d'une même
+    # ligne de tableau). Ne pas réintroduire sous une autre forme.
     # QG7 — contact du conseiller (créateur du devis) : nom + tél, ajouté comme
     # ligne de conditions (données seulement). Repli société géré côté builder.
     seller = d.get("seller") or {}
@@ -301,11 +258,6 @@ def build(ctx) -> str:
         '<td><div class="p3-h">Prochaines étapes</div></td></tr>')
     _right_html = f'<div class="p3-steps">{steps_html}</div>'
     _cols_cls = "p3-cols p3-block"
-    if fin_card_html:
-        _right_html += f'<div class="p3-finsec">{fin_card_html}</div>'
-        # La colonne de droite devient la plus haute : la gauche respire pour
-        # remplir la hauteur commune (cf. .p3-cols-fin .p3-cond-row).
-        _cols_cls += " p3-cols-fin"
     cols_html = (
         f'<table class="{_cols_cls}" cellspacing="0">{_cols_head}'
         f'<tr><td class="p3-tdcard">{cond_html}</td><td></td>'
@@ -441,25 +393,12 @@ def build(ctx) -> str:
 .p3-crh td {{ padding:0; }}
 .p3-tdcard {{ border:1px solid {C['line']}; border-radius:11px;
   background:{C['paper']}; padding:12px 14px; vertical-align:top; }}
-/* QRES65 — financement = bande de pied de la boîte « Prochaines étapes »
-   (filet or + fond crème à fleur des bords de la carte), jamais une carte
-   flottante de plus dans la rangée. */
-.p3-finsec {{ margin:9px -14px -12px; padding:9px 14px 10px;
-  background:#FFFCF5; border-top:1px solid {C['gold']};
-  border-radius:0 0 10px 10px; }}
 .p3-card {{ border:1px solid {C['line']}; border-radius:11px;
   background:{C['paper']}; padding:12px 14px; }}
 /* QRES26 — profondeur matière commune aux blocs de la page 3. */
 .p3-card, .p3-tdcard, .p3-accord, .p3-cta, .p3-val {{
   box-shadow:0 1px 2px rgba(26,43,74,.04),0 5px 14px rgba(26,43,74,.05); }}
 .p3-cond-row {{ padding:4.6px 0; border-bottom:1px dashed {C['line_soft']}; }}
-/* QRES65 — la méthode de calcul sortie, la boîte Conditions serait étirée sur
-   du vide QUAND la colonne d'en face porte la bande financement (la plus haute
-   des deux). Dans ce cas SEULEMENT, ses lignes respirent au rythme des étapes
-   d'en face : elle se remplit d'elle-même sans jamais dicter la hauteur de la
-   ligne — donc sans ajouter un millimètre à la page. Sans bande financement,
-   c'est la colonne Conditions qui est la plus haute : le rythme reste serré. */
-.p3-cols-fin .p3-cond-row {{ padding:12px 0; }}
 .p3-cond-row:last-child {{ border-bottom:none; padding-bottom:1px; }}
 .p3-cond-row:first-child {{ padding-top:1px; }}
 .p3-cond-k {{ display:block; font-size:7pt; letter-spacing:.1em;
@@ -538,24 +477,6 @@ def build(ctx) -> str:
 .p3-reco-mini {{ display:inline-block; margin-left:6px; background:{C['gold']};
   color:{C['navy']}; border-radius:999px; padding:1px 7px; font-size:6.6pt;
   font-weight:700; vertical-align:1px; }}
-
-/* QRES14/65 — financement (colonne droite) : bande de pied de la boîte
-   « Prochaines étapes » — l'enveloppe est .p3-finsec ci-dessus. */
-.p3-fin-k {{ font-size:7pt; letter-spacing:.1em; text-transform:uppercase;
-  color:{C['gold_soft']}; font-weight:700; margin-bottom:2px; }}
-.p3-fin-v {{ font-family:{ctx['fonts']['display']}; font-size:13.5pt;
-  color:{C['navy']}; line-height:1.1; }}
-.p3-fin-v small {{ font-family:{ctx['fonts']['sans']}; font-size:8pt;
-  color:{C['muted']}; font-weight:600; }}
-.p3-fin-s {{ font-size:7.2pt; color:{C['muted']}; margin-top:3px;
-  line-height:1.35; }}
-/* QRES45 — grand-livre financement */
-.p3-fin-row {{ display:flex; justify-content:space-between; font-size:8.2pt;
-  color:{C['ink']}; padding:2.2px 0; }}
-.p3-fin-row span:last-child {{ font-weight:700; color:{C['navy']}; }}
-.p3-fin-net {{ border-top:1px solid {C['gold']}; margin-top:2px;
-  padding-top:3.5px; }}
-.p3-fin-net span {{ color:{C['gold_soft']} !important; font-weight:700; }}
 
 /* QRES65 (fondateur, 2026-08-18) — « Comment nous calculons vos économies »
    À PLAT sous la rangée : une note discrète pleine largeur, sans boîte, sans

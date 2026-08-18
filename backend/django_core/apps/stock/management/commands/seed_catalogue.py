@@ -58,6 +58,12 @@ CATALOGUE = [
     ('Structures acier',           'STR-ACIER', 'Accessoires', 500, 350, 2000, 50),
     ('Structures aluminium',       'STR-ALU',   'Accessoires', 850, 600, 2000, 50),
     ('Socles',                     'SOC-BET',   'Accessoires', 80, 50, 5000, 100),
+    # ── Câbles Nexans 6 mm² AU MÈTRE (règle fondateur 18/08) ──
+    # 12,00 MAD HT le mètre → 14,40 TTC (TVA 20 %). Les métrés sont posés par
+    # l'auto-composition : 60 m de DC par palier de 5 kWc, 25 m + 15 m/palier
+    # de terre. prix_achat laissé vide (à renseigner par le fondateur).
+    ('Câble solaire Nexans 6 mm² (au mètre)',  'CAB-NEX-DC-6',  'Accessoires', 14.4, 0, 10000, 500),
+    ('Câble de terre Nexans 6 mm² (au mètre)', 'CAB-NEX-TER-6', 'Accessoires', 14.4, 0, 10000, 500),
     ('Smart Meter',                'SMART-MET', 'Accessoires', 1800, 1200, 500, 5),
     ('Wifi Dongle',                'WIFI-DON',  'Accessoires', 1200, 700, 500, 5),
     ('Accessoires',                'ACC-CAT',   'Accessoires', 2000, 2000, 999, 0),

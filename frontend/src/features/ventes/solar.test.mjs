@@ -16,7 +16,8 @@ import {
   computeCashflowPayback,
   computeEtudeIndustrielle,
   TARIF_MT_ONEE, tarifMtDisponible, tarifMtMoyen, normaliserRepartitionMt,
-  isReseauInverter, batterieCompatible,
+  isReseauInverter, batterieCompatible, DAYS_IN_MONTH,
+  PRODUCTIBLE_NET_FACTOR, TARIFF_ESCALATION,
 } from './solar.js'
 
 // Reflet du catalogue seedé (prix HT = TTC simulateur / 1.2, 2 décimales)
@@ -141,12 +142,19 @@ test('remise saisie librement (ex. 12.5 %) : appliquée exactement', () => {
 })
 
 test('sélecteur produits : groupé selon les catégories du catalogue simulateur', () => {
-  const groups = groupProduitsByCategory(
-    [...SEEDED, { id: 999, nom: 'Câble solaire 6mm² (100m)', prix_vente: '850' }])
+  const groups = groupProduitsByCategory([
+    ...SEEDED,
+    // Les deux câbles Nexans au mètre ont leurs propres groupes depuis le 18/08.
+    { id: 998, nom: 'Câble solaire Nexans 6 mm² (au mètre)', prix_vente: '12.00' },
+    { id: 999, nom: 'Câble de terre Nexans 6 mm² (au mètre)', prix_vente: '12.00' },
+    // …et un produit non classable alimente toujours « Autres ».
+    { id: 1000, nom: 'Échafaudage roulant', prix_vente: '850' },
+  ])
   const labels = groups.map(g => g.label)
   assert.deepEqual(labels, [
     'Onduleur Injection', 'Onduleur Hybride', 'Panneaux', 'Batterie',
-    'Structures acier', 'Structures aluminium', 'Socles', 'Smart Meter',
+    'Structures acier', 'Structures aluminium', 'Socles',
+    'Câble solaire DC', 'Câble de terre AC', 'Smart Meter',
     'Wifi Dongle', 'Accessoires', 'Tableau De Protection AC/DC',
     'Installation', 'Transport',
     'Suivi journalier, maintenance chaque 12 mois pendant 2 ans', 'Autres',
@@ -158,8 +166,11 @@ test('sélecteur produits : groupé selon les catégories du catalogue simulateu
   assert.equal(by('Batterie').items.length, 4)
   assert.equal(by('Structures acier').items.length, 1)
   assert.equal(by('Structures aluminium').items.length, 1)
+  // les deux câbles au mètre tombent chacun dans SON groupe, jamais « Autres »
+  assert.equal(by('Câble solaire DC').items.length, 1)
+  assert.equal(by('Câble de terre AC').items.length, 1)
   // produit non solaire → groupe Autres
-  assert.equal(by('Autres').items[0].nom, 'Câble solaire 6mm² (100m)')
+  assert.equal(by('Autres').items[0].nom, 'Échafaudage roulant')
 })
 
 test('garde-fou : plus aucune contrainte step restrictive sur l\'écran', () => {
@@ -201,10 +212,21 @@ test('ROI : production GHI × kWc × 0.8', () => {
   })
   const sumGhi = GHI.reduce((a, b) => a + b, 0)
   assert.ok(Math.abs(roi.production_annuelle_kwh - sumGhi * 9.94 * 0.8) < 0.1)
-  // économies avec batterie = sans + 60 MAD/kWh/mois
+  // ORDRE FONDATEUR (18/08) — l'apport batterie n'est plus un forfait de
+  // 60 MAD/kWh/mois : c'est de l'ÉNERGIE, capacité × 1 cycle/jour, plafonnée
+  // par le surplus du mois (production − part diurne) et valorisée au tarif.
+  // Dérivation à la main, janvier : production = 83,99 × 9,94 × 0,8 = 667,99 kWh ;
+  // part diurne 60 % = 400,79 kWh ; surplus stockable = 267,20 kWh ; la batterie
+  // pourrait décaler 10 kWh × 31 j = 310 kWh → PLAFONNÉE à 267,20 kWh.
   for (let i = 0; i < 12; i++) {
-    assert.ok(Math.abs(roi.eco_avec_monthly[i] - roi.eco_sans_monthly[i] - 600) < 0.001)
+    const prod = GHI[i] * 9.94 * 0.8
+    const shift = Math.min(10 * DAYS_IN_MONTH[i], prod * 0.4)
+    assert.ok(
+      Math.abs(roi.eco_avec_monthly[i] - roi.eco_sans_monthly[i] - shift * 1.75) < 0.001,
+      `mois ${i + 1} : l'apport batterie doit valoir les kWh décalés × 1,75 MAD`)
   }
+  // Le forfait historique (10 kWh × 60 = 600 MAD/mois) n'existe plus.
+  assert.ok(Math.abs(roi.eco_avec_monthly[0] - roi.eco_sans_monthly[0] - 600) > 1)
   assert.ok(roi.payback_sans > 0 && roi.payback_avec > 0)
 })
 
@@ -839,18 +861,34 @@ test('QF5 — tarif de repli unifié : KWH_PRICE (CompanyProfile) vs FALLBACK_KW
   assert.equal(FALLBACK_KWH_PRICE, 1.20) // pricing.py _FALLBACK_KWH_PRICE (miroir exact)
 })
 
-test('QF4 — monthlyBillFromKwh : barème ONEE par tranche (300 kWh/mois)', () => {
-  // QX38 — barème ONEE aligné (plafonds 100/250/400/∞) : 300 kWh/mois tombe
-  // dans la bande 251-400. Référence pricing.py _monthly_bill_from_kwh(300).
-  assert.ok(Math.abs(monthlyBillFromKwh(300, ONEE_TRANCHES) - 306.545) < 1e-9)
+test('QF4 — monthlyBillFromKwh : barème ONEE SÉLECTIF (300 kWh/mois)', () => {
+  // BARÈME SÉLECTIF (grille officielle, cf. solar.js) : au-dessus de 150
+  // kWh/mois, TOUTE la conso est facturée au tarif de SA tranche. 300 kWh/mois
+  // tombe dans la bande 201-300 (bornes effectives 211-310, tolérance 10 kWh)
+  // → tarif 1,1676 sur les 300 kWh.
+  // Dérivation à la main : 300 × 1,1676 = 350,28 MAD/mois.
+  assert.ok(Math.abs(monthlyBillFromKwh(300, ONEE_TRANCHES) - 350.28) < 1e-9)
+  // La bande d'EN DESSOUS (progressive, ≤ 150) reste cumulative :
+  // 100 × 0,9010 + 50 × 1,0732 = 90,10 + 53,66 = 143,76 MAD/mois.
+  assert.ok(Math.abs(monthlyBillFromKwh(150, ONEE_TRANCHES) - 143.76) < 1e-9)
 })
 
-test('QF4 — kwhFromBill : inverse du barème ONEE (850 MAD → 698.4 kWh/mois)', () => {
-  // QX38 — barème ONEE aligné (plafonds 100/250/400/∞). Parité pricing.py.
-  const r = kwhFromBill(850, 'onee')
-  assert.equal(r.kwhMensuel, 698.4)
+test('QF4 — kwhFromBill : inverse EXACT du barème sélectif', () => {
+  // Facture atteignable : 700 × 1,5958 = 1 117,06 MAD/mois → 700 kWh/mois.
+  const r = kwhFromBill(1117.06, 'onee')
+  assert.equal(r.kwhMensuel, 700)
   assert.equal(r.approximatif, false)
   assert.equal(r.estimation, false)
+  // 850 MAD/mois tombe dans un TROU du barème : la bande 301-500 plafonne à
+  // 510 × 1,3817 = 704,67 MAD et la bande supérieure démarre au-dessus de
+  // 510 × 1,5958 = 813,86 MAD… mais 850 MAD EST atteignable au-dessus de 510 :
+  // 850 / 1,5958 = 532,6 kWh (> 510, donc bien dans sa bande) → 532,6.
+  assert.equal(kwhFromBill(850, 'onee').kwhMensuel, 532.6)
+  // Vrai trou : 235 MAD/mois. À 210 kWh la facture vaut 210 × 1,0732 = 225,37 ;
+  // au premier kWh au-dessus elle saute à 210 × 1,1676 = 245,20. Aucune conso
+  // ne produit 235 MAD → on résout à la BORNE BASSE du saut (210 kWh), jamais
+  // une conso que le barème ne peut pas produire (règle miroir en Python).
+  assert.equal(kwhFromBill(235, 'onee').kwhMensuel, 210)
 })
 
 test('QF4 — kwhFromBill : distributeur privé (Lydec) marqué approximatif', () => {
@@ -871,22 +909,102 @@ test('QF4 — kwhFromBill : facture vide → 0 kWh, estimation', () => {
   assert.equal(r.estimation, true)
 })
 
-test('QF2/QF5 — twoBillsSavings : économie réelle par tranche (ratio 0.60, sans batterie)', () => {
-  // QX38 — barème ONEE aligné (plafonds 100/250/400/∞). Référence :
-  // pricing.py two_bills_savings(6000, 7200, 0.6, utility='onee').
+test('QF2/QF5 — twoBillsSavings : économie réelle au barème (ratio 0.60, sans batterie)', () => {
+  // Dérivation à la main (barème SÉLECTIF) :
+  //   conso    7 200/12 = 600 kWh/mois → > 510 → 600 × 1,5958 = 957,48 MAD/mois
+  //                                            × 12 = 11 489,76 → 11 490
+  //   autoconsommé 6 000 × 0,60 = 3 600 kWh (≤ conso) → résiduel 3 600 kWh/an
+  //   résiduel 3 600/12 = 300 kWh/mois → bande 211-310 → 300 × 1,1676 = 350,28
+  //                                            × 12 =  4 203,36 →  4 203
+  //   économie 11 490 − 4 203 = 7 287 MAD/an
   const r = twoBillsSavings(6000, 7200, 0.6, 'onee')
   assert.deepEqual(r, {
-    factureSans: 8544, factureAvec: 3679, economie: 4865, autoconsoKwh: 3600,
+    factureSans: 11490, factureAvec: 4203, economie: 7287, autoconsoKwh: 3600,
   })
 })
 
-test('QF2/QF5 — twoBillsSavings : économie réelle par tranche (ratio 0.85, avec batterie)', () => {
-  // QX38 — barème ONEE aligné (plafonds 100/250/400/∞). Référence :
-  // pricing.py two_bills_savings(6000, 7200, 0.85, utility='onee').
+test('QF2/QF5 — twoBillsSavings : économie réelle au barème (ratio 0.85, avec batterie)', () => {
+  // Dérivation à la main (barème SÉLECTIF) :
+  //   autoconsommé 6 000 × 0,85 = 5 100 kWh → résiduel 2 100 kWh/an
+  //   résiduel 2 100/12 = 175 kWh/mois → bande 151-210 → 175 × 1,0732 = 187,81
+  //                                            × 12 = 2 253,72 → 2 254
+  //   économie 11 490 − 2 254 = 9 236 MAD/an
+  // En redescendant sous 510 PUIS sous 310, le client ne fait pas qu'effacer
+  // des kWh : il RE-TARIFE tout son résiduel (1,5958 → 1,0732).
   const r = twoBillsSavings(6000, 7200, 0.85, 'onee')
   assert.deepEqual(r, {
-    factureSans: 8544, factureAvec: 2004, economie: 6540, autoconsoKwh: 5100,
+    factureSans: 11490, factureAvec: 2254, economie: 9236, autoconsoKwh: 5100,
   })
+})
+
+// ── VERROU DE DÉRIVE — barème SÉLECTIF : JS ↔ Python ↔ site ─────────────────
+// Jumeau EXACT de apps/ventes/tests/test_bareme_selectif_fondateur.py (ERP) et
+// de apps/web/tests/savingsTranchesFondateur.test.ts (site public). Les trois
+// fichiers portent les MÊMES entrées et les MÊMES attendus, tous DÉRIVÉS À LA
+// MAIN de la grille officielle (jamais copiés d'une sortie de code).
+//
+// Grille (TTC) : progressif 0-100 = 0,9010 · 101-150 = 1,0732 ;
+// sélectif (toute la conso au tarif de sa tranche, tolérance 10 kWh) :
+// 151-210 = 1,0732 · 211-310 = 1,1676 · 311-510 = 1,3817 · > 510 = 1,5958.
+const BAREME_FIXTURE = [
+  [100, 90.10],      // progressif : 100 × 0,9010
+  [150, 143.76],     // progressif : 90,10 + 50 × 1,0732 (= 53,66)
+  [151, 162.0532],   // 1re marche sélective : 151 × 1,0732
+  [210, 225.372],    // haut de bande (tolérance) : 210 × 1,0732
+  [211, 246.3636],   // bande suivante, TOUTE la conso : 211 × 1,1676
+  [310, 361.956],    // 310 × 1,1676
+  [311, 429.7087],   // 311 × 1,3817
+  [499, 689.4683],   // 499 × 1,3817
+  [500, 690.85],     // 500 × 1,3817 — le seuil « 500 » du fondateur
+  [501, 692.2317],   // 501 × 1,3817 (encore dans sa bande : borne effective 510)
+  [510, 704.667],    // 510 × 1,3817
+  [511, 815.4538],   // 511 × 1,5958 — la marche du haut de grille
+  [700, 1117.06],    // 700 × 1,5958
+]
+
+test('VERROU — barème sélectif : chaque marche vaut le montant dérivé à la main', () => {
+  for (const [kwh, mad] of BAREME_FIXTURE) {
+    assert.ok(Math.abs(monthlyBillFromKwh(kwh, ONEE_TRANCHES) - mad) < 1e-9,
+      `${kwh} kWh/mois → attendu ${mad} MAD, obtenu ${monthlyBillFromKwh(kwh, ONEE_TRANCHES)}`)
+  }
+  // La facture ne décroît JAMAIS quand la conso monte (monotonie du barème).
+  for (let i = 1; i < BAREME_FIXTURE.length; i++) {
+    assert.ok(BAREME_FIXTURE[i][1] > BAREME_FIXTURE[i - 1][1])
+  }
+  // 511 kWh coûte 110,79 MAD de plus que 510 kWh pour UN kWh de plus : c'est la
+  // marche sélective (815,4538 − 704,667), pas une erreur d'arrondi.
+  assert.ok(Math.abs((815.4538 - 704.667) - 110.7868) < 1e-9)
+})
+
+test('VERROU — kwhFromBill est l’inverse EXACT sur toute la grille (aller-retour)', () => {
+  for (const [kwh] of BAREME_FIXTURE) {
+    assert.equal(kwhFromBill(monthlyBillFromKwh(kwh, ONEE_TRANCHES), 'onee').kwhMensuel, kwh)
+  }
+})
+
+test('VERROU — scénario FONDATEUR : 700 kWh/mois, résiduel sous le seuil', () => {
+  // « The client will go down in the price per kWh because he will be below
+  //   500 kWh per month — I want the new price per kWh to be used. »
+  // Dérivation à la main :
+  //   avant  700 kWh/mois → 700 × 1,5958 = 1 117,06 MAD (1,5958 MAD/kWh)
+  //   après  280 kWh/mois → 280 × 1,1676 =   326,928 MAD (1,1676 MAD/kWh)
+  //   économie 1 117,06 − 326,928 = 790,132 MAD/mois → × 12 = 9 481,584 MAD/an
+  const avant = monthlyBillFromKwh(700, ONEE_TRANCHES)
+  const apres = monthlyBillFromKwh(280, ONEE_TRANCHES)
+  assert.ok(Math.abs(avant - 1117.06) < 1e-9)
+  assert.ok(Math.abs(apres - 326.928) < 1e-9)
+  assert.ok(Math.abs((avant - apres) - 790.132) < 1e-9)
+  // Le PRIX du kWh baisse vraiment (c'est la phrase du fondateur).
+  assert.ok(Math.abs(avant / 700 - 1.5958) < 1e-9)
+  assert.ok(Math.abs(apres / 280 - 1.1676) < 1e-9)
+  // …et l'économie vaut PLUS que les 420 kWh effacés au tarif marginal :
+  // 420 × 1,5958 = 670,236 MAD < 790,132 MAD (le résiduel est re-tarifé).
+  assert.ok(Math.abs(420 * 1.5958 - 670.236) < 1e-9)
+  assert.ok(790.132 > 670.236)
+  // Annualisation : 790,132 × 12 = 9 481,584 → 9 482 MAD/an. Le mois est
+  // l'unité de tarification (le seuil est MENSUEL) : on ne divise jamais
+  // l'année avant de tarifer.
+  assert.equal(Math.round((avant - apres) * 12), 9482)
 })
 
 test('twoBillsSavings : dégrade en null sans donnée réelle (jamais un chiffre inventé)', () => {
@@ -911,15 +1029,20 @@ test('QX38 — productibleForCity : PVGIS par ville, repli central, override soc
   assert.equal(productibleForCity('Agadir', 1750), 1750)
 })
 
-test('QX38 — computeROI : production = productible × kwp (parité PDF/web)', () => {
+test('QX38 — computeROI : production = productible × kwp × pertes 20 % (parité PDF/web)', () => {
   const kwp = 7.1
   const roi = computeROI({
     kwp, factures: Array(12).fill(500), dayUsagePct: 60,
     totalSans: 80000, totalAvec: 100000, batteryKwh: 0,
     productible: productibleForCity('Agadir'),
   })
-  // production annuelle = 1687 × 7.1 (répartie par forme GHI, somme = total)
-  assert.equal(Math.round(roi.production_annuelle_kwh), Math.round(1687 * kwp))
+  // ORDRE FONDATEUR (18/08) — 20 % de pertes AU TOTAL : le productible stocké
+  // (PVGIS, déjà net de 14 %) ne subit que le complément 0,80/0,86 = 0,9302.
+  // À la main : 1687 × 7,1 = 11 977,7 kWh bruts ; × 0,9302325581 = 11 142,05
+  // → 11 142 kWh/an (le PDF calcule EXACTEMENT la même chose).
+  assert.equal(Math.round(roi.production_annuelle_kwh),
+    Math.round(1687 * kwp * PRODUCTIBLE_NET_FACTOR))
+  assert.equal(Math.round(roi.production_annuelle_kwh), 11142)
 })
 
 // ── QX39 — cashflow 25 ans honnête (miroir backend pricing.py) ──────────────
@@ -930,6 +1053,18 @@ test('QX39 — computeCashflowPayback : croisement du cumul à zéro (parité ba
   assert.ok(cf.cumulative[0] < 0)                 // année 1 encore négatif
   assert.ok(cf.cumulative[cf.cumulative.length - 1] > 0) // rentabilisé à 25 ans
   assert.ok(cf.netGain > 0)
+})
+
+test('QX39 — projection à TARIF CONSTANT (miroir pricing.py TARIFF_ESCALATION=0)', () => {
+  // ALIGNEMENT 18/08 — l'écran supposait +2 %/an alors que le PDF et la page
+  // proposition écrivent « projection à tarif constant » : le modèle doit FAIRE
+  // ce qu'il dit. Seule la dégradation panneau (0,5 %/an) érode les économies.
+  assert.equal(TARIFF_ESCALATION, 0)
+  const cf = computeCashflowPayback(50000, 10000)
+  // Année 1 : cumul = −50 000 + 10 000 = −40 000 (aucune indexation).
+  assert.equal(cf.cumulative[0], -40000)
+  // Année 2 : économie × (1 − 0,005) = 9 950 → cumul −30 050.
+  assert.equal(cf.cumulative[1], -30050)
 })
 
 test('QX39 — computeCashflowPayback : dégénéré → payback null', () => {
@@ -1026,8 +1161,12 @@ test('QF5 — computeROI : avec consommation réelle + distributeur, bascule sur
   assert.equal(roi.savings_model, 'factures')
   // Doit correspondre EXACTEMENT à twoBillsSavings appelé avec la même
   // production annuelle réellement calculée par computeROI (parité interne).
-  const refSans = twoBillsSavings(prodAnnuelle, consoAnnuelleKwh, AUTOCONSO_SANS, 'onee')
-  const refAvec = twoBillsSavings(prodAnnuelle, consoAnnuelleKwh, AUTOCONSO_AVEC, 'onee')
+  // ALIGNEMENT 18/08 — cette production est ARRONDIE à l'entier avant le modèle
+  // par tranches, comme le fait le moteur PDF (pricing.calculate_savings_roi) :
+  // écran et document tombent ainsi du même côté des arrondis de tranche.
+  const prodCanonique = Math.round(prodAnnuelle)
+  const refSans = twoBillsSavings(prodCanonique, consoAnnuelleKwh, AUTOCONSO_SANS, 'onee')
+  const refAvec = twoBillsSavings(prodCanonique, consoAnnuelleKwh, AUTOCONSO_AVEC, 'onee')
   assert.equal(roi.eco_annuelle_sans, refSans.economie)
   assert.equal(roi.eco_annuelle_avec, refAvec.economie)
   assert.equal(roi.facture_sans, refSans.factureSans)

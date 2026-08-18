@@ -42,6 +42,17 @@ export const PRODUCTIBLE_PAR_VILLE = {
   tanger: 1634,
 }
 export const DEFAULT_PRODUCTIBLE = 1651 // Casablanca (centre zone de service)
+
+// ── Pertes système : 20 % AU TOTAL (ordre fondateur, 18/08) — MIROIR pricing.py
+// Les productibles ci-dessus sont des sorties PVGIS demandées à `loss=14`
+// (cf. backend apps/parametres/pvgis.py) : 14 % de pertes sont DÉJÀ dedans.
+// Le fondateur fixe le total à 20 % → on applique le seul COMPLÉMENT,
+// (1 − 20 %)/(1 − 14 %) ≈ 0,9302, pour passer d'un productible « net à 14 % »
+// à un productible « net à 20 % ». Le chemin historique GHI × EFFICIENCY (0,8)
+// porte DÉJÀ les 20 % : il n'est pas touché (sinon on compterait deux fois).
+export const SYSTEM_LOSS_TOTAL = 0.20   // pertes système TOTALES (fondateur 18/08)
+export const PVGIS_BUILTIN_LOSS = 0.14  // pertes déjà incluses dans le productible
+export const PRODUCTIBLE_NET_FACTOR = (1 - SYSTEM_LOSS_TOTAL) / (1 - PVGIS_BUILTIN_LOSS)
 const _PRODUCTIBLE_HISTORICAL_DEFAULT = 1600
 const _CITY_ALIASES = {
   casa: 'casablanca', kenitra: 'rabat', sale: 'rabat', salé: 'rabat',
@@ -206,24 +217,119 @@ export function estimerMois(hiver, ete) {
 
 // 8 panneaux par tranche de 900 MAD de facture hiver. Le ratio est éditable
 // (Paramètres → Avancé) ; sans argument il garde le défaut historique (8).
+// NB : depuis la règle fondateur du 18/08 le dimensionnement passe par les kWc
+// (`estimerKwcDepuisFacture` ci-dessous) ; cette fonction reste pour les appels
+// historiques et les paramétrages explicites en nombre de panneaux.
 export function estimerPanneaux(factureHiver, perTranche = 8) {
   const n = Number(perTranche)
   return Math.floor(factureHiver / 900) * (Number.isFinite(n) && n > 0 ? n : 8)
+}
+
+// ── Règle de dimensionnement fondateur (18/08) ───────────────────────────────
+// 1. Une installation se vend par PALIERS de 5 kWc — jamais une taille
+//    intermédiaire (5, 10, 15, 20 …).
+// 2. Le besoin se lit sur la facture d'hiver : 5 kWc par tranche de 900 MAD.
+// 3. La taille RETENUE est celle qui minimise le retour sur investissement
+//    (`optimalKwcByPayback`), pas la plus grosse qui rentre sur le toit.
+export const KWC_STEP = 5
+export const MAD_PAR_PALIER = 900
+
+// ── Métrés de câble (règle fondateur 18/08) ──────────────────────────────────
+// Câble solaire DC 6 mm² : 60 m par palier de 5 kWc (strictement proportionnel).
+// Câble de terre AC 6 mm² : 25 m de base + 15 m par palier de 5 kWc — soit 40 m
+// pour 5 kWc et 55 m pour 10 kWc, les deux cotes données par le fondateur.
+export const CABLE_DC_M_PAR_PALIER = 60
+export const CABLE_TERRE_M_BASE = 25
+export const CABLE_TERRE_M_PAR_PALIER = 15
+
+/** Longueur de câble solaire DC (m) pour `paliers` blocs de 5 kWc. */
+export function metreCableDc(paliers) {
+  const n = Math.max(1, Math.round(Number(paliers) || 0))
+  return n * CABLE_DC_M_PAR_PALIER
+}
+
+/** Longueur de câble de terre AC (m) pour `paliers` blocs de 5 kWc. */
+export function metreCableTerre(paliers) {
+  const n = Math.max(1, Math.round(Number(paliers) || 0))
+  return CABLE_TERRE_M_BASE + n * CABLE_TERRE_M_PAR_PALIER
+}
+
+/** Besoin en kWc lu sur la facture d'hiver : 5 kWc par tranche de 900 MAD. */
+export function estimerKwcDepuisFacture(factureHiver, { step = KWC_STEP, madParPalier = MAD_PAR_PALIER } = {}) {
+  const f = Number(factureHiver)
+  if (!Number.isFinite(f) || f <= 0) return 0
+  const pas = (Number.isFinite(Number(step)) && Number(step) > 0) ? Number(step) : KWC_STEP
+  const tranche = (Number.isFinite(Number(madParPalier)) && Number(madParPalier) > 0) ? Number(madParPalier) : MAD_PAR_PALIER
+  return Math.floor(f / tranche) * pas
+}
+
+/** Ramène une taille quelconque au PALIER de 5 kWc le plus proche (jamais 0). */
+export function arrondirAuPasKwc(kwc, step = KWC_STEP) {
+  const k = Number(kwc)
+  const pas = (Number.isFinite(Number(step)) && Number(step) > 0) ? Number(step) : KWC_STEP
+  if (!Number.isFinite(k) || k <= 0) return pas
+  return Math.max(pas, Math.round(k / pas) * pas)
 }
 
 // Taux d'autoconsommation par option — miroir pricing.py AUTOCONSO_SANS/AVEC.
 // Utilisés UNIQUEMENT par le modèle « deux factures » (QF5) ; l'estimation
 // historique ci-dessous continue d'utiliser dayUsagePct (comportement inchangé).
 export const AUTOCONSO_SANS = 0.60
+// ORDRE FONDATEUR (18/08) — le forfait « 85 % avec batterie » n'est PLUS le
+// modèle : une batterie ne relève pas un taux, elle décale une quantité
+// d'énergie RÉELLE égale à sa capacité, une fois par jour. AUTOCONSO_AVEC ne
+// survit que comme REPLI documenté : devis explicitement « avec batterie »
+// dont la capacité est inconnue (aucune ligne batterie chiffrable) — le seul
+// cas où l'on n'a rien de réel à additionner. Dès qu'une capacité existe, le
+// taux est DÉRIVÉ (autoconsoAvecRatio ci-dessous), jamais forfaitaire.
 export const AUTOCONSO_AVEC = 0.85
 
+// ── Modèle batterie ADDITIF (ordre fondateur 18/08) — MIROIR pricing.py ──────
+// autoconsommé_avec = 60 % × production + capacité_kWh × 1 cycle/jour.
+// PLAFONDS (honnêteté : on ne vend jamais de l'énergie qui n'existe pas) :
+//   • jamais plus que la production (la batterie ne décale que l'existant) ;
+//   • jamais plus que la consommation réelle quand elle est connue (QF5).
+export const BATTERY_CYCLES_PER_DAY = 1
+export const DAYS_PER_YEAR = 365
+export const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+
+/**
+ * Taux d'autoconsommation EFFECTIF de l'option « avec batterie », DÉRIVÉ de la
+ * capacité réellement chiffrée (miroir exact de pricing.autoconso_avec_ratio).
+ *
+ * @param productionAnnuelleKwh production annuelle (kWh/an)
+ * @param batteryKwh capacité batterie totale du devis (kWh) — 0/inconnue → repli
+ * @param base taux sans batterie (défaut AUTOCONSO_SANS)
+ * @param fallback taux de repli quand aucune capacité n'est connue
+ * @param consoAnnuelleKwh consommation réelle (kWh/an) quand elle est connue
+ */
+export function autoconsoAvecRatio(productionAnnuelleKwh, batteryKwh, {
+  base = AUTOCONSO_SANS, fallback = AUTOCONSO_AVEC, consoAnnuelleKwh = null,
+} = {}) {
+  const prod = parseFloat(productionAnnuelleKwh) || 0
+  const cap = parseFloat(batteryKwh) || 0
+  const conso = parseFloat(consoAnnuelleKwh) || 0
+  if (prod <= 0) return fallback
+  let ratio = cap > 0
+    ? (parseFloat(base) || 0) + (cap * BATTERY_CYCLES_PER_DAY * DAYS_PER_YEAR) / prod
+    : fallback
+  ratio = Math.min(1, ratio)                      // plafond production
+  if (conso > 0) ratio = Math.min(ratio, conso / prod)  // plafond consommation
+  return ratio
+}
+
 // ── QX39 — cashflow 25 ans honnête (MIROIR backend pricing.py) ───────────────
-// Mêmes hypothèses documentées : dégradation panneau, escalade tarifaire,
-// rendement batterie, remplacement onduleur optionnel. Le payback = croisement
+// Mêmes hypothèses documentées : dégradation panneau, tarif CONSTANT (aucune
+// hausse supposée), rendement batterie, remplacement onduleur optionnel. Le payback = croisement
 // du cumul à zéro. Écran, PDF et proposition web affichent le MÊME payback.
 export const CASHFLOW_YEARS = 25
 export const PANEL_DEGRADATION = 0.005
-export const TARIFF_ESCALATION = 0.02
+// ALIGNEMENT 18/08 — QRES54 (aucune hausse tarifaire supposée) n'avait été
+// appliqué qu'au backend : l'écran promettait +2 %/an alors que le PDF et la
+// page proposition écrivent « projection à tarif constant ». On dit VRAI des
+// deux côtés — la constante reste exportée, à 0 (miroir pricing.py).
+// Toute hausse réelle du tarif ne peut qu'améliorer le résultat du client.
+export const TARIFF_ESCALATION = 0.0
 export const BATTERY_ROUNDTRIP = 0.90
 export const INVERTER_REPLACE_YEAR = 12
 export const INVERTER_REPLACE_FRACTION = 0.08
@@ -295,15 +401,28 @@ export function computeROI({
   const ecoSansMonthly = []
   const ecoAvecMonthly = []
   let productionAnnuelle = 0
+  let batteryShiftAnnuel = 0   // kWh réellement décalés par la batterie
 
   for (let i = 0; i < 12; i++) {
     const prodKwh = useProductible
-      ? (PROD * kwp) * (GHI[i] / GHI_SUM)   // productible réparti par forme GHI
-      : GHI[i] * kwp * EFF
+      // Productible stocké (net à 14 %) ramené aux 20 % de pertes TOTALES du
+      // fondateur (PRODUCTIBLE_NET_FACTOR), puis réparti par la forme GHI.
+      ? (PROD * PRODUCTIBLE_NET_FACTOR * kwp) * (GHI[i] / GHI_SUM)
+      : GHI[i] * kwp * EFF   // chemin historique : EFFICIENCY = 0,8 EST déjà 20 %
     productionAnnuelle += prodKwh
     const selfConsumed = prodKwh * dayPct
     const ecoSans = selfConsumed * PRICE
-    const ecoAvec = ecoSans + (batteryKwh ?? 0) * 60 // 60 MAD/kWh batterie/mois
+    // ORDRE FONDATEUR (18/08) — apport batterie en ÉNERGIE, plus le forfait
+    // 60 MAD/kWh/mois : capacité × 1 cycle/jour × jours du mois, plafonné par
+    // ce qu'il reste de production ce mois-là (on ne stocke que l'existant),
+    // puis valorisé au tarif — même dérivation du taux que pricing.py,
+    // VERROUILLÉE par les tests jumeaux solar.batterie/test_battery_autoconso.
+    const stockable = Math.max(0, prodKwh - selfConsumed)
+    const batteryShift = Math.min(
+      Math.max(0, parseFloat(batteryKwh) || 0) * BATTERY_CYCLES_PER_DAY * DAYS_IN_MONTH[i],
+      stockable)
+    batteryShiftAnnuel += batteryShift
+    const ecoAvec = ecoSans + batteryShift * PRICE
     ecoSansMonthly.push(ecoSans)
     ecoAvecMonthly.push(ecoAvec)
     monthlyDetail.push({
@@ -320,13 +439,76 @@ export function computeROI({
   // QF2/QF5 — modèle « deux factures » (réel, par tranche) quand consommation
   // ET barème sont disponibles. Remplace l'estimation ci-dessus par l'économie
   // réelle facture_sans − facture_avec (jamais les deux mélangés).
+  // PARITÉ ÉCRAN/PDF AU DIRHAM : le moteur PDF arrondit la production annuelle
+  // à l'entier AVANT le modèle par tranches (pricing.calculate_savings_roi).
+  // L'écran fait donc pareil — sinon les deux tombent de part et d'autre d'un
+  // arrondi de tranche et affichent 1 MAD d'écart pour les mêmes entrées.
+  const productionCanonique = Math.round(productionAnnuelle)
+  // Le taux « avec batterie » est DÉRIVÉ de la capacité réelle du devis
+  // (ordre fondateur 18/08) : 60 % + capacité × 1 cycle/jour, plafonné par la
+  // production ET par la consommation. Sans capacité connue → repli documenté.
+  const autoconsoAvec = autoconsoAvecRatio(productionCanonique, batteryKwh, {
+    consoAnnuelleKwh,
+  })
+  // Taux EFFECTIVEMENT appliqués (pour affichage/transparence) : dans le
+  // chemin « estimation » la part sans batterie est la part diurne saisie
+  // (dayUsagePct) et la part avec batterie ajoute les kWh réellement décalés.
+  let autoconsoSansEff = dayPct
+  let autoconsoAvecEff = productionAnnuelle > 0
+    ? Math.min(1, dayPct + batteryShiftAnnuel / productionAnnuelle)
+    : dayPct
+  // ── PLAFOND CONSOMMATION DU CÔTÉ « SANS » — MIROIR EXACT de
+  // pricing.calculate_savings_roi (correctif 18/08) ────────────────────────
+  // Le côté AVEC batterie est déjà borné par la consommation réelle
+  // (`autoconsoAvecRatio`) ; le côté SANS, lui, était un pourcentage de la
+  // seule PRODUCTION, borné par rien. Sur une petite conso face à une grosse
+  // production, l'option BATTERIE « économisait » donc MOINS que l'option
+  // sans batterie (8 kWc / 5 000 kWh/an / 10 kWh : 6 644 MAD sans contre
+  // 6 000 MAD avec côté PDF). On borne les DEUX côtés aux kWh RÉELLEMENT
+  // consommés, puis on tient l'invariant « avec ≥ sans ».
+  //   sans = min(part_diurne × production, conso)
+  //   avec = max(min(part_diurne × production + décalage_batterie, conso), sans)
+  // Les séries mensuelles sont mises à l'échelle du MÊME facteur, pour que
+  // leur somme reste l'économie annuelle affichée.
+  const consoPlafond = parseFloat(consoAnnuelleKwh) || 0
+  if (consoPlafond > 0 && productionAnnuelle > 0) {
+    const kwhSansBrut = productionAnnuelle * dayPct
+    const kwhAvecBrut = kwhSansBrut + batteryShiftAnnuel
+    const kwhSans = Math.min(kwhSansBrut, consoPlafond)
+    const kwhAvec = Math.max(Math.min(kwhAvecBrut, consoPlafond), kwhSans)
+    const fSans = kwhSansBrut > 0 ? kwhSans / kwhSansBrut : 1
+    const fAvec = kwhAvecBrut > 0 ? kwhAvec / kwhAvecBrut : 1
+    if (fSans < 1 || fAvec < 1) {
+      for (let i = 0; i < 12; i++) {
+        ecoSansMonthly[i] *= fSans
+        ecoAvecMonthly[i] *= fAvec
+        monthlyDetail[i].eco_sans = ecoSansMonthly[i]
+        monthlyDetail[i].eco_avec = ecoAvecMonthly[i]
+      }
+      ecoAnnuelleSans = ecoSansMonthly.reduce((s, v) => s + v, 0)
+      ecoAnnuelleAvec = ecoAvecMonthly.reduce((s, v) => s + v, 0)
+    }
+    autoconsoSansEff = kwhSans / productionAnnuelle
+    autoconsoAvecEff = kwhAvec / productionAnnuelle
+  }
+  // Modèle « factures » : même plafond, même plancher (miroir pricing.py, qui
+  // passe `autoconso_sans_eff` à `two_bills_savings` et planchéise le taux
+  // AVEC). Sur les factures c'est un NO-OP de VALEUR — `twoBillsSavings` borne
+  // déjà les kWh autoconsommés à la conso — mais le taux AFFICHÉ devient
+  // honnête et l'invariant « avec ≥ sans » est verrouillé des deux côtés.
+  const autoconsoSansPlaf = (consoPlafond > 0 && productionCanonique > 0)
+    ? Math.min(AUTOCONSO_SANS, consoPlafond / productionCanonique)
+    : AUTOCONSO_SANS
+  const autoconsoAvecPlanche = Math.max(autoconsoAvec, autoconsoSansPlaf)
   let savingsModel = 'estimation'
   let factureSans = null, factureAvecSans = null, factureAvecAvec = null
   if (productionAnnuelle > 0 && consoAnnuelleKwh > 0 && utility) {
-    const tbSans = twoBillsSavings(productionAnnuelle, consoAnnuelleKwh, AUTOCONSO_SANS, utility)
-    const tbAvec = twoBillsSavings(productionAnnuelle, consoAnnuelleKwh, AUTOCONSO_AVEC, utility)
+    const tbSans = twoBillsSavings(productionCanonique, consoAnnuelleKwh, autoconsoSansPlaf, utility)
+    const tbAvec = twoBillsSavings(productionCanonique, consoAnnuelleKwh, autoconsoAvecPlanche, utility)
     if (tbSans && tbAvec) {
       savingsModel = 'factures'
+      autoconsoSansEff = autoconsoSansPlaf
+      autoconsoAvecEff = autoconsoAvecPlanche
       ecoAnnuelleSans = tbSans.economie
       ecoAnnuelleAvec = tbAvec.economie
       factureSans = tbSans.factureSans
@@ -362,6 +544,12 @@ export function computeROI({
     facture_sans: factureSans,
     facture_avec_sans: factureAvecSans,
     facture_avec_avec: factureAvecAvec,
+    // Transparence (mêmes clés que le PDF) : taux d'autoconsommation retenus.
+    // `autoconso_avec` est DÉRIVÉ de la capacité batterie, jamais forfaitaire.
+    autoconso_sans: autoconsoSansEff,
+    autoconso_avec: autoconsoAvecEff,
+    // kWh annuels réellement décalés par la batterie (chemin estimation).
+    battery_shift_kwh: Math.round(batteryShiftAnnuel),
   }
 }
 
@@ -380,16 +568,62 @@ export const FALLBACK_KWH_PRICE = 1.20 // MAD/kWh — miroir pricing.py._FALLBAC
 
 // Tables de tranches (miroir pricing.py — mêmes valeurs, mêmes plafonds).
 // Format : [plafond_kWh_mensuel | null, prix_MAD_kWh_TTC].
-// QX38 — plafonds cumulatifs alignés sur les vraies bandes ONEE (0-100 /
-// 101-250 / 251-400 / >400), miroir EXACT de pricing.py ONEE_TRANCHES. Prix
-// inchangés ; seuls les plafonds 150/200 → 250/400 sont corrigés (ils
-// contredisaient leurs libellés et sous-tarifaient les foyers 150-400 kWh/mois).
-export const ONEE_TRANCHES = [
-  [100, 0.9010],
-  [250, 1.0258],
-  [400, 1.2515],
-  [null, 1.4017],
-]
+//
+// ═══ ORDRE FONDATEUR (18/08) — LE BARÈME RÉSIDENTIEL EST SÉLECTIF ═══════════
+// « The client will go down in the price per kWh because he will be below 500
+//   kWh per month — I want the new price per kWh to be used so the savings are
+//   real. »
+// Le barème BT marocain n'est pas purement progressif : progressif jusqu'au
+// seuil (150 kWh/mois), puis SÉLECTIF — franchir une marche re-tarife TOUTE la
+// consommation du mois au prix de SA tranche. 700 kWh/mois se paient donc
+// 1,5958 MAD/kWh sur les 700 ; le résiduel de 280 kWh après solaire retombe à
+// 1,1676 MAD/kWh sur la totalité. C'est la baisse de prix décrite par le
+// fondateur, et elle vaut bien plus que les seuls kWh effacés.
+//
+// `trancheTable` attache la règle sélective à la table SANS changer sa forme :
+// la table reste un tableau de paires (itération, deepEqual, JSON inchangés).
+function trancheTable(pairs, selectif) {
+  if (selectif) Object.defineProperty(pairs, 'selectif', { value: selectif, enumerable: false })
+  return pairs
+}
+
+// ONEE — barème « BASSE TENSION / usage domestique », prix consommateur TTC.
+// MÊME grille que l'estimateur public (apps/web/src/lib/estimatorBrainV2.ts
+// REGIE_TARIFF) et que pricing.py ONEE_TRANCHES : site et ERP annoncent la
+// même économie.
+//
+// SOURCE VÉRIFIÉE (consultée le 18/08/2026) — grille officielle d'une régie de
+// distribution régulée appliquant le barème national : RADEEJ (El Jadida),
+// « Basse Tension : Tarif en DH/kWh TTC »,
+// https://radeej.ma/assets/espace%20client/elec%20tarif.pdf. Corroboration
+// indépendante (page mise à jour le 18/08/2026) : https://kherba.com/tarifs.
+//   · ≤ 150 kWh/mois → « Tarif Progressif » : 0-100 = 0,9010 ; 101-150 = 1,0732.
+//   · > 150 kWh/mois → « Tarif Sélectif » : 151-200 = 1,0732 ; 201-300 = 1,1676 ;
+//     301-500 = 1,3817 ; > 500 = 1,5958 — la tolérance officielle de 10 kWh/mois
+//     par tranche donne les bornes effectives 210/310/510.
+// BASE LÉGALE DU MÉCANISME : arrêtés ministériels n° 2451.14 / 2682.14, BO
+// n° 6275 bis du 22/07/2014 (appliqués au 01/08/2014) — « facturer la totalité
+// de la consommation mensuelle au tarif de la tranche dans laquelle elle se
+// situe ». Le tarif de vente BT n'est pas publié par l'ANRE (elle ne régule que
+// l'usage du réseau) ; refonte annoncée ~mars 2027, à re-vérifier alors.
+// HAUT DE GRILLE — POINT OUVERT (fondateur 18/08) : sa correction de fond est
+// confirmée (1,4017 était trop bas), mais le taux publié en USAGE DOMESTIQUE
+// > 500 kWh/mois est 1,5958 ; les taux ~1,69-1,71 de la même grille sont
+// d'autres usages (force motrice > 500 = 1,6758 ; éclairage patenté > 150 =
+// 1,7090). On encode le taux domestique VÉRIFIÉ, jamais un chiffre inventé.
+// Remplace l'ancienne grille QX38 (100/250/400/∞ à 0,9010/1,0258/1,2515/1,4017),
+// purement progressive et marquée « à confirmer » : elle contredisait la grille
+// officielle sur les seuils ET sur les prix.
+export const ONEE_TRANCHES = trancheTable([
+  [100, 0.9010],   // progressif   0-100          — RADEEJ TTC (18/08/2026)
+  [150, 1.0732],   // progressif 101-150          — RADEEJ TTC (18/08/2026)
+  [200, 1.0732],   // sélectif 151-200 (eff. 210) — RADEEJ TTC (18/08/2026)
+  [300, 1.1676],   // sélectif 201-300 (eff. 310) — RADEEJ TTC (18/08/2026)
+  [500, 1.3817],   // sélectif 301-500 (eff. 510) — RADEEJ TTC (18/08/2026)
+  [null, 1.5958],  // sélectif > 500  (eff. 510+) — RADEEJ TTC (18/08/2026)
+], { seuil: 150, tolerance: 10 })
+// Lydec/Redal restent PROGRESSIFS et « approximatifs » : aucune grille
+// sélective vérifiée pour les délégataires — on n'invente pas des seuils.
 export const LYDEC_TRANCHES = [
   [100, 0.9500],
   [200, 1.1500],
@@ -412,34 +646,102 @@ function resolveTranches(utility, tranchesOverride) {
   return { table: null, approx: false }
 }
 
-// Facture mensuelle TTC (MAD) d'une consommation, valorisée PAR TRANCHE
-// (barème progressif) — miroir _monthly_bill_from_kwh.
-export function monthlyBillFromKwh(kwhMensuel, tranches) {
-  if (!(kwhMensuel > 0)) return 0
+// Règle sélective portée par la table (miroir pricing._selective_rule) :
+// { seuil, tolerance } ou null pour une table purement progressive.
+function selectiveRule(tranches) {
+  const r = tranches && tranches.selectif
+  if (!r || !(r.seuil > 0)) return null
+  return { seuil: r.seuil, tolerance: r.tolerance || 0 }
+}
+
+// Sépare une table plate en bandes progressives (≤ seuil) / sélectives (> seuil).
+// Miroir pricing._split_tranches.
+function splitTranches(tranches, seuil) {
+  const prog = []
+  const sel = []
+  for (const b of tranches) {
+    if (b[0] != null && b[0] <= seuil) prog.push(b)
+    else sel.push(b)
+  }
+  return { prog, sel }
+}
+
+// Facture PROGRESSIVE (MAD) : chaque kWh au prix de SA tranche.
+// Miroir pricing._progressive_bill.
+function progressiveBill(kwhMensuel, bandes) {
   let remaining = kwhMensuel
   let prevCeiling = 0
   let totalCost = 0
-  for (const [ceiling, price] of tranches) {
+  for (const [ceiling, price] of bandes) {
     if (ceiling == null) { totalCost += remaining * price; remaining = 0; break }
-    const width = ceiling - prevCeiling
-    const consumed = Math.min(remaining, width)
+    const consumed = Math.min(remaining, ceiling - prevCeiling)
     totalCost += consumed * price
     remaining -= consumed
     prevCeiling = ceiling
     if (remaining <= 0) break
   }
-  if (remaining > 0) totalCost += remaining * tranches[tranches.length - 1][1]
+  if (remaining > 0 && bandes.length) totalCost += remaining * bandes[bandes.length - 1][1]
   return totalCost
 }
 
-// QF1 — inverse du barème progressif : facture mensuelle (MAD TTC) → kWh/mois.
-// Miroir kwh_from_bill. Retourne { kwhMensuel, approximatif, estimation }.
+// Facture mensuelle TTC (MAD) d'une consommation — SOURCE UNIQUE du prix d'un
+// volume mensuel de kWh. Miroir EXACT de pricing._monthly_bill_from_kwh et de
+// billMAD (apps/web/src/lib/estimatorBrainV2.ts) :
+//  · table PROGRESSIVE (Lydec, Redal, barème vendeur) : chaque kWh au prix de
+//    SA tranche — comportement historique inchangé ;
+//  · table SÉLECTIVE (ONEE) : progressif jusqu'au seuil, puis TOUTE la conso au
+//    tarif de sa tranche (tolérance de bord incluse), plancher à la facture
+//    progressive du seuil.
+// Monotone non décroissante par construction.
+export function monthlyBillFromKwh(kwhMensuel, tranches) {
+  if (!(kwhMensuel > 0)) return 0
+  const rule = selectiveRule(tranches)
+  if (!rule) return progressiveBill(kwhMensuel, tranches)
+  const { prog, sel } = splitTranches(tranches, rule.seuil)
+  if (kwhMensuel <= rule.seuil) return progressiveBill(kwhMensuel, prog)
+  let rate = sel.length ? sel[sel.length - 1][1] : FALLBACK_KWH_PRICE
+  for (const [ceiling, price] of sel) {
+    if (ceiling == null || kwhMensuel <= ceiling + rule.tolerance) { rate = price; break }
+  }
+  return Math.max(kwhMensuel * rate, progressiveBill(rule.seuil, prog))
+}
+
+// Inverse NUMÉRIQUE de monthlyBillFromKwh pour une table SÉLECTIVE — miroir
+// EXACT de pricing._kwh_from_bill_bisect et de billToAnnualKwh (site).
+// TROUS : la règle sélective rend la facture DISCONTINUE (à 210 kWh elle saute
+// de 210 × 1,0732 = 225,37 MAD à 210 × 1,1676 = 245,20 MAD — aucune conso ne
+// produit 235 MAD). La dichotomie converge vers inf{ k : facture(k) ≥ montant },
+// donc un montant tombé dans un trou est résolu à la BORNE BASSE du saut
+// (210 kWh) : jamais une conso que le barème ne peut produire, et toujours le
+// côté prudent (moins de kWh ⇒ système plus petit, économies plus petites).
+function kwhFromBillBisect(bill, tranches) {
+  let lo = 0
+  let hi = 1000
+  while (monthlyBillFromKwh(hi, tranches) < bill && hi < 1e6) hi *= 2
+  for (let i = 0; i < 60; i++) {
+    const mid = (lo + hi) / 2
+    if (monthlyBillFromKwh(mid, tranches) < bill) lo = mid
+    else hi = mid
+  }
+  return (lo + hi) / 2
+}
+
+// QF1 — inverse EXACT du barème : facture mensuelle (MAD TTC) → kWh/mois.
+// Miroir kwh_from_bill (analytique si progressif, dichotomie si sélectif).
+// Retourne { kwhMensuel, approximatif, estimation }.
 export function kwhFromBill(billMad, utility, tranchesOverride) {
   const bill = parseFloat(billMad) || 0
   if (bill <= 0) return { kwhMensuel: 0, approximatif: false, estimation: true }
   const { table, approx } = resolveTranches(utility, tranchesOverride)
   if (!table) {
     return { kwhMensuel: Math.round((bill / FALLBACK_KWH_PRICE) * 10) / 10, approximatif: true, estimation: true }
+  }
+  if (selectiveRule(table)) {
+    return {
+      kwhMensuel: Math.round(kwhFromBillBisect(bill, table) * 10) / 10,
+      approximatif: approx,
+      estimation: false,
+    }
   }
   let prevCeiling = 0
   let costSoFar = 0
@@ -637,6 +939,10 @@ export function classifyProduct(nom) {
   if (n.includes('batterie')) return 'batterie'
   if (n.includes('structure')) return 'structure'
   if (n.includes('socle')) return 'socle'
+  // Câbles (règle fondateur 18/08) : le câble de TERRE se distingue du câble
+  // solaire DC par son mot-clé, sinon tout « câble » est un câble solaire DC.
+  if (n.includes('cable') && (n.includes('terre') || n.includes('mise a la terre'))) return 'cable_terre'
+  if (n.includes('cable')) return 'cable_dc'
   if (n.includes('smart meter')) return 'smart_meter'
   if (n.includes('wifi') || n.includes('dongle')) return 'wifi_dongle'
   if (n.includes('accessoire')) return 'accessoires'
@@ -759,6 +1065,8 @@ export const PRODUCT_CATEGORIES = [
   ['structure_acier', 'Structures acier'],
   ['structure_alu', 'Structures aluminium'],
   ['socle', 'Socles'],
+  ['cable_dc', 'Câble solaire DC'],
+  ['cable_terre', 'Câble de terre AC'],
   ['smart_meter', 'Smart Meter'],
   ['wifi_dongle', 'Wifi Dongle'],
   ['accessoires', 'Accessoires'],
@@ -784,6 +1092,60 @@ export function groupProduitsByCategory(produits) {
     .filter(g => g.items.length)
   if (autres.length) groups.push({ label: 'Autres', items: autres })
   return groups
+}
+
+// Libellé FR d'un rôle ROLES_AUTO_COMPOSITION (mirroir des clés PRODUCT_CATEGORIES).
+export function roleLabel(role) {
+  return (PRODUCT_CATEGORIES.find(([key]) => key === role) ?? [null, role])[1]
+}
+
+// ── PVMRQ — marque préférée par gamme/rôle (fondateur 18/08/2026) ────────────
+// Frontend de `ParametresGammes.marques` (backend, ROLES_AUTO_COMPOSITION —
+// MIROIR EXACT des clés `PRODUCT_CATEGORIES` ci-dessus) : quand une marque est
+// épinglée pour un rôle, elle GAGNE TOUJOURS — le vivier de candidats de ce
+// rôle est restreint À ELLE SEULE avant toute autre logique (wattage/prix/
+// compatibilité). Sans marque réglée pour ce rôle (clé absente ou vide),
+// comportement byte-identique à l'historique.
+
+// Marque épinglée pour ce rôle dans la carte `marques` ({role: marque}) de la
+// gamme active, ou '' si aucune préférence — ne lève jamais.
+function _marqueEpinglee(marques, role) {
+  const carte = marques && typeof marques === 'object' ? marques : null
+  const m = carte ? carte[role] : null
+  return typeof m === 'string' ? m.trim() : ''
+}
+
+// Le produit porte-t-il la marque épinglée ? MIROIR EXACT de
+// `_marque_correspond` (apps/ventes/services.py) : `produit.marque` (champ
+// structuré) prioritaire, égalité EXACTE une fois normalisée ; à défaut (marque
+// non renseignée sur la fiche), son `nom` DOIT seulement CONTENIR la marque,
+// jamais l'égaler. Réutilise `_norm` (accents/casse) — le backend ne compare
+// que la casse (`casefold`), mais un accent divergent ne doit pas non plus
+// faire manquer une marque bien réelle côté écran.
+function _marqueCorrespond(produit, marque) {
+  const cible = _norm(marque)
+  if (!cible) return false
+  const marqueProduit = _norm(produit?.marque)
+  if (marqueProduit) return marqueProduit === cible
+  return _norm(produit?.nom).includes(cible)
+}
+
+// Restreint un vivier de candidats à la marque épinglée pour `role` (carte
+// `marques` de la gamme active). Sans préférence réglée : vivier RENVOYÉ TEL
+// QUEL (comportement historique). Marque réglée mais AUCUN candidat ne la
+// porte : vivier VIDE — JAMAIS un repli silencieux sur une autre marque — et
+// l'entrée `{ role, marque }` est consignée dans `manquantes` (dédupliquée par
+// rôle, même patron que `onduleursIncomplets`).
+function _filtrerParMarque(pool, role, marques, manquantes, vusRoles) {
+  const source = pool ?? []
+  const marque = _marqueEpinglee(marques, role)
+  if (!marque) return source
+  const filtres = source.filter(p => _marqueCorrespond(p, marque))
+  if (!filtres.length && vusRoles && !vusRoles.has(role)) {
+    vusRoles.add(role)
+    manquantes.push({ role, marque })
+  }
+  return filtres
 }
 
 // ── Indexation par type des produits du stock ─────────────────────────────────
@@ -849,9 +1211,17 @@ export function defaultProductLines(produits) {
 // ── Auto-remplissage (port exact de auto_fill_from_power + autofill_router) ───
 // Retourne la table complète dans l'ordre canonique du simulateur, lignes à
 // quantité nulle comprises (elles s'affichent mais ne sont pas enregistrées).
-export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux: nbOverride }) {
+export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux: nbOverride, marques }) {
   if (!kwp || kwp <= 0) return []
   const byType = indexProduits(produits)
+  // PVMRQ — marques préférées par rôle (gamme active) : sans réglage, `marques`
+  // est absent/vide et le comportement reste byte-identique à l'historique.
+  // `marquesManquantes` consigne chaque rôle épinglé sans AUCUN candidat en
+  // stock (même patron que `onduleursIncomplets`) — jamais un repli silencieux.
+  const marquesManquantes = []
+  const vuMarqueManquante = new Set()
+  const parMarque = (pool, role) =>
+    _filtrerParMarque(pool, role, marques, marquesManquantes, vuMarqueManquante)
 
   // QX19 — nombre de panneaux : override explicite (dérivé d'une taille kWc
   // souhaitée) sinon dérivé de la puissance. Le kWc RÉEL est recalculé plus bas
@@ -900,11 +1270,14 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
   const inverterQty = (kw) =>
     (!kw || kw >= threshold) ? 1 : Math.max(1, Math.ceil(kwp / kw))
 
-  const reseau = pickInverter(byType.onduleur_reseau)
-  const hybride = pickInverter(byType.onduleur_hybride)
+  const reseau = pickInverter(parMarque(byType.onduleur_reseau, 'onduleur_reseau'))
+  const hybride = pickInverter(parMarque(byType.onduleur_hybride, 'onduleur_hybride'))
 
   // Panneaux : wattage saisi (défaut 710 → Canadien Solar 710 du catalogue)
-  const panels = (byType.panneau ?? [])
+  // PVMRQ — la marque épinglée restreint le vivier AVANT le rapprochement de
+  // wattage : la substitution « wattage le plus proche » ne joue donc plus que
+  // DANS le vivier de la marque retenue, jamais hors d'elle.
+  const panels = parMarque(byType.panneau, 'panneau')
     .map(p => ({ p, w: parseWatt(p.nom) }))
     .filter(x => x.w != null)
   let panel = panels.filter(x => x.w === parseFloat(panelW))
@@ -933,8 +1306,14 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
   // L'exclusion se fait AVANT l'appariement par capacité 5/10 kWh ; une
   // batterie écartée reste sélectionnable à la main.
   const plageBatterie = plageBatterieOnduleur(hybride?.p)
-  const bats = (byType.batterie ?? [])
+  // PVMRQ — la compatibilité ÉLECTRIQUE (plage de tension) reste calculée sur
+  // le vivier COMPLET (elle alimente aussi `avertissementsBatterie` ci-dessous,
+  // un motif distinct de « marque introuvable ») ; la marque épinglée ne
+  // restreint le vivier électriquement compatible QU'APRÈS, jamais avant — même
+  // ordre que le backend `_pick_product` (garde métier avant marque).
+  const batsCompatibles = (byType.batterie ?? [])
     .filter(p => batterieCompatible(p, plageBatterie))
+  const bats = parMarque(batsCompatibles, 'batterie')
     .map(p => ({ p, cap: parseKwh(p.nom) }))
   const dyness = bats.filter(x => {
     const n = _norm(x.p.nom)
@@ -962,12 +1341,18 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
     nb10 = 0
   }
 
-  // Structures : type choisi par radio, 1 par panneau (prix catalogue)
+  // Structures : type choisi par radio, 1 par panneau (prix catalogue).
+  // PVMRQ — deux rôles DISTINCTS (`structure_acier`/`structure_alu`, comme
+  // PRODUCT_CATEGORIES) : chacun a sa propre marque épinglée, appliquée sur le
+  // sous-vivier déjà filtré par mot-clé acier/alu (même patron que les câbles
+  // ci-dessous).
   const structures = byType.structure ?? []
-  const wanted = structureType === 'aluminium' ? 'alu' : 'acier'
-  const other = structureType === 'aluminium' ? 'acier' : 'alu'
-  const structChosen = structures.find(p => _norm(p.nom).includes(wanted)) ?? null
-  const structOther = structures.find(p => _norm(p.nom).includes(other)) ?? null
+  const structuresAcier = parMarque(
+    structures.filter(p => _norm(p.nom).includes('acier')), 'structure_acier')
+  const structuresAlu = parMarque(
+    structures.filter(p => _norm(p.nom).includes('alu')), 'structure_alu')
+  const structChosen = (structureType === 'aluminium' ? structuresAlu : structuresAcier)[0] ?? null
+  const structOther = (structureType === 'aluminium' ? structuresAcier : structuresAlu)[0] ?? null
 
   // Accessoires / Tableau / Installation : prix indexés sur la puissance
   // (blocs de 5 kWc), exactement comme auto_fill_from_power. TTC.
@@ -988,10 +1373,26 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
   const smQty = huaweiRetenu ? 1 : 0
   const wifiQty = huaweiRetenu ? 1 : 0
 
-  const first = (type) => (byType[type] ?? [])[0] ?? null
+  // PVMRQ — `first(type)` sert socle/smart_meter/wifi_dongle/accessoires/
+  // tableau/installation/transport/suivi : le rôle épingle exactement la
+  // MÊME clé que la catégorie (`type`), donc une seule ligne suffit à couvrir
+  // les huit.
+  const first = (type) => parMarque(byType[type], type)[0] ?? null
   const row = (p, designation, quantite, ttcOverride = null) =>
     p ? lineFrom(p, quantite, ttcOverride)
       : { ...placeholder(designation, quantite), prix_unit_ttc: ttcOverride ?? 0 }
+
+  // Câbles : on préfère le NEXANS explicitement (marque confirmée fondateur
+  // — un fournisseur, pas la préférence de gamme), sinon le premier câble du
+  // type QUI PORTE UN PRIX. PVMRQ — la marque épinglée (si réglée pour
+  // cable_dc/cable_terre) restreint le vivier avant cette préférence Nexans.
+  const chiffre = (p) => !!p && parseFloat(p.prix_vente) > 0
+  const pickCable = (type) => {
+    const pool = parMarque((byType[type] ?? []).filter(chiffre), type)
+    return pool.find(p => _norm(p.nom).includes('nexans')) ?? pool[0] ?? null
+  }
+  const cableDc = pickCable('cable_dc')
+  const cableTerre = pickCable('cable_terre')
 
   const acierRow = structureType === 'aluminium'
     ? row(structOther, 'Structures acier', 0)
@@ -1011,6 +1412,11 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
     acierRow,
     aluRow,
     row(first('socle'), 'Socles', nbPanneaux * 2),
+    // Câbles Nexans 6 mm² au mètre (règle fondateur 18/08). On ne retient qu'un
+    // câble RÉELLEMENT chiffré : un produit sans prix n'entre jamais dans une
+    // auto-composition (même patron que « prix à renseigner »).
+    row(cableDc, 'Câble solaire Nexans 6 mm² (au mètre)', cableDc ? metreCableDc(blocks) : 0),
+    row(cableTerre, 'Câble de terre Nexans 6 mm² (au mètre)', cableTerre ? metreCableTerre(blocks) : 0),
     row(first('accessoires'), 'Accessoires', 1, prixAccessoires),
     row(first('tableau'), 'Tableau De Protection AC/DC', 1, prixTableau),
     row(first('installation'), 'Installation', 1, prixInstallation),
@@ -1032,7 +1438,121 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
   // PVOND — vivier batterie VIDE sous un onduleur à plage déclarée : même
   // métadonnée, même patron que les onduleurs incomplets ci-dessus.
   lignes.avertissementsBatterie = avertissementsBatterie
+  // PVMRQ — rôles dont la marque épinglée n'a AUCUN candidat en stock (jamais
+  // un repli silencieux sur une autre marque) : même patron de métadonnée que
+  // ci-dessus, lue par le générateur pour afficher le bandeau dédié.
+  lignes.marquesManquantes = marquesManquantes
   return lignes
+}
+
+// ── Taille OPTIMALE par retour sur investissement (règle fondateur 18/08) ────
+// On ne vend plus « la plus grosse installation qui rentre » ni « la taille lue
+// sur la facture » : on BALAIE les paliers de 5 kWc, on chiffre CHAQUE palier
+// avec le catalogue réel (`autoFillLines` — jamais un barème au kWc inventé,
+// il n'en existe aucun), on calcule le payback 25 ans de chacun
+// (`computeCashflowPayback`, le MÊME que l'écran, le PDF et la proposition) et
+// on garde le palier dont le payback est le plus court.
+//
+// Pourquoi un vrai optimum existe : en descendant, les coûts fixes (onduleur,
+// structure, pose) se diluent moins bien ; en montant, la production dépasse
+// l'autoconsommation et mord sur des tranches ONEE moins chères. Les deux
+// forces se croisent — c'est ce croisement qu'on cherche.
+//
+// `besoinKwc` (facture d'hiver, 900 MAD → 5 kWc) PLAFONNE le balayage : on ne
+// propose JAMAIS plus gros que le besoin lu sur la facture. C'est volontaire —
+// le modèle d'économie hérité du simulateur ne sature pas à la consommation
+// réelle, donc sans ce plafond « payback minimal » dériverait mécaniquement
+// vers le haut et sur-vendrait le client. L'optimisation joue donc SOUS le
+// besoin : elle retient un palier plus petit quand il rembourse plus vite.
+// `maxKwc` (surface de toit réelle) resserre encore la borne.
+//
+// Retourne { kwcOptimal, nbPanneaux, paliers[] } — `paliers` porte le détail
+// chiffré de chaque candidat pour que l'écran puisse JUSTIFIER le choix.
+export function optimalKwcByPayback({
+  produits, factures, dayUsagePct, panelW = 710, structureType,
+  discountPct, kwhPrice, efficiency, productible, consoAnnuelleKwh, utility,
+  besoinKwc, maxKwc, avecBatterie = false, step = KWC_STEP,
+  // PVMRQ — marques préférées par rôle (gamme active), transmises TELLES
+  // QUELLES à chaque palier chiffré : le balayage compare des paliers
+  // composés avec la MÊME contrainte de marque que l'auto-remplissage final.
+  marques,
+}) {
+  const pas = (Number.isFinite(Number(step)) && Number(step) > 0) ? Number(step) : KWC_STEP
+  const besoin = Number(besoinKwc) > 0 ? Number(besoinKwc) : 0
+  // Plafond : le besoin lui-même (jamais au-dessus), resserré par le toit.
+  let plafond = besoin > 0 ? arrondirAuPasKwc(besoin, pas) : pas
+  if (Number(maxKwc) > 0) plafond = Math.min(plafond, Math.floor(Number(maxKwc) / pas) * pas)
+  plafond = Math.max(pas, plafond)
+
+  const paliers = []
+  // PVMRQ — rôles dont la marque épinglée n'a AUCUN candidat en stock, relevés
+  // sur l'ENSEMBLE du balayage (dédupliqués par rôle+marque). Un palier ainsi
+  // amputé porte des lignes PLACEHOLDER à 0 MAD : son total s'effondre et son
+  // payback est FABRIQUÉ (mesuré : 5 kWc à 39 720 MAD → 29 920 MAD, payback
+  // 6,1 ans → 4,6 ans, uniquement parce que les panneaux ont disparu). Un tel
+  // palier n'est PAS chiffrable et ne peut donc pas entrer dans la comparaison.
+  const marquesManquantes = []
+  const vuMarqueManquante = new Set()
+  for (let k = pas; k <= plafond + 1e-9; k += pas) {
+    const lignes = autoFillLines(produits, { kwp: k, panelW, structureType, marques })
+    if (!lignes || !lignes.length) continue
+    const manquantesPalier = lignes.marquesManquantes ?? []
+    for (const m of manquantesPalier) {
+      const cle = `${m.role}|${m.marque}`
+      if (vuMarqueManquante.has(cle)) continue
+      vuMarqueManquante.add(cle)
+      marquesManquantes.push(m)
+    }
+    const { totalSans, totalAvec } = optionTotalsTTC(lignes, discountPct)
+    const roi = computeROI({
+      kwp: lignes.kwcReel || k,
+      factures, dayUsagePct, totalSans, totalAvec,
+      batteryKwh: batteryKwhFromLines(lignes),
+      kwhPrice, efficiency, consoAnnuelleKwh, utility, productible,
+    })
+    const payback = avecBatterie ? roi.payback_avec : roi.payback_sans
+    paliers.push({
+      kwc: k,
+      kwcReel: lignes.kwcReel || k,
+      nbPanneaux: lignes.nbPanneaux,
+      totalTtc: avecBatterie ? totalAvec : totalSans,
+      economieAnnuelle: avecBatterie ? roi.eco_annuelle_avec : roi.eco_annuelle_sans,
+      payback,
+      // Ce palier est-il RÉELLEMENT chiffré ? Faux dès qu'une marque épinglée
+      // manque au stock : son prix est incomplet, on ne le classe pas.
+      chiffrable: manquantesPalier.length === 0,
+      marquesManquantes: manquantesPalier,
+    })
+  }
+
+  const chiffrables = paliers.filter(
+    p => p.chiffrable && Number.isFinite(p.payback) && p.payback > 0)
+  if (!chiffrables.length) {
+    // Aucun palier chiffrable (catalogue incomplet, marque épinglée absente du
+    // stock, pas de facture) : on retombe sur le besoin arrondi au palier —
+    // jamais sur un chiffre inventé. `repliMarqueManquante` dit POURQUOI, pour
+    // que l'écran l'annonce au lieu de présenter un classement fantôme.
+    const repli = besoin > 0 ? arrondirAuPasKwc(besoin, pas) : pas
+    return {
+      kwcOptimal: repli,
+      nbPanneaux: panneauxPourKwc(repli, panelW),
+      paliers,
+      marquesManquantes,
+      repliMarqueManquante: marquesManquantes.length > 0,
+    }
+  }
+  // Payback le plus court ; à égalité stricte on garde le palier le PLUS PETIT
+  // (même retour, moins d'argent immobilisé chez le client).
+  const meilleur = chiffrables.reduce((best, p) => (
+    p.payback < best.payback - 1e-9 ? p : best
+  ), chiffrables[0])
+  return {
+    kwcOptimal: meilleur.kwc,
+    nbPanneaux: meilleur.nbPanneaux ?? panneauxPourKwc(meilleur.kwc, panelW),
+    paliers,
+    marquesManquantes,
+    repliMarqueManquante: false,
+  }
 }
 
 // ══ Multi-marchés (2026-06) ═══════════════════════════════════════════════════
