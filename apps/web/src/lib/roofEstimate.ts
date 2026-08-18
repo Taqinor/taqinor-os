@@ -9,9 +9,16 @@
  * sur le repli local (fallbackAnnualKwh) — le visiteur n'a jamais d'erreur.
  */
 
+import { PVGIS_LIVE_LOSS_PCT } from './systemLoss';
+
 const PVGIS_ENDPOINT = 'https://re.jrc.ec.europa.eu/api/v5_2/PVcalc';
 const DEFAULT_TILT_DEG = 15; // inclinaison « sensée » (pose Maroc, conservatrice)
-const SYSTEM_LOSS_PCT = 14; // pertes système PVGIS par défaut
+// PERTES SYSTEME 20 % AU TOTAL (ordre fondateur 18/08) : on demande directement
+// `loss=20` a PVGIS. Le resultat live est donc DEJA sur la base du fondateur --
+// ne JAMAIS lui appliquer en plus PRODUCTION_NET_FACTOR (qui, lui, ne sert qu'a
+// rebaser la table committee `yieldTable.ts`, figee a loss=14). Source unique :
+// src/lib/systemLoss.ts.
+const SYSTEM_LOSS_PCT = PVGIS_LIVE_LOSS_PCT; // 20 % -- base fondateur
 const TIMEOUT_MS = 6000;
 
 /**

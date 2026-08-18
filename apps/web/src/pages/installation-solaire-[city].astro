@@ -39,6 +39,7 @@ import { CITIES, REALISATIONS, realisationByRef } from '../lib/realisations';
 import { cityContentBySlug } from '../lib/cityContent';
 import { NAP } from '../lib/nap';
 import { YIELD_TABLE } from '../lib/yieldTable';
+import { PRODUCTION_NET_FACTOR } from '../lib/systemLoss';
 
 export function getStaticPaths() {
   return CITIES.map((c) => ({ params: { city: c.slug }, props: { c } }));
@@ -55,10 +56,11 @@ const closest = c.hasLocalInstall ? [] : REALISATIONS.slice(0, 3);
 
 // WJ73 — L'écart estimation-vs-preuve, expliqué honnêtement. Les chantiers
 // réellement affichés sur cette page (locaux si présents, sinon les plus
-// proches) mesurent en moyenne un rendement kWh/kWc/an souvent inférieur aux
-// ≈1 650 kWh/kWc/an qu'un plein sud à 29° donnerait dans la table de
-// rendement (yieldTable.ts, PVGIS) — l'hypothèse utilisée par le tableau
-// modélisé de toute estimation du site. Plutôt que de laisser cet écart sans
+// proches) mesurent en moyenne un rendement kWh/kWc/an souvent inférieur au
+// repère MODÉLISÉ de l'estimateur — depuis l'ordre fondateur du 18/08, ce
+// repère est le plein sud 29° de la table PVGIS RAMENÉ aux 20 % de pertes
+// totales (≈1 650 × 0,9302 ≈ 1 535 kWh/kWc/an pour Casablanca), c'est-à-dire
+// exactement le chiffre que l'estimateur et le devis ERP utilisent. Plutôt que de laisser cet écart sans
 // explication pour un visiteur qui ferait la division lui-même, on le nomme.
 // AUCUN chiffre inventé : dérivé de REALISATIONS + YIELD_TABLE, jamais
 // recopié à la main. `undefined` si aucun chantier affiché n'a de production
@@ -70,8 +72,14 @@ const yieldSamples = shownInstalls
 const avgYieldPerKwc = yieldSamples.length
   ? Math.round(yieldSamples.reduce((sum, y) => sum + y, 0) / yieldSamples.length)
   : null;
+// Pertes système 20 % au TOTAL (ordre fondateur 18/08) : la phrase rendue plus
+// bas nomme « le tableau modélisé utilisé pour les estimations » — c'est donc le
+// chiffre RÉELLEMENT utilisé par l'estimateur (base 20 %) qu'il faut afficher,
+// pas la donnée PVGIS brute (base 14 %) que l'estimateur rebase.
 const cityYieldTable = YIELD_TABLE[c.slug];
-const southOptimalYield = cityYieldTable ? cityYieldTable.grid['0']['29'] : undefined;
+const southOptimalYield = cityYieldTable
+  ? Math.round(cityYieldTable.grid['0']['29'] * PRODUCTION_NET_FACTOR)
+  : undefined;
 
 // Prose propre à la ville (W37) — déportée dans lib/cityContent.ts pour que les
 // cinq pages ne partagent plus un seul paragraphe. Le repli résout {intro}.
@@ -207,7 +215,11 @@ const heroPhoto = inCity[0]?.photos[0] ?? neutralHero;
               (production mesurée / kWc) tombe sur un rendement souvent
               inférieur au tableau modélisé des estimations — on le nomme
               plutôt que de laisser le delta sans explication. */}
-          {avgYieldPerKwc && southOptimalYield && (
+          {/* La phrase AFFIRME « en dessous » : on ne la rend que si c'est
+              VÉRIFIÉ. Le repère modélisé ayant baissé (base 20 %), une moyenne
+              mesurée pourrait désormais le dépasser — dans ce cas on n'écrit
+              rien plutôt qu'une comparaison fausse. */}
+          {avgYieldPerKwc && southOptimalYield && avgYieldPerKwc < southOptimalYield && (
             <p class="v2-rise mt-6 max-w-2xl text-xs leading-relaxed text-lune-faint">
               À noter : ces installations mesurent en moyenne ≈{avgYieldPerKwc.toLocaleString('fr-FR')} kWh/kWc/an,
               en dessous des ≈{southOptimalYield.toLocaleString('fr-FR')} kWh/kWc/an du tableau modélisé utilisé

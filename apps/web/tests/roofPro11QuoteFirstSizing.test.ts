@@ -117,14 +117,22 @@ describe('Ordre fondateur — le calepinage part du devis, jamais de la facture'
     const cons = createConsumption(ctx, emptyDom(), deps);
 
     // Un appareil « en plus » fait grandir le besoin.
-    cons.applyConsumptionToSizing(6000);
+    // PERTES 20 % (18/08) : le besoin est `max(besoin facture, besoin conso)`.
+    // Avec le productible ramené à la base 20 % (≈ 1 488 au lieu de 1 600
+    // kWh/kWc/an), il faut ~7 % de panneaux EN PLUS pour la même énergie : le
+    // socle dicté par la facture (600 MAD/mois ≈ 5 200 kWh/an) rejoignait
+    // l'ancien couple 6 000/3 000 kWh, qui retombait alors sur le même nombre
+    // de panneaux des deux côtés — le test ne testait plus rien. On écarte donc
+    // les deux consommations BIEN au-dessus de ce socle : l'intention (retirer
+    // un appareil RÉTRÉCIT le système) redevient la seule chose mesurée.
+    cons.applyConsumptionToSizing(12000);
     const withAppliance = ctx.neededPanels;
     expect(withAppliance).toBeGreaterThan(0);
     expect(ctx.neededAuto).toBe(false); // NOUS avons posé le latch (consOwnsLock)
     expect(renderActive).toHaveBeenCalledTimes(1);
 
     // Le retirer fait RÉTRÉCIR le besoin — la réversibilité W83 doit survivre au correctif.
-    cons.applyConsumptionToSizing(3000);
+    cons.applyConsumptionToSizing(7000);
     expect(ctx.neededPanels).toBeLessThan(withAppliance);
     expect(renderActive).toHaveBeenCalledTimes(2);
   });

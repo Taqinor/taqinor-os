@@ -12,7 +12,12 @@ export const prerender = false;
 
 import type { APIRoute } from 'astro';
 import { fetchPvgisAnnualKwh } from '../../lib/roofEstimate';
-import { annualSavingsBandMad, fallbackAnnualKwh, orientationToAspect } from '../../lib/roof';
+import { fallbackAnnualKwh, orientationToAspect } from '../../lib/roof';
+// ORDRE FONDATEUR (18/08) — économies RÉELLES au barème progressif/sélectif :
+// facture AVANT − facture APRÈS, mois par mois. `annualSavingsMad` et
+// `billToAnnualKwh` sont le modèle déjà testé du cerveau (billMAD porte le seuil
+// des 500 kWh/mois et la règle sélective ONEE).
+import { annualSavingsMad, billToAnnualKwh, tariffForCity } from '../../lib/estimatorBrainV2';
 import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
 
 function json(data: unknown, status = 200, headers: Record<string, string> = {}): Response {
@@ -82,10 +87,27 @@ export const POST: APIRoute = async ({ request }) => {
   const aspect = orientationToAspect(orientation);
   const pvgis = await fetchPvgisAnnualKwh(lat, lon, kwc, aspect, fetch);
   const annualKwh = pvgis ?? fallbackAnnualKwh(kwc);
-  const savings = annualSavingsBandMad(
-    annualKwh,
-    Number.isFinite(annualBillMad) && annualBillMad > 0 ? { annualBillMad } : {},
-  );
+
+  // ── ÉCONOMIES RÉELLES (ordre fondateur 18/08) ────────────────────────────
+  // « The client will go down in the price per kWh because he will be below
+  //   500 kWh per month — I want the new price per kWh to be used. »
+  // On ne valorise donc plus les kWh évités à un tarif moyen plat : on calcule
+  // la facture AVANT et la facture APRÈS au barème (progressif ≤ seuil, puis
+  // SÉLECTIF), et l'économie est leur différence. Le passage sous 500 kWh/mois
+  // re-tarife TOUTE la consommation résiduelle plus bas — c'est exactement ce
+  // que le fondateur décrit, et le modèle le capture tout seul.
+  //
+  // La consommation vient de la facture par l'INVERSE EXACT du barème
+  // (`billToAnnualKwh`, dichotomie sur `billMAD`) — jamais un diviseur plat.
+  // Sans facture, on ne connaît pas la consommation : on suppose alors le
+  // système dimensionné au besoin (conso = production), hypothèse déjà utilisée
+  // par le reste du tunnel, plutôt qu'un tarif moyen inventé.
+  const grid = tariffForCity();
+  const hasBill = Number.isFinite(annualBillMad) && annualBillMad > 0;
+  const consumptionAnnualKwh = hasBill
+    ? billToAnnualKwh(annualBillMad / 12, grid)
+    : annualKwh;
+  const savings = annualSavingsMad(annualKwh, consumptionAnnualKwh, grid);
 
   return json({
     ok: true,

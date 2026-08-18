@@ -243,10 +243,18 @@ describe('kwcFromPanelCount — puissance crête', () => {
 });
 
 describe('fallbackAnnualKwh — repli quand PVGIS est injoignable', () => {
-  it('≈ 1 600 kWh/kWc/an (hypothèse Maroc)', () => {
+  it('≈ 1 488 kWh/kWc/an — 1 600 ramené aux 20 % de pertes totales (18/08)', () => {
+    // ORDRE FONDATEUR (18/08) : 20 % de pertes AU TOTAL. Le repli 1 600
+    // kWh/kWc/an était exprimé en base PVGIS 14 %, comme la table committée ;
+    // il porte donc le complément 0,8/0,86 = 0,9302325581 →
+    // 1 600 × 0,9302325581 = 1 488,3720930 kWh/kWc/an (dérivé à la main).
+    //   5 kWc  → 5 × 1 488,3720930 =  7 441,8604651 kWh/an
+    //  10 kWc  → 10 × 1 488,3720930 = 14 883,7209302 kWh/an
     expect(fallbackAnnualKwh(0)).toBe(0);
-    expect(fallbackAnnualKwh(5)).toBe(8000);
-    expect(fallbackAnnualKwh(10)).toBe(16000);
+    expect(fallbackAnnualKwh(5)).toBeCloseTo(7441.86046511628, 6);
+    expect(fallbackAnnualKwh(10)).toBeCloseTo(14883.72093023256, 6);
+    // Et c'est bien 20 % sous le productible brut PVGIS, pas 20 % de plus.
+    expect(fallbackAnnualKwh(10)).toBeCloseTo(10 * 1600 * (0.8 / 0.86), 9);
   });
 });
 

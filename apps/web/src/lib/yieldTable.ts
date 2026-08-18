@@ -2,6 +2,16 @@
  * Productible solaire (kWh/kWc/an, pertes système 14 %) lu depuis PVGIS pour les
  * 5 latitudes de la zone de service Taqinor, en grille inclinaison × azimut.
  *
+ * ⚠ BASE DE PERTES — NE PAS LIRE CETTE TABLE DIRECTEMENT POUR ESTIMER UN CLIENT.
+ * Ces valeurs sont demandées à PVGIS avec `loss=14` : elles portent 14 % de
+ * pertes système. L'ordre du fondateur (18/08) fixe la base d'estimation à 20 %
+ * AU TOTAL. Le rebasage se fait EN UN SEUL POINT, `specificYield()` dans
+ * `estimatorBrainV2.ts` (× PRODUCTION_NET_FACTOR ≈ 0,9302) : toute estimation
+ * client passe par lui et tombe alors sur le MÊME chiffre que le devis ERP.
+ * La table reste volontairement en base 14 % (c'est la donnée PVGIS brute, celle
+ * que citent les pages « ensoleillement » et les comparaisons mesuré-vs-PVGIS) ;
+ * `specificYieldPvgis14()` l'expose telle quelle pour ces usages-là.
+ *
  * GÉNÉRÉ par scripts/generate-yield-table.mjs — DONNÉE committée, jamais une
  * dépendance. Sert de repli instantané/résilient à l'estimateur quand l'appel
  * PVGIS live est lent ou injoignable. Azimut : 0=Sud, -90=Est, 90=Ouest,

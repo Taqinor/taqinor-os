@@ -34,6 +34,7 @@ import { WHATSAPP_LEADS } from '../lib/nap';
 import { whatsappLink, zeroFormWhatsappText } from '../lib/whatsapp';
 import { REALISATIONS, realisationBySlug, MEASURED_FLEET_LIFETIME_MWH_FR } from '../lib/realisations';
 import { YIELD_TABLE } from '../lib/yieldTable';
+import { PRODUCTION_NET_FACTOR } from '../lib/systemLoss';
 
 const waDirect = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite une étude pour une installation solaire.');
 // W349 — porte sans formulaire : action secondaire du héros, pour le visiteur
@@ -57,7 +58,13 @@ const featured = [...REALISATIONS].sort((a, b) => b.kwcNum - a.kwcNum)[0];
 // facteur (voir la note d'intégrité dans realisations.ts). Le chantier phare
 // est désormais marqué `productionEstimated` et la note affichée sous la
 // galerie (plus bas) explique honnêtement la nuance sans inviter au calcul.
-const casablancaSouthOptimalYield = YIELD_TABLE.casablanca.grid['0']['29'];
+// Pertes système 20 % au TOTAL (ordre fondateur 18/08) : la phrase ci-dessous
+// nomme « le tableau modélisé utilisé pour les estimations » — ce doit donc être
+// le chiffre que l'estimateur utilise VRAIMENT (base 20 %), pas la donnée PVGIS
+// brute (base 14 %) qu'il rebase. On passe par la même fonction que l'estimateur.
+const casablancaSouthOptimalYield = Math.round(
+  YIELD_TABLE.casablanca.grid['0']['29'] * PRODUCTION_NET_FACTOR,
+);
 
 // WB1 (2026-07-04) — CHIFFRE HÉRO HONNÊTE : le cumul MESURÉ RÉEL de la flotte
 // Deye (MEASURED_FLEET, realisations.ts), pas un annuel fabriqué par install.
@@ -439,7 +446,7 @@ const investment = [
         {featured.productionEstimated && (
           <p class="v2-rise mt-6 max-w-2xl text-xs leading-relaxed text-lune-faint">
             À noter : la production de ce chantier est estimée à partir du rendement mesuré sur nos
-            installations suivies, en dessous des ≈{casablancaSouthOptimalYield.toLocaleString('fr-FR')} kWh/kWc/an
+            installations suivies, plutôt qu'à partir des ≈{casablancaSouthOptimalYield.toLocaleString('fr-FR')} kWh/kWc/an
             du tableau modélisé utilisé pour les estimations — les toits réels ne sont pas tous plein
             sud à 29°, contrairement à l'hypothèse du modèle. L'étude affine ce chiffre sur votre toit réel.
           </p>

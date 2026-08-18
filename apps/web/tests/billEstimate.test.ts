@@ -38,8 +38,11 @@ describe('WJ71 — productionBand surfacé par défaut sur l\'estimation publiqu
     const est = estimateFromBill(1200);
     expect(est).not.toBeNull();
     if (!est) return;
-    // high est calculé AVANT arrondi (kwc * yld) — proche de productionKwhYr (arrondi).
-    expect(est.productionBand.high).toBeCloseTo(est.productionKwhYr, 0);
+    // ORDRE FONDATEUR 18/08 — `productionKwhYr` EST le central (base 20 %) ;
+    // c'est donc `point` qui l'égale (avant arrondi), et `high` qui remonte à la
+    // base PVGIS nue (÷ 0,9302 ≈ +7,5 %). Le chiffre affiché reste le central.
+    expect(est.productionBand.point).toBeCloseTo(est.productionKwhYr, 0);
+    expect(est.productionBand.high).toBeGreaterThan(est.productionKwhYr);
   });
 
   it('productionBand.low <= point <= high (jamais un gain, jamais une inversion)', () => {

@@ -18,6 +18,8 @@
  * l'étude technique (et le lead garde sa propre bande ROI, inchangée).
  */
 
+import { PRODUCTION_NET_FACTOR } from './systemLoss';
+
 /** Coordonnée GeoJSON : [longitude, latitude]. */
 export type LngLat = [number, number];
 
@@ -37,8 +39,26 @@ export const SETBACK_M = 0.4; // retrait de rive (sécurité incendie / maintena
 export const PANEL_GAP_M = 0.02; // jeu entre panneaux
 
 // — Hypothèses énergie (Maroc) —
-export const KWH_PER_KWC_YEAR = 1600; // productible de repli quand PVGIS est injoignable
-export const TARIFF_MAD_PER_KWH = 1.4; // tarif moyen (aligné sur billRange.ts)
+/** Productible de repli EN BASE PVGIS 14 % (même base que la table committée). */
+export const KWH_PER_KWC_YEAR_PVGIS14 = 1600;
+/**
+ * Productible de repli quand PVGIS est injoignable, RAMENÉ À LA BASE 20 %
+ * (ordre fondateur 18/08) : 1600 × 0,9302 ≈ 1488 kWh/kWc/an. C'est ce chiffre
+ * qui est servi au visiteur, donc il doit être sur la même base que
+ * `specificYield()` et que le devis ERP. Source unique : src/lib/systemLoss.ts.
+ */
+export const KWH_PER_KWC_YEAR = KWH_PER_KWC_YEAR_PVGIS14 * PRODUCTION_NET_FACTOR;
+/**
+ * @deprecated Tarif moyen PLAT — ne plus l'utiliser pour valoriser des kWh.
+ * ORDRE FONDATEUR (18/08) : « I want the new price per kWh to be used so the
+ * savings are real ». Un tarif moyen ignore le barème progressif/sélectif ONEE :
+ * un client à 700 kWh/mois paie 1,5958 MAD/kWh, et son RÉSIDUEL après solaire
+ * (280 kWh/mois) retombe à 1,1676 MAD/kWh. La valorisation réelle se fait
+ * facture AVANT − facture APRÈS via `billMAD`/`annualSavingsMad`
+ * (estimatorBrainV2.ts), utilisés par /api/roof-estimate. Constante conservée
+ * pour ne pas casser d'appelant tiers ; aucun chemin public ne s'en sert.
+ */
+export const TARIFF_MAD_PER_KWH = 1.4;
 // WC9 (2026-07-05) — le wording client (nos-solutions.astro, index.astro)
 // affiche désormais « 50–100 % de la facture couverte — selon batteries et
 // usage jour/nuit », plus large que la fourchette 60–90 % ci-dessous. Le
