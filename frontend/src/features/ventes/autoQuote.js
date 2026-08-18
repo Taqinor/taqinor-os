@@ -76,10 +76,15 @@ export const buildEtudePompage = (sel, { typePompe, alim, hmt, debit, heures,
  *                                CE devis-là, sans toucher la fiche du lead.
  *                                Vide/absent = comportement historique (la
  *                                taille souhaitée du lead, sinon la facture).
+ * @param {object}   marques      PVMRQ — marques préférées par rôle (gamme
+ *                                active, `ParametresGammes.marques[slot]`) ;
+ *                                transmise telle quelle à `optimalKwcByPayback`
+ *                                et `autoFillLines`. Absente/vide = comportement
+ *                                historique (aucune préférence).
  */
 export async function createAutoQuote({ lead, produits, discountStr, dispatch,
                                         quoteLogic, pumpHours, onEtude,
-                                        targetKwc }) {
+                                        targetKwc, marques }) {
   // Logique de devis éditable (Paramètres → Avancé) ; sans valeur = défauts.
   const kwhPrice = (Number(quoteLogic?.kwhPrice) > 0) ? Number(quoteLogic.kwhPrice) : KWH_PRICE
   const efficiency = (Number(quoteLogic?.efficiency) > 0) ? Number(quoteLogic.efficiency) : EFFICIENCY
@@ -143,6 +148,7 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
           produits, factures: estimerMois(hiver, eteVal), dayUsagePct,
           panelW: 710, structureType: structFromLead(lead),
           discountPct: discountStr || '0', kwhPrice, efficiency, besoinKwc,
+          marques,
         })
         panels = opt.nbPanneaux > 0 ? opt.nbPanneaux : (estimerPanneaux(hiver, perTranche) || 8)
       } else {
@@ -154,6 +160,7 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
       kwp: kwpAuto, panelW: 710, nbPanneaux: panels,
       // QX19 — respecte la préférence de structure du lead (défaut acier).
       structureType: structFromLead(lead),
+      marques,
     })
     // QX19 — scénario batterie SEMÉ depuis batterie_souhaitee du lead : porté
     // dans etude_params pour que le PDF (builder QF6) restreigne le document au

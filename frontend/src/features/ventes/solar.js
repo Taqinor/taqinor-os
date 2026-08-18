@@ -936,6 +936,60 @@ export function groupProduitsByCategory(produits) {
   return groups
 }
 
+// Libellé FR d'un rôle ROLES_AUTO_COMPOSITION (mirroir des clés PRODUCT_CATEGORIES).
+export function roleLabel(role) {
+  return (PRODUCT_CATEGORIES.find(([key]) => key === role) ?? [null, role])[1]
+}
+
+// ── PVMRQ — marque préférée par gamme/rôle (fondateur 18/08/2026) ────────────
+// Frontend de `ParametresGammes.marques` (backend, ROLES_AUTO_COMPOSITION —
+// MIROIR EXACT des clés `PRODUCT_CATEGORIES` ci-dessus) : quand une marque est
+// épinglée pour un rôle, elle GAGNE TOUJOURS — le vivier de candidats de ce
+// rôle est restreint À ELLE SEULE avant toute autre logique (wattage/prix/
+// compatibilité). Sans marque réglée pour ce rôle (clé absente ou vide),
+// comportement byte-identique à l'historique.
+
+// Marque épinglée pour ce rôle dans la carte `marques` ({role: marque}) de la
+// gamme active, ou '' si aucune préférence — ne lève jamais.
+function _marqueEpinglee(marques, role) {
+  const carte = marques && typeof marques === 'object' ? marques : null
+  const m = carte ? carte[role] : null
+  return typeof m === 'string' ? m.trim() : ''
+}
+
+// Le produit porte-t-il la marque épinglée ? MIROIR EXACT de
+// `_marque_correspond` (apps/ventes/services.py) : `produit.marque` (champ
+// structuré) prioritaire, égalité EXACTE une fois normalisée ; à défaut (marque
+// non renseignée sur la fiche), son `nom` DOIT seulement CONTENIR la marque,
+// jamais l'égaler. Réutilise `_norm` (accents/casse) — le backend ne compare
+// que la casse (`casefold`), mais un accent divergent ne doit pas non plus
+// faire manquer une marque bien réelle côté écran.
+function _marqueCorrespond(produit, marque) {
+  const cible = _norm(marque)
+  if (!cible) return false
+  const marqueProduit = _norm(produit?.marque)
+  if (marqueProduit) return marqueProduit === cible
+  return _norm(produit?.nom).includes(cible)
+}
+
+// Restreint un vivier de candidats à la marque épinglée pour `role` (carte
+// `marques` de la gamme active). Sans préférence réglée : vivier RENVOYÉ TEL
+// QUEL (comportement historique). Marque réglée mais AUCUN candidat ne la
+// porte : vivier VIDE — JAMAIS un repli silencieux sur une autre marque — et
+// l'entrée `{ role, marque }` est consignée dans `manquantes` (dédupliquée par
+// rôle, même patron que `onduleursIncomplets`).
+function _filtrerParMarque(pool, role, marques, manquantes, vusRoles) {
+  const source = pool ?? []
+  const marque = _marqueEpinglee(marques, role)
+  if (!marque) return source
+  const filtres = source.filter(p => _marqueCorrespond(p, marque))
+  if (!filtres.length && vusRoles && !vusRoles.has(role)) {
+    vusRoles.add(role)
+    manquantes.push({ role, marque })
+  }
+  return filtres
+}
+
 // ── Indexation par type des produits du stock ─────────────────────────────────
 function indexProduits(produits) {
   const byType = {}
@@ -999,9 +1053,17 @@ export function defaultProductLines(produits) {
 // ── Auto-remplissage (port exact de auto_fill_from_power + autofill_router) ───
 // Retourne la table complète dans l'ordre canonique du simulateur, lignes à
 // quantité nulle comprises (elles s'affichent mais ne sont pas enregistrées).
-export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux: nbOverride }) {
+export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux: nbOverride, marques }) {
   if (!kwp || kwp <= 0) return []
   const byType = indexProduits(produits)
+  // PVMRQ — marques préférées par rôle (gamme active) : sans réglage, `marques`
+  // est absent/vide et le comportement reste byte-identique à l'historique.
+  // `marquesManquantes` consigne chaque rôle épinglé sans AUCUN candidat en
+  // stock (même patron que `onduleursIncomplets`) — jamais un repli silencieux.
+  const marquesManquantes = []
+  const vuMarqueManquante = new Set()
+  const parMarque = (pool, role) =>
+    _filtrerParMarque(pool, role, marques, marquesManquantes, vuMarqueManquante)
 
   // QX19 — nombre de panneaux : override explicite (dérivé d'une taille kWc
   // souhaitée) sinon dérivé de la puissance. Le kWc RÉEL est recalculé plus bas
@@ -1050,11 +1112,14 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
   const inverterQty = (kw) =>
     (!kw || kw >= threshold) ? 1 : Math.max(1, Math.ceil(kwp / kw))
 
-  const reseau = pickInverter(byType.onduleur_reseau)
-  const hybride = pickInverter(byType.onduleur_hybride)
+  const reseau = pickInverter(parMarque(byType.onduleur_reseau, 'onduleur_reseau'))
+  const hybride = pickInverter(parMarque(byType.onduleur_hybride, 'onduleur_hybride'))
 
   // Panneaux : wattage saisi (défaut 710 → Canadien Solar 710 du catalogue)
-  const panels = (byType.panneau ?? [])
+  // PVMRQ — la marque épinglée restreint le vivier AVANT le rapprochement de
+  // wattage : la substitution « wattage le plus proche » ne joue donc plus que
+  // DANS le vivier de la marque retenue, jamais hors d'elle.
+  const panels = parMarque(byType.panneau, 'panneau')
     .map(p => ({ p, w: parseWatt(p.nom) }))
     .filter(x => x.w != null)
   let panel = panels.filter(x => x.w === parseFloat(panelW))
@@ -1083,8 +1148,14 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
   // L'exclusion se fait AVANT l'appariement par capacité 5/10 kWh ; une
   // batterie écartée reste sélectionnable à la main.
   const plageBatterie = plageBatterieOnduleur(hybride?.p)
-  const bats = (byType.batterie ?? [])
+  // PVMRQ — la compatibilité ÉLECTRIQUE (plage de tension) reste calculée sur
+  // le vivier COMPLET (elle alimente aussi `avertissementsBatterie` ci-dessous,
+  // un motif distinct de « marque introuvable ») ; la marque épinglée ne
+  // restreint le vivier électriquement compatible QU'APRÈS, jamais avant — même
+  // ordre que le backend `_pick_product` (garde métier avant marque).
+  const batsCompatibles = (byType.batterie ?? [])
     .filter(p => batterieCompatible(p, plageBatterie))
+  const bats = parMarque(batsCompatibles, 'batterie')
     .map(p => ({ p, cap: parseKwh(p.nom) }))
   const dyness = bats.filter(x => {
     const n = _norm(x.p.nom)
@@ -1112,12 +1183,18 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
     nb10 = 0
   }
 
-  // Structures : type choisi par radio, 1 par panneau (prix catalogue)
+  // Structures : type choisi par radio, 1 par panneau (prix catalogue).
+  // PVMRQ — deux rôles DISTINCTS (`structure_acier`/`structure_alu`, comme
+  // PRODUCT_CATEGORIES) : chacun a sa propre marque épinglée, appliquée sur le
+  // sous-vivier déjà filtré par mot-clé acier/alu (même patron que les câbles
+  // ci-dessous).
   const structures = byType.structure ?? []
-  const wanted = structureType === 'aluminium' ? 'alu' : 'acier'
-  const other = structureType === 'aluminium' ? 'acier' : 'alu'
-  const structChosen = structures.find(p => _norm(p.nom).includes(wanted)) ?? null
-  const structOther = structures.find(p => _norm(p.nom).includes(other)) ?? null
+  const structuresAcier = parMarque(
+    structures.filter(p => _norm(p.nom).includes('acier')), 'structure_acier')
+  const structuresAlu = parMarque(
+    structures.filter(p => _norm(p.nom).includes('alu')), 'structure_alu')
+  const structChosen = (structureType === 'aluminium' ? structuresAlu : structuresAcier)[0] ?? null
+  const structOther = (structureType === 'aluminium' ? structuresAcier : structuresAlu)[0] ?? null
 
   // Accessoires / Tableau / Installation : prix indexés sur la puissance
   // (blocs de 5 kWc), exactement comme auto_fill_from_power. TTC.
@@ -1138,16 +1215,22 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
   const smQty = huaweiRetenu ? 1 : 0
   const wifiQty = huaweiRetenu ? 1 : 0
 
-  const first = (type) => (byType[type] ?? [])[0] ?? null
+  // PVMRQ — `first(type)` sert socle/smart_meter/wifi_dongle/accessoires/
+  // tableau/installation/transport/suivi : le rôle épingle exactement la
+  // MÊME clé que la catégorie (`type`), donc une seule ligne suffit à couvrir
+  // les huit.
+  const first = (type) => parMarque(byType[type], type)[0] ?? null
   const row = (p, designation, quantite, ttcOverride = null) =>
     p ? lineFrom(p, quantite, ttcOverride)
       : { ...placeholder(designation, quantite), prix_unit_ttc: ttcOverride ?? 0 }
 
-  // Câbles : on préfère le NEXANS explicitement (marque confirmée fondateur),
-  // sinon le premier câble du type QUI PORTE UN PRIX.
+  // Câbles : on préfère le NEXANS explicitement (marque confirmée fondateur
+  // — un fournisseur, pas la préférence de gamme), sinon le premier câble du
+  // type QUI PORTE UN PRIX. PVMRQ — la marque épinglée (si réglée pour
+  // cable_dc/cable_terre) restreint le vivier avant cette préférence Nexans.
   const chiffre = (p) => !!p && parseFloat(p.prix_vente) > 0
   const pickCable = (type) => {
-    const pool = (byType[type] ?? []).filter(chiffre)
+    const pool = parMarque((byType[type] ?? []).filter(chiffre), type)
     return pool.find(p => _norm(p.nom).includes('nexans')) ?? pool[0] ?? null
   }
   const cableDc = pickCable('cable_dc')
@@ -1197,6 +1280,10 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
   // PVOND — vivier batterie VIDE sous un onduleur à plage déclarée : même
   // métadonnée, même patron que les onduleurs incomplets ci-dessus.
   lignes.avertissementsBatterie = avertissementsBatterie
+  // PVMRQ — rôles dont la marque épinglée n'a AUCUN candidat en stock (jamais
+  // un repli silencieux sur une autre marque) : même patron de métadonnée que
+  // ci-dessus, lue par le générateur pour afficher le bandeau dédié.
+  lignes.marquesManquantes = marquesManquantes
   return lignes
 }
 
@@ -1227,6 +1314,10 @@ export function optimalKwcByPayback({
   produits, factures, dayUsagePct, panelW = 710, structureType,
   discountPct, kwhPrice, efficiency, productible, consoAnnuelleKwh, utility,
   besoinKwc, maxKwc, avecBatterie = false, step = KWC_STEP,
+  // PVMRQ — marques préférées par rôle (gamme active), transmises TELLES
+  // QUELLES à chaque palier chiffré : le balayage compare des paliers
+  // composés avec la MÊME contrainte de marque que l'auto-remplissage final.
+  marques,
 }) {
   const pas = (Number.isFinite(Number(step)) && Number(step) > 0) ? Number(step) : KWC_STEP
   const besoin = Number(besoinKwc) > 0 ? Number(besoinKwc) : 0
@@ -1237,7 +1328,7 @@ export function optimalKwcByPayback({
 
   const paliers = []
   for (let k = pas; k <= plafond + 1e-9; k += pas) {
-    const lignes = autoFillLines(produits, { kwp: k, panelW, structureType })
+    const lignes = autoFillLines(produits, { kwp: k, panelW, structureType, marques })
     if (!lignes || !lignes.length) continue
     const { totalSans, totalAvec } = optionTotalsTTC(lignes, discountPct)
     const roi = computeROI({

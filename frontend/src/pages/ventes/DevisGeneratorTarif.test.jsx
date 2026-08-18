@@ -32,6 +32,9 @@ vi.mock('../../api/ventesApi', () => ({
   default: {
     getDevisById: vi.fn(() => Promise.resolve({ data: {} })),
     getPrixApplicable: vi.fn(),
+    // PVMRQ — DevisGenerator interroge ce singleton au montage (best-effort) ;
+    // sans lui, l'effet lève sur un mock partiel avant même le premier rendu.
+    getParametresGammes: vi.fn(() => Promise.resolve({ data: {} })),
   },
 }))
 
