@@ -1276,6 +1276,38 @@ def specs_for_produit(produit):
 # explicite qu'un onduleur réseau ne prend pas de batterie. Ne RIEN écrire,
 # à l'inverse, veut dire « on ne sait pas » — et un onduleur qu'on ne sait pas
 # apparier est GRISÉ au générateur plutôt que chiffré à l'aveugle.
+#
+# ── RÈGLE CORRIGÉE — ORDRE FONDATEUR DU 18/08/2026 ────────────────────────
+#
+# « Tu dois corriger ces problèmes, pas moi. » Le bandeau « Onduleur(s) non
+# chiffrable(s) » réclamait la plage de tension batterie à TOUS les onduleurs,
+# réseau compris. Or un onduleur RÉSEAU (string on-grid) n'a PAS de port
+# batterie : lui demander sa fenêtre batterie, c'est lui demander une donnée
+# qui n'existe pas — et c'est pour cette SEULE variable que la moitié du
+# bandeau était grisée.
+#
+# Le contrat est donc CONDITIONNEL À LA FAMILLE de l'onduleur :
+#
+#   * HYBRIDE — ou famille INDÉTERMINÉE (un nom qui ne tranche pas) → la plage
+#     batterie est EXIGÉE. Sans elle on ne sait pas quelle batterie s'y
+#     accroche : l'onduleur reste écarté de l'auto-composition ET nommé.
+#     Comportement d'hier, inchangé.
+#   * RÉSEAU → la plage batterie n'est PAS exigée. La famille elle-même VAUT
+#     déclaration « aucune » : ``plage_batterie_onduleur`` rend ``(0, 0)``,
+#     exactement comme une ligne « Plage batterie : aucune » écrite à la main.
+#     Conséquence voulue et double : plus rien ne le grise pour cette
+#     variable, ET aucune batterie ne peut s'y accrocher (le repli mot-clé ne
+#     reprend PAS la main — c'était le trou : un onduleur réseau sans ligne
+#     déclarée pouvait se voir composer une batterie par le nom).
+#
+# La ligne marquée reste POSÉE en clair par ``seed_catalogue`` sur les dix
+# références réseau du catalogue — une fiche qui se lit vaut mieux qu'une
+# règle qu'il faut connaître — elle n'est simplement plus OBLIGATOIRE.
+#
+# La famille se lit sur le NOM, avec les mots-clés et l'ORDRE de
+# ``ventes.services.classer_produit`` (« hybride » l'emporte sur « réseau ») :
+# c'est déjà la seule source de vérité du dépôt sur ce point, et aucun champ
+# de ``FicheTechnique`` ne la porte.
 # ═══════════════════════════════════════════════════════════════════════════
 
 #: Préfixe de la ligne marquée dans ``Produit.description``.
@@ -1289,6 +1321,11 @@ PLAGE_BATTERIE_AUCUNE = 'aucune'
 #: constructeur (puissance, réseau, entrées DC, tensions, courant, rendement,
 #: stockage, garantie). Le libellé est ce que le générateur AFFICHE quand la
 #: variable manque : il doit se lire par un commercial, pas par un développeur.
+#:
+#: NEUF variables sur dix sont exigées de TOUT onduleur. La dixième —
+#: ``plage_batterie_v`` — est CONDITIONNELLE : exigée d'un hybride (ou d'une
+#: famille indéterminée), jamais d'un onduleur réseau (voir le bandeau
+#: ci-dessus et ``famille_onduleur``).
 CONTRAT_ONDULEUR = (
     ('ac_kw', 'puissance AC (kW)'),
     ('phases', 'monophasé / triphasé'),
@@ -1329,16 +1366,46 @@ def est_onduleur(produit):
     return 'onduleur' in _norme(getattr(produit, 'nom', ''))
 
 
+#: Familles d'onduleur qui changent le CONTRAT (rien d'autre ne les distingue :
+#: aucun champ de ``FicheTechnique`` ne porte la famille).
+FAMILLE_ONDULEUR_HYBRIDE = 'hybride'
+FAMILLE_ONDULEUR_RESEAU = 'reseau'
+
+
+def famille_onduleur(produit):
+    """``'hybride'`` / ``'reseau'`` / ``None`` (famille indéterminée).
+
+    MÊMES mots-clés et MÊME ORDRE que ``ventes.services.classer_produit`` :
+    « hybride » est testé AVANT « réseau/injection », de sorte qu'un onduleur
+    hybride dont le nom mentionne aussi le réseau reste un hybride. Un produit
+    qui n'est pas un onduleur, ou dont le nom ne tranche pas (un micro-onduleur,
+    une référence nue « Deye SUN-10K »), rend ``None`` : la famille est INCONNUE
+    et le contrat reste alors le plus exigeant des deux.
+    """
+    if not est_onduleur(produit):
+        return None
+    nom = _norme(getattr(produit, 'nom', ''))
+    if 'hybride' in nom:
+        return FAMILLE_ONDULEUR_HYBRIDE
+    if 'reseau' in nom or 'injection' in nom:
+        return FAMILLE_ONDULEUR_RESEAU
+    return None
+
+
 def plage_batterie_onduleur(produit):
     """Plage de tension batterie déclarée par un onduleur.
 
     Trois réponses, TOUTES différentes :
 
     * ``(v_min, v_max)`` — l'onduleur accepte une batterie dans cette fenêtre ;
-    * ``(0.0, 0.0)`` — déclaration explicite « aucune batterie » (onduleur
-      réseau). Le contrat est SATISFAIT : c'est une valeur, pas un trou ;
-    * ``None`` — rien n'est déclaré : la donnée MANQUE (l'appelant retombe sur
-      son repli mot-clé et le générateur grise l'onduleur).
+    * ``(0.0, 0.0)`` — « aucune batterie » (onduleur réseau). Le contrat est
+      SATISFAIT : c'est une valeur, pas un trou. DEUX sources la produisent, au
+      même titre : une ligne « Plage batterie : aucune » écrite sur la fiche,
+      OU — depuis l'ordre fondateur du 18/08/2026 — la seule FAMILLE RÉSEAU du
+      produit, parce qu'un string on-grid n'a pas de port batterie ;
+    * ``None`` — rien n'est déclaré sur un onduleur HYBRIDE (ou de famille
+      indéterminée) : la donnée MANQUE vraiment (l'appelant retombe sur son
+      repli mot-clé et le générateur grise l'onduleur).
 
     Lecture seule et tolérante : une ligne illisible vaut « non déclarée ».
     """
@@ -1364,6 +1431,12 @@ def plage_batterie_onduleur(produit):
         if haut < bas:
             bas, haut = haut, bas
         return (bas, haut)
+    # RÈGLE FONDATEUR (18/08/2026) — rien n'est écrit : sur un onduleur RÉSEAU
+    # ce n'est pas un trou, c'est le cas NOMINAL (pas de port batterie). Sa
+    # famille vaut donc déclaration « aucune ». Sur un hybride — ou quand la
+    # famille est indéterminée — l'absence reste une absence.
+    if famille_onduleur(produit) == FAMILLE_ONDULEUR_RESEAU:
+        return (0.0, 0.0)
     return None
 
 
@@ -1377,6 +1450,10 @@ def onduleur_specs_manquantes(produit):
     C'est ce que le générateur affiche pour GRISER l'onduleur, exactement comme
     « prix à renseigner » grise un produit non tarifé : on refuse de chiffrer
     un appareil qu'on ne sait pas dimensionner, et on DIT pourquoi.
+
+    La plage batterie n'est réclamée qu'aux onduleurs qui en ONT une (hybrides
+    et familles indéterminées) — un onduleur RÉSEAU n'est jamais grisé pour une
+    donnée que son matériel ne porte pas (ordre fondateur du 18/08/2026).
     """
     if not est_onduleur(produit):
         return []
@@ -1385,6 +1462,10 @@ def onduleur_specs_manquantes(produit):
     manquantes = []
     for cle, libelle in CONTRAT_ONDULEUR:
         if cle == 'plage_batterie_v':
+            # L'exemption RÉSEAU est portée par ``plage_batterie_onduleur``
+            # (source unique) : elle rend (0, 0) pour un onduleur réseau sans
+            # ligne déclarée, donc ``None`` ne subsiste que là où la plage est
+            # réellement EXIGÉE — hybride ou famille indéterminée.
             if plage_batterie_onduleur(produit) is None:
                 manquantes.append(libelle)
             continue
@@ -1424,8 +1505,9 @@ def specs_solaire_produit(produit):
     v_nominal = specs.get('v_nominal') if famille == 'batterie' else None
     return {
         'famille': famille or None,
-        # Onduleur : [min, max] V, [0, 0] = « aucune batterie » (réseau),
-        # None = non déclarée (le garde retombe sur son repli mot-clé).
+        # Onduleur : [min, max] V, [0, 0] = « aucune batterie » (ligne
+        # « aucune » DÉCLARÉE, ou famille RÉSEAU qui l'implique), None = non
+        # déclarée sur un hybride (le garde retombe sur son repli mot-clé).
         'plage_batterie_v': list(plage) if plage is not None else None,
         # Batterie : tension nominale (V) de sa fiche technique.
         'v_nominal': float(v_nominal) if v_nominal is not None else None,
