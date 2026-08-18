@@ -264,7 +264,48 @@ export function arrondirAuPasKwc(kwc, step = KWC_STEP) {
 // Utilisés UNIQUEMENT par le modèle « deux factures » (QF5) ; l'estimation
 // historique ci-dessous continue d'utiliser dayUsagePct (comportement inchangé).
 export const AUTOCONSO_SANS = 0.60
+// ORDRE FONDATEUR (18/08) — le forfait « 85 % avec batterie » n'est PLUS le
+// modèle : une batterie ne relève pas un taux, elle décale une quantité
+// d'énergie RÉELLE égale à sa capacité, une fois par jour. AUTOCONSO_AVEC ne
+// survit que comme REPLI documenté : devis explicitement « avec batterie »
+// dont la capacité est inconnue (aucune ligne batterie chiffrable) — le seul
+// cas où l'on n'a rien de réel à additionner. Dès qu'une capacité existe, le
+// taux est DÉRIVÉ (autoconsoAvecRatio ci-dessous), jamais forfaitaire.
 export const AUTOCONSO_AVEC = 0.85
+
+// ── Modèle batterie ADDITIF (ordre fondateur 18/08) — MIROIR pricing.py ──────
+// autoconsommé_avec = 60 % × production + capacité_kWh × 1 cycle/jour.
+// PLAFONDS (honnêteté : on ne vend jamais de l'énergie qui n'existe pas) :
+//   • jamais plus que la production (la batterie ne décale que l'existant) ;
+//   • jamais plus que la consommation réelle quand elle est connue (QF5).
+export const BATTERY_CYCLES_PER_DAY = 1
+export const DAYS_PER_YEAR = 365
+export const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+
+/**
+ * Taux d'autoconsommation EFFECTIF de l'option « avec batterie », DÉRIVÉ de la
+ * capacité réellement chiffrée (miroir exact de pricing.autoconso_avec_ratio).
+ *
+ * @param productionAnnuelleKwh production annuelle (kWh/an)
+ * @param batteryKwh capacité batterie totale du devis (kWh) — 0/inconnue → repli
+ * @param base taux sans batterie (défaut AUTOCONSO_SANS)
+ * @param fallback taux de repli quand aucune capacité n'est connue
+ * @param consoAnnuelleKwh consommation réelle (kWh/an) quand elle est connue
+ */
+export function autoconsoAvecRatio(productionAnnuelleKwh, batteryKwh, {
+  base = AUTOCONSO_SANS, fallback = AUTOCONSO_AVEC, consoAnnuelleKwh = null,
+} = {}) {
+  const prod = parseFloat(productionAnnuelleKwh) || 0
+  const cap = parseFloat(batteryKwh) || 0
+  const conso = parseFloat(consoAnnuelleKwh) || 0
+  if (prod <= 0) return fallback
+  let ratio = cap > 0
+    ? (parseFloat(base) || 0) + (cap * BATTERY_CYCLES_PER_DAY * DAYS_PER_YEAR) / prod
+    : fallback
+  ratio = Math.min(1, ratio)                      // plafond production
+  if (conso > 0) ratio = Math.min(ratio, conso / prod)  // plafond consommation
+  return ratio
+}
 
 // ── QX39 — cashflow 25 ans honnête (MIROIR backend pricing.py) ───────────────
 // Mêmes hypothèses documentées : dégradation panneau, escalade tarifaire,
@@ -344,6 +385,7 @@ export function computeROI({
   const ecoSansMonthly = []
   const ecoAvecMonthly = []
   let productionAnnuelle = 0
+  let batteryShiftAnnuel = 0   // kWh réellement décalés par la batterie
 
   for (let i = 0; i < 12; i++) {
     const prodKwh = useProductible
@@ -352,7 +394,16 @@ export function computeROI({
     productionAnnuelle += prodKwh
     const selfConsumed = prodKwh * dayPct
     const ecoSans = selfConsumed * PRICE
-    const ecoAvec = ecoSans + (batteryKwh ?? 0) * 60 // 60 MAD/kWh batterie/mois
+    // ORDRE FONDATEUR (18/08) — apport batterie en ÉNERGIE, plus le forfait
+    // 60 MAD/kWh/mois : capacité × 1 cycle/jour × jours du mois, plafonné par
+    // ce qu'il reste de production ce mois-là (on ne stocke que l'existant),
+    // puis valorisé au tarif. Miroir de la dérivation du taux côté PDF.
+    const stockable = Math.max(0, prodKwh - selfConsumed)
+    const batteryShift = Math.min(
+      Math.max(0, parseFloat(batteryKwh) || 0) * BATTERY_CYCLES_PER_DAY * DAYS_IN_MONTH[i],
+      stockable)
+    batteryShiftAnnuel += batteryShift
+    const ecoAvec = ecoSans + batteryShift * PRICE
     ecoSansMonthly.push(ecoSans)
     ecoAvecMonthly.push(ecoAvec)
     monthlyDetail.push({
@@ -369,13 +420,28 @@ export function computeROI({
   // QF2/QF5 — modèle « deux factures » (réel, par tranche) quand consommation
   // ET barème sont disponibles. Remplace l'estimation ci-dessus par l'économie
   // réelle facture_sans − facture_avec (jamais les deux mélangés).
+  // Le taux « avec batterie » est DÉRIVÉ de la capacité réelle du devis
+  // (ordre fondateur 18/08) : 60 % + capacité × 1 cycle/jour, plafonné par la
+  // production ET par la consommation. Sans capacité connue → repli documenté.
+  const autoconsoAvec = autoconsoAvecRatio(productionAnnuelle, batteryKwh, {
+    consoAnnuelleKwh,
+  })
+  // Taux EFFECTIVEMENT appliqués (pour affichage/transparence) : dans le
+  // chemin « estimation » la part sans batterie est la part diurne saisie
+  // (dayUsagePct) et la part avec batterie ajoute les kWh réellement décalés.
+  let autoconsoSansEff = dayPct
+  let autoconsoAvecEff = productionAnnuelle > 0
+    ? Math.min(1, dayPct + batteryShiftAnnuel / productionAnnuelle)
+    : dayPct
   let savingsModel = 'estimation'
   let factureSans = null, factureAvecSans = null, factureAvecAvec = null
   if (productionAnnuelle > 0 && consoAnnuelleKwh > 0 && utility) {
     const tbSans = twoBillsSavings(productionAnnuelle, consoAnnuelleKwh, AUTOCONSO_SANS, utility)
-    const tbAvec = twoBillsSavings(productionAnnuelle, consoAnnuelleKwh, AUTOCONSO_AVEC, utility)
+    const tbAvec = twoBillsSavings(productionAnnuelle, consoAnnuelleKwh, autoconsoAvec, utility)
     if (tbSans && tbAvec) {
       savingsModel = 'factures'
+      autoconsoSansEff = AUTOCONSO_SANS
+      autoconsoAvecEff = autoconsoAvec
       ecoAnnuelleSans = tbSans.economie
       ecoAnnuelleAvec = tbAvec.economie
       factureSans = tbSans.factureSans
@@ -411,6 +477,12 @@ export function computeROI({
     facture_sans: factureSans,
     facture_avec_sans: factureAvecSans,
     facture_avec_avec: factureAvecAvec,
+    // Transparence (mêmes clés que le PDF) : taux d'autoconsommation retenus.
+    // `autoconso_avec` est DÉRIVÉ de la capacité batterie, jamais forfaitaire.
+    autoconso_sans: autoconsoSansEff,
+    autoconso_avec: autoconsoAvecEff,
+    // kWh annuels réellement décalés par la batterie (chemin estimation).
+    battery_shift_kwh: Math.round(batteryShiftAnnuel),
   }
 }
 

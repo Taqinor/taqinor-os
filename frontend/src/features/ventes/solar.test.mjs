@@ -16,7 +16,7 @@ import {
   computeCashflowPayback,
   computeEtudeIndustrielle,
   TARIF_MT_ONEE, tarifMtDisponible, tarifMtMoyen, normaliserRepartitionMt,
-  isReseauInverter, batterieCompatible,
+  isReseauInverter, batterieCompatible, DAYS_IN_MONTH,
 } from './solar.js'
 
 // Reflet du catalogue seedé (prix HT = TTC simulateur / 1.2, 2 décimales)
@@ -211,10 +211,21 @@ test('ROI : production GHI × kWc × 0.8', () => {
   })
   const sumGhi = GHI.reduce((a, b) => a + b, 0)
   assert.ok(Math.abs(roi.production_annuelle_kwh - sumGhi * 9.94 * 0.8) < 0.1)
-  // économies avec batterie = sans + 60 MAD/kWh/mois
+  // ORDRE FONDATEUR (18/08) — l'apport batterie n'est plus un forfait de
+  // 60 MAD/kWh/mois : c'est de l'ÉNERGIE, capacité × 1 cycle/jour, plafonnée
+  // par le surplus du mois (production − part diurne) et valorisée au tarif.
+  // Dérivation à la main, janvier : production = 83,99 × 9,94 × 0,8 = 667,99 kWh ;
+  // part diurne 60 % = 400,79 kWh ; surplus stockable = 267,20 kWh ; la batterie
+  // pourrait décaler 10 kWh × 31 j = 310 kWh → PLAFONNÉE à 267,20 kWh.
   for (let i = 0; i < 12; i++) {
-    assert.ok(Math.abs(roi.eco_avec_monthly[i] - roi.eco_sans_monthly[i] - 600) < 0.001)
+    const prod = GHI[i] * 9.94 * 0.8
+    const shift = Math.min(10 * DAYS_IN_MONTH[i], prod * 0.4)
+    assert.ok(
+      Math.abs(roi.eco_avec_monthly[i] - roi.eco_sans_monthly[i] - shift * 1.75) < 0.001,
+      `mois ${i + 1} : l'apport batterie doit valoir les kWh décalés × 1,75 MAD`)
   }
+  // Le forfait historique (10 kWh × 60 = 600 MAD/mois) n'existe plus.
+  assert.ok(Math.abs(roi.eco_avec_monthly[0] - roi.eco_sans_monthly[0] - 600) > 1)
   assert.ok(roi.payback_sans > 0 && roi.payback_avec > 0)
 })
 

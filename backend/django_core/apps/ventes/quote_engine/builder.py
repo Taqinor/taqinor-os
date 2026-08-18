@@ -210,6 +210,42 @@ def _is_battery(designation: str) -> bool:
     return "batterie" in (designation or "").lower()
 
 
+# Capacité batterie lisible sur une désignation (« Batterie 5 kWh », « 10kwh »).
+# Miroir de solar.js KWH_RE / parseKwh — même regex, même défaut 5 kWh par
+# ligne batterie sans capacité écrite (ordre fondateur 18/08 : « chaque
+# batterie apporte 5 kWh par jour »).
+_KWH_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*kwh\b", re.IGNORECASE)
+BATTERY_DEFAULT_KWH = 5.0
+
+
+def _parse_kwh(text: str):
+    m = _KWH_RE.search(text or "")
+    if not m:
+        return None
+    try:
+        return float(m.group(1).replace(",", "."))
+    except ValueError:  # pragma: no cover — regex garantit le format
+        return None
+
+
+def _battery_kwh_from_items(rows, blob=None) -> float:
+    """Capacité batterie TOTALE (kWh) d'une liste d'items — miroir
+    ``solar.js batteryKwhFromLines`` (quantité × kWh lus, défaut 5 kWh)."""
+    total = 0.0
+    for it in rows or []:
+        text = blob(it) if blob else (it.get("designation") or "")
+        if not _is_battery(text):
+            continue
+        try:
+            qty = float(it.get("quantite") or 0)
+        except (TypeError, ValueError):
+            qty = 0.0
+        if qty <= 0:
+            continue
+        total += qty * (_parse_kwh(text) or BATTERY_DEFAULT_KWH)
+    return total
+
+
 def _is_hybrid_inverter(designation: str) -> bool:
     d = (designation or "").lower()
     return "onduleur" in d and "hybride" in d
@@ -957,6 +993,13 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         tranches_override=_tranches_override or None,
         autoconso_sans=_autoconso_sans if _autoconso_sans else AUTOCONSO_SANS,
         autoconso_avec=_autoconso_avec if _autoconso_avec else AUTOCONSO_AVEC,
+        # ORDRE FONDATEUR (18/08) — capacité batterie RÉELLE de l'option 2 :
+        # le taux d'autoconsommation « avec batterie » en est dérivé
+        # (60 % + capacité × 1 cycle/jour) au lieu d'un forfait 85 %. Un taux
+        # explicitement forcé par le vendeur (etude_params.autoconso_avec)
+        # reste souverain : on ne dérive alors rien.
+        battery_kwh=(None if _autoconso_avec
+                     else (_battery_kwh_from_items(avec_items, _blob) or None)),
         productible=_productible,
         fallback_tarif_kwh=_onee_tarif,
     )
@@ -1186,9 +1229,14 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                                 else None),
     }
 
-    # ONEE monthly bill proxy (bars sit above the savings curves): full-price bill
-    # ≈ Option-2 monthly savings / 0.85 autoconsumption.
-    factures_mensuelles = [round(v / 0.85) for v in roi["eco_a_monthly"]]
+    # ONEE monthly bill proxy (bars sit above the savings curves): full-price
+    # bill ≈ économies mensuelles option 2 / taux d'autoconsommation RETENU.
+    # Le taux vient de ``roi`` (dérivé de la capacité batterie depuis l'ordre
+    # fondateur du 18/08) — plus de 0,85 codé en dur qui contredirait le calcul.
+    _ac_a_proxy = roi.get("autoconso_avec") or AUTOCONSO_AVEC
+    if not (0 < _ac_a_proxy <= 1):
+        _ac_a_proxy = AUTOCONSO_AVEC
+    factures_mensuelles = [round(v / _ac_a_proxy) for v in roi["eco_a_monthly"]]
 
     client_name = f"{(client.prenom or '').strip()} {(client.nom or '').strip()}".strip()
 

@@ -67,7 +67,59 @@ UTILITY_TABLES = {
 # Taux d'autoconsommation par option (estimation documentée, pas de netting)
 # Sans batterie : résidentiel marocain typique (pas d'injection valorisée)
 AUTOCONSO_SANS = 0.60   # estimation — à affiner avec une étude de consommation
-AUTOCONSO_AVEC = 0.85   # avec batterie de stockage — idem
+# ORDRE FONDATEUR (18/08) — le forfait « 85 % avec batterie » n'est PLUS le
+# modèle : une batterie ne relève pas un taux, elle décale une quantité
+# d'énergie RÉELLE égale à sa capacité, une fois par jour. AUTOCONSO_AVEC ne
+# survit que comme REPLI documenté : devis explicitement « avec batterie » dont
+# la capacité est inconnue (aucune ligne batterie chiffrable), ou taux forcé par
+# le vendeur via ``etude_params['autoconso_avec']``. Dès qu'une capacité existe,
+# le taux est DÉRIVÉ (``autoconso_avec_ratio``), jamais forfaitaire.
+AUTOCONSO_AVEC = 0.85   # repli seulement — voir autoconso_avec_ratio()
+
+# ── Modèle batterie ADDITIF (ordre fondateur 18/08) — MIROIR solar.js ────────
+# autoconsommé_avec = 60 % × production + capacité_kWh × 1 cycle/jour.
+# PLAFONDS (honnêteté : on ne vend jamais de l'énergie qui n'existe pas) :
+#   • jamais plus que la production (la batterie ne décale que l'existant) ;
+#   • jamais plus que la consommation réelle quand elle est connue.
+BATTERY_CYCLES_PER_DAY = 1
+DAYS_PER_YEAR = 365
+
+
+def autoconso_avec_ratio(
+    production_annuelle_kwh,
+    battery_kwh,
+    *,
+    base: float = AUTOCONSO_SANS,
+    fallback: float = AUTOCONSO_AVEC,
+    conso_annuelle_kwh=None,
+) -> float:
+    """Taux d'autoconsommation EFFECTIF de l'option « avec batterie ».
+
+    Miroir EXACT de ``solar.js autoconsoAvecRatio`` : mêmes entrées, mêmes
+    plafonds, même résultat au chiffre près (un test de parité fixe les valeurs
+    des deux côtés). Fonction pure.
+
+    ``battery_kwh`` nul/inconnu → ``fallback`` (l'ancien forfait), seul cas où
+    l'on n'a aucune capacité réelle à additionner.
+    """
+    try:
+        prod = float(production_annuelle_kwh or 0)
+        cap = float(battery_kwh or 0)
+        conso = float(conso_annuelle_kwh or 0)
+    except (TypeError, ValueError):
+        return fallback
+    if prod <= 0:
+        return fallback
+    if cap > 0:
+        ratio = float(base) + (cap * BATTERY_CYCLES_PER_DAY * DAYS_PER_YEAR) / prod
+    else:
+        ratio = float(fallback)
+    ratio = min(1.0, ratio)                      # plafond production
+    if conso > 0:
+        ratio = min(ratio, conso / prod)         # plafond consommation
+    return ratio
+
+
 # QRES54 (fondateur, 2026-07-18) — pertes système : la production BRUTE
 # (kWc × productible) est réduite de 14 % (ombrage, température, câblage,
 # onduleur, salissure) AVANT tout calcul d'économies — le simulateur du
@@ -457,6 +509,7 @@ def calculate_savings_roi(
     tranches_override: list | None = None,
     autoconso_sans: float = AUTOCONSO_SANS,
     autoconso_avec: float = AUTOCONSO_AVEC,
+    battery_kwh: float | None = None,
     productible: float | None = None,
     fallback_tarif_kwh: float | None = None,
 ) -> dict:
@@ -479,6 +532,10 @@ def calculate_savings_roi(
       production_annuelle   = kwc × 1 240 kWh/kWc/an  (GHI moyen Maroc)
       economie_opt1 (sans)  = production × autoconso_sans × prix_kWh
       economie_opt2 (avec)  = production × autoconso_avec × prix_kWh
+                              où autoconso_avec est DÉRIVÉ de la capacité
+                              batterie quand ``battery_kwh`` est fourni
+                              (60 % + capacité × 1 cycle/jour, plafonné) —
+                              ordre fondateur 18/08.
       roi                   = total_option / economie_annuelle
       monthly               = economie_annuelle × facteur_saisonnier
 
@@ -512,6 +569,16 @@ def calculate_savings_roi(
         # est fourni. Reste marqué « estimation » (pas de données de conso).
         if savings_estimated and fallback_tarif_kwh and fallback_tarif_kwh > 0:
             prix_kwh = float(fallback_tarif_kwh)
+
+    # ORDRE FONDATEUR (18/08) — taux « avec batterie » DÉRIVÉ de la capacité
+    # réellement chiffrée sur le devis (60 % + capacité × 1 cycle/jour,
+    # plafonné par la production ET par la consommation connue). Sans capacité
+    # (``battery_kwh`` absent/0), l'ancien forfait ``autoconso_avec`` reste le
+    # repli — aucun devis existant ne change de chiffre sans raison.
+    autoconso_avec = autoconso_avec_ratio(
+        production_annuelle, battery_kwh,
+        base=autoconso_sans, fallback=autoconso_avec,
+        conso_annuelle_kwh=conso_annuelle_kwh)
 
     # Self-consumption-first savings (loi 82-21: only self-consumed kWh valued)
     economie_opt1 = round(production_annuelle * autoconso_sans * prix_kwh)
