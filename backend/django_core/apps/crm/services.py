@@ -818,6 +818,24 @@ def find_duplicates_by_contact(company, *, phone=None, email=None,
     return list(qs.filter(q))
 
 
+def is_strong_identity_match(other, *, phone=None, email=None):
+    """« Identité forte » : `other` partage À LA FOIS l'e-mail normalisé exact
+    ET le téléphone normalisé exact avec les valeurs fournies.
+
+    Niveau DISTINCT du rapprochement ordinaire (même téléphone OU même
+    e-mail) : le fondateur veut pouvoir dire « très probablement le même
+    client » sans jamais fusionner à la place du commercial. Les deux clés
+    doivent être non vides des DEUX côtés — un lead sans e-mail (ou sans
+    téléphone) n'est jamais une identité forte, seulement un doublon possible.
+    """
+    phone = normalize_phone(phone)
+    email = normalize_email(email)
+    if not phone or not email:
+        return False
+    return (normalize_phone(other.telephone) == phone
+            and normalize_email(other.email) == email)
+
+
 def merge_leads(survivor, others, user):
     """Fusionne `others` dans `survivor` SANS perte de données. Déplace devis,
     activités, pièces jointes, historique et chantiers ; complète les champs
@@ -2290,7 +2308,7 @@ def _build_lead_wa_reply_url(lead):
         return None
 
 
-def notify_new_lead(lead) -> None:
+def notify_new_lead(lead, *, sous_seuil=False) -> None:
     """QJ2 (a) — Notifie le responsable du lead à la CRÉATION d'un nouveau lead.
 
     Événement de speed-to-lead : le owner du lead est notifié dès l'arrivée du
@@ -2304,6 +2322,13 @@ def notify_new_lead(lead) -> None:
     notifié — repli sur les managers société (« Commercial responsable » /
     « Directeur ») quand le owner ou son supérieur manque. Aucun destinataire
     résolvable → no-op.
+
+    ``sous_seuil`` (18/08/2026 — le site transmet désormais les leads sous le
+    seuil de facture, `qualified: false`) : le lead est notifié comme les
+    autres — jamais silencieux, il est bien arrivé — mais le titre et le corps
+    portent la mention « (sous le seuil) », pour que le commercial arbitre en
+    VOYANT la notification et non après avoir décroché. Le défaut ``False``
+    laisse tous les autres appelants (création manuelle, imports) inchangés.
     """
     try:
         recipients = lead_notification_recipients(lead)
@@ -2312,13 +2337,18 @@ def notify_new_lead(lead) -> None:
         from apps.notifications.services import notify_many
         nom = (getattr(lead, 'nom', '') or '').strip() or 'Nouveau prospect'
         wa_url = _build_lead_wa_reply_url(lead)
-        body_parts = [f'Un nouveau lead vient d\'arriver : {nom}.']
+        suffixe = ' (sous le seuil)' if sous_seuil else ''
+        body_parts = [f'Un nouveau lead vient d\'arriver : {nom}{suffixe}.']
+        if sous_seuil:
+            body_parts.append(
+                'Facture déclarée sous le seuil de 1 000 MAD — à traiter '
+                'en second, après les leads au-dessus du seuil.')
         if wa_url:
             body_parts.append(f'Répondre maintenant : {wa_url}')
         notify_many(
             recipients,
             'lead_new',
-            f'Nouveau lead : {nom}',
+            f'Nouveau lead : {nom}{suffixe}',
             body='\n'.join(body_parts),
             link=f'/crm/leads?lead={lead.pk}',
             company=lead.company,
@@ -2515,6 +2545,19 @@ def notify_lead_callback_requested(lead) -> None:
 
 
 PARRAINAGE_SIGNUP_MARKER = 'auto — filleul détecté (utm_source=parrainage)'
+PARRAINAGE_IGNORED_MARKER = '2e code de parrainage ignoré'
+PARRAINAGE_DEJA_ENREGISTRE_MARKER = (
+    'Parrainage déjà enregistré pour ce filleul')
+
+
+def _format_date_fr(valeur):
+    """Date FR courte (JJ/MM/AAAA) pour une note chatter, en heure locale.
+    Tolérant : toute valeur non datable est rendue telle quelle (une note ne
+    casse jamais le flux qui l'écrit)."""
+    try:
+        return timezone.localtime(valeur).strftime('%d/%m/%Y')
+    except Exception:  # noqa: BLE001 — jamais bloquant pour une note
+        return str(valeur)
 
 
 def handle_parrainage_signup(lead) -> None:
@@ -2524,12 +2567,29 @@ def handle_parrainage_signup(lead) -> None:
     ``utm_campaign`` — voir ``apps/web/src/pages/parrainage.astro``, le lien
     personnel est `?utm_source=parrainage&utm_campaign=<code>`).
 
-    Idempotent (un seul ``Parrainage`` par ``filleul_lead``) ; no-op si
-    ``utm_source`` n'est pas ``'parrainage'``, si le code de parrain est
-    absent/inconnu, ou en cas d'auto-parrainage (le filleul est déjà le même
-    téléphone/email que le parrain — anti-abus minimal). Notifie les managers
-    de la société (repli ``_company_fallback_managers``, pas de owner dédié à
-    ce stade). Best-effort — jamais d'exception propagée."""
+    Idempotent PAR FILLEUL (18/08/2026 — décision fondateur). Depuis que
+    chaque soumission du site CRÉE un nouveau ``Lead`` (règle fondateur du
+    18/08/2026), le même filleul qui re-soumet /parrainage obtient une fiche
+    DIFFÉRENTE à chaque fois — la seule garde ``Parrainage.objects.filter(
+    filleul_lead=lead)`` (idempotente PAR LEAD, conservée ci-dessous pour le
+    replay du MÊME lead) ne voit donc plus ces reprises et laissait créer un
+    2e ``Parrainage en_attente`` pour la même personne. Le filleul est donc
+    aussi identifié par TÉLÉPHONE/E-MAIL normalisés parmi tous les
+    ``Parrainage`` déjà posés pour la société :
+      - même filleul, MÊME parrain → aucun 2e ``Parrainage``, mais une note
+        chatter sobre sur le NOUVEAU lead (jamais une sortie silencieuse :
+        une recommandation qui ne laisse aucune trace est une
+        recommandation perdue) ;
+      - même filleul, parrain DIFFÉRENT → cas ambigu : on GARDE le premier
+        parrainage (jamais réattribué) et on pose une note chatter sur le
+        NOUVEAU lead expliquant que son code a été ignoré.
+
+    no-op (comportement inchangé) si ``utm_source`` n'est pas
+    ``'parrainage'``, si le code de parrain est absent/inconnu, ou en cas
+    d'auto-parrainage (le filleul est déjà le même téléphone/email que le
+    parrain — anti-abus minimal). Notifie les managers de la société (repli
+    ``_company_fallback_managers``, pas de owner dédié à ce stade).
+    Best-effort — jamais d'exception propagée."""
     try:
         if (getattr(lead, 'utm_source', None) or '').strip().lower() != 'parrainage':
             return
@@ -2556,6 +2616,53 @@ def handle_parrainage_signup(lead) -> None:
         parrain_email = normalize_email(getattr(parrain, 'email', None))
         if ((lead_phone and lead_phone == parrain_phone)
                 or (lead_email and lead_email == parrain_email)):
+            return
+
+        # Idempotence PAR FILLEUL (voir docstring) : cherche un Parrainage
+        # déjà posé pour la société dont le filleul_lead partage le téléphone
+        # OU l'e-mail normalisé du lead courant — le PREMIER (plus ancien)
+        # fait foi.
+        existing_signup = None
+        if lead_phone or lead_email:
+            from django.db.models import Q
+            contact_q = Q()
+            if lead_phone:
+                contact_q |= Q(filleul_lead__phone_normalise=lead_phone)
+            if lead_email:
+                contact_q |= Q(filleul_lead__email_normalise=lead_email)
+            existing_signup = (
+                Parrainage.objects
+                .filter(company=lead.company)
+                .exclude(filleul_lead__isnull=True)
+                .filter(contact_q)
+                .order_by('date_creation')
+                .first()
+            )
+        if existing_signup is not None:
+            if existing_signup.parrain_id == parrain.pk:
+                # Même filleul, MÊME parrain : rien à recréer — mais plus de
+                # sortie SILENCIEUSE. Deux salariés d'un même client (adresse
+                # `contact@societe.ma` partagée) ou un foyer au même mobile
+                # tombent ici : sans trace, la 2e recommandation disparaissait
+                # du CRM sans que personne ne puisse savoir qu'elle a existé.
+                # Une note sobre sur le NOUVEAU lead, jamais un 2e Parrainage.
+                LeadActivity.objects.create(
+                    company=lead.company, lead=lead, user=None,
+                    kind=LeadActivity.Kind.NOTE,
+                    body=(f'{PARRAINAGE_DEJA_ENREGISTRE_MARKER} (parrain '
+                          f'{parrain.nom}, '
+                          f'{_format_date_fr(existing_signup.date_creation)}) '
+                          '— pas de doublon créé.'),
+                )
+                return
+            # Parrain DIFFÉRENT sur re-soumission : cas ambigu — on GARDE le
+            # premier parrainage (jamais réattribué), on note l'ignoré.
+            LeadActivity.objects.create(
+                company=lead.company, lead=lead, user=None,
+                kind=LeadActivity.Kind.NOTE,
+                body=(f'{PARRAINAGE_IGNORED_MARKER} (déjà parrainé par '
+                      f'{existing_signup.parrain.nom}).'),
+            )
             return
 
         Parrainage.objects.create(

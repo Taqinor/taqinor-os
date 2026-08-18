@@ -114,8 +114,20 @@ describe('WJ122 — mapping clé→webhook : snake_case → camelCase QX51', () 
     expect(COMMERCIAL_QUESTION_WEBHOOK_KEY.garde_nuit).toBe('gardeNuit');
     expect(COMMERCIAL_QUESTION_WEBHOOK_KEY.saisonnalite_recolte).toBe('saisonnaliteRecolte');
   });
-  it('surface_m2 (hammam) n’a PAS de destination webhook (jamais transmise)', () => {
-    expect(COMMERCIAL_QUESTION_WEBHOOK_KEY.surface_m2).toBeUndefined();
+  // Épingle INVERSÉE : `surface_m2` était le seul trou du mapping — la question
+  // s'affichait, le visiteur la remplissait, et la réponse n'atteignait jamais
+  // l'ERP. Elle part désormais sur `surfaceM2` (même sémantique que le champ
+  // PRO : surface du SITE, jamais la surface de toiture stricte).
+  it('surface_m2 (hammam/spa/salle de sport) atteint bien le webhook via surfaceM2', () => {
+    expect(COMMERCIAL_QUESTION_WEBHOOK_KEY.surface_m2).toBe('surfaceM2');
+  });
+
+  it('AUCUNE question affichée ne reste sans destination webhook', () => {
+    for (const c of COMMERCIAL_CATEGORIES) {
+      for (const q of COMMERCIAL_CATEGORY_QUESTIONS[c.value] ?? []) {
+        expect(COMMERCIAL_QUESTION_WEBHOOK_KEY[q.key], `question « ${q.key} » (${c.value})`).toBeTruthy();
+      }
+    }
   });
 });
 
@@ -196,10 +208,16 @@ describe.each(LOCALES)('WJ122 — sous-panneau commercial dans mon-toit.astro (%
     expect(src).toContain("pro.hidden = !(m === 'industriel' || m === 'professionnel');");
   });
 
-  it('le payload envoie categorieCommerciale + les réponses whitelistées', () => {
-    expect(src).toContain('function readCommercialAnswers(');
-    expect(src).toContain('COMMERCIAL_QUESTION_WEBHOOK_KEY');
+  it('le payload envoie la CATÉGORIE ; les questions par catégorie ont quitté le tunnel', () => {
     expect(src).toContain("categorieCommerciale: mode === 'commercial'");
+    // Coupe fondateur 18/08 : aucune de ces questions n'entrait dans
+    // estimatePro (seul le day-share de la CATÉGORIE compte), elles partaient
+    // au webhook sans changer un chiffre — le commercial les complète dans
+    // l'ERP. Le mapping reste dans la lib (le backend s'en sert toujours).
+    expect(src).not.toContain('function readCommercialAnswers(');
+    expect(src).not.toContain('mt-cc-questions');
+    // La page n'importe plus la table des questions (la lib, elle, la garde).
+    expect(src).not.toMatch(/import \{[^}]*COMMERCIAL_CATEGORY_QUESTIONS/);
   });
 
   it("l'estimateur reçoit la catégorie (hôtel ≠ bureau)", () => {

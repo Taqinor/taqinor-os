@@ -80,6 +80,19 @@ const EconomieDirecteur = lazy(() => import('./economie/EconomieDirecteur'))
 // seule ressource qui existe. Remplace le `viaAffaire()` ci-dessous, qui
 // disait honnêtement « pas de vue d'ensemble » — il y en a une désormais.
 const VariantesListPage = lazy(() => import('./calepinage/VariantesListPage'))
+/* L'ATELIER 3D DE L'AFFAIRE — les MÊMES outils pour les ventes et pour les
+   appels d'offres. `pages/ventes/ToitureDesign` héberge déjà le builder 3D du
+   site (alias `@roofbuilder`, source JAMAIS éditée) et sert les modes 'lead' et
+   'devis' ; le mode 'ao' le RÉUTILISE tel quel sur une AFFAIRE — une seconde
+   implémentation de la toiture 3D serait la garantie de deux calepinages qui
+   divergent.
+   `buildModuleRoutes` monte `<Comp />` SANS props (router/moduleRoutes.jsx) :
+   le mode est donc figé par cette enveloppe lazy, exactement comme
+   `viaAffaire()` fige les siennes plus bas. */
+const AtelierToiture3D = lazy(async () => {
+  const { default: ToitureDesign } = await import('../../pages/ventes/ToitureDesign')
+  return { default: () => <ToitureDesign mode="ao" /> }
+})
 
 // PACT75 — `RouteSquelette`/`squelette()` ont PERDU leur dernier appelant
 // (Rentabilité montait le squelette honnête « pas encore construit » sur ses
@@ -173,6 +186,10 @@ const config = {
     // AOF171 (cette lane) — fiche affaire, deep-link (pas d'item de nav dédié,
     // même patron que `/publicite/ad/:id`).
     { path: '/ao/affaires/:id', component: AffaireDetail, roles: ROLES },
+    // Atelier 3D de l'affaire — deep-link ouvert depuis « Toitures & relevés »
+    // (bouton « Ouvrir en 3D »), jamais un item de nav : il est contextuel à
+    // UNE affaire, comme `/ao/:id/rentabilite`.
+    { path: '/ao/affaires/:id/design', component: AtelierToiture3D, roles: ROLES },
     { path: '/ao/toitures', component: ToituresPage, roles: ROLES },
     // PV59 — `CalepinageStudio` (l'ATELIER de calcul) reste contextuel à une
     // toiture, ouvert depuis l'onglet « Calepinages » d'une affaire — ça ne

@@ -17,7 +17,9 @@
 export const prerender = false;
 
 import Layout from '../../layouts/Layout.astro';
-import StarRating from '../../components/StarRating.astro';
+// (fondateur 2026-08-17) <StarRating/> n'est plus monté ici : sans note Google
+// réelle (GOOGLE_RATING = null, testimonials.ts) le composant ne rendait RIEN,
+// et la décision fondateur du jour bannit tout avis/étoile de cette page.
 import TestimonialCarousel from '../../components/TestimonialCarousel.astro';
 import InstallCounter from '../../components/InstallCounter.astro';
 import CertLogoRow from '../../components/CertLogoRow.astro';
@@ -76,12 +78,22 @@ import {
   roofLayoutOutlineLatLng,
   hasSldSvg,
   sldSvgFilename,
+  parseConceptionElectrique,
+  conceptionPourLigne,
+  indexHoteDesCables,
+  chaineLabel,
+  protectionLabel,
+  cableLabel,
   proposalVariants,
+  proposalGammes,
+  gammeEcartLabel,
+  gammeComparatif,
   nextSteps,
   proposalAssumptions,
   monitoringPoints,
   objectionFaq,
   sellerNote,
+  resyncApresEnvoi,
 } from '../../lib/proposition';
 import {
   renderYearCurve,
@@ -121,7 +133,25 @@ import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
 // W342 — « installation la plus proche » : haversine sur un point GPS réel
 // (premier sommet du premier pan de toiture, quand roof_layout est exposé) ou,
 // à défaut, correspondance texte sur le nom de ville dans l'adresse client.
-import { nearestRealisation, nearestRealisationByCityText } from '../../lib/realisations';
+// (fondateur 2026-08-17) + date du relevé de production et appariement DOCUMENTÉ
+// « réalisation → centrale mesurée » (jamais deviné).
+import {
+  nearestRealisation,
+  nearestRealisationByCityText,
+  measuredPlantFor,
+  formatDateFr,
+  MEASURED_FLEET_READ_AT_FR,
+} from '../../lib/realisations';
+// (fondateur 2026-08-17) SOURCE UNIQUE des durées de garantie affichées : le
+// bloc « Pourquoi nous faire confiance » ne code plus aucun chiffre en dur.
+import {
+  PANEL_PERFORMANCE_WARRANTY_YEARS,
+  INVERTER_WARRANTY_YEARS,
+  INSTALL_WARRANTY_YEARS,
+} from '../../lib/warranty';
+// (fondateur 2026-08-17) le badge IEC ne s'affiche que s'il peut pointer vers la
+// fiche du panneau RÉELLEMENT devisé (catégorie « Panneaux photovoltaïques »).
+import { ficheBySlug } from '../../lib/fiches';
 
 const API_BASE = (import.meta.env.PUBLIC_API_BASE as string | undefined) ?? 'https://api.taqinor.ma';
 // ── PV80 — ROUTE CATCH-ALL : /proposition/<token> ET /proposition/<slug>/<token>.
@@ -222,6 +252,12 @@ const heroTtc = ok && heroHasRealPrice ? optionTtc(data!, reco ?? 'sans_batterie
 // WJ114 — note personnelle du vendeur (lecture défensive, backend pas encore
 // livré aujourd'hui) : n'affiche RIEN tant que l'ERP ne fournit pas ce bloc.
 const seller = ok ? sellerNote(data!) : null;
+// COUTURE — devis ENVOYÉ puis RESYNCHRONISÉ (prix catalogue corrigé après
+// coup) : la page rend les lignes en direct, elle peut donc afficher un total
+// différent du PDF déjà reçu par le client. Le backend pose la date dans
+// `resync_apres_envoi`, la page la dit en une ligne discrète près du total.
+// Clé absente (cas normal) → `null` → rien de rendu.
+const resyncDate = ok ? resyncApresEnvoi(data!) : null;
 
 // ── WJ82 — État explicite de l'offre (live/accepted/refused/expired/withdrawn).
 // Calculé UNE fois côté serveur à partir du même statut backend + de la même
@@ -369,7 +405,7 @@ const dailyCurve = dailyCurveFr;
 // (prod_kwh /365), réparties heure par heure (direct → surplus vers batterie →
 // déficit depuis batterie puis réseau). Ne s'affiche QUE pour résidentiel/commercial
 // (jamais agricole/pompage — aucune batterie en pompage, CLAUDE.md — ni industriel
-// par défaut). La capacité par unité vient STRICTEMENT de la réf catalogue Deyness
+// par défaut). La capacité par unité vient STRICTEMENT de la réf catalogue Dyness
 // du devis (5/10 kWh), jamais inventée ; AUCUN prix batterie fabriqué (prix réel du
 // devis quand N correspond à l'offre, sinon « sur étude »). Le recalcul au curseur
 // est 100 % côté client (aucun re-fetch) : les silhouettes + totaux sont sérialisés.
@@ -552,6 +588,27 @@ const nearestInstall = ok
     (q?.client_addr ? nearestRealisationByCityText(q.client_addr) : null)
   : null;
 const nearestInstallHref = nearestInstall ? `/realisations/${nearestInstall.slug}` : '';
+// (fondateur 2026-08-17) production MESURÉE de ce chantier — affichée UNIQUEMENT
+// quand la réalisation déclare son appariement avec la flotte supervisée
+// (measuredPlantFor : aucun appariement heuristique ville/puissance). Le cumul
+// est « depuis la mise en service », jamais converti en production annuelle. Il
+// n'existe AUCUNE estimation publiée par chantier (WB1 les a toutes retirées) :
+// la comparaison mesuré/estimé se réduit donc au chiffre mesuré, ou à rien.
+const nearestMeasured = measuredPlantFor(nearestInstall);
+const nearestMeasuredMwh = nearestMeasured ? formatNumber(nearestMeasured.lifetimeMWh, 2) : '';
+const nearestMeasuredDate = nearestMeasured ? formatDateFr(nearestMeasured.readAt) : '';
+const nearestMeasuredFr = nearestMeasured
+  ? `Production mesurée : ${nearestMeasuredMwh} MWh depuis la mise en service`
+    + (nearestMeasuredDate ? ` (relevé au ${nearestMeasuredDate})` : '')
+  : '';
+const nearestMeasuredEn = nearestMeasured
+  ? `Measured output: ${nearestMeasuredMwh} MWh since commissioning`
+    + (nearestMeasuredDate ? ` (as measured on ${nearestMeasuredDate})` : '')
+  : '';
+const nearestMeasuredAr = nearestMeasured
+  ? `إنتاج مقيس: ${nearestMeasuredMwh} ميغاواط-ساعة منذ التشغيل`
+    + (nearestMeasuredDate ? ` (قراءة بتاريخ ${nearestMeasuredDate})` : '')
+  : '';
 
 // ── WJ26 — « Tout est expliqué » : légende par pan + visite guidée en 4 étapes.
 // Chaque chiffre vient du layout serveur ou du payload quote (les fonctions
@@ -572,22 +629,108 @@ const equipmentItems = ok ? optionItems(data!, equipmentOption) : [];
 // WJ131 — chaque ligne emporte le slug de SA fiche technique, calculé UNE fois
 // ici (fonction pure, testée) : le tableau se contente d'afficher le lien quand
 // il existe. `null` = ligne sans lien, l'affichage ne change pas d'un pixel.
-const equipmentGroups = groupEquipment(equipmentItems).map((group) => ({
+// (fondateur 2026-08-18) « DANS VOTRE INSTALLATION » — le détail électrique du
+// devis, exposé SANS PRIX. Le backend n'envoie ce bloc que lorsque l'étude
+// électrique existe ; sinon `null` et rien ne change sur la page. Chaque ligne
+// d'équipement reçoit la PART qui la concerne (protections DC / protections AC /
+// sections de câble / chaînage), ou `null` — et un `null` ne rend aucun
+// dépliant : jamais un volet vide sous une ligne.
+const conception = ok ? parseConceptionElectrique(data!) : null;
+// Deux corrections de CATALOGUE RÉEL (le devis résidentiel type ne porte comme
+// postes génériques que « Tableau De Protection AC/DC », « Accessoires »,
+// « Socles », « Structures acier/aluminium ») :
+//  · la ligne « AC/DC » tombe sur la fiche protection-dc, donc le dépliant
+//    n'aurait montré que le côté continu — la moitié AC (disjoncteur, parafoudre,
+//    différentiel, terre, liaison équipotentielle) disparaissait sous une ligne
+//    qui s'appelle pourtant « AC/DC » : `estProtectionAcDc` la rend entière ;
+//  · aucune ligne « câble » n'est facturée, donc les sections et longueurs
+//    calculées par l'étude n'apparaissaient nulle part : `indexHoteDesCables`
+//    les accroche à UNE seule ligne de protection (jamais deux), sous un
+//    intertitre « Câblage ». Dès qu'un devis porte une vraie ligne câblage, il
+//    rend -1 et rien ne change.
+const equipmentGrouped = groupEquipment(equipmentItems);
+const equipmentRendered = equipmentGrouped.flatMap((group) => group.lines);
+const equipmentSlugs = equipmentRendered.map((it) => ficheSlugPourLigne(it.designation, it.marque));
+const cableHostIndex = indexHoteDesCables(equipmentSlugs);
+// La ligne hôte est désignée PAR IDENTITÉ (jamais par un index recalculé) :
+// `null` quand il n'y en a pas, et alors aucune ligne ne se compare vraie.
+const cableHostLine = cableHostIndex >= 0 ? equipmentRendered[cableHostIndex] : null;
+const equipmentGroups = equipmentGrouped.map((group) => ({
   id: group.id,
-  lines: group.lines.map((it) => ({
-    ...it,
-    ficheSlug: ficheSlugPourLigne(it.designation, it.marque),
-  })),
+  lines: group.lines.map((it) => {
+    const ficheSlug = ficheSlugPourLigne(it.designation, it.marque);
+    return {
+      ...it,
+      ficheSlug,
+      detail: conceptionPourLigne(conception, ficheSlug, {
+        designation: it.designation,
+        rattacherCables: it === cableHostLine,
+      }),
+    };
+  }),
 }));
 const equipmentExtra = ok && twoOptions && equipmentOption === 'sans_batterie'
   ? equipmentDelta(equipmentItems, optionItems(data!, 'avec_batterie'))
   : [];
+
+// ── (fondateur 2026-08-17) BADGES DU BLOC CONFIANCE ──────────────────────────
+// RÈGLE : un badge n'existe QUE s'il est cliquable vers une page réelle et bien
+// remplie. Concrètement :
+//  · garanties panneaux/onduleur → /garanties (tableau de garanties complet,
+//    exclusions, marche à suivre, FAQ assurance) ;
+//  · IEC 61215 / 61730 → la fiche du panneau RÉELLEMENT devisé
+//    (/produits/<slug>), qui porte ces certifications dans `fiches.ts` — aucun
+//    panneau apparié (marque absente/inconnue) ⇒ badge OMIS, jamais un lien
+//    vers la fiche d'une autre marque ;
+//  · « Loi 82-21 » → /loi-82-21 (page dédiée FR/EN/AR + guide, dans la nav).
+const panelFicheSlug = equipmentGroups
+  .flatMap((group) => group.lines)
+  .map((line) => line.ficheSlug)
+  .find((slug) => !!slug && ficheBySlug(slug)?.categorie === 'Panneaux photovoltaïques') ?? null;
+const certKeys = [
+  ...(panelFicheSlug ? ['iec' as const] : []),
+  'loi8221' as const,
+  'panneaux' as const,
+  'onduleur' as const,
+];
+const certHrefs = {
+  ...(panelFicheSlug ? { iec: `/produits/${panelFicheSlug}` } : {}),
+  loi8221: '/loi-82-21',
+  panneaux: '/garanties',
+  onduleur: '/garanties',
+};
+
+/**
+ * « N ans » en arabe, avec le DUEL. L'arabe ne pluralise pas comme le français :
+ * 1 → سنة واحدة, 2 → سنتان (duel, pas « 2 سنة »), 3 à 10 → N سنوات (pluriel de
+ * petit nombre), au-delà → N سنة. La durée de pose était écrite « سنتان » EN
+ * DUR : passer INSTALL_WARRANTY_YEARS à 3 dans warranty.ts affichait « 3 ans /
+ * 3 years » en FR/EN et laissait le client arabophone lire « deux ans » —
+ * exactement la divergence que warranty.ts existe pour empêcher. Les trois
+ * durées du bloc confiance passent donc par ici.
+ */
+function anneesAr(n: number): string {
+  if (n === 1) return 'سنة واحدة';
+  if (n === 2) return 'سنتان';
+  if (n >= 3 && n <= 10) return `${n} سنوات`;
+  return `${n} سنة`;
+}
 
 // ── WJ32 — Complétude du contenu : variantes, « Et après ? », « Nos
 // hypothèses », accompagnement, FAQ objections. Chaque bloc dégrade proprement
 // (masqué) quand sa donnée backend manque. PV80 — le bloc financement backend
 // (backendFinancing) n'est plus rendu : aucune mention de crédit sur la page.
 const variants = ok ? proposalVariants(data!) : [];
+// ── GAMMES (fondateur 2026-08-18) — choix de gamme AVANT/AVEC la signature.
+// `null` en mode d'envoi « seule » (le backend n'envoie alors RIEN de l'autre
+// gamme) : la page est byte-identique à aujourd'hui. En mode « les_deux » :
+// deux cartes (nom, TTC, badge « Recommandé », écart en MAD ABSOLUS) + un
+// tableau comparatif FACTUEL des seules lignes qui diffèrent. Choisir l'autre
+// gamme ouvre SON lien (document complet et PDF de CETTE gamme) : la signature
+// porte donc toujours sur le devis réellement choisi.
+const gammes = ok ? proposalGammes(data!) : null;
+const gammeEcart = gammes ? gammeEcartLabel(gammes.soeur.ecart_ttc) : null;
+const gammeRows = gammeComparatif(gammes);
 const steps = nextSteps();
 const assumptions = ok ? proposalAssumptions(data!) : [];
 const monitoring = monitoringPoints();
@@ -1130,9 +1273,10 @@ const signConfig = ok
                                 data-ar={`الضمان: ${it.garantie}`}>Garantie : {it.garantie}</p>
                             ) : null}
                             {/* WJ131 — « Fiche technique ↗ » : le client peut enfin
-                                VÉRIFIER chaque ligne qu'il paie, y compris les deux
-                                postes génériques (tableau de protection, accessoires)
-                                dont la fiche est EXPLICATIVE. Discret par construction :
+                                VÉRIFIER chaque ligne qu'il paie, y compris les
+                                postes génériques (protection DC, protection AC,
+                                câblage, accessoires de pose, structure) dont la
+                                fiche est EXPLICATIVE. Discret par construction :
                                 pas de lien du tout quand l'appariement n'est pas
                                 certain. La flèche vit HORS du span traduit — sinon la
                                 bascule EN/AR (textContent) l'effacerait. */}
@@ -1146,6 +1290,51 @@ const signConfig = ok
                                 <span data-i18n data-fr="Fiche technique" data-en="Datasheet" data-ar="الورقة التقنية">Fiche technique</span>
                                 <span aria-hidden="true">&#8599;</span>
                               </a>
+                            ) : null}
+                            {/* (fondateur 2026-08-18) « DANS VOTRE INSTALLATION » —
+                                le détail électrique de CETTE ligne, sans prix :
+                                les organes et leurs calibres sous la protection,
+                                les sections et longueurs sous le câblage, le
+                                chaînage sous les panneaux et l'onduleur. Replié
+                                par défaut (<details> natif, aucun JS) et
+                                ENTIÈREMENT absent quand l'étude électrique
+                                n'existe pas ou ne dit rien de cette ligne —
+                                jamais un volet vide, jamais une valeur inventée. */}
+                            {it.detail ? (
+                              <details class="conception-fold mt-1.5">
+                                <summary class="cursor-pointer list-none text-xs text-lune-faint transition-colors marker:content-none hover:text-lune-soft">
+                                  <span class="me-1 text-brass-300" aria-hidden="true">+</span>
+                                  <span data-i18n data-fr="Dans votre installation" data-en="In your installation" data-ar="في تركيبكم">Dans votre installation</span>
+                                </summary>
+                                <ul class="mt-1.5 space-y-1 border-s border-white/10 ps-3">
+                                  {it.detail.chaines.map((c) => (
+                                    <li class="text-xs text-lune-soft" data-i18n
+                                      data-fr={chaineLabel(c, 'fr')}
+                                      data-en={chaineLabel(c, 'en')}
+                                      data-ar={chaineLabel(c, 'ar')}>{chaineLabel(c, 'fr')}</li>
+                                  ))}
+                                  {it.detail.protections.map((o) => (
+                                    <li class="flex items-baseline justify-between gap-3 text-xs text-lune-soft">
+                                      <span class="min-w-0">{protectionLabel(o)}</span>
+                                      {o.quantite !== undefined ? (
+                                        <span class="fig shrink-0 text-lune-faint" dir="ltr">×{formatNumber(o.quantite)}</span>
+                                      ) : null}
+                                    </li>
+                                  ))}
+                                  {/* Câbles RATTACHÉS (le devis ne facture aucune
+                                      ligne « câblage ») : ils s'ouvrent par un
+                                      intertitre, sinon on lirait une section de
+                                      6 mm² comme un organe du coffret. Sous une
+                                      vraie ligne câblage, aucun intertitre. */}
+                                  {it.detail.cablesRattaches ? (
+                                    <li class="pt-1 text-[0.65rem] uppercase tracking-[0.12em] text-lune-faint" data-i18n
+                                      data-fr="Câblage" data-en="Cabling" data-ar="الكابلات">Câblage</li>
+                                  ) : null}
+                                  {it.detail.cables.map((c) => (
+                                    <li class="text-xs text-lune-soft">{cableLabel(c)}</li>
+                                  ))}
+                                </ul>
+                              </details>
                             ) : null}
                           </div>
                           <span class="fig shrink-0 text-sm text-lune-soft" dir="ltr">×{formatNumber(it.quantite)}</span>
@@ -1427,7 +1616,7 @@ const signConfig = ok
             {/* Sélecteur d'échelle — masqué quand une seule vue est rendue.
                 Fondateur 2026-08-15 : la JOURNÉE d'abord (onglet ET défaut —
                 availableViews la classe en tête), l'année en second.
-                Ce commentaire vit AU-DESSUS de l'expression : un `{/* … */}`
+                Ce commentaire vit AU-DESSUS de l'expression : un commentaire JSX
                 placé en PREMIER ENFANT d'un `&& (` casse le build Astro
                 (« Expected ")" but found … ») — il l'a réellement cassé ici. */}
             {prodLayers.showViewTabs && (
@@ -1635,7 +1824,7 @@ const signConfig = ok
                    showVariantTabs — quel que soit le dessin affiché. Changer
                    d'onglet pendant que la batterie est active recalcule la
                    silhouette de consommation ET rejoue le simulateur (script
-                   client), jamais un chiffre inventé ici. -->
+                   client), jamais un chiffre inventé ici. */}
             {curveVariantToggle && (
               <div data-prod-variant-control class="mt-3 flex flex-wrap items-center gap-2" role="group" aria-label="Variante du profil de consommation" hidden={!prodLayers.showVariantTabs}>
                 <button type="button" id="curve-variant-normal" data-curve-variant-btn="normal" aria-pressed="true"
@@ -1904,8 +2093,22 @@ const signConfig = ok
           réelles marqués `pending real content` tant que Reda ne les fournit pas.
           Les garanties et normes ci-dessous sont des FAITS techniques vérifiables.
           WJ35 — CertLogoRow reprend ces mêmes faits en bandeau ; le compteur
-          d'installations et la note Google sont désormais des composants premium
-          RÉUTILISABLES (InstallCounter / StarRating), avec la même intégrité. */}
+          d'installations est un composant premium RÉUTILISABLE (InstallCounter),
+          avec la même intégrité.
+          (fondateur 2026-08-17) REFONTE v2 DU BLOC :
+           1. les durées de garantie viennent de `lib/warranty.ts` (source unique
+              partagée avec le PDF, cf. residential/theme.py WARRANTIES) et la
+              pose est affichée AVEC sa durée, comme sur le PDF ;
+           2. une phrase de réassurance dit que les garanties fabricant sont
+              attachées au MATÉRIEL (transférables, valables quel que soit
+              l'installateur) ;
+           3. le cumul mesuré porte sa DATE DE RELEVÉ (donnée de realisations.ts,
+              omise si aucune date documentée) ;
+           4. le chantier le plus proche affiche sa production MESURÉE quand il
+              est apparié à la flotte supervisée ;
+           5. les badges ne survivent que cliquables (voir `certKeys`/`certHrefs`) ;
+           6. INTERDITS ICI : avis/étoiles (<StarRating/> démonté), invitation à
+              visiter un chantier, assurance, nombre d'installations. */}
       <section id="confiance" class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
         <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Pourquoi nous faire confiance" data-en="Why trust us" data-ar="لماذا تثقون بنا">Pourquoi nous faire confiance</p>
         {/* ── PV81 · LES GARANTIES RACONTENT UNE SEULE HISTOIRE ────────────────
@@ -1914,24 +2117,58 @@ const signConfig = ok
             garantie), « 30 ans panneaux / 10 ans onduleur » juste en dessous, et
             « 25 ans » du cumul d'économies plus haut. Le chiffre orphelin part ;
             restent les DEUX garanties constructeur réelles + l'engagement de
-            pose. Les certifications (IEC, loi 82-21) ne sont plus répétées ici :
-            <CertLogoRow/> juste en dessous les porte déjà, à l'identique. */}
-        <p class="cine-card mt-5 flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-xl p-5 text-lune-soft">
-          <span class="fig text-lune" dir="ltr">30 ans</span>
-          <span data-i18n data-fr="de performance panneaux" data-en="of panel performance" data-ar="أداء الألواح">de performance panneaux</span>
-          <span class="text-lune-faint" aria-hidden="true">·</span>
-          <span class="fig text-lune" dir="ltr">10 ans</span>
-          <span data-i18n data-fr="onduleur" data-en="inverter" data-ar="العاكس">onduleur</span>
-          <span class="text-lune-faint" aria-hidden="true">·</span>
-          <span class="text-lune" data-i18n data-fr="pose garantie Taqinor" data-en="installation guaranteed by Taqinor" data-ar="التركيب مضمون من طرف تاقينور">pose garantie Taqinor</span>
-        </p>
+            pose, désormais chiffré lui aussi (2 ans, comme le PDF). Les
+            certifications ne sont pas répétées ici : elles vivent dans le
+            bandeau de badges juste en dessous (IEC → la fiche du panneau
+            devisé, « Loi 82-21 » → /loi-82-21, page dédiée FR/EN/AR qui
+            existe bel et bien — voir `certKeys`/`certHrefs` plus haut). */}
+        <div class="cine-card mt-5 rounded-xl p-5">
+          <p class="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-lune-soft">
+            <span class="fig text-lune" dir="ltr" data-i18n
+              data-fr={`${PANEL_PERFORMANCE_WARRANTY_YEARS} ans`}
+              data-en={`${PANEL_PERFORMANCE_WARRANTY_YEARS} years`}
+              data-ar={anneesAr(PANEL_PERFORMANCE_WARRANTY_YEARS)}>{PANEL_PERFORMANCE_WARRANTY_YEARS} ans</span>
+            <span data-i18n data-fr="de performance panneaux" data-en="of panel performance" data-ar="أداء الألواح">de performance panneaux</span>
+            <span class="text-lune-faint" aria-hidden="true">·</span>
+            <span class="fig text-lune" dir="ltr" data-i18n
+              data-fr={`${INVERTER_WARRANTY_YEARS} ans`}
+              data-en={`${INVERTER_WARRANTY_YEARS} years`}
+              data-ar={anneesAr(INVERTER_WARRANTY_YEARS)}>{INVERTER_WARRANTY_YEARS} ans</span>
+            <span data-i18n data-fr="onduleur" data-en="inverter" data-ar="العاكس">onduleur</span>
+            <span class="text-lune-faint" aria-hidden="true">·</span>
+            {/* La pose porte désormais SA durée, exactement comme le PDF
+                (theme.WARRANTIES : « 2 ans — Installation »). */}
+            <span class="fig text-lune" dir="ltr" data-i18n
+              data-fr={`${INSTALL_WARRANTY_YEARS} ans`}
+              data-en={`${INSTALL_WARRANTY_YEARS} years`}
+              data-ar={anneesAr(INSTALL_WARRANTY_YEARS)}>{INSTALL_WARRANTY_YEARS} ans</span>
+            <span class="text-lune" data-i18n data-fr="de pose Taqinor" data-en="of Taqinor installation work" data-ar="على تركيب تاقينور">de pose Taqinor</span>
+          </p>
+          {/* (fondateur 2026-08-17) réassurance : ce que vaut une garantie
+              fabricant si l'installateur venait à changer. Fait vérifiable — la
+              garantie porte sur le MATÉRIEL, pas sur le poseur. */}
+          <p class="mt-3 text-sm text-lune-soft" data-i18n
+            data-fr="Les garanties fabricant sont attachées au matériel : elles suivent votre installation, restent transférables avec le bien et demeurent valables quel que soit l’installateur."
+            data-en="Manufacturer warranties are attached to the equipment: they follow your installation, transfer with the property and remain valid whoever the installer is."
+            data-ar="ضمانات المصنّع مرتبطة بالمعدات: فهي ترافق تركيبكم، وتنتقل مع الملك، وتبقى سارية مهما كان المُركِّب.">
+            Les garanties fabricant sont attachées au matériel : elles suivent votre installation,
+            restent transférables avec le bien et demeurent valables quel que soit l’installateur.
+          </p>
+        </div>
 
-        <!-- WJ35 — compteur d'installations réel + note Google (scaffold tant qu'absente). -->
+        <!-- WJ35 — compteur de production réellement mesurée (aucune note/avis
+             ici : décision fondateur 2026-08-17). La DATE DE RELEVÉ accompagne le
+             cumul — et n'est rendue que si realisations.ts en documente une. -->
         <div class="mt-4 cine-card rounded-xl p-5 sm:p-6">
-          <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <InstallCounter />
-            <StarRating />
-          </div>
+          <InstallCounter />
+          {MEASURED_FLEET_READ_AT_FR && (
+            <p class="mt-2 text-xs text-lune-faint" data-i18n
+              data-fr={`relevé au ${MEASURED_FLEET_READ_AT_FR}`}
+              data-en={`as measured on ${MEASURED_FLEET_READ_AT_FR}`}
+              data-ar={`قراءة بتاريخ ${MEASURED_FLEET_READ_AT_FR}`}>
+              relevé au {MEASURED_FLEET_READ_AT_FR}
+            </p>
+          )}
         </div>
 
         {/* W342 — « L'installation la plus proche de chez vous » : GPS réel du
@@ -1954,6 +2191,17 @@ const signConfig = ok
                 {nearestInstall.ville} — {nearestInstall.kwc} — installation réelle Taqinor
               </span>
             </p>
+            {/* (fondateur 2026-08-17) production RÉELLEMENT MESURÉE de ce
+                chantier — rendue seulement quand la réalisation est appariée à
+                une centrale supervisée (cumul depuis la mise en service, jamais
+                converti en production annuelle). Aucune estimation par chantier
+                n'existe dans les données (WB1) : rien ne vient la compléter. */}
+            {nearestMeasured && (
+              <p class="mt-2 text-sm text-lune-soft" data-i18n
+                data-fr={nearestMeasuredFr} data-en={nearestMeasuredEn} data-ar={nearestMeasuredAr}>
+                {nearestMeasuredFr}
+              </p>
+            )}
             <a href={nearestInstallHref} class="mt-2 inline-block text-sm text-brass-300 underline-offset-2 hover:underline" data-i18n
               data-fr="Voir cette réalisation" data-en="See this project" data-ar="مشاهدة هذا الإنجاز">
               Voir cette réalisation
@@ -1961,9 +2209,16 @@ const signConfig = ok
           </div>
         )}
 
-        <!-- WJ35 — bandeau certifications/garanties (texte, sobre — aucun logo fabriqué). -->
+        <!-- WJ35 — bandeau certifications/garanties (texte, sobre — aucun logo
+             fabriqué). (fondateur 2026-08-17) chaque badge rendu ici est un LIEN
+             vers une page réelle : garanties panneaux/onduleur → /garanties,
+             IEC → la fiche du panneau réellement devisé, « Loi 82-21 » →
+             /loi-82-21 (page dédiée FR/EN/AR + guide, dans la nav). Le badge
+             IEC est le seul OMIS quand sa cible manque — aucun panneau apparié,
+             donc aucun lien honnête. Ne retirez pas 'loi8221' de `certKeys` :
+             sa page existe et le fondateur a demandé ce badge. -->
         <div class="mt-4">
-          <CertLogoRow />
+          <CertLogoRow keys={certKeys} hrefs={certHrefs} />
         </div>
 
         {/* WJ35 — avis clients réels. PV81 — <TestimonialCarousel/> est no-op
@@ -2135,11 +2390,131 @@ const signConfig = ok
             );
           })}
         </div>
+        {/* COUTURE — le devis avait été ENVOYÉ, puis resynchronisé (prix
+            catalogue corrigé côté Stock). Les montants ci-dessus sont rendus
+            en direct depuis les lignes : ils peuvent donc différer du PDF déjà
+            reçu par le client. On le dit ici, sobrement, plutôt que de laisser
+            l'écart se découvrir au moment de signer. Sans la clé backend
+            `resync_apres_envoi` — le cas normal — rien n'est rendu. */}
+        {resyncDate && (
+          <p class="mt-4 text-xs text-lune-faint" data-i18n
+            data-fr={`Document mis à jour le ${resyncDate}`}
+            data-en={`Document updated on ${resyncDate}`}
+            data-ar={`تم تحديث الوثيقة بتاريخ ${resyncDate}`}>
+            Document mis à jour le {resyncDate}
+          </p>
+        )}
       </section>
+
+      <!-- ── GAMMES · CHOIX DE GAMME (fondateur 2026-08-18) ──────────────────
+           Rendu UNIQUEMENT en mode d'envoi « les_deux » (gammes !== null) : en
+           mode « seule », le backend n'envoie rien de l'autre gamme et ce bloc
+           n'existe pas. Chaque gamme est décrite par ses FAITS (sa composition
+           réelle, ci-dessous) — jamais un mot qui dénigre la moins chère. Le
+           prix de l'autre gamme est donné en MAD ABSOLUS (« + 8 500 MAD »).
+           Choisir une gamme ouvre SON lien : le client lit alors le document
+           COMPLET de la gamme qu'il signera (un PDF = une gamme). -->
+      {gammes && (
+        <section id="gammes" class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
+          <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Vos deux gammes" data-en="Your two ranges" data-ar="نطاقاكم">Vos deux gammes</p>
+          <p class="mt-3 text-sm text-lune-soft" data-i18n
+            data-fr="Deux compositions, deux prix. Choisissez celle qui vous convient : votre signature portera sur la gamme choisie."
+            data-en="Two configurations, two prices. Pick the one that suits you: your signature will apply to the range you choose."
+            data-ar="تكوينان وثمنان. اختاروا ما يناسبكم: سيسري توقيعكم على النطاق الذي تختارونه.">
+            Deux compositions, deux prix. Choisissez celle qui vous convient : votre signature portera sur la gamme choisie.
+          </p>
+          <div class="mt-5 grid gap-4 sm:grid-cols-2">
+            <article
+              class="cine-card relative flex flex-col rounded-2xl p-6"
+              data-gamme-carte="courante"
+              aria-current="true"
+              style={gammes.courante.recommandee ? 'border-color: rgb(232 181 74 / 0.45)' : undefined}
+            >
+              {gammes.courante.recommandee && (
+                <span class="absolute -top-3 left-6 rounded-full bg-brass-400 px-3 py-1 text-xs font-bold text-nuit" data-i18n data-fr="Recommandé" data-en="Recommended" data-ar="موصى به">
+                  Recommandé
+                </span>
+              )}
+              <h3 class="display text-xl text-lune">{gammes.courante.nom}</h3>
+              {typeof gammes.courante.total_ttc === 'number' && (
+                <p class="fig fig-md lum mt-2" dir="ltr">{formatMAD(gammes.courante.total_ttc)}</p>
+              )}
+              <p class="mt-1 text-xs text-lune-faint" data-i18n data-fr="TTC, clé en main" data-en="incl. tax, turnkey" data-ar="شامل الضريبة، تسليم مفتاح في اليد">TTC, clé en main</p>
+              <p class="mt-4 text-sm text-brass-300" data-i18n
+                data-fr="Gamme affichée ci-dessus — c’est ce document que vous signez."
+                data-en="The range shown above — this is the document you are signing."
+                data-ar="النطاق المعروض أعلاه — هذه هي الوثيقة التي توقّعونها.">
+                Gamme affichée ci-dessus — c’est ce document que vous signez.
+              </p>
+            </article>
+
+            <article
+              class="cine-card relative flex flex-col rounded-2xl p-6"
+              data-gamme-carte="soeur"
+              style={gammes.soeur.recommandee ? 'border-color: rgb(232 181 74 / 0.45)' : undefined}
+            >
+              {gammes.soeur.recommandee && (
+                <span class="absolute -top-3 left-6 rounded-full bg-brass-400 px-3 py-1 text-xs font-bold text-nuit" data-i18n data-fr="Recommandé" data-en="Recommended" data-ar="موصى به">
+                  Recommandé
+                </span>
+              )}
+              <h3 class="display text-xl text-lune">{gammes.soeur.nom}</h3>
+              {typeof gammes.soeur.total_ttc === 'number' && (
+                <p class="fig fig-md lum mt-2" dir="ltr">{formatMAD(gammes.soeur.total_ttc)}</p>
+              )}
+              <p class="mt-1 text-xs text-lune-faint" data-i18n data-fr="TTC, clé en main" data-en="incl. tax, turnkey" data-ar="شامل الضريبة، تسليم مفتاح في اليد">TTC, clé en main</p>
+              {gammeEcart && (
+                <p class="mt-2 text-sm text-lune-soft" dir="ltr" data-gamme-ecart>{gammeEcart}</p>
+              )}
+              <a
+                class="mt-4 inline-flex items-center justify-center rounded-xl border border-brass-400/60 px-4 py-2 text-sm font-semibold text-brass-300"
+                href={gammes.soeur.proposition_path}
+                data-gamme-choisir
+                data-i18n
+                data-fr="Voir et choisir cette gamme"
+                data-en="View and choose this range"
+                data-ar="اطّلعوا على هذا النطاق واختاروه"
+              >
+                Voir et choisir cette gamme
+              </a>
+            </article>
+          </div>
+
+          {gammeRows.length > 0 && (
+            <div class="mt-6 overflow-x-auto" style="overscroll-behavior-x: contain;">
+              <p class="tech-label text-lune-faint" data-i18n data-fr="Ce qui change entre les deux" data-en="What differs between the two" data-ar="ما يختلف بين الاثنين">Ce qui change entre les deux</p>
+              <table class="mt-3 w-full min-w-[420px] text-sm" data-gamme-comparatif>
+                <thead>
+                  <tr class="text-lune-faint">
+                    <th class="py-2 text-start font-normal" data-i18n data-fr="Équipement" data-en="Equipment" data-ar="التجهيزات">Équipement</th>
+                    <th class="py-2 text-end font-normal">{gammes.courante.nom}</th>
+                    <th class="py-2 text-end font-normal">{gammes.soeur.nom}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {gammeRows.map((r) => (
+                    <tr class="border-t border-white/10">
+                      <td class="py-2 pe-3 text-lune-soft">{r.designation}</td>
+                      <td class="py-2 text-end text-lune" dir="ltr">
+                        {typeof r.quantite === 'number' ? formatNumber(r.quantite, 2) : '—'}
+                      </td>
+                      <td class="py-2 text-end text-lune" dir="ltr">
+                        {typeof r.quantite_soeur === 'number' ? formatNumber(r.quantite_soeur, 2) : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
 
       <!-- ── WJ32 · VARIANTES CÔTE-À-CÔTE (« autres tailles ») ───────────────
            Résumés minimaux des devis frères/sœurs actifs (QJ15). Masqué si le
-           devis est isolé (variants=[]) — jamais un chiffre calculé ici. -->
+           devis est isolé (variants=[]) — jamais un chiffre calculé ici.
+           GAMMES — les sœurs porteuses d'une gamme sont exclues côté backend :
+           cette bande ne doublonne donc jamais le bloc « Vos deux gammes ». -->
       {variants.length > 0 && (
         <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
           <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Autres tailles proposées" data-en="Other sizes available" data-ar="أحجام أخرى مقترحة">Autres tailles proposées</p>
@@ -2527,6 +2902,21 @@ const signConfig = ok
                 Réponse WhatsApp sous 1 h, 7j/7
               </span>
             </p>
+
+            {/* GAMMES — la gamme signée est NOMMÉE au moment de la signature, et
+                l'autre reste accessible d'un clic tant que rien n'est signé.
+                L'axe « avec / sans batterie » ci-dessous est INTERNE à cette
+                gamme : les deux choix ne se mélangent jamais. */}
+            {gammes && (
+              <p class="mt-6 text-sm text-lune-soft" data-gamme-signature>
+                <span data-i18n data-fr="Vous signez la gamme" data-en="You are signing the range" data-ar="أنتم توقّعون النطاق">Vous signez la gamme</span>
+                <span class="text-lune"> {gammes.courante.nom}</span>
+                <a class="ms-2 text-brass-300 underline" href={gammes.soeur.proposition_path} data-gamme-basculer data-i18n
+                  data-fr="Choisir l’autre gamme"
+                  data-en="Choose the other range"
+                  data-ar="اختيار النطاق الآخر">Choisir l’autre gamme</a>
+              </p>
+            )}
 
             {twoOptions && (
               <fieldset class="mt-6">

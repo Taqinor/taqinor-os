@@ -48,6 +48,20 @@ export type CaptureOptions = InitOptions & {
    *  est refusée/indisponible (`GeolocationPositionError`). Localisé par la page
    *  (pas dans `CaptureStrings`, hors périmètre mapDraw.ts) ; absent → replis FR. */
   geolocateErrorMsg?: string;
+  /**
+   * MODE DE SAISIE DU TOIT, choisi EXPLICITEMENT par le visiteur sur la page
+   * (« pointer » vs « dessiner »). Lu à CHAQUE clic (fonction, pas valeur : le
+   * visiteur peut changer d'avis en cours de route).
+   *
+   * Le flux historique était IMPLICITE — un clic simple posait le repère, et il
+   * fallait DEVINER qu'un double-clic démarrait un contour. En mode `'draw'`, le
+   * PREMIER clic ouvre directement le contour ; en mode `'point'`, la carte
+   * atterrit serrée sur le repère posé pour que la page puisse demander
+   * « C'est bien votre toit ? » sur une image lisible.
+   *
+   * Absent (ou `undefined` renvoyé) → comportement historique à l'octet près.
+   */
+  roofInputMode?: () => 'point' | 'draw' | undefined;
 };
 
 /**
@@ -141,12 +155,26 @@ export function bootCaptureOnly(opts: CaptureOptions): void {
     showUserLocation: true,
   });
   map.addControl(geolocate, controlCorner);
+  /**
+   * ATTERRISSAGE sur un point : recentre la carte serrée dessus. Un seul et même
+   * comportement pour la géolocalisation, l'hydratation d'un repère existant
+   * (W113/WJ61) et la confirmation « pointer » — jamais trois variantes.
+   * `minZoom` est un PLANCHER : on ne dézoome jamais un visiteur déjà plus près.
+   */
+  function landOn(lngLat: LngLat, minZoom = 19) {
+    const target = {
+      center: lngLat,
+      zoom: Math.max(map.getZoom() || 0, minZoom),
+      pitch: 0,
+    } as const;
+    if (opts.reducedMotion) map.jumpTo(target);
+    else map.flyTo({ ...target, essential: true });
+  }
+
   geolocate.on('geolocate', (e: { coords?: { longitude: number; latitude: number } }) => {
     const c = e?.coords;
     if (!c) return;
-    const target = { center: [c.longitude, c.latitude] as LngLat, zoom: 19, pitch: 0 } as const;
-    if (opts.reducedMotion) map.jumpTo(target);
-    else map.flyTo({ ...target, essential: true });
+    landOn([c.longitude, c.latitude]);
   });
   // WJ62 — un refus/échec de géolocalisation (permission refusée, indisponible,
   // délai dépassé) était un silence total : le bandeau de statut annonce
@@ -259,6 +287,12 @@ export function bootCaptureOnly(opts: CaptureOptions): void {
     if (undoPointBtn) undoPointBtn.hidden = true;
     if (finishBtn) finishBtn.disabled = true;
     setStatus(t.pinPlaced);
+    // Choix EXPLICITE « pointer » : la carte atterrit serrée sur le repère. C'est
+    // la moitié « preuve visuelle » de la confirmation que la page affiche
+    // ensuite — sans elle, le visiteur valide « oui c'est mon toit » sur une vue
+    // large où il ne distingue rien. Flux « dessiner » et flux historique
+    // (option absente) : aucun déplacement de caméra, comme avant.
+    if (opts.roofInputMode?.() === 'point') landOn(v);
     notify();
     // W2 — lit l'adresse DEPUIS la carte : remplit le champ adresse + capture le GPS.
     refreshAddressFromPin();
@@ -279,6 +313,23 @@ export function bootCaptureOnly(opts: CaptureOptions): void {
       refreshAddressFromPin();
       return;
     }
+    // Choix EXPLICITE « dessiner » : le PREMIER clic ouvre le contour. Le
+    // double-clic restait la seule porte d'entrée du tracé et rien ne
+    // l'annonçait — une interaction qui n'existe même pas au doigt sur mobile.
+    if (!closed && opts.roofInputMode?.() === 'draw') {
+      pin = null;
+      redrawPin();
+      // `addVertex` pose lui-même le bon message (« Coin N placé… », puis
+      // « Double-cliquez pour fermer » dès 3 sommets) : on ne l'écrase pas avec
+      // une consigne générique, il est plus précis.
+      addVertex(lngLat);
+      if (finishBtn) finishBtn.disabled = vertices.length < 3;
+      if (undoPointBtn) undoPointBtn.hidden = vertices.length < 1;
+      updateAreaReadout();
+      notify();
+      refreshAddressFromPin();
+      return;
+    }
     setPin(lngLat);
   });
 
@@ -286,6 +337,18 @@ export function bootCaptureOnly(opts: CaptureOptions): void {
   // convertit le pin en 1ᵉʳ sommet ; les suivants ferment le contour (≥3 sommets).
   map.on('dblclick', (e) => {
     e.preventDefault();
+    // …mais UNIQUEMENT dans le geste « dessiner ». En mode « pointer », la page
+    // masque « Terminer le tracé » (syncRoofModeCards : finishBtn.hidden =
+    // roofInputMode !== 'draw') : un double-clic ouvrait donc un contour que le
+    // visiteur n'avait pas choisi, SANS le bouton pour en sortir — et tant que
+    // ce contour a moins de 3 sommets, currentPin() rend null, ce qui faisait
+    // aussi disparaître la confirmation « C'est bien votre toit ? ». Ici, un
+    // double-clic n'est qu'un repère de plus : les deux clics qui le composent
+    // sont déjà passés par le handler `click` ci-dessus, qui a posé le repère.
+    // Le flux HISTORIQUE (pas de cartes de geste, donc `roofInputMode` absent)
+    // garde le double-clic traceur, inchangé.
+    const inputMode = opts.roofInputMode?.();
+    if (inputMode && inputMode !== 'draw') return;
     if (closed) return;
     if (vertices.length >= 3 && isSimplePolygon(vertices)) {
       closed = true;
@@ -377,11 +440,7 @@ export function bootCaptureOnly(opts: CaptureOptions): void {
       return;
     }
     const p = currentPin();
-    if (p) {
-      const target = { center: [p.lng, p.lat] as LngLat, zoom: 19, pitch: 0 } as const;
-      if (opts.reducedMotion) map.jumpTo(target);
-      else map.flyTo({ ...target, essential: true });
-    }
+    if (p) landOn([p.lng, p.lat]);
     updateAreaReadout();
     notify();
   }

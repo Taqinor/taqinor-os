@@ -5,7 +5,7 @@
 // résolution, jamais un blocage/snap de la saisie manuelle ultérieure.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import { MemoryRouter } from 'react-router-dom'
@@ -103,5 +103,74 @@ describe('XSAL3 — badge tarif applicable', () => {
     await screen.findByDisplayValue('Smart Meter Huawei DTSU666')
     await waitFor(() => expect(ventesApi.getPrixApplicable).toHaveBeenCalled())
     expect(screen.queryByText(/Tarif :/)).not.toBeInTheDocument()
+  })
+})
+
+// ══ QXMT — raccordement MOYENNE TENSION dans l'étude industrielle ════════════
+// Un dossier > 50 kW est raccordé en MT et n'est PAS facturé au barème BT :
+// l'étude bascule sur le barème ONEE « Tarif Général (MT) » pondéré par la
+// répartition horaire du site. Sans cette répartition (les plages MT
+// officielles ne sont pas publiées), les économies sont OMISES — jamais
+// remplacées par un chiffre supposé.
+
+/** Amène l'écran en mode Industriel avec une puissance et une conso saisies. */
+async function setupIndustriel() {
+  renderGenerator()
+  await screen.findByDisplayValue('Smart Meter Huawei DTSU666')
+  fireEvent.click(screen.getByRole('radio', { name: /Industriel/ }))
+  // `Consommation mensuelle` n'existe QUE en industriel/commercial : l'attendre
+  // prouve que la bascule de marché a bien eu lieu avant la suite.
+  fireEvent.change(await screen.findByLabelText(/Consommation mensuelle/), {
+    target: { value: '20000' },
+  })
+  fireEvent.change(screen.getByLabelText(/Nombre de panneaux/), {
+    target: { value: '100' },
+  })
+}
+
+describe('QXMT — étude industrielle en moyenne tension', () => {
+  it('BT (défaut) : aucun bloc MT, étude chiffrée comme avant', async () => {
+    await setupIndustriel()
+    expect(screen.queryByTestId('gen-mt-block')).not.toBeInTheDocument()
+    expect(await screen.findByText(/Économies annuelles/)).toBeInTheDocument()
+    expect(screen.queryByTestId('etude-mt-motif')).not.toBeInTheDocument()
+  })
+
+  it('MT sans répartition horaire : économies OMISES + motif explicite', async () => {
+    await setupIndustriel()
+    fireEvent.click(screen.getByRole('radio', { name: /Moyenne tension/ }))
+    expect(await screen.findByTestId('gen-mt-block')).toBeInTheDocument()
+    // le motif est affiché, la carte « Économies » disparaît (pas de « 0 »)
+    expect(await screen.findByTestId('etude-mt-motif')).toBeInTheDocument()
+    expect(screen.queryByText(/Économies annuelles/)).not.toBeInTheDocument()
+    expect(screen.getByTestId('gen-mt-manquant')).toBeInTheDocument()
+  })
+
+  it('MT avec répartition : tarif MT sourcé affiché et économies rétablies', async () => {
+    await setupIndustriel()
+    fireEvent.click(screen.getByRole('radio', { name: /Moyenne tension/ }))
+    await screen.findByTestId('gen-mt-block')
+    fireEvent.change(screen.getByTestId('gen-mt-pointe'), { target: { value: '20' } })
+    fireEvent.change(screen.getByTestId('gen-mt-pleines'), { target: { value: '40' } })
+    fireEvent.change(screen.getByTestId('gen-mt-creuses'), { target: { value: '40' } })
+    // 0,2×1,4157 + 0,4×1,0101 + 0,4×0,7398 = 0,9831 DH/kWh
+    expect(await screen.findByTestId('gen-mt-tarif')).toHaveTextContent('0,9831')
+    // la source voyage TOUJOURS avec le chiffre
+    expect(await screen.findByTestId('etude-mt-source')).toHaveTextContent('one.org.ma')
+    expect(await screen.findByText(/Économies annuelles/)).toBeInTheDocument()
+    expect(screen.queryByTestId('etude-mt-motif')).not.toBeInTheDocument()
+  })
+
+  it('les champs MT n\'imposent aucune contrainte de saisie (step any, pas de max)', async () => {
+    await setupIndustriel()
+    fireEvent.click(screen.getByRole('radio', { name: /Moyenne tension/ }))
+    for (const key of ['pointe', 'pleines', 'creuses']) {
+      const input = await screen.findByTestId(`gen-mt-${key}`)
+      expect(input).toHaveAttribute('step', 'any')
+      expect(input).not.toHaveAttribute('max')
+      // une décimale libre est conservée telle quelle — jamais arrondie
+      fireEvent.change(input, { target: { value: '33.333' } })
+      expect(input).toHaveValue(33.333)
+    }
   })
 })

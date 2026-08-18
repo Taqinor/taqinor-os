@@ -179,6 +179,16 @@ export interface ProposalResponse {
    */
   sld_svg?: string | null;
   /**
+   * 2026-08-18 — DÉTAIL ÉLECTRIQUE public (chaînes, protections nominatives,
+   * câbles), whitelist STRICTE côté serveur
+   * (`public_views._conception_electrique_publique`) : jamais la nomenclature
+   * d'achat, jamais les paramètres de calcul, jamais un montant. `null`/absent
+   * tant que l'étude électrique n'existe pas — aucun dépliant ne s'affiche
+   * alors. Typé `unknown` À DESSEIN : il n'entre dans la page qu'à travers
+   * `parseConceptionElectrique`, qui valide et OMET toute valeur absente.
+   */
+  conception_electrique?: unknown;
+  /**
    * WJ32 — bloc de financement backend (QJ12, `compute_financing_block`),
    * DIFFÉRENT du calcul générique `financingComparison` ci-dessus : porte un
    * programme réel (Tatwir Croissance Verte / ISTIDAMA…) et une comparaison
@@ -193,6 +203,24 @@ export interface ProposalResponse {
    * (aucun frère/sœur actif) — la strip « autres tailles » se masque alors.
    */
   variants?: ProposalVariantSummary[];
+  /**
+   * GAMMES — choix de gamme (deux devis frères). Clé ABSENTE quand le vendeur
+   * a envoyé une gamme seule, ou quand le devis n'appartient à aucune paire :
+   * la page rend alors strictement ce qu'elle rend aujourd'hui.
+   */
+  gammes?: ProposalGammes | null;
+  /**
+   * COUTURE BACKEND (clé convenue, 2026-08-18) — RESYNCHRONISATION APRÈS ENVOI.
+   * Le backend ajoute cette clé quand un devis DÉJÀ ENVOYÉ a été resynchronisé
+   * après coup (prix catalogue corrigé côté Stock) : la page est re-rendue en
+   * direct depuis les lignes, elle peut donc afficher un total qui ne
+   * correspond plus au PDF que le client a reçu en pièce jointe. On le DIT en
+   * une ligne discrète près du total, au lieu de laisser l'écart se découvrir à
+   * la signature. Clé ABSENTE — le cas normal — ⇒ rien n'est rendu, la page ne
+   * bouge pas d'un pixel. Lue défensivement par `resyncApresEnvoi` : une date
+   * illisible n'affiche rien plutôt qu'une date inventée.
+   */
+  resync_apres_envoi?: { date?: string | null } | null;
   /**
    * WJ114 — bloc vendeur OPTIONNEL (note personnelle + identité), pas encore
    * exposé par le backend aujourd'hui : lu défensivement (`sellerNote` ci-
@@ -240,6 +268,76 @@ export interface ProposalVariantSummary {
 }
 
 export type OptionKey = 'sans_batterie' | 'avec_batterie';
+
+/**
+ * GAMMES (fondateur 2026-08-18) — offre à DEUX GAMMES paramétrable.
+ *
+ * Une gamme est un devis frère COMPLET (composition et prix propres) : le lien
+ * client rend TOUJOURS le devis de son jeton, et n'expose la gamme sœur que
+ * lorsque le vendeur a choisi d'envoyer LES DEUX. Le libellé est une DONNÉE
+ * (aucune marque codée en dur). Ce bloc est indépendant de l'axe
+ * « avec / sans batterie » (`OptionKey`), qui reste INTERNE à chaque gamme.
+ */
+export interface ProposalGammeCard {
+  nom: string;
+  recommandee: boolean;
+  reference: string;
+  total_ttc: number | null;
+}
+
+export interface ProposalGammeSoeur extends ProposalGammeCard {
+  /** Lien PUBLIC de la gamme sœur : son document complet ET son PDF. */
+  proposition_path: string;
+  /** Écart TTC de la sœur PAR RAPPORT à la gamme affichée, en MAD signés. */
+  ecart_ttc: number | null;
+}
+
+export interface ProposalGammeComparatifRow {
+  designation: string;
+  quantite?: number | null;
+  quantite_soeur?: number | null;
+}
+
+export interface ProposalGammes {
+  envoi: 'les_deux';
+  courante: ProposalGammeCard;
+  soeur: ProposalGammeSoeur;
+  comparatif: ProposalGammeComparatifRow[];
+}
+
+/**
+ * Bloc de choix de gamme, ou `null` — le backend n'envoie la clé qu'en mode
+ * d'envoi « les_deux » ; en mode « seule » rien de la sœur ne franchit la
+ * frontière publique, donc la page rend le devis comme aujourd'hui.
+ */
+export function proposalGammes(
+  p: { gammes?: ProposalGammes | null },
+): ProposalGammes | null {
+  const g = p.gammes;
+  if (!g || typeof g !== 'object') return null;
+  if (g.envoi !== 'les_deux') return null;
+  if (!g.courante?.nom || !g.soeur?.nom || !g.soeur?.proposition_path) return null;
+  return g;
+}
+
+/**
+ * Écart de prix en MAD ABSOLUS, signé : « + 8 500 MAD » / « − 8 500 MAD »
+ * (jamais un pourcentage, jamais un mot qui dénigre la gamme économique).
+ * `null` quand l'écart est inconnu ou nul — la carte n'affiche alors rien.
+ */
+export function gammeEcartLabel(ecart: number | null | undefined): string | null {
+  if (typeof ecart !== 'number' || !Number.isFinite(ecart)) return null;
+  const rounded = Math.round(ecart);
+  if (rounded === 0) return null;
+  return `${rounded > 0 ? '+' : '−'} ${formatMAD(Math.abs(rounded))}`;
+}
+
+/** Lignes qui DIFFÈRENT entre les deux compositions (tableau comparatif). */
+export function gammeComparatif(
+  g: ProposalGammes | null,
+): ProposalGammeComparatifRow[] {
+  return Array.isArray(g?.comparatif) ? g!.comparatif : [];
+}
 
 /**
  * Format monétaire marocain : `12 500 MAD` (espace fine de milliers, devise
@@ -707,6 +805,295 @@ export function sldSvgFilename(reference: string | null | undefined): string {
   return `schema-electrique-${safe || 'devis'}.svg`;
 }
 
+// ── 2026-08-18 · « Dans votre installation » — le DÉTAIL ÉLECTRIQUE, SANS PRIX ─
+//
+// Décision fondateur : le client voit enfin ce que contiennent les lignes qu'il
+// paie. Le backend (`public_views._conception_electrique_publique`) expose un
+// bloc `conception_electrique` sur liste blanche STRICTE — chaînes, protections
+// nominatives, câbles — et RIEN d'autre : pas de nomenclature d'achat, pas de
+// paramètres de calcul, aucun montant (règle #4 ; le moteur électrique n'en
+// connaît aucun). Le bloc n'existe que lorsque l'étude électrique a réellement
+// été faite ; `null`/absent ⇒ aucun dépliant ne s'affiche.
+//
+// TOUT EST LU DÉFENSIVEMENT et TOUTE VALEUR ABSENTE EST OMISE (règle dure) :
+// une chaîne sans nombre de modules ne devient jamais « 0 module ».
+
+/** Une chaîne de modules : combien de modules, sur quel MPPT, sur quel pan. */
+export interface ConceptionChaine {
+  pan?: number;
+  mppt?: number;
+  nb_modules?: number;
+}
+
+/** Un organe de protection réellement posé (ce qui est écrit dans le coffret). */
+export interface ConceptionProtection {
+  repere?: string;
+  designation?: string;
+  calibre?: string;
+  quantite?: number;
+}
+
+/** Une liaison câblée : ce qu'elle relie, sa section, sa longueur. */
+export interface ConceptionCable {
+  liaison?: string;
+  section_mm2?: number;
+  longueur_m?: number;
+}
+
+export interface ConceptionElectrique {
+  chaines: ConceptionChaine[];
+  protections: ConceptionProtection[];
+  cables: ConceptionCable[];
+}
+
+/** Nombre fini et strictement positif, sinon `undefined` (jamais un 0 inventé). */
+function nombrePositif(v: unknown): number | undefined {
+  const n = typeof v === 'number' ? v : Number(v);
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+
+/** Chaîne non vide, taillée, sinon `undefined`. */
+function texteNonVide(v: unknown): string | undefined {
+  if (typeof v !== 'string') return undefined;
+  const t = v.trim();
+  return t.length ? t : undefined;
+}
+
+/**
+ * Pose la clé UNIQUEMENT si la valeur existe. C'est le cœur de la règle dure :
+ * un objet public ne porte jamais `{ mppt: undefined }` ni `{ mppt: 0 }` — la
+ * clé est simplement absente, et le rendu n'a donc rien à afficher.
+ */
+function poser(cible: Record<string, unknown>, cle: string, valeur: unknown): void {
+  if (valeur !== undefined) cible[cle] = valeur;
+}
+
+/**
+ * Lecture défensive du bloc `conception_electrique`. Renvoie `null` quand le
+ * backend ne l'a pas envoyé, l'a envoyé à `null`, ou quand il ne reste RIEN
+ * d'affichable après nettoyage — jamais un bloc à moitié vide.
+ */
+export function parseConceptionElectrique(
+  p: Pick<ProposalResponse, 'conception_electrique'>,
+): ConceptionElectrique | null {
+  const brut = p?.conception_electrique;
+  if (!brut || typeof brut !== 'object') return null;
+  const src = brut as Record<string, unknown>;
+  const liste = (v: unknown): Record<string, unknown>[] =>
+    Array.isArray(v) ? v.filter((e): e is Record<string, unknown> => !!e && typeof e === 'object') : [];
+
+  // Une CHAÎNE sans nombre de modules ne dit rien : elle est écartée.
+  const chaines: ConceptionChaine[] = [];
+  for (const c of liste(src.chaines)) {
+    const item: Record<string, unknown> = {};
+    poser(item, 'pan', nombrePositif(c.pan));
+    poser(item, 'mppt', nombrePositif(c.mppt));
+    poser(item, 'nb_modules', nombrePositif(c.nb_modules));
+    if (item.nb_modules !== undefined) chaines.push(item as ConceptionChaine);
+  }
+
+  // Un ORGANE sans désignation ne serait qu'un repère orphelin : écarté.
+  const protections: ConceptionProtection[] = [];
+  for (const o of liste(src.protections)) {
+    const item: Record<string, unknown> = {};
+    poser(item, 'repere', texteNonVide(o.repere));
+    poser(item, 'designation', texteNonVide(o.designation));
+    poser(item, 'calibre', texteNonVide(o.calibre));
+    poser(item, 'quantite', nombrePositif(o.quantite));
+    if (item.designation !== undefined) protections.push(item as ConceptionProtection);
+  }
+
+  // Une LIAISON sans section NI longueur n'apprend rien : écartée.
+  const cables: ConceptionCable[] = [];
+  for (const c of liste(src.cables)) {
+    const item: Record<string, unknown> = {};
+    poser(item, 'liaison', texteNonVide(c.liaison));
+    poser(item, 'section_mm2', nombrePositif(c.section_mm2));
+    poser(item, 'longueur_m', nombrePositif(c.longueur_m));
+    if (item.section_mm2 !== undefined || item.longueur_m !== undefined) {
+      cables.push(item as ConceptionCable);
+    }
+  }
+
+  if (!chaines.length && !protections.length && !cables.length) return null;
+  return { chaines, protections, cables };
+}
+
+/**
+ * Marqueurs du CÔTÉ CONTINU sur un libellé d'organe. Test par SOUS-CHAÎNE, avec
+ * les deux graphies de « chaîne » — exactement la règle du moteur de devis
+ * Django (`quote_engine/residential/theme.py::_MARQUEURS_DC`), pour que la page
+ * et le PDF rangent le même organe du même côté.
+ */
+const MARQUEURS_DC: readonly string[] = [
+  'dc', 'continu', 'gpv', 'string', 'chaîne', 'chaine',
+];
+
+/** Un organe appartient-il au côté continu ? (sinon : côté alternatif). */
+function estOrganeDc(o: ConceptionProtection): boolean {
+  const libelle = `${o.repere ?? ''} ${o.designation ?? ''} ${o.calibre ?? ''}`.toLowerCase();
+  return MARQUEURS_DC.some((m) => libelle.includes(m));
+}
+
+/**
+ * Marqueurs d'une ligne de protection COMBINÉE (les deux côtés dans un même
+ * poste). Le catalogue réel ne facture pas deux coffrets : il porte UNE ligne
+ * « Tableau De Protection AC/DC ». Cette ligne tombe sur la fiche
+ * `protection-dc` (marqueur « dc », règle 1 de ficheMatcher) — si le dépliant
+ * s'en tenait au côté continu, le client verrait ses disjoncteurs DC et
+ * PERDRAIT tout le côté alternatif (disjoncteur AC, parafoudre type 2,
+ * différentiel type A, prise de terre, liaison équipotentielle) sous une ligne
+ * qui s'appelle pourtant « AC/DC ». Trois graphies observées.
+ */
+const MARQUEURS_AC_DC: readonly string[] = ['ac/dc', 'ac-dc', 'ac dc'];
+
+/** La désignation annonce-t-elle un poste qui porte LES DEUX côtés ? */
+export function estProtectionAcDc(designation?: string | null): boolean {
+  const libelle = String(designation ?? '').toLowerCase();
+  return MARQUEURS_AC_DC.some((m) => libelle.includes(m));
+}
+
+/** Ce qu'un dépliant « Dans votre installation » montre pour une famille donnée. */
+export interface ConceptionPourLigne {
+  chaines: ConceptionChaine[];
+  protections: ConceptionProtection[];
+  cables: ConceptionCable[];
+  /** Les câbles montrés ici sont RATTACHÉS (le devis n'a pas de ligne câblage) :
+   *  la page les annonce alors par un intertitre « Câblage », pour qu'on ne les
+   *  lise pas comme des organes de protection. Faux sous une ligne câblage. */
+  cablesRattaches: boolean;
+}
+
+/** Options de rattachement d'une ligne d'équipement (toutes facultatives). */
+export interface ConceptionPourLigneOpts {
+  /** La désignation TELLE QU'ELLE EST FACTURÉE (décide du poste combiné AC/DC). */
+  designation?: string | null;
+  /** Cette ligne accueille-t-elle les câbles faute de ligne « câblage » dédiée ?
+   *  Le choix de la ligne hôte appartient à l'appelant (`indexHoteDesCables`),
+   *  pour qu'une seule ligne les porte — jamais les deux protections. */
+  rattacherCables?: boolean;
+}
+
+/**
+ * Index de la ligne de protection qui ACCUEILLE les câbles, dans l'ordre des
+ * lignes rendues. Le catalogue résidentiel réel ne porte AUCUN poste « câble »
+ * (ses postes génériques sont « Tableau De Protection AC/DC », « Accessoires »,
+ * « Socles », « Structures acier/aluminium ») : sans ce rattachement, les
+ * sections et longueurs calculées par l'étude n'apparaissaient NULLE PART.
+ * Rend -1 — donc aucun rattachement — dès qu'une vraie ligne « câblage »
+ * existe (les câbles ont alors leur propre dépliant) ou qu'aucune ligne de
+ * protection n'existe.
+ */
+export function indexHoteDesCables(slugs: ReadonlyArray<string | null | undefined>): number {
+  if (slugs.some((s) => s === 'cablage')) return -1;
+  return slugs.findIndex((s) => s === 'protection-dc' || s === 'protection-ac');
+}
+
+/**
+ * Le détail à déplier SOUS une ligne d'équipement, choisi par la FAMILLE de sa
+ * fiche technique (le slug rendu par `ficheSlugPourLigne`) :
+ *
+ *  · `protection-dc`  → ses organes du côté continu (repère + calibre) ;
+ *  · `protection-ac`  → ses organes du côté alternatif ;
+ *  · une protection dont la DÉSIGNATION dit « AC/DC » → LES DEUX familles,
+ *    dans l'ordre où l'étude les a posées (c'est un seul coffret facturé) ;
+ *  · `cablage`        → les sections et longueurs de liaison ;
+ *  · panneaux/onduleur → le chaînage (modules par MPPT).
+ *
+ * Faute de ligne « câblage » au devis, `rattacherCables` accroche les liaisons
+ * sous la ligne de protection (intertitre « Câblage » côté page).
+ *
+ * Toute autre famille (batterie, structure, accessoires de pose, supervision,
+ * grands projets) n'a rien à dire ici : `null`, et aucun dépliant n'est rendu.
+ * `null` aussi quand la famille est concernée mais que l'étude ne porte AUCUNE
+ * valeur pour elle — jamais un dépliant vide. Une valeur absente reste OMISE :
+ * ce rattachement ne fabrique rien, il montre ce que l'étude a déjà calculé.
+ */
+export function conceptionPourLigne(
+  conception: ConceptionElectrique | null,
+  ficheSlug: string | null | undefined,
+  opts?: ConceptionPourLigneOpts,
+): ConceptionPourLigne | null {
+  if (!conception || !ficheSlug) return null;
+  // Une FABRIQUE, pas une constante partagée : chaque appel repart de trois
+  // tableaux neufs (aucun aliasing possible entre deux lignes du devis).
+  const vide = (): ConceptionPourLigne => ({ chaines: [], protections: [], cables: [], cablesRattaches: false });
+  const estProtection = ficheSlug === 'protection-dc' || ficheSlug === 'protection-ac';
+  let bloc: ConceptionPourLigne;
+  if (estProtection && estProtectionAcDc(opts?.designation)) {
+    // Un seul coffret facturé « AC/DC » : on ne coupe pas son contenu en deux.
+    // Ordre du moteur électrique conservé — c'est l'ordre du schéma.
+    bloc = { ...vide(), protections: [...conception.protections] };
+  } else if (ficheSlug === 'protection-dc') {
+    bloc = { ...vide(), protections: conception.protections.filter(estOrganeDc) };
+  } else if (ficheSlug === 'protection-ac') {
+    bloc = { ...vide(), protections: conception.protections.filter((o) => !estOrganeDc(o)) };
+  } else if (ficheSlug === 'cablage') {
+    bloc = { ...vide(), cables: conception.cables };
+  } else if (
+    ficheSlug === 'canadian-solar-710'
+    || ficheSlug === 'jinko-710'
+    || ficheSlug === 'onduleur-deye-hybride'
+    || ficheSlug === 'onduleur-huawei-reseau'
+  ) {
+    bloc = { ...vide(), chaines: conception.chaines };
+  } else {
+    return null;
+  }
+  // Rattachement des câbles orphelins : sous la protection choisie par
+  // l'appelant, et seulement s'il y a vraiment des liaisons à montrer.
+  if (estProtection && opts?.rattacherCables && conception.cables.length) {
+    bloc = { ...bloc, cables: conception.cables, cablesRattaches: true };
+  }
+  const rien = !bloc.chaines.length && !bloc.protections.length && !bloc.cables.length;
+  return rien ? null : bloc;
+}
+
+/**
+ * Libellé d'une chaîne, dans la langue active. C'est le SEUL des trois qui a
+ * besoin de mots (« modules ») — un repère, un calibre, une section et une
+ * longueur s'écrivent pareil dans les trois langues. Chaque morceau est OMIS
+ * quand la valeur manque : « MPPT 1 » ne devient jamais « MPPT — ».
+ */
+const CHAINE_MOTS: Record<PropLang, { modules: string; pan: string }> = {
+  fr: { modules: 'modules', pan: 'pan' },
+  en: { modules: 'modules', pan: 'roof section' },
+  ar: { modules: 'لوحاً', pan: 'جهة' },
+};
+
+export function chaineLabel(c: ConceptionChaine, lang: PropLang = 'fr'): string {
+  const mots = CHAINE_MOTS[lang] || CHAINE_MOTS.fr;
+  const parts: string[] = [];
+  if (c.nb_modules !== undefined) parts.push(`${formatNumber(c.nb_modules)} ${mots.modules}`);
+  if (c.mppt !== undefined) parts.push(`MPPT ${formatNumber(c.mppt)}`);
+  if (c.pan !== undefined) parts.push(`${mots.pan} ${formatNumber(c.pan)}`);
+  return parts.join(' · ');
+}
+
+/**
+ * Libellé d'un organe de protection : repère, désignation et calibre tels que
+ * le moteur électrique les a posés — donc tels qu'ils sont écrits dans le
+ * coffret et sur le schéma, ce que le client peut aller vérifier. Neutre en
+ * langue (un repère et un calibre ne se traduisent pas). La QUANTITÉ n'est PAS
+ * dans ce libellé : la page l'affiche à part, comme sur les lignes de devis.
+ */
+export function protectionLabel(o: ConceptionProtection): string {
+  return [o.repere, o.designation, o.calibre].filter((v) => !!v).join(' · ');
+}
+
+/**
+ * Libellé d'une liaison câblée : ce qu'elle relie, sa section, sa longueur.
+ * Neutre en langue. Section et longueur sont formatées comme tous les nombres
+ * de la page (virgule décimale) ; une valeur absente est OMISE.
+ */
+export function cableLabel(c: ConceptionCable): string {
+  const parts: string[] = [];
+  if (c.liaison) parts.push(c.liaison);
+  if (c.section_mm2 !== undefined) parts.push(`${formatNumber(c.section_mm2, 2)} mm²`);
+  if (c.longueur_m !== undefined) parts.push(`${formatNumber(c.longueur_m, 1)} m`);
+  return parts.join(' · ');
+}
+
 /**
  * Normalise une réponse d'acceptation backend (succès OU erreur) en un objet
  * stable que le client peut afficher. On reflète le `detail` backend tel quel
@@ -874,6 +1261,27 @@ export function resolveValidity(
   if (!dt) return { label: null, fromBackend: false, expired: false };
   const expired = dt.getTime() < now.getTime();
   return { label: formatFrenchDate(dt), fromBackend: true, expired };
+}
+
+/**
+ * Date de RESYNCHRONISATION APRÈS ENVOI, formatée FR (« 18 août 2026 »), ou
+ * `null`. Le devis a été envoyé au client avec un PDF, puis resynchronisé
+ * (correction d'un prix catalogue) : la page rend les lignes en direct, elle
+ * peut donc montrer un total différent de la pièce jointe reçue. La page
+ * l'annonce alors près du total.
+ *
+ * Défensif de bout en bout : clé absente, `null`, type inattendu ou date non
+ * parsable ⇒ `null` ⇒ AUCUNE ligne rendue. Jamais une date fabriquée, jamais
+ * une mention sur un devis qui n'a pas bougé.
+ */
+export function resyncApresEnvoi(
+  p: Pick<ProposalResponse, 'resync_apres_envoi'>,
+): string | null {
+  const brut = p?.resync_apres_envoi;
+  if (!brut || typeof brut !== 'object') return null;
+  const raw = (brut as { date?: unknown }).date;
+  const dt = parseBackendDate(typeof raw === 'string' ? raw : null);
+  return dt ? formatFrenchDate(dt) : null;
 }
 
 // ── WJ42 · Horodatage de signature localisé (FR/AR/EN) ───────────────────────
@@ -2418,9 +2826,14 @@ export function objectionFaq(): FaqItem[] {
       question: 'Puis-je emporter mon installation si je déménage ?',
       questionAr: 'هل يمكنني نقل التركيب إذا انتقلت للسكن في مكان آخر؟',
       questionEn: 'Can I take my installation with me if I move?',
-      answer: 'L\'installation est fixée au bâtiment ; elle valorise généralement le bien lors d\'une revente plutôt que d\'être démontée.',
-      answerAr: 'التركيب مثبت بالمبنى؛ وعادة ما يرفع من قيمة العقار عند البيع بدل تفكيكه.',
-      answerEn: 'The installation is fixed to the building; it typically raises the property\'s value on resale rather than being removed.',
+      // La réponse doit tenir DEVANT la fiche technique « structure-fixation »
+      // atteignable depuis la même page : celle-ci dit que sur toiture inclinée
+      // les fixations traversent la couverture et sont étanchées point par
+      // point. Promettre à tout le monde une pose lestée démontable contredisait
+      // donc la fiche du même devis — on distingue les deux cas.
+      answer: 'Sur toiture-terrasse — la grande majorité de nos poses — l\'installation repose sur des socles lestés, sans fixation au bâtiment : elle peut être démontée et remontée. Sur toiture inclinée, les fixations sont étanchées point par point : le démontage se fait alors sur étude.',
+      answerAr: 'على السطح المستوي — وهو حال الغالبية العظمى من تركيباتنا — يرتكز النظام على قواعد مثقّلة دون تثبيت بالمبنى: يمكن تفكيكه وإعادة تركيبه. أما على السطح المائل، فالتثبيتات معزولة نقطة بنقطة: عندئذ يتم التفكيك بعد دراسة.',
+      answerEn: 'On a flat roof — the vast majority of our installations — the system rests on ballasted mounts, with no fixing to the building: it can be dismantled and reinstalled. On a pitched roof, the fixings are sealed point by point: dismantling is then subject to a survey.',
     },
     {
       id: 'toit-abime',

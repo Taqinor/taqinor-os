@@ -31,6 +31,17 @@ vi.mock('../../api/ventesApi', () => ({
     reviserDevis: vi.fn(),
   },
 }))
+// MODE AO — le MÊME écran ouvert sur une AFFAIRE d'appel d'offres. Deux appels
+// seulement : le contexte agrégé (contrat `apps/ao/contract_samples/
+// ao_design_context.json`) et la persistance du layout.
+vi.mock('../../api/aoApi', () => ({
+  default: {
+    affaires: {
+      designContext: vi.fn(),
+      enregistrerLayout: vi.fn(),
+    },
+  },
+}))
 vi.mock('../../lib/toast', () => ({ toastInfo: vi.fn() }))
 const navigateMock = vi.fn()
 vi.mock('react-router-dom', async (importOriginal) => {
@@ -51,12 +62,27 @@ vi.mock('@roofbuilder', () => ({ initRoofToolPro8: (...a) => initRoofToolPro8(..
 import userEvent from '@testing-library/user-event'
 import api from '../../api/axios'
 import ventesApi from '../../api/ventesApi'
+import aoApi from '../../api/aoApi'
 import { toastInfo } from '../../lib/toast'
 import ToitureDesign from './ToitureDesign'
 
 const CTX = exempleContrat('ventes', 'devis_design_context')
 const CTX_RO = exempleContrat('ventes', 'devis_design_context',
   'exemple_lecture_seule')
+const CTX_AO = exempleContrat('ao', 'ao_design_context')
+const CTX_AO_RO = exempleContrat('ao', 'ao_design_context',
+  'exemple_lecture_seule')
+
+function rendreAo(id) {
+  return render(
+    <MemoryRouter initialEntries={[`/ao/affaires/${id}/design`]}>
+      <Routes>
+        <Route path="/ao/affaires/:id/design"
+          element={<ToitureDesign mode="ao" />} />
+      </Routes>
+    </MemoryRouter>,
+  )
+}
 
 function rendreDevis(id) {
   return render(
@@ -406,6 +432,128 @@ describe('ToitureDesign — PV86 : lien client permanent + choix WhatsApp', () =
     const texte = decodeURIComponent(hrefPdf.split('text=')[1])
     expect(texte).toContain(`${window.location.origin}/api/django/public/proposal/tok42/pdf/`)
     expect(texte).toContain(CTX.devis.reference)
+  })
+})
+
+/* MODE AO — les MÊMES outils pour les ventes et pour les appels d'offres.
+   L'écran s'ouvre sur une AFFAIRE, hydraté par la géométrie AO déjà relevée.
+   PACT13 : la charge utile vient de l'exemple COMMITTÉ
+   `apps/ao/contract_samples/ao_design_context.json` — le même fichier que le
+   test backend `apps/ao/tests/test_ao_design_context.py` compare à la réponse
+   RÉELLE du serveur. Une divergence de forme casse les deux tests, pas la
+   production. */
+describe('ToitureDesign — mode ao (atelier 3D d’une affaire)', () => {
+  it('boote sur UN SEUL appel design-context et hydrate le builder depuis l’affaire', async () => {
+    aoApi.affaires.designContext.mockResolvedValue({ data: CTX_AO })
+
+    rendreAo(CTX_AO.affaire.id)
+
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    // UN SEUL appel : rien n'est complété par une requête annexe (ni la config
+    // carte — la clé MapTiler vient du contexte), et aucun appel VENTES.
+    expect(aoApi.affaires.designContext).toHaveBeenCalledTimes(1)
+    expect(aoApi.affaires.designContext)
+      .toHaveBeenCalledWith(String(CTX_AO.affaire.id))
+    expect(api.get).not.toHaveBeenCalled()
+    expect(ventesApi.getDevisDesignContext).not.toHaveBeenCalled()
+    expect(ventesApi.shareLinkDevis).not.toHaveBeenCalled()
+
+    const options = initRoofToolPro8.mock.calls[0][0]
+    expect(options.maptilerKey).toBe(CTX_AO.carte.maptilerKey)
+    // La géométrie AO passe par le créneau `hydrate.devis` du builder (celui
+    // de la « géométrie déjà dessinée + cible imposée ») — jamais `hydrate.lead`.
+    expect(options.hydrate.lead).toBeUndefined()
+    expect(options.hydrate.devis).toEqual({
+      id: null,
+      geometrie: {
+        roof_layout: CTX_AO.geometrie.roof_layout,
+        roof_point: CTX_AO.geometrie.pin,
+        roof_outline: CTX_AO.geometrie.outline,
+      },
+      cible: {
+        panneaux: CTX_AO.cible.panneaux,
+        panel_watt: CTX_AO.cible.panel_watt,
+        scenario: null,
+      },
+      fullName: CTX_AO.affaire.objet,
+    })
+
+    // L'en-tête porte NOTRE référence d'affaire + son objet, servis par le contexte.
+    expect(await screen.findByRole('heading', { level: 1 }))
+      .toHaveTextContent(CTX_AO.affaire.reference)
+    expect(screen.getByRole('heading', { level: 1 }))
+      .toHaveTextContent(CTX_AO.affaire.objet)
+    // Aucun geste du monde DEVIS ne s'affiche ici.
+    expect(screen.queryByRole('button',
+      { name: /Générer le devis & envoyer au client/ })).toBeNull()
+    expect(screen.queryByRole('button',
+      { name: /Enregistrer la conception/ })).toBeNull()
+    // Le bloc facture (mode lead) est absent : la cible vient de l'engagement.
+    expect(screen.queryByLabelText(/Facture d'électricité/)).toBeNull()
+  })
+
+  it('lecture seule : motif du SERVEUR, aucun bouton d’enregistrement, aucun lien mort', async () => {
+    aoApi.affaires.designContext.mockResolvedValue({ data: CTX_AO_RO })
+
+    rendreAo(CTX_AO_RO.affaire.id)
+
+    const bandeau = await screen.findByTestId('pv20-lecture-seule')
+    expect(bandeau).toHaveTextContent(CTX_AO_RO.raison_lecture_seule)
+    // La visionneuse plein écran est une route DEVIS : pas de lien mort ici.
+    expect(screen.queryByRole('link', { name: 'Voir en 3D' })).toBeNull()
+    expect(screen.queryByTestId('ao-enregistrer-calepinage')).toBeNull()
+    // Le designer boote quand même (consultation du calepinage remis).
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    // Les avertissements du serveur sont rendus, pas inventés.
+    for (const a of CTX_AO_RO.avertissements) {
+      expect(screen.getByTestId('pv20-avertissements')).toHaveTextContent(a)
+    }
+  })
+
+  it('affaire introuvable : message FR, aucun boot du builder', async () => {
+    aoApi.affaires.designContext.mockRejectedValue({ response: { status: 404 } })
+
+    rendreAo(999)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Affaire introuvable.')
+    expect(initRoofToolPro8).not.toHaveBeenCalled()
+  })
+
+  it('enregistre le calepinage sérialisé sur l’affaire, sans toucher au devis', async () => {
+    aoApi.affaires.designContext.mockResolvedValue({ data: CTX_AO })
+    aoApi.affaires.enregistrerLayout.mockResolvedValue({ data: { roof_layout: LAYOUT } })
+
+    rendreAo(CTX_AO.affaire.id)
+    const bouton = await screen.findByRole('button',
+      { name: /Enregistrer le calepinage/ })
+    await userEvent.click(bouton)
+
+    await waitFor(() => expect(aoApi.affaires.enregistrerLayout)
+      .toHaveBeenCalledWith(String(CTX_AO.affaire.id), LAYOUT))
+    // Aucun devis n'est créé, resynchronisé ni livré depuis cet écran.
+    expect(api.post).not.toHaveBeenCalled()
+    expect(ventesApi.syncDevisLayout).not.toHaveBeenCalled()
+    expect(await screen.findByText(/Calepinage enregistré sur l’affaire/))
+      .toBeInTheDocument()
+  })
+
+  it('409 dossier déposé : bandeau de lecture seule avec le motif du serveur', async () => {
+    aoApi.affaires.designContext.mockResolvedValue({ data: CTX_AO })
+    aoApi.affaires.enregistrerLayout.mockRejectedValue({
+      response: {
+        status: 409,
+        data: { detail: 'Affaire « Déposé » : le calepinage ne se modifie plus.' },
+      },
+    })
+
+    rendreAo(CTX_AO.affaire.id)
+    await userEvent.click(await screen.findByRole('button',
+      { name: /Enregistrer le calepinage/ }))
+
+    const bandeau = await screen.findByTestId('ao-conflit-lecture-seule')
+    expect(bandeau).toHaveTextContent('le calepinage ne se modifie plus')
+    // Le geste « Réviser (v2) » appartient au monde DEVIS : jamais proposé ici.
+    expect(screen.queryByRole('button', { name: 'Réviser (v2)' })).toBeNull()
   })
 })
 

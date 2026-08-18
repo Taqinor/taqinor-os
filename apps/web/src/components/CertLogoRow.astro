@@ -10,8 +10,31 @@
  * aux libellés clés — cohérent avec la discipline v3 (pas de zellige plein,
  * pas d'icône fabriquée). pending real content from Reda : remplacer par les
  * vrais logos une fois les autorisations d'usage obtenues.
+ *
+ * (fondateur 2026-08-17) DEUX PROPRIÉTÉS OPTIONNELLES, sans changer le rendu
+ * par défaut : `keys` (quels badges rendre) et `hrefs` (vers quelle page chaque
+ * badge pointe). La règle fondateur — « un badge n'existe que s'il est
+ * cliquable vers une page réelle et bien remplie » — est appliquée par la page
+ * hôte, qui SEULE connaît les cibles pertinentes de son contexte (la
+ * proposition client lie garanties → /garanties, IEC → la fiche du panneau
+ * réellement devisé, et « Loi 82-21 » → /loi-82-21, page dédiée FR/EN/AR qui
+ * existe bel et bien). Une page hôte sans cible honnête pour un badge ne le
+ * passe simplement pas dans `keys`.
+ *
+ * ACCESSIBILITÉ : la variante liée enveloppe l'ancre dans un conteneur
+ * `role="listitem"` — poser ce rôle SUR l'ancre écrase son rôle natif `link`,
+ * et le badge sort alors de la liste des liens des lecteurs d'écran.
  */
+import {
+  PANEL_PERFORMANCE_WARRANTY_YEARS,
+  INVERTER_WARRANTY_YEARS,
+} from '../lib/warranty';
+
+/** Identifiant stable d'un badge (une page hôte choisit lesquels elle rend). */
+type CertKey = 'iec' | 'loi8221' | 'panneaux' | 'onduleur';
+
 interface CertItem {
+  key: CertKey;
   label: string;
   labelAr: string;
   detail: string;
@@ -22,12 +45,35 @@ interface CertItem {
 // WJ99 — `detailEn` ajouté : ce composant est monté sur /proposition/[token]
 // (EN disponible) ; sans variante anglaise, un visiteur EN voyait
 // silencieusement le libellé FR (repli implicite du mécanisme dual-node).
+// (fondateur 2026-08-17) les DURÉES viennent de `lib/warranty.ts`, source
+// unique des garanties publiées — plus aucun « 30 » / « 10 » codé en dur ici.
 const CERTS: CertItem[] = [
-  { label: 'IEC 61215 / 61730', labelAr: 'IEC 61215 / 61730', detail: 'Modules certifiés', detailEn: 'Certified modules', detailAr: 'ألواح معتمدة' },
-  { label: 'Loi 82-21', labelAr: 'القانون 82-21', detail: 'Autoconsommation BT', detailEn: 'Low-voltage self-consumption', detailAr: 'الاستهلاك الذاتي' },
-  { label: '30 ans', labelAr: '30 سنة', detail: 'Garantie performance panneaux', detailEn: 'Panel performance warranty', detailAr: 'ضمان أداء الألواح' },
-  { label: '10 ans', labelAr: '10 سنوات', detail: 'Garantie onduleur', detailEn: 'Inverter warranty', detailAr: 'ضمان العاكس' },
+  { key: 'iec', label: 'IEC 61215 / 61730', labelAr: 'IEC 61215 / 61730', detail: 'Modules certifiés', detailEn: 'Certified modules', detailAr: 'ألواح معتمدة' },
+  { key: 'loi8221', label: 'Loi 82-21', labelAr: 'القانون 82-21', detail: 'Autoconsommation BT', detailEn: 'Low-voltage self-consumption', detailAr: 'الاستهلاك الذاتي' },
+  { key: 'panneaux', label: `${PANEL_PERFORMANCE_WARRANTY_YEARS} ans`, labelAr: `${PANEL_PERFORMANCE_WARRANTY_YEARS} سنة`, detail: 'Garantie performance panneaux', detailEn: 'Panel performance warranty', detailAr: 'ضمان أداء الألواح' },
+  { key: 'onduleur', label: `${INVERTER_WARRANTY_YEARS} ans`, labelAr: `${INVERTER_WARRANTY_YEARS} سنوات`, detail: 'Garantie onduleur', detailEn: 'Inverter warranty', detailAr: 'ضمان العاكس' },
 ];
+
+interface Props {
+  /**
+   * (fondateur 2026-08-17) badges à rendre, dans cet ordre. Défaut : les
+   * quatre — le rendu des pages qui montent `<CertLogoRow />` sans propriété
+   * est strictement inchangé.
+   */
+  keys?: CertKey[];
+  /**
+   * Lien par badge. RÈGLE FONDATEUR (2026-08-17) : un badge ne vaut que s'il
+   * est cliquable vers une page réelle et bien remplie — une page hôte qui
+   * connaît ces cibles les passe ici, et le badge devient un lien. Sans lien,
+   * le badge reste le bloc typographique historique.
+   */
+  hrefs?: Partial<Record<CertKey, string>>;
+}
+
+const { keys, hrefs = {} } = Astro.props as Props;
+const items = (keys && keys.length ? keys : CERTS.map((c) => c.key))
+  .map((k) => CERTS.find((c) => c.key === k))
+  .filter((c): c is CertItem => !!c);
 ---
 
 <!-- WJ99 — `aria-label` racine porte les 3 traductions en `data-*` (jamais un
@@ -43,14 +89,31 @@ const CERTS: CertItem[] = [
   data-aria-label-fr="Certifications et garanties"
   data-aria-label-en="Certifications and warranties"
   data-aria-label-ar="الشهادات والضمانات"
+  data-n={items.length}
   data-choreo>
   {/* W377 — data-choreo cascades each cert in as the row scrolls into view
       (see v2.css); --i orders the four items left→right. */}
-  {CERTS.map((c, i) => (
-    <div class="cert-row__item" role="listitem" style={`--i:${i}`}>
-      <p class="cert-row__label">{c.label}</p>
-      <p class="cert-row__detail" data-i18n data-fr={c.detail} data-en={c.detailEn} data-ar={c.detailAr}>{c.detail}</p>
-    </div>
+  {items.map((c, i) => (
+    hrefs[c.key] ? (
+      /* Le rôle de liste vit sur un CONTENEUR, jamais sur l'ancre : posé sur
+         l'ancre, `role="listitem"` REMPLACE son rôle natif `link` — sous
+         NVDA/VoiceOver le badge était annoncé comme un simple élément de liste,
+         absent de la liste des liens de la page et de la navigation « lien
+         suivant ». C'est exactement la règle fondateur (« un badge n'existe que
+         s'il est cliquable ») rendue invisible au lecteur d'écran. Le conteneur
+         porte aussi `--i` : [data-choreo] n'anime que les enfants DIRECTS. */
+      <div class="cert-row__cell" role="listitem" style={`--i:${i}`}>
+        <a class="cert-row__item cert-row__item--link" href={hrefs[c.key]}>
+          <p class="cert-row__label">{c.label}</p>
+          <p class="cert-row__detail" data-i18n data-fr={c.detail} data-en={c.detailEn} data-ar={c.detailAr}>{c.detail}</p>
+        </a>
+      </div>
+    ) : (
+      <div class="cert-row__item" role="listitem" style={`--i:${i}`}>
+        <p class="cert-row__label">{c.label}</p>
+        <p class="cert-row__detail" data-i18n data-fr={c.detail} data-en={c.detailEn} data-ar={c.detailAr}>{c.detail}</p>
+      </div>
+    )
   ))}
 </div>
 
@@ -61,8 +124,19 @@ const CERTS: CertItem[] = [
     gap: 1rem;
   }
   @media (min-width: 640px) {
+    /* Quatre badges = rendu historique ; une page hôte qui n'en rend que 2 ou 3
+       occupe la largeur au lieu de laisser une colonne vide. */
     .cert-row {
       grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+    .cert-row[data-n='3'] {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+    .cert-row[data-n='2'] {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .cert-row[data-n='1'] {
+      grid-template-columns: minmax(0, 1fr);
     }
   }
   .cert-row__item {
@@ -70,6 +144,27 @@ const CERTS: CertItem[] = [
     border-top: 2px solid var(--color-brass-400, #e8b54a);
     padding: 0.9rem 1rem;
     text-align: center;
+  }
+  /* Maille de grille du badge cliquable : elle ne porte QUE le rôle de liste et
+     l'index de chorégraphie ; toute l'apparence reste sur l'ancre. */
+  .cert-row__cell {
+    display: block;
+  }
+  /* Badge CLIQUABLE (fondateur 2026-08-17) : même bloc, plus un état de survol
+     et un focus visible au clavier — jamais une couleur de lien par défaut.
+     `height: 100%` : l'ancre n'est plus la maille de grille, elle doit donc
+     remplir sa case pour que les badges gardent la même hauteur qu'avant. */
+  a.cert-row__item--link {
+    display: block;
+    height: 100%;
+    color: inherit;
+    text-decoration: none;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+  }
+  a.cert-row__item--link:hover,
+  a.cert-row__item--link:focus-visible {
+    border-color: var(--color-brass-400, #e8b54a);
+    background: rgb(255 255 255 / 0.04);
   }
   .cert-row__label {
     font-weight: 700;

@@ -45,8 +45,13 @@ CATALOGUE = [
     ('Panneau Canadien Solar 710W', 'PAN-CS-710', 'Panneaux solaires', 1400, 1200, 1000, 20),
     ('Panneau Jinko 710W',          'PAN-JK-710', 'Panneaux solaires', 1400, 1200, 1000, 20),
     # ── Batteries ──
-    ('Batterie Deyness 5 kWh',  'BAT-DEY-5',  'Batteries', 17000, 13000, 500, 5),
-    ('Batterie Deyness 10 kWh', 'BAT-DEY-10', 'Batteries', 30000, 22000, 500, 5),
+    # Marque RÉELLE : Dyness (dyness.com). Le catalogue historique écrivait
+    # « Deyness » — faute corrigée (décision fondateur 2026-08-18). Les SKU
+    # BAT-DEY-* NE CHANGENT PAS : l'appariement du seeder se fait par SKU
+    # d'abord, donc une base déjà seedée est retrouvée et SAUTÉE (aucun
+    # doublon), que la migration de renommage soit passée ou non.
+    ('Batterie Dyness 5 kWh',  'BAT-DEY-5',  'Batteries', 17000, 13000, 500, 5),
+    ('Batterie Dyness 10 kWh', 'BAT-DEY-10', 'Batteries', 30000, 22000, 500, 5),
     ('Batterie Lithium 5 kWh',  'BAT-LIT-5',  'Batteries', 15500, 13200, 500, 5),
     ('Batterie Gel 2.2 kWh',    'BAT-GEL-22', 'Batteries', 5000, 3100, 500, 5),
     # ── Structure & divers ──
@@ -185,6 +190,12 @@ PLACEHOLDER_VFD_SKUS = [
     'VFD-PMP-5.5T', 'VFD-PMP-7.5T', 'VFD-PMP-10T',
 ]
 
+# PVOND (2026-08-18) — ARTEFACTS catalogue à archiver, MÊME patron que les
+# coffrets estimés ci-dessus (autorisation fondateur : jamais de suppression).
+# artefact PVG4 : palier inexistant chez Huawei ; le besoin mono 10-12 kW se
+# couvre par Deye SG02LP1 (à référencer sur décision fondateur).
+ARTEFACTS_ONDULEUR_SKUS = ['OND-R-HUA-10M', 'OND-R-HUA-12M']
+
 # ── Pompes OSP série 30 (3", immergées, triphasées 380 V) ────────────────────
 # Courbes de performance constructeur : HMT (m) délivrée à chaque débit (m³/h).
 # PRIX VOLONTAIREMENT VIDES (0) : à renseigner par le fondateur — tant que le
@@ -248,6 +259,43 @@ CABLES_PROTECTIONS_VIDES = [
     ('Coffret AC',           'COF-AC',      100, 5),
 ]
 
+# ── PVG4 — Onduleur Deye 15 kW BASSE TENSION (décision fondateur 2026-08-18)
+# Série officielle Deye SUN-14/15/16/18/20K-SG05LP3-EU-SM2 (triphasé BASSE
+# TENSION 48 V, lancée 2024). Le catalogue n'avait que le palier 10 kW
+# (OND-H-DEY-10T, PV85) ; ce palier 15 kW COMPLÈTE la gamme LV SG05LP3 — À NE
+# PAS CONFONDRE avec OND-H-DEY-15T (gamme HAUTE TENSION SG01HP3, cf. la note
+# PVG4 « INCOMPATIBILITÉ MÉTIER » plus haut : deux appareils réels différents
+# au même palier de puissance, d'où un SKU et un nom distincts ici). PRIX
+# VOLONTAIREMENT VIDE (0) : à renseigner par le fondateur — même garde que
+# les pompes OSP / câbles PVG3 ci-dessus (``_has_price`` exclut le produit de
+# l'auto-composition, le générateur l'affiche grisé « prix à renseigner »).
+# (nom, sku, qte, seuil)
+ONDULEUR_DEYE_15K_LV_VIDE = [
+    ('Onduleur hybride Deye 15kW Triphasé Basse Tension', 'OND-DEY-15K-LV', 500, 5),
+]
+
+# ── Batterie Dyness HAUTE TENSION — 16 kWh (décision fondateur 2026-08-18) ──
+# Vendue PAR TRANCHE de 16 kWh, 3 000 DH/kWh (prix fondateur) → 48 000 DH TTC
+# la tranche ; rack et control box inclus dans le prix. Prix ACHAT
+# volontairement VIDE (0, non communiqué) : ne retire PAS le produit de
+# l'auto-composition (seul prix_vente=0 le ferait, cf. ``_has_price``) — ce
+# produit est un vrai article vendable, à la différence des pompes OSP/câbles.
+# Vérifié sur dyness.com/dyness.us (recherche 2026-08-18) : AUCUNE
+# configuration officielle Dyness ne fait exactement 16 kWh — Tower
+# T7/T10/T14/T17/T21 = 7,10/10,66/14,21/17,76/21,31 kWh, Orion = 9,9/14,9/19,9
+# kWh. Produit catalogue GÉNÉRIQUE (marque Dyness, capacité, prix,
+# description) SANS référence de modèle ni tension nominale inventées (règle
+# des faits vérifiés) — aucune ``FicheTechnique`` n'est donc créée pour ce SKU.
+# ⚠ HAUTE TENSION : ne doit JAMAIS être choisie par l'auto-composition
+# résidentielle BASSE TENSION (48 V, BAT-DEY-5/10) — garde posée côté
+# apps/ventes/services.py (mot-clé « haute tension » exclu du vivier
+# batterie, cf. ``_is_battery_basse_tension`` et le filtre dans
+# ``composition_residentielle``).
+# (nom, sku, sell_ttc, qte, seuil)
+BATTERIE_DYNESS_HV = [
+    ('Batterie Dyness haute tension — 16 kWh', 'BAT-DYN-HV-16', 48000, 500, 5),
+]
+
 _DESC_POMPE_IMM = ('Pompe immergée pour forage, corps inox\n'
                    'Pilotée par variateur solaire (AC, compatible champ PV)\n'
                    'Adaptée à l\'irrigation et l\'alimentation en eau agricole')
@@ -289,6 +337,19 @@ FICHES = {
                         'Monitoring Wi-Fi via Solarman Smart / Deye Cloud'),
     } for sku in ('OND-H-DEY-5M', 'OND-H-DEY-10M', 'OND-H-DEY-10T',
                   'OND-H-DEY-15T', 'OND-H-DEY-20T')},
+    # PVG4 — Onduleur Deye 15 kW BASSE TENSION (décision fondateur 2026-08-18,
+    # SUN-15K-SG05LP3-EU-SM2). Le modèle est donné directement par le
+    # fondateur (source WebFetch, pas une supposition) : l'addendum
+    # « Modèle confirmé fondateur : … » est posé automatiquement ci-dessous
+    # via MODELE_SUPPOSE_PVG4/MODELES_CONFIRMES_FONDATEUR, comme OND-H-DEY-10T.
+    'OND-DEY-15K-LV': {
+        'marque': 'Deye',
+        'garantie': 'Garantie constructeur 5 à 10 ans (selon site d\'installation)',
+        'description': ('Onduleur hybride Deye SUN-…K-SG05LP3, série basse tension 48 V (2024)\n'
+                        'Compatible batteries lithium/plomb 48 V (plage 40-60 V, BMS auto-adaptatif)\n'
+                        'Bascule secours (EPS/UPS), monitoring GPRS/WiFi/Bluetooth/4G/LAN\n'
+                        'Rendement max 97,6 % · rendement euro 97,0 %'),
+    },
     'PAN-CS-710': {
         'marque': 'Canadien Solar',
         'garantie': '12 ans produit · 30 ans performance linéaire (87,4 %)',
@@ -306,7 +367,7 @@ FICHES = {
                         'Certifié IEC 61215 / IEC 61730'),
     },
     **{sku: {
-        'marque': 'Deyness',
+        'marque': 'Dyness',
         'garantie': 'Garantie 5 ans · ≥ 6 000 cycles (80 % DoD)',
         'description': ('Batterie lithium LiFePO4 basse tension 51,2 V\n'
                         'Chimie fer-phosphate sûre et durable\n'
@@ -323,6 +384,19 @@ FICHES = {
         'marque': 'Gel',
         'garantie': 'Garantie 2 ans',
         'description': 'Batterie gel plomb étanche sans entretien, usage solaire',
+    },
+    # PVG4 — Batterie Dyness HAUTE TENSION, 16 kWh (décision fondateur
+    # 2026-08-18) : produit catalogue GÉNÉRIQUE (vérifié dyness.com/dyness.us,
+    # aucune configuration officielle ne fait 16 kWh — cf. le commentaire sur
+    # BATTERIE_DYNESS_HV plus haut). Pas de garantie sourcée : champ omis
+    # plutôt qu'inventé.
+    'BAT-DYN-HV-16': {
+        'marque': 'Dyness',
+        'description': ('Batterie Dyness haute tension, vendue par tranche de 16 kWh\n'
+                        'Rack et control box inclus dans le prix de la tranche\n'
+                        'Produit catalogue générique : aucune référence Dyness officielle '
+                        'ne correspond à 16 kWh (Tower/Orion) — modèle et tension nominale '
+                        'non renseignés, faute de source vérifiée'),
     },
     'STR-ACIER': {
         'garantie': 'Garantie 20 ans (structure)',
@@ -495,7 +569,9 @@ MODELE_SUPPOSE_PVG4 = {
     'OND-R-HUA-15T': 'Huawei SUN2000-15KTL-M5',          # enfsolar 16424 + huawei EDOC1100253093
     'OND-R-HUA-20T': 'Huawei SUN2000-20KTL-M5',          # globalsunhub
     'OND-R-HUA-25T': 'Huawei SUN2000-25KTL-M5',          # enfsolar
-    'OND-R-HUA-50T': 'Huawei SUN2000-50KTL-M0',          # huawei EDOC1100016052
+    # PVOND (2026-08-18) — édition PRÉSUMÉE M3 (gamme EMEA courante) ; le M0
+    # (édition AU) reste documenté dans FICHES_TECHNIQUES, à confirmer à l'achat.
+    'OND-R-HUA-50T': 'Huawei SUN2000-50KTL-M3',          # huawei EDOC1100016052 (M0) / fiche M3 EMEA
     'OND-R-HUA-100T': 'Huawei SUN2000-100KTL-M2',        # globalsunhub
     'OND-R-HUA-150T': 'Huawei SUN2000-150K-MG0',         # solar.huawei.com mg0/specs
     'OND-H-DEY-5M': 'Deye SUN-5K-SG04LP1-EU(-SM2)',      # liriksolar datasheet
@@ -508,12 +584,16 @@ MODELE_SUPPOSE_PVG4 = {
     'OND-H-DEY-20T': 'Deye SUN-20K-SG01HP3-EU-AM2',      # solarhouse.bg + pretapower
     'BAT-DEY-5': 'Dyness DL5.0C',                        # dyness.com DL5.0C datasheet
     'BAT-DEY-10': 'Dyness Powerbox Pro/G2 10.24',        # inverter-warehouse.co.za
+    # PVG4 — décision fondateur 2026-08-18 : nouveau palier 15 kW basse
+    # tension, modèle donné DIRECTEMENT par le fondateur (pas une supposition
+    # à deviner) — CONFIRMÉ dès la première seed, comme le 10T ci-dessus.
+    'OND-DEY-15K-LV': 'Deye SUN-15K-SG05LP3-EU-SM2',     # deyeinverter.com datasheet_sun-14-20k-sg05lp3-eu-sm2_240601_en.pdf (2024-06-01)
 }
 # PV85 — SKU dont le modèle constructeur n'est PLUS une supposition : le
 # fondateur a tranché. Leur addendum de description dit « Modèle confirmé
 # fondateur : … » (pas « supposé … — à confirmer »), et c'est cette mention
 # qui autorise le moteur électrique à NOMMER l'appareil sur le schéma.
-MODELES_CONFIRMES_FONDATEUR = ('OND-H-DEY-10T',)
+MODELES_CONFIRMES_FONDATEUR = ('OND-H-DEY-10T', 'OND-DEY-15K-LV')
 
 # Ajoute la mention du modèle (supposé ou confirmé) à la description
 # commerciale existante (SKU déjà présent dans FICHES ci-dessus) — additif,
@@ -527,6 +607,97 @@ for _sku_pvg4, _modele_pvg4 in MODELE_SUPPOSE_PVG4.items():
                          ' — à confirmer fondateur')
         if not FICHES[_sku_pvg4]['description'].endswith(_addendum):
             FICHES[_sku_pvg4]['description'] += _addendum
+
+
+# ── PVOND — PLAGE DE TENSION BATTERIE par référence onduleur ────────────────
+#
+# La neuvième variable du CONTRAT ONDULEUR (``apps/stock/selectors.py``) —
+# celle qui décide quelle batterie s'accroche à quel onduleur — n'a AUCUN champ
+# sur ``FicheTechnique`` (constat déjà écrit noir sur blanc dans les
+# commentaires PV85 ci-dessous : « NON seedés faute de champ … plage batterie
+# 40-60 V »). Elle est donc posée EN DONNÉE, sur une ligne marquée de la
+# description — même patron que « Modèle confirmé fondateur : … » juste
+# au-dessus, et lue par ``stock.selectors.plage_batterie_onduleur``.
+#
+# ``None`` = déclaration EXPLICITE « pas de batterie » (onduleur réseau) : le
+# contrat est SATISFAIT. Ne rien déclarer du tout voudrait dire « on ne sait
+# pas » — et l'onduleur serait grisé au générateur.
+#
+# ⚠ Les dix références Huawei du catalogue sont vendues par TAQINOR en
+# configuration RÉSEAU (string on-grid, sans stockage) : c'est ce que dit leur
+# nom, et c'est ce que déclare cette table. Deux appareils de la gamme
+# SUPPORTENT pourtant une batterie sur leur fiche constructeur (SUN2000-5KTL-L1
+# : 350-450 V avec une LG Chem RESU, 350-560 V avec une Huawei Smart ESS ;
+# SUN2000-10KTL-M1 : 600-980 V avec une Huawei Smart String ESS) — donc PAS une
+# fenêtre unique, mais une fenêtre PAR MARQUE de batterie, que le contrat (un
+# seul couple min/max) ne sait pas représenter. Le jour où le fondateur vend
+# l'un d'eux AVEC stockage, la ligne se change ici, en donnée.
+PLAGE_BATTERIE_ONDULEUR = {
+    # Huawei SUN2000 — vendus en réseau (cf. l'avertissement ci-dessus).
+    'OND-R-HUA-5M': None,
+    'OND-R-HUA-10M': None,
+    'OND-R-HUA-10T': None,
+    'OND-R-HUA-12M': None,
+    'OND-R-HUA-15T': None,
+    'OND-R-HUA-20T': None,
+    'OND-R-HUA-25T': None,
+    'OND-R-HUA-50T': None,
+    'OND-R-HUA-100T': None,
+    'OND-R-HUA-150T': None,
+    # Deye BASSE TENSION 48 V — familles SG04LP1 / SG02LP1 / SG05LP3.
+    # Sources : datasheet SG04LP1 (liriksolar) ; datasheet SG02LP1-EU-AM3
+    # (liriksolar) ; datasheet officielle deyeinverter.com
+    # datasheet_sun-3-12k-sg05lp3-eu-sm2_240927_en.pdf (2024-09-27) et
+    # datasheet_sun-14-20k-sg05lp3-eu-sm2_240601_en.pdf (2024-06-01) — la
+    # fenêtre 40-60 V y est donnée PARTAGÉE par toute la famille SG05LP3.
+    'OND-H-DEY-5M': (40, 60),
+    'OND-H-DEY-10M': (40, 60),
+    'OND-H-DEY-10T': (40, 60),
+    'OND-DEY-15K-LV': (40, 60),
+    # Deye HAUTE TENSION — famille SG01HP3, batterie lithium-ion 160-700 V.
+    # Source : datasheet officielle deyeinverter.com
+    # datasheet_sun-(5-25)k-sg01hp3-eu_230724_en.pdf (2023-07-24). C'est
+    # exactement l'incompatibilité métier déjà signalée au fondateur plus haut
+    # (une Dyness 51,2 V ne s'accroche PAS à ces deux appareils) — le garde
+    # data-driven de ``ventes.services`` la fait maintenant respecter par les
+    # CHIFFRES, plus par un mot-clé.
+    'OND-H-DEY-15T': (160, 700),
+    'OND-H-DEY-20T': (160, 700),
+}
+
+for _sku_bat, _plage_bat in PLAGE_BATTERIE_ONDULEUR.items():
+    if _sku_bat not in FICHES or 'description' not in FICHES[_sku_bat]:
+        continue
+    if _plage_bat is None:
+        _ligne_bat = '\nPlage batterie : aucune (onduleur réseau)'
+    else:
+        _ligne_bat = '\nPlage batterie : %s-%s V' % _plage_bat
+    if _ligne_bat not in FICHES[_sku_bat]['description']:
+        FICHES[_sku_bat]['description'] += _ligne_bat
+
+
+# ── PVOND — onduleurs dont le CONTRAT reste INCOMPLET, et pourquoi ──────────
+#
+# Le verrou de complétude grise au générateur tout onduleur auquel il manque
+# une variable du contrat. Cette table déclare les manques CONNUS et ASSUMÉS,
+# avec leur motif : elle n'est pas décorative, un test (``apps/stock/tests.py``)
+# refuse le seed d'un onduleur incomplet qui n'y figurerait pas — autrement dit,
+# ajouter demain une référence sans ses variables ne passe pas en silence.
+#
+# ORDRE FONDATEUR (2026-08-18, « ne laisse rien griser ») : la table est
+# désormais VIDE. Les neuf références jadis grisées ont été TRANCHÉES (chaque
+# valeur porte sa source et sa date dans ``FICHES_TECHNIQUES`` ci-dessous :
+# courants asymétriques ramenés au tracker LE PLUS FAIBLE par règle prudente,
+# édition M3 présumée pour le 50 kW, révision fondateur 2026-08-16 pour le Deye
+# 10 kW mono) et les deux ARTEFACTS Huawei mono 10/12 kW sont ARCHIVÉS
+# (``ARTEFACTS_ONDULEUR_SKUS``) plutôt que grisés — jamais supprimés.
+#
+# Le MÉCANISME, lui, reste ARMÉ pour les références FUTURES : une fixture
+# SYNTHÉTIQUE incomplète le prouve dans ``apps/stock/tests.py``. La règle qui
+# produit un manque est celle de PVG4/PV85, inchangée : on ne SAISIT que ce
+# qu'une source donne, et une valeur qu'il faut TRANCHER est une décision
+# fondateur — écrite ici avec son motif tant qu'elle n'est pas prise.
+ONDULEURS_CONTRAT_INCOMPLET = {}
 
 
 # ── PV9 — Fiches techniques (FicheTechnique, PV5) : SEULES les valeurs
@@ -589,36 +760,52 @@ FICHES_TECHNIQUES = {
         'ond_rendement_euro_pct': Decimal('98.1'),
     },
     'OND-R-HUA-15T': {
-        # 30A(2 strings)/20A(1) : valeur composée (pas un seul courant/MPPT
-        # propre) → ond_i_max_mppt_a NULL. Rendement ≈98.0 % interpolé → NULL.
+        # PVOND (2026-08-18, ordre fondateur « ne laisse rien griser ») —
+        # asymétrique 30/20 A (fiche FAMILLE SUN2000-12-25KTL-M5,
+        # solar.huawei.com, Version 01-20190716) — valeur retenue : 20 A,
+        # RÈGLE PRUDENTE (le moteur de chaînes ne peut alors jamais produire
+        # une config qui surcharge le tracker faible). Rendement euro 98,0 % =
+        # valeur OFFICIELLE de la famille 12-25KTL-M5, publiée par cette même
+        # fiche pour le palier 15 kW (remplace le « interpolé » de PVG4).
         'type_fiche': 'onduleur', 'ond_n_mppt': 2,
         'ond_mppt_v_min': Decimal('200.0'), 'ond_mppt_v_max': Decimal('1000.0'),
-        'ond_v_max_abs': Decimal('1100.0'),
+        'ond_v_max_abs': Decimal('1100.0'), 'ond_i_max_mppt_a': Decimal('20.0'),
         'ond_ac_kw': Decimal('15'), 'ond_phases': 3,
+        'ond_rendement_euro_pct': Decimal('98.0'),
     },
     'OND-R-HUA-20T': {
-        # 30A/20A composé → NULL. Nombre de MPPT non donné par la source
-        # pour ce palier précis → NULL (pas d'extrapolation depuis 15T/25T).
-        'type_fiche': 'onduleur',
+        # PVOND — nombre de MPPT SOURCÉ : la fiche FAMILLE
+        # SUN2000-12-25KTL-M5 (Version 01-20190716) donne 2 trackers pour TOUS
+        # les paliers 12-25 kW. Ce n'est donc pas l'extrapolation 15T/25T que
+        # PVG4 refusait : c'est la fiche du produit lui-même.
+        # PVOND (2026-08-18) — asymétrique 30/20 A (même fiche) — valeur
+        # retenue : 20 A, règle prudente.
+        'type_fiche': 'onduleur', 'ond_n_mppt': 2,
         'ond_mppt_v_min': Decimal('200.0'), 'ond_mppt_v_max': Decimal('1000.0'),
-        'ond_v_max_abs': Decimal('1100.0'),
+        'ond_v_max_abs': Decimal('1100.0'), 'ond_i_max_mppt_a': Decimal('20.0'),
         'ond_ac_kw': Decimal('20'), 'ond_phases': 3,
         'ond_rendement_euro_pct': Decimal('98.1'),
     },
     'OND-R-HUA-25T': {
-        'type_fiche': 'onduleur',
+        # PVOND — 2 trackers, même fiche famille 12-25KTL-M5 que ci-dessus.
+        # PVOND (2026-08-18) — asymétrique 30/20 A (même fiche) — valeur
+        # retenue : 20 A, règle prudente.
+        'type_fiche': 'onduleur', 'ond_n_mppt': 2,
         'ond_mppt_v_min': Decimal('200.0'), 'ond_mppt_v_max': Decimal('1000.0'),
-        'ond_v_max_abs': Decimal('1100.0'),
+        'ond_v_max_abs': Decimal('1100.0'), 'ond_i_max_mppt_a': Decimal('20.0'),
         'ond_ac_kw': Decimal('25'), 'ond_phases': 3,
         'ond_rendement_euro_pct': Decimal('98.2'),
     },
     'OND-R-HUA-50T': {
-        # Imax « non confirmé précisément » par la source → NULL. Rendement
-        # ≈98.5 % (approx., pas un rendement « euro » explicite) → NULL.
-        'type_fiche': 'onduleur', 'ond_n_mppt': 6,
+        # PVOND (2026-08-18, ordre fondateur) — édition présumée M3 (gamme
+        # EMEA courante) : 4 MPPT / 30 A / 98,0 % (fiche SUN2000-50KTL-M3,
+        # solar.huawei.com). M0 (22 A / 98,5 %, 6 trackers, édition AU,
+        # huawei EDOC1100016052) documenté — à confirmer à l'achat.
+        'type_fiche': 'onduleur', 'ond_n_mppt': 4,
         'ond_mppt_v_min': Decimal('200.0'), 'ond_mppt_v_max': Decimal('1000.0'),
-        'ond_v_max_abs': Decimal('1100.0'),
+        'ond_v_max_abs': Decimal('1100.0'), 'ond_i_max_mppt_a': Decimal('30.0'),
         'ond_ac_kw': Decimal('50'), 'ond_phases': 3,
+        'ond_rendement_euro_pct': Decimal('98.0'),
     },
     'OND-R-HUA-100T': {
         'type_fiche': 'onduleur', 'ond_n_mppt': 10,
@@ -636,22 +823,38 @@ FICHES_TECHNIQUES = {
     },
     # OND-R-HUA-10M / OND-R-HUA-12M : PAS de fiche — aucun Huawei mono
     # réseau réel à cette puissance (artefact catalogue, cf. commentaire
-    # MODELE_SUPPOSE_PVG4 ci-dessus).
+    # MODELE_SUPPOSE_PVG4 ci-dessus). PVOND (2026-08-18) : ces deux SKU ne
+    # sont plus GRISÉS mais ARCHIVÉS (``ARTEFACTS_ONDULEUR_SKUS``).
     # ── PVG4 — Onduleurs hybrides Deye ──
     'OND-H-DEY-5M': {
+        # PVOND — courant d'entrée désormais SOURCÉ : la fiche SG04LP1 donne
+        # « 13+13 A », soit la MÊME valeur sur les deux trackers — c'est donc
+        # bien un courant PAR MPPT propre (13 A), pas une valeur composée
+        # asymétrique comme le « 36+20 A » du SG05LP3 15 kW.
         'type_fiche': 'onduleur', 'ond_n_mppt': 2,
         'ond_mppt_v_min': Decimal('150.0'), 'ond_mppt_v_max': Decimal('425.0'),
-        'ond_v_max_abs': Decimal('600.0'),
+        'ond_v_max_abs': Decimal('600.0'), 'ond_i_max_mppt_a': Decimal('13.0'),
         'ond_ac_kw': Decimal('5'), 'ond_phases': 1,
         # 97.6 % max / 96.5 % euro — champ = rendement EURO uniquement.
         'ond_rendement_euro_pct': Decimal('96.5'),
     },
     'OND-H-DEY-10M': {
-        # DIVERGENCE plage MPPT selon la source (125-520 / 150-425 / 125-550
-        # selon nastechsolar vs autres) → ond_mppt_v_min/max NULL (fondateur
-        # à trancher). Nombre de MPPT lui-même divergent (3 vs 2×2) → NULL.
-        'type_fiche': 'onduleur',
+        # PVOND (2026-08-18, ordre fondateur « ne laisse rien griser ») — la
+        # DIVERGENCE est conservée EN COMMENTAIRE, la valeur est tranchée sur
+        # la datasheet du modèle nommé plus haut (Deye SUN-10K-SG02LP1-EU-AM3,
+        # liriksolar — déjà la source de la plage batterie 40-60 V) :
+        # 2 trackers (autres sources : 3 vs 2×2), plage MPPT 150-425 V (autres
+        # sources : 125-520 / 125-550 V), 600 V DC max.
+        # Courant 26 A/MPPT = valeur DÉJÀ VALIDÉE en production par le
+        # fondateur le 2026-08-16 pour les paliers 10K/12K (révision actuelle)
+        # — divergence documentée : la fiche de sept-2024 donnait 20 A.
+        # Rendement euro 97,0 % (même famille basse tension 48 V que les
+        # SG04LP1/SG05LP3 seedés ici, dont le rendement euro publié est 97,0 %).
+        'type_fiche': 'onduleur', 'ond_n_mppt': 2,
+        'ond_mppt_v_min': Decimal('150.0'), 'ond_mppt_v_max': Decimal('425.0'),
+        'ond_v_max_abs': Decimal('600.0'), 'ond_i_max_mppt_a': Decimal('26.0'),
         'ond_ac_kw': Decimal('10'), 'ond_phases': 1,
+        'ond_rendement_euro_pct': Decimal('97.0'),
     },
     # PV85 — Deye SUN-10K-SG05LP3-EU-SM2, modèle CONFIRMÉ FONDATEUR.
     # Sources : datasheet deyeinverter.com 2024-09 + manuel 2025-11.
@@ -663,9 +866,10 @@ FICHES_TECHNIQUES = {
     # / 2 chaînes pour les 10K et 12K précisément. On seede la révision
     # ACTUELLE (26 A) — à confirmer au numéro de série de l'appareil livré.
     # NON seedés faute de champ sur FicheTechnique (jamais inventé) : tension
-    # de démarrage 160 V, Isc max 39 A/MPPT, plage batterie 40-60 V,
-    # 210 A charge/décharge, rendement MAX 97,6 % (le champ est le rendement
-    # EURO), poids 35,2 kg.
+    # de démarrage 160 V, Isc max 39 A/MPPT, 210 A charge/décharge, rendement
+    # MAX 97,6 % (le champ est le rendement EURO), poids 35,2 kg.
+    # La PLAGE BATTERIE 40-60 V, elle, n'est plus perdue : PVOND la loge en
+    # DONNÉE sur la description (``PLAGE_BATTERIE_ONDULEUR`` plus haut).
     'OND-H-DEY-10T': {
         'type_fiche': 'onduleur', 'ond_n_mppt': 2,
         'ond_mppt_v_min': Decimal('200.0'), 'ond_mppt_v_max': Decimal('650.0'),
@@ -673,25 +877,58 @@ FICHES_TECHNIQUES = {
         'ond_ac_kw': Decimal('10'), 'ond_phases': 3,
         'ond_rendement_euro_pct': Decimal('97.0'),
     },
+    # PV85 — Deye SUN-15K-SG05LP3-EU-SM2 (gamme BASSE TENSION SG05LP3,
+    # décision fondateur 2026-08-18 — complète le palier 10 kW déjà seedé
+    # OND-H-DEY-10T ci-dessus, même famille de datasheet).
+    # Source : datasheet officielle deyeinverter.com/deyeinverter/2024/06/01/
+    # datasheet_sun-14-20k-sg05lp3-eu-sm2_240601_en.pdf (2024-06-01), colonne
+    # SUN-15K-SG05LP3-EU-SM2. La plage MPPT/V max/nb de trackers et le
+    # rendement EURO sont donnés PARTAGÉS pour toute la famille SG05LP3
+    # (14-20K) par la datasheet elle-même — pas une extrapolation.
+    # NON seedés faute de champ sur FicheTechnique (jamais inventé, même
+    # garde que OND-H-DEY-10T) : tension de démarrage 160 V, 280 A charge/
+    # décharge, poids 50,6 kg. La PLAGE BATTERIE 40-60 V est désormais logée
+    # en DONNÉE sur la description (PVOND, ``PLAGE_BATTERIE_ONDULEUR``).
+    'OND-DEY-15K-LV': {
+        'type_fiche': 'onduleur', 'ond_n_mppt': 2,
+        'ond_mppt_v_min': Decimal('160.0'), 'ond_mppt_v_max': Decimal('650.0'),
+        'ond_v_max_abs': Decimal('800.0'),
+        # PVOND (2026-08-18, ordre fondateur) — asymétrique 36/20 A (fiche
+        # SG05LP3 14-20K, deyeinverter.com 2024-06-01, 2/2+1 chaînes) —
+        # valeur retenue : 20 A, règle prudente (jamais une config qui
+        # surcharge le tracker faible), même règle que OND-R-HUA-15T.
+        'ond_i_max_mppt_a': Decimal('20.0'),
+        'ond_ac_kw': Decimal('15'), 'ond_phases': 3,
+        'ond_rendement_euro_pct': Decimal('97.0'),
+    },
     'OND-H-DEY-15T': {
         # Confiance moyenne : plage FAMILLE SG01HP3 (5-25K) documentée, pas
         # spécifique au 15T — seedée quand même (règle PVG4), l'incertitude
         # est portée par la mention « modèle supposé » sur la description.
-        'type_fiche': 'onduleur',
+        # PVOND — nb de MPPT SOURCÉ (2 trackers) par la fiche officielle
+        # deyeinverter.com datasheet_sun-(5-25)k-sg01hp3-eu_230724_en.pdf.
+        # PVOND (2026-08-18, ordre fondateur) — asymétrique 26/20 A (cette
+        # même fiche) — valeur retenue : 20 A, règle prudente.
+        'type_fiche': 'onduleur', 'ond_n_mppt': 2,
         'ond_mppt_v_min': Decimal('150.0'), 'ond_mppt_v_max': Decimal('850.0'),
-        'ond_v_max_abs': Decimal('1000.0'),
+        'ond_v_max_abs': Decimal('1000.0'), 'ond_i_max_mppt_a': Decimal('20.0'),
         'ond_ac_kw': Decimal('15'), 'ond_phases': 3,
         # 97.6/97.0 — même ordre max/euro que le 5M → euro = 97.0.
         'ond_rendement_euro_pct': Decimal('97.0'),
     },
     'OND-H-DEY-20T': {
-        # La source donne « charge max 50A » : c'est le courant de charge
-        # BATTERIE, pas un courant d'entrée MPPT PV → ond_i_max_mppt_a
-        # reste NULL (mauvais champ sinon).
-        'type_fiche': 'onduleur',
+        # L'ancienne source donnait « charge max 50A » : c'est le courant de
+        # charge BATTERIE, pas un courant d'entrée MPPT PV — il n'a jamais eu
+        # sa place ici. PVOND — la fiche OFFICIELLE de la famille
+        # (deyeinverter.com datasheet_sun-(5-25)k-sg01hp3-eu_230724_en.pdf,
+        # 2023-07-24) donne pour le 20K « 26+26 A » : même valeur sur les deux
+        # trackers, donc un courant PAR MPPT propre (26 A) — plus 2 trackers et
+        # un rendement euro de 97,0 %.
+        'type_fiche': 'onduleur', 'ond_n_mppt': 2,
         'ond_mppt_v_min': Decimal('150.0'), 'ond_mppt_v_max': Decimal('850.0'),
-        'ond_v_max_abs': Decimal('1000.0'),
+        'ond_v_max_abs': Decimal('1000.0'), 'ond_i_max_mppt_a': Decimal('26.0'),
         'ond_ac_kw': Decimal('20'), 'ond_phases': 3,
+        'ond_rendement_euro_pct': Decimal('97.0'),
     },
     # ── PVG4 — Batteries Dyness ──
     'BAT-DEY-5': {
@@ -894,12 +1131,70 @@ class Command(BaseCommand):
             )
             created.append(nom)
 
+        # ── Onduleur Deye 15 kW basse tension (SG05LP3) : PRIX VIDE (0) ──
+        # Même garde que les pompes OSP / câbles PVG3 ci-dessus : tant que
+        # prix_vente vaut 0, le produit est exclu du chiffrage automatique.
+        for nom, sku, qte, seuil in ONDULEUR_DEYE_15K_LV_VIDE:
+            if (Produit.objects.filter(company=company, sku=sku).exists()
+                    or Produit.objects.filter(
+                        company=company, nom__iexact=nom,
+                        is_archived=False).exists()):
+                skipped.append(nom)
+                continue
+            produit = Produit.objects.create(
+                company=company, nom=nom, sku=sku,
+                categorie=get_categorie(classify_categorie(nom)),
+                prix_achat=Decimal('0'),
+                prix_vente=Decimal('0'),  # à renseigner par le fondateur
+                quantite_stock=qte, seuil_alerte=seuil,
+                tva=Decimal('20.00'),
+            )
+            MouvementStock.objects.create(
+                company=company, produit=produit,
+                type_mouvement=MouvementStock.TypeMouvement.ENTREE,
+                quantite=qte, quantite_avant=0, quantite_apres=qte,
+                reference='SEED-CATALOGUE',
+                note='Stock initial (onduleur Deye 15kW LV — prix à renseigner)',
+            )
+            created.append(nom)
+
+        # ── Batterie Dyness haute tension — 16 kWh : prix vente RÉEL ──
+        # (3 000 DH/kWh, fondateur) ; prix achat vide (non communiqué).
+        for nom, sku, sell_ttc, qte, seuil in BATTERIE_DYNESS_HV:
+            if (Produit.objects.filter(company=company, sku=sku).exists()
+                    or Produit.objects.filter(
+                        company=company, nom__iexact=nom,
+                        is_archived=False).exists()):
+                skipped.append(nom)
+                continue
+            produit = Produit.objects.create(
+                company=company, nom=nom, sku=sku,
+                categorie=get_categorie(classify_categorie(nom)),
+                prix_achat=Decimal('0'),  # à renseigner par le fondateur
+                prix_vente=ht(sell_ttc),
+                quantite_stock=qte, seuil_alerte=seuil,
+                tva=Decimal('20.00'),
+                unite_stock='tranche',
+            )
+            MouvementStock.objects.create(
+                company=company, produit=produit,
+                type_mouvement=MouvementStock.TypeMouvement.ENTREE,
+                quantite=qte, quantite_avant=0, quantite_apres=qte,
+                reference='SEED-CATALOGUE',
+                note='Stock initial (batterie Dyness haute tension — 16 kWh)',
+            )
+            created.append(nom)
+
         # ── Archivage des coffrets variateurs PLACEHOLDER (prix estimés) ──
         # Exception ponctuelle à la règle "additif uniquement", explicitement
         # autorisée par le fondateur (2026-06-12) : ces articles n'ont jamais
         # porté de vrais prix. Archivés (jamais supprimés), prix intacts.
+        # PVOND (2026-08-18) — MÊME patron pour les deux ARTEFACTS onduleur
+        # Huawei mono 10/12 kW (``ARTEFACTS_ONDULEUR_SKUS``) : archivés, donc
+        # hors catalogue de composition, jamais supprimés.
         archived_count = Produit.objects.filter(
-            company=company, sku__in=PLACEHOLDER_VFD_SKUS,
+            company=company,
+            sku__in=PLACEHOLDER_VFD_SKUS + ARTEFACTS_ONDULEUR_SKUS,
             is_archived=False).update(is_archived=True)
 
         # ── Fiches commerciales : mise à jour ADDITIVE des seuls champs

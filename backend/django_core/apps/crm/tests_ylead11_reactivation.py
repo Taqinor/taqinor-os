@@ -1,9 +1,6 @@
 """YLEAD11 — Réactivation d'un lead perdu/COLD sur nouvelle touche entrante.
 
 Couvre :
-  - un 2e POST du webhook site sur un lead PERDU le réactive (perdu=False,
-    stage non-COLD) avec une activité de réactivation, sans écraser
-    l'attribution first-touch d'origine ;
   - un lead COLD (mais non perdu) est aussi repositionné hors COLD ;
   - un lead ouvert (ni perdu ni COLD) n'est pas affecté par
     ``reactivate_lead_on_new_touch`` (no-op) ;
@@ -12,6 +9,13 @@ Couvre :
   - la même règle est appliquée côté inbound WhatsApp (YLEAD8) — testé côté
     ``tests_ylead8_whatsapp_dedupe.py::test_lost_lead_is_reactivated_not_duplicated``,
     référencé ici pour traçabilité.
+
+NOTE (règle fondateur 18/08/2026) : le webhook du SITE ne réactive plus rien,
+parce qu'il ne retrouve plus de lead à réactiver — une soumission du site crée
+toujours sa propre fiche. La réactivation reste vivante sur les touches
+entrantes qui, elles, portent une identité de conversation (WhatsApp). La
+classe ``WebhookNeReactivePlusTests`` ci-dessous verrouille ce nouveau
+contrat : le lead perdu ressort INTACT, et le rapprochement est visible.
 """
 import json
 
@@ -76,9 +80,9 @@ class ReactivateLeadOnNewTouchUnitTests(TestCase):
 
 
 @override_settings(WEBSITE_LEAD_WEBHOOK_SECRET=SECRET)
-class WebhookReactivationTests(TestCase):
-    """2e POST site sur un lead perdu → réactivation, sans écraser le
-    first-touch d'origine."""
+class WebhookNeReactivePlusTests(TestCase):
+    """Règle fondateur 18/08/2026 — une nouvelle soumission du SITE sur un
+    numéro déjà perdu crée sa propre fiche ; l'ancienne reste telle quelle."""
 
     def setUp(self):
         self.company = Company.objects.create(
@@ -93,6 +97,7 @@ class WebhookReactivationTests(TestCase):
             'roofType': 'villa',
             'billRange': '1500-3000',
             'qualified': True,
+            'idempotencyKey': 'ylead11-web-1',
             'utm': {'utm_source': 'facebook', 'utm_campaign': 'campagne_origine'},
         }
         base.update(extra)
@@ -104,7 +109,7 @@ class WebhookReactivationTests(TestCase):
             content_type='application/json',
             HTTP_X_WEBHOOK_SECRET=SECRET)
 
-    def test_second_post_on_lost_lead_reactivates_without_overwriting_attribution(self):
+    def _lost_lead(self):
         lost = Lead.objects.create(
             company=self.company, nom='Nadia Bennis',
             telephone='+212662000001', source=Lead.Source.SITE_WEB,
@@ -113,40 +118,33 @@ class WebhookReactivationTests(TestCase):
             utm_campaign='campagne_origine', stage=stages.COLD)
         Lead.objects.filter(pk=lost.pk).update(
             date_creation=timezone.now() - timezone.timedelta(days=5))
+        lost.refresh_from_db()
+        return lost
+
+    def test_nouvelle_soumission_cree_une_fiche_et_laisse_le_lead_perdu_intact(self):
+        lost = self._lost_lead()
 
         resp = self._post(self._payload(
             utm={'utm_source': 'google', 'utm_campaign': 'campagne_nouvelle'}))
-        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.status_code, 201, resp.content)
+        self.assertEqual(
+            Lead.objects.filter(company=self.company).count(), 2)
 
         lost.refresh_from_db()
-        self.assertFalse(lost.perdu)
-        self.assertNotEqual(lost.stage, stages.COLD)
-        # First-touch d'origine préservé — jamais écrasé par le re-POST.
+        # Le lead perdu n'est ni réactivé, ni réécrit : plus aucun chemin du
+        # webhook ne le touche.
+        self.assertTrue(lost.perdu)
+        self.assertEqual(lost.stage, stages.COLD)
+        self.assertEqual(lost.motif_perte, 'Trop cher')
         self.assertEqual(lost.utm_source, 'facebook')
         self.assertEqual(lost.utm_campaign, 'campagne_origine')
-
-        notes = LeadActivity.objects.filter(lead=lost)
-        self.assertTrue(
-            any('réactivation' in (n.body or '') for n in notes))
-
-        # Toujours un seul lead pour ce numéro (pas de doublon).
-        self.assertEqual(
-            Lead.objects.filter(company=self.company).count(), 1)
-
-    def test_second_post_on_open_lead_does_not_touch_perdu(self):
-        """Contrôle négatif : un lead ouvert (jamais perdu) n'écrit aucune
-        activité de réactivation sur un re-POST."""
-        open_lead = Lead.objects.create(
-            company=self.company, nom='Nadia Bennis',
-            telephone='+212662000001', source=Lead.Source.SITE_WEB,
-            canal=Lead.Canal.SITE_WEB, stage=stages.CONTACTED)
-        Lead.objects.filter(pk=open_lead.pk).update(
-            date_creation=timezone.now() - timezone.timedelta(days=5))
-
-        self._post(self._payload())
-
-        open_lead.refresh_from_db()
-        self.assertFalse(open_lead.perdu)
-        notes = LeadActivity.objects.filter(lead=open_lead)
         self.assertFalse(
-            any('réactivation' in (n.body or '') for n in notes))
+            LeadActivity.objects.filter(lead=lost).exists())
+
+        # …mais le commercial voit le rapprochement sur la NOUVELLE fiche.
+        nouveau = Lead.objects.get(pk=resp.json()['lead_id'])
+        self.assertFalse(nouveau.perdu)
+        self.assertTrue(LeadActivity.objects.filter(
+            lead=nouveau, kind=LeadActivity.Kind.NOTE,
+            body__startswith='Doublon possible').exists())
+        self.assertEqual(resp.json()['doublons'], [lost.pk])

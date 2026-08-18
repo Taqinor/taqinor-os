@@ -174,6 +174,41 @@ export function ringBBox(ring: LngLat[]): [number, number, number, number] {
   return [minLng, minLat, maxLng, maxLat];
 }
 
+// W120 — bornes de zoom « atterrissage » d'un contour hydraté (lead/devis) sans
+// recherche d'adresse préalable pour zoomer (voir roof-tool-pro11.ts,
+// applyHydration/applyDevisHydration). FIT_ZOOM_MAX = le niveau « toit » déjà utilisé
+// partout ailleurs (pin client, adresse, géolocalisation → zoom 19) : un petit contour
+// ne zoome jamais plus près que ça. FIT_ZOOM_MIN borne le repli inverse (grand site) :
+// jamais la vue Maroc entière du bug d'origine (zoom ~5).
+const FIT_ZOOM_MIN = 15;
+const FIT_ZOOM_MAX = 19;
+// Fenêtre utile assumée (px) pour cadrer le contour. Le conteneur RÉEL n'est pas fiable
+// à l'hydratation (React peut ne pas avoir donné sa taille finale — W113), donc on vise
+// une largeur/hauteur utile raisonnable plutôt que de lire le canvas.
+const FIT_VIEWPORT_PX = 600;
+const FIT_PADDING_PX = 60;
+
+/**
+ * Zoom (échelle « slippy map » standard, tuiles 256 px) qui montre l'anneau ENTIER avec
+ * une marge confortable, à sa latitude moyenne. PUR (aucun DOM/carte) — sert à
+ * l'hydratation (lead/devis) pour ne JAMAIS ouvrir la vue au zoom du boot (Maroc entier,
+ * W120) : voir roof-tool-pro11.ts. Anneau vide/dégénéré (aire ~nulle) → FIT_ZOOM_MAX (le
+ * niveau « toit » déjà utilisé pour un pin seul).
+ */
+export function zoomToFitRing(ring: LngLat[]): number {
+  if (!Array.isArray(ring) || ring.length === 0) return FIT_ZOOM_MAX;
+  const [minLng, minLat, maxLng, maxLat] = ringBBox(ring);
+  const midLat = (minLat + maxLat) / 2;
+  const spanLngM = Math.max(maxLng - minLng, 0) * DEG2M * Math.cos(midLat * DEG2RAD);
+  const spanLatM = Math.max(maxLat - minLat, 0) * DEG2M;
+  const spanM = Math.max(spanLngM, spanLatM, 1); // jamais 0 (contour dégénéré) → log fini
+  const usablePx = FIT_VIEWPORT_PX - 2 * FIT_PADDING_PX;
+  const metersPerPixel = spanM / usablePx;
+  // Référence Web Mercator standard (tuiles 256 px) : mètres/pixel à zoom z, latitude φ.
+  const zoom = Math.log2((156543.03392 * Math.cos(midLat * DEG2RAD)) / metersPerPixel);
+  return Math.min(FIT_ZOOM_MAX, Math.max(FIT_ZOOM_MIN, zoom));
+}
+
 /**
  * Coordonnée de texture (u, v) ∈ [0,1] d'un point lng/lat dans une image satellite
  * couvrant EXACTEMENT la bbox [minLng,minLat,maxLng,maxLat]. u suit la longitude

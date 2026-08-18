@@ -42,8 +42,8 @@ CATALOGUE = [
     ('Panneau Jinko 550W', 'PAN550', '1100'),
     ('Onduleur réseau Huawei 5kW Monophasé', 'ONDR5', '14000'),
     ('Onduleur hybride Deye 5kW Monophasé', 'ONDH5', '17000'),
-    ('Batterie Deyness 5 kWh', 'BAT5', '16000'),
-    ('Batterie Deyness 10 kWh', 'BAT10', '30000'),
+    ('Batterie Dyness 5 kWh', 'BAT5', '16000'),
+    ('Batterie Dyness 10 kWh', 'BAT10', '30000'),
     ('Structures acier', 'STR-ACIER', '500'),
     ('Structures aluminium', 'STR-ALU', '850'),
     ('Socles', 'SOC-BET', '80'),
@@ -128,7 +128,7 @@ class LeKitResidentielEstComplet(_Base):
 
         # Scénario réseau : ni hybride, ni batterie.
         self.assertNotIn('Onduleur hybride Deye 5kW Monophasé', kit)
-        self.assertNotIn('Batterie Deyness 5 kWh', kit)
+        self.assertNotIn('Batterie Dyness 5 kWh', kit)
         # Le suivi est à quantité nulle au simulateur : jamais enregistré.
         self.assertNotIn(
             'Suivi journalier, maintenance chaque 12 mois pendant 2 ans', kit)
@@ -142,9 +142,9 @@ class LeKitResidentielEstComplet(_Base):
                          (1, Decimal('17000.00')))
         self.assertNotIn('Onduleur réseau Huawei 5kW Monophasé', kit)
         # 4,4 kWc → cible 5 kWh : un module de 5, aucun de 10.
-        self.assertEqual(kit['Batterie Deyness 5 kWh'],
+        self.assertEqual(kit['Batterie Dyness 5 kWh'],
                          (1, Decimal('16000.00')))
-        self.assertNotIn('Batterie Deyness 10 kWh', kit)
+        self.assertNotIn('Batterie Dyness 10 kWh', kit)
         # Le reste du kit ne bouge pas d'un pouce.
         self.assertEqual(kit['Structures acier'], (8, Decimal('500.00')))
         self.assertEqual(kit['Socles'], (16, Decimal('80.00')))
@@ -165,8 +165,8 @@ class LeKitResidentielEstComplet(_Base):
                          Decimal('2500.00'))
         self.assertEqual(kit['Installation'][1], Decimal('6000.00'))
         # Cible batterie = 10 kWh → un module de 10, aucun de 5.
-        self.assertEqual(kit['Batterie Deyness 10 kWh'][0], 1)
-        self.assertNotIn('Batterie Deyness 5 kWh', kit)
+        self.assertEqual(kit['Batterie Dyness 10 kWh'][0], 1)
+        self.assertNotIn('Batterie Dyness 5 kWh', kit)
         # 11 kWc contre un hybride de 5 kW (seuil 8,8) : il en faut 3.
         self.assertEqual(kit['Onduleur hybride Deye 5kW Monophasé'][0], 3)
 

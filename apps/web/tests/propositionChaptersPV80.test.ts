@@ -248,12 +248,62 @@ describe('PV81 — polish : rien de vide, rien qui se contredit', () => {
     expect(at('id="production"')).toBeGreaterThan(0);
   });
 
-  it('les garanties racontent UNE histoire (le « 20 à 25 ans » orphelin a disparu)', () => {
+  it('les garanties racontent UNE histoire, chiffrée par la SOURCE UNIQUE warranty.ts', () => {
     expect(CODE).not.toContain('20 à 25 ans');
     const bloc = PROPOSITION.slice(at('id="confiance"'), at('id="faq"'));
-    expect(bloc).toContain('30 ans');
-    expect(bloc).toContain('10 ans');
-    expect(bloc).toContain('data-fr="pose garantie Taqinor"');
+    // (fondateur 2026-08-17) plus AUCUN chiffre de garantie codé en dur dans le
+    // bloc : les trois durées sont importées de src/lib/warranty.ts — la même
+    // source que le PDF (backend residential/theme.py WARRANTIES). Corriger une
+    // durée se fait donc à un seul endroit, et le papier ne peut plus diverger
+    // de l'écran.
+    expect(PROPOSITION).toContain("from '../../lib/warranty'");
+    expect(bloc).toContain('PANEL_PERFORMANCE_WARRANTY_YEARS');
+    expect(bloc).toContain('INVERTER_WARRANTY_YEARS');
+    // La pose est affichée AVEC sa durée (2 ans), comme sur le PDF — l'ancien
+    // « pose garantie Taqinor » sans durée ne dit pas la même chose.
+    expect(bloc).toContain('INSTALL_WARRANTY_YEARS');
+    expect(bloc).toContain('data-fr="de pose Taqinor"');
+    expect(bloc).not.toContain('data-fr="pose garantie Taqinor"');
+    // …Y COMPRIS EN ARABE. La pose disait « سنتان » (« deux ans ») en dur :
+    // porter INSTALL_WARRANTY_YEARS à 3 corrigeait FR/EN et laissait le client
+    // arabophone lire deux ans. Les trois durées passent par `anneesAr`, qui
+    // applique le DUEL arabe (1 → سنة واحدة, 2 → سنتان, 3-10 → N سنوات, au-delà
+    // → N سنة) : aucune durée n'est plus écrite en dur dans le bloc.
+    expect(bloc).toContain('data-ar={anneesAr(INSTALL_WARRANTY_YEARS)}');
+    expect(bloc).toContain('data-ar={anneesAr(PANEL_PERFORMANCE_WARRANTY_YEARS)}');
+    expect(bloc).toContain('data-ar={anneesAr(INVERTER_WARRANTY_YEARS)}');
+    expect(bloc).not.toContain('data-ar="سنتان"');
+    // La fonction couvre bien les quatre cas (une seule définition, en tête).
+    expect(PROPOSITION).toContain('function anneesAr(n: number): string');
+    for (const forme of ['سنة واحدة', 'سنتان', 'سنوات', 'سنة']) {
+      expect(PROPOSITION, forme).toContain(forme);
+    }
+  });
+
+  it('la réassurance « garantie attachée au matériel » est dite en FR/EN/AR', () => {
+    const bloc = PROPOSITION.slice(at('id="confiance"'), at('id="faq"'));
+    expect(bloc).toContain('Les garanties fabricant sont attachées au matériel');
+    expect(bloc).toContain('Manufacturer warranties are attached to the equipment');
+    expect(bloc).toContain('ضمانات المصنّع مرتبطة بالمعدات');
+  });
+
+  it('le cumul mesuré porte sa DATE DE RELEVÉ, lue dans les données (jamais écrite en dur)', () => {
+    const bloc = PROPOSITION.slice(at('id="confiance"'), at('id="faq"'));
+    // La date vient de realisations.ts (relevés datés) : absente des données,
+    // la mention entière disparaît — jamais de date inventée ni de « — ».
+    expect(bloc).toContain('MEASURED_FLEET_READ_AT_FR');
+    expect(bloc).toContain('relevé au ');
+    expect(PROPOSITION).toContain("from '../../lib/realisations'");
+  });
+
+  it('ni étoiles, ni avis Google, ni assurance dans le bloc confiance', () => {
+    const bloc = PROPOSITION.slice(at('id="confiance"'), at('id="faq"'));
+    // (fondateur 2026-08-17) <StarRating/> était un no-op (GOOGLE_RATING null) :
+    // l'invocation morte est démontée, et rien ne la remplace.
+    expect(bloc).not.toContain('<StarRating');
+    expect(bloc).not.toContain('avis Google');
+    // L'assurance n'est pas souscrite : elle ne s'annonce nulle part ici.
+    expect(bloc).not.toContain('assurance habitation');
   });
 
   it('la page demande le pied de page réduit, et Layout le sert sans changer les autres pages', () => {

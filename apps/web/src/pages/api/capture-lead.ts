@@ -90,11 +90,18 @@ export const POST: APIRoute = async ({ request }) => {
   };
 
   const background = (async () => {
-    const fw = await forwardLead(record, env, fetch);
-    if (!fw.delivered && baseRecord.qualified) {
+    // Les leads SOUS LE SEUIL partent AUSSI au CRM, avec leur `qualified: false`
+    // intact. Jusqu'ici `forwardLead` les court-circuitait : un visiteur qui
+    // avait repéré son toit, donné sa ville, son profil et son créneau de visite
+    // disparaissait entièrement dès que sa facture passait sous 1 000 MAD. Le
+    // récepteur accepte le drapeau et fait le tri lui-même ; ce que voit le
+    // visiteur (`json.qualified`) et le Meta CAPI (qui se gate seul sur
+    // `record.qualified`, cf. fireCapi) sont INCHANGÉS.
+    const fw = await forwardLead(record, env, fetch, { includeUnqualified: true });
+    if (!fw.delivered) {
       // Aucune PII dans les logs (id haché, indicateurs, raison) — comme preview-lead.
       console.log(
-        `[capture-lead] non transmis au CRM (${fw.reason}) — lead qualifié:`,
+        `[capture-lead] non transmis au CRM (${fw.reason}) — lead:`,
         JSON.stringify(redactLeadForLog(baseRecord)),
       );
     }

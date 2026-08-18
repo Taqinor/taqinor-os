@@ -23,11 +23,14 @@ interface Props {
 }
 const { fiche } = Astro.props as Props;
 const downloadHref = ficheDownloadHref(fiche);
-// WJ131 — deux fiches sont EXPLICATIVES (postes génériques du devis : tableau de
-// protection, accessoires de câblage). Elles n'ont pas de fiche constructeur : leur
-// source faisant foi est la NORME, une page officielle, pas un PDF. On ne promet
-// donc « (PDF) » que quand la cible en est réellement un.
-const estPdf = downloadHref.toLowerCase().endsWith('.pdf');
+// WJ131 — plusieurs fiches sont EXPLICATIVES (postes génériques du devis :
+// protection DC, protection AC, câblage, accessoires de pose, grands projets).
+// Elles n'ont pas de fiche constructeur : leur source faisant foi est la NORME,
+// une page officielle, pas un PDF. On ne promet donc « (PDF) » que quand la
+// cible en est réellement un — et quand AUCUNE source officielle n'a été
+// vérifiée (`downloadHref === null`), le bouton disparaît entièrement plutôt
+// que de pointer vers un lien deviné (règle dure « faits vérifiés uniquement »).
+const estPdf = !!downloadHref && downloadHref.toLowerCase().endsWith('.pdf');
 const pairings = relatedFiches(fiche);
 
 // W326 — Offer/availability : AUCUN prix inventé. Le prix dépend de l'étude
@@ -83,8 +86,68 @@ const jsonLd = {
         <p class="cine-in mt-2 text-sm text-lune-faint [animation-delay:200ms]">{fiche.modele}</p>
         <p class="v2-lead cine-in mt-5 max-w-2xl text-white/85 [animation-delay:280ms]">{fiche.resume}</p>
 
-        <div class="v2-rise mt-8 border-t-2 border-brass-400/70">
-          <h2 class="tech-label mt-5 text-brass-300">Caractéristiques vérifiées</h2>
+        {/* ── PHOTO D'ILLUSTRATION (fondateur 2026-08-18) ─────────────────────
+            Rendue en TÊTE de fiche uniquement quand `fiche.photo` existe :
+            aucune fiche sans photo ne change d'un pixel (pas de cadre vide, pas
+            de placeholder). Les droits de chaque image sont vérifiables — le
+            registre fichier / source / auteur / licence vit dans
+            `public/fiches/photos/CREDITS.md`. La ligne de crédit n'apparaît que
+            si la licence EXIGE l'attribution (`photoCredit` renseigné) ; une
+            image du domaine public n'en porte pas.
+
+            Le conteneur fixe le ratio (aspect-[16/9] + object-cover) : la boîte
+            réserve sa hauteur AVANT le chargement → zéro CLS, et une photo
+            portrait comme paysage lit pareil.
+
+            NOTE — l'optimisation AVIF/WebP multi-largeurs
+            (`scripts/process-photos.mjs`, qui dépend de `sharp`) sera passée
+            sur une machine disposant de node : on sert l'original JPEG en
+            attendant. */}
+        {fiche.photo && (
+          <figure class="v2-rise mt-8">
+            <div class="aspect-[16/9] w-full overflow-hidden rounded border border-white/15 bg-white/5">
+              <img
+                src={fiche.photo}
+                alt={`${fiche.nom} — ${fiche.modele}`}
+                loading="lazy"
+                decoding="async"
+                class="h-full w-full object-cover"
+              />
+            </div>
+            {fiche.photoCredit && (
+              <figcaption class="mt-2 text-xs text-lune-faint">{fiche.photoCredit}</figcaption>
+            )}
+          </figure>
+        )}
+
+        {/* ── GABARIT 7 BLOCS (fondateur 2026-08-18) ──────────────────────────
+            1 rôle · 2 bénéfices · 3 specs · 4 normes · 5 garantie · 6 à vérifier
+            · 7 FAQ. Les fiches PRODUIT (marquées) n'en portent que 3 et 5 : un
+            bloc absent est OMIS, jamais rendu vide ni comblé par un
+            placeholder. */}
+        {fiche.role && (
+          <div class="v2-rise mt-8 border-t-2 border-brass-400/70">
+            <h2 class="tech-label mt-5 text-brass-300">Son rôle</h2>
+            <p class="mt-3 text-sm leading-relaxed text-lune">{fiche.role}</p>
+          </div>
+        )}
+
+        {fiche.benefices && fiche.benefices.length > 0 && (
+          <div class="v2-rise mt-8">
+            <h2 class="tech-label text-brass-300">Ce que ça change pour vous</h2>
+            <ul class="mt-4 divide-y divide-white/10">
+              {fiche.benefices.map((b) => (
+                <li class="flex gap-3 py-3 text-sm text-lune">
+                  <span class="mt-1.5 inline-block h-1.5 w-1.5 flex-none rotate-45 border border-brass-400" aria-hidden="true"></span>
+                  <span>{b}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        <div class={`v2-rise mt-8${fiche.role ? '' : ' border-t-2 border-brass-400/70'}`}>
+          <h2 class={`tech-label text-brass-300${fiche.role ? '' : ' mt-5'}`}>Caractéristiques vérifiées</h2>
           <ul class="mt-4 divide-y divide-white/10">
             {fiche.faits.map((p) => (
               <li class="flex gap-3 py-3 text-sm text-lune">
@@ -99,22 +162,53 @@ const jsonLd = {
           </ul>
         </div>
 
+        {fiche.normes && fiche.normes.length > 0 && (
+          <div class="v2-rise mt-8">
+            <h2 class="tech-label text-brass-300">Normes de référence</h2>
+            <ul class="mt-4 divide-y divide-white/10">
+              {fiche.normes.map((n) => (
+                <li class="py-3 text-sm text-lune-soft">{n}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {fiche.verifier && fiche.verifier.length > 0 && (
+          <div class="v2-rise mt-8">
+            <h2 class="tech-label text-brass-300">Ce que vous devez vérifier</h2>
+            <p class="mt-2 max-w-2xl text-sm text-lune-soft">
+              Valable pour n’importe quel installateur, y compris nous — ce sont les points
+              sur lesquels une offre se juge.
+            </p>
+            <ul class="mt-4 divide-y divide-white/10">
+              {fiche.verifier.map((v) => (
+                <li class="flex gap-3 py-3 text-sm text-lune">
+                  <span class="mt-1.5 inline-block h-1.5 w-1.5 flex-none rotate-45 border border-brass-400" aria-hidden="true"></span>
+                  <span>{v}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {/* WJ36 — discipline laiton : le laiton est réservé au CTA devis
             (parcours /devis/mon-toit, libellé principal verbatim) ; le
             téléchargement PDF est rétrogradé en bouton contour. */}
         <div class="v2-rise mt-8 flex flex-wrap gap-3">
           <a href="/devis/mon-toit" class="glow bg-brass-400 px-5 py-3 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300">Obtenir mon étude gratuite &rarr;</a>
-          <a
-            href={downloadHref}
-            target="_blank"
-            rel="noopener"
-            class="inline-flex items-center gap-2 border border-white/25 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10"
-          >
-            {estPdf && (
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            )}
-            {estPdf ? 'Fiche technique officielle (PDF)' : 'La norme de référence (source officielle) ↗'}
-          </a>
+          {downloadHref && (
+            <a
+              href={downloadHref}
+              target="_blank"
+              rel="noopener"
+              class="inline-flex items-center gap-2 border border-white/25 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10"
+            >
+              {estPdf && (
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              )}
+              {estPdf ? 'Fiche technique officielle (PDF)' : 'La norme de référence (source officielle) ↗'}
+            </a>
+          )}
         </div>
 
         {/* W147 — aperçu intégré de la fiche auto-hébergée (skip si pas de PDF /fiches). */}
@@ -142,6 +236,25 @@ const jsonLd = {
           </div>
         )}
 
+        {/* BLOC 7 du gabarit — FAQ : les questions réellement posées sur ce poste.
+            Rendue en <details> natif (aucun JS, aucune dépendance) et absente
+            quand la fiche n'en porte pas. */}
+        {fiche.faq && fiche.faq.length > 0 && (
+          <div class="v2-rise mt-10 border-t border-white/10 pt-8">
+            <h2 class="tech-label text-brass-300">Questions fréquentes</h2>
+            <div class="mt-4 divide-y divide-white/10 border-t border-white/10">
+              {fiche.faq.map((item) => (
+                <details class="group py-3">
+                  <summary class="cursor-pointer list-none text-sm font-semibold text-lune marker:content-none hover:text-white">
+                    <span class="me-2 text-brass-300" aria-hidden="true">+</span>{item.q}
+                  </summary>
+                  <p class="mt-2 ps-5 text-sm leading-relaxed text-lune-soft">{item.r}</p>
+                </details>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* W326 — « se combine avec » : les autres familles de produits qu'une
             installation associe typiquement à celle-ci (ex. panneau → onduleur
             + supervision). Aucun produit ne se référence lui-même. */}
@@ -164,7 +277,9 @@ const jsonLd = {
         <p class="mt-6 text-xs leading-relaxed text-lune-faint">
           {estPdf
             ? 'Les spécifications détaillées font foi dans la fiche constructeur officielle liée ci-dessus.'
-            : 'Ce poste n’a pas de fiche constructeur : c’est un ensemble monté sur mesure. Sa composition exacte est fixée par l’étude, dans le respect de la norme liée ci-dessus.'}
+            : downloadHref
+              ? 'Ce poste n’a pas de fiche constructeur : c’est un ensemble monté sur mesure. Sa composition exacte est fixée par l’étude, dans le respect de la norme liée ci-dessus.'
+              : 'Ce poste n’a pas de fiche constructeur : c’est un ensemble monté sur mesure. Sa composition exacte est fixée par l’étude, dans le respect des normes citées ci-dessus.'}
           Le raisonnement derrière chaque marque est expliqué sur
           <a href="/équipement" class="text-brass-300 underline underline-offset-2 hover:text-white">notre page Équipement</a>.
         </p>

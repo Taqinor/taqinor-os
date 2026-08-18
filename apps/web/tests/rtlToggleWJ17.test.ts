@@ -108,9 +108,12 @@ describe('WJ17 — mon-toit.astro : le toggle WJ33 reste la référence + couvre
     expect(MON_TOIT).toContain('data-fr="Voir les panneaux sur votre toit" data-ar="مشاهدة الألواح على سطحك"');
   });
 
-  it('les questions optionnelles WJ31 sont AR-labellées', () => {
-    expect(MON_TOIT).toContain('data-fr="Affiner mon estimation (facultatif, 1 minute)" data-ar="تحسين تقديري (اختياري، دقيقة واحدة)"');
+  it("l'ombrage — seule question conservée sous la facture — reste AR-labellé", () => {
+    // L'étage « Affiner mon estimation (facultatif, 1 minute) » et ses deux
+    // autres accordéons ont quitté le tunnel (coupe fondateur 18/08) : seul
+    // l'ombrage remonte dans la carte facture, et il garde sa paire FR/AR.
     expect(MON_TOIT).toContain('data-fr="Ombrage sur le toit" data-ar="التظليل على السطح"');
+    expect(MON_TOIT).not.toContain('Affiner mon estimation');
   });
 
   it('applyLang pilote dir/lang document + une hauteur de ligne AR plus généreuse', () => {

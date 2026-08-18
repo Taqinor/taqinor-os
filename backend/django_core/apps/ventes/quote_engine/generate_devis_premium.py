@@ -296,6 +296,10 @@ AVEC_ITEMS   = _Q["avec_items"]
 # D\u00e9faut vide \u2192 un devis sans structure/option est rendu strictement comme avant.
 LIGNES_STRUCTURE = []
 OPTIONS_PROPOSEES = []
+# QXMT \u2014 d\u00e9fauts INERTES : sans les cl\u00e9s du builder, le rendu est
+# byte-identique \u00e0 aujourd'hui (aucun dossier MT \u21d2 aucune omission).
+MASQUER_ECONOMIES = False
+TARIF_MT_MENTION = ""
 
 MONTHS  = ["Jan","F\u00e9v","Mar","Avr","Mai","Jun",
            "Jul","Ao\u00fb","Sep","Oct","Nov","D\u00e9c"]
@@ -511,8 +515,12 @@ DEFAULT_DOC_TEXTS = {
         "Tarifs de référence&#160;: barème ONEE/SRM",
     ],
     # N67 — garanties (titre, détail, libellé performance). Entités HTML EXACTES.
+    # QRES56 (fondateur, 2026-08-17) — « Structure 20 ans » RETIRÉE ici aussi :
+    # le moteur résidentiel v2 ne publie plus que les garanties traçables aux
+    # fiches produit (theme.WARRANTIES), les deux moteurs disent enfin la même
+    # chose. Le reste du littéral est inchangé au caractère près.
     "garantie_titre": "Garanties jusqu&#8217;à 30 ans",
-    "garantie_detail": ("Structure 20 ans, panneaux 12 ans produit + 30 ans "
+    "garantie_detail": ("Panneaux 12 ans produit + 30 ans "
                         "performance (87,4&#8201;%), onduleur 10 ans. "
                         "Sérénité totale."),
     "garantie_perf_label": "Performance panneau (87,4&#8201;%)",
@@ -763,11 +771,15 @@ _SVG = {
 "suivi":        '<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg"><rect width="40" height="40" rx="6" fill="#6B7280"/><rect x="6" y="9" width="28" height="24" rx="3" fill="none" stroke="white" stroke-width="1.5"/><rect x="6" y="9" width="28" height="8" rx="3" fill="white" opacity="0.15"/><line x1="13" y1="6" x2="13" y2="12" stroke="#F5A623" stroke-width="2" stroke-linecap="round"/><line x1="27" y1="6" x2="27" y2="12" stroke="#F5A623" stroke-width="2" stroke-linecap="round"/><path d="M11 24 L16 28 L29 19" fill="none" stroke="#F5A623" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
 }
 
+# Couleur du badge de marque. « dyness » est l'orthographe RÉELLE (correction
+# fondateur 2026-08-18) ; « deyness » reste listé pour que les désignations
+# FIGÉES des devis déjà émis gardent leur badge coloré.
 _BRAND_C = {
     "huawei":   ("#CF0A2C", "#fff"),
     "canadian": ("#004B87", "#fff"),
     "canadien": ("#004B87", "#fff"),
     "deye":     ("#FF6B00", "#fff"),
+    "dyness":   ("#FF6B00", "#fff"),
     "deyness":  ("#FF6B00", "#fff"),
 }
 
@@ -1231,6 +1243,57 @@ def page1():
     esa_mad = f"{int(ECO_S_ANN):,}".replace(",", _s) + "\u00a0MAD"
     eaa_mad = f"{int(ECO_A_ANN):,}".replace(",", _s) + "\u00a0MAD"
     pk      = f"{int(PROD_KWH):,}".replace(",", _s)
+    # QXMT \u2014 dossier raccord\u00e9 en MOYENNE TENSION sans \u00e9conomies d'\u00e9tude : la
+    # pastille \u00ab Retour en N ans \u00bb et l'encadr\u00e9 \u00ab \u00c9conomie estim\u00e9e \u00bb sont OMIS
+    # des cartes d'option. Les valeurs disponibles ici (ROI_S/ROI_A,
+    # ECO_S_ANN/ECO_A_ANN) sortent de ``calculate_savings_roi``, au bar\u00e8me
+    # BASSE TENSION de l'ONEE : un dossier MT ne porte JAMAIS ce chiffre-l\u00e0.
+    # Hors dossier MT (cas de tr\u00e8s loin le plus courant), les deux fragments
+    # sont EXACTEMENT le HTML d'hier \u2014 rendu byte-identique.
+    _mt_note = (
+        '<div style="background:#FFF8E1;border:1px solid #E8A020;'
+        'border-radius:5px;padding:5px 9px;font-size:6.5pt;line-height:1.35;'
+        f'color:{CG4};">Raccordement MOYENNE TENSION&#160;: les &#233;conomies '
+        'et le retour sur investissement seront chiffr&#233;s sur le bar&#232;me '
+        'MT, jamais au bar&#232;me basse tension.</div>')
+    if MASQUER_ECONOMIES:
+        _roi_pill_s = _roi_pill_a = ""
+        _eco_box_s = _eco_box_a = _mt_note
+    else:
+        _roi_pill_s = (
+            '<div style="display:inline-block;align-self:flex-start;'
+            'background:#e8f5e9;color:#2e7d32;border-radius:12px;'
+            'padding:4px 10px;font-size:13px;font-weight:600;'
+            f'margin-bottom:7px;">{SVG_CHART}Retour en {ROI_S} ans</div>')
+        _roi_pill_a = (
+            '<div style="display:inline-block;align-self:flex-start;'
+            'background:#1a1a2e;color:white;border-radius:12px;'
+            'padding:4px 10px;font-size:13px;font-weight:600;'
+            f'margin-bottom:7px;">{SVG_CHART2}Retour en {ROI_A} ans</div>')
+        _mt_src = (
+            f'<div style="font-size:6pt;color:{CG4};margin-top:3px;'
+            f'line-height:1.3;">{TARIF_MT_MENTION}</div>'
+            if TARIF_MT_MENTION else "")
+        # Le HTML est reproduit AU CARACTÈRE PRÈS (sauts de ligne et indentation
+        # compris) : hors dossier MT, le rendu reste byte-identique — deux
+        # <span> inline séparés par un blanc ne s'affichent pas comme deux
+        # <span> collés.
+        _eco_box_s = (
+            f'<div style="background:{CG1};border:1px solid {CG2};'
+            'border-radius:5px;padding:5px 9px;">\n'
+            f'        <span style="font-size:7pt;color:{CG4};">'
+            '&#201;conomie estim&#233;e&#160;: </span>\n'
+            f'        <span style="font-size:10pt;font-weight:800;color:{CN};">'
+            f'{esa_mad}/an</span>{_mt_src}\n'
+            '      </div>')
+        _eco_box_a = (
+            f'<div style="background:white;border:1px solid {CG2};'
+            'border-radius:5px;padding:5px 9px;">\n'
+            f'        <span style="font-size:7pt;color:{CG4};">'
+            '&#201;conomie estim&#233;e&#160;: </span>\n'
+            f'        <span style="font-size:10pt;font-weight:800;color:{CN};">'
+            f'{eaa_mad}/an</span>{_mt_src}\n'
+            '      </div>')
     # Scenario-aware option card visibility
     _s1   = 'display:none;' if SCENARIO == 'Avec batterie' else ''
     _s2   = 'display:none;' if SCENARIO == 'Sans batterie' else ''
@@ -1295,7 +1358,13 @@ def page1():
     _ab_lis = "".join(f"<li>{SVG_CHECK}{b}</li>" for b in AVEC_BULLETS) or \
         f"<li>{SVG_CHECK}Équipement détaillé en page 2</li>"
     # KPI economies card — scenario-aware
-    if SCENARIO == 'Sans batterie':
+    # QXMT — dossier MT sans économies d'étude : la vignette annonce l'absence
+    # de chiffre plutôt qu'un montant calculé au barème BASSE TENSION.
+    if MASQUER_ECONOMIES:
+        _eco_val   = '<span style="white-space:nowrap;">&#8212;</span>'
+        _eco_size  = "17pt"
+        _eco_sub   = "chiffr&#233;es sur bar&#232;me MT"
+    elif SCENARIO == 'Sans batterie':
         _eco_val   = f'<span style="white-space:nowrap;">{esa_mad}</span>'
         _eco_size  = "17pt"
         _eco_sub   = "&#233;conomies par an"
@@ -1422,16 +1491,13 @@ def page1():
       <div style="font-size:7pt;color:{CGR};font-weight:600;margin-bottom:7px;">Autoconsommation directe</div>
       {_ts_price}
       <div style="font-size:7pt;color:{CG4};margin-bottom:5px;">Prix total TTC{_pkwc_s}</div>
-      <div style="display:inline-block;align-self:flex-start;background:#e8f5e9;color:#2e7d32;border-radius:12px;padding:4px 10px;font-size:13px;font-weight:600;margin-bottom:7px;">{SVG_CHART}Retour en {ROI_S} ans</div>
+      {_roi_pill_s}
       <div style="height:1px;background:{CG2};margin-bottom:6px;"></div>
       <ul style="list-style:none;padding:0;font-size:7pt;line-height:1.8;color:{CG7};margin-bottom:6px;">
         {_sb_lis}
       </ul>
       <div style="height:1px;background:{CG2};margin-top:auto;margin-bottom:6px;"></div>
-      <div style="background:{CG1};border:1px solid {CG2};border-radius:5px;padding:5px 9px;">
-        <span style="font-size:7pt;color:{CG4};">&#201;conomie estim&#233;e&#160;: </span>
-        <span style="font-size:10pt;font-weight:800;color:{CN};">{esa_mad}/an</span>
-      </div>
+      {_eco_box_s}
     </div>
 
     <!-- OPTION 2 -->
@@ -1442,16 +1508,13 @@ def page1():
       <div style="font-size:7pt;color:{CGR};font-weight:600;margin-bottom:7px;">Stockage + autonomie nocturne</div>
       {_ta_price}
       <div style="font-size:7pt;color:{CG4};margin-bottom:5px;">Prix total TTC{_pkwc_a}</div>
-      <div style="display:inline-block;align-self:flex-start;background:#1a1a2e;color:white;border-radius:12px;padding:4px 10px;font-size:13px;font-weight:600;margin-bottom:7px;">{SVG_CHART2}Retour en {ROI_A} ans</div>
+      {_roi_pill_a}
       <div style="height:1px;background:{CG2};margin-bottom:6px;"></div>
       <ul style="list-style:none;padding:0;font-size:7pt;line-height:1.8;color:{CG7};margin-bottom:6px;">
         {_ab_lis}
       </ul>
       <div style="height:1px;background:{CG2};margin-top:auto;margin-bottom:6px;"></div>
-      <div style="background:white;border:1px solid {CG2};border-radius:5px;padding:5px 9px;">
-        <span style="font-size:7pt;color:{CG4};">&#201;conomie estim&#233;e&#160;: </span>
-        <span style="font-size:10pt;font-weight:800;color:{CN};">{eaa_mad}/an</span>
-      </div>
+      {_eco_box_a}
     </div>
 
   </div>
@@ -1792,11 +1855,9 @@ def page3():
         <div style="font-size:12px;font-weight:700;color:{CA};letter-spacing:1px;text-transform:uppercase;">ANS</div>
         <div style="font-size:8pt;color:{CG4};margin-top:2px;">Panneaux (produit)</div>
       </div>
-      <div style="flex:1;border:2px solid {CN};border-top:4px solid {CA};border-radius:8px;padding:6px 5px;text-align:center;background:white;">
-        <div class="serif" style="font-size:38px;color:{CN};line-height:1.0;letter-spacing:-1px;">20</div>
-        <div style="font-size:12px;font-weight:700;color:{CA};letter-spacing:1px;text-transform:uppercase;">ANS</div>
-        <div style="font-size:8pt;color:{CG4};margin-top:2px;">Structure de montage</div>
-      </div>
+      <!-- QRES56 (fondateur, 2026-08-17) : le badge « 20 ANS — Structure de
+           montage » est retiré (même décision que la ligne garantie_detail) ;
+           les trois badges restants s'élargissent, la hauteur ne bouge pas. -->
       <div style="flex:1;border:2px solid {CA};border-top:4px solid {CN};border-radius:8px;padding:6px 5px;text-align:center;background:{CAL};">
         <div class="serif" style="font-size:38px;color:{CA};line-height:1.0;letter-spacing:-1px;">30</div>
         <div style="font-size:12px;font-weight:700;color:{CN};letter-spacing:1px;text-transform:uppercase;">ANS</div>
@@ -2306,9 +2367,18 @@ def page_onepage(items):
         _sum_cells = [
             ("Puissance cr&#234;te", f"{KWC} kWc"),
             ("Production annuelle", f"{fnum(PROD_KWH)} kWh/an"),
-            ("&#201;conomie annuelle", f"{fnum(max(ECO_S_ANN, ECO_A_ANN))} MAD/an"),
-            ("Prix par kWc", f"{fnum(round(total / KWC))} MAD/kWc"),
         ]
+        # QXMT — dossier raccordé en MOYENNE TENSION sans économies d'étude :
+        # la vignette « Économie annuelle » est OMISE. La valeur disponible
+        # (``ECO_S_ANN``/``ECO_A_ANN``) sort de ``calculate_savings_roi``, au
+        # barème BASSE TENSION de l'ONEE : l'imprimer sur un dossier MT donne
+        # au client un chiffre qui n'est pas le sien.
+        if not MASQUER_ECONOMIES:
+            _sum_cells.append(
+                ("&#201;conomie annuelle",
+                 f"{fnum(max(ECO_S_ANN, ECO_A_ANN))} MAD/an"))
+        _sum_cells.append(
+            ("Prix par kWc", f"{fnum(round(total / KWC))} MAD/kWc"))
     else:
         _sum_cells = []
     summary_html = ""
@@ -2642,6 +2712,11 @@ def _render_premium_pdf(data: dict, out_path) -> str:
     global DEVISE  # FG52 — devise du document (ISO 4217)
     global SAVINGS_METHOD  # QF3 — bloc « Comment nous calculons vos économies »
     SAVINGS_METHOD = data.get("savings_method")
+    # QXMT — un dossier MT sans économies d'étude n'imprime AUCUN chiffre
+    # d'économies : ceux disponibles ici sont calculés au barème BASSE TENSION.
+    global MASQUER_ECONOMIES, TARIF_MT_MENTION
+    MASQUER_ECONOMIES = bool(data.get("masquer_economies"))
+    TARIF_MT_MENTION = data.get("tarif_mt_mention") or ""
     global HYPOTHESES  # QK4 — bloc « Nos hypothèses »
     HYPOTHESES = data.get("hypotheses")
     global FINANCING  # QK3 — bloc financement (QJ12)

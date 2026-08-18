@@ -64,12 +64,18 @@ def _augment(data: dict) -> dict:
     d["com_conso"] = _num(etude.get("conso_annuelle")) or _num(d.get("conso_annuelle_kwh"))
     d["com_autoconso"] = _num(etude.get("taux_autoconso"))
     d["com_couverture"] = _num(etude.get("taux_couverture"))
+    # QXMT — DOSSIER MT SANS ÉCONOMIES D'ÉTUDE : aucun repli sur le chiffre BT
+    # (``eco_s_ann``/``roi_s`` sortent du barème BASSE TENSION de l'ONEE). Le
+    # bloc est OMIS — jamais un « 0 », jamais un chiffre qui n'est pas le sien.
+    masque = bool(d.get("masquer_economies"))
+    d["com_masquer_economies"] = masque
+    d["com_mt_mention"] = d.get("tarif_mt_mention") or ""
     eco = _num(etude.get("economies_annuelles"))
-    if eco is None:
+    if eco is None and not masque:
         eco = _num(d.get("eco_s_ann"))
     d["com_economies"] = round(eco) if eco else 0
     pb = _num(etude.get("payback"))
-    if pb is None:
+    if pb is None and not masque:
         pb = _num(d.get("roi_s"))
     d["com_payback"] = pb
 

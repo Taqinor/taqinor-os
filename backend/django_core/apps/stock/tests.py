@@ -35,7 +35,8 @@ class TestSeedCatalogue(TestCase):
         seed(self.company)
         qs = Produit.objects.filter(company=self.company)
         # 31 solaire + 9 pompage + 16 VEICHI + 11 pompes OSP + 22 câbles/protections
-        self.assertEqual(qs.count(), 89)
+        # + 1 onduleur Deye 15kW LV (PVG4) + 1 batterie Dyness HV 16 kWh (PVG4)
+        self.assertEqual(qs.count(), 91)
         # Spot-check key items: HT price = simulator TTC / 1.2
         huawei_10t = qs.get(sku='OND-R-HUA-10T')
         self.assertEqual(huawei_10t.nom, 'Onduleur réseau Huawei 10kW Triphasé')
@@ -53,7 +54,7 @@ class TestSeedCatalogue(TestCase):
         # Traceability: one entry movement per product
         self.assertEqual(
             MouvementStock.objects.filter(
-                company=self.company, reference='SEED-CATALOGUE').count(), 89,
+                company=self.company, reference='SEED-CATALOGUE').count(), 91,
         )
 
     def test_fiches_and_pompage_seeded(self):
@@ -184,46 +185,73 @@ class TestSeedCatalogue(TestCase):
         self.assertIn('Modèle supposé : Huawei SUN2000-5KTL-L1', p5m.description)
         self.assertIn('à confirmer fondateur', p5m.description)
 
-    def test_pvg4_interpolated_and_ambiguous_values_left_null(self):
+    def test_pvond_courants_asymetriques_retiennent_le_tracker_faible(self):
+        """PVOND (ordre fondateur 2026-08-18, « ne laisse rien griser ») — un
+        courant ASYMÉTRIQUE par tracker est tranché sur LE PLUS FAIBLE : le
+        moteur de chaînes ne peut alors jamais produire une configuration qui
+        surcharge le tracker faible."""
         from apps.stock.models import FicheTechnique
         seed(self.company)
+        # « 30 A / 20 A » (fiche famille SUN2000-12-25KTL-M5) → 20 A.
+        for sku in ('OND-R-HUA-15T', 'OND-R-HUA-20T', 'OND-R-HUA-25T'):
+            fiche = FicheTechnique.objects.get(
+                produit=Produit.objects.get(company=self.company, sku=sku))
+            self.assertEqual(fiche.ond_i_max_mppt_a, Decimal('20.0'), sku)
+        # « 26+20 A » (SG01HP3) et « 36+20 A » (SG05LP3 14-20K) → 20 A.
+        for sku in ('OND-H-DEY-15T', 'OND-DEY-15K-LV'):
+            fiche = FicheTechnique.objects.get(
+                produit=Produit.objects.get(company=self.company, sku=sku))
+            self.assertEqual(fiche.ond_i_max_mppt_a, Decimal('20.0'), sku)
+
         p15t = Produit.objects.get(company=self.company, sku='OND-R-HUA-15T')
         f15t = FicheTechnique.objects.get(produit=p15t)
-        # Rendement ≈98.0 % « interpolé » — jamais saisi.
-        self.assertIsNone(f15t.ond_rendement_euro_pct)
-        # 30A(2 strings)/20A(1) : courant composé, pas une valeur propre.
-        self.assertIsNone(f15t.ond_i_max_mppt_a)
-        # Plage MPPT/Vmax, elles, sont sourcées explicitement.
+        # Rendement euro 98,0 % : valeur OFFICIELLE de la famille 12-25KTL-M5
+        # (remplace le « interpolé » de PVG4).
+        self.assertEqual(f15t.ond_rendement_euro_pct, Decimal('98.0'))
+        # Plage MPPT/Vmax, elles, sont sourcées explicitement (inchangé).
         self.assertEqual(f15t.ond_mppt_v_min, Decimal('200.0'))
         self.assertEqual(f15t.ond_mppt_v_max, Decimal('1000.0'))
 
+    def test_pvond_huawei_50t_seede_en_edition_m3(self):
+        """Édition présumée M3 (gamme EMEA courante) : 4 MPPT / 30 A / 98,0 %.
+        Le M0 (22 A / 98,5 %) reste documenté en commentaire, à confirmer à
+        l'achat."""
+        from apps.stock.models import FicheTechnique
+        seed(self.company)
         p50t = Produit.objects.get(company=self.company, sku='OND-R-HUA-50T')
         f50t = FicheTechnique.objects.get(produit=p50t)
-        # Imax « non confirmé précisément » par la source → NULL.
-        self.assertIsNone(f50t.ond_i_max_mppt_a)
-        # ≈98.5 % (approx., pas « euro » explicite) → NULL.
-        self.assertIsNone(f50t.ond_rendement_euro_pct)
-        self.assertEqual(f50t.ond_n_mppt, 6)
+        self.assertEqual(f50t.ond_n_mppt, 4)
+        self.assertEqual(f50t.ond_i_max_mppt_a, Decimal('30.0'))
+        self.assertEqual(f50t.ond_rendement_euro_pct, Decimal('98.0'))
+        self.assertIn('Modèle supposé : Huawei SUN2000-50KTL-M3', p50t.description)
 
-    def test_pvg4_deye_10m_divergent_mppt_range_left_null(self):
+    def test_pvond_deye_10m_tranche_sur_la_revision_validee_fondateur(self):
+        """La divergence de sources est CONSERVÉE en commentaire, mais la
+        valeur est tranchée : 26 A/MPPT (révision validée en production le
+        2026-08-16, fiche 2024 = 20 A documentée) et la plage MPPT de la
+        datasheet SG02LP1-EU-AM3 du modèle nommé."""
         from apps.stock.models import FicheTechnique
         seed(self.company)
         p = Produit.objects.get(company=self.company, sku='OND-H-DEY-10M')
         f = FicheTechnique.objects.get(produit=p)
         self.assertEqual(f.type_fiche, 'onduleur')
-        # DIVERGENCE selon la source → jamais tranchée par le seeder.
-        self.assertIsNone(f.ond_mppt_v_min)
-        self.assertIsNone(f.ond_mppt_v_max)
-        self.assertIsNone(f.ond_n_mppt)
+        self.assertEqual(f.ond_n_mppt, 2)
+        self.assertEqual(f.ond_mppt_v_min, Decimal('150.0'))
+        self.assertEqual(f.ond_mppt_v_max, Decimal('425.0'))
+        self.assertEqual(f.ond_v_max_abs, Decimal('600.0'))
+        self.assertEqual(f.ond_i_max_mppt_a, Decimal('26.0'))
+        self.assertEqual(f.ond_rendement_euro_pct, Decimal('97.0'))
         self.assertIn('Modèle supposé : Deye SUN-10K-SG02LP1-EU-AM3', p.description)
 
-    def test_pvg4_huawei_mono_10_12kw_have_no_fiche_technique(self):
-        """OND-R-HUA-10M/12M : artefacts catalogue, aucun modèle Huawei mono
-        réseau réel à ces puissances — donc AUCUNE fiche technique créée."""
+    def test_pvond_huawei_mono_10_12kw_sont_archives_jamais_supprimes(self):
+        """OND-R-HUA-10M/12M : ARTEFACTS (aucun Huawei mono réseau réel à ces
+        puissances). Ordre fondateur 2026-08-18 : plus grisés mais ARCHIVÉS —
+        donc hors catalogue de composition, et JAMAIS supprimés."""
         from apps.stock.models import FicheTechnique
         seed(self.company)
         for sku in ('OND-R-HUA-10M', 'OND-R-HUA-12M'):
             p = Produit.objects.get(company=self.company, sku=sku)
+            self.assertTrue(p.is_archived, sku)
             self.assertFalse(FicheTechnique.objects.filter(produit=p).exists(), sku)
             # Pas de mention de modèle supposé non plus (rien à confirmer).
             self.assertNotIn('Modèle supposé', p.description)
@@ -354,6 +382,96 @@ class TestSeedCatalogue(TestCase):
         priced = Produit.objects.get(company=self.company, sku='OND-R-HUA-10T')
         self.assertTrue(_has_price(priced))
 
+    # ── PVG4 — Onduleur Deye 15 kW basse tension (décision fondateur
+    # 2026-08-18, SUN-15K-SG05LP3-EU-SM2) ─────────────────────────────────
+    def test_pvg4_onduleur_deye_15k_lv_seeded_with_empty_price(self):
+        from apps.stock.models import FicheTechnique
+        from apps.ventes.services import _has_price
+        seed(self.company)
+        p = Produit.objects.get(company=self.company, sku='OND-DEY-15K-LV')
+        self.assertEqual(p.nom, 'Onduleur hybride Deye 15kW Triphasé Basse Tension')
+        self.assertEqual(p.prix_vente, Decimal('0'))   # à renseigner par le fondateur
+        self.assertEqual(p.prix_achat, Decimal('0'))
+        self.assertEqual(p.categorie.nom, 'Onduleurs hybrides')
+        self.assertEqual(p.marque, 'Deye')
+        self.assertIn('Modèle confirmé fondateur : Deye SUN-15K-SG05LP3-EU-SM2',
+                      p.description)
+        # Prix vide → exclu du chiffrage automatique (même garde que les OSP).
+        self.assertFalse(_has_price(p))
+
+        fiche = FicheTechnique.objects.get(produit=p)
+        self.assertEqual(fiche.type_fiche, 'onduleur')
+        self.assertEqual(fiche.ond_n_mppt, 2)
+        self.assertEqual(fiche.ond_mppt_v_min, Decimal('160.0'))
+        self.assertEqual(fiche.ond_mppt_v_max, Decimal('650.0'))
+        self.assertEqual(fiche.ond_v_max_abs, Decimal('800.0'))
+        self.assertEqual(fiche.ond_ac_kw, Decimal('15'))
+        self.assertEqual(fiche.ond_phases, 3)
+        self.assertEqual(fiche.ond_rendement_euro_pct, Decimal('97.0'))
+        # PVOND (2026-08-18) — courant asymétrique 36/20 A sur 2 trackers :
+        # valeur retenue = le tracker LE PLUS FAIBLE (20 A), règle prudente,
+        # même règle que OND-R-HUA-15T.
+        self.assertEqual(fiche.ond_i_max_mppt_a, Decimal('20.0'))
+
+    # ── PVG4 — Batterie Dyness haute tension, 16 kWh (décision fondateur
+    # 2026-08-18) ───────────────────────────────────────────────────────
+    def test_pvg4_batterie_dyness_hv_16kwh_seeded(self):
+        from apps.stock.models import FicheTechnique
+        from apps.ventes.services import _has_price
+        seed(self.company)
+        p = Produit.objects.get(company=self.company, sku='BAT-DYN-HV-16')
+        self.assertEqual(p.nom, 'Batterie Dyness haute tension — 16 kWh')
+        self.assertEqual(p.prix_vente, Decimal('40000.00'))   # 48 000 TTC / tranche
+        self.assertEqual(p.prix_achat, Decimal('0'))          # non communiqué
+        self.assertEqual(p.tva, Decimal('20.00'))
+        self.assertEqual(p.categorie.nom, 'Batteries')
+        self.assertEqual(p.marque, 'Dyness')
+        self.assertEqual(p.unite_stock, 'tranche')
+        self.assertIn('rack et control box', p.description.lower())
+        # Un vrai prix de vente → PAS exclu de l'auto-composition par _has_price
+        # (seul prix_vente=0 exclut — le prix d'achat vide n'y change rien).
+        self.assertTrue(_has_price(p))
+        # Aucune configuration Dyness officielle ne fait 16 kWh (vérifié) :
+        # aucun modèle inventé → aucune FicheTechnique créée pour ce SKU.
+        self.assertFalse(FicheTechnique.objects.filter(produit=p).exists())
+
+    def test_pvg4_new_products_idempotent_second_run(self):
+        seed(self.company)
+        seed(self.company)
+        self.assertEqual(
+            Produit.objects.filter(company=self.company, sku='OND-DEY-15K-LV').count(), 1)
+        self.assertEqual(
+            Produit.objects.filter(company=self.company, sku='BAT-DYN-HV-16').count(), 1)
+        bat = Produit.objects.get(company=self.company, sku='BAT-DYN-HV-16')
+        self.assertEqual(bat.prix_vente, Decimal('40000.00'))
+
+    def test_pvg4_batterie_dyness_hv_never_auto_selected_low_voltage(self):
+        """Garde fondateur (2026-08-18) : la batterie HAUTE TENSION ne doit
+        JAMAIS être choisie par l'auto-composition résidentielle basse
+        tension, même si elle devenait la moins chère du catalogue."""
+        from apps.ventes.services import (
+            _is_battery_basse_tension, _pick_product, composition_residentielle,
+            catalogue_de_la_societe)
+        seed(self.company)
+        hv = Produit.objects.get(company=self.company, sku='BAT-DYN-HV-16')
+        self.assertFalse(_is_battery_basse_tension(hv.nom))
+
+        # _pick_product (résynchronisation / from-layout) ne la retourne
+        # jamais, même artificiellement rendue la moins chère du catalogue.
+        hv.prix_vente = Decimal('1')
+        hv.save(update_fields=['prix_vente'])
+        picked = _pick_product(self.company, _is_battery_basse_tension)
+        self.assertIsNotNone(picked)
+        self.assertNotEqual(picked.sku, 'BAT-DYN-HV-16')
+
+        # Le vivier de composition_residentielle ne la retient pas non plus.
+        produits = catalogue_de_la_societe(self.company)
+        lignes = composition_residentielle(
+            produits, kwc=9.94, panel_watt=710, avec_batterie=True)
+        skus_batterie = [li.produit.sku for li in lignes
+                         if li.produit and 'batterie' in (li.produit.nom or '').lower()]
+        self.assertNotIn('BAT-DYN-HV-16', skus_batterie)
+
     def test_placeholder_coffrets_archived_prices_intact(self):
         # Un ancien coffret placeholder existant est archivé par le seeder
         # (autorisation fondateur) — jamais supprimé, prix jamais modifié.
@@ -385,7 +503,7 @@ class TestSeedCatalogue(TestCase):
         out = seed(self.company)
         self.assertEqual(
             Produit.objects.filter(company=self.company).count(), count_after_first)
-        self.assertIn('0 created, 89 already present', out)
+        self.assertIn('0 created, 91 already present', out)
 
     def test_never_overwrites_existing_product(self):
         # Pre-existing product with the same name but a different price
@@ -549,3 +667,248 @@ class TestSeedCatalogue(TestCase):
         other = make_company(slug='test-cat-other')
         seed(self.company)
         self.assertEqual(Produit.objects.filter(company=other).count(), 0)
+
+
+# ── Correction de marque « Deyness » → « Dyness » (fondateur, 2026-08-18) ─────
+class TestOrthographeDyness(TestCase):
+    """La vraie marque de batteries est Dyness (dyness.com).
+
+    Deux garanties, indissociables :
+      1. le SEEDER pose désormais la bonne orthographe sur une base neuve ;
+      2. la MIGRATION de données corrige une base DÉJÀ seedée — le seeder étant
+         strictement additif, lui seul ne renommerait jamais l'existant.
+    Les SKU ``BAT-DEY-*`` ne bougent pas : ce sont des codes catalogue, pas la
+    marque, et tout l'appariement (fiches techniques, simulateur de batterie du
+    site) s'y accroche.
+    """
+    # Le module de migration se charge par son chemin : son nom commence par un
+    # chiffre, donc `import` ne peut pas le nommer.
+    MIGRATION = 'apps.stock.migrations.0121_dyness_orthographe_marque'
+
+    def setUp(self):
+        self.company = make_company(slug='test-cat-dyness')
+
+    def _migration(self):
+        import importlib
+        return importlib.import_module(self.MIGRATION)
+
+    def test_le_seeder_pose_la_bonne_orthographe(self):
+        seed(self.company)
+        b5 = Produit.objects.get(company=self.company, sku='BAT-DEY-5')
+        b10 = Produit.objects.get(company=self.company, sku='BAT-DEY-10')
+        self.assertEqual(b5.nom, 'Batterie Dyness 5 kWh')
+        self.assertEqual(b10.nom, 'Batterie Dyness 10 kWh')
+        self.assertEqual(b5.marque, 'Dyness')
+        self.assertEqual(b10.marque, 'Dyness')
+        for produit in Produit.objects.filter(company=self.company):
+            self.assertNotIn('Deyness', produit.nom)
+            self.assertNotIn('Deyness', produit.marque or '')
+
+    def test_un_reseed_ne_duplique_pas_une_batterie_a_lancien_nom(self):
+        """L'appariement du seeder se fait par SKU AVANT le nom : une base
+        encore à l'ancienne orthographe (migration pas encore passée) est
+        retrouvée et SAUTÉE, jamais re-créée. C'est ce qui rend l'ordre
+        migration / re-seed indifférent."""
+        seed(self.company)
+        total = Produit.objects.filter(company=self.company).count()
+        Produit.objects.filter(company=self.company, sku='BAT-DEY-5').update(
+            nom='Batterie Deyness 5 kWh', marque='Deyness')
+        seed(self.company)
+        self.assertEqual(
+            Produit.objects.filter(company=self.company).count(), total,
+            "le re-seed a re-créé un produit au lieu de retrouver son SKU")
+        self.assertEqual(
+            Produit.objects.filter(company=self.company,
+                                   sku='BAT-DEY-5').count(), 1)
+
+    def test_la_migration_renomme_le_catalogue_existant(self):
+        from django.apps import apps as registre
+        migration = self._migration()
+        seed(self.company)
+        Produit.objects.filter(company=self.company, sku='BAT-DEY-5').update(
+            nom='Batterie Deyness 5 kWh', marque='Deyness')
+        Produit.objects.filter(company=self.company, sku='BAT-DEY-10').update(
+            nom='Batterie Deyness 10 kWh', marque='deyness')
+
+        migration.corriger_orthographe(registre, None)
+
+        b5 = Produit.objects.get(company=self.company, sku='BAT-DEY-5')
+        b10 = Produit.objects.get(company=self.company, sku='BAT-DEY-10')
+        self.assertEqual(b5.nom, 'Batterie Dyness 5 kWh')
+        self.assertEqual(b5.marque, 'Dyness')
+        self.assertEqual(b10.nom, 'Batterie Dyness 10 kWh')
+        # La casse d'origine est respectée (minuscule → minuscule).
+        self.assertEqual(b10.marque, 'dyness')
+        # Ni SKU, ni prix, ni quantités ne bougent.
+        self.assertEqual(b5.sku, 'BAT-DEY-5')
+        self.assertEqual(b5.prix_vente, Decimal('14166.67'))   # 17 000 TTC @ 20 %
+        self.assertEqual(b10.prix_vente, Decimal('25000.00'))  # 30 000 TTC @ 20 %
+
+    def test_la_migration_est_reversible(self):
+        from django.apps import apps as registre
+        migration = self._migration()
+        seed(self.company)
+        migration.retablir_orthographe(registre, None)
+        b5 = Produit.objects.get(company=self.company, sku='BAT-DEY-5')
+        self.assertEqual(b5.nom, 'Batterie Deyness 5 kWh')
+        self.assertEqual(b5.marque, 'Deyness')
+
+        migration.corriger_orthographe(registre, None)
+        b5.refresh_from_db()
+        self.assertEqual(b5.nom, 'Batterie Dyness 5 kWh')
+        self.assertEqual(b5.marque, 'Dyness')
+
+    def test_la_migration_est_idempotente(self):
+        from django.apps import apps as registre
+        migration = self._migration()
+        seed(self.company)
+        migration.corriger_orthographe(registre, None)
+        migration.corriger_orthographe(registre, None)
+        self.assertEqual(
+            Produit.objects.get(company=self.company, sku='BAT-DEY-5').nom,
+            'Batterie Dyness 5 kWh')
+
+
+# ── PVOND — VERROU DE COMPLÉTUDE sur le catalogue onduleur ──────────────────
+class TestContratOnduleurSeede(TestCase):
+    """Ajouter un onduleur demain doit être de la pure SAISIE — donc le seeder
+    ne doit jamais laisser passer, EN SILENCE, une référence à qui il manque
+    une variable du contrat.
+
+    La règle testée ici est « tout manque est DÉCLARÉ » : un onduleur
+    incomplet doit figurer dans ``ONDULEURS_CONTRAT_INCOMPLET`` avec son motif ;
+    un onduleur complet ne doit PAS y figurer. Les deux sens comptent — sans le
+    second, la table deviendrait un cimetière de motifs périmés.
+
+    ORDRE FONDATEUR (2026-08-18, « ne laisse rien griser ») : la table est
+    VIDE — plus AUCUNE référence du catalogue n'est grisée. Le mécanisme, lui,
+    reste armé pour les références futures : c'est ce que prouve
+    ``test_le_verrou_refuse_encore_un_incomplet_non_declare`` sur une fixture
+    SYNTHÉTIQUE (jamais une référence du catalogue).
+    """
+
+    def setUp(self):
+        self.company = make_company(slug='test-cat-pvond')
+
+    def _onduleurs(self):
+        """Onduleurs ACTIFS du catalogue — un produit archivé (les artefacts
+        Huawei mono 10/12 kW) est hors catalogue de composition, donc hors
+        contrat."""
+        from apps.stock.selectors import est_onduleur
+        return [p for p in Produit.objects.filter(
+                    company=self.company, is_archived=False)
+                if est_onduleur(p)]
+
+    def test_tout_onduleur_incomplet_est_declare_avec_son_motif(self):
+        from apps.stock.management.commands.seed_catalogue import (
+            ONDULEURS_CONTRAT_INCOMPLET,
+        )
+        from apps.stock.selectors import onduleur_specs_manquantes
+
+        seed(self.company)
+        onduleurs = self._onduleurs()
+        self.assertTrue(onduleurs, 'aucun onduleur seedé — test sans objet')
+
+        for produit in onduleurs:
+            manquantes = onduleur_specs_manquantes(produit)
+            declare = produit.sku in ONDULEURS_CONTRAT_INCOMPLET
+            if manquantes:
+                self.assertTrue(
+                    declare,
+                    f'{produit.sku} : contrat onduleur incomplet '
+                    f'({", ".join(manquantes)}) et NON déclaré dans '
+                    'ONDULEURS_CONTRAT_INCOMPLET — un onduleur qu\'on ne sait '
+                    'pas dimensionner ne doit jamais entrer au catalogue sans '
+                    'que le motif soit écrit.')
+                self.assertTrue(
+                    ONDULEURS_CONTRAT_INCOMPLET[produit.sku].strip(),
+                    f'{produit.sku} : motif vide')
+            else:
+                self.assertFalse(
+                    declare,
+                    f'{produit.sku} : déclaré incomplet alors que son contrat '
+                    'est complet — retirez-le de ONDULEURS_CONTRAT_INCOMPLET.')
+
+    def test_aucune_reference_du_catalogue_n_est_grisee(self):
+        """Ordre fondateur 2026-08-18 : plus rien ne grise. Les neuf manques
+        sont tranchés (valeur + source + date en commentaire du seeder), les
+        deux artefacts Huawei mono 10/12 kW sont ARCHIVÉS."""
+        from apps.stock.management.commands.seed_catalogue import (
+            ONDULEURS_CONTRAT_INCOMPLET,
+        )
+        from apps.stock.selectors import onduleur_specs_manquantes
+
+        self.assertEqual(ONDULEURS_CONTRAT_INCOMPLET, {})
+        seed(self.company)
+        grises = {p.sku: onduleur_specs_manquantes(p)
+                  for p in self._onduleurs() if onduleur_specs_manquantes(p)}
+        self.assertEqual(grises, {}, f'onduleurs encore grisés : {grises}')
+
+    def test_le_verrou_refuse_encore_un_incomplet_non_declare(self):
+        """Le MÉCANISME survit à la table vide : une référence FUTURE à qui il
+        manque une variable est toujours détectée et nommée en français.
+        Fixture SYNTHÉTIQUE — jamais une référence du catalogue."""
+        from apps.stock.management.commands.seed_catalogue import (
+            ONDULEURS_CONTRAT_INCOMPLET,
+        )
+        from apps.stock.models import FicheTechnique
+        from apps.stock.selectors import onduleur_specs_manquantes
+
+        produit = Produit.objects.create(
+            company=self.company, nom='Onduleur hybride SYNTHÉTIQUE 8kW',
+            sku='OND-TEST-SYNTH', prix_achat=Decimal('1'),
+            prix_vente=Decimal('1'), quantite_stock=1,
+            description='Plage batterie : 40-60 V',
+            garantie='Garantie constructeur 10 ans')
+        FicheTechnique.objects.create(
+            company=self.company, produit=produit, type_fiche='onduleur',
+            ond_n_mppt=2, ond_mppt_v_min=Decimal('200.0'),
+            ond_mppt_v_max=Decimal('650.0'), ond_v_max_abs=Decimal('800.0'),
+            ond_ac_kw=Decimal('8'), ond_phases=1,
+            ond_rendement_euro_pct=Decimal('97.0'))
+        produit.refresh_from_db()
+
+        self.assertEqual(onduleur_specs_manquantes(produit),
+                         ['courant maxi par MPPT (A)'])
+        self.assertNotIn(produit.sku, ONDULEURS_CONTRAT_INCOMPLET)
+
+    def test_chaque_onduleur_declare_sa_plage_batterie(self):
+        """La plage batterie est la variable qui décide de l'appairage : elle
+        est déclarée pour TOUS les onduleurs, y compris « aucune » pour un
+        onduleur réseau (une valeur pleine, pas un trou)."""
+        from apps.stock.selectors import plage_batterie_onduleur
+
+        seed(self.company)
+        for produit in self._onduleurs():
+            self.assertIsNotNone(
+                plage_batterie_onduleur(produit),
+                f'{produit.sku} : aucune ligne « Plage batterie : … » sur sa '
+                'fiche produit')
+
+    def test_la_plage_batterie_des_deye_basse_tension_est_48V(self):
+        seed(self.company)
+        from apps.stock.selectors import plage_batterie_onduleur
+        for sku in ('OND-H-DEY-10T', 'OND-DEY-15K-LV'):
+            produit = Produit.objects.get(company=self.company, sku=sku)
+            self.assertEqual(plage_batterie_onduleur(produit), (40.0, 60.0))
+
+    def test_la_plage_batterie_des_deye_haute_tension_est_160_700V(self):
+        seed(self.company)
+        from apps.stock.selectors import plage_batterie_onduleur
+        for sku in ('OND-H-DEY-15T', 'OND-H-DEY-20T'):
+            produit = Produit.objects.get(company=self.company, sku=sku)
+            self.assertEqual(plage_batterie_onduleur(produit), (160.0, 700.0))
+
+    def test_les_huawei_reseau_declarent_aucune_batterie(self):
+        seed(self.company)
+        from apps.stock.selectors import plage_batterie_onduleur
+        for sku in ('OND-R-HUA-10T', 'OND-R-HUA-100T'):
+            produit = Produit.objects.get(company=self.company, sku=sku)
+            self.assertEqual(plage_batterie_onduleur(produit), (0.0, 0.0))
+
+    def test_le_reseed_ne_duplique_pas_la_ligne_de_plage_batterie(self):
+        seed(self.company)
+        seed(self.company)
+        produit = Produit.objects.get(company=self.company, sku='OND-H-DEY-10T')
+        self.assertEqual(
+            (produit.description or '').count('Plage batterie :'), 1)

@@ -82,7 +82,7 @@ class TestQF9BuilderFilter(TestCase):
         devis = make_devis(self.company, self.user, self.client_obj, [
             ('Onduleur hybride Deye 5kW', '1', '24000'),
             ('Panneau mono 550W', '10', '1100'),
-            ('Batterie Deyness 10 kWh', '1', '14000'),
+            ('Batterie Dyness 10 kWh', '1', '14000'),
             ('Smart Meter', '1', '1800'),
             ('Wifi Dongle', '1', '1200'),
         ], 'DEV-QF9-DEYE', etude_params={'scenario': 'Avec batterie'})
@@ -130,7 +130,7 @@ class TestQF9PdfRender(TestCase):
         devis = make_devis(self.company, self.user, self.client_obj, [
             ('Onduleur hybride Deye 5kW', '1', '24000'),
             ('Panneau mono 550W', '10', '1100'),
-            ('Batterie Deyness 10 kWh', '1', '14000'),
+            ('Batterie Dyness 10 kWh', '1', '14000'),
             ('Smart Meter', '1', '1800'),
             ('Wifi Dongle', '1', '1200'),
             ('Installation', '1', '4000'),

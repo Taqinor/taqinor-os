@@ -261,6 +261,115 @@ class TestBuildQuoteData(TestCase):
         self.assertEqual(data['total_sans'], 10800)
 
 
+class TestDossierMoyenneTension(TestCase):
+    """QXMT — un dossier raccordé en MT ne porte JAMAIS un chiffre BT.
+
+    ``solar.js`` pose ``tension_raccordement='MT'`` et, sans répartition
+    horaire, laisse ``economies_annuelles`` à ``None`` : l'écran affiche alors
+    « économies et payback volontairement omis ». Le PDF, lui, ne lisait aucune
+    de ces clés et retombait sur ``calculate_savings_roi`` — le tarif BASSE
+    TENSION de l'ONEE. Le client recevait donc une économie et un payback qui
+    ne sont pas les siens."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+
+    def _data(self, etude_params, reference):
+        from apps.ventes.quote_engine import build_quote_data
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau mono 450W', '120', '1500'),
+            ('Onduleur réseau 50kW', '1', '60000'),
+        ], reference=reference, etude_params=etude_params)
+        return build_quote_data(devis, {'pdf_mode': 'full'})
+
+    def test_mt_sans_economies_detude_masque_le_bloc(self):
+        data = self._data({'tension_raccordement': 'MT'}, 'DEV-MT-0001')
+        self.assertTrue(data['masquer_economies'])
+        # Aucune mention de barème ne part avec un chiffre qui n'existe pas.
+        self.assertEqual(data['tarif_mt_mention'], '')
+
+    def test_mt_avec_economies_detude_rend_la_mention_source(self):
+        from apps.ventes.quote_engine.constants_82_21 import MENTION_MT
+        data = self._data({'tension_raccordement': 'MT',
+                           'production_annuelle': 82000,
+                           'economies_annuelles': 96000}, 'DEV-MT-0002')
+        self.assertFalse(data['masquer_economies'])
+        self.assertEqual(data['tarif_mt_mention'], MENTION_MT)
+        self.assertIn('one.org.ma', data['tarif_mt_mention'])
+        # Le chiffre servi EST celui de l'étude, jamais un recalcul BT.
+        self.assertEqual(data['eco_s_ann'], 96000)
+
+    def test_un_dossier_BT_est_strictement_inchange(self):
+        data = self._data({'tension_raccordement': 'BT'}, 'DEV-MT-0003')
+        self.assertFalse(data['masquer_economies'])
+        self.assertEqual(data['tarif_mt_mention'], '')
+        self.assertGreater(data['eco_s_ann'], 0)
+
+    def test_un_devis_sans_etude_est_strictement_inchange(self):
+        data = self._data(None, 'DEV-MT-0004')
+        self.assertFalse(data['masquer_economies'])
+        self.assertEqual(data['tarif_mt_mention'], '')
+
+    def test_le_renderer_industriel_n_herite_plus_du_chiffre_BT(self):
+        """Le repli ``eco_s_ann``/``roi_s`` était la porte d'entrée du chiffre
+        BT sur le document CFO."""
+        from apps.ventes.quote_engine.industriel import renderer as industriel
+
+        data = self._data({'tension_raccordement': 'MT'}, 'DEV-MT-0005')
+        self.assertGreater(data['eco_s_ann'], 0)   # la valeur BT EXISTE…
+        augmentee = industriel._augment(data)
+        self.assertTrue(augmentee['ind_masquer_economies'])
+        self.assertEqual(augmentee['ind_economies'], 0)   # …et n'est PAS reprise
+        self.assertIsNone(augmentee['ind_payback'])
+
+    def test_le_renderer_commercial_n_herite_plus_du_chiffre_BT(self):
+        from apps.ventes.quote_engine.commercial import renderer as commercial
+
+        data = self._data({'tension_raccordement': 'MT'}, 'DEV-MT-0006')
+        augmentee = commercial._augment(data)
+        self.assertTrue(augmentee['com_masquer_economies'])
+        self.assertEqual(augmentee['com_economies'], 0)
+        self.assertIsNone(augmentee['com_payback'])
+
+    def test_la_page_CFO_remplace_les_chiffres_par_le_motif(self):
+        """Page 2 industrielle : ni cashflow, ni TRI, ni payback BT — le motif
+        de l'omission et le geste qui la lève. La page RACCOURCIT (elle ne peut
+        donc pas déborder)."""
+        from apps.ventes.quote_engine.industriel import (
+            finance, render as industriel_render, renderer as industriel)
+
+        data = self._data({'tension_raccordement': 'MT'}, 'DEV-MT-0007')
+        ctx = industriel_render.build_ctx(industriel._augment(data))
+        html = finance.build(ctx)
+        self.assertIn('MOYENNE TENSION', html)
+        self.assertNotIn('Cashflow cumulé', html)
+        self.assertNotIn('TRI sur', html)
+        self.assertNotIn('Payback</b>', html)
+
+    def test_la_couverture_CFO_omet_la_vignette_economies(self):
+        from apps.ventes.quote_engine.industriel import (
+            cover, render as industriel_render, renderer as industriel)
+
+        data = self._data({'tension_raccordement': 'MT'}, 'DEV-MT-0008')
+        ctx = industriel_render.build_ctx(industriel._augment(data))
+        html = cover.build(ctx)
+        # Pas de vignette « Économies / an » — et surtout pas un « 0 » (la
+        # règle fondateur : un chiffre manquant s'OMET, il ne s'écrit pas 0).
+        self.assertNotIn('Économies / an', html)
+        self.assertIn('MOYENNE TENSION', html)
+
+    def test_la_couverture_CFO_garde_sa_vignette_hors_MT(self):
+        from apps.ventes.quote_engine.industriel import (
+            cover, render as industriel_render, renderer as industriel)
+
+        data = self._data({'tension_raccordement': 'BT'}, 'DEV-MT-0009')
+        ctx = industriel_render.build_ctx(industriel._augment(data))
+        html = cover.build(ctx)
+        self.assertIn('Économies / an', html)
+
+
 @tag('pdf')  # rendu PDF premium complet — lourd → palier release-verify
 class TestPremiumPdfRender(TestCase):
     def setUp(self):
@@ -438,14 +547,14 @@ class TestPdfFormats(TestCase):
         from apps.ventes.quote_engine.builder import build_quote_data
         devis = make_devis(self.company, self.user, self.client_obj, [
             ('Onduleur hybride Deye 5kW', '1', '14166.67'),
-            ('Batterie Deyness 10 kWh', '1', '25000'),
+            ('Batterie Dyness 10 kWh', '1', '25000'),
             ('Panneau Canadien Solar 710W', '10', '1166.67'),
             ('Socles béton', '20', '66.67'),
         ], reference='DEV-QE-MARQUE')
         data = build_quote_data(devis, {'pdf_mode': 'onepage'})
         marques = {it['designation']: it['marque'] for it in data['all_items']}
         self.assertEqual(marques['Onduleur hybride Deye 5kW'], 'Deye')
-        self.assertEqual(marques['Batterie Deyness 10 kWh'], 'Deyness')
+        self.assertEqual(marques['Batterie Dyness 10 kWh'], 'Dyness')
         self.assertEqual(marques['Panneau Canadien Solar 710W'], 'Canadien Solar')
         self.assertEqual(marques['Socles béton'], '')
 
@@ -1005,7 +1114,7 @@ class TestPdfFormats(TestCase):
             ('Panneau Canadien Solar 710W', '14', '1272.73', '10'),
             ('Onduleur réseau Huawei 10kW Triphasé', '1', '16666.67', '20'),
             ('Onduleur hybride Deye 10kW Triphasé', '1', '23333.33', '20'),
-            ('Batterie Deyness 10 kWh', '1', '25000', '20'),
+            ('Batterie Dyness 10 kWh', '1', '25000', '20'),
             ('Installation', '1', '4000', '20'),
         ], remise_globale='5', reference='DEV-QE-2OPT',
             etude_params=DEUX_OPTIONS)
@@ -1592,8 +1701,8 @@ class TestGeneratorQuoteFlow(TestCase):
         self.assertIn('Onduleur réseau Huawei 10kW Triphasé', sans)
         self.assertNotIn('Onduleur réseau Huawei 10kW Triphasé', avec)
         self.assertIn('Onduleur hybride Deye 10kW Triphasé', avec)
-        self.assertIn('Batterie Deyness 10 kWh', avec)
-        self.assertNotIn('Batterie Deyness 10 kWh', sans)
+        self.assertIn('Batterie Dyness 10 kWh', avec)
+        self.assertNotIn('Batterie Dyness 10 kWh', sans)
         # QF9 — Smart Meter + Wifi Dongle (accessoires Huawei) restent sur
         # l'option réseau Huawei (sans) mais sont retirés de l'option hybride
         # Deye (avec).
@@ -1652,7 +1761,7 @@ def _residential_sample_data():
     ]
     sans = shared + [_item("Onduleur réseau Huawei 10kW Triphasé", 1, 16667, marque="Huawei")]
     avec = shared + [_item("Onduleur hybride Deye 10kW Triphasé", 1, 23333, marque="Deye"),
-                     _item("Batterie Deyness 10 kWh", 1, 25000, marque="Deyness")]
+                     _item("Batterie Dyness 10 kWh", 1, 25000, marque="Dyness")]
     eco = 20953
     sf = [0.053, 0.062, 0.083, 0.098, 0.114, 0.116, 0.116, 0.101, 0.087, 0.070, 0.052, 0.048]
     eco_m = [round(eco * f) for f in sf]
@@ -1674,7 +1783,7 @@ def _residential_sample_data():
         "sans_bullets": ["16 panneaux 710 W", "Onduleur réseau Huawei 10kW Triphasé",
                          "Smart Meter + monitoring"],
         "avec_bullets": ["16 panneaux 710 W", "Onduleur hybride Deye 10kW Triphasé",
-                         "Batterie Deyness 10 kWh"],
+                         "Batterie Dyness 10 kWh"],
         "scenario": "Les deux (Sans + Avec)", "recommended": "Avec batterie",
         "tva_note": "TVA : 10% panneaux photovoltaïques · 20% autres équipements et prestations",
         "payment_terms": {"acompte": 30, "materiel": 60, "solde": 10},
@@ -1737,22 +1846,171 @@ class TestResidentialRenderer(TestCase):
                      'onduleur-deye-hybride', 'batterie-dyness',
                      'smart-meter-huawei', 'wifi-dongle-huawei'):
             self.assertIn(f'/produits/{slug}', html)
-        # an own-component line is not turned into a datasheet link
-        self.assertNotIn('produits/structures', html)
+        # Découpage fondateur 2026-08-18 : la structure a désormais SA fiche
+        # explicative (`structure-fixation`) — mais aucune URL de fiche n'est
+        # inventée à partir du libellé de la ligne (« produits/structures »
+        # n'existe pas et ne doit jamais apparaître).
+        self.assertNotIn('produits/structures/', html)
+        self.assertNotIn('produits/structures-acier', html)
 
     def test_fiche_slug_mapping(self):
+        """CONTRAT UNIQUE « ligne → fiche » — la moitié DJANGO (PACT10).
+
+        Le fichier partagé ``contract_samples/ligne_fiche_mapping.json`` est LE
+        porteur de l'obligation : la moitié web (apps/web/tests/
+        ficheMatcherWJ131.test.ts) lit EXACTEMENT le même fichier et vérifie son
+        propre matcher dessus. Si les deux tests passent, le PDF et la page
+        proposition envoient forcément le client sur la MÊME fiche — c'est ce
+        lien-là qui manquait le 03/08/2026.
+        """
+        import json
+        import os
+
+        from apps.ventes.quote_engine.residential import theme
+
+        contrat_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            'contract_samples', 'ligne_fiche_mapping.json')
+        with open(contrat_path, encoding='utf-8') as fh:
+            contrat = json.load(fh)
+
+        for designation, attendu in contrat['exemple'].items():
+            self.assertEqual(theme.fiche_slug(designation), attendu,
+                             f'contrat rompu sur « {designation} »')
+
+        # Le découpage fondateur du 18/08 : 8 familles résidentielles + 3
+        # postes de grands projets. Un ajout silencieux casse ici.
+        decoupage = contrat['decoupage']
+        self.assertEqual(len(decoupage['residentiel']), 8)
+        self.assertEqual(len(decoupage['grands_projets']), 3)
+
+        # Les postes qui ne sont pas du MATÉRIEL n'ont pas de fiche : pose,
+        # étude, transport, services.
+        for designation in ('Installation', 'Transport',
+                            'Main-d’œuvre et mise en service',
+                            'Étude technique'):
+            self.assertEqual(theme.fiche_slug(designation), '', designation)
+
+    def test_fiche_slug_scinde_protection_dc_et_ac(self):
+        """Le continu et l'alternatif ne se coupent pas de la même façon : leurs
+        deux fiches sont distinctes, et un coffret combiné va du côté DC (la
+        moitié spécifiquement photovoltaïque, cible de l'alias de l'ancien
+        slug `tableau-protection-ac-dc`)."""
+        from apps.ventes.quote_engine.residential import theme
+        for designation in ('Tableau De Protection AC/DC', 'Coffret DC 2 strings',
+                            'Parafoudre DC type 2 1000 V',
+                            'Sectionneur DC 1000 V 25 A',
+                            'Fusible gPV 1000 VDC 15 A'):
+            self.assertEqual(theme.fiche_slug(designation), 'protection-dc',
+                             designation)
+        for designation in ('Coffret AC', 'Parafoudre AC type 2',
+                            'Disjoncteur AC courbe C 16 A monophasé',
+                            'Différentiel (DDR) type A 300 mA 40 A'):
+            self.assertEqual(theme.fiche_slug(designation), 'protection-ac',
+                             designation)
+
+    def test_fiche_slug_separe_cablage_et_accessoires_de_pose(self):
+        """Le CÂBLE d'un côté, ce qui le porte de l'autre — le client payait les
+        deux sur une seule ligne « Accessoires » sans savoir ce qu'elle
+        contenait."""
+        from apps.ventes.quote_engine.residential import theme
+        self.assertEqual(
+            theme.fiche_slug('Câble solaire H1Z2Z2-K 6 mm² (au mètre)'),
+            'cablage')
+        self.assertEqual(theme.fiche_slug('Connecteurs MC4'), 'cablage')
+        self.assertEqual(theme.fiche_slug('Accessoires'), 'accessoires-pose')
+        self.assertEqual(theme.fiche_slug('Presse-étoupes'), 'accessoires-pose')
+        self.assertEqual(theme.fiche_slug('Structures aluminium'),
+                         'structure-fixation')
+        self.assertEqual(theme.fiche_slug('Socles'), 'structure-fixation')
+
+    def test_fiche_slug_jamais_la_mauvaise_marque(self):
+        """La moitié DJANGO du garde-fou du contrat (bloc ``sans_lien``).
+
+        Avant le 18/08 elle n'existait pas : le PDF envoyait le client sur la
+        fiche DEYE sous un onduleur Growatt, sur la fiche Schneider sous un
+        coffret Legrand, et sur la fiche d'une batterie LFP Dyness sous une
+        batterie plomb-gel. Le jumeau web renvoyait ``null`` sur exactement les
+        mêmes chaînes : le contrat existait, il ne liait rien."""
+        from apps.ventes.quote_engine.residential import theme
+        for designation in (
+                'Onduleur hybride Growatt 10 kW',
+                'Onduleur réseau 10 kW SMA Sunny Boy',
+                'Panneau monocristallin 710W Longi',
+                'Batterie LFP 5 kWh Pylontech',
+                'Coffret AC Legrand 4 modules',
+                'Coffret AC Hager',
+                'Câble solaire Prysmian 6 mm²'):
+            self.assertEqual(theme.fiche_slug(designation), '', designation)
+        # La marque peut arriver par le CHAMP marque, pas seulement le libellé.
+        self.assertEqual(
+            theme.fiche_slug('Onduleur hybride 8 kW', 'Growatt'), '')
+        # protection-dc ne nomme AUCUNE marque : elle reste liée.
+        self.assertEqual(
+            theme.fiche_slug('Coffret DC Hager 2 strings'), 'protection-dc')
+
+    def test_fiche_slug_exige_le_qualificatif_de_marque(self):
+        """Un panneau/une batterie sans marque ATTENDUE ne reçoit aucun lien —
+        exactement comme le jumeau web. « Batterie Gel 2.2 kWh » (BAT-GEL-22,
+        plomb-gel 12 V) et « Batterie Lithium 5 kWh » (BAT-LIT-5) sont des
+        références RÉELLES du catalogue seedé, et ne sont pas la LFP Dyness que
+        la fiche décrit."""
+        from apps.ventes.quote_engine.residential import theme
+        for designation in ('Panneau photovoltaïque 710 Wc',
+                            'Panneau 710 Wc',
+                            'Batterie Gel 2.2 kWh',
+                            'Batterie Lithium 5 kWh',
+                            'Batterie lithium 5,12 kWh'):
+            self.assertEqual(theme.fiche_slug(designation), '', designation)
+
+    def test_fiche_slug_accepte_l_orthographe_reelle_du_catalogue(self):
+        """Le catalogue écrit « Canadien Solar » (seed_catalogue.py:45/354), la
+        fiche publiée « Canadian Solar » : les DEUX graphies lient."""
         from apps.ventes.quote_engine.residential import theme
         self.assertEqual(theme.fiche_slug('Panneau Canadien Solar 710W'),
                          'canadian-solar-710')
-        self.assertEqual(theme.fiche_slug('Panneau Jinko 710W'), 'jinko-710')
-        self.assertEqual(theme.fiche_slug('Onduleur hybride Deye 10kW'),
-                         'onduleur-deye-hybride')
-        self.assertEqual(theme.fiche_slug('Onduleur réseau Huawei 10kW'),
-                         'onduleur-huawei-reseau')
-        self.assertEqual(theme.fiche_slug('Batterie Deyness 10 kWh'),
-                         'batterie-dyness')
-        self.assertEqual(theme.fiche_slug('Structures acier'), '')
-        self.assertEqual(theme.fiche_slug('Installation'), '')
+        self.assertEqual(
+            theme.fiche_slug('Panneau photovoltaïque 710 Wc', 'Canadien Solar'),
+            'canadian-solar-710')
+        self.assertEqual(
+            theme.fiche_slug('Panneau CANADIAN SOLAR 710W bifacial'),
+            'canadian-solar-710')
+
+    def test_fiche_slug_ne_confond_pas_sma_et_smart_meter(self):
+        """Le garde-fou teste des FRONTIÈRES DE MOT : « sma » (marque) ne doit
+        jamais être trouvé dans « smart meter »."""
+        from apps.ventes.quote_engine.residential import theme
+        self.assertEqual(theme.fiche_slug('Smart Meter Huawei'),
+                         'smart-meter-huawei')
+
+    def test_le_pourcentage_de_performance_reste_a_sa_marque(self):
+        """« 87,4 % garanti » est une spec Canadian Solar (TOPHiKu7).
+
+        Un panneau Longi est lui aussi garanti 30 ans — mais à 88,9 %. Ne
+        comparer que le NOMBRE D'ANNÉES réattachait le pourcentage d'une AUTRE
+        marque à un document client."""
+        from apps.ventes.quote_engine.residential import theme
+
+        def _bande(designation, marque):
+            d = {'items': [{
+                'designation': designation, 'marque': marque,
+                '_produit_nom': designation,
+                'garantie_mois': 144, 'garantie_production_mois': 360}]}
+            return {w[2]: w for w in theme.warranties_for(d)}
+
+        longi = _bande('Panneau Longi Hi-MO 585W', 'Longi')['Performance']
+        self.assertEqual(longi[0], '30')
+        self.assertEqual(longi[3], 'performance linéaire')
+        self.assertNotIn('87,4', longi[3])
+
+        # Le panneau PAR DÉFAUT, lui, garde son sous-libellé chiffré — et il
+        # le garde dans les DEUX graphies du catalogue.
+        for designation, marque in (
+                ('Panneau Canadien Solar 710W', 'Canadien Solar'),
+                ('Panneau Canadian Solar 710W', 'Canadian Solar')):
+            perf = _bande(designation, marque)['Performance']
+            self.assertEqual(perf[0], '30')
+            self.assertEqual(perf[3], '87,4 % garanti')
 
     def test_scan_to_sign_qr_when_qrcode_available(self):
         """The premium scan-to-sign QR renders on page 3 (qrcode is a pinned
@@ -1870,6 +2128,32 @@ class TestResidentialQRESRound(TestCase):
         self.assertNotIn("Nos hypothèses", html)
         self.assertIn("Estimations non contractuelles", html)
         self.assertIn("proposition en ligne", html)
+
+    def test_row_has_two_boxes_equal_by_construction_method_flat_below(self):
+        """QRES65 (fondateur, 2026-08-18) — la rangée « Conditions / Prochaines
+        étapes » de la page 3 ne porte plus que DEUX boîtes : le financement en
+        est la bande de pied (.p3-finsec), plus une troisième carte flottante.
+        Ces deux boîtes sont deux cellules d'une MÊME ligne de tableau : leurs
+        hauteurs s'égalisent par construction (la plus courte est étirée sur la
+        hauteur commune de la ligne), et non plus parce que le texte de la
+        méthode remplissait la colonne de gauche. Ce texte est désormais posé À
+        PLAT sous la rangée, sans boîte."""
+        html, _ = self._render("deux")
+        # exactement deux boîtes, dans UNE ligne de tableau (plus de rowspan
+        # qui répartissait la surhauteur entre trois lignes)
+        self.assertEqual(html.count('class="p3-tdcard"'), 2)
+        self.assertNotIn('rowspan', html)
+        self.assertNotIn('p3-tdfin', html)
+        self.assertNotIn('p3-rgap', html)
+        # le financement reste visible, en bande de pied de la boîte de droite
+        self.assertIn('class="p3-finsec"', html)
+        self.assertIn('Financement possible', html)
+        # la méthode a quitté la carte Conditions pour un texte plat sous la
+        # rangée (aucune boîte : ni p3-tdcard, ni p3-card, ni fond/bordure)
+        self.assertNotIn('p3-cond-k">Comment nous calculons', html)
+        i_row = html.index('class="p3-cols')
+        i_flat = html.index('class="p3-method"')
+        self.assertLess(html.index('</table>', i_row), i_flat)
 
     def test_sign_link_token_never_displayed_as_text(self):
         """Le lien tokenisé vit dans le href et le QR ; le bouton n'affiche que
@@ -2202,7 +2486,7 @@ class TestQuoteNumbersHonestyPack(TestCase):
             ('Panneau Canadien Solar 710W', '14', '1272.73'),
             ('Onduleur réseau Huawei 10kW', '1', '16666.67'),
             ('Onduleur hybride Deye 10kW', '1', '23333.33'),
-            ('Batterie Deyness 10 kWh', '1', '25000'),
+            ('Batterie Dyness 10 kWh', '1', '25000'),
             ('Installation', '1', '4000'),
         ], reference='DEV-QX7-BRAND', etude_params=DEUX_OPTIONS)
         for li in devis.lignes.all():
@@ -2212,8 +2496,8 @@ class TestQuoteNumbersHonestyPack(TestCase):
                 li.produit.marque = 'Huawei'
             elif 'Deye' in li.designation:
                 li.produit.marque = 'Deye'
-            elif 'Deyness' in li.designation:
-                li.produit.marque = 'Deyness'
+            elif 'Dyness' in li.designation:
+                li.produit.marque = 'Dyness'
             li.produit.save(update_fields=['marque'])
         data = build_quote_data(devis)
         html = render.build_html(renderer._augment(data))
@@ -2344,7 +2628,7 @@ class TestQuoteSignLinkAndPageNumbers(TestCase):
             ('Panneau Canadien Solar 710W', '14', '1272.73'),
             ('Onduleur réseau Huawei 10kW Triphasé', '1', '16666.67'),
             ('Onduleur hybride Deye 10kW Triphasé', '1', '23333.33'),
-            ('Batterie Deyness 10 kWh', '1', '25000'),
+            ('Batterie Dyness 10 kWh', '1', '25000'),
             ('Installation', '1', '4000'),
         ], reference='DEV-QX6-1', etude_params=DEUX_OPTIONS)
 
@@ -2424,7 +2708,7 @@ class TestResidentialSingleOptionGate(TestCase):
         return make_devis(self.company, self.user, self.client_obj, [
             ('Panneau Canadien Solar 710W', '12', '1272.73'),
             ('Onduleur hybride Deye 5kW', '1', '24000'),
-            ('Batterie Deyness 10 kWh', '1', '25000'),
+            ('Batterie Dyness 10 kWh', '1', '25000'),
             ('Structures acier', '12', '417'),
             ('Installation', '1', '5000'),
         ], reference='DEV-QX5-AVEC')
@@ -2458,7 +2742,7 @@ class TestResidentialSingleOptionGate(TestCase):
             ('Panneau Canadien Solar 710W', '14', '1272.73'),
             ('Onduleur réseau Huawei 10kW Triphasé', '1', '16666.67'),
             ('Onduleur hybride Deye 10kW Triphasé', '1', '23333.33'),
-            ('Batterie Deyness 10 kWh', '1', '25000'),
+            ('Batterie Dyness 10 kWh', '1', '25000'),
             ('Installation', '1', '4000'),
         ], reference='DEV-QX5-DEUX', etude_params=DEUX_OPTIONS)
         html = self._resid_html(devis)

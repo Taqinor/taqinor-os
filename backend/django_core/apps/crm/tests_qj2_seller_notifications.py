@@ -74,6 +74,27 @@ class NotifyNewLeadTests(TestCase):
         self.assertIsNotNone(n)
         self.assertIn('wa.me', n.body)
 
+    def test_sous_seuil_mentionne_dans_le_titre_et_le_corps(self):
+        """18/08/2026 — le site transmet les leads sous le seuil de facture :
+        ils sont notifiés comme les autres (jamais silencieux) mais le
+        commercial le VOIT avant de décrocher."""
+        lead = _make_lead(self.company, owner=self.owner)
+        notify_new_lead(lead, sous_seuil=True)
+        n = Notification.objects.filter(
+            recipient=self.owner, event_type='lead_new').get()
+        self.assertIn('(sous le seuil)', n.title)
+        self.assertIn('sous le seuil', n.body)
+
+    def test_defaut_sans_mention_de_seuil(self):
+        """Le défaut (tous les autres appelants : création manuelle, imports)
+        reste strictement inchangé."""
+        lead = _make_lead(self.company, owner=self.owner)
+        notify_new_lead(lead)
+        n = Notification.objects.filter(
+            recipient=self.owner, event_type='lead_new').get()
+        self.assertNotIn('seuil', n.title)
+        self.assertNotIn('seuil', n.body)
+
     def test_no_notification_without_owner(self):
         """Un lead sans owner ne lève pas d'exception et ne crée rien."""
         lead = _make_lead(self.company, owner=None)

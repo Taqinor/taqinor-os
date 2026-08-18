@@ -29,6 +29,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import api from '../../api/axios'
 import ventesApi from '../../api/ventesApi'
+import aoApi from '../../api/aoApi'
 import { originFrom } from '../../api/origin'
 import { toastInfo } from '../../lib/toast'
 import '../../styles/roofbuilder.css'
@@ -154,6 +155,38 @@ function contexteToDevisPayload(contexte) {
   }
 }
 
+// MODE AO — MÊME écran, MÊME builder, pour une AFFAIRE d'appel d'offres. Le
+// contexte serveur (contrat `apps/ao/contract_samples/ao_design_context.json`)
+// est le MIROIR du contrat devis : `affaire` y remplace `devis`, la géométrie
+// AO relevée est déjà reprojetée en degrés par le serveur (`pin` = ancre de la
+// toiture, `outline` = contour en [lat, lng], convention CRM/builder).
+//
+// L'hydratation passe par le MÊME emplacement `hydrate.devis` : côté builder,
+// c'est le créneau « géométrie déjà dessinée + cible imposée » (roofPro11/
+// prefill.ts `hydrateFromDevis`), pas un créneau propre au document devis. La
+// source du builder n'est JAMAIS éditée — on lui parle son langage. `id` reste
+// null : une affaire n'est pas un devis, et rien ici ne prétend le contraire.
+function contexteAoVersPayload(contexte) {
+  if (!contexte) return null
+  const geo = contexte.geometrie ?? {}
+  const cible = contexte.cible ?? {}
+  const objet = (contexte.affaire?.objet ?? '').trim()
+  return {
+    id: null,
+    geometrie: {
+      roof_layout: geo.roof_layout ?? null,
+      roof_point: geo.pin ?? null,
+      roof_outline: geo.outline ?? null,
+    },
+    cible: {
+      panneaux: cible.panneaux ?? null,
+      panel_watt: cible.panel_watt ?? null,
+      scenario: cible.scenario || null,
+    },
+    fullName: objet || undefined,
+  }
+}
+
 // PV75 — projette `Devis.etude_params.simulation.pr` (étude bancable PV69/PV74 :
 // P50/P90, ratio de performance, cascade des pertes) vers le payload `bankable`
 // consommé par la fenêtre de production du builder. Le contexte agrégé
@@ -196,11 +229,17 @@ export default function ToitureDesign({ mode = 'lead' }) {
   const navigate = useNavigate()
   // PV20 — deux modes sur le MÊME écran. `lead` (défaut) est le flux d'origine,
   // strictement inchangé ; `devis` démarre SUR un devis existant.
+  // Mode `ao` — TROISIÈME mode, MÊME écran et MÊME builder, pour une AFFAIRE
+  // d'appel d'offres : les mêmes outils pour les ventes et pour les appels
+  // d'offres, jamais une seconde implémentation de la toiture 3D.
   const estDevis = mode === 'devis'
+  const estAo = mode === 'ao'
   // Accepte /devis-design/:id ET ?lead=<id> (parité avec l'ancien lien public).
-  const leadId = estDevis ? '' : (idParam || searchParams.get('lead') || '')
+  const leadId = (estDevis || estAo)
+    ? '' : (idParam || searchParams.get('lead') || '')
   const devisId = estDevis ? (idParam || '') : ''
-  const cibleId = estDevis ? devisId : leadId
+  const affaireId = estAo ? (idParam || '') : ''
+  const cibleId = estDevis ? devisId : (estAo ? affaireId : leadId)
 
   const reducedMotion =
     typeof window !== 'undefined' &&
@@ -209,10 +248,14 @@ export default function ToitureDesign({ mode = 'lead' }) {
   // État initial dérivé de la présence du leadId (évite un setState synchrone
   // dans l'effet) : sans identifiant, on affiche directement le message d'erreur.
   const [status, setStatus] = useState(() => {
-    if (cibleId) return estDevis ? 'Chargement du devis…' : 'Chargement du lead…'
-    return estDevis
-      ? 'Aucun devis indiqué (identifiant manquant).'
-      : 'Aucun lead indiqué (identifiant manquant).'
+    if (cibleId) {
+      if (estDevis) return 'Chargement du devis…'
+      if (estAo) return 'Chargement de l’affaire…'
+      return 'Chargement du lead…'
+    }
+    if (estDevis) return 'Aucun devis indiqué (identifiant manquant).'
+    if (estAo) return 'Aucune affaire indiquée (identifiant manquant).'
+    return 'Aucun lead indiqué (identifiant manquant).'
   })
   const [lead, setLead] = useState(null)
   // PV20 — contexte agrégé du devis (mode devis uniquement) : identité, cible,
@@ -220,7 +263,9 @@ export default function ToitureDesign({ mode = 'lead' }) {
   const [contexte, setContexte] = useState(null)
   const [loadError, setLoadError] = useState(() => {
     if (cibleId) return null
-    return estDevis ? 'Aucun devis indiqué.' : 'Aucun lead indiqué.'
+    if (estDevis) return 'Aucun devis indiqué.'
+    if (estAo) return 'Aucune affaire indiquée.'
+    return 'Aucun lead indiqué.'
   })
 
   // API exposée par le builder (serializeLayout / snapshot), posée à onApiReady.
@@ -415,10 +460,64 @@ export default function ToitureDesign({ mode = 'lead' }) {
       )
     }
 
+    // ── MODE AO — boot en UN SEUL appel (design-context de l'affaire) ──────
+    // Même patron que `bootDevis` : identité + géométrie + cible + carte +
+    // `modifiable` arrivent ensemble ; l'écran ne fait AUCUNE requête de
+    // complément et ne devine AUCUN motif de lecture seule. Différences
+    // assumées, parce qu'une affaire n'est pas un devis : ni lien client, ni
+    // aperçu WhatsApp, ni étude bancable — rien de tout cela n'existe côté AO,
+    // et l'inventer produirait des boutons morts.
+    async function bootAo() {
+      let ctx = null
+      try {
+        const res = await aoApi.affaires.designContext(affaireId)
+        ctx = res.data
+      } catch (err) {
+        if (cancelled) return
+        const code = err?.response?.status
+        setLoadError(
+          code === 404
+            ? 'Affaire introuvable.'
+            : 'Impossible de charger l’affaire — réessayez.'
+        )
+        setStatus(`Affaire introuvable (erreur ${code ?? '?'}).`)
+        return
+      }
+      if (cancelled) return
+      setContexte(ctx)
+
+      const carte = ctx?.carte ?? {}
+      if (!carte.available || !carte.maptilerKey) {
+        setStatus('Carte indisponible (clé MapTiler manquante côté serveur).')
+        setLoadError('Carte indisponible : la clé MapTiler n’est pas configurée sur le serveur ERP.')
+        return
+      }
+
+      const mod = await import('@roofbuilder')
+      if (cancelled) return
+      window.__taqinorRoofBooted = true
+      // Une affaire close BOOTE quand même (consultation du calepinage
+      // remis) : seule l'action d'enregistrement disparaît.
+      mod.initRoofToolPro8({
+        maptilerKey: carte.maptilerKey,
+        mapboxToken: carte.mapboxToken || undefined,
+        reducedMotion: !!reducedMotion,
+        hydrate: { devis: contexteAoVersPayload(ctx) },
+        onApiReady: (a) => { builderApi.current = a },
+      })
+      const reference = ctx?.affaire?.reference ?? ''
+      setStatus(
+        ctx?.modifiable
+          ? `Affaire ${reference} chargée. Ajustez le calepinage, puis « Enregistrer le calepinage ».`
+          : `Affaire ${reference} en lecture seule — consultation du calepinage remis.`
+      )
+    }
+
     if (estDevis) bootDevis()
+    else if (estAo) bootAo()
     else boot()
     return () => { cancelled = true }
-  }, [cibleId, devisId, leadId, estDevis, reducedMotion])
+  }, [cibleId, devisId, leadId, affaireId, estDevis, estAo, reducedMotion])
 
   // ── UN SEUL BOUTON : devis + snapshot + livraison ──────────────────────────
   const generer = async () => {
@@ -616,6 +715,47 @@ export default function ToitureDesign({ mode = 'lead' }) {
     }
   }
 
+  // ── MODE AO — enregistrement du calepinage de l'AFFAIRE ────────────────
+  // Le layout est un DOCUMENT DE TRAVAIL : il se range sur l'affaire
+  // (`AppelOffre.roof_layout`) et ne réécrit JAMAIS la géométrie opposable du
+  // dossier (toitures, zones, chaînes de cotes) ni le statut de l'affaire —
+  // le serveur refuse (409) dès que le dossier est parti chez l'acheteur, avec
+  // son propre motif en français.
+  const enregistrerCalepinageAo = async () => {
+    if (sending) return
+    setGenError(null)
+    setConflit(null)
+    const apiTool = builderApi.current
+    if (!apiTool) {
+      setGenError('Outil non prêt — ajustez le calepinage puis réessayez.')
+      return
+    }
+    setSending(true)
+    setGenStatus('Enregistrement du calepinage…')
+    try {
+      const layout = apiTool.serializeLayout()
+      await aoApi.affaires.enregistrerLayout(affaireId, layout)
+      setGenStatus(null)
+      setSending(false)
+      setStatus('Calepinage enregistré sur l’affaire.')
+    } catch (err) {
+      const code = err?.response?.status
+      const data = err?.response?.data
+      setGenStatus(null)
+      setSending(false)
+      if (code === 409) {
+        // Une affaire déposée ou close ne se révise pas depuis cet écran : le
+        // geste est un nouvel indice de dossier, pas une « v2 » de devis.
+        setConflit({
+          detail: data?.detail || 'Ce calepinage ne peut plus être modifié.',
+          revision_possible: false,
+        })
+        return
+      }
+      setGenError(httpMessage(code ?? 0, data))
+    }
+  }
+
   // PV21 — « Réviser (v2) » : le devis est déjà chez le client, on en crée une
   // NOUVELLE version (brouillon) et on rouvre la conception dessus.
   const reviser = async () => {
@@ -669,7 +809,12 @@ export default function ToitureDesign({ mode = 'lead' }) {
   // contexte ; en lecture seule, le motif AFFICHÉ est celui du serveur.
   const devisLabel = (contexte?.devis?.client_nom ?? '').trim()
   const devisReference = contexte?.devis?.reference ?? ''
-  const lectureSeule = estDevis && contexte != null && !contexte.modifiable
+  // Mode AO — le titre porte NOTRE référence d'affaire + son objet, servis par
+  // le même contexte agrégé (contrat `ao_design_context`).
+  const affaireLabel = (contexte?.affaire?.objet ?? '').trim()
+  const affaireReference = contexte?.affaire?.reference ?? ''
+  const lectureSeule = (estDevis || estAo)
+    && contexte != null && !contexte.modifiable
   const raisonLectureSeule = (contexte?.raison_lecture_seule ?? '').trim()
   const avertissements = Array.isArray(contexte?.avertissements)
     ? contexte.avertissements : []
@@ -758,12 +903,19 @@ export default function ToitureDesign({ mode = 'lead' }) {
 
       <div className="mt-6">
         <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
-          {estDevis ? (
+          {estDevis && (
             <h1 className="display text-xl text-white sm:text-2xl">
               Devis <span className="text-brass-300">{devisReference || devisId || '—'}</span> ·{' '}
               <span className="text-lune-soft">{devisLabel || '—'}</span>
             </h1>
-          ) : (
+          )}
+          {estAo && (
+            <h1 className="display text-xl text-white sm:text-2xl">
+              Affaire <span className="text-brass-300">{affaireReference || affaireId || '—'}</span> ·{' '}
+              <span className="text-lune-soft">{affaireLabel || '—'}</span>
+            </h1>
+          )}
+          {!estDevis && !estAo && (
             <h1 className="display text-xl text-white sm:text-2xl">
               Lead <span className="text-brass-300">{leadId || '—'}</span> ·{' '}
               <span className="text-lune-soft">{leadLabel || '—'}</span>
@@ -781,19 +933,27 @@ export default function ToitureDesign({ mode = 'lead' }) {
           <div className="cine-card mt-6 border border-brass-400/40 p-5" data-testid="pv20-lecture-seule">
             <p className="tech-label rule-brass text-brass-300">Lecture seule</p>
             <p className="mt-3 text-sm text-lune-soft" role="status">
-              {raisonLectureSeule || 'Ce devis ne peut plus être modifié.'}
+              {raisonLectureSeule || (estAo
+                ? 'Ce calepinage ne peut plus être modifié.'
+                : 'Ce devis ne peut plus être modifié.')}
             </p>
-            <Link
-              to={`/ventes/devis/${devisId}/3d`}
-              className="mt-4 inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-brass-300"
-            >
-              Voir en 3D
-            </Link>
+            {/* La visionneuse 3D plein écran est une route DEVIS
+                (`/ventes/devis/:id/3d`) : en mode AO elle n'existe pas, et un
+                lien mort serait pire que pas de lien. */}
+            {estDevis && (
+              <Link
+                to={`/ventes/devis/${devisId}/3d`}
+                className="mt-4 inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-brass-300"
+              >
+                Voir en 3D
+              </Link>
+            )}
           </div>
         )}
 
-        {/* PV20 — avertissements serveur (multi-villa, aucune ligne panneau…). */}
-        {estDevis && avertissements.length > 0 && (
+        {/* PV20 — avertissements serveur (multi-villa, aucune ligne panneau…).
+            Mode AO : toiture non relevée, contour sans ancre géographique… */}
+        {(estDevis || estAo) && avertissements.length > 0 && (
           <ul className="mt-4 space-y-1 text-xs text-lune-faint" data-testid="pv20-avertissements">
             {avertissements.map((a) => <li key={a}>{a}</li>)}
           </ul>
@@ -807,8 +967,10 @@ export default function ToitureDesign({ mode = 'lead' }) {
             éléments via `$('rp9-bill')`/`$('rp9-bill-kwh')`, qui renvoie `null`
             si absent (roofPro11/dom.ts) et TOUS les usages sont déjà gardés
             (`billEl?.value`, `if (billKwhEl)`, `billEl?.addEventListener`) —
-            aucune casse à l'init sans ce bloc. */}
-        {!estDevis && (
+            aucune casse à l'init sans ce bloc. Mode AO : le dimensionnement
+            vient de l'engagement du dossier (cible.panneaux), pas d'une
+            facture d'électricité — le bloc n'y a aucun sens non plus. */}
+        {!estDevis && !estAo && (
         <div className="cine-card mt-6 p-5">
           <label htmlFor="rp9-bill" className="block text-sm text-lune-soft">
             Facture d'électricité moyenne par mois (MAD)
@@ -969,8 +1131,11 @@ export default function ToitureDesign({ mode = 'lead' }) {
 
         {/* UN SEUL BOUTON — génère le devis, capture la 3D, mint le lien.
             PV20 — mode lead UNIQUEMENT : un devis existant n'est jamais recréé
-            depuis cet écran (sa boucle d'enregistrement arrive en PV21). */}
-        {!estDevis && (
+            depuis cet écran (sa boucle d'enregistrement arrive en PV21).
+            Mode AO : une affaire ne « génère » aucun devis depuis la toiture —
+            le devis d'un appel d'offres naît du BORDEREAU DES PRIX (action
+            « Créer le devis » de l'écran Bordereau), pas d'un calepinage. */}
+        {!estDevis && !estAo && (
         <div className="cine-card mt-6 p-6">
           {!deliver ? (
             <div>
@@ -1043,6 +1208,39 @@ export default function ToitureDesign({ mode = 'lead' }) {
             )}
           </div>
           {blocAvertissements()}
+        </div>
+        )}
+
+        {/* MODE AO : « Enregistrer le calepinage ». L'affaire existe déjà — on
+            range son layout de travail, on ne touche NI son statut, NI sa
+            géométrie opposable (toitures / zones / chaînes de cotes), NI aucun
+            devis. Absent en lecture seule (dossier déposé ou clos). */}
+        {estAo && !lectureSeule && (
+        <div className="cine-card mt-6 p-6" data-testid="ao-enregistrer-calepinage">
+          <button type="button" onClick={enregistrerCalepinageAo} disabled={sending}
+            className="inline-flex w-full items-center justify-center gap-3 bg-ok-600 px-6 py-4 text-base font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
+            style={{ background: 'var(--rp-ok-600)' }}>
+            {sending && (
+              <span aria-hidden="true"
+                className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-white/30 border-t-white"></span>
+            )}
+            <span>{sending ? 'Enregistrement en cours…' : 'Enregistrer le calepinage'}</span>
+          </button>
+          <p className="mt-3 text-xs text-lune-faint">
+            Le calepinage est rangé sur l'affaire. Le relevé opposable
+            (toitures, zones, chaînes de cotes) et le statut du dossier ne
+            bougent pas ; le devis, lui, se crée depuis le bordereau des prix.
+          </p>
+          {genStatus && <p className="mt-3 text-sm text-lune-soft" aria-live="polite">{genStatus}</p>}
+          {genError && <p className="mt-3 text-sm text-alert-300" aria-live="assertive">{genError}</p>}
+
+          {/* 409 : le dossier est parti chez l'acheteur — motif du SERVEUR. */}
+          {conflit && (
+            <div className="mt-4 border border-alert-300/40 p-4" data-testid="ao-conflit-lecture-seule">
+              <p className="tech-label text-alert-300">Lecture seule</p>
+              <p className="mt-2 text-sm text-alert-300" role="alert">{conflit.detail}</p>
+            </div>
+          )}
         </div>
         )}
 

@@ -489,6 +489,77 @@ export const isReseauInverter = (d) => {
 }
 export const isPanel = (d) => _norm(d).includes('panneau')
 
+// ── PVOND — CONTRAT ONDULEUR & garde batterie PILOTÉ PAR LA DONNÉE ──────────
+//
+// MIROIR EXACT du backend (`apps/ventes/services.py` :
+// `_batterie_compatible` / `_pick_batterie`, et le contrat lui-même dans
+// `apps/stock/selectors.py`). Les deux côtés lisent la MÊME donnée, servie par
+// l'API dans `produit.specs_solaire` :
+//
+//   { famille, plage_batterie_v: [min, max] | null, v_nominal, manquantes[] }
+//
+// Ce qui change par rapport au garde d'hier : une batterie ne s'accroche plus
+// à un onduleur parce que son NOM ne dit pas « haute tension », mais parce que
+// sa TENSION NOMINALE tombe dans la PLAGE BATTERIE que l'onduleur déclare.
+// Le repli mot-clé reste EN PLACE et n'est pas un vestige : dès qu'une des deux
+// données manque (catalogue ancien, produit saisi à la main, fixture de test),
+// on retombe MOT POUR MOT sur le comportement PVG4 — jamais de régression
+// silencieuse.
+
+// Repli PVG4 : une batterie dont le nom dit « haute tension » n'est jamais
+// auto-choisie pour un kit résidentiel basse tension.
+// MIROIR EXACT de `_is_battery_basse_tension` (apps/ventes/services.py) : le
+// prédicat Python exige AUSSI le mot « batterie » dans le nom. Le tronquer
+// faisait de `batterieCompatible` — fonction EXPORTÉE, donc appelable hors du
+// vivier pré-classé — une fonction qui ne se comporte pas comme sa jumelle.
+const _batterieBasseTensionParMotCle = (p) => {
+  const n = _norm(p?.nom)
+  return n.includes('batterie') && !n.includes('haute tension')
+}
+
+// Fenêtre de tension batterie déclarée par un onduleur :
+//   [min, max] → fenêtre réelle ; [0, 0] → « aucune batterie » (réseau) ;
+//   null      → non déclarée (l'appelant retombe sur le mot-clé).
+export function plageBatterieOnduleur(produit) {
+  const plage = produit?.specs_solaire?.plage_batterie_v
+  if (!Array.isArray(plage) || plage.length !== 2) return null
+  const bas = Number(plage[0]); const haut = Number(plage[1])
+  if (!Number.isFinite(bas) || !Number.isFinite(haut)) return null
+  return bas <= haut ? [bas, haut] : [haut, bas]
+}
+
+// La batterie entre-t-elle dans la plage de l'onduleur ? (miroir exact de
+// `_batterie_compatible` côté backend, replis compris).
+//
+// RÈGLE CORRIGÉE (fondateur 2026-08-18) : le repli mot-clé ne s'applique QUE
+// lorsque L'ONDULEUR ne déclare aucune plage. Dès qu'une plage existe, une
+// candidate sans tension nominale — ou avec une tension nulle/illisible, donc
+// une donnée INVALIDE — est EXCLUE. L'ancien repli acceptait, sous un onduleur
+// 160-700 V, des batteries 48 V et plomb-gel 12 V sans aucune fiche technique,
+// tout en écartant celles qui étaient correctement documentées : le garde-fou
+// produisait exactement la composition qu'il devait empêcher.
+export function batterieCompatible(batterie, plage) {
+  if (!Array.isArray(plage)) return _batterieBasseTensionParMotCle(batterie)
+  const [vMin, vMax] = plage
+  if (!(vMax > 0)) return false        // onduleur réseau : aucune batterie
+  const tension = Number(batterie?.specs_solaire?.v_nominal)
+  // Plage EXIGÉE + tension inconnue/invalide ⇒ exclue (jamais le mot-clé).
+  if (!Number.isFinite(tension) || tension <= 0) return false
+  return tension >= vMin && tension <= vMax
+}
+
+// VERROU DE COMPLÉTUDE — les variables du contrat qui manquent à cet onduleur
+// (liste vide = complet). Même patron que « prix à renseigner » : un onduleur
+// incomplet est EXCLU de l'auto-composition et affiché grisé avec son motif,
+// mais reste sélectionnable à la main.
+export function onduleurSpecsManquantes(produit) {
+  const manquantes = produit?.specs_solaire?.manquantes
+  return Array.isArray(manquantes) ? manquantes : []
+}
+
+export const onduleurComplet = (produit) =>
+  onduleurSpecsManquantes(produit).length === 0
+
 // Défauts TVA (réforme : 10 % panneaux PV, 20 % le reste).
 export const TVA_PANNEAUX_DEFAUT = 10
 export const TVA_STANDARD_DEFAUT = 20
@@ -791,10 +862,29 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
     : Math.max(1, Math.round(kwp * 1000 / panelW))
   const threshold = kwp * 0.8
 
+  // PVOND — VERROU DE COMPLÉTUDE : un onduleur auquel il manque une variable
+  // du CONTRAT (puissance AC, phases, MPPT, tensions, courant, rendement,
+  // plage batterie, garantie) est EXCLU de l'auto-composition et remonté à
+  // l'écran avec son motif — exactement le patron de « prix à renseigner » :
+  // on ne chiffre pas un appareil qu'on ne sait pas dimensionner, et on DIT
+  // pourquoi. Il reste sélectionnable à la main.
+  const onduleursIncomplets = []
+  const vuIncomplet = new Set()
+  const retenirIncomplet = (p) => {
+    const manquantes = onduleurSpecsManquantes(p)
+    if (!manquantes.length) return false
+    if (!vuIncomplet.has(p.id)) {
+      vuIncomplet.add(p.id)
+      onduleursIncomplets.push({ id: p.id, nom: p.nom, manquantes })
+    }
+    return true
+  }
+
   // Sélection onduleur : plus petit modèle >= 80 % de la puissance, sinon le
   // plus gros du catalogue ; à puissance égale, Triphasé si >= 10 kW sinon Mono.
   const pickInverter = (pool) => {
     const cands = (pool ?? [])
+      .filter(p => !retenirIncomplet(p))
       .map(p => ({ p, kw: parseKw(p.nom), tri: parsePhaseIsTri(p.nom) }))
       .filter(x => x.kw != null && x.kw > 0)
       .sort((a, b) => a.kw - b.kw || a.p.id - b.p.id)
@@ -825,13 +915,45 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
   }
 
   // Batteries : cible = kWc arrondi au multiple de 5 (min 5 kWh),
-  // ligne 1 = Deyness 5 kWh (qté nb_5), ligne 2 = Deyness 10 kWh (qté nb_10).
+  // ligne 1 = Dyness 5 kWh (qté nb_5), ligne 2 = Dyness 10 kWh (qté nb_10).
+  // TOLÉRANCE DEUX ORTHOGRAPHES (miroir exact de services.py) : la marque
+  // s'écrit « Dyness » (correction fondateur 2026-08-18) ; un produit encore
+  // nommé « Deyness » (base non migrée, saisie manuelle) reste reconnu, sans
+  // quoi le vivier retomberait sur TOUTES les batteries du catalogue.
   const target = Math.max(5, Math.round(kwp / 5) * 5)
   let nb10 = Math.floor(target / 10)
   let nb5 = (target % 10) >= 5 ? 1 : 0
-  const bats = (byType.batterie ?? []).map(p => ({ p, cap: parseKwh(p.nom) }))
-  const deyness = bats.filter(x => _norm(x.p.nom).includes('deyness'))
-  const batPool = deyness.length ? deyness : bats
+  // PVOND — GARDE BATTERIE PILOTÉ PAR LA DONNÉE (remplace le garde par mot-clé
+  // PVG4 ; miroir EXACT de `_batterie_compatible` côté backend
+  // apps/ventes/services.py). Une batterie n'entre au vivier que si sa TENSION
+  // NOMINALE tombe dans la PLAGE BATTERIE déclarée par l'onduleur HYBRIDE
+  // retenu ci-dessus — c'est la vraie règle électrique, pas un nom de produit.
+  // Repli intégral sur le mot-clé « haute tension » dès qu'une des deux données
+  // manque : un catalogue non renseigné se comporte exactement comme hier.
+  // L'exclusion se fait AVANT l'appariement par capacité 5/10 kWh ; une
+  // batterie écartée reste sélectionnable à la main.
+  const plageBatterie = plageBatterieOnduleur(hybride?.p)
+  const bats = (byType.batterie ?? [])
+    .filter(p => batterieCompatible(p, plageBatterie))
+    .map(p => ({ p, cap: parseKwh(p.nom) }))
+  const dyness = bats.filter(x => {
+    const n = _norm(x.p.nom)
+    return n.includes('dyness') || n.includes('deyness')
+  })
+  const batPool = dyness.length ? dyness : bats
+  // Le vivier peut être VIDE alors que le catalogue porte des batteries : elles
+  // sont toutes incompatibles avec l'onduleur hybride retenu. Le dire vaut
+  // mieux que livrer un kit silencieusement sans stockage (miroir de
+  // `avertissement_vivier_batterie_vide`, apps/ventes/services.py).
+  const avertissementsBatterie = []
+  if (!batPool.length && (byType.batterie ?? []).length
+      && Array.isArray(plageBatterie) && plageBatterie[1] > 0) {
+    avertissementsBatterie.push(
+      `Aucune batterie compatible tarifée pour cet onduleur `
+      + `(plage ${plageBatterie[0]}-${plageBatterie[1]} V) : `
+      + `la composition part SANS batterie. Ajoutez une batterie compatible `
+      + `au catalogue, ou changez d'onduleur.`)
+  }
   const bat5 = batPool.find(x => x.cap === 5)
   const bat10 = batPool.find(x => x.cap === 10)
   if (!bat10 && bat5 && nb10 > 0) {
@@ -903,6 +1025,13 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
   lignes.actualPanelW = panel?.w ?? panelW
   lignes.nbPanneaux = nbPanneaux
   lignes.kwcReel = Math.round(nbPanneaux * (panel?.w ?? panelW) / 10) / 100
+  // PVOND — les onduleurs ÉCARTÉS faute de contrat complet, avec leur motif.
+  // Métadonnée portée par le tableau (les consommateurs qui itèrent les lignes
+  // ne la voient pas), lue par le générateur pour afficher le bandeau.
+  lignes.onduleursIncomplets = onduleursIncomplets
+  // PVOND — vivier batterie VIDE sous un onduleur à plage déclarée : même
+  // métadonnée, même patron que les onduleurs incomplets ci-dessus.
+  lignes.avertissementsBatterie = avertissementsBatterie
   return lignes
 }
 
@@ -947,9 +1076,114 @@ export function injection8221(productionKwh, autoconsommeKwh, pointe = false) {
   return { kwh: Math.round(kwh), dh: Math.round(dh) }
 }
 
+// ══ QXMT — Tarifs MOYENNE TENSION ONEE (raccordement MT, dossiers > 50 kW) ═══
+// Miroir STRICT de quote_engine/constants_82_21.py `TARIF_MT_ONEE` — un test de
+// parité backend (test_qx50_injection_82_21.py) échoue si l'un des deux dérive.
+//
+// RÈGLE FONDATEUR — ZÉRO CHIFFRE INVENTÉ (PLAN2 QXG6, contrainte « chaque
+// constante tarifaire porte sa source en commentaire »). Une valeur n'apparaît
+// ici QUE si une source OFFICIELLE ou de premier rang la publie (ONEE
+// one.org.ma, Bulletin officiel, ministère de l'énergie, ANRE), avec sa source
+// et sa date citées sur la ligne. Toute valeur non sourcée reste `null` :
+// l'étude OMET alors le calcul correspondant (économies / payback) au lieu
+// d'afficher un chiffre douteux. JAMAIS de placeholder chiffré, JAMAIS de
+// reprise d'une estimation « ordre de grandeur » (le site porte un blend
+// indicatif TARIF_MT_MAD_KWH = 1,15 dans apps/web/src/lib/estimatorPro.ts —
+// explicitement une hypothèse, donc INUTILISABLE pour une étude chiffrée).
+//
+// SOURCE DES TROIS PRIX + DE LA PRIME (relevée ET vérifiée le 18/08/2026) :
+//   ONEE — Branche Électricité, page officielle « Tarif Général (MT) »
+//   https://www.one.org.ma/fr/pages/interne.asp?esp=1&id1=14&id2=114&t2=1
+//   La page précise : « Les tarifs sont exprimés en dirhams TVA comprise
+//   (TVA est de 18 %) ». Elle n'affiche NI date d'entrée en vigueur NI numéro
+//   d'arrêté — d'où la mention de consultation portée par MENTION ci-dessous.
+// NON RETENU volontairement : la page ONEE « Grands Comptes » sans tag de
+// tension (494,09 DH/kVA ; 1,3645 / 0,9736 / 0,7131) est citée ailleurs comme
+// « MT » mais ne porte aucun libellé de tension et vit dans l'arborescence
+// THT/HT — ambiguë, donc écartée. Le TURD ANRE (5,92 c/kWh, décision
+// n°02-25-TURD, BO n°7400 du 01/05/2025) est un tarif d'ACCÈS au réseau payé
+// entre opérateurs, PAS un tarif de vente au client final : jamais mélangé ici.
+export const TARIF_MT_ONEE = {
+  // Redevance de consommation par poste horaire, DH/kWh TVA (18 %) comprise.
+  // ONEE « Tarif Général (MT) », one.org.ma, consulté le 18/08/2026.
+  POINTE: 1.4157,
+  PLEINES: 1.0101,
+  CREUSES: 0.7398,
+  // Prime fixe / redevance de puissance, DH par kVA souscrit et par an.
+  // Même source et même date. DÉLIBÉRÉMENT NON déduite des économies : le
+  // solaire ne réduit pas la puissance souscrite, la compter en économie
+  // gonflerait le gain. Exposée pour que personne n'ait à la réinventer.
+  PRIME_PUISSANCE_DH_KVA_AN: 512.62,
+  TVA_INCLUSE_PCT: 18,
+  // Durées officielles des plages horaires (heures/jour). Elles serviraient à
+  // répartir une consommation à profil plat quand le client ne fournit pas sa
+  // propre répartition. La page MT ne les publie QUE dans un diagramme image
+  // (non extractible) — plages MT à fournir par le fondateur (source
+  // officielle introuvable au 18/08/2026). `null` = AUCUNE répartition par
+  // défaut n'est inventée : le client doit saisir la sienne, sinon l'étude
+  // OMET la valorisation. (Les seules plages publiées en clair sur one.org.ma
+  // — 17h-22h etc. — appartiennent au tarif Optionnel « Super Pointe » THT/HT,
+  // explicitement PAS à la MT : les transposer serait un chiffre inventé.)
+  PLAGES_H: null,
+  // Mention affichée avec TOUT chiffre issu de ce barème (jamais un chiffre nu).
+  MENTION: 'Barème ONEE « Tarif Général (MT) », TVA 18 % comprise — '
+    + 'one.org.ma, consulté le 18/08/2026 (la page ne publie pas de date '
+    + "d'entrée en vigueur)",
+}
+
+// Le barème MT est-il exploitable ? true seulement si les TROIS postes horaires
+// portent un prix > 0 sourcé. Tant que c'est false, l'étude MT omet toute
+// valorisation monétaire plutôt que d'utiliser un chiffre de repli.
+export function tarifMtDisponible() {
+  return ['POINTE', 'PLEINES', 'CREUSES'].every((k) => {
+    const v = Number(TARIF_MT_ONEE[k])
+    return Number.isFinite(v) && v > 0
+  })
+}
+
+// Répartition horaire du client `{ pointe, pleines, creuses }` (en %, saisie
+// libre) → parts normalisées à 100 %. Retourne `null` si rien d'exploitable
+// n'est saisi : les plages MT officielles n'étant pas publiées, AUCUNE
+// répartition par défaut n'est inventée. Les valeurs non numériques ou
+// négatives comptent pour 0 (la saisie de l'utilisateur n'est jamais rejetée
+// ni corrigée à l'écran — seul le calcul les ignore).
+export function normaliserRepartitionMt(repartition) {
+  const part = (v) => {
+    const n = parseFloat(v)
+    return Number.isFinite(n) && n > 0 ? n : 0
+  }
+  const pointe = part(repartition?.pointe)
+  const pleines = part(repartition?.pleines)
+  const creuses = part(repartition?.creuses)
+  const somme = pointe + pleines + creuses
+  if (!(somme > 0)) return null
+  const pct = (v) => Math.round((v / somme) * 1000) / 10
+  return { pointe: pct(pointe), pleines: pct(pleines), creuses: pct(creuses) }
+}
+
+// Prix moyen pondéré (DH/kWh TTC) du barème MT pour une répartition horaire.
+// Retourne `null` — jamais un nombre de repli — si le barème n'est pas sourcé
+// ou si la répartition est absente/vide. C'est ce `null` qui fait OMETTRE le
+// calcul dans l'étude plutôt que d'inventer un tarif.
+export function tarifMtMoyen(repartition) {
+  if (!tarifMtDisponible()) return null
+  const parts = normaliserRepartitionMt(repartition)
+  if (!parts) return null
+  const moyen = (parts.pointe * TARIF_MT_ONEE.POINTE
+    + parts.pleines * TARIF_MT_ONEE.PLEINES
+    + parts.creuses * TARIF_MT_ONEE.CREUSES) / 100
+  return Number.isFinite(moyen) && moyen > 0 ? moyen : null
+}
+
 // QX50 — `injectionEnabled` (défaut false, OFF) ajoute la ligne d'injection
 // 82-21 SANS toucher l'étude d'autoconsommation : étude avec = étude sans + ligne.
-export function computeEtudeIndustrielle({ kwp, consoMensuelleKwh, dayUsagePct, totalTtc, kwhPrice, efficiency, injectionEnabled = false }) {
+// QXMT — `tensionRaccordement` ('bt' par défaut) : tant qu'il vaut autre chose
+// que 'mt', CHAQUE sortie de cette fonction est identique à l'historique (le
+// comportement BT est strictement inchangé). En 'mt', l'énergie est valorisée
+// au barème MT pondéré par `repartitionMt` ; si ce barème OU cette répartition
+// manque, les économies et le payback sont OMIS (null) et l'étude porte le
+// motif — jamais un chiffre BT déguisé en chiffre MT.
+export function computeEtudeIndustrielle({ kwp, consoMensuelleKwh, dayUsagePct, totalTtc, kwhPrice, efficiency, injectionEnabled = false, tensionRaccordement = 'bt', repartitionMt = null }) {
   if (!kwp || kwp <= 0) return null
   const PRICE = (Number.isFinite(Number(kwhPrice)) && Number(kwhPrice) > 0) ? Number(kwhPrice) : KWH_PRICE
   const EFF = (Number.isFinite(Number(efficiency)) && Number(efficiency) > 0) ? Number(efficiency) : EFFICIENCY
@@ -968,7 +1202,16 @@ export function computeEtudeIndustrielle({ kwp, consoMensuelleKwh, dayUsagePct, 
     autoconsomme = prodA * dayPct
     tauxAuto = dayPct * 100
   }
-  const economies = autoconsomme * PRICE
+  // QXMT — valorisation de l'énergie autoconsommée.
+  //  · BT (défaut) : tarif ONEE historique — chemin STRICTEMENT inchangé, et
+  //    aucune clé MT n'est ajoutée à la sortie.
+  //  · MT : barème ONEE « Tarif Général (MT) » pondéré par la répartition
+  //    horaire du client. Sans répartition exploitable, le prix vaut `null` et
+  //    les économies + le payback sont OMIS (jamais un chiffre BT déguisé).
+  const estMt = String(tensionRaccordement || '').toLowerCase() === 'mt'
+  const prixMt = estMt ? tarifMtMoyen(repartitionMt) : null
+  const prixEnergie = estMt ? prixMt : PRICE
+  const economies = prixEnergie != null ? autoconsomme * prixEnergie : null
   const payback = (economies > 0 && totalTtc > 0)
     ? Math.round(totalTtc / economies * 10) / 10 : null
   const out = {
@@ -977,11 +1220,32 @@ export function computeEtudeIndustrielle({ kwp, consoMensuelleKwh, dayUsagePct, 
     conso_annuelle: consoA ? Math.round(consoA) : null,
     taux_autoconso: Math.round(tauxAuto * 10) / 10,
     taux_couverture: tauxCouv != null ? Math.round(tauxCouv * 10) / 10 : null,
-    economies_annuelles: Math.round(economies),
+    economies_annuelles: economies != null ? Math.round(economies) : null,
     payback,
     prix_kwc: (kwp > 0 && totalTtc > 0) ? Math.round(totalTtc / kwp) : null,
     prod_mensuelle: prodM.map(v => Math.round(v)),
     conso_mensuelle: consoA ? Array(12).fill(Math.round(consoMois)) : null,
+  }
+  // QXMT — traçabilité MT : le barème, la répartition retenue et la mention
+  // réglementaire voyagent avec l'étude (etude_params → écran, PDF, proposition)
+  // pour qu'aucun chiffre MT ne circule jamais sans sa source.
+  if (estMt) {
+    out.tension_raccordement = 'mt'
+    out.tarif_mt_mention = TARIF_MT_ONEE.MENTION
+    out.tarif_mt_dh_kwh = prixMt != null ? Math.round(prixMt * 10000) / 10000 : null
+    const parts = normaliserRepartitionMt(repartitionMt)
+    if (parts) out.repartition_mt = parts
+    if (prixMt == null) {
+      // L'étude reste publiée (production, taux, prix/kWc) : SEUL le calcul qui
+      // dépend d'un tarif manquant est omis, avec son motif explicite.
+      out.etude_mt_incomplete = true
+      out.etude_mt_motif = tarifMtDisponible()
+        ? 'Raccordement MT : renseignez la répartition horaire (pointe / '
+          + 'pleines / creuses) — économies et payback omis sans elle, les '
+          + 'plages horaires MT officielles n’étant pas publiées.'
+        : 'Raccordement MT : barème MT ONEE indisponible en source officielle '
+          + '— économies et payback omis (à fournir par le fondateur).'
+    }
   }
   // QX50 — injection 82-21 : ligne SÉPARÉE (ne modifie pas l'étude ci-dessus).
   // OFF par défaut ; activée par devis. La mention est portée par le renderer.

@@ -56,7 +56,11 @@ UNGUARDED_ACTION_BASELINE = {
     # (``DossierAOViewSet.controles_avant_depot`` dans ``viewsets.py``,
     # ``EconomieAOViewSet.telecharger`` dans ``views_directeur.py``).
     # Un vrai fine-grain de tout ``ao`` reste un chantier à part (YRBAC3).
-    "ao": 22,
+    # 22 → 25 (2026-08-18, lot proposition) : design-context, layout et
+    # creer-devis — trois @action neuves gardées par le ScopedPermission de
+    # CLASSE de leurs viewsets ; coller un permission_classes= par action
+    # tairait le scanner sans rien resserrer (règle du dépôt, cf. #25).
+    "ao": 25,
     # NTASS — les viewsets assurances héritent de ``_AssurancesBaseViewSet``
     # (WriteScopedPermissionMixin + CompanyScopedModelViewSet) : gardés au
     # niveau CLASSE (read/write assurances_voir/gerer, company-scopé, zéro fuite

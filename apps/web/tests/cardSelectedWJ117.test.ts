@@ -1,6 +1,8 @@
 // WJ117 — État sélectionné des cartes-boutons (bug cascade layers).
-// Les 8 groupes de cartes du parcours devis (.mt-mode/.mt-roof-card/.mt-tension/
-// .mt-activity/.mt-water-source/.mt-irrigation/.mt-water-unit/.mt-pro-unit)
+// Les groupes de cartes SURVIVANTS du parcours devis (.mt-mode/.mt-tension/
+// .mt-activity/.mt-water-source/.mt-water-unit/.mt-pro-unit/.mt-equipes/
+// .mt-commercial-cat/.mt-ombrage — type de toit, irrigation et groupe
+// électrogène ont quitté le tunnel, coupe fondateur 18/08)
 // togglent aria-pressed + l'utilitaire Tailwind `border-brass-400`, mais ces
 // utilitaires vivent dans un @layer (Tailwind v4) alors que `.cine-card`
 // (global.css) est NON layered et pose `border: 1px solid …` par shorthand —
@@ -84,24 +86,32 @@ describe.each(LOCALES)('WJ117 — toggling aria-pressed dans mon-toit.astro (%s)
     expect(src).toContain("setAttribute('aria-pressed', String(on))");
   });
 
-  it('syncModeCards / syncRoofCards / wireCardGroup présents (les 8 groupes couverts)', () => {
+  it('syncModeCards / wireCardGroup présents (tous les groupes SURVIVANTS couverts)', () => {
     expect(src).toContain('function syncModeCards()');
-    expect(src).toContain('function syncRoofCards()');
     expect(src).toContain('function wireCardGroup(');
     for (const group of [
       "wireCardGroup('.mt-pro-unit'",
       "wireCardGroup('.mt-tension'",
       "wireCardGroup('.mt-activity'",
       "wireCardGroup('.mt-water-source'",
-      "wireCardGroup('.mt-irrigation'",
       "wireCardGroup('.mt-water-unit'",
+      "wireCardGroup('.mt-equipes'",
+      "wireCardGroup('.mt-commercial-cat'",
     ]) {
       expect(src).toContain(group);
     }
+    // Coupe fondateur 18/08 — ces deux groupes ont quitté le tunnel avec leurs
+    // questions : ils ne nourrissaient aucune estimation.
+    expect(src).not.toContain("wireCardGroup('.mt-irrigation'");
+    expect(src).not.toContain("wireCardGroup('.mt-generator'");
+    expect(src).not.toContain('function syncRoofCards()');
   });
 
-  it('le HTML statique porte aria-pressed sur les cartes mode et toit (état initial annoncé aux lecteurs d\'écran)', () => {
+  it('le HTML statique porte aria-pressed sur les cartes mode (état initial annoncé aux lecteurs d\'écran)', () => {
     expect(src).toMatch(/data-mode=\{m\.id\}\s+aria-pressed="false"/);
-    expect(src).toMatch(/data-roof=\{r\.id\}\s+aria-pressed="false"/);
+    // Les cartes « type de toit » (data-roof) sont retirées du tunnel (coupe
+    // fondateur 18/08) ; l'ombrage reprend le même patron aria-pressed.
+    expect(src).not.toMatch(/data-roof=/);
+    expect(src).toMatch(/class="mt-ombrage[^"]*"[^>]*aria-pressed="false"/);
   });
 });

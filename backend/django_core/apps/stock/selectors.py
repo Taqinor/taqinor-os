@@ -1242,6 +1242,198 @@ def specs_for_produit(produit):
     return out
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# PVOND — CONTRAT DE DONNÉES « ONDULEUR » : ajouter un onduleur demain doit
+# être de la pure SAISIE, jamais du code.
+#
+# Ce qu'un onduleur du catalogue DOIT porter pour être chiffrable et
+# dimensionnable, et OÙ chaque variable vit — rien de nouveau n'est inventé
+# ici, on NOMME l'existant et on comble le seul trou :
+#
+#   * ``FicheTechnique`` (``type_fiche='onduleur'``, PV5) porte les huit
+#     variables électriques : ``ond_ac_kw``, ``ond_phases``, ``ond_n_mppt``,
+#     ``ond_mppt_v_min``, ``ond_mppt_v_max``, ``ond_v_max_abs``,
+#     ``ond_i_max_mppt_a``, ``ond_rendement_euro_pct`` ;
+#   * ``Produit.garantie`` porte la garantie constructeur (déjà structurée) ;
+#   * la PLAGE DE TENSION BATTERIE — la neuvième variable, celle qui décide
+#     quelle batterie s'accroche à quel onduleur — n'a AUCUN champ sur
+#     ``FicheTechnique`` (le seeder le dit noir sur blanc depuis PV85 :
+#     « NON seedés faute de champ sur FicheTechnique … plage batterie
+#     40-60 V »). Elle se loge donc en DONNÉE, à l'endroit où ce dépôt loge
+#     déjà une donnée machine sans champ dédié : une LIGNE MARQUÉE de
+#     ``Produit.description`` — exactement le patron de
+#     « Modèle confirmé fondateur : … », que ``ventes.electrical_service``
+#     lit déjà de la même façon. Aucun schéma nouveau, aucune migration, et
+#     la donnée reste éditable à la main par le fondateur.
+#
+# Format de la ligne marquée (posée par ``seed_catalogue``, lisible en clair
+# sur la fiche produit) :
+#
+#     Plage batterie : 40-60 V
+#     Plage batterie : aucune (onduleur réseau)
+#
+# « aucune » est une valeur PLEINE, pas une absence : c'est la déclaration
+# explicite qu'un onduleur réseau ne prend pas de batterie. Ne RIEN écrire,
+# à l'inverse, veut dire « on ne sait pas » — et un onduleur qu'on ne sait pas
+# apparier est GRISÉ au générateur plutôt que chiffré à l'aveugle.
+# ═══════════════════════════════════════════════════════════════════════════
+
+#: Préfixe de la ligne marquée dans ``Produit.description``.
+MARQUEUR_PLAGE_BATTERIE = 'Plage batterie :'
+
+#: Valeur textuelle déclarant explicitement « cet onduleur ne prend pas de
+#: batterie » (onduleur réseau / string on-grid).
+PLAGE_BATTERIE_AUCUNE = 'aucune'
+
+#: LE CONTRAT — ``(clé, libellé français)``. L'ordre est celui d'une fiche
+#: constructeur (puissance, réseau, entrées DC, tensions, courant, rendement,
+#: stockage, garantie). Le libellé est ce que le générateur AFFICHE quand la
+#: variable manque : il doit se lire par un commercial, pas par un développeur.
+CONTRAT_ONDULEUR = (
+    ('ac_kw', 'puissance AC (kW)'),
+    ('phases', 'monophasé / triphasé'),
+    ('n_mppt', "nombre d'entrées MPPT"),
+    ('mppt_v_min', 'plage MPPT — tension mini (V)'),
+    ('mppt_v_max', 'plage MPPT — tension maxi (V)'),
+    ('v_max_abs', 'tension DC maximale (V)'),
+    ('i_max_mppt_a', 'courant maxi par MPPT (A)'),
+    ('rendement_euro_pct', 'rendement européen (%)'),
+    ('plage_batterie_v', 'plage de tension batterie (V)'),
+    ('garantie', 'garantie constructeur'),
+)
+
+#: Les clés du contrat, sans les libellés (pratique pour un test).
+CLES_CONTRAT_ONDULEUR = tuple(cle for cle, _ in CONTRAT_ONDULEUR)
+
+
+def _norme(texte):
+    """Minuscules sans accents — même normalisation que le reste du domaine."""
+    import unicodedata
+    decompose = unicodedata.normalize('NFD', str(texte or '').lower())
+    return ''.join(c for c in decompose
+                   if unicodedata.category(c) != 'Mn')
+
+
+def est_onduleur(produit):
+    """Le produit est-il un ONDULEUR (au sens du catalogue solaire) ?
+
+    Deux sources, dans cet ordre : le ``type_fiche`` de sa fiche technique
+    (déclaration explicite) puis, à défaut de fiche, le mot-clé « onduleur »
+    dans son nom — le MÊME mot-clé que ``ventes.services.classer_produit`` et
+    que le moteur PDF. Un produit sans fiche ET sans « onduleur » dans son nom
+    n'est pas concerné par le contrat (il ne sera jamais grisé pour ça).
+    """
+    fiche = getattr(produit, 'fiche_technique', None)
+    if fiche is not None and fiche.type_fiche:
+        return fiche.type_fiche == 'onduleur'
+    return 'onduleur' in _norme(getattr(produit, 'nom', ''))
+
+
+def plage_batterie_onduleur(produit):
+    """Plage de tension batterie déclarée par un onduleur.
+
+    Trois réponses, TOUTES différentes :
+
+    * ``(v_min, v_max)`` — l'onduleur accepte une batterie dans cette fenêtre ;
+    * ``(0.0, 0.0)`` — déclaration explicite « aucune batterie » (onduleur
+      réseau). Le contrat est SATISFAIT : c'est une valeur, pas un trou ;
+    * ``None`` — rien n'est déclaré : la donnée MANQUE (l'appelant retombe sur
+      son repli mot-clé et le générateur grise l'onduleur).
+
+    Lecture seule et tolérante : une ligne illisible vaut « non déclarée ».
+    """
+    import re
+
+    description = getattr(produit, 'description', '') or ''
+    for ligne in description.splitlines():
+        ligne = ligne.strip()
+        if not ligne.startswith(MARQUEUR_PLAGE_BATTERIE):
+            continue
+        valeur = _norme(ligne[len(MARQUEUR_PLAGE_BATTERIE):])
+        if PLAGE_BATTERIE_AUCUNE in valeur:
+            return (0.0, 0.0)
+        trouve = re.search(
+            r'(\d+(?:[.,]\d+)?)\s*[-–]\s*(\d+(?:[.,]\d+)?)', valeur)
+        if not trouve:
+            continue
+        try:
+            bas = float(trouve.group(1).replace(',', '.'))
+            haut = float(trouve.group(2).replace(',', '.'))
+        except (TypeError, ValueError):
+            continue
+        if haut < bas:
+            bas, haut = haut, bas
+        return (bas, haut)
+    return None
+
+
+def onduleur_specs_manquantes(produit):
+    """VERROU DE COMPLÉTUDE — les variables du contrat que cet onduleur n'a pas.
+
+    Renvoie la liste des LIBELLÉS FRANÇAIS manquants (vide = onduleur complet),
+    dans l'ordre du contrat. Un produit qui n'est pas un onduleur renvoie
+    toujours une liste vide : le contrat ne le concerne pas.
+
+    C'est ce que le générateur affiche pour GRISER l'onduleur, exactement comme
+    « prix à renseigner » grise un produit non tarifé : on refuse de chiffrer
+    un appareil qu'on ne sait pas dimensionner, et on DIT pourquoi.
+    """
+    if not est_onduleur(produit):
+        return []
+
+    specs = specs_for_produit(produit) or {}
+    manquantes = []
+    for cle, libelle in CONTRAT_ONDULEUR:
+        if cle == 'plage_batterie_v':
+            if plage_batterie_onduleur(produit) is None:
+                manquantes.append(libelle)
+            continue
+        if cle == 'garantie':
+            if not (getattr(produit, 'garantie', '') or '').strip():
+                manquantes.append(libelle)
+            continue
+        if specs.get(cle) is None:
+            manquantes.append(libelle)
+    return manquantes
+
+
+def specs_solaire_produit(produit):
+    """PVOND — le bloc SOLAIRE d'un produit, prêt à être sérialisé à l'écran.
+
+    Un seul dict pour tout ce dont le générateur a besoin afin de composer sans
+    deviner : la famille du produit, la fenêtre batterie d'un onduleur, la
+    tension nominale d'une batterie, et les variables de contrat manquantes.
+
+    Toutes les clés sont TOUJOURS présentes (``None``/``[]`` plutôt qu'absentes)
+    — même garantie que le contrat de conception électrique : un écran ne doit
+    jamais pouvoir ``.map()`` sur ``undefined``. Lecture seule.
+    """
+    fiche = getattr(produit, 'fiche_technique', None)
+    specs = specs_for_produit(produit) or {}
+    famille = getattr(fiche, 'type_fiche', '') or ''
+    if not famille:
+        nom = _norme(getattr(produit, 'nom', ''))
+        if 'onduleur' in nom:
+            famille = 'onduleur'
+        elif 'batterie' in nom:
+            famille = 'batterie'
+        elif 'panneau' in nom:
+            famille = 'module'
+
+    plage = plage_batterie_onduleur(produit) if famille == 'onduleur' else None
+    v_nominal = specs.get('v_nominal') if famille == 'batterie' else None
+    return {
+        'famille': famille or None,
+        # Onduleur : [min, max] V, [0, 0] = « aucune batterie » (réseau),
+        # None = non déclarée (le garde retombe sur son repli mot-clé).
+        'plage_batterie_v': list(plage) if plage is not None else None,
+        # Batterie : tension nominale (V) de sa fiche technique.
+        'v_nominal': float(v_nominal) if v_nominal is not None else None,
+        # Onduleur : libellés des variables de contrat absentes (verrou).
+        'manquantes': onduleur_specs_manquantes(produit),
+    }
+
+
 def kit_from_produit(produit):
     """PV6 — construit un ``core.calepinage.types.Kit`` à partir des
     dimensions/puissance de la fiche technique MODULE (PV5) d'un produit.

@@ -43,6 +43,10 @@ vi.mock('../../api/ventesApi', async (importOriginal) => {
       })),
       getVarianteConfig: vi.fn(() => Promise.resolve({ data: { variante_pct: '25.00' } })),
       dupliquerVariante: vi.fn(() => Promise.resolve({ data: [] })),
+      // GAMMES — création de la SŒUR « gamme » (devis frère complet).
+      dupliquerVarianteGamme: vi.fn(() => Promise.resolve({
+        data: { source: {}, gamme: {}, gammes: [] },
+      })),
       shareLinkDevis: vi.fn(() => Promise.resolve({ data: { token: 'tok123', path: '/proposition/tok123' } })),
       whatsappPreviewDevis: vi.fn(() => Promise.resolve({ data: { wa_url: 'https://wa.me/212600000000', message: 'Bonjour' } })),
       whatsappDevis: vi.fn(() => Promise.resolve({ data: { statut: 'envoye' } })),
@@ -429,6 +433,127 @@ describe('DevisList — QG10 : modale « Variante » (% + navigation comparaison
     await user.click(await screen.findByRole('menuitem', { name: /Variante/ }))
     const input = await screen.findByLabelText(/Pourcentage de variation/)
     expect(input).toHaveAttribute('readonly')
+  })
+})
+
+// ── GAMMES (fondateur 2026-08-18) — offre à DEUX GAMMES, envoi à la carte.
+describe('DevisList — GAMMES : créer une variante de gamme', () => {
+  const draft = () => ([{
+    id: 21, reference: 'DEV-GAM', client_nom: 'ACME', statut: 'brouillon',
+    date_creation: '2026-08-18', total_ttc: 60000, nb_options: 1, version: 1,
+  }])
+
+  it('ouvre une modale aux libellés LIBRES (défauts Essentielle / Premium)', async () => {
+    const user = userEvent.setup()
+    renderList({ loading: false, devis: draft(), role_nom: 'Directeur' })
+    const row = screen.getByText('DEV-GAM').closest('tr')
+    await user.click(within(row).getByRole('button', { name: /Plus d'actions/ }))
+    await user.click(await screen.findByRole('menuitem', { name: /Créer une variante de gamme/ }))
+    const nom = await screen.findByLabelText(/Nom de la nouvelle gamme/)
+    const nomSource = screen.getByLabelText(/Nom de la gamme de ce devis/)
+    expect(nom.value).toBe('Premium')
+    expect(nomSource.value).toBe('Essentielle')
+    // Aucune marque n'est imposée : les deux champs sont éditables.
+    expect(nom).not.toHaveAttribute('readonly')
+  })
+
+  it('crée la gamme avec le libellé saisi puis ouvre la comparaison', async () => {
+    const user = userEvent.setup()
+    renderList({ loading: false, devis: draft(), role_nom: 'Commercial responsable' })
+    const row = screen.getByText('DEV-GAM').closest('tr')
+    await user.click(within(row).getByRole('button', { name: /Plus d'actions/ }))
+    await user.click(await screen.findByRole('menuitem', { name: /Créer une variante de gamme/ }))
+    const nom = await screen.findByLabelText(/Nom de la nouvelle gamme/)
+    fireEvent.change(nom, { target: { value: 'Confort Atlas' } })
+    fireEvent.click(screen.getByRole('button', { name: /Créer la gamme/ }))
+    await waitFor(() => {
+      expect(ventesApi.dupliquerVarianteGamme).toHaveBeenCalledWith(21, {
+        nom: 'Confort Atlas', nom_source: 'Essentielle', recommandee: false,
+      })
+    })
+    await waitFor(() => {
+      expect(screen.getByText('Historique des versions')).toBeTruthy()
+    })
+  })
+
+  it('la case « Recommander » désigne la NOUVELLE gamme', async () => {
+    const user = userEvent.setup()
+    renderList({ loading: false, devis: draft(), role_nom: 'Directeur' })
+    const row = screen.getByText('DEV-GAM').closest('tr')
+    await user.click(within(row).getByRole('button', { name: /Plus d'actions/ }))
+    await user.click(await screen.findByRole('menuitem', { name: /Créer une variante de gamme/ }))
+    await screen.findByLabelText(/Nom de la nouvelle gamme/)
+    fireEvent.click(screen.getByRole('checkbox', { name: /Recommander la nouvelle gamme/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Créer la gamme/ }))
+    await waitFor(() => {
+      expect(ventesApi.dupliquerVarianteGamme).toHaveBeenCalledWith(
+        21, expect.objectContaining({ recommandee: true }))
+    })
+  })
+})
+
+describe('DevisList — GAMMES : envoi à la carte (seule / les deux)', () => {
+  const draft = () => ([{
+    id: 22, reference: 'DEV-ENV', client_nom: 'ACME', statut: 'brouillon',
+    date_creation: '2026-08-18', total_ttc: 60000, nb_options: 1, version: 1,
+  }])
+
+  const previewAvecGamme = () => {
+    ventesApi.whatsappPreviewDevis.mockResolvedValueOnce({
+      data: {
+        wa_url: 'https://wa.me/212600000000',
+        message: 'Bonjour',
+        gamme: {
+          envoi: 'les_deux', nom: 'Essentielle',
+          soeur_nom: 'Premium', soeur_reference: 'DEV-ENV-P',
+          recommandee: 'Essentielle',
+        },
+      },
+    })
+  }
+
+  // wa.me ne doit jamais s'ouvrir pendant les tests : on neutralise window.open
+  // et on le RESTAURE explicitement (jamais restoreAllMocks, qui viderait aussi
+  // les mocks de module partagés par les autres describes de ce fichier).
+  let openSpy
+  beforeEach(() => {
+    ventesApi.whatsappDevis.mockClear()
+    openSpy = vi.spyOn(window, 'open').mockImplementation(() => null)
+  })
+  afterEach(() => { openSpy.mockRestore() })
+
+  it('devis SANS gamme → la modale d’envoi est inchangée (aucun choix)', async () => {
+    const user = userEvent.setup()
+    renderList({ loading: false, devis: draft(), role_nom: 'Directeur' })
+    const row = screen.getByText('DEV-ENV').closest('tr')
+    await user.click(within(row).getByRole('button', { name: /^Envoyer$/ }))
+    await screen.findByRole('button', { name: /Ouvrir WhatsApp/ })
+    expect(screen.queryByText(/Gammes à envoyer/)).toBeNull()
+  })
+
+  it('paire de gammes → défaut « les deux » avec la recommandée nommée', async () => {
+    const user = userEvent.setup()
+    previewAvecGamme()
+    renderList({ loading: false, devis: draft(), role_nom: 'Directeur' })
+    const row = screen.getByText('DEV-ENV').closest('tr')
+    await user.click(within(row).getByRole('button', { name: /^Envoyer$/ }))
+    const lesDeux = await screen.findByRole('radio', { name: /Envoyer les deux/ })
+    expect(lesDeux.checked).toBe(true)
+    expect(screen.getByText(/recommandée : Essentielle/)).toBeTruthy()
+  })
+
+  it('« cette gamme seule » part avec l’envoi WhatsApp', async () => {
+    const user = userEvent.setup()
+    previewAvecGamme()
+    renderList({ loading: false, devis: draft(), role_nom: 'Directeur' })
+    const row = screen.getByText('DEV-ENV').closest('tr')
+    await user.click(within(row).getByRole('button', { name: /^Envoyer$/ }))
+    const seule = await screen.findByRole('radio', { name: /Envoyer cette gamme seule/ })
+    fireEvent.click(seule)
+    fireEvent.click(screen.getByRole('button', { name: /Ouvrir WhatsApp/ }))
+    await waitFor(() => {
+      expect(ventesApi.whatsappDevis).toHaveBeenCalledWith(22, { gamme_envoi: 'seule' })
+    })
   })
 })
 

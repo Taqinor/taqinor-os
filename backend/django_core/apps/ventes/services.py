@@ -139,6 +139,192 @@ def dupliquer_devis(devis, *, user):
     return copie
 
 
+# ── GAMMES — offre à DEUX GAMMES paramétrable (fondateur 2026-08-18) ────────
+# Une GAMME est une VARIANTE de devis : un devis frère COMPLET (composition et
+# prix propres) groupé par ``version_parent`` — exactement la mécanique QJ15
+# (``views/devis.py:dupliquer_variante``). Jamais un second axe DANS un devis :
+# l'axe « avec / sans batterie » (OptionKey/option_acceptee, PV86) reste
+# INTERNE à chaque gamme et inchangé.
+#
+# Le libellé est une DONNÉE, jamais une marque codée en dur : il vit dans
+# ``Devis.etude_params['gamme']`` (aucun changement de modèle) :
+#     {'nom': 'Essentielle', 'recommandee': False, 'envoi': 'les_deux'}
+#  * ``nom``        — libellé libre saisi par le vendeur ;
+#  * ``recommandee``— la gamme portant le badge « Recommandé » ;
+#  * ``envoi``      — mode d'envoi réglé À L'ENVOI : « les_deux » (DÉFAUT
+#                    fondateur — même philosophie que l'axe batterie, dont le
+#                    défaut est déjà les deux options) ou « seule » (le lien
+#                    rend le devis comme aujourd'hui, sans aucune mention de
+#                    l'autre gamme).
+GAMME_ENVOI_SEULE = 'seule'
+GAMME_ENVOI_LES_DEUX = 'les_deux'
+GAMME_ENVOI_DEFAUT = GAMME_ENVOI_LES_DEUX
+GAMME_ENVOIS = (GAMME_ENVOI_SEULE, GAMME_ENVOI_LES_DEUX)
+# Défauts proposés à l'écran ; le vendeur reste libre de saisir ce qu'il veut.
+GAMME_NOMS_DEFAUT = ('Essentielle', 'Premium')
+
+
+def gamme_info(devis):
+    """Renvoie le dict ``gamme`` du devis (jamais None) — lecture défensive.
+
+    Un devis sans gamme renvoie ``{}`` : tout le reste du système se comporte
+    alors exactement comme aujourd'hui (aucun bloc de choix, aucune mention)."""
+    params = getattr(devis, 'etude_params', None) or {}
+    g = params.get('gamme') if isinstance(params, dict) else None
+    return dict(g) if isinstance(g, dict) else {}
+
+
+def gamme_nom(devis):
+    """Libellé de gamme du devis, ou '' — jamais une marque codée en dur."""
+    return str(gamme_info(devis).get('nom') or '').strip()
+
+
+def gamme_envoi(devis):
+    """Mode d'envoi de la gamme : « seule » ou « les_deux ».
+
+    DÉFAUT fondateur : « les_deux » — une paire de gammes envoyée sans réglage
+    explicite propose donc le choix au client (le vendeur peut restreindre)."""
+    mode = str(gamme_info(devis).get('envoi') or '').strip()
+    return mode if mode in GAMME_ENVOIS else GAMME_ENVOI_DEFAUT
+
+
+def _set_gamme(devis, **champs):
+    """Écrit (fusionne) les clés de gamme dans ``etude_params`` et sauvegarde.
+
+    Copie le dict au lieu de le muter en place : ``dupliquer_variante`` passe
+    la MÊME référence de dict aux copies, une mutation fuirait sur le frère."""
+    params = dict(getattr(devis, 'etude_params', None) or {})
+    gamme = dict(params.get('gamme') or {})
+    gamme.update({k: v for k, v in champs.items() if v is not None})
+    params['gamme'] = gamme
+    devis.etude_params = params
+    devis.save(update_fields=['etude_params'])
+    return gamme
+
+
+def gamme_soeur(devis):
+    """Le devis frère PORTANT UNE GAMME (même groupe ``version_parent``), ou None.
+
+    Ne considère que les frères ACTIFS et encore vivants (brouillon/envoyé) de
+    la même société : une gamme non retenue (auto-refusée à l'acceptation,
+    YDOCF3) disparaît donc naturellement du choix."""
+    from django.db.models import Q
+    from apps.ventes.models import Devis
+    if not gamme_nom(devis):
+        return None
+    root = devis.version_parent_id or devis.pk
+    freres = (
+        Devis.objects
+        .filter(company=devis.company, is_active=True,
+                statut__in=(Devis.Statut.BROUILLON, Devis.Statut.ENVOYE))
+        .filter(Q(pk=root) | Q(version_parent_id=root))
+        .exclude(pk=devis.pk)
+        .order_by('version', 'id')
+    )
+    for frere in freres:
+        if gamme_nom(frere):
+            return frere
+    return None
+
+
+def creer_variante_gamme(devis, nom_gamme, *, user=None,
+                         nom_gamme_source=None, recommandee=False):
+    """Crée la SŒUR « gamme » de ``devis`` et pose les libellés des deux côtés.
+
+    Réutilise TELLE QUELLE la mécanique de variantes QJ15 : nouveau devis
+    BROUILLON complet, même client/lead/mode/TVA/remise, lignes clonées à
+    l'identique (à retoucher ensuite — chaque gamme a sa composition et ses
+    prix PROPRES), groupé par ``version_parent`` = racine du groupe et
+    ``is_active=True`` (une alternative, pas un remplacement). Aucun statut
+    n'est touché (règle #4) ; le numéro vient de ``create_numbered``.
+
+    ``recommandee=True`` désigne la NOUVELLE gamme comme recommandée (et retire
+    le badge de la source) — sinon la source garde/reçoit la recommandation :
+    par défaut le devis porteur EST la gamme recommandée.
+    """
+    from apps.ventes.models import Devis, LigneDevis
+    from apps.ventes.utils.company_settings import create_numbered
+
+    nom_gamme = str(nom_gamme or '').strip()
+    if not nom_gamme:
+        raise ValueError('creer_variante_gamme exige un nom de gamme.')
+    company = devis.company
+    root = devis.version_parent or devis
+    holder = {}
+
+    # etude_params est COPIÉ (jamais partagé) : la gamme sœur porte son propre
+    # bloc ``gamme`` sans jamais toucher celui de la source.
+    params_soeur = dict(getattr(devis, 'etude_params', None) or {})
+    params_soeur['gamme'] = {
+        'nom': nom_gamme,
+        'recommandee': bool(recommandee),
+        'envoi': gamme_envoi(devis),
+    }
+
+    def _save(ref):
+        obj = Devis.objects.create(
+            company=company, reference=ref,
+            client=devis.client, lead=devis.lead,
+            statut=Devis.Statut.BROUILLON,
+            taux_tva=devis.taux_tva,
+            remise_globale=devis.remise_globale,
+            note=(f'[Gamme {nom_gamme}] ' + (devis.note or '')).strip(),
+            mode_installation=devis.mode_installation,
+            etude_params=params_soeur,
+            prix_cible_kwc=devis.prix_cible_kwc,
+            devise=devis.devise,
+            taux_change=devis.taux_change,
+            created_by=user,
+            version=devis.version + 1,
+            version_parent=root,
+            is_active=True,
+        )
+        holder['obj'] = obj
+        return obj
+
+    create_numbered(Devis, company, 'devis', _save)
+    soeur = holder['obj']
+
+    for ligne in devis.lignes.all():
+        LigneDevis.objects.create(
+            devis=soeur, produit=ligne.produit, designation=ligne.designation,
+            quantite=ligne.quantite, prix_unitaire=ligne.prix_unitaire,
+            remise=ligne.remise, type_ligne=ligne.type_ligne, ordre=ligne.ordre,
+            taux_tva=ligne.taux_tva, groupe_index=ligne.groupe_index,
+            groupe_label=ligne.groupe_label,
+        )
+
+    # La SOURCE reçoit son propre libellé (défaut : l'autre nom proposé) et la
+    # recommandation quand la sœur ne la prend pas.
+    nom_source = (str(nom_gamme_source or '').strip()
+                  or gamme_nom(devis)
+                  or next((n for n in GAMME_NOMS_DEFAUT
+                           if n.lower() != nom_gamme.lower()),
+                          GAMME_NOMS_DEFAUT[0]))
+    _set_gamme(devis, nom=nom_source, recommandee=(not recommandee),
+               envoi=gamme_envoi(devis))
+    logger.info('GAMME: variante « %s » (%s) créée depuis %s (company %s)',
+                nom_gamme, soeur.reference, devis.reference,
+                getattr(company, 'id', '?'))
+    return soeur
+
+
+def regler_envoi_gamme(devis, mode):
+    """Règle le MODE D'ENVOI de la paire de gammes, des DEUX côtés.
+
+    Appelé au moment de l'envoi (lien / WhatsApp / email). ``mode`` invalide ou
+    devis sans gamme → no-op silencieux (l'envoi ne doit jamais échouer pour
+    ça). Renvoie le mode effectif."""
+    mode = str(mode or '').strip()
+    if mode not in GAMME_ENVOIS or not gamme_nom(devis):
+        return gamme_envoi(devis)
+    _set_gamme(devis, envoi=mode)
+    soeur = gamme_soeur(devis)
+    if soeur is not None:
+        _set_gamme(soeur, envoi=mode)
+    return mode
+
+
 def create_devis_from_reserve(*, reserve, user):
     """XFSM18 — crée un DEVIS brouillon de réparation à partir d'une réserve
     d'intervention (`installations.Reserve`), pour donner un chemin de devis
@@ -230,6 +416,160 @@ def _is_battery(name: str) -> bool:
     return "batterie" in (name or "").lower()
 
 
+# ── PVG4 — Batterie Dyness HAUTE TENSION (16 kWh, décision fondateur
+# 2026-08-18, SKU BAT-DYN-HV-16) : ne doit JAMAIS être choisie par
+# l'auto-composition résidentielle BASSE TENSION (48 V). ``_is_battery``
+# reconnaît "batterie" sans distinguer la tension — utilisé aussi bien pour
+# l'AUTO-SÉLECTION (``_pick_product`` ci-dessous) que pour CLASSIFIER une
+# ligne déjà présente dans un devis. Ce prédicat-ci sert UNIQUEMENT aux
+# points d'auto-sélection : une batterie HV ajoutée À LA MAIN par un
+# commercial (hors résidentiel) doit continuer d'être reconnue "batterie"
+# par ``_is_battery`` pour le rendu PDF — donc on ne touche pas ce dernier,
+# on lui substitue ce prédicat plus strict aux seuls call-sites qui PICK
+# automatiquement une batterie dans le catalogue.
+def _is_battery_basse_tension(name: str) -> bool:
+    n = (name or "").lower()
+    return "batterie" in n and "haute tension" not in n
+
+
+# ── PVOND — LE GARDE BATTERIE EST DÉSORMAIS PILOTÉ PAR LA DONNÉE ────────────
+#
+# Le prédicat par mot-clé ci-dessus répondait à la seule question « le nom
+# dit-il haute tension ? ». C'est une règle qui ne connaît qu'UN cas : elle
+# laisserait passer une batterie 96 V mal nommée sur un onduleur 48 V, et elle
+# refuserait une batterie HV sur un onduleur HV — qui est pourtant son
+# appairage LÉGITIME. La vraie règle électrique est celle-ci, et elle ne
+# demande que des chiffres déjà présents au catalogue :
+#
+#   une batterie s'accroche à un onduleur si sa TENSION NOMINALE tombe dans la
+#   PLAGE DE TENSION BATTERIE que l'onduleur déclare.
+#
+# Les deux variables vivent côté Stock et se lisent par ses sélecteurs (jamais
+# un import de ses models) : ``plage_batterie_onduleur`` (contrat PVOND) et
+# ``specs_for_produit(batterie)['v_nominal']`` (FicheTechnique PV5).
+#
+# REPLI EXPLICITE, jamais silencieux : dès qu'une des deux données manque —
+# onduleur sans plage déclarée, batterie sans fiche, ou aucun onduleur dans la
+# composition — on retombe MOT POUR MOT sur ``_is_battery_basse_tension``.
+# C'est ce qui garantit qu'aucun catalogue existant ne régresse le jour où ce
+# code arrive : sans donnée, le comportement est byte-identique à hier.
+
+def _plage_batterie_de_l_onduleur(onduleur):
+    """``(v_min, v_max)`` déclarée par l'onduleur, ``(0, 0)`` s'il n'en prend
+    aucune, ``None`` si la donnée manque. Lecture cross-app par sélecteur."""
+    if onduleur is None:
+        return None
+    from apps.stock.selectors import plage_batterie_onduleur
+    return plage_batterie_onduleur(onduleur)
+
+
+def _tension_nominale_batterie(batterie):
+    """Tension nominale (V) d'une batterie d'après sa fiche, ou ``None``."""
+    if batterie is None:
+        return None
+    from apps.stock.selectors import specs_for_produit
+    valeur = (specs_for_produit(batterie) or {}).get('v_nominal')
+    try:
+        return float(valeur) if valeur is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _batterie_compatible(batterie, plage):
+    """La batterie entre-t-elle dans la plage batterie de l'onduleur ?
+
+    ``plage`` vient de ``_plage_batterie_de_l_onduleur`` :
+
+    * ``(0, 0)`` — l'onduleur DÉCLARE ne prendre aucune batterie (réseau) :
+      aucune ne convient, et ce n'est pas un repli, c'est un fait ;
+    * ``None`` — L'ONDULEUR ne déclare AUCUNE plage : c'est le SEUL cas de
+      repli mot-clé (comportement PVG4 d'hier, catalogue non renseigné) ;
+    * sinon — verdict par la tension nominale, bornes incluses.
+
+    RÈGLE CORRIGÉE (fondateur 2026-08-18) : quand l'onduleur DÉCLARE une plage,
+    une candidate SANS donnée de tension est EXCLUE — jamais rattrapée par le
+    mot-clé. L'ancien repli faisait exactement l'inverse de ce qu'il promettait
+    sur le catalogue réel : sous un Deye 15 kW hybride (plage 160-700 V), il
+    ÉCARTAIT les Dyness 5/10 kWh (51,2 V, correctement documentées) et
+    ACCEPTAIT « Batterie Lithium 5 kWh » et « Batterie Gel 2.2 kWh » — deux
+    références sans aucune fiche technique, l'une en 48 V, l'autre en plomb-gel
+    12 V. Le devis partait avec 3 batteries 48 V sous un onduleur haute tension :
+    une composition électriquement invalide, produite par un garde-fou. Dès que
+    la plage existe, seule une tension MESURÉE peut prouver la compatibilité.
+    """
+    nom = getattr(batterie, 'nom', '') or ''
+    if plage is None:
+        return _is_battery_basse_tension(nom)
+    v_min, v_max = plage
+    if v_max <= 0:
+        return False
+    tension = _tension_nominale_batterie(batterie)
+    if tension is None or tension <= 0:
+        # Plage EXIGÉE + tension inconnue (ou 0 = donnée invalide) ⇒ exclue.
+        return False
+    return v_min <= tension <= v_max
+
+
+def _pick_batterie(company, *, onduleur=None):
+    """La batterie du catalogue COMPATIBLE avec l'onduleur de la composition.
+
+    Même sélection que ``_pick_product`` (produits tarifés de la société et
+    globaux, la moins chère l'emporte) mais avec le garde data-driven ci-dessus
+    au lieu du prédicat par mot-clé. ``onduleur=None`` (composition qui n'en a
+    pas encore) ⇒ repli mot-clé, donc comportement historique intact.
+    """
+    plage = _plage_batterie_de_l_onduleur(onduleur)
+    return _pick_product(
+        company, _is_battery,
+        produit_predicate=lambda p: _batterie_compatible(p, plage))
+
+
+# ── PVOND — VERROU DE COMPLÉTUDE, la moitié BACKEND ─────────────────────────
+#
+# L'écran (``solar.js::pickInverter``) écarte déjà de l'auto-composition tout
+# onduleur auquel il manque une variable du CONTRAT (puissance AC, phases,
+# MPPT, tensions, courant, rendement, plage batterie, garantie) et le montre
+# grisé avec son motif. Le backend, lui, ne l'appliquait NULLE PART :
+# ``onduleur_specs_manquantes`` n'avait aucun appelant hors tests/sérialiseur.
+# Deux moitiés de la MÊME auto-composition pouvaient donc retenir deux
+# onduleurs différents pour la même demande — deux prix pour un seul devis,
+# selon le bouton utilisé.
+#
+# La couture est ici, et elle passe par le canal cross-app LICITE (le
+# ``selectors.py`` de stock, jamais ses models). Sur le catalogue d'aujourd'hui
+# (table des incomplets VIDE depuis le dégrisage) ce filtre ne change RIEN :
+# c'est la COUTURE qui compte, pas son effet du jour.
+def _onduleur_complet(produit) -> bool:
+    """L'onduleur porte-t-il TOUTES les variables du contrat PVOND ?
+
+    ``True`` pour tout produit qui n'est PAS un onduleur (le contrat ne le
+    concerne pas — ``stock.selectors`` rend alors une liste vide). Défensif :
+    un sélecteur en panne ne doit jamais vider un catalogue."""
+    try:
+        from apps.stock.selectors import onduleur_specs_manquantes
+        return not onduleur_specs_manquantes(produit)
+    except Exception:  # noqa: BLE001 — jamais bloquer une composition
+        return True
+
+
+def _filtrer_onduleurs_complets(candidats):
+    """Applique le verrou de complétude à un vivier — SANS jamais le vider.
+
+    Le verrou trie entre onduleurs d'un MÊME catalogue : sur le catalogue du
+    fondateur (16 réf. OND-* au contrat complet depuis le dégrisage) il ne
+    change rien, et il écarte le jour où une référence part incomplète.
+
+    LA SEULE différence assumée avec ``solar.js::pickInverter`` : si AUCUN
+    candidat n'est complet, le vivier d'origine est rendu tel quel. Le backend
+    est MULTI-TENANT — le catalogue d'une société qui n'a encore saisi aucune
+    fiche technique ne doit pas devenir « non chiffrable » d'un coup, ce qui
+    supprimerait purement et simplement la ligne d'onduleur de tous ses devis.
+    Un verrou qui arbitre entre candidats reste un verrou ; un verrou qui vide
+    la table est une panne."""
+    complets = [c for c in candidats if _onduleur_complet(c)]
+    return complets or candidats
+
+
 def _is_hybrid_inverter(name: str) -> bool:
     n = (name or "").lower()
     return "onduleur" in n and "hybride" in n
@@ -269,19 +609,35 @@ def _has_price(produit) -> bool:
     return bool(produit.prix_vente and Decimal(produit.prix_vente) > 0)
 
 
-def _pick_product(company, predicate, *, watt=None):
+def _pick_product(company, predicate, *, watt=None, produit_predicate=None):
     """Smallest-suitable quotable catalogue product matching ``predicate``.
 
     Scans the company's (and global) products, keeps only priced ones, and —
     for panels with a target wattage — prefers an exact watt match. Returns
     None when nothing priced matches (caller then skips that line).
+
+    ``produit_predicate`` (PVOND) filtre sur le PRODUIT entier plutôt que sur
+    son seul nom : le garde batterie data-driven a besoin de la fiche technique
+    (tension nominale), pas d'un mot-clé. Il s'AJOUTE à ``predicate`` ; absent,
+    la sélection est byte-identique à l'historique.
     """
     from apps.stock.models import Produit
     from django.db.models import Q
 
-    qs = Produit.objects.filter(
-        Q(company=company) | Q(company__isnull=True), is_archived=False)
-    candidates = [p for p in qs if predicate(p.nom) and _has_price(p)]
+    # ``select_related`` inconditionnel : le verrou de complétude ci-dessous lit
+    # la fiche technique de CHAQUE candidat onduleur — sans lui, une requête par
+    # produit. Pour un panneau la fiche est simplement ignorée.
+    qs = (Produit.objects
+          .filter(Q(company=company) | Q(company__isnull=True),
+                  is_archived=False)
+          .select_related('fiche_technique'))
+    candidates = [p for p in qs
+                  if predicate(p.nom) and _has_price(p)
+                  and (produit_predicate is None or produit_predicate(p))]
+    # PVOND — VERROU DE COMPLÉTUDE (miroir de solar.js::pickInverter) : sur un
+    # vivier d'onduleurs, ceux au contrat incomplet passent derrière. Sans
+    # effet sur un panneau ou une batterie (le contrat ne les concerne pas).
+    candidates = _filtrer_onduleurs_complets(candidates)
     if not candidates:
         return None
     if watt:
@@ -468,15 +824,31 @@ def validate_composition_for_layout(layout, company):
 
     if wants_battery:
         inv = _pick_product(company, _is_hybrid_inverter)
-        bat = _pick_product(company, _is_battery)
+        # PVOND — garde batterie PILOTÉ PAR LA DONNÉE : la batterie retenue doit
+        # entrer dans la plage batterie de l'onduleur hybride effectivement
+        # choisi ci-dessus. Sans plage déclarée (ou sans fiche batterie), repli
+        # sur le mot-clé « haute tension » d'hier (PVG4) — jamais de régression
+        # silencieuse.
+        bat = _pick_batterie(company, onduleur=inv)
         if inv is None:
             errors.append(
                 'Aucun onduleur hybride disponible (ou sans prix) dans le catalogue. '
                 'Ajoutez un onduleur hybride tarifé avant de générer ce devis.')
         if bat is None:
-            errors.append(
-                'Aucune batterie disponible (ou sans prix) dans le catalogue. '
-                'Ajoutez une batterie tarifée avant de générer ce devis.')
+            # PVOND — DIRE POURQUOI : « aucune batterie » et « aucune batterie
+            # COMPATIBLE avec cet onduleur » n'appellent pas le même geste.
+            plage = _plage_batterie_de_l_onduleur(inv)
+            if plage and plage[1] > 0:
+                errors.append(
+                    'Aucune batterie compatible tarifée pour cet onduleur '
+                    '(plage %s-%s V). Ajoutez une batterie compatible tarifée, '
+                    'ou choisissez un autre onduleur, avant de générer ce '
+                    'devis.' % (_v_txt(plage[0]), _v_txt(plage[1])))
+            else:
+                errors.append(
+                    'Aucune batterie disponible (ou sans prix) dans le '
+                    'catalogue. Ajoutez une batterie tarifée avant de générer '
+                    'ce devis.')
     else:
         inv = _pick_product(company, _is_reseau_inverter)
         if inv is None:
@@ -1136,14 +1508,41 @@ def catalogue_de_la_societe(company):
 
     from apps.stock.models import Produit
 
+    # PVOND — la fiche technique est préchargée : le garde batterie data-driven
+    # y lit la tension nominale, et la composition ne doit pas payer une
+    # requête par batterie candidate.
     return list(Produit.objects.filter(
         Q(company=company) | Q(company__isnull=True),
-        is_archived=False).order_by('id'))
+        is_archived=False).select_related('fiche_technique').order_by('id'))
+
+
+def avertissement_vivier_batterie_vide(plage):
+    """Le message FRANÇAIS d'un vivier batterie VIDE sous un onduleur à plage.
+
+    Une seule formulation, partagée par tous les chemins qui savent avertir
+    (composition, resynchronisation de calepinage, pré-vol de composition) :
+    le commercial doit lire la MÊME phrase quel que soit le bouton utilisé."""
+    if plage and plage[1] > 0:
+        return ('Aucune batterie compatible tarifée pour cet onduleur '
+                '(plage %s-%s V) : le devis a été composé SANS batterie. '
+                'Ajoutez une batterie compatible au catalogue, ou changez '
+                'd\'onduleur.' % (_v_txt(plage[0]), _v_txt(plage[1])))
+    return ('Aucune batterie tarifée au catalogue : le devis a été composé '
+            'SANS batterie. Ajoutez une batterie tarifée.')
+
+
+def _v_txt(volts):
+    """« 160.0 » → « 160 » (une tension entière ne s'écrit pas avec un ,0)."""
+    try:
+        f = float(volts)
+    except (TypeError, ValueError):
+        return str(volts)
+    return str(int(f)) if f == int(f) else ('%g' % f)
 
 
 def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
                               avec_batterie=False, structure_type='acier',
-                              taux_tva=Decimal('20')):
+                              taux_tva=Decimal('20'), avertissements=None):
     """Le KIT résidentiel COMPLET composé depuis un catalogue.
 
     Fonction PURE : elle ne requête rien, n'écrit rien, ne touche aucun statut.
@@ -1155,6 +1554,13 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     lignes, dont ``taux_tva`` reste vide) : il sert à reconvertir en HT les
     trois prix forfaitaires que le simulateur exprime en TTC, pour que le
     montant vu par le client soit le même des deux côtés.
+
+    ``avertissements`` (optionnel) est LE CANAL de cette fonction : une liste
+    que l'appelant fournit et que la composition enrichit sur place quand elle
+    a dû composer AUTREMENT que demandé — aujourd'hui le seul cas est un vivier
+    batterie VIDE alors que ``avec_batterie`` était demandé. Sans ce canal, un
+    devis « avec batterie » pouvait partir SANS aucune ligne batterie et sans
+    que personne ne l'apprenne. Absent (``None``) ⇒ comportement inchangé.
 
     Rend la liste ORDONNÉE des ``LigneKit`` à créer, dans l'ordre canonique du
     simulateur, quantités nulles exclues. Liste vide si la puissance est nulle.
@@ -1188,7 +1594,11 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
 
     def choisir_onduleur(categorie):
         candidats = []
-        for produit in par_type.get(categorie) or []:
+        # PVOND — VERROU DE COMPLÉTUDE, miroir de solar.js::pickInverter : un
+        # onduleur au contrat incomplet est écarté de l'auto-composition AVANT
+        # le tri par puissance, exactement comme à l'écran.
+        for produit in _filtrer_onduleurs_complets(
+                par_type.get(categorie) or []):
             kw = _parse_kw(getattr(produit, 'nom', ''))
             if kw and kw > 0:
                 candidats.append((kw, getattr(produit, 'id', 0) or 0, produit))
@@ -1234,15 +1644,43 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
         panneau = None
 
     # ── Batteries : cible = kWc arrondi au multiple de 5 (5 kWh au minimum),
-    # servie en modules Deyness 10 kWh + un 5 kWh d'appoint ──
+    # servie en modules Dyness 10 kWh + un 5 kWh d'appoint ──
+    # TOLÉRANCE DEUX ORTHOGRAPHES : la marque s'écrit « Dyness » (correction
+    # fondateur 2026-08-18) ; un produit encore nommé « Deyness » (base non
+    # migrée, saisie manuelle, fixture ancienne) doit rester reconnu, sans quoi
+    # le vivier retomberait sur TOUTES les batteries du catalogue.
     cible_kwh = max(5, _arrondi_js(kwp / 5) * 5)
     nb10 = int(cible_kwh // 10)
     nb5 = 1 if (cible_kwh % 10) >= 5 else 0
+    # PVOND — GARDE BATTERIE PILOTÉ PAR LA DONNÉE (remplace le mot-clé PVG4) :
+    # une batterie n'entre au vivier que si sa TENSION NOMINALE tombe dans la
+    # PLAGE BATTERIE de l'onduleur retenu ci-dessus. Le repli par mot-clé
+    # « haute tension » ne joue QUE lorsque L'ONDULEUR ne déclare aucune plage
+    # (catalogue non renseigné : comportement d'hier, byte-identique) ; dès
+    # qu'une plage existe, une candidate sans tension mesurée est EXCLUE.
+    # Sur un devis SANS batterie, ``onduleur`` vaut l'onduleur réseau : la
+    # question ne se pose pas (le vivier n'est lu que si ``avec_batterie``).
+    _plage_bat = _plage_batterie_de_l_onduleur(
+        onduleur_hybride if avec_batterie else onduleur)
     batteries = [(_parse_kwh(getattr(p, 'nom', '')), p)
-                 for p in par_type.get('batterie') or []]
-    deyness = [b for b in batteries
-               if 'deyness' in _sans_accents(getattr(b[1], 'nom', ''))]
-    vivier = deyness or batteries
+                 for p in par_type.get('batterie') or []
+                 if _batterie_compatible(p, _plage_bat)]
+    dyness = [b for b in batteries
+              if any(marque in _sans_accents(getattr(b[1], 'nom', ''))
+                     for marque in ('dyness', 'deyness'))]
+    vivier = dyness or batteries
+    if avec_batterie and not vivier:
+        # Le vivier est VIDE alors que le devis est demandé AVEC batterie : la
+        # composition part sans batterie (jamais une batterie incompatible),
+        # mais elle le DIT — sinon le devis mentait par omission.
+        if avertissements is not None:
+            avertissements.append(
+                avertissement_vivier_batterie_vide(_plage_bat))
+        else:
+            logger.warning(
+                'PVOND: vivier batterie vide (plage %s) alors que le devis est '
+                'demandé AVEC batterie — composition SANS batterie ; cet '
+                'appelant ne porte aucun canal d\'avertissement.', _plage_bat)
     bat5 = next((p for cap, p in vivier if cap == 5), None)
     bat10 = next((p for cap, p in vivier if cap == 10), None)
     if bat10 is None and bat5 is not None and nb10 > 0:
@@ -1651,7 +2089,10 @@ def _completer_kit_residentiel(devis, *, kwc, watt, nb_panneaux,
         catalogue, kwc=kwc, panel_watt=watt, nb_panneaux=nb_panneaux,
         avec_batterie=avec_batterie,
         taux_tva=devis.taux_tva if devis.taux_tva is not None
-        else Decimal('20'))
+        else Decimal('20'),
+        # PVOND — ce chemin SAIT avertir : un vivier batterie vide remonte à
+        # l'écran plutôt que de disparaître dans un kit silencieusement amputé.
+        avertissements=avertissements)
     par_classe = {}
     for spec in attendu:
         classe = classer_produit(spec.designation)
@@ -1873,11 +2314,33 @@ def sync_devis_from_layout(devis, layout, user=None):
 
         # ── Batterie : présente si (et seulement si) le layout en veut une ──
         if veut_batterie and not a_batterie:
-            batterie = _pick_product(verrou.company, _is_battery)
+            # PVOND — garde batterie data-driven : c'est l'onduleur HYBRIDE
+            # RÉELLEMENT posé sur le devis qui décide de la fenêtre de tension
+            # (et non celui que la composition aurait choisi — on ne remplace
+            # jamais l'onduleur en place). À défaut d'hybride sur le devis, on
+            # se rabat sur celui du catalogue, puis sur le mot-clé (PVG4).
+            _hybride_du_devis = next(
+                (li.produit for li in lignes
+                 if _classe_ligne(li, _is_hybrid_inverter)
+                 and getattr(li, 'produit', None) is not None), None)
+            if _hybride_du_devis is None:
+                _hybride_du_devis = _pick_product(
+                    verrou.company, _is_hybrid_inverter)
+            batterie = _pick_batterie(
+                verrou.company, onduleur=_hybride_du_devis)
             if batterie is None:
-                avertissements.append(
-                    'Aucune batterie tarifée au catalogue : la ligne batterie '
-                    'n\'a pas pu être ajoutée. Ajoutez une batterie tarifée.')
+                _plage_devis = _plage_batterie_de_l_onduleur(_hybride_du_devis)
+                if _plage_devis and _plage_devis[1] > 0:
+                    avertissements.append(
+                        'Aucune batterie compatible tarifée pour cet onduleur '
+                        '(plage %s-%s V) : la ligne batterie n\'a pas pu être '
+                        'ajoutée.'
+                        % (_v_txt(_plage_devis[0]), _v_txt(_plage_devis[1])))
+                else:
+                    avertissements.append(
+                        'Aucune batterie tarifée au catalogue : la ligne '
+                        'batterie n\'a pas pu être ajoutée. Ajoutez une '
+                        'batterie tarifée.')
             else:
                 LigneDevis.objects.create(
                     devis=verrou, produit=batterie, designation=batterie.nom,
@@ -2058,6 +2521,249 @@ def sync_devis_from_layout(devis, layout, user=None):
     # transaction. L'empreinte d'entrée (PV41) évite toute réécriture inutile.
     concevoir_electrique_du_devis(verrou, origine='resynchronisation')
     return resultat
+
+
+# ── PVSYNC — le catalogue bouge, les devis VIVANTS suivent ───────────────────
+#
+# Jusqu'ici, corriger un prix ou renommer une référence dans le Stock laissait
+# les devis déjà rédigés parler de l'ancien monde : le commercial rouvrait un
+# brouillon de la semaine dernière et y lisait un prix que la société ne
+# pratique plus. La resynchronisation de calepinage (PV18) savait déjà guérir
+# un devis, mais seulement quand quelqu'un rouvrait la conception 3D — donc
+# jamais pour un devis qu'on ne rouvre pas.
+#
+# Ce bloc rend la propagation ÉVÉNEMENTIELLE : ``stock`` annonce sur le bus M6
+# qu'une référence a changé (``core.events.produit_modifie``), ``ventes`` s'y
+# abonne dans son ``apps.py`` ``ready()`` et délègue à une tâche Celery. Les
+# BORNES sont le sujet, et elles sont toutes dures :
+#
+#   1. **Seuls les statuts BROUILLON et ENVOYÉ bougent.** Un devis accepté,
+#      refusé ou expiré est un document CONTRACTUEL : le client a signé (ou vu)
+#      des montants, et aucune correction de catalogue n'a le droit de les
+#      réécrire. Le statut est LU, JAMAIS écrit (règle #4) — les écritures se
+#      limitent à ``LigneDevis`` et à une note de chatter.
+#   2. **Une ligne NÉGOCIÉE n'est jamais recalée.** Le prix ne suit le
+#      catalogue que si la ligne portait EXACTEMENT l'ANCIEN prix catalogue et
+#      aucune remise de ligne ; la désignation ne suit que si elle valait
+#      exactement l'ANCIEN nom. C'est pour cela que l'événement transporte
+#      l'AVANT : après l'écriture du produit, comparer au prix COURANT ne
+#      prouverait plus rien. Tout écart est CONSERVÉ et DIT.
+#   3. **Aucune cascade possible.** Ce chemin n'écrit jamais un ``Produit`` :
+#      il ne peut donc pas ré-émettre ``produit_modifie`` (garde structurelle,
+#      pas une convention — et un test la vérifie).
+#   4. **Silencieux quand il n'y a rien à dire.** Zéro ligne modifiée ⇒ aucune
+#      note, aucune écriture. Rejouer le même événement est donc un no-op
+#      complet (la tâche est at-least-once : elle DOIT être idempotente).
+#   5. **Une société à la fois.** La requête est cantonnée à la société de
+#      l'événement — le devis d'un autre tenant n'est jamais lu, encore moins
+#      réécrit.
+
+#: Résumé FRANÇAIS d'un champ produit, pour la note de chatter.
+LIBELLES_CHAMPS_PRODUIT = {
+    'nom': 'désignation',
+    'prix_vente': 'prix',
+}
+
+
+def _valeurs_champ(champs, nom_champ):
+    """``(avant, après)`` d'un champ du payload d'événement, ou ``(None, None)``.
+
+    Le payload transporte des CHAÎNES (il traverse une file Celery) ; on ne les
+    convertit pas ici, chaque appelant sait ce qu'il attend.
+    """
+    paire = (champs or {}).get(nom_champ)
+    if not isinstance(paire, (list, tuple)) or len(paire) != 2:
+        return None, None
+    return paire[0], paire[1]
+
+
+def _decimal_ou_none(valeur):
+    """``Decimal`` d'une chaîne du payload — ``None`` si elle n'en est pas un."""
+    if valeur in (None, ''):
+        return None
+    try:
+        return Decimal(str(valeur))
+    except (TypeError, ValueError, ArithmeticError):
+        return None
+
+
+def resynchroniser_devis_pour_produit(*, produit, company, champs, user=None):
+    """PVSYNC — propage un changement de RÉFÉRENCE aux devis qui l'utilisent.
+
+    Ne touche QUE les devis ``brouillon`` et ``envoye`` de ``company`` portant
+    une ligne rattachée à ``produit`` (voir les cinq bornes du bloc ci-dessus).
+
+    Renvoie toujours le même dict :
+    ``{devis_touches, lignes_modifiees, lignes_conservees, avertissements}`` —
+    ``lignes_conservees`` compte les lignes laissées telles quelles parce
+    qu'elles portaient un prix ou une désignation NÉGOCIÉS.
+    """
+    from django.db import transaction
+
+    from apps.ventes.models import Devis, LigneDevis
+
+    from .activity import log_devis_resynchronisation
+
+    ancien_nom, nouveau_nom = _valeurs_champ(champs, 'nom')
+    ancien_prix_txt, nouveau_prix_txt = _valeurs_champ(champs, 'prix_vente')
+    ancien_prix = _decimal_ou_none(ancien_prix_txt)
+    nouveau_prix = _decimal_ou_none(nouveau_prix_txt)
+
+    resultat = {'devis_touches': 0, 'lignes_modifiees': 0,
+                'lignes_conservees': 0, 'avertissements': []}
+    if company is None or produit is None:
+        return resultat
+    if not nouveau_nom and nouveau_prix is None:
+        return resultat
+
+    modifications = [LIBELLES_CHAMPS_PRODUIT[champ]
+                     for champ in ('prix_vente', 'nom')
+                     if champ in (champs or {})]
+
+    with transaction.atomic():
+        lignes = list(
+            LigneDevis.objects
+            .select_related('devis')
+            .filter(produit=produit,
+                    type_ligne=LigneDevis.TypeLigne.PRODUIT,
+                    devis__company=company,
+                    devis__statut__in=(Devis.Statut.BROUILLON,
+                                       Devis.Statut.ENVOYE))
+            .order_by('devis_id', 'id'))
+
+        touches = {}
+        for ligne in lignes:
+            champs_ecrits = []
+            conservee = False
+
+            # ── Désignation : elle ne suit que si elle n'a jamais été retouchée
+            if nouveau_nom and ancien_nom:
+                if (ligne.designation or '') == ancien_nom:
+                    ligne.designation = nouveau_nom
+                    champs_ecrits.append('designation')
+                elif (ligne.designation or '') != nouveau_nom:
+                    conservee = True
+
+            # ── Prix : il ne suit que si la ligne était AU PRIX CATALOGUE
+            # d'avant, sans remise de ligne. Une remise ou un prix retouché
+            # valent prix NÉGOCIÉ : intouchables, et on le dit.
+            if nouveau_prix is not None and ancien_prix is not None:
+                remise = _decimal_ou_none(ligne.remise) or Decimal('0')
+                actuel = _decimal_ou_none(ligne.prix_unitaire)
+                if actuel is not None and actuel == ancien_prix \
+                        and remise == Decimal('0'):
+                    ligne.prix_unitaire = nouveau_prix
+                    champs_ecrits.append('prix_unitaire')
+                elif actuel is None or actuel != nouveau_prix:
+                    conservee = True
+
+            if champs_ecrits:
+                ligne.save(update_fields=champs_ecrits)
+                resultat['lignes_modifiees'] += 1
+                touches.setdefault(ligne.devis_id, ligne.devis)
+            if conservee:
+                resultat['lignes_conservees'] += 1
+
+        # ── TRANSPARENCE D'UNE RESYNCHRO POST-ENVOI (fondateur 2026-08-18) ──
+        #
+        # Le périmètre reste brouillon + envoyé (décision fondateur, borne 1) :
+        # un devis envoyé DOIT suivre le catalogue, sinon le commercial rappelle
+        # un client avec un prix que la société ne pratique plus. Mais le client,
+        # lui, tient un PDF FIGÉ au montant du jour de l'envoi pendant que sa
+        # page /proposition est re-rendue en direct : sans marqueur, il pouvait
+        # signer un montant différent de sa pièce jointe sans jamais l'avoir su.
+        # On pose donc l'horodatage de la DERNIÈRE resynchro post-envoi (écrasé
+        # à chaque passage — c'est un « depuis quand », pas un journal) et la
+        # charge utile publique l'expose sous ``resync_apres_envoi``.
+        # ``update_fields`` EXCLUT ``statut`` : rien ne peut partir d'ici (#4).
+        from django.utils import timezone
+        horodatage = timezone.now().isoformat()
+        for devis in touches.values():
+            if devis.statut == Devis.Statut.ENVOYE:
+                etude = dict(devis.etude_params or {})
+                etude['resync_apres_envoi'] = {'date': horodatage}
+                devis.etude_params = etude
+                devis.save(update_fields=['etude_params'])
+            log_devis_resynchronisation(
+                devis, produit=produit, modifications=modifications, user=user)
+        resultat['devis_touches'] = len(touches)
+
+    if resultat['lignes_conservees']:
+        resultat['avertissements'].append(
+            '%d ligne(s) de devis portaient un prix ou une désignation '
+            'personnalisés : elles ont été CONSERVÉES telles quelles.'
+            % resultat['lignes_conservees'])
+
+    if resultat['devis_touches']:
+        logger.info(
+            'PVSYNC: produit %s modifié (%s) — %d devis resynchronisé(s), '
+            '%d ligne(s) recalée(s), %d ligne(s) négociée(s) conservée(s), '
+            'société %s',
+            getattr(produit, 'sku', None) or getattr(produit, 'pk', '?'),
+            ', '.join(modifications) or '—', resultat['devis_touches'],
+            resultat['lignes_modifiees'], resultat['lignes_conservees'],
+            getattr(company, 'id', '?'))
+    return resultat
+
+
+def on_produit_modifie(sender, produit, company, champs, user=None, **kwargs):
+    """PVSYNC — récepteur du bus M6, câblé dans ``VentesConfig.ready()``.
+
+    Il ne fait RIEN lui-même : il planifie la resynchronisation APRÈS le commit
+    de la requête stock (``transaction.on_commit``) et la confie à Celery. Deux
+    raisons, toutes deux dures :
+
+    * un magasinier qui corrige un prix ne doit pas attendre que N devis soient
+      relus — l'écran stock répond immédiatement ;
+    * tant que la transaction du produit n'est pas commitée, la nouvelle valeur
+      n'existe pas encore pour le worker : lancer la tâche avant le commit
+      resynchroniserait sur l'ANCIEN prix (et sur une écriture qui peut encore
+      être annulée).
+
+    Best-effort de bout en bout : un bus ou un courtier en panne ne fait jamais
+    échouer l'enregistrement du produit.
+    """
+    from django.db import transaction
+
+    produit_id = getattr(produit, 'pk', None)
+    company_id = getattr(company, 'pk', None)
+    if not produit_id or not company_id or not champs:
+        return
+    user_id = getattr(user, 'pk', None)
+
+    def _planifier():
+        planifier_resynchronisation_produit(
+            produit_id, company_id, champs, user_id)
+
+    transaction.on_commit(_planifier)
+
+
+def planifier_resynchronisation_produit(produit_id, company_id, champs,
+                                        user_id=None):
+    """PVSYNC — met la resynchronisation en file, ou la joue EN LIGNE à défaut.
+
+    Le repli en ligne n'est pas un luxe : sans courtier joignable, une
+    propagation silencieusement perdue laisserait des devis faux sans que
+    personne ne le sache. On est déjà APRÈS le commit (appelé depuis
+    ``on_commit``), donc jouer la tâche ici n'ouvre aucune transaction imbriquée.
+    """
+    from .tasks import task_resync_devis_apres_produit_modifie
+
+    try:
+        task_resync_devis_apres_produit_modifie.delay(
+            produit_id, company_id, champs, user_id)
+        return
+    except Exception as exc:  # noqa: BLE001 — courtier indisponible
+        logger.warning(
+            'PVSYNC: file Celery indisponible (%s) — resynchronisation du '
+            'produit %s jouée en ligne.', exc, produit_id)
+    try:
+        task_resync_devis_apres_produit_modifie(
+            produit_id, company_id, champs, user_id)
+    except Exception:  # noqa: BLE001 — jamais bloquant pour l'écriture stock
+        logger.exception(
+            'PVSYNC: resynchronisation en ligne du produit %s échouée.',
+            produit_id)
 
 
 # ── Copilote — devis AUTOMATIQUE (résidentiel) ───────────────────────────────
@@ -6461,3 +7167,402 @@ def ajouter_lignes_boq_electrique(devis, user=None):
                     'devis %s par %s', len(creees), devis.pk, user)
     return {'creees': len(creees), 'lignes': creees, 'manques': manques,
             'deja_presentes': deja}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# UN SEUL chemin de chiffrage : bordereau d'appel d'offres → devis ventes
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# POURQUOI ICI. ``apps.ao`` porte le bordereau des prix (BOQ : sections,
+# lignes, TVA par ligne, remise globale, clause de réserve) mais n'a AUCUN lien
+# avec le moteur de devis : un chiffrage d'AO se re-saisissait donc à la main
+# pour sortir un devis client. Ce service est le POINT DE CONTACT UNIQUE de la
+# traversée, symétrique exact de ``apps.ao.services.creer_appel_offre_depuis_
+# avis`` : le domaine AO appelle CETTE fonction (jamais ``apps.ventes.models``)
+# et le devis produit repart ensuite dans le pipeline devis NORMAL — PDF
+# ``/proposal`` compris (règle #4 : aucun autre chemin de PDF client, et rien
+# n'est touché dans ``quote_engine``).
+#
+# ``bordereau`` est reçu PAR RÉFÉRENCE et lu en CANARD : ``ventes`` n'importe
+# jamais ``apps.ao.models`` (contrat import-linter). On ne lit que des
+# attributs publics déjà documentés du BOQ.
+
+#: Le devis porte une quantité au CENTIÈME, le bordereau au MILLIÈME. L'écart
+#: est ANNONCÉ (jamais silencieux) : une quantité arrondie change un total.
+_QUANTUM_QUANTITE = Decimal('0.01')
+#: ``LigneDevis.prix_unitaire`` = 10 chiffres significatifs ; le BOQ en accepte
+#: 14. Un P.U. hors gabarit ferait échouer l'écriture en base — on saute la
+#: ligne et on le DIT, plutôt que de perdre tout le devis sur une seule ligne.
+_PU_DEVIS_MAX = Decimal('99999999.99')
+#: MÊME gabarit pour la QUANTITÉ (``LigneDevis.quantite`` : max_digits=10,
+#: decimal_places=2) — alors que ``LigneBordereau.quantite`` accepte
+#: max_digits=12/decimal_places=3, soit jusqu'à 999 999 999,999. Une ligne
+#: « Terrassement » à 150 000 000 m³ faisait donc lever un ``numeric field
+#: overflow`` DANS la transaction de ``create_with_reference`` → 500 muet (le
+#: ``except`` de la vue n'attrape que ``DjangoValidationError``), au lieu de
+#: l'avertissement français que le module promet pour « tout ce que le serveur
+#: n'a PAS pu reprendre à l'identique ». Le P.U. était gardé, pas la quantité.
+_QUANTITE_DEVIS_MAX = Decimal('99999999.99')
+
+
+def _designation_ligne_bordereau(ligne):
+    """Désignation du devis pour une ligne de BOQ, unité comprise.
+
+    ``LigneDevis`` ne porte pas de colonne « unité » : la laisser tomber
+    rendrait « 300 » ambigu (300 mètres linéaires ou 300 unités ?) sur un
+    marché à prix unitaires, où c'est précisément l'unité qui engage. On la
+    reporte donc dans la désignation, sauf pour l'unité par défaut ``U`` qui
+    n'apprend rien.
+    """
+    designation = (ligne.designation or '').strip()
+    unite = (ligne.unite or '').strip()
+    if unite and unite.upper() != 'U':
+        designation = f'{designation} ({unite})'
+    return designation[:255]
+
+
+def _signature_lignes_devis(devis):
+    """Empreinte COMPARABLE des lignes d'un devis, dans l'ordre d'affichage.
+
+    Même forme que les specs de ``creer_devis_depuis_bordereau`` : ce qui
+    permet de dire, sans heuristique, si le brouillon dit encore la même chose
+    que le bordereau. Les montants sont normalisés au centième (une même valeur
+    écrite ``12`` ou ``12.00`` ne doit pas passer pour une divergence)."""
+    def _q(valeur):
+        if valeur is None:
+            return None
+        try:
+            return Decimal(str(valeur)).quantize(Decimal('0.01'),
+                                                 rounding=ROUND_HALF_UP)
+        except (TypeError, ValueError, ArithmeticError):
+            return None
+
+    return [
+        (ligne.type_ligne, (ligne.designation or ''), ligne.produit_id,
+         _q(ligne.quantite), _q(ligne.prix_unitaire), _q(ligne.remise),
+         _q(ligne.taux_tva))
+        for ligne in devis.lignes.all().order_by('ordre', 'id')
+    ]
+
+
+def _signature_specs_bordereau(a_ecrire):
+    """La MÊME empreinte, côté bordereau (specs pas encore écrites)."""
+    def _q(valeur):
+        if valeur is None:
+            return None
+        try:
+            return Decimal(str(valeur)).quantize(Decimal('0.01'),
+                                                 rounding=ROUND_HALF_UP)
+        except (TypeError, ValueError, ArithmeticError):
+            return None
+
+    return [
+        (spec['type_ligne'], spec['designation'], spec['produit_id'],
+         _q(spec['quantite']), _q(spec['prix_unitaire']), _q(spec['remise']),
+         _q(spec['taux_tva']))
+        for spec in sorted(a_ecrire, key=lambda s: s['ordre'])
+    ]
+
+
+def _reouvrir_devis_depuis_bordereau(devis, *, bordereau, a_ecrire, origine,
+                                     avertissements):
+    """Rouvre le brouillon déjà issu de ce bordereau — RAFRAÎCHI s'il diverge.
+
+    Un brouillon n'engage personne : quand le bordereau a bougé (lignes, P.U.,
+    quantités, TVA, remise globale, clause de réserve), ses lignes sont
+    réécrites depuis le bordereau et l'écran le DIT. Identique ⇒ ZÉRO écriture,
+    donc un double-clic reste un no-op complet. Le statut n'est ni lu comme
+    modifiable ni écrit (règle #4) : le queryset appelant a déjà borné à
+    ``brouillon``."""
+    from django.db import transaction
+
+    from apps.ventes.models import LigneDevis
+
+    memes_lignes = (_signature_lignes_devis(devis)
+                    == _signature_specs_bordereau(a_ecrire))
+    memes_entetes = (
+        Decimal(devis.taux_tva or 0)
+        == Decimal(bordereau.taux_tva_defaut or 20)
+        and Decimal(devis.remise_globale or 0)
+        == Decimal(bordereau.remise_globale_pct or 0))
+
+    if memes_lignes and memes_entetes:
+        return (devis, {
+            'cree': False,
+            'lignes': devis.lignes.count(),
+            'avertissements': avertissements + [
+                'Un devis brouillon issu de ce bordereau existait déjà : il '
+                "est réouvert, aucun doublon n'a été créé."],
+        })
+
+    with transaction.atomic():
+        devis.lignes.all().delete()
+        for spec in a_ecrire:
+            LigneDevis.objects.create(devis=devis, **spec)
+        devis.taux_tva = Decimal(bordereau.taux_tva_defaut or 20)
+        devis.remise_globale = Decimal(bordereau.remise_globale_pct or 0)
+        etude = dict(devis.etude_params or {})
+        etude['origine'] = origine
+        devis.etude_params = etude
+        # ``update_fields`` EXCLUT ``statut`` (règle #4).
+        devis.save(update_fields=['taux_tva', 'remise_globale',
+                                  'etude_params'])
+    refresh_marge_snapshot(devis)
+    logger.info(
+        'Devis %s RAFRAÎCHI depuis le bordereau %s (%d ligne(s))',
+        devis.reference, bordereau.pk, len(a_ecrire))
+    return (devis, {
+        'cree': False,
+        'lignes': len(a_ecrire),
+        'avertissements': avertissements + [
+            'Un devis brouillon issu de ce bordereau existait déjà et le '
+            'bordereau a changé depuis : ce devis existant a été MIS À JOUR '
+            "depuis le bordereau (aucun doublon n'a été créé)."],
+    })
+
+
+def creer_devis_depuis_bordereau(bordereau, *, user=None, company=None,
+                                 client=None):
+    """Construit un DEVIS ventes standard à partir d'un bordereau des prix AO.
+
+    Le devis reprend la structure du BOQ à l'identique : une ligne de SECTION
+    (intertitre XSAL14) par section du bordereau, puis ses lignes chiffrées
+    dans leur ordre de numérotation, avec la TVA de la ligne
+    (``taux_tva_effectif``), sa remise de ligne, sa quantité et son P.U. La
+    remise GLOBALE et le taux de TVA par défaut du bordereau deviennent ceux du
+    devis : la chaîne « sous-total HT → remise → TVA → TTC » est donc la MÊME
+    des deux côtés, par construction et non par recopie.
+
+    Le client est résolu CÔTÉ SERVEUR : ``client`` fourni, sinon le lead
+    rattaché à l'affaire (``crm.selectors`` puis ``crm.services``, sans jamais
+    créer de doublon). Sans l'un ni l'autre, une ``ValidationError`` FRANÇAISE
+    nomme le geste qui débloque (rattacher un lead à l'affaire) — inventer un
+    client serait pire qu'un refus.
+
+    IDEMPOTENT : un brouillon déjà issu de CE bordereau est réouvert au lieu
+    d'être dupliqué (un double clic ne crée pas deux devis) — mais RAFRAÎCHI
+    quand le bordereau a bougé depuis (fondateur 2026-08-18). Le renvoyer tel
+    quel « en affirmant qu'il en est issu » laissait l'utilisateur repartir avec
+    un devis client périmé : il corrigeait un prix au bordereau, recliquait
+    « Créer le devis », lisait « aucun doublon créé » — et le devis gardait
+    l'ANCIEN total pour toujours, l'écran n'offrant aucun autre geste. Un
+    BROUILLON n'engage personne : ses lignes sont donc réécrites depuis le
+    bordereau, et l'écran le DIT.
+
+    La numérotation passe TOUJOURS par ``create_with_reference``
+    (``core.numbering``) — JAMAIS ``count()+1``. Le devis reste ``brouillon`` :
+    ce service CRÉE, il ne change aucun statut aval (règle #4).
+
+    Rend ``(devis, rapport)`` où ``rapport`` vaut
+    ``{'cree': bool, 'lignes': int, 'avertissements': [str, …]}``.
+    """
+    from django.core.exceptions import ValidationError
+
+    from apps.ventes.models import Devis, LigneDevis
+    from apps.ventes.utils.references import create_with_reference
+
+    if bordereau is None:
+        raise ValidationError({'bordereau': 'Bordereau introuvable.'})
+
+    affaire = bordereau.appel_offre
+    company = company or bordereau.company
+
+    # ── Le client : jamais inventé, jamais dupliqué ──
+    lead = None
+    if client is None:
+        from apps.crm.selectors import get_company_lead
+        from apps.crm.services import resolve_client_for_lead
+
+        lead = get_company_lead(company, getattr(affaire, 'lead_id', None))
+        if lead is None:
+            raise ValidationError({'client': (
+                "Cette affaire n'est rattachée à aucun lead : un devis a "
+                'toujours un client. Rattachez un lead à l\'affaire (action '
+                '« rattacher-lead ») ou indiquez le client, puis relancez.'
+            )})
+        client = resolve_client_for_lead(lead)
+
+    # ── Les lignes, dans l'ORDRE du bordereau ──
+    sections = list(bordereau.sections.all())
+    lignes_bordereau = list(bordereau.lignes.all())
+    par_section = {}
+    for ligne in lignes_bordereau:
+        # Le bordereau est DÉJÀ chargé : on garnit le cache de la FK pour que
+        # ``taux_tva_effectif`` (repli sur le taux du bordereau) reste la SEULE
+        # source de vérité du taux, sans une requête par ligne.
+        ligne.bordereau = bordereau
+        par_section.setdefault(ligne.section_id, []).append(ligne)
+    for groupe in par_section.values():
+        groupe.sort(key=lambda li: (li.numero or 0, li.pk))
+
+    avertissements = []
+    a_ecrire = []
+    ordre = 0
+
+    def _ajouter_ligne(ligne):
+        nonlocal ordre
+        prix = Decimal(ligne.prix_unitaire or 0)
+        if abs(prix) > _PU_DEVIS_MAX:
+            avertissements.append(
+                'Ligne %s « %s » : prix unitaire hors gabarit du devis — la '
+                'ligne a été écartée.' % (ligne.numero, ligne.designation))
+            return
+        brute = Decimal(ligne.quantite or 0)
+        if abs(brute) > _QUANTITE_DEVIS_MAX:
+            avertissements.append(
+                'Ligne %s « %s » : quantité hors gabarit du devis (%s) — la '
+                'ligne a été écartée.'
+                % (ligne.numero, ligne.designation, brute))
+            return
+        quantite = brute.quantize(_QUANTUM_QUANTITE, rounding=ROUND_HALF_UP)
+        if quantite != brute:
+            avertissements.append(
+                'Ligne %s « %s » : quantité %s arrondie à %s (le devis compte '
+                'au centième, le bordereau au millième).'
+                % (ligne.numero, ligne.designation, brute, quantite))
+        a_ecrire.append({
+            # ``produit_id`` et non ``produit`` : la string-FK catalogue est
+            # recopiée telle quelle, sans charger un Produit par ligne.
+            'produit_id': ligne.produit_id,
+            'designation': _designation_ligne_bordereau(ligne),
+            'quantite': quantite,
+            'prix_unitaire': prix,
+            'remise': Decimal(ligne.remise_pct or 0),
+            'taux_tva': Decimal(ligne.taux_tva_effectif),
+            'type_ligne': LigneDevis.TypeLigne.PRODUIT,
+            'ordre': ordre,
+        })
+        ordre += 1
+
+    for section in sections:
+        groupe = par_section.get(section.pk) or []
+        if not groupe:
+            continue
+        intitule = ' — '.join(
+            part for part in [(section.numero or '').strip(),
+                              (section.libelle or '').strip()] if part)
+        a_ecrire.append({
+            'produit_id': None,
+            'designation': (intitule or 'Section')[:255],
+            'quantite': None,
+            'prix_unitaire': None,
+            'remise': Decimal('0'),
+            'taux_tva': None,
+            'type_ligne': LigneDevis.TypeLigne.SECTION,
+            'ordre': ordre,
+        })
+        ordre += 1
+        for ligne in groupe:
+            _ajouter_ligne(ligne)
+
+    # Les lignes SANS section ferment le devis — jamais perdues en silence.
+    for ligne in par_section.get(None) or []:
+        _ajouter_ligne(ligne)
+
+    if not any(spec['type_ligne'] == LigneDevis.TypeLigne.PRODUIT
+               for spec in a_ecrire):
+        raise ValidationError({'bordereau': (
+            "Ce bordereau ne porte aucune ligne chiffrable : il n'y a rien à "
+            'reprendre dans un devis.'
+        )})
+
+    # ── CLAUSE DE RÉSERVE — elle traverse, sinon le devis ment ──
+    #
+    # ``BordereauPrix.raisons_de_non_conformite()`` REFUSE de rendre remettable
+    # un bordereau « marché à prix unitaires » sans clause de réserve, avec ce
+    # motif : « sans elle, les quantités du bordereau sont lues comme un
+    # engagement ferme ». Le devis reprenait les quantités… et laissait la
+    # clause derrière lui : le document remis au CLIENT contredisait celui remis
+    # à l'ACHETEUR sur la nature même de l'engagement. Elle voyage désormais
+    # deux fois — en ligne NOTE visible (XSAL14, hors totaux) et dans
+    # ``etude_params.origine`` pour tout consommateur machine.
+    clause = (getattr(bordereau, 'clause_reserve', '') or '').strip()
+    if clause:
+        a_ecrire.append({
+            'produit_id': None,
+            'designation': clause[:255],
+            'quantite': None,
+            'prix_unitaire': None,
+            'remise': Decimal('0'),
+            'taux_tva': None,
+            'type_ligne': LigneDevis.TypeLigne.NOTE,
+            'ordre': ordre,
+        })
+        ordre += 1
+
+    origine = {
+        'type': 'bordereau_ao',
+        'bordereau': bordereau.pk,
+        'appel_offre': getattr(affaire, 'pk', None),
+        'reference_ao': getattr(affaire, 'reference', '') or '',
+        'intitule': bordereau.intitule or '',
+        'indice_revision': bordereau.indice_revision or '',
+        'marche_prix_unitaires': bool(
+            getattr(bordereau, 'marche_prix_unitaires', False)),
+        'clause_reserve': clause,
+    }
+
+    # ── Idempotence : le MÊME bordereau ne produit qu'UN brouillon ──
+    # Placée APRÈS la construction des lignes : c'est elle qui permet de
+    # COMPARER l'existant au bordereau d'aujourd'hui plutôt que de le renvoyer
+    # les yeux fermés.
+    existant = Devis.objects.filter(
+        company=company, statut=Devis.Statut.BROUILLON,
+        etude_params__origine__bordereau=bordereau.pk).order_by('pk').first()
+    if existant is not None:
+        return _reouvrir_devis_depuis_bordereau(
+            existant, bordereau=bordereau, a_ecrire=a_ecrire, origine=origine,
+            avertissements=avertissements)
+
+    def _creer(reference):
+        devis = Devis.objects.create(
+            company=company,
+            reference=reference,
+            client=client,
+            lead=lead,
+            statut=Devis.Statut.BROUILLON,
+            taux_tva=Decimal(bordereau.taux_tva_defaut or 20),
+            remise_globale=Decimal(bordereau.remise_globale_pct or 0),
+            created_by=user,
+            etude_params={'origine': origine},
+        )
+        for spec in a_ecrire:
+            LigneDevis.objects.create(devis=devis, **spec)
+        return devis
+
+    devis = create_with_reference(Devis, 'DEV', company, _creer)
+    # QX23be — fige la marge interne dès la création, comme tout autre chemin
+    # de création de devis (best-effort, jamais bloquant, manager-only).
+    refresh_marge_snapshot(devis)
+    logger.info(
+        'Devis %s créé depuis le bordereau %s (affaire %s, %d ligne(s)) par %s',
+        devis.reference, bordereau.pk, origine['reference_ao'],
+        len(a_ecrire), user)
+    return (devis, {'cree': True, 'lignes': len(a_ecrire),
+                    'avertissements': avertissements})
+
+
+def resume_devis_depuis_bordereau(devis):
+    """Bloc ``devis`` du contrat ``ao_bordereau_devis`` — totaux SERVEUR.
+
+    Les montants passent par la chaîne canonique unique
+    (``selectors._canonical_totaux`` : HT brut → remise globale → TVA par taux
+    → TTC), celle-là même que l'écran et le PDF consomment. Aucun total n'est
+    recalculé ailleurs, donc aucun ne peut diverger.
+    """
+    from apps.ventes.selectors import _canonical_totaux
+
+    totaux = _canonical_totaux(
+        devis.lignes.all(), remise_globale_pct=devis.remise_globale,
+        fallback_taux=devis.taux_tva)
+    client = getattr(devis, 'client', None)
+    return {
+        'id': devis.pk,
+        'reference': devis.reference,
+        'statut': devis.statut,
+        'client': devis.client_id,
+        'client_nom': (getattr(client, 'nom', '') or '') if client else '',
+        'lignes': devis.lignes.count(),
+        'total_ht': str(totaux['ht_net']),
+        'total_ttc': str(totaux['ttc']),
+    }

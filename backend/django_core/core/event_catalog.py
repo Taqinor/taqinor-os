@@ -189,6 +189,16 @@ CATALOG = {
         "Un mouvement de stock (stock.MouvementStock) vient d'être "
         "enregistré — entrée, sortie ou ajustement.",
         ['instance', 'company']),
+    # PVSYNC — émis par ``stock.views.produit.ProduitViewSet.perform_update``
+    # (le seul point de mise à jour REST d'une référence), jamais par un
+    # ``post_save`` de modèle. ``champs`` porte l'AVANT/APRÈS en chaînes : sans
+    # l'ancienne valeur, un abonné ne peut plus distinguer une ligne de devis
+    # restée au prix catalogue d'une ligne négociée. Abonné : ``ventes``
+    # (resynchronisation des devis brouillon/envoyé).
+    'produit_modifie': _e(
+        "Une référence du catalogue change (désignation ou prix de vente) — "
+        "les devis brouillon/envoyé qui la portent sont resynchronisés.",
+        ['produit', 'company', 'user', 'champs']),
     # NTUX7 — alimente la corbeille transverse 30 jours (``apps.trash``) sans
     # qu'aucune app émettrice ne connaisse la corbeille.
     'record_soft_deleted': _e(

@@ -3,6 +3,7 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 import { formatDate, formatMAD } from '../../../lib/format'
+import { exempleContrat } from '../../../test/fixtures/contractSamples'
 import BordereauPage from './BordereauPage'
 import { quantiteVerrouillee, cadreAcheteur } from './LigneRow.utils'
 
@@ -61,11 +62,21 @@ const APRES = {
   ],
 }
 
+/* UN SEUL chemin de chiffrage bordereau → devis. PACT13 : la charge utile de
+   `onCreerDevis` n'est PAS tapée à la main — elle vient de l'exemple COMMITTÉ
+   `apps/ao/contract_samples/ao_bordereau_devis.json`, le même fichier que le
+   test backend `apps/ao/tests/test_bordereau_devis.py` compare à la réponse
+   RÉELLE du serveur. */
+const DEVIS_CREE = exempleContrat('ao', 'ao_bordereau_devis')
+const DEVIS_DEJA = exempleContrat('ao', 'ao_bordereau_devis',
+  'exemple_deja_cree')
+
 const services = {
   onDeplacerLigne: vi.fn(),
   onModifierLigne: vi.fn(),
   onDeverrouiller: vi.fn(),
   onAppliquerPrix: vi.fn(),
+  onCreerDevis: vi.fn(),
 }
 
 const renderPage = (props) => render(
@@ -86,6 +97,7 @@ beforeEach(() => {
   services.onModifierLigne.mockResolvedValue({ data: AVANT })
   services.onDeverrouiller.mockResolvedValue({ data: AVANT })
   services.onAppliquerPrix.mockResolvedValue({ data: AVANT })
+  services.onCreerDevis.mockResolvedValue({ data: DEVIS_CREE })
 })
 
 describe('BordereauPage (AOF179)', () => {
@@ -170,6 +182,51 @@ describe('BordereauPage (AOF179)', () => {
     await waitFor(() => expect(services.onAppliquerPrix).toHaveBeenCalledWith(
       L_MANUELLE, { prix_unitaire: 42, date: '2026-05-14', dossier_origine: 'AO-2026-004' },
     ))
+  })
+
+  it('« Créer le devis » appelle le service serveur et affiche la référence SERVIE', async () => {
+    renderPage()
+    await userEvent.click(screen.getByRole('button', { name: 'Créer le devis' }))
+
+    await waitFor(() => expect(services.onCreerDevis).toHaveBeenCalled())
+    const panneau = await screen.findByTestId('ao-bordereau-devis')
+    expect(panneau).toHaveTextContent(DEVIS_CREE.devis.reference)
+    // Le nombre de lignes est celui du SERVEUR, jamais recompté ici.
+    expect(panneau).toHaveTextContent(String(DEVIS_CREE.devis.lignes))
+    // Aucune fiche devis par identifiant n'existe : on renvoie vers la liste.
+    expect(screen.getByRole('link', { name: /liste des devis/ }))
+      .toHaveAttribute('href', '/ventes/devis')
+  })
+
+  it('idempotence : un devis DÉJÀ issu du bordereau est annoncé sans doublon', async () => {
+    services.onCreerDevis.mockResolvedValue({ data: DEVIS_DEJA })
+    renderPage()
+    await userEvent.click(screen.getByRole('button', { name: 'Créer le devis' }))
+
+    const panneau = await screen.findByTestId('ao-bordereau-devis')
+    expect(panneau).toHaveTextContent('aucun doublon créé')
+    // Les avertissements du serveur sont affichés MOT POUR MOT.
+    for (const a of DEVIS_DEJA.avertissements) {
+      expect(panneau).toHaveTextContent(a)
+    }
+  })
+
+  it('refus serveur : rien n’est affiché comme créé, le bordereau est intact', async () => {
+    services.onCreerDevis.mockRejectedValue({
+      response: { data: { detail: 'Cette affaire n’est rattachée à aucun lead.' } },
+    })
+    renderPage()
+    await userEvent.click(screen.getByRole('button', { name: 'Créer le devis' }))
+
+    await waitFor(() => expect(services.onCreerDevis).toHaveBeenCalled())
+    expect(screen.queryByTestId('ao-bordereau-devis')).toBeNull()
+    // Le bordereau affiché n'a pas bougé d'un centime.
+    expect(screen.getByText(mad(TOTAUX.total_ttc))).toBeInTheDocument()
+  })
+
+  it('sans service injecté, AUCUN bouton « Créer le devis » (pas de geste mort)', () => {
+    renderPage({ onCreerDevis: undefined })
+    expect(screen.queryByRole('button', { name: 'Créer le devis' })).toBeNull()
   })
 
   it('quantiteVerrouillee / cadreAcheteur : les régimes sont des règles, pas du style', () => {

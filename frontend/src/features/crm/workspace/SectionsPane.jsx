@@ -1,10 +1,12 @@
 import { createElement, useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import {
-  User, TrendingUp, Zap, Droplet, Home, ClipboardList, Globe, FileText,
+  User, TrendingUp, Zap, Droplet, Home, ClipboardList, Globe, FileText, ClipboardCheck,
 } from 'lucide-react'
 import { ErrorBoundary } from '../../../ui'
 import { useKeyboardAwareScroll } from '../../../hooks/useKeyboardAwareScroll'
-import { getField, WEB_ORIGIN_FIELDS, sectionAutoRepliee } from './draftCore'
+import {
+  getField, WEB_ORIGIN_FIELDS, hasWebQuestionnaireData, sectionAutoRepliee,
+} from './draftCore'
 // ROUND 5 — « ce qui manque » : une source unique, partagée avec l'onglet Devis.
 import { chipsAComplete, sectionsPointees } from './missingFields'
 import { jumpToField } from './jumpToField'
@@ -13,7 +15,7 @@ import SectionPipeline from './sections/SectionPipeline'
 import SectionEnergie, { SectionPompage } from './sections/SectionEnergie'
 import SectionSite from './sections/SectionSite'
 import SectionVisite from './sections/SectionVisite'
-import SectionDivers, { SectionOrigine } from './sections/SectionDivers'
+import SectionDivers, { SectionOrigine, SectionWebQuestionnaire } from './sections/SectionDivers'
 
 // LW11 — Le centre : registre de sections + nav-chips sticky (scroll-spy rAF,
 // aria-current), repli persisté par section, wrapper `<form>` en création.
@@ -78,6 +80,12 @@ export default function SectionsPane({
     const v = state.server ? state.server[k] : undefined
     return v !== undefined && v !== null && v !== ''
   })
+  // DÉCISION FONDATEUR 2026-08-18 — « toutes les questions et les détails
+  // doivent atteindre l'ERP » : questionnaire web complet + estimation
+  // montrée au visiteur + colonnes structurées QK1/QW2/QW3, invisibles avant
+  // (grep frontend = 0). hasWebQuestionnaireData vit dans draftCore.js (pure,
+  // testable) — même patron que hasWebOrigin ci-dessus.
+  const hasWebQuestionnaire = hasWebQuestionnaireData(state.server)
 
   // Registre ORDONNÉ des sections du centre. Les zones de CONSULTATION
   // (Devis/Activités/Pièces/Doublons/Historique) ont quitté le centre pour le
@@ -90,6 +98,12 @@ export default function SectionsPane({
     { id: 'toiture', label: 'Toiture & site', Icon: Home, Comp: SectionSite },
     { id: 'visite', label: 'Visite technique', Icon: ClipboardList, Comp: SectionVisite },
     ...(hasWebOrigin ? [{ id: 'origine', label: 'Origine web', Icon: Globe, Comp: SectionOrigine }] : []),
+    ...(hasWebQuestionnaire
+      ? [{
+        id: 'questionnaire', label: 'Réponses du questionnaire web',
+        Icon: ClipboardCheck, Comp: SectionWebQuestionnaire,
+      }]
+      : []),
     { id: 'divers', label: 'Compléments', Icon: FileText, Comp: SectionDivers },
   ]
 
@@ -124,11 +138,13 @@ export default function SectionsPane({
      localStorage — c'est un état d'ouverture, pas une préférence. */
   const [collapsed, setCollapsed] = useState(() => {
     const stored = readCollapsed()
-    // « Origine web » repliée par défaut (blueprint).
-    const auto = { origine: true }
+    // « Origine web » et « Réponses du questionnaire web » repliées par
+    // défaut (blueprint + décision fondateur 2026-08-18) : deux sections de
+    // consultation pure, jamais le premier écran qu'on regarde.
+    const auto = { origine: true, questionnaire: true }
     if (mode === 'edit') {
       for (const s of registry) {
-        if (s.id === 'origine') continue
+        if (s.id === 'origine' || s.id === 'questionnaire') continue
         auto[s.id] = sectionAutoRepliee(state, s.id, { porteUnManquant: pointees.has(s.id) })
       }
     }

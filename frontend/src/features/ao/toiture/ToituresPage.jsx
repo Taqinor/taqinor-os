@@ -1449,16 +1449,32 @@ export default function ToituresPage({ affaireId } = {}) {
     </div>
   ) : null
 
+  /* « Ouvrir en 3D » — le MÊME atelier 3D que la villa, sur CETTE affaire
+     (`/ao/affaires/:id/design`, mode 'ao'). Rendu SEULEMENT quand une affaire
+     est choisie : sans identifiant, l'écran cible n'aurait rien à charger.
+
+     LIEN NATIF (`<a href>`) et non `<Link>` : le builder 3D porte une garde
+     d'initialisation au niveau MODULE (un seul boot par chargement de page —
+     `ToitureDesign` va jusqu'à recharger la page quand on y revient en SPA).
+     Une navigation dure est donc le comportement CORRECT ici, pas un
+     raccourci. */
   const actionCreer = (
     <div className="flex flex-col items-start gap-1 sm:items-end">
-      <Button
-        size="sm"
-        disabled={Boolean(empechement)}
-        title={empechement || undefined}
-        onClick={() => { setRefus(null); setWizardOuvert(true) }}
-      >
-        Nouvelle toiture
-      </Button>
+      <div className="flex flex-wrap items-center gap-2">
+        {affaireCourante && (
+          <Button asChild size="sm" variant="outline">
+            <a href={`/ao/affaires/${affaireCourante}/design`}>Ouvrir en 3D</a>
+          </Button>
+        )}
+        <Button
+          size="sm"
+          disabled={Boolean(empechement)}
+          title={empechement || undefined}
+          onClick={() => { setRefus(null); setWizardOuvert(true) }}
+        >
+          Nouvelle toiture
+        </Button>
+      </div>
       {empechement && (
         <p className="max-w-xs text-xs text-muted-foreground sm:text-right">{empechement}</p>
       )}

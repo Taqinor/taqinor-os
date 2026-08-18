@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 9397, operations: 16904, components: 4936}
+counts: {paths: 9405, operations: 16914, components: 4937}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -511,7 +511,10 @@ operations:
 - post /api/django/ao/appels-offres/{id}/changer-statut/ -> django_ao_appels_offres_changer_statut_create
 - get /api/django/ao/appels-offres/{id}/chatter/historique/ -> django_ao_appels_offres_chatter_historique_retrieve
 - post /api/django/ao/appels-offres/{id}/chatter/noter/ -> django_ao_appels_offres_chatter_noter_create
+- get /api/django/ao/appels-offres/{id}/design-context/ -> django_ao_appels_offres_design_context_retrieve
 - post /api/django/ao/appels-offres/{id}/dupliquer/ -> django_ao_appels_offres_dupliquer_create
+- get /api/django/ao/appels-offres/{id}/layout/ -> django_ao_appels_offres_layout_retrieve
+- post /api/django/ao/appels-offres/{id}/layout/ -> django_ao_appels_offres_layout_create
 - get /api/django/ao/appels-offres/{id}/lead/ -> django_ao_appels_offres_lead_retrieve
 - get /api/django/ao/appels-offres/{id}/points-a-lever/ -> django_ao_appels_offres_points_a_lever_retrieve
 - post /api/django/ao/appels-offres/{id}/rattacher-lead/ -> django_ao_appels_offres_rattacher_lead_create
@@ -533,6 +536,7 @@ operations:
 - get /api/django/ao/bordereaux-prix/{id}/chatter/historique/ -> django_ao_bordereaux_prix_chatter_historique_retrieve
 - post /api/django/ao/bordereaux-prix/{id}/chatter/noter/ -> django_ao_bordereaux_prix_chatter_noter_create
 - get /api/django/ao/bordereaux-prix/{id}/controles/ -> django_ao_bordereaux_prix_controles_retrieve
+- post /api/django/ao/bordereaux-prix/{id}/creer-devis/ -> django_ao_bordereaux_prix_creer_devis_create
 - get /api/django/ao/bordereaux-prix/{id}/totaux/ -> django_ao_bordereaux_prix_totaux_retrieve
 - post /api/django/ao/calepinage/calculer/ -> django_ao_calepinage_calculer_create
 - post /api/django/ao/calepinage/lancer/ -> django_ao_calepinage_lancer_create
@@ -8260,6 +8264,7 @@ operations:
 - post /api/django/ventes/devis/{id}/convertir-bc/ -> django_ventes_devis_convertir_bc_create
 - get /api/django/ventes/devis/{id}/declaration-raccordement/ -> django_ventes_devis_declaration_raccordement_retrieve
 - get /api/django/ventes/devis/{id}/design-context/ -> django_ventes_devis_design_context_retrieve
+- post /api/django/ventes/devis/{id}/dupliquer-variante-gamme/ -> django_ventes_devis_dupliquer_variante_gamme_create
 - post /api/django/ventes/devis/{id}/dupliquer-variante/ -> django_ventes_devis_dupliquer_variante_create
 - post /api/django/ventes/devis/{id}/dupliquer/ -> django_ventes_devis_dupliquer_create
 - post /api/django/ventes/devis/{id}/envoyer-email/ -> django_ventes_devis_envoyer_email_create
@@ -8999,7 +9004,10 @@ operations:
 - post /api/v1/ao/appels-offres/{id}/changer-statut/ -> v1_ao_appels_offres_changer_statut_create
 - get /api/v1/ao/appels-offres/{id}/chatter/historique/ -> v1_ao_appels_offres_chatter_historique_retrieve
 - post /api/v1/ao/appels-offres/{id}/chatter/noter/ -> v1_ao_appels_offres_chatter_noter_create
+- get /api/v1/ao/appels-offres/{id}/design-context/ -> v1_ao_appels_offres_design_context_retrieve
 - post /api/v1/ao/appels-offres/{id}/dupliquer/ -> v1_ao_appels_offres_dupliquer_create
+- get /api/v1/ao/appels-offres/{id}/layout/ -> v1_ao_appels_offres_layout_retrieve
+- post /api/v1/ao/appels-offres/{id}/layout/ -> v1_ao_appels_offres_layout_create
 - get /api/v1/ao/appels-offres/{id}/lead/ -> v1_ao_appels_offres_lead_retrieve
 - get /api/v1/ao/appels-offres/{id}/points-a-lever/ -> v1_ao_appels_offres_points_a_lever_retrieve
 - post /api/v1/ao/appels-offres/{id}/rattacher-lead/ -> v1_ao_appels_offres_rattacher_lead_create
@@ -9021,6 +9029,7 @@ operations:
 - get /api/v1/ao/bordereaux-prix/{id}/chatter/historique/ -> v1_ao_bordereaux_prix_chatter_historique_retrieve
 - post /api/v1/ao/bordereaux-prix/{id}/chatter/noter/ -> v1_ao_bordereaux_prix_chatter_noter_create
 - get /api/v1/ao/bordereaux-prix/{id}/controles/ -> v1_ao_bordereaux_prix_controles_retrieve
+- post /api/v1/ao/bordereaux-prix/{id}/creer-devis/ -> v1_ao_bordereaux_prix_creer_devis_create
 - get /api/v1/ao/bordereaux-prix/{id}/totaux/ -> v1_ao_bordereaux_prix_totaux_retrieve
 - post /api/v1/ao/calepinage/calculer/ -> v1_ao_calepinage_calculer_create
 - post /api/v1/ao/calepinage/lancer/ -> v1_ao_calepinage_lancer_create
@@ -16704,6 +16713,7 @@ operations:
 - post /api/v1/ventes/devis/{id}/convertir-bc/ -> v1_ventes_devis_convertir_bc_create
 - get /api/v1/ventes/devis/{id}/declaration-raccordement/ -> v1_ventes_devis_declaration_raccordement_retrieve
 - get /api/v1/ventes/devis/{id}/design-context/ -> v1_ventes_devis_design_context_retrieve
+- post /api/v1/ventes/devis/{id}/dupliquer-variante-gamme/ -> v1_ventes_devis_dupliquer_variante_gamme_create
 - post /api/v1/ventes/devis/{id}/dupliquer-variante/ -> v1_ventes_devis_dupliquer_variante_create
 - post /api/v1/ventes/devis/{id}/dupliquer/ -> v1_ventes_devis_dupliquer_create
 - post /api/v1/ventes/devis/{id}/envoyer-email/ -> v1_ventes_devis_envoyer_email_create
@@ -20930,6 +20940,7 @@ components:
 - ProduitEquivalent
 - ProduitEquivalentRequest
 - ProduitRequest
+- ProduitSpecsSolaire
 - ProduitSync
 - ProduitSyncRequest
 - ProfilEnum

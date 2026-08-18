@@ -21,6 +21,9 @@ _REPO_ROOT = os.path.abspath(
     os.path.join(os.path.dirname(__file__), '..', '..', '..', '..', '..'))
 SOLAR_JS = os.path.join(
     _REPO_ROOT, 'frontend', 'src', 'features', 'ventes', 'solar.js')
+# Miroir backend de l'auto-remplissage écran (mêmes mots-clés, deux langages).
+SERVICES_PY = os.path.join(
+    os.path.dirname(__file__), '..', 'services.py')
 
 
 class TestClassificationParity(SimpleTestCase):
@@ -63,7 +66,7 @@ class TestClassificationParity(SimpleTestCase):
         ('Onduleur hybride Deye 5kW Monophasé', 'onduleur_hybride'),
         ('Onduleur réseau Huawei 10kW Triphasé', 'onduleur_reseau'),
         ('Onduleur injection SUN2000 5kW', 'onduleur_reseau'),
-        ('Batterie Deyness 5 kWh', 'batterie'),
+        ('Batterie Dyness 5 kWh', 'batterie'),
     ]
 
     def test_dc8_builder_seed_parity_on_shared_fixtures(self):
@@ -122,3 +125,68 @@ class TestClassificationParity(SimpleTestCase):
         # panneau/batterie présents.
         self.assertIn("'panneau'", low)
         self.assertIn("'batterie'", low)
+
+
+class TestToleranceOrthographeDyness(SimpleTestCase):
+    """Tolérance de lecture « Deyness » / « Dyness » (fondateur, 2026-08-18).
+
+    La marque de batteries s'écrit **Dyness** ; le catalogue historique écrivait
+    « Deyness ». Le catalogue et les produits en base sont corrigés (seeder +
+    migration de données `stock.0121`), mais les désignations FIGÉES des devis
+    déjà émis — et les PDF déjà rendus — gardent l'ancienne graphie : ce sont des
+    documents historiques, on ne les réécrit pas.
+
+    Conséquence directe : tout code qui CLASSIFIE ou APPARIE par chaîne doit
+    reconnaître les DEUX orthographes, sinon une vieille ligne cesserait d'être
+    une batterie du jour où le catalogue est corrigé. Ce test verrouille cette
+    tolérance à chaque point d'appariement.
+    """
+    _LES_DEUX = ('Batterie Dyness 5 kWh', 'Batterie Deyness 5 kWh')
+
+    def test_les_deux_orthographes_restent_des_batteries(self):
+        from apps.stock.management.commands import seed_catalogue as seed
+        for nom in self._LES_DEUX:
+            self.assertTrue(builder._is_battery(nom), nom)
+            # et rien d'autre : jamais un onduleur ni un panneau.
+            self.assertFalse(builder._is_hybrid_inverter(nom), nom)
+            self.assertFalse(builder._is_reseau_inverter(nom), nom)
+            self.assertFalse(builder._is_panel(nom, ''), nom)
+            self.assertEqual(seed.classify_categorie(nom), 'Batteries', nom)
+
+    def test_les_deux_orthographes_gardent_leur_badge_de_marque(self):
+        # Le badge du PDF affiche la marque TELLE QU'ÉCRITE sur la ligne : un
+        # vieux devis reste étiqueté « Deyness », un nouveau « Dyness ».
+        self.assertEqual(
+            builder._parse_marque('Batterie Dyness 5 kWh'), 'Dyness')
+        self.assertEqual(
+            builder._parse_marque('Batterie Deyness 5 kWh'), 'Deyness')
+        # Le jeton long gagne toujours sur son sous-mot « Deye ».
+        self.assertNotEqual(
+            builder._parse_marque('Batterie Deyness 5 kWh'), 'Deye')
+
+    def test_les_deux_orthographes_pointent_vers_la_meme_fiche(self):
+        from apps.ventes.quote_engine.residential import theme
+        for nom in self._LES_DEUX:
+            self.assertEqual(theme.fiche_slug(nom), 'batterie-dyness', nom)
+
+    def test_le_vivier_dauto_remplissage_tolere_les_deux(self):
+        # services.py choisit les modules 5/10 kWh de la marque parmi toutes les
+        # batteries du catalogue ; une base pas encore migrée ne doit pas faire
+        # retomber ce vivier sur TOUTES les batteries (gel, lithium générique…).
+        with open(SERVICES_PY, encoding='utf-8') as fh:
+            src = fh.read().lower()
+        for graphie in ("'dyness'", "'deyness'"):
+            self.assertIn(
+                graphie, src,
+                f"services.py a perdu la graphie {graphie} — une désignation "
+                "historique cesserait d'alimenter le vivier batterie.")
+
+    def test_solar_js_tolere_les_deux(self):
+        # Miroir écran de la garde ci-dessus (même règle, deux langages).
+        with open(SOLAR_JS, encoding='utf-8') as fh:
+            src = fh.read().lower()
+        for graphie in ("'dyness'", "'deyness'"):
+            self.assertIn(
+                graphie, src,
+                f"solar.js a perdu la graphie {graphie} — il doit rester "
+                "aligné avec apps/ventes/services.py.")

@@ -1,5 +1,8 @@
 import { DefinitionList } from '../../../../ui'
-import { getField, WEB_ORIGIN_FIELDS } from '../draftCore'
+import { formatDateTime } from '../../../../lib/format'
+import {
+  getField, WEB_ORIGIN_FIELDS, WEB_QUESTIONNAIRE_STRUCTURED_FIELDS, estValeurWebRenseignee,
+} from '../draftCore'
 import CustomFieldsInput from '../../../../components/CustomFieldsInput'
 
 // Champs d'origine web (taqinor.ma) en LECTURE SEULE : capturés par le site,
@@ -29,6 +32,150 @@ export function SectionOrigine({ state }) {
     .filter(Boolean)
   if (!items.length) return null
   return <DefinitionList items={items} />
+}
+
+/* DÉCISION FONDATEUR 2026-08-18 — « toutes les questions et les détails
+   doivent atteindre l'ERP » : le questionnaire web (JSON complet, clés
+   variables selon le profil du prospect) et l'estimation montrée au visiteur
+   arrivent déjà par le GET détail (LeadSerializer __all__) mais n'avaient
+   AUCUNE place à l'écran. Section conditionnelle (SectionsPane), repliée par
+   défaut, PURE AFFICHAGE — aucun TRACKED_KEYS, aucun draft : jamais éditée
+   ici, même patron lecture seule que SectionOrigine ci-dessus. */
+
+// (a) Colonnes structurées (QK1/QW2/QW3) — libellés FR humains ; la VALEUR
+// reste brute (choix serveur — apps/crm/models.py Lead.*.TextChoices) sauf
+// les quelques types illisibles tels quels (booléen, horodatage, liste de
+// clés) : ceux-ci sont mis en forme par `formatStructured` ci-dessous.
+const STRUCTURED_LABELS = {
+  distributeur: 'Distributeur',
+  roof_age: 'Âge du toit',
+  ownership: 'Propriétaire/locataire',
+  project_timeline: 'Horizon du projet',
+  financing_intent: 'Financement envisagé',
+  futures_charges: 'Charges futures',
+  facility_type: "Type d'établissement",
+  site_count: 'Nombre de sites',
+  visit_window_part: 'Créneau de visite souhaité',
+  visit_window_week: 'Semaine de visite souhaitée',
+  client_ref: 'Référence client (site)',
+  phone_is_foreign: 'Téléphone étranger',
+  page: "Page d'origine",
+  whatsapp_opt_in: 'Consentement WhatsApp',
+  consent_timestamp: 'Consentement (horodatage)',
+  utm_content: 'UTM content',
+  utm_term: 'UTM terme',
+  roof_type: 'Type de toiture (site)',
+  bill_kwh: 'Consommation (site, kWh)',
+}
+
+// futures_charges = liste de clés parmi ('clim', 've', 'pompe') — voir
+// apps/crm/models.py Lead.FUTURES_CHARGES_KEYS.
+const FUTURES_CHARGES_LABELS = { clim: 'Climatisation', ve: 'Véhicule électrique', pompe: 'Pompe' }
+
+function formatStructured(key, value) {
+  if (key === 'phone_is_foreign' || key === 'whatsapp_opt_in') return value ? 'Oui' : 'Non'
+  if (key === 'consent_timestamp') return formatDateTime(value, { long: true })
+  if (key === 'roof_age') return `${value} ans`
+  if (key === 'bill_kwh') return `${value} kWh`
+  if (key === 'futures_charges') {
+    const arr = Array.isArray(value) ? value : []
+    return arr.map((k) => FUTURES_CHARGES_LABELS[k] || k).join(', ')
+  }
+  return String(value)
+}
+
+// (b)/(c) — humanise une clé snake_case/camelCase GÉNÉRIQUE : ni les
+// questions du questionnaire ni les chiffres montrés n'ont un vocabulaire
+// fixe (ils varient selon le profil du prospect côté site) — un fallback
+// générique, jamais une table à maintenir à la main pour chaque nouvelle clé.
+function humaniser(cle) {
+  const mots = String(cle)
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2') // camelCase → mots séparés
+    .replace(/_/g, ' ')
+    .toLowerCase()
+    .trim()
+  if (!mots) return String(cle)
+  return mots.charAt(0).toUpperCase() + mots.slice(1)
+}
+
+// (c) web_estimate est un ENSEMBLE FERMÉ de clés (whitelist serveur
+// _ESTIMATE_SHOWN_KEYS, apps/crm/webhooks.py) : on connaît donc l'unité de
+// chacune — appliquée seulement ici (« unités seulement si la clé les rend
+// évidentes »). Une clé future non listée retombe sur `humaniser()`, sans
+// unité inventée.
+const ESTIMATE_LABELS = {
+  kwc: 'Puissance (kWc)',
+  prodKwh: 'Production (kWh/an)',
+  ecoMadMonthLow: 'Économie mensuelle min (MAD)',
+  ecoMadMonthHigh: 'Économie mensuelle max (MAD)',
+  ecoMadYearLow: 'Économie annuelle min (MAD)',
+  ecoMadYearHigh: 'Économie annuelle max (MAD)',
+  paybackLabel: 'Retour sur investissement',
+  tauxAutoconso: "Taux d'autoconsommation (%)",
+  tauxCouverture: 'Taux de couverture (%)',
+  pompeCv: 'Puissance pompe (CV)',
+  champKwc: 'Champ solaire (kWc)',
+  m3Jour: 'Débit (m³/j)',
+  nbPanneaux: 'Nombre de panneaux',
+  // `bassinM3` est un VOLUME de stockage (m³), pas un débit journalier : le
+  // tunnel pose `s.bassinM3 = ag.m3Jour` = le besoin d'UNE journée de pointe,
+  // borne basse de la fourchette 1-3× montrée au visiteur (lead.ts:231, et la
+  // proposition l'affiche « Bassin recommandé … m³ »). L'unité du libellé suit
+  // donc la donnée réelle — jamais « m³/j », qui en ferait un débit.
+  bassinM3: 'Bassin recommandé (m³)',
+}
+
+function itemsFromStructured(server) {
+  return WEB_QUESTIONNAIRE_STRUCTURED_FIELDS
+    .map((k) => (estValeurWebRenseignee(server[k])
+      ? { term: STRUCTURED_LABELS[k] || humaniser(k), description: formatStructured(k, server[k]) }
+      : null))
+    .filter(Boolean)
+}
+
+// RÈGLE DURE : une clé vide/absente du JSON n'est JAMAIS rendue (jamais de
+// « 0 » par défaut, jamais de placeholder) — filtrée avant le map.
+// Les booléens du blob (weekend, piscine, has_generator… — acceptés tels quels
+// par `_bool()` dans webhooks._extract_web_questionnaire) sont rendus « Oui »/
+// « Non » comme la moitié STRUCTURÉE de la même section (formatStructured) :
+// un CRM français n'affiche pas « Weekend : true » sous « Téléphone étranger :
+// Non ».
+function formatValeurWeb(v) {
+  if (typeof v === 'boolean') return v ? 'Oui' : 'Non'
+  return String(v)
+}
+
+function itemsFromObject(obj, labels) {
+  return Object.entries(obj || {})
+    .filter(([, v]) => estValeurWebRenseignee(v))
+    .map(([k, v]) => ({ term: (labels && labels[k]) || humaniser(k), description: formatValeurWeb(v) }))
+}
+
+export function SectionWebQuestionnaire({ state }) {
+  const server = state.server || {}
+  const structures = itemsFromStructured(server)
+  const questionnaire = itemsFromObject(server.web_questionnaire, null)
+  const estimation = itemsFromObject(server.web_estimate, ESTIMATE_LABELS)
+
+  if (!structures.length && !questionnaire.length && !estimation.length) return null
+
+  return (
+    <>
+      {!!structures.length && <DefinitionList items={structures} />}
+      {!!questionnaire.length && (
+        <>
+          <p className="form-label mt-3">Détails du questionnaire</p>
+          <DefinitionList items={questionnaire} />
+        </>
+      )}
+      {!!estimation.length && (
+        <>
+          <p className="form-label mt-3">Estimation montrée au visiteur</p>
+          <DefinitionList items={estimation} />
+        </>
+      )}
+    </>
+  )
 }
 
 // LW11 — Compléments : Note générale + Champs personnalisés — ENFIN dans la nav

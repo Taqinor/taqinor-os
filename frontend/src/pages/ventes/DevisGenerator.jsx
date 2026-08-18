@@ -61,6 +61,7 @@ import {
   kwhFromBill, buildEtudeParamsChoice, multiPropertyPreviewTTC,
   productibleForCity,
   COMMERCIAL_CATEGORIES, COMMERCIAL_CATEGORY_QUESTIONS, commercialDayShare,
+  TARIF_MT_ONEE, tarifMtDisponible, tarifMtMoyen,
 } from '../../features/ventes/solar'
 import { formatNumber, formatMAD, formatDateTime } from '../../lib/format'
 
@@ -230,6 +231,7 @@ export default function DevisGenerator({
   // Mêmes garde-fous « intact » pour les champs que applyLead peut pré-remplir :
   // dès que l'utilisateur y a touché, le lead ne les écrase plus.
   const structureTouched = useRef(false)
+  const tensionTouched = useRef(false)
   const pompeAlimTouched = useRef(false)
   const nbPanneauxTouched = useRef(false)
 
@@ -361,6 +363,12 @@ export default function DevisGenerator({
   // Confirmation d'auto-remplissage agricole (m³/jour + champ PV) — affichée
   // une fois l'auto-remplissage pompage réussi.
   const [pompageAutoFilled, setPompageAutoFilled] = useState(false)
+  // PVOND — onduleurs GRISÉS par le verrou de complétude : écartés de
+  // l'auto-composition parce qu'il leur manque une variable du contrat
+  // (puissance AC, MPPT, tensions, courant, rendement, plage batterie,
+  // garantie). Chaque entrée porte {id, nom, manquantes[]} et s'affiche avec
+  // son motif, comme « prix à renseigner » pour un produit non tarifé.
+  const [onduleursIncomplets, setOnduleursIncomplets] = useState([])
   const [previewCollapsed, setPreviewCollapsed] = useState(false)
   const [tauxTva, setTauxTva] = useState('20.00')
   const [discountPct, setDiscountPct] = useState('0')
@@ -403,6 +411,29 @@ export default function DevisGenerator({
   // QX50 — injection du surplus (loi 82-21). OFF par défaut, activable par devis
   // (industriel/commercial) ; la ligne ne s'affiche jamais sans sa mention.
   const [injectionEnabled, setInjectionEnabled] = useState(false)
+  // QXMT — tension de raccordement du site (industriel/commercial). 'bt' par
+  // défaut : tant qu'on n'a pas déclaré 'mt', l'étude est EXACTEMENT celle
+  // d'avant. Le questionnaire du tunnel web pose déjà la question
+  // (lead.web_questionnaire.tension_raccordement) — on la reprend s'il l'a.
+  const [tensionRaccordement, setTensionRaccordement] = useState('bt')
+  // Répartition horaire de la consommation MT (%, saisie libre). VIDE par
+  // défaut : les plages horaires MT officielles ne sont pas publiées, donc
+  // aucune répartition n'est inventée — sans elle, l'étude MT omet les
+  // économies plutôt que d'afficher un chiffre douteux.
+  const [repartitionMt, setRepartitionMt] = useState({
+    pointe: '', pleines: '', creuses: '',
+  })
+  const setPartMt = (key, val) => setRepartitionMt(p => ({ ...p, [key]: val }))
+  // QXMT — un dossier raccordé en MOYENNE TENSION n'est pas facturé au barème
+  // BT : l'étude passe alors au barème ONEE « Tarif Général (MT) », pondéré par
+  // la répartition horaire du site. `estMt` ne vaut true QUE si l'utilisateur
+  // (ou le questionnaire web) l'a déclaré — sinon tout le calcul reste celui
+  // d'avant, à l'identique. Dérivé ICI, avant `validate()` et l'étude, pour
+  // qu'aucun consommateur ne le lise avant sa déclaration.
+  const estMt = tensionRaccordement === 'mt'
+    && (modeInstallation === 'industriel' || modeInstallation === 'commercial')
+  const tarifMtApplique = estMt ? tarifMtMoyen(repartitionMt) : null
+  const etudeTension = { tensionRaccordement, repartitionMt }
   const [prixCible, setPrixCible] = useState('')
   // ── Logique de devis éditable (D5 ; Paramètres → Avancé). Défauts = constantes
   // historiques du simulateur, donc le devis est identique tant que rien n'est
@@ -464,6 +495,7 @@ export default function DevisGenerator({
     nbPanneaux, panelW, structureType, dayUsage, lines, tauxTva, discountPct,
     multiMode, nombreProprietes, villaGroups, modeInstallation, consoMensuelle,
     categorieCommerciale, commercialAnswers, injectionEnabled,
+    tensionRaccordement, repartitionMt,
     prixCible, remiseMax, accessoiresOnly,
     pompeCv, pompeType, pompeAlim, pompeHmt, pompeDebit, pompeProfondeur,
     pompeDistance, pompeHeures, farmRegion, farmCrop, farmSurfaceHa,
@@ -476,6 +508,7 @@ export default function DevisGenerator({
     nbPanneaux, panelW, structureType, dayUsage, lines, tauxTva, discountPct,
     multiMode, nombreProprietes, villaGroups, modeInstallation, consoMensuelle,
     categorieCommerciale, commercialAnswers, injectionEnabled,
+    tensionRaccordement, repartitionMt,
     prixCible, remiseMax, accessoiresOnly,
     pompeCv, pompeType, pompeAlim, pompeHmt, pompeDebit, pompeProfondeur,
     pompeDistance, pompeHeures, farmRegion, farmCrop, farmSurfaceHa,
@@ -542,6 +575,8 @@ export default function DevisGenerator({
     if (d.categorieCommerciale != null) setCategorieCommerciale(d.categorieCommerciale)
     if (d.commercialAnswers && typeof d.commercialAnswers === 'object') setCommercialAnswers(d.commercialAnswers)
     if (d.injectionEnabled != null) setInjectionEnabled(d.injectionEnabled)
+    if (d.tensionRaccordement != null) setTensionRaccordement(d.tensionRaccordement)
+    if (d.repartitionMt && typeof d.repartitionMt === 'object') setRepartitionMt(d.repartitionMt)
     if (d.prixCible != null) setPrixCible(d.prixCible)
     if (d.remiseMax != null) setRemiseMax(d.remiseMax)
     if (d.accessoiresOnly != null) setAccessoiresOnly(d.accessoiresOnly)
@@ -799,6 +834,14 @@ export default function DevisGenerator({
         && (lead.structure_pref === 'acier' || lead.structure_pref === 'aluminium')) {
       setStructureType(lead.structure_pref)
     }
+    // QXMT — le tunnel web pose déjà la tension de raccordement (BT/MT) au
+    // client pro : on la reprend telle quelle plutôt que de la redemander,
+    // tant que le vendeur n'a pas fixé lui-même le sélecteur.
+    if (!tensionTouched.current) {
+      const tensionLead = String(
+        lead.web_questionnaire?.tension_raccordement ?? '').toLowerCase()
+      if (tensionLead === 'bt' || tensionLead === 'mt') setTensionRaccordement(tensionLead)
+    }
     // Lead agricole : recopie pompe CV / HMT / débit ; l'alimentation suit le
     // raccordement (monophase→mono / triphase→tri) tant qu'elle est intacte.
     if (LEAD_TYPE_TO_MODE[lead.type_installation] === 'agricole') {
@@ -977,6 +1020,17 @@ export default function DevisGenerator({
       const e = d.etude_params || {}
       // QX50 — round-trip de l'injection 82-21 (flag activé si l'étude la porte).
       if (e.injection_82_21 || e.injection_dh_an != null) setInjectionEnabled(true)
+      // QXMT — round-trip du raccordement MT + de la répartition horaire, pour
+      // qu'un devis MT rouvert recalcule au MÊME barème (jamais un retour BT
+      // silencieux). Les clés absentes laissent le défaut 'bt' intact.
+      if (e.tension_raccordement === 'mt') setTensionRaccordement('mt')
+      if (e.repartition_mt && typeof e.repartition_mt === 'object') {
+        setRepartitionMt({
+          pointe: e.repartition_mt.pointe != null ? String(e.repartition_mt.pointe) : '',
+          pleines: e.repartition_mt.pleines != null ? String(e.repartition_mt.pleines) : '',
+          creuses: e.repartition_mt.creuses != null ? String(e.repartition_mt.creuses) : '',
+        })
+      }
       // QX44 — round-trip de l'étude commerciale : catégorie + réponses par
       // catégorie (clés snake_case) réinjectées dans le formulaire.
       if (e.categorie_commerciale) {
@@ -1358,6 +1412,10 @@ export default function DevisGenerator({
   }
 
   const handleAutoFill = () => {
+    // PVOND — le bandeau des onduleurs grisés appartient au DERNIER
+    // auto-remplissage : on le vide d'abord, sinon un message du run précédent
+    // survivrait à un changement de mode (le pompage n'a pas d'onduleur).
+    setOnduleursIncomplets([])
     // Mode agricole : équipement pompage (pompe + variateur + champ PV)
     if (modeInstallation === 'agricole') {
       const generated = autoFillPompage(produits, {
@@ -1384,6 +1442,13 @@ export default function DevisGenerator({
       panelW: parseFloat(panelW) || 710,
       structureType,
     })
+    // Les MÉTADONNÉES du tableau (wattage réel, kWc réel, onduleurs grisés)
+    // sont relevées ICI, avant tout `.map()` : un `.map()` rend un tableau NEUF
+    // et les perdrait en route (les modes industriel/commercial ci-dessous en
+    // font un).
+    const metaPanelW = generated.actualPanelW
+    const metaKwcReel = generated.kwcReel
+    const metaOnduleursIncomplets = generated.onduleursIncomplets ?? []
     // Modes industriel ET commercial (QX44) : sans batterie par défaut
     // (autoconsommation réseau, pas de stockage).
     if (modeInstallation === 'industriel' || modeInstallation === 'commercial') {
@@ -1405,10 +1470,10 @@ export default function DevisGenerator({
     // (issu du wattage saisi) ne correspond alors plus aux lignes réelles. On
     // le signale visiblement plutôt que d'expédier un système mal étiqueté.
     const askedW = parseFloat(panelW) || 710
-    const realW = generated.actualPanelW
+    const realW = metaPanelW
     let mismatch = null
     if (realW && Math.abs(realW - askedW) > 1) {
-      const kwcReel = generated.kwcReel
+      const kwcReel = metaKwcReel
       mismatch = `Attention : le stock ne propose pas de panneau ${askedW} W ; `
         + `un panneau ${realW} W a été retenu. La puissance réelle du système est `
         + `${kwcReel} kWc (et non ${kwp} kWc). Ajustez le nombre de panneaux ou le `
@@ -1422,6 +1487,10 @@ export default function DevisGenerator({
         : null,
       autofillKwc: mismatch,
     }))
+    // PVOND — onduleurs ÉCARTÉS de l'auto-composition faute de contrat complet
+    // (même patron que « prix à renseigner ») : on les nomme avec leur motif
+    // plutôt que de les laisser disparaître sans explication.
+    setOnduleursIncomplets(metaOnduleursIncomplets)
     setLines(withKeys(generated))
   }
 
@@ -1476,6 +1545,17 @@ export default function DevisGenerator({
     // Avertissement NON bloquant : le lead choisi est perdu et/ou archivé.
     // On le signale avant l'enregistrement sans jamais l'empêcher.
     const w = {}
+    // QXMT — raccordement MT sans tarif exploitable : l'étude part SANS
+    // économies ni payback (volontairement omis). C'est un AVERTISSEMENT, pas
+    // une erreur : rien n'est rejeté, rien n'est corrigé à la place du vendeur.
+    if (estMt && tarifMtApplique == null) {
+      w.tensionMt = tarifMtDisponible()
+        ? 'Raccordement MT sans répartition horaire : le devis sera enregistré '
+          + 'avec une étude SANS économies ni payback (aucun chiffre n\'est '
+          + 'supposé). Renseignez pointe / pleines / creuses pour les obtenir.'
+        : 'Raccordement MT : le barème MT ONEE n\'est pas disponible en source '
+          + 'officielle — l\'étude sera enregistrée sans économies ni payback.'
+    }
     if (selectedLead && (selectedLead.perdu || selectedLead.is_archived)) {
       const flags = [
         selectedLead.perdu ? 'perdu' : null,
@@ -1726,7 +1806,7 @@ export default function DevisGenerator({
         kwp, consoMensuelleKwh: consoKwhDerivee,
         dayUsagePct: dayUsage, totalTtc: kpiTotal,
         kwhPrice: quoteLogic.kwhPrice, efficiency: quoteLogic.efficiency,
-        injectionEnabled,
+        injectionEnabled, ...etudeTension,
       })
     : null
 
@@ -1739,7 +1819,7 @@ export default function DevisGenerator({
         kwp, consoMensuelleKwh: consoKwhDerivee,
         dayUsagePct: commercialDayShare(categorieCommerciale), totalTtc: kpiTotal,
         kwhPrice: quoteLogic.kwhPrice, efficiency: quoteLogic.efficiency,
-        injectionEnabled,
+        injectionEnabled, ...etudeTension,
       })
     : null
   // Étude « industriel/commercial » unifiée pour l'aperçu écran + la persistance.
@@ -2255,6 +2335,71 @@ export default function DevisGenerator({
                     Tarif ANRE 03/2026-02/2027, plafond en révision.
                   </p>
                 </div>
+                {/* QXMT — tension de raccordement : un site MT n'est pas
+                    facturé au barème BT. 'bt' par défaut → étude inchangée. */}
+                <div className="grid gap-1.5">
+                  <Label>Raccordement du site</Label>
+                  <Segmented
+                    data-testid="gen-tension"
+                    options={[
+                      { value: 'bt', label: 'Basse tension (BT)' },
+                      { value: 'mt', label: 'Moyenne tension (MT)' },
+                    ]}
+                    value={tensionRaccordement}
+                    onChange={(v) => { tensionTouched.current = true; setTensionRaccordement(v) }}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Au-delà de ~50 kW le site est en général raccordé en MT :
+                    l'étude bascule alors sur le barème horaire ONEE MT.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* QXMT — répartition horaire du site MT. Aucune valeur par défaut :
+                les plages horaires MT officielles ne sont pas publiées, donc
+                aucune répartition n'est inventée. Sans saisie, l'étude OMET
+                les économies plutôt que d'afficher un chiffre douteux. */}
+            {estMt && (
+              <div className="mt-3.5" data-testid="gen-mt-block">
+                <div className="grid gap-4 sm:grid-cols-3">
+                  {[
+                    ['pointe', 'Heures de pointe (%)', TARIF_MT_ONEE.POINTE],
+                    ['pleines', 'Heures pleines (%)', TARIF_MT_ONEE.PLEINES],
+                    ['creuses', 'Heures creuses (%)', TARIF_MT_ONEE.CREUSES],
+                  ].map(([key, label, prix]) => (
+                    <div className="grid gap-1.5" key={key}>
+                      <Label htmlFor={`gen-mt-${key}`}>{label}</Label>
+                      <Input id={`gen-mt-${key}`} type="number" min="0" step="any"
+                             data-testid={`gen-mt-${key}`}
+                             placeholder="ex: 20"
+                             value={repartitionMt[key]}
+                             onChange={e => setPartMt(key, e.target.value)} />
+                      <p className="text-xs text-muted-foreground">
+                        {prix != null
+                          ? `${formatNumber(prix, { decimals: 4 })} DH/kWh`
+                          : 'tarif à fournir par le fondateur'}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+                {tarifMtApplique != null ? (
+                  <p className="mt-2 text-xs text-muted-foreground" data-testid="gen-mt-tarif">
+                    Tarif MT moyen retenu ≈{' '}
+                    <strong>{formatNumber(tarifMtApplique, { decimals: 4 })} DH/kWh</strong>
+                    {' · '}{TARIF_MT_ONEE.MENTION}
+                  </p>
+                ) : (
+                  <p className="mt-2 text-xs text-warning" data-testid="gen-mt-manquant">
+                    {tarifMtDisponible()
+                      ? 'Répartition horaire non renseignée : les économies et le '
+                        + 'payback sont volontairement omis de l\'étude (les plages '
+                        + 'horaires MT officielles ne sont pas publiées — aucun '
+                        + 'chiffre n\'est supposé à votre place).'
+                      : 'Barème MT ONEE indisponible en source officielle : les '
+                        + 'économies et le payback sont omis de l\'étude.'}
+                  </p>
+                )}
               </div>
             )}
 
@@ -2617,6 +2762,22 @@ export default function DevisGenerator({
                 <Zap /> Auto-remplir depuis le stock
               </Button>
             </div>
+            {onduleursIncomplets.length > 0 && (
+              <div className="mt-3 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
+                <strong>Onduleur(s) non chiffrable(s)</strong> — fiche technique
+                incomplète, écartés de l'auto-remplissage (toujours
+                sélectionnables à la main) :
+                <ul className="mt-1 list-disc pl-5">
+                  {onduleursIncomplets.map(o => (
+                    <li key={o.id}>
+                      {o.nom} — à renseigner : {o.manquantes.join(', ')}
+                    </li>
+                  ))}
+                </ul>
+                Complétez leur fiche technique dans Stock pour les rendre
+                chiffrables.
+              </div>
+            )}
             {modeInstallation === 'agricole' && pompageAutoFilled && pompageSel && (
               <div className="mt-3 rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success">
                 Auto-remplissage effectué —
@@ -2651,15 +2812,33 @@ export default function DevisGenerator({
                               value={`${etudeCI.taux_couverture} %`}
                               unit="part de la conso couverte" accent />
                 )}
-                <MetricCard label="Économies annuelles (étude)"
-                            value={fmtNum(etudeCI.economies_annuelles)}
-                            unit="MAD / an" />
+                {/* QXMT — en MT sans tarif exploitable, `economies_annuelles`
+                    vaut null : la carte est OMISE (jamais un « 0 » trompeur),
+                    le motif est affiché juste en dessous. */}
+                {etudeCI.economies_annuelles != null && (
+                  <MetricCard label="Économies annuelles (étude)"
+                              value={fmtNum(etudeCI.economies_annuelles)}
+                              unit={etudeCI.tension_raccordement === 'mt'
+                                ? 'MAD / an · barème MT' : 'MAD / an'} />
+                )}
                 {etudeCI.payback != null && (
                   <MetricCard label="Payback (étude)"
                               value={`${etudeCI.payback} ans`}
                               unit="retour sur invest." />
                 )}
               </div>
+            )}
+            {etudeCI?.etude_mt_motif && (
+              <p className="mb-3 rounded-lg border border-warning/40 bg-warning/10 p-3 text-xs text-warning"
+                 data-testid="etude-mt-motif">
+                {etudeCI.etude_mt_motif}
+              </p>
+            )}
+            {etudeCI?.tarif_mt_dh_kwh != null && (
+              <p className="mb-3 text-xs text-muted-foreground" data-testid="etude-mt-source">
+                Énergie valorisée à {formatNumber(etudeCI.tarif_mt_dh_kwh, { decimals: 4 })} DH/kWh
+                {' — '}{etudeCI.tarif_mt_mention}
+              </p>
             )}
             {!roi ? (
               <p className="text-center text-sm text-muted-foreground">

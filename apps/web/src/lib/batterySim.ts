@@ -22,7 +22,7 @@
  * DISCIPLINE « ZÉRO CHIFFRE INVENTÉ » : ce module ne fabrique AUCUN prix. Les seules
  * constantes chiffrées sont des CONSTANTES PHYSIQUES documentées (rendement, DoD,
  * capacité catalogue) — chacune porte un commentaire de source. La capacité par
- * unité vient STRICTEMENT des références catalogue Deyness 5/10 kWh (jamais d'une
+ * unité vient STRICTEMENT des références catalogue Dyness 5/10 kWh (jamais d'une
  * valeur inventée). Le prix batterie est lu du devis par la page, jamais ici.
  */
 import type { ProposalItem } from './proposition';
@@ -36,7 +36,7 @@ export const HOURS_PER_DAY = 24;
  * Rendement ONE-WAY d'une batterie LFP (lithium fer phosphate) ≈ 0,96 : appliqué
  * UNE fois à la charge et UNE fois à la décharge → rendement ALLER-RETOUR ≈ 0,92
  * (0,96² ≈ 0,9216), l'ordre de grandeur publié pour un pack LFP + onduleur-chargeur
- * moderne (systèmes résidentiels Deye/Deyness). Conservateur : les pertes réelles
+ * moderne (systèmes résidentiels Deye/Dyness). Conservateur : les pertes réelles
  * dépendent du courant et de la température. Réglable ici.
  */
 export const BATTERY_ONE_WAY_EFFICIENCY = 0.96;
@@ -50,8 +50,9 @@ export const BATTERY_ONE_WAY_EFFICIENCY = 0.96;
 export const BATTERY_DEPTH_OF_DISCHARGE = 0.9;
 
 /**
- * Capacité catalogue par UNITÉ (kWh) — RÉFÉRENCES RÉELLES du catalogue Deyness :
+ * Capacité catalogue par UNITÉ (kWh) — RÉFÉRENCES RÉELLES du catalogue Dyness :
  *   BAT-DEY-5  → 5 kWh   ·   BAT-DEY-10 → 10 kWh.
+ * (Les SKU restent BAT-DEY-* : ce sont des codes catalogue, pas la marque.)
  *
  * ⚠ NE JAMAIS confondre avec `applianceConsumption.BATTERY_KWH_PER_DAY` (= 6) :
  *   ce dernier est une CONSOMMATION journalière couvrable (kWh/JOUR décalés du
@@ -61,14 +62,14 @@ export const BATTERY_DEPTH_OF_DISCHARGE = 0.9;
  *   une AUTRE chose — une capacité/unité par défaut côté générateur — à ne pas
  *   « réconcilier » avec ce 6 non plus.)
  */
-export const DEYNESS_CAPACITY_KWH: Readonly<Record<string, number>> = {
+export const DYNESS_CAPACITY_KWH: Readonly<Record<string, number>> = {
   'BAT-DEY-5': 5,
   'BAT-DEY-10': 10,
 };
 
 /** Capacité par défaut du curseur quand l'offre ne porte pas de batterie : l'unité
- *  de base Deyness (BAT-DEY-5 = 5 kWh). Toujours une réf catalogue, jamais inventée. */
-export const DEFAULT_UNIT_CAPACITY_KWH = DEYNESS_CAPACITY_KWH['BAT-DEY-5'];
+ *  de base Dyness (BAT-DEY-5 = 5 kWh). Toujours une réf catalogue, jamais inventée. */
+export const DEFAULT_UNIT_CAPACITY_KWH = DYNESS_CAPACITY_KWH['BAT-DEY-5'];
 
 /**
  * Puissance MOYENNE des CHARGES ESSENTIELLES (W) — utilisée UNIQUEMENT pour estimer
@@ -331,11 +332,17 @@ export interface OfferBattery {
   designation: string;
 }
 
-const BATTERY_KEYWORDS = /batter|deyness|\blfp\b|lithium|bat-dey/i;
+/**
+ * Mots-clés d'une ligne BATTERIE. `dyness` est l'orthographe RÉELLE de la marque
+ * (correction fondateur 2026-08-18) ; `deyness` reste reconnu parce que les
+ * désignations FIGÉES des devis déjà émis — que cette page affiche telles quelles —
+ * portent l'ancienne faute et doivent continuer d'être classées « batterie ».
+ */
+const BATTERY_KEYWORDS = /batter|dyness|deyness|\blfp\b|lithium|bat-dey/i;
 
 /**
  * WJ120 — Détecte, dans les lignes d'une option (typiquement `avec_items`), la ligne
- * BATTERIE : capacité par unité (STRICTEMENT depuis les réfs catalogue Deyness
+ * BATTERIE : capacité par unité (STRICTEMENT depuis les réfs catalogue Dyness
  * BAT-DEY-5 → 5 kWh / BAT-DEY-10 → 10 kWh, sinon un « N kWh » explicite dans la
  * désignation), et le nombre d'unités offertes (quantité). Aucune capacité inventée :
  * une ligne batterie sans capacité lisible renvoie `capacityKwhPerUnit: null` (la
@@ -350,8 +357,8 @@ export function resolveOfferBattery(items: ProposalItem[] | null | undefined): O
     if (!desig || !BATTERY_KEYWORDS.test(desig)) continue;
     const lower = desig.toLowerCase();
     let capacity: number | null = null;
-    if (lower.includes('bat-dey-10')) capacity = DEYNESS_CAPACITY_KWH['BAT-DEY-10'];
-    else if (lower.includes('bat-dey-5')) capacity = DEYNESS_CAPACITY_KWH['BAT-DEY-5'];
+    if (lower.includes('bat-dey-10')) capacity = DYNESS_CAPACITY_KWH['BAT-DEY-10'];
+    else if (lower.includes('bat-dey-5')) capacity = DYNESS_CAPACITY_KWH['BAT-DEY-5'];
     else {
       // Repli : un « N kWh » explicite dans la désignation d'une ligne batterie.
       const m = /(\d+(?:[.,]\d+)?)\s*kwh/i.exec(lower);

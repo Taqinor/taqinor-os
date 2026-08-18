@@ -34,18 +34,15 @@ DJANGO_CORE = ROOT / "backend" / "django_core"
 # lives here, in the one script file the task does declare. A NEW site not
 # in this set fails CI.
 BASELINE_ALLOWLIST = {
-    # NTUX13 (2026-07-31) re-based: dupliquer_devis() inserted earlier in the
-    # file shifted these two pre-existing (non-monetary surface_m2/kwc)
-    # round() calls from :302/:305 to :359/:362 — same call sites, not new.
-    "backend/django_core/apps/ventes/services.py:381",
-    "backend/django_core/apps/ventes/services.py:384",
-    # PV14/PV16/PV18 (geometry par pan, cible, sync) — les MEMES arrondis
-    # d'AFFICHAGE (surface m2, kWc — jamais un montant) re-decales, plus le
-    # kWc du chemin sync (duplication assumee du calcul d'affichage).
-    "backend/django_core/apps/ventes/services.py:397",
-    "backend/django_core/apps/ventes/services.py:400",
-    "backend/django_core/apps/ventes/services.py:1822",
-    "backend/django_core/apps/ventes/services.py:1979",
+    # 2026-08-18 — SIX ENTRÉES MORTES RETIRÉES (`ventes/services.py` :381,
+    # :384, :397, :400, :1822, :1979 — anciens recalages NTUX13 puis
+    # PV14/PV16/PV18). Relecture ligne à ligne de l'arbre courant : AUCUNE de
+    # ces six lignes ne porte de `round()`. Les quatre seuls sites que le
+    # détecteur AST retient dans ce fichier sont :687, :690, :2135 et :2305
+    # (surface m² / kWc), déjà listés plus bas. Une entrée morte n'est pas
+    # neutre : elle PRÉ-AUTORISE en silence un futur `round(total_ht, 2)`
+    # inséré à cette ligne, c.-à-d. exactement l'arrondi monétaire hors
+    # `quantize_mad` que cette garde existe pour faire relire.
     "backend/django_core/apps/ventes/quote_engine/builder.py:592",
     "backend/django_core/apps/ventes/quote_engine/builder.py:594",
     "backend/django_core/apps/ventes/quote_engine/builder.py:645",
@@ -146,6 +143,61 @@ BASELINE_ALLOWLIST = {
     "backend/django_core/apps/ventes/quote_engine/builder.py:1572",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1625",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1626",
+    # GAMMES (2026-08-18, offre à deux gammes) — RE-CALAGE file:line, PAS de
+    # nouveau site (bug-class #34). Deux insertions purement additives :
+    #   * `apps/ventes/services.py` — le bloc de services « gamme »
+    #     (creer_variante_gamme / regler_envoi_gamme…) inséré AVANT
+    #     `create_devis_from_reserve` décale tout ce qui suit ;
+    #   * `quote_engine/builder.py` — `_line_to_item` porte deux clés de plus
+    #     (`garantie_mois` / `garantie_production_mois`, durées catalogue qui
+    #     alimentent la bande « Nos garanties »).
+    # Vérifié : aucun des deux diffs n'ajoute un seul `round()` — ce sont les
+    # MÊMES arrondis d'AFFICHAGE (PU/HT/TVA/TTC du moteur, kWc/surface des
+    # services), simplement déplacés. Lignes relues sur l'arbre courant.
+    # PVSYNC/PVOND (2026-08-18) — RE-CALAGE file:line, PAS de nouveau site
+    # (bug-class #34). Deux insertions purement additives dans
+    # `apps/ventes/services.py` : le garde batterie data-driven (avant
+    # `extract_roof_config`) et le bloc de resynchronisation événementielle
+    # (après `sync_devis_from_layout`). Vérifié : le diff n'ajoute AUCUN
+    # `round()` — ce sont les MÊMES arrondis d'AFFICHAGE (surface m², kWc,
+    # jamais un montant), simplement déplacés. Lignes relues sur l'arbre
+    # courant : 599→687, 602→690, 2038→2135, 2197→2305.
+    # REVUE 2026-08-18 (garde batterie corrigé + verrou de complétude backend +
+    # transparence resync + bordereau→devis) — RE-CALAGE file:line, PAS de
+    # nouveau site (bug-class #34). Insertions purement additives dans
+    # `apps/ventes/services.py` : `_onduleur_complet`/
+    # `_filtrer_onduleurs_complets` et la docstring corrigée de
+    # `_batterie_compatible` (avant les deux round() de surface/kWc), puis
+    # `avertissement_vivier_batterie_vide`, le marqueur `resync_apres_envoi` et
+    # les helpers de rafraîchissement bordereau→devis. Vérifié par relecture :
+    # le diff n'ajoute AUCUN `round()` — ce sont les MÊMES arrondis
+    # d'AFFICHAGE (surface m², kWc ; jamais un montant), simplement déplacés.
+    # Lignes relues sur l'arbre courant : 687→753, 690→756, 2135→2263,
+    # 2305→2442.
+    "backend/django_core/apps/ventes/services.py:753",
+    "backend/django_core/apps/ventes/services.py:756",
+    "backend/django_core/apps/ventes/services.py:2263",
+    "backend/django_core/apps/ventes/services.py:2442",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:300",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:301",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:658",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:799",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:801",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:826",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:828",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:972",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:985",
+    # QXMT (2026-08-18) — le bloc « un dossier MT ne porte jamais un chiffre
+    # BT » (+36 lignes, inséré APRÈS le calcul ROI, avant QF2) décale les
+    # QUATRE arrondis d'affichage qui le suivent (montant de TVA ×N villas,
+    # total d'affichage multi, total HT/TTC d'une ligne d'option) : 1579→1615,
+    # 1585→1621, 1638→1674, 1639→1675. Décalage UNIFORME, aucune logique
+    # déplacée, aucun NOUVEAU `round()` — bug-class #34. Les neuf sites
+    # au-dessus (300…985) sont AVANT l'insertion et ne bougent pas.
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1615",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1621",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1674",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1675",
 }
 
 TARGET_FILES = [

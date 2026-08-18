@@ -420,6 +420,77 @@ class AppelOffreViewSet(AoBaseViewSet):
             'points': selectors.points_a_lever(appel_offre),
         })
 
+    @action(detail=True, methods=['get'], url_path='design-context')
+    def design_context(self, request, pk=None):
+        """TOUT ce que l'atelier 3D doit savoir d'une AFFAIRE, en UN appel.
+
+        MIROIR exact de ``ventes``/``devis/<id>/design-context/`` : le MÊME
+        écran (``frontend/src/pages/ventes/ToitureDesign.jsx``) s'ouvre en mode
+        « ao » sur une affaire, hydraté par la géométrie AO déjà relevée
+        (``ToitureAO``/``ZoneAO``, reprojetée en degrés à la frontière AOF19).
+
+        Renvoie ``{affaire, geometrie, cible, carte, modifiable,
+        raison_lecture_seule, avertissements}`` — toutes les clés TOUJOURS
+        présentes (contrat ``contract_samples/ao_design_context.json``) : un
+        panier vide vaut ``[]``, une valeur inconnue ``None``/``''``, jamais une
+        clé absente. L'écran n'a donc rien à deviner.
+
+        LECTURE PURE, scopée société par ``get_queryset`` (une affaire d'une
+        autre société → 404) : aucun statut, aucune toiture, aucun layout n'est
+        écrit ici.
+        """
+        from . import selectors
+
+        appel_offre = self.get_object()  # borné société par get_queryset
+        contexte = selectors.contexte_conception_affaire(
+            appel_offre, request.user.company)
+        if contexte is None:
+            return Response({'detail': 'Affaire inconnue.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        return Response(contexte)
+
+    @action(detail=True, methods=['get', 'post'], url_path='layout')
+    def layout(self, request, pk=None):
+        """Lit (GET) ou enregistre (POST) le calepinage 3D de l'affaire.
+
+        Le corps POST EST le layout sérialisé par le builder (on accepte aussi
+        les enveloppes ``{"layout": …}`` / ``{"roof_layout": …}``, comme côté
+        devis). SEUL ``roof_layout`` est touché : aucun statut ne bouge (la
+        garde ``AppelOffre.save`` reste intacte, ``update_fields`` ne cite
+        jamais ``statut``), et la géométrie OPPOSABLE du dossier
+        (``ToitureAO``/``ZoneAO``/``ChaineCotes``) n'est pas réécrite — le
+        layout est un document de TRAVAIL, pas un relevé.
+
+        Une affaire déposée ou close répond 409 avec le motif FRANÇAIS du
+        serveur (le même que ``design-context``) : l'écran n'a rien à deviner.
+        Affaire d'une autre société → 404 (get_queryset).
+        """
+        from . import selectors
+
+        appel_offre = self.get_object()  # borné société par get_queryset
+        if request.method.lower() == 'get':
+            return Response({'roof_layout': appel_offre.roof_layout})
+
+        # Le motif est celui du SELECTOR (source unique) : l'écran affiche au
+        # chargement EXACTEMENT la phrase que le refus d'écriture renvoie.
+        raison = selectors.raison_conception_figee(appel_offre)
+        if raison:
+            return Response({'detail': raison},
+                            status=status.HTTP_409_CONFLICT)
+
+        payload = request.data
+        if isinstance(payload, dict):
+            for enveloppe in ('layout', 'roof_layout'):
+                if set(payload.keys()) == {enveloppe}:
+                    payload = payload[enveloppe]
+                    break
+        if not isinstance(payload, dict) or not payload:
+            return Response({'detail': 'Layout manquant ou invalide.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        appel_offre.roof_layout = payload
+        appel_offre.save(update_fields=['roof_layout', 'updated_at'])
+        return Response({'roof_layout': appel_offre.roof_layout})
+
     @action(detail=True, methods=['get'], url_path='transitions')
     def transitions(self, request, pk=None):
         """Statuts atteignables depuis l'état courant (pilote l'UI)."""
@@ -1037,6 +1108,51 @@ class BordereauPrixViewSet(AoBaseViewSet):
         """Motifs de non-remettabilité (clause de réserve, traçabilité)."""
         raisons = services.raisons_bordereau_non_remettable(self.get_object())
         return Response({'remettable': not raisons, 'raisons': raisons})
+
+    @action(detail=True, methods=['post'], url_path='creer-devis')
+    def creer_devis(self, request, pk=None):
+        """UN SEUL chemin de chiffrage : ce bordereau devient un DEVIS ventes.
+
+        Le montage vit dans le POINT DE CONTACT UNIQUE
+        ``apps.ventes.services.creer_devis_depuis_bordereau`` (symétrique de
+        ``apps.ao.services.creer_appel_offre_depuis_avis``) : ``ao`` appelle ce
+        service PAR RÉFÉRENCE et n'importe JAMAIS ``apps.ventes.models``. Le
+        devis produit repart ensuite dans le pipeline devis normal — PDF
+        ``/proposal`` compris (règle #4 : rien n'est ajouté à ``quote_engine``).
+
+        Réponse : ``{devis, cree, bordereau, appel_offre, avertissements}``
+        (contrat ``contract_samples/ao_bordereau_devis.json``). ``cree`` vaut
+        ``false`` quand un brouillon issu du MÊME bordereau existait déjà —
+        idempotent, un double clic ne crée pas deux devis. Un refus motivé
+        (aucun client résoluble, bordereau sans ligne chiffrable) répond 400
+        avec le message FRANÇAIS du service, jamais un 500 muet.
+
+        Écriture ⇒ ``ao_gerer`` + scoping société : les deux viennent
+        d'``AoBaseViewSet``. La société n'est JAMAIS lue du corps — c'est celle
+        du bordereau, lui-même déjà borné par ``get_object()``.
+        """
+        from apps.ventes.services import (
+            creer_devis_depuis_bordereau, resume_devis_depuis_bordereau,
+        )
+
+        bordereau = self.get_object()  # borné société par get_queryset
+        try:
+            devis, rapport = creer_devis_depuis_bordereau(
+                bordereau, user=request.user, company=bordereau.company)
+        except DjangoValidationError as exc:
+            return Response(getattr(exc, 'message_dict', None)
+                            or {'bordereau': exc.messages},
+                            status=status.HTTP_400_BAD_REQUEST)
+        charge = {
+            'devis': resume_devis_depuis_bordereau(devis),
+            'cree': rapport['cree'],
+            'bordereau': bordereau.pk,
+            'appel_offre': bordereau.appel_offre_id,
+            'avertissements': rapport['avertissements'],
+        }
+        return Response(charge, status=(status.HTTP_201_CREATED
+                                        if rapport['cree']
+                                        else status.HTTP_200_OK))
 
 
 class SectionBordereauViewSet(AoBaseViewSet):

@@ -7,11 +7,14 @@
  * bill-to-range auto-detection, live per-field blur validation + per-step
  * gating, the A4 PDF-look estimate document (navy/gold, DM fonts from
  * /fonts/), satellite roof snapshot + 3D drape, a daylight 3D stage, and the
- * new payload fields (tensionRaccordement, puissanceKva, activityProfile,
- * surfaceType, surfaceM2, hasGenerator, proMonthlyKwh/Mad, waterSource,
- * profondeurM, hmtM, debitM3h, besoinM3j, heuresPompage, irrigation, culture,
- * surfaceHa, pompeActuelle, pompeCvActuelle, fuelSpendMad, estimateShown).
- * SAME /api/capture-lead submission contract (validateLead, per-mode MAD
+ * payload fields (tensionRaccordement, activityProfile, surfaceType,
+ * surfaceM2, proMonthlyKwh/Mad, waterSource, profondeurM, hmtM, debitM3h,
+ * besoinM3j, heuresPompage, culture, surfaceHa, fuelSpendMad, estimateShown).
+ * Founder cut (18/08): only questions that FEED the estimate stay in the
+ * funnel — roof type, connection type, distributor, meter photo, future
+ * loads, battery interest, per-category commercial questions, generator,
+ * irrigation and current-pump fields are removed; the sales rep fills them
+ * in the ERP. SAME /api/capture-lead submission contract (validateLead, per-mode MAD
  * threshold, roofPoint/roofOutline/energy profile optional), SAME client
  * logic. No in-page language toggle here (the /en/ URL already declares the
  * locale, consistent with every other /en/* page on this site) — the
@@ -23,27 +26,18 @@
  */
 import Layout from '../../../layouts/Layout.astro';
 import { BILL_RANGES } from '../../../lib/billRange';
-import { ROOF_TYPES } from '../../../lib/lead';
-// WJ122 — commercial category cards + questions rendered at build from the single
-// source ported from solar.js (QX44). Category VALUES drive logic; labels below
-// are localised for this /en/ page.
-import { COMMERCIAL_CATEGORIES, COMMERCIAL_CATEGORY_QUESTIONS } from '../../../lib/commercialCategories';
+// "Roof type" (ROOF_TYPES) removed from the funnel (founder cut 18/08) — the
+// sales rep fills it in the ERP. `roofType` stays REQUIRED by validateLead:
+// it is now DERIVED (resolveRoofType -> 'autre'), never asked again.
+// WJ122 — category cards rendered at build from the single source ported
+// from solar.js (QX44). The per-category questions (COMMERCIAL_CATEGORY_QUESTIONS)
+// are removed from the funnel (founder cut 18/08): none of them fed the
+// estimate — the sales rep fills them in the ERP.
+import { COMMERCIAL_CATEGORIES } from '../../../lib/commercialCategories';
 const CC_CAT_LABEL: Record<string, string> = {
   hotel: 'Hotel / Riad', restaurant: 'Restaurant / Café', commerce: 'Shop / Supermarket',
   bureau: 'Office / HQ', sante: 'Healthcare (clinic)', ecole: 'Private school',
   hammam: 'Hammam / Spa / Gym', boulangerie: 'Bakery', froid: 'Cold storage', autre: 'Other business',
-};
-const CC_Q_LABEL: Record<string, string> = {
-  chambres: 'Number of rooms', occupation_pct: 'Annual occupancy rate (%)', piscine: 'Heated pool',
-  chambres_froides: 'Cold rooms', horaires: 'Opening hours', cuisson: 'Cooking',
-  surface_vente_m2: 'Sales floor area (m²)', effectif: 'Headcount', clim: 'Central air conditioning',
-  lits: 'Number of beds', garde_nuit: 'Night shift', internat: 'Boarding',
-  fermeture_estivale: 'Summer closure', surface_m2: 'Area (m²)', chauffe: 'Water heating',
-  four: 'Oven', cuisson_nocturne: 'Night baking', temperature_consigne: 'Setpoint temperature (°C)',
-  volume_m3: 'Cold volume (m³)', saisonnalite_recolte: 'Seasonal peak (harvest)',
-};
-const CC_OPT_LABEL: Record<string, string> = {
-  midi: 'Midday', soir: 'Evening', continu: 'Continuous', electrique: 'Electric', gaz: 'Gas',
 };
 // WJ124 — crop + region cards rendered at build from the QX48 agronomy engine
 // (single source). VALUES = CROP_STAGES / ET0_MONTHLY keys (drive the water
@@ -75,9 +69,9 @@ import ZelligeSignature from '../../../components/ZelligeSignature.astro';
 
 const inputClass =
   'w-full border border-white/15 bg-white/5 px-3 py-3 text-base text-white placeholder:text-lune-faint outline-none transition-colors focus:border-brass-400 focus:ring-2 focus:ring-brass-400/30 aria-[invalid=true]:border-alert-300 aria-[invalid=true]:ring-2 aria-[invalid=true]:ring-alert-300/30';
-// BILL_RANGES / ROOF_TYPES are shared (lead.ts/billRange.ts contract
-// UNCHANGED): the `id` values stay identical across locales, only the
-// displayed label is translated here (those libs are out of scope).
+// BILL_RANGES is shared (lead.ts/billRange.ts contract UNCHANGED): the `id`
+// values stay identical across locales, only the displayed label is
+// translated here (that lib is out of scope).
 const BILL_RANGE_LABEL_EN: Record<string, string> = {
   lt800: 'Under 800 MAD',
   '800-1000': '800 – 1,000 MAD',
@@ -87,13 +81,6 @@ const BILL_RANGE_LABEL_EN: Record<string, string> = {
   '5000-10000': '5,000 – 10,000 MAD',
   gt10000: 'Over 10,000 MAD',
 };
-const ROOF_TYPE_LABEL_EN: Record<string, string> = {
-  villa: 'Villa',
-  hangar: 'Industrial shed',
-  toit_plat: 'Flat roof',
-  autre: 'Other',
-};
-const roofTypes = ROOF_TYPES.map((r) => ({ ...r, label: ROOF_TYPE_LABEL_EN[r.id] ?? r.label }));
 const billRanges = BILL_RANGES.map((b) => ({ ...b, label: BILL_RANGE_LABEL_EN[b.id] ?? b.label }));
 
 // WJ6 — assistant steps (English labels; residential defaults, overridden
@@ -262,6 +249,29 @@ const noscriptTelHref = `tel:${NAP.phone}`;
           </label>
         </div>
 
+        <!-- EXPLICIT CHOICE of the roof-marking gesture. The journey used to be
+             IMPLICIT: a click dropped a pin, and only a double-click (an
+             interaction that does not exist on touch) started an outline —
+             nothing announced it, so almost nobody ever drew. We ask the
+             question plainly, with a safe default ("point"). -->
+        <div id="mt-roof-mode-group" class="mt-5" role="group" aria-labelledby="mt-roof-mode-label">
+          <p id="mt-roof-mode-label" class="text-sm text-lune-soft">
+            How would you like to show us your roof?
+          </p>
+          <div class="mt-2 grid gap-2 sm:grid-cols-2">
+            <button type="button" id="mt-roof-mode-point" data-value="point" aria-pressed="true"
+              class="mt-roof-mode cine-card flex flex-col items-start gap-0.5 border border-white/15 p-3 text-left transition-colors">
+              <span class="text-sm font-semibold text-white">📍 Point at my roof</span>
+              <span class="text-xs text-lune-faint">A single tap on your roof — the quickest.</span>
+            </button>
+            <button type="button" id="mt-roof-mode-draw" data-value="draw" aria-pressed="false"
+              class="mt-roof-mode cine-card flex flex-col items-start gap-0.5 border border-white/15 p-3 text-left transition-colors">
+              <span class="text-sm font-semibold text-white">✏️ Draw my roof</span>
+              <span class="text-xs text-lune-faint">Trace the outline — more precise for the study.</span>
+            </button>
+          </div>
+        </div>
+
         <!-- MAP — address search + pin (ids rp9-* wired by captureBoot). -->
         <div id="mt-stage" class="cine-card mt-5 overflow-hidden">
           <form id="rp9-search" class="flex flex-col gap-3 border-b border-white/10 p-4 sm:flex-row">
@@ -310,6 +320,29 @@ const noscriptTelHref = `tel:${NAP.phone}`;
           <p id="rp9-status" class="border-t border-white/10 px-4 py-3 text-sm text-lune-faint" aria-live="polite">
             Search for your address, then drop a pin on your roof (optional).
           </p>
+
+          <!-- VISUAL CONFIRMATION of the pin ("point" flow only). Visitors used to
+               drop a point on a wide view and move on without ever seeing WHAT
+               they had designated; the map now lands tight on their pin
+               (captureBoot.landOn) and we ask the question next to the image.
+               The "draw" flow keeps its own visual feedback: the outline. -->
+          <div id="mt-pin-confirm" hidden class="border-t border-white/10 p-4">
+            <p class="text-sm font-semibold text-white">Is this your roof?</p>
+            <p class="mt-1 text-xs text-lune-faint">The map is centred on the pin you just dropped.</p>
+            <!-- Address filled ONLY if reverse geocoding found one (W2) — never a
+                 guessed address, never an empty line. -->
+            <p id="mt-pin-confirm-address" hidden class="mt-2 text-sm text-lune-soft"></p>
+            <div class="mt-3 flex flex-wrap gap-2">
+              <button type="button" id="mt-pin-confirm-yes"
+                class="bg-brass-400 px-4 py-2.5 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300">
+                Yes, that's my roof
+              </button>
+              <button type="button" id="mt-pin-confirm-adjust"
+                class="border border-white/25 px-4 py-2.5 text-sm font-semibold text-lune-soft transition-colors hover:border-brass-400 hover:text-brass-300">
+                No, move the pin
+              </button>
+            </div>
+          </div>
         </div>
 
         <div class="mt-5 flex justify-end">
@@ -376,95 +409,11 @@ const noscriptTelHref = `tel:${NAP.phone}`;
             <span>Detected range&nbsp;: <strong id="mt-bill-detected-value" class="font-semibold text-white">—</strong></span>
           </p>
 
-          <!-- WJ48 — "Roof type" converted from a dropdown into tappable
-               image cards: distinct SVG icons per type (no fabricated photo).
-               The native <select> stays in the DOM (sr-only): unchanged
-               source of truth for val('mt-roof'), validation, WJ61
-               persistence, and error focus — only the VISUAL selection changes. -->
+          <!-- SHADING — the ONLY question left after the bill: a single tap,
+               and it REALLY adjusts the calculation (billEstimate.ts
+               OMBRAGE_DERATE). Moved up here from the old "Refine my
+               estimate" accordion, which disappears with the founder cut of 18/08. -->
           <fieldset>
-            <legend class="text-sm text-lune-soft">Roof type</legend>
-            <div class="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
-              {roofTypes.map((r) => (
-                <button type="button" class="mt-roof-card cine-card flex flex-col items-center gap-1.5 border border-white/15 p-3 text-center transition-colors"
-                  data-roof={r.id} aria-pressed="false">
-                  <svg aria-hidden="true" width="32" height="32" viewBox="0 0 32 32" fill="none" class="text-lune-soft">
-                    {r.id === 'villa' && <path d="M4 18 16 8l12 10M8 16v10h16V16" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" fill="none" />}
-                    {r.id === 'hangar' && <path d="M3 20 10 12h12l7 8M6 20v6h20v-6" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" fill="none" />}
-                    {r.id === 'toit_plat' && <path d="M5 12h22v3H5zM7 15v10h18V15" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" fill="none" />}
-                    {r.id === 'autre' && <path d="M16 5v22M5 16h22" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />}
-                  </svg>
-                  <span class="text-xs font-semibold text-white">{r.label}</span>
-                </button>
-              ))}
-            </div>
-            <span id="mt-roof-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
-            <select id="mt-roof" name="roofType" aria-describedby="mt-roof-err" class="sr-only">
-              <option value="">Choose…</option>
-              {roofTypes.map((r) => <option value={r.id}>{r.label}</option>)}
-            </select>
-          </fieldset>
-
-          <div class="grid gap-4 sm:grid-cols-2">
-            <label class="block text-sm text-lune-soft">
-              <span>Connection</span>
-              <select id="mt-raccordement" name="raccordement" class={`${inputClass} mt-1`}>
-                <option value="">Choose…</option>
-                <option value="monophase">Single-phase</option>
-                <option value="triphase">Three-phase</option>
-                <option value="inconnu">I don't know</option>
-              </select>
-            </label>
-          </div>
-
-          <label class="flex items-start gap-3 text-sm text-lune-soft">
-            <input id="mt-ete-differente" name="eteDifferente" type="checkbox" class="mt-1 h-5 w-5 flex-none accent-brass-400" />
-            <span>Is summer different from winter? (air conditioning, pumping…)</span>
-          </label>
-
-          <label id="mt-facture-ete-wrap" hidden class="block text-sm text-lune-soft">
-            <span>Summer bill (MAD)</span>
-            <input id="mt-facture-ete" name="factureEte" type="number" step="any" inputmode="decimal"
-              placeholder="e.g. 2,500" class={`${inputClass} mt-1`} />
-          </label>
-        </div>
-
-        <!-- ===== WJ49 — restaged into 2-3 value-framed groups, ≤5 fields
-             visible per stage. Every field stays OPTIONAL and is forwarded
-             EXACTLY as before (WJ30/WJ31 contract intact). ===== -->
-        <p class="mt-4 text-sm font-semibold text-brass-300">Refine my estimate (optional, 1 minute)</p>
-
-        <!-- Group 1/3 — to refine the size (5 fields). -->
-        <details id="mt-more-size" class="cine-card mt-3 p-5 sm:p-6">
-          <summary class="cursor-pointer select-none text-sm font-semibold text-brass-300">
-            To refine the size
-          </summary>
-
-          <div class="mt-4 grid gap-4 sm:grid-cols-2">
-            <label class="block text-sm text-lune-soft">
-              <span>Electricity distributor</span>
-              <select id="mt-distributeur" name="distributeur" class={`${inputClass} mt-1`}>
-                <option value="">Choose…</option>
-                <option value="onee">ONEE</option>
-                <option value="lydec">Lydec</option>
-                <option value="redal">Redal</option>
-                <option value="inconnu">I don't know</option>
-              </select>
-              <!-- WJ70 — honesty: this choice does not change any figure shown
-                   today (Lydec/Redal are still equated to the conservative
-                   ONEE grid, see billEstimate.ts distributeurHonestyNote). -->
-              <p class="mt-1 text-xs text-lune-faint">
-                Estimate based on the ONEE grid (conservative) for all distributors, until
-                real per-distributor grids are available.
-              </p>
-            </label>
-            <label class="block text-sm text-lune-soft">
-              <span>Consumption (kWh/month, if known)</span>
-              <input id="mt-bill-kwh" name="billKwh" type="number" step="any" inputmode="decimal"
-                placeholder="e.g. 850" class={`${inputClass} mt-1`} />
-            </label>
-          </div>
-
-          <fieldset class="mt-4">
             <legend class="text-sm text-lune-soft">Shading on the roof</legend>
             <div class="mt-2 grid grid-cols-3 gap-2">
               <button type="button" class="mt-ombrage cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="aucun" aria-pressed="false">None</button>
@@ -472,106 +421,23 @@ const noscriptTelHref = `tel:${NAP.phone}`;
               <button type="button" class="mt-ombrage cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="important" aria-pressed="false">Significant</button>
             </div>
           </fieldset>
-
-          <label class="mt-4 block text-sm text-lune-soft">
-            <span>Approximate roof age (years)</span>
-            <input id="mt-roof-age" name="roofAgeYears" type="number" step="1" min="0" inputmode="numeric"
-              placeholder="e.g. 10" class={`${inputClass} mt-1`} />
-          </label>
-          <!-- WJ112 — honesty: roof age informs the TECHNICAL SITE VISIT (roof/
-               framing condition), not the kWc/production figure shown here — we
-               say so rather than implying an effect on the number. -->
-          <p class="mt-1 text-xs text-lune-faint">
-            Used to prepare your technical site visit (roof condition) — does not change the
-            calculation above.
-          </p>
-
-          <!-- Meter/bill photo — captured LOCALLY, never uploaded (no endpoint today). -->
-          <div class="mt-4">
-            <label class="block text-sm text-lune-soft" for="mt-meter-photo">
-              Photo of your meter or bill
-            </label>
-            <input id="mt-meter-photo" type="file" accept="image/*" capture="environment"
-              class="mt-1 block w-full text-sm text-lune-soft file:mr-3 file:border-0 file:bg-white/10 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white" />
-            <p id="mt-meter-photo-note" class="mt-1 text-xs text-lune-faint">
-              Or send it to us directly on WhatsApp after submitting the form — it's often
-              faster. You can also send a voice note with a photo of your bill.
-            </p>
-          </div>
-        </details>
-
-        <!-- Group 2/3 — to anticipate your needs (2 fields). -->
-        <details id="mt-more-needs" class="cine-card mt-3 p-5 sm:p-6">
-          <summary class="cursor-pointer select-none text-sm font-semibold text-brass-300">
-            To anticipate your needs
-          </summary>
-
-          <fieldset class="mt-4">
-            <legend class="text-sm text-lune-soft">Future loads planned</legend>
-            <div class="mt-2 flex flex-wrap gap-2">
-              <button type="button" class="mt-future-load cine-card border px-3 py-2 text-sm text-white transition-colors" data-value="clim" aria-pressed="false">Air conditioning</button>
-              <button type="button" class="mt-future-load cine-card border px-3 py-2 text-sm text-white transition-colors" data-value="ve" aria-pressed="false">Electric car</button>
-              <button type="button" class="mt-future-load cine-card border px-3 py-2 text-sm text-white transition-colors" data-value="pompe" aria-pressed="false">Pumping</button>
-            </div>
-          </fieldset>
-
-          <label class="mt-4 flex items-start gap-3 text-sm text-lune-soft">
-            <input id="mt-battery-interest" name="batteryInterest" type="checkbox" class="mt-1 h-5 w-5 flex-none accent-brass-400" />
-            <span>Interested in a storage battery</span>
-          </label>
-          <!-- WJ112 — honesty: this choice + the future loads above are
-               forwarded to your advisor for detailed pricing (battery/future
-               load quoting after a site visit), but do NOT change the
-               kWc/savings shown in this instant estimate — we say so rather
-               than implying a hidden effect. -->
-          <p class="mt-1 text-xs text-lune-faint">
-            Forwarded to your advisor for detailed pricing — does not change the instant
-            estimate above.
-          </p>
-        </details>
-
-        <!-- Group 3/3 — for financing (3 fields). -->
-        <details id="mt-more-financing" class="cine-card mt-3 p-5 sm:p-6">
-          <summary class="cursor-pointer select-none text-sm font-semibold text-brass-300">
-            For financing
-          </summary>
-
-          <div class="mt-4 grid gap-4 sm:grid-cols-2">
-            <label class="block text-sm text-lune-soft">
-              <span>You are…</span>
-              <select id="mt-occupant-type" name="occupantType" class={`${inputClass} mt-1`}>
-                <option value="">Choose…</option>
-                <option value="proprietaire">Owner</option>
-                <option value="locataire">Tenant</option>
-                <option value="decideur">Decision-maker (business)</option>
-              </select>
-            </label>
-            <label class="block text-sm text-lune-soft">
-              <span>Your project is for…</span>
-              <select id="mt-project-timing" name="projectTiming" class={`${inputClass} mt-1`}>
-                <option value="">Choose…</option>
-                <option value="maintenant">Now</option>
-                <option value="3mois">In ~3 months</option>
-                <option value="renseignement">Just gathering information</option>
-              </select>
-            </label>
-          </div>
-
-          <label class="mt-4 block text-sm text-lune-soft">
-            <span>Financing method envisaged</span>
-            <select id="mt-financing-intent" name="financingIntent" class={`${inputClass} mt-1`}>
-              <option value="">Choose…</option>
-              <option value="comptant">Cash</option>
-              <option value="financement">Financing / credit</option>
-              <option value="indecis">Not decided yet</option>
-            </select>
-          </label>
-        </details>
         </div>
 
-        <!-- ===== QX — PROFESSIONAL SUB-PANEL (new): site energy,
-             LV/MV connection, activity profile, optional surface & context.
-             Feeds estimatorPro (C&I self-consumption). ===== -->
+        <!-- REMOVED FROM THE FUNNEL (founder cut 18/08) — the sales rep fills
+             it in the ERP: roof type, single/three-phase connection, "is
+             summer different" + summer bill, electricity distributor,
+             consumption kWh/month (the bill is enough — estimateFromBill does
+             the MAD-to-kWh conversion itself), roof age, meter/bill photo,
+             future loads, battery interest, "You are…" (occupantType) and
+             "your project is for…" (projectTiming). The three mt-more-size /
+             mt-more-needs / mt-more-financing accordions ("Refine my
+             estimate") disappear entirely with them. -->
+        </div>
+
+        <!-- ===== QX — PROFESSIONAL SUB-PANEL: site energy, LV/MV connection,
+             activity profile, shifts and surface — i.e. EXACTLY the inputs
+             estimatorPro (C&I self-consumption) reads, nothing else since the
+             founder cut of 18/08. ===== -->
         <div id="mt-sub-professionnel" hidden>
           <p class="mt-6 text-lune-soft">
             Tell us about your site's energy — two answers are enough for a first
@@ -594,19 +460,16 @@ const noscriptTelHref = `tel:${NAP.phone}`;
               </label>
             </div>
 
-            <!-- (b) LV / MV connection (+ kVA if MV) -->
+            <!-- (b) LV / MV connection -->
             <div id="mt-tension-raccordement">
               <p class="text-sm text-lune-soft">Connection</p>
               <div class="mt-2 grid grid-cols-2 gap-2" role="group" aria-label="Connection type">
                 <button type="button" id="mt-tension-bt" class="mt-tension cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="bt" aria-pressed="true">Low voltage (LV)</button>
                 <button type="button" id="mt-tension-mt" class="mt-tension cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="mt" aria-pressed="false">Medium voltage (MV)</button>
               </div>
-              <label id="mt-puissance-kva-wrap" hidden class="mt-3 block text-sm text-lune-soft">
-                <span>Contracted power (kVA) — optional</span>
-                <input id="mt-puissance-kva" name="puissanceKva" type="number" step="any" inputmode="decimal"
-                  aria-describedby="mt-puissance-kva-err" placeholder="e.g. 160" class={`${inputClass} mt-1`} />
-                <span id="mt-puissance-kva-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
-              </label>
+              <!-- Contracted power (kVA) removed from the funnel (founder cut
+                   18/08): estimatePro only reads the connection type (LV/MV),
+                   never the kVA — the sales rep fills it in the ERP. -->
             </div>
 
             <!-- (c) Activity profile — drives the self-consumption rate -->
@@ -630,10 +493,10 @@ const noscriptTelHref = `tel:${NAP.phone}`;
                 <button type="button" class="mt-equipes cine-card border p-3 text-center text-sm text-white transition-colors" data-value="3x8" aria-pressed="false">3×8 continuous</button>
                 <button type="button" class="mt-equipes cine-card border p-3 text-center text-sm text-white transition-colors" data-value="continu" aria-pressed="false">Continuous 24/7</button>
               </div>
-              <label class="mt-3 flex items-start gap-3 text-sm text-lune-soft">
-                <input id="mt-weekend" name="weekend" type="checkbox" class="mt-1 h-5 w-5 flex-none accent-brass-400" />
-                <span>Production on weekends too</span>
-              </label>
+              <!-- "Production on weekends too" removed from the funnel
+                   (founder cut 18/08): the self-consumption ceiling comes
+                   from the SHIFTS alone (SHIFT_DAY_SHARE_CEILING) — weekend
+                   never entered any calculation. The sales rep fills it in the ERP. -->
               <p class="mt-2 text-xs text-lune-faint">
                 Solar shifts your FULL-rate hours (~1.01 MAD/kWh); PEAK is only covered
                 with a battery — never the other way round. The more you produce at night
@@ -642,13 +505,8 @@ const noscriptTelHref = `tel:${NAP.phone}`;
               </p>
             </fieldset>
 
-            <!-- WJ123 — power factor cos φ (optional): a real MV/industrial site input. -->
-            <label class="block text-sm text-lune-soft">
-              <span>Power factor cos φ (if known) — optional</span>
-              <input id="mt-cos-phi" name="cosPhiConnu" type="number" step="any" inputmode="decimal"
-                aria-describedby="mt-cos-phi-err" placeholder="e.g. 0.92" class={`${inputClass} mt-1`} />
-              <span id="mt-cos-phi-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
-            </label>
+            <!-- cos φ removed from the funnel (founder cut 18/08): never read
+                 by estimatePro — the sales rep fills it in the ERP. -->
 
             <p class="text-xs text-lune-faint">
               A detailed medium-voltage study is carried out by an engineer — this estimate
@@ -678,63 +536,11 @@ const noscriptTelHref = `tel:${NAP.phone}`;
             </label>
           </details>
 
-          <!-- (e) Context (optional) — also hosts the company fields moved
-               from the map step (same id/name, unchanged contract). -->
-          <details id="mt-pro-context" class="cine-card mt-3 p-5 sm:p-6">
-            <summary class="cursor-pointer select-none text-sm font-semibold text-brass-300">
-              Your context (optional)
-            </summary>
-            <fieldset class="mt-4">
-              <legend class="text-sm text-lune-soft">On-site backup generator?</legend>
-              <div class="mt-2 grid grid-cols-2 gap-2">
-                <button type="button" class="mt-generator cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="oui" aria-pressed="false">Yes</button>
-                <button type="button" class="mt-generator cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="non" aria-pressed="false">No</button>
-              </div>
-            </fieldset>
-            <!-- WJ123 — generator: rating + monthly diesel spend (substitution hook). -->
-            <div class="mt-4 grid gap-4 sm:grid-cols-2">
-              <label class="block text-sm text-lune-soft">
-                <span>Generator rating (kVA)</span>
-                <input id="mt-groupe-kva" name="groupeKva" type="number" step="any" inputmode="decimal"
-                  aria-describedby="mt-groupe-kva-err" placeholder="e.g. 250" class={`${inputClass} mt-1`} />
-                <span id="mt-groupe-kva-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
-              </label>
-              <label class="block text-sm text-lune-soft">
-                <span>Diesel spend (MAD/month)</span>
-                <input id="mt-diesel-dh" name="dieselDhMois" type="number" step="any" inputmode="decimal"
-                  aria-describedby="mt-diesel-dh-err" placeholder="e.g. 30,000" class={`${inputClass} mt-1`} />
-                <span id="mt-diesel-dh-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
-              </label>
-            </div>
-            <label class="mt-4 block text-sm text-lune-soft">
-              <span>Company name</span>
-              <input id="mt-raison-sociale" name="raisonSociale" type="text" autocomplete="organization"
-                placeholder="e.g. Riad Solaire SARL" class={`${inputClass} mt-1`} />
-            </label>
-            <div class="mt-4 grid gap-4 sm:grid-cols-2">
-              <label class="block text-sm text-lune-soft">
-                <span>Facility type</span>
-                <select id="mt-facility-type" name="facilityType" class={`${inputClass} mt-1`}>
-                  <option value="">Choose…</option>
-                  <option value="bureau">Office</option>
-                  <option value="entrepot">Warehouse</option>
-                  <option value="usine">Factory</option>
-                  <option value="commerce">Retail / hospitality</option>
-                  <option value="agricole">Agricultural</option>
-                  <option value="autre">Other</option>
-                </select>
-              </label>
-              <label class="block text-sm text-lune-soft">
-                <span>How many sites?</span>
-                <select id="mt-site-count" name="siteCount" class={`${inputClass} mt-1`}>
-                  <option value="">Choose…</option>
-                  <option value="1">1</option>
-                  <option value="2-5">2–5</option>
-                  <option value="6+">6+</option>
-                </select>
-              </label>
-            </div>
-          </details>
+          <!-- "Your context (optional)" removed from the funnel (founder cut
+               18/08): backup generator + generator rating (kVA) + diesel
+               spend, facility type, site count — none of them enters
+               estimatePro. COMPANY NAME moved to the contact screen (same
+               id/name). The sales rep fills in the rest in the ERP. -->
         </div>
 
         <!-- ===== WJ122 — COMMERCIAL SUB-PANEL: activity category (cards) then
@@ -777,34 +583,12 @@ const noscriptTelHref = `tel:${NAP.phone}`;
               </label>
             </div>
 
-            <!-- (c) Category-SPECIFIC questions (one grid visible at a time). -->
-            {COMMERCIAL_CATEGORIES.filter((c) => COMMERCIAL_CATEGORY_QUESTIONS[c.value].length > 0).map((c) => (
-              <div id={`mt-cc-questions-${c.value}`} class="mt-commercial-questions space-y-4 border-t border-white/10 pt-4" hidden>
-                <p class="text-sm font-semibold text-brass-300">Details — {CC_CAT_LABEL[c.value] ?? c.label}</p>
-                {COMMERCIAL_CATEGORY_QUESTIONS[c.value].map((q) => (
-                  q.type === 'bool' ? (
-                    <label class="flex items-start gap-3 text-sm text-lune-soft">
-                      <input id={`mt-cc-${c.value}-${q.key}`} type="checkbox" class="mt-1 h-5 w-5 flex-none accent-brass-400" />
-                      <span>{CC_Q_LABEL[q.key] ?? q.label}</span>
-                    </label>
-                  ) : q.type === 'select' ? (
-                    <label class="block text-sm text-lune-soft">
-                      <span>{CC_Q_LABEL[q.key] ?? q.label}</span>
-                      <select id={`mt-cc-${c.value}-${q.key}`} class={`${inputClass} mt-1`}>
-                        <option value="">Choose…</option>
-                        {(q.options ?? []).map((o) => <option value={o.value}>{CC_OPT_LABEL[o.value] ?? o.label}</option>)}
-                      </select>
-                    </label>
-                  ) : (
-                    <label class="block text-sm text-lune-soft">
-                      <span>{CC_Q_LABEL[q.key] ?? q.label}</span>
-                      <input id={`mt-cc-${c.value}-${q.key}`} type="number" step="any" inputmode="decimal"
-                        placeholder="—" class={`${inputClass} mt-1`} />
-                    </label>
-                  )
-                ))}
-              </div>
-            ))}
+            <!-- Category-SPECIFIC questions removed from the funnel (founder
+                 cut 18/08): none of them entered the estimate — estimatePro
+                 only reads the CATEGORY itself (archetype day-share), the
+                 bill, the connection, the activity, the shifts and the
+                 surface. They went to the webhook without changing a single
+                 figure shown; the sales rep now fills them in the ERP. -->
 
             <p class="text-xs text-lune-faint">
               Indicative estimate (self-consumption, law 82-21). A detailed study is
@@ -813,10 +597,11 @@ const noscriptTelHref = `tel:${NAP.phone}`;
           </div>
         </div>
 
-        <!-- ===== QX — AGRICULTURAL SUB-PANEL (new): hydraulics (source /
-             depth / TDH / need / hours), irrigation, farm and current pump —
-             all optional. Feeds estimatorAgricole (pumping) — NEVER
-             estimateFromBill (WJ111 guard). ===== -->
+        <!-- ===== QX — AGRICULTURAL SUB-PANEL: hydraulics (source / depth /
+             TDH / need / hours) + fuel spend. Feeds estimatorAgricole
+             (pumping) — NEVER estimateFromBill (WJ111 guard). Irrigation and
+             the current pump/HP fields are removed from the funnel (founder
+             cut 18/08). ===== -->
         <div id="mt-sub-agricole" hidden>
           <p class="mt-6 text-lune-soft">
             Your pumping system is sized on water, not a bill. Tell us your crop and region
@@ -925,15 +710,8 @@ const noscriptTelHref = `tel:${NAP.phone}`;
                 class="mt-2 h-2 w-full cursor-pointer appearance-none rounded-full bg-white/15 accent-brass-400" />
             </label>
 
-            <!-- (e) Irrigation -->
-            <fieldset>
-              <legend class="text-sm text-lune-soft">Your irrigation</legend>
-              <div class="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
-                <button type="button" class="mt-irrigation cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="goutte" aria-pressed="false">Drip</button>
-                <button type="button" class="mt-irrigation cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="aspersion" aria-pressed="false">Sprinkler</button>
-                <button type="button" class="mt-irrigation cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="gravitaire" aria-pressed="false">Gravity-fed</button>
-              </div>
-            </fieldset>
+            <!-- Irrigation removed from the funnel (founder cut 18/08) — the
+                 sales rep fills it in the ERP. -->
 
             <!-- FDA subsidy — verified fact, honest wording (cap, application handled by us). -->
             <p class="text-xs text-lune-faint">
@@ -945,39 +723,22 @@ const noscriptTelHref = `tel:${NAP.phone}`;
           <!-- WJ124 — crop + surface (former "Your farm") moved to the top of the
                panel (they now drive the water engine). -->
 
-          <!-- (g) Current pump (optional) — feeds the fuel-savings calculation -->
-          <details id="mt-agri-pompe-acc" class="cine-card mt-3 p-5 sm:p-6">
-            <summary class="cursor-pointer select-none text-sm font-semibold text-brass-300">
-              Your current pump (optional)
-            </summary>
-            <div class="mt-4 grid gap-4 sm:grid-cols-3">
-              <label class="block text-sm text-lune-soft">
-                <span>Current energy source</span>
-                <select id="mt-pompe-actuelle" name="pompeActuelle" class={`${inputClass} mt-1`}>
-                  <option value="">Choose…</option>
-                  <option value="aucune">No pump</option>
-                  <option value="diesel">Diesel</option>
-                  <option value="butane">Butane</option>
-                  <option value="electrique">Electric</option>
-                </select>
-              </label>
-              <label class="block text-sm text-lune-soft">
-                <span>Power (HP)</span>
-                <input id="mt-pompe-cv" name="pompeCvActuelle" type="number" step="any" inputmode="decimal"
-                  aria-describedby="mt-pompe-cv-err" placeholder="e.g. 10" class={`${inputClass} mt-1`} />
-                <span id="mt-pompe-cv-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
-              </label>
-              <label class="block text-sm text-lune-soft">
-                <span>Fuel cost (MAD/month)</span>
-                <input id="mt-fuel-spend" name="fuelSpendMad" type="number" step="any" inputmode="decimal"
-                  aria-describedby="mt-fuel-spend-err" placeholder="e.g. 3,000" class={`${inputClass} mt-1`} />
-                <span id="mt-fuel-spend-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
-              </label>
-            </div>
-            <p class="mt-2 text-xs text-lune-faint">
-              Fuel spend is used only to calculate your savings — nothing else.
+          <!-- Current energy source + power (HP) removed from the funnel
+               (founder cut 18/08) — the sales rep fills them in the ERP.
+               Fuel spend is the sole survivor of the old "Your current pump"
+               accordion: it REALLY feeds the fuel-savings calculation
+               (estimateAgricole). -->
+          <div class="cine-card mt-5 space-y-5 p-5 sm:p-6">
+            <label class="block text-sm text-lune-soft">
+              <span>Fuel cost (MAD/month)</span>
+              <input id="mt-fuel-spend" name="fuelSpendMad" type="number" step="any" inputmode="decimal"
+                aria-describedby="mt-fuel-spend-err" placeholder="e.g. 3,000" class={`${inputClass} mt-1`} />
+              <span id="mt-fuel-spend-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
+            </label>
+            <p class="text-xs text-lune-faint">
+              Fuel spend is used to compute your saving — nothing else.
             </p>
-          </details>
+          </div>
         </div>
 
         <div class="mt-5 flex items-center justify-between gap-3">
@@ -1365,6 +1126,17 @@ const noscriptTelHref = `tel:${NAP.phone}`;
             <span>E-mail (optional)</span>
             <input id="mt-email" name="email" type="email" inputmode="email" autocomplete="email"
               placeholder="you@example.com" class={`${inputClass} mt-1`} />
+          </label>
+
+          <!-- Company name — MOVED here from the "Your context" accordion of
+               the professional panel (founder cut 18/08): it feeds NO
+               calculation, so its place is on the contact screen, with the
+               rest of the details. Same id/name — webhook contract
+               unchanged. Shown only for a professional profile (syncRaisonSociale). -->
+          <label id="mt-raison-sociale-wrap" hidden class="block text-sm text-lune-soft">
+            <span>Company name</span>
+            <input id="mt-raison-sociale" name="raisonSociale" type="text" autocomplete="organization"
+              placeholder="e.g. Riad Solaire SARL" class={`${inputClass} mt-1`} />
           </label>
 
           <!-- WJ51 — explicit contact preference (replaces the single "I prefer
@@ -2041,8 +1813,9 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   // self-consumption) and AGRICULTURAL (pumping). Residential stays on
   // estimateFromBill, unchanged.
   import { estimatePro } from '../../../lib/estimatorPro';
-  // WJ122 — commercial per-category questions + key→webhook mapping (QX51).
-  import { COMMERCIAL_CATEGORY_QUESTIONS, COMMERCIAL_QUESTION_WEBHOOK_KEY } from '../../../lib/commercialCategories';
+  // WJ122 — commercial per-category questions + key→webhook mapping removed
+  // from the funnel (founder cut 18/08): none of them fed estimatePro — the
+  // sales rep fills them in the ERP.
   // WJ124 — agronomy water engine (crop → m³/day need) — QX48 mirror.
   import { monthlyWaterDemand } from '../../../lib/agronomy';
   import { estimateAgricole } from '../../../lib/estimatorAgricole';
@@ -2052,7 +1825,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   import { billRangeFromExact, type BillRangeId } from '../../../lib/billRange';
   import { captureWhatsappText, whatsappLink } from '../../../lib/whatsapp';
   import { WHATSAPP_LEADS } from '../../../lib/nap';
-  import { buildClientRef, validateLead, MAX_BILL_BY_MODE } from '../../../lib/lead';
+  import { buildClientRef, buildIdempotencyKey, validateLead, MAX_BILL_BY_MODE } from '../../../lib/lead';
   // QX/Lane C — TYPE only (erased at build: Three.js/viewerOnly NEVER joins
   // the initial bundle — WJ18; the real module stays a lazy import()).
   import type { RoofImageSpec } from '../../../scripts/roofPro11/viewerOnly';
@@ -2202,6 +1975,22 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   // is simply omitted from the submitted body below — the webhook contract
   // stays unchanged (the field is optional).
 
+  // ——— WJ45: offline banner (navigator.onLine + online/offline) ———
+  // A dropped mobile connection must never look like a silent failure: the
+  // banner appears/disappears live, independently of any submission. It is
+  // ALSO called from the submit `catch` below — the FR/AR variants declare it
+  // here and this page did not, so any failed submission (network cut,
+  // AbortSignal timeout) threw `syncOfflineBanner is not defined` BEFORE the
+  // error message and `setSubmitPending(false)`, leaving the button stuck on
+  // "sending". Same three lines as the FR/AR twins — keep them in sync.
+  const offlineBanner = $('mt-offline-banner');
+  function syncOfflineBanner() {
+    if (offlineBanner) offlineBanner.hidden = navigator.onLine;
+  }
+  syncOfflineBanner();
+  window.addEventListener('online', syncOfflineBanner);
+  window.addEventListener('offline', syncOfflineBanner);
+
   // ——— WJ61 : the wizard's state survives a refresh/back navigation ———
   // A phone call or an accidental back-swipe used to silently destroy
   // everything typed — the costliest UX failure in the funnel. We persist a
@@ -2216,33 +2005,46 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     ombrage?: string;
     visitWindowPart?: string;
     visitWindowWeek?: string;
-    futureLoads?: string[];
+    // `futureLoads` removed from the funnel (founder cut 18/08) — the sales
+    // rep fills it in the ERP; nothing left to persist.
     // QX — states of the PRO + AGRICULTURAL card/segment groups (tension,
-    // activity, surface, generator, water source, irrigation, units).
+    // activity, surface, water source, units).
     sel?: Record<string, string>;
     capturePin?: { lat: number; lng: number } | null;
     captureOutline?: Array<[number, number]>;
     fields?: Record<string, string>;
     checks?: Record<string, boolean>;
+    // Dedup tokens: persisted WITH the rest of the draft so a refresh/back
+    // navigation does not mint a second technical identity for the SAME entry
+    // (which is exactly the duplicate they are meant to prevent).
+    idempotencyKey?: string;
+    eventId?: string;
   }
+  // Founder cut 18/08 — the fields removed from the funnel also leave
+  // persistence: 'mt-facture-ete', 'mt-roof', 'mt-raccordement',
+  // 'mt-distributeur', 'mt-bill-kwh', 'mt-roof-age', 'mt-occupant-type',
+  // 'mt-project-timing', 'mt-facility-type', 'mt-site-count',
+  // 'mt-puissance-kva', 'mt-cos-phi', 'mt-groupe-kva', 'mt-diesel-dh',
+  // 'mt-pompe-actuelle' and 'mt-pompe-cv' no longer exist in the DOM —
+  // persisting them would have nothing to read. `mt-raison-sociale` stays: it
+  // is MOVED to the contact screen, not removed.
   const PERSISTED_TEXT_FIELDS = [
-    'mt-name', 'mt-phone', 'mt-city', 'mt-email', 'mt-facture-hiver', 'mt-facture-ete',
-    'mt-bill', 'mt-roof', 'mt-raccordement', 'mt-distributeur', 'mt-bill-kwh', 'mt-roof-age',
-    'mt-occupant-type', 'mt-project-timing', 'mt-financing-intent', 'mt-fallback-address',
+    'mt-name', 'mt-phone', 'mt-city', 'mt-email', 'mt-facture-hiver',
+    'mt-bill', 'mt-fallback-address',
     'rp9-address',
-    // WJ68 — professional mode (optional, additive).
-    'mt-raison-sociale', 'mt-facility-type', 'mt-site-count',
+    // WJ68 — company name (contact screen since the 18/08 cut).
+    'mt-raison-sociale',
     // QX — PROFESSIONAL sub-panel (step 2).
-    'mt-pro-bill', 'mt-puissance-kva', 'mt-surface-m2',
-    // WJ123 — INDUSTRIAL v2 sub-panel (cos φ, generator).
-    'mt-cos-phi', 'mt-groupe-kva', 'mt-diesel-dh',
+    'mt-pro-bill', 'mt-surface-m2',
     // WJ122 — COMMERCIAL sub-panel (bill).
     'mt-cc-bill',
     // QX — AGRICULTURAL sub-panel (step 2).
     'mt-profondeur', 'mt-hmt', 'mt-water-need', 'mt-heures-pompage',
-    'mt-culture', 'mt-surface-ha', 'mt-pompe-actuelle', 'mt-pompe-cv', 'mt-fuel-spend',
+    'mt-culture', 'mt-surface-ha', 'mt-fuel-spend',
   ];
-  const PERSISTED_CHECK_FIELDS = ['mt-ete-differente', 'mt-contact-whatsapp', 'mt-contact-phone', 'mt-consent', 'mt-battery-interest', 'mt-weekend'];
+  // 'mt-ete-differente', 'mt-battery-interest' and 'mt-weekend' removed from
+  // the funnel (founder cut 18/08) — the sales rep fills them in the ERP.
+  const PERSISTED_CHECK_FIELDS = ['mt-contact-whatsapp', 'mt-contact-phone', 'mt-consent'];
   let restoring = false; // WJ61 — avoids re-saving WHILE rehydrating.
   function saveWizardState() {
     if (restoring) return;
@@ -2260,10 +2062,10 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       const snapshot: WizardSnapshot = {
         step, mode, ombrage,
         visitWindowPart, visitWindowWeek,
-        futureLoads: Array.from(futureLoads),
-        sel: { proUnit, tension, activity, surfaceType, generator, waterSource, irrigation, waterUnit, commercialCategory, ccUnit, equipes, regionAgricole },
+        sel: { proUnit, tension, activity, surfaceType, waterSource, waterUnit, commercialCategory, ccUnit, equipes, regionAgricole, roofInputMode },
         capturePin, captureOutline,
         fields, checks,
+        idempotencyKey: dedupIdempotencyKey, eventId: dedupEventId,
       };
       sessionStorage.setItem(WIZARD_STORAGE_KEY, JSON.stringify(snapshot));
     } catch {
@@ -2294,6 +2096,31 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   });
 
   const savedWizard = loadWizardState();
+
+  // ——— Technical DEDUPLICATION tokens (CRM + Meta CAPI) ———
+  // `idempotencyKey` (CRM dedup signal) and `eventId` (the Meta CAPI spec's
+  // `event_id` field) have been validated by lib/lead.ts from the start, but
+  // this funnel never emitted them: the CRM could not recognise two sends of the
+  // same entry, and `fireCapi` fell back to a timestamp-derived id — DIFFERENT
+  // on every resend, so it deduplicated nothing on Meta's side.
+  // Minted on FIRST display, taken from the draft when one exists, stable after.
+  // Two DISTINCT tokens: they do not serve the same system.
+  function newDedupToken(): string {
+    try {
+      const c = globalThis.crypto;
+      // `randomUUID` only exists in a secure context: fall back to the in-house
+      // generator, already bounded by the same regex (^[A-Za-z0-9_-]{8,64}$).
+      if (c && typeof c.randomUUID === 'function') return c.randomUUID();
+    } catch { /* crypto access denied: take the fallback */ }
+    return buildIdempotencyKey();
+  }
+  let dedupIdempotencyKey = savedWizard?.idempotencyKey || newDedupToken();
+  let dedupEventId = savedWizard?.eventId || newDedupToken();
+  function getOrCreateDedupTokens(): { idempotencyKey: string; eventId: string } {
+    if (!dedupIdempotencyKey) dedupIdempotencyKey = newDedupToken();
+    if (!dedupEventId) dedupEventId = newDedupToken();
+    return { idempotencyKey: dedupIdempotencyKey, eventId: dedupEventId };
+  }
 
   // ——— WJ6/QX : mode selector — no default at all (the profile drives an
   // entirely different step-2 questionnaire); "Continue" requires an
@@ -2347,6 +2174,15 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     if (pro) pro.hidden = !(m === 'industriel' || m === 'professionnel');
     if (commercial) commercial.hidden = m !== 'commercial';
     if (agri) agri.hidden = m !== 'agricole';
+    syncRaisonSociale();
+  }
+  /** The company name now lives on the CONTACT screen (founder cut 18/08):
+   *  it feeds no calculation, so it has nothing to do before the estimate.
+   *  Only shown for professional profiles — a private individual has no
+   *  company name to give. */
+  function syncRaisonSociale() {
+    const wrap = $('mt-raison-sociale-wrap');
+    if (wrap) wrap.hidden = !isProMode(mode);
   }
   function syncModeCards() {
     document.querySelectorAll<HTMLButtonElement>('.mt-mode').forEach((b) => {
@@ -2378,34 +2214,10 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   syncStepLabels();
   syncStep2Panels();
 
-  // ——— WJ48 : "roof type" image cards — sync the sr-only <select> (mt-roof)
-  // which stays the source of truth for val('mt-roof'), validation
-  // (setFieldError) and WJ61 persistence (already wired on 'mt-roof' via
-  // PERSISTED_TEXT_FIELDS). Single active choice at a time. ———
-  const roofSelect = $('mt-roof') as HTMLSelectElement | null;
-  function syncRoofCards() {
-    const current = roofSelect?.value || '';
-    document.querySelectorAll<HTMLButtonElement>('.mt-roof-card').forEach((b) => {
-      const on = b.dataset.roof === current;
-      b.setAttribute('aria-pressed', String(on));
-      b.classList.toggle('border-brass-400', on);
-      b.classList.toggle('border-white/15', !on);
-    });
-  }
-  document.querySelectorAll<HTMLButtonElement>('.mt-roof-card').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      if (roofSelect) {
-        roofSelect.value = btn.dataset.roof || '';
-        // WJ4 — mirrors the existing inline validation (setFieldError already
-        // wired on mt-roof-err): a visual choice clears the displayed error.
-        setFieldError('mt-roof', 'mt-roof-err', null);
-      }
-      syncRoofCards();
-      markDataEntered();
-      saveWizardState();
-    });
-  });
-  syncRoofCards(); // initial state (rehydrated or empty).
+  // The "roof type" cards (.mt-roof-card + the sr-only <select> mt-roof) are
+  // removed from the funnel (founder cut 18/08): nothing left to sync or
+  // validate here. `roofType` stays required by validateLead — resolveRoofType
+  // now DERIVES it for every profile.
 
   // ——— WJ31 : single-toggle chip (shading) — one active choice at a time ———
   // WJ112 — shading is no longer decorative: it now REALLY derates
@@ -2470,67 +2282,12 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   wireVisitToggle('.mt-visit-part', () => visitWindowPart, (v) => { visitWindowPart = v; });
   wireVisitToggle('.mt-visit-week', () => visitWindowWeek, (v) => { visitWindowWeek = v; });
 
-  // ——— WJ31 : multi-select chips (future loads) ———
-  const futureLoads = new Set<string>(savedWizard?.futureLoads ?? []);
-  document.querySelectorAll<HTMLButtonElement>('.mt-future-load').forEach((btn) => {
-    const preOn = futureLoads.has(btn.dataset.value || '');
-    if (preOn) {
-      btn.setAttribute('aria-pressed', 'true');
-      btn.classList.add('border-brass-400');
-      btn.classList.remove('border-white/15');
-    }
-    btn.addEventListener('click', () => {
-      const v = btn.dataset.value || '';
-      const on = !futureLoads.has(v);
-      if (on) futureLoads.add(v); else futureLoads.delete(v);
-      btn.setAttribute('aria-pressed', String(on));
-      btn.classList.toggle('border-brass-400', on);
-      btn.classList.toggle('border-white/15', !on);
-      markDataEntered();
-      saveWizardState();
-    });
-  });
-
-  // ——— WJ31 : meter/bill photo — captured LOCALLY, NEVER uploaded ———
-  // No upload endpoint today (see PLAN2 QK6 OCR): we keep a simple boolean
-  // signal (hasMeterPhoto) and encourage sending it directly on WhatsApp.
-  // WJ61 — not persisted: a local file does not survive sessionStorage (nor
-  // should it — no binary data is serialised here).
-  let hasMeterPhoto = false;
-  const meterPhotoInput = $('mt-meter-photo') as HTMLInputElement | null;
-  meterPhotoInput?.addEventListener('change', () => {
-    hasMeterPhoto = !!(meterPhotoInput.files && meterPhotoInput.files.length > 0);
-  });
-
-  // ——— WJ46 : anti-false-trigger grace window for the exit-intent ———
-  // Opening the file picker (meter/bill photo, capture="environment") flips
-  // the tab to the background while the camera/gallery shows: a bare
-  // `visibilitychange->hidden` used to fire the exit-intent at the EXACT
-  // moment the form invites the user to take a photo. We suspend the
-  // exit-intent while the picker is open: set on click/focus of the file
-  // field, cleared on window focus return (the picker closed) — with a
-  // safety-net timeout in case the return-focus event never fires (browser fallback).
-  let filePickerOpen = false;
-  let filePickerGraceTimer: ReturnType<typeof setTimeout> | null = null;
-  function openFilePickerGrace() {
-    filePickerOpen = true;
-    if (filePickerGraceTimer != null) clearTimeout(filePickerGraceTimer);
-    // safety net: 60 s comfortably covers taking a photo, without blocking
-    // the exit-intent indefinitely if the browser never fires a return
-    // `focus`/`visibilitychange->visible` (rare case).
-    filePickerGraceTimer = setTimeout(() => { filePickerOpen = false; }, 60_000);
-  }
-  function closeFilePickerGrace() {
-    filePickerOpen = false;
-    if (filePickerGraceTimer != null) { clearTimeout(filePickerGraceTimer); filePickerGraceTimer = null; }
-  }
-  meterPhotoInput?.addEventListener('click', openFilePickerGrace);
-  meterPhotoInput?.addEventListener('focus', openFilePickerGrace);
-  meterPhotoInput?.addEventListener('change', closeFilePickerGrace);
-  meterPhotoInput?.addEventListener('cancel', closeFilePickerGrace);
-  // Window focus return is the most reliable signal that the picker
-  // (camera/gallery) closed, whether a file was chosen or not.
-  window.addEventListener('focus', closeFilePickerGrace);
+  // "Future loads planned" (.mt-future-load) and "Photo of your meter or
+  // bill" (mt-meter-photo) are removed from the funnel (founder cut 18/08) —
+  // the sales rep fills them in the ERP. With the file field gone, the WJ46
+  // exit-intent grace window also disappears: it existed ONLY to avoid a
+  // false trigger while the photo picker was opening, and this page no
+  // longer opens any file picker.
 
   // ——— map boot (captureOnly). No-map-key fallback ALLOWS the journey to continue (WJ4) ———
   let started = false;
@@ -2558,6 +2315,10 @@ const noscriptTelHref = `tel:${NAP.phone}`;
         // silent failure.
         geolocateErrorMsg: 'Location denied — search for your address or drop the pin by hand.',
         onReady: clearMapSkeleton,
+        // The gesture the visitor chose, read on EVERY click (they may change
+        // their mind): "draw" opens the outline from the first tap, "point"
+        // lands the map tight on the pin for the confirmation below.
+        roofInputMode: () => roofInputMode,
         // WJ61 — a pin/outline restored from sessionStorage (refresh or
         // browser back mid-journey) is seeded straight into the map at boot,
         // via the same mechanism as hydrating from an existing lead (W113):
@@ -2575,6 +2336,11 @@ const noscriptTelHref = `tel:${NAP.phone}`;
             const fromMap = (s.address && s.address.trim()) || addressEl?.value.trim() || '';
             if (fromMap) cityEl.value = fromMap;
           }
+          // Pin confirmation: the address often arrives AFTER the pin (async
+          // reverse geocoding), hence the re-sync on every notification.
+          // Hoisted functions, declared below.
+          setPinConfirmAddress(s.address);
+          syncPinConfirm();
           // WJ2 — the outline can arrive/change AFTER the estimate is
           // computed: re-evaluate the "see the panels" button's eligibility
           // on every trace change (function declared below, hoisted by `function`).
@@ -2595,6 +2361,11 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     if (fallback) fallback.hidden = false;
     const stage = $('mt-stage');
     if (stage) stage.hidden = true;
+    // …and the "point / draw" choice with it: offering a map gesture above an
+    // address fallback would be exactly the lying UI that hiding #mt-stage
+    // just removed.
+    const roofModeGroup = $('mt-roof-mode-group');
+    if (roofModeGroup) roofModeGroup.hidden = true;
   }
 
   // WJ60 — on slow 3G, a fetch with no timeout could hang indefinitely (the UI
@@ -2699,16 +2470,6 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     return Number.isFinite(n) ? n : null;
   };
 
-  // summer ≠ winter toggle
-  const eteToggle = $('mt-ete-differente') as HTMLInputElement | null;
-  const eteWrap = $('mt-facture-ete-wrap') as HTMLElement | null;
-  const eteInput = $('mt-facture-ete') as HTMLInputElement | null;
-  eteToggle?.addEventListener('change', () => {
-    const on = eteToggle.checked === true;
-    if (eteWrap) eteWrap.hidden = !on;
-    if (!on && eteInput) eteInput.value = '';
-  });
-
   // WJ105 — concrete callback SLA: visible ONLY when "An advisor may call
   // me" is the active preference. `sync` is re-called after rehydration
   // (WJ61, below): setting `.checked` via script never fires the native
@@ -2743,7 +2504,6 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     // `cityTouched`, and without this guard the next pin dropped on the map
     // would silently overwrite the city we just restored.
     if (savedWizard.fields?.['mt-city']) cityTouched = true;
-    if (eteToggle?.checked && eteWrap) eteWrap.hidden = false;
     // WJ105 — a restored contact preference must re-sync the callback SLA
     // visibility (assigning `.checked` via script never fires `change`).
     syncCallbackSla();
@@ -2771,9 +2531,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   let tension = savedSel.tension || 'bt';
   let activity = savedSel.activity || 'day';
   let surfaceType = savedSel.surfaceType || '';
-  let generator = savedSel.generator || '';
   let waterSource = savedSel.waterSource || '';
-  let irrigation = savedSel.irrigation || '';
   let waterUnit = savedSel.waterUnit || 'm3h';
   // WJ122 — COMMERCIAL mode: active category + bill unit (MAD/kWh).
   let commercialCategory = savedSel.commercialCategory || '';
@@ -2782,6 +2540,84 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   let equipes = savedSel.equipes || '';
   // WJ124 — AGRICULTURAL mode: agronomy region (drives the FAO-56 water engine).
   let regionAgricole = savedSel.regionAgricole || '';
+
+  // ——— EXPLICIT "point" / "draw" choice + VISUAL CONFIRMATION ———
+  // The marking gesture was implicit (click = pin, double-click = outline,
+  // nothing said so), and a visitor who pointed NEVER saw what they had just
+  // designated: they validated a dot on a wide view. So we ask for the gesture,
+  // then — in "point" mode — the map lands tight on the pin
+  // (captureBoot.landOn) and we put the question right next to the image.
+  let roofInputMode: 'point' | 'draw' = savedSel.roofInputMode === 'draw' ? 'draw' : 'point';
+  const pinConfirmEl = $('mt-pin-confirm');
+  const pinConfirmAddrEl = $('mt-pin-confirm-address');
+  /** Key of the ALREADY-confirmed pin: moving the pin asks again, a mere
+   *  re-render (address arriving later) does not. */
+  let confirmedPinKey = '';
+  const pinKey = (p: { lat: number; lng: number } | null) =>
+    p ? `${p.lat.toFixed(6)},${p.lng.toFixed(6)}` : '';
+  function setMapStatus(msg: string) {
+    const el = $('rp9-status');
+    if (el) el.textContent = msg;
+  }
+  function syncRoofModeCards() {
+    document.querySelectorAll<HTMLButtonElement>('.mt-roof-mode').forEach((b) => {
+      const on = b.dataset.value === roofInputMode;
+      b.setAttribute('aria-pressed', String(on));
+      b.classList.toggle('border-brass-400', on);
+      b.classList.toggle('border-white/15', !on);
+    });
+    // "Finish tracing" means nothing when you are not tracing.
+    const finishBtn = $('rp9-finish');
+    if (finishBtn) finishBtn.hidden = roofInputMode !== 'draw';
+  }
+  /** Show the confirmation ONLY when it means something: "point" gesture, a pin
+   *  dropped, no outline traced, and not already confirmed for that pin. */
+  function syncPinConfirm() {
+    if (!pinConfirmEl) return;
+    pinConfirmEl.hidden = !(
+      roofInputMode === 'point'
+      && capturePin != null
+      && captureOutline.length < 3
+      && pinKey(capturePin) !== confirmedPinKey
+    );
+  }
+  /** Pin address — shown only if reverse geocoding returned one (W2): never a
+   *  guessed address, never an empty line. */
+  function setPinConfirmAddress(addr?: string | null) {
+    if (!pinConfirmAddrEl) return;
+    const a = (addr || '').trim();
+    pinConfirmAddrEl.textContent = a;
+    pinConfirmAddrEl.hidden = a === '';
+  }
+  document.querySelectorAll<HTMLButtonElement>('.mt-roof-mode').forEach((b) => {
+    b.addEventListener('click', () => {
+      const v: 'point' | 'draw' = b.dataset.value === 'draw' ? 'draw' : 'point';
+      if (v === roofInputMode) return;
+      roofInputMode = v;
+      syncRoofModeCards();
+      syncPinConfirm();
+      setMapStatus(roofInputMode === 'draw'
+        ? 'Trace your roof outline: tap each corner, then "Finish tracing".'
+        : 'Tap your roof to drop the pin on it.');
+      markDataEntered();
+      saveWizardState();
+    });
+  });
+  $('mt-pin-confirm-yes')?.addEventListener('click', () => {
+    confirmedPinKey = pinKey(capturePin);
+    syncPinConfirm();
+    setMapStatus('Pin confirmed. Carry on with your contact details below.');
+  });
+  $('mt-pin-confirm-adjust')?.addEventListener('click', () => {
+    // We do NOT delete the pin: the visitor simply drops another one, and if
+    // they change their mind nothing has been lost.
+    confirmedPinKey = '';
+    if (pinConfirmEl) pinConfirmEl.hidden = true;
+    setMapStatus('Tap the right spot on your roof to move the pin.');
+    $('rp9-map')?.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'center' });
+  });
+  syncRoofModeCards();
+
   function wireCardGroup(
     selector: string,
     getCurrent: () => string,
@@ -2810,30 +2646,20 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     });
     paint();
   }
-  // PRO — the kVA field only appears at medium voltage.
-  function syncKvaVisibility() {
-    const wrap = $('mt-puissance-kva-wrap');
-    if (wrap) wrap.hidden = tension !== 'mt';
-  }
+  // The "Contracted power (kVA)" field (and therefore its conditional display
+  // at medium voltage) is removed from the funnel — like the "backup
+  // generator" cards (founder cut 18/08).
   wireCardGroup('.mt-pro-unit', () => proUnit, (v) => { proUnit = v || 'mad'; }, { recompute: true });
-  wireCardGroup('.mt-tension', () => tension, (v) => { tension = v || 'bt'; }, { recompute: true, onChange: syncKvaVisibility });
+  wireCardGroup('.mt-tension', () => tension, (v) => { tension = v || 'bt'; }, { recompute: true });
   wireCardGroup('.mt-activity', () => activity, (v) => { activity = v || 'day'; }, { recompute: true });
   wireCardGroup('.mt-surface-type', () => surfaceType, (v) => { surfaceType = v; }, { allowUnset: true, recompute: true });
-  wireCardGroup('.mt-generator', () => generator, (v) => { generator = v; }, { allowUnset: true });
-  syncKvaVisibility();
-  // WJ122 — COMMERCIAL: category cards (reveal the matching question grid) + bill
-  // unit toggle. Picking a category recomputes the estimate (archetype day-share
-  // → hotel ≠ office at equal bill).
-  function syncCommercialQuestions() {
-    document.querySelectorAll<HTMLElement>('.mt-commercial-questions').forEach((el) => { el.hidden = true; });
-    if (commercialCategory) {
-      const g = $(`mt-cc-questions-${commercialCategory}`);
-      if (g) g.hidden = false;
-    }
-  }
-  wireCardGroup('.mt-commercial-cat', () => commercialCategory, (v) => { commercialCategory = v; }, { allowUnset: true, recompute: true, onChange: syncCommercialQuestions });
+  // WJ122 — COMMERCIAL: category cards + bill unit toggle. Picking a category
+  // recomputes the estimate (archetype day-share → hotel ≠ office at equal
+  // bill). The per-category question grids it used to reveal are removed
+  // from the funnel (founder cut 18/08): they never changed a single figure
+  // shown — the sales rep fills them in the ERP.
+  wireCardGroup('.mt-commercial-cat', () => commercialCategory, (v) => { commercialCategory = v; }, { allowUnset: true, recompute: true });
   wireCardGroup('.mt-cc-unit', () => ccUnit, (v) => { ccUnit = v || 'mad'; }, { recompute: true });
-  syncCommercialQuestions();
   // WJ123 — INDUSTRIAL: shift pattern (the self-consumption ceiling recomputes).
   wireCardGroup('.mt-equipes', () => equipes, (v) => { equipes = v; }, { allowUnset: true, recompute: true });
   // WJ124 — AGRICULTURAL: region (cards) drives the water engine; crop (cards)
@@ -2860,8 +2686,8 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   });
   syncCultureCards();
   // AGRICULTURAL — the water source drives the pump type (submersible/surface).
+  // "Your irrigation" is removed from the funnel (founder cut 18/08).
   wireCardGroup('.mt-water-source', () => waterSource, (v) => { waterSource = v; }, { allowUnset: true, recompute: true });
-  wireCardGroup('.mt-irrigation', () => irrigation, (v) => { irrigation = v; }, { allowUnset: true });
   wireCardGroup('.mt-water-unit', () => waterUnit, (v) => { waterUnit = v || 'm3h'; }, { recompute: true });
   // "Pumping hours / day" slider — live displayed value.
   const heuresInput = $('mt-heures-pompage') as HTMLInputElement | null;
@@ -2876,7 +2702,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   syncHeuresLabel();
   // Live recompute on every numeric field that drives a shown figure (same
   // pattern as mt-facture-hiver / mt-bill-kwh on the residential side).
-  for (const id of ['mt-pro-bill', 'mt-cc-bill', 'mt-puissance-kva', 'mt-surface-m2', 'mt-profondeur', 'mt-hmt', 'mt-water-need', 'mt-fuel-spend', 'mt-cos-phi', 'mt-groupe-kva', 'mt-diesel-dh']) {
+  for (const id of ['mt-pro-bill', 'mt-cc-bill', 'mt-surface-m2', 'mt-profondeur', 'mt-hmt', 'mt-water-need', 'mt-fuel-spend']) {
     $(id)?.addEventListener('input', computeEstimate);
   }
 
@@ -3200,6 +3026,10 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       const s: Record<string, number | string> = {};
       const kOk = Number.isFinite(est.kwc) && est.kwc > 0;
       if (kOk) s.kwc = est.kwc;
+      // The module count behind the announced sizing (n × 710 Wc = that kWc).
+      // estimatorPro has always computed it; the CRM never received it, so the
+      // adviser recounted it by hand from the kWc.
+      if (Number.isFinite(est.nbPanneaux) && est.nbPanneaux > 0) s.nbPanneaux = est.nbPanneaux;
       if (Number.isFinite(est.prodAnnuelleKwh) && est.prodAnnuelleKwh > 0) s.prodKwh = Math.round(est.prodAnnuelleKwh);
       if (Number.isFinite(est.tauxAutoconso) && est.tauxAutoconso > 0) s.tauxAutoconso = pct(est.tauxAutoconso);
       if (Number.isFinite(est.tauxCouverture) && est.tauxCouverture > 0) s.tauxCouverture = pct(est.tauxCouverture);
@@ -3230,6 +3060,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     const kwcOk = Number.isFinite(est.kwc) && est.kwc > 0;
     setCard('mt-pro-kwc-card', 'mt-pro-kwc', kwcOk ? formatKwc(est.kwc) : null);
     if (kwcOk) shown.kwc = est.kwc;
+    if (Number.isFinite(est.nbPanneaux) && est.nbPanneaux > 0) shown.nbPanneaux = est.nbPanneaux;
     const prodOk = Number.isFinite(est.prodAnnuelleKwh) && est.prodAnnuelleKwh > 0;
     setCard('mt-pro-prod-card', 'mt-pro-prod', prodOk ? formatMad(Math.round(est.prodAnnuelleKwh)) : null);
     if (prodOk) shown.prodKwh = Math.round(est.prodAnnuelleKwh);
@@ -3312,7 +3143,10 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       const crop = val('mt-culture');
       const surfaceHa = num('mt-surface-ha');
       if (crop && regionAgricole && surfaceHa != null && surfaceHa > 0) {
-        const md = monthlyWaterDemand(crop, regionAgricole, surfaceHa, irrigation || undefined);
+        // "Your irrigation" is removed from the funnel (founder cut 18/08):
+        // the engine falls back to its default efficiency (IRRIGATION_EFFICIENCY_DEFAUT),
+        // exactly as for a visitor who never answered the question.
+        const md = monthlyWaterDemand(crop, regionAgricole, surfaceHa);
         if (md.peak_m3_farm_day > 0) { besoinM3j = md.peak_m3_farm_day; agroPeak = md.peak_m3_farm_day; }
       }
     }
@@ -3345,6 +3179,9 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       if (ag.pompeCv > 0) s.pompeCv = ag.pompeCv;
       const cOk = ag.champKwc > 0;
       if (cOk) s.champKwc = ag.champKwc;
+      // The PV array's panel count — this one is even SHOWN to the visitor
+      // ("… kWc · N panels") and still never reached the ERP.
+      if (ag.nbPanneaux > 0) s.nbPanneaux = ag.nbPanneaux;
       if (ag.m3Jour > 0) s.m3Jour = ag.m3Jour;
       // WJ124 — suggested reservoir = daily need (1×), low end of the 1-3× range.
       if (ag.m3Jour > 0) s.bassinM3 = ag.m3Jour;
@@ -3372,6 +3209,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     const champLabel = champOk ? `${formatKwc(ag.champKwc)} kWc${ag.nbPanneaux > 0 ? ` · ${ag.nbPanneaux} panels` : ''}` : null;
     setCard('mt-agri-champ-card', 'mt-agri-champ', champLabel);
     if (champOk) shown.champKwc = ag.champKwc;
+    if (ag.nbPanneaux > 0) shown.nbPanneaux = ag.nbPanneaux;
     const eauOk = ag.m3Jour > 0;
     const eauLabel = eauOk
       ? `${fmtNum(ag.m3Jour)} m³${ag.hmtM > 0 ? ` at TDH ${fmtNum(ag.hmtM)} m${ag.hmtEstimated ? ' (estimated)' : ''}` : ''}`
@@ -3501,13 +3339,13 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     if (toolarge) toolarge.hidden = true;
     const lat = capturePin?.lat;
     const city = (val('mt-city') || addressEl?.value || '').trim() || undefined;
-    // WJ112 — the "refine the size" accordion now REALLY feeds the
-    // calculation: the declared exact consumption (mt-bill-kwh) overrides
-    // the MAD bill when present, and the chosen shading honestly derates
-    // production (see billEstimate.ts OMBRAGE_DERATE — documented, never a
-    // fabricated number).
-    const exactKwhMonthly = num('mt-bill-kwh') ?? undefined;
-    const est = bill != null ? estimateFromBill(bill, { lat, city, exactKwhMonthly, ombrage: ombrage || undefined }) : null;
+    // Founder cut 18/08 — the exact kWh/month consumption is removed from
+    // the funnel: `exactKwhMonthly` is no longer forwarded, so estimateFromBill
+    // falls back to its own MAD-to-kWh conversion (ONEE rate), exactly as for
+    // any visitor who left that field empty. SHADING stays: it's the only
+    // question kept after the bill and it honestly derates production
+    // (see billEstimate.ts OMBRAGE_DERATE — documented, never fabricated).
+    const est = bill != null ? estimateFromBill(bill, { lat, city, ombrage: ombrage || undefined }) : null;
     if (!est) {
       if (card) card.hidden = true;
       if (note) note.hidden = true;
@@ -3709,9 +3547,8 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     computeEstimate();
   });
   $('mt-bill')?.addEventListener('change', computeEstimate);
-  // WJ112 — exact consumption (kWh/month) is now used by the calculation
-  // (estimateFromBill), so it must recompute live like the bill.
-  $('mt-bill-kwh')?.addEventListener('input', computeEstimate);
+  // Exact kWh/month consumption is removed from the funnel (founder cut
+  // 18/08): the bill is enough — estimateFromBill does the conversion itself.
 
   // ——— WJ2 : "see the panels on your roof" — optional, lazy, degrades
   // cleanly (no WebGL / no traced outline -> the block stays hidden). ———
@@ -3822,14 +3659,13 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     setFieldError(id, `${id}-err`, null);
     return true;
   }
+  // 'mt-puissance-kva' and 'mt-pompe-cv' removed from the funnel (founder cut 18/08).
   const OPTIONAL_NUMBER_FIELDS: Array<[string, string]> = [
-    ['mt-puissance-kva', 'Contracted power'],
     ['mt-surface-m2', 'Surface'],
     ['mt-profondeur', 'Depth'],
     ['mt-hmt', 'TDH'],
     ['mt-water-need', 'Water need'],
     ['mt-surface-ha', 'Surface'],
-    ['mt-pompe-cv', 'Power (HP)'],
     ['mt-fuel-spend', 'Fuel spend'],
   ];
   for (const [id, label] of OPTIONAL_NUMBER_FIELDS) {
@@ -3907,10 +3743,6 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   /** Questions step: validation PER PROFILE before the calculation. */
   function validateStep1(): boolean {
     if (isProMode(mode)) {
-      if (!checkOptionalNumber('mt-puissance-kva', 'Contracted power')) {
-        scrollToInvalid($('mt-puissance-kva'));
-        return false;
-      }
       const raw = val(proBillId()).trim();
       const n = num(proBillId());
       if (raw === '' || n == null || n <= 0) {
@@ -3925,7 +3757,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       // Nothing is REQUIRED (missing hydraulics = the honest "an engineer
       // will call you back" path) — but a number entered must be a number.
       for (const [id, label] of OPTIONAL_NUMBER_FIELDS) {
-        if (!['mt-profondeur', 'mt-hmt', 'mt-water-need', 'mt-pompe-cv', 'mt-fuel-spend'].includes(id)) continue;
+        if (!['mt-profondeur', 'mt-hmt', 'mt-water-need', 'mt-fuel-spend'].includes(id)) continue;
         if (!checkOptionalNumber(id, label)) {
           scrollToInvalid($(id));
           return false;
@@ -3933,8 +3765,10 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       }
       return true;
     }
-    // Residential: a bill is required (exact amount OR range) + a roof type
-    // (validateLead requires it anyway at submission — better to say so HERE, not at the end).
+    // Residential: ONLY the bill is required (exact amount OR range). "Roof
+    // type" is removed from the funnel (founder cut 18/08): it's no longer
+    // required here, and resolveRoofType supplies the value validateLead
+    // still expects.
     const rawF = val('mt-facture-hiver').trim();
     const exact = num('mt-facture-hiver');
     if (rawF !== '' && (exact == null || exact <= 0)) {
@@ -3949,11 +3783,6 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       return false;
     }
     setFieldError('mt-bill', 'mt-bill-err', null);
-    if (!val('mt-roof')) {
-      setFieldError('mt-roof', 'mt-roof-err', 'Choose your roof type.');
-      scrollToInvalid(document.querySelector<HTMLButtonElement>('.mt-roof-card'));
-      return false;
-    }
     return true;
   }
 
@@ -3972,21 +3801,21 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     if (rid) return rid;
     return mad > 10_000 ? 'gt10000' : '';
   }
-  // ——— QX : per-profile roofType — validateLead (lib/lead.ts) requires it
-  // for any mon-toit submission, but the "roof type" cards only live in the
-  // RESIDENTIAL sub-panel. For pro/agricultural we DERIVE the value from the
-  // real answers given (never an invented roof choice): metal roof ->
-  // hangar/shed, flat roof (terrace) -> flat roof, everything else -> 'other'
-  // (the honest bucket — the CRM gets surfaceType/waterSource, the precise
-  // fields, anyway). ———
+  // ——— QX : roofType DERIVED for EVERY profile — validateLead (lib/lead.ts)
+  // still REQUIRES it for any mon-toit submission, but no screen asks the
+  // question anymore since the founder cut of 18/08 (the residential
+  // sub-panel's "roof type" cards are gone). We derive it from real answers
+  // when they exist — metal roof -> hangar/shed, flat roof (terrace) -> flat
+  // roof — and fall back to 'autre' otherwise, the HONEST bucket: never an
+  // invented precise roof for a visitor we never asked. The sales rep
+  // qualifies the real roof type in the ERP / at the technical site visit. ———
   function resolveRoofType(): string {
     if (isProMode(mode)) {
       if (surfaceType === 'bac_acier') return 'hangar';
       if (surfaceType === 'terrasse') return 'toit_plat';
       return 'autre';
     }
-    if (mode === 'agricole') return 'autre';
-    return val('mt-roof');
+    return 'autre';
   }
   // ——— WJ52 : short client reference, generated ONCE in the browser ———
   // Stable across repeated submissions (e.g. a network failure then a retry):
@@ -4017,35 +3846,14 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     return out;
   }
 
-  // WJ122 — active commercial category answers, mapped snake_case → the webhook
-  // whitelist camelCase (QX51). Only questions with a webhook key are sent
-  // (hammam surface_m2 ⇒ never sent); a boolean is joined only when checked, a
-  // number/select only when filled.
-  function readCommercialAnswers(): Record<string, unknown> {
-    const out: Record<string, unknown> = {};
-    if (mode !== 'commercial' || !commercialCategory) return out;
-    const qs = COMMERCIAL_CATEGORY_QUESTIONS[commercialCategory] || [];
-    for (const q of qs) {
-      const webhookKey = COMMERCIAL_QUESTION_WEBHOOK_KEY[q.key];
-      if (!webhookKey) continue;
-      const domId = `mt-cc-${commercialCategory}-${q.key}`;
-      const el = $(domId) as HTMLInputElement | HTMLSelectElement | null;
-      if (!el) continue;
-      if (q.type === 'bool') {
-        if ((el as HTMLInputElement).checked === true) out[webhookKey] = true;
-      } else if (q.type === 'number') {
-        const n = num(domId);
-        if (n != null) out[webhookKey] = n;
-      } else {
-        const v = el.value;
-        if (v) out[webhookKey] = v;
-      }
-    }
-    return out;
-  }
+  // WJ122 — `readCommercialAnswers()` is gone along with the per-category
+  // questions (founder cut 18/08): none of them entered estimatePro, they
+  // went to the webhook without changing a single figure shown. The sales
+  // rep now fills them in the ERP. COMMERCIAL_QUESTION_WEBHOOK_KEY stays in
+  // lib/commercialCategories (the backend still uses it) — the funnel simply
+  // no longer produces these keys.
   /** Builds the lead body + returns client-side errors (mirrors validateLead). */
   function buildBody(): { body: Record<string, unknown>; errors: Record<string, string> } {
-    const eteDifferente = eteToggle?.checked === true;
     const consent = ($('mt-consent') as HTMLInputElement | null)?.checked === true;
     // WJ51 — EXPLICIT contact preference (radio "WhatsApp only" vs "An
     // advisor may call me"): `whatsappOptIn` stays derived so nothing breaks
@@ -4072,29 +3880,35 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       contactPreference,
       email: val('mt-email') || undefined,
       factureHiver: num('mt-facture-hiver'),
-      factureEte: eteDifferente ? num('mt-facture-ete') : null,
-      eteDifferente,
-      raccordement: val('mt-raccordement'),
+      // `factureEte`/`eteDifferente` and `raccordement` (single/three-phase)
+      // are removed from the funnel (founder cut 18/08) — the sales rep
+      // fills them in the ERP; the keys are simply ABSENT from the body
+      // (lib/lead.ts still accepts them from other sources).
       adresse,
       // WJ30 — the project type is forwarded to the webhook. WJ39 — this
       // page has no FR/AR toggle (the /en/ URL already declares the locale)
       // and `langue_preferee` only accepts fr/ar (src/lib/lead.ts LEAD_LANGS): omitted.
       mode,
-      // WJ31 — widened optional capture questions (already validated one by
-      // one server-side: an empty/malformed field is simply discarded).
-      distributeur: val('mt-distributeur') || undefined,
-      billKwh: num('mt-bill-kwh'),
+      // SHADING — the sole survivor of the old "Refine my estimate" step:
+      // it's the only one of these fields that changed a figure shown.
       ombrage: ombrage || undefined,
-      roofAgeYears: num('mt-roof-age'),
-      futureLoads: futureLoads.size > 0 ? Array.from(futureLoads) : undefined,
-      batteryInterest: ($('mt-battery-interest') as HTMLInputElement | null)?.checked === true,
-      occupantType: val('mt-occupant-type') || undefined,
-      projectTiming: val('mt-project-timing') || undefined,
-      financingIntent: val('mt-financing-intent') || undefined,
-      hasMeterPhoto,
+      // Removed from the funnel (founder cut 18/08) — the sales rep fills
+      // them in the ERP, their keys are simply ABSENT from the body
+      // (lib/lead.ts still accepts them from other sources, webhook contract
+      // intact): `distributeur`, `billKwh`, `roofAgeYears`, `futureLoads`,
+      // `batteryInterest`, `occupantType`, `projectTiming`, `hasMeterPhoto` —
+      // and `financingIntent`, removed before them for the same reason.
       // WJ52 — short reference for the post-submission artefact (echoed as-is,
       // never a server uniqueness key — see lib/lead.ts).
       clientRef: getOrCreateClientRef(),
+      // DEDUPLICATION tokens (CRM + Meta CAPI): minted on first display, stable
+      // for the whole entry session, so a resend (network failure, double-click,
+      // back button then re-submit) carries the SAME pair. lib/lead.ts already
+      // validated them — but the funnel never sent them: on the CAPI side
+      // `fireCapi` fell back to a timestamp-derived id, DIFFERENT on every
+      // resend, which deduplicates nothing.
+      idempotencyKey: getOrCreateDedupTokens().idempotencyKey,
+      eventId: getOrCreateDedupTokens().eventId,
       // W353 — technical visit slot preference (optional, STATIC).
       visitWindowPart: visitWindowPart || undefined,
       visitWindowWeek: visitWindowWeek || undefined,
@@ -4103,53 +3917,74 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       // them independently of the mode — a visitor toggling
       // residential->professional->residential loses nothing typed).
       raisonSociale: val('mt-raison-sociale') || undefined,
-      facilityType: val('mt-facility-type') || undefined,
-      siteCount: val('mt-site-count') || undefined,
+      // `facilityType` (facility type) and `siteCount` (how many sites) are
+      // removed from the funnel (founder cut 18/08): neither entered
+      // estimatePro — the sales rep fills them in the ERP.
       // QX — PROFESSIONAL sub-panel. `tensionRaccordement` (bt/mt) is
       // deliberately DISTINCT from the residential `raccordement` select
       // (single/three-phase) — never both meanings in one field. Fields with
       // a VISIBLE default (tension/activity) are only sent when a C&I
       // (industrial/commercial) profile is active — never fabricated data for another profile.
       tensionRaccordement: isProMode(mode) ? tension : undefined,
-      puissanceKva: num('mt-puissance-kva') ?? undefined,
       activityProfile: isProMode(mode) ? activity : undefined,
       surfaceType: surfaceType || undefined,
       surfaceM2: num('mt-surface-m2') ?? undefined,
-      hasGenerator: generator ? generator === 'oui' : undefined,
+      // `puissanceKva` and `hasGenerator` (+ generator kVA / diesel spend
+      // below) are removed from the funnel (founder cut 18/08): estimatePro
+      // never reads them.
       // WJ122 — C&I consumption comes from the active panel (commercial: mt-cc-bill).
       proMonthlyKwh: proBillUnit() === 'kwh' ? (num(proBillId()) ?? undefined) : undefined,
       proMonthlyMad: proBillUnit() === 'mad' ? (num(proBillId()) ?? undefined) : undefined,
-      // WJ122 — COMMERCIAL mode: category + category-specific answers (webhook
-      // whitelist QX51; hotel ≠ office at equal bill via the archetype day-share).
+      // WJ122 — COMMERCIAL mode: category (webhook whitelist QX51; hotel ≠
+      // office at equal bill via the archetype day-share). The per-category
+      // answers are removed from the funnel (founder cut 18/08).
       categorieCommerciale: mode === 'commercial' ? (commercialCategory || undefined) : undefined,
-      ...readCommercialAnswers(),
-      // WJ123 — INDUSTRIAL v2: shifts + weekend + context (webhook whitelist QX51).
-      // `weekend` is a SEPARATE boolean, never a 5th shift value.
-      equipes: (mode === 'industriel' || mode === 'professionnel') ? (equipes || undefined) : undefined,
-      weekend: (mode === 'industriel' || mode === 'professionnel') && (($('mt-weekend') as HTMLInputElement | null)?.checked === true) ? true : undefined,
-      cosPhiConnu: (mode === 'industriel' || mode === 'professionnel') ? (num('mt-cos-phi') ?? undefined) : undefined,
-      groupeKva: (mode === 'industriel' || mode === 'professionnel') ? (num('mt-groupe-kva') ?? undefined) : undefined,
-      dieselDhMois: (mode === 'industriel' || mode === 'professionnel') ? (num('mt-diesel-dh') ?? undefined) : undefined,
+      // WJ123 — INDUSTRIAL v2: SHIFTS stay (they honestly cap self-consumption
+      // in estimatePro); `weekend`, `cosPhiConnu`, `groupeKva` and
+      // `dieselDhMois` are removed from the funnel (founder cut 18/08) — none
+      // of them entered the calculation.
+      //
+      // NO MORE GATE ON THE CURRENT MODE. These fields only went out if the
+      // profile active AT SUBMIT TIME matched: a visitor who described their
+      // industrial site and then switched back to "commercial" (or stepped back
+      // to check something) had those answers silently erased from the payload —
+      // even though they really gave them. One rule now, the same as
+      // `raisonSociale` above: ANY NON-EMPTY ANSWER GOES. An untouched INPUT
+      // stays `undefined`, and validateLead bounds and screens each key on its
+      // own, independently of the mode. ONE EXCEPTION, kept gated below:
+      // `heuresPompage` is an <input type="range" value="7">, its `.value`
+      // reads "7" BEFORE any interaction — ungating it would fabricate an
+      // answer nobody gave.
+      equipes: equipes || undefined,
       // surface_toiture_m2 = roof surface in the strict sense (the backend
       // distinguishes ground: webhooks.py:303-304) — only send it for a real roof;
       // ombrière/terrain are described by their booleans, never a fake roof.
-      surfaceToitureM2: (mode === 'industriel' || mode === 'professionnel') && (surfaceType === 'bac_acier' || surfaceType === 'terrasse') ? (num('mt-surface-m2') ?? undefined) : undefined,
-      ombriere: (mode === 'industriel' || mode === 'professionnel') && surfaceType === 'ombriere' ? true : undefined,
-      terrain: (mode === 'industriel' || mode === 'professionnel') && surfaceType === 'terrain' ? true : undefined,
+      // The SURFACE-TYPE gate stays (that is semantics, not mode); only the
+      // current-mode gate goes away.
+      surfaceToitureM2: (surfaceType === 'bac_acier' || surfaceType === 'terrasse') ? (num('mt-surface-m2') ?? undefined) : undefined,
+      ombriere: surfaceType === 'ombriere' ? true : undefined,
+      terrain: surfaceType === 'terrain' ? true : undefined,
       // QX — AGRICULTURAL sub-panel (pumping).
       waterSource: waterSource || undefined,
       profondeurM: num('mt-profondeur') ?? undefined,
       hmtM: num('mt-hmt') ?? undefined,
       debitM3h: waterUnit === 'm3h' ? (num('mt-water-need') ?? undefined) : undefined,
       besoinM3j: waterUnit === 'm3j' ? (num('mt-water-need') ?? undefined) : undefined,
+      // The ONLY field that KEEPS its mode gate, deliberately: the others are
+      // inputs that start empty, this one is a slider shipped with value="7"
+      // (#mt-heures-pompage). Without the gate a residential or industrial lead
+      // would carry "7 h/day" nobody entered, and the CRM would show it as a
+      // visitor answer on a villa.
       heuresPompage: mode === 'agricole' ? (num('mt-heures-pompage') ?? undefined) : undefined,
-      irrigation: irrigation || undefined,
+      // `irrigation` is removed from the funnel (founder cut 18/08) — the
+      // water engine falls back to its default efficiency; the sales rep
+      // fills it in the ERP.
       culture: val('mt-culture') || undefined,
       // WJ124 — agronomy region (drives the FAO-56 water engine on the proposal).
       regionAgricole: regionAgricole || undefined,
       surfaceHa: num('mt-surface-ha') ?? undefined,
-      pompeActuelle: val('mt-pompe-actuelle') || undefined,
-      pompeCvActuelle: num('mt-pompe-cv') ?? undefined,
+      // `pompeActuelle` / `pompeCvActuelle` are removed from the funnel
+      // (founder cut 18/08): only the fuel SPEND feeds the calculated saving.
       fuelSpendMad: num('mt-fuel-spend') ?? undefined,
       // QX — EXACTLY the figures shown in the estimate document (the CRM
       // advisor sees what the client saw — never more).
@@ -4188,7 +4023,9 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     setFieldError('mt-name', 'mt-name-err', enMsg(errors.fullName));
     setFieldError('mt-phone', 'mt-phone-err', enMsg(errors.phone));
     setFieldError('mt-city', 'mt-city-err', enMsg(errors.city));
-    setFieldError('mt-roof', 'mt-roof-err', enMsg(errors.roofType));
+    // `errors.roofType` no longer has a field to show on: "roof type" is
+    // removed from the funnel (founder cut 18/08) and resolveRoofType
+    // guarantees a valid value — the error can no longer occur from this page.
     setFieldError('mt-bill', 'mt-bill-err', enMsg(errors.billRange));
     const cErr = $('mt-consent-err');
     const consentMsg = enMsg(errors.consent);
@@ -4251,18 +4088,12 @@ const noscriptTelHref = `tel:${NAP.phone}`;
         errEl.textContent = 'Please check the highlighted fields above.';
         errEl.hidden = false;
       }
-      // brings the user to the first field in error.
-      // WJ48 — mt-roof is now sr-only (the visual choice is made via the
-      // .mt-roof-card cards): focusing the hidden <select> would move
-      // keyboard focus to an element invisible to a sighted user. We focus
-      // the first visible card instead in that case.
-      const firstId = ['mt-name', 'mt-phone', 'mt-city', 'mt-roof', 'mt-bill']
+      // brings the user to the first field in error. 'mt-roof' left this
+      // list along with the question itself (founder cut 18/08): no more
+      // hidden field to work around, everything left here is visible.
+      const firstId = ['mt-name', 'mt-phone', 'mt-city', 'mt-bill']
         .find((id) => $(id)?.getAttribute('aria-invalid') === 'true');
-      if (firstId === 'mt-roof') {
-        document.querySelector<HTMLButtonElement>('.mt-roof-card')?.focus();
-      } else if (firstId) {
-        ($(firstId) as HTMLElement | null)?.focus();
-      }
+      if (firstId) ($(firstId) as HTMLElement | null)?.focus();
       return;
     }
     showInlineErrors({});
@@ -4424,11 +4255,10 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   // measurement signal stays useful even if the offer already showed once.
   let funnelAbandonSent = false;
   function maybeShowExit(triggerEl: HTMLElement | null = null) {
-    // WJ46 — grace window: do NOT interpret the tab going to the background
-    // while the meter/bill photo picker is open as an abandonment (the
-    // camera/gallery hides the tab for the length of the shot — the exact
-    // gesture the form invites).
-    if (filePickerOpen) return;
+    // WJ46 — the "photo picker open" grace window is gone along with the
+    // "Photo of your meter or bill" question (founder cut 18/08): this page
+    // no longer opens any file picker, so there is no background transition
+    // left to mistake for an abandonment.
     // only interrupt if the visitor has at least started (mode/bill or step > 0)
     const started2 = step > 0 || resolveMonthlyBill() != null || (capturePin != null);
     if (!started2) return;

@@ -374,7 +374,8 @@ function DevisRow({ d, ctx }) {
     role, canDelete, canValiderVente, canSeePublicite, highlightId,
     deletingId, statutActionId, superieurBusyId, superieurStatus, shareBusyId, previewingId,
     pdfGenerating, pdfDownloading, pdfSlowPoll, convertingId, chantierBusy, projetBusy, factureGenId,
-    openEdit, openVarianteModal, handleDelete, handleEnvoyer, handleRelancer, handleContacterSuperieur,
+    openEdit, openVarianteModal, openGammeModal, handleDelete, handleEnvoyer, handleRelancer,
+    handleContacterSuperieur,
     openEmailModal, handleCopierLienProposition, copierLienInterne, handlePreview, openPdfModal,
     handleTelechargerPdf, handlePartagerPdf, openAcceptModal, openRefusModal, handleConvertBC,
     handleProformaPdf, handleBonCommandePdf,
@@ -872,6 +873,16 @@ function DevisRow({ d, ctx }) {
                   Variante
                 </DropdownMenuItem>
               )}
+              {/* GAMMES — « Créer une variante de gamme » : crée le devis
+                  FRÈRE d'une seconde gamme (composition et prix propres, à
+                  retoucher ensuite). Le libellé est libre — aucune marque
+                  codée en dur ; défauts proposés : Essentielle / Premium. */}
+              {d.statut === 'brouillon' && (
+                <DropdownMenuItem onSelect={() => openGammeModal(d)}>
+                  <Copy className="size-3.5" aria-hidden="true" />
+                  Créer une variante de gamme
+                </DropdownMenuItem>
+              )}
               {/* PV23 — porte d'entrée du CALEPINAGE depuis la liste. Un devis
                   encore ouvert (brouillon / envoyé) se CONÇOIT — l'écran de
                   conception resynchronise ses lignes (PV21). Un devis figé ne
@@ -1268,6 +1279,16 @@ export default function DevisList() {
   const [varianteBusy, setVarianteBusy] = useState(false)
   const [varianteLoadingCfg, setVarianteLoadingCfg] = useState(false)
 
+  // ── GAMMES (fondateur 2026-08-18) — Modale « Créer une variante de gamme » :
+  //    crée le devis FRÈRE d'une seconde gamme (mécanique de variantes QJ15).
+  //    Les libellés sont LIBRES ; « Essentielle » / « Premium » ne sont que des
+  //    défauts proposés, jamais une marque imposée. ──
+  const [gammeTarget, setGammeTarget] = useState(null)
+  const [gammeNom, setGammeNom] = useState('Premium')
+  const [gammeNomSource, setGammeNomSource] = useState('Essentielle')
+  const [gammeRecommandee, setGammeRecommandee] = useState(false)
+  const [gammeBusy, setGammeBusy] = useState(false)
+
   // ── QG11/QG12 — Panneau « Voir le design 3D » : id du devis dont le plan de
   //    toiture (roof_layout) est ouvert en lecture seule dans le détail.
   //    Deep-link ?design3d=<id> l'ouvre directement au montage. ──
@@ -1524,6 +1545,43 @@ export default function DevisList() {
     }
   }
 
+  // GAMMES — ouvre la modale « Créer une variante de gamme ». Les deux libellés
+  // sont pré-remplis avec les défauts proposés et restent librement éditables.
+  const openGammeModal = (d) => {
+    setGammeTarget(d)
+    setGammeNom('Premium')
+    setGammeNomSource(d?.etude_params?.gamme?.nom || 'Essentielle')
+    setGammeRecommandee(false)
+    setGammeBusy(false)
+  }
+  const closeGammeModal = () => { setGammeTarget(null); setGammeBusy(false) }
+
+  // GAMMES — crée le devis frère de la seconde gamme puis ouvre la comparaison
+  // côte-à-côte (les deux gammes partagent version_parent → panneau versions).
+  const submitGamme = async () => {
+    const d = gammeTarget
+    if (!d) return
+    const nom = (gammeNom || '').trim()
+    if (!nom) { toast.error('Donnez un nom à la gamme.'); return }
+    setGammeBusy(true)
+    try {
+      await ventesApi.dupliquerVarianteGamme(d.id, {
+        nom,
+        nom_source: (gammeNomSource || '').trim() || undefined,
+        recommandee: gammeRecommandee,
+      })
+      dispatch(fetchDevis())
+      toast.success(`Gamme « ${nom} » créée pour ${d.reference}.`)
+      closeGammeModal()
+      setVersionsOpenId(d.id)
+      setSearchParams({ variantes: String(d.id) }, { replace: true })
+    } catch (err) {
+      toast.error(frenchError(err, 'Création de la gamme impossible.'))
+    } finally {
+      setGammeBusy(false)
+    }
+  }
+
   // VX55 — annule la requête en vol au démontage : sans ça, une réponse tardive
   // (3G qui cale) peut écraser l'état d'un AUTRE écran après navigation.
   useEffect(() => {
@@ -1633,12 +1691,19 @@ export default function DevisList() {
   // rappel + note au chatter) au lieu de l'envoi initial. Réinitialisé à la
   // fermeture pour qu'un « Envoyer » ultérieur reparte en mode initial.
   const [relanceMode, setRelanceMode] = useState(false)
+  // GAMMES — ENVOI À LA CARTE : quand le devis appartient à une paire de
+  // gammes, le vendeur choisit ici d'envoyer CETTE gamme seule ou LES DEUX
+  // (défaut fondateur : les deux, comme l'axe batterie). Le mode part avec
+  // l'envoi et vit ensuite sur le devis. `null` = devis sans gamme → la modale
+  // est exactement celle d'aujourd'hui.
+  const [waGammeEnvoi, setWaGammeEnvoi] = useState('les_deux')
   const handleEnvoyer = async (d) => {
     setStatutActionId(d.id)
     try {
       const res = await ventesApi.whatsappPreviewDevis(d.id)
       setWaTarget(d)
       setWaData(res.data)
+      setWaGammeEnvoi(res?.data?.gamme?.envoi || 'les_deux')
       // Aperçu seul — AUCUNE mutation de statut ici (fermer la modale sans
       // cliquer « Ouvrir WhatsApp » laisse le devis brouillon).
     } catch (err) {
@@ -1695,7 +1760,12 @@ export default function DevisList() {
     } else if (waData?.wa_url) window.open(waData.wa_url, '_blank', 'noopener')
     setWaSending(true)
     try {
-      await ventesApi.whatsappDevis(waTarget.id)
+      // GAMMES — le mode d'envoi choisi part AVEC l'envoi (le backend l'écrit
+      // sur les deux gammes). Omis quand le devis n'appartient à aucune paire.
+      await ventesApi.whatsappDevis(
+        waTarget.id,
+        waData?.gamme ? { gamme_envoi: waGammeEnvoi } : {},
+      )
       // VX222 — consigne la relance au chatter du devis (DevisActivity, VX97) ;
       // best-effort, ne bloque jamais l'ouverture WhatsApp déjà effectuée.
       if (relanceMode) {
@@ -2230,7 +2300,8 @@ export default function DevisList() {
     role, canDelete, canValiderVente, canSeePublicite, highlightId,
     deletingId, statutActionId, superieurBusyId, superieurStatus, shareBusyId, previewingId,
     pdfGenerating, pdfDownloading, pdfSlowPoll, convertingId, chantierBusy, projetBusy, factureGenId,
-    openEdit, openVarianteModal, handleDelete, handleEnvoyer, handleRelancer, handleContacterSuperieur,
+    openEdit, openVarianteModal, openGammeModal, handleDelete, handleEnvoyer, handleRelancer,
+    handleContacterSuperieur,
     openEmailModal, handleCopierLienProposition, copierLienInterne, handlePreview, openPdfModal,
     handleTelechargerPdf, handlePartagerPdf, openAcceptModal, openRefusModal, handleConvertBC,
     handleProformaPdf, handleBonCommandePdf,
@@ -2673,6 +2744,44 @@ export default function DevisList() {
                 ? buildRelanceMessage(waData, waTarget?.reference)
                 : (waData?.message || '…')}
             </div>
+            {/* GAMMES — ENVOI À LA CARTE (fondateur 2026-08-18). Affiché
+                uniquement quand ce devis appartient à une paire de gammes :
+                envoyer CETTE gamme seule (le lien rend le devis comme
+                aujourd'hui) ou LES DEUX (le client choisit, badge
+                « Recommandé » sur celle désignée). Défaut : les deux. */}
+            {waData?.gamme && !relanceMode && (
+              <fieldset className="rounded-lg border border-border p-3">
+                <legend className="px-1 text-sm font-medium">Gammes à envoyer</legend>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="radio"
+                    name="gamme-envoi"
+                    value="les_deux"
+                    checked={waGammeEnvoi === 'les_deux'}
+                    onChange={() => setWaGammeEnvoi('les_deux')}
+                  />
+                  <span>
+                    Envoyer les deux
+                    {waData.gamme.recommandee
+                      ? ` (recommandée : ${waData.gamme.recommandee})`
+                      : ''}
+                  </span>
+                </label>
+                <label className="mt-2 flex items-center gap-2 text-sm">
+                  <input
+                    type="radio"
+                    name="gamme-envoi"
+                    value="seule"
+                    checked={waGammeEnvoi === 'seule'}
+                    onChange={() => setWaGammeEnvoi('seule')}
+                  />
+                  <span>
+                    Envoyer cette gamme seule
+                    {waData.gamme.nom ? ` (${waData.gamme.nom})` : ''}
+                  </span>
+                </label>
+              </fieldset>
+            )}
             {!waData?.wa_url && (
               <p className="text-sm text-destructive">
                 Aucun numéro de téléphone : le message ne peut pas être ouvert
@@ -2741,6 +2850,60 @@ export default function DevisList() {
               )
             })()}
           </div>
+        </div>
+      </ResponsiveDialog>
+
+      {/* GAMMES (fondateur 2026-08-18) — Modale « Créer une variante de gamme » :
+          crée le devis FRÈRE d'une seconde gamme (composition et prix propres,
+          à retoucher ensuite). Les deux libellés sont LIBRES ; « Essentielle » /
+          « Premium » ne sont que des défauts proposés. */}
+      <ResponsiveDialog
+        open={!!gammeTarget}
+        onOpenChange={(o) => { if (!o) closeGammeModal() }}
+        title={`Créer une variante de gamme — ${gammeTarget?.reference ?? ''}`}
+        description="Une seconde gamme est créée comme devis frère : mêmes lignes au départ, à retoucher ensuite (composition et prix propres). Le client choisira au moment de la signature si vous envoyez les deux."
+        footer={(
+          <>
+            <Button variant="ghost" onClick={closeGammeModal} disabled={gammeBusy}>
+              Annuler
+            </Button>
+            <Button onClick={submitGamme} loading={gammeBusy}>
+              <Copy className="size-4 mr-1" aria-hidden="true" />
+              Créer la gamme
+            </Button>
+          </>
+        )}
+      >
+        <div className="flex flex-col gap-3">
+          <div className="grid gap-1.5">
+            <Label htmlFor="gamme-nom-source">Nom de la gamme de ce devis</Label>
+            <Input
+              id="gamme-nom-source"
+              value={gammeNomSource}
+              onChange={e => setGammeNomSource(e.target.value)}
+              placeholder="Essentielle"
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="gamme-nom">Nom de la nouvelle gamme</Label>
+            <Input
+              id="gamme-nom"
+              value={gammeNom}
+              onChange={e => setGammeNom(e.target.value)}
+              placeholder="Premium"
+            />
+          </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={gammeRecommandee}
+              onChange={e => setGammeRecommandee(e.target.checked)}
+            />
+            <span>Recommander la nouvelle gamme (badge « Recommandé » côté client)</span>
+          </label>
+          <p className="text-xs text-muted-foreground">
+            Sans cette case, c’est ce devis-ci qui porte la recommandation.
+          </p>
         </div>
       </ResponsiveDialog>
 

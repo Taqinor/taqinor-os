@@ -72,6 +72,27 @@ const aoApi = {
     // (jamais une suppression dure) réutilise le `update()` générique
     // ci-dessus (`update(id, { archive: true })`) — pas d'action dédiée.
     dupliquer: (id) => api.post(`/ao/appels-offres/${id}/dupliquer/`),
+
+    /* ── L'ATELIER 3D DE L'AFFAIRE — le MÊME écran que la villa ────────────
+       `frontend/src/pages/ventes/ToitureDesign.jsx` existe déjà et sert deux
+       modes ('lead', 'devis') ; le mode 'ao' le RÉUTILISE, jamais une seconde
+       implémentation. Les deux routes ci-dessous sont les `@action` RÉELLES
+       d'`AppelOffreViewSet` (`apps/ao/views.py`), relues dans le routeur.
+
+       `designContext` est l'appel AGRÉGÉ UNIQUE du boot (identité, géométrie
+       relevée reprojetée en degrés, cible d'engagement, clé carte,
+       `modifiable` + `raison_lecture_seule`) — contrat committé
+       `apps/ao/contract_samples/ao_design_context.json` (PACT10) : le test
+       d'écran IMPORTE cet exemple au lieu d'inventer sa charge utile.
+
+       `enregistrerLayout` ne touche QUE `AppelOffre.roof_layout` : aucun
+       statut ne bouge, et la géométrie OPPOSABLE du dossier (toitures, zones,
+       chaînes de cotes) n'est jamais réécrite par l'atelier. 409 motivé quand
+       le dossier est déposé ou clos. */
+    designContext: (id) => api.get(`/ao/appels-offres/${id}/design-context/`),
+    layout: (id) => api.get(`/ao/appels-offres/${id}/layout/`),
+    enregistrerLayout: (id, layout) =>
+      api.post(`/ao/appels-offres/${id}/layout/`, { layout }),
   },
 
   // ── Toiture / relevé (portes 1-2-3 : plan fourni, from-scratch, carte) ──
@@ -362,6 +383,15 @@ const aoApi = {
     ...crud('bordereaux-prix'),
     totaux: (id) => api.get(`/ao/bordereaux-prix/${id}/totaux/`),
     controles: (id) => api.get(`/ao/bordereaux-prix/${id}/controles/`),
+    /* UN SEUL chemin de chiffrage : le bordereau devient un DEVIS ventes
+       standard, qui repart dans le pipeline devis normal (PDF `/proposal`).
+       `@action` RÉELLE de `BordereauPrixViewSet`, qui délègue au point de
+       contact unique `apps.ventes.services.creer_devis_depuis_bordereau`.
+       IDEMPOTENT côté serveur : 201 pour un devis neuf, 200 + `cree: false`
+       quand le brouillon issu de CE bordereau existait déjà — un double clic
+       ne crée jamais deux devis. Contrat committé
+       `apps/ao/contract_samples/ao_bordereau_devis.json` (PACT10). */
+    creerDevis: (id) => api.post(`/ao/bordereaux-prix/${id}/creer-devis/`),
   },
   sectionsBordereau: crud('sections-bordereau'),
   lignesBordereau: crud('lignes-bordereau'),

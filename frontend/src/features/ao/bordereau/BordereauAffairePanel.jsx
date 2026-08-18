@@ -137,6 +137,14 @@ export default function BordereauAffairePanel({ affaireId }) {
     return rafraichir()
   }, [rafraichir])
 
+  /* UN SEUL chemin de chiffrage : le bordereau devient un DEVIS ventes
+     standard, qui repart dans le pipeline devis normal (PDF `/proposal`).
+     L'action est SERVEUR et idempotente (un second clic renvoie le brouillon
+     déjà créé) ; aucun montant, aucune ligne n'est assemblée ici. Le bordereau
+     n'est pas touché par cette action — donc aucune relecture. */
+  const onCreerDevis = useCallback(
+    () => aoApi.bordereaux.creerDevis(bordereauId), [bordereauId])
+
   if (chargementListe) {
     return <div className="flex flex-col gap-3"><Skeleton className="h-8 w-64" /><Skeleton className="h-64 w-full" /></div>
   }
@@ -179,6 +187,7 @@ export default function BordereauAffairePanel({ affaireId }) {
         error={error}
         onModifierLigne={onModifierLigne}
         onDeplacerLigne={onDeplacerLigne}
+        onCreerDevis={onCreerDevis}
       />
     </div>
   )

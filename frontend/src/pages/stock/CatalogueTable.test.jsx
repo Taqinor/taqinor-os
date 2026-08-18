@@ -168,7 +168,7 @@ describe('CatalogueTable (J142)', () => {
    ========================================================================== */
 
 const rupture = (over = {}) => baseProduit({
-  id: 10, nom: 'Batterie Deyness 5 kWh', sku: 'BAT-DEY-5',
+  id: 10, nom: 'Batterie Dyness 5 kWh', sku: 'BAT-DEY-5',
   quantite_stock: 0, quantite_disponible: 0, seuil_alerte: 5,
   is_low_stock: true, ...over,
 })

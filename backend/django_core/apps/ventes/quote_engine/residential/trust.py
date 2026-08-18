@@ -128,12 +128,25 @@ def build(ctx) -> str:
                 f'<span class="p3-val-t">{v}</span></div>'
                 for v in values)
             + '</div>')
+    # (fondateur 2026-08-17) — RÉASSURANCE : une garantie fabricant porte sur le
+    # MATÉRIEL, pas sur le poseur. La phrase tient sur une ligne fine SOUS la
+    # bande (mêmes mots que la proposition en ligne, bloc « Pourquoi nous faire
+    # confiance ») ; les joints élastiques QRES62 de la page absorbent sa
+    # hauteur, la pagination reste à 3 pages.
+    # GAMMES (fondateur 2026-08-18) — la bande DÉRIVE de la composition réelle
+    # du devis rendu (durées catalogue par produit), avec repli sur la
+    # constante theme.WARRANTIES et OMISSION du composant absent : deux gammes
+    # aux marques différentes affichent chacune SES vraies garanties.
     gar_html = (
         '<div class="p3-gar"><span class="p3-gar-t">Nos garanties</span>'
         + " &middot; ".join(
             f'<span class="p3-gar-i"><b>{n} {u}</b> — {label}'
             f'{(" (" + sub + ")") if label == "Performance" else ""}</span>'
-            for n, u, label, sub in theme.WARRANTIES)
+            for n, u, label, sub in theme.warranties_for(d))
+        + '<div class="p3-gar-n">Les garanties fabricant sont attachées au '
+          "matériel : elles suivent votre installation, restent transférables "
+          "avec le bien et demeurent valables quel que soit l'installateur."
+          '</div>'
         + '</div>')
 
     # ── Trust strip — LINK out, don't dump ──────────────────────────────────
@@ -171,28 +184,36 @@ def build(ctx) -> str:
         ("TVA", tva_note or "Selon barème en vigueur"),
         ("Délai d'installation", "7 à 14 jours ouvrés"),
     ]
-    # QF3 — « Comment nous calculons vos économies » : méthode + exemple chiffré
-    # compact, ajoutés comme une ligne de conditions (aucune hauteur de bloc en
-    # plus, la page reste à 3 pages). Le texte vient du builder (une source).
+    # QF3 / QRES65 (fondateur, 2026-08-18) — « Comment nous calculons vos
+    # économies » QUITTE la colonne Conditions. Le texte reste celui du builder
+    # (une seule source, aucun chiffre nouveau) mais il est rendu À PLAT sous la
+    # rangée : texte discret pleine largeur, sans boîte ni carte. En ligne de
+    # conditions, il servait surtout de BOURRAGE vertical à la colonne de gauche
+    # — la rangée alignait ses boîtes par chance de contenu, plus par structure.
     sm = d.get("savings_method") or {}
     sm_line = (sm.get("ligne_methode") or "").strip()
     sm_ex = (sm.get("exemple") or "").strip()
     sm_approx = " (approximatif)" if sm.get("approximatif") else ""
+    method_html = ""
     if sm_line:
         _v = sm_line
         if sm_ex:
             _v += f' <b>{sm_ex}{sm_approx}</b>'
-        conditions.append(("Comment nous calculons vos économies", _v))
+        method_html = (
+            '<div class="p3-method">'
+            '<span class="p3-method-k">Comment nous calculons vos '
+            'économies</span>'
+            f'<span class="p3-method-v">{_v}</span></div>')
     # QRES61 (fondateur, 2026-07-18) — les hypothèses de calcul quittent le
     # PDF : elles vivent sur la proposition EN LIGNE (page /proposition —
     # disclosure « Nos hypothèses » WJ32 + page méthodologie W359, données
     # déjà servies par proposal-data/QK4). Le papier garde UNE clause
     # non-contractuelle dans la bande légale, rien d'autre.
-    # QK3 / QRES14 — financement (indicatif) : mensualité + programme, rendu
-    # comme MINI-CARTE dans la colonne droite (sous « Prochaines étapes ») —
-    # la mensualité gagne en visibilité commerciale, la carte Conditions
-    # raccourcit (c'est elle qui poussait la page en débordement) et la
-    # colonne droite cesse d'être à moitié vide. Jamais de prix d'achat/marge.
+    # QK3 / QRES14/65 — financement (indicatif) : mensualité + programme, rendu
+    # en BANDE DE PIED de la boîte « Prochaines étapes » (colonne droite) — la
+    # mensualité garde sa visibilité commerciale, la carte Conditions reste
+    # courte (c'est elle qui poussait la page en débordement) et la colonne
+    # droite se remplit jusqu'en bas. Jamais de prix d'achat/marge.
     fin = d.get("financing") or {}
     fin_credit = fin.get("credit") or {}
     fin_card_html = ""
@@ -211,9 +232,10 @@ def build(ctx) -> str:
         # QRES45 — mini-grand-livre à 3 lignes : crédit / économies / reste en
         # poche (la juxtaposition qui vend, chiffrée — jamais promise).
         _ledger = ""
-        # QRES64 — contenu SANS enveloppe : la cellule <td class="p3-tdfin">
-        # porte les styles de la carte (le tableau à rowspan aligne les bas
-        # des deux colonnes, quel que soit le côté le plus haut).
+        # QRES64/65 — contenu SANS enveloppe propre : le financement est la
+        # BANDE DE PIED de la boîte « Prochaines étapes » (.p3-finsec), plus une
+        # troisième carte flottante — la rangée ne compte ainsi que deux boîtes,
+        # deux cellules d'une même ligne de tableau donc de hauteur identique.
         if _eco_mois > _mens:
             _reste = _eco_mois - _mens
             _ledger = (
@@ -263,30 +285,32 @@ def build(ctx) -> str:
         for n, t, s in steps
     )
 
-    # QRES64 — colonnes Conditions / Étapes(+Financement) en VRAI tableau
-    # HTML : la carte Conditions (rowspan) court sur toute la hauteur de la
-    # rangée et la carte Financement partage sa ligne de base — les quatre
-    # coins des colonnes s'alignent quel que soit le côté le plus haut.
+    # QRES64/65 — la rangée ne porte plus que DEUX boîtes : « Conditions » et
+    # « Prochaines étapes » (le financement en est la bande de pied). Ce sont
+    # deux cellules d'une MÊME ligne de tableau : les cellules d'une ligne
+    # s'égalisent en hauteur par construction (recette WeasyPrint maison, cf.
+    # RENDERING_NOTES §1) — la plus courte est ÉTIRÉE sur la hauteur commune.
+    # Les quatre coins finissent donc exactement à la même hauteur, quel que
+    # soit le côté le plus haut et sans dépendre du texte qui remplit l'un
+    # d'eux (l'ancien tableau à rowspan répartissait la surhauteur entre trois
+    # lignes : l'alignement tenait au contenu, pas à la structure).
     _cols_head = (
         '<colgroup><col><col class="p3-cgap"><col></colgroup>'
         '<tr class="p3-crh">'
         '<td><div class="p3-h">Conditions</div></td><td></td>'
         '<td><div class="p3-h">Prochaines étapes</div></td></tr>')
+    _right_html = f'<div class="p3-steps">{steps_html}</div>'
+    _cols_cls = "p3-cols p3-block"
     if fin_card_html:
-        cols_html = (
-            f'<table class="p3-cols p3-block" cellspacing="0">{_cols_head}'
-            f'<tr><td class="p3-tdcard" rowspan="3">{cond_html}</td><td></td>'
-            f'<td class="p3-tdcard"><div class="p3-steps">{steps_html}</div>'
-            '</td></tr>'
-            '<tr class="p3-rgap"><td></td><td></td></tr>'
-            f'<tr><td></td><td class="p3-tdfin">{fin_card_html}</td></tr>'
-            '</table>')
-    else:
-        cols_html = (
-            f'<table class="p3-cols p3-block" cellspacing="0">{_cols_head}'
-            f'<tr><td class="p3-tdcard">{cond_html}</td><td></td>'
-            f'<td class="p3-tdcard"><div class="p3-steps">{steps_html}</div>'
-            '</td></tr></table>')
+        _right_html += f'<div class="p3-finsec">{fin_card_html}</div>'
+        # La colonne de droite devient la plus haute : la gauche respire pour
+        # remplir la hauteur commune (cf. .p3-cols-fin .p3-cond-row).
+        _cols_cls += " p3-cols-fin"
+    cols_html = (
+        f'<table class="{_cols_cls}" cellspacing="0">{_cols_head}'
+        f'<tr><td class="p3-tdcard">{cond_html}</td><td></td>'
+        f'<td class="p3-tdcard">{_right_html}</td></tr>'
+        '</table>')
 
     # QX5 — « Option choisie » : deux cases seulement pour un vrai devis à deux
     # options ; mono-option → on nomme l'unique option (aucune case fantôme).
@@ -375,6 +399,10 @@ def build(ctx) -> str:
 .p3-gar-t {{ font-size:7pt; letter-spacing:.14em; text-transform:uppercase;
   color:{C['muted_2']}; font-weight:700; margin-right:10px; }}
 .p3-gar-i b {{ color:{C['navy']}; }}
+/* (fondateur 2026-08-17) note de réassurance sous la bande des garanties :
+   une garantie fabricant suit le MATÉRIEL, jamais l'installateur. */
+.p3-gar-n {{ margin-top:4px; font-size:7.3pt; line-height:1.3;
+  color:{C['muted']}; }}
 
 /* Value points row (uniquement si doc_texts.trust_values est personnalisé) */
 .p3-values {{ display:flex; gap:9px; margin:10px 0 11px; }}
@@ -402,25 +430,36 @@ def build(ctx) -> str:
   font-weight:600; }}
 
 /* Conditions + steps side by side */
-/* QRES64 — colonnes Conditions / Étapes+Financement en VRAI tableau :
-   hauteurs égales par construction, carte Conditions en rowspan sur toute
-   la rangée, carte Financement ancrée sur la MÊME ligne de base — plus
-   jamais de bas de colonnes en escalier (défaut relevé par le fondateur). */
+/* QRES64/65 — les DEUX boîtes de la rangée sont deux cellules d'une MÊME
+   ligne de tableau : leurs hauteurs s'égalisent par construction (la plus
+   courte est étirée sur la hauteur commune), donc les quatre coins finissent
+   exactement au même niveau — plus jamais de bas de colonnes en escalier, et
+   plus aucune dépendance au texte qui remplit une colonne. */
 .p3-cols {{ width:100%; border-collapse:separate; border-spacing:0;
   table-layout:fixed; }}
 .p3-cgap {{ width:12px; }}
 .p3-crh td {{ padding:0; }}
 .p3-tdcard {{ border:1px solid {C['line']}; border-radius:11px;
   background:{C['paper']}; padding:12px 14px; vertical-align:top; }}
-.p3-rgap td {{ height:9px; }}
-.p3-tdfin {{ border:1px solid {C['gold']}; background:#FFFCF5;
-  border-radius:11px; padding:9px 14px 10px; vertical-align:top; }}
+/* QRES65 — financement = bande de pied de la boîte « Prochaines étapes »
+   (filet or + fond crème à fleur des bords de la carte), jamais une carte
+   flottante de plus dans la rangée. */
+.p3-finsec {{ margin:9px -14px -12px; padding:9px 14px 10px;
+  background:#FFFCF5; border-top:1px solid {C['gold']};
+  border-radius:0 0 10px 10px; }}
 .p3-card {{ border:1px solid {C['line']}; border-radius:11px;
   background:{C['paper']}; padding:12px 14px; }}
 /* QRES26 — profondeur matière commune aux blocs de la page 3. */
-.p3-card, .p3-tdcard, .p3-tdfin, .p3-accord, .p3-cta, .p3-val {{
+.p3-card, .p3-tdcard, .p3-accord, .p3-cta, .p3-val {{
   box-shadow:0 1px 2px rgba(26,43,74,.04),0 5px 14px rgba(26,43,74,.05); }}
 .p3-cond-row {{ padding:4.6px 0; border-bottom:1px dashed {C['line_soft']}; }}
+/* QRES65 — la méthode de calcul sortie, la boîte Conditions serait étirée sur
+   du vide QUAND la colonne d'en face porte la bande financement (la plus haute
+   des deux). Dans ce cas SEULEMENT, ses lignes respirent au rythme des étapes
+   d'en face : elle se remplit d'elle-même sans jamais dicter la hauteur de la
+   ligne — donc sans ajouter un millimètre à la page. Sans bande financement,
+   c'est la colonne Conditions qui est la plus haute : le rythme reste serré. */
+.p3-cols-fin .p3-cond-row {{ padding:12px 0; }}
 .p3-cond-row:last-child {{ border-bottom:none; padding-bottom:1px; }}
 .p3-cond-row:first-child {{ padding-top:1px; }}
 .p3-cond-k {{ display:block; font-size:7pt; letter-spacing:.1em;
@@ -429,9 +468,9 @@ def build(ctx) -> str:
 .p3-cond-v {{ display:block; font-size:8.4pt; color:{C['ink']};
   font-weight:500; line-height:1.3; }}
 
-/* Steps mirror the Conditions rhythm (padded rows + dashed dividers) AND the 4
-   rows flex-divide the card's full height, so the two cards are equal height
-   with the steps evenly filling — no floating dots, no void, bottoms aligned. */
+/* Steps mirror the Conditions rhythm (padded rows + dashed dividers) — les
+   deux boîtes tiennent leur hauteur commune de la LIGNE de tableau (QRES65),
+   le rythme des lignes ne sert qu'à les remplir joliment. */
 .p3-steps {{ display:block; }}
 .p3-step {{ display:flex; align-items:center; padding:10.5px 0;
   border-bottom:1px dashed {C['line_soft']}; }}
@@ -500,9 +539,8 @@ def build(ctx) -> str:
   color:{C['navy']}; border-radius:999px; padding:1px 7px; font-size:6.6pt;
   font-weight:700; vertical-align:1px; }}
 
-/* QRES14 — mini-carte financement (colonne droite, sous les étapes) */
-.p3-fincard {{ margin-top:9px; border:1px solid {C['gold']};
-  background:#FFFCF5; border-radius:11px; padding:9px 14px 10px; }}
+/* QRES14/65 — financement (colonne droite) : bande de pied de la boîte
+   « Prochaines étapes » — l'enveloppe est .p3-finsec ci-dessus. */
 .p3-fin-k {{ font-size:7pt; letter-spacing:.1em; text-transform:uppercase;
   color:{C['gold_soft']}; font-weight:700; margin-bottom:2px; }}
 .p3-fin-v {{ font-family:{ctx['fonts']['display']}; font-size:13.5pt;
@@ -518,6 +556,17 @@ def build(ctx) -> str:
 .p3-fin-net {{ border-top:1px solid {C['gold']}; margin-top:2px;
   padding-top:3.5px; }}
 .p3-fin-net span {{ color:{C['gold_soft']} !important; font-weight:700; }}
+
+/* QRES65 (fondateur, 2026-08-18) — « Comment nous calculons vos économies »
+   À PLAT sous la rangée : une note discrète pleine largeur, sans boîte, sans
+   carte, sans filet. Pleine largeur, elle tient sur 2-3 lignes là où la même
+   phrase en occupait 5 dans une demi-colonne : la page 3 n'y perd pas de
+   hauteur (les joints élastiques QRES62 absorbent le reste). */
+.p3-method {{ margin:0 0 8px; font-size:7.1pt; line-height:1.3;
+  color:{C['muted']}; }}
+.p3-method-k {{ font-size:6.8pt; letter-spacing:.1em; text-transform:uppercase;
+  color:{C['muted_2']}; font-weight:700; margin-right:7px; }}
+.p3-method-v b {{ color:{C['navy']}; font-weight:700; }}
 
 /* Legal identifier band — refined fine print, intentional margin above footer */
 .p3-legal {{ margin-top:8px; margin-bottom:3mm; padding-top:6px;
@@ -539,6 +588,7 @@ def build(ctx) -> str:
   </div>
 
   {cols_html}
+  {method_html}
 
   <div class="qj" data-w="40"></div>
   <div class="p3-accord">

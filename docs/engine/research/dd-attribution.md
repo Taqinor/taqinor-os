@@ -77,9 +77,10 @@ utm_campaign/utm_content/canal** — a gap for part (a)/(d) rollup queries.
   Cloudflare Worker's payload (`apps/web`, out of scope here). **This path works correctly** —
   whatever UTM values the ad's destination URL carries reach `crm.Lead` unmodified, including
   `utm_content` at true ad/creative granularity **if and only if** the person who built the ad in
-  Ads Manager typed a distinct `utm_content` per ad. First-touch fields are protected on
-  visitor-revisit (`_FIRST_TOUCH_FIELDS`, never overwritten by a later touch) — correct dedup
-  design already in place (QJ8).
+  Ads Manager typed a distinct `utm_content` per ad. Current contract (founder rule, 18/08/2026):
+  **every submission creates its own `Lead`**; first-touch attribution is captured at creation
+  only and never rewritten afterwards (no "returning visitor" merge — duplicates are surfaced in
+  the chatter and merged manually).
 - **Meta Lead Ads webhook** (`crm/webhooks.py:meta_lead_ads_webhook` → `fetch_meta_lead_data` →
   `crm/services.py:create_lead_from_meta_lead_ads`) — **structurally broken for
   campaign/variant attribution** per finding #2/#3 above. `utm_source='facebook'` is the only
@@ -284,13 +285,14 @@ Within (1), further split by **capture mechanism**, since each has a different f
   against Meta's own count.
 
 ### 3.3 Dedup rules — reuse, do not reinvent
-`find_duplicates_by_contact` (phone/email normalized) plus the existing first-touch-protection
-rule (`_FIRST_TOUCH_FIELDS`, `crm/webhooks.py:43-49`) already correctly handle the cross-channel
-duplicate case (e.g. someone clicks a Meta Lead Ads form, then also fills the site form, then also
-calls): the record collapses to ONE `Lead` row, keeping the FIRST channel's attribution. This is
-the right behavior for reconciliation too — **do not build a second dedup mechanism for
-adsengine**; the reconciliation query should count deduplicated `Lead` rows (what already exists),
-never re-count raw webhook payloads (`WebsiteLeadPayload` count would double-count revisits).
+`find_duplicates_by_contact` (phone/email normalized) already handles the cross-channel duplicate
+case (e.g. someone clicks a Meta Lead Ads form, then also fills the site form, then also calls).
+Current contract (founder rule, 18/08/2026, `crm/webhooks.py`): **each submission creates its own
+`Lead`**, first-touch attribution is captured at creation only; the duplicate is then surfaced
+(chatter note "Doublon possible", identity rail) and collapsed by MANUAL merge
+(`services.merge_leads`), never automatically. The reconciliation query must therefore count
+`Lead` rows **after** manual merge — and **do not build a second dedup mechanism for adsengine**;
+never re-count raw webhook payloads (`WebsiteLeadPayload` count would double-count resubmissions).
 
 ### 3.4 Tolerance logic — what a primary source will and will not tell you
 **Primary source silent** on a numeric tolerance threshold — Meta does not publish an expected

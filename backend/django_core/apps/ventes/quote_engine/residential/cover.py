@@ -393,6 +393,18 @@ def build(ctx):
                               pkwc_sans, roi_s, sans_bullets, eco=eco_s_ann,
                               full=True)
 
+    # GAMMES (fondateur 2026-08-18) — les mentions rédigées de garantie de
+    # PERFORMANCE lisent la MÊME source que la bande de la page 3
+    # (theme.warranties_for, dérivée de la composition réelle). Sans donnée
+    # produit → la constante d'aujourd'hui (30 ans) ; sans panneau reconnu →
+    # la mention est OMISE plutôt qu'inventée.
+    _perf_ans = theme.performance_warranty_years(d)
+    perf_phrase = (f"performance garantie {_perf_ans}&nbsp;ans"
+                   if _perf_ans else "")
+    perf_sub = (f" —\n        {perf_phrase}." if perf_phrase else ".")
+    perf_trust = (f"Performance garantie {_perf_ans} ans &middot; "
+                  if _perf_ans else "")
+
     # ── HTML ────────────────────────────────────────────────────────────────
     html = f"""{css}
 <div class="c1-root">
@@ -412,8 +424,7 @@ def build(ctx):
     <div class="c1-hero-body">
       <div class="c1-kicker c1-hero-kicker">Proposition commerciale — Installation solaire</div>
       <div class="c1-serif c1-hello">Bonjour {first_name},</div>
-      <div class="c1-sub">Votre facture d'électricité réduite d'environ {pct_cut}&nbsp;% —
-        performance garantie 30&nbsp;ans.</div>
+      <div class="c1-sub">Votre facture d'électricité réduite d'environ {pct_cut}&nbsp;%{perf_sub}</div>
     </div>
   </div>
 
@@ -427,7 +438,7 @@ def build(ctx):
   <!-- CREDIBILITY CUE (number-free) ──────────────────────────────────────── -->
   <div class="c1-trust">
     <div class="c1-trust-line"></div>
-    <div class="c1-trust-txt"><b>Ingénieurs solaires</b> &middot; Performance garantie 30 ans &middot; Suivi en temps réel</div>
+    <div class="c1-trust-txt"><b>Ingénieurs solaires</b> &middot; {perf_trust}Suivi en temps réel</div>
     <div class="c1-trust-line"></div>
   </div>
 

@@ -126,6 +126,82 @@ class HandleParrainageSignupTests(TestCase):
         handle_parrainage_signup(lead)
         self.assertEqual(Parrainage.objects.filter(filleul_lead=lead).count(), 1)
 
+    def test_idempotent_par_filleul_meme_parrain_lead_different(self):
+        """18/08/2026 — chaque soumission du site CRÉE désormais un NOUVEAU
+        lead (règle fondateur) : le même filleul (même téléphone) qui
+        re-soumet /parrainage obtient donc une fiche DIFFÉRENTE à chaque
+        fois. L'idempotence PAR LEAD (test ci-dessus) ne voit plus ces
+        reprises — elle doit rester idempotente PAR FILLEUL (téléphone/e-mail
+        normalisés) + même parrain : pas de 2e Parrainage en_attente."""
+        lead1 = self._lead()
+        handle_parrainage_signup(lead1)
+        self.assertEqual(Parrainage.objects.count(), 1)
+
+        lead2 = self._lead()  # même téléphone/code — nouvelle fiche.
+        handle_parrainage_signup(lead2)
+
+        self.assertEqual(Parrainage.objects.count(), 1)
+        self.assertFalse(Parrainage.objects.filter(filleul_lead=lead2).exists())
+
+    def test_meme_parrain_laisse_une_note_au_lieu_du_silence(self):
+        """La sortie « même filleul, même parrain » était SILENCIEUSE : deux
+        salariés d'un même client (adresse contact@ partagée) ou un foyer au
+        même mobile faisaient disparaître la 2e recommandation du CRM. Elle
+        laisse désormais une note sobre sur le NOUVEAU lead."""
+        from apps.crm.services import PARRAINAGE_DEJA_ENREGISTRE_MARKER
+
+        lead1 = self._lead()
+        handle_parrainage_signup(lead1)
+        premier = Parrainage.objects.get(filleul_lead=lead1)
+
+        lead2 = self._lead(nom='Second Filleul')  # même contact, même code
+        handle_parrainage_signup(lead2)
+
+        # Toujours aucun doublon de Parrainage.
+        self.assertEqual(Parrainage.objects.count(), 1)
+        self.assertFalse(Parrainage.objects.filter(filleul_lead=lead2).exists())
+        # …mais la trace existe, sur le nouveau lead, avec parrain + date.
+        note = LeadActivity.objects.filter(
+            lead=lead2, kind=LeadActivity.Kind.NOTE,
+            body__startswith=PARRAINAGE_DEJA_ENREGISTRE_MARKER).first()
+        self.assertIsNotNone(note)
+        self.assertIsNone(note.user)
+        self.assertEqual(note.company, self.company)
+        self.assertIn(self.parrain.nom, note.body)
+        self.assertIn(
+            timezone.localtime(premier.date_creation).strftime('%d/%m/%Y'),
+            note.body)
+        self.assertIn('pas de doublon créé', note.body)
+        # Le premier lead, lui, garde sa seule note de parrainage.
+        self.assertFalse(LeadActivity.objects.filter(
+            lead=lead1,
+            body__startswith=PARRAINAGE_DEJA_ENREGISTRE_MARKER).exists())
+
+    def test_parrain_different_sur_resoumission_garde_le_premier(self):
+        """Filleul identique, code de parrain DIFFÉRENT sur la re-soumission :
+        cas ambigu — le premier parrainage n'est jamais réattribué, le
+        nouveau lead reçoit une note chatter expliquant l'ignoré."""
+        lead1 = self._lead()
+        handle_parrainage_signup(lead1)
+        parrainage = Parrainage.objects.get(filleul_lead=lead1)
+
+        autre_parrain = Client.objects.create(
+            company=self.company, nom='Autre Parrain',
+            telephone='+212600999999')
+        lead2 = self._lead(utm_campaign=autre_parrain.code_parrainage)
+        handle_parrainage_signup(lead2)
+
+        self.assertEqual(Parrainage.objects.count(), 1)
+        parrainage.refresh_from_db()
+        self.assertEqual(parrainage.parrain, self.parrain)
+        self.assertFalse(Parrainage.objects.filter(filleul_lead=lead2).exists())
+
+        note = LeadActivity.objects.filter(
+            lead=lead2, kind=LeadActivity.Kind.NOTE,
+            body__icontains='2e code de parrainage').first()
+        self.assertIsNotNone(note)
+        self.assertIn(self.parrain.nom, note.body)
+
     def test_cross_company_code_never_matches(self):
         other = Company.objects.create(nom='Autre QX35', slug='autre-qx35')
         lead = Lead.objects.create(

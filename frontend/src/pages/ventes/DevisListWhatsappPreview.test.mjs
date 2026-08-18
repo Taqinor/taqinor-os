@@ -36,7 +36,8 @@ test('QX22 : fermer sans cliquer ne déclenche aucun appel réseau (closeWaModal
 })
 
 test('QX22 : le clic-through sur wa.me (openWhatsApp) appelle whatsappDevis — la vraie action d\'envoi', () => {
-  assert.match(openWhatsAppBody, /ventesApi\.whatsappDevis\(waTarget\.id\)/)
+  // GAMMES 18/08 : l'appel est devenu multi-arguments multi-lignes (gamme_envoi).
+  assert.match(openWhatsAppBody, /ventesApi\.whatsappDevis\(\s*waTarget\.id/)
   assert.match(openWhatsAppBody, /window\.open\(waData\.wa_url/)
 })
 

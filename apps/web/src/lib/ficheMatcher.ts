@@ -19,9 +19,19 @@
  *  2. AUCUNE CORRESPONDANCE → `null`. Le tableau n'affiche alors simplement pas
  *     de lien pour cette ligne : rien n'est inventé, rien ne casse.
  *
- * Les deux postes GÉNÉRIQUES du devis (« Tableau De Protection AC/DC » et
- * « Accessoires ») pointent vers des fiches EXPLICATIVES sans marque : le
+ * Les postes GÉNÉRIQUES du devis (protection DC, protection AC, câblage,
+ * accessoires de pose, structure) pointent vers des fiches EXPLICATIVES : le
  * client comprend enfin à quoi sert la ligne qu'il paie.
+ *
+ * CONTRAT UNIQUE (fondateur 2026-08-18). Ce module et le moteur de devis
+ * Django (`apps/ventes/quote_engine/residential/theme.py::fiche_slug`) doivent
+ * produire LE MÊME slug pour la même désignation — sinon le PDF et la page web
+ * envoient le client sur deux fiches différentes. Le porteur de cette
+ * obligation est un fichier partagé, pas une convention orale :
+ * `apps/ventes/contract_samples/ligne_fiche_mapping.json`, une entrée par
+ * famille, que les DEUX tests de conformité lisent (ici
+ * `tests/ficheMatcherWJ131.test.ts`, côté Django
+ * `apps/ventes/tests/test_quote_engine.py::test_fiche_slug_mapping`).
  *
  * Le module ne connaît que des chaînes : il n'importe pas `fiches.ts` (aucun
  * cycle, aucun coût au rendu). L'existence RÉELLE de chaque slug retourné est
@@ -74,12 +84,28 @@ function contientUn(libelle: string, motsCles: readonly string[]): boolean {
  * le lien. Une marque inconnue de la liste ne déclenche rien — le garde-fou ne
  * ment jamais dans l'autre sens.
  */
+// « deyness » = ANCIENNE faute d'orthographe de Dyness (corrigée au catalogue le
+// 2026-08-18) : elle reste listée ici et dans la règle `batterie-dyness` parce que
+// les désignations FIGÉES des devis déjà émis arrivent encore avec cette graphie
+// via la proposition — elles doivent continuer d'être appariées à la bonne fiche.
+// « canadien » = l'orthographe RÉELLE du catalogue. Le produit seedé s'appelle
+// « Panneau Canadien Solar 710W » (marque « Canadien Solar », seed_catalogue.py
+// :45/354) alors que la fiche publiée écrit « Canadian Solar » : une règle qui
+// ne testait que `\bcanadian\b` rendait `null` sur la ligne LA PLUS FRÉQUENTE
+// de tous les devis résidentiels, pendant que le PDF, lui, posait le lien. Les
+// deux graphies mènent désormais à la même fiche, des deux côtés du contrat.
 const MARQUES_CONNUES: readonly string[] = [
-  'canadian', 'jinko', 'huawei', 'deye', 'dyness', 'deyness',
+  'canadian', 'canadien', 'jinko', 'huawei', 'deye', 'dyness', 'deyness',
   'growatt', 'sma', 'fronius', 'solis', 'sungrow', 'goodwe', 'chint',
   'longi', 'trina', 'ja solar', 'risen', 'astronergy',
   'pylontech', 'byd', 'victron', 'felicity',
   'hoymiles', 'enphase', 'solaredge', 'tigo', 'veichi',
+  // 2026-08-18 — appareillage & câble : depuis que les fiches `protection-ac`
+  // et `cablage` NOMMENT une marque (Schneider et Nexans, confirmées fondateur),
+  // elles cessent d'être neutres et méritent le même garde-fou que les fiches
+  // produit. `protection-dc` reste SANS marque : aucun garde-fou ne s'y applique.
+  'schneider', 'legrand', 'hager', 'abb', 'siemens', 'citel', 'dehn',
+  'nexans', 'prysmian', 'lapp', 'staubli',
 ];
 
 interface RegleFiche {
@@ -108,13 +134,31 @@ interface RegleFiche {
  */
 const REGLES: readonly RegleFiche[] = [
   {
-    // « Tableau De Protection AC/DC », « Coffret AC », « Parafoudre DC »…
-    slug: 'tableau-protection-ac-dc',
+    // PROTECTION DC — le CÔTÉ CONTINU d'abord : c'est lui qui porte un marqueur
+    // explicite (« DC », « gPV », « chaîne », « string »). Un coffret combiné
+    // « Tableau De Protection AC/DC » atterrit donc ICI, comme l'alias de
+    // l'ancien slug `tableau-protection-ac-dc` (cf. FICHE_ALIASES) — la fiche DC
+    // renvoie vers la fiche AC, aucune moitié n'est perdue.
+    // Aucune marque nommée dans la fiche ⇒ aucun garde-fou de marque.
+    slug: 'protection-dc',
+    contexte: ['dc', 'vdc', 'continu', 'gpv', 'string', 'strings', 'chaine', 'chaines'],
+    qualificatif: [
+      'tableau*', 'coffret*', 'parafoudre*', 'sectionneur*', 'disjoncteur*',
+      'fusible*', 'porte fusible*', 'interrupteur*', 'protection*',
+    ],
+    marques: null,
+  },
+  {
+    // PROTECTION AC — tout le reste de l'appareillage : ce qui n'a PAS de
+    // marqueur continu est du côté réseau. La fiche nomme Schneider (confirmé
+    // fondateur) : elle refuse donc une ligne qui cite une marque concurrente.
+    slug: 'protection-ac',
     contexte: [
-      'tableau*', 'coffret*', 'parafoudre*', 'sectionneur*', 'disjoncteur*', 'differentiel*',
+      'tableau*', 'coffret*', 'parafoudre*', 'disjoncteur*', 'differentiel*',
+      'ddr', 'sectionneur*', 'interrupteur*', 'protection*',
     ],
     qualificatif: null,
-    marques: null,
+    marques: ['schneider'],
   },
   {
     slug: 'batterie-dyness',
@@ -137,8 +181,10 @@ const REGLES: readonly RegleFiche[] = [
   {
     slug: 'canadian-solar-710',
     contexte: ['panneau', 'panneaux', 'module', 'modules', 'photovoltaique'],
-    qualificatif: ['canadian'],
-    marques: ['canadian'],
+    // Les DEUX graphies : le catalogue écrit « Canadien Solar », la fiche
+    // publiée « Canadian Solar » (cf. MARQUES_CONNUES ci-dessus).
+    qualificatif: ['canadian', 'canadien'],
+    marques: ['canadian', 'canadien'],
   },
   {
     slug: 'jinko-710',
@@ -159,12 +205,37 @@ const REGLES: readonly RegleFiche[] = [
     marques: ['huawei'],
   },
   {
-    // Filet du câblage : « Accessoires », « Câblage solaire », « Connecteurs MC4 »…
-    slug: 'accessoires-cablage',
+    // ACCESSOIRES DE POSE — les fournitures de pose : cheminement, étanchéité
+    // des entrées, mise à la terre. Testé AVANT le câblage parce que la ligne
+    // catalogue générique s'appelle « Accessoires » (description backend :
+    // presse-étoupes, goulottes, chemins de câbles, visserie) : c'est ce poste,
+    // pas le câble. Une ligne qui cite un CÂBLE tombe, elle, dans la règle
+    // suivante — aucun mot de câble ici, sauf « chemin de câble » (le support).
+    slug: 'accessoires-pose',
     contexte: [
-      'accessoire*', 'cablage', 'connecteur*', 'mc4', 'goulotte*',
-      'presse etoupe*', 'chemin de cable*', 'gaine*', 'cable solaire*',
+      'accessoire*', 'goulotte*', 'presse etoupe*', 'etoupe*',
+      'chemin de cable*', 'gaine*', 'visserie', 'mise a la terre',
+      'piquet de terre', 'liaison equipotentielle',
     ],
+    qualificatif: null,
+    marques: null,
+  },
+  {
+    // CÂBLAGE — le conducteur lui-même et ses connecteurs. La fiche nomme
+    // Nexans (confirmé fondateur) : garde-fou de marque actif. Les connecteurs
+    // restent SANS marque dans la fiche, mais « mc4 » reste un mot-clé de
+    // DÉSIGNATION (les devis émis l'écrivent) — un mot-clé n'est pas une marque
+    // publiée.
+    slug: 'cablage',
+    contexte: ['cablage', 'cable*', 'connecteur*', 'mc4', 'h1z2z2'],
+    qualificatif: null,
+    marques: ['nexans'],
+  },
+  {
+    // STRUCTURE — ce qui porte les modules. Ferme la marche : « structure »,
+    // « rails », « socles », « lestage » n'entrent en collision avec rien.
+    slug: 'structure-fixation',
+    contexte: ['structure*', 'rail*', 'fixation*', 'lestage', 'socle*', 'chassis*', 'plot*'],
     qualificatif: null,
     marques: null,
   },

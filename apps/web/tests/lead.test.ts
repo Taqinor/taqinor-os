@@ -399,13 +399,32 @@ describe('runSimulation', () => {
 describe('forwardLead — tolérance', () => {
   const band = { kwcMin: 5, kwcMax: 9, kwcLabel: '5 à 9 kWc', paybackLabel: '4 à 6 ans', source: 'local' as const };
 
-  it("un lead sous le seuil n'atteint JAMAIS le webhook CRM", async () => {
+  it("PAR DÉFAUT, un lead sous le seuil n'atteint JAMAIS le webhook CRM", async () => {
     const fetchFn = vi.fn() as unknown as typeof fetch;
     const record = buildLeadRecord(makeLead({ billRange: 'lt800' }), band, new Date());
     const r = await forwardLead(record, { LEAD_WEBHOOK_URL: 'https://crm.example/hook' }, fetchFn);
     expect(r.delivered).toBe(false);
     expect(r.reason).toBe('below-threshold');
     expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  // Opt-in EXPLICITE, réservé au tunnel /devis/mon-toit (capture-lead) : les
+  // autres points d'entrée (preview-lead, simulate) gardent le court-circuit
+  // ci-dessus, byte-identique.
+  it('avec includeUnqualified, un lead sous le seuil PART avec son drapeau qualified:false', async () => {
+    let body: Record<string, unknown> | null = null;
+    const fetchFn = vi.fn(async (_url: string, init?: { body?: string }) => {
+      if (init?.body) body = JSON.parse(init.body);
+      return { ok: true } as unknown as Response;
+    }) as unknown as typeof fetch;
+    const record = buildLeadRecord(makeLead({ billRange: 'lt800' }), band, new Date());
+    expect(record.qualified).toBe(false);
+    const r = await forwardLead(record, { LEAD_WEBHOOK_URL: 'https://crm.example/hook' }, fetchFn, {
+      includeUnqualified: true,
+    });
+    expect(r.delivered).toBe(true);
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    expect((body as unknown as Record<string, unknown>).qualified).toBe(false);
   });
 
   it('tolère un webhook absent (non configuré)', async () => {

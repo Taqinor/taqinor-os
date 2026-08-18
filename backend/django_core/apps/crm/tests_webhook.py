@@ -363,7 +363,7 @@ class QW2SiteFieldsTests(TestCase):
         lead = Lead.objects.get(pk=res.json()['lead_id'])
         self.assertTrue(lead.phone_is_foreign)
 
-    def test_page_persisted_and_protected_as_first_touch(self):
+    def test_page_persisted_and_never_rewritten_by_a_later_submission(self):
         import datetime
 
         res = self.post(payload_site(
@@ -371,15 +371,18 @@ class QW2SiteFieldsTests(TestCase):
         lead = Lead.objects.get(pk=res.json()['lead_id'])
         self.assertEqual(lead.page, '/simulateur')
 
-        # Visiteur revenant hors fenêtre de 60 s (même téléphone → dédup
-        # couche 2) avec une AUTRE page : le first-touch est préservé.
+        # Nouvelle soumission hors fenêtre de 60 s : elle crée SA fiche (règle
+        # fondateur) et ne réécrit donc jamais la landing page de la première.
         lead.date_creation = lead.date_creation - datetime.timedelta(minutes=5)
         lead.save(update_fields=['date_creation'])
         res2 = self.post(payload_site(
             phoneE164='+212699999999', page='/autre-page'))
-        self.assertEqual(res2.status_code, 200)
+        self.assertEqual(res2.status_code, 201, res2.content)
+        self.assertNotEqual(res2.json()['lead_id'], lead.pk)
         lead.refresh_from_db()
         self.assertEqual(lead.page, '/simulateur')
+        self.assertEqual(
+            Lead.objects.get(pk=res2.json()['lead_id']).page, '/autre-page')
 
     def test_company_isolation(self):
         res = self.post(payload_site(facilityType='usine'))
@@ -681,11 +684,9 @@ class QX14PersistedScoreTests(TestCase):
         lead = Lead.objects.get(pk=first.json()['lead_id'])
         lead.score = 0
         lead.save(update_fields=['score'])
-        # Re-post au-delà de la fenêtre de dédup < 60 s simule un visiteur
-        # revenant (couche 2) — on force directement le chemin de mise à jour
-        # en appelant find_duplicates_by_contact plutôt que d'attendre 60 s :
-        # ici on vérifie simplement que le double-clic (couche 1, < 60 s)
-        # recalcule aussi le score sur le lead existant mis à jour.
+        # Renvoi immédiat (double-clic) : on reste dans la garde anti-rejeu
+        # < 60 s, le SEUL chemin qui complète encore un lead existant. On
+        # vérifie qu'il recalcule aussi le score sur ce lead.
         retry = self.post(payload_site(
             phoneE164='+212611223344', gpsLat='33.5', gpsLng='-7.6',
             whatsappOptIn=True))
@@ -807,3 +808,114 @@ class YDATA12DedupWebhookEventTests(TestCase):
         # Un 3e appel identique (même société) est bien refusé.
         self.assertFalse(dedupe_event(
             company=self.company, source='crm.website_lead', event_id='evt-x'))
+
+
+@override_settings(WEBSITE_LEAD_WEBHOOK_SECRET=SECRET)
+class SousSeuilTriageTests(TestCase):
+    """Le site TRANSMET volontairement les leads sous le seuil de facture
+    (`qualified: false`, capture-lead.ts) en affirmant que « le récepteur fait
+    le tri lui-même ». Le tri se joue ici :
+
+      - le lead est créé et étiqueté comme avant (jamais rejeté, jamais perdu) ;
+      - sa notification d'arrivée porte la mention « (sous le seuil) » — le
+        commercial arbitre en la VOYANT, pas après avoir décroché ;
+      - l'alerte URGENTE de rappel (QW4) n'est PAS déclenchée ; la demande de
+        rappel reste visible sur la fiche (préférence + note chatter sobre).
+    """
+
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+        from apps.parametres.models import CompanyProfile
+        from apps.roles.models import Role
+
+        self.company = Company.objects.create(
+            nom='Taqinor Seuil', slug='taqinor-seuil')
+        role = Role.objects.create(
+            company=self.company, nom='Commercial',
+            permissions=['crm_creer', 'crm_voir'])
+        self.owner = get_user_model().objects.create_user(
+            username='owner_seuil', password='x', company=self.company,
+            role=role)
+        CompanyProfile.objects.create(
+            company=self.company, responsable_defaut_leads=self.owner)
+        self.url = reverse('website-lead-webhook')
+        self._idem = 0
+
+    def post(self, data):
+        self._idem += 1
+        data = dict(data)
+        data.setdefault('idempotencyKey', f'idem-seuil-{self._idem}')
+        return self.client.post(
+            self.url, data=json.dumps(data), content_type='application/json',
+            HTTP_X_WEBHOOK_SECRET=SECRET)
+
+    def _notifs(self, event_type):
+        from apps.notifications.models import Notification
+        return Notification.objects.filter(
+            recipient=self.owner, event_type=event_type)
+
+    def test_notification_d_arrivee_porte_la_mention_sous_le_seuil(self):
+        res = self.post(payload_site(
+            phoneE164='+212661000501', qualified=False, billRange='800-1000'))
+        self.assertEqual(res.status_code, 201, res.content)
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        # Le lead existe bel et bien, étiqueté (comportement conservé).
+        self.assertEqual(lead.tags, 'Sous le seuil 1 000 MAD')
+        self.assertEqual(lead.owner_id, self.owner.pk)
+        notif = self._notifs('lead_new').get()
+        self.assertIn('(sous le seuil)', notif.title)
+        self.assertIn('sous le seuil', notif.body)
+
+    def test_rappel_demande_sous_le_seuil_consigne_sans_alerte_urgente(self):
+        res = self.post(payload_site(
+            phoneE164='+212661000502', qualified=False, billRange='800-1000',
+            contactPreference='phone_ok'))
+        self.assertEqual(res.status_code, 201, res.content)
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        # La demande de rappel reste VISIBLE sur la fiche…
+        self.assertEqual(lead.contact_preference,
+                         Lead.ContactPreference.PHONE_OK)
+        from .webhooks import CALLBACK_SOUS_SEUIL_MARKER
+        self.assertTrue(LeadActivity.objects.filter(
+            lead=lead, kind=LeadActivity.Kind.NOTE,
+            body__startswith=CALLBACK_SOUS_SEUIL_MARKER).exists())
+        # …mais aucune alerte urgente n'est partie (QW4 réservé au-dessus du
+        # seuil), et le marqueur QW4 n'est pas posé non plus.
+        self.assertEqual(self._notifs('lead_callback_requested').count(), 0)
+        from .services import CALLBACK_REQUESTED_MARKER
+        self.assertFalse(LeadActivity.objects.filter(
+            lead=lead, body__startswith=CALLBACK_REQUESTED_MARKER).exists())
+
+    def test_note_sous_seuil_idempotente_sur_relance_60s(self):
+        """Le renvoi de la MÊME soumission (< 60 s) repasse par le tri : une
+        seule note, jamais un doublon dans le chatter."""
+        first = self.post(payload_site(
+            phoneE164='+212661000503', qualified=False,
+            contactPreference='phone_ok'))
+        self.assertEqual(first.status_code, 201, first.content)
+        retry = self.post(payload_site(
+            phoneE164='+212661000503', qualified=False, city='Rabat',
+            contactPreference='phone_ok'))
+        self.assertEqual(retry.status_code, 200, retry.content)
+        from .webhooks import CALLBACK_SOUS_SEUIL_MARKER
+        self.assertEqual(LeadActivity.objects.filter(
+            lead_id=first.json()['lead_id'],
+            body__startswith=CALLBACK_SOUS_SEUIL_MARKER).count(), 1)
+
+    def test_au_dessus_du_seuil_strictement_inchange(self):
+        res = self.post(payload_site(
+            phoneE164='+212661000504', qualified=True,
+            contactPreference='phone_ok'))
+        self.assertEqual(res.status_code, 201, res.content)
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        notif = self._notifs('lead_new').get()
+        self.assertNotIn('sous le seuil', notif.title)
+        self.assertNotIn('sous le seuil', notif.body)
+        # L'alerte de rappel part normalement, avec son marqueur QW4.
+        self.assertEqual(self._notifs('lead_callback_requested').count(), 1)
+        from .services import CALLBACK_REQUESTED_MARKER
+        self.assertTrue(LeadActivity.objects.filter(
+            lead=lead, body__startswith=CALLBACK_REQUESTED_MARKER).exists())
+        from .webhooks import CALLBACK_SOUS_SEUIL_MARKER
+        self.assertFalse(LeadActivity.objects.filter(
+            lead=lead, body__startswith=CALLBACK_SOUS_SEUIL_MARKER).exists())

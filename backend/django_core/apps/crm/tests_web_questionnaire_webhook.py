@@ -20,7 +20,7 @@ from django.urls import reverse
 
 from authentication.models import Company
 
-from .models import Lead, LeadActivity
+from .models import Lead, LeadActivity, WebsiteLeadPayload
 
 SECRET = 'test-secret-web-questionnaire'
 
@@ -206,6 +206,22 @@ class WebQuestionnaireWebhookTests(TestCase):
             'paybackLabel': '4 à 6 ans',
         })
 
+    def test_nb_panneaux_et_bassin_traversent_la_whitelist(self):
+        """WJ124 — le tunnel ANNONCE « 12,4 kWc · 28 panneaux » et un bassin
+        recommandé ; les deux clés (`nbPanneaux`, `bassinM3`) sont émises par
+        le site (lead.ts:ESTIMATE_SHOWN_NUMERIC_KEYS) et étaient jetées ici :
+        le commercial recomptait les modules à la main."""
+        res = self.post(payload_site(
+            mode='agricole',
+            estimateShown={'champKwc': 12.4, 'nbPanneaux': 28,
+                           'bassinM3': 45, 'm3Jour': 45},
+        ))
+        self.assertEqual(res.status_code, 201, res.content)
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertEqual(lead.web_estimate, {
+            'champKwc': 12.4, 'nbPanneaux': 28, 'bassinM3': 45, 'm3Jour': 45,
+        })
+
     def test_valeurs_invalides_ignorees_jamais_de_crash(self):
         res = self.post(payload_site(
             mode='agricole',
@@ -234,3 +250,76 @@ class WebQuestionnaireWebhookTests(TestCase):
             lead=lead, body__startswith='Questionnaire web').exists())
         self.assertTrue(LeadActivity.objects.filter(
             lead=lead, kind=LeadActivity.Kind.CREATION).exists())
+
+
+@override_settings(WEBSITE_LEAD_WEBHOOK_SECRET=SECRET)
+class TrousDeMappingCombles(TestCase):
+    """Clés émises par le site qui n'atterrissaient nulle part, ou dont il faut
+    verrouiller l'atterrissage dans le blob `web_questionnaire`."""
+
+    def setUp(self):
+        self.company = Company.objects.create(
+            nom='QJ Web Co 2', slug='qj-web-co-2')
+        self.url = reverse('website-lead-webhook')
+
+    def post(self, data):
+        return self.client.post(
+            self.url, data=json.dumps(data),
+            content_type='application/json',
+            HTTP_X_WEBHOOK_SECRET=SECRET)
+
+    def test_region_agricole_persistee_et_resumee(self):
+        """WJ124 — `regionAgricole` était émise par le site et jetée par le
+        webhook (aucune colonne, absente de la whitelist)."""
+        res = self.post(payload_site(
+            mode='agricole', regionAgricole='souss-massa', culture='olivier'))
+        self.assertEqual(res.status_code, 201, res.content)
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertEqual(lead.web_questionnaire.get('region_agricole'),
+                         'souss-massa')
+        note = LeadActivity.objects.filter(
+            lead=lead, body__startswith='Questionnaire web').first()
+        self.assertIn('région souss-massa', note.body)
+
+    def test_region_agricole_hors_liste_ignoree(self):
+        res = self.post(payload_site(
+            mode='agricole', regionAgricole='atlantide', culture='olivier'))
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertNotIn('region_agricole', lead.web_questionnaire)
+
+    def test_cles_gatees_atterrissent_toutes_dans_le_blob(self):
+        """Clés déjà acceptées mais rarement émises : on verrouille qu'elles
+        arrivent bien TOUTES dans `web_questionnaire` quand le site les
+        envoie (industriel v2 + surface commerciale + pompage)."""
+        res = self.post(payload_site(
+            mode='professionnel',
+            equipes='3x8', weekend=True, cosPhiConnu=0.92,
+            hasGenerator=True, groupeKva=400, dieselDhMois=18000,
+            surfaceToitureM2=2600, surfaceM2=3100, heuresPompage=7,
+        ))
+        self.assertEqual(res.status_code, 201, res.content)
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertEqual(lead.web_questionnaire, {
+            'equipes': '3x8',
+            'weekend': True,
+            'cos_phi_connu': 0.92,
+            'has_generator': True,
+            'groupe_kva': 400.0,
+            'diesel_dh_mois': 18000.0,
+            'surface_toiture_m2': 2600.0,
+            'surface_m2': 3100.0,
+            'heures_pompage': 7.0,
+        })
+
+    def test_cle_inconnue_survit_dans_le_payload_brut(self):
+        """Une clé que le backend ne connaît pas encore n'est jamais perdue :
+        elle reste dans `WebsiteLeadPayload.payload` (règle « jamais perdre un
+        lead »), sans polluer le blob questionnaire."""
+        res = self.post(payload_site(
+            mode='agricole', cleTotalementInconnue='valeur-du-futur'))
+        self.assertEqual(res.status_code, 201, res.content)
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertNotIn('cle_totalement_inconnue', lead.web_questionnaire)
+        raw = WebsiteLeadPayload.objects.get(lead=lead)
+        self.assertEqual(raw.payload['cleTotalementInconnue'],
+                         'valeur-du-futur')

@@ -437,3 +437,274 @@ def statuts_perdus():
     from .models import AppelOffre
 
     return (AppelOffre.Statut.PERDU, AppelOffre.Statut.ABANDONNE)
+
+
+# ── Le MÊME atelier 3D pour l'AO que pour la villa ─────────────────────────
+#
+# L'écran de conception 3D (``frontend/src/pages/ventes/ToitureDesign.jsx``)
+# existe déjà et sert deux modes (« lead », « devis »). Le mode « ao » le
+# RÉUTILISE — jamais une seconde implémentation : la géométrie AO relevée
+# (``ToitureAO`` + ``ZoneAO``, repère LOCAL MÉTRIQUE) est reprojetée en degrés
+# À LA FRONTIÈRE (``apps/ao/geometrie.py``, AOF19) pour hydrater le builder.
+#
+# UN SEUL appel, UN SEUL dict, TOUTES les clés TOUJOURS présentes (contrat
+# ``apps/ao/contract_samples/ao_design_context.json``, PACT10). Un panier vide
+# vaut ``[]``, une valeur inconnue vaut ``None``/``''`` — jamais une clé
+# absente : c'est un ``.map()`` sur ``undefined`` en production.
+#
+# LECTURE PURE : aucun statut, aucune toiture, aucun layout n'est écrit ici.
+
+def statuts_conception_figee():
+    """Statuts pour lesquels le dossier est PARTI (ou clos) : le calepinage ne
+    se remodifie plus depuis l'atelier.
+
+    DÉRIVÉE des énumérations du modèle (jamais des chaînes recopiées) et
+    réutilise les deux sources existantes ``statuts_gagnes``/``statuts_perdus``
+    — un statut renommé ne peut donc pas laisser une porte ouverte ici.
+    """
+    from .models import AppelOffre
+
+    return (AppelOffre.Statut.DEPOSE,) + statuts_gagnes() + statuts_perdus()
+
+
+def raison_conception_figee(appel_offre):
+    """Motif FRANÇAIS de lecture seule de l'atelier 3D, ou ``''``.
+
+    SOURCE UNIQUE de la phrase : le contexte de conception l'affiche au
+    chargement et le refus d'écriture (409) la renvoie — deux formulations
+    différentes pour la même règle seraient un écart que personne ne verrait.
+    """
+    if appel_offre is None \
+            or appel_offre.statut not in statuts_conception_figee():
+        return ''
+    return ('Affaire « %s » : le dossier est parti chez l\'acheteur — le '
+            'calepinage ne se modifie plus.'
+            % appel_offre.get_statut_display())
+
+
+def _config_carte_builder():
+    """Clés carte du builder 3D — MIROIR de ``apps/ventes/views/roof_config.py``.
+
+    Mêmes variables d'environnement (``PUBLIC_MAPTILER_KEY`` /
+    ``PUBLIC_MAPBOX_TOKEN``), même forme ``{available, maptilerKey,
+    mapboxToken}`` que le contexte devis : l'écran lit la carte DANS le contexte
+    plutôt que d'enchaîner un second appel. C'est de la CONFIGURATION (aucune
+    donnée société, aucune écriture) — la lire ici évite de faire dépendre le
+    domaine AO du domaine ventes pour une clé d'API.
+    """
+    import os
+
+    maptiler = os.environ.get('PUBLIC_MAPTILER_KEY', '') or ''
+    mapbox = os.environ.get('PUBLIC_MAPBOX_TOKEN', '') or ''
+    return {
+        'available': bool(maptiler),
+        'maptilerKey': maptiler,
+        'mapboxToken': mapbox or None,
+    }
+
+
+def _toiture_de_reference(company, appel_offre_id):
+    """La toiture qui porte la vue 3D de l'affaire — choix DÉTERMINISTE.
+
+    Une affaire peut compter plusieurs bâtiments et plusieurs toitures ; le
+    builder, lui, s'ouvre sur UN site. On prend la première toiture ANCRÉE
+    (``origine_lat``/``origine_lng`` renseignées — la seule reprojetable en
+    degrés), à défaut la première tout court, dans un ordre stable
+    (bâtiment, code de planche, id). Un tri instable ferait bouger la vue d'un
+    chargement à l'autre sans qu'aucune donnée n'ait changé.
+    """
+    from .models import ToitureAO
+
+    toitures = list(
+        ToitureAO.objects.filter(
+            company=company, batiment__appel_offre_id=appel_offre_id
+        ).select_related('batiment').prefetch_related('zones')
+        .order_by('batiment__ordre', 'batiment__code', 'code_document', 'id'))
+    if not toitures:
+        return None
+    for toiture in toitures:
+        if toiture.origine_lat is not None and toiture.origine_lng is not None:
+            return toiture
+    return toitures[0]
+
+
+def _toiture_vers_contexte(toiture):
+    """Bloc ``geometrie.toiture`` : le relevé AO tel qu'il est, sans invention."""
+    if toiture is None:
+        return None
+    return {
+        'id': toiture.pk,
+        'code_document': toiture.code_document or '',
+        'designation': toiture.designation or '',
+        'surface_m2': str(toiture.surface_m2 or '0.000'),
+        'angle_nord_deg': str(toiture.angle_nord_deg or '0.00'),
+        'parametres_calepinage': toiture.parametres_calepinage or {},
+        'zones': [
+            {
+                'id': zone.pk,
+                'repere': zone.repere or '',
+                'nature': zone.nature,
+                'sommets': zone.sommets or [],
+                'retrait_m': str(zone.retrait_m or '0.00'),
+                'hauteur_m': (str(zone.hauteur_m)
+                              if zone.hauteur_m is not None else None),
+            }
+            for zone in toiture.zones.all()
+        ],
+    }
+
+
+def _contour_en_degres(toiture):
+    """Contour LOCAL MÉTRIQUE → ``[[lat, lng], …]``, ou ``[]``.
+
+    ORDRE DES AXES (AOF19) : la conversion passe explicitement par
+    ``local_m_vers_lnglat`` puis ``lnglat_vers_latlng`` — le builder et le lead
+    CRM parlent ``[lat, lng]``, le repère de frontière est ``[lng, lat]``, et
+    seule une fonction NOMMÉE a le droit d'échanger les deux.
+
+    Sans ancre géographique sur la toiture, on rend ``[]`` : reprojeter un
+    repère local depuis le point GPS du SITE placerait le bâtiment à côté de
+    lui-même, ce qui est pire qu'un contour absent.
+    """
+    from .geometrie import lnglat_vers_latlng, local_m_vers_lnglat
+
+    if toiture is None or not toiture.contour_local_m:
+        return []
+    if toiture.origine_lat is None or toiture.origine_lng is None:
+        return []
+    origine = [float(toiture.origine_lng), float(toiture.origine_lat)]
+    return lnglat_vers_latlng(
+        local_m_vers_lnglat(toiture.contour_local_m, origine))
+
+
+def contexte_conception_affaire(appel_offre, company):
+    """Tout ce que l'atelier 3D doit savoir d'une AFFAIRE, en UN SEUL appel.
+
+    Rend ``None`` quand l'affaire appartient à une AUTRE société (l'appelant
+    répond alors 404 — jamais d'oracle d'existence). Sinon un dict à la forme
+    FIXE, miroir exact du contrat devis (``affaire`` y remplace ``devis``) :
+
+        {affaire: {id, reference, reference_acheteur, statut, objet, acheteur,
+                   maitre_ouvrage},
+         geometrie: {source, roof_layout, pin, outline, toiture},
+         cible: {panneaux, kwc, panel_watt, scenario, batterie, surface_m2},
+         carte: {available, maptilerKey, mapboxToken},
+         modifiable, raison_lecture_seule, avertissements}
+
+    ``geometrie.source`` vaut ``'affaire'`` (une session 3D est déjà
+    enregistrée sur l'affaire — elle PRIME), ``'toiture'`` (contour relevé
+    reprojeté depuis son ancre), ``'site'`` (seul le point GPS du site est
+    connu) ou ``'none'``. ``modifiable`` est faux — avec un motif FRANÇAIS dans
+    ``raison_lecture_seule`` — dès que le dossier est déposé ou clos.
+    ``raison_lecture_seule`` vaut ``''`` quand l'affaire est modifiable, jamais
+    ``None``.
+    """
+    if appel_offre is None:
+        return None
+    # Garde société DÉFENSIVE (le queryset de l'appelant borne déjà) : un
+    # superutilisateur sans société passe outre, comme partout ailleurs.
+    company_id = getattr(company, 'id', None)
+    if company_id is not None and appel_offre.company_id != company_id:
+        return None
+
+    societe = appel_offre.company
+    toiture = _toiture_de_reference(societe, appel_offre.pk)
+    outline = _contour_en_degres(toiture)
+
+    # ── Épingle : l'ancre de la toiture d'abord, le point du site ensuite ──
+    pin = None
+    pin_de_la_toiture = False
+    if toiture is not None and toiture.origine_lat is not None \
+            and toiture.origine_lng is not None:
+        pin = {'lat': float(toiture.origine_lat),
+               'lng': float(toiture.origine_lng)}
+        pin_de_la_toiture = True
+    elif appel_offre.site_gps_lat is not None \
+            and appel_offre.site_gps_lng is not None:
+        pin = {'lat': float(appel_offre.site_gps_lat),
+               'lng': float(appel_offre.site_gps_lng)}
+
+    layout = appel_offre.roof_layout \
+        if isinstance(appel_offre.roof_layout, dict) else None
+    if layout:
+        source = 'affaire'
+    elif outline or pin_de_la_toiture:
+        # ``'toiture'`` dès que la géométrie servie VIENT de la toiture — y
+        # compris quand seule son ANCRE existe (relevé GPS posé, plan pas
+        # encore tracé) : l'étiquette dit d'où sort le point affiché, et le
+        # point affiché est alors celui de la toiture, pas le GPS du site.
+        source = 'toiture'
+    elif pin:
+        source = 'site'
+    else:
+        source = 'none'
+
+    # ── Cible : ce que les variantes RETENUES engagent aujourd'hui ──
+    synthese = synthese_calepinage_affaire(appel_offre, company=societe)
+    panneaux = int(synthese['total_modules'] or 0)
+    kwc = float(synthese['total_kwc'] or 0.0)
+    if not panneaux:
+        panneaux = int(appel_offre.engagement_modules_batiments
+                       or appel_offre.engagement_modules or 0)
+    # Le wattage n'est JAMAIS saisi côté AO : il se DÉRIVE du couple
+    # modules/puissance des variantes retenues, et vaut 0 tant que l'un des
+    # deux manque (une valeur par défaut inventée fausserait le calepinage).
+    panel_watt = int(round(kwc * 1000.0 / panneaux)) if (panneaux and kwc) else 0
+
+    avertissements = []
+    if toiture is None:
+        avertissements.append(
+            'Aucune toiture relevée sur cette affaire : commencez par relever '
+            'une toiture.')
+    elif not outline:
+        # ``_contour_en_degres`` rend ``[]`` dans DEUX cas qui n'appellent PAS
+        # le même geste : contour non tracé, ou ancre géographique absente.
+        # Les confondre envoyait l'utilisateur re-saisir une ancre déjà posée.
+        nom_toiture = (toiture.code_document or toiture.designation
+                       or f'#{toiture.pk}')
+        if not toiture.contour_local_m:
+            avertissements.append(
+                'La toiture « %s » n\'a aucun contour relevé : il n\'y a rien '
+                'à reprojeter sur la carte. Tracez son contour.' % nom_toiture)
+        else:
+            avertissements.append(
+                'La toiture « %s » n\'a aucune ancre géographique : son '
+                'contour ne peut pas être reprojeté sur la carte.'
+                % nom_toiture)
+    if source == 'none':
+        avertissements.append(
+            'Aucune géométrie connue pour cette affaire : commencez par situer '
+            'le site sur la carte.')
+
+    raison = raison_conception_figee(appel_offre)
+
+    return {
+        'affaire': {
+            'id': appel_offre.pk,
+            'reference': appel_offre.reference,
+            'reference_acheteur': appel_offre.reference_acheteur or '',
+            'statut': appel_offre.statut,
+            'objet': appel_offre.objet or '',
+            'acheteur': appel_offre.acheteur or '',
+            'maitre_ouvrage': appel_offre.maitre_ouvrage or '',
+        },
+        'geometrie': {
+            'source': source,
+            'roof_layout': layout,
+            'pin': pin,
+            'outline': outline,
+            'toiture': _toiture_vers_contexte(toiture),
+        },
+        'cible': {
+            'panneaux': panneaux,
+            'kwc': round(kwc, 3),
+            'panel_watt': panel_watt,
+            'scenario': '',
+            'batterie': False,
+            'surface_m2': str(appel_offre.surface_toitures_m2),
+        },
+        'carte': _config_carte_builder(),
+        'modifiable': not raison,
+        'raison_lecture_seule': raison,
+        'avertissements': avertissements,
+    }

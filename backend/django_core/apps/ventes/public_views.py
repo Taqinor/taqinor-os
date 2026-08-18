@@ -610,6 +610,91 @@ def _safe_sld_svg(devis):
         return None
 
 
+#: Décision fondateur 2026-08-18 — LE DÉTAIL ÉLECTRIQUE EST EXPOSÉ AU CLIENT,
+#: SANS PRIX. Le contrat interne ``contract_samples/conception_electrique.json``
+#: porte déjà zéro montant (le moteur ``core.electrique`` ignore jusqu'à
+#: l'existence d'un prix), mais il porte AUSSI de l'ingénierie qui n'est pas
+#: destinée au client : la nomenclature d'achat (``bom``), les paramètres
+#: d'entrée du calcul (``parametres``), les verdicts de conformité et les ratios
+#: de dimensionnement, les tensions de chaîne aux températures extrêmes, la
+#: chute de tension par liaison.
+#:
+#: Ces trois tuples sont donc une WHITELIST au sens strict — même discipline que
+#: ``_mode_kpis`` : on ÉNUMÈRE ce qui sort, on ne filtre pas ce qui reste. Un
+#: champ ajouté demain au contrat interne n'atteint le client que si quelqu'un
+#: l'écrit ici, volontairement. Un test l'arme (``test_pv81_proposition_sld``).
+_PUBLIC_CHAINE = ('pan', 'mppt', 'nb_modules')
+#: ``repere`` + ``designation`` + ``calibre`` : ce qui est écrit sur l'organe et
+#: sur le schéma, donc ce que le client peut aller vérifier dans son coffret.
+_PUBLIC_PROTECTION = ('repere', 'designation', 'calibre', 'quantite')
+#: ``liaison`` = le libellé du tronçon (« Chaîne 1 → coffret DC ») : sans lui, une
+#: section et une longueur ne veulent rien dire sur une page client.
+_PUBLIC_CABLE = ('liaison', 'section_mm2', 'longueur_m')
+
+
+def _liste_blanche(source, champs):
+    """Projette une liste de dicts sur ``champs`` — valeur absente = clé OMISE.
+
+    Aucune valeur inventée, aucun zéro de remplissage : la page web applique la
+    règle dure « valeur absente ⇒ rien affiché », elle a donc besoin que la clé
+    manque plutôt que de valoir ``None``.
+    """
+    sortie = []
+    for element in source if isinstance(source, list) else []:
+        if not isinstance(element, dict):
+            continue
+        propre = {c: element[c] for c in champs
+                  if element.get(c) is not None}
+        if propre:
+            sortie.append(propre)
+    return sortie
+
+
+def _conception_electrique_publique(devis):
+    """Le détail électrique CLIENT-SAFE du devis, ou ``None``.
+
+    Même portail que ``_safe_sld_svg`` : sans ``Devis.electrical_design``
+    (PV41), on retourne ``None`` — le client ne voit un détail que lorsque
+    l'étude a réellement été faite, jamais une composition fabriquée pour
+    remplir la page.
+
+    Ce que le client obtient, et RIEN d'autre :
+      · ``chaines``     — combien de modules sur quel MPPT, pan par pan ;
+      · ``protections`` — les organes réellement posés : repère, désignation,
+                          calibre, quantité ;
+      · ``cables``      — la section et la longueur de chaque liaison.
+
+    Ce qui NE SORT JAMAIS : ``bom`` (nomenclature d'achat), ``parametres``
+    (entrées du calcul), ``conformite``/``ratio_*`` (verdicts d'ingénierie),
+    les tensions de chaîne et la chute de tension par liaison — et, cela va de
+    soi, aucun montant (règle #4 ; le moteur électrique n'en connaît aucun).
+
+    Lecture PURE : rien n'est écrit. Jamais bloquant : une étude illisible rend
+    ``None``, pas une erreur 500.
+    """
+    try:
+        from .electrical_service import conception_electrique_stockee
+
+        design = conception_electrique_stockee(devis)
+        if not design:
+            return None
+        public = {
+            'chaines': _liste_blanche(design.get('chaines'), _PUBLIC_CHAINE),
+            'protections': _liste_blanche(design.get('protections'),
+                                          _PUBLIC_PROTECTION),
+            'cables': _liste_blanche(design.get('cables'), _PUBLIC_CABLE),
+        }
+        # Une étude qui ne dit rien de montrable ne mérite pas un bloc vide.
+        if not any(public.values()):
+            return None
+        return public
+    except Exception:  # noqa: BLE001 — un détail absent ne casse pas la page
+        logger.warning(
+            "Détail électrique public indisponible pour le devis %s",
+            getattr(devis, "pk", None))
+        return None
+
+
 def _variant_summaries(devis) -> list:
     """QJ15 — côte-à-côte : résumé minimal de chaque variante du devis.
 
@@ -636,9 +721,19 @@ def _variant_summaries(devis) -> list:
             )
             .exclude(pk=devis.pk)   # exclude self — self is the main payload
             .order_by('version', 'id')
+            # ``etude_params`` est chargé ici (et non différé) : le filtre de
+            # gamme ci-dessous le lit sur chaque sœur — le différer coûterait
+            # une requête par ligne.
             .only('id', 'reference', 'version', 'note',
-                  'taux_tva', 'remise_globale')
+                  'taux_tva', 'remise_globale', 'etude_params')
         )
+        # GAMMES — une sœur porteuse d'un libellé de gamme n'est PAS une
+        # « autre taille » : elle est rendue par le bloc « gammes » (mode
+        # d'envoi « les_deux ») ou tue (mode « seule »). L'exclure ici évite le
+        # doublon dans la bande « Autres tailles proposées » ET toute fuite de
+        # l'autre gamme quand le vendeur a choisi d'en envoyer une seule.
+        from .services import gamme_nom
+        siblings = [s for s in siblings if not gamme_nom(s)]
         if not siblings:
             return []
         out = []
@@ -665,6 +760,154 @@ def _variant_summaries(devis) -> list:
         return out
     except Exception:  # noqa: BLE001 — best-effort, never break the proposal
         return []
+
+
+# ── GAMMES — offre à DEUX GAMMES, envoi à la carte (fondateur 2026-08-18) ───
+# Une gamme = un devis frère COMPLET (mécanique de variantes QJ15). Le lien
+# client rend TOUJOURS le devis de son jeton ; en mode « les_deux » il expose
+# EN PLUS le résumé de la gamme sœur pour que le client choisisse AVANT de
+# signer. En mode « seule » : rien de la sœur ne franchit la frontière.
+# UN PDF = UNE GAMME : chaque carte pointe vers le PDF de SA gamme (le jeton
+# de la sœur), jamais un PDF fusionné.
+def _gamme_lignes_publiques(devis):
+    """Composition CLIENT d'un devis : (désignation, quantité) par ligne.
+
+    Whitelist stricte — ni prix d'achat, ni marge, ni champ interne (règle #4).
+    Sert au tableau comparatif factuel des lignes qui diffèrent entre gammes.
+
+    PÉRIMÈTRE = celui de la CHAÎNE CANONIQUE, pas un périmètre à part. Seules
+    les lignes qui entrent réellement dans le total comparé sont publiées :
+    lignes PRODUIT non optionnelles, exactement comme
+    ``quote_engine/builder.py`` (``lignes = [li for li in lignes if not
+    li.optionnelle]``) et ``selectors.ligne_compte_dans_totaux``. Sans ce
+    filtre, un add-on ``optionnelle=True`` (XSAL5, HORS total) et les
+    intertitres ``SECTION`` (XSAL14, sans quantité) s'affichaient à côté d'un
+    ``total_ttc`` qui, lui, les EXCLUT : le client concluait qu'une gamme
+    incluait un matériel qu'elle ne facture pas."""
+    from .models import LigneDevis
+    lignes = []
+    for ln in (LigneDevis.objects
+               .filter(devis=devis,
+                       type_ligne=LigneDevis.TypeLigne.PRODUIT,
+                       optionnelle=False)
+               .order_by('ordre', 'id')
+               .values('designation', 'quantite')):
+        designation = (ln['designation'] or '').strip()
+        if not designation:
+            continue
+        try:
+            qte = float(ln['quantite'])
+        except (TypeError, ValueError):
+            qte = None
+        lignes.append({'designation': designation, 'quantite': qte})
+    return lignes
+
+
+def _gamme_comparatif(lignes_ici, lignes_soeur):
+    """Lignes qui DIFFÈRENT entre les deux compositions (jamais les communes).
+
+    Comparaison par désignation : une désignation absente d'un côté, ou
+    présente des deux côtés avec une quantité différente, entre au comparatif.
+    Une valeur absente est omise (jamais un « 0 » inventé).
+
+    Les quantités d'une MÊME désignation sont AGRÉGÉES (somme) : un devis
+    multi-villa (QJ29/QJ30) ou sectionné (XSAL14) répète la même désignation
+    une fois par groupe. Ne garder que la première (``setdefault``) publiait
+    « 10 » là où le devis porte 10 + 6 = 16 panneaux — un chiffre faux présenté
+    au client comme la composition de sa gamme."""
+    def _index(lignes):
+        out = {}
+        for ln in lignes:
+            designation, qte = ln['designation'], ln['quantite']
+            if designation not in out:
+                out[designation] = qte
+            elif qte is not None:
+                out[designation] = (out[designation] or 0) + qte
+        return out
+
+    ici, soeur = _index(lignes_ici), _index(lignes_soeur)
+    lignes = []
+    for designation in list(ici) + [d for d in soeur if d not in ici]:
+        q_ici, q_soeur = ici.get(designation), soeur.get(designation)
+        if designation in ici and designation in soeur and q_ici == q_soeur:
+            continue
+        ligne = {'designation': designation}
+        if q_ici is not None:
+            ligne['quantite'] = q_ici
+        if q_soeur is not None:
+            ligne['quantite_soeur'] = q_soeur
+        lignes.append(ligne)
+    return lignes
+
+
+def _gammes_public(devis):
+    """Bloc « choix de gamme » de la charge utile publique, ou ``None``.
+
+    ``None`` (clé absente) dans TOUS les cas où le client ne doit rien voir de
+    l'autre gamme : devis sans gamme, gamme sans sœur vivante, ou mode d'envoi
+    « seule ». L'écart est donné en MAD ABSOLUS et signé côté client.
+
+    LES DEUX CÔTÉS DU COMPARATIF SORTENT DE LA MÊME FONCTION (fondateur
+    2026-08-18) : ``display_totals(...)['total']`` pour la gamme courante COMME
+    pour la sœur. ``data['display_total']`` ne convenait pas : il vaut le total
+    SANS batterie dès qu'un devis porte DEUX options et le total AVEC quand il
+    n'en porte qu'une (``builder.build_quote_data``). Comparer un devis
+    bi-option à un devis mono-option revenait donc à soustraire deux
+    compositions différentes — l'écart annoncé au client (« + 44 000 MAD »)
+    n'était l'écart de rien. Même appel des deux côtés ⇒ sémantique identique
+    ⇒ écart comparable, et toujours un prix qui existe dans un document
+    (PV86)."""
+    from .services import (
+        GAMME_ENVOI_LES_DEUX, gamme_envoi, gamme_info, gamme_soeur,
+    )
+    try:
+        info = gamme_info(devis)
+        if not info.get('nom'):
+            return None
+        if gamme_envoi(devis) != GAMME_ENVOI_LES_DEUX:
+            return None
+        soeur = gamme_soeur(devis)
+        if soeur is None:
+            return None
+        from .models import ShareLink
+        from .quote_engine.builder import display_totals
+        from .utils.client_links import chemin_proposition
+
+        info_soeur = gamme_info(soeur)
+        lien_soeur = ShareLink.for_devis(soeur)
+        total_soeur = display_totals(soeur).get('total')
+        total_soeur = (round(float(total_soeur), 2)
+                       if total_soeur is not None else None)
+        total_courant = display_totals(devis).get('total')
+        courant = (round(float(total_courant), 2)
+                   if total_courant is not None else None)
+        ecart = (round(total_soeur - courant, 2)
+                 if (total_soeur is not None and courant is not None) else None)
+        lignes_ici = _gamme_lignes_publiques(devis)
+        lignes_soeur = _gamme_lignes_publiques(soeur)
+        return {
+            'envoi': GAMME_ENVOI_LES_DEUX,
+            'courante': {
+                'nom': str(info.get('nom') or ''),
+                'recommandee': bool(info.get('recommandee')),
+                'reference': devis.reference,
+                'total_ttc': courant,
+            },
+            'soeur': {
+                'nom': str(info_soeur.get('nom') or ''),
+                'recommandee': bool(info_soeur.get('recommandee')),
+                'reference': soeur.reference,
+                'total_ttc': total_soeur,
+                # Le jeton de la sœur : la carte « choisir cette gamme » ouvre
+                # SON lien (document complet) et SON PDF — la signature porte
+                # donc toujours sur le devis de la gamme réellement choisie.
+                'proposition_path': chemin_proposition(soeur, lien_soeur.token),
+                'ecart_ttc': ecart,
+            },
+            'comparatif': _gamme_comparatif(lignes_ici, lignes_soeur),
+        }
+    except Exception:  # noqa: BLE001 — jamais casser la proposition
+        return None
 
 
 def _kpi_num(v):
@@ -858,6 +1101,13 @@ def proposal_data(request, token):
             # None tant que la conception électrique (PV41) n'a pas été faite :
             # le client ne voit un schéma que lorsqu'il en existe un vrai.
             'sld_svg': _safe_sld_svg(devis),
+            # Fondateur 2026-08-18 — le DÉTAIL ÉLECTRIQUE, exposé au client
+            # SANS PRIX : chaînes (modules/MPPT), protections nominatives
+            # (repère, désignation, calibre, quantité) et câbles (section,
+            # longueur). Whitelist STRICTE (_PUBLIC_CHAINE/_PROTECTION/_CABLE) :
+            # ni nomenclature d'achat, ni paramètres internes, ni montant.
+            # None tant que la conception électrique (PV41) n'a pas été faite.
+            'conception_electrique': _conception_electrique_publique(devis),
             'option_totals': {
                 'sans_batterie': data.get('totaux_sans'),
                 'avec_batterie': data.get('totaux_avec'),
@@ -902,7 +1152,23 @@ def proposal_data(request, token):
             'multi_villa': data.get('multi_villa'),
             # QJ15 — variantes côte-à-côte (même version_parent, toutes actives).
             # [] quand le devis est isolé — le client voit seulement sa proposition.
+            # Les sœurs porteuses d'une GAMME en sont exclues : elles sont
+            # rendues (ou tues) par le bloc « gammes » ci-dessous, jamais deux
+            # fois — et jamais du tout en mode d'envoi « seule ».
             'variants': _variant_summaries(devis),
+            # GAMMES — choix de gamme AVANT/AVEC la signature. Clé présente
+            # uniquement en mode d'envoi « les_deux » ; absente sinon (le lien
+            # rend alors le devis exactement comme aujourd'hui).
+            'gammes': _gammes_public(devis),
+            # PVSYNC — TRANSPARENCE d'une resynchronisation POST-ENVOI. Posée
+            # par ``services.resynchroniser_devis_pour_produit`` quand une
+            # correction du catalogue a recalé les lignes d'un devis DÉJÀ
+            # envoyé : le client tient un PDF figé à l'ancien montant, la page
+            # rend le montant courant. Le dire vaut mieux que le taire — la
+            # page (rendue ailleurs) lit CETTE clé. Absente = rien n'a bougé
+            # depuis l'envoi (cas de très loin le plus courant).
+            'resync_apres_envoi': (
+                (devis.etude_params or {}).get('resync_apres_envoi')),
             # XSAL5 — options proposées (add-ons hors total) que le client peut
             # activer AVANT signature (POST proposal/<token>/activer-option/).
             # Absent quand le devis n'a aucune option → rendu inchangé. Jamais de
@@ -918,6 +1184,10 @@ def proposal_data(request, token):
         if bankable is not None:
             payload['bankable'] = bankable
     except Exception:  # noqa: BLE001
+        # 404 volontairement muet cote client (jamais de detail interne sur un
+        # lien public) — mais TRACE cote serveur : un garde-fou moteur qui
+        # refuse un devis ne doit plus se diagnostiquer a l'aveugle (CI 18/08).
+        logger.exception('proposal_data indisponible pour ce jeton')
         return _noindex(Response(
             {'detail': 'Proposition indisponible pour le moment.'},
             status=status.HTTP_404_NOT_FOUND))

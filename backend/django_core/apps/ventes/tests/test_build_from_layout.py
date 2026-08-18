@@ -32,7 +32,7 @@ def seed_catalogue(company, with_prices=True):
     mk('Panneau Jinko 550W', f'PAN-{company.pk}', 1100)
     mk('Onduleur réseau Huawei 5kW Monophasé', f'ONDR-{company.pk}', 14000)
     mk('Onduleur hybride Deye 5kW Monophasé', f'ONDH-{company.pk}', 17000)
-    mk('Batterie Deyness 5 kWh', f'BAT-{company.pk}', 17000)
+    mk('Batterie Dyness 5 kWh', f'BAT-{company.pk}', 17000)
 
 
 class TestBuildFromLayout(TestCase):

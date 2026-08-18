@@ -33,6 +33,26 @@ def log_devis_a_facturer_reminder(devis, jours):
     )
 
 
+def log_devis_resynchronisation(devis, *, produit, modifications, user=None):
+    """PVSYNC — chatter du devis : ses lignes ont suivi une RÉFÉRENCE modifiée.
+
+    Posée UNIQUEMENT quand au moins une ligne a réellement bougé (une
+    resynchronisation sans effet ne doit pas remplir le chatter de « rien n'a
+    changé »). ``user`` est la personne qui a modifié le produit dans le
+    Stock — jamais lue du corps d'une requête ; ``None`` = correction système.
+    """
+    quoi = ' / '.join(modifications) if modifications else 'fiche'
+    nom = getattr(produit, 'nom', '') or getattr(produit, 'sku', '') or 'produit'
+    return DevisActivity.objects.create(
+        company=devis.company, devis=devis, user=user,
+        kind=DevisActivity.Kind.MODIFICATION,
+        field='produit_resynchronise', field_label='Référence modifiée',
+        new_value=nom,
+        body=(f'Resynchronisé automatiquement — le produit « {nom} » a changé '
+              f'({quoi}).'),
+    )
+
+
 def log_devis_credit_hold_override(devis, user, motif):
     """XFAC28 — chatter du devis : un responsable/admin a débloqué un client
     en hold crédit dur pour laisser passer cette action (accepter/facturer)."""

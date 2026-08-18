@@ -188,6 +188,11 @@ class TestSavingsMethodRendersAndKeepsPageCounts(TestCase):
         self.assertEqual(len(doc.pages), 4)
 
     def test_residential_renderer_shows_block_and_three_pages(self):
+        """QRES65 (fondateur, 2026-08-18) — sur le moteur résidentiel v2, la
+        méthode n'est PLUS une ligne de la carte « Conditions » (elle y servait
+        de bourrage vertical à côté du bloc « Financement possible ») : elle est
+        rendue À PLAT, sans boîte ni carte, SOUS la rangée des deux boîtes. Le
+        texte et l'exemple chiffré sont inchangés, la page 3 reste une page."""
         from weasyprint import HTML
         from apps.ventes.quote_engine.residential import renderer, render
         from apps.ventes.tests.test_quote_engine import _residential_sample_data
@@ -201,4 +206,12 @@ class TestSavingsMethodRendersAndKeepsPageCounts(TestCase):
         html = render.build_html(d)
         doc = HTML(string=html).render()
         self.assertIn('Comment nous calculons vos', html)
+        self.assertIn('Facture actuelle', html)
+        # plat, hors de la carte Conditions
+        self.assertIn('class="p3-method"', html)
+        self.assertNotIn('p3-cond-k">Comment nous calculons', html)
+        # ... et posé APRÈS la rangée des deux boîtes
+        i_row = html.index('class="p3-cols')
+        self.assertLess(html.index('</table>', i_row),
+                        html.index('class="p3-method"'))
         self.assertEqual(len(doc.pages), 3)

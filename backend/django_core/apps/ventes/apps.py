@@ -62,3 +62,13 @@ class VentesConfig(AppConfig):
         # notification sur le devis) au bus core.email_intake.
         from .inbound_email import register_ventes_inbound_handler
         register_ventes_inbound_handler()
+        # PVSYNC — abonne ventes à `produit_modifie` (bus M6, émis par le
+        # viewset produit du Stock) : une référence qui change recale les devis
+        # BROUILLON/ENVOYÉ qui la portent. Le handler vit dans `services.py`
+        # (aucun module de plus) et délègue à Celery après commit ; le
+        # `dispatch_uid` rend l'abonnement idempotent si ready() est rejoué.
+        from core.events import produit_modifie
+        from .services import on_produit_modifie
+        produit_modifie.connect(
+            on_produit_modifie,
+            dispatch_uid='ventes_resync_devis_on_produit_modifie')

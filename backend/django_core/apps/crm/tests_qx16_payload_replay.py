@@ -101,8 +101,9 @@ class ReplayWebsiteLeadPayloadTests(TestCase):
         self.assertTrue(ok1)
         ok2, _, lead2 = replay_website_lead_payload(raw)
         self.assertTrue(ok2)
-        # Le deuxième rejeu retrouve le MÊME lead (dédup couche 1/2 du
-        # mapping standard) — jamais un doublon.
+        # Le deuxième rejeu retrouve le MÊME lead : les deux appels tombent
+        # dans la garde anti-rejeu < 60 s du mapping standard — jamais un
+        # doublon (un rejeu n'est pas une nouvelle soumission du visiteur).
         self.assertEqual(lead1.pk, lead2.pk)
         self.assertEqual(
             Lead.objects.filter(telephone='+212600666666').count(), 1)

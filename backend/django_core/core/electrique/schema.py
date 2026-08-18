@@ -59,12 +59,29 @@ _LIGNES_SOUS_TITRE = 2
 _ECART = 34.0
 _PAS = _BLOC_L + _ECART
 _RANGEE_H = 116.0
-#: Rangée agrandie quand une BRANCHE pend sous un organe (parc batterie).
-_RANGEE_H_AVEC_BRANCHE = 176.0
+#: Géométrie de la pointe de flèche (cf. ``_pointe``) et DÉGAGEMENT qu'elle
+#: réclame devant elle : sa hauteur, PLUS autant de trait droit. En dessous, la
+#: pointe se confond avec le coin d'équerre ou le trait qui la précède — on ne
+#: lit plus une flèche, on lit un trait qui s'arrête. C'est le dégagement que
+#: ``_liaison`` s'accorde depuis toujours entre deux rangées, et la référence de
+#: tout le dessin : aucune pointe ne doit être émise avec moins.
+_POINTE_H = 9.0
+_POINTE_L = 5.0
+_DEGAGEMENT_POINTE = 2 * _POINTE_H
 _BRANCHE_DX = 30.0
-_BRANCHE_DY = 96.0
 #: Hauteur de l'équerre de raccordement d'une branche (sous la gouttière terre).
 _BRANCHE_EQUERRE_DY = 26.0
+#: Profondeur de la branche sous son porteur — DÉRIVÉE, jamais posée à la main.
+#: L'équerre tombe à ``_BLOC_H + _BRANCHE_EQUERRE_DY`` sous le haut du porteur ;
+#: il faut ENSUITE ``_DEGAGEMENT_POINTE`` avant la boîte de la branche. La
+#: valeur écrite en dur (96) n'en laissait que 2 : l'équerre était tracée DANS
+#: la pointe de 9 px, et la flèche onduleur → batterie n'existait plus à l'œil.
+_BRANCHE_DY = _BLOC_H + _BRANCHE_EQUERRE_DY + _DEGAGEMENT_POINTE
+#: Gouttière entre le bas d'une branche et la rangée suivante.
+_ECART_SOUS_BRANCHE = 12.0
+#: Rangée agrandie quand une BRANCHE pend sous un organe (parc batterie) : elle
+#: loge la branche ENTIÈRE, sinon la rangée suivante se pose sur la batterie.
+_RANGEE_H_AVEC_BRANCHE = _BRANCHE_DY + _BLOC_H + _ECART_SOUS_BRANCHE
 #: Hauteur de la gouttière où circulent les liaisons de terre, entre le bas d'un
 #: bloc et le haut de ce qui suit (branche batterie comprise).
 _GOUTTIERE_DY = 14.0
@@ -410,16 +427,24 @@ def _trait(x1, y1, x2, y2, pointille=False):
 
 
 def _pointe(x, y, direction):
-    """Pointe de flèche orientée (``droite``, ``gauche``, ``bas``)."""
+    """Pointe de flèche orientée (``droite``, ``gauche``, ``bas``).
+
+    Elle occupe ``_POINTE_H`` px EN AMONT du point visé : tout appelant doit lui
+    laisser ce dégagement (``_DEGAGEMENT_POINTE``), sans quoi elle est dessinée
+    sous le trait qui la précède et disparaît sans qu'aucune sortie ne manque.
+    """
     if direction == "droite":
-        points = "%s,%s %s,%s %s,%s" % (_n(x), _n(y), _n(x - 9), _n(y - 5),
-                                        _n(x - 9), _n(y + 5))
+        points = "%s,%s %s,%s %s,%s" % (
+            _n(x), _n(y), _n(x - _POINTE_H), _n(y - _POINTE_L),
+            _n(x - _POINTE_H), _n(y + _POINTE_L))
     elif direction == "gauche":
-        points = "%s,%s %s,%s %s,%s" % (_n(x), _n(y), _n(x + 9), _n(y - 5),
-                                        _n(x + 9), _n(y + 5))
+        points = "%s,%s %s,%s %s,%s" % (
+            _n(x), _n(y), _n(x + _POINTE_H), _n(y - _POINTE_L),
+            _n(x + _POINTE_H), _n(y + _POINTE_L))
     else:
-        points = "%s,%s %s,%s %s,%s" % (_n(x), _n(y), _n(x - 5), _n(y - 9),
-                                        _n(x + 5), _n(y - 9))
+        points = "%s,%s %s,%s %s,%s" % (
+            _n(x), _n(y), _n(x - _POINTE_L), _n(y - _POINTE_H),
+            _n(x + _POINTE_L), _n(y - _POINTE_H))
     return '<polygon points="%s" fill="%s"/>' % (points, _TRAIT)
 
 
@@ -430,15 +455,18 @@ def _liaison(depart, arrivee):
     milieu_a, milieu_b = ya + _BLOC_H / 2, yb + _BLOC_H / 2
     if rangee_a == rangee_b:
         if xb >= xa:
-            return (_trait(xa + _BLOC_L, milieu_a, xb - 9, milieu_b)
+            return (_trait(xa + _BLOC_L, milieu_a, xb - _POINTE_H, milieu_b)
                     + _pointe(xb, milieu_b, "droite"))
-        return (_trait(xa, milieu_a, xb + _BLOC_L + 9, milieu_b)
+        return (_trait(xa, milieu_a, xb + _BLOC_L + _POINTE_H, milieu_b)
                 + _pointe(xb + _BLOC_L, milieu_b, "gauche"))
     centre_a, centre_b = xa + _BLOC_L / 2, xb + _BLOC_L / 2
-    morceaux = [_trait(centre_a, ya + _BLOC_H, centre_a, yb - 18)]
+    # Le coude se pose UN dégagement complet au-dessus de la boîte visée : la
+    # pointe garde ses 9 px, précédés d'autant de trait droit.
+    coude = yb - _DEGAGEMENT_POINTE
+    morceaux = [_trait(centre_a, ya + _BLOC_H, centre_a, coude)]
     if abs(centre_b - centre_a) > 0.5:
-        morceaux.append(_trait(centre_a, yb - 18, centre_b, yb - 18))
-    morceaux.append(_trait(centre_b, yb - 18, centre_b, yb - 9))
+        morceaux.append(_trait(centre_a, coude, centre_b, coude))
+    morceaux.append(_trait(centre_b, coude, centre_b, yb - _POINTE_H))
     morceaux.append(_pointe(centre_b, yb, "bas"))
     return "".join(morceaux)
 
@@ -506,6 +534,11 @@ def _branches(places):
 
     La liaison descend depuis le VENTRE de l'onduleur (côté DC) : la branche ne
     coupe pas la chaîne série, elle s'y accroche.
+
+    L'équerre est posée à ``_BRANCHE_EQUERRE_DY`` sous le porteur et la boîte de
+    la branche ``_DEGAGEMENT_POINTE`` plus bas (``_BRANCHE_DY`` en dérive) :
+    c'est exactement le dégagement que ``_liaison`` s'accorde entre deux
+    rangées, et la pointe de 9 px vers la batterie y tient ENTIÈRE.
     """
     ancre = _place(places, _ANCRE_DE_BRANCHE)
     if ancre is None:
@@ -520,11 +553,20 @@ def _branches(places):
         morceaux.append(_trait(depart, ancre[2] + _BLOC_H, depart, equerre))
         if abs(centre - depart) > 0.5:
             morceaux.append(_trait(depart, equerre, centre, equerre))
-        morceaux.append(_trait(centre, equerre, centre, place[2] - 9))
-        morceaux.append(_pointe(centre, place[2], "bas"))
         morceaux.append(
-            '<text x="%s" y="%s" font-size="8" fill="%s">branche DC</text>'
-            % (_n(depart + 6), _n(equerre - 5), _TEXTE_SECONDAIRE))
+            _trait(centre, equerre, centre, place[2] - _POINTE_H))
+        morceaux.append(_pointe(centre, place[2], "bas"))
+        # Le libellé se pose SOUS l'équerre, à l'aplomb du conducteur qu'il
+        # nomme, et à droite de la descente pour ne pas mordre la pointe. Posé
+        # au-dessus (à ``equerre − 5``), il flottait dans la bande de la
+        # gouttière de terre POINTILLÉE, qui récupérait la lecture. Le « ⇄ »
+        # note que le courant batterie va dans LES DEUX sens (charge et
+        # décharge) : une flèche simple, seule, dirait le contraire.
+        morceaux.append(
+            '<text x="%s" y="%s" font-size="8" fill="%s">'
+            'branche DC ⇄</text>'
+            % (_n(min(centre, depart) + _POINTE_L + 3.0),
+               _n(equerre + _POINTE_H), _TEXTE_SECONDAIRE))
     return "".join(morceaux)
 
 

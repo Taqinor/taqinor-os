@@ -1,6 +1,10 @@
 // W112 — endpoint /api/capture-lead : valide le lead, joint le repère (roofPoint),
-// le contour (roofOutline) et la consommation (billKwh) au record transmis, et —
-// comme le flux existant — ne transmet RIEN sous le seuil (lead non qualifié).
+// le contour (roofOutline) et la consommation (billKwh) au record transmis.
+//
+// ÉPINGLE INVERSÉE : ce point d'entrée transmet DÉSORMAIS aussi les leads SOUS
+// LE SEUIL, avec leur drapeau `qualified: false` — leurs réponses (toit repéré,
+// ville, profil, créneau) étaient jusqu'ici intégralement perdues. Le CAPI, lui,
+// garde son gate sur `qualified` (cf. describe WJ110 plus bas).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // cloudflare:workers est un module virtuel (fourni par l'adaptateur au build) :
@@ -100,15 +104,27 @@ describe('W112 — /api/capture-lead joint le repère au record transmis', () =>
     expect(rec).not.toHaveProperty('billKwh');
   });
 
-  it('ne transmet RIEN sous le seuil (lead non qualifié) — même comportement que le flux existant', async () => {
-    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({}) }) as unknown as Response);
+  it('transmet AUSSI un lead sous le seuil, avec son drapeau qualified:false et ses réponses', async () => {
+    let forwarded: Record<string, unknown> | null = null;
+    const fetchMock = vi.fn(async (url: string, init?: { body?: string }) => {
+      if (String(url).includes('crm.example/hook') && init?.body) forwarded = JSON.parse(init.body);
+      return { ok: true, json: async () => ({}) } as unknown as Response;
+    });
     vi.stubGlobal('fetch', fetchMock);
     const { status, json } = await call({ ...belowThreshold, roofPoint: { lat: 33.5, lng: -7.6 } });
     expect(status).toBe(200);
     expect(json.ok).toBe(true);
-    // aucun POST vers le webhook CRM (forwardLead court-circuite un lead non qualifié)
+    // Ce que voit le visiteur est INCHANGÉ : il reste non qualifié.
+    expect(json.qualified).toBe(false);
     const hookCalls = fetchMock.mock.calls.filter((c) => String(c[0]).includes('crm.example/hook'));
-    expect(hookCalls.length).toBe(0);
+    expect(hookCalls.length).toBe(1);
+    const rec = forwarded as unknown as Record<string, unknown>;
+    expect(rec).not.toBeNull();
+    // Le drapeau part TEL QUEL — c'est le récepteur qui trie, pas le site.
+    expect(rec.qualified).toBe(false);
+    // …et les réponses ne sont plus jetées en route.
+    expect(rec.roofPoint).toEqual({ lat: 33.5, lng: -7.6 });
+    expect(rec.city).toBe('Casablanca');
   });
 
   it('rejette un lead invalide (400) sans rien transmettre', async () => {
@@ -133,7 +149,8 @@ describe('W112 — /api/capture-lead joint le repère au record transmis', () =>
 // preview-lead.ts) : Meta optimisait donc les campagnes sur une tranche non
 // représentative du trafic. Preuve : une soumission QUALIFIÉE déclenche
 // fireCapi exactement une fois ; une soumission NON qualifiée ne le déclenche
-// jamais (même gating que forwardLead, miroir du test simulate/preview-lead).
+// jamais — ce gate-là reste INCHANGÉ alors même que le webhook CRM, lui, reçoit
+// désormais les non-qualifiés (deux systèmes, deux règles).
 describe('WJ110 — /api/capture-lead déclenche le Meta CAPI', () => {
   beforeEach(() => {
     resetRateLimit();

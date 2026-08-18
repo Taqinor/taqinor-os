@@ -64,15 +64,32 @@ def build(ctx):
                 f'<span class="c1c-ku">{unit}</span></div>'
                 f'<div class="c1c-kl">{label}</div></td>')
 
-    kpis = kpi(kwc, "&nbsp;kWc", "Puissance crête")
-    kpis += '<td class="c1c-kgap"></td>'
+    cellules = [kpi(kwc, "&nbsp;kWc", "Puissance crête")]
     if autoconso is not None:
-        kpis += kpi(f"{round(autoconso)}", "&nbsp;%", "Autoconsommation")
-        kpis += '<td class="c1c-kgap"></td>'
+        cellules.append(kpi(f"{round(autoconso)}", "&nbsp;%",
+                            "Autoconsommation"))
     if couverture is not None:
-        kpis += kpi(f"{round(couverture)}", "&nbsp;%", "Couverture conso")
-        kpis += '<td class="c1c-kgap"></td>'
-    kpis += kpi(fmt(economies), "&nbsp;MAD", "Économies / an")
+        cellules.append(kpi(f"{round(couverture)}", "&nbsp;%",
+                            "Couverture conso"))
+    # QXMT — dossier MT sans économies d'étude : la vignette est OMISE, pas
+    # remplie d'un « 0 » ni d'un chiffre calculé au barème BASSE TENSION.
+    if not d.get("com_masquer_economies"):
+        cellules.append(kpi(fmt(economies), "&nbsp;MAD", "Économies / an"))
+    kpis = '<td class="c1c-kgap"></td>'.join(cellules)
+
+    # QXMT — la SOURCE du barème voyage avec le chiffre, ou l'explication de
+    # son absence. Vide hors dossier MT.
+    if d.get("com_masquer_economies"):
+        mt_line = ('<div class="c1c-mtsrc">Dossier raccordé en MOYENNE '
+                   'TENSION : les économies et le retour sur investissement ne '
+                   'sont pas chiffrés au barème basse tension. Communiquez '
+                   'votre répartition horaire (pointe / heures pleines / '
+                   'heures creuses) et nous les calculons sur le barème MT.'
+                   '</div>')
+    elif d.get("com_mt_mention"):
+        mt_line = f'<div class="c1c-mtsrc">{d["com_mt_mention"]}</div>'
+    else:
+        mt_line = ""
 
     css = f"""
 <style>
@@ -110,6 +127,8 @@ def build(ctx):
 .c1c-kv{{font-family:{f_display};font-size:18pt;color:{navy};line-height:1;}}
 .c1c-ku{{font-size:9pt;color:{muted};}}
 .c1c-kl{{font-size:7pt;color:{muted};margin-top:3px;letter-spacing:.3px;}}
+/* QXMT — ligne SOURCE sous le bloc économies (petite, jamais un chiffre nu). */
+.c1c-mtsrc{{margin-top:6px;font-size:6.8pt;color:{muted};line-height:1.35;}}
 .c1c-note{{margin-top:12px;border:1px solid {green_bg};border-left:4px solid {green};
   border-radius:12px;background:linear-gradient(100deg,{green_bg},#fff 72%);
   padding:10px 14px;font-size:8.5pt;color:{ink};line-height:1.45;}}
@@ -153,6 +172,7 @@ def build(ctx):
 
   <div class="c1c-wrap">
     <div class="c1c-kpirow">{kpis}</div>
+    {mt_line}
     <div class="c1c-note">
       L'installation vise l'<b>autoconsommation</b> : la valeur porte d'abord sur
       la consommation de <b>journée</b> de votre établissement. La <b>pointe</b>

@@ -19,6 +19,7 @@ import {
   fallbackAnnualKwh,
   annualSavingsBandMad,
   layoutPanels,
+  zoomToFitRing,
   type LngLat,
 } from '../src/lib/roof';
 
@@ -160,6 +161,34 @@ describe('ringBBox + lngLatToUV — alignement géographique de la texture satel
     expect(vNorth).toBeGreaterThan(vSouth);
     expect(vNorth).toBe(1);
     expect(vSouth).toBe(0);
+  });
+});
+
+// W120 — le zoom d'atterrissage d'un contour hydraté sans recherche d'adresse
+// préalable (roof-tool-pro11.ts, applyHydration/applyDevisHydration → close() ne fixe
+// jamais de zoom lui-même). Le bug rapporté : sans ce calcul, la caméra ouvrait au zoom
+// du BOOT (5, Maroc entier) même correctement centrée sur le toit.
+describe('zoomToFitRing — cadrage caméra à l’hydratation (jamais la vue Maroc entière)', () => {
+  it('anneau vide/dégénéré → le niveau « toit » déjà utilisé pour un pin seul (19)', () => {
+    expect(zoomToFitRing([])).toBe(19);
+  });
+  it('petit toit résidentiel (16 m) → niveau bâtiment, jamais le zoom 5 du boot', () => {
+    const ring = rectMeters(-7.62, 33.59, 16, 16);
+    const z = zoomToFitRing(ring);
+    expect(z).toBeGreaterThanOrEqual(15);
+    expect(z).toBeLessThanOrEqual(19);
+    expect(z).toBeGreaterThan(10); // marge large contre toute régression vers le zoom Maroc
+  });
+  it('un site large (300 m) zoome MOINS qu’un petit toit — il reste montré en entier', () => {
+    const small = zoomToFitRing(rectMeters(-7.62, 33.59, 16, 16));
+    const large = zoomToFitRing(rectMeters(-7.62, 33.59, 300, 300));
+    expect(large).toBeLessThan(small);
+    expect(large).toBeGreaterThanOrEqual(15); // jamais en dessous du plancher (jamais Maroc entier)
+  });
+  it('un contour dégénéré (aire ~nulle) reste borné — pas de zoom infini', () => {
+    const z = zoomToFitRing([[-7.62, 33.59], [-7.62, 33.59], [-7.62, 33.59]]);
+    expect(Number.isFinite(z)).toBe(true);
+    expect(z).toBeLessThanOrEqual(19);
   });
 });
 

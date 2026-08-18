@@ -155,7 +155,7 @@ class MatchInverterTest(TestCase):
         cls.h8 = mk("Onduleur hybride Deye 8kW Monophasé", 19000, "ONDH8")
         # Bruit : panneau / batterie ne doivent jamais être pris pour onduleurs.
         mk("Panneau Jinko 550W", 1100, "PAN550")
-        mk("Batterie Deyness 5 kWh", 17000, "BAT5")
+        mk("Batterie Dyness 5 kWh", 17000, "BAT5")
         # Onduleur réseau SANS prix → jamais candidat (garde auto-fill).
         Produit.objects.create(
             company=cls.company, nom="Onduleur réseau Sans Prix 6kW",

@@ -50,7 +50,7 @@ def seed_catalogue(company, with_reseau=True, with_hybride=True, with_battery=Tr
     if with_hybride:
         mk('Onduleur hybride Deye 5kW', f'ONDH-{company.pk}', 17000)
     if with_battery:
-        mk('Batterie Deyness 5 kWh', f'BAT-{company.pk}', 17000)
+        mk('Batterie Dyness 5 kWh', f'BAT-{company.pk}', 17000)
 
 
 SAMPLE_LAYOUT = {
