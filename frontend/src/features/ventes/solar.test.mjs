@@ -340,6 +340,46 @@ test('auto-fill : un catalogue encore écrit « Deyness » alimente le même viv
   assert.ok(rows.every(r => !r.designation.includes('Lithium')))
 })
 
+// ── PVG4 — garde HAUTE TENSION (BAT-DYN-HV-16, miroir EXACT du garde backend
+// _is_battery_basse_tension, fondateur 2026-08-18) ────────────────────────────
+// La batterie Dyness haute tension (16 kWh) est réservée aux dossiers haute
+// tension : jamais auto-choisie en kit résidentiel, même moins chère et même
+// si sa capacité coïncide par coïncidence avec la cible basse tension.
+test('auto-fill : batterie « haute tension » jamais auto-choisie même moins chère', () => {
+  const avecHV = [...SEEDED]
+  const iDyness10 = avecHV.findIndex(p => p.nom === 'Batterie Dyness 10 kWh')
+  // Insérée AVANT la Dyness 10 kWh normale, bien moins chère (100 vs 30 000),
+  // même marque « Dyness » et capacité coïncidant à 10 kWh, casse mélangée
+  // (« HAUTE TENSION ») : sans le garde, le premier .find() par capacité la
+  // retiendrait à la place de la bonne batterie basse tension.
+  avecHV.splice(iDyness10, 0, P('Batterie Dyness HAUTE TENSION 10 kWh', 100))
+
+  const kwp = 14 * 710 / 1000 // 9.94 → cible batterie 10 kWh
+  const rows = autoFillLines(avecHV, { kwp, panelW: 710, structureType: 'acier' })
+  const by = (frag) => rows.find(r => r.designation.includes(frag))
+
+  // La batterie haute tension n'apparaît dans AUCUNE ligne auto-composée.
+  assert.ok(rows.every(r => !r.designation.toLowerCase().includes('haute tension')))
+  // La vraie Dyness 10 kWh (30 000 DH) est retenue à sa place, comme avant.
+  assert.equal(by('Dyness 10').designation, 'Batterie Dyness 10 kWh')
+  assert.equal(by('Dyness 10').quantite, 1)
+  assert.equal(by('Dyness 10').prix_unit_ttc, 30000)
+})
+
+test('auto-fill : les batteries 5/10 kWh restent choisies comme avant malgré une HV au catalogue', () => {
+  const avecHV = [...SEEDED, P('Batterie Dyness haute tension 16 kWh', 100)]
+
+  const rows24 = autoFillLines(avecHV, { kwp: 24 * 710 / 1000, panelW: 710, structureType: 'aluminium' })
+  const by24 = (frag) => rows24.find(r => r.designation.includes(frag))
+  assert.equal(by24('Dyness 10').quantite, 1)
+  assert.equal(by24('Dyness 5').quantite, 1)
+
+  const rows5 = autoFillLines(avecHV, { kwp: 5 * 710 / 1000, panelW: 710, structureType: 'acier' })
+  const by5 = (frag) => rows5.find(r => r.designation.includes(frag))
+  assert.equal(by5('Dyness 5').quantite, 1)
+  assert.equal(by5('Dyness 10').quantite, 0)
+})
+
 // ── QX19 — autoFillLines surface le wattage RÉEL + nb panneaux (anti-mismatch)
 test('QX19 — autoFillLines expose actualPanelW / nbPanneaux / kwcReel', () => {
   const kwp = 14 * 710 / 1000

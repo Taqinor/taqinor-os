@@ -833,7 +833,15 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
   const target = Math.max(5, Math.round(kwp / 5) * 5)
   let nb10 = Math.floor(target / 10)
   let nb5 = (target % 10) >= 5 ? 1 : 0
-  const bats = (byType.batterie ?? []).map(p => ({ p, cap: parseKwh(p.nom) }))
+  // PVG4 — GARDE HAUTE TENSION (BAT-DYN-HV-16, miroir EXACT de
+  // _is_battery_basse_tension côté backend apps/ventes/services.py) : la
+  // batterie Dyness haute tension (16 kWh) est réservée aux dossiers haute
+  // tension et ne doit JAMAIS être auto-choisie ici (kit résidentiel basse
+  // tension) — exclusion par mot-clé AVANT l'appariement par capacité 5/10 kWh
+  // (insensible casse/accents via _norm). Elle reste sélectionnable à la main.
+  const bats = (byType.batterie ?? [])
+    .filter(p => !_norm(p.nom).includes('haute tension'))
+    .map(p => ({ p, cap: parseKwh(p.nom) }))
   const dyness = bats.filter(x => {
     const n = _norm(x.p.nom)
     return n.includes('dyness') || n.includes('deyness')
