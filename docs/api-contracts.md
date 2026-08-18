@@ -48,10 +48,14 @@
     arrivee:inconnu, depart:inconnu, gain_total:inconnu, honnete:booleen, marches:liste, motifs:liste, recit:inconnu
 - frontend/src/api/aoApi.js :: deverrouiller -> /api/django/ao/economie/<>/deverrouiller
     verrouillee:booleen
+- frontend/src/api/aoApi.js :: enregistrerLayout -> /api/django/ao/appels-offres/<>/layout
+    detail:inconnu, roof_layout:inconnu
 - frontend/src/api/aoApi.js :: initialiserChecklist -> /api/django/ao/dossiers-ao/<>/initialiser-checklist
     crees:inconnu, deja_presents:inconnu
 - frontend/src/api/aoApi.js :: lancer -> /api/django/ao/calepinage/lancer
     id:inconnu, kind:inconnu, message_erreur:texte, progress_pct:inconnu, resultat:inconnu, statut:inconnu, variante:inconnu
+- frontend/src/api/aoApi.js :: layout -> /api/django/ao/appels-offres/<>/layout
+    detail:inconnu, roof_layout:inconnu
 - frontend/src/api/aoApi.js :: marches -> /api/django/ao/calepinage/variantes/<>/marches
     arrivee:inconnu, depart:inconnu, gain_total:inconnu, honnete:booleen, marches:liste, motifs:liste, recit:inconnu
 - frontend/src/api/aoApi.js :: resultat -> /api/django/ao/calepinage/resultat/<>
@@ -926,6 +930,8 @@
     detail:texte
 - frontend/src/api/ventesApi.js :: dgiConformiteFacture -> /api/django/ventes/factures/<>/dgi-conformite
     conforme:booleen, detail:texte, problemes:inconnu
+- frontend/src/api/ventesApi.js :: dupliquerVarianteGamme -> /api/django/ventes/devis/<>/dupliquer-variante-gamme
+    detail:texte, gamme:inconnu, gammes:liste, source:inconnu
 - frontend/src/api/ventesApi.js :: envoyerEmailDevis -> /api/django/ventes/devis/<>/envoyer-email
     detail:inconnu, devis_statut:inconnu, email_statut:inconnu, log_id:inconnu, proposal_path:inconnu, statut:texte
 - frontend/src/api/ventesApi.js :: envoyerEmailFacture -> /api/django/ventes/factures/<>/envoyer-email
