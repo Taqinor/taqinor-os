@@ -251,6 +251,26 @@ describe('LW18 — bannières intelligentes (doublons · client_match)', () => {
     expect(screen.getAllByRole('button', { name: /Fusionner ici/ })).toHaveLength(2)
   })
 
+  // Le webhook du site ne fusionne plus les soumissions (règle fondateur
+  // 18/08/2026) : c'est ce bandeau qui porte le rapprochement. `match_fort`
+  // (même e-mail ET même téléphone) doit le dire — et rester muet sans lui.
+  it('match_fort → la bannière dit « très probablement le même client »', async () => {
+    crmApi.getLeadDuplicates.mockResolvedValueOnce({ data: [
+      { id: 11, nom: 'Karim', prenom: 'B.', telephone: '0612345678', match_fort: true },
+    ] })
+    render(<IdentityRail state={makeState()} onAction={onAction} users={[]} />)
+    expect(await screen.findByText(/très probablement le même client/)).toBeInTheDocument()
+  })
+
+  it('sans match_fort → libellé strictement inchangé', async () => {
+    crmApi.getLeadDuplicates.mockResolvedValueOnce({ data: [
+      { id: 11, nom: 'Karim', prenom: 'B.', telephone: '0612345678', match_fort: false },
+    ] })
+    render(<IdentityRail state={makeState()} onAction={onAction} users={[]} />)
+    expect(await screen.findByText(/1 doublon probable/)).toBeInTheDocument()
+    expect(screen.queryByText(/très probablement le même client/)).toBeNull()
+  })
+
   // APX1 — la cible était `/crm/clients/42`, une route INEXISTANTE (404 réel).
   // Le lien profond vivant est `?id=` (VX220, lu par ClientList.jsx).
   it('client_match → bannière avec lien profond vers /crm?id=<pk> (jamais le 404 /crm/clients/:id)', async () => {

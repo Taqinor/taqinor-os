@@ -818,6 +818,24 @@ def find_duplicates_by_contact(company, *, phone=None, email=None,
     return list(qs.filter(q))
 
 
+def is_strong_identity_match(other, *, phone=None, email=None):
+    """« Identité forte » : `other` partage À LA FOIS l'e-mail normalisé exact
+    ET le téléphone normalisé exact avec les valeurs fournies.
+
+    Niveau DISTINCT du rapprochement ordinaire (même téléphone OU même
+    e-mail) : le fondateur veut pouvoir dire « très probablement le même
+    client » sans jamais fusionner à la place du commercial. Les deux clés
+    doivent être non vides des DEUX côtés — un lead sans e-mail (ou sans
+    téléphone) n'est jamais une identité forte, seulement un doublon possible.
+    """
+    phone = normalize_phone(phone)
+    email = normalize_email(email)
+    if not phone or not email:
+        return False
+    return (normalize_phone(other.telephone) == phone
+            and normalize_email(other.email) == email)
+
+
 def merge_leads(survivor, others, user):
     """Fusionne `others` dans `survivor` SANS perte de données. Déplace devis,
     activités, pièces jointes, historique et chantiers ; complète les champs

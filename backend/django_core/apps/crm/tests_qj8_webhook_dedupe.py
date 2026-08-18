@@ -1,16 +1,26 @@
-"""QJ8 — Déduplication renforcée du webhook site web (visiteur revenant).
+"""Webhook du site web — RÈGLE FONDATEUR du 18/08/2026 : chaque soumission
+crée un NOUVEAU lead, toujours.
 
-Tests :
-  - un visiteur revenant (re-POST le lendemain avec le même téléphone) est lié
-    au lead existant — pas de doublon créé ;
-  - un lead sans téléphone mais avec email déduplique par email ;
-  - deux personnes différentes (téléphone ET email différents) créent deux leads ;
-  - isolation cross-company : même email dans deux sociétés → deux leads séparés ;
-  - l'attribution first-touch (UTM/fbclid) du lead existant est préservée ;
-  - le chatter indique « visiteur revenant » (pas « doublon < 1 min »).
+Ce fichier portait auparavant la « couche 2 » QJ8 (dédup visiteur revenant :
+un re-POST au même e-mail/téléphone METTAIT À JOUR le lead existant, sans
+limite de temps). Cette fusion silencieuse a été SUPPRIMÉE — c'est elle qui a
+fait disparaître un lead de test dans une ancienne fiche au même e-mail, que
+son auteur n'a jamais pu retrouver. Le fichier garde désormais le contrat
+INVERSE :
 
-N.B. : les tests de la fenêtre < 60 s (dedup double-clic) sont dans
-``tests_webhook.py`` (déjà en place) — on ne les duplique pas ici.
+  - une soumission dont le téléphone/e-mail est déjà connu CRÉE un lead ;
+  - le lead existant ressort INTACT (son nom n'est plus jamais écrasé — mort
+    du QW7 sur ce chemin) ;
+  - le rapprochement est posé EN VISIBILITÉ : note chatter « Doublon
+    possible » sur le NOUVEAU lead, et le rail identité s'allume seul ;
+  - « identité forte » (même e-mail ET même téléphone) est signalée
+    explicitement — « très probablement le même client » ;
+  - le SEUL chemin qui touche encore un lead existant est la garde technique
+    anti-rejeu < 60 s (double-clic / relance réseau).
+
+N.B. : `dedupe_event` (YDATA12) court-circuite deux POSTs au payload
+STRICTEMENT identique — chaque envoi de ces tests porte donc son propre
+`idempotencyKey`, comme le fait le site (un jeton par session de saisie).
 """
 import json
 
@@ -48,28 +58,34 @@ def payload_site(**extra):
 
 
 @override_settings(WEBSITE_LEAD_WEBHOOK_SECRET=SECRET)
-class TestQJ8ReturningVisitorDedupe(TestCase):
-    """Tests de la déduplication visiteur revenant (couche 2 — au-delà de 60 s)."""
+class TestSoumissionCreeToujoursUnNouveauLead(TestCase):
+    """Le contrat central : plus aucune fusion automatique."""
 
     def setUp(self):
         self.company = Company.objects.create(
             nom='Taqinor QJ8', slug='taqinor-qj8')
         self.url = reverse('website-lead-webhook')
+        self._idem = 0
 
     def post(self, data, secret=SECRET):
+        self._idem += 1
+        data = dict(data)
+        data.setdefault('idempotencyKey', f'idem-{self._idem}')
         headers = {'HTTP_X_WEBHOOK_SECRET': secret} if secret else {}
         return self.client.post(
             self.url, data=json.dumps(data),
             content_type='application/json', **headers)
 
     def _make_existing_lead(self, telephone='+212661000001', email=None,
-                            utm_source='facebook', fbclid='fb.1.ABC.XYZ'):
-        """Crée un lead existant simulant une première visite."""
+                            nom='Karim Alaoui', utm_source='facebook',
+                            fbclid='fb.1.ABC.XYZ', ville='Fès'):
+        """Lead déjà en base, HORS de la fenêtre anti-rejeu de 60 s."""
         lead = Lead.objects.create(
             company=self.company,
-            nom='Karim Alaoui',
+            nom=nom,
             telephone=telephone,
             email=email,
+            ville=ville,
             source=Lead.Source.SITE_WEB,
             canal=Lead.Canal.SITE_WEB,
             utm_source=utm_source,
@@ -77,148 +93,189 @@ class TestQJ8ReturningVisitorDedupe(TestCase):
             utm_campaign='promo_ete',
             fbclid=fbclid,
         )
-        # date_creation est auto_now_add (la valeur passée à create() est
-        # ignorée) → on la force >60 s en arrière pour sortir de la fenêtre de
-        # dédup courte et exercer la couche 2 (visiteur revenant).
+        # `date_creation` est auto_now_add → on la force en arrière pour sortir
+        # de la garde < 60 s (seul chemin qui touche encore un lead existant).
         Lead.objects.filter(pk=lead.pk).update(
             date_creation=timezone.now() - timezone.timedelta(days=2))
         lead.refresh_from_db()
         return lead
 
-    # ── Test principal : visiteur revenant par téléphone ─────────────────────
+    def _notes(self, lead):
+        return list(LeadActivity.objects.filter(
+            lead=lead, kind=LeadActivity.Kind.NOTE))
 
-    def test_returning_visitor_links_to_existing_lead(self):
-        """Un re-POST avec le même téléphone crée un doublon — le webhook doit
-        le détecter et mettre à jour le lead existant."""
+    # ── Le nouveau lead est CRÉÉ, l'ancien reste INTACT ─────────────────
+
+    def test_meme_telephone_cree_un_nouveau_lead(self):
         existing = self._make_existing_lead()
-        initial_count = Lead.objects.count()
-
-        # Re-POST deux jours plus tard (hors fenêtre de 60 s)
         res = self.post(payload_site(city='Casablanca'))
-        self.assertEqual(res.status_code, 200, res.content)
-        # Aucun nouveau lead ne doit avoir été créé
-        self.assertEqual(Lead.objects.count(), initial_count)
-        # Le lead existant a été mis à jour
-        existing.refresh_from_db()
-        self.assertEqual(existing.ville, 'Casablanca')
 
-    def test_returning_visitor_chatter_note(self):
-        """Le chatter indique « visiteur revenant », pas « doublon < 1 min »."""
-        existing = self._make_existing_lead()
-        res = self.post(payload_site())
-        self.assertEqual(res.status_code, 200, res.content)
-        note = LeadActivity.objects.filter(
-            lead=existing, kind=LeadActivity.Kind.NOTE).last()
-        self.assertIsNotNone(note)
-        self.assertIn('revenant', note.body.lower())
+        self.assertEqual(res.status_code, 201, res.content)
+        self.assertEqual(Lead.objects.count(), 2)
+        nouveau = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertNotEqual(nouveau.pk, existing.pk)
+        self.assertEqual(nouveau.ville, 'Casablanca')
 
-    def test_returning_visitor_preserves_first_touch_attribution(self):
-        """L'attribution first-touch (UTM/fbclid) du lead existant n'est pas écrasée."""
+    def test_le_lead_existant_ressort_intact(self):
+        """QW7 — le nom (et le reste) d'une fiche existante n'est plus JAMAIS
+        écrasé par une soumission du site."""
         existing = self._make_existing_lead(
-            utm_source='facebook', fbclid='fb.1.ABC.ORIGINAL')
-        # Re-POST avec une NOUVELLE attribution (campagne différente)
+            nom='Karim Alaoui', ville='Fès', fbclid='fb.1.ABC.ORIGINAL')
+        avant = timezone.now()
+
         res = self.post(payload_site(
+            fullName='test1',
+            city='Casablanca',
             fbclid='fb.2.NEW.FBCLID',
             utm={'utm_source': 'instagram', 'utm_medium': 'organic',
                  'utm_campaign': 'nouvelle_campagne'},
         ))
-        self.assertEqual(res.status_code, 200, res.content)
+        self.assertEqual(res.status_code, 201, res.content)
+
         existing.refresh_from_db()
-        # Attribution d'origine préservée
+        self.assertEqual(existing.nom, 'Karim Alaoui')
+        self.assertEqual(existing.ville, 'Fès')
         self.assertEqual(existing.fbclid, 'fb.1.ABC.ORIGINAL')
         self.assertEqual(existing.utm_source, 'facebook')
+        self.assertEqual(existing.utm_campaign, 'promo_ete')
+        # Aucune activité n'est écrite sur la fiche existante.
+        self.assertFalse(
+            LeadActivity.objects.filter(
+                lead=existing, created_at__gte=avant).exists())
+        # …et le lead de test est bien retrouvable, sous SON nom.
+        nouveau = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertEqual(nouveau.nom, 'test1')
 
-    # ── Test : lead sans téléphone déduplique par email ───────────────────────
-
-    def test_phoneless_lead_dedupes_by_email(self):
-        """Un lead sans téléphone déduplique par email."""
+    def test_lead_sans_telephone_cree_aussi_un_nouveau_lead(self):
+        """Le rapprochement par e-mail seul ne fusionne pas davantage."""
         existing = Lead.objects.create(
-            company=self.company,
-            nom='Sara Bennis',
-            telephone=None,
-            email='sara@example.ma',
-            source=Lead.Source.SITE_WEB,
-            canal=Lead.Canal.SITE_WEB,
-            date_creation=timezone.now() - timezone.timedelta(days=1),
-        )
-        initial_count = Lead.objects.count()
-        # Re-POST sans téléphone, même email
+            company=self.company, nom='Sara Bennis', telephone=None,
+            email='sara@example.ma', ville='Rabat',
+            source=Lead.Source.SITE_WEB, canal=Lead.Canal.SITE_WEB)
         res = self.post(payload_site(
-            fullName='Sara Bennis',
-            phoneE164='',
-            phone='',
-            email='sara@example.ma',
-            city='Marrakech',
-        ))
-        self.assertEqual(res.status_code, 200, res.content)
-        self.assertEqual(Lead.objects.count(), initial_count)
+            fullName='Sara Bennis', phoneE164='', phone='',
+            email='sara@example.ma', city='Marrakech'))
+
+        self.assertEqual(res.status_code, 201, res.content)
+        self.assertEqual(Lead.objects.count(), 2)
         existing.refresh_from_db()
-        self.assertEqual(existing.ville, 'Marrakech')
+        self.assertEqual(existing.ville, 'Rabat')
 
-    # ── Test : deux personnes différentes → deux leads séparés ───────────────
+    def test_lead_sous_le_seuil_cree_aussi_un_nouveau_lead(self):
+        """Un lead `qualified:false` (< 1 000 MAD) est accepté, étiqueté, et
+        suit exactement la même règle — jamais rejeté, jamais fusionné."""
+        self._make_existing_lead()
+        res = self.post(payload_site(
+            billRange='800-1000', qualified=False, city='Salé'))
 
-    def test_different_people_create_separate_leads(self):
-        """Deux téléphones différents → deux leads, pas de fusion."""
+        self.assertEqual(res.status_code, 201, res.content)
+        nouveau = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertEqual(nouveau.tags, 'Sous le seuil 1 000 MAD')
+        self.assertEqual(Lead.objects.count(), 2)
+
+    # ── Détection posée EN VISIBILITÉ (note chatter + réponse HTTP) ──────────
+
+    def test_note_doublon_possible_sur_le_nouveau_lead(self):
+        existing = self._make_existing_lead()
+        res = self.post(payload_site(city='Casablanca'))
+        nouveau = Lead.objects.get(pk=res.json()['lead_id'])
+
+        bodies = [n.body for n in self._notes(nouveau)]
+        doublon = [b for b in bodies if b.startswith('Doublon possible')]
+        self.assertEqual(len(doublon), 1, bodies)
+        self.assertIn(f'#{existing.pk}', doublon[0])
+        self.assertIn('Karim Alaoui', doublon[0])
+        self.assertIn('à examiner', doublon[0])
+        # La réponse HTTP porte le même signal, exploitable par l'émetteur.
+        self.assertEqual(res.json()['doublons'], [existing.pk])
+        self.assertFalse(res.json()['match_fort'])
+
+    def test_identite_forte_meme_email_ET_meme_telephone(self):
+        existing = self._make_existing_lead(email='karim@example.ma')
+        res = self.post(payload_site(email='Karim@Example.MA'))
+        nouveau = Lead.objects.get(pk=res.json()['lead_id'])
+
+        note = [n.body for n in self._notes(nouveau)
+                if n.body.startswith('Doublon possible')][0]
+        self.assertIn('très probablement le même client', note)
+        self.assertIn(f'#{existing.pk}', note)
+        self.assertTrue(res.json()['match_fort'])
+        self.assertIn('très probablement le même client',
+                      res.json()['detail'])
+
+    def test_email_seul_nest_pas_une_identite_forte(self):
+        self._make_existing_lead(
+            telephone='+212699999999', email='karim@example.ma')
+        res = self.post(payload_site(
+            phoneE164='+212661000001', email='karim@example.ma'))
+        nouveau = Lead.objects.get(pk=res.json()['lead_id'])
+
+        note = [n.body for n in self._notes(nouveau)
+                if n.body.startswith('Doublon possible')][0]
+        self.assertNotIn('très probablement le même client', note)
+        self.assertFalse(res.json()['match_fort'])
+
+    def test_telephone_seul_nest_pas_une_identite_forte(self):
+        """Le lead existant n'a pas d'e-mail : rapprochement possible, jamais
+        « le même client »."""
+        self._make_existing_lead(email=None)
+        res = self.post(payload_site(email='karim@example.ma'))
+
+        self.assertFalse(res.json()['match_fort'])
+
+    def test_aucun_doublon_aucune_note(self):
+        res = self.post(payload_site())
+        nouveau = Lead.objects.get(pk=res.json()['lead_id'])
+
+        self.assertEqual(res.json()['detail'], 'Lead créé.')
+        self.assertEqual(res.json()['doublons'], [])
+        self.assertFalse(any(b.body.startswith('Doublon possible')
+                             for b in self._notes(nouveau)))
+
+    # ── Bornes : personnes distinctes, sociétés distinctes ──────────────────
+
+    def test_personnes_differentes_aucun_rapprochement(self):
         self._make_existing_lead(telephone='+212661000001')
         res = self.post(payload_site(
-            fullName='Autre Personne',
-            phoneE164='+212661000099',
-        ))
+            fullName='Autre Personne', phoneE164='+212661000099'))
+
         self.assertEqual(res.status_code, 201, res.content)
         self.assertEqual(Lead.objects.count(), 2)
+        self.assertEqual(res.json()['doublons'], [])
 
-    def test_different_email_no_phone_creates_new_lead(self):
-        """Email différent → nouveau lead."""
-        Lead.objects.create(
-            company=self.company,
-            nom='Autre Client',
-            telephone=None,
-            email='autre@example.ma',
-            source=Lead.Source.SITE_WEB,
-            date_creation=timezone.now() - timezone.timedelta(days=1),
-        )
-        res = self.post(payload_site(
-            fullName='Nouveau Client',
-            phoneE164='',
-            phone='',
-            email='nouveau@example.ma',
-        ))
-        self.assertEqual(res.status_code, 201, res.content)
-        self.assertEqual(Lead.objects.count(), 2)
-
-    # ── Test : isolation cross-company ─────────────────────────────────────────
-
-    def test_cross_company_isolation(self):
-        """Même email dans deux sociétés → deux leads séparés, jamais fusionnés."""
+    def test_isolation_cross_company(self):
+        """Même e-mail/téléphone dans deux sociétés : ni fusion, ni
+        rapprochement — la détection reste bornée à `company`."""
         company_b = Company.objects.create(
             nom='Autre Société QJ8', slug='autre-qj8')
-        # Lead dans la société B avec le même email
         Lead.objects.create(
-            company=company_b,
-            nom='Ali Benali',
-            telephone='+212661000001',
-            email='ali@example.ma',
-            source=Lead.Source.SITE_WEB,
-            date_creation=timezone.now() - timezone.timedelta(days=1),
-        )
-        # Le webhook résout toujours `company` = self.company (WEBSITE_LEADS_COMPANY_ID)
-        initial_a = Lead.objects.filter(company=self.company).count()
+            company=company_b, nom='Ali Benali',
+            telephone='+212661000001', email='ali@example.ma',
+            source=Lead.Source.SITE_WEB)
+
         res = self.post(payload_site(
-            fullName='Ali Benali',
-            phoneE164='+212661000001',
-        ))
-        # Un NOUVEAU lead doit être créé dans self.company (pas de dédup cross-company)
+            fullName='Ali Benali', email='ali@example.ma'))
+
         self.assertEqual(res.status_code, 201, res.content)
-        self.assertEqual(Lead.objects.filter(company=self.company).count(),
-                         initial_a + 1)
-        # Le lead de company_b est intact
+        self.assertEqual(res.json()['doublons'], [])
         self.assertEqual(Lead.objects.filter(company=company_b).count(), 1)
+        self.assertEqual(Lead.objects.filter(company=self.company).count(), 1)
 
-    # ── Test : le lead_id retourné est celui du lead existant ─────────────────
+    # ── La garde < 60 s reste le SEUL chemin de mise à jour ──────────────────
 
-    def test_returning_visitor_response_references_existing_lead(self):
-        """La réponse JSON contient le lead_id du lead existant, pas un nouveau."""
-        existing = self._make_existing_lead()
-        res = self.post(payload_site())
-        self.assertEqual(res.status_code, 200, res.content)
-        self.assertEqual(res.json()['lead_id'], existing.pk)
+    def test_garde_60s_est_le_seul_chemin_de_mise_a_jour(self):
+        first = self.post(payload_site())
+        self.assertEqual(first.status_code, 201, first.content)
+
+        # Renvoi immédiat (double-clic) : complète la fiche en cours.
+        retry = self.post(payload_site(city='Rabat'))
+        self.assertEqual(retry.status_code, 200, retry.content)
+        self.assertEqual(Lead.objects.count(), 1)
+        self.assertEqual(retry.json()['lead_id'], first.json()['lead_id'])
+
+        # Hors fenêtre : la soumission suivante est un lead à part entière.
+        Lead.objects.filter(pk=first.json()['lead_id']).update(
+            date_creation=timezone.now() - timezone.timedelta(minutes=5))
+        plus_tard = self.post(payload_site(city='Agadir'))
+        self.assertEqual(plus_tard.status_code, 201, plus_tard.content)
+        self.assertEqual(Lead.objects.count(), 2)

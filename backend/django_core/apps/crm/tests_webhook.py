@@ -363,7 +363,7 @@ class QW2SiteFieldsTests(TestCase):
         lead = Lead.objects.get(pk=res.json()['lead_id'])
         self.assertTrue(lead.phone_is_foreign)
 
-    def test_page_persisted_and_protected_as_first_touch(self):
+    def test_page_persisted_and_never_rewritten_by_a_later_submission(self):
         import datetime
 
         res = self.post(payload_site(
@@ -371,15 +371,18 @@ class QW2SiteFieldsTests(TestCase):
         lead = Lead.objects.get(pk=res.json()['lead_id'])
         self.assertEqual(lead.page, '/simulateur')
 
-        # Visiteur revenant hors fenêtre de 60 s (même téléphone → dédup
-        # couche 2) avec une AUTRE page : le first-touch est préservé.
+        # Nouvelle soumission hors fenêtre de 60 s : elle crée SA fiche (règle
+        # fondateur) et ne réécrit donc jamais la landing page de la première.
         lead.date_creation = lead.date_creation - datetime.timedelta(minutes=5)
         lead.save(update_fields=['date_creation'])
         res2 = self.post(payload_site(
             phoneE164='+212699999999', page='/autre-page'))
-        self.assertEqual(res2.status_code, 200)
+        self.assertEqual(res2.status_code, 201, res2.content)
+        self.assertNotEqual(res2.json()['lead_id'], lead.pk)
         lead.refresh_from_db()
         self.assertEqual(lead.page, '/simulateur')
+        self.assertEqual(
+            Lead.objects.get(pk=res2.json()['lead_id']).page, '/autre-page')
 
     def test_company_isolation(self):
         res = self.post(payload_site(facilityType='usine'))
@@ -681,11 +684,9 @@ class QX14PersistedScoreTests(TestCase):
         lead = Lead.objects.get(pk=first.json()['lead_id'])
         lead.score = 0
         lead.save(update_fields=['score'])
-        # Re-post au-delà de la fenêtre de dédup < 60 s simule un visiteur
-        # revenant (couche 2) — on force directement le chemin de mise à jour
-        # en appelant find_duplicates_by_contact plutôt que d'attendre 60 s :
-        # ici on vérifie simplement que le double-clic (couche 1, < 60 s)
-        # recalcule aussi le score sur le lead existant mis à jour.
+        # Renvoi immédiat (double-clic) : on reste dans la garde anti-rejeu
+        # < 60 s, le SEUL chemin qui complète encore un lead existant. On
+        # vérifie qu'il recalcule aussi le score sur ce lead.
         retry = self.post(payload_site(
             phoneE164='+212611223344', gpsLat='33.5', gpsLng='-7.6',
             whatsappOptIn=True))

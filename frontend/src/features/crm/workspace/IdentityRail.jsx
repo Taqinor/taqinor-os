@@ -124,6 +124,12 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
     }
     return [...map.values()]
   }, [dups, liveDups, leadId])
+  // « Identité forte » (backend `match_fort`) : même e-mail ET même téléphone.
+  // Le webhook du site ne fusionne plus rien — ce bandeau est ce qui dit au
+  // commercial que c'est très probablement le même client. Absent (anciennes
+  // réponses) ⇒ falsy ⇒ libellé strictement inchangé.
+  const hasMatchFort = useMemo(
+    () => allDups.some((d) => d && d.match_fort), [allDups])
   // VX237 — carte de visite collée : état optionnel exposé par le moteur
   // (lane 1) / la section Contact (lane 4). Inerte tant qu'il est absent.
   const cardPaste = state.cardPaste
@@ -227,6 +233,7 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
         <div className="lw-banner-card lw-banner-card--warning" role="status">
           <span>
             {allDups.length} doublon{allDups.length > 1 ? 's' : ''} probable{allDups.length > 1 ? 's' : ''}
+            {hasMatchFort ? ' — très probablement le même client' : ''}
           </span>
           <Button type="button" size="sm" variant="outline" onClick={() => setDupOpen(true)}>
             Examiner

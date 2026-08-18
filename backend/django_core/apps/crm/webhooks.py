@@ -6,8 +6,15 @@ l'en-tête ``X-Webhook-Secret``. Principes :
 
 1. JAMAIS perdre un lead : la charge utile brute est stockée
    (WebsiteLeadPayload) AVANT toute tentative de mapping.
-2. Idempotent : même téléphone reçu dans la même minute → mise à jour du
-   lead existant, jamais de doublon.
+2. RÈGLE FONDATEUR (18/08/2026) — CHAQUE soumission du site crée un
+   NOUVEAU lead, toujours. Plus jamais de fusion silencieuse d'un
+   « visiteur revenant » : c'est ainsi qu'un lead de test a disparu dans
+   un ancien lead au même e-mail, introuvable pour son auteur. Seule
+   subsiste une garde TECHNIQUE anti-rejeu (même téléphone reçu dans les
+   60 s : double-clic, relance réseau), qui complète la soumission EN
+   COURS. Les rapprochements se font ensuite en VISIBILITÉ — note chatter
+   « Doublon possible », bandeaux du rail identité — puis par FUSION
+   MANUELLE (``services.merge_leads``), jamais automatiquement.
 3. Tenant résolu CÔTÉ SERVEUR (env WEBSITE_LEADS_COMPANY_ID, sinon la
    première Company) — rien ne vient du payload.
 4. Un lead sous le seuil ne devrait pas arriver (filtré par le site) ;
@@ -33,20 +40,20 @@ from .models import Lead, LeadActivity, WebsiteLeadPayload
 
 logger = logging.getLogger(__name__)
 
-#: Fenêtre d'idempotence : même téléphone reçu deux fois dans cette fenêtre
-#: (relance réseau, double clic) = mise à jour, pas de doublon.
+#: Garde TECHNIQUE anti-rejeu (jamais une déduplication métier) : même
+#: téléphone reçu deux fois dans cette fenêtre = la MÊME soumission renvoyée
+#: (double-clic, relance réseau) → on complète la fiche en cours. Au-delà,
+#: toute soumission est un nouveau lead (règle fondateur, cf. docstring).
 DEDUP_WINDOW_SECONDS = 60
 
-#: Champs d'attribution first-touch préservés sur un visiteur revenant (QJ8).
-#: Ces valeurs sont posées au PREMIER contact et ne doivent jamais être écrasées
-#: par un re-POST ultérieur (campagne différente du visiteur revenant).
-_FIRST_TOUCH_FIELDS = frozenset([
-    'fbclid', 'utm_source', 'utm_medium',
-    'utm_campaign', 'utm_content', 'utm_term',
-    # QW2 — la landing page de première visite est une donnée d'attribution :
-    # protégée à l'identique de l'UTM/fbclid sur un visiteur revenant.
-    'page',
-])
+#: WJ124 — régions agronomiques (8 zones FAO) émises par le site
+#: (``apps/web/src/lib/lead.ts:REGIONS_AGRICOLES``). SOURCE DE VÉRITÉ :
+#: ``apps/ventes/quote_engine/agricole/agronomy.py`` (ET0_MONTHLY) — recopiée
+#: ici en constante plain, jamais importée (frontière inter-apps crm↛ventes).
+_REGIONS_AGRICOLES = (
+    'souss-massa', 'doukkala', 'tadla', 'saiss', 'oriental',
+    'draa-tafilalet', 'gharb-loukkos', 'haouz',
+)
 
 
 #: QW9 — Tolérance de dérive d'horloge pour l'en-tête `X-Webhook-Timestamp`
@@ -331,6 +338,11 @@ def _extract_web_questionnaire(data):
             ('aucune', 'diesel', 'butane', 'electrique'))
     _num('pompeCvActuelle', 'pompe_cv_actuelle', hi=10000)
     _num('fuelSpendMad', 'fuel_spend_mad')
+    # WJ124 — région agronomique : ÉMISE par le site depuis WJ124 mais jamais
+    # persistée jusqu'ici (trou de mapping constaté à l'audit). Elle atterrit
+    # désormais dans le blob web_questionnaire, comme toute réponse sans
+    # colonne Lead dédiée.
+    _choice('regionAgricole', 'region_agricole', _REGIONS_AGRICOLES)
 
     # ── QX51 — Mode COMMERCIAL (catégorie + réponses par catégorie) ──
     # Clés snake_case alignées sur COMMERCIAL_CATEGORY_QUESTIONS (générateur) et
@@ -416,6 +428,8 @@ def _build_questionnaire_note(questionnaire, estimate, type_installation):
         parts.append(f"culture {questionnaire['culture']}")
     if questionnaire.get('surface_ha') is not None:
         parts.append(f"{fmt(questionnaire['surface_ha'])} ha")
+    if questionnaire.get('region_agricole'):
+        parts.append(f"région {questionnaire['region_agricole']}")
     pompe = questionnaire.get('pompe_actuelle')
     pompe_cv = questionnaire.get('pompe_cv_actuelle')
     if pompe == 'aucune':
@@ -767,7 +781,8 @@ def _map_payload_to_fields(data: dict) -> dict:
         foreign = data.get('phoneIsForeign', data.get('phone_is_foreign'))
         if isinstance(foreign, bool):
             fields['phone_is_foreign'] = foreign
-    # Landing page de première visite (first-touch, protégée comme l'UTM).
+    # Landing page de première visite (first-touch) : posée à la création,
+    # jamais réécrite — chaque soumission crée désormais sa propre fiche.
     page = data.get('page')
     if page:
         fields['page'] = str(page).strip()[:300] or None
@@ -783,7 +798,7 @@ def _map_payload_to_fields(data: dict) -> dict:
         fields['contact_preference'] = contact_preference
         # QX15 — horodate la POSE de la préférence (distinct de
         # date_creation) : le SLA rappel doit mesurer depuis ce moment, pas
-        # depuis la création du lead (couche 2 dédup — visiteur revenant).
+        # depuis la création du lead.
         fields['contact_preference_set_at'] = timezone.now()
 
     # ── Quote-journey — questionnaire pro/agricole + estimation montrée ──
@@ -826,14 +841,63 @@ def _map_payload_to_fields(data: dict) -> dict:
     return fields
 
 
+def _flag_possible_duplicates(lead, *, telephone='', email=''):
+    """Détection de doublon posée EN VISIBILITÉ sur le lead qui vient d'être
+    créé — jamais une fusion (règle fondateur du 18/08/2026).
+
+    On cherche les leads de la MÊME société partageant le téléphone OU l'e-mail
+    normalisé et, s'il y en a, on pose UNE note chatter sobre sur le NOUVEAU
+    lead. Aucun lead existant n'est lu en écriture : les fiches déjà en base
+    ressortent intactes de ce chemin.
+
+    « Identité forte » = un lead existant partage À LA FOIS l'e-mail exact ET
+    le téléphone normalisé exact ; la note le dit alors explicitement (« très
+    probablement le même client »), et l'appelant l'expose dans la réponse
+    HTTP. Le rail identité (GET ``/crm/leads/<id>/duplicates/``) s'allume seul
+    sur le nouveau lead — cette note ne fait que l'expliquer dans le chatter.
+
+    Renvoie ``(ids_des_doublons, match_fort)``."""
+    from .services import find_duplicates_by_contact, is_strong_identity_match
+
+    dupes = find_duplicates_by_contact(
+        lead.company, phone=telephone or None, email=email or None,
+        exclude_pk=lead.pk)
+    if not dupes:
+        return [], False
+    dupes = sorted(dupes, key=lambda le: le.pk)
+    match_fort = any(
+        is_strong_identity_match(le, phone=telephone, email=email)
+        for le in dupes)
+    shown = dupes[:5]
+    refs = ', '.join(
+        f'#{le.pk} ({(le.nom or "sans nom").strip()})' for le in shown)
+    if len(dupes) > len(shown):
+        refs += f' (+{len(dupes) - len(shown)} autre(s))'
+    label = 'lead' if len(dupes) == 1 else 'leads'
+    body = (f'Doublon possible : même téléphone/email que {label} {refs}'
+            ' — à examiner')
+    if match_fort:
+        body += (' — même e-mail ET même téléphone : très probablement '
+                 'le même client')
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=None,
+        kind=LeadActivity.Kind.NOTE, body=body)
+    return [le.pk for le in dupes], match_fort
+
+
 def _map_and_link_lead(raw, data, company):
-    """QX16 — Cœur du mapping payload → Lead (création/mise à jour, dédup,
-    tous les effets de bord best-effort), factorisé hors de la vue pour être
-    réutilisable par le REJEU (``replay_website_lead_payload``) sans dupliquer
-    la logique. Persiste ``raw.lead``/``raw.processed`` et renvoie
-    ``(lead, created, detail)``. Laisse toute exception se propager — les
+    """QX16 — Cœur du mapping payload → Lead, factorisé hors de la vue pour
+    être réutilisable par le REJEU (``replay_website_lead_payload``) sans
+    dupliquer la logique. Persiste ``raw.lead``/``raw.processed`` et renvoie
+    ``(lead, created, detail, extra)`` (``extra`` = signaux de doublon à
+    exposer dans la réponse HTTP). Laisse toute exception se propager — les
     appelants (vue webhook, action replay) décident comment la consigner sur
-    ``raw.error``."""
+    ``raw.error``.
+
+    RÈGLE FONDATEUR (18/08/2026) : une soumission du site = un NOUVEAU lead.
+    Le SEUL cas où un lead existant est complété ici est la garde technique
+    anti-rejeu < 60 s (même téléphone + source site web) — c'est la même
+    soumission qui revient, pas un visiteur revenant."""
     fields = _map_payload_to_fields(data)
     telephone = fields.get('telephone') or ''
     email = fields.get('email') or ''
@@ -843,10 +907,10 @@ def _map_and_link_lead(raw, data, company):
     # `cache.add` est atomique : deux POSTs simultanés avec la MÊME clé ne
     # peuvent jamais tous les deux se croire « premiers » — la requête
     # PERDANTE attend brièvement que la gagnante commite son lead, puis
-    # rejoint la dédup téléphone/email normale ci-dessous (jamais de
-    # logique de fusion dupliquée). Best-effort : sans clé (anciens
-    # workers) ou cache indisponible, comportement inchangé (couches 1/2
-    # restent la seule protection).
+    # rejoint la garde anti-rejeu < 60 s ci-dessous (jamais de logique
+    # dupliquée). Best-effort : sans clé (anciens workers) ou cache
+    # indisponible, comportement inchangé (la garde < 60 s et le dédup dur
+    # `dedupe_event` restent la protection).
     idempotency_key = str(
         data.get('idempotencyKey') or data.get('idempotency_key') or ''
     ).strip()[:64]
@@ -865,9 +929,15 @@ def _map_and_link_lead(raw, data, company):
         except Exception:  # noqa: BLE001 — cache indisponible : no-op
             pass
 
+    dup_ids, match_fort = [], False
+
+    # ── Garde TECHNIQUE anti-rejeu < 60 s (double-clic / relance réseau) ──
+    # C'est la SEULE circonstance où ce webhook touche un lead déjà en base :
+    # la même soumission qui revient dans la minute. Ce n'est PAS une
+    # déduplication métier — un visiteur qui revient une heure, un jour ou un
+    # mois plus tard obtient sa propre fiche (règle fondateur), et le
+    # rapprochement se fait ensuite par bandeau + fusion manuelle.
     existing = None
-    is_window_dedup = False
-    # ── Couche 1 : dédup < 60 s (double-clic / relance réseau) ────────────
     if telephone:
         window_start = timezone.now() - timezone.timedelta(seconds=DEDUP_WINDOW_SECONDS)
         existing = (
@@ -878,63 +948,23 @@ def _map_and_link_lead(raw, data, company):
             .order_by('-date_creation')
             .first()
         )
-        if existing is not None:
-            is_window_dedup = True
-
-    # ── Couche 2 (QJ8) : dédup visiteur revenant — téléphone OU email ─────
-    # Si la fenêtre courte n'a rien trouvé, on cherche un lead existant dans
-    # la MÊME société par téléphone ou email normalisé (sans limite de temps).
-    # Préserve l'attribution first-touch (UTM/fbclid) : jamais écrasée.
-    # Périmètre : uniquement `company` — jamais de fusion cross-company.
-    # Les leads sans téléphone dédupliquent par email.
-    if existing is None:
-        from .services import find_duplicates_by_contact
-        dupes = find_duplicates_by_contact(
-            company, phone=telephone or None, email=email or None)
-        # Prend le lead le plus récent (find_duplicates_by_contact retourne
-        # une liste non ordonnée — on trie par date_creation desc).
-        if dupes:
-            dupes_sorted = sorted(
-                dupes, key=lambda lead_: lead_.date_creation, reverse=True)
-            existing = dupes_sorted[0]
 
     if existing:
-        # Re-POST ou visiteur revenant : on COMPLÈTE sans jamais écraser une
-        # donnée déjà captée. Un second payload plus pauvre (champ absent →
-        # None/'') ne doit pas annuler ce que le premier a rempli. On
-        # n'écrit donc que les valeurs réellement renseignées.
-        # Attribution first-touch (UTM/fbclid) : préservée sur visiteur revenant.
+        # Renvoi de la MÊME soumission : on COMPLÈTE sans jamais écraser une
+        # donnée déjà captée par du vide. Un second payload plus pauvre
+        # (champ absent → None/'') ne doit pas annuler ce que le premier a
+        # rempli — on n'écrit donc que les valeurs réellement renseignées.
         for key, value in fields.items():
             if value is None or value == '':
-                continue
-            # Sur un visiteur revenant (couche 2), l'attribution first-touch
-            # du lead existant prime sur celle du nouveau payload.
-            if (not is_window_dedup
-                    and key in _FIRST_TOUCH_FIELDS
-                    and getattr(existing, key, None)):
                 continue
             setattr(existing, key, value)
         existing.save()
         lead, created = existing, False
-        # Trace la mise à jour dans le chatter.
-        if is_window_dedup:
-            chatter_body = 'Mis à jour via le site web (doublon < 1 min)'
-        else:
-            chatter_body = 'Visiteur revenant : lead existant mis à jour via le site web'
         LeadActivity.objects.create(
             company=lead.company, lead=lead, user=None,
             kind=LeadActivity.Kind.NOTE,
-            body=chatter_body,
+            body='Mis à jour via le site web (même envoi < 1 min)',
         )
-        # YLEAD11 — une nouvelle touche sur un lead PERDU/COLD le
-        # réactive (lève perdu, repositionne NEW/CONTACTED avance-seul).
-        try:
-            from .services import reactivate_lead_on_new_touch
-            reactivate_lead_on_new_touch(lead, source='site web')
-        except Exception as _exc:  # noqa: BLE001 — best-effort
-            logger.warning(
-                'website_lead_webhook: réactivation échouée (lead #%s) : %s',
-                lead.pk, _exc)
         # QX14 — TOUS les autres chemins de création/mise à jour de lead
         # persistent le score via recompute_lead_score (views.py 561/574,
         # services.py 1088/1366/1429/2782) SAUF ce webhook — le score
@@ -1001,6 +1031,17 @@ def _map_and_link_lead(raw, data, company):
             logger.warning(
                 'website_lead_webhook: note questionnaire échouée '
                 '(lead #%s) : %s', lead.pk, _exc)
+        # Détection de doublon EN VISIBILITÉ (remplace l'ancienne fusion
+        # silencieuse « visiteur revenant ») : note chatter sur le NOUVEAU
+        # lead + signal « identité forte ». Best-effort — un rapprochement
+        # en échec ne remet jamais la capture du lead en cause.
+        try:
+            dup_ids, match_fort = _flag_possible_duplicates(
+                lead, telephone=telephone, email=email)
+        except Exception as _exc:  # noqa: BLE001 — best-effort
+            logger.warning(
+                'website_lead_webhook: détection de doublon échouée '
+                '(lead #%s) : %s', lead.pk, _exc)
 
     # QK6 — photo de facture/compteur/toiture jointe à la capture :
     # attachée au lead (+ OCR si configuré), best-effort — une photo
@@ -1014,9 +1055,9 @@ def _map_and_link_lead(raw, data, company):
             lead.pk, _exc)
 
     # QW4 — rappel demandé (contact_preference=phone_ok) : notification
-    # DISTINCTE et plus urgente qu'un lead générique, sur création ET
-    # mise à jour (un visiteur revenant peut poser sa préférence après
-    # coup). Idempotent (marqueur chatter) — jamais best-effort bloquant.
+    # DISTINCTE et plus urgente qu'un lead générique, sur création ET sur
+    # complément < 60 s (la préférence peut n'arriver qu'au second envoi).
+    # Idempotent (marqueur chatter) — jamais best-effort bloquant.
     try:
         from .services import notify_lead_callback_requested
         notify_lead_callback_requested(lead)
@@ -1041,13 +1082,18 @@ def _map_and_link_lead(raw, data, company):
     raw.lead = lead
     raw.processed = True
     raw.save(update_fields=['lead', 'processed'])
-    if created:
+    if not created:
+        detail = 'Lead mis à jour (même envoi < 1 min).'
+    elif not dup_ids:
         detail = 'Lead créé.'
-    elif is_window_dedup:
-        detail = 'Lead mis à jour (doublon < 1 min).'
     else:
-        detail = 'Lead existant mis à jour (visiteur revenant).'
-    return lead, created, detail
+        nb = len(dup_ids)
+        pluriel = '' if nb == 1 else 's'
+        detail = f'Lead créé — {nb} doublon{pluriel} possible{pluriel}'
+        detail += (' : très probablement le même client.' if match_fort
+                   else ' à examiner.')
+    return lead, created, detail, {
+        'doublons': dup_ids, 'match_fort': match_fort}
 
 
 @csrf_exempt
@@ -1098,7 +1144,12 @@ def website_lead_webhook(request):
             phone_key = normalize_phone(phone_raw)
             matched = None
             if phone_key:
-                for candidate in Lead.objects.filter(company=company):
+                # Ordre EXPLICITE (ne pas dépendre du Meta.ordering) : depuis
+                # que chaque soumission crée sa fiche, plusieurs leads peuvent
+                # partager un numéro — l'engagement se note sur le PLUS RÉCENT.
+                candidates = (Lead.objects.filter(company=company)
+                              .order_by('-date_creation'))
+                for candidate in candidates:
                     if normalize_phone(candidate.telephone) == phone_key:
                         matched = candidate
                         break
@@ -1140,11 +1191,14 @@ def website_lead_webhook(request):
              'payload_id': raw.pk}, status=200)
 
     try:
-        lead, created, detail = _map_and_link_lead(raw, data, company)
-        return JsonResponse(
-            {'detail': detail, 'lead_id': lead.pk, 'payload_id': raw.pk},
-            status=201 if created else 200,
-        )
+        lead, created, detail, extra = _map_and_link_lead(raw, data, company)
+        # `doublons`/`match_fort` sont ADDITIFS (le Worker du site ignore les
+        # clés qu'il ne connaît pas) : ils disent au clair qu'un lead au même
+        # téléphone/e-mail existe déjà, et si c'est très probablement le même
+        # client — sans que RIEN n'ait été fusionné.
+        body = {'detail': detail, 'lead_id': lead.pk, 'payload_id': raw.pk}
+        body.update(extra)
+        return JsonResponse(body, status=201 if created else 200)
     except Exception as exc:  # noqa: BLE001 — la donnée brute prime
         raw.error = f'{type(exc).__name__}: {exc}'
         raw.save(update_fields=['error'])
@@ -1195,7 +1249,8 @@ def replay_website_lead_payload(raw):
     if company is None:
         return False, 'Aucune Company résolue — rejeu impossible.', None
     try:
-        lead, created, detail = _map_and_link_lead(raw, raw.payload, company)
+        lead, created, detail, _extra = _map_and_link_lead(
+            raw, raw.payload, company)
         return True, detail, lead
     except Exception as exc:  # noqa: BLE001 — même contrat que la vue webhook
         raw.error = f'{type(exc).__name__}: {exc}'

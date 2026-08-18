@@ -903,8 +903,15 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
     @action(detail=True, methods=['get'], url_path='duplicates',
             permission_classes=[IsAnyRole])
     def duplicates(self, request, pk=None):
-        """Doublons probables (même téléphone/email normalisé, même société)."""
-        from .services import find_duplicate_leads
+        """Doublons probables (même téléphone/email normalisé, même société).
+
+        `match_fort` (ADDITIF au contrat existant) distingue le rapprochement
+        ordinaire — même téléphone OU même e-mail — de l'« identité forte » :
+        même e-mail ET même téléphone, c.-à-d. très probablement le même
+        client. Depuis que le webhook du site crée SYSTÉMATIQUEMENT un nouveau
+        lead (plus aucune fusion silencieuse), c'est ce bandeau qui porte le
+        rapprochement, et la fusion reste manuelle."""
+        from .services import find_duplicate_leads, is_strong_identity_match
         lead = self.get_object()
         dups = find_duplicate_leads(lead)
         return Response([
@@ -914,6 +921,8 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 'email': d.email, 'stage': d.stage,
                 'is_archived': d.is_archived,
                 'nb_devis': d.devis.count(),
+                'match_fort': is_strong_identity_match(
+                    d, phone=lead.telephone, email=lead.email),
             }
             for d in dups
         ])
@@ -925,8 +934,10 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         correspond-il déjà à un lead de la société ? Avertissement NON bloquant
         côté formulaire — la société vient du serveur, jamais du corps. Saisie
         libre acceptée (mêmes normaliseurs que la détection de doublons).
-        ?exclude=<id> retire le lead en cours d'édition de ses propres doublons."""
-        from .services import find_duplicates_by_contact
+        ?exclude=<id> retire le lead en cours d'édition de ses propres doublons.
+        `match_fort` : même forme de ligne que l'action `duplicates` ci-dessus
+        (les deux listes sont fusionnées par le même bandeau côté rail)."""
+        from .services import find_duplicates_by_contact, is_strong_identity_match
         phone = request.query_params.get('telephone') or \
             request.query_params.get('phone')
         email = request.query_params.get('email')
@@ -942,6 +953,8 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 'email': d.email, 'stage': d.stage,
                 'is_archived': d.is_archived,
                 'nb_devis': d.devis.count(),
+                'match_fort': is_strong_identity_match(
+                    d, phone=phone, email=email),
             }
             for d in dups
         ])

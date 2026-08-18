@@ -221,3 +221,64 @@ class TestDoublonsEndpointEnrichment(TestCase):
         # Chaque membre porte un compteur d'activités.
         for m in cluster['members']:
             self.assertIn('nb_activites', m)
+
+
+class TestMatchFortSurLesDoublons(TestCase):
+    """Le rail identité doit pouvoir DIRE « très probablement le même client ».
+
+    Depuis que le webhook du site crée systématiquement un nouveau lead (règle
+    fondateur 18/08/2026), c'est le bandeau qui porte le rapprochement : il a
+    besoin du niveau « identité forte » (même e-mail ET même téléphone), en
+    plus du rapprochement ordinaire (l'un OU l'autre)."""
+
+    def setUp(self):
+        self.company = make_company('doublons-fort', 'Doublons Fort')
+        self.user = User.objects.create_user(
+            username='dbl_fort', password='x', role_legacy='responsable',
+            company=self.company)
+        self.api = make_api(self.user)
+
+    def test_unite_identite_forte(self):
+        from apps.crm.services import is_strong_identity_match
+        autre = Lead.objects.create(
+            company=self.company, nom='Alaoui',
+            telephone='+212 612-34-56-78', email='Karim@Example.MA')
+        self.assertTrue(is_strong_identity_match(
+            autre, phone='0612345678', email='karim@example.ma'))
+        # Une seule clé partagée → doublon possible, jamais identité forte.
+        self.assertFalse(is_strong_identity_match(
+            autre, phone='0612345678', email='autre@example.ma'))
+        self.assertFalse(is_strong_identity_match(
+            autre, phone='0699999999', email='karim@example.ma'))
+        # Clé manquante d'un côté → jamais identité forte.
+        self.assertFalse(is_strong_identity_match(
+            autre, phone='0612345678', email=None))
+
+    def test_endpoint_duplicates_expose_match_fort(self):
+        fort = Lead.objects.create(
+            company=self.company, nom='Fort', telephone='0612345678',
+            email='karim@example.ma')
+        faible = Lead.objects.create(
+            company=self.company, nom='Faible', telephone='0612345678')
+        courant = Lead.objects.create(
+            company=self.company, nom='Courant', telephone='0612345678',
+            email='Karim@Example.MA')
+
+        resp = self.api.get(
+            f'/api/django/crm/leads/{courant.id}/duplicates/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        par_id = {row['id']: row for row in resp.data}
+        self.assertEqual(set(par_id), {fort.id, faible.id})
+        self.assertTrue(par_id[fort.id]['match_fort'])
+        self.assertFalse(par_id[faible.id]['match_fort'])
+
+    def test_endpoint_check_duplicates_expose_match_fort(self):
+        fort = Lead.objects.create(
+            company=self.company, nom='Fort', telephone='0612345678',
+            email='karim@example.ma')
+        resp = self.api.get(
+            '/api/django/crm/leads/check-duplicates/',
+            {'telephone': '+212612345678', 'email': 'KARIM@example.ma'})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual([r['id'] for r in resp.data], [fort.id])
+        self.assertTrue(resp.data[0]['match_fort'])
