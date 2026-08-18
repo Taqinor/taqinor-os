@@ -432,3 +432,40 @@ export default reducer
 export const WEB_ORIGIN_FIELDS = [
   'bill_range_bucket', 'roi_band', 'utm_source', 'utm_medium', 'utm_campaign', 'fbclid',
 ]
+
+// DÉCISION FONDATEUR 2026-08-18 — « toutes les questions et les détails
+// doivent atteindre l'ERP » : colonnes structurées du questionnaire web
+// (QK1/QW2/QW3), en LECTURE SEULE — capturées par le site, jamais éditées
+// dans la fiche. Les libellés/le rendu vivent dans SectionWebQuestionnaire (sections/SectionDivers.jsx)
+// ; cette liste sert ICI à décider si la section a quelque chose à montrer
+// (SectionsPane), même patron que WEB_ORIGIN_FIELDS ci-dessus.
+export const WEB_QUESTIONNAIRE_STRUCTURED_FIELDS = [
+  'distributeur', 'roof_age', 'ownership', 'project_timeline', 'financing_intent',
+  'futures_charges', 'facility_type', 'site_count', 'visit_window_part',
+  'visit_window_week', 'client_ref', 'phone_is_foreign', 'page',
+  'whatsapp_opt_in', 'consent_timestamp', 'utm_content', 'utm_term',
+  'roof_type', 'bill_kwh',
+]
+
+// Une valeur « vide » au sens de cette section : '' / null / undefined / []
+// / {} ne comptent jamais comme une réponse — RÈGLE DURE, jamais de « 0 » par
+// défaut ni de placeholder pour ce qui n'a pas été répondu. Exportée : sert
+// aussi bien ici (hasWebQuestionnaireData) que dans le composant de rendu,
+// pour filtrer paire par paire web_questionnaire/web_estimate.
+export function estValeurWebRenseignee(v) {
+  if (v === undefined || v === null || v === '') return false
+  if (Array.isArray(v)) return v.length > 0
+  if (typeof v === 'object') return Object.keys(v).length > 0
+  return true
+}
+
+// La section « Réponses du questionnaire web » (SectionsPane) s'affiche si le
+// JSON complet du questionnaire, l'estimation montrée au visiteur, OU l'une
+// des colonnes structurées ci-dessus est non vide. Pure, testable en
+// `node --test` — mêmes garanties que le calcul de hasWebOrigin.
+export function hasWebQuestionnaireData(server) {
+  const s = server || {}
+  if (estValeurWebRenseignee(s.web_questionnaire)) return true
+  if (estValeurWebRenseignee(s.web_estimate)) return true
+  return WEB_QUESTIONNAIRE_STRUCTURED_FIELDS.some((k) => estValeurWebRenseignee(s[k]))
+}

@@ -8,7 +8,7 @@ import SectionPipeline from './SectionPipeline'
 import SectionEnergie, { SectionPompage } from './SectionEnergie'
 import SectionSite from './SectionSite'
 import SectionVisite from './SectionVisite'
-import SectionDivers, { SectionOrigine } from './SectionDivers'
+import SectionDivers, { SectionOrigine, SectionWebQuestionnaire } from './SectionDivers'
 import SectionsPane from '../SectionsPane'
 
 expect.extend(axeMatchers)
@@ -101,6 +101,95 @@ describe('LW11 — rendu des sections (port 1:1 des champs)', () => {
     render(<SectionOrigine state={state} />)
     expect(screen.getByText('UTM source')).toBeInTheDocument()
     expect(screen.getByText('meta')).toBeInTheDocument()
+  })
+
+  /* DÉCISION FONDATEUR 2026-08-18 — « toutes les questions et les détails
+     doivent atteindre l'ERP » : le questionnaire web complet + l'estimation
+     montrée au visiteur + les colonnes structurées QK1/QW2/QW3 arrivent déjà
+     par le GET détail mais n'avaient aucune place à l'écran. */
+  it('SectionWebQuestionnaire rend les 3 sous-blocs, humanise les clés, omet le vide', () => {
+    const state = initState({
+      lead: {
+        id: 1,
+        distributeur: 'onee',
+        roof_age: 12,
+        phone_is_foreign: true,
+        page: '', // vide → JAMAIS rendu (règle dure)
+        web_questionnaire: { tension_raccordement: 'BT', puissance_kva: '' },
+        web_estimate: { kwc: 6.2, prodKwh: 9800 },
+      },
+      mode: 'edit',
+    })
+    render(<SectionWebQuestionnaire state={state} />)
+    // (a) colonnes structurées — libellés FR + valeur brute conservée
+    expect(screen.getByText('Distributeur')).toBeInTheDocument()
+    expect(screen.getByText('onee')).toBeInTheDocument()
+    expect(screen.getByText('Âge du toit')).toBeInTheDocument()
+    expect(screen.getByText('Téléphone étranger')).toBeInTheDocument()
+    expect(screen.getByText('Oui')).toBeInTheDocument()
+    expect(screen.queryByText("Page d'origine")).toBeNull() // vide → omis
+    // (b) « Détails du questionnaire » — clé snake_case humanisée
+    expect(screen.getByText('Détails du questionnaire')).toBeInTheDocument()
+    expect(screen.getByText('Tension raccordement')).toBeInTheDocument()
+    expect(screen.getByText('BT')).toBeInTheDocument()
+    expect(screen.queryByText('Puissance kva')).toBeNull() // clé vide → omise
+    // (c) « Estimation montrée au visiteur » — libellé dédié + unité au libellé
+    expect(screen.getByText('Estimation montrée au visiteur')).toBeInTheDocument()
+    expect(screen.getByText('Puissance (kWc)')).toBeInTheDocument()
+    expect(screen.getByText('6.2')).toBeInTheDocument()
+  })
+
+  it('SectionWebQuestionnaire ne rend rien quand rien n\'a été capturé (aucun chrome)', () => {
+    const state = initState({ lead: { id: 1, nom: 'Test' }, mode: 'edit' })
+    const { container } = render(<SectionWebQuestionnaire state={state} />)
+    expect(container).toBeEmptyDOMElement()
+  })
+})
+
+describe('LW-QUESTIONNAIRE — registre : section « Réponses du questionnaire web »', () => {
+  it('apparaît dans SectionsPane quand web_questionnaire est non vide', () => {
+    const state = initState({ lead: { id: 1, web_questionnaire: { region: 'Souss' } }, mode: 'edit' })
+    const { container } = render(
+      <SectionsPane
+        state={state} setField={vi.fn()} errors={{}} mode="edit"
+        refData={{ users: [], tagOptions: [], motifOptions: [] }}
+      />,
+    )
+    expect(container.querySelector('[data-nav-id="questionnaire"]')).toBeInTheDocument()
+  })
+
+  it('absente quand aucune donnée web n\'a été capturée', () => {
+    const state = initState({ lead: { id: 1, nom: 'Test' }, mode: 'edit' })
+    const { container } = render(
+      <SectionsPane
+        state={state} setField={vi.fn()} errors={{}} mode="edit"
+        refData={{ users: [], tagOptions: [], motifOptions: [] }}
+      />,
+    )
+    expect(container.querySelector('[data-nav-id="questionnaire"]')).toBeNull()
+  })
+
+  it('apparaît aussi via une seule colonne structurée renseignée (ex. distributeur)', () => {
+    const state = initState({ lead: { id: 1, distributeur: 'onee' }, mode: 'edit' })
+    const { container } = render(
+      <SectionsPane
+        state={state} setField={vi.fn()} errors={{}} mode="edit"
+        refData={{ users: [], tagOptions: [], motifOptions: [] }}
+      />,
+    )
+    expect(container.querySelector('[data-nav-id="questionnaire"]')).toBeInTheDocument()
+  })
+
+  it('repliée par défaut, comme « Origine web »', () => {
+    const state = initState({ lead: { id: 1, web_estimate: { kwc: 6 } }, mode: 'edit' })
+    const { container } = render(
+      <SectionsPane
+        state={state} setField={vi.fn()} errors={{}} mode="edit"
+        refData={{ users: [], tagOptions: [], motifOptions: [] }}
+      />,
+    )
+    expect(container.querySelector('[data-nav-id="questionnaire"] .lw-section-head'))
+      .toHaveAttribute('aria-expanded', 'false')
   })
 })
 
