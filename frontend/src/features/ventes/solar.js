@@ -415,7 +415,8 @@ export function computeROI({
     // ORDRE FONDATEUR (18/08) — apport batterie en ÉNERGIE, plus le forfait
     // 60 MAD/kWh/mois : capacité × 1 cycle/jour × jours du mois, plafonné par
     // ce qu'il reste de production ce mois-là (on ne stocke que l'existant),
-    // puis valorisé au tarif. Miroir de la dérivation du taux côté PDF.
+    // puis valorisé au tarif — même dérivation du taux que pricing.py,
+    // VERROUILLÉE par les tests jumeaux solar.batterie/test_battery_autoconso.
     const stockable = Math.max(0, prodKwh - selfConsumed)
     const batteryShift = Math.min(
       Math.max(0, parseFloat(batteryKwh) || 0) * BATTERY_CYCLES_PER_DAY * DAYS_IN_MONTH[i],
