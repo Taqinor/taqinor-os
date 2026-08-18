@@ -43,16 +43,16 @@ BASELINE_ALLOWLIST = {
     # neutre : elle PRÉ-AUTORISE en silence un futur `round(total_ht, 2)`
     # inséré à cette ligne, c.-à-d. exactement l'arrondi monétaire hors
     # `quantize_mad` que cette garde existe pour faire relire.
-    "backend/django_core/apps/ventes/quote_engine/builder.py:592",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:594",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:645",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:628",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:630",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:681",
     "backend/django_core/apps/ventes/quote_engine/builder.py:167",
     "backend/django_core/apps/ventes/quote_engine/builder.py:190",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:497",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:595",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:778",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1279",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:758",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:533",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:590",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:814",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1339",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:794",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1286",
     # compta/services.py entries re-based (WIR153, 2026-07-31, -3 lines above
     # them from removing two dead OCR-provider try/except blocks + docstring
@@ -80,54 +80,54 @@ BASELINE_ALLOWLIST = {
     "backend/django_core/apps/compta/services.py:9102",
     # XSAL14 (2026-07-16) — builder.py edits shifted existing display-round
     # sites; re-based 1:1 (premium engine, sanctioned rounding).
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1309",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1315",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1368",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1429",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1375",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1428",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1369",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:520",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:556",
     "backend/django_core/apps/ventes/quote_engine/builder.py:615",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:617",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:642",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:644",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:788",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:801",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:653",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:678",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:680",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:824",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:837",
     # QX ROUND 7 (2026-07-16) — QX43/QX50 builder.py edits shifted existing
     # display-round sites again; re-based 1:1 (premium engine, sanctioned
     # whole-MAD display rounding — rule #4 vendored engine, not new logic).
     "backend/django_core/apps/ventes/quote_engine/builder.py:192",
     "backend/django_core/apps/ventes/quote_engine/builder.py:193",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:532",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:627",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:629",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:654",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:632",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:800",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:813",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1325",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1331",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1384",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:504",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:663",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:631",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:690",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:631",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:836",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:805",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1445",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1391",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1382",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1385",
     # QRES (2026-07-18) puis PV11/PV46/PV77 (fiche wattage, annexe technique,
     # bloc bankable) — les MÊMES arrondis d'affichage déjà revus, re-décalés.
     # QRES (2026-07-18) — les blocs hypothèses/tarif/photo-toiture ajoutés dans
     # builder.py ont décalé les MÊMES arrondis d'affichage existants (déjà
     # revus : PU/ROI/TVA affichés, jamais un calcul monétaire persisté).
-    "backend/django_core/apps/ventes/quote_engine/builder.py:287",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:288",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:645",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:740",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:742",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:767",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:769",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:913",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:926",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:323",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:324",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:681",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:776",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:778",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:803",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:784",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:949",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:962",
     # PV84 (chemin_proposition — nom du client dans le lien) — l'import
     # chemin_proposition + son commentaire ajoutés au bloc "signer" ont
     # décalé les MÊMES 4 arrondis d'affichage (PU/total ligne) de +2 lignes ;
     # aucune logique déplacée, aucun NOUVEAU site — bug-class #34.
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1520",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1526",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1579",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1640",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1586",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1639",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1580",
     # PV86 (2026-08-15, « la seule vérité est le devis ») — le bloc qui exige
     # qu'une alternative soit DÉCLARÉE avant de rendre deux options a inséré
@@ -135,13 +135,13 @@ BASELINE_ALLOWLIST = {
     # TTC exact, ROI/prix-kWc, ×N villas, total de ligne d'option) glissent
     # tous de +46, à l'identique. Vérifié : le diff n'ajoute AUCUN round() —
     # aucun NOUVEAU site, simple re-calage file:line (bug-class #34).
-    "backend/django_core/apps/ventes/quote_engine/builder.py:786",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:815",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:959",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:972",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1566",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1572",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1625",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:822",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:851",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:995",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1015",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1650",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1632",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1685",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1626",
     # GAMMES (2026-08-18, offre à deux gammes) — RE-CALAGE file:line, PAS de
     # nouveau site (bug-class #34). Deux insertions purement additives :
@@ -174,19 +174,19 @@ BASELINE_ALLOWLIST = {
     # d'AFFICHAGE (surface m², kWc ; jamais un montant), simplement déplacés.
     # Lignes relues sur l'arbre courant : 687→753, 690→756, 2135→2263,
     # 2305→2442.
-    "backend/django_core/apps/ventes/services.py:753",
-    "backend/django_core/apps/ventes/services.py:756",
-    "backend/django_core/apps/ventes/services.py:2263",
-    "backend/django_core/apps/ventes/services.py:2442",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:300",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:301",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:658",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:799",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:801",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:826",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:828",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:972",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:985",
+    "backend/django_core/apps/ventes/services.py:913",
+    "backend/django_core/apps/ventes/services.py:916",
+    "backend/django_core/apps/ventes/services.py:2434",
+    "backend/django_core/apps/ventes/services.py:2501",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:336",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:337",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:694",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:835",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:837",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:862",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:864",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1015",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1028",
     # QXMT (2026-08-18) — le bloc « un dossier MT ne porte jamais un chiffre
     # BT » (+36 lignes, inséré APRÈS le calcul ROI, avant QF2) décale les
     # QUATRE arrondis d'affichage qui le suivent (montant de TVA ×N villas,
@@ -194,9 +194,9 @@ BASELINE_ALLOWLIST = {
     # 1585→1621, 1638→1674, 1639→1675. Décalage UNIFORME, aucune logique
     # déplacée, aucun NOUVEAU `round()` — bug-class #34. Les neuf sites
     # au-dessus (300…985) sont AVANT l'insertion et ne bougent pas.
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1615",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1621",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1674",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1735",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1681",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1734",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1675",
 }
 
