@@ -40,7 +40,22 @@ import {
 import { $, fmt } from './dom';
 import { type Ctx } from './context';
 import { type ProdConfig } from './types';
-import { createLayoutHistory } from './layoutHistory';
+import { createLayoutHistory, createValueHistory } from './layoutHistory';
+// PV30 — placement libre : géométrie PURE + pont vers le pavage gagnant.
+import {
+  moveFreePanels,
+  addFreePanel,
+  removeFreePanel,
+  checkPanelAt,
+  findFreeSpot,
+  copyFreeState,
+  toUV,
+  type FreeGeom,
+  type FreeCheck,
+  type FreeLayoutState,
+  type FreeViolation,
+} from '../../lib/freeLayout';
+import { FREE_STEP_M, freeGeomFrom, freeStateFromCenters, quantizeFree } from './freeMode';
 
 /** Décimal à 1 chiffre, à la française (identique à l'entrée). */
 const fmt1 = (n: number): string =>
@@ -115,11 +130,22 @@ export interface LayoutEditor {
   /** PV29 — sélectionne TOUTE la rangée du panneau donné (le geste « rangée » en un coup).
    *  Renvoie les membres sélectionnés ([] si la cellule n'est pas occupée). */
   selectRow: (cellIndex: number) => number[];
+  /** PV30 — le mode PLACEMENT LIBRE est-il actif ? */
+  isFreeMode: () => boolean;
+  /** PV30 — bascule de mode. `false` revient à la lattice SANS demander (l'appelant a déjà
+   *  décidé) ; le bouton d'interface, lui, passe par la demande de confirmation. */
+  setFreeMode: (on: boolean) => boolean;
+  /** PV30 — copie des panneaux posés librement (centres ENU). */
+  freePanels: () => { cx: number; cy: number; face?: 'E' | 'W' }[];
+  /** PV30 — marges RELÂCHABLES courantes (m). */
+  freeMargins: () => { setbackM: number; gapM: number };
+  /** PV30 — fixe les marges relâchables (m). Une valeur absente laisse la sienne. */
+  setFreeMargins: (m: { setbackM?: number; gapM?: number }) => void;
   /** PV27 — HYDRATE la disposition depuis les centres de panneaux d'un layout exporté
    *  (leur repère d'origine si différent de celui du pavage courant). Re-snappe chaque
    *  centre sur la lattice courante et rend la 3D avec CETTE occupation. Renvoie true si
    *  la disposition a été appliquée. */
-  hydrateLayout: (centers: readonly { cx: number; cy: number }[], origin?: readonly [number, number]) => boolean;
+  hydrateLayout: (centers: readonly { cx: number; cy: number }[], origin?: readonly [number, number], mode?: 'lattice' | 'free') => boolean;
 }
 
 /**
@@ -159,6 +185,11 @@ function buildFallbackLayoutDom(container: HTMLElement | null): void {
       'border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.08)}',
       '.rp9-layout-fallback .rp9-layout-cell[data-occupied="true"]{background:#3f7fd0}',
       '.rp9-layout-fallback .rp9-layout-cell[aria-pressed="true"]{background:#e0b25c}',
+      '.rp9-layout-fallback label{opacity:.7}',
+      '.rp9-layout-fallback input{width:4.5em;border:1px solid rgba(255,255,255,.3);background:transparent;',
+      'color:inherit;font:inherit;padding:4px 6px}',
+      '#rp9-free-controls[hidden]{display:none}',
+      '#rp9-free-measure{font-variant-numeric:tabular-nums;opacity:.85}',
     ].join('');
     document.head.appendChild(style);
   }
@@ -169,6 +200,23 @@ function buildFallbackLayoutDom(container: HTMLElement | null): void {
   win.innerHTML = [
     '<button type="button" id="rp9-layout-toggle" aria-pressed="false">Déplacer les panneaux</button>',
     '<div id="rp9-layout-panel" hidden>',
+    // PV30 — les deux modes, côte à côte. La lattice reste le mode d'entrée.
+    '<div class="rp9-fb-row">',
+    '<button type="button" id="rp9-layout-mode-lattice" aria-pressed="true">Emplacements validés</button>',
+    '<button type="button" id="rp9-layout-mode-free" aria-pressed="false">Placement libre</button>',
+    '</div>',
+    '<div id="rp9-free-controls" hidden>',
+    '<div class="rp9-fb-row">',
+    '<label for="rp9-free-setback">Retrait de rive (cm)</label>',
+    '<input id="rp9-free-setback" type="text" inputmode="decimal" step="any" size="4">',
+    '<label for="rp9-free-gap">Écart panneaux (cm)</label>',
+    '<input id="rp9-free-gap" type="text" inputmode="decimal" step="any" size="4">',
+    '</div>',
+    '<div class="rp9-fb-row">',
+    '<button type="button" id="rp9-free-add" aria-pressed="false">＋ Ajouter un panneau</button>',
+    '<span id="rp9-free-measure" aria-live="polite"></span>',
+    '</div>',
+    '</div>',
     '<dl>',
     '<div><dd id="rp9-layout-count">—</dd><dt>Posés</dt></div>',
     '<div><dd id="rp9-layout-kwc">—</dd><dt>Puissance</dt></div>',
@@ -245,6 +293,14 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   // PV26 — annuler / rétablir.
   const layoutUndoBtn = $<HTMLButtonElement>('rp9-layout-undo');
   const layoutRedoBtn = $<HTMLButtonElement>('rp9-layout-redo');
+  // PV30 — bascule de MODE + réglages du placement libre.
+  const modeLatticeBtn = $<HTMLButtonElement>('rp9-layout-mode-lattice');
+  const modeFreeBtn = $<HTMLButtonElement>('rp9-layout-mode-free');
+  const freeControlsEl = $('rp9-free-controls');
+  const freeSetbackEl = $<HTMLInputElement>('rp9-free-setback');
+  const freeGapEl = $<HTMLInputElement>('rp9-free-gap');
+  const freeAddBtn = $<HTMLButtonElement>('rp9-free-add');
+  const freeMeasureEl = $('rp9-free-measure');
 
   // PV25 — ÉTAT de la sélection multiple. Il vit dans ce module (rien à ajouter au ctx
   // partagé) : c'est une intention d'édition, pas un état de design.
@@ -333,6 +389,185 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
    * groupe est préservée (une rangée reste une rangée). Pas de grille connu → delta brut
    * (comportement historique).
    */
+  // ═══════════ PV30 — PLACEMENT LIBRE (second mode, jamais un remplacement) ═══════════
+  // Le mode lattice reste le DÉFAUT et n'est touché nulle part : chaque fonction ci-dessous
+  // est soit nouvelle, soit branchée derrière `ctx.freeMode`. Éteint, le fichier se
+  // comporte exactement comme avant.
+
+  /** Historique PROPRE au placement libre (positions continues, pas une occupation). */
+  const freeHistory = createValueHistory<FreeLayoutState>(copyFreeState);
+  /** Le prochain clic doit-il POSER un nouveau panneau ? (bouton « Ajouter »). */
+  let freeAddArmed = false;
+
+  /** Contexte géométrique courant du placement libre (axes, dimensions, contour,
+   *  obstacles), ou null si le plan ne permet pas de décrire un panneau. */
+  function freeGeom(): FreeGeom | null {
+    return freeGeomFrom(ctx.layoutPlan, ctx.obstacles ?? []);
+  }
+  /** État libre courant (jamais null quand `ctx.freeMode` est vrai). */
+  function freeState(): FreeLayoutState | null {
+    return ctx.freeState;
+  }
+  /** Le mode libre est-il RÉELLEMENT utilisable maintenant ? */
+  function freeActive(): boolean {
+    return !!ctx.freeMode && !!ctx.freeState;
+  }
+  function recordFreeHistory() {
+    if (ctx.freeState) freeHistory.push(ctx.freeState);
+  }
+
+  /** Libellé FR d'une contrainte violée — on NOMME ce qui bloque, jamais « impossible ». */
+  function violationLabel(v: FreeViolation): string {
+    switch (v) {
+      case 'outline':
+        return 'le panneau sortirait du toit';
+      case 'overlap':
+        return 'il chevaucherait un autre panneau';
+      case 'obstacle':
+        return 'il tomberait sur un obstacle (ou son dégagement)';
+      case 'setback':
+        return 'il passerait sous le retrait de rive que vous avez fixé';
+      case 'gap':
+        return 'il passerait sous l’écart entre panneaux que vous avez fixé';
+      default:
+        return 'placement invalide';
+    }
+  }
+  const cm = (m: number): string => `${Math.round(m * 100)} cm`;
+
+  /** Affiche les distances MESURÉES (rive / voisin) — c'est ce qui rend une marge réduite
+   *  VISIBLE : l'utilisateur voit le chiffre auquel il descend, il ne le devine pas. */
+  function showMeasure(chk: FreeCheck | null) {
+    if (!freeMeasureEl) return;
+    if (!chk) {
+      freeMeasureEl.textContent = '';
+      return;
+    }
+    const edge = Number.isFinite(chk.edgeM) ? cm(chk.edgeM) : '—';
+    const near = chk.panelM === null ? '—' : cm(chk.panelM);
+    const verdict = chk.ok ? '' : ` — ${chk.violations.map(violationLabel).join(', ')}`;
+    freeMeasureEl.textContent = `Rive : ${edge} · Voisin : ${near}${verdict}`;
+  }
+
+  /** Panneau libre le plus proche d'un point écran (même seuil de saisie que la lattice). */
+  function freePanelAt(point: maplibregl.Point): number | null {
+    const st = freeState();
+    const enu = screenToENU(point);
+    if (!st || !enu) return null;
+    let best = -1;
+    let bestD = Infinity;
+    for (let i = 0; i < st.panels.length; i++) {
+      const d = (st.panels[i].cx - enu.x) ** 2 + (st.panels[i].cy - enu.y) ** 2;
+      if (d < bestD) {
+        bestD = d;
+        best = i;
+      }
+    }
+    const grabR2 = (PANEL2_LONG_M * 0.7) ** 2;
+    return best >= 0 && bestD <= grabR2 ? best : null;
+  }
+
+  /** Panneaux libres dont le centre tombe dans le rectangle ENU (marquee). */
+  function freeInRect(rect: { x0: number; y0: number; x1: number; y1: number }): number[] {
+    const st = freeState();
+    if (!st) return [];
+    const xMin = Math.min(rect.x0, rect.x1);
+    const xMax = Math.max(rect.x0, rect.x1);
+    const yMin = Math.min(rect.y0, rect.y1);
+    const yMax = Math.max(rect.y0, rect.y1);
+    const out: number[] = [];
+    for (let i = 0; i < st.panels.length; i++) {
+      const p = st.panels[i];
+      if (p.cx < xMin || p.cx > xMax || p.cy < yMin || p.cy > yMax) continue;
+      out.push(i);
+    }
+    return out;
+  }
+
+  /** Membres de la RANGÉE d'un panneau libre : ceux qui partagent sa coordonnée
+   *  d'empilement `v` (dans le repère du pavage) à une demi-profondeur près. La rangée
+   *  reste une notion géométrique réelle, même sans lattice. */
+  function freeRowMembers(idx: number): number[] {
+    const st = freeState();
+    const g = freeGeom();
+    if (!st || !g || idx < 0 || idx >= st.panels.length) return [];
+    const refV = toUV(g, st.panels[idx].cx, st.panels[idx].cy)[1];
+    const tol = g.depthM / 2;
+    const out: number[] = [];
+    for (let i = 0; i < st.panels.length; i++) {
+      const v = toUV(g, st.panels[i].cx, st.panels[i].cy)[1];
+      if (Math.abs(v - refV) <= tol) out.push(i);
+    }
+    return out;
+  }
+
+  /** Déplace la sélection libre de (dx, dy) mètres — rigide, tout ou rien. */
+  function freeMoveSelection(dx: number, dy: number, members: readonly number[]): boolean {
+    const st = freeState();
+    const g = freeGeom();
+    if (!st || !g || !members.length) return false;
+    recordFreeHistory();
+    const res = moveFreePanels(st, g, members, quantizeFree(dx), quantizeFree(dy), ctx.freeMargins);
+    if (!res.ok) {
+      freeHistory.drop();
+      flashRefusal(members);
+      if (res.blocked) showMeasure(res.blocked);
+      if (layoutNoteEl) {
+        const why = res.blocked ? res.blocked.violations.map(violationLabel).join(', ') : 'placement invalide';
+        layoutNoteEl.textContent = `Déplacement refusé : ${why} — rien n’a bougé.`;
+      }
+      renderLayoutPanel();
+      return false;
+    }
+    if (layoutNoteEl) layoutNoteEl.textContent = `Déplacé — ${fmt(members.length)} panneaux (placement libre).`;
+    renderCustomLayout();
+    renderLayoutPanel();
+    return true;
+  }
+
+  /** POSE un panneau au point ENU visé (clic après « Ajouter »). */
+  function freeAddAt(cx: number, cy: number): boolean {
+    const st = freeState();
+    const g = freeGeom();
+    if (!st || !g) return false;
+    recordFreeHistory();
+    const res = addFreePanel(st, g, quantizeFree(cx), quantizeFree(cy), ctx.freeMargins);
+    showMeasure(res.check);
+    if (!res.ok) {
+      freeHistory.drop();
+      if (layoutNoteEl) {
+        layoutNoteEl.textContent = `Impossible de poser un panneau ici : ${res.check.violations.map(violationLabel).join(', ')}.`;
+      }
+      renderLayoutPanel();
+      return false;
+    }
+    setSelection([res.index]);
+    if (layoutNoteEl) {
+      layoutNoteEl.textContent = `Panneau ajouté — ${fmt(st.panels.length)} posés. Le devis suivra ce nombre à l’enregistrement.`;
+    }
+    renderCustomLayout();
+    renderLayoutPanel();
+    return true;
+  }
+
+  /** RETIRE un panneau libre (Alt + clic, ou le bouton « − »). */
+  function freeRemoveAt(idx: number): boolean {
+    const st = freeState();
+    if (!st) return false;
+    recordFreeHistory();
+    if (!removeFreePanel(st, idx)) {
+      freeHistory.drop();
+      return false;
+    }
+    setSelection([]);
+    if (layoutNoteEl) {
+      layoutNoteEl.textContent = `Panneau retiré — ${fmt(st.panels.length)} posés. Le devis suivra ce nombre à l’enregistrement.`;
+    }
+    renderCustomLayout();
+    renderLayoutPanel();
+    return true;
+  }
+
   function snapDeltaToGrid(dx: number, dy: number): { dx: number; dy: number } {
     const grid = ctx.layoutPlan?.grid;
     const stepU = grid && Number.isFinite(grid.rowWidthM) && grid.rowWidthM > 0 ? grid.rowWidthM : 0;
@@ -365,7 +600,23 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     renderCustomLayout();
     renderLayoutPanel();
   }
+  /** PV30 — ré-applique une photo de PLACEMENT LIBRE (positions continues). */
+  function applyFreeSnapshot(snap: FreeLayoutState) {
+    ctx.freeState = snap;
+    ctx.layoutSel = null;
+    pruneSelection();
+    renderCustomLayout();
+    renderLayoutPanel();
+  }
   function undo(): boolean {
+    // PV30 — chaque mode a sa pile ; on annule TOUJOURS dans le mode où l'on se trouve.
+    if (freeActive()) {
+      const prev = freeHistory.undo(ctx.freeState!);
+      if (!prev) return false;
+      applyFreeSnapshot(prev);
+      if (layoutNoteEl) layoutNoteEl.textContent = `Action annulée — ${fmt(ctx.freeState!.panels.length)} panneaux posés.`;
+      return true;
+    }
     const st = ctx.layoutState;
     if (!st) return false;
     const prev = history.undo(st.occupied);
@@ -375,6 +626,13 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     return true;
   }
   function redo(): boolean {
+    if (freeActive()) {
+      const next = freeHistory.redo(ctx.freeState!);
+      if (!next) return false;
+      applyFreeSnapshot(next);
+      if (layoutNoteEl) layoutNoteEl.textContent = `Action rétablie — ${fmt(ctx.freeState!.panels.length)} panneaux posés.`;
+      return true;
+    }
     const st = ctx.layoutState;
     if (!st) return false;
     const next = history.redo(st.occupied);
@@ -408,7 +666,25 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
    *  par panneau ; seul le NOMBRE change), puis recompute la production/économies par le
    *  chemin PVGIS-par-comptage existant (la fenêtre de production suit prodPanels). */
   function renderCustomLayout() {
-    if (!ctx.layoutPlan || !ctx.layoutState) return;
+    if (!ctx.layoutPlan) return;
+    // PV30 — en placement LIBRE, la 3D est rendue avec une grille SYNTHÉTIQUE dont les
+    // panneaux sont les positions libres : même chemin de rendu, mêmes matériaux, même
+    // mapping instance→index (donc le surlignage de sélection marche à l'identique). Le
+    // rendement par panneau ne change pas — seul le NOMBRE pilote la production, comme
+    // en mode lattice.
+    if (freeActive()) {
+      const st = ctx.freeState!;
+      const grid = { ...ctx.layoutPlan.grid, panels: st.panels.map((p) => ({ ...p })), count: st.panels.length };
+      const all = new Set(st.panels.map((_, i) => i));
+      renderScene(ctx.layoutPlan.pack, grid, ctx.layoutPlan.tiltDeg, ctx.layoutPlan.family, st.panels.length, ctx.layoutPlan.flush, all);
+      const cfgFree = prodConfigFromState();
+      if (cfgFree) updateProductionWindow({ ...cfgFree, panels: st.panels.length });
+      snapshotActiveAreaResult();
+      renderAreasPanel();
+      paintScene();
+      return;
+    }
+    if (!ctx.layoutState) return;
     const occ = new Set(ctx.layoutState.occupied);
     renderScene(ctx.layoutPlan.pack, ctx.layoutPlan.grid, ctx.layoutPlan.tiltDeg, ctx.layoutPlan.family, occ.size, ctx.layoutPlan.flush, occ);
     // Recompute par COMPTAGE (jamais un rendement inventé) : on met prodPanels au nombre
@@ -447,8 +723,11 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     const layoutState = ctx.layoutState;
     if (!layoutState) return;
 
-    const count = occupiedCount(layoutState);
-    const free = emptyIndices(layoutState).length;
+    // PV30 — en placement libre, les chiffres viennent des panneaux RÉELLEMENT posés (il
+    // n'y a plus d'« emplacements libres » : le toit entier est disponible sous contrainte).
+    const freeOn = freeActive();
+    const count = freeOn ? ctx.freeState!.panels.length : occupiedCount(layoutState);
+    const free = freeOn ? 0 : emptyIndices(layoutState).length;
     const kwc = count * PANEL_KWC;
     if (layoutCountEl) layoutCountEl.textContent = fmt(count);
     if (layoutKwcEl) layoutKwcEl.textContent = `${fmt1(kwc)} kWc`;
@@ -456,12 +735,18 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     const cover = ctx.neededPanels > 0 ? Math.round((count / ctx.neededPanels) * 100) : 0;
     if (layoutCoverEl) layoutCoverEl.textContent = ctx.neededPanels > 0 ? `${cover} %` : '—';
     if (layoutMinusEl) layoutMinusEl.disabled = count <= 0;
-    if (layoutPlusEl) layoutPlusEl.disabled = free <= 0 || count >= layoutCap();
+    // PV30 — en libre, « + » n'est jamais bloqué par un stock de cellules : c'est la
+    // géométrie qui refusera (ou non) la pose, au moment de la pose.
+    if (layoutPlusEl) layoutPlusEl.disabled = freeOn ? false : free <= 0 || count >= layoutCap();
     // WJ20 — « Remplir » n'a de sens que s'il reste des cellules libres.
-    if (layoutFillEl) layoutFillEl.disabled = free <= 0;
+    if (layoutFillEl) layoutFillEl.disabled = freeOn ? true : free <= 0;
 
-    // Mini-plan des cellules : occupées (bleu) / libres (gris→vert au survol).
-    if (layoutGridEl) {
+    // Mini-plan des cellules : occupées (bleu) / libres (gris→vert au survol). PV30 — le
+    // mini-plan DÉCRIT la lattice ; en placement libre il n'y a plus de cellules à montrer,
+    // on le vide plutôt que d'afficher une grille qui ne gouverne plus rien.
+    if (layoutGridEl && freeOn) {
+      layoutGridEl.innerHTML = '';
+    } else if (layoutGridEl) {
       layoutGridEl.innerHTML = layoutState.cells
         .map((c) => {
           const occupied = layoutState.occupied.has(c.index);
@@ -474,15 +759,24 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     }
     pruneSelection();
     syncSelectionControls();
+    syncFreeInputs(); // PV30
     if (layoutNoteEl && !layoutNoteEl.textContent) {
-      layoutNoteEl.textContent =
-        'Sur la 3D : clic = sélectionner, Maj + clic = ajouter au groupe, Maj + glissé = encadrer, double-clic = toute la rangée. Glissez pour déplacer, flèches pour ajuster, Alt + clic pour retirer un panneau. Ou touchez un panneau (bleu) puis un emplacement libre (vert) dans le plan ci-dessous.';
+      layoutNoteEl.textContent = freeOn
+        ? 'Placement libre : clic = sélectionner, Maj + clic = ajouter au groupe, double-clic = toute la rangée. Glissez pour déplacer au millimètre, flèches pour ajuster, Alt + clic pour retirer. « Ajouter un panneau » puis un clic pose un panneau de plus.'
+        : 'Sur la 3D : clic = sélectionner, Maj + clic = ajouter au groupe, Maj + glissé = encadrer, double-clic = toute la rangée. Glissez pour déplacer, flèches pour ajuster, Alt + clic pour retirer un panneau. Ou touchez un panneau (bleu) puis un emplacement libre (vert) dans le plan ci-dessous.';
     }
   }
 
   /** PV25 — la sélection ne garde que des cellules RÉELLEMENT occupées (un panneau
    *  supprimé/déplacé ailleurs ne doit pas rester « sélectionné »). */
   function pruneSelection() {
+    // PV30 — en placement libre, la sélection indexe la LISTE des panneaux libres : reste
+    // valide tout index encore dans la liste (un panneau retiré disparaît de la sélection).
+    if (ctx.freeMode) {
+      const n = ctx.freeState ? ctx.freeState.panels.length : 0;
+      selection = selection.filter((i) => Number.isInteger(i) && i >= 0 && i < n).sort((a, b) => a - b);
+      return;
+    }
     const st = ctx.layoutState;
     if (!st) {
       selection = [];
@@ -499,9 +793,8 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   /** PV29 — SÉLECTION D'UNE RANGÉE ENTIÈRE en un seul geste (double-clic sur un panneau).
    *  Rien à activer au préalable : c'est le geste « rangée » sans mode à retenir. */
   function selectRow(cellIndex: number): number[] {
-    const st = ctx.layoutState;
-    if (!st) return [];
-    const members = rowMembers(st, cellIndex);
+    // PV30 — en libre, la « rangée » est géométrique (même coordonnée d'empilement).
+    const members = freeActive() ? freeRowMembers(cellIndex) : ctx.layoutState ? rowMembers(ctx.layoutState, cellIndex) : [];
     if (!members.length) return [];
     setSelection(members);
     ctx.layoutSel = null;
@@ -515,8 +808,13 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   /** PV29 — sélection d'UN SEUL panneau (clic simple), ou BASCULE de ce panneau dans la
    *  sélection courante (Maj + clic) : les deux gestes standard d'un éditeur. */
   function selectSinglePanel(cellIndex: number, toggle = false) {
-    const st = ctx.layoutState;
-    if (!st || !st.occupied.has(cellIndex)) return;
+    if (freeActive()) {
+      const n = ctx.freeState!.panels.length;
+      if (!Number.isInteger(cellIndex) || cellIndex < 0 || cellIndex >= n) return;
+    } else {
+      const st = ctx.layoutState;
+      if (!st || !st.occupied.has(cellIndex)) return;
+    }
     if (toggle) {
       const next = selection.includes(cellIndex) ? selection.filter((i) => i !== cellIndex) : [...selection, cellIndex];
       setSelection(next);
@@ -541,12 +839,140 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     if (layoutSelectBtn) layoutSelectBtn.setAttribute('aria-pressed', String(selectMode));
     if (layoutRowBtn) layoutRowBtn.setAttribute('aria-pressed', String(rowMode));
     if (layoutClearSelBtn) layoutClearSelBtn.disabled = selection.length === 0;
-    if (layoutUndoBtn) layoutUndoBtn.disabled = !history.canUndo(); // PV26
-    if (layoutRedoBtn) layoutRedoBtn.disabled = !history.canRedo();
+    // PV26/PV30 — l'historique reflété est celui du MODE courant.
+    const hist = freeActive() ? freeHistory : history;
+    if (layoutUndoBtn) layoutUndoBtn.disabled = !hist.canUndo();
+    if (layoutRedoBtn) layoutRedoBtn.disabled = !hist.canRedo();
     // L'azimut n'est nudgeable que sur un toit en PENTE (face imposée par la toiture) ;
     // sur toit plat, l'azimut est un AXE de l'optimiseur, pas un réglage de disposition.
     if (layoutAzWrapEl) layoutAzWrapEl.hidden = ctx.roofType !== 'pitched';
     if (layoutAzValueEl) layoutAzValueEl.textContent = `${Math.round(ctx.facingAzimuthDeg)}°`;
+  }
+
+  // ── PV30 — BASCULE DE MODE ────────────────────────────────────────────────────
+  /**
+   * Passe en PLACEMENT LIBRE. Les panneaux posés gardent EXACTEMENT leur position : on ne
+   * fait que changer la règle qui les gouverne (cellules validées → contrôles géométriques
+   * réels). C'est pour ça que la bascule est sans risque et sans question.
+   */
+  function enterFreeMode(): boolean {
+    if (!ctx.layoutPlan) return false;
+    const g = freeGeom();
+    if (!g) {
+      if (layoutNoteEl) layoutNoteEl.textContent = 'Placement libre indisponible : ce toit n’a pas encore de calepinage.';
+      return false;
+    }
+    ensureLayoutState();
+    if (!ctx.freeState) {
+      const st = ctx.layoutState;
+      const centers = st ? [...st.occupied].sort((a, b) => a - b).map((i) => ({ ...st.cells[i] })) : [];
+      ctx.freeState = freeStateFromCenters(centers.map((c) => ({ cx: c.cx, cy: c.cy, ...(c.face ? { face: c.face } : {}) })));
+    }
+    ctx.freeMode = true;
+    freeHistory.clear();
+    setSelection([]);
+    ctx.layoutSel = null;
+    syncFreeInputs();
+    if (layoutNoteEl) {
+      layoutNoteEl.textContent =
+        'Placement libre : les panneaux se déplacent au millimètre. Seuls le contour du toit, les chevauchements et les obstacles sont interdits — le retrait de rive et l’écart entre panneaux sont réglables ci-dessus.';
+    }
+    renderCustomLayout();
+    renderLayoutPanel();
+    return true;
+  }
+
+  /**
+   * Retour au mode LATTICE. Les positions libres n'existent pas sur la lattice : on
+   * re-snappe chaque panneau sur la cellule valide la plus proche, ce qui PERD le gain de
+   * place obtenu à la main. On DEMANDE donc avant — même garde-fou que PV28, jamais un
+   * effacement silencieux.
+   */
+  function exitFreeMode(ask = true): boolean {
+    if (!ctx.freeMode) return true;
+    const st = ctx.freeState;
+    if (ask && st && st.panels.length) {
+      const confirmFn =
+        deps.confirmDiscard ??
+        ((msg: string) => (typeof window !== 'undefined' && typeof window.confirm === 'function' ? window.confirm(msg) : true));
+      const ok = confirmFn(
+        `Revenir au mode « emplacements validés » va replacer vos ${st.panels.length} panneaux sur les emplacements calculés : les marges que vous avez réduites seront perdues. Continuer ?`,
+      );
+      if (!ok) {
+        if (layoutNoteEl) layoutNoteEl.textContent = 'Retour annulé — votre placement libre est conservé.';
+        return false;
+      }
+    }
+    ctx.freeMode = false;
+    // Re-snap : chaque position libre reprend la cellule VIDE valide la plus proche.
+    ensureLayoutState();
+    const lat = ctx.layoutState;
+    if (lat && st) {
+      lat.occupied.clear();
+      for (const p of st.panels) {
+        const idx = nearestEmptyCell(lat, p.cx, p.cy);
+        if (idx >= 0) lat.occupied.add(idx);
+      }
+    }
+    ctx.freeState = null;
+    freeHistory.clear();
+    setSelection([]);
+    ctx.layoutSel = null;
+    syncFreeInputs();
+    if (layoutNoteEl && lat) {
+      layoutNoteEl.textContent = `Mode emplacements validés — ${fmt(lat.occupied.size)} panneaux replacés sur la grille de l’étude.`;
+    }
+    renderCustomLayout();
+    renderLayoutPanel();
+    return true;
+  }
+
+  /** Reflète l'état des contrôles de mode + les champs de marges. */
+  function syncFreeInputs() {
+    const on = !!ctx.freeMode;
+    if (modeLatticeBtn) modeLatticeBtn.setAttribute('aria-pressed', String(!on));
+    if (modeFreeBtn) modeFreeBtn.setAttribute('aria-pressed', String(on));
+    if (freeControlsEl) freeControlsEl.hidden = !on;
+    if (freeAddBtn) freeAddBtn.setAttribute('aria-pressed', String(freeAddArmed));
+    // Les champs sont en CENTIMÈTRES (l'unité dans laquelle un poseur raisonne) ; on ne
+    // réécrit pas la valeur pendant que l'utilisateur tape (sinon le curseur saute).
+    if (freeSetbackEl && document.activeElement !== freeSetbackEl) {
+      freeSetbackEl.value = String(Math.round(ctx.freeMargins.setbackM * 100));
+    }
+    if (freeGapEl && document.activeElement !== freeGapEl) {
+      freeGapEl.value = String(Math.round(ctx.freeMargins.gapM * 100));
+    }
+  }
+
+  /** Lit un champ de marge (cm → m). Règle fondateur : on n'IMPOSE aucun arrondi et on ne
+   *  REJETTE aucune saisie — une valeur illisible laisse simplement la marge inchangée. */
+  function readMarginCm(el: HTMLInputElement | null, current: number): number {
+    if (!el) return current;
+    const raw = (el.value ?? '').toString().trim().replace(',', '.');
+    if (raw === '') return current;
+    const v = Number(raw);
+    if (!Number.isFinite(v) || v < 0) return current;
+    return v / 100;
+  }
+
+  /** Applique les marges saisies. Les BAISSER est permis — c'est tout l'objet du mode ;
+   *  ce qui compte, c'est que les distances réelles restent AFFICHÉES. */
+  function applyMargins() {
+    const before = ctx.freeMargins;
+    const next = {
+      setbackM: readMarginCm(freeSetbackEl, before.setbackM),
+      gapM: readMarginCm(freeGapEl, before.gapM),
+    };
+    if (next.setbackM === before.setbackM && next.gapM === before.gapM) return;
+    // Un changement de marge est une action ANNULABLE comme une autre (elle change ce que
+    // les gestes suivants accepteront) — on photographie l'état pour ne pas casser la
+    // chronologie de « annuler ».
+    recordFreeHistory();
+    ctx.freeMargins = next;
+    if (layoutNoteEl) {
+      layoutNoteEl.textContent = `Marges : retrait de rive ${cm(next.setbackM)}, écart entre panneaux ${cm(next.gapM)}. Les panneaux déjà posés ne bougent pas ; ces valeurs s’appliquent aux prochains gestes.`;
+    }
+    renderLayoutPanel();
   }
 
   /** PV25 — recalcul complet après un changement d'azimut : re-pavage PUIS re-snap de la
@@ -560,6 +986,8 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
    *  recalc (qui va remplacer la lattice et nuller layoutState) pour pouvoir re-snapper la
    *  même intention de placement sur la nouvelle lattice. [] si pas de disposition. */
   function occupiedCenters(): { cx: number; cy: number }[] {
+    // PV30 — en libre, les « centres posés » SONT les positions libres, telles quelles.
+    if (freeActive()) return ctx.freeState!.panels.map((p) => ({ cx: p.cx, cy: p.cy }));
     const st = ctx.layoutState;
     if (!st) return [];
     const out: { cx: number; cy: number }[] = [];
@@ -578,6 +1006,16 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
    *  Puis on re-rend panneaux/grille/note. No-op hors mode disposition ou sans plan. */
   function reenterCustomLayout(prevCenters: { cx: number; cy: number }[]) {
     if (!ctx.layoutMode || !ctx.layoutPlan) return;
+    // PV30 — en placement LIBRE, les positions sont absolues : un re-pavage ne les
+    // concerne pas. On les garde telles quelles (aucun re-snap) et on re-rend.
+    if (freeActive()) {
+      if (layoutNoteEl) {
+        layoutNoteEl.textContent = `Placement libre conservé — ${fmt(ctx.freeState!.panels.length)} panneaux inchangés.`;
+      }
+      renderCustomLayout();
+      renderLayoutPanel();
+      return;
+    }
     // Reconstruit une lattice fraîche depuis le plan re-pavé, PUIS remplace l'occupation
     // par les re-snaps (chaque centre → cellule vide valide la plus proche, sans doublon).
     ensureLayoutState();
@@ -607,7 +1045,11 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
    * repère du pavage courant (centroïde légèrement différent), on translate d'abord — sans
    * ça, tout le champ serait décalé de quelques mètres.
    */
-  function hydrateLayout(centers: readonly { cx: number; cy: number }[], origin?: readonly [number, number]): boolean {
+  function hydrateLayout(
+    centers: readonly { cx: number; cy: number }[],
+    origin?: readonly [number, number],
+    mode?: 'lattice' | 'free',
+  ): boolean {
     if (!centers.length || !ctx.layoutPlan) return false;
     ensureLayoutState();
     const st = ctx.layoutState;
@@ -619,6 +1061,23 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
       const cosLat = Math.cos(cur[1] * DEG2RAD);
       dx = (origin[0] - cur[0]) * DEG2M * cosLat;
       dy = (origin[1] - cur[1]) * DEG2M;
+    }
+    // PV30 — un dossier enregistré en PLACEMENT LIBRE se recharge VERBATIM : re-snapper ses
+    // positions sur la lattice détruirait exactement le gain de place qu'il enregistrait.
+    if (mode === 'free') {
+      ctx.freeState = freeStateFromCenters(centers.map((c) => ({ cx: c.cx + dx, cy: c.cy + dy })));
+      ctx.freeMode = true;
+      ctx.layoutSel = null;
+      setSelection([]);
+      freeHistory.clear();
+      hydrated = true;
+      syncFreeInputs();
+      renderCustomLayout();
+      renderLayoutPanel();
+      if (layoutNoteEl) {
+        layoutNoteEl.textContent = `Placement libre du dossier rechargé — ${fmt(centers.length)} panneaux reposés à l'identique.`;
+      }
+      return true;
     }
     st.occupied.clear();
     let placed = 0;
@@ -644,6 +1103,9 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   // ── PV28 — garde-fou « ne perds pas le travail manuel » ─────────────────────
   /** La disposition posée diverge-t-elle de l'optimum ? (ajout, retrait ou déplacement). */
   function hasManualEdits(): boolean {
+    // PV30 — un placement LIBRE est par définition un travail manuel : il n'existe aucun
+    // « optimum » auquel le comparer, donc tout ré-agencement automatique le détruirait.
+    if (freeActive() && ctx.freeState!.panels.length) return true;
     return hasManualEditsPure(ctx.layoutState, ctx.layoutOptimalCount);
   }
   /**
@@ -701,6 +1163,24 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   // + / − : ajoute/retire un panneau (touch + mouvement réduit, sans glissé fin).
   layoutPlusEl?.addEventListener('click', () => {
     if (!ctx.layoutMode || !ctx.layoutState) return;
+    // PV30 — en libre, « + » pose un panneau au PREMIER endroit qui satisfait réellement
+    // toutes les contraintes (jamais une position devinée) ; s'il n'y en a aucun aux marges
+    // courantes, on le dit et on rappelle que les marges sont réglables.
+    if (freeActive()) {
+      const st = ctx.freeState!;
+      const g = freeGeom();
+      const spot = g ? findFreeSpot(st, g, ctx.freeMargins) : null;
+      if (!spot) {
+        if (layoutNoteEl) {
+          layoutNoteEl.textContent =
+            'Aucune place pour un panneau de plus avec ces marges. Réduisez le retrait de rive ou l’écart entre panneaux, ou posez-le à la main avec « Ajouter un panneau ».';
+        }
+        renderLayoutPanel();
+        return;
+      }
+      freeAddAt(spot.cx, spot.cy);
+      return;
+    }
     recordHistory(); // PV26
     const r = addFirstEmpty(ctx.layoutState, layoutCap());
     if (r.ok) {
@@ -713,6 +1193,13 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   });
   layoutMinusEl?.addEventListener('click', () => {
     if (!ctx.layoutMode || !ctx.layoutState) return;
+    // PV30 — en libre, « − » retire le panneau SÉLECTIONNÉ, sinon le dernier posé.
+    if (freeActive()) {
+      const st = ctx.freeState!;
+      if (!st.panels.length) return;
+      freeRemoveAt(selection.length ? selection[selection.length - 1] : st.panels.length - 1);
+      return;
+    }
     recordHistory(); // PV26
     const r = removeLast(ctx.layoutState);
     if (r.ok) {
@@ -805,10 +1292,48 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   layoutUndoBtn?.addEventListener('click', () => undo());
   layoutRedoBtn?.addEventListener('click', () => redo());
 
+  // ── PV30 — bascule de MODE + réglages du placement libre ─────────────────────
+  modeLatticeBtn?.addEventListener('click', () => {
+    if (!ctx.freeMode) return;
+    exitFreeMode();
+  });
+  modeFreeBtn?.addEventListener('click', () => {
+    if (ctx.freeMode) return;
+    enterFreeMode();
+  });
+  // Les deux champs de marge : on applique à la saisie ET à la sortie du champ. Aucune
+  // validation HTML (pas de min/max/step imposé) — règle fondateur : on n'arrondit ni ne
+  // rejette jamais ce que l'utilisateur tape.
+  freeSetbackEl?.addEventListener('change', applyMargins);
+  freeGapEl?.addEventListener('change', applyMargins);
+  freeSetbackEl?.addEventListener('blur', applyMargins);
+  freeGapEl?.addEventListener('blur', applyMargins);
+  // « Ajouter un panneau » : ARME la pose ; le prochain clic sur le toit la commet.
+  freeAddBtn?.addEventListener('click', () => {
+    if (!freeActive()) return;
+    freeAddArmed = !freeAddArmed;
+    if (layoutNoteEl) {
+      layoutNoteEl.textContent = freeAddArmed
+        ? 'Touchez l’endroit du toit où poser le nouveau panneau (Échap pour annuler).'
+        : 'Ajout annulé.';
+    }
+    syncFreeInputs();
+    renderLayoutPanel();
+  });
+
   // PV26 — RACCOURCIS clavier, actifs SEULEMENT en mode disposition (sinon on volerait
   // Ctrl+Z à la page hôte) : Ctrl/⌘+Z annule, Ctrl/⌘+Y (ou Ctrl/⌘+Maj+Z) rétablit. Les
   // FLÈCHES nudgent le panneau sélectionné — ou tout le groupe — d'un pas de calepinage.
   function nudgeSelection(dx: number, dy: number): boolean {
+    // PV30 — en placement libre, les flèches avancent du PAS DE STABILITÉ (1 cm) : c'est
+    // l'ajustement fin que la lattice ne pouvait pas offrir (elle sautait d'un emplacement).
+    if (freeActive()) {
+      const members = selection.length ? selection : [];
+      if (!members.length) return false;
+      const ux = Math.sign(dx) * (dx === 0 ? 0 : 1);
+      const uy = Math.sign(dy) * (dy === 0 ? 0 : 1);
+      return freeMoveSelection(ux * FREE_STEP_M, uy * FREE_STEP_M, members);
+    }
     const st = ctx.layoutState;
     if (!st) return false;
     const members = selection.length ? selection : ctx.layoutSel != null ? [ctx.layoutSel] : [];
@@ -848,6 +1373,15 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     if (mod) return;
     // PV29 — Échap : abandonne la sélection (le geste « je me suis trompé » universel).
     if (key === 'escape') {
+      // PV30 — Échap désarme d'abord la pose d'un nouveau panneau.
+      if (freeAddArmed) {
+        freeAddArmed = false;
+        syncFreeInputs();
+        if (layoutNoteEl) layoutNoteEl.textContent = 'Ajout annulé.';
+        renderLayoutPanel();
+        e.preventDefault();
+        return;
+      }
       if (!selection.length && ctx.layoutSel == null) return;
       setSelection([]);
       ctx.layoutSel = null;
@@ -914,6 +1448,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   // un clic simple SÉLECTIONNE désormais, seul Alt + clic supprime (voir endLayoutDrag).
   let layoutDrag: { from: number; startPoint: maplibregl.Point; moved: boolean; altKey: boolean } | null = null;
   function layoutPanelAt(point: maplibregl.Point): number | null {
+    if (freeActive()) return freePanelAt(point); // PV30 — même geste, autre liste
     const layoutState = ctx.layoutState;
     if (!layoutState) return null;
     const enu = screenToENU(point);
@@ -937,6 +1472,15 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
    *  pan de la carte. Renvoie true si un panneau a été saisi (le geste devient un glissé). */
   function beginLayoutDrag(point: maplibregl.Point, shiftKey = false, altKey = false): boolean {
     if (!ctx.layoutMode || isObstacleMode() || !ctx.layoutState) return false;
+    // PV30 — « Ajouter un panneau » armé : le prochain clic POSE, il ne saisit rien.
+    if (freeActive() && freeAddArmed) {
+      const enu = screenToENU(point);
+      if (!enu) return false;
+      freeAddArmed = false;
+      freeAddAt(enu.x, enu.y);
+      syncFreeInputs();
+      return true;
+    }
     // PV25 — MARQUEE : Maj + glissé (souris) ou mode « sélection multiple » (doigt) trace
     // un rectangle au lieu de déplacer un panneau. Le rectangle est en ENU (mètres), via
     // la MÊME déprojection écran→toit que le reste de l'éditeur — aucun second système.
@@ -974,7 +1518,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
       if (Math.abs(point.x - marquee.startPoint.x) >= LAYOUT_GRAB_PX || Math.abs(point.y - marquee.startPoint.y) >= LAYOUT_GRAB_PX) {
         marquee.moved = true;
       }
-      const hits = cellsInRect(ctx.layoutState, marquee);
+      const hits = freeActive() ? freeInRect(marquee) : cellsInRect(ctx.layoutState, marquee);
       if (layoutNoteEl) {
         layoutNoteEl.textContent = hits.length
           ? `${fmt(hits.length)} panneaux dans la sélection — relâchez pour les sélectionner.`
@@ -989,6 +1533,24 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     if (!layoutDrag.moved) return;
     const enu = screenToENU(point);
     if (!enu) return;
+    // PV30 — placement libre : on MESURE en direct où le panneau atterrirait (distance à
+    // la rive et au voisin le plus proche, en cm) et on annonce le verdict. Réduire une
+    // marge devient un acte VU et CHOISI — jamais un glissement silencieux.
+    if (freeActive()) {
+      const st = ctx.freeState!;
+      const g = freeGeom();
+      const from = layoutDrag.from;
+      if (g && st.panels[from]) {
+        const chk = checkPanelAt(st, g, from, quantizeFree(enu.x), quantizeFree(enu.y), ctx.freeMargins);
+        showMeasure(chk);
+        if (layoutNoteEl) {
+          layoutNoteEl.textContent = chk.ok
+            ? `Relâchez pour poser — rive ${cm(chk.edgeM)}, voisin ${chk.panelM === null ? '—' : cm(chk.panelM)}.`
+            : `Ici : ${chk.violations.map(violationLabel).join(', ')}.`;
+        }
+      }
+      return;
+    }
     const target = nearestEmptyCell(ctx.layoutState, enu.x, enu.y);
     if (layoutNoteEl) layoutNoteEl.textContent = target >= 0 ? 'Relâchez sur un emplacement valide (vert).' : 'Aucun emplacement libre — il reviendra à sa place.';
   }
@@ -1024,7 +1586,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
         marquee.y1 = enu.y;
       }
       const dragged = marquee.moved;
-      const hits = cellsInRect(ctx.layoutState, marquee);
+      const hits = freeActive() ? freeInRect(marquee) : cellsInRect(ctx.layoutState, marquee); // PV30
       marquee = null;
       map.dragPan.enable();
       map.getCanvas().style.cursor = '';
@@ -1053,6 +1615,22 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     const from = layoutDrag.from;
     const moved = layoutDrag.moved;
     const altTap = layoutDrag.altKey; // PV29 — modificateur de SUPPRESSION saisi au mousedown
+    if (moved && freeActive()) {
+      // PV30 — commit d'un glissé LIBRE : translation rigide de toute la sélection (ou du
+      // seul panneau saisi), quantifiée au centimètre. Tout ou rien, refus visible.
+      const enu = screenToENU(point);
+      const st = ctx.freeState!;
+      const grabbed = st.panels[from];
+      if (enu && grabbed) {
+        const members = selection.length > 1 && selection.includes(from) ? selection : [from];
+        freeMoveSelection(enu.x - grabbed.cx, enu.y - grabbed.cy, members);
+      }
+      layoutDrag = null;
+      ctx.layoutSel = null;
+      map.dragPan.enable();
+      map.getCanvas().style.cursor = '';
+      return;
+    }
     if (moved) {
       const enu = screenToENU(point);
       if (enu) {
@@ -1117,6 +1695,10 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     // ne fait plus disparaître un panneau vendu. Au doigt, la suppression reste l'appui long.
     if (!moved && removeOnTap) {
       if (altTap) {
+        if (freeActive()) {
+          freeRemoveAt(from); // PV30 — retrait EXPLICITE d'un panneau posé librement
+          return;
+        }
         removePanelInScene(from);
         return;
       }
@@ -1218,5 +1800,17 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     hasManualEdits,
     confirmDiscardEdits,
     selectRow,
+    // PV30 - placement libre.
+    isFreeMode: () => !!ctx.freeMode,
+    setFreeMode: (on: boolean) => (on ? enterFreeMode() : exitFreeMode(false)),
+    freePanels: () => (ctx.freeState ? ctx.freeState.panels.map((p) => ({ ...p })) : []),
+    freeMargins: () => ({ ...ctx.freeMargins }),
+    setFreeMargins: (m: { setbackM?: number; gapM?: number }) => {
+      ctx.freeMargins = {
+        setbackM: Number.isFinite(m.setbackM as number) ? (m.setbackM as number) : ctx.freeMargins.setbackM,
+        gapM: Number.isFinite(m.gapM as number) ? (m.gapM as number) : ctx.freeMargins.gapM,
+      };
+      syncFreeInputs();
+    },
   };
 }
