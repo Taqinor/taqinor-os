@@ -742,7 +742,11 @@ def calculate_savings_roi(
 
     Formulas:
       production_annuelle   = kwc × 1 240 kWh/kWc/an  (GHI moyen Maroc)
-      economie_opt1 (sans)  = production × autoconso_sans × prix_kWh
+      economie_opt1 (sans)  = production × autoconso_sans_eff × prix_kWh
+                              où autoconso_sans_eff = min(autoconso_sans,
+                              conso/production) quand la conso est connue —
+                              on ne valorise jamais des kWh que le client ne
+                              consomme pas (correctif 18/08).
       economie_opt2 (avec)  = production × autoconso_avec × prix_kWh
                               où autoconso_avec est DÉRIVÉ de la capacité
                               batterie quand ``battery_kwh`` est fourni
@@ -793,8 +797,33 @@ def calculate_savings_roi(
         base=autoconso_sans, fallback=autoconso_avec,
         conso_annuelle_kwh=conso_annuelle_kwh)
 
+    # ── PLAFOND CONSOMMATION DU CÔTÉ « SANS » (correctif 18/08) ──────────────
+    # ``autoconso_avec_ratio`` plafonne le côté AVEC par la consommation réelle
+    # (on ne décale pas des kWh que le client ne consomme pas) — le côté SANS,
+    # lui, restait au forfait 0,60 de la PRODUCTION. Sur une petite conso face
+    # à une grosse production, le modèle « estimation » valorisait donc côté
+    # SANS des kWh inexistants et l'option BATTERIE économisait MOINS que
+    # l'option sans batterie sur le PDF client (8 kWc / 5 000 kWh/an /
+    # 10 kWh : 6 644 MAD sans contre 6 000 MAD avec).
+    #   autoconso_sans_eff = min(autoconso_sans, conso / production)
+    #   autoconso_avec     = max(autoconso_avec, autoconso_sans_eff)
+    # Le second plancher tient l'INVARIANT « avec ≥ sans » même quand le
+    # vendeur force un ``autoconso_avec`` plus bas que le taux sans batterie.
+    # Sur le modèle « factures » le plafond est un NO-OP exact
+    # (``two_bills_savings`` borne déjà les kWh autoconsommés à la conso) :
+    # aucun devis existant ne change de chiffre. MIROIR solar.js computeROI.
+    autoconso_sans_eff = float(autoconso_sans)
+    try:
+        _conso_plafond = float(conso_annuelle_kwh or 0)
+    except (TypeError, ValueError):
+        _conso_plafond = 0.0
+    if _conso_plafond > 0 and production_annuelle > 0:
+        autoconso_sans_eff = min(
+            autoconso_sans_eff, _conso_plafond / production_annuelle)
+    autoconso_avec = max(autoconso_avec, autoconso_sans_eff)
+
     # Self-consumption-first savings (loi 82-21: only self-consumed kWh valued)
-    economie_opt1 = round(production_annuelle * autoconso_sans * prix_kwh)
+    economie_opt1 = round(production_annuelle * autoconso_sans_eff * prix_kwh)
     economie_opt2 = round(production_annuelle * autoconso_avec * prix_kwh)
 
     # QF2 — modèle « deux factures » (réel, par tranche) : quand une VRAIE
@@ -808,7 +837,7 @@ def calculate_savings_roi(
     factures_approximatif = False
     if not (tarif_kwh_override is not None and tarif_kwh_override > 0):
         _tb_s = two_bills_savings(
-            production_annuelle, conso_annuelle_kwh, autoconso_sans,
+            production_annuelle, conso_annuelle_kwh, autoconso_sans_eff,
             utility=utility, tranches_override=tranches_override)
         _tb_a = two_bills_savings(
             production_annuelle, conso_annuelle_kwh, autoconso_avec,
@@ -852,7 +881,8 @@ def calculate_savings_roi(
         "eco_a_monthly":    eco_a_monthly,
         # Metadata for honest rendering
         "savings_estimated": savings_estimated,
-        "autoconso_sans":   autoconso_sans,
+        # Taux SANS batterie EFFECTIVEMENT appliqué (plafonné par la conso).
+        "autoconso_sans":   autoconso_sans_eff,
         "autoconso_avec":   autoconso_avec,
         "tarif_kwh":        prix_kwh,
         "utility":          utility,

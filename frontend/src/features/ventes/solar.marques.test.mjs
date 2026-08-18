@@ -13,7 +13,10 @@
 //      au comportement historique (regression-lock).
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { autoFillLines } from './solar.js'
+import {
+  autoFillLines, optimalKwcByPayback, estimerKwcDepuisFacture, estimerMois,
+  arrondirAuPasKwc, DAY_USAGE_DEFAULTS, KWH_PRICE, EFFICIENCY,
+} from './solar.js'
 
 const ht = (ttc) => (ttc / 1.2).toFixed(2)
 let _id = 0
@@ -161,4 +164,77 @@ test('PVMRQ — batterie : marque épinglée introuvable au vivier électriqueme
   assert.ok(rows.marquesManquantes.some(m => m.role === 'batterie' && m.marque === 'Pylontech'))
   // Jamais un repli silencieux sur la Dyness pourtant en stock.
   assert.ok(!rows.some(r => r.designation.includes('Dyness')))
+})
+
+// ── PVMRQ × dimensionnement — un palier AMPUTÉ n'est pas chiffrable ──────────
+// `optimalKwcByPayback` chiffre CHAQUE palier avec `autoFillLines`. Quand une
+// marque épinglée n'a aucun candidat en stock, la ligne concernée devient un
+// PLACEHOLDER à 0 MAD : le total du palier s'effondre et son payback est
+// FABRIQUÉ (mesuré sur ce catalogue : 5 kWc à 39 720 MAD / 6,1 ans devient
+// 29 920 MAD / 4,6 ans, uniquement parce que les panneaux ont disparu).
+// Un tel palier est EXCLU de la comparaison ; si TOUS le sont, on retombe sur
+// le besoin arrondi au palier et on le DIT (`repliMarqueManquante`).
+const CATALOGUE_PALIERS = [
+  P('Onduleur réseau Huawei 5kW Monophasé', 14000),
+  P('Onduleur réseau Huawei 10kW Monophasé', 18000),
+  P('Onduleur réseau Huawei 12kW Monophasé', 20000),
+  P('Onduleur réseau Huawei 15kW Triphasé', 23000),
+  P('Onduleur réseau Huawei 20kW Triphasé', 28000),
+  P('Panneau Canadien Solar 710W', 1400),
+  P('Structures acier', 500), P('Socles', 80), P('Smart Meter', 1800),
+  P('Wifi Dongle', 1200), P('Accessoires', 2000),
+  P('Tableau De Protection AC/DC', 2000), P('Installation', 4800),
+  P('Transport', 1000),
+  P('Suivi journalier, maintenance chaque 12 mois pendant 2 ans', 5000),
+]
+
+const balayage = (hiver, marques) => optimalKwcByPayback({
+  produits: CATALOGUE_PALIERS, factures: estimerMois(hiver, hiver),
+  dayUsagePct: DAY_USAGE_DEFAULTS['Résidentielle'], panelW: 710,
+  structureType: 'acier', discountPct: '0', kwhPrice: KWH_PRICE,
+  efficiency: EFFICIENCY, besoinKwc: estimerKwcDepuisFacture(hiver), marques,
+})
+
+test('PVMRQ — marque épinglée absente : chaque palier est marqué NON chiffrable', () => {
+  const res = balayage(7000, { panneau: 'Jinko' })   // Jinko absent du catalogue
+  assert.ok(res.paliers.length > 1, 'le balayage doit produire plusieurs paliers')
+  for (const p of res.paliers) {
+    assert.equal(p.chiffrable, false,
+      `palier ${p.kwc} kWc chiffré alors que les panneaux manquent`)
+    assert.ok(p.marquesManquantes.some(m => m.role === 'panneau' && m.marque === 'Jinko'))
+  }
+})
+
+test('PVMRQ — tous les paliers amputés : repli sur le besoin, JAMAIS le payback fabriqué', () => {
+  const hiver = 7000
+  const besoin = estimerKwcDepuisFacture(hiver)          // 35 kWc
+  const res = balayage(hiver, { panneau: 'Jinko' })
+  // Le repli est le besoin arrondi au palier (35 kWc)…
+  assert.equal(res.kwcOptimal, arrondirAuPasKwc(besoin))
+  assert.equal(res.kwcOptimal, 35)
+  assert.equal(res.repliMarqueManquante, true)
+  assert.deepEqual(res.marquesManquantes, [{ role: 'panneau', marque: 'Jinko' }])
+  assert.ok(res.nbPanneaux > 0)
+  // …et surtout PAS le palier au « meilleur » payback fabriqué (25 kWc,
+  // 2,5 ans — le plus court de tous), qui était retenu avant le correctif.
+  const meilleurFabrique = res.paliers.reduce((b, p) => (p.payback < b.payback ? p : b))
+  assert.equal(meilleurFabrique.kwc, 25)
+  assert.notEqual(res.kwcOptimal, meilleurFabrique.kwc)
+})
+
+test('PVMRQ — marque épinglée PRÉSENTE : classement normal, aucun repli', () => {
+  const res = balayage(7000, { panneau: 'Canadien' })    // bien au catalogue
+  assert.equal(res.repliMarqueManquante, false)
+  assert.deepEqual(res.marquesManquantes, [])
+  assert.ok(res.paliers.every(p => p.chiffrable))
+  // Même résultat que sans aucune préférence de marque (regression-lock).
+  assert.equal(res.kwcOptimal, balayage(7000, undefined).kwcOptimal)
+})
+
+test('PVMRQ — sans marque épinglée : balayage BYTE-IDENTIQUE à l\'historique', () => {
+  const res = balayage(7000, undefined)
+  assert.equal(res.repliMarqueManquante, false)
+  assert.deepEqual(res.marquesManquantes, [])
+  assert.equal(res.kwcOptimal, 25)   // le VRAI optimum, paliers réellement chiffrés
+  assert.ok(res.paliers.every(p => p.chiffrable && p.marquesManquantes.length === 0))
 })

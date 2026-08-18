@@ -456,15 +456,58 @@ export function computeROI({
   let autoconsoAvecEff = productionAnnuelle > 0
     ? Math.min(1, dayPct + batteryShiftAnnuel / productionAnnuelle)
     : dayPct
+  // ── PLAFOND CONSOMMATION DU CÔTÉ « SANS » — MIROIR EXACT de
+  // pricing.calculate_savings_roi (correctif 18/08) ────────────────────────
+  // Le côté AVEC batterie est déjà borné par la consommation réelle
+  // (`autoconsoAvecRatio`) ; le côté SANS, lui, était un pourcentage de la
+  // seule PRODUCTION, borné par rien. Sur une petite conso face à une grosse
+  // production, l'option BATTERIE « économisait » donc MOINS que l'option
+  // sans batterie (8 kWc / 5 000 kWh/an / 10 kWh : 6 644 MAD sans contre
+  // 6 000 MAD avec côté PDF). On borne les DEUX côtés aux kWh RÉELLEMENT
+  // consommés, puis on tient l'invariant « avec ≥ sans ».
+  //   sans = min(part_diurne × production, conso)
+  //   avec = max(min(part_diurne × production + décalage_batterie, conso), sans)
+  // Les séries mensuelles sont mises à l'échelle du MÊME facteur, pour que
+  // leur somme reste l'économie annuelle affichée.
+  const consoPlafond = parseFloat(consoAnnuelleKwh) || 0
+  if (consoPlafond > 0 && productionAnnuelle > 0) {
+    const kwhSansBrut = productionAnnuelle * dayPct
+    const kwhAvecBrut = kwhSansBrut + batteryShiftAnnuel
+    const kwhSans = Math.min(kwhSansBrut, consoPlafond)
+    const kwhAvec = Math.max(Math.min(kwhAvecBrut, consoPlafond), kwhSans)
+    const fSans = kwhSansBrut > 0 ? kwhSans / kwhSansBrut : 1
+    const fAvec = kwhAvecBrut > 0 ? kwhAvec / kwhAvecBrut : 1
+    if (fSans < 1 || fAvec < 1) {
+      for (let i = 0; i < 12; i++) {
+        ecoSansMonthly[i] *= fSans
+        ecoAvecMonthly[i] *= fAvec
+        monthlyDetail[i].eco_sans = ecoSansMonthly[i]
+        monthlyDetail[i].eco_avec = ecoAvecMonthly[i]
+      }
+      ecoAnnuelleSans = ecoSansMonthly.reduce((s, v) => s + v, 0)
+      ecoAnnuelleAvec = ecoAvecMonthly.reduce((s, v) => s + v, 0)
+    }
+    autoconsoSansEff = kwhSans / productionAnnuelle
+    autoconsoAvecEff = kwhAvec / productionAnnuelle
+  }
+  // Modèle « factures » : même plafond, même plancher (miroir pricing.py, qui
+  // passe `autoconso_sans_eff` à `two_bills_savings` et planchéise le taux
+  // AVEC). Sur les factures c'est un NO-OP de VALEUR — `twoBillsSavings` borne
+  // déjà les kWh autoconsommés à la conso — mais le taux AFFICHÉ devient
+  // honnête et l'invariant « avec ≥ sans » est verrouillé des deux côtés.
+  const autoconsoSansPlaf = (consoPlafond > 0 && productionCanonique > 0)
+    ? Math.min(AUTOCONSO_SANS, consoPlafond / productionCanonique)
+    : AUTOCONSO_SANS
+  const autoconsoAvecPlanche = Math.max(autoconsoAvec, autoconsoSansPlaf)
   let savingsModel = 'estimation'
   let factureSans = null, factureAvecSans = null, factureAvecAvec = null
   if (productionAnnuelle > 0 && consoAnnuelleKwh > 0 && utility) {
-    const tbSans = twoBillsSavings(productionCanonique, consoAnnuelleKwh, AUTOCONSO_SANS, utility)
-    const tbAvec = twoBillsSavings(productionCanonique, consoAnnuelleKwh, autoconsoAvec, utility)
+    const tbSans = twoBillsSavings(productionCanonique, consoAnnuelleKwh, autoconsoSansPlaf, utility)
+    const tbAvec = twoBillsSavings(productionCanonique, consoAnnuelleKwh, autoconsoAvecPlanche, utility)
     if (tbSans && tbAvec) {
       savingsModel = 'factures'
-      autoconsoSansEff = AUTOCONSO_SANS
-      autoconsoAvecEff = autoconsoAvec
+      autoconsoSansEff = autoconsoSansPlaf
+      autoconsoAvecEff = autoconsoAvecPlanche
       ecoAnnuelleSans = tbSans.economie
       ecoAnnuelleAvec = tbAvec.economie
       factureSans = tbSans.factureSans
@@ -1441,9 +1484,24 @@ export function optimalKwcByPayback({
   plafond = Math.max(pas, plafond)
 
   const paliers = []
+  // PVMRQ — rôles dont la marque épinglée n'a AUCUN candidat en stock, relevés
+  // sur l'ENSEMBLE du balayage (dédupliqués par rôle+marque). Un palier ainsi
+  // amputé porte des lignes PLACEHOLDER à 0 MAD : son total s'effondre et son
+  // payback est FABRIQUÉ (mesuré : 5 kWc à 39 720 MAD → 29 920 MAD, payback
+  // 6,1 ans → 4,6 ans, uniquement parce que les panneaux ont disparu). Un tel
+  // palier n'est PAS chiffrable et ne peut donc pas entrer dans la comparaison.
+  const marquesManquantes = []
+  const vuMarqueManquante = new Set()
   for (let k = pas; k <= plafond + 1e-9; k += pas) {
     const lignes = autoFillLines(produits, { kwp: k, panelW, structureType, marques })
     if (!lignes || !lignes.length) continue
+    const manquantesPalier = lignes.marquesManquantes ?? []
+    for (const m of manquantesPalier) {
+      const cle = `${m.role}|${m.marque}`
+      if (vuMarqueManquante.has(cle)) continue
+      vuMarqueManquante.add(cle)
+      marquesManquantes.push(m)
+    }
     const { totalSans, totalAvec } = optionTotalsTTC(lignes, discountPct)
     const roi = computeROI({
       kwp: lignes.kwcReel || k,
@@ -1459,15 +1517,28 @@ export function optimalKwcByPayback({
       totalTtc: avecBatterie ? totalAvec : totalSans,
       economieAnnuelle: avecBatterie ? roi.eco_annuelle_avec : roi.eco_annuelle_sans,
       payback,
+      // Ce palier est-il RÉELLEMENT chiffré ? Faux dès qu'une marque épinglée
+      // manque au stock : son prix est incomplet, on ne le classe pas.
+      chiffrable: manquantesPalier.length === 0,
+      marquesManquantes: manquantesPalier,
     })
   }
 
-  const chiffrables = paliers.filter(p => Number.isFinite(p.payback) && p.payback > 0)
+  const chiffrables = paliers.filter(
+    p => p.chiffrable && Number.isFinite(p.payback) && p.payback > 0)
   if (!chiffrables.length) {
-    // Aucun palier chiffrable (catalogue incomplet, pas de facture) : on retombe
-    // sur le besoin arrondi au palier — jamais sur un chiffre inventé.
+    // Aucun palier chiffrable (catalogue incomplet, marque épinglée absente du
+    // stock, pas de facture) : on retombe sur le besoin arrondi au palier —
+    // jamais sur un chiffre inventé. `repliMarqueManquante` dit POURQUOI, pour
+    // que l'écran l'annonce au lieu de présenter un classement fantôme.
     const repli = besoin > 0 ? arrondirAuPasKwc(besoin, pas) : pas
-    return { kwcOptimal: repli, nbPanneaux: panneauxPourKwc(repli, panelW), paliers }
+    return {
+      kwcOptimal: repli,
+      nbPanneaux: panneauxPourKwc(repli, panelW),
+      paliers,
+      marquesManquantes,
+      repliMarqueManquante: marquesManquantes.length > 0,
+    }
   }
   // Payback le plus court ; à égalité stricte on garde le palier le PLUS PETIT
   // (même retour, moins d'argent immobilisé chez le client).
@@ -1478,6 +1549,8 @@ export function optimalKwcByPayback({
     kwcOptimal: meilleur.kwc,
     nbPanneaux: meilleur.nbPanneaux ?? panneauxPourKwc(meilleur.kwc, panelW),
     paliers,
+    marquesManquantes,
+    repliMarqueManquante: false,
   }
 }
 

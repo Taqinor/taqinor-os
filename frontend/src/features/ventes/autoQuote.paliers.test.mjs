@@ -17,10 +17,17 @@
 // (elle vit uniquement dans solar.js, testée par solar.dimensionnement.test.mjs).
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
 import {
   KWC_STEP, estimerKwcDepuisFacture, arrondirAuPasKwc, optimalKwcByPayback,
   estimerMois, panneauxPourKwc, DAY_USAGE_DEFAULTS, KWH_PRICE, EFFICIENCY,
+  autoFillLines, roleLabel,
 } from './solar.js'
+
+const ici = dirname(fileURLToPath(import.meta.url))
+const lire = (rel) => readFileSync(join(ici, rel), 'utf-8')
 
 const ht = (ttc) => (ttc / 1.2).toFixed(2)
 let _id = 0
@@ -86,4 +93,88 @@ test('devis auto AVEC taille explicite (cible ou lead) : toujours ramenée au pa
   // nombre entier de panneaux de 710 W ne tombe jamais pile sur 5,000 kWc).
   const kwpReel = panels * 710 / 1000
   assert.ok(Math.abs(kwpReel - tailleRetenue) < 0.71)
+})
+
+// ── PVMRQ — GARDE « devis auto sans panneaux » (correctif 18/08) ─────────────
+// `createAutoQuote` n'enregistre que les lignes qui ont un produit ET une
+// quantité > 0. Une marque épinglée absente du stock laisse la ligne concernée
+// en PLACEHOLDER (aucun produit, 0 MAD) : elle était donc écartée EN SILENCE et
+// le devis partait sans panneaux, à un prix effondré. La garde REFUSE désormais
+// la création, avec EXACTEMENT le message du bandeau de DevisGenerator —
+// LeadDevisPanel le rend tel quel (`setErrorMsg(err.detail)`).
+
+// Catalogue SANS Jinko : la marque épinglée n'a aucun candidat.
+const CATALOGUE_SANS_JINKO = [
+  P('Onduleur réseau Huawei 10kW Monophasé', 18000),
+  P('Panneau Canadien Solar 710W', 1400),
+  P('Structures acier', 500), P('Socles', 80), P('Installation', 4800),
+]
+
+const MESSAGE_ATTENDU =
+  'Marque épinglée introuvable au stock : Jinko (Panneaux). '
+  + 'Ajoutez le produit ou changez la marque dans Paramètres → Gammes.'
+
+test('devis auto : une marque épinglée absente laisserait un devis SANS panneaux', () => {
+  // Rejoue l'appel `autoFillLines` de createAutoQuote (branche non-agricole).
+  const rows = autoFillLines(CATALOGUE_SANS_JINKO, {
+    kwp: 14 * 710 / 1000, panelW: 710, nbPanneaux: 14,
+    structureType: 'acier', marques: { panneau: 'Jinko' },
+  })
+  assert.deepEqual(rows.marquesManquantes, [{ role: 'panneau', marque: 'Jinko' }])
+  // La ligne panneaux existe (quantité 14) mais SANS produit ni prix…
+  const pan = rows.find(r => /panneau/i.test(r.designation))
+  assert.equal(pan.produit, '')
+  assert.equal(pan.prix_unit_ttc, 0)
+  assert.ok(parseFloat(pan.quantite) > 0)
+  // …donc le filtre d'enregistrement de createAutoQuote la jette : c'est
+  // exactement le devis muet que la garde doit empêcher.
+  const enregistrees = rows.filter(r => r.produit && parseFloat(r.quantite) > 0)
+  assert.ok(!enregistrees.some(r => /panneau/i.test(r.designation)),
+    'sans garde, le devis serait créé sans aucune ligne panneau')
+  // Message que la garde doit lever, construit avec le VRAI libellé de rôle.
+  const detail = `Marque épinglée introuvable au stock : ${rows.marquesManquantes
+    .map(m => `${m.marque} (${roleLabel(m.role)})`).join(', ')}. `
+    + 'Ajoutez le produit ou changez la marque dans Paramètres → Gammes.'
+  assert.equal(detail, MESSAGE_ATTENDU)
+})
+
+test('devis auto : la garde lève AVANT createDevis (aucun devis vide persisté)', () => {
+  const src = lire('./autoQuote.js')
+  const garde = src.indexOf('rows.marquesManquantes ?? []')
+  const jet = src.indexOf('Marque épinglée introuvable au stock')
+  const creation = src.indexOf('await dispatch(createDevis(')
+  assert.ok(garde > 0, 'createAutoQuote doit relever rows.marquesManquantes')
+  assert.ok(jet > garde, 'la garde doit lever le message de marque manquante')
+  assert.ok(jet < creation,
+    'la garde doit lever AVANT createDevis — sinon un devis vide est persisté')
+  // Le `detail` est bien la clé lue par LeadDevisPanel (`err.detail`).
+  assert.ok(/throw \{\s*\n\s*detail: `Marque épinglée introuvable au stock/.test(src),
+    'le jet doit porter la clé `detail`')
+  // Second filet : plus aucun panneau chiffrable, même sans marque épinglée.
+  assert.ok(src.includes('aucun panneau du stock ne correspond'),
+    'un catalogue sans panneau doit aussi être refusé, pas expédié muet')
+})
+
+test('devis auto : le message de la garde est CELUI du bandeau de DevisGenerator', () => {
+  // Verrou de dérive inter-fichiers : le commercial voit la MÊME phrase, qu'il
+  // passe par le générateur complet ou par « Devis automatique » de la fiche
+  // lead. Les deux fichiers portent le même gabarit, à la lettre.
+  const auto = lire('./autoQuote.js')
+  const gen = lire('../../pages/ventes/DevisGenerator.jsx')
+  const gabarit = 'Marque épinglée introuvable au stock : ${metaMarquesManquantes'
+  assert.ok(gen.includes(gabarit), 'gabarit du bandeau introuvable dans DevisGenerator')
+  assert.ok(auto.includes('Marque épinglée introuvable au stock : ${marquesAbsentes'))
+  const suite = 'Ajoutez le produit ou changez la marque dans Paramètres → Gammes.'
+  assert.ok(gen.includes(suite) && auto.includes(suite))
+  assert.ok(gen.includes('.map(m => `${m.marque} (${roleLabel(m.role)})`).join(\', \')'))
+  assert.ok(auto.includes('.map(m => `${m.marque} (${roleLabel(m.role)})`).join(\', \')'))
+})
+
+test('devis auto : catalogue complet sans marque épinglée → aucune garde ne se déclenche', () => {
+  const rows = autoFillLines(SEEDED, {
+    kwp: 14 * 710 / 1000, panelW: 710, nbPanneaux: 14, structureType: 'acier',
+  })
+  assert.deepEqual(rows.marquesManquantes ?? [], [])
+  const pan = rows.find(r => /panneau/i.test(r.designation))
+  assert.ok(pan.produit, 'un catalogue complet doit chiffrer les panneaux')
 })

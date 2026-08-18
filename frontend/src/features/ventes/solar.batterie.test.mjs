@@ -181,3 +181,87 @@ test('capacité lue sur les VRAIES lignes batterie du devis', () => {
   assert.equal(autoconsoAvecRatio(PROD, batteryKwhFromLines(lignes)),
     autoconsoAvecRatio(PROD, 10))
 })
+
+// ── Plafond consommation du côté « SANS » (correctif 18/08) ──────────────────
+// VERROU DE DÉRIVE avec test_battery_autoconso.py ::
+// TestPlafondConsoModeleEstimation — mêmes entrées, MÊMES 6 000 MAD.
+//
+// Le côté AVEC batterie était déjà borné par la consommation réelle
+// (`autoconsoAvecRatio`) ; le côté SANS était un % de la seule PRODUCTION,
+// borné par rien. Côté PDF (pricing.py) cela INVERSAIT les deux options :
+// 6 644 MAD sans batterie contre 6 000 MAD avec — la batterie « économisait
+// moins » sur le document client.
+test('plafond consommation : on ne valorise jamais plus de kWh que le client n\'en consomme', () => {
+  // Dérivation À LA MAIN (8 kWc, productible 1240, tarif 1,20, conso 5 000) :
+  //   production = 8 × 1 240 × 0,80/0,86 = 9 227,906976… kWh/an
+  //   part diurne 60 %   = 5 536,744186… kWh  → PLAFONNÉE à 5 000 kWh
+  //     ⇒ économie SANS  = 5 000 × 1,20 = 6 000 MAD
+  //       (AVANT correctif : 5 536,744186 × 1,20 = 6 644,09 MAD)
+  //   part avec batterie = 5 536,744186 + 3 195 (décalage réel, plafonné mois
+  //     par mois par le surplus) = 8 731,7 kWh → PLAFONNÉE à 5 000 kWh
+  //     ⇒ économie AVEC  = 5 000 × 1,20 = 6 000 MAD
+  //   Les deux options SATURENT la même consommation : égalité, jamais
+  //   d'inversion. Le jumeau Python trouve 6 000/6 000 sur la production
+  //   ARRONDIE (9 228) — les deux saturent à 5 000 kWh, donc au dirham près.
+  const roi = computeROI({
+    kwp: 8, productible: 1240, factures: Array(12).fill(1500),
+    dayUsagePct: 60, totalSans: 100000, totalAvec: 140000,
+    batteryKwh: BATTERY, kwhPrice: 1.20, consoAnnuelleKwh: 5000,
+  })
+  assert.equal(roi.savings_model, 'estimation')
+  assert.equal(Math.abs(roi.production_annuelle_kwh - 9227.9) < 0.05, true)
+  assert.equal(Math.round(roi.eco_annuelle_sans), 6000)
+  assert.equal(Math.round(roi.eco_annuelle_avec), 6000)
+  // Le chiffre FAUX d'avant correctif ne doit jamais revenir.
+  assert.equal(Math.round(roi.eco_annuelle_sans) !== 6644, true)
+  // Taux affichés = kWh réellement valorisés / production (les deux saturent).
+  assert.equal(Math.abs(roi.autoconso_sans - 5000 / (8 * 1240 * PRODUCTIBLE_NET_FACTOR)) < 1e-12, true)
+  assert.equal(Math.abs(roi.autoconso_avec - roi.autoconso_sans) < 1e-12, true)
+  // Les séries mensuelles suivent le plafond : leur somme reste l'annuel.
+  assert.equal(Math.abs(roi.eco_sans_monthly.reduce((s, v) => s + v, 0)
+    - roi.eco_annuelle_sans) < 1e-6, true)
+  assert.equal(Math.abs(roi.eco_avec_monthly.reduce((s, v) => s + v, 0)
+    - roi.eco_annuelle_avec) < 1e-6, true)
+})
+
+test('sans consommation connue : aucun plafond, chiffres historiques inchangés', () => {
+  // Mêmes entrées SANS `consoAnnuelleKwh` : 5 536,744186 × 1,20 = 6 644,09 MAD
+  // (le jumeau Python arrondit à 6 644) — zéro régression sur les devis qui
+  // n'ont pas de consommation renseignée.
+  const roi = computeROI({
+    kwp: 8, productible: 1240, factures: Array(12).fill(1500),
+    dayUsagePct: 60, totalSans: 100000, totalAvec: 140000,
+    batteryKwh: BATTERY, kwhPrice: 1.20,
+  })
+  assert.equal(Math.round(roi.eco_annuelle_sans), 6644)
+  assert.equal(roi.autoconso_sans, 0.60)
+  assert.equal(roi.eco_annuelle_avec > roi.eco_annuelle_sans, true)
+})
+
+test('INVARIANT : l\'option AVEC batterie n\'économise JAMAIS moins que l\'option SANS', () => {
+  // Balayage des combinaisons qui faisaient basculer le modèle : petite et
+  // grosse conso, avec/sans batterie, avec/sans distributeur (modèle
+  // « factures »), avec/sans productible. Miroir exact du test Python
+  // `test_invariant_avec_toujours_superieur_ou_egal_a_sans`.
+  for (const kwp of [3, 8, 20]) {
+    for (const consoAnnuelleKwh of [null, 1000, 5000, 30000]) {
+      for (const batteryKwh of [0, 5, 10, 40]) {
+        for (const utility of [null, 'onee']) {
+          for (const productible of [null, 1651]) {
+            const roi = computeROI({
+              kwp, productible, factures: Array(12).fill(1500),
+              dayUsagePct: 60, totalSans: 100000, totalAvec: 140000,
+              batteryKwh, kwhPrice: 1.20, consoAnnuelleKwh, utility,
+            })
+            const ctx = `kwp=${kwp} conso=${consoAnnuelleKwh} `
+              + `batterie=${batteryKwh} utility=${utility} prod=${productible}`
+            assert.equal(roi.eco_annuelle_avec >= roi.eco_annuelle_sans - 1e-6,
+              true, `inversion d'économies : ${ctx}`)
+            assert.equal(roi.autoconso_avec >= roi.autoconso_sans - 1e-12,
+              true, `taux d'autoconsommation inversés : ${ctx}`)
+          }
+        }
+      }
+    }
+  }
+})

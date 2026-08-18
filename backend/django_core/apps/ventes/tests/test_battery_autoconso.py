@@ -200,3 +200,100 @@ class TestCalculateSavingsRoiBattery(SimpleTestCase):
         self.assertEqual(roi["prod_kwh"], 4607)
         self.assertEqual(roi["autoconso_avec"], 1.0)
         self.assertEqual(roi["eco_a_ann"], 8062)   # 4 607 × 1,75 = 8 062,25
+
+
+class TestPlafondConsoModeleEstimation(SimpleTestCase):
+    """VERROU DE DÉRIVE — plafond consommation du côté « SANS » (18/08).
+
+    Le côté AVEC batterie était déjà borné par la consommation réelle
+    (``autoconso_avec_ratio``) ; le côté SANS restait un pourcentage de la
+    seule PRODUCTION. Résultat sur une petite conso face à une grosse
+    production : l'option BATTERIE économisait MOINS que l'option sans
+    batterie sur le PDF CLIENT — l'inverse de ce qu'on lui vend.
+
+    Jumeau JS : ``solar.batterie.test.mjs`` (« plafond consommation »), mêmes
+    entrées, mêmes 6 000 MAD des deux côtés.
+    """
+
+    def test_repro_8kwc_conso_5000_batterie_10kwh(self):
+        """Le cas exact du défaut, dérivé À LA MAIN.
+
+        production   = round(8 × 1 240 × 0,80/0,86) = round(9 227,906…) = 9 228
+        tarif        = repli 1,20 MAD/kWh (aucune table, aucun override)
+        conso/prod   = 5 000/9 228 = 0,5418292154…
+        taux SANS    : AVANT min() → 0,60 ⇒ 9 228 × 0,60 × 1,20 = 6 644,16
+                       → 6 644 MAD (on valorisait 5 536,8 kWh pour un client
+                       qui n'en consomme que 5 000)
+                       APRÈS  → min(0,60 ; 0,5418292154) = 0,5418292154
+                       ⇒ 9 228 × 0,5418292154 × 1,20 = 6 000 MAD
+        taux AVEC    : 0,60 + 3 650/9 228 = 0,9955353273 → plafonné par la
+                       conso à 0,5418292154 ⇒ 6 000 MAD (inchangé)
+        ⇒ l'inversion 6 644 > 6 000 disparaît ; l'invariant tient à l'égalité
+          (les deux options saturent la MÊME consommation).
+        """
+        roi = calculate_savings_roi(
+            8.0, 100000, 140000, conso_annuelle_kwh=5000, battery_kwh=10)
+        self.assertEqual(roi["savings_model"], "estimation")
+        self.assertEqual(roi["prod_kwh"], 9228)
+        self.assertEqual(roi["tarif_kwh"], 1.20)
+        self.assertAlmostEqual(roi["autoconso_sans"], 5000 / 9228, places=12)
+        self.assertAlmostEqual(roi["autoconso_avec"], 5000 / 9228, places=12)
+        self.assertEqual(roi["eco_s_ann"], 6000)
+        self.assertEqual(roi["eco_a_ann"], 6000)
+        # Le chiffre FAUX d'avant correctif ne doit jamais revenir.
+        self.assertNotEqual(roi["eco_s_ann"], 6644)
+
+    def test_sans_consommation_connue_comportement_historique(self):
+        """Aucune conso → aucun plafond : chiffres BYTE-IDENTIQUES à avant.
+
+        9 228 × 0,60 × 1,20 = 6 644,16 → 6 644 ; côté AVEC le taux dérivé
+        0,9955353273 (non plafonné, faute de conso) ⇒ 9 228 × 0,9955353273
+        × 1,20 = 11 024,4… → 11 024.
+        """
+        roi = calculate_savings_roi(8.0, 100000, 140000, battery_kwh=10)
+        self.assertEqual(roi["autoconso_sans"], AUTOCONSO_SANS)
+        self.assertEqual(roi["eco_s_ann"], 6644)
+        self.assertEqual(roi["eco_a_ann"], 11024)
+
+    def test_invariant_avec_toujours_superieur_ou_egal_a_sans(self):
+        """INVARIANT ABSOLU : une batterie ne peut jamais économiser MOINS.
+
+        Balayage des combinaisons qui faisaient basculer le modèle : petite et
+        grosse conso, avec/sans batterie, tarif plat vendeur, distributeur
+        (modèle « factures ») et repli sans aucune donnée tarifaire.
+        """
+        for kwc in (3.0, 8.0, 20.0):
+            for conso in (None, 1000, 5000, 30000):
+                for battery in (None, 0, 5, 10, 40):
+                    for utility, tarif in ((None, None), ("onee", None),
+                                           (None, 1.75), ("onee", 1.75)):
+                        roi = calculate_savings_roi(
+                            kwc, 100000, 140000,
+                            conso_annuelle_kwh=conso, battery_kwh=battery,
+                            utility=utility, tarif_kwh_override=tarif)
+                        self.assertGreaterEqual(
+                            roi["eco_a_ann"], roi["eco_s_ann"],
+                            f"inversion : kwc={kwc} conso={conso} "
+                            f"batterie={battery} utility={utility} "
+                            f"tarif={tarif}")
+                        self.assertGreaterEqual(
+                            roi["autoconso_avec"], roi["autoconso_sans"],
+                            f"taux inversés : kwc={kwc} conso={conso} "
+                            f"batterie={battery}")
+
+    def test_plafond_est_un_no_op_sur_le_modele_factures(self):
+        """Sur le modèle « factures », le plafond ne change AUCUN chiffre.
+
+        ``two_bills_savings`` borne déjà les kWh autoconsommés à la conso
+        (``min(prod × ratio, conso)``) : plafonner le TAUX en amont donne le
+        même minimum. Fixture du verrou JS (10 kWc, 15 358 kWh, ONEE,
+        15 000 kWh/an) : 15 944 / 21 646 MAD, inchangés.
+        """
+        roi = calculate_savings_roi(
+            10.0, 100000, 140000, productible=1651, battery_kwh=BATTERY,
+            utility="onee", conso_annuelle_kwh=CONSO)
+        self.assertEqual(roi["savings_model"], "factures")
+        # conso/prod = 15 000/15 358 = 0,9767… > 0,60 → le plafond ne mord pas.
+        self.assertEqual(roi["autoconso_sans"], AUTOCONSO_SANS)
+        self.assertEqual(roi["eco_s_ann"], 15944)
+        self.assertEqual(roi["eco_a_ann"], 21646)

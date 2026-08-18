@@ -849,10 +849,12 @@ export default function DevisGenerator({
   // ── PVMRQ — réglages « Gammes & marques » (Paramètres → Gammes & marques) ──
   // Chargés UNE fois, en CRÉATION comme en ÉDITION (une marque épinglée
   // s'applique à chaque auto-remplissage, pas seulement au premier chargement
-  // d'un devis neuf). Best-effort : la lecture est réservée responsable/admin
-  // côté serveur (`IsResponsableOrAdmin`, même garde que le PATCH) — un rôle
-  // sans accès retombe silencieusement sur `{}` (aucune préférence,
-  // comportement historique), jamais un blocage de l'écran. Déclaré AVANT
+  // d'un devis neuf). Best-effort : la LECTURE est ouverte à tout utilisateur
+  // authentifié de la société (`IsAuthenticated` — l'épinglage doit s'appliquer
+  // aux devis de TOUS les commerciaux ; seule l'ÉCRITURE reste
+  // Admin/Responsable, cf. `views/parametres_gammes.py`). Un échec réseau
+  // retombe silencieusement sur `{}` (aucune préférence, comportement
+  // historique), jamais un blocage de l'écran. Déclaré AVANT
   // `computeAutoSizing` ci-dessous : `marquesActives` entre dans sa clé de
   // cache/dépendances, donc doit déjà être initialisé à ce point du rendu.
   const gammesLoaded = useRef(false)
@@ -2906,6 +2908,27 @@ export default function DevisGenerator({
                 sur la facture d'hiver, payback le plus court parmi les
                 paliers testés (`optimalKwcByPayback`, voir `sizingInfo.paliers`). */}
             {sizingInfo?.kwcOptimal > 0 && (() => {
+              // PVMRQ — REPLI : une marque épinglée introuvable au stock ampute
+              // CHAQUE palier (lignes placeholder à 0 MAD) ; leur payback serait
+              // FABRIQUÉ, donc aucun n'est comparable et la taille retombe sur
+              // le besoin lu sur la facture. On le DIT, jamais en silence — et
+              // surtout on ne prétend pas avoir classé par retour sur
+              // investissement.
+              if (sizingInfo.repliMarqueManquante) {
+                const mm = sizingInfo.marquesManquantes ?? []
+                return (
+                  <div className="mt-3 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
+                    Taille retenue : palier de <strong>{sizingInfo.kwcOptimal} kWc</strong>
+                    {' '}— besoin lu sur la facture d'hiver ≈ {sizingInfo.besoinKwc} kWc.
+                    {' '}Le classement par retour sur investissement est <strong>suspendu</strong> :
+                    {' '}marque épinglée introuvable au stock
+                    {mm.length > 0 && (
+                      <> ({mm.map(m => `${m.marque} (${roleLabel(m.role)})`).join(', ')})</>
+                    )}, les paliers chiffrés seraient incomplets.
+                    {' '}Ajoutez le produit ou changez la marque dans Paramètres → Gammes.
+                  </div>
+                )
+              }
               const retenu = sizingInfo.paliers?.find(p => p.kwc === sizingInfo.kwcOptimal)
               return (
                 <div className="mt-3 rounded-lg border border-info/30 bg-info/10 p-3 text-sm text-info">

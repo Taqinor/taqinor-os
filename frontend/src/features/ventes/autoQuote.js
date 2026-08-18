@@ -14,6 +14,8 @@ import {
   // Règle fondateur du 18/08 — dimensionnement par PALIERS de 5 kWc, retenus
   // au payback le plus court (jamais un panneau/900 MAD nu).
   estimerKwcDepuisFacture, arrondirAuPasKwc, optimalKwcByPayback,
+  // PVMRQ — libellé FR d'un rôle, pour dire QUELLE marque épinglée manque.
+  roleLabel,
 } from './solar'
 
 // QX19 — préférence de structure du lead (acier/aluminium) → structureType
@@ -162,6 +164,29 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
       structureType: structFromLead(lead),
       marques,
     })
+    // PVMRQ — GARDE : une marque épinglée sans AUCUN candidat en stock laisse
+    // des lignes PLACEHOLDER (aucun produit, 0 MAD) que le filtre
+    // d'enregistrement plus bas (`r.produit && quantite > 0`) écarte
+    // silencieusement — le devis partait SANS panneaux, à un prix effondré.
+    // On refuse, avec EXACTEMENT le message du bandeau de DevisGenerator
+    // (LeadDevisPanel rend `err.detail` tel quel).
+    const marquesAbsentes = rows.marquesManquantes ?? []
+    const panneauxSansProduit = rows.some(
+      r => !r.produit && /panneau/i.test(r.designation || '')
+        && parseFloat(r.quantite) > 0)
+    if (marquesAbsentes.length) {
+      throw {
+        detail: `Marque épinglée introuvable au stock : ${marquesAbsentes
+          .map(m => `${m.marque} (${roleLabel(m.role)})`).join(', ')}. `
+          + 'Ajoutez le produit ou changez la marque dans Paramètres → Gammes.',
+      }
+    }
+    if (panneauxSansProduit) {
+      throw {
+        detail: 'Devis auto impossible : aucun panneau du stock ne correspond '
+          + 'à cette composition. Complétez le catalogue, puis réessayez.',
+      }
+    }
     // QX19 — scénario batterie SEMÉ depuis batterie_souhaitee du lead : porté
     // dans etude_params pour que le PDF (builder QF6) restreigne le document au
     // choix du client (« sans »/« avec »/« les deux »). Défaut « les deux »
