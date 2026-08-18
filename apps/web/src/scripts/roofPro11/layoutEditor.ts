@@ -74,6 +74,10 @@ export interface LayoutEditorDeps {
   isObstacleMode: () => boolean;
   /** W88 — surligne (or) le panneau 3D de la cellule donnée, ou efface tout (null). */
   setPanelHighlight: (cellIndex: number | null) => void;
+  /** PV29 — surligne une SÉLECTION 3D (plusieurs cellules) + le survol, et la passe en
+   *  ROUGE quand `refused` (déplacement impossible : rien n'a bougé). OPTIONNEL : absent,
+   *  l'éditeur retombe sur `setPanelHighlight` (une seule cellule à la fois, W88). */
+  setPanelSelection?: (selected: readonly number[] | null, hover: number | null, refused: boolean) => void;
   /** PV28 — demande de confirmation (injectable pour les tests). Défaut : `window.confirm`.
    *  Doit renvoyer true si l'utilisateur accepte de PERDRE sa disposition personnalisée. */
   confirmDiscard?: (message: string) => boolean;
@@ -108,11 +112,95 @@ export interface LayoutEditor {
   /** PV28 — à appeler AVANT tout ré-agencement automatique : true = on peut continuer
    *  (aucune édition manuelle, ou l'utilisateur a accepté de la perdre). */
   confirmDiscardEdits: () => boolean;
+  /** PV29 — sélectionne TOUTE la rangée du panneau donné (le geste « rangée » en un coup).
+   *  Renvoie les membres sélectionnés ([] si la cellule n'est pas occupée). */
+  selectRow: (cellIndex: number) => number[];
   /** PV27 — HYDRATE la disposition depuis les centres de panneaux d'un layout exporté
    *  (leur repère d'origine si différent de celui du pavage courant). Re-snappe chaque
    *  centre sur la lattice courante et rend la 3D avec CETTE occupation. Renvoie true si
    *  la disposition a été appliquée. */
   hydrateLayout: (centers: readonly { cx: number; cy: number }[], origin?: readonly [number, number]) => boolean;
+}
+
+/**
+ * PV29 — ÉCHAFAUDAGE DE SECOURS du panneau « Personnaliser la disposition ».
+ *
+ * La page astro publique porte ce balisage dans son HTML ; l'écran ERP (ToitureDesign)
+ * a copié l'échafaudage `rp9-*` SANS cette fenêtre — l'éditeur y était donc totalement
+ * injoignable (aucun bouton pour passer `ctx.layoutMode` à true, donc ni glissé, ni
+ * sélection, ni flèches). On construit ici la MÊME structure d'identifiants, en surcouche
+ * du conteneur de la carte, UNIQUEMENT quand la page hôte ne l'a pas fournie : la page
+ * astro reste strictement inchangée (le `getElementById` trouve son propre balisage et on
+ * ne crée rien), et l'ERP gagne la fonctionnalité sans toucher au code React.
+ *
+ * Volontairement sobre : replié sur un seul bouton tant que l'utilisateur ne l'ouvre pas.
+ */
+function buildFallbackLayoutDom(container: HTMLElement | null): void {
+  if (typeof document === 'undefined' || !container) return;
+  if (document.getElementById('rp9-layout-window')) return; // la page hôte a son balisage
+  if (!document.getElementById('rp9-layout-fallback-style')) {
+    const style = document.createElement('style');
+    style.id = 'rp9-layout-fallback-style';
+    style.textContent = [
+      '#rp9-layout-window.rp9-layout-fallback{position:absolute;left:8px;bottom:8px;z-index:5;',
+      'max-width:340px;max-height:70%;overflow:auto;padding:10px 12px;border:1px solid rgba(255,255,255,.25);',
+      'background:rgba(12,17,28,.92);color:#fff;font:12px/1.45 system-ui,sans-serif}',
+      '#rp9-layout-window.rp9-layout-fallback[hidden]{display:none}',
+      '.rp9-layout-fallback button{border:1px solid rgba(255,255,255,.3);background:transparent;color:inherit;',
+      'padding:5px 9px;font:inherit;font-weight:600;cursor:pointer;min-height:30px}',
+      '.rp9-layout-fallback button:disabled{opacity:.4;cursor:not-allowed}',
+      '.rp9-layout-fallback button[aria-pressed="true"]{border-color:#e0b25c;color:#e0b25c}',
+      '.rp9-layout-fallback .rp9-fb-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px}',
+      '.rp9-layout-fallback dl{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin:8px 0 0}',
+      '.rp9-layout-fallback dt{opacity:.65;font-size:10px;text-transform:uppercase}',
+      '.rp9-layout-fallback dd{margin:0;font-weight:700}',
+      '.rp9-layout-fallback .rp9-layout-grid{display:flex;flex-wrap:wrap;gap:2px;margin-top:6px}',
+      '.rp9-layout-fallback .rp9-layout-cell{width:14px;height:14px;min-height:0;padding:0;',
+      'border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.08)}',
+      '.rp9-layout-fallback .rp9-layout-cell[data-occupied="true"]{background:#3f7fd0}',
+      '.rp9-layout-fallback .rp9-layout-cell[aria-pressed="true"]{background:#e0b25c}',
+    ].join('');
+    document.head.appendChild(style);
+  }
+  const win = document.createElement('div');
+  win.id = 'rp9-layout-window';
+  win.className = 'rp9-layout-fallback';
+  win.hidden = true;
+  win.innerHTML = [
+    '<button type="button" id="rp9-layout-toggle" aria-pressed="false">Déplacer les panneaux</button>',
+    '<div id="rp9-layout-panel" hidden>',
+    '<dl>',
+    '<div><dd id="rp9-layout-count">—</dd><dt>Posés</dt></div>',
+    '<div><dd id="rp9-layout-kwc">—</dd><dt>Puissance</dt></div>',
+    '<div><dd id="rp9-layout-free">—</dd><dt>Libres</dt></div>',
+    '<div><dd id="rp9-layout-cover">—</dd><dt>Couverture</dt></div>',
+    '</dl>',
+    '<div class="rp9-fb-row">',
+    '<button type="button" id="rp9-layout-minus" aria-label="Retirer un panneau">−</button>',
+    '<button type="button" id="rp9-layout-plus" aria-label="Ajouter un panneau">+</button>',
+    '<button type="button" id="rp9-layout-fill">Remplir</button>',
+    '<button type="button" id="rp9-layout-reset">↺ Optimale</button>',
+    '</div>',
+    '<div class="rp9-fb-row">',
+    '<button type="button" id="rp9-layout-select" aria-pressed="false">▭ Sélection</button>',
+    '<button type="button" id="rp9-layout-row" aria-pressed="false">⇔ Rangée</button>',
+    '<button type="button" id="rp9-layout-clear-sel">✕ Effacer</button>',
+    '</div>',
+    '<div class="rp9-fb-row">',
+    '<button type="button" id="rp9-layout-undo" disabled>↶ Annuler</button>',
+    '<button type="button" id="rp9-layout-redo" disabled>↷ Rétablir</button>',
+    '</div>',
+    '<div class="rp9-fb-row" id="rp9-layout-azimuth" hidden>',
+    '<span>Azimut</span>',
+    '<button type="button" id="rp9-layout-az-minus" aria-label="Diminuer l’azimut d’un degré">−</button>',
+    '<span id="rp9-layout-az-value">—</span>',
+    '<button type="button" id="rp9-layout-az-plus" aria-label="Augmenter l’azimut d’un degré">+</button>',
+    '</div>',
+    '<div id="rp9-layout-grid" class="rp9-layout-grid" role="group" aria-label="Plan des emplacements de panneaux"></div>',
+    '<p id="rp9-layout-note" aria-live="polite"></p>',
+    '</div>',
+  ].join('');
+  container.appendChild(win);
 }
 
 export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEditor {
@@ -125,9 +213,12 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     renderAreasPanel,
     renderActive,
     isObstacleMode,
-    setPanelHighlight,
   } = deps;
   const opts = ctx.opts;
+
+  // PV29 — l'écran ERP ne fournit pas le balisage de la fenêtre : on le construit avant
+  // toute recherche d'élément (no-op quand la page hôte l'a déjà, comme la page astro).
+  buildFallbackLayoutDom(typeof map.getContainer === 'function' ? map.getContainer() : null);
 
   // — DOM du panneau « Personnaliser la disposition » —
   const layoutWindowEl = $('rp9-layout-window');
@@ -162,14 +253,87 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   let selectMode = false;
   /** Mode « rangée » : le glissé sur un panneau emmène TOUTE sa rangée (axe contraint). */
   let rowMode = false;
-  /** Marquee en cours (coin de départ en ENU) ou null. */
-  let marquee: { x0: number; y0: number; x1: number; y1: number } | null = null;
+  /** Marquee en cours (coin de départ en ENU) ou null. `moved` : le doigt/la souris a-t-il
+   *  franchi le seuil de glissé ? (PV29 — sinon le geste est un Maj + CLIC, pas un cadre.) */
+  let marquee: { x0: number; y0: number; x1: number; y1: number; moved: boolean; startPoint: maplibregl.Point } | null = null;
   /** Tolérance de « snap » d'un déplacement de groupe/rangée : chaque membre doit
    *  atterrir à moins d'un DEMI-panneau de l'endroit visé. Au-delà, le geste sort du toit
    *  (ou le groupe se replierait n'importe où) → refus, et rien ne bouge. */
   const GROUP_SNAP_M = PANEL2_LONG_M / 2;
   /** Pas du nudge d'azimut (°) — jamais un arrondi imposé, juste l'incrément du bouton. */
   const AZIMUTH_NUDGE_DEG = 1;
+  /** PV29 — durée du clignotement ROUGE d'un déplacement REFUSÉ (ms). */
+  const REFUSAL_FLASH_MS = 900;
+
+  // ── PV29 — PEINTURE de la 3D : sélection (or) + survol (or clair) + refus (rouge) ──
+  // `deps.setPanelHighlight` (W88) ne connaît qu'UNE cellule : la sélection multiple et la
+  // rangée étaient invisibles sur la 3D. On centralise donc TOUT le rendu de sélection ici,
+  // derrière un unique `setPanelHighlight(cellIndex)` LOCAL (le survol) qui repeint aussi la
+  // sélection courante — sinon un simple mouvement de souris effaçait le groupe doré.
+  const sceneHighlight = deps.setPanelHighlight;
+  const sceneSelection = deps.setPanelSelection;
+  /** Cellule actuellement SURVOLÉE (or clair), ou null. */
+  let hoverCell: number | null = null;
+  /** Cellules à peindre en ROUGE (refus d'un déplacement) pendant le clignotement. */
+  let refusedCells: number[] = [];
+  let refusalTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** Repeint la 3D : sélection + survol + refus. Sans `setPanelSelection` (déps anciennes),
+   *  on retombe honnêtement sur le surlignage à UNE cellule de W88. */
+  function paintScene() {
+    if (sceneSelection) {
+      const refused = refusedCells.length > 0;
+      sceneSelection(refused ? refusedCells : selection, hoverCell, refused);
+      return;
+    }
+    sceneHighlight(hoverCell ?? (selection.length ? selection[0] : null));
+  }
+
+  /** W88 — surlignage du panneau SURVOLÉ. PV29 : il ne remplace plus la sélection, il
+   *  s'y ajoute (les deux vivent dans le même buffer d'instances). */
+  function setPanelHighlight(cellIndex: number | null) {
+    hoverCell = cellIndex;
+    if (cellIndex == null) {
+      refusedCells = [];
+      if (refusalTimer) {
+        clearTimeout(refusalTimer);
+        refusalTimer = null;
+      }
+    }
+    paintScene();
+  }
+
+  /** PV29 — REFUS VISIBLE : les panneaux concernés virent au rouge un court instant, puis
+   *  reprennent leur teinte. Aucun panneau n'a bougé — c'est exactement ce que ça dit. */
+  function flashRefusal(cells: readonly number[]) {
+    if (!cells.length) return;
+    if (refusalTimer) clearTimeout(refusalTimer);
+    refusedCells = [...cells];
+    paintScene();
+    refusalTimer = setTimeout(() => {
+      refusalTimer = null;
+      refusedCells = [];
+      paintScene();
+    }, REFUSAL_FLASH_MS);
+  }
+
+  /**
+   * PV29 — QUANTIFIE un déplacement de groupe sur le PAS DU CALEPINAGE (largeur de rangée
+   * sur l'axe u, pas de rangée sur l'axe d'empilement) — exactement les pas déjà utilisés
+   * par les flèches du clavier, jamais un pas inventé. Un groupe/une rangée se pose donc
+   * sur la grille au lieu d'atterrir « au plus près du curseur » : la forme interne du
+   * groupe est préservée (une rangée reste une rangée). Pas de grille connu → delta brut
+   * (comportement historique).
+   */
+  function snapDeltaToGrid(dx: number, dy: number): { dx: number; dy: number } {
+    const grid = ctx.layoutPlan?.grid;
+    const stepU = grid && Number.isFinite(grid.rowWidthM) && grid.rowWidthM > 0 ? grid.rowWidthM : 0;
+    const stepV = grid && Number.isFinite(grid.rowPitchM) && grid.rowPitchM > 0 ? grid.rowPitchM : 0;
+    return {
+      dx: stepU > 0 ? Math.round(dx / stepU) * stepU : dx,
+      dy: stepV > 0 ? Math.round(dy / stepV) * stepV : dy,
+    };
+  }
 
   // PV26 — HISTORIQUE par snapshots : toute action qui MUTE l'occupation appelle d'abord
   // `recordHistory()`. Annuler ré-applique la photo précédente ; une nouvelle action vide
@@ -248,6 +412,9 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     // disposition (le résultat de zone suit le gagnant vivant, hook partagé).
     snapshotActiveAreaResult();
     renderAreasPanel();
+    // PV29 — re-rendre la scène reconstruit les instances (teintes remises à blanc) : on
+    // REPEINT la sélection juste après, sinon elle disparaîtrait à chaque déplacement.
+    paintScene();
   }
 
   /** Convertit un point ÉCRAN (carte) en coordonnées ENU relatives à l'origine de la
@@ -300,7 +467,8 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     pruneSelection();
     syncSelectionControls();
     if (layoutNoteEl && !layoutNoteEl.textContent) {
-      layoutNoteEl.textContent = 'Touchez un panneau (bleu) pour le sélectionner, puis un emplacement libre (vert) pour l’y déplacer. Ou utilisez + / −.';
+      layoutNoteEl.textContent =
+        'Sur la 3D : clic = sélectionner, Maj + clic = ajouter au groupe, Maj + glissé = encadrer, double-clic = toute la rangée. Glissez pour déplacer, flèches pour ajuster, Alt + clic pour retirer un panneau. Ou touchez un panneau (bleu) puis un emplacement libre (vert) dans le plan ci-dessous.';
     }
   }
 
@@ -317,6 +485,47 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   function setSelection(indices: readonly number[]) {
     selection = [...new Set(indices)];
     pruneSelection();
+    paintScene(); // PV29 — la sélection est VISIBLE sur la 3D, pas seulement dans le mini-plan
+  }
+
+  /** PV29 — SÉLECTION D'UNE RANGÉE ENTIÈRE en un seul geste (double-clic sur un panneau).
+   *  Rien à activer au préalable : c'est le geste « rangée » sans mode à retenir. */
+  function selectRow(cellIndex: number): number[] {
+    const st = ctx.layoutState;
+    if (!st) return [];
+    const members = rowMembers(st, cellIndex);
+    if (!members.length) return [];
+    setSelection(members);
+    ctx.layoutSel = null;
+    if (layoutNoteEl) {
+      layoutNoteEl.textContent = `Rangée sélectionnée — ${fmt(members.length)} panneaux. Glissez-en un pour déplacer toute la rangée, ou utilisez les flèches.`;
+    }
+    renderLayoutPanel();
+    return members;
+  }
+
+  /** PV29 — sélection d'UN SEUL panneau (clic simple), ou BASCULE de ce panneau dans la
+   *  sélection courante (Maj + clic) : les deux gestes standard d'un éditeur. */
+  function selectSinglePanel(cellIndex: number, toggle = false) {
+    const st = ctx.layoutState;
+    if (!st || !st.occupied.has(cellIndex)) return;
+    if (toggle) {
+      const next = selection.includes(cellIndex) ? selection.filter((i) => i !== cellIndex) : [...selection, cellIndex];
+      setSelection(next);
+      if (layoutNoteEl) {
+        layoutNoteEl.textContent = selection.length
+          ? `${fmt(selection.length)} panneaux sélectionnés — glissez-en un pour déplacer tout le groupe.`
+          : 'Sélection vide.';
+      }
+    } else {
+      setSelection([cellIndex]);
+      ctx.layoutSel = cellIndex;
+      if (layoutNoteEl) {
+        layoutNoteEl.textContent =
+          'Panneau sélectionné — glissez-le pour le déplacer, flèches pour l’ajuster, double-clic pour prendre toute la rangée.';
+      }
+    }
+    renderLayoutPanel();
   }
 
   /** PV25 — reflète l'état des boutons de sélection + le nudge d'azimut. */
@@ -471,6 +680,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     } else {
       // En sortant, on re-rend la disposition de l'optimiseur (recalc rebranche tout).
       ctx.layoutSel = null;
+      setSelection([]); // PV29 — une sélection ne survit pas à la sortie du mode
       setPanelHighlight(null); // W88 — efface tout surlignage de panneau en quittant le mode
       if (ctx.closed) renderActive();
     }
@@ -628,6 +838,16 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
       return;
     }
     if (mod) return;
+    // PV29 — Échap : abandonne la sélection (le geste « je me suis trompé » universel).
+    if (key === 'escape') {
+      if (!selection.length && ctx.layoutSel == null) return;
+      setSelection([]);
+      ctx.layoutSel = null;
+      if (layoutNoteEl) layoutNoteEl.textContent = 'Sélection effacée.';
+      renderLayoutPanel();
+      e.preventDefault();
+      return;
+    }
     // Pas de nudge : la largeur de rangée (axe u) et le pas de rangée (axe d'empilement)
     // du pavage courant — on avance exactement d'un emplacement, jamais d'un pas inventé.
     const grid = ctx.layoutPlan?.grid;
@@ -682,7 +902,9 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
 
   // Glissé sur la 3D : raycast (déprojection) → snap à la cellule VIDE valide la plus
   // proche, commit au relâchement. Désactive le pan de la carte pendant le glissé.
-  let layoutDrag: { from: number; startPoint: maplibregl.Point; moved: boolean } | null = null;
+  // PV29 — `altKey` mémorise le modificateur DE SUPPRESSION appuyé au moment de la saisie :
+  // un clic simple SÉLECTIONNE désormais, seul Alt + clic supprime (voir endLayoutDrag).
+  let layoutDrag: { from: number; startPoint: maplibregl.Point; moved: boolean; altKey: boolean } | null = null;
   function layoutPanelAt(point: maplibregl.Point): number | null {
     const layoutState = ctx.layoutState;
     if (!layoutState) return null;
@@ -705,7 +927,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   }
   /** Début d'un glissé-déplacer (souris OU doigt) : saisit le panneau sous le point, fige le
    *  pan de la carte. Renvoie true si un panneau a été saisi (le geste devient un glissé). */
-  function beginLayoutDrag(point: maplibregl.Point, shiftKey = false): boolean {
+  function beginLayoutDrag(point: maplibregl.Point, shiftKey = false, altKey = false): boolean {
     if (!ctx.layoutMode || isObstacleMode() || !ctx.layoutState) return false;
     // PV25 — MARQUEE : Maj + glissé (souris) ou mode « sélection multiple » (doigt) trace
     // un rectangle au lieu de déplacer un panneau. Le rectangle est en ENU (mètres), via
@@ -713,14 +935,17 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     if (shiftKey || selectMode) {
       const enu = screenToENU(point);
       if (!enu) return false;
-      marquee = { x0: enu.x, y0: enu.y, x1: enu.x, y1: enu.y };
+      // PV29 — `moved` distingue un Maj + GLISSÉ (rectangle) d'un Maj + CLIC (bascule d'un
+      // seul panneau dans la sélection). Avant, un Maj + clic terminait sur un rectangle de
+      // surface nulle et VIDAIT donc la sélection — l'inverse de ce que le geste veut dire.
+      marquee = { x0: enu.x, y0: enu.y, x1: enu.x, y1: enu.y, moved: false, startPoint: point };
       map.dragPan.disable();
       map.getCanvas().style.cursor = 'crosshair';
       return true;
     }
     const from = layoutPanelAt(point);
     if (from == null) return false;
-    layoutDrag = { from, startPoint: point, moved: false };
+    layoutDrag = { from, startPoint: point, moved: false, altKey };
     ctx.layoutSel = from;
     map.dragPan.disable();
     map.getCanvas().style.cursor = 'grabbing';
@@ -737,6 +962,10 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
       if (!enu) return;
       marquee.x1 = enu.x;
       marquee.y1 = enu.y;
+      // PV29 — au-delà du seuil, c'est un vrai cadre (et plus un Maj + clic).
+      if (Math.abs(point.x - marquee.startPoint.x) >= LAYOUT_GRAB_PX || Math.abs(point.y - marquee.startPoint.y) >= LAYOUT_GRAB_PX) {
+        marquee.moved = true;
+      }
       const hits = cellsInRect(ctx.layoutState, marquee);
       if (layoutNoteEl) {
         layoutNoteEl.textContent = hits.length
@@ -786,10 +1015,24 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
         marquee.x1 = enu.x;
         marquee.y1 = enu.y;
       }
-      setSelection(cellsInRect(ctx.layoutState, marquee));
+      const dragged = marquee.moved;
+      const hits = cellsInRect(ctx.layoutState, marquee);
       marquee = null;
       map.dragPan.enable();
       map.getCanvas().style.cursor = '';
+      if (!dragged) {
+        // PV29 — Maj + CLIC (aucun glissé) : BASCULE le panneau visé dans la sélection.
+        const hit = layoutPanelAt(point);
+        if (hit != null) {
+          selectSinglePanel(hit, true);
+          return;
+        }
+        // Maj + clic dans le vide : on ne touche à rien (on ne vide plus la sélection par
+        // accident — c'était le piège du rectangle de surface nulle).
+        renderLayoutPanel();
+        return;
+      }
+      setSelection(hits);
       if (layoutNoteEl) {
         layoutNoteEl.textContent = selection.length
           ? `${fmt(selection.length)} panneaux sélectionnés — glissez-en un pour déplacer tout le groupe.`
@@ -801,12 +1044,17 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     if (!layoutDrag || !ctx.layoutState) return;
     const from = layoutDrag.from;
     const moved = layoutDrag.moved;
+    const altTap = layoutDrag.altKey; // PV29 — modificateur de SUPPRESSION saisi au mousedown
     if (moved) {
       const enu = screenToENU(point);
       if (enu) {
         const cell = ctx.layoutState.cells[from];
-        const dx = enu.x - cell.cx;
-        const dy = enu.y - cell.cy;
+        const rawDx = enu.x - cell.cx;
+        const rawDy = enu.y - cell.cy;
+        // PV29 — un déplacement de GROUPE/RANGÉE est quantifié sur le pas du calepinage :
+        // le bloc garde sa forme (une rangée reste une rangée) au lieu de se replier au plus
+        // près du curseur. Un panneau SEUL garde le placement libre (cellule la plus proche).
+        const { dx, dy } = snapDeltaToGrid(rawDx, rawDy);
         recordHistory(); // PV26 — une photo AVANT le geste (simple, groupe ou rangée)
         // PV25 — trois gestes possibles, du plus large au plus fin :
         //  1. mode RANGÉE : toute la rangée suit, déplacement contraint à son axe ;
@@ -820,8 +1068,9 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
             setSelection(res.targets);
             if (layoutNoteEl) layoutNoteEl.textContent = `Rangée déplacée — ${fmt(members.length)} panneaux.`;
             renderCustomLayout();
-          } else if (layoutNoteEl) {
-            layoutNoteEl.textContent = 'La rangée ne tient pas à cet endroit — rien n’a bougé.';
+          } else {
+            flashRefusal(members); // PV29 — refus VISIBLE (rouge), rien n'a bougé
+            if (layoutNoteEl) layoutNoteEl.textContent = 'La rangée ne tient pas à cet endroit — rien n’a bougé.';
           }
         } else if (selection.length > 1 && selection.includes(from)) {
           const res = moveGroup(ctx.layoutState, selection, dx, dy, { maxSnapM: GROUP_SNAP_M });
@@ -829,16 +1078,21 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
             setSelection(res.targets);
             if (layoutNoteEl) layoutNoteEl.textContent = `Groupe déplacé — ${fmt(res.targets.length)} panneaux.`;
             renderCustomLayout();
-          } else if (layoutNoteEl) {
-            layoutNoteEl.textContent = 'Le groupe entier ne tient pas à cet endroit — rien n’a bougé.';
+          } else {
+            flashRefusal(selection); // PV29
+            if (layoutNoteEl) layoutNoteEl.textContent = 'Le groupe entier ne tient pas à cet endroit — rien n’a bougé.';
           }
         } else {
           const res = movePanelToPoint(ctx.layoutState, from, enu.x, enu.y);
           if (res.ok && res.toIndex !== from) {
+            setSelection([res.toIndex]); // PV29 — le panneau déplacé reste sélectionné
             if (layoutNoteEl) layoutNoteEl.textContent = 'Panneau déplacé.';
             renderCustomLayout();
-          } else if (layoutNoteEl) {
-            layoutNoteEl.textContent = 'Aucun emplacement libre à cet endroit — le panneau est resté en place.';
+          } else {
+            flashRefusal([from]); // PV29
+            if (layoutNoteEl) {
+              layoutNoteEl.textContent = 'Aucun emplacement libre à cet endroit — le panneau est resté en place.';
+            }
           }
         }
       }
@@ -847,9 +1101,17 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     ctx.layoutSel = null;
     map.dragPan.enable();
     map.getCanvas().style.cursor = '';
-    // W88 — clic desktop sans glissé sur un panneau = suppression ciblée de CE panneau.
+    // W88/PV29 — clic desktop SANS glissé. La suppression ciblée demande désormais Alt :
+    // un clic simple SÉLECTIONNE (le geste attendu par un opérateur), et un clic maladroit
+    // ne fait plus disparaître un panneau vendu. Au doigt, la suppression reste l'appui long.
     if (!moved && removeOnTap) {
-      removePanelInScene(from);
+      if (altTap) {
+        removePanelInScene(from);
+        return;
+      }
+    }
+    if (!moved) {
+      selectSinglePanel(from);
       return;
     }
     renderLayoutPanel();
@@ -858,8 +1120,19 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   // — Souris —
   map.on('mousedown', (e) => {
     // PV25 — Maj + glissé = rectangle de sélection (marquee) au lieu d'un déplacement.
+    // PV29 — Alt = modificateur de SUPPRESSION (un clic nu sélectionne désormais).
     const shift = !!(e.originalEvent as MouseEvent | undefined)?.shiftKey;
-    if (beginLayoutDrag(e.point, shift)) e.preventDefault();
+    const alt = !!(e.originalEvent as MouseEvent | undefined)?.altKey;
+    if (beginLayoutDrag(e.point, shift, alt)) e.preventDefault();
+  });
+  // PV29 — DOUBLE-CLIC sur un panneau = sélectionner TOUTE SA RANGÉE, en un seul geste et
+  // sans mode à activer (le zoom au double-clic est déjà désactivé par l'entrée). C'est le
+  // geste « prendre la rangée » : ensuite un glissé (ou les flèches) l'emmène en bloc.
+  map.on('dblclick', (e) => {
+    if (!ctx.layoutMode || isObstacleMode() || !ctx.layoutState) return;
+    const hit = layoutPanelAt(e.point);
+    if (hit == null) return;
+    if (selectRow(hit).length) e.preventDefault();
   });
   map.on('mousemove', (e) => {
     if (layoutDrag || marquee) {
@@ -933,5 +1206,6 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     hydrateLayout,
     hasManualEdits,
     confirmDiscardEdits,
+    selectRow,
   };
 }

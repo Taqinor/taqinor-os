@@ -1112,6 +1112,9 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // W88 — surlignage/pick des panneaux 3D : `setPanelHighlight` (scene3d) est déclaré plus
     // bas → wrapper paresseux (référencé seulement à l'exécution d'un survol/clic 3D).
     setPanelHighlight: (cellIndex) => setPanelHighlight(cellIndex),
+    // PV29 — surlignage d'une SÉLECTION (plusieurs panneaux + survol + refus rouge). Même
+    // wrapper paresseux : `setPanelSelection` (scene3d) est déclaré plus bas.
+    setPanelSelection: (selected, hover, refused) => setPanelSelection(selected, hover, refused),
     // PV25 — le nudge d'azimut passe par le recalc COMPLET de l'entrée, qui capture puis
     // re-snappe la disposition personnalisée (wrapper paresseux : recalc est déclaré plus bas).
     recalcWithReenter: () => recalc(),
@@ -1204,6 +1207,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   const disposeScene = scene3d.disposeScene;
   const renderScene = scene3d.renderScene;
   const setPanelHighlight = scene3d.setPanelHighlight; // W88 — surlignage/pick des panneaux 3D
+  const setPanelSelection = scene3d.setPanelSelection; // PV29 — surlignage d'une SÉLECTION 3D
 
   // — Moteur d'optimisation vivante (W34/V7 plat + W35/V8 pente + matrice V6 PVGIS) :
   // voir roofPro11/optimizer.ts. `syncChips`/`renderMatrixOptimumCard` sont déclarés plus

@@ -1509,6 +1509,46 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     map3dRepaint();
   }
 
+  /**
+   * PV29 — surligne une SÉLECTION (plusieurs cellules) + le panneau SURVOLÉ, en un seul
+   * passage sur le buffer d'instances. `setPanelHighlight` ci-dessus ne connaît qu'UNE
+   * cellule : la sélection multiple / la rangée étaient donc invisibles en 3D (elles ne
+   * vivaient que dans le mini-plan tactile). On garde `setPanelHighlight` intact (c'est
+   * le chemin du survol seul, W88) et on ajoute CETTE fonction pour l'éditeur.
+   *
+   *  - `selected` : cellules de la sélection → laiton (GOLD), la même teinte que W88 ;
+   *  - `hover`    : cellule survolée → laiton CLAIR (elle reste distinguable dans un
+   *                 groupe déjà doré) ;
+   *  - `refused`  : true → la sélection vire au ROUGE (refus visible d'un déplacement
+   *                 impossible ; l'appelant la remet à sa teinte normale après un délai).
+   * Tout le reste revient à blanc (teinte d'origine). No-op sans mesh de panneaux.
+   */
+  function setPanelSelection(
+    selected: readonly number[] | null,
+    hover: number | null = null,
+    refused = false,
+  ) {
+    const mesh = ctx.activePanelMesh;
+    if (!mesh || !mesh.instanceColor) return;
+    const col = mesh.instanceColor as THREE.InstancedBufferAttribute;
+    const map = ctx.activePanelCellIndex;
+    const sel = new Set(selected ?? []);
+    for (let i = 0; i < map.length; i++) {
+      const cell = map[i];
+      if (sel.has(cell)) {
+        // ROUGE = refus (rien n'a bougé), sinon laiton (sélectionné).
+        if (refused) col.setXYZ(i, 1.0, 0.36, 0.32);
+        else col.setXYZ(i, 1.0, 0.78, 0.32);
+      } else if (hover != null && cell === hover) {
+        col.setXYZ(i, 1.0, 0.92, 0.72); // laiton clair = survol
+      } else {
+        col.setXYZ(i, 1, 1, 1); // teinte d'origine (instanceColor neutre)
+      }
+    }
+    col.needsUpdate = true;
+    map3dRepaint();
+  }
+
   /** WJ21 — teinte les instances de panneaux de la zone active par leur accès solaire.
    *  `colorFor(cellIndex)` renvoie une couleur RVB (0–1) par cellule de lattice ; null
    *  remet toutes les instances à blanc (teinte d'origine, heatmap OFF). Réutilise le
@@ -1550,5 +1590,5 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     }
   }
 
-  return { customLayer, disposeScene, setOrigin, appendOtherZones, renderScene, resetTextures, setPanelHighlight, setSolarAccessHeatmap, snapshot };
+  return { customLayer, disposeScene, setOrigin, appendOtherZones, renderScene, resetTextures, setPanelHighlight, setPanelSelection, setSolarAccessHeatmap, snapshot };
 }
