@@ -290,10 +290,22 @@ describe('PV29 — un déplacement impossible est REFUSÉ, visiblement, sans rie
 
   it('un refus n’empile PAS d’action vide dans l’historique (rien à annuler)', () => {
     editor.setSelection([0, 1]);
-    drag(cellPt(0), pt(0, 2 * STEP_M)); // toit plein → refus
     const before = occ(ctx);
-    editor.undo();
+    drag(cellPt(0), pt(0, 2 * STEP_M)); // toit plein → refus
+    // La photo prise juste AVANT le geste est jetée : un geste refusé n'a rien changé, donc
+    // il n'y a rien à annuler — et « rétablir » ne s'allume pas pour une action fantôme.
+    expect(editor.undo()).toBe(false);
+    expect(editor.redo()).toBe(false);
     expect(occ(ctx)).toEqual(before);
+    expect(document.getElementById('rp9-layout-undo')!.hasAttribute('disabled')).toBe(true);
+  });
+
+  it('un nudge clavier bloqué ne laisse pas non plus d’action fantôme', () => {
+    editor.setSelection([0, 1]); // toit plein : aucune direction libre
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp' }));
+    expect(note()).toContain('Pas de place dans cette direction');
+    expect(editor.undo()).toBe(false);
+    expect(editor.redo()).toBe(false);
   });
 });
 

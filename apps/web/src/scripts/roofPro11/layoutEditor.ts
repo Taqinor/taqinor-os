@@ -303,6 +303,14 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     paintScene();
   }
 
+  /** PV29 — RETIRE la photo prise juste avant un geste qui a finalement été REFUSÉ. Sans
+   *  cela, « annuler » consommait un pas pour ne rien changer (l'utilisateur appuie et rien
+   *  ne bouge) : un geste refusé n'est pas une action, il n'a rien à annuler. Même
+   *  mécanique que le nudge clavier bloqué. */
+  function dropHistoryPhoto() {
+    history.drop();
+  }
+
   /** PV29 — REFUS VISIBLE : les panneaux concernés virent au rouge un court instant, puis
    *  reprennent leur teinte. Aucun panneau n'a bougé — c'est exactement ce que ça dit. */
   function flashRefusal(cells: readonly number[]) {
@@ -813,7 +821,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     const sameAsBefore =
       res.ok && res.targets.length === members.length && [...res.targets].sort((a, b) => a - b).join() === [...members].sort((a, b) => a - b).join();
     if (!res.ok || sameAsBefore) {
-      history.undo(st.occupied);
+      history.drop(); // PV29 — jeter la photo, sans allumer « rétablir » pour rien
       if (layoutNoteEl) layoutNoteEl.textContent = 'Pas de place dans cette direction — rien n’a bougé.';
       renderLayoutPanel();
       return false;
@@ -1069,6 +1077,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
             if (layoutNoteEl) layoutNoteEl.textContent = `Rangée déplacée — ${fmt(members.length)} panneaux.`;
             renderCustomLayout();
           } else {
+            dropHistoryPhoto(); // PV29 — un geste refusé n'est pas une action à annuler
             flashRefusal(members); // PV29 — refus VISIBLE (rouge), rien n'a bougé
             if (layoutNoteEl) layoutNoteEl.textContent = 'La rangée ne tient pas à cet endroit — rien n’a bougé.';
           }
@@ -1079,6 +1088,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
             if (layoutNoteEl) layoutNoteEl.textContent = `Groupe déplacé — ${fmt(res.targets.length)} panneaux.`;
             renderCustomLayout();
           } else {
+            dropHistoryPhoto(); // PV29
             flashRefusal(selection); // PV29
             if (layoutNoteEl) layoutNoteEl.textContent = 'Le groupe entier ne tient pas à cet endroit — rien n’a bougé.';
           }
@@ -1089,6 +1099,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
             if (layoutNoteEl) layoutNoteEl.textContent = 'Panneau déplacé.';
             renderCustomLayout();
           } else {
+            dropHistoryPhoto(); // PV29
             flashRefusal([from]); // PV29
             if (layoutNoteEl) {
               layoutNoteEl.textContent = 'Aucun emplacement libre à cet endroit — le panneau est resté en place.';
