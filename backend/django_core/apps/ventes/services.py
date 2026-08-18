@@ -349,18 +349,31 @@ def marque_preferee(company, gamme_nom, role):
     LA seule voie par laquelle un appelant apprend une préférence de marque —
     ``_pick_product`` la consulte, rien d'autre ne doit lire
     ``ParametresGammes.marques`` en direct. Ne lève JAMAIS : société sans
-    réglage, gamme inconnue, rôle inconnu ou marque vide renvoient tous
-    ``None`` (le caller retombe alors sur le comportement historique, sans
-    préférence).
+    réglage, rôle inconnu ou marque vide renvoient tous ``None`` (le caller
+    retombe alors sur le comportement historique, sans préférence).
 
-    ``gamme_nom`` est le libellé LIBRE de la gamme du devis (celui que renvoie
-    ``gamme_nom(devis)`` plus haut dans ce fichier) — résolu ici contre
-    ``nom_essentielle``/``nom_premium`` pour retrouver le SLOT FIXE
-    ('Essentielle'/'Premium') qui indexe réellement ``marques`` (ces clés ne
-    bougent jamais, même si le libellé affiché est renommé). Un ``gamme_nom``
-    vide ou ``None`` retombe explicitement sur le slot Essentielle — c'est le
-    comportement demandé pour les appelants de ``_pick_product`` qui n'ont pas
-    de devis (donc pas de gamme) sous la main.
+    RÉSOLUTION DU SLOT (F4/F7, fondateur 18/08/2026) — ``gamme_nom`` est le
+    libellé LIBRE de la gamme du devis (celui que renvoie ``gamme_nom(devis)``
+    plus haut dans ce fichier), résolu ici contre le réglage société pour
+    retrouver le SLOT FIXE ('Essentielle'/'Premium') qui indexe réellement
+    ``marques`` (ces clés ne bougent jamais, même si le libellé affiché est
+    renommé) :
+
+    * ``deux_gammes=False`` (offre à UNE seule gamme) — TOUJOURS le slot
+      Essentielle, quel que soit ``gamme_nom`` (y compris un devis encore
+      étiqueté « Premium » : une société à une gamme n'a qu'UNE carte de
+      marques active — voir ``ParametresGammes``) ;
+    * ``gamme_nom`` vide/``None``, ou égal (sans casse) à ``nom_essentielle``
+      — slot Essentielle ;
+    * ``gamme_nom`` égal (sans casse) à ``nom_premium`` — slot Premium ;
+    * tout autre libellé (gamme inconnue de ce réglage — p. ex. un devis
+      encore étiqueté « Premium » après un renommage fondateur Premium →
+      Luxe) — slot Essentielle, JAMAIS ``None`` : un ``None`` laisserait
+      ``_pick_product`` composer SANS aucune marque épinglée, alors que
+      l'écran (DevisGenerator ``marquesActives``) retombe déjà sur la carte
+      Essentielle dans ce cas — la composition automatique DÉSÉPINGLERAIT
+      alors la marque en silence, l'exact inverse de l'ordre fondateur #5
+      (jamais de substitution silencieuse).
     """
     from .models import ParametresGammes, ROLES_AUTO_COMPOSITION
 
@@ -371,14 +384,21 @@ def marque_preferee(company, gamme_nom, role):
     if params is None:
         return None
     nom = str(gamme_nom or '').strip()
-    if not nom:
+    if not params.deux_gammes:
+        # F7 — offre à UNE gamme : une seule carte de marques est
+        # significative, quel que soit le libellé passé.
+        slot = ParametresGammes.SLOT_ESSENTIELLE
+    elif not nom:
         slot = ParametresGammes.SLOT_ESSENTIELLE
     elif nom.casefold() == (params.nom_essentielle or '').strip().casefold():
         slot = ParametresGammes.SLOT_ESSENTIELLE
     elif nom.casefold() == (params.nom_premium or '').strip().casefold():
         slot = ParametresGammes.SLOT_PREMIUM
     else:
-        return None  # gamme inconnue de ce réglage
+        # F4 — gamme inconnue de ce réglage (renommage, libellé périmé…) :
+        # repli explicite sur Essentielle, jamais un None qui désépinglerait
+        # la composition en silence (voir la docstring ci-dessus).
+        slot = ParametresGammes.SLOT_ESSENTIELLE
     marques = params.marques if isinstance(params.marques, dict) else {}
     carte = marques.get(slot)
     if not isinstance(carte, dict):
@@ -476,6 +496,45 @@ def _is_panel(name: str) -> bool:
 
 def _is_battery(name: str) -> bool:
     return "batterie" in (name or "").lower()
+
+
+# ── PVCBL — les CÂBLES suivent la taille du calepinage (F8, fondateur
+# 18/08/2026) ────────────────────────────────────────────────────────────
+#
+# Métrés — MIROIR EXACT de ``solar.js`` (CABLE_DC_M_PAR_PALIER/
+# CABLE_TERRE_M_BASE/CABLE_TERRE_M_PAR_PALIER) : câble solaire DC 6 mm² à
+# 60 m par palier de 5 kWc (strictement proportionnel), câble de terre AC
+# 6 mm² à 25 m de base + 15 m par palier — 40 m pour 5 kWc, 55 m pour 10 kWc.
+CABLE_DC_M_PAR_PALIER = 60
+CABLE_TERRE_M_BASE = 25
+CABLE_TERRE_M_PAR_PALIER = 15
+
+
+def metre_cable_dc(paliers):
+    """Longueur (m) de câble solaire DC pour ``paliers`` blocs de 5 kWc."""
+    n = max(1, int(round(float(paliers or 0))))
+    return n * CABLE_DC_M_PAR_PALIER
+
+
+def metre_cable_terre(paliers):
+    """Longueur (m) de câble de terre AC pour ``paliers`` blocs de 5 kWc."""
+    n = max(1, int(round(float(paliers or 0))))
+    return CABLE_TERRE_M_BASE + n * CABLE_TERRE_M_PAR_PALIER
+
+
+# Classification — même mot-clé que ``solar.js::classifyProduct`` : un câble
+# de TERRE se reconnaît à « terre »/« mise à la terre », tout autre « câble »
+# est un câble solaire DC (accents retirés — ``_sans_accents`` plus bas dans
+# ce fichier, chargé par NOM au moment de l'appel, jamais au chargement du
+# module).
+def _is_cable_terre(name: str) -> bool:
+    n = _sans_accents(name)
+    return "cable" in n and ("terre" in n or "mise a la terre" in n)
+
+
+def _is_cable_dc(name: str) -> bool:
+    n = _sans_accents(name)
+    return "cable" in n and not _is_cable_terre(name)
 
 
 # ── PVG4 — Batterie Dyness HAUTE TENSION (16 kWh, décision fondateur
@@ -2381,6 +2440,11 @@ def sync_devis_from_layout(devis, layout, user=None):
             }
 
         lignes_modifiees = 0
+        # F8 — vrai UNIQUEMENT quand le compte de panneaux a réellement bougé
+        # (ligne créée, ou ligne dominante réajustée) : c'est ce qui déclenche
+        # la resynchro des câbles plus bas, jamais un layout qui ne change
+        # rien aux panneaux.
+        panneaux_ont_change = False
 
         # ── Panneaux : porter le compte à la cible ──
         if cible_panneaux > 0 and not lignes_panneau:
@@ -2398,6 +2462,7 @@ def sync_devis_from_layout(devis, layout, user=None):
                     remise=Decimal('0'))
                 lignes_modifiees += 1
                 total_panneaux = cible_panneaux
+                panneaux_ont_change = True
         elif cible_panneaux <= 0:
             # Un layout sans compte de panneaux ne DÉTRUIT pas les lignes en
             # place : « 0 » veut dire « inconnu », pas « enlève tout ».
@@ -2424,6 +2489,60 @@ def sync_devis_from_layout(devis, layout, user=None):
             lignes_modifiees += 1
             total_panneaux = sum(
                 int(li.quantite or 0) for li in lignes_panneau)
+            panneaux_ont_change = True
+
+        # ── Kilowattage RETENU — déplacé ICI (F8) : le kit (PVHEAL) ET les
+        # câbles (PVCBL, juste en dessous) en ont tous les deux besoin, et le
+        # panel count qui vient d'être arrêté ci-dessus est son unique
+        # dépendance restante.
+        result = dict(layout.get('result') or {})
+        kwc = float(result.get('kwc') or toiture.get('kwc') or 0.0)
+        if not kwc and total_panneaux:
+            kwc = round(total_panneaux * watt / 1000.0, 3)
+
+        # ── PVCBL — LES CÂBLES SUIVENT LA TAILLE DU CALEPINAGE (F8, fondateur
+        # 18/08/2026) ──
+        #
+        # Le compte de panneaux, la batterie et l'onduleur se resynchronisaient
+        # déjà ; les DEUX lignes de câble (DC solaire + terre AC), elles,
+        # restaient au métrage du premier calepinage — un devis ramené de
+        # 10 à 5 kWc gardait ses 120 m de câble DC (60 m/palier × 2 paliers)
+        # alors que 5 kWc n'en réclame que 60. Mêmes métrés que ``solar.js``
+        # (paliers = max(1, round(kWc / 5))).
+        #
+        # Ne touche QUE des lignes DÉJÀ PRÉSENTES, classées par le même
+        # mot-clé que l'écran et rattachées à un PRODUIT catalogue (au mètre)
+        # — jamais une note texte, et jamais une ligne INVENTÉE : un devis
+        # sans câble hier n'en gagne pas un ici (ce trou reste à la charge de
+        # PVHEAL/``composition_residentielle``, hors périmètre de cette
+        # resynchro). Ne se déclenche QUE si le compte de panneaux a bougé —
+        # un layout qui ne change rien aux panneaux ne touche pas aux câbles
+        # non plus.
+        def _resynchroniser_cable(predicat, cible_metres):
+            candidats = [li for li in lignes
+                         if getattr(li, 'produit', None) is not None
+                         and _classe_ligne(li, predicat)]
+            if not candidats:
+                return False
+            # Plusieurs lignes de la même famille (rare) : seule la PLUS
+            # GROSSE bouge, même politique que les panneaux ci-dessus.
+            dominante = max(candidats,
+                            key=lambda li: Decimal(str(li.quantite or 0)))
+            nouvelle = Decimal(str(cible_metres))
+            if Decimal(str(dominante.quantite or 0)) == nouvelle:
+                return False
+            dominante.quantite = nouvelle
+            dominante.save(update_fields=['quantite'])
+            return True
+
+        if panneaux_ont_change and kwc > 0:
+            paliers = max(1, _arrondi_js(kwc / 5))
+            if _resynchroniser_cable(_is_cable_dc,
+                                     metre_cable_dc(paliers)):
+                lignes_modifiees += 1
+            if _resynchroniser_cable(_is_cable_terre,
+                                     metre_cable_terre(paliers)):
+                lignes_modifiees += 1
 
         # ── Batterie : présente si (et seulement si) le layout en veut une ──
         if veut_batterie and not a_batterie:
@@ -2551,10 +2670,9 @@ def sync_devis_from_layout(devis, layout, user=None):
                 lignes_reseau, lignes_hybride = [lignes_hybride[0]], []
                 lignes_modifiees += 1
 
-        result = dict(layout.get('result') or {})
-        kwc = float(result.get('kwc') or toiture.get('kwc') or 0.0)
-        if not kwc and total_panneaux:
-            kwc = round(total_panneaux * watt / 1000.0, 3)
+        # ``result``/``kwc`` sont déjà résolus plus haut (F8, juste après le
+        # bloc panneaux) — le kit ci-dessous et l'étude plus bas les
+        # réutilisent tels quels.
 
         # ── PVHEAL — COMPLÉTER le kit manquant (structures, socles, tableau…) ──
         #

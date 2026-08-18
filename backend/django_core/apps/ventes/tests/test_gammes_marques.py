@@ -212,13 +212,20 @@ class MarqueAbsenteRenvoieNoneTests(ParametresGammesBase):
 # ── 5. Gamme/rôle inconnus, valeur vide ──────────────────────────────────
 
 class GammeEtRoleTests(ParametresGammesBase):
-    def test_gamme_inconnue_ne_matche_aucun_slot_renvoie_none(self):
+    def test_gamme_inconnue_pin_essentielle_jamais_none(self):
+        """F4 — une gamme inconnue de ce réglage (ni ``nom_essentielle`` ni
+        ``nom_premium``) retombe sur le slot Essentielle, jamais sur
+        ``None`` : un ``None`` désépinglerait la composition automatique en
+        silence, l'inverse de l'ordre fondateur #5. ``deux_gammes=True`` ici
+        pour isoler CE repli de celui de la société à une gamme (F7,
+        couvert plus bas)."""
         ParametresGammes.objects.create(
-            company=self.company,
+            company=self.company, deux_gammes=True,
             marques={'Essentielle': {'panneau': 'Jinko'}})
 
-        self.assertIsNone(
-            services.marque_preferee(self.company, 'Gamme Fantôme', 'panneau'))
+        self.assertEqual(
+            services.marque_preferee(self.company, 'Gamme Fantôme', 'panneau'),
+            'Jinko')
 
     def test_gamme_vide_ou_none_retombe_sur_essentielle(self):
         ParametresGammes.objects.create(
@@ -266,6 +273,22 @@ class RenommageLibelleTests(ParametresGammesBase):
         self.assertEqual(
             services.marque_preferee(self.company, 'Luxe', 'panneau'),
             'Canadian Solar')
+
+    def test_f4_ancien_libelle_premium_apres_renommage_pin_essentielle(self):
+        """F4 — le fondateur renomme Premium → Luxe : un devis ENCORE
+        étiqueté « Premium » (le libellé d'AVANT le renommage) ne matche
+        plus ``nom_premium`` ('Luxe') ni ``nom_essentielle`` — il doit
+        retomber sur le slot Essentielle (même repli que l'écran
+        DevisGenerator ``marquesActives``), pas sur ``None`` qui aurait
+        laissé la composition SANS marque épinglée en silence."""
+        ParametresGammes.objects.create(
+            company=self.company, deux_gammes=True, nom_premium='Luxe',
+            marques={'Essentielle': {'panneau': 'Jinko'},
+                     'Premium': {'panneau': 'Canadian Solar'}})
+
+        self.assertEqual(
+            services.marque_preferee(self.company, 'Premium', 'panneau'),
+            'Jinko')
 
 
 # ── 7. Rôle/gamme invalides rejetés à l'écriture ────────────────────────
@@ -343,6 +366,68 @@ class DeuxGammesToggleTests(ParametresGammesBase):
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
                 ParametresGammes.objects.create(company=self.company)
+
+
+# ── 8bis. F7 — deux_gammes=False force TOUJOURS le slot Essentielle ───────
+#
+# Une société à UNE seule gamme n'a qu'une carte de marques active : même un
+# devis étiqueté « Premium » (le SLOT par défaut) doit lire la carte
+# Essentielle. La carte 'Premium' du JSON n'est jamais supprimée — juste
+# ignorée tant que ``deux_gammes`` reste False (voir la docstring de
+# ``ParametresGammes``, apps/ventes/models.py).
+
+class DeuxGammesFauxForceEssentielleTests(ParametresGammesBase):
+    def test_f7_deux_gammes_false_toute_gamme_pin_essentielle(self):
+        ParametresGammes.objects.create(
+            company=self.company, deux_gammes=False,
+            marques={'Essentielle': {'panneau': 'Jinko'},
+                     'Premium': {'panneau': 'Canadian Solar'}})
+
+        # Le libellé 'Premium' matcherait le slot Premium si la société
+        # avait deux gammes — mais deux_gammes=False force Essentielle.
+        self.assertEqual(
+            services.marque_preferee(self.company, 'Premium', 'panneau'),
+            'Jinko')
+        # Un libellé complètement inconnu résout la MÊME carte.
+        self.assertEqual(
+            services.marque_preferee(self.company, 'Gamme Fantôme', 'panneau'),
+            'Jinko')
+        # Vide/None aussi (comportement déjà en place, non régressé).
+        self.assertEqual(
+            services.marque_preferee(self.company, '', 'panneau'), 'Jinko')
+
+    def test_f7_deux_gammes_true_garde_les_pins_par_slot(self):
+        """Contrôle négatif : deux_gammes=True garde la résolution PAR SLOT
+        — Premium reste Premium, Essentielle reste Essentielle."""
+        ParametresGammes.objects.create(
+            company=self.company, deux_gammes=True,
+            marques={'Essentielle': {'panneau': 'Jinko'},
+                     'Premium': {'panneau': 'Canadian Solar'}})
+
+        self.assertEqual(
+            services.marque_preferee(self.company, 'Premium', 'panneau'),
+            'Canadian Solar')
+        self.assertEqual(
+            services.marque_preferee(self.company, 'Essentielle', 'panneau'),
+            'Jinko')
+
+    def test_f7_deux_gammes_false_pick_product_compose_avec_essentielle(self):
+        """Preuve bout-en-bout : ``_pick_product`` (le seul lecteur de
+        ``marque_preferee``) compose bien avec la marque Essentielle même
+        quand on lui passe le libellé 'Premium', société à une gamme."""
+        essentielle = self._produit('Panneau Jinko 550W', 'PVMRQ-F7-1',
+                                    marque='Jinko', prix='900')
+        self._produit('Panneau Canadian Solar 550W', 'PVMRQ-F7-2',
+                      marque='Canadian Solar', prix='1500')
+        ParametresGammes.objects.create(
+            company=self.company, deux_gammes=False,
+            marques={'Essentielle': {'panneau': 'Jinko'},
+                     'Premium': {'panneau': 'Canadian Solar'}})
+
+        retenu = services._pick_product(
+            self.company, services._is_panel, role='panneau',
+            gamme='Premium')
+        self.assertEqual(retenu, essentielle)
 
 
 # ── 9. Les SLOTS fixes ne dérivent jamais de GAMME_NOMS_DEFAUT ─────────

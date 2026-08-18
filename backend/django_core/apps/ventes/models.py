@@ -2636,9 +2636,14 @@ class ParametresGammes(TenantModel):
     Les clés internes sont les rôles ``ROLES_AUTO_COMPOSITION`` (miroir de
     ``PRODUCT_CATEGORIES`` côté frontend). Un rôle absent, ou une gamme
     absente/vide, signifient « aucune préférence, choisir comme aujourd'hui ».
-    Quand ``deux_gammes`` est False, seule la carte 'Essentielle' est
-    significative — l'autre n'est JAMAIS supprimée silencieusement, juste
-    ignorée par le sélecteur de lecture (``services.marque_preferee``).
+
+    Quand ``deux_gammes`` est False (offre à UNE seule gamme), le sélecteur de
+    lecture (``services.marque_preferee``) résout TOUJOURS le slot
+    Essentielle, quel que soit le libellé de gamme passé par l'appelant — y
+    compris un devis encore étiqueté « Premium ». La carte 'Premium' du JSON
+    n'est alors JAMAIS supprimée (un futur retour à ``deux_gammes=True`` la
+    retrouve intacte), simplement plus jamais lue tant que la société reste à
+    une seule gamme.
     """
 
     SLOT_ESSENTIELLE = 'Essentielle'
