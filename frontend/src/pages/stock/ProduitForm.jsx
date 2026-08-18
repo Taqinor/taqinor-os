@@ -27,6 +27,15 @@ import { isDirty } from '../../ui/form-utils'
 import { compressImage, validateFile } from '../../ui/file-utils'
 import { useServerFieldErrors } from '../../hooks/useServerFieldErrors'
 import CustomFieldsInput from '../../components/CustomFieldsInput'
+// PVOND (fondateur 18/08) — la classification produit reste UNE seule
+// source : la même que le générateur de devis, jamais réimplémentée ici.
+import { classifyProduct, isPompe } from '../../features/ventes/solar.js'
+import {
+  MARQUEUR_PLAGE_BATTERIE,
+  lirePlageBatterieDescription, ecrirePlageBatterieDescription, plageBatterieDeclaree,
+  manquantesOnduleurLocal, typeFicheBackend, ficheFieldsVides,
+  champsFicheDepuisServeur, champsFichePourType,
+} from './pvondFicheTechnique.js'
 
 // APX18 — photo produit : seules les images, bornées à 10 Mo — le MÊME
 // plafond que la primitive plateforme `records.storage` côté serveur, pour
@@ -415,6 +424,64 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
     if (photoInputRef.current) photoInputRef.current.value = ''
   }
 
+  // ── PVOND (fondateur 18/08) — section « Fiche technique » ──────────────────
+  // Complétée en SECOND, après le produit, exactement comme la photo APX18 :
+  // un échec d'enregistrement de la fiche ne perd JAMAIS le produit déjà
+  // sauvegardé. `ficheId` = id de la `FicheTechnique` (PV5) existante, ou
+  // `null` si ce produit n'en a pas encore. `ficheChargee` évite d'afficher
+  // l'indicateur de complétude une fraction de seconde avec des champs
+  // encore vides pendant le chargement (même garde que ProduitDetail.jsx).
+  const [ficheId, setFicheId] = useState(null)
+  const [ficheFields, setFicheFields] = useState(ficheFieldsVides())
+  const [ficheChargee, setFicheChargee] = useState(!isEdit)
+
+  useEffect(() => {
+    if (!isEdit || !produit?.id) { setFicheChargee(true); return undefined }
+    let active = true
+    stockApi.getFichesTechniques(produit.id)
+      .then((r) => {
+        if (!active) return
+        const liste = r.data?.results ?? r.data ?? []
+        const f = liste[0] ?? null
+        setFicheId(f?.id ?? null)
+        setFicheFields(champsFicheDepuisServeur(f))
+        setFicheChargee(true)
+      })
+      .catch(() => { if (active) setFicheChargee(true) })
+    return () => { active = false }
+  }, [isEdit, produit?.id])
+
+  const setFicheField = (k, v) => setFicheFields((f) => ({ ...f, [k]: v }))
+
+  // Type détecté depuis le NOM tapé — même classification que le générateur
+  // de devis (`classifyProduct`, solar.js), jamais réimplémentée ici.
+  const ficheType = classifyProduct(fields.nom)
+  const estOnduleurHybride = ficheType === 'onduleur_hybride'
+  const estOnduleur = estOnduleurHybride || ficheType === 'onduleur_reseau'
+  const estPanneauFiche = ficheType === 'panneau'
+  const estBatterieFiche = ficheType === 'batterie'
+  const estPompeFiche = isPompe(fields.nom)
+  const afficherFicheTechnique = estOnduleur || estPanneauFiche || estBatterieFiche || estPompeFiche
+
+  // Plage de tension batterie : éditable ici UNIQUEMENT pour un onduleur
+  // HYBRIDE (règle fondateur 18/08) — un onduleur réseau n'en porte jamais.
+  // Elle vit dans une ligne marquée de `fields.description` (voir
+  // pvondFicheTechnique.js) faute de champ dédié sur FicheTechnique ; pour un
+  // onduleur réseau non-hybride, on retombe sur l'état SERVEUR déjà connu
+  // (non éditable depuis cet écran).
+  const plageBatterieActuelle = estOnduleurHybride ? lirePlageBatterieDescription(fields.description) : null
+  const plageBatterieAbsente = estOnduleurHybride
+    ? !plageBatterieDeclaree(fields.description)
+    : (produit?.specs_solaire?.plage_batterie_v == null)
+  // PVOND — verrou de complétude, recalculé EN LOCAL pendant la frappe :
+  // l'exact miroir de la bannière « Onduleur(s) non chiffrable(s) » du
+  // générateur de devis (`onduleurSpecsManquantes`, solar.js), qui ne lit
+  // que le dernier état SERVEUR — remplir ce formulaire éteint donc
+  // visiblement l'avertissement avant même l'enregistrement.
+  const manquantesOnduleur = estOnduleur
+    ? manquantesOnduleurLocal({ ficheFields, garantieTexte: fields.garantie, plageBatterieAbsente })
+    : []
+
   const dirty = isDirty(initialFieldsSnapshot, fields)
   useDirtyGuard(dirty)
 
@@ -571,6 +638,36 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
             : 'Produit enregistré, mais la photo n\'a pas pu être envoyée.')
         }
       }
+      // PVOND (fondateur 18/08) — la fiche technique part en SECOND elle
+      // aussi, même patron que la photo : un échec ne perd JAMAIS le produit
+      // déjà enregistré. On n'écrit que si le type a un bloc FicheTechnique
+      // ET qu'il y a quelque chose à écrire (au moins un champ rempli, ou une
+      // fiche existante à mettre à jour — y compris pour la vider).
+      const typeFicheServeur = typeFicheBackend(ficheType)
+      if (cibleId && typeFicheServeur) {
+        const payloadFiche = champsFichePourType(ficheType, ficheFields)
+        const aDesDonnees = Object.values(payloadFiche).some((v) => v !== null)
+        if (aDesDonnees || ficheId) {
+          try {
+            if (ficheId) {
+              // `type_fiche` est reposé à chaque enregistrement : si le nom
+              // tapé a changé de classification (onduleur → panneau…) entre
+              // deux modifications, la fiche existante suit plutôt que de
+              // rester étiquetée sur l'ancien type pendant que ces champs du
+              // NOUVEAU type s'y écrivent.
+              await stockApi.updateFicheTechnique(
+                ficheId, { type_fiche: typeFicheServeur, ...payloadFiche })
+            } else {
+              const resFiche = await stockApi.createFicheTechnique({
+                produit: cibleId, type_fiche: typeFicheServeur, ...payloadFiche,
+              })
+              setFicheId(resFiche.data?.id ?? null)
+            }
+          } catch {
+            toast.error('Produit enregistré, mais la fiche technique n\'a pas pu être enregistrée.')
+          }
+        }
+      }
       onSaved?.()
       // VX92 — « Créer un autre » (uniquement à la création) : on vide le
       // formulaire et on refocalise le champ 1 au lieu de fermer le dialog.
@@ -585,6 +682,10 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
         // APX18 — le produit SUIVANT repart sans photo (sinon la photo du
         // précédent serait re-téléversée en boucle).
         retirerPhoto()
+        // PVOND — le produit SUIVANT repart sans fiche technique (sinon
+        // celle du précédent serait ré-écrite dessus).
+        setFicheId(null)
+        setFicheFields(ficheFieldsVides())
         nomRef.current?.focus()
       } else {
         onClose()
@@ -895,6 +996,231 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
                      placeholder="ex : 300 (panneaux, 25 ans)" />
             </FormField>
           </FormSection>
+
+          {/* PVOND (fondateur 18/08) — « Fiche technique » : la promesse de
+              ProduitDetail.jsx (« se modifie depuis l'édition du produit »)
+              enfin tenue. Section par TYPE, auto-détecté depuis le nom tapé —
+              rien à cocher, rien à ouvrir en plus. Chargée en attendant
+              `ficheChargee` pour ne jamais flasher un indicateur faux le
+              temps du chargement (édition). */}
+          {afficherFicheTechnique && ficheChargee && (
+            <FormSection
+              title="Fiche technique"
+              description={estOnduleur
+                ? "Ce que le générateur de devis exige pour chiffrer cet onduleur — les mêmes variables que sa bannière « à renseigner »."
+                : 'Caractéristiques techniques, lues par le dimensionnement et les fiches produits des devis.'}
+            >
+              {estOnduleur && (
+                <div className="sm:col-span-2">
+                  {manquantesOnduleur.length === 0 ? (
+                    <Badge tone="success">Chiffrable ✓</Badge>
+                  ) : (
+                    <Badge tone="warning">
+                      Non chiffrable — il manque : {manquantesOnduleur.join(', ')}
+                    </Badge>
+                  )}
+                </div>
+              )}
+
+              {estOnduleur && (
+                <>
+                  <FormField label="Puissance AC (kW)" htmlFor="pf-ft-ackw">
+                    <Input id="pf-ft-ackw" type="number" min="0" step="any" inputMode="decimal"
+                           value={ficheFields.ond_ac_kw}
+                           onChange={e => setFicheField('ond_ac_kw', e.target.value)} />
+                  </FormField>
+                  <FormField label="Phases" htmlFor="pf-ft-phases">
+                    <Select
+                      value={ficheFields.ond_phases || '__none'}
+                      onValueChange={v => setFicheField('ond_phases', v === '__none' ? '' : v)}
+                    >
+                      <SelectTrigger id="pf-ft-phases"><SelectValue placeholder="— Non renseigné —" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none">— Non renseigné —</SelectItem>
+                        <SelectItem value="1">Monophasé</SelectItem>
+                        <SelectItem value="3">Triphasé</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </FormField>
+                  <FormField label="Nombre d'entrées MPPT" htmlFor="pf-ft-nmppt">
+                    <Input id="pf-ft-nmppt" type="number" min="0" step="any" inputMode="decimal"
+                           value={ficheFields.ond_n_mppt}
+                           onChange={e => setFicheField('ond_n_mppt', e.target.value)} />
+                  </FormField>
+                  <FormField label="Courant maxi par MPPT (A)" htmlFor="pf-ft-imax">
+                    <Input id="pf-ft-imax" type="number" min="0" step="any" inputMode="decimal"
+                           value={ficheFields.ond_i_max_mppt_a}
+                           onChange={e => setFicheField('ond_i_max_mppt_a', e.target.value)} />
+                  </FormField>
+                  <FormField label="Plage MPPT — tension mini (V)" htmlFor="pf-ft-mpptmin">
+                    <Input id="pf-ft-mpptmin" type="number" min="0" step="any" inputMode="decimal"
+                           value={ficheFields.ond_mppt_v_min}
+                           onChange={e => setFicheField('ond_mppt_v_min', e.target.value)} />
+                  </FormField>
+                  <FormField label="Plage MPPT — tension maxi (V)" htmlFor="pf-ft-mpptmax">
+                    <Input id="pf-ft-mpptmax" type="number" min="0" step="any" inputMode="decimal"
+                           value={ficheFields.ond_mppt_v_max}
+                           onChange={e => setFicheField('ond_mppt_v_max', e.target.value)} />
+                  </FormField>
+                  <FormField label="Tension DC maximale (V)" htmlFor="pf-ft-vmax">
+                    <Input id="pf-ft-vmax" type="number" min="0" step="any" inputMode="decimal"
+                           value={ficheFields.ond_v_max_abs}
+                           onChange={e => setFicheField('ond_v_max_abs', e.target.value)} />
+                  </FormField>
+                  <FormField label="Rendement européen (%)" htmlFor="pf-ft-rend">
+                    <Input id="pf-ft-rend" type="number" min="0" step="any" inputMode="decimal"
+                           value={ficheFields.ond_rendement_euro_pct}
+                           onChange={e => setFicheField('ond_rendement_euro_pct', e.target.value)} />
+                  </FormField>
+                  {!fields.garantie.trim() && (
+                    <p className="sm:col-span-2 text-xs text-muted-foreground">
+                      Garantie constructeur — renseignez le champ « Texte de garantie »
+                      ci-dessus (section Garantie) : c&apos;est lui que lit le contrat.
+                    </p>
+                  )}
+
+                  {/* Plage de tension batterie — HYBRIDE uniquement (règle
+                      fondateur 18/08). Pas de champ dédié côté serveur :
+                      cette valeur vit dans une ligne marquée de la
+                      description ci-dessus (voir pvondFicheTechnique.js) —
+                      ce mini-contrôle ne fait qu'éviter la faute de frappe
+                      sur le format, la donnée reste la MÊME ligne de texte. */}
+                  {estOnduleurHybride && (
+                    <div className="sm:col-span-2 flex flex-col gap-2 border-t border-border pt-3">
+                      <Label>Plage de tension batterie (hybride)</Label>
+                      <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Switch
+                          checked={!!plageBatterieActuelle?.aucune}
+                          onCheckedChange={(v) => setField('description', ecrirePlageBatterieDescription(
+                            fields.description,
+                            { aucune: v, min: plageBatterieActuelle?.min, max: plageBatterieActuelle?.max },
+                          ))}
+                          aria-label="Aucune batterie compatible (onduleur réseau)"
+                        />
+                        Aucune batterie compatible
+                      </label>
+                      {!plageBatterieActuelle?.aucune && (
+                        <div className="flex flex-wrap gap-2">
+                          <Input
+                            type="number" min="0" step="any" inputMode="decimal" className="w-32"
+                            placeholder="mini (V)" aria-label="Plage batterie — tension mini (V)"
+                            value={plageBatterieActuelle?.min ?? ''}
+                            onChange={e => setField('description', ecrirePlageBatterieDescription(
+                              fields.description,
+                              { aucune: false, min: e.target.value, max: plageBatterieActuelle?.max },
+                            ))}
+                          />
+                          <Input
+                            type="number" min="0" step="any" inputMode="decimal" className="w-32"
+                            placeholder="maxi (V)" aria-label="Plage batterie — tension maxi (V)"
+                            value={plageBatterieActuelle?.max ?? ''}
+                            onChange={e => setField('description', ecrirePlageBatterieDescription(
+                              fields.description,
+                              { aucune: false, min: plageBatterieActuelle?.min, max: e.target.value },
+                            ))}
+                          />
+                        </div>
+                      )}
+                      <p className="text-xs text-muted-foreground">
+                        Enregistrée comme une ligne dans la description ci-dessus
+                        (« {MARQUEUR_PLAGE_BATTERIE} … ») — c&apos;est elle qui décide
+                        quelle batterie s&apos;accroche à cet onduleur.
+                      </p>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {estPanneauFiche && (
+                <>
+                  <FormField label="Puissance crête (Wc)" htmlFor="pf-ft-pmax">
+                    <Input id="pf-ft-pmax" type="number" min="0" step="any" inputMode="decimal"
+                           value={ficheFields.pmax_wc}
+                           onChange={e => setFicheField('pmax_wc', e.target.value)} />
+                  </FormField>
+                  <FormField label="Longueur (mm)" htmlFor="pf-ft-long">
+                    <Input id="pf-ft-long" type="number" min="0" step="any" inputMode="decimal"
+                           value={ficheFields.longueur_mm}
+                           onChange={e => setFicheField('longueur_mm', e.target.value)} />
+                  </FormField>
+                  <FormField label="Largeur (mm)" htmlFor="pf-ft-larg">
+                    <Input id="pf-ft-larg" type="number" min="0" step="any" inputMode="decimal"
+                           value={ficheFields.largeur_mm}
+                           onChange={e => setFicheField('largeur_mm', e.target.value)} />
+                  </FormField>
+                  <p className="sm:col-span-2 text-xs text-muted-foreground">
+                    Garantie produit/performance : champs « Texte de garantie » et
+                    « Garantie production (mois) » ci-dessus.
+                  </p>
+                </>
+              )}
+
+              {estBatterieFiche && (
+                <>
+                  <FormField label="Capacité nominale (kWh)" htmlFor="pf-ft-kwhnom">
+                    <Input id="pf-ft-kwhnom" type="number" min="0" step="any" inputMode="decimal"
+                           value={ficheFields.bat_kwh_nominal}
+                           onChange={e => setFicheField('bat_kwh_nominal', e.target.value)} />
+                  </FormField>
+                  <FormField label="Capacité utilisable (kWh)" htmlFor="pf-ft-kwhutil">
+                    <Input id="pf-ft-kwhutil" type="number" min="0" step="any" inputMode="decimal"
+                           value={ficheFields.bat_kwh_usable}
+                           onChange={e => setFicheField('bat_kwh_usable', e.target.value)} />
+                  </FormField>
+                  <FormField label="Tension nominale (V)" htmlFor="pf-ft-vnom">
+                    <Input id="pf-ft-vnom" type="number" min="0" step="any" inputMode="decimal"
+                           value={ficheFields.bat_v_nominal}
+                           onChange={e => setFicheField('bat_v_nominal', e.target.value)} />
+                  </FormField>
+                  <FormField label="Profondeur de décharge — plage utile (%)" htmlFor="pf-ft-dod">
+                    <Input id="pf-ft-dod" type="number" min="0" step="any" inputMode="decimal"
+                           value={ficheFields.bat_dod_pct}
+                           onChange={e => setFicheField('bat_dod_pct', e.target.value)} />
+                  </FormField>
+                </>
+              )}
+
+              {estPompeFiche && (
+                <div className="sm:col-span-2 flex flex-col gap-2">
+                  {isEdit ? (
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-lg border border-border p-3 text-sm sm:grid-cols-3">
+                      {[
+                        ['Puissance (CV)', produit?.pompe_cv],
+                        ['HMT max (m)', produit?.hmt_m],
+                        ['Débit indicatif (m³/j)', produit?.debit_m3j],
+                        ['Puissance (kW)', produit?.pompe_kw],
+                        ['Tension (V)', produit?.tension_v],
+                      ].map(([label, valeur]) => (
+                        <div key={label}>
+                          <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
+                          <p className={valeur != null && valeur !== '' ? 'text-foreground' : 'italic text-muted-foreground'}>
+                            {valeur != null && valeur !== '' ? String(valeur) : 'Non renseigné'}
+                          </p>
+                        </div>
+                      ))}
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-muted-foreground">Courbe constructeur</p>
+                        <p className={produit?.courbe_pompe ? 'text-foreground' : 'italic text-muted-foreground'}>
+                          {produit?.courbe_pompe?.debits_m3h?.length
+                            ? `${produit.courbe_pompe.debits_m3h.length} points`
+                            : 'Aucune'}
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      Courbe constructeur et caractéristiques de pompage — disponibles après
+                      la création du produit (saisie via le catalogue).
+                    </p>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    Lecture seule — ces valeurs viennent du catalogue (seed) et alimentent le
+                    dimensionnement du mode Agricole.
+                  </p>
+                </div>
+              )}
+            </FormSection>
+          )}
 
           {/* WIR67 — champs personnalisés (module « produit »). */}
           <CustomFieldsInput module="produit" value={customData} onChange={setCustomData} />

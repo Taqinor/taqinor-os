@@ -16,6 +16,10 @@ import {
   FICHE_ABSENTE, FICHE_PARTIELLE, FICHE_COMPLETE,
   completudeFiche, TON_FICHE, LABEL_FICHE,
 } from './ficheCompletude'
+// PVOND (fondateur 18/08) — même verrou de complétude que la bannière
+// « Onduleur(s) non chiffrable(s) » du générateur de devis : visible ICI,
+// avant qu'un onduleur incomplet ne surprenne un devis.
+import { onduleurSpecsManquantes } from '../../features/ventes/solar.js'
 
 /* ============================================================================
    J142 — Stock refonte : le catalogue produits passe au moteur DataTable
@@ -179,20 +183,34 @@ export function CatalogueTable({
       // le nom se tronque plus tôt qu'avant l'ajout du visuel.
       minWidth: 272,
       // Titre mobile (1re colonne) — vignette (APX18) + nom + SKU + marque.
-      cell: (value, p) => (
-        <div className="flex min-w-0 items-center gap-2.5">
-          <VignetteProduit produit={p} />
-          <div className="min-w-0">
-            <div className="truncate font-medium text-foreground">{p.nom}</div>
-            <div className="flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
-              {p.sku
-                ? <span className="font-mono">{p.sku}</span>
-                : <Badge tone="warning">SKU manquant</Badge>}
-              {(p.marque || '').trim() && <span>· {p.marque}</span>}
+      cell: (value, p) => {
+        // PVOND — onduleur GRISÉ par le verrou de complétude (même donnée
+        // que la bannière du générateur de devis, `produit.specs_solaire`,
+        // déjà servie par la liste des produits — aucun appel réseau de plus).
+        const manquantesOnduleur = onduleurSpecsManquantes(p)
+        return (
+          <div className="flex min-w-0 items-center gap-2.5">
+            <VignetteProduit produit={p} />
+            <div className="min-w-0">
+              <div className="truncate font-medium text-foreground">{p.nom}</div>
+              <div className="flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
+                {p.sku
+                  ? <span className="font-mono">{p.sku}</span>
+                  : <Badge tone="warning">SKU manquant</Badge>}
+                {(p.marque || '').trim() && <span>· {p.marque}</span>}
+                {manquantesOnduleur.length > 0 && (
+                  <Badge
+                    tone="warning"
+                    title={`Non chiffrable — il manque : ${manquantesOnduleur.join(', ')}`}
+                  >
+                    Non chiffrable
+                  </Badge>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      ),
+        )
+      },
       exportValue: (p) => `${p.nom}${p.sku ? ` (${p.sku})` : ''}`,
     },
     {
