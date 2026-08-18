@@ -253,6 +253,43 @@ CABLES_PROTECTIONS_VIDES = [
     ('Coffret AC',           'COF-AC',      100, 5),
 ]
 
+# ── PVG4 — Onduleur Deye 15 kW BASSE TENSION (décision fondateur 2026-08-18)
+# Série officielle Deye SUN-14/15/16/18/20K-SG05LP3-EU-SM2 (triphasé BASSE
+# TENSION 48 V, lancée 2024). Le catalogue n'avait que le palier 10 kW
+# (OND-H-DEY-10T, PV85) ; ce palier 15 kW COMPLÈTE la gamme LV SG05LP3 — À NE
+# PAS CONFONDRE avec OND-H-DEY-15T (gamme HAUTE TENSION SG01HP3, cf. la note
+# PVG4 « INCOMPATIBILITÉ MÉTIER » plus haut : deux appareils réels différents
+# au même palier de puissance, d'où un SKU et un nom distincts ici). PRIX
+# VOLONTAIREMENT VIDE (0) : à renseigner par le fondateur — même garde que
+# les pompes OSP / câbles PVG3 ci-dessus (``_has_price`` exclut le produit de
+# l'auto-composition, le générateur l'affiche grisé « prix à renseigner »).
+# (nom, sku, qte, seuil)
+ONDULEUR_DEYE_15K_LV_VIDE = [
+    ('Onduleur hybride Deye 15kW Triphasé Basse Tension', 'OND-DEY-15K-LV', 500, 5),
+]
+
+# ── Batterie Dyness HAUTE TENSION — 16 kWh (décision fondateur 2026-08-18) ──
+# Vendue PAR TRANCHE de 16 kWh, 3 000 DH/kWh (prix fondateur) → 48 000 DH TTC
+# la tranche ; rack et control box inclus dans le prix. Prix ACHAT
+# volontairement VIDE (0, non communiqué) : ne retire PAS le produit de
+# l'auto-composition (seul prix_vente=0 le ferait, cf. ``_has_price``) — ce
+# produit est un vrai article vendable, à la différence des pompes OSP/câbles.
+# Vérifié sur dyness.com/dyness.us (recherche 2026-08-18) : AUCUNE
+# configuration officielle Dyness ne fait exactement 16 kWh — Tower
+# T7/T10/T14/T17/T21 = 7,10/10,66/14,21/17,76/21,31 kWh, Orion = 9,9/14,9/19,9
+# kWh. Produit catalogue GÉNÉRIQUE (marque Dyness, capacité, prix,
+# description) SANS référence de modèle ni tension nominale inventées (règle
+# des faits vérifiés) — aucune ``FicheTechnique`` n'est donc créée pour ce SKU.
+# ⚠ HAUTE TENSION : ne doit JAMAIS être choisie par l'auto-composition
+# résidentielle BASSE TENSION (48 V, BAT-DEY-5/10) — garde posée côté
+# apps/ventes/services.py (mot-clé « haute tension » exclu du vivier
+# batterie, cf. ``_is_battery_basse_tension`` et le filtre dans
+# ``composition_residentielle``).
+# (nom, sku, sell_ttc, qte, seuil)
+BATTERIE_DYNESS_HV = [
+    ('Batterie Dyness haute tension — 16 kWh', 'BAT-DYN-HV-16', 48000, 500, 5),
+]
+
 _DESC_POMPE_IMM = ('Pompe immergée pour forage, corps inox\n'
                    'Pilotée par variateur solaire (AC, compatible champ PV)\n'
                    'Adaptée à l\'irrigation et l\'alimentation en eau agricole')
@@ -294,6 +331,19 @@ FICHES = {
                         'Monitoring Wi-Fi via Solarman Smart / Deye Cloud'),
     } for sku in ('OND-H-DEY-5M', 'OND-H-DEY-10M', 'OND-H-DEY-10T',
                   'OND-H-DEY-15T', 'OND-H-DEY-20T')},
+    # PVG4 — Onduleur Deye 15 kW BASSE TENSION (décision fondateur 2026-08-18,
+    # SUN-15K-SG05LP3-EU-SM2). Le modèle est donné directement par le
+    # fondateur (source WebFetch, pas une supposition) : l'addendum
+    # « Modèle confirmé fondateur : … » est posé automatiquement ci-dessous
+    # via MODELE_SUPPOSE_PVG4/MODELES_CONFIRMES_FONDATEUR, comme OND-H-DEY-10T.
+    'OND-DEY-15K-LV': {
+        'marque': 'Deye',
+        'garantie': 'Garantie constructeur 5 à 10 ans (selon site d\'installation)',
+        'description': ('Onduleur hybride Deye SUN-…K-SG05LP3, série basse tension 48 V (2024)\n'
+                        'Compatible batteries lithium/plomb 48 V (plage 40-60 V, BMS auto-adaptatif)\n'
+                        'Bascule secours (EPS/UPS), monitoring GPRS/WiFi/Bluetooth/4G/LAN\n'
+                        'Rendement max 97,6 % · rendement euro 97,0 %'),
+    },
     'PAN-CS-710': {
         'marque': 'Canadien Solar',
         'garantie': '12 ans produit · 30 ans performance linéaire (87,4 %)',
@@ -328,6 +378,19 @@ FICHES = {
         'marque': 'Gel',
         'garantie': 'Garantie 2 ans',
         'description': 'Batterie gel plomb étanche sans entretien, usage solaire',
+    },
+    # PVG4 — Batterie Dyness HAUTE TENSION, 16 kWh (décision fondateur
+    # 2026-08-18) : produit catalogue GÉNÉRIQUE (vérifié dyness.com/dyness.us,
+    # aucune configuration officielle ne fait 16 kWh — cf. le commentaire sur
+    # BATTERIE_DYNESS_HV plus haut). Pas de garantie sourcée : champ omis
+    # plutôt qu'inventé.
+    'BAT-DYN-HV-16': {
+        'marque': 'Dyness',
+        'description': ('Batterie Dyness haute tension, vendue par tranche de 16 kWh\n'
+                        'Rack et control box inclus dans le prix de la tranche\n'
+                        'Produit catalogue générique : aucune référence Dyness officielle '
+                        'ne correspond à 16 kWh (Tower/Orion) — modèle et tension nominale '
+                        'non renseignés, faute de source vérifiée'),
     },
     'STR-ACIER': {
         'garantie': 'Garantie 20 ans (structure)',
@@ -513,12 +576,16 @@ MODELE_SUPPOSE_PVG4 = {
     'OND-H-DEY-20T': 'Deye SUN-20K-SG01HP3-EU-AM2',      # solarhouse.bg + pretapower
     'BAT-DEY-5': 'Dyness DL5.0C',                        # dyness.com DL5.0C datasheet
     'BAT-DEY-10': 'Dyness Powerbox Pro/G2 10.24',        # inverter-warehouse.co.za
+    # PVG4 — décision fondateur 2026-08-18 : nouveau palier 15 kW basse
+    # tension, modèle donné DIRECTEMENT par le fondateur (pas une supposition
+    # à deviner) — CONFIRMÉ dès la première seed, comme le 10T ci-dessus.
+    'OND-DEY-15K-LV': 'Deye SUN-15K-SG05LP3-EU-SM2',     # deyeinverter.com datasheet_sun-14-20k-sg05lp3-eu-sm2_240601_en.pdf (2024-06-01)
 }
 # PV85 — SKU dont le modèle constructeur n'est PLUS une supposition : le
 # fondateur a tranché. Leur addendum de description dit « Modèle confirmé
 # fondateur : … » (pas « supposé … — à confirmer »), et c'est cette mention
 # qui autorise le moteur électrique à NOMMER l'appareil sur le schéma.
-MODELES_CONFIRMES_FONDATEUR = ('OND-H-DEY-10T',)
+MODELES_CONFIRMES_FONDATEUR = ('OND-H-DEY-10T', 'OND-DEY-15K-LV')
 
 # Ajoute la mention du modèle (supposé ou confirmé) à la description
 # commerciale existante (SKU déjà présent dans FICHES ci-dessus) — additif,
@@ -676,6 +743,27 @@ FICHES_TECHNIQUES = {
         'ond_mppt_v_min': Decimal('200.0'), 'ond_mppt_v_max': Decimal('650.0'),
         'ond_v_max_abs': Decimal('800.0'), 'ond_i_max_mppt_a': Decimal('26.0'),
         'ond_ac_kw': Decimal('10'), 'ond_phases': 3,
+        'ond_rendement_euro_pct': Decimal('97.0'),
+    },
+    # PV85 — Deye SUN-15K-SG05LP3-EU-SM2 (gamme BASSE TENSION SG05LP3,
+    # décision fondateur 2026-08-18 — complète le palier 10 kW déjà seedé
+    # OND-H-DEY-10T ci-dessus, même famille de datasheet).
+    # Source : datasheet officielle deyeinverter.com/deyeinverter/2024/06/01/
+    # datasheet_sun-14-20k-sg05lp3-eu-sm2_240601_en.pdf (2024-06-01), colonne
+    # SUN-15K-SG05LP3-EU-SM2. La plage MPPT/V max/nb de trackers et le
+    # rendement EURO sont donnés PARTAGÉS pour toute la famille SG05LP3
+    # (14-20K) par la datasheet elle-même — pas une extrapolation.
+    # NON seedés faute de champ sur FicheTechnique (jamais inventé, même
+    # garde que OND-H-DEY-10T) : tension de démarrage 160 V, plage batterie
+    # 40-60 V, 280 A charge/décharge, poids 50,6 kg.
+    'OND-DEY-15K-LV': {
+        'type_fiche': 'onduleur', 'ond_n_mppt': 2,
+        'ond_mppt_v_min': Decimal('160.0'), 'ond_mppt_v_max': Decimal('650.0'),
+        'ond_v_max_abs': Decimal('800.0'),
+        # Courant PV max = « 36+20 A » : valeur COMPOSÉE sur 2 trackers à
+        # répartition inégale (2/2+1 strings), pas un seul courant/MPPT
+        # propre → ond_i_max_mppt_a NULL, même raison que OND-R-HUA-15T.
+        'ond_ac_kw': Decimal('15'), 'ond_phases': 3,
         'ond_rendement_euro_pct': Decimal('97.0'),
     },
     'OND-H-DEY-15T': {
@@ -896,6 +984,60 @@ class Command(BaseCommand):
                 quantite=qte, quantite_avant=0, quantite_apres=qte,
                 reference='SEED-CATALOGUE',
                 note='Stock initial (câbles/protections — prix à renseigner)',
+            )
+            created.append(nom)
+
+        # ── Onduleur Deye 15 kW basse tension (SG05LP3) : PRIX VIDE (0) ──
+        # Même garde que les pompes OSP / câbles PVG3 ci-dessus : tant que
+        # prix_vente vaut 0, le produit est exclu du chiffrage automatique.
+        for nom, sku, qte, seuil in ONDULEUR_DEYE_15K_LV_VIDE:
+            if (Produit.objects.filter(company=company, sku=sku).exists()
+                    or Produit.objects.filter(
+                        company=company, nom__iexact=nom,
+                        is_archived=False).exists()):
+                skipped.append(nom)
+                continue
+            produit = Produit.objects.create(
+                company=company, nom=nom, sku=sku,
+                categorie=get_categorie(classify_categorie(nom)),
+                prix_achat=Decimal('0'),
+                prix_vente=Decimal('0'),  # à renseigner par le fondateur
+                quantite_stock=qte, seuil_alerte=seuil,
+                tva=Decimal('20.00'),
+            )
+            MouvementStock.objects.create(
+                company=company, produit=produit,
+                type_mouvement=MouvementStock.TypeMouvement.ENTREE,
+                quantite=qte, quantite_avant=0, quantite_apres=qte,
+                reference='SEED-CATALOGUE',
+                note='Stock initial (onduleur Deye 15kW LV — prix à renseigner)',
+            )
+            created.append(nom)
+
+        # ── Batterie Dyness haute tension — 16 kWh : prix vente RÉEL ──
+        # (3 000 DH/kWh, fondateur) ; prix achat vide (non communiqué).
+        for nom, sku, sell_ttc, qte, seuil in BATTERIE_DYNESS_HV:
+            if (Produit.objects.filter(company=company, sku=sku).exists()
+                    or Produit.objects.filter(
+                        company=company, nom__iexact=nom,
+                        is_archived=False).exists()):
+                skipped.append(nom)
+                continue
+            produit = Produit.objects.create(
+                company=company, nom=nom, sku=sku,
+                categorie=get_categorie(classify_categorie(nom)),
+                prix_achat=Decimal('0'),  # à renseigner par le fondateur
+                prix_vente=ht(sell_ttc),
+                quantite_stock=qte, seuil_alerte=seuil,
+                tva=Decimal('20.00'),
+                unite_stock='tranche',
+            )
+            MouvementStock.objects.create(
+                company=company, produit=produit,
+                type_mouvement=MouvementStock.TypeMouvement.ENTREE,
+                quantite=qte, quantite_avant=0, quantite_apres=qte,
+                reference='SEED-CATALOGUE',
+                note='Stock initial (batterie Dyness haute tension — 16 kWh)',
             )
             created.append(nom)
 

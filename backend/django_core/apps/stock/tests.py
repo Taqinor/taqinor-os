@@ -35,7 +35,8 @@ class TestSeedCatalogue(TestCase):
         seed(self.company)
         qs = Produit.objects.filter(company=self.company)
         # 31 solaire + 9 pompage + 16 VEICHI + 11 pompes OSP + 22 câbles/protections
-        self.assertEqual(qs.count(), 89)
+        # + 1 onduleur Deye 15kW LV (PVG4) + 1 batterie Dyness HV 16 kWh (PVG4)
+        self.assertEqual(qs.count(), 91)
         # Spot-check key items: HT price = simulator TTC / 1.2
         huawei_10t = qs.get(sku='OND-R-HUA-10T')
         self.assertEqual(huawei_10t.nom, 'Onduleur réseau Huawei 10kW Triphasé')
@@ -53,7 +54,7 @@ class TestSeedCatalogue(TestCase):
         # Traceability: one entry movement per product
         self.assertEqual(
             MouvementStock.objects.filter(
-                company=self.company, reference='SEED-CATALOGUE').count(), 89,
+                company=self.company, reference='SEED-CATALOGUE').count(), 91,
         )
 
     def test_fiches_and_pompage_seeded(self):
@@ -354,6 +355,95 @@ class TestSeedCatalogue(TestCase):
         priced = Produit.objects.get(company=self.company, sku='OND-R-HUA-10T')
         self.assertTrue(_has_price(priced))
 
+    # ── PVG4 — Onduleur Deye 15 kW basse tension (décision fondateur
+    # 2026-08-18, SUN-15K-SG05LP3-EU-SM2) ─────────────────────────────────
+    def test_pvg4_onduleur_deye_15k_lv_seeded_with_empty_price(self):
+        from apps.stock.models import FicheTechnique
+        from apps.ventes.services import _has_price
+        seed(self.company)
+        p = Produit.objects.get(company=self.company, sku='OND-DEY-15K-LV')
+        self.assertEqual(p.nom, 'Onduleur hybride Deye 15kW Triphasé Basse Tension')
+        self.assertEqual(p.prix_vente, Decimal('0'))   # à renseigner par le fondateur
+        self.assertEqual(p.prix_achat, Decimal('0'))
+        self.assertEqual(p.categorie.nom, 'Onduleurs hybrides')
+        self.assertEqual(p.marque, 'Deye')
+        self.assertIn('Modèle confirmé fondateur : Deye SUN-15K-SG05LP3-EU-SM2',
+                      p.description)
+        # Prix vide → exclu du chiffrage automatique (même garde que les OSP).
+        self.assertFalse(_has_price(p))
+
+        fiche = FicheTechnique.objects.get(produit=p)
+        self.assertEqual(fiche.type_fiche, 'onduleur')
+        self.assertEqual(fiche.ond_n_mppt, 2)
+        self.assertEqual(fiche.ond_mppt_v_min, Decimal('160.0'))
+        self.assertEqual(fiche.ond_mppt_v_max, Decimal('650.0'))
+        self.assertEqual(fiche.ond_v_max_abs, Decimal('800.0'))
+        self.assertEqual(fiche.ond_ac_kw, Decimal('15'))
+        self.assertEqual(fiche.ond_phases, 3)
+        self.assertEqual(fiche.ond_rendement_euro_pct, Decimal('97.0'))
+        # Courant composé sur 2 trackers à répartition inégale (36+20 A) :
+        # pas une valeur/MPPT propre, même règle que OND-R-HUA-15T.
+        self.assertIsNone(fiche.ond_i_max_mppt_a)
+
+    # ── PVG4 — Batterie Dyness haute tension, 16 kWh (décision fondateur
+    # 2026-08-18) ───────────────────────────────────────────────────────
+    def test_pvg4_batterie_dyness_hv_16kwh_seeded(self):
+        from apps.stock.models import FicheTechnique
+        from apps.ventes.services import _has_price
+        seed(self.company)
+        p = Produit.objects.get(company=self.company, sku='BAT-DYN-HV-16')
+        self.assertEqual(p.nom, 'Batterie Dyness haute tension — 16 kWh')
+        self.assertEqual(p.prix_vente, Decimal('40000.00'))   # 48 000 TTC / tranche
+        self.assertEqual(p.prix_achat, Decimal('0'))          # non communiqué
+        self.assertEqual(p.tva, Decimal('20.00'))
+        self.assertEqual(p.categorie.nom, 'Batteries')
+        self.assertEqual(p.marque, 'Dyness')
+        self.assertEqual(p.unite_stock, 'tranche')
+        self.assertIn('rack et control box', p.description.lower())
+        # Un vrai prix de vente → PAS exclu de l'auto-composition par _has_price
+        # (seul prix_vente=0 exclut — le prix d'achat vide n'y change rien).
+        self.assertTrue(_has_price(p))
+        # Aucune configuration Dyness officielle ne fait 16 kWh (vérifié) :
+        # aucun modèle inventé → aucune FicheTechnique créée pour ce SKU.
+        self.assertFalse(FicheTechnique.objects.filter(produit=p).exists())
+
+    def test_pvg4_new_products_idempotent_second_run(self):
+        seed(self.company)
+        seed(self.company)
+        self.assertEqual(
+            Produit.objects.filter(company=self.company, sku='OND-DEY-15K-LV').count(), 1)
+        self.assertEqual(
+            Produit.objects.filter(company=self.company, sku='BAT-DYN-HV-16').count(), 1)
+        bat = Produit.objects.get(company=self.company, sku='BAT-DYN-HV-16')
+        self.assertEqual(bat.prix_vente, Decimal('40000.00'))
+
+    def test_pvg4_batterie_dyness_hv_never_auto_selected_low_voltage(self):
+        """Garde fondateur (2026-08-18) : la batterie HAUTE TENSION ne doit
+        JAMAIS être choisie par l'auto-composition résidentielle basse
+        tension, même si elle devenait la moins chère du catalogue."""
+        from apps.ventes.services import (
+            _is_battery_basse_tension, _pick_product, composition_residentielle,
+            catalogue_de_la_societe)
+        seed(self.company)
+        hv = Produit.objects.get(company=self.company, sku='BAT-DYN-HV-16')
+        self.assertFalse(_is_battery_basse_tension(hv.nom))
+
+        # _pick_product (résynchronisation / from-layout) ne la retourne
+        # jamais, même artificiellement rendue la moins chère du catalogue.
+        hv.prix_vente = Decimal('1')
+        hv.save(update_fields=['prix_vente'])
+        picked = _pick_product(self.company, _is_battery_basse_tension)
+        self.assertIsNotNone(picked)
+        self.assertNotEqual(picked.sku, 'BAT-DYN-HV-16')
+
+        # Le vivier de composition_residentielle ne la retient pas non plus.
+        produits = catalogue_de_la_societe(self.company)
+        lignes = composition_residentielle(
+            produits, kwc=9.94, panel_watt=710, avec_batterie=True)
+        skus_batterie = [li.produit.sku for li in lignes
+                         if li.produit and 'batterie' in (li.produit.nom or '').lower()]
+        self.assertNotIn('BAT-DYN-HV-16', skus_batterie)
+
     def test_placeholder_coffrets_archived_prices_intact(self):
         # Un ancien coffret placeholder existant est archivé par le seeder
         # (autorisation fondateur) — jamais supprimé, prix jamais modifié.
@@ -385,7 +475,7 @@ class TestSeedCatalogue(TestCase):
         out = seed(self.company)
         self.assertEqual(
             Produit.objects.filter(company=self.company).count(), count_after_first)
-        self.assertIn('0 created, 89 already present', out)
+        self.assertIn('0 created, 91 already present', out)
 
     def test_never_overwrites_existing_product(self):
         # Pre-existing product with the same name but a different price
