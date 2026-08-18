@@ -64,6 +64,55 @@ def is_residential(devis, options=None) -> bool:
     return True
 
 
+# ── PVCOV (fondateur, 18/08/2026) — LA synthèse économies/couverture, extraite
+# pour être servie TELLE QUELLE à la proposition en ligne (public_views) : la
+# page web et la couverture du PDF lisent ainsi le MÊME calcul — le « −85 % »
+# et la donut de couverture ne peuvent plus diverger entre les deux supports.
+# Fonction PURE (dict → dict | None) : aucun accès BD, aucune dépendance lourde.
+def synthese_economies(data: dict) -> dict | None:
+    """Avant/après facture + couverture solaire, formules de la page 1 du PDF.
+
+    Retourne None quand le devis n'a pas la forme requise (12 factures
+    mensuelles, économies mensuelles, production) — l'appelant public sert
+    alors des None et la page web n'affiche rien, jamais un chiffre inventé.
+    """
+    try:
+        before = list(data.get("factures_mensuelles") or [])
+        eco_m = list(data.get("eco_a_monthly") or [])
+        prod_kwh = data.get("prod_kwh") or 0
+        if len(before) != 12 or len(eco_m) != 12 or not prod_kwh:
+            return None
+        after = [max(0, round(b - s)) for b, s in zip(before, eco_m)]
+        annual_before, annual_after = sum(before), sum(after)
+        if annual_before <= 0:
+            return None
+        # Même formule que la couverture (cover.py) : « facture réduite de X % ».
+        pct_cut = round((1 - annual_after / max(1, annual_before)) * 100)
+        # QX7a — couverture HONNÊTE : conso réelle d'abord, sinon dérivée de la
+        # facture au tarif réel ; plancher 1 %, plafond 100 %, drapeau
+        # « estimation » quand la conso n'est pas mesurée.
+        conso_kwh = data.get("conso_annuelle_kwh")
+        coverage_estimated = False
+        if conso_kwh and conso_kwh > 0:
+            conso = conso_kwh
+        else:
+            tarif = data.get("tarif_kwh") or 0
+            if tarif and tarif > 0:
+                conso = max(1, round(annual_before / float(tarif)))
+            else:
+                conso = max(1, round(annual_before))  # dernier repli (1 MAD/kWh)
+            coverage_estimated = True
+        coverage = min(100, max(1, round(prod_kwh / conso * 100)))
+        return {
+            "bills_before": before, "bills_after": after,
+            "annual_before": annual_before, "annual_after": annual_after,
+            "pct_cut": pct_cut,
+            "coverage_pct": coverage, "coverage_estimated": coverage_estimated,
+        }
+    except (TypeError, ValueError):
+        return None
+
+
 def _augment(data: dict) -> dict:
     """Add the redesigned layout's derived fields onto the built quote data,
     raising Unsupported if the devis isn't the residential two-option shape."""
@@ -76,33 +125,13 @@ def _augment(data: dict) -> dict:
         if data.get(k) in (None, "", [], 0):
             raise Unsupported(f"missing quote field: {k}")
 
-    before = list(data["factures_mensuelles"])
-    if len(before) != 12:
+    if len(data["factures_mensuelles"]) != 12:
         raise Unsupported("need 12 monthly bills for the avant/après chart")
-    after = [max(0, round(b - s)) for b, s in zip(before, data["eco_a_monthly"])]
-    annual_before, annual_after = sum(before), sum(after)
-    if annual_before <= 0:
+    # PVCOV — le calcul vit dans synthese_economies (servi tel quel à la
+    # proposition en ligne) ; _augment ne fait plus que le consommer.
+    synth = synthese_economies(data)
+    if synth is None:
         raise Unsupported("no bill baseline")
-
-    # ── QX7a — couverture solaire HONNÊTE (plus de diviseur /1.3 fabriqué) ────
-    # Priorité 1 : consommation annuelle RÉELLE (kWh) fournie par le builder
-    # (étude / vraie facture). Priorité 2 : dérivée de la facture annuelle au
-    # tarif kWh RÉEL (roi.tarif_kwh) — pas d'un 1.3 inventé. Le résultat n'est
-    # PLUS planché à 40 % : une petite installation affiche sa vraie couverture.
-    # Quand la conso n'est qu'une estimation (dérivée d'une facture), on pose un
-    # drapeau pour l'étiqueter « estimation » sur la donut.
-    conso_kwh = data.get("conso_annuelle_kwh")
-    coverage_estimated = False
-    if conso_kwh and conso_kwh > 0:
-        conso = conso_kwh
-    else:
-        tarif = data.get("tarif_kwh") or 0
-        if tarif and tarif > 0:
-            conso = max(1, round(annual_before / float(tarif)))
-        else:
-            conso = max(1, round(annual_before))  # dernier repli (1 MAD/kWh)
-        coverage_estimated = True
-    coverage = min(100, max(1, round(data["prod_kwh"] / conso * 100)))
 
     d = dict(data)
     d.setdefault("client_full", d.get("client_name") or "Client")
@@ -133,12 +162,7 @@ def _augment(data: dict) -> dict:
     links = {**_default_links, **{k: v for k, v in _existing_links.items() if v}}
 
     d.update({
-        "bills_before": before, "bills_after": after,
-        "annual_before": annual_before, "annual_after": annual_after,
-        "coverage_pct": coverage,
-        # QX7a — la couverture est une estimation quand la conso réelle est
-        # inconnue (dérivée d'une facture) → la donut l'étiquette honnêtement.
-        "coverage_estimated": coverage_estimated,
+        **synth,
         "validity_days": d.get("validity_days", 30),
         "site_url": site_url,
         "links": links,

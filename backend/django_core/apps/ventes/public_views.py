@@ -1057,6 +1057,10 @@ def proposal_data(request, token):
         # ci-dessous en sort. Devis sans simulation → dict inchangé.
         bankable = _bankable_headline(devis, data)
         data = _sans_internes_bancables(data)
+        # PVCOV — synthèse économies/couverture, calculée par LE code de la
+        # page 1 du PDF (import paresseux : frontière quote_engine).
+        from .quote_engine.residential.renderer import synthese_economies
+        synthese = synthese_economies(data)
         # PV86 — VÉRITÉ UNIQUE : la charge utile publique ne transporte QUE les
         # totaux/lignes de l'option réellement proposée. Un devis mono-option
         # laissait passer le second panier (calculé pour le découpage interne) :
@@ -1142,6 +1146,18 @@ def proposal_data(request, token):
             'facture_sans_solaire': data.get('facture_sans_solaire'),
             'facture_avec_solaire_s': data.get('facture_avec_solaire_s'),
             'facture_avec_solaire_a': data.get('facture_avec_solaire_a'),
+            # PVCOV (fondateur, 18/08/2026) — le « −N % », l'avant/après annuel
+            # et la donut de couverture viennent du MÊME calcul que la page 1
+            # du PDF (residential/renderer.synthese_economies) : la page web ne
+            # recalcule RIEN, elle affiche ces valeurs servies — PDF et lien
+            # client ne peuvent plus diverger. None quand le devis n'a pas la
+            # forme requise (la page n'affiche alors rien, jamais un chiffre
+            # inventé). Jamais de prix d'achat/marge (RULE #4).
+            'pct_cut': (synthese or {}).get('pct_cut'),
+            'annual_before': (synthese or {}).get('annual_before'),
+            'annual_after': (synthese or {}).get('annual_after'),
+            'coverage_pct': (synthese or {}).get('coverage_pct'),
+            'coverage_estimated': (synthese or {}).get('coverage_estimated'),
             # QJ29/QJ30 — multi-propriétés (rendu web) : ×N villas identiques
             # (multiplicateur + totaux mis à l'échelle) et/ou sections par-villa
             # (sous-totaux + total général). Absents quand le devis n'est pas
