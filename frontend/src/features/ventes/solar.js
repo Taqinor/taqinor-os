@@ -42,6 +42,17 @@ export const PRODUCTIBLE_PAR_VILLE = {
   tanger: 1634,
 }
 export const DEFAULT_PRODUCTIBLE = 1651 // Casablanca (centre zone de service)
+
+// ── Pertes système : 20 % AU TOTAL (ordre fondateur, 18/08) — MIROIR pricing.py
+// Les productibles ci-dessus sont des sorties PVGIS demandées à `loss=14`
+// (cf. backend apps/parametres/pvgis.py) : 14 % de pertes sont DÉJÀ dedans.
+// Le fondateur fixe le total à 20 % → on applique le seul COMPLÉMENT,
+// (1 − 20 %)/(1 − 14 %) ≈ 0,9302, pour passer d'un productible « net à 14 % »
+// à un productible « net à 20 % ». Le chemin historique GHI × EFFICIENCY (0,8)
+// porte DÉJÀ les 20 % : il n'est pas touché (sinon on compterait deux fois).
+export const SYSTEM_LOSS_TOTAL = 0.20   // pertes système TOTALES (fondateur 18/08)
+export const PVGIS_BUILTIN_LOSS = 0.14  // pertes déjà incluses dans le productible
+export const PRODUCTIBLE_NET_FACTOR = (1 - SYSTEM_LOSS_TOTAL) / (1 - PVGIS_BUILTIN_LOSS)
 const _PRODUCTIBLE_HISTORICAL_DEFAULT = 1600
 const _CITY_ALIASES = {
   casa: 'casablanca', kenitra: 'rabat', sale: 'rabat', salé: 'rabat',
@@ -308,12 +319,17 @@ export function autoconsoAvecRatio(productionAnnuelleKwh, batteryKwh, {
 }
 
 // ── QX39 — cashflow 25 ans honnête (MIROIR backend pricing.py) ───────────────
-// Mêmes hypothèses documentées : dégradation panneau, escalade tarifaire,
-// rendement batterie, remplacement onduleur optionnel. Le payback = croisement
+// Mêmes hypothèses documentées : dégradation panneau, tarif CONSTANT (aucune
+// hausse supposée), rendement batterie, remplacement onduleur optionnel. Le payback = croisement
 // du cumul à zéro. Écran, PDF et proposition web affichent le MÊME payback.
 export const CASHFLOW_YEARS = 25
 export const PANEL_DEGRADATION = 0.005
-export const TARIFF_ESCALATION = 0.02
+// ALIGNEMENT 18/08 — QRES54 (aucune hausse tarifaire supposée) n'avait été
+// appliqué qu'au backend : l'écran promettait +2 %/an alors que le PDF et la
+// page proposition écrivent « projection à tarif constant ». On dit VRAI des
+// deux côtés — la constante reste exportée, à 0 (miroir pricing.py).
+// Toute hausse réelle du tarif ne peut qu'améliorer le résultat du client.
+export const TARIFF_ESCALATION = 0.0
 export const BATTERY_ROUNDTRIP = 0.90
 export const INVERTER_REPLACE_YEAR = 12
 export const INVERTER_REPLACE_FRACTION = 0.08
@@ -389,8 +405,10 @@ export function computeROI({
 
   for (let i = 0; i < 12; i++) {
     const prodKwh = useProductible
-      ? (PROD * kwp) * (GHI[i] / GHI_SUM)   // productible réparti par forme GHI
-      : GHI[i] * kwp * EFF
+      // Productible stocké (net à 14 %) ramené aux 20 % de pertes TOTALES du
+      // fondateur (PRODUCTIBLE_NET_FACTOR), puis réparti par la forme GHI.
+      ? (PROD * PRODUCTIBLE_NET_FACTOR * kwp) * (GHI[i] / GHI_SUM)
+      : GHI[i] * kwp * EFF   // chemin historique : EFFICIENCY = 0,8 EST déjà 20 %
     productionAnnuelle += prodKwh
     const selfConsumed = prodKwh * dayPct
     const ecoSans = selfConsumed * PRICE
@@ -420,10 +438,15 @@ export function computeROI({
   // QF2/QF5 — modèle « deux factures » (réel, par tranche) quand consommation
   // ET barème sont disponibles. Remplace l'estimation ci-dessus par l'économie
   // réelle facture_sans − facture_avec (jamais les deux mélangés).
+  // PARITÉ ÉCRAN/PDF AU DIRHAM : le moteur PDF arrondit la production annuelle
+  // à l'entier AVANT le modèle par tranches (pricing.calculate_savings_roi).
+  // L'écran fait donc pareil — sinon les deux tombent de part et d'autre d'un
+  // arrondi de tranche et affichent 1 MAD d'écart pour les mêmes entrées.
+  const productionCanonique = Math.round(productionAnnuelle)
   // Le taux « avec batterie » est DÉRIVÉ de la capacité réelle du devis
   // (ordre fondateur 18/08) : 60 % + capacité × 1 cycle/jour, plafonné par la
   // production ET par la consommation. Sans capacité connue → repli documenté.
-  const autoconsoAvec = autoconsoAvecRatio(productionAnnuelle, batteryKwh, {
+  const autoconsoAvec = autoconsoAvecRatio(productionCanonique, batteryKwh, {
     consoAnnuelleKwh,
   })
   // Taux EFFECTIVEMENT appliqués (pour affichage/transparence) : dans le
@@ -436,8 +459,8 @@ export function computeROI({
   let savingsModel = 'estimation'
   let factureSans = null, factureAvecSans = null, factureAvecAvec = null
   if (productionAnnuelle > 0 && consoAnnuelleKwh > 0 && utility) {
-    const tbSans = twoBillsSavings(productionAnnuelle, consoAnnuelleKwh, AUTOCONSO_SANS, utility)
-    const tbAvec = twoBillsSavings(productionAnnuelle, consoAnnuelleKwh, autoconsoAvec, utility)
+    const tbSans = twoBillsSavings(productionCanonique, consoAnnuelleKwh, AUTOCONSO_SANS, utility)
+    const tbAvec = twoBillsSavings(productionCanonique, consoAnnuelleKwh, autoconsoAvec, utility)
     if (tbSans && tbAvec) {
       savingsModel = 'factures'
       autoconsoSansEff = AUTOCONSO_SANS

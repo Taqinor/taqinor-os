@@ -120,11 +120,19 @@ def autoconso_avec_ratio(
     return ratio
 
 
-# QRES54 (fondateur, 2026-07-18) — pertes système : la production BRUTE
-# (kWc × productible) est réduite de 14 % (ombrage, température, câblage,
-# onduleur, salissure) AVANT tout calcul d'économies — le simulateur du
-# fondateur raisonne sur cette production NETTE.
-PRODUCTION_DERATE = 0.86
+# ── Pertes système : 20 % AU TOTAL (ordre fondateur, 18/08) ─────────────────
+# QRES54 (2026-07-18) déduisait 14 % de plus du productible stocké — c'était un
+# DOUBLE COMPTAGE : les productibles de ``productible.py`` (1651 Casablanca…)
+# sont des sorties PVGIS demandées à ``loss=14`` (cf. apps/parametres/pvgis.py),
+# donc 14 % de pertes sont DÉJÀ dedans. Le fondateur fixe le total à 20 % :
+# on n'applique donc que le COMPLÉMENT, (1 − 20 %)/(1 − 14 %) ≈ 0,9302, pour
+# passer d'un productible « net à 14 % » à un productible « net à 20 % ».
+# Le nom PRODUCTION_DERATE est conservé (mêmes consommateurs), sa valeur
+# change : 0,86 (faux, 26 % cumulés) → 0,9302 (20 % au total, exact).
+# MIROIR solar.js SYSTEM_LOSS_TOTAL / PVGIS_BUILTIN_LOSS / PRODUCTIBLE_NET_FACTOR.
+SYSTEM_LOSS_TOTAL = 0.20      # pertes système TOTALES retenues (fondateur 18/08)
+PVGIS_BUILTIN_LOSS = 0.14     # pertes déjà incluses dans le productible stocké
+PRODUCTION_DERATE = (1 - SYSTEM_LOSS_TOTAL) / (1 - PVGIS_BUILTIN_LOSS)
 
 # Prix kWh ONEE de référence (FLAT) — utilisé quand AUCUNE donnée de conso n'est
 # disponible. Valeur « raisonnable » de milieu de gamme ONEE ; le résultat est
@@ -549,9 +557,10 @@ def calculate_savings_roi(
     """
     # DC2 — productible : repère société (CompanyProfile.productible_kwh_kwc)
     # quand fourni, sinon défaut historique 1240 (byte-identique).
-    # QRES54 — pertes système de 14 % déduites de la production brute
-    # (PRODUCTION_DERATE) : toute la chaîne (économies, factures par tranches,
-    # couverture, cashflow) raisonne sur la production NETTE.
+    # Pertes système 20 % AU TOTAL (fondateur 18/08) : le productible stocké
+    # étant déjà net de 14 % (PVGIS loss=14), on n'applique que le complément
+    # PRODUCTION_DERATE ≈ 0,9302. Toute la chaîne (économies, factures par
+    # tranches, couverture, cashflow) raisonne sur cette production NETTE.
     prod_factor = float(productible) if productible and productible > 0 \
         else _DEFAULT_PRODUCTIBLE
     production_annuelle = round(

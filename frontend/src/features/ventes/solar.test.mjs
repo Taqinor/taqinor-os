@@ -17,6 +17,7 @@ import {
   computeEtudeIndustrielle,
   TARIF_MT_ONEE, tarifMtDisponible, tarifMtMoyen, normaliserRepartitionMt,
   isReseauInverter, batterieCompatible, DAYS_IN_MONTH,
+  PRODUCTIBLE_NET_FACTOR, TARIFF_ESCALATION,
 } from './solar.js'
 
 // Reflet du catalogue seedé (prix HT = TTC simulateur / 1.2, 2 décimales)
@@ -932,15 +933,20 @@ test('QX38 — productibleForCity : PVGIS par ville, repli central, override soc
   assert.equal(productibleForCity('Agadir', 1750), 1750)
 })
 
-test('QX38 — computeROI : production = productible × kwp (parité PDF/web)', () => {
+test('QX38 — computeROI : production = productible × kwp × pertes 20 % (parité PDF/web)', () => {
   const kwp = 7.1
   const roi = computeROI({
     kwp, factures: Array(12).fill(500), dayUsagePct: 60,
     totalSans: 80000, totalAvec: 100000, batteryKwh: 0,
     productible: productibleForCity('Agadir'),
   })
-  // production annuelle = 1687 × 7.1 (répartie par forme GHI, somme = total)
-  assert.equal(Math.round(roi.production_annuelle_kwh), Math.round(1687 * kwp))
+  // ORDRE FONDATEUR (18/08) — 20 % de pertes AU TOTAL : le productible stocké
+  // (PVGIS, déjà net de 14 %) ne subit que le complément 0,80/0,86 = 0,9302.
+  // À la main : 1687 × 7,1 = 11 977,7 kWh bruts ; × 0,9302325581 = 11 142,05
+  // → 11 142 kWh/an (le PDF calcule EXACTEMENT la même chose).
+  assert.equal(Math.round(roi.production_annuelle_kwh),
+    Math.round(1687 * kwp * PRODUCTIBLE_NET_FACTOR))
+  assert.equal(Math.round(roi.production_annuelle_kwh), 11142)
 })
 
 // ── QX39 — cashflow 25 ans honnête (miroir backend pricing.py) ──────────────
@@ -951,6 +957,18 @@ test('QX39 — computeCashflowPayback : croisement du cumul à zéro (parité ba
   assert.ok(cf.cumulative[0] < 0)                 // année 1 encore négatif
   assert.ok(cf.cumulative[cf.cumulative.length - 1] > 0) // rentabilisé à 25 ans
   assert.ok(cf.netGain > 0)
+})
+
+test('QX39 — projection à TARIF CONSTANT (miroir pricing.py TARIFF_ESCALATION=0)', () => {
+  // ALIGNEMENT 18/08 — l'écran supposait +2 %/an alors que le PDF et la page
+  // proposition écrivent « projection à tarif constant » : le modèle doit FAIRE
+  // ce qu'il dit. Seule la dégradation panneau (0,5 %/an) érode les économies.
+  assert.equal(TARIFF_ESCALATION, 0)
+  const cf = computeCashflowPayback(50000, 10000)
+  // Année 1 : cumul = −50 000 + 10 000 = −40 000 (aucune indexation).
+  assert.equal(cf.cumulative[0], -40000)
+  // Année 2 : économie × (1 − 0,005) = 9 950 → cumul −30 050.
+  assert.equal(cf.cumulative[1], -30050)
 })
 
 test('QX39 — computeCashflowPayback : dégénéré → payback null', () => {
@@ -1047,8 +1065,12 @@ test('QF5 — computeROI : avec consommation réelle + distributeur, bascule sur
   assert.equal(roi.savings_model, 'factures')
   // Doit correspondre EXACTEMENT à twoBillsSavings appelé avec la même
   // production annuelle réellement calculée par computeROI (parité interne).
-  const refSans = twoBillsSavings(prodAnnuelle, consoAnnuelleKwh, AUTOCONSO_SANS, 'onee')
-  const refAvec = twoBillsSavings(prodAnnuelle, consoAnnuelleKwh, AUTOCONSO_AVEC, 'onee')
+  // ALIGNEMENT 18/08 — cette production est ARRONDIE à l'entier avant le modèle
+  // par tranches, comme le fait le moteur PDF (pricing.calculate_savings_roi) :
+  // écran et document tombent ainsi du même côté des arrondis de tranche.
+  const prodCanonique = Math.round(prodAnnuelle)
+  const refSans = twoBillsSavings(prodCanonique, consoAnnuelleKwh, AUTOCONSO_SANS, 'onee')
+  const refAvec = twoBillsSavings(prodCanonique, consoAnnuelleKwh, AUTOCONSO_AVEC, 'onee')
   assert.equal(roi.eco_annuelle_sans, refSans.economie)
   assert.equal(roi.eco_annuelle_avec, refAvec.economie)
   assert.equal(roi.facture_sans, refSans.factureSans)

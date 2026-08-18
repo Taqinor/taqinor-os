@@ -1188,12 +1188,17 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "surplus injecté n'est pas rémunéré (plafond d'injection 20 % "
         "intégré, rachat BT non publié).")
     if _prod_factor:
-        # QRES54 — production NETTE affichée : pertes système de 14 % déduites
-        # (PRODUCTION_DERATE), la même que TOUS les calculs du document.
+        # Production NETTE affichée, la même que TOUS les calculs du document :
+        # pertes système de 20 % AU TOTAL (ordre fondateur 18/08). Le chiffre
+        # rendu doit dire le total réel — l'ancienne mention « 14 % » était
+        # doublement fausse (elle nommait les seules pertes PVGIS alors que le
+        # moteur en retranchait 14 % de plus, soit 26 % cumulés).
         from .pricing import PRODUCTION_DERATE as _DERATE
+        from .pricing import SYSTEM_LOSS_TOTAL as _LOSS
         hypotheses.append(
             f"Production estimée : ≈ {_fr_int(_prod_factor * _DERATE)} "
-            "kWh par kWc et par an, pertes système de 14 % déduites.")
+            f"kWh par kWc et par an, pertes système de "
+            f"{int(round(_LOSS * 100))} % déduites.")
     _ac_s = roi.get("autoconso_sans")
     _ac_a = roi.get("autoconso_avec")
     if _ac_s and _ac_a:
