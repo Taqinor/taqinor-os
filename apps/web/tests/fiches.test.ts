@@ -1,6 +1,6 @@
 // Garde-fou des fiches techniques (W141–W145) : la bibliothèque /produits et
 // l'alignement des slugs avec le moteur de devis Django.
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -311,5 +311,166 @@ describe('W147 — fiche intégrée sur /produits/<slug>', () => {
 
   it('au moins une fiche a un PDF auto-hébergé à prévisualiser (sinon W147 est inerte)', () => {
     expect(FICHES.some((f) => f.pdf !== null)).toBe(true);
+  });
+});
+
+// ── PHOTOS D'ILLUSTRATION (fondateur 2026-08-18) ─────────────────────────────
+// Une fiche peut porter une photo — mais SEULEMENT si ses droits sont
+// vérifiables. Le registre `public/fiches/photos/CREDITS.md` est la source de
+// vérité (fichier · fiche · page source · auteur · licence · attribution
+// requise) et ces tests l'opposent à `fiches.ts` : déclarer une photo sans
+// l'inscrire au registre, ou l'y inscrire « attribution requise » sans rendre
+// de crédit, casse la suite.
+describe('photos des fiches — droits vérifiables', () => {
+  const PHOTOS_DIR = resolve(PUBLIC_DIR, 'fiches/photos');
+  const CREDITS_PATH = resolve(PHOTOS_DIR, 'CREDITS.md');
+
+  /** Une ligne du tableau de CREDITS.md, décodée. */
+  interface CreditRow {
+    fichier: string;
+    slug: string;
+    source: string;
+    auteur: string;
+    licence: string;
+    attributionRequise: boolean;
+  }
+
+  const credits: CreditRow[] = readFileSync(CREDITS_PATH, 'utf-8')
+    .split('\n')
+    .filter((ligne) => /^\|\s*`[^`]+\.(jpe?g|png|webp|avif)`\s*\|/i.test(ligne))
+    .map((ligne) => {
+      const cellules = ligne.split('|').slice(1, -1).map((c) => c.trim());
+      return {
+        fichier: cellules[0].replace(/`/g, ''),
+        slug: cellules[1].replace(/`/g, ''),
+        source: cellules[2],
+        auteur: cellules[3],
+        licence: cellules[4],
+        attributionRequise: /\boui\b/i.test(cellules[5]),
+      };
+    });
+
+  const avecPhoto = FICHES.filter((f) => f.photo);
+
+  // Les SEULES sources autorisées (règle fondateur) : Wikimedia Commons,
+  // Unsplash, Pexels. Une médiathèque constructeur exige une autorisation
+  // écrite pour l'usage commercial — elle n'entre jamais ici.
+  const HOTES_AUTORISES = ['commons.wikimedia.org', 'unsplash.com', 'pexels.com'];
+  // Familles de licences acceptées, telles qu'écrites au registre.
+  const LICENCES_OK = /(CC BY|CC BY-SA|CC0|domaine public|Unsplash|Pexels)/i;
+
+  it('le registre CREDITS.md existe et décrit au moins une image', () => {
+    expect(existsSync(CREDITS_PATH), `registre manquant : ${CREDITS_PATH}`).toBe(true);
+    expect(credits.length, 'aucune ligne d’image lisible dans CREDITS.md').toBeGreaterThan(0);
+  });
+
+  it('une photo est TOUJOURS auto-hébergée sous /fiches/photos (jamais un hotlink)', () => {
+    for (const f of avecPhoto) {
+      expect(f.photo!.startsWith('/fiches/photos/'), `chemin hors dossier : ${f.slug} → ${f.photo}`).toBe(true);
+      expect(f.photo!, `hotlink interdit sur ${f.slug}`).not.toMatch(/^https?:\/\//);
+    }
+  });
+
+  it('chaque photo déclarée existe réellement sur disque, et reste légère', () => {
+    for (const f of avecPhoto) {
+      const surDisque = resolve(PUBLIC_DIR, '.' + f.photo!);
+      expect(existsSync(surDisque), `fichier image manquant : ${surDisque}`).toBe(true);
+      // Garde-fou de poids : on sert l'original en attendant AVIF/WebP, il ne
+      // doit donc jamais être un 20 Mpx sorti tel quel de Commons.
+      const ko = statSync(surDisque).size / 1024;
+      expect(ko, `${f.photo} pèse ${Math.round(ko)} Ko`).toBeLessThan(400);
+    }
+  });
+
+  it('chaque photo est inscrite au registre, sur la bonne fiche, avec une source autorisée', () => {
+    for (const f of avecPhoto) {
+      const fichier = f.photo!.split('/').pop()!;
+      const ligne = credits.find((c) => c.fichier === fichier);
+      expect(ligne, `photo absente de CREDITS.md : ${fichier}`).toBeTruthy();
+      expect(ligne!.slug, `CREDITS.md rattache ${fichier} à la mauvaise fiche`).toBe(f.slug);
+      expect(ligne!.licence, `licence non reconnue pour ${fichier} : ${ligne!.licence}`).toMatch(LICENCES_OK);
+      expect(ligne!.source, `source non https pour ${fichier}`).toMatch(/https:\/\//);
+      expect(
+        HOTES_AUTORISES.some((h) => ligne!.source.includes(h)),
+        `source interdite pour ${fichier} : ${ligne!.source}`,
+      ).toBe(true);
+      expect(ligne!.auteur.length, `auteur manquant pour ${fichier}`).toBeGreaterThan(0);
+    }
+  });
+
+  // LA RÈGLE, encodée : licence à attribution ⇒ crédit obligatoire ; licence
+  // sans attribution ⇒ pas de crédit inventé.
+  it('licence à attribution ⇒ photoCredit obligatoire (et inversement)', () => {
+    for (const f of avecPhoto) {
+      const fichier = f.photo!.split('/').pop()!;
+      const ligne = credits.find((c) => c.fichier === fichier)!;
+      expect(
+        !!f.photoCredit,
+        ligne.attributionRequise
+          ? `photoCredit manquant alors que ${fichier} est sous ${ligne.licence}`
+          : `photoCredit inventé alors que ${fichier} n’exige aucune attribution`,
+      ).toBe(ligne.attributionRequise);
+    }
+  });
+
+  it('un photoCredit nomme l’auteur du registre ET sa licence', () => {
+    for (const f of avecPhoto) {
+      if (!f.photoCredit) continue;
+      const ligne = credits.find((c) => c.fichier === f.photo!.split('/').pop()!)!;
+      expect(f.photoCredit, `crédit sans « © » : ${f.slug}`).toContain('©');
+      expect(f.photoCredit, `crédit sans auteur : ${f.slug}`).toContain(ligne.auteur);
+      expect(f.photoCredit, `crédit sans licence : ${f.slug}`).toMatch(LICENCES_OK);
+    }
+  });
+
+  it('aucun photoCredit ne pend sans photo', () => {
+    for (const f of FICHES) {
+      if (f.photo) continue;
+      expect(f.photoCredit, `crédit orphelin sur ${f.slug}`).toBeUndefined();
+    }
+  });
+
+  it('les fiches de MARQUE restent sans photo (jamais le matériel d’un autre fabricant)', () => {
+    // Montrer un module ou un onduleur d'une AUTRE marque sous le nom du
+    // produit vendu serait un fait faux — règle « faits vérifiés uniquement ».
+    for (const slug of [
+      'canadian-solar-710', 'jinko-710', 'onduleur-deye-hybride',
+      'onduleur-huawei-reseau', 'batterie-dyness', 'smart-meter-huawei',
+      'wifi-dongle-huawei',
+    ]) {
+      expect(ficheBySlug(slug)!.photo, `photo générique sur une fiche de marque : ${slug}`).toBeUndefined();
+    }
+  });
+});
+
+describe('rendu de la photo sur /produits/<slug>', () => {
+  const slugPage = readFileSync(
+    resolve(dirname(fileURLToPath(import.meta.url)), '../src/pages/produits/[slug].astro'),
+    'utf-8',
+  );
+
+  it('la photo n’est rendue que si elle existe (absente = AUCUN changement)', () => {
+    expect(slugPage).toContain('{fiche.photo && (');
+    expect(slugPage).toContain('src={fiche.photo}');
+  });
+
+  it('l’image est lazy, décrite en français, et fluide', () => {
+    expect(slugPage).toMatch(/src=\{fiche\.photo\}[\s\S]{0,400}?loading="lazy"/);
+    expect(slugPage).toContain('alt={`${fiche.nom} — ${fiche.modele}`}');
+    expect(slugPage).toMatch(/w-full/);
+  });
+
+  it('la boîte réserve son ratio → zéro CLS même avant chargement', () => {
+    expect(slugPage).toMatch(/aspect-\[16\/9\]/);
+    expect(slugPage).toMatch(/object-cover/);
+  });
+
+  it('la ligne de crédit est discrète et conditionnelle', () => {
+    expect(slugPage).toContain('{fiche.photoCredit && (');
+    expect(slugPage).toMatch(/<figcaption[^>]*text-xs/);
+  });
+
+  it('l’optimisation AVIF/WebP différée est documentée dans le code', () => {
+    expect(slugPage).toContain('scripts/process-photos.mjs');
   });
 });

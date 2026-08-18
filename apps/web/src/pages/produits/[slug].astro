@@ -86,6 +86,40 @@ const jsonLd = {
         <p class="cine-in mt-2 text-sm text-lune-faint [animation-delay:200ms]">{fiche.modele}</p>
         <p class="v2-lead cine-in mt-5 max-w-2xl text-white/85 [animation-delay:280ms]">{fiche.resume}</p>
 
+        {/* ── PHOTO D'ILLUSTRATION (fondateur 2026-08-18) ─────────────────────
+            Rendue en TÊTE de fiche uniquement quand `fiche.photo` existe :
+            aucune fiche sans photo ne change d'un pixel (pas de cadre vide, pas
+            de placeholder). Les droits de chaque image sont vérifiables — le
+            registre fichier / source / auteur / licence vit dans
+            `public/fiches/photos/CREDITS.md`. La ligne de crédit n'apparaît que
+            si la licence EXIGE l'attribution (`photoCredit` renseigné) ; une
+            image du domaine public n'en porte pas.
+
+            Le conteneur fixe le ratio (aspect-[16/9] + object-cover) : la boîte
+            réserve sa hauteur AVANT le chargement → zéro CLS, et une photo
+            portrait comme paysage lit pareil.
+
+            NOTE — l'optimisation AVIF/WebP multi-largeurs
+            (`scripts/process-photos.mjs`, qui dépend de `sharp`) sera passée
+            sur une machine disposant de node : on sert l'original JPEG en
+            attendant. */}
+        {fiche.photo && (
+          <figure class="v2-rise mt-8">
+            <div class="aspect-[16/9] w-full overflow-hidden rounded border border-white/15 bg-white/5">
+              <img
+                src={fiche.photo}
+                alt={`${fiche.nom} — ${fiche.modele}`}
+                loading="lazy"
+                decoding="async"
+                class="h-full w-full object-cover"
+              />
+            </div>
+            {fiche.photoCredit && (
+              <figcaption class="mt-2 text-xs text-lune-faint">{fiche.photoCredit}</figcaption>
+            )}
+          </figure>
+        )}
+
         {/* ── GABARIT 7 BLOCS (fondateur 2026-08-18) ──────────────────────────
             1 rôle · 2 bénéfices · 3 specs · 4 normes · 5 garantie · 6 à vérifier
             · 7 FAQ. Les fiches PRODUIT (marquées) n'en portent que 3 et 5 : un

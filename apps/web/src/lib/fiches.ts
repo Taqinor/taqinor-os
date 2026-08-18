@@ -97,6 +97,25 @@ export interface Fiche {
   datasheet: string | null;
   /** Copie auto-hébergée `/fiches/<slug>.pdf` — null tant qu'elle n'est pas déposée. */
   pdf: string | null;
+  /**
+   * PHOTO d'illustration auto-hébergée sous `/fiches/photos/` (jamais un
+   * hotlink). Optionnelle et OMISE quand elle n'existe pas : une fiche sans
+   * photo juste ET libre de droits reste sans photo, jamais de remplissage.
+   *
+   * DROITS (règle fondateur 2026-08-18) : uniquement Wikimedia Commons
+   * (CC BY / CC BY-SA / CC0 / domaine public explicite), Unsplash ou Pexels.
+   * Jamais de média constructeur : leurs médiathèques exigent une autorisation
+   * écrite pour l'usage commercial. Le registre complet — fichier, URL de la
+   * page source, auteur, licence — vit dans
+   * `public/fiches/photos/CREDITS.md`.
+   */
+  photo?: string;
+  /**
+   * Ligne de crédit courte affichée sous la photo (« © Auteur — licence »)
+   * quand la licence EXIGE l'attribution (CC BY, CC BY-SA). Absent pour une
+   * image CC0 / domaine public, où aucune attribution n'est due.
+   */
+  photoCredit?: string;
 }
 
 export const FICHES: Fiche[] = [
@@ -284,6 +303,8 @@ export const FICHES: Fiche[] = [
     // plutôt que deviné (le contenu ci-dessus reste, lui, entièrement sourcé).
     datasheet: null,
     pdf: null,
+    photo: '/fiches/photos/structure-toiture-terrasse.jpg',
+    photoCredit: '© Asurnipal — Wikimedia Commons, CC BY-SA 4.0',
   },
   {
     slug: 'protection-dc',
@@ -343,6 +364,8 @@ export const FICHES: Fiche[] = [
     datasheet:
       'https://norminfo.afnor.org/norme/ute-c15-712-1/installations-electriques-a-basse-tension-guide-pratique-installations-photovoltaiques-sans-stockage-et-raccordees-au-reseau-public-de-distribution/105394',
     pdf: null,
+    photo: '/fiches/photos/coffret-protection-dc.jpg',
+    photoCredit: '© Asurnipal — Wikimedia Commons, CC BY-SA 4.0',
   },
   {
     slug: 'protection-ac',
@@ -398,6 +421,8 @@ export const FICHES: Fiche[] = [
     datasheet:
       'https://norminfo.afnor.org/norme/ute-c15-712-1/installations-electriques-a-basse-tension-guide-pratique-installations-photovoltaiques-sans-stockage-et-raccordees-au-reseau-public-de-distribution/105394',
     pdf: null,
+    photo: '/fiches/photos/coffret-protection-ac.jpg',
+    photoCredit: '© Asurnipal — Wikimedia Commons, CC BY-SA 4.0',
   },
   {
     slug: 'cablage',
@@ -452,6 +477,11 @@ export const FICHES: Fiche[] = [
     datasheet:
       'https://norminfo.afnor.org/norme/nf-en-50618/cables-electriques-pour-systemes-photovoltaiques/105484',
     pdf: null,
+    // Connecteurs solaires démontés : corps mâle/femelle, contacts à sertir,
+    // presse-étoupes. Aucune marque lisible — cohérent avec la décision
+    // fondateur de ne publier AUCUNE référence commerciale de connecteur.
+    photo: '/fiches/photos/connecteurs-solaires.jpg',
+    photoCredit: '© Asurnipal — Wikimedia Commons, CC BY-SA 4.0',
   },
   {
     slug: 'accessoires-pose',
@@ -505,6 +535,8 @@ export const FICHES: Fiche[] = [
     datasheet:
       'https://norminfo.afnor.org/norme/ute-c15-712-1/installations-electriques-a-basse-tension-guide-pratique-installations-photovoltaiques-sans-stockage-et-raccordees-au-reseau-public-de-distribution/105394',
     pdf: null,
+    photo: '/fiches/photos/chemin-de-cables.jpg',
+    photoCredit: '© Santeri Viinamäki — Wikimedia Commons, CC BY-SA 4.0',
   },
   // ── GRANDS PROJETS (fondateur 2026-08-18) ─────────────────────────────────
   // Trois fiches NORMATIVES et GÉNÉRIQUES, écrites pour un acheteur
@@ -565,6 +597,8 @@ export const FICHES: Fiche[] = [
     pairsWith: ['Onduleurs réseau', 'Supervision & comptage'],
     datasheet: null,
     pdf: null,
+    photo: '/fiches/photos/poste-livraison-mt.jpg',
+    photoCredit: '© Cjp24 — Wikimedia Commons, CC BY-SA 4.0',
   },
   {
     slug: 'supervision-comptage',
@@ -669,6 +703,10 @@ export const FICHES: Fiche[] = [
     pairsWith: ['Panneaux photovoltaïques', 'Protection & câblage'],
     datasheet: null,
     pdf: null,
+    // Ombrière de parking — l'une des trois familles décrites par la fiche.
+    // Domaine public (agent du DoE américain) : AUCUNE attribution due, donc
+    // pas de `photoCredit` (on n'invente pas un crédit qui n'est pas exigé).
+    photo: '/fiches/photos/ombriere-parking.jpg',
   },
   {
     slug: 'smart-meter-huawei',
