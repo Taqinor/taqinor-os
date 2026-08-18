@@ -1092,9 +1092,16 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             "facture_avec_solaire": _sm_avec,
             "economie": roi["facture_sans"] - _sm_avec,
             "approximatif": bool(roi.get("factures_approximatif")),
+            # Le barème résidentiel n'est PAS purement progressif : au-delà de
+            # 150 kWh/mois il est SÉLECTIF (toute la consommation du mois au
+            # tarif de sa tranche), et c'est exactement ce qui rend l'économie
+            # réelle plus grande — en repassant sous une marche, le client
+            # re-tarife TOUT son résiduel. La phrase doit dire ce que le moteur
+            # fait (pricing.ONEE_TRANCHES), pas l'inverse.
             "ligne_methode": (
-                "Chaque kWh est valorisé au prix de SA tranche (barème "
-                "progressif du distributeur) : facture actuelle moins facture "
+                "Facture recalculée au barème réel du distributeur "
+                "(progressif ≤ 150 kWh/mois, puis sélectif : toute la conso du "
+                "mois au tarif de SA tranche) : facture actuelle moins facture "
                 "résiduelle après autoconsommation — jamais un prix moyen "
                 "inventé."),
             # QRES40 — MAD partout (le document n'emploie jamais « DH » :

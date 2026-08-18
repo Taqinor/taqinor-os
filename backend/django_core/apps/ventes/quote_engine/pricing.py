@@ -11,9 +11,11 @@ net-billing tariff is unpublished/unconfirmed; including it would be
 fabricating income.
 
 Tranche tables for ONEE, Lydec, Redal are provided as module-level
-constants, clearly flagged as APPROXIMATIF and subject to revision.
-They can be overridden per quote via ``etude_params`` passed to
-``calculate_savings_roi``.
+constants. ONEE is the founder-verified RÉGIE grid, SELECTIVE above
+150 kWh/month (crossing a step re-prices the WHOLE month) and identical
+to the public estimator's grid; Lydec/Redal stay progressive and flagged
+APPROXIMATIF, subject to revision. They can be overridden per quote via
+``etude_params`` passed to ``calculate_savings_roi``.
 
 All tables are TTC tariffs (the customer pays TTC, so the avoided cost
 is the TTC tariff).
@@ -29,21 +31,108 @@ from __future__ import annotations
 # Format : liste de (plafond_kWh_mensuel, prix_MAD_kWh_TTC).
 # La dernière tranche n'a pas de plafond (None = tranche supérieure).
 #
-# ONEE (tarif BT résidentiel 2025 — public, officiels ONEE)
-# QX38 — plafonds CUMULATIFS alignés sur les vraies bandes ONEE (le modèle
-# progressif lit ces valeurs comme des seuils cumulés) : 0-100, 101-250,
-# 251-400, > 400. Avant QX38 les plafonds (150/200) contredisaient leurs propres
-# libellés et écrasaient la bande 101-250 → sous-tarification des foyers 150-400
-# kWh/mois typiques. Prix inchangés (publics ONEE) ; seuls les seuils sont
-# corrigés. Le miroir JS solar.js ONEE_TRANCHES porte les MÊMES valeurs.
-ONEE_TRANCHES = [
-    (100, 0.9010),    # 0–100 kWh/mois
-    (250, 1.0258),    # 101–250 kWh/mois
-    (400, 1.2515),    # 251–400 kWh/mois
-    (None, 1.4017),   # > 400 kWh/mois
-]
+# ═══ ORDRE FONDATEUR (18/08) — LE BARÈME RÉSIDENTIEL EST SÉLECTIF ═══════════
+# « The client will go down in the price per kWh because he will be below 500
+#   kWh per month — I want the new price per kWh to be used so the savings are
+#   real. »
+# Le barème BT résidentiel marocain n'est PAS purement progressif : il est
+# progressif jusqu'au seuil (150 kWh/mois), puis SÉLECTIF — franchir une marche
+# re-tarife la TOTALITÉ de la consommation du mois au prix de SA tranche. Un
+# foyer à 700 kWh/mois paie donc 1,5958 MAD sur ses 700 kWh ; passé au solaire,
+# son résiduel de 280 kWh retombe à 1,1676 MAD sur la totalité — c'est
+# exactement la baisse de prix décrite par le fondateur, et elle vaut BEAUCOUP
+# plus que les seuls kWh effacés au tarif marginal.
+
+
+class TrancheTable(list):
+    """Table de tranches ``[(plafond_kWh_mensuel | None, prix_MAD_kWh), …]``
+    qui PEUT porter la règle SÉLECTIVE marocaine.
+
+    Reste une ``list`` de paires à tous points de vue (itération, indexation,
+    égalité avec une liste nue) : les tables purement PROGRESSIVES (Lydec,
+    Redal, barème collé par le vendeur) sont de simples listes et gardent
+    exactement leur comportement historique.
+
+    Attributs :
+        selective_threshold  Conso mensuelle (kWh) au-delà de laquelle la
+                             facturation bascule en SÉLECTIF (None = table
+                             purement progressive).
+        boundary_tolerance   Tolérance de bord (kWh) : on n'entre dans la
+                             tranche supérieure qu'à +tolérance (bornes
+                             nominales 200/300/500 → effectives 210/310/510).
+    """
+
+    def __init__(self, pairs, selective_threshold=None, boundary_tolerance=0.0):
+        super().__init__(pairs)
+        self.selective_threshold = selective_threshold
+        self.boundary_tolerance = boundary_tolerance
+
+
+# ONEE — barème « BASSE TENSION / usage domestique », prix consommateur TTC
+# (TVA incluse — ne JAMAIS rajouter de TVA par-dessus). MÊME grille que
+# l'estimateur public (apps/web/src/lib/estimatorBrainV2.ts ``REGIE_TARIFF``) —
+# site et ERP annoncent désormais la même économie.
+#
+# SOURCE VÉRIFIÉE (consultée le 18/08/2026) — grille tarifaire officielle
+# publiée par une régie de distribution régulée, qui applique le barème
+# national : RADEEJ (El Jadida), « Basse Tension : Tarif en DH/kWh TTC »,
+# https://radeej.ma/assets/espace%20client/elec%20tarif.pdf — les SIX valeurs
+# ci-dessous en sont copiées telles quelles, ainsi que le mécanisme et la
+# tolérance. Corroboration indépendante (page mise à jour le 18/08/2026) :
+# https://kherba.com/tarifs — mêmes six taux au dix-millième.
+#
+#   · ≤ 150 kWh/mois → « Tarif Progressif » : 0–100 = 0,9010 ; 101–150 = 1,0732.
+#   · > 150 kWh/mois → « Tarif Sélectif » (TOUTE la conso au tarif de SA
+#     tranche) : 151–200 = 1,0732 ; 201–300 = 1,1676 ; 301–500 = 1,3817 ;
+#     > 500 = 1,5958.
+#   · Tolérance, citée mot pour mot par la source : « le tarif sélectif précité
+#     sera appliqué en faisant bénéficier les clients d'une tolérance de
+#     dépassement de 10 KWh/mois pour chaque tranche de consommation » — d'où
+#     les bornes EFFECTIVES 210/310/510.
+#
+# BASE LÉGALE DU MÉCANISME (le « sélectif » n'est pas une interprétation) :
+# arrêtés ministériels n° 2451.14 / 2682.14, BO n° 6275 bis du 22/07/2014,
+# appliqués au 01/08/2014 ; le bulletin client Lydec d'août 2014 qui les relaie
+# l'écrit noir sur blanc — « facturer la totalité de la consommation mensuelle
+# au tarif de la tranche dans laquelle elle se situe » — et confirme le seuil
+# de tolérance de 10 kWh. Le tarif de VENTE BT au consommateur n'est PAS publié
+# par l'ANRE (elle ne régule que les tarifs d'usage du réseau) : il reste fixé
+# par arrêté, d'où le recours aux grilles publiées par les distributeurs. Les
+# taux TTC ci-dessus intègrent la hausse étalée sur 4 ans qui a suivi 2014 ;
+# refonte tarifaire ANRE annoncée pour ~mars 2027 → re-vérifier à cette date.
+#
+# HAUT DE GRILLE — POINT OUVERT POUR LE FONDATEUR (18/08). Le fondateur a
+# corrigé « ce n'est pas 1,4 mais ~1,69/1,7 » pour la tranche haute : sa
+# correction de FOND est confirmée (l'ancien 1,4017 était bel et bien trop bas),
+# mais le chiffre exact publié pour l'USAGE DOMESTIQUE > 500 kWh/mois est
+# 1,5958. Les taux ~1,69–1,71 de la MÊME grille officielle appartiennent à
+# d'AUTRES catégories d'usage : force motrice > 500 kWh = 1,6758 et éclairage
+# patenté > 150 kWh = 1,7090 (bi-horaire domestique, heures de pointe = 2,2441).
+# On encode donc le taux domestique VÉRIFIÉ, jamais un chiffre inventé ; si le
+# fondateur produit une facture récente montrant 1,69 en domestique, cette seule
+# ligne change (et son miroir JS).
+#
+# Remplace l'ancienne grille QX38 (100/250/400/∞ à 0,9010/1,0258/1,2515/1,4017),
+# purement progressive et marquée « à confirmer » : elle contredisait la grille
+# officielle sur les seuils ET sur les prix, et sous-estimait lourdement
+# l'économie d'un foyer du haut de grille. Le miroir JS solar.js ONEE_TRANCHES
+# porte les MÊMES valeurs.
+ONEE_TRANCHES = TrancheTable(
+    [
+        (100, 0.9010),    # progressif   0–100  — RADEEJ TTC (18/08/2026)
+        (150, 1.0732),    # progressif 101–150  — RADEEJ TTC (18/08/2026)
+        (200, 1.0732),    # sélectif 151–200, effectif 151–210 — RADEEJ TTC
+        (300, 1.1676),    # sélectif 201–300, effectif 211–310 — RADEEJ TTC
+        (500, 1.3817),    # sélectif 301–500, effectif 311–510 — RADEEJ TTC
+        (None, 1.5958),   # sélectif > 500,   effectif > 510   — RADEEJ TTC
+    ],
+    selective_threshold=150,
+    boundary_tolerance=10,
+)
 
 # Lydec (Casablanca / Grand Casablanca) — APPROXIMATIF, à confirmer avec tarif Lydec
+# Reste PROGRESSIF : aucune donnée sélective vérifiée pour les délégataires — on
+# n'invente pas des seuils qu'on n'a pas (le drapeau « approximatif » subsiste).
 LYDEC_TRANCHES = [
     (100, 0.9500),
     (200, 1.1500),
@@ -51,6 +140,7 @@ LYDEC_TRANCHES = [
 ]
 
 # Redal (Rabat / Salé / Kénitra) — APPROXIMATIF, à confirmer avec tarif Redal
+# Progressif également (même raison que Lydec).
 REDAL_TRANCHES = [
     (100, 0.9300),
     (200, 1.1200),
@@ -163,6 +253,10 @@ def _resolve_tranches(utility=None, tranches_override=None):
         table vient d'un distributeur privé estimé (Lydec/Redal, à confirmer).
     """
     if tranches_override:
+        # Une table SÉLECTIVE fournie telle quelle garde sa règle ; une liste de
+        # paires nue (le cas du barème collé par le vendeur) reste progressive.
+        if isinstance(tranches_override, TrancheTable):
+            return tranches_override, False
         return list(tranches_override), False
     if utility and str(utility).lower() in UTILITY_TABLES:
         key = str(utility).lower()
@@ -170,20 +264,123 @@ def _resolve_tranches(utility=None, tranches_override=None):
     return None, False
 
 
+def _selective_rule(tranches) -> tuple | None:
+    """(seuil_kWh, tolérance_kWh) si la table porte la règle SÉLECTIVE, sinon
+    None (table purement progressive — comportement historique)."""
+    seuil = getattr(tranches, "selective_threshold", None)
+    if seuil is None or seuil <= 0:
+        return None
+    tol = getattr(tranches, "boundary_tolerance", 0.0) or 0.0
+    return float(seuil), float(tol)
+
+
+def _split_tranches(tranches: list, seuil: float) -> tuple:
+    """Sépare une table plate en (bandes PROGRESSIVES ≤ seuil, bandes
+    SÉLECTIVES > seuil). La bande ouverte (plafond None) est toujours sélective."""
+    prog, sel = [], []
+    for ceiling, price in tranches:
+        if ceiling is not None and ceiling <= seuil:
+            prog.append((ceiling, price))
+        else:
+            sel.append((ceiling, price))
+    return prog, sel
+
+
+def _progressive_bill(kwh_mensuel: float, bandes: list) -> float:
+    """Facture PROGRESSIVE (MAD) : chaque kWh au prix de SA tranche."""
+    total = 0.0
+    remaining = float(kwh_mensuel)
+    prev_ceiling = 0.0
+    for ceiling, price in bandes:
+        if ceiling is None:
+            total += remaining * price
+            remaining = 0.0
+            break
+        consumed = min(remaining, ceiling - prev_ceiling)
+        total += consumed * price
+        remaining -= consumed
+        prev_ceiling = ceiling
+        if remaining <= 0:
+            break
+    if remaining > 0 and bandes:
+        total += remaining * bandes[-1][1]
+    return total
+
+
 def _monthly_bill_from_kwh(kwh_mensuel: float, tranches: list) -> float:
-    """Facture mensuelle TTC (MAD) d'une consommation, valorisée PAR TRANCHE
-    (barème progressif). 0 kWh → 0 MAD."""
+    """Facture mensuelle TTC (MAD) d'une consommation. SOURCE UNIQUE du prix
+    d'un volume mensuel de kWh — miroir EXACT de ``billMAD``
+    (apps/web/src/lib/estimatorBrainV2.ts) et de ``monthlyBillFromKwh``
+    (frontend/src/features/ventes/solar.js).
+
+    · Table PROGRESSIVE (Lydec, Redal, barème vendeur) : chaque kWh au prix de
+      SA tranche — comportement historique inchangé.
+    · Table SÉLECTIVE (ONEE, ordre fondateur 18/08) : progressif jusqu'au
+      seuil, puis TOUTE la consommation au tarif de sa tranche (tolérance de
+      bord incluse), avec un PLANCHER à la facture progressive du seuil — un
+      client juste au-dessus du seuil ne paie jamais moins qu'au seuil.
+
+    Monotone non décroissante par construction (les tarifs montent de tranche
+    en tranche). 0 kWh → 0 MAD.
+    """
     if kwh_mensuel is None or kwh_mensuel <= 0:
         return 0.0
-    return _weighted_kwh_price(kwh_mensuel, tranches) * kwh_mensuel
+    k = float(kwh_mensuel)
+    rule = _selective_rule(tranches)
+    if rule is None:
+        return _progressive_bill(k, tranches)
+    seuil, tol = rule
+    prog, sel = _split_tranches(tranches, seuil)
+    if k <= seuil:
+        return _progressive_bill(k, prog)
+    rate = sel[-1][1] if sel else _FALLBACK_KWH_PRICE
+    for ceiling, price in sel:
+        if ceiling is None or k <= ceiling + tol:
+            rate = price
+            break
+    return max(k * rate, _progressive_bill(seuil, prog))
+
+
+def _kwh_from_bill_bisect(bill: float, tranches: list) -> float:
+    """Inverse NUMÉRIQUE de ``_monthly_bill_from_kwh`` pour une table
+    SÉLECTIVE — miroir EXACT de ``billToAnnualKwh``
+    (apps/web/src/lib/estimatorBrainV2.ts), au facteur 12 près (ici mensuel).
+
+    RÉSOLUTION DES « TROUS » : une règle sélective rend la facture
+    DISCONTINUE (à 210 kWh la facture saute de 210 × 1,0732 = 225,37 MAD à
+    210 × 1,1676 = 245,20 MAD — aucune consommation ne produit 235 MAD). La
+    dichotomie converge vers ``inf{ k : facture(k) ≥ montant }``, donc un
+    montant tombé dans un trou est résolu à la BORNE BASSE du saut (ici
+    210 kWh) : on ne fabrique jamais une consommation que le barème ne peut
+    pas produire, et on choisit le côté PRUDENT (moins de kWh ⇒ système plus
+    petit, économies plus petites — jamais l'inverse). Le miroir JS applique
+    exactement la même règle.
+    """
+    lo = 0.0
+    hi = 1000.0
+    while _monthly_bill_from_kwh(hi, tranches) < bill and hi < 1e6:
+        hi *= 2
+    for _ in range(60):
+        mid = (lo + hi) / 2
+        if _monthly_bill_from_kwh(mid, tranches) < bill:
+            lo = mid
+        else:
+            hi = mid
+    return (lo + hi) / 2
 
 
 def kwh_from_bill(bill_mad, utility=None, tranches_override=None) -> dict:
-    """QF1 — Inverse du barème progressif : facture mensuelle (MAD TTC) → kWh/mois.
+    """QF1 — Inverse EXACT du barème : facture mensuelle (MAD TTC) → kWh/mois.
 
-    Parcourt les tranches en accumulant leur coût jusqu'à retrouver la facture,
-    puis interpole linéairement DANS la tranche atteinte (l'inversion exacte du
-    modèle progressif de ``_weighted_kwh_price``). Fonction pure, sans I/O.
+    · Table PROGRESSIVE : parcourt les tranches en accumulant leur coût jusqu'à
+      retrouver la facture, puis interpole linéairement DANS la tranche atteinte
+      (inversion analytique exacte du modèle progressif) — inchangé.
+    · Table SÉLECTIVE (ONEE) : dichotomie sur ``_monthly_bill_from_kwh``
+      (``_kwh_from_bill_bisect``), qui est le vrai inverse d'une fonction
+      discontinue ; un montant tombé entre deux marches est résolu à la borne
+      basse du saut (voir ``_kwh_from_bill_bisect``). Miroir exact du JS.
+
+    Fonction pure, sans I/O.
 
     Returns dict:
         kwh_mensuel   float — consommation mensuelle estimée (kWh).
@@ -212,6 +409,11 @@ def kwh_from_bill(bill_mad, utility=None, tranches_override=None) -> dict:
                 "approximatif": True, "estimation": True,
                 "label": ESTIMATION_LABEL}
 
+    if _selective_rule(table) is not None:
+        return {"kwh_mensuel": round(_kwh_from_bill_bisect(bill, table), 1),
+                "approximatif": approx, "estimation": False,
+                "label": "approximatif" if approx else ""}
+
     prev_ceiling = 0.0
     cost_so_far = 0.0
     kwh = None
@@ -235,7 +437,8 @@ def kwh_from_bill(bill_mad, utility=None, tranches_override=None) -> dict:
 
 def annual_bill_from_kwh(monthly_kwh, utility=None, tranches_override=None) -> dict:
     """QF1 — Facture annuelle TTC (MAD) d'une consommation mensuelle, valorisée
-    PAR TRANCHE (barème progressif ONEE/Lydec/Redal). Fonction pure.
+    au barème du distributeur (ONEE sélectif, Lydec/Redal progressifs — voir
+    ``_monthly_bill_from_kwh``). Fonction pure.
 
     Returns dict:
         bill_mensuel  float — facture mensuelle TTC (MAD).
@@ -271,12 +474,19 @@ def annual_bill_from_kwh(monthly_kwh, utility=None, tranches_override=None) -> d
 
 
 def _weighted_kwh_price(kwh_mensuel: float, tranches: list) -> float:
-    """Compute a weighted average TTC kWh price given monthly consumption and a
-    tariff schedule.
+    """Prix EFFECTIF du kWh (MAD/kWh) pour une consommation mensuelle donnée :
+    la facture du mois divisée par ses kWh — une seule source de vérité, celle
+    de ``_monthly_bill_from_kwh``.
 
-    Uses a progressive-tranche model: each tranche is weighted by the share of
-    consumption that falls into it.  When ``kwh_mensuel`` is 0, returns the
-    first tranche price (floor).
+    · Table PROGRESSIVE : moyenne pondérée des tranches traversées (identique
+      au comportement historique).
+    · Table SÉLECTIVE (ONEE) : le prix de SA tranche, appliqué à toute la
+      consommation — c'est LE « new price per kWh » de l'ordre fondateur, qui
+      BAISSE dès que le client repasse sous une marche (700 kWh → 1,5958 ;
+      280 kWh → 1,1676).
+
+    Quand ``kwh_mensuel`` vaut 0, renvoie le prix de la première tranche
+    (plancher), comme avant.
 
     Args:
         kwh_mensuel: Monthly kWh consumption.
@@ -284,32 +494,11 @@ def _weighted_kwh_price(kwh_mensuel: float, tranches: list) -> float:
                      None ceiling means "no upper bound."
 
     Returns:
-        Weighted average price in MAD/kWh, or first-tranche price if no
-        consumption.
+        Effective price in MAD/kWh, or first-tranche price if no consumption.
     """
     if kwh_mensuel <= 0:
         return tranches[0][1] if tranches else _FALLBACK_KWH_PRICE
-
-    total_cost = 0.0
-    remaining = kwh_mensuel
-    prev_ceiling = 0.0
-    for ceiling, price in tranches:
-        if ceiling is None:
-            # Dernière tranche : tout le reste
-            total_cost += remaining * price
-            remaining = 0.0
-            break
-        tranche_width = ceiling - prev_ceiling
-        consumed_in_tranche = min(remaining, tranche_width)
-        total_cost += consumed_in_tranche * price
-        remaining -= consumed_in_tranche
-        prev_ceiling = ceiling
-        if remaining <= 0:
-            break
-    if remaining > 0:
-        # Consommation dépasse toutes les tranches définies → dernière tranche
-        total_cost += remaining * tranches[-1][1]
-    return total_cost / kwh_mensuel
+    return _monthly_bill_from_kwh(kwh_mensuel, tranches) / kwh_mensuel
 
 
 def _avg_kwh_price_from_tranches(
@@ -347,12 +536,18 @@ def two_bills_savings(
     utility=None,
     tranches_override=None,
 ) -> dict | None:
-    """QF2 — Modèle « deux factures » (économies RÉELLES, par tranche).
+    """QF2 — Modèle « deux factures » (économies RÉELLES, au barème).
 
-    facture annuelle SANS solaire  = consommation valorisée par tranche ;
+    facture annuelle SANS solaire  = consommation valorisée au barème ;
     facture annuelle AVEC solaire = consommation résiduelle (après les kWh
-    autoconsommés) valorisée par tranche ;
+    autoconsommés) valorisée au barème — au MÊME barème, mais éventuellement
+    dans une tranche PLUS BASSE : sur une grille sélective (ONEE), redescendre
+    sous une marche re-tarife TOUTE la consommation restante, ce qui vaut plus
+    que les seuls kWh effacés (ordre fondateur 18/08) ;
     économie = facture_sans − facture_avec.
+
+    Le mois est l'unité de tarification : on ne divise jamais l'année avant de
+    tarifer (le seuil des marches est MENSUEL).
 
     Self-consumption-first (loi 82-21) : seuls les kWh autoconsommés réduisent
     la facture — le surplus injecté ne vaut rien (tarif ANRE BT non publié).

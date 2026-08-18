@@ -58,30 +58,33 @@ test('capacité inconnue : repli documenté sur l\'ancien forfait 85 %', () => {
 })
 
 // ── VERROU DE DÉRIVE JS ↔ Python ─────────────────────────────────────────────
-// Valeurs dérivées À LA MAIN du barème ONEE [[100, 0.9010], [250, 1.0258],
-// [400, 1.2515], [null, 1.4017]] — le jumeau Python (test_battery_autoconso.py,
-// test_miroir_js_meme_fixture_memes_chiffres) attend EXACTEMENT les mêmes.
+// Valeurs dérivées À LA MAIN du barème ONEE SÉLECTIF (progressif ≤ 150 : 0,9010
+// puis 1,0732 ; sélectif au-delà — TOUTE la conso au tarif de sa tranche :
+// 151-210 = 1,0732 · 211-310 = 1,1676 · 311-510 = 1,3817 · > 510 = 1,5958) — le
+// jumeau Python (test_battery_autoconso.py, test_miroir_js_meme_fixture_memes_
+// chiffres) attend EXACTEMENT les mêmes.
 //
-//  facture sans solaire  : 15 000/12 = 1 250 kWh/mois
-//      100 × 0,9010 = 90,10 | 150 × 1,0258 = 153,87 | 150 × 1,2515 = 187,725
-//      850 × 1,4017 = 1 191,445 → 1 623,14 MAD/mois × 12 = 19 477,68 → 19 478
+//  facture sans solaire  : 15 000/12 = 1 250 kWh/mois → > 510
+//      1 250 × 1,5958 = 1 994,75 MAD/mois × 12 = 23 937 MAD/an
 //  option SANS (60 %)    : autoconsommé 9 214,8 → résiduel 5 785,2
-//      → 482,1 kWh/mois : 90,10 + 153,87 + 187,725 + 82,1 × 1,4017 (115,07957)
-//      = 546,77457 × 12 = 6 561,29 → 6 561
-//      ⇒ économie 19 478 − 6 561 = 12 917 MAD/an
+//      → 482,1 kWh/mois → bande 311-510 : 482,1 × 1,3817 = 666,11757
+//      × 12 = 7 993,41 → 7 993
+//      ⇒ économie 23 937 − 7 993 = 15 944 MAD/an
 //  option AVEC (83,8 %)  : autoconsommé 12 864,8 → résiduel 2 135,2
-//      → 177,9333 kWh/mois : 90,10 + 77,9333 × 1,0258 (79,944013)
-//      = 170,044013 × 12 = 2 040,53 → 2 041
-//      ⇒ économie 19 478 − 2 041 = 17 437 MAD/an
+//      → 177,9333 kWh/mois → bande 151-210 : 177,9333 × 1,0732 = 190,95805
+//      × 12 = 2 291,50 → 2 291
+//      ⇒ économie 23 937 − 2 291 = 21 646 MAD/an
+//  (la batterie fait franchir DEUX marches vers le bas : 1,3817 → 1,0732 sur la
+//   totalité du résiduel — c'est là que le modèle sélectif change tout.)
 test('MIROIR Python — mêmes entrées, mêmes factures et mêmes économies', () => {
   const sans = twoBillsSavings(PROD, CONSO, AUTOCONSO_SANS, 'onee')
   const avec = twoBillsSavings(PROD, CONSO, autoconsoAvecRatio(PROD, BATTERY), 'onee')
-  assert.equal(sans.factureSans, 19478)
-  assert.equal(sans.factureAvec, 6561)
-  assert.equal(sans.economie, 12917)
+  assert.equal(sans.factureSans, 23937)
+  assert.equal(sans.factureAvec, 7993)
+  assert.equal(sans.economie, 15944)
   assert.equal(avec.autoconsoKwh, 12865)
-  assert.equal(avec.factureAvec, 2041)
-  assert.equal(avec.economie, 17437)
+  assert.equal(avec.factureAvec, 2291)
+  assert.equal(avec.economie, 21646)
   // La batterie ajoute une économie RÉELLE, jamais négative.
   assert.equal(avec.economie > sans.economie, true)
 })
@@ -102,8 +105,8 @@ test('computeROI (modèle « deux factures ») : taux avec batterie dérivé, pa
   // le PDF : à l'écran comme sur le document, 0,60 + 3 650/15 358.
   assert.equal(Math.abs(roi.autoconso_avec - 0.8376611538) < 1e-9, true)
   assert.equal(roi.autoconso_avec, autoconsoAvecRatio(PROD, BATTERY))
-  assert.equal(roi.eco_annuelle_sans, 12917)
-  assert.equal(roi.eco_annuelle_avec, 17437)
+  assert.equal(roi.eco_annuelle_sans, 15944)
+  assert.equal(roi.eco_annuelle_avec, 21646)
   assert.notEqual(roi.autoconso_avec, AUTOCONSO_AVEC)
 })
 

@@ -75,32 +75,36 @@ class TestAutoconsoAvecRatio(SimpleTestCase):
 class TestMiroirJs(SimpleTestCase):
     """VERROU DE DÉRIVE — mêmes chiffres que solar.batterie.test.mjs.
 
-    Valeurs dérivées À LA MAIN du barème ONEE
-    [[100, 0.9010], [250, 1.0258], [400, 1.2515], [null, 1.4017]] :
+    Valeurs dérivées À LA MAIN du barème ONEE SÉLECTIF (grille officielle :
+    progressif ≤ 150 kWh/mois — 0,9010 puis 1,0732 ; au-delà, TOUTE la conso au
+    tarif de SA tranche — 151-210 = 1,0732 · 211-310 = 1,1676 ·
+    311-510 = 1,3817 · > 510 = 1,5958) :
 
-      facture sans solaire : 15 000/12 = 1 250 kWh/mois
-        100 × 0,9010 = 90,10 | 150 × 1,0258 = 153,87 | 150 × 1,2515 = 187,725
-        850 × 1,4017 = 1 191,445 → 1 623,14 MAD/mois × 12 = 19 477,68 → 19 478
+      facture sans solaire : 15 000/12 = 1 250 kWh/mois → tranche > 510
+        1 250 × 1,5958 = 1 994,75 MAD/mois × 12 = 23 937 MAD/an
       option SANS (60 %) : autoconsommé 9 214,8 → résiduel 5 785,2
-        → 482,1 kWh/mois : 90,10 + 153,87 + 187,725 + 82,1 × 1,4017 (115,07957)
-        = 546,77457 × 12 = 6 561,29 → 6 561
-        ⇒ économie 19 478 − 6 561 = 12 917 MAD/an
+        → 482,1 kWh/mois → tranche 311-510 : 482,1 × 1,3817 = 666,11757
+        × 12 = 7 993,41084 → 7 993
+        ⇒ économie 23 937 − 7 993 = 15 944 MAD/an
       option AVEC (83,8 %) : autoconsommé 12 864,8 → résiduel 2 135,2
-        → 177,9333 kWh/mois : 90,10 + 77,9333 × 1,0258 (79,944013)
-        = 170,044013 × 12 = 2 040,528 → 2 041
-        ⇒ économie 19 478 − 2 041 = 17 437 MAD/an
+        → 177,9333 kWh/mois → tranche 151-210 : 177,9333 × 1,0732 = 190,95805
+        × 12 = 2 291,49664 → 2 291
+        ⇒ économie 23 937 − 2 291 = 21 646 MAD/an
+
+    La batterie fait franchir DEUX marches vers le bas (1,3817 → 1,0732 sur la
+    TOTALITÉ du résiduel) : c'est là que le barème sélectif change tout.
     """
 
     def test_miroir_js_meme_fixture_memes_chiffres(self):
         sans = two_bills_savings(PROD, CONSO, AUTOCONSO_SANS, utility="onee")
         avec = two_bills_savings(
             PROD, CONSO, autoconso_avec_ratio(PROD, BATTERY), utility="onee")
-        self.assertEqual(sans["facture_sans"], 19478)
-        self.assertEqual(sans["facture_avec"], 6561)
-        self.assertEqual(sans["economie"], 12917)
+        self.assertEqual(sans["facture_sans"], 23937)
+        self.assertEqual(sans["facture_avec"], 7993)
+        self.assertEqual(sans["economie"], 15944)
         self.assertEqual(avec["autoconso_kwh"], 12865)
-        self.assertEqual(avec["facture_avec"], 2041)
-        self.assertEqual(avec["economie"], 17437)
+        self.assertEqual(avec["facture_avec"], 2291)
+        self.assertEqual(avec["economie"], 21646)
         self.assertGreater(avec["economie"], sans["economie"])
 
     def test_miroir_js_bout_en_bout_meme_production_memes_economies(self):
@@ -116,8 +120,8 @@ class TestMiroirJs(SimpleTestCase):
         self.assertEqual(roi["savings_model"], "factures")
         self.assertEqual(roi["prod_kwh"], PROD)                 # 15 358
         self.assertAlmostEqual(roi["autoconso_avec"], RATIO_ATTENDU, places=9)
-        self.assertEqual(roi["eco_s_ann"], 12917)
-        self.assertEqual(roi["eco_a_ann"], 17437)
+        self.assertEqual(roi["eco_s_ann"], 15944)
+        self.assertEqual(roi["eco_a_ann"], 21646)
 
 
 class TestPertesSysteme20Pct(SimpleTestCase):

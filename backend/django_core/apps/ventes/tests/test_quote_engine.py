@@ -2278,11 +2278,15 @@ class TestCanonicalProductible(TestCase):
                          round(7.1 * 1687 * PRODUCTION_DERATE))
 
     def test_onee_tranche_ceilings_aligned(self):
-        """QX38 — les plafonds ONEE représentent les vraies bandes cumulées
-        (100 / 250 / 400 / ∞), plus la bande 101-250 écrasée."""
+        """Les plafonds ONEE sont ceux de la grille officielle publiée
+        (100 / 150 / 200 / 300 / 500 / ∞), et la table porte la règle SÉLECTIVE
+        (progressif ≤ 150, puis toute la conso au tarif de sa tranche, avec la
+        tolérance officielle de 10 kWh → bornes effectives 210/310/510)."""
         from apps.ventes.quote_engine.pricing import ONEE_TRANCHES
         ceilings = [c for c, _ in ONEE_TRANCHES]
-        self.assertEqual(ceilings, [100, 250, 400, None])
+        self.assertEqual(ceilings, [100, 150, 200, 300, 500, None])
+        self.assertEqual(ONEE_TRANCHES.selective_threshold, 150)
+        self.assertEqual(ONEE_TRANCHES.boundary_tolerance, 10)
 
 
 class TestHonestCashflowPayback(TestCase):
