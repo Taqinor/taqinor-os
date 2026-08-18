@@ -230,6 +230,22 @@ def _is_battery(name: str) -> bool:
     return "batterie" in (name or "").lower()
 
 
+# ── PVG4 — Batterie Dyness HAUTE TENSION (16 kWh, décision fondateur
+# 2026-08-18, SKU BAT-DYN-HV-16) : ne doit JAMAIS être choisie par
+# l'auto-composition résidentielle BASSE TENSION (48 V). ``_is_battery``
+# reconnaît "batterie" sans distinguer la tension — utilisé aussi bien pour
+# l'AUTO-SÉLECTION (``_pick_product`` ci-dessous) que pour CLASSIFIER une
+# ligne déjà présente dans un devis. Ce prédicat-ci sert UNIQUEMENT aux
+# points d'auto-sélection : une batterie HV ajoutée À LA MAIN par un
+# commercial (hors résidentiel) doit continuer d'être reconnue "batterie"
+# par ``_is_battery`` pour le rendu PDF — donc on ne touche pas ce dernier,
+# on lui substitue ce prédicat plus strict aux seuls call-sites qui PICK
+# automatiquement une batterie dans le catalogue.
+def _is_battery_basse_tension(name: str) -> bool:
+    n = (name or "").lower()
+    return "batterie" in n and "haute tension" not in n
+
+
 def _is_hybrid_inverter(name: str) -> bool:
     n = (name or "").lower()
     return "onduleur" in n and "hybride" in n
@@ -468,7 +484,9 @@ def validate_composition_for_layout(layout, company):
 
     if wants_battery:
         inv = _pick_product(company, _is_hybrid_inverter)
-        bat = _pick_product(company, _is_battery)
+        # PVG4 — garde HAUTE TENSION : jamais BAT-DYN-HV-16 auto-sélectionnée
+        # pour un résidentiel basse tension (cf. _is_battery_basse_tension).
+        bat = _pick_product(company, _is_battery_basse_tension)
         if inv is None:
             errors.append(
                 'Aucun onduleur hybride disponible (ou sans prix) dans le catalogue. '
@@ -1242,8 +1260,15 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     cible_kwh = max(5, _arrondi_js(kwp / 5) * 5)
     nb10 = int(cible_kwh // 10)
     nb5 = 1 if (cible_kwh % 10) >= 5 else 0
+    # PVG4 — GARDE HAUTE TENSION (BAT-DYN-HV-16, décision fondateur
+    # 2026-08-18) : exclue du vivier résidentiel basse tension par mot-clé.
+    # La correspondance cap==5/cap==10 ci-dessous l'exclurait déjà en
+    # pratique (elle fait 16 kWh), mais le mot-clé rend l'exclusion
+    # explicite et robuste à un futur palier basse tension qui vaudrait, par
+    # coïncidence, 16 kWh.
     batteries = [(_parse_kwh(getattr(p, 'nom', '')), p)
-                 for p in par_type.get('batterie') or []]
+                 for p in par_type.get('batterie') or []
+                 if 'haute tension' not in _sans_accents(getattr(p, 'nom', ''))]
     dyness = [b for b in batteries
               if any(marque in _sans_accents(getattr(b[1], 'nom', ''))
                      for marque in ('dyness', 'deyness'))]
@@ -1878,7 +1903,9 @@ def sync_devis_from_layout(devis, layout, user=None):
 
         # ── Batterie : présente si (et seulement si) le layout en veut une ──
         if veut_batterie and not a_batterie:
-            batterie = _pick_product(verrou.company, _is_battery)
+            # PVG4 — même garde HAUTE TENSION que build_devis_from_layout ci-
+            # dessus : jamais BAT-DYN-HV-16 auto-ajoutée en résynchronisation.
+            batterie = _pick_product(verrou.company, _is_battery_basse_tension)
             if batterie is None:
                 avertissements.append(
                     'Aucune batterie tarifée au catalogue : la ligne batterie '
@@ -6466,3 +6493,254 @@ def ajouter_lignes_boq_electrique(devis, user=None):
                     'devis %s par %s', len(creees), devis.pk, user)
     return {'creees': len(creees), 'lignes': creees, 'manques': manques,
             'deja_presentes': deja}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# UN SEUL chemin de chiffrage : bordereau d'appel d'offres → devis ventes
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# POURQUOI ICI. ``apps.ao`` porte le bordereau des prix (BOQ : sections,
+# lignes, TVA par ligne, remise globale, clause de réserve) mais n'a AUCUN lien
+# avec le moteur de devis : un chiffrage d'AO se re-saisissait donc à la main
+# pour sortir un devis client. Ce service est le POINT DE CONTACT UNIQUE de la
+# traversée, symétrique exact de ``apps.ao.services.creer_appel_offre_depuis_
+# avis`` : le domaine AO appelle CETTE fonction (jamais ``apps.ventes.models``)
+# et le devis produit repart ensuite dans le pipeline devis NORMAL — PDF
+# ``/proposal`` compris (règle #4 : aucun autre chemin de PDF client, et rien
+# n'est touché dans ``quote_engine``).
+#
+# ``bordereau`` est reçu PAR RÉFÉRENCE et lu en CANARD : ``ventes`` n'importe
+# jamais ``apps.ao.models`` (contrat import-linter). On ne lit que des
+# attributs publics déjà documentés du BOQ.
+
+#: Le devis porte une quantité au CENTIÈME, le bordereau au MILLIÈME. L'écart
+#: est ANNONCÉ (jamais silencieux) : une quantité arrondie change un total.
+_QUANTUM_QUANTITE = Decimal('0.01')
+#: ``LigneDevis.prix_unitaire`` = 10 chiffres significatifs ; le BOQ en accepte
+#: 14. Un P.U. hors gabarit ferait échouer l'écriture en base — on saute la
+#: ligne et on le DIT, plutôt que de perdre tout le devis sur une seule ligne.
+_PU_DEVIS_MAX = Decimal('99999999.99')
+
+
+def _designation_ligne_bordereau(ligne):
+    """Désignation du devis pour une ligne de BOQ, unité comprise.
+
+    ``LigneDevis`` ne porte pas de colonne « unité » : la laisser tomber
+    rendrait « 300 » ambigu (300 mètres linéaires ou 300 unités ?) sur un
+    marché à prix unitaires, où c'est précisément l'unité qui engage. On la
+    reporte donc dans la désignation, sauf pour l'unité par défaut ``U`` qui
+    n'apprend rien.
+    """
+    designation = (ligne.designation or '').strip()
+    unite = (ligne.unite or '').strip()
+    if unite and unite.upper() != 'U':
+        designation = f'{designation} ({unite})'
+    return designation[:255]
+
+
+def creer_devis_depuis_bordereau(bordereau, *, user=None, company=None,
+                                 client=None):
+    """Construit un DEVIS ventes standard à partir d'un bordereau des prix AO.
+
+    Le devis reprend la structure du BOQ à l'identique : une ligne de SECTION
+    (intertitre XSAL14) par section du bordereau, puis ses lignes chiffrées
+    dans leur ordre de numérotation, avec la TVA de la ligne
+    (``taux_tva_effectif``), sa remise de ligne, sa quantité et son P.U. La
+    remise GLOBALE et le taux de TVA par défaut du bordereau deviennent ceux du
+    devis : la chaîne « sous-total HT → remise → TVA → TTC » est donc la MÊME
+    des deux côtés, par construction et non par recopie.
+
+    Le client est résolu CÔTÉ SERVEUR : ``client`` fourni, sinon le lead
+    rattaché à l'affaire (``crm.selectors`` puis ``crm.services``, sans jamais
+    créer de doublon). Sans l'un ni l'autre, une ``ValidationError`` FRANÇAISE
+    nomme le geste qui débloque (rattacher un lead à l'affaire) — inventer un
+    client serait pire qu'un refus.
+
+    IDEMPOTENT : un brouillon déjà issu de CE bordereau est réouvert au lieu
+    d'être dupliqué (un double clic ne crée pas deux devis).
+
+    La numérotation passe TOUJOURS par ``create_with_reference``
+    (``core.numbering``) — JAMAIS ``count()+1``. Le devis reste ``brouillon`` :
+    ce service CRÉE, il ne change aucun statut aval (règle #4).
+
+    Rend ``(devis, rapport)`` où ``rapport`` vaut
+    ``{'cree': bool, 'lignes': int, 'avertissements': [str, …]}``.
+    """
+    from django.core.exceptions import ValidationError
+
+    from apps.ventes.models import Devis, LigneDevis
+    from apps.ventes.utils.references import create_with_reference
+
+    if bordereau is None:
+        raise ValidationError({'bordereau': 'Bordereau introuvable.'})
+
+    affaire = bordereau.appel_offre
+    company = company or bordereau.company
+
+    # ── Le client : jamais inventé, jamais dupliqué ──
+    lead = None
+    if client is None:
+        from apps.crm.selectors import get_company_lead
+        from apps.crm.services import resolve_client_for_lead
+
+        lead = get_company_lead(company, getattr(affaire, 'lead_id', None))
+        if lead is None:
+            raise ValidationError({'client': (
+                "Cette affaire n'est rattachée à aucun lead : un devis a "
+                'toujours un client. Rattachez un lead à l\'affaire (action '
+                '« rattacher-lead ») ou indiquez le client, puis relancez.'
+            )})
+        client = resolve_client_for_lead(lead)
+
+    # ── Idempotence : le MÊME bordereau ne produit qu'UN brouillon ──
+    existant = Devis.objects.filter(
+        company=company, statut=Devis.Statut.BROUILLON,
+        etude_params__origine__bordereau=bordereau.pk).order_by('pk').first()
+    if existant is not None:
+        return (existant, {
+            'cree': False,
+            'lignes': existant.lignes.count(),
+            'avertissements': [
+                'Un devis brouillon issu de ce bordereau existait déjà : il '
+                "est réouvert, aucun doublon n'a été créé."],
+        })
+
+    # ── Les lignes, dans l'ORDRE du bordereau ──
+    sections = list(bordereau.sections.all())
+    lignes_bordereau = list(bordereau.lignes.all())
+    par_section = {}
+    for ligne in lignes_bordereau:
+        # Le bordereau est DÉJÀ chargé : on garnit le cache de la FK pour que
+        # ``taux_tva_effectif`` (repli sur le taux du bordereau) reste la SEULE
+        # source de vérité du taux, sans une requête par ligne.
+        ligne.bordereau = bordereau
+        par_section.setdefault(ligne.section_id, []).append(ligne)
+    for groupe in par_section.values():
+        groupe.sort(key=lambda li: (li.numero or 0, li.pk))
+
+    avertissements = []
+    a_ecrire = []
+    ordre = 0
+
+    def _ajouter_ligne(ligne):
+        nonlocal ordre
+        prix = Decimal(ligne.prix_unitaire or 0)
+        if abs(prix) > _PU_DEVIS_MAX:
+            avertissements.append(
+                'Ligne %s « %s » : prix unitaire hors gabarit du devis — la '
+                'ligne a été écartée.' % (ligne.numero, ligne.designation))
+            return
+        brute = Decimal(ligne.quantite or 0)
+        quantite = brute.quantize(_QUANTUM_QUANTITE, rounding=ROUND_HALF_UP)
+        if quantite != brute:
+            avertissements.append(
+                'Ligne %s « %s » : quantité %s arrondie à %s (le devis compte '
+                'au centième, le bordereau au millième).'
+                % (ligne.numero, ligne.designation, brute, quantite))
+        a_ecrire.append({
+            # ``produit_id`` et non ``produit`` : la string-FK catalogue est
+            # recopiée telle quelle, sans charger un Produit par ligne.
+            'produit_id': ligne.produit_id,
+            'designation': _designation_ligne_bordereau(ligne),
+            'quantite': quantite,
+            'prix_unitaire': prix,
+            'remise': Decimal(ligne.remise_pct or 0),
+            'taux_tva': Decimal(ligne.taux_tva_effectif),
+            'type_ligne': LigneDevis.TypeLigne.PRODUIT,
+            'ordre': ordre,
+        })
+        ordre += 1
+
+    for section in sections:
+        groupe = par_section.get(section.pk) or []
+        if not groupe:
+            continue
+        intitule = ' — '.join(
+            part for part in [(section.numero or '').strip(),
+                              (section.libelle or '').strip()] if part)
+        a_ecrire.append({
+            'produit_id': None,
+            'designation': (intitule or 'Section')[:255],
+            'quantite': None,
+            'prix_unitaire': None,
+            'remise': Decimal('0'),
+            'taux_tva': None,
+            'type_ligne': LigneDevis.TypeLigne.SECTION,
+            'ordre': ordre,
+        })
+        ordre += 1
+        for ligne in groupe:
+            _ajouter_ligne(ligne)
+
+    # Les lignes SANS section ferment le devis — jamais perdues en silence.
+    for ligne in par_section.get(None) or []:
+        _ajouter_ligne(ligne)
+
+    if not any(spec['type_ligne'] == LigneDevis.TypeLigne.PRODUIT
+               for spec in a_ecrire):
+        raise ValidationError({'bordereau': (
+            "Ce bordereau ne porte aucune ligne chiffrable : il n'y a rien à "
+            'reprendre dans un devis.'
+        )})
+
+    origine = {
+        'type': 'bordereau_ao',
+        'bordereau': bordereau.pk,
+        'appel_offre': getattr(affaire, 'pk', None),
+        'reference_ao': getattr(affaire, 'reference', '') or '',
+        'intitule': bordereau.intitule or '',
+        'indice_revision': bordereau.indice_revision or '',
+    }
+
+    def _creer(reference):
+        devis = Devis.objects.create(
+            company=company,
+            reference=reference,
+            client=client,
+            lead=lead,
+            statut=Devis.Statut.BROUILLON,
+            taux_tva=Decimal(bordereau.taux_tva_defaut or 20),
+            remise_globale=Decimal(bordereau.remise_globale_pct or 0),
+            created_by=user,
+            etude_params={'origine': origine},
+        )
+        for spec in a_ecrire:
+            LigneDevis.objects.create(devis=devis, **spec)
+        return devis
+
+    devis = create_with_reference(Devis, 'DEV', company, _creer)
+    # QX23be — fige la marge interne dès la création, comme tout autre chemin
+    # de création de devis (best-effort, jamais bloquant, manager-only).
+    refresh_marge_snapshot(devis)
+    logger.info(
+        'Devis %s créé depuis le bordereau %s (affaire %s, %d ligne(s)) par %s',
+        devis.reference, bordereau.pk, origine['reference_ao'],
+        len(a_ecrire), user)
+    return (devis, {'cree': True, 'lignes': len(a_ecrire),
+                    'avertissements': avertissements})
+
+
+def resume_devis_depuis_bordereau(devis):
+    """Bloc ``devis`` du contrat ``ao_bordereau_devis`` — totaux SERVEUR.
+
+    Les montants passent par la chaîne canonique unique
+    (``selectors._canonical_totaux`` : HT brut → remise globale → TVA par taux
+    → TTC), celle-là même que l'écran et le PDF consomment. Aucun total n'est
+    recalculé ailleurs, donc aucun ne peut diverger.
+    """
+    from apps.ventes.selectors import _canonical_totaux
+
+    totaux = _canonical_totaux(
+        devis.lignes.all(), remise_globale_pct=devis.remise_globale,
+        fallback_taux=devis.taux_tva)
+    client = getattr(devis, 'client', None)
+    return {
+        'id': devis.pk,
+        'reference': devis.reference,
+        'statut': devis.statut,
+        'client': devis.client_id,
+        'client_nom': (getattr(client, 'nom', '') or '') if client else '',
+        'lignes': devis.lignes.count(),
+        'total_ht': str(totaux['ht_net']),
+        'total_ttc': str(totaux['ttc']),
+    }

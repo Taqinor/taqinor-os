@@ -201,6 +201,19 @@ class AppelOffre(TenantModel):
         max_digits=16, decimal_places=2, default=Decimal('0.00'),
         verbose_name="Montant de l'offre TTC (MAD)")
 
+    # ── Calepinage 3D de l'affaire — le MÊME outil que la villa ────────────
+    #
+    # L'atelier de conception 3D (``frontend/src/pages/ventes/ToitureDesign``)
+    # sert désormais DEUX métiers : un devis ventes (``Devis.roof_layout``) et
+    # une affaire d'appel d'offres. Le layout sérialisé par le builder est un
+    # DOCUMENT DE TRAVAIL — la géométrie opposable reste ``ToitureAO`` /
+    # ``ZoneAO`` / ``ChaineCotes``, en repère LOCAL MÉTRIQUE (AOF18/AOF19).
+    # ``NULL`` = aucune session 3D enregistrée sur cette affaire ; un ``{}``
+    # dirait « session enregistrée mais vide », ce qui est faux.
+    roof_layout = models.JSONField(
+        null=True, blank=True,
+        verbose_name='Calepinage 3D enregistré (layout du builder)')
+
     class Meta:
         verbose_name = "Appel d'offres"
         verbose_name_plural = "Appels d'offres"

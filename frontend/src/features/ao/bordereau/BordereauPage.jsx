@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
-import { AlertTriangle, ClipboardList } from 'lucide-react'
+import { AlertTriangle, ClipboardList, FileText } from 'lucide-react'
 import {
   Button, Card, EmptyState, Skeleton, Textarea, toast,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
@@ -31,9 +31,17 @@ import LigneRow from './LigneRow'
    obligatoire, tracé côté serveur.
 
    Les services serveur sont INJECTÉS (`onDeplacerLigne`, `onModifierLigne`,
-   `onDeverrouiller`, `onAppliquerPrix`) : `api/aoApi.js` (AOF11, lane
-   `frontend/ao-socle`) n'expose pas encore de ressource bordereau et n'est
-   jamais retouché ici — aucun endpoint n'est inventé, aucun `axios` direct.
+   `onDeverrouiller`, `onAppliquerPrix`, `onCreerDevis`) : `api/aoApi.js`
+   (AOF11, lane `frontend/ao-socle`) n'est jamais retouché ici — aucun endpoint
+   n'est inventé, aucun `axios` direct.
+
+   **UN SEUL chemin de chiffrage bordereau → devis.** `onCreerDevis` appelle
+   l'action serveur `bordereaux-prix/<id>/creer-devis/`, qui délègue au point de
+   contact unique `apps.ventes.services.creer_devis_depuis_bordereau` : le devis
+   produit repart dans le pipeline devis NORMAL (PDF `/proposal`, envoi,
+   acceptation). L'écran n'ASSEMBLE rien — il affiche la référence servie,
+   l'état `cree` (idempotence : un second clic ne crée pas de doublon) et les
+   `avertissements` du serveur, mot pour mot.
    ========================================================================== */
 
 const errMsg = (e, fallback) => e?.response?.data?.detail || fallback
@@ -127,10 +135,14 @@ export default function BordereauPage({
   onDeplacerLigne,
   onDeverrouiller,
   onAppliquerPrix,
+  onCreerDevis,
 }) {
   const [bordereau, setBordereau] = useState(bordereauInitial ?? null)
   const [occupe, setOccupe] = useState(false)
   const [aDeverrouiller, setADeverrouiller] = useState(null)
+  // Ce que le SERVEUR a répondu à « Créer le devis » : référence, `cree` et
+  // avertissements. Jamais reconstitué ici.
+  const [devisIssu, setDevisIssu] = useState(null)
 
   // On se recale sur le bordereau reçu du parent quand IL change, en ajustant
   // l'état AU RENDU (jamais dans un effet — évite le rendu en cascade ;
@@ -184,6 +196,30 @@ export default function BordereauPage({
     )
   }, [executer, onDeverrouiller])
 
+  /* « Créer le devis » — hors `executer` : la réponse n'est PAS un bordereau
+     recalculé (elle décrit un DEVIS), donc la remplacer dans l'état du
+     bordereau n'aurait aucun sens. Le bordereau, lui, n'est pas touché par
+     cette action côté serveur. */
+  const creerDevis = useCallback(async () => {
+    if (!onCreerDevis) return
+    setOccupe(true)
+    try {
+      const reponse = await onCreerDevis(bordereau)
+      const charge = reponse?.data ?? reponse ?? null
+      setDevisIssu(charge)
+      if (charge?.devis?.reference) {
+        toast.success(charge.cree === false
+          ? `Devis ${charge.devis.reference} déjà issu de ce bordereau — réouvert.`
+          : `Devis ${charge.devis.reference} créé depuis le bordereau.`)
+      }
+    } catch (e) {
+      toast.error(errMsg(
+        e, 'Création du devis impossible — le bordereau est inchangé.'))
+    } finally {
+      setOccupe(false)
+    }
+  }, [onCreerDevis, bordereau])
+
   const sections = useMemo(() => bordereau?.sections ?? [], [bordereau])
   const lignesParSection = useMemo(() => {
     const carte = new Map(sections.map((s) => [s.id, []]))
@@ -217,7 +253,40 @@ export default function BordereauPage({
             prix unitaires et montants en lettres calculés par le serveur.
           </p>
         </div>
+        {onCreerDevis && (
+          <Button variant="outline" size="sm" disabled={occupe} onClick={creerDevis}>
+            Créer le devis
+          </Button>
+        )}
       </div>
+
+      {/* Ce que le SERVEUR a répondu — référence, idempotence, avertissements.
+          Aucun montant n'est recalculé ici (garde AOF94) et aucune URL de
+          fiche devis n'est inventée : il n'existe pas de route de détail par
+          identifiant, donc on renvoie vers la liste avec la référence. */}
+      {devisIssu?.devis && (
+        <Card className="flex items-start gap-2 p-4" data-testid="ao-bordereau-devis">
+          <FileText className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <div>
+            <p className="text-sm font-medium">
+              {devisIssu.cree === false
+                ? `Devis ${devisIssu.devis.reference} déjà issu de ce bordereau — aucun doublon créé.`
+                : `Devis ${devisIssu.devis.reference} créé depuis ce bordereau.`}
+            </p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {devisIssu.devis.lignes} ligne(s) · brouillon ·{' '}
+              <a href="/ventes/devis" className="underline">ouvrir la liste des devis</a>
+            </p>
+            {(devisIssu.avertissements || []).length > 0 && (
+              <ul className="mt-1 flex flex-col gap-0.5">
+                {devisIssu.avertissements.map((a) => (
+                  <li key={a} className="text-xs text-warning">{a}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </Card>
+      )}
 
       {sections.map((section) => (
         <Card key={section.id} className="overflow-x-auto p-0">

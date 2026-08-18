@@ -1,0 +1,52 @@
+{
+  "endpoint": "GET /produits/<slug>",
+  "pourquoi": "CONTRAT UNIQUE « ligne de devis → fiche technique » (fondateur 2026-08-18). Ce n'est pas une réponse d'API : c'est la TABLE DE VÉRITÉ que DEUX moitiés doivent produire à l'identique — le moteur de devis Django (apps/ventes/quote_engine/residential/theme.py::fiche_slug, qui pose les liens du PDF) et la page proposition du site (apps/web/src/lib/ficheMatcher.ts::ficheSlugPourLigne, qui pose les liens web). Sans ce porteur partagé, les deux lanes sont file-disjointes et inventent mécaniquement deux découpages : le PDF enverrait le client sur /produits/tableau-protection-ac-dc pendant que la page web l'enverrait sur /produits/protection-dc — incident PACT10 du 03/08/2026, rejoué. Le champ `endpoint` porte l'URL PUBLIQUE que les deux moitiés doivent atteindre (la page Astro /produits/<slug>) : aucune vue Django ne la sert, donc scripts/check_api_shapes.py ne compare rien ici — la garde de conformité, ce sont les deux tests cités dans `tests`. AUCUN PRIX ici, jamais : ce contrat ne transporte que des désignations et des slugs.",
+  "decoupage": {
+    "residentiel": [
+      "panneaux",
+      "onduleur",
+      "batterie",
+      "structure",
+      "cablage",
+      "protection-dc",
+      "protection-ac",
+      "accessoires-pose"
+    ],
+    "grands_projets": [
+      "poste-mt-raccordement",
+      "supervision-comptage",
+      "structures-grandes-installations"
+    ]
+  },
+  "exemple": {
+    "Panneau CANADIAN SOLAR 710W bifacial": "canadian-solar-710",
+    "Panneau Jinko 710W": "jinko-710",
+    "Onduleur hybride Deye 10kW": "onduleur-deye-hybride",
+    "Onduleur réseau Huawei 10kW": "onduleur-huawei-reseau",
+    "Batterie Dyness 10 kWh": "batterie-dyness",
+    "Structures aluminium": "structure-fixation",
+    "Câble solaire H1Z2Z2-K 6 mm² (au mètre)": "cablage",
+    "Tableau De Protection AC/DC": "protection-dc",
+    "Coffret DC 2 strings": "protection-dc",
+    "Parafoudre DC type 2 1000 V": "protection-dc",
+    "Coffret AC": "protection-ac",
+    "Disjoncteur AC courbe C 16 A monophasé": "protection-ac",
+    "Accessoires": "accessoires-pose",
+    "Smart Meter Huawei": "smart-meter-huawei",
+    "Wifi Dongle Huawei": "wifi-dongle-huawei",
+    "Installation": "",
+    "Transport": ""
+  },
+  "alias": {
+    "tableau-protection-ac-dc": "protection-dc",
+    "accessoires-cablage": "cablage"
+  },
+  "sans_lien": [
+    "Une désignation qui ne correspond à AUCUNE famille avec certitude vaut '' côté Django et null côté web : la ligne s'affiche simplement sans lien. Jamais un lien deviné.",
+    "Une ligne qui cite une marque CONCURRENTE d'une fiche marquée coupe le lien (« onduleur hybride Growatt » ne renvoie pas vers la fiche Deye). Les fiches protection-ac et cablage nomment désormais une marque (Schneider, Nexans — confirmées fondateur) et suivent la même règle ; protection-dc n'en nomme AUCUNE."
+  ],
+  "tests": [
+    "apps/web/tests/ficheMatcherWJ131.test.ts — lit ce fichier et vérifie ficheSlugPourLigne() dessus.",
+    "backend/django_core/apps/ventes/tests/test_quote_engine.py::test_fiche_slug_mapping — lit ce fichier et vérifie theme.fiche_slug() dessus."
+  ]
+}
