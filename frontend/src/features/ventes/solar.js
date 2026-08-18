@@ -206,9 +206,58 @@ export function estimerMois(hiver, ete) {
 
 // 8 panneaux par tranche de 900 MAD de facture hiver. Le ratio est éditable
 // (Paramètres → Avancé) ; sans argument il garde le défaut historique (8).
+// NB : depuis la règle fondateur du 18/08 le dimensionnement passe par les kWc
+// (`estimerKwcDepuisFacture` ci-dessous) ; cette fonction reste pour les appels
+// historiques et les paramétrages explicites en nombre de panneaux.
 export function estimerPanneaux(factureHiver, perTranche = 8) {
   const n = Number(perTranche)
   return Math.floor(factureHiver / 900) * (Number.isFinite(n) && n > 0 ? n : 8)
+}
+
+// ── Règle de dimensionnement fondateur (18/08) ───────────────────────────────
+// 1. Une installation se vend par PALIERS de 5 kWc — jamais une taille
+//    intermédiaire (5, 10, 15, 20 …).
+// 2. Le besoin se lit sur la facture d'hiver : 5 kWc par tranche de 900 MAD.
+// 3. La taille RETENUE est celle qui minimise le retour sur investissement
+//    (`optimalKwcByPayback`), pas la plus grosse qui rentre sur le toit.
+export const KWC_STEP = 5
+export const MAD_PAR_PALIER = 900
+
+// ── Métrés de câble (règle fondateur 18/08) ──────────────────────────────────
+// Câble solaire DC 6 mm² : 60 m par palier de 5 kWc (strictement proportionnel).
+// Câble de terre AC 6 mm² : 25 m de base + 15 m par palier de 5 kWc — soit 40 m
+// pour 5 kWc et 55 m pour 10 kWc, les deux cotes données par le fondateur.
+export const CABLE_DC_M_PAR_PALIER = 60
+export const CABLE_TERRE_M_BASE = 25
+export const CABLE_TERRE_M_PAR_PALIER = 15
+
+/** Longueur de câble solaire DC (m) pour `paliers` blocs de 5 kWc. */
+export function metreCableDc(paliers) {
+  const n = Math.max(1, Math.round(Number(paliers) || 0))
+  return n * CABLE_DC_M_PAR_PALIER
+}
+
+/** Longueur de câble de terre AC (m) pour `paliers` blocs de 5 kWc. */
+export function metreCableTerre(paliers) {
+  const n = Math.max(1, Math.round(Number(paliers) || 0))
+  return CABLE_TERRE_M_BASE + n * CABLE_TERRE_M_PAR_PALIER
+}
+
+/** Besoin en kWc lu sur la facture d'hiver : 5 kWc par tranche de 900 MAD. */
+export function estimerKwcDepuisFacture(factureHiver, { step = KWC_STEP, madParPalier = MAD_PAR_PALIER } = {}) {
+  const f = Number(factureHiver)
+  if (!Number.isFinite(f) || f <= 0) return 0
+  const pas = (Number.isFinite(Number(step)) && Number(step) > 0) ? Number(step) : KWC_STEP
+  const tranche = (Number.isFinite(Number(madParPalier)) && Number(madParPalier) > 0) ? Number(madParPalier) : MAD_PAR_PALIER
+  return Math.floor(f / tranche) * pas
+}
+
+/** Ramène une taille quelconque au PALIER de 5 kWc le plus proche (jamais 0). */
+export function arrondirAuPasKwc(kwc, step = KWC_STEP) {
+  const k = Number(kwc)
+  const pas = (Number.isFinite(Number(step)) && Number(step) > 0) ? Number(step) : KWC_STEP
+  if (!Number.isFinite(k) || k <= 0) return pas
+  return Math.max(pas, Math.round(k / pas) * pas)
 }
 
 // Taux d'autoconsommation par option — miroir pricing.py AUTOCONSO_SANS/AVEC.
@@ -637,6 +686,10 @@ export function classifyProduct(nom) {
   if (n.includes('batterie')) return 'batterie'
   if (n.includes('structure')) return 'structure'
   if (n.includes('socle')) return 'socle'
+  // Câbles (règle fondateur 18/08) : le câble de TERRE se distingue du câble
+  // solaire DC par son mot-clé, sinon tout « câble » est un câble solaire DC.
+  if (n.includes('cable') && (n.includes('terre') || n.includes('mise a la terre'))) return 'cable_terre'
+  if (n.includes('cable')) return 'cable_dc'
   if (n.includes('smart meter')) return 'smart_meter'
   if (n.includes('wifi') || n.includes('dongle')) return 'wifi_dongle'
   if (n.includes('accessoire')) return 'accessoires'
@@ -759,6 +812,8 @@ export const PRODUCT_CATEGORIES = [
   ['structure_acier', 'Structures acier'],
   ['structure_alu', 'Structures aluminium'],
   ['socle', 'Socles'],
+  ['cable_dc', 'Câble solaire DC'],
+  ['cable_terre', 'Câble de terre AC'],
   ['smart_meter', 'Smart Meter'],
   ['wifi_dongle', 'Wifi Dongle'],
   ['accessoires', 'Accessoires'],
@@ -993,6 +1048,16 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
     p ? lineFrom(p, quantite, ttcOverride)
       : { ...placeholder(designation, quantite), prix_unit_ttc: ttcOverride ?? 0 }
 
+  // Câbles : on préfère le NEXANS explicitement (marque confirmée fondateur),
+  // sinon le premier câble du type QUI PORTE UN PRIX.
+  const chiffre = (p) => !!p && parseFloat(p.prix_vente) > 0
+  const pickCable = (type) => {
+    const pool = (byType[type] ?? []).filter(chiffre)
+    return pool.find(p => _norm(p.nom).includes('nexans')) ?? pool[0] ?? null
+  }
+  const cableDc = pickCable('cable_dc')
+  const cableTerre = pickCable('cable_terre')
+
   const acierRow = structureType === 'aluminium'
     ? row(structOther, 'Structures acier', 0)
     : row(structChosen, 'Structures acier', nbPanneaux)
@@ -1011,6 +1076,11 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
     acierRow,
     aluRow,
     row(first('socle'), 'Socles', nbPanneaux * 2),
+    // Câbles Nexans 6 mm² au mètre (règle fondateur 18/08). On ne retient qu'un
+    // câble RÉELLEMENT chiffré : un produit sans prix n'entre jamais dans une
+    // auto-composition (même patron que « prix à renseigner »).
+    row(cableDc, 'Câble solaire Nexans 6 mm² (au mètre)', cableDc ? metreCableDc(blocks) : 0),
+    row(cableTerre, 'Câble de terre Nexans 6 mm² (au mètre)', cableTerre ? metreCableTerre(blocks) : 0),
     row(first('accessoires'), 'Accessoires', 1, prixAccessoires),
     row(first('tableau'), 'Tableau De Protection AC/DC', 1, prixTableau),
     row(first('installation'), 'Installation', 1, prixInstallation),
@@ -1033,6 +1103,82 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
   // métadonnée, même patron que les onduleurs incomplets ci-dessus.
   lignes.avertissementsBatterie = avertissementsBatterie
   return lignes
+}
+
+// ── Taille OPTIMALE par retour sur investissement (règle fondateur 18/08) ────
+// On ne vend plus « la plus grosse installation qui rentre » ni « la taille lue
+// sur la facture » : on BALAIE les paliers de 5 kWc, on chiffre CHAQUE palier
+// avec le catalogue réel (`autoFillLines` — jamais un barème au kWc inventé,
+// il n'en existe aucun), on calcule le payback 25 ans de chacun
+// (`computeCashflowPayback`, le MÊME que l'écran, le PDF et la proposition) et
+// on garde le palier dont le payback est le plus court.
+//
+// Pourquoi un vrai optimum existe : en descendant, les coûts fixes (onduleur,
+// structure, pose) se diluent moins bien ; en montant, la production dépasse
+// l'autoconsommation et mord sur des tranches ONEE moins chères. Les deux
+// forces se croisent — c'est ce croisement qu'on cherche.
+//
+// `besoinKwc` (facture d'hiver, 900 MAD → 5 kWc) PLAFONNE le balayage : on ne
+// propose JAMAIS plus gros que le besoin lu sur la facture. C'est volontaire —
+// le modèle d'économie hérité du simulateur ne sature pas à la consommation
+// réelle, donc sans ce plafond « payback minimal » dériverait mécaniquement
+// vers le haut et sur-vendrait le client. L'optimisation joue donc SOUS le
+// besoin : elle retient un palier plus petit quand il rembourse plus vite.
+// `maxKwc` (surface de toit réelle) resserre encore la borne.
+//
+// Retourne { kwcOptimal, nbPanneaux, paliers[] } — `paliers` porte le détail
+// chiffré de chaque candidat pour que l'écran puisse JUSTIFIER le choix.
+export function optimalKwcByPayback({
+  produits, factures, dayUsagePct, panelW = 710, structureType,
+  discountPct, kwhPrice, efficiency, productible, consoAnnuelleKwh, utility,
+  besoinKwc, maxKwc, avecBatterie = false, step = KWC_STEP,
+}) {
+  const pas = (Number.isFinite(Number(step)) && Number(step) > 0) ? Number(step) : KWC_STEP
+  const besoin = Number(besoinKwc) > 0 ? Number(besoinKwc) : 0
+  // Plafond : le besoin lui-même (jamais au-dessus), resserré par le toit.
+  let plafond = besoin > 0 ? arrondirAuPasKwc(besoin, pas) : pas
+  if (Number(maxKwc) > 0) plafond = Math.min(plafond, Math.floor(Number(maxKwc) / pas) * pas)
+  plafond = Math.max(pas, plafond)
+
+  const paliers = []
+  for (let k = pas; k <= plafond + 1e-9; k += pas) {
+    const lignes = autoFillLines(produits, { kwp: k, panelW, structureType })
+    if (!lignes || !lignes.length) continue
+    const { totalSans, totalAvec } = optionTotalsTTC(lignes, discountPct)
+    const roi = computeROI({
+      kwp: lignes.kwcReel || k,
+      factures, dayUsagePct, totalSans, totalAvec,
+      batteryKwh: batteryKwhFromLines(lignes),
+      kwhPrice, efficiency, consoAnnuelleKwh, utility, productible,
+    })
+    const payback = avecBatterie ? roi.payback_avec : roi.payback_sans
+    paliers.push({
+      kwc: k,
+      kwcReel: lignes.kwcReel || k,
+      nbPanneaux: lignes.nbPanneaux,
+      totalTtc: avecBatterie ? totalAvec : totalSans,
+      economieAnnuelle: avecBatterie ? roi.eco_annuelle_avec : roi.eco_annuelle_sans,
+      payback,
+    })
+  }
+
+  const chiffrables = paliers.filter(p => Number.isFinite(p.payback) && p.payback > 0)
+  if (!chiffrables.length) {
+    // Aucun palier chiffrable (catalogue incomplet, pas de facture) : on retombe
+    // sur le besoin arrondi au palier — jamais sur un chiffre inventé.
+    const repli = besoin > 0 ? arrondirAuPasKwc(besoin, pas) : pas
+    return { kwcOptimal: repli, nbPanneaux: panneauxPourKwc(repli, panelW), paliers }
+  }
+  // Payback le plus court ; à égalité stricte on garde le palier le PLUS PETIT
+  // (même retour, moins d'argent immobilisé chez le client).
+  const meilleur = chiffrables.reduce((best, p) => (
+    p.payback < best.payback - 1e-9 ? p : best
+  ), chiffrables[0])
+  return {
+    kwcOptimal: meilleur.kwc,
+    nbPanneaux: meilleur.nbPanneaux ?? panneauxPourKwc(meilleur.kwc, panelW),
+    paliers,
+  }
 }
 
 // ══ Multi-marchés (2026-06) ═══════════════════════════════════════════════════

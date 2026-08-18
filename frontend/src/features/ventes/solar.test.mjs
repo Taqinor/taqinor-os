@@ -141,12 +141,19 @@ test('remise saisie librement (ex. 12.5 %) : appliquée exactement', () => {
 })
 
 test('sélecteur produits : groupé selon les catégories du catalogue simulateur', () => {
-  const groups = groupProduitsByCategory(
-    [...SEEDED, { id: 999, nom: 'Câble solaire 6mm² (100m)', prix_vente: '850' }])
+  const groups = groupProduitsByCategory([
+    ...SEEDED,
+    // Les deux câbles Nexans au mètre ont leurs propres groupes depuis le 18/08.
+    { id: 998, nom: 'Câble solaire Nexans 6 mm² (au mètre)', prix_vente: '12.00' },
+    { id: 999, nom: 'Câble de terre Nexans 6 mm² (au mètre)', prix_vente: '12.00' },
+    // …et un produit non classable alimente toujours « Autres ».
+    { id: 1000, nom: 'Échafaudage roulant', prix_vente: '850' },
+  ])
   const labels = groups.map(g => g.label)
   assert.deepEqual(labels, [
     'Onduleur Injection', 'Onduleur Hybride', 'Panneaux', 'Batterie',
-    'Structures acier', 'Structures aluminium', 'Socles', 'Smart Meter',
+    'Structures acier', 'Structures aluminium', 'Socles',
+    'Câble solaire DC', 'Câble de terre AC', 'Smart Meter',
     'Wifi Dongle', 'Accessoires', 'Tableau De Protection AC/DC',
     'Installation', 'Transport',
     'Suivi journalier, maintenance chaque 12 mois pendant 2 ans', 'Autres',
@@ -158,8 +165,11 @@ test('sélecteur produits : groupé selon les catégories du catalogue simulateu
   assert.equal(by('Batterie').items.length, 4)
   assert.equal(by('Structures acier').items.length, 1)
   assert.equal(by('Structures aluminium').items.length, 1)
+  // les deux câbles au mètre tombent chacun dans SON groupe, jamais « Autres »
+  assert.equal(by('Câble solaire DC').items.length, 1)
+  assert.equal(by('Câble de terre AC').items.length, 1)
   // produit non solaire → groupe Autres
-  assert.equal(by('Autres').items[0].nom, 'Câble solaire 6mm² (100m)')
+  assert.equal(by('Autres').items[0].nom, 'Échafaudage roulant')
 })
 
 test('garde-fou : plus aucune contrainte step restrictive sur l\'écran', () => {
