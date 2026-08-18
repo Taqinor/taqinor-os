@@ -9,7 +9,7 @@ Deux étages :
     dégrade en ``None`` (jamais un chiffre inventé) hors forme résidentielle ;
   - test API : ``proposal_data`` sert les cinq clés, égales au calcul du PDF.
 """
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 
 from apps.ventes.quote_engine.residential import sample_data
 from apps.ventes.quote_engine.residential.renderer import (
@@ -20,8 +20,9 @@ CLES = ("pct_cut", "annual_before", "annual_after",
         "coverage_pct", "coverage_estimated")
 
 
-class SyntheseEconomiesPureTests(TestCase):
-    """Étage pur — aucune fixture, aucune BD."""
+class SyntheseEconomiesPureTests(SimpleTestCase):
+    """Étage pur — aucune fixture, aucune BD (SimpleTestCase : exécutable
+    sur l'hôte sans Postgres, comme les drift-locks du barème)."""
 
     def test_miroir_exact_de_augment(self):
         data = sample_data.build("deux")
