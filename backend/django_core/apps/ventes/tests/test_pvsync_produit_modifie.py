@@ -91,6 +91,14 @@ class PvSyncBase(TestCase):
             devis=devis, produit=produit or self.produit,
             designation=designation, quantite=Decimal('10'),
             prix_unitaire=prix, remise=remise)
+        # Le moteur de proposition refuse un devis sans onduleur (garde-fou
+        # PV86) : chaque devis de fixture porte une ligne onduleur stable,
+        # hors du perimetre des resynchronisations testees.
+        LigneDevis.objects.create(
+            devis=devis, produit=produit or self.produit,
+            designation='Onduleur hybride 5kW (fixture)',
+            quantite=Decimal('1'), prix_unitaire=Decimal('9000'),
+            remise=Decimal('0'))
         return devis
 
     def _ligne(self, devis):

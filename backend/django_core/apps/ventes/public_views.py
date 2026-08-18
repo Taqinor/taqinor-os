@@ -1184,6 +1184,10 @@ def proposal_data(request, token):
         if bankable is not None:
             payload['bankable'] = bankable
     except Exception:  # noqa: BLE001
+        # 404 volontairement muet cote client (jamais de detail interne sur un
+        # lien public) — mais TRACE cote serveur : un garde-fou moteur qui
+        # refuse un devis ne doit plus se diagnostiquer a l'aveugle (CI 18/08).
+        logger.exception('proposal_data indisponible pour ce jeton')
         return _noindex(Response(
             {'detail': 'Proposition indisponible pour le moment.'},
             status=status.HTTP_404_NOT_FOUND))

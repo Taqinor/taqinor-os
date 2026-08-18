@@ -604,6 +604,9 @@ REFUS = {
     "frontend/src/features/ventes/module.config.jsx": [
         ("/sav/action-requise", "COMPORTEMENT")],
     "frontend/src/features/ventes/solar.js": [
+        # PVOND (2026-08-18) — le commentaire decrit l'avertissement « vivier
+        # batterie vide », un comportement, pas une liste de valeurs.
+        ("livrer un kit silencieusement sans stockage", "COMPORTEMENT"),
         ("MIROIR de la source Python", "NOMBRES"),
         ("computeROI", "NOMBRES"),
         ("plafonds cumulatifs", "NOMBRES"),

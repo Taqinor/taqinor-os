@@ -415,6 +415,9 @@ class TestPayloadPublic(GammeBase):
     def test_devis_sans_gamme_payload_inchange(self):
         d = make_devis(self.company, self.user, self.client_obj, 'DEV-GAM-038')
         add_ligne(d, self.panneau, qty='6')
+        # Le moteur refuse (a raison) un devis a options sans onduleur : la
+        # fixture doit porter une composition credible, pas un panneau seul.
+        add_ligne(d, self.onduleur)
         link = ShareLink.for_devis(d)
         resp = APIClient().get(url_proposal(link.token))
         self.assertEqual(resp.status_code, 200)
