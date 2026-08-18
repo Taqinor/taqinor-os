@@ -134,7 +134,19 @@ const PER_CHUNK_BUDGET_KB = 350
 // vérifié), et le seul `import * as` ajouté est le namespace Radix d'un
 // primitif Popover déjà installé. Palier avec ~66 Ko de marge pour ne pas
 // re-bumper à chaque vague.
-const TOTAL_BUDGET_KB = 3330
+// 2026-08-18 : 3330 -> 3345. +15 Ko (18/08) : écran Gammes & marques +
+// entrée Conception 3D + bandeau paliers — mesuré 3336.4. Vérifié AVANT ce
+// bump : `GammesMarquesPage` (features/parametres/module.config.jsx) et
+// `Conception3DPage` (features/ventes/module.config.jsx) sont TOUTES DEUX
+// déclarées `lazy(() => import(...))`, exactement comme leurs pages sœurs —
+// aucune n'est importée statiquement dans le chunk partagé. Le reste du
+// poids (bandeau « palier retenu », épinglage de marque) vit dans
+// `solar.js` + `DevisGenerator.jsx`, déjà lazy-loadé ; aucun import lourd
+// nouveau (diff des imports de DevisGenerator.jsx et LeadDevisPanel.jsx
+// vide). AUCUNE nouvelle dépendance npm. Pas de réduction réelle possible
+// ici : croissance produit légitime déjà bien rangée, palier honnête plutôt
+// qu'une marge cumulée.
+const TOTAL_BUDGET_KB = 3345
 const VENDOR_CHUNK_BUDGETS_KB = {
   recharts: 450,
   'pdfjs-dist': 450,
