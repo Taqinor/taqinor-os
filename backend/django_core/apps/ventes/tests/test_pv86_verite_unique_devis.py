@@ -55,7 +55,7 @@ ARTEFACT_LIGNES = [
     ('Onduleur réseau Huawei 10kW Triphasé', '1', '11700'),
     ('Onduleur hybride Deye 10kW Triphasé', '1', '24000'),
     ('Panneau Canadien Solar 710W', '14', '1100'),
-    ('Batterie Deyness 10 kWh', '1', '14000'),
+    ('Batterie Dyness 10 kWh', '1', '14000'),
     ('Structures acier', '14', '375'),
     ('Socles', '30', '67'),
     ('Tableau De Protection AC/DC', '1', '1667'),
@@ -69,7 +69,7 @@ RESEAU_LIGNES = [
 ]
 BATTERIE_LIGNES = [
     ('Onduleur hybride Deye 10kW Triphasé', '1', '24000'),
-    ('Batterie Deyness 10 kWh', '1', '14000'),
+    ('Batterie Dyness 10 kWh', '1', '14000'),
     ('Panneau Canadien Solar 710W', '14', '1100'),
     ('Installation', '1', '4000'),
 ]
@@ -281,7 +281,7 @@ class TestOptionsXsal5(_Base):
     def test_option_batterie_hors_total_document_mono_option(self):
         devis = self.make_devis(
             RESEAU_LIGNES,
-            optionnelles=[('Batterie Deyness 10 kWh', '1', '14000')])
+            optionnelles=[('Batterie Dyness 10 kWh', '1', '14000')])
         data = self.build(devis)
         self.assertEqual(data['nb_options'], 1)
         self.assertFalse(data['deux_options'])

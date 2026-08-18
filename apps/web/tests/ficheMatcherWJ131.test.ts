@@ -33,6 +33,11 @@ const APPARIEMENTS: Array<[string, string | undefined, string]> = [
   // Stockage.
   ['Batterie lithium 5,12 kWh', 'Dyness', 'batterie-dyness'],
   ['Batterie DYNESS DL5.0C', undefined, 'batterie-dyness'],
+  // TOLÉRANCE HISTORIQUE — le catalogue a longtemps écrit « Deyness » (faute
+  // corrigée le 2026-08-18) et les désignations FIGÉES des devis déjà émis la
+  // portent encore : elles doivent continuer d'atteindre la fiche Dyness.
+  ['Batterie Deyness 10 kWh', undefined, 'batterie-dyness'],
+  ['Batterie lithium 5 kWh', 'Deyness', 'batterie-dyness'],
   // Supervision & comptage.
   ['Smart Meter triphasé', undefined, 'smart-meter-huawei'],
   ['Compteur intelligent DTSU666-H', undefined, 'smart-meter-huawei'],

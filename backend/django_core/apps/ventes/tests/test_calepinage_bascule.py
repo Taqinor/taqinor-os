@@ -108,7 +108,7 @@ def seed_catalogue(company):
     mk('Panneau Jinko 550W', 'PAN-%s' % company.pk, 1100)
     mk('Onduleur réseau Huawei 5kW Monophasé', 'ONDR-%s' % company.pk, 14000)
     mk('Onduleur hybride Deye 5kW Monophasé', 'ONDH-%s' % company.pk, 17000)
-    mk('Batterie Deyness 5 kWh', 'BAT-%s' % company.pk, 17000)
+    mk('Batterie Dyness 5 kWh', 'BAT-%s' % company.pk, 17000)
 
 
 class _Base(TestCase):
@@ -496,7 +496,7 @@ class LeContratDeClassificationEstIntact(SimpleTestCase):
     def test_le_backend_classe_avec_les_MEMES_mots_cles(self):
         """L'alignement front/back est le contrat, pas une coïncidence."""
         self.assertTrue(services._is_panel('Panneau Jinko 550W'))
-        self.assertTrue(services._is_battery('Batterie Deyness 5 kWh'))
+        self.assertTrue(services._is_battery('Batterie Dyness 5 kWh'))
         self.assertTrue(services._is_hybrid_inverter('Onduleur hybride Deye'))
         self.assertTrue(services._is_reseau_inverter('Onduleur réseau Huawei'))
         self.assertTrue(services._is_reseau_inverter('Onduleur injection X'))

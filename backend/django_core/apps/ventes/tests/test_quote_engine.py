@@ -438,14 +438,14 @@ class TestPdfFormats(TestCase):
         from apps.ventes.quote_engine.builder import build_quote_data
         devis = make_devis(self.company, self.user, self.client_obj, [
             ('Onduleur hybride Deye 5kW', '1', '14166.67'),
-            ('Batterie Deyness 10 kWh', '1', '25000'),
+            ('Batterie Dyness 10 kWh', '1', '25000'),
             ('Panneau Canadien Solar 710W', '10', '1166.67'),
             ('Socles béton', '20', '66.67'),
         ], reference='DEV-QE-MARQUE')
         data = build_quote_data(devis, {'pdf_mode': 'onepage'})
         marques = {it['designation']: it['marque'] for it in data['all_items']}
         self.assertEqual(marques['Onduleur hybride Deye 5kW'], 'Deye')
-        self.assertEqual(marques['Batterie Deyness 10 kWh'], 'Deyness')
+        self.assertEqual(marques['Batterie Dyness 10 kWh'], 'Dyness')
         self.assertEqual(marques['Panneau Canadien Solar 710W'], 'Canadien Solar')
         self.assertEqual(marques['Socles béton'], '')
 
@@ -1005,7 +1005,7 @@ class TestPdfFormats(TestCase):
             ('Panneau Canadien Solar 710W', '14', '1272.73', '10'),
             ('Onduleur réseau Huawei 10kW Triphasé', '1', '16666.67', '20'),
             ('Onduleur hybride Deye 10kW Triphasé', '1', '23333.33', '20'),
-            ('Batterie Deyness 10 kWh', '1', '25000', '20'),
+            ('Batterie Dyness 10 kWh', '1', '25000', '20'),
             ('Installation', '1', '4000', '20'),
         ], remise_globale='5', reference='DEV-QE-2OPT',
             etude_params=DEUX_OPTIONS)
@@ -1592,8 +1592,8 @@ class TestGeneratorQuoteFlow(TestCase):
         self.assertIn('Onduleur réseau Huawei 10kW Triphasé', sans)
         self.assertNotIn('Onduleur réseau Huawei 10kW Triphasé', avec)
         self.assertIn('Onduleur hybride Deye 10kW Triphasé', avec)
-        self.assertIn('Batterie Deyness 10 kWh', avec)
-        self.assertNotIn('Batterie Deyness 10 kWh', sans)
+        self.assertIn('Batterie Dyness 10 kWh', avec)
+        self.assertNotIn('Batterie Dyness 10 kWh', sans)
         # QF9 — Smart Meter + Wifi Dongle (accessoires Huawei) restent sur
         # l'option réseau Huawei (sans) mais sont retirés de l'option hybride
         # Deye (avec).
@@ -1652,7 +1652,7 @@ def _residential_sample_data():
     ]
     sans = shared + [_item("Onduleur réseau Huawei 10kW Triphasé", 1, 16667, marque="Huawei")]
     avec = shared + [_item("Onduleur hybride Deye 10kW Triphasé", 1, 23333, marque="Deye"),
-                     _item("Batterie Deyness 10 kWh", 1, 25000, marque="Deyness")]
+                     _item("Batterie Dyness 10 kWh", 1, 25000, marque="Dyness")]
     eco = 20953
     sf = [0.053, 0.062, 0.083, 0.098, 0.114, 0.116, 0.116, 0.101, 0.087, 0.070, 0.052, 0.048]
     eco_m = [round(eco * f) for f in sf]
@@ -1674,7 +1674,7 @@ def _residential_sample_data():
         "sans_bullets": ["16 panneaux 710 W", "Onduleur réseau Huawei 10kW Triphasé",
                          "Smart Meter + monitoring"],
         "avec_bullets": ["16 panneaux 710 W", "Onduleur hybride Deye 10kW Triphasé",
-                         "Batterie Deyness 10 kWh"],
+                         "Batterie Dyness 10 kWh"],
         "scenario": "Les deux (Sans + Avec)", "recommended": "Avec batterie",
         "tva_note": "TVA : 10% panneaux photovoltaïques · 20% autres équipements et prestations",
         "payment_terms": {"acompte": 30, "materiel": 60, "solde": 10},
@@ -1749,7 +1749,7 @@ class TestResidentialRenderer(TestCase):
                          'onduleur-deye-hybride')
         self.assertEqual(theme.fiche_slug('Onduleur réseau Huawei 10kW'),
                          'onduleur-huawei-reseau')
-        self.assertEqual(theme.fiche_slug('Batterie Deyness 10 kWh'),
+        self.assertEqual(theme.fiche_slug('Batterie Dyness 10 kWh'),
                          'batterie-dyness')
         self.assertEqual(theme.fiche_slug('Structures acier'), '')
         self.assertEqual(theme.fiche_slug('Installation'), '')
@@ -2228,7 +2228,7 @@ class TestQuoteNumbersHonestyPack(TestCase):
             ('Panneau Canadien Solar 710W', '14', '1272.73'),
             ('Onduleur réseau Huawei 10kW', '1', '16666.67'),
             ('Onduleur hybride Deye 10kW', '1', '23333.33'),
-            ('Batterie Deyness 10 kWh', '1', '25000'),
+            ('Batterie Dyness 10 kWh', '1', '25000'),
             ('Installation', '1', '4000'),
         ], reference='DEV-QX7-BRAND', etude_params=DEUX_OPTIONS)
         for li in devis.lignes.all():
@@ -2238,8 +2238,8 @@ class TestQuoteNumbersHonestyPack(TestCase):
                 li.produit.marque = 'Huawei'
             elif 'Deye' in li.designation:
                 li.produit.marque = 'Deye'
-            elif 'Deyness' in li.designation:
-                li.produit.marque = 'Deyness'
+            elif 'Dyness' in li.designation:
+                li.produit.marque = 'Dyness'
             li.produit.save(update_fields=['marque'])
         data = build_quote_data(devis)
         html = render.build_html(renderer._augment(data))
@@ -2370,7 +2370,7 @@ class TestQuoteSignLinkAndPageNumbers(TestCase):
             ('Panneau Canadien Solar 710W', '14', '1272.73'),
             ('Onduleur réseau Huawei 10kW Triphasé', '1', '16666.67'),
             ('Onduleur hybride Deye 10kW Triphasé', '1', '23333.33'),
-            ('Batterie Deyness 10 kWh', '1', '25000'),
+            ('Batterie Dyness 10 kWh', '1', '25000'),
             ('Installation', '1', '4000'),
         ], reference='DEV-QX6-1', etude_params=DEUX_OPTIONS)
 
@@ -2450,7 +2450,7 @@ class TestResidentialSingleOptionGate(TestCase):
         return make_devis(self.company, self.user, self.client_obj, [
             ('Panneau Canadien Solar 710W', '12', '1272.73'),
             ('Onduleur hybride Deye 5kW', '1', '24000'),
-            ('Batterie Deyness 10 kWh', '1', '25000'),
+            ('Batterie Dyness 10 kWh', '1', '25000'),
             ('Structures acier', '12', '417'),
             ('Installation', '1', '5000'),
         ], reference='DEV-QX5-AVEC')
@@ -2484,7 +2484,7 @@ class TestResidentialSingleOptionGate(TestCase):
             ('Panneau Canadien Solar 710W', '14', '1272.73'),
             ('Onduleur réseau Huawei 10kW Triphasé', '1', '16666.67'),
             ('Onduleur hybride Deye 10kW Triphasé', '1', '23333.33'),
-            ('Batterie Deyness 10 kWh', '1', '25000'),
+            ('Batterie Dyness 10 kWh', '1', '25000'),
             ('Installation', '1', '4000'),
         ], reference='DEV-QX5-DEUX', etude_params=DEUX_OPTIONS)
         html = self._resid_html(devis)

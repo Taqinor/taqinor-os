@@ -767,11 +767,15 @@ _SVG = {
 "suivi":        '<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg"><rect width="40" height="40" rx="6" fill="#6B7280"/><rect x="6" y="9" width="28" height="24" rx="3" fill="none" stroke="white" stroke-width="1.5"/><rect x="6" y="9" width="28" height="8" rx="3" fill="white" opacity="0.15"/><line x1="13" y1="6" x2="13" y2="12" stroke="#F5A623" stroke-width="2" stroke-linecap="round"/><line x1="27" y1="6" x2="27" y2="12" stroke="#F5A623" stroke-width="2" stroke-linecap="round"/><path d="M11 24 L16 28 L29 19" fill="none" stroke="#F5A623" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
 }
 
+# Couleur du badge de marque. « dyness » est l'orthographe RÉELLE (correction
+# fondateur 2026-08-18) ; « deyness » reste listé pour que les désignations
+# FIGÉES des devis déjà émis gardent leur badge coloré.
 _BRAND_C = {
     "huawei":   ("#CF0A2C", "#fff"),
     "canadian": ("#004B87", "#fff"),
     "canadien": ("#004B87", "#fff"),
     "deye":     ("#FF6B00", "#fff"),
+    "dyness":   ("#FF6B00", "#fff"),
     "deyness":  ("#FF6B00", "#fff"),
 }
 

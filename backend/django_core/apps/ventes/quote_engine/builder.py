@@ -43,9 +43,13 @@ PAYMENT_TERMS_BY_MODE = {
 }
 
 # Brand tokens from the simulator catalogue — longest/most specific first so
-# 'Deyness' wins over its substring 'Deye'.
+# 'Deyness'/'Dyness' win over the substring 'Deye'.
+# TOLÉRANCE HISTORIQUE : la marque de batteries s'écrit « Dyness » (correction
+# fondateur 2026-08-18) mais les désignations FIGÉES des devis déjà émis disent
+# « Deyness ». Les deux jetons restent reconnus — un vieux devis doit continuer
+# d'afficher sa marque —, le premier de la liste étant l'orthographe correcte.
 _BRAND_TOKENS = [
-    "Canadien Solar", "Canadian Solar", "Deyness", "Jinko",
+    "Canadien Solar", "Canadian Solar", "Dyness", "Deyness", "Jinko",
     "Huawei", "Deye", "Lithium", "Gel",
 ]
 

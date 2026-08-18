@@ -38,8 +38,8 @@ const SEEDED = [
   P('Onduleur hybride Deye 20kW Triphasé', 48000),
   P('Panneau Canadien Solar 710W', 1400),
   P('Panneau Jinko 710W', 1400),
-  P('Batterie Deyness 5 kWh', 17000),
-  P('Batterie Deyness 10 kWh', 30000),
+  P('Batterie Dyness 5 kWh', 17000),
+  P('Batterie Dyness 10 kWh', 30000),
   P('Batterie Lithium 5 kWh', 15500),
   P('Batterie Gel 2.2 kWh', 5000),
   P('Structures acier', 500),
@@ -253,10 +253,10 @@ test('auto-fill 14 panneaux × 710 W : équipements et prix identiques au simula
   assert.equal(pan.quantite, 14)
   assert.equal(pan.prix_unit_ttc, 1400)
 
-  // Batteries : cible 10 kWh → 1 × Deyness 10 kWh, 0 × 5 kWh
-  assert.equal(by('Deyness 10').quantite, 1)
-  assert.equal(by('Deyness 10').prix_unit_ttc, 30000)
-  assert.equal(by('Deyness 5').quantite, 0)
+  // Batteries : cible 10 kWh → 1 × Dyness 10 kWh, 0 × 5 kWh
+  assert.equal(by('Dyness 10').quantite, 1)
+  assert.equal(by('Dyness 10').prix_unit_ttc, 30000)
+  assert.equal(by('Dyness 5').quantite, 0)
 
   // Structures acier ×14 (500), aluminium 0 ; Socles ×28 (80)
   assert.equal(by('acier').quantite, 14)
@@ -285,8 +285,8 @@ test('auto-fill 24 panneaux × 710 W : batterie composée 10+5, structures alu',
   const kwp = 24 * 710 / 1000 // 17.04 → cible batterie 15 kWh
   const rows = autoFillLines(SEEDED, { kwp, panelW: 710, structureType: 'aluminium' })
   const by = (frag) => rows.find(r => r.designation.includes(frag))
-  assert.equal(by('Deyness 10').quantite, 1)
-  assert.equal(by('Deyness 5').quantite, 1)
+  assert.equal(by('Dyness 10').quantite, 1)
+  assert.equal(by('Dyness 5').quantite, 1)
   assert.equal(by('aluminium').quantite, 24)
   assert.equal(by('aluminium').prix_unit_ttc, 850)
   assert.equal(by('acier').quantite, 0)
@@ -306,10 +306,36 @@ test('auto-fill petit système 5 panneaux : onduleur 5 kW Monophasé préféré'
     'Onduleur réseau Huawei 5kW Monophasé')
   assert.equal(rows.find(r => r.designation.includes('hybride')).designation,
     'Onduleur hybride Deye 5kW Monophasé')
-  // cible batterie : max(5, round(3.55/5)*5) = 5 → 1 × Deyness 5 kWh
+  // cible batterie : max(5, round(3.55/5)*5) = 5 → 1 × Dyness 5 kWh
   const by = (frag) => rows.find(r => r.designation.includes(frag))
+  assert.equal(by('Dyness 5').quantite, 1)
+  assert.equal(by('Dyness 10').quantite, 0)
+})
+
+// ── Tolérance d'orthographe Dyness / Deyness (fondateur, 2026-08-18) ─────────
+// La marque s'écrit « Dyness » ; le catalogue a longtemps écrit « Deyness ».
+// Une base pas encore migrée (ou un produit saisi à la main) doit continuer
+// d'alimenter le vivier batterie — sinon l'auto-remplissage retomberait sur
+// TOUTES les batteries du catalogue et proposerait un module Gel ou Lithium
+// générique à la place du bon.
+test('auto-fill : un catalogue encore écrit « Deyness » alimente le même vivier', () => {
+  const ancien = SEEDED.map(p => ({
+    ...p, nom: p.nom.replace('Dyness', 'Deyness'),
+  }))
+  // Le module GÉNÉRIQUE 5 kWh passe DEVANT : sans la tolérance d'orthographe, le
+  // vivier retomberait sur toutes les batteries et retiendrait celui-ci.
+  const iGenerique = ancien.findIndex(p => p.nom.includes('Batterie Lithium'))
+  ancien.unshift(...ancien.splice(iGenerique, 1))
+
+  const kwp = 24 * 710 / 1000 // 17.04 → cible batterie 15 kWh (1 × 10 + 1 × 5)
+  const rows = autoFillLines(ancien, { kwp, panelW: 710, structureType: 'acier' })
+  const by = (frag) => rows.find(r => r.designation.includes(frag))
+  assert.equal(by('Deyness 10').quantite, 1)
+  assert.equal(by('Deyness 10').prix_unit_ttc, 30000)
   assert.equal(by('Deyness 5').quantite, 1)
-  assert.equal(by('Deyness 10').quantite, 0)
+  assert.equal(by('Deyness 5').prix_unit_ttc, 17000)
+  // Aucune batterie générique ne s'est glissée à la place de la marque.
+  assert.ok(rows.every(r => !r.designation.includes('Lithium')))
 })
 
 // ── QX19 — autoFillLines surface le wattage RÉEL + nb panneaux (anti-mismatch)
@@ -345,7 +371,7 @@ test('QF8 — catalogue 100% Deye (réseau + hybride) : Smart Meter et Wifi Dong
     P('Onduleur réseau Deye 10kW Triphasé', 18000),
     P('Onduleur hybride Deye 10kW Triphasé', 28000),
     P('Panneau Jinko 710W', 1400),
-    P('Batterie Deyness 10 kWh', 30000),
+    P('Batterie Dyness 10 kWh', 30000),
     P('Structures acier', 500),
     P('Socles', 80),
     P('Smart Meter', 1800),

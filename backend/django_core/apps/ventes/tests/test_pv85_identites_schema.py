@@ -121,7 +121,7 @@ def _onduleur(confirme=True):
 
 def _batterie():
     return _FauxProduit(
-        "Batterie Deyness 10 kWh", marque="Dyness",
+        "Batterie Dyness 10 kWh", marque="Dyness",
         description="Batterie lithium LFP",
         fiche=_FausseFiche("batterie", bat_kwh_nominal=Decimal("10.24"),
                            bat_v_nominal=Decimal("51.2")))

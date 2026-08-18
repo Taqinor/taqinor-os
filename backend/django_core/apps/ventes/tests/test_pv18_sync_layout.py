@@ -84,7 +84,7 @@ class TestSyncLayout(TestCase):
         # Batterie GLOBALE (company=None) — le catalogue partagé doit être
         # quotable ici comme dans _pick_product.
         self.batterie = Produit.objects.create(
-            company=None, nom='Batterie Deyness 5 kWh', sku='PV18-BAT-GLOBAL',
+            company=None, nom='Batterie Dyness 5 kWh', sku='PV18-BAT-GLOBAL',
             prix_vente=Decimal('17000'), prix_achat=Decimal('12000'),
             quantite_stock=100)
         self.compteur = 0
@@ -175,7 +175,7 @@ class TestSyncLayout(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(resp.data['batterie'])
         self.assertEqual(resp.data['scenario'], 'avec_batterie')
-        ligne = devis.lignes.get(designation='Batterie Deyness 5 kWh')
+        ligne = devis.lignes.get(designation='Batterie Dyness 5 kWh')
         self.assertEqual(ligne.produit_id, self.batterie.id)
         self.assertEqual(int(ligne.quantite), 1)
 
@@ -220,7 +220,7 @@ class TestSyncLayout(TestCase):
             produit=self.onduleur_hybride,
             designation='Onduleur hybride Deye 5kW')
         devis.lignes.create(
-            produit=self.batterie, designation='Batterie Deyness 5 kWh',
+            produit=self.batterie, designation='Batterie Dyness 5 kWh',
             quantite=Decimal('1'), prix_unitaire=Decimal('16000'), ordre=3)
 
         resp = self._post(devis, layout(panels=12, scenario='reseau'))
@@ -250,7 +250,7 @@ class TestSyncLayout(TestCase):
     def test_batterie_retiree_quand_le_scenario_n_en_veut_plus(self):
         devis = self._devis(panneaux=12)
         devis.lignes.create(
-            produit=self.batterie, designation='Batterie Deyness 5 kWh',
+            produit=self.batterie, designation='Batterie Dyness 5 kWh',
             quantite=Decimal('1'), prix_unitaire=Decimal('16000'), ordre=3)
         resp = self._post(devis, layout(panels=12, scenario='reseau'))
         self.assertEqual(resp.status_code, 200)
@@ -261,7 +261,7 @@ class TestSyncLayout(TestCase):
     def test_batterie_deja_presente_n_est_pas_dupliquee(self):
         devis = self._devis(panneaux=12)
         devis.lignes.create(
-            produit=self.batterie, designation='Batterie Deyness 5 kWh',
+            produit=self.batterie, designation='Batterie Dyness 5 kWh',
             quantite=Decimal('1'), prix_unitaire=Decimal('16000'), ordre=3)
         resp = self._post(devis, layout(panels=12, scenario='avec_batterie'))
         self.assertEqual(resp.status_code, 200)
@@ -269,7 +269,7 @@ class TestSyncLayout(TestCase):
             devis.lignes.filter(designation__icontains='Batterie').count(), 1)
         # Le prix NÉGOCIÉ de la batterie en place est conservé.
         self.assertEqual(
-            devis.lignes.get(designation='Batterie Deyness 5 kWh')
+            devis.lignes.get(designation='Batterie Dyness 5 kWh')
             .prix_unitaire, Decimal('16000.00'))
 
     # ── Plusieurs lignes de panneaux : l'écart va sur la PLUS GROSSE ───────
@@ -427,7 +427,7 @@ CATALOGUE_KIT = [
     ('Panneau Jinko 550W', 'HEAL-PAN', '1100'),
     ('Onduleur réseau Huawei 5kW', 'HEAL-ONDR', '14000'),
     ('Onduleur hybride Deye 5kW', 'HEAL-ONDH', '17000'),
-    ('Batterie Deyness 5 kWh', 'HEAL-BAT', '16000'),
+    ('Batterie Dyness 5 kWh', 'HEAL-BAT', '16000'),
     ('Structures acier', 'HEAL-STR', '500'),
     ('Socles', 'HEAL-SOC', '80'),
     ('Smart Meter', 'HEAL-SMART', '1800'),

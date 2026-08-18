@@ -74,6 +74,10 @@ function contientUn(libelle: string, motsCles: readonly string[]): boolean {
  * le lien. Une marque inconnue de la liste ne déclenche rien — le garde-fou ne
  * ment jamais dans l'autre sens.
  */
+// « deyness » = ANCIENNE faute d'orthographe de Dyness (corrigée au catalogue le
+// 2026-08-18) : elle reste listée ici et dans la règle `batterie-dyness` parce que
+// les désignations FIGÉES des devis déjà émis arrivent encore avec cette graphie
+// via la proposition — elles doivent continuer d'être appariées à la bonne fiche.
 const MARQUES_CONNUES: readonly string[] = [
   'canadian', 'jinko', 'huawei', 'deye', 'dyness', 'deyness',
   'growatt', 'sma', 'fronius', 'solis', 'sungrow', 'goodwe', 'chint',

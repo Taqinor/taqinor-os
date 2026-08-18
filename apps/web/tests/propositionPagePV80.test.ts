@@ -226,7 +226,7 @@ describe('PV80 — chapitre « Votre installation » : équipement structuré', 
   const ITEMS = [
     { designation: 'Panneau solaire 550 W', quantite: 12, marque: 'Longi' },
     { designation: 'Onduleur hybride 6 kW', quantite: 1, marque: 'Deye' },
-    { designation: 'Batterie lithium LFP 5 kWh', quantite: 2, marque: 'Deyness' },
+    { designation: 'Batterie lithium LFP 5 kWh', quantite: 2, marque: 'Dyness' },
     { designation: 'Coffret de protection DC', quantite: 1 },
     { designation: 'Structure aluminium toiture', quantite: 1 },
     { designation: 'Câble solaire 6 mm²', quantite: 60 },

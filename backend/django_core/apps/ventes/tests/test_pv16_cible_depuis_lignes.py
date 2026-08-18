@@ -166,8 +166,8 @@ class TestCibleDepuisLignes(TestCase):
         self._ligne(devis, 'Onduleur hybride Deye 5kW', 1,
                     produit=self._produit('Onduleur hybride Deye 5kW',
                                           'PV16-ONDH'))
-        self._ligne(devis, 'Batterie Deyness 5 kWh', 1,
-                    produit=self._produit('Batterie Deyness 5 kWh',
+        self._ligne(devis, 'Batterie Dyness 5 kWh', 1,
+                    produit=self._produit('Batterie Dyness 5 kWh',
                                           'PV16-BAT'))
         cible = cible_depuis_lignes(devis)
         self.assertEqual(cible['scenario'], 'avec_batterie')

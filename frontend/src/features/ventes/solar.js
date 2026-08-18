@@ -825,13 +825,20 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
   }
 
   // Batteries : cible = kWc arrondi au multiple de 5 (min 5 kWh),
-  // ligne 1 = Deyness 5 kWh (qté nb_5), ligne 2 = Deyness 10 kWh (qté nb_10).
+  // ligne 1 = Dyness 5 kWh (qté nb_5), ligne 2 = Dyness 10 kWh (qté nb_10).
+  // TOLÉRANCE DEUX ORTHOGRAPHES (miroir exact de services.py) : la marque
+  // s'écrit « Dyness » (correction fondateur 2026-08-18) ; un produit encore
+  // nommé « Deyness » (base non migrée, saisie manuelle) reste reconnu, sans
+  // quoi le vivier retomberait sur TOUTES les batteries du catalogue.
   const target = Math.max(5, Math.round(kwp / 5) * 5)
   let nb10 = Math.floor(target / 10)
   let nb5 = (target % 10) >= 5 ? 1 : 0
   const bats = (byType.batterie ?? []).map(p => ({ p, cap: parseKwh(p.nom) }))
-  const deyness = bats.filter(x => _norm(x.p.nom).includes('deyness'))
-  const batPool = deyness.length ? deyness : bats
+  const dyness = bats.filter(x => {
+    const n = _norm(x.p.nom)
+    return n.includes('dyness') || n.includes('deyness')
+  })
+  const batPool = dyness.length ? dyness : bats
   const bat5 = batPool.find(x => x.cap === 5)
   const bat10 = batPool.find(x => x.cap === 10)
   if (!bat10 && bat5 && nb10 > 0) {

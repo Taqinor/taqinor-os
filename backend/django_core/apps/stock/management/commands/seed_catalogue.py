@@ -45,8 +45,13 @@ CATALOGUE = [
     ('Panneau Canadien Solar 710W', 'PAN-CS-710', 'Panneaux solaires', 1400, 1200, 1000, 20),
     ('Panneau Jinko 710W',          'PAN-JK-710', 'Panneaux solaires', 1400, 1200, 1000, 20),
     # ── Batteries ──
-    ('Batterie Deyness 5 kWh',  'BAT-DEY-5',  'Batteries', 17000, 13000, 500, 5),
-    ('Batterie Deyness 10 kWh', 'BAT-DEY-10', 'Batteries', 30000, 22000, 500, 5),
+    # Marque RÉELLE : Dyness (dyness.com). Le catalogue historique écrivait
+    # « Deyness » — faute corrigée (décision fondateur 2026-08-18). Les SKU
+    # BAT-DEY-* NE CHANGENT PAS : l'appariement du seeder se fait par SKU
+    # d'abord, donc une base déjà seedée est retrouvée et SAUTÉE (aucun
+    # doublon), que la migration de renommage soit passée ou non.
+    ('Batterie Dyness 5 kWh',  'BAT-DEY-5',  'Batteries', 17000, 13000, 500, 5),
+    ('Batterie Dyness 10 kWh', 'BAT-DEY-10', 'Batteries', 30000, 22000, 500, 5),
     ('Batterie Lithium 5 kWh',  'BAT-LIT-5',  'Batteries', 15500, 13200, 500, 5),
     ('Batterie Gel 2.2 kWh',    'BAT-GEL-22', 'Batteries', 5000, 3100, 500, 5),
     # ── Structure & divers ──
@@ -306,7 +311,7 @@ FICHES = {
                         'Certifié IEC 61215 / IEC 61730'),
     },
     **{sku: {
-        'marque': 'Deyness',
+        'marque': 'Dyness',
         'garantie': 'Garantie 5 ans · ≥ 6 000 cycles (80 % DoD)',
         'description': ('Batterie lithium LiFePO4 basse tension 51,2 V\n'
                         'Chimie fer-phosphate sûre et durable\n'

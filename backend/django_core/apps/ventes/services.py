@@ -1234,15 +1234,20 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
         panneau = None
 
     # ── Batteries : cible = kWc arrondi au multiple de 5 (5 kWh au minimum),
-    # servie en modules Deyness 10 kWh + un 5 kWh d'appoint ──
+    # servie en modules Dyness 10 kWh + un 5 kWh d'appoint ──
+    # TOLÉRANCE DEUX ORTHOGRAPHES : la marque s'écrit « Dyness » (correction
+    # fondateur 2026-08-18) ; un produit encore nommé « Deyness » (base non
+    # migrée, saisie manuelle, fixture ancienne) doit rester reconnu, sans quoi
+    # le vivier retomberait sur TOUTES les batteries du catalogue.
     cible_kwh = max(5, _arrondi_js(kwp / 5) * 5)
     nb10 = int(cible_kwh // 10)
     nb5 = 1 if (cible_kwh % 10) >= 5 else 0
     batteries = [(_parse_kwh(getattr(p, 'nom', '')), p)
                  for p in par_type.get('batterie') or []]
-    deyness = [b for b in batteries
-               if 'deyness' in _sans_accents(getattr(b[1], 'nom', ''))]
-    vivier = deyness or batteries
+    dyness = [b for b in batteries
+              if any(marque in _sans_accents(getattr(b[1], 'nom', ''))
+                     for marque in ('dyness', 'deyness'))]
+    vivier = dyness or batteries
     bat5 = next((p for cap, p in vivier if cap == 5), None)
     bat10 = next((p for cap, p in vivier if cap == 10), None)
     if bat10 is None and bat5 is not None and nb10 > 0:

@@ -3,14 +3,14 @@
 // batteries améliore MONOTONIQUEMENT l'autosuffisance et réduit l'import réseau, que
 // les heures de secours sont linéaires en N, et que le JOUR 2 (régime permanent,
 // SoC reporté) diffère bien d'un jour 1 démarré batterie vide. Aucun chiffre
-// inventé : la capacité vient des réfs catalogue Deyness (5/10), jamais du 6.
+// inventé : la capacité vient des réfs catalogue Dyness (5/10), jamais du 6.
 import { describe, expect, it } from 'vitest';
 import {
   simulateBattery,
   scaleShapeToDaily,
   resolveOfferBattery,
   renderBatterySplitSvg,
-  DEYNESS_CAPACITY_KWH,
+  DYNESS_CAPACITY_KWH,
   ESSENTIAL_LOAD_W,
   BATTERY_ONE_WAY_EFFICIENCY,
   BATTERY_DEPTH_OF_DISCHARGE,
@@ -33,7 +33,7 @@ function baseInput(units: number, overrides: Partial<BatterySimInput> = {}): Bat
     productionShape: solarShape,
     dailyConsumptionKwh: 15,
     dailyProductionKwh: 20, // surplus disponible à stocker
-    capacityKwhPerUnit: DEYNESS_CAPACITY_KWH['BAT-DEY-5'], // 5 kWh
+    capacityKwhPerUnit: DYNESS_CAPACITY_KWH['BAT-DEY-5'], // 5 kWh
     units,
     ...overrides,
   };
@@ -127,7 +127,7 @@ describe('WJ120 — heures de secours : linéaires en N, sur charges ESSENTIELLE
   });
   it('valeur = capacité utile × rendement décharge ÷ charge essentielle', () => {
     const r = simulateBattery(baseInput(1));
-    const usable = 1 * DEYNESS_CAPACITY_KWH['BAT-DEY-5'] * BATTERY_DEPTH_OF_DISCHARGE;
+    const usable = 1 * DYNESS_CAPACITY_KWH['BAT-DEY-5'] * BATTERY_DEPTH_OF_DISCHARGE;
     const expected = (usable * BATTERY_ONE_WAY_EFFICIENCY) / (ESSENTIAL_LOAD_W / 1000);
     expect(r.backupHours).toBeCloseTo(expected, 6);
   });
@@ -198,15 +198,24 @@ describe('WJ120 — resolveOfferBattery : capacité depuis les réfs catalogue, 
     taux_tva: 0,
   });
   it('BAT-DEY-10 → 10 kWh, quantité reportée', () => {
-    const r = resolveOfferBattery([mkItem('Batterie Deyness 10 kWh (BAT-DEY-10)', 2)]);
+    const r = resolveOfferBattery([mkItem('Batterie Dyness 10 kWh (BAT-DEY-10)', 2)]);
     expect(r.present).toBe(true);
     expect(r.capacityKwhPerUnit).toBe(10);
     expect(r.units).toBe(2);
   });
   it('BAT-DEY-5 → 5 kWh', () => {
-    const r = resolveOfferBattery([mkItem('Batterie lithium Deyness 5 kWh (BAT-DEY-5)')]);
+    const r = resolveOfferBattery([mkItem('Batterie lithium Dyness 5 kWh (BAT-DEY-5)')]);
     expect(r.capacityKwhPerUnit).toBe(5);
     expect(r.units).toBe(1);
+  });
+  it('désignation HISTORIQUE « Deyness » : toujours reconnue comme batterie', () => {
+    // Le catalogue écrit désormais « Dyness » (correction 2026-08-18), mais les
+    // lignes FIGÉES des devis déjà émis portent l'ancienne faute : la page les
+    // affiche telles quelles et doit continuer à les classer batterie.
+    const r = resolveOfferBattery([mkItem('Batterie Deyness 10 kWh (BAT-DEY-10)', 2)]);
+    expect(r.present).toBe(true);
+    expect(r.capacityKwhPerUnit).toBe(10);
+    expect(r.units).toBe(2);
   });
   it('repli « N kWh » explicite dans une ligne batterie', () => {
     const r = resolveOfferBattery([mkItem('Batterie LFP 5 kWh')]);

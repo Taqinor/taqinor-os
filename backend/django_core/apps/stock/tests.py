@@ -549,3 +549,103 @@ class TestSeedCatalogue(TestCase):
         other = make_company(slug='test-cat-other')
         seed(self.company)
         self.assertEqual(Produit.objects.filter(company=other).count(), 0)
+
+
+# ── Correction de marque « Deyness » → « Dyness » (fondateur, 2026-08-18) ─────
+class TestOrthographeDyness(TestCase):
+    """La vraie marque de batteries est Dyness (dyness.com).
+
+    Deux garanties, indissociables :
+      1. le SEEDER pose désormais la bonne orthographe sur une base neuve ;
+      2. la MIGRATION de données corrige une base DÉJÀ seedée — le seeder étant
+         strictement additif, lui seul ne renommerait jamais l'existant.
+    Les SKU ``BAT-DEY-*`` ne bougent pas : ce sont des codes catalogue, pas la
+    marque, et tout l'appariement (fiches techniques, simulateur de batterie du
+    site) s'y accroche.
+    """
+    # Le module de migration se charge par son chemin : son nom commence par un
+    # chiffre, donc `import` ne peut pas le nommer.
+    MIGRATION = 'apps.stock.migrations.0121_dyness_orthographe_marque'
+
+    def setUp(self):
+        self.company = make_company(slug='test-cat-dyness')
+
+    def _migration(self):
+        import importlib
+        return importlib.import_module(self.MIGRATION)
+
+    def test_le_seeder_pose_la_bonne_orthographe(self):
+        seed(self.company)
+        b5 = Produit.objects.get(company=self.company, sku='BAT-DEY-5')
+        b10 = Produit.objects.get(company=self.company, sku='BAT-DEY-10')
+        self.assertEqual(b5.nom, 'Batterie Dyness 5 kWh')
+        self.assertEqual(b10.nom, 'Batterie Dyness 10 kWh')
+        self.assertEqual(b5.marque, 'Dyness')
+        self.assertEqual(b10.marque, 'Dyness')
+        for produit in Produit.objects.filter(company=self.company):
+            self.assertNotIn('Deyness', produit.nom)
+            self.assertNotIn('Deyness', produit.marque or '')
+
+    def test_un_reseed_ne_duplique_pas_une_batterie_a_lancien_nom(self):
+        """L'appariement du seeder se fait par SKU AVANT le nom : une base
+        encore à l'ancienne orthographe (migration pas encore passée) est
+        retrouvée et SAUTÉE, jamais re-créée. C'est ce qui rend l'ordre
+        migration / re-seed indifférent."""
+        seed(self.company)
+        total = Produit.objects.filter(company=self.company).count()
+        Produit.objects.filter(company=self.company, sku='BAT-DEY-5').update(
+            nom='Batterie Deyness 5 kWh', marque='Deyness')
+        seed(self.company)
+        self.assertEqual(
+            Produit.objects.filter(company=self.company).count(), total,
+            "le re-seed a re-créé un produit au lieu de retrouver son SKU")
+        self.assertEqual(
+            Produit.objects.filter(company=self.company,
+                                   sku='BAT-DEY-5').count(), 1)
+
+    def test_la_migration_renomme_le_catalogue_existant(self):
+        from django.apps import apps as registre
+        migration = self._migration()
+        seed(self.company)
+        Produit.objects.filter(company=self.company, sku='BAT-DEY-5').update(
+            nom='Batterie Deyness 5 kWh', marque='Deyness')
+        Produit.objects.filter(company=self.company, sku='BAT-DEY-10').update(
+            nom='Batterie Deyness 10 kWh', marque='deyness')
+
+        migration.corriger_orthographe(registre, None)
+
+        b5 = Produit.objects.get(company=self.company, sku='BAT-DEY-5')
+        b10 = Produit.objects.get(company=self.company, sku='BAT-DEY-10')
+        self.assertEqual(b5.nom, 'Batterie Dyness 5 kWh')
+        self.assertEqual(b5.marque, 'Dyness')
+        self.assertEqual(b10.nom, 'Batterie Dyness 10 kWh')
+        # La casse d'origine est respectée (minuscule → minuscule).
+        self.assertEqual(b10.marque, 'dyness')
+        # Ni SKU, ni prix, ni quantités ne bougent.
+        self.assertEqual(b5.sku, 'BAT-DEY-5')
+        self.assertEqual(b5.prix_vente, Decimal('14166.67'))   # 17 000 TTC @ 20 %
+        self.assertEqual(b10.prix_vente, Decimal('25000.00'))  # 30 000 TTC @ 20 %
+
+    def test_la_migration_est_reversible(self):
+        from django.apps import apps as registre
+        migration = self._migration()
+        seed(self.company)
+        migration.retablir_orthographe(registre, None)
+        b5 = Produit.objects.get(company=self.company, sku='BAT-DEY-5')
+        self.assertEqual(b5.nom, 'Batterie Deyness 5 kWh')
+        self.assertEqual(b5.marque, 'Deyness')
+
+        migration.corriger_orthographe(registre, None)
+        b5.refresh_from_db()
+        self.assertEqual(b5.nom, 'Batterie Dyness 5 kWh')
+        self.assertEqual(b5.marque, 'Dyness')
+
+    def test_la_migration_est_idempotente(self):
+        from django.apps import apps as registre
+        migration = self._migration()
+        seed(self.company)
+        migration.corriger_orthographe(registre, None)
+        migration.corriger_orthographe(registre, None)
+        self.assertEqual(
+            Produit.objects.get(company=self.company, sku='BAT-DEY-5').nom,
+            'Batterie Dyness 5 kWh')

@@ -58,7 +58,7 @@ BOTH_LINES = [
     ('Onduleur réseau Huawei 10kW Triphasé', '1', '11700'),
     ('Onduleur hybride Deye 10kW Triphasé', '1', '24000'),
     ('Panneau Canadien Solar 710W', '14', '1100'),
-    ('Batterie Deyness 10 kWh', '1', '14000'),
+    ('Batterie Dyness 10 kWh', '1', '14000'),
     ('Installation', '1', '4000'),
 ]
 
