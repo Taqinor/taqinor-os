@@ -252,10 +252,10 @@ describe('pro-11 — W71 : matériaux + géométries statiques hoistés hors du 
     expect(script.match(/new THREE\.MeshPhysicalMaterial/g)?.length).toBe(1);
   });
 
-  it('les géométries STATIQUES (boîtier/montant avant/lest) sont cachées une fois', () => {
+  it('les géométries STATIQUES (boîtier/platine/bordure béton) sont cachées une fois', () => {
     expect(script).toContain('jboxGeoOf()');
-    expect(script).toContain('frontGeoOf(frontStrut)');
-    expect(script).toContain('ballastGeoOf()');
+    expect(script).toContain('plateGeoOf()');
+    expect(script).toContain('socleGeoOf()');
   });
 
   it('disposeScene ne libère JAMAIS le cache partagé (seul disposeSharedCache à onRemove)', () => {
@@ -266,6 +266,109 @@ describe('pro-11 — W71 : matériaux + géométries statiques hoistés hors du 
     // le cache n'est libéré qu'au démontage de la couche (onRemove), pas par rendu.
     expect(script).toContain('disposeSharedCache()');
     expect(script).toMatch(/onRemove\([\s\S]{0,200}disposeSharedCache\(\)/);
+  });
+});
+
+describe('pro-11 — structures RÉELLES TAQINOR (triangle à chaque jointure, socles béton)', () => {
+  // Le rendu du toit plat ne montre plus 3 montants + 3 rails PAR PANNEAU sur un bac de
+  // 4 lests, mais la structure relevée sur les photos de chantier du dépôt : un triangle
+  // rectangle en profilé C galvanisé perforé à CHAQUE jointure de panneaux, chaque pied
+  // boulonné sur sa propre bordure béton préfabriquée. (Sources : photos
+  // `equipe-pose-structure`/`mesure-rails`/`champ-villa` + fiche géométrique du 18/08.)
+  const scene = read('../src/scripts/roofPro11/scene3d.ts');
+
+  it('les COTES réelles sont des constantes nommées, pas des nombres magiques', () => {
+    expect(scene).toContain('const PROFILE_M = 0.041'); // profilé C galvanisé 41 × 41 mm
+    expect(scene).toContain('const PLATINE_L_M = 0.12'); // platine acier 120 × 60 × 8 mm
+    expect(scene).toContain('const PLATINE_W_M = 0.06');
+    expect(scene).toContain('const PLATINE_T_M = 0.008');
+    expect(scene).toContain('const SOCLE_L_M = 1.0'); // bordure béton 100 × 20 × 12 cm
+    expect(scene).toContain('const SOCLE_W_M = 0.2');
+    expect(scene).toContain('const SOCLE_H_M = 0.12');
+    // Le pied avant n'est plus un 0,1 arbitraire : c'est la PILE bordure + platine + demi-
+    // profilé (≈ 0,149 m), donc un montant arrière de 0,77 m à 15° sur un module de 2,40 m.
+    expect(scene).toContain('const frontStrut = SOCLE_H_M + PLATINE_T_M + PROFILE_M / 2');
+  });
+
+  it('UN triangle par JOINTURE : N panneaux contigus → N+1 triangles', () => {
+    // Contiguïté détectée le long de la rangée (regroupement par profondeur locale, tri
+    // par abscisse), avec un jeu toléré nommé — au-delà le tronçon est coupé, donc un
+    // panneau isolé garde un triangle à chacun de ses deux bords.
+    expect(scene).toContain('const CONTIG_GAP_M = 0.25');
+    expect(scene).toContain('const invRx =');
+    expect(scene).toContain('const rows = new Map<number, PanelFoot[]>()');
+    expect(scene).toContain('row.sort((a, b) => a.la - b.la)');
+    expect(scene).toContain('row[j + 1].la - row[j].la <= row[j].halfA + row[j + 1].halfA + CONTIG_GAP_M');
+    // Exactement TROIS sites de pose : le bord amont du tronçon, chaque jointure INTERNE
+    // (le milieu entre deux voisins), le bord aval. Soit (N−1) + 2 = N+1 triangles.
+    expect(scene).toContain('addTriangle(row[i].la - row[i].halfA, row[i])');
+    expect(scene).toContain('addTriangle((row[k].la + row[k].halfA + row[k + 1].la - row[k + 1].halfA) / 2, row[k])');
+    expect(scene).toContain('addTriangle(row[j].la + row[j].halfA, row[j])');
+    expect(scene.match(/addTriangle\(\(?row\[/g)?.length).toBe(3);
+    // Invariant N+1 re-dérivé ici pour qu'il soit lisible sans relire la boucle.
+    const trianglesFor = (n: number) => (n - 1) + 2;
+    expect(trianglesFor(1)).toBe(2);
+    expect(trianglesFor(12)).toBe(13);
+  });
+
+  it('chaque triangle = 3 pièces boulonnées + 2 platines + 2 bordures béton', () => {
+    // 1. hypoténuse (rail incliné porteur), 2. montant arrière VERTICAL (rotX = π/2 dresse
+    // le profilé, hauteur dérivée de la montée signée), 3. traverse basse horizontale.
+    expect(scene).toContain('railMats'); // hypoténuses
+    expect(scene).toContain('backMats'); // montants arrière verticaux
+    expect(scene).toContain('crossMats'); // traverses basses horizontales
+    expect(scene).toMatch(/backMats\.push\([\s\S]{0,160}Math\.PI \/ 2/);
+    expect(scene).toContain('const backH = frontStrut + r.riseP');
+    // Platines aux DEUX pieds, posées SUR la bordure (z = socle + demi-platine).
+    expect(scene).toContain('const plateZ = baseZ + SOCLE_H_M + PLATINE_T_M / 2');
+    expect(scene.match(/plateMats\.push\(/g)?.length).toBe(2);
+    // Socles DISCONTINUS : une bordure sous le pied avant, une sous le pied arrière — plus
+    // aucun lest ni bac continu nulle part dans la scène.
+    expect(scene).toContain('const socleZ = baseZ + SOCLE_H_M / 2');
+    expect(scene.match(/socleMats\.push\(/g)?.length).toBe(2);
+    expect(scene).not.toContain('ballastGeoOf');
+    expect(scene).not.toContain('ballastMats');
+    expect(scene).not.toContain('frontMats');
+  });
+
+  it('UN InstancedMesh par TYPE de pièce (7 en toit plat) — instancing conservé', () => {
+    const meshes = scene.slice(scene.indexOf('const meshes = ['), scene.indexOf('for (const me of meshes)'));
+    expect(meshes.match(/makeIM\(/g)?.length).toBe(6); // + panelIM déjà bâti au-dessus = 7
+    for (const piece of ['railGeo', 'backGeo', 'crossGeo', 'plateGeo', 'socleGeo', 'jboxGeo']) {
+      expect(meshes, piece).toContain(piece);
+    }
+    // Les bordures béton restent la seule pièce en receiveShadow (posées à même la dalle).
+    expect(meshes).toContain('makeIM(socleGeo, socleMat, socleMats, true, true)');
+  });
+
+  it('matière signature : profilé galvanisé PERFORÉ, texture procédurale partagée + cache', () => {
+    // CanvasTexture générée en code (aucun asset externe, aucune dépendance nouvelle),
+    // module de perforation 30 mm / fente oblongue ~11 mm, répétée par les UV physiques.
+    expect(scene).toContain('function makeGalvaProfileTexture()');
+    expect(scene).toContain('new THREE.CanvasTexture(c)');
+    expect(scene).toContain('const PERF_PITCH_M = 0.03');
+    expect(scene).toContain('const PERF_SLOT_W_M = 0.011');
+    expect(scene).toContain('function stretchProfileUVs(');
+    expect(scene).toContain('lengthM / PERF_PITCH_M');
+    // Partagée + bakée UNE fois (patron W71), libérée au seul onRemove.
+    expect(scene).toContain('galvaTex?.dispose()');
+    expect(scene).toMatch(/onRemove\([\s\S]{0,320}galvaTex\?\.dispose\(\)/);
+    // lowEnd → PAS de texture du tout : couleur galva unie.
+    expect(scene).toContain('lowEnd ? null : makeGalvaProfileTexture()');
+    expect(scene).toContain('color: galvaTex ? 0xffffff : 0xb0b7be');
+    // Aucun second matériau physique (garde W71 de recompilation de shader).
+    expect(scene.match(/new THREE\.MeshPhysicalMaterial/g)?.length).toBe(1);
+  });
+
+  it('la pose AFFLEURANTE (toit en pente) reste INTOUCHÉE : aucune structure', () => {
+    // Toute la structure est gardée par `!flush` : ni relevé de panneau, ni triangle.
+    // (Regex et non `indexOf` d'un littéral à `\n` : insensible au CRLF d'un checkout Windows.)
+    expect(scene).toMatch(/if \(!flush\)[\s\S]{0,120}const \[la, ld\] = invRx\(cx, cy\);/);
+    expect(scene).toContain('if (!flush && feet.length) {');
+    // Le chemin pente garde sa géométrie V6 mot pour mot.
+    expect(scene).toContain('flushPanelCenterAt(p.cx, p.cy, pitchEaveCoord, baseZ + ridgeLiftM');
+    expect(scene).toContain('PITCHED_FLUSH_STANDOFF_M');
+    expect(scene).toContain('pitchedDeckZ(');
   });
 });
 

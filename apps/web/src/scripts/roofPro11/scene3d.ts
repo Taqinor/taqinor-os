@@ -244,6 +244,137 @@ export function computeRidgeLifts(pans: RidgePan[]): number[] {
   return lifts;
 }
 
+// ═══════════ STRUCTURE RÉELLE TAQINOR — toit plat (fiche géométrique du 18/08) ═══════════
+// Relevé sur les photos de chantier du dépôt (`equipe-pose-structure`, `mesure-rails`,
+// `champ-villa`) : la structure n'appartient PAS au panneau. Ce n'est ni un bac lesté
+// continu ni un trio de montants par module, mais un TRIANGLE RECTANGLE assemblé sur
+// place — trois pièces boulonnées en profilé C galvanisé PERFORÉ — posé à CHAQUE
+// jointure de panneaux, chaque pied sur sa propre bordure béton préfabriquée.
+
+/** Profilé C galvanisé perforé : section 41 × 41 mm (rail type Unistrut — la seule
+ *  section vue sur TOUS les chantiers : ni tube rond, ni cornière alu). */
+const PROFILE_M = 0.041;
+/** Platine acier plate boulonnée au pied de chaque montant : 120 × 60 mm, 8 mm. */
+const PLATINE_L_M = 0.12;
+const PLATINE_W_M = 0.06;
+const PLATINE_T_M = 0.008;
+/** Bordure béton préfabriquée = le SOCLE, discontinu : 100 × 20 × 12 cm, gris clair. */
+const SOCLE_L_M = 1.0;
+const SOCLE_W_M = 0.2;
+const SOCLE_H_M = 0.12;
+/** Perforation du profilé : fentes oblongues ~11 mm de large, une tous les 30 mm ;
+ *  ~20 mm de fente laissent ~10 mm de matière entre deux trous, comme sur les rails
+ *  photographiés. C'est LA signature visuelle de la structure. */
+const PERF_PITCH_M = 0.03;
+const PERF_SLOT_W_M = 0.011;
+const PERF_SLOT_L_M = 0.02;
+/** Jeu MAXIMAL toléré entre deux panneaux encore tenus pour CONTIGUS le long d'une
+ *  rangée. Le jeu de pose réel vaut 2 cm ; 25 cm absorbe les marges de l'optimiseur sans
+ *  jamais souder deux rangées distinctes. Au-delà, le tronçon est coupé et chaque morceau
+ *  reçoit ses propres triangles d'extrémité — un panneau ISOLÉ porte donc un triangle à
+ *  chacun de ses deux bords. */
+const CONTIG_GAP_M = 0.25;
+
+/** Un panneau POSÉ ramené dans le repère LOCAL de la pose — la matière première de la
+ *  détection de contiguïté qui place les triangles aux jointures. */
+interface PanelFoot {
+  /** Abscisse du centre le long de la rangée (m). */
+  la: number;
+  /** Profondeur de la rangée (m) — les panneaux d'une même rangée la partagent. */
+  ld: number;
+  /** Demi-largeur du module le long de la rangée (m) — propre à SA pose (PV62). */
+  halfA: number;
+  /** Longueur de pente du module (m) — donne la longueur du rail incliné. */
+  slopeP: number;
+  /** Montée du module (m) — donne la hauteur du montant arrière. */
+  riseP: number;
+  /** Demi-empreinte au sol (m) — donne la longueur de la traverse basse. */
+  halfDepthP: number;
+  /** Inclinaison SIGNÉE (rad) : négative sur la face E d'un chevron Est-Ouest. */
+  signedTilt: number;
+}
+
+/**
+ * Texture PROCÉDURALE du profilé C galvanisé PERFORÉ (aucun asset externe, aucune
+ * dépendance nouvelle). Une TUILE = un module de perforation : les 41 mm de largeur de
+ * la face sur l'axe U, les 30 mm d'entraxe des trous sur l'axe V. On y peint un fond
+ * galva mate-brillant (lèvres pliées du C plus claires, fines rayures de laminage) et
+ * une fente oblongue sombre. Bakée UNE fois sur un canvas 64 × 64 — puissance de deux,
+ * donc `RepeatWrapping` sûr jusque sur un contexte WebGL 1 — puis répétée le long de
+ * chaque pièce par `stretchProfileUVs`.
+ */
+function makeGalvaProfileTexture(): THREE.Texture {
+  const S = 64;
+  const c = document.createElement('canvas');
+  c.width = S;
+  c.height = S;
+  const g = c.getContext('2d')!;
+  // Dégradé TRANSVERSAL (U = les 41 mm de la face) : les deux lèvres pliées du profilé
+  // accrochent la lumière, le fond de la face reste plus mat.
+  const grad = g.createLinearGradient(0, 0, S, 0);
+  grad.addColorStop(0, '#e4e8ec');
+  grad.addColorStop(0.18, '#bcc3ca');
+  grad.addColorStop(0.5, '#a3abb3');
+  grad.addColorStop(0.82, '#bcc3ca');
+  grad.addColorStop(1, '#e4e8ec');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, S, S);
+  // Rayures de laminage — trois filets clairs très peu contrastés (galva mate-brillant).
+  g.strokeStyle = 'rgba(255,255,255,0.16)';
+  g.lineWidth = 1;
+  for (const x of [S * 0.3, S * 0.5, S * 0.7]) {
+    g.beginPath();
+    g.moveTo(x, 0);
+    g.lineTo(x, S);
+    g.stroke();
+  }
+  // La fente oblongue, aux cotes réelles rapportées à la tuile.
+  const sw = (PERF_SLOT_W_M / PROFILE_M) * S;
+  const sh = (PERF_SLOT_L_M / PERF_PITCH_M) * S;
+  const x0 = (S - sw) / 2;
+  const y0 = (S - sh) / 2;
+  const r = sw / 2;
+  g.beginPath();
+  g.moveTo(x0 + r, y0);
+  g.arcTo(x0 + sw, y0, x0 + sw, y0 + sh, r);
+  g.arcTo(x0 + sw, y0 + sh, x0, y0 + sh, r);
+  g.arcTo(x0, y0 + sh, x0, y0, r);
+  g.arcTo(x0, y0, x0 + sw, y0, r);
+  g.closePath();
+  g.fillStyle = '#2b3036'; // le trou : on voit l'ombre à l'intérieur du profilé
+  g.fill();
+  g.lineWidth = 1.5;
+  g.strokeStyle = 'rgba(240,244,248,0.75)'; // tranche de tôle éclairée
+  g.stroke();
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.anisotropy = 8;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+/**
+ * Étale la texture de perforations sur la LONGUEUR réelle d'un profilé, pour que le pas
+ * de 30 mm reste physique quelle que soit la pièce (rail de 2,40 m ou montant de 0,77 m).
+ * Les 24 sommets d'une `BoxGeometry` non segmentée sont ordonnés par face — +X, −X, +Y,
+ * −Y, +Z, −Z — et chaque face mappe `u` sur son premier axe de plan et `v` sur le second :
+ * (±X) → (z, y), (±Y) → (x, z), (±Z) → (x, y). Toutes nos pièces sont bâties LONGUES SUR
+ * Y, donc les quatre faces LONGUES (±X, ±Z) portent `v` le long de la pièce : on y répète
+ * la tuile `longueur / 30 mm` fois et on laisse `u` couvrir exactement la face. Les deux
+ * faces de BOUT (±Y, 41 × 41 mm) restent en 0..1 — invisibles à l'échelle de la carte.
+ */
+function stretchProfileUVs(geo: THREE.BoxGeometry, lengthM: number) {
+  const uv = geo.attributes.uv as THREE.BufferAttribute;
+  if (!uv || uv.count < 24) return;
+  const reps = Math.max(1, Math.round(lengthM / PERF_PITCH_M));
+  for (const face of [0, 1, 4, 5]) {
+    for (let i = face * 4; i < face * 4 + 4; i++) uv.setY(i, uv.getY(i) * reps);
+  }
+  uv.needsUpdate = true;
+}
+
 export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
   const { map, lowEnd, shadowSize } = deps;
   // Absent (ERP) → false : toutes les branches gardées ci-dessous sont inertes.
@@ -260,6 +391,11 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
   let sun: THREE.DirectionalLight | null = null;
   let modelMatrix: THREE.Matrix4 | null = null;
   const panelTex = makeCanadianPanelTexture();
+  // Texture du profilé galvanisé PERFORÉ, PARTAGÉE par toutes les pièces de structure et
+  // bakée une seule fois (patron W71 : jamais dans le chemin de rendu). En mode bas de
+  // gamme on ne la fabrique PAS — le profilé garde une couleur galva unie : zéro canvas,
+  // zéro upload GPU, zéro échantillonnage supplémentaire.
+  const galvaTex: THREE.Texture | null = lowEnd ? null : makeGalvaProfileTexture();
   // Change B : photo satellite posée sur la face supérieure du toit. Texture mise en
   // cache par bbox (chargée UNE fois par tracé) ; matériau du deck courant suivi pour
   // l'appliquer dès l'arrivée de l'image. Repli silencieux (deck gris) si pas de token
@@ -310,7 +446,8 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
   };
 
   // W71 — CACHE des matériaux + géométries STATIQUES du système panneau (verre/cadre/
-  // dos/boîtier/châssis/lest). Avant le split ils étaient ré-alloués DANS buildZoneMeshes
+  // dos/boîtier + profilé galvanisé perforé/platine/bordure béton de la structure, et la
+  // TEXTURE de perforations). Avant le split ils étaient ré-alloués DANS buildZoneMeshes
   // à CHAQUE rendu (glissé du curseur d'inclinaison, déplacement d'obstacle, édition de
   // disposition) → chaque MeshPhysicalMaterial (verre, clearcoat) reprovoquait une
   // recompilation de shader. On les fabrique UNE fois ici (variantes active + `dim`,
@@ -318,8 +455,9 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
   // disposeScene ne touche QUE les meshes par zone ; ce cache n'est libéré qu'à
   // onRemove (disposeSharedCache). Les matériaux bâtiment/dalle restent par rendu (la
   // dalle porte la photo satellite, et leur géométrie varie de toute façon par zone).
-  // Les géométries panneau/rail/châssis-arrière dépendent de grid (alongRow/slope/rise)
-  // → restent par rendu ; seules les BoxGeometry à arêtes CONSTANTES sont cachées.
+  // Les géométries panneau/rail/montant/traverse dépendent de grid (alongRow/slope/rise/
+  // empreinte au sol) → restent par rendu ; seules les BoxGeometry à arêtes CONSTANTES
+  // (boîtier, platine, bordure béton) sont cachées.
   // Ressources PARTAGÉES (matériaux + géométries cachés) : disposeObject ne doit JAMAIS
   // les libérer (un rendu suivant les réutilise) ; seul disposeSharedCache le fait.
   const sharedResources = new WeakSet<THREE.Material | THREE.BufferGeometry>();
@@ -329,8 +467,10 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     backMat: THREE.MeshStandardMaterial;
     panelMats: THREE.Material[];
     jboxMat: THREE.MeshStandardMaterial;
+    /** Profilé C galvanisé perforé — rails inclinés, montants, traverses ET platines. */
     rackMat: THREE.MeshStandardMaterial;
-    ballastMat: THREE.MeshStandardMaterial;
+    /** Bordure béton préfabriquée (le socle discontinu sous chaque pied). */
+    socleMat: THREE.MeshStandardMaterial;
   }
   const buildPanelMatSet = (dim: boolean): PanelMatSet => {
     const glassMat = new THREE.MeshPhysicalMaterial({ map: panelTex, color: 0xffffff, metalness: 0.1, roughness: 0.22, clearcoat: 1, clearcoatRoughness: 0.08 });
@@ -343,10 +483,18 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
       backMat.color.set(0xb0b3ba);
     }
     const jboxMat = new THREE.MeshStandardMaterial({ color: 0x15171c, metalness: 0.3, roughness: 0.6 });
-    const rackMat = new THREE.MeshStandardMaterial({ color: 0x40454f, metalness: 0.75, roughness: 0.4 });
-    const ballastMat = new THREE.MeshStandardMaterial({ color: 0x9b9a90, metalness: 0, roughness: 0.95 });
-    for (const m of [glassMat, frameMat, backMat, jboxMat, rackMat, ballastMat]) sharedResources.add(m);
-    return { glassMat, frameMat, backMat, panelMats: [frameMat, frameMat, frameMat, frameMat, glassMat, backMat], jboxMat, rackMat, ballastMat };
+    // Galvanisé mate-brillant : la texture perforée porte la teinte (couleur neutre pour
+    // ne pas l'assombrir) ; sans texture (lowEnd) on peint la même teinte galva en aplat.
+    const rackMat = new THREE.MeshStandardMaterial({
+      map: galvaTex,
+      color: galvaTex ? 0xffffff : 0xb0b7be,
+      metalness: 0.78,
+      roughness: 0.38,
+    });
+    // Béton préfabriqué gris CLAIR (bordure de chantier), totalement mat.
+    const socleMat = new THREE.MeshStandardMaterial({ color: 0xc2c0b6, metalness: 0, roughness: 0.95 });
+    for (const m of [glassMat, frameMat, backMat, jboxMat, rackMat, socleMat]) sharedResources.add(m);
+    return { glassMat, frameMat, backMat, panelMats: [frameMat, frameMat, frameMat, frameMat, glassMat, backMat], jboxMat, rackMat, socleMat };
   };
   let panelMatsActive: PanelMatSet | null = null;
   let panelMatsDim: PanelMatSet | null = null;
@@ -356,10 +504,10 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
   };
 
   // Géométries STATIQUES (arêtes constantes) du système panneau : boîtier de jonction,
-  // montant avant du châssis, lest béton. Indépendantes de grid → cachées une fois.
+  // platine de pied, bordure béton. Indépendantes de grid → cachées une fois.
   let jboxGeoCache: THREE.BoxGeometry | null = null;
-  let frontGeoCache: THREE.BoxGeometry | null = null;
-  let ballastGeoCache: THREE.BoxGeometry | null = null;
+  let plateGeoCache: THREE.BoxGeometry | null = null;
+  let socleGeoCache: THREE.BoxGeometry | null = null;
   const jboxGeoOf = (): THREE.BoxGeometry => {
     if (!jboxGeoCache) {
       jboxGeoCache = new THREE.BoxGeometry(0.4, 0.12, 0.035);
@@ -368,13 +516,15 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     }
     return jboxGeoCache;
   };
-  const frontGeoOf = (frontStrut: number): THREE.BoxGeometry => {
-    if (!frontGeoCache) sharedResources.add((frontGeoCache = new THREE.BoxGeometry(0.06, 0.06, frontStrut)));
-    return frontGeoCache;
+  /** Platine acier plate (120 × 60 × 8 mm) boulonnée sous chaque pied de triangle. */
+  const plateGeoOf = (): THREE.BoxGeometry => {
+    if (!plateGeoCache) sharedResources.add((plateGeoCache = new THREE.BoxGeometry(PLATINE_L_M, PLATINE_W_M, PLATINE_T_M)));
+    return plateGeoCache;
   };
-  const ballastGeoOf = (): THREE.BoxGeometry => {
-    if (!ballastGeoCache) sharedResources.add((ballastGeoCache = new THREE.BoxGeometry(0.34, 0.18, 0.12)));
-    return ballastGeoCache;
+  /** Bordure béton préfabriquée (100 × 20 × 12 cm), longueur ALIGNÉE sur la rangée. */
+  const socleGeoOf = (): THREE.BoxGeometry => {
+    if (!socleGeoCache) sharedResources.add((socleGeoCache = new THREE.BoxGeometry(SOCLE_L_M, SOCLE_W_M, SOCLE_H_M)));
+    return socleGeoCache;
   };
 
   /** Libère le cache W71 (matériaux + géométries statiques partagés). Appelé UNIQUEMENT
@@ -387,16 +537,16 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
       set.backMat.dispose();
       set.jboxMat.dispose();
       set.rackMat.dispose();
-      set.ballastMat.dispose();
+      set.socleMat.dispose();
     }
     panelMatsActive = null;
     panelMatsDim = null;
     jboxGeoCache?.dispose();
-    frontGeoCache?.dispose();
-    ballastGeoCache?.dispose();
+    plateGeoCache?.dispose();
+    socleGeoCache?.dispose();
     jboxGeoCache = null;
-    frontGeoCache = null;
-    ballastGeoCache = null;
+    plateGeoCache = null;
+    socleGeoCache = null;
   }
 
   // W89 — récupération de perte de contexte WebGL. Sur mobile (mise en arrière-plan /
@@ -485,6 +635,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
       disposeScene();
       disposeSharedCache(); // W71 — cache matériaux/géométries partagés (jamais dans disposeScene)
       panelTex.dispose();
+      galvaTex?.dispose(); // texture procédurale du profilé perforé (absente en lowEnd)
       roofTex?.dispose();
       roofTex = null;
       renderer?.dispose();
@@ -663,7 +814,8 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
   }
 
   /** CHEMIN DE CONSTRUCTION UNIQUE d'une zone : bâtiment + dalle (deck) + panneaux
-   *  (+ châssis/lest en toit plat). Utilisé par renderScene pour la zone ACTIVE
+   *  (+ triangles de structure et bordures béton en toit plat, rien en pose
+   *  affleurante). Utilisé par renderScene pour la zone ACTIVE
    *  (offX=offY=0, dim=false → octet pour octet identique à avant) ET par
    *  appendOtherZones pour les AUTRES zones (offset GPS→ENU + dim=true subdué). Tout
    *  est ajouté à `sceneRoot`. NE touche PAS `setOrigin`/`disposeScene` (renderScene
@@ -796,20 +948,28 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     const ca = Math.cos(rowAngleRad);
     const sa = Math.sin(rowAngleRad);
     const rx = (lx: number, ly: number): [number, number] => [lx * ca - ly * sa, lx * sa + ly * ca];
+    /** Monde → repère local de la pose (inverse EXACTE de `rx`) : abscisse le long de la
+     *  rangée, puis profondeur. Sert à regrouper les panneaux par rangée. */
+    const invRx = (wx: number, wy: number): [number, number] => [wx * ca + wy * sa, -wx * sa + wy * ca];
 
     const alongRow = grid.rowWidthM;
     const slope = grid.slopeLenM;
     const tilt = tiltDeg * DEG2RAD;
     const rise = slope * Math.sin(tilt);
     const depthFootprint = slope * Math.cos(tilt);
-    const frontStrut = 0.1;
+    // Hauteur libre du pied AVANT (m) = la PILE réelle sous le rail incliné : bordure béton
+    // (12 cm) + platine (8 mm) + demi-section du profilé C (20,5 mm) ≈ 0,149 m. C'est la cote
+    // « pied avant 0,10-0,15 m » de la fiche du 18/08, et elle redonne exactement le montant
+    // arrière de 0,77 m relevé à Marrakech (0,62 de montée + 0,15 de socle) sur un module de
+    // 2,40 m incliné à 15°.
+    const frontStrut = SOCLE_H_M + PLATINE_T_M + PROFILE_M / 2;
     const halfAlong = alongRow / 2;
     const halfDepth = depthFootprint / 2;
 
     // W71 — matériaux du système panneau réutilisés depuis le cache (variante active ou
     // `dim`) au lieu d'être ré-alloués à chaque rendu (plus de recompilation de shader
     // MeshPhysicalMaterial sur un simple glissé). Rendu visuel identique.
-    const { glassMat, frameMat, backMat, panelMats, jboxMat, rackMat, ballastMat } = panelMatSet(dim);
+    const { glassMat, frameMat, backMat, panelMats, jboxMat, rackMat, socleMat } = panelMatSet(dim);
     const panelGeo = new THREE.BoxGeometry(alongRow, slope, PANEL2_THICK_M);
     const jboxGeo = jboxGeoOf();
 
@@ -825,18 +985,25 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
       return keep;
     });
     const panelMatsArr: THREE.Matrix4[] = [];
-    const frontMats: THREE.Matrix4[] = [];
-    const backMats: THREE.Matrix4[] = [];
-    const railMats: THREE.Matrix4[] = [];
-    const ballastMats: THREE.Matrix4[] = [];
-    // railGeo (slope) et backGeo (frontStrut + rise) dépendent de grid/tilt → par rendu.
-    // frontGeo (0.06³ × frontStrut constant) et ballastGeo (0.34×0.18×0.12) sont statiques
-    // → cache W71.
-    const railGeo = new THREE.BoxGeometry(0.05, slope, 0.05);
-    const frontGeo = frontGeoOf(frontStrut);
-    const backGeo = new THREE.BoxGeometry(0.06, 0.06, frontStrut + rise);
-    const ballastGeo = ballastGeoOf();
-    const ends = [-halfAlong + 0.08, 0, halfAlong - 0.08];
+    const railMats: THREE.Matrix4[] = []; // hypoténuses — rails inclinés porteurs
+    const backMats: THREE.Matrix4[] = []; // montants arrière VERTICAUX
+    const crossMats: THREE.Matrix4[] = []; // traverses basses horizontales au sol
+    const plateMats: THREE.Matrix4[] = []; // platines acier aux deux pieds
+    const socleMats: THREE.Matrix4[] = []; // bordures béton sous chaque pied
+    // Les TROIS profilés du triangle sont bâtis LONGS SUR Y (`stretchProfileUVs` en dépend)
+    // et leur longueur suit grid/tilt (pente, empreinte au sol, montée) → géométries PAR
+    // RENDU. Platine et bordure béton ont des arêtes CONSTANTES → cache W71.
+    const railGeo = new THREE.BoxGeometry(PROFILE_M, slope, PROFILE_M);
+    stretchProfileUVs(railGeo, slope);
+    const backGeo = new THREE.BoxGeometry(PROFILE_M, frontStrut + rise, PROFILE_M);
+    stretchProfileUVs(backGeo, frontStrut + rise);
+    const crossGeo = new THREE.BoxGeometry(PROFILE_M, depthFootprint, PROFILE_M);
+    stretchProfileUVs(crossGeo, depthFootprint);
+    const plateGeo = plateGeoOf();
+    const socleGeo = socleGeoOf();
+    // Toit plat : les panneaux posés, en coordonnées LOCALES, d'où l'on déduira ensuite les
+    // jointures. En pose affleurante (toit en pente) la liste reste vide → aucun triangle.
+    const feet: PanelFoot[] = [];
     // PV62 — pavage MIXTE : un panneau peut porter SA pose (`orient`), différente de la
     // pose DOMINANTE qui a dimensionné les géométries partagées. C'est le MÊME module,
     // tourné de 90° dans son plan : on fait tourner son instance autour de sa propre
@@ -853,7 +1020,6 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
       const riseP = swapped ? slopeP * Math.sin(tilt) : rise;
       const halfAlongP = swapped ? alongRowP / 2 : halfAlong;
       const halfDepthP = swapped ? (slopeP * Math.cos(tilt)) / 2 : halfDepth;
-      const endsP = swapped ? [-halfAlongP + 0.08, 0, halfAlongP - 0.08] : ends;
       const spinZ = swapped ? Math.PI / 2 : 0;
       // Pour l'Est-Ouest : le sens d'inclinaison vient de la FACE du panneau
       // (chevrons dos à dos faces E/O), fournie par le cerveau. Sud : tilt simple.
@@ -872,39 +1038,109 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
         const pZ = baseZ + frontStrut + riseP / 2 + 0.07;
         panelMatsArr.push(composeLocal(cx, cy, pZ, rowAngleRad, signedTilt, spinZ));
       }
-      if (!flush) for (const xe of endsP) {
-        const lowDepth = signedTilt >= 0 ? -halfDepthP : halfDepthP;
-        const highDepth = -lowDepth;
-        const fpt = rx(xe, lowDepth);
-        frontMats.push(compose(cx + fpt[0], cy + fpt[1], baseZ + frontStrut / 2, rowAngleRad, 0));
-        const bpt = rx(xe, highDepth);
-        // Montant arrière : sa hauteur suit la MONTÉE du panneau (échelle locale en z si
-        // la pose de ce panneau n'est pas la pose dominante).
-        backMats.push(
-          composeLocal(cx + bpt[0], cy + bpt[1], baseZ + (frontStrut + riseP) / 2, rowAngleRad, 0, 0, 1, 1, (frontStrut + riseP) / (frontStrut + rise)),
-        );
-        const cpt = rx(xe, 0);
-        // Rail : sa longueur suit le côté « pente » du panneau (échelle locale en y).
-        railMats.push(
-          composeLocal(cx + cpt[0], cy + cpt[1], baseZ + frontStrut + riseP / 2, rowAngleRad, signedTilt, 0, 1, slopeP / slope, 1),
-        );
+      // Toit plat : la structure ne se dessine PAS ici. On mémorise seulement le panneau
+      // dans le repère local de la pose ; les triangles seront placés APRÈS la boucle, aux
+      // JOINTURES entre panneaux voisins (un triangle porte les deux bords à la fois).
+      if (!flush) {
+        const [la, ld] = invRx(cx, cy);
+        feet.push({ la, ld, halfA: halfAlongP, slopeP, riseP, halfDepthP, signedTilt });
       }
-      if (!flush) for (const xe of [-halfAlongP + 0.08, halfAlongP - 0.08]) {
-        const bf = rx(xe, -halfDepthP - 0.02);
-        ballastMats.push(compose(cx + bf[0], cy + bf[1], baseZ + 0.06, rowAngleRad, 0));
-        const bb = rx(xe, halfDepthP + 0.02);
-        ballastMats.push(compose(cx + bb[0], cy + bb[1], baseZ + 0.06, rowAngleRad, 0));
+    }
+
+    // ── TRIANGLES À CHAQUE JOINTURE (toit plat uniquement) ────────────────────────────
+    // Sur les chantiers TAQINOR le triangle est posé à CHAQUE jointure de panneaux ET aux
+    // deux extrémités de rangée, chaque triangle portant le bord de ses deux voisins :
+    // N panneaux CONTIGUS donnent N+1 triangles, d'où l'entraxe d'une largeur de module
+    // (~1,15 m) mesuré sur les photos. Chaque triangle = 3 pièces boulonnées en profilé C
+    // galvanisé perforé (rail incliné, montant arrière vertical, traverse basse au sol),
+    // 2 platines et 2 bordures béton — jamais un bac lesté continu.
+    if (!flush && feet.length) {
+      // Rangées : les panneaux d'une même rangée partagent leur profondeur locale, arrondie
+      // au décimètre (le pavage aligne les rangées à la maille près).
+      const rows = new Map<number, PanelFoot[]>();
+      for (const ft of feet) {
+        const key = Math.round(ft.ld * 10) / 10;
+        const bucket = rows.get(key);
+        if (bucket) bucket.push(ft);
+        else rows.set(key, [ft]);
+      }
+      /** Pose les 7 pièces d'UN triangle à l'abscisse `xa` de la rangée du panneau `r`. */
+      const addTriangle = (xa: number, r: PanelFoot) => {
+        // Côté BAS (aval) = celui vers lequel le panneau descend ; l'inclinaison signée d'un
+        // chevron Est-Ouest retourne simplement le triangle, sans autre changement.
+        const lowDepth = r.signedTilt >= 0 ? -r.halfDepthP : r.halfDepthP;
+        const highDepth = -lowDepth;
+        const axis = rx(xa, r.ld); // milieu de la traverse / du rail incliné
+        const foot = rx(xa, r.ld + lowDepth); // pied AVANT
+        const heel = rx(xa, r.ld + highDepth); // pied ARRIÈRE (sous le montant)
+        // 1. HYPOTÉNUSE — le rail incliné qui PORTE le panneau ; longueur = pente du module
+        //    (échelle locale en y quand ce panneau n'est pas dans la pose dominante).
+        const railZ = baseZ + frontStrut + r.riseP / 2;
+        const railScale = r.slopeP / slope;
+        railMats.push(
+          composeLocal(axis[0], axis[1], railZ, rowAngleRad, r.signedTilt, 0, 1, railScale, 1),
+        );
+        // 2. MONTANT ARRIÈRE VERTICAL — du sol jusqu'au bout haut du rail. `rotX = π/2`
+        //    DRESSE le profilé (bâti long sur Y) sans changer sa perforation ; sa hauteur
+        //    dérive de la montée du panneau, donc de l'inclinaison signée.
+        const backH = frontStrut + r.riseP;
+        const backScale = backH / (frontStrut + rise);
+        backMats.push(
+          composeLocal(heel[0], heel[1], baseZ + backH / 2, rowAngleRad, Math.PI / 2, 0, 1, backScale, 1),
+        );
+        // 3. TRAVERSE BASSE HORIZONTALE — relie le pied avant au pied du montant, posée sur
+        //    les deux platines : d'où z = baseZ + frontStrut, la hauteur exacte de la pile
+        //    bordure + platine + demi-profilé.
+        const crossScale = depthFootprint > 0 ? (2 * r.halfDepthP) / depthFootprint : 1;
+        crossMats.push(
+          composeLocal(axis[0], axis[1], baseZ + frontStrut, rowAngleRad, 0, 0, 1, crossScale, 1),
+        );
+        // 4. PLATINES acier plates (120 × 60 mm) boulonnées aux DEUX pieds, sur la bordure.
+        const plateZ = baseZ + SOCLE_H_M + PLATINE_T_M / 2;
+        plateMats.push(compose(foot[0], foot[1], plateZ, rowAngleRad, 0));
+        plateMats.push(compose(heel[0], heel[1], plateZ, rowAngleRad, 0));
+        // 5. SOCLES DISCONTINUS — une bordure béton (100 × 20 × 12 cm) sous le pied AVANT,
+        //    une sous le pied ARRIÈRE. Longue de 1 m pour un entraxe de ~1,15 m : la ligne
+        //    de socles reste VISIBLEMENT interrompue, comme sur les photos de chantier.
+        const socleZ = baseZ + SOCLE_H_M / 2;
+        socleMats.push(compose(foot[0], foot[1], socleZ, rowAngleRad, 0));
+        socleMats.push(compose(heel[0], heel[1], socleZ, rowAngleRad, 0));
+      };
+      for (const row of rows.values()) {
+        row.sort((a, b) => a.la - b.la);
+        let i = 0;
+        while (i < row.length) {
+          // Fin du TRONÇON contigu : deux voisins se touchent tant que l'écart de leurs
+          // centres ne dépasse pas la somme de leurs demi-largeurs + le jeu toléré.
+          let j = i;
+          while (
+            j + 1 < row.length &&
+            row[j + 1].la - row[j].la <= row[j].halfA + row[j + 1].halfA + CONTIG_GAP_M
+          ) j++;
+          // Bord AMONT du tronçon, puis le MILIEU de chaque jointure interne, puis le bord
+          // AVAL : exactement N+1 triangles pour les N panneaux contigus du tronçon.
+          addTriangle(row[i].la - row[i].halfA, row[i]);
+          for (let k = i; k < j; k++) {
+            addTriangle((row[k].la + row[k].halfA + row[k + 1].la - row[k + 1].halfA) / 2, row[k]);
+          }
+          addTriangle(row[j].la + row[j].halfA, row[j]);
+          i = j + 1;
+        }
       }
     }
 
     const panelIM = makeIM(panelGeo, panelMats, panelMatsArr, true, false);
+    // UN InstancedMesh par TYPE de pièce (7 au plus en toit plat, 2 en pose affleurante) :
+    // le nombre de draw-calls ne dépend pas du nombre de panneaux. Seules les bordures
+    // béton reçoivent l'ombre — elles sont la seule pièce posée à même la dalle.
     const meshes = [
       panelIM,
       makeIM(jboxGeo, jboxMat, panelMatsArr, true, false),
-      makeIM(frontGeo, rackMat, frontMats, true, false),
-      makeIM(backGeo, rackMat, backMats, true, false),
       makeIM(railGeo, rackMat, railMats, true, false),
-      makeIM(ballastGeo, ballastMat, ballastMats, true, true),
+      makeIM(backGeo, rackMat, backMats, true, false),
+      makeIM(crossGeo, rackMat, crossMats, true, false),
+      makeIM(plateGeo, rackMat, plateMats, true, false),
+      makeIM(socleGeo, socleMat, socleMats, true, true),
     ];
     for (const me of meshes) if (me) sceneRoot!.add(me);
 
