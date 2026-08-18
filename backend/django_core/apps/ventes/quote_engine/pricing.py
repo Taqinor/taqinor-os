@@ -117,6 +117,15 @@ class TrancheTable(list):
 # officielle sur les seuils ET sur les prix, et sous-estimait lourdement
 # l'économie d'un foyer du haut de grille. Le miroir JS solar.js ONEE_TRANCHES
 # porte les MÊMES valeurs.
+#
+# SECONDE IMPLÉMENTATION INDÉPENDANTE — apps/parametres/models_tariff.py
+# ``DEFAULT_RESIDENTIAL_TIERS`` + apps/parametres/tariff.py
+# ``monthly_bill_residentiel`` (consommée par apps/ventes/etude.py, pas par le
+# moteur de devis) portent la MÊME grille/règle, en Decimal, avec des bornes
+# déjà EFFECTIVES au lieu de nominal+tolérance. Volontairement PAS unifiées
+# (hors périmètre) — verrouillées d'accord par
+# apps/ventes/tests/test_tariff_drift_lock.py : si l'une bouge seule, ce test
+# passe au rouge.
 ONEE_TRANCHES = TrancheTable(
     [
         (100, 0.9010),    # progressif   0–100  — RADEEJ TTC (18/08/2026)

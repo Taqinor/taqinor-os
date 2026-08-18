@@ -89,6 +89,14 @@ def monthly_bill_residentiel(settings, kwh):
 
     ≤ seuil (150) → PROGRESSIF (chaque tranche à son prix).
     > seuil       → SÉLECTIF (mois entier au prix de la tranche atteinte).
+
+    SECONDE IMPLÉMENTATION INDÉPENDANTE — apps/ventes/quote_engine/pricing.py
+    ``_monthly_bill_from_kwh``/``ONEE_TRANCHES`` (consommée par le moteur de
+    devis/PDF ; celle-ci sert ``apps/ventes/etude.py`` pour l'étude bancable
+    et l'écran Tarification & ROI) calcule la MÊME grille/règle. Volontairement
+    PAS unifiées (hors périmètre) — verrouillées d'accord par
+    apps/ventes/tests/test_tariff_drift_lock.py : si l'une bouge seule, ce
+    test passe au rouge.
     """
     kwh = Decimal(str(kwh or 0))
     if kwh <= 0:
