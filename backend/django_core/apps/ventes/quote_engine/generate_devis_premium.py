@@ -511,8 +511,12 @@ DEFAULT_DOC_TEXTS = {
         "Tarifs de référence&#160;: barème ONEE/SRM",
     ],
     # N67 — garanties (titre, détail, libellé performance). Entités HTML EXACTES.
+    # QRES56 (fondateur, 2026-08-17) — « Structure 20 ans » RETIRÉE ici aussi :
+    # le moteur résidentiel v2 ne publie plus que les garanties traçables aux
+    # fiches produit (theme.WARRANTIES), les deux moteurs disent enfin la même
+    # chose. Le reste du littéral est inchangé au caractère près.
     "garantie_titre": "Garanties jusqu&#8217;à 30 ans",
-    "garantie_detail": ("Structure 20 ans, panneaux 12 ans produit + 30 ans "
+    "garantie_detail": ("Panneaux 12 ans produit + 30 ans "
                         "performance (87,4&#8201;%), onduleur 10 ans. "
                         "Sérénité totale."),
     "garantie_perf_label": "Performance panneau (87,4&#8201;%)",
@@ -1792,11 +1796,9 @@ def page3():
         <div style="font-size:12px;font-weight:700;color:{CA};letter-spacing:1px;text-transform:uppercase;">ANS</div>
         <div style="font-size:8pt;color:{CG4};margin-top:2px;">Panneaux (produit)</div>
       </div>
-      <div style="flex:1;border:2px solid {CN};border-top:4px solid {CA};border-radius:8px;padding:6px 5px;text-align:center;background:white;">
-        <div class="serif" style="font-size:38px;color:{CN};line-height:1.0;letter-spacing:-1px;">20</div>
-        <div style="font-size:12px;font-weight:700;color:{CA};letter-spacing:1px;text-transform:uppercase;">ANS</div>
-        <div style="font-size:8pt;color:{CG4};margin-top:2px;">Structure de montage</div>
-      </div>
+      <!-- QRES56 (fondateur, 2026-08-17) : le badge « 20 ANS — Structure de
+           montage » est retiré (même décision que la ligne garantie_detail) ;
+           les trois badges restants s'élargissent, la hauteur ne bouge pas. -->
       <div style="flex:1;border:2px solid {CA};border-top:4px solid {CN};border-radius:8px;padding:6px 5px;text-align:center;background:{CAL};">
         <div class="serif" style="font-size:38px;color:{CA};line-height:1.0;letter-spacing:-1px;">30</div>
         <div style="font-size:12px;font-weight:700;color:{CN};letter-spacing:1px;text-transform:uppercase;">ANS</div>

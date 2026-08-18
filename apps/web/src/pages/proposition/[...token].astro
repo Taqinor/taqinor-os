@@ -17,7 +17,9 @@
 export const prerender = false;
 
 import Layout from '../../layouts/Layout.astro';
-import StarRating from '../../components/StarRating.astro';
+// (fondateur 2026-08-17) <StarRating/> n'est plus monté ici : sans note Google
+// réelle (GOOGLE_RATING = null, testimonials.ts) le composant ne rendait RIEN,
+// et la décision fondateur du jour bannit tout avis/étoile de cette page.
 import TestimonialCarousel from '../../components/TestimonialCarousel.astro';
 import InstallCounter from '../../components/InstallCounter.astro';
 import CertLogoRow from '../../components/CertLogoRow.astro';
@@ -121,7 +123,25 @@ import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
 // W342 — « installation la plus proche » : haversine sur un point GPS réel
 // (premier sommet du premier pan de toiture, quand roof_layout est exposé) ou,
 // à défaut, correspondance texte sur le nom de ville dans l'adresse client.
-import { nearestRealisation, nearestRealisationByCityText } from '../../lib/realisations';
+// (fondateur 2026-08-17) + date du relevé de production et appariement DOCUMENTÉ
+// « réalisation → centrale mesurée » (jamais deviné).
+import {
+  nearestRealisation,
+  nearestRealisationByCityText,
+  measuredPlantFor,
+  formatDateFr,
+  MEASURED_FLEET_READ_AT_FR,
+} from '../../lib/realisations';
+// (fondateur 2026-08-17) SOURCE UNIQUE des durées de garantie affichées : le
+// bloc « Pourquoi nous faire confiance » ne code plus aucun chiffre en dur.
+import {
+  PANEL_PERFORMANCE_WARRANTY_YEARS,
+  INVERTER_WARRANTY_YEARS,
+  INSTALL_WARRANTY_YEARS,
+} from '../../lib/warranty';
+// (fondateur 2026-08-17) le badge IEC ne s'affiche que s'il peut pointer vers la
+// fiche du panneau RÉELLEMENT devisé (catégorie « Panneaux photovoltaïques »).
+import { ficheBySlug } from '../../lib/fiches';
 
 const API_BASE = (import.meta.env.PUBLIC_API_BASE as string | undefined) ?? 'https://api.taqinor.ma';
 // ── PV80 — ROUTE CATCH-ALL : /proposition/<token> ET /proposition/<slug>/<token>.
@@ -552,6 +572,27 @@ const nearestInstall = ok
     (q?.client_addr ? nearestRealisationByCityText(q.client_addr) : null)
   : null;
 const nearestInstallHref = nearestInstall ? `/realisations/${nearestInstall.slug}` : '';
+// (fondateur 2026-08-17) production MESURÉE de ce chantier — affichée UNIQUEMENT
+// quand la réalisation déclare son appariement avec la flotte supervisée
+// (measuredPlantFor : aucun appariement heuristique ville/puissance). Le cumul
+// est « depuis la mise en service », jamais converti en production annuelle. Il
+// n'existe AUCUNE estimation publiée par chantier (WB1 les a toutes retirées) :
+// la comparaison mesuré/estimé se réduit donc au chiffre mesuré, ou à rien.
+const nearestMeasured = measuredPlantFor(nearestInstall);
+const nearestMeasuredMwh = nearestMeasured ? formatNumber(nearestMeasured.lifetimeMWh, 2) : '';
+const nearestMeasuredDate = nearestMeasured ? formatDateFr(nearestMeasured.readAt) : '';
+const nearestMeasuredFr = nearestMeasured
+  ? `Production mesurée : ${nearestMeasuredMwh} MWh depuis la mise en service`
+    + (nearestMeasuredDate ? ` (relevé au ${nearestMeasuredDate})` : '')
+  : '';
+const nearestMeasuredEn = nearestMeasured
+  ? `Measured output: ${nearestMeasuredMwh} MWh since commissioning`
+    + (nearestMeasuredDate ? ` (as measured on ${nearestMeasuredDate})` : '')
+  : '';
+const nearestMeasuredAr = nearestMeasured
+  ? `إنتاج مقيس: ${nearestMeasuredMwh} ميغاواط-ساعة منذ التشغيل`
+    + (nearestMeasuredDate ? ` (قراءة بتاريخ ${nearestMeasuredDate})` : '')
+  : '';
 
 // ── WJ26 — « Tout est expliqué » : légende par pan + visite guidée en 4 étapes.
 // Chaque chiffre vient du layout serveur ou du payload quote (les fonctions
@@ -582,6 +623,33 @@ const equipmentGroups = groupEquipment(equipmentItems).map((group) => ({
 const equipmentExtra = ok && twoOptions && equipmentOption === 'sans_batterie'
   ? equipmentDelta(equipmentItems, optionItems(data!, 'avec_batterie'))
   : [];
+
+// ── (fondateur 2026-08-17) BADGES DU BLOC CONFIANCE ──────────────────────────
+// RÈGLE : un badge n'existe QUE s'il est cliquable vers une page réelle et bien
+// remplie. Concrètement :
+//  · garanties panneaux/onduleur → /garanties (tableau de garanties complet,
+//    exclusions, marche à suivre, FAQ assurance) ;
+//  · IEC 61215 / 61730 → la fiche du panneau RÉELLEMENT devisé
+//    (/produits/<slug>), qui porte ces certifications dans `fiches.ts` — aucun
+//    panneau apparié (marque absente/inconnue) ⇒ badge OMIS, jamais un lien
+//    vers la fiche d'une autre marque ;
+//  · « Loi 82-21 » → /loi-82-21 (page dédiée FR/EN/AR + guide, dans la nav).
+const panelFicheSlug = equipmentGroups
+  .flatMap((group) => group.lines)
+  .map((line) => line.ficheSlug)
+  .find((slug) => !!slug && ficheBySlug(slug)?.categorie === 'Panneaux photovoltaïques') ?? null;
+const certKeys = [
+  ...(panelFicheSlug ? ['iec' as const] : []),
+  'loi8221' as const,
+  'panneaux' as const,
+  'onduleur' as const,
+];
+const certHrefs = {
+  ...(panelFicheSlug ? { iec: `/produits/${panelFicheSlug}` } : {}),
+  loi8221: '/loi-82-21',
+  panneaux: '/garanties',
+  onduleur: '/garanties',
+};
 
 // ── WJ32 — Complétude du contenu : variantes, « Et après ? », « Nos
 // hypothèses », accompagnement, FAQ objections. Chaque bloc dégrade proprement
@@ -1904,8 +1972,22 @@ const signConfig = ok
           réelles marqués `pending real content` tant que Reda ne les fournit pas.
           Les garanties et normes ci-dessous sont des FAITS techniques vérifiables.
           WJ35 — CertLogoRow reprend ces mêmes faits en bandeau ; le compteur
-          d'installations et la note Google sont désormais des composants premium
-          RÉUTILISABLES (InstallCounter / StarRating), avec la même intégrité. */}
+          d'installations est un composant premium RÉUTILISABLE (InstallCounter),
+          avec la même intégrité.
+          (fondateur 2026-08-17) REFONTE v2 DU BLOC :
+           1. les durées de garantie viennent de `lib/warranty.ts` (source unique
+              partagée avec le PDF, cf. residential/theme.py WARRANTIES) et la
+              pose est affichée AVEC sa durée, comme sur le PDF ;
+           2. une phrase de réassurance dit que les garanties fabricant sont
+              attachées au MATÉRIEL (transférables, valables quel que soit
+              l'installateur) ;
+           3. le cumul mesuré porte sa DATE DE RELEVÉ (donnée de realisations.ts,
+              omise si aucune date documentée) ;
+           4. le chantier le plus proche affiche sa production MESURÉE quand il
+              est apparié à la flotte supervisée ;
+           5. les badges ne survivent que cliquables (voir `certKeys`/`certHrefs`) ;
+           6. INTERDITS ICI : avis/étoiles (<StarRating/> démonté), invitation à
+              visiter un chantier, assurance, nombre d'installations. */}
       <section id="confiance" class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
         <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Pourquoi nous faire confiance" data-en="Why trust us" data-ar="لماذا تثقون بنا">Pourquoi nous faire confiance</p>
         {/* ── PV81 · LES GARANTIES RACONTENT UNE SEULE HISTOIRE ────────────────
@@ -1914,24 +1996,57 @@ const signConfig = ok
             garantie), « 30 ans panneaux / 10 ans onduleur » juste en dessous, et
             « 25 ans » du cumul d'économies plus haut. Le chiffre orphelin part ;
             restent les DEUX garanties constructeur réelles + l'engagement de
-            pose. Les certifications (IEC, loi 82-21) ne sont plus répétées ici :
-            <CertLogoRow/> juste en dessous les porte déjà, à l'identique. */}
-        <p class="cine-card mt-5 flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-xl p-5 text-lune-soft">
-          <span class="fig text-lune" dir="ltr">30 ans</span>
-          <span data-i18n data-fr="de performance panneaux" data-en="of panel performance" data-ar="أداء الألواح">de performance panneaux</span>
-          <span class="text-lune-faint" aria-hidden="true">·</span>
-          <span class="fig text-lune" dir="ltr">10 ans</span>
-          <span data-i18n data-fr="onduleur" data-en="inverter" data-ar="العاكس">onduleur</span>
-          <span class="text-lune-faint" aria-hidden="true">·</span>
-          <span class="text-lune" data-i18n data-fr="pose garantie Taqinor" data-en="installation guaranteed by Taqinor" data-ar="التركيب مضمون من طرف تاقينور">pose garantie Taqinor</span>
-        </p>
+            pose, désormais chiffré lui aussi (2 ans, comme le PDF). Les
+            certifications ne sont pas répétées ici : le bandeau de badges juste
+            en dessous porte l'IEC — et lui seul, la loi 82-21 n'ayant aucune
+            page dédiée à laquelle un badge cliquable pourrait renvoyer. */}
+        <div class="cine-card mt-5 rounded-xl p-5">
+          <p class="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-lune-soft">
+            <span class="fig text-lune" dir="ltr" data-i18n
+              data-fr={`${PANEL_PERFORMANCE_WARRANTY_YEARS} ans`}
+              data-en={`${PANEL_PERFORMANCE_WARRANTY_YEARS} years`}
+              data-ar={`${PANEL_PERFORMANCE_WARRANTY_YEARS} سنة`}>{PANEL_PERFORMANCE_WARRANTY_YEARS} ans</span>
+            <span data-i18n data-fr="de performance panneaux" data-en="of panel performance" data-ar="أداء الألواح">de performance panneaux</span>
+            <span class="text-lune-faint" aria-hidden="true">·</span>
+            <span class="fig text-lune" dir="ltr" data-i18n
+              data-fr={`${INVERTER_WARRANTY_YEARS} ans`}
+              data-en={`${INVERTER_WARRANTY_YEARS} years`}
+              data-ar={`${INVERTER_WARRANTY_YEARS} سنوات`}>{INVERTER_WARRANTY_YEARS} ans</span>
+            <span data-i18n data-fr="onduleur" data-en="inverter" data-ar="العاكس">onduleur</span>
+            <span class="text-lune-faint" aria-hidden="true">·</span>
+            {/* La pose porte désormais SA durée, exactement comme le PDF
+                (theme.WARRANTIES : « 2 ans — Installation »). */}
+            <span class="fig text-lune" dir="ltr" data-i18n
+              data-fr={`${INSTALL_WARRANTY_YEARS} ans`}
+              data-en={`${INSTALL_WARRANTY_YEARS} years`}
+              data-ar="سنتان">{INSTALL_WARRANTY_YEARS} ans</span>
+            <span class="text-lune" data-i18n data-fr="de pose Taqinor" data-en="of Taqinor installation work" data-ar="على تركيب تاقينور">de pose Taqinor</span>
+          </p>
+          {/* (fondateur 2026-08-17) réassurance : ce que vaut une garantie
+              fabricant si l'installateur venait à changer. Fait vérifiable — la
+              garantie porte sur le MATÉRIEL, pas sur le poseur. */}
+          <p class="mt-3 text-sm text-lune-soft" data-i18n
+            data-fr="Les garanties fabricant sont attachées au matériel : elles suivent votre installation, restent transférables avec le bien et demeurent valables quel que soit l’installateur."
+            data-en="Manufacturer warranties are attached to the equipment: they follow your installation, transfer with the property and remain valid whoever the installer is."
+            data-ar="ضمانات المصنّع مرتبطة بالمعدات: فهي ترافق تركيبكم، وتنتقل مع الملك، وتبقى سارية مهما كان المُركِّب.">
+            Les garanties fabricant sont attachées au matériel : elles suivent votre installation,
+            restent transférables avec le bien et demeurent valables quel que soit l’installateur.
+          </p>
+        </div>
 
-        <!-- WJ35 — compteur d'installations réel + note Google (scaffold tant qu'absente). -->
+        <!-- WJ35 — compteur de production réellement mesurée (aucune note/avis
+             ici : décision fondateur 2026-08-17). La DATE DE RELEVÉ accompagne le
+             cumul — et n'est rendue que si realisations.ts en documente une. -->
         <div class="mt-4 cine-card rounded-xl p-5 sm:p-6">
-          <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <InstallCounter />
-            <StarRating />
-          </div>
+          <InstallCounter />
+          {MEASURED_FLEET_READ_AT_FR && (
+            <p class="mt-2 text-xs text-lune-faint" data-i18n
+              data-fr={`relevé au ${MEASURED_FLEET_READ_AT_FR}`}
+              data-en={`as measured on ${MEASURED_FLEET_READ_AT_FR}`}
+              data-ar={`قراءة بتاريخ ${MEASURED_FLEET_READ_AT_FR}`}>
+              relevé au {MEASURED_FLEET_READ_AT_FR}
+            </p>
+          )}
         </div>
 
         {/* W342 — « L'installation la plus proche de chez vous » : GPS réel du
@@ -1954,6 +2069,17 @@ const signConfig = ok
                 {nearestInstall.ville} — {nearestInstall.kwc} — installation réelle Taqinor
               </span>
             </p>
+            {/* (fondateur 2026-08-17) production RÉELLEMENT MESURÉE de ce
+                chantier — rendue seulement quand la réalisation est appariée à
+                une centrale supervisée (cumul depuis la mise en service, jamais
+                converti en production annuelle). Aucune estimation par chantier
+                n'existe dans les données (WB1) : rien ne vient la compléter. */}
+            {nearestMeasured && (
+              <p class="mt-2 text-sm text-lune-soft" data-i18n
+                data-fr={nearestMeasuredFr} data-en={nearestMeasuredEn} data-ar={nearestMeasuredAr}>
+                {nearestMeasuredFr}
+              </p>
+            )}
             <a href={nearestInstallHref} class="mt-2 inline-block text-sm text-brass-300 underline-offset-2 hover:underline" data-i18n
               data-fr="Voir cette réalisation" data-en="See this project" data-ar="مشاهدة هذا الإنجاز">
               Voir cette réalisation
@@ -1961,9 +2087,13 @@ const signConfig = ok
           </div>
         )}
 
-        <!-- WJ35 — bandeau certifications/garanties (texte, sobre — aucun logo fabriqué). -->
+        <!-- WJ35 — bandeau certifications/garanties (texte, sobre — aucun logo
+             fabriqué). (fondateur 2026-08-17) chaque badge rendu ici est un LIEN
+             vers une page réelle : garanties → /garanties, IEC → la fiche du
+             panneau devisé ; le badge « Loi 82-21 », sans page dédiée digne d'un
+             clic, n'est plus rendu sur cette proposition. -->
         <div class="mt-4">
-          <CertLogoRow />
+          <CertLogoRow keys={certKeys} hrefs={certHrefs} />
         </div>
 
         {/* WJ35 — avis clients réels. PV81 — <TestimonialCarousel/> est no-op

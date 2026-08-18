@@ -92,6 +92,19 @@ export interface Realisation {
   /** Phrase de contexte, neutre, factuelle. */
   resume: string;
   photos: RealisationPhoto[];
+  /**
+   * (fondateur 2026-08-17) — libellé de l'entrée `MEASURED_FLEET` qui
+   * correspond à CE chantier, quand l'appariement est DOCUMENTÉ dans ce
+   * fichier. JAMAIS d'appariement deviné par ville + puissance : deux
+   * chantiers d'une même ville peuvent partager la même puissance, et
+   * plusieurs réalisations disent explicitement « pas de relevé distinct ».
+   * Seule la réf. 400 est appariée à ce jour : son commentaire de production
+   * cite le cumul réel « 1,13 MWh », identique à celui de
+   * « Bd Fès (Casablanca) » (11,36 kWc de part et d'autre).
+   * Absent = aucune production mesurée publiable pour ce chantier → la
+   * mention est OMISE, jamais remplacée par une estimation.
+   */
+  measuredLabel?: string;
 }
 
 export const REALISATIONS: Realisation[] = [
@@ -135,6 +148,10 @@ export const REALISATIONS: Realisation[] = [
     onduleur: 'Deye 10 kW',
     batterie: '10 kWh Dyness (2 × DL5.0C)',
     segment: 'residentiel',
+    // (fondateur 2026-08-17) seul appariement DOCUMENTÉ avec la flotte mesurée :
+    // le commentaire `production` ci-dessus cite le cumul réel 1,13 MWh, celui
+    // de « Bd Fès (Casablanca) » — même puissance (11,36 kWc) des deux côtés.
+    measuredLabel: 'Bd Fès (Casablanca)',
     resume:
       'Une villa de Casablanca face à la skyline : 16 panneaux, onduleur hybride Deye et deux batteries Dyness, avec borne de recharge — production suivie en temps réel.',
     photos: [
@@ -238,14 +255,23 @@ export interface MeasuredPlant {
   lifetimeMWh: number;
   /** Application de supervision — INTERNE, jamais affichée (WC10). */
   source: 'deye' | 'huawei';
+  /**
+   * (fondateur 2026-08-17) DATE DU RELEVÉ (ISO), telle que déjà documentée
+   * dans ce fichier — jamais une date devinée : la vue de la flotte suivie sur
+   * la première application a été « tirée le 2026-07-04 » (en-tête WB1), les
+   * deux centrales de la seconde ont été relevées et ajoutées le 2026-07-05
+   * (note WC10 ci-dessus). Un cumul saisi sans date documentée laisse ce champ
+   * absent : l'affichage omet alors la mention « relevé au … ».
+   */
+  readAt?: string;
 }
 export const MEASURED_FLEET: MeasuredPlant[] = [
-  { label: 'Aïn Diab (Casablanca)', kwc: 10, lifetimeMWh: 2.62, source: 'deye' },
-  { label: 'Casablanca (Rassam)', kwc: 5.68, lifetimeMWh: 1.41, source: 'deye' },
-  { label: 'El Jadida (Benaissa)', kwc: 5, lifetimeMWh: 1.4, source: 'deye' },
-  { label: 'Bd Fès (Casablanca)', kwc: 11.36, lifetimeMWh: 1.13, source: 'deye' },
-  { label: 'Omar Taouss', kwc: null, lifetimeMWh: 3.41, source: 'huawei' },
-  { label: 'Villa Haj Elofir', kwc: null, lifetimeMWh: 34.22, source: 'huawei' },
+  { label: 'Aïn Diab (Casablanca)', kwc: 10, lifetimeMWh: 2.62, source: 'deye', readAt: '2026-07-04' },
+  { label: 'Casablanca (Rassam)', kwc: 5.68, lifetimeMWh: 1.41, source: 'deye', readAt: '2026-07-04' },
+  { label: 'El Jadida (Benaissa)', kwc: 5, lifetimeMWh: 1.4, source: 'deye', readAt: '2026-07-04' },
+  { label: 'Bd Fès (Casablanca)', kwc: 11.36, lifetimeMWh: 1.13, source: 'deye', readAt: '2026-07-04' },
+  { label: 'Omar Taouss', kwc: null, lifetimeMWh: 3.41, source: 'huawei', readAt: '2026-07-05' },
+  { label: 'Villa Haj Elofir', kwc: null, lifetimeMWh: 34.22, source: 'huawei', readAt: '2026-07-05' },
 ];
 /** Cumul mesuré de la flotte = 2,62+1,41+1,40+1,13+3,41+34,22 ≈ 44,19 MWh. */
 export const MEASURED_FLEET_LIFETIME_MWH = MEASURED_FLEET.reduce((s, p) => s + p.lifetimeMWh, 0);
@@ -253,6 +279,41 @@ export const MEASURED_FLEET_LIFETIME_MWH = MEASURED_FLEET.reduce((s, p) => s + p
 export const MEASURED_FLEET_COUNT = MEASURED_FLEET.length;
 /** Format FR (virgule décimale) pour l'affichage — « 44,19 ». */
 export const MEASURED_FLEET_LIFETIME_MWH_FR = MEASURED_FLEET_LIFETIME_MWH.toFixed(2).replace('.', ',');
+
+/**
+ * (fondateur 2026-08-17) « 2026-07-05 » → « 05/07/2026 ». Chaîne vide si la
+ * valeur n'est pas une date ISO complète — l'appelant OMET alors la mention
+ * plutôt que d'afficher une date partielle ou inventée.
+ */
+export function formatDateFr(iso: string | null | undefined): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso ?? ''));
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : '';
+}
+
+/**
+ * Date du DERNIER relevé composant `MEASURED_FLEET_LIFETIME_MWH` (ISO) — donc
+ * la date à laquelle ce cumul est vrai. `null` si aucune centrale ne porte de
+ * date documentée : la mention « relevé au … » est alors omise partout.
+ */
+export const MEASURED_FLEET_READ_AT: string | null = (() => {
+  const dates = MEASURED_FLEET.map((p) => p.readAt).filter((d): d is string => !!d).sort();
+  return dates.length ? dates[dates.length - 1] : null;
+})();
+
+/** Même date au format FR (« 05/07/2026 ») — chaîne vide si non documentée. */
+export const MEASURED_FLEET_READ_AT_FR = formatDateFr(MEASURED_FLEET_READ_AT);
+
+/**
+ * (fondateur 2026-08-17) centrale MESURÉE correspondant à une réalisation, ou
+ * `null`. Aucun appariement heuristique (ville/puissance) : seule une
+ * réalisation qui DÉCLARE son `measuredLabel` est appariée, et seulement si
+ * l'entrée existe toujours dans la flotte.
+ */
+export function measuredPlantFor(r: Realisation | null | undefined): MeasuredPlant | null {
+  const label = r?.measuredLabel;
+  if (!label) return null;
+  return MEASURED_FLEET.find((p) => p.label === label) ?? null;
+}
 
 export const realisationBySlug = (slug: string): Realisation | undefined =>
   REALISATIONS.find((r) => r.slug === slug);

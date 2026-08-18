@@ -83,6 +83,36 @@ describe('WJ35 — CertLogoRow : faits vérifiables uniquement, aucun logo fabri
     expect(CERT_LOGO_ROW).toContain('IEC 61215');
     expect(CERT_LOGO_ROW).toContain('Loi 82-21');
   });
+
+  // (fondateur 2026-08-17) les DURÉES du bandeau viennent de la source unique
+  // des garanties : plus aucun « 30 ans » / « 10 ans » codé en dur ici.
+  it('tire ses durées de lib/warranty.ts (aucun chiffre de garantie en dur)', () => {
+    expect(CERT_LOGO_ROW).toContain("from '../lib/warranty'");
+    expect(CERT_LOGO_ROW).toContain('PANEL_PERFORMANCE_WARRANTY_YEARS');
+    expect(CERT_LOGO_ROW).toContain('INVERTER_WARRANTY_YEARS');
+    expect(CERT_LOGO_ROW).not.toContain("label: '30 ans'");
+    expect(CERT_LOGO_ROW).not.toContain("label: '10 ans'");
+  });
+
+  // Règle fondateur : un badge n'existe que s'il est cliquable vers une page
+  // réelle et bien remplie. Le composant sait rendre un badge en LIEN quand la
+  // page hôte lui en donne la cible ; sans `hrefs`, rendu historique inchangé.
+  it('rend un badge en lien quand la page hôte fournit sa cible', () => {
+    expect(CERT_LOGO_ROW).toContain('hrefs?: Partial<Record<CertKey, string>>');
+    expect(CERT_LOGO_ROW).toContain('cert-row__item--link');
+    expect(CERT_LOGO_ROW).toContain('href={hrefs[c.key]}');
+  });
+
+  it('[token].astro ne rend QUE des badges cliquables (garanties, fiche panneau, loi 82-21)', () => {
+    expect(PROPOSITION).toContain('<CertLogoRow keys={certKeys} hrefs={certHrefs} />');
+    expect(PROPOSITION).toContain("panneaux: '/garanties'");
+    expect(PROPOSITION).toContain("onduleur: '/garanties'");
+    expect(PROPOSITION).toContain('iec: `/produits/${panelFicheSlug}`');
+    // Le badge IEC n'existe que si le panneau devisé a une fiche appariée.
+    expect(PROPOSITION).toContain("ficheBySlug(slug)?.categorie === 'Panneaux photovoltaïques'");
+    // La loi 82-21 a sa page dédiée trilingue (+ guide) : badge cliquable.
+    expect(PROPOSITION).toContain("loi8221: '/loi-82-21'");
+  });
   // WJ99 — le libellé de détail porte désormais une variante anglaise, et
   // l'aria-label racine (statique auparavant) porte les 3 traductions en
   // data-attrs pour que la page hôte (proposition/[token].astro) le retraduise.
@@ -137,15 +167,19 @@ describe('WJ35 — câblage : les deux pages du parcours montent les composants 
     expect(MON_TOIT).toContain('<ZelligeSignature');
   });
 
-  it('[token].astro importe StarRating / TestimonialCarousel / InstallCounter / CertLogoRow', () => {
-    expect(PROPOSITION).toContain("import StarRating from '../../components/StarRating.astro'");
+  // (fondateur 2026-08-17) la proposition ne monte PLUS <StarRating/> : sans
+  // note Google réelle le composant ne rendait rien, et la décision du jour
+  // bannit tout avis/étoile de ce document commercial. Les trois autres
+  // composants restent câblés à l'identique.
+  it('[token].astro importe TestimonialCarousel / InstallCounter / CertLogoRow, PAS StarRating', () => {
     expect(PROPOSITION).toContain("import TestimonialCarousel from '../../components/TestimonialCarousel.astro'");
     expect(PROPOSITION).toContain("import InstallCounter from '../../components/InstallCounter.astro'");
     expect(PROPOSITION).toContain("import CertLogoRow from '../../components/CertLogoRow.astro'");
     expect(PROPOSITION).toContain('<InstallCounter');
-    expect(PROPOSITION).toContain('<StarRating');
     expect(PROPOSITION).toContain('<TestimonialCarousel');
     expect(PROPOSITION).toContain('<CertLogoRow');
+    expect(PROPOSITION).not.toContain("import StarRating from '../../components/StarRating.astro'");
+    expect(PROPOSITION).not.toContain('<StarRating />');
   });
 
   it('[token].astro applique le grade v3 UNIQUEMENT à une photo non-LCP (jamais au héros eager)', () => {

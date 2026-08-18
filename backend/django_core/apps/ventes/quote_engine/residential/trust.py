@@ -128,12 +128,21 @@ def build(ctx) -> str:
                 f'<span class="p3-val-t">{v}</span></div>'
                 for v in values)
             + '</div>')
+    # (fondateur 2026-08-17) — RÉASSURANCE : une garantie fabricant porte sur le
+    # MATÉRIEL, pas sur le poseur. La phrase tient sur une ligne fine SOUS la
+    # bande (mêmes mots que la proposition en ligne, bloc « Pourquoi nous faire
+    # confiance ») ; les joints élastiques QRES62 de la page absorbent sa
+    # hauteur, la pagination reste à 3 pages.
     gar_html = (
         '<div class="p3-gar"><span class="p3-gar-t">Nos garanties</span>'
         + " &middot; ".join(
             f'<span class="p3-gar-i"><b>{n} {u}</b> — {label}'
             f'{(" (" + sub + ")") if label == "Performance" else ""}</span>'
             for n, u, label, sub in theme.WARRANTIES)
+        + '<div class="p3-gar-n">Les garanties fabricant sont attachées au '
+          "matériel : elles suivent votre installation, restent transférables "
+          "avec le bien et demeurent valables quel que soit l'installateur."
+          '</div>'
         + '</div>')
 
     # ── Trust strip — LINK out, don't dump ──────────────────────────────────
@@ -375,6 +384,10 @@ def build(ctx) -> str:
 .p3-gar-t {{ font-size:7pt; letter-spacing:.14em; text-transform:uppercase;
   color:{C['muted_2']}; font-weight:700; margin-right:10px; }}
 .p3-gar-i b {{ color:{C['navy']}; }}
+/* (fondateur 2026-08-17) note de réassurance sous la bande des garanties :
+   une garantie fabricant suit le MATÉRIEL, jamais l'installateur. */
+.p3-gar-n {{ margin-top:4px; font-size:7.3pt; line-height:1.3;
+  color:{C['muted']}; }}
 
 /* Value points row (uniquement si doc_texts.trust_values est personnalisé) */
 .p3-values {{ display:flex; gap:9px; margin:10px 0 11px; }}
