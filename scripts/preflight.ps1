@@ -6,15 +6,34 @@
 # FOUR CI round-trips (FE-SCA orphan prefix -> check_modules -> test-determinism
 # -> flake8 -> lint-imports) on failures that are ALL locally checkable in
 # seconds. It only ran 3 of the 11 stage-names sub-checks locally. This script
-# runs them ALL (plus backend-lint's compileall/flake8/lint-imports and the
-# makemigrations drift check) so the first push is already green on the fast
-# gates. It does NOT run the heavy backend-tests suite — that is the slow gate;
-# use scripts/test-backend.ps1 for that. Fast gate here, full suite there.
+# runs them ALL so the first push is already green on the fast gates. It does NOT
+# run the heavy backend-tests suite — that is the slow gate; use
+# scripts/test-backend.ps1 for that. Fast gate here, full suite there.
+#
+# PARITE, PAS RECOPIE (18/08/2026, PR #536). La version precedente portait une
+# COPIE MANUELLE des listes d'etapes des jobs `backend-lint` et `stage-names`, et
+# ces copies avaient derive : preflight annoncait 16/16 vert pendant que la CI du
+# meme push echouait sur `check_on_delete.py --financial` et sur
+# `check_choices_declares.py` — deux checks dont preflight n'avait jamais entendu
+# parler (il couvrait 3 des 23 checks de backend-lint et 12 des 29 de
+# stage-names). Un preflight vert qui n'implique pas un gate vert est PIRE que pas
+# de preflight : il achete un aller-retour CI avec une fausse confiance.
+# Desormais preflight ne possede plus aucune liste : scripts/ci_fast_gate_steps.py
+# lit .github/workflows/ci.yml — le meme fichier que GitHub — et rend les etapes
+# des deux jobs, memes commandes, memes drapeaux, meme ordre. Ajouter un check
+# dans ci.yml suffit : preflight le joue au run suivant, sans rien a resynchroniser.
 #
 # Faithful to CI: every check runs on the SAME Python 3.11 image CI uses (via the
 # docker compose `django_core` service), over a repo-root bind mount, with the
 # exact commands ci.yml runs. No host Python / flake8 needed. Never masks an exit
 # code behind a pipe.
+#
+# Trois etapes de ci.yml sont volontairement sautees (voir _SKIPS dans
+# ci_fast_gate_steps.py) : elles ne font que PREPARER le runner GitHub (apt-get
+# des libs WeasyPrint, pip install -r requirements.txt, pip install flake8 +
+# import-linter) et l'image prod les fournit deja. Le script echoue bruyamment si
+# l'une de ces regles cesse de correspondre a une etape reelle : la garde
+# anti-derive fonctionne dans les deux sens.
 
 param(
     [switch]$NoDocker   # skip the container checks (compileall/flake8/lint-imports/
@@ -53,25 +72,28 @@ try {
     }
 
     if ($NoDocker) {
-        # Pure-Python fast gates on host python (the 10 stage-names checks only;
-        # compileall/flake8/lint-imports need the 3.11 image + deps).
-        Write-Host "-> Mode -NoDocker : stage-names uniquement, sur python hote." -ForegroundColor Yellow
-        $checks = @(
-            @('check_stages',              'python scripts/check_stages.py'),
-            @('check_modules',             'python scripts/check_modules.py'),
-            @('check_test_determinism',    'python scripts/check_test_determinism.py'),
-            @('check_test_tags',           'python scripts/check_test_tags.py'),
-            @('check_invariants',          'python scripts/check_invariants.py'),
-            @('codemap_fingerprint',       'python scripts/codemap_fingerprint.py --check'),
-            @('check_safe_migrations',     'python scripts/check_safe_migrations.py'),
-            @('test_check_safe_migrations','python -m unittest scripts.tests.test_check_safe_migrations'),
-            @('check_build_order',         'python scripts/check_build_order.py'),
-            @('test_check_build_order',    'python -m unittest scripts.tests.test_check_build_order')
-        )
+        # Pure-Python fast gates on host python: the WHOLE `stage-names` job, read
+        # straight out of ci.yml (that job installs nothing in CI either — bare
+        # setup-python + stdlib scripts — so the host can run it faithfully).
+        # backend-lint is NOT runnable here: it needs the 3.11 image + its deps.
+        Write-Host "-> Mode -NoDocker : job stage-names uniquement, sur python hote." -ForegroundColor Yellow
+        $raw = & python scripts/ci_fast_gate_steps.py --format tsv stage-names
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "REFUS : impossible d'extraire les etapes de ci.yml (voir l'erreur ci-dessus)." -ForegroundColor Red
+            exit 1
+        }
+        $checks = @()
+        foreach ($ln in $raw) {
+            if ([string]::IsNullOrWhiteSpace($ln)) { continue }
+            $p = $ln -split "`t", 3
+            $checks += , @($p[0], $p[1], $p[2])
+        }
+        Write-Host ("   $($checks.Count) etapes reprises telles quelles de ci.yml.") -ForegroundColor Yellow
         $fails = @()
         foreach ($c in $checks) {
             Write-Host ""; Write-Host "=== $($c[0]) ===" -ForegroundColor Cyan
-            Invoke-Expression $c[1]
+            if ($c[1] -ne '.') { Push-Location $c[1] }
+            try { Invoke-Expression $c[2] } finally { if ($c[1] -ne '.') { Pop-Location } }
             if ($LASTEXITCODE -ne 0) { $fails += $c[0]; Write-Host "FAIL: $($c[0])" -ForegroundColor Red }
             else { Write-Host "PASS: $($c[0])" -ForegroundColor Green }
         }
@@ -80,7 +102,7 @@ try {
             Write-Host ("PREFLIGHT FAILED (" + $fails.Count + "): " + ($fails -join ', ')) -ForegroundColor Red
             exit 1
         }
-        Write-Host "PREFLIGHT OK (stage-names, host python)." -ForegroundColor Green
+        Write-Host "PREFLIGHT OK (stage-names complet, host python)." -ForegroundColor Green
         exit 0
     }
 
@@ -101,35 +123,40 @@ step() {
   ( eval "$2" )
   if [ $? -eq 0 ]; then echo "PASS: $1"; else echo "FAIL: $1"; fails="$fails $1"; fi
 }
+# PARITE AUTOMATIQUE AVEC ci.yml (18/08/2026). Les listes de checks ne sont PLUS
+# recopiees ici : scripts/ci_fast_gate_steps.py les lit dans .github/workflows/ci.yml
+# et les rend pretes a executer, memes commandes et memes drapeaux. C'est le
+# correctif de fond de l'incident PR #536, ou un preflight "16/16 vert" a laisse
+# passer deux rouges CI (check_on_delete.py --financial cote backend-lint,
+# check_choices_declares.py cote stage-names) que ses copies manuelles ignoraient.
+# Ajouter une etape dans ci.yml suffit desormais : preflight la joue au run suivant.
+run_job() {
+  if ! python scripts/ci_fast_gate_steps.py "$1" > "/tmp/steps-$1.sh"; then
+    echo "FAIL: extraction des etapes du job '$1' depuis ci.yml"
+    fails="$fails extraction-$1"
+    return 1
+  fi
+  echo ""
+  echo "### job CI '$1' : $(grep -c '^step ' /tmp/steps-$1.sh) etapes reprises de ci.yml"
+  . "/tmp/steps-$1.sh"
+}
+
 echo "-> installing flake8 + import-linter (CI backend-lint deps)..."
 pip install -q flake8 import-linter==2.11
 
-# backend-lint parity
-step "compileall-3.11" "python -m compileall -q -j 0 backend/django_core/apps backend/django_core/erp_agentique backend/fastapi_ia"
-step "flake8"          "flake8 backend --max-line-length=120 --extend-ignore=E501 --exclude=migrations"
-step "lint-imports"    "cd backend/django_core && lint-imports"
-# backend-tests-shard pre-step: model<->migration drift (the #1 CI-red class)
+run_job backend-lint
+# Pre-etape du job backend-tests-shard (derive modele<->migration, la classe de
+# rouge CI n1). Elle n'appartient ni a backend-lint ni a stage-names, donc elle
+# reste declaree explicitement ici.
 step "makemigrations-check" "cd backend/django_core && python manage.py makemigrations --check --dry-run"
-# stage-names parity (all 11 — EZ16 a ajouté check_frontend_errors)
-step "check_stages"              "python scripts/check_stages.py"
-step "check_modules"             "python scripts/check_modules.py"
-step "check_frontend_errors"     "python scripts/check_frontend_errors.py"
-step "test_check_frontend_errors" "python -m unittest scripts.tests.test_check_frontend_errors"
-step "check_test_determinism"    "python scripts/check_test_determinism.py"
-step "check_test_tags"           "python scripts/check_test_tags.py"
-step "check_invariants"          "python scripts/check_invariants.py"
-step "codemap_fingerprint"       "python scripts/codemap_fingerprint.py --check"
-step "check_safe_migrations"     "python scripts/check_safe_migrations.py"
-step "test_check_safe_migrations" "python -m unittest scripts.tests.test_check_safe_migrations"
-step "check_build_order"         "python scripts/check_build_order.py"
-step "test_check_build_order"    "python -m unittest scripts.tests.test_check_build_order"
+run_job stage-names
 
 echo ""
 if [ -n "$fails" ]; then
   echo "PREFLIGHT FAILED:$fails"
   exit 1
 fi
-echo "PREFLIGHT OK - all fast gates green (3.11-faithful)."
+echo "PREFLIGHT OK - all fast gates green (3.11-faithful, parite ci.yml)."
 '@
     # Normalise to LF, then base64-encode. Windows PowerShell 5.1 mangles embedded
     # double-quotes/newlines when passing a multi-line arg to a native exe (docker),
