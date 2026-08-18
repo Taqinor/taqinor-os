@@ -1239,26 +1239,10 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       </div>
       <!-- ============ WJ8/WJ35 — CONFIANCE AU POINT DE CAPTURE ============ -->
       <aside class="mt-8 border-t border-white/10 pt-6">
-        <!-- On NE FABRIQUE PAS de chiffre ni d'avis : faits vérifiables (loi 82-21,
-             garanties constructeur standard, zone de service réelle) + compteur RÉEL. -->
-        <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <div class="cine-card p-3 text-center">
-            <p class="text-sm font-bold text-white" data-i18n data-fr="Conforme loi 82-21" data-ar="مطابق للقانون 82-21">Conforme loi 82-21</p>
-            <p class="text-xs text-lune-faint" data-i18n data-fr="Autoproduction déclarée" data-ar="إنتاج ذاتي مُصرَّح">Autoproduction déclarée</p>
-          </div>
-          <div class="cine-card p-3 text-center">
-            <p class="text-sm font-bold text-white" data-i18n data-fr="Garantie 25 ans" data-ar="ضمان 25 سنة">Garantie 25 ans</p>
-            <p class="text-xs text-lune-faint" data-i18n data-fr="Panneaux (constructeur)" data-ar="الألواح (المُصنّع)">Panneaux (constructeur)</p>
-          </div>
-          <div class="cine-card p-3 text-center">
-            <p class="text-sm font-bold text-white" data-i18n data-fr="Matériel certifié" data-ar="معدات معتمدة">Matériel certifié</p>
-            <p class="text-xs text-lune-faint" dir="ltr">IEC 61215 / 61730</p>
-          </div>
-          <div class="cine-card p-3 text-center">
-            <p class="text-sm font-bold text-white" data-i18n data-fr="Partout au Maroc" data-ar="في كل المغرب">Partout au Maroc</p>
-            <p class="text-xs text-lune-faint" data-i18n data-fr="Étude locale" data-ar="دراسة محلية">Étude locale</p>
-          </div>
-        </div>
+        <!-- QRES67 (fondateur, 18/08/2026) — UNE seule rangée de badges de
+             confiance : la grille manuscrite doublonnait CertLogoRow et son
+             « Garantie 25 ans » contredisait lib/warranty.ts (30 ans). Les 4
+             badges de CertLogoRow (plus bas) sont la SEULE rangée. -->
 
         <!-- WJ8 — villes desservies (réelles) -->
         <p class="mt-4 text-center text-xs text-lune-faint">

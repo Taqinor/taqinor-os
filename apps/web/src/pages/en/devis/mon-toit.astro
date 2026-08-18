@@ -1261,29 +1261,12 @@ const noscriptTelHref = `tel:${NAP.phone}`;
 
       <!-- ============ WJ8/WJ35 — TRUST AT THE POINT OF CAPTURE ============ -->
       <aside class="mt-8 border-t border-white/10 pt-6">
-        <!-- pending real content from Reda: real installation photos.
-             We do NOT FABRICATE any figure or review: we show verifiable facts (law
-             82-21, standard manufacturer warranties, real service area) + a scaffolded
-             slot for the photos. The installation counter (4th tile) is now REAL —
-             derived from src/lib/realisations.ts (WJ35, InstallCounter). -->
-        <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <div class="cine-card p-3 text-center">
-            <p class="text-sm font-bold text-white">Law 82-21 compliant</p>
-            <p class="text-xs text-lune-faint">Declared self-production</p>
-          </div>
-          <div class="cine-card p-3 text-center">
-            <p class="text-sm font-bold text-white">25-year warranty</p>
-            <p class="text-xs text-lune-faint">Panels (manufacturer)</p>
-          </div>
-          <div class="cine-card p-3 text-center">
-            <p class="text-sm font-bold text-white">Certified equipment</p>
-            <p class="text-xs text-lune-faint">IEC 61215 / 61730</p>
-          </div>
-          <div class="cine-card p-3 text-center">
-            <p class="text-sm font-bold text-white">All across Morocco</p>
-            <p class="text-xs text-lune-faint">Local site study</p>
-          </div>
-        </div>
+        <!-- QRES67 (founder, 2026-08-18) — a SINGLE row of trust badges: the
+             old handwritten 4-card grid duplicated CertLogoRow (law 82-21 x2,
+             IEC x2) and showed a "25-year warranty" contradicting the single
+             source lib/warranty.ts (30-year performance). CertLogoRow's four
+             sourced badges (below) are the ONLY row; "All across Morocco" is
+             carried by the real towns line below. -->
 
         <!-- WJ8 — real service towns -->
         <p class="mt-4 text-center text-xs text-lune-faint">
