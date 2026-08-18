@@ -20,8 +20,8 @@
  *     de lien pour cette ligne : rien n'est inventé, rien ne casse.
  *
  * Les postes GÉNÉRIQUES du devis (protection DC, protection AC, câblage,
- * accessoires de pose, structure) pointent vers des fiches EXPLICATIVES : le
- * client comprend enfin à quoi sert la ligne qu'il paie.
+ * accessoires de pose, structure, socles de lestage) pointent vers des fiches
+ * EXPLICATIVES : le client comprend enfin à quoi sert la ligne qu'il paie.
  *
  * CONTRAT UNIQUE (fondateur 2026-08-18). Ce module et le moteur de devis
  * Django (`apps/ventes/quote_engine/residential/theme.py::fiche_slug`) doivent
@@ -232,10 +232,22 @@ const REGLES: readonly RegleFiche[] = [
     marques: ['nexans'],
   },
   {
-    // STRUCTURE — ce qui porte les modules. Ferme la marche : « structure »,
-    // « rails », « socles », « lestage » n'entrent en collision avec rien.
+    // SOCLES — les plots béton qui LESTENT la structure. Testés AVANT la
+    // structure (même logique que « accessoires avant câblage ») : ils ont leur
+    // propre fiche depuis le 18/08/2026, et un libellé qui nomme le socle parle
+    // du socle, même s'il cite aussi la structure qu'il porte
+    // (« Socles béton pour structure » → les socles).
+    slug: 'socles-lestage',
+    contexte: ['socle*', 'plot*', 'lest*'],
+    qualificatif: null,
+    marques: null,
+  },
+  {
+    // STRUCTURE — le châssis qui porte les modules. Ferme la marche :
+    // « structure », « rails », « fixation », « châssis » n'entrent en
+    // collision avec rien.
     slug: 'structure-fixation',
-    contexte: ['structure*', 'rail*', 'fixation*', 'lestage', 'socle*', 'chassis*', 'plot*'],
+    contexte: ['structure*', 'rail*', 'fixation*', 'chassis*'],
     qualificatif: null,
     marques: null,
   },

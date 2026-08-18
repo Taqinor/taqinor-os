@@ -1847,9 +1847,10 @@ class TestResidentialRenderer(TestCase):
                      'smart-meter-huawei', 'wifi-dongle-huawei'):
             self.assertIn(f'/produits/{slug}', html)
         # Découpage fondateur 2026-08-18 : la structure a désormais SA fiche
-        # explicative (`structure-fixation`) — mais aucune URL de fiche n'est
-        # inventée à partir du libellé de la ligne (« produits/structures »
-        # n'existe pas et ne doit jamais apparaître).
+        # explicative (`structure-fixation`, scindée de `socles-lestage` le
+        # 18/08) — mais aucune URL de fiche n'est inventée à partir du libellé
+        # de la ligne (« produits/structures » n'existe pas et ne doit jamais
+        # apparaître).
         self.assertNotIn('produits/structures/', html)
         self.assertNotIn('produits/structures-acier', html)
 
@@ -1922,7 +1923,27 @@ class TestResidentialRenderer(TestCase):
         self.assertEqual(theme.fiche_slug('Presse-étoupes'), 'accessoires-pose')
         self.assertEqual(theme.fiche_slug('Structures aluminium'),
                          'structure-fixation')
-        self.assertEqual(theme.fiche_slug('Socles'), 'structure-fixation')
+
+    def test_fiche_slug_separe_la_structure_de_ses_socles(self):
+        """Ordre fondateur du 18/08/2026 (« a page for each ») : le CHÂSSIS et
+        les SOCLES béton qui le lestent sont deux fiches, donc deux slugs. Le
+        jumeau web (apps/web/tests/ficheMatcherWJ131.test.ts) épingle les mêmes
+        libellés — si les deux moitiés divergeaient ici, le PDF enverrait le
+        client sur `structure-fixation` pendant que la page proposition
+        l'enverrait sur `socles-lestage` (incident PACT10 rejoué)."""
+        from apps.ventes.quote_engine.residential import theme
+        for designation in ('Socles', 'Socles béton',
+                            'Plots de lestage béton 30x30x20',
+                            'Lestage toiture-terrasse',
+                            # Un libellé qui nomme les DEUX parle du socle.
+                            'Socles béton pour structure'):
+            self.assertEqual(theme.fiche_slug(designation), 'socles-lestage',
+                             designation)
+        for designation in ('Structures acier', 'Structures aluminium',
+                            'Rails de fixation',
+                            'Structure de fixation en aluminium'):
+            self.assertEqual(theme.fiche_slug(designation),
+                             'structure-fixation', designation)
 
     def test_fiche_slug_jamais_la_mauvaise_marque(self):
         """La moitié DJANGO du garde-fou du contrat (bloc ``sans_lien``).
@@ -3609,11 +3630,29 @@ class TestLayoutV2NeBougePasLeDocument(TestCase):
         return len(HTML(string=cap['html']).render().pages)
 
     def test_le_chemin_v2_s_allume_vraiment(self):
-        """Sans cette divergence, tout le reste du module serait vide de sens."""
+        """Sans cette divergence, tout le reste du module serait vide de sens.
+
+        PVUNI (fondateur 18/08/2026) — ce qui diverge a CHANGÉ de nature. Le
+        chemin v2 apportait la PUISSANCE (``v2['puissance_kwc'] == 8.4``, le
+        kWc du calepinage) alors que les lignes disent 14 × 550 W = 7,7 kWc :
+        deux bases de puissance dans un même document, le défaut exact de
+        l'incident DEV-202608-0007. Les LIGNES sont désormais la source unique
+        de la puissance ; le chemin v2 s'allume toujours, mais sur ce qu'il est
+        seul à savoir — la PRODUCTION du site, recalée sur la taille vendue
+        (13 000 × 7,7 / 8,4 = 11 917).
+        """
         v1 = self._data(self._layout_v1())
         v2 = self._data(self._layout_v2())
-        self.assertEqual(v2['puissance_kwc'], 8.4)
-        self.assertNotEqual(v1['puissance_kwc'], v2['puissance_kwc'])
+        # La puissance ne bouge plus : elle vient des lignes, des deux côtés.
+        self.assertEqual(v2['puissance_kwc'], 7.7)
+        self.assertEqual(v1['puissance_kwc'], v2['puissance_kwc'])
+        self.assertEqual(
+            round(v2['puissance_kwc'] * 1000),
+            v2['nb_panneaux'] * v2['watt_par_panneau'])
+        # Mais le chemin v2 s'allume bel et bien : sa production recalée entre
+        # dans le document, là où v1 (aucun bloc ``result``) n'apporte rien.
+        self.assertEqual(v2['prod_kwh'], 11917)
+        self.assertNotEqual(v1['prod_kwh'], v2['prod_kwh'])
 
     def test_les_totaux_sont_identiques_au_centime(self):
         v1 = self._data(self._layout_v1())

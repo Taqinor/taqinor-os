@@ -95,8 +95,18 @@ const APPARIEMENTS: Array<[string, string | undefined, string]> = [
   // Structure : la ligne que le client payait sans aucune explication.
   ['Structures acier', undefined, 'structure-fixation'],
   ['Structures aluminium', undefined, 'structure-fixation'],
-  ['Socles', undefined, 'structure-fixation'],
   ['Structure de fixation en aluminium', undefined, 'structure-fixation'],
+  ['Rails de fixation', undefined, 'structure-fixation'],
+  // SOCLES — page à part depuis le 18/08/2026 (ordre fondateur : « a page for
+  // each »). Le châssis et les plots béton qui le lestent ne répondent pas à la
+  // même question du client, donc la ligne « Socles » ne doit plus atterrir sur
+  // la fiche de la structure.
+  ['Socles', undefined, 'socles-lestage'],
+  ['Socles béton', undefined, 'socles-lestage'],
+  ['Plots de lestage béton 30x30x20', undefined, 'socles-lestage'],
+  ['Lestage toiture-terrasse', undefined, 'socles-lestage'],
+  // Un libellé qui nomme les DEUX parle du socle : la règle socles passe avant.
+  ['Socles béton pour structure', undefined, 'socles-lestage'],
 ];
 
 describe('WJ131 — appariement ligne de devis → fiche technique', () => {
@@ -115,7 +125,8 @@ describe('WJ131 — appariement ligne de devis → fiche technique', () => {
   });
 
   it('les fiches EXPLICATIVES des postes génériques sont publiées, sans PDF constructeur', () => {
-    for (const slug of ['protection-dc', 'protection-ac', 'cablage', 'accessoires-pose', 'structure-fixation']) {
+    for (const slug of ['protection-dc', 'protection-ac', 'cablage', 'accessoires-pose',
+      'structure-fixation', 'socles-lestage']) {
       const fiche = ficheBySlug(slug);
       expect(fiche, `fiche manquante : ${slug}`).toBeTruthy();
       expect(fiche!.faits.length).toBeGreaterThan(0);

@@ -424,7 +424,8 @@ _MARQUES_CONNUES = (
 
 #: Marques ACCEPTÉES par chaque fiche MARQUÉE. Un slug absent de cette table
 #: est une fiche GÉNÉRIQUE (protection-dc, accessoires-pose,
-#: structure-fixation) : aucun garde-fou de marque ne s'y applique.
+#: structure-fixation, socles-lestage) : aucun garde-fou de marque ne s'y
+#: applique.
 _FICHE_MARQUES = {
     "protection-ac": ("schneider",),
     "cablage": ("nexans",),
@@ -550,9 +551,16 @@ def fiche_slug(designation, marque="") -> str:
         # La fiche `cablage` nomme Nexans : un « Câble solaire Prysmian 6 mm² »
         # ne s'y rattache pas.
         return _lie("cablage")
+    # ── Structure : DEUX fiches depuis le 18/08/2026 (ordre fondateur « a page
+    # for each ») — le CHÂSSIS d'un côté, les SOCLES béton qui le lestent de
+    # l'autre. Les socles sont testés EN PREMIER (même logique que « accessoires
+    # avant câblage ») : un libellé qui nomme le socle parle du socle, même s'il
+    # cite aussi la structure qu'il porte. Le jumeau web applique le même ordre
+    # (apps/web/src/lib/ficheMatcher.ts).
+    if any(mot in blob for mot in ("socle", "plot", "lest")):
+        return "socles-lestage"
     if any(mot in blob for mot in (
-            "structure", "rail", "fixation", "lestage", "socle", "châssis",
-            "chassis", "plot")):
+            "structure", "rail", "fixation", "châssis", "chassis")):
         return "structure-fixation"
     return ""
 

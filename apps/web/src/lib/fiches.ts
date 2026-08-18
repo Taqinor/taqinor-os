@@ -102,12 +102,17 @@ export interface Fiche {
    * hotlink). Optionnelle et OMISE quand elle n'existe pas : une fiche sans
    * photo juste ET libre de droits reste sans photo, jamais de remplissage.
    *
-   * DROITS (règle fondateur 2026-08-18) : uniquement Wikimedia Commons
-   * (CC BY / CC BY-SA / CC0 / domaine public explicite), Unsplash ou Pexels.
+   * DROITS (règle fondateur 2026-08-18) : deux classes, et deux seulement.
+   *  · PHOTO DE CHANTIER TAQINOR — droits fondateur : nos propres photos, celles
+   *    dont les originaux vivent déjà dans `public/photos/`. C'est la MEILLEURE
+   *    classe (c'est notre matériel, notre équipe, notre pose réelle) ; aucune
+   *    attribution n'est due, donc aucun `photoCredit`.
+   *  · Photo libre externe : uniquement Wikimedia Commons (CC BY / CC BY-SA /
+   *    CC0 / domaine public explicite), Unsplash ou Pexels.
    * Jamais de média constructeur : leurs médiathèques exigent une autorisation
-   * écrite pour l'usage commercial. Le registre complet — fichier, URL de la
-   * page source, auteur, licence — vit dans
-   * `public/fiches/photos/CREDITS.md`.
+   * écrite pour l'usage commercial. Le registre complet — fichier, fiche,
+   * source (page de licence, ou l'original `/photos/` dont la photo dérive),
+   * auteur, licence — vit dans `public/fiches/photos/CREDITS.md`.
    */
   photo?: string;
   /**
@@ -250,26 +255,37 @@ export const FICHES: Fiche[] = [
   //     restent SANS marque (« d'origine, certifiés du fabricant de vos
   //     panneaux ») tant que la référence n'est pas arrêtée.
   // Jamais un nombre d'installations, nulle part.
+  // ── STRUCTURE / SOCLES : DEUX FICHES, PAS UNE (fondateur 18/08/2026) ──────
+  // « It is better to have a page for each. » L'ancienne fiche unique mélangeait
+  // le CHÂSSIS (les triangles qui portent les modules) et les SOCLES (les plots
+  // béton qui les lestent) : deux pièces différentes, deux questions différentes
+  // du client (« ça tient comment ? » / « faut-il percer ? »). Les cotes citées
+  // ci-dessous sont celles de la fiche géométrique donnée par le fondateur le
+  // 18/08 — les mêmes constantes que la scène 3D du calepineur
+  // (`src/scripts/roofPro11/scene3d.ts` : PROFILE_M, PLATINE_*, SOCLE_*).
   {
     slug: 'structure-fixation',
     nom: 'Structure de fixation',
     marque: 'Poste générique',
-    modele: 'Acier galvanisé ou aluminium anodisé — profil selon étude',
+    modele: 'Triangles boulonnés en profilé C galvanisé perforé 41 × 41 mm',
     categorie: 'Structure & pose',
     resume:
-      'Ce qui tient vos panneaux pendant trente ans de vent, de soleil et de pluie — et qui décide si votre toiture reste étanche.',
+      'Ce qui tient vos panneaux pendant trente ans de vent, de soleil et de pluie — un triangle assemblé sur place à chaque jointure de panneaux.',
     role:
-      'La structure transmet à la toiture le poids des modules ET les efforts du vent, sans percer l’étanchéité là où il ne faut pas. C’est le seul poste du devis qui touche physiquement votre bâtiment.',
+      'La structure porte les modules et transmet les efforts du vent jusqu’aux socles. Sur toiture-terrasse, ce n’est ni un châssis d’un seul tenant ni un trio de montants par module : c’est un TRIANGLE assemblé sur place à chaque jointure de panneaux, trois pièces boulonnées, chaque pied sur son propre socle béton.',
     benefices: [
       'Les modules restent plans et alignés : pas de contrainte mécanique sur le verre, pas de micro-fissure de cellule',
       'La reprise d’efforts est calculée pour le site : un panneau ne part pas au premier coup de chergui',
-      'Toiture-terrasse : le lestage évite de percer l’étanchéité — aucune reprise d’étanchéité à prévoir',
+      'Un triangle par jointure porte les deux panneaux voisins à la fois : moins de pièces au sol, un montage démontable pièce par pièce',
+      'Tout est boulonné au trou existant du profilé perforé : aucune découpe, aucune soudure sur votre toiture',
     ],
     faits: [
-      'Acier galvanisé à chaud ou aluminium anodisé anticorrosion, selon l’exposition du site',
+      'Triangle assemblé à CHAQUE jointure de panneaux : trois pièces boulonnées sur place, jamais un châssis d’un seul tenant',
+      'Profilé C galvanisé PERFORÉ, section 41 × 41 mm — l’assemblage se fait au trou existant',
+      'Platine acier de pied 120 × 60 mm, épaisseur 8 mm, boulonnée sous chaque montant',
       'Visserie inox, mise à la terre de la structure incluse',
-      'Plots béton préfabriqués CARRÉS de 30 × 30 × 20 cm, un sous chaque pied, pour le lestage des toitures-terrasses (pose sans percement)',
-      'Le profil, l’entraxe et la charge de lestage sont fixés par l’étude — jamais un catalogue',
+      'Acier galvanisé à chaud ou aluminium anodisé anticorrosion, selon l’exposition du site',
+      'Le profil, l’entraxe et l’inclinaison sont fixés par l’étude — jamais un catalogue',
     ],
     normes: [
       'Charges climatiques : Eurocode 1 — EN 1991-1-4 (vent) et EN 1991-1-3 (neige)',
@@ -285,26 +301,94 @@ export const FICHES: Fiche[] = [
     verifier: [
       'La note de calcul au vent existe et cite la zone et l’altitude RÉELLES du site',
       'La visserie est inox — pas d’acier zingué en toiture',
+      'Il y a bien un triangle à chaque jointure de panneaux, pas un montant sur deux',
       'La continuité de terre de la structure est mesurée à la réception',
     ],
     faq: [
       {
-        q: 'Faut-il percer ma toiture ?',
-        r: 'Sur toiture-terrasse, non : la structure est lestée par plots béton carrés (30 × 30 × 20 cm), un sous chaque pied. Sur toiture inclinée, les fixations traversent la couverture et sont étanchées point par point — c’est l’étude qui tranche.',
+        q: 'Sur toiture inclinée, faut-il percer la couverture ?',
+        r: 'Oui : là, les fixations traversent la couverture et sont étanchées point par point. C’est la toiture-terrasse qui se pose SANS percement, parce que la structure y est simplement lestée — voir la fiche « Socles de lestage ». L’étude tranche selon votre toiture.',
       },
       {
         q: 'Acier ou aluminium ?',
         r: 'L’aluminium anodisé est plus léger et tient mieux l’air marin ; l’acier galvanisé à chaud encaisse des portées plus longues. L’exposition du site décide, pas le prix.',
       },
+      {
+        q: 'Pourquoi un triangle à chaque jointure plutôt qu’un châssis continu ?',
+        r: 'Parce qu’un triangle porte les deux panneaux voisins à la fois : la même rigidité avec moins de pièces posées sur votre dalle, et un ensemble qui se démonte pièce par pièce si la toiture doit être reprise un jour.',
+      },
     ],
     pairsWith: ['Panneaux photovoltaïques', 'Protection & câblage'],
-    voirAussi: ['accessoires-pose'],
+    voirAussi: ['socles-lestage', 'accessoires-pose'],
     // Aucune source officielle VÉRIFIÉE en ligne pour ce poste : lien omis
     // plutôt que deviné (le contenu ci-dessus reste, lui, entièrement sourcé).
     datasheet: null,
     pdf: null,
-    photo: '/fiches/photos/structure-toiture-terrasse.jpg',
-    photoCredit: '© Asurnipal — Wikimedia Commons, CC BY-SA 4.0',
+    // PHOTO DE CHANTIER TAQINOR (droits fondateur) : l'équipe montant les
+    // triangles en profilé C galvanisé perforé. Elle remplace une photo
+    // Wikimedia d'une toiture suisse sur plots ronds en caoutchouc — un
+    // matériel qui n'est PAS le nôtre. Aucune attribution due : pas de crédit.
+    photo: '/fiches/photos/structure-triangles-taqinor.jpg',
+  },
+  {
+    slug: 'socles-lestage',
+    nom: 'Socles de lestage',
+    marque: 'Poste générique',
+    modele: 'Plots béton préfabriqués — pose sans percement',
+    categorie: 'Structure & pose',
+    resume:
+      'La seule pièce posée à même votre dalle : elle tient l’installation par son poids, sans qu’un seul trou soit percé dans l’étanchéité.',
+    role:
+      'Sur toiture-terrasse, la structure n’est pas vissée au bâtiment : elle est LESTÉE. Un plot béton préfabriqué est posé sous chaque pied de triangle, et c’est leur masse qui reprend les efforts du vent. C’est le seul poste du devis en contact direct avec votre étanchéité.',
+    benefices: [
+      'AUCUN percement de l’étanchéité : rien à reprendre, rien à ré-étancher, aucune garantie de toiture remise en cause',
+      'L’installation reste démontable : les socles se déposent et se reposent sans laisser un seul point d’ancrage',
+      'La charge est répartie pied par pied au lieu d’être concentrée sur quelques points de fixation',
+    ],
+    faits: [
+      'Plots béton préfabriqués CARRÉS de 30 × 30 × 20 cm',
+      'Un socle sous CHAQUE pied de triangle — jamais une longrine continue',
+      'Posés à même la dalle, sur l’étanchéité existante : aucun percement, aucun scellement, aucune reprise',
+      'La charge de lestage à mettre en œuvre est fixée par l’étude au vent du site — jamais un nombre de plots au catalogue',
+    ],
+    normes: [
+      'Charges de vent à reprendre par le lestage : Eurocode 1 — EN 1991-1-4 (la charge retenue sort de l’étude du site, pas d’un tableau)',
+      'Poids propre et descente de charges sur la dalle : Eurocode 1 — EN 1991-1-1',
+    ],
+    garantie: `Garantie ${STRUCTURE_WARRANTY_YEARS} ans (structure) · garantie de pose Taqinor ${INSTALL_WARRANTY_YEARS} ans`,
+    warranty: {
+      years: STRUCTURE_WARRANTY_YEARS,
+      note: `Garantie ${STRUCTURE_WARRANTY_YEARS} ans sur la structure lestée ; garantie de pose et de main-d’œuvre Taqinor ${INSTALL_WARRANTY_YEARS} ans.`,
+    },
+    verifier: [
+      'Votre étanchéité est INTACTE après la pose : aucun trou, aucun scellement, constaté à la réception',
+      'Il y a bien un socle sous chaque pied — aucun pied ne repose directement sur la dalle',
+      'La charge de lestage retenue figure dans la note de calcul au vent, avec la zone et l’altitude RÉELLES du site',
+    ],
+    faq: [
+      {
+        q: 'Faut-il percer ma toiture ?',
+        r: 'Sur toiture-terrasse, non : l’installation est lestée par des plots béton carrés de 30 × 30 × 20 cm, un sous chaque pied, posés sur l’étanchéité existante. Sur toiture inclinée, ce sont les fixations de la structure qui traversent la couverture et qui sont étanchées point par point — voir la fiche « Structure de fixation ». C’est l’étude qui tranche.',
+      },
+      {
+        q: 'Ma dalle supporte-t-elle ce poids ?',
+        r: 'C’est exactement ce que l’étude vérifie avant la pose : la charge de lestage et sa répartition pied par pied sont calculées sur VOTRE toiture. Si la dalle ne les accepte pas, la pose lestée n’est pas retenue — on ne force jamais un lestage sur un support qui ne l’encaisse pas.',
+      },
+      {
+        q: 'Pourquoi des plots carrés plutôt qu’une longrine continue ?',
+        r: 'Parce qu’un plot sous chaque pied répartit la charge là où elle arrive vraiment, et laisse l’eau circuler librement sur la terrasse entre les rangées. Un ouvrage continu ferait barrage et concentrerait le poids sur des lignes entières de la dalle.',
+      },
+    ],
+    pairsWith: ['Panneaux photovoltaïques'],
+    voirAussi: ['structure-fixation'],
+    // Aucune source officielle VÉRIFIÉE en ligne pour ce poste : lien omis
+    // plutôt que deviné.
+    datasheet: null,
+    pdf: null,
+    // PHOTO DE CHANTIER TAQINOR (droits fondateur) : l'équipe positionnant les
+    // supports béton préfabriqués et les rails sur une toiture-terrasse.
+    // Aucune attribution due : pas de crédit rendu.
+    photo: '/fiches/photos/socles-beton-taqinor.jpg',
   },
   {
     slug: 'protection-dc',
@@ -766,7 +850,9 @@ export const FICHE_CATEGORIES: FicheCategorie[] = [
  * raconte : 8 familles résidentielles puis 3 postes de grands projets. Chaque
  * famille pointe le ou les slugs qui la servent — `panneaux` et `onduleur`
  * gardent leurs fiches de MARQUE (le client doit lire les faits de SON
- * matériel), les six autres familles résidentielles ont une fiche unique.
+ * matériel), `structure` porte depuis le 18/08/2026 SES DEUX pages (le châssis
+ * et les socles qui le lestent), les cinq autres familles résidentielles ont
+ * une fiche unique.
  *
  * Cette table est la source de vérité du découpage : le test de catalogue la
  * confronte à `FICHES`, donc retirer une fiche sans toucher ici casse le test.
@@ -775,7 +861,10 @@ export const FICHE_FAMILLES: readonly { id: string; libelle: string; slugs: read
   { id: 'panneaux', libelle: 'Panneaux', slugs: ['canadian-solar-710', 'jinko-710'] },
   { id: 'onduleur', libelle: 'Onduleur', slugs: ['onduleur-deye-hybride', 'onduleur-huawei-reseau'] },
   { id: 'batterie', libelle: 'Batterie', slugs: ['batterie-dyness'] },
-  { id: 'structure', libelle: 'Structure', slugs: ['structure-fixation'] },
+  // Deux fiches depuis le 18/08/2026 : le CHÂSSIS et les SOCLES qui le lestent
+  // — deux pages, une seule famille de devis (la ligne « Structures » et la
+  // ligne « Socles » sont deux postes du même chapitre).
+  { id: 'structure', libelle: 'Structure', slugs: ['structure-fixation', 'socles-lestage'] },
   { id: 'cablage', libelle: 'Câblage', slugs: ['cablage'] },
   { id: 'protection-dc', libelle: 'Protection DC', slugs: ['protection-dc'] },
   { id: 'protection-ac', libelle: 'Protection AC', slugs: ['protection-ac'] },

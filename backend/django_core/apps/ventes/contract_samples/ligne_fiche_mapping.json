@@ -1,6 +1,6 @@
 {
   "endpoint": "GET /produits/<slug>",
-  "pourquoi": "CONTRAT UNIQUE « ligne de devis → fiche technique » (fondateur 2026-08-18). Ce n'est pas une réponse d'API : c'est la TABLE DE VÉRITÉ que DEUX moitiés doivent produire à l'identique — le moteur de devis Django (apps/ventes/quote_engine/residential/theme.py::fiche_slug, qui pose les liens du PDF) et la page proposition du site (apps/web/src/lib/ficheMatcher.ts::ficheSlugPourLigne, qui pose les liens web). Sans ce porteur partagé, les deux lanes sont file-disjointes et inventent mécaniquement deux découpages : le PDF enverrait le client sur /produits/tableau-protection-ac-dc pendant que la page web l'enverrait sur /produits/protection-dc — incident PACT10 du 03/08/2026, rejoué. Le champ `endpoint` porte l'URL PUBLIQUE que les deux moitiés doivent atteindre (la page Astro /produits/<slug>) : aucune vue Django ne la sert, donc scripts/check_api_shapes.py ne compare rien ici — la garde de conformité, ce sont les deux tests cités dans `tests`. AUCUN PRIX ici, jamais : ce contrat ne transporte que des désignations et des slugs.",
+  "pourquoi": "CONTRAT UNIQUE « ligne de devis → fiche technique » (fondateur 2026-08-18). Ce n'est pas une réponse d'API : c'est la TABLE DE VÉRITÉ que DEUX moitiés doivent produire à l'identique — le moteur de devis Django (apps/ventes/quote_engine/residential/theme.py::fiche_slug, qui pose les liens du PDF) et la page proposition du site (apps/web/src/lib/ficheMatcher.ts::ficheSlugPourLigne, qui pose les liens web). Sans ce porteur partagé, les deux lanes sont file-disjointes et inventent mécaniquement deux découpages : le PDF enverrait le client sur /produits/tableau-protection-ac-dc pendant que la page web l'enverrait sur /produits/protection-dc — incident PACT10 du 03/08/2026, rejoué. Le champ `endpoint` porte l'URL PUBLIQUE que les deux moitiés doivent atteindre (la page Astro /produits/<slug>) : aucune vue Django ne la sert, donc scripts/check_api_shapes.py ne compare rien ici — la garde de conformité, ce sont les deux tests cités dans `tests`. AUCUN PRIX ici, jamais : ce contrat ne transporte que des désignations et des slugs. MISE À JOUR DU 18/08/2026 (ordre fondateur « a page for each ») : la famille résidentielle « structure » porte désormais DEUX fiches — `structure-fixation` (le châssis : triangles en profilé C galvanisé perforé) et `socles-lestage` (les plots béton qui le lestent, la pose sans percement). Le découpage reste à 11 FAMILLES — ce sont deux pages d'une même famille de devis, pas une douzième famille. Les deux moitiés testent le mot-clé socle/plot/lest AVANT structure/rail/fixation.",
   "decoupage": {
     "residentiel": [
       "panneaux",
@@ -25,6 +25,8 @@
     "Onduleur réseau Huawei 10kW": "onduleur-huawei-reseau",
     "Batterie Dyness 10 kWh": "batterie-dyness",
     "Structures aluminium": "structure-fixation",
+    "Socles": "socles-lestage",
+    "Plots de lestage béton": "socles-lestage",
     "Câble solaire H1Z2Z2-K 6 mm² (au mètre)": "cablage",
     "Tableau De Protection AC/DC": "protection-dc",
     "Coffret DC 2 strings": "protection-dc",
@@ -58,7 +60,7 @@
       "smart-meter-huawei": ["huawei"],
       "wifi-dongle-huawei": ["huawei"]
     },
-    "fiches_generiques": ["protection-dc", "accessoires-pose", "structure-fixation"],
+    "fiches_generiques": ["protection-dc", "accessoires-pose", "structure-fixation", "socles-lestage"],
     "regle": "Le jeton de marque est cherché sur des FRONTIÈRES DE MOT dans le libellé normalisé (minuscules, accents retirés, ponctuation → espace) : « sma » ne doit jamais matcher « smart meter ». Une marque de `marques_connues` absente des marques acceptées par la fiche retenue ANNULE le lien (aucun repli sur une règle voisine). Une marque inconnue de la liste ne déclenche rien. Les fiches de `fiches_generiques` ne nomment aucune marque : aucun garde-fou ne s'y applique."
   },
   "alias": {
