@@ -11,6 +11,9 @@ import {
   autoFillLines, computeEtudeIndustrielle, panneauxPourKwc,
   autoFillPompage, pompageSelection, HEURES_POMPAGE_DEFAUT,
   KWH_PRICE, EFFICIENCY, DAY_USAGE_DEFAULTS,
+  // Règle fondateur du 18/08 — dimensionnement par PALIERS de 5 kWc, retenus
+  // au payback le plus court (jamais un panneau/900 MAD nu).
+  estimerKwcDepuisFacture, arrondirAuPasKwc, optimalKwcByPayback,
 } from './solar'
 
 // QX19 — préférence de structure du lead (acier/aluminium) → structureType
@@ -110,16 +113,42 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
   } else {
     const hiver = parseFloat(lead.facture_hiver) || 0
     // QX19 — priorité à la taille souhaitée par le lead (kWc) quand elle est
-    // renseignée ; sinon dérivation historique depuis la facture d'hiver.
-    // EZ5 — une cible saisie POUR CE DEVIS (« Devis automatique » de la fiche
-    // lead) passe devant les deux : c'est un choix ponctuel du commercial, il
-    // ne réécrit jamais `taille_souhaitee_kwc` sur le lead. Même conversion
-    // partagée `panneauxPourKwc` — aucune formule recopiée.
+    // renseignée ; sinon dérivation depuis la facture d'hiver. EZ5 — une cible
+    // saisie POUR CE DEVIS (« Devis automatique » de la fiche lead) passe
+    // devant les deux : c'est un choix ponctuel du commercial, il ne réécrit
+    // jamais `taille_souhaitee_kwc` sur le lead. Même conversion partagée
+    // `panneauxPourKwc` — aucune formule recopiée.
+    // Règle fondateur du 18/08 — une taille EXPLICITE (cible du devis ou
+    // taille souhaitée du lead) est ramenée au palier de 5 kWc le plus proche
+    // (`arrondirAuPasKwc`) : aucun devis auto ne peut sortir une taille hors
+    // palier. Sans taille explicite, le besoin se lit sur la facture d'hiver
+    // (`estimerKwcDepuisFacture`) et la taille retenue est le palier au
+    // payback le plus court (`optimalKwcByPayback`) — jamais le plus gros qui
+    // rentre sur le toit.
     const cibleKwc = parseFloat(targetKwc) || 0
-    const tailleKwc = cibleKwc > 0 ? cibleKwc : (parseFloat(lead.taille_souhaitee_kwc) || 0)
-    const panels = tailleKwc > 0
-      ? panneauxPourKwc(tailleKwc, 710)
-      : (estimerPanneaux(hiver, perTranche) || 8)
+    const explicitKwc = cibleKwc > 0 ? cibleKwc : (parseFloat(lead.taille_souhaitee_kwc) || 0)
+    const tailleKwc = explicitKwc > 0 ? arrondirAuPasKwc(explicitKwc) : 0
+    let panels
+    if (tailleKwc > 0) {
+      panels = panneauxPourKwc(tailleKwc, 710)
+    } else {
+      const besoinKwc = estimerKwcDepuisFacture(hiver)
+      if (besoinKwc > 0) {
+        const eteVal = (lead.ete_differente && lead.facture_ete)
+          ? parseFloat(lead.facture_ete) : hiver
+        const dayUsagePct = mode === 'commercial' ? DAY_USAGE_DEFAULTS['Commerciale']
+          : mode === 'industriel' ? DAY_USAGE_DEFAULTS['Industrielle']
+            : DAY_USAGE_DEFAULTS['Résidentielle']
+        const opt = optimalKwcByPayback({
+          produits, factures: estimerMois(hiver, eteVal), dayUsagePct,
+          panelW: 710, structureType: structFromLead(lead),
+          discountPct: discountStr || '0', kwhPrice, efficiency, besoinKwc,
+        })
+        panels = opt.nbPanneaux > 0 ? opt.nbPanneaux : (estimerPanneaux(hiver, perTranche) || 8)
+      } else {
+        panels = estimerPanneaux(hiver, perTranche) || 8
+      }
+    }
     const kwpAuto = panels * 710 / 1000
     rows = autoFillLines(produits, {
       kwp: kwpAuto, panelW: 710, nbPanneaux: panels,
