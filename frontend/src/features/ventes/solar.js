@@ -508,8 +508,14 @@ export const isPanel = (d) => _norm(d).includes('panneau')
 
 // Repli PVG4 : une batterie dont le nom dit « haute tension » n'est jamais
 // auto-choisie pour un kit résidentiel basse tension.
-const _batterieBasseTensionParMotCle = (p) =>
-  !_norm(p?.nom).includes('haute tension')
+// MIROIR EXACT de `_is_battery_basse_tension` (apps/ventes/services.py) : le
+// prédicat Python exige AUSSI le mot « batterie » dans le nom. Le tronquer
+// faisait de `batterieCompatible` — fonction EXPORTÉE, donc appelable hors du
+// vivier pré-classé — une fonction qui ne se comporte pas comme sa jumelle.
+const _batterieBasseTensionParMotCle = (p) => {
+  const n = _norm(p?.nom)
+  return n.includes('batterie') && !n.includes('haute tension')
+}
 
 // Fenêtre de tension batterie déclarée par un onduleur :
 //   [min, max] → fenêtre réelle ; [0, 0] → « aucune batterie » (réseau) ;
@@ -524,14 +530,21 @@ export function plageBatterieOnduleur(produit) {
 
 // La batterie entre-t-elle dans la plage de l'onduleur ? (miroir exact de
 // `_batterie_compatible` côté backend, replis compris).
+//
+// RÈGLE CORRIGÉE (fondateur 2026-08-18) : le repli mot-clé ne s'applique QUE
+// lorsque L'ONDULEUR ne déclare aucune plage. Dès qu'une plage existe, une
+// candidate sans tension nominale — ou avec une tension nulle/illisible, donc
+// une donnée INVALIDE — est EXCLUE. L'ancien repli acceptait, sous un onduleur
+// 160-700 V, des batteries 48 V et plomb-gel 12 V sans aucune fiche technique,
+// tout en écartant celles qui étaient correctement documentées : le garde-fou
+// produisait exactement la composition qu'il devait empêcher.
 export function batterieCompatible(batterie, plage) {
   if (!Array.isArray(plage)) return _batterieBasseTensionParMotCle(batterie)
   const [vMin, vMax] = plage
   if (!(vMax > 0)) return false        // onduleur réseau : aucune batterie
   const tension = Number(batterie?.specs_solaire?.v_nominal)
-  if (!Number.isFinite(tension) || tension <= 0) {
-    return _batterieBasseTensionParMotCle(batterie)
-  }
+  // Plage EXIGÉE + tension inconnue/invalide ⇒ exclue (jamais le mot-clé).
+  if (!Number.isFinite(tension) || tension <= 0) return false
   return tension >= vMin && tension <= vMax
 }
 
@@ -928,6 +941,19 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
     return n.includes('dyness') || n.includes('deyness')
   })
   const batPool = dyness.length ? dyness : bats
+  // Le vivier peut être VIDE alors que le catalogue porte des batteries : elles
+  // sont toutes incompatibles avec l'onduleur hybride retenu. Le dire vaut
+  // mieux que livrer un kit silencieusement sans stockage (miroir de
+  // `avertissement_vivier_batterie_vide`, apps/ventes/services.py).
+  const avertissementsBatterie = []
+  if (!batPool.length && (byType.batterie ?? []).length
+      && Array.isArray(plageBatterie) && plageBatterie[1] > 0) {
+    avertissementsBatterie.push(
+      `Aucune batterie compatible tarifée pour cet onduleur `
+      + `(plage ${plageBatterie[0]}-${plageBatterie[1]} V) : `
+      + `la composition part SANS batterie. Ajoutez une batterie compatible `
+      + `au catalogue, ou changez d'onduleur.`)
+  }
   const bat5 = batPool.find(x => x.cap === 5)
   const bat10 = batPool.find(x => x.cap === 10)
   if (!bat10 && bat5 && nb10 > 0) {
@@ -1003,6 +1029,9 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
   // Métadonnée portée par le tableau (les consommateurs qui itèrent les lignes
   // ne la voient pas), lue par le générateur pour afficher le bandeau.
   lignes.onduleursIncomplets = onduleursIncomplets
+  // PVOND — vivier batterie VIDE sous un onduleur à plage déclarée : même
+  // métadonnée, même patron que les onduleurs incomplets ci-dessus.
+  lignes.avertissementsBatterie = avertissementsBatterie
   return lignes
 }
 

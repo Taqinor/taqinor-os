@@ -79,15 +79,31 @@ def build(ctx):
                 f'<span class="i1-ku">{unit}</span></div>'
                 f'<div class="i1-kl">{label}</div></td>')
 
-    kpis = kpi(kwc, "&nbsp;kWc", f"Puissance crête")
-    kpis += '<td class="i1-kgap"></td>'
+    cellules = [kpi(kwc, "&nbsp;kWc", "Puissance crête")]
     if autoconso is not None:
-        kpis += kpi(f"{round(autoconso)}", "&nbsp;%", "Autoconsommation")
-        kpis += '<td class="i1-kgap"></td>'
+        cellules.append(kpi(f"{round(autoconso)}", "&nbsp;%",
+                            "Autoconsommation"))
     if couverture is not None:
-        kpis += kpi(f"{round(couverture)}", "&nbsp;%", "Couverture conso")
-        kpis += '<td class="i1-kgap"></td>'
-    kpis += kpi(fmt(economies), "&nbsp;MAD", "Économies / an")
+        cellules.append(kpi(f"{round(couverture)}", "&nbsp;%",
+                            "Couverture conso"))
+    # QXMT — dossier MT sans économies d'étude : la vignette est OMISE, pas
+    # remplie d'un « 0 » ni d'un chiffre calculé au barème BASSE TENSION.
+    if not d.get("ind_masquer_economies"):
+        cellules.append(kpi(fmt(economies), "&nbsp;MAD", "Économies / an"))
+    kpis = '<td class="i1-kgap"></td>'.join(cellules)
+
+    # QXMT — la SOURCE du barème voyage avec le chiffre (jamais un chiffre nu),
+    # ou l'explication de son absence. Vide hors dossier MT.
+    if d.get("ind_masquer_economies"):
+        mt_line = ('<div class="i1-mtsrc">Dossier raccordé en MOYENNE TENSION :'
+                   ' les économies et le retour sur investissement ne sont pas '
+                   'chiffrés au barème basse tension. Communiquez votre '
+                   'répartition horaire (pointe / heures pleines / heures '
+                   'creuses) et nous les calculons sur le barème MT.</div>')
+    elif d.get("ind_mt_mention"):
+        mt_line = f'<div class="i1-mtsrc">{d["ind_mt_mention"]}</div>'
+    else:
+        mt_line = ""
 
     conso_line = (f"Consommation ≈ {fmt(round(conso))} kWh/an" if conso
                   else "Consommation à confirmer (facture 12 mois)")
@@ -137,6 +153,8 @@ def build(ctx):
 .i1-kv{{font-family:{f_display};font-size:17pt;color:{navy};line-height:1;}}
 .i1-ku{{font-size:9pt;color:{muted};}}
 .i1-kl{{font-size:7pt;color:{muted};margin-top:3px;letter-spacing:.3px;}}
+/* QXMT — ligne SOURCE sous le bloc économies (petite, jamais un chiffre nu). */
+.i1-mtsrc{{margin-top:6px;font-size:6.8pt;color:{muted};line-height:1.35;}}
 .i1-note{{margin-top:11px;border:1px solid {green_bg};border-left:4px solid {green};
   border-radius:12px;background:linear-gradient(100deg,{green_bg},#fff 72%);
   padding:9px 14px;font-size:8pt;color:{ink};line-height:1.4;}}
@@ -189,6 +207,7 @@ def build(ctx):
     </div>
 
     <div class="i1-kpirow">{kpis}</div>
+    {mt_line}
 
     <div class="i1-note">
       L'installation vise l'<b>autoconsommation</b> : la valeur porte d'abord sur

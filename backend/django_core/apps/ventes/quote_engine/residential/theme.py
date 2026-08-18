@@ -205,6 +205,29 @@ def _first_warranty(rows, predicat, champ):
     return present, annees
 
 
+#: Marque du panneau PAR DÉFAUT dont proviennent les chiffres de la constante
+#: ``WARRANTIES`` (Canadian Solar TOPHiKu7). Le catalogue écrit « Canadien
+#: Solar » et les fiches produit « Canadian Solar » : les deux graphies.
+_PANNEAU_DEFAUT_MARQUEURS = ("canadian", "canadien")
+
+
+def _panneau_du_defaut(rows, est_panneau) -> bool:
+    """Un panneau de la composition est-il le produit PAR DÉFAUT ?
+
+    Sert au sous-libellé chiffré de la garantie de performance : un chiffre de
+    dégradation (« 87,4 % ») n'appartient qu'à SA fiche produit."""
+    for it in rows:
+        if not est_panneau(it):
+            continue
+        blob = _normaliser_libelle("%s %s %s" % (
+            it.get("designation", "") or "",
+            it.get("_produit_nom", "") or "",
+            it.get("marque", "") or ""))
+        if any(_cite_marque(blob, m) for m in _PANNEAU_DEFAUT_MARQUEURS):
+            return True
+    return False
+
+
 def warranties_for(d):
     """Bande « Nos garanties » dérivée de la composition réelle du devis.
 
@@ -251,11 +274,17 @@ def warranties_for(d):
                                       "garantie_production_mois")
         defaut_perf = _WARRANTY_FALLBACK.get("Performance")
         if perf_ans is not None:
-            # Le sous-libellé chiffré (« 87,4 % garanti ») n'appartient qu'à la
-            # constante : dérivé d'un AUTRE produit, il serait un chiffre
-            # inventé — on le remplace par une formulation sans nombre.
-            sub = (defaut_perf[3] if (defaut_perf
-                                      and str(perf_ans) == defaut_perf[0])
+            # Le sous-libellé chiffré (« 87,4 % garanti ») est une SPEC
+            # Canadian Solar (TOPHiKu7) : il n'appartient qu'au produit par
+            # défaut. L'égalité des ANNÉES ne suffisait pas — un panneau Longi
+            # est lui aussi garanti 30 ans, mais à 88,9 % : le PDF affichait
+            # alors le pourcentage d'une AUTRE marque sur un document client.
+            # On exige donc que le panneau du devis SOIT le produit par défaut
+            # (désignation/marque citant canadian|canadien) ; sinon la durée
+            # part seule, sous une formulation sans nombre.
+            sub = (defaut_perf[3]
+                   if (defaut_perf and str(perf_ans) == defaut_perf[0]
+                       and _panneau_du_defaut(rows, _est_panneau))
                    else "performance linéaire")
             out.append((str(perf_ans), "ans", "Performance", sub))
         elif defaut_perf is not None:
@@ -364,6 +393,81 @@ _ORGANES_PROTECTION = (
 #: cible de l'alias de l'ancien slug `tableau-protection-ac-dc`.
 _MARQUEURS_DC = ("dc", "continu", "gpv", "string", "chaîne", "chaine")
 
+# ── « JAMAIS LA MAUVAISE MARQUE » — la moitié DJANGO du garde-fou ────────────
+#
+# Le contrat partagé ``contract_samples/ligne_fiche_mapping.json`` (bloc
+# ``sans_lien``) l'exige des DEUX côtés ; seul le web l'implémentait. Résultat
+# mesuré sur le catalogue RÉEL : « Onduleur hybride Growatt 10 kW » recevait un
+# lien PDF vers la fiche DEYE, « Coffret AC Legrand » vers la fiche Schneider,
+# et « Batterie Gel 2.2 kWh » (BAT-GEL-22, plomb-gel 12 V) vers la fiche d'une
+# batterie LFP Dyness — pendant que la page web, elle, ne liait rien. Un client
+# lisait donc, sous une ligne de SON devis, les caractéristiques d'un AUTRE
+# matériel.
+#
+# MIROIR EXACT de ``MARQUES_CONNUES`` / de la table ``marques`` des règles de
+# ``apps/web/src/lib/ficheMatcher.ts`` : mêmes jetons, même sémantique — une
+# marque de cette liste, absente des marques acceptées par la fiche retenue,
+# ANNULE le lien ; une marque inconnue de la liste ne déclenche rien (le
+# garde-fou ne ment jamais dans l'autre sens).
+_MARQUES_CONNUES = (
+    "canadian", "canadien", "jinko", "huawei", "deye", "dyness", "deyness",
+    "growatt", "sma", "fronius", "solis", "sungrow", "goodwe", "chint",
+    "longi", "trina", "ja solar", "risen", "astronergy",
+    "pylontech", "byd", "victron", "felicity",
+    "hoymiles", "enphase", "solaredge", "tigo", "veichi",
+    # Appareillage & câble : depuis que les fiches `protection-ac` et `cablage`
+    # NOMMENT une marque (Schneider, Nexans — confirmées fondateur), elles
+    # cessent d'être neutres. `protection-dc` reste SANS marque.
+    "schneider", "legrand", "hager", "abb", "siemens", "citel", "dehn",
+    "nexans", "prysmian", "lapp", "staubli",
+)
+
+#: Marques ACCEPTÉES par chaque fiche MARQUÉE. Un slug absent de cette table
+#: est une fiche GÉNÉRIQUE (protection-dc, accessoires-pose,
+#: structure-fixation) : aucun garde-fou de marque ne s'y applique.
+_FICHE_MARQUES = {
+    "protection-ac": ("schneider",),
+    "cablage": ("nexans",),
+    "batterie-dyness": ("dyness", "deyness"),
+    "onduleur-deye-hybride": ("deye",),
+    "onduleur-huawei-reseau": ("huawei",),
+    "canadian-solar-710": ("canadian", "canadien"),
+    "jinko-710": ("jinko",),
+    "smart-meter-huawei": ("huawei",),
+    "wifi-dongle-huawei": ("huawei",),
+}
+
+
+def _normaliser_libelle(valeur) -> str:
+    """Minuscules, accents retirés, ponctuation → espace (miroir du
+    ``normaliser`` de ficheMatcher.ts). « Câble 6 mm² » → « cable 6 mm2 »."""
+    import re
+    import unicodedata
+
+    brut = unicodedata.normalize("NFD", str(valeur or ""))
+    sans_accents = "".join(c for c in brut
+                           if not unicodedata.combining(c))
+    return re.sub(r"[^a-z0-9]+", " ", sans_accents.lower()).strip()
+
+
+def _cite_marque(libelle_normalise, jeton) -> bool:
+    """Le libellé cite-t-il CE jeton de marque, sur des FRONTIÈRES DE MOT ?
+
+    Les frontières ne sont pas un détail : « sma » ne doit jamais matcher
+    « smart meter », et « abb » jamais « abbaye »."""
+    import re
+    return bool(re.search(r"\b%s\b" % re.escape(jeton), libelle_normalise))
+
+
+def _marque_intruse(slug, libelle_normalise) -> bool:
+    """Le libellé cite-t-il une marque CONCURRENTE de la fiche ``slug`` ?"""
+    acceptees = _FICHE_MARQUES.get(slug)
+    if not acceptees:
+        return False
+    return any(jeton not in acceptees
+               and _cite_marque(libelle_normalise, jeton)
+               for jeton in _MARQUES_CONNUES)
+
 
 def fiche_slug(designation, marque="") -> str:
     """Map an equipment line to its fiche-technique page slug on taqinor.ma.
@@ -383,31 +487,56 @@ def fiche_slug(designation, marque="") -> str:
     étude, transport, services).
     """
     blob = f"{designation} {marque}".lower()
+    # Libellé NORMALISÉ (accents/ponctuation) : c'est lui, et lui seul, que le
+    # garde-fou de marque interroge — sur des FRONTIÈRES DE MOT.
+    norme = _normaliser_libelle(f"{designation} {marque}")
+
+    def _lie(slug):
+        """Le slug… sauf si la ligne cite une marque CONCURRENTE : alors RIEN.
+
+        On s'arrête net plutôt que de glisser vers une règle voisine — une
+        ligne ambiguë ne mérite aucun lien (règle du jumeau web)."""
+        return "" if _marque_intruse(slug, norme) else slug
 
     # ── Protection : le côté continu d'abord (il porte un marqueur explicite) ──
     if any(o in blob for o in _ORGANES_PROTECTION):
         if any(m in blob for m in _MARQUEURS_DC):
+            # Fiche SANS marque : aucun garde-fou (un coffret DC de n'importe
+            # quelle marque mérite l'explication du coffret).
             return "protection-dc"
-        return "protection-ac"
+        return _lie("protection-ac")
 
     if "batterie" in blob or "battery" in blob:
-        return "batterie-dyness"
+        # QUALIFICATIF DE MARQUE EXIGÉ (miroir web) : la fiche décrit une
+        # batterie LFP Dyness précise. « Batterie Gel 2.2 kWh » et « Batterie
+        # Lithium 5 kWh » — deux références RÉELLES du catalogue seedé — ne
+        # sont pas cette batterie-là : aucun lien, plutôt que celui d'une autre.
+        if _cite_marque(norme, "dyness") or _cite_marque(norme, "deyness"):
+            return _lie("batterie-dyness")
+        return ""
     if "onduleur" in blob or "inverter" in blob:
         if "hybride" in blob or "hybrid" in blob:
-            return "onduleur-deye-hybride"
+            return _lie("onduleur-deye-hybride")
         if "réseau" in blob or "reseau" in blob or "injection" in blob:
-            return "onduleur-huawei-reseau"
-        return "onduleur-huawei-reseau"
+            return _lie("onduleur-huawei-reseau")
+        return _lie("onduleur-huawei-reseau")
     if "panneau" in blob or "panel" in blob:
-        return "jinko-710" if "jinko" in blob else "canadian-solar-710"
+        # Même exigence : la puissance seule ne fait pas la marque. Le catalogue
+        # écrit « Canadien Solar » (seed_catalogue.py:45/354) là où les fiches
+        # écrivent « Canadian Solar » — les DEUX graphies mènent à la fiche.
+        if _cite_marque(norme, "jinko"):
+            return _lie("jinko-710")
+        if _cite_marque(norme, "canadian") or _cite_marque(norme, "canadien"):
+            return _lie("canadian-solar-710")
+        return ""
     # QF9 — le Smart Meter et la Clé Wifi (dongle) sont des accessoires Huawei :
     # le builder retire déjà ces lignes d'un devis non-Huawei. Garde-fou : ne
     # renvoyer leur fiche Huawei que si la ligne est bien Huawei, pour qu'une
     # ligne obsolète glissée jusqu'ici ne pointe pas vers une fiche Huawei.
     if "smart meter" in blob or "compteur" in blob:
-        return "smart-meter-huawei" if "huawei" in blob else ""
+        return _lie("smart-meter-huawei") if "huawei" in blob else ""
     if "dongle" in blob or "wifi" in blob:
-        return "wifi-dongle-huawei" if "huawei" in blob else ""
+        return _lie("wifi-dongle-huawei") if "huawei" in blob else ""
     # ── Postes de pose : accessoires AVANT câblage (la ligne catalogue
     # générique « Accessoires » désigne les fournitures de pose, pas le câble) ──
     if any(mot in blob for mot in (
@@ -418,7 +547,9 @@ def fiche_slug(designation, marque="") -> str:
     if any(mot in blob for mot in (
             "câblage", "cablage", "câble", "cable", "connecteur", "mc4",
             "h1z2z2")):
-        return "cablage"
+        # La fiche `cablage` nomme Nexans : un « Câble solaire Prysmian 6 mm² »
+        # ne s'y rattache pas.
+        return _lie("cablage")
     if any(mot in blob for mot in (
             "structure", "rail", "fixation", "lestage", "socle", "châssis",
             "chassis", "plot")):

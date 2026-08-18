@@ -146,6 +146,9 @@ class LaStructureDuBordereauEstReprise(BaseChiffrage):
                 (LigneDevis.TypeLigne.PRODUIT, 'Onduleur 60 kWc'),
                 (LigneDevis.TypeLigne.SECTION, 'B — Prestations communes'),
                 (LigneDevis.TypeLigne.PRODUIT, 'Câbles DC (ml)'),
+                # La clause de réserve FERME le devis, en ligne NOTE : sans
+                # elle, les quantités reprises deviennent un engagement ferme.
+                (LigneDevis.TypeLigne.NOTE, CLAUSE),
             ])
 
     def test_les_intertitres_ne_portent_aucun_prix(self):
@@ -254,6 +257,172 @@ class LesRefusSontMotivesEnFrancais(BaseChiffrage):
         devis = Devis.objects.get(company=self.company)
         ligne = devis.lignes.get(designation__startswith='Terrassement')
         self.assertEqual(ligne.quantite, Decimal('12.35'))
+
+
+class LaClauseDeReserveTraverse(BaseChiffrage):
+    """``raisons_de_non_conformite()`` REFUSE de rendre remettable un bordereau
+    « marché à prix unitaires » sans clause de réserve, parce que « sans elle,
+    les quantités du bordereau sont lues comme un engagement ferme ». Le devis
+    reprenait les quantités et laissait la clause derrière lui : le document
+    remis au CLIENT contredisait celui remis à l'ACHETEUR sur la nature même de
+    l'engagement."""
+
+    def test_la_clause_devient_une_ligne_NOTE_du_devis(self):
+        self.api.post(url_creer_devis(self.bordereau.pk))
+        devis = Devis.objects.get(company=self.company)
+        notes = list(devis.lignes.filter(
+            type_ligne=LigneDevis.TypeLigne.NOTE))
+        self.assertEqual(len(notes), 1)
+        self.assertEqual(notes[0].designation, CLAUSE)
+        # Une note ne porte AUCUN montant et ne compte dans aucun total.
+        self.assertIsNone(notes[0].quantite)
+        self.assertIsNone(notes[0].prix_unitaire)
+        self.assertFalse(notes[0].compte_dans_totaux)
+
+    def test_la_clause_est_aussi_tracee_dans_l_origine(self):
+        """Une ligne NOTE est pour l'ŒIL ; ``origine`` est pour la MACHINE."""
+        self.api.post(url_creer_devis(self.bordereau.pk))
+        devis = Devis.objects.get(company=self.company)
+        origine = devis.etude_params['origine']
+        self.assertEqual(origine['clause_reserve'], CLAUSE)
+        self.assertTrue(origine['marche_prix_unitaires'])
+
+    def test_un_bordereau_sans_clause_ne_fabrique_aucune_note(self):
+        self.bordereau.clause_reserve = ''
+        self.bordereau.marche_prix_unitaires = False
+        self.bordereau.save(update_fields=['clause_reserve',
+                                           'marche_prix_unitaires'])
+        self.api.post(url_creer_devis(self.bordereau.pk))
+        devis = Devis.objects.get(company=self.company)
+        self.assertFalse(devis.lignes.filter(
+            type_ligne=LigneDevis.TypeLigne.NOTE).exists())
+        self.assertEqual(devis.etude_params['origine']['clause_reserve'], '')
+
+
+class LArrondiEstLeMemeDesDeuxCotes(BaseChiffrage):
+    """HALF_EVEN côté bordereau contre HALF_UP côté devis : les deux écrans
+    affichaient deux totaux HT différents pour la MÊME donnée. Le test
+    d'origine ne le voyait pas — il ne testait qu'avec remise globale = 0."""
+
+    def test_une_demi_valeur_de_remise_globale_ne_diverge_plus(self):
+        # Lignes = 1 000,50 HT ; remise 5 % ⇒ 50,025 EXACTEMENT.
+        # HALF_EVEN → 50,02 (950,48) ; HALF_UP → 50,03 (950,47).
+        self.bordereau.lignes.all().delete()
+        self.bordereau.remise_globale_pct = Decimal('5.00')
+        self.bordereau.save(update_fields=['remise_globale_pct'])
+        self._ligne(1, self.section_a, 'Poste unique', 'U', '1', '1000.50',
+                    taux_tva=Decimal('20.00'))
+
+        self.assertEqual(self.bordereau.montant_remise_globale,
+                         Decimal('50.03'))
+        self.assertEqual(self.bordereau.total_ht, Decimal('950.47'))
+
+        reponse = self.api.post(url_creer_devis(self.bordereau.pk))
+        self.assertEqual(reponse.status_code, 201, reponse.data)
+        # L'écran Bordereau et la carte « devis créé » affichent LE MÊME HT.
+        self.assertEqual(reponse.data['devis']['total_ht'],
+                         str(self.bordereau.total_ht))
+
+
+class LIdempotenceNeSertPasUnDevisPerime(BaseChiffrage):
+    """Le brouillon existant était renvoyé TEL QUEL « en affirmant qu'il en est
+    issu » : l'utilisateur corrigeait un prix au bordereau, recliquait « Créer
+    le devis », lisait « aucun doublon créé » — et repartait avec un devis
+    client obsolète que l'écran ne pouvait plus jamais rafraîchir."""
+
+    def test_bordereau_inchange_zero_ecriture_et_message_de_reouverture(self):
+        premiere = self.api.post(url_creer_devis(self.bordereau.pk))
+        devis = Devis.objects.get(company=self.company)
+        pks_avant = list(devis.lignes.values_list('pk', flat=True))
+
+        seconde = self.api.post(url_creer_devis(self.bordereau.pk))
+
+        self.assertEqual(seconde.status_code, 200, seconde.data)
+        self.assertFalse(seconde.data['cree'])
+        self.assertEqual(seconde.data['devis']['id'],
+                         premiere.data['devis']['id'])
+        # Rien n'a bougé : un double-clic reste un no-op COMPLET.
+        self.assertEqual(list(devis.lignes.values_list('pk', flat=True)),
+                         pks_avant)
+        self.assertTrue(any('réouvert' in a
+                            for a in seconde.data['avertissements']))
+
+    def test_un_bordereau_modifie_RAFRAICHIT_le_brouillon(self):
+        self.api.post(url_creer_devis(self.bordereau.pk))
+        ligne = self.bordereau.lignes.get(numero=2)
+        ligne.prix_unitaire = Decimal('45000.00')
+        ligne.save(update_fields=['prix_unitaire'])
+
+        seconde = self.api.post(url_creer_devis(self.bordereau.pk))
+
+        self.assertEqual(seconde.status_code, 200, seconde.data)
+        self.assertFalse(seconde.data['cree'])
+        self.assertEqual(Devis.objects.filter(company=self.company).count(), 1)
+        devis = Devis.objects.get(company=self.company)
+        maj = devis.lignes.get(designation='Onduleur 60 kWc')
+        self.assertEqual(maj.prix_unitaire, Decimal('45000.00'))
+        # Les totaux servis suivent le bordereau, au centime.
+        self.assertEqual(seconde.data['devis']['total_ht'],
+                         str(self.bordereau.total_ht))
+        self.assertTrue(any('MIS À JOUR' in a
+                            for a in seconde.data['avertissements']))
+
+    def test_une_ligne_AJOUTEE_au_bordereau_arrive_dans_le_brouillon(self):
+        self.api.post(url_creer_devis(self.bordereau.pk))
+        self._ligne(4, self.section_b, 'Génie civil', 'U', '1', '9000.00',
+                    taux_tva=Decimal('20.00'))
+
+        self.api.post(url_creer_devis(self.bordereau.pk))
+
+        devis = Devis.objects.get(company=self.company)
+        self.assertTrue(devis.lignes.filter(designation='Génie civil').exists())
+
+    def test_une_remise_globale_modifiee_recale_l_entete_du_devis(self):
+        self.api.post(url_creer_devis(self.bordereau.pk))
+        self.bordereau.remise_globale_pct = Decimal('7.50')
+        self.bordereau.save(update_fields=['remise_globale_pct'])
+
+        self.api.post(url_creer_devis(self.bordereau.pk))
+
+        devis = Devis.objects.get(company=self.company)
+        self.assertEqual(devis.remise_globale, Decimal('7.50'))
+
+    def test_le_rafraichissement_ne_touche_JAMAIS_le_statut(self):
+        self.api.post(url_creer_devis(self.bordereau.pk))
+        ligne = self.bordereau.lignes.get(numero=1)
+        ligne.quantite = Decimal('150')
+        ligne.save(update_fields=['quantite'])
+
+        self.api.post(url_creer_devis(self.bordereau.pk))
+
+        devis = Devis.objects.get(company=self.company)
+        self.assertEqual(devis.statut, Devis.Statut.BROUILLON)
+
+
+class LaQuantiteHorsGabaritEstRefusEE(BaseChiffrage):
+    """``LigneDevis.quantite`` a le MÊME gabarit que le P.U. (10 chiffres, 2
+    décimales) alors que ``LigneBordereau.quantite`` monte à 999 999 999,999 :
+    le P.U. était gardé, la quantité non — et une ligne « Terrassement » à
+    150 000 000 m³ faisait lever un ``numeric field overflow`` DANS la
+    transaction, donc un 500 muet au lieu du refus français promis."""
+
+    def test_une_quantite_geante_est_ecartee_avec_un_avertissement(self):
+        self._ligne(4, self.section_b, 'Terrassement', 'm3',
+                    '150000000.000', '2.00')
+
+        reponse = self.api.post(url_creer_devis(self.bordereau.pk))
+
+        self.assertEqual(reponse.status_code, 201, reponse.data)
+        self.assertTrue(any('hors gabarit' in a
+                            for a in reponse.data['avertissements']),
+                        reponse.data['avertissements'])
+        devis = Devis.objects.get(company=self.company)
+        self.assertFalse(devis.lignes.filter(
+            designation__startswith='Terrassement').exists())
+        # Le reste du devis a bien été repris : une ligne ne perd pas tout.
+        self.assertEqual(
+            devis.lignes.filter(
+                type_ligne=LigneDevis.TypeLigne.PRODUIT).count(), 3)
 
 
 class LeCloisonnementMultiSociete(BaseChiffrage):

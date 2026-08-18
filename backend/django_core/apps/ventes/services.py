@@ -482,8 +482,20 @@ def _batterie_compatible(batterie, plage):
 
     * ``(0, 0)`` — l'onduleur DÉCLARE ne prendre aucune batterie (réseau) :
       aucune ne convient, et ce n'est pas un repli, c'est un fait ;
-    * ``None`` ou batterie sans fiche — donnée absente : REPLI mot-clé ;
+    * ``None`` — L'ONDULEUR ne déclare AUCUNE plage : c'est le SEUL cas de
+      repli mot-clé (comportement PVG4 d'hier, catalogue non renseigné) ;
     * sinon — verdict par la tension nominale, bornes incluses.
+
+    RÈGLE CORRIGÉE (fondateur 2026-08-18) : quand l'onduleur DÉCLARE une plage,
+    une candidate SANS donnée de tension est EXCLUE — jamais rattrapée par le
+    mot-clé. L'ancien repli faisait exactement l'inverse de ce qu'il promettait
+    sur le catalogue réel : sous un Deye 15 kW hybride (plage 160-700 V), il
+    ÉCARTAIT les Dyness 5/10 kWh (51,2 V, correctement documentées) et
+    ACCEPTAIT « Batterie Lithium 5 kWh » et « Batterie Gel 2.2 kWh » — deux
+    références sans aucune fiche technique, l'une en 48 V, l'autre en plomb-gel
+    12 V. Le devis partait avec 3 batteries 48 V sous un onduleur haute tension :
+    une composition électriquement invalide, produite par un garde-fou. Dès que
+    la plage existe, seule une tension MESURÉE peut prouver la compatibilité.
     """
     nom = getattr(batterie, 'nom', '') or ''
     if plage is None:
@@ -492,8 +504,9 @@ def _batterie_compatible(batterie, plage):
     if v_max <= 0:
         return False
     tension = _tension_nominale_batterie(batterie)
-    if tension is None:
-        return _is_battery_basse_tension(nom)
+    if tension is None or tension <= 0:
+        # Plage EXIGÉE + tension inconnue (ou 0 = donnée invalide) ⇒ exclue.
+        return False
     return v_min <= tension <= v_max
 
 
@@ -509,6 +522,52 @@ def _pick_batterie(company, *, onduleur=None):
     return _pick_product(
         company, _is_battery,
         produit_predicate=lambda p: _batterie_compatible(p, plage))
+
+
+# ── PVOND — VERROU DE COMPLÉTUDE, la moitié BACKEND ─────────────────────────
+#
+# L'écran (``solar.js::pickInverter``) écarte déjà de l'auto-composition tout
+# onduleur auquel il manque une variable du CONTRAT (puissance AC, phases,
+# MPPT, tensions, courant, rendement, plage batterie, garantie) et le montre
+# grisé avec son motif. Le backend, lui, ne l'appliquait NULLE PART :
+# ``onduleur_specs_manquantes`` n'avait aucun appelant hors tests/sérialiseur.
+# Deux moitiés de la MÊME auto-composition pouvaient donc retenir deux
+# onduleurs différents pour la même demande — deux prix pour un seul devis,
+# selon le bouton utilisé.
+#
+# La couture est ici, et elle passe par le canal cross-app LICITE (le
+# ``selectors.py`` de stock, jamais ses models). Sur le catalogue d'aujourd'hui
+# (table des incomplets VIDE depuis le dégrisage) ce filtre ne change RIEN :
+# c'est la COUTURE qui compte, pas son effet du jour.
+def _onduleur_complet(produit) -> bool:
+    """L'onduleur porte-t-il TOUTES les variables du contrat PVOND ?
+
+    ``True`` pour tout produit qui n'est PAS un onduleur (le contrat ne le
+    concerne pas — ``stock.selectors`` rend alors une liste vide). Défensif :
+    un sélecteur en panne ne doit jamais vider un catalogue."""
+    try:
+        from apps.stock.selectors import onduleur_specs_manquantes
+        return not onduleur_specs_manquantes(produit)
+    except Exception:  # noqa: BLE001 — jamais bloquer une composition
+        return True
+
+
+def _filtrer_onduleurs_complets(candidats):
+    """Applique le verrou de complétude à un vivier — SANS jamais le vider.
+
+    Le verrou trie entre onduleurs d'un MÊME catalogue : sur le catalogue du
+    fondateur (16 réf. OND-* au contrat complet depuis le dégrisage) il ne
+    change rien, et il écarte le jour où une référence part incomplète.
+
+    LA SEULE différence assumée avec ``solar.js::pickInverter`` : si AUCUN
+    candidat n'est complet, le vivier d'origine est rendu tel quel. Le backend
+    est MULTI-TENANT — le catalogue d'une société qui n'a encore saisi aucune
+    fiche technique ne doit pas devenir « non chiffrable » d'un coup, ce qui
+    supprimerait purement et simplement la ligne d'onduleur de tous ses devis.
+    Un verrou qui arbitre entre candidats reste un verrou ; un verrou qui vide
+    la table est une panne."""
+    complets = [c for c in candidats if _onduleur_complet(c)]
+    return complets or candidats
 
 
 def _is_hybrid_inverter(name: str) -> bool:
@@ -565,13 +624,20 @@ def _pick_product(company, predicate, *, watt=None, produit_predicate=None):
     from apps.stock.models import Produit
     from django.db.models import Q
 
-    qs = Produit.objects.filter(
-        Q(company=company) | Q(company__isnull=True), is_archived=False)
-    if produit_predicate is not None:
-        qs = qs.select_related('fiche_technique')
+    # ``select_related`` inconditionnel : le verrou de complétude ci-dessous lit
+    # la fiche technique de CHAQUE candidat onduleur — sans lui, une requête par
+    # produit. Pour un panneau la fiche est simplement ignorée.
+    qs = (Produit.objects
+          .filter(Q(company=company) | Q(company__isnull=True),
+                  is_archived=False)
+          .select_related('fiche_technique'))
     candidates = [p for p in qs
                   if predicate(p.nom) and _has_price(p)
                   and (produit_predicate is None or produit_predicate(p))]
+    # PVOND — VERROU DE COMPLÉTUDE (miroir de solar.js::pickInverter) : sur un
+    # vivier d'onduleurs, ceux au contrat incomplet passent derrière. Sans
+    # effet sur un panneau ou une batterie (le contrat ne les concerne pas).
+    candidates = _filtrer_onduleurs_complets(candidates)
     if not candidates:
         return None
     if watt:
@@ -769,9 +835,20 @@ def validate_composition_for_layout(layout, company):
                 'Aucun onduleur hybride disponible (ou sans prix) dans le catalogue. '
                 'Ajoutez un onduleur hybride tarifé avant de générer ce devis.')
         if bat is None:
-            errors.append(
-                'Aucune batterie disponible (ou sans prix) dans le catalogue. '
-                'Ajoutez une batterie tarifée avant de générer ce devis.')
+            # PVOND — DIRE POURQUOI : « aucune batterie » et « aucune batterie
+            # COMPATIBLE avec cet onduleur » n'appellent pas le même geste.
+            plage = _plage_batterie_de_l_onduleur(inv)
+            if plage and plage[1] > 0:
+                errors.append(
+                    'Aucune batterie compatible tarifée pour cet onduleur '
+                    '(plage %s-%s V). Ajoutez une batterie compatible tarifée, '
+                    'ou choisissez un autre onduleur, avant de générer ce '
+                    'devis.' % (_v_txt(plage[0]), _v_txt(plage[1])))
+            else:
+                errors.append(
+                    'Aucune batterie disponible (ou sans prix) dans le '
+                    'catalogue. Ajoutez une batterie tarifée avant de générer '
+                    'ce devis.')
     else:
         inv = _pick_product(company, _is_reseau_inverter)
         if inv is None:
@@ -1439,9 +1516,33 @@ def catalogue_de_la_societe(company):
         is_archived=False).select_related('fiche_technique').order_by('id'))
 
 
+def avertissement_vivier_batterie_vide(plage):
+    """Le message FRANÇAIS d'un vivier batterie VIDE sous un onduleur à plage.
+
+    Une seule formulation, partagée par tous les chemins qui savent avertir
+    (composition, resynchronisation de calepinage, pré-vol de composition) :
+    le commercial doit lire la MÊME phrase quel que soit le bouton utilisé."""
+    if plage and plage[1] > 0:
+        return ('Aucune batterie compatible tarifée pour cet onduleur '
+                '(plage %s-%s V) : le devis a été composé SANS batterie. '
+                'Ajoutez une batterie compatible au catalogue, ou changez '
+                'd\'onduleur.' % (_v_txt(plage[0]), _v_txt(plage[1])))
+    return ('Aucune batterie tarifée au catalogue : le devis a été composé '
+            'SANS batterie. Ajoutez une batterie tarifée.')
+
+
+def _v_txt(volts):
+    """« 160.0 » → « 160 » (une tension entière ne s'écrit pas avec un ,0)."""
+    try:
+        f = float(volts)
+    except (TypeError, ValueError):
+        return str(volts)
+    return str(int(f)) if f == int(f) else ('%g' % f)
+
+
 def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
                               avec_batterie=False, structure_type='acier',
-                              taux_tva=Decimal('20')):
+                              taux_tva=Decimal('20'), avertissements=None):
     """Le KIT résidentiel COMPLET composé depuis un catalogue.
 
     Fonction PURE : elle ne requête rien, n'écrit rien, ne touche aucun statut.
@@ -1453,6 +1554,13 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     lignes, dont ``taux_tva`` reste vide) : il sert à reconvertir en HT les
     trois prix forfaitaires que le simulateur exprime en TTC, pour que le
     montant vu par le client soit le même des deux côtés.
+
+    ``avertissements`` (optionnel) est LE CANAL de cette fonction : une liste
+    que l'appelant fournit et que la composition enrichit sur place quand elle
+    a dû composer AUTREMENT que demandé — aujourd'hui le seul cas est un vivier
+    batterie VIDE alors que ``avec_batterie`` était demandé. Sans ce canal, un
+    devis « avec batterie » pouvait partir SANS aucune ligne batterie et sans
+    que personne ne l'apprenne. Absent (``None``) ⇒ comportement inchangé.
 
     Rend la liste ORDONNÉE des ``LigneKit`` à créer, dans l'ordre canonique du
     simulateur, quantités nulles exclues. Liste vide si la puissance est nulle.
@@ -1486,7 +1594,11 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
 
     def choisir_onduleur(categorie):
         candidats = []
-        for produit in par_type.get(categorie) or []:
+        # PVOND — VERROU DE COMPLÉTUDE, miroir de solar.js::pickInverter : un
+        # onduleur au contrat incomplet est écarté de l'auto-composition AVANT
+        # le tri par puissance, exactement comme à l'écran.
+        for produit in _filtrer_onduleurs_complets(
+                par_type.get(categorie) or []):
             kw = _parse_kw(getattr(produit, 'nom', ''))
             if kw and kw > 0:
                 candidats.append((kw, getattr(produit, 'id', 0) or 0, produit))
@@ -1542,11 +1654,12 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     nb5 = 1 if (cible_kwh % 10) >= 5 else 0
     # PVOND — GARDE BATTERIE PILOTÉ PAR LA DONNÉE (remplace le mot-clé PVG4) :
     # une batterie n'entre au vivier que si sa TENSION NOMINALE tombe dans la
-    # PLAGE BATTERIE de l'onduleur retenu ci-dessus. Quand la plage n'est pas
-    # déclarée (ou la batterie n'a pas de fiche), on retombe MOT POUR MOT sur
-    # l'exclusion par mot-clé « haute tension » — aucun catalogue existant ne
-    # régresse. Sur un devis SANS batterie, ``onduleur`` vaut l'onduleur réseau :
-    # la question ne se pose pas (le vivier n'est lu que si ``avec_batterie``).
+    # PLAGE BATTERIE de l'onduleur retenu ci-dessus. Le repli par mot-clé
+    # « haute tension » ne joue QUE lorsque L'ONDULEUR ne déclare aucune plage
+    # (catalogue non renseigné : comportement d'hier, byte-identique) ; dès
+    # qu'une plage existe, une candidate sans tension mesurée est EXCLUE.
+    # Sur un devis SANS batterie, ``onduleur`` vaut l'onduleur réseau : la
+    # question ne se pose pas (le vivier n'est lu que si ``avec_batterie``).
     _plage_bat = _plage_batterie_de_l_onduleur(
         onduleur_hybride if avec_batterie else onduleur)
     batteries = [(_parse_kwh(getattr(p, 'nom', '')), p)
@@ -1556,6 +1669,18 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
               if any(marque in _sans_accents(getattr(b[1], 'nom', ''))
                      for marque in ('dyness', 'deyness'))]
     vivier = dyness or batteries
+    if avec_batterie and not vivier:
+        # Le vivier est VIDE alors que le devis est demandé AVEC batterie : la
+        # composition part sans batterie (jamais une batterie incompatible),
+        # mais elle le DIT — sinon le devis mentait par omission.
+        if avertissements is not None:
+            avertissements.append(
+                avertissement_vivier_batterie_vide(_plage_bat))
+        else:
+            logger.warning(
+                'PVOND: vivier batterie vide (plage %s) alors que le devis est '
+                'demandé AVEC batterie — composition SANS batterie ; cet '
+                'appelant ne porte aucun canal d\'avertissement.', _plage_bat)
     bat5 = next((p for cap, p in vivier if cap == 5), None)
     bat10 = next((p for cap, p in vivier if cap == 10), None)
     if bat10 is None and bat5 is not None and nb10 > 0:
@@ -1964,7 +2089,10 @@ def _completer_kit_residentiel(devis, *, kwc, watt, nb_panneaux,
         catalogue, kwc=kwc, panel_watt=watt, nb_panneaux=nb_panneaux,
         avec_batterie=avec_batterie,
         taux_tva=devis.taux_tva if devis.taux_tva is not None
-        else Decimal('20'))
+        else Decimal('20'),
+        # PVOND — ce chemin SAIT avertir : un vivier batterie vide remonte à
+        # l'écran plutôt que de disparaître dans un kit silencieusement amputé.
+        avertissements=avertissements)
     par_classe = {}
     for spec in attendu:
         classe = classer_produit(spec.designation)
@@ -2201,9 +2329,18 @@ def sync_devis_from_layout(devis, layout, user=None):
             batterie = _pick_batterie(
                 verrou.company, onduleur=_hybride_du_devis)
             if batterie is None:
-                avertissements.append(
-                    'Aucune batterie tarifée au catalogue : la ligne batterie '
-                    'n\'a pas pu être ajoutée. Ajoutez une batterie tarifée.')
+                _plage_devis = _plage_batterie_de_l_onduleur(_hybride_du_devis)
+                if _plage_devis and _plage_devis[1] > 0:
+                    avertissements.append(
+                        'Aucune batterie compatible tarifée pour cet onduleur '
+                        '(plage %s-%s V) : la ligne batterie n\'a pas pu être '
+                        'ajoutée.'
+                        % (_v_txt(_plage_devis[0]), _v_txt(_plage_devis[1])))
+                else:
+                    avertissements.append(
+                        'Aucune batterie tarifée au catalogue : la ligne '
+                        'batterie n\'a pas pu être ajoutée. Ajoutez une '
+                        'batterie tarifée.')
             else:
                 LigneDevis.objects.create(
                     devis=verrou, produit=batterie, designation=batterie.nom,
@@ -2527,7 +2664,26 @@ def resynchroniser_devis_pour_produit(*, produit, company, champs, user=None):
             if conservee:
                 resultat['lignes_conservees'] += 1
 
+        # ── TRANSPARENCE D'UNE RESYNCHRO POST-ENVOI (fondateur 2026-08-18) ──
+        #
+        # Le périmètre reste brouillon + envoyé (décision fondateur, borne 1) :
+        # un devis envoyé DOIT suivre le catalogue, sinon le commercial rappelle
+        # un client avec un prix que la société ne pratique plus. Mais le client,
+        # lui, tient un PDF FIGÉ au montant du jour de l'envoi pendant que sa
+        # page /proposition est re-rendue en direct : sans marqueur, il pouvait
+        # signer un montant différent de sa pièce jointe sans jamais l'avoir su.
+        # On pose donc l'horodatage de la DERNIÈRE resynchro post-envoi (écrasé
+        # à chaque passage — c'est un « depuis quand », pas un journal) et la
+        # charge utile publique l'expose sous ``resync_apres_envoi``.
+        # ``update_fields`` EXCLUT ``statut`` : rien ne peut partir d'ici (#4).
+        from django.utils import timezone
+        horodatage = timezone.now().isoformat()
         for devis in touches.values():
+            if devis.statut == Devis.Statut.ENVOYE:
+                etude = dict(devis.etude_params or {})
+                etude['resync_apres_envoi'] = {'date': horodatage}
+                devis.etude_params = etude
+                devis.save(update_fields=['etude_params'])
             log_devis_resynchronisation(
                 devis, produit=produit, modifications=modifications, user=user)
         resultat['devis_touches'] = len(touches)
@@ -7038,6 +7194,15 @@ _QUANTUM_QUANTITE = Decimal('0.01')
 #: 14. Un P.U. hors gabarit ferait échouer l'écriture en base — on saute la
 #: ligne et on le DIT, plutôt que de perdre tout le devis sur une seule ligne.
 _PU_DEVIS_MAX = Decimal('99999999.99')
+#: MÊME gabarit pour la QUANTITÉ (``LigneDevis.quantite`` : max_digits=10,
+#: decimal_places=2) — alors que ``LigneBordereau.quantite`` accepte
+#: max_digits=12/decimal_places=3, soit jusqu'à 999 999 999,999. Une ligne
+#: « Terrassement » à 150 000 000 m³ faisait donc lever un ``numeric field
+#: overflow`` DANS la transaction de ``create_with_reference`` → 500 muet (le
+#: ``except`` de la vue n'attrape que ``DjangoValidationError``), au lieu de
+#: l'avertissement français que le module promet pour « tout ce que le serveur
+#: n'a PAS pu reprendre à l'identique ». Le P.U. était gardé, pas la quantité.
+_QUANTITE_DEVIS_MAX = Decimal('99999999.99')
 
 
 def _designation_ligne_bordereau(ligne):
@@ -7054,6 +7219,106 @@ def _designation_ligne_bordereau(ligne):
     if unite and unite.upper() != 'U':
         designation = f'{designation} ({unite})'
     return designation[:255]
+
+
+def _signature_lignes_devis(devis):
+    """Empreinte COMPARABLE des lignes d'un devis, dans l'ordre d'affichage.
+
+    Même forme que les specs de ``creer_devis_depuis_bordereau`` : ce qui
+    permet de dire, sans heuristique, si le brouillon dit encore la même chose
+    que le bordereau. Les montants sont normalisés au centième (une même valeur
+    écrite ``12`` ou ``12.00`` ne doit pas passer pour une divergence)."""
+    def _q(valeur):
+        if valeur is None:
+            return None
+        try:
+            return Decimal(str(valeur)).quantize(Decimal('0.01'),
+                                                 rounding=ROUND_HALF_UP)
+        except (TypeError, ValueError, ArithmeticError):
+            return None
+
+    return [
+        (ligne.type_ligne, (ligne.designation or ''), ligne.produit_id,
+         _q(ligne.quantite), _q(ligne.prix_unitaire), _q(ligne.remise),
+         _q(ligne.taux_tva))
+        for ligne in devis.lignes.all().order_by('ordre', 'id')
+    ]
+
+
+def _signature_specs_bordereau(a_ecrire):
+    """La MÊME empreinte, côté bordereau (specs pas encore écrites)."""
+    def _q(valeur):
+        if valeur is None:
+            return None
+        try:
+            return Decimal(str(valeur)).quantize(Decimal('0.01'),
+                                                 rounding=ROUND_HALF_UP)
+        except (TypeError, ValueError, ArithmeticError):
+            return None
+
+    return [
+        (spec['type_ligne'], spec['designation'], spec['produit_id'],
+         _q(spec['quantite']), _q(spec['prix_unitaire']), _q(spec['remise']),
+         _q(spec['taux_tva']))
+        for spec in sorted(a_ecrire, key=lambda s: s['ordre'])
+    ]
+
+
+def _reouvrir_devis_depuis_bordereau(devis, *, bordereau, a_ecrire, origine,
+                                     avertissements):
+    """Rouvre le brouillon déjà issu de ce bordereau — RAFRAÎCHI s'il diverge.
+
+    Un brouillon n'engage personne : quand le bordereau a bougé (lignes, P.U.,
+    quantités, TVA, remise globale, clause de réserve), ses lignes sont
+    réécrites depuis le bordereau et l'écran le DIT. Identique ⇒ ZÉRO écriture,
+    donc un double-clic reste un no-op complet. Le statut n'est ni lu comme
+    modifiable ni écrit (règle #4) : le queryset appelant a déjà borné à
+    ``brouillon``."""
+    from django.db import transaction
+
+    from apps.ventes.models import LigneDevis
+
+    memes_lignes = (_signature_lignes_devis(devis)
+                    == _signature_specs_bordereau(a_ecrire))
+    memes_entetes = (
+        Decimal(devis.taux_tva or 0)
+        == Decimal(bordereau.taux_tva_defaut or 20)
+        and Decimal(devis.remise_globale or 0)
+        == Decimal(bordereau.remise_globale_pct or 0))
+
+    if memes_lignes and memes_entetes:
+        return (devis, {
+            'cree': False,
+            'lignes': devis.lignes.count(),
+            'avertissements': avertissements + [
+                'Un devis brouillon issu de ce bordereau existait déjà : il '
+                "est réouvert, aucun doublon n'a été créé."],
+        })
+
+    with transaction.atomic():
+        devis.lignes.all().delete()
+        for spec in a_ecrire:
+            LigneDevis.objects.create(devis=devis, **spec)
+        devis.taux_tva = Decimal(bordereau.taux_tva_defaut or 20)
+        devis.remise_globale = Decimal(bordereau.remise_globale_pct or 0)
+        etude = dict(devis.etude_params or {})
+        etude['origine'] = origine
+        devis.etude_params = etude
+        # ``update_fields`` EXCLUT ``statut`` (règle #4).
+        devis.save(update_fields=['taux_tva', 'remise_globale',
+                                  'etude_params'])
+    refresh_marge_snapshot(devis)
+    logger.info(
+        'Devis %s RAFRAÎCHI depuis le bordereau %s (%d ligne(s))',
+        devis.reference, bordereau.pk, len(a_ecrire))
+    return (devis, {
+        'cree': False,
+        'lignes': len(a_ecrire),
+        'avertissements': avertissements + [
+            'Un devis brouillon issu de ce bordereau existait déjà et le '
+            'bordereau a changé depuis : ce devis existant a été MIS À JOUR '
+            "depuis le bordereau (aucun doublon n'a été créé)."],
+    })
 
 
 def creer_devis_depuis_bordereau(bordereau, *, user=None, company=None,
@@ -7075,7 +7340,14 @@ def creer_devis_depuis_bordereau(bordereau, *, user=None, company=None,
     client serait pire qu'un refus.
 
     IDEMPOTENT : un brouillon déjà issu de CE bordereau est réouvert au lieu
-    d'être dupliqué (un double clic ne crée pas deux devis).
+    d'être dupliqué (un double clic ne crée pas deux devis) — mais RAFRAÎCHI
+    quand le bordereau a bougé depuis (fondateur 2026-08-18). Le renvoyer tel
+    quel « en affirmant qu'il en est issu » laissait l'utilisateur repartir avec
+    un devis client périmé : il corrigeait un prix au bordereau, recliquait
+    « Créer le devis », lisait « aucun doublon créé » — et le devis gardait
+    l'ANCIEN total pour toujours, l'écran n'offrant aucun autre geste. Un
+    BROUILLON n'engage personne : ses lignes sont donc réécrites depuis le
+    bordereau, et l'écran le DIT.
 
     La numérotation passe TOUJOURS par ``create_with_reference``
     (``core.numbering``) — JAMAIS ``count()+1``. Le devis reste ``brouillon`` :
@@ -7110,19 +7382,6 @@ def creer_devis_depuis_bordereau(bordereau, *, user=None, company=None,
             )})
         client = resolve_client_for_lead(lead)
 
-    # ── Idempotence : le MÊME bordereau ne produit qu'UN brouillon ──
-    existant = Devis.objects.filter(
-        company=company, statut=Devis.Statut.BROUILLON,
-        etude_params__origine__bordereau=bordereau.pk).order_by('pk').first()
-    if existant is not None:
-        return (existant, {
-            'cree': False,
-            'lignes': existant.lignes.count(),
-            'avertissements': [
-                'Un devis brouillon issu de ce bordereau existait déjà : il '
-                "est réouvert, aucun doublon n'a été créé."],
-        })
-
     # ── Les lignes, dans l'ORDRE du bordereau ──
     sections = list(bordereau.sections.all())
     lignes_bordereau = list(bordereau.lignes.all())
@@ -7149,6 +7408,12 @@ def creer_devis_depuis_bordereau(bordereau, *, user=None, company=None,
                 'ligne a été écartée.' % (ligne.numero, ligne.designation))
             return
         brute = Decimal(ligne.quantite or 0)
+        if abs(brute) > _QUANTITE_DEVIS_MAX:
+            avertissements.append(
+                'Ligne %s « %s » : quantité hors gabarit du devis (%s) — la '
+                'ligne a été écartée.'
+                % (ligne.numero, ligne.designation, brute))
+            return
         quantite = brute.quantize(_QUANTUM_QUANTITE, rounding=ROUND_HALF_UP)
         if quantite != brute:
             avertissements.append(
@@ -7201,6 +7466,30 @@ def creer_devis_depuis_bordereau(bordereau, *, user=None, company=None,
             'reprendre dans un devis.'
         )})
 
+    # ── CLAUSE DE RÉSERVE — elle traverse, sinon le devis ment ──
+    #
+    # ``BordereauPrix.raisons_de_non_conformite()`` REFUSE de rendre remettable
+    # un bordereau « marché à prix unitaires » sans clause de réserve, avec ce
+    # motif : « sans elle, les quantités du bordereau sont lues comme un
+    # engagement ferme ». Le devis reprenait les quantités… et laissait la
+    # clause derrière lui : le document remis au CLIENT contredisait celui remis
+    # à l'ACHETEUR sur la nature même de l'engagement. Elle voyage désormais
+    # deux fois — en ligne NOTE visible (XSAL14, hors totaux) et dans
+    # ``etude_params.origine`` pour tout consommateur machine.
+    clause = (getattr(bordereau, 'clause_reserve', '') or '').strip()
+    if clause:
+        a_ecrire.append({
+            'produit_id': None,
+            'designation': clause[:255],
+            'quantite': None,
+            'prix_unitaire': None,
+            'remise': Decimal('0'),
+            'taux_tva': None,
+            'type_ligne': LigneDevis.TypeLigne.NOTE,
+            'ordre': ordre,
+        })
+        ordre += 1
+
     origine = {
         'type': 'bordereau_ao',
         'bordereau': bordereau.pk,
@@ -7208,7 +7497,22 @@ def creer_devis_depuis_bordereau(bordereau, *, user=None, company=None,
         'reference_ao': getattr(affaire, 'reference', '') or '',
         'intitule': bordereau.intitule or '',
         'indice_revision': bordereau.indice_revision or '',
+        'marche_prix_unitaires': bool(
+            getattr(bordereau, 'marche_prix_unitaires', False)),
+        'clause_reserve': clause,
     }
+
+    # ── Idempotence : le MÊME bordereau ne produit qu'UN brouillon ──
+    # Placée APRÈS la construction des lignes : c'est elle qui permet de
+    # COMPARER l'existant au bordereau d'aujourd'hui plutôt que de le renvoyer
+    # les yeux fermés.
+    existant = Devis.objects.filter(
+        company=company, statut=Devis.Statut.BROUILLON,
+        etude_params__origine__bordereau=bordereau.pk).order_by('pk').first()
+    if existant is not None:
+        return _reouvrir_devis_depuis_bordereau(
+            existant, bordereau=bordereau, a_ecrire=a_ecrire, origine=origine,
+            avertissements=avertissements)
 
     def _creer(reference):
         devis = Devis.objects.create(

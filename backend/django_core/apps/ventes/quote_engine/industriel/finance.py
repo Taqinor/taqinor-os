@@ -114,6 +114,16 @@ def build(ctx):
     om_txt = (f"O&amp;M déduit : {fmt(round(om))} MAD/an" if om
               else "O&amp;M (nettoyage, supervision) : inclus dans les économies nettes")
 
+    # QXMT — chapô + ligne SOURCE du barème MT (jamais un chiffre nu).
+    lead_txt = (
+        "Le barème applicable à ce dossier est un barème MOYENNE TENSION : "
+        "aucun chiffre n'est repris du barème basse tension."
+        if d.get("ind_masquer_economies") else
+        "Hypothèse prudente : économies maintenues constantes (hors inflation "
+        "tarifaire, qui les augmenterait).")
+    mt_source = (f'<br><span class="i2-mini">{d["ind_mt_mention"]}</span>'
+                 if d.get("ind_mt_mention") else "")
+
     css = f"""
 <style>
 .i2-root{{font-family:{f_sans};color:{ink};width:210mm;min-height:283mm;
@@ -149,15 +159,45 @@ def build(ctx):
 .i2-be .i2-y{{font-weight:700;color:{navy};}}
 .i2-foot{{margin-top:10px;font-size:7.5pt;color:{muted};line-height:1.4;}}
 .i2-foot b{{color:{navy};}}
+/* QXMT — corps de remplacement quand la rentabilité n'est pas chiffrable au
+   barème du dossier (raccordement MT sans répartition horaire). */
+.i2-mt{{margin-top:13px;border:1px solid {line};border-left:4px solid {gold};
+  border-radius:12px;background:{wash};padding:13px 16px;}}
+.i2-mt-t{{font-family:{f_serif};font-weight:700;font-size:12pt;color:{navy};}}
+.i2-mt-b{{margin-top:6px;font-size:8.5pt;color:{ink};line-height:1.45;}}
+.i2-mt-b b{{color:{navy};}}
 </style>
 """
 
-    html = f"""{css}
-<div class="i2-root">
-  <div class="i2-kicker">Analyse financière</div>
-  <div class="i2-sec">Rentabilité sur {_HORIZON} ans</div>
-  <div class="i2-lead">Hypothèse prudente : économies maintenues constantes (hors inflation tarifaire, qui les augmenterait).</div>
-
+    # QXMT — DOSSIER MT SANS ÉCONOMIES D'ÉTUDE : cette page EST le bloc
+    # ROI/économies. Plutôt que d'imprimer un cashflow, un point mort, un TRI et
+    # un payback tous dérivés du tarif BASSE TENSION de l'ONEE — c.-à-d. des
+    # chiffres qui ne sont pas ceux du dossier — le corps chiffré est REMPLACÉ
+    # par le motif de l'omission et le geste qui la lève. La page reste (le
+    # nombre de pages ne bouge pas) et ne peut que RACCOURCIR : aucun risque de
+    # débordement.
+    if d.get("ind_masquer_economies"):
+        corps = f"""
+  <div class="i2-mt">
+    <div class="i2-mt-t">Rentabilité non chiffrée sur ce dossier</div>
+    <div class="i2-mt-b">
+      Votre installation est raccordée en <b>MOYENNE TENSION</b>. Les économies
+      et le retour sur investissement d'un dossier MT se calculent sur le barème
+      MT par poste horaire (pointe / heures pleines / heures creuses) — pas sur
+      le barème basse tension. Nous préférons ne rien afficher plutôt que
+      d'afficher un chiffre qui n'est pas le vôtre.
+      <br><br>
+      <b>Ce qu'il nous manque :</b> votre répartition horaire de consommation
+      (ou 12 mois de factures MT). Avec elle, nous chiffrons économies, point
+      mort, TRI et payback sur VOTRE barème, et cette page se remplit.
+    </div>
+  </div>
+  <div class="i2-foot">
+    {om_txt}. Investissement (TTC, clé en main) : <b>{fmt(round(invest))} MAD</b>.
+    Chiffres indicatifs, hors financement.
+  </div>"""
+    else:
+        corps = f"""
   <div class="i2-kpis">
     <div class="i2-kpi i2-hi"><div class="i2-kv">{fmt(round(net_annual))}</div>
       <div class="i2-kl">Économie nette / an (MAD)</div></div>
@@ -181,7 +221,15 @@ def build(ctx):
     <b>Payback</b> (retour d'investissement) ≈ {payback_txt}. {om_txt}.
     Le TRI est calculé sur le flux d'économies ci-dessus (méthode actuarielle) ;
     aucune escalade tarifaire n'est supposée. Chiffres indicatifs, hors financement.
-  </div>
+    {mt_source}
+  </div>"""
+
+    html = f"""{css}
+<div class="i2-root">
+  <div class="i2-kicker">Analyse financière</div>
+  <div class="i2-sec">Rentabilité sur {_HORIZON} ans</div>
+  <div class="i2-lead">{lead_txt}</div>
+{corps}
 </div>
 """
     return html

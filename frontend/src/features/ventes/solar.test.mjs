@@ -16,7 +16,7 @@ import {
   computeCashflowPayback,
   computeEtudeIndustrielle,
   TARIF_MT_ONEE, tarifMtDisponible, tarifMtMoyen, normaliserRepartitionMt,
-  isReseauInverter,
+  isReseauInverter, batterieCompatible,
 } from './solar.js'
 
 // Reflet du catalogue seedé (prix HT = TTC simulateur / 1.2, 2 décimales)
@@ -437,6 +437,57 @@ test('PVOND — un onduleur au contrat incomplet est écarté ET nommé', () => 
   // Il n'est PAS chiffré : la ligne « Onduleur réseau » porte un autre modèle.
   const reseau = rows.find(r => isReseauInverter(r.designation))
   assert.notEqual(reseau?.designation, 'Onduleur réseau Huawei 10kW Triphasé')
+})
+
+// ── PVOND — LE REPLI MOT-CLÉ N'EST PLUS UN RATTRAPAGE UNIVERSEL ─────────────
+// Règle corrigée (fondateur 2026-08-18) : le mot-clé ne parle QUE lorsque
+// l'ONDULEUR ne déclare aucune plage. Dès qu'une plage existe, une candidate
+// sans tension nominale — ou avec une tension nulle, donc une donnée INVALIDE —
+// est exclue. Miroir exact de `_batterie_compatible` (apps/ventes/services.py).
+test('PVOND — plage déclarée + batterie SANS fiche ⇒ exclue (jamais le mot-clé)', () => {
+  const sansFiche = P('Batterie Dyness 5 kWh', 16000)
+  assert.equal(batterieCompatible(sansFiche, [40, 60]), false)
+  // …mais SANS plage déclarée, le repli mot-clé garde la main à l'identique.
+  assert.equal(batterieCompatible(sansFiche, null), true)
+})
+
+test('PVOND — v_nominal = 0 est une donnée INVALIDE, pas une absence', () => {
+  const zero = _specs(P('Batterie Dyness 5 kWh', 16000),
+                      { famille: 'batterie', v_nominal: 0 })
+  // Python teste `40 <= 0.0 <= 60` et REFUSE : le JS refuse désormais aussi.
+  assert.equal(batterieCompatible(zero, [40, 60]), false)
+})
+
+test('PVOND — le repli mot-clé exige « batterie » dans le nom (miroir Python)', () => {
+  // `_is_battery_basse_tension` exige "batterie" ET pas "haute tension".
+  assert.equal(batterieCompatible(P('Batterie Dyness 5 kWh', 16000), null), true)
+  assert.equal(
+    batterieCompatible(P('Batterie Dyness haute tension 16 kWh', 48000), null),
+    false)
+  // Un produit qui n'est pas une batterie n'est jamais « compatible ».
+  assert.equal(batterieCompatible(P('Onduleur hybride Deye 10kW', 28000), null),
+               false)
+})
+
+test('PVOND — vivier batterie VIDE sous une plage : la composition AVERTIT', () => {
+  // Le cas RÉEL du catalogue : sous un Deye 15 kW (160-700 V), les batteries
+  // génériques sans fiche partaient quand même — désormais aucune ne passe, et
+  // le devis le DIT au lieu de partir silencieusement sans stockage.
+  const catalogue = SEEDED.map(p =>
+    p.nom === 'Onduleur hybride Deye 15kW Triphasé'
+      ? _specs(p, { famille: 'onduleur', plage_batterie_v: [160, 700] })
+      : p)
+
+  const rows = autoFillLines(catalogue, { kwp: 15, panelW: 710, structureType: 'acier' })
+
+  assert.equal(rows.avertissementsBatterie.length, 1)
+  assert.ok(rows.avertissementsBatterie[0].includes('160-700 V'))
+  assert.ok(rows.avertissementsBatterie[0].includes('SANS batterie'))
+})
+
+test('PVOND — aucune alerte batterie quand le vivier sert normalement', () => {
+  const rows = autoFillLines(SEEDED, { kwp: 10, panelW: 710, structureType: 'acier' })
+  assert.deepEqual(rows.avertissementsBatterie, [])
 })
 
 // ── QX19 — autoFillLines surface le wattage RÉEL + nb panneaux (anti-mismatch)

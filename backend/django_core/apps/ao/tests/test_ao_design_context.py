@@ -177,6 +177,49 @@ class LaGeometrieVientDuReleveAO(BaseAtelier):
         self.assertTrue(any('ancre géographique' in a
                             for a in reponse.data['avertissements']))
 
+    def test_sans_CONTOUR_l_avertissement_ne_parle_pas_d_ancre(self):
+        """``_contour_en_degres`` rend ``[]`` dans DEUX cas qui n'appellent PAS
+        le même geste. Les confondre envoyait l'utilisateur re-saisir une ancre
+        DÉJÀ posée : « la toiture n'a aucune ancre géographique » était
+        factuellement faux — c'est le contour qui manquait."""
+        self.toiture.contour_local_m = []
+        self.toiture.save(update_fields=['contour_local_m'])
+
+        reponse = self.api.get(url_contexte(self.affaire.pk))
+
+        avertissements = reponse.data['avertissements']
+        self.assertEqual(reponse.data['geometrie']['outline'], [])
+        self.assertTrue(any('aucun contour relevé' in a
+                            for a in avertissements), avertissements)
+        self.assertFalse(any('ancre géographique' in a
+                             for a in avertissements), avertissements)
+
+    def test_sans_contour_la_source_dit_TOITURE_puisque_le_pin_en_vient(self):
+        """L'épingle servie est l'ANCRE DE LA TOITURE (branche ``if toiture is
+        not None and toiture.origine_lat is not None``), pas le point GPS du
+        site : l'étiquette ``'site'`` mentait sur l'origine du point affiché."""
+        self.toiture.contour_local_m = []
+        self.toiture.save(update_fields=['contour_local_m'])
+        self.affaire.site_gps_lat = Decimal('34.0000000')
+        self.affaire.site_gps_lng = Decimal('-6.8000000')
+        self.affaire.save(update_fields=['site_gps_lat', 'site_gps_lng'])
+
+        reponse = self.api.get(url_contexte(self.affaire.pk))
+
+        self.assertEqual(reponse.data['geometrie']['source'], 'toiture')
+        pin = reponse.data['geometrie']['pin']
+        self.assertAlmostEqual(pin['lat'], float(ANCRE_LAT), places=6)
+
+    def test_sans_toiture_du_tout_la_source_reste_le_site(self):
+        nue = AppelOffre.objects.create(
+            company=self.company, reference='AO-3D-SITE', objet='GPS seul',
+            site_gps_lat=Decimal('34.0000000'),
+            site_gps_lng=Decimal('-6.8000000'))
+
+        reponse = self.api.get(url_contexte(nue.pk))
+
+        self.assertEqual(reponse.data['geometrie']['source'], 'site')
+
     def test_cible_derivee_de_l_engagement_quand_aucune_variante(self):
         reponse = self.api.get(url_contexte(self.affaire.pk))
         cible = reponse.data['cible']

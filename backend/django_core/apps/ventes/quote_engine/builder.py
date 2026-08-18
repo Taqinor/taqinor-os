@@ -984,6 +984,36 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         if puissance_kwc > 0:
             etude["prix_kwc"] = round(_ref_total / puissance_kwc)
 
+    # ── QXMT — UN DOSSIER MT NE PORTE JAMAIS UN CHIFFRE BT ───────────────────
+    #
+    # ``solar.js`` pose ``etude_params['tension_raccordement'] = 'MT'`` sur un
+    # dossier raccordé en moyenne tension et, faute de répartition horaire,
+    # laisse délibérément ``economies_annuelles`` à ``None`` — l'ÉCRAN affiche
+    # alors « économies et payback volontairement omis ». Le PDF, lui, ne lisait
+    # AUCUNE de ces clés : ``if etude.get("economies_annuelles")`` étant faux,
+    # le bloc d'étude n'écrasait rien et ``calculate_savings_roi`` (tarif BT
+    # ONEE) restait la source des économies et du payback rendus au client.
+    # Le client recevait donc un chiffre BT sur un dossier MT — exactement le
+    # « chiffre BT déguisé en chiffre MT » que le commentaire de solar.js
+    # interdit.
+    #
+    # Deux sorties, jamais un chiffre inventé entre les deux :
+    #   · sans économies d'étude → ``masquer_economies`` : les renderers OMETTENT
+    #     le bloc ROI/économies (pas un « 0 », pas un chiffre BT) ;
+    #   · avec économies d'étude → ``tarif_mt_mention`` : la source du barème
+    #     voyage AVEC le chiffre, comme MENTION_82_21 voyage avec l'injection.
+    _tension_racc = str(etude.get("tension_raccordement") or "").strip().lower()
+    _dossier_mt = _tension_racc == "mt"
+    masquer_economies = bool(_dossier_mt
+                             and not etude.get("economies_annuelles"))
+    tarif_mt_mention = ""
+    if _dossier_mt and not masquer_economies:
+        try:
+            from .constants_82_21 import MENTION_MT
+            tarif_mt_mention = MENTION_MT
+        except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus
+            tarif_mt_mention = ""
+
     # ── QF2 — modèle « deux factures » (économies réelles, par tranche) ──────
     # Le modèle effectivement utilisé pour les économies affichées :
     #   'factures'   — facture_sans − facture_avec, par tranche (données réelles)
@@ -1406,6 +1436,12 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "net_gain_avec": roi.get("net_gain_avec"),
         # QJ13 — honest-number guard: True when savings are an estimate (no tariff data)
         "savings_estimated": roi.get("savings_estimated", False),
+        # QXMT — dossier MT sans économies d'étude : le bloc ROI/économies est
+        # OMIS du document (jamais un chiffre calculé au barème BT).
+        "masquer_economies": masquer_economies,
+        # QXMT — source du barème MT, à imprimer SOUS le bloc économies quand
+        # les valeurs viennent bien de l'étude MT. '' hors dossier MT.
+        "tarif_mt_mention": tarif_mt_mention,
         "tarif_kwh": roi.get("tarif_kwh"),
         # QX7a — consommation annuelle RÉELLE (kWh) quand elle est connue
         # (étude industrielle ou dérivée d'une vraie facture via le tarif kWh) ;

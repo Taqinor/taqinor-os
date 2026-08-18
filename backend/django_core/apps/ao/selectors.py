@@ -613,10 +613,12 @@ def contexte_conception_affaire(appel_offre, company):
 
     # ── Épingle : l'ancre de la toiture d'abord, le point du site ensuite ──
     pin = None
+    pin_de_la_toiture = False
     if toiture is not None and toiture.origine_lat is not None \
             and toiture.origine_lng is not None:
         pin = {'lat': float(toiture.origine_lat),
                'lng': float(toiture.origine_lng)}
+        pin_de_la_toiture = True
     elif appel_offre.site_gps_lat is not None \
             and appel_offre.site_gps_lng is not None:
         pin = {'lat': float(appel_offre.site_gps_lat),
@@ -626,7 +628,11 @@ def contexte_conception_affaire(appel_offre, company):
         if isinstance(appel_offre.roof_layout, dict) else None
     if layout:
         source = 'affaire'
-    elif outline:
+    elif outline or pin_de_la_toiture:
+        # ``'toiture'`` dès que la géométrie servie VIENT de la toiture — y
+        # compris quand seule son ANCRE existe (relevé GPS posé, plan pas
+        # encore tracé) : l'étiquette dit d'où sort le point affiché, et le
+        # point affiché est alors celui de la toiture, pas le GPS du site.
         source = 'toiture'
     elif pin:
         source = 'site'
@@ -651,11 +657,20 @@ def contexte_conception_affaire(appel_offre, company):
             'Aucune toiture relevée sur cette affaire : commencez par relever '
             'une toiture.')
     elif not outline:
-        avertissements.append(
-            'La toiture « %s » n\'a aucune ancre géographique : son contour ne '
-            'peut pas être reprojeté sur la carte.'
-            % (toiture.code_document or toiture.designation
-               or f'#{toiture.pk}'))
+        # ``_contour_en_degres`` rend ``[]`` dans DEUX cas qui n'appellent PAS
+        # le même geste : contour non tracé, ou ancre géographique absente.
+        # Les confondre envoyait l'utilisateur re-saisir une ancre déjà posée.
+        nom_toiture = (toiture.code_document or toiture.designation
+                       or f'#{toiture.pk}')
+        if not toiture.contour_local_m:
+            avertissements.append(
+                'La toiture « %s » n\'a aucun contour relevé : il n\'y a rien '
+                'à reprojeter sur la carte. Tracez son contour.' % nom_toiture)
+        else:
+            avertissements.append(
+                'La toiture « %s » n\'a aucune ancre géographique : son '
+                'contour ne peut pas être reprojeté sur la carte.'
+                % nom_toiture)
     if source == 'none':
         avertissements.append(
             'Aucune géométrie connue pour cette affaire : commencez par situer '

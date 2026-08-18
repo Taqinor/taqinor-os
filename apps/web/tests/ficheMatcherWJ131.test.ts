@@ -41,6 +41,12 @@ const APPARIEMENTS: Array<[string, string | undefined, string]> = [
   // Panneaux — la MARQUE est décisive, jamais la puissance seule.
   ['Panneau photovoltaïque 710 Wc', 'Canadian Solar', 'canadian-solar-710'],
   ['Panneau CANADIAN SOLAR 710W bifacial', undefined, 'canadian-solar-710'],
+  // L'ORTHOGRAPHE RÉELLE DU CATALOGUE. Le produit seedé s'appelle « Panneau
+  // Canadien Solar 710W » et porte la marque « Canadien Solar » : c'est la
+  // ligne la plus fréquente de tous les devis résidentiels, et elle ne
+  // recevait AUCUN lien côté web tant que la règle ne testait que `canadian`.
+  ['Panneau Canadien Solar 710W', undefined, 'canadian-solar-710'],
+  ['Panneau photovoltaïque 710 Wc', 'Canadien Solar', 'canadian-solar-710'],
   ['Module PV Jinko Tiger Neo 710 Wc', undefined, 'jinko-710'],
   ['Panneau photovoltaïque 710 Wc', 'JINKO', 'jinko-710'],
   // Onduleurs — la topologie ou la marque suffit, chacune vers SA fiche.
@@ -191,6 +197,20 @@ describe('WJ131 — JAMAIS la mauvaise marque, JAMAIS de lien inventé', () => {
   it('une batterie d’une autre marque ne renvoie pas vers la fiche Dyness', () => {
     expect(ficheSlugPourLigne('Batterie lithium 5 kWh')).toBeNull();
     expect(ficheSlugPourLigne('Batterie LFP 5 kWh', 'Pylontech')).toBeNull();
+    // Les DEUX batteries génériques RÉELLES du catalogue seedé (BAT-GEL-22,
+    // plomb-gel 12 V, et BAT-LIT-5) : ni l'une ni l'autre n'est la LFP Dyness
+    // que la fiche décrit — aucun lien, des deux côtés du contrat.
+    expect(ficheSlugPourLigne('Batterie Gel 2.2 kWh')).toBeNull();
+    expect(ficheSlugPourLigne('Batterie Lithium 5 kWh')).toBeNull();
+  });
+
+  it('l’appareillage et le câble d’une marque concurrente ne sont pas liés', () => {
+    // Les fiches protection-ac et cablage NOMMENT une marque (Schneider,
+    // Nexans) : elles suivent donc la même règle que les fiches produit.
+    expect(ficheSlugPourLigne('Coffret AC Legrand 4 modules')).toBeNull();
+    expect(ficheSlugPourLigne('Câble solaire Prysmian 6 mm²')).toBeNull();
+    // protection-dc ne nomme AUCUNE marque : un coffret DC reste expliqué.
+    expect(ficheSlugPourLigne('Coffret DC Hager 2 strings')).toBe('protection-dc');
   });
 
   it('un onduleur d’une marque concurrente ne renvoie vers aucune fiche onduleur', () => {

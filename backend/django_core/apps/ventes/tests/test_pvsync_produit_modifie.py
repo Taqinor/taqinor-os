@@ -138,6 +138,85 @@ class BrouillonEtEnvoyeSuiventTests(PvSyncBase):
         devis.refresh_from_db()
         self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
 
+
+class TransparenceApresEnvoiTests(PvSyncBase):
+    """Le périmètre reste brouillon + envoyé, mais un devis DÉJÀ ENVOYÉ qui
+    bouge le DIT : le client tient un PDF figé pendant que sa page est
+    re-rendue en direct. Sans marqueur, il pouvait signer un montant différent
+    de sa pièce jointe sans jamais l'avoir su."""
+
+    def test_un_devis_envoye_modifie_porte_l_horodatage(self):
+        devis = self._devis(Devis.Statut.ENVOYE)
+
+        self._resync()
+
+        devis.refresh_from_db()
+        marqueur = (devis.etude_params or {}).get('resync_apres_envoi')
+        self.assertIsNotNone(marqueur)
+        self.assertIn('date', marqueur)
+        # Une date ISO lisible, pas un booléen muet.
+        self.assertRegex(marqueur['date'], r'^\d{4}-\d{2}-\d{2}T')
+        # Et le statut n'a pas bougé (règle #4).
+        self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
+
+    def test_un_brouillon_ne_porte_aucun_marqueur(self):
+        """Rien n'est parti chez le client : il n'y a rien à lui signaler."""
+        devis = self._devis(Devis.Statut.BROUILLON)
+
+        self._resync()
+
+        devis.refresh_from_db()
+        self.assertIsNone((devis.etude_params or {}).get('resync_apres_envoi'))
+
+    def test_un_envoye_NON_modifie_ne_porte_aucun_marqueur(self):
+        """Ligne négociée : rien n'a été recalé, donc rien à signaler."""
+        devis = self._devis(Devis.Statut.ENVOYE, prix=Decimal('850.00'))
+
+        self._resync()
+
+        devis.refresh_from_db()
+        self.assertIsNone((devis.etude_params or {}).get('resync_apres_envoi'))
+
+    def test_le_marqueur_est_ECRASE_a_chaque_resynchro(self):
+        """C'est un « depuis quand », pas un journal qui gonfle."""
+        devis = self._devis(Devis.Statut.ENVOYE)
+        devis.etude_params = {'resync_apres_envoi': {'date': '2020-01-01T00:00:00'}}
+        devis.save(update_fields=['etude_params'])
+
+        self._resync()
+
+        devis.refresh_from_db()
+        marqueur = devis.etude_params['resync_apres_envoi']
+        self.assertNotEqual(marqueur['date'], '2020-01-01T00:00:00')
+        self.assertEqual(len(devis.etude_params['resync_apres_envoi']), 1)
+
+    def test_le_payload_public_expose_la_cle_resync_apres_envoi(self):
+        """Le nom de la clé est un CONTRAT : la page proposition la lit."""
+        from apps.ventes.models import ShareLink
+
+        devis = self._devis(Devis.Statut.ENVOYE)
+        self._resync()
+        lien = ShareLink.for_devis(devis)
+
+        reponse = APIClient().get(
+            f'/api/django/ventes/proposal/{lien.token}/data/')
+
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertIsNotNone(reponse.data.get('resync_apres_envoi'))
+        self.assertIn('date', reponse.data['resync_apres_envoi'])
+
+    def test_le_payload_public_reste_nul_sans_resynchro(self):
+        from apps.ventes.models import ShareLink
+
+        devis = self._devis(Devis.Statut.ENVOYE)
+        lien = ShareLink.for_devis(devis)
+
+        reponse = APIClient().get(
+            f'/api/django/ventes/proposal/{lien.token}/data/')
+
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertIsNone(reponse.data.get('resync_apres_envoi'))
+
     def test_la_designation_suit_le_renommage(self):
         devis = self._devis(Devis.Statut.BROUILLON)
 

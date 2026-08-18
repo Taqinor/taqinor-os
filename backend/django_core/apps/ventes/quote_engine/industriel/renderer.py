@@ -86,12 +86,20 @@ def _augment(data: dict) -> dict:
     d["ind_conso"] = _num(etude.get("conso_annuelle")) or _num(d.get("conso_annuelle_kwh"))
     d["ind_autoconso"] = _num(etude.get("taux_autoconso"))
     d["ind_couverture"] = _num(etude.get("taux_couverture"))
+    # QXMT — DOSSIER MT SANS ÉCONOMIES D'ÉTUDE : aucun repli sur le chiffre BT.
+    # ``eco_s_ann``/``roi_s`` sortent de ``calculate_savings_roi``, au barème
+    # BASSE TENSION de l'ONEE. Les reprendre sur un dossier raccordé en MT
+    # imprimait sur le document client une économie et un payback qui ne sont
+    # pas les siens. Le bloc est OMIS (jamais un « 0 », jamais un chiffre BT).
+    masque = bool(d.get("masquer_economies"))
+    d["ind_masquer_economies"] = masque
+    d["ind_mt_mention"] = d.get("tarif_mt_mention") or ""
     eco = _num(etude.get("economies_annuelles"))
-    if eco is None:
+    if eco is None and not masque:
         eco = _num(d.get("eco_s_ann"))
     d["ind_economies"] = round(eco) if eco else 0
     pb = _num(etude.get("payback"))
-    if pb is None:
+    if pb is None and not masque:
         pb = _num(d.get("roi_s"))
     d["ind_payback"] = pb
     d["ind_prix_kwc"] = _num(etude.get("prix_kwc"))

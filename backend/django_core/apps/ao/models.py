@@ -28,7 +28,7 @@ existantes et reste le champ d'ordonnancement.
 """
 import math
 from datetime import timedelta
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
@@ -2135,6 +2135,18 @@ class BordereauPrix(TenantModel):
         return f'BOQ {self.intitule} ({self.appel_offre.reference})'
 
     # ── Totaux RECALCULÉS côté serveur (jamais des colonnes recopiées) ────
+    #
+    # ARRONDI : ``ROUND_HALF_UP`` EXPLICITE partout (fondateur 2026-08-18).
+    # Sans argument ``rounding``, ``quantize`` applique le contexte décimal par
+    # défaut — ROUND_HALF_EVEN (arrondi bancaire) — alors que la chaîne devis
+    # canonique (``apps/ventes/selectors._canonical_totaux``, celle que
+    # ``resume_devis_depuis_bordereau`` sert à l'écran et au PDF) quantifie en
+    # HALF_UP. Un bordereau à 1 000,50 HT et 5,00 % de remise globale donne
+    # exactement 50,025 : le bordereau affichait 950,48 et le devis issu du
+    # MÊME bordereau 950,47. L'écran Bordereau et la carte « devis créé »
+    # montraient deux totaux HT différents pour la même donnée, contre
+    # l'invariant « les TOTAUX au centime » du contrat ao_bordereau_devis
+    # (le test ne le voyait pas : il ne testait qu'avec remise = 0).
 
     @property
     def sous_total_ht(self):
@@ -2142,20 +2154,20 @@ class BordereauPrix(TenantModel):
         total = Decimal('0.00')
         for ligne in self.lignes.all():
             total += ligne.montant_ht
-        return total.quantize(Decimal('0.01'))
+        return total.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
     @property
     def montant_remise_globale(self):
         """Montant de la remise globale, DÉRIVÉ du sous-total."""
         taux = self.remise_globale_pct or Decimal('0')
         return (self.sous_total_ht * taux / Decimal('100')).quantize(
-            Decimal('0.01'))
+            Decimal('0.01'), rounding=ROUND_HALF_UP)
 
     @property
     def total_ht(self):
         """Sous-total HT moins la remise globale."""
         return (self.sous_total_ht - self.montant_remise_globale).quantize(
-            Decimal('0.01'))
+            Decimal('0.01'), rounding=ROUND_HALF_UP)
 
     @property
     def tva_par_taux(self):
@@ -2173,17 +2185,19 @@ class BordereauPrix(TenantModel):
             base = (ligne.montant_ht * facteur)
             panier[taux] = panier.get(taux, Decimal('0.00')) + (
                 base * taux / Decimal('100'))
-        return {taux: montant.quantize(Decimal('0.01'))
+        return {taux: montant.quantize(Decimal('0.01'),
+                                       rounding=ROUND_HALF_UP)
                 for taux, montant in panier.items()}
 
     @property
     def total_tva(self):
         return sum(self.tva_par_taux.values(), Decimal('0.00')).quantize(
-            Decimal('0.01'))
+            Decimal('0.01'), rounding=ROUND_HALF_UP)
 
     @property
     def total_ttc(self):
-        return (self.total_ht + self.total_tva).quantize(Decimal('0.01'))
+        return (self.total_ht + self.total_tva).quantize(
+            Decimal('0.01'), rounding=ROUND_HALF_UP)
 
     def raisons_de_non_conformite(self):
         """Motifs, en français, qui rendent le bordereau non remettable."""

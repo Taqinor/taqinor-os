@@ -35,7 +35,31 @@
     "Smart Meter Huawei": "smart-meter-huawei",
     "Wifi Dongle Huawei": "wifi-dongle-huawei",
     "Installation": "",
-    "Transport": ""
+    "Transport": "",
+    "Panneau Canadien Solar 710W": "canadian-solar-710",
+    "Batterie Gel 2.2 kWh": "",
+    "Batterie Lithium 5 kWh": "",
+    "Onduleur hybride Growatt 10 kW": "",
+    "Coffret AC Legrand 4 modules": "",
+    "Câble solaire Prysmian 6 mm²": "",
+    "Panneau photovoltaïque 710 Wc": ""
+  },
+  "pourquoi_ces_exemples_reels": "Les six dernières entrées de `exemple` sont des libellés RÉELS (catalogue seedé au 18/08/2026) et non des cas d'école : elles épinglent précisément ce que les deux moitiés faisaient DIVERGER avant le 18/08. « Panneau Canadien Solar 710W » (seed_catalogue.py:45, marque « Canadien Solar ») : Django liait, le web rendait null parce que sa règle ne testait que la graphie anglaise `canadian` — les deux acceptent désormais canadian|canadien. « Batterie Gel 2.2 kWh » (SKU BAT-GEL-22, plomb-gel 12 V) et « Batterie Lithium 5 kWh » (BAT-LIT-5) : Django renvoyait la fiche d'une batterie LFP Dyness sous une ligne qui n'en est pas une — le qualificatif de marque est maintenant EXIGÉ des deux côtés. « Onduleur hybride Growatt », « Coffret AC Legrand », « Câble solaire Prysmian » : marque concurrente d'une fiche marquée ⇒ AUCUN lien (Django implémente enfin le garde-fou du bloc `sans_lien`). « Panneau photovoltaïque 710 Wc » sans marque : ni Canadian, ni Jinko, donc rien.",
+  "garde_fou_marque": {
+    "marques_connues": ["canadian", "canadien", "jinko", "huawei", "deye", "dyness", "deyness", "growatt", "sma", "fronius", "solis", "sungrow", "goodwe", "chint", "longi", "trina", "ja solar", "risen", "astronergy", "pylontech", "byd", "victron", "felicity", "hoymiles", "enphase", "solaredge", "tigo", "veichi", "schneider", "legrand", "hager", "abb", "siemens", "citel", "dehn", "nexans", "prysmian", "lapp", "staubli"],
+    "fiches_marquees": {
+      "protection-ac": ["schneider"],
+      "cablage": ["nexans"],
+      "batterie-dyness": ["dyness", "deyness"],
+      "onduleur-deye-hybride": ["deye"],
+      "onduleur-huawei-reseau": ["huawei"],
+      "canadian-solar-710": ["canadian", "canadien"],
+      "jinko-710": ["jinko"],
+      "smart-meter-huawei": ["huawei"],
+      "wifi-dongle-huawei": ["huawei"]
+    },
+    "fiches_generiques": ["protection-dc", "accessoires-pose", "structure-fixation"],
+    "regle": "Le jeton de marque est cherché sur des FRONTIÈRES DE MOT dans le libellé normalisé (minuscules, accents retirés, ponctuation → espace) : « sma » ne doit jamais matcher « smart meter ». Une marque de `marques_connues` absente des marques acceptées par la fiche retenue ANNULE le lien (aucun repli sur une règle voisine). Une marque inconnue de la liste ne déclenche rien. Les fiches de `fiches_generiques` ne nomment aucune marque : aucun garde-fou ne s'y applique."
   },
   "alias": {
     "tableau-protection-ac-dc": "protection-dc",

@@ -197,15 +197,46 @@ class RepliMotCleTests(PvOndBase):
                                v_nominal=None)
         self.assertEqual(services._pick_batterie(self.company), basse)
 
-    def test_une_batterie_sans_fiche_retombe_sur_le_mot_cle(self):
+    def test_une_batterie_sans_fiche_est_EXCLUE_sous_un_onduleur_a_plage(self):
+        """RÈGLE CORRIGÉE (fondateur 2026-08-18) : le repli mot-clé ne
+        s'applique QUE quand L'ONDULEUR ne déclare aucune plage.
+
+        L'ancienne règle faisait l'inverse de sa promesse sur le catalogue
+        réel : sous un onduleur 160-700 V elle ÉCARTAIT les Dyness 5/10 kWh
+        (51,2 V, correctement documentées) et ACCEPTAIT « Batterie Lithium
+        5 kWh » et « Batterie Gel 2.2 kWh » — deux références sans AUCUNE fiche
+        technique, l'une en 48 V, l'autre en plomb-gel 12 V. Dès qu'une plage
+        est déclarée, seule une tension MESURÉE prouve la compatibilité."""
         onduleur = self._onduleur('Onduleur hybride Deye 10kW Triphasé',
                                   'PVOND-LV4', plage='40-60 V')
-        basse = self._batterie('Batterie Dyness 5 kWh', 'PVOND-B6',
-                               v_nominal=None)
+        self._batterie('Batterie Dyness 5 kWh', 'PVOND-B6', v_nominal=None)
         self._batterie('Batterie Dyness haute tension — 16 kWh',
                        'PVOND-BHV4', v_nominal=None, prix='100')
-        self.assertEqual(
-            services._pick_batterie(self.company, onduleur=onduleur), basse)
+        self.assertIsNone(
+            services._pick_batterie(self.company, onduleur=onduleur))
+
+    def test_une_tension_nulle_est_une_donnee_INVALIDE_pas_un_repli(self):
+        """``bat_v_nominal = 0`` n'est pas « pas de donnée » : c'est une donnée
+        fausse. Elle ne doit pas ouvrir la porte au mot-clé (miroir exact du
+        garde JS ``tension <= 0``)."""
+        onduleur = self._onduleur('Onduleur hybride Deye 10kW Triphasé',
+                                  'PVOND-LV5', plage='40-60 V')
+        self._batterie('Batterie Dyness 5 kWh', 'PVOND-B7',
+                       v_nominal=Decimal('0'))
+        self.assertIsNone(
+            services._pick_batterie(self.company, onduleur=onduleur))
+
+    def test_une_batterie_generique_du_catalogue_reel_ne_passe_plus(self):
+        """Les deux références RÉELLES qui passaient : BAT-GEL-22 (plomb-gel
+        12 V) et BAT-LIT-5 (48 V), toutes deux sans FicheTechnique."""
+        onduleur = self._onduleur('Onduleur hybride Deye 15kW Triphasé',
+                                  'PVOND-HV2', plage='160-700 V')
+        self._batterie('Batterie Gel 2.2 kWh', 'BAT-GEL-22', v_nominal=None,
+                       prix='5000')
+        self._batterie('Batterie Lithium 5 kWh', 'BAT-LIT-5', v_nominal=None,
+                       prix='15500')
+        self.assertIsNone(
+            services._pick_batterie(self.company, onduleur=onduleur))
 
 
 class CompositionResidentielleTests(PvOndBase):
@@ -242,3 +273,107 @@ class CompositionResidentielleTests(PvOndBase):
         batteries = [ligne for ligne in lignes
                      if 'Batterie' in ligne.designation]
         self.assertTrue(batteries)
+
+    def test_un_vivier_VIDE_avertit_au_lieu_de_se_taire(self):
+        """Le devis partait « avec batterie » et SANS aucune ligne batterie,
+        sans que personne ne l'apprenne. La composition le DIT désormais, sur
+        le canal que l'appelant lui fournit."""
+        self._onduleur('Onduleur hybride Deye 15kW Triphasé', 'PVOND-VID-OND',
+                       plage='160-700 V')
+        self._batterie('Batterie Gel 2.2 kWh', 'PVOND-VID-GEL',
+                       v_nominal=None, prix='5000')
+        self._produit('Panneau Jinko 550W', 'PVOND-VID-PAN', prix='1100')
+
+        catalogue = services.catalogue_de_la_societe(self.company)
+        avertissements = []
+        lignes = services.composition_residentielle(
+            catalogue, kwc=15, panel_watt=550, avec_batterie=True,
+            avertissements=avertissements)
+
+        self.assertFalse([li for li in lignes if 'Batterie' in li.designation])
+        self.assertEqual(len(avertissements), 1)
+        self.assertIn('Aucune batterie compatible tarifée',
+                      avertissements[0])
+        # La plage de l'onduleur est NOMMÉE : le commercial sait quoi chercher.
+        self.assertIn('160-700 V', avertissements[0])
+
+    def test_aucun_avertissement_quand_la_batterie_est_bien_composee(self):
+        self._onduleur('Onduleur hybride Deye 10kW Triphasé', 'PVOND-VID-OK',
+                       plage='40-60 V')
+        self._batterie('Batterie Dyness 5 kWh', 'PVOND-VID-B5')
+        self._produit('Panneau Jinko 550W', 'PVOND-VID-PAN2', prix='1100')
+
+        catalogue = services.catalogue_de_la_societe(self.company)
+        avertissements = []
+        services.composition_residentielle(
+            catalogue, kwc=5, panel_watt=550, avec_batterie=True,
+            avertissements=avertissements)
+
+        self.assertEqual(avertissements, [])
+
+    def test_sans_batterie_demandee_aucun_avertissement(self):
+        """Un devis réseau ne lit jamais le vivier : rien à signaler."""
+        self._onduleur('Onduleur réseau Huawei 10kW Triphasé', 'PVOND-VID-RES',
+                       plage='aucune (onduleur réseau)')
+        self._produit('Panneau Jinko 550W', 'PVOND-VID-PAN3', prix='1100')
+
+        catalogue = services.catalogue_de_la_societe(self.company)
+        avertissements = []
+        services.composition_residentielle(
+            catalogue, kwc=10, panel_watt=550, avec_batterie=False,
+            avertissements=avertissements)
+
+        self.assertEqual(avertissements, [])
+
+
+class VerrouDeCompletudeBackendTests(PvOndBase):
+    """PVOND — LA COUTURE : l'écran et le backend écartent LE MÊME onduleur.
+
+    ``onduleur_specs_manquantes`` n'avait aucun appelant hors tests/sérialiseur :
+    ``solar.js`` filtrait, ``composition_residentielle`` et ``_pick_product``
+    non. Deux moitiés de la même auto-composition pouvaient donc retenir deux
+    onduleurs différents pour la même demande — deux prix pour un seul devis,
+    selon le bouton utilisé."""
+
+    def test_un_onduleur_INCOMPLET_passe_derriere_un_complet(self):
+        # Le 10 kW est INCOMPLET (il lui manque le courant maxi par MPPT) et
+        # serait choisi le premier au seuil de 8 kWc ; le 20 kW est complet.
+        self._onduleur('Onduleur hybride Deye 10kW Triphasé', 'PVOND-VC-KO',
+                       plage='40-60 V',
+                       fiche={'ond_i_max_mppt_a': None}, prix='36000')
+        self._onduleur('Onduleur hybride Deye 20kW Triphasé', 'PVOND-VC-OK',
+                       plage='40-60 V', prix='48000')
+        self._batterie('Batterie Dyness 5 kWh', 'PVOND-VC-B5')
+        self._produit('Panneau Jinko 550W', 'PVOND-VC-PAN', prix='1100')
+
+        catalogue = services.catalogue_de_la_societe(self.company)
+        lignes = services.composition_residentielle(
+            catalogue, kwc=10, panel_watt=550, avec_batterie=True)
+
+        onduleurs = [li.designation for li in lignes
+                     if 'Onduleur' in li.designation]
+        self.assertEqual(onduleurs, ['Onduleur hybride Deye 20kW Triphasé'])
+
+    def test_pick_product_ecarte_lui_aussi_l_onduleur_incomplet(self):
+        """Même verrou sur l'autre moitié du backend (resync / pont 3D)."""
+        self._onduleur('Onduleur hybride Deye 10kW Triphasé', 'PVOND-VC2-KO',
+                       plage='40-60 V',
+                       fiche={'ond_rendement_euro_pct': None}, prix='1000')
+        complet = self._onduleur('Onduleur hybride Deye 20kW Triphasé',
+                                 'PVOND-VC2-OK', plage='40-60 V', prix='48000')
+
+        retenu = services._pick_product(
+            self.company, services._is_hybrid_inverter)
+
+        self.assertEqual(retenu, complet)
+
+    def test_un_catalogue_SANS_aucune_fiche_reste_chiffrable(self):
+        """MULTI-TENANT : une société qui n'a saisi aucune fiche technique ne
+        devient pas « non chiffrable » du jour au lendemain — le verrou trie
+        entre candidats, il ne vide jamais la table."""
+        nu = self._produit('Onduleur hybride Générique 10kW', 'PVOND-VC3-NU',
+                           prix='20000')
+
+        self.assertEqual(
+            services._pick_product(self.company,
+                                   services._is_hybrid_inverter), nu)

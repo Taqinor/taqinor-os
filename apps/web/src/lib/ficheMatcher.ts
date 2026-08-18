@@ -88,8 +88,14 @@ function contientUn(libelle: string, motsCles: readonly string[]): boolean {
 // 2026-08-18) : elle reste listée ici et dans la règle `batterie-dyness` parce que
 // les désignations FIGÉES des devis déjà émis arrivent encore avec cette graphie
 // via la proposition — elles doivent continuer d'être appariées à la bonne fiche.
+// « canadien » = l'orthographe RÉELLE du catalogue. Le produit seedé s'appelle
+// « Panneau Canadien Solar 710W » (marque « Canadien Solar », seed_catalogue.py
+// :45/354) alors que la fiche publiée écrit « Canadian Solar » : une règle qui
+// ne testait que `\bcanadian\b` rendait `null` sur la ligne LA PLUS FRÉQUENTE
+// de tous les devis résidentiels, pendant que le PDF, lui, posait le lien. Les
+// deux graphies mènent désormais à la même fiche, des deux côtés du contrat.
 const MARQUES_CONNUES: readonly string[] = [
-  'canadian', 'jinko', 'huawei', 'deye', 'dyness', 'deyness',
+  'canadian', 'canadien', 'jinko', 'huawei', 'deye', 'dyness', 'deyness',
   'growatt', 'sma', 'fronius', 'solis', 'sungrow', 'goodwe', 'chint',
   'longi', 'trina', 'ja solar', 'risen', 'astronergy',
   'pylontech', 'byd', 'victron', 'felicity',
@@ -175,8 +181,10 @@ const REGLES: readonly RegleFiche[] = [
   {
     slug: 'canadian-solar-710',
     contexte: ['panneau', 'panneaux', 'module', 'modules', 'photovoltaique'],
-    qualificatif: ['canadian'],
-    marques: ['canadian'],
+    // Les DEUX graphies : le catalogue écrit « Canadien Solar », la fiche
+    // publiée « Canadian Solar » (cf. MARQUES_CONNUES ci-dessus).
+    qualificatif: ['canadian', 'canadien'],
+    marques: ['canadian', 'canadien'],
   },
   {
     slug: 'jinko-710',

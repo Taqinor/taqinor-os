@@ -773,10 +773,23 @@ def _gamme_lignes_publiques(devis):
     """Composition CLIENT d'un devis : (désignation, quantité) par ligne.
 
     Whitelist stricte — ni prix d'achat, ni marge, ni champ interne (règle #4).
-    Sert au tableau comparatif factuel des lignes qui diffèrent entre gammes."""
+    Sert au tableau comparatif factuel des lignes qui diffèrent entre gammes.
+
+    PÉRIMÈTRE = celui de la CHAÎNE CANONIQUE, pas un périmètre à part. Seules
+    les lignes qui entrent réellement dans le total comparé sont publiées :
+    lignes PRODUIT non optionnelles, exactement comme
+    ``quote_engine/builder.py`` (``lignes = [li for li in lignes if not
+    li.optionnelle]``) et ``selectors.ligne_compte_dans_totaux``. Sans ce
+    filtre, un add-on ``optionnelle=True`` (XSAL5, HORS total) et les
+    intertitres ``SECTION`` (XSAL14, sans quantité) s'affichaient à côté d'un
+    ``total_ttc`` qui, lui, les EXCLUT : le client concluait qu'une gamme
+    incluait un matériel qu'elle ne facture pas."""
     from .models import LigneDevis
     lignes = []
-    for ln in (LigneDevis.objects.filter(devis=devis)
+    for ln in (LigneDevis.objects
+               .filter(devis=devis,
+                       type_ligne=LigneDevis.TypeLigne.PRODUIT,
+                       optionnelle=False)
                .order_by('ordre', 'id')
                .values('designation', 'quantite')):
         designation = (ln['designation'] or '').strip()
@@ -795,11 +808,21 @@ def _gamme_comparatif(lignes_ici, lignes_soeur):
 
     Comparaison par désignation : une désignation absente d'un côté, ou
     présente des deux côtés avec une quantité différente, entre au comparatif.
-    Une valeur absente est omise (jamais un « 0 » inventé)."""
+    Une valeur absente est omise (jamais un « 0 » inventé).
+
+    Les quantités d'une MÊME désignation sont AGRÉGÉES (somme) : un devis
+    multi-villa (QJ29/QJ30) ou sectionné (XSAL14) répète la même désignation
+    une fois par groupe. Ne garder que la première (``setdefault``) publiait
+    « 10 » là où le devis porte 10 + 6 = 16 panneaux — un chiffre faux présenté
+    au client comme la composition de sa gamme."""
     def _index(lignes):
         out = {}
         for ln in lignes:
-            out.setdefault(ln['designation'], ln['quantite'])
+            designation, qte = ln['designation'], ln['quantite']
+            if designation not in out:
+                out[designation] = qte
+            elif qte is not None:
+                out[designation] = (out[designation] or 0) + qte
         return out
 
     ici, soeur = _index(lignes_ici), _index(lignes_soeur)
@@ -817,14 +840,23 @@ def _gamme_comparatif(lignes_ici, lignes_soeur):
     return lignes
 
 
-def _gammes_public(devis, total_ttc_courant):
+def _gammes_public(devis):
     """Bloc « choix de gamme » de la charge utile publique, ou ``None``.
 
     ``None`` (clé absente) dans TOUS les cas où le client ne doit rien voir de
     l'autre gamme : devis sans gamme, gamme sans sœur vivante, ou mode d'envoi
-    « seule ». Le total de la sœur est calculé par le MÊME chemin que son PDF
-    (``display_totals``) — jamais un prix qui n'existe dans aucun document
-    (PV86). L'écart est donné en MAD ABSOLUS et signé côté client."""
+    « seule ». L'écart est donné en MAD ABSOLUS et signé côté client.
+
+    LES DEUX CÔTÉS DU COMPARATIF SORTENT DE LA MÊME FONCTION (fondateur
+    2026-08-18) : ``display_totals(...)['total']`` pour la gamme courante COMME
+    pour la sœur. ``data['display_total']`` ne convenait pas : il vaut le total
+    SANS batterie dès qu'un devis porte DEUX options et le total AVEC quand il
+    n'en porte qu'une (``builder.build_quote_data``). Comparer un devis
+    bi-option à un devis mono-option revenait donc à soustraire deux
+    compositions différentes — l'écart annoncé au client (« + 44 000 MAD »)
+    n'était l'écart de rien. Même appel des deux côtés ⇒ sémantique identique
+    ⇒ écart comparable, et toujours un prix qui existe dans un document
+    (PV86)."""
     from .services import (
         GAMME_ENVOI_LES_DEUX, gamme_envoi, gamme_info, gamme_soeur,
     )
@@ -846,8 +878,9 @@ def _gammes_public(devis, total_ttc_courant):
         total_soeur = display_totals(soeur).get('total')
         total_soeur = (round(float(total_soeur), 2)
                        if total_soeur is not None else None)
-        courant = (round(float(total_ttc_courant), 2)
-                   if total_ttc_courant is not None else None)
+        total_courant = display_totals(devis).get('total')
+        courant = (round(float(total_courant), 2)
+                   if total_courant is not None else None)
         ecart = (round(total_soeur - courant, 2)
                  if (total_soeur is not None and courant is not None) else None)
         lignes_ici = _gamme_lignes_publiques(devis)
@@ -1126,7 +1159,16 @@ def proposal_data(request, token):
             # GAMMES — choix de gamme AVANT/AVEC la signature. Clé présente
             # uniquement en mode d'envoi « les_deux » ; absente sinon (le lien
             # rend alors le devis exactement comme aujourd'hui).
-            'gammes': _gammes_public(devis, data.get('display_total')),
+            'gammes': _gammes_public(devis),
+            # PVSYNC — TRANSPARENCE d'une resynchronisation POST-ENVOI. Posée
+            # par ``services.resynchroniser_devis_pour_produit`` quand une
+            # correction du catalogue a recalé les lignes d'un devis DÉJÀ
+            # envoyé : le client tient un PDF figé à l'ancien montant, la page
+            # rend le montant courant. Le dire vaut mieux que le taire — la
+            # page (rendue ailleurs) lit CETTE clé. Absente = rien n'a bougé
+            # depuis l'envoi (cas de très loin le plus courant).
+            'resync_apres_envoi': (
+                (devis.etude_params or {}).get('resync_apres_envoi')),
             # XSAL5 — options proposées (add-ons hors total) que le client peut
             # activer AVANT signature (POST proposal/<token>/activer-option/).
             # Absent quand le devis n'a aucune option → rendu inchangé. Jamais de
