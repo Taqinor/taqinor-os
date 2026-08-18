@@ -157,7 +157,8 @@ describe('PV30 §pur — les deux contraintes RELÂCHABLES cèdent quand on le d
     const chk = checkAt(st, geom(), 3, 0, NO_MARGIN);
     expect(chk.ok).toBe(true);
     expect(chk.panelM).toBeCloseTo(1, 6);
-    expect(chk.edgeM).toBeCloseTo(9 - 4, 6); // bord droit du panneau à 4 m, rive à 10 → hmm
+    // Panneau centré en 3 m, large de 2 m → son bord droit est à 4 m ; la rive est à 10 m.
+    expect(chk.edgeM).toBeCloseTo(6, 6);
   });
 });
 
@@ -422,9 +423,9 @@ describe('PV30 §câblage — déplacement CONTINU (ce que la lattice ne pouvait
 
   it('un panneau se pose à une position quelconque, pas sur une cellule', () => {
     click2(map, pt(0, 0)); // saisit le panneau du centre (cellule 4 → index 4)
-    drag2(map, pt(0, 0), pt(0.37, 0));
+    drag2(map, pt(0, 0), pt(1.37, 0)); // 13,7 px : au-delà du seuil de glissé (12 px)
     const moved = editor.freePanels()[4];
-    expect(moved.cx).toBeCloseTo(0.37, 6); // 37 cm : aucune cellule ici
+    expect(moved.cx).toBeCloseTo(1.37, 6); // 1,37 m : aucune cellule ici (elles sont à 0 et 4)
     expect(moved.cy).toBeCloseTo(0, 6);
   });
 
