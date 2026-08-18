@@ -12,9 +12,16 @@ Idempotent and strictly additive:
   - existing products are NEVER modified or duplicated — only missing ones
     are created (a skipped collision is listed in the output).
 
+Les fiches (commerciales et techniques) sont RÉ-APPLIQUÉES à chaque run, ce qui
+rattrape une base de production restée en arrière du catalogue — c'est pourquoi
+``scripts/deploy-prod.ps1`` appelle cette commande à chaque déploiement. Sur une
+fiche technique DÉJÀ existante, le défaut est de COMBLER les champs vides sans
+jamais écraser une valeur saisie par le fondateur (``--reappliquer-fiches``
+rouvre explicitement cette porte pour une correction de datasheet).
+
 Run:
   docker compose exec django_core python manage.py seed_catalogue
-  (option --company-slug, default: taqinor-demo)
+  (options --company-slug, default: taqinor-demo ; --reappliquer-fiches)
 """
 from decimal import Decimal
 
@@ -275,9 +282,17 @@ CABLES_PROTECTIONS_VIDES = [
 # VOLONTAIREMENT VIDE (0) : à renseigner par le fondateur — même garde que
 # les pompes OSP / câbles PVG3 ci-dessus (``_has_price`` exclut le produit de
 # l'auto-composition, le générateur l'affiche grisé « prix à renseigner »).
+#
+# PVOND (18/08/2026) — le palier 20 kW rejoint la gamme LV pour la MÊME raison
+# que le 15 kW : OND-H-DEY-20T est un SG01HP3 HAUTE TENSION (160-700 V), donc
+# INCOMPATIBLE avec les batteries Dyness 51,2 V de la maison. Sans son jumeau
+# basse tension, un devis 20 kW « avec batterie » n'avait aucun onduleur
+# apparaissable au catalogue. Même patron exact que le 15 kW : SKU et nom
+# distincts, prix VIDES (jamais inventés), modèle « supposé — à confirmer ».
 # (nom, sku, qte, seuil)
 ONDULEUR_DEYE_15K_LV_VIDE = [
     ('Onduleur hybride Deye 15kW Triphasé Basse Tension', 'OND-DEY-15K-LV', 500, 5),
+    ('Onduleur hybride Deye 20kW Triphasé Basse Tension', 'OND-DEY-20K-LV', 500, 5),
 ]
 
 # ── Batterie Dyness HAUTE TENSION — 16 kWh (décision fondateur 2026-08-18) ──
@@ -349,6 +364,19 @@ FICHES = {
     # « Modèle confirmé fondateur : … » est posé automatiquement ci-dessous
     # via MODELE_SUPPOSE_PVG4/MODELES_CONFIRMES_FONDATEUR, comme OND-H-DEY-10T.
     'OND-DEY-15K-LV': {
+        'marque': 'Deye',
+        'garantie': 'Garantie constructeur 5 à 10 ans (selon site d\'installation)',
+        'description': ('Onduleur hybride Deye SUN-…K-SG05LP3, série basse tension 48 V (2024)\n'
+                        'Compatible batteries lithium/plomb 48 V (plage 40-60 V, BMS auto-adaptatif)\n'
+                        'Bascule secours (EPS/UPS), monitoring GPRS/WiFi/Bluetooth/4G/LAN\n'
+                        'Rendement max 97,6 % · rendement euro 97,0 %'),
+    },
+    # PVOND (18/08/2026) — jumeau BASSE TENSION du palier 20 kW. Même
+    # datasheet de famille que le 15 kW (SUN-14-20K-SG05LP3-EU-SM2) ; le
+    # modèle exact n'est PAS confirmé par le fondateur, il porte donc
+    # « Modèle supposé : … — à confirmer fondateur » (il n'est volontairement
+    # pas listé dans MODELES_CONFIRMES_FONDATEUR).
+    'OND-DEY-20K-LV': {
         'marque': 'Deye',
         'garantie': 'Garantie constructeur 5 à 10 ans (selon site d\'installation)',
         'description': ('Onduleur hybride Deye SUN-…K-SG05LP3, série basse tension 48 V (2024)\n'
@@ -594,6 +622,7 @@ MODELE_SUPPOSE_PVG4 = {
     # tension, modèle donné DIRECTEMENT par le fondateur (pas une supposition
     # à deviner) — CONFIRMÉ dès la première seed, comme le 10T ci-dessus.
     'OND-DEY-15K-LV': 'Deye SUN-15K-SG05LP3-EU-SM2',     # deyeinverter.com datasheet_sun-14-20k-sg05lp3-eu-sm2_240601_en.pdf (2024-06-01)
+    'OND-DEY-20K-LV': 'Deye SUN-20K-SG05LP3-EU-SM2',     # deyeinverter.com datasheet_sun-14-20k-sg05lp3-eu-sm2_240601_en.pdf (2024-06-01) — colonne 20K, modèle SUPPOSÉ (non confirmé fondateur)
 }
 # PV85 — SKU dont le modèle constructeur n'est PLUS une supposition : le
 # fondateur a tranché. Leur addendum de description dit « Modèle confirmé
@@ -660,6 +689,7 @@ PLAGE_BATTERIE_ONDULEUR = {
     'OND-H-DEY-10M': (40, 60),
     'OND-H-DEY-10T': (40, 60),
     'OND-DEY-15K-LV': (40, 60),
+    'OND-DEY-20K-LV': (40, 60),
     # Deye HAUTE TENSION — famille SG01HP3, batterie lithium-ion 160-700 V.
     # Source : datasheet officielle deyeinverter.com
     # datasheet_sun-(5-25)k-sg01hp3-eu_230724_en.pdf (2023-07-24). C'est
@@ -907,6 +937,32 @@ FICHES_TECHNIQUES = {
         'ond_ac_kw': Decimal('15'), 'ond_phases': 3,
         'ond_rendement_euro_pct': Decimal('97.0'),
     },
+    # PVOND (18/08/2026) — Deye SUN-20K-SG05LP3-EU-SM2, jumeau BASSE TENSION
+    # du palier 20 kW (OND-H-DEY-20T est un SG01HP3 HAUTE TENSION 160-700 V,
+    # incompatible avec les batteries 51,2 V de la maison).
+    # Source : MÊME datasheet officielle que le 15 kW ci-dessus —
+    # deyeinverter.com/deyeinverter/2024/06/01/
+    # datasheet_sun-14-20k-sg05lp3-eu-sm2_240601_en.pdf (2024-06-01), colonne
+    # SUN-20K-SG05LP3-EU-SM2. Plage MPPT (160-650 V), tension DC max (800 V),
+    # nombre de trackers (2) et rendement EURO (97,0 %) sont donnés PARTAGÉS
+    # par la datasheet pour toute la famille SG05LP3 14-20K : ce ne sont pas
+    # des extrapolations. Seule la puissance AC (20 kW) est propre à la
+    # colonne 20K.
+    # NON seedés faute de champ sur FicheTechnique (jamais inventé, même garde
+    # que le 15 kW) : tension de démarrage 160 V, courants de charge/décharge,
+    # poids. La PLAGE BATTERIE 40-60 V est logée en DONNÉE sur la description
+    # (PVOND, ``PLAGE_BATTERIE_ONDULEUR``).
+    'OND-DEY-20K-LV': {
+        'type_fiche': 'onduleur', 'ond_n_mppt': 2,
+        'ond_mppt_v_min': Decimal('160.0'), 'ond_mppt_v_max': Decimal('650.0'),
+        'ond_v_max_abs': Decimal('800.0'),
+        # Asymétrique 36/20 A sur la fiche (2/2+1 chaînes) — valeur retenue :
+        # 20 A, MÊME règle prudente que le 15 kW LV et OND-R-HUA-15T (jamais
+        # une configuration qui surcharge le tracker le plus faible).
+        'ond_i_max_mppt_a': Decimal('20.0'),
+        'ond_ac_kw': Decimal('20'), 'ond_phases': 3,
+        'ond_rendement_euro_pct': Decimal('97.0'),
+    },
     'OND-H-DEY-15T': {
         # Confiance moyenne : plage FAMILLE SG01HP3 (5-25K) documentée, pas
         # spécifique au 15T — seedée quand même (règle PVG4), l'incertitude
@@ -956,6 +1012,20 @@ FICHES_TECHNIQUES = {
 }
 
 
+def _fiche_champ_vide(valeur):
+    """Un champ de ``FicheTechnique`` est-il VIDE, c.-à-d. jamais renseigné ?
+
+    ``None`` (tous les champs de la fiche sont ``null=True``) et la chaîne vide
+    (``type_fiche``) sont les DEUX seuls états « rien de saisi ». ``0`` — ou
+    ``Decimal('0')`` — est une VALEUR : c'est une donnée que quelqu'un a tapée,
+    fût-elle fausse, et le seeder ne la remplace pas sans qu'on le lui demande
+    (``--reappliquer-fiches``).
+    """
+    if valeur is None:
+        return True
+    return isinstance(valeur, str) and not valeur.strip()
+
+
 class Command(BaseCommand):
     help = "Seed the stock with the devis-simulator catalogue (idempotent, additive only)."
 
@@ -963,6 +1033,15 @@ class Command(BaseCommand):
         parser.add_argument(
             '--company-slug', default='taqinor-demo',
             help="Slug of the company to seed (default: taqinor-demo).",
+        )
+        parser.add_argument(
+            '--reappliquer-fiches', action='store_true',
+            help=("Repose les champs de FicheTechnique DÉCLARÉS par le "
+                  "catalogue PAR-DESSUS les valeurs existantes (porte des "
+                  "CORRECTIONS de datasheet, PV85). Sans ce drapeau — et donc "
+                  "à chaque déploiement — le seeder se contente de COMBLER "
+                  "les champs vides : une saisie du fondateur n'est JAMAIS "
+                  "écrasée."),
         )
 
     @transaction.atomic
@@ -1137,7 +1216,7 @@ class Command(BaseCommand):
             )
             created.append(nom)
 
-        # ── Onduleur Deye 15 kW basse tension (SG05LP3) : PRIX VIDE (0) ──
+        # ── Onduleurs Deye BASSE TENSION (SG05LP3) : PRIX VIDES (0) ──
         # Même garde que les pompes OSP / câbles PVG3 ci-dessus : tant que
         # prix_vente vaut 0, le produit est exclu du chiffrage automatique.
         for nom, sku, qte, seuil in ONDULEUR_DEYE_15K_LV_VIDE:
@@ -1160,7 +1239,7 @@ class Command(BaseCommand):
                 type_mouvement=MouvementStock.TypeMouvement.ENTREE,
                 quantite=qte, quantite_avant=0, quantite_apres=qte,
                 reference='SEED-CATALOGUE',
-                note='Stock initial (onduleur Deye 15kW LV — prix à renseigner)',
+                note='Stock initial (onduleur Deye basse tension — prix à renseigner)',
             )
             created.append(nom)
 
@@ -1218,15 +1297,35 @@ class Command(BaseCommand):
             fiches_updated += 1
 
         # ── PV9/PV85 — Fiches techniques (valeurs datasheet constructeur) ──
-        # Additif + idempotent : SKU absent du catalogue → ignoré. Fiche déjà
-        # existante → les champs DÉCLARÉS ci-dessus sont RÉ-APPLIQUÉS (même
-        # philosophie que marque/description/garantie), tout champ non déclaré
-        # est laissé intact (PDF téléversé, saisie manuelle hors catalogue).
-        # C'est ce qui fait qu'une correction de datasheet atteint une base
-        # déjà seedée sans jamais détruire ce que le catalogue ne source pas.
+        # Additif + idempotent : SKU absent du catalogue → ignoré. Produit SANS
+        # fiche → la fiche est CRÉÉE complète (c'est ce qui répare une base de
+        # production restée en arrière du catalogue : le cas RÉEL du bandeau
+        # « Onduleur(s) non chiffrable(s) » du 18/08/2026).
+        #
+        # ORDRE FONDATEUR (18/08/2026) — « rends-moi facile de saisir les infos
+        # des futurs onduleurs et panneaux ». Sur une fiche DÉJÀ existante, le
+        # comportement PAR DÉFAUT est désormais COMBLER, jamais écraser : un
+        # champ VIDE (NULL / chaîne vide) reçoit la valeur du catalogue, un
+        # champ DÉJÀ RENSEIGNÉ est laissé tel quel. C'est ce qui rend sûr
+        # l'appel du seeder à CHAQUE déploiement (scripts/deploy-prod.ps1) —
+        # sans cette garde, un redéploiement écraserait silencieusement ce que
+        # le fondateur vient de saisir à l'écran.
+        #
+        # PV85 garde sa raison d'être — faire atteindre une CORRECTION de
+        # datasheet une base déjà seedée (le 10 kW triphasé passé de SG04LP3 à
+        # SG05LP3 : 26 A/MPPT au lieu de 16 A) — mais cette porte est
+        # maintenant EXPLICITE : `--reappliquer-fiches` repose les champs
+        # déclarés par-dessus l'existant. Un run nu ne peut plus le faire par
+        # accident.
+        #
+        # INTOUCHABLE dans LES DEUX modes : tout champ NON déclaré ici (PDF
+        # téléversé, saisie manuelle sur un champ que le catalogue ne source
+        # pas) et la fiche d'un produit absent de ce dictionnaire.
         from apps.stock.models import FicheTechnique
+        reappliquer = bool(options.get('reappliquer_fiches'))
         fiches_techniques_created = 0
         fiches_techniques_updated = 0
+        champs_combles = 0
         for sku, valeurs in FICHES_TECHNIQUES.items():
             produit = Produit.objects.filter(company=company, sku=sku).first()
             if not produit:
@@ -1237,14 +1336,21 @@ class Command(BaseCommand):
                     company=company, produit=produit, **valeurs)
                 fiches_techniques_created += 1
                 continue
-            modifies = [champ for champ, valeur in valeurs.items()
-                        if getattr(fiche, champ) != valeur]
+            modifies = []
+            for champ, valeur in valeurs.items():
+                actuel = getattr(fiche, champ)
+                if actuel == valeur:
+                    continue  # déjà à jour — aucune écriture (idempotence)
+                if not reappliquer and not _fiche_champ_vide(actuel):
+                    continue  # valeur SAISIE : elle appartient au fondateur
+                modifies.append(champ)
             if not modifies:
-                continue  # déjà à jour — aucune écriture (idempotence)
+                continue
             for champ in modifies:
                 setattr(fiche, champ, valeurs[champ])
             fiche.save(update_fields=modifies)
             fiches_techniques_updated += 1
+            champs_combles += len(modifies)
 
         # ── Réforme TVA 2024–2026 (autorisation explicite du fondateur) ──
         # Panneaux PV → 10 % avec HT re-dérivé pour PRÉSERVER le TTC à
@@ -1302,7 +1408,9 @@ class Command(BaseCommand):
             f"{len(created)} created, {len(skipped)} already present (untouched), "
             f"{fiches_updated} fiches commerciales mises à jour, "
             f"{fiches_techniques_created} fiches techniques créées, "
-            f"{fiches_techniques_updated} fiches techniques ré-appliquées, "
+            f"{fiches_techniques_updated} fiches techniques complétées "
+            f"({champs_combles} champs "
+            f"{'ré-appliqués' if reappliquer else 'comblés'}), "
             f"{archived_count} placeholders archivés, "
             f"{tva_updated} taux TVA alignés (réforme 10 % panneaux), "
             f"{recategorises} produits rangés dans la taxonomie."

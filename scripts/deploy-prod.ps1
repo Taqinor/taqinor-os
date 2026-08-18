@@ -271,6 +271,26 @@ if [ "$UNAPPLIED" != "0" ]; then echo "MIGRATIONS INCOMPLETES ($UNAPPLIED) -> ec
 # avec roles/models.py : indispensable quand un deploiement ajoute de nouveaux
 # codes de permission (ex. equipement_*/sav_*). Idempotent, sans effet sinon.
 docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T django_core python manage.py init_roles
+# PVOND (18/08/2026) — RE-APPLIQUE LES FICHES CATALOGUE a chaque deploiement.
+# Le bandeau « Onduleur(s) non chiffrable(s) » vu par le fondateur venait de la
+# ET SEULEMENT DE la : le code du seeder portait bien les specs sourcees, mais
+# la base de PROD ne les avait jamais recues (seed_catalogue n'etait lance a la
+# main qu'une fois, a la creation du catalogue). Ce pas fait disparaitre cette
+# classe de panne « base de prod en retard sur le seeder ».
+# SUR (charte du seeder) : strictement additif — ne cree que les produits
+# manquants, ne touche JAMAIS un prix ni une quantite existants, et sur une
+# fiche technique deja presente il COMBLE les champs vides SANS jamais ecraser
+# une valeur saisie par le fondateur (--reappliquer-fiches, non passe ici, est
+# la seule porte qui ecrase, et elle est manuelle).
+# NON BLOQUANT : societe absente / slug different => on journalise et on
+# continue. Un catalogue non rafraichi ne doit jamais faire echouer un
+# deploiement (ni declencher le faux rollback documente plus haut).
+SEED_COMPANY_SLUG="${SEED_COMPANY_SLUG:-taqinor-demo}"
+set +e
+docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T django_core python manage.py seed_catalogue --company-slug "$SEED_COMPANY_SLUG"
+SEED_RC=$?
+set -e
+if [ "$SEED_RC" != "0" ]; then echo "AVERTISSEMENT: seed_catalogue (societe '$SEED_COMPANY_SLUG') a echoue (code $SEED_RC) - fiches catalogue NON rafraichies, deploiement poursuivi."; fi
 # nginx garde l'ancienne adresse de django apres recreation -> 502 sinon
 docker compose -f docker-compose.yml -f docker-compose.prod.yml restart nginx
 # La Caddyfile est un bind mount : un changement de config ne recree pas le
