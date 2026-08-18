@@ -507,24 +507,6 @@ def build_pages(ctx) -> list:
   .p2-fin-xl .p2-fin-sub {{ margin-top:0; }}
   .p2-fin-xl {{ margin-top:6mm; }}
 
-  /* QRES50 — bande financement de la page rentabilité (économies − crédit =
-     dans votre poche) : séparation par cellules fixes, jamais par flex gap */
-  .p2-finband {{ display:flex; align-items:stretch; margin-top:1mm; }}
-  .p2-fb-c {{ flex:1; text-align:center; padding:4mm 3mm;
-    background:{C['paper']}; border:1px solid {C['line']}; border-radius:11px;
-    box-shadow:0 1px 2px rgba(26,43,74,.04),0 5px 14px rgba(26,43,74,.05); }}
-  .p2-fb-sep {{ flex:0 0 10mm; text-align:center; align-self:center;
-    font-family:{fonts['display']}; font-size:15pt; color:{C['muted_2']}; }}
-  .p2-fb-k {{ display:block; font-size:6.7pt; letter-spacing:.12em;
-    text-transform:uppercase; color:{C['muted_2']}; font-weight:700;
-    margin-bottom:1mm; }}
-  .p2-fb-v {{ display:block; font-family:{fonts['display']}; font-size:14.5pt;
-    color:{C['navy']}; }}
-  .p2-fb-v small {{ font-family:{fonts['sans']}; font-size:7.5pt;
-    color:{C['muted']}; font-weight:600; }}
-  .p2-fb-net {{ border:1.5px solid {C['gold']}; background:#FFFCF5; }}
-  .p2-fb-net .p2-fb-v {{ color:{C['gold_soft']}; }}
-
   /* QRES53 — bande impact environnemental (page rentabilité) */
   .p2-impact {{ display:flex; gap:8mm; margin-top:1mm; }}
   .p2-imp-c {{ flex:1; text-align:center; padding:3.5mm 3mm;
@@ -731,42 +713,9 @@ def build_pages(ctx) -> list:
             f'25 ans — <b>{gain_mult_txt}× le prix de votre installation'
             '</b></div>')
 
-    # QRES50 (fondateur, 2026-07-18) — la zone blanche du bas de page devient
-    # l'argument cashflow-positif : bande « économies − crédit = dans votre
-    # poche », données réelles du bloc financing uniquement (sinon omise).
-    fin_d = d.get("financing") or {}
-    fin_credit = fin_d.get("credit") or {}
-    finband_html = ""
-    if fin_d.get("indicatif") and fin_credit.get("mensualite"):
-        _mens = int(round(fin_credit["mensualite"]))
-        _eco_ref_m = (d.get("eco_a_ann") if (deux_options or avec_ok)
-                      else d.get("eco_s_ann")) or 0
-        _eco_mois = int(round(_eco_ref_m / 12.0))
-        if _eco_mois > _mens:
-            _duree_ans = round((fin_credit.get("duree_mois") or 0) / 12)
-            _prog = fin_credit.get("programme_nom") or "crédit vert"
-            finband_html = (
-                '<div class="p2-lbl" style="margin-top:8mm">Financement '
-                'possible — et si vous financiez au lieu de payer '
-                'comptant&nbsp;?</div>'
-                '<div class="p2-finband">'
-                '<div class="p2-fb-c"><span class="p2-fb-k">Économies '
-                'estimées</span>'
-                f'<span class="p2-fb-v">≈ {fmt(_eco_mois)} '
-                '<small>MAD/mois</small></span></div>'
-                '<div class="p2-fb-sep">&minus;</div>'
-                '<div class="p2-fb-c"><span class="p2-fb-k">Crédit</span>'
-                f'<span class="p2-fb-v">≈ {fmt(_mens)} '
-                '<small>MAD/mois</small></span></div>'
-                '<div class="p2-fb-sep">=</div>'
-                '<div class="p2-fb-c p2-fb-net"><span class="p2-fb-k">Dans '
-                'votre poche</span>'
-                f'<span class="p2-fb-v">≈ +{fmt(_eco_mois - _mens)} '
-                '<small>MAD/mois</small></span></div>'
-                '</div>'
-                f'<div class="p2-fin-cap">sur {_duree_ans} ans ({_prog}) — '
-                'indicatif, à confirmer avec votre banque.</div>')
-
+    # QRES66 (fondateur, 18/08/2026) — la bande « Financement possible —
+    # et si vous financiez ? » (économies − crédit = dans votre poche) est
+    # SUPPRIMÉE de la page rentabilité. Ne pas la réintroduire.
     # QRES53 — l'impact environnemental complète la page rentabilité (le
     # retour de l'investissement ne se compte pas qu'en dirhams) : mêmes
     # facteurs de calcul que la page 1 (0,81 t CO₂/MWh, ~21 kg CO₂/arbre/an),
@@ -801,7 +750,7 @@ def build_pages(ctx) -> list:
     pages.append(_wrap_page(
         fin_head_html + _fin_html(xl=True)
         + '<div class="qj" data-w="40"></div>' + _callout
-        + '<div class="qj" data-w="35"></div>' + finband_html
+        + '<div class="qj" data-w="35"></div>'
         + '<div class="qj" data-w="25"></div>' + impact_html))
     return pages
 

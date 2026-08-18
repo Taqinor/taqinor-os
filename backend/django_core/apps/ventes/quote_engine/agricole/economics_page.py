@@ -153,18 +153,8 @@ def build(ctx) -> str:
                   ("TVA", tva_note or "Selon barème"), ("Délai", "selon site & forage"),
                   ("Point d'eau", "Forage/puits avec autorisation ABH valide — "
                    "nous vous orientons pour la démarche")]
-    # QK3 — financement CAM « Saquii Solaire » + subvention FDA 30 % (indicatif).
-    # Le bloc vient du builder (QJ12, corrigé Saquii Solaire pour l'agricole) ;
-    # jamais de prix d'achat/marge. Ajouté comme ligne de conditions (page à 4).
-    fin = d.get("financing") or {}
-    fin_credit = fin.get("credit") or {}
-    if fin.get("indicatif") and fin_credit.get("mensualite"):
-        _mens = int(round(fin_credit["mensualite"]))
-        _duree_ans = round((fin_credit.get("duree_mois") or 0) / 12)
-        _prog = fin_credit.get("programme_nom") or "crédit agricole"
-        conditions.append(
-            ("Financement", f"≈ {fmt(_mens)}/mois sur {_duree_ans} ans "
-             f"({_prog}), cumulable FDA 30 % — indicatif."))
+    # QRES66 (fondateur, 18/08/2026) — la ligne de conditions « Financement »
+    # (CAM Saquii Solaire + FDA) est SUPPRIMÉE. Ne pas la réintroduire.
     cond_html = "".join(
         f'<div class="a4-cr"><span class="a4-ck">{k}</span><span class="a4-cv">{v}</span></div>'
         for k, v in conditions)

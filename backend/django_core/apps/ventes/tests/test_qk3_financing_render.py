@@ -116,15 +116,17 @@ class TestFinancingOnPdf(TestCase):
             G._render_pdf_weasyprint = orig
         return cap['html'], HTML(string=cap['html']).render()
 
-    def test_residential_legacy_pdf_shows_financing_three_pages(self):
-        # réseau-only residential → single-option full (legacy engine, 3 pages)
+    def test_residential_legacy_pdf_sans_bloc_financement(self):
+        # QRES66 (fondateur, 18/08/2026) — le rendu legacy (réseau-only, 3
+        # pages) ne porte PLUS le bloc « Financement possible », même quand le
+        # builder fournit des données de financement.
         devis = make_devis(self.company, self.user, self.client_obj, [
             ('Onduleur réseau 8kW', '1', '14000'),
             ('Panneau mono 550W', '12', '1400'),
             ('Installation', '1', '4000'),
         ], 'DEV-QK3-RES', etude_params={'scenario': 'Sans batterie'})
         html, doc = self._render(devis)
-        self.assertIn('Financement possible', html)
+        self.assertNotIn('Financement possible', html)
         self.assertEqual(len(doc.pages), 3)
 
     def test_residential_redesigned_page3_sans_bloc_financement(self):
@@ -155,7 +157,7 @@ class TestFinancingOnPdf(TestCase):
         self.assertEqual(html.count('class="p3-tdcard"'), 2)
         self.assertEqual(len(doc.pages), 3)
 
-    def test_agricole_pdf_shows_saquii_solaire_four_pages(self):
+    def test_agricole_pdf_sans_financement_quatre_pages(self):
         devis = make_devis(self.company, self.user, self.client_obj, [
             ('Pompe immergée OSP 5.5CV', '1', '9000'),
             ('Variateur VEICHI SI23 5.5kW 380V', '1', '4500'),
@@ -167,5 +169,8 @@ class TestFinancingOnPdf(TestCase):
                           'm3_jour': 140, 'champ_kwc': 5.68})
         html, doc = self._render(devis)
         self.assertEqual(len(doc.pages), 4)
-        self.assertIn('Saquii Solaire', html)
+        # QRES66 — la ligne de conditions « Financement » (Saquii Solaire/FDA)
+        # a quitté la page économie ; le programme ne doit plus s'imprimer.
+        self.assertNotIn('Financement', html)
+        self.assertNotIn('Saquii Solaire', html)
         self.assertNotIn('ISTIDAMA', html)
