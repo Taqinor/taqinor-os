@@ -148,6 +148,25 @@ export interface ProposalResponse {
    * ou `[]` — la comparaison se réduit alors à la production seule (P2).
    */
   monthly_consumption?: number[];
+  /**
+   * QF2 (fondateur 2026-08-18) — MODÈLE « DEUX FACTURES » DU MOTEUR DE DEVIS.
+   * `savings_model` vaut `'factures'` quand l'économie du devis est la
+   * DIFFÉRENCE de deux factures annuelles réellement calculées par le moteur
+   * (`quote_engine/pricing.two_bills_savings`, barème par tranche) ; les trois
+   * montants ci-dessous sont alors les factures ANNUELLES (MAD/an) servies par
+   * le backend : sans solaire, avec solaire (option sans batterie), avec solaire
+   * (option avec batterie). Hors de ce modèle le backend envoie `null` — la page
+   * n'affiche alors RIEN plutôt que de fabriquer une facture « après ».
+   *
+   * RÈGLE : la page ne recalcule JAMAIS ces montants. Le moteur change ⇒ la page
+   * change avec lui, sans une ligne de code ici.
+   */
+  savings_model?: string | null;
+  facture_sans_solaire?: number | null;
+  facture_avec_solaire_s?: number | null;
+  facture_avec_solaire_a?: number | null;
+  /** QF2 — barème approximatif (régie sans table publiée) : le dire, jamais le taire. */
+  factures_approximatif?: boolean;
   option_totals: OptionTotals;
   accepted: boolean;
   accepte_par_nom?: string | null;
@@ -1400,6 +1419,58 @@ export function savingsHeadline(
     monthly: annual !== null ? Math.round(annual / 12) : null,
     payback: formatPayback(paybackRaw),
     cumulativeFromBackend,
+  };
+}
+
+// ── QF2 (fondateur 2026-08-18) · Facture AVANT / APRÈS — 100 % servie ───────
+
+/** Les deux factures du moteur, telles que servies (aucun modèle local). */
+export interface FactureAvantApres {
+  /** Facture annuelle SANS solaire (MAD/an) — backend `facture_sans_solaire`. */
+  annuelAvant: number;
+  /** Facture annuelle AVEC solaire (MAD/an) — backend `facture_avec_solaire_s|_a`. */
+  annuelApres: number;
+  /** Même montant ramené au mois (÷ 12 : changement d'unité, pas un calcul). */
+  mensuelAvant: number;
+  mensuelApres: number;
+  /** Barème approximatif signalé par le backend (régie sans table publiée). */
+  approximatif: boolean;
+}
+
+/**
+ * QF2 — Lit les DEUX factures annuelles que le moteur de devis a lui-même
+ * calculées et que le backend sert déjà (`facture_sans_solaire` /
+ * `facture_avec_solaire_s` / `facture_avec_solaire_a`), pour l'option donnée.
+ *
+ * DISCIPLINE (ordre fondateur du 18/08) : la page CONSOMME ces nombres, elle ne
+ * les reconstruit pas. Aucun barème, aucun tarif, aucune hypothèse d'autoconso
+ * n'existe ici — le seul traitement appliqué est la division par 12 (mois),
+ * un changement d'unité. Conséquence voulue : quand le moteur corrige son
+ * modèle, la page affiche le nouveau chiffre sans être modifiée.
+ *
+ * Renvoie `null` — donc « n'affiche rien » — dès que le backend n'est pas dans
+ * le modèle « deux factures » (`savings_model !== 'factures'`), qu'une des deux
+ * factures manque, que la facture d'avant n'est pas strictement positive, ou
+ * que la facture d'après serait SUPÉRIEURE à celle d'avant (payload incohérent :
+ * on se tait plutôt que d'annoncer une facture qui augmente).
+ */
+export function factureAvantApres(
+  p: ProposalResponse,
+  opt: OptionKey,
+): FactureAvantApres | null {
+  if (String(p?.savings_model ?? '') !== 'factures') return null;
+  const avantRaw = p?.facture_sans_solaire;
+  const apresRaw = opt === 'avec_batterie' ? p?.facture_avec_solaire_a : p?.facture_avec_solaire_s;
+  const avant = typeof avantRaw === 'number' && Number.isFinite(avantRaw) ? avantRaw : null;
+  const apres = typeof apresRaw === 'number' && Number.isFinite(apresRaw) ? apresRaw : null;
+  if (avant === null || apres === null) return null;
+  if (avant <= 0 || apres < 0 || apres > avant) return null;
+  return {
+    annuelAvant: Math.round(avant),
+    annuelApres: Math.round(apres),
+    mensuelAvant: Math.round(avant / 12),
+    mensuelApres: Math.round(apres / 12),
+    approximatif: p?.factures_approximatif === true,
   };
 }
 
@@ -2765,15 +2836,26 @@ export interface MonitoringPoint {
 /**
  * WJ32 — Points d'accompagnement post-installation : FAITS opérationnels
  * (garanties déjà affichées ailleurs sur la page, SAV Taqinor) — pas de
- * chiffre nouveau, aucune dépendance backend (toujours affiché).
+ * chiffre nouveau.
+ *
+ * (fondateur 2026-08-18) LE SUIVI PAR L'APPLICATION DE L'ONDULEUR N'EST PLUS
+ * INCONDITIONNEL. Il était rendu « toujours », y compris sur un devis de
+ * POMPAGE qui ne contient aucun onduleur (pompe + variateur) : la page
+ * promettait alors une application pour un matériel non vendu. L'appelant
+ * passe la présence RÉELLE d'une ligne onduleur (`equipmentPresence` de
+ * `propositionPage.ts`, lue sur les lignes du devis) ; sans elle, seuls les
+ * points génériques de maintenance restent — jamais un point inventé.
  */
-export function monitoringPoints(): MonitoringPoint[] {
+export function monitoringPoints(
+  presence?: { onduleur?: boolean } | null,
+): MonitoringPoint[] {
+  const onduleur = presence?.onduleur === true;
   return [
-    {
+    ...(onduleur ? [{
       label: 'Suivi de production disponible via l\'application de votre onduleur',
       labelAr: 'تتبع الإنتاج متاح عبر تطبيق العاكس',
       labelEn: 'Production monitoring available via your inverter\'s app',
-    },
+    }] : []),
     {
       label: 'SAV Taqinor joignable sur WhatsApp pour toute question après installation',
       labelAr: 'خدمة ما بعد البيع لتاقينور متاحة عبر واتساب لأي سؤال بعد التركيب',
