@@ -572,7 +572,7 @@ test('QF8 — réseau Deye mais hybride Huawei : Smart Meter/Wifi attachés (hyb
 
 // ══ Multi-marchés ═════════════════════════════════════════════════════════════
 import {
-  computeEtudeIndustrielle, computePompage, autoFillPompage,
+  computePompage, autoFillPompage,
   prixParKwc, discountForTarget, computeBuyCost, CV_TO_KW,
   expectedTvaForDesignation,
 } from './solar.js'

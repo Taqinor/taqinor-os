@@ -84,7 +84,7 @@ def url_gamme(devis_id):
 
 
 def url_proposal(token):
-    return f'/api/django/ventes/proposal/{token}/data/'
+    return f'/api/django/ventes/proposal/{token}/'
 
 
 def url_accept(token):

@@ -199,7 +199,7 @@ class TransparenceApresEnvoiTests(PvSyncBase):
         lien = ShareLink.for_devis(devis)
 
         reponse = APIClient().get(
-            f'/api/django/ventes/proposal/{lien.token}/data/')
+            f'/api/django/ventes/proposal/{lien.token}/')
 
         self.assertEqual(reponse.status_code, 200, reponse.data)
         self.assertIsNotNone(reponse.data.get('resync_apres_envoi'))
@@ -212,7 +212,7 @@ class TransparenceApresEnvoiTests(PvSyncBase):
         lien = ShareLink.for_devis(devis)
 
         reponse = APIClient().get(
-            f'/api/django/ventes/proposal/{lien.token}/data/')
+            f'/api/django/ventes/proposal/{lien.token}/')
 
         self.assertEqual(reponse.status_code, 200, reponse.data)
         self.assertIsNone(reponse.data.get('resync_apres_envoi'))

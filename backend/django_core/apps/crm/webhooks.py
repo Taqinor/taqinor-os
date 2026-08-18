@@ -973,7 +973,7 @@ def _note_rappel_sous_seuil(lead):
 
 
 def _flag_possible_duplicates(lead, *, telephone='', email='', dupes=None,
-                               inherited_owner=None, inherited_from=None):
+                              inherited_owner=None, inherited_from=None):
     """Détection de doublon posée EN VISIBILITÉ sur le lead qui vient d'être
     créé — jamais une fusion (règle fondateur du 18/08/2026).
 
