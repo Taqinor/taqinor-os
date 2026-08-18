@@ -31,6 +31,7 @@ from .views import (
     MandatPaiementViewSet,  # XCTR22
     ListePrixViewSet,  # XSAL1-2
     prix_applicable_view,  # XSAL3
+    ParametresGammesView,  # PVMRQ
 )
 from .recouvrement import (
     FollowupLevelViewSet,
@@ -239,5 +240,8 @@ urlpatterns = [
          name='calendrier-reglementaire'),
     # XSAL3 — résolution de prix (liste client + règles/paliers XSAL1-2).
     path('prix-applicable/', prix_applicable_view, name='prix-applicable'),
+    # PVMRQ — réglages « offre à deux gammes » par société (singleton).
+    path('parametres-gammes/', ParametresGammesView.as_view(),
+         name='parametres-gammes'),
     path('', include(router.urls)),
 ]

@@ -1,0 +1,35 @@
+{
+  "endpoint": "GET /api/django/ventes/parametres-gammes/",
+  "pourquoi": "Réglages « offre à deux gammes » de la société (PVMRQ, fondateur 18/08/2026) : bascule une/deux gammes, libellés affichés (renommables sans code) et la carte de marques préférées par gamme et par rôle de composition automatique, en UN SEUL appel singleton (get-or-create, comme /ventes/parametres-tresorerie/). Source de vérité : apps/ventes/models.py::ParametresGammes, forme déclarée par ParametresGammesSerializer. Les clés de `marques` sont TOUJOURS les SLOTS fixes 'Essentielle'/'Premium' (jamais le libellé renommé de `nom_essentielle`/`nom_premium`) ; un rôle absent d'une gamme signifie « aucune préférence, choisir comme aujourd'hui ». Lu par apps/ventes/services.py::marque_preferee, la SEULE voie de lecture de `marques`.",
+  "exemple": {
+    "id": 3,
+    "deux_gammes": true,
+    "nom_essentielle": "Essentielle",
+    "nom_premium": "Premium",
+    "marques": {
+      "Essentielle": {
+        "panneau": "Jinko",
+        "onduleur_reseau": "Huawei",
+        "onduleur_hybride": "Deye",
+        "batterie": "Dyness"
+      },
+      "Premium": {
+        "panneau": "Canadian Solar",
+        "onduleur_reseau": "Huawei",
+        "onduleur_hybride": "Huawei",
+        "batterie": "Huawei"
+      }
+    },
+    "created_at": "2026-08-18T09:00:00Z",
+    "updated_at": "2026-08-18T09:00:00Z"
+  },
+  "exemple_vide": {
+    "id": 7,
+    "deux_gammes": false,
+    "nom_essentielle": "Essentielle",
+    "nom_premium": "Premium",
+    "marques": {},
+    "created_at": "2026-08-18T09:00:00Z",
+    "updated_at": "2026-08-18T09:00:00Z"
+  }
+}

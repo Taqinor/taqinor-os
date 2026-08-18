@@ -325,6 +325,68 @@ def regler_envoi_gamme(devis, mode):
     return mode
 
 
+# ── PVMRQ — marque préférée par gamme/rôle (fondateur 18/08/2026) ──────────
+#
+# ``ParametresGammes`` (apps/ventes/models.py) porte le réglage ; ces deux
+# fonctions en sont la SEULE voie de lecture — aucun autre code ne doit lire
+# ``ParametresGammes.marques`` directement (le contrat JSON n'a qu'un seul
+# lecteur, donc qu'un seul endroit à faire évoluer si sa forme change).
+
+def get_parametres_gammes(company):
+    """Réglages « gammes » de la société (get-or-create singleton, NTTRE27-like).
+
+    Une société sans réglage explicite obtient les valeurs par défaut
+    (``deux_gammes=False``, ``marques={}``) — aucune régression sur la
+    composition automatique tant que le fondateur n'a rien configuré."""
+    from .models import ParametresGammes
+    params, _ = ParametresGammes.objects.get_or_create(company=company)
+    return params
+
+
+def marque_preferee(company, gamme_nom, role):
+    """La marque préférée pour ce (société, gamme, rôle), ou ``None``.
+
+    LA seule voie par laquelle un appelant apprend une préférence de marque —
+    ``_pick_product`` la consulte, rien d'autre ne doit lire
+    ``ParametresGammes.marques`` en direct. Ne lève JAMAIS : société sans
+    réglage, gamme inconnue, rôle inconnu ou marque vide renvoient tous
+    ``None`` (le caller retombe alors sur le comportement historique, sans
+    préférence).
+
+    ``gamme_nom`` est le libellé LIBRE de la gamme du devis (celui que renvoie
+    ``gamme_nom(devis)`` plus haut dans ce fichier) — résolu ici contre
+    ``nom_essentielle``/``nom_premium`` pour retrouver le SLOT FIXE
+    ('Essentielle'/'Premium') qui indexe réellement ``marques`` (ces clés ne
+    bougent jamais, même si le libellé affiché est renommé). Un ``gamme_nom``
+    vide ou ``None`` retombe explicitement sur le slot Essentielle — c'est le
+    comportement demandé pour les appelants de ``_pick_product`` qui n'ont pas
+    de devis (donc pas de gamme) sous la main.
+    """
+    from .models import ParametresGammes, ROLES_AUTO_COMPOSITION
+
+    role = str(role or '').strip()
+    if role not in ROLES_AUTO_COMPOSITION:
+        return None
+    params = ParametresGammes.objects.filter(company=company).first()
+    if params is None:
+        return None
+    nom = str(gamme_nom or '').strip()
+    if not nom:
+        slot = ParametresGammes.SLOT_ESSENTIELLE
+    elif nom.casefold() == (params.nom_essentielle or '').strip().casefold():
+        slot = ParametresGammes.SLOT_ESSENTIELLE
+    elif nom.casefold() == (params.nom_premium or '').strip().casefold():
+        slot = ParametresGammes.SLOT_PREMIUM
+    else:
+        return None  # gamme inconnue de ce réglage
+    marques = params.marques if isinstance(params.marques, dict) else {}
+    carte = marques.get(slot)
+    if not isinstance(carte, dict):
+        return None
+    marque = str(carte.get(role) or '').strip()
+    return marque or None
+
+
 def create_devis_from_reserve(*, reserve, user):
     """XFSM18 — crée un DEVIS brouillon de réparation à partir d'une réserve
     d'intervention (`installations.Reserve`), pour donner un chemin de devis
@@ -510,17 +572,19 @@ def _batterie_compatible(batterie, plage):
     return v_min <= tension <= v_max
 
 
-def _pick_batterie(company, *, onduleur=None):
+def _pick_batterie(company, *, onduleur=None, gamme=None):
     """La batterie du catalogue COMPATIBLE avec l'onduleur de la composition.
 
     Même sélection que ``_pick_product`` (produits tarifés de la société et
-    globaux, la moins chère l'emporte) mais avec le garde data-driven ci-dessus
-    au lieu du prédicat par mot-clé. ``onduleur=None`` (composition qui n'en a
-    pas encore) ⇒ repli mot-clé, donc comportement historique intact.
+    globaux, la moins chère l'emporte, PVMRQ : marque préférée en priorité)
+    mais avec le garde data-driven ci-dessus au lieu du prédicat par mot-clé.
+    ``onduleur=None`` (composition qui n'en a pas encore) ⇒ repli mot-clé, donc
+    comportement historique intact. ``gamme`` (PVMRQ) est le libellé de gamme
+    du devis appelant, transmis tel quel à ``_pick_product``.
     """
     plage = _plage_batterie_de_l_onduleur(onduleur)
     return _pick_product(
-        company, _is_battery,
+        company, _is_battery, role='batterie', gamme=gamme,
         produit_predicate=lambda p: _batterie_compatible(p, plage))
 
 
@@ -609,7 +673,25 @@ def _has_price(produit) -> bool:
     return bool(produit.prix_vente and Decimal(produit.prix_vente) > 0)
 
 
-def _pick_product(company, predicate, *, watt=None, produit_predicate=None):
+def _marque_correspond(produit, marque):
+    """PVMRQ — ``produit`` porte-t-il la marque préférée, sans tenir compte de
+    la casse ?
+
+    ``Produit.marque`` (champ structuré) prioritaire, exact une fois normalisé
+    (espaces/casse) ; à défaut (marque non renseignée sur la fiche), son
+    ``nom`` — une désignation complète comme « Panneau Jinko 550W Mono » — DOIT
+    seulement CONTENIR la marque, jamais l'égaler."""
+    cible = str(marque or '').strip().casefold()
+    if not cible:
+        return False
+    marque_produit = str(getattr(produit, 'marque', '') or '').strip()
+    if marque_produit:
+        return marque_produit.casefold() == cible
+    return cible in str(getattr(produit, 'nom', '') or '').casefold()
+
+
+def _pick_product(company, predicate, *, watt=None, produit_predicate=None,
+                  role=None, gamme=None):
     """Smallest-suitable quotable catalogue product matching ``predicate``.
 
     Scans the company's (and global) products, keeps only priced ones, and —
@@ -620,6 +702,17 @@ def _pick_product(company, predicate, *, watt=None, produit_predicate=None):
     son seul nom : le garde batterie data-driven a besoin de la fiche technique
     (tension nominale), pas d'un mot-clé. Il s'AJOUTE à ``predicate`` ; absent,
     la sélection est byte-identique à l'historique.
+
+    ``role``/``gamme`` (PVMRQ, fondateur 18/08/2026) — quand ``role`` est
+    fourni et qu'une marque préférée est réglée pour ce (société, gamme, rôle)
+    via ``ParametresGammes``/``marque_preferee``, cette marque GAGNE
+    TOUJOURS : les candidats sont restreints à elle AVANT toute logique de
+    wattage/prix (inchangée, byte-identique à l'historique en aval). Si la
+    marque est réglée mais qu'AUCUN candidat ne la porte, la fonction renvoie
+    ``None`` sans jamais retomber en silence sur une autre marque — c'est
+    l'appelant qui doit alors signaler le trou (comme il le fait déjà pour
+    « aucun produit disponible »). ``role=None`` (défaut) laisse la sélection
+    strictement inchangée — aucun appelant non migré ne régresse.
     """
     from apps.stock.models import Produit
     from django.db.models import Q
@@ -640,6 +733,14 @@ def _pick_product(company, predicate, *, watt=None, produit_predicate=None):
     candidates = _filtrer_onduleurs_complets(candidates)
     if not candidates:
         return None
+    if role:
+        marque = marque_preferee(company, gamme, role)
+        if marque:
+            candidats_marque = [p for p in candidates
+                                if _marque_correspond(p, marque)]
+            if not candidats_marque:
+                return None  # marque réglée, aucun match ⇒ JAMAIS un repli
+            candidates = candidats_marque
     if watt:
         exact = [p for p in candidates
                  if _parse_watt(p.nom) == int(watt)]
@@ -823,7 +924,10 @@ def validate_composition_for_layout(layout, company):
                      or bool(layout.get('battery')))
 
     if wants_battery:
-        inv = _pick_product(company, _is_hybrid_inverter)
+        # PVMRQ — pas de devis ici (pré-vol AVANT création) ⇒ pas de gamme
+        # connue : ``marque_preferee`` retombe explicitement sur le slot
+        # Essentielle.
+        inv = _pick_product(company, _is_hybrid_inverter, role='onduleur_hybride')
         # PVOND — garde batterie PILOTÉ PAR LA DONNÉE : la batterie retenue doit
         # entrer dans la plage batterie de l'onduleur hybride effectivement
         # choisi ci-dessus. Sans plage déclarée (ou sans fiche batterie), repli
@@ -850,7 +954,7 @@ def validate_composition_for_layout(layout, company):
                     'catalogue. Ajoutez une batterie tarifée avant de générer '
                     'ce devis.')
     else:
-        inv = _pick_product(company, _is_reseau_inverter)
+        inv = _pick_product(company, _is_reseau_inverter, role='onduleur_reseau')
         if inv is None:
             errors.append(
                 'Aucun onduleur réseau disponible (ou sans prix) dans le catalogue. '
@@ -1218,7 +1322,11 @@ def _panneau_pour_calepinage(layout, *, company=None, devis=None):
             if panneaux and kwc:
                 watt = int(round(kwc * 1000 / panneaux / 10) * 10)
         try:
-            produit = _pick_product(company, _is_panel, watt=watt)
+            # PVMRQ — le devis (s'il en existe déjà un) donne sa gamme réelle ;
+            # sans lui, ``marque_preferee`` retombe sur le slot Essentielle.
+            produit = _pick_product(
+                company, _is_panel, watt=watt, role='panneau',
+                gamme=gamme_nom(devis) if devis is not None else None)
         except Exception:      # pragma: no cover - catalogue indisponible
             produit = None
     if produit is None:
@@ -2220,6 +2328,10 @@ def sync_devis_from_layout(devis, layout, user=None):
         if verrou is None:
             raise SyncLayoutError('Devis introuvable.')
 
+        # PVMRQ — gamme RÉELLE de ce devis, calculée une fois et transmise à
+        # chaque ``_pick_product``/``_pick_batterie`` de cette resynchro.
+        gamme = gamme_nom(verrou)
+
         # ── Garde de statut : LECTURE du statut, jamais une écriture ──
         if verrou.statut == Devis.Statut.ENVOYE:
             raise SyncLayoutError(
@@ -2272,7 +2384,8 @@ def sync_devis_from_layout(devis, layout, user=None):
 
         # ── Panneaux : porter le compte à la cible ──
         if cible_panneaux > 0 and not lignes_panneau:
-            panneau = _pick_product(verrou.company, _is_panel, watt=watt)
+            panneau = _pick_product(verrou.company, _is_panel, watt=watt,
+                                    role='panneau', gamme=gamme)
             if panneau is None:
                 avertissements.append(
                     'Aucun panneau tarifé au catalogue : la ligne de panneaux '
@@ -2325,9 +2438,10 @@ def sync_devis_from_layout(devis, layout, user=None):
                  and getattr(li, 'produit', None) is not None), None)
             if _hybride_du_devis is None:
                 _hybride_du_devis = _pick_product(
-                    verrou.company, _is_hybrid_inverter)
+                    verrou.company, _is_hybrid_inverter,
+                    role='onduleur_hybride', gamme=gamme)
             batterie = _pick_batterie(
-                verrou.company, onduleur=_hybride_du_devis)
+                verrou.company, onduleur=_hybride_du_devis, gamme=gamme)
             if batterie is None:
                 _plage_devis = _plage_batterie_de_l_onduleur(_hybride_du_devis)
                 if _plage_devis and _plage_devis[1] > 0:
@@ -2407,8 +2521,9 @@ def sync_devis_from_layout(devis, layout, user=None):
             else:
                 lignes_hybride = conserves
 
-        def _permuter_onduleur(ligne, predicat, motif_absence):
-            remplacant = _pick_product(verrou.company, predicat)
+        def _permuter_onduleur(ligne, predicat, role, motif_absence):
+            remplacant = _pick_product(verrou.company, predicat, role=role,
+                                       gamme=gamme)
             if remplacant is None:
                 avertissements.append(motif_absence)
                 return False
@@ -2421,7 +2536,7 @@ def sync_devis_from_layout(devis, layout, user=None):
 
         if a_batterie and lignes_reseau and not lignes_hybride:
             if _permuter_onduleur(
-                    lignes_reseau[0], _is_hybrid_inverter,
+                    lignes_reseau[0], _is_hybrid_inverter, 'onduleur_hybride',
                     'Aucun onduleur hybride tarifé au catalogue : l\'onduleur '
                     'réseau a été conservé. La proposition ne pourra pas '
                     'présenter l\'option avec batterie.'):
@@ -2429,7 +2544,7 @@ def sync_devis_from_layout(devis, layout, user=None):
                 lignes_modifiees += 1
         elif not a_batterie and lignes_hybride and not lignes_reseau:
             if _permuter_onduleur(
-                    lignes_hybride[0], _is_reseau_inverter,
+                    lignes_hybride[0], _is_reseau_inverter, 'onduleur_reseau',
                     'Aucun onduleur réseau tarifé au catalogue : l\'onduleur '
                     'hybride a été conservé alors que la batterie a été '
                     'retirée.'):

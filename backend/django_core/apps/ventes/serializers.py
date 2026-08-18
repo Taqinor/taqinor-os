@@ -6,7 +6,7 @@ from .models import (
     Avoir, LigneAvoir, DevisActivity, DevisPreset, RoofLayout,
     RemiseEncaissement, LigneRemiseEncaissement,
     MandatPaiement, ListePrix, LignePrixListe, RegleListePrix,
-    AvenantDevis,
+    AvenantDevis, ParametresGammes,  # PVMRQ
 )
 
 
@@ -1134,3 +1134,31 @@ class DevisActionRequiseSerializer(serializers.Serializer):
             "Ligne d'affichage par id de devis cité dans un panier — évite à "
             "l'écran de re-télécharger toute la liste des devis."),
     )
+
+
+# ── PVMRQ — Réglages « offre à deux gammes » par société (fondateur 18/08) ──
+
+class ParametresGammesSerializer(serializers.ModelSerializer):
+    """PVMRQ — réglages « gammes » de la société (singleton, GET/PATCH).
+
+    ``marques`` est validé avec la MÊME règle que ``ParametresGammes.clean()``
+    (``_erreurs_marques``) : une gamme hors des SLOTS fixes, un rôle hors de
+    ``ROLES_AUTO_COMPOSITION`` ou une valeur non textuelle sont rejetés ici,
+    AVANT d'atteindre la base — un ``PATCH`` invalide échoue en 400, jamais un
+    ``ValidationError`` non attrapé à l'écriture.
+    """
+
+    class Meta:
+        model = ParametresGammes
+        fields = [
+            'id', 'deux_gammes', 'nom_essentielle', 'nom_premium', 'marques',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def validate_marques(self, value):
+        from .models import _erreurs_marques
+        erreurs = _erreurs_marques(value)
+        if erreurs:
+            raise serializers.ValidationError(erreurs)
+        return value
