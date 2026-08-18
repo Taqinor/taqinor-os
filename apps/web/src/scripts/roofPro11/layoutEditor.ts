@@ -54,8 +54,9 @@ import {
   type FreeCheck,
   type FreeLayoutState,
   type FreeViolation,
+  type FreeMargins,
 } from '../../lib/freeLayout';
-import { FREE_STEP_M, freeGeomFrom, freeStateFromCenters, quantizeFree } from './freeMode';
+import { DEFAULT_FREE_MARGINS, FREE_STEP_M, freeGeomFrom, freeStateFromCenters, quantizeFree } from './freeMode';
 
 /** Décimal à 1 chiffre, à la française (identique à l'entrée). */
 const fmt1 = (n: number): string =>
@@ -399,6 +400,20 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   /** Le prochain clic doit-il POSER un nouveau panneau ? (bouton « Ajouter »). */
   let freeAddArmed = false;
 
+  /**
+   * Marges RELACHABLES courantes, avec repli sur celles de l'etude. Un `ctx` fourni par
+   * un hote anterieur a PV30 ne porte pas `freeMargins` : lire le champ en aveugle y
+   * plantait le rendu du panneau (donc TOUT le mode disposition), y compris en mode
+   * lattice ou le placement libre n'a rien a faire. On ne suppose donc rien du `ctx`.
+   */
+  function margins(): FreeMargins {
+    const m = ctx.freeMargins;
+    return {
+      setbackM: Number.isFinite(m?.setbackM as number) ? m.setbackM : DEFAULT_FREE_MARGINS.setbackM,
+      gapM: Number.isFinite(m?.gapM as number) ? m.gapM : DEFAULT_FREE_MARGINS.gapM,
+    };
+  }
+
   /** Contexte géométrique courant du placement libre (axes, dimensions, contour,
    *  obstacles), ou null si le plan ne permet pas de décrire un panneau. */
   function freeGeom(): FreeGeom | null {
@@ -507,7 +522,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     const g = freeGeom();
     if (!st || !g || !members.length) return false;
     recordFreeHistory();
-    const res = moveFreePanels(st, g, members, quantizeFree(dx), quantizeFree(dy), ctx.freeMargins);
+    const res = moveFreePanels(st, g, members, quantizeFree(dx), quantizeFree(dy), margins());
     if (!res.ok) {
       freeHistory.drop();
       flashRefusal(members);
@@ -531,7 +546,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     const g = freeGeom();
     if (!st || !g) return false;
     recordFreeHistory();
-    const res = addFreePanel(st, g, quantizeFree(cx), quantizeFree(cy), ctx.freeMargins);
+    const res = addFreePanel(st, g, quantizeFree(cx), quantizeFree(cy), margins());
     showMeasure(res.check);
     if (!res.ok) {
       freeHistory.drop();
@@ -937,10 +952,10 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     // Les champs sont en CENTIMÈTRES (l'unité dans laquelle un poseur raisonne) ; on ne
     // réécrit pas la valeur pendant que l'utilisateur tape (sinon le curseur saute).
     if (freeSetbackEl && document.activeElement !== freeSetbackEl) {
-      freeSetbackEl.value = String(Math.round(ctx.freeMargins.setbackM * 100));
+      freeSetbackEl.value = String(Math.round(margins().setbackM * 100));
     }
     if (freeGapEl && document.activeElement !== freeGapEl) {
-      freeGapEl.value = String(Math.round(ctx.freeMargins.gapM * 100));
+      freeGapEl.value = String(Math.round(margins().gapM * 100));
     }
   }
 
@@ -958,7 +973,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   /** Applique les marges saisies. Les BAISSER est permis — c'est tout l'objet du mode ;
    *  ce qui compte, c'est que les distances réelles restent AFFICHÉES. */
   function applyMargins() {
-    const before = ctx.freeMargins;
+    const before = margins();
     const next = {
       setbackM: readMarginCm(freeSetbackEl, before.setbackM),
       gapM: readMarginCm(freeGapEl, before.gapM),
@@ -1169,7 +1184,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     if (freeActive()) {
       const st = ctx.freeState!;
       const g = freeGeom();
-      const spot = g ? findFreeSpot(st, g, ctx.freeMargins) : null;
+      const spot = g ? findFreeSpot(st, g, margins()) : null;
       if (!spot) {
         if (layoutNoteEl) {
           layoutNoteEl.textContent =
@@ -1541,7 +1556,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
       const g = freeGeom();
       const from = layoutDrag.from;
       if (g && st.panels[from]) {
-        const chk = checkPanelAt(st, g, from, quantizeFree(enu.x), quantizeFree(enu.y), ctx.freeMargins);
+        const chk = checkPanelAt(st, g, from, quantizeFree(enu.x), quantizeFree(enu.y), margins());
         showMeasure(chk);
         if (layoutNoteEl) {
           layoutNoteEl.textContent = chk.ok
@@ -1804,11 +1819,11 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     isFreeMode: () => !!ctx.freeMode,
     setFreeMode: (on: boolean) => (on ? enterFreeMode() : exitFreeMode(false)),
     freePanels: () => (ctx.freeState ? ctx.freeState.panels.map((p) => ({ ...p })) : []),
-    freeMargins: () => ({ ...ctx.freeMargins }),
+    freeMargins: () => margins(),
     setFreeMargins: (m: { setbackM?: number; gapM?: number }) => {
       ctx.freeMargins = {
-        setbackM: Number.isFinite(m.setbackM as number) ? (m.setbackM as number) : ctx.freeMargins.setbackM,
-        gapM: Number.isFinite(m.gapM as number) ? (m.gapM as number) : ctx.freeMargins.gapM,
+        setbackM: Number.isFinite(m.setbackM as number) ? (m.setbackM as number) : margins().setbackM,
+        gapM: Number.isFinite(m.gapM as number) ? (m.gapM as number) : margins().gapM,
       };
       syncFreeInputs();
     },
