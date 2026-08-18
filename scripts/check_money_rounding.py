@@ -146,6 +146,34 @@ BASELINE_ALLOWLIST = {
     "backend/django_core/apps/ventes/quote_engine/builder.py:1572",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1625",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1626",
+    # GAMMES (2026-08-18, offre à deux gammes) — RE-CALAGE file:line, PAS de
+    # nouveau site (bug-class #34). Deux insertions purement additives :
+    #   * `apps/ventes/services.py` — le bloc de services « gamme »
+    #     (creer_variante_gamme / regler_envoi_gamme…) inséré AVANT
+    #     `create_devis_from_reserve` décale tout ce qui suit ;
+    #   * `quote_engine/builder.py` — `_line_to_item` porte deux clés de plus
+    #     (`garantie_mois` / `garantie_production_mois`, durées catalogue qui
+    #     alimentent la bande « Nos garanties »).
+    # Vérifié : aucun des deux diffs n'ajoute un seul `round()` — ce sont les
+    # MÊMES arrondis d'AFFICHAGE (PU/HT/TVA/TTC du moteur, kWc/surface des
+    # services), simplement déplacés. Lignes relues sur l'arbre courant.
+    "backend/django_core/apps/ventes/services.py:599",
+    "backend/django_core/apps/ventes/services.py:602",
+    "backend/django_core/apps/ventes/services.py:2038",
+    "backend/django_core/apps/ventes/services.py:2197",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:300",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:301",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:658",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:799",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:801",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:826",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:828",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:972",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:985",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1579",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1585",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1638",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1639",
 }
 
 TARGET_FILES = [

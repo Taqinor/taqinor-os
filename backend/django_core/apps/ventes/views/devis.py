@@ -53,6 +53,35 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
 from authentication.scoping import scope_queryset  # noqa: E402,F401
 
 
+def _gamme_envoi_payload(devis):
+    """GAMME — bloc « envoi à la carte » pour la modale d'envoi de l'ERP.
+
+    ``None`` quand le devis n'appartient pas à une paire de gammes : la modale
+    d'envoi reste alors strictement celle d'aujourd'hui. Sinon : le libellé de
+    CHAQUE gamme, laquelle est recommandée et le mode d'envoi courant (défaut
+    « les_deux » — décision fondateur)."""
+    from ..services import gamme_envoi, gamme_info, gamme_soeur
+    soeur = gamme_soeur(devis)
+    if soeur is None:
+        return None
+    ici, la_soeur = gamme_info(devis), gamme_info(soeur)
+    recommandee = (la_soeur.get('nom') if la_soeur.get('recommandee')
+                   else ici.get('nom'))
+    return {
+        'envoi': gamme_envoi(devis),
+        'nom': ici.get('nom') or '',
+        'soeur_nom': la_soeur.get('nom') or '',
+        'soeur_reference': soeur.reference,
+        'recommandee': recommandee or '',
+    }
+
+
+def _appliquer_gamme_envoi(devis, mode):
+    """GAMME — applique le mode d'envoi demandé (no-op hors paire de gammes)."""
+    from ..services import regler_envoi_gamme
+    return regler_envoi_gamme(devis, mode)
+
+
 def _emettre_layout_finalise(devis, user):
     """PV79 — annonce que la conception 3D d'un devis est finalisée.
 
@@ -205,6 +234,10 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             'generer_facture', 'reviser', 'noter',
             'layout', 'roof_image', 'from_layout', 'auto', 'share_link',
             'envoyer_email', 'dupliquer_variante', 'variantes', 'dupliquer',
+            # GAMMES — création de la SŒUR « gamme ». Déclare la MÊME classe
+            # que le permission_classes de l'@action (cette surcharge PRIME
+            # sur lui — cf. le commentaire VX199 ci-dessus).
+            'dupliquer_variante_gamme',
             'save_preset', 'apply_preset', 'contacter_superieur',
             'whatsapp', 'proforma_pdf',
             # QX21be — atomic create + replace-lines (self.action is the
@@ -973,9 +1006,13 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         l'utilisateur par ``get_queryset`` (autre société → 404)."""
         from ..models import ShareLink
         devis = self.get_object()
+        # GAMME — le mode d'envoi (« seule » / « les_deux ») accompagne le lien
+        # quand le vendeur le précise ; absent du corps → mode déjà posé.
+        _appliquer_gamme_envoi(devis, request.data.get('gamme_envoi'))
         link = ShareLink.for_devis(devis)
         return Response(
-            {'token': link.token, 'path': chemin_proposition(devis, link.token)},
+            {'token': link.token, 'path': chemin_proposition(devis, link.token),
+             'gamme': _gamme_envoi_payload(devis)},
             status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='envoyer-email',
@@ -1006,6 +1043,10 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         sujet = (request.data.get('sujet') or '').strip() or None
         corps = (request.data.get('corps') or '').strip() or None
         pdf_mode = (request.data.get('pdf_mode') or 'full').strip()
+        # GAMME — mode d'envoi « à la carte », réglé au moment de l'envoi.
+        # UN PDF = UNE GAMME : la pièce jointe reste le PDF de CE devis, jamais
+        # un PDF fusionné des deux gammes (chaque gamme a le sien).
+        _appliquer_gamme_envoi(devis, request.data.get('gamme_envoi'))
 
         # Génère le PDF premium (persist=False — rendu à la volée, pas de
         # remplacement du fichier stocké : le moteur rend seulement).
@@ -1307,6 +1348,53 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         return Response(
             [DevisSerializer(v, context={'request': request}).data
              for v in created],
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=True, methods=['post'], url_path='dupliquer-variante-gamme',
+            permission_classes=[IsResponsableOrAdmin])
+    def dupliquer_variante_gamme(self, request, pk=None):
+        """GAMME (fondateur 2026-08-18) — crée la SŒUR « gamme » de ce devis.
+
+        Une gamme = une VARIANTE de devis (même mécanique QJ15 : devis frère
+        complet groupé par ``version_parent``, composition et prix PROPRES).
+        Le libellé est une DONNÉE libre — aucune marque codée en dur : il est
+        stocké dans ``etude_params['gamme']`` (aucun changement de modèle).
+
+        Corps :
+          ``nom``            : libellé de la gamme créée (défaut « Premium ») ;
+          ``nom_source``     : libellé de la gamme du devis courant
+                               (défaut « Essentielle », ou celui déjà posé) ;
+          ``recommandee``    : ``true`` pour que la NOUVELLE gamme porte le
+                               badge « Recommandé » (défaut : la source le
+                               garde — le devis porteur est la recommandée).
+
+        Aucun statut n'est touché (règle #4). Renvoie les DEUX devis."""
+        from ..services import (
+            GAMME_NOMS_DEFAUT, creer_variante_gamme, gamme_info,
+        )
+        source = self.get_object()
+        nom = (str(request.data.get('nom') or '').strip()
+               or GAMME_NOMS_DEFAUT[1])
+        nom_source = (str(request.data.get('nom_source') or '').strip()
+                      or None)
+        recommandee = request.data.get('recommandee') in (
+            True, 'true', 'True', '1', 1, 'on')
+        try:
+            soeur = creer_variante_gamme(
+                source, nom, user=request.user,
+                nom_gamme_source=nom_source, recommandee=recommandee)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        source.refresh_from_db(fields=['etude_params'])
+        ctx = {'request': request}
+        return Response(
+            {
+                'source': DevisSerializer(source, context=ctx).data,
+                'gamme': DevisSerializer(soeur, context=ctx).data,
+                'gammes': [gamme_info(source), gamme_info(soeur)],
+            },
             status=status.HTTP_201_CREATED,
         )
 
@@ -1889,6 +1977,10 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             'phone': phone, 'message': message, 'url': link['url'],
             'devis_statut': devis.statut,  # inchangé
             'preview': True,
+            # GAMME — de quoi afficher le choix « envoyer cette gamme seule /
+            # envoyer les deux » dans la modale d'envoi. ``None`` quand le
+            # devis n'a pas de gamme sœur (modale inchangée).
+            'gamme': _gamme_envoi_payload(devis),
         })
 
     @action(detail=True, methods=['post'], url_path='whatsapp',
@@ -1929,6 +2021,10 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             lead = getattr(devis, 'lead', None)
             langue = (getattr(lead, 'langue_preferee', None) or 'fr'
                       if lead is not None else 'fr')
+        # GAMME — le MODE D'ENVOI est réglé À L'ENVOI et vit sur le devis
+        # (``etude_params['gamme']['envoi']``), des deux côtés de la paire.
+        # Absent du corps → le mode déjà posé (défaut « les_deux »).
+        _appliquer_gamme_envoi(devis, request.data.get('gamme_envoi'))
         message, link = build_single_devis_whatsapp(request, devis, langue)
 
         # U4 — partager le devis le marque « envoyé » (idempotent, jamais de

@@ -84,6 +84,9 @@ import {
   protectionLabel,
   cableLabel,
   proposalVariants,
+  proposalGammes,
+  gammeEcartLabel,
+  gammeComparatif,
   nextSteps,
   proposalAssumptions,
   monitoringPoints,
@@ -668,6 +671,16 @@ const certHrefs = {
 // (masqué) quand sa donnée backend manque. PV80 — le bloc financement backend
 // (backendFinancing) n'est plus rendu : aucune mention de crédit sur la page.
 const variants = ok ? proposalVariants(data!) : [];
+// ── GAMMES (fondateur 2026-08-18) — choix de gamme AVANT/AVEC la signature.
+// `null` en mode d'envoi « seule » (le backend n'envoie alors RIEN de l'autre
+// gamme) : la page est byte-identique à aujourd'hui. En mode « les_deux » :
+// deux cartes (nom, TTC, badge « Recommandé », écart en MAD ABSOLUS) + un
+// tableau comparatif FACTUEL des seules lignes qui diffèrent. Choisir l'autre
+// gamme ouvre SON lien (document complet et PDF de CETTE gamme) : la signature
+// porte donc toujours sur le devis réellement choisi.
+const gammes = ok ? proposalGammes(data!) : null;
+const gammeEcart = gammes ? gammeEcartLabel(gammes.soeur.ecart_ttc) : null;
+const gammeRows = gammeComparatif(gammes);
 const steps = nextSteps();
 const assumptions = ok ? proposalAssumptions(data!) : [];
 const monitoring = monitoringPoints();
@@ -2316,9 +2329,115 @@ const signConfig = ok
         </div>
       </section>
 
+      <!-- ── GAMMES · CHOIX DE GAMME (fondateur 2026-08-18) ──────────────────
+           Rendu UNIQUEMENT en mode d'envoi « les_deux » (gammes !== null) : en
+           mode « seule », le backend n'envoie rien de l'autre gamme et ce bloc
+           n'existe pas. Chaque gamme est décrite par ses FAITS (sa composition
+           réelle, ci-dessous) — jamais un mot qui dénigre la moins chère. Le
+           prix de l'autre gamme est donné en MAD ABSOLUS (« + 8 500 MAD »).
+           Choisir une gamme ouvre SON lien : le client lit alors le document
+           COMPLET de la gamme qu'il signera (un PDF = une gamme). -->
+      {gammes && (
+        <section id="gammes" class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
+          <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Vos deux gammes" data-en="Your two ranges" data-ar="نطاقاكم">Vos deux gammes</p>
+          <p class="mt-3 text-sm text-lune-soft" data-i18n
+            data-fr="Deux compositions, deux prix. Choisissez celle qui vous convient : votre signature portera sur la gamme choisie."
+            data-en="Two configurations, two prices. Pick the one that suits you: your signature will apply to the range you choose."
+            data-ar="تكوينان وثمنان. اختاروا ما يناسبكم: سيسري توقيعكم على النطاق الذي تختارونه.">
+            Deux compositions, deux prix. Choisissez celle qui vous convient : votre signature portera sur la gamme choisie.
+          </p>
+          <div class="mt-5 grid gap-4 sm:grid-cols-2">
+            <article
+              class="cine-card relative flex flex-col rounded-2xl p-6"
+              data-gamme-carte="courante"
+              aria-current="true"
+              style={gammes.courante.recommandee ? 'border-color: rgb(232 181 74 / 0.45)' : undefined}
+            >
+              {gammes.courante.recommandee && (
+                <span class="absolute -top-3 left-6 rounded-full bg-brass-400 px-3 py-1 text-xs font-bold text-nuit" data-i18n data-fr="Recommandé" data-en="Recommended" data-ar="موصى به">
+                  Recommandé
+                </span>
+              )}
+              <h3 class="display text-xl text-lune">{gammes.courante.nom}</h3>
+              {typeof gammes.courante.total_ttc === 'number' && (
+                <p class="fig fig-md lum mt-2" dir="ltr">{formatMAD(gammes.courante.total_ttc)}</p>
+              )}
+              <p class="mt-1 text-xs text-lune-faint" data-i18n data-fr="TTC, clé en main" data-en="incl. tax, turnkey" data-ar="شامل الضريبة، تسليم مفتاح في اليد">TTC, clé en main</p>
+              <p class="mt-4 text-sm text-brass-300" data-i18n
+                data-fr="Gamme affichée ci-dessus — c’est ce document que vous signez."
+                data-en="The range shown above — this is the document you are signing."
+                data-ar="النطاق المعروض أعلاه — هذه هي الوثيقة التي توقّعونها.">
+                Gamme affichée ci-dessus — c’est ce document que vous signez.
+              </p>
+            </article>
+
+            <article
+              class="cine-card relative flex flex-col rounded-2xl p-6"
+              data-gamme-carte="soeur"
+              style={gammes.soeur.recommandee ? 'border-color: rgb(232 181 74 / 0.45)' : undefined}
+            >
+              {gammes.soeur.recommandee && (
+                <span class="absolute -top-3 left-6 rounded-full bg-brass-400 px-3 py-1 text-xs font-bold text-nuit" data-i18n data-fr="Recommandé" data-en="Recommended" data-ar="موصى به">
+                  Recommandé
+                </span>
+              )}
+              <h3 class="display text-xl text-lune">{gammes.soeur.nom}</h3>
+              {typeof gammes.soeur.total_ttc === 'number' && (
+                <p class="fig fig-md lum mt-2" dir="ltr">{formatMAD(gammes.soeur.total_ttc)}</p>
+              )}
+              <p class="mt-1 text-xs text-lune-faint" data-i18n data-fr="TTC, clé en main" data-en="incl. tax, turnkey" data-ar="شامل الضريبة، تسليم مفتاح في اليد">TTC, clé en main</p>
+              {gammeEcart && (
+                <p class="mt-2 text-sm text-lune-soft" dir="ltr" data-gamme-ecart>{gammeEcart}</p>
+              )}
+              <a
+                class="mt-4 inline-flex items-center justify-center rounded-xl border border-brass-400/60 px-4 py-2 text-sm font-semibold text-brass-300"
+                href={gammes.soeur.proposition_path}
+                data-gamme-choisir
+                data-i18n
+                data-fr="Voir et choisir cette gamme"
+                data-en="View and choose this range"
+                data-ar="اطّلعوا على هذا النطاق واختاروه"
+              >
+                Voir et choisir cette gamme
+              </a>
+            </article>
+          </div>
+
+          {gammeRows.length > 0 && (
+            <div class="mt-6 overflow-x-auto" style="overscroll-behavior-x: contain;">
+              <p class="tech-label text-lune-faint" data-i18n data-fr="Ce qui change entre les deux" data-en="What differs between the two" data-ar="ما يختلف بين الاثنين">Ce qui change entre les deux</p>
+              <table class="mt-3 w-full min-w-[420px] text-sm" data-gamme-comparatif>
+                <thead>
+                  <tr class="text-lune-faint">
+                    <th class="py-2 text-start font-normal" data-i18n data-fr="Équipement" data-en="Equipment" data-ar="التجهيزات">Équipement</th>
+                    <th class="py-2 text-end font-normal">{gammes.courante.nom}</th>
+                    <th class="py-2 text-end font-normal">{gammes.soeur.nom}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {gammeRows.map((r) => (
+                    <tr class="border-t border-white/10">
+                      <td class="py-2 pe-3 text-lune-soft">{r.designation}</td>
+                      <td class="py-2 text-end text-lune" dir="ltr">
+                        {typeof r.quantite === 'number' ? formatNumber(r.quantite, 2) : '—'}
+                      </td>
+                      <td class="py-2 text-end text-lune" dir="ltr">
+                        {typeof r.quantite_soeur === 'number' ? formatNumber(r.quantite_soeur, 2) : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
+
       <!-- ── WJ32 · VARIANTES CÔTE-À-CÔTE (« autres tailles ») ───────────────
            Résumés minimaux des devis frères/sœurs actifs (QJ15). Masqué si le
-           devis est isolé (variants=[]) — jamais un chiffre calculé ici. -->
+           devis est isolé (variants=[]) — jamais un chiffre calculé ici.
+           GAMMES — les sœurs porteuses d'une gamme sont exclues côté backend :
+           cette bande ne doublonne donc jamais le bloc « Vos deux gammes ». -->
       {variants.length > 0 && (
         <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
           <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Autres tailles proposées" data-en="Other sizes available" data-ar="أحجام أخرى مقترحة">Autres tailles proposées</p>
@@ -2706,6 +2825,21 @@ const signConfig = ok
                 Réponse WhatsApp sous 1 h, 7j/7
               </span>
             </p>
+
+            {/* GAMMES — la gamme signée est NOMMÉE au moment de la signature, et
+                l'autre reste accessible d'un clic tant que rien n'est signé.
+                L'axe « avec / sans batterie » ci-dessous est INTERNE à cette
+                gamme : les deux choix ne se mélangent jamais. */}
+            {gammes && (
+              <p class="mt-6 text-sm text-lune-soft" data-gamme-signature>
+                <span data-i18n data-fr="Vous signez la gamme" data-en="You are signing the range" data-ar="أنتم توقّعون النطاق">Vous signez la gamme</span>
+                <span class="text-lune"> {gammes.courante.nom}</span>
+                <a class="ms-2 text-brass-300 underline" href={gammes.soeur.proposition_path} data-gamme-basculer data-i18n
+                  data-fr="Choisir l’autre gamme"
+                  data-en="Choose the other range"
+                  data-ar="اختيار النطاق الآخر">Choisir l’autre gamme</a>
+              </p>
+            )}
 
             {twoOptions && (
               <fieldset class="mt-6">

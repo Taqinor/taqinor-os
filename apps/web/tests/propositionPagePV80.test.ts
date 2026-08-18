@@ -539,3 +539,81 @@ describe('détail électrique — rendu dans le tableau d’équipement', () => 
     }
   });
 });
+
+// ── GAMMES (fondateur 2026-08-18) — bloc de choix de gamme sur la page.
+// Garde de SOURCE : le bloc n'existe QUE sous la condition `gammes` (mode
+// d'envoi « les_deux »), il porte les deux cartes + le badge « Recommandé » +
+// l'écart en MAD, et chaque carte ouvre le lien de SA gamme (un PDF = une
+// gamme). En mode « seule », le backend n'envoie pas la clé → rien ne rend.
+describe('GAMMES — choix de gamme sur la page proposition', () => {
+  const PAGE = readFileSync(
+    fileURLToPath(new URL('../src/pages/proposition/[...token].astro', import.meta.url)),
+    'utf-8',
+  );
+
+  it('la page lit le bloc par les fonctions PURES, une seule fois', () => {
+    expect(PAGE).toContain('proposalGammes(data!)');
+    expect(PAGE).toContain('gammeEcartLabel(gammes.soeur.ecart_ttc)');
+    expect(PAGE).toContain('gammeComparatif(gammes)');
+  });
+
+  it('le bloc est STRICTEMENT conditionnel (mode « seule » → rien du tout)', () => {
+    expect(PAGE).toContain('{gammes && (');
+    expect(PAGE).toContain('<section id="gammes"');
+  });
+
+  it('deux cartes de gamme, badge « Recommandé » et écart en MAD absolus', () => {
+    const debut = PAGE.indexOf('<section id="gammes"');
+    const fin = PAGE.indexOf('</section>', PAGE.indexOf('data-gamme-comparatif'));
+    const bloc = PAGE.slice(debut, fin);
+    expect(debut).toBeGreaterThan(0);
+    expect(bloc).toContain('data-gamme-carte="courante"');
+    expect(bloc).toContain('data-gamme-carte="soeur"');
+    expect(bloc).toContain('data-fr="Recommandé" data-en="Recommended" data-ar="موصى به"');
+    expect(bloc).toContain('data-gamme-ecart');
+    expect(bloc).toContain('gammes.courante.nom');
+    expect(bloc).toContain('gammes.soeur.nom');
+  });
+
+  it('la carte de la sœur ouvre le lien de SA gamme (un PDF = une gamme)', () => {
+    expect(PAGE).toContain('href={gammes.soeur.proposition_path}');
+    expect(PAGE).toContain('data-gamme-choisir');
+  });
+
+  it('une valeur absente du comparatif est OMISE (jamais un 0 inventé)', () => {
+    expect(PAGE).toContain("{typeof r.quantite === 'number' ? formatNumber(r.quantite, 2) : '—'}");
+    expect(PAGE).toContain(
+      "{typeof r.quantite_soeur === 'number' ? formatNumber(r.quantite_soeur, 2) : '—'}");
+  });
+
+  it('un total de gamme absent n’affiche aucun prix', () => {
+    expect(PAGE).toContain("{typeof gammes.courante.total_ttc === 'number' && (");
+    expect(PAGE).toContain("{typeof gammes.soeur.total_ttc === 'number' && (");
+  });
+
+  it('la gamme signée est NOMMÉE dans le bloc signature, avant le stylo', () => {
+    const idxGamme = PAGE.indexOf('data-gamme-signature');
+    const idxSigner = PAGE.indexOf('id="signer"');
+    // L'axe « avec / sans batterie » (choix d'option) vit APRÈS : les deux
+    // choix sont distincts et ne se mélangent jamais.
+    const idxChoixOption = PAGE.indexOf('data-fr="Votre choix"');
+    expect(idxGamme).toBeGreaterThan(idxSigner);
+    expect(idxGamme).toBeLessThan(idxChoixOption);
+    expect(PAGE).toContain('data-fr="Vous signez la gamme"');
+    expect(PAGE).toContain('data-gamme-basculer');
+  });
+
+  it('le bloc porte ses trois langues (FR/EN/AR)', () => {
+    expect(PAGE).toContain(
+      'data-fr="Vos deux gammes" data-en="Your two ranges" data-ar="نطاقاكم"');
+    expect(PAGE).toContain(
+      'data-fr="Ce qui change entre les deux" data-en="What differs between the two"');
+  });
+
+  it('la bande « Autres tailles » reste distincte du bloc gammes', () => {
+    const idxGammes = PAGE.indexOf('<section id="gammes"');
+    const idxTailles = PAGE.indexOf('data-fr="Autres tailles proposées"');
+    expect(idxGammes).toBeGreaterThan(0);
+    expect(idxTailles).toBeGreaterThan(idxGammes);
+  });
+});

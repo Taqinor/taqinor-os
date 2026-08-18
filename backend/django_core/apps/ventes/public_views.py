@@ -721,9 +721,19 @@ def _variant_summaries(devis) -> list:
             )
             .exclude(pk=devis.pk)   # exclude self — self is the main payload
             .order_by('version', 'id')
+            # ``etude_params`` est chargé ici (et non différé) : le filtre de
+            # gamme ci-dessous le lit sur chaque sœur — le différer coûterait
+            # une requête par ligne.
             .only('id', 'reference', 'version', 'note',
-                  'taux_tva', 'remise_globale')
+                  'taux_tva', 'remise_globale', 'etude_params')
         )
+        # GAMMES — une sœur porteuse d'un libellé de gamme n'est PAS une
+        # « autre taille » : elle est rendue par le bloc « gammes » (mode
+        # d'envoi « les_deux ») ou tue (mode « seule »). L'exclure ici évite le
+        # doublon dans la bande « Autres tailles proposées » ET toute fuite de
+        # l'autre gamme quand le vendeur a choisi d'en envoyer une seule.
+        from .services import gamme_nom
+        siblings = [s for s in siblings if not gamme_nom(s)]
         if not siblings:
             return []
         out = []
@@ -750,6 +760,121 @@ def _variant_summaries(devis) -> list:
         return out
     except Exception:  # noqa: BLE001 — best-effort, never break the proposal
         return []
+
+
+# ── GAMMES — offre à DEUX GAMMES, envoi à la carte (fondateur 2026-08-18) ───
+# Une gamme = un devis frère COMPLET (mécanique de variantes QJ15). Le lien
+# client rend TOUJOURS le devis de son jeton ; en mode « les_deux » il expose
+# EN PLUS le résumé de la gamme sœur pour que le client choisisse AVANT de
+# signer. En mode « seule » : rien de la sœur ne franchit la frontière.
+# UN PDF = UNE GAMME : chaque carte pointe vers le PDF de SA gamme (le jeton
+# de la sœur), jamais un PDF fusionné.
+def _gamme_lignes_publiques(devis):
+    """Composition CLIENT d'un devis : (désignation, quantité) par ligne.
+
+    Whitelist stricte — ni prix d'achat, ni marge, ni champ interne (règle #4).
+    Sert au tableau comparatif factuel des lignes qui diffèrent entre gammes."""
+    from .models import LigneDevis
+    lignes = []
+    for ln in (LigneDevis.objects.filter(devis=devis)
+               .order_by('ordre', 'id')
+               .values('designation', 'quantite')):
+        designation = (ln['designation'] or '').strip()
+        if not designation:
+            continue
+        try:
+            qte = float(ln['quantite'])
+        except (TypeError, ValueError):
+            qte = None
+        lignes.append({'designation': designation, 'quantite': qte})
+    return lignes
+
+
+def _gamme_comparatif(lignes_ici, lignes_soeur):
+    """Lignes qui DIFFÈRENT entre les deux compositions (jamais les communes).
+
+    Comparaison par désignation : une désignation absente d'un côté, ou
+    présente des deux côtés avec une quantité différente, entre au comparatif.
+    Une valeur absente est omise (jamais un « 0 » inventé)."""
+    def _index(lignes):
+        out = {}
+        for ln in lignes:
+            out.setdefault(ln['designation'], ln['quantite'])
+        return out
+
+    ici, soeur = _index(lignes_ici), _index(lignes_soeur)
+    lignes = []
+    for designation in list(ici) + [d for d in soeur if d not in ici]:
+        q_ici, q_soeur = ici.get(designation), soeur.get(designation)
+        if designation in ici and designation in soeur and q_ici == q_soeur:
+            continue
+        ligne = {'designation': designation}
+        if q_ici is not None:
+            ligne['quantite'] = q_ici
+        if q_soeur is not None:
+            ligne['quantite_soeur'] = q_soeur
+        lignes.append(ligne)
+    return lignes
+
+
+def _gammes_public(devis, total_ttc_courant):
+    """Bloc « choix de gamme » de la charge utile publique, ou ``None``.
+
+    ``None`` (clé absente) dans TOUS les cas où le client ne doit rien voir de
+    l'autre gamme : devis sans gamme, gamme sans sœur vivante, ou mode d'envoi
+    « seule ». Le total de la sœur est calculé par le MÊME chemin que son PDF
+    (``display_totals``) — jamais un prix qui n'existe dans aucun document
+    (PV86). L'écart est donné en MAD ABSOLUS et signé côté client."""
+    from .services import (
+        GAMME_ENVOI_LES_DEUX, gamme_envoi, gamme_info, gamme_soeur,
+    )
+    try:
+        info = gamme_info(devis)
+        if not info.get('nom'):
+            return None
+        if gamme_envoi(devis) != GAMME_ENVOI_LES_DEUX:
+            return None
+        soeur = gamme_soeur(devis)
+        if soeur is None:
+            return None
+        from .models import ShareLink
+        from .quote_engine.builder import display_totals
+        from .utils.client_links import chemin_proposition
+
+        info_soeur = gamme_info(soeur)
+        lien_soeur = ShareLink.for_devis(soeur)
+        total_soeur = display_totals(soeur).get('total')
+        total_soeur = (round(float(total_soeur), 2)
+                       if total_soeur is not None else None)
+        courant = (round(float(total_ttc_courant), 2)
+                   if total_ttc_courant is not None else None)
+        ecart = (round(total_soeur - courant, 2)
+                 if (total_soeur is not None and courant is not None) else None)
+        lignes_ici = _gamme_lignes_publiques(devis)
+        lignes_soeur = _gamme_lignes_publiques(soeur)
+        return {
+            'envoi': GAMME_ENVOI_LES_DEUX,
+            'courante': {
+                'nom': str(info.get('nom') or ''),
+                'recommandee': bool(info.get('recommandee')),
+                'reference': devis.reference,
+                'total_ttc': courant,
+            },
+            'soeur': {
+                'nom': str(info_soeur.get('nom') or ''),
+                'recommandee': bool(info_soeur.get('recommandee')),
+                'reference': soeur.reference,
+                'total_ttc': total_soeur,
+                # Le jeton de la sœur : la carte « choisir cette gamme » ouvre
+                # SON lien (document complet) et SON PDF — la signature porte
+                # donc toujours sur le devis de la gamme réellement choisie.
+                'proposition_path': chemin_proposition(soeur, lien_soeur.token),
+                'ecart_ttc': ecart,
+            },
+            'comparatif': _gamme_comparatif(lignes_ici, lignes_soeur),
+        }
+    except Exception:  # noqa: BLE001 — jamais casser la proposition
+        return None
 
 
 def _kpi_num(v):
@@ -994,7 +1119,14 @@ def proposal_data(request, token):
             'multi_villa': data.get('multi_villa'),
             # QJ15 — variantes côte-à-côte (même version_parent, toutes actives).
             # [] quand le devis est isolé — le client voit seulement sa proposition.
+            # Les sœurs porteuses d'une GAMME en sont exclues : elles sont
+            # rendues (ou tues) par le bloc « gammes » ci-dessous, jamais deux
+            # fois — et jamais du tout en mode d'envoi « seule ».
             'variants': _variant_summaries(devis),
+            # GAMMES — choix de gamme AVANT/AVEC la signature. Clé présente
+            # uniquement en mode d'envoi « les_deux » ; absente sinon (le lien
+            # rend alors le devis exactement comme aujourd'hui).
+            'gammes': _gammes_public(devis, data.get('display_total')),
             # XSAL5 — options proposées (add-ons hors total) que le client peut
             # activer AVANT signature (POST proposal/<token>/activer-option/).
             # Absent quand le devis n'a aucune option → rendu inchangé. Jamais de

@@ -287,6 +287,15 @@ def _line_to_item(ligne, taux_tva: Decimal) -> dict:
         "marque": (getattr(produit, "marque", "") or ""),
         "description": (getattr(produit, "description", "") or ""),
         "garantie": (getattr(produit, "garantie", "") or ""),
+        # GAMMES (fondateur 2026-08-18) — durées STRUCTURÉES du catalogue : la
+        # bande « Nos garanties » du PDF les dérive de la composition réelle
+        # (theme.warranties_for) au lieu d'une constante unique, pour qu'une
+        # gamme d'une autre marque affiche SES vraies garanties. None quand le
+        # produit ne les renseigne pas → repli sur la constante, jamais un
+        # chiffre inventé.
+        "garantie_mois": getattr(produit, "garantie_mois", None),
+        "garantie_production_mois": getattr(
+            produit, "garantie_production_mois", None),
         "quantite": float(ligne.quantite),
         "prix_unit_ht": float(round(pu_ht, 2)),
         "prix_unit_ttc": float(round(pu_ttc, 2)),

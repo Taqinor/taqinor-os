@@ -5,6 +5,9 @@ import { describe, expect, it } from 'vitest';
 import {
   backendFinancing,
   proposalVariants,
+  proposalGammes,
+  gammeEcartLabel,
+  gammeComparatif,
   nextSteps,
   proposalAssumptions,
   monitoringPoints,
@@ -12,6 +15,7 @@ import {
   SAVINGS_HORIZON_YEARS,
   type ProposalResponse,
   type ProposalFinancingBlock,
+  type ProposalGammes,
 } from '../src/lib/proposition';
 
 function makeProposal(over: Partial<ProposalResponse> = {}): ProposalResponse {
@@ -85,6 +89,77 @@ describe('WJ32 — proposalVariants (strip « autres tailles »)', () => {
     expect(proposalVariants({ variants: undefined })).toEqual([]);
     // @ts-expect-error
     expect(proposalVariants({ variants: 'x' })).toEqual([]);
+  });
+});
+
+// ── GAMMES (fondateur 2026-08-18) — offre à DEUX GAMMES, envoi à la carte.
+const GAMMES_LES_DEUX: ProposalGammes = {
+  envoi: 'les_deux',
+  courante: { nom: 'Essentielle', recommandee: true, reference: 'DEV-2026-042', total_ttc: 96000 },
+  soeur: {
+    nom: 'Premium',
+    recommandee: false,
+    reference: 'DEV-2026-043',
+    total_ttc: 104500,
+    proposition_path: '/proposition/reda-kasri/tok-soeur',
+    ecart_ttc: 8500,
+  },
+  comparatif: [
+    { designation: 'Panneau 550W', quantite: 10, quantite_soeur: 14 },
+    { designation: 'Batterie 5 kWh', quantite_soeur: 1 },
+  ],
+};
+
+describe('GAMMES — proposalGammes (bloc de choix de gamme)', () => {
+  it('mode « les_deux » complet → renvoyé tel quel', () => {
+    expect(proposalGammes({ gammes: GAMMES_LES_DEUX })).toEqual(GAMMES_LES_DEUX);
+  });
+
+  it('absent (mode d’envoi « seule ») → null : rien de l’autre gamme', () => {
+    expect(proposalGammes({ gammes: undefined })).toBeNull();
+    expect(proposalGammes({ gammes: null })).toBeNull();
+  });
+
+  it('bloc incomplet (sans lien de la sœur) → null, jamais de carte morte', () => {
+    const casse = {
+      ...GAMMES_LES_DEUX,
+      soeur: { ...GAMMES_LES_DEUX.soeur, proposition_path: '' },
+    };
+    expect(proposalGammes({ gammes: casse })).toBeNull();
+  });
+
+  it('mode inattendu → null (seul « les_deux » ouvre le choix)', () => {
+    // @ts-expect-error — entrée volontairement hors-contrat
+    expect(proposalGammes({ gammes: { ...GAMMES_LES_DEUX, envoi: 'seule' } })).toBeNull();
+  });
+});
+
+describe('GAMMES — gammeEcartLabel (écart en MAD ABSOLUS, jamais un %)', () => {
+  it('sœur plus chère → « + 8 500 MAD »', () => {
+    expect(gammeEcartLabel(8500)).toBe('+ 8 500 MAD');
+  });
+
+  it('sœur moins chère → « − 8 500 MAD » (tiret cadratin, jamais un mot dénigrant)', () => {
+    expect(gammeEcartLabel(-8500)).toBe('− 8 500 MAD');
+  });
+
+  it('écart nul/inconnu → null (rien n’est affiché, jamais un « 0 »)', () => {
+    expect(gammeEcartLabel(0)).toBeNull();
+    expect(gammeEcartLabel(null)).toBeNull();
+    expect(gammeEcartLabel(undefined)).toBeNull();
+  });
+});
+
+describe('GAMMES — gammeComparatif (lignes qui diffèrent)', () => {
+  it('renvoie les lignes du backend, valeur absente laissée absente', () => {
+    const rows = gammeComparatif(GAMMES_LES_DEUX);
+    expect(rows.map((r) => r.designation)).toEqual(['Panneau 550W', 'Batterie 5 kWh']);
+    expect(rows[1].quantite).toBeUndefined();
+    expect(rows[1].quantite_soeur).toBe(1);
+  });
+
+  it('aucun bloc gammes → tableau vide', () => {
+    expect(gammeComparatif(null)).toEqual([]);
   });
 });
 

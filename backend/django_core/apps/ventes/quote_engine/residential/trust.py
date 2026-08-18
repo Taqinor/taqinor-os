@@ -133,12 +133,16 @@ def build(ctx) -> str:
     # bande (mêmes mots que la proposition en ligne, bloc « Pourquoi nous faire
     # confiance ») ; les joints élastiques QRES62 de la page absorbent sa
     # hauteur, la pagination reste à 3 pages.
+    # GAMMES (fondateur 2026-08-18) — la bande DÉRIVE de la composition réelle
+    # du devis rendu (durées catalogue par produit), avec repli sur la
+    # constante theme.WARRANTIES et OMISSION du composant absent : deux gammes
+    # aux marques différentes affichent chacune SES vraies garanties.
     gar_html = (
         '<div class="p3-gar"><span class="p3-gar-t">Nos garanties</span>'
         + " &middot; ".join(
             f'<span class="p3-gar-i"><b>{n} {u}</b> — {label}'
             f'{(" (" + sub + ")") if label == "Performance" else ""}</span>'
-            for n, u, label, sub in theme.WARRANTIES)
+            for n, u, label, sub in theme.warranties_for(d))
         + '<div class="p3-gar-n">Les garanties fabricant sont attachées au '
           "matériel : elles suivent votre installation, restent transférables "
           "avec le bien et demeurent valables quel que soit l'installateur."

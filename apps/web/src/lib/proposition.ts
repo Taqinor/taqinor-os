@@ -204,6 +204,12 @@ export interface ProposalResponse {
    */
   variants?: ProposalVariantSummary[];
   /**
+   * GAMMES — choix de gamme (deux devis frères). Clé ABSENTE quand le vendeur
+   * a envoyé une gamme seule, ou quand le devis n'appartient à aucune paire :
+   * la page rend alors strictement ce qu'elle rend aujourd'hui.
+   */
+  gammes?: ProposalGammes | null;
+  /**
    * WJ114 — bloc vendeur OPTIONNEL (note personnelle + identité), pas encore
    * exposé par le backend aujourd'hui : lu défensivement (`sellerNote` ci-
    * dessous) pour qu'il s'allume dès que l'ERP le fournira, sans crash ni
@@ -250,6 +256,76 @@ export interface ProposalVariantSummary {
 }
 
 export type OptionKey = 'sans_batterie' | 'avec_batterie';
+
+/**
+ * GAMMES (fondateur 2026-08-18) — offre à DEUX GAMMES paramétrable.
+ *
+ * Une gamme est un devis frère COMPLET (composition et prix propres) : le lien
+ * client rend TOUJOURS le devis de son jeton, et n'expose la gamme sœur que
+ * lorsque le vendeur a choisi d'envoyer LES DEUX. Le libellé est une DONNÉE
+ * (aucune marque codée en dur). Ce bloc est indépendant de l'axe
+ * « avec / sans batterie » (`OptionKey`), qui reste INTERNE à chaque gamme.
+ */
+export interface ProposalGammeCard {
+  nom: string;
+  recommandee: boolean;
+  reference: string;
+  total_ttc: number | null;
+}
+
+export interface ProposalGammeSoeur extends ProposalGammeCard {
+  /** Lien PUBLIC de la gamme sœur : son document complet ET son PDF. */
+  proposition_path: string;
+  /** Écart TTC de la sœur PAR RAPPORT à la gamme affichée, en MAD signés. */
+  ecart_ttc: number | null;
+}
+
+export interface ProposalGammeComparatifRow {
+  designation: string;
+  quantite?: number | null;
+  quantite_soeur?: number | null;
+}
+
+export interface ProposalGammes {
+  envoi: 'les_deux';
+  courante: ProposalGammeCard;
+  soeur: ProposalGammeSoeur;
+  comparatif: ProposalGammeComparatifRow[];
+}
+
+/**
+ * Bloc de choix de gamme, ou `null` — le backend n'envoie la clé qu'en mode
+ * d'envoi « les_deux » ; en mode « seule » rien de la sœur ne franchit la
+ * frontière publique, donc la page rend le devis comme aujourd'hui.
+ */
+export function proposalGammes(
+  p: { gammes?: ProposalGammes | null },
+): ProposalGammes | null {
+  const g = p.gammes;
+  if (!g || typeof g !== 'object') return null;
+  if (g.envoi !== 'les_deux') return null;
+  if (!g.courante?.nom || !g.soeur?.nom || !g.soeur?.proposition_path) return null;
+  return g;
+}
+
+/**
+ * Écart de prix en MAD ABSOLUS, signé : « + 8 500 MAD » / « − 8 500 MAD »
+ * (jamais un pourcentage, jamais un mot qui dénigre la gamme économique).
+ * `null` quand l'écart est inconnu ou nul — la carte n'affiche alors rien.
+ */
+export function gammeEcartLabel(ecart: number | null | undefined): string | null {
+  if (typeof ecart !== 'number' || !Number.isFinite(ecart)) return null;
+  const rounded = Math.round(ecart);
+  if (rounded === 0) return null;
+  return `${rounded > 0 ? '+' : '−'} ${formatMAD(Math.abs(rounded))}`;
+}
+
+/** Lignes qui DIFFÈRENT entre les deux compositions (tableau comparatif). */
+export function gammeComparatif(
+  g: ProposalGammes | null,
+): ProposalGammeComparatifRow[] {
+  return Array.isArray(g?.comparatif) ? g!.comparatif : [];
+}
 
 /**
  * Format monétaire marocain : `12 500 MAD` (espace fine de milliers, devise

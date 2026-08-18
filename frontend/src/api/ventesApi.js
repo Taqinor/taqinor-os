@@ -92,6 +92,12 @@ const ventesApi = {
   dupliquerVariante: (id, payload = {}) => api.post(`/ventes/devis/${id}/dupliquer-variante/`, payload),
   // QJ15 — Lister les variantes liées à ce devis (même version_parent).
   getVariantes: (id) => api.get(`/ventes/devis/${id}/variantes/`),
+  // GAMMES — crée la SŒUR « gamme » de ce devis (même mécanique de variantes :
+  // devis frère complet, composition et prix propres). Corps : `nom`,
+  // `nom_source`, `recommandee`. Le libellé est une DONNÉE, jamais une marque
+  // codée en dur.
+  dupliquerVarianteGamme: (id, payload = {}) =>
+    api.post(`/ventes/devis/${id}/dupliquer-variante-gamme/`, payload),
   // PV41/PV43 — étude ÉLECTRIQUE agrégée du devis, en UN SEUL appel. GET la lit
   // (et la calcule si absente) ; POST la RECALCULE avec des surcharges
   // (`dc_m`/`ac_m`/`phases`/`regime`…). Les deux rendent EXACTEMENT la forme du

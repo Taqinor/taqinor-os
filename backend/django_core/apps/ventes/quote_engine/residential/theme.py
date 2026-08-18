@@ -155,6 +155,129 @@ WARRANTIES = [
     ("30", "ans", "Performance", "87,4 % garanti"),
 ]
 
+# GAMMES (fondateur 2026-08-18) — les garanties du PDF se DÉRIVENT de la
+# composition RÉELLE du devis rendu : deux gammes aux marques différentes
+# affichent chacune SES vraies durées, sans qu'aucune marque soit codée en dur.
+# Source des durées : les données STRUCTURÉES du catalogue portées par chaque
+# ligne (``garantie_mois`` / ``garantie_production_mois``, injectées par
+# ``builder._line_to_item``). REPLI : la constante WARRANTIES ci-dessus.
+# OMISSION quand ni la donnée produit ni une constante ne correspond au
+# composant (une batterie sans durée renseignée ne sort pas un chiffre inventé).
+_WARRANTY_FALLBACK = {label: (n, u, label, sub)
+                      for n, u, label, sub in WARRANTIES}
+
+
+def _annees(mois):
+    """Mois → années entières, ou None (0/absent/invalide ⇒ pas de donnée)."""
+    try:
+        m = int(mois)
+    except (TypeError, ValueError):
+        return None
+    return m // 12 if m >= 12 else None
+
+
+def _composition_rows(d):
+    """Toutes les lignes du devis rendu (les DEUX scénarios batterie).
+
+    L'axe « avec / sans batterie » vit dans le MÊME document : la batterie
+    n'existe que dans ``avec_items``, on lit donc l'union."""
+    rows = []
+    for cle in ("sans_items", "avec_items", "items"):
+        for it in (d.get(cle) or []):
+            if isinstance(it, dict):
+                rows.append(it)
+    return rows
+
+
+def _first_warranty(rows, predicat, champ):
+    """(présent, années) pour le premier composant reconnu portant la donnée.
+
+    ``présent`` dit si le composant EXISTE dans la composition (sinon la
+    garantie est omise) ; ``années`` vaut None quand aucun produit ne porte la
+    durée structurée (on retombe alors sur la constante)."""
+    present, annees = False, None
+    for it in rows:
+        if not predicat(it):
+            continue
+        present = True
+        if annees is None:
+            annees = _annees(it.get(champ))
+    return present, annees
+
+
+def warranties_for(d):
+    """Bande « Nos garanties » dérivée de la composition réelle du devis.
+
+    Renvoie la même forme que ``WARRANTIES`` — (nombre, unité, libellé,
+    sous-libellé) — pour que tous les consommateurs restent inchangés. Un devis
+    sans donnée produit rend EXACTEMENT la constante d'aujourd'hui."""
+    try:
+        from .. import builder
+    except Exception:  # noqa: BLE001 — jamais casser le rendu d'un PDF
+        return list(WARRANTIES)
+    rows = _composition_rows(d)
+    if not rows:
+        return list(WARRANTIES)
+
+    def _nom(it):
+        return f"{it.get('designation', '')} {it.get('_produit_nom', '')}"
+
+    def _est_panneau(it):
+        return builder._is_panel(it.get("designation", "") or "",
+                                 it.get("_produit_nom", "") or "")
+
+    def _est_onduleur(it):
+        return builder._is_inverter(_nom(it))
+
+    def _est_batterie(it):
+        return builder._is_battery(_nom(it))
+
+    out = [_WARRANTY_FALLBACK["Installation"]]  # pose : constante 2 ans
+
+    ond_present, ond_ans = _first_warranty(rows, _est_onduleur, "garantie_mois")
+    if ond_present:
+        if ond_ans is not None:
+            out.append((str(ond_ans), "ans", "Onduleur", "garantie fabricant"))
+        elif "Onduleur" in _WARRANTY_FALLBACK:
+            out.append(_WARRANTY_FALLBACK["Onduleur"])
+
+    pan_present, pan_ans = _first_warranty(rows, _est_panneau, "garantie_mois")
+    if pan_present:
+        if pan_ans is not None:
+            out.append((str(pan_ans), "ans", "Panneaux", "garantie produit"))
+        elif "Panneaux" in _WARRANTY_FALLBACK:
+            out.append(_WARRANTY_FALLBACK["Panneaux"])
+        _, perf_ans = _first_warranty(rows, _est_panneau,
+                                      "garantie_production_mois")
+        defaut_perf = _WARRANTY_FALLBACK.get("Performance")
+        if perf_ans is not None:
+            # Le sous-libellé chiffré (« 87,4 % garanti ») n'appartient qu'à la
+            # constante : dérivé d'un AUTRE produit, il serait un chiffre
+            # inventé — on le remplace par une formulation sans nombre.
+            sub = (defaut_perf[3] if (defaut_perf
+                                      and str(perf_ans) == defaut_perf[0])
+                   else "performance linéaire")
+            out.append((str(perf_ans), "ans", "Performance", sub))
+        elif defaut_perf is not None:
+            out.append(defaut_perf)
+
+    bat_present, bat_ans = _first_warranty(rows, _est_batterie, "garantie_mois")
+    if bat_present and bat_ans is not None:
+        # Aucune constante batterie n'existe : sans donnée produit, OMISSION.
+        out.append((str(bat_ans), "ans", "Batterie", "garantie fabricant"))
+    return out
+
+
+def performance_warranty_years(d):
+    """Durée de garantie de PERFORMANCE du devis rendu, ou None si aucune.
+
+    Sert aux mentions rédigées de la page 1 (« performance garantie N ans ») —
+    même source que la bande, donc jamais deux chiffres contradictoires."""
+    for n, _u, label, _sub in warranties_for(d):
+        if label == "Performance":
+            return n
+    return None
+
 # French name particles that stay lowercase inside a name.
 _NAME_PARTICLES = {"de", "du", "des", "la", "le", "les", "van", "von",
                    "el", "al", "ben", "bin", "ould", "aït", "ait"}
