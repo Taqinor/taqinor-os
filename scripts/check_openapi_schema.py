@@ -35,8 +35,49 @@ et le message d'echec porte la commande exacte :
 Ne repassez pas ce controle en « advisory ». Si la regeneration est trop lente,
 accelerez-la ; ne rendez pas le contrat facultatif.
 
+WOW-CI3 — ACCELERATION (18/08/2026), la reponse a ce « accelerez-la »
+---------------------------------------------------------------------
+Le job `backend-openapi` durait 5 min 53 s et fixait SEUL le plancher du gate.
+Mesure par phase dans l'image de prod (~2,2x plus lente qu'un runner CI) :
+
+    django.setup()            53,7 s
+    get_schema()             284,4 s   <- 16 918 operations... dont la moitie
+                                          est le MIROIR `api/v1/` de l'autre
+    rendu YAML (22,8 Mo)      98,9 s   <- vs 4,7 s en JSON (40,4 Mo)
+    --validate               102,2 s
+    yaml.safe_load           230,8 s   <- vs 4,1 s en json.loads (!)
+
+Trois causes, trois corrections, AUCUNE perte de garantie :
+
+ 1. `erp_agentique/urls.py` monte la meme liste `_APP_URLS` sous `api/django/`
+    ET sous `api/v1/` : drf-spectacular re-introspecte donc chaque vue, chaque
+    serializer et chaque type-hint DEUX fois. Le controle passe desormais
+    `--generator-class erp_agentique.openapi_check.SchemaGeneratorAliasV1`,
+    qui introspecte l'arbre une fois puis RECONSTITUE le miroir `api/v1/`
+    (copie profonde + `operationId` `django_X` -> `v1_X`) AVANT les
+    postprocessing hooks. Le document produit est identique ; les garde-fous
+    structurels sont dans ce module (voir son en-tete) et font ECHOUER la
+    generation — jamais passer en silence — si le miroir cesse d'etre derivable.
+ 2. le fichier intermediaire passe de YAML a JSON (`--format openapi-json`) :
+    meme document, serialisation 21x plus rapide a ecrire...
+ 3. ...et 56x plus rapide a relire (`json.loads` au lieu de `yaml.safe_load`
+    sur 22,8 Mo). L'inventaire ne lit que `paths`/`components`/`info` : il en
+    ressort au bit pres identique.
+
+Tout ce qui GELE un fichier de reference — `--write` (l'instantane versionne) et
+`--write-baseline` (le cliquet d'avertissements) — utilise le generateur de
+REFERENCE : l'instantane reste la verite generee par les deux montages reels, et
+le raccourci du controle est compare A ELLE. Un raccourci qui derivait ne
+pourrait donc produire qu'un FAUX ROUGE, jamais un faux vert. `--reference`
+force ce meme generateur pour le controle lui-meme.
+
 Why the snapshot is an INVENTORY and not the raw document: the full schema is
-~20 MB / 8 100 paths — git-hostile and un-renderable in a PR. The inventory
+9 407 paths / 16 918 operations (22,8 MB en YAML, 40,4 MB en JSON) — git-hostile
+and un-renderable in a PR. Sur ces 16 918 operations, 8 467 sont sous
+``/api/django/`` et 8 423 en sont le MIROIR EXACT sous ``/api/v1/`` (les 44
+restantes sont les routes publiques tokenisees et les 3 endpoints JWT, montees
+hors de ``_APP_URLS`` donc sans jumeau v1) : c'est ce doublon integral que
+WOW-CI3 cesse de payer deux fois. The inventory
 (one sorted ``method path -> operationId`` line per operation + the component
 names) is the part that actually surfaces a breaking change, and it diffs
 line-by-line in review.
@@ -45,7 +86,8 @@ The signature deliberately carries NO file path and NO line number: a checker
 keyed on ``file:line`` goes red on every unrelated line shift.
 
 Usage:
-    python scripts/check_openapi_schema.py                 # CI gate
+    python scripts/check_openapi_schema.py                 # CI gate (rapide)
+    python scripts/check_openapi_schema.py --reference     # CI gate, sans le raccourci
     python scripts/check_openapi_schema.py --write         # refresh docs/openapi-schema.yml
     python scripts/check_openapi_schema.py --write-baseline
     python scripts/check_openapi_schema.py --from-log FILE # parse an existing log (offline)
@@ -53,6 +95,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import subprocess
@@ -135,12 +178,47 @@ def _schema_env() -> dict:
     return env
 
 
-def generate(target: Path) -> str:
-    """Run the generator (with ``--validate``); return its warning log."""
+# WOW-CI3 — generateur qui n'introspecte qu'une fois l'arbre monte deux fois
+# (voir backend/django_core/erp_agentique/openapi_check.py). Le document
+# produit est identique a celui du generateur par defaut.
+ALIAS_GENERATOR = "erp_agentique.openapi_check.SchemaGeneratorAliasV1"
+
+
+def spectacular_command(target: Path, *, reference: bool = False) -> list[str]:
+    """Commande `manage.py spectacular` du controle (testee en isolation)."""
+    cmd = [sys.executable, "manage.py", "spectacular",
+           "--file", str(target), "--validate", "--format", "openapi-json"]
+    if not reference:
+        cmd += ["--generator-class", ALIAS_GENERATOR]
+    return cmd
+
+
+def use_reference_generator(args) -> bool:
+    """PACT6/WOW-CI3 — tout ce qui GELE un fichier de reference est produit par
+    le generateur de REFERENCE :
+
+    * ``--write`` (l'instantane de contrat) reste la verite generee par les
+      DEUX montages reels ; c'est a elle que le raccourci du controle est
+      compare, donc un raccourci qui derivait ne pourrait produire qu'un FAUX
+      ROUGE, jamais un faux vert ;
+    * ``--write-baseline`` doit voir les constats des deux arbres (le miroir
+      `api/v#/` a ses propres avertissements globaux de collision
+      d'operationId) — sinon le cliquet perdrait silencieusement ces entrees.
+    """
+    return bool(args.reference or args.write
+                or getattr(args, "write_baseline", False))
+
+
+def generate(target: Path, *, reference: bool = False) -> str:
+    """Run the generator (with ``--validate``); return its warning log.
+
+    ``reference=True`` -> generateur par defaut, les deux montages reellement
+    introspectes (c'est ce que `--write` utilise pour produire l'instantane).
+    Sinon le raccourci WOW-CI3, qui rend le meme document ~2x plus vite.
+    """
+    cmd = spectacular_command(target, reference=reference)
     proc = subprocess.run(
-        [sys.executable, "manage.py", "spectacular",
-         "--file", str(target), "--validate"],
-        cwd=str(DJANGO_CORE), env=_schema_env(),
+        cmd, cwd=str(DJANGO_CORE), env=_schema_env(),
         capture_output=True, text=True, errors="replace", timeout=1800,
     )
     if proc.returncode != 0:
@@ -148,16 +226,23 @@ def generate(target: Path) -> str:
         sys.stderr.write(proc.stderr)
         print("\nECHEC : la generation/validation du schema OpenAPI a echoue "
               "(document invalide ou generateur en erreur).")
+        if not reference:
+            print("Si l'echec vient du raccourci WOW-CI3 (garde-fou du miroir "
+                  "api/v1/), rejouer avec --reference pour l'isoler.")
         raise SystemExit(1)
     return proc.stderr
 
 
 def build_inventory(schema_path: Path) -> str:
-    """Compact, deterministic contract snapshot (see module docstring)."""
-    import yaml
+    """Compact, deterministic contract snapshot (see module docstring).
 
+    Lit le document JSON produit par ``--format openapi-json`` (WOW-CI3) :
+    seuls ``paths``/``components``/``info`` sont exploites, donc l'inventaire
+    est identique a celui bati depuis l'ancien rendu YAML — pour 4 s au lieu
+    de 231 s de ``yaml.safe_load`` sur 22,8 Mo.
+    """
     with schema_path.open(encoding="utf-8") as fh:
-        doc = yaml.safe_load(fh)
+        doc = json.load(fh)
 
     paths = doc.get("paths") or {}
     schemas = (doc.get("components") or {}).get("schemas") or {}
@@ -258,6 +343,15 @@ def rapporter_derive(derive: dict, snapshot_rel: str) -> None:
     if not (manquantes or en_trop or comp_manquants or comp_en_trop):
         print("\n  (aucune operation ni composant ne differe : seul l'en-tete de "
               "l'instantane — compteurs, titre, version — a bouge.)")
+    # WOW-CI3 — diagnostic : une derive PUREMENT `api/v1/` ne vient pas d'une
+    # route oubliee mais du raccourci qui reconstitue ce miroir.
+    lignes_ops = manquantes + en_trop
+    if lignes_ops and all(" /api/v1/" in ligne for ligne in lignes_ops):
+        print("\n  NB : la derive ne porte QUE sur des chemins /api/v#/. Ce miroir "
+              "est reconstitue\n  par le raccourci WOW-CI3 "
+              "(erp_agentique/openapi_check.py). Rejouer le controle avec\n"
+              "  --reference : si la derive disparait, c'est le raccourci qu'il "
+              "faut corriger,\n  pas l'instantane.")
     print(f"\nREGENERER L'INSTANTANE, PUIS LE COMMITTER :\n    {REGEN_COMMAND}\n")
     print("POURQUOI C'EST BLOQUANT : le 02/08/2026 le module Appels d'offres est "
           "entre en production\nsans que l'instantane bouge d'une ligne "
@@ -275,15 +369,20 @@ def main() -> int:
                         help="refresh scripts/openapi_schema_allow.txt")
     parser.add_argument("--from-log", metavar="FILE",
                         help="parse an existing spectacular log instead of regenerating")
+    parser.add_argument("--reference", action="store_true",
+                        help="generer avec le generateur par defaut (les deux "
+                             "montages reellement introspectes) au lieu du "
+                             "raccourci WOW-CI3 ; implicite avec --write")
     args = parser.parse_args()
 
     inventory = None
     if args.from_log:
         log = Path(args.from_log).read_text(encoding="utf-8", errors="replace")
     else:
+        reference = use_reference_generator(args)
         with tempfile.TemporaryDirectory() as tmp:
-            target = Path(tmp) / "openapi-schema-full.yml"
-            log = generate(target)
+            target = Path(tmp) / "openapi-schema-full.json"
+            log = generate(target, reference=reference)
             inventory = build_inventory(target)
 
     found = parse_log(log)

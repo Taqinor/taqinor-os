@@ -139,9 +139,15 @@ jobs:
   # `backend-lint` est préservé par l'agrégateur mince plus bas — NE PAS le
   # renommer (protection de branche : contexte littéral).
   #
-  # La génération elle-même n'est PAS raccourcie ici : elle est mono-thread et
-  # dans drf-spectacular, hors de portée de ce fichier. C'est aujourd'hui le
-  # plancher du gate (~6 min 50 s pour cette lane) — voir le rapport de run.
+  # WOW-CI3 (2026-08-18) — la génération elle-même est désormais raccourcie,
+  # mais dans le SCRIPT, pas ici. Profil par phase dans l'image de prod :
+  # `get_schema()` 284 s (dont la moitié est le miroir `api/v1/` de l'arbre
+  # `api/django/`, monté deux fois par urls.py), rendu YAML 99 s, `--validate`
+  # 102 s, et surtout `yaml.safe_load` de 22,8 Mo 231 s. Corrigé par un
+  # générateur qui n'introspecte qu'une fois puis reconstitue le miroir
+  # (`erp_agentique/openapi_check.py`) et par un document intermédiaire JSON.
+  # Aucune route d'exécution ne change, et l'instantané de contrat continue
+  # d'être régénéré (`--write`) par le générateur de RÉFÉRENCE.
   # ---------------------------------------------------------------------------
   backend-lint-fast:
     needs: changes
@@ -252,9 +258,10 @@ jobs:
         run: python scripts/check_ao_api_contract.py
   # Lane dédiée : génération + validation du schéma OpenAPI. Mesurée à 5 min 53 s
   # sur le run 32182877239 (une seule invocation de `manage.py spectacular
-  # --validate`, aucune sortie intermédiaire). Elle tourne EN PARALLÈLE de
-  # `backend-lint-fast` et des 8 lanes de tests, donc elle ne retarde plus les
-  # gardes rapides — mais elle fixe seule le plancher du gate.
+  # --validate`, aucune sortie intermédiaire), puis raccourcie par WOW-CI3
+  # (générateur `openapi_check.SchemaGeneratorAliasV1` + document JSON) — voir
+  # l'en-tête de scripts/check_openapi_schema.py pour le profil par phase.
+  # Elle tourne EN PARALLÈLE de `backend-lint-fast` et des 8 lanes de tests.
   backend-openapi:
     needs: changes
     if: ${{ needs.changes.outputs.backend == 'true' }}
