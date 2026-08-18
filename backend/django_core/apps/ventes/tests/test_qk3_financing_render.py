@@ -127,7 +127,12 @@ class TestFinancingOnPdf(TestCase):
         self.assertIn('Financement possible', html)
         self.assertEqual(len(doc.pages), 3)
 
-    def test_residential_redesigned_renderer_shows_financing(self):
+    def test_residential_redesigned_page3_sans_bloc_financement(self):
+        """QRES66 (fondateur, 18/08/2026) — le bloc « Financement possible » a
+        quitté la page 3 du rendu résidentiel redessiné : même quand les
+        données de financement SONT fournies (QK3), la page Conditions /
+        Prochaines étapes n'en rend plus rien (ni .p3-finsec ni .p3-fin*), la
+        rangée garde ses deux boîtes égales et le document reste à 3 pages."""
         from weasyprint import HTML
         from apps.ventes.quote_engine.residential import renderer, render
         from apps.ventes.tests.test_quote_engine import _residential_sample_data
@@ -145,7 +150,9 @@ class TestFinancingOnPdf(TestCase):
         d = renderer._augment(data)
         html = render.build_html(d)
         doc = HTML(string=html).render()
-        self.assertIn('Financement', html)
+        self.assertNotIn('p3-fin', html)
+        self.assertNotIn('p3-cols-fin', html)
+        self.assertEqual(html.count('class="p3-tdcard"'), 2)
         self.assertEqual(len(doc.pages), 3)
 
     def test_agricole_pdf_shows_saquii_solaire_four_pages(self):
