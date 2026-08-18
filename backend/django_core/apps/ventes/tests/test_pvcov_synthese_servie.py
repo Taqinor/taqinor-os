@@ -7,7 +7,12 @@ Deux étages :
   - tests PURS (dict → dict, aucune BD) : la fonction extraite reproduit
     exactement les champs que ``_augment`` pose pour la couverture du PDF, et
     dégrade en ``None`` (jamais un chiffre inventé) hors forme résidentielle ;
-  - test API : ``proposal_data`` sert les cinq clés, égales au calcul du PDF.
+  - test API : ``proposal_data`` sert les cinq clés, égales au calcul du PDF —
+    et à ``None`` pour un devis non-résidentiel (F5, revue Fable pré-merge
+    18/08/2026) : le builder produit un ``eco_a_monthly``/``factures_mensuelles``
+    PROXY pour TOUT mode, donc ``synthese_economies(data)`` seul est non-None
+    même sur un industriel/commercial — la vue le gate désormais avec
+    ``residential/renderer.is_residential`` avant de servir ces cinq clés.
 """
 from django.test import SimpleTestCase, TestCase
 
@@ -104,7 +109,10 @@ class ProposalDataServeSyntheseTests(TestCase):
         resp = APIClient().get(
             f'/api/django/public/proposal/{link.token}/data/')
         self.assertEqual(resp.status_code, 200)
-        quote = resp.json().get('quote') or resp.json()
+        # Les cinq clés PVCOV sont posées à la RACINE de la charge utile
+        # (``payload['pct_cut']``…), jamais imbriquées sous ``quote`` —
+        # ``quote`` ne porte que la sortie brute de ``build_quote_data``.
+        payload = resp.json()
 
         from apps.ventes.quote_engine.builder import build_quote_data
         attendu = synthese_economies(
@@ -112,8 +120,73 @@ class ProposalDataServeSyntheseTests(TestCase):
         if attendu is None:
             # Forme non résidentielle : les clés existent et valent None.
             for k in CLES:
-                self.assertIn(k, quote)
-                self.assertIsNone(quote[k])
+                self.assertIn(k, payload)
+                self.assertIsNone(payload[k])
         else:
             for k in CLES:
-                self.assertEqual(quote[k], attendu[k], k)
+                self.assertEqual(payload[k], attendu[k], k)
+
+    def test_proposal_data_industriel_sert_cinq_none(self):
+        """F5 (revue Fable, pré-merge 18/08/2026) — un devis INDUSTRIEL fait,
+        lui aussi, tourner ``calculate_savings_roi`` (TOUT mode) : le builder
+        produit donc un ``eco_a_monthly`` et un ``factures_mensuelles`` PROXY
+        même sans étude — ``synthese_economies(data)`` seul renvoie alors une
+        valeur non-None pour ce devis. Mais cette synthèse EST la page 1 du
+        PDF RÉSIDENTIEL ; un devis industriel a SA propre étude (bloc
+        ``mode_kpis``, testé ailleurs) et aucun document remis à ce client ne
+        montre l'avant/après fabriqué. La vue publique doit donc servir les
+        cinq clés à ``None`` pour ce mode — jamais la valeur calculée."""
+        from decimal import Decimal
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+        from authentication.models import Company
+        from apps.crm.models import Client
+        from apps.stock.models import Produit
+        from apps.ventes.models import Devis, LigneDevis, ShareLink
+
+        company = Company.objects.get_or_create(
+            slug='pvcov-ind-co', defaults={'nom': 'PVCOV Industriel Co'})[0]
+        get_user_model().objects.get_or_create(
+            username='pvcov-ind', defaults={'password': 'x', 'company': company})
+        client_obj = Client.objects.get_or_create(
+            company=company, nom='Client PVCOV Industriel', defaults={})[0]
+        devis = Devis.objects.get_or_create(
+            company=company, reference='DEV-PVCOV-IND-01',
+            defaults={'client': client_obj, 'taux_tva': Decimal('20'),
+                      'statut': 'envoye', 'mode_installation': 'industriel',
+                      'etude_params': {
+                          'factures_mensuelles': [1800] * 12,
+                          'ville': 'casablanca'}})[0]
+        lignes = (
+            ('Panneau Canadien Solar 710W', '14', '1166.67'),
+            ('Onduleur réseau Huawei 10kW Monophasé', '1', '15000.00'),
+            ('Onduleur hybride Deye 10kW Monophasé', '1', '23333.33'),
+            ('Batterie Dyness 10 kWh', '1', '25000.00'),
+        )
+        for nom, qte, pu in lignes:
+            produit = Produit.objects.create(
+                company=company, nom=nom, prix_vente=pu, quantite_stock=50)
+            LigneDevis.objects.create(
+                devis=devis, produit=produit, designation=nom,
+                quantite=Decimal(qte), prix_unitaire=Decimal(pu),
+                remise=Decimal('0'))
+        link = ShareLink.objects.create(company=company, devis=devis)
+
+        # Preuve que la fixture reproduit bien la fuite F5 côté données PURES
+        # (sans la garde ``is_residential`` de la vue) — sinon ce test ne
+        # prouverait rien : un devis dont ``synthese_economies`` serait déjà
+        # None ne distinguerait pas « gardé » de « jamais produit ».
+        from apps.ventes.quote_engine.builder import build_quote_data
+        brut = build_quote_data(devis, {'pdf_mode': 'full'})
+        self.assertIsNotNone(
+            synthese_economies(brut),
+            'fixture invalide : le builder ne produit pas de forme PROXY '
+            'pour ce devis industriel — le test ne prouverait rien.')
+
+        resp = APIClient().get(
+            f'/api/django/public/proposal/{link.token}/data/')
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.json()
+        for k in CLES:
+            self.assertIn(k, payload, k)
+            self.assertIsNone(payload[k], k)

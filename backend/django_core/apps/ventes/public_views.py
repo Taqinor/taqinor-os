@@ -1059,8 +1059,25 @@ def proposal_data(request, token):
         data = _sans_internes_bancables(data)
         # PVCOV — synthèse économies/couverture, calculée par LE code de la
         # page 1 du PDF (import paresseux : frontière quote_engine).
-        from .quote_engine.residential.renderer import synthese_economies
-        synthese = synthese_economies(data)
+        from .quote_engine.residential.renderer import (
+            is_residential, synthese_economies,
+        )
+        # F5 (revue Fable, pré-merge 18/08/2026) — cette synthèse (« −N % »,
+        # avant/après annuel, donut de couverture) EST la page 1 du PDF
+        # RÉSIDENTIEL ; elle n'a de sens que là. Le builder calcule pourtant
+        # `eco_a_monthly` (donc un `factures_mensuelles` PROXY) pour TOUT mode
+        # via `calculate_savings_roi` — un devis industriel/commercial (qui a
+        # SA propre étude, servie par `_mode_kpis` ci-dessous) faisait donc
+        # renvoyer `synthese_economies(data)` une valeur NON None : la page
+        # affichait alors une facture avant/après fabriquée à côté des KPIs de
+        # l'étude — deux histoires d'argent, dont une qu'aucun document remis
+        # au client (son PDF) ne montre. Discriminateur : `is_residential`, LA
+        # fonction pure (mode_installation + format de rendu, aucun accès BD)
+        # qui décide déjà si LE renderer résidentiel — celui qui rend cette
+        # page 1 — s'applique à ce devis : c'est donc l'autorité correcte, et
+        # la plus économe (déjà importée juste au-dessus, zéro calcul de plus).
+        synthese = (synthese_economies(data)
+                    if is_residential(devis, {'pdf_mode': 'full'}) else None)
         # PV86 — VÉRITÉ UNIQUE : la charge utile publique ne transporte QUE les
         # totaux/lignes de l'option réellement proposée. Un devis mono-option
         # laissait passer le second panier (calculé pour le découpage interne) :
@@ -1069,6 +1086,19 @@ def proposal_data(request, token):
         # AUCUN document ne franchit plus la frontière publique. Les
         # avertissements internes (devis à assainir) restent côté vendeur.
         data.pop('avertissements_internes', None)
+        # F6 (revue Fable, pré-merge 18/08/2026) — QJ12 calcule un bloc
+        # `financing` INTERNE (indicatif) ; le fondateur a retiré le crédit de
+        # toute surface client à QUATRE reprises (PV80 : plus aucune mensualité
+        # ni banque sur la page /proposition, `financingComparison`/
+        # `backendFinancing` gardées mais plus IMPORTÉES par la page). Rien ne
+        # le rend plus nulle part — mais il restait SERVI, en clair, sur le lien
+        # public tokenisé : un JSON récupérable contredisait la décision même
+        # sans qu'aucun écran ne l'affiche. On le retire ici, sur `data` lui-même
+        # (jamais sur une copie) : `'quote': data` plus bas republie ce même
+        # dict, donc le laisser dedans aurait fui la MÊME donnée sous un second
+        # nom. Le calcul interne du builder (`compute_financing_block`) n'est
+        # pas touché — seule la republication publique s'arrête.
+        data.pop('financing', None)
         if data.get('nb_options') == 1:
             if not data.get('avec_ok'):
                 data['totaux_avec'] = None
@@ -1128,11 +1158,13 @@ def proposal_data(request, token):
             # Consommation : factures RÉELLES du lead (MAD→kWh, tarif interne),
             # [] sans facture → la page masque le graphe.
             'monthly_consumption': _monthly_consumption(devis),
-            # QJ12 — financing block (indicatif / à confirmer).
-            # Present when build_quote_data produced a non-None financing dict;
-            # absent (key not sent) when total is unknown — frontend must check.
-            # NOTE: also nested inside data['quote']['financing'] for the PDF engine.
-            'financing': data.get('financing'),
+            # F6 (revue Fable, 18/08/2026) — 'financing' n'est PLUS servi ici :
+            # le fondateur a retiré le crédit de toute surface client (PV80),
+            # rien ne le rend, et `data.pop('financing', None)` ci-dessus a déjà
+            # retiré la copie imbriquée sous 'quote'. Voir le commentaire à cet
+            # endroit pour le détail — le calcul interne du builder (QJ12,
+            # `compute_financing_block`) reste intact, seule la publication
+            # s'arrête.
             # QF3 — bloc « Comment nous calculons vos économies » (méthode +
             # exemple chiffré). Présent quand le builder l'a produit ; jamais de
             # prix d'achat/marge (RULE #4). Aussi imbriqué dans data['quote'].
