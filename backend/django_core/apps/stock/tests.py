@@ -185,46 +185,73 @@ class TestSeedCatalogue(TestCase):
         self.assertIn('Modèle supposé : Huawei SUN2000-5KTL-L1', p5m.description)
         self.assertIn('à confirmer fondateur', p5m.description)
 
-    def test_pvg4_interpolated_and_ambiguous_values_left_null(self):
+    def test_pvond_courants_asymetriques_retiennent_le_tracker_faible(self):
+        """PVOND (ordre fondateur 2026-08-18, « ne laisse rien griser ») — un
+        courant ASYMÉTRIQUE par tracker est tranché sur LE PLUS FAIBLE : le
+        moteur de chaînes ne peut alors jamais produire une configuration qui
+        surcharge le tracker faible."""
         from apps.stock.models import FicheTechnique
         seed(self.company)
+        # « 30 A / 20 A » (fiche famille SUN2000-12-25KTL-M5) → 20 A.
+        for sku in ('OND-R-HUA-15T', 'OND-R-HUA-20T', 'OND-R-HUA-25T'):
+            fiche = FicheTechnique.objects.get(
+                produit=Produit.objects.get(company=self.company, sku=sku))
+            self.assertEqual(fiche.ond_i_max_mppt_a, Decimal('20.0'), sku)
+        # « 26+20 A » (SG01HP3) et « 36+20 A » (SG05LP3 14-20K) → 20 A.
+        for sku in ('OND-H-DEY-15T', 'OND-DEY-15K-LV'):
+            fiche = FicheTechnique.objects.get(
+                produit=Produit.objects.get(company=self.company, sku=sku))
+            self.assertEqual(fiche.ond_i_max_mppt_a, Decimal('20.0'), sku)
+
         p15t = Produit.objects.get(company=self.company, sku='OND-R-HUA-15T')
         f15t = FicheTechnique.objects.get(produit=p15t)
-        # Rendement ≈98.0 % « interpolé » — jamais saisi.
-        self.assertIsNone(f15t.ond_rendement_euro_pct)
-        # 30A(2 strings)/20A(1) : courant composé, pas une valeur propre.
-        self.assertIsNone(f15t.ond_i_max_mppt_a)
-        # Plage MPPT/Vmax, elles, sont sourcées explicitement.
+        # Rendement euro 98,0 % : valeur OFFICIELLE de la famille 12-25KTL-M5
+        # (remplace le « interpolé » de PVG4).
+        self.assertEqual(f15t.ond_rendement_euro_pct, Decimal('98.0'))
+        # Plage MPPT/Vmax, elles, sont sourcées explicitement (inchangé).
         self.assertEqual(f15t.ond_mppt_v_min, Decimal('200.0'))
         self.assertEqual(f15t.ond_mppt_v_max, Decimal('1000.0'))
 
+    def test_pvond_huawei_50t_seede_en_edition_m3(self):
+        """Édition présumée M3 (gamme EMEA courante) : 4 MPPT / 30 A / 98,0 %.
+        Le M0 (22 A / 98,5 %) reste documenté en commentaire, à confirmer à
+        l'achat."""
+        from apps.stock.models import FicheTechnique
+        seed(self.company)
         p50t = Produit.objects.get(company=self.company, sku='OND-R-HUA-50T')
         f50t = FicheTechnique.objects.get(produit=p50t)
-        # Imax « non confirmé précisément » par la source → NULL.
-        self.assertIsNone(f50t.ond_i_max_mppt_a)
-        # ≈98.5 % (approx., pas « euro » explicite) → NULL.
-        self.assertIsNone(f50t.ond_rendement_euro_pct)
-        self.assertEqual(f50t.ond_n_mppt, 6)
+        self.assertEqual(f50t.ond_n_mppt, 4)
+        self.assertEqual(f50t.ond_i_max_mppt_a, Decimal('30.0'))
+        self.assertEqual(f50t.ond_rendement_euro_pct, Decimal('98.0'))
+        self.assertIn('Modèle supposé : Huawei SUN2000-50KTL-M3', p50t.description)
 
-    def test_pvg4_deye_10m_divergent_mppt_range_left_null(self):
+    def test_pvond_deye_10m_tranche_sur_la_revision_validee_fondateur(self):
+        """La divergence de sources est CONSERVÉE en commentaire, mais la
+        valeur est tranchée : 26 A/MPPT (révision validée en production le
+        2026-08-16, fiche 2024 = 20 A documentée) et la plage MPPT de la
+        datasheet SG02LP1-EU-AM3 du modèle nommé."""
         from apps.stock.models import FicheTechnique
         seed(self.company)
         p = Produit.objects.get(company=self.company, sku='OND-H-DEY-10M')
         f = FicheTechnique.objects.get(produit=p)
         self.assertEqual(f.type_fiche, 'onduleur')
-        # DIVERGENCE selon la source → jamais tranchée par le seeder.
-        self.assertIsNone(f.ond_mppt_v_min)
-        self.assertIsNone(f.ond_mppt_v_max)
-        self.assertIsNone(f.ond_n_mppt)
+        self.assertEqual(f.ond_n_mppt, 2)
+        self.assertEqual(f.ond_mppt_v_min, Decimal('150.0'))
+        self.assertEqual(f.ond_mppt_v_max, Decimal('425.0'))
+        self.assertEqual(f.ond_v_max_abs, Decimal('600.0'))
+        self.assertEqual(f.ond_i_max_mppt_a, Decimal('26.0'))
+        self.assertEqual(f.ond_rendement_euro_pct, Decimal('97.0'))
         self.assertIn('Modèle supposé : Deye SUN-10K-SG02LP1-EU-AM3', p.description)
 
-    def test_pvg4_huawei_mono_10_12kw_have_no_fiche_technique(self):
-        """OND-R-HUA-10M/12M : artefacts catalogue, aucun modèle Huawei mono
-        réseau réel à ces puissances — donc AUCUNE fiche technique créée."""
+    def test_pvond_huawei_mono_10_12kw_sont_archives_jamais_supprimes(self):
+        """OND-R-HUA-10M/12M : ARTEFACTS (aucun Huawei mono réseau réel à ces
+        puissances). Ordre fondateur 2026-08-18 : plus grisés mais ARCHIVÉS —
+        donc hors catalogue de composition, et JAMAIS supprimés."""
         from apps.stock.models import FicheTechnique
         seed(self.company)
         for sku in ('OND-R-HUA-10M', 'OND-R-HUA-12M'):
             p = Produit.objects.get(company=self.company, sku=sku)
+            self.assertTrue(p.is_archived, sku)
             self.assertFalse(FicheTechnique.objects.filter(produit=p).exists(), sku)
             # Pas de mention de modèle supposé non plus (rien à confirmer).
             self.assertNotIn('Modèle supposé', p.description)
@@ -381,9 +408,10 @@ class TestSeedCatalogue(TestCase):
         self.assertEqual(fiche.ond_ac_kw, Decimal('15'))
         self.assertEqual(fiche.ond_phases, 3)
         self.assertEqual(fiche.ond_rendement_euro_pct, Decimal('97.0'))
-        # Courant composé sur 2 trackers à répartition inégale (36+20 A) :
-        # pas une valeur/MPPT propre, même règle que OND-R-HUA-15T.
-        self.assertIsNone(fiche.ond_i_max_mppt_a)
+        # PVOND (2026-08-18) — courant asymétrique 36/20 A sur 2 trackers :
+        # valeur retenue = le tracker LE PLUS FAIBLE (20 A), règle prudente,
+        # même règle que OND-R-HUA-15T.
+        self.assertEqual(fiche.ond_i_max_mppt_a, Decimal('20.0'))
 
     # ── PVG4 — Batterie Dyness haute tension, 16 kWh (décision fondateur
     # 2026-08-18) ───────────────────────────────────────────────────────
@@ -747,19 +775,28 @@ class TestContratOnduleurSeede(TestCase):
     ne doit jamais laisser passer, EN SILENCE, une référence à qui il manque
     une variable du contrat.
 
-    La règle testée ici n'est pas « tout est complet » (ce serait faux, et
-    l'inventer serait pire) : c'est « tout manque est DÉCLARÉ ». Un onduleur
+    La règle testée ici est « tout manque est DÉCLARÉ » : un onduleur
     incomplet doit figurer dans ``ONDULEURS_CONTRAT_INCOMPLET`` avec son motif ;
     un onduleur complet ne doit PAS y figurer. Les deux sens comptent — sans le
     second, la table deviendrait un cimetière de motifs périmés.
+
+    ORDRE FONDATEUR (2026-08-18, « ne laisse rien griser ») : la table est
+    VIDE — plus AUCUNE référence du catalogue n'est grisée. Le mécanisme, lui,
+    reste armé pour les références futures : c'est ce que prouve
+    ``test_le_verrou_refuse_encore_un_incomplet_non_declare`` sur une fixture
+    SYNTHÉTIQUE (jamais une référence du catalogue).
     """
 
     def setUp(self):
         self.company = make_company(slug='test-cat-pvond')
 
     def _onduleurs(self):
+        """Onduleurs ACTIFS du catalogue — un produit archivé (les artefacts
+        Huawei mono 10/12 kW) est hors catalogue de composition, donc hors
+        contrat."""
         from apps.stock.selectors import est_onduleur
-        return [p for p in Produit.objects.filter(company=self.company)
+        return [p for p in Produit.objects.filter(
+                    company=self.company, is_archived=False)
                 if est_onduleur(p)]
 
     def test_tout_onduleur_incomplet_est_declare_avec_son_motif(self):
@@ -791,6 +828,49 @@ class TestContratOnduleurSeede(TestCase):
                     declare,
                     f'{produit.sku} : déclaré incomplet alors que son contrat '
                     'est complet — retirez-le de ONDULEURS_CONTRAT_INCOMPLET.')
+
+    def test_aucune_reference_du_catalogue_n_est_grisee(self):
+        """Ordre fondateur 2026-08-18 : plus rien ne grise. Les neuf manques
+        sont tranchés (valeur + source + date en commentaire du seeder), les
+        deux artefacts Huawei mono 10/12 kW sont ARCHIVÉS."""
+        from apps.stock.management.commands.seed_catalogue import (
+            ONDULEURS_CONTRAT_INCOMPLET,
+        )
+        from apps.stock.selectors import onduleur_specs_manquantes
+
+        self.assertEqual(ONDULEURS_CONTRAT_INCOMPLET, {})
+        seed(self.company)
+        grises = {p.sku: onduleur_specs_manquantes(p)
+                  for p in self._onduleurs() if onduleur_specs_manquantes(p)}
+        self.assertEqual(grises, {}, f'onduleurs encore grisés : {grises}')
+
+    def test_le_verrou_refuse_encore_un_incomplet_non_declare(self):
+        """Le MÉCANISME survit à la table vide : une référence FUTURE à qui il
+        manque une variable est toujours détectée et nommée en français.
+        Fixture SYNTHÉTIQUE — jamais une référence du catalogue."""
+        from apps.stock.management.commands.seed_catalogue import (
+            ONDULEURS_CONTRAT_INCOMPLET,
+        )
+        from apps.stock.models import FicheTechnique
+        from apps.stock.selectors import onduleur_specs_manquantes
+
+        produit = Produit.objects.create(
+            company=self.company, nom='Onduleur hybride SYNTHÉTIQUE 8kW',
+            sku='OND-TEST-SYNTH', prix_achat=Decimal('1'),
+            prix_vente=Decimal('1'), quantite_stock=1,
+            description='Plage batterie : 40-60 V',
+            garantie='Garantie constructeur 10 ans')
+        FicheTechnique.objects.create(
+            company=self.company, produit=produit, type_fiche='onduleur',
+            ond_n_mppt=2, ond_mppt_v_min=Decimal('200.0'),
+            ond_mppt_v_max=Decimal('650.0'), ond_v_max_abs=Decimal('800.0'),
+            ond_ac_kw=Decimal('8'), ond_phases=1,
+            ond_rendement_euro_pct=Decimal('97.0'))
+        produit.refresh_from_db()
+
+        self.assertEqual(onduleur_specs_manquantes(produit),
+                         ['courant maxi par MPPT (A)'])
+        self.assertNotIn(produit.sku, ONDULEURS_CONTRAT_INCOMPLET)
 
     def test_chaque_onduleur_declare_sa_plage_batterie(self):
         """La plage batterie est la variable qui décide de l'appairage : elle

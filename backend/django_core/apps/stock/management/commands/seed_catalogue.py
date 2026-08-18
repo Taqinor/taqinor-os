@@ -190,6 +190,12 @@ PLACEHOLDER_VFD_SKUS = [
     'VFD-PMP-5.5T', 'VFD-PMP-7.5T', 'VFD-PMP-10T',
 ]
 
+# PVOND (2026-08-18) — ARTEFACTS catalogue à archiver, MÊME patron que les
+# coffrets estimés ci-dessus (autorisation fondateur : jamais de suppression).
+# artefact PVG4 : palier inexistant chez Huawei ; le besoin mono 10-12 kW se
+# couvre par Deye SG02LP1 (à référencer sur décision fondateur).
+ARTEFACTS_ONDULEUR_SKUS = ['OND-R-HUA-10M', 'OND-R-HUA-12M']
+
 # ── Pompes OSP série 30 (3", immergées, triphasées 380 V) ────────────────────
 # Courbes de performance constructeur : HMT (m) délivrée à chaque débit (m³/h).
 # PRIX VOLONTAIREMENT VIDES (0) : à renseigner par le fondateur — tant que le
@@ -563,7 +569,9 @@ MODELE_SUPPOSE_PVG4 = {
     'OND-R-HUA-15T': 'Huawei SUN2000-15KTL-M5',          # enfsolar 16424 + huawei EDOC1100253093
     'OND-R-HUA-20T': 'Huawei SUN2000-20KTL-M5',          # globalsunhub
     'OND-R-HUA-25T': 'Huawei SUN2000-25KTL-M5',          # enfsolar
-    'OND-R-HUA-50T': 'Huawei SUN2000-50KTL-M0',          # huawei EDOC1100016052
+    # PVOND (2026-08-18) — édition PRÉSUMÉE M3 (gamme EMEA courante) ; le M0
+    # (édition AU) reste documenté dans FICHES_TECHNIQUES, à confirmer à l'achat.
+    'OND-R-HUA-50T': 'Huawei SUN2000-50KTL-M3',          # huawei EDOC1100016052 (M0) / fiche M3 EMEA
     'OND-R-HUA-100T': 'Huawei SUN2000-100KTL-M2',        # globalsunhub
     'OND-R-HUA-150T': 'Huawei SUN2000-150K-MG0',         # solar.huawei.com mg0/specs
     'OND-H-DEY-5M': 'Deye SUN-5K-SG04LP1-EU(-SM2)',      # liriksolar datasheet
@@ -676,39 +684,20 @@ for _sku_bat, _plage_bat in PLAGE_BATTERIE_ONDULEUR.items():
 # refuse le seed d'un onduleur incomplet qui n'y figurerait pas — autrement dit,
 # ajouter demain une référence sans ses variables ne passe pas en silence.
 #
-# La règle qui produit ces manques est celle de PVG4/PV85, inchangée : on ne
-# SAISIT que ce qu'une fiche donne comme UNE valeur propre. Un « 30 A (2
-# chaînes) / 20 A (1 chaîne) » ou un « 36+20 A » est une valeur ASYMÉTRIQUE par
-# tracker, pas un courant par MPPT : la saisir demanderait de TRANCHER laquelle
-# des deux le champ porte — une décision fondateur, pas une recherche.
-ONDULEURS_CONTRAT_INCOMPLET = {
-    'OND-R-HUA-10M': 'à fournir : toutes les variables — aucun SUN2000 mono '
-                     'réseau réel à 10 kW (artefact catalogue).',
-    'OND-R-HUA-12M': 'à fournir : toutes les variables — aucun SUN2000 mono '
-                     'réseau réel à 12 kW (artefact catalogue).',
-    'OND-R-HUA-15T': 'à fournir : courant maxi par MPPT (la fiche famille '
-                     '12-25KTL-M5 donne « 30 A (2 chaînes) / 20 A (1 chaîne) ») '
-                     'et rendement euro (98,0 % publié par cette même fiche, '
-                     'mais classé « interpolé » par PVG4 — à confirmer).',
-    'OND-R-HUA-50T': 'à fournir : courant maxi par MPPT et rendement euro — '
-                     'une fiche SUN2000-50KTL-M0 (édition AU) donne 22 A et '
-                     '98,5 %, mais le M0 se confond avec le M3 (4 trackers / '
-                     '30 A / 98,0 %) : confirmer l\'édition vendue.',
-    'OND-R-HUA-20T': 'à fournir : courant maxi par MPPT — idem fiche famille '
-                     '12-25KTL-M5 (30 A / 20 A selon le nombre de chaînes).',
-    'OND-R-HUA-25T': 'à fournir : courant maxi par MPPT — idem fiche famille '
-                     '12-25KTL-M5 (30 A / 20 A selon le nombre de chaînes).',
-    'OND-H-DEY-10M': 'à fournir : plage MPPT, nombre de MPPT, tension DC max, '
-                     'courant maxi par MPPT et rendement euro — les sources '
-                     'divergent sur la plage (125-520 / 150-425 / 125-550 V) '
-                     'et sur les trackers (3 vs 2×2) ; rien ne sera saisi tant '
-                     'que la fiche officielle du SG02LP1 ne tranchera pas.',
-    'OND-H-DEY-15T': 'à fournir : courant maxi par MPPT — la fiche SG01HP3 '
-                     'donne « 26+20 A » (trackers asymétriques).',
-    'OND-DEY-15K-LV': 'à fournir : courant maxi par MPPT — la fiche '
-                      'SG05LP3 14-20K donne « 36+20 A » (trackers '
-                      'asymétriques). Prix de vente également à renseigner.',
-}
+# ORDRE FONDATEUR (2026-08-18, « ne laisse rien griser ») : la table est
+# désormais VIDE. Les neuf références jadis grisées ont été TRANCHÉES (chaque
+# valeur porte sa source et sa date dans ``FICHES_TECHNIQUES`` ci-dessous :
+# courants asymétriques ramenés au tracker LE PLUS FAIBLE par règle prudente,
+# édition M3 présumée pour le 50 kW, révision fondateur 2026-08-16 pour le Deye
+# 10 kW mono) et les deux ARTEFACTS Huawei mono 10/12 kW sont ARCHIVÉS
+# (``ARTEFACTS_ONDULEUR_SKUS``) plutôt que grisés — jamais supprimés.
+#
+# Le MÉCANISME, lui, reste ARMÉ pour les références FUTURES : une fixture
+# SYNTHÉTIQUE incomplète le prouve dans ``apps/stock/tests.py``. La règle qui
+# produit un manque est celle de PVG4/PV85, inchangée : on ne SAISIT que ce
+# qu'une source donne, et une valeur qu'il faut TRANCHER est une décision
+# fondateur — écrite ici avec son motif tant qu'elle n'est pas prise.
+ONDULEURS_CONTRAT_INCOMPLET = {}
 
 
 # ── PV9 — Fiches techniques (FicheTechnique, PV5) : SEULES les valeurs
@@ -771,53 +760,52 @@ FICHES_TECHNIQUES = {
         'ond_rendement_euro_pct': Decimal('98.1'),
     },
     'OND-R-HUA-15T': {
-        # 30A(2 strings)/20A(1) : valeur composée (pas un seul courant/MPPT
-        # propre) → ond_i_max_mppt_a NULL (cf. ONDULEURS_CONTRAT_INCOMPLET).
-        # Rendement ≈98.0 % interpolé → NULL. PVOND (2026-08-18) : la fiche
-        # FAMILLE SUN2000-12-25KTL-M5 (solar.huawei.com, Version 01-20190716)
-        # publie bien 98,0 % pour le palier 15 kW — mais c'est une DÉCISION
-        # PVG4 déjà prise (« interpolé, jamais saisi ») et verrouillée par un
-        # test : elle n'est PAS renversée sur une seule passe de recherche.
-        # À trancher par le fondateur ; d'ici là l'onduleur reste grisé.
+        # PVOND (2026-08-18, ordre fondateur « ne laisse rien griser ») —
+        # asymétrique 30/20 A (fiche FAMILLE SUN2000-12-25KTL-M5,
+        # solar.huawei.com, Version 01-20190716) — valeur retenue : 20 A,
+        # RÈGLE PRUDENTE (le moteur de chaînes ne peut alors jamais produire
+        # une config qui surcharge le tracker faible). Rendement euro 98,0 % =
+        # valeur OFFICIELLE de la famille 12-25KTL-M5, publiée par cette même
+        # fiche pour le palier 15 kW (remplace le « interpolé » de PVG4).
         'type_fiche': 'onduleur', 'ond_n_mppt': 2,
         'ond_mppt_v_min': Decimal('200.0'), 'ond_mppt_v_max': Decimal('1000.0'),
-        'ond_v_max_abs': Decimal('1100.0'),
+        'ond_v_max_abs': Decimal('1100.0'), 'ond_i_max_mppt_a': Decimal('20.0'),
         'ond_ac_kw': Decimal('15'), 'ond_phases': 3,
+        'ond_rendement_euro_pct': Decimal('98.0'),
     },
     'OND-R-HUA-20T': {
-        # 30A/20A composé → NULL (cf. ONDULEURS_CONTRAT_INCOMPLET).
-        # PVOND — nombre de MPPT désormais SOURCÉ : la fiche FAMILLE
+        # PVOND — nombre de MPPT SOURCÉ : la fiche FAMILLE
         # SUN2000-12-25KTL-M5 (Version 01-20190716) donne 2 trackers pour TOUS
         # les paliers 12-25 kW. Ce n'est donc pas l'extrapolation 15T/25T que
         # PVG4 refusait : c'est la fiche du produit lui-même.
+        # PVOND (2026-08-18) — asymétrique 30/20 A (même fiche) — valeur
+        # retenue : 20 A, règle prudente.
         'type_fiche': 'onduleur', 'ond_n_mppt': 2,
         'ond_mppt_v_min': Decimal('200.0'), 'ond_mppt_v_max': Decimal('1000.0'),
-        'ond_v_max_abs': Decimal('1100.0'),
+        'ond_v_max_abs': Decimal('1100.0'), 'ond_i_max_mppt_a': Decimal('20.0'),
         'ond_ac_kw': Decimal('20'), 'ond_phases': 3,
         'ond_rendement_euro_pct': Decimal('98.1'),
     },
     'OND-R-HUA-25T': {
         # PVOND — 2 trackers, même fiche famille 12-25KTL-M5 que ci-dessus.
+        # PVOND (2026-08-18) — asymétrique 30/20 A (même fiche) — valeur
+        # retenue : 20 A, règle prudente.
         'type_fiche': 'onduleur', 'ond_n_mppt': 2,
         'ond_mppt_v_min': Decimal('200.0'), 'ond_mppt_v_max': Decimal('1000.0'),
-        'ond_v_max_abs': Decimal('1100.0'),
+        'ond_v_max_abs': Decimal('1100.0'), 'ond_i_max_mppt_a': Decimal('20.0'),
         'ond_ac_kw': Decimal('25'), 'ond_phases': 3,
         'ond_rendement_euro_pct': Decimal('98.2'),
     },
     'OND-R-HUA-50T': {
-        # Imax « non confirmé précisément » par la source → NULL. Rendement
-        # ≈98.5 % (approx., pas un rendement « euro » explicite) → NULL.
-        # PVOND (2026-08-18) : une fiche SUN2000-50KTL-M0 (édition AU) donne
-        # 6 trackers / 22 A / 98,5 % — cohérent avec les 6 trackers déjà seedés
-        # ici. Mais ⚠ le M0 se confond avec le SUN2000-50KTL-M3 (édition EU :
-        # 4 trackers / 30 A / 98,0 %), un appareil DIFFÉRENT au nom voisin ;
-        # et ces deux NULL sont des décisions PVG4 verrouillées par un test.
-        # Rien n'est saisi tant que le fondateur n'a pas confirmé l'édition
-        # réellement vendue ; d'ici là l'onduleur reste grisé.
-        'type_fiche': 'onduleur', 'ond_n_mppt': 6,
+        # PVOND (2026-08-18, ordre fondateur) — édition présumée M3 (gamme
+        # EMEA courante) : 4 MPPT / 30 A / 98,0 % (fiche SUN2000-50KTL-M3,
+        # solar.huawei.com). M0 (22 A / 98,5 %, 6 trackers, édition AU,
+        # huawei EDOC1100016052) documenté — à confirmer à l'achat.
+        'type_fiche': 'onduleur', 'ond_n_mppt': 4,
         'ond_mppt_v_min': Decimal('200.0'), 'ond_mppt_v_max': Decimal('1000.0'),
-        'ond_v_max_abs': Decimal('1100.0'),
+        'ond_v_max_abs': Decimal('1100.0'), 'ond_i_max_mppt_a': Decimal('30.0'),
         'ond_ac_kw': Decimal('50'), 'ond_phases': 3,
+        'ond_rendement_euro_pct': Decimal('98.0'),
     },
     'OND-R-HUA-100T': {
         'type_fiche': 'onduleur', 'ond_n_mppt': 10,
@@ -835,7 +823,8 @@ FICHES_TECHNIQUES = {
     },
     # OND-R-HUA-10M / OND-R-HUA-12M : PAS de fiche — aucun Huawei mono
     # réseau réel à cette puissance (artefact catalogue, cf. commentaire
-    # MODELE_SUPPOSE_PVG4 ci-dessus).
+    # MODELE_SUPPOSE_PVG4 ci-dessus). PVOND (2026-08-18) : ces deux SKU ne
+    # sont plus GRISÉS mais ARCHIVÉS (``ARTEFACTS_ONDULEUR_SKUS``).
     # ── PVG4 — Onduleurs hybrides Deye ──
     'OND-H-DEY-5M': {
         # PVOND — courant d'entrée désormais SOURCÉ : la fiche SG04LP1 donne
@@ -850,11 +839,22 @@ FICHES_TECHNIQUES = {
         'ond_rendement_euro_pct': Decimal('96.5'),
     },
     'OND-H-DEY-10M': {
-        # DIVERGENCE plage MPPT selon la source (125-520 / 150-425 / 125-550
-        # selon nastechsolar vs autres) → ond_mppt_v_min/max NULL (fondateur
-        # à trancher). Nombre de MPPT lui-même divergent (3 vs 2×2) → NULL.
-        'type_fiche': 'onduleur',
+        # PVOND (2026-08-18, ordre fondateur « ne laisse rien griser ») — la
+        # DIVERGENCE est conservée EN COMMENTAIRE, la valeur est tranchée sur
+        # la datasheet du modèle nommé plus haut (Deye SUN-10K-SG02LP1-EU-AM3,
+        # liriksolar — déjà la source de la plage batterie 40-60 V) :
+        # 2 trackers (autres sources : 3 vs 2×2), plage MPPT 150-425 V (autres
+        # sources : 125-520 / 125-550 V), 600 V DC max.
+        # Courant 26 A/MPPT = valeur DÉJÀ VALIDÉE en production par le
+        # fondateur le 2026-08-16 pour les paliers 10K/12K (révision actuelle)
+        # — divergence documentée : la fiche de sept-2024 donnait 20 A.
+        # Rendement euro 97,0 % (même famille basse tension 48 V que les
+        # SG04LP1/SG05LP3 seedés ici, dont le rendement euro publié est 97,0 %).
+        'type_fiche': 'onduleur', 'ond_n_mppt': 2,
+        'ond_mppt_v_min': Decimal('150.0'), 'ond_mppt_v_max': Decimal('425.0'),
+        'ond_v_max_abs': Decimal('600.0'), 'ond_i_max_mppt_a': Decimal('26.0'),
         'ond_ac_kw': Decimal('10'), 'ond_phases': 1,
+        'ond_rendement_euro_pct': Decimal('97.0'),
     },
     # PV85 — Deye SUN-10K-SG05LP3-EU-SM2, modèle CONFIRMÉ FONDATEUR.
     # Sources : datasheet deyeinverter.com 2024-09 + manuel 2025-11.
@@ -893,9 +893,11 @@ FICHES_TECHNIQUES = {
         'type_fiche': 'onduleur', 'ond_n_mppt': 2,
         'ond_mppt_v_min': Decimal('160.0'), 'ond_mppt_v_max': Decimal('650.0'),
         'ond_v_max_abs': Decimal('800.0'),
-        # Courant PV max = « 36+20 A » : valeur COMPOSÉE sur 2 trackers à
-        # répartition inégale (2/2+1 strings), pas un seul courant/MPPT
-        # propre → ond_i_max_mppt_a NULL, même raison que OND-R-HUA-15T.
+        # PVOND (2026-08-18, ordre fondateur) — asymétrique 36/20 A (fiche
+        # SG05LP3 14-20K, deyeinverter.com 2024-06-01, 2/2+1 chaînes) —
+        # valeur retenue : 20 A, règle prudente (jamais une config qui
+        # surcharge le tracker faible), même règle que OND-R-HUA-15T.
+        'ond_i_max_mppt_a': Decimal('20.0'),
         'ond_ac_kw': Decimal('15'), 'ond_phases': 3,
         'ond_rendement_euro_pct': Decimal('97.0'),
     },
@@ -905,11 +907,11 @@ FICHES_TECHNIQUES = {
         # est portée par la mention « modèle supposé » sur la description.
         # PVOND — nb de MPPT SOURCÉ (2 trackers) par la fiche officielle
         # deyeinverter.com datasheet_sun-(5-25)k-sg01hp3-eu_230724_en.pdf.
-        # Le courant reste NULL : cette même fiche donne « 26+20 A », deux
-        # trackers ASYMÉTRIQUES (cf. ONDULEURS_CONTRAT_INCOMPLET).
+        # PVOND (2026-08-18, ordre fondateur) — asymétrique 26/20 A (cette
+        # même fiche) — valeur retenue : 20 A, règle prudente.
         'type_fiche': 'onduleur', 'ond_n_mppt': 2,
         'ond_mppt_v_min': Decimal('150.0'), 'ond_mppt_v_max': Decimal('850.0'),
-        'ond_v_max_abs': Decimal('1000.0'),
+        'ond_v_max_abs': Decimal('1000.0'), 'ond_i_max_mppt_a': Decimal('20.0'),
         'ond_ac_kw': Decimal('15'), 'ond_phases': 3,
         # 97.6/97.0 — même ordre max/euro que le 5M → euro = 97.0.
         'ond_rendement_euro_pct': Decimal('97.0'),
@@ -1187,8 +1189,12 @@ class Command(BaseCommand):
         # Exception ponctuelle à la règle "additif uniquement", explicitement
         # autorisée par le fondateur (2026-06-12) : ces articles n'ont jamais
         # porté de vrais prix. Archivés (jamais supprimés), prix intacts.
+        # PVOND (2026-08-18) — MÊME patron pour les deux ARTEFACTS onduleur
+        # Huawei mono 10/12 kW (``ARTEFACTS_ONDULEUR_SKUS``) : archivés, donc
+        # hors catalogue de composition, jamais supprimés.
         archived_count = Produit.objects.filter(
-            company=company, sku__in=PLACEHOLDER_VFD_SKUS,
+            company=company,
+            sku__in=PLACEHOLDER_VFD_SKUS + ARTEFACTS_ONDULEUR_SKUS,
             is_archived=False).update(is_archived=True)
 
         # ── Fiches commerciales : mise à jour ADDITIVE des seuls champs
