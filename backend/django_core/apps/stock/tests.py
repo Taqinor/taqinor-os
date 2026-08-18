@@ -739,3 +739,96 @@ class TestOrthographeDyness(TestCase):
         self.assertEqual(
             Produit.objects.get(company=self.company, sku='BAT-DEY-5').nom,
             'Batterie Dyness 5 kWh')
+
+
+# ── PVOND — VERROU DE COMPLÉTUDE sur le catalogue onduleur ──────────────────
+class TestContratOnduleurSeede(TestCase):
+    """Ajouter un onduleur demain doit être de la pure SAISIE — donc le seeder
+    ne doit jamais laisser passer, EN SILENCE, une référence à qui il manque
+    une variable du contrat.
+
+    La règle testée ici n'est pas « tout est complet » (ce serait faux, et
+    l'inventer serait pire) : c'est « tout manque est DÉCLARÉ ». Un onduleur
+    incomplet doit figurer dans ``ONDULEURS_CONTRAT_INCOMPLET`` avec son motif ;
+    un onduleur complet ne doit PAS y figurer. Les deux sens comptent — sans le
+    second, la table deviendrait un cimetière de motifs périmés.
+    """
+
+    def setUp(self):
+        self.company = make_company(slug='test-cat-pvond')
+
+    def _onduleurs(self):
+        from apps.stock.selectors import est_onduleur
+        return [p for p in Produit.objects.filter(company=self.company)
+                if est_onduleur(p)]
+
+    def test_tout_onduleur_incomplet_est_declare_avec_son_motif(self):
+        from apps.stock.management.commands.seed_catalogue import (
+            ONDULEURS_CONTRAT_INCOMPLET,
+        )
+        from apps.stock.selectors import onduleur_specs_manquantes
+
+        seed(self.company)
+        onduleurs = self._onduleurs()
+        self.assertTrue(onduleurs, 'aucun onduleur seedé — test sans objet')
+
+        for produit in onduleurs:
+            manquantes = onduleur_specs_manquantes(produit)
+            declare = produit.sku in ONDULEURS_CONTRAT_INCOMPLET
+            if manquantes:
+                self.assertTrue(
+                    declare,
+                    f'{produit.sku} : contrat onduleur incomplet '
+                    f'({", ".join(manquantes)}) et NON déclaré dans '
+                    'ONDULEURS_CONTRAT_INCOMPLET — un onduleur qu\'on ne sait '
+                    'pas dimensionner ne doit jamais entrer au catalogue sans '
+                    'que le motif soit écrit.')
+                self.assertTrue(
+                    ONDULEURS_CONTRAT_INCOMPLET[produit.sku].strip(),
+                    f'{produit.sku} : motif vide')
+            else:
+                self.assertFalse(
+                    declare,
+                    f'{produit.sku} : déclaré incomplet alors que son contrat '
+                    'est complet — retirez-le de ONDULEURS_CONTRAT_INCOMPLET.')
+
+    def test_chaque_onduleur_declare_sa_plage_batterie(self):
+        """La plage batterie est la variable qui décide de l'appairage : elle
+        est déclarée pour TOUS les onduleurs, y compris « aucune » pour un
+        onduleur réseau (une valeur pleine, pas un trou)."""
+        from apps.stock.selectors import plage_batterie_onduleur
+
+        seed(self.company)
+        for produit in self._onduleurs():
+            self.assertIsNotNone(
+                plage_batterie_onduleur(produit),
+                f'{produit.sku} : aucune ligne « Plage batterie : … » sur sa '
+                'fiche produit')
+
+    def test_la_plage_batterie_des_deye_basse_tension_est_48V(self):
+        seed(self.company)
+        from apps.stock.selectors import plage_batterie_onduleur
+        for sku in ('OND-H-DEY-10T', 'OND-DEY-15K-LV'):
+            produit = Produit.objects.get(company=self.company, sku=sku)
+            self.assertEqual(plage_batterie_onduleur(produit), (40.0, 60.0))
+
+    def test_la_plage_batterie_des_deye_haute_tension_est_160_700V(self):
+        seed(self.company)
+        from apps.stock.selectors import plage_batterie_onduleur
+        for sku in ('OND-H-DEY-15T', 'OND-H-DEY-20T'):
+            produit = Produit.objects.get(company=self.company, sku=sku)
+            self.assertEqual(plage_batterie_onduleur(produit), (160.0, 700.0))
+
+    def test_les_huawei_reseau_declarent_aucune_batterie(self):
+        seed(self.company)
+        from apps.stock.selectors import plage_batterie_onduleur
+        for sku in ('OND-R-HUA-10T', 'OND-R-HUA-100T'):
+            produit = Produit.objects.get(company=self.company, sku=sku)
+            self.assertEqual(plage_batterie_onduleur(produit), (0.0, 0.0))
+
+    def test_le_reseed_ne_duplique_pas_la_ligne_de_plage_batterie(self):
+        seed(self.company)
+        seed(self.company)
+        produit = Produit.objects.get(company=self.company, sku='OND-H-DEY-10T')
+        self.assertEqual(
+            (produit.description or '').count('Plage batterie :'), 1)

@@ -489,6 +489,64 @@ export const isReseauInverter = (d) => {
 }
 export const isPanel = (d) => _norm(d).includes('panneau')
 
+// ── PVOND — CONTRAT ONDULEUR & garde batterie PILOTÉ PAR LA DONNÉE ──────────
+//
+// MIROIR EXACT du backend (`apps/ventes/services.py` :
+// `_batterie_compatible` / `_pick_batterie`, et le contrat lui-même dans
+// `apps/stock/selectors.py`). Les deux côtés lisent la MÊME donnée, servie par
+// l'API dans `produit.specs_solaire` :
+//
+//   { famille, plage_batterie_v: [min, max] | null, v_nominal, manquantes[] }
+//
+// Ce qui change par rapport au garde d'hier : une batterie ne s'accroche plus
+// à un onduleur parce que son NOM ne dit pas « haute tension », mais parce que
+// sa TENSION NOMINALE tombe dans la PLAGE BATTERIE que l'onduleur déclare.
+// Le repli mot-clé reste EN PLACE et n'est pas un vestige : dès qu'une des deux
+// données manque (catalogue ancien, produit saisi à la main, fixture de test),
+// on retombe MOT POUR MOT sur le comportement PVG4 — jamais de régression
+// silencieuse.
+
+// Repli PVG4 : une batterie dont le nom dit « haute tension » n'est jamais
+// auto-choisie pour un kit résidentiel basse tension.
+const _batterieBasseTensionParMotCle = (p) =>
+  !_norm(p?.nom).includes('haute tension')
+
+// Fenêtre de tension batterie déclarée par un onduleur :
+//   [min, max] → fenêtre réelle ; [0, 0] → « aucune batterie » (réseau) ;
+//   null      → non déclarée (l'appelant retombe sur le mot-clé).
+export function plageBatterieOnduleur(produit) {
+  const plage = produit?.specs_solaire?.plage_batterie_v
+  if (!Array.isArray(plage) || plage.length !== 2) return null
+  const bas = Number(plage[0]); const haut = Number(plage[1])
+  if (!Number.isFinite(bas) || !Number.isFinite(haut)) return null
+  return bas <= haut ? [bas, haut] : [haut, bas]
+}
+
+// La batterie entre-t-elle dans la plage de l'onduleur ? (miroir exact de
+// `_batterie_compatible` côté backend, replis compris).
+export function batterieCompatible(batterie, plage) {
+  if (!Array.isArray(plage)) return _batterieBasseTensionParMotCle(batterie)
+  const [vMin, vMax] = plage
+  if (!(vMax > 0)) return false        // onduleur réseau : aucune batterie
+  const tension = Number(batterie?.specs_solaire?.v_nominal)
+  if (!Number.isFinite(tension) || tension <= 0) {
+    return _batterieBasseTensionParMotCle(batterie)
+  }
+  return tension >= vMin && tension <= vMax
+}
+
+// VERROU DE COMPLÉTUDE — les variables du contrat qui manquent à cet onduleur
+// (liste vide = complet). Même patron que « prix à renseigner » : un onduleur
+// incomplet est EXCLU de l'auto-composition et affiché grisé avec son motif,
+// mais reste sélectionnable à la main.
+export function onduleurSpecsManquantes(produit) {
+  const manquantes = produit?.specs_solaire?.manquantes
+  return Array.isArray(manquantes) ? manquantes : []
+}
+
+export const onduleurComplet = (produit) =>
+  onduleurSpecsManquantes(produit).length === 0
+
 // Défauts TVA (réforme : 10 % panneaux PV, 20 % le reste).
 export const TVA_PANNEAUX_DEFAUT = 10
 export const TVA_STANDARD_DEFAUT = 20
@@ -791,10 +849,29 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
     : Math.max(1, Math.round(kwp * 1000 / panelW))
   const threshold = kwp * 0.8
 
+  // PVOND — VERROU DE COMPLÉTUDE : un onduleur auquel il manque une variable
+  // du CONTRAT (puissance AC, phases, MPPT, tensions, courant, rendement,
+  // plage batterie, garantie) est EXCLU de l'auto-composition et remonté à
+  // l'écran avec son motif — exactement le patron de « prix à renseigner » :
+  // on ne chiffre pas un appareil qu'on ne sait pas dimensionner, et on DIT
+  // pourquoi. Il reste sélectionnable à la main.
+  const onduleursIncomplets = []
+  const vuIncomplet = new Set()
+  const retenirIncomplet = (p) => {
+    const manquantes = onduleurSpecsManquantes(p)
+    if (!manquantes.length) return false
+    if (!vuIncomplet.has(p.id)) {
+      vuIncomplet.add(p.id)
+      onduleursIncomplets.push({ id: p.id, nom: p.nom, manquantes })
+    }
+    return true
+  }
+
   // Sélection onduleur : plus petit modèle >= 80 % de la puissance, sinon le
   // plus gros du catalogue ; à puissance égale, Triphasé si >= 10 kW sinon Mono.
   const pickInverter = (pool) => {
     const cands = (pool ?? [])
+      .filter(p => !retenirIncomplet(p))
       .map(p => ({ p, kw: parseKw(p.nom), tri: parsePhaseIsTri(p.nom) }))
       .filter(x => x.kw != null && x.kw > 0)
       .sort((a, b) => a.kw - b.kw || a.p.id - b.p.id)
@@ -833,14 +910,18 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
   const target = Math.max(5, Math.round(kwp / 5) * 5)
   let nb10 = Math.floor(target / 10)
   let nb5 = (target % 10) >= 5 ? 1 : 0
-  // PVG4 — GARDE HAUTE TENSION (BAT-DYN-HV-16, miroir EXACT de
-  // _is_battery_basse_tension côté backend apps/ventes/services.py) : la
-  // batterie Dyness haute tension (16 kWh) est réservée aux dossiers haute
-  // tension et ne doit JAMAIS être auto-choisie ici (kit résidentiel basse
-  // tension) — exclusion par mot-clé AVANT l'appariement par capacité 5/10 kWh
-  // (insensible casse/accents via _norm). Elle reste sélectionnable à la main.
+  // PVOND — GARDE BATTERIE PILOTÉ PAR LA DONNÉE (remplace le garde par mot-clé
+  // PVG4 ; miroir EXACT de `_batterie_compatible` côté backend
+  // apps/ventes/services.py). Une batterie n'entre au vivier que si sa TENSION
+  // NOMINALE tombe dans la PLAGE BATTERIE déclarée par l'onduleur HYBRIDE
+  // retenu ci-dessus — c'est la vraie règle électrique, pas un nom de produit.
+  // Repli intégral sur le mot-clé « haute tension » dès qu'une des deux données
+  // manque : un catalogue non renseigné se comporte exactement comme hier.
+  // L'exclusion se fait AVANT l'appariement par capacité 5/10 kWh ; une
+  // batterie écartée reste sélectionnable à la main.
+  const plageBatterie = plageBatterieOnduleur(hybride?.p)
   const bats = (byType.batterie ?? [])
-    .filter(p => !_norm(p.nom).includes('haute tension'))
+    .filter(p => batterieCompatible(p, plageBatterie))
     .map(p => ({ p, cap: parseKwh(p.nom) }))
   const dyness = bats.filter(x => {
     const n = _norm(x.p.nom)
@@ -918,6 +999,10 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
   lignes.actualPanelW = panel?.w ?? panelW
   lignes.nbPanneaux = nbPanneaux
   lignes.kwcReel = Math.round(nbPanneaux * (panel?.w ?? panelW) / 10) / 100
+  // PVOND — les onduleurs ÉCARTÉS faute de contrat complet, avec leur motif.
+  // Métadonnée portée par le tableau (les consommateurs qui itèrent les lignes
+  // ne la voient pas), lue par le générateur pour afficher le bandeau.
+  lignes.onduleursIncomplets = onduleursIncomplets
   return lignes
 }
 

@@ -52,9 +52,35 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
 PRODUIT_CREATE_PERMISSION = HasPermissionAndRole(
     'stock_creer', 'Directeur', 'Commercial responsable')
 
+# PVSYNC — les SEULS champs produit dont un changement peut rendre FAUX un
+# devis déjà rédigé, donc les seuls qui émettent ``core.events.produit_modifie``
+# (règle fondateur 2026-08-18 : « modifier une référence propage aux devis ») :
+#
+#   * ``nom``        — c'est la DÉSIGNATION recopiée ligne à ligne dans le
+#     devis ; renommer la référence laisse sinon les devis parler d'un produit
+#     qui n'existe plus sous ce nom ;
+#   * ``prix_vente`` — c'est le prix catalogue auquel une ligne NON NÉGOCIÉE a
+#     été posée.
+#
+# Volontairement ABSENTS : ``description`` / ``marque`` / ``garantie`` /
+# ``garantie_mois`` / la fiche technique. Ce ne sont pas des oublis : le moteur
+# de proposition les relit sur le PRODUIT au moment du rendu (fiches produit du
+# PDF), donc ils se propagent DÉJÀ sans qu'aucune ligne n'ait à être réécrite —
+# les émettre ne ferait que réveiller une tâche Celery pour ne rien changer.
+CHAMPS_PRODUIT_SUIVIS_DEVIS = ('nom', 'prix_vente')
+
 
 from .fournisseur_scm import ScmProduitTcoMixin  # noqa: E402
 from .negoce import AtpProduitMixin  # noqa: E402
+
+
+def _texte_champ(valeur):
+    """PVSYNC — valeur de champ rendue en CHAÎNE pour le payload d'événement.
+
+    Un ``Decimal`` traverserait mal une file Celery (JSON) et un ``None`` doit
+    rester distinguable d'une chaîne vide côté abonné.
+    """
+    return '' if valeur is None else str(valeur)
 
 
 class _MarketplaceFormatContentNegotiation(DefaultContentNegotiation):
@@ -83,7 +109,12 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
     # ligne : N+1. On précharge le fournisseur avec les mêmes annotations que
     # FournisseurViewSet + ses contacts → nombre de requêtes fixe quel que soit
     # le nombre de produits.
-    queryset = Produit.objects.select_related('categorie').prefetch_related(
+    # PVOND — `fiche_technique` (OneToOne) est préchargée : le bloc
+    # `specs_solaire` du serializer la lit sur CHAQUE ligne (contrat onduleur +
+    # appariement batterie). Sans ce select_related, la liste catalogue ferait
+    # une requête par produit.
+    queryset = Produit.objects.select_related(
+        'categorie', 'fiche_technique').prefetch_related(
         Prefetch(
             'fournisseur',
             queryset=Fournisseur.objects.annotate(
@@ -175,6 +206,54 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         if self.action in ('force_delete', 'unarchive'):
             return qs  # archived products must be visible for these actions
         return qs.filter(is_archived=False)
+
+    def perform_update(self, serializer):
+        """PVSYNC — écrit le produit, PUIS annonce ce qui a changé sur le bus.
+
+        L'événement ``core.events.produit_modifie`` est émis ICI, au point de
+        mise à jour REST, et JAMAIS depuis un ``post_save`` de modèle : un
+        signal de modèle partirait aussi sur les écritures internes (mouvement
+        de stock qui rafraîchit ``quantite_stock``, recatégorisation du seeder,
+        migration de données) et ferait resynchroniser des devis pour rien.
+
+        L'instantané AVANT est pris sur l'instance encore non écrite ; le
+        payload transporte l'avant ET l'après, parce qu'une fois la référence
+        réécrite, plus personne ne peut distinguer une ligne de devis restée AU
+        PRIX CATALOGUE d'une ligne dont le prix a été négocié.
+
+        Best-effort : l'émission ne peut pas faire échouer l'enregistrement du
+        produit (un abonné en panne ne doit pas bloquer le magasinier).
+
+        PÉRIMÈTRE ASSUMÉ : l'édition EN MASSE (action ``bulk``) n'émet pas —
+        elle passe par ``services.apply_product_bulk``, pas par ce point. C'est
+        un manque CONNU, pas un oubli : le brancher demande de décider ce qu'on
+        fait de N × M devis en une requête (file, lot, plafond), une question
+        qui se tranche à part.
+        """
+        avant = {champ: getattr(serializer.instance, champ, None)
+                 for champ in CHAMPS_PRODUIT_SUIVIS_DEVIS}
+        # L'écriture PASSE PAR ``super()`` : c'est lui qui force la société côté
+        # serveur (``TenantMixin.perform_update``). Sauvegarder soi-même ici
+        # défairait cette garde d'isolation.
+        super().perform_update(serializer)
+        produit = serializer.instance
+        champs = {}
+        for champ in CHAMPS_PRODUIT_SUIVIS_DEVIS:
+            apres = getattr(produit, champ, None)
+            if avant[champ] != apres:
+                champs[champ] = [_texte_champ(avant[champ]),
+                                 _texte_champ(apres)]
+        if not champs:
+            return  # rien de significatif n'a bougé : aucun événement
+        try:
+            from core.events import produit_modifie
+            produit_modifie.send(
+                sender=Produit, produit=produit,
+                company=getattr(self.request.user, 'company', None),
+                user=getattr(self.request, 'user', None),
+                champs=champs)
+        except Exception:  # noqa: BLE001 — jamais bloquant pour l'écriture
+            pass
 
     def destroy(self, request, *args, **kwargs):
         produit = self.get_object()

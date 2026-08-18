@@ -432,6 +432,85 @@ def _is_battery_basse_tension(name: str) -> bool:
     return "batterie" in n and "haute tension" not in n
 
 
+# ── PVOND — LE GARDE BATTERIE EST DÉSORMAIS PILOTÉ PAR LA DONNÉE ────────────
+#
+# Le prédicat par mot-clé ci-dessus répondait à la seule question « le nom
+# dit-il haute tension ? ». C'est une règle qui ne connaît qu'UN cas : elle
+# laisserait passer une batterie 96 V mal nommée sur un onduleur 48 V, et elle
+# refuserait une batterie HV sur un onduleur HV — qui est pourtant son
+# appairage LÉGITIME. La vraie règle électrique est celle-ci, et elle ne
+# demande que des chiffres déjà présents au catalogue :
+#
+#   une batterie s'accroche à un onduleur si sa TENSION NOMINALE tombe dans la
+#   PLAGE DE TENSION BATTERIE que l'onduleur déclare.
+#
+# Les deux variables vivent côté Stock et se lisent par ses sélecteurs (jamais
+# un import de ses models) : ``plage_batterie_onduleur`` (contrat PVOND) et
+# ``specs_for_produit(batterie)['v_nominal']`` (FicheTechnique PV5).
+#
+# REPLI EXPLICITE, jamais silencieux : dès qu'une des deux données manque —
+# onduleur sans plage déclarée, batterie sans fiche, ou aucun onduleur dans la
+# composition — on retombe MOT POUR MOT sur ``_is_battery_basse_tension``.
+# C'est ce qui garantit qu'aucun catalogue existant ne régresse le jour où ce
+# code arrive : sans donnée, le comportement est byte-identique à hier.
+
+def _plage_batterie_de_l_onduleur(onduleur):
+    """``(v_min, v_max)`` déclarée par l'onduleur, ``(0, 0)`` s'il n'en prend
+    aucune, ``None`` si la donnée manque. Lecture cross-app par sélecteur."""
+    if onduleur is None:
+        return None
+    from apps.stock.selectors import plage_batterie_onduleur
+    return plage_batterie_onduleur(onduleur)
+
+
+def _tension_nominale_batterie(batterie):
+    """Tension nominale (V) d'une batterie d'après sa fiche, ou ``None``."""
+    if batterie is None:
+        return None
+    from apps.stock.selectors import specs_for_produit
+    valeur = (specs_for_produit(batterie) or {}).get('v_nominal')
+    try:
+        return float(valeur) if valeur is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _batterie_compatible(batterie, plage):
+    """La batterie entre-t-elle dans la plage batterie de l'onduleur ?
+
+    ``plage`` vient de ``_plage_batterie_de_l_onduleur`` :
+
+    * ``(0, 0)`` — l'onduleur DÉCLARE ne prendre aucune batterie (réseau) :
+      aucune ne convient, et ce n'est pas un repli, c'est un fait ;
+    * ``None`` ou batterie sans fiche — donnée absente : REPLI mot-clé ;
+    * sinon — verdict par la tension nominale, bornes incluses.
+    """
+    nom = getattr(batterie, 'nom', '') or ''
+    if plage is None:
+        return _is_battery_basse_tension(nom)
+    v_min, v_max = plage
+    if v_max <= 0:
+        return False
+    tension = _tension_nominale_batterie(batterie)
+    if tension is None:
+        return _is_battery_basse_tension(nom)
+    return v_min <= tension <= v_max
+
+
+def _pick_batterie(company, *, onduleur=None):
+    """La batterie du catalogue COMPATIBLE avec l'onduleur de la composition.
+
+    Même sélection que ``_pick_product`` (produits tarifés de la société et
+    globaux, la moins chère l'emporte) mais avec le garde data-driven ci-dessus
+    au lieu du prédicat par mot-clé. ``onduleur=None`` (composition qui n'en a
+    pas encore) ⇒ repli mot-clé, donc comportement historique intact.
+    """
+    plage = _plage_batterie_de_l_onduleur(onduleur)
+    return _pick_product(
+        company, _is_battery,
+        produit_predicate=lambda p: _batterie_compatible(p, plage))
+
+
 def _is_hybrid_inverter(name: str) -> bool:
     n = (name or "").lower()
     return "onduleur" in n and "hybride" in n
@@ -471,19 +550,28 @@ def _has_price(produit) -> bool:
     return bool(produit.prix_vente and Decimal(produit.prix_vente) > 0)
 
 
-def _pick_product(company, predicate, *, watt=None):
+def _pick_product(company, predicate, *, watt=None, produit_predicate=None):
     """Smallest-suitable quotable catalogue product matching ``predicate``.
 
     Scans the company's (and global) products, keeps only priced ones, and —
     for panels with a target wattage — prefers an exact watt match. Returns
     None when nothing priced matches (caller then skips that line).
+
+    ``produit_predicate`` (PVOND) filtre sur le PRODUIT entier plutôt que sur
+    son seul nom : le garde batterie data-driven a besoin de la fiche technique
+    (tension nominale), pas d'un mot-clé. Il s'AJOUTE à ``predicate`` ; absent,
+    la sélection est byte-identique à l'historique.
     """
     from apps.stock.models import Produit
     from django.db.models import Q
 
     qs = Produit.objects.filter(
         Q(company=company) | Q(company__isnull=True), is_archived=False)
-    candidates = [p for p in qs if predicate(p.nom) and _has_price(p)]
+    if produit_predicate is not None:
+        qs = qs.select_related('fiche_technique')
+    candidates = [p for p in qs
+                  if predicate(p.nom) and _has_price(p)
+                  and (produit_predicate is None or produit_predicate(p))]
     if not candidates:
         return None
     if watt:
@@ -670,9 +758,12 @@ def validate_composition_for_layout(layout, company):
 
     if wants_battery:
         inv = _pick_product(company, _is_hybrid_inverter)
-        # PVG4 — garde HAUTE TENSION : jamais BAT-DYN-HV-16 auto-sélectionnée
-        # pour un résidentiel basse tension (cf. _is_battery_basse_tension).
-        bat = _pick_product(company, _is_battery_basse_tension)
+        # PVOND — garde batterie PILOTÉ PAR LA DONNÉE : la batterie retenue doit
+        # entrer dans la plage batterie de l'onduleur hybride effectivement
+        # choisi ci-dessus. Sans plage déclarée (ou sans fiche batterie), repli
+        # sur le mot-clé « haute tension » d'hier (PVG4) — jamais de régression
+        # silencieuse.
+        bat = _pick_batterie(company, onduleur=inv)
         if inv is None:
             errors.append(
                 'Aucun onduleur hybride disponible (ou sans prix) dans le catalogue. '
@@ -1340,9 +1431,12 @@ def catalogue_de_la_societe(company):
 
     from apps.stock.models import Produit
 
+    # PVOND — la fiche technique est préchargée : le garde batterie data-driven
+    # y lit la tension nominale, et la composition ne doit pas payer une
+    # requête par batterie candidate.
     return list(Produit.objects.filter(
         Q(company=company) | Q(company__isnull=True),
-        is_archived=False).order_by('id'))
+        is_archived=False).select_related('fiche_technique').order_by('id'))
 
 
 def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
@@ -1446,15 +1540,18 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     cible_kwh = max(5, _arrondi_js(kwp / 5) * 5)
     nb10 = int(cible_kwh // 10)
     nb5 = 1 if (cible_kwh % 10) >= 5 else 0
-    # PVG4 — GARDE HAUTE TENSION (BAT-DYN-HV-16, décision fondateur
-    # 2026-08-18) : exclue du vivier résidentiel basse tension par mot-clé.
-    # La correspondance cap==5/cap==10 ci-dessous l'exclurait déjà en
-    # pratique (elle fait 16 kWh), mais le mot-clé rend l'exclusion
-    # explicite et robuste à un futur palier basse tension qui vaudrait, par
-    # coïncidence, 16 kWh.
+    # PVOND — GARDE BATTERIE PILOTÉ PAR LA DONNÉE (remplace le mot-clé PVG4) :
+    # une batterie n'entre au vivier que si sa TENSION NOMINALE tombe dans la
+    # PLAGE BATTERIE de l'onduleur retenu ci-dessus. Quand la plage n'est pas
+    # déclarée (ou la batterie n'a pas de fiche), on retombe MOT POUR MOT sur
+    # l'exclusion par mot-clé « haute tension » — aucun catalogue existant ne
+    # régresse. Sur un devis SANS batterie, ``onduleur`` vaut l'onduleur réseau :
+    # la question ne se pose pas (le vivier n'est lu que si ``avec_batterie``).
+    _plage_bat = _plage_batterie_de_l_onduleur(
+        onduleur_hybride if avec_batterie else onduleur)
     batteries = [(_parse_kwh(getattr(p, 'nom', '')), p)
                  for p in par_type.get('batterie') or []
-                 if 'haute tension' not in _sans_accents(getattr(p, 'nom', ''))]
+                 if _batterie_compatible(p, _plage_bat)]
     dyness = [b for b in batteries
               if any(marque in _sans_accents(getattr(b[1], 'nom', ''))
                      for marque in ('dyness', 'deyness'))]
@@ -2089,9 +2186,20 @@ def sync_devis_from_layout(devis, layout, user=None):
 
         # ── Batterie : présente si (et seulement si) le layout en veut une ──
         if veut_batterie and not a_batterie:
-            # PVG4 — même garde HAUTE TENSION que build_devis_from_layout ci-
-            # dessus : jamais BAT-DYN-HV-16 auto-ajoutée en résynchronisation.
-            batterie = _pick_product(verrou.company, _is_battery_basse_tension)
+            # PVOND — garde batterie data-driven : c'est l'onduleur HYBRIDE
+            # RÉELLEMENT posé sur le devis qui décide de la fenêtre de tension
+            # (et non celui que la composition aurait choisi — on ne remplace
+            # jamais l'onduleur en place). À défaut d'hybride sur le devis, on
+            # se rabat sur celui du catalogue, puis sur le mot-clé (PVG4).
+            _hybride_du_devis = next(
+                (li.produit for li in lignes
+                 if _classe_ligne(li, _is_hybrid_inverter)
+                 and getattr(li, 'produit', None) is not None), None)
+            if _hybride_du_devis is None:
+                _hybride_du_devis = _pick_product(
+                    verrou.company, _is_hybrid_inverter)
+            batterie = _pick_batterie(
+                verrou.company, onduleur=_hybride_du_devis)
             if batterie is None:
                 avertissements.append(
                     'Aucune batterie tarifée au catalogue : la ligne batterie '
@@ -2276,6 +2384,230 @@ def sync_devis_from_layout(devis, layout, user=None):
     # transaction. L'empreinte d'entrée (PV41) évite toute réécriture inutile.
     concevoir_electrique_du_devis(verrou, origine='resynchronisation')
     return resultat
+
+
+# ── PVSYNC — le catalogue bouge, les devis VIVANTS suivent ───────────────────
+#
+# Jusqu'ici, corriger un prix ou renommer une référence dans le Stock laissait
+# les devis déjà rédigés parler de l'ancien monde : le commercial rouvrait un
+# brouillon de la semaine dernière et y lisait un prix que la société ne
+# pratique plus. La resynchronisation de calepinage (PV18) savait déjà guérir
+# un devis, mais seulement quand quelqu'un rouvrait la conception 3D — donc
+# jamais pour un devis qu'on ne rouvre pas.
+#
+# Ce bloc rend la propagation ÉVÉNEMENTIELLE : ``stock`` annonce sur le bus M6
+# qu'une référence a changé (``core.events.produit_modifie``), ``ventes`` s'y
+# abonne dans son ``apps.py`` ``ready()`` et délègue à une tâche Celery. Les
+# BORNES sont le sujet, et elles sont toutes dures :
+#
+#   1. **Seuls les statuts BROUILLON et ENVOYÉ bougent.** Un devis accepté,
+#      refusé ou expiré est un document CONTRACTUEL : le client a signé (ou vu)
+#      des montants, et aucune correction de catalogue n'a le droit de les
+#      réécrire. Le statut est LU, JAMAIS écrit (règle #4) — les écritures se
+#      limitent à ``LigneDevis`` et à une note de chatter.
+#   2. **Une ligne NÉGOCIÉE n'est jamais recalée.** Le prix ne suit le
+#      catalogue que si la ligne portait EXACTEMENT l'ANCIEN prix catalogue et
+#      aucune remise de ligne ; la désignation ne suit que si elle valait
+#      exactement l'ANCIEN nom. C'est pour cela que l'événement transporte
+#      l'AVANT : après l'écriture du produit, comparer au prix COURANT ne
+#      prouverait plus rien. Tout écart est CONSERVÉ et DIT.
+#   3. **Aucune cascade possible.** Ce chemin n'écrit jamais un ``Produit`` :
+#      il ne peut donc pas ré-émettre ``produit_modifie`` (garde structurelle,
+#      pas une convention — et un test la vérifie).
+#   4. **Silencieux quand il n'y a rien à dire.** Zéro ligne modifiée ⇒ aucune
+#      note, aucune écriture. Rejouer le même événement est donc un no-op
+#      complet (la tâche est at-least-once : elle DOIT être idempotente).
+#   5. **Une société à la fois.** La requête est cantonnée à la société de
+#      l'événement — le devis d'un autre tenant n'est jamais lu, encore moins
+#      réécrit.
+
+#: Résumé FRANÇAIS d'un champ produit, pour la note de chatter.
+LIBELLES_CHAMPS_PRODUIT = {
+    'nom': 'désignation',
+    'prix_vente': 'prix',
+}
+
+
+def _valeurs_champ(champs, nom_champ):
+    """``(avant, après)`` d'un champ du payload d'événement, ou ``(None, None)``.
+
+    Le payload transporte des CHAÎNES (il traverse une file Celery) ; on ne les
+    convertit pas ici, chaque appelant sait ce qu'il attend.
+    """
+    paire = (champs or {}).get(nom_champ)
+    if not isinstance(paire, (list, tuple)) or len(paire) != 2:
+        return None, None
+    return paire[0], paire[1]
+
+
+def _decimal_ou_none(valeur):
+    """``Decimal`` d'une chaîne du payload — ``None`` si elle n'en est pas un."""
+    if valeur in (None, ''):
+        return None
+    try:
+        return Decimal(str(valeur))
+    except (TypeError, ValueError, ArithmeticError):
+        return None
+
+
+def resynchroniser_devis_pour_produit(*, produit, company, champs, user=None):
+    """PVSYNC — propage un changement de RÉFÉRENCE aux devis qui l'utilisent.
+
+    Ne touche QUE les devis ``brouillon`` et ``envoye`` de ``company`` portant
+    une ligne rattachée à ``produit`` (voir les cinq bornes du bloc ci-dessus).
+
+    Renvoie toujours le même dict :
+    ``{devis_touches, lignes_modifiees, lignes_conservees, avertissements}`` —
+    ``lignes_conservees`` compte les lignes laissées telles quelles parce
+    qu'elles portaient un prix ou une désignation NÉGOCIÉS.
+    """
+    from django.db import transaction
+
+    from apps.ventes.models import Devis, LigneDevis
+
+    from .activity import log_devis_resynchronisation
+
+    ancien_nom, nouveau_nom = _valeurs_champ(champs, 'nom')
+    ancien_prix_txt, nouveau_prix_txt = _valeurs_champ(champs, 'prix_vente')
+    ancien_prix = _decimal_ou_none(ancien_prix_txt)
+    nouveau_prix = _decimal_ou_none(nouveau_prix_txt)
+
+    resultat = {'devis_touches': 0, 'lignes_modifiees': 0,
+                'lignes_conservees': 0, 'avertissements': []}
+    if company is None or produit is None:
+        return resultat
+    if not nouveau_nom and nouveau_prix is None:
+        return resultat
+
+    modifications = [LIBELLES_CHAMPS_PRODUIT[champ]
+                     for champ in ('prix_vente', 'nom')
+                     if champ in (champs or {})]
+
+    with transaction.atomic():
+        lignes = list(
+            LigneDevis.objects
+            .select_related('devis')
+            .filter(produit=produit,
+                    type_ligne=LigneDevis.TypeLigne.PRODUIT,
+                    devis__company=company,
+                    devis__statut__in=(Devis.Statut.BROUILLON,
+                                       Devis.Statut.ENVOYE))
+            .order_by('devis_id', 'id'))
+
+        touches = {}
+        for ligne in lignes:
+            champs_ecrits = []
+            conservee = False
+
+            # ── Désignation : elle ne suit que si elle n'a jamais été retouchée
+            if nouveau_nom and ancien_nom:
+                if (ligne.designation or '') == ancien_nom:
+                    ligne.designation = nouveau_nom
+                    champs_ecrits.append('designation')
+                elif (ligne.designation or '') != nouveau_nom:
+                    conservee = True
+
+            # ── Prix : il ne suit que si la ligne était AU PRIX CATALOGUE
+            # d'avant, sans remise de ligne. Une remise ou un prix retouché
+            # valent prix NÉGOCIÉ : intouchables, et on le dit.
+            if nouveau_prix is not None and ancien_prix is not None:
+                remise = _decimal_ou_none(ligne.remise) or Decimal('0')
+                actuel = _decimal_ou_none(ligne.prix_unitaire)
+                if actuel is not None and actuel == ancien_prix \
+                        and remise == Decimal('0'):
+                    ligne.prix_unitaire = nouveau_prix
+                    champs_ecrits.append('prix_unitaire')
+                elif actuel is None or actuel != nouveau_prix:
+                    conservee = True
+
+            if champs_ecrits:
+                ligne.save(update_fields=champs_ecrits)
+                resultat['lignes_modifiees'] += 1
+                touches.setdefault(ligne.devis_id, ligne.devis)
+            if conservee:
+                resultat['lignes_conservees'] += 1
+
+        for devis in touches.values():
+            log_devis_resynchronisation(
+                devis, produit=produit, modifications=modifications, user=user)
+        resultat['devis_touches'] = len(touches)
+
+    if resultat['lignes_conservees']:
+        resultat['avertissements'].append(
+            '%d ligne(s) de devis portaient un prix ou une désignation '
+            'personnalisés : elles ont été CONSERVÉES telles quelles.'
+            % resultat['lignes_conservees'])
+
+    if resultat['devis_touches']:
+        logger.info(
+            'PVSYNC: produit %s modifié (%s) — %d devis resynchronisé(s), '
+            '%d ligne(s) recalée(s), %d ligne(s) négociée(s) conservée(s), '
+            'société %s',
+            getattr(produit, 'sku', None) or getattr(produit, 'pk', '?'),
+            ', '.join(modifications) or '—', resultat['devis_touches'],
+            resultat['lignes_modifiees'], resultat['lignes_conservees'],
+            getattr(company, 'id', '?'))
+    return resultat
+
+
+def on_produit_modifie(sender, produit, company, champs, user=None, **kwargs):
+    """PVSYNC — récepteur du bus M6, câblé dans ``VentesConfig.ready()``.
+
+    Il ne fait RIEN lui-même : il planifie la resynchronisation APRÈS le commit
+    de la requête stock (``transaction.on_commit``) et la confie à Celery. Deux
+    raisons, toutes deux dures :
+
+    * un magasinier qui corrige un prix ne doit pas attendre que N devis soient
+      relus — l'écran stock répond immédiatement ;
+    * tant que la transaction du produit n'est pas commitée, la nouvelle valeur
+      n'existe pas encore pour le worker : lancer la tâche avant le commit
+      resynchroniserait sur l'ANCIEN prix (et sur une écriture qui peut encore
+      être annulée).
+
+    Best-effort de bout en bout : un bus ou un courtier en panne ne fait jamais
+    échouer l'enregistrement du produit.
+    """
+    from django.db import transaction
+
+    produit_id = getattr(produit, 'pk', None)
+    company_id = getattr(company, 'pk', None)
+    if not produit_id or not company_id or not champs:
+        return
+    user_id = getattr(user, 'pk', None)
+
+    def _planifier():
+        planifier_resynchronisation_produit(
+            produit_id, company_id, champs, user_id)
+
+    transaction.on_commit(_planifier)
+
+
+def planifier_resynchronisation_produit(produit_id, company_id, champs,
+                                        user_id=None):
+    """PVSYNC — met la resynchronisation en file, ou la joue EN LIGNE à défaut.
+
+    Le repli en ligne n'est pas un luxe : sans courtier joignable, une
+    propagation silencieusement perdue laisserait des devis faux sans que
+    personne ne le sache. On est déjà APRÈS le commit (appelé depuis
+    ``on_commit``), donc jouer la tâche ici n'ouvre aucune transaction imbriquée.
+    """
+    from .tasks import task_resync_devis_apres_produit_modifie
+
+    try:
+        task_resync_devis_apres_produit_modifie.delay(
+            produit_id, company_id, champs, user_id)
+        return
+    except Exception as exc:  # noqa: BLE001 — courtier indisponible
+        logger.warning(
+            'PVSYNC: file Celery indisponible (%s) — resynchronisation du '
+            'produit %s jouée en ligne.', exc, produit_id)
+    try:
+        task_resync_devis_apres_produit_modifie(
+            produit_id, company_id, champs, user_id)
+    except Exception:  # noqa: BLE001 — jamais bloquant pour l'écriture stock
+        logger.exception(
+            'PVSYNC: resynchronisation en ligne du produit %s échouée.',
+            produit_id)
 
 
 # ── Copilote — devis AUTOMATIQUE (résidentiel) ───────────────────────────────

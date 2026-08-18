@@ -157,10 +157,18 @@ BASELINE_ALLOWLIST = {
     # Vérifié : aucun des deux diffs n'ajoute un seul `round()` — ce sont les
     # MÊMES arrondis d'AFFICHAGE (PU/HT/TVA/TTC du moteur, kWc/surface des
     # services), simplement déplacés. Lignes relues sur l'arbre courant.
-    "backend/django_core/apps/ventes/services.py:599",
-    "backend/django_core/apps/ventes/services.py:602",
-    "backend/django_core/apps/ventes/services.py:2038",
-    "backend/django_core/apps/ventes/services.py:2197",
+    # PVSYNC/PVOND (2026-08-18) — RE-CALAGE file:line, PAS de nouveau site
+    # (bug-class #34). Deux insertions purement additives dans
+    # `apps/ventes/services.py` : le garde batterie data-driven (avant
+    # `extract_roof_config`) et le bloc de resynchronisation événementielle
+    # (après `sync_devis_from_layout`). Vérifié : le diff n'ajoute AUCUN
+    # `round()` — ce sont les MÊMES arrondis d'AFFICHAGE (surface m², kWc,
+    # jamais un montant), simplement déplacés. Lignes relues sur l'arbre
+    # courant : 599→687, 602→690, 2038→2135, 2197→2305.
+    "backend/django_core/apps/ventes/services.py:687",
+    "backend/django_core/apps/ventes/services.py:690",
+    "backend/django_core/apps/ventes/services.py:2135",
+    "backend/django_core/apps/ventes/services.py:2305",
     "backend/django_core/apps/ventes/quote_engine/builder.py:300",
     "backend/django_core/apps/ventes/quote_engine/builder.py:301",
     "backend/django_core/apps/ventes/quote_engine/builder.py:658",

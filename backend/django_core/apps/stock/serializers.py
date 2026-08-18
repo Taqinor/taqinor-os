@@ -1,4 +1,4 @@
-from drf_spectacular.utils import extend_schema_field
+from drf_spectacular.utils import extend_schema_field, inline_serializer
 from rest_framework import serializers
 from .models import (
     Produit, Categorie, Fournisseur, MouvementStock, Marque,
@@ -220,6 +220,14 @@ class ProduitSerializer(serializers.ModelSerializer):
     # Réutilise le sélecteur YPROC9 existant (jamais de logique dupliquée).
     quantite_en_commande = serializers.SerializerMethodField()
     bcf_sources_en_commande = serializers.SerializerMethodField()
+    # PVOND — bloc SOLAIRE en LECTURE SEULE : famille (onduleur/batterie/
+    # module), fenêtre de tension batterie d'un onduleur, tension nominale
+    # d'une batterie, et les variables du CONTRAT ONDULEUR encore absentes.
+    # C'est ce que le générateur consomme pour (a) apparier batterie et
+    # onduleur sur la DONNÉE plutôt que sur un mot-clé, et (b) GRISER un
+    # onduleur incomplet avec son motif — même patron que « prix à renseigner ».
+    # Aucune donnée d'achat n'y entre : le bloc est purement technique.
+    specs_solaire = serializers.SerializerMethodField()
 
     # APX18 — photo produit, en LECTURE SEULE ici. Le téléversement passe par
     # l'action dédiée `POST /stock/produits/<id>/photo/` (multipart), qui
@@ -331,6 +339,8 @@ class ProduitSerializer(serializers.ModelSerializer):
             # FG20 — indicateur de marge (gardé par marge_voir, cf. get_fields)
             'marge_pct',
             # Champs dérivés / calculés (SerializerMethodField, lecture seule)
+            # PVOND — contrat onduleur / appariement batterie (lecture seule)
+            'specs_solaire',
             'is_low_stock', 'categorie_type', 'categorie_type_display',
             'quantite_reservee', 'quantite_disponible',
             'is_low_stock_disponible', 'nb_mouvements',
@@ -514,6 +524,23 @@ class ProduitSerializer(serializers.ModelSerializer):
 
     def get_bcf_sources_en_commande(self, obj):
         return self._en_commande_map().get(obj.id, [])
+
+    @extend_schema_field(inline_serializer('ProduitSpecsSolaire', {
+        'famille': serializers.CharField(allow_null=True),
+        'plage_batterie_v': serializers.ListField(
+            child=serializers.FloatField(), allow_null=True),
+        'v_nominal': serializers.FloatField(allow_null=True),
+        'manquantes': serializers.ListField(child=serializers.CharField()),
+    }))
+    def get_specs_solaire(self, obj):
+        """PVOND — bloc solaire du produit (contrat onduleur inclus).
+
+        Délègue au sélecteur du domaine (une seule vérité, partagée avec le
+        backend de composition) ; la fiche technique est préchargée par le
+        ``select_related`` du viewset, donc aucun N+1 sur la liste catalogue.
+        """
+        from .selectors import specs_solaire_produit
+        return specs_solaire_produit(obj)
 
     def get_nb_mouvements(self, obj):
         return getattr(obj, 'nb_mouvements', None)

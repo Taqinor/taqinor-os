@@ -601,6 +601,116 @@ for _sku_pvg4, _modele_pvg4 in MODELE_SUPPOSE_PVG4.items():
             FICHES[_sku_pvg4]['description'] += _addendum
 
 
+# ── PVOND — PLAGE DE TENSION BATTERIE par référence onduleur ────────────────
+#
+# La neuvième variable du CONTRAT ONDULEUR (``apps/stock/selectors.py``) —
+# celle qui décide quelle batterie s'accroche à quel onduleur — n'a AUCUN champ
+# sur ``FicheTechnique`` (constat déjà écrit noir sur blanc dans les
+# commentaires PV85 ci-dessous : « NON seedés faute de champ … plage batterie
+# 40-60 V »). Elle est donc posée EN DONNÉE, sur une ligne marquée de la
+# description — même patron que « Modèle confirmé fondateur : … » juste
+# au-dessus, et lue par ``stock.selectors.plage_batterie_onduleur``.
+#
+# ``None`` = déclaration EXPLICITE « pas de batterie » (onduleur réseau) : le
+# contrat est SATISFAIT. Ne rien déclarer du tout voudrait dire « on ne sait
+# pas » — et l'onduleur serait grisé au générateur.
+#
+# ⚠ Les dix références Huawei du catalogue sont vendues par TAQINOR en
+# configuration RÉSEAU (string on-grid, sans stockage) : c'est ce que dit leur
+# nom, et c'est ce que déclare cette table. Deux appareils de la gamme
+# SUPPORTENT pourtant une batterie sur leur fiche constructeur (SUN2000-5KTL-L1
+# : 350-450 V avec une LG Chem RESU, 350-560 V avec une Huawei Smart ESS ;
+# SUN2000-10KTL-M1 : 600-980 V avec une Huawei Smart String ESS) — donc PAS une
+# fenêtre unique, mais une fenêtre PAR MARQUE de batterie, que le contrat (un
+# seul couple min/max) ne sait pas représenter. Le jour où le fondateur vend
+# l'un d'eux AVEC stockage, la ligne se change ici, en donnée.
+PLAGE_BATTERIE_ONDULEUR = {
+    # Huawei SUN2000 — vendus en réseau (cf. l'avertissement ci-dessus).
+    'OND-R-HUA-5M': None,
+    'OND-R-HUA-10M': None,
+    'OND-R-HUA-10T': None,
+    'OND-R-HUA-12M': None,
+    'OND-R-HUA-15T': None,
+    'OND-R-HUA-20T': None,
+    'OND-R-HUA-25T': None,
+    'OND-R-HUA-50T': None,
+    'OND-R-HUA-100T': None,
+    'OND-R-HUA-150T': None,
+    # Deye BASSE TENSION 48 V — familles SG04LP1 / SG02LP1 / SG05LP3.
+    # Sources : datasheet SG04LP1 (liriksolar) ; datasheet SG02LP1-EU-AM3
+    # (liriksolar) ; datasheet officielle deyeinverter.com
+    # datasheet_sun-3-12k-sg05lp3-eu-sm2_240927_en.pdf (2024-09-27) et
+    # datasheet_sun-14-20k-sg05lp3-eu-sm2_240601_en.pdf (2024-06-01) — la
+    # fenêtre 40-60 V y est donnée PARTAGÉE par toute la famille SG05LP3.
+    'OND-H-DEY-5M': (40, 60),
+    'OND-H-DEY-10M': (40, 60),
+    'OND-H-DEY-10T': (40, 60),
+    'OND-DEY-15K-LV': (40, 60),
+    # Deye HAUTE TENSION — famille SG01HP3, batterie lithium-ion 160-700 V.
+    # Source : datasheet officielle deyeinverter.com
+    # datasheet_sun-(5-25)k-sg01hp3-eu_230724_en.pdf (2023-07-24). C'est
+    # exactement l'incompatibilité métier déjà signalée au fondateur plus haut
+    # (une Dyness 51,2 V ne s'accroche PAS à ces deux appareils) — le garde
+    # data-driven de ``ventes.services`` la fait maintenant respecter par les
+    # CHIFFRES, plus par un mot-clé.
+    'OND-H-DEY-15T': (160, 700),
+    'OND-H-DEY-20T': (160, 700),
+}
+
+for _sku_bat, _plage_bat in PLAGE_BATTERIE_ONDULEUR.items():
+    if _sku_bat not in FICHES or 'description' not in FICHES[_sku_bat]:
+        continue
+    if _plage_bat is None:
+        _ligne_bat = '\nPlage batterie : aucune (onduleur réseau)'
+    else:
+        _ligne_bat = '\nPlage batterie : %s-%s V' % _plage_bat
+    if _ligne_bat not in FICHES[_sku_bat]['description']:
+        FICHES[_sku_bat]['description'] += _ligne_bat
+
+
+# ── PVOND — onduleurs dont le CONTRAT reste INCOMPLET, et pourquoi ──────────
+#
+# Le verrou de complétude grise au générateur tout onduleur auquel il manque
+# une variable du contrat. Cette table déclare les manques CONNUS et ASSUMÉS,
+# avec leur motif : elle n'est pas décorative, un test (``apps/stock/tests.py``)
+# refuse le seed d'un onduleur incomplet qui n'y figurerait pas — autrement dit,
+# ajouter demain une référence sans ses variables ne passe pas en silence.
+#
+# La règle qui produit ces manques est celle de PVG4/PV85, inchangée : on ne
+# SAISIT que ce qu'une fiche donne comme UNE valeur propre. Un « 30 A (2
+# chaînes) / 20 A (1 chaîne) » ou un « 36+20 A » est une valeur ASYMÉTRIQUE par
+# tracker, pas un courant par MPPT : la saisir demanderait de TRANCHER laquelle
+# des deux le champ porte — une décision fondateur, pas une recherche.
+ONDULEURS_CONTRAT_INCOMPLET = {
+    'OND-R-HUA-10M': 'à fournir : toutes les variables — aucun SUN2000 mono '
+                     'réseau réel à 10 kW (artefact catalogue).',
+    'OND-R-HUA-12M': 'à fournir : toutes les variables — aucun SUN2000 mono '
+                     'réseau réel à 12 kW (artefact catalogue).',
+    'OND-R-HUA-15T': 'à fournir : courant maxi par MPPT (la fiche famille '
+                     '12-25KTL-M5 donne « 30 A (2 chaînes) / 20 A (1 chaîne) ») '
+                     'et rendement euro (98,0 % publié par cette même fiche, '
+                     'mais classé « interpolé » par PVG4 — à confirmer).',
+    'OND-R-HUA-50T': 'à fournir : courant maxi par MPPT et rendement euro — '
+                     'une fiche SUN2000-50KTL-M0 (édition AU) donne 22 A et '
+                     '98,5 %, mais le M0 se confond avec le M3 (4 trackers / '
+                     '30 A / 98,0 %) : confirmer l\'édition vendue.',
+    'OND-R-HUA-20T': 'à fournir : courant maxi par MPPT — idem fiche famille '
+                     '12-25KTL-M5 (30 A / 20 A selon le nombre de chaînes).',
+    'OND-R-HUA-25T': 'à fournir : courant maxi par MPPT — idem fiche famille '
+                     '12-25KTL-M5 (30 A / 20 A selon le nombre de chaînes).',
+    'OND-H-DEY-10M': 'à fournir : plage MPPT, nombre de MPPT, tension DC max, '
+                     'courant maxi par MPPT et rendement euro — les sources '
+                     'divergent sur la plage (125-520 / 150-425 / 125-550 V) '
+                     'et sur les trackers (3 vs 2×2) ; rien ne sera saisi tant '
+                     'que la fiche officielle du SG02LP1 ne tranchera pas.',
+    'OND-H-DEY-15T': 'à fournir : courant maxi par MPPT — la fiche SG01HP3 '
+                     'donne « 26+20 A » (trackers asymétriques).',
+    'OND-DEY-15K-LV': 'à fournir : courant maxi par MPPT — la fiche '
+                      'SG05LP3 14-20K donne « 36+20 A » (trackers '
+                      'asymétriques). Prix de vente également à renseigner.',
+}
+
+
 # ── PV9 — Fiches techniques (FicheTechnique, PV5) : SEULES les valeurs
 # SOURCÉES ci-dessous sont saisies ; tout le reste reste NULL sur la fiche
 # (« à vérifier fondateur — PVG4 »).
@@ -662,23 +772,33 @@ FICHES_TECHNIQUES = {
     },
     'OND-R-HUA-15T': {
         # 30A(2 strings)/20A(1) : valeur composée (pas un seul courant/MPPT
-        # propre) → ond_i_max_mppt_a NULL. Rendement ≈98.0 % interpolé → NULL.
+        # propre) → ond_i_max_mppt_a NULL (cf. ONDULEURS_CONTRAT_INCOMPLET).
+        # Rendement ≈98.0 % interpolé → NULL. PVOND (2026-08-18) : la fiche
+        # FAMILLE SUN2000-12-25KTL-M5 (solar.huawei.com, Version 01-20190716)
+        # publie bien 98,0 % pour le palier 15 kW — mais c'est une DÉCISION
+        # PVG4 déjà prise (« interpolé, jamais saisi ») et verrouillée par un
+        # test : elle n'est PAS renversée sur une seule passe de recherche.
+        # À trancher par le fondateur ; d'ici là l'onduleur reste grisé.
         'type_fiche': 'onduleur', 'ond_n_mppt': 2,
         'ond_mppt_v_min': Decimal('200.0'), 'ond_mppt_v_max': Decimal('1000.0'),
         'ond_v_max_abs': Decimal('1100.0'),
         'ond_ac_kw': Decimal('15'), 'ond_phases': 3,
     },
     'OND-R-HUA-20T': {
-        # 30A/20A composé → NULL. Nombre de MPPT non donné par la source
-        # pour ce palier précis → NULL (pas d'extrapolation depuis 15T/25T).
-        'type_fiche': 'onduleur',
+        # 30A/20A composé → NULL (cf. ONDULEURS_CONTRAT_INCOMPLET).
+        # PVOND — nombre de MPPT désormais SOURCÉ : la fiche FAMILLE
+        # SUN2000-12-25KTL-M5 (Version 01-20190716) donne 2 trackers pour TOUS
+        # les paliers 12-25 kW. Ce n'est donc pas l'extrapolation 15T/25T que
+        # PVG4 refusait : c'est la fiche du produit lui-même.
+        'type_fiche': 'onduleur', 'ond_n_mppt': 2,
         'ond_mppt_v_min': Decimal('200.0'), 'ond_mppt_v_max': Decimal('1000.0'),
         'ond_v_max_abs': Decimal('1100.0'),
         'ond_ac_kw': Decimal('20'), 'ond_phases': 3,
         'ond_rendement_euro_pct': Decimal('98.1'),
     },
     'OND-R-HUA-25T': {
-        'type_fiche': 'onduleur',
+        # PVOND — 2 trackers, même fiche famille 12-25KTL-M5 que ci-dessus.
+        'type_fiche': 'onduleur', 'ond_n_mppt': 2,
         'ond_mppt_v_min': Decimal('200.0'), 'ond_mppt_v_max': Decimal('1000.0'),
         'ond_v_max_abs': Decimal('1100.0'),
         'ond_ac_kw': Decimal('25'), 'ond_phases': 3,
@@ -687,6 +807,13 @@ FICHES_TECHNIQUES = {
     'OND-R-HUA-50T': {
         # Imax « non confirmé précisément » par la source → NULL. Rendement
         # ≈98.5 % (approx., pas un rendement « euro » explicite) → NULL.
+        # PVOND (2026-08-18) : une fiche SUN2000-50KTL-M0 (édition AU) donne
+        # 6 trackers / 22 A / 98,5 % — cohérent avec les 6 trackers déjà seedés
+        # ici. Mais ⚠ le M0 se confond avec le SUN2000-50KTL-M3 (édition EU :
+        # 4 trackers / 30 A / 98,0 %), un appareil DIFFÉRENT au nom voisin ;
+        # et ces deux NULL sont des décisions PVG4 verrouillées par un test.
+        # Rien n'est saisi tant que le fondateur n'a pas confirmé l'édition
+        # réellement vendue ; d'ici là l'onduleur reste grisé.
         'type_fiche': 'onduleur', 'ond_n_mppt': 6,
         'ond_mppt_v_min': Decimal('200.0'), 'ond_mppt_v_max': Decimal('1000.0'),
         'ond_v_max_abs': Decimal('1100.0'),
@@ -711,9 +838,13 @@ FICHES_TECHNIQUES = {
     # MODELE_SUPPOSE_PVG4 ci-dessus).
     # ── PVG4 — Onduleurs hybrides Deye ──
     'OND-H-DEY-5M': {
+        # PVOND — courant d'entrée désormais SOURCÉ : la fiche SG04LP1 donne
+        # « 13+13 A », soit la MÊME valeur sur les deux trackers — c'est donc
+        # bien un courant PAR MPPT propre (13 A), pas une valeur composée
+        # asymétrique comme le « 36+20 A » du SG05LP3 15 kW.
         'type_fiche': 'onduleur', 'ond_n_mppt': 2,
         'ond_mppt_v_min': Decimal('150.0'), 'ond_mppt_v_max': Decimal('425.0'),
-        'ond_v_max_abs': Decimal('600.0'),
+        'ond_v_max_abs': Decimal('600.0'), 'ond_i_max_mppt_a': Decimal('13.0'),
         'ond_ac_kw': Decimal('5'), 'ond_phases': 1,
         # 97.6 % max / 96.5 % euro — champ = rendement EURO uniquement.
         'ond_rendement_euro_pct': Decimal('96.5'),
@@ -735,9 +866,10 @@ FICHES_TECHNIQUES = {
     # / 2 chaînes pour les 10K et 12K précisément. On seede la révision
     # ACTUELLE (26 A) — à confirmer au numéro de série de l'appareil livré.
     # NON seedés faute de champ sur FicheTechnique (jamais inventé) : tension
-    # de démarrage 160 V, Isc max 39 A/MPPT, plage batterie 40-60 V,
-    # 210 A charge/décharge, rendement MAX 97,6 % (le champ est le rendement
-    # EURO), poids 35,2 kg.
+    # de démarrage 160 V, Isc max 39 A/MPPT, 210 A charge/décharge, rendement
+    # MAX 97,6 % (le champ est le rendement EURO), poids 35,2 kg.
+    # La PLAGE BATTERIE 40-60 V, elle, n'est plus perdue : PVOND la loge en
+    # DONNÉE sur la description (``PLAGE_BATTERIE_ONDULEUR`` plus haut).
     'OND-H-DEY-10T': {
         'type_fiche': 'onduleur', 'ond_n_mppt': 2,
         'ond_mppt_v_min': Decimal('200.0'), 'ond_mppt_v_max': Decimal('650.0'),
@@ -754,8 +886,9 @@ FICHES_TECHNIQUES = {
     # rendement EURO sont donnés PARTAGÉS pour toute la famille SG05LP3
     # (14-20K) par la datasheet elle-même — pas une extrapolation.
     # NON seedés faute de champ sur FicheTechnique (jamais inventé, même
-    # garde que OND-H-DEY-10T) : tension de démarrage 160 V, plage batterie
-    # 40-60 V, 280 A charge/décharge, poids 50,6 kg.
+    # garde que OND-H-DEY-10T) : tension de démarrage 160 V, 280 A charge/
+    # décharge, poids 50,6 kg. La PLAGE BATTERIE 40-60 V est désormais logée
+    # en DONNÉE sur la description (PVOND, ``PLAGE_BATTERIE_ONDULEUR``).
     'OND-DEY-15K-LV': {
         'type_fiche': 'onduleur', 'ond_n_mppt': 2,
         'ond_mppt_v_min': Decimal('160.0'), 'ond_mppt_v_max': Decimal('650.0'),
@@ -770,7 +903,11 @@ FICHES_TECHNIQUES = {
         # Confiance moyenne : plage FAMILLE SG01HP3 (5-25K) documentée, pas
         # spécifique au 15T — seedée quand même (règle PVG4), l'incertitude
         # est portée par la mention « modèle supposé » sur la description.
-        'type_fiche': 'onduleur',
+        # PVOND — nb de MPPT SOURCÉ (2 trackers) par la fiche officielle
+        # deyeinverter.com datasheet_sun-(5-25)k-sg01hp3-eu_230724_en.pdf.
+        # Le courant reste NULL : cette même fiche donne « 26+20 A », deux
+        # trackers ASYMÉTRIQUES (cf. ONDULEURS_CONTRAT_INCOMPLET).
+        'type_fiche': 'onduleur', 'ond_n_mppt': 2,
         'ond_mppt_v_min': Decimal('150.0'), 'ond_mppt_v_max': Decimal('850.0'),
         'ond_v_max_abs': Decimal('1000.0'),
         'ond_ac_kw': Decimal('15'), 'ond_phases': 3,
@@ -778,13 +915,18 @@ FICHES_TECHNIQUES = {
         'ond_rendement_euro_pct': Decimal('97.0'),
     },
     'OND-H-DEY-20T': {
-        # La source donne « charge max 50A » : c'est le courant de charge
-        # BATTERIE, pas un courant d'entrée MPPT PV → ond_i_max_mppt_a
-        # reste NULL (mauvais champ sinon).
-        'type_fiche': 'onduleur',
+        # L'ancienne source donnait « charge max 50A » : c'est le courant de
+        # charge BATTERIE, pas un courant d'entrée MPPT PV — il n'a jamais eu
+        # sa place ici. PVOND — la fiche OFFICIELLE de la famille
+        # (deyeinverter.com datasheet_sun-(5-25)k-sg01hp3-eu_230724_en.pdf,
+        # 2023-07-24) donne pour le 20K « 26+26 A » : même valeur sur les deux
+        # trackers, donc un courant PAR MPPT propre (26 A) — plus 2 trackers et
+        # un rendement euro de 97,0 %.
+        'type_fiche': 'onduleur', 'ond_n_mppt': 2,
         'ond_mppt_v_min': Decimal('150.0'), 'ond_mppt_v_max': Decimal('850.0'),
-        'ond_v_max_abs': Decimal('1000.0'),
+        'ond_v_max_abs': Decimal('1000.0'), 'ond_i_max_mppt_a': Decimal('26.0'),
         'ond_ac_kw': Decimal('20'), 'ond_phases': 3,
+        'ond_rendement_euro_pct': Decimal('97.0'),
     },
     # ── PVG4 — Batteries Dyness ──
     'BAT-DEY-5': {

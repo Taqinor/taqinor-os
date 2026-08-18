@@ -363,6 +363,12 @@ export default function DevisGenerator({
   // Confirmation d'auto-remplissage agricole (m³/jour + champ PV) — affichée
   // une fois l'auto-remplissage pompage réussi.
   const [pompageAutoFilled, setPompageAutoFilled] = useState(false)
+  // PVOND — onduleurs GRISÉS par le verrou de complétude : écartés de
+  // l'auto-composition parce qu'il leur manque une variable du contrat
+  // (puissance AC, MPPT, tensions, courant, rendement, plage batterie,
+  // garantie). Chaque entrée porte {id, nom, manquantes[]} et s'affiche avec
+  // son motif, comme « prix à renseigner » pour un produit non tarifé.
+  const [onduleursIncomplets, setOnduleursIncomplets] = useState([])
   const [previewCollapsed, setPreviewCollapsed] = useState(false)
   const [tauxTva, setTauxTva] = useState('20.00')
   const [discountPct, setDiscountPct] = useState('0')
@@ -1406,6 +1412,10 @@ export default function DevisGenerator({
   }
 
   const handleAutoFill = () => {
+    // PVOND — le bandeau des onduleurs grisés appartient au DERNIER
+    // auto-remplissage : on le vide d'abord, sinon un message du run précédent
+    // survivrait à un changement de mode (le pompage n'a pas d'onduleur).
+    setOnduleursIncomplets([])
     // Mode agricole : équipement pompage (pompe + variateur + champ PV)
     if (modeInstallation === 'agricole') {
       const generated = autoFillPompage(produits, {
@@ -1432,6 +1442,13 @@ export default function DevisGenerator({
       panelW: parseFloat(panelW) || 710,
       structureType,
     })
+    // Les MÉTADONNÉES du tableau (wattage réel, kWc réel, onduleurs grisés)
+    // sont relevées ICI, avant tout `.map()` : un `.map()` rend un tableau NEUF
+    // et les perdrait en route (les modes industriel/commercial ci-dessous en
+    // font un).
+    const metaPanelW = generated.actualPanelW
+    const metaKwcReel = generated.kwcReel
+    const metaOnduleursIncomplets = generated.onduleursIncomplets ?? []
     // Modes industriel ET commercial (QX44) : sans batterie par défaut
     // (autoconsommation réseau, pas de stockage).
     if (modeInstallation === 'industriel' || modeInstallation === 'commercial') {
@@ -1453,10 +1470,10 @@ export default function DevisGenerator({
     // (issu du wattage saisi) ne correspond alors plus aux lignes réelles. On
     // le signale visiblement plutôt que d'expédier un système mal étiqueté.
     const askedW = parseFloat(panelW) || 710
-    const realW = generated.actualPanelW
+    const realW = metaPanelW
     let mismatch = null
     if (realW && Math.abs(realW - askedW) > 1) {
-      const kwcReel = generated.kwcReel
+      const kwcReel = metaKwcReel
       mismatch = `Attention : le stock ne propose pas de panneau ${askedW} W ; `
         + `un panneau ${realW} W a été retenu. La puissance réelle du système est `
         + `${kwcReel} kWc (et non ${kwp} kWc). Ajustez le nombre de panneaux ou le `
@@ -1470,6 +1487,10 @@ export default function DevisGenerator({
         : null,
       autofillKwc: mismatch,
     }))
+    // PVOND — onduleurs ÉCARTÉS de l'auto-composition faute de contrat complet
+    // (même patron que « prix à renseigner ») : on les nomme avec leur motif
+    // plutôt que de les laisser disparaître sans explication.
+    setOnduleursIncomplets(metaOnduleursIncomplets)
     setLines(withKeys(generated))
   }
 
@@ -2741,6 +2762,22 @@ export default function DevisGenerator({
                 <Zap /> Auto-remplir depuis le stock
               </Button>
             </div>
+            {onduleursIncomplets.length > 0 && (
+              <div className="mt-3 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
+                <strong>Onduleur(s) non chiffrable(s)</strong> — fiche technique
+                incomplète, écartés de l'auto-remplissage (toujours
+                sélectionnables à la main) :
+                <ul className="mt-1 list-disc pl-5">
+                  {onduleursIncomplets.map(o => (
+                    <li key={o.id}>
+                      {o.nom} — à renseigner : {o.manquantes.join(', ')}
+                    </li>
+                  ))}
+                </ul>
+                Complétez leur fiche technique dans Stock pour les rendre
+                chiffrables.
+              </div>
+            )}
             {modeInstallation === 'agricole' && pompageAutoFilled && pompageSel && (
               <div className="mt-3 rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success">
                 Auto-remplissage effectué —

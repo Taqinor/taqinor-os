@@ -16,6 +16,7 @@ import {
   computeCashflowPayback,
   computeEtudeIndustrielle,
   TARIF_MT_ONEE, tarifMtDisponible, tarifMtMoyen, normaliserRepartitionMt,
+  isReseauInverter,
 } from './solar.js'
 
 // Reflet du catalogue seedé (prix HT = TTC simulateur / 1.2, 2 décimales)
@@ -378,6 +379,64 @@ test('auto-fill : les batteries 5/10 kWh restent choisies comme avant malgré un
   const by5 = (frag) => rows5.find(r => r.designation.includes(frag))
   assert.equal(by5('Dyness 5').quantite, 1)
   assert.equal(by5('Dyness 10').quantite, 0)
+})
+
+// ── PVOND — garde batterie PILOTÉ PAR LA DONNÉE + verrou de complétude ──────
+// Les deux tests PVG4 ci-dessus restent VRAIS et inchangés : sans
+// `specs_solaire` au catalogue (fixtures ci-dessus), le repli mot-clé garde la
+// main à l'identique. Les tests qui suivent vérifient ce que le mot-clé ne
+// savait PAS faire.
+const _specs = (p, specs) => ({
+  ...p,
+  specs_solaire: {
+    famille: null, plage_batterie_v: null, v_nominal: null, manquantes: [],
+    ...specs,
+  },
+})
+
+test('PVOND — une batterie hors plage est refusée même si son nom ne dit rien', () => {
+  // 204,8 V sous un onduleur 48 V : appairage électriquement impossible que le
+  // mot-clé « haute tension » ne voyait pas (le nom est parfaitement neutre).
+  const catalogue = SEEDED.map(p =>
+    p.nom === 'Onduleur hybride Deye 10kW Triphasé'
+      ? _specs(p, { famille: 'onduleur', plage_batterie_v: [40, 60] })
+      : p)
+  catalogue.push(_specs(P('Batterie LFP 10 kWh rack', 100),
+                        { famille: 'batterie', v_nominal: 204.8 }))
+
+  const rows = autoFillLines(catalogue, { kwp: 14 * 710 / 1000, panelW: 710, structureType: 'acier' })
+  assert.ok(rows.every(r => !r.designation.includes('LFP')))
+})
+
+test('PVOND — une batterie haute tension EST retenue sous un onduleur haute tension', () => {
+  // L'autre moitié du gain : le mot-clé interdisait l'appairage LÉGITIME.
+  const catalogue = SEEDED
+    .filter(p => !p.nom.startsWith('Batterie'))
+    .map(p => p.nom === 'Onduleur hybride Deye 10kW Triphasé'
+      ? _specs(p, { famille: 'onduleur', plage_batterie_v: [160, 700] })
+      : p)
+  catalogue.push(_specs(P('Batterie Dyness haute tension 10 kWh', 40000),
+                        { famille: 'batterie', v_nominal: 204.8 }))
+
+  const rows = autoFillLines(catalogue, { kwp: 14 * 710 / 1000, panelW: 710, structureType: 'acier' })
+  const bat = rows.find(r => r.designation.includes('haute tension'))
+  assert.ok(bat, 'la batterie HV aurait dû être retenue sous un onduleur HV')
+  assert.equal(bat.quantite, 1)
+})
+
+test('PVOND — un onduleur au contrat incomplet est écarté ET nommé', () => {
+  const catalogue = SEEDED.map(p =>
+    p.nom === 'Onduleur réseau Huawei 10kW Triphasé'
+      ? _specs(p, { famille: 'onduleur', manquantes: ['courant maxi par MPPT (A)'] })
+      : p)
+
+  const rows = autoFillLines(catalogue, { kwp: 10, panelW: 710, structureType: 'acier' })
+
+  assert.ok(rows.onduleursIncomplets.some(o => o.nom === 'Onduleur réseau Huawei 10kW Triphasé'))
+  assert.deepEqual(rows.onduleursIncomplets[0].manquantes, ['courant maxi par MPPT (A)'])
+  // Il n'est PAS chiffré : la ligne « Onduleur réseau » porte un autre modèle.
+  const reseau = rows.find(r => isReseauInverter(r.designation))
+  assert.notEqual(reseau?.designation, 'Onduleur réseau Huawei 10kW Triphasé')
 })
 
 // ── QX19 — autoFillLines surface le wattage RÉEL + nb panneaux (anti-mismatch)

@@ -331,6 +331,59 @@ def task_simulate_bankable_study(self, devis_id, company_id, token,
         raise self.retry(exc=exc, countdown=2 ** self.request.retries * 30)
 
 
+# ── PVSYNC — resynchronisation des devis après un changement de référence ────
+#
+# Déclenchée par ``core.events.produit_modifie`` (émis par le viewset produit du
+# Stock) via ``ventes.services.on_produit_modifie``, APRÈS commit.
+#
+# Volontairement SANS ``bind``/``retry``, à la différence des tâches PDF
+# voisines : le service qui l'appelle sait la rejouer EN LIGNE quand le courtier
+# est injoignable, et un ``self.retry`` levé hors worker ferait échouer ce repli.
+# La sécurité vient d'ailleurs — l'opération est IDEMPOTENTE (rejouer le même
+# événement ne modifie plus rien, cf. ``resynchroniser_devis_pour_produit``),
+# donc une livraison at-least-once est sans danger.
+@shared_task(
+    name='ventes.resync_devis_apres_produit_modifie',
+    acks_late=True,
+)
+def task_resync_devis_apres_produit_modifie(produit_id, company_id, champs,
+                                            user_id=None):
+    """Recale les devis brouillon/envoyé qui portent le produit ``produit_id``.
+
+    Ne prend que des PK (jamais des instances) : le message survit à la file et
+    à un rejeu, et le produit est RELU en base — donc jamais un objet figé au
+    moment de l'émission.
+
+    No-op silencieux si le produit ou la société a disparu entre-temps (ne
+    JAMAIS relancer : réessayer ne les fera pas réapparaître).
+    """
+    from authentication.models import Company
+
+    from apps.stock.models import Produit
+
+    from .services import resynchroniser_devis_pour_produit
+
+    company = Company.objects.filter(pk=company_id).first()
+    produit = Produit.objects.filter(pk=produit_id).first()
+    if company is None or produit is None:
+        logger.info('task_resync_devis_apres_produit_modifie: produit %s / '
+                    'société %s introuvable — rien à faire.',
+                    produit_id, company_id)
+        return None
+
+    utilisateur = None
+    if user_id:
+        from django.contrib.auth import get_user_model
+        utilisateur = get_user_model().objects.filter(pk=user_id).first()
+
+    resultat = resynchroniser_devis_pour_produit(
+        produit=produit, company=company, champs=champs, user=utilisateur)
+    logger.info('task_resync_devis_apres_produit_modifie OK: produit=%s '
+                'devis=%s lignes=%s', produit_id,
+                resultat['devis_touches'], resultat['lignes_modifiees'])
+    return resultat
+
+
 @shared_task(
     bind=True,
     name='ventes.build_async_export',

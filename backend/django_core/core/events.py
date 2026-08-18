@@ -616,6 +616,28 @@ paiement_fournisseur_enregistre = django.dispatch.Signal()
 # signal, exactement comme ``facture_fournisseur_creee``.
 mouvement_stock_enregistre = django.dispatch.Signal()
 
+# PVSYNC — une RÉFÉRENCE du catalogue vient de changer : ``stock`` a écrit un
+# ``Produit`` sur un champ qui peut RENDRE FAUX un devis déjà rédigé (le NOM,
+# qui est la désignation reprise ligne à ligne, et le PRIX DE VENTE, qui est le
+# prix catalogue auquel une ligne non négociée a été posée).
+#   Arguments : ``produit`` (l'instance APRÈS écriture), ``company`` (posée
+#   côté serveur, jamais lue du corps), ``user`` (peut être None) et
+#   ``champs`` — dict ``{champ: [ancienne_valeur, nouvelle_valeur]}`` en
+#   CHAÎNES, l'ancienne valeur étant la seule façon de reconnaître plus tard
+#   une ligne restée AU PRIX CATALOGUE d'une ligne NÉGOCIÉE (une fois le
+#   produit réécrit, la comparaison au prix courant ne prouve plus rien).
+# Émis SYNCHRONE et best-effort par le SEUL point de mise à jour REST d'un
+# produit (``stock.views.produit.ProduitViewSet.perform_update``) — JAMAIS un
+# ``post_save`` de modèle : un signal de modèle se déclencherait aussi sur les
+# écritures internes (mouvements de stock, recatégorisation du seeder,
+# migrations de données) et ferait re-synchroniser des devis pour rien.
+# Émis UNIQUEMENT sur un changement RÉEL (dict vide ⇒ aucune émission).
+# Abonné dans ce repo : ``ventes`` (``apps/ventes/apps.py`` ``ready()`` →
+# ``ventes.services.on_produit_modifie``), qui délègue à une tâche Celery la
+# resynchronisation des devis BROUILLON/ENVOYÉ portant ce produit. ``stock``
+# n'importe jamais ``apps.ventes`` — même patron que ``devis_accepted`` → crm.
+produit_modifie = django.dispatch.Signal()
+
 # Émis à l'annulation d'un chantier (``apps.installations``) — YSERV9.
 # Arguments : installation (installations.Installation), user (peut être
 # None), company. NE change JAMAIS un statut devis/facture (règle #4,
