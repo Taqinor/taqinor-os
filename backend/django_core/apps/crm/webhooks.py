@@ -17,8 +17,13 @@ l'en-tête ``X-Webhook-Secret``. Principes :
    MANUELLE (``services.merge_leads``), jamais automatiquement.
 3. Tenant résolu CÔTÉ SERVEUR (env WEBSITE_LEADS_COMPANY_ID, sinon la
    première Company) — rien ne vient du payload.
-4. Un lead sous le seuil ne devrait pas arriver (filtré par le site) ;
-   s'il arrive quand même : accepté et étiqueté, jamais rejeté.
+4. Un lead SOUS LE SEUIL arrive volontairement (le site transmet
+   ``qualified: false`` — apps/web/src/pages/api/capture-lead.ts) : c'est le
+   RÉCEPTEUR qui fait le tri. Il est créé et étiqueté comme tout lead (jamais
+   rejeté, jamais perdu), mais sa notification d'arrivée porte la mention
+   « (sous le seuil) » et l'alerte URGENTE de rappel n'est pas déclenchée —
+   le rappel demandé reste visible sur la fiche (préférence de contact + note
+   chatter), sans réveiller un commercial pour une facture < 1 000 MAD.
 """
 
 import hashlib
@@ -45,6 +50,20 @@ logger = logging.getLogger(__name__)
 #: (double-clic, relance réseau) → on complète la fiche en cours. Au-delà,
 #: toute soumission est un nouveau lead (règle fondateur, cf. docstring).
 DEDUP_WINDOW_SECONDS = 60
+
+#: Étiquette posée sur un lead que le SITE a déclaré sous le seuil de facture
+#: (``qualified: false``) — une constante depuis que le tri du récepteur
+#: s'appuie dessus (étiquetage + notification atténuée).
+SOUS_SEUIL_TAG = 'Sous le seuil 1 000 MAD'
+
+
+def _is_sous_seuil(data) -> bool:
+    """Le site a-t-il déclaré CETTE soumission sous le seuil de facture ?
+
+    Strictement ``qualified is False`` (jamais « absent » ni « falsy ») : un
+    payload sans le drapeau (anciens workers) reste un lead ordinaire."""
+    return data.get('qualified') is False
+
 
 #: WJ124 — régions agronomiques (8 zones FAO) émises par le site
 #: (``apps/web/src/lib/lead.ts:REGIONS_AGRICOLES``). SOURCE DE VÉRITÉ :
@@ -246,6 +265,14 @@ _ESTIMATE_SHOWN_KEYS = frozenset([
     'ecoMadYearLow', 'ecoMadYearHigh',
     'paybackLabel', 'tauxAutoconso', 'tauxCouverture',
     'pompeCv', 'champKwc', 'm3Jour',
+    # WJ124 — le tunnel ANNONCE aussi au visiteur le nombre de modules du
+    # dimensionnement (`nbPanneaux`) et le bassin de stockage suggéré
+    # (`bassinM3` — un VOLUME en m³ : le besoin journalier de pointe, borne
+    # basse de la fourchette 1-3×, cf. apps/web/src/lib/lead.ts:231 et
+    # mon-toit.astro `s.bassinM3 = ag.m3Jour`). Les DEUX moitiés du contrat
+    # les émettaient déjà (lead.ts:ESTIMATE_SHOWN_NUMERIC_KEYS) mais cette
+    # whitelist les jetait : le commercial recomptait les modules à la main.
+    'nbPanneaux', 'bassinM3',
 ])
 
 
@@ -835,30 +862,76 @@ def _map_payload_to_fields(data: dict) -> dict:
 
     if fields['whatsapp_opt_in'] and fields['telephone']:
         fields['whatsapp'] = fields['telephone']
-    # Sous le seuil (ne devrait pas arriver — le site filtre) : étiqueté.
-    if data.get('qualified') is False:
-        fields['tags'] = 'Sous le seuil 1 000 MAD'
+    # Sous le seuil : le site le transmet VOLONTAIREMENT (`qualified: false`,
+    # capture-lead.ts) et c'est ici que le tri se fait — étiquetage ci-dessous,
+    # puis notification atténuée dans `_map_and_link_lead` (cf. docstring §4).
+    if _is_sous_seuil(data):
+        fields['tags'] = SOUS_SEUIL_TAG
     return fields
 
 
-def _pick_owner_from_duplicates(dupes, *, telephone='', email=''):
+def _owners_habilites(company, owner_ids):
+    """Sous-ensemble de ``owner_ids`` réellement ATTRIBUABLE aujourd'hui.
+
+    MÊMES filtres que ``services.pick_round_robin_owner`` (le chemin normal
+    d'attribution) : utilisateur de la société, ``is_active=True``, et
+    habilité au CRM — permission ``crm_creer``, ou rôle legacy admin/
+    responsable pour les comptes sans Role. Renvoie un ``set`` de pk."""
+    from django.contrib.auth import get_user_model
+    from django.db.models import Q
+
+    ids = {pk for pk in owner_ids if pk}
+    if not ids:
+        return set()
+    User = get_user_model()
+    return set(
+        User.objects.filter(
+            pk__in=ids, company=company, is_active=True,
+        ).filter(
+            Q(role__permissions__contains=['crm_creer'])
+            | Q(role__isnull=True, role_legacy__in=['admin', 'responsable']),
+        ).values_list('pk', flat=True)
+    )
+
+
+def _pick_owner_from_duplicates(dupes, *, telephone='', email='', company=None):
     """QW11 (héritage du commercial, 18/08/2026 — décision fondateur) —
     Choisit l'owner à HÉRITER parmi les doublons trouvés À LA CRÉATION, avant
     toute décision d'attribution : un lead qui EST un doublon n'entre jamais
     dans le round-robin/territoires.
 
+    DEUX filtres d'éligibilité, sans lesquels l'héritage attribuait un lead à
+    un compte que TOUS les autres chemins d'attribution refusent :
+
+    1. le doublon ARCHIVÉ ne transmet pas son owner. ``find_duplicates_by_contact``
+       inclut délibérément les archivés (pour le SIGNALEMENT — une fiche
+       classée spam/injoignable reste mentionnée dans la note chatter), mais
+       une vraie nouvelle demande ne doit pas être attribuée « comme » une
+       fiche mise au rebut ;
+    2. l'owner doit être ACTIF et habilité au CRM — mêmes filtres que
+       ``services.pick_round_robin_owner`` (``_owners_habilites``). Sans cela,
+       le commercial parti (``is_active=False``) restait propriétaire de tous
+       les leads de son ancien téléphone : ``notify_new_lead`` ciblait un
+       compte mort et aucun commercial actif ne voyait jamais le lead.
+
     Priorité au doublon en IDENTITÉ FORTE (même e-mail ET même téléphone,
-    ``is_strong_identity_match``) qui A un owner ; à défaut, le doublon le
-    PLUS RÉCENT (``date_creation``, pk en départage) qui a un owner parmi
-    tous les doublons trouvés. Renvoie ``(None, None)`` si ``dupes`` est vide
-    ou si AUCUN doublon n'a d'owner — l'appelant replie alors sur le
-    comportement actuel (territoires/round-robin), strictement inchangé.
+    ``is_strong_identity_match``) parmi les éligibles ; à défaut, le doublon
+    le PLUS RÉCENT (``date_creation``, pk en départage). Renvoie
+    ``(None, None)`` si ``dupes`` est vide ou si AUCUN doublon éligible n'a
+    d'owner attribuable — l'appelant replie alors sur le comportement normal
+    (territoires/round-robin), strictement inchangé.
 
     Renvoie ``(owner, doublon_origine)`` — ``doublon_origine`` est le Lead
     dont l'owner est hérité, utile pour la note chatter."""
     from .services import is_strong_identity_match
 
-    dupes_avec_owner = [d for d in dupes if d.owner_id]
+    candidats = [d for d in dupes if d.owner_id and not d.is_archived]
+    if not candidats:
+        return None, None
+    if company is None:
+        company = candidats[0].company
+    habilites = _owners_habilites(company, {d.owner_id for d in candidats})
+    dupes_avec_owner = [d for d in candidats if d.owner_id in habilites]
     if not dupes_avec_owner:
         return None, None
     forts = [d for d in dupes_avec_owner
@@ -866,6 +939,37 @@ def _pick_owner_from_duplicates(dupes, *, telephone='', email=''):
     pool = forts or dupes_avec_owner
     origine = max(pool, key=lambda d: (d.date_creation, d.pk))
     return origine.owner, origine
+
+
+#: Marqueur de la note sobre qui REMPLACE l'alerte urgente de rappel (QW4)
+#: quand le lead est sous le seuil — sert aussi d'idempotence par lead.
+CALLBACK_SOUS_SEUIL_MARKER = 'auto — rappel demandé, lead sous le seuil'
+
+
+def _note_rappel_sous_seuil(lead):
+    """Consigne la demande de rappel d'un lead SOUS LE SEUIL sans réveiller
+    personne : UNE note chatter sobre, aucune notification (l'alerte urgente
+    ``notify_lead_callback_requested`` est réservée aux leads au-dessus du
+    seuil — une facture < 1 000 MAD n'est pas « plus urgente qu'un lead
+    générique »). La demande reste donc visible sur la fiche (préférence de
+    contact + cette note), elle ne se transforme simplement plus en alerte.
+
+    No-op si le lead n'a pas demandé de rappel ; idempotent par lead (la garde
+    anti-rejeu < 60 s repasse ici pour la MÊME soumission)."""
+    if getattr(lead, 'contact_preference', None) != Lead.ContactPreference.PHONE_OK:
+        return
+    already = LeadActivity.objects.filter(
+        lead=lead, kind=LeadActivity.Kind.NOTE,
+        body__startswith=CALLBACK_SOUS_SEUIL_MARKER,
+    ).exists()
+    if already:
+        return
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=None,
+        kind=LeadActivity.Kind.NOTE,
+        body=(f'{CALLBACK_SOUS_SEUIL_MARKER} : demande consignée, '
+              'aucune alerte urgente envoyée.'),
+    )
 
 
 def _flag_possible_duplicates(lead, *, telephone='', email='', dupes=None,
@@ -941,6 +1045,11 @@ def _map_and_link_lead(raw, data, company):
     fields = _map_payload_to_fields(data)
     telephone = fields.get('telephone') or ''
     email = fields.get('email') or ''
+    # Le TRI promis au site (capture-lead.ts : « le récepteur accepte le
+    # drapeau et fait le tri lui-même ») se joue sur ce booléen : le lead est
+    # créé et étiqueté comme tout autre, mais sa notification d'arrivée est
+    # marquée et l'alerte URGENTE de rappel (QW4) n'est pas déclenchée.
+    sous_seuil = _is_sous_seuil(data)
 
     # QW10 — Garde CONCURRENTE via `idempotencyKey` (lib/lead.ts — jeton
     # généré côté navigateur à l'ouverture de la session de saisie).
@@ -1032,7 +1141,7 @@ def _map_and_link_lead(raw, data, company):
         dupes = find_duplicates_by_contact(
             company, phone=telephone or None, email=email or None)
         inherited_owner, inherited_from = _pick_owner_from_duplicates(
-            dupes, telephone=telephone, email=email)
+            dupes, telephone=telephone, email=email, company=company)
         if inherited_owner is not None:
             fields.setdefault('owner', inherited_owner)
         else:
@@ -1051,10 +1160,13 @@ def _map_and_link_lead(raw, data, company):
         )
         # QJ2 (a) — speed-to-lead : notifie le owner dès la création (voit
         # déjà l'owner hérité ci-dessus s'il y en a un — jamais un round-robin
-        # notifié puis contredit par la note de doublon qui suit).
+        # notifié puis contredit par la note de doublon qui suit). Un lead
+        # SOUS LE SEUIL est notifié lui aussi (jamais silencieux : il est bien
+        # arrivé), mais la mention « (sous le seuil) » le dit dans le titre —
+        # le commercial arbitre en voyant la notification, pas après l'appel.
         try:
             from .services import notify_new_lead
-            notify_new_lead(lead)
+            notify_new_lead(lead, sous_seuil=sous_seuil)
         except Exception as _exc:  # noqa: BLE001 — best-effort, jamais bloquant
             logger.warning(
                 'website_lead_webhook: notify_new_lead échoué (lead #%s) : %s',
@@ -1121,9 +1233,17 @@ def _map_and_link_lead(raw, data, company):
     # DISTINCTE et plus urgente qu'un lead générique, sur création ET sur
     # complément < 60 s (la préférence peut n'arriver qu'au second envoi).
     # Idempotent (marqueur chatter) — jamais best-effort bloquant.
+    #
+    # SOUS LE SEUIL : l'alerte urgente n'est PAS déclenchée (une facture
+    # < 1 000 MAD ne réveille pas un commercial), mais la demande de rappel
+    # ne disparaît pas pour autant — `contact_preference` reste posée sur la
+    # fiche et une note chatter sobre la consigne, sans notification.
     try:
-        from .services import notify_lead_callback_requested
-        notify_lead_callback_requested(lead)
+        if sous_seuil:
+            _note_rappel_sous_seuil(lead)
+        else:
+            from .services import notify_lead_callback_requested
+            notify_lead_callback_requested(lead)
     except Exception as _exc:  # noqa: BLE001 — best-effort
         logger.warning(
             'website_lead_webhook: notify_lead_callback_requested échoué '

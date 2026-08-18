@@ -143,6 +143,40 @@ class HandleParrainageSignupTests(TestCase):
         self.assertEqual(Parrainage.objects.count(), 1)
         self.assertFalse(Parrainage.objects.filter(filleul_lead=lead2).exists())
 
+    def test_meme_parrain_laisse_une_note_au_lieu_du_silence(self):
+        """La sortie « même filleul, même parrain » était SILENCIEUSE : deux
+        salariés d'un même client (adresse contact@ partagée) ou un foyer au
+        même mobile faisaient disparaître la 2e recommandation du CRM. Elle
+        laisse désormais une note sobre sur le NOUVEAU lead."""
+        from apps.crm.services import PARRAINAGE_DEJA_ENREGISTRE_MARKER
+
+        lead1 = self._lead()
+        handle_parrainage_signup(lead1)
+        premier = Parrainage.objects.get(filleul_lead=lead1)
+
+        lead2 = self._lead(nom='Second Filleul')  # même contact, même code
+        handle_parrainage_signup(lead2)
+
+        # Toujours aucun doublon de Parrainage.
+        self.assertEqual(Parrainage.objects.count(), 1)
+        self.assertFalse(Parrainage.objects.filter(filleul_lead=lead2).exists())
+        # …mais la trace existe, sur le nouveau lead, avec parrain + date.
+        note = LeadActivity.objects.filter(
+            lead=lead2, kind=LeadActivity.Kind.NOTE,
+            body__startswith=PARRAINAGE_DEJA_ENREGISTRE_MARKER).first()
+        self.assertIsNotNone(note)
+        self.assertIsNone(note.user)
+        self.assertEqual(note.company, self.company)
+        self.assertIn(self.parrain.nom, note.body)
+        self.assertIn(
+            timezone.localtime(premier.date_creation).strftime('%d/%m/%Y'),
+            note.body)
+        self.assertIn('pas de doublon créé', note.body)
+        # Le premier lead, lui, garde sa seule note de parrainage.
+        self.assertFalse(LeadActivity.objects.filter(
+            lead=lead1,
+            body__startswith=PARRAINAGE_DEJA_ENREGISTRE_MARKER).exists())
+
     def test_parrain_different_sur_resoumission_garde_le_premier(self):
         """Filleul identique, code de parrain DIFFÉRENT sur la re-soumission :
         cas ambigu — le premier parrainage n'est jamais réattribué, le

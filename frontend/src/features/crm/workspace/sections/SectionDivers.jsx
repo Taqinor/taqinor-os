@@ -116,6 +116,13 @@ const ESTIMATE_LABELS = {
   pompeCv: 'Puissance pompe (CV)',
   champKwc: 'Champ solaire (kWc)',
   m3Jour: 'Débit (m³/j)',
+  nbPanneaux: 'Nombre de panneaux',
+  // `bassinM3` est un VOLUME de stockage (m³), pas un débit journalier : le
+  // tunnel pose `s.bassinM3 = ag.m3Jour` = le besoin d'UNE journée de pointe,
+  // borne basse de la fourchette 1-3× montrée au visiteur (lead.ts:231, et la
+  // proposition l'affiche « Bassin recommandé … m³ »). L'unité du libellé suit
+  // donc la donnée réelle — jamais « m³/j », qui en ferait un débit.
+  bassinM3: 'Bassin recommandé (m³)',
 }
 
 function itemsFromStructured(server) {
@@ -128,10 +135,20 @@ function itemsFromStructured(server) {
 
 // RÈGLE DURE : une clé vide/absente du JSON n'est JAMAIS rendue (jamais de
 // « 0 » par défaut, jamais de placeholder) — filtrée avant le map.
+// Les booléens du blob (weekend, piscine, has_generator… — acceptés tels quels
+// par `_bool()` dans webhooks._extract_web_questionnaire) sont rendus « Oui »/
+// « Non » comme la moitié STRUCTURÉE de la même section (formatStructured) :
+// un CRM français n'affiche pas « Weekend : true » sous « Téléphone étranger :
+// Non ».
+function formatValeurWeb(v) {
+  if (typeof v === 'boolean') return v ? 'Oui' : 'Non'
+  return String(v)
+}
+
 function itemsFromObject(obj, labels) {
   return Object.entries(obj || {})
     .filter(([, v]) => estValeurWebRenseignee(v))
-    .map(([k, v]) => ({ term: (labels && labels[k]) || humaniser(k), description: String(v) }))
+    .map(([k, v]) => ({ term: (labels && labels[k]) || humaniser(k), description: formatValeurWeb(v) }))
 }
 
 export function SectionWebQuestionnaire({ state }) {

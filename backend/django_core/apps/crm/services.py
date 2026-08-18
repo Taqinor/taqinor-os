@@ -2308,7 +2308,7 @@ def _build_lead_wa_reply_url(lead):
         return None
 
 
-def notify_new_lead(lead) -> None:
+def notify_new_lead(lead, *, sous_seuil=False) -> None:
     """QJ2 (a) — Notifie le responsable du lead à la CRÉATION d'un nouveau lead.
 
     Événement de speed-to-lead : le owner du lead est notifié dès l'arrivée du
@@ -2322,6 +2322,13 @@ def notify_new_lead(lead) -> None:
     notifié — repli sur les managers société (« Commercial responsable » /
     « Directeur ») quand le owner ou son supérieur manque. Aucun destinataire
     résolvable → no-op.
+
+    ``sous_seuil`` (18/08/2026 — le site transmet désormais les leads sous le
+    seuil de facture, `qualified: false`) : le lead est notifié comme les
+    autres — jamais silencieux, il est bien arrivé — mais le titre et le corps
+    portent la mention « (sous le seuil) », pour que le commercial arbitre en
+    VOYANT la notification et non après avoir décroché. Le défaut ``False``
+    laisse tous les autres appelants (création manuelle, imports) inchangés.
     """
     try:
         recipients = lead_notification_recipients(lead)
@@ -2330,13 +2337,18 @@ def notify_new_lead(lead) -> None:
         from apps.notifications.services import notify_many
         nom = (getattr(lead, 'nom', '') or '').strip() or 'Nouveau prospect'
         wa_url = _build_lead_wa_reply_url(lead)
-        body_parts = [f'Un nouveau lead vient d\'arriver : {nom}.']
+        suffixe = ' (sous le seuil)' if sous_seuil else ''
+        body_parts = [f'Un nouveau lead vient d\'arriver : {nom}{suffixe}.']
+        if sous_seuil:
+            body_parts.append(
+                'Facture déclarée sous le seuil de 1 000 MAD — à traiter '
+                'en second, après les leads au-dessus du seuil.')
         if wa_url:
             body_parts.append(f'Répondre maintenant : {wa_url}')
         notify_many(
             recipients,
             'lead_new',
-            f'Nouveau lead : {nom}',
+            f'Nouveau lead : {nom}{suffixe}',
             body='\n'.join(body_parts),
             link=f'/crm/leads?lead={lead.pk}',
             company=lead.company,
@@ -2534,6 +2546,18 @@ def notify_lead_callback_requested(lead) -> None:
 
 PARRAINAGE_SIGNUP_MARKER = 'auto — filleul détecté (utm_source=parrainage)'
 PARRAINAGE_IGNORED_MARKER = '2e code de parrainage ignoré'
+PARRAINAGE_DEJA_ENREGISTRE_MARKER = (
+    'Parrainage déjà enregistré pour ce filleul')
+
+
+def _format_date_fr(valeur):
+    """Date FR courte (JJ/MM/AAAA) pour une note chatter, en heure locale.
+    Tolérant : toute valeur non datable est rendue telle quelle (une note ne
+    casse jamais le flux qui l'écrit)."""
+    try:
+        return timezone.localtime(valeur).strftime('%d/%m/%Y')
+    except Exception:  # noqa: BLE001 — jamais bloquant pour une note
+        return str(valeur)
 
 
 def handle_parrainage_signup(lead) -> None:
@@ -2552,7 +2576,10 @@ def handle_parrainage_signup(lead) -> None:
     2e ``Parrainage en_attente`` pour la même personne. Le filleul est donc
     aussi identifié par TÉLÉPHONE/E-MAIL normalisés parmi tous les
     ``Parrainage`` déjà posés pour la société :
-      - même filleul, MÊME parrain → no-op silencieux (rien à recréer) ;
+      - même filleul, MÊME parrain → aucun 2e ``Parrainage``, mais une note
+        chatter sobre sur le NOUVEAU lead (jamais une sortie silencieuse :
+        une recommandation qui ne laisse aucune trace est une
+        recommandation perdue) ;
       - même filleul, parrain DIFFÉRENT → cas ambigu : on GARDE le premier
         parrainage (jamais réattribué) et on pose une note chatter sur le
         NOUVEAU lead expliquant que son code a été ignoré.
@@ -2613,7 +2640,21 @@ def handle_parrainage_signup(lead) -> None:
             )
         if existing_signup is not None:
             if existing_signup.parrain_id == parrain.pk:
-                return  # même filleul, même parrain — déjà traité.
+                # Même filleul, MÊME parrain : rien à recréer — mais plus de
+                # sortie SILENCIEUSE. Deux salariés d'un même client (adresse
+                # `contact@societe.ma` partagée) ou un foyer au même mobile
+                # tombent ici : sans trace, la 2e recommandation disparaissait
+                # du CRM sans que personne ne puisse savoir qu'elle a existé.
+                # Une note sobre sur le NOUVEAU lead, jamais un 2e Parrainage.
+                LeadActivity.objects.create(
+                    company=lead.company, lead=lead, user=None,
+                    kind=LeadActivity.Kind.NOTE,
+                    body=(f'{PARRAINAGE_DEJA_ENREGISTRE_MARKER} (parrain '
+                          f'{parrain.nom}, '
+                          f'{_format_date_fr(existing_signup.date_creation)}) '
+                          '— pas de doublon créé.'),
+                )
+                return
             # Parrain DIFFÉRENT sur re-soumission : cas ambigu — on GARDE le
             # premier parrainage (jamais réattribué), on note l'ignoré.
             LeadActivity.objects.create(

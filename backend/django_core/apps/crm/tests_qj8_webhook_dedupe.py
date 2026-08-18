@@ -23,7 +23,10 @@ NOUVEAU lead qui EST un doublon à la création n'entre plus dans le
 round-robin/territoires — il HÉRITE du commercial (owner) du doublon le plus
 pertinent (priorité au match fort, sinon le doublon le plus récent qui a un
 owner ; sans owner sur aucun doublon, le round-robin/territoires s'applique
-inchangé). Couvert par ``TestHeritageCommercialSurDoublon`` ci-dessous.
+inchangé). L'owner hérité doit être ÉLIGIBLE — actif et habilité au CRM, les
+mêmes filtres que ``pick_round_robin_owner`` — et un doublon ARCHIVÉ ne
+transmet jamais le sien (il reste signalé en note). Couvert par
+``TestHeritageCommercialSurDoublon`` ci-dessous.
 
 N.B. : `dedupe_event` (YDATA12) court-circuite deux POSTs au payload
 STRICTEMENT identique — chaque envoi de ces tests porte donc son propre
@@ -388,6 +391,94 @@ class TestHeritageCommercialSurDoublon(TestCase):
         self.assertEqual(res.status_code, 201, res.content)
         nouveau = Lead.objects.get(pk=res.json()['lead_id'])
         self.assertEqual(nouveau.owner_id, commercial.pk)
+
+    # ── Éligibilité de l'owner hérité (18/08/2026) ──────────────────────────
+    # L'héritage ne doit JAMAIS attribuer un lead à un compte que tous les
+    # autres chemins d'attribution refusent (`pick_round_robin_owner` :
+    # is_active + permission crm_creer), ni « comme » une fiche archivée.
+
+    def test_owner_desactive_nest_jamais_herite(self):
+        """Le commercial est parti, son compte est désactivé : ses anciens
+        leads ne transmettent plus rien — le lead repart au round-robin, qui
+        l'attribue à un commercial ACTIF (avant : notification vers un compte
+        mort, lead invisible de tous les « mes leads »)."""
+        parti = self._commercial('qw11_com_parti')
+        User.objects.filter(pk=parti.pk).update(is_active=False)
+        self._lead(nom='Ancien Client', telephone='+212661000010',
+                   owner=parti)
+        actif = self._commercial('qw11_com_actif')
+
+        res = self.post(payload_site(phoneE164='+212661000010'))
+        self.assertEqual(res.status_code, 201, res.content)
+        nouveau = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertEqual(nouveau.owner_id, actif.pk)
+        # La note signale bien le doublon, sans prétendre à un héritage.
+        note = [n.body for n in self._notes(nouveau)
+                if n.body.startswith('Doublon possible')][0]
+        self.assertNotIn('attribué à', note)
+
+    def test_owner_sans_habilitation_crm_nest_pas_herite(self):
+        """Même filtre de permission que `pick_round_robin_owner` : un compte
+        actif mais SANS `crm_creer` (rôle lecture seule) n'hérite de rien."""
+        lecteur_role = Role.objects.create(
+            company=self.company, nom='Support', permissions=['crm_voir'])
+        lecteur = User.objects.create_user(
+            username='qw11_lecteur', password='x', company=self.company,
+            role=lecteur_role)
+        doublon = self._lead(nom='Client Support', telephone='+212661000011',
+                             owner=lecteur)
+
+        res = self.post(payload_site(phoneE164='+212661000011'))
+        self.assertEqual(res.status_code, 201, res.content)
+        nouveau = Lead.objects.get(pk=res.json()['lead_id'])
+        # Aucun commercial habilité dans la société → aucun owner, jamais le
+        # compte non habilité.
+        self.assertIsNone(nouveau.owner_id)
+        # Le rapprochement, lui, reste signalé (visibilité inchangée).
+        self.assertEqual(res.json()['doublons'], [doublon.pk])
+        note = [n.body for n in self._notes(nouveau)
+                if n.body.startswith('Doublon possible')][0]
+        self.assertNotIn('attribué à', note)
+
+    def test_doublon_archive_ne_transmet_pas_son_owner(self):
+        """Une fiche archivée (spam/injoignable) reste SIGNALÉE en note, mais
+        n'impose plus son commercial à une vraie nouvelle demande."""
+        commercial = self._commercial('qw11_com_archive')
+        archive = self._lead(
+            nom='Fiche Archivée', telephone='+212661000012',
+            owner=commercial, is_archived=True)
+
+        res = self.post(payload_site(phoneE164='+212661000012'))
+        self.assertEqual(res.status_code, 201, res.content)
+        nouveau = Lead.objects.get(pk=res.json()['lead_id'])
+        # Pas d'héritage : le chemin normal reprend la main (ici, aucun
+        # round-robin configuré et un seul commercial → il reste candidat
+        # légitime, mais JAMAIS « comme la fiche d'origine »).
+        note = [n.body for n in self._notes(nouveau)
+                if n.body.startswith('Doublon possible')][0]
+        self.assertIn(f'#{archive.pk}', note)
+        self.assertNotIn('attribué à', note)
+        self.assertNotIn("comme la fiche d'origine", note)
+
+    def test_doublon_archive_saute_au_profit_du_doublon_actif(self):
+        """L'archivé est SAUTÉ, pas seulement déclassé : même plus récent, il
+        laisse l'héritage au doublon vivant."""
+        com_archive = self._commercial('qw11_com_arch2')
+        com_vivant = self._commercial('qw11_com_vivant')
+        vivant = self._lead(
+            nom='Doublon Vivant', telephone='+212661000013',
+            owner=com_vivant, jours=9)
+        self._lead(
+            nom='Doublon Archivé Récent', telephone='+212661000013',
+            owner=com_archive, is_archived=True, jours=1)
+
+        res = self.post(payload_site(phoneE164='+212661000013'))
+        self.assertEqual(res.status_code, 201, res.content)
+        nouveau = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertEqual(nouveau.owner_id, com_vivant.pk)
+        note = [n.body for n in self._notes(nouveau)
+                if n.body.startswith('Doublon possible')][0]
+        self.assertIn(f"comme la fiche d'origine #{vivant.pk}", note)
 
     def test_isolation_societe_aucun_heritage_cross_company(self):
         other = Company.objects.create(nom='Autre QW11', slug='autre-qw11')

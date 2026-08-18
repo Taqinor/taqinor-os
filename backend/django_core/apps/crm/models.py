@@ -694,9 +694,9 @@ class Lead(SoftDeleteModel):
     # commerciale distincte, badge-worthy (jamais utilisé pour qualifiesForCrm).
     phone_is_foreign = models.BooleanField(
         null=True, blank=True, verbose_name='Numéro étranger (diaspora/MRE)')
-    # Première page de landing vue (first-touch) — protégé comme l'UTM :
-    # jamais écrasé sur un visiteur revenant (voir `_FIRST_TOUCH_FIELDS`,
-    # apps/crm/webhooks.py).
+    # Première page de landing vue (first-touch) — capturée À LA CRÉATION de
+    # la fiche : depuis le 18/08/2026 chaque soumission du site crée SA fiche
+    # (apps/crm/webhooks.py), donc plus rien à protéger d'un « revenant ».
     page = models.CharField(
         max_length=300, blank=True, null=True,
         verbose_name='Page de landing (first-touch)')

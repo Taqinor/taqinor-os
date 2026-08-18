@@ -206,6 +206,22 @@ class WebQuestionnaireWebhookTests(TestCase):
             'paybackLabel': '4 à 6 ans',
         })
 
+    def test_nb_panneaux_et_bassin_traversent_la_whitelist(self):
+        """WJ124 — le tunnel ANNONCE « 12,4 kWc · 28 panneaux » et un bassin
+        recommandé ; les deux clés (`nbPanneaux`, `bassinM3`) sont émises par
+        le site (lead.ts:ESTIMATE_SHOWN_NUMERIC_KEYS) et étaient jetées ici :
+        le commercial recomptait les modules à la main."""
+        res = self.post(payload_site(
+            mode='agricole',
+            estimateShown={'champKwc': 12.4, 'nbPanneaux': 28,
+                           'bassinM3': 45, 'm3Jour': 45},
+        ))
+        self.assertEqual(res.status_code, 201, res.content)
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertEqual(lead.web_estimate, {
+            'champKwc': 12.4, 'nbPanneaux': 28, 'bassinM3': 45, 'm3Jour': 45,
+        })
+
     def test_valeurs_invalides_ignorees_jamais_de_crash(self):
         res = self.post(payload_site(
             mode='agricole',

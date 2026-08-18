@@ -139,6 +139,47 @@ describe('LW11 — rendu des sections (port 1:1 des champs)', () => {
     expect(screen.getByText('6.2')).toBeInTheDocument()
   })
 
+  it('SectionWebQuestionnaire rend les booléens du blob en « Oui »/« Non »', () => {
+    // Les booléens du questionnaire (acceptés tels quels par `_bool()` dans
+    // webhooks._extract_web_questionnaire) sortaient bruts en anglais
+    // (« true »/« false ») juste sous un « Non » produit par formatStructured
+    // pour la même nature de donnée.
+    const state = initState({
+      lead: {
+        id: 1,
+        phone_is_foreign: false,
+        web_questionnaire: { weekend: true, piscine: false, has_generator: true },
+      },
+      mode: 'edit',
+    })
+    render(<SectionWebQuestionnaire state={state} />)
+    expect(screen.getByText('Weekend')).toBeInTheDocument()
+    expect(screen.getByText('Piscine')).toBeInTheDocument()
+    expect(screen.queryByText('true')).toBeNull()
+    expect(screen.queryByText('false')).toBeNull()
+    // 2 « Oui » (weekend, has_generator) et 2 « Non » (piscine + la colonne
+    // structurée phone_is_foreign, déjà formatée ainsi).
+    expect(screen.getAllByText('Oui')).toHaveLength(2)
+    expect(screen.getAllByText('Non')).toHaveLength(2)
+  })
+
+  it('SectionWebQuestionnaire libelle nbPanneaux et bassinM3 (unité réelle m³)', () => {
+    // WJ124 — les deux clés traversent désormais la whitelist serveur
+    // (_ESTIMATE_SHOWN_KEYS) : elles doivent avoir un libellé FR, et le
+    // bassin est un VOLUME (m³), pas un débit journalier.
+    const state = initState({
+      lead: { id: 1, web_estimate: { nbPanneaux: 28, bassinM3: 45 } },
+      mode: 'edit',
+    })
+    render(<SectionWebQuestionnaire state={state} />)
+    expect(screen.getByText('Nombre de panneaux')).toBeInTheDocument()
+    expect(screen.getByText('28')).toBeInTheDocument()
+    expect(screen.getByText('Bassin recommandé (m³)')).toBeInTheDocument()
+    expect(screen.getByText('45')).toBeInTheDocument()
+    // Jamais la clé brute humanisée à la place du libellé dédié.
+    expect(screen.queryByText('Nb panneaux')).toBeNull()
+  })
+
   it('SectionWebQuestionnaire ne rend rien quand rien n\'a été capturé (aucun chrome)', () => {
     const state = initState({ lead: { id: 1, nom: 'Test' }, mode: 'edit' })
     const { container } = render(<SectionWebQuestionnaire state={state} />)
