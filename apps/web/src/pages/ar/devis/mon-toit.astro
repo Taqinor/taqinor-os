@@ -15,27 +15,18 @@
  */
 import Layout from '../../../layouts/Layout.astro';
 import { BILL_RANGES } from '../../../lib/billRange';
-import { ROOF_TYPES } from '../../../lib/lead';
-// WJ122 — بطاقات الفئات التجارية + الأسئلة المولّدة عند البناء من المصدر الوحيد
-// المنقول من solar.js (QX44). قيم الفئات تقود المنطق ؛ التسميات أدناه مُعرَّبة
-// لهذه الصفحة (الأرقام النقدية تبقى غربية عند العرض).
-import { COMMERCIAL_CATEGORIES, COMMERCIAL_CATEGORY_QUESTIONS } from '../../../lib/commercialCategories';
+// « Type de toit » (ROOF_TYPES) retirée du tunnel (coupe fondateur 18/08) — le
+// commercial la complète dans l'ERP. `roofType` reste EXIGÉ par validateLead :
+// il est désormais DÉRIVÉ (resolveRoofType → 'autre'), plus jamais demandé.
+// WJ122 — بطاقات الفئات التجارية مولّدة عند البناء من المصدر الوحيد المنقول من
+// solar.js (QX44). الأسئلة الخاصة بكل فئة (COMMERCIAL_CATEGORY_QUESTIONS) رُفعت
+// من المسار (قطع فوندر 18/08) : لم تكن أي منها تُغذّي التقدير — يُكمّلها التجاري
+// في ERP.
+import { COMMERCIAL_CATEGORIES } from '../../../lib/commercialCategories';
 const CC_CAT_LABEL: Record<string, string> = {
   hotel: 'فندق / رياض', restaurant: 'مطعم / مقهى', commerce: 'متجر / سوبر ماركت',
   bureau: 'مكتب / مقرّ', sante: 'صحّة (عيادة)', ecole: 'مدرسة خاصة',
   hammam: 'حمّام / سبا / نادٍ رياضي', boulangerie: 'مخبزة', froid: 'مخزن تبريد', autre: 'نشاط آخر',
-};
-const CC_Q_LABEL: Record<string, string> = {
-  chambres: 'عدد الغرف', occupation_pct: 'نسبة الإشغال السنوية (%)', piscine: 'مسبح مُدفّأ',
-  chambres_froides: 'غرف التبريد', horaires: 'أوقات العمل', cuisson: 'الطهي',
-  surface_vente_m2: 'مساحة البيع (م²)', effectif: 'عدد الأشخاص', clim: 'تكييف مركزي',
-  lits: 'عدد الأسِرّة', garde_nuit: 'مناوبة ليلية', internat: 'داخليّة',
-  fermeture_estivale: 'إغلاق صيفي', surface_m2: 'المساحة (م²)', chauffe: 'تسخين الماء',
-  four: 'فرن', cuisson_nocturne: 'خَبز ليلي', temperature_consigne: 'درجة الحرارة المضبوطة (°م)',
-  volume_m3: 'حجم التبريد (م³)', saisonnalite_recolte: 'ذروة موسمية (حصاد)',
-};
-const CC_OPT_LABEL: Record<string, string> = {
-  midi: 'ظُهراً', soir: 'مساءً', continu: 'متواصل', electrique: 'كهربائي', gaz: 'غاز',
 };
 // WJ124 — بطاقات الزراعة + الجهة مولّدة عند البناء من محرّك الزراعة QX48 (مصدر
 // وحيد). القيم = مفاتيح CROP_STAGES / ET0_MONTHLY (تقود محرّك الماء) ؛ التسميات
@@ -67,9 +58,9 @@ import ZelligeSignature from '../../../components/ZelligeSignature.astro';
 
 const inputClass =
   'w-full border border-white/15 bg-white/5 px-3 py-3 text-base text-white placeholder:text-lune-faint outline-none transition-colors focus:border-brass-400 focus:ring-2 focus:ring-brass-400/30 aria-[invalid=true]:border-alert-300 aria-[invalid=true]:ring-2 aria-[invalid=true]:ring-alert-300/30';
-// BILL_RANGES / ROOF_TYPES sont partagés (contrat lead.ts INCHANGÉ) : les `id`
-// restent identiques FR/AR, seul le libellé affiché est traduit ici (lib/billRange.ts
-// et lib/lead.ts ne sont pas modifiés — hors périmètre).
+// BILL_RANGES sont partagées (contrat lead.ts INCHANGÉ) : les `id` restent
+// identiques FR/AR, seul le libellé affiché est traduit ici (lib/billRange.ts
+// n'est pas modifié — hors périmètre).
 const BILL_RANGE_LABEL_AR: Record<string, string> = {
   lt800: 'أقل من 800 درهم',
   '800-1000': '800 – 1 000 درهم',
@@ -79,13 +70,6 @@ const BILL_RANGE_LABEL_AR: Record<string, string> = {
   '5000-10000': '5 000 – 10 000 درهم',
   gt10000: 'أكثر من 10 000 درهم',
 };
-const ROOF_TYPE_LABEL_AR: Record<string, string> = {
-  villa: 'فيلا',
-  hangar: 'مستودع صناعي',
-  toit_plat: 'سطح مسطح',
-  autre: 'أخرى',
-};
-const roofTypes = ROOF_TYPES.map((r) => ({ ...r, label: ROOF_TYPE_LABEL_AR[r.id] ?? r.label }));
 const billRanges = BILL_RANGES.map((b) => ({ ...b, label: BILL_RANGE_LABEL_AR[b.id] ?? b.label }));
 
 // WJ6 — étapes de l'assistant (libellés FR + AR). data-i18n pour bascule de langue.
@@ -419,94 +403,11 @@ const noscriptTelHref = `tel:${NAP.phone}`;
             <span>الشريحة المكتشفة&nbsp;: <strong id="mt-bill-detected-value" class="font-semibold text-white">—</strong></span>
           </p>
 
-          <!-- WJ48 — « Type de toit » en cartes image tappables ; le <select> natif
-               reste (sr-only) comme source de vérité de val('mt-roof'). -->
+          <!-- OMBRAGE — la SEULE question qui reste après la facture : un seul
+               clic, et il ajuste RÉELLEMENT le calcul (billEstimate.ts
+               OMBRAGE_DERATE). Remonté ici depuis l'ancien accordéon « Pour
+               affiner la taille », qui disparaît avec la coupe du 18/08. -->
           <fieldset>
-            <legend class="text-sm text-lune-soft" data-i18n data-fr="Type de toit" data-ar="نوع السطح">Type de toit</legend>
-            <div class="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
-              {ROOF_TYPES.map((r) => (
-                <button type="button" class="mt-roof-card cine-card flex flex-col items-center gap-1.5 border border-white/15 p-3 text-center transition-colors"
-                  data-roof={r.id} aria-pressed="false">
-                  <svg aria-hidden="true" width="32" height="32" viewBox="0 0 32 32" fill="none" class="text-lune-soft">
-                    {r.id === 'villa' && <path d="M4 18 16 8l12 10M8 16v10h16V16" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" fill="none" />}
-                    {r.id === 'hangar' && <path d="M3 20 10 12h12l7 8M6 20v6h20v-6" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" fill="none" />}
-                    {r.id === 'toit_plat' && <path d="M5 12h22v3H5zM7 15v10h18V15" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" fill="none" />}
-                    {r.id === 'autre' && <path d="M16 5v22M5 16h22" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />}
-                  </svg>
-                  <span class="text-xs font-semibold text-white" data-i18n data-fr={r.label} data-ar={ROOF_TYPE_LABEL_AR[r.id] ?? r.label}>{r.label}</span>
-                </button>
-              ))}
-            </div>
-            <span id="mt-roof-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
-            <select id="mt-roof" name="roofType" aria-describedby="mt-roof-err" class="sr-only">
-              <option value="">اختر…</option>
-              {roofTypes.map((r) => <option value={r.id}>{r.label}</option>)}
-            </select>
-          </fieldset>
-
-          <div class="grid gap-4 sm:grid-cols-2">
-            <label class="block text-sm text-lune-soft">
-              <span data-i18n data-fr="Raccordement" data-ar="نوع الربط">Raccordement</span>
-              <select id="mt-raccordement" name="raccordement" class={`${inputClass} mt-1`}>
-                <option value="">اختر…</option>
-                <option value="monophase">أحادي الطور</option>
-                <option value="triphase">ثلاثي الطور</option>
-                <option value="inconnu">لا أعرف</option>
-              </select>
-            </label>
-          </div>
-
-          <label class="flex items-start gap-3 text-sm text-lune-soft">
-            <input id="mt-ete-differente" name="eteDifferente" type="checkbox" class="mt-1 h-5 w-5 flex-none accent-brass-400" />
-            <span data-i18n data-fr="L'été est différent de l'hiver ? (climatisation, pompage…)" data-ar="الصيف مختلف عن الشتاء؟ (تكييف، ضخ…)">L'été est différent de l'hiver&nbsp;? (climatisation, pompage…)</span>
-          </label>
-
-          <label id="mt-facture-ete-wrap" hidden class="block text-sm text-lune-soft">
-            <span data-i18n data-fr="Facture été (MAD)" data-ar="فاتورة الصيف (درهم)">Facture été (MAD)</span>
-            <input id="mt-facture-ete" name="factureEte" type="number" step="any" inputmode="decimal"
-              placeholder="مثال: 2 500" dir="ltr" class={`${inputClass} mt-1`} />
-          </label>
-        </div>
-
-        <!-- ===== WJ31/WJ49 — questions facultatives, restagées en 2-3 groupes. ===== -->
-        <p class="mt-4 text-sm font-semibold text-brass-300" data-i18n
-          data-fr="Affiner mon estimation (facultatif, 1 minute)" data-ar="تحسين تقديري (اختياري، دقيقة واحدة)">
-          Affiner mon estimation (facultatif, 1 minute)
-        </p>
-
-        <!-- Groupe 1/3 — pour affiner la taille. -->
-        <details id="mt-more-size" class="cine-card mt-3 p-5 sm:p-6">
-          <summary class="cursor-pointer select-none text-sm font-semibold text-brass-300" data-i18n
-            data-fr="Pour affiner la taille" data-ar="لتحسين الحجم">
-            Pour affiner la taille
-          </summary>
-
-          <div class="mt-4 grid gap-4 sm:grid-cols-2">
-            <label class="block text-sm text-lune-soft">
-              <span data-i18n data-fr="Distributeur d'électricité" data-ar="موزع الكهرباء">Distributeur d'électricité</span>
-              <select id="mt-distributeur" name="distributeur" class={`${inputClass} mt-1`}>
-                <option value="">اختر…</option>
-                <option value="onee" data-i18n data-fr="ONEE" data-ar="المكتب الوطني">ONEE</option>
-                <option value="lydec" data-i18n data-fr="Lydec" data-ar="ليديك">Lydec</option>
-                <option value="redal" data-i18n data-fr="Redal" data-ar="ريضال">Redal</option>
-                <option value="inconnu" data-i18n data-fr="Je ne sais pas" data-ar="لا أعرف">Je ne sais pas</option>
-              </select>
-              <!-- WJ70 — honnêteté : ce choix ne change AUCUN chiffre affiché aujourd'hui. -->
-              <p class="mt-1 text-xs text-lune-faint" data-i18n
-                data-fr="Estimation basée sur le barème ONEE (conservateur) pour tous les distributeurs, en attendant les grilles réelles par distributeur."
-                data-ar="التقدير يعتمد على تعريفة المكتب الوطني (ONEE) المتحفظة لجميع الموزعين، إلى حين توفر شبكات أسعار حقيقية لكل موزع.">
-                Estimation basée sur le barème ONEE (conservateur) pour tous les distributeurs,
-                en attendant les grilles réelles par distributeur.
-              </p>
-            </label>
-            <label class="block text-sm text-lune-soft">
-              <span data-i18n data-fr="Consommation (kWh/mois, si connue)" data-ar="الاستهلاك (كيلوواط ساعة/شهر، إن عُرف)">Consommation (kWh/mois, si connue)</span>
-              <input id="mt-bill-kwh" name="billKwh" type="number" step="any" inputmode="decimal"
-                placeholder="مثال: 850" dir="ltr" class={`${inputClass} mt-1`} />
-            </label>
-          </div>
-
-          <fieldset class="mt-4">
             <legend class="text-sm text-lune-soft" data-i18n data-fr="Ombrage sur le toit" data-ar="التظليل على السطح">Ombrage sur le toit</legend>
             <div class="mt-2 grid grid-cols-3 gap-2">
               <button type="button" class="mt-ombrage cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="aucun" aria-pressed="false" data-i18n data-fr="Aucun" data-ar="لا يوجد">Aucun</button>
@@ -514,108 +415,24 @@ const noscriptTelHref = `tel:${NAP.phone}`;
               <button type="button" class="mt-ombrage cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="important" aria-pressed="false" data-i18n data-fr="Important" data-ar="كبير">Important</button>
             </div>
           </fieldset>
+        </div>
 
-          <label class="mt-4 block text-sm text-lune-soft">
-            <span data-i18n data-fr="Âge approximatif du toit (années)" data-ar="عمر السطح التقريبي (سنوات)">Âge approximatif du toit (années)</span>
-            <input id="mt-roof-age" name="roofAgeYears" type="number" step="1" min="0" inputmode="numeric"
-              placeholder="مثال: 10" dir="ltr" class={`${inputClass} mt-1`} />
-          </label>
-          <!-- WJ112 — l'âge du toit sert la VISITE TECHNIQUE, pas le calcul de kWc affiché. -->
-          <p class="mt-1 text-xs text-lune-faint" data-i18n
-            data-fr="Sert à préparer votre visite technique (état de la toiture) — ne change pas le calcul ci-dessus."
-            data-ar="يُستخدم لتحضير الزيارة التقنية (حالة السطح) — لا يغيّر الحساب أعلاه.">
-            Sert à préparer votre visite technique (état de la toiture) — ne change pas le
-            calcul ci-dessus.
-          </p>
-
-          <!-- Photo compteur/facture — capturée EN LOCAL, jamais uploadée. -->
-          <div class="mt-4">
-            <label class="block text-sm text-lune-soft" for="mt-meter-photo" data-i18n
-              data-fr="Photo du compteur ou de la facture" data-ar="صورة العداد أو الفاتورة">
-              Photo du compteur ou de la facture
-            </label>
-            <input id="mt-meter-photo" type="file" accept="image/*" capture="environment"
-              class="mt-1 block w-full text-sm text-lune-soft file:me-3 file:border-0 file:bg-white/10 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white" />
-            <p id="mt-meter-photo-note" class="mt-1 text-xs text-lune-faint" data-i18n
-              data-fr="Ou envoyez-la nous directement sur WhatsApp après l'envoi du formulaire — c'est souvent plus rapide. Vous pouvez aussi envoyer un vocal avec une photo de votre facture."
-              data-ar="أو أرسلها لنا مباشرة على واتساب بعد إرسال النموذج — غالباً أسرع. يمكنكم أيضاً إرسال رسالة صوتية مع صورة فاتورتكم.">
-              Ou envoyez-la nous directement sur WhatsApp après l'envoi du formulaire — c'est
-              souvent plus rapide. Vous pouvez aussi envoyer un vocal avec une photo de votre
-              facture.
-            </p>
-          </div>
-        </details>
-
-        <!-- Groupe 2/3 — pour anticiper vos besoins. -->
-        <details id="mt-more-needs" class="cine-card mt-3 p-5 sm:p-6">
-          <summary class="cursor-pointer select-none text-sm font-semibold text-brass-300" data-i18n
-            data-fr="Pour anticiper vos besoins" data-ar="لتوقع احتياجاتكم">
-            Pour anticiper vos besoins
-          </summary>
-
-          <fieldset class="mt-4">
-            <legend class="text-sm text-lune-soft" data-i18n data-fr="Charges futures envisagées" data-ar="أحمال مستقبلية متوقعة">Charges futures envisagées</legend>
-            <div class="mt-2 flex flex-wrap gap-2">
-              <button type="button" class="mt-future-load cine-card border px-3 py-2 text-sm text-white transition-colors" data-value="clim" aria-pressed="false" data-i18n data-fr="Climatisation" data-ar="تكييف">Climatisation</button>
-              <button type="button" class="mt-future-load cine-card border px-3 py-2 text-sm text-white transition-colors" data-value="ve" aria-pressed="false" data-i18n data-fr="Voiture électrique" data-ar="سيارة كهربائية">Voiture électrique</button>
-              <button type="button" class="mt-future-load cine-card border px-3 py-2 text-sm text-white transition-colors" data-value="pompe" aria-pressed="false" data-i18n data-fr="Pompage" data-ar="ضخ">Pompage</button>
-            </div>
-          </fieldset>
-
-          <label class="mt-4 flex items-start gap-3 text-sm text-lune-soft">
-            <input id="mt-battery-interest" name="batteryInterest" type="checkbox" class="mt-1 h-5 w-5 flex-none accent-brass-400" />
-            <span data-i18n data-fr="Intéressé(e) par une batterie de stockage" data-ar="مهتم بتخزين البطارية">Intéressé(e) par une batterie de stockage</span>
-          </label>
-          <!-- WJ112 — transmis au conseiller, ne change PAS l'estimation instantanée. -->
-          <p class="mt-1 text-xs text-lune-faint" data-i18n
-            data-fr="Transmis à votre conseiller pour le chiffrage détaillé — ne change pas l'estimation instantanée ci-dessus."
-            data-ar="يُنقل إلى مستشاركم للتقدير المفصّل — لا يغيّر التقدير الفوري أعلاه.">
-            Transmis à votre conseiller pour le chiffrage détaillé — ne change pas
-            l'estimation instantanée ci-dessus.
-          </p>
-        </details>
-
-        <!-- Groupe 3/3 — pour mieux conseiller (2 champs). L'id `mt-more-financing`
-             est CONSERVÉ tel quel : c'est un point d'ancrage DOM déjà câblé
-             (persistance, tests, styles) et le renommer ne changerait rien pour
-             le visiteur, qui ne voit que l'intitulé. -->
-        <details id="mt-more-financing" class="cine-card mt-3 p-5 sm:p-6">
-          <summary class="cursor-pointer select-none text-sm font-semibold text-brass-300" data-i18n
-            data-fr="Pour mieux vous conseiller" data-ar="لتقديم نصيحة أفضل">
-            Pour mieux vous conseiller
-          </summary>
-
-          <div class="mt-4 grid gap-4 sm:grid-cols-2">
-            <label class="block text-sm text-lune-soft">
-              <span data-i18n data-fr="Vous êtes…" data-ar="أنتم…">Vous êtes…</span>
-              <select id="mt-occupant-type" name="occupantType" class={`${inputClass} mt-1`}>
-                <option value="">اختر…</option>
-                <option value="proprietaire" data-i18n data-fr="Propriétaire" data-ar="مالك">Propriétaire</option>
-                <option value="locataire" data-i18n data-fr="Locataire" data-ar="مستأجر">Locataire</option>
-                <option value="decideur" data-i18n data-fr="Décideur (entreprise)" data-ar="صاحب القرار (شركة)">Décideur (entreprise)</option>
-              </select>
-            </label>
-            <label class="block text-sm text-lune-soft">
-              <span data-i18n data-fr="Votre projet, c'est pour…" data-ar="مشروعكم من أجل…">Votre projet, c'est pour…</span>
-              <select id="mt-project-timing" name="projectTiming" class={`${inputClass} mt-1`}>
-                <option value="">اختر…</option>
-                <option value="maintenant" data-i18n data-fr="Maintenant" data-ar="الآن">Maintenant</option>
-                <option value="3mois" data-i18n data-fr="Dans ~3 mois" data-ar="خلال ~3 أشهر">Dans ~3 mois</option>
-                <option value="renseignement" data-i18n data-fr="Juste un renseignement" data-ar="مجرد استعلام">Juste un renseignement</option>
-              </select>
-            </label>
-          </div>
-          <!-- La question « Mode de financement envisagé » (mt-financing-intent)
-               a été RETIRÉE sur décision du fondateur : on ne demande plus au
-               visiteur comment il compte payer avant même de lui avoir parlé.
-               Le champ ERP `financing_intent` existe toujours (d'autres sources
-               l'alimentent) et lib/lead.ts continue de le valider s'il arrive —
-               le tunnel ne l'envoie simplement plus. -->
-        </details>
+        <!-- RETIRÉES DU TUNNEL (coupe fondateur 18/08) — le commercial les
+             complète dans l'ERP (la fenêtre lead a désormais sa section dédiée) :
+             type de toit, raccordement mono/triphasé, « l'été est différent »
+             + facture d'été, distributeur d'électricité, consommation kWh/mois
+             (la facture suffit — estimateFromBill fait la conversion lui-même),
+             âge du toit, photo du compteur, charges futures, intérêt batterie,
+             « Vous êtes… » (occupantType) et « Votre projet, c'est pour… »
+             (projectTiming). Les trois accordéons mt-more-size / mt-more-needs /
+             mt-more-financing (« Pour mieux vous conseiller ») disparaissent
+             entièrement avec elles. -->
         </div>
 
         <!-- ===== QX — SOUS-PANNEAU PROFESSIONNEL : énergie du site, raccordement
-             BT/MT, profil d'activité, surface & contexte facultatifs. ===== -->
+             BT/MT, profil d'activité, équipes et surface — c'est-à-dire EXACTEMENT
+             les entrées d'estimatorPro (autoconsommation C&I), rien d'autre depuis
+             la coupe fondateur du 18/08. ===== -->
         <div id="mt-sub-professionnel" hidden>
           <p class="mt-6 text-lune-soft">
             أخبرونا عن طاقة موقعكم — جوابان يكفيان لتقدير أولي، والباقي يحسّنه.
@@ -644,12 +461,9 @@ const noscriptTelHref = `tel:${NAP.phone}`;
                 <button type="button" id="mt-tension-bt" class="mt-tension cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="bt" aria-pressed="true">الجهد المنخفض</button>
                 <button type="button" id="mt-tension-mt" class="mt-tension cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="mt" aria-pressed="false">الجهد المتوسط</button>
               </div>
-              <label id="mt-puissance-kva-wrap" hidden class="mt-3 block text-sm text-lune-soft">
-                <span>القدرة المكتتبة (kVA) — اختياري</span>
-                <input id="mt-puissance-kva" name="puissanceKva" type="number" step="any" inputmode="decimal"
-                  aria-describedby="mt-puissance-kva-err" placeholder="مثال: 160" dir="ltr" class={`${inputClass} mt-1`} />
-                <span id="mt-puissance-kva-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
-              </label>
+              <!-- Puissance souscrite (kVA) retirée du tunnel (coupe fondateur
+                   18/08) : estimatePro ne lit que le raccordement bt/mt, jamais
+                   le kVA — le commercial le complète dans l'ERP. -->
             </div>
 
             <!-- (c) Profil d'activité — pilote le taux d'autoconsommation -->
@@ -672,10 +486,10 @@ const noscriptTelHref = `tel:${NAP.phone}`;
                 <button type="button" class="mt-equipes cine-card border p-3 text-center text-sm text-white transition-colors" data-value="3x8" aria-pressed="false">3×8 متواصل</button>
                 <button type="button" class="mt-equipes cine-card border p-3 text-center text-sm text-white transition-colors" data-value="continu" aria-pressed="false">متواصل 24/7</button>
               </div>
-              <label class="mt-3 flex items-start gap-3 text-sm text-lune-soft">
-                <input id="mt-weekend" name="weekend" type="checkbox" class="mt-1 h-5 w-5 flex-none accent-brass-400" />
-                <span>إنتاج في عطلة نهاية الأسبوع أيضاً</span>
-              </label>
+              <!-- « Production aussi le week-end » retirée du tunnel (coupe
+                   fondateur 18/08) : le plafond d'autoconsommation vient des
+                   ÉQUIPES seules (SHIFT_DAY_SHARE_CEILING) — le week-end
+                   n'entrait dans aucun calcul. Le commercial le complète dans l'ERP. -->
               <p class="mt-2 text-xs text-lune-faint">
                 الطاقة الشمسية تُزيح ساعاتكم المُمتلئة (~1.01 درهم/ك.و.س) ؛ ساعة الذروة
                 لا تُغطّى إلا ببطارية — لا العكس أبداً. كلما أنتجتم ليلاً أكثر (3×8،
@@ -683,13 +497,8 @@ const noscriptTelHref = `tel:${NAP.phone}`;
               </p>
             </fieldset>
 
-            <!-- WJ123 — معامل القدرة cos φ (اختياري) : معطى حقيقي لموقع جهد متوسط/صناعي. -->
-            <label class="block text-sm text-lune-soft">
-              <span>معامل القدرة cos φ (إن عُرف) — اختياري</span>
-              <input id="mt-cos-phi" name="cosPhiConnu" type="number" step="any" inputmode="decimal"
-                aria-describedby="mt-cos-phi-err" dir="ltr" placeholder="مثال: 0.92" class={`${inputClass} mt-1`} />
-              <span id="mt-cos-phi-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
-            </label>
+            <!-- cos φ retiré du tunnel (coupe fondateur 18/08) : jamais lu par
+                 estimatePro — le commercial le complète dans l'ERP. -->
 
             <p class="text-xs text-lune-faint">
               دراسة مفصّلة للجهد المتوسط ينجزها مهندس — هذا التقدير استرشادي (القانون 82-21، الاستهلاك الذاتي).
@@ -718,68 +527,20 @@ const noscriptTelHref = `tel:${NAP.phone}`;
             </label>
           </details>
 
-          <!-- (e) Contexte (facultatif) — accueille aussi les champs entreprise. -->
-          <details id="mt-pro-context" class="cine-card mt-3 p-5 sm:p-6">
-            <summary class="cursor-pointer select-none text-sm font-semibold text-brass-300">
-              سياقكم (اختياري)
-            </summary>
-            <fieldset class="mt-4">
-              <legend class="text-sm text-lune-soft">مولّد كهربائي في الموقع؟</legend>
-              <div class="mt-2 grid grid-cols-2 gap-2">
-                <button type="button" class="mt-generator cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="oui" aria-pressed="false">نعم</button>
-                <button type="button" class="mt-generator cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="non" aria-pressed="false">لا</button>
-              </div>
-            </fieldset>
-            <!-- WJ123 — المولّد : القدرة + مصروف الديزل الشهري (مدخل الاستبدال). -->
-            <div class="mt-4 grid gap-4 sm:grid-cols-2">
-              <label class="block text-sm text-lune-soft">
-                <span>قدرة المولّد (kVA)</span>
-                <input id="mt-groupe-kva" name="groupeKva" type="number" step="any" inputmode="decimal"
-                  aria-describedby="mt-groupe-kva-err" dir="ltr" placeholder="مثال: 250" class={`${inputClass} mt-1`} />
-                <span id="mt-groupe-kva-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
-              </label>
-              <label class="block text-sm text-lune-soft">
-                <span>مصروف الديزل (درهم/شهر)</span>
-                <input id="mt-diesel-dh" name="dieselDhMois" type="number" step="any" inputmode="decimal"
-                  aria-describedby="mt-diesel-dh-err" dir="ltr" placeholder="مثال: 30000" class={`${inputClass} mt-1`} />
-                <span id="mt-diesel-dh-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
-              </label>
-            </div>
-            <label class="mt-4 block text-sm text-lune-soft">
-              <span data-i18n data-fr="Raison sociale" data-ar="التسمية الاجتماعية">Raison sociale</span>
-              <input id="mt-raison-sociale" name="raisonSociale" type="text" autocomplete="organization"
-                placeholder="مثال: Riad Solaire SARL" class={`${inputClass} mt-1`} />
-            </label>
-            <div class="mt-4 grid gap-4 sm:grid-cols-2">
-              <label class="block text-sm text-lune-soft">
-                <span data-i18n data-fr="Type de site" data-ar="نوع الموقع">Type de site</span>
-                <select id="mt-facility-type" name="facilityType" class={`${inputClass} mt-1`}>
-                  <option value="">اختر…</option>
-                  <option value="bureau" data-i18n data-fr="Bureau" data-ar="مكتب">Bureau</option>
-                  <option value="entrepot" data-i18n data-fr="Entrepôt" data-ar="مستودع">Entrepôt</option>
-                  <option value="usine" data-i18n data-fr="Usine" data-ar="مصنع">Usine</option>
-                  <option value="commerce" data-i18n data-fr="Commerce / hôtellerie" data-ar="تجارة / فندقة">Commerce / hôtellerie</option>
-                  <option value="agricole" data-i18n data-fr="Agricole" data-ar="فلاحي">Agricole</option>
-                  <option value="autre" data-i18n data-fr="Autre" data-ar="أخرى">Autre</option>
-                </select>
-              </label>
-              <label class="block text-sm text-lune-soft">
-                <span data-i18n data-fr="Combien de sites ?" data-ar="كم عدد المواقع؟">Combien de sites&nbsp;?</span>
-                <select id="mt-site-count" name="siteCount" class={`${inputClass} mt-1`}>
-                  <option value="">اختر…</option>
-                  <option value="1">1</option>
-                  <option value="2-5">2–5</option>
-                  <option value="6+">6+</option>
-                </select>
-              </label>
-            </div>
-          </details>
+          <!-- « Votre contexte (facultatif) » retiré du tunnel (coupe fondateur
+               18/08) : groupe électrogène + puissance du groupe (kVA) + dépense
+               diesel, type de site, nombre de sites — aucun n'entre dans
+               estimatePro. La RAISON SOCIALE a été déplacée sur l'écran contact
+               (mêmes id/name). Le commercial complète le reste dans l'ERP. -->
         </div>
 
-        <!-- ===== WJ122 — SOUS-PANNEAU COMMERCIAL : catégorie (cartes) + questions
-             spécifiques + facture MAD⇄kWh. Le day-share par archétype
-             (commercialDayShare, SOURCE solar.js QX44) → hôtel ≠ bureau à facture
-             égale. Alimente estimatorPro via `categorieCommerciale`. ===== -->
+        <!-- ===== WJ122 — SOUS-PANNEAU COMMERCIAL : catégorie d'activité (cartes)
+             + facture MAD⇄kWh. Les 2-4 questions SPÉCIFIQUES à la catégorie sont
+             sorties du tunnel (coupe fondateur 18/08) : seule la CATÉGORIE compte
+             pour le calcul.
+             Le day-share par archétype (commercialDayShare, SOURCE solar.js QX44)
+             fait qu'un hôtel ≠ un bureau à facture égale. Alimente estimatorPro
+             (autoconsommation C&I) via `categorieCommerciale`. ===== -->
         <div id="mt-sub-commercial" hidden>
           <p class="mt-6 text-lune-soft">
             لمنشأتكم نمط استهلاك خاص — اختاروا نشاطكم للحصول على تقدير ملائم.
@@ -815,34 +576,12 @@ const noscriptTelHref = `tel:${NAP.phone}`;
               </label>
             </div>
 
-            <!-- (c) أسئلة خاصة بالفئة المختارة (شبكة واحدة ظاهرة في كل مرة). -->
-            {COMMERCIAL_CATEGORIES.filter((c) => COMMERCIAL_CATEGORY_QUESTIONS[c.value].length > 0).map((c) => (
-              <div id={`mt-cc-questions-${c.value}`} class="mt-commercial-questions space-y-4 border-t border-white/10 pt-4" hidden>
-                <p class="text-sm font-semibold text-brass-300">تفاصيل — {CC_CAT_LABEL[c.value] ?? c.label}</p>
-                {COMMERCIAL_CATEGORY_QUESTIONS[c.value].map((q) => (
-                  q.type === 'bool' ? (
-                    <label class="flex items-start gap-3 text-sm text-lune-soft">
-                      <input id={`mt-cc-${c.value}-${q.key}`} type="checkbox" class="mt-1 h-5 w-5 flex-none accent-brass-400" />
-                      <span>{CC_Q_LABEL[q.key] ?? q.label}</span>
-                    </label>
-                  ) : q.type === 'select' ? (
-                    <label class="block text-sm text-lune-soft">
-                      <span>{CC_Q_LABEL[q.key] ?? q.label}</span>
-                      <select id={`mt-cc-${c.value}-${q.key}`} class={`${inputClass} mt-1`}>
-                        <option value="">اختر…</option>
-                        {(q.options ?? []).map((o) => <option value={o.value}>{CC_OPT_LABEL[o.value] ?? o.label}</option>)}
-                      </select>
-                    </label>
-                  ) : (
-                    <label class="block text-sm text-lune-soft">
-                      <span>{CC_Q_LABEL[q.key] ?? q.label}</span>
-                      <input id={`mt-cc-${c.value}-${q.key}`} type="number" step="any" inputmode="decimal"
-                        dir="ltr" placeholder="—" class={`${inputClass} mt-1`} />
-                    </label>
-                  )
-                ))}
-              </div>
-            ))}
+            <!-- Questions PAR CATÉGORIE retirées du tunnel (coupe fondateur
+                 18/08) : aucune n'entrait dans l'estimation — estimatePro ne lit
+                 que la CATÉGORIE elle-même (day-share par archétype), la facture,
+                 le raccordement, l'activité, les équipes et la surface. Elles
+                 partaient au webhook sans changer un seul chiffre affiché ; le
+                 commercial les complète désormais dans l'ERP. -->
 
             <p class="text-xs text-lune-faint">
               تقدير إرشادي (الاستهلاك الذاتي، القانون 82-21). تُنجَز دراسة مفصّلة على يد مهندس.
@@ -851,8 +590,9 @@ const noscriptTelHref = `tel:${NAP.phone}`;
         </div>
 
         <!-- ===== QX — SOUS-PANNEAU AGRICOLE : hydraulique (source / profondeur /
-             HMT / besoin / heures), irrigation, exploitation et pompe actuelle
-             facultatives. Alimente estimatorAgricole — JAMAIS estimateFromBill. ===== -->
+             HMT / besoin / heures) + dépense carburant. Alimente estimatorAgricole
+             (pompage) — JAMAIS estimateFromBill. Irrigation et pompe actuelle/CV
+             sont sorties du tunnel (coupe fondateur 18/08). ===== -->
         <div id="mt-sub-agricole" hidden>
           <p class="mt-6 text-lune-soft">
             يُحسب ضخّكم على أساس الماء، لا على أساس فاتورة. أخبرونا بزراعتكم وجهتكم — نُقدّر
@@ -959,15 +699,10 @@ const noscriptTelHref = `tel:${NAP.phone}`;
                 class="mt-2 h-2 w-full cursor-pointer appearance-none rounded-full bg-white/15 accent-brass-400" />
             </label>
 
-            <!-- (e) Irrigation -->
-            <fieldset>
-              <legend class="text-sm text-lune-soft">الري لديكم</legend>
-              <div class="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
-                <button type="button" class="mt-irrigation cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="goutte" aria-pressed="false">التنقيط</button>
-                <button type="button" class="mt-irrigation cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="aspersion" aria-pressed="false">الرش</button>
-                <button type="button" class="mt-irrigation cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="gravitaire" aria-pressed="false">الجاذبية</button>
-              </div>
-            </fieldset>
+            <!-- « Votre irrigation » retirée du tunnel (coupe fondateur 18/08) —
+                 le commercial la complète dans l'ERP. Le moteur eau FAO-56
+                 retombe sur son efficience par défaut (IRRIGATION_EFFICIENCY_DEFAUT),
+                 exactement comme pour un visiteur qui ne répondait pas. -->
 
             <!-- Subvention FDA — fait vérifié, formulation honnête (plafond, dossier). -->
             <p class="text-xs text-lune-faint">
@@ -978,39 +713,22 @@ const noscriptTelHref = `tel:${NAP.phone}`;
           <!-- WJ124 — الزراعة + المساحة (« استغلاليتكم » سابقاً) نُقلت إلى أعلى
                اللوحة (صارت تقود محرّك الماء). -->
 
-          <!-- (g) Pompe actuelle (facultatif) — sert au calcul d'économie carburant -->
-          <details id="mt-agri-pompe-acc" class="cine-card mt-3 p-5 sm:p-6">
-            <summary class="cursor-pointer select-none text-sm font-semibold text-brass-300">
-              مضختكم الحالية (اختياري)
-            </summary>
-            <div class="mt-4 grid gap-4 sm:grid-cols-3">
-              <label class="block text-sm text-lune-soft">
-                <span>الطاقة الحالية</span>
-                <select id="mt-pompe-actuelle" name="pompeActuelle" class={`${inputClass} mt-1`}>
-                  <option value="">اختر…</option>
-                  <option value="aucune">لا مضخة</option>
-                  <option value="diesel">ديزل</option>
-                  <option value="butane">بوتان</option>
-                  <option value="electrique">كهربائية</option>
-                </select>
-              </label>
-              <label class="block text-sm text-lune-soft">
-                <span>القدرة (CV)</span>
-                <input id="mt-pompe-cv" name="pompeCvActuelle" type="number" step="any" inputmode="decimal"
-                  aria-describedby="mt-pompe-cv-err" placeholder="مثال: 10" dir="ltr" class={`${inputClass} mt-1`} />
-                <span id="mt-pompe-cv-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
-              </label>
-              <label class="block text-sm text-lune-soft">
-                <span>الوقود (درهم/شهر)</span>
-                <input id="mt-fuel-spend" name="fuelSpendMad" type="number" step="any" inputmode="decimal"
-                  aria-describedby="mt-fuel-spend-err" placeholder="مثال: 3 000" dir="ltr" class={`${inputClass} mt-1`} />
-                <span id="mt-fuel-spend-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
-              </label>
-            </div>
-            <p class="mt-2 text-xs text-lune-faint">
+          <!-- Carburant — SEUL rescapé de l'ancien accordéon « Votre pompe
+               actuelle » : la dépense mensuelle alimente RÉELLEMENT l'économie
+               carburant calculée par estimateAgricole. « Énergie actuelle »
+               (pompeActuelle) et « Puissance (CV) » sont retirées du tunnel
+               (coupe fondateur 18/08) — le commercial les complète dans l'ERP. -->
+          <div class="cine-card mt-5 space-y-5 p-5 sm:p-6">
+            <label class="block text-sm text-lune-soft">
+              <span>الوقود (درهم/شهر)</span>
+              <input id="mt-fuel-spend" name="fuelSpendMad" type="number" step="any" inputmode="decimal"
+                aria-describedby="mt-fuel-spend-err" placeholder="مثال: 3 000" dir="ltr" class={`${inputClass} mt-1`} />
+              <span id="mt-fuel-spend-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
+            </label>
+            <p class="text-xs text-lune-faint">
               تُستخدم نفقة الوقود لحساب توفيركم — لا غير.
             </p>
-          </details>
+          </div>
         </div>
 
         <div class="mt-5 flex items-center justify-between gap-3">
@@ -1384,6 +1102,17 @@ const noscriptTelHref = `tel:${NAP.phone}`;
             <span data-i18n data-fr="E-mail (facultatif)" data-ar="البريد الإلكتروني (اختياري)">E-mail (facultatif)</span>
             <input id="mt-email" name="email" type="email" inputmode="email" autocomplete="email"
               placeholder="vous@exemple.com" dir="ltr" class={`${inputClass} mt-1`} />
+          </label>
+
+          <!-- Raison sociale — DÉPLACÉE ici depuis l'accordéon « Votre contexte »
+               du panneau professionnel (coupe fondateur 18/08) : elle ne nourrit
+               AUCUN calcul, sa place est donc sur l'écran contact, avec le reste
+               des coordonnées. Mêmes id/name — contrat webhook inchangé. Affichée
+               uniquement pour un profil professionnel (syncRaisonSociale). -->
+          <label id="mt-raison-sociale-wrap" hidden class="block text-sm text-lune-soft">
+            <span data-i18n data-fr="Raison sociale" data-ar="التسمية الاجتماعية">Raison sociale</span>
+            <input id="mt-raison-sociale" name="raisonSociale" type="text" autocomplete="organization"
+              placeholder="مثال: Riad Solaire SARL" class={`${inputClass} mt-1`} />
           </label>
 
           <!-- WJ51 — préférence de contact EXPLICITE. -->
@@ -2043,8 +1772,6 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   // QX — les deux nouveaux moteurs par profil : PRO (autoconsommation C&I) et
   // AGRICOLE (pompage). Le résidentiel reste sur estimateFromBill, inchangé.
   import { estimatePro } from '../../../lib/estimatorPro';
-  // WJ122 — questions commerciales par catégorie + mapping clé→webhook (QX51).
-  import { COMMERCIAL_CATEGORY_QUESTIONS, COMMERCIAL_QUESTION_WEBHOOK_KEY } from '../../../lib/commercialCategories';
   // WJ124 — moteur eau agronomique (culture → besoin m³/jour) — miroir QX48.
   import { monthlyWaterDemand } from '../../../lib/agronomy';
   import { estimateAgricole } from '../../../lib/estimatorAgricole';
@@ -2208,7 +1935,8 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     ombrage?: string;
     visitWindowPart?: string;
     visitWindowWeek?: string;
-    futureLoads?: string[];
+    // `futureLoads` retirée du tunnel (coupe fondateur 18/08) — le commercial
+    // la complète dans l'ERP ; plus rien à persister.
     sel?: Record<string, string>;
     capturePin?: { lat: number; lng: number } | null;
     captureOutline?: Array<[number, number]>;
@@ -2220,26 +1948,31 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     idempotencyKey?: string;
     eventId?: string;
   }
+  // Coupe fondateur 18/08 — les champs retirés du tunnel quittent aussi la
+  // persistance : 'mt-facture-ete', 'mt-roof', 'mt-raccordement',
+  // 'mt-distributeur', 'mt-bill-kwh', 'mt-roof-age', 'mt-occupant-type',
+  // 'mt-project-timing', 'mt-facility-type', 'mt-site-count',
+  // 'mt-puissance-kva', 'mt-cos-phi', 'mt-groupe-kva', 'mt-diesel-dh',
+  // 'mt-pompe-actuelle' et 'mt-pompe-cv' n'existent plus dans le DOM — les
+  // persister n'aurait rien à lire. `mt-raison-sociale` reste : elle est
+  // DÉPLACÉE sur l'écran contact, pas supprimée.
   const PERSISTED_TEXT_FIELDS = [
-    'mt-name', 'mt-phone', 'mt-city', 'mt-email', 'mt-facture-hiver', 'mt-facture-ete',
-    'mt-bill', 'mt-roof', 'mt-raccordement', 'mt-distributeur', 'mt-bill-kwh', 'mt-roof-age',
-    // 'mt-financing-intent' retiré avec la question elle-même (le champ n'existe
-    // plus dans le DOM : le persister n'aurait rien à lire).
-    'mt-occupant-type', 'mt-project-timing', 'mt-fallback-address',
+    'mt-name', 'mt-phone', 'mt-city', 'mt-email', 'mt-facture-hiver',
+    'mt-bill', 'mt-fallback-address',
     'rp9-address',
-    // WJ68 — mode professionnel (facultatif, additif).
-    'mt-raison-sociale', 'mt-facility-type', 'mt-site-count',
+    // WJ68 — raison sociale (écran contact depuis la coupe du 18/08).
+    'mt-raison-sociale',
     // QX — sous-panneau PROFESSIONNEL (étape 2).
-    'mt-pro-bill', 'mt-puissance-kva', 'mt-surface-m2',
-    // WJ123 — sous-panneau INDUSTRIEL v2 (cos φ, groupe électrogène).
-    'mt-cos-phi', 'mt-groupe-kva', 'mt-diesel-dh',
+    'mt-pro-bill', 'mt-surface-m2',
     // WJ122 — sous-panneau COMMERCIAL (facture).
     'mt-cc-bill',
     // QX — sous-panneau AGRICOLE (étape 2).
     'mt-profondeur', 'mt-hmt', 'mt-water-need', 'mt-heures-pompage',
-    'mt-culture', 'mt-surface-ha', 'mt-pompe-actuelle', 'mt-pompe-cv', 'mt-fuel-spend',
+    'mt-culture', 'mt-surface-ha', 'mt-fuel-spend',
   ];
-  const PERSISTED_CHECK_FIELDS = ['mt-ete-differente', 'mt-contact-whatsapp', 'mt-contact-phone', 'mt-consent', 'mt-battery-interest', 'mt-weekend'];
+  // 'mt-ete-differente', 'mt-battery-interest' et 'mt-weekend' retirés du tunnel
+  // (coupe fondateur 18/08) — le commercial les complète dans l'ERP.
+  const PERSISTED_CHECK_FIELDS = ['mt-contact-whatsapp', 'mt-contact-phone', 'mt-consent'];
   let restoring = false;
   function saveWizardState() {
     if (restoring) return;
@@ -2257,8 +1990,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       const snapshot: WizardSnapshot = {
         step, mode, ombrage,
         visitWindowPart, visitWindowWeek,
-        futureLoads: Array.from(futureLoads),
-        sel: { proUnit, tension, activity, surfaceType, generator, waterSource, irrigation, waterUnit, commercialCategory, ccUnit, equipes, regionAgricole, roofInputMode },
+        sel: { proUnit, tension, activity, surfaceType, waterSource, waterUnit, commercialCategory, ccUnit, equipes, regionAgricole, roofInputMode },
         capturePin, captureOutline,
         fields, checks,
         idempotencyKey: dedupIdempotencyKey, eventId: dedupEventId,
@@ -2365,6 +2097,15 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     if (pro) pro.hidden = !(m === 'industriel' || m === 'professionnel');
     if (commercial) commercial.hidden = m !== 'commercial';
     if (agri) agri.hidden = m !== 'agricole';
+    syncRaisonSociale();
+  }
+  /** La raison sociale vit désormais sur l'écran CONTACT (coupe fondateur
+   *  18/08) : elle ne nourrit aucun calcul, elle n'a donc rien à faire avant
+   *  l'estimation. On ne la montre qu'aux profils professionnels — un
+   *  particulier n'a pas de raison sociale à donner. */
+  function syncRaisonSociale() {
+    const wrap = $('mt-raison-sociale-wrap');
+    if (wrap) wrap.hidden = !isProMode(mode);
   }
   function syncModeCards() {
     document.querySelectorAll<HTMLButtonElement>('.mt-mode').forEach((b) => {
@@ -2394,29 +2135,10 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   syncStepLabels();
   syncStep2Panels();
 
-  // ——— WJ48 : cartes image « type de toit » — synchronisent le <select> sr-only. ———
-  const roofSelect = $('mt-roof') as HTMLSelectElement | null;
-  function syncRoofCards() {
-    const current = roofSelect?.value || '';
-    document.querySelectorAll<HTMLButtonElement>('.mt-roof-card').forEach((b) => {
-      const on = b.dataset.roof === current;
-      b.setAttribute('aria-pressed', String(on));
-      b.classList.toggle('border-brass-400', on);
-      b.classList.toggle('border-white/15', !on);
-    });
-  }
-  document.querySelectorAll<HTMLButtonElement>('.mt-roof-card').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      if (roofSelect) {
-        roofSelect.value = btn.dataset.roof || '';
-        setFieldError('mt-roof', 'mt-roof-err', null);
-      }
-      syncRoofCards();
-      markDataEntered();
-      saveWizardState();
-    });
-  });
-  syncRoofCards();
+  // Les cartes « type de toit » (.mt-roof-card + le <select> sr-only mt-roof)
+  // sont retirées du tunnel (coupe fondateur 18/08) : plus rien à synchroniser
+  // ni à valider ici. `roofType` reste exigé par validateLead — resolveRoofType
+  // le DÉRIVE désormais pour tous les profils.
 
   // ——— WJ31 : puce à bascule unique (ombrage) — recalcule en direct au clic. ———
   let ombrage = savedWizard?.ombrage || '';
@@ -2475,51 +2197,13 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   wireVisitToggle('.mt-visit-part', () => visitWindowPart, (v) => { visitWindowPart = v; });
   wireVisitToggle('.mt-visit-week', () => visitWindowWeek, (v) => { visitWindowWeek = v; });
 
-  // ——— WJ31 : puces multi-sélection (charges futures) ———
-  const futureLoads = new Set<string>(savedWizard?.futureLoads ?? []);
-  document.querySelectorAll<HTMLButtonElement>('.mt-future-load').forEach((btn) => {
-    const preOn = futureLoads.has(btn.dataset.value || '');
-    if (preOn) {
-      btn.setAttribute('aria-pressed', 'true');
-      btn.classList.add('border-brass-400');
-      btn.classList.remove('border-white/15');
-    }
-    btn.addEventListener('click', () => {
-      const v = btn.dataset.value || '';
-      const on = !futureLoads.has(v);
-      if (on) futureLoads.add(v); else futureLoads.delete(v);
-      btn.setAttribute('aria-pressed', String(on));
-      btn.classList.toggle('border-brass-400', on);
-      btn.classList.toggle('border-white/15', !on);
-      markDataEntered();
-      saveWizardState();
-    });
-  });
+  // « Charges futures envisagées » (.mt-future-load) et « Photo du compteur ou
+  // de la facture » (mt-meter-photo) sont retirées du tunnel (coupe fondateur
+  // 18/08) — le commercial les complète dans l'ERP. Avec le champ fichier
+  // disparaît aussi la fenêtre de grâce WJ46 de l'exit-intent : elle n'existait
+  // QUE pour éviter un faux déclenchement pendant l'ouverture du sélecteur de
+  // photo, et plus aucun sélecteur de fichier n'est ouvert par cette page.
 
-  // ——— WJ31 : photo compteur/facture — capturée EN LOCAL, JAMAIS uploadée ———
-  let hasMeterPhoto = false;
-  const meterPhotoInput = $('mt-meter-photo') as HTMLInputElement | null;
-  meterPhotoInput?.addEventListener('change', () => {
-    hasMeterPhoto = !!(meterPhotoInput.files && meterPhotoInput.files.length > 0);
-  });
-
-  // ——— WJ46 : fenêtre de grâce anti-faux-déclenchement de l'exit-intent ———
-  let filePickerOpen = false;
-  let filePickerGraceTimer: ReturnType<typeof setTimeout> | null = null;
-  function openFilePickerGrace() {
-    filePickerOpen = true;
-    if (filePickerGraceTimer != null) clearTimeout(filePickerGraceTimer);
-    filePickerGraceTimer = setTimeout(() => { filePickerOpen = false; }, 60_000);
-  }
-  function closeFilePickerGrace() {
-    filePickerOpen = false;
-    if (filePickerGraceTimer != null) { clearTimeout(filePickerGraceTimer); filePickerGraceTimer = null; }
-  }
-  meterPhotoInput?.addEventListener('click', openFilePickerGrace);
-  meterPhotoInput?.addEventListener('focus', openFilePickerGrace);
-  meterPhotoInput?.addEventListener('change', closeFilePickerGrace);
-  meterPhotoInput?.addEventListener('cancel', closeFilePickerGrace);
-  window.addEventListener('focus', closeFilePickerGrace);
   // ——— boot carte (captureOnly). Repli sans clé carte AUTORISE la suite (WJ4) ———
   let started = false;
   const mapEl = $('rp9-map');
@@ -2654,15 +2338,9 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     return Number.isFinite(n) ? n : null;
   };
 
-  // toggle été ≠ hiver
-  const eteToggle = $('mt-ete-differente') as HTMLInputElement | null;
-  const eteWrap = $('mt-facture-ete-wrap') as HTMLElement | null;
-  const eteInput = $('mt-facture-ete') as HTMLInputElement | null;
-  eteToggle?.addEventListener('change', () => {
-    const on = eteToggle.checked === true;
-    if (eteWrap) eteWrap.hidden = !on;
-    if (!on && eteInput) eteInput.value = '';
-  });
+  // La case « L'été est différent de l'hiver ? » et la facture d'été qu'elle
+  // révélait sont retirées du tunnel (coupe fondateur 18/08) — le commercial
+  // les complète dans l'ERP. `factureEte`/`eteDifferente` ne partent plus.
 
   // WJ105 — SLA de rappel concret : visible UNIQUEMENT quand « on m'appelle » est actif.
   const contactPhoneRadio = $('mt-contact-phone') as HTMLInputElement | null;
@@ -2687,7 +2365,6 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       if (el) el.checked = v;
     }
     if (savedWizard.fields?.['mt-city']) cityTouched = true;
-    if (eteToggle?.checked && eteWrap) eteWrap.hidden = false;
     syncCallbackSla();
     if (savedWizard.capturePin) capturePin = savedWizard.capturePin;
     if (savedWizard.captureOutline?.length) captureOutline = savedWizard.captureOutline;
@@ -2707,9 +2384,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   let tension = savedSel.tension || 'bt';
   let activity = savedSel.activity || 'day';
   let surfaceType = savedSel.surfaceType || '';
-  let generator = savedSel.generator || '';
   let waterSource = savedSel.waterSource || '';
-  let irrigation = savedSel.irrigation || '';
   let waterUnit = savedSel.waterUnit || 'm3h';
   // WJ122 — mode COMMERCIAL : catégorie active + unité de facture (MAD/kWh).
   let commercialCategory = savedSel.commercialCategory || '';
@@ -2832,29 +2507,20 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     });
     paint();
   }
-  function syncKvaVisibility() {
-    const wrap = $('mt-puissance-kva-wrap');
-    if (wrap) wrap.hidden = tension !== 'mt';
-  }
+  // Le champ « Puissance souscrite (kVA) » (et donc son affichage conditionnel
+  // en moyenne tension) est retiré du tunnel — comme les cartes « groupe
+  // électrogène » (coupe fondateur 18/08).
   wireCardGroup('.mt-pro-unit', () => proUnit, (v) => { proUnit = v || 'mad'; }, { recompute: true });
-  wireCardGroup('.mt-tension', () => tension, (v) => { tension = v || 'bt'; }, { recompute: true, onChange: syncKvaVisibility });
+  wireCardGroup('.mt-tension', () => tension, (v) => { tension = v || 'bt'; }, { recompute: true });
   wireCardGroup('.mt-activity', () => activity, (v) => { activity = v || 'day'; }, { recompute: true });
   wireCardGroup('.mt-surface-type', () => surfaceType, (v) => { surfaceType = v; }, { allowUnset: true, recompute: true });
-  wireCardGroup('.mt-generator', () => generator, (v) => { generator = v; }, { allowUnset: true });
-  syncKvaVisibility();
-  // WJ122 — COMMERCIAL : cartes catégorie (montrent la grille de questions) +
-  // bascule d'unité. Le choix de catégorie recalcule (day-share par archétype
-  // → hôtel ≠ bureau à facture égale).
-  function syncCommercialQuestions() {
-    document.querySelectorAll<HTMLElement>('.mt-commercial-questions').forEach((el) => { el.hidden = true; });
-    if (commercialCategory) {
-      const g = $(`mt-cc-questions-${commercialCategory}`);
-      if (g) g.hidden = false;
-    }
-  }
-  wireCardGroup('.mt-commercial-cat', () => commercialCategory, (v) => { commercialCategory = v; }, { allowUnset: true, recompute: true, onChange: syncCommercialQuestions });
+  // WJ122 — COMMERCIAL : cartes catégorie + bascule d'unité de facture. Le choix
+  // de catégorie recalcule l'estimation (day-share par archétype → hôtel ≠
+  // bureau à facture égale). Les grilles de questions PAR CATÉGORIE qu'il
+  // révélait sont retirées du tunnel (coupe fondateur 18/08) : elles ne
+  // changeaient aucun chiffre — le commercial les complète dans l'ERP.
+  wireCardGroup('.mt-commercial-cat', () => commercialCategory, (v) => { commercialCategory = v; }, { allowUnset: true, recompute: true });
   wireCardGroup('.mt-cc-unit', () => ccUnit, (v) => { ccUnit = v || 'mad'; }, { recompute: true });
-  syncCommercialQuestions();
   // WJ123 — INDUSTRIEL : pattern d'équipes (le plafond d'autoconsommation recalcule).
   wireCardGroup('.mt-equipes', () => equipes, (v) => { equipes = v; }, { allowUnset: true, recompute: true });
   // WJ124 — AGRICOLE : région (cartes) pilote le moteur eau ; culture (cartes)
@@ -2880,8 +2546,9 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     });
   });
   syncCultureCards();
+  // AGRICOLE — la source d'eau pilote le type de pompe (immergée/surface).
+  // « Votre irrigation » est retirée du tunnel (coupe fondateur 18/08).
   wireCardGroup('.mt-water-source', () => waterSource, (v) => { waterSource = v; }, { allowUnset: true, recompute: true });
-  wireCardGroup('.mt-irrigation', () => irrigation, (v) => { irrigation = v; }, { allowUnset: true });
   wireCardGroup('.mt-water-unit', () => waterUnit, (v) => { waterUnit = v || 'm3h'; }, { recompute: true });
   const heuresInput = $('mt-heures-pompage') as HTMLInputElement | null;
   function syncHeuresLabel() {
@@ -2893,7 +2560,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     computeEstimate();
   });
   syncHeuresLabel();
-  for (const id of ['mt-pro-bill', 'mt-cc-bill', 'mt-puissance-kva', 'mt-surface-m2', 'mt-profondeur', 'mt-hmt', 'mt-water-need', 'mt-fuel-spend', 'mt-cos-phi', 'mt-groupe-kva', 'mt-diesel-dh']) {
+  for (const id of ['mt-pro-bill', 'mt-cc-bill', 'mt-surface-m2', 'mt-profondeur', 'mt-hmt', 'mt-water-need', 'mt-fuel-spend']) {
     $(id)?.addEventListener('input', computeEstimate);
   }
 
@@ -3302,7 +2969,10 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       const crop = val('mt-culture');
       const surfaceHa = num('mt-surface-ha');
       if (crop && regionAgricole && surfaceHa != null && surfaceHa > 0) {
-        const md = monthlyWaterDemand(crop, regionAgricole, surfaceHa, irrigation || undefined);
+        // « Votre irrigation » retirée du tunnel (coupe fondateur 18/08) : le
+        // moteur retombe sur IRRIGATION_EFFICIENCY_DEFAUT, comme pour un
+        // visiteur qui ne répondait pas à la question.
+        const md = monthlyWaterDemand(crop, regionAgricole, surfaceHa);
         if (md.peak_m3_farm_day > 0) { besoinM3j = md.peak_m3_farm_day; agroPeak = md.peak_m3_farm_day; }
       }
     }
@@ -3483,8 +3153,13 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     if (toolarge) toolarge.hidden = true;
     const lat = capturePin?.lat;
     const city = (val('mt-city') || addressEl?.value || '').trim() || undefined;
-    const exactKwhMonthly = num('mt-bill-kwh') ?? undefined;
-    const est = bill != null ? estimateFromBill(bill, { lat, city, exactKwhMonthly, ombrage: ombrage || undefined }) : null;
+    // Coupe fondateur 18/08 — la conso exacte en kWh/mois est retirée du tunnel :
+    // `exactKwhMonthly` n'est plus transmis, donc estimateFromBill retombe sur sa
+    // conversion interne facture MAD → kWh (barème ONEE), exactement comme pour
+    // tout visiteur qui laissait ce champ vide. L'OMBRAGE, lui, reste : c'est la
+    // seule question conservée après la facture et il dérate honnêtement la
+    // production (cf. billEstimate.ts OMBRAGE_DERATE — documenté, jamais inventé).
+    const est = bill != null ? estimateFromBill(bill, { lat, city, ombrage: ombrage || undefined }) : null;
     if (!est) {
       if (card) card.hidden = true;
       if (note) note.hidden = true;
@@ -3641,7 +3316,8 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     computeEstimate();
   });
   $('mt-bill')?.addEventListener('change', computeEstimate);
-  $('mt-bill-kwh')?.addEventListener('input', computeEstimate);
+  // La conso exacte (kWh/mois) est retirée du tunnel (coupe fondateur 18/08) :
+  // la facture suffit — estimateFromBill fait lui-même la conversion MAD → kWh.
   // ——— WJ2 : « voir les panneaux sur votre toit » — facultatif, lazy. ———
   const panels3dBlock = $('mt-panels3d') as HTMLElement | null;
   const panels3dStage = $('mt-panels3d-stage') as HTMLElement | null;
@@ -3738,13 +3414,11 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     return true;
   }
   const OPTIONAL_NUMBER_FIELDS: Array<[string, string]> = [
-    ['mt-puissance-kva', 'القدرة المكتتبة'],
     ['mt-surface-m2', 'المساحة'],
     ['mt-profondeur', 'العمق'],
     ['mt-hmt', 'HMT'],
     ['mt-water-need', 'الحاجة إلى الماء'],
     ['mt-surface-ha', 'المساحة'],
-    ['mt-pompe-cv', 'القدرة (CV)'],
     ['mt-fuel-spend', 'نفقة الوقود'],
   ];
   for (const [id, label] of OPTIONAL_NUMBER_FIELDS) {
@@ -3820,10 +3494,6 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   /** Étape questions : validation PAR PROFIL avant le calcul. */
   function validateStep1(): boolean {
     if (isProMode(mode)) {
-      if (!checkOptionalNumber('mt-puissance-kva', 'القدرة المكتتبة')) {
-        scrollToInvalid($('mt-puissance-kva'));
-        return false;
-      }
       const raw = val(proBillId()).trim();
       const n = num(proBillId());
       if (raw === '' || n == null || n <= 0) {
@@ -3838,7 +3508,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       // Rien n'est REQUIS (hydraulique manquante = chemin honnête) — mais un
       // nombre saisi doit être un nombre.
       for (const [id, label] of OPTIONAL_NUMBER_FIELDS) {
-        if (!['mt-profondeur', 'mt-hmt', 'mt-water-need', 'mt-pompe-cv', 'mt-fuel-spend'].includes(id)) continue;
+        if (!['mt-profondeur', 'mt-hmt', 'mt-water-need', 'mt-fuel-spend'].includes(id)) continue;
         if (!checkOptionalNumber(id, label)) {
           scrollToInvalid($(id));
           return false;
@@ -3861,11 +3531,6 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       return false;
     }
     setFieldError('mt-bill', 'mt-bill-err', null);
-    if (!val('mt-roof')) {
-      setFieldError('mt-roof', 'mt-roof-err', 'اختاروا نوع سطحكم.');
-      scrollToInvalid(document.querySelector<HTMLButtonElement>('.mt-roof-card'));
-      return false;
-    }
     return true;
   }
 
@@ -3881,15 +3546,21 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     if (rid) return rid;
     return mad > 10_000 ? 'gt10000' : '';
   }
-  // ——— QX : roofType par profil (validateLead l'exige). ———
+  // ——— QX : roofType DÉRIVÉ pour TOUS les profils — validateLead (lib/lead.ts)
+  // l'exige pour toute soumission mon-toit, mais plus AUCUN écran ne pose la
+  // question depuis la coupe fondateur du 18/08 (les cartes « type de toit » du
+  // sous-panneau résidentiel ont disparu). On dérive donc de vraies réponses
+  // quand il y en a — bac acier → hangar, toiture-terrasse → toit plat — et on
+  // retombe sinon sur 'autre', le bucket HONNÊTE : jamais une toiture précise
+  // inventée pour un visiteur qu'on n'a pas interrogé. Le commercial qualifie
+  // le vrai type de toiture dans l'ERP / à la visite technique. ———
   function resolveRoofType(): string {
     if (isProMode(mode)) {
       if (surfaceType === 'bac_acier') return 'hangar';
       if (surfaceType === 'terrasse') return 'toit_plat';
       return 'autre';
     }
-    if (mode === 'agricole') return 'autre';
-    return val('mt-roof');
+    return 'autre';
   }
   // ——— WJ52 : référence client courte, générée UNE FOIS côté navigateur ———
   let clientRef = '';
@@ -3911,37 +3582,14 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     return out;
   }
 
-  // WJ122 — réponses de la catégorie commerciale ACTIVE, mappées snake_case →
-  // camelCase de la liste blanche webhook (QX51). Seules les questions dotées
-  // d'une clé webhook sont transmises — et elles en ont TOUTES une désormais
-  // (`surface_m2` hammam/spa/salle de sport, seul trou du mapping, part sur
-  // `surfaceM2`). En mode commercial, `mt-surface-m2` (PRO) n'existe pas : les
-  // deux sources de `surfaceM2` ne se marchent jamais dessus.
-  function readCommercialAnswers(): Record<string, unknown> {
-    const out: Record<string, unknown> = {};
-    if (mode !== 'commercial' || !commercialCategory) return out;
-    const qs = COMMERCIAL_CATEGORY_QUESTIONS[commercialCategory] || [];
-    for (const q of qs) {
-      const webhookKey = COMMERCIAL_QUESTION_WEBHOOK_KEY[q.key];
-      if (!webhookKey) continue;
-      const domId = `mt-cc-${commercialCategory}-${q.key}`;
-      const el = $(domId) as HTMLInputElement | HTMLSelectElement | null;
-      if (!el) continue;
-      if (q.type === 'bool') {
-        if ((el as HTMLInputElement).checked === true) out[webhookKey] = true;
-      } else if (q.type === 'number') {
-        const n = num(domId);
-        if (n != null) out[webhookKey] = n;
-      } else {
-        const v = el.value;
-        if (v) out[webhookKey] = v;
-      }
-    }
-    return out;
-  }
+  // WJ122 — `readCommercialAnswers()` a disparu avec les questions par catégorie
+  // (coupe fondateur 18/08) : aucune n'entrait dans estimatePro, elles partaient
+  // au webhook sans changer un seul chiffre affiché. Le commercial les complète
+  // désormais dans l'ERP. COMMERCIAL_QUESTION_WEBHOOK_KEY reste dans
+  // lib/commercialCategories (le backend s'en sert toujours) — le tunnel ne
+  // produit simplement plus ces clés.
   /** Construit le corps de lead + renvoie les erreurs client (miroir validateLead). */
   function buildBody(): { body: Record<string, unknown>; errors: Record<string, string> } {
-    const eteDifferente = eteToggle?.checked === true;
     const consent = ($('mt-consent') as HTMLInputElement | null)?.checked === true;
     const contactPreference = (($('mt-contact-phone') as HTMLInputElement | null)?.checked === true)
       ? 'phone_ok'
@@ -3952,32 +3600,38 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       fullName: val('mt-name'),
       phone: val('mt-phone'),
       city: adresse,
+      // QX — billRange TOUJOURS cohérent avec ce qui a piloté l'estimation
+      // affichée : résidentiel = le <select> (auto-dérivé du montant exact,
+      // syncBillRangeFromExact) ; C&I (industriel/commercial) = dérivé de la conso saisie ;
+      // agricole = plus requis (lib/lead.ts, mode 'agricole').
       billRange: isProMode(mode) ? resolveProBillRange() : mode === 'agricole' ? '' : val('mt-bill'),
+      // QX — dérivé des vraies réponses pour pro/agricole (cartes toit =
+      // sous-panneau résidentiel uniquement) ; cf. resolveRoofType.
       roofType: resolveRoofType(),
       consent,
       whatsappOptIn,
       contactPreference,
       email: val('mt-email') || undefined,
       factureHiver: num('mt-facture-hiver'),
-      factureEte: eteDifferente ? num('mt-facture-ete') : null,
-      eteDifferente,
-      raccordement: val('mt-raccordement'),
+      // `factureEte`/`eteDifferente` et `raccordement` (mono/triphasé) retirés
+      // du tunnel (coupe fondateur 18/08) — le commercial les complète dans
+      // l'ERP ; les clés sont simplement ABSENTES du corps, lib/lead.ts les
+      // accepte toujours d'autres sources.
       adresse,
+      // WJ30 — le type de projet et la langue active partent aussi au webhook.
       mode,
       langue_preferee: currentLang,
-      distributeur: val('mt-distributeur') || undefined,
-      billKwh: num('mt-bill-kwh'),
+      // OMBRAGE — seul rescapé de l'ancien étage « Affiner mon estimation » :
+      // c'est le seul de ces champs qui changeait un chiffre affiché.
       ombrage: ombrage || undefined,
-      roofAgeYears: num('mt-roof-age'),
-      futureLoads: futureLoads.size > 0 ? Array.from(futureLoads) : undefined,
-      batteryInterest: ($('mt-battery-interest') as HTMLInputElement | null)?.checked === true,
-      occupantType: val('mt-occupant-type') || undefined,
-      projectTiming: val('mt-project-timing') || undefined,
-      // `financingIntent` n'est PLUS envoyé (question retirée, cf. l'accordéon
-      // « Pour mieux vous conseiller »). validateLead l'accepte toujours pour
-      // les autres sources — le contrat webhook est intact, la clé est
-      // simplement absente.
-      hasMeterPhoto,
+      // Retirés du tunnel (coupe fondateur 18/08) — le commercial les complète
+      // dans l'ERP, leurs clés sont simplement ABSENTES du corps (lib/lead.ts
+      // les accepte toujours d'autres sources, contrat webhook intact) :
+      // `distributeur`, `billKwh`, `roofAgeYears`, `futureLoads`,
+      // `batteryInterest`, `occupantType`, `projectTiming`, `hasMeterPhoto` —
+      // et `financingIntent`, retirée avant elles pour la même raison.
+      // WJ52 — référence courte pour l'artefact post-soumission (échoée telle
+      // quelle, jamais une clé d'unicité serveur — cf. lib/lead.ts).
       clientRef: getOrCreateClientRef(),
       // Jetons de DÉDOUBLONNAGE (CRM + Meta CAPI) : générés au premier
       // affichage, stables pour toute la session de saisie, donc un renvoi
@@ -3987,28 +3641,38 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       // l'horodatage, qui DIFFÈRE à chaque renvoi et ne déduplique donc rien.
       idempotencyKey: getOrCreateDedupTokens().idempotencyKey,
       eventId: getOrCreateDedupTokens().eventId,
+      // W353 — préférence de créneau de visite technique (facultative, STATIQUE).
       visitWindowPart: visitWindowPart || undefined,
       visitWindowWeek: visitWindowWeek || undefined,
+      // WJ68 — mode professionnel : facultatif, additif, jamais bloquant. Les
+      // champs restent envoyés même si le mode a changé depuis (validateLead
+      // les accepte indépendamment du mode — un visiteur qui bascule
+      // résidentiel→professionnel→résidentiel ne perd rien de saisi).
       raisonSociale: val('mt-raison-sociale') || undefined,
-      facilityType: val('mt-facility-type') || undefined,
-      siteCount: val('mt-site-count') || undefined,
-      // QX — sous-panneau PROFESSIONNEL. `tensionRaccordement` (bt/mt) distinct du
-      // select résidentiel `raccordement` (monophasé/triphasé).
+      // `facilityType` (type de site) et `siteCount` (nombre de sites) retirés
+      // du tunnel (coupe fondateur 18/08) : ni l'un ni l'autre n'entrait dans
+      // estimatePro — le commercial les complète dans l'ERP.
+      // QX — sous-panneau PROFESSIONNEL. `tensionRaccordement` (bt/mt) est
+      // volontairement DISTINCT du select résidentiel `raccordement`
+      // (monophasé/triphasé) — jamais les deux sens dans un même champ. Les
+      // champs à DÉFAUT visible (tension/activité) ne partent que si un profil
+      // C&I (industriel/commercial) est actif — jamais une donnée fabriquée pour un autre profil.
       tensionRaccordement: isProMode(mode) ? tension : undefined,
-      puissanceKva: num('mt-puissance-kva') ?? undefined,
+      // `puissanceKva` et `hasGenerator` (+ groupe kVA / diesel plus bas)
+      // retirés du tunnel (coupe fondateur 18/08) : estimatePro ne les lit pas.
       activityProfile: isProMode(mode) ? activity : undefined,
       surfaceType: surfaceType || undefined,
       surfaceM2: num('mt-surface-m2') ?? undefined,
-      hasGenerator: generator ? generator === 'oui' : undefined,
       // WJ122 — la conso C&I vient du panneau actif (commercial : mt-cc-bill).
       proMonthlyKwh: proBillUnit() === 'kwh' ? (num(proBillId()) ?? undefined) : undefined,
       proMonthlyMad: proBillUnit() === 'mad' ? (num(proBillId()) ?? undefined) : undefined,
       // WJ122 — mode COMMERCIAL : catégorie + réponses spécifiques (liste blanche
       // webhook QX51 ; hôtel ≠ bureau à facture égale via le day-share archétype).
       categorieCommerciale: mode === 'commercial' ? (commercialCategory || undefined) : undefined,
-      ...readCommercialAnswers(),
-      // WJ123 — mode INDUSTRIEL v2 : équipes + weekend + contexte (liste blanche
-      // webhook QX51). `weekend` est un booléen SÉPARÉ, jamais une 5e équipe.
+      // WJ123 — mode INDUSTRIEL v2 : les ÉQUIPES restent (elles plafonnent
+      // honnêtement l'autoconsommation dans estimatePro) ; `weekend`,
+      // `cosPhiConnu`, `groupeKva` et `dieselDhMois` sont retirés du tunnel
+      // (coupe fondateur 18/08) — aucun n'entrait dans le calcul.
       //
       // PLUS DE GATE SUR LE MODE COURANT. Ces champs ne partaient que si le
       // profil actif AU MOMENT DE L'ENVOI correspondait : un visiteur qui
@@ -4020,10 +3684,6 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       // reste `undefined`, et validateLead borne/écarte chaque clé séparément,
       // indépendamment du mode.
       equipes: equipes || undefined,
-      weekend: (($('mt-weekend') as HTMLInputElement | null)?.checked === true) ? true : undefined,
-      cosPhiConnu: num('mt-cos-phi') ?? undefined,
-      groupeKva: num('mt-groupe-kva') ?? undefined,
-      dieselDhMois: num('mt-diesel-dh') ?? undefined,
       // surface_toiture_m2 = surface de TOIT au sens strict (le backend distingue
       // le sol : webhooks.py:303-304) — ne l'envoyer que pour une vraie toiture ;
       // ombrière/terrain sont décrits par leurs booléens, jamais une fausse toiture.
@@ -4041,15 +3701,20 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       // Dégaté comme les champs industriels ci-dessus : un nombre d'heures de
       // pompage saisi part, même si le visiteur a changé de profil depuis.
       heuresPompage: num('mt-heures-pompage') ?? undefined,
-      irrigation: irrigation || undefined,
+      // `irrigation` retirée du tunnel (coupe fondateur 18/08) — le moteur eau
+      // retombe sur son efficience par défaut ; le commercial la complète dans l'ERP.
       culture: val('mt-culture') || undefined,
       // WJ124 — région agronomique (pilote le moteur eau FAO-56 côté proposition).
       regionAgricole: regionAgricole || undefined,
       surfaceHa: num('mt-surface-ha') ?? undefined,
-      pompeActuelle: val('mt-pompe-actuelle') || undefined,
-      pompeCvActuelle: num('mt-pompe-cv') ?? undefined,
+      // `pompeActuelle` / `pompeCvActuelle` retirées du tunnel (coupe fondateur
+      // 18/08) : seule la DÉPENSE carburant alimente l'économie calculée.
       fuelSpendMad: num('mt-fuel-spend') ?? undefined,
+      // QX — EXACTEMENT les chiffres affichés dans le document d'estimation
+      // (le conseiller CRM voit ce que le client a vu — jamais plus).
       estimateShown: estimateShown ?? undefined,
+      // W317 — honeypot : vide pour tout visiteur humain (champ masqué hors
+      // écran, jamais rempli sciemment) ; rejeté côté serveur si non vide.
       website_url: val('mt-hp'),
     };
     Object.assign(body, readTrackingParams());
@@ -4072,7 +3737,9 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     setFieldError('mt-name', 'mt-name-err', errors.fullName ?? null);
     setFieldError('mt-phone', 'mt-phone-err', errors.phone ?? null);
     setFieldError('mt-city', 'mt-city-err', errors.city ?? null);
-    setFieldError('mt-roof', 'mt-roof-err', errors.roofType ?? null);
+    // `errors.roofType` n'a plus de champ où s'afficher : le type de toit est
+    // retiré du tunnel (coupe fondateur 18/08) et resolveRoofType garantit une
+    // valeur valide — l'erreur ne peut donc plus se produire depuis cette page.
     setFieldError('mt-bill', 'mt-bill-err', errors.billRange ?? null);
     const cErr = $('mt-consent-err');
     if (cErr) { cErr.textContent = errors.consent ?? ''; cErr.hidden = !errors.consent; }
@@ -4134,13 +3801,12 @@ const noscriptTelHref = `tel:${NAP.phone}`;
         errEl.textContent = fieldsHighlightedMsg();
         errEl.hidden = false;
       }
-      const firstId = ['mt-name', 'mt-phone', 'mt-city', 'mt-roof', 'mt-bill']
+      // amène l'utilisateur au premier champ en erreur. 'mt-roof' a quitté cette
+      // liste avec la question elle-même (coupe fondateur 18/08) : plus aucun
+      // champ caché à contourner, tous ceux qui restent sont visibles.
+      const firstId = ['mt-name', 'mt-phone', 'mt-city', 'mt-bill']
         .find((id) => $(id)?.getAttribute('aria-invalid') === 'true');
-      if (firstId === 'mt-roof') {
-        document.querySelector<HTMLButtonElement>('.mt-roof-card')?.focus();
-      } else if (firstId) {
-        ($(firstId) as HTMLElement | null)?.focus();
-      }
+      if (firstId) ($(firstId) as HTMLElement | null)?.focus();
       return;
     }
     showInlineErrors({});
@@ -4251,7 +3917,10 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   }
   let funnelAbandonSent = false;
   function maybeShowExit(triggerEl: HTMLElement | null = null) {
-    if (filePickerOpen) return;
+    // WJ46 — la fenêtre de grâce « sélecteur de photo ouvert » a disparu avec la
+    // question « Photo du compteur ou de la facture » (coupe fondateur 18/08) :
+    // cette page n'ouvre plus AUCUN sélecteur de fichier, donc plus aucun
+    // passage en arrière-plan à ne pas confondre avec un abandon.
     const started2 = step > 0 || resolveMonthlyBill() != null || (capturePin != null);
     if (!started2) return;
     if (!submitted && !funnelAbandonSent && hasReachedConsentStep()) {

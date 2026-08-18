@@ -155,27 +155,32 @@ describe('WJ123 — validateLead : equipes/weekend/groupe traversent la liste bl
 describe.each(LOCALES)('WJ123 — panneau industriel v2 dans mon-toit.astro (%s)', (_locale, rel) => {
   const src = read(rel);
 
-  it('a les cartes de pattern d’équipes + le toggle weekend séparé', () => {
+  it('a les cartes de pattern d’équipes (la seule question WJ123 que le calcul lit)', () => {
     expect(src).toContain('mt-equipes cine-card');
     for (const v of ['1x8', '2x8', '3x8', 'continu']) {
       expect(src).toContain(`data-value="${v}"`);
     }
-    expect(src).toContain('id="mt-weekend"');
   });
 
-  it('a les champs groupe électrogène (kVA + diesel) et cos φ', () => {
-    expect(src).toContain('id="mt-groupe-kva"');
-    expect(src).toContain('id="mt-diesel-dh"');
-    expect(src).toContain('id="mt-cos-phi"');
+  it('weekend, cos φ et groupe électrogène ont quitté le tunnel (coupe fondateur 18/08)', () => {
+    // Aucun n'entrait dans estimatePro : le plafond d'autoconsommation vient
+    // des ÉQUIPES seules. Le commercial les complète dans l'ERP — et
+    // validateLead continue de les accepter d'autres sources (tests plus haut).
+    expect(src).not.toContain('id="mt-weekend"');
+    expect(src).not.toContain('id="mt-groupe-kva"');
+    expect(src).not.toContain('id="mt-diesel-dh"');
+    expect(src).not.toContain('id="mt-cos-phi"');
+    expect(src).not.toContain('id="mt-puissance-kva"');
   });
 
   it('la micro-copy dit que le solaire déplace les heures pleines (~1,01), la pointe seulement avec batterie', () => {
     expect(src).toMatch(/1[.,]01/);
   });
 
-  it('l’estimateur reçoit equipes ; le payload envoie equipes + weekend', () => {
+  it('l’estimateur reçoit equipes ; le payload l’envoie sans gate de mode', () => {
     expect(src).toContain("equipes: (mode === 'industriel' || mode === 'professionnel') && equipes ? equipes : undefined");
-    expect(src).toContain("equipes: (mode === 'industriel' || mode === 'professionnel') ? (equipes || undefined) : undefined");
-    expect(src).toContain("weekend: (mode === 'industriel' || mode === 'professionnel')");
+    // Côté payload, `equipes` n'est plus gaté sur le profil ACTIF au moment de
+    // l'envoi : toute valeur saisie part (cf. monToitTunnel.test.ts, chantier 2).
+    expect(src).toContain('equipes: equipes || undefined,');
   });
 });

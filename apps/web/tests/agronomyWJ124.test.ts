@@ -134,7 +134,10 @@ describe.each(LOCALES)('WJ124 — panneau agricole enrichi dans mon-toit.astro (
   });
 
   it('déduit le besoin sans débit connu, en gardant le chemin hydraulique', () => {
-    expect(src).toContain('monthlyWaterDemand(crop, regionAgricole, surfaceHa, irrigation');
+    // Coupe fondateur 18/08 — la question « Votre irrigation » a quitté le
+    // tunnel : le moteur retombe sur IRRIGATION_EFFICIENCY_DEFAUT, comme pour
+    // un visiteur qui ne répondait pas. Culture + région + surface suffisent.
+    expect(src).toContain('monthlyWaterDemand(crop, regionAgricole, surfaceHa)');
     expect(src).toContain('md.peak_m3_farm_day');
   });
 

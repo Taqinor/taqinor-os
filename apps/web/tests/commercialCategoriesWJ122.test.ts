@@ -208,10 +208,16 @@ describe.each(LOCALES)('WJ122 — sous-panneau commercial dans mon-toit.astro (%
     expect(src).toContain("pro.hidden = !(m === 'industriel' || m === 'professionnel');");
   });
 
-  it('le payload envoie categorieCommerciale + les réponses whitelistées', () => {
-    expect(src).toContain('function readCommercialAnswers(');
-    expect(src).toContain('COMMERCIAL_QUESTION_WEBHOOK_KEY');
+  it('le payload envoie la CATÉGORIE ; les questions par catégorie ont quitté le tunnel', () => {
     expect(src).toContain("categorieCommerciale: mode === 'commercial'");
+    // Coupe fondateur 18/08 : aucune de ces questions n'entrait dans
+    // estimatePro (seul le day-share de la CATÉGORIE compte), elles partaient
+    // au webhook sans changer un chiffre — le commercial les complète dans
+    // l'ERP. Le mapping reste dans la lib (le backend s'en sert toujours).
+    expect(src).not.toContain('function readCommercialAnswers(');
+    expect(src).not.toContain('mt-cc-questions');
+    // La page n'importe plus la table des questions (la lib, elle, la garde).
+    expect(src).not.toMatch(/import \{[^}]*COMMERCIAL_CATEGORY_QUESTIONS/);
   });
 
   it("l'estimateur reçoit la catégorie (hôtel ≠ bureau)", () => {

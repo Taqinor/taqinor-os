@@ -4,11 +4,14 @@
 //  (1) billEstimate.ts: ombrage now derates production/kWc with a DOCUMENTED,
 //      never-a-gain multiplier (OMBRAGE_DERATE); exact kWh now overrides the
 //      bill-derived consumption target when provided;
-//  (2) the 3 mon-toit.astro variants (fr/en/ar) wire both fields into the
+//  (2) the 3 mon-toit.astro variants (fr/en/ar) wire OMBRAGE into the
 //      estimateFromBill() call, recompute live on change (no full-page
 //      recalculation delay), and cut the fake "thinking" delay to <=500 ms;
-//  (3) fields that remain genuinely capture-only (roof age, battery interest)
-//      carry an honesty note instead of silently doing nothing.
+//  (3) the founder cut of 18/08 finished the job the honesty notes started:
+//      instead of a note explaining that a field changes nothing (roof age,
+//      battery interest, exact kWh…), the field itself LEFT the funnel. Only
+//      ombrage survived that accordion — because it is the only one that ever
+//      moved a number. The lib still accepts `exactKwhMonthly` (other callers).
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -93,13 +96,15 @@ describe.each([
   ['FR', FR],
   ['EN', EN],
   ['AR', AR],
-])('WJ112 — %s mon-toit.astro : accordéon "affiner" câblé + délai réduit', (_label, src) => {
-  it('estimateFromBill() reçoit désormais exactKwhMonthly et ombrage (plus seulement bill/lat/city)', () => {
-    expect(src).toContain('const exactKwhMonthly = num(\'mt-bill-kwh\') ?? undefined;');
-    expect(src).toContain('estimateFromBill(bill, { lat, city, exactKwhMonthly, ombrage: ombrage || undefined })');
+])('WJ112 — %s mon-toit.astro : ombrage câblé au calcul + délai réduit', (_label, src) => {
+  it('estimateFromBill() reçoit lat/city/ombrage — et PLUS la conso kWh saisie (coupe 18/08)', () => {
+    expect(src).toContain('estimateFromBill(bill, { lat, city, ombrage: ombrage || undefined })');
+    // La question « Consommation (kWh/mois) » a quitté le tunnel : le moteur
+    // refait lui-même la conversion facture MAD → kWh.
+    expect(src).not.toContain("num('mt-bill-kwh')");
   });
 
-  it('les clics ombrage ET la saisie kWh exact déclenchent un recalcul EN DIRECT (computeEstimate)', () => {
+  it('les clics ombrage déclenchent un recalcul EN DIRECT (computeEstimate)', () => {
     // Le bloc `let ombrage = ...` jusqu'à sa 2e fermeture `});` couvre le
     // .forEach(click) complet (le 1er `});` ferme le .setAttribute/.toggle
     // forEach interne, le 2e ferme le addEventListener('click', ...)).
@@ -109,8 +114,6 @@ describe.each([
     const secondClose = src.indexOf('});', firstClose + 3);
     const ombrageHandlerBlock = src.slice(ombrageDeclStart, secondClose);
     expect(ombrageHandlerBlock).toContain('computeEstimate();');
-
-    expect(src).toContain("$('mt-bill-kwh')?.addEventListener('input', computeEstimate);");
   });
 
   it('le délai de « réflexion » simulé est réduit à <= 500 ms (jamais > 1.5 s comme avant)', () => {
@@ -130,17 +133,14 @@ describe.each([
     expect(src).toContain('if (reducedMotion) return 0;');
   });
 
-  it('les champs genuinely capture-only (âge du toit, batterie) portent une note d\'honnêteté WJ112', () => {
-    const roofAgeIdx = src.indexOf('id="mt-roof-age"');
-    expect(roofAgeIdx).toBeGreaterThan(-1);
-    const afterRoofAge = src.slice(roofAgeIdx, roofAgeIdx + 900);
-    expect(afterRoofAge).toContain('WJ112');
-    expect(afterRoofAge.toLowerCase()).toMatch(/does not change|ne change pas/);
-
-    const batteryIdx = src.indexOf('id="mt-battery-interest"');
-    expect(batteryIdx).toBeGreaterThan(-1);
-    const afterBattery = src.slice(batteryIdx, batteryIdx + 900);
-    expect(afterBattery).toContain('WJ112');
-    expect(afterBattery.toLowerCase()).toMatch(/does not change|ne change pas/);
+  it("les champs qui ne changeaient AUCUN chiffre ont quitté le tunnel (coupe 18/08)", () => {
+    // WJ112 leur avait collé une note d'honnêteté « ne change pas le calcul ».
+    // La coupe du fondateur va au bout de la même logique : on ne les pose plus
+    // du tout avant l'estimation — le commercial les complète dans l'ERP.
+    for (const id of ['id="mt-roof-age"', 'id="mt-battery-interest"', 'id="mt-bill-kwh"']) {
+      expect(src, id).not.toContain(id);
+    }
+    // Seul l'ombrage survit à cet étage — parce qu'il dérate vraiment.
+    expect(src).toContain('mt-ombrage');
   });
 });

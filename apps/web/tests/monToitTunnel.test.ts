@@ -1,12 +1,15 @@
-// Tunnel /devis/mon-toit — les trois chantiers du lot, épinglés sur les TROIS
-// variantes de langue (FR / EN / AR), qui partagent le même contrat DOM+payload :
+// Tunnel /devis/mon-toit — épinglé sur les TROIS variantes de langue (FR / EN /
+// AR), qui partagent le même contrat DOM+payload :
 //
-//  1. La question « Mode de financement envisagé » est RETIRÉE (décision
-//     fondateur) — du DOM comme du corps envoyé — sans casser le contrat
-//     backend, qui continue d'accepter `financing_intent` d'autres sources.
-//  2. Plus rien de collecté ne se perd en route : la surface des catégories
-//     commerciales, les champs qui étaient gatés sur le profil ACTIF au moment
-//     de l'envoi, les jetons de dédoublonnage, et le nombre de panneaux annoncé.
+//  1. LA COUPE DU TUNNEL (décision fondateur, 18/08). Avant l'estimation, on ne
+//     pose plus QUE les questions qui NOURRISSENT l'estimation ; les coordonnées
+//     viennent en dernier. Tout le reste sort du tunnel — le commercial le
+//     complète dans l'ERP. Le contrat /api/capture-lead est INCHANGÉ : une
+//     question retirée = une clé simplement ABSENTE du corps, jamais un champ
+//     cassé côté validation.
+//  2. Plus rien de collecté ne se perd en route : les champs qui étaient gatés
+//     sur le profil ACTIF au moment de l'envoi, les jetons de dédoublonnage, et
+//     le nombre de panneaux annoncé.
 //  3. Repérer son toit est un CHOIX explicite (pointer / dessiner), et le geste
 //     « pointer » se termine par une confirmation visuelle.
 //
@@ -20,6 +23,9 @@ import { fileURLToPath } from 'node:url';
 
 import { COMMERCIAL_QUESTION_WEBHOOK_KEY } from '../src/lib/commercialCategories';
 import { validateLead } from '../src/lib/lead';
+import { estimateFromBill } from '../src/lib/billEstimate';
+import { estimateAgricole } from '../src/lib/estimatorAgricole';
+import { monthlyWaterDemand } from '../src/lib/agronomy';
 
 const read = (rel: string) =>
   readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
@@ -50,66 +56,283 @@ function slice(src: string, open: string, close: string): string {
 const payloadSrc = (src: string) =>
   stripLineComments(slice(src, 'const body: Record<string, unknown> = {', "website_url: val('mt-hp'),"));
 
-/** La ligne du payload qui porte `key:` (une seule par corps). */
+/** La ligne du payload qui porte `key:` (une seule par corps). Le `^[ \t]*`
+ *  garantit qu'on ne confond jamais une clé avec le SUFFIXE d'une autre
+ *  (`raccordement` vs `tensionRaccordement`, qui lui reste envoyé). */
 function payloadLine(src: string, key: string): string {
   const m = payloadSrc(src).match(new RegExp(`^[ \\t]*${key}: .*$`, 'm'));
   return m ? m[0] : '';
 }
 
-const detailsFinancing = (src: string) =>
-  stripHtmlComments(slice(src, '<details id="mt-more-financing"', '</details>'));
+const persistedText = (src: string) =>
+  stripLineComments(slice(src, 'const PERSISTED_TEXT_FIELDS = [', '];'));
+const persistedChecks = (src: string) =>
+  stripLineComments(slice(src, 'const PERSISTED_CHECK_FIELDS = [', '];'));
+const contactForm = (src: string) =>
+  stripHtmlComments(slice(src, '<form id="mt-form"', '</form>'));
 
 // ———————————————————————————————————————————————————————————————————————————
-describe('Chantier 1 — la question de financement a quitté le tunnel', () => {
+// Les questions RETIRÉES du tunnel, par profil. `dom` = l'id (ou la classe)
+// qui ne doit plus exister ; `key` = la clé de payload qui ne doit plus partir.
+// Un `key` à null = la question n'avait pas de clé propre (ou elle est
+// mutualisée avec un champ conservé).
+const CUT_RESIDENTIEL: Array<{ dom: string; key: string | null }> = [
+  { dom: 'id="mt-roof"', key: null }, // roofType reste envoyé, mais DÉRIVÉ
+  { dom: 'mt-roof-card', key: null },
+  { dom: 'id="mt-raccordement"', key: 'raccordement' },
+  { dom: 'id="mt-facture-ete"', key: 'factureEte' },
+  { dom: 'id="mt-facture-ete-wrap"', key: null },
+  { dom: 'id="mt-distributeur"', key: 'distributeur' },
+  { dom: 'id="mt-bill-kwh"', key: 'billKwh' },
+  { dom: 'id="mt-roof-age"', key: 'roofAgeYears' },
+  { dom: 'id="mt-meter-photo"', key: null },
+  { dom: 'mt-future-load', key: 'futureLoads' },
+  { dom: 'id="mt-battery-interest"', key: 'batteryInterest' },
+  { dom: 'id="mt-occupant-type"', key: 'occupantType' },
+  { dom: 'id="mt-project-timing"', key: 'projectTiming' },
+  { dom: 'id="mt-financing-intent"', key: 'financingIntent' },
+  // Les trois accordéons qui les portaient disparaissent entièrement.
+  { dom: 'id="mt-more-size"', key: null },
+  { dom: 'id="mt-more-needs"', key: null },
+  { dom: 'id="mt-more-financing"', key: null },
+];
+const CUT_PRO: Array<{ dom: string; key: string | null }> = [
+  { dom: 'id="mt-puissance-kva"', key: 'puissanceKva' },
+  { dom: 'id="mt-cos-phi"', key: 'cosPhiConnu' },
+  { dom: 'id="mt-weekend"', key: 'weekend' },
+  { dom: 'id="mt-pro-context"', key: null },
+  { dom: 'mt-generator', key: 'hasGenerator' },
+  { dom: 'id="mt-groupe-kva"', key: 'groupeKva' },
+  { dom: 'id="mt-diesel-dh"', key: 'dieselDhMois' },
+  { dom: 'id="mt-facility-type"', key: 'facilityType' },
+  { dom: 'id="mt-site-count"', key: 'siteCount' },
+  // Questions PAR CATÉGORIE commerciale : purement informatives (estimatePro ne
+  // lit que la catégorie elle-même), donc sorties du tunnel avec leur lecteur.
+  { dom: 'mt-cc-questions', key: null },
+];
+const CUT_AGRICOLE: Array<{ dom: string; key: string | null }> = [
+  { dom: 'mt-irrigation', key: 'irrigation' },
+  { dom: 'id="mt-agri-pompe-acc"', key: null },
+  { dom: 'id="mt-pompe-actuelle"', key: 'pompeActuelle' },
+  { dom: 'id="mt-pompe-cv"', key: 'pompeCvActuelle' },
+];
+const ALL_CUT = [...CUT_RESIDENTIEL, ...CUT_PRO, ...CUT_AGRICOLE];
+
+/** Ce qui RESTE avant l'estimation : uniquement ce que les moteurs lisent. */
+const KEPT_DOM = [
+  // Résidentiel : facture exacte OU tranche, + ombrage (1 clic, il dérate).
+  'id="mt-facture-hiver"', 'id="mt-bill"', 'mt-ombrage',
+  // Industriel / commercial : facture, BT/MT, activité, équipes, surface, catégorie.
+  'id="mt-pro-bill"', 'mt-pro-unit', 'mt-tension', 'mt-activity', 'mt-equipes',
+  'id="mt-surface-m2"', 'mt-surface-type', 'mt-commercial-cat', 'id="mt-cc-bill"',
+  // Agricole : le bloc de dimensionnement complet + la dépense carburant.
+  'mt-culture-card', 'mt-region-card', 'id="mt-surface-ha"', 'mt-water-source',
+  'id="mt-profondeur"', 'id="mt-hmt"', 'id="mt-water-need"', 'id="mt-heures-pompage"',
+  'id="mt-fuel-spend"',
+  // Contact, en DERNIER.
+  'id="mt-name"', 'id="mt-phone"', 'id="mt-city"', 'id="mt-email"', 'id="mt-consent"',
+  'mt-visit-part', 'mt-visit-week',
+];
+
+describe('Chantier 1 — la coupe du tunnel (fondateur, 18/08)', () => {
   for (const [lang, rel] of LOCALES) {
     const src = read(rel);
+    // Chaque retrait laisse derrière lui un commentaire qui NOMME la question
+    // retirée (pour l'archéologie) : on retire donc les commentaires HTML *et*
+    // les commentaires de ligne du script avant toute épingle d'absence, sinon
+    // l'explication du retrait ferait échouer la preuve du retrait.
+    const dom = stripLineComments(stripHtmlComments(src));
 
-    it(`${lang} — le <select> mt-financing-intent n'existe plus dans le DOM`, () => {
-      expect(stripHtmlComments(src)).not.toContain('id="mt-financing-intent"');
-      expect(stripHtmlComments(src)).not.toContain('name="financingIntent"');
+    it(`${lang} — les questions coupées ont quitté le DOM`, () => {
+      for (const { dom: id } of ALL_CUT) expect(dom, id).not.toContain(id);
     });
 
-    it(`${lang} — l'accordéon garde ses DEUX autres questions`, () => {
-      const block = detailsFinancing(src);
-      expect(block).toContain('id="mt-occupant-type"');
-      expect(block).toContain('id="mt-project-timing"');
-      expect(block).not.toContain('mt-financing-intent');
+    it(`${lang} — leurs clés ne partent plus dans le corps du lead`, () => {
+      for (const { key } of ALL_CUT) {
+        if (key) expect(payloadLine(src, key), key).toBe('');
+      }
+      // `eteDifferente` et `hasMeterPhoto` étaient des raccourcis d'objet
+      // (`eteDifferente,`) : ils n'ont pas de ligne `clé: valeur` à chercher.
+      expect(payloadSrc(src)).not.toContain('eteDifferente');
+      expect(payloadSrc(src)).not.toContain('hasMeterPhoto');
+      // …et la surface commerciale par catégorie n'est plus lue du tout.
+      expect(payloadSrc(src)).not.toContain('readCommercialAnswers');
     });
 
-    it(`${lang} — son intitulé ne parle plus de financement`, () => {
-      const summary = stripHtmlComments(slice(detailsFinancing(src), '<summary', '</summary>'));
-      expect(summary.length).toBeGreaterThan(0);
-      // Ni « financement » (FR), ni « financing » (EN), ni « تمويل » (AR).
-      expect(summary).not.toMatch(/financ/i);
-      expect(summary).not.toMatch(/تمويل/);
+    it(`${lang} — le brouillon ne les persiste plus`, () => {
+      const text = persistedText(src);
+      for (const id of [
+        'mt-facture-ete', 'mt-roof', 'mt-raccordement', 'mt-distributeur', 'mt-bill-kwh',
+        'mt-roof-age', 'mt-occupant-type', 'mt-project-timing', 'mt-financing-intent',
+        'mt-facility-type', 'mt-site-count', 'mt-puissance-kva', 'mt-cos-phi',
+        'mt-groupe-kva', 'mt-diesel-dh', 'mt-pompe-actuelle', 'mt-pompe-cv',
+      ]) {
+        expect(text, id).not.toContain(`'${id}'`);
+      }
+      const checks = persistedChecks(src);
+      expect(checks).not.toContain('mt-ete-differente');
+      expect(checks).not.toContain('mt-battery-interest');
+      expect(checks).not.toContain('mt-weekend');
+      // Ce qui reste EST toujours persisté (un rafraîchissement ne perd rien).
+      expect(text).toContain("'mt-facture-hiver'");
+      expect(text).toContain("'mt-raison-sociale'");
+      expect(text).toContain("'mt-fuel-spend'");
     });
 
-    it(`${lang} — la clé financingIntent ne part plus dans le corps du lead`, () => {
-      expect(payloadSrc(src)).not.toContain('financingIntent');
+    it(`${lang} — tout ce qui NOURRIT l'estimation est toujours posé`, () => {
+      for (const id of KEPT_DOM) expect(dom, id).toContain(id);
     });
 
-    it(`${lang} — le champ disparu n'est plus persisté dans le brouillon`, () => {
-      const persisted = stripLineComments(slice(src, 'const PERSISTED_TEXT_FIELDS = [', '];'));
-      expect(persisted).toContain("'mt-occupant-type'");
-      expect(persisted).not.toContain("'mt-financing-intent'");
+    it(`${lang} — l'ombrage a quitté l'accordéon pour la carte facture`, () => {
+      // Plus AUCUN accordéon « affiner » : l'ombrage est visible d'emblée,
+      // juste sous la facture, parce qu'il change vraiment le chiffre.
+      expect(dom).not.toContain('<details id="mt-more');
+      const card = slice(dom, 'id="mt-facture-hiver"', '</fieldset>');
+      expect(card).toContain('mt-ombrage');
+      expect(payloadLine(src, 'ombrage')).not.toBe('');
+    });
+
+    it(`${lang} — la raison sociale est passée sur l'écran CONTACT`, () => {
+      const form = contactForm(src);
+      expect(form).toContain('id="mt-raison-sociale-wrap"');
+      expect(form).toContain('id="mt-raison-sociale"');
+      expect(form).toContain('name="raisonSociale"');
+      // …et elle part toujours au webhook, id/name inchangés.
+      expect(payloadLine(src, 'raisonSociale')).not.toBe('');
+      // Affichée aux seuls profils professionnels (un particulier n'en a pas).
+      expect(src).toContain('function syncRaisonSociale()');
+      expect(src).toContain('wrap.hidden = !isProMode(mode)');
+    });
+
+    it(`${lang} — roofType est DÉRIVÉ, plus jamais demandé`, () => {
+      // validateLead EXIGE roofType : la question part, la valeur reste — et
+      // reste honnête ('autre', jamais une toiture précise inventée).
+      const fn = stripLineComments(slice(src, 'function resolveRoofType()', '\n  }'));
+      expect(fn).toContain("return 'autre';");
+      expect(fn).not.toContain("val('mt-roof')");
+      expect(payloadLine(src, 'roofType')).toContain('resolveRoofType()');
+    });
+
+    it(`${lang} — l'étape 2 n'exige plus qu'une facture (résidentiel)`, () => {
+      const fn = stripLineComments(slice(src, 'function validateStep1()', '\n  }\n'));
+      expect(fn).not.toContain("val('mt-roof')");
+      expect(fn).not.toContain('mt-puissance-kva');
+      expect(fn).not.toContain('mt-pompe-cv');
+      expect(fn).toContain("val('mt-bill')");
     });
   }
 
-  it("le CONTRAT BACKEND est intact : validateLead accepte toujours financingIntent", () => {
-    // Le champ ERP `financing_intent` vit encore (d'autres sources l'alimentent) :
-    // retirer la question du site ne doit RIEN casser côté serveur.
+  // ——— Le CONTRAT SERVEUR est intact : retirer une question du site ne doit
+  // RIEN casser côté validation — d'autres sources alimentent encore ces champs.
+  const base = {
+    fullName: 'Karim Benali',
+    phone: '06 12 34 56 78',
+    city: 'Casablanca',
+    roofType: 'villa',
+    billRange: '1500-3000',
+    consent: true,
+  };
+
+  it('validateLead accepte TOUJOURS les champs retirés du tunnel', () => {
     const r = validateLead({
-      fullName: 'Karim Benali',
-      phone: '06 12 34 56 78',
-      city: 'Casablanca',
-      roofType: 'villa',
-      billRange: '1500-3000',
-      consent: true,
+      ...base,
       financingIntent: 'comptant',
+      occupantType: 'decideur',
+      projectTiming: 'maintenant',
+      billKwh: 700,
+      roofAgeYears: 8,
+      batteryInterest: true,
+      raccordement: 'triphase',
+      eteDifferente: true,
+      factureEte: 2500,
+      puissanceKva: 400,
+      cosPhiConnu: 0.92,
+      irrigation: 'goutte',
+      pompeActuelle: 'diesel',
+      pompeCvActuelle: 7.5,
     });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.lead.financingIntent).toBe('comptant');
+    expect(r.lead.occupantType).toBe('decideur');
+    expect(r.lead.billKwh).toBe(700);
+    expect(r.lead.pompeActuelle).toBe('diesel');
+  });
+
+  it("un lead SANS aucun des champs coupés reste parfaitement valide", () => {
+    // Exactement ce que le tunnel envoie désormais côté résidentiel : facture,
+    // ombrage, coordonnées, consentement — et roofType dérivé ('autre').
+    const r = validateLead({
+      fullName: 'Karim Benali',
+      phone: '06 12 34 56 78',
+      city: 'Casablanca',
+      roofType: 'autre',
+      billRange: '1500-3000',
+      ombrage: 'partiel',
+      consent: true,
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.lead.roofType).toBe('autre');
+    expect(r.lead.ombrage).toBe('partiel');
+  });
+});
+
+// ———————————————————————————————————————————————————————————————————————————
+describe("Chantier 1 bis — l'estimation tient debout sans les questions coupées", () => {
+  it('RÉSIDENTIEL : la FACTURE SEULE suffit (plus de kWh/mois saisi)', () => {
+    // La conso exacte en kWh a quitté le tunnel : estimateFromBill retombe sur
+    // sa propre conversion MAD → kWh, exactement comme pour tout visiteur qui
+    // laissait ce champ vide — donc aucun trou dans le chiffre affiché.
+    const est = estimateFromBill(1200);
+    expect(est).not.toBeNull();
+    if (!est) return;
+    expect(est.kwc).toBeGreaterThan(0);
+    expect(est.productionKwhYr).toBeGreaterThan(0);
+    expect(est.savingsMonthlyLow).toBeGreaterThan(0);
+  });
+
+  it("RÉSIDENTIEL : l'ombrage, lui, agit toujours sur le calcul", () => {
+    const shaded = estimateFromBill(1200, { ombrage: 'important' });
+    expect(shaded).not.toBeNull();
+    if (!shaded) return;
+    expect(shaded.kwc).toBeGreaterThan(0);
+    expect(shaded.productionKwhYr).toBeGreaterThan(0);
+  });
+
+  for (const [lang, rel] of LOCALES) {
+    const src = read(rel);
+    it(`${lang} — le tunnel appelle bien le moteur SANS conso kWh`, () => {
+      expect(stripLineComments(src))
+        .toContain('estimateFromBill(bill, { lat, city, ombrage: ombrage || undefined })');
+    });
+    it(`${lang} — le moteur eau est appelé SANS méthode d'irrigation`, () => {
+      expect(stripLineComments(src))
+        .toContain('monthlyWaterDemand(crop, regionAgricole, surfaceHa)');
+    });
+  }
+
+  it("AGRICOLE : un dossier complet passe toujours (le bloc conservé suffit)", () => {
+    const r = estimateAgricole({
+      hmtM: 60,
+      debitM3h: 10,
+      heuresPompage: 7,
+      pompeType: 'immergee',
+      fuelSpendMadMonth: 3000,
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.pompeCv).toBeGreaterThan(0);
+    expect(r.champKwc).toBeGreaterThan(0);
+    expect(r.m3Jour).toBeGreaterThan(0);
+    // La dépense carburant — SEUL rescapé de l'accordéon « pompe actuelle » —
+    // continue de produire l'économie annoncée.
+    expect(r.fuelSavingMadYearLow ?? 0).toBeGreaterThan(0);
+  });
+
+  it("AGRICOLE : le besoin en eau se calcule sans la question d'irrigation", () => {
+    const md = monthlyWaterDemand('agrumes', 'souss-massa', 5);
+    expect(md.peak_m3_farm_day).toBeGreaterThan(0);
   });
 });
 
@@ -124,7 +347,9 @@ describe('Chantier 2 — tout ce qui est collecté atteint bien l’ERP', () => 
     consent: true,
   };
 
-  it('la surface des catégories commerciales a enfin une destination webhook', () => {
+  it('la surface des catégories commerciales garde sa destination webhook', () => {
+    // Le mapping reste dans lib/commercialCategories (le backend s'en sert) —
+    // seul le TUNNEL a cessé de poser ces questions.
     expect(COMMERCIAL_QUESTION_WEBHOOK_KEY.surface_m2).toBe('surfaceM2');
     const r = validateLead({ ...base, surfaceM2: 240 });
     expect(r.ok).toBe(true);
@@ -173,10 +398,9 @@ describe('Chantier 2 — tout ce qui est collecté atteint bien l’ERP', () => 
 
     // Un visiteur qui a décrit son site industriel puis rebasculé sur un autre
     // profil ne doit plus perdre ses réponses : ce qui est SAISI part, point.
-    const UNGATED = [
-      'equipes', 'weekend', 'cosPhiConnu', 'groupeKva', 'dieselDhMois',
-      'surfaceToitureM2', 'ombriere', 'terrain', 'heuresPompage',
-    ];
+    // (La liste a maigri avec la coupe du 18/08 — weekend / cos φ / groupe
+    // électrogène / diesel ne sont tout simplement plus demandés.)
+    const UNGATED = ['equipes', 'surfaceToitureM2', 'ombriere', 'terrain', 'heuresPompage'];
     for (const key of UNGATED) {
       it(`${lang} — ${key} ne dépend plus du profil actif au moment de l'envoi`, () => {
         const line = payloadLine(src, key);
