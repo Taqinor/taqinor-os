@@ -372,10 +372,9 @@ FICHES = {
                         'Rendement max 97,6 % · rendement euro 97,0 %'),
     },
     # PVOND (18/08/2026) — jumeau BASSE TENSION du palier 20 kW. Même
-    # datasheet de famille que le 15 kW (SUN-14-20K-SG05LP3-EU-SM2) ; le
-    # modèle exact n'est PAS confirmé par le fondateur, il porte donc
-    # « Modèle supposé : … — à confirmer fondateur » (il n'est volontairement
-    # pas listé dans MODELES_CONFIRMES_FONDATEUR).
+    # datasheet de famille que le 15 kW (SUN-14-20K-SG05LP3-EU-SM2). CONFIRMÉ
+    # FONDATEUR le 18/08 (« there is a deye 15kw and 20kw with low voltage ») —
+    # listé dans MODELES_CONFIRMES_FONDATEUR comme le 15K LV.
     'OND-DEY-20K-LV': {
         'marque': 'Deye',
         'garantie': 'Garantie constructeur 5 à 10 ans (selon site d\'installation)',
@@ -622,13 +621,13 @@ MODELE_SUPPOSE_PVG4 = {
     # tension, modèle donné DIRECTEMENT par le fondateur (pas une supposition
     # à deviner) — CONFIRMÉ dès la première seed, comme le 10T ci-dessus.
     'OND-DEY-15K-LV': 'Deye SUN-15K-SG05LP3-EU-SM2',     # deyeinverter.com datasheet_sun-14-20k-sg05lp3-eu-sm2_240601_en.pdf (2024-06-01)
-    'OND-DEY-20K-LV': 'Deye SUN-20K-SG05LP3-EU-SM2',     # deyeinverter.com datasheet_sun-14-20k-sg05lp3-eu-sm2_240601_en.pdf (2024-06-01) — colonne 20K, modèle SUPPOSÉ (non confirmé fondateur)
+    'OND-DEY-20K-LV': 'Deye SUN-20K-SG05LP3-EU-SM2',     # deyeinverter.com datasheet_sun-14-20k-sg05lp3-eu-sm2_240601_en.pdf (2024-06-01) — colonne 20K, CONFIRMÉ fondateur 18/08
 }
 # PV85 — SKU dont le modèle constructeur n'est PLUS une supposition : le
 # fondateur a tranché. Leur addendum de description dit « Modèle confirmé
 # fondateur : … » (pas « supposé … — à confirmer »), et c'est cette mention
 # qui autorise le moteur électrique à NOMMER l'appareil sur le schéma.
-MODELES_CONFIRMES_FONDATEUR = ('OND-H-DEY-10T', 'OND-DEY-15K-LV')
+MODELES_CONFIRMES_FONDATEUR = ('OND-H-DEY-10T', 'OND-DEY-15K-LV', 'OND-DEY-20K-LV')
 
 # Ajoute la mention du modèle (supposé ou confirmé) à la description
 # commerciale existante (SKU déjà présent dans FICHES ci-dessus) — additif,
