@@ -18,9 +18,10 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
-  factureAvantApres,
+  couvertureSolaire,
   monitoringPoints,
   savingsHeadline,
+  syntheseEconomies,
   formatPayback,
   type ProposalItem,
   type ProposalResponse,
@@ -235,10 +236,12 @@ function proposal(over: Partial<ProposalResponse> = {}): ProposalResponse {
     roof_image_url: null,
     option_totals: { sans_batterie: 62000, avec_batterie: 94000, display_total: 62000, nb_options: 2 },
     accepted: false,
-    savings_model: 'factures',
-    facture_sans_solaire: 15600,
-    facture_avec_solaire_s: 4200,
-    facture_avec_solaire_a: 2350,
+    // PVCOV — la synthèse SERVIE : exactement les valeurs de la page 1 du PDF.
+    pct_cut: 56,
+    annual_before: 21400,
+    annual_after: 9404,
+    coverage_pct: 67,
+    coverage_estimated: false,
     ...over,
   } as ProposalResponse;
 }
@@ -275,52 +278,105 @@ describe('P18 — savingsHeadline rend EXACTEMENT les champs servis', () => {
   });
 });
 
-describe('P18 — factureAvantApres : deux factures servies, zéro calcul de barème', () => {
-  it('rend les montants du moteur, au MAD près, et le mensuel = annuel / 12', () => {
+describe('P18 — syntheseEconomies : le « −N % » et l’avant/après SERVIS', () => {
+  it('rend EXACTEMENT pct_cut / annual_before / annual_after, sans retouche', () => {
     const p = proposal();
-    const f = factureAvantApres(p, 'avec_batterie')!;
-    expect(f.annuelAvant).toBe(p.facture_sans_solaire);
-    expect(f.annuelApres).toBe(p.facture_avec_solaire_a);
-    expect(f.mensuelAvant).toBe(Math.round((p.facture_sans_solaire as number) / 12));
-    expect(f.mensuelApres).toBe(Math.round((p.facture_avec_solaire_a as number) / 12));
+    const s = syntheseEconomies(p)!;
+    expect(s.pctCut).toBe(p.pct_cut);
+    expect(s.annuelAvant).toBe(p.annual_before);
+    expect(s.annuelApres).toBe(p.annual_after);
+    // La SEULE arithmétique autorisée : le passage au mois.
+    expect(s.mensuelAvant).toBe(Math.round((p.annual_before as number) / 12));
+    expect(s.mensuelApres).toBe(Math.round((p.annual_after as number) / 12));
   });
 
-  it('l’option décide QUELLE facture « après » est lue', () => {
-    const p = proposal();
-    expect(factureAvantApres(p, 'sans_batterie')!.annuelApres).toBe(p.facture_avec_solaire_s);
-    expect(factureAvantApres(p, 'avec_batterie')!.annuelApres).toBe(p.facture_avec_solaire_a);
+  it('le pourcentage n’est JAMAIS re-dérivé des deux factures', () => {
+    // Backend volontairement en désaccord avec un recalcul local : la page doit
+    // afficher le `pct_cut` SERVI (42), pas le 56 % qu'un calcul local tirerait
+    // de 21 400 → 9 404. C'est tout l'objet de la règle « le moteur décide ».
+    expect(syntheseEconomies(proposal({ pct_cut: 42 }))!.pctCut).toBe(42);
   });
 
-  it('hors du modèle « deux factures » du moteur → null (aucune facture fabriquée)', () => {
-    expect(factureAvantApres(proposal({ savings_model: 'estimation' }), 'sans_batterie')).toBeNull();
-    expect(factureAvantApres(proposal({ savings_model: null }), 'sans_batterie')).toBeNull();
-    expect(factureAvantApres(proposal({ facture_sans_solaire: null }), 'sans_batterie')).toBeNull();
-    expect(factureAvantApres(proposal({ facture_avec_solaire_s: null }), 'sans_batterie')).toBeNull();
+  it('un seul champ manquant → bloc masqué (null), jamais un chiffre partiel', () => {
+    expect(syntheseEconomies(proposal({ pct_cut: null }))).toBeNull();
+    expect(syntheseEconomies(proposal({ annual_before: null }))).toBeNull();
+    expect(syntheseEconomies(proposal({ annual_after: null }))).toBeNull();
+    expect(syntheseEconomies(proposal({ pct_cut: undefined }))).toBeNull();
   });
 
-  it('payload incohérent (facture d’après ≥ d’avant, ou avant ≤ 0) → null', () => {
-    expect(factureAvantApres(proposal({ facture_avec_solaire_s: 20000 }), 'sans_batterie')).toBeNull();
-    expect(factureAvantApres(proposal({ facture_sans_solaire: 0 }), 'sans_batterie')).toBeNull();
+  it('devis hors forme résidentielle (les cinq champs None) → rien du tout', () => {
+    const p = proposal({
+      pct_cut: null, annual_before: null, annual_after: null,
+      coverage_pct: null, coverage_estimated: null,
+    });
+    expect(syntheseEconomies(p)).toBeNull();
+    expect(couvertureSolaire(p)).toBeNull();
+  });
+
+  it('payload incohérent (après > avant, ou avant ≤ 0) → null', () => {
+    expect(syntheseEconomies(proposal({ annual_after: 30000 }))).toBeNull();
+    expect(syntheseEconomies(proposal({ annual_before: 0 }))).toBeNull();
   });
 
   it('facture « après » nulle (autoconsommation totale) reste un cas valide', () => {
-    const f = factureAvantApres(proposal({ facture_avec_solaire_s: 0 }), 'sans_batterie')!;
-    expect(f.annuelApres).toBe(0);
-    expect(f.mensuelApres).toBe(0);
+    const s = syntheseEconomies(proposal({ annual_after: 0, pct_cut: 100 }))!;
+    expect(s.annuelApres).toBe(0);
+    expect(s.mensuelApres).toBe(0);
+    expect(s.pctCut).toBe(100);
+  });
+});
+
+describe('P18 — couvertureSolaire : la donut lit coverage_pct, point', () => {
+  it('rend EXACTEMENT coverage_pct et coverage_estimated', () => {
+    const p = proposal();
+    const c = couvertureSolaire(p)!;
+    expect(c.pct).toBe(p.coverage_pct);
+    expect(c.estimated).toBe(false);
   });
 
-  it('le drapeau « barème approximatif » du backend est repris tel quel', () => {
-    expect(factureAvantApres(proposal({ factures_approximatif: true }), 'sans_batterie')!.approximatif).toBe(true);
-    expect(factureAvantApres(proposal(), 'sans_batterie')!.approximatif).toBe(false);
+  it('coverage_estimated pilote SEUL le libellé « (estimation) »', () => {
+    expect(couvertureSolaire(proposal({ coverage_estimated: true }))!.estimated).toBe(true);
+    expect(couvertureSolaire(proposal({ coverage_estimated: null }))!.estimated).toBe(false);
+  });
+
+  it('couverture absente → donut masquée (null)', () => {
+    expect(couvertureSolaire(proposal({ coverage_pct: null }))).toBeNull();
+    expect(couvertureSolaire(proposal({ coverage_pct: undefined }))).toBeNull();
+  });
+
+  it('100 % n’est affiché que si le backend sert 100 (borne moteur : prod ≥ conso)', () => {
+    expect(couvertureSolaire(proposal({ coverage_pct: 100 }))!.pct).toBe(100);
+    // Hors de la plage servie 1..100 : on se tait, on ne ramène jamais à 100.
+    expect(couvertureSolaire(proposal({ coverage_pct: 140 }))).toBeNull();
+    expect(couvertureSolaire(proposal({ coverage_pct: 0 }))).toBeNull();
   });
 });
 
 describe('P18 — la page n’a aucun modèle d’économies à elle', () => {
-  it('elle lit les factures servies au lieu de les reconstruire', () => {
-    expect(CODE).toContain('factureAvantApres(data!, reco ?? \'sans_batterie\')');
-    expect(CODE).toContain('{factureCompare && (');
-    expect(CODE).toContain('factureCompare.mensuelAvant');
-    expect(CODE).toContain('factureCompare.mensuelApres');
+  it('elle lit la synthèse servie au lieu de la reconstruire', () => {
+    expect(CODE).toContain('const synthese = ok ? syntheseEconomies(data!) : null');
+    expect(CODE).toContain('const couverture = ok ? couvertureSolaire(data!) : null');
+    expect(CODE).toContain('{(synthese || showCouvertureDonut) && (');
+    for (const bound of [
+      'synthese.pctCut', 'synthese.mensuelAvant', 'synthese.mensuelApres',
+      'synthese.annuelAvant', 'synthese.annuelApres',
+      'couverture.pct', 'couverture.estimated',
+    ]) {
+      expect(CODE).toContain(bound);
+    }
+  });
+
+  it('le « −N % » est rendu tel quel, jamais dérivé de l’avant/après', () => {
+    expect(CODE).toContain('−{formatNumber(synthese.pctCut, 0)} %');
+    expect(CODE).not.toMatch(/1\s*-\s*synthese\.annuelApres/);
+    expect(CODE).not.toMatch(/annuelApres\s*\/\s*synthese\.annuelAvant/);
+  });
+
+  it('la donut résidentielle n’existe que sur une couverture servie', () => {
+    expect(CODE).toContain("const showCouvertureDonut = installMode === 'residentiel' && !!couverture");
+    // L'anneau ne fait que DESSINER : une longueur d'arc, pas un pourcentage.
+    expect(CODE).toContain('const donutDash = couverture ? (donutCirc * couverture.pct) / 100 : 0');
+    expect(CODE).toContain('stroke-dasharray');
   });
 
   it('aucun barème / tarif kWh / taux d’autoconsommation n’est codé dans la page', () => {
@@ -331,9 +387,9 @@ describe('P18 — la page n’a aucun modèle d’économies à elle', () => {
     expect(CODE).not.toMatch(/const\s+BILL_INFLATION/);
   });
 
-  it('le taux de couverture affiché reste celui servi par le backend (mode_kpis)', () => {
-    // Aucune couverture n'est recalculée côté page : la seule affichée est
-    // `auto.taux_couverture`, extrait tel quel de `mode_kpis` par autoconsoKpis.
+  it('le taux de couverture industriel/commercial reste celui servi (mode_kpis)', () => {
+    // Deux chemins distincts, jamais deux couvertures sur la même page :
+    // résidentiel → donut `coverage_pct` ; autoconso → KPI `taux_couverture`.
     expect(CODE).toContain('auto.taux_couverture');
     expect(CODE).not.toMatch(/couverture\s*=\s*.*prodKwh\s*\//);
   });

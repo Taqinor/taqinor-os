@@ -68,7 +68,8 @@ import {
   formatPercent,
   resolveValidity,
   savingsHeadline,
-  factureAvantApres,
+  syntheseEconomies,
+  couvertureSolaire,
   environmentalImpact,
   whatsappLink,
   whatsappLinkForIntent,
@@ -523,13 +524,25 @@ const validity = ok ? resolveValidity(data!) : { label: null, fromBackend: false
 // × horizon (la MÊME multiplication linéaire que le PDF). La page n'a aucun
 // modèle d'économies à elle — le moteur corrigé se propage tout seul ici.
 const headline = ok ? savingsHeadline(data!, reco ?? 'sans_batterie') : null;
-// ── QF2 (fondateur 2026-08-18) — FACTURE AVANT / APRÈS, 100 % SERVIE ────────
-// Les deux factures annuelles calculées par le moteur (`facture_sans_solaire` /
-// `facture_avec_solaire_s|_a`, modèle « deux factures » par tranche) étaient
-// servies par le backend et ignorées par la page. Elles sont désormais LUES,
-// jamais reconstruites : hors du modèle « factures » (backend `null`), le bloc
-// ne rend rien du tout plutôt qu'une facture « après » fabriquée.
-const factureCompare = ok ? factureAvantApres(data!, reco ?? 'sans_batterie') : null;
+// ── PVCOV (fondateur 2026-08-18) — LA SYNTHÈSE DE LA PAGE 1 DU PDF, SERVIE ──
+// Le « −N % », la facture avant/après et la couverture solaire ne sont plus
+// calculés nulle part sur cette page : ils sont LUS depuis les champs servis
+// (`pct_cut` / `annual_before` / `annual_after` / `coverage_pct` /
+// `coverage_estimated`), produits par la MÊME fonction moteur que la page 1 du
+// devis PDF. Le PDF et le lien client ne peuvent donc plus afficher deux
+// chiffres différents. Backend `null` (devis hors forme résidentielle) ⇒ les
+// blocs ne rendent rien du tout, jamais un chiffre inventé.
+const synthese = ok ? syntheseEconomies(data!) : null;
+const couverture = ok ? couvertureSolaire(data!) : null;
+// La donut « ÉNERGIE SOLAIRE » est le récit RÉSIDENTIEL. L'industriel et le
+// commercial gardent leur propre « Taux de couverture » (bloc KPI d'étude,
+// `auto.taux_couverture`) — jamais les deux sur la même page.
+const showCouvertureDonut = installMode === 'residentiel' && !!couverture;
+// Géométrie de l'anneau : rayon 42 sur un viewBox 100×100 → circonférence 2πr.
+// C'est du DESSIN (longueur d'arc), pas un recalcul du pourcentage servi.
+const DONUT_R = 42;
+const donutCirc = 2 * Math.PI * DONUT_R;
+const donutDash = couverture ? (donutCirc * couverture.pct) / 100 : 0;
 
 // ── WJ14 — Impact environnemental humain (CO₂ ≈ arbres), depuis la production ─
 const enviro = ok ? environmentalImpact(prodKwh) : null;
@@ -1928,7 +1941,7 @@ const signConfig = ok
       <!-- WJ126 — jamais en pompage (agricole) : la valeur d'un pompage solaire est
            l'eau livrée + le carburant évité, pas un cumul de facture réseau ; le
            cadrage « économies cumulées 25 ans » est résidentiel/autoconso. -->
-      {!isAgricole && headline && (headline.cumulative || headline.annual || paybackHero || prodKwh || factureCompare) && (
+      {!isAgricole && headline && (headline.cumulative || headline.annual || paybackHero || prodKwh || synthese || showCouvertureDonut) && (
         <section id="financing-headline" class="mx-auto max-w-4xl px-5 pt-12 sm:px-8 sm:pt-16">
           <span id="economies" aria-hidden="true"></span>
           <p class="tech-label rule-brass mb-5 text-brass-300" data-i18n
@@ -1964,38 +1977,80 @@ const signConfig = ok
             </div>
           ) : null}
 
-          {/* ── QF2 (fondateur 2026-08-18) · VOTRE FACTURE, AVANT ET APRÈS ─────
-                 Les DEUX montants viennent tels quels du moteur de devis
-                 (`facture_sans_solaire` / `facture_avec_solaire_s|_a`), qui les
-                 calcule au barème par tranche : la page ne connaît ni tarif, ni
-                 taux d'autoconsommation, ni règle de calcul — elle affiche ce
-                 que le backend sert, divisé par 12 pour la lecture mensuelle.
-                 Le moteur change ⇒ ce bloc change avec lui. Backend hors modèle
-                 « deux factures » ⇒ `factureAvantApres` renvoie null ⇒ rien. */}
-          {factureCompare && (
-            <div class="cine-card mt-4 rounded-xl p-5">
+          {/* ── PVCOV (fondateur 2026-08-18) · CE QUE LE SOLAIRE CHANGE POUR VOUS
+                 Le « −N % », la facture avant/après et la couverture solaire
+                 sont les valeurs SERVIES par le backend, produites par la MÊME
+                 fonction moteur que la page 1 du devis PDF
+                 (`residential/renderer.synthese_economies`). La page ne connaît
+                 ni tarif, ni barème, ni taux d'autoconsommation : elle affiche
+                 ce qu'on lui sert, la seule arithmétique étant « ÷ 12 » pour la
+                 lecture mensuelle et la longueur d'arc de l'anneau. PDF et lien
+                 client ne peuvent donc plus diverger — et corriger le moteur
+                 corrige cette page sans y toucher. Champs `null` (devis hors
+                 forme résidentielle) ⇒ le bloc entier disparaît. */}
+          {(synthese || showCouvertureDonut) && (
+            <div class="cine-card mt-4 rounded-xl p-5 sm:p-6">
               <p class="tech-label text-lune-faint" data-i18n
-                data-fr="Votre facture d’électricité" data-en="Your electricity bill" data-ar="فاتورة الكهرباء">Votre facture d’électricité</p>
-              <p class="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                <span class="fig fig-md text-lune-faint line-through" dir="ltr">{formatMAD(factureCompare.mensuelAvant)}</span>
-                <span class="text-lune-faint" aria-hidden="true">→</span>
-                <span class="fig fig-md lum" dir="ltr">{formatMAD(factureCompare.mensuelApres)}</span>
-                <span class="text-sm text-lune-soft" data-i18n data-fr="par mois" data-en="per month" data-ar="شهرياً">par mois</span>
-              </p>
-              <p class="mt-1 text-sm text-lune-soft" data-i18n
-                data-fr={`Soit ${formatMAD(factureCompare.annuelAvant)} par an aujourd’hui, contre ${formatMAD(factureCompare.annuelApres)} par an avec votre installation.`}
-                data-en={`That is ${formatMAD(factureCompare.annuelAvant)} per year today, against ${formatMAD(factureCompare.annuelApres)} per year with your installation.`}
-                data-ar={`أي ${formatMAD(factureCompare.annuelAvant)} سنوياً اليوم، مقابل ${formatMAD(factureCompare.annuelApres)} سنوياً مع تركيبكم.`}>
-                Soit {formatMAD(factureCompare.annuelAvant)} par an aujourd’hui, contre {formatMAD(factureCompare.annuelApres)} par an avec votre installation.
-              </p>
-              {factureCompare.approximatif && (
-                <p class="mt-1 text-xs text-lune-faint" data-i18n
-                  data-fr="Barème de votre régie non publié : montants approchés, à confirmer sur votre facture."
-                  data-en="Your utility's tariff table is not published: approximate amounts, to confirm on your bill."
-                  data-ar="جدول تعريفة موزّعكم غير منشور: مبالغ تقريبية، تُؤكَّد على فاتورتكم.">
-                  Barème de votre régie non publié : montants approchés, à confirmer sur votre facture.
-                </p>
-              )}
+                data-fr="Ce que le solaire change pour vous" data-en="What solar changes for you" data-ar="ما تغيّره الطاقة الشمسية بالنسبة لكم">Ce que le solaire change pour vous</p>
+              <div class="mt-4 grid gap-5 sm:grid-cols-[1fr_auto] sm:items-center sm:gap-8">
+                <div>
+                  {synthese && (
+                    <>
+                      <p class="fig lum text-4xl sm:text-5xl" dir="ltr">−{formatNumber(synthese.pctCut, 0)} %</p>
+                      <p class="mt-1 text-sm text-lune-soft" data-i18n
+                        data-fr="sur votre facture d’électricité" data-en="on your electricity bill" data-ar="على فاتورة الكهرباء">
+                        sur votre facture d’électricité
+                      </p>
+                      <p class="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                        <span class="fig fig-md text-lune-faint line-through" dir="ltr">{formatMAD(synthese.mensuelAvant)}</span>
+                        <span class="text-lune-faint" aria-hidden="true">→</span>
+                        <span class="fig fig-md text-lune" dir="ltr">{formatMAD(synthese.mensuelApres)}</span>
+                        <span class="text-sm text-lune-soft" data-i18n data-fr="par mois" data-en="per month" data-ar="شهرياً">par mois</span>
+                      </p>
+                      <p class="mt-1 text-sm text-lune-soft" data-i18n
+                        data-fr={`Soit ${formatMAD(synthese.annuelAvant)} par an aujourd’hui, contre ${formatMAD(synthese.annuelApres)} par an avec votre installation.`}
+                        data-en={`That is ${formatMAD(synthese.annuelAvant)} per year today, against ${formatMAD(synthese.annuelApres)} per year with your installation.`}
+                        data-ar={`أي ${formatMAD(synthese.annuelAvant)} سنوياً اليوم، مقابل ${formatMAD(synthese.annuelApres)} سنوياً مع تركيبكم.`}>
+                        Soit {formatMAD(synthese.annuelAvant)} par an aujourd’hui, contre {formatMAD(synthese.annuelApres)} par an avec votre installation.
+                      </p>
+                    </>
+                  )}
+                </div>
+
+                {/* Donut « ÉNERGIE SOLAIRE » — l'anneau ne fait que DESSINER le
+                    pourcentage servi (longueur d'arc = circonférence × pct/100).
+                    Le moteur borne déjà 1..100 : 100 % ne s'affiche que si le
+                    backend dit production ≥ consommation. */}
+                {showCouvertureDonut && couverture && (
+                  <div class="flex items-center gap-4 sm:flex-col sm:gap-2">
+                    <svg viewBox="0 0 100 100" width="112" height="112" class="shrink-0" role="img"
+                      aria-label={`Couverture solaire : ${formatNumber(couverture.pct, 0)} %`}>
+                      <circle cx="50" cy="50" r={DONUT_R} fill="none" stroke="var(--color-lune-faint)" stroke-opacity="0.22" stroke-width="10" />
+                      <circle cx="50" cy="50" r={DONUT_R} fill="none" stroke="var(--color-brass-400)" stroke-width="10"
+                        stroke-linecap="round" stroke-dasharray={`${donutDash.toFixed(2)} ${(donutCirc - donutDash).toFixed(2)}`}
+                        transform="rotate(-90 50 50)" />
+                      <text x="50" y="50" text-anchor="middle" dominant-baseline="central"
+                        font-size="24" font-weight="700" fill="var(--color-lune)" dir="ltr">{formatNumber(couverture.pct, 0)}%</text>
+                    </svg>
+                    <div class="sm:text-center">
+                      <p class="tech-label text-brass-300" data-i18n
+                        data-fr="Énergie solaire" data-en="Solar energy" data-ar="الطاقة الشمسية">Énergie solaire</p>
+                      <p class="mt-1 text-sm text-lune-soft" data-i18n
+                        data-fr="de vos besoins couverts" data-en="of your needs covered" data-ar="من احتياجاتكم مغطاة">
+                        de vos besoins couverts
+                      </p>
+                      {couverture.estimated && (
+                        <p class="mt-1 text-xs text-lune-faint" data-i18n
+                          data-fr="(estimation — consommation déduite de votre facture)"
+                          data-en="(estimate — consumption derived from your bill)"
+                          data-ar="(تقدير — استهلاك مستنتج من فاتورتكم)">
+                          (estimation — consommation déduite de votre facture)
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 

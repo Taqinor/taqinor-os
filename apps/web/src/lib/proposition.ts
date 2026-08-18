@@ -149,24 +149,30 @@ export interface ProposalResponse {
    */
   monthly_consumption?: number[];
   /**
-   * QF2 (fondateur 2026-08-18) — MODÈLE « DEUX FACTURES » DU MOTEUR DE DEVIS.
-   * `savings_model` vaut `'factures'` quand l'économie du devis est la
-   * DIFFÉRENCE de deux factures annuelles réellement calculées par le moteur
-   * (`quote_engine/pricing.two_bills_savings`, barème par tranche) ; les trois
-   * montants ci-dessous sont alors les factures ANNUELLES (MAD/an) servies par
-   * le backend : sans solaire, avec solaire (option sans batterie), avec solaire
-   * (option avec batterie). Hors de ce modèle le backend envoie `null` — la page
-   * n'affiche alors RIEN plutôt que de fabriquer une facture « après ».
+   * PVCOV (fondateur 2026-08-18) — LA SYNTHÈSE DE LA PAGE 1 DU PDF, SERVIE.
    *
-   * RÈGLE : la page ne recalcule JAMAIS ces montants. Le moteur change ⇒ la page
-   * change avec lui, sans une ligne de code ici.
+   * Ces cinq champs sortent de `quote_engine/residential/renderer.
+   * synthese_economies` — LA MÊME fonction qui alimente la page 1 du devis PDF.
+   * Le lien client et le PDF lisent donc littéralement les mêmes nombres : ils
+   * ne PEUVENT plus diverger, et une correction du moteur se propage ici sans
+   * qu'une ligne de cette page bouge.
+   *
+   *  · `pct_cut` — réduction de facture en % (le « −N % »).
+   *  · `annual_before` / `annual_after` — facture ANNUELLE (MAD/an) avant et
+   *    après solaire.
+   *  · `coverage_pct` — couverture solaire en % (la donut « ÉNERGIE SOLAIRE »),
+   *    déjà bornée 1..100 côté moteur : 100 % signifie production ≥ consommation.
+   *  · `coverage_estimated` — vrai quand la consommation n'est pas mesurée mais
+   *    dérivée de la facture : la page l'écrit « (estimation) », jamais en creux.
+   *
+   * TOUS `null` quand le devis n'a pas la forme résidentielle attendue — la page
+   * masque alors le bloc entier plutôt que d'inventer un chiffre.
    */
-  savings_model?: string | null;
-  facture_sans_solaire?: number | null;
-  facture_avec_solaire_s?: number | null;
-  facture_avec_solaire_a?: number | null;
-  /** QF2 — barème approximatif (régie sans table publiée) : le dire, jamais le taire. */
-  factures_approximatif?: boolean;
+  pct_cut?: number | null;
+  annual_before?: number | null;
+  annual_after?: number | null;
+  coverage_pct?: number | null;
+  coverage_estimated?: boolean | null;
   option_totals: OptionTotals;
   accepted: boolean;
   accepte_par_nom?: string | null;
@@ -1422,56 +1428,81 @@ export function savingsHeadline(
   };
 }
 
-// ── QF2 (fondateur 2026-08-18) · Facture AVANT / APRÈS — 100 % servie ───────
+// ── PVCOV (fondateur 2026-08-18) · La synthèse page 1 du PDF, SERVIE ────────
 
-/** Les deux factures du moteur, telles que servies (aucun modèle local). */
-export interface FactureAvantApres {
-  /** Facture annuelle SANS solaire (MAD/an) — backend `facture_sans_solaire`. */
+/** Nombre fini servi par le backend, sinon `null` (jamais un 0 fabriqué). */
+function servedNumber(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) ? v : null;
+}
+
+/** Le « −N % » + la facture avant/après, tels que servis (aucun modèle local). */
+export interface SyntheseEconomies {
+  /** Réduction de facture en % — backend `pct_cut`, affiché « −N % ». */
+  pctCut: number;
+  /** Facture annuelle AVANT solaire (MAD/an) — backend `annual_before`. */
   annuelAvant: number;
-  /** Facture annuelle AVEC solaire (MAD/an) — backend `facture_avec_solaire_s|_a`. */
+  /** Facture annuelle APRÈS solaire (MAD/an) — backend `annual_after`. */
   annuelApres: number;
-  /** Même montant ramené au mois (÷ 12 : changement d'unité, pas un calcul). */
+  /** Les mêmes montants ramenés au mois (÷ 12 : changement d'unité, pas un calcul). */
   mensuelAvant: number;
   mensuelApres: number;
-  /** Barème approximatif signalé par le backend (régie sans table publiée). */
-  approximatif: boolean;
 }
 
 /**
- * QF2 — Lit les DEUX factures annuelles que le moteur de devis a lui-même
- * calculées et que le backend sert déjà (`facture_sans_solaire` /
- * `facture_avec_solaire_s` / `facture_avec_solaire_a`), pour l'option donnée.
+ * PVCOV — Lit la synthèse d'économies que le moteur a calculée pour la PAGE 1
+ * DU PDF (`residential/renderer.synthese_economies`, servie telle quelle par
+ * `proposal_data`).
  *
  * DISCIPLINE (ordre fondateur du 18/08) : la page CONSOMME ces nombres, elle ne
- * les reconstruit pas. Aucun barème, aucun tarif, aucune hypothèse d'autoconso
- * n'existe ici — le seul traitement appliqué est la division par 12 (mois),
- * un changement d'unité. Conséquence voulue : quand le moteur corrige son
- * modèle, la page affiche le nouveau chiffre sans être modifiée.
+ * les reconstruit pas. Aucun barème, aucun tarif, aucune hypothèse
+ * d'autoconsommation ici — la SEULE arithmétique autorisée est la division par
+ * 12 pour la lecture mensuelle. Conséquence voulue : PDF et lien client
+ * affichent le même chiffre, et une correction du moteur se propage seule.
  *
- * Renvoie `null` — donc « n'affiche rien » — dès que le backend n'est pas dans
- * le modèle « deux factures » (`savings_model !== 'factures'`), qu'une des deux
- * factures manque, que la facture d'avant n'est pas strictement positive, ou
- * que la facture d'après serait SUPÉRIEURE à celle d'avant (payload incohérent :
- * on se tait plutôt que d'annoncer une facture qui augmente).
+ * Renvoie `null` — donc « le bloc ne rend rien » — dès qu'un des trois champs
+ * manque (devis hors forme résidentielle : le backend sert `null`), que la
+ * facture d'avant n'est pas strictement positive, ou que le payload est
+ * incohérent (facture d'après négative ou supérieure à celle d'avant) : on se
+ * tait plutôt que d'annoncer une facture qui augmente.
  */
-export function factureAvantApres(
-  p: ProposalResponse,
-  opt: OptionKey,
-): FactureAvantApres | null {
-  if (String(p?.savings_model ?? '') !== 'factures') return null;
-  const avantRaw = p?.facture_sans_solaire;
-  const apresRaw = opt === 'avec_batterie' ? p?.facture_avec_solaire_a : p?.facture_avec_solaire_s;
-  const avant = typeof avantRaw === 'number' && Number.isFinite(avantRaw) ? avantRaw : null;
-  const apres = typeof apresRaw === 'number' && Number.isFinite(apresRaw) ? apresRaw : null;
-  if (avant === null || apres === null) return null;
+export function syntheseEconomies(p: ProposalResponse): SyntheseEconomies | null {
+  const pctCut = servedNumber(p?.pct_cut);
+  const avant = servedNumber(p?.annual_before);
+  const apres = servedNumber(p?.annual_after);
+  if (pctCut === null || avant === null || apres === null) return null;
   if (avant <= 0 || apres < 0 || apres > avant) return null;
   return {
-    annuelAvant: Math.round(avant),
-    annuelApres: Math.round(apres),
+    pctCut,
+    annuelAvant: avant,
+    annuelApres: apres,
     mensuelAvant: Math.round(avant / 12),
     mensuelApres: Math.round(apres / 12),
-    approximatif: p?.factures_approximatif === true,
   };
+}
+
+/** La couverture solaire servie (la donut « ÉNERGIE SOLAIRE »). */
+export interface CouvertureSolaire {
+  /** Pourcentage de couverture — backend `coverage_pct`, déjà borné 1..100. */
+  pct: number;
+  /** Consommation dérivée de la facture plutôt que mesurée → « (estimation) ». */
+  estimated: boolean;
+}
+
+/**
+ * PVCOV — Lit la couverture solaire du MÊME calcul que la donut de la page 1 du
+ * PDF. Le moteur borne déjà la valeur à 1..100 : la page affiche donc 100 %
+ * UNIQUEMENT quand le moteur dit production ≥ consommation, jamais par un
+ * arrondi local. Rien n'est recalculé ici — pas de production, pas de
+ * consommation, pas de ratio.
+ *
+ * `null` (donut masquée) quand le backend ne sert pas la valeur, ou qu'elle
+ * sort de la plage servie 1..100 (payload incohérent : se taire plutôt que
+ * dessiner un anneau faux).
+ */
+export function couvertureSolaire(p: ProposalResponse): CouvertureSolaire | null {
+  const pct = servedNumber(p?.coverage_pct);
+  if (pct === null || pct <= 0 || pct > 100) return null;
+  return { pct, estimated: p?.coverage_estimated === true };
 }
 
 // ── WJ14 · Impact environnemental humain (CO₂ ≈ arbres) ──────────────────────
