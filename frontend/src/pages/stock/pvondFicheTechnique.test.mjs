@@ -7,7 +7,7 @@ import assert from 'node:assert/strict'
 import {
   MARQUEUR_PLAGE_BATTERIE,
   lirePlageBatterieDescription, ecrirePlageBatterieDescription,
-  plageBatterieDeclaree,
+  plageBatterieDeclaree, plageBatterieAbsenteLocale,
   CONTRAT_ONDULEUR_FR, manquantesOnduleurLocal,
   typeFicheBackend, ficheFieldsVides, champsFicheDepuisServeur,
   champsFichePourType,
@@ -83,6 +83,61 @@ test('plageBatterieDeclaree : vraie pour une fenêtre ou « aucune », fausse si
   assert.equal(plageBatterieDeclaree('Plage batterie : aucune (onduleur réseau)'), true)
   assert.equal(plageBatterieDeclaree('Rien ici.'), false)
   assert.equal(plageBatterieDeclaree(''), false)
+})
+
+// ── plageBatterieAbsenteLocale — règle CORRIGÉE (commit ed34ced9, ordre
+//    fondateur 18/08) : la plage n'est exigée QUE d'un onduleur HYBRIDE.
+//    MIROIR de `plage_batterie_onduleur` (apps/stock/selectors.py). ──────────
+test('HYBRIDE sans ligne déclarée → absente (comportement inchangé)', () => {
+  assert.equal(plageBatterieAbsenteLocale({
+    estHybride: true, estReseau: false, description: '',
+  }), true)
+})
+
+test('HYBRIDE avec une plage déclarée → non absente', () => {
+  assert.equal(plageBatterieAbsenteLocale({
+    estHybride: true, estReseau: false, description: 'Plage batterie : 40-60 V',
+  }), false)
+})
+
+test('HYBRIDE avec « aucune » déclarée → non absente (valeur pleine)', () => {
+  assert.equal(plageBatterieAbsenteLocale({
+    estHybride: true, estReseau: false, description: 'Plage batterie : aucune (onduleur réseau)',
+  }), false)
+})
+
+test('RÉSEAU sans AUCUNE ligne déclarée → JAMAIS absente (la famille vaut « aucune »)', () => {
+  assert.equal(plageBatterieAbsenteLocale({
+    estHybride: false, estReseau: true, description: '',
+  }), false)
+})
+
+test('RÉSEAU même sur un produit tout juste en cours de création (pas de fallback serveur nécessaire)', () => {
+  // Reproduit exactement le bug corrigé : `produit` est `null` (création),
+  // donc `plageBatterieServeurAbsente` vaudrait `true` par défaut — un
+  // onduleur réseau doit rester « non absente » MALGRÉ ce défaut, la
+  // famille suffit à elle seule.
+  assert.equal(plageBatterieAbsenteLocale({
+    estHybride: false, estReseau: true, description: '',
+    plageBatterieServeurAbsente: true,
+  }), false)
+})
+
+test('RÉSEAU avec une ligne déclarée reste non absente (la ligne prime, cohérent)', () => {
+  assert.equal(plageBatterieAbsenteLocale({
+    estHybride: false, estReseau: true, description: 'Plage batterie : aucune (onduleur réseau)',
+  }), false)
+})
+
+test('ni hybride ni réseau (famille indéterminée / hors périmètre) → repli sur l\'état SERVEUR', () => {
+  assert.equal(plageBatterieAbsenteLocale({
+    estHybride: false, estReseau: false, description: '',
+    plageBatterieServeurAbsente: true,
+  }), true)
+  assert.equal(plageBatterieAbsenteLocale({
+    estHybride: false, estReseau: false, description: '',
+    plageBatterieServeurAbsente: false,
+  }), false)
 })
 
 // ── Verrou de complétude onduleur — miroir de CONTRAT_ONDULEUR ─────────────

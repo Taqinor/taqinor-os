@@ -35,6 +35,40 @@ vi.mock('../../api/axios', () => ({
   default: { get: (...args) => apiGet(...args), post: (...args) => apiPost(...args) },
 }))
 
+// Radix Select ne s'ouvre pas de façon fiable sous jsdom (portail + pointer
+// events) — pattern établi (pages/ventes/ListesPrixPage.test.jsx,
+// pages/monitoring/ClientPortalPage.test.jsx) : remplacer les primitives
+// Select par un <select> natif. ProduitForm.jsx pose toujours l'`id` sur
+// <SelectTrigger> (jamais sur <Select> lui-même — Radix Select.Root ne rend
+// aucun nœud DOM propre) ; on le repêche depuis les enfants pour que
+// `getByLabelText` (association <label htmlFor>, posée par FormField)
+// continue de fonctionner SANS toucher au code de production.
+vi.mock('../../ui', async (importActual) => {
+  const actual = await importActual()
+  const Passthrough = ({ children }) => <>{children}</>
+  const Select = ({ value, onValueChange, children }) => {
+    const kids = Array.isArray(children) ? children : [children]
+    const trigger = kids.find((k) => k?.props?.id)
+    return (
+      <select
+        id={trigger?.props?.id}
+        value={value}
+        onChange={(e) => onValueChange(e.target.value)}
+      >
+        {kids}
+      </select>
+    )
+  }
+  return {
+    ...actual,
+    Select,
+    SelectTrigger: Passthrough,
+    SelectValue: () => null,
+    SelectContent: Passthrough,
+    SelectItem: ({ value, children }) => <option value={value}>{children}</option>,
+  }
+})
+
 const {
   getFichesTechniques, createFicheTechnique, updateFicheTechnique,
   createProduitApi, updateProduitApi,
@@ -142,6 +176,12 @@ describe('ProduitForm — section « Fiche technique » (PVOND)', () => {
     // variables du contrat.
     fireEvent.change(document.getElementById('pf-gar-txt'), { target: { value: 'Garantie constructeur 10 ans' } })
     fireEvent.change(screen.getByLabelText('Puissance AC (kW)'), { target: { value: '8' } })
+    // « Phases » est un <Select> (mocké en <select> natif ci-dessus) — 10ᵉ
+    // variable du contrat, oubliée dans une version antérieure de ce test :
+    // sans elle, « monophasé / triphasé » restait manquant et le badge ne
+    // pouvait JAMAIS passer à « Chiffrable ✓ » quoi que fassent les 9 autres
+    // champs.
+    fireEvent.change(screen.getByLabelText('Phases'), { target: { value: '3' } })
     fireEvent.change(screen.getByLabelText("Nombre d'entrées MPPT"), { target: { value: '2' } })
     fireEvent.change(screen.getByLabelText('Courant maxi par MPPT (A)'), { target: { value: '26' } })
     fireEvent.change(screen.getByLabelText('Plage MPPT — tension mini (V)'), { target: { value: '200' } })
@@ -150,6 +190,34 @@ describe('ProduitForm — section « Fiche technique » (PVOND)', () => {
     fireEvent.change(screen.getByLabelText('Rendement européen (%)'), { target: { value: '97' } })
     // Plage batterie (hybride) : « aucune batterie » déclare la variable.
     fireEvent.click(screen.getByLabelText('Aucune batterie compatible (onduleur réseau)'))
+
+    expect(await screen.findByText('Chiffrable ✓')).toBeInTheDocument()
+    expect(screen.queryByText(/Non chiffrable/)).not.toBeInTheDocument()
+  })
+
+  it('RÉSEAU : « Chiffrable ✓ » sans jamais avoir à déclarer de plage batterie (règle 18/08, commit ed34ced9)', async () => {
+    // Un onduleur RÉSEAU n'a pas de port batterie : sa famille (lue sur le
+    // nom, comme `famille_onduleur` côté backend) vaut à elle seule
+    // déclaration « aucune » — y compris fraîchement créé, SANS aller-retour
+    // serveur (`specs_solaire` absent). Reproduit le bug corrigé de
+    // `plageBatterieAbsenteLocale`.
+    renderEdit({
+      nom: 'Onduleur réseau Huawei 10kW', description: '', garantie: 'Garantie 10 ans',
+      specs_solaire: undefined,
+    })
+    await screen.findByText(/Éditer/)
+    await waitFor(() => expect(getFichesTechniques).toHaveBeenCalled())
+
+    fireEvent.change(screen.getByLabelText('Puissance AC (kW)'), { target: { value: '10' } })
+    fireEvent.change(screen.getByLabelText('Phases'), { target: { value: '3' } })
+    fireEvent.change(screen.getByLabelText("Nombre d'entrées MPPT"), { target: { value: '2' } })
+    fireEvent.change(screen.getByLabelText('Courant maxi par MPPT (A)'), { target: { value: '26' } })
+    fireEvent.change(screen.getByLabelText('Plage MPPT — tension mini (V)'), { target: { value: '200' } })
+    fireEvent.change(screen.getByLabelText('Plage MPPT — tension maxi (V)'), { target: { value: '650' } })
+    fireEvent.change(screen.getByLabelText('Tension DC maximale (V)'), { target: { value: '800' } })
+    fireEvent.change(screen.getByLabelText('Rendement européen (%)'), { target: { value: '97' } })
+    // AUCUNE interaction avec un contrôle « plage batterie » — il n'y en a
+    // pas pour un réseau (widget réservé au HYBRIDE, testé plus haut).
 
     expect(await screen.findByText('Chiffrable ✓')).toBeInTheDocument()
     expect(screen.queryByText(/Non chiffrable/)).not.toBeInTheDocument()

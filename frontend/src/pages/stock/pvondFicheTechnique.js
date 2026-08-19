@@ -92,6 +92,31 @@ export function plageBatterieDeclaree(description) {
   return Number.isFinite(bas) && Number.isFinite(haut) && bas > 0 && haut > 0
 }
 
+/** La variable « plage de tension batterie » est-elle ABSENTE (manquante au
+ * sens du contrat) pour CET onduleur ? MIROIR de `plage_batterie_onduleur` +
+ * `onduleur_specs_manquantes` (apps/stock/selectors.py) sous la RÈGLE
+ * CORRIGÉE — ordre fondateur du 18/08/2026 (commit ed34ced9) : la plage
+ * n'est exigée QUE d'un onduleur HYBRIDE.
+ *
+ *   - HYBRIDE  → absente SAUF ligne déclarée (« aucune » ou une plage
+ *                numérique) — comportement inchangé, c'est la seule famille
+ *                qui a réellement un port batterie à documenter ;
+ *   - RÉSEAU   → JAMAIS absente : sa FAMILLE vaut déclaration « aucune »,
+ *                exactement comme une ligne écrite à la main (une ligne
+ *                déclarée reste prioritaire si présente, mais son absence
+ *                n'est plus un trou — un string on-grid n'a pas de port
+ *                batterie) ;
+ *   - ni hybride ni réseau (famille indéterminée / hors périmètre de cet
+ *     écran) → repli sur la dernière valeur SERVEUR connue
+ *     (`plageBatterieServeurAbsente`), jamais une régression silencieuse. */
+export function plageBatterieAbsenteLocale({
+  estHybride, estReseau, description, plageBatterieServeurAbsente = true,
+}) {
+  if (estHybride) return !plageBatterieDeclaree(description)
+  if (estReseau) return false
+  return plageBatterieServeurAbsente
+}
+
 // ── Verrou de complétude ONDULEUR — MIROIR de CONTRAT_ONDULEUR ─────────────
 // (apps/stock/selectors.py CONTRAT_ONDULEUR). Clés préfixées `__` = variables
 // qui ne vivent pas sur `FicheTechnique` (voir plus haut).

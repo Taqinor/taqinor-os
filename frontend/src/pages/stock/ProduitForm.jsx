@@ -32,7 +32,8 @@ import CustomFieldsInput from '../../components/CustomFieldsInput'
 import { classifyProduct, isPompe } from '../../features/ventes/solar.js'
 import {
   MARQUEUR_PLAGE_BATTERIE,
-  lirePlageBatterieDescription, ecrirePlageBatterieDescription, plageBatterieDeclaree,
+  lirePlageBatterieDescription, ecrirePlageBatterieDescription,
+  plageBatterieAbsenteLocale,
   manquantesOnduleurLocal, typeFicheBackend, ficheFieldsVides,
   champsFicheDepuisServeur, champsFichePourType,
 } from './pvondFicheTechnique.js'
@@ -460,7 +461,8 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
   // de devis (`classifyProduct`, solar.js), jamais réimplémentée ici.
   const ficheType = classifyProduct(fields.nom)
   const estOnduleurHybride = ficheType === 'onduleur_hybride'
-  const estOnduleur = estOnduleurHybride || ficheType === 'onduleur_reseau'
+  const estOnduleurReseau = ficheType === 'onduleur_reseau'
+  const estOnduleur = estOnduleurHybride || estOnduleurReseau
   const estPanneauFiche = ficheType === 'panneau'
   const estBatterieFiche = ficheType === 'batterie'
   const estPompeFiche = isPompe(fields.nom)
@@ -469,13 +471,20 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
   // Plage de tension batterie : éditable ici UNIQUEMENT pour un onduleur
   // HYBRIDE (règle fondateur 18/08) — un onduleur réseau n'en porte jamais.
   // Elle vit dans une ligne marquée de `fields.description` (voir
-  // pvondFicheTechnique.js) faute de champ dédié sur FicheTechnique ; pour un
-  // onduleur réseau non-hybride, on retombe sur l'état SERVEUR déjà connu
-  // (non éditable depuis cet écran).
+  // pvondFicheTechnique.js) faute de champ dédié sur FicheTechnique.
   const plageBatterieActuelle = estOnduleurHybride ? lirePlageBatterieDescription(fields.description) : null
-  const plageBatterieAbsente = estOnduleurHybride
-    ? !plageBatterieDeclaree(fields.description)
-    : (produit?.specs_solaire?.plage_batterie_v == null)
+  // RÈGLE CORRIGÉE (commit ed34ced9, ordre fondateur du 18/08) : la plage
+  // n'est plus jamais réclamée à un RÉSEAU (sa famille vaut « aucune », même
+  // sur un produit tout juste en cours de création — jamais besoin d'un
+  // aller-retour serveur pour l'éteindre) ; un HYBRIDE reste jugé sur sa
+  // ligne déclarée ; toute autre famille retombe sur le dernier état SERVEUR
+  // connu (`plageBatterieAbsenteLocale`, testé par pvondFicheTechnique.test.mjs).
+  const plageBatterieAbsente = plageBatterieAbsenteLocale({
+    estHybride: estOnduleurHybride,
+    estReseau: estOnduleurReseau,
+    description: fields.description,
+    plageBatterieServeurAbsente: produit?.specs_solaire?.plage_batterie_v == null,
+  })
   // PVOND — verrou de complétude, recalculé EN LOCAL pendant la frappe :
   // l'exact miroir de la bannière « Onduleur(s) non chiffrable(s) » du
   // générateur de devis (`onduleurSpecsManquantes`, solar.js), qui ne lit

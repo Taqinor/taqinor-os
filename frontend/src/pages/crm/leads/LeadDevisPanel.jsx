@@ -18,6 +18,7 @@ import {
 import DevisGenerator from '../../ventes/DevisGenerator'
 import { filenameFromResponse } from '../../../utils/downloadBlob'
 import { openPdfInGesture } from '../../../utils/pdfBlob'
+import { fetchAllPages } from '../../../utils/fetchAllPages'
 import {
   Button, Input, Spinner, Segmented, Checkbox, EmptyState, Sheet, SheetContent,
 } from '../../../ui'
@@ -150,8 +151,20 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
     setErrorMsg(null)
     try {
       if (!produitsRef.current) {
-        const r = await stockApi.getProduits()
-        produitsRef.current = r.data.results ?? r.data
+        // RÉGRESSION CONFIRMÉE (CI run 32200473257, e2e devis.spec.js E4) —
+        // `stockApi.getProduits()` SANS paramètre ne renvoie que la PAGE 1
+        // (50 produits, triés par nom). Dès que le catalogue dépasse 50
+        // références, une famille de produits triée alphabétiquement APRÈS
+        // la coupure (ex. « Panneau… ») disparaît silencieusement du
+        // dimensionnement automatique — `autoFillLines` la voit comme
+        // ABSENTE DU STOCK et jette « aucun panneau du stock ne correspond »
+        // alors que le catalogue en porte réellement. Trace réseau du run
+        // rouge : count=101, page 1 s'arrête à « Onduleur réseau… », les DEUX
+        // panneaux tombent en page 2. `fetchAllPages` (VX54, déjà le chemin
+        // correct de stockSlice.js pour StockList/DevisList/FactureList/
+        // Dashboard) lit le catalogue ENTIER, en parallèle borné.
+        produitsRef.current = await fetchAllPages(
+          (page) => stockApi.getProduits({ page }).then((r) => r.data))
       }
       // PVMRQ — les marques épinglées (Paramètres → Gammes) s'appliquent AUSSI
       // au devis automatique du lead : sans ce fil, ce chemin rapide recomposait
