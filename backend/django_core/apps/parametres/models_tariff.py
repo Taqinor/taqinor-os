@@ -30,15 +30,23 @@ from django.db import models
 
 
 # ── Barème résidentiel ONEE — défauts TTC (jamais de TVA en plus) ─────────────
-# Tranches mensuelles (kWh) → prix MAD/kWh TTC. Spec founder 2024 :
-#   0–100   = 0.9010
-#   101–150 = 1.0732   (et 151–210 = 1.0732 aussi)
-#   211–310 = 1.1676
-#   311–510 = 1.3817
-#   >510    = 1.5958
+# Tranches mensuelles (kWh) → prix MAD/kWh TTC. ORDRE FONDATEUR (19/08/2026) —
+# TVA 20 % depuis le 01/01/2026 (16 % en 2024, 18 % en 2025) : les six prix ont
+# été re-dérivés HT × 1,20 (voir apps/ventes/quote_engine/pricing.py
+# ONEE_TRANCHES pour la dérivation complète HT/TTC par tranche et l'ancre
+# fondateur — tranche >500 kWh = 1,622856 MAD/kWh TTC, vérifiée facture réelle).
+#   0–100   = 0.916272
+#   101–150 = 1.091388  (et 151–210 = 1.091388 aussi)
+#   211–310 = 1.187388
+#   311–510 = 1.405116
+#   >510    = 1.622856
 # Le service de calcul applique le MODÈLE (progressif ≤150 / sélectif >150 avec
 # tolérance 10 kWh décalant les bornes opératoires à 210/310/510). Le barème ici
 # n'est que la liste des paliers + prix ; la logique vit dans ``tariff.py``.
+# ÉDITABLE PAR SOCIÉTÉ : ces six valeurs sont le DÉFAUT ; une société peut les
+# surcharger via ``TariffSettings.residential_tiers`` (Paramètres →
+# Tarification & ROI). Le moteur de devis lit la surcharge via
+# ``apps.parametres.selectors.residential_tranches_for``.
 #
 # SECONDE IMPLÉMENTATION INDÉPENDANTE — apps/ventes/quote_engine/pricing.py
 # ``ONEE_TRANCHES`` (consommée par le moteur de devis/PDF, pas par l'étude)
@@ -48,12 +56,12 @@ from django.db import models
 # verrouillées d'accord par apps/ventes/tests/test_tariff_drift_lock.py : si
 # l'une bouge seule, ce test passe au rouge.
 DEFAULT_RESIDENTIAL_TIERS = [
-    {"max_kwh": 100, "prix_kwh_ttc": "0.9010"},
-    {"max_kwh": 150, "prix_kwh_ttc": "1.0732"},
-    {"max_kwh": 210, "prix_kwh_ttc": "1.0732"},
-    {"max_kwh": 310, "prix_kwh_ttc": "1.1676"},
-    {"max_kwh": 510, "prix_kwh_ttc": "1.3817"},
-    {"max_kwh": None, "prix_kwh_ttc": "1.5958"},  # None = palier supérieur ouvert
+    {"max_kwh": 100, "prix_kwh_ttc": "0.916272"},
+    {"max_kwh": 150, "prix_kwh_ttc": "1.091388"},
+    {"max_kwh": 210, "prix_kwh_ttc": "1.091388"},
+    {"max_kwh": 310, "prix_kwh_ttc": "1.187388"},
+    {"max_kwh": 510, "prix_kwh_ttc": "1.405116"},
+    {"max_kwh": None, "prix_kwh_ttc": "1.622856"},  # None = palier supérieur ouvert
 ]
 
 
@@ -73,7 +81,7 @@ class TariffSettings(models.Model):
     )
 
     # ── N64 — barème résidentiel ONEE (liste de paliers, prix TTC) ──
-    # JSON : [{max_kwh: int|null, prix_kwh_ttc: "0.9010"}, ...] ordonné croissant.
+    # JSON : [{max_kwh: int|null, prix_kwh_ttc: "0.916272"}, ...] ordonné croissant.
     # NULL/[] → le service applique ``DEFAULT_RESIDENTIAL_TIERS``.
     residential_tiers = models.JSONField(null=True, blank=True)
 

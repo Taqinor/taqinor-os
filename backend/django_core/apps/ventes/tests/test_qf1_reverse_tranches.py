@@ -28,7 +28,7 @@ class TestKwhFromBill(SimpleTestCase):
     """kwh_from_bill inverts the progressive tranche model."""
 
     def test_inversion_exact_within_first_tranche_onee(self):
-        # 50 kWh × 0.9010 = 45.05 MAD — inversion must return 50 kWh.
+        # 50 kWh × 0.916272 = 45.8136 MAD — inversion must return 50 kWh.
         bill = 50 * ONEE_TRANCHES[0][1]
         out = kwh_from_bill(bill, utility="onee")
         self.assertAlmostEqual(out["kwh_mensuel"], 50.0, delta=0.2)

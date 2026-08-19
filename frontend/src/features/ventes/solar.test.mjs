@@ -929,29 +929,31 @@ test('QF4 — monthlyBillFromKwh : barème ONEE SÉLECTIF (300 kWh/mois)', () =>
   // BARÈME SÉLECTIF (grille officielle, cf. solar.js) : au-dessus de 150
   // kWh/mois, TOUTE la conso est facturée au tarif de SA tranche. 300 kWh/mois
   // tombe dans la bande 201-300 (bornes effectives 211-310, tolérance 10 kWh)
-  // → tarif 1,1676 sur les 300 kWh.
-  // Dérivation à la main : 300 × 1,1676 = 350,28 MAD/mois.
-  assert.ok(Math.abs(monthlyBillFromKwh(300, ONEE_TRANCHES) - 350.28) < 1e-9)
+  // → tarif 1,187388 sur les 300 kWh (2026, TVA 20%).
+  // Dérivation à la main : 300 × 1,187388 = 356,2164 MAD/mois.
+  assert.ok(Math.abs(monthlyBillFromKwh(300, ONEE_TRANCHES) - 356.2164) < 1e-9)
   // La bande d'EN DESSOUS (progressive, ≤ 150) reste cumulative :
-  // 100 × 0,9010 + 50 × 1,0732 = 90,10 + 53,66 = 143,76 MAD/mois.
-  assert.ok(Math.abs(monthlyBillFromKwh(150, ONEE_TRANCHES) - 143.76) < 1e-9)
+  // 100 × 0,916272 + 50 × 1,091388 = 91,6272 + 54,5694 = 146,1966 MAD/mois.
+  assert.ok(Math.abs(monthlyBillFromKwh(150, ONEE_TRANCHES) - 146.1966) < 1e-9)
 })
 
 test('QF4 — kwhFromBill : inverse EXACT du barème sélectif', () => {
-  // Facture atteignable : 700 × 1,5958 = 1 117,06 MAD/mois → 700 kWh/mois.
-  const r = kwhFromBill(1117.06, 'onee')
+  // Facture atteignable : 700 × 1,622856 = 1 135,9992 MAD/mois → 700 kWh/mois.
+  const r = kwhFromBill(1135.9992, 'onee')
   assert.equal(r.kwhMensuel, 700)
   assert.equal(r.approximatif, false)
   assert.equal(r.estimation, false)
   // 850 MAD/mois tombe dans un TROU du barème : la bande 301-500 plafonne à
-  // 510 × 1,3817 = 704,67 MAD et la bande supérieure démarre au-dessus de
-  // 510 × 1,5958 = 813,86 MAD… mais 850 MAD EST atteignable au-dessus de 510 :
-  // 850 / 1,5958 = 532,6 kWh (> 510, donc bien dans sa bande) → 532,6.
-  assert.equal(kwhFromBill(850, 'onee').kwhMensuel, 532.6)
-  // Vrai trou : 235 MAD/mois. À 210 kWh la facture vaut 210 × 1,0732 = 225,37 ;
-  // au premier kWh au-dessus elle saute à 210 × 1,1676 = 245,20. Aucune conso
-  // ne produit 235 MAD → on résout à la BORNE BASSE du saut (210 kWh), jamais
-  // une conso que le barème ne peut pas produire (règle miroir en Python).
+  // 510 × 1,405116 = 716,60916 MAD et la bande supérieure démarre au-dessus de
+  // 511 × 1,622856 = 829,279416 MAD… mais 850 MAD EST atteignable au-dessus de
+  // 510 : 850 / 1,622856 = 523,7998… kWh (> 510, donc bien dans sa bande) →
+  // arrondi 523,8.
+  assert.equal(kwhFromBill(850, 'onee').kwhMensuel, 523.8)
+  // Vrai trou : 235 MAD/mois. À 210 kWh la facture vaut 210 × 1,091388 =
+  // 229,19148 ; au premier kWh au-dessus elle saute à 211 × 1,187388 =
+  // 250,538868. Aucune conso ne produit 235 MAD → on résout à la BORNE BASSE
+  // du saut (210 kWh), jamais une conso que le barème ne peut pas produire
+  // (règle miroir en Python).
   assert.equal(kwhFromBill(235, 'onee').kwhMensuel, 210)
 })
 
@@ -974,30 +976,30 @@ test('QF4 — kwhFromBill : facture vide → 0 kWh, estimation', () => {
 })
 
 test('QF2/QF5 — twoBillsSavings : économie réelle au barème (ratio 0.60, sans batterie)', () => {
-  // Dérivation à la main (barème SÉLECTIF) :
-  //   conso    7 200/12 = 600 kWh/mois → > 510 → 600 × 1,5958 = 957,48 MAD/mois
-  //                                            × 12 = 11 489,76 → 11 490
+  // Dérivation à la main (barème SÉLECTIF, 2026 — TVA 20 %) :
+  //   conso    7 200/12 = 600 kWh/mois → > 510 → 600 × 1,622856 = 973,7136
+  //                                            MAD/mois × 12 = 11 684,5632 → 11 685
   //   autoconsommé 6 000 × 0,60 = 3 600 kWh (≤ conso) → résiduel 3 600 kWh/an
-  //   résiduel 3 600/12 = 300 kWh/mois → bande 211-310 → 300 × 1,1676 = 350,28
-  //                                            × 12 =  4 203,36 →  4 203
-  //   économie 11 490 − 4 203 = 7 287 MAD/an
+  //   résiduel 3 600/12 = 300 kWh/mois → bande 211-310 → 300 × 1,187388 =
+  //                                            356,2164 × 12 = 4 274,5968 → 4 275
+  //   économie 11 685 − 4 275 = 7 410 MAD/an
   const r = twoBillsSavings(6000, 7200, 0.6, 'onee')
   assert.deepEqual(r, {
-    factureSans: 11490, factureAvec: 4203, economie: 7287, autoconsoKwh: 3600,
+    factureSans: 11685, factureAvec: 4275, economie: 7410, autoconsoKwh: 3600,
   })
 })
 
 test('QF2/QF5 — twoBillsSavings : économie réelle au barème (ratio 0.85, avec batterie)', () => {
-  // Dérivation à la main (barème SÉLECTIF) :
+  // Dérivation à la main (barème SÉLECTIF, 2026 — TVA 20 %) :
   //   autoconsommé 6 000 × 0,85 = 5 100 kWh → résiduel 2 100 kWh/an
-  //   résiduel 2 100/12 = 175 kWh/mois → bande 151-210 → 175 × 1,0732 = 187,81
-  //                                            × 12 = 2 253,72 → 2 254
-  //   économie 11 490 − 2 254 = 9 236 MAD/an
+  //   résiduel 2 100/12 = 175 kWh/mois → bande 151-210 → 175 × 1,091388 =
+  //                                            190,9929 × 12 = 2 291,9148 → 2 292
+  //   économie 11 685 − 2 292 = 9 393 MAD/an
   // En redescendant sous 510 PUIS sous 310, le client ne fait pas qu'effacer
-  // des kWh : il RE-TARIFE tout son résiduel (1,5958 → 1,0732).
+  // des kWh : il RE-TARIFE tout son résiduel (1,622856 → 1,091388).
   const r = twoBillsSavings(6000, 7200, 0.85, 'onee')
   assert.deepEqual(r, {
-    factureSans: 11490, factureAvec: 2254, economie: 9236, autoconsoKwh: 5100,
+    factureSans: 11685, factureAvec: 2292, economie: 9393, autoconsoKwh: 5100,
   })
 })
 
@@ -1007,23 +1009,24 @@ test('QF2/QF5 — twoBillsSavings : économie réelle au barème (ratio 0.85, av
 // fichiers portent les MÊMES entrées et les MÊMES attendus, tous DÉRIVÉS À LA
 // MAIN de la grille officielle (jamais copiés d'une sortie de code).
 //
-// Grille (TTC) : progressif 0-100 = 0,9010 · 101-150 = 1,0732 ;
-// sélectif (toute la conso au tarif de sa tranche, tolérance 10 kWh) :
-// 151-210 = 1,0732 · 211-310 = 1,1676 · 311-510 = 1,3817 · > 510 = 1,5958.
+// Grille (TTC, 2026 — TVA 20 %) : progressif 0-100 = 0,916272 ·
+// 101-150 = 1,091388 ; sélectif (toute la conso au tarif de sa tranche,
+// tolérance 10 kWh) : 151-210 = 1,091388 · 211-310 = 1,187388 ·
+// 311-510 = 1,405116 · > 510 = 1,622856.
 const BAREME_FIXTURE = [
-  [100, 90.10],      // progressif : 100 × 0,9010
-  [150, 143.76],     // progressif : 90,10 + 50 × 1,0732 (= 53,66)
-  [151, 162.0532],   // 1re marche sélective : 151 × 1,0732
-  [210, 225.372],    // haut de bande (tolérance) : 210 × 1,0732
-  [211, 246.3636],   // bande suivante, TOUTE la conso : 211 × 1,1676
-  [310, 361.956],    // 310 × 1,1676
-  [311, 429.7087],   // 311 × 1,3817
-  [499, 689.4683],   // 499 × 1,3817
-  [500, 690.85],     // 500 × 1,3817 — le seuil « 500 » du fondateur
-  [501, 692.2317],   // 501 × 1,3817 (encore dans sa bande : borne effective 510)
-  [510, 704.667],    // 510 × 1,3817
-  [511, 815.4538],   // 511 × 1,5958 — la marche du haut de grille
-  [700, 1117.06],    // 700 × 1,5958
+  [100, 91.6272],      // progressif : 100 × 0,916272
+  [150, 146.1966],     // progressif : 91,6272 + 50 × 1,091388 (= 54,5694)
+  [151, 164.799588],   // 1re marche sélective : 151 × 1,091388
+  [210, 229.19148],    // haut de bande (tolérance) : 210 × 1,091388
+  [211, 250.538868],   // bande suivante, TOUTE la conso : 211 × 1,187388
+  [310, 368.09028],    // 310 × 1,187388
+  [311, 436.991076],   // 311 × 1,405116
+  [499, 701.152884],   // 499 × 1,405116
+  [500, 702.558],      // 500 × 1,405116 — le seuil « 500 » du fondateur
+  [501, 703.963116],   // 501 × 1,405116 (encore dans sa bande : borne effective 510)
+  [510, 716.60916],    // 510 × 1,405116
+  [511, 829.279416],   // 511 × 1,622856 — la marche du haut de grille
+  [700, 1135.9992],    // 700 × 1,622856
 ]
 
 test('VERROU — barème sélectif : chaque marche vaut le montant dérivé à la main', () => {
@@ -1035,9 +1038,9 @@ test('VERROU — barème sélectif : chaque marche vaut le montant dérivé à l
   for (let i = 1; i < BAREME_FIXTURE.length; i++) {
     assert.ok(BAREME_FIXTURE[i][1] > BAREME_FIXTURE[i - 1][1])
   }
-  // 511 kWh coûte 110,79 MAD de plus que 510 kWh pour UN kWh de plus : c'est la
-  // marche sélective (815,4538 − 704,667), pas une erreur d'arrondi.
-  assert.ok(Math.abs((815.4538 - 704.667) - 110.7868) < 1e-9)
+  // 511 kWh coûte 112,670256 MAD de plus que 510 kWh pour UN kWh de plus :
+  // c'est la marche sélective (829,279416 − 716,60916), pas une erreur d'arrondi.
+  assert.ok(Math.abs((829.279416 - 716.60916) - 112.670256) < 1e-9)
 })
 
 test('VERROU — kwhFromBill est l’inverse EXACT sur toute la grille (aller-retour)', () => {
@@ -1049,26 +1052,26 @@ test('VERROU — kwhFromBill est l’inverse EXACT sur toute la grille (aller-re
 test('VERROU — scénario FONDATEUR : 700 kWh/mois, résiduel sous le seuil', () => {
   // « The client will go down in the price per kWh because he will be below
   //   500 kWh per month — I want the new price per kWh to be used. »
-  // Dérivation à la main :
-  //   avant  700 kWh/mois → 700 × 1,5958 = 1 117,06 MAD (1,5958 MAD/kWh)
-  //   après  280 kWh/mois → 280 × 1,1676 =   326,928 MAD (1,1676 MAD/kWh)
-  //   économie 1 117,06 − 326,928 = 790,132 MAD/mois → × 12 = 9 481,584 MAD/an
+  // Dérivation à la main (2026 — TVA 20 %) :
+  //   avant  700 kWh/mois → 700 × 1,622856 = 1 135,9992 MAD (1,622856 MAD/kWh)
+  //   après  280 kWh/mois → 280 × 1,187388 =   332,46864 MAD (1,187388 MAD/kWh)
+  //   économie 1 135,9992 − 332,46864 = 803,53056 MAD/mois → × 12 = 9 642,3672 MAD/an
   const avant = monthlyBillFromKwh(700, ONEE_TRANCHES)
   const apres = monthlyBillFromKwh(280, ONEE_TRANCHES)
-  assert.ok(Math.abs(avant - 1117.06) < 1e-9)
-  assert.ok(Math.abs(apres - 326.928) < 1e-9)
-  assert.ok(Math.abs((avant - apres) - 790.132) < 1e-9)
+  assert.ok(Math.abs(avant - 1135.9992) < 1e-9)
+  assert.ok(Math.abs(apres - 332.46864) < 1e-9)
+  assert.ok(Math.abs((avant - apres) - 803.53056) < 1e-9)
   // Le PRIX du kWh baisse vraiment (c'est la phrase du fondateur).
-  assert.ok(Math.abs(avant / 700 - 1.5958) < 1e-9)
-  assert.ok(Math.abs(apres / 280 - 1.1676) < 1e-9)
+  assert.ok(Math.abs(avant / 700 - 1.622856) < 1e-9)
+  assert.ok(Math.abs(apres / 280 - 1.187388) < 1e-9)
   // …et l'économie vaut PLUS que les 420 kWh effacés au tarif marginal :
-  // 420 × 1,5958 = 670,236 MAD < 790,132 MAD (le résiduel est re-tarifé).
-  assert.ok(Math.abs(420 * 1.5958 - 670.236) < 1e-9)
-  assert.ok(790.132 > 670.236)
-  // Annualisation : 790,132 × 12 = 9 481,584 → 9 482 MAD/an. Le mois est
+  // 420 × 1,622856 = 681,59952 MAD < 803,53056 MAD (le résiduel est re-tarifé).
+  assert.ok(Math.abs(420 * 1.622856 - 681.59952) < 1e-9)
+  assert.ok(803.53056 > 681.59952)
+  // Annualisation : 803,53056 × 12 = 9 642,3672 → 9 642 MAD/an. Le mois est
   // l'unité de tarification (le seuil est MENSUEL) : on ne divise jamais
   // l'année avant de tarifer.
-  assert.equal(Math.round((avant - apres) * 12), 9482)
+  assert.equal(Math.round((avant - apres) * 12), 9642)
 })
 
 test('twoBillsSavings : dégrade en null sans donnée réelle (jamais un chiffre inventé)', () => {

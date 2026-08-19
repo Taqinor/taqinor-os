@@ -89,8 +89,8 @@ class TestTariffDriftLock(SimpleTestCase):
         settings = TariffSettings()
         effective = settings.effective_tiers()
         bornes_effectives_attendues = [
-            (100, 0.9010), (150, 1.0732), (210, 1.0732),
-            (310, 1.1676), (510, 1.3817), (None, 1.5958),
+            (100, 0.916272), (150, 1.091388), (210, 1.091388),
+            (310, 1.187388), (510, 1.405116), (None, 1.622856),
         ]
         for (ceiling, price), tier in zip(bornes_effectives_attendues, effective):
             self.assertEqual(tier['max_kwh'], ceiling)

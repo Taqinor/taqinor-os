@@ -645,13 +645,22 @@ function trancheTable(pairs, selectif) {
 // Remplace l'ancienne grille QX38 (100/250/400/∞ à 0,9010/1,0258/1,2515/1,4017),
 // purement progressive et marquée « à confirmer » : elle contredisait la grille
 // officielle sur les seuils ET sur les prix.
+//
+// ORDRE FONDATEUR (19/08/2026) — TVA 20 % depuis le 01/01/2026 (16 % en 2024,
+// 18 % en 2025) : les six prix RADEEJ ci-dessus étaient encore au taux 2025
+// (18 %). Re-dérivés HT × 1,20 (HT = TTC 2025 ÷ 1,18) ; ancre fondateur
+// (facture réelle) = tranche > 500 kWh = 1,622856 MAD/kWh TTC. Détail complet
+// de la dérivation HT/TTC par tranche : apps/ventes/quote_engine/pricing.py
+// ONEE_TRANCHES (miroir exact). Prochaine hausse de TVA : refaire HT × nouveau
+// taux sur les six bases HT documentées là-bas — jamais repartir d'un TTC
+// déjà taxé. ÉDITABLE PAR SOCIÉTÉ : Paramètres → Tarification & ROI.
 export const ONEE_TRANCHES = trancheTable([
-  [100, 0.9010],   // progressif   0-100          — RADEEJ TTC (18/08/2026)
-  [150, 1.0732],   // progressif 101-150          — RADEEJ TTC (18/08/2026)
-  [200, 1.0732],   // sélectif 151-200 (eff. 210) — RADEEJ TTC (18/08/2026)
-  [300, 1.1676],   // sélectif 201-300 (eff. 310) — RADEEJ TTC (18/08/2026)
-  [500, 1.3817],   // sélectif 301-500 (eff. 510) — RADEEJ TTC (18/08/2026)
-  [null, 1.5958],  // sélectif > 500  (eff. 510+) — RADEEJ TTC (18/08/2026)
+  [100, 0.916272],   // progressif   0-100          — HT 0,76356 × TVA 20% (2026)
+  [150, 1.091388],   // progressif 101-150          — HT 0,90949 × TVA 20% (2026)
+  [200, 1.091388],   // sélectif 151-200 (eff. 210) — idem
+  [300, 1.187388],   // sélectif 201-300 (eff. 310) — HT 0,98949 × TVA 20% (2026)
+  [500, 1.405116],   // sélectif 301-500 (eff. 510) — HT 1,17093 × TVA 20% (2026)
+  [null, 1.622856],  // sélectif > 500  (eff. 510+) — HT 1,35238 × TVA 20% (2026, ancre)
 ], { seuil: 150, tolerance: 10 })
 // Lydec/Redal restent PROGRESSIFS et « approximatifs » : aucune grille
 // sélective vérifiée pour les délégataires — on n'invente pas des seuils.
