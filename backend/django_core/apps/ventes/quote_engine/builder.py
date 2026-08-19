@@ -1366,7 +1366,31 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     _ac_a_proxy = roi.get("autoconso_avec") or AUTOCONSO_AVEC
     if not (0 < _ac_a_proxy <= 1):
         _ac_a_proxy = AUTOCONSO_AVEC
-    factures_mensuelles = [round(v / _ac_a_proxy) for v in roi["eco_a_monthly"]]
+    # ── PACT10/QF-REAL (fondateur 19/08/2026) — 12 VRAIES factures mensuelles ──
+    # Le devis auto résidentiel (frontend/.../autoQuote.js) sème désormais
+    # etude_params.factures_mensuelles_reelles depuis la facture hiver/été du
+    # lead : quand elles existent, elles remplacent le proxy ci-dessus comme
+    # série « avant » — le proxy reconstruisait la facture depuis l'économie
+    # SUPPOSÉE (circulaire : la couverture solaire valait toujours ≈ le taux
+    # d'autoconsommation forfaitaire, jamais une vraie conso — audit du
+    # 19/08). L'« après » reste calculé plus loin, INCHANGÉ
+    # (before[i] − eco_a_monthly[i], residential/renderer.synthese_economies) :
+    # seule la série « avant » devient réelle. Garde stricte : exactement 12
+    # valeurs numériques strictement positives, sinon repli SILENCIEUX sur le
+    # proxy historique — un contrat malformé ne casse jamais le rendu, et
+    # aucun devis existant (sans la clé) ne change de chiffre.
+    _factures_reelles = etude.get("factures_mensuelles_reelles")
+    _real_bills = None
+    if isinstance(_factures_reelles, (list, tuple)) and len(_factures_reelles) == 12:
+        try:
+            _candidats = [float(v) for v in _factures_reelles]
+            if all(v > 0 for v in _candidats):
+                _real_bills = [round(v) for v in _candidats]
+        except (TypeError, ValueError):
+            _real_bills = None
+    factures_mensuelles = (
+        _real_bills if _real_bills is not None
+        else [round(v / _ac_a_proxy) for v in roi["eco_a_monthly"]])
 
     client_name = f"{(client.prenom or '').strip()} {(client.nom or '').strip()}".strip()
 
