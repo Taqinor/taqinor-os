@@ -21,9 +21,10 @@ def make_company(slug='test-cat-co'):
     return company
 
 
-def seed(company):
+def seed(company, **options):
     out = StringIO()
-    call_command('seed_catalogue', company_slug=company.slug, stdout=out)
+    call_command('seed_catalogue', company_slug=company.slug, stdout=out,
+                 **options)
     return out.getvalue()
 
 
@@ -410,9 +411,10 @@ class TestSeedCatalogue(TestCase):
             p.description.count('Modèle confirmé fondateur'), 1,
             "la mention ne doit jamais être dupliquée sur un second run")
 
-        # PV85 — une fiche onduleur pré-existante voit ses champs SOURCÉS
-        # ré-alignés sur la datasheet (une valeur fantaisiste ne survit pas),
-        # mais rien d'autre n'est touché.
+        # PV85 → PVOND 19/08 : par DÉFAUT le seeder COMBLE sans jamais écraser —
+        # une valeur posée par le fondateur (même fantaisiste) survit au run.
+        # Le ré-alignement datasheet est désormais une porte EXPLICITE
+        # (--reappliquer-fiches), testé juste en dessous.
         p20t = Produit.objects.get(company=self.company, sku='OND-H-DEY-20T')
         FicheTechnique.objects.filter(produit=p20t).delete()
         ancienne = FicheTechnique.objects.create(
@@ -420,7 +422,12 @@ class TestSeedCatalogue(TestCase):
             ond_ac_kw=Decimal('99'), bat_dod_pct=Decimal('77.0'))
         seed(self.company)
         ancienne.refresh_from_db()
-        self.assertEqual(ancienne.ond_ac_kw, Decimal('20'))
+        self.assertEqual(ancienne.ond_ac_kw, Decimal('99'),
+                         'comble-jamais-écrase : la valeur fondateur survit')
+        seed(self.company, reappliquer_fiches=True)
+        ancienne.refresh_from_db()
+        self.assertEqual(ancienne.ond_ac_kw, Decimal('20'),
+                         'porte explicite : la datasheet ré-aligne')
         self.assertEqual(ancienne.bat_dod_pct, Decimal('77.0'))
 
     def test_veichi_seeded_with_real_buy_and_sell_prices(self):

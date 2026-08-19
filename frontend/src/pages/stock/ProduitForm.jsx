@@ -433,10 +433,13 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
   // encore vides pendant le chargement (même garde que ProduitDetail.jsx).
   const [ficheId, setFicheId] = useState(null)
   const [ficheFields, setFicheFields] = useState(ficheFieldsVides())
-  const [ficheChargee, setFicheChargee] = useState(!isEdit)
+  // Vrai « en attente » UNIQUEMENT en édition d'un produit persisté : les
+  // autres cas n'ont rien à charger (règle react-hooks/set-state-in-effect —
+  // pas de setState synchrone dans le corps de l'effet).
+  const [ficheChargee, setFicheChargee] = useState(!isEdit || !produit?.id)
 
   useEffect(() => {
-    if (!isEdit || !produit?.id) { setFicheChargee(true); return undefined }
+    if (!isEdit || !produit?.id) return undefined
     let active = true
     stockApi.getFichesTechniques(produit.id)
       .then((r) => {

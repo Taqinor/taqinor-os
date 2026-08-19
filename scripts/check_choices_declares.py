@@ -646,6 +646,21 @@ REFUS = {
         ("memes gardes", "TEST")],
     "frontend/src/pages/stock/StockList.jsx": [("garde backend QG4",
                                                 "COMPORTEMENT")],
+    # PVOND — CONTRAT_ONDULEUR_FR est une liste de PAIRES [clé, libellé]
+    # (variables du contrat, pas un vocabulaire de valeurs) ; le miroir est
+    # verrouillé par les tests pvondFicheTechnique, pas déclarable ici.
+    "frontend/src/pages/stock/pvondFicheTechnique.js": [
+        ("CONTRAT_ONDULEUR", "FORME")],
+    # PVOND — prose de MIROIR sur du COMPORTEMENT (bannière/complétude), pas
+    # des listes de valeurs ; le miroir réel est verrouillé par les tests
+    # pvondFicheTechnique côté frontend et test_pvond côté backend.
+    "frontend/src/pages/stock/ProduitForm.jsx": [
+        ("bannière « Onduleur(s) non chiffrable(s) »", "COMPORTEMENT")],
+    "frontend/src/pages/stock/pvondFicheTechnique.test.mjs": [
+        ("plage_batterie_onduleur", "TEST"),
+        ("CONTRAT_ONDULEUR", "TEST")],
+    "frontend/src/features/ventes/solar.test.mjs": [
+        ("familles indéterminées", "TEST")],
     "frontend/src/pages/ventes/DevisActionBoardPage.jsx": [
         ("Relances du jour", "COMPORTEMENT"),
         ("wa.me", "MIROIR_JS")],
