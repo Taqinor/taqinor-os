@@ -234,17 +234,48 @@ export function estimerPanneaux(factureHiver, perTranche = 8) {
 export const KWC_STEP = 5
 export const MAD_PAR_PALIER = 900
 
-// ── Métrés de câble (règle fondateur 18/08) ──────────────────────────────────
-// Câble solaire DC 6 mm² : 60 m par palier de 5 kWc (strictement proportionnel).
+// ── Métrés de câble (règle fondateur 18/08, câble DC révisé 19/08 — PVCBL) ──
 // Câble de terre AC 6 mm² : 25 m de base + 15 m par palier de 5 kWc — soit 40 m
 // pour 5 kWc et 55 m pour 10 kWc, les deux cotes données par le fondateur.
+// Câble solaire DC 6 mm² : voir `metreCableDcParPaires` ci-dessous — la règle
+// « 60 m par palier » est SUPERSEDÉE par la règle par PAIRE de MPPT (19/08).
 export const CABLE_DC_M_PAR_PALIER = 60
 export const CABLE_TERRE_M_BASE = 25
 export const CABLE_TERRE_M_PAR_PALIER = 15
 
-/** Longueur de câble solaire DC (m) pour `paliers` blocs de 5 kWc. */
+/** Longueur de câble solaire DC (m) pour `paliers` blocs de 5 kWc.
+ *
+ * CONSERVÉE pour compat/tests mais N'EST PLUS APPELÉE par `autoFillLines`
+ * (voir `metreCableDcParPaires`, la règle du 19/08) : un palier de 5 kWc et
+ * une paire de MPPT ne coïncident pas forcément (dépend de l'onduleur
+ * retenu), donc ce calcul au palier peut sur/sous-estimer le métrage réel. */
 export function metreCableDc(paliers) {
   const n = Math.max(1, Math.round(Number(paliers) || 0))
+  return n * CABLE_DC_M_PAR_PALIER
+}
+
+// ── PVCBL (fondateur 19/08/2026) — métrage câble DC PAR PAIRE de MPPT ───────
+// Bug constaté : un devis auto avait chiffré un ROULEAU de 100 m (produit au
+// conditionnement rouleau, pas au mètre) avec une quantité en MÈTRES (60) →
+// 71 400 MAD d'aberration (« who said 100m??? i wanted cable DC 6mm2 per
+// metre »). Deux corrections ORTHOGONALES :
+//  1. le produit retenu doit être vendu AU MÈTRE — voir `pickCable` dans
+//     `autoFillLines`, qui exclut désormais tout conditionnement rouleau/
+//     touret (jamais un repli silencieux sur un autre conditionnement) ;
+//  2. le MÉTRAGE suit les PAIRES de câbles qui descendent du toit (30 m rouge
+//     + 30 m noir = 60 m par paire), pas le palier de 5 kWc. Le nombre de
+//     paires = le nombre d'entrées MPPT RÉELLEMENT UTILISÉES par l'onduleur
+//     retenu — un calcul qui vit dans le moteur électrique
+//     (apps/ventes/solar_design.py::string_design, core/electrique/chaines.py,
+//     PV34) et exige des données que la composition simple (kWc + nb de
+//     panneaux, sans plan de toiture ni fiche technique complète) n'a pas à ce
+//     stade (`specs_solaire` ne sert pas encore `n_mppt` au frontend).
+//     `nbPaires` est donc un paramètre EXPLICITE : un appelant qui a déjà ce
+//     calcul (ex. l'écran Conception électrique, une fois branché) le
+//     transmet ; SANS lui, repli fondateur EXPLICITEMENT AUTORISÉ : 1 paire —
+//     jamais un calcul deviné.
+export function metreCableDcParPaires(nbPaires = 1) {
+  const n = Math.max(1, Math.round(Number(nbPaires) || 0) || 1)
   return n * CABLE_DC_M_PAR_PALIER
 }
 
@@ -1295,7 +1326,9 @@ export function defaultProductLines(produits, ordreLignes) {
 // PVORD `ordreLignes` s'il est fourni — voir `orderLinesByRolePreference`),
 // lignes à quantité nulle comprises (elles s'affichent mais ne sont pas
 // enregistrées).
-export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux: nbOverride, marques, ordreLignes }) {
+// `mpptPaires` (PVCBL, 19/08) — nombre de paires de câble DC (voir
+// `metreCableDcParPaires`) ; absent = repli fondateur à 1 paire.
+export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux: nbOverride, marques, ordreLignes, mpptPaires }) {
   if (!kwp || kwp <= 0) return []
   const byType = indexProduits(produits)
   // PVMRQ — marques préférées par rôle (gamme active) : sans réglage, `marques`
@@ -1470,9 +1503,17 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
   // — un fournisseur, pas la préférence de gamme), sinon le premier câble du
   // type QUI PORTE UN PRIX. PVMRQ — la marque épinglée (si réglée pour
   // cable_dc/cable_terre) restreint le vivier avant cette préférence Nexans.
+  // PVCBL (fondateur 19/08/2026) — VERROU DE CONDITIONNEMENT : le câble est
+  // TOUJOURS acheté/vendu AU MÈTRE (le métrage plus bas est en MÈTRES), donc
+  // un produit conditionné en rouleau/touret (ex. « Câble solaire 6mm²
+  // (100m) ») ne doit JAMAIS entrer au vivier — même chiffré, même moins
+  // cher, même seul candidat. Sans candidat « au mètre », le vivier est VIDE
+  // et la ligne part en placeholder à 0 (même patron que « prix à
+  // renseigner ») — jamais un repli silencieux sur un autre conditionnement.
   const chiffre = (p) => !!p && parseFloat(p.prix_vente) > 0
+  const auMetre = (p) => _norm(p?.nom).includes('au metre')
   const pickCable = (type) => {
-    const pool = parMarque((byType[type] ?? []).filter(chiffre), type)
+    const pool = parMarque((byType[type] ?? []).filter(chiffre).filter(auMetre), type)
     return pool.find(p => _norm(p.nom).includes('nexans')) ?? pool[0] ?? null
   }
   const cableDc = pickCable('cable_dc')
@@ -1503,7 +1544,11 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
     // Câbles Nexans 6 mm² au mètre (règle fondateur 18/08). On ne retient qu'un
     // câble RÉELLEMENT chiffré : un produit sans prix n'entre jamais dans une
     // auto-composition (même patron que « prix à renseigner »).
-    ['cable_dc', row(cableDc, 'Câble solaire Nexans 6 mm² (au mètre)', cableDc ? metreCableDc(blocks) : 0)],
+    // PVCBL (19/08) — métrage PAR PAIRE de MPPT (voir metreCableDcParPaires),
+    // plus lié au palier de 5 kWc. Quantité éditable à la main ensuite,
+    // jamais re-forcée (aucun effet ne rejoue l'auto-composition après une
+    // frappe manuelle sur le champ Qté).
+    ['cable_dc', row(cableDc, 'Câble solaire Nexans 6 mm² (au mètre)', cableDc ? metreCableDcParPaires(mpptPaires) : 0)],
     ['cable_terre', row(cableTerre, 'Câble de terre Nexans 6 mm² (au mètre)', cableTerre ? metreCableTerre(blocks) : 0)],
     ['accessoires', row(first('accessoires'), 'Accessoires', 1, prixAccessoires)],
     ['tableau', row(first('tableau'), 'Tableau De Protection AC/DC', 1, prixTableau)],
