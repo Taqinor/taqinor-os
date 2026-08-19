@@ -425,6 +425,17 @@ jobs:
     # commence par `-r requirements.txt`, donc le sur-ensemble des deps prod
     # dont ce generateur a besoin). Les quatre etapes qui suivaient — cache apt,
     # apt-get, setup-python, pip install — ont disparu avec lui.
+    #
+    # UNE DIFFERENCE ASSUMEE, ET SES LIMITES. Ce job installait auparavant le
+    # seul `requirements.txt` ; il voit desormais aussi les deps de dev. Or
+    # `settings/dev.py` — que `check_openapi_schema.py` charge — ajoute
+    # `nplusone.ext.django` a INSTALLED_APPS/MIDDLEWARE DES QUE le paquet est
+    # importable. L'inventaire d'operations OpenAPI, lui, ne bouge pas : il est
+    # derive du seul ROOT_URLCONF, et `nplusone` n'enregistre aucune route (il
+    # n'expose qu'un middleware de journalisation des requetes N+1). Les six
+    # lanes `backend-tests-shard` tournent d'ailleurs deja sous `settings.dev`
+    # AVEC ce paquet installe, donc la combinaison est eprouvee. Si un diff de
+    # contrat inattendu apparaissait un jour ici, c'est la premiere piste.
     container:
       image: ${{ needs.ci-image-check.outputs.image }}
       credentials:
@@ -690,6 +701,11 @@ jobs:
           # dont une base est réellement `TransactionTestCase` (ou le mixin
           # maison `WideTeardownTimeoutMixin`, qui est précisément le marqueur de
           # cette purge large dans ce dépôt).
+          # On compte des CLASSES, pas des FICHIERS : c'est la classe qui est
+          # l'unité d'affectation de Django à un worker, donc deux classes à
+          # purge large dans UN MÊME module suffiraient à faire tourner deux
+          # purges en parallèle — un comptage par fichier les aurait vues comme
+          # une seule et serait passé à côté.
           cat > /tmp/purge_large.py <<'PY'
           import ast
           import sys
@@ -716,8 +732,7 @@ jobs:
                   continue
               for noeud in ast.walk(arbre):
                   if isinstance(noeud, ast.ClassDef) and MARQUEURS & set(noms_de_bases(noeud)):
-                      print(chemin)
-                      break
+                      print(f'{chemin}::{noeud.name}')
           PY
           FILES=""
           for label in $LABELS; do
@@ -732,12 +747,12 @@ jobs:
           WIDE=$(printf '%s' "$WIDE_FILES" | grep -c . || true)
           if [ "${WIDE:-0}" -ge 2 ]; then
             PARALLEL=1
-            echo "GARDE max_locks : $WIDE modules a purge large dans ce shard —"
+            echo "GARDE max_locks : $WIDE classes a purge large dans ce shard —"
             echo "$WIDE_FILES"
             echo "on retombe a --parallel 1 pour ce shard (lent, mais jamais rouge)."
           else
             PARALLEL=4
-            echo "Purges larges dans ce shard : ${WIDE:-0} — --parallel 4."
+            echo "Classes a purge large dans ce shard : ${WIDE:-0} — --parallel 4."
           fi
 
           python manage.py test $LABELS -v 2 --exclude-tag=pdf --exclude-tag=slow --parallel "$PARALLEL" --keepdb
