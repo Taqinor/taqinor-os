@@ -194,7 +194,15 @@ def weigh(units, timings, repo_root: str = REPO_ROOT) -> dict:
     for unit in units:
         measured = timings.get(unit)
         if measured:
-            weights[unit] = max(MIN_UNIT_SECONDS, float(measured))
+            # A MEASURED value is used as-is, with NO floor. The floor exists to
+            # stop a static ESTIMATE from reading as weightless; applying it to a
+            # measurement would destroy the balance it is meant to protect. Most
+            # of the 2 680 modules really do run in hundredths of a second, and
+            # flooring them all to the same 0.4 s would make LPT balance module
+            # COUNT instead of module TIME — which is the blind split this whole
+            # mechanism replaced. (Measured 2026-08-19: the floor inflated an
+            # estimated total of 1 457 s to 2 232 s, i.e. 775 s of pure phantom.)
+            weights[unit] = float(measured)
             continue
         app = app_of(unit)
         app_total = timings.get(app)
@@ -277,7 +285,12 @@ def update_timings(log_paths, out_path: str = TIMINGS_PATH) -> int:
             "tourne-t-elle bien en -v 2 ?\n"
         )
         return 2
-    table = {k: round(v, 2) for k, v in sorted(merged.items()) if v > 0}
+    # Floor AFTER rounding, not before: a module measured at 0.004 s rounds to
+    # 0.0, and a 0.0 entry is FALSY — `weigh()` would silently ignore the
+    # measurement and fall back to the static estimate, which for a
+    # sub-millisecond module over-weighs it by two orders of magnitude. The
+    # well-formedness test in scripts/tests/test_ci_shard.py pins this.
+    table = {k: max(0.01, round(v, 2)) for k, v in sorted(merged.items()) if v > 0}
     with open(out_path, "w", encoding="utf-8", newline="\n") as fh:
         json.dump(table, fh, indent=1, sort_keys=True)
         fh.write("\n")

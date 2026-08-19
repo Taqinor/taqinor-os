@@ -343,16 +343,38 @@ jobs:
   # CI resterait verte, c'est le seul risque que ce mécanisme doit interdire.
   # On n'augmente toujours PAS `--parallel` (resté à 1 depuis 0d66f6e1 :
   # `--parallel 2` faisait sauter max_locks / OOM sur test_rls + QW10).
-  # 8 et pas 12 : le chemin critique du gate est désormais `backend-openapi`
-  # (~6 min 50 s), donc descendre les lanes backend sous ~6 min ne gagnerait
-  # rien et dépasserait le plafond de 20 jobs simultanés du dépôt public.
+  # ROUND 3 (run 32200473257) — `backend-openapi` est retombé à 3 min 20 s une
+  # fois son cache pip chaud : il n'est PLUS le plancher, les tests backend le
+  # sont. Étape `Run Django test suite` par lane sur ce run :
+  #   158 / 310 / 242 / 251 / 128 / 167 / 147 / 218 s — total 1 621 s, moyenne
+  #   203 s, PIRE lane 310 s = 1,53x la moyenne. La pondération « durée mesurée
+  #   par APPLICATION, repartie au prorata du nombre de tests » etait trop
+  #   grossiere : le cout par test varie AUSSI fortement a l'interieur d'une
+  #   meme application. La table est donc passee en durees MESUREES PAR MODULE
+  #   (2 680 modules, 1 457 s ; scripts/ci_shard_timings.json, regeneree par
+  #   `ci_shard.py --update-timings` sur les journaux de ce run).
+  #
+  # POURQUOI 9 ET PAS 12 — deux plafonds, tous deux mesures :
+  # 1. UN SEUL MODULE pese 146,9 s : `apps.ventes.tests.test_quote_engine`,
+  #    soit 10 % de toute la suite et 3,4x le module suivant. Aucun nombre de
+  #    lanes ne peut descendre une lane sous 147 s tant qu'il n'est pas scinde.
+  #    Le gain s'arrete donc net vers N=12 (1 457/12 = 121 s < 147 s) : au-dela,
+  #    on paie ~135 s de mise en place de plus pour zero seconde gagnee.
+  # 2. Le depot public plafonne a 20 jobs SIMULTANES, et ce plafond est PARTAGE
+  #    avec les workflows d'analyse qui demarrent sur le meme commit : CodeQL en
+  #    prend 3, semgrep 1, bandit 1. Sur ce run, 4 jobs CI ont donc attendu de
+  #    35 s a 1 min 47 s avant de demarrer. La vague CI est calibree a 20 jobs
+  #    exactement (9 backend + 3 vitest + 2 e2e + 6 uniques) ; toute lane
+  #    supplementaire part en file d'attente et rend son gain.
+  # Cout par lane = ~135 s de mise en place + ~20 s de rodage Django + 1 457/N :
+  #   N=9 -> ~5 min 49 s, N=12 -> ~5 min 02 s (le plancher du module ci-dessus).
   backend-tests-shard:
     needs: changes
     if: ${{ needs.changes.outputs.backend == 'true' }}
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8]
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -418,11 +440,11 @@ jobs:
       # `authentication` et `core`, prouvé par scripts/tests/test_ci_shard.py.
       # `--parallel 1` est VOLONTAIRE (cf. 0d66f6e1) ; `coverage` reste hors du
       # gate (WOW3).
-      - name: Run Django test suite — shard ${{ matrix.shard }}/8 (fast tier — excludes pdf/slow)
+      - name: Run Django test suite — shard ${{ matrix.shard }}/9 (fast tier — excludes pdf/slow)
         working-directory: backend/django_core
         run: |
-          LABELS=$(python ../../scripts/ci_shard.py ${{ matrix.shard }} 8)
-          echo "Shard ${{ matrix.shard }}/8 -> $(echo "$LABELS" | wc -w) modules"
+          LABELS=$(python ../../scripts/ci_shard.py ${{ matrix.shard }} 9)
+          echo "Shard ${{ matrix.shard }}/9 -> $(echo "$LABELS" | wc -w) modules"
           python manage.py test $LABELS -v 2 --exclude-tag=pdf --exclude-tag=slow --parallel 1 --keepdb
 
   # WOW6 — thin aggregator that PRESERVES the required `backend-tests` status
@@ -514,8 +536,8 @@ jobs:
 
   # Couche UX : rendu/interaction (Testing Library) + accessibilité (axe),
   # exécutée par Vitest (fichiers *.test.jsx, jsdom) + résumé de couverture.
-  # `--shard=i/4` découpe la liste de fichiers, jamais le contenu d'un fichier :
-  # l'union des 4 lanes est EXACTEMENT la suite complète d'aujourd'hui (Vitest
+  # `--shard=i/3` découpe la liste de fichiers, jamais le contenu d'un fichier :
+  # l'union des 3 lanes est EXACTEMENT la suite complète d'aujourd'hui (Vitest
   # trie les fichiers avant de les répartir, le découpage est donc déterministe).
   # `--coverage` reste sur chaque lane : le rapport devient un résumé par tranche
   # (il est purement informatif — aucun seuil ne gate, cf. vitest.config.js).
@@ -525,7 +547,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -537,9 +559,9 @@ jobs:
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci --prefer-offline --no-audit --no-fund
-      - name: Frontend component + a11y tests — shard ${{ matrix.shard }}/4 (Vitest + Testing Library + axe)
+      - name: Frontend component + a11y tests — shard ${{ matrix.shard }}/3 (Vitest + Testing Library + axe)
         working-directory: frontend
-        run: npm run test:coverage -- --shard=${{ matrix.shard }}/4
+        run: npm run test:coverage -- --shard=${{ matrix.shard }}/3
 
   # Agrégateur mince qui PRÉSERVE le nom de check requis `frontend-lint` (patron
   # WOW6, identique à `backend-tests`). Vert ssi aucune lane n'a échoué ; vert
