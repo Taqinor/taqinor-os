@@ -72,6 +72,10 @@ from collections import defaultdict
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DJANGO_ROOT = os.path.join(REPO_ROOT, "backend", "django_core")
 TIMINGS_PATH = os.path.join(REPO_ROOT, "scripts", "ci_shard_timings.json")
+# The most recent RAW run, kept beside the planning table so a refresh can take
+# max(latest, previous) WITHOUT the value ratcheting upward forever: each refresh
+# compares against exactly one prior run, never an accumulated maximum.
+RAW_TIMINGS_PATH = os.path.join(REPO_ROOT, "scripts", "ci_shard_timings_raw.json")
 
 # Roots Django is asked to test: every package under apps/, plus the two
 # foundation packages that live at the django_core root.
@@ -211,8 +215,33 @@ def weigh(units, timings, repo_root: str = REPO_ROOT) -> dict:
             share = counts[unit] / n_app
             weights[unit] = max(MIN_UNIT_SECONDS, float(app_total) * share)
         else:
-            weights[unit] = max(MIN_UNIT_SECONDS, counts[unit] * SECONDS_PER_TEST)
+            # UN MODULE NON MESURE COUTE LA MEDIANE, pas une extrapolation par
+            # nombre de tests (mesure du 19/08/2026). Ce palier tourne avec
+            # `--exclude-tag=pdf --exclude-tag=slow` : 347 des 2 733 modules ne
+            # s'executent donc JAMAIS ici et n'ont, par construction, aucune
+            # mesure. Les facturer `nb_tests x 0,55 s` gonflait le total estime a
+            # 58 min contre 23 min reellement mesurees — LPT equilibrait des
+            # fantomes, et le desequilibre affiche a 1,00x etait un mirage. La
+            # mediane des modules REELLEMENT mesures est l'estimation neutre :
+            # elle ne peut ni dominer une lane ni disparaitre.
+            weights[unit] = _fallback_seconds(timings, counts[unit])
     return weights
+
+
+@functools.lru_cache(maxsize=None)
+def _median_measured(frozen_items) -> float:
+    values = sorted(v for _k, v in frozen_items if v > 0)
+    if not values:
+        return 0.0
+    mid = len(values) // 2
+    return values[mid] if len(values) % 2 else (values[mid - 1] + values[mid]) / 2
+
+
+def _fallback_seconds(timings: dict, n_cases: int) -> float:
+    median = _median_measured(tuple(sorted(timings.items()))) if timings else 0.0
+    if median > 0:
+        return max(MIN_UNIT_SECONDS, median)
+    return max(MIN_UNIT_SECONDS, n_cases * SECONDS_PER_TEST)
 
 
 def assign(units, total: int, weights) -> list[list[str]]:
@@ -269,7 +298,8 @@ def parse_log_durations(lines) -> dict:
     return dict(durations)
 
 
-def update_timings(log_paths, out_path: str = TIMINGS_PATH) -> int:
+def update_timings(log_paths, out_path: str = TIMINGS_PATH,
+                   raw_path: str = RAW_TIMINGS_PATH) -> int:
     merged: dict = defaultdict(float)
     for path in log_paths:
         try:
@@ -285,6 +315,44 @@ def update_timings(log_paths, out_path: str = TIMINGS_PATH) -> int:
             "tourne-t-elle bien en -v 2 ?\n"
         )
         return 2
+
+    # GARDE DE VARIANCE (round 4). Une seule mesure est BRUITEE : entre deux runs,
+    # l'etat du cache de base de test, le bruit du runner et le voisinage dans le
+    # meme processus font bouger le cout d'un module. Le round 3 a equilibre sur un
+    # seul echantillon et la pire lane est repartie a 1,24x la moyenne. Le poids de
+    # planification est donc le MAX des DEUX derniers runs — pessimiste, donc une
+    # lane ne peut pas etre sous-estimee deux fois de suite. Borne : on ne garde
+    # qu'UN run brut precedent, donc le max ne monte pas indefiniment.
+    # Depart du tableau de planification EXISTANT, pas d'une page blanche : une
+    # lane qui n'a pas demarre (plafond de creneaux) ou un module simplement non
+    # joue ce jour-la n'a AUCUNE mesure dans ces journaux. Repartir de zero
+    # supprimerait son poids et le renverrait a l'estimation statique — c'est
+    # arrive le 19/08 avec les modules du shard 5, jamais demarre. On conserve
+    # donc l'ancien poids pour tout ce que ce run n'a pas mesure.
+    previous_raw = load_timings(raw_path)
+    weights = dict(load_timings(out_path))
+    for key in set(merged) | set(previous_raw):
+        weights[key] = max(merged.get(key, 0.0), previous_raw.get(key, 0.0),
+                           weights.get(key, 0.0) if key not in merged else 0.0)
+    previous = previous_raw
+
+    if previous:
+        drifted = [
+            (k, previous[k], merged[k])
+            for k in set(merged) & set(previous)
+            if previous[k] >= 1.0 and abs(merged[k] - previous[k]) / previous[k] > 0.20
+        ]
+        drifted.sort(key=lambda r: -abs(r[2] - r[1]))
+        print(f"ci_shard: {len(drifted)} module(s) au-dela de 20 % d'ecart entre "
+              f"les deux runs (poids = max des deux) ; 10 plus gros ecarts :")
+        for key, before, after in drifted[:10]:
+            print(f"    {key}: {before:.2f}s -> {after:.2f}s")
+
+    with open(raw_path, "w", encoding="utf-8", newline="\n") as fh:
+        json.dump({k: max(0.01, round(v, 2)) for k, v in sorted(merged.items())},
+                  fh, indent=1, sort_keys=True)
+        fh.write("\n")
+    merged = weights
     # Floor AFTER rounding, not before: a module measured at 0.004 s rounds to
     # 0.0, and a 0.0 entry is FALSY — `weigh()` would silently ignore the
     # measurement and fall back to the static estimate, which for a

@@ -29,6 +29,34 @@ concurrency:
 # drift guard), and `ci-gate` is an always-running aggregate so a single
 # required check can be pinned safely.
 
+# ---------------------------------------------------------------------------
+# CRENEAUX — BUDGET DUR : 17 JOBS SIMULTANES A NOUS (mesure du 19/08/2026).
+#
+# Le depot public plafonne a 20 jobs simultanes, et ce plafond est PARTAGE avec
+# les workflows d'analyse lances sur le meme commit. Mesure sur le run
+# 32206663106 : CodeQL en prend 3 (javascript-typescript / actions / python).
+# Notre vague en demandait alors 20 : `backend-openapi` et
+# `backend-tests-shard (5)` n'avaient TOUJOURS PAS DEMARRE a T+11 min.
+#
+# UN JOB QUI NE DEMARRE PAS EST LA PIRE LANE POSSIBLE. Moins de lanes bien
+# equilibrees battent toujours plus de lanes dont une partie fait la queue.
+#
+# La vague simultanee = tous les jobs qui declarent `needs: changes` (ils
+# partent ensemble des que `changes` finit, ~16 s) PLUS `stage-names`, qui ne
+# declare aucun `needs` et tourne donc en parallele. `changes` est termine avant
+# que la vague parte ; les agregateurs (backend-lint, backend-tests,
+# frontend-lint, e2e, ci-gate) attendent leurs lanes. Ni l'un ni les autres ne
+# comptent — verifie contre l'ordonnancement reel du run ci-dessus.
+#
+#   stage-names 1 + backend-lint-fast 1 + backend-openapi 1 + frontend-static 1
+#   + web-build-test 1 + rls-tests 1                                     =  6
+#   + backend-tests-shard 6 + frontend-vitest-shard 3 + e2e-shard 2      = 11
+#                                                              TOTAL     = 17
+#
+# TOUTE augmentation d'une matrice doit etre compensee ailleurs. Si le fondateur
+# desactive le CodeQL par defaut (reglage GitHub, pas un fichier de ce depot),
+# 3 creneaux se liberent et le budget passe a 20.
+# ---------------------------------------------------------------------------
 jobs:
   # ---------------------------------------------------------------------------
   # Change detector. Resolves which surfaces a push/PR touched, using pure git
@@ -354,34 +382,26 @@ jobs:
   #   (2 680 modules, 1 457 s ; scripts/ci_shard_timings.json, regeneree par
   #   `ci_shard.py --update-timings` sur les journaux de ce run).
   #
-  # POURQUOI 9 ET PAS 12 — deux plafonds, tous deux mesures :
-  # 1. LE PLANCHER DU MODULE LE PLUS LOURD — LEVE le 19/08/2026. Il valait
-  #    146,9 s (`apps.ventes.tests.test_quote_engine`, 10 % de toute la suite,
-  #    3,4x le module suivant) : aucun nombre de lanes ne pouvait descendre une
-  #    lane sous 147 s. Ce module a ete SCINDE en quatre (formats / residential
-  #    / documents / builder, plus une couche de compatibilite qui re-exporte
-  #    ses fabriques), donc le nouveau plancher est ~64 s et il ne mord plus
-  #    avant N~22. Les entrees des quatre parties dans ci_shard_timings.json
-  #    sont des ESTIMATIONS reparties (somme = les 146,9 s mesures) : le
-  #    prochain `ci_shard.py --update-timings` les remplacera par du mesure.
-  #    Ce qui borne desormais N est le point 2, pas un module.
-  # 2. Le depot public plafonne a 20 jobs SIMULTANES, et ce plafond est PARTAGE
-  #    avec les workflows d'analyse qui demarrent sur le meme commit : CodeQL en
-  #    prend 3, semgrep 1, bandit 1. Sur ce run, 4 jobs CI ont donc attendu de
-  #    35 s a 1 min 47 s avant de demarrer. La vague CI est calibree a 20 jobs
-  #    exactement (9 backend + 3 vitest + 2 e2e + 6 uniques) ; toute lane
-  #    supplementaire part en file d'attente et rend son gain.
-  # Cout par lane = ~135 s de mise en place + ~20 s de rodage Django + 1 457/N :
-  #   N=9 -> ~5 min 49 s, N=12 -> ~5 min 02 s. Depuis la scission du point 1,
-  #   `ci_shard.py --plan N` rend 1,00x d'equilibre jusqu'a N=20 (avant : 1,35x
-  #   a N=16, 1,69x a N=20 — une lane restait collee a 146,9 s).
+  # POURQUOI 6 — c'est le BUDGET DE CRENEAUX qui borne, plus un module.
+  # Le plancher du module le plus lourd a ete leve le 19/08 (test_quote_engine
+  # scinde en quatre), donc N n'est plus limite par un fichier ; il est limite
+  # par les 17 creneaux (voir le bloc CRENEAUX en tete de fichier) et par le
+  # fait que la lane la plus lente du gate est desormais `e2e-shard` (~6 min 45 s,
+  # plancher fixe par fumee-ecrans.spec.js). Descendre le backend sous ce seuil
+  # ne raccourcirait rien.
+  # Mesure du run 32206663106, etape `Run Django test suite` par lane :
+  #   283 / 134 / 197 / 181 / 197 / 210 / 191 / 165 s (shard 5 jamais demarre),
+  #   dont 1 385 s de modules mesures + ~21,6 s de rodage Django par lane,
+  #   remarquablement constant quel que soit le poids de la lane.
+  # Cout par lane = ~135 s de mise en place + ~22 s de rodage + 1 385/N :
+  #   N=6 -> ~6 min 28 s, N=8 -> ~5 min 30 s (hors budget de creneaux).
   backend-tests-shard:
     needs: changes
     if: ${{ needs.changes.outputs.backend == 'true' }}
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8]
+        shard: [0, 1, 2, 3, 4, 5]
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -447,11 +467,11 @@ jobs:
       # `authentication` et `core`, prouvé par scripts/tests/test_ci_shard.py.
       # `--parallel 1` est VOLONTAIRE (cf. 0d66f6e1) ; `coverage` reste hors du
       # gate (WOW3).
-      - name: Run Django test suite — shard ${{ matrix.shard }}/9 (fast tier — excludes pdf/slow)
+      - name: Run Django test suite — shard ${{ matrix.shard }}/6 (fast tier — excludes pdf/slow)
         working-directory: backend/django_core
         run: |
-          LABELS=$(python ../../scripts/ci_shard.py ${{ matrix.shard }} 9)
-          echo "Shard ${{ matrix.shard }}/9 -> $(echo "$LABELS" | wc -w) modules"
+          LABELS=$(python ../../scripts/ci_shard.py ${{ matrix.shard }} 6)
+          echo "Shard ${{ matrix.shard }}/6 -> $(echo "$LABELS" | wc -w) modules"
           python manage.py test $LABELS -v 2 --exclude-tag=pdf --exclude-tag=slow --parallel 1 --keepdb
 
   # WOW6 — thin aggregator that PRESERVES the required `backend-tests` status
@@ -566,9 +586,24 @@ jobs:
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci --prefer-offline --no-audit --no-fund
-      - name: Frontend component + a11y tests — shard ${{ matrix.shard }}/3 (Vitest + Testing Library + axe)
+      # WOW-CI4 — `--shard=i/n` de Vitest repartit le NOMBRE de fichiers, pas le
+      # TRAVAIL. Mesure du run 32206663106 : 265 / 265 / 264 fichiers pour
+      # 381 s / 266 s / 193 s de travail. On passe donc a des LISTES EXPLICITES
+      # equilibrees sur les durees mesurees (794 fichiers, 840 s ;
+      # scripts/ci_vitest_timings.json), placees par le meme LPT que le backend.
+      # La liste transite par VITEST_INCLUDE et non par des arguments
+      # positionnels : Vitest traite ces derniers comme des FILTRES par
+      # sous-chaine, donc un chemin prefixe d'un autre embarquerait des fichiers
+      # en trop. Completude de l'union prouvee par
+      # scripts/tests/test_ci_frontend_shard.py (job stage-names).
+      - name: Frontend component + a11y tests — lane ${{ matrix.shard }}/3 (Vitest + Testing Library + axe)
         working-directory: frontend
-        run: npm run test:coverage -- --shard=${{ matrix.shard }}/3
+        run: |
+          set -euo pipefail
+          VITEST_INCLUDE="$(python3 ../scripts/ci_frontend_shard.py $(( ${{ matrix.shard }} - 1 )) 3)"
+          export VITEST_INCLUDE
+          echo "Lane ${{ matrix.shard }}/3 -> $(echo "$VITEST_INCLUDE" | tr ',' '\n' | wc -l) fichiers"
+          npm run test:coverage
 
   # Agrégateur mince qui PRÉSERVE le nom de check requis `frontend-lint` (patron
   # WOW6, identique à `backend-tests`). Vert ssi aucune lane n'a échoué ; vert
@@ -748,6 +783,11 @@ jobs:
       # plusieurs totaux de shards. Stdlib pure, ~6 s.
       - name: Test the backend-test shard split itself (WOW-CI2 — completude du decoupage)
         run: python -m unittest scripts.tests.test_ci_shard -v
+      # WOW-CI4 — meme garde pour les lanes Vitest : un fichier qui tomberait du
+      # decoupage cesserait d'etre teste pendant que `frontend-lint` resterait
+      # vert. Stdlib pure, ~2 s.
+      - name: Test the frontend-test lane split itself (WOW-CI4 — completude du decoupage)
+        run: python -m unittest scripts.tests.test_ci_frontend_shard -v
 
   web-build-test:
     needs: changes
@@ -969,8 +1009,23 @@ jobs:
           # transversal que ce commentaire promettait sans l'avoir : le
           # 03/08/2026, `/ao` était déclaré dans `e2e/helpers.js` et visité par
           # AUCUNE spec, nulle part. Ne le retirez pas de cette ligne.
-          npx playwright test --project=chromium --shard=${{ matrix.shard }}/2 \
-            devis.spec.js health.spec.js fumee-ecrans.spec.js
+          # WOW-CI4 — repartition MESUREE, plus `--shard`. Playwright affecte des
+          # fichiers ENTIERS a un shard : avec trois fichiers listes, la lane 1
+          # prenait devis+fumee (204 s) et la lane 2 health seul (13,9 s) — d'ou
+          # 7 min 33 s contre 6 min 17 s. Durees mesurees sur le run 32206663106 :
+          #   chromium : fumee-ecrans 183,4 s | devis 20,7 s | health 13,9 s
+          #   mobile-safari : 71,3 s (mobile 51,4 + adsengine 12,0 + ao 7,9)
+          # `fumee-ecrans.spec.js` pese 84 % du total chromium et n'est PAS
+          # divisible (chez Playwright un fichier va tout entier sur un shard) :
+          # il prend donc une lane a lui seul, tout le reste tient dans l'autre
+          # (183,4 s contre 20,7+13,9+71,3 = 105,9 s). Une 3e lane ne gagnerait
+          # RIEN — le plancher resterait 183 s. Pour descendre, il faut scinder
+          # ce fichier (il boucle sur les routes des module.config.jsx).
+          if [ "${{ matrix.shard }}" = "1" ]; then
+            npx playwright test --project=chromium fumee-ecrans.spec.js
+          else
+            npx playwright test --project=chromium devis.spec.js health.spec.js
+          fi
           # VX68 — passage WebKit RÉEL (Safari) sur le spec mobile : capte les
           # régressions qui n'apparaissent que sur Safari (VX48 window.open
           # post-await, sticky, backdrop-blur). PR-only, hors matrice complète.
