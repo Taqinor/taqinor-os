@@ -27,6 +27,19 @@ inputs:
       permissions, seed data) are preserved. Empty (the default) disables it.
     required: false
     default: ''
+  prebuilt-image:
+    description: >-
+      WOW-CI RONDE 5 — mettre a 'true' quand le job tourne DEJA dans l'image CI
+      pre-construite (`container: ghcr.io/<owner>/<repo>/ci-backend:<tag>`, cf.
+      `.github/ci-image/Dockerfile`). Cette image porte deja les bibliotheques
+      WeasyPrint, l'environnement Python complet (requirements-dev.txt), les
+      outils clients Postgres 16 et les binaires MinIO : l'action saute alors
+      apt, pip et leurs caches, et rend le service MinIO + les commandes
+      pg_restore/pg_dump SANS docker (indisponible dans un job `container:`).
+      A 'false' (defaut) le comportement est EXACTEMENT celui d'avant — c'est
+      le chemin qu'emprunte encore `e2e-shard`, qui n'est pas conteneurise.
+    required: false
+    default: 'false'
 runs:
   using: composite
   steps:
@@ -40,7 +53,14 @@ runs:
     # lockfile frontend (jamais de ce fichier action.yml) : WOW-CI7 (commit
     # 14e14dc2) a decouple les deux expres, une edition de cette action ne doit
     # jamais invalider le cache apt.
+    #
+    # WOW-CI RONDE 5 (20/08/2026) — LES QUATRE ETAPES QUI SUIVENT (apt + pip et
+    # leurs caches) SONT SAUTEES quand le job tourne deja dans l'image CI
+    # pre-construite : elle les contient toutes, figees. On les garde intactes
+    # pour le chemin non conteneurise (`e2e-shard`), ou elles restent le
+    # meilleur compromis.
     - name: Redirect apt's .deb store into a cacheable directory
+      if: ${{ inputs.prebuilt-image != 'true' }}
       shell: bash
       # JAMAIS BLOQUANT : ce n'est qu'une optimisation. Si quoi que ce soit
       # échoue ici, apt reprend son magasin par défaut et le job se comporte
@@ -58,6 +78,7 @@ runs:
           || echo "AVERTISSEMENT : redirection du cache apt impossible — on continue sans."
         exit 0
     - name: Cache apt packages (Playwright system deps + WeasyPrint)
+      if: ${{ inputs.prebuilt-image != 'true' }}
       uses: actions/cache@v4
       with:
         path: ~/apt-archives
@@ -65,6 +86,7 @@ runs:
         restore-keys: |
           apt-e2e-v2-${{ runner.os }}-
     - name: Install WeasyPrint system dependencies
+      if: ${{ inputs.prebuilt-image != 'true' }}
       shell: bash
       run: |
         sudo apt-get update
@@ -88,12 +110,14 @@ runs:
     # l'erreur.
     - name: Restore the installed Python environment (WOW-CI6)
       id: pyenv-cache
+      if: ${{ inputs.prebuilt-image != 'true' }}
       uses: actions/cache@v4
       with:
         path: ${{ env.pythonLocation }}
         key: >-
           pyenv-v1-${{ runner.os }}-${{ env.pythonLocation }}-${{ inputs.requirements }}-${{ hashFiles('backend/django_core/requirements.txt', 'backend/django_core/requirements-dev.txt') }}
     - name: Install Python dependencies
+      if: ${{ inputs.prebuilt-image != 'true' }}
       shell: bash
       working-directory: backend/django_core
       run: |
@@ -114,24 +138,51 @@ runs:
         pip install -r ${{ inputs.requirements }}
     - name: Start MinIO + create buckets
       shell: bash
+      env:
+        PREBUILT: ${{ inputs.prebuilt-image }}
       run: |
-        docker run -d --name minio -p 9000:9000 \
-          -e MINIO_ROOT_USER=erp_admin \
-          -e MINIO_ROOT_PASSWORD=erp_minio_password \
-          minio/minio:latest server /data
+        set -euo pipefail
+        # WOW-CI RONDE 5 — DEUX RENDUS, UN SEUL COMPORTEMENT.
+        # Dans un job `container:`, `docker` n'est pas disponible (et un
+        # conteneur frere en `--network host` ne partagerait ni le reseau ni le
+        # /tmp du job). L'image CI porte donc les binaires MinIO officiels — les
+        # MEMES que ceux des images `minio/minio` / `minio/mc` — et on lance le
+        # serveur en tache de fond dans le conteneur du job : le point d'entree
+        # reste `localhost:9000`, les buckets restent `erp-pdf`/`erp-uploads`,
+        # rien ne change pour l'application ni pour les tests.
+        if [ "$PREBUILT" = 'true' ]; then
+          mkdir -p /tmp/minio-data
+          MINIO_ROOT_USER=erp_admin MINIO_ROOT_PASSWORD=erp_minio_password \
+            nohup minio server /tmp/minio-data --address ':9000' \
+            > /tmp/minio.log 2>&1 &
+        else
+          docker run -d --name minio -p 9000:9000 \
+            -e MINIO_ROOT_USER=erp_admin \
+            -e MINIO_ROOT_PASSWORD=erp_minio_password \
+            minio/minio:latest server /data
+        fi
         # Wait for MinIO's health endpoint before creating buckets.
         for i in $(seq 1 30); do
           if curl -sf http://localhost:9000/minio/health/live; then
             echo "MinIO ready"; break
           fi
           echo "Waiting for MinIO ($i)..."; sleep 2
-          if [ "$i" = "30" ]; then echo "MinIO unavailable"; exit 1; fi
+          if [ "$i" = "30" ]; then
+            echo "MinIO unavailable"
+            [ -f /tmp/minio.log ] && tail -50 /tmp/minio.log
+            exit 1
+          fi
         done
         # Pre-create the buckets (erp-pdf is also self-healed by the app). The
         # minio/mc entrypoint is `mc`, so force `sh` to chain the commands.
-        docker run --rm --network host --entrypoint sh minio/mc:latest -c "
-          mc alias set local http://localhost:9000 erp_admin erp_minio_password &&
-          mc mb -p local/erp-pdf local/erp-uploads"
+        if [ "$PREBUILT" = 'true' ]; then
+          mc alias set local http://localhost:9000 erp_admin erp_minio_password
+          mc mb -p local/erp-pdf local/erp-uploads
+        else
+          docker run --rm --network host --entrypoint sh minio/mc:latest -c "
+            mc alias set local http://localhost:9000 erp_admin erp_minio_password &&
+            mc mb -p local/erp-pdf local/erp-uploads"
+        fi
     - name: Restore cached pre-migrated DB dump (WOW8)
       id: testdb-cache
       if: ${{ inputs.testdb-cache-into != '' }}
@@ -164,6 +215,8 @@ runs:
     - name: Build or restore the pre-migrated database (WOW8 + WOW8-INCR)
       if: ${{ inputs.testdb-cache-into != '' }}
       shell: bash
+      env:
+        PREBUILT: ${{ inputs.prebuilt-image }}
       run: |
         set -euo pipefail
         TARGET='${{ inputs.testdb-cache-into }}'
@@ -175,8 +228,20 @@ runs:
         # Run the postgres client tools from the SAME image as the DB service so
         # client/server versions can never mismatch (pg_dump refuses to run
         # against a newer server; ubuntu runners ship whatever apt has).
+        # WOW-CI RONDE 5 — dans un job `container:` cette indirection docker est
+        # impossible ET inutile : docker n'y est pas disponible, `--network host`
+        # ne verrait pas le service `postgres` par son nom, et le `-v /tmp:/tmp`
+        # pointerait le /tmp de l'HOTE, pas celui du job (le dump restaure par
+        # actions/cache serait introuvable). L'image CI embarque donc
+        # `postgresql-client-16` — MEME version majeure que le service
+        # `pgvector/pgvector:pg16`, ce qui preserve exactement la garantie que
+        # l'indirection docker apportait.
         PGIMG=pgvector/pgvector:pg16
-        pgtool() { docker run --rm --network host -v /tmp:/tmp -e PGPASSWORD "$PGIMG" "$@"; }
+        if [ "$PREBUILT" = 'true' ]; then
+          pgtool() { "$@"; }
+        else
+          pgtool() { docker run --rm --network host -v /tmp:/tmp -e PGPASSWORD "$PGIMG" "$@"; }
+        fi
         migrate() { (cd backend/django_core && DB_NAME="$TARGET" python manage.py migrate --noinput); }
         # Deterministic "<sha256>  <path>" line per migration file. Recorded next
         # to each dump so a later run can tell whether the restored dump's exact

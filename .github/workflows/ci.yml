@@ -54,6 +54,26 @@ concurrency:
 #   + backend-tests-shard 6 + frontend-vitest-shard 4 + e2e-shard 2      = 12
 #                                                              TOTAL     = 18
 #
+# RONDE 5 (20/08) — `ci-image-check` AJOUTE UN CRENEAU, MAIS PAS DANS LA VAGUE.
+# Il ne declare AUCUN `needs` : il part a T=0 en meme temps que `changes` et
+# finit en ~25-35 s sur le chemin normal, donc AVANT que la vague backend parte
+# (elle attend `changes` ET lui). Les deux fenetres ne se recouvrent pas :
+#
+#   Fenetre 1 (T=0 a ~T+35 s) — `changes` 1 + `ci-image-check` 1
+#     + stage-names 1 + frontend-static 1 + frontend-vitest-shard 4
+#     + web-build-test 1 + e2e-shard 2                              = 11
+#   Fenetre 2 (apres) — les 6 de la ronde 4 (dont `ci-image-check`
+#     et `changes` sont sortis) : stage-names 1 + backend-lint-fast 1
+#     + backend-openapi 1 + frontend-static 1 + web-build-test 1
+#     + rls-tests 1 = 6, + backend-tests-shard 6
+#     + frontend-vitest-shard 4 + e2e-shard 2 = 12                  = 18
+#
+# LE PIC RESTE DONC 18, inchange — la marge mesuree de 2 creneaux sous le
+# plafond de 20 est preservee. Le chemin LENT de `ci-image-check` (construction
+# en ligne, ~8-12 min, uniquement quand un requirements ou le Dockerfile CI
+# change) allonge sa fenetre mais ne l'elargit pas : c'est toujours 1 creneau,
+# et la vague backend attend simplement plus longtemps pour demarrer.
+#
 # RONDE 4 (19/08) — la 4e lane vitest depense 1 des 3 creneaux libres MESURES
 # sur le run 32265590843 (17 lanes a nous, 3 creneaux encore idle sous le
 # plafond de 20 a ce moment-la — la contention CodeQL varie d'un run a l'autre,
@@ -167,6 +187,92 @@ jobs:
             echo "code=$code"
           } >> "$GITHUB_OUTPUT"
           echo "Resolved -> backend=$backend frontend=$frontend web=$web e2e(code)=$code"
+
+  # ---------------------------------------------------------------------------
+  # WOW-CI RONDE 5 (20/08/2026) — L'IMAGE CI BACKEND PRE-CONSTRUITE.
+  #
+  # Les lanes backend ne reconstruisent plus leur environnement : elles tournent
+  # DANS une image figee (`.github/ci-image/Dockerfile`, poussee sur GHCR par
+  # `.github/workflows/ci-image.yml`) qui contient deja les bibliotheques
+  # WeasyPrint, tout `requirements-dev.txt`, `postgresql-client-16` et les
+  # binaires MinIO. Ce job calcule l'etiquette (empreinte des deux requirements
+  # + du Dockerfile CI), verifie que le manifeste existe sur GHCR, et l'expose.
+  #
+  # POURQUOI IL NE DECLARE PAS `needs: changes` — pour ne RIEN ajouter au chemin
+  # critique. Il part a T=0, en meme temps que `changes` (~16 s) ; sur le chemin
+  # normal (image presente) il finit en ~25-35 s, soit ~15 s apres `changes`.
+  # Les lanes backend attendent donc les deux et demarrent ~15 s plus tard
+  # qu'avant — contre ~60 a 150 s d'apt+pip+setup-python economisees CHACUNE.
+  #
+  # CHEMIN LENT (miss) : si l'etiquette n'existe pas encore — la PREMIERE PR qui
+  # modifie un requirements ou ce Dockerfile — l'image est construite et poussee
+  # ICI, en ligne (~8-12 min). Ce cout est paye UNE fois : au merge, le workflow
+  # `ci-image.yml` republie la meme etiquette sur `main` et toutes les PR
+  # suivantes retombent sur le chemin rapide.
+  #
+  # PAS DE REPLI SILENCIEUX (regle explicite) : si le pull echoue cote lane, la
+  # lane echoue FRANCHEMENT. On ne garde pas un second chemin « ancien style »
+  # vivant en parallele — deux chemins finissent toujours par diverger, et
+  # l'ancien serait teste par personne. Le repli est MANUEL et visible :
+  # `workflow_dispatch` sur `ci-image.yml`.
+  #
+  # LIMITE CONNUE : une PR issue d'un FORK recoit un GITHUB_TOKEN degrade en
+  # lecture seule ; elle peut PULLER l'image mais pas la construire en ligne.
+  # Ce depot travaille sur des branches internes (`claude/...`), donc le cas ne
+  # se presente pas aujourd'hui ; il est note comme risque residuel.
+  # ---------------------------------------------------------------------------
+  ci-image-check:
+    runs-on: ubuntu-latest
+    # 30 min = le chemin LENT (construction en ligne) avec de la marge. Le
+    # chemin normal rend son verdict en ~25-35 s.
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.tag.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+      # Source UNIQUE de l'etiquette, partagee avec `ci-image.yml` : si les deux
+      # la calculaient separement, la moindre divergence reconstruirait l'image
+      # a chaque run.
+      - name: Calculer l'etiquette de l'image
+        id: tag
+        run: bash .github/ci-image/tag.sh "${{ github.repository }}" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: L'image est-elle deja publiee ?
+        id: exists
+        run: |
+          set -uo pipefail
+          if docker manifest inspect '${{ steps.tag.outputs.image }}' >/dev/null 2>&1; then
+            echo "Image presente — chemin rapide."
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Image ABSENTE (${{ steps.tag.outputs.image }}) — construction en ligne."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+          exit 0
+      - uses: docker/setup-buildx-action@v3
+        if: ${{ steps.exists.outputs.present != 'true' }}
+      - name: Construire et pousser l'image manquante (chemin lent)
+        if: ${{ steps.exists.outputs.present != 'true' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: backend/django_core
+          file: .github/ci-image/Dockerfile
+          push: true
+          tags: ${{ steps.tag.outputs.image }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+      - name: Resume
+        run: |
+          echo "image=${{ steps.tag.outputs.image }}"
+          echo "deja presente = ${{ steps.exists.outputs.present }}"
 
   # ---------------------------------------------------------------------------
   # WOW-CI2 (2026-08-18, run 32182877239) — `backend-lint` durait 8 min 25 s, et
@@ -307,17 +413,25 @@ jobs:
   # l'en-tête de scripts/check_openapi_schema.py pour le profil par phase.
   # Elle tourne EN PARALLÈLE de `backend-lint-fast` et des 8 lanes de tests.
   backend-openapi:
-    needs: changes
+    needs: [changes, ci-image-check]
     if: ${{ needs.changes.outputs.backend == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: read
+    # WOW-CI RONDE 5 — l'image CI porte deja Python 3.11 (MEME version que la
+    # prod), les bibliotheques WeasyPrint et TOUT requirements-dev.txt (qui
+    # commence par `-r requirements.txt`, donc le sur-ensemble des deps prod
+    # dont ce generateur a besoin). Les quatre etapes qui suivaient — cache apt,
+    # apt-get, setup-python, pip install — ont disparu avec lui.
+    container:
+      image: ${{ needs.ci-image-check.outputs.image }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'   # MUST match prod (django_core/fastapi Dockerfiles: python:3.11.x).
-          cache: 'pip'   # YAPIC6 — ce job installe requirements.txt en entier (le générateur importe tout l'URLconf) ; sans cache l'install serait payée à chaque run.
-          cache-dependency-path: backend/django_core/requirements.txt
       # YAPIC6 — le schéma OpenAPI (YAPIC5) doit rester GÉNÉRABLE, VALIDE
       # (validation OpenAPI 3 de drf-spectacular) et sans NOUVEL avertissement
       # de génération : un serializer non résolu ou une collision d'operationId
@@ -331,48 +445,15 @@ jobs:
       # de contrat apparaisse dans la PR.
       #
       # COÛT : le générateur importe TOUT l'URLconf, donc les vraies
-      # dépendances backend (WeasyPrint & co) — d'où les deux installations
-      # ci-dessous. Elles n'allongent QUE ce job, qui tourne EN PARALLÈLE des
-      # 4 shards `backend-tests` (le chemin critique du gate) : le temps de mur
-      # du merge est inchangé. AUCUNE base de données n'est nécessaire (le
-      # générateur ne fait qu'introspecter vues et serializers).
-      # WOW-CI ronde 4 (19/08/2026) — MEME cache apt que e2e-shard (meme patron,
-      # meme cle apt-e2e-v2-...) : ce job installe les memes paquets WeasyPrint
-      # et payait le telechargement complet a chaque run, sans jamais partager
-      # le cache que e2e-shard alimente deja. Cle inchangee (lockfile frontend
-      # uniquement) pour rester dans le MEME cache partage — voir le commentaire
-      # WOW-CI7 sur e2e-shard plus bas dans ce fichier.
-      - name: Redirect apt's .deb store into a cacheable directory
-        # JAMAIS BLOQUANT : ce n'est qu'une optimisation. Si quoi que ce soit
-        # échoue ici, apt reprend son magasin par défaut et le job se comporte
-        # exactement comme avant — une accélération ne doit pas pouvoir faire
-        # rougir un check REQUIS.
-        run: |
-          set -uo pipefail
-          mkdir -p "$HOME/apt-archives/partial" || true
-          # apt abandonne ses privilèges vers l'utilisateur `_apt` pour écrire
-          # dans `partial/` : sans droits larges il retombe (bruyamment) sur un
-          # téléchargement non bac-à-sable, ou échoue.
-          chmod -R 777 "$HOME/apt-archives" || true
-          printf 'Dir::Cache::archives "%s";\nBinary::apt::APT::Keep-Downloaded-Packages "true";\n' \
-            "$HOME/apt-archives" | sudo tee /etc/apt/apt.conf.d/99-ci-archive-cache >/dev/null \
-            || echo "AVERTISSEMENT : redirection du cache apt impossible — on continue sans."
-          exit 0
-      - name: Cache apt packages (Playwright system deps + WeasyPrint)
-        uses: actions/cache@v4
-        with:
-          path: ~/apt-archives
-          key: apt-e2e-v2-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
-          restore-keys: |
-            apt-e2e-v2-${{ runner.os }}-
-      - name: Install WeasyPrint system libraries (URLconf import — YAPIC6)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b fonts-dejavu-core
-      - name: Install backend dependencies for schema generation (YAPIC6)
-        working-directory: backend/django_core
-        run: pip install -r requirements.txt
+      # dépendances backend (WeasyPrint & co). AUCUNE base de données n'est
+      # nécessaire (le générateur ne fait qu'introspecter vues et serializers).
+      # WOW-CI RONDE 5 (20/08/2026) — les quatre étapes de mise en place qui
+      # tenaient ici (redirection du magasin apt, cache apt partagé, `apt-get
+      # install` des bibliothèques WeasyPrint, `pip install -r
+      # requirements.txt`) ont été SUPPRIMÉES : l'image CI déclarée en
+      # `container:` plus haut les contient déjà, figées. Le cache apt partagé
+      # `apt-e2e-v2-…` reste alimenté et consommé par `e2e-shard`, qui n'est pas
+      # conteneurisé — cette suppression ne le prive de rien.
       - name: Test the OpenAPI-schema checker itself (YAPIC6)
         run: python -m unittest scripts.tests.test_check_openapi_schema -v
       - name: OpenAPI schema — generate, validate, no NEW warning (YAPIC6)
@@ -385,10 +466,18 @@ jobs:
   # (backend=false), ce qui conserve la sémantique « un check requis sauté
   # compte comme réussi » du filtre de chemins.
   backend-lint:
-    needs: [changes, backend-lint-fast, backend-openapi]
+    needs: [changes, ci-image-check, backend-lint-fast, backend-openapi]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
+      # WOW-CI RONDE 5 — même garde que sur `backend-tests` : `backend-openapi`
+      # dépend de l'image CI, donc un échec de `ci-image-check` le laisserait
+      # « skipped » et ferait passer ce check REQUIS au vert sans rien valider.
+      - name: Fail if the CI image could not be resolved
+        if: ${{ needs.ci-image-check.result == 'failure' || needs.ci-image-check.result == 'cancelled' }}
+        run: |
+          echo "ci-image-check=${{ needs.ci-image-check.result }} — le job backend-openapi n'a pas tourné."
+          exit 1
       - name: Fail if a backend-lint lane failed or was cancelled
         if: ${{ needs.backend-lint-fast.result == 'failure' || needs.backend-lint-fast.result == 'cancelled' || needs.backend-openapi.result == 'failure' || needs.backend-openapi.result == 'cancelled' }}
         run: |
@@ -442,7 +531,7 @@ jobs:
   # Cout par lane = ~135 s de mise en place + ~22 s de rodage + 1 385/N :
   #   N=6 -> ~6 min 28 s, N=8 -> ~5 min 30 s (hors budget de creneaux).
   backend-tests-shard:
-    needs: changes
+    needs: [changes, ci-image-check]
     if: ${{ needs.changes.outputs.backend == 'true' }}
     strategy:
       fail-fast: false
@@ -450,6 +539,19 @@ jobs:
         shard: [0, 1, 2, 3, 4, 5]
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: read
+    # WOW-CI RONDE 5 (20/08/2026) — la lane tourne DANS l'image CI figée
+    # (`.github/ci-image/Dockerfile`) : plus d'apt, plus de pip, plus de
+    # setup-python, et `postgresql-client-16` + MinIO sont déjà là. Le pull
+    # (~20-40 s) remplace 60 à 150 s d'installation. AUCUN repli silencieux :
+    # si le pull échoue, la lane échoue — cf. l'en-tête de `ci-image-check`.
+    container:
+      image: ${{ needs.ci-image-check.outputs.image }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     services:
       postgres:
         image: pgvector/pgvector:pg16
@@ -475,9 +577,13 @@ jobs:
       DB_NAME: erp_db
       DB_USER: erp_user
       DB_PASSWORD: ci_password
-      DB_HOST: localhost
+      # WOW-CI RONDE 5 — job `container:` : les services ne sont plus atteints
+      # par un port publié sur l'hôte mais par leur NOM sur le réseau que le
+      # runner crée pour le job. `localhost` désignerait le conteneur du job
+      # lui-même (où tourne MinIO, d'où `MINIO_ENDPOINT` inchangé).
+      DB_HOST: postgres
       DB_PORT: '5432'
-      REDIS_HOST: localhost
+      REDIS_HOST: redis
       REDIS_PORT: '6379'
       MINIO_ENDPOINT: localhost:9000
       MINIO_ROOT_USER: erp_admin
@@ -486,18 +592,18 @@ jobs:
       MINIO_BUCKET_UPLOADS: erp-uploads
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'   # MUST match prod (django_core/fastapi Dockerfiles: python:3.11.x). A 3.12+/3.13 CI would not catch 3.11-only SyntaxErrors (e.g. backslash in f-string) that crash the live PDF generator.
-          cache: 'pip'   # WOW4 — cache les deps Python (npm l'était déjà, pas pip) ; clé sur requirements-dev.txt.
-          cache-dependency-path: backend/django_core/requirements-dev.txt
       # WOW7 — shared WeasyPrint + pip (requirements-dev.txt) + MinIO setup.
       # WOW8 — restore the cached pre-migrated test DB (measured: the ~850-
       # migration replay was 2255s of a 2388s shard — 97% of the job); the test
       # step's --keepdb then reuses it and only clones the 4 parallel workers.
+      # WOW-CI RONDE 5 — `prebuilt-image: 'true'` : l'action saute apt/pip (déjà
+      # dans l'image), lance MinIO via son binaire natif et appelle
+      # pg_restore/pg_dump directement au lieu de passer par `docker run`
+      # (indisponible dans un job `container:`).
       - uses: ./.github/actions/backend-env
         with:
           testdb-cache-into: test_erp_db
+          prebuilt-image: 'true'
       # YOPSB5 — anti-dérive modèle<->migration : échoue si un changement de
       # modèle n'a pas sa migration (index nommé à la main divergent,
       # contrainte sans migration…). Tourne AVANT la suite de tests, même
@@ -528,10 +634,21 @@ jobs:
   # shard failed; also passes when the shards SKIP (backend=false), preserving the
   # path-filter "a skipped required check counts as success" behaviour.
   backend-tests:
-    needs: [changes, backend-tests-shard]
+    needs: [changes, ci-image-check, backend-tests-shard]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
+      # WOW-CI RONDE 5 — GARDE OBLIGATOIRE. Les shards déclarent désormais
+      # `needs: ci-image-check` ; si ce job échoue, les shards ne sont pas
+      # « failure » mais « skipped », et sans cette étape cet agrégateur —
+      # qui est un check REQUIS — passerait au VERT alors qu'AUCUN test backend
+      # n'a tourné. Un échec d'image doit bloquer la fusion, pas la déverrouiller.
+      - name: Fail if the CI image could not be resolved
+        if: ${{ needs.ci-image-check.result == 'failure' || needs.ci-image-check.result == 'cancelled' }}
+        run: |
+          echo "ci-image-check=${{ needs.ci-image-check.result }} — l'image CI backend n'a pas pu être publiée/résolue."
+          echo "Les shards n'ont donc PAS tourné. Repli manuel : workflow_dispatch sur ci-image.yml."
+          exit 1
       - name: Fail if any shard failed or was cancelled
         if: ${{ needs.backend-tests-shard.result == 'failure' || needs.backend-tests-shard.result == 'cancelled' }}
         run: |
@@ -1170,10 +1287,19 @@ jobs:
   # partout ailleurs, donc n'alourdit jamais le gate backend-tests requis).
   # ---------------------------------------------------------------------------
   rls-tests:
-    needs: changes
+    needs: [changes, ci-image-check]
     if: ${{ needs.changes.outputs.backend == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 12
+    permissions:
+      contents: read
+      packages: read
+    # WOW-CI RONDE 5 — même image CI figée que les shards (cf. leur en-tête).
+    container:
+      image: ${{ needs.ci-image-check.outputs.image }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     services:
       postgres:
         image: pgvector/pgvector:pg16
@@ -1199,9 +1325,11 @@ jobs:
       DB_NAME: erp_db
       DB_USER: erp_user
       DB_PASSWORD: ci_password
-      DB_HOST: localhost
+      # WOW-CI RONDE 5 — job `container:` : services joignables par leur NOM
+      # (voir le même commentaire sur `backend-tests-shard`).
+      DB_HOST: postgres
       DB_PORT: '5432'
-      REDIS_HOST: localhost
+      REDIS_HOST: redis
       REDIS_PORT: '6379'
       MINIO_ENDPOINT: localhost:9000
       MINIO_ROOT_USER: erp_admin
@@ -1212,11 +1340,6 @@ jobs:
       POSTGRES_RLS_ENABLED: '1'
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: 'pip'
-          cache-dependency-path: backend/django_core/requirements-dev.txt
       # WOW-CI (2026-07-16): reuse the WOW8 pre-migrated dump + --keepdb exactly
       # like the shards. Before this, rls-tests cold-replayed the full ~1,150-
       # migration history on every run (measured 36-52 min, 94-97% of the job;
@@ -1228,6 +1351,7 @@ jobs:
       - uses: ./.github/actions/backend-env
         with:
           testdb-cache-into: test_erp_db
+          prebuilt-image: 'true'
       - name: Run RLS seal suite (opt-in — flag ON)
         working-directory: backend/django_core
         run: python manage.py test core.tests.test_rls -v 2 --keepdb
@@ -1243,6 +1367,7 @@ jobs:
     if: ${{ always() }}
     needs:
       - changes
+      - ci-image-check
       - backend-lint-fast
       - backend-openapi
       - backend-lint
@@ -1260,6 +1385,7 @@ jobs:
       - name: Report job results
         run: |
           echo "changes=${{ needs.changes.result }}"
+          echo "ci-image-check=${{ needs.ci-image-check.result }}"
           echo "backend-lint-fast=${{ needs.backend-lint-fast.result }}"
           echo "backend-openapi=${{ needs.backend-openapi.result }}"
           echo "backend-lint=${{ needs.backend-lint.result }}"
