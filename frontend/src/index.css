@@ -10823,3 +10823,28 @@ textarea.form-control {
   font-size: 0.95rem;
   line-height: 1.45;
 }
+
+/* LDPQ1 (19/08/2026, fondateur) — Édition complète du devis dans le panneau
+   lead (LeadDevisPanel.jsx embarque DevisGenerator) : sans largeur minimale,
+   le layout auto des <table> réduit la colonne QTÉ au min-content quasi nul
+   d'un <input type="number"> (juste les flèches du spinner natif) — la
+   VALEUR saisie devenait invisible. Ciblé via l'attribut stable data-role
+   posé par DevisLineRow.jsx (JAMAIS modifié ici — cf. règle « touche
+   uniquement index.css + le token de largeur du panneau »). Largeur mini
+   ~84px (4-5 chiffres + décimale) + suppression des flèches natives pour que
+   la valeur gagne tout l'espace disponible ; .lines-table-wrap a déjà
+   overflow-x:auto, donc si la colonne pousse la table plus large que le
+   panneau elle défile plutôt que de s'écraser à zéro. Comportement de
+   saisie (type/step/noValidate, jamais de nombre tapé rejeté) INCHANGÉ —
+   effet purement visuel. */
+[data-role="line-qty"] {
+  min-width: 84px;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+[data-role="line-qty"]::-webkit-outer-spin-button,
+[data-role="line-qty"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}

@@ -268,7 +268,7 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
     // « pop » du centre de l'écran. Le bouton ✕ reste celui du header
     // ldp-* existant (showClose désactivé pour ne pas en dupliquer un).
     <Sheet open onOpenChange={(o) => { if (!o) onClose() }}>
-      <SheetContent side="right" showClose={false} className="w-[min(1100px,100%)] gap-0 p-0 sm:max-w-none">
+      <SheetContent side="right" showClose={false} className="w-[min(1500px,100%)] gap-0 p-0 sm:max-w-none">
         <div className="ldp-header">
           <h3 className="ldp-title">
             {TITLES[mode] || 'Devis'} — {lead.nom} {lead.prenom || ''}
