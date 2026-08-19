@@ -46,8 +46,15 @@ const ventesApi = {
   // Proposition client (chemin canonique /proposal) — rendue à la volée selon
   // le format (pdf_mode/onepage/full, include_etude…), récupérée en blob pour
   // l'aperçu inline (iframe) ET le téléchargement, sans quitter la fiche lead.
-  getProposalPdf: (id, params = {}) =>
-    api.get(`/ventes/devis/${id}/proposal/`, { params, responseType: 'blob' }),
+  // APXTMO (19/08/2026) — le rendu premium prend ~26 s À FROID en prod
+  // (mesuré ; <1 s une fois le cache moteur chaud) : le timeout global 20 s
+  // (VX55) avortait chaque premier aperçu (nginx 499 → « Aperçu
+  // indisponible »). Budget dédié 90 s pour CE flux d'octets uniquement ;
+  // `config` laisse passer un AbortSignal pour annuler un rendu devenu inutile.
+  getProposalPdf: (id, params = {}, config = {}) =>
+    api.get(`/ventes/devis/${id}/proposal/`, {
+      params, responseType: 'blob', timeout: 90000, ...config,
+    }),
   convertirDevisEnBC: (id) => api.post(`/ventes/devis/${id}/convertir-bc/`),
   // B2/WR2 — (re)mint le lien public de proposition sans passer par l'envoi
   // email/WhatsApp (ex. pour le copier manuellement).
