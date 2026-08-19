@@ -1368,9 +1368,38 @@ jobs:
           #   fumee (3 groupes) 61,1 s chacun | devis 20,7 s | health 13,9 s
           #   mobile-safari 71,3 s
           # Repartition retenue : 61,1+61,1+20,7 = 142,9 s contre
-          # 61,1+13,9+71,3 = 146,3 s. Une 3e lane descendrait a ~96 s mais le
-          # budget de creneaux est plein (bloc CRENEAUX en tete de fichier) ;
-          # le decoupage la rend possible des qu'un creneau se libere.
+          # 61,1+13,9+71,3 = 146,3 s. C'est l'OPTIMUM a 2 lanes (les six
+          # partitions possibles ont ete enumerees : aucune ne descend sous
+          # 146,3 s).
+          #
+          # WOW-CI RONDE 5 (20/08/2026) — CORRECTION D'UN CHIFFRE FAUX QUI A
+          # SURVECU DEUX RONDES. Ce commentaire annoncait « une 3e lane
+          # descendrait a ~96 s ». C'est 289,2/3, l'ideal d'un travail
+          # DIVISIBLE — or il ne l'est pas : Playwright affecte un FICHIER
+          # entier a un shard, et `mobile-safari` est un projet sur un seul
+          # fichier (`mobile.spec.js`, un worker). Les blocs sont donc
+          # atomiques : 61,1 / 61,1 / 61,1 / 71,3 / 20,7 / 13,9.
+          # QUATRE blocs pesent >= 61 s pour 3 lanes : par principe des
+          # tiroirs, une lane en porte forcement deux, et la paire la moins
+          # chere est 61,1+61,1 = 122,2 s. Le meilleur pire-lane atteignable a
+          # 3 lanes est donc 122,2 s, PAS 96 s — soit 24 s gagnees sur 146,3,
+          # en echange d'un des 2 derniers creneaux mesures. Rapporte au job
+          # entier (~6 min 45 s, dont ~259 s de MISE EN PLACE dupliquee par
+          # lane et insensible au nombre de lanes), cela ferait passer le pire
+          # e2e de ~405 s a ~381 s. Mauvais echange : le bloc CRENEAUX rappelle
+          # qu'un job qui fait la queue est la pire lane possible.
+          #
+          # LES VRAIS LEVIERS, DANS L'ORDRE :
+          #  1. la mise en place (259 s = 64 % du job) — c'est la que sont les
+          #     minutes : backend-env, migrate+seed, npm ci, playwright
+          #     install, vite build. Une image `ci-e2e` pre-construite (cf. le
+          #     commentaire en tete de ce job) vaut ~45-100 s SANS creneau
+          #     supplementaire, donc davantage qu'une 3e lane ;
+          #  2. scinder `fumee-ecrans` en QUATRE ou CINQ groupes (fichier
+          #     `frontend/e2e/fumee-ecrans.partition.js`) : a 4 groupes de
+          #     ~46 s, une 3e lane descendrait reellement vers ~92 s. C'est
+          #     l'ordre a respecter — scinder D'ABORD, ajouter la lane
+          #     ENSUITE ; l'inverse achete un creneau pour 24 s.
           if [ "${{ matrix.shard }}" = "1" ]; then
             npx playwright test --project=chromium \
               fumee-ecrans-1.spec.js fumee-ecrans-2.spec.js devis.spec.js
