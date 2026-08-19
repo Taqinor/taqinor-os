@@ -60,7 +60,7 @@ test('VX92 : ProduitForm — succès + toggle ON = reset formulaire + refocus no
   // Fenêtre élargie (VX93 a inséré un commentaire + la ligne TVA « dernière
   // saisie » ; VX249(b) a ensuite inséré setTvaTouched(false) dans le même
   // bloc « créer un autre »).
-  const block = PRODUIT_FORM_SRC.slice(start, start + 800)
+  const block = PRODUIT_FORM_SRC.slice(start, start + 1100)
   assert.match(block, /if \(!isEdit && creerUnAutre\) \{/)
   // VX93 — le reset ré-applique la dernière TVA saisie (spread de initialFields).
   assert.match(block, /setFields\(\{ \.\.\.initialFields/)

@@ -661,6 +661,8 @@ REFUS = {
         ("CONTRAT_ONDULEUR", "TEST")],
     "frontend/src/features/ventes/solar.test.mjs": [
         ("familles indéterminées", "TEST")],
+    "frontend/src/features/ventes/autoQuote.e2eSeedRepro.test.mjs": [
+        ("LeadDevisPanel.jsx", "TEST")],
     "frontend/src/pages/ventes/DevisActionBoardPage.jsx": [
         ("Relances du jour", "COMPORTEMENT"),
         ("wa.me", "MIROIR_JS")],
