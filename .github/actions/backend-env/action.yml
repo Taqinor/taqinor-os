@@ -36,10 +36,48 @@ runs:
         sudo apt-get update
         sudo apt-get install -y --no-install-recommends \
           libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b fonts-dejavu-core
+    # WOW-CI6 (19/08/2026) — CACHE DE L'ENVIRONNEMENT PYTHON INSTALLE.
+    # `pip install -r requirements-dev.txt` coutait 44 s MESUREES, payees par
+    # CHACUNE des lanes qui appellent cette action (6 backend + 2 e2e + rls = 9),
+    # a chaque run. Le cache pip de `setup-python` ne cache que les TELECHARGEMENTS :
+    # le deballage et l'installation des ~150 paquets restent a payer. On cache donc
+    # `pythonLocation` en entier (interpreteur + site-packages + scripts bin).
+    #
+    # Cle EXACTE, sans `restore-keys` — meme regle que le cache des navigateurs
+    # Playwright : un environnement PARTIEL est pire qu'un environnement froid, car
+    # il echouerait a l'import au milieu d'une suite au lieu de simplement etre lent.
+    # La cle porte le chemin de l'interpreteur (donc sa version exacte : un
+    # site-packages de 3.11.15 n'est pas valide pour 3.12), le fichier de
+    # dependances demande, et l'empreinte des DEUX fichiers de dependances. Prendre
+    # les deux sur-invalide legerement (une modification dev invalide aussi la cle
+    # prod) mais ne peut jamais rendre un environnement faux — c'est le bon sens de
+    # l'erreur.
+    - name: Restore the installed Python environment (WOW-CI6)
+      id: pyenv-cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.pythonLocation }}
+        key: >-
+          pyenv-v1-${{ runner.os }}-${{ env.pythonLocation }}-${{ inputs.requirements }}-${{ hashFiles('backend/django_core/requirements.txt', 'backend/django_core/requirements-dev.txt') }}
     - name: Install Python dependencies
       shell: bash
       working-directory: backend/django_core
-      run: pip install -r ${{ inputs.requirements }}
+      run: |
+        set -euo pipefail
+        # GARDE D'AUTO-REPARATION : on ne fait confiance au cache qu'apres avoir
+        # PROUVE que l'environnement restaure s'importe. Un cache tronque ou ecrit
+        # a moitie ferait echouer les tests loin d'ici, avec un message qui
+        # n'accuserait jamais le cache. Si la preuve echoue, on installe
+        # normalement — le chemin froid reste EXACTEMENT celui d'avant.
+        if [ "${{ steps.pyenv-cache.outputs.cache-hit }}" = 'true' ] \
+           && python -c 'import django, rest_framework, weasyprint' 2>/dev/null; then
+          echo "Environnement Python restaure depuis le cache — installation sautee."
+          exit 0
+        fi
+        if [ "${{ steps.pyenv-cache.outputs.cache-hit }}" = 'true' ]; then
+          echo "Cache present mais l'environnement ne s'importe pas — installation complete."
+        fi
+        pip install -r ${{ inputs.requirements }}
     - name: Start MinIO + create buckets
       shell: bash
       run: |
@@ -188,13 +226,21 @@ runs:
         # first-write-wins (a harmless "cache already exists" warning on the rest).
         # FULL dump (never --schema-only): RunPython data migrations seed rows
         # (content types, permissions, seed data) that tests depend on.
-        if [ "$EXACT" != 'true' ]; then
+        # WOW-CI6 — ne re-dumper QUE si le dump sera effectivement sauvegarde.
+        # L'etape de sauvegarde ci-dessous ne tourne que sur les runs `push`
+        # (cf. son commentaire WOW-CI du 16/07) : sur une PR, ce `pg_dump` etait
+        # calcule puis JETE. Mesure du 19/08 : ~15 s gaspillees par lane, sur
+        # 9 lanes, a chaque PR. Strictement equivalent — sur un run push, le
+        # comportement est identique au precedent.
+        if [ "$EXACT" = 'true' ]; then
+          echo "Exact hit — DB already current, no re-dump needed."
+        elif [ "${{ github.event_name }}" = 'pull_request' ]; then
+          echo "Run de PR — la sauvegarde du cache est desactivee ici, donc on ne re-dumpe pas (le dump serait jete)."
+        else
           rm -f /tmp/testdb.dump
           pgtool pg_dump -h "$PGHOST" -U "$PGUSER" -Fc -f /tmp/testdb.dump "$TARGET"
           manifest > /tmp/testdb.manifest
           echo "Re-dumped + manifest under the new key — the save step below persists it (push runs only, first save wins)."
-        else
-          echo "Exact hit — DB already current, no re-dump needed."
         fi
     - name: Save the pre-migrated DB dump (push runs only — never from a PR)
       # WOW-CI (2026-07-16): PR runs must NOT save. A PR-scoped dump shadows
