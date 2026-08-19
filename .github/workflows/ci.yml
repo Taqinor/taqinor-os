@@ -1361,45 +1361,42 @@ jobs:
           # `fumee-ecrans.spec.js` pesait 183,4 s dans un seul fichier, soit
           # 84 % du temps chromium, et Playwright affecte un fichier ENTIER a un
           # shard : ce fichier fixait donc seul le plancher du job. Il est
-          # desormais scinde en trois groupes de modules equilibres
-          # (141/141/140 routes sur 422 — voir e2e/fumee-ecrans.partition.js,
-          # dont la garde d'union prouve qu'aucun module ni aucune route ne
-          # tombe du decoupage). Durees mesurees sur le run 32206663106 :
-          #   fumee (3 groupes) 61,1 s chacun | devis 20,7 s | health 13,9 s
-          #   mobile-safari 71,3 s
-          # Repartition retenue : 61,1+61,1+20,7 = 142,9 s contre
-          # 61,1+13,9+71,3 = 146,3 s. C'est l'OPTIMUM a 2 lanes (les six
-          # partitions possibles ont ete enumerees : aucune ne descend sous
-          # 146,3 s).
+          # scinde en groupes de modules equilibres — voir
+          # e2e/fumee-ecrans.partition.js, dont la garde d'union prouve
+          # qu'aucun module ni aucune route ne tombe du decoupage.
           #
-          # WOW-CI RONDE 5 (20/08/2026) — CORRECTION D'UN CHIFFRE FAUX QUI A
-          # SURVECU DEUX RONDES. Ce commentaire annoncait « une 3e lane
-          # descendrait a ~96 s ». C'est 289,2/3, l'ideal d'un travail
-          # DIVISIBLE — or il ne l'est pas : Playwright affecte un FICHIER
-          # entier a un shard, et `mobile-safari` est un projet sur un seul
-          # fichier (`mobile.spec.js`, un worker). Les blocs sont donc
-          # atomiques : 61,1 / 61,1 / 61,1 / 71,3 / 20,7 / 13,9.
-          # QUATRE blocs pesent >= 61 s pour 3 lanes : par principe des
-          # tiroirs, une lane en porte forcement deux, et la paire la moins
-          # chere est 61,1+61,1 = 122,2 s. Le meilleur pire-lane atteignable a
-          # 3 lanes est donc 122,2 s, PAS 96 s — soit 24 s gagnees sur 146,3,
-          # en echange d'un des 2 derniers creneaux mesures. Rapporte au job
-          # entier (~6 min 45 s, dont ~259 s de MISE EN PLACE dupliquee par
-          # lane et insensible au nombre de lanes), cela ferait passer le pire
-          # e2e de ~405 s a ~381 s. Mauvais echange : le bloc CRENEAUX rappelle
-          # qu'un job qui fait la queue est la pire lane possible.
+          # LE MODELE EST ADDITIF, ET C'EST VERIFIABLE : playwright.config.js
+          # declare `workers: 1, fullyParallel: false`, donc une lane execute
+          # ses fichiers en SERIE et son temps est la SOMME de ses blocs.
           #
-          # LES VRAIS LEVIERS, DANS L'ORDRE :
-          #  1. la mise en place (259 s = 64 % du job) — c'est la que sont les
-          #     minutes : backend-env, migrate+seed, npm ci, playwright
-          #     install, vite build. Une image `ci-e2e` pre-construite (cf. le
-          #     commentaire en tete de ce job) vaut ~45-100 s SANS creneau
-          #     supplementaire, donc davantage qu'une 3e lane ;
-          #  2. scinder `fumee-ecrans` en QUATRE ou CINQ groupes (fichier
-          #     `frontend/e2e/fumee-ecrans.partition.js`) : a 4 groupes de
-          #     ~46 s, une 3e lane descendrait reellement vers ~92 s. C'est
-          #     l'ordre a respecter — scinder D'ABORD, ajouter la lane
-          #     ENSUITE ; l'inverse achete un creneau pour 24 s.
+          # WOW-CI RONDE 5 (20/08/2026) — MESURES REELLES, ET DEUX CHANGEMENTS
+          # QU'ELLES ONT FAIT ABANDONNER. Les durees ci-dessus venaient du run
+          # 32206663106, qui est ANNULE (« cancelled ») : ce n'etait pas une
+          # mesure de reference. Relevees sur le dernier run VERT (32307320397,
+          # etape « Start Django + run E2E specs », attente gunicorn comprise) :
+          #
+          #     lane 1 (fumee-1 + fumee-2 + devis)          129 s
+          #     lane 2 (fumee-3 + health + mobile-safari)   126 s
+          #
+          # LES DEUX LANES SONT DEJA EQUILIBREES A 3 s PRES. Le plafond de tout
+          # rééquilibrage a 2 lanes est donc 3 s — quel que soit le nombre de
+          # groupes de fumee. Scinder la fumee plus finement (essai a 5 groupes)
+          # a bien ete calcule puis ABANDONNE pour cette raison : ca ne rachete
+          # rien tant qu'il n'y a que 2 lanes.
+          #
+          # ET LE DESEQUILIBRE REEL N'EST PAS LA. Sur ce meme run, le job entier
+          # fait 369 s (lane 1) contre 305 s (lane 2) — 64 s d'ecart, dont 62 s
+          # viennent de la MISE EN PLACE, pas des specs :
+          #     backend-env            102 s (lane 1) contre  75 s (lane 2)
+          #     playwright install      55 s (lane 1) contre  20 s (lane 2)
+          # C'est la variance de la mise en place qui fixe le pire e2e, pas la
+          # repartition des specs. On ne corrige donc pas ce qui est deja droit.
+          #
+          # UNE 3e LANE, elle, vaudrait 123 -> 86 s, soit ~37 s : sous le seuil
+          # de 60 s qui justifierait de depenser un des 2 derniers creneaux
+          # (bloc CRENEAUX en tete de fichier — un job qui fait la queue est la
+          # pire lane possible). Le vrai levier reste la mise en place : voir
+          # l'en-tete de ce job.
           if [ "${{ matrix.shard }}" = "1" ]; then
             npx playwright test --project=chromium \
               fumee-ecrans-1.spec.js fumee-ecrans-2.spec.js devis.spec.js
