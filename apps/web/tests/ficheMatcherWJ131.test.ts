@@ -131,7 +131,10 @@ describe('WJ131 — appariement ligne de devis → fiche technique', () => {
       expect(fiche, `fiche manquante : ${slug}`).toBeTruthy();
       expect(fiche!.faits.length).toBeGreaterThan(0);
       // Aucun constructeur : ces postes sont montés sur mesure, donc pas de PDF.
-      expect(fiche!.pdf).toBeNull();
+      // EXCEPTION `cablage` (fondateur 2026-08-20, V2) — voir tests/fiches.test.ts :
+      // il nomme une marque unique (Nexans) et porte désormais SA fiche
+      // constructeur auto-hébergée pour l'aperçu intégré.
+      if (slug !== 'cablage') expect(fiche!.pdf).toBeNull();
       // La source faisant foi est une NORME (page officielle) — ou rien du tout,
       // jamais une URL devinée.
       if (fiche!.datasheet !== null) expect(fiche!.datasheet).toMatch(/^https:\/\//);
