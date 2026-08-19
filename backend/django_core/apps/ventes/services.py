@@ -748,6 +748,10 @@ def _is_reseau_inverter(name: str) -> bool:
 # repli qu'on cherche précisément à ne plus dépendre.
 SCENARIO_SANS_BATTERIE = 'Sans batterie'
 SCENARIO_AVEC_BATTERIE = 'Avec batterie'
+#: U2 — devis à DEUX OPTIONS : le client compare « sans » et « avec » dans un
+#: seul document. Libellé RECONNU TEL QUEL par le moteur PDF
+#: (``quote_engine/builder.py``) : ne pas le reformuler.
+SCENARIO_LES_DEUX = 'Les deux (Sans + Avec)'
 
 
 def _scenario_stocke(avec_batterie):
@@ -1769,8 +1773,20 @@ def _v_txt(volts):
 
 def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
                               avec_batterie=False, structure_type='acier',
-                              taux_tva=Decimal('20'), avertissements=None):
+                              taux_tva=Decimal('20'), avertissements=None,
+                              deux_options=False):
     """Le KIT résidentiel COMPLET composé depuis un catalogue.
+
+    ``deux_options`` (U2, fondateur 20/08/2026) — compose la forme DEUX
+    OPTIONS que la proposition résidentielle rend déjà : les DEUX onduleurs
+    (réseau ET hybride) et les batteries dans UN seul devis. C'est le
+    découpage que lisent ``optionTotalsTTC`` (écran) et le moteur PDF :
+      · option « sans batterie » = tout SAUF batterie + onduleur hybride ;
+      · option « avec batterie »  = tout SAUF onduleur réseau.
+    Le client compare, puis choisit. Sans ce drapeau (défaut), la composition
+    reste MONO-OPTION et byte-identique à l'historique : ``avec_batterie``
+    décide seul quel onduleur est vendu — c'est ce que veut le calepinage 3D,
+    où le scénario a DÉJÀ été arrêté à l'écran.
 
     Fonction PURE : elle ne requête rien, n'écrit rien, ne touche aucun statut.
     ``produits`` est un itérable de produits DÉJÀ cantonnés à la société
@@ -1855,6 +1871,10 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     onduleur_hybride, kw_hybride = choisir_onduleur('onduleur_hybride')
     onduleur = onduleur_hybride if avec_batterie else onduleur_reseau
     kw_onduleur = kw_hybride if avec_batterie else kw_reseau
+    # U2 — en forme DEUX OPTIONS, le stockage fait partie du devis : les
+    # batteries sont composées même si ``avec_batterie`` est faux, puisque
+    # c'est l'option « avec » qui les porte.
+    veut_batterie = bool(avec_batterie or deux_options)
 
     # ── Panneau : wattage demandé d'abord, à défaut le plus proche ──
     tries = []
@@ -1890,8 +1910,11 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     # qu'une plage existe, une candidate sans tension mesurée est EXCLUE.
     # Sur un devis SANS batterie, ``onduleur`` vaut l'onduleur réseau : la
     # question ne se pose pas (le vivier n'est lu que si ``avec_batterie``).
+    # U2 — la batterie pend TOUJOURS à l'onduleur HYBRIDE : en forme deux
+    # options, c'est lui qui décide de la plage, jamais l'onduleur réseau de
+    # l'option « sans ».
     _plage_bat = _plage_batterie_de_l_onduleur(
-        onduleur_hybride if avec_batterie else onduleur)
+        onduleur_hybride if veut_batterie else onduleur)
     batteries = [(_parse_kwh(getattr(p, 'nom', '')), p)
                  for p in par_type.get('batterie') or []
                  if _batterie_compatible(p, _plage_bat)]
@@ -1899,7 +1922,7 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
               if any(marque in _sans_accents(getattr(b[1], 'nom', ''))
                      for marque in ('dyness', 'deyness'))]
     vivier = dyness or batteries
-    if avec_batterie and not vivier:
+    if veut_batterie and not vivier:
         # Le vivier est VIDE alors que le devis est demandé AVEC batterie : la
         # composition part sans batterie (jamais une batterie incompatible),
         # mais elle le DIT — sinon le devis mentait par omission.
@@ -1937,9 +1960,16 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     # (miroir du garde ``info_hw`` de l'ancien simulateur). L'écran teste les
     # DEUX onduleurs parce qu'il les propose tous les deux ; ici un seul est
     # vendu, donc c'est celui-là qui décide.
-    blob = '%s %s' % (getattr(onduleur, 'marque', '') or '',
-                      getattr(onduleur, 'nom', '') or '')
-    huawei = 'huawei' in _sans_accents(blob)
+    # U2 — en forme DEUX OPTIONS les deux onduleurs sont vendus : le garde
+    # Huawei teste alors les DEUX, exactement comme l'écran (autoFillLines),
+    # sinon l'option Huawei partirait sans son Smart Meter.
+    def _est_huawei(produit):
+        return 'huawei' in _sans_accents(
+            '%s %s' % (getattr(produit, 'marque', '') or '',
+                       getattr(produit, 'nom', '') or ''))
+
+    huawei = (_est_huawei(onduleur_reseau) or _est_huawei(onduleur_hybride)
+              if deux_options else _est_huawei(onduleur))
 
     lignes = []
 
@@ -1956,11 +1986,18 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
 
     # Ordre canonique du simulateur (onduleur, accessoires Huawei, panneaux,
     # batteries, structures, socles, forfaits, transport).
-    ajouter(onduleur, quantite_onduleur(kw_onduleur))
+    # U2 — forme DEUX OPTIONS : les DEUX onduleurs entrent au devis (le PDF et
+    # l'écran répartissent ensuite chaque ligne dans l'option qui la concerne).
+    # Forme mono-option : un seul, celui qu'``avec_batterie`` a désigné.
+    if deux_options:
+        ajouter(onduleur_reseau, quantite_onduleur(kw_reseau))
+        ajouter(onduleur_hybride, quantite_onduleur(kw_hybride))
+    else:
+        ajouter(onduleur, quantite_onduleur(kw_onduleur))
     ajouter(premier('smart_meter'), 1 if huawei else 0)
     ajouter(premier('wifi_dongle'), 1 if huawei else 0)
     ajouter(panneau, nb)
-    if avec_batterie:
+    if veut_batterie:
         ajouter(bat5, nb5)
         ajouter(bat10, nb10)
     ajouter(structure, nb)
@@ -1976,8 +2013,15 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
 
 
 def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
-                            taux_tva=Decimal('20'), remise_globale=Decimal('0')):
+                            taux_tva=Decimal('20'), remise_globale=Decimal('0'),
+                            deux_options=False):
     """Q3 — turn a FINALISED roof layout into a coherent, company-scoped Devis.
+
+    ``deux_options`` (U2, fondateur 20/08/2026) — compose la forme DEUX
+    OPTIONS (« sans batterie » ET « avec batterie » dans un seul devis, cf.
+    ``composition_residentielle``) et stocke le scénario correspondant. Défaut
+    False : le calepinage 3D a DÉJÀ arrêté son scénario à l'écran, il garde
+    donc sa composition mono-option, byte-identique à l'historique.
 
     ``layout`` is the serialized roofPro11 output (see Devis.roof_layout):
     a ``result`` block ``{panels, kwc, annualKwh, savings}`` plus an optional
@@ -2076,6 +2120,7 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
         nb_panneaux=nb_panneaux,
         avec_batterie=wants_battery,
         taux_tva=taux_tva,
+        deux_options=deux_options,
     )
 
     etude_params = {}
@@ -2083,9 +2128,19 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
     # (QF6) retombe sur l'inférence par les lignes, qui se trompe dès que la
     # composition est partielle. On stocke ce que les lignes peuvent RÉELLEMENT
     # servir : « Avec batterie » exige l'onduleur hybride ET la batterie.
-    etude_params['scenario'] = _scenario_stocke(
-        any(_is_battery(spec.designation) for spec in line_specs)
-        and any(_is_hybrid_inverter(spec.designation) for spec in line_specs))
+    # U2 — un devis à DEUX OPTIONS ne stocke ni « sans » ni « avec » : il
+    # stocke « les deux », le seul libellé qui dise au moteur PDF de rendre la
+    # comparaison. Il faut que les lignes puissent RÉELLEMENT servir les deux
+    # côtés (onduleur réseau d'un côté, hybride + batterie de l'autre) — sinon
+    # on retombe sur le libellé mono-option, même garde anti-mensonge
+    # qu'``_scenario_stocke``.
+    _a_batterie = any(_is_battery(s.designation) for s in line_specs)
+    _a_hybride = any(_is_hybrid_inverter(s.designation) for s in line_specs)
+    _a_reseau = any(_is_reseau_inverter(s.designation) for s in line_specs)
+    if deux_options and _a_reseau and _a_hybride and _a_batterie:
+        etude_params['scenario'] = SCENARIO_LES_DEUX
+    else:
+        etude_params['scenario'] = _scenario_stocke(_a_batterie and _a_hybride)
     if annual_kwh is not None:
         etude_params['production_annuelle'] = int(annual_kwh)
     if savings is not None:
@@ -3140,8 +3195,10 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
     """Crée un devis RÉSIDENTIEL automatiquement dimensionné depuis la fiche lead.
 
     Lit le profil énergétique du lead (taille souhaitée en kWc, sinon facture
-    d'hiver), dimensionne le champ PV, compose un layout réseau (batterie ajoutée
-    si ``batterie_souhaitee == 'avec'``) et délègue à ``build_devis_from_layout``
+    d'hiver), dimensionne le champ PV, compose PAR DÉFAUT la forme DEUX OPTIONS
+    (« sans batterie » ET « avec batterie » — U2 ; un ``batterie_souhaitee``
+    explicite du lead, « avec » ou « sans », reste souverain et compose cette
+    option-là seule) et délègue à ``build_devis_from_layout``
     (sélection catalogue, numérotation anti-collision, devis ``brouillon``). Lève
     ``AutoDevisError`` (→ 422) si le marché n'est pas résidentiel ou si aucune
     donnée de dimensionnement n'est exploitable — l'agent demande alors la donnée
@@ -3170,7 +3227,21 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
         raise AutoDevisError(msg, field='facture_hiver')
 
     kwc = round(panneaux * _AUTO_PANEL_WATT / 1000, 2)
-    wants_battery = (getattr(lead, 'batterie_souhaitee', '') or '') == 'avec'
+    # ── U2 (fondateur 20/08/2026) — LE DÉFAUT EST « LES DEUX OPTIONS » ──────
+    # « le devis auto sort SANS batterie alors que le calepinage 3D sort AVEC ;
+    # le DÉFAUT doit être le devis avec LES DEUX options ». Le devis auto ne
+    # choisissait à la place du client que parce que le lead ne disait rien :
+    # un lead SANS préférence de batterie repartait en « réseau », donc sans
+    # stockage ni onduleur hybride, et le client ne voyait jamais l'option.
+    # Désormais le silence du lead veut dire « propose les deux » — c'est la
+    # forme que la proposition résidentielle sait déjà rendre.
+    #
+    # Un choix EXPLICITE du lead reste souverain : « avec » compose l'hybride
+    # + batterie seuls, « sans » compose le réseau seul. On ne repropose pas
+    # une option que le client a déjà écartée.
+    choix_batterie = (getattr(lead, 'batterie_souhaitee', '') or '').strip()
+    wants_battery = choix_batterie == 'avec'
+    deux_options = choix_batterie not in ('avec', 'sans')
     layout = {
         'result': {'panels': panneaux, 'kwc': kwc},
         'panelWatt': _AUTO_PANEL_WATT,
@@ -3178,10 +3249,12 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
     }
     devis = build_devis_from_layout(
         layout=layout, user=user, company=company, lead=lead,
-        taux_tva=taux_tva, remise_globale=remise_globale)
+        taux_tva=taux_tva, remise_globale=remise_globale,
+        deux_options=deux_options)
     logger.info(
-        'Auto-devis %s: %d panneaux, %.2f kWc, batterie=%s (company %s)',
-        devis.reference, panneaux, kwc, wants_battery,
+        'Auto-devis %s: %d panneaux, %.2f kWc, batterie=%s, deux_options=%s '
+        '(company %s)',
+        devis.reference, panneaux, kwc, wants_battery, deux_options,
         getattr(company, 'id', '?'))
     return devis
 
