@@ -874,6 +874,29 @@ class TestSyncLayoutCables(TestCase):
         self.assertFalse(
             devis.lignes.filter(designation__icontains='Câble').exists())
 
+    def test_ligne_rouleau_jamais_resynchronisee_en_metres(self):
+        """C4 (fondateur 19/08) : la cible de resynchro est un MÉTRAGE — elle
+        ne s'applique JAMAIS à un produit câble vendu en ROULEAU
+        (« … (100m) »). L'incident réel côté composition : 60 « unités »
+        posées sur un rouleau de 100 m à 1 190 MAD = 71 400 MAD de câble."""
+        rouleau = Produit.objects.create(
+            company=self.company, nom='Câble solaire 6mm² (100m)',
+            sku='PV18C-CDCR', prix_vente=Decimal('1190'),
+            prix_achat=Decimal('800'), quantite_stock=50)
+        devis = self._devis(panneaux=18, cable_dc_m=None, cable_terre_m=55)
+        devis.lignes.create(
+            produit=rouleau, designation='Câble solaire 6mm² (100m)',
+            quantite=Decimal('2'), prix_unitaire=Decimal('1190'), ordre=5)
+        resp = self._post(devis, layout(panels=9, kwc=5.0))
+        self.assertEqual(resp.status_code, 200, resp.content)
+        # Le rouleau garde ses 2 unités — jamais « 60 » (mètres) posés dessus.
+        self.assertEqual(int(devis.lignes.get(produit=rouleau).quantite), 2)
+        # La ligne terre AU MÈTRE, elle, suit le nouveau palier (55 → 40).
+        self.assertEqual(
+            int(devis.lignes.get(
+                designation=DESIGNATION_CABLE_TERRE).quantite),
+            40)
+
     def test_compte_de_panneaux_inchange_les_cables_ne_bougent_pas(self):
         """Aucun écart de calepinage (même compte de panneaux) : les câbles
         ne sont PAS recalculés — seul un vrai changement de panneaux
