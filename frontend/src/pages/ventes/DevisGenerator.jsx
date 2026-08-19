@@ -69,6 +69,10 @@ import {
   // PVMRQ — libellé FR d'un rôle ROLES_AUTO_COMPOSITION, pour le bandeau
   // « marque épinglée introuvable ».
   roleLabel,
+  // PVORD (fondateur 19/08/2026) — ordre par défaut des lignes de devis :
+  // dérive la séquence de rôles depuis l'écran (bouton « Enregistrer cet
+  // ordre »), appliquée par autoFillLines via ordreLignes.
+  deriveRoleOrderFromLines,
 } from '../../features/ventes/solar'
 import { formatNumber, formatMAD, formatDateTime } from '../../lib/format'
 
@@ -390,6 +394,11 @@ export default function DevisGenerator({
   // — l'endpoint est `IsResponsableOrAdmin` — retombe sur `{}` silencieusement,
   // donc sur le comportement historique SANS préférence de marque).
   const [gammesConfig, setGammesConfig] = useState(null)
+  // PVORD (fondateur 19/08/2026) — bouton « Enregistrer cet ordre comme
+  // ordre par défaut » (voir handleSaveOrdreLignes) : état de chargement
+  // dédié, séparé de `saving` (l'enregistrement du DEVIS) — les deux actions
+  // sont indépendantes et ne doivent pas se griser l'une l'autre.
+  const [savingOrdreLignes, setSavingOrdreLignes] = useState(false)
   // Gamme du devis rouvert (`etude_params.gamme.nom`, QJ29/services.gamme_nom) —
   // round-trip minimal : le générateur ne construit PAS de choix de gamme,
   // il lit seulement celle déjà posée par un devis existant pour résoudre la
@@ -1090,6 +1099,9 @@ export default function DevisGenerator({
         // PVMRQ — marques préférées (gamme active) : même contrainte que
         // l'auto-remplissage manuel (handleAutoFill).
         marques: marquesActives,
+        // PVORD — ordre par défaut de la société, même contrainte que
+        // l'auto-remplissage manuel (handleAutoFill) ci-dessous.
+        ordreLignes: gammesConfig?.ordre_lignes,
       })
       finish(devisId)
     } catch (err) {
@@ -1493,6 +1505,27 @@ export default function DevisGenerator({
   }), [setLines])
   const moveLineUp = useCallback((key) => moveLine(key, -1), [moveLine])
   const moveLineDown = useCallback((key) => moveLine(key, 1), [moveLine])
+  // PVORD — « Enregistrer cet ordre comme ordre par défaut » : dérive la
+  // séquence de rôles depuis les lignes COURANTES de l'écran (classification
+  // réutilisée, jamais un nouveau mot-clé — voir deriveRoleOrderFromLines) et
+  // la PATCH sur ParametresGammes.ordre_lignes. Best-effort, même patron que
+  // GammesMarquesPage.jsx : un rôle non Admin/Responsable reçoit un 403 (géré
+  // via un toast d'erreur), jamais un plantage de l'écran.
+  const handleSaveOrdreLignes = async () => {
+    const derived = deriveRoleOrderFromLines(lines)
+    setSavingOrdreLignes(true)
+    try {
+      const { data } = await ventesApi.updateParametresGammes({ ordre_lignes: derived })
+      setGammesConfig(prev => ({ ...(prev || {}), ordre_lignes: data?.ordre_lignes ?? derived }))
+      toast.success('Ordre des lignes enregistré comme ordre par défaut pour les prochains devis.')
+    } catch (err) {
+      const detail = err?.response?.data?.detail
+      toast.error(typeof detail === 'string'
+        ? detail : 'Impossible d\'enregistrer cet ordre par défaut.')
+    } finally {
+      setSavingOrdreLignes(false)
+    }
+  }
   // VX188 — identité stable pour ProduitPicker.onProduitCreated (passé à
   // chaque DevisLineRow) : setProduits est déjà un setState fonctionnel,
   // aucune dépendance réelle.
@@ -1611,6 +1644,10 @@ export default function DevisGenerator({
       // active de ce devis) : une marque épinglée gagne toujours, jamais de
       // repli silencieux sur une autre marque (voir marquesManquantes ci-dessous).
       marques: marquesActives,
+      // PVORD — ordre par défaut de la société (Paramètres → Gammes &
+      // marques, ou le bouton « Enregistrer cet ordre » de ce devis) ;
+      // absent/vide = ordre canonique du simulateur (comportement historique).
+      ordreLignes: gammesConfig?.ordre_lignes,
     })
     // Les MÉTADONNÉES du tableau (wattage réel, kWc réel, onduleurs grisés)
     // sont relevées ICI, avant tout `.map()` : un `.map()` rend un tableau NEUF
@@ -3182,6 +3219,17 @@ export default function DevisGenerator({
             </Button>
             <Button type="button" size="sm" variant="outline" onClick={addLine}>
               <Plus /> Ajouter ligne
+            </Button>
+            {/* PVORD (fondateur 19/08/2026) — persiste l'ordre ÉCRAN courant
+                comme nouvel ordre par défaut des PROCHAINS devis
+                (ParametresGammes.ordre_lignes). Réservé Admin/Responsable
+                côté serveur (même garde que Paramètres → Gammes & marques) ;
+                un rôle non autorisé reçoit un toast d'erreur, pas un crash. */}
+            <Button type="button" size="sm" variant="ghost"
+                    loading={savingOrdreLignes}
+                    onClick={handleSaveOrdreLignes}
+                    title="Enregistre l'ordre actuel des lignes comme ordre par défaut pour les prochains devis">
+              Enregistrer cet ordre comme ordre par défaut
             </Button>
           </GenCardHeader>
           <CardContent className="px-0 pt-0">

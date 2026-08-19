@@ -1146,19 +1146,31 @@ class ParametresGammesSerializer(serializers.ModelSerializer):
     ``ROLES_AUTO_COMPOSITION`` ou une valeur non textuelle sont rejetés ici,
     AVANT d'atteindre la base — un ``PATCH`` invalide échoue en 400, jamais un
     ``ValidationError`` non attrapé à l'écriture.
+
+    ``ordre_lignes`` (PVORD, fondateur 19/08/2026) — MÊME patron de
+    validation (``_erreurs_ordre_lignes``) : une liste de rôles
+    ``ROLES_AUTO_COMPOSITION`` uniques. Liste vide = ordre canonique du
+    simulateur (comportement historique).
     """
 
     class Meta:
         model = ParametresGammes
         fields = [
             'id', 'deux_gammes', 'nom_essentielle', 'nom_premium', 'marques',
-            'created_at', 'updated_at',
+            'ordre_lignes', 'created_at', 'updated_at',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 
     def validate_marques(self, value):
         from .models import _erreurs_marques
         erreurs = _erreurs_marques(value)
+        if erreurs:
+            raise serializers.ValidationError(erreurs)
+        return value
+
+    def validate_ordre_lignes(self, value):
+        from .models import _erreurs_ordre_lignes
+        erreurs = _erreurs_ordre_lignes(value)
         if erreurs:
             raise serializers.ValidationError(erreurs)
         return value

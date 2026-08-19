@@ -1124,6 +1124,59 @@ export function roleLabel(role) {
   return (PRODUCT_CATEGORIES.find(([key]) => key === role) ?? [null, role])[1]
 }
 
+// ── PVORD (fondateur 19/08/2026) — ordre PAR DÉFAUT des lignes de devis ──────
+// Frontend de `ParametresGammes.ordre_lignes` (apps/ventes/models.py) : une
+// liste de rôles PRODUCT_CATEGORIES/ROLES_AUTO_COMPOSITION dans l'ordre voulu
+// pour les PROCHAINS devis. Sans préférence (absente/vide) : ordre CANONIQUE
+// de composition inchangé — zéro régression tant que rien n'est enregistré.
+
+// Trie une liste de lignes TAGUÉES `[role, ligne]` par préférence de rôle.
+// Un rôle PRÉSENT dans `ordreLignes` est classé à sa position ; un rôle
+// ABSENT garde son rang canonique mais TOUJOURS après tout rôle
+// explicitement préféré — tri STABLE (jamais un ex-æquo aléatoire) : les
+// deux lignes « batterie » (5 kWh / 10 kWh) gardent leur ordre relatif entre
+// elles quand leur rôle est préféré, ou l'un envers l'autre à la fin sinon.
+export function orderLinesByRolePreference(taggedLines, ordreLignes) {
+  if (!Array.isArray(ordreLignes) || !ordreLignes.length) {
+    return taggedLines.map(([, ligne]) => ligne)
+  }
+  const rang = (role) => {
+    const idx = ordreLignes.indexOf(role)
+    return idx === -1 ? Infinity : idx
+  }
+  return taggedLines
+    .map((entree, i) => ({ entree, i }))
+    .sort((a, b) => {
+      const ra = rang(a.entree[0])
+      const rb = rang(b.entree[0])
+      return ra !== rb ? ra - rb : a.i - b.i
+    })
+    .map(({ entree }) => entree[1])
+}
+
+// Dérive la séquence de rôles depuis les lignes COURANTES de l'écran (bouton
+// « Enregistrer cet ordre comme ordre par défaut ») : classification RÉUTILISÉE
+// (aucun nouveau mot-clé — même classifyProduct que groupProduitsByCategory),
+// dédupliquée en gardant la PREMIÈRE occurrence (l'ordre écran des DEUX lignes
+// batterie 5/10 kWh ne compte que pour un seul rang « batterie »), et les
+// lignes sans classification reconnue (section/note, désignation libre) sont
+// simplement ignorées — jamais un rôle inventé.
+export function deriveRoleOrderFromLines(lines) {
+  const seen = new Set()
+  const order = []
+  for (const l of (lines ?? [])) {
+    let role = classifyProduct(l.designation)
+    if (!role) continue
+    if (role === 'structure') {
+      role = _norm(l.designation).includes('alu') ? 'structure_alu' : 'structure_acier'
+    }
+    if (seen.has(role)) continue
+    seen.add(role)
+    order.push(role)
+  }
+  return order
+}
+
 // ── PVMRQ — marque préférée par gamme/rôle (fondateur 18/08/2026) ────────────
 // Frontend de `ParametresGammes.marques` (backend, ROLES_AUTO_COMPOSITION —
 // MIROIR EXACT des clés `PRODUCT_CATEGORIES` ci-dessus) : quand une marque est
@@ -1204,7 +1257,10 @@ const placeholder = (designation, quantite) => ({
 // Quantités par défaut du simulateur ; les lignes « spéciales » (onduleurs,
 // panneaux, batteries) restent à choisir, les autres pointent sur le produit
 // canonique du stock avec son prix TTC (équivalent de autofillRowPrice).
-export function defaultProductLines(produits) {
+// PVORD — `ordreLignes` (optionnel, `ParametresGammes.ordre_lignes`) réordonne
+// le résultat par rôle préféré ; absent/vide = ordre canonique ci-dessous,
+// byte-identique à l'historique (voir `orderLinesByRolePreference`).
+export function defaultProductLines(produits, ordreLignes) {
   const byType = indexProduits(produits)
   const first = (type) => (byType[type] ?? [])[0] ?? null
   const exactOr = (type, needle) => {
@@ -1214,29 +1270,32 @@ export function defaultProductLines(produits) {
   const row = (p, designation, quantite) =>
     p ? lineFrom(p, quantite) : placeholder(designation, quantite)
 
-  return [
-    placeholder('Onduleur réseau', 1),
-    placeholder('Onduleur hybride', 1),
-    row(first('smart_meter'), 'Smart Meter', 0),
-    row(first('wifi_dongle'), 'Wifi Dongle', 0),
-    placeholder('Panneaux', 0),
-    placeholder('Batterie', 1),
-    placeholder('Batterie', 0),
-    row(exactOr('structure', 'acier'), 'Structures acier', 0),
-    row(exactOr('structure', 'alu'), 'Structures aluminium', 0),
-    row(first('socle'), 'Socles', 0),
-    row(first('accessoires'), 'Accessoires', 1),
-    row(first('tableau'), 'Tableau De Protection AC/DC', 1),
-    row(first('installation'), 'Installation', 1),
-    row(first('transport'), 'Transport', 1),
-    row(first('suivi'), 'Suivi journalier, maintenance chaque 12 mois pendant 2 ans', 1),
+  const tagged = [
+    ['onduleur_reseau', placeholder('Onduleur réseau', 1)],
+    ['onduleur_hybride', placeholder('Onduleur hybride', 1)],
+    ['smart_meter', row(first('smart_meter'), 'Smart Meter', 0)],
+    ['wifi_dongle', row(first('wifi_dongle'), 'Wifi Dongle', 0)],
+    ['panneau', placeholder('Panneaux', 0)],
+    ['batterie', placeholder('Batterie', 1)],
+    ['batterie', placeholder('Batterie', 0)],
+    ['structure_acier', row(exactOr('structure', 'acier'), 'Structures acier', 0)],
+    ['structure_alu', row(exactOr('structure', 'alu'), 'Structures aluminium', 0)],
+    ['socle', row(first('socle'), 'Socles', 0)],
+    ['accessoires', row(first('accessoires'), 'Accessoires', 1)],
+    ['tableau', row(first('tableau'), 'Tableau De Protection AC/DC', 1)],
+    ['installation', row(first('installation'), 'Installation', 1)],
+    ['transport', row(first('transport'), 'Transport', 1)],
+    ['suivi', row(first('suivi'), 'Suivi journalier, maintenance chaque 12 mois pendant 2 ans', 1)],
   ]
+  return orderLinesByRolePreference(tagged, ordreLignes)
 }
 
 // ── Auto-remplissage (port exact de auto_fill_from_power + autofill_router) ───
-// Retourne la table complète dans l'ordre canonique du simulateur, lignes à
-// quantité nulle comprises (elles s'affichent mais ne sont pas enregistrées).
-export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux: nbOverride, marques }) {
+// Retourne la table complète dans l'ordre canonique du simulateur (ou l'ordre
+// PVORD `ordreLignes` s'il est fourni — voir `orderLinesByRolePreference`),
+// lignes à quantité nulle comprises (elles s'affichent mais ne sont pas
+// enregistrées).
+export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux: nbOverride, marques, ordreLignes }) {
   if (!kwp || kwp <= 0) return []
   const byType = indexProduits(produits)
   // PVMRQ — marques préférées par rôle (gamme active) : sans réglage, `marques`
@@ -1426,33 +1485,41 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
     ? row(structChosen, 'Structures aluminium', nbPanneaux)
     : row(structOther, 'Structures aluminium', 0)
 
-  const lignes = [
-    row(reseau?.p ?? null, 'Onduleur réseau', reseau ? inverterQty(reseau.kw) : 1),
-    row(hybride?.p ?? null, 'Onduleur hybride', hybride ? Math.max(1, inverterQty(hybride.kw)) : 1),
-    row(first('smart_meter'), 'Smart Meter', smQty),
-    row(first('wifi_dongle'), 'Wifi Dongle', wifiQty),
-    row(panel?.p ?? null, 'Panneaux', nbPanneaux),
-    row(bat5?.p ?? null, 'Batterie', nb5),
-    row(bat10?.p ?? null, 'Batterie', nb10),
-    acierRow,
-    aluRow,
-    row(first('socle'), 'Socles', nbPanneaux * 2),
+  // PVORD — chaque ligne est TAGUÉE de son rôle avant l'assemblage final :
+  // `orderLinesByRolePreference` réordonne selon `ordreLignes`
+  // (`ParametresGammes.ordre_lignes`) si fourni, sinon renvoie EXACTEMENT
+  // cet ordre canonique — comportement historique inchangé.
+  const lignesTaguees = [
+    ['onduleur_reseau', row(reseau?.p ?? null, 'Onduleur réseau', reseau ? inverterQty(reseau.kw) : 1)],
+    ['onduleur_hybride', row(hybride?.p ?? null, 'Onduleur hybride', hybride ? Math.max(1, inverterQty(hybride.kw)) : 1)],
+    ['smart_meter', row(first('smart_meter'), 'Smart Meter', smQty)],
+    ['wifi_dongle', row(first('wifi_dongle'), 'Wifi Dongle', wifiQty)],
+    ['panneau', row(panel?.p ?? null, 'Panneaux', nbPanneaux)],
+    ['batterie', row(bat5?.p ?? null, 'Batterie', nb5)],
+    ['batterie', row(bat10?.p ?? null, 'Batterie', nb10)],
+    ['structure_acier', acierRow],
+    ['structure_alu', aluRow],
+    ['socle', row(first('socle'), 'Socles', nbPanneaux * 2)],
     // Câbles Nexans 6 mm² au mètre (règle fondateur 18/08). On ne retient qu'un
     // câble RÉELLEMENT chiffré : un produit sans prix n'entre jamais dans une
     // auto-composition (même patron que « prix à renseigner »).
-    row(cableDc, 'Câble solaire Nexans 6 mm² (au mètre)', cableDc ? metreCableDc(blocks) : 0),
-    row(cableTerre, 'Câble de terre Nexans 6 mm² (au mètre)', cableTerre ? metreCableTerre(blocks) : 0),
-    row(first('accessoires'), 'Accessoires', 1, prixAccessoires),
-    row(first('tableau'), 'Tableau De Protection AC/DC', 1, prixTableau),
-    row(first('installation'), 'Installation', 1, prixInstallation),
-    row(first('transport'), 'Transport', 1),
-    row(first('suivi'), 'Suivi journalier, maintenance chaque 12 mois pendant 2 ans', 0),
+    ['cable_dc', row(cableDc, 'Câble solaire Nexans 6 mm² (au mètre)', cableDc ? metreCableDc(blocks) : 0)],
+    ['cable_terre', row(cableTerre, 'Câble de terre Nexans 6 mm² (au mètre)', cableTerre ? metreCableTerre(blocks) : 0)],
+    ['accessoires', row(first('accessoires'), 'Accessoires', 1, prixAccessoires)],
+    ['tableau', row(first('tableau'), 'Tableau De Protection AC/DC', 1, prixTableau)],
+    ['installation', row(first('installation'), 'Installation', 1, prixInstallation)],
+    ['transport', row(first('transport'), 'Transport', 1)],
+    ['suivi', row(first('suivi'), 'Suivi journalier, maintenance chaque 12 mois pendant 2 ans', 0)],
   ]
+  const lignes = orderLinesByRolePreference(lignesTaguees, ordreLignes)
   // QX19 — puissance du panneau EFFECTIVEMENT retenu (peut différer de panelW
   // quand le catalogue n'a pas exactement panelW → substitution la plus proche)
   // + nb de panneaux : l'écran recalcule le kWc RÉEL depuis ces valeurs plutôt
   // que d'afficher un kWc théorique divergent. Métadonnées portées sur le
   // tableau (les consommateurs qui itèrent les lignes ne les voient pas).
+  // PVORD — rattachées APRÈS le tri : `orderLinesByRolePreference` renvoie un
+  // tableau NEUF (jamais les métadonnées attachées à `lignesTaguees`, qui n'en
+  // porte aucune de toute façon).
   lignes.actualPanelW = panel?.w ?? panelW
   lignes.nbPanneaux = nbPanneaux
   lignes.kwcReel = Math.round(nbPanneaux * (panel?.w ?? panelW) / 10) / 100

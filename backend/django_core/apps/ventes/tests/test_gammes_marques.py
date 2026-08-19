@@ -342,6 +342,130 @@ class RoleEtGammeInvalidesRejetesTests(ParametresGammesBase):
         self.assertTrue(serializer.is_valid(), serializer.errors)
 
 
+# ── 7bis. PVORD (fondateur 19/08/2026) — ordre_lignes ──────────────────────
+#
+# Ordre PAR DÉFAUT des lignes de devis pour les PROCHAINS devis : une liste
+# de rôles ROLES_AUTO_COMPOSITION, MÊME patron de validation que `marques`
+# ci-dessus (clean()/serializer, jamais silencieux). Liste vide (défaut) =
+# ordre canonique du simulateur.
+
+class OrdreLignesTests(ParametresGammesBase):
+    def test_defaut_liste_vide(self):
+        params = services.get_parametres_gammes(self.company)
+        self.assertEqual(params.ordre_lignes, [])
+
+    def test_clean_accepte_une_liste_de_roles_valide(self):
+        params = ParametresGammes(
+            company=self.company,
+            ordre_lignes=['panneau', 'onduleur_reseau', 'batterie'])
+        params.full_clean()  # ne doit PAS lever
+
+    def test_clean_rejette_un_role_hors_du_tuple(self):
+        params = ParametresGammes(
+            company=self.company, ordre_lignes=['ROLE_INEXISTANT'])
+        with self.assertRaises(ValidationError):
+            params.full_clean()
+
+    def test_clean_rejette_un_role_duplique(self):
+        params = ParametresGammes(
+            company=self.company, ordre_lignes=['panneau', 'panneau'])
+        with self.assertRaises(ValidationError):
+            params.full_clean()
+
+    def test_clean_rejette_une_valeur_qui_n_est_pas_une_liste(self):
+        params = ParametresGammes(
+            company=self.company, ordre_lignes={'panneau': 0})
+        with self.assertRaises(ValidationError):
+            params.full_clean()
+
+    def test_clean_rejette_un_element_non_texte(self):
+        params = ParametresGammes(
+            company=self.company, ordre_lignes=['panneau', 42])
+        with self.assertRaises(ValidationError):
+            params.full_clean()
+
+    def test_serializer_rejette_un_role_hors_du_tuple(self):
+        params = ParametresGammes.objects.create(company=self.company)
+        serializer = ParametresGammesSerializer(
+            params, data={'ordre_lignes': ['ROLE_INEXISTANT']}, partial=True)
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('ordre_lignes', serializer.errors)
+
+    def test_serializer_rejette_un_role_duplique(self):
+        params = ParametresGammes.objects.create(company=self.company)
+        serializer = ParametresGammesSerializer(
+            params, data={'ordre_lignes': ['socle', 'socle']}, partial=True)
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('ordre_lignes', serializer.errors)
+
+    def test_serializer_accepte_une_liste_valide_et_persiste(self):
+        params = ParametresGammes.objects.create(company=self.company)
+        serializer = ParametresGammesSerializer(
+            params,
+            data={'ordre_lignes': ['panneau', 'onduleur_reseau']},
+            partial=True)
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        saved = serializer.save()
+        self.assertEqual(saved.ordre_lignes, ['panneau', 'onduleur_reseau'])
+
+    def test_reglage_ordre_lignes_scope_societe(self):
+        """Même garde de portée société que `marques` (section 1) : une
+        société ne lit jamais l'ordre_lignes réglé par une autre."""
+        autre = Company.objects.create(nom='Autre société PVORD')
+        ParametresGammes.objects.create(
+            company=autre, ordre_lignes=['panneau', 'socle'])
+
+        params = services.get_parametres_gammes(self.company)
+        self.assertEqual(params.ordre_lignes, [])
+
+
+class OrdreLignesEndpointTests(ParametresGammesBase):
+    def _user(self, company, username, role):
+        from django.contrib.auth import get_user_model
+        return get_user_model().objects.create_user(
+            username=username, password='x', company=company,
+            role_legacy=role)
+
+    def test_get_renvoie_ordre_lignes(self):
+        from rest_framework.test import APIClient
+        ParametresGammes.objects.create(
+            company=self.company, ordre_lignes=['panneau', 'batterie'])
+        commercial = self._user(self.company, 'pvord-lecture', 'commercial')
+        api = APIClient()
+        api.force_authenticate(commercial)
+        resp = api.get('/api/django/ventes/parametres-gammes/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()['ordre_lignes'], ['panneau', 'batterie'])
+
+    def test_patch_ordre_lignes_reserve_responsable_admin(self):
+        from rest_framework.test import APIClient
+        commercial = self._user(self.company, 'pvord-ecriture', 'commercial')
+        api = APIClient()
+        api.force_authenticate(commercial)
+        resp = api.patch(
+            '/api/django/ventes/parametres-gammes/',
+            {'ordre_lignes': ['panneau']}, format='json')
+        self.assertEqual(resp.status_code, 403)
+
+    def test_patch_ordre_lignes_par_responsable_persiste(self):
+        from rest_framework.test import APIClient
+        responsable = self._user(
+            self.company, 'pvord-responsable', 'responsable')
+        api = APIClient()
+        api.force_authenticate(responsable)
+        resp = api.patch(
+            '/api/django/ventes/parametres-gammes/',
+            {'ordre_lignes': ['panneau', 'onduleur_reseau', 'socle']},
+            format='json')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(
+            resp.json()['ordre_lignes'],
+            ['panneau', 'onduleur_reseau', 'socle'])
+        relu = services.get_parametres_gammes(self.company)
+        self.assertEqual(
+            relu.ordre_lignes, ['panneau', 'onduleur_reseau', 'socle'])
+
+
 # ── 8. deux_gammes bascule proprement ────────────────────────────────────
 
 class DeuxGammesToggleTests(ParametresGammesBase):

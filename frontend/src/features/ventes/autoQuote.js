@@ -83,10 +83,16 @@ export const buildEtudePompage = (sel, { typePompe, alim, hmt, debit, heures,
  *                                transmise telle quelle à `optimalKwcByPayback`
  *                                et `autoFillLines`. Absente/vide = comportement
  *                                historique (aucune préférence).
+ * @param {string[]} ordreLignes  PVORD (fondateur 19/08/2026) — ordre par
+ *                                défaut des lignes (`ParametresGammes.
+ *                                ordre_lignes`), transmis tel quel à
+ *                                `autoFillLines`. Absente/vide = ordre
+ *                                canonique du simulateur (comportement
+ *                                historique).
  */
 export async function createAutoQuote({ lead, produits, discountStr, dispatch,
                                         quoteLogic, pumpHours, onEtude,
-                                        targetKwc, marques }) {
+                                        targetKwc, marques, ordreLignes }) {
   // Logique de devis éditable (Paramètres → Avancé) ; sans valeur = défauts.
   const kwhPrice = (Number(quoteLogic?.kwhPrice) > 0) ? Number(quoteLogic.kwhPrice) : KWH_PRICE
   const efficiency = (Number(quoteLogic?.efficiency) > 0) ? Number(quoteLogic.efficiency) : EFFICIENCY
@@ -163,6 +169,9 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
       // QX19 — respecte la préférence de structure du lead (défaut acier).
       structureType: structFromLead(lead),
       marques,
+      // PVORD — ordre par défaut de la société (voir la doc du paramètre
+      // plus haut) ; absent/vide = ordre canonique inchangé.
+      ordreLignes,
     })
     // PVMRQ — GARDE : une marque épinglée sans AUCUN candidat en stock laisse
     // des lignes PLACEHOLDER (aucun produit, 0 MAD) que le filtre
