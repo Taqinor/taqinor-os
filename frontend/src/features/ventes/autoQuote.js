@@ -246,9 +246,17 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
     note: null,
     ...extra,
   })).unwrap()
+  // PVORD (fondateur 19/08/2026) — ordre PAR DÉFAUT des lignes = l'ordre
+  // canonique du simulateur (celui produit par `rows`, éventuellement déjà
+  // réordonné selon `ParametresGammes.ordre_lignes` — voir `autoFillLines`).
+  // Les créations restent concurrentes (`Promise.all`) : sans `ordre`
+  // explicite, le tri en base retombait sur `id` = ordre d'ARRIVÉE réseau
+  // (une course), pas l'ordre voulu. `idx` est calculé de façon SYNCHRONE sur
+  // le tableau filtré avant tout dispatch, donc déterministe malgré la
+  // concurrence des requêtes.
   await Promise.all(rows
     .filter(r => r.produit && parseFloat(r.quantite) > 0)
-    .map(r => dispatch(addLigneDevis({
+    .map((r, idx) => dispatch(addLigneDevis({
       devis: devis.id,
       produit: parseInt(r.produit),
       designation: r.designation,
@@ -256,6 +264,7 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
       prix_unitaire: htFromTtc(r.prix_unit_ttc, r.taux_tva ?? 20),
       remise: '0',
       taux_tva: String(r.taux_tva ?? 20),
+      ordre: idx,
     })).unwrap()))
   return devis.id
 }
