@@ -8,6 +8,7 @@ import {
   MARQUEUR_PLAGE_BATTERIE,
   lirePlageBatterieDescription, ecrirePlageBatterieDescription,
   plageBatterieDeclaree, plageBatterieAbsenteLocale,
+  plageBatterieDeclareeChamps, plageBatterieAbsenteChamps,
   CONTRAT_ONDULEUR_FR, manquantesOnduleurLocal,
   typeFicheBackend, ficheFieldsVides, champsFicheDepuisServeur,
   champsFichePourType,
@@ -140,6 +141,32 @@ test('ni hybride ni réseau (famille indéterminée / hors périmètre) → repl
   }), false)
 })
 
+// ── PVOND-H — même contrat, lu sur le CHAMP DÉDIÉ plutôt que la description ─
+test('plageBatterieDeclareeChamps : vraie pour aucune=true ou une plage min/max, fausse sinon', () => {
+  assert.equal(plageBatterieDeclareeChamps({ ond_bat_aucune: true }), true)
+  assert.equal(plageBatterieDeclareeChamps({ ond_bat_v_min: '40', ond_bat_v_max: '60' }), true)
+  assert.equal(plageBatterieDeclareeChamps({ ond_bat_v_min: '40', ond_bat_v_max: '' }), false)
+  assert.equal(plageBatterieDeclareeChamps({}), false)
+  assert.equal(plageBatterieDeclareeChamps(undefined), false)
+})
+
+test('plageBatterieAbsenteChamps : HYBRIDE exigé, RÉSEAU jamais absente, sinon repli SERVEUR', () => {
+  assert.equal(plageBatterieAbsenteChamps({ estHybride: true, estReseau: false, ficheFields: {} }), true)
+  assert.equal(plageBatterieAbsenteChamps({
+    estHybride: true, estReseau: false, ficheFields: { ond_bat_v_min: '40', ond_bat_v_max: '60' },
+  }), false)
+  assert.equal(plageBatterieAbsenteChamps({
+    estHybride: true, estReseau: false, ficheFields: { ond_bat_aucune: true },
+  }), false)
+  assert.equal(plageBatterieAbsenteChamps({ estHybride: false, estReseau: true, ficheFields: {} }), false)
+  assert.equal(plageBatterieAbsenteChamps({
+    estHybride: false, estReseau: false, ficheFields: {}, plageBatterieServeurAbsente: true,
+  }), true)
+  assert.equal(plageBatterieAbsenteChamps({
+    estHybride: false, estReseau: false, ficheFields: {}, plageBatterieServeurAbsente: false,
+  }), false)
+})
+
 // ── Verrou de complétude onduleur — miroir de CONTRAT_ONDULEUR ─────────────
 test('CONTRAT_ONDULEUR_FR a bien les 10 variables du contrat backend, dans le même ordre', () => {
   assert.deepEqual(CONTRAT_ONDULEUR_FR.map(([cle]) => cle), [
@@ -221,6 +248,19 @@ test('ficheFieldsVides part de chaînes vides pour tous les champs connus', () =
   assert.equal(vide.ond_ac_kw, '')
   assert.equal(vide.pmax_wc, '')
   assert.equal(vide.bat_kwh_nominal, '')
+  // PVOND-H — nouveaux champs onduleur/panneau, mêmes garanties.
+  assert.equal(vide.ond_v_demarrage_v, '')
+  assert.equal(vide.ond_isc_max_mppt_a, '')
+  assert.equal(vide.ond_bat_v_min, '')
+  assert.equal(vide.ond_bat_v_max, '')
+  assert.equal(vide.voc_v, '')
+  assert.equal(vide.isc_a, '')
+  assert.equal(vide.vmp_v, '')
+  assert.equal(vide.imp_a, '')
+  assert.equal(vide.temp_coeff_voc_pct_c, '')
+  assert.equal(vide.temp_coeff_pmax_pct_c, '')
+  // Le seul champ booléen part à `false`, jamais une chaîne vide.
+  assert.equal(vide.ond_bat_aucune, false)
 })
 
 test('champsFicheDepuisServeur convertit nombres/absences en chaînes', () => {
@@ -238,6 +278,13 @@ test('champsFicheDepuisServeur(null) renvoie l\'état vide (nouveau produit)', (
   assert.deepEqual(champsFicheDepuisServeur(null), ficheFieldsVides())
 })
 
+test('champsFicheDepuisServeur convertit ond_bat_aucune en booléen (jamais une chaîne)', () => {
+  assert.equal(champsFicheDepuisServeur({ ond_bat_aucune: true }).ond_bat_aucune, true)
+  assert.equal(champsFicheDepuisServeur({ ond_bat_aucune: false }).ond_bat_aucune, false)
+  // Fiche jamais enregistrée pour ce champ → repli `false`, jamais `null`/`undefined`.
+  assert.equal(champsFicheDepuisServeur({ ond_ac_kw: '10' }).ond_bat_aucune, false)
+})
+
 test('champsFichePourType ne garde que les champs du type, en nombres', () => {
   const payload = champsFichePourType('onduleur_hybride', {
     ond_ac_kw: '10', ond_phases: '3', ond_n_mppt: '', pmax_wc: '710',
@@ -246,14 +293,34 @@ test('champsFichePourType ne garde que les champs du type, en nombres', () => {
     ond_ac_kw: 10, ond_phases: 3, ond_n_mppt: null,
     ond_mppt_v_min: null, ond_mppt_v_max: null, ond_v_max_abs: null,
     ond_i_max_mppt_a: null, ond_rendement_euro_pct: null,
+    // PVOND-H — nouveaux champs numériques du bloc onduleur.
+    ond_v_demarrage_v: null, ond_isc_max_mppt_a: null,
+    ond_bat_v_min: null, ond_bat_v_max: null,
+    // Champ booléen du bloc onduleur : converti en `false`, jamais `null`.
+    ond_bat_aucune: false,
   })
   // pmax_wc n'appartient pas au bloc onduleur : jamais dans ce payload.
   assert.ok(!('pmax_wc' in payload))
 })
 
-test('champsFichePourType(panneau) garde puissance + dimensions', () => {
-  assert.deepEqual(champsFichePourType('panneau', { pmax_wc: '710', longueur_mm: '2384', largeur_mm: '1303' }), {
-    pmax_wc: 710, longueur_mm: 2384, largeur_mm: 1303,
+// PVOND-H — la plage de tension batterie déclarée « aucune » (onduleur
+// réseau) doit ressortir à `true`, pas à un nombre ou `null`.
+test('champsFichePourType(onduleur) convertit ond_bat_aucune en booléen, jamais en nombre', () => {
+  const payload = champsFichePourType('onduleur_reseau', { ond_bat_aucune: true })
+  assert.equal(payload.ond_bat_aucune, true)
+  assert.equal(champsFichePourType('onduleur_reseau', { ond_bat_aucune: false }).ond_bat_aucune, false)
+  assert.equal(champsFichePourType('onduleur_reseau', {}).ond_bat_aucune, false)
+})
+
+test('champsFichePourType(panneau) garde puissance, électrique complet et dimensions', () => {
+  assert.deepEqual(champsFichePourType('panneau', {
+    pmax_wc: '710', voc_v: '48.3', isc_a: '18.59', vmp_v: '40.4', imp_a: '17.59',
+    temp_coeff_voc_pct_c: '-0.25', temp_coeff_pmax_pct_c: '-0.29',
+    longueur_mm: '2384', largeur_mm: '1303',
+  }), {
+    pmax_wc: 710, voc_v: 48.3, isc_a: 18.59, vmp_v: 40.4, imp_a: 17.59,
+    temp_coeff_voc_pct_c: -0.25, temp_coeff_pmax_pct_c: -0.29,
+    longueur_mm: 2384, largeur_mm: 1303,
   })
 })
 

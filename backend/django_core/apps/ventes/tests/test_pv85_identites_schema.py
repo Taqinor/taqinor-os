@@ -93,12 +93,17 @@ FICHE_CS710 = dict(pmax_wc=Decimal("710.00"), voc_v=Decimal("48.30"),
                    temp_coeff_pmax_pct_c=Decimal("-0.290"))
 
 #: Deye SUN-10K-SG05LP3-EU-SM2 — idem, y compris les 26 A par entrée MPPT.
+# PVOND-H (2026-08-19) — tension de démarrage (160 V) et Isc max
+# (39 A/MPPT) : deux variables que le moteur électrique sait déjà lire mais
+# qui n'avaient AUCUN champ ``FicheTechnique`` pour les porter jusqu'ici.
 FICHE_SG05LP3 = dict(ond_n_mppt=2, ond_mppt_v_min=Decimal("200.0"),
                      ond_mppt_v_max=Decimal("650.0"),
                      ond_v_max_abs=Decimal("800.0"),
                      ond_i_max_mppt_a=Decimal("26.0"),
                      ond_ac_kw=Decimal("10"), ond_phases=3,
-                     ond_rendement_euro_pct=Decimal("97.0"))
+                     ond_rendement_euro_pct=Decimal("97.0"),
+                     ond_v_demarrage_v=Decimal("160.0"),
+                     ond_isc_max_mppt_a=Decimal("39.0"))
 
 
 def _panneau(marque="Canadien Solar"):
@@ -162,6 +167,16 @@ class LesEntreesPortentLIdentiteDuMateriel(SimpleTestCase):
         self.assertEqual(onduleur.i_max_mppt_a, 26.0)
         self.assertEqual(onduleur.rendement_euro_pct, 97.0)
 
+    # PVOND-H (2026-08-19, plainte fondateur « have a place for every one of
+    # this information ») — tension de démarrage et Isc max par MPPT sont
+    # désormais lues sur la fiche, pas seulement portées par le moteur PUR.
+    def test_l_onduleur_porte_sa_tension_de_demarrage_et_son_isc_max(self):
+        onduleur, _phases = es.spec_onduleur_du_devis(_devis())
+        self.assertEqual(onduleur.v_demarrage_v, 160.0)
+        self.assertEqual(onduleur.tension_demarrage_v, 160.0)
+        self.assertEqual(onduleur.isc_max_mppt_a, 39.0)
+        self.assertEqual(onduleur.courant_isc_max_a, 39.0)
+
     def test_un_modele_seulement_suppose_n_est_jamais_repris(self):
         """Un numéro de modèle non vérifié se lirait comme une déclaration."""
         onduleur, _phases = es.spec_onduleur_du_devis(_devis(confirme=False))
@@ -185,6 +200,18 @@ class LesEntreesPortentLIdentiteDuMateriel(SimpleTestCase):
         self.assertEqual(module.designation, "Panneau PV 550 Wc mono")
         self.assertEqual(onduleur.designation, "Onduleur réseau 6 kW")
         self.assertIsNone(onduleur.rendement_euro_pct)
+        # PVOND-H — même garde que le rendement : sans fiche, l'Isc max
+        # RESTE None (jamais une borne inventée plus permissive que ce
+        # qu'une fiche garantit) ; le moteur retombe alors sur le courant
+        # maxi de fonctionnement (0.0 ici, faute de fiche non plus).
+        self.assertIsNone(onduleur.isc_max_mppt_a)
+        self.assertEqual(onduleur.courant_isc_max_a, onduleur.i_max_mppt_a)
+        # La tension de démarrage, elle, garde son repli HISTORIQUE
+        # (``solar_design.DEFAULT_INVERTER_WINDOW['v_min']`` — distinct du
+        # bas de la fenêtre MPPT) — jamais un crash sur fiche vide.
+        from apps.ventes import solar_design as sd
+        self.assertEqual(onduleur.v_demarrage_v,
+                         float(sd.DEFAULT_INVERTER_WINDOW["v_min"]))
 
 
 class LeSchemaNommeLeMateriel(SimpleTestCase):

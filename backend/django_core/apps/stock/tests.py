@@ -1101,3 +1101,38 @@ class TestContratOnduleurSeede(TestCase):
         produit = Produit.objects.get(company=self.company, sku='OND-H-DEY-10T')
         self.assertEqual(
             (produit.description or '').count('Plage batterie :'), 1)
+
+    # PVOND-H (fondateur 19/08/2026) — les dix onduleurs Deye/Huawei du
+    # catalogue portent désormais LE CHAMP DÉDIÉ, pas seulement la ligne de
+    # description historique.
+    def test_le_seeder_pose_le_champ_dedie_pas_seulement_la_description(self):
+        from apps.stock.models import FicheTechnique
+        seed(self.company)
+        hybride = Produit.objects.get(company=self.company, sku='OND-H-DEY-10T')
+        f_hybride = FicheTechnique.objects.get(produit=hybride)
+        self.assertEqual(f_hybride.ond_bat_v_min, Decimal('40.0'))
+        self.assertEqual(f_hybride.ond_bat_v_max, Decimal('60.0'))
+        self.assertFalse(f_hybride.ond_bat_aucune)
+        reseau = Produit.objects.get(company=self.company, sku='OND-R-HUA-10T')
+        f_reseau = FicheTechnique.objects.get(produit=reseau)
+        self.assertTrue(f_reseau.ond_bat_aucune)
+        self.assertIsNone(f_reseau.ond_bat_v_min)
+        self.assertIsNone(f_reseau.ond_bat_v_max)
+
+    def test_le_champ_dedie_prime_sur_une_ligne_de_description_divergente(self):
+        """PVOND-H — ordre de lecture : si le champ DÉDIÉ est renseigné, il
+        fait foi même quand une vieille ligne de description dit autre
+        chose (une base migrée sans --reappliquer-fiches ne doit jamais
+        rendre une valeur incohérente entre les deux mécanismes)."""
+        from apps.stock.models import FicheTechnique
+        from apps.stock.selectors import plage_batterie_onduleur
+        seed(self.company)
+        produit = Produit.objects.get(company=self.company, sku='OND-H-DEY-10T')
+        fiche = FicheTechnique.objects.get(produit=produit)
+        fiche.ond_bat_v_min = Decimal('45.0')
+        fiche.ond_bat_v_max = Decimal('55.0')
+        fiche.save()
+        # La description garde encore l'ancienne ligne « 40-60 V » — le champ
+        # dédié doit gagner.
+        self.assertIn('Plage batterie : 40-60 V', produit.description)
+        self.assertEqual(plage_batterie_onduleur(produit), (45.0, 55.0))

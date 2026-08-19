@@ -247,12 +247,22 @@ def spec_onduleur_du_devis(devis):
         i_max_mppt_a=_flottant(specs.get("i_max_mppt_a"), 0.0),
         ac_kw=ac_kw,
         phases=phases,
-        v_demarrage_v=float(defauts["v_min"]),
+        # PVOND-H (2026-08-19) — la fiche fait foi quand elle la donne
+        # (``FicheTechnique.ond_v_demarrage_v``) ; à défaut, le repli
+        # HISTORIQUE (bas de la fenêtre par défaut) reste inchangé.
+        v_demarrage_v=_flottant(specs.get("v_demarrage_v"),
+                                float(defauts["v_min"])),
         # Le rendement n'a PAS de défaut : il reste None tant qu'une fiche ne
         # le donne pas (il serait sinon publié comme une caractéristique
         # vérifiée de l'appareil sur une pièce technique).
         rendement_euro_pct=(_flottant(specs.get("rendement_euro_pct"), 0.0)
                             or None),
+        # PVOND-H — même garde que le rendement : PAS de défaut inventé, une
+        # borne matérielle plus permissive que ce qu'une fiche garantit serait
+        # dangereuse. ``None`` tant qu'aucune fiche ne la donne ; le moteur
+        # (``SpecOnduleur.courant_isc_max_a``) retombe alors sur
+        # ``i_max_mppt_a``, exactement le repli déjà documenté côté moteur.
+        isc_max_mppt_a=(_flottant(specs.get("isc_max_mppt_a"), 0.0) or None),
         designation=_designation_materiel(
             produit, libelle, _texte_grandeur(ac_kw, "kW", 1)),
     )

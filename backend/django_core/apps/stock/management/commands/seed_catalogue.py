@@ -822,8 +822,26 @@ FICHES_TECHNIQUES = {
     },
     'PAN-JK-710': {
         'type_fiche': 'module',
-        # Source : datasheet JKM710-735N-66HL5-BDV. Pas de dimensions —
-        # non vérifiées, à confirmer fondateur (PVG4).
+        # H5 (2026-08-19) — RE-SOURCÉ intégralement (colonne 710 W, page 2)
+        # sur la datasheet OFFICIELLE JKM710-735N-66HL5-BDV-Z3-EU
+        # (jinkosolar.eu/wp-content/uploads/2025/04/
+        # JKM710-735N-66HL5-BDV-Z3-EU.pdf) : Vmp 40,65 V / Imp 17,47 A /
+        # Voc 48,73 V / Isc 18,53 A / rendement STC 22,86 % — jusqu'ici
+        # ABSENTS de FicheTechnique malgré une fiche déjà lue par le moteur
+        # électrique (specs_for_produit) pour tout autre panneau du
+        # catalogue. Dimensions 2384×1303×33 mm, 37,5 kg — MÊME datasheet.
+        'pmax_wc': Decimal('710.00'),
+        'voc_v': Decimal('48.73'),
+        'isc_a': Decimal('18.53'),
+        'vmp_v': Decimal('40.65'),
+        'imp_a': Decimal('17.47'),
+        'rendement_pct': Decimal('22.86'),
+        'longueur_mm': 2384,
+        'largeur_mm': 1303,
+        'epaisseur_mm': 33,
+        'poids_kg': Decimal('37.50'),
+        'techno_cellule': 'N-type TOPCon (Tiger Neo)',
+        'bifacial': True,
         'temp_coeff_pmax_pct_c': Decimal('-0.290'),
         'temp_coeff_voc_pct_c': Decimal('-0.250'),
     },
@@ -928,14 +946,19 @@ FICHES_TECHNIQUES = {
         #   • Efficiency : Max. 97,60 % / Euro 96,50 % / MPPT 99,90 % (valeurs
         #     PARTAGÉES par toute la famille SG05LP1) — le champ ne porte que
         #     le rendement EURO, INCHANGÉ par rapport à l'ancienne fiche.
+        #   • PVOND-H (2026-08-19) — DEUX champs enfin saisissables, comblés
+        #     sur la MÊME datasheet : Start-up Voltage 125 V (partagée par
+        #     toute la famille) → tension de démarrage ; Max. PV Isc(A)
+        #     « 17+17 » (famille 3.6/5/6K) → 17 A d'Isc max par MPPT.
         # NON seedés faute de champ sur FicheTechnique (jamais inventé) :
-        # Max. Charging/Discharging Current 120 A, Start-up Voltage 125 V,
+        # Max. Charging/Discharging Current 120 A,
         # Max. Continuous AC Passthrough 35 A, poids 24 kg, IP65.
         'type_fiche': 'onduleur', 'ond_n_mppt': 2,
         'ond_mppt_v_min': Decimal('150.0'), 'ond_mppt_v_max': Decimal('425.0'),
         'ond_v_max_abs': Decimal('500.0'), 'ond_i_max_mppt_a': Decimal('13.0'),
         'ond_ac_kw': Decimal('5'), 'ond_phases': 1,
         'ond_rendement_euro_pct': Decimal('96.5'),
+        'ond_v_demarrage_v': Decimal('125.0'), 'ond_isc_max_mppt_a': Decimal('17.0'),
     },
     'OND-H-DEY-10M': {
         # PVOND (2026-08-18, ordre fondateur « ne laisse rien griser ») — la
@@ -966,17 +989,23 @@ FICHES_TECHNIQUES = {
     # révision actuelle (manuel nov-2025 + page produit) donne 26 A / Isc 39 A
     # / 2 chaînes pour les 10K et 12K précisément. On seede la révision
     # ACTUELLE (26 A) — à confirmer au numéro de série de l'appareil livré.
-    # NON seedés faute de champ sur FicheTechnique (jamais inventé) : tension
-    # de démarrage 160 V, Isc max 39 A/MPPT, 210 A charge/décharge, rendement
-    # MAX 97,6 % (le champ est le rendement EURO), poids 35,2 kg.
+    # PVOND-H (2026-08-19) — tension de démarrage (160 V) et Isc max
+    # (39 A/MPPT, révision actuelle 2 chaînes) désormais SEEDÉES : ces deux
+    # valeurs étaient déjà SOURCÉES ci-dessus mais restaient en commentaire
+    # faute de champ sur FicheTechnique.
+    # NON seedés faute de champ sur FicheTechnique (jamais inventé) : 210 A
+    # charge/décharge, rendement MAX 97,6 % (le champ est le rendement EURO),
+    # poids 35,2 kg.
     # La PLAGE BATTERIE 40-60 V, elle, n'est plus perdue : PVOND la loge en
-    # DONNÉE sur la description (``PLAGE_BATTERIE_ONDULEUR`` plus haut).
+    # DONNÉE sur la description (``PLAGE_BATTERIE_ONDULEUR`` plus haut) ET,
+    # depuis PVOND-H, sur le champ dédié (même dict, fusionné plus bas).
     'OND-H-DEY-10T': {
         'type_fiche': 'onduleur', 'ond_n_mppt': 2,
         'ond_mppt_v_min': Decimal('200.0'), 'ond_mppt_v_max': Decimal('650.0'),
         'ond_v_max_abs': Decimal('800.0'), 'ond_i_max_mppt_a': Decimal('26.0'),
         'ond_ac_kw': Decimal('10'), 'ond_phases': 3,
         'ond_rendement_euro_pct': Decimal('97.0'),
+        'ond_v_demarrage_v': Decimal('160.0'), 'ond_isc_max_mppt_a': Decimal('39.0'),
     },
     # PV85 — Deye SUN-15K-SG05LP3-EU-SM2 (gamme BASSE TENSION SG05LP3,
     # décision fondateur 2026-08-18 — complète le palier 10 kW déjà seedé
@@ -986,10 +1015,13 @@ FICHES_TECHNIQUES = {
     # SUN-15K-SG05LP3-EU-SM2. La plage MPPT/V max/nb de trackers et le
     # rendement EURO sont donnés PARTAGÉS pour toute la famille SG05LP3
     # (14-20K) par la datasheet elle-même — pas une extrapolation.
+    # PVOND-H (2026-08-19) — tension de démarrage (160 V, sourcée ci-dessus)
+    # désormais SEEDÉE.
     # NON seedés faute de champ sur FicheTechnique (jamais inventé, même
-    # garde que OND-H-DEY-10T) : tension de démarrage 160 V, 280 A charge/
-    # décharge, poids 50,6 kg. La PLAGE BATTERIE 40-60 V est désormais logée
-    # en DONNÉE sur la description (PVOND, ``PLAGE_BATTERIE_ONDULEUR``).
+    # garde que OND-H-DEY-10T) : 280 A charge/décharge, poids 50,6 kg. La
+    # PLAGE BATTERIE 40-60 V est désormais logée en DONNÉE sur la description
+    # (PVOND, ``PLAGE_BATTERIE_ONDULEUR``) ET sur le champ dédié (fusionné
+    # plus bas).
     'OND-DEY-15K-LV': {
         'type_fiche': 'onduleur', 'ond_n_mppt': 2,
         'ond_mppt_v_min': Decimal('160.0'), 'ond_mppt_v_max': Decimal('650.0'),
@@ -1001,6 +1033,7 @@ FICHES_TECHNIQUES = {
         'ond_i_max_mppt_a': Decimal('20.0'),
         'ond_ac_kw': Decimal('15'), 'ond_phases': 3,
         'ond_rendement_euro_pct': Decimal('97.0'),
+        'ond_v_demarrage_v': Decimal('160.0'),
     },
     # PVOND (18/08/2026) — Deye SUN-20K-SG05LP3-EU-SM2, jumeau BASSE TENSION
     # du palier 20 kW (OND-H-DEY-20T est un SG01HP3 HAUTE TENSION 160-700 V,
@@ -1013,10 +1046,12 @@ FICHES_TECHNIQUES = {
     # par la datasheet pour toute la famille SG05LP3 14-20K : ce ne sont pas
     # des extrapolations. Seule la puissance AC (20 kW) est propre à la
     # colonne 20K.
+    # PVOND-H (2026-08-19) — tension de démarrage (160 V, sourcée ci-dessus)
+    # désormais SEEDÉE.
     # NON seedés faute de champ sur FicheTechnique (jamais inventé, même garde
-    # que le 15 kW) : tension de démarrage 160 V, courants de charge/décharge,
-    # poids. La PLAGE BATTERIE 40-60 V est logée en DONNÉE sur la description
-    # (PVOND, ``PLAGE_BATTERIE_ONDULEUR``).
+    # que le 15 kW) : courants de charge/décharge, poids. La PLAGE BATTERIE
+    # 40-60 V est logée en DONNÉE sur la description (PVOND,
+    # ``PLAGE_BATTERIE_ONDULEUR``) ET sur le champ dédié (fusionné plus bas).
     'OND-DEY-20K-LV': {
         'type_fiche': 'onduleur', 'ond_n_mppt': 2,
         'ond_mppt_v_min': Decimal('160.0'), 'ond_mppt_v_max': Decimal('650.0'),
@@ -1027,6 +1062,7 @@ FICHES_TECHNIQUES = {
         'ond_i_max_mppt_a': Decimal('20.0'),
         'ond_ac_kw': Decimal('20'), 'ond_phases': 3,
         'ond_rendement_euro_pct': Decimal('97.0'),
+        'ond_v_demarrage_v': Decimal('160.0'),
     },
     'OND-H-DEY-15T': {
         # Confiance moyenne : plage FAMILLE SG01HP3 (5-25K) documentée, pas
@@ -1075,6 +1111,44 @@ FICHES_TECHNIQUES = {
         'bat_max_charge_kw': Decimal('5.12'),
     },
 }
+
+# ── PVOND-H (fondateur 19/08/2026) — même donnée, fusionnée dans le champ
+# DÉDIÉ ─────────────────────────────────────────────────────────────────────
+# ``PLAGE_BATTERIE_ONDULEUR`` (plus haut) reste la SEULE source de vérité de
+# la plage de tension batterie — inchangée, toujours écrite en ligne marquée
+# de la description pour la lecture RÉTRO-COMPATIBLE côté moteur
+# (``plage_batterie_onduleur``, ``apps/stock/selectors.py``, repli si le
+# champ dédié est vide). Cette fusion ADDITIVE pousse la MÊME valeur dans le
+# nouveau bloc structuré de ``FicheTechnique`` (``ond_bat_aucune``/
+# ``ond_bat_v_min``/``ond_bat_v_max``) pour les onduleurs qui ont déjà une
+# entrée ci-dessus — jamais une deuxième saisie à maintenir en parallèle, un
+# seul dictionnaire (``PLAGE_BATTERIE_ONDULEUR``) qui alimente les DEUX
+# mécanismes. Les deux SKU Huawei mono ARTEFACTS (10M/12M, sans entrée
+# ci-dessus) restent hors de cette fusion, comme de tout le reste du seeder.
+#
+# ⚠ NUANCE ``ond_bat_aucune`` (BooleanField, jamais NULL) — même doctrine que
+# le 0/Decimal('0') du docstring de ``_fiche_champ_vide`` : ``False`` EST une
+# valeur, pas un « vide ». Sur une base DÉJÀ seedée avant cette migration,
+# chaque fiche onduleur existante reçoit ``ond_bat_aucune=False`` (défaut de
+# colonne) AVANT le premier run de ce seeder — la garde « combler seulement
+# le vide » ne le réécrira donc PAS en ``True`` pour les dix onduleurs réseau
+# tant que ``--reappliquer-fiches`` n'est pas passé une fois (même mécanisme
+# que PV85 : « faire atteindre une correction à une base déjà seedée »). Les
+# TROIS champs numériques (``ond_v_demarrage_v``/``ond_isc_max_mppt_a``/
+# ``ond_bat_v_min``/``ond_bat_v_max``, tous ``null=True``) n'ont PAS ce
+# problème : une fiche existante les porte à ``None`` jusqu'ici, donc
+# ``_fiche_champ_vide`` les comble normalement, sans drapeau, au prochain
+# déploiement. Un produit CRÉÉ après cette migration n'a de toute façon
+# jamais ce problème (la fiche est créée avec ``ond_bat_aucune`` déjà posé).
+for _sku_plage, _plage_fusion in PLAGE_BATTERIE_ONDULEUR.items():
+    if _sku_plage not in FICHES_TECHNIQUES:
+        continue
+    if _plage_fusion is None:
+        FICHES_TECHNIQUES[_sku_plage]['ond_bat_aucune'] = True
+    else:
+        _bas_fusion, _haut_fusion = _plage_fusion
+        FICHES_TECHNIQUES[_sku_plage]['ond_bat_v_min'] = Decimal(str(_bas_fusion))
+        FICHES_TECHNIQUES[_sku_plage]['ond_bat_v_max'] = Decimal(str(_haut_fusion))
 
 
 def _fiche_champ_vide(valeur):
