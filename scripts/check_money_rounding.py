@@ -43,8 +43,13 @@ BASELINE_ALLOWLIST = {
     # neutre : elle PRÉ-AUTORISE en silence un futur `round(total_ht, 2)`
     # inséré à cette ligne, c.-à-d. exactement l'arrondi monétaire hors
     # `quantize_mad` que cette garde existe pour faire relire.
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1777",  # QJ29 multi-villa ×N (réécrit PVUNI, formule préexistante revue)
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1836",  # total_ttc ligne gamme (réécrit PVUNI, formule préexistante revue)
+    # 2026-08-19 — DIX ENTRÉES RECALÉES (mêmes formules, lignes décalées par
+    # la garde au-mètre de services.py [+15] et le contrat factures réelles +
+    # le barème société de builder.py [+21/+45]) : 935→950, 938→953,
+    # 2456→2471, 2523→2538 ; builder 1112→1133, 1125→1146, 1777→1822,
+    # 1783→1828, 1836→1881, 1837→1882. Vérifié formule par formule.
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1822",  # QJ29 multi-villa ×N (réécrit PVUNI, formule préexistante revue)
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1881",  # total_ttc ligne gamme (réécrit PVUNI, formule préexistante revue)
     "backend/django_core/apps/ventes/quote_engine/builder.py:628",
     "backend/django_core/apps/ventes/quote_engine/builder.py:630",
     "backend/django_core/apps/ventes/quote_engine/builder.py:686",
@@ -143,7 +148,7 @@ BASELINE_ALLOWLIST = {
     "backend/django_core/apps/ventes/quote_engine/builder.py:1084",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1672",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1706",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1783",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1828",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1700",
     # GAMMES (2026-08-18, offre à deux gammes) — RE-CALAGE file:line, PAS de
     # nouveau site (bug-class #34). Deux insertions purement additives :
@@ -176,10 +181,10 @@ BASELINE_ALLOWLIST = {
     # d'AFFICHAGE (surface m², kWc ; jamais un montant), simplement déplacés.
     # Lignes relues sur l'arbre courant : 687→753, 690→756, 2135→2263,
     # 2305→2442.
-    "backend/django_core/apps/ventes/services.py:935",
-    "backend/django_core/apps/ventes/services.py:938",
-    "backend/django_core/apps/ventes/services.py:2456",
-    "backend/django_core/apps/ventes/services.py:2523",
+    "backend/django_core/apps/ventes/services.py:950",
+    "backend/django_core/apps/ventes/services.py:953",
+    "backend/django_core/apps/ventes/services.py:2471",
+    "backend/django_core/apps/ventes/services.py:2538",
     "backend/django_core/apps/ventes/quote_engine/builder.py:336",
     "backend/django_core/apps/ventes/quote_engine/builder.py:337",
     "backend/django_core/apps/ventes/quote_engine/builder.py:727",
@@ -187,8 +192,8 @@ BASELINE_ALLOWLIST = {
     "backend/django_core/apps/ventes/quote_engine/builder.py:842",
     "backend/django_core/apps/ventes/quote_engine/builder.py:895",
     "backend/django_core/apps/ventes/quote_engine/builder.py:897",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1112",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1125",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1133",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1146",
     # QXMT (2026-08-18) — le bloc « un dossier MT ne porte jamais un chiffre
     # BT » (+36 lignes, inséré APRÈS le calcul ROI, avant QF2) décale les
     # QUATRE arrondis d'affichage qui le suivent (montant de TVA ×N villas,
@@ -198,7 +203,7 @@ BASELINE_ALLOWLIST = {
     # au-dessus (300…985) sont AVANT l'insertion et ne bougent pas.
     "backend/django_core/apps/ventes/quote_engine/builder.py:1809",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1755",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1837",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1882",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1749",
 }
 
