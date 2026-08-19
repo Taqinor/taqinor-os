@@ -504,8 +504,42 @@ jobs:
   # `scripts/tests/test_ci_shard.py`, exécuté dans le job `stage-names` — un
   # module qui tomberait du découpage ne serait plus jamais testé pendant que la
   # CI resterait verte, c'est le seul risque que ce mécanisme doit interdire.
-  # On n'augmente toujours PAS `--parallel` (resté à 1 depuis 0d66f6e1 :
-  # `--parallel 2` faisait sauter max_locks / OOM sur test_rls + QW10).
+  #
+  # ---------------------------------------------------------------------------
+  # WOW-CI RONDE 5 (20/08/2026) — `--parallel` REPASSE DE 1 À 4, AVEC LA GARDE
+  # QUI MANQUAIT LA PREMIÈRE FOIS.
+  #
+  # POURQUOI ÇA AVAIT CASSÉ (commit 0d66f6e1, 16/07 : « --parallel 2->1
+  # max_locks OOM shard 3 test_rls+QW10 »). Le coupable n'est PAS la mémoire du
+  # runner, c'est la TABLE DE VERROUS de Postgres. Un `TransactionTestCase`
+  # termine chaque test par un `flush` = UN SEUL `TRUNCATE` qui, `CASCADE`
+  # aidant, ratisse les ~900 tables du dépôt (c'est écrit noir sur blanc dans
+  # `core/test_utils.WideTeardownTimeoutMixin`, qui existe parce que cette purge
+  # dure 16 à 31 s). Chaque table, chaque index, chaque table TOAST y prend un
+  # `AccessExclusiveLock` : de l'ordre de 4 500 verrous d'un coup. Or la table
+  # de verrous d'un cluster vaut `max_locks_per_transaction × max_connections`
+  # = 64 × 100 = 6 400 entrées, et un service `postgres:` d'Actions ne peut PAS
+  # recevoir de `command:` — donc ce réglage n'est pas relevable ici. DEUX
+  # purges simultanées = ~9 000 > 6 400 = « out of shared memory ». C'est
+  # exactement ce que `--parallel 2` avait déclenché.
+  #
+  # LA GARDE. Django affecte une CLASSE de test entière à UN worker : le risque
+  # n'apparaît donc que si un même shard contient DEUX modules à purge large.
+  # Il n'en existe que trois dans tout le dépôt (`apps/crm/tests_webhook.py`,
+  # `apps/ventes/tests/test_premium_security.py`, `core/tests/test_rls.py` — ce
+  # dernier étant intégralement sauté ici, faute de `POSTGRES_RLS_ENABLED`), et
+  # le découpage LPT actuel les place dans des shards différents. Mais ce
+  # découpage se recalcule sur des durées mesurées : rien ne garantit qu'il en
+  # sera de même demain. L'étape ci-dessous COMPTE donc, à chaque run, les
+  # modules à purge large de SON shard et retombe à `--parallel 1` s'il y en a
+  # deux ou plus. Un shard devient lent au lieu de devenir rouge — et la garde
+  # s'adapte toute seule au prochain `TransactionTestCase` ajouté.
+  #
+  # PARALLÉLISME PROUVÉ AILLEURS : le harnais local canonique
+  # (`scripts/test-backend.ps1`) tourne en `--keepdb --parallel 4` par défaut
+  # depuis toujours — la sûreté des tests eux-mêmes est donc déjà éprouvée ;
+  # seule la contention de verrous ci-dessus était propre à la CI.
+  # ---------------------------------------------------------------------------
   # ROUND 3 (run 32200473257) — `backend-openapi` est retombé à 3 min 20 s une
   # fois son cache pip chaud : il n'est PLUS le plancher, les tests backend le
   # sont. Étape `Run Django test suite` par lane sur ce run :
@@ -585,6 +619,21 @@ jobs:
       DB_PORT: '5432'
       REDIS_HOST: redis
       REDIS_PORT: '6379'
+      # WOW-CI RONDE 5 — LE GARDE-FOU DE PRODUCTION ÉLARGI POUR LE RUNNER DE
+      # TESTS, ET UNIQUEMENT LUI. NTPLT18 pose `statement_timeout = 30 s` sur
+      # CHAQUE connexion (settings/base.py) pour qu'une requête ORM folle ne
+      # puisse pas épingler un worker gunicorn. Deux opérations légitimes du
+      # runner dépassent ce seuil : le `CREATE DATABASE … WITH TEMPLATE` que
+      # Django exécute pour cloner la base une fois par worker `--parallel`, et
+      # la purge `TRUNCATE` de tout le schéma d'un `TransactionTestCase`
+      # (mesurée 16 à 31 s — c'est précisément la raison d'être de
+      # `core/test_utils.WideTeardownTimeoutMixin`). Annulées, elles laissent la
+      # base à moitié purgée et le test SUIVANT échoue en doublon de clé, très
+      # loin de la vraie cause. On élargit donc à 10 min ICI, dans le job de
+      # test — le réglage de production n'est pas touché, et la variable reste
+      # DÉFINIE, donc `core.tests.test_db_guards` (qui vérifie sa présence dans
+      # OPTIONS, pas sa valeur) continue de passer.
+      DB_STATEMENT_TIMEOUT_MS: '600000'
       MINIO_ENDPOINT: localhost:9000
       MINIO_ROOT_USER: erp_admin
       MINIO_ROOT_PASSWORD: erp_minio_password
@@ -618,14 +667,80 @@ jobs:
       # (placement LPT déterministe via scripts/ci_shard.py) ; l'union des 8
       # shards == exactement l'ensemble des modules `test*.py` de `apps`,
       # `authentication` et `core`, prouvé par scripts/tests/test_ci_shard.py.
-      # `--parallel 1` est VOLONTAIRE (cf. 0d66f6e1) ; `coverage` reste hors du
-      # gate (WOW3).
+      # `coverage` reste hors du gate (WOW3).
       - name: Run Django test suite — shard ${{ matrix.shard }}/6 (fast tier — excludes pdf/slow)
         working-directory: backend/django_core
         run: |
+          set -euo pipefail
           LABELS=$(python ../../scripts/ci_shard.py ${{ matrix.shard }} 6)
           echo "Shard ${{ matrix.shard }}/6 -> $(echo "$LABELS" | wc -w) modules"
-          python manage.py test $LABELS -v 2 --exclude-tag=pdf --exclude-tag=slow --parallel 1 --keepdb
+
+          # WOW-CI RONDE 5 — GARDE ANTI-`max_locks` (raisonnement complet dans
+          # l'en-tête du job). On compte les modules de CE shard qui déclarent un
+          # `TransactionTestCase` : chacun termine ses tests par un TRUNCATE de
+          # tout le schéma (~4 500 verrous), et la table de verrous du cluster
+          # n'en tient que ~6 400. Un seul à la fois passe ; deux en même temps
+          # font sauter le shard. `core/tests/test_rls.py` est exclu du compte :
+          # sans `POSTGRES_RLS_ENABLED` toute sa classe est sautée, donc sa purge
+          # ne s'exécute jamais dans ce job (elle a son propre job `rls-tests`).
+          # Détection par AST, et non par `grep` : `core/test_utils.py` CITE
+          # `TransactionTestCase` une dizaine de fois (docstring du mixin, exemple
+          # d'usage) sans en déclarer un seul — un grep textuel le comptait et
+          # déclenchait la garde pour rien. On ne retient donc que les CLASSES
+          # dont une base est réellement `TransactionTestCase` (ou le mixin
+          # maison `WideTeardownTimeoutMixin`, qui est précisément le marqueur de
+          # cette purge large dans ce dépôt).
+          cat > /tmp/purge_large.py <<'PY'
+          import ast
+          import sys
+
+          MARQUEURS = {'TransactionTestCase', 'WideTeardownTimeoutMixin'}
+
+
+          def noms_de_bases(classe):
+              for base in classe.bases:
+                  if isinstance(base, ast.Name):
+                      yield base.id
+                  elif isinstance(base, ast.Attribute):
+                      # `django.test.TransactionTestCase` -> `TransactionTestCase`
+                      yield base.attr
+
+
+          for chemin in sys.argv[1:]:
+              try:
+                  with open(chemin, encoding='utf-8') as fichier:
+                      arbre = ast.parse(fichier.read(), chemin)
+              except (OSError, SyntaxError, UnicodeDecodeError):
+                  # Un fichier illisible n'est pas une raison de bloquer le shard :
+                  # au pire la garde ne le compte pas, au mieux il n'existe pas.
+                  continue
+              for noeud in ast.walk(arbre):
+                  if isinstance(noeud, ast.ClassDef) and MARQUEURS & set(noms_de_bases(noeud)):
+                      print(chemin)
+                      break
+          PY
+          FILES=""
+          for label in $LABELS; do
+            case "$label" in *test_rls*) continue ;; esac
+            p="$(printf '%s' "$label" | tr '.' '/').py"
+            if [ -f "$p" ]; then FILES="$FILES $p"; fi
+          done
+          WIDE_FILES=""
+          if [ -n "$FILES" ]; then
+            WIDE_FILES=$(python /tmp/purge_large.py $FILES)
+          fi
+          WIDE=$(printf '%s' "$WIDE_FILES" | grep -c . || true)
+          if [ "${WIDE:-0}" -ge 2 ]; then
+            PARALLEL=1
+            echo "GARDE max_locks : $WIDE modules a purge large dans ce shard —"
+            echo "$WIDE_FILES"
+            echo "on retombe a --parallel 1 pour ce shard (lent, mais jamais rouge)."
+          else
+            PARALLEL=4
+            echo "Purges larges dans ce shard : ${WIDE:-0} — --parallel 4."
+          fi
+
+          python manage.py test $LABELS -v 2 --exclude-tag=pdf --exclude-tag=slow --parallel "$PARALLEL" --keepdb
 
   # WOW6 — thin aggregator that PRESERVES the required `backend-tests` status
   # check name. Branch protection requires the literal `backend-tests` context
@@ -998,6 +1113,21 @@ jobs:
   # SA base : deux lanes, `--shard` natif de Playwright sur la partie chromium.
   # Le nom de check REQUIS `e2e` est préservé par l'agrégateur mince plus bas —
   # NE PAS le renommer (protection de branche : contexte littéral).
+  # ---------------------------------------------------------------------------
+  # WOW-CI RONDE 5 (20/08/2026) — CE JOB RESTE SUR LE CHEMIN CLASSIQUE (runner
+  # nu + apt/pip caches), DÉLIBÉRÉMENT. Une variante `ci-e2e` de l'image
+  # pré-construite avait été envisagée ; l'arithmétique ne la justifie pas :
+  #   - ce qu'elle supprimerait : `npm ci` ~13 s + `playwright install` ~31-37 s
+  #     (cache navigateurs chaud) + la part apt/pip de `backend-env` ~20-60 s,
+  #     soit ~65-110 s ;
+  #   - ce qu'elle coûterait : une image portant en plus Node 22, chromium ET
+  #     webkit avec leurs dépendances système (~2 Go), donc ~30-45 s de pull, et
+  #     un `node_modules` qui devrait de toute façon être réinstallé à chaque
+  #     changement du lock — le vrai contenu de `npm ci`.
+  # Le gain net (~30-60 s) ne paie pas le doublement de la surface d'images à
+  # entretenir sur un job qui n'est pas le plancher du gate. À rouvrir si
+  # `e2e-shard` redevient la lane la plus lente.
+  # ---------------------------------------------------------------------------
   e2e-shard:
     needs: changes
     if: ${{ needs.changes.outputs.code == 'true' }}
@@ -1336,6 +1466,10 @@ jobs:
       MINIO_ROOT_PASSWORD: erp_minio_password
       MINIO_BUCKET_PDF: erp-pdf
       MINIO_BUCKET_UPLOADS: erp-uploads
+      # WOW-CI RONDE 5 — même élargissement que sur les shards : cette suite EST
+      # un `TransactionTestCase`, donc chacun de ses tests se termine par la
+      # purge large de 16-31 s que le garde-fou de 30 s annulerait tôt ou tard.
+      DB_STATEMENT_TIMEOUT_MS: '600000'
       # Active la suite RLS (sautée partout ailleurs).
       POSTGRES_RLS_ENABLED: '1'
     steps:
@@ -1352,9 +1486,22 @@ jobs:
         with:
           testdb-cache-into: test_erp_db
           prebuilt-image: 'true'
+      # WOW-CI RONDE 5 — CE JOB RESTE DÉLIBÉRÉMENT EN `--parallel 1` (B3).
+      # Deux raisons, pas une :
+      #  1. Il n'exécute qu'UN module, qui ne contient qu'UNE classe
+      #     (`RlsSealTests`). Django affecte une classe entière à un seul
+      #     worker : `--parallel` n'aurait donc STRICTEMENT rien à répartir, il
+      #     ne ferait qu'ajouter le coût de N clones de base.
+      #  2. Cette classe est justement celle qui a fait sauter `max_locks` en
+      #     juillet (commit 0d66f6e1) : c'est un `TransactionTestCase` dont
+      #     chaque test purge tout le schéma. La paralléliser serait reprendre
+      #     le risque en échange de zéro gain.
+      # Ce job n'est de toute façon pas sur le chemin critique du gate : ses
+      # assertions tournent en moins d'une minute, le reste est la restauration
+      # WOW8 que le volet A raccourcit déjà.
       - name: Run RLS seal suite (opt-in — flag ON)
         working-directory: backend/django_core
-        run: python manage.py test core.tests.test_rls -v 2 --keepdb
+        run: python manage.py test core.tests.test_rls -v 2 --keepdb --parallel 1
 
   # ---------------------------------------------------------------------------
   # Always-running aggregate gate. Pin THIS one job as the single required
