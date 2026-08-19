@@ -637,7 +637,23 @@ MODELE_SUPPOSE_PVG4 = {
     'OND-R-HUA-50T': 'Huawei SUN2000-50KTL-M3',          # huawei EDOC1100016052 (M0) / fiche M3 EMEA
     'OND-R-HUA-100T': 'Huawei SUN2000-100KTL-M2',        # globalsunhub
     'OND-R-HUA-150T': 'Huawei SUN2000-150K-MG0',         # solar.huawei.com mg0/specs
-    'OND-H-DEY-5M': 'Deye SUN-5K-SG04LP1-EU(-SM2)',      # liriksolar datasheet
+    # G4 (2026-08-19) — CORRIGÉ : le fondateur a tranché le 15/08 (déjà posé
+    # côté apps/web/src/lib/fiches.ts:211-215) « génération réellement en
+    # pose = SG05 ; mono = gamme SG05LP1 » — le SG04LP1 ci-dessous survivait
+    # ENCORE côté ERP/PDF (c'est ce que le fondateur voit sur ses devis).
+    # Datasheet OFFICIELLE deyeinverter.com,
+    # datasheet_sun-(3.6-8)k-sg05lp1-eu_230731_en.pdf (2023-07-31), famille
+    # SUN-3.6/5/6/7.6/8K-SG05LP1-EU — le 5 kW y figure nommément. Suffixe
+    # « (-SM2) » laissé en supposition (comme avant) : la datasheet officielle
+    # ne montre que « -EU » sans variante de révision.
+    'OND-H-DEY-5M': 'Deye SUN-5K-SG05LP1-EU(-SM2)',      # deyeinverter.com datasheet_sun-(3.6-8)k-sg05lp1-eu_230731_en.pdf
+    # G4 — INCHANGÉ : la gamme SG05LP1 confirmée le 15/08 s'arrête à 8 kW
+    # (famille SUN-3.6/5/6/7.6/8K-SG05LP1-EU, même datasheet 230731 ci-dessus).
+    # Une révision « AM2-P » plus récente (manual_sun-3.6-10k-sg05lp1-eu-am2-p
+    # _20250812_en.pdf) semble étendre la gamme jusqu'à 10 kW, mais c'est un
+    # produit/suffixe DIFFÉRENT (AM2-P, pas EU/EU-SM2) — pas un fait assez net
+    # pour re-sourcer ce SKU sans trancher fondateur (cf. rapport G4). Le 10M
+    # reste donc en SG02LP1, modèle déjà supposé, INCHANGÉ.
     'OND-H-DEY-10M': 'Deye SUN-10K-SG02LP1-EU-AM3',      # nastechsolar datasheet — divergence plage MPPT
     # PV85 — TRANCHÉ PAR LE FONDATEUR (2026-08-15) : le 10 kW triphasé du
     # catalogue est un SG05LP3 (révision SM2), PAS le SG04LP3 supposé en PVG4.
@@ -708,12 +724,16 @@ PLAGE_BATTERIE_ONDULEUR = {
     'OND-R-HUA-50T': None,
     'OND-R-HUA-100T': None,
     'OND-R-HUA-150T': None,
-    # Deye BASSE TENSION 48 V — familles SG04LP1 / SG02LP1 / SG05LP3.
-    # Sources : datasheet SG04LP1 (liriksolar) ; datasheet SG02LP1-EU-AM3
-    # (liriksolar) ; datasheet officielle deyeinverter.com
-    # datasheet_sun-3-12k-sg05lp3-eu-sm2_240927_en.pdf (2024-09-27) et
-    # datasheet_sun-14-20k-sg05lp3-eu-sm2_240601_en.pdf (2024-06-01) — la
-    # fenêtre 40-60 V y est donnée PARTAGÉE par toute la famille SG05LP3.
+    # Deye BASSE TENSION 48 V — familles SG05LP1 / SG02LP1 / SG05LP3.
+    # Sources : G4 (2026-08-19) datasheet OFFICIELLE deyeinverter.com
+    # datasheet_sun-(3.6-8)k-sg05lp1-eu_230731_en.pdf (2023-07-31), « Battery
+    # Voltage Range (V) : 40-60 » PARTAGÉE par toute la famille SG05LP1
+    # (identique à l'ancienne valeur SG04LP1 — re-confirmée, pas recopiée) ;
+    # datasheet SG02LP1-EU-AM3 (liriksolar) ; datasheet officielle
+    # deyeinverter.com datasheet_sun-3-12k-sg05lp3-eu-sm2_240927_en.pdf
+    # (2024-09-27) et datasheet_sun-14-20k-sg05lp3-eu-sm2_240601_en.pdf
+    # (2024-06-01) — la fenêtre 40-60 V y est donnée PARTAGÉE par toute la
+    # famille SG05LP3.
     'OND-H-DEY-5M': (40, 60),
     'OND-H-DEY-10M': (40, 60),
     'OND-H-DEY-10T': (40, 60),
@@ -892,15 +912,29 @@ FICHES_TECHNIQUES = {
     # sont plus GRISÉS mais ARCHIVÉS (``ARTEFACTS_ONDULEUR_SKUS``).
     # ── PVG4 — Onduleurs hybrides Deye ──
     'OND-H-DEY-5M': {
-        # PVOND — courant d'entrée désormais SOURCÉ : la fiche SG04LP1 donne
-        # « 13+13 A », soit la MÊME valeur sur les deux trackers — c'est donc
-        # bien un courant PAR MPPT propre (13 A), pas une valeur composée
-        # asymétrique comme le « 36+20 A » du SG05LP3 15 kW.
+        # G4 (2026-08-19) — RE-SOURCÉ intégralement sur la datasheet OFFICIELLE
+        # deyeinverter.com datasheet_sun-(3.6-8)k-sg05lp1-eu_230731_en.pdf
+        # (2023-07-31), colonne SUN-5K-SG05LP1-EU (table lue en entier, pas de
+        # valeur SG04LP1 reconduite) :
+        #   • MPPT Voltage Range 150-425 V, 2 trackers, 1+1 chaîne — INCHANGÉS
+        #     par rapport à l'ancienne fiche SG04LP1 (même plage, re-vérifiée
+        #     sur la nouvelle source, pas recopiée sans preuve).
+        #   • PV Input Current « 13+13 A » (famille 3.6/5/6K) = 13 A PAR MPPT
+        #     — INCHANGÉ, re-confirmé sur la nouvelle fiche.
+        #   • Rated PV Input Voltage « 370 (125-500) V » ⇒ tension DC MAX
+        #     ABSOLUE = 500 V, PAS 600 V (c'était l'ancienne valeur SG04LP1,
+        #     jamais vérifiée sur une fiche SG05LP1 — CORRIGÉE ici).
+        #   • Rated AC Output Active Power 5000 W = 5 kW, monophasé — INCHANGÉ.
+        #   • Efficiency : Max. 97,60 % / Euro 96,50 % / MPPT 99,90 % (valeurs
+        #     PARTAGÉES par toute la famille SG05LP1) — le champ ne porte que
+        #     le rendement EURO, INCHANGÉ par rapport à l'ancienne fiche.
+        # NON seedés faute de champ sur FicheTechnique (jamais inventé) :
+        # Max. Charging/Discharging Current 120 A, Start-up Voltage 125 V,
+        # Max. Continuous AC Passthrough 35 A, poids 24 kg, IP65.
         'type_fiche': 'onduleur', 'ond_n_mppt': 2,
         'ond_mppt_v_min': Decimal('150.0'), 'ond_mppt_v_max': Decimal('425.0'),
-        'ond_v_max_abs': Decimal('600.0'), 'ond_i_max_mppt_a': Decimal('13.0'),
+        'ond_v_max_abs': Decimal('500.0'), 'ond_i_max_mppt_a': Decimal('13.0'),
         'ond_ac_kw': Decimal('5'), 'ond_phases': 1,
-        # 97.6 % max / 96.5 % euro — champ = rendement EURO uniquement.
         'ond_rendement_euro_pct': Decimal('96.5'),
     },
     'OND-H-DEY-10M': {
@@ -913,8 +947,10 @@ FICHES_TECHNIQUES = {
         # Courant 26 A/MPPT = valeur DÉJÀ VALIDÉE en production par le
         # fondateur le 2026-08-16 pour les paliers 10K/12K (révision actuelle)
         # — divergence documentée : la fiche de sept-2024 donnait 20 A.
-        # Rendement euro 97,0 % (même famille basse tension 48 V que les
-        # SG04LP1/SG05LP3 seedés ici, dont le rendement euro publié est 97,0 %).
+        # Rendement euro 97,0 % (même famille basse tension 48 V que le
+        # SG05LP3 triphasé seedé ici — OND-H-DEY-10T, rendement euro publié
+        # 97,0 %. G4 (2026-08-19) : le SG05LP1 MONOPHASÉ, lui, publie 96,5 %
+        # — cf. OND-H-DEY-5M ci-dessus — donc PAS repris ici comme référence).
         'type_fiche': 'onduleur', 'ond_n_mppt': 2,
         'ond_mppt_v_min': Decimal('150.0'), 'ond_mppt_v_max': Decimal('425.0'),
         'ond_v_max_abs': Decimal('600.0'), 'ond_i_max_mppt_a': Decimal('26.0'),

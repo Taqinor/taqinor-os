@@ -289,6 +289,28 @@ class TestSeedCatalogue(TestCase):
         self.assertEqual(fiche.ond_phases, 3)
         self.assertEqual(fiche.ond_rendement_euro_pct, Decimal('97.0'))
 
+    def test_g4_deye_5m_mono_est_sg05lp1_pas_sg04lp1(self):
+        """G4 (2026-08-19, plainte fondateur) — le SG04LP1 ne doit plus
+        survivre nulle part sur le 5 kW monophasé : ni le modèle affiché, ni
+        les caractéristiques électriques de sa FicheTechnique (re-sourcées sur
+        la datasheet officielle deyeinverter.com SUN-5K-SG05LP1-EU)."""
+        from apps.stock.models import FicheTechnique
+        seed(self.company)
+        p = Produit.objects.get(company=self.company, sku='OND-H-DEY-5M')
+        self.assertIn('Modèle supposé : Deye SUN-5K-SG05LP1-EU(-SM2)', p.description)
+        self.assertNotIn('SG04', p.description)
+        fiche = FicheTechnique.objects.get(produit=p)
+        self.assertEqual(fiche.ond_n_mppt, 2)
+        self.assertEqual(fiche.ond_mppt_v_min, Decimal('150.0'))
+        self.assertEqual(fiche.ond_mppt_v_max, Decimal('425.0'))
+        # Rated PV Input Voltage 370 (125-500) V sur la fiche SG05LP1 : 500 V,
+        # PAS 600 V (l'ancienne valeur, jamais vérifiée sur une fiche SG05LP1).
+        self.assertEqual(fiche.ond_v_max_abs, Decimal('500.0'))
+        self.assertEqual(fiche.ond_i_max_mppt_a, Decimal('13.0'))
+        self.assertEqual(fiche.ond_ac_kw, Decimal('5'))
+        self.assertEqual(fiche.ond_phases, 1)
+        self.assertEqual(fiche.ond_rendement_euro_pct, Decimal('96.5'))
+
     # ── PVG4 — Fiches techniques onduleurs/batteries (modèle supposé) ───────
     def test_pvg4_onduleur_fiche_sourced_values_only(self):
         from apps.stock.models import FicheTechnique

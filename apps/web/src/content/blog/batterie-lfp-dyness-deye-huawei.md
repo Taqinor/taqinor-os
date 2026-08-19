@@ -34,7 +34,7 @@ Sur l'ensemble de la gamme, la chimie LFP offre un rendement aller-retour de l'o
 
 Le critère souvent négligé dans le choix d'un onduleur hybride, c'est la **qualité du secours** — ce qui se passe exactement quand ONEE coupe le courant.
 
-### Deye SG-series (SG03LP1 monophasé / SG04LP3 triphasé)
+### Deye SG-series (SG05LP1 monophasé / SG05LP3 triphasé)
 
 - Bascule **≈ 4–10 ms** — quasi-instantanée, **de type UPS**
 - **Aucun boîtier supplémentaire** : le secours est intégré à l'onduleur
@@ -56,7 +56,7 @@ Une coupure de ≈ 4–10 ms est imperceptible pour la quasi-totalité des équi
 |---|---|---|
 | Délai de bascule | **≈ 4–10 ms (UPS)** | **< 3 s** (coupure brève) |
 | Boîtier secours séparé | Non, intégré | Oui (Backup Box B0/B1) |
-| Triphasé sans secours | Non (le SG04LP3 assure le secours) | **SUN2000 M0 : aucun secours** |
+| Triphasé sans secours | Non (le SG05LP3 assure le secours) | **SUN2000 M0 : aucun secours** |
 | Tension batterie | 48 V basse tension | Haute tension (LUNA2000) |
 | Fenêtres TOU | **6** | Oui (nombre selon firmware) |
 

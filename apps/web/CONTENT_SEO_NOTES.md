@@ -294,7 +294,7 @@ petrol cost post.** Sources: Médias24; le360; Infomédiaire; globalpetrolprices
 grid-charging** (both have time-of-use scheduling), and **"battery-ready"** operation (run solar-only
 now, add batteries later — cheaper than AC-coupling a string inverter retrofit). Key **backup
 difference** (great differentiator for a Moroccan home riding through grid cuts):
-- **Deye SG-series** (SG03LP1 1-phase / SG04LP3 3-phase): **near-seamless UPS backup (~4–10 ms)**,
+- **Deye SG-series** (SG05LP1 1-phase / SG05LP3 3-phase): **near-seamless UPS backup (~4–10 ms)**,
   **no extra box**, **48 V low-voltage LFP**, **6 configurable TOU charge/discharge windows**. The
   ~4 ms figure is forum-corroborated, not byte-confirmed off the (403-blocked) PDF → cite as "≈".
 - **Huawei SUN2000 L1/M1 + LUNA2000** (HV string LFP, ~350–980 V): clean, well-integrated, excellent
