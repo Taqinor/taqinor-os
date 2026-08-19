@@ -80,13 +80,48 @@ class BuildDevisAutoServiceTest(TestCase):
             float(devis.etude_params['puissance_kwc']), 11.36, places=2)
 
     def test_sizes_from_taille_souhaitee(self):
-        # 6 kWc → round(6000 / 710) = 8 panneaux.
+        # U1 (fondateur 20/08/2026) — le compte de panneaux est un PLAFOND :
+        # 6 kWc → ceil(6000 / 710) = 9 panneaux. Avec l'arrondi au plus proche
+        # d'hier (8 panneaux = 5,68 kWc), le client payait 6 kWc et recevait
+        # moins ; on ne descend JAMAIS sous la puissance vendue.
         devis = build_devis_auto(
             lead=self._lead(taille_souhaitee_kwc=Decimal('6')),
             user=self.user, company=self.company)
         panel = next(li for li in devis.lignes.all()
                      if 'Panneau' in li.designation)
-        self.assertEqual(int(panel.quantite), 8)
+        self.assertEqual(int(panel.quantite), 9)
+
+    def test_le_compte_de_panneaux_couvre_toujours_la_taille_demandee(self):
+        """U1 — invariant du PLAFOND, sur tout le domaine résidentiel utile.
+
+        Le cas signalé par le fondateur (5 kWc → 8 panneaux, jamais 7) n'est
+        qu'un point ; la règle est que la puissance RÉELLEMENT posée n'est
+        jamais inférieure à la taille demandée, et jamais gonflée d'un panneau
+        entier de trop.
+        """
+        from apps.ventes.services import _residential_panel_count
+        for kwc_x10 in range(10, 205, 5):           # 1,0 → 20,0 kWc
+            kwc = Decimal(kwc_x10) / 10
+            nb = _residential_panel_count(taille_kwc=kwc)
+            pose = nb * 710 / 1000
+            self.assertGreaterEqual(
+                pose + 1e-9, float(kwc),
+                '%s kWc : %d panneaux ne couvrent que %.3f kWc' % (
+                    kwc, nb, pose))
+            self.assertLess(
+                (nb - 1) * 710 / 1000, float(kwc),
+                '%s kWc : %d panneaux, un panneau de trop' % (kwc, nb))
+
+    def test_le_plafond_est_stable_par_aller_retour(self):
+        """U1 — miroir Python de la garde anti-dérive flottante de solar.js :
+        un compte de panneaux repassé par son kWc doit se retrouver À
+        L'IDENTIQUE, sans quoi chaque aller-retour ajouterait un panneau."""
+        from apps.ventes.services import _residential_panel_count
+        for nb in range(1, 61):
+            kwc = Decimal(str(nb * 710 / 1000))
+            self.assertEqual(
+                _residential_panel_count(taille_kwc=kwc), nb,
+                'aller-retour instable à %d panneaux' % nb)
 
     def test_battery_added_when_wanted(self):
         devis = build_devis_auto(

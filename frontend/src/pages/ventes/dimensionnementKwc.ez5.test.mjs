@@ -25,9 +25,14 @@ test('la conversion est RÉUTILISÉE, jamais réécrite', () => {
   // Aucune formule kWc→panneaux recopiée à la main dans l'écran.
   const handlers = gen.slice(gen.indexOf('const onKwcCibleChange'), gen.indexOf('const showSans'))
   assert.doesNotMatch(handlers, /Math\.round\(\s*\w+\s*\*\s*1000\s*\//)
-  // 3 kWc en panneaux de 550 W → 5 panneaux (la conversion partagée).
-  assert.equal(panneauxPourKwc(3, 550), 5)
-  assert.equal(panneauxPourKwc(3, 710), 4)
+  // U1 (fondateur 20/08/2026) — la conversion partagée est un PLAFOND : on ne
+  // descend JAMAIS sous la puissance annoncée (« 8 panneaux par 5 kW »).
+  // 3 kWc en panneaux de 550 W → 5,45 → 6 panneaux (5 ne feraient que 2,75 kWc).
+  assert.equal(panneauxPourKwc(3, 550), 6)
+  // 3 kWc en panneaux de 710 W → 4,23 → 5 panneaux (4 ne feraient que 2,84 kWc).
+  assert.equal(panneauxPourKwc(3, 710), 5)
+  // Le pivot de la demande fondateur : 5 kWc en 710 Wc font 8 panneaux, pas 7.
+  assert.equal(panneauxPourKwc(5, 710), 8)
 })
 
 test('les deux champs sont BIDIRECTIONNELS', () => {

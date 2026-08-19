@@ -1645,6 +1645,29 @@ def _arrondi_js(valeur):
     return int(math.floor(float(valeur) + 0.5))
 
 
+# ── U1 (fondateur 20/08/2026) — LE COMPTE DE PANNEAUX EST UN PLAFOND ────────
+# « 7 panneaux pour 5 kW : ça a TOUJOURS été 8 panneaux par 5 kW ». L'arrondi
+# au plus proche sortait 7 panneaux pour 5 kWc en 710 Wc (round(7,042) = 7) :
+# l'installation livrée était SOUS la puissance vendue. La règle est le
+# PLAFOND — miroir EXACT de ``solar.js::plafondPanneaux``.
+#
+# ÉPSILON — un compte de panneaux fait ALLER-RETOUR par le kWc
+# (``kwc = nb * 710 / 1000`` puis re-dérivation) et 8 × 710 / 1000 × 1000 / 710
+# vaut 8.000000000000002 en flottant : sans garde, le plafond ajouterait un
+# 9ᵉ panneau fantôme à chaque aller-retour. La tolérance ramène un « à peine
+# au-dessus d'un entier » sur cet entier ; elle ne peut PAS masquer un vrai
+# besoin partiel (7,042 reste bien au-dessus de 7).
+PANNEAUX_CEIL_EPS = 1e-9
+
+
+def plafond_panneaux(valeur):
+    """``Math.ceil`` tolérant au flottant — miroir de ``plafondPanneaux``."""
+    v = float(valeur or 0)
+    if v <= 0:
+        return 0
+    return int(math.ceil(v - PANNEAUX_CEIL_EPS))
+
+
 def _parse_kw(nom):
     """Puissance kW/kVA lue dans un nom — les « kWh » sont retirés d'abord
     (sans quoi « Batterie 5 kWh » passerait pour un onduleur de 5 kW)."""
@@ -1789,8 +1812,11 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
         return pool[0] if pool else None
 
     # ── Panneaux : compte explicite, sinon dérivé de la puissance ──
+    # U1 — dérivation AU PLAFOND (``plafond_panneaux``) : 5 kWc en 710 Wc font
+    # 8 panneaux, jamais 7. Un compte fourni explicitement est déjà un ENTIER
+    # de panneaux ; il garde son arrondi au plus proche.
     nb = (_arrondi_js(nb_panneaux) if float(nb_panneaux or 0) > 0
-          else max(1, _arrondi_js(kwp * 1000 / watt)))
+          else max(1, plafond_panneaux(kwp * 1000 / watt)))
 
     # ── Onduleur : plus petit modèle ≥ 80 % de la puissance, sinon le plus
     # gros du catalogue ; à puissance égale, Triphasé au-delà de 10 kW ──
@@ -3101,7 +3127,8 @@ def _residential_panel_count(*, facture_hiver=None, taille_kwc=None,
     solar.js : 8 panneaux par tranche de 900 MAD). Renvoie 0 si aucune donnée
     exploitable (le caller lève alors ``AutoDevisError``)."""
     if taille_kwc not in (None, '') and Decimal(str(taille_kwc)) > 0:
-        return int(round(float(taille_kwc) * 1000 / panel_watt))
+        # U1 — PLAFOND, comme ``panneauxPourKwc`` / ``composition_residentielle``.
+        return max(1, plafond_panneaux(float(taille_kwc) * 1000 / panel_watt))
     if facture_hiver not in (None, '') and Decimal(str(facture_hiver)) > 0:
         tranches = int(Decimal(str(facture_hiver)) // _AUTO_TRANCHE_MAD)
         return tranches * _AUTO_PANELS_PER_TRANCHE

@@ -959,13 +959,33 @@ export function designationMatchesProduct(designation, produit) {
   return cd != null && cd === cn
 }
 
+// ── U1 (fondateur 20/08/2026) — LE COMPTE DE PANNEAUX EST UN PLAFOND ────────
+// « 7 panneaux pour 5 kW : ça a TOUJOURS été 8 panneaux par 5 kW ». L'arrondi
+// AU PLUS PROCHE (`Math.round`) sortait 7 panneaux pour 5 kWc en 710 Wc
+// (round(7,042) = 7) : l'installation livrée était SOUS la puissance vendue.
+// La règle est le PLAFOND : on ne descend jamais sous la cible annoncée.
+//
+// ÉPSILON — un compte de panneaux fait ALLER-RETOUR par le kWc
+// (`kwp = nb * 710 / 1000`, puis re-dérivation), et 8 × 710 / 1000 × 1000 / 710
+// vaut 8.000000000000002 en flottant : sans garde, le plafond ajouterait un
+// 9ᵉ panneau fantôme à chaque aller-retour. La tolérance ramène un « à peine
+// au-dessus d'un entier » sur cet entier ; elle ne peut PAS masquer un vrai
+// besoin partiel (7,042 reste bien au-dessus de 7).
+export const PANNEAUX_CEIL_EPS = 1e-9
+
+export function plafondPanneaux(valeur) {
+  const v = Number(valeur)
+  if (!Number.isFinite(v) || v <= 0) return 0
+  return Math.ceil(v - PANNEAUX_CEIL_EPS)
+}
+
 // Nombre de panneaux pour une taille cible (kWc) à la puissance panneau donnée.
 // Utilisé pour préremplir depuis lead.taille_souhaitee_kwc. Au moins 1 panneau.
 export function panneauxPourKwc(kwc, panelW = 710) {
   const k = parseFloat(kwc) || 0
   const w = parseFloat(panelW) || 710
   if (!(k > 0) || !(w > 0)) return 0
-  return Math.max(1, Math.round(k * 1000 / w))
+  return Math.max(1, plafondPanneaux(k * 1000 / w))
 }
 
 const WATT_RE = /(\d{3,4})\s*(?:wc|w)\b/i
@@ -1353,9 +1373,13 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
   // souhaitée) sinon dérivé de la puissance. Le kWc RÉEL est recalculé plus bas
   // depuis la puissance du panneau EFFECTIVEMENT retenu (jamais une divergence
   // silencieuse 550W-pour-710W).
+  // U1 (fondateur 20/08/2026) — dérivation AU PLAFOND, même règle que
+  // `panneauxPourKwc` : 5 kWc en 710 Wc font 8 panneaux, jamais 7. Un compte
+  // fourni explicitement (`nbOverride`) est déjà un ENTIER de panneaux : il
+  // garde son arrondi au plus proche (il ne dérive d'aucune puissance).
   const nbPanneaux = (Number(nbOverride) > 0)
     ? Math.round(Number(nbOverride))
-    : Math.max(1, Math.round(kwp * 1000 / panelW))
+    : Math.max(1, plafondPanneaux(kwp * 1000 / panelW))
   const threshold = kwp * 0.8
 
   // PVOND — VERROU DE COMPLÉTUDE : un onduleur auquel il manque une variable
