@@ -86,8 +86,9 @@ test('la cible traverse le panneau jusqu’au calcul partagé', () => {
   // PVMRQ (18/08) — `marques` suit `targetKwc` dans l'appel : la cible traverse
   // toujours, accompagnée des marques épinglées.
   assert.match(panel, /createAutoQuote\(\{[\s\S]{0,200}?targetKwc,[\s\S]{0,120}?\}\)/)
-  // PVMRQ (18/08) — la signature porte aussi `marques` après `targetKwc`.
-  assert.match(autoQuote, /pumpHours, onEtude,\s*\n\s*targetKwc, marques \}\)/)
+  // PVMRQ (18/08) — la signature porte aussi `marques` après `targetKwc` ;
+  // PVORD (19/08) — puis `ordreLignes` (ordre par défaut des lignes).
+  assert.match(autoQuote, /pumpHours, onEtude,\s*\n\s*targetKwc, marques, ordreLignes \}\)/)
 })
 
 test('la cible prime sur la fiche, mais ne l’écrase jamais', () => {

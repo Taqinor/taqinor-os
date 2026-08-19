@@ -666,7 +666,12 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
       const typeFicheServeur = typeFicheBackend(ficheType)
       if (cibleId && typeFicheServeur) {
         const payloadFiche = champsFichePourType(ficheType, ficheFields)
-        const aDesDonnees = Object.values(payloadFiche).some((v) => v !== null)
+        // PVOND-H — « quelque chose à écrire » ignore `ond_bat_aucune: false` :
+        // c'est le DÉFAUT du booléen (non nul par contrat), pas une saisie —
+        // sans ce filtre, un formulaire vierge sans fiche existante créait
+        // une fiche vide à chaque enregistrement (rouge CI vitest 19/08).
+        const aDesDonnees = Object.entries(payloadFiche).some(
+          ([k, v]) => v !== null && !(k === 'ond_bat_aucune' && v === false))
         if (aDesDonnees || ficheId) {
           try {
             if (ficheId) {

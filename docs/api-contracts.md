@@ -3445,7 +3445,7 @@
     champs: date_creation, date_decision, documents, fournisseur, fournisseur_nom, id, motif_rejet, note, progression, statut, statut_display, valide_par
     statut ∈ {documents_recus, en_attente, rejete, valide}
 - frontend/src/api/stockApi.js :: createFicheTechnique -> /api/django/stock/fiches-techniques  [FicheTechniqueSerializer]
-    champs: bat_dod_pct, bat_kwh_nominal, bat_kwh_usable, bat_max_charge_kw, bat_v_nominal, bifacial, date_creation, date_mise_a_jour, epaisseur_mm, id, imp_a, isc_a, largeur_mm, longueur_mm, ond_ac_kw, ond_i_max_mppt_a, ond_mppt_v_max, ond_mppt_v_min, ond_n_mppt, ond_phases, ond_rendement_euro_pct, ond_v_max_abs, pdf, pmax_wc, poids_kg, produit, produit_garantie, produit_marque, produit_nom, rendement_pct, techno_cellule, temp_coeff_pmax_pct_c, temp_coeff_voc_pct_c, type_fiche, vmp_v, voc_v
+    champs: bat_dod_pct, bat_kwh_nominal, bat_kwh_usable, bat_max_charge_kw, bat_v_nominal, bifacial, date_creation, date_mise_a_jour, epaisseur_mm, id, imp_a, isc_a, largeur_mm, longueur_mm, ond_ac_kw, ond_bat_aucune, ond_bat_v_max, ond_bat_v_min, ond_i_max_mppt_a, ond_isc_max_mppt_a, ond_mppt_v_max, ond_mppt_v_min, ond_n_mppt, ond_phases, ond_rendement_euro_pct, ond_v_demarrage_v, ond_v_max_abs, pdf, pmax_wc, poids_kg, produit, produit_garantie, produit_marque, produit_nom, rendement_pct, techno_cellule, temp_coeff_pmax_pct_c, temp_coeff_voc_pct_c, type_fiche, vmp_v, voc_v
     type_fiche ∈ {autre, batterie, module, onduleur}
 - frontend/src/api/stockApi.js :: createInventaireSession -> /api/django/stock/inventaire-sessions  [InventaireSessionSerializer]
     champs: created_by, created_by_username, date_creation, date_mise_a_jour, id, lignes, motif, reference, statut, statut_display
@@ -3479,7 +3479,7 @@
 - frontend/src/api/stockApi.js :: deleteContactFournisseur -> /api/django/stock/contacts-fournisseur/<>  [ContactFournisseurSerializer]
     champs: email, fonction, fournisseur, id, nom, telephone
 - frontend/src/api/stockApi.js :: deleteFicheTechnique -> /api/django/stock/fiches-techniques/<>  [FicheTechniqueSerializer]
-    champs: bat_dod_pct, bat_kwh_nominal, bat_kwh_usable, bat_max_charge_kw, bat_v_nominal, bifacial, date_creation, date_mise_a_jour, epaisseur_mm, id, imp_a, isc_a, largeur_mm, longueur_mm, ond_ac_kw, ond_i_max_mppt_a, ond_mppt_v_max, ond_mppt_v_min, ond_n_mppt, ond_phases, ond_rendement_euro_pct, ond_v_max_abs, pdf, pmax_wc, poids_kg, produit, produit_garantie, produit_marque, produit_nom, rendement_pct, techno_cellule, temp_coeff_pmax_pct_c, temp_coeff_voc_pct_c, type_fiche, vmp_v, voc_v
+    champs: bat_dod_pct, bat_kwh_nominal, bat_kwh_usable, bat_max_charge_kw, bat_v_nominal, bifacial, date_creation, date_mise_a_jour, epaisseur_mm, id, imp_a, isc_a, largeur_mm, longueur_mm, ond_ac_kw, ond_bat_aucune, ond_bat_v_max, ond_bat_v_min, ond_i_max_mppt_a, ond_isc_max_mppt_a, ond_mppt_v_max, ond_mppt_v_min, ond_n_mppt, ond_phases, ond_rendement_euro_pct, ond_v_demarrage_v, ond_v_max_abs, pdf, pmax_wc, poids_kg, produit, produit_garantie, produit_marque, produit_nom, rendement_pct, techno_cellule, temp_coeff_pmax_pct_c, temp_coeff_voc_pct_c, type_fiche, vmp_v, voc_v
     type_fiche ∈ {autre, batterie, module, onduleur}
 - frontend/src/api/stockApi.js :: deleteModeleBcf -> /api/django/stock/modeles-bcf/<>  [ModeleBonCommandeFournisseurSerializer]
     champs: date_creation, date_mise_a_jour, fournisseur, fournisseur_nom, id, lignes, nom, note
@@ -3512,7 +3512,7 @@
     champs: date_creation, date_emission, date_expiration, date_modification, est_valide, fournisseur, fournisseur_nom, id, note, obligatoire, reference, type_document, type_document_display
     type_document ∈ {arf, assurance, autre, cnss, rc}
 - frontend/src/api/stockApi.js :: getFichesTechniques -> /api/django/stock/fiches-techniques  [FicheTechniqueSerializer]
-    champs: bat_dod_pct, bat_kwh_nominal, bat_kwh_usable, bat_max_charge_kw, bat_v_nominal, bifacial, date_creation, date_mise_a_jour, epaisseur_mm, id, imp_a, isc_a, largeur_mm, longueur_mm, ond_ac_kw, ond_i_max_mppt_a, ond_mppt_v_max, ond_mppt_v_min, ond_n_mppt, ond_phases, ond_rendement_euro_pct, ond_v_max_abs, pdf, pmax_wc, poids_kg, produit, produit_garantie, produit_marque, produit_nom, rendement_pct, techno_cellule, temp_coeff_pmax_pct_c, temp_coeff_voc_pct_c, type_fiche, vmp_v, voc_v
+    champs: bat_dod_pct, bat_kwh_nominal, bat_kwh_usable, bat_max_charge_kw, bat_v_nominal, bifacial, date_creation, date_mise_a_jour, epaisseur_mm, id, imp_a, isc_a, largeur_mm, longueur_mm, ond_ac_kw, ond_bat_aucune, ond_bat_v_max, ond_bat_v_min, ond_i_max_mppt_a, ond_isc_max_mppt_a, ond_mppt_v_max, ond_mppt_v_min, ond_n_mppt, ond_phases, ond_rendement_euro_pct, ond_v_demarrage_v, ond_v_max_abs, pdf, pmax_wc, poids_kg, produit, produit_garantie, produit_marque, produit_nom, rendement_pct, techno_cellule, temp_coeff_pmax_pct_c, temp_coeff_voc_pct_c, type_fiche, vmp_v, voc_v
     type_fiche ∈ {autre, batterie, module, onduleur}
 - frontend/src/api/stockApi.js :: getInventaireSession -> /api/django/stock/inventaire-sessions/<>  [InventaireSessionSerializer]
     champs: created_by, created_by_username, date_creation, date_mise_a_jour, id, lignes, motif, reference, statut, statut_display
@@ -3570,7 +3570,7 @@
 - frontend/src/api/stockApi.js :: updateContactFournisseur -> /api/django/stock/contacts-fournisseur/<>  [ContactFournisseurSerializer]
     champs: email, fonction, fournisseur, id, nom, telephone
 - frontend/src/api/stockApi.js :: updateFicheTechnique -> /api/django/stock/fiches-techniques/<>  [FicheTechniqueSerializer]
-    champs: bat_dod_pct, bat_kwh_nominal, bat_kwh_usable, bat_max_charge_kw, bat_v_nominal, bifacial, date_creation, date_mise_a_jour, epaisseur_mm, id, imp_a, isc_a, largeur_mm, longueur_mm, ond_ac_kw, ond_i_max_mppt_a, ond_mppt_v_max, ond_mppt_v_min, ond_n_mppt, ond_phases, ond_rendement_euro_pct, ond_v_max_abs, pdf, pmax_wc, poids_kg, produit, produit_garantie, produit_marque, produit_nom, rendement_pct, techno_cellule, temp_coeff_pmax_pct_c, temp_coeff_voc_pct_c, type_fiche, vmp_v, voc_v
+    champs: bat_dod_pct, bat_kwh_nominal, bat_kwh_usable, bat_max_charge_kw, bat_v_nominal, bifacial, date_creation, date_mise_a_jour, epaisseur_mm, id, imp_a, isc_a, largeur_mm, longueur_mm, ond_ac_kw, ond_bat_aucune, ond_bat_v_max, ond_bat_v_min, ond_i_max_mppt_a, ond_isc_max_mppt_a, ond_mppt_v_max, ond_mppt_v_min, ond_n_mppt, ond_phases, ond_rendement_euro_pct, ond_v_demarrage_v, ond_v_max_abs, pdf, pmax_wc, poids_kg, produit, produit_garantie, produit_marque, produit_nom, rendement_pct, techno_cellule, temp_coeff_pmax_pct_c, temp_coeff_voc_pct_c, type_fiche, vmp_v, voc_v
     type_fiche ∈ {autre, batterie, module, onduleur}
 - frontend/src/api/stockApi.js :: updateModeleBcf -> /api/django/stock/modeles-bcf/<>  [ModeleBonCommandeFournisseurSerializer]
     champs: date_creation, date_mise_a_jour, fournisseur, fournisseur_nom, id, lignes, nom, note
@@ -3586,7 +3586,7 @@
     champs: encode, est_regex, id, motif, nomenclature, priorite
     encode ∈ {emplacement, lot, produit, quantite, serie}
 - frontend/src/api/stockApi.js :: uploadFicheTechniquePdf -> /api/django/stock/fiches-techniques/<>  [FicheTechniqueSerializer]
-    champs: bat_dod_pct, bat_kwh_nominal, bat_kwh_usable, bat_max_charge_kw, bat_v_nominal, bifacial, date_creation, date_mise_a_jour, epaisseur_mm, id, imp_a, isc_a, largeur_mm, longueur_mm, ond_ac_kw, ond_i_max_mppt_a, ond_mppt_v_max, ond_mppt_v_min, ond_n_mppt, ond_phases, ond_rendement_euro_pct, ond_v_max_abs, pdf, pmax_wc, poids_kg, produit, produit_garantie, produit_marque, produit_nom, rendement_pct, techno_cellule, temp_coeff_pmax_pct_c, temp_coeff_voc_pct_c, type_fiche, vmp_v, voc_v
+    champs: bat_dod_pct, bat_kwh_nominal, bat_kwh_usable, bat_max_charge_kw, bat_v_nominal, bifacial, date_creation, date_mise_a_jour, epaisseur_mm, id, imp_a, isc_a, largeur_mm, longueur_mm, ond_ac_kw, ond_bat_aucune, ond_bat_v_max, ond_bat_v_min, ond_i_max_mppt_a, ond_isc_max_mppt_a, ond_mppt_v_max, ond_mppt_v_min, ond_n_mppt, ond_phases, ond_rendement_euro_pct, ond_v_demarrage_v, ond_v_max_abs, pdf, pmax_wc, poids_kg, produit, produit_garantie, produit_marque, produit_nom, rendement_pct, techno_cellule, temp_coeff_pmax_pct_c, temp_coeff_voc_pct_c, type_fiche, vmp_v, voc_v
     type_fiche ∈ {autre, batterie, module, onduleur}
 - frontend/src/api/uxviewsApi.js :: createSavedView -> /api/django/uxviews/saved-views  [SavedViewSerializer]
     champs: configuration, created_at, ecran, est_defaut_role, id, nom, owner, owner_nom, role, role_nom, updated_at, visibilite

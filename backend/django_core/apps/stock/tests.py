@@ -104,9 +104,17 @@ class TestSeedCatalogue(TestCase):
         self.assertEqual(fiche_jk.type_fiche, 'module')
         self.assertEqual(fiche_jk.temp_coeff_pmax_pct_c, Decimal('-0.290'))
         self.assertEqual(fiche_jk.temp_coeff_voc_pct_c, Decimal('-0.250'))
-        # Dimensions Jinko non vérifiées : jamais inventées.
-        self.assertIsNone(fiche_jk.longueur_mm)
-        self.assertIsNone(fiche_jk.largeur_mm)
+        # PVOND-H (19/08/2026) — la fiche Jinko est désormais SOURCÉE sur la
+        # datasheet officielle JKM710-735N-66HL5-BDV-Z3-EU (elle n'avait
+        # aucune valeur électrique avant) : le pin « dimensions absentes »
+        # d'hier documente ce qui MANQUAIT, celui-ci ce qui est VÉRIFIÉ.
+        self.assertEqual(fiche_jk.pmax_wc, Decimal('710.00'))
+        self.assertEqual(fiche_jk.voc_v, Decimal('48.73'))
+        self.assertEqual(fiche_jk.isc_a, Decimal('18.53'))
+        self.assertEqual(fiche_jk.vmp_v, Decimal('40.65'))
+        self.assertEqual(fiche_jk.imp_a, Decimal('17.47'))
+        self.assertEqual(fiche_jk.longueur_mm, 2384)
+        self.assertEqual(fiche_jk.largeur_mm, 1303)
 
     def test_pv9_fiches_techniques_idempotent_second_run(self):
         from apps.stock.models import FicheTechnique

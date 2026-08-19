@@ -294,56 +294,43 @@ class TestFacturesReellesContract(TestCase):
         self.assertLess(synth['coverage_pct'], 100)
         self.assertGreater(synth['coverage_pct'], 0)
 
+    # Le pin du repli ne RE-DÉRIVE jamais le proxy à la main : le dénominateur
+    # (taux « avec ») dépend du devis et du modèle d'économies retenu — le pin
+    # manuel « / AUTOCONSO_AVEC » était FAUX dès que le modèle « factures »
+    # s'active (rouge CI du 19/08). Le VRAI contrat de S2 : une clé absente ou
+    # malformée rend EXACTEMENT ce que rend le build sans la clé — on compare
+    # donc deux builds construits dans le MÊME test (même catalogue).
+    def _factures_rendues(self, etude_params, reference):
+        from apps.ventes.quote_engine import build_quote_data
+        return build_quote_data(
+            self._devis(etude_params=etude_params, reference=reference),
+        )['factures_mensuelles']
+
+    _ETUDE_SANS_CLE = {'distributeur': 'onee', 'conso_annuelle': 6000}
+
+    def _assert_repli_identique(self, valeur_malformee, reference):
+        sans = self._factures_rendues(dict(self._ETUDE_SANS_CLE),
+                                      reference + 'A')
+        avec = self._factures_rendues(
+            {**self._ETUDE_SANS_CLE,
+             'factures_mensuelles_reelles': valeur_malformee},
+            reference + 'B')
+        self.assertEqual(avec, sans)
+        return sans
+
     def test_absence_of_keys_stays_byte_identical_to_legacy_proxy(self):
         """Pin du comportement HISTORIQUE : sans factures_mensuelles_reelles,
-        la série « avant » reste le proxy éco/autoconso — formule inchangée."""
-        from apps.ventes.quote_engine import build_quote_data
-        from apps.ventes.quote_engine.pricing import AUTOCONSO_AVEC
-        devis = self._devis(
-            etude_params={'distributeur': 'onee', 'conso_annuelle': 6000},
-            reference='DEV-QFREAL-0002')
-        data = build_quote_data(devis)
-        # Aucune batterie sur ce devis → le taux « avec » retombe sur le
-        # forfait historique AUTOCONSO_AVEC (0,85), exactement comme avant
-        # l'introduction du contrat factures_mensuelles_reelles.
-        expected = [round(v / AUTOCONSO_AVEC) for v in data['eco_a_monthly']]
-        self.assertEqual(data['factures_mensuelles'], expected)
+        la série « avant » reste le proxy éco/autoconso (12 entiers > 0), et
+        une clé None est traitée comme une clé absente."""
+        sans = self._assert_repli_identique(None, 'DEV-QFREAL-0002')
+        self.assertEqual(len(sans), 12)
+        self.assertTrue(all(v > 0 for v in sans), sans)
 
     def test_wrong_length_falls_back_silently_to_proxy(self):
-        from apps.ventes.quote_engine import build_quote_data
-        from apps.ventes.quote_engine.pricing import AUTOCONSO_AVEC
-        devis = self._devis(
-            etude_params={
-                'distributeur': 'onee', 'conso_annuelle': 6000,
-                'factures_mensuelles_reelles': [1200] * 11,  # 11, pas 12
-            },
-            reference='DEV-QFREAL-0003')
-        data = build_quote_data(devis)
-        expected = [round(v / AUTOCONSO_AVEC) for v in data['eco_a_monthly']]
-        self.assertEqual(data['factures_mensuelles'], expected)
+        self._assert_repli_identique([1200] * 11, 'DEV-QFREAL-0003')  # 11≠12
 
     def test_non_numeric_values_fall_back_silently_to_proxy(self):
-        from apps.ventes.quote_engine import build_quote_data
-        from apps.ventes.quote_engine.pricing import AUTOCONSO_AVEC
-        devis = self._devis(
-            etude_params={
-                'distributeur': 'onee', 'conso_annuelle': 6000,
-                'factures_mensuelles_reelles': ['x'] * 12,
-            },
-            reference='DEV-QFREAL-0004')
-        data = build_quote_data(devis)
-        expected = [round(v / AUTOCONSO_AVEC) for v in data['eco_a_monthly']]
-        self.assertEqual(data['factures_mensuelles'], expected)
+        self._assert_repli_identique(['x'] * 12, 'DEV-QFREAL-0004')
 
     def test_non_positive_values_fall_back_silently_to_proxy(self):
-        from apps.ventes.quote_engine import build_quote_data
-        from apps.ventes.quote_engine.pricing import AUTOCONSO_AVEC
-        devis = self._devis(
-            etude_params={
-                'distributeur': 'onee', 'conso_annuelle': 6000,
-                'factures_mensuelles_reelles': [0] * 12,
-            },
-            reference='DEV-QFREAL-0005')
-        data = build_quote_data(devis)
-        expected = [round(v / AUTOCONSO_AVEC) for v in data['eco_a_monthly']]
-        self.assertEqual(data['factures_mensuelles'], expected)
+        self._assert_repli_identique([0] * 12, 'DEV-QFREAL-0005')
