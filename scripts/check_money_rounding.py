@@ -44,7 +44,7 @@ BASELINE_ALLOWLIST = {
     # inséré à cette ligne, c.-à-d. exactement l'arrondi monétaire hors
     # `quantize_mad` que cette garde existe pour faire relire.
     "backend/django_core/apps/ventes/quote_engine/builder.py:1749",  # QJ29 multi-villa ×N (réécrit PVUNI, formule préexistante revue)
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1809",  # total_ttc ligne gamme (réécrit PVUNI, formule préexistante revue)
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1836",  # total_ttc ligne gamme (réécrit PVUNI, formule préexistante revue)
     "backend/django_core/apps/ventes/quote_engine/builder.py:628",
     "backend/django_core/apps/ventes/quote_engine/builder.py:630",
     "backend/django_core/apps/ventes/quote_engine/builder.py:686",
@@ -143,7 +143,7 @@ BASELINE_ALLOWLIST = {
     "backend/django_core/apps/ventes/quote_engine/builder.py:1084",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1672",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1706",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1759",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1783",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1700",
     # GAMMES (2026-08-18, offre à deux gammes) — RE-CALAGE file:line, PAS de
     # nouveau site (bug-class #34). Deux insertions purement additives :
@@ -182,13 +182,13 @@ BASELINE_ALLOWLIST = {
     "backend/django_core/apps/ventes/services.py:2523",
     "backend/django_core/apps/ventes/quote_engine/builder.py:336",
     "backend/django_core/apps/ventes/quote_engine/builder.py:337",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:699",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:727",
     "backend/django_core/apps/ventes/quote_engine/builder.py:840",
     "backend/django_core/apps/ventes/quote_engine/builder.py:842",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:867",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:869",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:895",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:897",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1084",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1097",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1125",
     # QXMT (2026-08-18) — le bloc « un dossier MT ne porte jamais un chiffre
     # BT » (+36 lignes, inséré APRÈS le calcul ROI, avant QF2) décale les
     # QUATRE arrondis d'affichage qui le suivent (montant de TVA ×N villas,
@@ -198,7 +198,7 @@ BASELINE_ALLOWLIST = {
     # au-dessus (300…985) sont AVANT l'insertion et ne bougent pas.
     "backend/django_core/apps/ventes/quote_engine/builder.py:1809",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1755",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1808",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1837",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1749",
 }
 
