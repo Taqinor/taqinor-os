@@ -92,7 +92,7 @@ BASELINE_ALLOWLIST = {
     "backend/django_core/apps/ventes/quote_engine/builder.py:683",
     "backend/django_core/apps/ventes/quote_engine/builder.py:685",
     "backend/django_core/apps/ventes/quote_engine/builder.py:829",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:842",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:870",
     # QX ROUND 7 (2026-07-16) — QX43/QX50 builder.py edits shifted existing
     # display-round sites again; re-based 1:1 (premium engine, sanctioned
     # whole-MAD display rounding — rule #4 vendored engine, not new logic).
@@ -138,7 +138,7 @@ BASELINE_ALLOWLIST = {
     # tous de +46, à l'identique. Vérifié : le diff n'ajoute AUCUN round() —
     # aucun NOUVEAU site, simple re-calage file:line (bug-class #34).
     "backend/django_core/apps/ventes/quote_engine/builder.py:827",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:856",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:868",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1064",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1084",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1672",
@@ -187,7 +187,7 @@ BASELINE_ALLOWLIST = {
     "backend/django_core/apps/ventes/quote_engine/builder.py:842",
     "backend/django_core/apps/ventes/quote_engine/builder.py:895",
     "backend/django_core/apps/ventes/quote_engine/builder.py:897",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1084",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1112",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1125",
     # QXMT (2026-08-18) — le bloc « un dossier MT ne porte jamais un chiffre
     # BT » (+36 lignes, inséré APRÈS le calcul ROI, avant QF2) décale les
