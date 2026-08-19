@@ -372,17 +372,12 @@ def concevoir_protections(entree, resultat_chaines=None, evaluation=None):
                           "barrette de terre"),
         ))
 
-    # ── 9. Parc batterie (le cas échéant) ────────────────────────────────────
-    if entree.batterie:
-        protections.append(Protection(
-            repere="QBAT1",
-            designation="Sectionneur-fusible DC batterie",
-            calibre="selon courant de décharge du parc",
-            quantite=1,
-            regle_source=("NF C 15-100 §464 — organe de sectionnement "
-                          "d'urgence du parc de stockage (le guide "
-                          "UTE C 15-712-1 ne couvre pas le stockage)"),
-        ))
+    # ── 9. Parc batterie ──────────────────────────────────────────────────────
+    # AUCUN organe de protection posé ici, et ce n'est pas un oubli : décision
+    # fondateur 19/08/2026, TAQINOR ne pose pas de fusible/sectionneur dédié
+    # sur le parc de stockage (« I don't install fuses for batteries »). Le
+    # câblage batterie lui-même reste au bordereau (câble DC 25 mm²,
+    # ``core.electrique.nomenclature``) — seul l'organe de coupure disparaît.
 
     if resultat_chaines is not None:
         bloquants.extend(resultat_chaines.bloquants)

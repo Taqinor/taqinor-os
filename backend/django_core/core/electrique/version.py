@@ -17,9 +17,17 @@ Convention MAJEUR.MINEUR.CORRECTIF :
 
 Un changement de MAJEUR invalide les dossiers déjà déposés : ils doivent être
 rejoués avant d'être re-remis à un client ou au gestionnaire de réseau.
+
+Journal des MAJEUR :
+
+* **2.0.0 — décision fondateur 19/08/2026 : plus de fusible/sectionneur sur
+  le parc batterie.** ``concevoir_protections`` ne pose plus l'organe QBAT1
+  (« Sectionneur-fusible DC batterie ») — TAQINOR n'en installe pas. Un
+  dossier hybride/autonome perd donc une ligne de protection à entrée
+  identique : c'est la définition même d'un MAJEUR ici.
 """
 
-VERSION_MOTEUR = "1.0.0"
+VERSION_MOTEUR = "2.0.0"
 
 #: Version du schéma d'échange (dictionnaires de projection ``tiroirs`` et
 #: nomenclature). Elle évolue indépendamment de ``VERSION_MOTEUR`` : le moteur

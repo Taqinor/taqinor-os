@@ -177,8 +177,10 @@ class HybrideAvecBatterie(unittest.TestCase):
         self.assertEqual(self.resultat.nb_chaines, 2)
         self.assertEqual([c.nb_modules for c in self.resultat.chaines], [8, 8])
 
-    def test_le_stockage_amene_son_sectionnement_et_son_cablage(self):
-        self.assertIsNotNone(_repere(self.resultat.protections, "QBAT1"))
+    def test_le_stockage_amene_son_cablage_mais_aucun_organe_de_protection(self):
+        # Décision fondateur 19/08/2026 : TAQINOR ne pose pas de fusible ni de
+        # sectionneur dédié sur le parc batterie — seul le câblage reste.
+        self.assertIsNone(_repere(self.resultat.protections, "QBAT1"))
         self.assertTrue(any(ligne.categorie == "Batterie"
                             for ligne in self.resultat.bom))
 
