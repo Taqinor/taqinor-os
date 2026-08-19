@@ -328,6 +328,35 @@ jobs:
       # 4 shards `backend-tests` (le chemin critique du gate) : le temps de mur
       # du merge est inchangé. AUCUNE base de données n'est nécessaire (le
       # générateur ne fait qu'introspecter vues et serializers).
+      # WOW-CI ronde 4 (19/08/2026) — MEME cache apt que e2e-shard (meme patron,
+      # meme cle apt-e2e-v2-...) : ce job installe les memes paquets WeasyPrint
+      # et payait le telechargement complet a chaque run, sans jamais partager
+      # le cache que e2e-shard alimente deja. Cle inchangee (lockfile frontend
+      # uniquement) pour rester dans le MEME cache partage — voir le commentaire
+      # WOW-CI7 sur e2e-shard plus bas dans ce fichier.
+      - name: Redirect apt's .deb store into a cacheable directory
+        # JAMAIS BLOQUANT : ce n'est qu'une optimisation. Si quoi que ce soit
+        # échoue ici, apt reprend son magasin par défaut et le job se comporte
+        # exactement comme avant — une accélération ne doit pas pouvoir faire
+        # rougir un check REQUIS.
+        run: |
+          set -uo pipefail
+          mkdir -p "$HOME/apt-archives/partial" || true
+          # apt abandonne ses privilèges vers l'utilisateur `_apt` pour écrire
+          # dans `partial/` : sans droits larges il retombe (bruyamment) sur un
+          # téléchargement non bac-à-sable, ou échoue.
+          chmod -R 777 "$HOME/apt-archives" || true
+          printf 'Dir::Cache::archives "%s";\nBinary::apt::APT::Keep-Downloaded-Packages "true";\n' \
+            "$HOME/apt-archives" | sudo tee /etc/apt/apt.conf.d/99-ci-archive-cache >/dev/null \
+            || echo "AVERTISSEMENT : redirection du cache apt impossible — on continue sans."
+          exit 0
+      - name: Cache apt packages (Playwright system deps + WeasyPrint)
+        uses: actions/cache@v4
+        with:
+          path: ~/apt-archives
+          key: apt-e2e-v2-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: |
+            apt-e2e-v2-${{ runner.os }}-
       - name: Install WeasyPrint system libraries (URLconf import — YAPIC6)
         run: |
           sudo apt-get update

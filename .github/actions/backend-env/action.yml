@@ -30,6 +30,40 @@ inputs:
 runs:
   using: composite
   steps:
+    # WOW-CI ronde 4 (19/08/2026) — MEME cache apt que e2e-shard (ci.yml, job
+    # e2e-shard), DEPLACE ICI pour que backend-tests-shard (x6) et rls-tests en
+    # heritent aussi : eux appellent cette action SANS le redirect+cache que
+    # e2e-shard se pose lui-meme avant d'appeler l'action, donc ils payaient le
+    # telechargement apt complet a chaque lane. Cle IDENTIQUE a celle d'e2e-shard
+    # (apt-e2e-v2-...) — a dessein, pour PARTAGER un seul cache entre tous les
+    # jobs qui installent les memes paquets WeasyPrint. La cle ne depend QUE du
+    # lockfile frontend (jamais de ce fichier action.yml) : WOW-CI7 (commit
+    # 14e14dc2) a decouple les deux expres, une edition de cette action ne doit
+    # jamais invalider le cache apt.
+    - name: Redirect apt's .deb store into a cacheable directory
+      shell: bash
+      # JAMAIS BLOQUANT : ce n'est qu'une optimisation. Si quoi que ce soit
+      # échoue ici, apt reprend son magasin par défaut et le job se comporte
+      # exactement comme avant — une accélération ne doit pas pouvoir faire
+      # rougir un check REQUIS.
+      run: |
+        set -uo pipefail
+        mkdir -p "$HOME/apt-archives/partial" || true
+        # apt abandonne ses privilèges vers l'utilisateur `_apt` pour écrire
+        # dans `partial/` : sans droits larges il retombe (bruyamment) sur un
+        # téléchargement non bac-à-sable, ou échoue.
+        chmod -R 777 "$HOME/apt-archives" || true
+        printf 'Dir::Cache::archives "%s";\nBinary::apt::APT::Keep-Downloaded-Packages "true";\n' \
+          "$HOME/apt-archives" | sudo tee /etc/apt/apt.conf.d/99-ci-archive-cache >/dev/null \
+          || echo "AVERTISSEMENT : redirection du cache apt impossible — on continue sans."
+        exit 0
+    - name: Cache apt packages (Playwright system deps + WeasyPrint)
+      uses: actions/cache@v4
+      with:
+        path: ~/apt-archives
+        key: apt-e2e-v2-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
+        restore-keys: |
+          apt-e2e-v2-${{ runner.os }}-
     - name: Install WeasyPrint system dependencies
       shell: bash
       run: |
