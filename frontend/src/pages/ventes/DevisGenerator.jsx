@@ -1475,6 +1475,24 @@ export default function DevisGenerator({
   })
   const removeLine = useCallback((key) =>
     setLines(ls => ls.filter(l => l._key !== key)), [setLines])
+  // PVORD (fondateur 19/08/2026) — réordonnancement manuel des lignes dans
+  // l'éditeur (monter/descendre). Mutation PURE de l'ORDRE du tableau
+  // `lines` : le chemin de sauvegarde existant (`lignesPayload`, plus bas)
+  // dérive déjà `ordre: idx` de cet ordre — aucun autre câblage requis pour
+  // que le nouvel ordre soit persisté au « Enregistrer ». `delta` = -1
+  // (monter) ou +1 (descendre) ; hors bornes = no-op silencieux.
+  const moveLine = useCallback((key, delta) => setLines(ls => {
+    const idx = ls.findIndex(l => l._key === key)
+    if (idx < 0) return ls
+    const target = idx + delta
+    if (target < 0 || target >= ls.length) return ls
+    const copy = ls.slice()
+    const [item] = copy.splice(idx, 1)
+    copy.splice(target, 0, item)
+    return copy
+  }), [setLines])
+  const moveLineUp = useCallback((key) => moveLine(key, -1), [moveLine])
+  const moveLineDown = useCallback((key) => moveLine(key, 1), [moveLine])
   // VX188 — identité stable pour ProduitPicker.onProduitCreated (passé à
   // chaque DevisLineRow) : setProduits est déjà un setState fonctionnel,
   // aucune dépendance réelle.
@@ -3278,6 +3296,9 @@ export default function DevisGenerator({
                     {/* XSAL5 — case « option » : la ligne est un add-on proposé
                         hors total (activable par le client sur la proposition). */}
                     <th style={{ width: 56 }} title="Ligne optionnelle (add-on) : proposée au client hors total">Option</th>
+                    {/* PVORD — monter/descendre : ordre par défaut = ordre du
+                        simulateur (autoFillLines), réordonnable ici. */}
+                    <th className="col-ordre" title="Réordonner la ligne">Ordre</th>
                     <th className="col-del"></th>
                   </tr>
                 </thead>
@@ -3286,7 +3307,7 @@ export default function DevisGenerator({
                       dans Note/farmSurfaceHa/n'importe lequel des autres
                       useState ne re-rend plus les lignes inchangées (callbacks
                       stabilisés ci-dessus, clé en argument). */}
-                  {lines.map(l => (
+                  {lines.map((l, i) => (
                     <DevisLineRow
                       key={l._key}
                       line={l}
@@ -3304,6 +3325,10 @@ export default function DevisGenerator({
                       onQuantiteChange={onQuantiteChange}
                       onSetGroupe={setLineGroupe}
                       onRemove={removeLine}
+                      canMoveUp={i > 0}
+                      canMoveDown={i < lines.length - 1}
+                      onMoveUp={moveLineUp}
+                      onMoveDown={moveLineDown}
                     />
                   ))}
                 </tbody>

@@ -1625,6 +1625,16 @@ textarea.form-control {
 
 .col-num { width: 90px; text-align: right; }
 .col-del { width: 32px; }
+/* PVORD (fondateur 19/08/2026) — monter/descendre une ligne de devis. */
+.col-ordre { width: 60px; }
+.line-reorder-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.line-reorder-buttons button:disabled {
+  opacity: 0.35;
+}
 
 .line-total {
   text-align: right;
