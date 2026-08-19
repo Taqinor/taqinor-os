@@ -73,12 +73,12 @@ const pvout = [
 ];
 
 const tariffs = [
-  { range: '<span dir="ltr">0 – 100 kWh</span>', tariff: '<span dir="ltr">0,9010</span>', mode: 'تصاعدي' },
-  { range: '<span dir="ltr">101 – 150 kWh</span>', tariff: '<span dir="ltr">1,0732</span>', mode: 'تصاعدي' },
-  { range: '<span dir="ltr">151 – 210 kWh</span>', tariff: '<span dir="ltr">1,0732</span>', mode: 'انتقائي' },
-  { range: '<span dir="ltr">211 – 310 kWh</span>', tariff: '<span dir="ltr">1,1676</span>', mode: 'انتقائي' },
-  { range: '<span dir="ltr">311 – 510 kWh</span>', tariff: '<span dir="ltr">1,3817</span>', mode: 'انتقائي' },
-  { range: '<span dir="ltr">> 510 kWh</span>', tariff: '<span dir="ltr">1,5958</span>', mode: 'انتقائي' },
+  { range: '<span dir="ltr">0 – 100 kWh</span>', tariff: '<span dir="ltr">0,916272</span>', mode: 'تصاعدي' },
+  { range: '<span dir="ltr">101 – 150 kWh</span>', tariff: '<span dir="ltr">1,091388</span>', mode: 'تصاعدي' },
+  { range: '<span dir="ltr">151 – 210 kWh</span>', tariff: '<span dir="ltr">1,091388</span>', mode: 'انتقائي' },
+  { range: '<span dir="ltr">211 – 310 kWh</span>', tariff: '<span dir="ltr">1,187388</span>', mode: 'انتقائي' },
+  { range: '<span dir="ltr">311 – 510 kWh</span>', tariff: '<span dir="ltr">1,405116</span>', mode: 'انتقائي' },
+  { range: '<span dir="ltr">> 510 kWh</span>', tariff: '<span dir="ltr">1,622856</span>', mode: 'انتقائي' },
 ];
 ---
 
@@ -185,14 +185,14 @@ const tariffs = [
           <li>فوق <strong><span dir="ltr" style="unicode-bidi:isolate">150 kWh/شهر</span></strong>، تصبح الفوترة <strong>«انتقائية»</strong>: <strong>كل استهلاك الشهر</strong> يُفوتَر بتعريفة الشطر المُبلَغ.</li>
         </ul>
         <p>
-          <strong>مثال ملموس:</strong> أسرة تستهلك <span dir="ltr" style="unicode-bidi:isolate">250 kWh</span> في يوليوز لا تدفع الـ<span dir="ltr" style="unicode-bidi:isolate">100 kWh</span> الأولى بـ<span dir="ltr" style="unicode-bidi:isolate">0,9010</span>
-          درهم ثم الباقي بـ<span dir="ltr" style="unicode-bidi:isolate">1,0732</span>… بل تدفع الـ<span dir="ltr" style="unicode-bidi:isolate">250 kWh</span> <em>كاملة</em> بتعريفة شطر <span dir="ltr" style="unicode-bidi:isolate">211–310 kWh</span>، أي
-          <span dir="ltr" style="unicode-bidi:isolate">1,1676</span> درهم/kWh (تسامح <span dir="ltr" style="unicode-bidi:isolate">10 kWh</span> لكل شطر يُخفّف التجاوزات الطفيفة).
+          <strong>مثال ملموس:</strong> أسرة تستهلك <span dir="ltr" style="unicode-bidi:isolate">250 kWh</span> في يوليوز لا تدفع الـ<span dir="ltr" style="unicode-bidi:isolate">100 kWh</span> الأولى بـ<span dir="ltr" style="unicode-bidi:isolate">0,916272</span>
+          درهم ثم الباقي بـ<span dir="ltr" style="unicode-bidi:isolate">1,091388</span>… بل تدفع الـ<span dir="ltr" style="unicode-bidi:isolate">250 kWh</span> <em>كاملة</em> بتعريفة شطر <span dir="ltr" style="unicode-bidi:isolate">211–310 kWh</span>، أي
+          <span dir="ltr" style="unicode-bidi:isolate">1,187388</span> درهم/kWh (تسامح <span dir="ltr" style="unicode-bidi:isolate">10 kWh</span> لكل شطر يُخفّف التجاوزات الطفيفة).
         </p>
         <p>
           ما تُزيله الطاقة الشمسية هو بالضبط هذه التعريفة الهامشية المرتفعة المُطبَّقة على كامل
           الفاتورة. لنأخذ أسرة في شطر <span dir="ltr" style="unicode-bidi:isolate">311–510 kWh</span> تسحب <span dir="ltr" style="unicode-bidi:isolate">200 kWh</span> شهرياً من الشبكة بفضل ألواحها: توفّر
-          هذه الـ<span dir="ltr" style="unicode-bidi:isolate">200 kWh</span> بالتعريفة <em>الهامشية</em> البالغة <span dir="ltr" style="unicode-bidi:isolate">1,3817</span> درهم، لا بالمعدّل الظاهري لفاتورتها
+          هذه الـ<span dir="ltr" style="unicode-bidi:isolate">200 kWh</span> بالتعريفة <em>الهامشية</em> البالغة <span dir="ltr" style="unicode-bidi:isolate">1,405116</span> درهم، لا بالمعدّل الظاهري لفاتورتها
           القديمة. هذا كل السبب في ارتفاع الربحية لدى كبار المستهلكين، وهو أيضاً ما أتحقّق منه أولاً
           على فاتورة قبل تسعير أي شيء.
         </p>
@@ -205,7 +205,7 @@ const tariffs = [
         </p>
         <p><strong>ما يؤثّر على الاسترجاع:</strong></p>
         <ul>
-          <li><strong>شطركم التعريفي الحالي</strong>: كلّما كنتم في شطر أعلى (≥ <span dir="ltr" style="unicode-bidi:isolate">1,3817</span> درهم/kWh)، كلّما كانت التوفيرات السنوية أكبر والاسترجاع أسرع.</li>
+          <li><strong>شطركم التعريفي الحالي</strong>: كلّما كنتم في شطر أعلى (≥ <span dir="ltr" style="unicode-bidi:isolate">1,405116</span> درهم/kWh)، كلّما كانت التوفيرات السنوية أكبر والاسترجاع أسرع.</li>
           <li><strong>كلفة التركيبة</strong>: هامش استرشادي 2026 من <span dir="ltr">~10 000 إلى 14 000</span> درهم/kWc (عتاد + تركيب، مصادر مُركِّبين — غير مُدقَّق). انظروا <a href={L('/blog/prix-installation-solaire-maroc-2026')}>دليلنا للأثمنة</a>.</li>
           <li><strong>معدّل استهلاككم الذاتي</strong>: ينظّم <a href={L('/loi-82-21')}>القانون <span dir="ltr" style="unicode-bidi:isolate">82-21</span></a> الإنتاج الذاتي للتوتر المنخفض، لكن لم تُنشَر بعد أي تعريفة إعادة شراء سكنية (توتر منخفض) — نشرت ANRE تعريفة إعادة شراء الفائض (<span dir="ltr">0,18–0,21</span> درهم/kWh) فقط للتوتر المتوسط/العالي/العالي جداً، وليس للبيوت أقل من <span dir="ltr">11 kW</span>. وما دامت هذه التعريفة غير موجودة رسمياً، لا نحتسب <strong>أي عائد من التصدير</strong>: القيمة الفعلية للطاقة الشمسية في الاستهلاك الفوري، لا في إعادة بيع فائض غير مُقيَّم (انظروا <a href={L('/methodologie-estimation')}>منهجيتنا في التقدير</a>).</li>
           <li><strong>البطارية</strong>: إضافة تخزين تُطيل الاسترجاع بـ<strong><span dir="ltr" style="unicode-bidi:isolate">1</span> إلى <span dir="ltr" style="unicode-bidi:isolate">3 سنوات</span></strong> لكنها تزيد معدّل الاستهلاك الذاتي المسائي.</li>
