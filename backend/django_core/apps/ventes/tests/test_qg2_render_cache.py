@@ -13,6 +13,7 @@ Ce module teste les fonctions PURES de signature (aucune infra MinIO/Celery
 requise) : c'est ce qui gouverne le hit/miss du cache.
 """
 from decimal import Decimal
+from unittest import mock
 
 from django.test import TestCase
 
@@ -132,3 +133,109 @@ class RenderSignatureRoofLayoutTests(TestCase):
         sig1 = _render_signature(self.devis.id, self.opts)
         sig2 = _render_signature(self.devis.id, self.opts)
         self.assertEqual(sig1, sig2)
+
+
+class LEmpreinteNeSeffondreJamaisSurLaConstanteVide(TestCase):
+    """RVCEL2 — l'empreinte de contenu ne doit JAMAIS retomber sur ``''``.
+
+    Le partage d'empreinte (PVFRESH/RVCEL) avait été posé sous un
+    ``except Exception: return ''``. Or le moteur REFUSE (règle dure) de bâtir
+    le format « full » d'un devis dont aucune option ne porte d'onduleur — un
+    devis de structure, d'accessoires ou de pompage, c'est-à-dire un cas
+    banal. L'erreur était avalée, l'empreinte devenait la CONSTANTE ``''``, et
+    la signature de rendu redevenait keyée sur les seules options : le cache
+    servait de nouveau l'ANCIEN PDF après une édition — exactement le défaut
+    que QG2 existe pour empêcher, désormais en silence et pour toujours.
+
+    Ce module verrouille les trois issues : refus déclaré du moteur, empreinte
+    de rendu indisponible, erreur inattendue. Dans AUCUNE, deux états
+    différents d'un devis ne partagent une empreinte vide.
+    """
+
+    def setUp(self):
+        self.company = Company.objects.create(
+            nom='RVCEL2 Co', slug='rvcel2-co')
+        self.client_obj = Client.objects.create(
+            company=self.company, nom='Client RVCEL2')
+        self.produit = Produit.objects.create(
+            company=self.company, nom='Structure acier', sku='RV-STR',
+            prix_vente=Decimal('500'))
+        # AUCUN onduleur : le moteur refuse le format « full » pour ce devis.
+        self.devis = Devis.objects.create(
+            company=self.company, reference='DEV-RVCEL2-0001',
+            client=self.client_obj, statut=Devis.Statut.BROUILLON)
+        self.ligne = LigneDevis.objects.create(
+            devis=self.devis, produit=self.produit, designation='Structure',
+            quantite=Decimal('4'), prix_unitaire=Decimal('500'),
+            taux_tva=Decimal('20'))
+
+    def _empreintes_des_deux_etats(self, options=None):
+        """Empreintes AVANT et APRÈS une édition réelle du devis."""
+        avant = _content_version(self.devis.id, options)
+        self.ligne.quantite = Decimal('9')
+        self.ligne.save(update_fields=['quantite'])
+        apres = _content_version(self.devis.id, options)
+        return avant, apres
+
+    def _assert_jamais_vide_et_discriminante(self, avant, apres):
+        self.assertTrue(avant, "empreinte AVANT vide : le cache retombe sur "
+                               "les seules options → PDF périmé")
+        self.assertTrue(apres, "empreinte APRÈS vide : le cache retombe sur "
+                               "les seules options → PDF périmé")
+        self.assertNotEqual(
+            avant, apres,
+            "deux états différents du devis partagent la même empreinte : "
+            "l'édition ne casse plus le cache de rendu")
+
+    def test_un_devis_sans_onduleur_garde_une_empreinte_pleine(self):
+        """Le cas EXACT du refus moteur : empreinte pleine et discriminante."""
+        self._assert_jamais_vide_et_discriminante(
+            *self._empreintes_des_deux_etats({'pdf_mode': 'full'}))
+
+    def test_options_par_defaut_aussi(self):
+        """``pdf_options=None`` vaut « full » (défaut) — même garantie."""
+        self._assert_jamais_vide_et_discriminante(
+            *self._empreintes_des_deux_etats())
+
+    def test_empreinte_de_rendu_indisponible_repli_qui_varie_encore(self):
+        """Empreinte de rendu ``None`` → repli sur l'état stocké, pas ``''``."""
+        with mock.patch('apps.ventes.quote_engine.empreinte_donnees_pdf',
+                        return_value=None):
+            avant, apres = self._empreintes_des_deux_etats(
+                {'pdf_mode': 'onepage'})
+        self._assert_jamais_vide_et_discriminante(avant, apres)
+
+    def test_le_repli_reste_stable_a_contenu_inchange(self):
+        """Le repli garde le bénéfice du cache : contenu inchangé ⇒ stable.
+
+        Verrouille aussi la raison d'être de ``_CHAMPS_DE_RENDU`` : le tout
+        premier ``build_quote_data`` d'une société crée son profil, ce qui
+        remet à '' le ``fichier_pdf`` de ses devis. Un repli qui empreindrait
+        les champs de SORTIE du rendu changerait donc entre deux appels
+        strictement identiques — cache raté en boucle, sans qu'une seule
+        donnée du devis ait bougé.
+        """
+        with mock.patch('apps.ventes.quote_engine.empreinte_donnees_pdf',
+                        return_value=None):
+            self.assertEqual(_content_version(self.devis.id),
+                             _content_version(self.devis.id))
+
+    def test_une_erreur_inattendue_remonte_au_lieu_de_setre_avalee(self):
+        """Aucune erreur inconnue n'est avalée : elle remonte, bruyamment.
+
+        Les appelants (``_idempotent_cached_key``/``_remember_render``) la
+        traitent comme « pas de cache » → le PDF est RE-RENDU. Une empreinte
+        vide, elle, aurait figé le cache sur un PDF périmé.
+        """
+        with mock.patch('apps.ventes.quote_engine.build_quote_data',
+                        side_effect=RuntimeError('moteur cassé')):
+            with self.assertRaises(RuntimeError):
+                _content_version(self.devis.id, {'pdf_mode': 'onepage'})
+
+    def test_une_erreur_inattendue_ne_fige_pas_le_cache_de_rendu(self):
+        """Bout en bout : moteur cassé ⇒ aucune clé réutilisée (re-rendu)."""
+        from apps.ventes.tasks import _idempotent_cached_key
+        with mock.patch('apps.ventes.quote_engine.build_quote_data',
+                        side_effect=RuntimeError('moteur cassé')):
+            self.assertIsNone(
+                _idempotent_cached_key(self.devis.id, {'pdf_mode': 'full'}))
