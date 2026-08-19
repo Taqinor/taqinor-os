@@ -30,7 +30,8 @@ concurrency:
 # required check can be pinned safely.
 
 # ---------------------------------------------------------------------------
-# CRENEAUX — BUDGET DUR : 17 JOBS SIMULTANES A NOUS (mesure du 19/08/2026).
+# CRENEAUX — BUDGET : 18 JOBS SIMULTANES A NOUS (mesure du 19/08/2026, majoree
+# ronde 4).
 #
 # Le depot public plafonne a 20 jobs simultanes, et ce plafond est PARTAGE avec
 # les workflows d'analyse lances sur le meme commit. Mesure sur le run
@@ -50,8 +51,15 @@ concurrency:
 #
 #   stage-names 1 + backend-lint-fast 1 + backend-openapi 1 + frontend-static 1
 #   + web-build-test 1 + rls-tests 1                                     =  6
-#   + backend-tests-shard 6 + frontend-vitest-shard 3 + e2e-shard 2      = 11
-#                                                              TOTAL     = 17
+#   + backend-tests-shard 6 + frontend-vitest-shard 4 + e2e-shard 2      = 12
+#                                                              TOTAL     = 18
+#
+# RONDE 4 (19/08) — la 4e lane vitest depense 1 des 3 creneaux libres MESURES
+# sur le run 32265590843 (17 lanes a nous, 3 creneaux encore idle sous le
+# plafond de 20 a ce moment-la — la contention CodeQL varie d'un run a l'autre,
+# contrairement au pire cas fige ci-dessus). Il reste donc 2 creneaux de marge
+# mesuree ; si une lane se met a faire la queue au demarrage, revenir a 3 lanes
+# vitest en premier reflexe.
 #
 # PLAFONDS DE TEMPS (WOW-CI7, 19/08) — chaque lane porte un `timeout-minutes`.
 # Le 19/08, `e2e-shard (2)` a brule 1 h 05 min 43 s sans qu'aucun garde-fou ne
@@ -61,7 +69,7 @@ concurrency:
 #
 # TOUTE augmentation d'une matrice doit etre compensee ailleurs. Si le fondateur
 # desactive le CodeQL par defaut (reglage GitHub, pas un fichier de ce depot),
-# 3 creneaux se liberent et le budget passe a 20.
+# des creneaux supplementaires se liberent jusqu'au plafond de 20.
 # ---------------------------------------------------------------------------
 jobs:
   # ---------------------------------------------------------------------------
@@ -328,6 +336,35 @@ jobs:
       # 4 shards `backend-tests` (le chemin critique du gate) : le temps de mur
       # du merge est inchangé. AUCUNE base de données n'est nécessaire (le
       # générateur ne fait qu'introspecter vues et serializers).
+      # WOW-CI ronde 4 (19/08/2026) — MEME cache apt que e2e-shard (meme patron,
+      # meme cle apt-e2e-v2-...) : ce job installe les memes paquets WeasyPrint
+      # et payait le telechargement complet a chaque run, sans jamais partager
+      # le cache que e2e-shard alimente deja. Cle inchangee (lockfile frontend
+      # uniquement) pour rester dans le MEME cache partage — voir le commentaire
+      # WOW-CI7 sur e2e-shard plus bas dans ce fichier.
+      - name: Redirect apt's .deb store into a cacheable directory
+        # JAMAIS BLOQUANT : ce n'est qu'une optimisation. Si quoi que ce soit
+        # échoue ici, apt reprend son magasin par défaut et le job se comporte
+        # exactement comme avant — une accélération ne doit pas pouvoir faire
+        # rougir un check REQUIS.
+        run: |
+          set -uo pipefail
+          mkdir -p "$HOME/apt-archives/partial" || true
+          # apt abandonne ses privilèges vers l'utilisateur `_apt` pour écrire
+          # dans `partial/` : sans droits larges il retombe (bruyamment) sur un
+          # téléchargement non bac-à-sable, ou échoue.
+          chmod -R 777 "$HOME/apt-archives" || true
+          printf 'Dir::Cache::archives "%s";\nBinary::apt::APT::Keep-Downloaded-Packages "true";\n' \
+            "$HOME/apt-archives" | sudo tee /etc/apt/apt.conf.d/99-ci-archive-cache >/dev/null \
+            || echo "AVERTISSEMENT : redirection du cache apt impossible — on continue sans."
+          exit 0
+      - name: Cache apt packages (Playwright system deps + WeasyPrint)
+        uses: actions/cache@v4
+        with:
+          path: ~/apt-archives
+          key: apt-e2e-v2-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: |
+            apt-e2e-v2-${{ runner.os }}-
       - name: Install WeasyPrint system libraries (URLconf import — YAPIC6)
         run: |
           sudo apt-get update
@@ -394,7 +431,7 @@ jobs:
   # POURQUOI 6 — c'est le BUDGET DE CRENEAUX qui borne, plus un module.
   # Le plancher du module le plus lourd a ete leve le 19/08 (test_quote_engine
   # scinde en quatre), donc N n'est plus limite par un fichier ; il est limite
-  # par les 17 creneaux (voir le bloc CRENEAUX en tete de fichier) et par le
+  # par les 18 creneaux (voir le bloc CRENEAUX en tete de fichier) et par le
   # fait que la lane la plus lente du gate est desormais `e2e-shard` (~6 min 45 s,
   # plancher desormais partage apres la scission de fumee-ecrans). Descendre le
   # backend sous ce seuil ne raccourcirait rien.
@@ -574,9 +611,10 @@ jobs:
 
   # Couche UX : rendu/interaction (Testing Library) + accessibilité (axe),
   # exécutée par Vitest (fichiers *.test.jsx, jsdom) + résumé de couverture.
-  # `--shard=i/3` découpe la liste de fichiers, jamais le contenu d'un fichier :
-  # l'union des 3 lanes est EXACTEMENT la suite complète d'aujourd'hui (Vitest
-  # trie les fichiers avant de les répartir, le découpage est donc déterministe).
+  # Le decoupage en lanes explicites (VITEST_INCLUDE, WOW-CI4 ci-dessous)
+  # decoupe la liste de fichiers, jamais le contenu d'un fichier : l'union des
+  # 4 lanes est EXACTEMENT la suite complète d'aujourd'hui (completude prouvee
+  # par scripts/tests/test_ci_frontend_shard.py).
   # `--coverage` reste sur chaque lane : le rapport devient un résumé par tranche
   # (il est purement informatif — aucun seuil ne gate, cf. vitest.config.js).
   frontend-vitest-shard:
@@ -585,7 +623,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
+        shard: [1, 2, 3, 4]
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
@@ -608,13 +646,13 @@ jobs:
       # sous-chaine, donc un chemin prefixe d'un autre embarquerait des fichiers
       # en trop. Completude de l'union prouvee par
       # scripts/tests/test_ci_frontend_shard.py (job stage-names).
-      - name: Frontend component + a11y tests — lane ${{ matrix.shard }}/3 (Vitest + Testing Library + axe)
+      - name: Frontend component + a11y tests — lane ${{ matrix.shard }}/4 (Vitest + Testing Library + axe)
         working-directory: frontend
         run: |
           set -euo pipefail
-          VITEST_INCLUDE="$(python3 ../scripts/ci_frontend_shard.py $(( ${{ matrix.shard }} - 1 )) 3)"
+          VITEST_INCLUDE="$(python3 ../scripts/ci_frontend_shard.py $(( ${{ matrix.shard }} - 1 )) 4)"
           export VITEST_INCLUDE
-          echo "Lane ${{ matrix.shard }}/3 -> $(echo "$VITEST_INCLUDE" | tr ',' '\n' | wc -l) fichiers"
+          echo "Lane ${{ matrix.shard }}/4 -> $(echo "$VITEST_INCLUDE" | tr ',' '\n' | wc -l) fichiers"
           npm run test:coverage
 
   # Agrégateur mince qui PRÉSERVE le nom de check requis `frontend-lint` (patron

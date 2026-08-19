@@ -95,6 +95,16 @@ export interface Fiche {
    * en 404 sous les yeux du client).
    */
   datasheet: string | null;
+  /**
+   * G4 (2026-08-19) — fiche constructeur MONOPHASÉE additionnelle, pour une
+   * gamme qui existe aussi en monophasé sous un AUTRE modèle que celui de
+   * `datasheet` (ex. onduleur hybride Deye : `datasheet` = SG05LP3 triphasé,
+   * `datasheetMono` = SG05LP1 monophasé — deux fiches constructeur réelles,
+   * un seul `modele` affiché qui les nomme toutes les deux). `undefined` pour
+   * toute fiche à gamme unique : n'invente jamais un second lien qui n'existe
+   * pas.
+   */
+  datasheetMono?: string;
   /** Copie auto-hébergée `/fiches/<slug>.pdf` — null tant qu'elle n'est pas déposée. */
   pdf: string | null;
   /**
@@ -213,6 +223,13 @@ export const FICHES: Fiche[] = [
     // pointait vers la datasheet SG04LP3, une génération dépassée.
     datasheet:
       'https://www.deyeinverter.com/deyeinverter/2024/09/27/datasheet_sun-3-12k-sg05lp3-eu-sm2_240927_en.pdf',
+    // G4 (2026-08-19, plainte fondateur « the deye 5kw datasheet is still the
+    // sg04 ») — datasheet OFFICIELLE deyeinverter.com de la gamme MONOPHASÉE
+    // SUN-3.6/5/6/7.6/8K-SG05LP1-EU (le 5 kW réellement posé y figure
+    // nommément) : sans ce second lien, le SG04LP1 ne survivait nulle part
+    // dans le code mais restait absent de la seule source publique vérifiée.
+    datasheetMono:
+      'https://www.deyeinverter.com/deyeinverter/2023/07/31/datasheet_sun-(3.6-8)k-sg05lp1-eu_230731_en.pdf',
     pdf: '/fiches/onduleur-deye-hybride.pdf',
   },
   {

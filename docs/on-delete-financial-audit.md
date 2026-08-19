@@ -731,7 +731,7 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/parametres/models_pos.py:30` | ParametresPos.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/parametres/models_pos.py:82` | BoutiquePos.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/parametres/models_statuses.py:31` | StatutConfig.company | authentication.Company | CASCADE |
-| `backend/django_core/apps/parametres/models_tariff.py:67` | TariffSettings.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/parametres/models_tariff.py:75` | TariffSettings.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/parametres/models_taxes.py:44` | TauxTVA.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/parametres/models_translations.py:31` | TranslationOverride.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/parametres/models_units.py:38` | UniteMesure.company | authentication.Company | CASCADE |
@@ -1027,9 +1027,9 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/stock/models.py:1825` | RevisionKit.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/stock/models.py:1880` | FicheTechnique.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/stock/models.py:1884` | FicheTechnique.produit | Produit | PROTECT |
-| `backend/django_core/apps/stock/models.py:2017` | ModeleBonCommandeFournisseur.company | authentication.Company | CASCADE |
-| `backend/django_core/apps/stock/models.py:2050` | ModeleBonCommandeFournisseurLigne.produit | Produit | CASCADE |
-| `backend/django_core/apps/stock/models.py:2080` | NomenclatureCodeBarres.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/stock/models.py:2050` | ModeleBonCommandeFournisseur.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/stock/models.py:2083` | ModeleBonCommandeFournisseurLigne.produit | Produit | CASCADE |
+| `backend/django_core/apps/stock/models.py:2113` | NomenclatureCodeBarres.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/stock/models_consignation.py:32` | DepotConsignation.produit | stock.Produit | PROTECT |
 | `backend/django_core/apps/stock/models_incident_fournisseur.py:40` | IncidentQualiteFournisseur.produit | stock.Produit | SET_NULL |
 | `backend/django_core/apps/stock/models_negoce_params.py:19` | ParametresNegoce.company | authentication.Company | CASCADE |

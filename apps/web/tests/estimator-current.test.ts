@@ -243,7 +243,7 @@ describe('cerveau — tarif sélectif ONEE, inversion facture & plafond d’éco
   it('barème sélectif (seuil 150 kWh), top ≈ 1,60 — JAMAIS l’ancien 1,4 ni le 1,66 force-motrice', () => {
     expect(REGIE_TARIFF.selectiveThresholdKwh).toBe(150);
     expect(REGIE_TARIFF.selective.length).toBeGreaterThanOrEqual(3);
-    expect(REGIE_TARIFF.selective[REGIE_TARIFF.selective.length - 1].rate).toBeCloseTo(1.5958, 4);
+    expect(REGIE_TARIFF.selective[REGIE_TARIFF.selective.length - 1].rate).toBeCloseTo(1.622856, 4);
     const rates = [...REGIE_TARIFF.progressive, ...REGIE_TARIFF.selective].map((t) => t.rate);
     expect(rates).not.toContain(1.4); // ancien plat
     expect(rates).not.toContain(1.66); // ancien tarif force-motrice retiré

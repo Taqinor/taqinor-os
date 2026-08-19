@@ -42,16 +42,17 @@ from apps.ventes.quote_engine.pricing import ONEE_TRANCHES, _monthly_bill_from_k
 # entier : ``apps/parametres/tariff.py`` tronquait ce kWh en ``int()`` avant de
 # choisir la tranche sélective, alors que la multiplication finale gardait le
 # kWh réel — un client à 210,5 kWh/mois retombait (via l'``int()``) dans la
-# tranche 151–210 (1,0732 MAD/kWh) au lieu de 211–310 (1,1676 MAD/kWh) : SEULE
-# la SÉLECTION de tranche doit lire le kWh exact, jamais sa troncature.
+# tranche 151–210 au lieu de 211–310 : SEULE la SÉLECTION de tranche doit lire
+# le kWh exact, jamais sa troncature.
 #
 # Dérivation à la main de 210,5 kWh (bornes opératoires 210/310/510, barème
-# DEFAULT_RESIDENTIAL_TIERS) : 210,5 > 210 ⇒ tranche 211–310 (1,1676 MAD/kWh)
-# ⇒ 210,5 × 1,1676 = 245,7798 → arrondi 245,78 MAD (PAS 210,5 × 1,0732 =
-# 225,9086 → 225,91 MAD, la valeur bogue par troncature — écart −8,1 %).
-# Même mécanique à 310,7 (> 310 ⇒ tranche 311–510, 1,3817 ⇒ 429,29 MAD, contre
-# 362,77 MAD tronqué, −15,5 %) et à 510,3 (> 510 ⇒ palier ouvert, 1,5958 ⇒
-# 814,34 MAD, contre 705,08 MAD tronqué, −13,4 %). Les autres sondes
+# DEFAULT_RESIDENTIAL_TIERS **TTC 2026**, TVA 20 %) : 210,5 > 210 ⇒ tranche
+# 211–310 (1,187388 MAD/kWh) ⇒ 210,5 × 1,187388 = 249,945174 → arrondi
+# 249,95 MAD (PAS 210,5 × 1,091388 = 229,737174 → 229,74 MAD, la valeur bogue
+# par troncature — écart −8,1 %).
+# Même mécanique à 310,7 (> 310 ⇒ tranche 311–510, 1,405116 ⇒ 436,57 MAD,
+# contre 368,92 MAD tronqué, −15,5 %) et à 510,3 (> 510 ⇒ palier ouvert,
+# 1,622856 ⇒ 828,14 MAD, contre 717,03 MAD tronqué, −13,4 %). Les autres sondes
 # fractionnaires (150,5 / 211,3 / 499,5 / 700,25) ne franchissent aucune borne
 # entière : elles n'auraient PAS détecté le bug seules — gardées pour couvrir
 # l'intérieur de chaque tranche, pas seulement ses abords.
@@ -89,8 +90,8 @@ class TestTariffDriftLock(SimpleTestCase):
         settings = TariffSettings()
         effective = settings.effective_tiers()
         bornes_effectives_attendues = [
-            (100, 0.9010), (150, 1.0732), (210, 1.0732),
-            (310, 1.1676), (510, 1.3817), (None, 1.5958),
+            (100, 0.916272), (150, 1.091388), (210, 1.091388),
+            (310, 1.187388), (510, 1.405116), (None, 1.622856),
         ]
         for (ceiling, price), tier in zip(bornes_effectives_attendues, effective):
             self.assertEqual(tier['max_kwh'], ceiling)

@@ -31,9 +31,14 @@ import CustomFieldsInput from '../../components/CustomFieldsInput'
 // source : la même que le générateur de devis, jamais réimplémentée ici.
 import { classifyProduct, isPompe } from '../../features/ventes/solar.js'
 import {
-  MARQUEUR_PLAGE_BATTERIE,
-  lirePlageBatterieDescription, ecrirePlageBatterieDescription,
-  plageBatterieAbsenteLocale,
+  // PVOND-H (fondateur 19/08/2026) — la plage de tension batterie s'édite
+  // désormais sur le CHAMP DÉDIÉ de FicheTechnique (ond_bat_aucune/
+  // ond_bat_v_min/ond_bat_v_max), plus dans une ligne de texte de la
+  // description : `plageBatterieAbsenteChamps` en lit l'état, jamais
+  // `plageBatterieAbsenteLocale`/`lirePlageBatterieDescription` (conservées
+  // dans pvondFicheTechnique.js pour la lecture d'une fiche pré-migration
+  // côté moteur, mais plus utilisées par cet écran).
+  plageBatterieAbsenteChamps,
   manquantesOnduleurLocal, typeFicheBackend, ficheFieldsVides,
   champsFicheDepuisServeur, champsFichePourType,
 } from './pvondFicheTechnique.js'
@@ -470,19 +475,22 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
 
   // Plage de tension batterie : éditable ici UNIQUEMENT pour un onduleur
   // HYBRIDE (règle fondateur 18/08) — un onduleur réseau n'en porte jamais.
-  // Elle vit dans une ligne marquée de `fields.description` (voir
-  // pvondFicheTechnique.js) faute de champ dédié sur FicheTechnique.
-  const plageBatterieActuelle = estOnduleurHybride ? lirePlageBatterieDescription(fields.description) : null
+  // PVOND-H (19/08) — champ DÉDIÉ de FicheTechnique (ond_bat_aucune/
+  // ond_bat_v_min/ond_bat_v_max), plus une ligne de texte devinée dans la
+  // description libre.
+  const plageBatterieActuelle = estOnduleurHybride
+    ? { aucune: !!ficheFields.ond_bat_aucune, min: ficheFields.ond_bat_v_min, max: ficheFields.ond_bat_v_max }
+    : null
   // RÈGLE CORRIGÉE (commit ed34ced9, ordre fondateur du 18/08) : la plage
   // n'est plus jamais réclamée à un RÉSEAU (sa famille vaut « aucune », même
   // sur un produit tout juste en cours de création — jamais besoin d'un
-  // aller-retour serveur pour l'éteindre) ; un HYBRIDE reste jugé sur sa
-  // ligne déclarée ; toute autre famille retombe sur le dernier état SERVEUR
-  // connu (`plageBatterieAbsenteLocale`, testé par pvondFicheTechnique.test.mjs).
-  const plageBatterieAbsente = plageBatterieAbsenteLocale({
+  // aller-retour serveur pour l'éteindre) ; un HYBRIDE reste jugé sur son
+  // champ déclaré ; toute autre famille retombe sur le dernier état SERVEUR
+  // connu (`plageBatterieAbsenteChamps`, testé par pvondFicheTechnique.test.mjs).
+  const plageBatterieAbsente = plageBatterieAbsenteChamps({
     estHybride: estOnduleurHybride,
     estReseau: estOnduleurReseau,
-    description: fields.description,
+    ficheFields,
     plageBatterieServeurAbsente: produit?.specs_solaire?.plage_batterie_v == null,
   })
   // PVOND — verrou de complétude, recalculé EN LOCAL pendant la frappe :
@@ -658,7 +666,12 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
       const typeFicheServeur = typeFicheBackend(ficheType)
       if (cibleId && typeFicheServeur) {
         const payloadFiche = champsFichePourType(ficheType, ficheFields)
-        const aDesDonnees = Object.values(payloadFiche).some((v) => v !== null)
+        // PVOND-H — « quelque chose à écrire » ignore `ond_bat_aucune: false` :
+        // c'est le DÉFAUT du booléen (non nul par contrat), pas une saisie —
+        // sans ce filtre, un formulaire vierge sans fiche existante créait
+        // une fiche vide à chaque enregistrement (rouge CI vitest 19/08).
+        const aDesDonnees = Object.entries(payloadFiche).some(
+          ([k, v]) => v !== null && !(k === 'ond_bat_aucune' && v === false))
         if (aDesDonnees || ficheId) {
           try {
             if (ficheId) {
@@ -1084,6 +1097,23 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
                            value={ficheFields.ond_rendement_euro_pct}
                            onChange={e => setFicheField('ond_rendement_euro_pct', e.target.value)} />
                   </FormField>
+                  {/* PVOND-H (fondateur 19/08/2026) — deux variables que le
+                      moteur électrique sait déjà lire (core.electrique.types.
+                      SpecOnduleur) mais qui n'étaient éditables NULLE PART :
+                      OPTIONNELLES (jamais exigées par le badge « Chiffrable »
+                      ci-dessus, un repli sûr s'applique en leur absence). */}
+                  <FormField label="Tension de démarrage (V)" htmlFor="pf-ft-vdem"
+                             hint="Optionnel — à défaut, le bas de la plage MPPT fait foi.">
+                    <Input id="pf-ft-vdem" type="number" min="0" step="any" inputMode="decimal"
+                           value={ficheFields.ond_v_demarrage_v}
+                           onChange={e => setFicheField('ond_v_demarrage_v', e.target.value)} />
+                  </FormField>
+                  <FormField label="Isc maxi par MPPT (A)" htmlFor="pf-ft-iscmax"
+                             hint="Optionnel — court-circuit, distinct du courant maxi ci-dessus. À défaut, ce dernier fait foi.">
+                    <Input id="pf-ft-iscmax" type="number" min="0" step="any" inputMode="decimal"
+                           value={ficheFields.ond_isc_max_mppt_a}
+                           onChange={e => setFicheField('ond_isc_max_mppt_a', e.target.value)} />
+                  </FormField>
                   {!fields.garantie.trim() && (
                     <p className="sm:col-span-2 text-xs text-muted-foreground">
                       Garantie constructeur — renseignez le champ « Texte de garantie »
@@ -1092,21 +1122,23 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
                   )}
 
                   {/* Plage de tension batterie — HYBRIDE uniquement (règle
-                      fondateur 18/08). Pas de champ dédié côté serveur :
-                      cette valeur vit dans une ligne marquée de la
-                      description ci-dessus (voir pvondFicheTechnique.js) —
-                      ce mini-contrôle ne fait qu'éviter la faute de frappe
-                      sur le format, la donnée reste la MÊME ligne de texte. */}
+                      fondateur 18/08). PVOND-H (19/08) : champ DÉDIÉ de
+                      FicheTechnique (ond_bat_aucune/ond_bat_v_min/
+                      ond_bat_v_max) — plus une ligne devinée dans la
+                      description libre. */}
                   {estOnduleurHybride && (
                     <div className="sm:col-span-2 flex flex-col gap-2 border-t border-border pt-3">
                       <Label>Plage de tension batterie (hybride)</Label>
                       <label className="flex items-center gap-2 text-sm text-muted-foreground">
                         <Switch
                           checked={!!plageBatterieActuelle?.aucune}
-                          onCheckedChange={(v) => setField('description', ecrirePlageBatterieDescription(
-                            fields.description,
-                            { aucune: v, min: plageBatterieActuelle?.min, max: plageBatterieActuelle?.max },
-                          ))}
+                          onCheckedChange={(v) => {
+                            setFicheField('ond_bat_aucune', v)
+                            if (v) {
+                              setFicheField('ond_bat_v_min', '')
+                              setFicheField('ond_bat_v_max', '')
+                            }
+                          }}
                           aria-label="Aucune batterie compatible (onduleur réseau)"
                         />
                         Aucune batterie compatible
@@ -1117,26 +1149,19 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
                             type="number" min="0" step="any" inputMode="decimal" className="w-32"
                             placeholder="mini (V)" aria-label="Plage batterie — tension mini (V)"
                             value={plageBatterieActuelle?.min ?? ''}
-                            onChange={e => setField('description', ecrirePlageBatterieDescription(
-                              fields.description,
-                              { aucune: false, min: e.target.value, max: plageBatterieActuelle?.max },
-                            ))}
+                            onChange={e => setFicheField('ond_bat_v_min', e.target.value)}
                           />
                           <Input
                             type="number" min="0" step="any" inputMode="decimal" className="w-32"
                             placeholder="maxi (V)" aria-label="Plage batterie — tension maxi (V)"
                             value={plageBatterieActuelle?.max ?? ''}
-                            onChange={e => setField('description', ecrirePlageBatterieDescription(
-                              fields.description,
-                              { aucune: false, min: plageBatterieActuelle?.min, max: e.target.value },
-                            ))}
+                            onChange={e => setFicheField('ond_bat_v_max', e.target.value)}
                           />
                         </div>
                       )}
                       <p className="text-xs text-muted-foreground">
-                        Enregistrée comme une ligne dans la description ci-dessus
-                        (« {MARQUEUR_PLAGE_BATTERIE} … ») — c&apos;est elle qui décide
-                        quelle batterie s&apos;accroche à cet onduleur.
+                        La fenêtre de tension que la batterie doit respecter pour
+                        s&apos;accrocher à cet onduleur.
                       </p>
                     </div>
                   )}
@@ -1149,6 +1174,43 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
                     <Input id="pf-ft-pmax" type="number" min="0" step="any" inputMode="decimal"
                            value={ficheFields.pmax_wc}
                            onChange={e => setFicheField('pmax_wc', e.target.value)} />
+                  </FormField>
+                  {/* PVOND-H (fondateur 19/08/2026) — Voc/Isc/Vmp/Imp et les
+                      deux coefficients de température EXISTAIENT déjà sur
+                      FicheTechnique (lus par le moteur électrique via
+                      specs_for_produit) mais n'étaient éditables nulle part à
+                      l'écran — champs réutilisés, aucune duplication. */}
+                  <FormField label="Tension circuit ouvert — Voc (V)" htmlFor="pf-ft-voc">
+                    <Input id="pf-ft-voc" type="number" min="0" step="any" inputMode="decimal"
+                           value={ficheFields.voc_v}
+                           onChange={e => setFicheField('voc_v', e.target.value)} />
+                  </FormField>
+                  <FormField label="Courant court-circuit — Isc (A)" htmlFor="pf-ft-isc">
+                    <Input id="pf-ft-isc" type="number" min="0" step="any" inputMode="decimal"
+                           value={ficheFields.isc_a}
+                           onChange={e => setFicheField('isc_a', e.target.value)} />
+                  </FormField>
+                  <FormField label="Tension au point de puissance max — Vmp (V)" htmlFor="pf-ft-vmp">
+                    <Input id="pf-ft-vmp" type="number" min="0" step="any" inputMode="decimal"
+                           value={ficheFields.vmp_v}
+                           onChange={e => setFicheField('vmp_v', e.target.value)} />
+                  </FormField>
+                  <FormField label="Courant au point de puissance max — Imp (A)" htmlFor="pf-ft-imp">
+                    <Input id="pf-ft-imp" type="number" min="0" step="any" inputMode="decimal"
+                           value={ficheFields.imp_a}
+                           onChange={e => setFicheField('imp_a', e.target.value)} />
+                  </FormField>
+                  <FormField label="Coefficient de température Voc (%/°C)" htmlFor="pf-ft-tcvoc"
+                             hint="Négatif : le Voc monte quand il fait froid — nécessaire au calcul du Voc à froid.">
+                    <Input id="pf-ft-tcvoc" type="number" step="any" inputMode="decimal"
+                           value={ficheFields.temp_coeff_voc_pct_c}
+                           onChange={e => setFicheField('temp_coeff_voc_pct_c', e.target.value)} />
+                  </FormField>
+                  <FormField label="Coefficient de température Pmax (%/°C)" htmlFor="pf-ft-tcpmax"
+                             hint="Sert aussi au calcul de dérive du Vmp.">
+                    <Input id="pf-ft-tcpmax" type="number" step="any" inputMode="decimal"
+                           value={ficheFields.temp_coeff_pmax_pct_c}
+                           onChange={e => setFicheField('temp_coeff_pmax_pct_c', e.target.value)} />
                   </FormField>
                   <FormField label="Longueur (mm)" htmlFor="pf-ft-long">
                     <Input id="pf-ft-long" type="number" min="0" step="any" inputMode="decimal"

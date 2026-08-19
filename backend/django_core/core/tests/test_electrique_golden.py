@@ -86,7 +86,9 @@ class MonoReseauHuitPanneaux(unittest.TestCase):
     def test_les_sections_de_cable(self):
         dc = _repere(self.resultat.cables, "W1")
         ac = _repere(self.resultat.cables, "W2")
-        self.assertEqual(dc.section_mm2, 2.5)
+        # F2 (fondateur 19/08/2026) : plancher DC 6 mm² — la physique seule
+        # tiendrait 2,5 mm² ici, mais TAQINOR n'installe jamais moins.
+        self.assertEqual(dc.section_mm2, 6.0)
         self.assertEqual(ac.section_mm2, 2.5)
         self.assertLess(dc.chute_tension_pct, dc.chute_cible_pct)
         self.assertLess(ac.chute_tension_pct, ac.chute_cible_pct)
@@ -177,8 +179,10 @@ class HybrideAvecBatterie(unittest.TestCase):
         self.assertEqual(self.resultat.nb_chaines, 2)
         self.assertEqual([c.nb_modules for c in self.resultat.chaines], [8, 8])
 
-    def test_le_stockage_amene_son_sectionnement_et_son_cablage(self):
-        self.assertIsNotNone(_repere(self.resultat.protections, "QBAT1"))
+    def test_le_stockage_amene_son_cablage_mais_aucun_organe_de_protection(self):
+        # Décision fondateur 19/08/2026 : TAQINOR ne pose pas de fusible ni de
+        # sectionneur dédié sur le parc batterie — seul le câblage reste.
+        self.assertIsNone(_repere(self.resultat.protections, "QBAT1"))
         self.assertTrue(any(ligne.categorie == "Batterie"
                             for ligne in self.resultat.bom))
 

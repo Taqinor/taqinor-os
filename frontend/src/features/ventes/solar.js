@@ -234,17 +234,48 @@ export function estimerPanneaux(factureHiver, perTranche = 8) {
 export const KWC_STEP = 5
 export const MAD_PAR_PALIER = 900
 
-// ── Métrés de câble (règle fondateur 18/08) ──────────────────────────────────
-// Câble solaire DC 6 mm² : 60 m par palier de 5 kWc (strictement proportionnel).
+// ── Métrés de câble (règle fondateur 18/08, câble DC révisé 19/08 — PVCBL) ──
 // Câble de terre AC 6 mm² : 25 m de base + 15 m par palier de 5 kWc — soit 40 m
 // pour 5 kWc et 55 m pour 10 kWc, les deux cotes données par le fondateur.
+// Câble solaire DC 6 mm² : voir `metreCableDcParPaires` ci-dessous — la règle
+// « 60 m par palier » est SUPERSEDÉE par la règle par PAIRE de MPPT (19/08).
 export const CABLE_DC_M_PAR_PALIER = 60
 export const CABLE_TERRE_M_BASE = 25
 export const CABLE_TERRE_M_PAR_PALIER = 15
 
-/** Longueur de câble solaire DC (m) pour `paliers` blocs de 5 kWc. */
+/** Longueur de câble solaire DC (m) pour `paliers` blocs de 5 kWc.
+ *
+ * CONSERVÉE pour compat/tests mais N'EST PLUS APPELÉE par `autoFillLines`
+ * (voir `metreCableDcParPaires`, la règle du 19/08) : un palier de 5 kWc et
+ * une paire de MPPT ne coïncident pas forcément (dépend de l'onduleur
+ * retenu), donc ce calcul au palier peut sur/sous-estimer le métrage réel. */
 export function metreCableDc(paliers) {
   const n = Math.max(1, Math.round(Number(paliers) || 0))
+  return n * CABLE_DC_M_PAR_PALIER
+}
+
+// ── PVCBL (fondateur 19/08/2026) — métrage câble DC PAR PAIRE de MPPT ───────
+// Bug constaté : un devis auto avait chiffré un ROULEAU de 100 m (produit au
+// conditionnement rouleau, pas au mètre) avec une quantité en MÈTRES (60) →
+// 71 400 MAD d'aberration (« who said 100m??? i wanted cable DC 6mm2 per
+// metre »). Deux corrections ORTHOGONALES :
+//  1. le produit retenu doit être vendu AU MÈTRE — voir `pickCable` dans
+//     `autoFillLines`, qui exclut désormais tout conditionnement rouleau/
+//     touret (jamais un repli silencieux sur un autre conditionnement) ;
+//  2. le MÉTRAGE suit les PAIRES de câbles qui descendent du toit (30 m rouge
+//     + 30 m noir = 60 m par paire), pas le palier de 5 kWc. Le nombre de
+//     paires = le nombre d'entrées MPPT RÉELLEMENT UTILISÉES par l'onduleur
+//     retenu — un calcul qui vit dans le moteur électrique
+//     (apps/ventes/solar_design.py::string_design, core/electrique/chaines.py,
+//     PV34) et exige des données que la composition simple (kWc + nb de
+//     panneaux, sans plan de toiture ni fiche technique complète) n'a pas à ce
+//     stade (`specs_solaire` ne sert pas encore `n_mppt` au frontend).
+//     `nbPaires` est donc un paramètre EXPLICITE : un appelant qui a déjà ce
+//     calcul (ex. l'écran Conception électrique, une fois branché) le
+//     transmet ; SANS lui, repli fondateur EXPLICITEMENT AUTORISÉ : 1 paire —
+//     jamais un calcul deviné.
+export function metreCableDcParPaires(nbPaires = 1) {
+  const n = Math.max(1, Math.round(Number(nbPaires) || 0) || 1)
   return n * CABLE_DC_M_PAR_PALIER
 }
 
@@ -614,13 +645,22 @@ function trancheTable(pairs, selectif) {
 // Remplace l'ancienne grille QX38 (100/250/400/∞ à 0,9010/1,0258/1,2515/1,4017),
 // purement progressive et marquée « à confirmer » : elle contredisait la grille
 // officielle sur les seuils ET sur les prix.
+//
+// ORDRE FONDATEUR (19/08/2026) — TVA 20 % depuis le 01/01/2026 (16 % en 2024,
+// 18 % en 2025) : les six prix RADEEJ ci-dessus étaient encore au taux 2025
+// (18 %). Re-dérivés HT × 1,20 (HT = TTC 2025 ÷ 1,18) ; ancre fondateur
+// (facture réelle) = tranche > 500 kWh = 1,622856 MAD/kWh TTC. Détail complet
+// de la dérivation HT/TTC par tranche : apps/ventes/quote_engine/pricing.py
+// ONEE_TRANCHES (miroir exact). Prochaine hausse de TVA : refaire HT × nouveau
+// taux sur les six bases HT documentées là-bas — jamais repartir d'un TTC
+// déjà taxé. ÉDITABLE PAR SOCIÉTÉ : Paramètres → Tarification & ROI.
 export const ONEE_TRANCHES = trancheTable([
-  [100, 0.9010],   // progressif   0-100          — RADEEJ TTC (18/08/2026)
-  [150, 1.0732],   // progressif 101-150          — RADEEJ TTC (18/08/2026)
-  [200, 1.0732],   // sélectif 151-200 (eff. 210) — RADEEJ TTC (18/08/2026)
-  [300, 1.1676],   // sélectif 201-300 (eff. 310) — RADEEJ TTC (18/08/2026)
-  [500, 1.3817],   // sélectif 301-500 (eff. 510) — RADEEJ TTC (18/08/2026)
-  [null, 1.5958],  // sélectif > 500  (eff. 510+) — RADEEJ TTC (18/08/2026)
+  [100, 0.916272],   // progressif   0-100          — HT 0,76356 × TVA 20% (2026)
+  [150, 1.091388],   // progressif 101-150          — HT 0,90949 × TVA 20% (2026)
+  [200, 1.091388],   // sélectif 151-200 (eff. 210) — idem
+  [300, 1.187388],   // sélectif 201-300 (eff. 310) — HT 0,98949 × TVA 20% (2026)
+  [500, 1.405116],   // sélectif 301-500 (eff. 510) — HT 1,17093 × TVA 20% (2026)
+  [null, 1.622856],  // sélectif > 500  (eff. 510+) — HT 1,35238 × TVA 20% (2026, ancre)
 ], { seuil: 150, tolerance: 10 })
 // Lydec/Redal restent PROGRESSIFS et « approximatifs » : aucune grille
 // sélective vérifiée pour les délégataires — on n'invente pas des seuils.
@@ -1124,6 +1164,59 @@ export function roleLabel(role) {
   return (PRODUCT_CATEGORIES.find(([key]) => key === role) ?? [null, role])[1]
 }
 
+// ── PVORD (fondateur 19/08/2026) — ordre PAR DÉFAUT des lignes de devis ──────
+// Frontend de `ParametresGammes.ordre_lignes` (apps/ventes/models.py) : une
+// liste de rôles PRODUCT_CATEGORIES/ROLES_AUTO_COMPOSITION dans l'ordre voulu
+// pour les PROCHAINS devis. Sans préférence (absente/vide) : ordre CANONIQUE
+// de composition inchangé — zéro régression tant que rien n'est enregistré.
+
+// Trie une liste de lignes TAGUÉES `[role, ligne]` par préférence de rôle.
+// Un rôle PRÉSENT dans `ordreLignes` est classé à sa position ; un rôle
+// ABSENT garde son rang canonique mais TOUJOURS après tout rôle
+// explicitement préféré — tri STABLE (jamais un ex-æquo aléatoire) : les
+// deux lignes « batterie » (5 kWh / 10 kWh) gardent leur ordre relatif entre
+// elles quand leur rôle est préféré, ou l'un envers l'autre à la fin sinon.
+export function orderLinesByRolePreference(taggedLines, ordreLignes) {
+  if (!Array.isArray(ordreLignes) || !ordreLignes.length) {
+    return taggedLines.map(([, ligne]) => ligne)
+  }
+  const rang = (role) => {
+    const idx = ordreLignes.indexOf(role)
+    return idx === -1 ? Infinity : idx
+  }
+  return taggedLines
+    .map((entree, i) => ({ entree, i }))
+    .sort((a, b) => {
+      const ra = rang(a.entree[0])
+      const rb = rang(b.entree[0])
+      return ra !== rb ? ra - rb : a.i - b.i
+    })
+    .map(({ entree }) => entree[1])
+}
+
+// Dérive la séquence de rôles depuis les lignes COURANTES de l'écran (bouton
+// « Enregistrer cet ordre comme ordre par défaut ») : classification RÉUTILISÉE
+// (aucun nouveau mot-clé — même classifyProduct que groupProduitsByCategory),
+// dédupliquée en gardant la PREMIÈRE occurrence (l'ordre écran des DEUX lignes
+// batterie 5/10 kWh ne compte que pour un seul rang « batterie »), et les
+// lignes sans classification reconnue (section/note, désignation libre) sont
+// simplement ignorées — jamais un rôle inventé.
+export function deriveRoleOrderFromLines(lines) {
+  const seen = new Set()
+  const order = []
+  for (const l of (lines ?? [])) {
+    let role = classifyProduct(l.designation)
+    if (!role) continue
+    if (role === 'structure') {
+      role = _norm(l.designation).includes('alu') ? 'structure_alu' : 'structure_acier'
+    }
+    if (seen.has(role)) continue
+    seen.add(role)
+    order.push(role)
+  }
+  return order
+}
+
 // ── PVMRQ — marque préférée par gamme/rôle (fondateur 18/08/2026) ────────────
 // Frontend de `ParametresGammes.marques` (backend, ROLES_AUTO_COMPOSITION —
 // MIROIR EXACT des clés `PRODUCT_CATEGORIES` ci-dessus) : quand une marque est
@@ -1204,7 +1297,10 @@ const placeholder = (designation, quantite) => ({
 // Quantités par défaut du simulateur ; les lignes « spéciales » (onduleurs,
 // panneaux, batteries) restent à choisir, les autres pointent sur le produit
 // canonique du stock avec son prix TTC (équivalent de autofillRowPrice).
-export function defaultProductLines(produits) {
+// PVORD — `ordreLignes` (optionnel, `ParametresGammes.ordre_lignes`) réordonne
+// le résultat par rôle préféré ; absent/vide = ordre canonique ci-dessous,
+// byte-identique à l'historique (voir `orderLinesByRolePreference`).
+export function defaultProductLines(produits, ordreLignes) {
   const byType = indexProduits(produits)
   const first = (type) => (byType[type] ?? [])[0] ?? null
   const exactOr = (type, needle) => {
@@ -1214,29 +1310,34 @@ export function defaultProductLines(produits) {
   const row = (p, designation, quantite) =>
     p ? lineFrom(p, quantite) : placeholder(designation, quantite)
 
-  return [
-    placeholder('Onduleur réseau', 1),
-    placeholder('Onduleur hybride', 1),
-    row(first('smart_meter'), 'Smart Meter', 0),
-    row(first('wifi_dongle'), 'Wifi Dongle', 0),
-    placeholder('Panneaux', 0),
-    placeholder('Batterie', 1),
-    placeholder('Batterie', 0),
-    row(exactOr('structure', 'acier'), 'Structures acier', 0),
-    row(exactOr('structure', 'alu'), 'Structures aluminium', 0),
-    row(first('socle'), 'Socles', 0),
-    row(first('accessoires'), 'Accessoires', 1),
-    row(first('tableau'), 'Tableau De Protection AC/DC', 1),
-    row(first('installation'), 'Installation', 1),
-    row(first('transport'), 'Transport', 1),
-    row(first('suivi'), 'Suivi journalier, maintenance chaque 12 mois pendant 2 ans', 1),
+  const tagged = [
+    ['onduleur_reseau', placeholder('Onduleur réseau', 1)],
+    ['onduleur_hybride', placeholder('Onduleur hybride', 1)],
+    ['smart_meter', row(first('smart_meter'), 'Smart Meter', 0)],
+    ['wifi_dongle', row(first('wifi_dongle'), 'Wifi Dongle', 0)],
+    ['panneau', placeholder('Panneaux', 0)],
+    ['batterie', placeholder('Batterie', 1)],
+    ['batterie', placeholder('Batterie', 0)],
+    ['structure_acier', row(exactOr('structure', 'acier'), 'Structures acier', 0)],
+    ['structure_alu', row(exactOr('structure', 'alu'), 'Structures aluminium', 0)],
+    ['socle', row(first('socle'), 'Socles', 0)],
+    ['accessoires', row(first('accessoires'), 'Accessoires', 1)],
+    ['tableau', row(first('tableau'), 'Tableau De Protection AC/DC', 1)],
+    ['installation', row(first('installation'), 'Installation', 1)],
+    ['transport', row(first('transport'), 'Transport', 1)],
+    ['suivi', row(first('suivi'), 'Suivi journalier, maintenance chaque 12 mois pendant 2 ans', 1)],
   ]
+  return orderLinesByRolePreference(tagged, ordreLignes)
 }
 
 // ── Auto-remplissage (port exact de auto_fill_from_power + autofill_router) ───
-// Retourne la table complète dans l'ordre canonique du simulateur, lignes à
-// quantité nulle comprises (elles s'affichent mais ne sont pas enregistrées).
-export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux: nbOverride, marques }) {
+// Retourne la table complète dans l'ordre canonique du simulateur (ou l'ordre
+// PVORD `ordreLignes` s'il est fourni — voir `orderLinesByRolePreference`),
+// lignes à quantité nulle comprises (elles s'affichent mais ne sont pas
+// enregistrées).
+// `mpptPaires` (PVCBL, 19/08) — nombre de paires de câble DC (voir
+// `metreCableDcParPaires`) ; absent = repli fondateur à 1 paire.
+export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux: nbOverride, marques, ordreLignes, mpptPaires }) {
   if (!kwp || kwp <= 0) return []
   const byType = indexProduits(produits)
   // PVMRQ — marques préférées par rôle (gamme active) : sans réglage, `marques`
@@ -1411,9 +1512,17 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
   // — un fournisseur, pas la préférence de gamme), sinon le premier câble du
   // type QUI PORTE UN PRIX. PVMRQ — la marque épinglée (si réglée pour
   // cable_dc/cable_terre) restreint le vivier avant cette préférence Nexans.
+  // PVCBL (fondateur 19/08/2026) — VERROU DE CONDITIONNEMENT : le câble est
+  // TOUJOURS acheté/vendu AU MÈTRE (le métrage plus bas est en MÈTRES), donc
+  // un produit conditionné en rouleau/touret (ex. « Câble solaire 6mm²
+  // (100m) ») ne doit JAMAIS entrer au vivier — même chiffré, même moins
+  // cher, même seul candidat. Sans candidat « au mètre », le vivier est VIDE
+  // et la ligne part en placeholder à 0 (même patron que « prix à
+  // renseigner ») — jamais un repli silencieux sur un autre conditionnement.
   const chiffre = (p) => !!p && parseFloat(p.prix_vente) > 0
+  const auMetre = (p) => _norm(p?.nom).includes('au metre')
   const pickCable = (type) => {
-    const pool = parMarque((byType[type] ?? []).filter(chiffre), type)
+    const pool = parMarque((byType[type] ?? []).filter(chiffre).filter(auMetre), type)
     return pool.find(p => _norm(p.nom).includes('nexans')) ?? pool[0] ?? null
   }
   const cableDc = pickCable('cable_dc')
@@ -1426,33 +1535,45 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
     ? row(structChosen, 'Structures aluminium', nbPanneaux)
     : row(structOther, 'Structures aluminium', 0)
 
-  const lignes = [
-    row(reseau?.p ?? null, 'Onduleur réseau', reseau ? inverterQty(reseau.kw) : 1),
-    row(hybride?.p ?? null, 'Onduleur hybride', hybride ? Math.max(1, inverterQty(hybride.kw)) : 1),
-    row(first('smart_meter'), 'Smart Meter', smQty),
-    row(first('wifi_dongle'), 'Wifi Dongle', wifiQty),
-    row(panel?.p ?? null, 'Panneaux', nbPanneaux),
-    row(bat5?.p ?? null, 'Batterie', nb5),
-    row(bat10?.p ?? null, 'Batterie', nb10),
-    acierRow,
-    aluRow,
-    row(first('socle'), 'Socles', nbPanneaux * 2),
+  // PVORD — chaque ligne est TAGUÉE de son rôle avant l'assemblage final :
+  // `orderLinesByRolePreference` réordonne selon `ordreLignes`
+  // (`ParametresGammes.ordre_lignes`) si fourni, sinon renvoie EXACTEMENT
+  // cet ordre canonique — comportement historique inchangé.
+  const lignesTaguees = [
+    ['onduleur_reseau', row(reseau?.p ?? null, 'Onduleur réseau', reseau ? inverterQty(reseau.kw) : 1)],
+    ['onduleur_hybride', row(hybride?.p ?? null, 'Onduleur hybride', hybride ? Math.max(1, inverterQty(hybride.kw)) : 1)],
+    ['smart_meter', row(first('smart_meter'), 'Smart Meter', smQty)],
+    ['wifi_dongle', row(first('wifi_dongle'), 'Wifi Dongle', wifiQty)],
+    ['panneau', row(panel?.p ?? null, 'Panneaux', nbPanneaux)],
+    ['batterie', row(bat5?.p ?? null, 'Batterie', nb5)],
+    ['batterie', row(bat10?.p ?? null, 'Batterie', nb10)],
+    ['structure_acier', acierRow],
+    ['structure_alu', aluRow],
+    ['socle', row(first('socle'), 'Socles', nbPanneaux * 2)],
     // Câbles Nexans 6 mm² au mètre (règle fondateur 18/08). On ne retient qu'un
     // câble RÉELLEMENT chiffré : un produit sans prix n'entre jamais dans une
     // auto-composition (même patron que « prix à renseigner »).
-    row(cableDc, 'Câble solaire Nexans 6 mm² (au mètre)', cableDc ? metreCableDc(blocks) : 0),
-    row(cableTerre, 'Câble de terre Nexans 6 mm² (au mètre)', cableTerre ? metreCableTerre(blocks) : 0),
-    row(first('accessoires'), 'Accessoires', 1, prixAccessoires),
-    row(first('tableau'), 'Tableau De Protection AC/DC', 1, prixTableau),
-    row(first('installation'), 'Installation', 1, prixInstallation),
-    row(first('transport'), 'Transport', 1),
-    row(first('suivi'), 'Suivi journalier, maintenance chaque 12 mois pendant 2 ans', 0),
+    // PVCBL (19/08) — métrage PAR PAIRE de MPPT (voir metreCableDcParPaires),
+    // plus lié au palier de 5 kWc. Quantité éditable à la main ensuite,
+    // jamais re-forcée (aucun effet ne rejoue l'auto-composition après une
+    // frappe manuelle sur le champ Qté).
+    ['cable_dc', row(cableDc, 'Câble solaire Nexans 6 mm² (au mètre)', cableDc ? metreCableDcParPaires(mpptPaires) : 0)],
+    ['cable_terre', row(cableTerre, 'Câble de terre Nexans 6 mm² (au mètre)', cableTerre ? metreCableTerre(blocks) : 0)],
+    ['accessoires', row(first('accessoires'), 'Accessoires', 1, prixAccessoires)],
+    ['tableau', row(first('tableau'), 'Tableau De Protection AC/DC', 1, prixTableau)],
+    ['installation', row(first('installation'), 'Installation', 1, prixInstallation)],
+    ['transport', row(first('transport'), 'Transport', 1)],
+    ['suivi', row(first('suivi'), 'Suivi journalier, maintenance chaque 12 mois pendant 2 ans', 0)],
   ]
+  const lignes = orderLinesByRolePreference(lignesTaguees, ordreLignes)
   // QX19 — puissance du panneau EFFECTIVEMENT retenu (peut différer de panelW
   // quand le catalogue n'a pas exactement panelW → substitution la plus proche)
   // + nb de panneaux : l'écran recalcule le kWc RÉEL depuis ces valeurs plutôt
   // que d'afficher un kWc théorique divergent. Métadonnées portées sur le
   // tableau (les consommateurs qui itèrent les lignes ne les voient pas).
+  // PVORD — rattachées APRÈS le tri : `orderLinesByRolePreference` renvoie un
+  // tableau NEUF (jamais les métadonnées attachées à `lignesTaguees`, qui n'en
+  // porte aucune de toute façon).
   lignes.actualPanelW = panel?.w ?? panelW
   lignes.nbPanneaux = nbPanneaux
   lignes.kwcReel = Math.round(nbPanneaux * (panel?.w ?? panelW) / 10) / 100

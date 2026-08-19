@@ -1042,6 +1042,27 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     _tarif_kwh_override = etude.get("tarif_kwh")  # explicit flat price (seller set)
     _tranches_override = etude.get("tarif_tranches")  # custom schedule [[ceil, price], …]
     _utility = etude.get("distributeur")  # "onee" | "lydec" | "redal"
+    # ORDRE FONDATEUR (19/08/2026) — barème ONEE résidentiel RÉGLABLE par
+    # société (« correct all prices and keep them changable in the settings »).
+    # Le vendeur (etude.tarif_tranches, ci-dessus) reste souverain s'il a collé
+    # un barème custom pour CE devis ; à défaut, si le fondateur a ÉDITÉ le
+    # barème de sa société (Paramètres → Tarification & ROI, apps/parametres
+    # TariffSettings), on l'utilise ; sinon aucun changement — pricing.py garde
+    # ses défauts 2026 codés en dur. N'agit que sur ONEE (le réglage ne couvre
+    # que le barème résidentiel national, jamais Lydec/Redal estimés).
+    if not _tranches_override and (not _utility or str(_utility).lower() == "onee"):
+        try:
+            from apps.parametres.selectors import residential_tranches_for
+            _co_tranches = residential_tranches_for(getattr(devis, "company", None))
+            if _co_tranches:
+                from .pricing import TrancheTable
+                _tranches_override = TrancheTable(
+                    _co_tranches["pairs"],
+                    selective_threshold=_co_tranches["selective_threshold"],
+                    boundary_tolerance=_co_tranches["boundary_tolerance"],
+                )
+        except Exception:  # noqa: BLE001 — un PDF/une liste ne casse jamais ici
+            pass
     _conso_annuelle = etude.get("conso_annuelle")  # from industrial étude if available
     # Autoconsommation overrides (seller/study can refine these)
     _autoconso_sans = float(etude.get("autoconso_sans") or 0) or None
@@ -1345,7 +1366,31 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     _ac_a_proxy = roi.get("autoconso_avec") or AUTOCONSO_AVEC
     if not (0 < _ac_a_proxy <= 1):
         _ac_a_proxy = AUTOCONSO_AVEC
-    factures_mensuelles = [round(v / _ac_a_proxy) for v in roi["eco_a_monthly"]]
+    # ── PACT10/QF-REAL (fondateur 19/08/2026) — 12 VRAIES factures mensuelles ──
+    # Le devis auto résidentiel (frontend/.../autoQuote.js) sème désormais
+    # etude_params.factures_mensuelles_reelles depuis la facture hiver/été du
+    # lead : quand elles existent, elles remplacent le proxy ci-dessus comme
+    # série « avant » — le proxy reconstruisait la facture depuis l'économie
+    # SUPPOSÉE (circulaire : la couverture solaire valait toujours ≈ le taux
+    # d'autoconsommation forfaitaire, jamais une vraie conso — audit du
+    # 19/08). L'« après » reste calculé plus loin, INCHANGÉ
+    # (before[i] − eco_a_monthly[i], residential/renderer.synthese_economies) :
+    # seule la série « avant » devient réelle. Garde stricte : exactement 12
+    # valeurs numériques strictement positives, sinon repli SILENCIEUX sur le
+    # proxy historique — un contrat malformé ne casse jamais le rendu, et
+    # aucun devis existant (sans la clé) ne change de chiffre.
+    _factures_reelles = etude.get("factures_mensuelles_reelles")
+    _real_bills = None
+    if isinstance(_factures_reelles, (list, tuple)) and len(_factures_reelles) == 12:
+        try:
+            _candidats = [float(v) for v in _factures_reelles]
+            if all(v > 0 for v in _candidats):
+                _real_bills = [round(v) for v in _candidats]
+        except (TypeError, ValueError):
+            _real_bills = None
+    factures_mensuelles = (
+        _real_bills if _real_bills is not None
+        else [round(v / _ac_a_proxy) for v in roi["eco_a_monthly"]])
 
     client_name = f"{(client.prenom or '').strip()} {(client.nom or '').strip()}".strip()
 

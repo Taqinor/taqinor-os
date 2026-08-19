@@ -160,6 +160,32 @@ describe('ProduitForm — section « Fiche technique » (PVOND)', () => {
     expect(screen.getByText(/Non chiffrable — il manque :/)).toBeInTheDocument()
   })
 
+  // PVOND-H (fondateur 19/08/2026) — « have a place for every one of this
+  // information » : tension de démarrage et Isc max par MPPT sont désormais
+  // éditables, mais restent OPTIONNELLES (le moteur électrique a un repli
+  // sûr en leur absence) — jamais comptées dans le badge « Chiffrable ».
+  it('les nouveaux champs onduleur (démarrage, Isc max MPPT) sont éditables et OPTIONNELS', async () => {
+    renderEdit()
+    await screen.findByText(/Éditer/)
+    await waitFor(() => expect(getFichesTechniques).toHaveBeenCalled())
+    expect(screen.getByLabelText('Tension de démarrage (V)')).toBeInTheDocument()
+    expect(screen.getByLabelText('Isc maxi par MPPT (A)')).toBeInTheDocument()
+    // Remplir les 8 variables du contrat SANS toucher aux deux nouveaux
+    // champs optionnels atteint quand même « Chiffrable ✓ ».
+    fireEvent.change(document.getElementById('pf-gar-txt'), { target: { value: 'Garantie constructeur 10 ans' } })
+    fireEvent.change(screen.getByLabelText('Puissance AC (kW)'), { target: { value: '8' } })
+    fireEvent.change(screen.getByLabelText('Phases'), { target: { value: '3' } })
+    fireEvent.change(screen.getByLabelText("Nombre d'entrées MPPT"), { target: { value: '2' } })
+    fireEvent.change(screen.getByLabelText('Courant maxi par MPPT (A)'), { target: { value: '26' } })
+    fireEvent.change(screen.getByLabelText('Plage MPPT — tension mini (V)'), { target: { value: '200' } })
+    fireEvent.change(screen.getByLabelText('Plage MPPT — tension maxi (V)'), { target: { value: '650' } })
+    fireEvent.change(screen.getByLabelText('Tension DC maximale (V)'), { target: { value: '800' } })
+    fireEvent.change(screen.getByLabelText('Rendement européen (%)'), { target: { value: '97' } })
+    fireEvent.click(screen.getByLabelText('Aucune batterie compatible (onduleur réseau)'))
+
+    expect(await screen.findByText('Chiffrable ✓')).toBeInTheDocument()
+  })
+
   it('la plage de tension batterie n\'apparaît que pour un onduleur HYBRIDE', async () => {
     renderEdit({ nom: 'Onduleur réseau Huawei 10kW' })
     await screen.findByText(/Éditer/)
@@ -193,6 +219,20 @@ describe('ProduitForm — section « Fiche technique » (PVOND)', () => {
 
     expect(await screen.findByText('Chiffrable ✓')).toBeInTheDocument()
     expect(screen.queryByText(/Non chiffrable/)).not.toBeInTheDocument()
+  })
+
+  // PVOND-H (fondateur 19/08/2026) — la plage de tension batterie s'écrit
+  // désormais dans le champ DÉDIÉ de FicheTechnique, plus dans une ligne
+  // devinée de `Produit.description` : la description reste INTACTE.
+  it('la plage de tension batterie s\'écrit dans le champ dédié, jamais dans la description', async () => {
+    renderEdit()
+    await screen.findByText(/Éditer/)
+    await waitFor(() => expect(getFichesTechniques).toHaveBeenCalled())
+
+    fireEvent.change(screen.getByLabelText('Plage batterie — tension mini (V)'), { target: { value: '40' } })
+    fireEvent.change(screen.getByLabelText('Plage batterie — tension maxi (V)'), { target: { value: '60' } })
+
+    expect(document.getElementById('pf-desc').value).toBe('')
   })
 
   it('RÉSEAU : « Chiffrable ✓ » sans jamais avoir à déclarer de plage batterie (règle 18/08, commit ed34ced9)', async () => {
@@ -272,6 +312,28 @@ describe('ProduitForm — section « Fiche technique » (PVOND)', () => {
     expect(screen.getByLabelText('Puissance crête (Wc)')).toBeInTheDocument()
     expect(screen.getByLabelText('Longueur (mm)')).toBeInTheDocument()
     expect(screen.queryByLabelText('Puissance AC (kW)')).not.toBeInTheDocument()
+  })
+
+  // PVOND-H (fondateur 19/08/2026) — Voc/Isc/Vmp/Imp et les coefficients de
+  // température EXISTAIENT déjà sur FicheTechnique (lus par le moteur
+  // électrique) mais n'étaient éditables NULLE PART à l'écran.
+  it('type PANNEAU : Voc/Isc/Vmp/Imp et coefficients de température sont éditables', async () => {
+    renderEdit({ nom: 'Panneau JA Solar 550W', specs_solaire: undefined })
+    await screen.findByText(/Éditer/)
+    await screen.findByText('Fiche technique')
+    expect(screen.getByLabelText('Tension circuit ouvert — Voc (V)')).toBeInTheDocument()
+    expect(screen.getByLabelText('Courant court-circuit — Isc (A)')).toBeInTheDocument()
+    expect(screen.getByLabelText('Tension au point de puissance max — Vmp (V)')).toBeInTheDocument()
+    expect(screen.getByLabelText('Courant au point de puissance max — Imp (A)')).toBeInTheDocument()
+    expect(screen.getByLabelText('Coefficient de température Voc (%/°C)')).toBeInTheDocument()
+    expect(screen.getByLabelText('Coefficient de température Pmax (%/°C)')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Tension circuit ouvert — Voc (V)'), { target: { value: '48.3' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Mettre à jour' }))
+
+    await waitFor(() => expect(updateProduitApi).toHaveBeenCalled())
+    await waitFor(() => expect(createFicheTechnique).toHaveBeenCalledWith(
+      expect.objectContaining({ type_fiche: 'module', voc_v: 48.3 })))
   })
 
   it('type BATTERIE : capacité/tension/DoD', async () => {

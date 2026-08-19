@@ -206,7 +206,24 @@ const jsonLd = {
               {estPdf && (
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
               )}
-              {estPdf ? 'Fiche technique officielle (PDF)' : 'La norme de référence (source officielle) ↗'}
+              {estPdf
+                ? (fiche.datasheetMono ? 'Fiche technique officielle — triphasé (PDF)' : 'Fiche technique officielle (PDF)')
+                : 'La norme de référence (source officielle) ↗'}
+            </a>
+          )}
+          {/* G4 (2026-08-19) — second lien constructeur, UNIQUEMENT pour une
+              fiche dont le modèle affiché couvre deux gammes réelles
+              (mono/triphasé) sous deux références différentes ; absent =
+              aucun changement pour toutes les autres fiches. */}
+          {fiche.datasheetMono && (
+            <a
+              href={fiche.datasheetMono}
+              target="_blank"
+              rel="noopener"
+              class="inline-flex items-center gap-2 border border-white/25 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Fiche technique officielle — monophasé (PDF)
             </a>
           )}
         </div>

@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import { Trash2 } from 'lucide-react'
+import { Trash2, ChevronUp, ChevronDown } from 'lucide-react'
 import {
   Button, IconButton, Input,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
@@ -37,6 +37,14 @@ function DevisLineRowImpl({
   onQuantiteChange,
   onSetGroupe,
   onRemove,
+  // PVORD (fondateur 19/08/2026) — réordonnancement manuel des lignes
+  // (monter/descendre). `canMoveUp`/`canMoveDown` bornent le premier/dernier
+  // rang ; les callbacks reçoivent la clé de ligne (même patron que
+  // `onRemove`), jamais la ligne entière.
+  canMoveUp,
+  canMoveDown,
+  onMoveUp,
+  onMoveDown,
 }) {
   const lineTtc = (parseFloat(l.quantite) || 0) * (parseFloat(l.prix_unit_ttc) || 0)
   // Indice non bloquant : la désignation a été éditée et ne correspond plus
@@ -55,6 +63,26 @@ function DevisLineRowImpl({
     const expected = expectedTvaForDesignation(l.designation, { tvaPanneaux, tvaStandard })
     if (t !== expected) tvaWarning = `${expected} % attendu`
   }
+
+  // PVORD — boutons monter/descendre, PARTAGÉS entre la ligne produit et la
+  // ligne section/note ci-dessous (une section/note reste réordonnable au
+  // même titre qu'une ligne produit — `ordre` s'applique à toutes).
+  // Baseline accessible : boutons natifs désactivés en butée (aria-disabled
+  // implicite via `disabled`), jamais de glisser-déposer requis.
+  const reorderButtons = (
+    <div className="line-reorder-buttons">
+      <IconButton type="button" label="Monter la ligne" size="sm"
+                  disabled={!canMoveUp}
+                  onClick={() => onMoveUp(l._key)}>
+        <ChevronUp />
+      </IconButton>
+      <IconButton type="button" label="Descendre la ligne" size="sm"
+                  disabled={!canMoveDown}
+                  onClick={() => onMoveDown(l._key)}>
+        <ChevronDown />
+      </IconButton>
+    </div>
+  )
 
   // XSAL14 — ligne de SECTION (intertitre) ou de NOTE (texte sans prix) : une
   // seule cellule pleine largeur, exclue de tous les totaux. Pas de produit, de
@@ -79,6 +107,7 @@ function DevisLineRowImpl({
         </td>
         {/* cellule Option (vide — sans objet pour une section/note) */}
         <td aria-hidden="true"></td>
+        <td data-label="Ordre" className="ta-center">{reorderButtons}</td>
         <td>
           <IconButton type="button" label="Supprimer la ligne" size="sm"
                       className="text-destructive hover:bg-destructive/10"
@@ -188,6 +217,7 @@ function DevisLineRowImpl({
                title="Add-on proposé au client hors total (activable avant signature)"
                onChange={e => onSetField(l._key, 'optionnelle', e.target.checked)} />
       </td>
+      <td data-label="Ordre" className="ta-center">{reorderButtons}</td>
       <td>
         <IconButton type="button" label="Supprimer la ligne" size="sm"
                     className="text-destructive hover:bg-destructive/10"
@@ -221,6 +251,14 @@ function areEqual(prev, next) {
     && prev.onQuantiteChange === next.onQuantiteChange
     && prev.onSetGroupe === next.onSetGroupe
     && prev.onRemove === next.onRemove
+    // PVORD — canMoveUp/canMoveDown dépendent de la POSITION de la ligne
+    // (index dans `lines`), donc changent bien quand l'ordre bouge : à
+    // inclure explicitement, sinon une ligne déplacée garderait ses
+    // boutons monter/descendre périmés (memo stale).
+    && prev.canMoveUp === next.canMoveUp
+    && prev.canMoveDown === next.canMoveDown
+    && prev.onMoveUp === next.onMoveUp
+    && prev.onMoveDown === next.onMoveDown
 }
 
 export const DevisLineRow = memo(DevisLineRowImpl, areEqual)

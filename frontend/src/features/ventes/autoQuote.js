@@ -16,6 +16,10 @@ import {
   estimerKwcDepuisFacture, arrondirAuPasKwc, optimalKwcByPayback,
   // PVMRQ — libellé FR d'un rôle, pour dire QUELLE marque épinglée manque.
   roleLabel,
+  // PACT10/QF-REAL — inverse EXACT du barème (facture MAD → kWh/mois), déjà
+  // utilisé par l'écran manuel de DevisGenerator (QF4) ; réutilisé tel quel
+  // pour dériver la consommation annuelle RÉELLE du lead depuis sa facture.
+  kwhFromBill,
 } from './solar'
 
 // QX19 — préférence de structure du lead (acier/aluminium) → structureType
@@ -83,10 +87,16 @@ export const buildEtudePompage = (sel, { typePompe, alim, hmt, debit, heures,
  *                                transmise telle quelle à `optimalKwcByPayback`
  *                                et `autoFillLines`. Absente/vide = comportement
  *                                historique (aucune préférence).
+ * @param {string[]} ordreLignes  PVORD (fondateur 19/08/2026) — ordre par
+ *                                défaut des lignes (`ParametresGammes.
+ *                                ordre_lignes`), transmis tel quel à
+ *                                `autoFillLines`. Absente/vide = ordre
+ *                                canonique du simulateur (comportement
+ *                                historique).
  */
 export async function createAutoQuote({ lead, produits, discountStr, dispatch,
                                         quoteLogic, pumpHours, onEtude,
-                                        targetKwc, marques }) {
+                                        targetKwc, marques, ordreLignes }) {
   // Logique de devis éditable (Paramètres → Avancé) ; sans valeur = défauts.
   const kwhPrice = (Number(quoteLogic?.kwhPrice) > 0) ? Number(quoteLogic.kwhPrice) : KWH_PRICE
   const efficiency = (Number(quoteLogic?.efficiency) > 0) ? Number(quoteLogic.efficiency) : EFFICIENCY
@@ -163,6 +173,9 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
       // QX19 — respecte la préférence de structure du lead (défaut acier).
       structureType: structFromLead(lead),
       marques,
+      // PVORD — ordre par défaut de la société (voir la doc du paramètre
+      // plus haut) ; absent/vide = ordre canonique inchangé.
+      ordreLignes,
     })
     // PVMRQ — GARDE : une marque épinglée sans AUCUN candidat en stock laisse
     // des lignes PLACEHOLDER (aucun produit, 0 MAD) que le filtre
@@ -197,6 +210,37 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
       scenario: _bat === 'sans' ? 'Sans batterie'
         : _bat === 'avec' ? 'Avec batterie'
           : 'Les deux (Sans + Avec)',
+    }
+    // PACT10/QF-REAL (fondateur 19/08/2026) — un devis résidentiel auto ne
+    // portait QUE {scenario} : le PDF (builder.py) reconstruisait alors les
+    // « factures avant » depuis l'économie SUPPOSÉE (proxy circulaire — la
+    // couverture solaire valait toujours ≈ le taux d'autoconsommation
+    // forfaitaire, jamais une vraie consommation ; voir l'audit du 19/08).
+    // Quand le lead porte une VRAIE facture d'hiver, on sème le contrat
+    // convenu avec le backend (etude_params.factures_mensuelles_reelles /
+    // conso_annuelle / distributeur) : le PDF rend alors les 12 factures
+    // RÉELLES du client comme série « avant » et bascule sur le modèle
+    // « deux factures » par tranche dès que le distributeur est connu
+    // (builder.py QF2). Même interpolation hiver/été que le dimensionnement
+    // ci-dessus (`estimerMois`) et même inverse de barème que l'écran manuel
+    // de DevisGenerator (`kwhFromBill`, miroir exact de pricing.py). Rien
+    // n'est écrit quand le lead n'a pas de facture — l'étude reste
+    // {scenario} seul, comportement historique inchangé (le backend dégrade
+    // alors sur son proxy historique).
+    if (mode === 'residentiel' && hiver > 0) {
+      const eteReel = (lead.ete_differente && lead.facture_ete)
+        ? parseFloat(lead.facture_ete) : hiver
+      const facturesReelles = estimerMois(hiver, eteReel)
+      const distributeurLead = ['onee', 'lydec', 'redal'].includes(lead.distributeur)
+        ? lead.distributeur : undefined
+      const consoAnnuelleReelle = Math.round(facturesReelles.reduce(
+        (somme, bill) => somme + (kwhFromBill(bill, distributeurLead).kwhMensuel || 0), 0))
+      extra.etude_params = {
+        ...extra.etude_params,
+        factures_mensuelles_reelles: facturesReelles,
+        ...(consoAnnuelleReelle > 0 ? { conso_annuelle: consoAnnuelleReelle } : {}),
+        ...(distributeurLead ? { distributeur: distributeurLead } : {}),
+      }
     }
     // QX52 — industriel ET commercial partagent l'étude d'autoconsommation ; le
     // day-share diffère (industriel 80 % vs commercial 80 % archétype par défaut)
@@ -246,9 +290,17 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
     note: null,
     ...extra,
   })).unwrap()
+  // PVORD (fondateur 19/08/2026) — ordre PAR DÉFAUT des lignes = l'ordre
+  // canonique du simulateur (celui produit par `rows`, éventuellement déjà
+  // réordonné selon `ParametresGammes.ordre_lignes` — voir `autoFillLines`).
+  // Les créations restent concurrentes (`Promise.all`) : sans `ordre`
+  // explicite, le tri en base retombait sur `id` = ordre d'ARRIVÉE réseau
+  // (une course), pas l'ordre voulu. `idx` est calculé de façon SYNCHRONE sur
+  // le tableau filtré avant tout dispatch, donc déterministe malgré la
+  // concurrence des requêtes.
   await Promise.all(rows
     .filter(r => r.produit && parseFloat(r.quantite) > 0)
-    .map(r => dispatch(addLigneDevis({
+    .map((r, idx) => dispatch(addLigneDevis({
       devis: devis.id,
       produit: parseInt(r.produit),
       designation: r.designation,
@@ -256,6 +308,7 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
       prix_unitaire: htFromTtc(r.prix_unit_ttc, r.taux_tva ?? 20),
       remise: '0',
       taux_tva: String(r.taux_tva ?? 20),
+      ordre: idx,
     })).unwrap()))
   return devis.id
 }

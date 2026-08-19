@@ -104,9 +104,17 @@ class TestSeedCatalogue(TestCase):
         self.assertEqual(fiche_jk.type_fiche, 'module')
         self.assertEqual(fiche_jk.temp_coeff_pmax_pct_c, Decimal('-0.290'))
         self.assertEqual(fiche_jk.temp_coeff_voc_pct_c, Decimal('-0.250'))
-        # Dimensions Jinko non vérifiées : jamais inventées.
-        self.assertIsNone(fiche_jk.longueur_mm)
-        self.assertIsNone(fiche_jk.largeur_mm)
+        # PVOND-H (19/08/2026) — la fiche Jinko est désormais SOURCÉE sur la
+        # datasheet officielle JKM710-735N-66HL5-BDV-Z3-EU (elle n'avait
+        # aucune valeur électrique avant) : le pin « dimensions absentes »
+        # d'hier documente ce qui MANQUAIT, celui-ci ce qui est VÉRIFIÉ.
+        self.assertEqual(fiche_jk.pmax_wc, Decimal('710.00'))
+        self.assertEqual(fiche_jk.voc_v, Decimal('48.73'))
+        self.assertEqual(fiche_jk.isc_a, Decimal('18.53'))
+        self.assertEqual(fiche_jk.vmp_v, Decimal('40.65'))
+        self.assertEqual(fiche_jk.imp_a, Decimal('17.47'))
+        self.assertEqual(fiche_jk.longueur_mm, 2384)
+        self.assertEqual(fiche_jk.largeur_mm, 1303)
 
     def test_pv9_fiches_techniques_idempotent_second_run(self):
         from apps.stock.models import FicheTechnique
@@ -288,6 +296,28 @@ class TestSeedCatalogue(TestCase):
         self.assertEqual(fiche.ond_ac_kw, Decimal('10'))
         self.assertEqual(fiche.ond_phases, 3)
         self.assertEqual(fiche.ond_rendement_euro_pct, Decimal('97.0'))
+
+    def test_g4_deye_5m_mono_est_sg05lp1_pas_sg04lp1(self):
+        """G4 (2026-08-19, plainte fondateur) — le SG04LP1 ne doit plus
+        survivre nulle part sur le 5 kW monophasé : ni le modèle affiché, ni
+        les caractéristiques électriques de sa FicheTechnique (re-sourcées sur
+        la datasheet officielle deyeinverter.com SUN-5K-SG05LP1-EU)."""
+        from apps.stock.models import FicheTechnique
+        seed(self.company)
+        p = Produit.objects.get(company=self.company, sku='OND-H-DEY-5M')
+        self.assertIn('Modèle supposé : Deye SUN-5K-SG05LP1-EU(-SM2)', p.description)
+        self.assertNotIn('SG04', p.description)
+        fiche = FicheTechnique.objects.get(produit=p)
+        self.assertEqual(fiche.ond_n_mppt, 2)
+        self.assertEqual(fiche.ond_mppt_v_min, Decimal('150.0'))
+        self.assertEqual(fiche.ond_mppt_v_max, Decimal('425.0'))
+        # Rated PV Input Voltage 370 (125-500) V sur la fiche SG05LP1 : 500 V,
+        # PAS 600 V (l'ancienne valeur, jamais vérifiée sur une fiche SG05LP1).
+        self.assertEqual(fiche.ond_v_max_abs, Decimal('500.0'))
+        self.assertEqual(fiche.ond_i_max_mppt_a, Decimal('13.0'))
+        self.assertEqual(fiche.ond_ac_kw, Decimal('5'))
+        self.assertEqual(fiche.ond_phases, 1)
+        self.assertEqual(fiche.ond_rendement_euro_pct, Decimal('96.5'))
 
     # ── PVG4 — Fiches techniques onduleurs/batteries (modèle supposé) ───────
     def test_pvg4_onduleur_fiche_sourced_values_only(self):
@@ -509,6 +539,45 @@ class TestSeedCatalogue(TestCase):
         # Contrôle négatif : un produit normalement prisé passe la garde.
         priced = Produit.objects.get(company=self.company, sku='OND-R-HUA-10T')
         self.assertTrue(_has_price(priced))
+
+    # ── DC35/G1 (2026-08-19) — le fondateur ne pose que du câble Nexans : la
+    # marque doit être visible sur TOUTE ligne câble solaire du catalogue, pas
+    # seulement sur les deux SKU dont le nom la porte déjà (CAB-NEX-DC-6/TER-6).
+    def test_toutes_les_lignes_cable_solaire_portent_la_marque_nexans(self):
+        seed(self.company)
+        skus_cable = [
+            'CAB-6MM-M', 'CAB-H1Z2Z2-4-M', 'CAB-H1Z2Z2-6-M',
+            'CAB-H1Z2Z2-10-M', 'CAB-H1Z2Z2-16-M',
+            'CAB-NEX-DC-6', 'CAB-NEX-TER-6',
+        ]
+        for sku in skus_cable:
+            p = Produit.objects.get(company=self.company, sku=sku)
+            self.assertEqual(p.marque, 'Nexans', sku)
+            self.assertTrue(p.description, sku)
+
+    def test_cable_dc_h1z2z2k_cite_la_norme_et_le_conducteur(self):
+        """Les câbles DC (H1Z2Z2-K) portent des faits VÉRIFIÉS — jamais un
+        câble de terre : NF EN 50618 est une norme de câble PV, pas de mise à
+        la terre (aucun numéro inventé, cf. règle fondateur « faits vérifiés
+        uniquement »)."""
+        seed(self.company)
+        for sku in ('CAB-6MM-M', 'CAB-H1Z2Z2-6-M', 'CAB-NEX-DC-6'):
+            p = Produit.objects.get(company=self.company, sku=sku)
+            self.assertIn('H1Z2Z2-K', p.description, sku)
+            self.assertIn('NF EN 50618', p.description, sku)
+
+    def test_fiche_nexans_idempotente_et_sans_prix_touche(self):
+        seed(self.company)
+        avant = Produit.objects.get(company=self.company, sku='CAB-NEX-DC-6')
+        self.assertEqual(avant.prix_vente, Decimal('12.00'))  # 14,4 TTC / 1,2
+        self.assertEqual(avant.prix_achat, Decimal('0'))
+        seed(self.company)
+        apres = Produit.objects.get(company=self.company, sku='CAB-NEX-DC-6')
+        self.assertEqual(apres.marque, 'Nexans')
+        self.assertEqual(apres.prix_vente, avant.prix_vente)
+        self.assertEqual(apres.prix_achat, avant.prix_achat)
+        self.assertEqual(
+            Produit.objects.filter(company=self.company, sku='CAB-NEX-DC-6').count(), 1)
 
     # ── PVG4 — Onduleur Deye 15 kW basse tension (décision fondateur
     # 2026-08-18, SUN-15K-SG05LP3-EU-SM2) ─────────────────────────────────
@@ -1040,3 +1109,38 @@ class TestContratOnduleurSeede(TestCase):
         produit = Produit.objects.get(company=self.company, sku='OND-H-DEY-10T')
         self.assertEqual(
             (produit.description or '').count('Plage batterie :'), 1)
+
+    # PVOND-H (fondateur 19/08/2026) — les dix onduleurs Deye/Huawei du
+    # catalogue portent désormais LE CHAMP DÉDIÉ, pas seulement la ligne de
+    # description historique.
+    def test_le_seeder_pose_le_champ_dedie_pas_seulement_la_description(self):
+        from apps.stock.models import FicheTechnique
+        seed(self.company)
+        hybride = Produit.objects.get(company=self.company, sku='OND-H-DEY-10T')
+        f_hybride = FicheTechnique.objects.get(produit=hybride)
+        self.assertEqual(f_hybride.ond_bat_v_min, Decimal('40.0'))
+        self.assertEqual(f_hybride.ond_bat_v_max, Decimal('60.0'))
+        self.assertFalse(f_hybride.ond_bat_aucune)
+        reseau = Produit.objects.get(company=self.company, sku='OND-R-HUA-10T')
+        f_reseau = FicheTechnique.objects.get(produit=reseau)
+        self.assertTrue(f_reseau.ond_bat_aucune)
+        self.assertIsNone(f_reseau.ond_bat_v_min)
+        self.assertIsNone(f_reseau.ond_bat_v_max)
+
+    def test_le_champ_dedie_prime_sur_une_ligne_de_description_divergente(self):
+        """PVOND-H — ordre de lecture : si le champ DÉDIÉ est renseigné, il
+        fait foi même quand une vieille ligne de description dit autre
+        chose (une base migrée sans --reappliquer-fiches ne doit jamais
+        rendre une valeur incohérente entre les deux mécanismes)."""
+        from apps.stock.models import FicheTechnique
+        from apps.stock.selectors import plage_batterie_onduleur
+        seed(self.company)
+        produit = Produit.objects.get(company=self.company, sku='OND-H-DEY-10T')
+        fiche = FicheTechnique.objects.get(produit=produit)
+        fiche.ond_bat_v_min = Decimal('45.0')
+        fiche.ond_bat_v_max = Decimal('55.0')
+        fiche.save()
+        # La description garde encore l'ancienne ligne « 40-60 V » — le champ
+        # dédié doit gagner.
+        self.assertIn('Plage batterie : 40-60 V', produit.description)
+        self.assertEqual(plage_batterie_onduleur(produit), (45.0, 55.0))

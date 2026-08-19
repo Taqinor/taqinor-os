@@ -1356,7 +1356,7 @@ backend/django_core/apps/parametres/models_email.py:197
 backend/django_core/apps/parametres/models_messages.py:72
 backend/django_core/apps/parametres/models_payment_terms.py:26
 backend/django_core/apps/parametres/models_statuses.py:31
-backend/django_core/apps/parametres/models_tariff.py:67
+backend/django_core/apps/parametres/models_tariff.py:75
 backend/django_core/apps/parametres/models_taxes.py:44
 backend/django_core/apps/parametres/models_translations.py:31
 backend/django_core/apps/parametres/models_units.py:38

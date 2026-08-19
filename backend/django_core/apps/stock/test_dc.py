@@ -247,6 +247,39 @@ class TestPV5FicheTechniqueSpecs(DCBase):
         self.assertEqual(f.ond_phases, 1)
         self.assertEqual(f.ond_rendement_euro_pct, Decimal('97.6'))
 
+    # PVOND-H (fondateur 19/08/2026, « have a place for every one of this
+    # information ») — trois variables ONDULEUR que le moteur électrique sait
+    # déjà lire mais qui n'avaient AUCUN champ dédié jusqu'ici.
+    def test_onduleur_champs_pvond_h_persistes(self):
+        from apps.stock.models import FicheTechnique
+        fiche = self._make_fiche(
+            type_fiche=FicheTechnique.TypeFiche.ONDULEUR,
+            ond_v_demarrage_v=Decimal('160.0'),
+            ond_isc_max_mppt_a=Decimal('39.0'),
+            ond_bat_aucune=False,
+            ond_bat_v_min=Decimal('40.0'), ond_bat_v_max=Decimal('60.0'))
+        f = FicheTechnique.objects.get(pk=fiche.pk)
+        self.assertEqual(f.ond_v_demarrage_v, Decimal('160.0'))
+        self.assertEqual(f.ond_isc_max_mppt_a, Decimal('39.0'))
+        self.assertFalse(f.ond_bat_aucune)
+        self.assertEqual(f.ond_bat_v_min, Decimal('40.0'))
+        self.assertEqual(f.ond_bat_v_max, Decimal('60.0'))
+
+    def test_onduleur_bat_aucune_defaut_false_jamais_null(self):
+        """``ond_bat_aucune`` n'est PAS nullable (contrairement au reste du
+        bloc PVOND-H) : une fiche qui ne le déclare pas reste ``False``, la
+        même sémantique « pas encore renseigné » qu'un ``bifacial`` non
+        déclaré (docstring de ``_fiche_champ_vide`` côté seeder : une valeur
+        booléenne par défaut EST une valeur, jamais un ``NULL``)."""
+        from apps.stock.models import FicheTechnique
+        fiche = self._make_fiche(type_fiche=FicheTechnique.TypeFiche.ONDULEUR)
+        f = FicheTechnique.objects.get(pk=fiche.pk)
+        self.assertFalse(f.ond_bat_aucune)
+        self.assertIsNone(f.ond_v_demarrage_v)
+        self.assertIsNone(f.ond_isc_max_mppt_a)
+        self.assertIsNone(f.ond_bat_v_min)
+        self.assertIsNone(f.ond_bat_v_max)
+
     def test_batterie_fields_persisted(self):
         from apps.stock.models import FicheTechnique
         fiche = self._make_fiche(
@@ -289,6 +322,14 @@ class TestPV5FicheTechniqueSpecs(DCBase):
                       'bat_kwh_nominal', 'bat_dod_pct'):
             self.assertIn(champ, data)
             self.assertIsNone(data[champ])
+        # PVOND-H (2026-08-19) — les trois nouveaux champs onduleur sont
+        # exposés eux aussi (null ici, cette fiche est un module).
+        for champ in ('ond_v_demarrage_v', 'ond_isc_max_mppt_a',
+                      'ond_bat_v_min', 'ond_bat_v_max'):
+            self.assertIn(champ, data)
+            self.assertIsNone(data[champ])
+        self.assertIn('ond_bat_aucune', data)
+        self.assertFalse(data['ond_bat_aucune'])
 
 
 class TestPV6SpecsForProduitSelector(DCBase):
@@ -344,6 +385,22 @@ class TestPV6SpecsForProduitSelector(DCBase):
         specs = specs_for_produit(self.produit)
         self.assertEqual(specs, {
             'kwh_nominal': Decimal('10.00'), 'dod_pct': Decimal('95.0'),
+        })
+
+    # PVOND-H (2026-08-19) — le moteur électrique (electrical_service.
+    # spec_onduleur_du_devis) lit ces deux clés depuis ``specs_for_produit`` :
+    # ce test verrouille qu'elles y transitent bien depuis la fiche.
+    def test_onduleur_subset_porte_demarrage_et_isc_max(self):
+        from apps.stock.models import FicheTechnique
+        from apps.stock.selectors import specs_for_produit
+        self._make_fiche(
+            type_fiche=FicheTechnique.TypeFiche.ONDULEUR,
+            ond_n_mppt=2, ond_v_demarrage_v=Decimal('160.0'),
+            ond_isc_max_mppt_a=Decimal('39.0'))
+        specs = specs_for_produit(self.produit)
+        self.assertEqual(specs, {
+            'n_mppt': 2, 'v_demarrage_v': Decimal('160.0'),
+            'isc_max_mppt_a': Decimal('39.0'),
         })
 
     def test_merge_over_default_is_byte_identical_when_empty(self):

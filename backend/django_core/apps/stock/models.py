@@ -1968,6 +1968,39 @@ class FicheTechnique(models.Model):
         max_digits=4, decimal_places=1, null=True, blank=True,
         help_text='Rendement européen de l\'onduleur (%).')
 
+    # ── PVOND-H (fondateur 19/08/2026) — « i was expecting to get battery
+    # voltage... have a place for every one of this information ». Trois
+    # variables que le moteur électrique (core.electrique.types.SpecOnduleur)
+    # sait déjà lire mais qui n'avaient AUCUN champ dédié :
+    #   • la plage de tension batterie vivait en texte libre dans
+    #     Produit.description (ligne « Plage batterie : … », cf.
+    #     apps/stock/selectors.py::plage_batterie_onduleur) ;
+    #   • tension de démarrage et Isc max par MPPT n'étaient nulle part —
+    #     seedées en commentaire (« NON seedés faute de champ »), jamais
+    #     saisissables. Tout optionnel/additif : une fiche existante n'est pas
+    #     impactée, et ``plage_batterie_onduleur`` garde son repli sur
+    #     l'ancienne ligne de description pour une fiche pas encore migrée.
+    ond_v_demarrage_v = models.DecimalField(
+        max_digits=6, decimal_places=1, null=True, blank=True,
+        help_text="Tension de démarrage (V). À défaut, le bas de la plage MPPT fait foi.")
+    ond_isc_max_mppt_a = models.DecimalField(
+        max_digits=5, decimal_places=1, null=True, blank=True,
+        help_text='Courant de court-circuit (Isc) maximal admissible par entrée MPPT (A) '
+                  '— borne matérielle, distincte du courant maximal de fonctionnement '
+                  "ci-dessus. À défaut, c'est ce dernier qui fait foi.")
+    ond_bat_aucune = models.BooleanField(
+        default=False,
+        help_text='Déclaration explicite : cet onduleur ne prend AUCUNE batterie '
+                  '(réseau / string on-grid). Prioritaire sur la plage min/max ci-dessous.')
+    ond_bat_v_min = models.DecimalField(
+        max_digits=6, decimal_places=1, null=True, blank=True,
+        help_text='Plage de tension batterie compatible — borne basse (V). '
+                  'Onduleur hybride uniquement.')
+    ond_bat_v_max = models.DecimalField(
+        max_digits=6, decimal_places=1, null=True, blank=True,
+        help_text='Plage de tension batterie compatible — borne haute (V). '
+                  'Onduleur hybride uniquement.')
+
     # ── PV5 — Batterie ──
     bat_kwh_nominal = models.DecimalField(
         max_digits=6, decimal_places=2, null=True, blank=True,

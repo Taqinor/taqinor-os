@@ -1529,6 +1529,12 @@ class FicheTechniqueSerializer(serializers.ModelSerializer):
             'ond_n_mppt', 'ond_mppt_v_min', 'ond_mppt_v_max', 'ond_v_max_abs',
             'ond_i_max_mppt_a', 'ond_ac_kw', 'ond_phases',
             'ond_rendement_euro_pct',
+            # PVOND-H (2026-08-19) — tension de démarrage, Isc max par MPPT,
+            # plage de tension batterie : le moteur électrique les sait déjà
+            # lire (core.electrique.types.SpecOnduleur), elles n'avaient
+            # simplement aucun champ pour les porter jusqu'ici.
+            'ond_v_demarrage_v', 'ond_isc_max_mppt_a',
+            'ond_bat_aucune', 'ond_bat_v_min', 'ond_bat_v_max',
             'bat_kwh_nominal', 'bat_kwh_usable', 'bat_dod_pct',
             'bat_v_nominal', 'bat_max_charge_kw',
             'pdf', 'date_creation', 'date_mise_a_jour',

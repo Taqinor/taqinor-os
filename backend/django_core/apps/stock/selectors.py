@@ -1189,7 +1189,8 @@ def specs_for_produit(produit):
         temp_coeff_voc_pct_c, temp_coeff_pmax_pct_c, longueur_mm,
         largeur_mm}`` ;
       * ``onduleur`` → ``{n_mppt, mppt_v_min, mppt_v_max, v_max_abs,
-        i_max_mppt_a, ac_kw, phases, rendement_euro_pct}`` ;
+        i_max_mppt_a, ac_kw, phases, rendement_euro_pct, v_demarrage_v,
+        isc_max_mppt_a}`` ;
       * ``batterie`` → ``{kwh_nominal, kwh_usable, dod_pct, v_nominal,
         max_charge_kw}``.
 
@@ -1228,6 +1229,11 @@ def specs_for_produit(produit):
             ('ac_kw', fiche.ond_ac_kw),
             ('phases', fiche.ond_phases),
             ('rendement_euro_pct', fiche.ond_rendement_euro_pct),
+            # PVOND-H (2026-08-19) — le moteur (SpecOnduleur) sait déjà lire
+            # ces deux variables ; elles n'avaient simplement aucun champ pour
+            # les porter jusqu'ici (cf. le nouveau bloc PVOND-H du modèle).
+            ('v_demarrage_v', fiche.ond_v_demarrage_v),
+            ('isc_max_mppt_a', fiche.ond_isc_max_mppt_a),
         ):
             _put(out, key, value)
     elif fiche.type_fiche == 'batterie':
@@ -1399,17 +1405,39 @@ def plage_batterie_onduleur(produit):
 
     * ``(v_min, v_max)`` — l'onduleur accepte une batterie dans cette fenêtre ;
     * ``(0.0, 0.0)`` — « aucune batterie » (onduleur réseau). Le contrat est
-      SATISFAIT : c'est une valeur, pas un trou. DEUX sources la produisent, au
-      même titre : une ligne « Plage batterie : aucune » écrite sur la fiche,
-      OU — depuis l'ordre fondateur du 18/08/2026 — la seule FAMILLE RÉSEAU du
-      produit, parce qu'un string on-grid n'a pas de port batterie ;
+      SATISFAIT : c'est une valeur, pas un trou. TROIS sources la produisent,
+      au même titre : le champ dédié ``FicheTechnique.ond_bat_aucune`` (PVOND-H,
+      2026-08-19), une ligne « Plage batterie : aucune » écrite sur la fiche
+      (mécanisme HISTORIQUE, conservé en repli), OU — depuis l'ordre fondateur
+      du 18/08/2026 — la seule FAMILLE RÉSEAU du produit, parce qu'un string
+      on-grid n'a pas de port batterie ;
     * ``None`` — rien n'est déclaré sur un onduleur HYBRIDE (ou de famille
       indéterminée) : la donnée MANQUE vraiment (l'appelant retombe sur son
       repli mot-clé et le générateur grise l'onduleur).
 
+    PVOND-H (2026-08-19) — ORDRE DE LECTURE : le champ DÉDIÉ
+    ``FicheTechnique.ond_bat_v_min``/``ond_bat_v_max``/``ond_bat_aucune``
+    prime quand il est renseigné (c'est la source que l'écran Stock écrit
+    désormais) ; à défaut, repli sur l'ANCIENNE ligne marquée de
+    ``Produit.description`` (une fiche seedée avant cette date, ou une
+    description éditée à la main, reste lue à l'identique — AUCUNE
+    régression) ; à défaut, repli sur la famille RÉSEAU.
+
     Lecture seule et tolérante : une ligne illisible vaut « non déclarée ».
     """
     import re
+
+    fiche = getattr(produit, 'fiche_technique', None)
+    if fiche is not None and getattr(fiche, 'type_fiche', None) == 'onduleur':
+        if getattr(fiche, 'ond_bat_aucune', False):
+            return (0.0, 0.0)
+        v_min = getattr(fiche, 'ond_bat_v_min', None)
+        v_max = getattr(fiche, 'ond_bat_v_max', None)
+        if v_min is not None and v_max is not None:
+            bas, haut = float(v_min), float(v_max)
+            if haut < bas:
+                bas, haut = haut, bas
+            return (bas, haut)
 
     description = getattr(produit, 'description', '') or ''
     for ligne in description.splitlines():

@@ -117,6 +117,31 @@ export function plageBatterieAbsenteLocale({
   return plageBatterieServeurAbsente
 }
 
+// ── PVOND-H (fondateur 19/08/2026) — même contrat que les deux fonctions
+// ci-dessus, mais lues sur le CHAMP DÉDIÉ (`ond_bat_aucune`/`ond_bat_v_min`/
+// `ond_bat_v_max`, désormais un vrai bloc de `FicheTechnique`) plutôt que sur
+// l'ancienne ligne de texte de `Produit.description`. C'est la source que
+// l'écran Stock ÉCRIT désormais ; `plageBatterieDeclaree`/
+// `plageBatterieAbsenteLocale` ci-dessus restent INCHANGÉES (elles gardent
+// leur propre couverture de test) — ce sont deux lectures du MÊME concept,
+// une par génération de mécanisme, jamais mélangées dans un seul appelant. */
+export function plageBatterieDeclareeChamps(ficheFields) {
+  if (ficheFields?.ond_bat_aucune) return true
+  const bas = Number(ficheFields?.ond_bat_v_min)
+  const haut = Number(ficheFields?.ond_bat_v_max)
+  return Number.isFinite(bas) && Number.isFinite(haut) && bas > 0 && haut > 0
+}
+
+/** Mêmes règles que `plageBatterieAbsenteLocale` (HYBRIDE exigé, RÉSEAU
+ * jamais absente, sinon repli SERVEUR) — appliquées à `ficheFields`. */
+export function plageBatterieAbsenteChamps({
+  estHybride, estReseau, ficheFields, plageBatterieServeurAbsente = true,
+}) {
+  if (estHybride) return !plageBatterieDeclareeChamps(ficheFields)
+  if (estReseau) return false
+  return plageBatterieServeurAbsente
+}
+
 // ── Verrou de complétude ONDULEUR — MIROIR de CONTRAT_ONDULEUR ─────────────
 // (apps/stock/selectors.py CONTRAT_ONDULEUR). Clés préfixées `__` = variables
 // qui ne vivent pas sur `FicheTechnique` (voir plus haut).
@@ -160,14 +185,36 @@ export function manquantesOnduleurLocal({ ficheFields = {}, garantieTexte = '', 
 }
 
 // ── Champs FicheTechnique (PV5) par type de fiche ───────────────────────────
+// PVOND-H (fondateur 19/08/2026, « have a place for every one of this
+// information ») — trois champs onduleur AJOUTÉS (tension de démarrage, Isc
+// max par MPPT, plage de tension batterie min/max) : le moteur électrique
+// (core.electrique.types.SpecOnduleur) sait déjà les lire, ils n'avaient
+// simplement aucun champ ``FicheTechnique`` pour les porter. Côté panneau,
+// Voc/Isc/Vmp/Imp et les deux coefficients de température EXISTAIENT déjà sur
+// le modèle (lus par ``specs_for_produit``/le moteur) mais n'étaient éditables
+// NULLE PART à l'écran — champ réutilisé, aucune duplication.
 const CHAMPS_PAR_TYPE = {
   onduleur: [
     'ond_ac_kw', 'ond_phases', 'ond_n_mppt', 'ond_mppt_v_min',
     'ond_mppt_v_max', 'ond_v_max_abs', 'ond_i_max_mppt_a',
     'ond_rendement_euro_pct',
+    'ond_v_demarrage_v', 'ond_isc_max_mppt_a',
+    'ond_bat_v_min', 'ond_bat_v_max',
   ],
-  module: ['pmax_wc', 'longueur_mm', 'largeur_mm'],
+  module: [
+    'pmax_wc', 'voc_v', 'isc_a', 'vmp_v', 'imp_a',
+    'temp_coeff_voc_pct_c', 'temp_coeff_pmax_pct_c',
+    'longueur_mm', 'largeur_mm',
+  ],
   batterie: ['bat_kwh_nominal', 'bat_kwh_usable', 'bat_v_nominal', 'bat_dod_pct'],
+}
+
+/** Champs BOOLÉENS du bloc FicheTechnique — traités à part des champs
+ * numériques ci-dessus (jamais `Number(brut)`, qui casserait un booléen).
+ * Un seul aujourd'hui : la déclaration explicite « aucune batterie »
+ * (PVOND-H). */
+const CHAMPS_BOOLEENS_PAR_TYPE = {
+  onduleur: ['ond_bat_aucune'],
 }
 
 /** `type_fiche` backend (FicheTechnique.TypeFiche : 'onduleur'/'module'/
@@ -182,19 +229,23 @@ export function typeFicheBackend(ficheType) {
   return null
 }
 
-/** Liste vide de départ (toutes chaînes vides) pour l'état local du
- * formulaire — un seul objet, quel que soit le type détecté. */
+/** Liste vide de départ (toutes chaînes vides, booléens à `false`) pour
+ * l'état local du formulaire — un seul objet, quel que soit le type
+ * détecté. */
 export function ficheFieldsVides() {
   const out = {}
   for (const cles of Object.values(CHAMPS_PAR_TYPE)) {
     for (const cle of cles) out[cle] = ''
+  }
+  for (const cles of Object.values(CHAMPS_BOOLEENS_PAR_TYPE)) {
+    for (const cle of cles) out[cle] = false
   }
   return out
 }
 
 /** Convertit une `FicheTechnique` chargée du serveur (nombres/Decimal→string
  * JSON) vers l'état local du formulaire (toutes chaînes, '' = non
- * renseigné). */
+ * renseigné ; les champs booléens restent des booléens). */
 export function champsFicheDepuisServeur(fiche) {
   const out = ficheFieldsVides()
   if (!fiche) return out
@@ -204,21 +255,29 @@ export function champsFicheDepuisServeur(fiche) {
       out[cle] = (v === null || v === undefined) ? '' : String(v)
     }
   }
+  for (const cles of Object.values(CHAMPS_BOOLEENS_PAR_TYPE)) {
+    for (const cle of cles) out[cle] = !!fiche[cle]
+  }
   return out
 }
 
 /** Sous-ensemble de `ficheFields` pertinent pour ce type, converti en
- * nombres (`null` si vide/invalide) — prêt pour le payload
- * `FicheTechniqueSerializer` (POST/PATCH `/stock/fiches-techniques/`). */
+ * nombres (`null` si vide/invalide) — les champs booléens en `true`/`false` —
+ * prêt pour le payload `FicheTechniqueSerializer` (POST/PATCH
+ * `/stock/fiches-techniques/`). */
 export function champsFichePourType(ficheType, ficheFields) {
   const typeBackend = typeFicheBackend(ficheType)
   const cles = CHAMPS_PAR_TYPE[typeBackend] ?? []
+  const clesBooleennes = CHAMPS_BOOLEENS_PAR_TYPE[typeBackend] ?? []
   const out = {}
   for (const cle of cles) {
     const brut = ficheFields?.[cle]
     if (brut === '' || brut === null || brut === undefined) { out[cle] = null; continue }
     const n = Number(brut)
     out[cle] = Number.isFinite(n) ? n : null
+  }
+  for (const cle of clesBooleennes) {
+    out[cle] = !!ficheFields?.[cle]
   }
   return out
 }

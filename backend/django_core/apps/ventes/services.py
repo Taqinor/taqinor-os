@@ -501,10 +501,14 @@ def _is_battery(name: str) -> bool:
 # ── PVCBL — les CÂBLES suivent la taille du calepinage (F8, fondateur
 # 18/08/2026) ────────────────────────────────────────────────────────────
 #
-# Métrés — MIROIR EXACT de ``solar.js`` (CABLE_DC_M_PAR_PALIER/
-# CABLE_TERRE_M_BASE/CABLE_TERRE_M_PAR_PALIER) : câble solaire DC 6 mm² à
-# 60 m par palier de 5 kWc (strictement proportionnel), câble de terre AC
-# 6 mm² à 25 m de base + 15 m par palier — 40 m pour 5 kWc, 55 m pour 10 kWc.
+# Métrés : câble de terre AC 6 mm² à 25 m de base + 15 m par palier de 5 kWc
+# — miroir exact de ``solar.js`` (CABLE_TERRE_M_BASE/CABLE_TERRE_M_PAR_PALIER),
+# 40 m pour 5 kWc, 55 m pour 10 kWc. Pour le câble solaire DC, la COMPOSITION
+# (``solar.js``, C4 du 19/08/2026) chiffre désormais 60 m × nb de PAIRES MPPT
+# descendantes ; cette resynchro de calepinage, qui n'a pas de compte MPPT
+# frais sous la main, garde l'approximation historique 60 m par palier de
+# 5 kWc (≈ une paire par tranche de 5 kWc) — et ne touche que des lignes
+# vendues AU MÈTRE (garde ``_est_au_metre`` ci-dessous).
 CABLE_DC_M_PAR_PALIER = 60
 CABLE_TERRE_M_BASE = 25
 CABLE_TERRE_M_PAR_PALIER = 15
@@ -535,6 +539,17 @@ def _is_cable_terre(name: str) -> bool:
 def _is_cable_dc(name: str) -> bool:
     n = _sans_accents(name)
     return "cable" in n and not _is_cable_terre(name)
+
+
+def _est_au_metre(name: str) -> bool:
+    """Vrai pour un câble vendu AU MÈTRE (désignation « … (au mètre) »).
+
+    Miroir du filtre de composition de ``solar.js`` (C4, 19/08/2026) : une
+    cible de resynchro est un MÉTRAGE — la poser sur un SKU ROULEAU serait
+    l'incident fondateur du 19/08 à l'envers (60 « unités » sur un rouleau
+    de 100 m à 1 190 MAD = 71 400 MAD de câble).
+    """
+    return "au metre" in _sans_accents(name)
 
 
 # ── PVSTR — les STRUCTURES et les SOCLES suivent le compte de panneaux
@@ -2564,11 +2579,16 @@ def sync_devis_from_layout(devis, layout, user=None):
 
         if panneaux_ont_change and kwc > 0:
             paliers = max(1, _arrondi_js(kwc / 5))
-            if _resynchroniser_quantite(_is_cable_dc,
-                                        metre_cable_dc(paliers)):
+            # C4 (fondateur 19/08/2026) — garde AU MÈTRE : la cible est un
+            # MÉTRAGE, elle ne s'applique qu'aux lignes dont le produit se
+            # vend au mètre. Une ligne ROULEAU (« (100m) ») garde sa quantité.
+            if _resynchroniser_quantite(
+                    lambda n: _is_cable_dc(n) and _est_au_metre(n),
+                    metre_cable_dc(paliers)):
                 lignes_modifiees += 1
-            if _resynchroniser_quantite(_is_cable_terre,
-                                        metre_cable_terre(paliers)):
+            if _resynchroniser_quantite(
+                    lambda n: _is_cable_terre(n) and _est_au_metre(n),
+                    metre_cable_terre(paliers)):
                 lignes_modifiees += 1
 
         # ── PVSTR — LES STRUCTURES ET LES SOCLES SUIVENT LE COMPTE DE

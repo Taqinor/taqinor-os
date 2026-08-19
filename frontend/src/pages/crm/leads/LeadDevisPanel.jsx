@@ -99,13 +99,19 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
   useEffect(() => {
     if (phase !== 'preview' || !devisId) return undefined
     let cancelled = false
+    // APXTMO — annulation RÉELLE du rendu en vol : changer de format ou fermer
+    // le panneau avorte la requête (sinon les rendus à froid ~26 s s'empilent
+    // sur les workers gunicorn et ralentissent tous les suivants).
+    const controller = new AbortController()
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setPreviewLoading(true)
     setServerError(null)
     setNetworkFailed(false)
     setRenderFailed(false)
     setPreviewBlob(null)
-    ventesApi.getProposalPdf(devisId, proposalParams(pdfMode, includeEtude))
+    ventesApi.getProposalPdf(
+      devisId, proposalParams(pdfMode, includeEtude),
+      { signal: controller.signal })
       .then((res) => {
         if (cancelled) return
         setPreviewBlob(pdfBlob(res.data))
@@ -122,7 +128,7 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
         }
       })
       .finally(() => { if (!cancelled) setPreviewLoading(false) })
-    return () => { cancelled = true }
+    return () => { cancelled = true; controller.abort() }
   }, [phase, devisId, pdfMode, includeEtude, previewReloadKey])
 
   // « Réessayer l'aperçu » : on relance fetch + rendu depuis zéro.
@@ -262,7 +268,7 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
     // « pop » du centre de l'écran. Le bouton ✕ reste celui du header
     // ldp-* existant (showClose désactivé pour ne pas en dupliquer un).
     <Sheet open onOpenChange={(o) => { if (!o) onClose() }}>
-      <SheetContent side="right" showClose={false} className="w-[min(1100px,100%)] gap-0 p-0 sm:max-w-none">
+      <SheetContent side="right" showClose={false} className="w-[min(1500px,100%)] gap-0 p-0 sm:max-w-none">
         <div className="ldp-header">
           <h3 className="ldp-title">
             {TITLES[mode] || 'Devis'} — {lead.nom} {lead.prenom || ''}
@@ -368,7 +374,8 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
 
                 {previewState === PREVIEW_VIEW.LOADING && (
                   <p className="ldp-pdf-loading">
-                    <Spinner /> Chargement de l'aperçu…
+                    <Spinner /> Chargement de l'aperçu… La première génération
+                    d'un devis peut prendre ~30 secondes.
                   </p>
                 )}
 

@@ -59,11 +59,11 @@ class TariffSettingsModelTest(TestCase):
     def test_default_tiers_seeded(self):
         s = TariffSettings.get(company=_company())
         tiers = s.effective_tiers()
-        # 6 paliers ; premier à 0.9010, palier ouvert à 1.5958.
+        # 6 paliers ; premier à 0.916272, palier ouvert à 1.622856 (2026, TVA 20%).
         self.assertEqual(tiers[0]['max_kwh'], 100)
-        self.assertEqual(tiers[0]['prix_kwh_ttc'], Decimal('0.9010'))
+        self.assertEqual(tiers[0]['prix_kwh_ttc'], Decimal('0.916272'))
         self.assertIsNone(tiers[-1]['max_kwh'])
-        self.assertEqual(tiers[-1]['prix_kwh_ttc'], Decimal('1.5958'))
+        self.assertEqual(tiers[-1]['prix_kwh_ttc'], Decimal('1.622856'))
 
 
 # ── Modèle de facturation ONEE ────────────────────────────────────────────────
@@ -72,59 +72,59 @@ class BillingModelTest(TestCase):
         self.s = TariffSettings.get(company=_company())
 
     def test_progressive_below_threshold(self):
-        # 120 kWh ≤ 150 → progressif : 100×0.9010 + 20×1.0732.
-        expected = Decimal('100') * Decimal('0.9010') \
-            + Decimal('20') * Decimal('1.0732')
+        # 120 kWh ≤ 150 → progressif : 100×0.916272 + 20×1.091388.
+        expected = Decimal('100') * Decimal('0.916272') \
+            + Decimal('20') * Decimal('1.091388')
         bill = tariff_service.monthly_bill_residentiel(self.s, 120)
         self.assertEqual(bill, expected.quantize(Decimal('0.01')))
 
     def test_progressive_exactly_at_threshold(self):
-        # 150 kWh (≤150) → progressif : 100×0.9010 + 50×1.0732.
-        expected = Decimal('100') * Decimal('0.9010') \
-            + Decimal('50') * Decimal('1.0732')
+        # 150 kWh (≤150) → progressif : 100×0.916272 + 50×1.091388.
+        expected = Decimal('100') * Decimal('0.916272') \
+            + Decimal('50') * Decimal('1.091388')
         bill = tariff_service.monthly_bill_residentiel(self.s, 150)
         self.assertEqual(bill, expected.quantize(Decimal('0.01')))
 
     def test_selective_whole_month_at_bracket_rate(self):
         # 250 kWh > 150 → SÉLECTIF : tout le mois au tarif de 211–310
-        # (1.1676), PAS de progressivité.
+        # (1.187388), PAS de progressivité.
         bill = tariff_service.monthly_bill_residentiel(self.s, 250)
-        self.assertEqual(bill, (Decimal('250') * Decimal('1.1676'))
+        self.assertEqual(bill, (Decimal('250') * Decimal('1.187388'))
                          .quantize(Decimal('0.01')))
 
     def test_selective_is_not_progressive(self):
         # Vérifie explicitement que le sélectif n'empile PAS les tranches :
         # une facture progressive de 250 serait bien inférieure.
         selective = tariff_service.monthly_bill_residentiel(self.s, 250)
-        progressive = (Decimal('100') * Decimal('0.9010')
-                       + Decimal('50') * Decimal('1.0732')
-                       + Decimal('60') * Decimal('1.0732')
-                       + Decimal('40') * Decimal('1.1676'))
+        progressive = (Decimal('100') * Decimal('0.916272')
+                       + Decimal('50') * Decimal('1.091388')
+                       + Decimal('60') * Decimal('1.091388')
+                       + Decimal('40') * Decimal('1.187388'))
         self.assertGreater(selective, progressive.quantize(Decimal('0.01')))
 
     def test_tolerance_bound_at_210(self):
         # 205 kWh : sans tolérance tomberait dans 211–310 ; AVEC tolérance 10
-        # la borne opératoire est 210 → reste au tarif 151–210 (1.0732).
+        # la borne opératoire est 210 → reste au tarif 151–210 (1.091388).
         bill = tariff_service.monthly_bill_residentiel(self.s, 205)
-        self.assertEqual(bill, (Decimal('205') * Decimal('1.0732'))
+        self.assertEqual(bill, (Decimal('205') * Decimal('1.091388'))
                          .quantize(Decimal('0.01')))
 
     def test_tolerance_bound_at_310(self):
-        # 305 kWh : borne opératoire 310 → tarif 211–310 (1.1676).
+        # 305 kWh : borne opératoire 310 → tarif 211–310 (1.187388).
         bill = tariff_service.monthly_bill_residentiel(self.s, 305)
-        self.assertEqual(bill, (Decimal('305') * Decimal('1.1676'))
+        self.assertEqual(bill, (Decimal('305') * Decimal('1.187388'))
                          .quantize(Decimal('0.01')))
 
     def test_tolerance_bound_at_510(self):
-        # 505 kWh : borne opératoire 510 → tarif 311–510 (1.3817).
+        # 505 kWh : borne opératoire 510 → tarif 311–510 (1.405116).
         bill = tariff_service.monthly_bill_residentiel(self.s, 505)
-        self.assertEqual(bill, (Decimal('505') * Decimal('1.3817'))
+        self.assertEqual(bill, (Decimal('505') * Decimal('1.405116'))
                          .quantize(Decimal('0.01')))
 
     def test_above_all_bounds_top_rate(self):
-        # 600 kWh > 510 → tarif du palier ouvert (1.5958).
+        # 600 kWh > 510 → tarif du palier ouvert (1.622856).
         bill = tariff_service.monthly_bill_residentiel(self.s, 600)
-        self.assertEqual(bill, (Decimal('600') * Decimal('1.5958'))
+        self.assertEqual(bill, (Decimal('600') * Decimal('1.622856'))
                          .quantize(Decimal('0.01')))
 
     def test_zero_kwh_is_zero(self):
@@ -297,6 +297,26 @@ class TariffApiTest(TestCase):
             PUT_URL, {'residential_tiers': 'pas-une-liste'}, format='json')
         self.assertEqual(r.status_code, 400)
 
+    def test_negative_tier_price_rejected(self):
+        # ORDRE FONDATEUR (19/08/2026) — validation « 6 prix positifs ».
+        r = self.api.patch(PUT_URL, {'residential_tiers': [
+            {'max_kwh': 100, 'prix_kwh_ttc': '-1.0000'},
+            {'max_kwh': None, 'prix_kwh_ttc': '2.0000'},
+        ]}, format='json')
+        self.assertEqual(r.status_code, 400)
+
+    def test_default_tiers_are_six_positive_2026_prices(self):
+        # Le barème par défaut (aucune surcharge) porte SIX paliers, tous à
+        # un prix strictement positif — les valeurs 2026 (TVA 20 %).
+        r = self.api.get(GET_URL)
+        self.assertEqual(r.status_code, 200)
+        s = TariffSettings.get(company=self.company)
+        tiers = s.effective_tiers()
+        self.assertEqual(len(tiers), 6)
+        for t in tiers:
+            self.assertGreater(t['prix_kwh_ttc'], Decimal('0'))
+        self.assertEqual(tiers[-1]['prix_kwh_ttc'], Decimal('1.622856'))
+
     def test_custom_tiers_persist_and_drive_calc(self):
         r = self.api.patch(PUT_URL, {'residential_tiers': [
             {'max_kwh': 100, 'prix_kwh_ttc': '1.0000'},
@@ -344,3 +364,45 @@ class TariffApiTest(TestCase):
             'kwc': 5, 'conso_mensuelle_kwh': 200, 'cout_total_ttc': 50000,
         }, format='json')
         self.assertEqual(r.status_code, 200)
+
+
+# ── Sélecteur cross-app : le moteur de devis (ventes) lit la surcharge ────────
+class ResidentialTranchesForSelectorTest(TestCase):
+    """ORDRE FONDATEUR (19/08/2026) — ``residential_tranches_for`` est le point
+    d'entrée unique par lequel ``apps.ventes.quote_engine.builder`` lit le
+    barème ONEE réglé par une société : ``None`` sans société / sans surcharge
+    (le moteur garde ses défauts 2026), sinon les paliers convertis en bornes
+    NOMINALES + tolérance (format attendu par ``pricing.TrancheTable``)."""
+
+    def test_none_without_company(self):
+        from apps.parametres.selectors import residential_tranches_for
+        self.assertIsNone(residential_tranches_for(None))
+
+    def test_none_when_nothing_edited(self):
+        from apps.parametres.selectors import residential_tranches_for
+        company = _company('rtf-default')
+        TariffSettings.get(company=company)  # matérialise le singleton, vierge
+        self.assertIsNone(residential_tranches_for(company))
+
+    def test_pairs_converted_to_nominal_bounds_when_edited(self):
+        from apps.parametres.selectors import residential_tranches_for
+        company = _company('rtf-custom')
+        ts = TariffSettings.get(company=company)
+        ts.residential_tiers = [
+            {'max_kwh': 100, 'prix_kwh_ttc': '1.0000'},
+            {'max_kwh': 150, 'prix_kwh_ttc': '1.2000'},
+            {'max_kwh': 210, 'prix_kwh_ttc': '1.2000'},
+            {'max_kwh': 310, 'prix_kwh_ttc': '1.4000'},
+            {'max_kwh': 510, 'prix_kwh_ttc': '1.6000'},
+            {'max_kwh': None, 'prix_kwh_ttc': '9.0000'},
+        ]
+        ts.save()
+        out = residential_tranches_for(company)
+        self.assertIsNotNone(out)
+        # Bornes EFFECTIVES (210/310/510) reconverties en NOMINALES (200/300/500)
+        # — la tolérance ne décale QUE les paliers au-delà du seuil sélectif.
+        self.assertEqual(
+            [c for c, _ in out['pairs']], [100, 150, 200, 300, 500, None])
+        self.assertEqual(out['pairs'][-1][1], 9.0)
+        self.assertEqual(out['selective_threshold'], 150)
+        self.assertEqual(out['boundary_tolerance'], 10)

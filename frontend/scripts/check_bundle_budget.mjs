@@ -146,7 +146,11 @@ const PER_CHUNK_BUDGET_KB = 350
 // vide). AUCUNE nouvelle dépendance npm. Pas de réduction réelle possible
 // ici : croissance produit légitime déjà bien rangée, palier honnête plutôt
 // qu'une marge cumulée.
-const TOTAL_BUDGET_KB = 3345
+// 2026-08-19 — +10 Ko : lot fondateur du jour (boutons monter/descendre du
+// générateur, ordre par défaut mémorisé, champs fiche technique MPPT/batterie
+// du formulaire produit, message d'attente aperçu). Total mesuré 3345,3 Ko —
+// croissance produit légitime, aucune nouvelle dépendance npm, palier serré.
+const TOTAL_BUDGET_KB = 3355
 const VENDOR_CHUNK_BUDGETS_KB = {
   recharts: 450,
   'pdfjs-dist': 450,

@@ -208,10 +208,12 @@ class DifferentielEtTerre(unittest.TestCase):
         self.assertFalse(any("continuité de terre existante à vérifier" in j
                              for j in resultat.justifications))
 
-    def test_le_parc_batterie_prend_son_sectionnement(self):
+    def test_le_parc_batterie_ne_prend_aucun_organe_de_protection(self):
+        """Décision fondateur 19/08/2026 : pas de fusible/sectionneur batterie
+        (« I don't install fuses for batteries ») — vrai avec ou sans parc."""
         self.assertIsNone(_repere(_protections(_entree()), "QBAT1"))
         avec = _protections(_entree(batterie=True))
-        self.assertIsNotNone(_repere(avec, "QBAT1"))
+        self.assertIsNone(_repere(avec, "QBAT1"))
 
 
 class CoffretDeProtectionAcDc(unittest.TestCase):

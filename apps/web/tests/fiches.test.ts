@@ -40,6 +40,25 @@ describe('fiches techniques — manifest', () => {
     }
   });
 
+  it('datasheetMono, quand présent, est en https (même garde que datasheet)', () => {
+    for (const f of FICHES) {
+      if (f.datasheetMono === undefined) continue;
+      expect(f.datasheetMono).toMatch(/^https:\/\//);
+    }
+  });
+
+  // G4 (2026-08-19, plainte fondateur) — le SG04LP1 (mono) ne doit plus
+  // survivre nulle part dans le catalogue de fiches : la datasheet mono
+  // vérifiée est la SG05LP1 (deyeinverter.com, 2023-07-31).
+  it('onduleur-deye-hybride pointe SG05LP1 (mono) et SG05LP3 (tri), jamais SG04/SG03', () => {
+    const f = ficheBySlug('onduleur-deye-hybride')!;
+    expect(f.datasheetMono?.toLowerCase()).toContain('sg05lp1');
+    expect(f.datasheet?.toLowerCase()).toContain('sg05lp3');
+    expect(f.datasheet?.toLowerCase()).not.toMatch(/sg0[34]/);
+    expect(f.datasheetMono?.toLowerCase()).not.toMatch(/sg0[34]/);
+    expect(f.modele.toLowerCase()).not.toMatch(/sg0[34]/);
+  });
+
   it('aucun slug de fiche ne porte le nom d’un alias (l’ancien nom est LIBRE)', () => {
     // Sinon l'alias se mordrait la queue : /produits/<ancien> existerait ET
     // serait redirigé, deux vérités pour la même URL.
@@ -303,6 +322,13 @@ describe('rendu du gabarit 7 blocs sur /produits/<slug>', () => {
 
   it('le bouton « source officielle » disparaît quand aucune n’a été vérifiée', () => {
     expect(slugPage).toContain('{downloadHref && (');
+  });
+
+  // G4 (2026-08-19) — le second lien datasheet (gamme monophasée) est rendu
+  // SOUS CONDITION, comme tout bloc optionnel de ce gabarit : absent pour
+  // toute fiche sans `datasheetMono`.
+  it('le second lien datasheet (mono) est rendu sous condition', () => {
+    expect(slugPage).toContain('{fiche.datasheetMono && (');
   });
 });
 

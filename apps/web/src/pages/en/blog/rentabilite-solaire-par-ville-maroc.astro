@@ -74,12 +74,12 @@ const pvout = [
 ];
 
 const tariffs = [
-  { range: '0 – 100 kWh', tariff: '0.9010', mode: 'progressive' },
-  { range: '101 – 150 kWh', tariff: '1.0732', mode: 'progressive' },
-  { range: '151 – 210 kWh', tariff: '1.0732', mode: 'selective' },
-  { range: '211 – 310 kWh', tariff: '1.1676', mode: 'selective' },
-  { range: '311 – 510 kWh', tariff: '1.3817', mode: 'selective' },
-  { range: '> 510 kWh', tariff: '1.5958', mode: 'selective' },
+  { range: '0 – 100 kWh', tariff: '0.916272', mode: 'progressive' },
+  { range: '101 – 150 kWh', tariff: '1.091388', mode: 'progressive' },
+  { range: '151 – 210 kWh', tariff: '1.091388', mode: 'selective' },
+  { range: '211 – 310 kWh', tariff: '1.187388', mode: 'selective' },
+  { range: '311 – 510 kWh', tariff: '1.405116', mode: 'selective' },
+  { range: '> 510 kWh', tariff: '1.622856', mode: 'selective' },
 ];
 ---
 
@@ -189,14 +189,14 @@ const tariffs = [
         </ul>
         <p>
           <strong>Concrete example:</strong> a household consuming 250 kWh in July doesn't pay the
-          first 100 kWh at 0.9010 DH then the rest at 1.0732… It pays the <em>entire</em> 250 kWh at
-          the 211–310 kWh bracket rate, 1.1676 DH/kWh (a 10 kWh tolerance per bracket softens
+          first 100 kWh at 0.916272 DH then the rest at 1.091388… It pays the <em>entire</em> 250 kWh at
+          the 211–310 kWh bracket rate, 1.187388 DH/kWh (a 10 kWh tolerance per bracket softens
           narrow overshoots).
         </p>
         <p>
           What solar removes is precisely this high marginal rate applied to the whole bill. Take a
           household in the 311–510 kWh bracket that pulls 200 kWh a month off the grid thanks to its
-          panels: it saves those 200 kWh at the <em>marginal</em> rate of 1.3817 DH, not at the apparent
+          panels: it saves those 200 kWh at the <em>marginal</em> rate of 1.405116 DH, not at the apparent
           average rate of its old bill. That's the whole reason profitability climbs for heavy
           consumers, and it's also what I check first on a bill before pricing anything.
         </p>
@@ -209,7 +209,7 @@ const tariffs = [
         </p>
         <p><strong>What influences payback:</strong></p>
         <ul>
-          <li><strong>Your current tariff bracket</strong>: the higher your bracket (≥ 1.3817 DH/kWh), the greater the annual savings and the faster the payback.</li>
+          <li><strong>Your current tariff bracket</strong>: the higher your bracket (≥ 1.405116 DH/kWh), the greater the annual savings and the faster the payback.</li>
           <li><strong>Installation cost</strong>: indicative 2026 bracket of ~10,000 to 14,000 DH/kWc (equipment + install, installer sources — unaudited). See <a href={L('/blog/prix-installation-solaire-maroc-2026')}>our pricing guide</a>.</li>
           <li><strong>Your self-consumption rate</strong>: <a href={L('/loi-82-21')}>Law 82-21</a> organises low-voltage self-generation, but no residential (BT) buy-back tariff is published yet — the ANRE has only published a buy-back tariff for medium/high/very-high voltage (0.18–0.21 DH/kWh), not for homes under 11 kW. Until that BT tariff exists in black and white, we don't price in <strong>any export revenue</strong>: solar's real value is in immediate consumption, not in reselling an unvalued surplus (see <a href={L('/methodologie-estimation')}>our estimation methodology</a>).</li>
           <li><strong>The battery</strong>: adding storage stretches payback by <strong>1 to 3 years</strong> but increases the evening self-consumption rate.</li>

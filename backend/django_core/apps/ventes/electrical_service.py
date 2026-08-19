@@ -33,14 +33,19 @@ import json
 
 __all__ = ["build_electrical_design", "conception_electrique_stockee",
            "rendre_schema_du_devis",
-           "DC_M_MINIMUM", "DC_M_PAR_CHAINE", "AC_M_DEFAUT"]
+           "DC_M_MINIMUM", "DC_M_PAR_DEFAUT", "AC_M_DEFAUT"]
 
-#: Longueurs de liaison PAR DÉFAUT (m), reprises du bordereau historique
-#: (``solar_design.generate_boq``) pour que les deux chiffrages s'accordent :
-#: la liaison DC est estimée à 20 m par chaîne, avec un plancher de 10 m ; la
-#: liaison AC onduleur → tableau à 15 m. Les deux sont surchargeables.
+#: Longueurs de liaison PAR DÉFAUT (m). DC — F2, décision fondateur
+#: 19/08/2026 : chaque paire descendante (+ et −, une par entrée MPPT
+#: réellement utilisée) parcourt un forfait de 30 m à l'aller — la longueur
+#: ne dépend PLUS du nombre de chaînes (plusieurs chaînes en parallèle
+#: convergent au coffret de chaînes avant la descente commune vers
+#: l'onduleur) ; c'est le nombre de PAIRES qui suit les MPPT, pas la
+#: longueur individuelle (``core.electrique.cables.dimensionner_cables``,
+#: qui compte les conducteurs pour le métrage total du bordereau). AC
+#: onduleur → tableau : 15 m. Les deux sont surchargeables (``dc_m``/``ac_m``).
 DC_M_MINIMUM = 10.0
-DC_M_PAR_CHAINE = 20.0
+DC_M_PAR_DEFAUT = 30.0
 AC_M_DEFAUT = 15.0
 
 #: Clés d'override acceptées — toute autre clé est IGNORÉE (jamais une erreur :
@@ -242,12 +247,22 @@ def spec_onduleur_du_devis(devis):
         i_max_mppt_a=_flottant(specs.get("i_max_mppt_a"), 0.0),
         ac_kw=ac_kw,
         phases=phases,
-        v_demarrage_v=float(defauts["v_min"]),
+        # PVOND-H (2026-08-19) — la fiche fait foi quand elle la donne
+        # (``FicheTechnique.ond_v_demarrage_v``) ; à défaut, le repli
+        # HISTORIQUE (bas de la fenêtre par défaut) reste inchangé.
+        v_demarrage_v=_flottant(specs.get("v_demarrage_v"),
+                                float(defauts["v_min"])),
         # Le rendement n'a PAS de défaut : il reste None tant qu'une fiche ne
         # le donne pas (il serait sinon publié comme une caractéristique
         # vérifiée de l'appareil sur une pièce technique).
         rendement_euro_pct=(_flottant(specs.get("rendement_euro_pct"), 0.0)
                             or None),
+        # PVOND-H — même garde que le rendement : PAS de défaut inventé, une
+        # borne matérielle plus permissive que ce qu'une fiche garantit serait
+        # dangereuse. ``None`` tant qu'aucune fiche ne la donne ; le moteur
+        # (``SpecOnduleur.courant_isc_max_a``) retombe alors sur
+        # ``i_max_mppt_a``, exactement le repli déjà documenté côté moteur.
+        isc_max_mppt_a=(_flottant(specs.get("isc_max_mppt_a"), 0.0) or None),
         designation=_designation_materiel(
             produit, libelle, _texte_grandeur(ac_kw, "kW", 1)),
     )
@@ -320,14 +335,14 @@ def _batterie_du_devis(devis):
 def construire_entree(devis, overrides=None):
     """``EntreeElectrique`` complète d'un devis (+ les overrides appliqués).
 
-    Les longueurs de liaison par défaut dépendent du NOMBRE DE CHAÎNES, qu'on
-    ne connaît qu'après un premier passage : on conçoit donc les chaînes une
-    fois à vide pour le compter, puis on ferme l'entrée. Le passage est pur et
-    sans effet de bord — c'est du calcul, pas une écriture.
+    La longueur DC par défaut est un FORFAIT (30 m par paire descendante,
+    F2 — décision fondateur 19/08/2026) : elle ne dépend plus du nombre de
+    chaînes du devis, seulement d'un éventuel override explicite. C'est
+    ``core.electrique.cables`` qui compte les PAIRES (une par MPPT réellement
+    utilisée) pour le métrage total du bordereau, pas ce module.
     """
     import dataclasses
 
-    from core.electrique.chaines import concevoir_chaines
     from core.electrique.types import (
         EntreeElectrique, REGIME_TT, REGIMES_CONNUS,
         TEMP_CHAUD_DEFAUT_C, TEMP_FROID_DEFAUT_C)
@@ -380,8 +395,7 @@ def construire_entree(devis, overrides=None):
     if "dc_m" in reglages:
         dc_m = _flottant(reglages.get("dc_m"), DC_M_MINIMUM)
     else:
-        nb_chaines = concevoir_chaines(entree).nb_chaines
-        dc_m = max(DC_M_MINIMUM, nb_chaines * DC_M_PAR_CHAINE)
+        dc_m = DC_M_PAR_DEFAUT
     return dataclasses.replace(entree, dc_m=dc_m)
 
 

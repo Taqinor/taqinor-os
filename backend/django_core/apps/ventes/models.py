@@ -2627,6 +2627,36 @@ def _erreurs_marques(marques):
     return erreurs
 
 
+# ── PVORD (fondateur 19/08/2026) — ordre PAR DÉFAUT des lignes de devis ─────
+def _erreurs_ordre_lignes(ordre_lignes):
+    """Liste d'erreurs de forme de ``ParametresGammes.ordre_lignes`` (liste
+    vide = valide, et vaut « ordre canonique du simulateur »).
+
+    Ne lève jamais : une liste de rôles ⊆ ``ROLES_AUTO_COMPOSITION``, chacun
+    UNIQUE (un rôle dupliqué n'a pas de sens pour un tri stable). Un rôle
+    absent de la liste n'est PAS une erreur — il garde simplement son rang
+    canonique, après les rôles explicitement classés (voir
+    ``solar.js::orderLinesByRolePreference``, le miroir frontend)."""
+    if not isinstance(ordre_lignes, list):
+        return ["« ordre_lignes » doit être une liste de rôles texte."]
+    erreurs = []
+    vus = set()
+    for role in ordre_lignes:
+        if not isinstance(role, str):
+            erreurs.append(
+                '« ordre_lignes » ne doit contenir que des rôles texte.')
+            continue
+        if role not in ROLES_AUTO_COMPOSITION:
+            erreurs.append(
+                'rôle inconnu « %s » dans ordre_lignes — voir '
+                'ROLES_AUTO_COMPOSITION.' % role)
+        elif role in vus:
+            erreurs.append('rôle « %s » dupliqué dans ordre_lignes.' % role)
+        else:
+            vus.add(role)
+    return erreurs
+
+
 class ParametresGammes(TenantModel):
     """Réglages de l'offre à DEUX GAMMES par société (fondateur 18/08/2026).
 
@@ -2658,6 +2688,18 @@ class ParametresGammes(TenantModel):
     n'est alors JAMAIS supprimée (un futur retour à ``deux_gammes=True`` la
     retrouve intacte), simplement plus jamais lue tant que la société reste à
     une seule gamme.
+
+    ``ordre_lignes`` (PVORD, fondateur 19/08/2026) — ordre PAR DÉFAUT des
+    rôles de composition automatique pour les PROCHAINS devis, une liste de
+    rôles ``ROLES_AUTO_COMPOSITION`` ex. ``['panneau', 'onduleur_reseau',
+    ...]``. Liste vide (défaut) = ordre canonique du simulateur (l'ordre de
+    composition d'``autoFillLines``, solar.js). Posé depuis l'écran devis via
+    le bouton « Enregistrer cet ordre comme ordre par défaut » (dérive la
+    séquence des lignes courantes) ; lu par ``autoFillLines``/
+    ``defaultProductLines`` (frontend, `orderLinesByRolePreference`) pour
+    ordonner les lignes composées AVANT enregistrement. Ne concerne QUE
+    l'ordre d'affichage/PDF (``LigneDevis.ordre``) — jamais un choix de
+    marque/produit, qui reste dans ``marques`` ci-dessus.
     """
 
     SLOT_ESSENTIELLE = 'Essentielle'
@@ -2689,6 +2731,15 @@ class ParametresGammes(TenantModel):
         verbose_name='Marques préférées par gamme et par rôle',
         help_text="{'Essentielle': {rôle: marque}, 'Premium': {rôle: marque}} "
                   "— voir la docstring de la classe.")
+    # PVORD (fondateur 19/08/2026) — ordre PAR DÉFAUT des lignes des PROCHAINS
+    # devis. Liste vide = ordre canonique du simulateur (comportement
+    # historique inchangé, aucune régression tant que rien n'est enregistré).
+    ordre_lignes = models.JSONField(
+        default=list, blank=True,
+        verbose_name='Ordre par défaut des lignes de devis',
+        help_text="Liste de rôles ROLES_AUTO_COMPOSITION dans l'ordre voulu "
+                  "(ex. ['panneau', 'onduleur_reseau', ...]). Liste vide = "
+                  "ordre canonique du simulateur.")
 
     class Meta:
         verbose_name = 'Paramètres gammes'
@@ -2703,10 +2754,18 @@ class ParametresGammes(TenantModel):
 
     def clean(self):
         super().clean()
-        erreurs = _erreurs_marques(self.marques)
-        if erreurs:
+        erreurs_champs = {}
+        erreurs_marques = _erreurs_marques(self.marques)
+        if erreurs_marques:
+            erreurs_champs['marques'] = erreurs_marques
+        # PVORD — même patron de validation que `marques` ci-dessus : un
+        # champ invalide échoue à `full_clean()`, jamais silencieusement.
+        erreurs_ordre = _erreurs_ordre_lignes(self.ordre_lignes)
+        if erreurs_ordre:
+            erreurs_champs['ordre_lignes'] = erreurs_ordre
+        if erreurs_champs:
             from django.core.exceptions import ValidationError
-            raise ValidationError({'marques': erreurs})
+            raise ValidationError(erreurs_champs)
 
 
 # ── ODX17 — MODULE FACTURATION (déplacé) ─────────────────────────────────────

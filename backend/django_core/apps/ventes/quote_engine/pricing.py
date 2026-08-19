@@ -115,8 +115,37 @@ class TrancheTable(list):
 # Remplace l'ancienne grille QX38 (100/250/400/∞ à 0,9010/1,0258/1,2515/1,4017),
 # purement progressive et marquée « à confirmer » : elle contredisait la grille
 # officielle sur les seuils ET sur les prix, et sous-estimait lourdement
-# l'économie d'un foyer du haut de grille. Le miroir JS solar.js ONEE_TRANCHES
-# porte les MÊMES valeurs.
+# l'économie d'un foyer du haut de grille.
+#
+# ═══ ORDRE FONDATEUR (19/08/2026) — TVA 20 % DEPUIS LE 01/01/2026 ══════════
+# « for the electricity price the price for tranche 6 is : 1.622856. the price
+#   is changing per year, because they change the VAT... so correct all
+#   prices and keep them changable in the settings ». La TVA marocaine sur
+#   l'électricité est passée 16 % (2024) → 18 % (2025) → 20 % (depuis le
+#   01/01/2026) : les SIX prix TTC ci-dessus (RADEEJ, 18/08/2026) étaient donc
+#   encore au taux 2025 (18 %), pas au taux en vigueur. Le fondateur a confirmé
+#   au dixième de dirham près (facture réelle) que la tranche 6 (> 500 kWh)
+#   vaut désormais 1,622856 MAD/kWh TTC — l'ANCRE de la re-dérivation ci-dessous.
+#
+#   MÉTHODE (reproductible chaque année où la TVA change) : chaque prix TTC
+#   2025 (18 %) ci-dessus divise par 1,18 pour retrouver sa base HT (arrondie
+#   au cinquième de centime, cohérente avec l'ancre fondateur — HT tranche 6 =
+#   1,622856 / 1,20 = 1,35238) ; le nouveau TTC = HT × (1 + taux TVA courant).
+#   Bases HT retrouvées (identiques aux 2 décimales millièmes près quel que
+#   soit le sens du calcul, TTC 2025 ↔ HT ↔ TTC 2026) :
+#     0–100 kWh   : HT 0,76356 → 2025 (18 %) 0,9010  → 2026 (20 %) 0,916272
+#     101–210 kWh : HT 0,90949 → 2025 (18 %) 1,0732  → 2026 (20 %) 1,091388
+#     211–310 kWh : HT 0,98949 → 2025 (18 %) 1,1676  → 2026 (20 %) 1,187388
+#     311–510 kWh : HT 1,17093 → 2025 (18 %) 1,3817  → 2026 (20 %) 1,405116
+#     > 510 kWh   : HT 1,35238 → 2025 (18 %) 1,5958  → 2026 (20 %) 1,622856 ✓ ancre
+#   PROCHAINE HAUSSE DE TVA : refaire exactement ce calcul (HT × nouveau taux)
+#   sur les six bases HT ci-dessus — jamais repartir d'un TTC déjà taxé.
+#
+# ÉDITABLE PAR SOCIÉTÉ (19/08/2026) — ces six valeurs restent le DÉFAUT codé
+# en dur ; une société peut les surcharger dans Paramètres → Tarification &
+# ROI (apps/parametres ``TariffSettings.residential_tiers``, lu au calcul via
+# ``apps.parametres.selectors.residential_tranches_for`` — voir builder.py).
+# Sans surcharge enregistrée, ces défauts 2026 s'appliquent tels quels.
 #
 # SECONDE IMPLÉMENTATION INDÉPENDANTE — apps/parametres/models_tariff.py
 # ``DEFAULT_RESIDENTIAL_TIERS`` + apps/parametres/tariff.py
@@ -125,15 +154,17 @@ class TrancheTable(list):
 # déjà EFFECTIVES au lieu de nominal+tolérance. Volontairement PAS unifiées
 # (hors périmètre) — verrouillées d'accord par
 # apps/ventes/tests/test_tariff_drift_lock.py : si l'une bouge seule, ce test
-# passe au rouge.
+# passe au rouge. Le miroir JS frontend/src/features/ventes/solar.js
+# ONEE_TRANCHES et le miroir site apps/web/src/lib/estimatorBrainV2.ts
+# REGIE_TARIFF portent les MÊMES six valeurs 2026.
 ONEE_TRANCHES = TrancheTable(
     [
-        (100, 0.9010),    # progressif   0–100  — RADEEJ TTC (18/08/2026)
-        (150, 1.0732),    # progressif 101–150  — RADEEJ TTC (18/08/2026)
-        (200, 1.0732),    # sélectif 151–200, effectif 151–210 — RADEEJ TTC
-        (300, 1.1676),    # sélectif 201–300, effectif 211–310 — RADEEJ TTC
-        (500, 1.3817),    # sélectif 301–500, effectif 311–510 — RADEEJ TTC
-        (None, 1.5958),   # sélectif > 500,   effectif > 510   — RADEEJ TTC
+        (100, 0.916272),    # progressif   0–100  — HT 0,76356 × TVA 20 % (2026)
+        (150, 1.091388),    # progressif 101–150  — HT 0,90949 × TVA 20 % (2026)
+        (200, 1.091388),    # sélectif 151–200, effectif 151–210 — idem
+        (300, 1.187388),    # sélectif 201–300, effectif 211–310 — HT 0,98949 × 1,20
+        (500, 1.405116),    # sélectif 301–500, effectif 311–510 — HT 1,17093 × 1,20
+        (None, 1.622856),   # sélectif > 500,   effectif > 510   — HT 1,35238 × 1,20 (ancre fondateur)
     ],
     selective_threshold=150,
     boundary_tolerance=10,

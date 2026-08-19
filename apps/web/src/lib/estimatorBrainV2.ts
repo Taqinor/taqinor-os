@@ -95,11 +95,18 @@ export interface TariffGrid {
 }
 
 /**
- * Barème RÉGIE ONEE « usage domestique » — prix consommateur TTC (TVA 20 % DÉJÀ
- * incluse), juin 2026, fourni et vérifié par le fondateur :
- *  - ≤ 150 kWh/mois → PROGRESSIF : 0–100 = 0,9010 ; 101–150 = 1,0732.
+ * Barème RÉGIE ONEE « usage domestique » — prix consommateur TTC, ORDRE
+ * FONDATEUR (19/08/2026) : TVA 20 % depuis le 01/01/2026 (16 % en 2024, 18 %
+ * en 2025) — les six prix ont été re-dérivés HT × 1,20 (HT = ancien TTC 2025
+ * ÷ 1,18) ; ancre fondateur (facture réelle) = tranche > 500 kWh =
+ * 1,622856 MAD/kWh TTC. Détail complet de la dérivation HT/TTC par tranche :
+ * apps/ventes/quote_engine/pricing.py ONEE_TRANCHES (miroir exact). Prochaine
+ * hausse de TVA : refaire HT × nouveau taux sur les six bases HT documentées
+ * là-bas — jamais repartir d'un TTC déjà taxé.
+ *  - ≤ 150 kWh/mois → PROGRESSIF : 0–100 = 0,916272 ; 101–150 = 1,091388.
  *  - > 150 kWh/mois → SÉLECTIF (toute la conso au tarif de sa tranche) :
- *    151–210 = 1,0732 ; 211–310 = 1,1676 ; 311–510 = 1,3817 ; > 510 = 1,5958.
+ *    151–210 = 1,091388 ; 211–310 = 1,187388 ; 311–510 = 1,405116 ;
+ *    > 510 = 1,622856.
  * Les bornes nominales 200/300/500 + la tolérance de 10 kWh donnent les bornes
  * EFFECTIVES 210/310/510 (un client n'entre dans la tranche supérieure qu'à +10 kWh).
  * Remplace l'ancienne grille trop haute (201–300=1,18 ; 301–500=1,45 ; >500=1,66 —
@@ -107,14 +114,14 @@ export interface TariffGrid {
  */
 export const REGIE_TARIFF: TariffGrid = {
   progressive: [
-    { upToKwh: 100, rate: 0.901 },
-    { upToKwh: 150, rate: 1.0732 },
+    { upToKwh: 100, rate: 0.916272 },
+    { upToKwh: 150, rate: 1.091388 },
   ],
   selective: [
-    { upToKwh: 200, rate: 1.0732 }, // effectif 151–210
-    { upToKwh: 300, rate: 1.1676 }, // effectif 211–310
-    { upToKwh: 500, rate: 1.3817 }, // effectif 311–510
-    { upToKwh: Infinity, rate: 1.5958 }, // > 510
+    { upToKwh: 200, rate: 1.091388 }, // effectif 151–210
+    { upToKwh: 300, rate: 1.187388 }, // effectif 211–310
+    { upToKwh: 500, rate: 1.405116 }, // effectif 311–510
+    { upToKwh: Infinity, rate: 1.622856 }, // > 510
   ],
   selectiveThresholdKwh: 150,
   boundaryToleranceKwh: 10,

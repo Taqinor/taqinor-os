@@ -75,36 +75,37 @@ class TestAutoconsoAvecRatio(SimpleTestCase):
 class TestMiroirJs(SimpleTestCase):
     """VERROU DE DÉRIVE — mêmes chiffres que solar.batterie.test.mjs.
 
-    Valeurs dérivées À LA MAIN du barème ONEE SÉLECTIF (grille officielle :
-    progressif ≤ 150 kWh/mois — 0,9010 puis 1,0732 ; au-delà, TOUTE la conso au
-    tarif de SA tranche — 151-210 = 1,0732 · 211-310 = 1,1676 ·
-    311-510 = 1,3817 · > 510 = 1,5958) :
+    Valeurs dérivées À LA MAIN du barème ONEE SÉLECTIF **TTC 2026** (TVA 20 %
+    depuis le 01/01/2026, bases HT inchangées — cf. pricing.ONEE_TRANCHES) :
+    progressif ≤ 150 kWh/mois — 0,916272 puis 1,091388 ; au-delà, TOUTE la
+    conso au tarif de SA tranche — 151-210 = 1,091388 · 211-310 = 1,187388 ·
+    311-510 = 1,405116 · > 510 = 1,622856) :
 
       facture sans solaire : 15 000/12 = 1 250 kWh/mois → tranche > 510
-        1 250 × 1,5958 = 1 994,75 MAD/mois × 12 = 23 937 MAD/an
+        1 250 × 1,622856 = 2 028,57 MAD/mois × 12 = 24 342,84 → 24 343 MAD/an
       option SANS (60 %) : autoconsommé 9 214,8 → résiduel 5 785,2
-        → 482,1 kWh/mois → tranche 311-510 : 482,1 × 1,3817 = 666,11757
-        × 12 = 7 993,41084 → 7 993
-        ⇒ économie 23 937 − 7 993 = 15 944 MAD/an
+        → 482,1 kWh/mois → tranche 311-510 : 482,1 × 1,405116 = 677,40642
+        × 12 = 8 128,877 → 8 129
+        ⇒ économie 24 343 − 8 129 = 16 214 MAD/an
       option AVEC (83,8 %) : autoconsommé 12 864,8 → résiduel 2 135,2
-        → 177,9333 kWh/mois → tranche 151-210 : 177,9333 × 1,0732 = 190,95805
-        × 12 = 2 291,49664 → 2 291
-        ⇒ économie 23 937 − 2 291 = 21 646 MAD/an
+        → 177,9333 kWh/mois → tranche 151-210 : 177,9333 × 1,091388 = 194,19432
+        × 12 = 2 330,33 → 2 330
+        ⇒ économie 24 343 − 2 330 = 22 013 MAD/an
 
-    La batterie fait franchir DEUX marches vers le bas (1,3817 → 1,0732 sur la
-    TOTALITÉ du résiduel) : c'est là que le barème sélectif change tout.
+    La batterie fait franchir DEUX marches vers le bas (1,405116 → 1,091388 sur
+    la TOTALITÉ du résiduel) : c'est là que le barème sélectif change tout.
     """
 
     def test_miroir_js_meme_fixture_memes_chiffres(self):
         sans = two_bills_savings(PROD, CONSO, AUTOCONSO_SANS, utility="onee")
         avec = two_bills_savings(
             PROD, CONSO, autoconso_avec_ratio(PROD, BATTERY), utility="onee")
-        self.assertEqual(sans["facture_sans"], 23937)
-        self.assertEqual(sans["facture_avec"], 7993)
-        self.assertEqual(sans["economie"], 15944)
+        self.assertEqual(sans["facture_sans"], 24343)
+        self.assertEqual(sans["facture_avec"], 8129)
+        self.assertEqual(sans["economie"], 16214)
         self.assertEqual(avec["autoconso_kwh"], 12865)
-        self.assertEqual(avec["facture_avec"], 2291)
-        self.assertEqual(avec["economie"], 21646)
+        self.assertEqual(avec["facture_avec"], 2330)
+        self.assertEqual(avec["economie"], 22013)
         self.assertGreater(avec["economie"], sans["economie"])
 
     def test_miroir_js_bout_en_bout_meme_production_memes_economies(self):
@@ -120,8 +121,8 @@ class TestMiroirJs(SimpleTestCase):
         self.assertEqual(roi["savings_model"], "factures")
         self.assertEqual(roi["prod_kwh"], PROD)                 # 15 358
         self.assertAlmostEqual(roi["autoconso_avec"], RATIO_ATTENDU, places=9)
-        self.assertEqual(roi["eco_s_ann"], 15944)
-        self.assertEqual(roi["eco_a_ann"], 21646)
+        self.assertEqual(roi["eco_s_ann"], 16214)
+        self.assertEqual(roi["eco_a_ann"], 22013)
 
 
 class TestPertesSysteme20Pct(SimpleTestCase):
@@ -287,7 +288,7 @@ class TestPlafondConsoModeleEstimation(SimpleTestCase):
         ``two_bills_savings`` borne déjà les kWh autoconsommés à la conso
         (``min(prod × ratio, conso)``) : plafonner le TAUX en amont donne le
         même minimum. Fixture du verrou JS (10 kWc, 15 358 kWh, ONEE,
-        15 000 kWh/an) : 15 944 / 21 646 MAD, inchangés.
+        15 000 kWh/an, barème TTC 2026) : 16 214 / 22 013 MAD, inchangés.
         """
         roi = calculate_savings_roi(
             10.0, 100000, 140000, productible=1651, battery_kwh=BATTERY,
@@ -295,5 +296,5 @@ class TestPlafondConsoModeleEstimation(SimpleTestCase):
         self.assertEqual(roi["savings_model"], "factures")
         # conso/prod = 15 000/15 358 = 0,9767… > 0,60 → le plafond ne mord pas.
         self.assertEqual(roi["autoconso_sans"], AUTOCONSO_SANS)
-        self.assertEqual(roi["eco_s_ann"], 15944)
-        self.assertEqual(roi["eco_a_ann"], 21646)
+        self.assertEqual(roi["eco_s_ann"], 16214)
+        self.assertEqual(roi["eco_a_ann"], 22013)
