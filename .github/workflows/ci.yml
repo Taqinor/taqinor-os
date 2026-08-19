@@ -387,8 +387,8 @@ jobs:
   # scinde en quatre), donc N n'est plus limite par un fichier ; il est limite
   # par les 17 creneaux (voir le bloc CRENEAUX en tete de fichier) et par le
   # fait que la lane la plus lente du gate est desormais `e2e-shard` (~6 min 45 s,
-  # plancher fixe par fumee-ecrans.spec.js). Descendre le backend sous ce seuil
-  # ne raccourcirait rien.
+  # plancher desormais partage apres la scission de fumee-ecrans). Descendre le
+  # backend sous ce seuil ne raccourcirait rien.
   # Mesure du run 32206663106, etape `Run Django test suite` par lane :
   #   283 / 134 / 197 / 181 / 197 / 210 / 191 / 165 s (shard 5 jamais demarre),
   #   dont 1 385 s de modules mesures + ~21,6 s de rodage Django par lane,
@@ -967,6 +967,24 @@ jobs:
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci --prefer-offline --no-audit --no-fund
+      # WOW-CI5 (19/08) — le cache apt du round 2 fonctionne desormais : ce run
+      # a bien restaure `apt-e2e-v1-...`, donc les dependances systeme de WebKit
+      # ne se retelechargent plus. Les 37 s qui restent sont le telechargement
+      # des NAVIGATEURS depuis le CDN Playwright (chromium 177 Mo + webkit
+      # 101 Mo + ffmpeg). On les cache a leur tour, cle EXACTE sur le lock (donc
+      # sur la version de Playwright) et sans `restore-keys` : un binaire d'une
+      # autre version ferait echouer le lancement avec « Executable doesn't
+      # exist ». `npx playwright install` continue de tourner juste apres — il
+      # est idempotent et ne fait rien quand les binaires sont deja la.
+      # (Au round 1 j'avais ecarte ce cache : ~250 Mo pour ~14 s ne le valaient
+      # pas quand le quota du depot etait sature. Le gain mesure est maintenant
+      # de ~30 s par lane, et les caches evinces en LRU sont les bases CodeQL
+      # par-commit, jamais relues — pas les dumps testdb, relus a chaque run.)
+      - name: Cache Playwright browser binaries
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: pw-browsers-v1-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
       - name: Install Playwright browsers (chromium + webkit)
         working-directory: frontend
         # VX68 — WebKit (Safari réel) en plus de Chromium : le smoke ajoute un
@@ -1009,22 +1027,26 @@ jobs:
           # transversal que ce commentaire promettait sans l'avoir : le
           # 03/08/2026, `/ao` était déclaré dans `e2e/helpers.js` et visité par
           # AUCUNE spec, nulle part. Ne le retirez pas de cette ligne.
-          # WOW-CI4 — repartition MESUREE, plus `--shard`. Playwright affecte des
-          # fichiers ENTIERS a un shard : avec trois fichiers listes, la lane 1
-          # prenait devis+fumee (204 s) et la lane 2 health seul (13,9 s) — d'ou
-          # 7 min 33 s contre 6 min 17 s. Durees mesurees sur le run 32206663106 :
-          #   chromium : fumee-ecrans 183,4 s | devis 20,7 s | health 13,9 s
-          #   mobile-safari : 71,3 s (mobile 51,4 + adsengine 12,0 + ao 7,9)
-          # `fumee-ecrans.spec.js` pese 84 % du total chromium et n'est PAS
-          # divisible (chez Playwright un fichier va tout entier sur un shard) :
-          # il prend donc une lane a lui seul, tout le reste tient dans l'autre
-          # (183,4 s contre 20,7+13,9+71,3 = 105,9 s). Une 3e lane ne gagnerait
-          # RIEN — le plancher resterait 183 s. Pour descendre, il faut scinder
-          # ce fichier (il boucle sur les routes des module.config.jsx).
+          # WOW-CI5 — repartition MESUREE sur les specs SCINDEES.
+          # `fumee-ecrans.spec.js` pesait 183,4 s dans un seul fichier, soit
+          # 84 % du temps chromium, et Playwright affecte un fichier ENTIER a un
+          # shard : ce fichier fixait donc seul le plancher du job. Il est
+          # desormais scinde en trois groupes de modules equilibres
+          # (141/141/140 routes sur 422 — voir e2e/fumee-ecrans.partition.js,
+          # dont la garde d'union prouve qu'aucun module ni aucune route ne
+          # tombe du decoupage). Durees mesurees sur le run 32206663106 :
+          #   fumee (3 groupes) 61,1 s chacun | devis 20,7 s | health 13,9 s
+          #   mobile-safari 71,3 s
+          # Repartition retenue : 61,1+61,1+20,7 = 142,9 s contre
+          # 61,1+13,9+71,3 = 146,3 s. Une 3e lane descendrait a ~96 s mais le
+          # budget de creneaux est plein (bloc CRENEAUX en tete de fichier) ;
+          # le decoupage la rend possible des qu'un creneau se libere.
           if [ "${{ matrix.shard }}" = "1" ]; then
-            npx playwright test --project=chromium fumee-ecrans.spec.js
+            npx playwright test --project=chromium \
+              fumee-ecrans-1.spec.js fumee-ecrans-2.spec.js devis.spec.js
           else
-            npx playwright test --project=chromium devis.spec.js health.spec.js
+            npx playwright test --project=chromium \
+              fumee-ecrans-3.spec.js health.spec.js
           fi
           # VX68 — passage WebKit RÉEL (Safari) sur le spec mobile : capte les
           # régressions qui n'apparaissent que sur Safari (VX48 window.open
