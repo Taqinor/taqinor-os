@@ -34,7 +34,9 @@ __all__ = [
     "SECTIONS_MM2", "AMPACITE_H1Z2Z2K", "AMPACITE_U1000R2V_MONO",
     "AMPACITE_U1000R2V_TRI", "RHO_CUIVRE_20C", "COEFF_ISC_DIMENSIONNEMENT",
     "CHUTE_CIBLE_DC_PCT", "CHUTE_MAX_DC_PCT", "CHUTE_CIBLE_AC_PCT",
-    "CHUTE_MAX_AC_PCT", "SectionProposee", "ResultatCables",
+    "CHUTE_MAX_AC_PCT", "SECTION_MIN_DC_MM2", "CRITERE_ECHAUFFEMENT",
+    "CRITERE_CHUTE", "CRITERE_LES_DEUX", "CRITERE_PLANCHER",
+    "SectionProposee", "ResultatCables",
     "ampacite", "chute_tension_v", "chute_tension_pct", "proposer_section",
     "verifier_ib_in_iz", "dimensionner_cables",
 ]
@@ -78,9 +80,18 @@ CHUTE_MAX_DC_PCT = 3.0
 CHUTE_CIBLE_AC_PCT = 1.0
 CHUTE_MAX_AC_PCT = 2.0
 
+#: Plancher DC — décision fondateur 19/08/2026 (F2) : TAQINOR ne pose jamais
+#: moins de 6 mm² en DC, même quand 2,5 ou 4 mm² suffiraient électriquement
+#: (marge mécanique/terrain). C'est un PLANCHER, jamais un plafond : si
+#: l'échauffement ou la chute de tension exigent PLUS que 6 mm², la valeur
+#: calculée l'emporte toujours. Ce plancher ne concerne QUE le câble solaire
+#: de chaîne (W1) — la section AC (W2) reste hors de sa portée.
+SECTION_MIN_DC_MM2 = 6.0
+
 CRITERE_ECHAUFFEMENT = "échauffement (Iz)"
 CRITERE_CHUTE = "chute de tension"
 CRITERE_LES_DEUX = "échauffement et chute de tension"
+CRITERE_PLANCHER = "plancher DC 6 mm² (décision fondateur 19/08/2026)"
 
 
 @dataclass(frozen=True)
@@ -162,13 +173,20 @@ def verifier_ib_in_iz(ib_a, in_a, iz_a):
 
 def proposer_section(courant_ib_a, longueur_m, tension_v, cible_pct,
                      bareme=AMPACITE_H1Z2Z2K, coefficient=2.0,
-                     calibre_in_a=None, courant_service_a=None):
+                     calibre_in_a=None, courant_service_a=None,
+                     section_min_mm2=None):
     """Plus petite section qui satisfait Iz ET la cible de chute de tension.
 
     ``courant_ib_a`` sert au critère d'ÉCHAUFFEMENT (courant de dimensionnement,
     majoré le cas échéant), ``courant_service_a`` au critère de CHUTE (courant
     réellement transporté en fonctionnement) — les deux diffèrent côté DC, où le
     câble se dimensionne sur 1,25 × Isc mais ne transporte que l'Imp.
+
+    ``section_min_mm2`` est un PLANCHER commercial (jamais normatif) : quand la
+    section calculée tombe en dessous, elle est relevée à ce plancher SANS
+    changer les deux sections « calculées » publiées
+    (``section_par_echauffement_mm2``/``section_par_chute_mm2``) — un lecteur
+    doit pouvoir voir ce que la physique exigeait ET ce que le plancher impose.
     """
     courant_chute = (float(courant_ib_a or 0.0) if courant_service_a is None
                      else float(courant_service_a))
@@ -199,6 +217,10 @@ def proposer_section(courant_ib_a, longueur_m, tension_v, cible_pct,
         critere = CRITERE_CHUTE
     else:
         critere = CRITERE_ECHAUFFEMENT
+
+    if section_min_mm2 is not None and section_min_mm2 > retenue + 1e-9:
+        retenue = section_min_mm2
+        critere = CRITERE_PLANCHER
 
     return SectionProposee(
         section_mm2=retenue,
@@ -231,11 +253,16 @@ def dimensionner_cables(entree, resultat_chaines=None,
         tension_service = min(c.vmp_stc_v for c in chaines)
         calibre = (resultat_protections.calibre_fusible_a
                    if resultat_protections is not None else None)
+        # F2 (fondateur 19/08/2026) — le nombre de PAIRES descendantes (+ et −)
+        # suit les entrées MPPT réellement utilisées, PAS le nombre de chaînes :
+        # plusieurs chaînes en parallèle convergent au coffret de chaînes avant
+        # la descente commune vers l'onduleur, une seule paire par MPPT.
+        nb_mppt_utilises = len(set(c.mppt for c in chaines))
         proposee = proposer_section(
             courant_ib_a=ib_dc, longueur_m=entree.dc_m,
             tension_v=tension_service, cible_pct=CHUTE_CIBLE_DC_PCT,
             bareme=AMPACITE_H1Z2Z2K, coefficient=2.0, calibre_in_a=calibre,
-            courant_service_a=imp)
+            courant_service_a=imp, section_min_mm2=SECTION_MIN_DC_MM2)
         conforme, motif = verifier_ib_in_iz(ib_dc, calibre, proposee.iz_a)
         depasse = proposee.chute_pct > CHUTE_MAX_DC_PCT + 1e-9
         if motif:
@@ -255,11 +282,11 @@ def dimensionner_cables(entree, resultat_chaines=None,
                    fr(proposee.section_mm2, 1), fr(CHUTE_MAX_DC_PCT, 1)))
         cables.append(Cable(
             repere="W1",
-            designation="Câble solaire H1Z2Z2-K 1000 V DC (2 conducteurs par "
-                        "chaîne, + et −)",
+            designation="Câble solaire Nexans H1Z2Z2-K 1000 V DC (2 "
+                        "conducteurs par paire descendante MPPT, + et −)",
             section_mm2=proposee.section_mm2,
             longueur_m=float(entree.dc_m or 0.0),
-            nb_conducteurs=2 * len(chaines),
+            nb_conducteurs=2 * nb_mppt_utilises,
             ib_a=ib_dc,
             in_a=calibre,
             iz_a=proposee.iz_a,
@@ -271,9 +298,12 @@ def dimensionner_cables(entree, resultat_chaines=None,
             regle_source=(
                 "EN 50618 (Iz H1Z2Z2-K) + IEC 62548 §7.3 (Ib = 1,25 × Isc = "
                 "%s) + NF C 15-100 §433.1 (Ib ≤ In ≤ Iz) ; chute u = 2 × %s × "
-                "L × I / S, cible %s %%, maximum %s %% (UTE C 15-712-1)"
+                "L × I / S, cible %s %%, maximum %s %% (UTE C 15-712-1) ; "
+                "plancher %s mm² (décision fondateur 19/08/2026 — TAQINOR "
+                "n'installe pas moins)"
                 % (fr_a(ib_dc), fr(RHO_CUIVRE_20C, 5),
-                   fr(CHUTE_CIBLE_DC_PCT, 1), fr(CHUTE_MAX_DC_PCT, 1))),
+                   fr(CHUTE_CIBLE_DC_PCT, 1), fr(CHUTE_MAX_DC_PCT, 1),
+                   fr(SECTION_MIN_DC_MM2, 1))),
         ))
 
     # ── Liaison AC onduleur → tableau ────────────────────────────────────────

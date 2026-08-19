@@ -150,12 +150,22 @@ class ContratConceptionElectriqueTest(SimpleTestCase):
         for interdit in ("prix", "prix_achat", "marge", "montant", "mad"):
             self.assertNotIn(interdit, blob)
 
-    def test_longueurs_par_defaut_depuis_le_nombre_de_chaines(self):
+    def test_longueur_dc_par_defaut_est_le_forfait_par_paire(self):
+        """F2 (fondateur 19/08/2026) : forfait fixe, indépendant du nombre de
+        chaînes — seul le nombre de PAIRES MPPT (core.electrique.cables) suit
+        les chaînes, pas la longueur elle-même."""
         design = es.build_electrical_design(_devis_villa())
-        nb_chaines = len(design["chaines"])
-        self.assertEqual(design["parametres"]["dc_m"],
-                         max(es.DC_M_MINIMUM, nb_chaines * es.DC_M_PAR_CHAINE))
+        self.assertEqual(design["parametres"]["dc_m"], es.DC_M_PAR_DEFAUT)
         self.assertEqual(design["parametres"]["ac_m"], es.AC_M_DEFAUT)
+
+    def test_longueur_dc_par_defaut_ne_bouge_pas_avec_le_devis(self):
+        villa = es.build_electrical_design(_devis_villa())
+        petit = es.build_electrical_design(_FauxDevis(lignes=[
+            _FausseLigne("Panneau PV 550 Wc mono", 4),
+            _FausseLigne("Onduleur réseau 3 kW", 1),
+        ]))
+        self.assertEqual(villa["parametres"]["dc_m"],
+                         petit["parametres"]["dc_m"])
 
     def test_triphase_lu_dans_le_libelle(self):
         design = es.build_electrical_design(_devis_villa())

@@ -24,7 +24,9 @@ from core.electrique.cables import (
     CHUTE_MAX_DC_PCT,
     COEFF_ISC_DIMENSIONNEMENT,
     CRITERE_CHUTE,
+    CRITERE_PLANCHER,
     RHO_CUIVRE_20C,
+    SECTION_MIN_DC_MM2,
     SECTIONS_MM2,
     ampacite,
     chute_tension_pct,
@@ -197,9 +199,23 @@ class CablesDeLInstallation(unittest.TestCase):
         self.assertAlmostEqual(
             dc.ib_a, entree.module.isc_a * COEFF_ISC_DIMENSIONNEMENT, places=9)
 
-    def test_deux_conducteurs_par_chaine(self):
+    def test_deux_conducteurs_par_paire_mppt(self):
+        # 2 chaînes, UNE par MPPT (n_mppt=2) → 2 paires descendantes.
         resultat = _cables(_entree(nb_modules=24, longueur=12))
-        self.assertEqual(_cable(resultat, "W1").nb_conducteurs, 4)  # 2 chaînes
+        self.assertEqual(_cable(resultat, "W1").nb_conducteurs, 4)
+
+    def test_les_paires_dc_suivent_les_mppt_pas_les_chaines(self):
+        """F2 (fondateur 19/08/2026) : plusieurs chaînes en parallèle sur les
+        MÊMES entrées MPPT convergent au coffret de chaînes avant la descente
+        — le métrage compte les PAIRES MPPT, jamais les chaînes."""
+        entree = _entree(nb_modules=36, longueur=12)   # 3 chaînes, n_mppt=2
+        chaines = concevoir_chaines(entree).chaines
+        self.assertEqual(len(chaines), 3)
+        nb_mppt = len({c.mppt for c in chaines})
+        self.assertEqual(nb_mppt, 2)
+        dc = _cable(_cables(entree), "W1")
+        self.assertEqual(dc.nb_conducteurs, 2 * nb_mppt)   # 4, jamais 6
+        self.assertIn("Nexans", dc.designation)
 
     def test_le_triphase_change_le_bareme_et_le_nombre_de_conducteurs(self):
         ac = _cable(_cables(_entree(phases=3, ac_kw=20.0)), "W2")
@@ -232,3 +248,48 @@ class CablesDeLInstallation(unittest.TestCase):
                                   v_max_abs=1000.0, i_max_mppt_a=26.0,
                                   ac_kw=0.0))
         self.assertEqual(_cables(entree).cables, ())
+
+
+class PlancherDcFondateur(unittest.TestCase):
+    """F2 (fondateur 19/08/2026) : le câble DC de chaîne ne descend jamais
+    sous 6 mm², même quand la physique seule tiendrait moins — mais le
+    plancher ne PLAFONNE rien : une liaison qui exige davantage l'emporte."""
+
+    def test_le_plancher_releve_une_section_physique_plus_petite(self):
+        proposee = proposer_section(
+            courant_ib_a=17.25, longueur_m=30.0, tension_v=408.0,
+            cible_pct=CHUTE_CIBLE_DC_PCT, courant_service_a=13.0,
+            section_min_mm2=SECTION_MIN_DC_MM2)
+        self.assertEqual(proposee.section_mm2, SECTION_MIN_DC_MM2)
+        self.assertEqual(proposee.critere, CRITERE_PLANCHER)
+        # Les sections CALCULÉES restent publiées telles quelles — le
+        # plancher s'ajoute APRÈS elles, il ne les efface pas.
+        self.assertLess(proposee.section_par_echauffement_mm2,
+                        SECTION_MIN_DC_MM2)
+        self.assertLess(proposee.section_par_chute_mm2, SECTION_MIN_DC_MM2)
+
+    def test_le_plancher_ne_plafonne_rien(self):
+        """Une liaison longue exige davantage : le plancher ne redescend pas."""
+        proposee = proposer_section(
+            courant_ib_a=17.25, longueur_m=120.0, tension_v=408.0,
+            cible_pct=CHUTE_CIBLE_DC_PCT, courant_service_a=13.0,
+            section_min_mm2=SECTION_MIN_DC_MM2)
+        self.assertGreater(proposee.section_mm2, SECTION_MIN_DC_MM2)
+        self.assertNotEqual(proposee.critere, CRITERE_PLANCHER)
+
+    def test_sans_plancher_demande_le_comportement_est_inchange(self):
+        avec = proposer_section(
+            courant_ib_a=17.25, longueur_m=30.0, tension_v=408.0,
+            cible_pct=CHUTE_CIBLE_DC_PCT, courant_service_a=13.0,
+            section_min_mm2=None)
+        self.assertLess(avec.section_mm2, SECTION_MIN_DC_MM2)
+
+    def test_le_cable_dc_reel_applique_le_plancher(self):
+        dc = _cable(_cables(_entree()), "W1")
+        self.assertEqual(dc.section_mm2, SECTION_MIN_DC_MM2)
+        self.assertEqual(dc.critere_dimensionnant, CRITERE_PLANCHER)
+        self.assertIn("plancher", dc.regle_source.lower())
+        self.assertIn("Nexans", dc.designation)
+        # L'AC, lui, n'a AUCUN plancher — c'est une règle propre au DC.
+        ac = _cable(_cables(_entree()), "W2")
+        self.assertNotIn("plancher", ac.regle_source.lower())

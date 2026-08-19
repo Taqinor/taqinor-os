@@ -25,9 +25,16 @@ Journal des MAJEUR :
   (« Sectionneur-fusible DC batterie ») — TAQINOR n'en installe pas. Un
   dossier hybride/autonome perd donc une ligne de protection à entrée
   identique : c'est la définition même d'un MAJEUR ici.
+* **3.0.0 — F2, décision fondateur 19/08/2026 : câble DC solaire, plancher et
+  paires descendantes.** ``dimensionner_cables`` impose un plancher de 6 mm²
+  au câble DC de chaîne (W1) — TAQINOR n'installe jamais moins, même quand
+  2,5 ou 4 mm² suffiraient électriquement — et compte ses conducteurs par
+  PAIRE DESCENDANTE (une par entrée MPPT réellement utilisée), plus jamais
+  par chaîne. La section ou le métrage DC publiés peuvent donc changer à
+  entrée identique : c'est un MAJEUR.
 """
 
-VERSION_MOTEUR = "2.0.0"
+VERSION_MOTEUR = "3.0.0"
 
 #: Version du schéma d'échange (dictionnaires de projection ``tiroirs`` et
 #: nomenclature). Elle évolue indépendamment de ``VERSION_MOTEUR`` : le moteur

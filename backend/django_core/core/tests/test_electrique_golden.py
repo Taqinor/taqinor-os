@@ -86,7 +86,9 @@ class MonoReseauHuitPanneaux(unittest.TestCase):
     def test_les_sections_de_cable(self):
         dc = _repere(self.resultat.cables, "W1")
         ac = _repere(self.resultat.cables, "W2")
-        self.assertEqual(dc.section_mm2, 2.5)
+        # F2 (fondateur 19/08/2026) : plancher DC 6 mm² — la physique seule
+        # tiendrait 2,5 mm² ici, mais TAQINOR n'installe jamais moins.
+        self.assertEqual(dc.section_mm2, 6.0)
         self.assertEqual(ac.section_mm2, 2.5)
         self.assertLess(dc.chute_tension_pct, dc.chute_cible_pct)
         self.assertLess(ac.chute_tension_pct, ac.chute_cible_pct)
