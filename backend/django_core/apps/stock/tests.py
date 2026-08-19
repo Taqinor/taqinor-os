@@ -510,6 +510,45 @@ class TestSeedCatalogue(TestCase):
         priced = Produit.objects.get(company=self.company, sku='OND-R-HUA-10T')
         self.assertTrue(_has_price(priced))
 
+    # ── DC35/G1 (2026-08-19) — le fondateur ne pose que du câble Nexans : la
+    # marque doit être visible sur TOUTE ligne câble solaire du catalogue, pas
+    # seulement sur les deux SKU dont le nom la porte déjà (CAB-NEX-DC-6/TER-6).
+    def test_toutes_les_lignes_cable_solaire_portent_la_marque_nexans(self):
+        seed(self.company)
+        skus_cable = [
+            'CAB-6MM-M', 'CAB-H1Z2Z2-4-M', 'CAB-H1Z2Z2-6-M',
+            'CAB-H1Z2Z2-10-M', 'CAB-H1Z2Z2-16-M',
+            'CAB-NEX-DC-6', 'CAB-NEX-TER-6',
+        ]
+        for sku in skus_cable:
+            p = Produit.objects.get(company=self.company, sku=sku)
+            self.assertEqual(p.marque, 'Nexans', sku)
+            self.assertTrue(p.description, sku)
+
+    def test_cable_dc_h1z2z2k_cite_la_norme_et_le_conducteur(self):
+        """Les câbles DC (H1Z2Z2-K) portent des faits VÉRIFIÉS — jamais un
+        câble de terre : NF EN 50618 est une norme de câble PV, pas de mise à
+        la terre (aucun numéro inventé, cf. règle fondateur « faits vérifiés
+        uniquement »)."""
+        seed(self.company)
+        for sku in ('CAB-6MM-M', 'CAB-H1Z2Z2-6-M', 'CAB-NEX-DC-6'):
+            p = Produit.objects.get(company=self.company, sku=sku)
+            self.assertIn('H1Z2Z2-K', p.description, sku)
+            self.assertIn('NF EN 50618', p.description, sku)
+
+    def test_fiche_nexans_idempotente_et_sans_prix_touche(self):
+        seed(self.company)
+        avant = Produit.objects.get(company=self.company, sku='CAB-NEX-DC-6')
+        self.assertEqual(avant.prix_vente, Decimal('12.00'))  # 14,4 TTC / 1,2
+        self.assertEqual(avant.prix_achat, Decimal('0'))
+        seed(self.company)
+        apres = Produit.objects.get(company=self.company, sku='CAB-NEX-DC-6')
+        self.assertEqual(apres.marque, 'Nexans')
+        self.assertEqual(apres.prix_vente, avant.prix_vente)
+        self.assertEqual(apres.prix_achat, avant.prix_achat)
+        self.assertEqual(
+            Produit.objects.filter(company=self.company, sku='CAB-NEX-DC-6').count(), 1)
+
     # ── PVG4 — Onduleur Deye 15 kW basse tension (décision fondateur
     # 2026-08-18, SUN-15K-SG05LP3-EU-SM2) ─────────────────────────────────
     def test_pvg4_onduleur_deye_15k_lv_seeded_with_empty_price(self):

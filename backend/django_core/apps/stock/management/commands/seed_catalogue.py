@@ -483,7 +483,15 @@ FICHES = {
     **{sku: {'garantie': 'Garantie constructeur 2 ans', 'description': _DESC_POMPE_SUR,
              } for sku in ('PMP-SUR-1.5M', 'PMP-SUR-3T')},
     'CAB-6MM-M': {
-        'description': 'Câble solaire 6 mm² double isolation, résistant UV (prix au mètre)',
+        # DC35/G1 (2026-08-19) — le fondateur ne pose que du Nexans : la marque
+        # doit être visible sur CHAQUE ligne câble, pas seulement dans le nom
+        # du SKU récent CAB-NEX-DC-6. Faits vérifiés sur la datasheet Nexans
+        # H1Z2Z2-K SUN PLUS (1,5 kV DC) : nexans.fr/en/products/Renewable/
+        # Solar/Photovoltaic-Cables/Nexans-PV-38188.html.
+        'marque': 'Nexans',
+        'description': ('Câble solaire H1Z2Z2-K, conducteur cuivre étamé souple classe 5\n'
+                        'Isolation et gaine réticulées sans halogène, tenue -40°C à 90°C\n'
+                        'Tension 1,5/1,8 kV DC, conforme NF EN 50618 et CEI 62930 (prix au mètre)'),
     },
     # Variateurs VEICHI
     'VEI-SI22-AFF': {
@@ -510,17 +518,37 @@ FICHES = {
                            'PMP-OSP-30-20', 'PMP-OSP-30-21', 'PMP-OSP-30-25',
                            'PMP-OSP-30-26', 'PMP-OSP-30-35')},
     # ── PVG3 — Câbles & protections (descriptions FR courtes) ──
+    # DC35/G1 (2026-08-19) — même marque Nexans que CAB-6MM-M/CAB-NEX-* ci-
+    # dessus : un seul câble solaire réellement posé, plusieurs SKU historiques
+    # pour la même section commerciale.
     'CAB-H1Z2Z2-4-M': {
-        'description': 'Câble solaire H1Z2Z2-K 4 mm², double isolation, résistant UV (au mètre)',
+        'marque': 'Nexans',
+        'description': 'Câble solaire H1Z2Z2-K 4 mm², double isolation, résistant UV, conforme NF EN 50618 (au mètre)',
     },
     'CAB-H1Z2Z2-6-M': {
-        'description': 'Câble solaire H1Z2Z2-K 6 mm², double isolation, résistant UV (au mètre)',
+        'marque': 'Nexans',
+        'description': 'Câble solaire H1Z2Z2-K 6 mm², double isolation, résistant UV, conforme NF EN 50618 (au mètre)',
     },
     'CAB-H1Z2Z2-10-M': {
-        'description': 'Câble solaire H1Z2Z2-K 10 mm², double isolation, résistant UV (au mètre)',
+        'marque': 'Nexans',
+        'description': 'Câble solaire H1Z2Z2-K 10 mm², double isolation, résistant UV, conforme NF EN 50618 (au mètre)',
     },
     'CAB-H1Z2Z2-16-M': {
-        'description': 'Câble solaire H1Z2Z2-K 16 mm², double isolation, résistant UV (au mètre)',
+        'marque': 'Nexans',
+        'description': 'Câble solaire H1Z2Z2-K 16 mm², double isolation, résistant UV, conforme NF EN 50618 (au mètre)',
+    },
+    # ── Câbles Nexans 6 mm² AU MÈTRE (règle fondateur 18/08) — SKU récents de
+    # CATALOGUE (ligne 68 plus haut) : absents de FICHES jusqu'ici, donc SANS
+    # description ni marque appliquée malgré « Nexans » dans leur NOM.
+    'CAB-NEX-DC-6': {
+        'marque': 'Nexans',
+        'description': ('Câble solaire H1Z2Z2-K, conducteur cuivre étamé souple classe 5\n'
+                        'Isolation et gaine réticulées sans halogène, tenue -40°C à 90°C\n'
+                        'Tension 1,5/1,8 kV DC, conforme NF EN 50618 et CEI 62930 (prix au mètre)'),
+    },
+    'CAB-NEX-TER-6': {
+        'marque': 'Nexans',
+        'description': 'Câble de terre Nexans 6 mm², liaison de mise à la terre (prix au mètre)',
     },
     'FUS-GPV-1000-15A': {
         'description': 'Fusible cartouche gPV 1000 VDC, calibre 15 A, protection string PV',
