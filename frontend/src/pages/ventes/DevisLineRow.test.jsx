@@ -62,6 +62,22 @@ describe('DevisLineRow (VX188) — mémoïsation', () => {
     expect(qte.value).toBe('4')
   })
 
+  it('U4 — affiche le HT unitaire dérivé (lecture seule) sous le prix TTC et le total HT sous le total TTC', () => {
+    render(
+      <table><tbody>{wrap(<DevisLineRow {...baseProps()} />)}</tbody></table>,
+    )
+    const row = screen.getByDisplayValue('Panneau solaire 450W').closest('tr')
+    // prix_unit_ttc=1500, taux_tva=20 → HT unitaire = 1500 / 1.2 = 1250.00
+    const prixCell = row.querySelector('td[data-label="Prix unit. TTC"]')
+    expect(prixCell).toHaveTextContent('HT : 1 250 MAD')
+    // quantite=4 × HT unitaire 1250 = 5000 (total HT de la ligne)
+    const totalCell = row.querySelector('td[data-label="Total TTC"]')
+    expect(totalCell).toHaveTextContent('6 000 MAD') // total TTC = 4 × 1500
+    expect(totalCell).toHaveTextContent('HT : 5 000 MAD')
+    // L'input TTC reste la seule saisie — aucun nouveau champ éditable pour le HT.
+    expect(prixCell.querySelectorAll('input').length).toBe(1)
+  })
+
   it('ne se re-rend PAS (ProduitPicker non ré-invoqué) quand un re-render parent passe des props IDENTIQUES par référence', () => {
     produitPickerRenderSpy.mockClear()
     const props = baseProps()

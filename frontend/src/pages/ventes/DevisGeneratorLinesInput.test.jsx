@@ -57,6 +57,7 @@ vi.mock('../../components/ProduitPicker', async (importOriginal) => {
 import crmApi from '../../api/crmApi'
 import stockApi from '../../api/stockApi'
 import DevisGenerator from './DevisGenerator'
+import { htFromTtc, formatMoney } from '../../features/ventes/solar'
 
 const PRODUITS = [
   { id: 10, nom: 'Smart Meter Huawei DTSU666', prix_vente: 1500, tva: 20, is_archived: false, prix_achat: 900 },
@@ -137,6 +138,30 @@ describe('VX137 — table de lignes : champs design system, saisie jamais rejet�
     await screen.findByDisplayValue('Smart Meter Huawei DTSU666')
     const table = document.querySelector('.lines-table')
     expect(table.querySelectorAll('input.form-control').length).toBe(0)
+  })
+
+  // U4 (fondateur 20/08/2026) — le HT unitaire dérivé (lecture seule) doit
+  // s'afficher pour une ligne réelle du générateur, calculé avec le MÊME
+  // helper que la production (htFromTtc) à partir des valeurs TTC/TVA
+  // actuellement affichées — sans dépendre du fil d'auto-remplissage.
+  it('affiche le HT unitaire dérivé et le total HT de la ligne, sans ajouter de champ éditable', async () => {
+    renderGenerator()
+    const designation = await screen.findByDisplayValue('Smart Meter Huawei DTSU666')
+    const row = designation.closest('tr')
+    const qte = row.querySelector('td[data-label="Qté"] input')
+    const prix = row.querySelector('td[data-label="Prix unit. TTC"] input')
+    const tva = row.querySelector('td[data-label="TVA %"] input')
+
+    const uniteHt = htFromTtc(prix.value, tva.value || 20)
+    const lineHt = (parseFloat(qte.value) || 0) * (parseFloat(uniteHt) || 0)
+
+    const prixCell = row.querySelector('td[data-label="Prix unit. TTC"]')
+    expect(prixCell).toHaveTextContent(`HT : ${formatMoney(uniteHt)}`)
+    // Toujours un seul input éditable dans la cellule TTC (le HT reste dérivé).
+    expect(prixCell.querySelectorAll('input').length).toBe(1)
+
+    const totalCell = row.querySelector('td[data-label="Total TTC"]')
+    expect(totalCell).toHaveTextContent(`HT : ${formatMoney(lineHt)}`)
   })
 })
 
