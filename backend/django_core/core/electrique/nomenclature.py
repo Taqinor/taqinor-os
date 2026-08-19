@@ -37,6 +37,7 @@ CATEGORIE_PAR_REPERE = (
     ("QAC", "Protection AC"),
     ("PAC", "Protection AC"),
     ("DDR", "Protection AC"),
+    ("ARM", "Coffret AC/DC"),
     ("T", "Mise à la terre"),
 )
 

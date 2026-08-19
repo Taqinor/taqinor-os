@@ -184,15 +184,71 @@ class DifferentielEtTerre(unittest.TestCase):
         self.assertIsNone(_repere(resultat, "DDR1"))
         self.assertTrue(any("TN" in a for a in resultat.alertes))
 
-    def test_mise_a_la_terre_prise_et_equipotentielle(self):
+    def test_prise_de_terre_absente_par_defaut_mais_verifiee(self):
+        """Décision fondateur 19/08 : la prise de terre n'est plus bundlée.
+
+        La vérification est une JUSTIFICATION (note de calcul), pas une
+        alerte d'écran — même discipline que « fusibles NON exigés » : un
+        rappel routinier posé sur CHAQUE dossier n'est pas un problème.
+        """
         resultat = _protections(_entree())
-        self.assertIsNotNone(_repere(resultat, "T1"))
+        self.assertIsNone(_repere(resultat, "T1"))
         self.assertIsNotNone(_repere(resultat, "T2"))
+        self.assertTrue(any("continuité de terre existante à vérifier" in j
+                            for j in resultat.justifications))
+        self.assertTrue(any("100" in j and "Ω" in j
+                            for j in resultat.justifications))
+        self.assertFalse(any("terre" in a for a in resultat.alertes))
+
+    def test_prise_de_terre_opt_in_devient_service_en_sus(self):
+        resultat = _protections(_entree(inclure_prise_terre=True))
+        prise = _repere(resultat, "T1")
+        self.assertIsNotNone(prise)
+        self.assertIn("service en sus", prise.designation)
+        self.assertFalse(any("continuité de terre existante à vérifier" in j
+                             for j in resultat.justifications))
 
     def test_le_parc_batterie_prend_son_sectionnement(self):
         self.assertIsNone(_repere(_protections(_entree()), "QBAT1"))
         avec = _protections(_entree(batterie=True))
         self.assertIsNotNone(_repere(avec, "QBAT1"))
+
+
+class CoffretDeProtectionAcDc(unittest.TestCase):
+    """Le coffret qui héberge les organes DC/AC — jamais la prise de terre."""
+
+    def test_le_coffret_apparait_avec_les_protections(self):
+        resultat = _protections(_entree())
+        coffret = _repere(resultat, "ARM1")
+        self.assertIsNotNone(coffret)
+        self.assertIn("IP65", coffret.calibre)
+
+    def test_le_coffret_est_dimensionne_par_le_nombre_d_organes(self):
+        # 2 chaînes (pas de fusible), liaison DC de 8 m (pas de parafoudre) :
+        # QDC1 seul côté DC ; QAC1, PAC1, DDR1 côté AC.
+        resultat = _protections(
+            _entree(nb_modules=24, longueur=12, n_mppt=1, dc_m=8.0))
+        coffret = _repere(resultat, "ARM1")
+        self.assertIn("1 organe(s) DC", coffret.calibre)
+        self.assertIn("3 organe(s) AC", coffret.calibre)
+
+    def test_installation_vide_pas_de_coffret(self):
+        entree = EntreeElectrique(
+            module=SpecModule(vmp_v=34.0, voc_v=41.0, isc_a=13.8, imp_a=13.0,
+                              pmax_wc=550.0),
+            onduleur=SpecOnduleur(n_mppt=2, mppt_v_min=120.0, mppt_v_max=850.0,
+                                  v_max_abs=1000.0, i_max_mppt_a=26.0,
+                                  ac_kw=0.0))
+        resultat = concevoir_protections(entree, concevoir_chaines(entree),
+                                         dimensionner_onduleurs(entree))
+        self.assertIsNone(_repere(resultat, "ARM1"))
+
+    def test_le_coffret_ne_loge_jamais_la_prise_de_terre(self):
+        """La confusion signalée par le fondateur : T1/T2 ≠ tableau AC/DC."""
+        resultat = _protections(_entree(inclure_prise_terre=True))
+        coffret = _repere(resultat, "ARM1")
+        self.assertNotIn("T1", coffret.calibre)
+        self.assertNotIn("terre", coffret.designation.lower())
 
 
 class ChaqueProtectionPorteSaSource(unittest.TestCase):

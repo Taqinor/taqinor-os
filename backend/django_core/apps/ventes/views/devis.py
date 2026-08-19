@@ -559,8 +559,9 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         n'existe pas encore. ``POST`` la RECALCULE en appliquant les
         surcharges du corps (``dc_m``, ``ac_m``, ``phases``, ``regime``,
         ``batterie``, ``zone_keraunique``, ``temp_froid_c``, ``temp_chaud_c``,
-        ``longueur_chaine_forcee``, ``plafond_kwc_par_onduleur`` — toute autre
-        clé est ignorée). Les DEUX rendent EXACTEMENT la même forme, celle du
+        ``longueur_chaine_forcee``, ``plafond_kwc_par_onduleur``,
+        ``inclure_prise_terre`` — toute autre clé est ignorée). Les DEUX
+        rendent EXACTEMENT la même forme, celle du
         contrat partagé ``contract_samples/conception_electrique.json``
         (``chaines``, ``conformite``, ``ratio_dc_ac``, ``ratio_ac_dc``,
         ``protections``, ``cables``, ``bom``, ``note``, ``parametres``) —

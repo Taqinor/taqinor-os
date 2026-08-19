@@ -48,7 +48,7 @@ AC_M_DEFAUT = 15.0
 OVERRIDES_CONNUS = (
     "dc_m", "ac_m", "phases", "regime", "batterie", "zone_keraunique",
     "temp_froid_c", "temp_chaud_c", "longueur_chaine_forcee",
-    "plafond_kwc_par_onduleur",
+    "plafond_kwc_par_onduleur", "inclure_prise_terre",
 )
 
 
@@ -374,6 +374,7 @@ def construire_entree(devis, overrides=None):
         plafond_kwc_par_onduleur=plafond,
         longueur_chaine_forcee=longueur_forcee,
         zone_keraunique=bool(reglages.get("zone_keraunique")),
+        inclure_prise_terre=bool(reglages.get("inclure_prise_terre")),
     )
 
     if "dc_m" in reglages:
@@ -412,6 +413,7 @@ def empreinte_entree(devis, entree):
         "plafond_kwc_par_onduleur": entree.plafond_kwc_par_onduleur,
         "longueur_chaine_forcee": entree.longueur_chaine_forcee,
         "zone_keraunique": entree.zone_keraunique,
+        "inclure_prise_terre": entree.inclure_prise_terre,
     }
     brut = json.dumps(charge, sort_keys=True, separators=(",", ":"),
                       default=str)

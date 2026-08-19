@@ -23,8 +23,17 @@ et aucune règle n'est appliquée « parce que c'est l'habitude » :
 * **DDR type A 300 mA** — régime TT (NF C 15-100 §411.5 : en TT la protection
   contre les contacts indirects repose sur un différentiel) ; type A parce qu'un
   onduleur PV peut injecter une composante continue (IEC 62109) ;
-* **mise à la terre** — prise de terre + liaison équipotentielle des masses
-  (NF C 15-100 §542 / UTE C 15-712-1).
+* **coffret de protection AC/DC** — l'enveloppe qui héberge les organes DC et
+  AC ci-dessus, dimensionnée par leur NOMBRE (NF C 15-100 §512.2 — choix du
+  matériel selon les influences externes, IP65) ;
+* **liaison équipotentielle des masses** — TOUJOURS posée (NF C 15-100 §542.4) ;
+* **prise de terre** — piquet + barrette de coupure, un service EN SUS,
+  opt-in (décision fondateur 19/08/2026 : le client est réputé déjà équipé,
+  la poser par défaut la facturerait sans le dire). L'obligation normative de
+  mise à la terre (NF C 15-100 §542) ne disparaît pas pour autant : à défaut
+  du service, une JUSTIFICATION de vérification (continuité de terre
+  existante, ≤ 100 Ω) reste posée dans la note de calcul — jamais une alerte
+  d'écran, réservée à un vrai problème.
 
 AUCUN PRIX : ce module produit des calibres et des quantités.
 """
@@ -295,17 +304,63 @@ def concevoir_protections(entree, resultat_chaines=None, evaluation=None):
                 "par les temps de coupure des protections (NF C 15-100 §411) — "
                 "à confirmer avec le gestionnaire de réseau" % regime)
 
-    # ── 7. Mise à la terre ───────────────────────────────────────────────────
+    # ── 7. Coffret de protection AC/DC — héberge les organes ci-dessus ───────
+    # Sa taille SUIT ce qui vient d'être retenu : elle ne se pose ni avant (les
+    # organes qu'elle doit loger ne sont pas encore connus) ni après la mise à
+    # la terre (le piquet et la barrette ne SONT PAS dans le coffret — la
+    # confusion des deux est précisément ce que le fondateur a repéré : « why
+    # do you add this line with the tableau AC/DC ? »).
     if nb_chaines or ib_ac > 0:
+        organes_dc = sum(1 for p in protections
+                         if p.repere.startswith(("F", "PDC", "QDC")))
+        organes_ac = sum(1 for p in protections
+                         if p.repere.startswith(("QAC", "PAC", "DDR")))
         protections.append(Protection(
-            repere="T1",
-            designation="Prise de terre : piquet + barrette de coupure",
-            calibre="≤ 100 Ω",
-            quantite=1,
-            regle_source=("NF C 15-100 §542 — valeur de prise de terre "
-                          "compatible avec le différentiel %d mA en régime TT"
-                          % SENSIBILITE_DDR_MA),
+            # « ARM » (armoire), jamais « CF » : un repère qui CONTIENDRAIT
+            # « F1 » comme sous-chaîne se ferait confondre avec le fusible de
+            # chaîne par tout contrôle textuel (bordereau, note) — piège réel,
+            # débusqué par ``test_electrique_nomenclature.py``.
+            repere="ARM1",
+            designation="Coffret de protection AC/DC (tableau)",
+            calibre="IP65, %d organe(s) DC + %d organe(s) AC"
+                    % (organes_dc, organes_ac),
+            quantite=max(1, nb_onduleurs),
+            regle_source=("NF C 15-100 §512.2 — organes de protection réunis "
+                          "dans une enveloppe unique adaptée aux conditions "
+                          "d'installation"),
         ))
+
+    # ── 8. Mise à la terre — liaison équipotentielle TOUJOURS, prise EN SUS ──
+    # La prise de terre (piquet + barrette) n'est PLUS un défaut : décision
+    # fondateur 19/08/2026, le client est réputé déjà équipé et la vendre sans
+    # le dire serait facturer un service en silence. Sans elle, l'obligation
+    # normative ne disparaît pas pour autant : une JUSTIFICATION de
+    # vérification la remplace dans la note de calcul, pour qu'un dossier
+    # sans T1 ne se lise jamais comme un dossier sans terre.
+    if nb_chaines or ib_ac > 0:
+        if entree.inclure_prise_terre:
+            protections.append(Protection(
+                repere="T1",
+                designation=("Prise de terre : piquet + barrette de coupure "
+                             "(si absente chez le client — service en sus)"),
+                calibre="≤ 100 Ω",
+                quantite=1,
+                regle_source=("NF C 15-100 §542 — valeur de prise de terre "
+                              "compatible avec le différentiel %d mA en "
+                              "régime TT" % SENSIBILITE_DDR_MA),
+            ))
+        else:
+            # JUSTIFICATION, pas une alerte : même discipline que « fusibles
+            # NON exigés » plus haut — la règle a été EXAMINÉE (elle reste
+            # dans la note de calcul), mais ce n'est pas un problème à
+            # signaler en tête d'écran. Le bandeau d'alertes doit rester le
+            # signal d'un vrai problème, jamais un rappel routinier posé sur
+            # CHAQUE dossier.
+            justifications.append(
+                "prise de terre non fournie par défaut (réputée déjà en "
+                "place chez le client) — continuité de terre existante à "
+                "vérifier, ≤ 100 Ω (NF C 15-100 §542) ; piquet et barrette de "
+                "coupure en service en sus si absente")
         protections.append(Protection(
             repere="T2",
             designation=("Liaison équipotentielle des masses "
@@ -317,7 +372,7 @@ def concevoir_protections(entree, resultat_chaines=None, evaluation=None):
                           "barrette de terre"),
         ))
 
-    # ── 8. Parc batterie (le cas échéant) ────────────────────────────────────
+    # ── 9. Parc batterie (le cas échéant) ────────────────────────────────────
     if entree.batterie:
         protections.append(Protection(
             repere="QBAT1",
