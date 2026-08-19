@@ -343,6 +343,39 @@ def _line_to_item(ligne, taux_tva: Decimal) -> dict:
     }
 
 
+def puissance_panneaux_lignes(lignes) -> tuple[int, int]:
+    """``(nb_panneaux, watt)`` dérivés des lignes PANNEAU parmi ``lignes``.
+
+    PVUNI (fondateur, 18/08/2026) — extrait de ``build_quote_data`` (la boucle
+    « Derive power from the panel line(s) ») en fonction RÉUTILISABLE : la
+    puissance SERVIE (page/PDF, via ``build_quote_data``) et celle des KPI
+    internes (``reports.py`` « conçu vs vendu », ARC40) doivent juger le MÊME
+    devis avec l'EXACTE même règle — une seconde dérivation qui diverge est
+    précisément le défaut de l'incident DEV-202608-0007 (deux nombres de
+    panneaux, deux coûts, dans le même document). ``lignes`` est la liste DÉJÀ
+    filtrée (lignes produit non optionnelles, ``LigneDevis.compte_dans_totaux``)
+    que l'appelant possède ; aucune requête n'est faite ici.
+
+    ``watt`` retombe TOUJOURS sur ``_DEFAULT_WATT`` (710 W) quand aucune ligne
+    panneau n'est exploitable — même repli que l'estimation faute de ligne
+    panneau, historique et inchangé. ``nb_panneaux`` vaut alors 0 : à
+    l'appelant de choisir son propre repli (estimation d'équipement pour le
+    PDF, kWc du calepinage pour le KPI/la page).
+    """
+    nb_panneaux = 0
+    watt = None
+    for li in lignes:
+        designation = getattr(li, "designation", "") or ""
+        produit = getattr(li, "produit", None)
+        produit_nom = getattr(produit, "nom", "") or ""
+        if _is_panel(designation, produit_nom):
+            nb_panneaux += int(round(float(getattr(li, "quantite", 0) or 0)))
+            watt = (watt
+                    or _fiche_watt(produit)
+                    or _parse_watt(designation, produit_nom))
+    return nb_panneaux, (watt or _DEFAULT_WATT)
+
+
 # Whitelisted PDF format options (mirroring the simulator's payload). The
 # defaults reproduce today's premium 3-page output exactly.
 DEFAULT_PDF_OPTIONS = {
@@ -619,15 +652,10 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # Sans fiche exploitable, ``_fiche_watt`` rend None et le chemin regex
     # historique s'applique à l'identique. La première ligne panneau qui donne
     # une puissance l'emporte, comme avant.
-    nb_panneaux = 0
-    watt = None
-    for li, it in zip(lignes, items):
-        if _is_panel(it["designation"], it.get("_produit_nom", "")):
-            nb_panneaux += int(round(it["quantite"]))
-            watt = (watt
-                    or _fiche_watt(getattr(li, "produit", None))
-                    or _parse_watt(it["designation"], it.get("_produit_nom", "")))
-    watt = watt or _DEFAULT_WATT
+    # PVUNI — ``puissance_panneaux_lignes`` est LA fonction partagée (aussi
+    # appelée par ``reports.py`` pour le KPI « conçu vs vendu ») : jamais une
+    # seconde dérivation de « combien de panneaux, quel watt » à côté.
+    nb_panneaux, watt = puissance_panneaux_lignes(lignes)
 
     # ── Split into the two options ───────────────────────────────────────────
     # Option 1 "Sans batterie": réseau/injection inverter, NO hybrid, NO battery.
@@ -674,6 +702,11 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     has_batterie = _has_qty(avec_items, _is_battery)
 
     # Power: prefer real panels; otherwise estimate from the equipment total.
+    # PVUNI (fondateur, 18/08/2026) — ce drapeau dit si la puissance vient des
+    # LIGNES (nb panneaux × watt du panneau RETENU) ou d'une estimation faute de
+    # ligne de panneau. Il est relu bien plus bas, au bloc « toiture 3D » : un
+    # calepinage ne peut plus écraser une puissance issue des lignes.
+    puissance_des_lignes = nb_panneaux > 0
     if nb_panneaux > 0:
         puissance_kwc = round(nb_panneaux * watt / 1000, 2)
     else:
@@ -918,17 +951,81 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     if roof_layout:
         _res = (roof_layout.get("result") or {}) if isinstance(
             roof_layout, dict) else {}
-        _kwc = _res.get("kwc")
-        if _kwc:
-            puissance_kwc = round(float(_kwc), 2)
+        _kwc_layout = _nombre(_res.get("kwc"))
+        # ── PVUNI — LES LIGNES SONT LA SOURCE UNIQUE (fondateur, 18/08/2026) ──
+        #
+        # Le calepinage 3D dimensionne ses panneaux sur une puissance unitaire
+        # CONSTANTE (roofPro : 720 W). Le devis, lui, porte le panneau
+        # RÉELLEMENT vendu — 710 W sur le devis de production DEV-202608-0007.
+        # Reprendre ``result.kwc`` tel quel plaçait donc DEUX bases de puissance
+        # dans le MÊME document : « 9 panneaux × 710 W » et « 6,48 kWc »
+        # (= 9 × 720) côte à côte sur la page 1 du PDF, pendant que l'annexe
+        # technique — qui, elle, lit les lignes — imprimait « 9 modules × 710 Wc
+        # = 6,39 kWc ». Deux vérités, un seul document.
+        #
+        # Désormais la puissance des LIGNES l'emporte TOUJOURS. Le kWc du
+        # calepinage ne sert plus que de repli quand le devis ne porte AUCUNE
+        # ligne de panneau (rien à lire côté lignes) : la géométrie 3D reste
+        # exacte, seule son échelle de puissance cesse de faire autorité.
+        if _kwc_layout and not puissance_des_lignes:
+            puissance_kwc = round(_kwc_layout, 2)
+        # Facteur de RECALAGE des figures du calepinage (production, économies)
+        # sur la taille réellement vendue : la modélisation de site du
+        # calepinage (orientation, inclinaison, ombrage, irradiance) est
+        # conservée — seule sa TAILLE est ramenée à celle des lignes. 1.0 quand
+        # les deux coïncident, donc sortie inchangée sur un devis sain.
+        _recalage = 1.0
+        if puissance_des_lignes and _kwc_layout > 0 and puissance_kwc > 0:
+            _recalage = puissance_kwc / _kwc_layout
         _stored = dict(devis.etude_params or {})
-        if _res.get("annualKwh") and not _stored.get("production_annuelle"):
-            _stored["production_annuelle"] = int(_res["annualKwh"])
-        if _res.get("savings") and not _stored.get("economies_annuelles"):
-            _stored["economies_annuelles"] = int(_res["savings"])
+        for _cle, _brut in (("production_annuelle", _res.get("annualKwh")),
+                            ("economies_annuelles", _res.get("savings"))):
+            if not _brut:
+                continue
+            _recale = int(round(_nombre(_brut) * _recalage))
+            if not _stored.get(_cle):
+                _stored[_cle] = _recale
+            elif _est_la_figure_du_calepinage(_stored.get(_cle), _brut):
+                # Figure POSÉE par le calepinage : ``sync_devis_from_layout``
+                # la recopie telle quelle dans ``etude_params``, donc elle
+                # porte la même base 720 W que son kWc. On la recale sur les
+                # lignes — une étude SAISIE (valeur différente) reste souveraine.
+                _stored[_cle] = _recale
+        # Le kWc stocké dans l'étude est SERVI tel quel (payload public
+        # ``etude.puissance_kwc``, ``etude.toiture.kwc``) : il suit la même
+        # règle, sans quoi la page publiait encore la base 720 W sous un autre
+        # nom. Copies défensives — ``etude_params`` du devis n'est jamais muté.
+        if puissance_des_lignes and puissance_kwc > 0:
+            _stored["puissance_kwc"] = puissance_kwc
+            _toiture = _stored.get("toiture")
+            if isinstance(_toiture, dict) and _nombre(_toiture.get("kwc")):
+                _toiture = dict(_toiture)
+                _toiture["kwc"] = puissance_kwc
+                _pans = _toiture.get("pans")
+                if isinstance(_pans, list) and _recalage != 1.0:
+                    _toiture["pans"] = [
+                        (dict(p, kwc=round(_nombre(p.get("kwc")) * _recalage, 2))
+                         if isinstance(p, dict) and _nombre(p.get("kwc"))
+                         else p)
+                        for p in _pans
+                    ]
+                _stored["toiture"] = _toiture
         devis_etude_override = _stored
     else:
         devis_etude_override = devis.etude_params or {}
+
+    # ── PVUNI — LE CALEPINAGE EST-IL PÉRIMÉ ? ────────────────────────────────
+    # Le calepinage porte le compte de panneaux pour lequel il a été joué. Les
+    # lignes, elles, bougent après coup (édition manuelle d'une quantité, ajout
+    # d'une seconde marque…) sans que personne ne rejoue la 3D. Quand les deux
+    # divergent, la vue 3D montre une toiture qui n'est plus celle du devis :
+    # on le DIT (drapeau servi à la page et au PDF), plutôt que de laisser le
+    # client compter lui-même. Jamais un recalcul de la géométrie — seulement
+    # une comparaison honnête entre deux comptes.
+    layout_nb_panneaux = _panneaux_du_layout(roof_layout)
+    layout_stale = bool(
+        layout_nb_panneaux and puissance_des_lignes
+        and layout_nb_panneaux != nb_panneaux)
 
     # ── Canonical performance figures: ONE source of truth ───────────────────
     # When the quote carries a stored étude (industrial), its consumption-driven
@@ -1470,6 +1567,11 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "puissance_kwc": puissance_kwc,
         "nb_panneaux": nb_panneaux,
         "watt_par_panneau": watt,
+        # PVUNI — le calepinage 3D ne colle plus aux lignes (quelqu'un a édité
+        # une quantité de panneaux sans rejouer la 3D). False sur un devis sain
+        # ET sur un devis sans calepinage : rendu inchangé dans les deux cas.
+        "layout_stale": layout_stale,
+        "layout_nb_panneaux": layout_nb_panneaux or None,
         "prod_kwh": roi["prod_kwh"],
         "total_sans": total_sans,
         "total_avec": total_avec,
@@ -1796,6 +1898,55 @@ def display_totals(devis) -> dict:
         return {"total": float(devis.total_ttc), "nb_options": 1}
 
 
+def _nombre(valeur) -> float:
+    """``float`` tolérant : ``0.0`` sur None / vide / non numérique.
+
+    PVUNI — les figures du calepinage arrivent d'un JSON client (roofPro) : une
+    valeur absente ou mal typée ne doit jamais lever, elle vaut « pas de figure ».
+    """
+    try:
+        return float(valeur)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _est_la_figure_du_calepinage(valeur_stockee, valeur_layout) -> bool:
+    """La figure stockée dans l'étude est-elle la RECOPIE de celle du calepinage ?
+
+    PVUNI — ``sync_devis_from_layout`` recopie ``result.annualKwh`` /
+    ``result.savings`` dans ``etude_params`` sans les transformer. Une égalité à
+    l'entier près prouve donc que la figure vient du calepinage (et porte sa base
+    720 W) ; toute autre valeur est une étude SAISIE, qu'on ne touche jamais.
+    """
+    try:
+        return (int(round(float(valeur_stockee)))
+                == int(round(float(valeur_layout))))
+    except (TypeError, ValueError):
+        return False
+
+
+def _panneaux_du_layout(roof_layout) -> int:
+    """Nombre de panneaux que le calepinage 3D porte, ou ``0`` s'il n'en dit rien.
+
+    PVUNI — lit le ``result`` (clés connues de roofPro) puis, à défaut, somme les
+    pans. Tolérant par construction : un layout absent/mal formé rend 0, ce qui
+    éteint simplement le drapeau de péremption (jamais une fausse alerte).
+    """
+    if not isinstance(roof_layout, dict):
+        return 0
+    resultat = roof_layout.get("result") or {}
+    if isinstance(resultat, dict):
+        for cle in ("panels", "count", "nb_panneaux"):
+            nombre = int(round(_nombre(resultat.get(cle))))
+            if nombre > 0:
+                return nombre
+    total = 0
+    for pan in (roof_layout.get("pans") or []):
+        if isinstance(pan, dict):
+            total += int(round(_nombre(pan.get("nb_panneaux"))))
+    return total
+
+
 def _pdf_key(devis) -> str:
     """MinIO key, scoped by company to avoid cross-tenant collisions."""
     company_id = getattr(devis, "company_id", None) or "0"
@@ -1917,9 +2068,71 @@ def generate_premium_devis_pdf(devis_id, pdf_options=None, persist=True) -> str:
 
     # Persist the key only when asked AND when it actually changed: a safe GET
     # (persist=False) never writes; the default path writes once.
-    if persist and devis.fichier_pdf != key:
-        devis.fichier_pdf = key
-        devis.save(update_fields=["fichier_pdf"])
+    # PVFRESH — on persiste EN MÊME TEMPS l'empreinte des données rendues et les
+    # options de format : la clé étant déterministe, elle ne dit rien de la
+    # fraîcheur du fichier ; cette empreinte, si. ``champs`` n'inclut que ce qui
+    # a réellement bougé (règle #4 : ``statut`` n'est jamais écrit d'ici).
+    if persist:
+        champs = []
+        if devis.fichier_pdf != key:
+            devis.fichier_pdf = key
+            champs.append("fichier_pdf")
+        meta = {"empreinte": empreinte_donnees_pdf(data),
+                "options": clean_pdf_options(pdf_options)}
+        if devis.pdf_render_meta != meta:
+            devis.pdf_render_meta = meta
+            champs.append("pdf_render_meta")
+        if champs:
+            devis.save(update_fields=champs)
 
     logger.info("Premium quote PDF generated: %s (%d bytes)", key, len(pdf_bytes))
     return key
+
+
+def empreinte_donnees_pdf(data) -> str | None:
+    """Empreinte stable des données d'un rendu PDF — LE mécanisme QX8, réutilisé.
+
+    PVFRESH — le cache d'octets QX8 (``residential/renderer._fingerprint``)
+    prouve déjà qu'une empreinte du dict de rendu suffit à décider « mêmes
+    données ⇒ même PDF ». On l'étend au chemin de PERSISTANCE plutôt que d'en
+    inventer une seconde : deux empreintes divergentes seraient un troisième
+    prix dans une maison qui n'en veut qu'un. ``None`` sur donnée non
+    sérialisable → l'appelant re-rend (jamais un fichier servi à l'aveugle).
+    """
+    from .residential.renderer import _fingerprint
+
+    return _fingerprint(data)
+
+
+def cle_pdf_a_jour(devis, pdf_options=None) -> str:
+    """Clé MinIO d'un PDF dont on GARANTIT qu'il correspond aux données du jour.
+
+    PVFRESH — le contrat des chemins qui SERVENT le fichier stocké sans
+    re-rendre. On reconstruit les données du devis avec les options du dernier
+    rendu, on compare l'empreinte à celle mémorisée, et :
+
+    * identiques → on renvoie ``devis.fichier_pdf`` tel quel (aucun re-rendu :
+      le bénéfice du fichier stocké est intégralement conservé) ;
+    * différentes, absentes, ou fichier jamais rendu → on RE-REND et on
+      persiste (clé + empreinte), puis on renvoie la clé fraîche.
+
+    Le format du dernier rendu est respecté : un devis rendu en une page se
+    re-rend en une page, jamais silencieusement en trois. Aucun statut n'est
+    touché (règle #4 — le moteur ne fait que rendre).
+    """
+    meta = devis.pdf_render_meta if isinstance(
+        devis.pdf_render_meta, dict) else {}
+    options = meta.get("options") if isinstance(
+        meta.get("options"), dict) else None
+    if pdf_options is not None:
+        options = pdf_options
+    options = clean_pdf_options(options)
+    empreinte_stockee = meta.get("empreinte")
+    if devis.fichier_pdf and empreinte_stockee:
+        try:
+            attendue = empreinte_donnees_pdf(build_quote_data(devis, options))
+        except Exception:  # noqa: BLE001 — un devis illisible se re-rend
+            attendue = None
+        if attendue and attendue == empreinte_stockee:
+            return devis.fichier_pdf
+    return generate_premium_devis_pdf(devis.pk, options, persist=True)

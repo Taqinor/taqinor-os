@@ -241,6 +241,15 @@ class EntreeElectrique:
     #: parafoudre quelle que soit la longueur de liaison (UTE C 15-712-1 §7 :
     #: le critère de longueur critique dépend de la densité d'arcs Ng).
     zone_keraunique: bool = False
+    #: Décision fondateur 19/08/2026 — la PRISE DE TERRE (piquet + barrette de
+    #: coupure) n'est PLUS posée par défaut : le client est réputé déjà équipé,
+    #: et la fournir sans le dire la facturerait en silence. ``False`` par
+    #: défaut = service EN SUS, à cocher explicitement (``True``) quand le
+    #: dossier doit la vendre. Ça ne change RIEN à l'obligation normative de
+    #: mise à la terre elle-même (NF C 15-100 §542) : à défaut de ce booléen,
+    #: le moteur pose une JUSTIFICATION de vérification (note de calcul) au
+    #: lieu de fournir l'organe — cf. ``core.electrique.protections``.
+    inclure_prise_terre: bool = False
 
     @property
     def nb_modules(self):

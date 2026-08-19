@@ -79,6 +79,9 @@ describe('fiches techniques — manifest', () => {
       'wifi-dongle-huawei',
       // Découpage fondateur 2026-08-18 — les postes génériques du devis.
       'structure-fixation',
+      // Scindée de la précédente le 18/08/2026 (« a page for each ») : le
+      // châssis d'un côté, les plots béton qui le lestent de l'autre.
+      'socles-lestage',
       'cablage',
       'protection-dc',
       'protection-ac',
@@ -94,6 +97,9 @@ describe('fiches techniques — manifest', () => {
 // protection DC, protection AC, accessoires de pose) + 3 postes de grands
 // projets. Les fiches de MARQUE (panneaux, onduleurs) restent plusieurs par
 // famille : le client doit lire les faits de SON matériel, pas d'un générique.
+// La famille `structure` en porte DEUX depuis le 18/08/2026 (ordre fondateur
+// « a page for each ») : le châssis et les socles de lestage — deux pièces,
+// deux questions du client, deux pages ; une seule famille de devis.
 describe('découpage 11 familles', () => {
   it('la table des familles compte exactement 11 entrées, 8 + 3', () => {
     expect(FICHE_FAMILLES.length).toBe(11);
@@ -211,6 +217,25 @@ describe('fiches sœurs (voirAussi)', () => {
     expect(ficheBySlug('protection-ac')!.voirAussi).toContain('protection-dc');
   });
 
+  // Découpage fondateur du 18/08/2026 : le châssis et les socles qui le lestent
+  // sont deux pages. Chacune reste donc à UN clic de l'autre — sinon le client
+  // lirait la moitié de ce qu'il paie, exactement le défaut corrigé sur AC/DC.
+  it('la structure et les socles se citent l’une l’autre, et ne se mélangent plus', () => {
+    const structure = ficheBySlug('structure-fixation')!;
+    const socles = ficheBySlug('socles-lestage')!;
+    expect(structure.voirAussi).toContain('socles-lestage');
+    expect(socles.voirAussi).toContain('structure-fixation');
+    // La cote des plots (fondateur 18/08) vit désormais SUR la fiche socles…
+    expect(socles.faits.join(' ')).toContain('30 × 30 × 20 cm');
+    // …et la question « faut-il percer ? » avec elle.
+    expect(socles.faq!.map((q) => q.q).join(' ')).toContain('percer');
+    // La fiche structure, elle, porte les cotes du châssis et plus les socles.
+    expect(structure.faits.join(' ')).toContain('41 × 41 mm');
+    expect(structure.faits.join(' ')).toContain('120 × 60 mm');
+    expect(structure.faits.join(' '), 'la cote des socles traîne encore sur la fiche structure')
+      .not.toContain('30 × 30 × 20');
+  });
+
   it('« se combine avec » les fait remonter sans jamais dupliquer une fiche', () => {
     for (const f of FICHES) {
       const slugs = relatedFiches(f).flatMap((g) => g.fiches).map((x) => x.slug);
@@ -226,12 +251,12 @@ describe('fiches sœurs (voirAussi)', () => {
 // elles) ; les fiches produit gardent specs + garantie et n'en portent pas plus.
 describe('gabarit 7 blocs des fiches de famille', () => {
   const GENERIQUES = [
-    'structure-fixation', 'protection-dc', 'protection-ac', 'cablage',
-    'accessoires-pose', 'poste-mt-raccordement', 'supervision-comptage',
-    'structures-grandes-installations',
+    'structure-fixation', 'socles-lestage', 'protection-dc', 'protection-ac',
+    'cablage', 'accessoires-pose', 'poste-mt-raccordement',
+    'supervision-comptage', 'structures-grandes-installations',
   ];
 
-  it('les 8 fiches de famille portent les 7 blocs, remplis', () => {
+  it('les 9 fiches de famille portent les 7 blocs, remplis', () => {
     for (const slug of GENERIQUES) {
       const f = ficheBySlug(slug)!;
       expect(f, `fiche manquante : ${slug}`).toBeTruthy();
@@ -352,11 +377,19 @@ describe('photos des fiches — droits vérifiables', () => {
 
   const avecPhoto = FICHES.filter((f) => f.photo);
 
-  // Les SEULES sources autorisées (règle fondateur) : Wikimedia Commons,
-  // Unsplash, Pexels. Une médiathèque constructeur exige une autorisation
-  // écrite pour l'usage commercial — elle n'entre jamais ici.
+  // DEUX classes de droits, et deux seulement (règle fondateur du 18/08/2026).
+  //
+  //  1. PHOTO DE CHANTIER TAQINOR — droits fondateur. La MEILLEURE classe :
+  //     notre matériel, notre équipe, notre pose réelle. Aucune page de licence
+  //     externe n'existe et aucune attribution n'est due ; la colonne « Source »
+  //     enregistre à la place l'ORIGINAL `/photos/` dont le JPEG dérive, qui
+  //     doit exister sur disque — c'est la traçabilité qui remplace l'URL.
+  //  2. Photo libre EXTERNE : Wikimedia Commons, Unsplash, Pexels, et rien
+  //     d'autre. Une médiathèque constructeur exige une autorisation écrite
+  //     pour l'usage commercial — elle n'entre jamais ici.
+  const LICENCE_TAQINOR = /droits fondateur/i;
   const HOTES_AUTORISES = ['commons.wikimedia.org', 'unsplash.com', 'pexels.com'];
-  // Familles de licences acceptées, telles qu'écrites au registre.
+  // Familles de licences EXTERNES acceptées, telles qu'écrites au registre.
   const LICENCES_OK = /(CC BY|CC BY-SA|CC0|domaine public|Unsplash|Pexels)/i;
 
   it('le registre CREDITS.md existe et décrit au moins une image', () => {
@@ -388,13 +421,41 @@ describe('photos des fiches — droits vérifiables', () => {
       const ligne = credits.find((c) => c.fichier === fichier);
       expect(ligne, `photo absente de CREDITS.md : ${fichier}`).toBeTruthy();
       expect(ligne!.slug, `CREDITS.md rattache ${fichier} à la mauvaise fiche`).toBe(f.slug);
-      expect(ligne!.licence, `licence non reconnue pour ${fichier} : ${ligne!.licence}`).toMatch(LICENCES_OK);
-      expect(ligne!.source, `source non https pour ${fichier}`).toMatch(/https:\/\//);
-      expect(
-        HOTES_AUTORISES.some((h) => ligne!.source.includes(h)),
-        `source interdite pour ${fichier} : ${ligne!.source}`,
-      ).toBe(true);
       expect(ligne!.auteur.length, `auteur manquant pour ${fichier}`).toBeGreaterThan(0);
+
+      if (LICENCE_TAQINOR.test(ligne!.licence)) {
+        // Photo de chantier TAQINOR : pas d'URL de licence à citer — le registre
+        // enregistre l'ORIGINAL `/photos/` dont ce JPEG dérive, et cet original
+        // doit RÉELLEMENT exister (sinon la provenance n'est plus vérifiable).
+        const original = ligne!.source.replace(/`/g, '').trim();
+        expect(original.startsWith('/photos/'), `origine TAQINOR illisible pour ${fichier} : ${ligne!.source}`).toBe(true);
+        expect(
+          existsSync(resolve(PUBLIC_DIR, '.' + original)),
+          `original introuvable pour ${fichier} : ${original}`,
+        ).toBe(true);
+        // Elle ne peut PAS exiger d'attribution : le fondateur en détient les droits.
+        expect(ligne!.attributionRequise, `attribution exigée à tort sur ${fichier}`).toBe(false);
+      } else {
+        expect(ligne!.licence, `licence non reconnue pour ${fichier} : ${ligne!.licence}`).toMatch(LICENCES_OK);
+        expect(ligne!.source, `source non https pour ${fichier}`).toMatch(/https:\/\//);
+        expect(
+          HOTES_AUTORISES.some((h) => ligne!.source.includes(h)),
+          `source interdite pour ${fichier} : ${ligne!.source}`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  // Les deux fiches de structure montrent NOTRE pose, pas un équivalent trouvé
+  // en ligne : c'est tout l'objet de l'ordre du 18/08 (« the old picture »).
+  it('la structure et les socles sont illustrés par nos PROPRES photos de chantier', () => {
+    for (const slug of ['structure-fixation', 'socles-lestage']) {
+      const f = ficheBySlug(slug)!;
+      expect(f.photo, `photo manquante sur ${slug}`).toBeTruthy();
+      const ligne = credits.find((c) => c.fichier === f.photo!.split('/').pop()!)!;
+      expect(ligne.licence, `${slug} n'est pas illustré par une photo TAQINOR`).toMatch(LICENCE_TAQINOR);
+      // Droits fondateur ⇒ aucune attribution rendue.
+      expect(f.photoCredit, `crédit inventé sur ${slug}`).toBeUndefined();
     }
   });
 

@@ -200,7 +200,8 @@ describe('pathRedirect — anciens slugs de fiches techniques', () => {
   });
 
   it('les slugs ACTUELS ne sont jamais redirigés', () => {
-    for (const slug of ['protection-dc', 'protection-ac', 'cablage', 'accessoires-pose', 'structure-fixation']) {
+    for (const slug of ['protection-dc', 'protection-ac', 'cablage', 'accessoires-pose',
+      'structure-fixation', 'socles-lestage']) {
       expect(pathRedirect(`https://taqinor.ma/produits/${slug}`), slug).toBeNull();
     }
   });

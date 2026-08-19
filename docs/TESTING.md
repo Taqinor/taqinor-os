@@ -41,7 +41,10 @@ python manage.py test apps authentication
 ```
 
 Tests étiquetés `pdf` aujourd'hui : `test_pdf.TestPdfRender`,
-`test_quote_engine.TestPremiumPdfRender`, `test_extra_docs._Base` (et ses
+`test_quote_engine_formats.TestPremiumPdfRender` (la suite `test_quote_engine`
+a été scindée le 19/08/2026 en `_formats` / `_residential` / `_documents` /
+`_builder` ; les classes résidentielles portent aussi `pdf`),
+`test_extra_docs._Base` (et ses
 sous-classes), `test_quote_engine_snapshot.TestQuoteEngineGoldenSnapshots`
 (YTEST10, également `@tag('slow')`). Pour en ajouter : `from django.test import
 tag` puis `@tag('pdf')` sur la classe.

@@ -193,6 +193,14 @@ export interface SerializedZoneGeometry {
   origin: LngLat;
   /** Centres ENU (m) + face de CHAQUE panneau posé (repère `origin`). */
   panels: Array<{ cx: number; cy: number; face?: 'E' | 'W' }>;
+  /**
+   * PV30 — MODE de placement de ces panneaux. ADDITIF et OMIS par défaut : un pan calepiné
+   * sur les emplacements validés sérialise exactement comme avant (octet pour octet), et
+   * tout lecteur existant continue de ne lire que `panels`. `'free'` signale un PLACEMENT
+   * LIBRE — les centres sont alors des positions choisies à la main, à recharger VERBATIM
+   * (les re-snapper sur la lattice détruirait le gain de place qu'ils enregistrent).
+   */
+  mode?: 'free';
 }
 
 /** Une zone sérialisée (sous-ensemble plat et JSON-sûr d'AreaRecord). */
@@ -406,16 +414,25 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
       // silencieusement effacée à l'export (puis au ré-import). La liste occupée n'existe
       // que pour la zone ACTIVE (c'est la seule en cours d'édition) ; une zone figée garde
       // le comportement historique (les `count` premières du pavage).
+      // PV30 — PLACEMENT LIBRE de la zone active : les panneaux ne sont plus des cellules
+      // de la lattice mais des positions continues choisies à la main. Elles sont déjà des
+      // centres ENU dans le repère `origin` — donc AUCUN nouveau format de coordonnées :
+      // on remplace simplement la liste, et `mode: 'free'` dit au rechargement de ne pas
+      // les re-snapper. Hors placement libre, tout ce bloc est ignoré et la sérialisation
+      // reste identique au byte près.
+      const freePosed = isActive && ctx.freeMode && ctx.freeState ? ctx.freeState.panels : null;
       const live =
         isActive && ctx.layoutState && ctx.layoutState.cells.length === g.grid.panels.length
           ? [...ctx.layoutState.occupied].filter((i) => i >= 0 && i < g.grid.panels.length).sort((a, b) => a - b)
           : null;
       const posedIdx =
         live ?? Array.from({ length: Math.max(0, Math.min(g.grid.panels.length, Math.round(g.count))) }, (_, i) => i);
-      const panels = posedIdx.map((i) => {
-        const p = g.grid.panels[i];
-        return { cx: p.cx, cy: p.cy, ...(p.face ? { face: p.face } : {}) };
-      });
+      const panels = freePosed
+        ? freePosed.map((p) => ({ cx: p.cx, cy: p.cy, ...(p.face ? { face: p.face } : {}) }))
+        : posedIdx.map((i) => {
+            const p = g.grid.panels[i];
+            return { cx: p.cx, cy: p.cy, ...(p.face ? { face: p.face } : {}) };
+          });
       const posed = panels.length;
       zone.geometry = {
         azimuthDeg: g.pack.azimuthDeg,
@@ -426,6 +443,8 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
         count: posed,
         origin: [g.pack.origin[0], g.pack.origin[1]] as LngLat,
         panels,
+        // PV30 — jamais émis hors placement libre (additif, rétro-compatible).
+        ...(freePosed ? { mode: 'free' as const } : {}),
       };
     }
     return zone;

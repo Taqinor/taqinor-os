@@ -45,6 +45,60 @@ export interface LayoutHistory {
 /** Profondeur par défaut du tampon circulaire. */
 export const LAYOUT_HISTORY_LIMIT = 50;
 
+/**
+ * PV30 — MÊME mécanique d'historique, pour un état qui n'est PAS une occupation de
+ * cellules : le placement libre photographie une liste de positions continues. On garde
+ * un seul modèle (photo + tampon circulaire + `drop`), paramétré par sa fonction de COPIE
+ * profonde — plutôt que deux historiques divergents à maintenir.
+ */
+export interface ValueHistory<T> {
+  /** Enregistre l'état AVANT une action. Vide le redo. */
+  push: (value: T) => void;
+  canUndo: () => boolean;
+  canRedo: () => boolean;
+  undo: (current: T) => T | null;
+  redo: (current: T) => T | null;
+  /** Jette la dernière photo (action finalement REFUSÉE) — cf. `LayoutHistory.drop`. */
+  drop: () => boolean;
+  clear: () => void;
+  size: () => { undo: number; redo: number };
+}
+
+export function createValueHistory<T>(copy: (v: T) => T, limit: number = LAYOUT_HISTORY_LIMIT): ValueHistory<T> {
+  const cap = Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : LAYOUT_HISTORY_LIMIT;
+  let undoStack: T[] = [];
+  let redoStack: T[] = [];
+  return {
+    push(value) {
+      undoStack.push(copy(value));
+      if (undoStack.length > cap) undoStack = undoStack.slice(undoStack.length - cap);
+      redoStack = [];
+    },
+    canUndo: () => undoStack.length > 0,
+    canRedo: () => redoStack.length > 0,
+    undo(current) {
+      const prev = undoStack.pop();
+      if (prev === undefined) return null;
+      redoStack.push(copy(current));
+      if (redoStack.length > cap) redoStack = redoStack.slice(redoStack.length - cap);
+      return prev;
+    },
+    redo(current) {
+      const next = redoStack.pop();
+      if (next === undefined) return null;
+      undoStack.push(copy(current));
+      if (undoStack.length > cap) undoStack = undoStack.slice(undoStack.length - cap);
+      return next;
+    },
+    drop: () => undoStack.pop() !== undefined,
+    clear() {
+      undoStack = [];
+      redoStack = [];
+    },
+    size: () => ({ undo: undoStack.length, redo: redoStack.length }),
+  };
+}
+
 /** Copie PROFONDE d'une occupation (jamais une référence partagée avec l'état vivant). */
 function snapshotOf(occupied: ReadonlySet<number>): LayoutSnapshot {
   return [...occupied].sort((a, b) => a - b);

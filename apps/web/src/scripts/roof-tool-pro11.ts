@@ -100,6 +100,8 @@ import {
   type HourlyCurve,
 } from '../lib/applianceConsumption';
 import { type LayoutState } from '../lib/layoutVariability';
+import { type FreeLayoutState, type FreeMargins } from '../lib/freeLayout';
+import { DEFAULT_FREE_MARGINS } from './roofPro11/freeMode';
 
 import {
   type InitOptions,
@@ -483,6 +485,11 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   let layoutState: LayoutState | null = null;
   let layoutOptimalCount = 0;
   let layoutSel: number | null = null;
+  // PV30 — PLACEMENT LIBRE : second mode d'édition, en parallèle de la lattice (jamais à
+  // sa place). `freeMode` off = comportement historique strict, `freeState` reste null.
+  let freeMode = false;
+  let freeState: FreeLayoutState | null = null;
+  let freeMargins: FreeMargins = { ...DEFAULT_FREE_MARGINS };
   let layoutPlan:
     | { pack: PackResult; grid: PanelGrid; tiltDeg: number; family: ConfigFamily; flush: boolean }
     | null = null;
@@ -954,6 +961,25 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     },
     set layoutSel(v) {
       layoutSel = v;
+    },
+    // PV30 — placement libre.
+    get freeMode() {
+      return freeMode;
+    },
+    set freeMode(v) {
+      freeMode = v;
+    },
+    get freeState() {
+      return freeState;
+    },
+    set freeState(v) {
+      freeState = v;
+    },
+    get freeMargins() {
+      return freeMargins;
+    },
+    set freeMargins(v) {
+      freeMargins = v;
     },
   };
   const graphs = createGraphs(ctx);
@@ -1429,7 +1455,10 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
         // de laisser l'optimum s'afficher à sa place.
         const zoneGeo = layout?.zones?.find((z) => z.id === activeAreaId) ?? layout?.zones?.[0];
         const posed = zoneGeo?.geometry;
-        if (posed?.panels?.length) layoutEditor.hydrateLayout(posed.panels, posed.origin);
+        // PV30 — un dossier enregistré en PLACEMENT LIBRE (`geometry.mode === 'free'`)
+        // se recharge VERBATIM : le re-snap sur la lattice détruirait précisément les
+        // marges réduites à la main que ce dossier enregistrait.
+        if (posed?.panels?.length) layoutEditor.hydrateLayout(posed.panels, posed.origin, posed.mode === 'free' ? 'free' : 'lattice');
         return true;
       }
     }

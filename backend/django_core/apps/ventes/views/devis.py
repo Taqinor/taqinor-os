@@ -559,8 +559,9 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         n'existe pas encore. ``POST`` la RECALCULE en appliquant les
         surcharges du corps (``dc_m``, ``ac_m``, ``phases``, ``regime``,
         ``batterie``, ``zone_keraunique``, ``temp_froid_c``, ``temp_chaud_c``,
-        ``longueur_chaine_forcee``, ``plafond_kwc_par_onduleur`` — toute autre
-        clé est ignorée). Les DEUX rendent EXACTEMENT la même forme, celle du
+        ``longueur_chaine_forcee``, ``plafond_kwc_par_onduleur``,
+        ``inclure_prise_terre`` — toute autre clé est ignorée). Les DEUX
+        rendent EXACTEMENT la même forme, celle du
         contrat partagé ``contract_samples/conception_electrique.json``
         (``chaines``, ``conformite``, ``ratio_dc_ac``, ``ratio_ac_dc``,
         ``protections``, ``cables``, ``bom``, ``note``, ``parametres``) —
@@ -2407,7 +2408,32 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             )
         try:
             from ..utils.pdf import download_pdf
-            pdf_bytes = download_pdf(devis.fichier_pdf)
+            # PVFRESH — ce bouton livrait les octets du DERNIER rendu, quelle
+            # que soit l'ancienneté de ce rendu : « Générer PDF », puis on
+            # corrige une quantité, puis « Télécharger » → le commercial
+            # repartait avec le PDF d'AVANT la correction et l'envoyait au
+            # client, pendant que la page /proposition (qui, elle, re-rend à
+            # chaque appel) montrait les chiffres à jour. C'est exactement la
+            # divergence page/PDF signalée le 18/08/2026. On compare donc
+            # l'empreinte des données à celle du fichier stocké : identiques →
+            # aucun re-rendu (le cache garde tout son intérêt), différentes →
+            # re-rendu dans LE MÊME format avant de servir.
+            #
+            # DÉGRADATION : si le rafraîchissement lui-même échoue (moteur ou
+            # stockage momentanément indisponible), on retombe sur le fichier
+            # stocké plutôt que de refuser le téléchargement — ce bouton
+            # fonctionnait avant PVFRESH, il doit continuer de fonctionner.
+            from ..quote_engine import cle_pdf_a_jour
+            try:
+                cle = cle_pdf_a_jour(devis)
+            except Exception:  # noqa: BLE001
+                import logging as _logging
+                _logging.getLogger(__name__).warning(
+                    'PVFRESH: rafraîchissement impossible pour %s — le fichier '
+                    'stocké est servi tel quel', devis.reference,
+                    exc_info=True)
+                cle = devis.fichier_pdf
+            pdf_bytes = download_pdf(cle)
         except Exception:
             return Response(
                 {'detail': 'Fichier introuvable. Régénérez le PDF.'},

@@ -26,7 +26,18 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: false,
-    include: ['src/**/*.test.jsx'],
+    // WOW-CI4 — découpage ÉQUILIBRÉ PAR DURÉE en CI. `--shard=i/n` de Vitest
+    // répartit le NOMBRE de fichiers, pas le TRAVAIL : mesuré sur le run
+    // 32206663106, trois lanes de 265/265/264 fichiers ont couru 381 s / 266 s /
+    // 193 s. `scripts/ci_frontend_shard.py` calcule donc la liste exacte de
+    // chaque lane à partir des durées mesurées et la passe ici.
+    // Vide ou absent (poste de dev, `npm run test:unit`) : comportement d'origine,
+    // la suite complète. On lit une liste EXPLICITE plutôt que des arguments
+    // positionnels parce que Vitest traite ces derniers comme des FILTRES par
+    // sous-chaîne — un chemin préfixe d'un autre embarquerait des fichiers en trop.
+    include: process.env.VITEST_INCLUDE
+      ? process.env.VITEST_INCLUDE.split(',').map((s) => s.trim()).filter(Boolean)
+      : ['src/**/*.test.jsx'],
     setupFiles: ['./src/test/setup.js'],
     css: false,
     // Certains écrans lancent au montage un `api.methode().then(...)` dans un

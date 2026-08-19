@@ -22,6 +22,7 @@ import ventesApi from '../../api/ventesApi'
 import parametresApi from '../../api/parametresApi'
 // NTMFG18 — vérification de faisabilité atelier (simulation SANS écriture).
 import mrpApi from '../../api/mrpApi'
+import { fetchAllPages } from '../../utils/fetchAllPages'
 import ClientQuickCreateModal from './ClientQuickCreateModal'
 import DevisPresetPanel from './DevisPresetPanel'
 import DevisLineRow from './DevisLineRow'
@@ -630,10 +631,19 @@ export default function DevisGenerator({
     // partent déjà de true/[] ; on ne re-set rien de synchrone dans l'effet.)
     const fail = (label) => setLoadFailed(prev =>
       prev.includes(label) ? prev : [...prev, label])
+    // RÉGRESSION CONFIRMÉE (CI run 32200473257, e2e devis.spec.js E4, même
+    // appel que LeadDevisPanel.jsx) — `stockApi.getProduits()` sans
+    // paramètre ne renvoie que la PAGE 1 (50 produits, triés par nom). Un
+    // catalogue de plus de 50 références perd silencieusement une famille
+    // triée après la coupure (« Panneau… » est passée en page 2 sur le
+    // catalogue de démo, count=101) : l'auto-remplissage la voit comme
+    // absente du stock. `fetchAllPages` (VX54, déjà le chemin de
+    // stockSlice.js) lit le catalogue ENTIER.
     Promise.allSettled([
       crmApi.getClients().then(r => setClients(r.data.results ?? r.data)).catch(() => { fail('clients'); throw 0 }),
       crmApi.getLeads().then(r => setLeads(r.data.results ?? r.data)).catch(() => { fail('leads'); throw 0 }),
-      stockApi.getProduits().then(r => setProduits(r.data.results ?? r.data)).catch(() => { fail('produits'); throw 0 }),
+      fetchAllPages((page) => stockApi.getProduits({ page }).then((r) => r.data))
+        .then(setProduits).catch(() => { fail('produits'); throw 0 }),
     ]).finally(() => setRefsLoading(false))
   }, [])
 

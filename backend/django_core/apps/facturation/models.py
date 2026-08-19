@@ -230,6 +230,19 @@ class Facture(models.Model):
     fichier_pdf = models.CharField(
         max_length=500, blank=True, null=True
     )
+    # ── PVFRESH (fondateur, 19/08/2026) — de QUELLES DONNÉES le PDF stocké
+    # a-t-il été rendu ? Miroir de ``ventes.Devis.pdf_render_meta`` : la clé
+    # MinIO ci-dessus (``factures/<référence>.pdf``) est DÉTERMINISTE — elle
+    # ne dit rien de la fraîcheur du fichier. Le lien public (règle #4 :
+    # les factures gardent leur PDF légataire séparé, ce champ ne les fait
+    # PAS passer par le moteur devis) le servait donc sans jamais vérifier
+    # qu'il correspondait encore aux lignes/montants courants. On mémorise
+    # ici l'empreinte des données rendues (même mécanisme QX8 que
+    # ``Devis.pdf_render_meta``) : servir devient « comparer, puis re-rendre
+    # si ça a bougé ». ``{'empreinte': '<sha256>'}`` — null pour les
+    # factures antérieures (l'empreinte manquante force alors un re-rendu,
+    # jamais un fichier périmé).
+    pdf_render_meta = models.JSONField(null=True, blank=True)
     # ── Export structuré UBL 2.1 (N38) — clé MinIO du dernier XML généré.
     # Purement préparatoire (aperçu brouillon, jamais transmis). Additif.
     fichier_ubl = models.CharField(

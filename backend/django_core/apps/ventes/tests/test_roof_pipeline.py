@@ -195,6 +195,17 @@ class TestQ5BuilderGuard(TestCase):
         self.assertEqual(baseline, again)
 
     def test_layout_drives_figures(self):
+        """PVUNI (fondateur 18/08/2026) — le calepinage apporte la PRODUCTION,
+        jamais la PUISSANCE.
+
+        Ce test exigeait l'inverse : ``puissance_kwc == 9.9`` (le kWc du
+        calepinage) alors que les lignes du devis disent 12 × 550 W = 6,6 kWc.
+        C'est exactement le défaut qui a produit l'incident DEV-202608-0007 —
+        « 9 panneaux × 710 W » imprimé à côté de « 6,48 kWc » (= 9 × 720, la
+        constante roofPro). Les LIGNES sont la source unique : le calepinage
+        garde sa modélisation de site (production, économies), recalée sur la
+        taille réellement vendue.
+        """
         from apps.ventes.quote_engine.builder import build_quote_data
         before = build_quote_data(self.devis, {'pdf_mode': 'onepage'})
         self.devis.roof_layout = {
@@ -203,13 +214,20 @@ class TestQ5BuilderGuard(TestCase):
         self.devis.roof_image = 'roofs/1/DEV-Q5-0001.png'
         self.devis.save(update_fields=['roof_layout', 'roof_image'])
         after = build_quote_data(self.devis, {'pdf_mode': 'onepage'})
-        # kWc now comes from the layout (overrides the panel-derived estimate).
-        self.assertEqual(after['puissance_kwc'], 9.9)
-        self.assertEqual(after['prod_kwh'], 15000)
+        # La puissance reste celle des LIGNES : 12 panneaux × 550 W = 6,6 kWc,
+        # avant comme après le calepinage.
+        self.assertEqual(after['puissance_kwc'], 6.6)
+        self.assertEqual(after['puissance_kwc'], before['puissance_kwc'])
+        self.assertEqual(
+            round(after['puissance_kwc'] * 1000),
+            after['nb_panneaux'] * after['watt_par_panneau'])
+        # Le calepinage, lui, apporte bien quelque chose : sa production
+        # annuelle, RECALÉE de 9,9 kWc à 6,6 (15 000 × 6,6 / 9,9 = 10 000).
+        self.assertEqual(after['prod_kwh'], 10000)
+        self.assertNotEqual(before['prod_kwh'], after['prod_kwh'])
         self.assertEqual(after['roof_image_key'], 'roofs/1/DEV-Q5-0001.png')
-        # And it genuinely differs from the no-layout build.
-        self.assertNotEqual(before.get('puissance_kwc'),
-                            after['puissance_kwc'])
+        # 12 panneaux au calepinage, 12 sur les lignes : rien de périmé.
+        self.assertFalse(after['layout_stale'])
 
     def test_render_still_valid_with_layout(self):
         # The full render must still produce a real PDF when a layout exists.

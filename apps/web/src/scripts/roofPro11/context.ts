@@ -22,6 +22,7 @@ import { type PitchedRecommendation } from '../../lib/estimatorBrainV3';
 import { type MatrixSortKey, type MatrixV6Result } from '../../lib/estimatorBrainV6';
 import { type Appliance, type HourlyCurve } from '../../lib/applianceConsumption';
 import { type LayoutState } from '../../lib/layoutVariability';
+import { type FreeLayoutState, type FreeMargins } from '../../lib/freeLayout';
 import { type ShadeObstruction } from '../../lib/shadingEngine';
 import {
   type InitOptions,
@@ -232,6 +233,16 @@ export interface Ctx {
   layoutOptimalCount: number;
   /** Index du panneau sélectionné (repli tactile) ou null. */
   layoutSel: number | null;
+
+  // — PV30 « Placement libre » (second mode d'édition, en parallèle de la lattice) —
+  /** Le mode PLACEMENT LIBRE est-il actif ? false = mode lattice (le défaut). */
+  freeMode: boolean;
+  /** Panneaux posés librement (coordonnées ENU continues) ou null tant que le mode
+   *  n'a jamais été activé sur ce pan. */
+  freeState: FreeLayoutState | null;
+  /** Marges RELÂCHABLES courantes (retrait de rive + écart entre panneaux), en mètres.
+   *  Initialisées sur les valeurs de l'étude ; l'utilisateur a le droit de les baisser. */
+  freeMargins: FreeMargins;
 
   // — W68 « Affiner ma consommation » (mutable) —
   /** Le panneau « Affiner » est-il ouvert ? */

@@ -537,6 +537,28 @@ def _is_cable_dc(name: str) -> bool:
     return "cable" in n and not _is_cable_terre(name)
 
 
+# ── PVSTR — les STRUCTURES et les SOCLES suivent le compte de panneaux
+# (fondateur, 18/08/2026) ───────────────────────────────────────────────────
+#
+# Ratios de la composition résidentielle, source unique déjà en place :
+# ``composition_residentielle`` pose ``ajouter(structure, nb)`` et
+# ``ajouter(premier('socle'), nb * 2)`` — UNE structure par panneau, DEUX
+# socles par panneau. Ces deux prédicats passent par le classifieur PARTAGÉ
+# ``classer_produit`` (celui de la composition ET du moteur PDF) plutôt que par
+# un mot-clé de plus : inventer une seconde classification ici ferait diverger
+# « ce qu'on resynchronise » de « ce que le PDF montre ».
+STRUCTURES_PAR_PANNEAU = 1
+SOCLES_PAR_PANNEAU = 2
+
+
+def _is_structure(name: str) -> bool:
+    return classer_produit(name) == 'structure'
+
+
+def _is_socle(name: str) -> bool:
+    return classer_produit(name) == 'socle'
+
+
 # ── PVG4 — Batterie Dyness HAUTE TENSION (16 kWh, décision fondateur
 # 2026-08-18, SKU BAT-DYN-HV-16) : ne doit JAMAIS être choisie par
 # l'auto-composition résidentielle BASSE TENSION (48 V). ``_is_battery``
@@ -2518,7 +2540,12 @@ def sync_devis_from_layout(devis, layout, user=None):
         # resynchro). Ne se déclenche QUE si le compte de panneaux a bougé —
         # un layout qui ne change rien aux panneaux ne touche pas aux câbles
         # non plus.
-        def _resynchroniser_cable(predicat, cible_metres):
+        def _resynchroniser_quantite(predicat, cible):
+            """Porte à ``cible`` la quantité de la famille ``predicat``.
+
+            Ne touche QUE des lignes déjà présentes ET rattachées à un produit
+            catalogue ; renvoie True quand une ligne a réellement bougé.
+            """
             candidats = [li for li in lignes
                          if getattr(li, 'produit', None) is not None
                          and _classe_ligne(li, predicat)]
@@ -2528,7 +2555,7 @@ def sync_devis_from_layout(devis, layout, user=None):
             # GROSSE bouge, même politique que les panneaux ci-dessus.
             dominante = max(candidats,
                             key=lambda li: Decimal(str(li.quantite or 0)))
-            nouvelle = Decimal(str(cible_metres))
+            nouvelle = Decimal(str(cible))
             if Decimal(str(dominante.quantite or 0)) == nouvelle:
                 return False
             dominante.quantite = nouvelle
@@ -2537,11 +2564,35 @@ def sync_devis_from_layout(devis, layout, user=None):
 
         if panneaux_ont_change and kwc > 0:
             paliers = max(1, _arrondi_js(kwc / 5))
-            if _resynchroniser_cable(_is_cable_dc,
-                                     metre_cable_dc(paliers)):
+            if _resynchroniser_quantite(_is_cable_dc,
+                                        metre_cable_dc(paliers)):
                 lignes_modifiees += 1
-            if _resynchroniser_cable(_is_cable_terre,
-                                     metre_cable_terre(paliers)):
+            if _resynchroniser_quantite(_is_cable_terre,
+                                        metre_cable_terre(paliers)):
+                lignes_modifiees += 1
+
+        # ── PVSTR — LES STRUCTURES ET LES SOCLES SUIVENT LE COMPTE DE
+        # PANNEAUX (fondateur, 18/08/2026) ──
+        #
+        # Les panneaux, la batterie, l'onduleur et les câbles se
+        # resynchronisaient déjà ; la FERRURE, elle, restait au compte du
+        # premier calepinage. Le devis de production DEV-202608-0007 en porte
+        # la trace exacte : 9 panneaux, mais 8 structures et 16 socles — le
+        # calepinage était passé de 8 à 9 panneaux et rien d'autre n'avait
+        # suivi. Le client reçoit alors une installation sous-ferrée sur le
+        # papier, et un total faux d'une structure et de deux socles.
+        #
+        # Mêmes garde-fous que les câbles, sans exception : ne touche QUE des
+        # lignes DÉJÀ PRÉSENTES rattachées à un produit catalogue (jamais une
+        # note, jamais une ligne INVENTÉE — une ferrure absente reste à la
+        # charge de PVHEAL juste en dessous, qui l'ajoute au bon compte), et ne
+        # se déclenche QUE si le compte de panneaux a réellement bougé.
+        if panneaux_ont_change and total_panneaux > 0:
+            if _resynchroniser_quantite(
+                    _is_structure, total_panneaux * STRUCTURES_PAR_PANNEAU):
+                lignes_modifiees += 1
+            if _resynchroniser_quantite(
+                    _is_socle, total_panneaux * SOCLES_PAR_PANNEAU):
                 lignes_modifiees += 1
 
         # ── Batterie : présente si (et seulement si) le layout en veut une ──

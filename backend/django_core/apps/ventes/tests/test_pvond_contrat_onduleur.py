@@ -25,8 +25,8 @@ from django.test import TestCase
 
 from apps.stock.models import FicheTechnique, Produit
 from apps.stock.selectors import (
-    CLES_CONTRAT_ONDULEUR, onduleur_specs_manquantes, plage_batterie_onduleur,
-    specs_solaire_produit,
+    CLES_CONTRAT_ONDULEUR, famille_onduleur, onduleur_specs_manquantes,
+    plage_batterie_onduleur, specs_solaire_produit,
 )
 from apps.ventes import services
 from authentication.models import Company
@@ -102,6 +102,93 @@ class LectureDeLaPlageBatterieTests(PvOndBase):
         self.assertIsNone(plage_batterie_onduleur(onduleur))
         self.assertIn('plage de tension batterie (V)',
                       onduleur_specs_manquantes(onduleur))
+
+
+class ContratConditionnelParFamilleTests(PvOndBase):
+    """ORDRE FONDATEUR (18/08/2026) — « corrige ces problèmes, pas moi ».
+
+    Le bandeau « Onduleur(s) non chiffrable(s) » réclamait la plage de tension
+    batterie à TOUS les onduleurs. Un onduleur RÉSEAU (string on-grid) n'a pas
+    de port batterie : la moitié du bandeau était grisée pour une donnée que le
+    matériel ne porte pas. La plage n'est donc exigée que des HYBRIDES (et des
+    familles indéterminées, où l'on ne sait pas).
+    """
+
+    def test_la_famille_se_lit_sur_le_nom_hybride_avant_reseau(self):
+        """MÊME ordre que ``ventes.services.classer_produit``."""
+        hybride = self._onduleur('Onduleur hybride Deye 10kW Triphasé',
+                                 'PVOND-FAM-H')
+        reseau = self._onduleur('Onduleur réseau Huawei 10kW Triphasé',
+                                'PVOND-FAM-R')
+        # « hybride » l'emporte, même quand le nom dit aussi « réseau ».
+        mixte = self._onduleur('Onduleur hybride injection réseau 10kW',
+                               'PVOND-FAM-MIX', plage=None)
+        indetermine = self._onduleur('Onduleur Deye SUN-10K', 'PVOND-FAM-IND',
+                                     plage=None)
+        self.assertEqual(famille_onduleur(hybride), 'hybride')
+        self.assertEqual(famille_onduleur(reseau), 'reseau')
+        self.assertEqual(famille_onduleur(mixte), 'hybride')
+        self.assertIsNone(famille_onduleur(indetermine))
+        # Un produit qui n'est pas un onduleur n'a pas de famille.
+        self.assertIsNone(famille_onduleur(
+            self._batterie('Batterie Dyness 5 kWh', 'PVOND-FAM-BAT')))
+
+    def test_un_reseau_SANS_ligne_declaree_n_est_plus_grise(self):
+        """LE bug du fondateur : réseau + aucune ligne « Plage batterie » ⇒ il
+        manquait CETTE SEULE variable et l'onduleur était écarté."""
+        onduleur = self._onduleur('Onduleur réseau Huawei 10kW Triphasé',
+                                  'PVOND-RES-NU', plage=None)
+        # Sa FAMILLE vaut déclaration « aucune » : une valeur, pas un trou.
+        self.assertEqual(plage_batterie_onduleur(onduleur), (0.0, 0.0))
+        self.assertEqual(onduleur_specs_manquantes(onduleur), [])
+        self.assertEqual(specs_solaire_produit(onduleur)['plage_batterie_v'],
+                         [0.0, 0.0])
+        # …donc il redevient chiffrable par l'auto-composition backend.
+        self.assertTrue(services._onduleur_complet(onduleur))
+
+    def test_un_reseau_sans_plage_n_accepte_TOUJOURS_aucune_batterie(self):
+        """L'exemption ne rouvre PAS la porte au repli mot-clé : sans elle, un
+        onduleur réseau sans ligne déclarée pouvait se voir composer une
+        batterie par son NOM."""
+        onduleur = self._onduleur('Onduleur réseau Huawei 15kW Triphasé',
+                                  'PVOND-RES-NU2', plage=None)
+        self._batterie('Batterie Dyness 5 kWh', 'PVOND-RES-B1', v_nominal=None)
+        self.assertIsNone(
+            services._pick_batterie(self.company, onduleur=onduleur))
+
+    def test_un_HYBRIDE_sans_plage_reste_ecarte_ET_nomme(self):
+        """La moitié qui NE CHANGE PAS : sur un hybride, la plage décide quelle
+        batterie s'accroche — sans elle on ne sait pas, donc on ne chiffre pas.
+        """
+        incomplet = self._onduleur('Onduleur hybride Deye 10kW Triphasé',
+                                   'PVOND-HYB-NU', plage=None, prix='1000')
+        complet = self._onduleur('Onduleur hybride Deye 20kW Triphasé',
+                                 'PVOND-HYB-OK', plage='40-60 V', prix='48000')
+
+        self.assertEqual(onduleur_specs_manquantes(incomplet),
+                         ['plage de tension batterie (V)'])
+        self.assertFalse(services._onduleur_complet(incomplet))
+        # Le moins cher est l'INCOMPLET : c'est le complet qui doit sortir.
+        self.assertEqual(
+            services._pick_product(self.company,
+                                   services._is_hybrid_inverter), complet)
+
+    def test_une_famille_INDETERMINEE_reste_exigeante(self):
+        """On n'exempte que ce qu'on SAIT être un réseau. Un nom qui ne tranche
+        pas (micro-onduleur, référence nue) garde le contrat le plus strict."""
+        onduleur = self._onduleur('Onduleur Deye SUN-10K', 'PVOND-IND-NU',
+                                  plage=None)
+        self.assertIsNone(plage_batterie_onduleur(onduleur))
+        self.assertIn('plage de tension batterie (V)',
+                      onduleur_specs_manquantes(onduleur))
+
+    def test_une_ligne_declaree_l_emporte_sur_la_famille(self):
+        """Le jour où le fondateur vend un Huawei AVEC stockage, il écrit la
+        fenêtre sur la fiche et elle est LUE — la famille n'est qu'un défaut."""
+        onduleur = self._onduleur('Onduleur réseau Huawei 5kW Monophasé',
+                                  'PVOND-RES-BAT', plage='350-560 V')
+        self.assertEqual(plage_batterie_onduleur(onduleur), (350.0, 560.0))
+        self.assertEqual(onduleur_specs_manquantes(onduleur), [])
 
 
 class VerrouDeCompletudeTests(PvOndBase):

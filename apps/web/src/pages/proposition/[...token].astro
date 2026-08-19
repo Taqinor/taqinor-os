@@ -598,6 +598,15 @@ const pdfUrl = ok ? proposalPdfEndpoint(API_BASE, token) : '';
 const roofLayout = ok ? parseRoofLayout(data?.roof_layout) : null;
 const viewerModel = roofLayout ? buildViewerModel(roofLayout) : null;
 const show3d = !!viewerModel && viewerModel.totalPanels >= 0;
+// PVUNI (fondateur 2026-08-18) — LE CALEPINAGE 3D EST-IL PÉRIMÉ ?
+// Servi par le backend, jamais recalculé ici : c'est lui qui compare le compte
+// de panneaux pour lequel la 3D a été jouée à celui des LIGNES du devis (la
+// seule source de vérité). Sur le devis DEV-202608-0007, les lignes étaient
+// passées de 8 à 9 panneaux sans que la 3D soit rejouée — le client voyait
+// donc un toit qui n'était plus le sien, sans que rien ne l'en avertisse.
+// false/absent (le cas de très loin le plus courant) → aucun rendu de plus.
+const layoutStale = ok && data?.layout_stale === true;
+const layoutPanneaux = layoutStale ? (data?.layout_nb_panneaux ?? null) : null;
 // WJ118 — contour aplati [lat,lng] (roof_layout.zones[].vertices, [lng,lat] →
 // [lat,lng] — même convention que captureOutline) transmis au client pour
 // draper la VRAIE photo satellite sur la 3D (buildPublicRoofImageSpec) ; vide
@@ -1230,6 +1239,23 @@ const signConfig = ok
               <span data-i18n data-fr="Obstacles (cheminée, cage d’escalier…)" data-en="Obstacles (chimney, stairwell…)" data-ar="عوائق (مدخنة، بيت الدرج…)">Obstacles (cheminée, cage d’escalier…)</span>
             </span>
           </div>
+
+          <!-- ── PVUNI · Calepinage à rejouer (fondateur 2026-08-18) ──────────
+               La vue ci-dessus a été étudiée pour un autre nombre de panneaux
+               que celui du devis. On le DIT, sous la vue, plutôt que de laisser
+               le client compter les panneaux à l'écran et trouver un autre
+               chiffre dans son devis. Le nombre qui fait foi reste celui des
+               lignes (« Votre installation ») — c'est exactement ce que la
+               phrase annonce. Bloc absent du DOM sur un devis sain. -->
+          {layoutStale && (
+            <p id="roof3d-stale" class="mt-3 text-sm text-lune-faint" data-i18n
+              data-fr={`Calepinage à rejouer : cette vue 3D a été étudiée pour ${layoutPanneaux} panneaux. Les chiffres de votre proposition suivent votre devis, pas cette vue.`}
+              data-en={`Layout to be replayed: this 3D view was studied for ${layoutPanneaux} panels. Your proposal’s figures follow your quote, not this view.`}
+              data-ar={`التخطيط بحاجة إلى إعادة: صُمِّم هذا العرض ثلاثي الأبعاد لـ ${layoutPanneaux} لوحاً. أرقام عرضكم تتبع فاتوركم التقديرية، لا هذا العرض.`}>
+              Calepinage à rejouer : cette vue 3D a été étudiée pour {layoutPanneaux} panneaux.
+              Les chiffres de votre proposition suivent votre devis, pas cette vue.
+            </p>
+          )}
           {/* Cartes « ZONE n · … » retirées (fondateur 2026-08-15) : les chiffres
               par pan vivent dans « Votre installation » ; zoneAnnotations reste
               dans la lib (testée) pour un éventuel retour. */}

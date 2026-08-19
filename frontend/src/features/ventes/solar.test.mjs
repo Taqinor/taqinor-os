@@ -16,7 +16,7 @@ import {
   computeCashflowPayback,
   computeEtudeIndustrielle,
   TARIF_MT_ONEE, tarifMtDisponible, tarifMtMoyen, normaliserRepartitionMt,
-  isReseauInverter, batterieCompatible, DAYS_IN_MONTH,
+  isReseauInverter, batterieCompatible, plageBatterieOnduleur, DAYS_IN_MONTH,
   PRODUCTIBLE_NET_FACTOR, TARIFF_ESCALATION,
 } from './solar.js'
 
@@ -510,6 +510,70 @@ test('PVOND — vivier batterie VIDE sous une plage : la composition AVERTIT', (
 test('PVOND — aucune alerte batterie quand le vivier sert normalement', () => {
   const rows = autoFillLines(SEEDED, { kwp: 10, panelW: 710, structureType: 'acier' })
   assert.deepEqual(rows.avertissementsBatterie, [])
+})
+
+// ── PVOND — CONTRAT CONDITIONNEL À LA FAMILLE (ordre fondateur 18/08/2026) ──
+// La plage de tension batterie décrit un PORT qui n'existe pas sur un onduleur
+// RÉSEAU : la réclamer grisait la moitié du bandeau « Onduleur(s) non
+// chiffrable(s) » pour cette SEULE variable. Elle n'est donc exigée que des
+// HYBRIDES (et des familles indéterminées). Miroir de
+// `stock.selectors.plage_batterie_onduleur` / `famille_onduleur`.
+test('PVOND — un onduleur RÉSEAU sans plage déclarée vaut « aucune batterie »', () => {
+  const reseau = P('Onduleur réseau Huawei 10kW Triphasé', 20000)
+  assert.deepEqual(plageBatterieOnduleur(reseau), [0, 0])
+  // …et aucune batterie ne s'y accroche : le mot-clé ne reprend PAS la main.
+  assert.equal(
+    batterieCompatible(P('Batterie Dyness 5 kWh', 16000), plageBatterieOnduleur(reseau)),
+    false)
+})
+
+test('PVOND — un onduleur HYBRIDE sans plage reste « non déclarée » (repli intact)', () => {
+  const hybride = P('Onduleur hybride Deye 10kW Triphasé', 28000)
+  assert.equal(plageBatterieOnduleur(hybride), null)
+  // Sans plage, le repli mot-clé PVG4 garde la main, byte-identique à hier.
+  assert.equal(
+    batterieCompatible(P('Batterie Dyness 5 kWh', 16000), plageBatterieOnduleur(hybride)),
+    true)
+})
+
+test('PVOND — « hybride » l\'emporte sur « réseau » dans le nom (miroir Python)', () => {
+  // Même ORDRE que `classer_produit` / `famille_onduleur` : un hybride qui
+  // mentionne aussi l'injection réseau reste un HYBRIDE, plage EXIGÉE.
+  assert.equal(plageBatterieOnduleur(P('Onduleur hybride injection réseau 10kW', 1)), null)
+  // Une référence nue (famille indéterminée) reste exigeante elle aussi.
+  assert.equal(plageBatterieOnduleur(P('Onduleur Deye SUN-10K', 1)), null)
+})
+
+test('PVOND — une plage SERVIE par l\'API l\'emporte sur le défaut de famille', () => {
+  // Le jour où un Huawei est vendu AVEC stockage, la fenêtre déclarée est lue.
+  const reseauAvecBatterie = _specs(P('Onduleur réseau Huawei 5kW Monophasé', 14000),
+                                    { famille: 'onduleur', plage_batterie_v: [350, 560] })
+  assert.deepEqual(plageBatterieOnduleur(reseauAvecBatterie), [350, 560])
+})
+
+test('PVOND — un RÉSEAU complet n\'est plus grisé, un HYBRIDE sans plage l\'est encore', () => {
+  const catalogue = SEEDED.map(p => {
+    if (p.nom === 'Onduleur réseau Huawei 10kW Triphasé') {
+      // Ce que le backend sert désormais : plage « aucune », rien ne manque.
+      return _specs(p, { famille: 'onduleur', plage_batterie_v: [0, 0], manquantes: [] })
+    }
+    if (p.nom === 'Onduleur hybride Deye 10kW Triphasé') {
+      return _specs(p, { famille: 'onduleur',
+                         manquantes: ['plage de tension batterie (V)'] })
+    }
+    return p
+  })
+
+  const rows = autoFillLines(catalogue, { kwp: 10, panelW: 710, structureType: 'acier' })
+
+  const noms = rows.onduleursIncomplets.map(o => o.nom)
+  assert.ok(!noms.includes('Onduleur réseau Huawei 10kW Triphasé'),
+            'un onduleur réseau ne doit plus être grisé pour la plage batterie')
+  assert.ok(noms.includes('Onduleur hybride Deye 10kW Triphasé'),
+            'un hybride sans plage batterie doit rester écarté ET nommé')
+  assert.deepEqual(
+    rows.onduleursIncomplets.find(o => o.nom === 'Onduleur hybride Deye 10kW Triphasé').manquantes,
+    ['plage de tension batterie (V)'])
 })
 
 // ── QX19 — autoFillLines surface le wattage RÉEL + nb panneaux (anti-mismatch)

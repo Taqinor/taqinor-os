@@ -73,8 +73,11 @@ class MonoReseauHuitPanneaux(unittest.TestCase):
 
     def test_les_protections_retenues(self):
         reperes = [p.repere for p in self.resultat.protections]
+        # T1 (prise de terre) n'est PLUS bundlée par défaut (décision
+        # fondateur 19/08/2026) : ARM1 (coffret AC/DC) ferme le groupe AC/DC,
+        # T2 (liaison équipotentielle) reste seule de la famille « terre ».
         self.assertEqual(reperes, ["PDC1", "QDC1", "QAC1", "PAC1", "DDR1",
-                                   "T1", "T2"])
+                                   "ARM1", "T2"])
         # 2 chaînes seulement : pas de fusible de chaîne (IEC 62548).
         self.assertIsNone(_repere(self.resultat.protections, "F1"))
         self.assertIn("20 A", _repere(self.resultat.protections,

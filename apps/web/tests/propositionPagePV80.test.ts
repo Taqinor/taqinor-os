@@ -456,7 +456,7 @@ describe('détail électrique — chaque ligne d’équipement reçoit SA part',
 
   it('les familles sans détail électrique n’ouvrent AUCUN dépliant', () => {
     for (const slug of [
-      'batterie-dyness', 'structure-fixation', 'accessoires-pose',
+      'batterie-dyness', 'structure-fixation', 'socles-lestage', 'accessoires-pose',
       'smart-meter-huawei', 'wifi-dongle-huawei', 'poste-mt-raccordement',
     ]) {
       expect(conceptionPourLigne(c, slug), slug).toBeNull();

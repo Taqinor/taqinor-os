@@ -33,6 +33,8 @@ vi.mock('../../api/axios', () => ({
 vi.mock('../../api/stockApi', () => ({
   default: {
     getProduitPrixFournisseurs: () => Promise.resolve({ data: [] }),
+    // PVOND — la section « Fiche technique » lit la fiche au montage en édition.
+    getFichesTechniques: () => Promise.resolve({ data: [] }),
     comparerFournisseurs: () => Promise.resolve({ data: [] }),
     // NTSCM26 — colonne TCO additionnelle du panneau « Comparer fournisseurs ».
     comparerTcoFournisseurs: () => Promise.resolve({ data: { fournisseurs: [] } }),

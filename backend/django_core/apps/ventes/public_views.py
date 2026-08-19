@@ -24,7 +24,7 @@ from rest_framework.throttling import SimpleRateThrottle
 
 from .models import PaymentLink, ShareLink
 from .quote_engine import clean_pdf_options, generate_premium_devis_pdf
-from .utils.pdf import download_pdf, generate_facture_pdf
+from .utils.pdf import cle_facture_pdf_a_jour, download_pdf
 
 logger = logging.getLogger(__name__)
 
@@ -269,7 +269,27 @@ def public_document(request, token):
                 company=devis.company)
         elif link.facture_id:
             facture = link.facture
-            key = facture.fichier_pdf or generate_facture_pdf(facture.id)
+            # PVFRESH (fondateur, 19/08/2026) — la clé stockée n'est plus
+            # servie sans vérifier sa fraîcheur (même contrat que le devis
+            # ci-dessus, via le moteur LÉGATAIRE propre à la facture — règle
+            # #4, jamais un routage par le moteur devis) : identique →
+            # aucun re-rendu, différente → re-rendu avant de servir.
+            #
+            # DÉGRADATION : si le rafraîchissement lui-même échoue (moteur ou
+            # stockage momentanément indisponible) mais qu'un fichier stocké
+            # existe déjà, on le sert tel quel plutôt que de refuser le
+            # téléchargement — ce lien fonctionnait avant PVFRESH, il doit
+            # continuer de fonctionner.
+            try:
+                key = cle_facture_pdf_a_jour(facture)
+            except Exception:  # noqa: BLE001
+                if not facture.fichier_pdf:
+                    raise
+                logger.warning(
+                    'PVFRESH: rafraîchissement impossible pour la facture '
+                    '%s — le fichier stocké est servi tel quel',
+                    facture.reference, exc_info=True)
+                key = facture.fichier_pdf
             pdf_bytes = download_pdf(key)
             # QD2 — nom cohérent (société _ type _ client _ référence).
             filename = document_filename(
@@ -1130,6 +1150,18 @@ def proposal_data(request, token):
             # jamais de prix/marge/champ interne). None quand absent → le PNG
             # poster (roof_image_url) reste le repli.
             'roof_layout': _safe_roof_layout(devis),
+            # PVUNI (fondateur, 18/08/2026) — LE CALEPINAGE NE COLLE PLUS AUX
+            # LIGNES. La vue 3D montre le compte de panneaux pour lequel elle a
+            # été jouée ; les lignes, elles, peuvent avoir bougé depuis (édition
+            # manuelle d'une quantité, seconde marque ajoutée) sans que
+            # personne ne rejoue la 3D. Plutôt que de laisser le client compter
+            # les panneaux à l'écran et trouver un autre nombre dans son devis,
+            # la page le DIT. False (ou clé sans effet) sur un devis sain et sur
+            # un devis sans calepinage : rendu inchangé dans les deux cas.
+            # Le chiffre du calepinage accompagne le drapeau pour que la page
+            # puisse être précise sans rien recalculer elle-même.
+            'layout_stale': bool(data.get('layout_stale')),
+            'layout_nb_panneaux': data.get('layout_nb_panneaux'),
             # PV81 — schéma unifilaire de l'installation (SVG texte), rendu par
             # le moteur électrique SANS AUCUN PRIX (il n'en connaît aucun).
             # None tant que la conception électrique (PV41) n'a pas été faite :

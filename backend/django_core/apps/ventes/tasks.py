@@ -54,8 +54,63 @@ def task_generate_devis_pdf(self, devis_id, pdf_options=None):
         raise self.retry(exc=exc, countdown=2 ** self.request.retries * 30)
 
 
-def _content_version(devis_id):
-    """QG2 — Empreinte du CONTENU d'un devis (lignes + totaux + méta).
+# QG2/PVFRESH — le format « une page » est le SEUL que le moteur accepte pour
+# N'IMPORTE QUEL devis : la règle dure de ``quote_engine.builder`` refuse
+# (``ValueError``) de bâtir le format « full » d'un devis dont aucune option ne
+# porte d'onduleur — cas parfaitement banal (devis de structure, d'accessoires,
+# de pompage…). Il sert donc de format de CALCUL de repli pour l'empreinte de
+# contenu, JAMAIS de format de rendu : ``pdf_options`` reste intégralement dans
+# ``_render_signature``, donc deux formats demandés gardent deux signatures
+# distinctes même quand leur composante « contenu » est calculée pareil.
+_FORMAT_EMPREINTE_DE_REPLI = 'onepage'
+
+
+def _options_empreinte_de_repli(pdf_options):
+    """Les mêmes options, ramenées au seul format que le moteur bâtit toujours."""
+    from .quote_engine import clean_pdf_options
+    options = clean_pdf_options(pdf_options)
+    options['pdf_mode'] = _FORMAT_EMPREINTE_DE_REPLI
+    return options
+
+
+# Champs qui décrivent le RÉSULTAT d'un rendu, pas le contenu du devis : ils
+# sont ÉCRITS par le moteur (clé MinIO, empreinte + options du dernier rendu).
+# Les exclure du repli brut ci-dessous est sans danger — une DENYLIST de sorties
+# ne peut que faire re-rendre pour rien, jamais masquer une édition ; c'est une
+# ALLOWLIST de champs de contenu qui pourrait en oublier un (le défaut PVFRESH).
+_CHAMPS_DE_RENDU = ('fichier_pdf', 'pdf_render_meta')
+
+
+def _empreinte_brute(devis):
+    """Repli TOTAL : empreinte de l'état STOCKÉ du devis et de ses lignes.
+
+    Dernier recours quand l'empreinte de rendu partagée est indisponible (dict
+    de rendu non sérialisable → ``empreinte_donnees_pdf`` rend ``None``). Elle
+    sérialise TOUS les champs concrets du devis et de ses lignes
+    (``django.core.serializers``), moins ``_CHAMPS_DE_RENDU`` — aucune liste de
+    champs de CONTENU écrite à la main, donc rien à « oublier » : c'est
+    exactement le défaut PVFRESH (``roof_layout`` absent d'une liste manuelle)
+    qu'on refuse de réintroduire ici. ``roof_layout``, ``etude_params`` et
+    ``updated_at`` (``auto_now``) en font partie.
+
+    Plus GROSSIÈRE que l'empreinte de rendu : elle peut faire RATER le cache
+    sans que le PDF change (on re-rend pour rien, coût pur) — jamais l'inverse
+    (servir un PDF périmé). C'est le seul sens de dégradation acceptable.
+    """
+    import hashlib
+    import json
+    from django.core import serializers
+    lignes = json.loads(serializers.serialize(
+        'json', [devis, *devis.lignes.order_by('pk')]))
+    for entree in lignes:
+        for champ in _CHAMPS_DE_RENDU:
+            entree.get('fields', {}).pop(champ, None)
+    blob = json.dumps(lignes, sort_keys=True, default=str)
+    return 'repli:' + hashlib.sha256(blob.encode('utf-8')).hexdigest()
+
+
+def _content_version(devis_id, pdf_options=None):
+    """QG2 — Empreinte du CONTENU d'un devis (lignes + totaux + méta + calepinage).
 
     Le cache d'idempotence du rendu était keyé sur (devis_id, pdf_options)
     uniquement : après une édition « Éditer », les MÊMES options renvoyaient
@@ -65,42 +120,82 @@ def _content_version(devis_id):
     « rate » → le PDF est re-rendu ; à contenu identique, l'empreinte est
     stable → le cache reste bénéfique (pas de re-rendu inutile).
 
-    Best-effort : toute erreur renvoie une empreinte vide, ce qui revient au
-    comportement historique (signature sur options seules)."""
-    import hashlib
-    import json
-    try:
-        from .models import Devis, LigneDevis
-        devis = (Devis.objects
-                 .filter(pk=devis_id)
-                 .values('remise_globale', 'taux_tva', 'version', 'statut',
-                         'mode_installation', 'etude_params', 'prix_cible_kwc')
-                 .first())
-        if devis is None:
-            return ''
-        lignes = list(
-            LigneDevis.objects.filter(devis_id=devis_id)
-            .order_by('id')
-            .values('id', 'produit_id', 'designation', 'quantite',
-                    'prix_unitaire', 'remise', 'taux_tva'))
-        payload = json.dumps(
-            {'devis': devis, 'lignes': lignes},
-            sort_keys=True, default=str)
-        return hashlib.sha256(payload.encode()).hexdigest()
-    except Exception:  # noqa: BLE001 — best-effort → repli historique
+    PVFRESH (résidu, fondateur 19/08/2026) — cette empreinte lisait les
+    champs du devis à la main (``.values(...)``) et OUBLIAIT
+    ``roof_layout`` : un calepinage rejoué SANS toucher une ligne ne
+    changeait donc pas l'empreinte Celery, alors qu'il change bien le PDF
+    rendu (PVUNI : le kWc/production servis suivent le calepinage en repli, et
+    ``layout_stale`` dépend de son compte de panneaux). Plutôt qu'ajouter
+    ``roof_layout`` à la main ici — une DEUXIÈME dérivation qui pourrait
+    encore diverger de celle utilisée pour SERVIR le PDF — on réutilise
+    l'EXACTE empreinte PVFRESH (``quote_engine.empreinte_donnees_pdf`` sur
+    ``build_quote_data``, celle-là même persistée dans
+    ``Devis.pdf_render_meta`` par ``cle_pdf_a_jour``). Tâche Celery et vues
+    jugent donc désormais la fraîcheur d'un devis avec la MÊME fonction,
+    jamais une seconde implémentation.
+
+    RVCEL2 (CI rouge de PR #538) — ce partage était posé sous un
+    ``except Exception: return ''`` : le moteur refuse le format « full » d'un
+    devis SANS onduleur (règle dure), l'erreur était avalée, l'empreinte
+    devenait la CONSTANTE ``''`` et le cache de rendu redevenait keyé sur les
+    seules options — c'est-à-dire EXACTEMENT le bug du PDF périmé que QG2
+    existe pour empêcher, en silence et pour toujours. Ce repli muet est
+    supprimé :
+
+    * refus déclaré du moteur (``ValueError``) → on rebâtit l'empreinte au
+      format « une page », que le moteur accepte pour tout devis. MÊME
+      dérivation partagée, juste le format de calcul qui dégrade ;
+    * dict de rendu non sérialisable (``empreinte_donnees_pdf`` → ``None``)
+      → repli ``_empreinte_brute``, qui VARIE toujours avec le contenu ;
+    * toute autre erreur → elle REMONTE, bruyamment. Les appelants
+      (``_idempotent_cached_key``/``_remember_render``) la traitent déjà comme
+      « pas de cache » → le PDF est re-rendu. Jamais servi périmé.
+
+    L'empreinte n'est donc JAMAIS vide pour un devis existant."""
+    from .models import Devis
+    from .quote_engine import build_quote_data, empreinte_donnees_pdf
+
+    devis = Devis.objects.filter(pk=devis_id).first()
+    if devis is None:
+        # Devis disparu : il n'y a pas de contenu à empreindre. Ce n'est pas un
+        # échec avalé — l'id du devis reste dans la signature.
         return ''
+
+    try:
+        empreinte = empreinte_donnees_pdf(build_quote_data(devis, pdf_options))
+    except ValueError as refus:
+        # SEUL cas toléré : le refus DÉCLARÉ du moteur (une option sans
+        # onduleur ne se rend pas en « full »). On le journalise et on
+        # recalcule au format que le moteur bâtit toujours ; si celui-là échoue
+        # aussi, l'erreur remonte.
+        logger.warning(
+            '_content_version: format demandé refusé par le moteur pour le '
+            'devis %s (%s) — empreinte recalculée au format « %s ».',
+            devis_id, refus, _FORMAT_EMPREINTE_DE_REPLI)
+        empreinte = empreinte_donnees_pdf(
+            build_quote_data(devis, _options_empreinte_de_repli(pdf_options)))
+
+    if empreinte:
+        return empreinte
+
+    logger.error(
+        '_content_version: empreinte de rendu indisponible pour le devis %s '
+        '(données non sérialisables) — repli sur l\'état stocké : le cache de '
+        'rendu peut rater, il ne peut pas servir un PDF périmé.', devis_id)
+    return _empreinte_brute(devis)
 
 
 def _render_signature(devis_id, pdf_options):
     """Signature stable (devis + CONTENU + options de format) d'un rendu.
 
-    QG2 — inclut désormais l'empreinte du contenu (`_content_version`) pour
-    qu'une édition invalide le cache de rendu tout en gardant le bénéfice du
-    cache à contenu inchangé."""
+    QG2 — inclut l'empreinte du contenu (`_content_version`) pour qu'une
+    édition (lignes, méta, OU calepinage — PVFRESH) invalide le cache de
+    rendu tout en gardant le bénéfice du cache à contenu inchangé."""
     import hashlib
     import json
     payload = json.dumps(
-        {'devis': devis_id, 'content': _content_version(devis_id),
+        {'devis': devis_id,
+         'content': _content_version(devis_id, pdf_options),
          'opts': pdf_options or {}},
         sort_keys=True, default=str)
     return 'devis-pdf:' + hashlib.sha256(payload.encode()).hexdigest()

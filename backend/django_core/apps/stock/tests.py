@@ -21,9 +21,10 @@ def make_company(slug='test-cat-co'):
     return company
 
 
-def seed(company):
+def seed(company, **options):
     out = StringIO()
-    call_command('seed_catalogue', company_slug=company.slug, stdout=out)
+    call_command('seed_catalogue', company_slug=company.slug, stdout=out,
+                 **options)
     return out.getvalue()
 
 
@@ -35,8 +36,9 @@ class TestSeedCatalogue(TestCase):
         seed(self.company)
         qs = Produit.objects.filter(company=self.company)
         # 31 solaire + 9 pompage + 16 VEICHI + 11 pompes OSP + 22 câbles/protections
-        # + 1 onduleur Deye 15kW LV (PVG4) + 1 batterie Dyness HV 16 kWh (PVG4)
-        self.assertEqual(qs.count(), 93)
+        # + 2 onduleurs Deye basse tension 15/20 kW (PVG4 + PVOND)
+        # + 1 batterie Dyness HV 16 kWh (PVG4)
+        self.assertEqual(qs.count(), 94)
         # Spot-check key items: HT price = simulator TTC / 1.2
         huawei_10t = qs.get(sku='OND-R-HUA-10T')
         self.assertEqual(huawei_10t.nom, 'Onduleur réseau Huawei 10kW Triphasé')
@@ -54,7 +56,7 @@ class TestSeedCatalogue(TestCase):
         # Traceability: one entry movement per product
         self.assertEqual(
             MouvementStock.objects.filter(
-                company=self.company, reference='SEED-CATALOGUE').count(), 93,
+                company=self.company, reference='SEED-CATALOGUE').count(), 94,
         )
 
     def test_fiches_and_pompage_seeded(self):
@@ -119,12 +121,14 @@ class TestSeedCatalogue(TestCase):
         self.assertEqual(fiche.temp_coeff_pmax_pct_c, Decimal('-0.290'))
 
     def test_pv85_fiche_technique_reappliquee_sur_base_deja_seedee(self):
-        """PV85 — les champs SOURCÉS par le catalogue sont reposés à chaque run.
+        """PV85 — `--reappliquer-fiches` repose les champs SOURCÉS.
 
-        Sans cela, une correction de datasheet (le 10 kW triphasé passé de
-        SG04LP3 à SG05LP3 : 26 A/MPPT au lieu de 16 A) resterait bloquée sur
-        les bases déjà seedées. Ce qui reste intouchable : tout champ que le
-        catalogue ne source pas.
+        Sans cette porte, une correction de datasheet (le 10 kW triphasé passé
+        de SG04LP3 à SG05LP3 : 26 A/MPPT au lieu de 16 A) resterait bloquée sur
+        les bases déjà seedées. Elle est EXPLICITE depuis l'ordre fondateur du
+        18/08/2026 (un run nu comble seulement les vides, cf. les deux tests
+        PVOND ci-dessous). Ce qui reste intouchable dans les deux modes : tout
+        champ que le catalogue ne source pas.
         """
         from apps.stock.models import FicheTechnique
         seed(self.company)
@@ -135,7 +139,8 @@ class TestSeedCatalogue(TestCase):
             longueur_mm=1, largeur_mm=1,
             # Champ NON déclaré par le catalogue pour ce SKU : saisie manuelle.
             bat_kwh_nominal=Decimal('42.00'))
-        seed(self.company)
+        call_command('seed_catalogue', company_slug=self.company.slug,
+                     reappliquer_fiches=True, stdout=StringIO())
         ancienne.refresh_from_db()
         # Champs SOURCÉS → ré-appliqués depuis la datasheet.
         self.assertEqual(ancienne.longueur_mm, 2384)
@@ -146,6 +151,123 @@ class TestSeedCatalogue(TestCase):
         # Toujours une seule fiche par produit.
         self.assertEqual(
             FicheTechnique.objects.filter(produit=cs).count(), 1)
+
+    # ── PVOND (18/08/2026) — LE SEEDER COMBLE, IL N'ÉCRASE PLUS ──────────────
+    # Le bandeau « Onduleur(s) non chiffrable(s) » du fondateur ne venait pas
+    # d'un manque de données SOURCÉES (le seeder les portait déjà) : elles
+    # n'avaient jamais atteint les LIGNES EXISTANTES de la base de production.
+    # Le seeder tourne désormais à chaque déploiement — il doit donc réparer
+    # sans jamais détruire une saisie.
+    def test_pvond_les_specs_vides_d_une_fiche_existante_sont_comblees(self):
+        """Fiche déjà là mais VIDE (le cas de la prod) → le seeder la remplit."""
+        from apps.stock.models import FicheTechnique
+        seed(self.company)
+        p = Produit.objects.get(company=self.company, sku='OND-H-DEY-10T')
+        FicheTechnique.objects.filter(produit=p).delete()
+        nue = FicheTechnique.objects.create(
+            company=self.company, produit=p, type_fiche='onduleur')
+        self.assertIsNone(nue.ond_i_max_mppt_a)
+
+        seed(self.company)   # run NU, sans --reappliquer-fiches
+
+        nue.refresh_from_db()
+        self.assertEqual(nue.ond_n_mppt, 2)
+        self.assertEqual(nue.ond_i_max_mppt_a, Decimal('26.0'))
+        self.assertEqual(nue.ond_ac_kw, Decimal('10'))
+        self.assertEqual(nue.ond_rendement_euro_pct, Decimal('97.0'))
+        # …et l'onduleur redevient chiffrable, ce qui est TOUT le sujet.
+        from apps.stock.selectors import onduleur_specs_manquantes
+        p.refresh_from_db()
+        self.assertEqual(onduleur_specs_manquantes(p), [])
+
+    def test_pvond_une_valeur_saisie_par_le_fondateur_n_est_jamais_ecrasee(self):
+        """« Rends-moi facile de saisir les infos. » Ce que le fondateur tape
+        survit à TOUS les redéploiements — c'est ce qui rend sûr l'appel du
+        seeder depuis deploy-prod.ps1."""
+        from apps.stock.models import FicheTechnique
+        seed(self.company)
+        p = Produit.objects.get(company=self.company, sku='OND-H-DEY-10T')
+        fiche = FicheTechnique.objects.get(produit=p)
+        # Le fondateur corrige à l'écran : 30 A au lieu des 26 A du catalogue,
+        # et vide un autre champ pour prouver que le vide, LUI, est comblé.
+        fiche.ond_i_max_mppt_a = Decimal('30.0')
+        fiche.ond_rendement_euro_pct = None
+        fiche.save(update_fields=['ond_i_max_mppt_a', 'ond_rendement_euro_pct'])
+
+        seed(self.company)   # run NU (celui du déploiement)
+
+        fiche.refresh_from_db()
+        self.assertEqual(fiche.ond_i_max_mppt_a, Decimal('30.0'))   # INTACTE
+        self.assertEqual(fiche.ond_rendement_euro_pct, Decimal('97.0'))  # comblée
+
+        # …et la porte explicite existe toujours pour une correction datasheet.
+        call_command('seed_catalogue', company_slug=self.company.slug,
+                     reappliquer_fiches=True, stdout=StringIO())
+        fiche.refresh_from_db()
+        self.assertEqual(fiche.ond_i_max_mppt_a, Decimal('26.0'))
+
+    # ── PVOND — jumeau BASSE TENSION du palier 20 kW ────────────────────────
+    def test_pvond_onduleur_deye_20k_lv_seede_avec_prix_vide(self):
+        from apps.stock.models import FicheTechnique
+        from apps.stock.selectors import (
+            onduleur_specs_manquantes, plage_batterie_onduleur,
+        )
+        from apps.ventes.services import _has_price
+        seed(self.company)
+        p = Produit.objects.get(company=self.company, sku='OND-DEY-20K-LV')
+        self.assertEqual(
+            p.nom, 'Onduleur hybride Deye 20kW Triphasé Basse Tension')
+        self.assertEqual(p.prix_vente, Decimal('0'))   # jamais inventé
+        self.assertEqual(p.prix_achat, Decimal('0'))
+        self.assertEqual(p.categorie.nom, 'Onduleurs hybrides')
+        self.assertEqual(p.marque, 'Deye')
+        # Modèle CONFIRMÉ fondateur (18/08/2026 : « there is a deye 15kw and
+        # 20kw with low voltage ») — même marquage que le 15K LV, et c'est
+        # cette mention qui autorise le moteur électrique à NOMMER l'appareil.
+        self.assertIn('Modèle confirmé fondateur : Deye SUN-20K-SG05LP3-EU-SM2',
+                      p.description)
+        self.assertNotIn('Modèle supposé', p.description)
+        # Prix vide → exclu du chiffrage automatique (garde des pompes OSP).
+        self.assertFalse(_has_price(p))
+        # Basse tension : la plage batterie 48 V de la famille SG05LP3.
+        self.assertEqual(plage_batterie_onduleur(p), (40.0, 60.0))
+        # Contrat COMPLET dès le seed : rien à griser.
+        self.assertEqual(onduleur_specs_manquantes(p), [])
+        fiche = FicheTechnique.objects.get(produit=p)
+        self.assertEqual(fiche.ond_ac_kw, Decimal('20'))
+        self.assertEqual(fiche.ond_phases, 3)
+        self.assertEqual(fiche.ond_mppt_v_min, Decimal('160.0'))
+        self.assertEqual(fiche.ond_mppt_v_max, Decimal('650.0'))
+        self.assertEqual(fiche.ond_v_max_abs, Decimal('800.0'))
+        self.assertEqual(fiche.ond_i_max_mppt_a, Decimal('20.0'))
+        self.assertEqual(fiche.ond_rendement_euro_pct, Decimal('97.0'))
+
+    def test_pvond_les_deux_20kW_deye_restent_deux_appareils_distincts(self):
+        """OND-H-DEY-20T (SG01HP3, 160-700 V) et OND-DEY-20K-LV (SG05LP3,
+        40-60 V) sont deux appareils RÉELS différents au même palier : leurs
+        plages batterie ne doivent jamais se confondre."""
+        from apps.stock.selectors import plage_batterie_onduleur
+        seed(self.company)
+        hv = Produit.objects.get(company=self.company, sku='OND-H-DEY-20T')
+        lv = Produit.objects.get(company=self.company, sku='OND-DEY-20K-LV')
+        self.assertEqual(plage_batterie_onduleur(hv), (160.0, 700.0))
+        self.assertEqual(plage_batterie_onduleur(lv), (40.0, 60.0))
+        self.assertNotEqual(hv.nom, lv.nom)
+
+    def test_pvond_completer_les_specs_ne_resynchronise_aucun_devis(self):
+        """PVSYNC — vérification du chemin de resynchronisation.
+
+        ``ventes.services.resynchroniser_devis_pour_produit`` ne suit QUE le
+        nom et le prix de vente d'un produit. Quand le seeder comble une fiche
+        technique, RIEN ne doit donc être propagé aux devis — et c'est le bon
+        comportement : un devis déjà émis est un DOCUMENT (désignations et prix
+        figés), tandis que le contrat de complétude (le grisage d'un onduleur)
+        est recalculé EN DIRECT à chaque ouverture du générateur. Ce test fige
+        cette frontière : élargir la liste ferait réécrire des documents à
+        chaque déploiement, puisque le seeder tourne désormais à chaque fois.
+        """
+        from apps.stock.views.produit import CHAMPS_PRODUIT_SUIVIS_DEVIS
+        self.assertEqual(CHAMPS_PRODUIT_SUIVIS_DEVIS, ('nom', 'prix_vente'))
 
     def test_pv85_deye_10t_modele_confirme_fondateur(self):
         """PV85 — SG05LP3 tranché par le fondateur : plus « supposé »."""
@@ -289,9 +411,10 @@ class TestSeedCatalogue(TestCase):
             p.description.count('Modèle confirmé fondateur'), 1,
             "la mention ne doit jamais être dupliquée sur un second run")
 
-        # PV85 — une fiche onduleur pré-existante voit ses champs SOURCÉS
-        # ré-alignés sur la datasheet (une valeur fantaisiste ne survit pas),
-        # mais rien d'autre n'est touché.
+        # PV85 → PVOND 19/08 : par DÉFAUT le seeder COMBLE sans jamais écraser —
+        # une valeur posée par le fondateur (même fantaisiste) survit au run.
+        # Le ré-alignement datasheet est désormais une porte EXPLICITE
+        # (--reappliquer-fiches), testé juste en dessous.
         p20t = Produit.objects.get(company=self.company, sku='OND-H-DEY-20T')
         FicheTechnique.objects.filter(produit=p20t).delete()
         ancienne = FicheTechnique.objects.create(
@@ -299,7 +422,12 @@ class TestSeedCatalogue(TestCase):
             ond_ac_kw=Decimal('99'), bat_dod_pct=Decimal('77.0'))
         seed(self.company)
         ancienne.refresh_from_db()
-        self.assertEqual(ancienne.ond_ac_kw, Decimal('20'))
+        self.assertEqual(ancienne.ond_ac_kw, Decimal('99'),
+                         'comble-jamais-écrase : la valeur fondateur survit')
+        seed(self.company, reappliquer_fiches=True)
+        ancienne.refresh_from_db()
+        self.assertEqual(ancienne.ond_ac_kw, Decimal('20'),
+                         'porte explicite : la datasheet ré-aligne')
         self.assertEqual(ancienne.bat_dod_pct, Decimal('77.0'))
 
     def test_veichi_seeded_with_real_buy_and_sell_prices(self):
@@ -503,7 +631,7 @@ class TestSeedCatalogue(TestCase):
         out = seed(self.company)
         self.assertEqual(
             Produit.objects.filter(company=self.company).count(), count_after_first)
-        self.assertIn('0 created, 93 already present', out)
+        self.assertIn('0 created, 94 already present', out)
 
     def test_never_overwrites_existing_product(self):
         # Pre-existing product with the same name but a different price

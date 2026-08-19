@@ -493,6 +493,50 @@ const chipClass =
               </p>
 
               <div id="rp9-layout-panel" hidden class="mt-5 space-y-5">
+                <!-- PV30 — DEUX MODES d'édition, côte à côte et explicites. « Emplacements
+                     validés » (le défaut) ne déplace un panneau que d'une cellule calculée à
+                     une autre : sûr, mais impossible d'y gagner de la place. « Placement
+                     libre » déplace au centimètre et laisse RÉGLER le retrait de rive et
+                     l'écart entre panneaux — les seules limites qui restent sont physiques
+                     (contour du toit, chevauchement, obstacle), et les distances réelles
+                     s'affichent pendant le geste. -->
+                <div class="flex flex-wrap items-center gap-3">
+                  <span class="tech-label text-lune-faint">Mode d’édition</span>
+                  <button type="button" id="rp9-layout-mode-lattice" aria-pressed="true"
+                    class="border border-white/25 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:border-brass-400 hover:text-brass-300 aria-pressed:border-brass-400">
+                    ▦ Emplacements validés
+                  </button>
+                  <button type="button" id="rp9-layout-mode-free" aria-pressed="false"
+                    class="border border-white/25 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:border-brass-400 hover:text-brass-300">
+                    ✥ Placement libre
+                  </button>
+                </div>
+
+                <div id="rp9-free-controls" hidden class="space-y-3 border border-brass-400/30 bg-brass-400/5 p-3">
+                  <p class="text-xs leading-relaxed text-lune-soft">
+                    En placement libre, ces deux marges sont les vôtres : les baisser fait tenir
+                    plus de panneaux. Les <strong class="text-lune-soft">distances réellement
+                    mesurées</strong> s’affichent pendant le déplacement — rien n’est réduit dans
+                    votre dos. Le contour du toit, les chevauchements et les obstacles restent,
+                    eux, infranchissables.
+                  </p>
+                  <div class="flex flex-wrap items-center gap-3">
+                    <label for="rp9-free-setback" class="text-sm text-lune-soft">Retrait de rive (cm)</label>
+                    <input id="rp9-free-setback" name="freeSetback" type="text" inputmode="decimal" step="any"
+                      class="w-24 border border-white/25 bg-nuit-900 px-3 py-2 text-sm text-white" />
+                    <label for="rp9-free-gap" class="text-sm text-lune-soft">Écart entre panneaux (cm)</label>
+                    <input id="rp9-free-gap" name="freeGap" type="text" inputmode="decimal" step="any"
+                      class="w-24 border border-white/25 bg-nuit-900 px-3 py-2 text-sm text-white" />
+                  </div>
+                  <div class="flex flex-wrap items-center gap-3">
+                    <button type="button" id="rp9-free-add" aria-pressed="false"
+                      class="border border-brass-400 bg-brass-400/10 px-4 py-2.5 text-sm font-bold text-brass-300 transition-colors hover:bg-brass-400/20">
+                      ＋ Ajouter un panneau
+                    </button>
+                    <span id="rp9-free-measure" class="fig text-sm text-brass-300" aria-live="polite"></span>
+                  </div>
+                </div>
+
                 <dl class="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
                   <div>
                     <dd id="rp9-layout-count" class="fig text-lg text-white sm:text-xl">—</dd>

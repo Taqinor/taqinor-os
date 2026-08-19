@@ -8,7 +8,9 @@ le job » SANS payer les ~3 min de generation du schema : le ratchet est teste
 sur des journaux drf-spectacular synthetiques + la vraie base de reference
 versionnee.
 """
+import argparse
 import io
+import json
 import sys
 import tempfile
 import unittest
@@ -113,32 +115,27 @@ class RatchetTests(unittest.TestCase):
 
 
 class InventoryTests(unittest.TestCase):
-    SCHEMA = """
-openapi: 3.0.3
-info:
-  title: T
-  version: '1.0.0'
-paths:
-  /b/:
-    get:
-      operationId: b_list
-  /a/:
-    post:
-      operationId: a_create
-    get:
-      operationId: a_list
-components:
-  schemas:
-    Zeta: {}
-    Alpha: {}
-  securitySchemes:
-    cookieJWT: {}
-"""
+    # WOW-CI3 — le document intermediaire est desormais du JSON
+    # (`--format openapi-json`) : meme document, 21x plus vite a ecrire et 56x
+    # plus vite a relire que le YAML de 22,8 Mo.
+    SCHEMA = {
+        "openapi": "3.0.3",
+        "info": {"title": "T", "version": "1.0.0"},
+        "paths": {
+            "/b/": {"get": {"operationId": "b_list"}},
+            "/a/": {"post": {"operationId": "a_create"},
+                    "get": {"operationId": "a_list"}},
+        },
+        "components": {
+            "schemas": {"Zeta": {}, "Alpha": {}},
+            "securitySchemes": {"cookieJWT": {}},
+        },
+    }
 
-    def _inventory(self):
-        with tempfile.NamedTemporaryFile("w", suffix=".yml", delete=False,
+    def _inventory(self, doc=None):
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False,
                                          encoding="utf-8") as fh:
-            fh.write(self.SCHEMA)
+            json.dump(self.SCHEMA if doc is None else doc, fh)
             path = Path(fh.name)
         try:
             return cos.build_inventory(path)
@@ -162,6 +159,59 @@ components:
 
     def test_inventory_is_deterministic(self):
         self.assertEqual(self._inventory(), self._inventory())
+
+    def test_le_miroir_v1_reconstitue_produit_les_memes_lignes(self):
+        """WOW-CI3 — l'inventaire ne distingue pas un miroir reconstitue d'un
+        miroir genere : c'est bien tout le contrat qui reste certifie."""
+        doc = {
+            "openapi": "3.0.3",
+            "info": {"title": "T", "version": "1.0.0"},
+            "paths": {
+                "/api/django/stock/produits/":
+                    {"get": {"operationId": "django_stock_produits_list"}},
+                "/api/v1/stock/produits/":
+                    {"get": {"operationId": "v1_stock_produits_list"}},
+            },
+            "components": {"schemas": {}, "securitySchemes": {}},
+        }
+        text = self._inventory(doc)
+        self.assertIn("- get /api/django/stock/produits/ -> "
+                      "django_stock_produits_list", text)
+        self.assertIn("- get /api/v1/stock/produits/ -> "
+                      "v1_stock_produits_list", text)
+        self.assertIn("counts: {paths: 2, operations: 2, components: 0}", text)
+
+
+class GenerationCommandTests(unittest.TestCase):
+    """WOW-CI3 — la commande construite porte bien le raccourci (ou pas)."""
+
+    def test_le_controle_utilise_le_raccourci_et_le_json(self):
+        cmd = cos.spectacular_command(Path("/tmp/x.json"))
+        self.assertIn("--generator-class", cmd)
+        self.assertEqual(cmd[cmd.index("--generator-class") + 1],
+                         "erp_agentique.openapi_check.SchemaGeneratorAliasV1")
+        self.assertEqual(cmd[cmd.index("--format") + 1], "openapi-json")
+        self.assertIn("--validate", cmd)
+
+    def test_le_mode_reference_n_impose_aucun_generateur(self):
+        cmd = cos.spectacular_command(Path("/tmp/x.json"), reference=True)
+        self.assertNotIn("--generator-class", cmd)
+        self.assertIn("--validate", cmd)
+
+    def test_write_regenere_avec_le_generateur_de_reference(self):
+        """L'instantane versionne doit rester la VERITE : `--write` n'utilise
+        jamais le raccourci, sinon plus rien ne le contredirait."""
+        def opts(**kw):
+            base = dict(reference=False, write=False, write_baseline=False)
+            base.update(kw)
+            return argparse.Namespace(**base)
+
+        self.assertTrue(cos.use_reference_generator(opts(write=True)))
+        self.assertTrue(cos.use_reference_generator(opts(reference=True)))
+        # Le cliquet d'avertissements aussi : le miroir `api/v#/` porte ses
+        # propres collisions globales d'operationId.
+        self.assertTrue(cos.use_reference_generator(opts(write_baseline=True)))
+        self.assertFalse(cos.use_reference_generator(opts()))
 
     def test_committed_snapshot_matches_the_inventory_format(self):
         snapshot = cos.SNAPSHOT_PATH
@@ -245,7 +295,7 @@ class DeriveInstantaneTests(unittest.TestCase):
             anciens = (cos.ROOT, cos.SNAPSHOT_PATH, cos.generate,
                        cos.build_inventory, sys.argv)
             cos.ROOT, cos.SNAPSHOT_PATH = base, snapshot
-            cos.generate = lambda target: ""
+            cos.generate = lambda target, **kwargs: ""
             cos.build_inventory = lambda target: inventaire_genere
             sys.argv = ["check_openapi_schema.py"] + argv
             flux = io.StringIO()

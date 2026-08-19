@@ -822,11 +822,28 @@ const _batterieBasseTensionParMotCle = (p) => {
 // Fenêtre de tension batterie déclarée par un onduleur :
 //   [min, max] → fenêtre réelle ; [0, 0] → « aucune batterie » (réseau) ;
 //   null      → non déclarée (l'appelant retombe sur le mot-clé).
+//
+// RÈGLE CORRIGÉE (ordre fondateur 18/08/2026) — MIROIR EXACT de
+// `stock.selectors.plage_batterie_onduleur` : un onduleur RÉSEAU (string
+// on-grid) n'a PAS de port batterie. Rien de déclaré sur lui n'est pas un trou,
+// c'est le cas nominal : sa FAMILLE vaut déclaration « aucune » ⇒ [0, 0].
+// Le backend sert déjà cette valeur dans `specs_solaire.plage_batterie_v` ; ce
+// repli local couvre le catalogue servi SANS bloc `specs_solaire` (produit
+// saisi à la main, fixture) — sans lui, le mot-clé reprenait la main et pouvait
+// accrocher une batterie à un onduleur réseau.
+//
+// L'ORDRE des deux mots-clés est signifiant et strictement celui de
+// `stock.selectors.famille_onduleur` / `ventes.services.classer_produit` :
+// « hybride » l'emporte sur « réseau », donc un « onduleur hybride injection
+// réseau » reste un HYBRIDE (et sa plage reste EXIGÉE).
+const _estOnduleurReseau = (nom) => isReseauInverter(nom) && !isHybridInverter(nom)
+
 export function plageBatterieOnduleur(produit) {
   const plage = produit?.specs_solaire?.plage_batterie_v
-  if (!Array.isArray(plage) || plage.length !== 2) return null
+  const replisReseau = () => (_estOnduleurReseau(produit?.nom) ? [0, 0] : null)
+  if (!Array.isArray(plage) || plage.length !== 2) return replisReseau()
   const bas = Number(plage[0]); const haut = Number(plage[1])
-  if (!Number.isFinite(bas) || !Number.isFinite(haut)) return null
+  if (!Number.isFinite(bas) || !Number.isFinite(haut)) return replisReseau()
   return bas <= haut ? [bas, haut] : [haut, bas]
 }
 
@@ -854,6 +871,14 @@ export function batterieCompatible(batterie, plage) {
 // (liste vide = complet). Même patron que « prix à renseigner » : un onduleur
 // incomplet est EXCLU de l'auto-composition et affiché grisé avec son motif,
 // mais reste sélectionnable à la main.
+//
+// LA LISTE EST CALCULÉE PAR LE BACKEND (`stock.selectors.onduleur_specs_
+// manquantes`, servie dans `specs_solaire.manquantes`) : c'est la source
+// UNIQUE de la règle, donc les deux moitiés ne peuvent pas diverger. Depuis
+// l'ordre fondateur du 18/08/2026 elle applique le contrat CONDITIONNEL —
+// la « plage de tension batterie (V) » est réclamée aux onduleurs HYBRIDES
+// (et aux familles indéterminées), jamais aux onduleurs RÉSEAU qui n'ont pas
+// de port batterie. Un hybride sans plage reste écarté ET nommé.
 export function onduleurSpecsManquantes(produit) {
   const manquantes = produit?.specs_solaire?.manquantes
   return Array.isArray(manquantes) ? manquantes : []
