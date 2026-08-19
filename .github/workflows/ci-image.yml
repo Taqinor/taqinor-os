@@ -29,7 +29,9 @@ on:
     paths:
       - 'backend/django_core/requirements.txt'
       - 'backend/django_core/requirements-dev.txt'
+      - 'frontend/package-lock.json'
       - '.github/ci-image/Dockerfile'
+      - '.github/ci-image/Dockerfile.e2e'
       - '.github/ci-image/tag.sh'
       - '.github/workflows/ci-image.yml'
   workflow_dispatch:
@@ -69,31 +71,34 @@ jobs:
       # Rien a faire si l'etiquette est deja publiee : le contenu est fige par
       # construction (l'etiquette EST l'empreinte du contenu), donc reconstruire
       # produirait le meme resultat en 10 minutes.
-      - name: L'etiquette existe-t-elle deja ?
+      - name: Les etiquettes existent-elles deja ?
         id: exists
         run: |
           set -uo pipefail
-          if [ "${{ github.event.inputs.force }}" = 'true' ]; then
-            echo "Reconstruction FORCEE demandee."
-            echo "present=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          if docker manifest inspect '${{ steps.tag.outputs.image }}' >/dev/null 2>&1; then
-            echo "Image deja publiee : ${{ steps.tag.outputs.image }}"
-            echo "present=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "Image absente — construction."
-            echo "present=false" >> "$GITHUB_OUTPUT"
-          fi
+          FORCE='${{ github.event.inputs.force }}'
+          for couple in "backend:${{ steps.tag.outputs.image }}" "e2e:${{ steps.tag.outputs.image_e2e }}"; do
+            cle="${couple%%:*}"; ref="${couple#*:}"
+            if [ "$FORCE" = 'true' ]; then
+              echo "Reconstruction FORCEE demandee pour $ref"
+              echo "${cle}=false" >> "$GITHUB_OUTPUT"
+            elif docker manifest inspect "$ref" >/dev/null 2>&1; then
+              echo "Image deja publiee : $ref"
+              echo "${cle}=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "Image absente — construction : $ref"
+              echo "${cle}=false" >> "$GITHUB_OUTPUT"
+            fi
+          done
+          exit 0
 
       - uses: docker/setup-buildx-action@v3
-        if: ${{ steps.exists.outputs.present != 'true' }}
+        if: ${{ steps.exists.outputs.backend != 'true' || steps.exists.outputs.e2e != 'true' }}
 
       # Contexte = `backend/django_core` (le Dockerfile y prend les deux
       # requirements par COPY), fichier = le Dockerfile CI dedie. L'image de
       # PRODUCTION (`backend/django_core/Dockerfile`) n'est ni lue ni touchee.
-      - name: Construire et pousser
-        if: ${{ steps.exists.outputs.present != 'true' }}
+      - name: Construire et pousser ci-backend
+        if: ${{ steps.exists.outputs.backend != 'true' }}
         uses: docker/build-push-action@v6
         with:
           context: backend/django_core
@@ -104,8 +109,24 @@ jobs:
           cache-to: type=gha,mode=max
           provenance: false
 
+      # `ci-e2e` est construite PAR-DESSUS `ci-backend` : elle doit donc suivre,
+      # jamais tourner en parallele. Contexte = `frontend/` (le Dockerfile y
+      # prend `package-lock.json`, d'ou il lit la version de Playwright).
+      - name: Construire et pousser ci-e2e
+        if: ${{ steps.exists.outputs.e2e != 'true' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          file: .github/ci-image/Dockerfile.e2e
+          build-args: |
+            CI_BACKEND_IMAGE=${{ steps.tag.outputs.image }}
+          push: true
+          tags: ${{ steps.tag.outputs.image_e2e }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+
       - name: Resume
         run: |
-          echo "Etiquette : ${{ steps.tag.outputs.tag }}"
-          echo "Image     : ${{ steps.tag.outputs.image }}"
-          echo "Deja presente : ${{ steps.exists.outputs.present }}"
+          echo "ci-backend : ${{ steps.tag.outputs.image }} (deja presente = ${{ steps.exists.outputs.backend }})"
+          echo "ci-e2e     : ${{ steps.tag.outputs.image_e2e }} (deja presente = ${{ steps.exists.outputs.e2e }})"

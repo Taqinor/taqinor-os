@@ -70,9 +70,21 @@ concurrency:
 #
 # LE PIC RESTE DONC 18, inchange — la marge mesuree de 2 creneaux sous le
 # plafond de 20 est preservee. Le chemin LENT de `ci-image-check` (construction
-# en ligne, ~8-12 min, uniquement quand un requirements ou le Dockerfile CI
-# change) allonge sa fenetre mais ne l'elargit pas : c'est toujours 1 creneau,
-# et la vague backend attend simplement plus longtemps pour demarrer.
+# en ligne, ~8-12 min, uniquement quand un requirements, un lockfile frontend ou
+# un Dockerfile CI change) allonge sa fenetre mais ne l'elargit pas : c'est
+# toujours 1 creneau, et la vague attend simplement plus longtemps pour demarrer.
+# NOTE : `e2e-shard` attend desormais lui aussi `ci-image-check` (il tourne dans
+# l'image `ci-e2e`), donc il quitte la fenetre 1 pour la fenetre 2 — ce qui
+# BAISSE le pic de la fenetre 1 a 9 et laisse la fenetre 2 a 18. Pic inchange.
+#
+# 3e LANE e2e — REFUSEE, et le calcul est ici pour qu'on ne le reprenne pas a
+# zero. Sur le run vert 32307320397, les etapes de specs des deux lanes valent
+# 129 s et 126 s : elles sont deja equilibrees a 3 s pres, et une 3e lane
+# ramenerait le pire bloc de specs de 123 s a 86 s, soit ~37 s. C'est SOUS le
+# seuil de 60 s qui justifierait de depenser un des 2 derniers creneaux — et
+# apres le volet e2e ci-dessous, une lane e2e a ~306 s serait de toute facon
+# talonnee par `frontend-vitest-shard` (291 s mesurees), qui deviendrait le
+# nouveau plancher : les 37 s ne rapporteraient qu'environ 15 s sur le gate.
 #
 # RONDE 4 (19/08) — la 4e lane vitest depense 1 des 3 creneaux libres MESURES
 # sur le run 32265590843 (17 lanes a nous, 3 creneaux encore idle sous le
@@ -231,12 +243,13 @@ jobs:
       packages: write
     outputs:
       image: ${{ steps.tag.outputs.image }}
+      image_e2e: ${{ steps.tag.outputs.image_e2e }}
     steps:
       - uses: actions/checkout@v4
-      # Source UNIQUE de l'etiquette, partagee avec `ci-image.yml` : si les deux
-      # la calculaient separement, la moindre divergence reconstruirait l'image
-      # a chaque run.
-      - name: Calculer l'etiquette de l'image
+      # Source UNIQUE des etiquettes, partagee avec `ci-image.yml` : si les deux
+      # les calculaient separement, la moindre divergence reconstruirait les
+      # images a chaque run.
+      - name: Calculer les etiquettes des images
         id: tag
         run: bash .github/ci-image/tag.sh "${{ github.repository }}" >> "$GITHUB_OUTPUT"
       - uses: docker/login-action@v3
@@ -244,22 +257,25 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: L'image est-elle deja publiee ?
+      - name: Les images sont-elles deja publiees ?
         id: exists
         run: |
           set -uo pipefail
-          if docker manifest inspect '${{ steps.tag.outputs.image }}' >/dev/null 2>&1; then
-            echo "Image presente — chemin rapide."
-            echo "present=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "Image ABSENTE (${{ steps.tag.outputs.image }}) — construction en ligne."
-            echo "present=false" >> "$GITHUB_OUTPUT"
-          fi
+          for couple in "backend:${{ steps.tag.outputs.image }}" "e2e:${{ steps.tag.outputs.image_e2e }}"; do
+            cle="${couple%%:*}"; ref="${couple#*:}"
+            if docker manifest inspect "$ref" >/dev/null 2>&1; then
+              echo "Presente — chemin rapide : $ref"
+              echo "${cle}=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "ABSENTE — construction en ligne : $ref"
+              echo "${cle}=false" >> "$GITHUB_OUTPUT"
+            fi
+          done
           exit 0
       - uses: docker/setup-buildx-action@v3
-        if: ${{ steps.exists.outputs.present != 'true' }}
-      - name: Construire et pousser l'image manquante (chemin lent)
-        if: ${{ steps.exists.outputs.present != 'true' }}
+        if: ${{ steps.exists.outputs.backend != 'true' || steps.exists.outputs.e2e != 'true' }}
+      - name: Construire et pousser ci-backend si elle manque (chemin lent)
+        if: ${{ steps.exists.outputs.backend != 'true' }}
         uses: docker/build-push-action@v6
         with:
           context: backend/django_core
@@ -269,10 +285,24 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: false
+      # Construite PAR-DESSUS ci-backend, donc APRES elle, jamais en parallele.
+      - name: Construire et pousser ci-e2e si elle manque (chemin lent)
+        if: ${{ steps.exists.outputs.e2e != 'true' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          file: .github/ci-image/Dockerfile.e2e
+          build-args: |
+            CI_BACKEND_IMAGE=${{ steps.tag.outputs.image }}
+          push: true
+          tags: ${{ steps.tag.outputs.image_e2e }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
       - name: Resume
         run: |
-          echo "image=${{ steps.tag.outputs.image }}"
-          echo "deja presente = ${{ steps.exists.outputs.present }}"
+          echo "ci-backend = ${{ steps.tag.outputs.image }} (deja presente = ${{ steps.exists.outputs.backend }})"
+          echo "ci-e2e     = ${{ steps.tag.outputs.image_e2e }} (deja presente = ${{ steps.exists.outputs.e2e }})"
 
   # ---------------------------------------------------------------------------
   # WOW-CI2 (2026-08-18, run 32182877239) — `backend-lint` durait 8 min 25 s, et
@@ -1129,23 +1159,48 @@ jobs:
   # Le nom de check REQUIS `e2e` est préservé par l'agrégateur mince plus bas —
   # NE PAS le renommer (protection de branche : contexte littéral).
   # ---------------------------------------------------------------------------
-  # WOW-CI RONDE 5 (20/08/2026) — CE JOB RESTE SUR LE CHEMIN CLASSIQUE (runner
-  # nu + apt/pip caches), DÉLIBÉRÉMENT. Une variante `ci-e2e` de l'image
-  # pré-construite avait été envisagée ; l'arithmétique ne la justifie pas :
-  #   - ce qu'elle supprimerait : `npm ci` ~13 s + `playwright install` ~31-37 s
-  #     (cache navigateurs chaud) + la part apt/pip de `backend-env` ~20-60 s,
-  #     soit ~65-110 s ;
-  #   - ce qu'elle coûterait : une image portant en plus Node 22, chromium ET
-  #     webkit avec leurs dépendances système (~2 Go), donc ~30-45 s de pull, et
-  #     un `node_modules` qui devrait de toute façon être réinstallé à chaque
-  #     changement du lock — le vrai contenu de `npm ci`.
-  # Le gain net (~30-60 s) ne paie pas le doublement de la surface d'images à
-  # entretenir sur un job qui n'est pas le plancher du gate. À rouvrir si
-  # `e2e-shard` redevient la lane la plus lente.
+  # WOW-CI RONDE 5 (20/08/2026) — CE JOB PASSE DANS L'IMAGE `ci-e2e`.
+  #
+  # J'avais d'abord écarté cette variante sur une estimation. Les mesures du
+  # dernier run VERT (32307320397) l'ont renversée. `e2e-shard (1)` = 369 s,
+  # dont 240 s de MISE EN PLACE pour 129 s de specs, et l'écart entre les deux
+  # lanes (369 s contre 305 s) vient à 62 s sur 64 de cette mise en place.
+  # Ce que l'image supprime, mesuré :
+  #     Install Playwright browsers (chromium + webkit) ....... 55 s
+  #     Cache Playwright browser binaries .....................  7 s
+  #     part apt + pip + MinIO de backend-env ................. ~40 s
+  #     setup-python + redirection/cache apt ..................   7 s
+  #                                                        total ~109 s
+  # Ce qu'elle coûte : le pull de l'image (~40-50 s de plus que les 15 s
+  # d'« Initialize containers » actuels, pour ~950 Mo compressés).
+  # GAIN NET ATTENDU ~60 s : 369 s -> ~306 s.
+  #
+  # Le poste dominant restait `Install Playwright browsers` À 55 s ALORS QUE LES
+  # BINAIRES ÉTAIENT DÉJÀ CACHÉS (l'étape de cache qui les restaure ne coûte que
+  # 7 s) : ces 55 s sont le `--with-deps`, c'est-à-dire le dépaquetage apt des
+  # dépendances système de WebKit. Ni le cache apt ni le cache des binaires ne
+  # l'évitent — seule une image pré-construite le fait.
+  #
+  # POURQUOI CE JOB DEVIENT PRIORITAIRE : une fois les volets A+B appliqués, le
+  # pire `backend-tests-shard` tombe de 425 s à ~263 s, et c'est `e2e-shard` qui
+  # devient le job qui ferme la marche. Le corriger n'est plus un confort.
+  #
+  # `actions/setup-node` RESTE dans le job (il coûte 4 s et apporte le cache npm,
+  # sans lequel `npm ci` passerait de 5 s à plusieurs dizaines) — voir l'en-tête
+  # de `.github/ci-image/Dockerfile.e2e` pour les deux choses qu'il n'embarque
+  # volontairement pas.
   # ---------------------------------------------------------------------------
   e2e-shard:
-    needs: changes
+    needs: [changes, ci-image-check]
     if: ${{ needs.changes.outputs.code == 'true' }}
+    permissions:
+      contents: read
+      packages: read
+    container:
+      image: ${{ needs.ci-image-check.outputs.image_e2e }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     strategy:
       fail-fast: false
       matrix:
@@ -1177,10 +1232,19 @@ jobs:
       DB_NAME: erp_db
       DB_USER: erp_user
       DB_PASSWORD: ci_password
-      DB_HOST: localhost
+      # WOW-CI RONDE 5 — job `container:` : les services sont joints par leur NOM
+      # sur le réseau du job, plus par un port publié sur l'hôte. `localhost`
+      # désigne désormais le conteneur du job — d'où MinIO (qui y tourne) et
+      # gunicorn (127.0.0.1:8000, lancé par l'étape des specs) inchangés.
+      DB_HOST: postgres
       DB_PORT: '5432'
-      REDIS_HOST: localhost
+      REDIS_HOST: redis
       REDIS_PORT: '6379'
+      # Emplacement des navigateurs BAKÉS dans l'image. Doit être identique à
+      # l'`ENV PLAYWRIGHT_BROWSERS_PATH` du Dockerfile.e2e : sans lui Playwright
+      # les chercherait dans `~/.cache/ms-playwright`, ne les trouverait pas, et
+      # les retéléchargerait — l'image ne servirait à rien.
+      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
       MINIO_ENDPOINT: localhost:9000
       MINIO_ROOT_USER: erp_admin
       MINIO_ROOT_PASSWORD: erp_minio_password
@@ -1198,82 +1262,40 @@ jobs:
       TENANT_RATE_LIMIT: '0'
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'   # MUST match prod (django_core/fastapi Dockerfiles: python:3.11.x). A 3.12+/3.13 CI would not catch 3.11-only SyntaxErrors (e.g. backslash in f-string) that crash the live PDF generator.
-          cache: 'pip'   # WOW4 — cache les deps Python (npm l'était déjà, pas pip) ; clé sur requirements-dev.txt.
-          cache-dependency-path: backend/django_core/requirements-dev.txt
+      # WOW-CI RONDE 5 — `actions/setup-python` a disparu (Python 3.11 et toutes
+      # les dépendances sont dans l'image). `actions/setup-node` RESTE : il ne
+      # coûte que 4 s et il apporte le cache npm, sans lequel `npm ci` passerait
+      # de 5 s (mesuré) à plusieurs dizaines de secondes. C'est pour cette raison
+      # précise que l'image n'embarque pas `node_modules`.
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       # -----------------------------------------------------------------------
-      # WOW-CI (2026-08-18) — CACHE DES PAQUETS APT. Mesuré sur le run
-      # 32167530769 : l'étape « Install Playwright browsers » a duré 9 min 10 s,
-      # et son propre journal dit « Fetched 114 MB in 8min 41s (219 kB/s) ».
-      # Autrement dit 95 % du coût est le TÉLÉCHARGEMENT APT des dépendances
-      # système de WebKit (fontes CJK, gstreamer, libavcodec, librsvg…) — pas les
-      # navigateurs : leurs binaires (177 Mo + 101 Mo depuis le CDN Playwright)
-      # descendent en ~14 s. On redirige donc le magasin de .deb d'apt vers un
-      # dossier que `actions/cache` sait restaurer : sur un cache chaud apt trouve
-      # tous les paquets sur place (il revérifie leurs sommes de contrôle) et ne
-      # télécharge RIEN — il ne reste que le dépaquetage. Sur un cache froid, le
-      # comportement est EXACTEMENT celui d'avant : rien n'est sauté, aucune
-      # dépendance n'est retirée, WebKit reste installé et testé.
-      #
-      # Placé AVANT `backend-env` à dessein : ses paquets WeasyPrint passent par
-      # le même magasin et deviennent gratuits eux aussi.
-      #
-      # On ne met VOLONTAIREMENT PAS `~/.cache/ms-playwright` dans le cache :
-      # ~450 Mo pour ~14 s gagnées, alors que le quota de cache du dépôt est déjà
-      # saturé (10,49 Go pour 10 Go au 18/08) — et évincer un dump testdb (WOW8)
-      # coûterait un rebuild à froid d'environ 40 min.
+      # WOW-CI RONDE 5 (20/08/2026) — TOUT LE DISPOSITIF DE CACHE APT A DISPARU
+      # D'ICI, et c'est le but. Il existait parce que `playwright install
+      # --with-deps` retéléchargeait 114 Mo de dépendances système WebKit à
+      # chaque run (jusqu'à « Fetched 114 MB in 59min 15s » sur un miroir
+      # étranglé, le 19/08). Ces paquets sont maintenant DANS l'image `ci-e2e`,
+      # dépaquetés une fois pour toutes : il n'y a plus rien à télécharger, donc
+      # plus rien à cacher, et la pathologie du miroir lent disparaît avec.
+      # Le cache `apt-e2e-v2-…` reste alimenté et consommé par
+      # `.github/actions/backend-env` sur son chemin NON conteneurisé, qui sert
+      # encore `release-verify.yml`.
       # -----------------------------------------------------------------------
-      - name: Redirect apt's .deb store into a cacheable directory
-        # JAMAIS BLOQUANT : ce n'est qu'une optimisation. Si quoi que ce soit
-        # échoue ici, apt reprend son magasin par défaut et le job se comporte
-        # exactement comme avant — une accélération ne doit pas pouvoir faire
-        # rougir un check REQUIS.
-        run: |
-          set -uo pipefail
-          mkdir -p "$HOME/apt-archives/partial" || true
-          # apt abandonne ses privilèges vers l'utilisateur `_apt` pour écrire
-          # dans `partial/` : sans droits larges il retombe (bruyamment) sur un
-          # téléchargement non bac-à-sable, ou échoue.
-          chmod -R 777 "$HOME/apt-archives" || true
-          printf 'Dir::Cache::archives "%s";\nBinary::apt::APT::Keep-Downloaded-Packages "true";\n' \
-            "$HOME/apt-archives" | sudo tee /etc/apt/apt.conf.d/99-ci-archive-cache >/dev/null \
-            || echo "AVERTISSEMENT : redirection du cache apt impossible — on continue sans."
-          exit 0
-      - name: Cache apt packages (Playwright system deps + WeasyPrint)
-        uses: actions/cache@v4
-        with:
-          path: ~/apt-archives
-          # WOW-CI7 (19/08) — LA CLE NE DEPEND PLUS QUE DU LOCK. Elle portait
-          # aussi l'empreinte de `.github/actions/backend-env/action.yml`, ce qui
-          # etait une faute : ce fichier change pour des raisons qui n'ont RIEN a
-          # voir avec la liste des paquets .deb. Mon propre correctif de la ronde 6
-          # (cache de l'environnement Python) l'a modifie, a invalide ce cache, et
-          # le run qui a suivi est tombe sur un miroir Ubuntu etrangle a 32 ko/s :
-          # « Fetched 114 MB in 59min 15s ». Une heure de silence pour une cle
-          # couplee a un fichier sans rapport.
-          # Ce qui determine reellement le jeu de paquets, c'est la version de
-          # Playwright (donc le lock). Si la liste WeasyPrint de backend-env
-          # change un jour, apt telechargera ces quelques paquets en plus et le
-          # cache se recalera tout seul au prochain run `push` — auto-correcteur,
-          # au lieu de tout jeter a chaque edition.
-          key: apt-e2e-v2-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
-          restore-keys: |
-            apt-e2e-v2-${{ runner.os }}-
       # WOW7 — shared WeasyPrint + pip (requirements-dev.txt) + MinIO setup.
       # WOW8 — restore the cached pre-migrated dump straight into erp_db
       # (measured: this job's migrate+seed step was 1796s of a 1915s total —
       # 94% — while the E2E specs themselves ran in 36s). The migrate below
       # becomes a fast no-op; the seeds still run fresh.
+      # WOW-CI RONDE 5 — `prebuilt-image: 'true'` : apt et pip sont déjà dans
+      # l'image, MinIO démarre par son binaire natif et pg_restore/pg_dump sont
+      # appelés directement (docker n'existe pas dans un job `container:`).
       - uses: ./.github/actions/backend-env
         with:
           testdb-cache-into: erp_db
+          prebuilt-image: 'true'
       - name: Migrate + seed throwaway demo data
         working-directory: backend/django_core
         run: |
@@ -1291,38 +1313,31 @@ jobs:
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci --prefer-offline --no-audit --no-fund
-      # WOW-CI5 (19/08) — le cache apt du round 2 fonctionne desormais : ce run
-      # a bien restaure `apt-e2e-v1-...`, donc les dependances systeme de WebKit
-      # ne se retelechargent plus. Les 37 s qui restent sont le telechargement
-      # des NAVIGATEURS depuis le CDN Playwright (chromium 177 Mo + webkit
-      # 101 Mo + ffmpeg). On les cache a leur tour, cle EXACTE sur le lock (donc
-      # sur la version de Playwright) et sans `restore-keys` : un binaire d'une
-      # autre version ferait echouer le lancement avec « Executable doesn't
-      # exist ». `npx playwright install` continue de tourner juste apres — il
-      # est idempotent et ne fait rien quand les binaires sont deja la.
-      # (Au round 1 j'avais ecarte ce cache : ~250 Mo pour ~14 s ne le valaient
-      # pas quand le quota du depot etait sature. Le gain mesure est maintenant
-      # de ~30 s par lane, et les caches evinces en LRU sont les bases CodeQL
-      # par-commit, jamais relues — pas les dumps testdb, relus a chaque run.)
-      - name: Cache Playwright browser binaries
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: pw-browsers-v1-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
+      # WOW-CI RONDE 5 (20/08/2026) — LE CACHE DES BINAIRES A DISPARU, ET
+      # `--with-deps` AVEC LUI. Les deux navigateurs (VX68 : chromium ET webkit,
+      # le passage Safari réel) sont BAKÉS dans l'image `ci-e2e`, à
+      # `PLAYWRIGHT_BROWSERS_PATH=/ms-playwright`, dans la version que
+      # `package-lock.json` fixe — c'est cette même version qui étiquette
+      # l'image, donc un binaire ne peut pas se désynchroniser du
+      # `@playwright/test` que `npm ci` vient d'installer.
+      #
+      # LA MESURE QUI JUSTIFIE CE CHANGEMENT (run vert 32307320397) : l'étape
+      # de cache restaurait bien les binaires en 7 s, et pourtant
+      # `playwright install --with-deps` durait encore 55 s sur la lane 1 (20 s
+      # sur la lane 2, 31 s sur le run précédent). Ces secondes n'étaient donc
+      # PAS les navigateurs : c'était le dépaquetage apt de `--with-deps`. Ni le
+      # cache apt ni le cache des binaires ne pouvaient l'éviter.
+      #
+      # L'appel est CONSERVÉ, sans `--with-deps` : idempotent, il ne fait rien
+      # quand les binaires sont là, et il échouera franchement s'ils manquaient —
+      # ce qui vaut mieux qu'un `playwright test` mourant sur « Executable
+      # doesn't exist ». Le plafond de 10 min reste : si cette étape se met à
+      # retélécharger, l'échec doit la NOMMER (le 19/08 elle a tourné 59 min 44 s
+      # en silence sur un miroir apt étranglé).
       - name: Install Playwright browsers (chromium + webkit)
-        # WOW-CI7 — plafond au niveau de l'ETAPE, pas seulement du job : quand
-        # cette etape est le point de blocage, l'echec doit la NOMMER. Le
-        # 19/08 elle a tourne 59 min 44 s sur un miroir apt etrangle et le job
-        # est mort en silence a 1 h 05. 10 min est large : mesure a 31-37 s sur
-        # un miroir sain, ~9 min sur le pire miroir observe avant celui-ci.
         timeout-minutes: 10
         working-directory: frontend
-        # VX68 — WebKit (Safari réel) en plus de Chromium : le smoke ajoute un
-        # passage `mobile-safari` pour attraper ce qui ne casse QUE sur Safari.
-        # `--with-deps` est CONSERVÉ tel quel (mêmes navigateurs, mêmes
-        # dépendances système) ; c'est le magasin apt caché plus haut qui rend
-        # sa partie « téléchargement » gratuite sur un cache chaud.
-        run: npx playwright install --with-deps chromium webkit
+        run: npx playwright install chromium webkit
       - name: Build frontend (no service worker for E2E)
         working-directory: frontend
         env:
@@ -1419,30 +1434,27 @@ jobs:
           name: playwright-report-${{ matrix.shard }}
           path: frontend/playwright-report
           retention-days: 7
-      # WOW-CI2 — la sauvegarde du cache apt du round 1 a ÉCHOUÉ sur le run
-      # 32182877239 : « tar: ../../../apt-archives/lock: Cannot open: Permission
-      # denied », idem pour `partial/`. apt tourne en root et recrée ces deux
-      # entrées en root ; le tar de post-job, lancé en `runner`, ne peut pas les
-      # lire — donc RIEN n'était sauvegardé et chaque run repayait les 114 Mo.
-      # On retire les deux entrées qui ne sont pas des paquets et on rend le
-      # dossier lisible, juste avant l'étape post d'actions/cache.
-      # `if: always()` : le cache doit s'écrire même quand une spec est rouge,
-      # sinon un run rouge condamne le suivant à repayer le téléchargement.
-      - name: Make the apt store readable for the cache save
-        if: ${{ always() }}
-        run: |
-          set -uo pipefail
-          sudo rm -rf "$HOME/apt-archives/partial" "$HOME/apt-archives/lock" || true
-          sudo chown -R "$(id -u):$(id -g)" "$HOME/apt-archives" || true
-          exit 0
+      # WOW-CI RONDE 5 — l'étape « Make the apt store readable for the cache
+      # save » a été retirée avec le cache apt qu'elle servait : ce job n'écrit
+      # plus dans `~/apt-archives` (les paquets sont dans l'image), et `sudo`
+      # n'existe de toute façon pas dans le conteneur.
 
   # Agrégateur mince qui PRÉSERVE le nom de check requis `e2e` (patron WOW6,
   # identique à `backend-tests` / `frontend-lint` / `backend-lint`).
   e2e:
-    needs: [changes, e2e-shard]
+    needs: [changes, ci-image-check, e2e-shard]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
+      # WOW-CI RONDE 5 — même garde que sur `backend-tests` et `backend-lint` :
+      # `e2e-shard` dépend désormais de l'image CI, donc un `ci-image-check`
+      # rouge le laisserait « skipped » et ferait passer ce check REQUIS au vert
+      # sans qu'aucune spec n'ait tourné.
+      - name: Fail if the CI image could not be resolved
+        if: ${{ needs.ci-image-check.result == 'failure' || needs.ci-image-check.result == 'cancelled' }}
+        run: |
+          echo "ci-image-check=${{ needs.ci-image-check.result }} — les lanes e2e n'ont pas tourné."
+          exit 1
       - name: Fail if an e2e lane failed or was cancelled
         if: ${{ needs.e2e-shard.result == 'failure' || needs.e2e-shard.result == 'cancelled' }}
         run: |
