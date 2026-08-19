@@ -7,11 +7,12 @@ name: semgrep (advisory)
 # ADVISORY : non-required, ne bloque aucune merge (protection de branche
 # intacte). Complémentaire des gardes AST YDATA (structure des modèles).
 
+# WOW-CI ronde 3 (fondateur 19/08, « CI below 5 min ») : ce scan ADVISORY ne
+# tourne plus au moment PR — le cap GitHub de 20 jobs simultanés étranglait les
+# shards requis (4 jobs en file 35 s-1 min 47 mesurés). La couverture est
+# CONSERVÉE : chaque merge vers main relance le scan (push) + lancement manuel.
 on:
   workflow_dispatch: {}
-  pull_request:
-    paths:
-      - 'backend/**'
   push:
     branches: [main]
     paths:
