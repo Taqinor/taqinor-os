@@ -743,8 +743,8 @@ class TestSavingsMath(TestCase):
         price_high = _weighted_kwh_price(600, ONEE_TRANCHES)  # crosses all
         self.assertLessEqual(price_low, price_mid)
         self.assertLessEqual(price_mid, price_high)
-        # First-tranche cap
-        self.assertAlmostEqual(price_low, 0.9010, places=3)
+        # First-tranche cap (2026 TTC, TVA 20% — see pricing.py ONEE_TRANCHES)
+        self.assertAlmostEqual(price_low, 0.916272, places=3)
 
     def test_utility_name_resolves_to_table(self):
         """Passing utility='onee' uses the ONEE tranche table, not the fallback."""
@@ -934,6 +934,58 @@ class TestNoInventedNumberGuard(TestCase):
         from apps.ventes.quote_engine.builder import build_quote_data
         data = build_quote_data(devis)
         self.assertFalse(data["savings_estimated"])
+
+    def test_builder_uses_company_tariff_override_when_set(self):
+        """ORDRE FONDATEUR (19/08/2026) — quand le fondateur a ÉDITÉ le barème
+        ONEE de sa société (Paramètres → Tarification & ROI, apps/parametres
+        ``TariffSettings``), le moteur de devis doit l'UTILISER (via
+        ``apps.parametres.selectors.residential_tranches_for``), pas les
+        défauts codés en dur dans pricing.py."""
+        from apps.parametres.models_tariff import TariffSettings
+        company = make_company()
+        user = make_user(company)
+        client_obj = make_client(company)
+        # Barème custom : la tranche haute (> 500 kWh) vaut 9.000000 MAD/kWh —
+        # une valeur qui ne peut PAS venir des défauts 2026 (1.622856).
+        ts = TariffSettings.get(company=company)
+        ts.residential_tiers = [
+            {"max_kwh": 100, "prix_kwh_ttc": "0.916272"},
+            {"max_kwh": 150, "prix_kwh_ttc": "1.091388"},
+            {"max_kwh": 210, "prix_kwh_ttc": "1.091388"},
+            {"max_kwh": 310, "prix_kwh_ttc": "1.187388"},
+            {"max_kwh": 510, "prix_kwh_ttc": "1.405116"},
+            {"max_kwh": None, "prix_kwh_ttc": "9.000000"},
+        ]
+        ts.save()
+        devis = make_devis(company, user, client_obj, [
+            ('Panneau mono 450W', '10', '1500'),
+            ('Onduleur réseau 8kW', '1', '14000'),
+        ], reference='DEV-QF-TARIF2026-OVERRIDE')
+        # 18 000 kWh/an = 1 500 kWh/mois : bien au-dessus de 500 → tranche haute.
+        devis.etude_params = {"distributeur": "onee", "conso_annuelle": 18000}
+        devis.save(update_fields=["etude_params"])
+        from apps.ventes.quote_engine.builder import build_quote_data
+        data = build_quote_data(devis)
+        self.assertFalse(data["savings_estimated"])
+        self.assertAlmostEqual(data["tarif_kwh"], 9.0, places=2)
+
+    def test_builder_falls_back_to_2026_defaults_without_company_override(self):
+        """Société SANS barème édité → le moteur de devis garde les défauts
+        2026 codés en dur dans pricing.ONEE_TRANCHES (aucune régression)."""
+        from apps.ventes.quote_engine.pricing import ONEE_TRANCHES
+        company = make_company()
+        user = make_user(company)
+        client_obj = make_client(company)
+        devis = make_devis(company, user, client_obj, [
+            ('Panneau mono 450W', '10', '1500'),
+            ('Onduleur réseau 8kW', '1', '14000'),
+        ], reference='DEV-QF-TARIF2026-DEFAULT')
+        devis.etude_params = {"distributeur": "onee", "conso_annuelle": 18000}
+        devis.save(update_fields=["etude_params"])
+        from apps.ventes.quote_engine.builder import build_quote_data
+        data = build_quote_data(devis)
+        self.assertFalse(data["savings_estimated"])
+        self.assertAlmostEqual(data["tarif_kwh"], ONEE_TRANCHES[-1][1], places=4)
 
     def test_surplus_injection_not_in_savings(self):
         """Savings must NEVER exceed production × autoconso × price.

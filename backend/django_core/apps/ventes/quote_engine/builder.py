@@ -1042,6 +1042,27 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     _tarif_kwh_override = etude.get("tarif_kwh")  # explicit flat price (seller set)
     _tranches_override = etude.get("tarif_tranches")  # custom schedule [[ceil, price], …]
     _utility = etude.get("distributeur")  # "onee" | "lydec" | "redal"
+    # ORDRE FONDATEUR (19/08/2026) — barème ONEE résidentiel RÉGLABLE par
+    # société (« correct all prices and keep them changable in the settings »).
+    # Le vendeur (etude.tarif_tranches, ci-dessus) reste souverain s'il a collé
+    # un barème custom pour CE devis ; à défaut, si le fondateur a ÉDITÉ le
+    # barème de sa société (Paramètres → Tarification & ROI, apps/parametres
+    # TariffSettings), on l'utilise ; sinon aucun changement — pricing.py garde
+    # ses défauts 2026 codés en dur. N'agit que sur ONEE (le réglage ne couvre
+    # que le barème résidentiel national, jamais Lydec/Redal estimés).
+    if not _tranches_override and (not _utility or str(_utility).lower() == "onee"):
+        try:
+            from apps.parametres.selectors import residential_tranches_for
+            _co_tranches = residential_tranches_for(getattr(devis, "company", None))
+            if _co_tranches:
+                from .pricing import TrancheTable
+                _tranches_override = TrancheTable(
+                    _co_tranches["pairs"],
+                    selective_threshold=_co_tranches["selective_threshold"],
+                    boundary_tolerance=_co_tranches["boundary_tolerance"],
+                )
+        except Exception:  # noqa: BLE001 — un PDF/une liste ne casse jamais ici
+            pass
     _conso_annuelle = etude.get("conso_annuelle")  # from industrial étude if available
     # Autoconsommation overrides (seller/study can refine these)
     _autoconso_sans = float(etude.get("autoconso_sans") or 0) or None

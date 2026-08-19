@@ -99,3 +99,46 @@ def tariff_for(company) -> dict:
         "tva_standard": _f(p.tva_standard, Decimal("20")),
         "tva_panneaux": _f(p.tva_panneaux, Decimal("10")),
     }
+
+
+def residential_tranches_for(company) -> dict | None:
+    """Barème résidentiel ONEE (paliers TTC) RÉGLÉ par une société — ordre
+    fondateur 19/08/2026 (« correct all prices and keep them changable in the
+    settings »). Renvoie ``None`` si aucune société n'est fournie ou si rien
+    n'a été édité dans Paramètres → Tarification & ROI : l'appelant retombe
+    alors sur les défauts 2026 codés en dur dans le moteur de devis (une seule
+    source de vérité par défaut — jamais dupliquée ici).
+
+    Lu par ``apps.ventes.quote_engine.builder`` (import paresseux/local, la
+    frontière cross-app CLAUDE.md est respectée dans CE sens : ``ventes`` lit
+    ``parametres`` via ce sélecteur ; ``parametres`` — app FONDATION — ne
+    connaît JAMAIS ``ventes`` en retour). Renvoie donc un dict PUR (aucune
+    classe de ``ventes.quote_engine.pricing`` importée ici) :
+        {"pairs": [(plafond_kWh_nominal | None, prix_MAD_kWh_TTC), ...],
+         "selective_threshold": int, "boundary_tolerance": int}
+    prêt à reconstruire l'équivalent de ``pricing.TrancheTable`` côté appelant.
+
+    ``TariffSettings.residential_tiers`` stocke des bornes déjà EFFECTIVES
+    (210/310/510 = 200/300/500 + tolérance, cf. models_tariff.py) ; on les
+    reconvertit ici en bornes NOMINALES (− tolérance, uniquement AU-DELÀ du
+    seuil sélectif — la zone progressive n'est jamais décalée) pour rester
+    compatible avec le format nominal+tolérance qu'attend ``TrancheTable``.
+    """
+    if company is None:
+        return None
+    try:
+        from apps.parametres.models_tariff import TariffSettings
+        settings = TariffSettings.get(company=company)
+    except Exception:  # noqa: BLE001 — un PDF/une liste ne casse jamais ici
+        return None
+    if not settings.residential_tiers:
+        return None
+    seuil = int(settings.selective_threshold_kwh or 150)
+    tol = int(settings.tolerance_kwh or 0)
+    pairs = []
+    for t in settings.effective_tiers():
+        mk = t["max_kwh"]
+        if mk is not None and mk > seuil:
+            mk = mk - tol
+        pairs.append((mk, float(t["prix_kwh_ttc"])))
+    return {"pairs": pairs, "selective_threshold": seuil, "boundary_tolerance": tol}
