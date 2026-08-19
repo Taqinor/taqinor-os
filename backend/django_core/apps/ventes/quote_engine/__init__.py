@@ -9,6 +9,9 @@ Public API:
   - cle_pdf_a_jour(devis, pdf_options=None) -> str
         PVFRESH — clé MinIO GARANTIE à jour : réutilise le fichier stocké quand
         son empreinte de données correspond encore, le re-rend sinon
+  - puissance_panneaux_lignes(lignes) -> (nb_panneaux, watt)
+        PVUNI — dérivation LIGNES-D'ABORD de la puissance panneau, réutilisée
+        telle quelle par ``apps.ventes.reports`` (KPI « conçu vs vendu »)
   - calculate_savings_roi(kwc, total_sans, total_avec) -> dict
 """
 from .builder import (
@@ -17,6 +20,7 @@ from .builder import (
     cle_pdf_a_jour,
     empreinte_donnees_pdf,
     generate_premium_devis_pdf,
+    puissance_panneaux_lignes,
 )
 from .pricing import calculate_savings_roi
 
@@ -26,5 +30,6 @@ __all__ = [
     "cle_pdf_a_jour",
     "empreinte_donnees_pdf",
     "generate_premium_devis_pdf",
+    "puissance_panneaux_lignes",
     "calculate_savings_roi",
 ]

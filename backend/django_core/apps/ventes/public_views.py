@@ -24,7 +24,7 @@ from rest_framework.throttling import SimpleRateThrottle
 
 from .models import PaymentLink, ShareLink
 from .quote_engine import clean_pdf_options, generate_premium_devis_pdf
-from .utils.pdf import download_pdf, generate_facture_pdf
+from .utils.pdf import cle_facture_pdf_a_jour, download_pdf
 
 logger = logging.getLogger(__name__)
 
@@ -269,7 +269,27 @@ def public_document(request, token):
                 company=devis.company)
         elif link.facture_id:
             facture = link.facture
-            key = facture.fichier_pdf or generate_facture_pdf(facture.id)
+            # PVFRESH (fondateur, 19/08/2026) — la clé stockée n'est plus
+            # servie sans vérifier sa fraîcheur (même contrat que le devis
+            # ci-dessus, via le moteur LÉGATAIRE propre à la facture — règle
+            # #4, jamais un routage par le moteur devis) : identique →
+            # aucun re-rendu, différente → re-rendu avant de servir.
+            #
+            # DÉGRADATION : si le rafraîchissement lui-même échoue (moteur ou
+            # stockage momentanément indisponible) mais qu'un fichier stocké
+            # existe déjà, on le sert tel quel plutôt que de refuser le
+            # téléchargement — ce lien fonctionnait avant PVFRESH, il doit
+            # continuer de fonctionner.
+            try:
+                key = cle_facture_pdf_a_jour(facture)
+            except Exception:  # noqa: BLE001
+                if not facture.fichier_pdf:
+                    raise
+                logger.warning(
+                    'PVFRESH: rafraîchissement impossible pour la facture '
+                    '%s — le fichier stocké est servi tel quel',
+                    facture.reference, exc_info=True)
+                key = facture.fichier_pdf
             pdf_bytes = download_pdf(key)
             # QD2 — nom cohérent (société _ type _ client _ référence).
             filename = document_filename(

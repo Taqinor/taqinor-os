@@ -86,3 +86,49 @@ class RenderSignatureTests(TestCase):
         sig_full = _render_signature(self.devis.id, {'pdf_mode': 'full'})
         sig_one = _render_signature(self.devis.id, {'pdf_mode': 'onepage'})
         self.assertNotEqual(sig_full, sig_one)
+
+
+class RenderSignatureRoofLayoutTests(TestCase):
+    """PVFRESH (résidu, fondateur 19/08/2026) — ``_content_version`` lisait
+    les champs du devis à la main et OUBLIAIT ``roof_layout`` : rejouer le
+    calepinage 3D SANS toucher une ligne ne changeait donc pas la signature
+    Celery, alors que le PDF servi change bien (PVUNI — un devis sans ligne
+    panneau sert son kWc depuis ``roof_layout.result.kwc``). La correction
+    réutilise l'EXACTE empreinte PVFRESH (``build_quote_data`` +
+    ``empreinte_donnees_pdf``, la même que ``Devis.pdf_render_meta``) plutôt
+    qu'une seconde dérivation : ce module le verrouille sur un devis SANS
+    ligne panneau, où le calepinage seul pilote le kWc servi."""
+
+    def setUp(self):
+        self.company = Company.objects.create(
+            nom='QG2 Layout Co', slug='qg2-layout-co')
+        self.client_obj = Client.objects.create(
+            company=self.company, nom='Client QG2 Layout')
+        self.produit = Produit.objects.create(
+            company=self.company, nom='Structure acier', sku='PV-STR',
+            prix_vente=Decimal('500'))
+        self.devis = Devis.objects.create(
+            company=self.company, reference='DEV-QG2-LAYOUT-0001',
+            client=self.client_obj, statut=Devis.Statut.BROUILLON,
+            roof_layout={'result': {'kwc': 6.6}})
+        # Aucune ligne PANNEAU : le kWc servi vient donc du calepinage seul
+        # (PVUNI — repli quand le devis ne porte aucune ligne panneau).
+        LigneDevis.objects.create(
+            devis=self.devis, produit=self.produit, designation='Structure',
+            quantite=Decimal('1'), prix_unitaire=Decimal('500'),
+            taux_tva=Decimal('20'))
+        self.opts = {'pdf_mode': 'full'}
+
+    def test_replaying_the_layout_changes_the_signature(self):
+        """Rejouer le calepinage (autre kWc) invalide désormais le cache Celery."""
+        sig_before = _render_signature(self.devis.id, self.opts)
+        self.devis.roof_layout = {'result': {'kwc': 9.9}}
+        self.devis.save(update_fields=['roof_layout'])
+        sig_after = _render_signature(self.devis.id, self.opts)
+        self.assertNotEqual(sig_before, sig_after)
+
+    def test_unchanged_layout_keeps_stable_signature(self):
+        """À calepinage inchangé, la signature reste stable (cache conservé)."""
+        sig1 = _render_signature(self.devis.id, self.opts)
+        sig2 = _render_signature(self.devis.id, self.opts)
+        self.assertEqual(sig1, sig2)

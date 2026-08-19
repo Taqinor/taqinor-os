@@ -7,10 +7,16 @@ un provider KPI dotted (``apps.ventes.reports.kpi_ventes``) déclaré dans
 
 Couvre :
   - un devis SANS layout 3D n'est ni conçu ni signé ;
-  - un devis AVEC layout mais sans kWc résoluble (ni etude_params ni
-    roof_layout.result.kwc) est ignoré, jamais compté à zéro ;
-  - ``etude_params.puissance_kwc`` prime sur ``roof_layout.result.kwc`` quand
-    les deux sont présents (même priorité que quote_engine/builder.py, Q5) ;
+  - un devis AVEC layout mais sans kWc résoluble (ni lignes, ni etude_params,
+    ni roof_layout.result.kwc) est ignoré, jamais compté à zéro ;
+  - PVUNI (18/08/2026) — les LIGNES du devis priment TOUJOURS sur le kWc du
+    calepinage (``puissance_panneaux_lignes``, la même fonction que le
+    PDF/la page — jamais une seconde dérivation) ;
+  - ``roof_layout.result.kwc`` prime sur ``etude_params.puissance_kwc`` quand
+    le devis ne porte AUCUNE ligne panneau (même priorité que
+    quote_engine/builder.py, PVUNI) — l'ordre INVERSE d'avant PVUNI, où cette
+    tuile lisait encore la valeur potentiellement périmée (base 720 W)
+    recopiée depuis le calepinage dans ``etude_params.puissance_kwc`` ;
   - seul un devis ``statut='accepte'`` compte comme « signé » ;
   - le taux de conversion est CALCULÉ (signés / conçus), jamais saisi, et
     vaut 0 (jamais une division par zéro) sans aucun devis conçu ;
@@ -25,10 +31,13 @@ Run :
 """
 from __future__ import annotations
 
+from decimal import Decimal
+
 from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, TestCase
 
 from apps.crm.models import Client
+from apps.stock.models import Produit
 from apps.ventes.models import Devis
 from apps.ventes.platform import PLATFORM
 from apps.ventes import reports as ventes_reports
@@ -61,6 +70,20 @@ class _Base(TestCase):
             client=self.client_obj, statut=statut, created_by=self.user,
             roof_layout=roof_layout, etude_params=etude_params)
 
+    def _ligne_panneau(self, devis, *, quantite, watt=600, prix_unitaire='1000'):
+        """PVUNI — une ligne PANNEAU réelle (produit + LigneDevis), pour les
+        tests qui prouvent que les LIGNES priment sur le calepinage."""
+        produit = Produit.objects.create(
+            company=devis.company, nom=f'Panneau Solar {watt}W',
+            sku=f'PV82-PAN-{watt}-{devis.pk}',
+            prix_vente=Decimal(prix_unitaire), prix_achat=Decimal('1'),
+            quantite_stock=500)
+        devis.lignes.create(
+            produit=produit, designation=f'Panneau Solar {watt}W',
+            quantite=Decimal(str(quantite)),
+            prix_unitaire=Decimal(prix_unitaire))
+        return produit
+
 
 class UnDevisSansLayoutNEstNiConcuNiSigne(_Base):
     def test_devis_sans_roof_layout_est_ignore(self):
@@ -86,11 +109,52 @@ class UnDevisAvecLayoutMaisSansKwcResolubleEstIgnore(_Base):
         self.assertIsNone(ventes_reports.kwc_concu_devis(devis))
 
 
-class LeKwcPrivilegieEtudeParamsSurLeLayout(_Base):
-    def test_etude_params_prime_sur_roof_layout(self):
+class LesLignesDuDevisPrimentSurLeCalepinage(_Base):
+    """PVUNI (18/08/2026) — le résidu exact de l'incident DEV-202608-0007,
+    reproduit côté KPI : un devis avec des lignes panneau RÉELLES (600 W) et
+    un calepinage dimensionné sur une autre base (720 W, 10 panneaux) doit
+    compter le kWc des LIGNES (6.0), jamais celui du calepinage (7.2)."""
+
+    def test_les_lignes_priment_sur_le_kwc_du_calepinage(self):
+        devis = self._devis(
+            'DEV-PV82-LIGNES',
+            # 10 panneaux x 720 W (base roofPro) — ce que le calepinage annonce.
+            roof_layout={'result': {'panels': 10, 'kwc': 7.2}},
+            etude_params={'puissance_kwc': 7.2})
+        # 10 panneaux x 600 W (ligne réellement vendue) — ce que les lignes disent.
+        self._ligne_panneau(devis, quantite=10, watt=600)
+        self.assertAlmostEqual(
+            ventes_reports.kwc_concu_devis(devis), 6.0, places=2)
+
+    def test_le_kpi_agrege_le_kwc_des_lignes_pas_celui_du_calepinage(self):
+        devis = self._devis(
+            'DEV-PV82-LIGNES-2', statut='accepte',
+            roof_layout={'result': {'panels': 10, 'kwc': 7.2}},
+            etude_params={'puissance_kwc': 7.2})
+        self._ligne_panneau(devis, quantite=10, watt=600)
+        tuiles = {t['id']: t['valeur'] for t in ventes_reports.kpi_ventes(
+            self.company)}
+        self.assertEqual(tuiles['ventes_kwc_concus'], 6.0)
+        self.assertEqual(tuiles['ventes_kwc_signes'], 6.0)
+
+
+class LeKwcPrivilegieLeCalepinageSurEtudeParams(_Base):
+    """PVUNI — SANS AUCUNE ligne panneau, le kWc du calepinage prime sur
+    ``etude_params.puissance_kwc`` (l'ordre INVERSE d'avant PVUNI — cette
+    valeur est exactement celle qu'une création depuis calepinage y recopie,
+    donc potentiellement périmée elle aussi)."""
+
+    def test_roof_layout_prime_sur_etude_params_sans_ligne(self):
         devis = self._devis(
             'DEV-PV82-4',
             roof_layout={'result': {'kwc': 3.3}},
+            etude_params={'puissance_kwc': 9.9})
+        self.assertAlmostEqual(
+            ventes_reports.kwc_concu_devis(devis), 3.3, places=2)
+
+    def test_repli_sur_etude_params_si_le_layout_ne_porte_aucun_kwc(self):
+        devis = self._devis(
+            'DEV-PV82-4B', roof_layout={'zones': []},
             etude_params={'puissance_kwc': 9.9})
         self.assertAlmostEqual(
             ventes_reports.kwc_concu_devis(devis), 9.9, places=2)

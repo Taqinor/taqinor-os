@@ -343,6 +343,39 @@ def _line_to_item(ligne, taux_tva: Decimal) -> dict:
     }
 
 
+def puissance_panneaux_lignes(lignes) -> tuple[int, int]:
+    """``(nb_panneaux, watt)`` dérivés des lignes PANNEAU parmi ``lignes``.
+
+    PVUNI (fondateur, 18/08/2026) — extrait de ``build_quote_data`` (la boucle
+    « Derive power from the panel line(s) ») en fonction RÉUTILISABLE : la
+    puissance SERVIE (page/PDF, via ``build_quote_data``) et celle des KPI
+    internes (``reports.py`` « conçu vs vendu », ARC40) doivent juger le MÊME
+    devis avec l'EXACTE même règle — une seconde dérivation qui diverge est
+    précisément le défaut de l'incident DEV-202608-0007 (deux nombres de
+    panneaux, deux coûts, dans le même document). ``lignes`` est la liste DÉJÀ
+    filtrée (lignes produit non optionnelles, ``LigneDevis.compte_dans_totaux``)
+    que l'appelant possède ; aucune requête n'est faite ici.
+
+    ``watt`` retombe TOUJOURS sur ``_DEFAULT_WATT`` (710 W) quand aucune ligne
+    panneau n'est exploitable — même repli que l'estimation faute de ligne
+    panneau, historique et inchangé. ``nb_panneaux`` vaut alors 0 : à
+    l'appelant de choisir son propre repli (estimation d'équipement pour le
+    PDF, kWc du calepinage pour le KPI/la page).
+    """
+    nb_panneaux = 0
+    watt = None
+    for li in lignes:
+        designation = getattr(li, "designation", "") or ""
+        produit = getattr(li, "produit", None)
+        produit_nom = getattr(produit, "nom", "") or ""
+        if _is_panel(designation, produit_nom):
+            nb_panneaux += int(round(float(getattr(li, "quantite", 0) or 0)))
+            watt = (watt
+                    or _fiche_watt(produit)
+                    or _parse_watt(designation, produit_nom))
+    return nb_panneaux, (watt or _DEFAULT_WATT)
+
+
 # Whitelisted PDF format options (mirroring the simulator's payload). The
 # defaults reproduce today's premium 3-page output exactly.
 DEFAULT_PDF_OPTIONS = {
@@ -619,15 +652,10 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # Sans fiche exploitable, ``_fiche_watt`` rend None et le chemin regex
     # historique s'applique à l'identique. La première ligne panneau qui donne
     # une puissance l'emporte, comme avant.
-    nb_panneaux = 0
-    watt = None
-    for li, it in zip(lignes, items):
-        if _is_panel(it["designation"], it.get("_produit_nom", "")):
-            nb_panneaux += int(round(it["quantite"]))
-            watt = (watt
-                    or _fiche_watt(getattr(li, "produit", None))
-                    or _parse_watt(it["designation"], it.get("_produit_nom", "")))
-    watt = watt or _DEFAULT_WATT
+    # PVUNI — ``puissance_panneaux_lignes`` est LA fonction partagée (aussi
+    # appelée par ``reports.py`` pour le KPI « conçu vs vendu ») : jamais une
+    # seconde dérivation de « combien de panneaux, quel watt » à côté.
+    nb_panneaux, watt = puissance_panneaux_lignes(lignes)
 
     # ── Split into the two options ───────────────────────────────────────────
     # Option 1 "Sans batterie": réseau/injection inverter, NO hybrid, NO battery.

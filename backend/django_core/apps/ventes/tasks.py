@@ -54,8 +54,8 @@ def task_generate_devis_pdf(self, devis_id, pdf_options=None):
         raise self.retry(exc=exc, countdown=2 ** self.request.retries * 30)
 
 
-def _content_version(devis_id):
-    """QG2 — Empreinte du CONTENU d'un devis (lignes + totaux + méta).
+def _content_version(devis_id, pdf_options=None):
+    """QG2 — Empreinte du CONTENU d'un devis (lignes + totaux + méta + calepinage).
 
     Le cache d'idempotence du rendu était keyé sur (devis_id, pdf_options)
     uniquement : après une édition « Éditer », les MÊMES options renvoyaient
@@ -65,28 +65,29 @@ def _content_version(devis_id):
     « rate » → le PDF est re-rendu ; à contenu identique, l'empreinte est
     stable → le cache reste bénéfique (pas de re-rendu inutile).
 
+    PVFRESH (résidu, fondateur 19/08/2026) — cette empreinte lisait les
+    champs du devis à la main (``.values(...)``) et OUBLIAIT
+    ``roof_layout`` : un calepinage rejoué SANS toucher une ligne ne
+    changeait donc pas l'empreinte Celery, alors qu'il change bien le PDF
+    rendu (PVUNI : le kWc/production servis suivent le calepinage en repli, et
+    ``layout_stale`` dépend de son compte de panneaux). Plutôt qu'ajouter
+    ``roof_layout`` à la main ici — une DEUXIÈME dérivation qui pourrait
+    encore diverger de celle utilisée pour SERVIR le PDF — on réutilise
+    l'EXACTE empreinte PVFRESH (``quote_engine.empreinte_donnees_pdf`` sur
+    ``build_quote_data``, celle-là même persistée dans
+    ``Devis.pdf_render_meta`` par ``cle_pdf_a_jour``). Tâche Celery et vues
+    jugent donc désormais la fraîcheur d'un devis avec la MÊME fonction,
+    jamais une seconde implémentation.
+
     Best-effort : toute erreur renvoie une empreinte vide, ce qui revient au
     comportement historique (signature sur options seules)."""
-    import hashlib
-    import json
     try:
-        from .models import Devis, LigneDevis
-        devis = (Devis.objects
-                 .filter(pk=devis_id)
-                 .values('remise_globale', 'taux_tva', 'version', 'statut',
-                         'mode_installation', 'etude_params', 'prix_cible_kwc')
-                 .first())
+        from .models import Devis
+        from .quote_engine import build_quote_data, empreinte_donnees_pdf
+        devis = Devis.objects.filter(pk=devis_id).first()
         if devis is None:
             return ''
-        lignes = list(
-            LigneDevis.objects.filter(devis_id=devis_id)
-            .order_by('id')
-            .values('id', 'produit_id', 'designation', 'quantite',
-                    'prix_unitaire', 'remise', 'taux_tva'))
-        payload = json.dumps(
-            {'devis': devis, 'lignes': lignes},
-            sort_keys=True, default=str)
-        return hashlib.sha256(payload.encode()).hexdigest()
+        return empreinte_donnees_pdf(build_quote_data(devis, pdf_options)) or ''
     except Exception:  # noqa: BLE001 — best-effort → repli historique
         return ''
 
@@ -94,13 +95,14 @@ def _content_version(devis_id):
 def _render_signature(devis_id, pdf_options):
     """Signature stable (devis + CONTENU + options de format) d'un rendu.
 
-    QG2 — inclut désormais l'empreinte du contenu (`_content_version`) pour
-    qu'une édition invalide le cache de rendu tout en gardant le bénéfice du
-    cache à contenu inchangé."""
+    QG2 — inclut l'empreinte du contenu (`_content_version`) pour qu'une
+    édition (lignes, méta, OU calepinage — PVFRESH) invalide le cache de
+    rendu tout en gardant le bénéfice du cache à contenu inchangé."""
     import hashlib
     import json
     payload = json.dumps(
-        {'devis': devis_id, 'content': _content_version(devis_id),
+        {'devis': devis_id,
+         'content': _content_version(devis_id, pdf_options),
          'opts': pdf_options or {}},
         sort_keys=True, default=str)
     return 'devis-pdf:' + hashlib.sha256(payload.encode()).hexdigest()

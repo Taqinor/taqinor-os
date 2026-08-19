@@ -282,8 +282,21 @@ def generate_facture_pdf(facture_id):
     key = f'factures/{facture.reference}.pdf'
     _upload_pdf(pdf_bytes, key)
 
-    facture.fichier_pdf = key
-    facture.save(update_fields=['fichier_pdf'])
+    # PVFRESH (fondateur, 19/08/2026) — on persiste EN MÊME TEMPS l'empreinte
+    # des données rendues : la clé ci-dessus est DÉTERMINISTE (dérivée de la
+    # seule référence), elle ne dit donc rien de la fraîcheur du fichier ;
+    # cette empreinte, si (``cle_facture_pdf_a_jour`` la relit). Miroir de
+    # ``Devis.pdf_render_meta`` — n'écrit que ce qui a réellement changé.
+    champs = []
+    if facture.fichier_pdf != key:
+        facture.fichier_pdf = key
+        champs.append('fichier_pdf')
+    meta = {'empreinte': empreinte_donnees_facture_pdf(facture)}
+    if facture.pdf_render_meta != meta:
+        facture.pdf_render_meta = meta
+        champs.append('pdf_render_meta')
+    if champs:
+        facture.save(update_fields=champs)
 
     logger.info('PDF facture généré : %s', key)
 
@@ -316,6 +329,112 @@ def generate_facture_pdf(facture_id):
             facture.reference)
 
     return key
+
+
+def _facture_render_data(facture) -> dict:
+    """Données qui déterminent le RENDU du PDF facture — miroir, réduit au
+    moteur LÉGATAIRE de la facture (règle #4), de ce que ``build_quote_data``
+    fait pour les devis (PVFRESH). Deux appels rendent la MÊME empreinte si et
+    seulement si rien de ce qui compte pour le PDF n'a changé.
+
+    Lignes triées par ``id`` (pas d'``ordering`` déclaré sur ``LigneFacture``)
+    pour une empreinte stable quel que soit le chemin d'appel (queryset
+    prefetché depuis ``generate_facture_pdf``, ou requête fraîche depuis
+    ``cle_facture_pdf_a_jour``)."""
+    lignes = sorted(facture.lignes.all(), key=lambda li: li.id)
+    return {
+        'reference': facture.reference,
+        'statut': facture.statut,
+        'client_id': facture.client_id,
+        'type_facture': facture.type_facture,
+        'pourcentage': (str(facture.pourcentage)
+                        if facture.pourcentage is not None else None),
+        'libelle': facture.libelle,
+        'montant_ht': (str(facture.montant_ht)
+                       if facture.montant_ht is not None else None),
+        'montant_tva': (str(facture.montant_tva)
+                        if facture.montant_tva is not None else None),
+        'montant_ttc': (str(facture.montant_ttc)
+                        if facture.montant_ttc is not None else None),
+        'taux_tva': str(facture.taux_tva),
+        'remise_globale': str(facture.remise_globale),
+        'date_emission': (str(facture.date_emission)
+                          if facture.date_emission else None),
+        'date_echeance': (str(facture.date_echeance)
+                          if facture.date_echeance else None),
+        'date_livraison': (str(facture.date_livraison)
+                           if facture.date_livraison else None),
+        'conditions_paiement': facture.conditions_paiement,
+        'note': facture.note,
+        'devise': facture.devise,
+        'taux_change': str(facture.taux_change),
+        'lignes': [
+            {
+                'id': li.id,
+                'produit_id': li.produit_id,
+                'designation': li.designation,
+                'quantite': str(li.quantite),
+                'prix_unitaire': str(li.prix_unitaire),
+                'remise': str(li.remise),
+                'taux_tva': (str(li.taux_tva)
+                             if li.taux_tva is not None else None),
+            }
+            for li in lignes
+        ],
+    }
+
+
+def empreinte_donnees_facture_pdf(facture) -> str | None:
+    """Empreinte stable des données de rendu d'une facture — RÉUTILISE le
+    mécanisme QX8/PVFRESH (``quote_engine.empreinte_donnees_pdf``, la MÊME
+    fonction qui empreint les données devis), jamais une seconde
+    implémentation de hachage. ``None`` sur donnée non sérialisable →
+    l'appelant re-rend (jamais un fichier servi à l'aveugle)."""
+    from apps.ventes.quote_engine import empreinte_donnees_pdf
+
+    return empreinte_donnees_pdf(_facture_render_data(facture))
+
+
+def cle_facture_pdf_a_jour(facture) -> str:
+    """Clé MinIO d'un PDF facture dont on GARANTIT qu'il correspond aux
+    données du jour.
+
+    PVFRESH — même contrat que ``quote_engine.cle_pdf_a_jour`` côté devis,
+    appliqué au moteur LÉGATAIRE de la facture (règle #4 : les factures
+    gardent leur PDF séparé — ceci ne les fait PAS passer par le moteur
+    devis, seule la petite fonction d'empreinte générique est réutilisée) :
+
+    * empreinte stockée == empreinte courante → renvoie ``facture.fichier_pdf``
+      tel quel (aucun re-rendu) ;
+    * différentes, absentes, ou fichier jamais rendu → RE-REND
+      (``generate_facture_pdf``, qui persiste clé + empreinte), renvoie la
+      clé fraîche.
+
+    Document figé ? — la Facture n'a PAS d'équivalent de la signature Devis
+    (loi 43-20, instantané juridique toujours figé). Son seul verrou est
+    XFAC24 (``CompanyProfile.factures_immuables``, opt-in, défaut OFF) : une
+    fois la facture ÉMISE, les champs FINANCIERS deviennent en lecture seule
+    à la fois sur la facture elle-même (``FactureViewSet.perform_update``,
+    ``FACTURE_CHAMPS_FINANCIERS``) et sur ses LIGNES
+    (``LigneFactureViewSet._check_immuable`` — créer/modifier/supprimer une
+    ligne est refusé) — les données que cette empreinte lit ne peuvent alors
+    plus changer, donc l'empreinte ne change plus non plus : la fraîcheur se
+    stabilise d'elle-même après émission, sans logique de gel séparée à
+    maintenir ici. Sans ce réglage (comportement par défaut), une facture
+    émise reste modifiable comme aujourd'hui et se re-rend comme n'importe
+    quel document actif — c'est le comportement voulu.
+    """
+    meta = facture.pdf_render_meta if isinstance(
+        facture.pdf_render_meta, dict) else {}
+    empreinte_stockee = meta.get('empreinte')
+    if facture.fichier_pdf and empreinte_stockee:
+        try:
+            attendue = empreinte_donnees_facture_pdf(facture)
+        except Exception:  # noqa: BLE001 — une facture illisible se re-rend
+            attendue = None
+        if attendue and attendue == empreinte_stockee:
+            return facture.fichier_pdf
+    return generate_facture_pdf(facture.pk)
 
 
 def generate_avoir_pdf(avoir_id):
