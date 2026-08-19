@@ -356,6 +356,16 @@ test('MB6: key flows have no horizontal overflow and no content hidden behind th
   //    above the bottom tab-bar, not swallowed by it.
   await page.goto('/ventes/devis/nouveau')
   await expect(page.getByRole('heading', { name: 'Générateur de Devis Solaire' })).toBeVisible()
+  // Rouge CI (mobile-safari, `fetchAllPages` — le stock se charge maintenant
+  // en 2 aller-retours réseau au lieu d'1 seul) : l'effet « Table par défaut
+  // du simulateur une fois le stock chargé » (DevisGenerator.jsx) insère ~15
+  // lignes d'un coup DÈS que `produits` arrive, après le premier rendu. Sonder
+  // les points AVANT cet ajout fige une bbox transitoire du pied collant ; le
+  // contenu inséré ensuite occupe alors le point sondé (bouton de ligne
+  // fraîchement rendu) — pas du chrome fixe recouvrant la cible. Attendre que
+  // cette composition par défaut soit posée (condition EXPLICITE, jamais un
+  // sleep fixe) avant de mesurer.
+  await expect(page.locator('table.lines-table tbody tr').first()).toBeVisible()
   await assertNoHorizontalOverflow(page, '/ventes/devis/nouveau')
   const submitBtn = page.getByRole('button', { name: /Créer le devis|Enregistrer les modifications/ })
   await assertNotObscured(page, submitBtn, 'devis generator: submit action')
