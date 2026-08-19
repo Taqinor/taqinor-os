@@ -43,7 +43,7 @@ BASELINE_ALLOWLIST = {
     # neutre : elle PRÉ-AUTORISE en silence un futur `round(total_ht, 2)`
     # inséré à cette ligne, c.-à-d. exactement l'arrondi monétaire hors
     # `quantize_mad` que cette garde existe pour faire relire.
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1749",  # QJ29 multi-villa ×N (réécrit PVUNI, formule préexistante revue)
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1777",  # QJ29 multi-villa ×N (réécrit PVUNI, formule préexistante revue)
     "backend/django_core/apps/ventes/quote_engine/builder.py:1836",  # total_ttc ligne gamme (réécrit PVUNI, formule préexistante revue)
     "backend/django_core/apps/ventes/quote_engine/builder.py:628",
     "backend/django_core/apps/ventes/quote_engine/builder.py:630",
