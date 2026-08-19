@@ -23,11 +23,11 @@ Format d'une entrée : `ID | invariant | fichier::Classe::test_méthode`.
 3. **TVA-CHAIN** — la chaîne Sous-total HT → Remise → Total HT → TVA → Total
    TTC affichée sur le PDF correspond exactement au taux de TVA réellement
    appliqué (jamais un texte de taux qui contredit le calcul).
-   `apps/ventes/tests/test_quote_engine.py::TestPdfFormats::test_tva_note_matches_applied_math`
+   `apps/ventes/tests/test_quote_engine_formats.py::TestPdfFormats::test_tva_note_matches_applied_math`
 
 4. **TOTALS-RECONCILE** — les compartiments à taux de TVA mixtes (10 %
    panneaux / 20 % reste) se réconcilient au centime près sur le total.
-   `apps/ventes/tests/test_quote_engine.py::TestPdfFormats::test_mixed_rates_buckets_reconcile_to_the_centime`
+   `apps/ventes/tests/test_quote_engine_formats.py::TestPdfFormats::test_mixed_rates_buckets_reconcile_to_the_centime`
 
 5. **STATUS-TRANSITIONS** — un devis `refusé`/`expiré`/`accepté` ne peut plus
    transiter vers `accepté` (409, jamais un statut aval illégal).
@@ -41,7 +41,7 @@ Format d'une entrée : `ID | invariant | fichier::Classe::test_méthode`.
 7. **NO-PRIX-ACHAT-CLIENT-FACING** — `Produit.prix_achat` (indicateur de
    marge générateur-only) n'apparaît JAMAIS dans un rendu PDF client, quel que
    soit le format (règle CLAUDE.md — devis premium).
-   `apps/ventes/tests/test_quote_engine.py::TestPdfFormats::test_buy_prices_never_in_pdf_html`
+   `apps/ventes/tests/test_quote_engine_formats.py::TestPdfFormats::test_buy_prices_never_in_pdf_html`
 
 ## Règle : un bug corrigé atterrit avec un test rouge-d'abord
 

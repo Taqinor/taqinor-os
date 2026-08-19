@@ -355,11 +355,16 @@ jobs:
   #   `ci_shard.py --update-timings` sur les journaux de ce run).
   #
   # POURQUOI 9 ET PAS 12 — deux plafonds, tous deux mesures :
-  # 1. UN SEUL MODULE pese 146,9 s : `apps.ventes.tests.test_quote_engine`,
-  #    soit 10 % de toute la suite et 3,4x le module suivant. Aucun nombre de
-  #    lanes ne peut descendre une lane sous 147 s tant qu'il n'est pas scinde.
-  #    Le gain s'arrete donc net vers N=12 (1 457/12 = 121 s < 147 s) : au-dela,
-  #    on paie ~135 s de mise en place de plus pour zero seconde gagnee.
+  # 1. LE PLANCHER DU MODULE LE PLUS LOURD — LEVE le 19/08/2026. Il valait
+  #    146,9 s (`apps.ventes.tests.test_quote_engine`, 10 % de toute la suite,
+  #    3,4x le module suivant) : aucun nombre de lanes ne pouvait descendre une
+  #    lane sous 147 s. Ce module a ete SCINDE en quatre (formats / residential
+  #    / documents / builder, plus une couche de compatibilite qui re-exporte
+  #    ses fabriques), donc le nouveau plancher est ~64 s et il ne mord plus
+  #    avant N~22. Les entrees des quatre parties dans ci_shard_timings.json
+  #    sont des ESTIMATIONS reparties (somme = les 146,9 s mesures) : le
+  #    prochain `ci_shard.py --update-timings` les remplacera par du mesure.
+  #    Ce qui borne desormais N est le point 2, pas un module.
   # 2. Le depot public plafonne a 20 jobs SIMULTANES, et ce plafond est PARTAGE
   #    avec les workflows d'analyse qui demarrent sur le meme commit : CodeQL en
   #    prend 3, semgrep 1, bandit 1. Sur ce run, 4 jobs CI ont donc attendu de
@@ -367,7 +372,9 @@ jobs:
   #    exactement (9 backend + 3 vitest + 2 e2e + 6 uniques) ; toute lane
   #    supplementaire part en file d'attente et rend son gain.
   # Cout par lane = ~135 s de mise en place + ~20 s de rodage Django + 1 457/N :
-  #   N=9 -> ~5 min 49 s, N=12 -> ~5 min 02 s (le plancher du module ci-dessus).
+  #   N=9 -> ~5 min 49 s, N=12 -> ~5 min 02 s. Depuis la scission du point 1,
+  #   `ci_shard.py --plan N` rend 1,00x d'equilibre jusqu'a N=20 (avant : 1,35x
+  #   a N=16, 1,69x a N=20 — une lane restait collee a 146,9 s).
   backend-tests-shard:
     needs: changes
     if: ${{ needs.changes.outputs.backend == 'true' }}
