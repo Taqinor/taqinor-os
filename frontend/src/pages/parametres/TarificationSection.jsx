@@ -142,7 +142,8 @@ export default function TarificationSection() {
             icon={<><path d="M3 3v18h18" /><path d="m19 9-5 5-4-4-3 3" /></>} />
           <p className="text-[11px] text-muted-foreground">
             Paliers mensuels (kWh → prix MAD/kWh TTC). Laissez la borne vide pour
-            le palier supérieur ouvert. Défaut = barème ONEE 2024.
+            le palier supérieur ouvert. Défaut = barème ONEE 2026 (TVA 20 %) —
+            change chaque année où la TVA change, réglable ici.
           </p>
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center gap-2 text-[11px] font-medium text-muted-foreground">
@@ -298,15 +299,18 @@ export default function TarificationSection() {
   )
 }
 
-// Miroir des défauts ONEE TTC côté serveur (DEFAULT_RESIDENTIAL_TIERS). Affichés
-// quand rien n'est encore enregistré ; enregistrer = mêmes valeurs.
+// Miroir des défauts ONEE TTC côté serveur (DEFAULT_RESIDENTIAL_TIERS).
+// ORDRE FONDATEUR (19/08/2026) — TVA 20 % depuis le 01/01/2026 : valeurs 2026
+// (HT × 1,20, voir apps/ventes/quote_engine/pricing.py ONEE_TRANCHES pour la
+// dérivation). Affichés quand rien n'est encore enregistré ; enregistrer =
+// mêmes valeurs.
 const DEFAULT_TIERS = [
-  { max_kwh: '100', prix_kwh_ttc: '0.9010' },
-  { max_kwh: '150', prix_kwh_ttc: '1.0732' },
-  { max_kwh: '210', prix_kwh_ttc: '1.0732' },
-  { max_kwh: '310', prix_kwh_ttc: '1.1676' },
-  { max_kwh: '510', prix_kwh_ttc: '1.3817' },
-  { max_kwh: '', prix_kwh_ttc: '1.5958' },
+  { max_kwh: '100', prix_kwh_ttc: '0.916272' },
+  { max_kwh: '150', prix_kwh_ttc: '1.091388' },
+  { max_kwh: '210', prix_kwh_ttc: '1.091388' },
+  { max_kwh: '310', prix_kwh_ttc: '1.187388' },
+  { max_kwh: '510', prix_kwh_ttc: '1.405116' },
+  { max_kwh: '', prix_kwh_ttc: '1.622856' },
 ]
 
 const FALLBACK_FORM = {
