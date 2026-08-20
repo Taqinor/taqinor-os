@@ -1,0 +1,131 @@
+{
+  "endpoint": "GET /api/django/stock/produits/<int:pk>/compatibilites/",
+  "pourquoi": "PVCOMPAT (fondateur 20/08/2026) — la fiche produit du stock ne doit pas seulement dire si la FICHE est complète : elle doit dire si le produit est INSTALLABLE avec le reste du stock, montrer la composition qu'il rejoindrait, lister les produits compatibles des autres familles, et NOMMER le problème quand rien ne convient (« courant maxi par MPPT inférieur au courant de chaque panneau »). PACT10 : ce fichier part SEUL, avant les deux moitiés — le calcul vit côté ventes (apps/ventes/compatibilites.py, exposé par apps/ventes/selectors.py, moteur pur core.electrique via solar_design), l'endpoint est une action détail du viewset Produit (stock), l'écran est l'onglet « Compatibilités » de ProduitDetail. Les verdicts sont DÉRIVÉS des fiches techniques réelles — jamais un défaut inventé : une variable absente rend un verdict « inconnu » motivé, pas un faux OK. Familles couvertes v1 : panneau / onduleur (réseau + hybride) / batterie ; extensible (protections DC, coffrets) sans changer la forme.",
+  "exemple": {
+    "produit": {
+      "id": 12,
+      "nom": "Onduleur hybride Deye 10kW Triphasé",
+      "famille": "onduleur_hybride"
+    },
+    "fiche_incomplete": [],
+    "installable": true,
+    "bilan": {
+      "verdict": "installable",
+      "composition": [
+        {
+          "role": "panneau",
+          "produit_id": 3,
+          "nom": "Panneau Canadien Solar 710W",
+          "quantite": 14,
+          "detail": "2 chaînes de 7 — Voc à froid 386 V sous la limite 500 V, fenêtre MPPT 150-425 V respectée, 17,6 A sous les 26 A par MPPT"
+        },
+        {
+          "role": "batterie",
+          "produit_id": 7,
+          "nom": "Batterie Dyness 10 kWh",
+          "quantite": 1,
+          "detail": "51,2 V nominale dans la plage batterie 40-60 V de l'onduleur"
+        }
+      ],
+      "problemes": []
+    },
+    "familles": [
+      {
+        "famille": "panneau",
+        "produits": [
+          {
+            "id": 3,
+            "nom": "Panneau Canadien Solar 710W",
+            "ok": true,
+            "raison": ""
+          },
+          {
+            "id": 4,
+            "nom": "Panneau Jinko 710W",
+            "ok": true,
+            "raison": ""
+          }
+        ]
+      },
+      {
+        "famille": "batterie",
+        "produits": [
+          {
+            "id": 7,
+            "nom": "Batterie Dyness 10 kWh",
+            "ok": true,
+            "raison": ""
+          },
+          {
+            "id": 9,
+            "nom": "Batterie Dyness HV 16 kWh",
+            "ok": false,
+            "raison": "tension nominale inconnue (fiche technique sans « tension nominale (V) ») — complétez la fiche pour trancher"
+          }
+        ]
+      }
+    ]
+  },
+  "exemple_non_installable": {
+    "produit": {
+      "id": 31,
+      "nom": "Onduleur réseau compact 3kW",
+      "famille": "onduleur_reseau"
+    },
+    "fiche_incomplete": [],
+    "installable": false,
+    "bilan": {
+      "verdict": "non installable",
+      "composition": [],
+      "problemes": [
+        "aucun panneau du stock ne convient : courant maxi par MPPT (13 A) inférieur au courant de court-circuit de chaque panneau (≥ 18,5 A)"
+      ]
+    },
+    "familles": [
+      {
+        "famille": "panneau",
+        "produits": [
+          {
+            "id": 3,
+            "nom": "Panneau Canadien Solar 710W",
+            "ok": false,
+            "raison": "courant de court-circuit 18,6 A au-dessus du courant maxi par MPPT (13 A)"
+          }
+        ]
+      },
+      {
+        "famille": "batterie",
+        "produits": []
+      }
+    ]
+  },
+  "exemple_panneau": {
+    "produit": {
+      "id": 3,
+      "nom": "Panneau Canadien Solar 710W",
+      "famille": "panneau"
+    },
+    "fiche_incomplete": [],
+    "installable": true,
+    "bilan": null,
+    "familles": [
+      {
+        "famille": "onduleur",
+        "produits": [
+          {
+            "id": 12,
+            "nom": "Onduleur hybride Deye 10kW Triphasé",
+            "ok": true,
+            "raison": ""
+          },
+          {
+            "id": 31,
+            "nom": "Onduleur réseau compact 3kW",
+            "ok": false,
+            "raison": "courant de court-circuit 18,6 A au-dessus du courant maxi par MPPT (13 A)"
+          }
+        ]
+      }
+    ]
+  }
+}
