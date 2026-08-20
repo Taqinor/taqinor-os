@@ -1,9 +1,14 @@
 """Read-only product catalog helper — vendored data from RedaSolar/devis-simulator.
 
-Only the auto-selection bits the OS lacks are lifted: picking a default battery
-to build the "Avec batterie" (Option 2) column when an OS quote has none. The
-simulator's file-writing / editing machinery (save_catalog, custom templates,
-JSON storage) is intentionally NOT carried over.
+The simulator's file-writing / editing machinery (save_catalog, custom
+templates, JSON storage) is intentionally NOT carried over.
+
+Z1 (ORDRE FONDATEUR, 20/08/2026) — ``pick_default_battery`` a été SUPPRIMÉE.
+Elle fabriquait une « Batterie 5 kWh » de catalogue pour composer l'option
+« Avec batterie » d'un devis hybride qui n'en portait aucune : un composant et
+un prix INVENTÉS sur un document client. Aucun chiffre montré au client ne peut
+venir d'ailleurs que d'une saisie réelle ou d'une dérivation traçable — ne
+réintroduisez PAS de sélection par défaut ici.
 """
 from __future__ import annotations
 
@@ -21,37 +26,3 @@ def load_catalog() -> dict:
             return json.load(f)
     except Exception:
         return {}
-
-
-def pick_default_battery() -> dict:
-    """Return a sensible default battery line for the Avec-batterie option.
-
-    Prefers a real named-brand 5 kWh battery from the catalog; falls back to the
-    catalog __default__ price, then to a hard default. Shape matches the premium
-    generator's item dicts: designation, marque, quantite, prix_unit_ttc.
-    """
-    catalog = load_catalog()
-    batteries = catalog.get("Batterie", {})
-
-    # Prefer a named brand with a 5 kWh entry (most common residential default).
-    for brand, sizes in batteries.items():
-        if brand == "__default__" or not isinstance(sizes, dict):
-            continue
-        entry = sizes.get("5")
-        if isinstance(entry, dict) and entry.get("sell_ttc"):
-            return {
-                "designation": "Batterie 5 kWh",
-                "marque": brand,
-                "quantite": 1,
-                "prix_unit_ttc": float(entry["sell_ttc"]),
-            }
-
-    # Fallback: catalog __default__ price.
-    default = batteries.get("__default__", {})
-    price = float(default.get("sell_ttc") or 16000)
-    return {
-        "designation": "Batterie 5 kWh",
-        "marque": "Deye",
-        "quantite": 1,
-        "prix_unit_ttc": price,
-    }

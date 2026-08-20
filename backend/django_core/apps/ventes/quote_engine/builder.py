@@ -612,7 +612,6 @@ def compute_financing_block(
 def build_quote_data(devis, pdf_options=None) -> dict:
     """Build the dict consumed by generate_premium_pdf from a Devis instance."""
     from .pricing import calculate_savings_roi
-    from .catalog import pick_default_battery
 
     client = devis.client
     taux_tva = devis.taux_tva or Decimal(20)
@@ -714,19 +713,34 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         puissance_kwc = max(3.0, round(_approx / 12000, 2))
         nb_panneaux = max(1, round(puissance_kwc * 1000 / watt))
 
-    # Battery synthesis only at residential scale (≤ 15 kWc) where a single
-    # default module is sensible — never a token battery on a large plant.
-    if has_hybride and not has_batterie and puissance_kwc <= 15:
-        synth = dict(pick_default_battery())
-        # Une batterie n'est jamais un panneau : 20 % en mode réforme,
-        # taux du devis pour les devis historiques.
-        synth_taux = 20.0 if per_line_tva else float(taux_tva)
-        synth.setdefault("taux_tva", synth_taux)
-        synth.setdefault(
-            "prix_unit_ht",
-            round(synth.get("prix_unit_ttc", 0) / (1 + synth_taux / 100), 2))
-        avec_items = avec_items + [synth]
-        has_batterie = True
+    # ── Z1 (ORDRE FONDATEUR, 20/08/2026) — PLUS AUCUNE BATTERIE DE SYNTHÈSE ──
+    #
+    # Le moteur INJECTAIT ici une « Batterie 5 kWh » tirée du catalogue vendorisé
+    # (``catalog.pick_default_battery``) dès qu'un devis portait un onduleur
+    # HYBRIDE sans ligne batterie réelle, pour pouvoir composer l'option « Avec
+    # batterie » du document résidentiel à deux options. Le client recevait donc
+    # un COMPOSANT et un PRIX qui n'existaient dans AUCUN document : le fondateur
+    # l'interdit sans exception (« never invent numbers »).
+    #
+    # Nouvelle règle : l'option « Avec batterie » n'existe QUE depuis des lignes
+    # RÉELLES du devis. Sans batterie réelle, il n'y a pas d'alternative
+    # commerciale à présenter — le document dégrade en OPTION UNIQUE. Sa
+    # composition est alors TOUTES les lignes réelles du devis (mêmes doctrine et
+    # invariant que le repli « artefact deux-onduleurs » plus bas, PV86 : aucune
+    # ligne, aucun dirham ne disparaît, le total du document EST le total du
+    # devis) et son étiquette « Sans batterie » est FACTUELLEMENT vraie.
+    #
+    # Sans ce rattrapage, un devis dont le SEUL onduleur est hybride perdrait son
+    # onduleur (``sans_items`` exclut les hybrides) et se verrait refuser le
+    # rendu par la règle dure « une option ne se rend jamais sans onduleur »,
+    # alors qu'il porte bel et bien un onduleur.
+    #
+    # Conséquence directe : plus aucun chemin ne fait dériver le taux
+    # d'autoconsommation « avec batterie » d'un forfait 0,85 faute de capacité —
+    # il n'y a plus d'option « avec » sans capacité réelle à additionner.
+    hybride_sans_batterie = has_hybride and not has_batterie
+    if hybride_sans_batterie:
+        sans_items = [dict(it) for it in items]
 
     opts = clean_pdf_options(pdf_options)
     mode = devis.mode_installation or ""
@@ -738,6 +752,11 @@ def build_quote_data(devis, pdf_options=None) -> dict:
 
     sans_ok = has_reseau
     avec_ok = has_hybride and has_batterie
+    if hybride_sans_batterie:
+        # Z1 — l'onduleur hybride EST là (l'option unique le porte, cf. la
+        # recomposition de ``sans_items`` ci-dessus) ; c'est la batterie qui
+        # manque. Une seule présentation, honnêtement étiquetée « Sans batterie ».
+        sans_ok, avec_ok = True, False
     if not sans_ok and not avec_ok and pdf_mode == "full":
         # RÈGLE DURE : une option ne se rend JAMAIS sans onduleur. Un devis
         # sans aucun onduleur ne peut pas produire le document à options.
@@ -774,6 +793,13 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # charge utile publique les retire (``public_views.proposal_data``) et aucun
     # renderer ne les lit.
     avertissements_internes = []
+    if hybride_sans_batterie:
+        # Z1 — trace INTERNE : le vendeur doit savoir pourquoi le document est
+        # mono-option (le devis porte un onduleur hybride mais aucune batterie
+        # chiffrée). Jamais rendu au client.
+        avertissements_internes.append(
+            "onduleur hybride sans ligne batterie — document rendu en option "
+            "unique (aucune batterie n'est inventée)")
     # Deux VRAIES options (avant tout repli) — pilote la règle d'intégrité :
     # total d'affichage = option 1, et le une-page ne mélange jamais.
     deux_options = sans_ok and avec_ok and alternative_declaree
@@ -850,6 +876,15 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     elif scenario == 'Avec batterie':
         sans_ok = False
         deux_options = False
+
+    # Z1 — un document MONO-option ne peut pas « recommander » l'option qu'il ne
+    # rend pas : un ``recommended_option`` stocké « Avec batterie » sur un devis
+    # dont la batterie a disparu des lignes ferait choisir au moteur legacy le
+    # total de l'option ABSENTE — le prix fantôme que PV86 a banni. On aligne la
+    # recommandation sur l'option réellement rendue. Sans effet sur un document
+    # à deux options (la recommandation stockée y reste souveraine).
+    if not deux_options:
+        recommended = 'Avec batterie' if avec_ok else 'Sans batterie'
 
     # ── Canonical totals: ONE computation from the stored HT lines ───────────
     # Every page must display these exact values — never re-derive.
@@ -1291,12 +1326,25 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # autre) : la ligne dit la MÉTHODE et le chemin vers l'exactitude.
         # Seul un tarif réellement personnalisé (saisi pour CE devis, différent
         # du défaut) reste affiché, car c'est la donnée du client.
-        from .constants import KWH_PRICE as _KWH_DEFAULT
+        # Z3 (ORDRE FONDATEUR, 20/08/2026) — la garde QRES55 visait la MAUVAISE
+        # constante : elle comparait le tarif employé à ``constants.KWH_PRICE``
+        # (1,75 — l'ANCIEN défaut du simulateur, plus jamais utilisé comme prix)
+        # alors que le repli réellement appliqué est
+        # ``pricing._FALLBACK_KWH_PRICE`` (1,20). L'égalité n'arrivant jamais,
+        # c'était la branche « personnalisé » qui s'exécutait et le document
+        # client (PDF legacy ET proposition publique, qui sert ``hypotheses``
+        # telles quelles) affichait « Tarif électricité : 1,20 MAD/kWh,
+        # personnalisé pour votre profil de consommation » — un REPLI présenté
+        # comme une donnée du client. Le signal juste n'est pas une comparaison
+        # de valeur mais ``savings_estimated``, que ``calculate_savings_roi``
+        # pose à True EXACTEMENT quand aucune donnée tarifaire n'existait (ni
+        # prix vendeur, ni barème distributeur, ni barème société) : le prix est
+        # alors un repli — jamais nommé en chiffres, jamais dit « personnalisé ».
         if _util_name:
             hypotheses.append(
                 f"Tarif électricité retenu : {_tarif_txt} MAD/kWh "
                 f"({_util_name})")
-        elif abs(float(_tarif_val) - float(_KWH_DEFAULT)) < 1e-6:
+        elif roi.get("savings_estimated"):
             hypotheses.append(
                 "Tarif électricité : référence résidentielle prudente — "
                 "transmettez une facture récente et nous recalculons vos "
@@ -1676,6 +1724,12 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # productible). Même dict rendu par le PDF premium et /proposal.
         "hypotheses": hypotheses_block,
         "factures_mensuelles": factures_mensuelles,
+        # Z2 (ORDRE FONDATEUR, 20/08/2026) — la série « avant » est-elle RÉELLE
+        # (12 factures du lead, PACT10/QF-REAL) ou reconstruite depuis l'économie
+        # SUPPOSÉE ? C'est l'ancrage qui autorise la synthèse économies à être
+        # rendue ; sans aucun ancrage réel, elle est OMISE (jamais un chiffre
+        # d'apparence factuelle bâti sur le tarif de repli + un taux forfaitaire).
+        "factures_reelles": _real_bills is not None,
         "sans_items": sans_items,
         "avec_items": avec_items,
         "sans_bullets": _bullets(sans_items),

@@ -209,6 +209,29 @@ BASELINE_ALLOWLIST = {
     "backend/django_core/apps/ventes/quote_engine/builder.py:1755",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1882",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1749",
+    # Z1/Z2 (20/08/2026) — RE-CALAGE file:line, PAS de nouveau site
+    # (bug-class #34), et un site MONÉTAIRE EN MOINS. Le bloc « batterie de
+    # synthèse » de `build_quote_data` a été SUPPRIMÉ (ordre fondateur : aucun
+    # composant ni prix inventé sur un document client) ; il portait le seul
+    # round() vraiment monétaire du lot,
+    # `round(synth["prix_unit_ttc"] / (1 + taux/100), 2)` — il n'existe plus.
+    # Les commentaires Z1/Z2 ajoutés décalent ensuite uniformément les arrondis
+    # d'AFFICHAGE qui suivent (+26 puis +45 lignes). PREUVE DE CONTENU (script
+    # de recalage, chaque ligne retrouvée mot pour mot sur HEAD) :
+    #   868→903 ht_brut · 870→905 ht_net · 895→930 tva_amt · 897→932 ttc_exact
+    #   1133→1168 roi_s · 1146→1181 prix_kwc · 1822→1876 montant TVA ×N
+    #   1828→1882 display_total_multi · 1881→1935 total_ht · 1882→1936 total_ttc
+    # (336/337 sont AVANT toute insertion et ne bougent pas.)
+    "backend/django_core/apps/ventes/quote_engine/builder.py:903",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:905",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:930",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:932",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1168",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1181",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1876",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1882",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1935",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1936",
 }
 
 TARGET_FILES = [

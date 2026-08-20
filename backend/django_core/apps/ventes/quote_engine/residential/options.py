@@ -141,6 +141,13 @@ def build_pages(ctx) -> list:
     # « commun aux deux options ». Repli sûr : sans drapeau, deux-options.
     deux_options = bool(d.get("deux_options", True))
     avec_ok = bool(d.get("avec_ok", True))
+    # Z2 (ORDRE FONDATEUR, 20/08/2026) — sans AUCUNE donnée réelle d'ancrage, la
+    # couche économique du document est OMISE (cf. renderer.ancrage_reel_absent) :
+    # la rentabilité (payback, gain net 25 ans, courbe de cashflow) descend du
+    # même tarif de repli × taux forfaitaire que la synthèse de la page 1 et part
+    # avec elle. L'équipement, les totaux et la TVA — eux — sont les données du
+    # devis : ils restent rendus à l'identique.
+    masquer_eco = bool(d.get("masquer_synthese"))
 
     if deux_options:
         shared, delta_sans, delta_avec = _split_items(
@@ -630,6 +637,8 @@ def build_pages(ctx) -> list:
         </div>"""
 
     def _fin_html(xl=False):
+        if masquer_eco:
+            return ""
         if xl:
             # QRES38 — page rentabilité dédiée : composition VERTICALE (courbe
             # pleine largeur, stats en rangée dessous) — la page respire au
@@ -688,7 +697,10 @@ def build_pages(ctx) -> list:
     # tableau), pages « suite » (titre court seulement — la clôture suit le
     # DERNIER morceau de tableau).
     chunks = _chunk_rows(shared, budgets=[118.0, 165.0])
-    pages = []
+    # Z2 — les intérieurs sont gardés pour pouvoir, en mode « économies omises »,
+    # replier l'encart environnemental sur la DERNIÈRE page équipement (dans son
+    # gabarit ``p2-wrap``) au lieu de publier une page « rentabilité » vide.
+    inners = []
     for i, chunk in enumerate(chunks):
         is_first = i == 0
         is_last = i == len(chunks) - 1
@@ -702,12 +714,12 @@ def build_pages(ctx) -> list:
             # QRES62 — joint élastique avant la clôture (totaux) : absorbe le
             # vide résiduel mesuré de la dernière page équipement.
             inner += '<div class="qj" data-w="100"></div>' + closing_html
-        pages.append(_wrap_page(inner))
+        inners.append(inner)
 
     # QRES28 — la page rentabilité dédiée (espace abondant) reçoit le bandeau
     # navy de gain net (le chiffre-héros du document, en pleine largeur).
     _callout = ""
-    if gain_mult_txt:
+    if gain_mult_txt and not masquer_eco:
         _callout = (
             f'<div class="p2-callout">≈ {fmt(gain25)} MAD de gain net sur '
             f'25 ans — <b>{gain_mult_txt}× le prix de votre installation'
@@ -747,6 +759,14 @@ def build_pages(ctx) -> list:
 
     # QRES62 — joints élastiques de la page rentabilité : le vide mesuré se
     # répartit entre courbe→bandeau→financement→impact (page toujours pleine).
+    if masquer_eco:
+        # Z2 — la page « rentabilité » n'a plus de contenu légitime (courbe,
+        # payback et gain net sont omis) : on ne publie PAS une page-titre vide
+        # avec un seul encart environnemental. L'impact rejoint la dernière page
+        # équipement — le document reste composé, avec UNE page de moins.
+        inners[-1] += impact_html
+        return [_wrap_page(x) for x in inners]
+    pages = [_wrap_page(x) for x in inners]
     pages.append(_wrap_page(
         fin_head_html + _fin_html(xl=True)
         + '<div class="qj" data-w="40"></div>' + _callout

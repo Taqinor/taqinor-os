@@ -97,18 +97,49 @@ class TestBuildQuoteData(TestCase):
         sans = [it['designation'].lower() for it in data['sans_items']]
         self.assertTrue(any('reseau' in d or 'réseau' in d for d in sans))
 
-    def test_residential_hybrid_without_battery_synthesizes_small_module(self):
-        """Échelle résidentielle (≤ 15 kWc) : hybride présent sans batterie →
-        un module par défaut est ajouté (comportement historique conservé)."""
+    def test_residential_hybrid_without_battery_never_synthesizes_a_module(self):
+        """Z1 (ORDRE FONDATEUR, 20/08/2026) — hybride sans ligne batterie :
+        AUCUNE batterie n'est fabriquée. Le moteur ajoutait ici une « Batterie
+        5 kWh » de catalogue pour composer l'option « Avec batterie » : un
+        composant et un prix INVENTÉS sur un document client. Le devis devient
+        mono-option « Sans batterie » (factuellement vrai) et sa composition
+        porte TOUTES ses lignes réelles — l'onduleur hybride compris, donc son
+        total reste le total du devis."""
         from apps.ventes.quote_engine import build_quote_data
         devis = make_devis(self.company, self.user, self.client_obj, [
             ('Panneau mono 550W', '8', '2000'),
             ('Onduleur hybride 5kW', '1', '14000'),
         ])
         data = build_quote_data(devis)
-        self.assertEqual(data['scenario'], 'Avec batterie')
-        avec = [it['designation'].lower() for it in data['avec_items']]
-        self.assertTrue(any('batterie' in d for d in avec))
+        self.assertEqual(data['scenario'], 'Sans batterie')
+        self.assertFalse(data['avec_ok'])
+        self.assertTrue(data['sans_ok'])
+        self.assertFalse(data['deux_options'])
+        # Aucune ligne « batterie » nulle part dans le document rendu.
+        for panier in ('sans_items', 'avec_items'):
+            self.assertFalse(
+                any('batterie' in it['designation'].lower()
+                    for it in data[panier]),
+                f"une batterie fabriquée a survécu dans {panier}")
+        # L'onduleur hybride RÉEL est bien dans l'option rendue (il n'est pas
+        # perdu au passage) et le total du document = total des lignes.
+        sans = [it['designation'].lower() for it in data['sans_items']]
+        self.assertTrue(any('hybride' in d for d in sans))
+        attendu = round(sum(it['quantite'] * it['prix_unit_ht']
+                            for it in data['sans_items']), 2)
+        self.assertAlmostEqual(data['totaux_sans']['ht_brut'], attendu, places=2)
+
+    def test_hybrid_without_battery_still_renders_a_pdf(self):
+        """Z1 — la règle dure « une option ne se rend jamais sans onduleur » ne
+        doit PAS refuser un devis dont le seul onduleur est hybride : il porte
+        bien un onduleur, c'est la batterie qui manque."""
+        from apps.ventes.quote_engine import build_quote_data
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau mono 550W', '8', '2000'),
+            ('Onduleur hybride 5kW', '1', '14000'),
+        ], reference='DEV-QE-HYBNOBAT')
+        data = build_quote_data(devis, {'pdf_mode': 'full'})
+        self.assertEqual(data['nb_options'], 1)
 
     def test_large_plant_never_gets_token_battery(self):
         """> 15 kWc sans batterie : pas de batterie symbolique fabriquée —
@@ -473,14 +504,55 @@ class TestQuoteNumbersHonestyPack(TestCase):
                          min(100, max(1, round(data['prod_kwh'] / 12000 * 100))))
 
     def test_coverage_flagged_estimation_without_real_conso(self):
-        """Sans conso réelle, la couverture est dérivée honnêtement et
-        étiquetée « estimation » (drapeau vrai)."""
+        """Sans conso réelle MAIS avec un barème distributeur réel, la
+        couverture est DÉRIVÉE de la facture au tarif réel — une dérivation
+        traçable : elle reste rendue, étiquetée « estimation » (drapeau vrai).
+        Z2 ne touche PAS ce cas (voir le test d'omission ci-dessous)."""
         from apps.ventes.quote_engine.builder import build_quote_data
         from apps.ventes.quote_engine.residential import renderer
-        data = build_quote_data(self._devis(ref='DEV-QX7-EST'))
+        devis = self._devis(ref='DEV-QX7-EST')
+        devis.etude_params = {**DEUX_OPTIONS, 'distributeur': 'onee'}
+        devis.save(update_fields=['etude_params'])
+        data = build_quote_data(devis)
         self.assertIsNone(data['conso_annuelle_kwh'])
+        self.assertFalse(data['savings_estimated'])
         d = renderer._augment(data)
+        self.assertFalse(d['masquer_synthese'])
         self.assertTrue(d['coverage_estimated'])
+
+    def test_no_real_data_at_all_omits_the_savings_synthesis(self):
+        """Z2 (ORDRE FONDATEUR, 20/08/2026) — un devis SANS aucune donnée
+        réelle d'ancrage (ni 12 factures réelles, ni conso annuelle, ni
+        distributeur/tarif) ne rend PLUS de synthèse économies : le −N %,
+        l'avant/après, la couverture et le graphe mensuel descendaient tous du
+        tarif de REPLI × un taux forfaitaire. Ils disparaissent ENSEMBLE ;
+        aucun « 0 » ne les remplace."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine.residential import renderer
+        data = build_quote_data(self._devis(ref='DEV-Z2-NODATA'))
+        self.assertIsNone(data['conso_annuelle_kwh'])
+        self.assertFalse(data['factures_reelles'])
+        self.assertTrue(data['savings_estimated'])
+        self.assertTrue(renderer.ancrage_reel_absent(data))
+        self.assertIsNone(renderer.synthese_economies(data))
+        # Le document reste rendu (aucune Unsupported), simplement sans sa
+        # couche économique — jamais un bloc à moitié.
+        d = renderer._augment(data)
+        self.assertTrue(d['masquer_synthese'])
+        for k in ('pct_cut', 'annual_before', 'annual_after',
+                  'coverage_pct', 'coverage_estimated',
+                  'bills_before', 'bills_after'):
+            self.assertNotIn(k, d, f"{k} ne doit pas être publié")
+        from apps.ventes.quote_engine.residential import render as r_render
+        html = r_render.build_html(d)
+        for marqueur in ('<div class="c1-bigcut">', '<img class="c1-donut"',
+                         'Votre facture mois par mois', 'Économie estimée',
+                         'Rentabilisé en', 'Rentabilité sur 25 ans',
+                         'Gain net sur 25 ans'):
+            self.assertNotIn(marqueur, html, f"{marqueur} aurait dû être omis")
+        # Ce qui reste est intégralement traçable : prix, puissance, production.
+        self.assertIn('c1-opt-price', html)
+        self.assertIn('Production estimée', html)
 
     # ── (b) échéancier custom sans case morte ───────────────────────────────
     def test_custom_acompte_full_collapses_to_two_boxes(self):

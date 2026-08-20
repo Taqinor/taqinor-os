@@ -69,13 +69,47 @@ def is_residential(devis, options=None) -> bool:
 # page web et la couverture du PDF lisent ainsi le MÊME calcul — le « −85 % »
 # et la donut de couverture ne peuvent plus diverger entre les deux supports.
 # Fonction PURE (dict → dict | None) : aucun accès BD, aucune dépendance lourde.
+def ancrage_reel_absent(data: dict) -> bool:
+    """Z2 (ORDRE FONDATEUR, 20/08/2026) — le devis n'a-t-il AUCUNE donnée réelle ?
+
+    « Aucun ancrage » = le tarif employé est le REPLI (``savings_estimated`` :
+    ni prix plat vendeur, ni barème distributeur, ni barème société) ET le devis
+    ne porte ni 12 factures mensuelles réelles (``factures_reelles``) ni
+    consommation annuelle saisie (``conso_annuelle_kwh``). Tout ce qui serait
+    alors « calculé » descend d'un tarif de repli (1,20 MAD/kWh) multiplié par
+    un taux d'autoconsommation forfaitaire : un chiffre d'apparence factuelle
+    sans aucune saisie derrière — donc OMIS, jamais rendu.
+
+    NE PAS confondre avec ``coverage_estimated`` : là, la consommation est
+    DÉRIVÉE d'une facture réelle au tarif réel — une dérivation traçable, qui
+    reste rendue avec sa mention « (estimation) ».
+    """
+    if not data.get("savings_estimated"):
+        return False                     # tarif réel (vendeur/barème/société)
+    if data.get("factures_reelles"):
+        return False                     # 12 factures RÉELLES du lead
+    try:
+        if float(data.get("conso_annuelle_kwh") or 0) > 0:
+            return False                 # consommation annuelle SAISIE
+    except (TypeError, ValueError):
+        pass
+    return True
+
+
 def synthese_economies(data: dict) -> dict | None:
     """Avant/après facture + couverture solaire, formules de la page 1 du PDF.
 
     Retourne None quand le devis n'a pas la forme requise (12 factures
     mensuelles, économies mensuelles, production) — l'appelant public sert
     alors des None et la page web n'affiche rien, jamais un chiffre inventé.
+
+    Z2 — retourne aussi None quand AUCUNE donnée réelle n'ancre le calcul
+    (``ancrage_reel_absent``) : le −N %, l'avant/après, la couverture et le
+    graphe mensuel disparaissent ALORS ENSEMBLE, du PDF comme de la proposition
+    en ligne (qui lit cette même fonction).
     """
+    if ancrage_reel_absent(data):
+        return None
     try:
         before = list(data.get("factures_mensuelles") or [])
         eco_m = list(data.get("eco_a_monthly") or [])
@@ -129,8 +163,16 @@ def _augment(data: dict) -> dict:
         raise Unsupported("need 12 monthly bills for the avant/après chart")
     # PVCOV — le calcul vit dans synthese_economies (servi tel quel à la
     # proposition en ligne) ; _augment ne fait plus que le consommer.
+    # Z2 — deux raisons distinctes de n'avoir PAS de synthèse :
+    #   · aucune donnée réelle d'ancrage → OMISSION VOULUE : le document est
+    #     rendu normalement, mais sa couche économique (−N %, avant/après,
+    #     couverture, graphe mensuel, économie annuelle, rentabilité) est
+    #     entièrement retirée — jamais un bloc à moitié, jamais un « 0 » ;
+    #   · devis malformé (série de factures inexploitable) → hors périmètre du
+    #     rendu résidentiel, comportement historique inchangé.
     synth = synthese_economies(data)
-    if synth is None:
+    masquer_synthese = synth is None and ancrage_reel_absent(data)
+    if synth is None and not masquer_synthese:
         raise Unsupported("no bill baseline")
 
     d = dict(data)
@@ -162,7 +204,10 @@ def _augment(data: dict) -> dict:
     links = {**_default_links, **{k: v for k, v in _existing_links.items() if v}}
 
     d.update({
-        **synth,
+        **(synth or {}),
+        # Z2 — drapeau UNIQUE lu par les trois gabarits (cover/options) et par
+        # charts.build_all : la couche économique est rendue, ou omise en bloc.
+        "masquer_synthese": masquer_synthese,
         "validity_days": d.get("validity_days", 30),
         "site_url": site_url,
         "links": links,

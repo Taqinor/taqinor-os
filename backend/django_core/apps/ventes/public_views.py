@@ -1080,7 +1080,7 @@ def proposal_data(request, token):
         # PVCOV — synthèse économies/couverture, calculée par LE code de la
         # page 1 du PDF (import paresseux : frontière quote_engine).
         from .quote_engine.residential.renderer import (
-            is_residential, synthese_economies,
+            ancrage_reel_absent, is_residential, synthese_economies,
         )
         # F5 (revue Fable, pré-merge 18/08/2026) — cette synthèse (« −N % »,
         # avant/après annuel, donut de couverture) EST la page 1 du PDF
@@ -1096,8 +1096,8 @@ def proposal_data(request, token):
         # qui décide déjà si LE renderer résidentiel — celui qui rend cette
         # page 1 — s'applique à ce devis : c'est donc l'autorité correcte, et
         # la plus économe (déjà importée juste au-dessus, zéro calcul de plus).
-        synthese = (synthese_economies(data)
-                    if is_residential(devis, {'pdf_mode': 'full'}) else None)
+        _resid_public = is_residential(devis, {'pdf_mode': 'full'})
+        synthese = synthese_economies(data) if _resid_public else None
         # PV86 — VÉRITÉ UNIQUE : la charge utile publique ne transporte QUE les
         # totaux/lignes de l'option réellement proposée. Un devis mono-option
         # laissait passer le second panier (calculé pour le découpage interne) :
@@ -1106,6 +1106,20 @@ def proposal_data(request, token):
         # AUCUN document ne franchit plus la frontière publique. Les
         # avertissements internes (devis à assainir) restent côté vendeur.
         data.pop('avertissements_internes', None)
+        # ── Z2 (ORDRE FONDATEUR, 20/08/2026) — la proposition en ligne HÉRITE de
+        # l'omission du PDF. La synthèse (−N %, avant/après, couverture) est déjà
+        # None ci-dessus, mais la page lit AUSSI `quote.eco_s_ann`/`eco_a_ann`/
+        # `roi_s`/`roi_a`/`eco_a_cumul` en direct : les laisser passer aurait
+        # gardé « Économie ≈ X MAD/an » et « Rentabilisé en Y ans » à l'écran
+        # alors que le PDF du même devis ne les montre plus — un chiffre bâti sur
+        # le tarif de repli × un taux forfaitaire, sans aucune saisie derrière.
+        # Ils partent AVEC la synthèse (la page omet chaque bloc dont la valeur
+        # est nulle). Aucun autre support ne change : le calcul interne du
+        # builder reste intact, seule la republication publique s'arrête.
+        if _resid_public and ancrage_reel_absent(data):
+            for _k in ('eco_s_ann', 'eco_a_ann', 'eco_a_cumul',
+                       'roi_s', 'roi_a', 'savings_method', 'hypotheses'):
+                data[_k] = None
         # F6 (revue Fable, pré-merge 18/08/2026) — QJ12 calcule un bloc
         # `financing` INTERNE (indicatif) ; le fondateur a retiré le crédit de
         # toute surface client à QUATRE reprises (PV80 : plus aucune mensualité

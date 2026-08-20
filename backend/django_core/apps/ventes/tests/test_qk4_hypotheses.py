@@ -132,6 +132,19 @@ class TestHypothesesInData(TestCase):
         joined = ' '.join(h['items'])
         self.assertNotIn('1,75', joined)
         self.assertIn('par tranches', joined)
+        # Z3 (ORDRE FONDATEUR, 20/08/2026) — la garde QRES55 comparait le tarif
+        # employé à ``constants.KWH_PRICE`` (1,75), un défaut HISTORIQUE que
+        # ``pricing`` n'utilise plus : l'égalité n'arrivait jamais et c'est la
+        # branche « personnalisé » qui s'imprimait, donc « Tarif électricité :
+        # 1,20 MAD/kWh, personnalisé pour votre profil de consommation » — le
+        # REPLI ``_FALLBACK_KWH_PRICE`` présenté au client comme SA donnée (sur
+        # le PDF legacy comme sur la proposition en ligne, qui sert ce bloc tel
+        # quel). Le signal juste est ``savings_estimated``.
+        from apps.ventes.quote_engine.pricing import _FALLBACK_KWH_PRICE
+        repli_txt = f"{_FALLBACK_KWH_PRICE:.2f}".replace('.', ',')
+        self.assertTrue(data['savings_estimated'])
+        self.assertNotIn(repli_txt, joined)
+        self.assertNotIn('personnalisé', joined)
 
 
 @tag('pdf')
