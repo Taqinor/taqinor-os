@@ -478,6 +478,12 @@ FICHES = {
     **{sku: {
         'marque': 'Dyness',
         'garantie': 'Garantie 10 ans (variante régionale : 7 ans) · ≥ 6 000 cycles',
+        # Trou comblé (20/08/2026, revue de la lane moteur) : la migration 0012
+        # backfillait 120 mois sur les batteries EXISTANTES, mais le seeder ne
+        # posait AUCUN garantie_mois — toute base neuve sortait à NULL et le
+        # PDF omettait une garantie POURTANT réelle (dyness.com, DL5.0C ESS
+        # 10-Year Limited Warranty — même source que le texte ci-dessus).
+        'garantie_mois': 120,
         # « 51,2 V » → ``bat_v_nominal`` (les deux paliers ont leur fiche).
         'description': ('Batterie lithium LiFePO4 basse tension\n'
                         'Chimie fer-phosphate sûre et durable\n'
@@ -1530,11 +1536,14 @@ class Command(BaseCommand):
             produit = Produit.objects.filter(company=company, sku=sku).first()
             if not produit:
                 continue
-            for field in ('marque', 'description', 'garantie'):
+            # `garantie_mois` (structuré, lu par theme.warranties_for) suit le
+            # même contrat de ré-application que le texte de garantie.
+            for field in ('marque', 'description', 'garantie', 'garantie_mois'):
                 if field in fiche:
                     setattr(produit, field, fiche[field])
-            produit.save(update_fields=[f for f in ('marque', 'description', 'garantie')
-                                        if f in fiche])
+            produit.save(update_fields=[
+                f for f in ('marque', 'description', 'garantie', 'garantie_mois')
+                if f in fiche])
             fiches_updated += 1
 
         # ── PV9/PV85 — Fiches techniques (valeurs datasheet constructeur) ──
