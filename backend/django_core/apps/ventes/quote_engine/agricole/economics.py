@@ -43,7 +43,6 @@ def load_constants(company_id=None) -> dict:
         "peak_to_avg": K.PEAK_TO_AVG,
         "specific_yield_kwh_kwc": K.SPECIFIC_YIELD_KWH_KWC,
         "fda_subsidy_pct": K.FDA_SUBSIDY_PCT,
-        "fda_subsidy_cap": K.FDA_SUBSIDY_CAP,
         "default_current_fuel": K.DEFAULT_CURRENT_FUEL,
     }
     if not company_id:
@@ -132,11 +131,11 @@ def compute(data: dict, company_id=None) -> dict:
     payback_diesel = _payback(quote_ttc, saving_vs_diesel)
     payback = _payback(quote_ttc, annual_saving)
 
-    # FDA 30% subsidy (capped), on acquisition + installation TTC.
+    # FDA 30% subsidy — RATE ONLY (sourced, may be shown). Decision 20/08/2026:
+    # the real cap can't be confirmed, so no amount is computed/shown/derived
+    # from a cap (no "up to X MAD", no net-after-subsidy). See
+    # ``constants.FDA_QUALITATIVE_NOTE`` for the qualitative wording.
     fda_pct = _num(cfg["fda_subsidy_pct"], 30)
-    fda_cap = _num(cfg["fda_subsidy_cap"], 30000)
-    fda_amount = min(round(quote_ttc * fda_pct / 100), int(fda_cap)) if quote_ttc > 0 else 0
-    net_after_fda = max(0, round(quote_ttc - fda_amount))
 
     # CO₂ avoided (bottom-up from the current fuel) — a calculation, not a stat.
     if current_fuel == "diesel":
@@ -201,9 +200,6 @@ def compute(data: dict, company_id=None) -> dict:
         "payback_butane": payback_butane,
         "payback_diesel": payback_diesel,
         "fda_pct": int(fda_pct),
-        "fda_amount": fda_amount,
-        "fda_cap": int(fda_cap),
-        "net_after_fda": net_after_fda,
         "co2_t": co2_t,
         "trees": trees,
         "fuel_qty_label": fuel_qty_label,

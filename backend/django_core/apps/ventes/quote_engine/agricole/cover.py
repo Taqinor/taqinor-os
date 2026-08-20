@@ -49,7 +49,7 @@ def build(ctx) -> str:
     has_water = d.get("has_water")
     annual_saving = d.get("annual_saving") or 0
     payback = d.get("payback")
-    fda_amount = d.get("fda_amount") or 0; fda_pct = d.get("fda_pct") or 30
+    fda_pct = d.get("fda_pct") or 30
     show_subsidy = d.get("show_subsidy", True)
     hectares = d.get("hectares_irrigable")
     current_fuel = d.get("current_fuel") or "butane"
@@ -117,8 +117,10 @@ def build(ctx) -> str:
     if pompe_cv:
         sub = theme.join_meta(f"{fmt_dec(pompe_kw)} kW" if pompe_kw else "", type_lbl)
         stats.append((f"{fmt_dec(pompe_cv)} CV", f"Pompe solaire{(' · ' + sub) if sub else ''}"))
-    if show_subsidy and fda_amount > 0:
-        stats.append((f"{fmt(fda_amount)} DH", f"Subvention FDA {fda_pct} % (estimée)"))
+    # Q3 (fondateur, 20/08/2026) — le plafond FDA n'est pas confirmable : SEUL
+    # le taux (sourcé) est montré ici, plus aucun montant en MAD/DH.
+    if show_subsidy:
+        stats.append((f"{fda_pct} %", "Subvention FDA possible"))
     elif hmt:
         stats.append((f"{fmt(hmt)} m", "Hauteur d'élévation de l'eau"))
     stats = stats[:3]

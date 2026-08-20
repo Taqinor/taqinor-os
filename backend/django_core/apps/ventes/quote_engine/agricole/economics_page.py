@@ -31,6 +31,7 @@ def _disp(url):
 
 def build(ctx) -> str:
     from . import theme
+    from . import constants as K
     d = ctx["d"]; C = ctx["C"]; fmt = ctx["fmt"]; fmt_dec = ctx["fmt_dec"]
     fonts = ctx["fonts"]; charts = ctx["charts"]
 
@@ -51,7 +52,7 @@ def build(ctx) -> str:
     payback_diesel = d.get("payback_diesel")
     annual_saving = d.get("annual_saving") or 0
     savings_20y = d.get("savings_20y") or 0
-    net_after_fda = d.get("net_after_fda") or 0
+    show_subsidy = d.get("show_subsidy", True)
     current_fuel = d.get("current_fuel") or "butane"
     fuel_lbl = {"butane": "butane", "diesel": "diesel"}.get(current_fuel, "carburant")
     co2_t = d.get("co2_t") or 0; trees = d.get("trees") or 0
@@ -114,9 +115,10 @@ def build(ctx) -> str:
         # Degraded path — a curve-less (priced) pump has no m³/jour, so we invent
         # NO water/fuel numbers. We still fill the page with the qualitative value
         # of solar pumping + the market figures that legitimately exist.
-        net_line = (f'<div class="a4-qnet">Après la subvention FDA, votre coût net '
-                    f'estimé tombe à <b>≈ {fmt(net_after_fda)} MAD</b>.</div>'
-                    ) if net_after_fda else ""
+        # Q3 (fondateur, 20/08/2026) — plus de "coût net après subvention" (le
+        # plafond FDA n'est pas confirmable) : mention qualitative, mot pour mot.
+        net_line = (f'<div class="a4-qnet">{K.FDA_QUALITATIVE_NOTE}</div>'
+                    ) if show_subsidy else ""
         whys = [
             ("Indépendance énergétique",
              "Votre énergie vient du soleil, pas du marché du carburant."),
@@ -223,8 +225,7 @@ def build(ctx) -> str:
 .a4-q0 i{{font-style:normal;font-size:11pt;font-weight:700;letter-spacing:.06em;
   text-transform:uppercase;color:{gold};margin-left:9px;}}
 .a4-qsub{{font-size:8.4pt;color:{ink};line-height:1.45;}}
-.a4-qnet{{margin-top:auto;border-top:1px dashed {line};padding-top:8px;font-size:8.2pt;color:{muted};}}
-.a4-qnet b{{color:{green_700};font-family:{f_display};font-size:11.5pt;}}
+.a4-qnet{{margin-top:auto;border-top:1px dashed {line};padding-top:8px;font-size:8pt;color:{ink};line-height:1.35;}}
 .a4-why-i{{padding:7px 0;border-bottom:1px dashed {line_soft};}}
 .a4-why-i:last-child{{border-bottom:none;}}
 .a4-why-i b{{display:block;font-size:8.6pt;color:{navy};font-weight:700;}}

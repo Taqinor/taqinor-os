@@ -11,6 +11,7 @@ def _short(text, n=72):
 
 
 def build(ctx) -> str:
+    from . import constants as K
     d = ctx["d"]; C = ctx["C"]; fmt = ctx["fmt"]; fmt_dec = ctx["fmt_dec"]
     fonts = ctx["fonts"]
 
@@ -29,8 +30,6 @@ def build(ctx) -> str:
     ttc = totaux.get("ttc") or 0
     discount_pct = d.get("discount_pct") or 0
     show_subsidy = d.get("show_subsidy", True)
-    fda_amount = d.get("fda_amount") or 0; fda_pct = d.get("fda_pct") or 30
-    net_after_fda = d.get("net_after_fda") or ttc
 
     # ── equipment table ──────────────────────────────────────────────────────
     rows = []
@@ -70,23 +69,20 @@ def build(ctx) -> str:
         f'<div class="a3-cr {"a3-cr-tot" if big else ""}"><span>{k}</span><b>{v}</b></div>'
         for k, v, big in chain)
 
+    # Q3 (fondateur, 20/08/2026) — le plafond FDA n'est pas confirmable : plus
+    # AUCUN montant de subvention (ni "jusqu'à X MAD", ni un net-après-
+    # subvention). Mention QUALITATIVE, mot pour mot (K.FDA_QUALITATIVE_NOTE) ;
+    # le taux (sourcé) reste affichable.
     fda_html = ""
-    if show_subsidy and fda_amount > 0:
+    if show_subsidy:
         fda_html = (
             f'<div class="a3-fda"><div class="a3-fda-k">Subvention FDA · pompage solaire</div>'
-            f'<div class="a3-fda-v">− {fmt(fda_amount)} MAD</div>'
-            f'<div class="a3-fda-s">{fda_pct} % du coût, plafonnée à 30 000 MAD par projet '
-            f'(pompage couplé à l\'irrigation localisée), versée a posteriori sur dossier '
-            f'DPA/ORMVA, sous réserve d\'éligibilité — cumulable avec la subvention '
-            f'goutte-à-goutte. Nous montons le dossier avec vous.</div>'
-            f'<div class="a3-fda-net"><span>Coût net estimé</span>'
-            f'<b>≈ {fmt(net_after_fda)} MAD</b></div></div>')
+            f'<div class="a3-fda-s">{K.FDA_QUALITATIVE_NOTE}</div></div>')
     else:
         fda_html = ('<div class="a3-fda a3-fda-empty"><div class="a3-fda-k">Bon à savoir</div>'
-                    '<div class="a3-fda-s">Le pompage solaire couplé au goutte-à-goutte est '
-                    'éligible à la subvention FDA (30 %, plafonnée à 30 000 MAD par projet, '
-                    'versée a posteriori, sous réserve d\'éligibilité). Nous montons le '
-                    'dossier DPA/ORMVA avec vous.</div></div>')
+                    '<div class="a3-fda-s">Le pompage solaire couplé au goutte-à-goutte réduit '
+                    'durablement votre facture de carburant. Parlez-nous de votre projet pour '
+                    'étudier les aides à l\'irrigation localisée disponibles.</div></div>')
 
     # ── garanties (folded up from the trust page) ────────────────────────────
     badges = [("25", "ans", "Panneaux (perf.)"), ("5", "ans", "Variateur"),
@@ -130,11 +126,7 @@ def build(ctx) -> str:
 .a3-fda-empty{{border-color:{line};background:{wash};}}
 .a3-fda-k{{font-size:8.4pt;font-weight:700;color:{green_700};}}
 .a3-fda-empty .a3-fda-k{{color:{navy};}}
-.a3-fda-v{{font-family:{f_display};font-size:20pt;color:{green_700};line-height:1;margin:4px 0;}}
-.a3-fda-s{{font-size:7.4pt;color:{muted};line-height:1.3;}}
-.a3-fda-net{{display:flex;justify-content:space-between;align-items:baseline;margin-top:auto;padding-top:8px;
-  border-top:1px dashed #BFE6CB;font-size:9pt;}}
-.a3-fda-net b{{color:{green_700};font-weight:700;font-family:{f_display};font-size:13pt;}}
+.a3-fda-s{{font-size:8.2pt;color:{ink};line-height:1.4;margin-top:2px;}}
 /* garanties */
 .a3-gh{{font-family:{f_serif};font-weight:700;font-size:11pt;color:{navy};margin:14px 0 7px;}}
 .a3-badges{{display:flex;gap:8px;}}
