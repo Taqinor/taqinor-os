@@ -530,11 +530,17 @@ DEFAULT_DOC_TEXTS = {
     # le moteur résidentiel v2 ne publie plus que les garanties traçables aux
     # fiches produit (theme.WARRANTIES), les deux moteurs disent enfin la même
     # chose. Le reste du littéral est inchangé au caractère près.
-    "garantie_titre": "Garanties jusqu&#8217;à 30 ans",
-    "garantie_detail": ("Panneaux 12 ans produit + 30 ans "
-                        "performance (87,4&#8201;%), onduleur 10 ans. "
-                        "Sérénité totale."),
-    "garantie_perf_label": "Performance panneau (87,4&#8201;%)",
+    # M6 (audit du 19/08/2026) — plus AUCUNE durée ni pourcentage codés ici.
+    # Ces trois littéraux annonçaient « jusqu'à 30 ans », « 12 ans produit +
+    # 30 ans performance (87,4 %) », « Performance panneau (87,4 %) » sur TOUS
+    # les devis, y compris ceux dont le panneau est d'une autre marque (Longi :
+    # 30 ans à 88,9 %) ou dont aucune garantie n'est saisie. Le titre et le
+    # détail sont désormais COMPOSÉS depuis les fiches produit du devis
+    # (``_garanties_du_devis``) ; ces défauts ne servent plus que de repli
+    # non chiffré, et une surcharge société explicite reste souveraine.
+    "garantie_titre": "",
+    "garantie_detail": "",
+    "garantie_perf_label": "Performance panneau",
     # D2/N60 — bloc « Bon pour accord » (titre + mention manuscrite).
     "bpa_titre": "Bon pour accord",
     "bpa_mention": ("Lu et approuvé — Signature précédée "
@@ -766,11 +772,14 @@ _BRAND_C = {
     "deyness":  ("#FF6B00", "#fff"),
 }
 
-_GAR = {
-    "onduleur":"10 ans","panneaux":"12 ans","batterie":"10 ans","structures":"20 ans",
-    "smart meter":"2 ans","wifi":"2 ans","tableau":"\u2014","installation":"\u2014",
-    "transport":"\u2014","accessoires":"\u2014","socles":"\u2014","suivi":"\u2014",
-}
+# M6 (audit adversarial du 19/08/2026) \u2014 LE DICTIONNAIRE DE REPLI EST SUPPRIM\u00c9.
+# Il attribuait \u00ab 10 ans \u00bb \u00e0 tout ce qui contient \u00ab onduleur \u00bb, \u00ab 12 ans \u00bb \u00e0
+# tout ce qui contient \u00ab panneaux \u00bb, \u00ab 20 ans \u00bb aux structures\u2026 sur la foi d'un
+# mot dans la d\u00e9signation, pour des produits dont AUCUNE garantie n'\u00e9tait
+# saisie. Un document client engageait donc l'entreprise sur des dur\u00e9es
+# invent\u00e9es. D\u00e9sormais : garantie saisie sur la fiche produit \u21d2 affich\u00e9e ;
+# absente \u21d2 \u00ab \u2014 \u00bb. La colonne existe pour dire ce qu'on sait, pas pour la
+# remplir.
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 def fmt(v):
@@ -1162,6 +1171,67 @@ def _totals_block_rows(totaux, colspan):
     return rows
 
 
+def _ans(mois):
+    """Mois → années entières, ou None si la fiche produit ne dit rien (M6)."""
+    try:
+        m = int(mois)
+    except (TypeError, ValueError):
+        return None
+    return m // 12 if m >= 12 else None
+
+
+def _gar_de_la_fiche(it):
+    """« N ans » lu sur la FICHE PRODUIT de la ligne, ou '' (M6).
+
+    Jamais un mot-clé de désignation : la garantie est une donnée du produit,
+    pas une déduction sur son nom.
+    """
+    n = _ans(it.get("garantie_mois"))
+    return f"{n} ans" if n else ""
+
+
+def _garanties_du_devis():
+    """Garanties RÉELLES des lignes rendues : [(années, libellé), …] (M6).
+
+    Lit les fiches produit des lignes de l'option affichée — onduleur, panneaux
+    (garantie produit), panneaux (garantie de PRODUCTION), batterie. Une
+    famille dont aucune ligne ne porte de garantie saisie est ABSENTE de la
+    liste : les badges de la page signature affichaient « 10 / 12 / 30 ANS »
+    en dur, quels que soient les produits réellement vendus.
+    """
+    rows = AVEC_ITEMS if SCENARIO == 'Avec batterie' else SANS_ITEMS
+    rows = list(rows or []) or list(SANS_ITEMS or []) or list(AVEC_ITEMS or [])
+
+    def _premier(pred, champ):
+        for it in rows:
+            if pred((it.get("designation") or "").lower()):
+                n = _ans(it.get(champ))
+                if n:
+                    return n
+        return None
+
+    _ond = lambda d: "onduleur" in d                      # noqa: E731
+    _pan = lambda d: "panneau" in d or "module" in d      # noqa: E731
+    _bat = lambda d: "batterie" in d                      # noqa: E731
+
+    out = []
+    n = _premier(_ond, "garantie_mois")
+    if n:
+        out.append((n, "Onduleur"))
+    n = _premier(_pan, "garantie_mois")
+    if n:
+        out.append((n, "Panneaux (produit)"))
+    n = _premier(_pan, "garantie_production_mois")
+    if n:
+        # Sans le pourcentage : « 87,4 % » est une spec Canadian Solar, elle ne
+        # vaut pas pour un panneau d'une autre marque garanti la même durée.
+        out.append((n, "Performance panneau"))
+    n = _premier(_bat, "garantie_mois")
+    if n:
+        out.append((n, "Batterie"))
+    return out
+
+
 def equip_rows(items, totaux, hi_bat=False):
     rows = ""
     for i, it in enumerate(items):
@@ -1176,11 +1246,8 @@ def equip_rows(items, totaux, hi_bat=False):
         # factur\u00e9e ; la puissance vit dans la vignette \u00ab Puissance install\u00e9e \u00bb,
         # qui, elle, sait s'omettre.
         ico = icon_img(des, mar); bdg = badge(mar)
-        gar = (it.get("garantie") or "").strip()
-        if not gar:
-            gar = "\u2014"
-            for k, v in _GAR.items():
-                if k in des.lower(): gar = v; break
+        # M6 \u2014 la garantie vient de la FICHE PRODUIT, ou n'est pas affich\u00e9e.
+        gar = (it.get("garantie") or "").strip() or _gar_de_la_fiche(it) or "\u2014"
         # Texte de garantie complet \u2014 il S'ENROULE dans la colonne, jamais
         # tronqu\u00e9 en plein mot.
         is_bat = "batterie" in des.lower() and hi_bat
@@ -1703,6 +1770,50 @@ def page2(sans_items, img_roi, img_mon):
 
 # ── PAGE 3 — trust, guarantees, conditions, prochaines étapes, signature ─────
 def page3():
+    # ── M6 (audit adversarial du 19/08/2026) — LES BADGES DISENT LES VRAIES
+    # GARANTIES. Ils affichaient « 10 / 12 / 30 ANS » et « Performance panneau
+    # (87,4 %) » en dur : ces chiffres sortaient sur un devis Longi comme sur un
+    # Canadian Solar, et sur des produits dont aucune garantie n'est saisie. Ils
+    # sont désormais dérivés des fiches produit des lignes rendues ; une famille
+    # sans garantie saisie n'a PAS de badge, et la bande entière disparaît quand
+    # le devis n'en porte aucune. Le « 87,4 % » — spec Canadian Solar TOPHiKu7 —
+    # ne s'écrit plus ici : le libellé porte la durée, pas la marque d'un autre.
+    _gars = _garanties_du_devis()
+    if _gars:
+        _cards = "".join(
+            f'<div style="flex:1;border:2px solid '
+            f'{CA if lbl.startswith("Performance") else CN};border-top:4px solid '
+            f'{CN if lbl.startswith("Performance") else CA};border-radius:8px;'
+            f'padding:6px 5px;text-align:center;'
+            f'background:{CAL if lbl.startswith("Performance") else "white"};">'
+            f'<div class="serif" style="font-size:38px;'
+            f'color:{CA if lbl.startswith("Performance") else CN};'
+            f'line-height:1.0;letter-spacing:-1px;">{n}</div>'
+            f'<div style="font-size:12px;font-weight:700;'
+            f'color:{CN if lbl.startswith("Performance") else CA};'
+            f'letter-spacing:1px;text-transform:uppercase;">ANS</div>'
+            f'<div style="font-size:8pt;color:{CG4};margin-top:2px;">{lbl}</div>'
+            f'</div>'
+            for n, lbl in _gars[:4])
+        _badges_garanties_html = (
+            f'<div style="padding:0 24px 4px;margin-bottom:5px;">'
+            f'<div style="display:flex;gap:5px;">{_cards}</div></div>')
+    else:
+        _badges_garanties_html = ""
+
+    # M6 — le titre et le détail « Nos garanties » suivent les MÊMES fiches
+    # produit que les badges. Surcharge société explicite (D2/N67) souveraine ;
+    # à défaut, texte composé ; aucune garantie saisie ⇒ formulation sobre,
+    # sans durée inventée.
+    _gar_titre = _doc_text("garantie_titre") or (
+        f"Garanties jusqu&#8217;&#224; {max(n for n, _ in _gars)} ans"
+        if _gars else "Nos garanties")
+    _gar_detail = _doc_text("garantie_detail") or (
+        ", ".join(f"{lbl.lower()} {n} ans" for n, lbl in _gars).capitalize() + "."
+        if _gars else
+        "Garanties fabricant des produits install&#233;s, telles que "
+        "d&#233;taill&#233;es sur leurs fiches techniques.")
+
     # "Option choisie" tick-boxes — only shown when both options are presented
     _opt = (
         f'<div style="margin-bottom:6px;">'
@@ -1872,8 +1983,8 @@ def page3():
           </svg>
         </div>
         <div>
-          <div style="font-size:10.5pt;font-weight:700;color:{CN};margin-bottom:3px;">{_doc_text("garantie_titre")}</div>
-          <div style="font-size:13px;color:{CG4};line-height:1.4;">{_doc_text("garantie_detail")}</div>
+          <div style="font-size:10.5pt;font-weight:700;color:{CN};margin-bottom:3px;">{_gar_titre}</div>
+          <div style="font-size:13px;color:{CG4};line-height:1.4;">{_gar_detail}</div>
         </div>
       </div>
 
@@ -1893,29 +2004,8 @@ def page3():
     </div>
   </div>
 
-  <!-- GUARANTEE BADGES -->
-  <div style="padding:0 24px 4px;margin-bottom:5px;">
-    <div style="display:flex;gap:5px;">
-      <div style="flex:1;border:2px solid {CN};border-top:4px solid {CA};border-radius:8px;padding:6px 5px;text-align:center;background:white;">
-        <div class="serif" style="font-size:38px;color:{CN};line-height:1.0;letter-spacing:-1px;">10</div>
-        <div style="font-size:12px;font-weight:700;color:{CA};letter-spacing:1px;text-transform:uppercase;">ANS</div>
-        <div style="font-size:8pt;color:{CG4};margin-top:2px;">Onduleur</div>
-      </div>
-      <div style="flex:1;border:2px solid {CN};border-top:4px solid {CA};border-radius:8px;padding:6px 5px;text-align:center;background:white;">
-        <div class="serif" style="font-size:38px;color:{CN};line-height:1.0;letter-spacing:-1px;">12</div>
-        <div style="font-size:12px;font-weight:700;color:{CA};letter-spacing:1px;text-transform:uppercase;">ANS</div>
-        <div style="font-size:8pt;color:{CG4};margin-top:2px;">Panneaux (produit)</div>
-      </div>
-      <!-- QRES56 (fondateur, 2026-08-17) : le badge « 20 ANS — Structure de
-           montage » est retiré (même décision que la ligne garantie_detail) ;
-           les trois badges restants s'élargissent, la hauteur ne bouge pas. -->
-      <div style="flex:1;border:2px solid {CA};border-top:4px solid {CN};border-radius:8px;padding:6px 5px;text-align:center;background:{CAL};">
-        <div class="serif" style="font-size:38px;color:{CA};line-height:1.0;letter-spacing:-1px;">30</div>
-        <div style="font-size:12px;font-weight:700;color:{CN};letter-spacing:1px;text-transform:uppercase;">ANS</div>
-        <div style="font-size:8pt;color:{CG4};margin-top:2px;">{_doc_text("garantie_perf_label")}</div>
-      </div>
-    </div>
-  </div>
+  <!-- GUARANTEE BADGES — M6 : dérivés des FICHES PRODUIT du devis -->
+  {_badges_garanties_html}
 
   <!-- QF3 — COMMENT NOUS CALCULONS VOS ÉCONOMIES (méthode + exemple) -->
   <div style="padding:0 24px;">{_savings_method_html()}</div>

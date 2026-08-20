@@ -359,6 +359,63 @@ class Q8DeviseTests(SimpleTestCase):
         self.assertIn(" MAD", html)
 
 
+def _ligne(designation, garantie_mois=None, garantie_production_mois=None):
+    """Ligne d'équipement minimale, avec (ou sans) garantie de fiche produit."""
+    return {"designation": designation, "marque": "", "description": "",
+            "garantie": "", "quantite": 1, "prix_unit_ht": 100.0,
+            "prix_unit_ttc": 120.0, "taux_tva": 20.0,
+            "garantie_mois": garantie_mois,
+            "garantie_production_mois": garantie_production_mois}
+
+
+class M6GarantiesCodeesEnDurTests(SimpleTestCase):
+    """M6 — les garanties du document viennent des FICHES PRODUIT.
+
+    « 30 ans / 87,4 % » (spec Canadian Solar TOPHiKu7) et les badges
+    « 10 / 12 / 30 ANS » s'imprimaient en dur sur tous les devis, y compris un
+    devis Longi (30 ans mais 88,9 %) et des produits sans garantie saisie.
+    """
+
+    LONGI = dict(
+        sans_items=[_ligne("Panneau Longi 585W", 144, 360),
+                    _ligne("Onduleur réseau Huawei 10kW", 120)],
+        avec_items=[_ligne("Panneau Longi 585W", 144, 360),
+                    _ligne("Onduleur hybride Deye 10kW", 120),
+                    _ligne("Batterie Dyness 10 kWh", 120)])
+    SANS_GARANTIE = dict(
+        sans_items=[_ligne("Onduleur réseau 10kW"), _ligne("Panneau X 585W")],
+        avec_items=[_ligne("Onduleur hybride"), _ligne("Batterie 10 kWh")])
+
+    def test_le_pourcentage_canadian_solar_ne_sort_plus_sur_un_autre_panneau(self):
+        self.assertNotIn("87,4", F.html_legacy(**self.LONGI))
+
+    def test_les_badges_reprennent_les_durees_des_fiches(self):
+        html = F.html_legacy(**self.LONGI)
+        durees = re.findall(r'letter-spacing:-1px;">(\d+)</div>', html)
+        self.assertEqual(durees, ["10", "12", "30"])
+        self.assertIn("Garanties jusqu&#8217;&#224; 30 ans", html)
+
+    def test_aucune_garantie_saisie_aucun_badge(self):
+        html = F.html_legacy(**self.SANS_GARANTIE)
+        self.assertEqual(
+            re.findall(r'letter-spacing:-1px;">(\d+)</div>', html), [])
+        self.assertIn("Nos garanties", html)
+        self.assertNotIn("Garanties jusqu", html)
+
+    def test_le_tableau_n_invente_plus_de_garantie_par_mot_cle(self):
+        # « onduleur » dans la désignation valait « 10 ans », « panneaux »
+        # valait « 12 ans » — sur la foi d'un mot, sans aucune donnée produit.
+        html = F.html_legacy(**self.SANS_GARANTIE)
+        self.assertNotIn(">10 ans<", html)
+        self.assertNotIn(">12 ans<", html)
+        self.assertNotIn(">20 ans<", html)
+
+    def test_la_garantie_saisie_reste_affichee(self):
+        html = F.html_legacy(**self.LONGI)
+        self.assertIn(">12 ans<", html)   # panneau : 144 mois
+        self.assertIn(">10 ans<", html)   # onduleur : 120 mois
+
+
 class M1GhiSourceUniqueTests(SimpleTestCase):
     """M1 (suite) — une SEULE dérivation du profil GHI dans tout le backend."""
 
