@@ -1305,3 +1305,130 @@ class TestContratOnduleurSeede(TestCase):
         # dédié doit gagner.
         self.assertIn('Plage batterie : 40-60 V', produit.description)
         self.assertEqual(plage_batterie_onduleur(produit), (45.0, 55.0))
+
+
+class TestPvfchDescriptionSansSpecs(TestCase):
+    """PVFCH (fondateur 20/08/2026) — la DESCRIPTION raconte, elle ne chiffre pas.
+
+    Les descriptions seedées portaient des specs chiffrées qui vivent DÉJÀ dans
+    un champ structuré de ``FicheTechnique`` (« 710 Wc » = ``pmax_wc``,
+    « 51,2 V » = ``bat_v_nominal``, « rendement euro 97,0 % » =
+    ``ond_rendement_euro_pct``, « plage 40-60 V » = ``ond_bat_v_min/max``,
+    « ≈ −0,29 %/°C » = ``temp_coeff_pmax_pct_c``).
+
+    Deux copies d'un même nombre finissent toujours par diverger — et c'est la
+    copie en PROSE, celle que personne ne recalcule, qui part sur la fiche
+    produit du PDF client. La preuve était déjà là : la prose annonçait
+    « rendement max ≈ 98,6 % » à l'identique pour les DIX Huawei, quand leurs
+    champs disent 97,8 à 98,4 % selon le palier.
+
+    Le test garde les DEUX SENS : un nombre porté par un champ ne doit plus
+    être en prose, ET un nombre qu'aucun champ ne porte doit y RESTER (le
+    supprimer serait l'erreur symétrique — une perte de donnée sourcée).
+    """
+
+    #: ``champ de fiche`` → comment ce nombre s'écrirait en prose française.
+    #: Le rendu suit les conventions du dépôt (virgule décimale, unité collée
+    #: au nombre par une espace) ; on teste les deux précisions usuelles pour
+    #: qu'un « 710 » comme un « 710,00 » soit attrapé.
+    UNITES = {
+        'pmax_wc': 'Wc',
+        'bat_v_nominal': 'V',
+        'bat_kwh_nominal': 'kWh',
+        'ond_rendement_euro_pct': '%',
+        'ond_v_max_abs': 'V',
+        'ond_mppt_v_min': 'V',
+        'ond_mppt_v_max': 'V',
+    }
+
+    def setUp(self):
+        from authentication.models import Company
+        self.company, _ = Company.objects.get_or_create(
+            slug='pvfch-desc', defaults={'nom': 'PVFCH'})
+
+    @staticmethod
+    def _ecritures_francaises(valeur):
+        """Les façons plausibles d'écrire ce nombre dans une phrase FR."""
+        brut = Decimal(valeur)
+        formes = set()
+        for gabarit in ('%g', '%.1f', '%.2f'):
+            texte = (gabarit % brut).replace('.', ',')
+            formes.add(texte)
+            if texte.endswith(',0'):
+                formes.add(texte[:-2])
+        return formes
+
+    def test_aucune_spec_portee_par_un_champ_ne_reste_en_prose(self):
+        from apps.stock.management.commands.seed_catalogue import (
+            FICHES, FICHES_TECHNIQUES)
+
+        fautes = []
+        for sku, fiche in FICHES_TECHNIQUES.items():
+            description = (FICHES.get(sku) or {}).get('description') or ''
+            if not description:
+                continue
+            for champ, unite in self.UNITES.items():
+                valeur = fiche.get(champ)
+                if valeur is None:
+                    continue
+                for forme in self._ecritures_francaises(valeur):
+                    aiguille = '%s %s' % (forme, unite)
+                    if aiguille in description:
+                        fautes.append(
+                            '%s : « %s » est déjà porté par %s'
+                            % (sku, aiguille, champ))
+        self.assertEqual(fautes, [], '\n'.join(fautes))
+
+    def test_les_valeurs_retirees_vivent_bien_dans_un_champ(self):
+        """Aucune PERTE : chaque nombre sorti de la prose est encore lisible."""
+        from apps.stock.management.commands.seed_catalogue import (
+            FICHES_TECHNIQUES)
+
+        self.assertEqual(FICHES_TECHNIQUES['PAN-CS-710']['pmax_wc'],
+                         Decimal('710.00'))
+        self.assertEqual(FICHES_TECHNIQUES['PAN-JK-710']['pmax_wc'],
+                         Decimal('710.00'))
+        self.assertEqual(
+            FICHES_TECHNIQUES['PAN-CS-710']['temp_coeff_pmax_pct_c'],
+            Decimal('-0.290'))
+        self.assertEqual(FICHES_TECHNIQUES['BAT-DEY-5']['bat_v_nominal'],
+                         Decimal('51.2'))
+        self.assertEqual(FICHES_TECHNIQUES['BAT-DEY-10']['bat_v_nominal'],
+                         Decimal('51.2'))
+        self.assertEqual(
+            FICHES_TECHNIQUES['OND-DEY-15K-LV']['ond_rendement_euro_pct'],
+            Decimal('97.0'))
+        # La plage batterie des Deye LV, retirée de la parenthèse en prose,
+        # reste portée par le champ dédié (fusionné depuis la source unique
+        # PLAGE_BATTERIE_ONDULEUR).
+        self.assertEqual(FICHES_TECHNIQUES['OND-DEY-15K-LV']['ond_bat_v_min'],
+                         Decimal('40'))
+        self.assertEqual(FICHES_TECHNIQUES['OND-DEY-15K-LV']['ond_bat_v_max'],
+                         Decimal('60'))
+
+    def test_un_nombre_sans_champ_reste_en_prose(self):
+        """L'erreur SYMÉTRIQUE : retirer un nombre qui n'a pas d'autre
+        domicile le perdrait. ``BAT-LIT-5`` n'a AUCUNE ``FicheTechnique`` —
+        sa tension et sa capacité ne vivent que là."""
+        from apps.stock.management.commands.seed_catalogue import (
+            FICHES, FICHES_TECHNIQUES)
+
+        self.assertNotIn('BAT-LIT-5', FICHES_TECHNIQUES)
+        description = FICHES['BAT-LIT-5']['description']
+        self.assertIn('51,2 V', description)
+        self.assertIn('5 kWh', description)
+        # Idem pour le rendement de MODULE et la dégradation annuelle : aucun
+        # champ de FicheTechnique ne les porte, ils restent en prose.
+        self.assertIn('22,9 %', FICHES['PAN-CS-710']['description'])
+        self.assertIn('0,4 %/an', FICHES['PAN-CS-710']['description'])
+
+    def test_la_ligne_marquee_plage_batterie_est_intacte(self):
+        """La parenthèse « (plage 40-60 V…) » a disparu de la prose, mais la
+        LIGNE MARQUÉE — lue par ``plage_batterie_onduleur`` en repli — est
+        posée par un autre mécanisme et reste écrite telle quelle."""
+        seed(self.company)
+        produit = Produit.objects.get(company=self.company,
+                                      sku='OND-DEY-15K-LV')
+        self.assertIn('Plage batterie : 40-60 V', produit.description)
+        # …et la prose ne redit plus la même plage juste au-dessus.
+        self.assertNotIn('(plage 40-60 V', produit.description)

@@ -351,6 +351,21 @@ _DESC_OSP = ('Pompe immergée 3 pouces pour forage, triphasée 380 V\n'
 # ── Fiches commerciales (marque / description / garantie) ───────────────────
 # Garanties issues des termes constructeurs publiés (recherche 2026-06) ;
 # descriptions FR factuelles. Mise à jour ADDITIVE de ces 3 champs uniquement.
+#
+# PVFCH (fondateur 20/08/2026) — LA DESCRIPTION RACONTE, ELLE NE CHIFFRE PAS.
+# Ces descriptions portaient des specs chiffrées qui vivent DÉJÀ dans un champ
+# structuré de ``FicheTechnique`` (« 710 Wc » = ``pmax_wc``, « 51,2 V » =
+# ``bat_v_nominal``, « rendement euro 97,0 % » = ``ond_rendement_euro_pct``,
+# « plage 40-60 V » = ``ond_bat_v_min``/``ond_bat_v_max``, « ≈ −0,29 %/°C » =
+# ``temp_coeff_pmax_pct_c``). Deux copies d'un même nombre finissent toujours
+# par diverger — et c'est la copie en PROSE, celle que personne ne recalcule,
+# qui part sur la fiche produit du PDF client.
+#
+# RÈGLE : un nombre reste dans la prose UNIQUEMENT si aucun champ ne le porte
+# (rendement de module, dégradation annuelle, capacité d'une batterie sans
+# fiche…). Supprimer un nombre qui n'a pas d'autre domicile le PERDRAIT — ce
+# serait l'erreur symétrique. Le test ``test_pvfch_description_sans_specs``
+# vérifie les deux sens.
 FICHES = {
     # Onduleurs réseau Huawei (résidentiel ≤ 25 kW : 10 ans ; C&I : 5 ans ext.)
     **{sku: {
@@ -360,7 +375,11 @@ FICHES = {
                                 'OND-R-HUA-12M', 'OND-R-HUA-15T', 'OND-R-HUA-20T',
                                 'OND-R-HUA-25T')
                      else 'Garantie constructeur 5 ans (extensible jusqu\'à 20 ans)'),
-        'description': ('Onduleur string on-grid Huawei SUN2000, rendement max ≈ 98,6 %\n'
+        # Le rendement vit dans ``ond_rendement_euro_pct``, PAR RÉFÉRENCE
+        # (97,8 à 98,4 % selon le palier) : la prose annonçait « 98,6 % » à
+        # l'identique pour les dix, ce qui contredisait le champ de huit d'entre
+        # elles.
+        'description': ('Onduleur string on-grid Huawei SUN2000\n'
                         'Protection d\'arc intelligente AFCI, parafoudres DC/AC intégrés\n'
                         'Supervision temps réel via l\'application FusionSolar\n'
                         'Conforme IEC 62109, indice IP65 (pose intérieure/extérieure)'),
@@ -371,7 +390,10 @@ FICHES = {
     **{sku: {
         'marque': 'Deye',
         'garantie': 'Garantie constructeur 10 ans',
-        'description': ('Onduleur hybride Deye SUN-…SG, rendement max ≈ 97,6 %\n'
+        # Rendement → ``ond_rendement_euro_pct``. La tension NOMINALE « 48 V »
+        # de la famille de batteries reste : ce n'est pas la PLAGE
+        # (``ond_bat_v_min``/``ond_bat_v_max``), aucun champ ne la porte.
+        'description': ('Onduleur hybride Deye SUN-…SG\n'
                         'Compatible batteries lithium 48 V (BMS CAN/RS485)\n'
                         'Bascule secours (EPS/UPS) < 4 ms en cas de coupure réseau\n'
                         'Monitoring Wi-Fi via Solarman Smart / Deye Cloud'),
@@ -386,9 +408,8 @@ FICHES = {
         'marque': 'Deye',
         'garantie': 'Garantie constructeur 5 à 10 ans (selon site d\'installation)',
         'description': ('Onduleur hybride Deye SUN-…K-SG05LP3, série basse tension 48 V (2024)\n'
-                        'Compatible batteries lithium/plomb 48 V (plage 40-60 V, BMS auto-adaptatif)\n'
-                        'Bascule secours (EPS/UPS), monitoring GPRS/WiFi/Bluetooth/4G/LAN\n'
-                        'Rendement max 97,6 % · rendement euro 97,0 %'),
+                        'Compatible batteries lithium/plomb 48 V (BMS auto-adaptatif)\n'
+                        'Bascule secours (EPS/UPS), monitoring GPRS/WiFi/Bluetooth/4G/LAN'),
     },
     # PVOND (18/08/2026) — jumeau BASSE TENSION du palier 20 kW. Même
     # datasheet de famille que le 15 kW (SUN-14-20K-SG05LP3-EU-SM2). CONFIRMÉ
@@ -398,22 +419,25 @@ FICHES = {
         'marque': 'Deye',
         'garantie': 'Garantie constructeur 5 à 10 ans (selon site d\'installation)',
         'description': ('Onduleur hybride Deye SUN-…K-SG05LP3, série basse tension 48 V (2024)\n'
-                        'Compatible batteries lithium/plomb 48 V (plage 40-60 V, BMS auto-adaptatif)\n'
-                        'Bascule secours (EPS/UPS), monitoring GPRS/WiFi/Bluetooth/4G/LAN\n'
-                        'Rendement max 97,6 % · rendement euro 97,0 %'),
+                        'Compatible batteries lithium/plomb 48 V (BMS auto-adaptatif)\n'
+                        'Bascule secours (EPS/UPS), monitoring GPRS/WiFi/Bluetooth/4G/LAN'),
     },
     'PAN-CS-710': {
         'marque': 'Canadien Solar',
         'garantie': '12 ans produit · 30 ans performance linéaire (87,4 %)',
-        'description': ('Module Canadian Solar TOPHiKu7 710 Wc, cellules N-type TOPCon\n'
+        # « 710 Wc » → ``pmax_wc`` ; « ≈ −0,29 %/°C » → ``temp_coeff_pmax_pct_c``.
+        # Le rendement du MODULE et la dégradation annuelle restent : aucun
+        # champ de ``FicheTechnique`` ne les porte.
+        'description': ('Module Canadian Solar TOPHiKu7, cellules N-type TOPCon\n'
                         'Rendement module jusqu\'à ≈ 22,9 %, dégradation ≤ 0,4 %/an\n'
-                        'Excellent comportement à haute température (≈ −0,29 %/°C)\n'
+                        'Excellent comportement à haute température\n'
                         'Certifié IEC 61215 / IEC 61730, fabricant Tier 1'),
     },
     'PAN-JK-710': {
         'marque': 'Jinko',
         'garantie': '12 ans produit · 30 ans performance linéaire (87,4 %)',
-        'description': ('Module JinkoSolar Tiger Neo 710 Wc, N-type TOPCon\n'
+        # « 710 Wc » → ``pmax_wc``.
+        'description': ('Module JinkoSolar Tiger Neo, N-type TOPCon\n'
                         'Rendement jusqu\'à ≈ 22,9 %, dégradation ≤ 0,4 %/an\n'
                         'Version bifaciale double verre disponible\n'
                         'Certifié IEC 61215 / IEC 61730'),
@@ -421,11 +445,16 @@ FICHES = {
     **{sku: {
         'marque': 'Dyness',
         'garantie': 'Garantie 5 ans · ≥ 6 000 cycles (80 % DoD)',
-        'description': ('Batterie lithium LiFePO4 basse tension 51,2 V\n'
+        # « 51,2 V » → ``bat_v_nominal`` (les deux paliers ont leur fiche).
+        'description': ('Batterie lithium LiFePO4 basse tension\n'
                         'Chimie fer-phosphate sûre et durable\n'
                         'BMS intégré CAN/RS485, compatible onduleurs hybrides Deye\n'
                         'Extensible en parallèle'),
     } for sku in ('BAT-DEY-5', 'BAT-DEY-10')},
+    # PVFCH — « 51,2 V » et « 5 kWh » RESTENT en prose : cette référence n'a
+    # PAS de ``FicheTechnique`` (absente de FICHES_TECHNIQUES, contrairement aux
+    # Dyness). Les retirer perdrait la seule trace de ces deux valeurs. Le jour
+    # où sa fiche est saisie, ils partent d'ici — pas avant.
     'BAT-LIT-5': {
         'marque': 'Lithium',
         'garantie': 'Garantie 5 ans · ≥ 6 000 cycles (80 % DoD)',
