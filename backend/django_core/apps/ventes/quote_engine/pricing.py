@@ -10,12 +10,15 @@ Surplus injected to the grid is NOT valued — the ANRE BT residential
 net-billing tariff is unpublished/unconfirmed; including it would be
 fabricating income.
 
-Tranche tables for ONEE, Lydec, Redal are provided as module-level
-constants. ONEE is the founder-verified RÉGIE grid, SELECTIVE above
-150 kWh/month (crossing a step re-prices the WHOLE month) and identical
-to the public estimator's grid; Lydec/Redal stay progressive and flagged
-APPROXIMATIF, subject to revision. They can be overridden per quote via
-``etude_params`` passed to ``calculate_savings_roi``.
+Q7 (décision fondateur du 20/08/2026) — UN SEUL BARÈME NATIONAL : la grille
+ONEE vérifiée (SÉLECTIVE au-delà de 150 kWh/mois — franchir une marche
+re-tarife TOUT le mois), identique à celle de l'estimateur public. Les trois
+distributeurs (ONEE, Lydec, Redal) la lisent ; le nom du distributeur n'est
+plus qu'un LIBELLÉ. Les anciennes grilles « approximatives » Lydec/Redal sont
+supprimées : jamais vérifiées, elles faisaient diverger la facture d'un même
+client selon un champ de formulaire. Une société dont la grille réelle diffère
+la SAISIT (Paramètres → Tarification & ROI, ``TariffSettings``), et un devis
+peut la surcharger via ``etude_params``.
 
 All tables are TTC tariffs (the customer pays TTC, so the avoided cost
 is the TTC tariff).
@@ -23,7 +26,7 @@ is the TTC tariff).
 from __future__ import annotations
 
 # ── Utility tranche tables ─────────────────────────────────────────────────────
-# APPROXIMATIF / À CONFIRMER — tarifs TTC (MAD/kWh, TVA incluse) au 2026.
+# Tarifs TTC (MAD/kWh, TVA incluse) au 2026 — grille NATIONALE vérifiée (Q7).
 # Source: barèmes ONEE/distributeurs publiés (résidentiel BT, compteur monophasé).
 # Ces constantes sont les SEULS prix de référence ; aucun autre fichier ne doit
 # porter de prix kWh en dur. Le vendeur peut les surcharger via etude_params.
@@ -49,9 +52,9 @@ class TrancheTable(list):
     qui PEUT porter la règle SÉLECTIVE marocaine.
 
     Reste une ``list`` de paires à tous points de vue (itération, indexation,
-    égalité avec une liste nue) : les tables purement PROGRESSIVES (Lydec,
-    Redal, barème collé par le vendeur) sont de simples listes et gardent
-    exactement leur comportement historique.
+    égalité avec une liste nue) : une table purement PROGRESSIVE (barème collé
+    par le vendeur, surcharge société) est une simple liste et garde
+    exactement son comportement historique.
 
     Attributs :
         selective_threshold  Conso mensuelle (kWh) au-delà de laquelle la
@@ -170,28 +173,20 @@ ONEE_TRANCHES = TrancheTable(
     boundary_tolerance=10,
 )
 
-# Lydec (Casablanca / Grand Casablanca) — APPROXIMATIF, à confirmer avec tarif Lydec
-# Reste PROGRESSIF : aucune donnée sélective vérifiée pour les délégataires — on
-# n'invente pas des seuils qu'on n'a pas (le drapeau « approximatif » subsiste).
-LYDEC_TRANCHES = [
-    (100, 0.9500),
-    (200, 1.1500),
-    (None, 1.4500),
-]
-
-# Redal (Rabat / Salé / Kénitra) — APPROXIMATIF, à confirmer avec tarif Redal
-# Progressif également (même raison que Lydec).
-REDAL_TRANCHES = [
-    (100, 0.9300),
-    (200, 1.1200),
-    (None, 1.4200),
-]
-
-# Mapping distributer name → tranche table (alias-tolerant)
+# ── Q7 (décision fondateur du 20/08/2026) — UN SEUL BARÈME NATIONAL ──────────
+# Les grilles « approximatives » Lydec et Redal DISPARAISSENT. Elles étaient
+# inventées (« à confirmer avec tarif Lydec », trois paliers ronds jamais
+# vérifiés) et produisaient, sur un même client, une facture différente de
+# celle du barème national — puis un drapeau « approximatif » qui avouait le
+# problème sans le corriger. Les trois distributeurs résolvent désormais sur LA
+# grille nationale ci-dessus, éditable par société (Paramètres → Tarification &
+# ROI). Le nom du distributeur reste un LIBELLÉ (il s'affiche, il ne calcule
+# plus) : un délégataire dont la grille réelle diffère se saisit comme
+# surcharge société, jamais comme approximation codée en dur.
 UTILITY_TABLES = {
     "onee": ONEE_TRANCHES,
-    "lydec": LYDEC_TRANCHES,
-    "redal": REDAL_TRANCHES,
+    "lydec": ONEE_TRANCHES,
+    "redal": ONEE_TRANCHES,
 }
 
 # Taux d'autoconsommation par option (estimation documentée, pas de netting)
@@ -278,9 +273,10 @@ _DEFAULT_PRODUCTIBLE = 1240
 # Label affiché quand on dégrade en estimation (pas de données tarifaires)
 ESTIMATION_LABEL = "estimation"
 
-# Tables de distributeurs privés ESTIMÉES (à confirmer) — tout calcul qui les
-# utilise porte le drapeau « approximatif ». ONEE reste le barème public officiel.
-APPROX_UTILITIES = {"lydec", "redal"}
+# Q7 — plus AUCUNE table approximative : les trois distributeurs lisent la même
+# grille nationale (éditable par société). L'ensemble reste défini, VIDE, pour
+# les appelants qui l'importent encore ; il ne peut plus rien étiqueter.
+APPROX_UTILITIES = frozenset()
 
 
 def _resolve_tranches(utility=None, tranches_override=None):
@@ -289,8 +285,9 @@ def _resolve_tranches(utility=None, tranches_override=None):
     Returns:
         (table | None, approximatif: bool)
         ``table`` est None quand AUCUNE donnée tarifaire n'existe (l'appelant
-        dégrade alors en estimation honnête). ``approximatif`` est True quand la
-        table vient d'un distributeur privé estimé (Lydec/Redal, à confirmer).
+        dégrade alors en estimation honnête). Q7 — ``approximatif`` vaut
+        DÉSORMAIS toujours False : il n'existe plus de table estimée, les trois
+        distributeurs lisant la grille nationale (éditable par société).
     """
     if tranches_override:
         # Une table SÉLECTIVE fournie telle quelle garde sa règle ; une liste de
@@ -299,8 +296,8 @@ def _resolve_tranches(utility=None, tranches_override=None):
             return tranches_override, False
         return list(tranches_override), False
     if utility and str(utility).lower() in UTILITY_TABLES:
-        key = str(utility).lower()
-        return UTILITY_TABLES[key], key in APPROX_UTILITIES
+        # Q7 — le distributeur est un LIBELLÉ : la grille est la même pour tous.
+        return UTILITY_TABLES[str(utility).lower()], False
     return None, False
 
 

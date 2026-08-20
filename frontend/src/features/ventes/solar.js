@@ -662,27 +662,22 @@ export const ONEE_TRANCHES = trancheTable([
   [500, 1.405116],   // sélectif 301-500 (eff. 510) — HT 1,17093 × TVA 20% (2026)
   [null, 1.622856],  // sélectif > 500  (eff. 510+) — HT 1,35238 × TVA 20% (2026, ancre)
 ], { seuil: 150, tolerance: 10 })
-// Lydec/Redal restent PROGRESSIFS et « approximatifs » : aucune grille
-// sélective vérifiée pour les délégataires — on n'invente pas des seuils.
-export const LYDEC_TRANCHES = [
-  [100, 0.9500],
-  [200, 1.1500],
-  [null, 1.4500],
-]
-export const REDAL_TRANCHES = [
-  [100, 0.9300],
-  [200, 1.1200],
-  [null, 1.4200],
-]
+// Q7 (decision fondateur du 20/08/2026) — UN SEUL BAREME NATIONAL. Les grilles
+// « approximatives » Lydec et Redal disparaissent : elles etaient inventees
+// (trois paliers ronds « a confirmer ») et faisaient diverger l'ecran du
+// barame national sur un meme client. Les trois distributeurs lisent la MEME
+// grille (editable par societe cote backend) ; le nom du distributeur reste un
+// LIBELLE. Miroir EXACT de quote_engine/pricing.py UTILITY_TABLES.
 export const UTILITY_TABLES = {
-  onee: ONEE_TRANCHES, lydec: LYDEC_TRANCHES, redal: REDAL_TRANCHES,
+  onee: ONEE_TRANCHES, lydec: ONEE_TRANCHES, redal: ONEE_TRANCHES,
 }
-export const APPROX_UTILITIES = new Set(['lydec', 'redal'])
+export const APPROX_UTILITIES = new Set()
 
 function resolveTranches(utility, tranchesOverride) {
   if (tranchesOverride && tranchesOverride.length) return { table: tranchesOverride, approx: false }
   const key = (utility || '').toLowerCase()
-  if (key && UTILITY_TABLES[key]) return { table: UTILITY_TABLES[key], approx: APPROX_UTILITIES.has(key) }
+  // Q7 — plus aucune table approximative : approx est toujours false.
+  if (key && UTILITY_TABLES[key]) return { table: UTILITY_TABLES[key], approx: false }
   return { table: null, approx: false }
 }
 

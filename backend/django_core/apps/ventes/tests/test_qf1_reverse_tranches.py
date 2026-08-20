@@ -14,9 +14,7 @@ from django.test import SimpleTestCase
 
 from apps.ventes.quote_engine.pricing import (
     ESTIMATION_LABEL,
-    LYDEC_TRANCHES,
     ONEE_TRANCHES,
-    REDAL_TRANCHES,
     _FALLBACK_KWH_PRICE,
     _weighted_kwh_price,
     annual_bill_from_kwh,
@@ -57,15 +55,16 @@ class TestKwhFromBill(SimpleTestCase):
                     back["kwh_mensuel"], kwh, delta=0.5,
                     msg=f"round-trip failed for {utility} @ {kwh} kWh")
 
-    def test_lydec_and_redal_flagged_approximatif(self):
-        for utility, table in (("lydec", LYDEC_TRANCHES),
-                               ("redal", REDAL_TRANCHES)):
-            bill = _weighted_kwh_price(200, table) * 200
+    def test_aucun_distributeur_n_est_plus_approximatif(self):
+        """Q7 — les grilles estimées Lydec/Redal ont disparu : les trois
+        distributeurs lisent la grille nationale, donc plus aucun calcul ne
+        porte le drapeau « approximatif »."""
+        for utility in ("onee", "lydec", "redal"):
+            bill = _weighted_kwh_price(200, ONEE_TRANCHES) * 200
             out = kwh_from_bill(bill, utility=utility)
-            self.assertTrue(out["approximatif"],
-                            f"{utility} table is estimated → approximatif")
-            self.assertFalse(out["estimation"])
-            self.assertEqual(out["label"], "approximatif")
+            self.assertFalse(out["approximatif"], utility)
+            self.assertFalse(out["estimation"], utility)
+            self.assertEqual(out["label"], "", utility)
 
     def test_onee_not_flagged_approximatif(self):
         out = kwh_from_bill(200, utility="onee")
@@ -104,9 +103,10 @@ class TestAnnualBillFromKwh(SimpleTestCase):
     """annual_bill_from_kwh values consumption per progressive tranche."""
 
     def test_matches_weighted_price_model(self):
+        # Q7 — même table pour les trois distributeurs.
         for utility, table in (("onee", ONEE_TRANCHES),
-                               ("lydec", LYDEC_TRANCHES),
-                               ("redal", REDAL_TRANCHES)):
+                               ("lydec", ONEE_TRANCHES),
+                               ("redal", ONEE_TRANCHES)):
             out = annual_bill_from_kwh(250, utility=utility)
             expected = _weighted_kwh_price(250, table) * 250
             self.assertAlmostEqual(out["bill_mensuel"], round(expected, 2),
