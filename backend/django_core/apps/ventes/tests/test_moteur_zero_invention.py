@@ -270,6 +270,95 @@ class M9AbattementBatterieTests(SimpleTestCase):
         self.assertFalse(any("aller-retour" in n for n in notes))
 
 
+class M5CourbeVingtCinqAnsTests(SimpleTestCase):
+    """M5 — la courbe 25 ans trace le VRAI cumul, pas une droite."""
+
+    def _cumuls(self, **surcharges):
+        from apps.ventes.quote_engine import generate_devis_premium as legacy
+        legacy.apply_quote_data(F.donnees_legacy(**surcharges))
+        return list(legacy.CUMUL_S), list(legacy.CUMUL_A)
+
+    def test_le_cumul_vient_du_cashflow_reel_pas_de_eco_fois_annee(self):
+        d = F.donnees_legacy()
+        cs, ca = self._cumuls()
+        # La droite surestimait le gain final : elle ignorait la dégradation
+        # panneau, le rendement batterie et la provision onduleur.
+        self.assertLess(cs[25], -d["total_sans"] + d["eco_s_ann"] * 25)
+        self.assertLess(ca[25], -d["total_avec"] + d["eco_a_cumul"] * 25)
+        self.assertEqual(cs[25], d["cashflow_sans"][24])
+
+    def test_les_deux_series_gardent_26_points(self):
+        cs, ca = self._cumuls()
+        self.assertEqual((len(cs), len(ca)), (26, 26))
+        self.assertEqual(cs[0], -F.donnees_legacy()["total_sans"])
+
+    def test_repli_sur_la_droite_quand_le_cumul_manque(self):
+        d = F.donnees_legacy()
+        sans_cf = {k: v for k, v in d.items()
+                   if k not in ("cashflow_sans", "cashflow_avec")}
+        from apps.ventes.quote_engine import generate_devis_premium as legacy
+        legacy.apply_quote_data(sans_cf)
+        self.assertEqual(legacy.CUMUL_S[25],
+                         -d["total_sans"] + d["eco_s_ann"] * 25)
+
+    def test_la_garde_moyenne_tension_couvre_la_page_2(self):
+        # Un dossier MT n'a aucun chiffre d'économies légitime : la page 1 les
+        # omettait déjà, la courbe « Gain cumulé sur 25 ans » les traçait.
+        html = F.html_legacy(masquer_economies=True)
+        self.assertNotIn("Gain cumul", html)
+        normal = F.html_legacy()
+        self.assertIn("Gain cumul", normal)
+
+
+class Q6ProductibleLocalTests(SimpleTestCase):
+    """Q6 — la donnée PVGIS locale remplace « 3 000 h/an d'ensoleillement »."""
+
+    PVGIS = {"titre": "Nos hypothèses", "items": [],
+             "productible_net_kwh_kwc": 1651,
+             "productible_ville": "casablanca"}
+
+    def test_le_slogan_national_a_disparu(self):
+        self.assertNotIn("h/an d&#8217;ensoleillement", F.html_legacy())
+
+    def test_la_donnee_locale_est_imprimee_avec_sa_source(self):
+        html = F.html_legacy(hypotheses=self.PVGIS)
+        self.assertIn("kWh par kWc et par an &#224; Casablanca", html)
+        self.assertIn("(donn&#233;e PVGIS)", html)
+
+    def test_ville_inconnue_la_phrase_s_omet(self):
+        self.assertNotIn("(donn&#233;e PVGIS)", F.html_legacy())
+
+    def test_le_builder_omet_hors_table_pvgis(self):
+        from apps.ventes.quote_engine.productible import ville_reconnue
+        self.assertTrue(ville_reconnue("Casablanca"))
+        self.assertTrue(ville_reconnue("settat"))   # alias → casablanca
+        self.assertFalse(ville_reconnue("Ouarzazate"))
+        self.assertFalse(ville_reconnue(""))
+        self.assertFalse(ville_reconnue(None))
+
+    def test_le_cent_pour_cent_propre_n_est_plus_chiffre(self):
+        html = F.html_legacy()
+        self.assertNotIn("100&#37; propre", html)
+        self.assertIn("&#201;nergie propre", html)
+
+
+class Q8DeviseTests(SimpleTestCase):
+    """Q8 — les documents impriment MAD, jamais une étiquette non convertie."""
+
+    def test_les_montants_sont_etiquetes_mad(self):
+        from apps.ventes.quote_engine import generate_devis_premium as legacy
+        legacy.apply_quote_data(F.donnees_legacy(devise="EUR"))
+        self.assertTrue(legacy.fmt(52650).endswith("MAD"))
+        self.assertNotIn("EUR", legacy.fmt(52650))
+
+    def test_le_document_rendu_ne_porte_aucune_autre_devise(self):
+        # On cherche l'ÉTIQUETTE monétaire (espace insécable + code), pas la
+        # sous-chaîne nue : les data-URI base64 des polices en contiennent.
+        html = F.html_legacy(devise="EUR")
+        self.assertNotIn(" EUR", html)
+        self.assertIn(" MAD", html)
+
+
 class M1GhiSourceUniqueTests(SimpleTestCase):
     """M1 (suite) — une SEULE dérivation du profil GHI dans tout le backend."""
 

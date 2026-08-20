@@ -69,6 +69,21 @@ def _normalize_city(city) -> str:
     return (str(city or "").strip().lower())
 
 
+def ville_reconnue(city) -> bool:
+    """La ville est-elle DANS la table PVGIS (alias compris) ?
+
+    Q6 (décision fondateur du 20/08/2026) — ``productible_for_city`` retombe
+    silencieusement sur Casablanca quand la ville est inconnue : parfait pour
+    calculer, inacceptable pour AFFICHER « à {ville} (donnée PVGIS) ». Ce
+    prédicat dit si la ville a réellement été trouvée ; sinon la phrase s'omet,
+    jamais un national moyen déguisé en donnée locale.
+    """
+    key = _normalize_city(city)
+    if not key:
+        return False
+    return _CITY_ALIASES.get(key, key) in PRODUCTIBLE_PAR_VILLE
+
+
 def productible_for_city(city, override=None) -> float:
     """Productible canonique (kWh/kWc/an) pour une ville.
 

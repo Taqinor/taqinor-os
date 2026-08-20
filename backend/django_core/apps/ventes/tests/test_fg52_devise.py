@@ -335,7 +335,14 @@ class TestDgiExportDevise(TestCase):
 
 
 class TestBuildQuoteDataDevise(TestCase):
-    """build_quote_data inclut 'devise' et 'taux_change' dans le dict renvoyé."""
+    """Q8 (décision fondateur du 20/08/2026) — LES DOCUMENTS SONT EN MAD.
+
+    Le champ ``Devis.devise`` et son ``taux_change`` restent en base (aucune
+    migration destructive) et continuent de piloter l'export UBL/DGI, testé
+    plus haut. Mais AUCUN montant n'a jamais été converti par le moteur : la
+    devise servie au rendu était une étiquette sans effet — un devis marqué
+    EUR aurait affiché des dirhams sous un signe euro. ``build_quote_data``
+    sert donc « MAD », et ne sert plus du tout le taux de change."""
 
     def setUp(self):
         self.company = make_company('fg52-bqd')
@@ -356,16 +363,22 @@ class TestBuildQuoteDataDevise(TestCase):
         )
         return devis
 
-    def test_build_quote_data_inclut_devise_mad(self):
+    def test_build_quote_data_sert_mad(self):
         from apps.ventes.quote_engine.builder import build_quote_data
         devis = self._make_devis_with_ligne()
         data = build_quote_data(devis, {'pdf_mode': 'onepage'})
         self.assertEqual(data.get('devise'), 'MAD')
-        self.assertEqual(data.get('taux_change'), 1.0)
 
-    def test_build_quote_data_inclut_devise_eur(self):
+    def test_un_devis_marque_eur_est_quand_meme_rendu_en_mad(self):
+        """Les montants sont stockés en MAD et n'ont jamais été convertis :
+        étiqueter le document « EUR » aurait affiché des dirhams sous un signe
+        euro. Le champ reste en base (export DGI), le rendu dit MAD."""
         from apps.ventes.quote_engine.builder import build_quote_data
         devis = self._make_devis_with_ligne(devise='EUR', taux_change=10.7)
         data = build_quote_data(devis, {'pdf_mode': 'onepage'})
-        self.assertEqual(data.get('devise'), 'EUR')
-        self.assertAlmostEqual(data.get('taux_change'), 10.7, places=4)
+        self.assertEqual(data.get('devise'), 'MAD')
+        # Le taux de change ne franchit plus la frontière du rendu (il était
+        # servi, et republié sur le lien public, sans qu'aucun chiffre ne
+        # l'utilise).
+        self.assertNotIn('taux_change', data)
+        self.assertEqual(devis.devise, 'EUR')  # la base, elle, est intacte

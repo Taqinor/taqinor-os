@@ -328,6 +328,8 @@ PAYMENT_MODE   = "standard"   # "standard" or "custom"
 CUSTOM_ACOMPTE = None          # user-defined acompte (MAD) for custom mode
 # FG52 — devise portée par le document (ISO 4217, défaut MAD). Lue depuis
 # data["devise"] ; permet l'affichage de la bonne devise sur le PDF.
+# Q8 (fondateur, 20/08/2026) — les documents sont en MAD, point. La variable
+# reste (exports/compat) mais n'est plus imprimée : `fmt()` écrit MAD.
 DEVISE = "MAD"
 PAGES_TOTAL = 3                # nombre réel de pages (+1 étude, +1 annexe PV46)
 PAGE3_NUM = 3                  # numéro de la page de signature
@@ -772,14 +774,16 @@ _GAR = {
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 def fmt(v):
-    """Format as French currency amount: 52\u202f650\u00a0MAD (or DEVISE).
+    """Montant \u00e0 la fran\u00e7aise : 52\u202f650\u00a0MAD.
 
-    FG52 \u2014 utilise le global DEVISE (positionn\u00e9 par _render_premium_pdf depuis
-    data["devise"]) pour afficher la bonne devise sur le PDF. Le comportement
-    reste byte-identique pour MAD (d\u00e9faut = comportement historique).
+    Q8 (d\u00e9cision fondateur du 20/08/2026) \u2014 MAD PARTOUT. Le global ``DEVISE``
+    imprimait l'\u00e9tiquette port\u00e9e par le devis, alors qu'AUCUN montant n'\u00e9tait
+    jamais converti (le ``taux_change`` n'\u00e9tait lu nulle part) : un document
+    \u00e9tiquet\u00e9 EUR aurait affich\u00e9 des dirhams sous un signe euro. L'\u00e9tiquette
+    suit d\u00e9sormais la r\u00e9alit\u00e9 des montants.
     """
     try:
-        return f"{int(round(float(v))):,}".replace(",", "\u202f") + "\u00a0" + DEVISE
+        return f"{int(round(float(v))):,}".replace(",", "\u202f") + "\u00a0MAD"
     except Exception:
         return str(v)
 
@@ -1412,6 +1416,24 @@ def page1():
             f'<div style="font-size:6.5pt;color:{CA};font-weight:600;margin-top:3px;">{_eco_sub}</div>'
             '</div>')
     _kpi_cards_html = "\n".join(_kpi_cards)
+
+    # ── Q6 (décision fondateur du 20/08/2026) — LA DONNÉE LOCALE, PAS LE SLOGAN
+    # « 3 000 h/an d'ensoleillement » était un chiffre national arrondi, sans
+    # rapport avec ce client ni ce devis. On imprime le productible PVGIS de SA
+    # ville, celui-là même qui sert à tous les calculs du document. Ville hors
+    # table PVGIS ou productible forcé par un réglage société : la pastille
+    # DISPARAÎT (le builder rend alors None). « Énergie 100 % propre » perd son
+    # chiffre : le qualitatif suffit, le « 100 % » ne se démontre pas.
+    _h = HYPOTHESES if isinstance(HYPOTHESES, dict) else {}
+    _prod_net = _h.get("productible_net_kwh_kwc")
+    _prod_ville = (_h.get("productible_ville") or "").strip()
+    _pill_productible = (
+        '<span style="background:rgba(255,255,255,0.08);border:1px solid '
+        'rgba(255,255,255,0.35);border-radius:11px;padding:2px 7px;'
+        'font-size:6.5pt;color:white;white-space:nowrap;">'
+        f'{SVG_SUN}&#8776;&#160;{fnum(_prod_net)}&#160;kWh par kWc et par an '
+        f'&#224; {_esc(_prod_ville.title())} (donn&#233;e PVGIS)</span>'
+    ) if (_prod_net and _prod_ville) else ""
     return f"""
 <div class="page" style="background:#FFFFFF !important;">
 
@@ -1542,9 +1564,9 @@ def page1():
   <!-- BOTTOM DARK STRIP — solid edge-to-edge dark navy, compact height -->
   <div style="background:{CN};flex-shrink:0;display:flex;flex-direction:row;align-items:center;justify-content:space-between;padding:8px 24px;gap:16px;">
     <div style="display:flex;gap:5px;flex-shrink:0;">
-      <span style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.35);border-radius:11px;padding:2px 7px;font-size:6.5pt;color:white;white-space:nowrap;">{SVG_SUN}3&#8239;000&#160;h/an d&#8217;ensoleillement</span>
+      {_pill_productible}
       <span style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.35);border-radius:11px;padding:2px 7px;font-size:6.5pt;color:white;white-space:nowrap;">{SVG_ZAP}Prix ONEE en hausse</span>
-      <span style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.35);border-radius:11px;padding:2px 7px;font-size:6.5pt;color:white;white-space:nowrap;">{SVG_GLOBE}&#201;nergie 100&#37; propre</span>
+      <span style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.35);border-radius:11px;padding:2px 7px;font-size:6.5pt;color:white;white-space:nowrap;">{SVG_GLOBE}&#201;nergie propre</span>
     </div>
     <div style="width:1px;height:16px;background:rgba(255,255,255,0.2);flex-shrink:0;"></div>
     <div style="font-size:6.5pt;color:rgba(255,255,255,0.70);white-space:nowrap;flex-shrink:0;">
@@ -1592,6 +1614,22 @@ def page2(sans_items, img_roi, img_mon):
         )
     else:
         tbl_css = ""
+
+    # M5 — la carte « Gain cumulé sur 25 ans » disparaît avec sa courbe : un
+    # cadre vide sous un titre qui promet un gain est pire qu'une absence.
+    _roi_card = (
+        f'<div style="flex:1;min-height:0;background:{CG1};border-radius:7px;'
+        f'padding:8px 11px;border:1px solid {CG2};display:flex;'
+        f'flex-direction:column;">'
+        f'<div style="font-size:7pt;font-weight:700;color:{CN};'
+        f'text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;'
+        f'flex-shrink:0;">'
+        f'<svg width="12" height="12" viewBox="0 0 12 12" style="vertical-align:middle;margin-right:3px;"><polyline points="1,10 4,6 7,8 11,2" fill="none" stroke="{CN}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><polyline points="8,2 11,2 11,5" fill="none" stroke="{CN}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+        f' Gain cumulé sur 25 ans — Point de retour sur investissement'
+        f'</div>'
+        f'<img src="{img_roi}" style="width:680px;height:170px;display:block;">'
+        f'</div>'
+    ) if img_roi else ""
 
     _monthly_card = (
         f'<div style="flex:1;min-height:0;background:{CG1};border-radius:7px;padding:8px 11px;'
@@ -1655,12 +1693,7 @@ def page2(sans_items, img_roi, img_mon):
 
   <!-- Charts section -->
   <div style="padding:4px 24px 6px;flex:1;min-height:0;display:flex;flex-direction:column;gap:10px;">
-    <div style="flex:1;min-height:0;background:{CG1};border-radius:7px;padding:8px 11px;border:1px solid {CG2};display:flex;flex-direction:column;">
-      <div style="font-size:7pt;font-weight:700;color:{CN};text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;flex-shrink:0;">
-        <svg width="12" height="12" viewBox="0 0 12 12" style="vertical-align:middle;margin-right:3px;"><polyline points="1,10 4,6 7,8 11,2" fill="none" stroke="{CN}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><polyline points="8,2 11,2 11,5" fill="none" stroke="{CN}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg> Gain cumul\u00e9 sur 25 ans \u2014 Point de retour sur investissement
-      </div>
-      <img src="{img_roi}" style="width:680px;height:170px;display:block;">
-    </div>
+    {_roi_card}
     {_monthly_card}
   </div>
 
@@ -2302,8 +2335,15 @@ def page_annexe_technique():
 
 def build_html():
     print("  Generating charts...")
-    img_roi = make_chart_roi()
-    img_mon = make_chart_monthly() if SHOW_MONTHLY else ""
+    # M5 — la GARDE MOYENNE TENSION s'étend à la page 2. Un dossier MT n'a
+    # aucun chiffre d'économies légitime (ceux disponibles sortent du barème
+    # BASSE TENSION) : la page 1 les omettait déjà, la courbe « Gain cumulé sur
+    # 25 ans » les traçait quand même. Idem quand la puissance n'a aucun
+    # ancrage réel (M2) : sans kWc, le gain cumulé vaut zéro — on n'imprime pas
+    # une courbe plate à zéro, on n'imprime rien.
+    _sans_economies = MASQUER_ECONOMIES or PUISSANCE_INCONNUE
+    img_roi = "" if _sans_economies else make_chart_roi()
+    img_mon = "" if (_sans_economies or not SHOW_MONTHLY) else make_chart_monthly()
     etude_html = page_etude() if (INCLUDE_ETUDE and ETUDE) else ""
     annexe_html = (page_annexe_technique()
                    if (INCLUDE_ANNEXE and ELECTRICAL_DESIGN) else "")
@@ -2883,9 +2923,21 @@ def apply_quote_data(data: dict) -> None:
     # chemin de repli du renderer résidentiel. Absence ⇒ liste vide ⇒ le
     # graphique mensuel omet les barres de facture (jamais un proxy).
     FACTURES_M   = list(data.get("factures_mensuelles") or [])
-    eco_a_cumul  = int(data["eco_a_cumul"])
-    CUMUL_S      = [-TOTAL_SANS + ECO_S_ANN * y for y in YEARS]
-    CUMUL_A      = [-TOTAL_AVEC + eco_a_cumul  * y for y in YEARS]
+    eco_a_cumul  = int(data.get("eco_a_cumul") or 0)
+    # ── M5 (audit adversarial du 19/08/2026) — LA COURBE 25 ANS N'EST PLUS UNE
+    # DROITE. Elle traçait `−total + économie × année` : une économie PLATE sur
+    # 25 ans, alors que le modèle du devis intègre la dégradation panneau
+    # (0,5 %/an), le rendement batterie et la provision onduleur. Écart mesuré
+    # sur le gain final : +14,5 % (option 1) et +36,6 % (option 2) de trop.
+    # Le VRAI cumul est déjà dans les données (``cashflow_sans``/
+    # ``cashflow_avec``, calculé par ``compute_cashflow_payback``) : on le trace
+    # tel quel — la droite ne subsiste qu'en repli, si le cumul manque.
+    _cf_s = list(data.get("cashflow_sans") or [])
+    _cf_a = list(data.get("cashflow_avec") or [])
+    CUMUL_S = ([-TOTAL_SANS] + _cf_s[:25] if len(_cf_s) >= 25
+               else [-TOTAL_SANS + ECO_S_ANN * y for y in YEARS])
+    CUMUL_A = ([-TOTAL_AVEC] + _cf_a[:25] if len(_cf_a) >= 25
+               else [-TOTAL_AVEC + eco_a_cumul * y for y in YEARS])
 
 
 def render_html_for(data: dict) -> str:

@@ -1476,6 +1476,22 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             f"Production estimée : ≈ {_fr_int(_prod_factor * _DERATE)} "
             f"kWh par kWc et par an, pertes système de "
             f"{int(round(_LOSS * 100))} % déduites.")
+    # Q6 — le productible PVGIS de la ville du client, prêt à imprimer, ou None.
+    # Deux conditions STRICTES : la ville doit être dans la table PVGIS (le
+    # calcul, lui, retombe silencieusement sur Casablanca — pas l'affichage),
+    # et aucun réglage société ne doit avoir forcé la valeur (ce ne serait plus
+    # une donnée PVGIS). Sinon : None ⇒ omission.
+    _productible_net_pvgis = None
+    _ville_pvgis = None
+    if _prod_factor:
+        from .productible import ville_reconnue as _ville_ok
+        from .pricing import PRODUCTION_DERATE as _DR
+        _force_societe = bool(
+            _co_productible and abs(float(_co_productible) - 1600) > 0.5)
+        if _ville_ok(_client_city) and not _force_societe:
+            _productible_net_pvgis = int(round(_prod_factor * _DR))
+            _ville_pvgis = _client_city
+
     _ac_s = roi.get("autoconso_sans")
     _ac_a = roi.get("autoconso_avec")
     if _ac_s and _ac_a:
@@ -1509,6 +1525,16 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "autoconso_first": True,
         "productible_kwh_kwc": (int(round(_prod_factor)) if _prod_factor
                                 else None),
+        # ── Q6 (décision fondateur du 20/08/2026) — LA DONNÉE LOCALE REMPLACE
+        # LE SLOGAN. Le PDF affichait « 3 000 h/an d'ensoleillement », un
+        # chiffre national arrondi qui ne décrit ni ce client ni ce devis.
+        # Le productible PVGIS de SA ville est déjà en machine : c'est lui
+        # qu'on imprime, en production NETTE (la même que tous les calculs du
+        # document). Ville hors table PVGIS, ou productible forcé par un
+        # réglage société : la phrase s'OMET — jamais une moyenne nationale
+        # présentée comme la donnée du client.
+        "productible_net_kwh_kwc": _productible_net_pvgis,
+        "productible_ville": _ville_pvgis,
     }
 
     # ── M1 (audit adversarial du 19/08/2026) — PLUS AUCUN PROXY DE FACTURE ────
@@ -1922,11 +1948,15 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "date_acceptation": (
             devis.date_acceptation.strftime("%d/%m/%Y")
             if getattr(devis, "date_acceptation", None) else ""),
-        # FG52 — devise portée par le document (ISO 4217, défaut MAD).
-        # Aucun impact sur les montants en base (stockés en MAD) ; uniquement
-        # affiché sur le PDF et porté dans l'export UBL.
-        "devise": (getattr(devis, "devise", None) or "MAD"),
-        "taux_change": float(getattr(devis, "taux_change", 1) or 1),
+        # ── Q8 (décision fondateur du 20/08/2026) — LES DOCUMENTS SONT EN MAD ──
+        # Les montants sont stockés en MAD et rendus en MAD. Le `taux_change`
+        # du devis n'était converti nulle part : il était SERVI au moteur (et
+        # republié sur le lien public) sans qu'aucun chiffre ne l'utilise —
+        # une promesse de multi-devise que rien ne tenait. Il ne sort plus
+        # d'ici. Le champ modèle est CONSERVÉ tel quel (aucune migration
+        # destructive) ; seule sa republication s'arrête, exactement comme
+        # `financing` (F6).
+        "devise": "MAD",
     }
     # Q5 — visuel « votre installation » : la clé MinIO du rendu 3D N'EST
     # ajoutée que si le devis en porte un. Sans rendu, aucune clé n'est
