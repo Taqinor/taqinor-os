@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 9407, operations: 16918, components: 4939}
+counts: {paths: 9409, operations: 16920, components: 4939}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -8242,6 +8242,7 @@ operations:
 - get /api/django/ventes/devis/action-requise/ -> django_ventes_devis_action_requise_retrieve
 - post /api/django/ventes/devis/atomic/ -> django_ventes_devis_atomic_create
 - post /api/django/ventes/devis/auto/ -> django_ventes_devis_auto_create
+- post /api/django/ventes/devis/composition/ -> django_ventes_devis_composition_create
 - post /api/django/ventes/devis/from-layout/ -> django_ventes_devis_from_layout_create
 - get /api/django/ventes/devis/prefill-site/ -> django_ventes_devis_prefill_site_retrieve
 - get /api/django/ventes/devis/variante-config/ -> django_ventes_devis_variante_config_retrieve
@@ -16693,6 +16694,7 @@ operations:
 - get /api/v1/ventes/devis/action-requise/ -> v1_ventes_devis_action_requise_retrieve
 - post /api/v1/ventes/devis/atomic/ -> v1_ventes_devis_atomic_create
 - post /api/v1/ventes/devis/auto/ -> v1_ventes_devis_auto_create
+- post /api/v1/ventes/devis/composition/ -> v1_ventes_devis_composition_create
 - post /api/v1/ventes/devis/from-layout/ -> v1_ventes_devis_from_layout_create
 - get /api/v1/ventes/devis/prefill-site/ -> v1_ventes_devis_prefill_site_retrieve
 - get /api/v1/ventes/devis/variante-config/ -> v1_ventes_devis_variante_config_retrieve
