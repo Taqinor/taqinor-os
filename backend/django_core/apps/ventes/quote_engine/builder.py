@@ -107,23 +107,21 @@ def _sld_svg(devis) -> str:
     deux vues se contredisaient : l'annexe dessinait l'esquisse historique à
     cinq blocs FIXES (qui ignore ``electrical_design`` et ne montre aucune
     protection) alors que la nomenclature imprimée juste dessous — et la page
-    client — venaient de ``core.electrique``. Un client comparant les deux
-    voyait deux installations. L'esquisse ne subsiste qu'en REPLI, pour un
-    devis sans conception ou si le rendu du moteur échoue.
+    client — venaient de ``core.electrique``.
+
+    PVFCH-ANNEXE (20/08/2026) — l'esquisse historique NE SERT PLUS DE REPLI
+    ici. L'annexe ne sort que pour un devis qui PORTE une conception ; si le
+    moteur refuse alors de dessiner (fiche technique redevenue incomplète —
+    cas type : étude rangée AVANT le verrou PVFCH) ou échoue, imprimer
+    l'esquisse mettrait un schéma qui ignore l'étude au-dessus de la
+    nomenclature de cette même étude — et contredirait la page client, qui
+    l'omet. Même trou de fiche ⇒ même réponse sur les deux surfaces : PAS de
+    schéma. L'esquisse (``single_line_diagram``) reste utilisée par ses
+    autres appelants historiques, jamais par l'annexe.
     """
     try:
         from apps.ventes.electrical_service import rendre_schema_du_devis
-        svg = rendre_schema_du_devis(devis)
-        if svg:
-            return svg
-    except Exception:  # noqa: BLE001 — on tente encore le repli historique
-        logger.warning("PVSLD: schéma moteur indisponible pour le devis %s — "
-                       "repli sur le schéma historique",
-                       getattr(devis, "pk", None))
-    try:
-        from apps.ventes.single_line_diagram import (
-            build_single_line_svg, diagram_params_from_devis)
-        return build_single_line_svg(diagram_params_from_devis(devis))
+        return rendre_schema_du_devis(devis) or ""
     except Exception:  # noqa: BLE001 — un schéma absent ne casse jamais un devis
         logger.warning("PV46: schéma unifilaire indisponible pour le devis %s",
                        getattr(devis, "pk", None))
