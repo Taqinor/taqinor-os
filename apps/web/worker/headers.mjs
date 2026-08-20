@@ -32,6 +32,15 @@ const CSP_DIRECTIVES = [
   "img-src 'self' data: blob: https://api.maptiler.com https://api.mapbox.com",
   "font-src 'self' data:",
   "connect-src 'self' https://api.taqinor.ma https://api.maptiler.com https://api.mapbox.com",
+  // WJCSP (21/08/2026) — MapLibre rend les sources GeoJSON (repère maison,
+  // contour du toit dessiné : rp9-pin/rp9-line/rp9-pts) dans un WEB WORKER
+  // qu'il crée depuis un blob:. Sans worker-src, la directive de repli est
+  // script-src (sans blob:) : le worker est bloqué SILENCIEUSEMENT — la
+  // carte satellite (tuiles images) s'affiche, mais le client ne VOIT jamais
+  // ni son repère ni son tracé (régression du 03/07, W315 ; le nginx de
+  // l'ERP porte déjà cette directive avec le même diagnostic —
+  // backend/nginx/security-headers.conf.template).
+  "worker-src 'self' blob:",
   "frame-ancestors 'none'",
   "base-uri 'self'",
   "form-action 'self' https://api.taqinor.ma",
