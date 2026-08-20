@@ -557,6 +557,52 @@ class M10M11EstimationDivulgueeTests(SimpleTestCase):
         self.assertNotIn("1,80", html)
 
 
+class Q2SerieDeLOptionChiffreeTests(SimpleTestCase):
+    """Q2 — la page 1 décrit l'option que le document chiffre.
+
+    Elle lisait ``eco_a_monthly`` d'office : sur un devis réseau MONO-OPTION
+    (aucune batterie vendue, aucune carte « avec batterie »), le « −N % » et
+    l'avant/après décrivaient l'option AVEC batterie — un second jeu de
+    chiffres qu'aucune page du document n'assumait.
+    """
+
+    @staticmethod
+    def _donnees():
+        d = F.donnees_residentiel()
+        d["eco_s_monthly"] = [round(v * 0.6) for v in d["eco_a_monthly"]]
+        return d
+
+    def test_mono_option_sans_batterie_lit_la_serie_sans(self):
+        from apps.ventes.quote_engine.residential.renderer import (
+            synthese_economies,
+        )
+        d = self._donnees()
+        mono = {**d, "deux_options": False, "avec_ok": False, "sans_ok": True}
+        attendu = [max(0, round(b - s)) for b, s
+                   in zip(d["factures_mensuelles"], d["eco_s_monthly"])]
+        self.assertEqual(synthese_economies(mono)["bills_after"], attendu)
+
+    def test_deux_options_garde_la_serie_de_l_option_recommandee(self):
+        from apps.ventes.quote_engine.residential.renderer import (
+            synthese_economies,
+        )
+        d = self._donnees()
+        attendu = [max(0, round(b - s)) for b, s
+                   in zip(d["factures_mensuelles"], d["eco_a_monthly"])]
+        self.assertEqual(synthese_economies(d)["bills_after"], attendu)
+
+    def test_un_seul_jeu_de_chiffres_par_document(self):
+        from apps.ventes.quote_engine.residential.renderer import (
+            synthese_economies,
+        )
+        d = self._donnees()
+        mono = {**d, "deux_options": False, "avec_ok": False, "sans_ok": True}
+        # Le document mono-option annonce une baisse PLUS FAIBLE — celle qu'il
+        # vend réellement, pas celle d'une batterie qu'il ne chiffre pas.
+        self.assertLess(synthese_economies(mono)["pct_cut"],
+                        synthese_economies(d)["pct_cut"])
+
+
 class M1GhiSourceUniqueTests(SimpleTestCase):
     """M1 (suite) — une SEULE dérivation du profil GHI dans tout le backend."""
 

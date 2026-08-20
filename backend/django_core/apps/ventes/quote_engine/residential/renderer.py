@@ -112,7 +112,20 @@ def synthese_economies(data: dict) -> dict | None:
         return None
     try:
         before = list(data.get("factures_mensuelles") or [])
-        eco_m = list(data.get("eco_a_monthly") or [])
+        # ── Q2 (décision fondateur du 20/08/2026) — LA SÉRIE DE L'OPTION
+        # RÉELLEMENT CHIFFRÉE. La page 1 lisait ``eco_a_monthly`` D'OFFICE :
+        # sur un devis réseau MONO-OPTION (aucune batterie vendue, aucune carte
+        # « avec batterie » sur le document), le « −N % », l'avant/après et le
+        # graphe mensuel décrivaient donc l'option AVEC batterie — un second
+        # jeu de chiffres qu'aucune page du document n'assumait. Le choix suit
+        # exactement celui de la courbe 25 ans (options.py) : l'option 2 quand
+        # le document la porte, sinon l'option 1.
+        _avec = bool(data.get("deux_options", True)) or bool(
+            data.get("avec_ok", True))
+        eco_m = list(
+            (data.get("eco_a_monthly") if _avec
+             else (data.get("eco_s_monthly") or data.get("eco_a_monthly")))
+            or [])
         prod_kwh = data.get("prod_kwh") or 0
         if len(before) != 12 or len(eco_m) != 12 or not prod_kwh:
             return None
