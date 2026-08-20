@@ -1524,14 +1524,24 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # lignes de l'option sans batterie, « Avec » → celles de l'option avec
     # batterie, « Les deux » → option 1 seule (jamais deux onduleurs), sinon
     # tout le devis (liste libre/pompage).
+    # ── M4 (audit adversarial du 19/08/2026) — UNE SEULE BRANCHE, PARTOUT ─────
+    # La page imprimait ``max(économie sans, économie avec)`` : sur un document
+    # qui chiffre l'option SANS batterie (et le DIT, mention « voir la
+    # proposition complète »), le client lisait l'économie de l'option AVEC.
+    # L'économie affichée vient désormais de la MÊME branche que les lignes
+    # facturées ; sans branche identifiable, elle est OMISE.
     if deux_options:
-        onepage_source = sans_items
+        onepage_source, onepage_branche = sans_items, 'sans'
     elif scenario == 'Avec batterie' and avec_ok:
-        onepage_source = avec_items
+        onepage_source, onepage_branche = avec_items, 'avec'
     elif scenario == 'Sans batterie' and has_reseau:
-        onepage_source = sans_items
+        onepage_source, onepage_branche = sans_items, 'sans'
     else:
+        # Liste libre / pompage : les lignes du devis entier. La branche se
+        # déduit alors de la composition RÉELLEMENT facturée — un panier qui
+        # porte une batterie est l'option « avec », sinon « sans ».
         onepage_source = items
+        onepage_branche = 'avec' if has_batterie else 'sans'
     onepage_note_batterie = deux_options
     all_items = [
         {
@@ -1827,6 +1837,10 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "deux_options": bool(deux_options),
         "all_items": all_items,
         "onepage_note_batterie": onepage_note_batterie,
+        # M4 — branche ('sans' | 'avec') dont proviennent les lignes du format
+        # une page : l'économie du résumé système lit CETTE branche, jamais le
+        # maximum des deux.
+        "onepage_branche": onepage_branche,
         "display_total": display_total,
         "nb_options": nb_options,
         "pdf_mode": pdf_mode,

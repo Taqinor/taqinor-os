@@ -342,6 +342,10 @@ TOTAUX_ALL = None              # totaux canoniques toutes-lignes (one-page)
 PAY_A, PAY_M, PAY_S = 30, 60, 10
 # Devis deux-options rendu en une page : option 1 seule + mention discrète.
 ONEPAGE_NOTE_BATTERIE = False
+# M4 — branche ('sans' | 'avec' | None) dont proviennent les lignes du format
+# une page. Défaut None = aucune économie affichée sur le chemin autonome ;
+# le builder la pose TOUJOURS pour un vrai devis.
+ONEPAGE_BRANCHE = None
 
 # ── DC1 — identité société (multi-tenant) ──────────────────────────────────────
 # Chaque littéral d'identité (nom de marque du footer, coordonnées, ligne légale
@@ -2386,10 +2390,17 @@ def page_onepage(items):
         # (``ECO_S_ANN``/``ECO_A_ANN``) sort de ``calculate_savings_roi``, au
         # barème BASSE TENSION de l'ONEE : l'imprimer sur un dossier MT donne
         # au client un chiffre qui n'est pas le sien.
-        if not MASQUER_ECONOMIES:
+        # M4 (audit du 19/08/2026) — L'ÉCONOMIE VIENT DE LA MÊME BRANCHE QUE LES
+        # LIGNES. ``max(ECO_S_ANN, ECO_A_ANN)`` affichait l'économie de l'option
+        # AVEC batterie sur un document qui chiffre l'option SANS — et qui le
+        # dit, quelques centimètres plus bas (« voir la proposition complète »).
+        # Deux histoires d'argent sur une seule page. Branche non identifiable
+        # ⇒ vignette OMISE, jamais un maximum arbitraire.
+        _eco_branche = {"sans": ECO_S_ANN, "avec": ECO_A_ANN}.get(
+            ONEPAGE_BRANCHE)
+        if not MASQUER_ECONOMIES and _eco_branche:
             _sum_cells.append(
-                ("&#201;conomie annuelle",
-                 f"{fnum(max(ECO_S_ANN, ECO_A_ANN))} MAD/an"))
+                ("&#201;conomie annuelle", f"{fnum(_eco_branche)} MAD/an"))
         _sum_cells.append(
             ("Prix par kWc", f"{fnum(round(total / KWC))} MAD/kWc"))
     else:
@@ -2820,6 +2831,9 @@ def apply_quote_data(data: dict) -> None:
     PAY_M = int(_terms.get("materiel", 60))
     PAY_S = int(_terms.get("solde", 10))
     ONEPAGE_NOTE_BATTERIE = bool(data.get("onepage_note_batterie", False))
+    global ONEPAGE_BRANCHE  # M4 — branche des lignes du format une page
+    _br = data.get("onepage_branche")
+    ONEPAGE_BRANCHE = _br if _br in ("sans", "avec") else None
     # XSAL14/XSAL5 — structure (sections/notes) + options proposées (rendu seul,
     # hors totaux). Absents → byte-identique. Escapés à l'ingestion (ERR37).
     global LIGNES_STRUCTURE, OPTIONS_PROPOSEES

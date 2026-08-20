@@ -9,6 +9,8 @@ regardait le document. Les fixtures (``_moteur_fixtures``) rendent le HTML exact
 qui part chez WeasyPrint, sans BD et sans WeasyPrint : ``SimpleTestCase``.
 """
 
+import re
+
 from django.test import SimpleTestCase
 
 from apps.ventes.tests import _moteur_fixtures as F
@@ -131,6 +133,47 @@ class M3WattNonLuTests(SimpleTestCase):
         self.assertEqual(
             builder.panneaux_et_watt_lu([_L("Panneau Jinko 585W", 10)]),
             (10, 585))
+
+
+class M4UnePageMemeBrancheTests(SimpleTestCase):
+    """M4 — l'économie du format UNE PAGE vient de la branche facturée.
+
+    Le document chiffre l'option SANS batterie et le dit ; il affichait
+    pourtant ``max(éco sans, éco avec)``, donc l'économie de l'option AVEC.
+    """
+
+    @staticmethod
+    def _eco(html):
+        """Montant d'économie RENDU dans le résumé système, sans séparateurs."""
+        i = html.find("conomie annuelle")
+        if i < 0:
+            return None
+        m = re.search(r">([\d   ]+) MAD/an<", html[i:i + 300])
+        if not m:
+            return None
+        return re.sub(r"[^\d]", "", m.group(1))
+
+    def test_branche_sans_affiche_l_economie_sans_batterie(self):
+        d = F.donnees_legacy()
+        html = F.html_onepage(onepage_branche="sans")
+        self.assertEqual(self._eco(html), str(d["eco_s_ann"]))
+
+    def test_branche_avec_affiche_l_economie_avec_batterie(self):
+        d = F.donnees_legacy()
+        html = F.html_onepage(onepage_branche="avec")
+        self.assertEqual(self._eco(html), str(d["eco_a_ann"]))
+
+    def test_branche_inconnue_omet_la_vignette(self):
+        self.assertIsNone(self._eco(F.html_onepage()))
+
+    def test_jamais_le_maximum_des_deux_branches(self):
+        d = F.donnees_legacy()
+        self.assertNotEqual(d["eco_s_ann"], d["eco_a_ann"],
+                            "fixture invalide : les deux branches doivent "
+                            "différer pour que le test prouve quelque chose")
+        maxi = str(max(d["eco_s_ann"], d["eco_a_ann"]))
+        self.assertNotEqual(self._eco(F.html_onepage(onepage_branche="sans")),
+                            maxi)
 
 
 class M1GhiSourceUniqueTests(SimpleTestCase):
