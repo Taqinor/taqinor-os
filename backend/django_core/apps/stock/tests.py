@@ -1569,3 +1569,130 @@ class TestPvfchDescriptionSansSpecs(TestCase):
         self.assertIn('Plage batterie : 40-60 V', produit.description)
         # …et la prose ne redit plus la même plage juste au-dessus.
         self.assertNotIn('(plage 40-60 V', produit.description)
+
+
+class TestPvfchComblerFichesManquantes(TestCase):
+    """PVFCH (fondateur 20/08/2026) — ``apps/ventes/electrical_service.py``
+    (commit ff38e6e3) refuse le schéma unifilaire dès qu'UNE SEULE des 7
+    variables MODULE ou 7 variables ONDULEUR de ``FicheTechnique`` est
+    absente. ``manage.py seed_catalogue`` (qui pose ces valeurs) n'a
+    longtemps jamais été appelé par ``scripts/deploy-prod.ps1`` — une base de
+    production peut donc porter une fiche NULL ou partiellement remplie.
+
+    La migration 0125 soigne ce trou : elle crée la fiche manquante ou ne
+    comble QUE les champs vides, à partir du dictionnaire ``FICHES_TECHNIQUES``
+    du seeder (source unique, importée) — jamais une valeur déjà saisie par
+    le fondateur n'est écrasée."""
+
+    MIGRATION = 'apps.stock.migrations.0125_pvfch_combler_fiches_manquantes'
+
+    def setUp(self):
+        self.company = make_company(slug='test-cat-pvfch-fiches')
+
+    def _migration(self):
+        import importlib
+        return importlib.import_module(self.MIGRATION)
+
+    def test_cree_la_fiche_manquante_avec_les_valeurs_du_seeder(self):
+        """PAN-CS-710 seedé SANS fiche technique (base restée en arrière du
+        seeder, ex. société jamais couverte par le déploiement PVOND) : la
+        migration la crée avec exactement les valeurs sourcées."""
+        from django.apps import apps as registre
+        from apps.stock.models import FicheTechnique
+        seed(self.company)
+        produit = Produit.objects.get(company=self.company, sku='PAN-CS-710')
+        FicheTechnique.objects.filter(produit=produit).delete()
+        self.assertFalse(
+            FicheTechnique.objects.filter(produit=produit).exists())
+
+        self._migration().soigner_fiches_manquantes(registre, None)
+
+        fiche = FicheTechnique.objects.get(produit=produit)
+        self.assertEqual(fiche.company_id, self.company.id)
+        self.assertEqual(fiche.type_fiche, 'module')
+        self.assertEqual(fiche.pmax_wc, Decimal('710.00'))
+        self.assertEqual(fiche.voc_v, Decimal('48.30'))
+        self.assertEqual(fiche.temp_coeff_voc_pct_c, Decimal('-0.250'))
+        self.assertEqual(fiche.temp_coeff_pmax_pct_c, Decimal('-0.290'))
+
+    def test_ne_jamais_ecraser_un_champ_deja_saisi(self):
+        """OND-H-DEY-5M seedé avec sa fiche : ``ond_ac_kw`` porte une valeur
+        DIFFÉRENTE de celle du seeder (simule une saisie fondateur, fût-elle
+        fausse) et ``ond_v_max_abs`` est vidé (champ pas encore comblé).
+        Après la migration : ``ond_ac_kw`` INCHANGÉ, ``ond_v_max_abs``
+        COMBLÉ."""
+        from django.apps import apps as registre
+        from apps.stock.management.commands.seed_catalogue import (
+            FICHES_TECHNIQUES)
+        from apps.stock.models import FicheTechnique
+        seed(self.company)
+        produit = Produit.objects.get(company=self.company, sku='OND-H-DEY-5M')
+        fiche = FicheTechnique.objects.get(produit=produit)
+        valeur_seeder = FICHES_TECHNIQUES['OND-H-DEY-5M']['ond_ac_kw']
+        valeur_saisie = valeur_seeder + Decimal('1')  # différente : simule une saisie fondateur
+        fiche.ond_ac_kw = valeur_saisie
+        fiche.ond_v_max_abs = None
+        fiche.save(update_fields=['ond_ac_kw', 'ond_v_max_abs'])
+
+        self._migration().soigner_fiches_manquantes(registre, None)
+
+        fiche.refresh_from_db()
+        self.assertEqual(fiche.ond_ac_kw, valeur_saisie)
+        self.assertEqual(
+            fiche.ond_v_max_abs,
+            FICHES_TECHNIQUES['OND-H-DEY-5M']['ond_v_max_abs'])
+
+    def test_sku_absent_du_dictionnaire_reste_intact(self):
+        """Un produit dont le SKU n'est PAS dans ``FICHES_TECHNIQUES`` (ex.
+        un variateur VEICHI) : aucune fiche créée, rien ne bouge."""
+        from django.apps import apps as registre
+        from apps.stock.management.commands.seed_catalogue import (
+            FICHES_TECHNIQUES)
+        from apps.stock.models import FicheTechnique
+        seed(self.company)
+        produit = Produit.objects.get(company=self.company, sku='VEI-SI22-AFF')
+        self.assertNotIn('VEI-SI22-AFF', FICHES_TECHNIQUES)
+        self.assertFalse(
+            FicheTechnique.objects.filter(produit=produit).exists())
+
+        self._migration().soigner_fiches_manquantes(registre, None)
+
+        self.assertFalse(
+            FicheTechnique.objects.filter(produit=produit).exists())
+
+    def test_la_migration_est_idempotente(self):
+        """Un second passage n'écrit rien de plus (aucune fiche dupliquée,
+        aucun champ retouché)."""
+        from django.apps import apps as registre
+        from apps.stock.models import FicheTechnique
+        seed(self.company)
+        produit = Produit.objects.get(company=self.company, sku='PAN-CS-710')
+        FicheTechnique.objects.filter(produit=produit).delete()
+        migration = self._migration()
+
+        migration.soigner_fiches_manquantes(registre, None)
+        migration.soigner_fiches_manquantes(registre, None)
+
+        self.assertEqual(
+            FicheTechnique.objects.filter(produit=produit).count(), 1)
+        fiche = FicheTechnique.objects.get(produit=produit)
+        self.assertEqual(fiche.pmax_wc, Decimal('710.00'))
+
+    def test_reverse_est_un_noop(self):
+        """La migration inverse ne défait rien (``RunPython.noop``) — un
+        champ comblé par le passage aller reste comblé après un rollback."""
+        from django.apps import apps as registre
+        from django.db import migrations as dj_migrations
+        from apps.stock.models import FicheTechnique
+        seed(self.company)
+        produit = Produit.objects.get(company=self.company, sku='PAN-CS-710')
+        FicheTechnique.objects.filter(produit=produit).delete()
+        migration = self._migration()
+        migration.soigner_fiches_manquantes(registre, None)
+
+        reverse = migration.Migration.operations[0].reverse_code
+        self.assertIs(reverse, dj_migrations.RunPython.noop)
+        reverse(registre, None)
+
+        fiche = FicheTechnique.objects.get(produit=produit)
+        self.assertEqual(fiche.pmax_wc, Decimal('710.00'))
