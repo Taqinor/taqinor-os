@@ -256,9 +256,36 @@ def _is_reseau_inverter(designation: str) -> bool:
     return "onduleur" in d and ("réseau" in d or "reseau" in d or "injection" in d)
 
 
+# ── M2 — DÉTECTION PANNEAU ÉLARGIE (audit adversarial du 19/08/2026) ─────────
+# Le seul mot « panneau » laissait passer les désignations que les vendeurs
+# écrivent vraiment (« Module PV 550 W », « Canadian Solar TOPHiKu7 710 Wc ») :
+# le devis n'avait alors AUCUNE ligne panneau à ses yeux, et l'ancien repli
+# fabriquait un kWc depuis le prix. Élargir la détection, c'est supprimer la
+# cause la plus fréquente de cette invention. Les marques ne suffisent JAMAIS
+# seules — Canadian Solar, Huawei et consorts vendent aussi des onduleurs.
+_PANEL_MODULE_QUALIFIERS = ("pv", "photovolta", "solaire", "solar")
+_PANEL_BRANDS = (
+    "canadian solar", "canadien solar", "jinko", "longi", "trina",
+    "ja solar", "risen", "sunpower", "qcells", "q cells", "astronergy",
+    "znshine",
+)
+
+
 def _is_panel(designation: str, produit_nom: str = "") -> bool:
     blob = f"{designation} {produit_nom}".lower()
-    return "panneau" in blob or "panneaux" in blob
+    if "panneau" in blob or "panneaux" in blob:
+        return True
+    # Exclusions d'abord : un onduleur/une batterie/un accessoire n'est jamais
+    # un panneau, quelle que soit la marque écrite dessus.
+    if (_is_inverter(blob) or _is_battery(blob)
+            or _is_smart_meter(blob) or _is_wifi_dongle(blob)):
+        return False
+    if "module" in blob and any(q in blob for q in _PANEL_MODULE_QUALIFIERS):
+        return True
+    # Marque de panneau ET puissance lisible : sans watt, une marque seule
+    # reste ambiguë — on préfère l'omission à un faux positif.
+    return bool(any(b in blob for b in _PANEL_BRANDS)
+                and _WATT_RE.search(blob))
 
 
 def _is_inverter(designation: str) -> bool:
@@ -700,18 +727,32 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     has_hybride = _has_qty(avec_items, _is_hybrid_inverter)
     has_batterie = _has_qty(avec_items, _is_battery)
 
-    # Power: prefer real panels; otherwise estimate from the equipment total.
+    # ── M2 (audit adversarial du 19/08/2026) — LE kWc N'EST PLUS DÉDUIT DU PRIX ─
+    # L'ancien repli sans ligne de panneau : ``kWc = max(3,0 ; total TTC / 12 000)``
+    # puis ``panneaux = kWc / 0,710``. Une puissance crête et un nombre de
+    # panneaux DÉDUITS D'UN MONTANT, imprimés comme des faits sur la couverture,
+    # les cartes d'option, le legacy et la page publique — avec un plancher de
+    # 3 kWc qui garantissait qu'un chiffre sorte toujours, même sans la moindre
+    # donnée technique.
+    #
+    # ORDRE DE RÉSOLUTION, et rien d'autre :
+    #   1. lignes PANNEAU du devis (nb × watt) ;
+    #   2. watt de la FICHE PRODUIT quand la désignation est muette
+    #      (``puissance_panneaux_lignes`` → ``_fiche_watt``) ;
+    #   3. kWc du CALEPINAGE 3D, plus bas, quand le devis ne porte aucune ligne
+    #      panneau (bloc « toiture 3D ») ;
+    #   4. OMISSION — ``None``. Les vignettes puissance / production /
+    #      économies / prix-au-kWc ne sont alors pas rendues du tout.
+    #
     # PVUNI (fondateur, 18/08/2026) — ce drapeau dit si la puissance vient des
-    # LIGNES (nb panneaux × watt du panneau RETENU) ou d'une estimation faute de
-    # ligne de panneau. Il est relu bien plus bas, au bloc « toiture 3D » : un
-    # calepinage ne peut plus écraser une puissance issue des lignes.
+    # LIGNES. Il est relu bien plus bas, au bloc « toiture 3D » : un calepinage
+    # ne peut plus écraser une puissance issue des lignes.
     puissance_des_lignes = nb_panneaux > 0
     if nb_panneaux > 0:
         puissance_kwc = round(nb_panneaux * watt / 1000, 2)
     else:
-        _approx = float(sum(r["quantite"] * r["prix_unit_ttc"] for r in sans_items))
-        puissance_kwc = max(3.0, round(_approx / 12000, 2))
-        nb_panneaux = max(1, round(puissance_kwc * 1000 / watt))
+        puissance_kwc = None
+        nb_panneaux = None
 
     # ── Z1 (ORDRE FONDATEUR, 20/08/2026) — PLUS AUCUNE BATTERIE DE SYNTHÈSE ──
     #
@@ -1002,15 +1043,23 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # calepinage ne sert plus que de repli quand le devis ne porte AUCUNE
         # ligne de panneau (rien à lire côté lignes) : la géométrie 3D reste
         # exacte, seule son échelle de puissance cesse de faire autorité.
+        # M2 — étape 3 de l'ordre de résolution : le calepinage n'est plus le
+        # repli d'une estimation par le prix, il est le DERNIER ancrage réel
+        # avant l'omission. Le compte de panneaux vient alors de CE MÊME
+        # calepinage (une seule source pour les deux figures) ; la puissance
+        # unitaire, elle, reste inconnue (roofPro modélise à 720 W constants,
+        # ce n'est pas le panneau vendu) — voir M3.
         if _kwc_layout and not puissance_des_lignes:
             puissance_kwc = round(_kwc_layout, 2)
+            nb_panneaux = _panneaux_du_layout(roof_layout) or None
         # Facteur de RECALAGE des figures du calepinage (production, économies)
         # sur la taille réellement vendue : la modélisation de site du
         # calepinage (orientation, inclinaison, ombrage, irradiance) est
         # conservée — seule sa TAILLE est ramenée à celle des lignes. 1.0 quand
         # les deux coïncident, donc sortie inchangée sur un devis sain.
         _recalage = 1.0
-        if puissance_des_lignes and _kwc_layout > 0 and puissance_kwc > 0:
+        if (puissance_des_lignes and _kwc_layout > 0
+                and (puissance_kwc or 0) > 0):
             _recalage = puissance_kwc / _kwc_layout
         _stored = dict(devis.etude_params or {})
         for _cle, _brut in (("production_annuelle", _res.get("annualKwh")),
@@ -1030,7 +1079,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # ``etude.puissance_kwc``, ``etude.toiture.kwc``) : il suit la même
         # règle, sans quoi la page publiait encore la base 720 W sous un autre
         # nom. Copies défensives — ``etude_params`` du devis n'est jamais muté.
-        if puissance_des_lignes and puissance_kwc > 0:
+        if puissance_des_lignes and (puissance_kwc or 0) > 0:
             _stored["puissance_kwc"] = puissance_kwc
             _toiture = _stored.get("toiture")
             if isinstance(_toiture, dict) and _nombre(_toiture.get("kwc")):
@@ -1156,7 +1205,12 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         productible=_productible,
         fallback_tarif_kwh=_onee_tarif,
     )
-    roi = calculate_savings_roi(puissance_kwc, total_sans, total_avec, **roi_kwargs)
+    # M2 — puissance inconnue ⇒ production et économies le sont aussi (elles en
+    # dérivent toutes). ``calculate_savings_roi`` rend alors des zéros ; le
+    # drapeau ``puissance_inconnue`` fait OMETTRE ces vignettes au rendu, au
+    # lieu d'imprimer « 0 kWh » / « 0 MAD/an » / « Retour en 0 ans ».
+    roi = calculate_savings_roi(puissance_kwc or 0, total_sans, total_avec,
+                                **roi_kwargs)
     if etude.get("production_annuelle"):
         roi["prod_kwh"] = int(etude["production_annuelle"])
         if etude.get("economies_annuelles"):
@@ -1177,7 +1231,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         if etude.get("economies_annuelles"):
             etude["economies_annuelles"] = roi["eco_s_ann"]
             etude["payback"] = roi["roi_s"]
-        if puissance_kwc > 0:
+        if (puissance_kwc or 0) > 0:
             etude["prix_kwc"] = round(_ref_total / puissance_kwc)
 
     # ── QXMT — UN DOSSIER MT NE PORTE JAMAIS UN CHIFFRE BT ───────────────────
@@ -1660,6 +1714,10 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "puissance_kwc": puissance_kwc,
         "nb_panneaux": nb_panneaux,
         "watt_par_panneau": watt,
+        # M2 — aucun ancrage réel de puissance (ni ligne panneau, ni fiche
+        # produit, ni calepinage) : les renderers OMETTENT puissance,
+        # production, économies et prix-au-kWc. Jamais un kWc déduit du prix.
+        "puissance_inconnue": puissance_kwc is None,
         # PVUNI — le calepinage 3D ne colle plus aux lignes (quelqu'un a édité
         # une quantité de panneaux sans rejouer la 3D). False sur un devis sain
         # ET sur un devis sans calepinage : rendu inchangé dans les deux cas.
@@ -1729,7 +1787,12 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # SUPPOSÉE ? C'est l'ancrage qui autorise la synthèse économies à être
         # rendue ; sans aucun ancrage réel, elle est OMISE (jamais un chiffre
         # d'apparence factuelle bâti sur le tarif de repli + un taux forfaitaire).
-        "factures_reelles": _real_bills is not None,
+        # M1 × Z2 — depuis M1 il n'existe PLUS de série proxy : quand
+        # ``factures_mensuelles`` n'est pas None, elle EST la série
+        # réelle du client. Le drapeau d'ancrage de Z2 se lit donc
+        # directement dessus (il testait la variable intermédiaire que
+        # M1 a supprimée avec le repli qu'elle servait à distinguer).
+        "factures_reelles": factures_mensuelles is not None,
         "sans_items": sans_items,
         "avec_items": avec_items,
         "sans_bullets": _bullets(sans_items),

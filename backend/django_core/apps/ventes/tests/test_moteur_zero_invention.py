@@ -46,6 +46,48 @@ class M1FactureProxyTests(SimpleTestCase):
         self.assertIsNone(renderer.synthese_economies(data))
 
 
+class M2PuissanceInventeeParLePrixTests(SimpleTestCase):
+    """M2 — le kWc n'est plus déduit du prix ; inconnu ⇒ vignettes omises."""
+
+    INCONNUE = dict(puissance_inconnue=True, puissance_kwc=None,
+                    nb_panneaux=None, watt_par_panneau=None, prod_kwh=0)
+
+    def test_puissance_inconnue_le_document_n_imprime_ni_kwc_ni_panneaux(self):
+        html = F.html_legacy(**self.INCONNUE)
+        self.assertNotIn("Puissance Install", html)
+        self.assertNotIn("panneaux &#215;", html)
+
+    def test_puissance_inconnue_omet_production_et_economies(self):
+        html = F.html_legacy(**self.INCONNUE)
+        self.assertNotIn("Production Annuelle", html)
+        self.assertNotIn("&#201;conomies estim&#233;es / an", html)
+        self.assertNotIn("Retour en", html)
+
+    def test_puissance_connue_les_vignettes_restent(self):
+        html = F.html_legacy()
+        self.assertIn("Puissance Install", html)
+        self.assertIn("Production Annuelle", html)
+        self.assertIn("&#201;conomies estim&#233;es / an", html)
+
+    def test_une_page_omet_le_resume_systeme_sans_puissance(self):
+        html = F.html_onepage(**self.INCONNUE)
+        self.assertNotIn("Puissance cr&#234;te", html)
+        self.assertNotIn("Prix par kWc", html)
+
+    def test_detection_panneau_elargie_aux_designations_reelles(self):
+        from apps.ventes.quote_engine import builder
+        for designation in ("Panneau Canadien Solar 710W", "Module PV 550W",
+                            "Module photovoltaïque 550 W",
+                            "Canadian Solar TOPHiKu7 710 Wc"):
+            self.assertTrue(builder._is_panel(designation), designation)
+        # Une marque seule, ou un équipement d'une autre famille, jamais.
+        for designation in ("Canadian Solar", "Onduleur réseau Huawei 10kW",
+                            "Onduleur hybride Deye 10kW", "Batterie Dyness 10 kWh",
+                            "Smart Meter", "Coffret PV DC",
+                            "Module de communication", "Structures acier"):
+            self.assertFalse(builder._is_panel(designation), designation)
+
+
 class M1GhiSourceUniqueTests(SimpleTestCase):
     """M1 (suite) — une SEULE dérivation du profil GHI dans tout le backend."""
 

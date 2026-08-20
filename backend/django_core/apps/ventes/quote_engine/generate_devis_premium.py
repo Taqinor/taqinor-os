@@ -300,6 +300,11 @@ OPTIONS_PROPOSEES = []
 # byte-identique \u00e0 aujourd'hui (aucun dossier MT \u21d2 aucune omission).
 MASQUER_ECONOMIES = False
 TARIF_MT_MENTION = ""
+# M2 — aucun ancrage réel de puissance (ni ligne panneau, ni fiche produit, ni
+# calepinage) : puissance, production, économies et prix-au-kWc en dérivent
+# tous, donc AUCUN d'eux n'est imprimé. Défaut INERTE (False) : sans la clé du
+# builder, le rendu est byte-identique.
+PUISSANCE_INCONNUE = False
 
 MONTHS  = ["Jan","F\u00e9v","Mar","Avr","Mai","Jun",
            "Jul","Ao\u00fb","Sep","Oct","Nov","D\u00e9c"]
@@ -1236,9 +1241,13 @@ def page1():
         f'color:{CG4};">Raccordement MOYENNE TENSION&#160;: les &#233;conomies '
         'et le retour sur investissement seront chiffr&#233;s sur le bar&#232;me '
         'MT, jamais au bar&#232;me basse tension.</div>')
-    if MASQUER_ECONOMIES:
+    if MASQUER_ECONOMIES or PUISSANCE_INCONNUE:
+        # M2 — puissance sans ancrage : les économies et le retour sur
+        # investissement en dérivent (ils valent 0), on les OMET plutôt que
+        # d'imprimer « Retour en 0 ans ». La note MT ne s'affiche, elle, que
+        # pour un vrai dossier moyenne tension.
         _roi_pill_s = _roi_pill_a = ""
-        _eco_box_s = _eco_box_a = _mt_note
+        _eco_box_s = _eco_box_a = _mt_note if MASQUER_ECONOMIES else ""
     else:
         _roi_pill_s = (
             '<div style="display:inline-block;align-self:flex-start;'
@@ -1356,6 +1365,45 @@ def page1():
         _eco_val   = f'<span style="white-space:nowrap;">{esa_mad}&nbsp;&#8211;&nbsp;{eaa_mad}</span>'
         _eco_size  = "13pt"
         _eco_sub   = "selon option choisie"
+
+    # ── M2 — VIGNETTES CONDITIONNELLES (audit adversarial du 19/08/2026) ──────
+    # La rangée imprimait « {KWC} kWc », « {NB_PAN} panneaux × {WP} W »,
+    # « {pk} kWh » et un montant d'économies comme des FAITS, y compris quand
+    # le kWc venait d'une division du prix total (M2) et le watt d'un défaut
+    # catalogue (M3). Chaque carte n'est désormais rendue que si sa donnée a
+    # un ancrage réel ; une rangée entièrement vide disparaît. Sur un devis
+    # normal (puissance lue sur les lignes), le HTML est celui d'hier.
+    _kpi_cards = []
+    if not PUISSANCE_INCONNUE and KWC > 0:
+        # M3 — « × W » seulement si la puissance unitaire a été LUE quelque
+        # part (désignation ou fiche produit) ; sinon « N panneaux » tout court.
+        if NB_PAN > 0:
+            _pan_line = (f'{NB_PAN} panneaux &#215; {WP}&nbsp;W' if WP > 0
+                         else f'{NB_PAN} panneaux')
+        else:
+            _pan_line = ""
+        _kpi_cards.append(
+            f'<div style="flex:1;min-width:0;margin-right:9px;border:1px solid {CG2};border-left:4px solid {CA};border-radius:6px;padding:14px 12px;background:white;">'
+            f'<div style="font-size:4.5pt;letter-spacing:1.5px;color:{CG4};font-weight:400;text-transform:uppercase;margin-bottom:4px;">Puissance Install&#233;e</div>'
+            f'<div class="serif" style="font-size:19pt;color:{CN};line-height:1.05;">{KWC}&nbsp;kWc</div>'
+            + (f'<div style="font-size:6.5pt;color:{CG4};margin-top:3px;">{_pan_line}</div>'
+               if _pan_line else '')
+            + '</div>')
+    if not PUISSANCE_INCONNUE and PROD_KWH > 0:
+        _kpi_cards.append(
+            f'<div style="flex:1;min-width:0;margin-right:9px;border:1px solid {CG2};border-left:4px solid {CA};border-radius:6px;padding:14px 12px;background:white;">'
+            f'<div style="font-size:4.5pt;letter-spacing:1.5px;color:{CG4};font-weight:400;text-transform:uppercase;margin-bottom:4px;">Production Annuelle</div>'
+            f'<div class="serif" style="font-size:19pt;color:{CN};line-height:1.05;">{pk}&nbsp;kWh</div>'
+            f'<div style="font-size:6.5pt;color:{CG4};margin-top:3px;">&#233;nergie propre / an</div>'
+            '</div>')
+    if not PUISSANCE_INCONNUE:
+        _kpi_cards.append(
+            f'<div style="flex:1;min-width:0;overflow-wrap:anywhere;border:2px solid {CA};border-left:5px solid {CA};border-radius:6px;padding:14px 12px;background:#FFFBF2;box-shadow:0 2px 10px rgba(245,166,35,0.18);">'
+            f'<div style="font-size:4.5pt;letter-spacing:1.5px;color:{CA};font-weight:700;text-transform:uppercase;margin-bottom:4px;">&#201;conomies estim&#233;es / an</div>'
+            f'<div class="serif" style="font-size:{_eco_size};color:{CN};line-height:1.1;">{_eco_val}</div>'
+            f'<div style="font-size:6.5pt;color:{CA};font-weight:600;margin-top:3px;">{_eco_sub}</div>'
+            '</div>')
+    _kpi_cards_html = "\n".join(_kpi_cards)
     return f"""
 <div class="page" style="background:#FFFFFF !important;">
 
@@ -1427,25 +1475,7 @@ def page1():
          carte Économies. Le padding droit du conteneur (42px = 24px de marge
          + 2×9px d'espacement) ramène le bord droit exactement sur la marge. -->
     <div style="display:flex;background:#FFFFFF !important;">
-
-      <div style="flex:1;min-width:0;margin-right:9px;border:1px solid {CG2};border-left:4px solid {CA};border-radius:6px;padding:14px 12px;background:white;">
-        <div style="font-size:4.5pt;letter-spacing:1.5px;color:{CG4};font-weight:400;text-transform:uppercase;margin-bottom:4px;">Puissance Install&#233;e</div>
-        <div class="serif" style="font-size:19pt;color:{CN};line-height:1.05;">{KWC}&nbsp;kWc</div>
-        <div style="font-size:6.5pt;color:{CG4};margin-top:3px;">{NB_PAN} panneaux &#215; {WP}&nbsp;W</div>
-      </div>
-
-      <div style="flex:1;min-width:0;margin-right:9px;border:1px solid {CG2};border-left:4px solid {CA};border-radius:6px;padding:14px 12px;background:white;">
-        <div style="font-size:4.5pt;letter-spacing:1.5px;color:{CG4};font-weight:400;text-transform:uppercase;margin-bottom:4px;">Production Annuelle</div>
-        <div class="serif" style="font-size:19pt;color:{CN};line-height:1.05;">{pk}&nbsp;kWh</div>
-        <div style="font-size:6.5pt;color:{CG4};margin-top:3px;">&#233;nergie propre / an</div>
-      </div>
-
-      <div style="flex:1;min-width:0;overflow-wrap:anywhere;border:2px solid {CA};border-left:5px solid {CA};border-radius:6px;padding:14px 12px;background:#FFFBF2;box-shadow:0 2px 10px rgba(245,166,35,0.18);">
-        <div style="font-size:4.5pt;letter-spacing:1.5px;color:{CA};font-weight:700;text-transform:uppercase;margin-bottom:4px;">&#201;conomies estim&#233;es / an</div>
-        <div class="serif" style="font-size:{_eco_size};color:{CN};line-height:1.1;">{_eco_val}</div>
-        <div style="font-size:6.5pt;color:{CA};font-weight:600;margin-top:3px;">{_eco_sub}</div>
-      </div>
-
+{_kpi_cards_html}
     </div>
   </div>
 
@@ -2707,6 +2737,8 @@ def apply_quote_data(data: dict) -> None:
     global MASQUER_ECONOMIES, TARIF_MT_MENTION
     MASQUER_ECONOMIES = bool(data.get("masquer_economies"))
     TARIF_MT_MENTION = data.get("tarif_mt_mention") or ""
+    global PUISSANCE_INCONNUE  # M2 — puissance sans ancrage réel
+    PUISSANCE_INCONNUE = bool(data.get("puissance_inconnue"))
     global HYPOTHESES  # QK4 — bloc « Nos hypothèses »
     HYPOTHESES = data.get("hypotheses")
     global NB_PROPRIETES, DISPLAY_TOTAL_MULTI, MULTI_VILLA  # QJ30 multi-propriétés
@@ -2724,10 +2756,13 @@ def apply_quote_data(data: dict) -> None:
     CLIENT_ICE   = _esc(data.get("client_ice", ""))
     REF          = str(data["ref"])
     DATE_STR     = data["date"]
-    KWC          = float(data["puissance_kwc"])
-    NB_PAN       = int(data["nb_panneaux"])
-    WP           = int(data["watt_par_panneau"])
-    PROD_KWH     = int(data["prod_kwh"])
+    # M2/M3 — puissance, compte de panneaux et watt unitaire peuvent être
+    # INCONNUS (None) : ils ne sont plus jamais déduits du prix. 0 = « rien à
+    # imprimer », et chaque vignette qui en dépend est omise.
+    KWC          = float(data.get("puissance_kwc") or 0)
+    NB_PAN       = int(data.get("nb_panneaux") or 0)
+    WP           = int(data.get("watt_par_panneau") or 0)
+    PROD_KWH     = int(data.get("prod_kwh") or 0)
     TOTAL_SANS        = float(data["total_sans"])
     TOTAL_AVEC        = float(data["total_avec"])
     DISCOUNT_PCT      = float(data.get("discount_pct", 0))
