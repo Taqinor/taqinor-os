@@ -189,8 +189,8 @@ BASELINE_ALLOWLIST = {
     "backend/django_core/apps/ventes/services.py:1036",
     "backend/django_core/apps/ventes/services.py:2817",
     "backend/django_core/apps/ventes/services.py:2884",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:336",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:337",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:387",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:388",
     "backend/django_core/apps/ventes/quote_engine/builder.py:727",
     "backend/django_core/apps/ventes/quote_engine/builder.py:840",
     "backend/django_core/apps/ventes/quote_engine/builder.py:842",
@@ -207,7 +207,7 @@ BASELINE_ALLOWLIST = {
     # au-dessus (300…985) sont AVANT l'insertion et ne bougent pas.
     "backend/django_core/apps/ventes/quote_engine/builder.py:1809",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1755",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1882",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:2110",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1749",
     # Z1/Z2 (20/08/2026) — RE-CALAGE file:line, PAS de nouveau site
     # (bug-class #34), et un site MONÉTAIRE EN MOINS. Le bloc « batterie de
@@ -222,16 +222,35 @@ BASELINE_ALLOWLIST = {
     #   1133→1168 roi_s · 1146→1181 prix_kwc · 1822→1876 montant TVA ×N
     #   1828→1882 display_total_multi · 1881→1935 total_ht · 1882→1936 total_ttc
     # (336/337 sont AVANT toute insertion et ne bougent pas.)
-    "backend/django_core/apps/ventes/quote_engine/builder.py:903",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:905",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:930",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:932",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1168",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1181",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1876",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1882",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1935",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1936",
+    # 2026-08-20 — LANE MOTEUR (M1-M11/Q1-Q8) : DOUZE ENTRÉES RECALÉES,
+    # zéro ajout hors celle documentée juste dessous. Le rebasage sur la
+    # base Z+W+N+O et les correctifs de la lane ont décalé builder.py de
+    # ~+107 à +228 lignes selon la zone. Chaque numéro a été retrouvé PAR
+    # PREUVE DE CONTENU (la ligne de base et la nouvelle portent la MÊME
+    # expression, à la lettre), jamais par un décalage supposé :
+    #   336→387 pu_ht · 337→388 pu_ttc · 903→1010 ht_brut · 905→1012
+    #   ht_net · 930→1037 tva_amt · 932→1039 ttc_exact · 1168→1295 roi_s
+    #   1181→1308 prix_kwc · 1876→2104 montant TVA ×N · 1882→2110
+    #   display_total_multi · 1935→2163 total_ht · 1936→2164 total_ttc.
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1010",
+    # 2026-08-20 — Q1 (lane moteur) : NOUVEAU site relu. Somme TTC des
+    # lignes onduleur d'une option (`_cout_onduleur`), qui devient la
+    # provision de remplacement à l'année 12 — elle remplace un forfait
+    # « 8 % du CAPEX ». Même unité et même arrondi float que les sites
+    # voisins déjà listés de ce module (le moteur de devis travaille en
+    # float de bout en bout ; `quantize_mad` est la convention des
+    # modèles, pas de ce rendu). Valeur JAMAIS persistée : elle ne sert
+    # qu'au tracé et à la ligne d'hypothèse.
+    "backend/django_core/apps/ventes/quote_engine/builder.py:270",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1012",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1037",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1039",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1295",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1308",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:2104",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:2110",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:2163",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:2164",
 }
 
 TARGET_FILES = [

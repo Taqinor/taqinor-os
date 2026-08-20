@@ -38,14 +38,23 @@ class M1FactureProxyTests(SimpleTestCase):
         html = F.html_legacy(factures_mensuelles=None)
         self.assertGreater(len(html), 10_000)
 
-    def test_serie_absente_le_renderer_residentiel_refuse_de_rendre(self):
-        # La dégradation VOULUE : plutôt qu'une page 1 avec un « −N % »
-        # fabriqué, le renderer résidentiel se déclare hors périmètre.
+    def test_serie_absente_la_couche_economique_est_omise_en_place(self):
+        """M1 × Z2 — la dégradation VOULUE, dans sa forme la plus stricte.
+
+        Sans série de factures RÉELLES il n'y a rien à montrer (et plus aucun
+        proxy pour la fabriquer) : plutôt que de renvoyer tout le document vers
+        le moteur legacy, la proposition résidentielle est RENDUE et sa couche
+        économique retirée d'un seul bloc — jamais un « −N % » fabriqué, jamais
+        un bloc à moitié.
+        """
         from apps.ventes.quote_engine.residential import renderer
         data = F.donnees_residentiel(factures_mensuelles=None)
-        with self.assertRaises(renderer.Unsupported):
-            renderer._augment(data)
         self.assertIsNone(renderer.synthese_economies(data))
+        d = renderer._augment(data)          # ne lève PLUS Unsupported
+        self.assertTrue(d["masquer_synthese"])
+        for k in ("pct_cut", "annual_before", "annual_after",
+                  "coverage_pct", "bills_before", "bills_after"):
+            self.assertNotIn(k, d, k)
 
 
 class M2PuissanceInventeeParLePrixTests(SimpleTestCase):
@@ -250,10 +259,21 @@ class M9AbattementBatterieTests(SimpleTestCase):
         self.assertGreater(sans["cashflow_avec"][-1], avec["cashflow_avec"][-1])
 
     def test_le_stockage_se_deduit_de_la_capacite_batterie_reelle(self):
+        """Sans ``stockage_present`` explicite, la présence de stockage se
+        déduit de la capacité batterie RÉELLE.
+
+        On l'épingle sur le drapeau des hypothèses, pas sur le gain final : une
+        capacité réelle relève aussi le taux d'autoconsommation, donc le gain
+        MONTE (et c'est correct). Ce que M9 garantit, c'est qu'aucun abattement
+        n'est appliqué à une option qui ne porte pas de stockage.
+        """
         from apps.ventes.quote_engine.pricing import calculate_savings_roi
         sans = calculate_savings_roi(10, 100000, 100000, battery_kwh=None)
         avec = calculate_savings_roi(10, 100000, 100000, battery_kwh=10)
-        self.assertGreater(sans["cashflow_avec"][-1], avec["cashflow_avec"][-1])
+        self.assertFalse(
+            sans["cashflow_assumptions"]["battery_roundtrip_applique"])
+        self.assertTrue(
+            avec["cashflow_assumptions"]["battery_roundtrip_applique"])
 
     def test_les_deux_hypotheses_cachees_sont_imprimees(self):
         from apps.ventes.quote_engine.pricing import cashflow_assumptions
