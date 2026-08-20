@@ -100,7 +100,7 @@ class _Base(TestCase):
         self.company = make_company(self.slug)
         self.user = User.objects.create_user(
             username='u3-%s' % self.slug, password='x',
-            company=self.company, role='admin')
+            company=self.company, role_legacy='admin')
         seed(self.company)
         self.api = auth_client(self.user)
 
