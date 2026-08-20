@@ -770,7 +770,12 @@ MODELE_SUPPOSE_PVG4 = {
     'OND-H-DEY-15T': 'Deye SUN-15K-SG01HP3-EU-AM2',      # deyeinverter datasheet sun-(5-25)k-sg01hp3
     'OND-H-DEY-20T': 'Deye SUN-20K-SG01HP3-EU-AM2',      # solarhouse.bg + pretapower
     'BAT-DEY-5': 'Dyness DL5.0C',                        # dyness.com DL5.0C datasheet
-    'BAT-DEY-10': 'Dyness Powerbox Pro/G2 10.24',        # inverter-warehouse.co.za
+    # PVCOMPAT (2026-08-21) — tranché entre Pro et G2 par les fiches
+    # OFFICIELLES dyness.com : les valeurs seedées (DoD 90 %, 9,216 kWh
+    # utilisables, 103 kg) sont EXACTEMENT celles du Powerbox Pro
+    # (DynessPowerboxPro datasheet 20241231-EN) — le G2 publie 95 % / 9,728.
+    # Modèle toujours « supposé » (pas confirmé fondateur), source resserrée.
+    'BAT-DEY-10': 'Dyness Powerbox Pro 10.24',           # dyness.com Powerbox Pro datasheet (20241231-EN)
     # PVG4 — décision fondateur 2026-08-18 : nouveau palier 15 kW basse
     # tension, modèle donné DIRECTEMENT par le fondateur (pas une supposition
     # à deviner) — CONFIRMÉ dès la première seed, comme le 10T ci-dessus.
@@ -1142,6 +1147,10 @@ FICHES_TECHNIQUES = {
         'ond_ac_kw': Decimal('15'), 'ond_phases': 3,
         'ond_rendement_euro_pct': Decimal('97.0'),
         'ond_v_demarrage_v': Decimal('160.0'),
+        # PVCOMPAT (2026-08-21) — Isc maxi par MPPT asymétrique 54+30 A sur la
+        # MÊME fiche (datasheet_sun-14-20k-sg05lp3-eu-sm2_240601_en.pdf) —
+        # valeur retenue : 30 A, règle prudente (tracker le plus faible).
+        'ond_isc_max_mppt_a': Decimal('30.0'),
     },
     # PVOND (18/08/2026) — Deye SUN-20K-SG05LP3-EU-SM2, jumeau BASSE TENSION
     # du palier 20 kW (OND-H-DEY-20T est un SG01HP3 HAUTE TENSION 160-700 V,
@@ -1171,6 +1180,9 @@ FICHES_TECHNIQUES = {
         'ond_ac_kw': Decimal('20'), 'ond_phases': 3,
         'ond_rendement_euro_pct': Decimal('97.0'),
         'ond_v_demarrage_v': Decimal('160.0'),
+        # PVCOMPAT (2026-08-21) — Isc maxi par MPPT 54+30 A (même fiche que le
+        # 15 kW LV) — valeur retenue : 30 A, règle prudente.
+        'ond_isc_max_mppt_a': Decimal('30.0'),
     },
     'OND-H-DEY-15T': {
         # Confiance moyenne : plage FAMILLE SG01HP3 (5-25K) documentée, pas
@@ -1184,8 +1196,13 @@ FICHES_TECHNIQUES = {
         'ond_mppt_v_min': Decimal('150.0'), 'ond_mppt_v_max': Decimal('850.0'),
         'ond_v_max_abs': Decimal('1000.0'), 'ond_i_max_mppt_a': Decimal('20.0'),
         'ond_ac_kw': Decimal('15'), 'ond_phases': 3,
-        # 97.6/97.0 — même ordre max/euro que le 5M → euro = 97.0.
+        # PVCOMPAT (2026-08-21) — rendement euro DÉSORMAIS SOURCÉ DIRECTEMENT :
+        # la fiche famille SG01HP3 (même PDF 230724) publie Max 97,60 % /
+        # Euro 97,00 % PARTAGÉS 5-25K — plus une déduction depuis le 5M.
         'ond_rendement_euro_pct': Decimal('97.0'),
+        # PVCOMPAT (2026-08-21) — tension de démarrage 180 V, même fiche
+        # famille (valeur partagée 5-25K).
+        'ond_v_demarrage_v': Decimal('180.0'),
     },
     'OND-H-DEY-20T': {
         # L'ancienne source donnait « charge max 50A » : c'est le courant de
@@ -1199,7 +1216,10 @@ FICHES_TECHNIQUES = {
         'ond_mppt_v_min': Decimal('150.0'), 'ond_mppt_v_max': Decimal('850.0'),
         'ond_v_max_abs': Decimal('1000.0'), 'ond_i_max_mppt_a': Decimal('26.0'),
         'ond_ac_kw': Decimal('20'), 'ond_phases': 3,
+        # PVCOMPAT (2026-08-21) — Euro 97,00 % publié PARTAGÉ 5-25K par la
+        # fiche famille SG01HP3 ; tension de démarrage 180 V, même fiche.
         'ond_rendement_euro_pct': Decimal('97.0'),
+        'ond_v_demarrage_v': Decimal('180.0'),
     },
     # ── PVG4 — Batteries Dyness ──
     'BAT-DEY-5': {
