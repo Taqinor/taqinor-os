@@ -2663,7 +2663,18 @@ def generate_premium_pdf(data: dict, out_path) -> str:
         return _render_premium_pdf(data, out_path)
 
 
-def _render_premium_pdf(data: dict, out_path) -> str:
+def apply_quote_data(data: dict) -> None:
+    """Ingère ``data`` dans les globales du module (SANS rendre quoi que ce soit).
+
+    Extrait de ``_render_premium_pdf`` le 20/08/2026 : le rendu PDF passait par
+    WeasyPrint, donc AUCUN test ne pouvait scanner le DOCUMENT réellement
+    produit sans une dépendance lourde — c'est exactement le trou qui a laissé
+    passer le « 87,4 % » codé en dur (audit du 18/08). Avec cette fonction, un
+    test pur appelle ``render_html_for(data)`` et cherche (ou refuse) une chaîne
+    dans le HTML EXACT qui part chez WeasyPrint. Le chemin PDF est inchangé :
+    ``_render_premium_pdf`` appelle ces deux fonctions, dans le même ordre,
+    sous le même verrou.
+    """
     global CLIENT_NAME, CLIENT_ADDR, CLIENT_PHONE, CLIENT_ICE, REF, DATE_STR
     global KWC, NB_PAN, WP, PROD_KWH, TOTAL_SANS, TOTAL_AVEC
     global DISCOUNT_PCT, TOTAL_SANS_BEFORE, TOTAL_AVEC_BEFORE
@@ -2811,13 +2822,24 @@ def _render_premium_pdf(data: dict, out_path) -> str:
     CUMUL_S      = [-TOTAL_SANS + ECO_S_ANN * y for y in YEARS]
     CUMUL_A      = [-TOTAL_AVEC + eco_a_cumul  * y for y in YEARS]
 
-    out_path = Path(out_path)
-    mode = data.get("pdf_mode", "full")
-    if mode == "onepage":
-        html = build_html_onepage(
+
+def render_html_for(data: dict) -> str:
+    """HTML EXACT que le moteur legacy envoie à WeasyPrint pour ``data``.
+
+    Point d'entrée des tests « document rendu » : aucune dépendance PDF, même
+    ingestion et même sélection de gabarit que le chemin PDF. N'acquiert PAS
+    ``_RENDER_LOCK`` (``_render_premium_pdf`` le tient déjà autour de l'appel).
+    """
+    apply_quote_data(data)
+    if data.get("pdf_mode", "full") == "onepage":
+        return build_html_onepage(
             _guard_huawei_accessories(_esc_items(data.get("all_items", []))))
-    else:
-        html = build_html()
+    return build_html()
+
+
+def _render_premium_pdf(data: dict, out_path) -> str:
+    out_path = Path(out_path)
+    html = render_html_for(data)
 
     with tempfile.NamedTemporaryFile(suffix=".html", delete=False,
                                      mode="w", encoding="utf-8") as tf:
