@@ -31,7 +31,12 @@
 # Editer ce Dockerfile change donc l'etiquette, et le workflow `ci-image.yml`
 # reconstruit l'image au prochain push sur `main`.
 # ---------------------------------------------------------------------------
-FROM python:3.11-slim
+# Base EPINGLEE sur bookworm : le tag flottant python:3.11-slim est passe a
+# Debian trixie (20/08/2026), or le depot PGDG ci-dessous installe des
+# paquets construits pour bookworm (libpq5 pgdg12+ exige libldap-2.5-0,
+# absent de trixie) - exit 100 au premier build reel. La base et la ligne
+# bookworm-pgdg doivent TOUJOURS bouger ensemble.
+FROM python:3.11-slim-bookworm
 
 # MEME version majeure/mineure que la production (backend/django_core/Dockerfile
 # et backend/fastapi_ia : python:3.11.x). Une CI en 3.12+ ne verrait pas les
