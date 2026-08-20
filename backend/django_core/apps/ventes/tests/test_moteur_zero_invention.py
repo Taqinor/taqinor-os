@@ -485,6 +485,78 @@ class Q5DelaisIndicatifsTests(SimpleTestCase):
         self.assertNotIn("Délai d'installation", html)
 
 
+class Q7BaremeNationalUniqueTests(SimpleTestCase):
+    """Q7 — les trois distributeurs lisent LA grille nationale."""
+
+    def test_meme_facture_quel_que_soit_le_distributeur(self):
+        from apps.ventes.quote_engine.pricing import kwh_from_bill
+        ref = kwh_from_bill(1800, utility="onee")["kwh_mensuel"]
+        for utility in ("lydec", "redal"):
+            self.assertAlmostEqual(
+                kwh_from_bill(1800, utility=utility)["kwh_mensuel"], ref,
+                places=6, msg=utility)
+
+    def test_l_etiquette_approximatif_a_disparu_du_document(self):
+        from apps.ventes.quote_engine.pricing import kwh_from_bill
+        for utility in ("onee", "lydec", "redal"):
+            self.assertEqual(kwh_from_bill(210, utility=utility)["label"], "")
+
+    def test_le_miroir_js_porte_la_meme_regle(self):
+        # Le repo exige que solar.js reste le miroir EXACT du moteur : deux
+        # grilles divergentes, c'est l'écran qui promet autre chose que le PDF.
+        import os
+        racine = os.path.abspath(os.path.join(
+            os.path.dirname(__file__), "..", "..", "..", "..", ".."))
+        chemin = os.path.join(racine, "frontend", "src", "features", "ventes",
+                              "solar.js")
+        with open(chemin, encoding="utf-8") as fh:
+            src = fh.read()
+        self.assertNotIn("LYDEC_TRANCHES", src)
+        self.assertNotIn("REDAL_TRANCHES", src)
+        self.assertIn("lydec: ONEE_TRANCHES", src)
+        self.assertIn("redal: ONEE_TRANCHES", src)
+
+
+class M10M11EstimationDivulgueeTests(SimpleTestCase):
+    """M10/M11 — une économie estimée le DIT, et un réglage société posé par
+    défaut ne se fait pas passer pour la donnée du client."""
+
+    def test_l_economie_estimee_porte_la_mention_sur_les_trois_pages(self):
+        self.assertIn("(estimation)", F.html_legacy(savings_estimated=True))
+
+    def test_l_economie_estimee_porte_la_mention_sur_une_page(self):
+        html = F.html_onepage(savings_estimated=True, onepage_branche="sans")
+        self.assertIn("MAD/an (estimation)", html)
+
+    def test_sans_drapeau_aucune_mention_ajoutee(self):
+        html = F.html_onepage(onepage_branche="sans")
+        self.assertNotIn("MAD/an (estimation)", html)
+
+    def test_un_tarif_estime_n_est_jamais_dit_personnalise(self):
+        # M11 — le discriminateur était « ce tarif est-il égal à la constante
+        # 1,75 ? » : une société ayant simplement touché son réglage voyait ses
+        # devis annoncer un tarif « personnalisé pour votre profil de
+        # consommation ». Un forfait maison n'est pas la donnée du client.
+        from apps.ventes.quote_engine.builder import ligne_tarif_hypothese
+        estime = ligne_tarif_hypothese("1,80", "ONEE", True)
+        self.assertIn("estimation", estime)
+        self.assertNotIn("personnalisé", estime)
+        self.assertNotIn("1,80", estime)
+        # Seul un tarif saisi pour CE devis (aucune estimation) est présenté
+        # comme tel — et il s'affiche alors, car c'est la donnée du client.
+        saisi = ligne_tarif_hypothese("1,42", "", False)
+        self.assertIn("saisi pour ce devis", saisi)
+        self.assertIn("1,42", saisi)
+
+    def test_la_ligne_de_tarif_estimee_est_rendue_telle_quelle(self):
+        from apps.ventes.quote_engine.builder import ligne_tarif_hypothese
+        ligne = ligne_tarif_hypothese("1,80", "ONEE", True)
+        html = F.html_legacy(hypotheses={"titre": "Nos hypothèses",
+                                         "items": [ligne]})
+        self.assertIn("référence prudente (estimation)", html)
+        self.assertNotIn("1,80", html)
+
+
 class M1GhiSourceUniqueTests(SimpleTestCase):
     """M1 (suite) — une SEULE dérivation du profil GHI dans tout le backend."""
 

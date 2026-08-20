@@ -356,6 +356,13 @@ VALID_UNTIL = ""
 # codé ici, jamais dans la boîte « Conditions »).
 DELAI_VISITE = ""
 DELAI_INSTALLATION = ""
+# M10 (audit du 19/08/2026) — le modèle d'économies est-il une ESTIMATION
+# (aucun barème réel du client n'a servi) ? Le builder le calcule depuis
+# toujours (``savings_estimated``) mais AUCUN renderer ne le lisait : le
+# document ne distinguait pas une économie calculée sur le barème réel du
+# client d'une économie estimée sur un tarif de référence. Défaut False =
+# rendu inchangé pour tout appel sans la clé.
+SAVINGS_ESTIMATED = False
 
 # ── DC1 — identité société (multi-tenant) ──────────────────────────────────────
 # Chaque littéral d'identité (nom de marque du footer, coordonnées, ligne légale
@@ -1457,18 +1464,24 @@ def page1():
         _eco_val   = '<span style="white-space:nowrap;">&#8212;</span>'
         _eco_size  = "17pt"
         _eco_sub   = "chiffr&#233;es sur bar&#232;me MT"
-    elif SCENARIO == 'Sans batterie':
-        _eco_val   = f'<span style="white-space:nowrap;">{esa_mad}</span>'
-        _eco_size  = "17pt"
-        _eco_sub   = "&#233;conomies par an"
-    elif SCENARIO == 'Avec batterie':
-        _eco_val   = f'<span style="white-space:nowrap;">{eaa_mad}</span>'
-        _eco_size  = "17pt"
-        _eco_sub   = "&#233;conomies par an"
     else:
-        _eco_val   = f'<span style="white-space:nowrap;">{esa_mad}&nbsp;&#8211;&nbsp;{eaa_mad}</span>'
-        _eco_size  = "13pt"
-        _eco_sub   = "selon option choisie"
+        # M10 — une économie du modèle « estimation » porte la mention sur TOUS
+        # les formats : sans barème réel du client, le chiffre est un ordre de
+        # grandeur, et le document doit le dire là où il l'affiche.
+        _est = " (estimation)" if SAVINGS_ESTIMATED else ""
+        if SCENARIO == 'Sans batterie':
+            _eco_val = f'<span style="white-space:nowrap;">{esa_mad}</span>'
+            _eco_size = "17pt"
+            _eco_sub = f"&#233;conomies par an{_est}"
+        elif SCENARIO == 'Avec batterie':
+            _eco_val = f'<span style="white-space:nowrap;">{eaa_mad}</span>'
+            _eco_size = "17pt"
+            _eco_sub = f"&#233;conomies par an{_est}"
+        else:
+            _eco_val = (f'<span style="white-space:nowrap;">{esa_mad}'
+                        f'&nbsp;&#8211;&nbsp;{eaa_mad}</span>')
+            _eco_size = "13pt"
+            _eco_sub = f"selon option choisie{_est}"
 
     # ── M2 — VIGNETTES CONDITIONNELLES (audit adversarial du 19/08/2026) ──────
     # La rangée imprimait « {KWC} kWc », « {NB_PAN} panneaux × {WP} W »,
@@ -2565,7 +2578,9 @@ def page_onepage(items):
             ONEPAGE_BRANCHE)
         if not MASQUER_ECONOMIES and _eco_branche:
             _sum_cells.append(
-                ("&#201;conomie annuelle", f"{fnum(_eco_branche)} MAD/an"))
+                ("&#201;conomie annuelle",
+                 f"{fnum(_eco_branche)} MAD/an"
+                 + (" (estimation)" if SAVINGS_ESTIMATED else "")))
         _sum_cells.append(
             ("Prix par kWc", f"{fnum(round(total / KWC))} MAD/kWc"))
     else:
@@ -3005,6 +3020,8 @@ def apply_quote_data(data: dict) -> None:
     _dl = data.get("delais") or {}
     DELAI_VISITE = (_dl.get("visite_technique") or "").strip()
     DELAI_INSTALLATION = (_dl.get("installation") or "").strip()
+    global SAVINGS_ESTIMATED  # M10 — économies estimées ?
+    SAVINGS_ESTIMATED = bool(data.get("savings_estimated"))
     # XSAL14/XSAL5 — structure (sections/notes) + options proposées (rendu seul,
     # hors totaux). Absents → byte-identique. Escapés à l'ingestion (ERR37).
     global LIGNES_STRUCTURE, OPTIONS_PROPOSEES

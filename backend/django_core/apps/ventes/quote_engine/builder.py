@@ -394,6 +394,29 @@ def _line_to_item(ligne, taux_tva: Decimal) -> dict:
     }
 
 
+def ligne_tarif_hypothese(tarif_txt, util_name, savings_estimated) -> str:
+    """Ligne « Tarif électricité » du bloc « Nos hypothèses ».
+
+    M11 (audit adversarial du 19/08/2026) — UN RÉGLAGE SOCIÉTÉ POSÉ PAR DÉFAUT
+    N'EST PAS UNE DONNÉE DU CLIENT. Le discriminateur était « ce tarif est-il
+    égal à la constante interne 1,75 ? » : dès qu'une société avait touché son
+    réglage ``onee_tarif_kwh`` — ou en gardait simplement un autre défaut — le
+    document annonçait un tarif « personnalisé pour votre profil de
+    consommation ». C'est un forfait maison, commun à tous ses clients, et le
+    moteur le SAIT : ``savings_estimated`` reste vrai tant qu'aucun barème réel
+    n'a servi. C'est donc ce drapeau qui décide, jamais une comparaison avec une
+    constante. Extrait en fonction PURE pour être épinglé par un test.
+    """
+    if savings_estimated:
+        return ("Tarif électricité : référence prudente (estimation) — "
+                "transmettez une facture récente et nous recalculons vos "
+                "économies par tranches, sur votre barème exact.")
+    if util_name:
+        return f"Tarif électricité retenu : {tarif_txt} MAD/kWh ({util_name})"
+    return (f"Tarif électricité : {tarif_txt} MAD/kWh, saisi pour ce devis — "
+            "un calcul par tranches sur facture réelle reste possible.")
+
+
 def puissance_panneaux_lignes(lignes) -> tuple[int, int]:
     """``(nb_panneaux, watt)`` dérivés des lignes PANNEAU parmi ``lignes``.
 
@@ -1398,14 +1421,23 @@ def build_quote_data(devis, pdf_options=None) -> dict:
 
     # ── QK4 — « Nos hypothèses » : transparence des hypothèses d'économies ────
     # Surface côté client les hypothèses derrière les économies : tarif MAD/kWh
-    # utilisé, source du barème (ONEE/Lydec/Redal — approximatif pour les
-    # distributeurs privés), autoconsommation d'abord (loi 82-21, injection OFF —
+    # utilisé, source du barème (Q7 : UNE grille nationale, le nom du
+    # distributeur n'est plus qu'un libellé), autoconsommation d'abord
+    # (loi 82-21, injection OFF —
     # rachat BT résidentiel différé par l'ANRE), base de production/dégradation.
     # Toutes les valeurs viennent de roi/etude (une source) ; dégrade proprement.
     _util_labels = {"onee": "ONEE", "lydec": "Lydec", "redal": "Redal"}
     _util_key = (str(_utility).lower() if _utility else "")
     _util_name = _util_labels.get(_util_key, "")
-    _util_approx = _util_key in ("lydec", "redal")
+    # Q7 — plus aucun barème « approximatif » : les trois distributeurs lisent
+    # la grille nationale (éditable par société). Le drapeau reste, toujours
+    # faux, pour ne casser aucun consommateur de la charge utile.
+    _util_approx = False
+    # M10/M11 — LE MODÈLE D'ÉCONOMIES EST-IL UNE ESTIMATION ? ``savings_estimated``
+    # est calculé par ``calculate_savings_roi`` (aucun barème réel n'a servi)
+    # mais n'était lu par AUCUN renderer : le document ne distinguait pas une
+    # économie calculée sur le barème réel du client d'une économie estimée.
+    _savings_estimated = bool(roi.get("savings_estimated"))
     _tarif_val = roi.get("tarif_kwh")
     _tarif_txt = (f"{_tarif_val:.2f}".replace(".", ",")
                   if isinstance(_tarif_val, (int, float)) else None)
@@ -1414,8 +1446,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     if savings_model == "factures" and _util_name:
         hypotheses.append(
             f"Tarif électricité : barème {_util_name} par tranche"
-            + (" (approximatif — distributeur privé)" if _util_approx
-               else " (barème public)"))
+            + " (barème national)")
     elif _tarif_txt:
         # QRES16 (fondateur, 2026-07-18) — ne JAMAIS présenter le défaut
         # interne du simulateur comme un « tarif retenu » réfléchi : le 1,75
@@ -1430,34 +1461,20 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # autre) : la ligne dit la MÉTHODE et le chemin vers l'exactitude.
         # Seul un tarif réellement personnalisé (saisi pour CE devis, différent
         # du défaut) reste affiché, car c'est la donnée du client.
-        # Z3 (ORDRE FONDATEUR, 20/08/2026) — la garde QRES55 visait la MAUVAISE
-        # constante : elle comparait le tarif employé à ``constants.KWH_PRICE``
-        # (1,75 — l'ANCIEN défaut du simulateur, plus jamais utilisé comme prix)
-        # alors que le repli réellement appliqué est
-        # ``pricing._FALLBACK_KWH_PRICE`` (1,20). L'égalité n'arrivant jamais,
-        # c'était la branche « personnalisé » qui s'exécutait et le document
-        # client (PDF legacy ET proposition publique, qui sert ``hypotheses``
-        # telles quelles) affichait « Tarif électricité : 1,20 MAD/kWh,
-        # personnalisé pour votre profil de consommation » — un REPLI présenté
-        # comme une donnée du client. Le signal juste n'est pas une comparaison
-        # de valeur mais ``savings_estimated``, que ``calculate_savings_roi``
-        # pose à True EXACTEMENT quand aucune donnée tarifaire n'existait (ni
-        # prix vendeur, ni barème distributeur, ni barème société) : le prix est
-        # alors un repli — jamais nommé en chiffres, jamais dit « personnalisé ».
-        if _util_name:
-            hypotheses.append(
-                f"Tarif électricité retenu : {_tarif_txt} MAD/kWh "
-                f"({_util_name})")
-        elif roi.get("savings_estimated"):
-            hypotheses.append(
-                "Tarif électricité : référence résidentielle prudente — "
-                "transmettez une facture récente et nous recalculons vos "
-                "économies par tranches, sur votre barème exact.")
-        else:
-            hypotheses.append(
-                f"Tarif électricité : {_tarif_txt} MAD/kWh, personnalisé "
-                "pour votre profil de consommation — un calcul par tranches "
-                "sur facture réelle reste possible.")
+        # Z3 × M11 — MÊME défaut, deux correctifs : on garde le plus
+        # STRICT (M11). Z3 avait identifié la cause — la garde QRES55
+        # comparait le tarif à ``constants.KWH_PRICE`` (1,75, l'ANCIEN
+        # défaut, plus jamais utilisé comme prix) au lieu du repli
+        # réellement appliqué ``_FALLBACK_KWH_PRICE`` (1,20) : l'égalité
+        # n'arrivant jamais, la branche « personnalisé » s'exécutait
+        # TOUJOURS. M11 va plus loin sur trois points : le drapeau
+        # ``savings_estimated`` est testé EN PREMIER (un tarif estimé ne
+        # peut plus être habillé en « tarif retenu (ONEE) »), la ligne
+        # PORTE le mot « (estimation) », et la branche restante dit
+        # « saisi pour ce devis » au lieu de revendiquer un « profil de
+        # consommation » que le moteur n'a jamais analysé.
+        hypotheses.append(ligne_tarif_hypothese(
+            _tarif_txt, _util_name, _savings_estimated))
     # QRES55 — formulations COMPACTES (le fondateur veut la même transparence
     # « en plus petit ») : une idée, une ligne courte.
     hypotheses.append(

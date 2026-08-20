@@ -426,6 +426,17 @@ def _monthly_consumption(devis) -> list:
     # Barème stable par facture → on mémoïse la conversion (2 valeurs max).
     _cache = {}
 
+    # ── M10 (audit adversarial du 19/08/2026) — PAS DE DISTRIBUTEUR RÉEL, PAS
+    # DE COURBE. Sans distributeur, ``kwh_from_bill`` dégrade sur un prix PLAT
+    # (1,20 MAD/kWh) et le signale (``estimation``) — ce drapeau était JETÉ, et
+    # la page publiait une courbe de consommation en kWh qui n'était qu'une
+    # division de la facture par un forfait, présentée comme une mesure. Le
+    # drapeau décide maintenant : estimation ⇒ série vide ⇒ la page masque le
+    # graphe (elle le fait déjà pour un devis sans facture).
+    _sonde = kwh_from_bill(hiver_mad, utility=utility)
+    if _sonde.get('estimation'):
+        return []
+
     def _kwh(mad):
         if mad not in _cache:
             _cache[mad] = round(
