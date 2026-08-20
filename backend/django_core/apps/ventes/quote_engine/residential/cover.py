@@ -110,12 +110,16 @@ def build(ctx):
       <div class="c1-impact-t">Et pour la planète&nbsp;: ≈&nbsp;<b>{co2_txt} tonnes de CO<sub>2</sub></b>
         évitées chaque année — l'équivalent de <b>≈&nbsp;{fmt(trees)} arbres</b> plantés.</div>
     </div>""" if trees > 0 else "")
-    validity_days = d["validity_days"]
+    # M7 (audit du 19/08/2026) — la validité vient du DEVIS (date_validite,
+    # sinon création + réglage société), servie par le builder ; plus de
+    # « 30 jours » par défaut. Indéterminable ⇒ la pastille disparaît.
+    validity_days = d.get("validity_days")
     # QRES31 — échéance absolue sur la pastille (une date butoir concrète
     # engage plus que « 30 jours ») ; repli sur la durée si date illisible.
-    _valid_until = theme.valid_until(date, validity_days)
+    _valid_until = (d.get("valid_until") or "").strip() or (
+        theme.valid_until(date, validity_days) if validity_days else "")
     validity_pill = (f"Valable jusqu'au {_valid_until}" if _valid_until
-                     else f"Validité {validity_days} jours")
+                     else "")
     sans_bullets = d.get("sans_bullets", []) or []
     avec_bullets = d.get("avec_bullets", []) or []
     # QX5 — n'imprime JAMAIS d'option fantôme : deux cartes seulement quand le
@@ -527,7 +531,7 @@ def build(ctx):
         <div class="c1-ref-l">Réf. devis</div>
         <div class="c1-ref-v">{ref}</div>
         <div class="c1-date">{date}</div>
-        <div class="c1-pill-gold">{validity_pill}</div>
+        {'<div class="c1-pill-gold">' + validity_pill + '</div>' if validity_pill else ''}
       </div>
     </div>
     <div class="c1-hero-body">
