@@ -47,6 +47,20 @@ export default function DevisSection({
                      value={form.agricole_pump_hours} onChange={set} />
             </Field>
           </div>
+          {/* Q4 (fondateur, 20/08/2026) — prix bonbonne butane terrain +
+              coût réel non subventionné (agricole) : le moteur de devis en
+              dérive le rapport de décompensation, plus de multiplicateur codé
+              en dur. Le fondateur les ajuste à chaque hausse. */}
+          <div className="pe-grid-2 mt-2.5">
+            <Field label="Prix bonbonne butane 12 kg, terrain (agricole, DH)" htmlFor="pe-butane-prix">
+              <Input id="pe-butane-prix" type="number" step="any" name="agricole_prix_bonbonne"
+                     value={form.agricole_prix_bonbonne} onChange={set} />
+            </Field>
+            <Field label="Coût réel bonbonne 12 kg, non subventionné (agricole, DH)" htmlFor="pe-butane-cout-reel">
+              <Input id="pe-butane-cout-reel" type="number" step="any" name="agricole_cout_reel_bonbonne"
+                     value={form.agricole_cout_reel_bonbonne} onChange={set} />
+            </Field>
+          </div>
           <div className="mb-1 mt-3 text-xs font-semibold text-foreground">
             Numérotation des pièces
           </div>

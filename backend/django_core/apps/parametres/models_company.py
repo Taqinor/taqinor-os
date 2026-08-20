@@ -123,6 +123,16 @@ class CompanyProfile(models.Model):
     # Heures de pompage effectives/jour par défaut (mode agricole). Défaut 7.
     agricole_pump_hours = models.DecimalField(
         max_digits=4, decimal_places=1, default=7)
+    # Q4 (fondateur, 20/08/2026) — prix bonbonne butane 12 kg (terrain,
+    # aujourd'hui) et son coût réel non subventionné, utilisés par le moteur
+    # de devis agricole (comparatif carburant + rapport de décompensation :
+    # cout_reel / prix, plus de multiplicateur codé en dur). Défauts = valeurs
+    # terrain mi-2026 ; le fondateur les ajuste à chaque hausse de
+    # décompensation.
+    agricole_prix_bonbonne = models.DecimalField(
+        max_digits=8, decimal_places=2, default=50)
+    agricole_cout_reel_bonbonne = models.DecimalField(
+        max_digits=8, decimal_places=2, default=128)
     # Préfixes de numérotation des pièces : {devis,facture,avoir,bon_commande}.
     # NULL = repli sur les préfixes historiques (DEV/FAC/AVO/BC).
     doc_prefixes = models.JSONField(null=True, blank=True)
