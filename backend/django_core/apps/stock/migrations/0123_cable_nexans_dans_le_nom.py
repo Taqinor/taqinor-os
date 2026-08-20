@@ -11,7 +11,8 @@ seedé — seul un ``RunPython`` peut rattraper une base de production.
 
 PÉRIMÈTRE — CINQ SKU, ``Produit.nom`` UNIQUEMENT, RIEN D'AUTRE :
   * CAB-6MM-M       : « Câble solaire 6mm² (au mètre) »
-                        → « Câble solaire Nexans 6 mm² (au mètre) »
+                        → « Câble solaire Nexans 6mm² (au mètre) » (SANS
+                        espace avant « mm² » — voir CORRECTION ci-dessous)
   * CAB-H1Z2Z2-4-M  : « Câble solaire H1Z2Z2-K 4 mm² (au mètre) »
                         → « Câble solaire Nexans H1Z2Z2-K 4 mm² (au mètre) »
   * CAB-H1Z2Z2-6-M, CAB-H1Z2Z2-10-M, CAB-H1Z2Z2-16-M : même patron (6/10/16).
@@ -20,6 +21,22 @@ CAB-NEX-DC-6 et CAB-NEX-TER-6 ne bougent pas : leur nom porte déjà « Nexans �
 ``Produit.marque`` reste hors périmètre ici : elle est déjà 'Nexans' sur les
 7 SKU câble depuis a002d459 (2026-08-19), réappliquée par le seeder à chaque
 déploiement (comblage de champ vide, jamais d'écrasement).
+
+CORRECTION (2026-08-20, CI run 32320136461 shard 3 — PR #542) : la toute
+première version de cette migration visait « Câble solaire Nexans 6 mm² (au
+mètre) » AVEC espace pour CAB-6MM-M — BYTE-IDENTIQUE au nom de CAB-NEX-DC-6
+(ligne CATALOGUE, seed_catalogue.py). Sur une base neuve, le garde-fou
+anti-doublon du seeder (`nom__iexact` sur produits actifs) SAUTAIT purement
+et simplement la création de CAB-6MM-M dès que CAB-NEX-DC-6 existait déjà —
+`Produit.objects.get(sku='CAB-6MM-M')` levait `DoesNotExist` dans TOUS les
+tests de TestCableNexansDansLeNom + 3 tests préexistants de TestSeedCatalogue
+qui itèrent sur ce SKU en premier. Sur une base de PRODUCTION déjà seedée, le
+risque était différent mais réel : cette migration utilise `.update()` (pas
+de garde applicatif), donc les DEUX lignes auraient fini avec un `nom`
+identique — deux produits actifs indiscernables dans tout sélecteur. Le SANS
+ESPACE restaure l'orthographe D'ORIGINE de CAB-6MM-M (avant tout renommage
+Nexans) : un disambiguateur déjà présent dans l'historique, jamais une
+chaîne inventée pour cette correction.
 
 APPARIEMENT PAR SKU + ANCIEN NOM EXACT (pas un simple remplacement de mot
 comme la migration 0121) : on est en train d'INSÉRER « Nexans » dans un nom
@@ -47,7 +64,7 @@ from django.db import migrations
 _RENOMMAGES = (
     ('CAB-6MM-M',
      'Câble solaire 6mm² (au mètre)',
-     'Câble solaire Nexans 6 mm² (au mètre)'),
+     'Câble solaire Nexans 6mm² (au mètre)'),
     ('CAB-H1Z2Z2-4-M',
      'Câble solaire H1Z2Z2-K 4 mm² (au mètre)',
      'Câble solaire Nexans H1Z2Z2-K 4 mm² (au mètre)'),

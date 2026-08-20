@@ -170,7 +170,19 @@ POMPAGE = [
     # DC35/G2 (2026-08-20) — même patron que le renommage Dyness (fc883be2) :
     # la marque doit être visible dans le NOM du produit, pas seulement dans
     # ``FICHES[...]['marque']``. « (au mètre) » et le SKU sont INCHANGÉS.
-    ('Câble solaire Nexans 6 mm² (au mètre)', 'CAB-6MM-M', 13, 5000, 200, None, None, None),
+    # DC35/G3 (2026-08-20, CI run 32320136461 shard 3) — SANS ESPACE avant
+    # « mm² » (« 6mm² », pas « 6 mm² ») : DÉLIBÉRÉ, pas une coquille. Le
+    # nom-jumeau AVEC espace ('Câble solaire Nexans 6 mm² (au mètre)') est
+    # DÉJÀ pris par CAB-NEX-DC-6 (ligne ~72 ci-dessus, réglé 18/08). Le garde-
+    # fou anti-doublon du seeder (plus bas, `nom__iexact` sur produits actifs)
+    # SAUTE la création de tout produit dont le nom égale — insensible à la
+    # casse — un produit déjà seedé : avec l'espace, CAB-6MM-M ne serait
+    # JAMAIS créé (skip silencieux dès que CAB-NEX-DC-6 existe), faisant
+    # échouer `Produit.objects.get(sku='CAB-6MM-M')` partout. L'absence
+    # d'espace est l'orthographe D'ORIGINE de ce SKU (avant le renommage
+    # Nexans) : elle reste le disambiguateur naturel entre les deux SKU
+    # câble-6mm historiques, jamais une chaîne inventée.
+    ('Câble solaire Nexans 6mm² (au mètre)', 'CAB-6MM-M', 13, 5000, 200, None, None, None),
 ]
 
 # ── Variateurs VEICHI (prix réels fondateur, 2026-06) ────────────────────────

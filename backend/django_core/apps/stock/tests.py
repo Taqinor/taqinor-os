@@ -983,7 +983,12 @@ class TestCableNexansDansLeNom(TestCase):
     MIGRATION = 'apps.stock.migrations.0123_cable_nexans_dans_le_nom'
 
     SKUS_RENOMMES = {
-        'CAB-6MM-M': 'Câble solaire Nexans 6 mm² (au mètre)',
+        # SANS espace avant « mm² » : DÉLIBÉRÉ, voir le commentaire DC35/G3
+        # dans seed_catalogue.py — 'Câble solaire Nexans 6 mm² (au mètre)'
+        # (AVEC espace) est déjà le nom EXACT de CAB-NEX-DC-6, et le garde-fou
+        # anti-doublon du seeder (nom__iexact) saute la création d'un second
+        # produit actif portant ce nom.
+        'CAB-6MM-M': 'Câble solaire Nexans 6mm² (au mètre)',
         'CAB-H1Z2Z2-4-M': 'Câble solaire Nexans H1Z2Z2-K 4 mm² (au mètre)',
         'CAB-H1Z2Z2-6-M': 'Câble solaire Nexans H1Z2Z2-K 6 mm² (au mètre)',
         'CAB-H1Z2Z2-10-M': 'Câble solaire Nexans H1Z2Z2-K 10 mm² (au mètre)',
@@ -1036,7 +1041,7 @@ class TestCableNexansDansLeNom(TestCase):
 
         c6 = Produit.objects.get(company=self.company, sku='CAB-6MM-M')
         c4 = Produit.objects.get(company=self.company, sku='CAB-H1Z2Z2-4-M')
-        self.assertEqual(c6.nom, 'Câble solaire Nexans 6 mm² (au mètre)')
+        self.assertEqual(c6.nom, 'Câble solaire Nexans 6mm² (au mètre)')
         self.assertEqual(c4.nom,
                          'Câble solaire Nexans H1Z2Z2-K 4 mm² (au mètre)')
         # Ni SKU, ni prix, ni quantités ne bougent.
@@ -1068,7 +1073,7 @@ class TestCableNexansDansLeNom(TestCase):
 
         migration.marquer_nexans(registre, None)
         p = Produit.objects.get(company=self.company, sku='CAB-6MM-M')
-        self.assertEqual(p.nom, 'Câble solaire Nexans 6 mm² (au mètre)')
+        self.assertEqual(p.nom, 'Câble solaire Nexans 6mm² (au mètre)')
 
         migration.demarquer_nexans(registre, None)
         p.refresh_from_db()
@@ -1076,7 +1081,7 @@ class TestCableNexansDansLeNom(TestCase):
 
         migration.marquer_nexans(registre, None)
         p.refresh_from_db()
-        self.assertEqual(p.nom, 'Câble solaire Nexans 6 mm² (au mètre)')
+        self.assertEqual(p.nom, 'Câble solaire Nexans 6mm² (au mètre)')
 
     def test_la_migration_est_idempotente(self):
         from django.apps import apps as registre
@@ -1086,7 +1091,7 @@ class TestCableNexansDansLeNom(TestCase):
         migration.marquer_nexans(registre, None)
         self.assertEqual(
             Produit.objects.get(company=self.company, sku='CAB-6MM-M').nom,
-            'Câble solaire Nexans 6 mm² (au mètre)')
+            'Câble solaire Nexans 6mm² (au mètre)')
 
     def test_classification_categorie_et_h1z2z2k_inchangees(self):
         """GARDE-FOU : la classification par mot-clé (« cable » substring,
@@ -1099,6 +1104,27 @@ class TestCableNexansDansLeNom(TestCase):
         c4 = Produit.objects.get(company=self.company, sku='CAB-H1Z2Z2-4-M')
         self.assertIn('H1Z2Z2-K', c4.description)
         self.assertIn('NF EN 50618', c4.description)
+
+    def test_aucun_nom_de_cable_nexans_ne_collisionne_entre_sections_du_catalogue(self):
+        """RÉGRESSION (CI run 32320136461, PR #542) : le garde-fou anti-doublon
+        du seeder (``nom__iexact`` sur produits actifs) SAUTE la création de
+        tout produit dont le nom égale — insensible à la casse — un produit
+        DÉJÀ créé par une AUTRE section du catalogue (ex. CAB-6MM-M du
+        POMPAGE arrive APRÈS CAB-NEX-DC-6 de CATALOGUE). Un renommage qui
+        rend deux noms byte-identiques fait donc SAUTER silencieusement la
+        création du second, sans qu'aucune exception ne le signale au moment
+        du seed — seul un ``Produit.objects.get(sku=...)`` ultérieur échoue.
+        Ce test verrouille que les 7 SKU câble Nexans sont TOUS créés, avec
+        7 noms mutuellement DISTINCTS."""
+        seed(self.company)
+        skus_cable_nexans = list(self.SKUS_RENOMMES) + ['CAB-NEX-DC-6', 'CAB-NEX-TER-6']
+        noms = []
+        for sku in skus_cable_nexans:
+            p = Produit.objects.get(company=self.company, sku=sku)
+            noms.append(p.nom)
+        self.assertEqual(
+            len(noms), len(set(noms)),
+            f"noms de câble Nexans en collision : {noms}")
 
 
 # ── PVOND — VERROU DE COMPLÉTUDE sur le catalogue onduleur ──────────────────
