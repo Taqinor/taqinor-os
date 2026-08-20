@@ -163,6 +163,20 @@ WARRANTIES = [
 # ``builder._line_to_item``). REPLI : la constante WARRANTIES ci-dessus.
 # OMISSION quand ni la donnée produit ni une constante ne correspond au
 # composant (une batterie sans durée renseignée ne sort pas un chiffre inventé).
+#
+# M6 (audit du 19/08/2026) — un repli PRODUIT (Panneaux/Performance) n'est
+# tiré de cette table que si le composant du devis EST le produit par défaut
+# dont provient le chiffre (``_panneau_du_defaut`` ci-dessous, panneau
+# Canadian Solar TOPHiKu7 — seule marque dont le catalogue trace « 12 ans
+# produit / 30 ans, 87,4 % » sur SA fiche). Un panneau Longi est lui aussi
+# garanti 30 ans, mais à 88,9 % : lui appliquer le repli Canadian Solar
+# imprimerait le pourcentage d'une AUTRE marque sur le devis du client.
+# L'ONDULEUR N'A PAS de repli constante : le catalogue documente « 10 ans »
+# pour Huawei (réseau) ET Deye (hybride) à la fois — aucune marque unique
+# n'est LE produit par défaut dont ce chiffre proviendrait, donc aucun repli
+# ne peut être vérifié comme celui du panneau. Sans donnée produit
+# (``garantie_mois``), l'entrée Onduleur s'OMET (même règle que Batterie,
+# qui n'a jamais eu de repli).
 _WARRANTY_FALLBACK = {label: (n, u, label, sub)
                       for n, u, label, sub in WARRANTIES}
 
@@ -257,18 +271,23 @@ def warranties_for(d):
 
     out = [_WARRANTY_FALLBACK["Installation"]]  # pose : constante 2 ans
 
+    # M6 — aucun repli constante pour l'onduleur (voir commentaire de
+    # ``_WARRANTY_FALLBACK`` : « 10 ans » n'est LE produit par défaut d'aucune
+    # marque unique du catalogue). Sans ``garantie_mois`` saisie : OMISSION.
     ond_present, ond_ans = _first_warranty(rows, _est_onduleur, "garantie_mois")
-    if ond_present:
-        if ond_ans is not None:
-            out.append((str(ond_ans), "ans", "Onduleur", "garantie fabricant"))
-        elif "Onduleur" in _WARRANTY_FALLBACK:
-            out.append(_WARRANTY_FALLBACK["Onduleur"])
+    if ond_present and ond_ans is not None:
+        out.append((str(ond_ans), "ans", "Onduleur", "garantie fabricant"))
 
     pan_present, pan_ans = _first_warranty(rows, _est_panneau, "garantie_mois")
     if pan_present:
+        # Le repli constante (Panneaux 12 ans / Performance 87,4 %) n'est une
+        # spec VÉRIFIÉE que pour le panneau par défaut (Canadian Solar
+        # TOPHiKu7) : un panneau d'une autre marque, sans donnée saisie, n'a
+        # pas de garantie connue — jamais le chiffre d'un AUTRE produit.
+        est_pan_defaut = _panneau_du_defaut(rows, _est_panneau)
         if pan_ans is not None:
             out.append((str(pan_ans), "ans", "Panneaux", "garantie produit"))
-        elif "Panneaux" in _WARRANTY_FALLBACK:
+        elif est_pan_defaut and "Panneaux" in _WARRANTY_FALLBACK:
             out.append(_WARRANTY_FALLBACK["Panneaux"])
         _, perf_ans = _first_warranty(rows, _est_panneau,
                                       "garantie_production_mois")
@@ -284,10 +303,10 @@ def warranties_for(d):
             # part seule, sous une formulation sans nombre.
             sub = (defaut_perf[3]
                    if (defaut_perf and str(perf_ans) == defaut_perf[0]
-                       and _panneau_du_defaut(rows, _est_panneau))
+                       and est_pan_defaut)
                    else "performance linéaire")
             out.append((str(perf_ans), "ans", "Performance", sub))
-        elif defaut_perf is not None:
+        elif defaut_perf is not None and est_pan_defaut:
             out.append(defaut_perf)
 
     bat_present, bat_ans = _first_warranty(rows, _est_batterie, "garantie_mois")

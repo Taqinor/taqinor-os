@@ -611,6 +611,27 @@ def build_pages(ctx) -> list:
         f'<div class="p2-tva-note">{tva_note}{fiche_inline}</div>'
         f'{multi_html}')
 
+    # M6 (audit du 19/08/2026) — la carte « Performance garantie » lisait
+    # « 30 ans / 87,4 % » en DUR sur tous les devis, y compris un panneau
+    # Longi (garanti 30 ans mais à 88,9 %). Elle lit désormais la MÊME source
+    # que la bande de garanties de la page signature (theme.warranties_for) :
+    # jamais deux chiffres contradictoires dans le même document. Aucune
+    # entrée « Performance » (composant non reconnu / hors gamme par défaut,
+    # sans donnée produit) ⇒ la carte-stat est OMISE entièrement.
+    _perf_warranty = next(
+        (w for w in theme.warranties_for(d) if w[2] == "Performance"), None)
+
+    def _perf_stat_html():
+        if not _perf_warranty:
+            return ""
+        n, u, _label, sub = _perf_warranty
+        return f"""
+        <div class="p2-side-stat">
+          <span class="p2-stat-k">Performance garantie</span>
+          <span class="p2-stat-v">{n} {u}</span>
+          <span class="p2-stat-s">panneaux — {sub}</span>
+        </div>"""
+
     _stats_html = f"""
         <div class="p2-side-stat">
           <span class="p2-stat-k">Retour sur investissement</span>
@@ -621,12 +642,7 @@ def build_pages(ctx) -> list:
           <span class="p2-stat-k">Gain net sur 25 ans</span>
           <span class="p2-stat-v">≈ {fmt(gain25)} <small>MAD</small></span>
           <span class="p2-stat-s">{gain25_label}{gain_mult_sub}</span>
-        </div>
-        <div class="p2-side-stat">
-          <span class="p2-stat-k">Performance garantie</span>
-          <span class="p2-stat-v">30 ans</span>
-          <span class="p2-stat-s">panneaux — 87,4 % de rendement à 30 ans</span>
-        </div>"""
+        </div>{_perf_stat_html()}"""
     # QRES59 — libellé NEUTRE (beaucoup de clients sont chez une régie, pas
     # l'ONEE) ; seule mention « toute hausse vous profite » du document.
     # Z4 (ORDRE FONDATEUR, 20/08/2026) — le SEUL décrochement de la courbe est la
@@ -651,12 +667,7 @@ def build_pages(ctx) -> list:
           <span class="p2-stat-k">Retour sur investissement</span>
           <span class="p2-stat-v">{roi_range}</span>
           <span class="p2-stat-s">l'installation se rembourse</span>
-        </div>
-        <div class="p2-side-stat">
-          <span class="p2-stat-k">Performance garantie</span>
-          <span class="p2-stat-v">30 ans</span>
-          <span class="p2-stat-s">panneaux — 87,4 % de rendement à 30 ans</span>
-        </div>"""
+        </div>{_perf_stat_html()}"""
 
     def _fin_html(xl=False):
         if masquer_eco:
