@@ -51,8 +51,14 @@ concurrency:
 #
 #   stage-names 1 + backend-lint-fast 1 + backend-openapi 1 + frontend-static 1
 #   + web-build-test 1 + rls-tests 1                                     =  6
-#   + backend-tests-shard 6 + frontend-vitest-shard 4 + e2e-shard 2      = 12
-#                                                              TOTAL     = 18
+#   + backend-tests-shard 5 + frontend-vitest-shard 4 + e2e-shard 2      = 11
+#                                                              TOTAL     = 17
+#
+# VOLET F (20/08) — 18 -> 17 : `backend-tests-shard` passe de 6 a 5 lanes SANS
+# rien ralentir. Le palier backend est borne par UNE classe de test indivisible
+# (~195 s) ; a 5 comme a 6 lanes la pire lane vaut 196 s, la 6e ne servait qu'a
+# alleger des lanes qui n'etaient deja plus le chemin critique. Un creneau de
+# marge en plus sous le plafond de 20 — trois desormais.
 #
 # RONDE 5 (20/08) — `ci-image-check` AJOUTE UN CRENEAU, MAIS PAS DANS LA VAGUE.
 # Il ne declare AUCUN `needs` : il part a T=0 en meme temps que `changes` et
@@ -65,11 +71,11 @@ concurrency:
 #   Fenetre 2 (apres) — les 6 de la ronde 4 (dont `ci-image-check`
 #     et `changes` sont sortis) : stage-names 1 + backend-lint-fast 1
 #     + backend-openapi 1 + frontend-static 1 + web-build-test 1
-#     + rls-tests 1 = 6, + backend-tests-shard 6
-#     + frontend-vitest-shard 4 + e2e-shard 2 = 12                  = 18
+#     + rls-tests 1 = 6, + backend-tests-shard 5
+#     + frontend-vitest-shard 4 + e2e-shard 2 = 11                  = 17
 #
-# LE PIC RESTE DONC 18, inchange — la marge mesuree de 2 creneaux sous le
-# plafond de 20 est preservee. Le chemin LENT de `ci-image-check` (construction
+# LE PIC EST DONC 17 (volet F : 18 - 1 lane backend), soit TROIS creneaux de
+# marge mesuree sous le plafond de 20 au lieu de deux. Le chemin LENT de `ci-image-check` (construction
 # en ligne, ~8-12 min, uniquement quand un requirements, un lockfile frontend ou
 # un Dockerfile CI change) allonge sa fenetre mais ne l'elargit pas : c'est
 # toujours 1 creneau, et la vague attend simplement plus longtemps pour demarrer.
@@ -609,26 +615,54 @@ jobs:
   #   (2 680 modules, 1 457 s ; scripts/ci_shard_timings.json, regeneree par
   #   `ci_shard.py --update-timings` sur les journaux de ce run).
   #
-  # POURQUOI 6 — c'est le BUDGET DE CRENEAUX qui borne, plus un module.
-  # Le plancher du module le plus lourd a ete leve le 19/08 (test_quote_engine
-  # scinde en quatre), donc N n'est plus limite par un fichier ; il est limite
-  # par les 18 creneaux (voir le bloc CRENEAUX en tete de fichier) et par le
-  # fait que la lane la plus lente du gate est desormais `e2e-shard` (~6 min 45 s,
-  # plancher desormais partage apres la scission de fumee-ecrans). Descendre le
-  # backend sous ce seuil ne raccourcirait rien.
-  # Mesure du run 32206663106, etape `Run Django test suite` par lane :
-  #   283 / 134 / 197 / 181 / 197 / 210 / 191 / 165 s (shard 5 jamais demarre),
-  #   dont 1 385 s de modules mesures + ~21,6 s de rodage Django par lane,
-  #   remarquablement constant quel que soit le poids de la lane.
-  # Cout par lane = ~135 s de mise en place + ~22 s de rodage + 1 385/N :
-  #   N=6 -> ~6 min 28 s, N=8 -> ~5 min 30 s (hors budget de creneaux).
+  # ---------------------------------------------------------------------------
+  # VOLET F (20/08/2026) — POURQUOI 5, ET POURQUOI LE PLANIFICATEUR MENTAIT.
+  #
+  # Constat du fondateur : « les shards ne sont pas equilibres du tout ». Mesure
+  # sur le run 32320058346 (6/6 verts), etape `Run Django test suite` :
+  #     152 / 163 / 116 / 121 / 298 / 125 s   -> ecart (max-min)/max = 61 %
+  # …pendant que `ci_shard.py --plan 6` affichait « desequilibre 1.00x ». Les
+  # deux etaient vrais : le planificateur optimisait la mauvaise quantite, sur
+  # des mesures fausses. Deux defauts, corriges tous les deux :
+  #
+  # 1. LES MESURES ETAIENT INVERSEES D'UN CRAN. La sortie `-v 2` est TAMPONNEE :
+  #    le runner horodate au vidage, pas a l'execution (15 lignes consecutives a
+  #    23 ms d'intervalle ; ecart nul entre deux lignes d'une meme classe dans
+  #    100 % des cas). Un trou mesure donc le travail de la rafale QUI LE SUIT,
+  #    or le parser l'imputait a la PRECEDENTE. Resultat :
+  #    `test_gammes_offre` etait pesee 26 s alors que sa classe
+  #    `TestAcceptationGamme` consomme 195 s — 70 % du shard le plus lent,
+  #    totalement invisible dans la table.
+  # 2. LE MODELE IGNORAIT L'INDIVISIBILITE. Sous `--parallel`, Django repartit
+  #    des CLASSES ; une classe ne se scinde pas. Le cout d'une lane est donc
+  #    `max(somme de ses contributions, sa plus grosse classe)`, pas une somme.
+  #
+  # CE QUI BORNE MAINTENANT : `TestAcceptationGamme` a ~195 s. Aucun decoupage
+  # ne descend sous ce chiffre — c'est pour cela que 6 lanes ne valaient pas
+  # mieux que 5 (196 s dans les deux cas), et que la 6e ne faisait que creuser
+  # l'ecart. Plan a 5 lanes : 196 / 163 / 163 / 163 / 163 s, ecart 17 %.
+  # `python scripts/ci_shard.py --plan N` rejoue tout ce calcul et NOMME la
+  # classe qui borne.
+  #
+  # POUR DESCENDRE PLUS BAS il faut scinder cette classe — un changement de code
+  # de TEST (apps/ventes/tests/test_gammes_offre.py), pas de CI. Tant qu'elle
+  # existe, ajouter des lanes ne rachete rien.
+  # ---------------------------------------------------------------------------
   backend-tests-shard:
     needs: [changes, ci-image-check]
     if: ${{ needs.changes.outputs.backend == 'true' }}
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3, 4, 5]
+        # WOW-CI RONDE 5 / VOLET F (20/08/2026) — 6 lanes -> 5. Ce n'est pas une
+        # economie de confort : au-dela de 5, une lane de plus ne raccourcit
+        # RIEN. Le palier est borne par UNE classe indivisible
+        # (`test_gammes_offre.TestAcceptationGamme`, ~195 s mesurees), donc la
+        # pire lane vaut 196 s a 5 comme a 6 lanes — la 6e ne faisait que
+        # creuser l'ecart (33 % contre 17 %) en liberant les autres lanes sans
+        # toucher au plancher. Le creneau recupere va au budget du bloc CRENEAUX.
+        # `python scripts/ci_shard.py --plan N` rejoue ce calcul.
+        shard: [0, 1, 2, 3, 4]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -730,12 +764,12 @@ jobs:
       # shards == exactement l'ensemble des modules `test*.py` de `apps`,
       # `authentication` et `core`, prouvé par scripts/tests/test_ci_shard.py.
       # `coverage` reste hors du gate (WOW3).
-      - name: Run Django test suite — shard ${{ matrix.shard }}/6 (fast tier — excludes pdf/slow)
+      - name: Run Django test suite — shard ${{ matrix.shard }}/5 (fast tier — excludes pdf/slow)
         working-directory: backend/django_core
         run: |
           set -euo pipefail
-          LABELS=$(python ../../scripts/ci_shard.py ${{ matrix.shard }} 6)
-          echo "Shard ${{ matrix.shard }}/6 -> $(echo "$LABELS" | wc -w) modules"
+          LABELS=$(python ../../scripts/ci_shard.py ${{ matrix.shard }} 5)
+          echo "Shard ${{ matrix.shard }}/5 -> $(echo "$LABELS" | wc -w) modules"
 
           # WOW-CI RONDE 5 — GARDE ANTI-`max_locks`, DEVENUE UNE CEINTURE.
           #

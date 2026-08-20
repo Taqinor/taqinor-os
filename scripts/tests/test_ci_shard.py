@@ -129,14 +129,49 @@ class BalanceTests(unittest.TestCase):
 
         On the 18/08 run the round-robin put apps.crm AND apps.ventes on one
         lane: that lane carried 767 s while the lightest carried 83 s — 9.2x.
-        A 1.5x cap is loose enough to survive normal drift in the timing table
-        and still catch a return to blind splitting.
+
+        VOLET F (20/08) — LA REFERENCE N'EST PLUS LA MOYENNE, C'EST LE PLANCHER
+        THEORIQUE. Comparer la pire lane a `total / lanes` supposait le travail
+        infiniment divisible. Il ne l'est pas : une CLASSE de test est
+        indivisible sous `--parallel`, et le depot en porte une de ~195 s
+        (`test_gammes_offre.TestAcceptationGamme`) alors que la moyenne a 8
+        lanes vaut ~106 s. Une lane a 1,85x de la moyenne etait donc signalee
+        comme un desequilibre alors que c'etait le decoupage OPTIMAL — aucune
+        assignation ne peut faire mieux tant que cette classe existe.
+        `theoretical_floor` prend le plus grand des deux (moyenne, plus grosse
+        classe) : c'est la seule borne qu'un planificateur puisse viser.
         """
-        _u, weights, lanes = ci_shard.plan(8)
-        loads = [sum(weights[u] for u in lane) for lane in lanes]
-        ideal = sum(weights.values()) / len(lanes)
-        self.assertLess(max(loads) / ideal, 1.5,
-                        f"lanes desequilibrees: {[round(x) for x in loads]}")
+        units, weights, lanes = ci_shard.plan(8)
+        murs = [ci_shard.lane_makespan(lane, weights) for lane in lanes]
+        sol = ci_shard.theoretical_floor(units, weights, 8)
+        self.assertLess(max(murs) / sol, 1.5,
+                        f"lanes desequilibrees: {[round(x) for x in murs]} "
+                        f"(plancher {sol:.0f}s)")
+
+    def test_the_binding_class_is_not_diluted_by_pro_rata(self):
+        """Une classe MESUREE garde sa duree, elle n'est pas moyennee.
+
+        Le defaut que le volet F a corrige : `test_gammes_offre` pesait 26 s au
+        total pendant que sa classe `TestAcceptationGamme` en consommait 195 —
+        repartir le poids du module au prorata du nombre de tests la rendait
+        invisible, et le planificateur se declarait equilibre a 1,00x pendant
+        que le shard 4 tournait trois fois plus longtemps que le shard 2.
+        """
+        mesures = dict(ci_shard.load_class_timings())
+        if not mesures:
+            self.skipTest("aucune table de classes mesuree")
+        pire_nom = max(mesures, key=mesures.get)
+        module = ci_shard.module_of_class(pire_nom)
+        units = ci_shard.discover_units()
+        if module not in units:
+            self.skipTest(f"{module} n'est plus decouvert")
+        weights = ci_shard.weigh(units, ci_shard.load_timings())
+        blocs = ci_shard.class_weights(module, weights[module])
+        self.assertAlmostEqual(
+            max(blocs), mesures[pire_nom], places=1,
+            msg=f"la classe {pire_nom} ({mesures[pire_nom]:.0f}s) doit garder "
+                "sa duree mesuree, sinon le plancher d'une lane est sous-estime",
+        )
 
     def test_heavy_apps_are_spread_not_pinned(self):
         """apps.ventes must not land on a single lane again."""
@@ -148,17 +183,38 @@ class BalanceTests(unittest.TestCase):
 
 
 class TimingParserTests(unittest.TestCase):
+    """Le parser attribue un TROU a la rafale QUI LE SUIT, par CLASSE.
+
+    La sortie `-v 2` est tamponnee : le runner horodate au moment du VIDAGE, pas
+    de l'execution (mesure sur le run 32320058346 : 15 lignes consecutives a
+    23 ms d'intervalle, et 0 % d'ecart entre deux lignes d'une meme classe). Un
+    trou mesure donc le travail accompli JUSTE AVANT d'etre vide — celui de la
+    ligne suivante. L'ancienne version l'imputait a la ligne PRECEDENTE, ce qui
+    donnait systematiquement le cout d'une classe lente a sa voisine rapide.
+    """
+
     LOG = [
         "2026-08-18T20:37:13.0000000Z test_a (apps.ventes.tests.test_pdf.C.test_a) ... ok",
         "2026-08-18T20:37:15.0000000Z test_b (apps.ventes.tests.test_pdf.C.test_b) ... ok",
-        "2026-08-18T20:37:20.0000000Z test_c (apps.crm.tests.test_lead.C.test_c) ... ok",
+        "2026-08-18T20:37:20.0000000Z test_c (apps.crm.tests.test_lead.D.test_c) ... ok",
         "2026-08-18T20:37:21.0000000Z Ran 3 tests in 8.000s",
     ]
 
-    def test_durations_are_attributed_to_the_owning_module(self):
+    def test_a_gap_is_charged_to_the_burst_that_follows_it(self):
         got = ci_shard.parse_log_durations(self.LOG)
-        self.assertAlmostEqual(got["apps.ventes.tests.test_pdf"], 7.0, places=3)
-        self.assertNotIn("apps.crm.tests.test_lead", got)
+        # 13->15 : 2 s de travail rendus par la 2e ligne, meme classe C
+        self.assertAlmostEqual(got["apps.ventes.tests.test_pdf.C"], 2.0, places=3)
+        # 15->20 : 5 s attribuees a la classe SUIVANTE (D), pas a C
+        self.assertAlmostEqual(got["apps.crm.tests.test_lead.D"], 5.0, places=3)
+
+    def test_durations_are_keyed_by_class_not_module(self):
+        """La CLASSE est l'unite indivisible sous --parallel : c'est elle qu'on
+        mesure. Le poids du module en decoule par somme."""
+        got = ci_shard.parse_log_durations(self.LOG)
+        self.assertNotIn("apps.ventes.tests.test_pdf", got)
+        self.assertEqual(
+            ci_shard.module_of_class("apps.ventes.tests.test_pdf.C"),
+            "apps.ventes.tests.test_pdf")
 
     def test_non_test_lines_are_ignored(self):
         self.assertEqual(ci_shard.parse_log_durations(["nothing here", ""]), {})

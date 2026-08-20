@@ -76,6 +76,10 @@ TIMINGS_PATH = os.path.join(REPO_ROOT, "scripts", "ci_shard_timings.json")
 # max(latest, previous) WITHOUT the value ratcheting upward forever: each refresh
 # compares against exactly one prior run, never an accumulated maximum.
 RAW_TIMINGS_PATH = os.path.join(REPO_ROOT, "scripts", "ci_shard_timings_raw.json")
+# Volet F — durees par CLASSE de test. Sous `--parallel`, la classe est l'unite
+# INDIVISIBLE : c'est elle, et non le module, qui fixe le plancher d'une lane.
+CLASS_TIMINGS_PATH = os.path.join(REPO_ROOT, "scripts",
+                                  "ci_shard_class_timings.json")
 
 # Roots Django is asked to test: every package under apps/, plus the two
 # foundation packages that live at the django_core root.
@@ -89,6 +93,51 @@ SKIP_DIRS = {"__pycache__", "migrations", "node_modules", ".git"}
 SECONDS_PER_TEST = 0.55
 MIN_UNIT_SECONDS = 0.4
 
+# Nombre de processus que `manage.py test --parallel N` lance dans CHAQUE lane.
+# DOIT rester aligne sur la commande de `.github/workflows/ci.yml` : le plan est
+# calcule pour ce parallelisme, et un ecart ne casserait rien (le decoupage
+# reste complet) mais rendrait l'equilibrage faux.
+DEFAULT_PARALLEL = 4
+
+# Seuil au-dessus duquel une CLASSE est retenue dans `ci_shard_class_timings.json`.
+# En dessous, elle ne peut pas etre le facteur limitant d'une lane (la charge
+# moyenne d'une lane est de l'ordre de 160 s) : son cout reste compte dans le
+# total de son module, seule sa capacite a BORNER disparait — ce qu'elle n'a
+# jamais eue.
+CLASS_FLOOR_SECONDS = 1.0
+
+# WOW-CI RONDE 5 / VOLET F (20/08/2026) — LE PARALLELISME CHANGE LE COUT D'UNE
+# LANE, ET LE PLANIFICATEUR L'IGNORAIT.
+#
+# Depuis que le palier tourne en `--parallel 4`, le temps de mur d'une lane
+# n'est PLUS la somme de ses modules : Django repartit les CLASSES de test entre
+# N processus (`ParallelTestSuite` decoupe par `TestCase`, jamais plus fin), donc
+#
+#     temps de lane ~ max( travail_total / N , plus grosse CLASSE de la lane )
+#
+# Une classe est INDIVISIBLE : aucun parallelisme ne la raccourcit. Le
+# planificateur, lui, equilibrait le travail TOTAL et s'auto-declarait parfait
+# (« desequilibre 1.00x ») pendant que la realite mesurait ~60 % d'ecart entre
+# lanes. Les deux affirmations etaient vraies en meme temps, et c'est tout le
+# probleme : il optimisait la mauvaise quantite.
+#
+# Cas reel qui l'a revele : `apps.ventes.tests.test_quote_engine_formats` pese
+# 117 s dont UNE classe de ~112 s. La lane qui la recoit ne peut pas finir avant
+# 112 s — ses trois autres workers tournent a vide — tandis que les cinq autres
+# lanes finissent en 73 s.
+#
+# DEUX CONSEQUENCES, TOUTES DEUX APPLIQUEES PLUS BAS :
+#  1. le cout d'une lane se calcule par un ORDONNANCEMENT de ses classes sur N
+#     workers, pas par une somme ;
+#  2. une lane qui porte une classe geante a de la CAPACITE LIBRE (ses autres
+#     workers) : il faut lui donner PLUS de travail, pas moins. Un equilibrage
+#     par somme faisait exactement l'inverse.
+#
+# Les poids par classe sont deduits du poids MESURE du module, reparti au
+# prorata du nombre de methodes `test*` de chaque classe — meme procede que la
+# repartition app -> module plus bas. C'est une approximation ; elle ne decide
+# que du PLACEMENT, jamais de ce qui s'execute.
+_CLASS_RE = re.compile(r"^class\s+(\w+)\s*[(:]", re.MULTILINE)
 _TEST_DEF_RE = re.compile(r"^\s+(?:async\s+)?def\s+test", re.MULTILINE)
 # A Django -v 2 result line: "name (dotted.path.Class.name) ... ok"
 _RESULT_RE = re.compile(r"^\S*\s*\(([\w.]+)\)\s*\.\.\.")
@@ -164,6 +213,109 @@ def _static_test_count(unit: str, repo_root: str) -> int:
             return max(1, len(_TEST_DEF_RE.findall(fh.read())))
     except OSError:
         return 1
+
+
+@functools.lru_cache(maxsize=None)
+def _class_test_counts(unit: str, repo_root: str) -> tuple:
+    """((classe, nb_tests), ...) du module — decoupage textuel, aucun import.
+
+    Sert UNIQUEMENT a estimer la plus grosse portion indivisible du module.
+    Un module sans classe reconnue est traite comme un bloc unique, ce qui est
+    le choix PESSIMISTE : on suppose qu'il ne se parallelise pas.
+    """
+    path = os.path.join(repo_root, "backend", "django_core", *unit.split(".")) + ".py"
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            src = fh.read()
+    except OSError:
+        return (("", 1),)
+    bornes = [(m.start(), m.group(1)) for m in _CLASS_RE.finditer(src)]
+    if not bornes:
+        return (("", 1),)
+    out = []
+    for i, (pos, nom) in enumerate(bornes):
+        fin = bornes[i + 1][0] if i + 1 < len(bornes) else len(src)
+        n = len(_TEST_DEF_RE.findall(src[pos:fin]))
+        if n:
+            out.append((nom, n))
+    return tuple(out) if out else (("", 1),)
+
+
+@functools.lru_cache(maxsize=1)
+def load_class_timings(path: str = CLASS_TIMINGS_PATH) -> tuple:
+    """Durees MESUREES par classe, sous forme hachable (pour le cache)."""
+    return tuple(sorted(load_timings(path).items()))
+
+
+def class_weights(unit: str, weight: float, repo_root: str = REPO_ROOT) -> list:
+    """Poids des blocs INDIVISIBLES du module, mesure d'abord.
+
+    1. si des classes de ce module ont ete MESUREES, on rend leurs durees
+       telles quelles (plus le reliquat du poids du module reparti sur les
+       classes non mesurees) ;
+    2. sinon, le poids du module est reparti au prorata du nombre de tests.
+
+    La difference n'est pas cosmetique : `test_gammes_offre` pese 26 s au total
+    dans l'ancienne table alors que sa seule classe `TestAcceptationGamme` en
+    consomme 195 — extrapoler au prorata des tests aurait continue de la rendre
+    invisible.
+    """
+    return [poids for _nom, poids in class_weight_items(unit, weight, repo_root)]
+
+
+def class_weight_items(unit: str, weight: float,
+                       repo_root: str = REPO_ROOT) -> list:
+    """`class_weights` en gardant le NOM de chaque bloc, pour les diagnostics."""
+    mesures = dict(load_class_timings())
+    parts = _class_test_counts(unit, repo_root)
+    connues = [(nom, mesures[f"{unit}.{nom}"]) for nom, _n in parts
+               if f"{unit}.{nom}" in mesures]
+    if connues:
+        reste = weight - sum(v for _nom, v in connues)
+        inconnues = [(nom, n) for nom, n in parts
+                     if f"{unit}.{nom}" not in mesures]
+        total_inconnu = sum(n for _nom, n in inconnues)
+        if reste > 0 and total_inconnu:
+            connues += [(nom, reste * n / total_inconnu) for nom, n in inconnues]
+        return connues
+    total = sum(n for _n, n in parts)
+    if not total:
+        return [("", weight)]
+    return [(nom, weight * n / total) for nom, n in parts]
+
+
+def makespan(charges, workers: int = 0) -> float:
+    """Temps de mur d'une lane portant ces blocs.
+
+    ATTENTION AU SENS DES POIDS — c'est le piege de ce fichier. Les durees de
+    `ci_shard_class_timings.json` sont mesurees SUR UN RUN DEJA PARALLELE
+    (`--parallel 4`) : ce sont des CONTRIBUTIONS AU TEMPS DE MUR, pas du travail
+    processeur. Les rediviser par le nombre de workers reviendrait a compter le
+    parallelisme DEUX FOIS, et c'est ce qui produisait un plan absurde (une lane
+    a 1 603 modules « pesant » 128 s).
+
+    Le modele juste est donc :
+
+        temps de lane = max( somme des contributions , plus grosse CLASSE )
+
+    Le premier terme dit qu'une lane deux fois moins chargee finit deux fois
+    plus vite (les 4 workers restent 4) ; le second dit qu'aucune lane ne
+    descend sous sa plus grosse classe, indivisible par construction.
+
+    Verification sur le run 32320058346, les six lanes, sans ajustement :
+        shard 0 : somme 131 s, plus grosse classe 73 s -> 131 s (mesure 131 s)
+        shard 2 : somme  86 s, plus grosse classe  5 s ->  86 s (mesure  86 s)
+        shard 4 : somme 276 s, plus grosse classe 195 s -> 276 s (mesure 276 s)
+
+    `workers` n'est plus utilise dans le calcul ; il reste au prototype pour ne
+    pas casser les appels existants et pour documenter que la mesure a ete prise
+    a ce parallelisme. Si `--parallel` change dans ci.yml, il faut REMESURER,
+    pas rediviser.
+    """
+    charges = list(charges)
+    if not charges:
+        return 0.0
+    return max(sum(charges), max(charges))
 
 
 def app_of(unit: str) -> str:
@@ -244,27 +396,72 @@ def _fallback_seconds(timings: dict, n_cases: int) -> float:
     return max(MIN_UNIT_SECONDS, n_cases * SECONDS_PER_TEST)
 
 
-def assign(units, total: int, weights) -> list[list[str]]:
-    """LPT greedy: heaviest unit first onto the currently lightest lane.
+def assign(units, total: int, weights, parallel: int = DEFAULT_PARALLEL,
+           repo_root: str = REPO_ROOT) -> list[list[str]]:
+    """LPT greedy sur le TEMPS DE MUR de la lane, pas sur la somme de ses poids.
 
-    Deterministic: units are ordered by (-weight, label) so equal weights break
-    by name, and ties between lanes always resolve to the lowest lane index.
+    Chaque lane est modelisee par l'etat de ses `parallel` workers. Placer un
+    module = deposer ses CLASSES sur les workers les plus libres de la lane
+    candidate ; on retient la lane dont le temps de mur resultant est le plus
+    faible. Une lane bloquee par une classe geante a des workers inoccupes :
+    ce modele lui donne donc naturellement plus de travail, ce qu'un
+    equilibrage par somme refusait de faire.
+
+    Deterministe : modules ordonnes par (-poids, label) ; a egalite de cout
+    resultant, la lane d'indice le plus bas gagne.
     """
     if total < 1:
         raise ValueError("shard_total must be >= 1")
     lanes: list[list[str]] = [[] for _ in range(total)]
-    loads = [0.0] * total
+    sommes = [0.0] * total          # contributions cumulees au temps de mur
+    plus_gros = [0.0] * total       # plus grosse CLASSE deja posee sur la lane
+
     for unit in sorted(units, key=lambda u: (-weights[u], u)):
-        i = min(range(total), key=lambda k: (loads[k], k))
-        lanes[i].append(unit)
-        loads[i] += weights[unit]
+        blocs = class_weights(unit, weights[unit], repo_root)
+        s, g = sum(blocs), (max(blocs) if blocs else 0.0)
+        meilleure, meilleur_cout = 0, None
+        for i in range(total):
+            cout = max(sommes[i] + s, plus_gros[i], g)
+            if meilleur_cout is None or cout < meilleur_cout - 1e-12:
+                meilleure, meilleur_cout = i, cout
+        lanes[meilleure].append(unit)
+        sommes[meilleure] += s
+        plus_gros[meilleure] = max(plus_gros[meilleure], g)
     return [sorted(lane) for lane in lanes]
 
 
-def plan(total: int, repo_root: str = REPO_ROOT):
+def lane_makespan(lane, weights, parallel: int = DEFAULT_PARALLEL,
+                  repo_root: str = REPO_ROOT) -> float:
+    """Temps de mur attendu d'une lane : ses CLASSES sur `parallel` workers."""
+    blocs = []
+    for unit in lane:
+        blocs.extend(class_weights(unit, weights[unit], repo_root))
+    return makespan(blocs, parallel)
+
+
+def theoretical_floor(units, weights, total: int,
+                      parallel: int = DEFAULT_PARALLEL,
+                      repo_root: str = REPO_ROOT) -> float:
+    """Plancher qu'AUCUN decoupage ne peut franchir.
+
+    C'est le plus grand des deux : le travail total divise par tous les workers
+    disponibles, et la plus grosse CLASSE indivisible de toute la suite. Quand
+    c'est la seconde qui domine, ajouter des lanes ne sert plus a rien — seul
+    scinder cette classe ferait descendre le gate.
+    """
+    travail = sum(weights[u] for u in units)
+    plus_grosse = 0.0
+    for unit in units:
+        for bloc in class_weights(unit, weights[unit], repo_root):
+            plus_grosse = max(plus_grosse, bloc)
+    return max(travail / total, plus_grosse)
+
+
+def plan(total: int, repo_root: str = REPO_ROOT,
+         parallel: int = DEFAULT_PARALLEL):
     units = discover_units(repo_root)
     weights = weigh(units, load_timings(), repo_root)
-    lanes = assign(units, total, weights)
+    lanes = assign(units, total, weights, parallel, repo_root)
     return units, weights, lanes
 
 
@@ -272,11 +469,36 @@ def plan(total: int, repo_root: str = REPO_ROOT):
 # --update-timings: rebuild the table from CI job logs
 # --------------------------------------------------------------------------
 def parse_log_durations(lines) -> dict:
-    """Attribute elapsed wall time between -v 2 result lines to their module."""
+    """Duree par CLASSE de test, lue sur les journaux `-v 2`.
+
+    DEUX CORRECTIONS DE FOND (volet F, 20/08/2026) — l'ancienne version se
+    trompait de sens ET de granularite, et c'est ce qui a rendu le planificateur
+    aveugle pendant quatre rondes.
+
+    1. LE SENS. La sortie `-v 2` n'est PAS ecrite au fil de l'eau : Python
+       tamponne, et le runner horodate les lignes AU MOMENT DU VIDAGE. Mesure
+       sur le run 32320058346 : 15 lignes de tests consecutives portent le meme
+       horodatage a 23 ms pres, et l'ecart entre deux lignes de la MEME classe
+       est nul dans 100 % des cas. Les horodatages ne datent donc pas les
+       tests — ils datent les rafales. Le seul signal exploitable est le TROU
+       entre deux rafales, et ce trou mesure le travail accompli JUSTE AVANT
+       d'etre vide, c'est-a-dire celui de la ligne QUI SUIT. L'ancienne version
+       l'imputait a la ligne PRECEDENTE : un decalage d'un cran qui attribuait
+       systematiquement le cout d'une classe lente a sa voisine rapide.
+       Consequence mesuree : `test_gammes_offre` etait pesee 25,9 s alors que sa
+       classe `TestAcceptationGamme` consomme 194,8 s a elle seule — 70 % du
+       shard le plus lent, invisible dans la table.
+
+    2. LA GRANULARITE. On mesure desormais la CLASSE, pas le module. Sous
+       `--parallel`, la classe est l'unite indivisible : c'est elle qui fixe le
+       plancher d'une lane (cf. l'en-tete de ce fichier). Le poids du module en
+       decoule par simple somme, donc rien n'est perdu.
+
+    Retourne ``{"<module>.<Classe>": secondes}``.
+    """
     from datetime import datetime
 
     durations: dict = defaultdict(float)
-    prev_module = None
     prev_time = None
     for raw in lines:
         m = _TS_RE.match(raw.rstrip("\n"))
@@ -287,25 +509,32 @@ def parse_log_durations(lines) -> dict:
         if not hit:
             continue
         dotted = hit.group(1)
-        # "apps.ventes.tests.test_pdf.ClassName.test_method" -> drop the last two
-        module = ".".join(dotted.split(".")[:-2]) or dotted
+        # "apps.ventes.tests.test_pdf.ClassName.test_method" -> drop the method
+        classe = ".".join(dotted.split(".")[:-1]) or dotted
         now = datetime.strptime(stamp[:26] + "Z", "%Y-%m-%dT%H:%M:%S.%fZ")
-        if prev_module is not None and prev_time is not None:
+        if prev_time is not None:
             delta = (now - prev_time).total_seconds()
-            if 0 <= delta < 600:  # ignore clock jumps / inter-shard gaps
-                durations[prev_module] += delta
-        prev_module, prev_time = module, now
+            if 0 <= delta < 3600:  # ignore clock jumps / inter-shard gaps
+                durations[classe] += delta
+        prev_time = now
     return dict(durations)
 
 
+def module_of_class(dotted: str) -> str:
+    """`apps.x.tests.test_y.MaClasse` -> `apps.x.tests.test_y`."""
+    parts = dotted.split(".")
+    return ".".join(parts[:-1]) if len(parts) > 1 else dotted
+
+
 def update_timings(log_paths, out_path: str = TIMINGS_PATH,
-                   raw_path: str = RAW_TIMINGS_PATH) -> int:
+                   raw_path: str = RAW_TIMINGS_PATH,
+                   class_path: str = CLASS_TIMINGS_PATH) -> int:
     merged: dict = defaultdict(float)
     for path in log_paths:
         try:
             with open(path, encoding="utf-8", errors="replace") as fh:
-                for mod, secs in parse_log_durations(fh).items():
-                    merged[mod] = max(merged[mod], secs)
+                for cls, secs in parse_log_durations(fh).items():
+                    merged[cls] = max(merged[cls], secs)
         except OSError as exc:
             sys.stderr.write(f"ci_shard: log illisible {path} ({exc})\n")
             return 2
@@ -315,6 +544,29 @@ def update_timings(log_paths, out_path: str = TIMINGS_PATH,
             "tourne-t-elle bien en -v 2 ?\n"
         )
         return 2
+
+    # La table par CLASSE est le nouveau produit principal : c'est l'unite
+    # indivisible sous `--parallel`, donc celle qui fixe le plancher d'une lane.
+    #
+    # ON N'Y GARDE QUE CE QUI PEUT CHANGER UNE DECISION. Une classe ne borne une
+    # lane que si elle pese plus que la charge moyenne d'une lane (~160 s a 5
+    # lanes) ; en dessous de CLASS_FLOOR_SECONDS elle ne peut jamais etre le
+    # facteur limitant, et son cout reste compte dans le total du module. Sans
+    # ce seuil la table faisait 473 Ko pour 6 529 entrees dont 99 % sous la
+    # seconde — illisible en revue, et couteux a versionner a chaque mesure.
+    classes = {k: round(v, 2) for k, v in sorted(merged.items())
+               if v >= CLASS_FLOOR_SECONDS}
+    with open(class_path, "w", encoding="utf-8", newline="\n") as fh:
+        json.dump(classes, fh, indent=1, sort_keys=True)
+        fh.write("\n")
+    print(f"ci_shard: {len(classes)} classe(s) chronometree(s) -> {class_path}")
+
+    # Le poids d'un module est la SOMME de ses classes mesurees — plus aucune
+    # extrapolation par nombre de tests quand la mesure existe.
+    par_module: dict = defaultdict(float)
+    for cls, secs in merged.items():
+        par_module[module_of_class(cls)] += secs
+    merged = par_module
 
     # GARDE DE VARIANCE (round 4). Une seule mesure est BRUITEE : entre deux runs,
     # l'etat du cache de base de test, le bruit du runner et le voisinage dans le
@@ -374,22 +626,49 @@ def main(argv):
                         help="print the balance table for TOTAL lanes")
     parser.add_argument("--update-timings", nargs="+", metavar="LOG",
                         help="rebuild scripts/ci_shard_timings.json from CI logs")
+    parser.add_argument("--parallel", type=int, default=DEFAULT_PARALLEL,
+                        metavar="N",
+                        help="processus par lane (doit refleter ci.yml ; "
+                             f"defaut {DEFAULT_PARALLEL})")
     args = parser.parse_args(argv[1:])
 
     if args.update_timings:
         return update_timings(args.update_timings)
 
     if args.plan:
-        units, weights, lanes = plan(args.plan)
+        p = args.parallel
+        units, weights, lanes = plan(args.plan, parallel=p)
         total_w = sum(weights.values())
-        print(f"{len(units)} modules, cout total estime {total_w / 60:.1f} min")
+        print(f"{len(units)} modules, travail total estime {total_w / 60:.1f} min, "
+              f"--parallel {p} par lane")
+        murs = [lane_makespan(lane, weights, p) for lane in lanes]
+        print(f"  {'lane':>4}  {'modules':>7}  {'travail':>8}  {'temps de mur':>12}")
         for i, lane in enumerate(lanes):
             load = sum(weights[u] for u in lane)
-            print(f"  lane {i}: {len(lane):4d} modules  {load / 60:5.2f} min")
-        loads = [sum(weights[u] for u in lane) for lane in lanes]
-        print(f"  pire lane {max(loads) / 60:.2f} min / ideal "
-              f"{total_w / len(lanes) / 60:.2f} min "
-              f"(desequilibre {max(loads) / (total_w / len(lanes)):.2f}x)")
+            print(f"  {i:4d}  {len(lane):7d}  {load:7.0f}s  {murs[i]:11.0f}s")
+        sol = theoretical_floor(units, weights, args.plan, p)
+        ecart = (max(murs) - min(murs)) / max(murs) if max(murs) else 0.0
+        print(f"\n  pire lane {max(murs):.0f}s / plancher theorique {sol:.0f}s "
+              f"({max(murs) / sol:.2f}x)")
+        print(f"  ecart (max-min)/max = {100 * ecart:.0f} %")
+
+        # Nommer CE QUI BORNE : si la plus grosse classe depasse le travail
+        # total divise par tous les workers, ajouter des lanes ne sert plus a
+        # rien — c'est cette classe qu'il faut scinder.
+        pire_bloc, pire_nom = 0.0, ""
+        for unit in units:
+            for nom, poids in class_weight_items(unit, weights[unit]):
+                if poids > pire_bloc:
+                    pire_bloc, pire_nom = poids, f"{unit}.{nom}"
+        capacite = total_w / args.plan
+        if pire_bloc > capacite:
+            print(f"\n  BORNE PAR UNE CLASSE INDIVISIBLE : {pire_nom} "
+                  f"~{pire_bloc:.0f}s")
+            print(f"  (capacite par lane a {args.plan} lanes x {p} workers = "
+                  f"{capacite:.0f}s)")
+            n_utile = max(1, int(round(total_w / pire_bloc)))
+            print(f"  => au-dela de ~{n_utile} lane(s), une lane de plus ne "
+                  f"raccourcit RIEN ; seul un decoupage de cette classe le ferait.")
         return 0
 
     if args.index is None or args.total is None:
@@ -398,7 +677,7 @@ def main(argv):
     if not (0 <= args.index < args.total):
         sys.stderr.write("shard_index must be in [0, shard_total)\n")
         return 2
-    _units, _weights, lanes = plan(args.total)
+    _units, _weights, lanes = plan(args.total, parallel=args.parallel)
     sys.stdout.write(" ".join(lanes[args.index]))
     return 0
 
