@@ -607,10 +607,20 @@ class M1GhiSourceUniqueTests(SimpleTestCase):
     """M1 (suite) — une SEULE dérivation du profil GHI dans tout le backend."""
 
     def test_public_views_importe_les_poids_au_lieu_de_les_recopier(self):
-        from apps.ventes import public_views
-        from apps.ventes.quote_engine import constants
-        self.assertIs(public_views.MOROCCO_SOLAR_MONTHLY_WEIGHTS,
-                      constants.MOROCCO_SOLAR_MONTHLY_WEIGHTS)
+        # On lit la SOURCE plutôt que d'importer le module : `public_views`
+        # tire WeasyPrint (dépendance native lourde) et ce test doit rester
+        # pur. Ce qu'on vérifie est justement textuel : plus aucune seconde
+        # copie de la table GHI, seulement l'import de l'unique dérivation.
+        import os
+        chemin = os.path.join(os.path.dirname(__file__), "..",
+                              "public_views.py")
+        with open(os.path.abspath(chemin), encoding="utf-8") as fh:
+            src = fh.read()
+        self.assertIn(
+            "from .quote_engine.constants import "
+            "MOROCCO_SOLAR_MONTHLY_WEIGHTS", src)
+        self.assertNotIn("83.99", src)
+        self.assertNotIn("_GHI_MONTHLY", src)
 
     def test_les_poids_derivent_de_la_table_ghi_verrouillee(self):
         from apps.ventes.quote_engine import constants

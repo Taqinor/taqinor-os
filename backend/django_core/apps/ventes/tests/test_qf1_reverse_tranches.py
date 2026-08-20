@@ -121,11 +121,17 @@ class TestAnnualBillFromKwh(SimpleTestCase):
         self.assertGreater(high["bill_mensuel"] / 600,
                            low["bill_mensuel"] / 80)
 
-    def test_lydec_redal_flagged_approximatif(self):
+    def test_aucun_distributeur_n_est_approximatif(self):
+        """Q7 — les trois distributeurs lisent la grille nationale : plus aucun
+        calcul ne porte le drapeau « approximatif », et tous rendent la MÊME
+        facture pour la même consommation."""
+        ref = annual_bill_from_kwh(300, utility="onee")
         for utility in ("lydec", "redal"):
             out = annual_bill_from_kwh(300, utility=utility)
-            self.assertTrue(out["approximatif"])
-            self.assertFalse(out["estimation"])
+            self.assertFalse(out["approximatif"], utility)
+            self.assertFalse(out["estimation"], utility)
+            self.assertAlmostEqual(out["bill_mensuel"], ref["bill_mensuel"],
+                                   places=2, msg=utility)
 
     def test_no_utility_labelled_estimate_flat_fallback(self):
         out = annual_bill_from_kwh(200)
