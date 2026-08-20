@@ -1570,6 +1570,40 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         except (TypeError, ValueError):
             factures_mensuelles = None
 
+    # ── Q5 (décision fondateur du 20/08/2026) — DÉLAIS COMMERCIAUX ───────────
+    # « visite sous 48-72 h » et « installation 7-14 jours » étaient codés en
+    # dur dans quatre renderers ET rendus dans la boîte « Conditions » du PDF,
+    # où ils se lisaient comme des engagements contractuels. Ils viennent
+    # désormais des réglages société, s'affichent hors des Conditions et portent
+    # « (indicatif) ». Réglage VIDÉ ⇒ le délai n'apparaît nulle part.
+    _delais = {"visite_technique": "", "installation": ""}
+    try:
+        from apps.parametres.models import CompanyProfile
+        _prof = CompanyProfile.get(getattr(devis, "company", None))
+        _delais = {
+            "visite_technique": (
+                getattr(_prof, "delai_visite_technique", "") or "").strip(),
+            "installation": (
+                getattr(_prof, "delai_installation", "") or "").strip(),
+        }
+    except Exception:  # noqa: BLE001 — un PDF ne casse jamais sur un réglage
+        _delais = {"visite_technique": "", "installation": ""}
+
+    # ── M7 — date de validité RÉELLE du devis (voir le commentaire du dict) ───
+    _valid_until_txt = None
+    _validity_days = None
+    try:
+        from ..utils.expiry import date_expiration
+        _exp = date_expiration(devis)
+        _cree = devis.date_creation.date() if devis.date_creation else None
+        if _exp and _cree:
+            _jours = (_exp - _cree).days
+            if _jours > 0:
+                _valid_until_txt = _exp.strftime("%d/%m/%Y")
+                _validity_days = _jours
+    except Exception:  # noqa: BLE001 — un PDF ne casse jamais sur une date
+        _valid_until_txt = _validity_days = None
+
     client_name = f"{(client.prenom or '').strip()} {(client.nom or '').strip()}".strip()
 
     # Liste d'articles du format UNE PAGE. RÈGLE D'INTÉGRITÉ : une facture ne
@@ -1948,6 +1982,22 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "date_acceptation": (
             devis.date_acceptation.strftime("%d/%m/%Y")
             if getattr(devis, "date_acceptation", None) else ""),
+        # ── M7 (audit adversarial du 19/08/2026) — LA VRAIE DATE DE VALIDITÉ ──
+        # Les quatre renderers codaient « 30 jours » en dur, en ignorant à la
+        # fois ``Devis.date_validite`` (saisie par le vendeur) et le réglage
+        # société ``quote_validity_days`` : le portail client affichait la VRAIE
+        # échéance, le PDF — y compris le bandeau à signer — une fausse. Deux
+        # dates contradictoires sur un document engageant.
+        # ``utils/expiry.date_expiration`` est LA règle déjà appliquée par le
+        # backend (date_validite, sinon création + réglage société) : le moteur
+        # la lit au lieu d'en inventer une seconde. ``valid_until`` est la date
+        # imprimable ; ``validity_days`` en est le nombre de jours, pour que
+        # l'arithmétique existante des gabarits retombe EXACTEMENT dessus.
+        # Indéterminable ⇒ les deux valent None ⇒ les renderers OMETTENT.
+        "valid_until": _valid_until_txt,
+        "validity_days": _validity_days,
+        # Q5 — délais commerciaux INDICATIFS, réglages société. Vides ⇒ omis.
+        "delais": _delais,
         # ── Q8 (décision fondateur du 20/08/2026) — LES DOCUMENTS SONT EN MAD ──
         # Les montants sont stockés en MAD et rendus en MAD. Le `taux_change`
         # du devis n'était converti nulle part : il était SERVI au moteur (et

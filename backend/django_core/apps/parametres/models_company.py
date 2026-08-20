@@ -133,6 +133,17 @@ class CompanyProfile(models.Model):
         max_digits=8, decimal_places=2, default=50)
     agricole_cout_reel_bonbonne = models.DecimalField(
         max_digits=8, decimal_places=2, default=128)
+    # ── Q5 (fondateur, 20/08/2026) — DÉLAIS COMMERCIAUX PARAMÉTRABLES ─────────
+    # « visite sous 48-72 h » et « installation 7-14 jours » étaient codés en
+    # dur dans quatre renderers ET rendus DANS la boîte « Conditions » du PDF,
+    # où ils se lisaient comme des engagements contractuels. Ils deviennent des
+    # réglages société (texte libre court), s'affichent hors des Conditions et
+    # portent la mention « (indicatif) ». Réglage VIDÉ ⇒ le délai n'apparaît
+    # nulle part (règle du lot : jamais un forfait déguisé en donnée société).
+    delai_visite_technique = models.CharField(
+        max_length=40, blank=True, default='48-72 h')
+    delai_installation = models.CharField(
+        max_length=40, blank=True, default='7-14 jours ouvrés')
     # Préfixes de numérotation des pièces : {devis,facture,avoir,bon_commande}.
     # NULL = repli sur les préfixes historiques (DEV/FAC/AVO/BC).
     doc_prefixes = models.JSONField(null=True, blank=True)

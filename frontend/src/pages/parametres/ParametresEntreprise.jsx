@@ -148,6 +148,9 @@ export default function ParametresEntreprise() {
     agricole_pump_hours: 7,
     agricole_prix_bonbonne: 50,
     agricole_cout_reel_bonbonne: 128,
+    // Q5 — delais commerciaux INDICATIFS (texte libre ; vide = non affiche).
+    delai_visite_technique: '48-72 h',
+    delai_installation: '7-14 jours ouvres',
     doc_prefixes: DEFAULT_PREFIXES,
     doc_numbering: DEFAULT_NUMBERING,
     tva_standard: 20,
@@ -598,6 +601,8 @@ export default function ParametresEntreprise() {
       agricole_pump_hours: profile.agricole_pump_hours ?? 7,
       agricole_prix_bonbonne: profile.agricole_prix_bonbonne ?? 50,
       agricole_cout_reel_bonbonne: profile.agricole_cout_reel_bonbonne ?? 128,
+      delai_visite_technique: profile.delai_visite_technique ?? '',
+      delai_installation: profile.delai_installation ?? '',
       doc_prefixes: { ...DEFAULT_PREFIXES, ...(profile.doc_prefixes || {}) },
       doc_numbering: Object.fromEntries(Object.keys(DEFAULT_NUMBERING).map(k => [
         k, { ...DEFAULT_NUMBERING[k], ...((profile.doc_numbering || {})[k] || {}) },
@@ -733,6 +738,10 @@ export default function ParametresEntreprise() {
       agricole_pump_hours: Number(form.agricole_pump_hours) || 7,
       agricole_prix_bonbonne: Number(form.agricole_prix_bonbonne) || 50,
       agricole_cout_reel_bonbonne: Number(form.agricole_cout_reel_bonbonne) || 128,
+      // Q5 — chaine VIDE conservee telle quelle : elle SIGNIFIE
+      // « ne pas afficher ce delai », ce n'est pas une valeur manquante.
+      delai_visite_technique: (form.delai_visite_technique ?? '').trim(),
+      delai_installation: (form.delai_installation ?? '').trim(),
       tva_standard: keepNum(form.tva_standard),
       tva_panneaux: keepNum(form.tva_panneaux),
       onee_tarif_kwh: Number(form.onee_tarif_kwh) || 1.75,

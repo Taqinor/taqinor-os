@@ -348,6 +348,14 @@ ONEPAGE_NOTE_BATTERIE = False
 # une page. Défaut None = aucune économie affichée sur le chemin autonome ;
 # le builder la pose TOUJOURS pour un vrai devis.
 ONEPAGE_BRANCHE = None
+# M7 — date d'échéance RÉELLE du devis, format « JJ/MM/AAAA », ou "" quand elle
+# est indéterminable (les mentions de validité disparaissent alors).
+VALID_UNTIL = ""
+# Q5 (fondateur, 20/08/2026) — délais commerciaux INDICATIFS, réglages
+# société. Vides ⇒ le délai n'apparaît nulle part (jamais un littéral
+# codé ici, jamais dans la boîte « Conditions »).
+DELAI_VISITE = ""
+DELAI_INSTALLATION = ""
 
 # ── DC1 — identité société (multi-tenant) ──────────────────────────────────────
 # Chaque littéral d'identité (nom de marque du footer, coordonnées, ligne légale
@@ -512,16 +520,21 @@ def _apply_seller(seller):
 # substitués par le moteur (PAY_A/PAY_M/PAY_S/TVA_NOTE) — défauts inchangés.
 DEFAULT_DOC_TEXTS = {
     # D2/N60 — validité de l'offre (3 emplacements, libellés distincts).
-    "validite_badge_p1": "Validit&#233;&#160;: 30 jours",
-    "validite_onepage": "&#183; Validit&#233;&#160;: 30 jours",
+    # M7 (audit du 19/08/2026) — plus AUCUN « 30 jours » codé ici : le devis
+    # porte sa vraie échéance (``date_validite``, sinon création + réglage
+    # société ``quote_validity_days``), que le builder sert dans ``valid_until``
+    # et que le marqueur {validite} substitue. Échéance indéterminable ⇒ le
+    # marqueur rend une chaîne VIDE et le badge/la puce DISPARAÎT — jamais une
+    # date fausse en face de la vraie, affichée elle sur le portail client.
+    "validite_badge_p1": "{validite}",
+    "validite_onepage": "&#183; {validite}",
     # D2/N60 — conditions générales (titre + 7 puces ; placeholders substitués).
     "cgv_titre": "Conditions générales du devis",
     "cgv_bullets": [
-        "Validité de l&#8217;offre&#160;: 30 jours",
+        "{validite_offre}",
         "Acompte à la commande&#160;: {acompte}&#37;",
         "{materiel}&#37; à la réception du matériel",
         "{solde}&#37; après la mise en marche",
-        "Délai d&#8217;installation&#160;: 7–14 jours ouvrés",
         "{tva_note}",
         "Tarifs de référence&#160;: barème ONEE/SRM",
     ],
@@ -695,7 +708,12 @@ def _doc_text(key):
     """Fragment de texte éditable `key`, repli sur le littéral historique."""
     val = DOC_TEXTS.get(key)
     if val is None:
-        return DEFAULT_DOC_TEXTS.get(key, "")
+        val = DEFAULT_DOC_TEXTS.get(key, "")
+    # M7 — {validite} porte la VRAIE échéance du devis, ou rien du tout.
+    if isinstance(val, str) and "{validite}" in val:
+        val = (val.replace("{validite}",
+                           f"Validit&#233;&#160;: jusqu&#8217;au {VALID_UNTIL}")
+               if VALID_UNTIL else "")
     return val
 
 
@@ -710,10 +728,17 @@ def _cgv_bullets_html():
     out = ""
     for raw in bullets:
         try:
-            txt = raw.format(acompte=PAY_A, materiel=PAY_M, solde=PAY_S,
-                             tva_note=TVA_NOTE)
+            txt = raw.format(
+                acompte=PAY_A, materiel=PAY_M, solde=PAY_S,
+                tva_note=TVA_NOTE,
+                # M7 — échéance RÉELLE ; inconnue ⇒ chaîne vide ⇒ puce omise.
+                validite_offre=(
+                    "Validit&#233; de l&#8217;offre&#160;: jusqu&#8217;au "
+                    f"{VALID_UNTIL}" if VALID_UNTIL else ""))
         except (KeyError, IndexError, ValueError):
             txt = raw
+        if not str(txt).strip():
+            continue
         # Enrobage <li> + indentation/retours IDENTIQUES au bloc historique
         # (newline + 8 espaces avant chaque puce) → HTML byte-identique au défaut.
         out += (f'\n        <li style="font-size:12px;color:{CG7};'
@@ -1637,7 +1662,7 @@ def page1():
     </div>
     <div style="width:1px;height:16px;background:rgba(255,255,255,0.2);flex-shrink:0;"></div>
     <div style="font-size:6.5pt;color:rgba(255,255,255,0.70);white-space:nowrap;flex-shrink:0;">
-      {svg_num(1)} Devis {SVG_ARROW} {svg_num(2)} Visite {SVG_ARROW} {svg_num(3)} Install. 7&#8211;14&#160;j {SVG_ARROW} {svg_num(4)} Mise en service
+      {svg_num(1)} Devis {SVG_ARROW} {svg_num(2)} Visite {SVG_ARROW} {svg_num(3)} Installation {SVG_ARROW} {svg_num(4)} Mise en service
     </div>
   </div>
 
@@ -1813,6 +1838,16 @@ def page3():
         if _gars else
         "Garanties fabricant des produits install&#233;s, telles que "
         "d&#233;taill&#233;es sur leurs fiches techniques.")
+
+    # Q5 — sous-titres des « prochaines étapes » : délais des réglages
+    # société, toujours suivis de « (indicatif) ». Réglage vidé ⇒
+    # sous-titre VIDE : le document ne promet alors aucun délai. Ces
+    # délais ne figurent plus dans la boîte « Conditions », où ils se
+    # lisaient comme des engagements contractuels.
+    _etape_visite = (f"Sous {DELAI_VISITE} (indicatif)"
+                     if DELAI_VISITE else "")
+    _etape_install = (f"{DELAI_INSTALLATION} (indicatif)"
+                      if DELAI_INSTALLATION else "")
 
     # "Option choisie" tick-boxes — only shown when both options are presented
     _opt = (
@@ -2050,12 +2085,12 @@ def page3():
         <div style="flex:1;text-align:center;padding:7px 6px;background:white;border-radius:8px;border:1px solid #EAECF0;">
           <div class="serif" style="font-size:36px;font-weight:800;color:{CA};line-height:1.0;">2</div>
           <div style="font-size:12px;color:{CN};font-weight:700;margin-top:2px;">Visite technique</div>
-          <div style="font-size:10px;color:{CG4};margin-top:2px;">Sous 48\u201372&#160;h</div>
+          <div style="font-size:10px;color:{CG4};margin-top:2px;">{_etape_visite}</div>
         </div>
         <div style="flex:1;text-align:center;padding:7px 6px;background:white;border-radius:8px;border:1px solid #EAECF0;">
           <div class="serif" style="font-size:36px;font-weight:800;color:{CA};line-height:1.0;">3</div>
           <div style="font-size:12px;color:{CN};font-weight:700;margin-top:2px;">Installation</div>
-          <div style="font-size:10px;color:{CG4};margin-top:2px;">7\u201314 jours ouvr\u00e9s</div>
+          <div style="font-size:10px;color:{CG4};margin-top:2px;">{_etape_install}</div>
         </div>
         <div style="flex:1;text-align:center;padding:7px 6px;background:white;border-radius:8px;border:1px solid #EAECF0;">
           <div class="serif" style="font-size:36px;font-weight:800;color:{CA};line-height:1.0;">4</div>
@@ -2964,6 +2999,12 @@ def apply_quote_data(data: dict) -> None:
     global ONEPAGE_BRANCHE  # M4 — branche des lignes du format une page
     _br = data.get("onepage_branche")
     ONEPAGE_BRANCHE = _br if _br in ("sans", "avec") else None
+    global VALID_UNTIL  # M7 — échéance réelle du devis
+    VALID_UNTIL = (data.get("valid_until") or "").strip()
+    global DELAI_VISITE, DELAI_INSTALLATION  # Q5 — délais indicatifs
+    _dl = data.get("delais") or {}
+    DELAI_VISITE = (_dl.get("visite_technique") or "").strip()
+    DELAI_INSTALLATION = (_dl.get("installation") or "").strip()
     # XSAL14/XSAL5 — structure (sections/notes) + options proposées (rendu seul,
     # hors totaux). Absents → byte-identique. Escapés à l'ingestion (ERR37).
     global LIGNES_STRUCTURE, OPTIONS_PROPOSEES

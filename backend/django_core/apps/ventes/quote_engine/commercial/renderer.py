@@ -56,7 +56,12 @@ def _augment(data: dict) -> dict:
     d = dict(data)
     d["_invest_ttc"] = round(invest)
     d.setdefault("client_full", d.get("client_name") or "Client")
-    d["validity_days"] = d.get("validity_days", 30)
+    # M7 (audit du 19/08/2026) — la validité vient du DEVIS
+    # (``date_validite``, sinon création + réglage société
+    # ``quote_validity_days``), jamais d'un « 30 jours » codé ici.
+    # Indéterminable ⇒ None ⇒ la pastille/ligne est OMISE.
+    d.setdefault("validity_days", None)
+    d.setdefault("valid_until", None)
 
     d["com_category"] = (etude.get("categorie_commerciale") or "").strip().lower() or None
     d["com_kwc"] = _num(etude.get("kwc")) or _num(d.get("puissance_kwc"))

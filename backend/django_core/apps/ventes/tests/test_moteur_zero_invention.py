@@ -416,6 +416,75 @@ class M6GarantiesCodeesEnDurTests(SimpleTestCase):
         self.assertIn(">10 ans<", html)   # onduleur : 120 mois
 
 
+class M7DateDeValiditeTests(SimpleTestCase):
+    """M7 — la date de validité vient du DEVIS, jamais d'un « 30 jours » codé.
+
+    Le portail client affichait la vraie échéance (date_validite ou réglage
+    société), le PDF — bandeau à signer compris — une fausse.
+    """
+
+    def test_le_pdf_imprime_l_echeance_reelle(self):
+        html = F.html_legacy(valid_until="16/08/2026")
+        self.assertIn("jusqu&#8217;au 16/08/2026", html)
+        self.assertNotIn("30 jours", html)
+
+    def test_echeance_indeterminable_la_mention_disparait(self):
+        html = F.html_legacy()
+        self.assertNotIn("Validit&#233;", html)
+        self.assertNotIn("30 jours", html)
+
+    def test_une_page_suit_la_meme_echeance(self):
+        self.assertIn("jusqu&#8217;au 16/08/2026",
+                      F.html_onepage(valid_until="16/08/2026"))
+        self.assertNotIn("Validit&#233;", F.html_onepage())
+
+    def test_le_bandeau_a_signer_porte_la_vraie_date(self):
+        html = F.html_residentiel(valid_until="16/08/2026")
+        self.assertIn("16/08/2026", html)
+        self.assertNotIn("30 jours", html)
+
+    def test_le_builder_lit_la_regle_d_expiration_du_backend(self):
+        # Une seconde règle de validité à côté de utils/expiry serait
+        # exactement le défaut corrigé : deux dates pour un même devis.
+        from apps.ventes.quote_engine import builder
+        import inspect
+        self.assertIn("date_expiration", inspect.getsource(builder))
+
+
+class Q5DelaisIndicatifsTests(SimpleTestCase):
+    """Q5 — les délais commerciaux sont indicatifs, paramétrables, et hors des
+    « Conditions » (où ils se lisaient comme des engagements)."""
+
+    REGLES = {"visite_technique": "48-72 h",
+              "installation": "7-14 jours ouvrés"}
+
+    def test_les_delais_portent_la_mention_indicatif(self):
+        html = F.html_legacy(delais=self.REGLES)
+        self.assertIn("Sous 48-72 h (indicatif)", html)
+        self.assertIn("7-14 jours ouvrés (indicatif)", html)
+
+    def test_ils_ne_sont_plus_dans_la_boite_conditions(self):
+        html = F.html_legacy(delais=self.REGLES)
+        self.assertNotIn("D&#233;lai d&#8217;installation&#160;:", html)
+
+    def test_un_reglage_vide_retire_le_delai_du_document(self):
+        html = F.html_legacy(delais={"visite_technique": "",
+                                     "installation": ""})
+        # On regarde le bloc « prochaines étapes », seul endroit où les délais
+        # s'affichent désormais (un commentaire HTML sans rapport porte aussi
+        # le mot « indicatif » ailleurs dans la page).
+        etapes = html.split("PROCHAINES")[-1][:1200]
+        self.assertNotIn("(indicatif)", etapes)
+        self.assertNotIn("48", etapes)
+        self.assertNotIn("14 jours", etapes)
+
+    def test_le_renderer_residentiel_suit_le_meme_reglage(self):
+        html = F.html_residentiel(delais=self.REGLES)
+        self.assertIn("sous 48-72 h (indicatif)", html)
+        self.assertIn("7-14 jours ouvrés (indicatif)", html)
+        self.assertNotIn("Délai d'installation", html)
+
+
 class M1GhiSourceUniqueTests(SimpleTestCase):
     """M1 (suite) — une SEULE dérivation du profil GHI dans tout le backend."""
 

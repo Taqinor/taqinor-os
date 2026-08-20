@@ -37,6 +37,8 @@ _PROFILE_AUDIT_FIELDS = {
     'agricole_pump_hours': 'Heures de pompage par défaut',
     'agricole_prix_bonbonne': 'Prix bonbonne butane 12 kg (agricole)',
     'agricole_cout_reel_bonbonne': 'Coût réel bonbonne butane 12 kg (agricole)',
+    'delai_visite_technique': 'Délai de visite technique (indicatif)',
+    'delai_installation': "Délai d'installation (indicatif)",
     'doc_prefixes': 'Préfixes de numérotation',
     'doc_numbering': 'Numérotation (largeur / réinitialisation)',
     'tva_standard': 'TVA standard',
