@@ -641,8 +641,15 @@ PANEL_DEGRADATION = 0.005        # 0,5 %/an — perte de production annuelle
 # peut qu'améliorer le résultat.
 TARIFF_ESCALATION = 0.0
 BATTERY_ROUNDTRIP = 0.90         # rendement aller-retour batterie (option 2)
+# ── Q1 (décision fondateur du 20/08/2026) — PROVISION DE REMPLACEMENT ONDULEUR ─
+# Le principe mi-vie (IEA PVPS) est confirmé : l'onduleur se remplace vers
+# l'année 12. Le MONTANT, lui, n'est plus un pourcentage forfaitaire du CAPEX
+# (l'ancien « ≈ 8 % de l'investissement » ne correspondait au prix d'AUCUN
+# onduleur réel) : c'est le PRIX TTC de la ligne onduleur du devis, tel qu'il
+# est facturé. Aucune ligne onduleur identifiable ⇒ AUCUNE provision, et
+# l'hypothèse affichée le DIT. Le palier de la courbe est plus creux qu'avant :
+# c'est le chiffre vrai.
 INVERTER_REPLACE_YEAR = 12       # remplacement onduleur (année) — optionnel
-INVERTER_REPLACE_FRACTION = 0.08  # coût ≈ 8 % de l'investissement, à l'année ci-dessus
 
 
 def compute_cashflow_payback(
@@ -656,14 +663,19 @@ def compute_cashflow_payback(
     battery_roundtrip: float = BATTERY_ROUNDTRIP,
     battery_share: float | None = None,
     inverter_replace_year: int | None = INVERTER_REPLACE_YEAR,
-    inverter_replace_fraction: float = INVERTER_REPLACE_FRACTION,
+    inverter_replace_cost: float | None = None,
 ) -> dict:
     """QX39 — cashflow 25 ans honnête + payback par croisement du cumul à zéro.
 
     Chaque année : l'économie de base (année 1) est érodée par la dégradation
     panneau (0,5 %/an) MAIS améliorée par l'escalade tarifaire documentée ; la
-    batterie (option 2) applique son rendement aller-retour. Un remplacement
-    onduleur optionnel retranche une fraction de l'investissement l'année dite.
+    batterie applique son rendement aller-retour UNIQUEMENT quand l'option
+    porte réellement du stockage (M9 — l'abattement était appliqué
+    inconditionnellement, y compris à un devis sans batterie).
+
+    Q1 — ``inverter_replace_cost`` est le PRIX RÉEL de l'onduleur du devis, en
+    MAD TTC, retranché à ``inverter_replace_year``. ``None`` ⇒ aucune provision
+    (jamais un pourcentage de repli).
     Le payback = première année où le cumul devient ≥ 0 (interpolé dans l'année).
     Renvoie le cashflow annuel, le cumul, le payback (années) et le gain net.
 
@@ -711,8 +723,9 @@ def compute_cashflow_payback(
         if battery:
             year_saving *= batt_factor
         year_cf = year_saving
-        if inverter_replace_year and y == inverter_replace_year:
-            year_cf -= inv * inverter_replace_fraction
+        if (inverter_replace_year and inverter_replace_cost
+                and y == inverter_replace_year):
+            year_cf -= float(inverter_replace_cost)
         cashflow.append(round(year_cf))
         prev_cumul = cumul
         cumul += year_cf
@@ -740,7 +753,13 @@ def _fr_pct(v) -> str:
     return s.replace(".", ",")
 
 
-def cashflow_assumptions() -> dict:
+def _fr_mad(v) -> str:
+    """12345 -> '12 345' (espace fine insécable, format des documents)."""
+    return f"{int(round(float(v))):,}".replace(",", " ")
+
+
+def cashflow_assumptions(inverter_replace_cost=None,
+                         stockage: bool = False) -> dict:
     """QX39 — hypothèses documentées du cashflow, rendues sur le PDF/la
     proposition (autoconsommation d'abord ; rachat BT surplus toujours non
     publié ; plafond d'injection 20 % pré-intégré via l'autoconso).
@@ -749,32 +768,57 @@ def cashflow_assumptions() -> dict:
     d'injection fusionnés ; plus de « performance garantie 25 ans » redondant
     avec les garanties produit) et les pourcentages s'écrivent à la française
     (« 0,5 %/an », jamais « 0.5 »)."""
+    # ── M9 (audit du 19/08/2026) — LES DEUX HYPOTHÈSES CACHÉES SONT DITES ────
+    # Le rendement aller-retour batterie (90 %) et la provision de remplacement
+    # onduleur à l'année 12 changent le résultat affiché ; elles étaient
+    # appliquées en silence. Elles s'écrivent désormais dans le bloc
+    # « Nos hypothèses », comme la dégradation panneau.
+    notes = [
+        "Loi 82-21 : seuls les kWh autoconsommés réduisent la facture — "
+        "le surplus injecté n'est pas rémunéré (plafond d'injection 20 % "
+        "intégré).",
+        f"Dégradation panneau {_fr_pct(round(PANEL_DEGRADATION * 100, 2))} "
+        "%/an intégrée ; aucune hausse du tarif électrique supposée — "
+        "projection à tarif constant, toute hausse réelle améliore votre "
+        "résultat.",
+    ]
+    if stockage:
+        notes.append(
+            f"Stockage : rendement aller-retour batterie "
+            f"{round(BATTERY_ROUNDTRIP * 100)} % appliqué aux kWh qui "
+            "transitent par la batterie.")
+    # Q1 — le MONTANT de la provision est le prix RÉEL de l'onduleur du devis ;
+    # sans ligne onduleur identifiable, la projection le dit au lieu de
+    # provisionner un pourcentage inventé.
+    if inverter_replace_cost:
+        # Z4 (ordre fondateur, 20/08/2026) — cette provision était SILENCIEUSE :
+        # elle est le SEUL décrochement de la courbe de rentabilité, et rien ne
+        # l'expliquait au client ; une courbe qui change de pente sans raison
+        # énoncée se lit comme une erreur. Q1 va plus loin que Z4 : le montant
+        # n'est plus « 8 % de l'investissement » (un forfait qui ne
+        # correspondait au prix d'AUCUN onduleur réel) mais le prix FACTURÉ de
+        # l'onduleur de ce devis. La raison ET le vrai chiffre voyagent ensemble.
+        notes.append(
+            f"Provision de remplacement de l'onduleur en année "
+            f"{INVERTER_REPLACE_YEAR} : {_fr_mad(inverter_replace_cost)} MAD "
+            "(le prix de l'onduleur de ce devis) — c'est le palier visible sur "
+            "la courbe de rentabilité.")
+    else:
+        notes.append(
+            "Projection établie hors provision de remplacement onduleur "
+            "(aucun onduleur chiffré sur ce devis).")
     return {
         "years": CASHFLOW_YEARS,
         "degradation_pct": round(PANEL_DEGRADATION * 100, 2),
         "escalation_pct": round(TARIFF_ESCALATION * 100, 1),
         "battery_roundtrip_pct": round(BATTERY_ROUNDTRIP * 100),
+        "battery_roundtrip_applique": bool(stockage),
         "inverter_replace_year": INVERTER_REPLACE_YEAR,
-        "notes": [
-            "Loi 82-21 : seuls les kWh autoconsommés réduisent la facture — "
-            "le surplus injecté n'est pas rémunéré (plafond d'injection 20 % "
-            "intégré).",
-            f"Dégradation panneau {_fr_pct(round(PANEL_DEGRADATION * 100, 2))} "
-            "%/an intégrée ; aucune hausse du tarif électrique supposée — "
-            "projection à tarif constant, toute hausse réelle améliore votre "
-            "résultat.",
-            # Z4 (ORDRE FONDATEUR, 20/08/2026) — cette provision était SILENCIEUSE :
-            # elle est le SEUL décrochement de la courbe de rentabilité (le tracé
-            # s'aplatit l'année du remplacement puis repart à sa pente normale) et
-            # rien, ni sur le graphe ni dans les hypothèses, ne l'expliquait au
-            # client. Une courbe qui change de pente sans raison énoncée se lit
-            # comme une erreur : la raison voyage désormais AVEC le chiffre.
-            f"Une provision de remplacement de l'onduleur est retranchée en "
-            f"année {INVERTER_REPLACE_YEAR} "
-            f"({_fr_pct(round(INVERTER_REPLACE_FRACTION * 100, 1))} % de "
-            "l'investissement) — c'est le palier visible sur la courbe de "
-            "rentabilité.",
-        ],
+        # Montant RÉEL provisionné (MAD TTC) ou None — lu par la légende de la
+        # courbe 25 ans, qui affiche le chiffre plutôt qu'un pourcentage.
+        "inverter_replace_cost": (round(float(inverter_replace_cost))
+                                  if inverter_replace_cost else None),
+        "notes": notes,
     }
 
 
@@ -792,6 +836,15 @@ def calculate_savings_roi(
     battery_kwh: float | None = None,
     productible: float | None = None,
     fallback_tarif_kwh: float | None = None,
+    # M9 — l'option 2 porte-t-elle RÉELLEMENT du stockage ? L'abattement de
+    # rendement aller-retour (×0,90) était appliqué inconditionnellement, y
+    # compris à un devis SANS batterie : la projection était pénalisée par un
+    # équipement absent. None ⇒ déduit de ``battery_kwh``.
+    stockage_present: bool | None = None,
+    # Q1 — prix TTC RÉEL de l'onduleur de chaque option (provision de
+    # remplacement à l'année 12). None ⇒ aucune provision pour cette option.
+    inverter_cost_sans: float | None = None,
+    inverter_cost_avec: float | None = None,
 ) -> dict:
     """Auto-compute annual production, savings and ROI — loi 82-21 model.
 
@@ -938,9 +991,23 @@ def calculate_savings_roi(
     _batt_part = 0.0
     if autoconso_avec > 0:
         _batt_part = max(0.0, (autoconso_avec - autoconso_sans_eff)) / autoconso_avec
-    cf_s = compute_cashflow_payback(total_sans, economie_opt1)
+    # M9 (audit du 19/08/2026) — l'abattement ne s'applique QU'À une option qui
+    # porte RÉELLEMENT du stockage : ``battery=True`` était codé en dur, donc un
+    # devis sans batterie subissait quand même la perte d'un équipement absent.
+    # Il se combine à Z5 : Z5 borne la perte à la part stockée, M9 la supprime
+    # entièrement quand il n'y a rien à stocker.
+    # Q1 (décision fondateur du 20/08/2026) — la provision de remplacement est
+    # le prix TTC RÉEL de la ligne onduleur de CETTE option, jamais un
+    # pourcentage du total ; aucune ligne onduleur ⇒ aucune provision.
+    _stockage = (bool(battery_kwh and battery_kwh > 0)
+                 if stockage_present is None else bool(stockage_present))
+    cf_s = compute_cashflow_payback(
+        total_sans, economie_opt1,
+        inverter_replace_cost=inverter_cost_sans)
     cf_a = compute_cashflow_payback(
-        total_avec, economie_opt2, battery=True, battery_share=_batt_part)
+        total_avec, economie_opt2, battery=_stockage,
+        battery_share=_batt_part,
+        inverter_replace_cost=inverter_cost_avec)
     roi_opt1 = cf_s["payback_years"] if economie_opt1 > 0 else 0.0
     roi_opt2 = cf_a["payback_years"] if economie_opt2 > 0 else 0.0
 
@@ -981,5 +1048,12 @@ def calculate_savings_roi(
         "cashflow_avec":    cf_a["cumulative"],
         "net_gain_sans":    cf_s["net_gain"],
         "net_gain_avec":    cf_a["net_gain"],
-        "cashflow_assumptions": cashflow_assumptions(),
+        # Les hypothèses RENDUES décrivent CE devis : provision onduleur réelle
+        # (ou son absence explicite) et abattement batterie seulement s'il
+        # s'applique. L'option affichée en priorité est l'option 2 quand elle
+        # existe, sinon l'option 1 — même choix que la courbe 25 ans.
+        "cashflow_assumptions": cashflow_assumptions(
+            inverter_replace_cost=(inverter_cost_avec if _stockage
+                                   else inverter_cost_sans),
+            stockage=_stockage),
     }

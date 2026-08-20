@@ -246,6 +246,30 @@ def _battery_kwh_from_items(rows, blob=None) -> float:
     return total
 
 
+def _cout_onduleur(rows, blob=None):
+    """Q1 — prix TTC RÉEL des lignes onduleur d'une option, ou ``None``.
+
+    Décision fondateur du 20/08/2026 : la provision de remplacement de
+    l'onduleur (année 12, principe mi-vie IEA PVPS) vaut le PRIX FACTURÉ de
+    l'onduleur de ce devis — plus un pourcentage du CAPEX, qui ne correspondait
+    au prix d'aucun onduleur réel. Aucune ligne onduleur identifiable ⇒ ``None``
+    ⇒ aucune provision, et l'hypothèse affichée le dit.
+    """
+    total = 0.0
+    for it in rows or []:
+        text = blob(it) if blob else (it.get("designation") or "")
+        if not _is_inverter(text):
+            continue
+        try:
+            qty = float(it.get("quantite") or 0)
+            pu = float(it.get("prix_unit_ttc") or 0)
+        except (TypeError, ValueError):
+            continue
+        if qty > 0 and pu > 0:
+            total += qty * pu
+    return round(total, 2) if total > 0 else None
+
+
 def _is_hybrid_inverter(designation: str) -> bool:
     d = (designation or "").lower()
     return "onduleur" in d and "hybride" in d
@@ -1223,6 +1247,13 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                      else (_battery_kwh_from_items(avec_items, _blob) or None)),
         productible=_productible,
         fallback_tarif_kwh=_onee_tarif,
+        # M9 — l'abattement de rendement batterie ne s'applique qu'à une option
+        # qui porte VRAIMENT du stockage (il l'était inconditionnellement).
+        stockage_present=has_batterie,
+        # Q1 — provision de remplacement onduleur = prix TTC RÉEL de la ligne
+        # onduleur de chaque option ; aucune ligne ⇒ aucune provision.
+        inverter_cost_sans=_cout_onduleur(sans_items, _blob),
+        inverter_cost_avec=_cout_onduleur(avec_items, _blob),
     )
     # M2 — puissance inconnue ⇒ production et économies le sont aussi (elles en
     # dérivent toutes). ``calculate_savings_roi`` rend alors des zéros ; le
@@ -1774,6 +1805,10 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # : pilote la courbe de rentabilité (plus de droite linéaire « plate »).
         "cashflow_sans": roi.get("cashflow_sans"),
         "cashflow_avec": roi.get("cashflow_avec"),
+        # Q1 — hypothèses du cashflow, SERVIES au rendu : la légende de la
+        # courbe 25 ans y lit le montant RÉEL provisionné pour le remplacement
+        # de l'onduleur (le creux de l'année 12 cesse d'être inexpliqué).
+        "cashflow_assumptions": roi.get("cashflow_assumptions"),
         "net_gain_sans": roi.get("net_gain_sans"),
         "net_gain_avec": roi.get("net_gain_avec"),
         # QJ13 — honest-number guard: True when savings are an estimate (no tariff data)

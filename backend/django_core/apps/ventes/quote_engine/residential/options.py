@@ -300,6 +300,18 @@ def build_pages(ctx) -> list:
     fin_sub = ("gain cumulé, deux scénarios — le point marque le retour "
                "sur investissement" if deux_options
                else "gain cumulé — le point marque le retour sur investissement")
+    # ── Q1 (décision fondateur du 20/08/2026) — LE CREUX DE LA COURBE EST DIT ─
+    # La courbe plonge en année 12 : c'est la provision de remplacement de
+    # l'onduleur. Elle vaut le PRIX RÉEL de l'onduleur de ce devis (plus un
+    # pourcentage forfaitaire du CAPEX), et la légende l'écrit — un creux
+    # inexpliqué se lit comme une erreur de graphe. Aucun onduleur chiffré ⇒
+    # aucune provision ⇒ aucune mention (la courbe n'a alors pas de creux).
+    _cf_assum = d.get("cashflow_assumptions") or {}
+    _prov = _cf_assum.get("inverter_replace_cost")
+    if _prov:
+        _an = _cf_assum.get("inverter_replace_year") or 12
+        fin_sub += (f" · remplacement onduleur provisionné en année {_an} "
+                    f"({f'{int(_prov):,}'.replace(',', ' ')} MAD)")
 
     # QRES57 — les garanties vivent en bande fine sur la page signature
     # (trust.py, source unique theme.WARRANTIES) : plus de cartes badges en

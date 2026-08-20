@@ -176,6 +176,100 @@ class M4UnePageMemeBrancheTests(SimpleTestCase):
                             maxi)
 
 
+class Q1ProvisionOnduleurTests(SimpleTestCase):
+    """Q1 (décision fondateur du 20/08) — la provision de remplacement de
+    l'onduleur vaut le PRIX RÉEL de la ligne onduleur, jamais un % du CAPEX.
+    Aucun onduleur chiffré ⇒ aucune provision, et le document le DIT."""
+
+    def test_le_creux_de_l_annee_12_vaut_le_prix_reel_de_l_onduleur(self):
+        from apps.ventes.quote_engine.pricing import compute_cashflow_payback
+        sans = compute_cashflow_payback(100000, 20000)
+        avec = compute_cashflow_payback(100000, 20000,
+                                        inverter_replace_cost=16000)
+        self.assertEqual(sans["cumulative"][11] - avec["cumulative"][11], 16000)
+
+    def test_aucun_onduleur_aucune_provision(self):
+        from apps.ventes.quote_engine.pricing import compute_cashflow_payback
+        a = compute_cashflow_payback(100000, 20000, inverter_replace_cost=None)
+        b = compute_cashflow_payback(100000, 20000, inverter_replace_cost=0)
+        self.assertEqual(a["cashflow"], b["cashflow"])
+        # aucun palier : l'année 12 vaut ce que vaut l'année 11 à la
+        # dégradation près, jamais un décrochement.
+        self.assertGreater(a["cashflow"][11], a["cashflow"][11] * 0.9)
+
+    def test_le_montant_reel_est_imprime_dans_les_hypotheses(self):
+        from apps.ventes.quote_engine.pricing import cashflow_assumptions
+        notes = cashflow_assumptions(inverter_replace_cost=16000)["notes"]
+        html = F.html_legacy(hypotheses={"titre": "Nos hypothèses",
+                                         "items": notes})
+        self.assertIn("Provision de remplacement", html)
+        # espace fine insécable : le format monétaire des documents
+        self.assertIn("16 000 MAD", html)
+        self.assertIn("année 12", html)
+
+    def test_sans_onduleur_le_document_dit_hors_provision(self):
+        from apps.ventes.quote_engine.pricing import cashflow_assumptions
+        notes = cashflow_assumptions()["notes"]
+        html = F.html_legacy(hypotheses={"titre": "Nos hypothèses",
+                                         "items": notes})
+        self.assertIn("hors provision de remplacement onduleur", html)
+
+    def test_la_legende_de_la_courbe_affiche_le_montant_provisionne(self):
+        html = F.html_residentiel(cashflow_assumptions={
+            "inverter_replace_cost": 23000, "inverter_replace_year": 12})
+        self.assertIn("remplacement onduleur provisionn", html)
+        self.assertIn("23", html)
+
+    def test_sans_provision_la_legende_ne_mentionne_rien(self):
+        html = F.html_residentiel()
+        self.assertNotIn("remplacement onduleur provisionn", html)
+
+    def test_le_builder_lit_le_prix_ttc_reel_des_lignes_onduleur(self):
+        from apps.ventes.quote_engine import builder
+        rows = [{"designation": "Onduleur hybride Deye 10kW",
+                 "quantite": 2, "prix_unit_ttc": 12000},
+                {"designation": "Batterie Dyness 10 kWh",
+                 "quantite": 1, "prix_unit_ttc": 25000}]
+        self.assertEqual(builder._cout_onduleur(rows), 24000)
+        self.assertIsNone(builder._cout_onduleur(rows[1:]))
+        self.assertIsNone(builder._cout_onduleur([]))
+
+
+class M9AbattementBatterieTests(SimpleTestCase):
+    """M9 — l'abattement de rendement batterie ne s'applique qu'au stockage
+    RÉELLEMENT présent, et les deux hypothèses cachées sont divulguées."""
+
+    def test_sans_stockage_aucun_abattement(self):
+        from apps.ventes.quote_engine.pricing import calculate_savings_roi
+        sans = calculate_savings_roi(10, 100000, 100000,
+                                     stockage_present=False)
+        avec = calculate_savings_roi(10, 100000, 100000,
+                                     stockage_present=True)
+        # Même devis, même prix : seule la présence de stockage change le
+        # cashflow de l'option 2 — l'abattement s'appliquait aux deux.
+        self.assertGreater(sans["cashflow_avec"][-1], avec["cashflow_avec"][-1])
+
+    def test_le_stockage_se_deduit_de_la_capacite_batterie_reelle(self):
+        from apps.ventes.quote_engine.pricing import calculate_savings_roi
+        sans = calculate_savings_roi(10, 100000, 100000, battery_kwh=None)
+        avec = calculate_savings_roi(10, 100000, 100000, battery_kwh=10)
+        self.assertGreater(sans["cashflow_avec"][-1], avec["cashflow_avec"][-1])
+
+    def test_les_deux_hypotheses_cachees_sont_imprimees(self):
+        from apps.ventes.quote_engine.pricing import cashflow_assumptions
+        notes = cashflow_assumptions(inverter_replace_cost=16000,
+                                     stockage=True)["notes"]
+        html = F.html_legacy(hypotheses={"titre": "Nos hypothèses",
+                                         "items": notes})
+        self.assertIn("rendement aller-retour batterie 90", html)
+        self.assertIn("Provision de remplacement", html)
+
+    def test_sans_stockage_l_hypothese_batterie_ne_s_affiche_pas(self):
+        from apps.ventes.quote_engine.pricing import cashflow_assumptions
+        notes = cashflow_assumptions(stockage=False)["notes"]
+        self.assertFalse(any("aller-retour" in n for n in notes))
+
+
 class M1GhiSourceUniqueTests(SimpleTestCase):
     """M1 (suite) — une SEULE dérivation du profil GHI dans tout le backend."""
 
