@@ -641,12 +641,19 @@ function DevisRow({ d, ctx }) {
           : '—'}
       </td>
       <td className="ta-right tabular-nums" data-label="Total TTC">
-        {(d.total_affiche ?? d.total_ttc) != null
-          ? formatMAD(d.total_affiche ?? d.total_ttc)
-          : '—'}
+        {/* PVAB (fondateur 20/08) — devis à deux options : les DEUX totaux,
+            « sans / avec » batterie, jamais un montant qui n'existe dans aucun
+            document. Repli : total_affiche (option 1), puis total stocké. */}
+        {d.nb_options === 2
+         && d.comparaison_options?.sans?.ttc != null
+         && d.comparaison_options?.avec?.ttc != null
+          ? `${formatMAD(d.comparaison_options.sans.ttc)} / ${formatMAD(d.comparaison_options.avec.ttc)}`
+          : ((d.total_affiche ?? d.total_ttc) != null
+              ? formatMAD(d.total_affiche ?? d.total_ttc)
+              : '—')}
         {d.nb_options === 2 && (
           <Badge tone="warning" className="ml-1.5"
-                 title="Devis à deux options — total affiché : option 1 (sans batterie), remise incluse">
+                 title="Devis à deux options — sans batterie / avec batterie, remise incluse">
             2 options
           </Badge>
         )}

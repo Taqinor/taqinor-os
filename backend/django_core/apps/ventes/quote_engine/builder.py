@@ -2220,9 +2220,19 @@ def display_totals(devis) -> dict:
         data = build_quote_data(devis, {"pdf_mode": "onepage"})
         return {"total": data["display_total"], "nb_options": data["nb_options"]}
     except Exception:  # noqa: BLE001 — une liste ne doit jamais casser
-        logger.exception("display_totals: repli sur total_ttc (devis %s)",
+        logger.exception("display_totals: moteur en échec (devis %s)",
                          getattr(devis, "reference", "?"))
-        return {"total": float(devis.total_ttc), "nb_options": 1}
+        # PVAB (incident DEV-202608-0015) — le repli n'affiche JAMAIS la somme
+        # des deux options : un moteur en échec retombe d'abord sur la chaîne
+        # canonique LÉGÈRE (mêmes prédicats, mêmes totaux au centime, sans le
+        # moteur), et seulement ensuite sur le total stocké.
+        try:
+            from apps.ventes.utils.options import totaux_affichage_repli
+            return totaux_affichage_repli(devis)
+        except Exception:  # noqa: BLE001 — dernier filet : total stocké
+            logger.exception("display_totals: repli léger en échec (devis %s)",
+                             getattr(devis, "reference", "?"))
+            return {"total": float(devis.total_ttc), "nb_options": 1}
 
 
 def _nombre(valeur) -> float:

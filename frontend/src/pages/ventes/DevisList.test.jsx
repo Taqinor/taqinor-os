@@ -91,6 +91,7 @@ import { toast } from '../../ui'
 // (comme en production, où <Layout> l'enveloppe). Ajout de wrapper de HARNAIS
 // uniquement — aucune assertion n'est modifiée.
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
+import { formatMAD } from '../../lib/format'
 
 // Réducteurs minimaux : seules les tranches lues par l'écran (ventes + auth).
 // QG10 — l'écran lit aussi auth.role_nom + auth.permissions (useHasPermission).
@@ -156,6 +157,46 @@ describe('DevisList — rendu des données (J141)', () => {
     // ligne du tableau (le libellé apparaît aussi dans les cartes de résumé).
     const row = cell.closest('tr')
     expect(within(row).getByText('Envoyé')).toBeVisible()
+  })
+})
+
+describe('DevisList — PVAB : devis à deux options, total « sans / avec »', () => {
+  it('affiche les DEUX totaux séparés par « / » quand la comparaison est servie', () => {
+    renderList({
+      loading: false,
+      devis: [{
+        id: 41, reference: 'DEV-202608-0015', client_nom: 'ACME', statut: 'brouillon',
+        date_creation: '2026-08-20', total_ttc: 77584, total_affiche: 42180,
+        nb_options: 2, version: 1,
+        comparaison_options: {
+          nb_options: 2,
+          sans: { ttc: 42180, ht_net: 35150, remise: 1850 },
+          avec: { ttc: 60250, ht_net: 50208, remise: 2642 },
+          roi: { prod_kwh: null, eco_s_ann: null, eco_a_ann: null, roi_s: null, roi_a: null },
+        },
+      }],
+    })
+    const row = screen.getByText('DEV-202608-0015').closest('tr')
+    const cellule = row.querySelector('td[data-label="Total TTC"]')
+    // Les deux montants, dans l'ordre sans / avec — jamais la somme 77 584.
+    expect(cellule.textContent).toContain(`${formatMAD(42180)} / ${formatMAD(60250)}`)
+    expect(cellule.textContent).not.toContain(formatMAD(77584))
+    expect(within(row).getByText('2 options')).toBeVisible()
+  })
+
+  it('sans comparaison servie, retombe sur total_affiche (jamais total_ttc sommé)', () => {
+    renderList({
+      loading: false,
+      devis: [{
+        id: 42, reference: 'DEV-202608-0016', client_nom: 'ACME', statut: 'brouillon',
+        date_creation: '2026-08-20', total_ttc: 77584, total_affiche: 42180,
+        nb_options: 2, version: 1, comparaison_options: null,
+      }],
+    })
+    const row = screen.getByText('DEV-202608-0016').closest('tr')
+    const cellule = row.querySelector('td[data-label="Total TTC"]')
+    expect(cellule.textContent).toContain(formatMAD(42180))
+    expect(cellule.textContent).not.toContain(formatMAD(77584))
   })
 })
 
