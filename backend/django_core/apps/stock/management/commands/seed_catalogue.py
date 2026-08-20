@@ -324,26 +324,33 @@ CABLES_PROTECTIONS_VIDES = [
 # bloc « prix vides » historique est retiré, la migration stock 0126 opère le
 # transfert sur les bases existantes.
 
-# ── Batterie Dyness HAUTE TENSION — 16 kWh (décision fondateur 2026-08-18) ──
+# ── Batterie HAUTE TENSION — 16 kWh (fondateur 18/08, IDENTITÉ 21/08) ──────
 # Vendue PAR TRANCHE de 16 kWh, 3 000 DH/kWh (prix fondateur) → 48 000 DH TTC
-# la tranche ; rack et control box inclus dans le prix. Prix ACHAT
-# volontairement VIDE (0, non communiqué) : ne retire PAS le produit de
-# l'auto-composition (seul prix_vente=0 le ferait, cf. ``_has_price``) — ce
-# produit est un vrai article vendable, à la différence des pompes OSP/câbles.
-# Vérifié sur dyness.com/dyness.us (recherche 2026-08-18) : AUCUNE
-# configuration officielle Dyness ne fait exactement 16 kWh — Tower
-# T7/T10/T14/T17/T21 = 7,10/10,66/14,21/17,76/21,31 kWh, Orion = 9,9/14,9/19,9
-# kWh. Produit catalogue GÉNÉRIQUE (marque Dyness, capacité, prix,
-# description) SANS référence de modèle ni tension nominale inventées (règle
-# des faits vérifiés) — aucune ``FicheTechnique`` n'est donc créée pour ce SKU.
+# la tranche ; rack et control box inclus dans le prix.
+# PVLV (21/08/2026) — le produit N'EST PAS une Dyness : la facture
+# fournisseur Solarex S26/001708 (27/07/2026) le nomme « 16kWh BOS-B-Pro
+# Battery Pack-deye » = module officiel **Deye BOS-B-Pack16-A3** (système
+# BOS-B Pro-A3, 16,08 kWh réels, LiFePO4, 51,2 V/module, 314 Ah, empilage
+# série 5-15 modules derrière control box BOS-B-PDU-2-A 200-1000 Vdc,
+# garantie 10 ans publiée). C'est pourquoi aucune configuration Dyness ne
+# faisait 16 kWh (Tower T14 = 14,21 / T17 = 17,76) — la recherche du 18/08
+# cherchait la bonne valeur chez le mauvais fabricant. Le SKU historique
+# BAT-DYN-HV-16 NE CHANGE PAS (appariement par SKU d'abord — même règle que
+# Deyness→Dyness) ; nom/marque/fiche corrigés (migration stock 0127 pour les
+# bases existantes). Prix ACHAT : 28 000 HT le pack (même facture).
+# ⚠ APPARIEMENT ONDULEUR NON PROMIS : la liste officielle Deye des batteries
+# approuvées (DY-HV(160-800)-028, 2025-08-09) n'apparie le BOS-B Pro qu'aux
+# onduleurs 30-80 kW (BM3/BM4/EM6) — PAS aux SUN-15K/20K-SG01HP3-EU-AM2 du
+# catalogue (famille AM2 → BOS-G / GB-L). Décision fondateur en attente ;
+# rien ici ne prétend le contraire.
 # ⚠ HAUTE TENSION : ne doit JAMAIS être choisie par l'auto-composition
 # résidentielle BASSE TENSION (48 V, BAT-DEY-5/10) — garde posée côté
 # apps/ventes/services.py (mot-clé « haute tension » exclu du vivier
 # batterie, cf. ``_is_battery_basse_tension`` et le filtre dans
-# ``composition_residentielle``).
+# ``composition_residentielle``) : le mot-clé RESTE dans le nom ci-dessous.
 # (nom, sku, sell_ttc, qte, seuil)
-BATTERIE_DYNESS_HV = [
-    ('Batterie Dyness haute tension — 16 kWh', 'BAT-DYN-HV-16', 48000, 500, 5),
+BATTERIE_DEYE_HV = [
+    ('Batterie Deye BOS-B Pro haute tension — 16 kWh', 'BAT-DYN-HV-16', 48000, 500, 5),
 ]
 
 _DESC_POMPE_IMM = ('Pompe immergée pour forage, corps inox\n'
@@ -524,18 +531,25 @@ FICHES = {
         'marque': 'Gel',
         'description': 'Batterie gel plomb étanche sans entretien, usage solaire',
     },
-    # PVG4 — Batterie Dyness HAUTE TENSION, 16 kWh (décision fondateur
-    # 2026-08-18) : produit catalogue GÉNÉRIQUE (vérifié dyness.com/dyness.us,
-    # aucune configuration officielle ne fait 16 kWh — cf. le commentaire sur
-    # BATTERIE_DYNESS_HV plus haut). Pas de garantie sourcée : champ omis
-    # plutôt qu'inventé.
+    # PVLV (21/08/2026) — IDENTITÉ ENFIN CONNUE : la facture fournisseur
+    # Solarex S26/001708 (27/07/2026) nomme « 16kWh BOS-B-Pro Battery
+    # Pack-deye » — c'est le module officiel Deye BOS-B-Pack16-A3 (système
+    # BOS-B Pro-A3) : 16,08 kWh, LiFePO4, 51,2 V/module, 314 Ah, empilage
+    # SÉRIE de 5 à 15 modules derrière une control box BOS-B-PDU-2-A
+    # (200-1000 Vdc). Sources : deye.com « BOS-B Pro-A3 C&I ESS Solution » +
+    # brochures officielles 2025-09-28 / 2025-12-11. Garantie 10 ans
+    # PUBLIÉE (≥ 6000 cycles, EOL 70 %). La description ne fait AUCUNE
+    # promesse d'appariement onduleur : la liste officielle Deye des
+    # batteries approuvées (DY-HV(160-800)-028, 2025-08-09) n'apparie le
+    # BOS-B Pro qu'aux onduleurs 30-80 kW (BM3/BM4/EM6) — PAS à la famille
+    # AM2 15/20 kW du catalogue. Divergence signalée au fondateur.
     'BAT-DYN-HV-16': {
-        'marque': 'Dyness',
-        'description': ('Batterie Dyness haute tension, vendue par tranche de 16 kWh\n'
-                        'Rack et control box inclus dans le prix de la tranche\n'
-                        'Produit catalogue générique : aucune référence Dyness officielle '
-                        'ne correspond à 16 kWh (Tower/Orion) — modèle et tension nominale '
-                        'non renseignés, faute de source vérifiée'),
+        'marque': 'Deye',
+        'garantie': 'Garantie constructeur 10 ans (≥ 6000 cycles, EOL 70 %)',
+        'description': ('Batterie Deye BOS-B Pro haute tension, vendue par tranche de 16 kWh\n'
+                        'Module BOS-B-Pack16-A3 : LiFePO4, 51,2 V, 314 Ah — empilage série '
+                        'de 5 à 15 modules derrière control box BOS-B-PDU-2-A\n'
+                        'Rack et control box inclus dans le prix de la tranche'),
     },
     'STR-ACIER': {
         'garantie': 'Garantie 20 ans (structure)',
@@ -786,6 +800,11 @@ MODELE_SUPPOSE_PVG4 = {
     # (DynessPowerboxPro datasheet 20241231-EN) — le G2 publie 95 % / 9,728.
     # Modèle toujours « supposé » (pas confirmé fondateur), source resserrée.
     'BAT-DEY-10': 'Dyness Powerbox Pro 10.24',           # dyness.com Powerbox Pro datasheet (20241231-EN)
+    # PVLV (21/08/2026) — identité posée par la facture fournisseur Solarex
+    # S26/001708 (« 16kWh BOS-B-Pro Battery Pack-deye ») + fiches officielles
+    # deye.com ; le suffixe -A3 exact reste une identification recherche,
+    # d'où « supposé » et pas « confirmé fondateur ».
+    'BAT-DYN-HV-16': 'Deye BOS-B-Pack16-A3 (BOS-B Pro-A3)',  # deye.com BOS-B Pro-A3 + facture Solarex 27/07/2026
     # PVG4 — décision fondateur 2026-08-18 : nouveau palier 15 kW basse
     # tension, modèle donné DIRECTEMENT par le fondateur (pas une supposition
     # à deviner) — CONFIRMÉ dès la première seed, comme le 10T ci-dessus.
@@ -1248,6 +1267,29 @@ FICHES_TECHNIQUES = {
         # 100 A × 51,2 V = 5,12 kW (valeur constructeur).
         'bat_max_charge_kw': Decimal('5.12'),
     },
+    # PVLV (21/08/2026) — Deye BOS-B-Pack16-A3 (système BOS-B Pro-A3),
+    # identifié par la facture Solarex S26/001708 + fiches officielles
+    # deye.com (brochures 2025-09-28 / 2025-12-11).
+    # ``bat_v_nominal`` DÉLIBÉRÉMENT OMIS : 51,2 V est la tension du MODULE,
+    # jamais celle que voit l'onduleur — le système empile 5 à 15 modules EN
+    # SÉRIE derrière la control box BOS-B-PDU-2-A (200-1000 Vdc) et Deye ne
+    # publie pas la fenêtre système exacte. Poser 51,2 ici ferait entrer ce
+    # composant HV dans la fenêtre 40-60 V des onduleurs BASSE tension (la
+    # règle data-driven prime sur le mot-clé dès que la donnée existe,
+    # ``services._batterie_compatible``) — un contresens physique. Sans
+    # tension nominale, le repli mot-clé « haute tension » garde ce produit
+    # HORS de toute auto-composition, conforme à la liste officielle Deye qui
+    # n'approuve PAS le BOS-B Pro sur la famille AM2 15/20 kW (cf. bandeau
+    # BATTERIE_DEYE_HV — décision fondateur en attente).
+    # ``bat_kwh_usable`` omis : Deye ne publie pas de valeur par module
+    # (seulement un ratio système ≈ 90 %).
+    'BAT-DYN-HV-16': {
+        'type_fiche': 'batterie',
+        'bat_kwh_nominal': Decimal('16.08'),
+        'bat_dod_pct': Decimal('90.0'),   # « Recommend DoD: 90 % » (officiel)
+        # 180 A × 51,2 V = 9,216 kW par module (courant max officiel).
+        'bat_max_charge_kw': Decimal('9.22'),
+    },
 }
 
 # ── PVOND-H (fondateur 19/08/2026) — même donnée, fusionnée dans le champ
@@ -1498,7 +1540,7 @@ class Command(BaseCommand):
         # leurs prix fondateur (le transfert sur bases existantes est
         # l'affaire de la migration stock 0126, pas du seeder).
 
-        # ── Batterie Dyness haute tension — 16 kWh : prix vente RÉEL ──
+        # ── Batterie Deye BOS-B Pro haute tension — 16 kWh : prix RÉELS ──
         # (3 000 DH/kWh, fondateur). PVLV (21/08/2026) — prix ACHAT désormais
         # COMMUNIQUÉ : facture fournisseur Solarex Maroc S26/001708 du
         # 27/07/2026 — « 16kWh BOS-B-Pro Battery Pack » à 28 000 DH HT le pack
@@ -1506,7 +1548,7 @@ class Command(BaseCommand):
         # racks/câbles (6 000 HT) de la même facture couvrent une pile de 6
         # packs et ne sont PAS amortis ici (l'amortissement dépend de la
         # taille de pile — au fondateur d'ajuster s'il le souhaite).
-        for nom, sku, sell_ttc, qte, seuil in BATTERIE_DYNESS_HV:
+        for nom, sku, sell_ttc, qte, seuil in BATTERIE_DEYE_HV:
             if (Produit.objects.filter(company=company, sku=sku).exists()
                     or Produit.objects.filter(
                         company=company, nom__iexact=nom,

@@ -1788,3 +1788,82 @@ class TestPvlvTransfertPrixDeyeLv(TestCase):
         hv = Produit.objects.get(company=self.company, sku='OND-H-DEY-15T')
         self.assertEqual(lv.prix_vente, lv_avant)
         self.assertEqual(hv.prix_vente, Decimal('0'))
+
+
+class TestPvlvIdentiteBatterieBosb(TestCase):
+    """PVLV (21/08/2026) — la batterie HV « 16 kWh » est une Deye BOS-B Pro
+    (facture Solarex S26/001708), pas une Dyness. La migration 0127 corrige
+    nom + marque sur les bases existantes, SKU inchangé ; un nom retouché par
+    le fondateur n'est jamais touché."""
+
+    MIGRATION = 'apps.stock.migrations.0127_pvlv_identite_batterie_bosb'
+    ANCIEN = 'Batterie Dyness haute tension — 16 kWh'
+    NOUVEAU = 'Batterie Deye BOS-B Pro haute tension — 16 kWh'
+
+    def setUp(self):
+        self.company = make_company(slug='test-cat-pvlv-bosb')
+
+    def _migration(self):
+        import importlib
+        return importlib.import_module(self.MIGRATION)
+
+    def _etat_ancienne_base(self):
+        seed(self.company)
+        produit = Produit.objects.get(
+            company=self.company, sku='BAT-DYN-HV-16')
+        produit.nom = self.ANCIEN
+        produit.marque = 'Dyness'
+        produit.save(update_fields=['nom', 'marque'])
+        return produit
+
+    def test_rename_nom_et_marque_sku_inchange(self):
+        from django.apps import apps as registre
+        produit = self._etat_ancienne_base()
+
+        self._migration().corriger_identite(registre, None)
+
+        produit.refresh_from_db()
+        self.assertEqual(produit.nom, self.NOUVEAU)
+        self.assertEqual(produit.marque, 'Deye')
+        self.assertEqual(produit.sku, 'BAT-DYN-HV-16')
+        # Le mot-clé de la garde anti-composition basse tension survit.
+        self.assertIn('haute tension', produit.nom.lower())
+
+    def test_nom_retouche_par_le_fondateur_intouchable(self):
+        from django.apps import apps as registre
+        produit = self._etat_ancienne_base()
+        produit.nom = 'Batterie HV projet Bouskoura'
+        produit.save(update_fields=['nom'])
+
+        self._migration().corriger_identite(registre, None)
+
+        produit.refresh_from_db()
+        self.assertEqual(produit.nom, 'Batterie HV projet Bouskoura')
+        # La marque, elle, reste corrigeable (Dyness était factuellement faux).
+        self.assertEqual(produit.marque, 'Deye')
+
+    def test_idempotente_et_base_neuve_sans_effet(self):
+        from django.apps import apps as registre
+        seed(self.company)   # base NEUVE : le seeder crée déjà le bon nom
+        migration = self._migration()
+        migration.corriger_identite(registre, None)
+        migration.corriger_identite(registre, None)
+        produit = Produit.objects.get(
+            company=self.company, sku='BAT-DYN-HV-16')
+        self.assertEqual(produit.nom, self.NOUVEAU)
+        self.assertEqual(produit.marque, 'Deye')
+
+    def test_le_seeder_neuf_pose_la_fiche_bosb(self):
+        """La fiche (16,08 kWh / DoD 90 / 9,22 kW) est posée par le seeder —
+        et ``bat_v_nominal`` reste ABSENT (tension MODULE ≠ tension système :
+        la poser ferait entrer ce composant HV dans la fenêtre 40-60 V des
+        onduleurs basse tension)."""
+        from apps.stock.models import FicheTechnique
+        seed(self.company)
+        produit = Produit.objects.get(
+            company=self.company, sku='BAT-DYN-HV-16')
+        fiche = FicheTechnique.objects.get(produit=produit)
+        self.assertEqual(fiche.bat_kwh_nominal, Decimal('16.08'))
+        self.assertEqual(fiche.bat_dod_pct, Decimal('90.0'))
+        self.assertEqual(fiche.bat_max_charge_kw, Decimal('9.22'))
+        self.assertIsNone(fiche.bat_v_nominal)
