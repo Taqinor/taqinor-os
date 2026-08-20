@@ -2277,6 +2277,21 @@ def contexte_conception_devis(devis, company):
             'situer le bâtiment sur la carte.')
 
     client = getattr(devis, 'client', None)
+    # PV23bis (fondateur 20/08/2026 : « link this 3D layouter to the quote »)
+    # — l'outil 3D doit connaître le CLIENT du devis, pas seulement son nom :
+    # téléphone, ville et adresse alimentent le formulaire du builder
+    # (`hydrateFromDevis` sait déjà les lire) et le centrage de la carte quand
+    # aucune géométrie n'existe. Client d'abord, repli sur le lead (même
+    # priorité whatsapp > téléphone que le mode lead de l'écran) ; vide quand
+    # personne ne le sait — jamais une valeur inventée.
+    telephone = (getattr(client, 'telephone', '') or '').strip() if client else ''
+    adresse = (getattr(client, 'adresse', '') or '').strip() if client else ''
+    ville = ''  # crm.Client ne porte pas de ville — elle vient du lead.
+    if lead is not None:
+        telephone = telephone or (getattr(lead, 'whatsapp', '') or '').strip() \
+            or (getattr(lead, 'telephone', '') or '').strip()
+        adresse = adresse or (getattr(lead, 'adresse', '') or '').strip()
+        ville = (getattr(lead, 'ville', '') or '').strip()
     return {
         'devis': {
             'id': devis.pk,
@@ -2286,6 +2301,9 @@ def contexte_conception_devis(devis, company):
             'lead': devis.lead_id,
             'client': devis.client_id,
             'client_nom': (getattr(client, 'nom', '') or '') if client else '',
+            'client_telephone': telephone,
+            'client_ville': ville,
+            'client_adresse': adresse,
         },
         'geometrie': {
             'source': source,
