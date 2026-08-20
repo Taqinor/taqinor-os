@@ -121,12 +121,12 @@ class TestDocLiteralTemplates(TestCase):
         # M6 — aucune garantie saisie sur ce montage : rien n'est affirmé.
         self.assertIn('Nos garanties', doc)
         self.assertNotIn('Garanties jusqu', doc)
-        self.assertNotIn('87,4', html)
+        self.assertNotIn('87,4', doc)
         # Bon pour accord — titre + mention manuscrite (espaces insécables)
-        self.assertIn('Bon pour accord', html)
+        self.assertIn('Bon pour accord', doc)
         self.assertIn(
-            'Lu et approuvé — Signature précédée de « Bon pour accord »',
-            html)
+            'Lu et approuvé — Signature précédée de « Bon pour accord »',
+            doc)
 
     def test_onepage_default_validity_literal_preserved(self):
         """M7 — le format une page porte la MÊME échéance réelle que les trois
