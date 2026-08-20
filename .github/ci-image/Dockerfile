@@ -61,20 +61,57 @@ ENV PYTHONUNBUFFERED=1 \
 #    sur un telechargement d'archive via l'API), `curl`/`ca-certificates`
 #    (sondes de sante), `zstd` (actions/cache l'utilise, sinon il retombe en
 #    gzip), `gnupg` (cle du depot PGDG), `procps`.
-# 3. `postgresql-client-16` depuis PGDG (voir l'en-tete).
+# 3. `postgresql-16` (SERVEUR + client) et `postgresql-16-pgvector` depuis PGDG.
+#
+# POURQUOI LE SERVEUR, ET PAS SEULEMENT LE CLIENT (WOW-CI ronde 5, 20/08/2026).
+# Les shards conteneurises tombaient sur
+# `psycopg2.errors.OutOfMemory: out of shared memory —
+#  HINT: increase max_locks_per_transaction` (run 32316744098). La cause n'est
+# pas la memoire du runner : c'est la TABLE DE VERROUS. Une purge de societe
+# (`Company.delete()`) descend en cascade sur les ~900 tables du depot et prend
+# un verrou sur chacune DANS UNE SEULE TRANSACTION ; la table de verrous par
+# defaut n'en tient que 64 x 100 = 6 400. Un `services:` postgres d'Actions ne
+# peut PAS recevoir de `command:`, donc ce reglage y etait INATTEIGNABLE — la
+# seule parade cote tests etait d'enumerer les classes fautives, or cette
+# enumeration est un puits sans fond (ma garde AST comptait les TRUNCATE larges
+# des TransactionTestCase, elle ne pouvait pas voir les DELETE CASCADE).
+# En embarquant le serveur, `backend-env` le demarre avec
+# `max_locks_per_transaction=2048` et le probleme disparait a la racine, pour
+# toutes les classes presentes ET futures.
+#
+# `postgresql-16-pgvector` est OBLIGATOIRE, pas un confort : la migration
+# `apps/ged/0007_document_embedding` execute `VectorExtension()` =
+# `CREATE EXTENSION IF NOT EXISTS vector`. Le service remplace etait
+# `pgvector/pgvector:pg16` ; sans cette extension, les migrations ET la
+# restauration du dump WOW8 echoueraient.
+#
+# `locales` + `en_US.UTF-8` : l'image officielle `postgres` initialise son
+# cluster sous cette locale, donc c'est la COLLATION que la CI a toujours eue.
+# Un cluster en `C` trierait differemment les chaines accentuees et ferait
+# rougir des assertions d'ordre sur du code correct.
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
         libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b fonts-dejavu-core \
-        git curl ca-certificates zstd gnupg procps; \
+        git curl ca-certificates zstd gnupg procps locales; \
+    sed -i 's/^# *en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen; \
+    locale-gen; \
     install -d /usr/share/keyrings; \
     curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
         | gpg --dearmor -o /usr/share/keyrings/pgdg.gpg; \
     echo 'deb [signed-by=/usr/share/keyrings/pgdg.gpg] http://apt.postgresql.org/pub/repos/apt bookworm-pgdg main' \
         > /etc/apt/sources.list.d/pgdg.list; \
     apt-get update; \
-    apt-get install -y --no-install-recommends postgresql-client-16; \
+    apt-get install -y --no-install-recommends \
+        postgresql-client-16 postgresql-16 postgresql-16-pgvector; \
+    pg_dropcluster --stop 16 main || true; \
     rm -rf /var/lib/apt/lists/*
+# NOTE sur le `pg_dropcluster` ci-dessus (commentaire tenu HORS du RUN : un
+# commentaire au milieu d'une continuation `\` est une ambiguite de parsing
+# qu'on ne cherche pas). Le paquet Debian cree un cluster « 16/main » a
+# l'installation ; on le supprime, parce que `backend-env` fabrique le sien
+# dans /tmp avec les reglages CI. Deux clusters se disputant le port 5432
+# seraient une source de confusion garantie.
 
 # --- MinIO (serveur + client) ----------------------------------------------
 # Memes binaires que les images `minio/minio:latest` / `minio/mc:latest`

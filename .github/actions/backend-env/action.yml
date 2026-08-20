@@ -136,6 +136,100 @@ runs:
           echo "Cache present mais l'environnement ne s'importe pas — installation complete."
         fi
         pip install -r ${{ inputs.requirements }}
+    # -----------------------------------------------------------------------
+    # WOW-CI RONDE 5 (20/08/2026) — POSTGRES DANS LE CONTENEUR DU JOB.
+    #
+    # Sur le chemin conteneurise, le `services: postgres` d'Actions est
+    # REMPLACE par un serveur local demarre ici. Ce n'est pas une preference de
+    # style : un service d'Actions n'accepte pas de `command:`, donc
+    # `max_locks_per_transaction` y etait INATTEIGNABLE, et les shards mouraient
+    # en `out of shared memory` des qu'un test purgeait une societe entiere
+    # (DELETE en cascade = un verrou sur chacune des ~900 tables, dans UNE
+    # transaction, contre 6 400 verrous disponibles au total).
+    #
+    # LES REGLAGES, ET POURQUOI ILS SONT LEGITIMES ICI. Cette base est JETABLE :
+    # elle est reconstruite a chaque job et personne ne survit a son crash.
+    # `fsync=off`, `synchronous_commit=off` et `full_page_writes=off` echangent
+    # donc une durabilite dont on n'a aucun besoin contre de la vitesse — y
+    # compris sur la restauration WOW8, qui est le plus gros poste restant du
+    # job. `checkpoint_timeout=1h` + `max_wal_size=4GB` evitent la tempete de
+    # points de controle pendant cette meme restauration.
+    # `dynamic_shared_memory_type=mmap` evite `/dev/shm`, plafonne a 64 Mo dans
+    # un conteneur Actions : la memoire partagee dynamique passe par des
+    # fichiers du repertoire de donnees, ce qui affranchit des parallelismes de
+    # `pg_restore` de cette limite.
+    # -----------------------------------------------------------------------
+    - name: Demarrer Postgres dans le conteneur (image CI)
+      if: ${{ inputs.prebuilt-image == 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        PGBIN=/usr/lib/postgresql/16/bin
+        export PGDATA=/tmp/pgdata
+        PGUSER_NAME="${DB_USER:-erp_user}"
+        PGDB_NAME="${DB_NAME:-erp_db}"
+
+        rm -rf "$PGDATA"
+        install -d -o postgres -g postgres "$PGDATA" /tmp/pgrun
+
+        # Le serveur REFUSE de tourner en root ; on passe donc par l'utilisateur
+        # `postgres` que le paquet Debian cree. Le script est ecrit dans un
+        # fichier plutot qu'inline : imbriquer les guillemets d'un `su -c`
+        # autour d'une liste d'options `-o "..."` est une source d'erreurs
+        # silencieuses.
+        cat > /tmp/pgstart.sh <<'SH'
+        set -eu
+        PGBIN=/usr/lib/postgresql/16/bin
+        # --auth=trust : aucun mot de passe n'est demande. Les jobs continuent
+        # d'exporter DB_PASSWORD/PGPASSWORD, simplement ignores — c'etait deja
+        # une base jetable en reseau prive.
+        # --locale=en_US.UTF-8 : MEME collation que l'image `pgvector/pgvector:pg16`
+        # remplacee, sinon l'ordre des chaines accentuees changerait.
+        "$PGBIN/initdb" -D "$PGDATA" -U "$PGUSER_NAME" \
+          --encoding=UTF8 --locale=en_US.UTF-8 \
+          --auth-local=trust --auth-host=trust >/dev/null
+        "$PGBIN/pg_ctl" -D "$PGDATA" -l /tmp/pg.log -w -t 90 -o "\
+          -c listen_addresses=localhost \
+          -c port=5432 \
+          -c unix_socket_directories=/tmp/pgrun \
+          -c max_locks_per_transaction=2048 \
+          -c fsync=off \
+          -c synchronous_commit=off \
+          -c full_page_writes=off \
+          -c checkpoint_timeout=1h \
+          -c max_wal_size=4GB \
+          -c dynamic_shared_memory_type=mmap" start
+        "$PGBIN/createdb" -h localhost -U "$PGUSER_NAME" "$PGDB_NAME"
+        SH
+        chown postgres:postgres /tmp/pgstart.sh
+
+        if ! su postgres -s /bin/bash -c \
+             "PGDATA='$PGDATA' PGUSER_NAME='$PGUSER_NAME' PGDB_NAME='$PGDB_NAME' bash /tmp/pgstart.sh"; then
+          echo "--- Postgres n'a pas demarre — journal /tmp/pg.log ---"
+          cat /tmp/pg.log 2>/dev/null || echo "(aucun journal ecrit)"
+          exit 1
+        fi
+
+        if ! "$PGBIN/pg_isready" -h localhost -U "$PGUSER_NAME" -t 30; then
+          echo "Postgres demarre mais n'accepte pas de connexion — journal :"
+          cat /tmp/pg.log 2>/dev/null || echo "(aucun journal ecrit)"
+          exit 1
+        fi
+
+        # PREUVE que le reglage qui motive toute cette etape est EN VIGUEUR.
+        # Sans elle, une option mal ecrite serait ignoree en silence (Postgres
+        # demarrerait tres bien avec ses 64 verrous par defaut) et l'`out of
+        # shared memory` reviendrait au premier test de purge de societe, en
+        # accusant les tests plutot que ce fichier.
+        VERROUS="$("$PGBIN/psql" -h localhost -U "$PGUSER_NAME" -d "$PGDB_NAME" \
+          -tAc 'SHOW max_locks_per_transaction')"
+        echo "Postgres local pret — max_locks_per_transaction=${VERROUS}"
+        if [ "$VERROUS" != '2048' ]; then
+          echo "ECHEC : max_locks_per_transaction vaut '${VERROUS}' et non 2048."
+          echo "Les options -o de pg_ctl n'ont pas ete prises en compte ;"
+          echo "corriger ICI, surtout pas en baissant --parallel dans ci.yml."
+          exit 1
+        fi
     - name: Start MinIO + create buckets
       shell: bash
       env:

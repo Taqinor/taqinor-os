@@ -554,8 +554,18 @@ jobs:
   # CI resterait verte, c'est le seul risque que ce mécanisme doit interdire.
   #
   # ---------------------------------------------------------------------------
-  # WOW-CI RONDE 5 (20/08/2026) — `--parallel` REPASSE DE 1 À 4, AVEC LA GARDE
-  # QUI MANQUAIT LA PREMIÈRE FOIS.
+  # WOW-CI RONDE 5 (20/08/2026) — `--parallel` REPASSE DE 1 À 4.
+  #
+  # CE QUI LE REND SÛR : `max_locks_per_transaction=2048` sur le Postgres que
+  # `backend-env` démarre maintenant DANS le conteneur du job. Ce n'est PAS la
+  # garde décrite plus bas — elle a été écrite d'abord, elle a échoué en
+  # conditions réelles (run 32316744098, 4 shards rouges), et elle n'est
+  # conservée que comme ceinture. Son erreur : elle comptait les purges larges
+  # des `TransactionTestCase`, alors qu'un simple `Company.delete()` prend un
+  # verrou sur chacune des ~900 tables en cascade sans qu'aucun
+  # `TransactionTestCase` soit impliqué. Le mécanisme décrit ci-dessous reste
+  # exact ; c'est la liste des consommateurs de verrous qui était incomplète, et
+  # l'énumérer était un puits sans fond.
   #
   # POURQUOI ÇA AVAIT CASSÉ (commit 0d66f6e1, 16/07 : « --parallel 2->1
   # max_locks OOM shard 3 test_rls+QW10 »). Le coupable n'est PAS la mémoire du
@@ -642,19 +652,16 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
     services:
-      postgres:
-        image: pgvector/pgvector:pg16
-        env:
-          POSTGRES_DB: erp_db
-          POSTGRES_USER: erp_user
-          POSTGRES_PASSWORD: ci_password
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U erp_user"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
+      # WOW-CI RONDE 5 (20/08/2026) — LE SERVICE `postgres` A DISPARU D'ICI.
+      # Il est remplacé par un serveur local que `backend-env` démarre DANS le
+      # conteneur du job (voir son étape « Demarrer Postgres »). Raison unique
+      # et non négociable : un `services:` d'Actions n'accepte pas de
+      # `command:`, donc `max_locks_per_transaction` y était inatteignable — et
+      # les shards mouraient en `out of shared memory` dès qu'un test purgeait
+      # une société entière (DELETE en cascade sur ~900 tables dans UNE
+      # transaction, contre 6 400 verrous disponibles). Le serveur local tourne
+      # avec 2048 verrous par transaction, ce qui règle la classe entière.
+      # `redis` reste un service : rien à y configurer.
       redis:
         image: redis:7.4-alpine
         ports:
@@ -666,11 +673,11 @@ jobs:
       DB_NAME: erp_db
       DB_USER: erp_user
       DB_PASSWORD: ci_password
-      # WOW-CI RONDE 5 — job `container:` : les services ne sont plus atteints
-      # par un port publié sur l'hôte mais par leur NOM sur le réseau que le
-      # runner crée pour le job. `localhost` désignerait le conteneur du job
-      # lui-même (où tourne MinIO, d'où `MINIO_ENDPOINT` inchangé).
-      DB_HOST: postgres
+      # WOW-CI RONDE 5 — `localhost` désigne le conteneur du job, et c'est bien
+      # là que tournent désormais Postgres (démarré par `backend-env`, cf. le
+      # commentaire du bloc `services:`) et MinIO. Seul `redis`, resté un
+      # service, s'atteint par son NOM sur le réseau du job.
+      DB_HOST: localhost
       DB_PORT: '5432'
       REDIS_HOST: redis
       REDIS_PORT: '6379'
@@ -730,14 +737,33 @@ jobs:
           LABELS=$(python ../../scripts/ci_shard.py ${{ matrix.shard }} 6)
           echo "Shard ${{ matrix.shard }}/6 -> $(echo "$LABELS" | wc -w) modules"
 
-          # WOW-CI RONDE 5 — GARDE ANTI-`max_locks` (raisonnement complet dans
-          # l'en-tête du job). On compte les modules de CE shard qui déclarent un
-          # `TransactionTestCase` : chacun termine ses tests par un TRUNCATE de
-          # tout le schéma (~4 500 verrous), et la table de verrous du cluster
-          # n'en tient que ~6 400. Un seul à la fois passe ; deux en même temps
-          # font sauter le shard. `core/tests/test_rls.py` est exclu du compte :
-          # sans `POSTGRES_RLS_ENABLED` toute sa classe est sautée, donc sa purge
-          # ne s'exécute jamais dans ce job (elle a son propre job `rls-tests`).
+          # WOW-CI RONDE 5 — GARDE ANTI-`max_locks`, DEVENUE UNE CEINTURE.
+          #
+          # ELLE N'EST PLUS LA PROTECTION PRINCIPALE, et il faut savoir pourquoi
+          # avant de s'y fier. Écrite d'abord seule, elle comptait les modules
+          # déclarant un `TransactionTestCase` — dont le TRUNCATE de fin de test
+          # verrouille tout le schéma. Elle a échoué en conditions réelles (run
+          # 32316744098, 4 shards rouges) parce que la purge large n'est PAS le
+          # seul consommateur de verrous : un simple `Company.delete()` descend
+          # en cascade sur les ~900 tables et en prend autant dans UNE
+          # transaction, sans aucun `TransactionTestCase` à l'horizon
+          # (`test_purges_demo_company_expired_over_90_days`). Énumérer les
+          # classes coupables est un puits sans fond — c'était la mauvaise
+          # couche pour corriger ce défaut.
+          #
+          # LA VRAIE CORRECTION EST EN AMONT : Postgres tourne maintenant dans
+          # le conteneur du job avec `max_locks_per_transaction=2048`, ce qui
+          # règle la classe entière, présente et future (voir l'étape
+          # « Demarrer Postgres » de `.github/actions/backend-env`). Avec ce
+          # budget, deux purges simultanées passent largement.
+          #
+          # ON LA GARDE QUAND MÊME, pour un coût d'une seconde : si un jour le
+          # démarrage local régressait vers un serveur aux réglages par défaut,
+          # elle rendrait un shard lent plutôt que rouge. Elle ne doit plus être
+          # lue comme « ce qui rend `--parallel 4` sûr ».
+          # `core/tests/test_rls.py` reste exclu du compte : sans
+          # `POSTGRES_RLS_ENABLED` toute sa classe est sautée ici (elle a son
+          # propre job `rls-tests`).
           # Détection par AST, et non par `grep` : `core/test_utils.py` CITE
           # `TransactionTestCase` une dizaine de fois (docstring du mixin, exemple
           # d'usage) sans en déclarer un seul — un grep textuel le comptait et
@@ -1229,19 +1255,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 18
     services:
-      postgres:
-        image: pgvector/pgvector:pg16
-        env:
-          POSTGRES_DB: erp_db
-          POSTGRES_USER: erp_user
-          POSTGRES_PASSWORD: ci_password
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U erp_user"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
+      # WOW-CI RONDE 5 (20/08/2026) — LE SERVICE `postgres` A DISPARU D'ICI.
+      # Il est remplacé par un serveur local que `backend-env` démarre DANS le
+      # conteneur du job (voir son étape « Demarrer Postgres »). Raison unique
+      # et non négociable : un `services:` d'Actions n'accepte pas de
+      # `command:`, donc `max_locks_per_transaction` y était inatteignable — et
+      # les shards mouraient en `out of shared memory` dès qu'un test purgeait
+      # une société entière (DELETE en cascade sur ~900 tables dans UNE
+      # transaction, contre 6 400 verrous disponibles). Le serveur local tourne
+      # avec 2048 verrous par transaction, ce qui règle la classe entière.
+      # `redis` reste un service : rien à y configurer.
       redis:
         image: redis:7.4-alpine
         ports:
@@ -1253,11 +1276,11 @@ jobs:
       DB_NAME: erp_db
       DB_USER: erp_user
       DB_PASSWORD: ci_password
-      # WOW-CI RONDE 5 — job `container:` : les services sont joints par leur NOM
-      # sur le réseau du job, plus par un port publié sur l'hôte. `localhost`
-      # désigne désormais le conteneur du job — d'où MinIO (qui y tourne) et
-      # gunicorn (127.0.0.1:8000, lancé par l'étape des specs) inchangés.
-      DB_HOST: postgres
+      # WOW-CI RONDE 5 — `localhost` désigne le conteneur du job : Postgres
+      # (démarré par `backend-env`), MinIO et gunicorn (127.0.0.1:8000, lancé
+      # par l'étape des specs) y tournent tous. Seul `redis`, resté un service,
+      # s'atteint par son NOM sur le réseau du job.
+      DB_HOST: localhost
       DB_PORT: '5432'
       REDIS_HOST: redis
       REDIS_PORT: '6379'
@@ -1512,19 +1535,16 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
     services:
-      postgres:
-        image: pgvector/pgvector:pg16
-        env:
-          POSTGRES_DB: erp_db
-          POSTGRES_USER: erp_user
-          POSTGRES_PASSWORD: ci_password
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U erp_user"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
+      # WOW-CI RONDE 5 (20/08/2026) — LE SERVICE `postgres` A DISPARU D'ICI.
+      # Il est remplacé par un serveur local que `backend-env` démarre DANS le
+      # conteneur du job (voir son étape « Demarrer Postgres »). Raison unique
+      # et non négociable : un `services:` d'Actions n'accepte pas de
+      # `command:`, donc `max_locks_per_transaction` y était inatteignable — et
+      # les shards mouraient en `out of shared memory` dès qu'un test purgeait
+      # une société entière (DELETE en cascade sur ~900 tables dans UNE
+      # transaction, contre 6 400 verrous disponibles). Le serveur local tourne
+      # avec 2048 verrous par transaction, ce qui règle la classe entière.
+      # `redis` reste un service : rien à y configurer.
       redis:
         image: redis:7.4-alpine
         ports:
@@ -1536,9 +1556,9 @@ jobs:
       DB_NAME: erp_db
       DB_USER: erp_user
       DB_PASSWORD: ci_password
-      # WOW-CI RONDE 5 — job `container:` : services joignables par leur NOM
-      # (voir le même commentaire sur `backend-tests-shard`).
-      DB_HOST: postgres
+      # WOW-CI RONDE 5 — Postgres tourne DANS le conteneur du job, démarré par
+      # `backend-env` (voir le même commentaire sur `backend-tests-shard`).
+      DB_HOST: localhost
       DB_PORT: '5432'
       REDIS_HOST: redis
       REDIS_PORT: '6379'
