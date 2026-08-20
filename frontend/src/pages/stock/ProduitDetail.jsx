@@ -415,6 +415,167 @@ function OngletPrevisionnel({ produitId }) {
   )
 }
 
+/* ── PVCOMPAT (fondateur 20/08/2026) — onglet « Compatibilités » ───────────
+   « don't only show whether the fiche is complete — show COMPATIBILITIES and
+   INSTALLABILITY ». Le calcul (apps/ventes/compatibilites.py, exposé via le
+   selector stock côté backend) tourne SERVEUR ; cet onglet ne fait qu'AFFICHER
+   son verdict — même règle « never invent numbers » que le reste de l'écran :
+   les phrases de `bilan.problemes` et les `raison` sont des phrases françaises
+   COMPLÈTES envoyées par le serveur, jamais réécrites ni tronquées ici.
+   Même style de data-fetch que `useFicheTechnique` : état CLÉ PAR PRODUIT,
+   pas de setState synchrone au début de l'effet (pas de flash d'un produit
+   sur l'autre pendant un changement rapide d'onglet/produit). */
+function useCompatibilites(produitId) {
+  const [etat, setEtat] = useState({ id: null, data: undefined, error: false })
+  useEffect(() => {
+    let active = true
+    stockApi.getCompatibilites(produitId)
+      .then((r) => { if (active) setEtat({ id: produitId, data: r.data ?? null, error: false }) })
+      .catch(() => { if (active) setEtat({ id: produitId, data: null, error: true }) })
+    return () => { active = false }
+  }, [produitId])
+  return etat.id === produitId ? etat : { id: produitId, data: undefined, error: false }
+}
+
+// Libellés français par famille. Repli humanisé (underscores → espaces,
+// première lettre en majuscule) pour toute famille future non encore
+// mappée ici — le contrat dit « extensible … sans changer la forme ».
+const FAMILLE_LABELS = {
+  panneau: 'Panneaux',
+  batterie: 'Batteries',
+  onduleur: 'Onduleurs',
+  onduleur_hybride: 'Onduleurs hybrides',
+  onduleur_reseau: 'Onduleurs réseau',
+}
+function libelleFamille(famille) {
+  if (FAMILLE_LABELS[famille]) return FAMILLE_LABELS[famille]
+  const humain = String(famille).replace(/_/g, ' ')
+  return humain.charAt(0).toUpperCase() + humain.slice(1)
+}
+
+// Une famille de produits potentiellement compatibles : ✓/✗ par produit,
+// raison en texte atténué pour un ✗, en ton avertissement pour un ✓ « avec
+// réserve » (raison non vide malgré `ok: true` — ex. donnée manquante qui
+// n'empêche pas le verdict mais mérite d'être vue).
+function FamilleCompat({ famille }) {
+  const produits = famille.produits ?? []
+  return (
+    <div className="rounded-lg border border-border" data-testid={`pdet-compat-famille-${famille.famille}`}>
+      <p className="border-b border-border px-3 py-2 text-xs uppercase tracking-wide text-muted-foreground">
+        {libelleFamille(famille.famille)}
+      </p>
+      {produits.length === 0 ? (
+        <p className="px-3 py-2 text-sm text-muted-foreground">
+          Aucun produit de cette famille dans le stock.
+        </p>
+      ) : (
+        <ul className="px-3 py-1">
+          {produits.map((p) => (
+            <li
+              key={p.id}
+              className="flex flex-col gap-0.5 border-b border-border py-2 last:border-b-0 sm:flex-row sm:items-baseline sm:gap-3"
+            >
+              <span className={p.ok ? 'text-sm text-success' : 'text-sm text-destructive'}>
+                <span aria-hidden="true">{p.ok ? '✓' : '✗'}</span>{' '}
+                <span className="sr-only">{p.ok ? 'Compatible : ' : 'Non compatible : '}</span>
+                {p.nom}
+              </span>
+              {p.raison && (
+                <span className={p.ok ? 'text-xs text-warning' : 'text-xs text-muted-foreground'}>
+                  {p.raison}
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+function OngletCompatibilites({ produit }) {
+  const { data, error } = useCompatibilites(produit.id)
+
+  if (error) {
+    return <p className="py-3 text-sm text-muted-foreground">Compatibilités indisponibles.</p>
+  }
+  if (data === undefined) return <Chargement />
+  if (!data) {
+    return <p className="py-3 text-sm text-muted-foreground">Compatibilités indisponibles.</p>
+  }
+
+  const ficheIncomplete = data.fiche_incomplete ?? []
+  const { installable, bilan } = data
+  const familles = data.familles ?? []
+
+  return (
+    <div className="flex flex-col gap-3" data-testid="pdet-compatibilites">
+      {ficheIncomplete.length > 0 && (
+        <div
+          className="rounded-lg border border-warning/40 bg-warning/10 p-3"
+          data-testid="pdet-compat-fiche-incomplete"
+        >
+          <p className="text-xs font-semibold uppercase tracking-wide text-warning">
+            Fiche technique incomplète
+          </p>
+          <ul className="mt-1 list-disc pl-5 text-sm text-foreground">
+            {ficheIncomplete.map((label) => <li key={label}>{label}</li>)}
+          </ul>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Ces champs alimentent le chiffrage, le schéma unifilaire — et ce calcul de
+            compatibilité : un verdict ci-dessous peut rester incertain tant qu&apos;ils
+            manquent.
+          </p>
+        </div>
+      )}
+
+      {bilan && (
+        <div className="rounded-lg border border-border" data-testid="pdet-compat-bilan">
+          <div className="flex items-center gap-2 border-b border-border px-3 py-2">
+            <span className="text-xs uppercase tracking-wide text-muted-foreground">
+              Installable avec le stock actuel
+            </span>
+            <Badge tone={installable ? 'success' : 'warning'} className="ml-auto">
+              {bilan.verdict}
+            </Badge>
+          </div>
+          <div className="flex flex-col gap-2 px-3 py-2">
+            {bilan.composition.length > 0 && (
+              <ul className="flex flex-col gap-2" data-testid="pdet-compat-composition">
+                {bilan.composition.map((item) => (
+                  <li
+                    key={`${item.role}-${item.produit_id}`}
+                    className="border-b border-border pb-2 last:border-b-0 last:pb-0"
+                  >
+                    <p className="text-sm font-medium text-foreground">
+                      {item.nom} × {item.quantite}
+                    </p>
+                    {item.detail && <p className="text-xs text-muted-foreground">{item.detail}</p>}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {bilan.problemes.length > 0 && (
+              <ul className="flex flex-col gap-1" data-testid="pdet-compat-problemes">
+                {bilan.problemes.map((p) => (
+                  <li key={p} className="text-sm text-warning">{p}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      )}
+
+      {familles.map((f) => <FamilleCompat key={f.famille} famille={f} />)}
+
+      <p className="text-xs text-muted-foreground">
+        Marque préférée par gamme :{' '}
+        <Link to="/parametres/gammes" className="underline">Paramètres → Gammes &amp; marques</Link>.
+      </p>
+    </div>
+  )
+}
+
 // Export nommé : testé directement.
 export function ProduitDetail({ produit, onClose, onEdit }) {
   // VX98 — bouton « Historique » → Journal pré-filtré sur CE produit, visible
@@ -466,7 +627,9 @@ export function ProduitDetail({ produit, onClose, onEdit }) {
             <TabsTrigger value="previsionnel">Prévisionnel</TabsTrigger>
             {/* APX20 — 3ᵉ onglet, à côté des deux onglets achats. */}
             <TabsTrigger value="fiche">Fiche technique</TabsTrigger>
-            {/* PACT128 — 4ᵉ onglet : groupes d'options de configuration. */}
+            {/* PVCOMPAT — 4ᵉ onglet : compatibilités + installabilité. */}
+            <TabsTrigger value="compat">Compatibilités</TabsTrigger>
+            {/* PACT128 — 5ᵉ onglet : groupes d'options de configuration. */}
             <TabsTrigger value="options">Options</TabsTrigger>
           </TabsList>
           <TabsContent value="en-commande">
@@ -477,6 +640,9 @@ export function ProduitDetail({ produit, onClose, onEdit }) {
           </TabsContent>
           <TabsContent value="fiche">
             <OngletFicheTechnique produit={produit} onEdit={onEdit} />
+          </TabsContent>
+          <TabsContent value="compat">
+            <OngletCompatibilites produit={produit} />
           </TabsContent>
           <TabsContent value="options">
             <ProduitOptionsTab produitId={produit.id} />

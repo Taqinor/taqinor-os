@@ -300,6 +300,10 @@ const stockApi = {
   // attendues → solde projeté daté). INTERNE, lecture seule.
   produitPrevisionnel: (produitId) =>
     api.get(`/stock/produits/${produitId}/previsionnel/`),
+  // PVCOMPAT — compatibilités + installabilité (onduleur/panneau/batterie),
+  // dérivées des fiches techniques réelles. INTERNE, lecture seule.
+  getCompatibilites: (produitId) =>
+    api.get(`/stock/produits/${produitId}/compatibilites/`),
   // ZSTK7 — « Vue groupée / pivot » : quantités entrées/sorties/nettes
   // agrégées par produit/type/mois/emplacement.
   mouvementsAgregation: (params) =>
