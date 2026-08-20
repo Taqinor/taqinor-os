@@ -1696,3 +1696,95 @@ class TestPvfchComblerFichesManquantes(TestCase):
 
         fiche = FicheTechnique.objects.get(produit=produit)
         self.assertEqual(fiche.pmax_wc, Decimal('710.00'))
+
+
+class TestPvlvTransfertPrixDeyeLv(TestCase):
+    """PVLV (fondateur 21/08/2026) — « the prices that were there were for
+    15kw and 20kw LV inverters » : la migration 0126 transfère les prix des
+    SKU HAUTE TENSION (OND-H-DEY-15T/20T) vers leurs jumeaux BASSE TENSION
+    (OND-DEY-15K-LV/20K-LV), puis remet les HV à zéro (« prix à renseigner »).
+    Une saisie fondateur sur le LV gagne toujours ; les valeurs transférées
+    sont celles DE LA BASE, jamais des constantes."""
+
+    MIGRATION = 'apps.stock.migrations.0126_pvlv_prix_deye_lv'
+
+    def setUp(self):
+        self.company = make_company(slug='test-cat-pvlv-prix')
+
+    def _migration(self):
+        import importlib
+        return importlib.import_module(self.MIGRATION)
+
+    def _etat_ancienne_base(self):
+        """Reproduit une base d'AVANT le 21/08 : HV prixé (valeurs fondateur,
+        éventuellement ajustées), LV à zéro — le seeder NEUF fait l'inverse."""
+        seed(self.company)
+        hv = Produit.objects.get(company=self.company, sku='OND-H-DEY-15T')
+        lv = Produit.objects.get(company=self.company, sku='OND-DEY-15K-LV')
+        hv.prix_vente = Decimal('31234.56')   # « son » prix, ajusté en base
+        hv.prix_achat = Decimal('25000.00')
+        hv.save(update_fields=['prix_vente', 'prix_achat'])
+        lv.prix_vente = Decimal('0')
+        lv.prix_achat = Decimal('0')
+        lv.save(update_fields=['prix_vente', 'prix_achat'])
+        return hv, lv
+
+    def test_transfert_des_valeurs_reelles_puis_hv_a_zero(self):
+        from django.apps import apps as registre
+        hv, lv = self._etat_ancienne_base()
+
+        self._migration().transferer_prix_lv(registre, None)
+
+        hv.refresh_from_db()
+        lv.refresh_from_db()
+        # Les valeurs RÉELLES de la base voyagent (pas les constantes seeder).
+        self.assertEqual(lv.prix_vente, Decimal('31234.56'))
+        self.assertEqual(lv.prix_achat, Decimal('25000.00'))
+        self.assertEqual(hv.prix_vente, Decimal('0'))
+        self.assertEqual(hv.prix_achat, Decimal('0'))
+
+    def test_saisie_fondateur_sur_le_lv_gagne_toujours(self):
+        from django.apps import apps as registre
+        hv, lv = self._etat_ancienne_base()
+        lv.prix_vente = Decimal('39999.00')   # le fondateur a déjà prixé
+        lv.save(update_fields=['prix_vente'])
+
+        self._migration().transferer_prix_lv(registre, None)
+
+        hv.refresh_from_db()
+        lv.refresh_from_db()
+        self.assertEqual(lv.prix_vente, Decimal('39999.00'))
+        # Rien ne bouge côté HV non plus : la paire est laissée telle quelle.
+        self.assertEqual(hv.prix_vente, Decimal('31234.56'))
+
+    def test_lv_absent_est_cree_sans_stock_fantome(self):
+        from django.apps import apps as registre
+        hv, lv = self._etat_ancienne_base()
+        MouvementStock.objects.filter(produit=lv).delete()
+        lv.delete()
+
+        self._migration().transferer_prix_lv(registre, None)
+
+        cree = Produit.objects.get(company=self.company, sku='OND-DEY-15K-LV')
+        self.assertEqual(cree.prix_vente, Decimal('31234.56'))
+        self.assertEqual(cree.categorie, hv.categorie)
+        # Une migration ne crée jamais 500 unités sans mouvement de stock.
+        self.assertEqual(cree.quantite_stock, 0)
+
+    def test_idempotente_et_sans_effet_sur_base_neuve(self):
+        from django.apps import apps as registre
+        # Base NEUVE (seeder du 21/08) : LV déjà prixé, HV à zéro — la
+        # migration ne doit strictement rien changer, deux fois de suite.
+        seed(self.company)
+        lv_avant = Produit.objects.get(
+            company=self.company, sku='OND-DEY-15K-LV').prix_vente
+        self.assertGreater(lv_avant, 0)
+
+        migration = self._migration()
+        migration.transferer_prix_lv(registre, None)
+        migration.transferer_prix_lv(registre, None)
+
+        lv = Produit.objects.get(company=self.company, sku='OND-DEY-15K-LV')
+        hv = Produit.objects.get(company=self.company, sku='OND-H-DEY-15T')
+        self.assertEqual(lv.prix_vente, lv_avant)
+        self.assertEqual(hv.prix_vente, Decimal('0'))

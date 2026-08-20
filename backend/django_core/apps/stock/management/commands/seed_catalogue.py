@@ -46,8 +46,21 @@ CATALOGUE = [
     ('Onduleur hybride Deye 5kW Monophasé',    'OND-H-DEY-5M',   'Onduleurs', 17000, 12000, 500, 5),
     ('Onduleur hybride Deye 10kW Monophasé',   'OND-H-DEY-10M',  'Onduleurs', 28000, 24000, 500, 5),
     ('Onduleur hybride Deye 10kW Triphasé',    'OND-H-DEY-10T',  'Onduleurs', 28000, 24000, 500, 5),
-    ('Onduleur hybride Deye 15kW Triphasé',    'OND-H-DEY-15T',  'Onduleurs', 36000, 30000, 500, 5),
-    ('Onduleur hybride Deye 20kW Triphasé',    'OND-H-DEY-20T',  'Onduleurs', 48000, 42000, 500, 5),
+    # PVLV (fondateur 21/08/2026 — « the prices that were there were for 15kw
+    # and 20kw LV inverters ») : les 36 000/48 000 TTC portés ici depuis
+    # l'origine étaient les prix des jumeaux BASSE TENSION SG05LP3 (ci-dessous)
+    # — pas ceux de ces SG01HP3 HAUTE TENSION. Prix HV remis à ZÉRO (grisés
+    # « prix à renseigner », même garde que les pompes OSP) tant que le
+    # fondateur n'a pas communiqué de vrais prix HV ; la migration stock 0126
+    # opère le MÊME transfert sur les bases existantes.
+    ('Onduleur hybride Deye 15kW Triphasé',    'OND-H-DEY-15T',  'Onduleurs', 0, 0, 500, 5),
+    ('Onduleur hybride Deye 20kW Triphasé',    'OND-H-DEY-20T',  'Onduleurs', 0, 0, 500, 5),
+    # PVLV — les jumeaux BASSE TENSION (SG05LP3, plage batterie 40-60 V,
+    # compatibles Dyness 51,2 V — le parc réel du fondateur) reçoivent les
+    # prix fondateur ci-dessus. « Modèle confirmé fondateur » sur les deux
+    # (18/08/2026), prix confirmés fondateur (21/08/2026).
+    ('Onduleur hybride Deye 15kW Triphasé Basse Tension', 'OND-DEY-15K-LV', 'Onduleurs', 36000, 30000, 500, 5),
+    ('Onduleur hybride Deye 20kW Triphasé Basse Tension', 'OND-DEY-20K-LV', 'Onduleurs', 48000, 42000, 500, 5),
     # ── Panneaux ──
     ('Panneau Canadien Solar 710W', 'PAN-CS-710', 'Panneaux solaires', 1400, 1200, 1000, 20),
     ('Panneau Jinko 710W',          'PAN-JK-710', 'Panneaux solaires', 1400, 1200, 1000, 20),
@@ -295,24 +308,21 @@ CABLES_PROTECTIONS_VIDES = [
 # (OND-H-DEY-10T, PV85) ; ce palier 15 kW COMPLÈTE la gamme LV SG05LP3 — À NE
 # PAS CONFONDRE avec OND-H-DEY-15T (gamme HAUTE TENSION SG01HP3, cf. la note
 # PVG4 « INCOMPATIBILITÉ MÉTIER » plus haut : deux appareils réels différents
-# au même palier de puissance, d'où un SKU et un nom distincts ici). PRIX
-# VOLONTAIREMENT VIDE (0) : à renseigner par le fondateur — même garde que
-# les pompes OSP / câbles PVG3 ci-dessus (``_has_price`` exclut le produit de
-# l'auto-composition, le générateur l'affiche grisé « prix à renseigner »).
+# au même palier de puissance, d'où un SKU et un nom distincts ici).
 #
 # PVOND (18/08/2026) — le palier 20 kW rejoint la gamme LV pour la MÊME raison
 # que le 15 kW : OND-H-DEY-20T est un SG01HP3 HAUTE TENSION (160-700 V), donc
 # INCOMPATIBLE avec les batteries Dyness 51,2 V de la maison. Sans son jumeau
 # basse tension, un devis 20 kW « avec batterie » n'avait aucun onduleur
 # apparaissable au catalogue. Même patron exact que le 15 kW : SKU et nom
-# distincts et prix VIDES (jamais inventés). Les DEUX paliers basse tension
-# (15 ET 20 kW) sont des produits que le fondateur porte RÉELLEMENT — confirmé
-# le 18/08/2026 — d'où « Modèle confirmé fondateur » sur les deux.
-# (nom, sku, qte, seuil)
-ONDULEUR_DEYE_15K_LV_VIDE = [
-    ('Onduleur hybride Deye 15kW Triphasé Basse Tension', 'OND-DEY-15K-LV', 500, 5),
-    ('Onduleur hybride Deye 20kW Triphasé Basse Tension', 'OND-DEY-20K-LV', 500, 5),
-]
+# distincts. Les DEUX paliers basse tension (15 ET 20 kW) sont des produits
+# que le fondateur porte RÉELLEMENT — confirmé le 18/08/2026 — d'où « Modèle
+# confirmé fondateur » sur les deux.
+# PVLV (fondateur 21/08/2026) — les deux SKU basse tension vivent désormais
+# dans ``CATALOGUE`` ci-dessus AVEC leurs prix fondateur (36 000/48 000 TTC —
+# « the prices that were there were for 15kw and 20kw LV inverters ») : le
+# bloc « prix vides » historique est retiré, la migration stock 0126 opère le
+# transfert sur les bases existantes.
 
 # ── Batterie Dyness HAUTE TENSION — 16 kWh (décision fondateur 2026-08-18) ──
 # Vendue PAR TRANCHE de 16 kWh, 3 000 DH/kWh (prix fondateur) → 48 000 DH TTC
@@ -1483,35 +1493,19 @@ class Command(BaseCommand):
             )
             created.append(nom)
 
-        # ── Onduleurs Deye BASSE TENSION (SG05LP3) : PRIX VIDES (0) ──
-        # Même garde que les pompes OSP / câbles PVG3 ci-dessus : tant que
-        # prix_vente vaut 0, le produit est exclu du chiffrage automatique.
-        for nom, sku, qte, seuil in ONDULEUR_DEYE_15K_LV_VIDE:
-            if (Produit.objects.filter(company=company, sku=sku).exists()
-                    or Produit.objects.filter(
-                        company=company, nom__iexact=nom,
-                        is_archived=False).exists()):
-                skipped.append(nom)
-                continue
-            produit = Produit.objects.create(
-                company=company, nom=nom, sku=sku,
-                categorie=get_categorie(classify_categorie(nom)),
-                prix_achat=Decimal('0'),
-                prix_vente=Decimal('0'),  # à renseigner par le fondateur
-                quantite_stock=qte, seuil_alerte=seuil,
-                tva=Decimal('20.00'),
-            )
-            MouvementStock.objects.create(
-                company=company, produit=produit,
-                type_mouvement=MouvementStock.TypeMouvement.ENTREE,
-                quantite=qte, quantite_avant=0, quantite_apres=qte,
-                reference='SEED-CATALOGUE',
-                note='Stock initial (onduleur Deye basse tension — prix à renseigner)',
-            )
-            created.append(nom)
+        # PVLV (21/08/2026) — le bloc « onduleurs Deye basse tension à prix
+        # vides » a disparu : les deux SKU LV vivent dans ``CATALOGUE`` avec
+        # leurs prix fondateur (le transfert sur bases existantes est
+        # l'affaire de la migration stock 0126, pas du seeder).
 
         # ── Batterie Dyness haute tension — 16 kWh : prix vente RÉEL ──
-        # (3 000 DH/kWh, fondateur) ; prix achat vide (non communiqué).
+        # (3 000 DH/kWh, fondateur). PVLV (21/08/2026) — prix ACHAT désormais
+        # COMMUNIQUÉ : facture fournisseur Solarex Maroc S26/001708 du
+        # 27/07/2026 — « 16kWh BOS-B-Pro Battery Pack » à 28 000 DH HT le pack
+        # (33 600 TTC). Le pack SEUL : la control box HV (11 200 HT) et les
+        # racks/câbles (6 000 HT) de la même facture couvrent une pile de 6
+        # packs et ne sont PAS amortis ici (l'amortissement dépend de la
+        # taille de pile — au fondateur d'ajuster s'il le souhaite).
         for nom, sku, sell_ttc, qte, seuil in BATTERIE_DYNESS_HV:
             if (Produit.objects.filter(company=company, sku=sku).exists()
                     or Produit.objects.filter(
@@ -1522,7 +1516,8 @@ class Command(BaseCommand):
             produit = Produit.objects.create(
                 company=company, nom=nom, sku=sku,
                 categorie=get_categorie(classify_categorie(nom)),
-                prix_achat=Decimal('0'),  # à renseigner par le fondateur
+                # PVLV — 28 000 HT le pack 16 kWh (facture Solarex S26/001708).
+                prix_achat=ht(Decimal('33600')),
                 prix_vente=ht(sell_ttc),
                 quantite_stock=qte, seuil_alerte=seuil,
                 tva=Decimal('20.00'),
