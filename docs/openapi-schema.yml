@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 9409, operations: 16920, components: 4939}
+counts: {paths: 9411, operations: 16922, components: 4939}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -7902,6 +7902,7 @@ operations:
 - get /api/django/stock/produits/{id}/classe-abc/ -> django_stock_produits_classe_abc_retrieve
 - get /api/django/stock/produits/{id}/comparer-fournisseurs/ -> django_stock_produits_comparer_fournisseurs_retrieve
 - get /api/django/stock/produits/{id}/comparer-tco/ -> django_stock_produits_comparer_tco_retrieve
+- get /api/django/stock/produits/{id}/compatibilites/ -> django_stock_produits_compatibilites_retrieve
 - post /api/django/stock/produits/{id}/dupliquer/ -> django_stock_produits_dupliquer_create
 - get /api/django/stock/produits/{id}/emplacements/ -> django_stock_produits_emplacements_retrieve
 - delete /api/django/stock/produits/{id}/force-delete/ -> django_stock_produits_force_delete_destroy
@@ -16357,6 +16358,7 @@ operations:
 - get /api/v1/stock/produits/{id}/classe-abc/ -> v1_stock_produits_classe_abc_retrieve
 - get /api/v1/stock/produits/{id}/comparer-fournisseurs/ -> v1_stock_produits_comparer_fournisseurs_retrieve
 - get /api/v1/stock/produits/{id}/comparer-tco/ -> v1_stock_produits_comparer_tco_retrieve
+- get /api/v1/stock/produits/{id}/compatibilites/ -> v1_stock_produits_compatibilites_retrieve
 - post /api/v1/stock/produits/{id}/dupliquer/ -> v1_stock_produits_dupliquer_create
 - get /api/v1/stock/produits/{id}/emplacements/ -> v1_stock_produits_emplacements_retrieve
 - delete /api/v1/stock/produits/{id}/force-delete/ -> v1_stock_produits_force_delete_destroy

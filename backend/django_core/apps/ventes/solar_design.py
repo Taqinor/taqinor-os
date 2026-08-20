@@ -16,10 +16,14 @@ calculateurs réutilisés par l'écran de devis et, à terme, le pont toiture 3D
   déjà sur l'hypothèse manuelle, jamais d'exception réseau).
 
 CONTRAINTES :
-* Les onduleurs/panneaux du catalogue (``stock.Produit``) ne portent PAS de
-  fiche électrique complète (Voc/Vmp/Vmppt/Vmax). On utilise donc des
-  paramètres électriques par défaut SENSÉS (silicium cristallin) avec repli sûr,
-  en extrayant du nom produit ce qui est extractible (puissance W, kW onduleur).
+* Les onduleurs/panneaux du catalogue (``stock.Produit``) portent DÉSORMAIS une
+  fiche électrique normalisée (``stock.FicheTechnique``, PV5/PVOND-H) lue par le
+  pont PV10 ci-dessous — tensions, courants, fenêtre MPPT, puissance AC. Ce qui
+  reste par défaut ne l'est que pour un produit dont la fiche est ABSENTE ou
+  INCOMPLÈTE : on applique alors des paramètres de tension par défaut SENSÉS
+  (silicium cristallin), on extrait du nom ce qui est extractible (puissance W,
+  kW onduleur), et les COURANTS restent à 0 — le noyau saute alors ses verdicts
+  de courant plutôt que d'en inventer un.
 * Aucun prix d'achat / marge n'apparaît jamais dans une sortie — ce module ne
   manipule que des grandeurs électriques publiques.
 * Aucune dépendance pip nouvelle ; PVGIS via le client stdlib existant.
@@ -44,6 +48,13 @@ DEFAULT_MODULE = {
     "temp_coeff_voc": -0.27,   # %/°C (négatif)
     "temp_coeff_vmp": -0.35,   # %/°C (négatif) — Vmp chute plus vite
     "puissance_w": 450,    # puissance crête (W) — repli si non lisible du nom
+    # PVCOMPAT — COURANTS du module. Défaut 0 VOULU : un courant n'a pas de
+    # « valeur de marché » défendable (il varie du simple au double d'un module
+    # à l'autre) et le noyau SAUTE ses verdicts de courant quand il vaut 0.
+    # Sans fiche, on ne rend donc AUCUN verdict de courant plutôt qu'un verdict
+    # inventé — c'est exactement le comportement d'avant ce lot.
+    "isc_a": 0.0,          # courant de court-circuit (A), STC
+    "imp_a": 0.0,          # courant au point de puissance max (A), STC
 }
 
 # Fenêtre onduleur par défaut (onduleur string résidentiel/commercial typique).
@@ -55,6 +66,12 @@ DEFAULT_INVERTER_WINDOW = {
     "v_mppt_max": 500.0,  # haut de la plage MPPT (V)
     "n_mppt": 2,         # nombre d'entrées MPPT
     "ac_kw": None,       # puissance AC nominale (kW) — pour le ratio DC/AC
+    # PVCOMPAT — COURANTS admissibles par entrée MPPT. Même raison que côté
+    # module : 0 signifie « la fiche ne le dit pas », et le noyau se tait plutôt
+    # que de fabriquer une contrainte. ``isc_max_mppt_a=None`` fait retomber le
+    # noyau sur ``i_max_mppt_a`` (repli PRUDENT documenté dans SpecOnduleur).
+    "i_max_mppt_a": 0.0,     # courant d'entrée admissible par MPPT (A)
+    "isc_max_mppt_a": None,  # Isc admissible par MPPT (A) — borne MATÉRIELLE
 }
 
 # Conditions de température de référence pour le calcul à froid / à chaud.
@@ -138,6 +155,15 @@ _MODULE_SPEC_MAP = (
     ('voc_v', 'voc', float),
     ('pmax_wc', 'puissance_w', float),
     ('temp_coeff_voc_pct_c', 'temp_coeff_voc', float),
+    # PVCOMPAT (fondateur 20/08/2026) — LES COURANTS. Ils étaient structurellement
+    # ignorés : la fiche les porte (PV5) mais rien ne les descendait jusqu'au
+    # noyau, si bien qu'aucun verdict de courant ne pouvait sortir de
+    # ``string_design`` — d'où « il n'y a pas de PV parce que le courant maxi par
+    # MPPT de cet onduleur est sous le courant de nos panneaux » qui n'était
+    # jamais dit. La clé de destination GARDE son unité dans son nom (convention
+    # du noyau), un courant se confondant trop facilement avec une tension.
+    ('isc_a', 'isc_a', float),
+    ('imp_a', 'imp_a', float),
 )
 # NOTE : ``temp_coeff_pmax_pct_c`` n'est volontairement PAS mappé sur
 # ``temp_coeff_vmp`` — le coefficient de Pmax et celui de Vmp sont deux
@@ -150,10 +176,24 @@ _INVERTER_SPEC_MAP = (
     ('mppt_v_max', 'v_mppt_max', float),
     ('v_max_abs', 'v_max', float),
     ('ac_kw', 'ac_kw', float),
+    # PVCOMPAT — les DEUX bornes de courant d'entrée, que le noyau distingue :
+    # ``i_max_mppt_a`` est la borne de FONCTIONNEMENT (somme des Imp — au-delà
+    # l'onduleur écrête en permanence), ``isc_max_mppt_a`` la borne MATÉRIELLE
+    # (somme des Isc). Absente, la seconde retombe sur la première côté noyau
+    # (repli PRUDENT de ``SpecOnduleur.courant_isc_max_a``) : jamais une borne
+    # plus permissive que ce que la fiche garantit.
+    ('i_max_mppt_a', 'i_max_mppt_a', float),
+    ('isc_max_mppt_a', 'isc_max_mppt_a', float),
+    # PVOND-H a ajouté le champ de tension de DÉMARRAGE à la fiche ; la clé
+    # historique de ce module s'appelle ``v_min`` et sert DÉJÀ exactement à ça
+    # (elle est passée telle quelle à ``SpecOnduleur.v_demarrage_v``, cf.
+    # ``_entree_electrique_du_dict``). Le mapping est donc trivialement
+    # cohérent : une fiche qui déclare sa tension de démarrage l'emporte sur le
+    # défaut de marché ; une fiche muette garde ce défaut, à l'identique.
+    ('v_demarrage_v', 'v_min', float),
 )
-# NOTE : ``v_min`` (tension de démarrage onduleur) n'existe pas encore sur la
-# fiche → le défaut s'applique. ``i_max_mppt_a`` / ``phases`` ne font pas
-# partie de la fenêtre de tension utilisée par ``string_design`` : ignorés ici.
+# NOTE : ``phases`` n'entre pas dans la conception de chaînes (c'est une
+# contrainte de RACCORDEMENT, portée par la composition) : ignoré ici.
 
 
 def _specs_produit(produit):
@@ -194,7 +234,9 @@ def specs_module_pour_produit(produit):
     sélecteur stock PV6) dans les clés de ``DEFAULT_MODULE`` :
     ``vmp_v→vmp``, ``voc_v→voc``, ``pmax_wc→puissance_w``,
     ``temp_coeff_voc_pct_c→temp_coeff_voc`` (le signe de la fiche est repris
-    tel quel : un coefficient de Voc est négatif sur toute fiche constructeur).
+    tel quel : un coefficient de Voc est négatif sur toute fiche constructeur),
+    ``isc_a→isc_a`` et ``imp_a→imp_a`` (PVCOMPAT — les courants, sans lesquels
+    aucun verdict de courant d'entrée MPPT ne peut être prononcé).
 
     Usage : ``string_design(n, module=specs_module_pour_produit(panneau))``.
     Produit ``None``, sans fiche, ou fiche d'un autre type → ``{}``.
@@ -208,7 +250,9 @@ def fenetre_onduleur_pour_produit(produit):
     Traduit la fiche technique ``type_fiche='onduleur'`` (PV5, lue via le
     sélecteur stock PV6) dans les clés de ``DEFAULT_INVERTER_WINDOW`` :
     ``n_mppt→n_mppt``, ``mppt_v_min→v_mppt_min``, ``mppt_v_max→v_mppt_max``,
-    ``v_max_abs→v_max``, ``ac_kw→ac_kw``.
+    ``v_max_abs→v_max``, ``ac_kw→ac_kw``, et — PVCOMPAT —
+    ``i_max_mppt_a→i_max_mppt_a``, ``isc_max_mppt_a→isc_max_mppt_a``,
+    ``v_demarrage_v→v_min``.
 
     Usage : ``string_design(n, inverter=fenetre_onduleur_pour_produit(ond))``.
     Produit ``None``, sans fiche, ou fiche d'un autre type → ``{}``.
@@ -259,19 +303,44 @@ def _entree_electrique_du_dict(mod, inv, n, n_mppt, cold_temp_c, hot_temp_c):
     """PV83 — traduit les dicts historiques en ``EntreeElectrique`` du noyau.
 
     Un seul ``GroupePan`` : le calcul historique ne connaît pas les pans, il
-    répartit un total de panneaux sur les entrées MPPT d'un onduleur. Les
-    grandeurs dont l'historique ne dispose pas (Isc/Imp module, courant d'entrée
-    MPPT admissible) sont mises à 0 — le noyau saute alors les verdicts de
-    courant, exactement comme l'historique qui ne les rendait pas.
+    répartit un total de panneaux sur les entrées MPPT d'un onduleur.
+
+    PVCOMPAT (fondateur 20/08/2026) — LES COURANTS PASSENT DÉSORMAIS. Ils
+    étaient mis à 0 EN DUR ici, si bien que le noyau sautait TOUS ses verdicts
+    de courant quelle que soit la richesse des fiches : le cas même que le
+    fondateur cite (« pas de PV parce que le courant maxi par MPPT de cet
+    onduleur est sous le courant de nos panneaux ») ne pouvait pas être
+    prononcé. Ils viennent maintenant des dicts (donc de la fiche technique via
+    le pont PV10) — et VALENT ENCORE 0 quand la fiche ne les porte pas, ce qui
+    fait retomber le noyau, à l'identique, sur son silence : dégradé, jamais
+    inventé.
     """
     from core.electrique.types import (
         EntreeElectrique, GroupePan, SpecModule, SpecOnduleur)
 
+    def _courant(valeur):
+        """Courant en ampères, 0.0 quand la donnée manque (jamais deviné)."""
+        try:
+            v = float(valeur)
+        except (TypeError, ValueError):
+            return 0.0
+        return v if v > 0 else 0.0
+
+    isc_max = inv.get("isc_max_mppt_a")
+    try:
+        isc_max = float(isc_max) if isc_max is not None else None
+    except (TypeError, ValueError):
+        isc_max = None
+    if isc_max is not None and isc_max <= 0:
+        # 0 n'est pas une borne, c'est une absence : on rend la main au repli
+        # PRUDENT du noyau (``courant_isc_max_a`` → ``i_max_mppt_a``).
+        isc_max = None
+
     spec_module = SpecModule(
         vmp_v=float(mod["vmp"]),
         voc_v=float(mod["voc"]),
-        isc_a=0.0,
-        imp_a=0.0,
+        isc_a=_courant(mod.get("isc_a")),
+        imp_a=_courant(mod.get("imp_a")),
         pmax_wc=float(mod.get("puissance_w")
                       or DEFAULT_MODULE["puissance_w"]),
         temp_coeff_voc_pct_c=float(mod["temp_coeff_voc"]),
@@ -282,12 +351,13 @@ def _entree_electrique_du_dict(mod, inv, n, n_mppt, cold_temp_c, hot_temp_c):
         mppt_v_min=float(inv["v_mppt_min"]),
         mppt_v_max=float(inv["v_mppt_max"]),
         v_max_abs=float(inv["v_max"]),
-        i_max_mppt_a=0.0,
+        i_max_mppt_a=_courant(inv.get("i_max_mppt_a")),
         ac_kw=_as_kw(inv.get("ac_kw")) or 0.0,
         # L'historique distingue la tension de DÉMARRAGE (``v_min``) du bas de
         # plage MPPT ; le noyau retombe sur le bas de plage à défaut : on la
         # lui passe explicitement pour garder les deux bornes distinctes.
         v_demarrage_v=float(inv["v_min"]),
+        isc_max_mppt_a=isc_max,
     )
     return EntreeElectrique(
         module=spec_module,
@@ -297,6 +367,82 @@ def _entree_electrique_du_dict(mod, inv, n, n_mppt, cold_temp_c, hot_temp_c):
         temp_froid_c=cold_temp_c,
         temp_chaud_c=hot_temp_c,
     )
+
+
+def _alertes_courant(resultat_chaines, entree):
+    """PVCOMPAT — les SEULES alertes de COURANT d'une conception de chaînes.
+
+    ``ResultatChaines.alertes`` mélange trois natures : la forme de la
+    répartition (« aucune découpe en chaînes ÉGALES », « modules en réserve »),
+    les bornes de TENSION, et les bornes de COURANT. Les deux premières sont
+    déjà rédigées par ce module dans son propre vocabulaire historique — les
+    reprendre les dirait deux fois. On redemande donc au noyau ses SEULS
+    verdicts de courant, en rappelant sa fonction dédiée sur une liste neuve :
+    aucun tri par mot-clé, donc aucune divergence possible le jour où le noyau
+    reformule ses phrases.
+    """
+    from core.electrique.chaines import _verdicts_courant
+    alertes = []
+    _verdicts_courant(resultat_chaines.chaines, entree.onduleur, alertes)
+    return alertes
+
+
+def verdicts_chaines(n_panels, module=None, inverter=None,
+                     cold_temp_c=DEFAULT_COLD_TEMP_C,
+                     hot_temp_c=DEFAULT_HOT_TEMP_C):
+    """PVCOMPAT — la TAXONOMIE du noyau pour un couple module/onduleur.
+
+    ``string_design`` rend une charge utile historique (des ``checks`` binaires
+    et une liste de ``warnings`` à plat) qui ne dit PAS ce qui, dans le verdict,
+    arrête le dossier et ce qui le dégrade seulement. Le noyau, lui, sépare :
+
+    * ``bloquants`` — le matériel est en danger (Voc à froid au-dessus de la
+      tension maximale absolue) ou aucune longueur de chaîne n'existe (fenêtre
+      de tension vide) ;
+    * ``alertes`` — la production est dégradée mais rien ne casse (écrêtage par
+      la plage MPPT, MPPT hors plage en été, ET les DEUX bornes de courant
+      d'entrée : Imp cumulé au-dessus du courant admissible, Isc cumulé
+      au-dessus de la borne matérielle).
+
+    Cette fonction EXPOSE cette séparation telle quelle, sans la retraduire :
+    tout appelant qui doit trancher « incompatible » / « sous réserve » lit ici
+    plutôt que de rejouer une règle à lui (règle qui divergerait du jour où le
+    noyau change d'avis). Retourne un dict JSON-sérialisable
+    ``{bloquants, alertes, alertes_courant, fenetre_trop_etroite,
+    longueur_chaine, nb_chaines, homogene}``. Ne lève jamais.
+    """
+    from core.electrique.chaines import concevoir_chaines
+
+    mod = {**DEFAULT_MODULE, **(module or {})}
+    inv = {**DEFAULT_INVERTER_WINDOW, **(inverter or {})}
+    try:
+        n = int(n_panels)
+    except (TypeError, ValueError):
+        n = 0
+    n_mppt = max(1, int(inv.get("n_mppt") or 1))
+
+    if n <= 0:
+        return {
+            "bloquants": [], "alertes": ["aucun module à répartir"],
+            "alertes_courant": [], "fenetre_trop_etroite": False,
+            "longueur_chaine": 0, "nb_chaines": 0, "homogene": True,
+        }
+
+    entree = _entree_electrique_du_dict(mod, inv, n, n_mppt,
+                                        cold_temp_c, hot_temp_c)
+    resultat = concevoir_chaines(entree)
+    repartition = (resultat.repartitions[0] if resultat.repartitions else None)
+    return {
+        "bloquants": list(resultat.bloquants),
+        "alertes": list(resultat.alertes),
+        "alertes_courant": _alertes_courant(resultat, entree),
+        "fenetre_trop_etroite": bool(
+            resultat.fenetre.trop_etroite if resultat.fenetre else False),
+        "longueur_chaine": (repartition.longueur_chaine
+                            if repartition else 0),
+        "nb_chaines": repartition.nb_chaines if repartition else 0,
+        "homogene": bool(repartition.homogene) if repartition else True,
+    }
 
 
 def string_design(n_panels, module=None, inverter=None,
@@ -314,6 +460,13 @@ def string_design(n_panels, module=None, inverter=None,
     * Vmp à chaud ≥ ``v_min`` (démarrage onduleur).
 
     Et rapporte le ratio DC/AC (puissance crête DC ÷ puissance AC onduleur).
+
+    PVCOMPAT — quand les fiches portent les COURANTS (Isc/Imp module, courant
+    admissible par entrée MPPT), les verdicts de courant du noyau rejoignent
+    ``warnings`` (jamais ``checks`` : ce sont des ALERTES au sens du noyau, pas
+    des contrôles de la fenêtre de tension — cf. ``verdicts_chaines`` pour la
+    taxonomie bloquant/alerte séparée). Fiches muettes ⇒ aucun verdict de
+    courant, comme avant.
 
     Paramètres
     ----------
@@ -438,6 +591,15 @@ def string_design(n_panels, module=None, inverter=None,
     if not checks["vmp_hot_over_vmin"]:
         warnings.append(
             f"Vmp à chaud {string_vmp_hot} V < démarrage onduleur {v_min} V")
+
+    # ── PVCOMPAT — verdicts de COURANT d'entrée MPPT, prononcés par le NOYAU ──
+    # Ils ne rejoignent PAS ``checks`` : la charge utile historique de cette
+    # fonction est épinglée clé pour clé (``test_pv83_shims_electrique``), et
+    # ces verdicts sont des ALERTES au sens du noyau — pas des contrôles
+    # binaires de la fenêtre de tension. Ils rejoignent ``warnings``, la liste
+    # que tous les appelants lisent déjà, avec le TEXTE du noyau (jamais un
+    # texte réécrit : les chiffres qu'il cite viennent de la fiche).
+    warnings.extend(_alertes_courant(resultat_chaines, entree))
 
     # ── Ratio DC/AC ──
     dc_kw = round(n * panel_w / 1000.0, 3)
