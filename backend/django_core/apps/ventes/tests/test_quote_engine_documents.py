@@ -93,26 +93,34 @@ class TestDocLiteralTemplates(TestCase):
           n'est affirmée (le « 87,4 % », spec Canadian Solar, ne s'imprime plus
           sous un libellé générique).
         """
-        html = self._render()
+        # Classe #72 (miroir backend) — le gabarit mélange entités HTML
+        # (&#233;, &#160;, &#8217;) et caractères bruts selon la source du
+        # fragment : épingler l'échappement EXACT rend le test rouge au
+        # moindre déplacement d'un littéral entre gabarits. On épingle le
+        # CONTENU : document déséchappé, espaces insécables (U+00A0/U+202F)
+        # et apostrophe typographique normalisés.
+        import html as html_module
+        doc = html_module.unescape(self._render())
+        doc = (doc.replace(' ', ' ').replace(' ', ' ')
+                  .replace('’', "'"))
         echeance = self._echeance()
-        # Validité (badge page 1) — la VRAIE date, pas une durée.
-        self.assertIn(f'Validit&#233;&#160;: jusqu&#8217;au {echeance}', html)
-        self.assertNotIn('Validit&#233;&#160;: 30 jours', html)
-        # Conditions générales — titre + puces (entités/accents EXACTS)
-        self.assertIn('Conditions générales du devis', html)
-        self.assertIn(
-            f'Validité de l&#8217;offre&#160;: jusqu&#8217;au {echeance}', html)
-        self.assertIn('Acompte à la commande&#160;: 30&#37;', html)
-        self.assertIn('60&#37; à la réception du matériel', html)
-        self.assertIn('10&#37; après la mise en marche', html)
-        self.assertIn('Tarifs de référence&#160;: barème ONEE/SRM', html)
+        # Validité (badge page 1) — la VRAIE date, pas une durée (M7).
+        self.assertIn(f"Validité : jusqu'au {echeance}", doc)
+        self.assertNotIn('Validité : 30 jours', doc)
+        # Conditions générales — titre + puces.
+        self.assertIn('Conditions générales du devis', doc)
+        self.assertIn(f"Validité de l'offre : jusqu'au {echeance}", doc)
+        self.assertIn('Acompte à la commande : 30%', doc)
+        self.assertIn('60% à la réception du matériel', doc)
+        self.assertIn('10% après la mise en marche', doc)
+        self.assertIn('Tarifs de référence : barème ONEE/SRM', doc)
         # Q5 — le délai est INDICATIF et hors des Conditions.
-        self.assertNotIn('Délai d&#8217;installation&#160;:', html)
-        self.assertIn('7-14 jours ouvrés (indicatif)', html)
-        self.assertIn('Sous 48-72 h (indicatif)', html)
+        self.assertNotIn("Délai d'installation :", doc)
+        self.assertIn('7-14 jours ouvrés (indicatif)', doc)
+        self.assertIn('Sous 48-72 h (indicatif)', doc)
         # M6 — aucune garantie saisie sur ce montage : rien n'est affirmé.
-        self.assertIn('Nos garanties', html)
-        self.assertNotIn('Garanties jusqu', html)
+        self.assertIn('Nos garanties', doc)
+        self.assertNotIn('Garanties jusqu', doc)
         self.assertNotIn('87,4', html)
         # Bon pour accord — titre + mention manuscrite (espaces insécables)
         self.assertIn('Bon pour accord', html)
