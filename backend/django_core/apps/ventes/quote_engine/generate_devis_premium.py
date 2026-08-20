@@ -1160,9 +1160,13 @@ def equip_rows(items, totaux, hi_bat=False):
         des = it["designation"]; qty = it["quantite"]
         pu_ht = _item_pu_ht(it)
         mar = (it.get("marque") or "").strip()
-        # Enrich panel designation with watt info
-        if "panneaux" in des.lower() and WP:
-            des = f"{des} {WP}\u00a0Wc"
+        # M3 (audit du 19/08/2026) \u2014 la D\u00c9SIGNATION FACTUR\u00c9E N'EST JAMAIS
+        # R\u00c9\u00c9CRITE. Le moteur ajoutait \u00ab 710 Wc \u00bb au libell\u00e9 contractuel d'une
+        # ligne, avec une puissance qui pouvait n'avoir \u00e9t\u00e9 lue nulle part
+        # (d\u00e9faut catalogue) : le document engageait alors une caract\u00e9ristique
+        # que le devis ne portait pas. La ligne s'affiche telle qu'elle est
+        # factur\u00e9e ; la puissance vit dans la vignette \u00ab Puissance install\u00e9e \u00bb,
+        # qui, elle, sait s'omettre.
         ico = icon_img(des, mar); bdg = badge(mar)
         gar = (it.get("garantie") or "").strip()
         if not gar:

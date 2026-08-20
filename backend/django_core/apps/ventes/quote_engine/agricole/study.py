@@ -127,7 +127,11 @@ def build(ctx) -> str:
         sub = theme.join_meta(pompe_nom or "", type_lbl, alim_lbl)
         steps.append(("La pompe choisie", sub or "Pompe solaire", f"{fmt_dec(pompe_cv)} CV"))
     if kwc:
-        steps.append(("Le champ solaire", f"{nb_pan} panneaux × {wp} W", f"{fmt_dec(kwc)} kWc"))
+        # M3 — « × W » seulement si la puissance unitaire a été LUE (ligne ou
+        # fiche produit) ; sinon « N panneaux » tout court, jamais un défaut
+        # catalogue présenté comme la caractéristique du panneau vendu.
+        _champ = f"{nb_pan} panneaux × {wp} W" if wp else f"{nb_pan} panneaux"
+        steps.append(("Le champ solaire", _champ, f"{fmt_dec(kwc)} kWc"))
     if has_water and m3j:
         sub = (f"{fmt_dec(debit)} m³/h × {fmt_dec(heures)} h de soleil utile"
                if debit and heures else "Livré chaque jour")

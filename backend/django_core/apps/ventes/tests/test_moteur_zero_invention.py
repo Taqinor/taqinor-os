@@ -88,6 +88,51 @@ class M2PuissanceInventeeParLePrixTests(SimpleTestCase):
             self.assertFalse(builder._is_panel(designation), designation)
 
 
+class M3WattNonLuTests(SimpleTestCase):
+    """M3 — « × 710 W » n'est plus imprimé sans lecture, et la désignation
+    facturée n'est jamais réécrite."""
+
+    def test_watt_non_lu_le_document_ecrit_n_panneaux_sans_puissance(self):
+        html = F.html_legacy(watt_par_panneau=None)
+        self.assertNotIn("panneaux &#215;", html)
+        self.assertIn("8 panneaux</div>", html)
+
+    def test_watt_lu_la_puissance_unitaire_reste_imprimee(self):
+        html = F.html_legacy()
+        self.assertIn("8 panneaux &#215; 710&nbsp;W", html)
+
+    def test_la_designation_facturee_n_est_jamais_suffixee(self):
+        # Le libellé contractuel de la ligne s'affiche tel quel : le moteur
+        # ajoutait « 710 Wc » derrière, donc engageait une caractéristique
+        # que le devis ne porte pas.
+        html = F.html_legacy()
+        self.assertIn("Panneau Canadien Solar 710W", html)
+        self.assertNotIn("Panneau Canadien Solar 710W 710&#160;Wc", html)
+        self.assertNotIn("710W 710", html)
+
+    def test_le_moteur_lit_le_watt_sans_repli_catalogue(self):
+        from apps.ventes.quote_engine import builder
+
+        class _L:
+            def __init__(self, designation, quantite):
+                self.designation = designation
+                self.quantite = quantite
+                self.produit = None
+
+        # Aucune puissance lisible nulle part → None, jamais 710.
+        nb, watt = builder.panneaux_et_watt_lu([_L("Panneaux solaires", 16)])
+        self.assertEqual(nb, 16)
+        self.assertIsNone(watt)
+        # Le contrat HISTORIQUE (KPI interne) garde, lui, son repli documenté.
+        self.assertEqual(
+            builder.puissance_panneaux_lignes([_L("Panneaux solaires", 16)]),
+            (16, builder._DEFAULT_WATT))
+        # Puissance écrite dans la désignation → elle est LUE.
+        self.assertEqual(
+            builder.panneaux_et_watt_lu([_L("Panneau Jinko 585W", 10)]),
+            (10, 585))
+
+
 class M1GhiSourceUniqueTests(SimpleTestCase):
     """M1 (suite) — une SEULE dérivation du profil GHI dans tout le backend."""
 

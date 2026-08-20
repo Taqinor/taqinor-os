@@ -383,11 +383,27 @@ def puissance_panneaux_lignes(lignes) -> tuple[int, int]:
     filtrée (lignes produit non optionnelles, ``LigneDevis.compte_dans_totaux``)
     que l'appelant possède ; aucune requête n'est faite ici.
 
-    ``watt`` retombe TOUJOURS sur ``_DEFAULT_WATT`` (710 W) quand aucune ligne
-    panneau n'est exploitable — même repli que l'estimation faute de ligne
-    panneau, historique et inchangé. ``nb_panneaux`` vaut alors 0 : à
-    l'appelant de choisir son propre repli (estimation d'équipement pour le
-    PDF, kWc du calepinage pour le KPI/la page).
+    ``watt`` retombe sur ``_DEFAULT_WATT`` (710 W) quand aucune ligne panneau
+    n'est exploitable. CE REPLI NE SORT JAMAIS SUR UN DOCUMENT CLIENT : depuis
+    M3 (audit du 19/08/2026) le moteur de devis lit ``panneaux_et_watt_lu``,
+    qui rend ``None`` au lieu du défaut. Ce contrat-ci reste inchangé pour le
+    KPI INTERNE « conçu vs vendu » (``apps/ventes/reports.py``), qui a besoin
+    d'un ordre de grandeur et n'imprime rien au client.
+    """
+    nb_panneaux, watt = panneaux_et_watt_lu(lignes)
+    return nb_panneaux, (watt or _DEFAULT_WATT)
+
+
+def panneaux_et_watt_lu(lignes) -> tuple:
+    """``(nb_panneaux, watt LU)`` — ``watt`` vaut ``None`` s'il est ILLISIBLE.
+
+    M3 (audit adversarial du 19/08/2026) — « × 710 W » était imprimé sur des
+    devis dont AUCUNE ligne ni fiche produit ne porte 710 W : le défaut
+    catalogue passait pour une lecture. Une puissance unitaire non lue est
+    désormais absente, et le document écrit « N panneaux » tout court.
+
+    Ordre de lecture, inchangé : fiche technique du produit (PV11) puis
+    désignation / nom du produit.
     """
     nb_panneaux = 0
     watt = None
@@ -400,7 +416,7 @@ def puissance_panneaux_lignes(lignes) -> tuple[int, int]:
             watt = (watt
                     or _fiche_watt(produit)
                     or _parse_watt(designation, produit_nom))
-    return nb_panneaux, (watt or _DEFAULT_WATT)
+    return nb_panneaux, watt
 
 
 # Whitelisted PDF format options (mirroring the simulator's payload). The
@@ -674,14 +690,13 @@ def build_quote_data(devis, pdf_options=None) -> dict:
 
     # ── Derive power from the panel line(s) ──────────────────────────────────
     # PV11 — ORDRE DE RÉSOLUTION de la puissance panneau : fiche technique du
-    # produit (Pmax constructeur) > regex sur désignation/nom > repli catalogue.
-    # Sans fiche exploitable, ``_fiche_watt`` rend None et le chemin regex
-    # historique s'applique à l'identique. La première ligne panneau qui donne
-    # une puissance l'emporte, comme avant.
-    # PVUNI — ``puissance_panneaux_lignes`` est LA fonction partagée (aussi
-    # appelée par ``reports.py`` pour le KPI « conçu vs vendu ») : jamais une
-    # seconde dérivation de « combien de panneaux, quel watt » à côté.
-    nb_panneaux, watt = puissance_panneaux_lignes(lignes)
+    # produit (Pmax constructeur) > regex sur désignation/nom. La première
+    # ligne panneau qui donne une puissance l'emporte, comme avant.
+    # M3 — plus de repli catalogue ICI : un watt non lu vaut ``None`` et le
+    # document écrit « N panneaux » sans puissance unitaire. Le KPI interne
+    # (``reports.py``) garde son repli via ``puissance_panneaux_lignes`` — même
+    # boucle, deux contrats, jamais deux dérivations.
+    nb_panneaux, watt = panneaux_et_watt_lu(lignes)
 
     # ── Split into the two options ───────────────────────────────────────────
     # Option 1 "Sans batterie": réseau/injection inverter, NO hybrid, NO battery.
@@ -748,11 +763,15 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # LIGNES. Il est relu bien plus bas, au bloc « toiture 3D » : un calepinage
     # ne peut plus écraser une puissance issue des lignes.
     puissance_des_lignes = nb_panneaux > 0
-    if nb_panneaux > 0:
+    if nb_panneaux > 0 and watt:
         puissance_kwc = round(nb_panneaux * watt / 1000, 2)
     else:
+        # M3 — des panneaux comptés mais aucune puissance unitaire LUE : le
+        # compte reste vrai, le kWc devient inconnu. « 14 panneaux », sans
+        # « × 710 W » ni kWc fabriqué à partir de ce 710.
         puissance_kwc = None
-        nb_panneaux = None
+        if nb_panneaux <= 0:
+            nb_panneaux = None
 
     # ── Z1 (ORDRE FONDATEUR, 20/08/2026) — PLUS AUCUNE BATTERIE DE SYNTHÈSE ──
     #
