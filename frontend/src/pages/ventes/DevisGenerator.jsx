@@ -1831,9 +1831,15 @@ export default function DevisGenerator({
     return Object.keys(e).length === 0
   }
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    if (!validate()) return
+  // Cœur de persistance extrait de `handleSubmit` (aucun changement de
+  // comportement) : construit etudeParams/payload/lignes, écrit le devis
+  // (édition atomique ou création atomique), et RENVOIE {devisId, devisCree}
+  // en cas de succès — null sinon (le message HUMAIN est déjà posé dans
+  // `errors.submit`). PV23bis (fondateur 20/08) — `ouvrirConception3D`
+  // ci-dessous réutilise EXACTEMENT ce même chemin d'écriture pour le bouton
+  // « Concevoir en 3D » : un seul endroit qui sait enregistrer un devis,
+  // jamais une seconde logique dupliquée.
+  const persisterDevis = async () => {
     setSaving(true)
     try {
       // Paramètres d'étude stockés avec le devis (alimentent la page Étude
@@ -1991,8 +1997,7 @@ export default function DevisGenerator({
         devisCree = data
       }
 
-      clear() // VX62 — succès : purge le brouillon local.
-      finish(devisId, devisCree)
+      return { devisId, devisCree }
     } catch (err) {
       // Message HUMAIN, jamais de JSON brut — et le formulaire reste vivant.
       const raw = err?.response?.data ?? err
@@ -2013,9 +2018,36 @@ export default function DevisGenerator({
         msg = 'L\'enregistrement a échoué — vérifiez les champs et réessayez.'
       }
       setErrors(prev => ({ ...prev, submit: msg }))
+      return null
     } finally {
       setSaving(false)
     }
+  }
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    if (!validate()) return
+    const res = await persisterDevis()
+    if (res) { clear(); finish(res.devisId, res.devisCree) }
+  }
+
+  // PV23bis (fondateur 20/08) — « Concevoir en 3D » depuis l'écran de devis :
+  // l'outil 3D travaille désormais TOUJOURS SUR LE DEVIS (jamais un aller-
+  // retour lead déconnecté qui en créerait un second, cf. le bouton
+  // ci-dessous). Le formulaire est d'abord enregistré (création ou édition,
+  // via `persisterDevis` ci-dessus) pour que l'outil s'ouvre attaché à un
+  // devis réel et resynchronise ses lignes (PV21) ; le chemin lead ne
+  // survit que comme repli « conception avant devis valide », quand le
+  // formulaire n'est pas encore un devis enregistrable.
+  const ouvrirConception3D = async () => {
+    if (!validate()) {
+      if (leadId && selectedLead) navigate(`/devis-design/${selectedLead.id}`)
+      return
+    }
+    const res = await persisterDevis()
+    if (!res) return
+    clear()
+    navigate(`/ventes/devis/${res.devisId}/design`)
   }
 
   const selectedClient = clients.find(c => String(c.id) === String(clientId))
@@ -2439,21 +2471,27 @@ export default function DevisGenerator({
               </div>
             )}
 
-            {/* QX28 — le lead porte un repère toit (GPS) : raccourci vers la
-                conception 3D qui EXPLOITE ces données, plutôt qu'un devis à plat
-                qui les ignore. Visible seulement quand roof_point est présent. */}
-            {selectedLead?.roof_point && (
+            {/* QX28 — raccourci vers la conception 3D. PV23bis (fondateur
+                20/08, remplace PV23 ci-dessous) : visible dès qu'un lead OU
+                un client est choisi — plus seulement quand le lead porte un
+                repère toit (GPS) — parce que le bouton n'ouvre plus jamais un
+                lead déconnecté du devis : il enregistre D'ABORD le formulaire
+                (création ou édition, `ouvrirConception3D`) puis ouvre
+                l'outil SUR ce devis. Le repère GPS du lead, quand il existe,
+                reste simplement annoncé dans le libellé. */}
+            {(selectedLead || clientId) && (
               <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-brass-400/40 bg-brass-400/10 p-3 text-sm">
-                <span>🛰️ Repère toit disponible sur ce lead (GPS).</span>
-                {/* PV23 — quand on ÉDITE un devis existant, la conception 3D
-                    doit porter sur CE devis (elle resynchronise ses lignes,
-                    PV21) et non repartir du lead, ce qui en créerait un
-                    second. Sans devis en édition, le chemin lead est
-                    strictement inchangé. */}
+                <span>
+                  {selectedLead?.roof_point
+                    ? '🛰️ Repère toit disponible sur ce lead (GPS).'
+                    : '🛰️ Concevez la toiture en 3D — le devis est d\'abord enregistré en brouillon.'}
+                </span>
+                {/* PV23bis — remplace PV23 : édition COMME création passent
+                    désormais par `ouvrirConception3D` (enregistrement
+                    d'abord, puis ouverture SUR le devis) — une édition non
+                    enregistrée n'est plus perdue en repartant du lead. */}
                 <Button type="button" variant="outline" size="sm"
-                        onClick={() => navigate(editDevis?.id
-                          ? `/ventes/devis/${editDevis.id}/design`
-                          : `/devis-design/${selectedLead.id}`)}>
+                        disabled={saving} onClick={ouvrirConception3D}>
                   Concevoir en 3D
                 </Button>
               </div>
