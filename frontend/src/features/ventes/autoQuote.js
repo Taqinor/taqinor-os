@@ -174,8 +174,8 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
     const kwpAuto = panels * 710 / 1000
 
     // ── U3 (fondateur 20/08/2026) — LE RÉSIDENTIEL NE COMPOSE PLUS ICI ─────
-    // « il y a encore DEUX sortes de devis ; je veux UNE SEULE source de
-    // vérité et tout le monde copie dessus. »
+    // Ordre fondateur APPLIQUÉ par ce fichier : la composition n'a plus
+    // qu'UNE source de vérité (le serveur) et cet écran la consomme.
     //
     // Il y en avait bien deux : cet écran composait le kit en JavaScript
     // (`autoFillLines`) pendant que le serveur le composait en Python

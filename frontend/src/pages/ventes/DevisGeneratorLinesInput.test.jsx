@@ -155,13 +155,20 @@ describe('VX137 — table de lignes : champs design system, saisie jamais rejet�
     const uniteHt = htFromTtc(prix.value, tva.value || 20)
     const lineHt = (parseFloat(qte.value) || 0) * (parseFloat(uniteHt) || 0)
 
+    // toHaveTextContent normalise les espaces du DOM mais PAS la chaîne
+    // attendue : formatMoney émet une espace insécable fine (U+202F) que la
+    // normalisation réduit en espace simple côté DOM seulement — on normalise
+    // donc LES DEUX côtés (rouge CI 20/08, classe « espaces Intl fr-FR »).
+    const normalise = (s) => s.replace(/\s+/g, ' ')
     const prixCell = row.querySelector('td[data-label="Prix unit. TTC"]')
-    expect(prixCell).toHaveTextContent(`HT : ${formatMoney(uniteHt)}`)
+    expect(normalise(prixCell.textContent))
+      .toContain(normalise(`HT : ${formatMoney(uniteHt)}`))
     // Toujours un seul input éditable dans la cellule TTC (le HT reste dérivé).
     expect(prixCell.querySelectorAll('input').length).toBe(1)
 
     const totalCell = row.querySelector('td[data-label="Total TTC"]')
-    expect(totalCell).toHaveTextContent(`HT : ${formatMoney(lineHt)}`)
+    expect(normalise(totalCell.textContent))
+      .toContain(normalise(`HT : ${formatMoney(lineHt)}`))
   })
 })
 
