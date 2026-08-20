@@ -18,6 +18,7 @@ Every money number goes through `ctx["fmt"]`; currency is MAD; language FR.
 
 def build(ctx):
     from . import theme
+    from .. import constants
 
     d = ctx["d"]
     C = ctx["C"]
@@ -89,11 +90,26 @@ def build(ctx):
     month_before = round(annual_before / 12)
     month_after = round(annual_after / 12)
     # Environmental impact — a CALCULATION, not an invented statistic: Moroccan
-    # grid factor ≈ 0.81 t CO₂/MWh (IEA), ~21 kg CO₂ absorbed per tree per year.
-    co2_t = prod_kwh * 0.81 / 1000.0
+    # grid factor + kg CO₂/tree/year now live in quote_engine.constants (M8,
+    # 19/08/2026) — the SAME two numbers the tree count on apps/web reads, so
+    # the same devis never prints two different tree counts on two supports.
+    co2_t = prod_kwh * constants.CO2_T_PAR_MWH / 1000.0
     co2_txt = (f"{co2_t:.1f}".replace(".", ",") if co2_t < 10
                else fmt(co2_t))
-    trees = max(1, round(prod_kwh * 0.81 / 21))
+    # M8 — plus de plancher « au moins 1 arbre » : un compte à 0 s'affiche 0
+    # (la mention entière s'omet plus bas — « l'équivalent de 0 arbres »
+    # n'aurait aucun sens sur un document client).
+    trees = round(prod_kwh * constants.CO2_T_PAR_MWH
+                  / constants.KG_CO2_PAR_ARBRE_AN)
+    impact_html = (f"""
+    <!-- IMPACT STRIP ───────────────────────────────────────────────────── -->
+    <div class="c1-impact">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M12 21c5-1 8-5 8-11V5l-5 1c-5 1-8 4-8 9 0 .7.1 1.4.3 2"
+        stroke="{green}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M7 21c0-4 2-7 6-9" stroke="{green}" stroke-width="1.7" stroke-linecap="round"/></svg>
+      <div class="c1-impact-t">Et pour la planète&nbsp;: ≈&nbsp;<b>{co2_txt} tonnes de CO<sub>2</sub></b>
+        évitées chaque année — l'équivalent de <b>≈&nbsp;{fmt(trees)} arbres</b> plantés.</div>
+    </div>""" if trees > 0 else "")
     validity_days = d["validity_days"]
     # QRES31 — échéance absolue sur la pastille (une date butoir concrète
     # engage plus que « 30 jours ») ; repli sur la durée si date illisible.
@@ -551,14 +567,7 @@ def build(ctx):
       </div>
 {kpi_eco_html}    </div>
 
-    <!-- IMPACT STRIP ───────────────────────────────────────────────────── -->
-    <div class="c1-impact">
-      <svg viewBox="0 0 24 24" fill="none"><path d="M12 21c5-1 8-5 8-11V5l-5 1c-5 1-8 4-8 9 0 .7.1 1.4.3 2"
-        stroke="{green}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
-        <path d="M7 21c0-4 2-7 6-9" stroke="{green}" stroke-width="1.7" stroke-linecap="round"/></svg>
-      <div class="c1-impact-t">Et pour la planète&nbsp;: ≈&nbsp;<b>{co2_txt} tonnes de CO<sub>2</sub></b>
-        évitées chaque année — l'équivalent de <b>≈&nbsp;{fmt(trees)} arbres</b> plantés.</div>
-    </div>
+    {impact_html}
 
     <!-- OPTION CARDS ───────────────────────────────────────────────────── -->
     <div class="c1-opts">{opts_html}</div>

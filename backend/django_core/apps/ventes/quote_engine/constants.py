@@ -35,3 +35,16 @@ KWH_PRICE = 1.75   # MAD/kWh FIXE (utilisé en interne — ne pas afficher dans 
 # disponible ; dès qu'un devis porte une société, c'est le 1600 (ou la valeur
 # éditée) du profil qui prime.
 PRODUCTIBLE_DEFAUT = 1600
+
+# ---------- CONSTANTES IMPACT ENVIRONNEMENTAL (résidentiel) ----------
+# M8 (audit du 19/08/2026) — SOURCE UNIQUE et DATÉE : le PDF résidentiel
+# (cover.py + options.py) recopiait ces deux chiffres localement, et un
+# arrondi divergeait déjà du site web pour le MÊME devis (21 kg/arbre/an côté
+# PDF, 22 côté web). Décision fondateur : le PDF s'aligne sur la valeur du
+# site (22) ; le site n'est pas modifiable depuis cette lane.
+# Facteur réseau marocain — mix électrique national, ≈0,81 t CO₂/MWh (IEA,
+# dernier ratio publié consommé par ce moteur, 2026).
+CO2_T_PAR_MWH = 0.81
+# Absorption annuelle d'un arbre (kg de CO₂/an) — ALIGNÉE sur apps/web
+# (référence usuelle grand public ; gardée identique des deux côtés).
+KG_CO2_PAR_ARBRE_AN = 22

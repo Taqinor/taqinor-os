@@ -1,18 +1,22 @@
-"""M6 — le renderer RÉSIDENTIEL n'invente aucune garantie (audit 19/08/2026).
+"""M6/M8 — le renderer RÉSIDENTIEL n'invente aucun chiffre (audit du 19/08/2026).
 
 RÈGLE : valeur inconnue ⇒ ``None`` + omission, JAMAIS un forfait.
 
 Comme ``test_moteur_zero_invention`` (moteur legacy), chaque test épingle le
 HTML RÉELLEMENT RENDU par le renderer résidentiel redessiné
 (``residential.render.build_html``), pas la fonction qui le calcule — c'est le
-trou par lequel « 87,4 % » codé en dur est passé : tout le monde interrogeait
-des fonctions, personne ne regardait le document. Aucune BD, aucun
-WeasyPrint : ``SimpleTestCase``, rendu HTML pur.
+trou par lequel « 87,4 % » et « 21 kg/arbre » codés en dur sont passés :
+tout le monde interrogeait des fonctions, personne ne regardait le document.
+Aucune BD, aucun WeasyPrint : ``SimpleTestCase``, rendu HTML pur.
 
 M6 — la carte « Performance garantie » (page 2, ``options.py``) et la bande
 « Nos garanties » (page 3, ``trust.py``) doivent toujours porter la MÊME
 durée : les deux lisent ``theme.warranties_for(d)``, dérivée de la
 composition réelle du devis, jamais un littéral recopié.
+
+M8 — le nombre d'arbres imprimé dérive de ``quote_engine.constants``
+(CO2_T_PAR_MWH / KG_CO2_PAR_ARBRE_AN = 22, alignée sur apps/web), plus jamais
+21, et plus de plancher « au moins 1 arbre » : un compte à 0 omet la mention.
 """
 
 import re
@@ -124,3 +128,49 @@ class M6GarantiesResidentiellesTests(SimpleTestCase):
         self.assertNotIn("Performance garantie", html)
         self.assertNotIn("— Performance", html)
         self.assertNotIn("87,4", html)
+
+
+class M8ImpactCo2ArbresTests(SimpleTestCase):
+    """M8 — le nombre d'arbres imprimé dérive de constants.KG_CO2_PAR_ARBRE_AN
+    (22, alignée sur apps/web), plus jamais 21 ; zéro arbre ⇒ mention omise."""
+
+    def test_le_nombre_d_arbres_derive_du_facteur_22_pas_21(self):
+        d = renderer._augment(F.donnees_residentiel())
+        html = render.build_html(d)
+        prod = d["prod_kwh"]
+        attendu_22 = round(prod * 0.81 / 22)
+        attendu_21 = round(prod * 0.81 / 21)
+        self.assertNotEqual(attendu_22, attendu_21,
+                            "fixture invalide : les deux diviseurs doivent "
+                            "donner un compte différent pour que le test "
+                            "prouve quelque chose")
+        self.assertIn(f"≈&nbsp;{attendu_22} arbres", html)
+        self.assertNotIn(f"≈&nbsp;{attendu_21} arbres", html)
+
+    def test_production_nulle_aucune_mention_d_arbres_ni_de_co2(self):
+        # _augment refuse prod_kwh=0 (garde M2) : on l'annule APRÈS
+        # augmentation, pour tester la page RÉELLEMENT rendue par cover.py.
+        d = renderer._augment(F.donnees_residentiel())
+        d["prod_kwh"] = 0
+        html = render.build_html(d)
+        self.assertNotIn("arbres", html)
+        self.assertNotIn("Et pour la planète&nbsp;:", html)
+
+    def test_page_deux_derive_aussi_du_facteur_22(self):
+        # Le variant « plus10 » déclenche la page rentabilité dédiée
+        # (options.py) qui porte son propre bloc impact environnemental.
+        d = renderer._augment(F.donnees_residentiel("plus10"))
+        html = render.build_html(d)
+        prod = d["prod_kwh"]
+        attendu = round(prod * 0.81 / 22)
+        self.assertIn(f"≈ {attendu}</span><span class=\"p2-imp-l\">arbres",
+                      html)
+
+    def test_page_deux_omet_la_carte_arbres_quand_le_compte_tombe_a_zero(self):
+        d = renderer._augment(F.donnees_residentiel("plus10"))
+        d["prod_kwh"] = 5   # round(5 * 0.81 / 22) == 0, mais production > 0
+        html = render.build_html(d)
+        self.assertNotIn("arbres plantés", html)
+        # Les cartes CO2 (année / 25 ans) restent : seule la carte arbres,
+        # tombée à zéro, s'omet.
+        self.assertIn("de CO<sub>2</sub> évitées chaque année", html)
