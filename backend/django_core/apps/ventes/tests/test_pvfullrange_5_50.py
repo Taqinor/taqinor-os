@@ -42,18 +42,17 @@ LA MATRICE ENCODÉE (catalogue du 20/08/2026) :
   * hybride monophasé + batterie — 5 kWc (naturel) et 10 kWc (vivier forcé,
     cf. ci-dessus) — Deye OND-H-DEY-5M/10M + Dyness BAT-DEY-5/10 (fenêtre
     basse tension 40-60 V, batterie mesurée à 51,2 V).
-  * hybride triphasé BASSE TENSION + batterie — 10 kWc (OND-H-DEY-10T) et,
-    depuis PVLV (fondateur 21/08/2026 : « the prices that were there were
-    for 15kw and 20kw LV inverters »), 15 et 20 kWc (OND-DEY-15K-LV/20K-LV,
-    prix fondateur transférés) — MÊME fenêtre 40-60 V que les mono.
+  * hybride triphasé BASSE TENSION + batterie — 10, 15 et 20 kWc
+    (OND-H-DEY-10T/15T/20T, tous SG05LP3 basse tension — PVLV2, fondateur
+    21/08/2026 : « i only know 15 and 20kw on LV ») — MÊME fenêtre 40-60 V
+    que les mono, batteries Dyness 51,2 V.
 
 TROU DE CATALOGUE DOCUMENTÉ, DÉLIBÉRÉMENT NON COUVERT PAR LA MATRICE
-CI-DESSUS : aucun onduleur hybride ≥ 25 kW n'existe au catalogue (les
-SG01HP3 HAUTE TENSION 15/20 kW sont désormais à prix VIDE — leurs anciens
-prix étaient ceux des LV — et la batterie HV BAT-DYN-HV-16 reste sans
-candidature possible tant que la question de l'appariement AM2 n'est pas
-tranchée par le fondateur). Une demande « hybride 30 kW avec batterie »
-replie donc sur le plus gros modèle LV disponible.
+CI-DESSUS : aucun onduleur hybride ≥ 25 kW n'existe au catalogue (le parc
+réel s'arrête à 20 kW ; la batterie HV Deye BOS-B Pro reste hors
+auto-composition — système C&I apparié par Deye aux onduleurs 30-80 kW).
+Une demande « hybride 30 kW avec batterie » replie donc sur le plus gros
+modèle disponible.
 ``QuoteFullRange5To50Test.test_trous_catalogue_documentes_ne_cassent_jamais``
 vérifie SEULEMENT que cette composition ne LÈVE JAMAIS — elle ne fige à
 dessein aucune sortie dégradée, pour que le jour où le fondateur ajoute un
@@ -107,12 +106,12 @@ REACHABLE_MATRIX = (
            'hybride', 'mono', 10, (_ONDULEUR_HYBRIDE_10T,)),
     Saveur('hybride triphasé basse tension 10 kW avec batterie', 10, True,
            'hybride', 'tri', 10, ()),
-    # PVLV (fondateur 21/08/2026) — les prix 36 000/48 000 TTC étaient ceux
-    # des jumeaux BASSE TENSION : ces deux paliers sont désormais composables
-    # de bout en bout (fenêtre batterie 40-60 V, Dyness 51,2 V).
-    Saveur('hybride triphasé basse tension 15 kW avec batterie (PVLV)', 15,
+    # PVLV2 (fondateur 21/08/2026) — les 15/20 kW du catalogue SONT les
+    # SG05LP3 basse tension (fenêtre batterie 40-60 V, Dyness 51,2 V) :
+    # composables de bout en bout avec leurs prix d'origine.
+    Saveur('hybride triphasé basse tension 15 kW avec batterie (PVLV2)', 15,
            True, 'hybride', 'tri', 15, ()),
-    Saveur('hybride triphasé basse tension 20 kW avec batterie (PVLV)', 20,
+    Saveur('hybride triphasé basse tension 20 kW avec batterie (PVLV2)', 20,
            True, 'hybride', 'tri', 20, ()),
 )
 

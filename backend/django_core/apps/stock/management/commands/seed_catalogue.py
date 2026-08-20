@@ -46,21 +46,17 @@ CATALOGUE = [
     ('Onduleur hybride Deye 5kW Monophasé',    'OND-H-DEY-5M',   'Onduleurs', 17000, 12000, 500, 5),
     ('Onduleur hybride Deye 10kW Monophasé',   'OND-H-DEY-10M',  'Onduleurs', 28000, 24000, 500, 5),
     ('Onduleur hybride Deye 10kW Triphasé',    'OND-H-DEY-10T',  'Onduleurs', 28000, 24000, 500, 5),
-    # PVLV (fondateur 21/08/2026 — « the prices that were there were for 15kw
-    # and 20kw LV inverters ») : les 36 000/48 000 TTC portés ici depuis
-    # l'origine étaient les prix des jumeaux BASSE TENSION SG05LP3 (ci-dessous)
-    # — pas ceux de ces SG01HP3 HAUTE TENSION. Prix HV remis à ZÉRO (grisés
-    # « prix à renseigner », même garde que les pompes OSP) tant que le
-    # fondateur n'a pas communiqué de vrais prix HV ; la migration stock 0126
-    # opère le MÊME transfert sur les bases existantes.
-    ('Onduleur hybride Deye 15kW Triphasé',    'OND-H-DEY-15T',  'Onduleurs', 0, 0, 500, 5),
-    ('Onduleur hybride Deye 20kW Triphasé',    'OND-H-DEY-20T',  'Onduleurs', 0, 0, 500, 5),
-    # PVLV — les jumeaux BASSE TENSION (SG05LP3, plage batterie 40-60 V,
-    # compatibles Dyness 51,2 V — le parc réel du fondateur) reçoivent les
-    # prix fondateur ci-dessus. « Modèle confirmé fondateur » sur les deux
-    # (18/08/2026), prix confirmés fondateur (21/08/2026).
-    ('Onduleur hybride Deye 15kW Triphasé Basse Tension', 'OND-DEY-15K-LV', 'Onduleurs', 36000, 30000, 500, 5),
-    ('Onduleur hybride Deye 20kW Triphasé Basse Tension', 'OND-DEY-20K-LV', 'Onduleurs', 48000, 42000, 500, 5),
+    # PVLV2 (fondateur 21/08/2026, DÉFINITIF — « i only know 15 and 20kw on
+    # LV, i dont even have them in high voltage ») : ces deux SKU historiques
+    # SONT les modèles BASSE TENSION SG05LP3 du parc réel, avec leurs prix
+    # d'origine. L'identification « SG01HP3 haute tension » (PVG4) était une
+    # SUPPOSITION de recherche jamais validée par le fondateur — elle a créé
+    # le 18/08 deux SKU doublons « Basse Tension » (OND-DEY-15K-LV/20K-LV),
+    # désormais ARCHIVÉS (``ARTEFACTS_ONDULEUR_SKUS``). Fiches recalées sur la
+    # datasheet SG05LP3 14-20K (migration stock 0126 pour les bases
+    # existantes).
+    ('Onduleur hybride Deye 15kW Triphasé',    'OND-H-DEY-15T',  'Onduleurs', 36000, 30000, 500, 5),
+    ('Onduleur hybride Deye 20kW Triphasé',    'OND-H-DEY-20T',  'Onduleurs', 48000, 42000, 500, 5),
     # ── Panneaux ──
     ('Panneau Canadien Solar 710W', 'PAN-CS-710', 'Panneaux solaires', 1400, 1200, 1000, 20),
     ('Panneau Jinko 710W',          'PAN-JK-710', 'Panneaux solaires', 1400, 1200, 1000, 20),
@@ -235,7 +231,13 @@ PLACEHOLDER_VFD_SKUS = [
 # coffrets estimés ci-dessus (autorisation fondateur : jamais de suppression).
 # artefact PVG4 : palier inexistant chez Huawei ; le besoin mono 10-12 kW se
 # couvre par Deye SG02LP1 (à référencer sur décision fondateur).
-ARTEFACTS_ONDULEUR_SKUS = ['OND-R-HUA-10M', 'OND-R-HUA-12M']
+ARTEFACTS_ONDULEUR_SKUS = [
+    'OND-R-HUA-10M', 'OND-R-HUA-12M',
+    # PVLV2 (fondateur 21/08/2026) — doublons nés de la fausse identification
+    # « SG01HP3 haute tension » des 15/20 kW : le parc réel n'a QUE du basse
+    # tension (OND-H-DEY-15T/20T = SG05LP3). Archivés, jamais supprimés.
+    'OND-DEY-15K-LV', 'OND-DEY-20K-LV',
+]
 
 # ── Pompes OSP série 30 (3", immergées, triphasées 380 V) ────────────────────
 # Courbes de performance constructeur : HMT (m) délivrée à chaque débit (m³/h).
@@ -302,27 +304,16 @@ CABLES_PROTECTIONS_VIDES = [
     ('Coffret AC',           'COF-AC',      100, 5),
 ]
 
-# ── PVG4 — Onduleur Deye 15 kW BASSE TENSION (décision fondateur 2026-08-18)
-# Série officielle Deye SUN-14/15/16/18/20K-SG05LP3-EU-SM2 (triphasé BASSE
-# TENSION 48 V, lancée 2024). Le catalogue n'avait que le palier 10 kW
-# (OND-H-DEY-10T, PV85) ; ce palier 15 kW COMPLÈTE la gamme LV SG05LP3 — À NE
-# PAS CONFONDRE avec OND-H-DEY-15T (gamme HAUTE TENSION SG01HP3, cf. la note
-# PVG4 « INCOMPATIBILITÉ MÉTIER » plus haut : deux appareils réels différents
-# au même palier de puissance, d'où un SKU et un nom distincts ici).
-#
-# PVOND (18/08/2026) — le palier 20 kW rejoint la gamme LV pour la MÊME raison
-# que le 15 kW : OND-H-DEY-20T est un SG01HP3 HAUTE TENSION (160-700 V), donc
-# INCOMPATIBLE avec les batteries Dyness 51,2 V de la maison. Sans son jumeau
-# basse tension, un devis 20 kW « avec batterie » n'avait aucun onduleur
-# apparaissable au catalogue. Même patron exact que le 15 kW : SKU et nom
-# distincts. Les DEUX paliers basse tension (15 ET 20 kW) sont des produits
-# que le fondateur porte RÉELLEMENT — confirmé le 18/08/2026 — d'où « Modèle
-# confirmé fondateur » sur les deux.
-# PVLV (fondateur 21/08/2026) — les deux SKU basse tension vivent désormais
-# dans ``CATALOGUE`` ci-dessus AVEC leurs prix fondateur (36 000/48 000 TTC —
-# « the prices that were there were for 15kw and 20kw LV inverters ») : le
-# bloc « prix vides » historique est retiré, la migration stock 0126 opère le
-# transfert sur les bases existantes.
+# ── PVLV2 — HISTORIQUE des SKU « Basse Tension » (créés 18/08, ARCHIVÉS
+# 21/08/2026) ─────────────────────────────────────────────────────────────
+# La recherche PVG4 avait identifié OND-H-DEY-15T/20T comme des SG01HP3
+# « haute tension » — supposition jamais validée. Sur cette base fausse, deux
+# SKU « jumeaux basse tension » (OND-DEY-15K-LV/20K-LV) ont été créés le
+# 18/08. Le fondateur a tranché le 21/08 : « i only know 15 and 20kw on LV,
+# i dont even have them in high voltage » — les SKU HISTORIQUES sont ses
+# SG05LP3 basse tension, avec leurs prix d'origine ; les « jumeaux » sont
+# des DOUBLONS, archivés via ``ARTEFACTS_ONDULEUR_SKUS`` (jamais supprimés),
+# migration stock 0126 pour les bases existantes.
 
 # ── Batterie HAUTE TENSION — 16 kWh (fondateur 18/08, IDENTITÉ 21/08) ──────
 # Vendue PAR TRANCHE de 16 kWh, 3 000 DH/kWh (prix fondateur) → 48 000 DH TTC
@@ -339,10 +330,11 @@ CABLES_PROTECTIONS_VIDES = [
 # Deyness→Dyness) ; nom/marque/fiche corrigés (migration stock 0127 pour les
 # bases existantes). Prix ACHAT : 28 000 HT le pack (même facture).
 # ⚠ APPARIEMENT ONDULEUR NON PROMIS : la liste officielle Deye des batteries
-# approuvées (DY-HV(160-800)-028, 2025-08-09) n'apparie le BOS-B Pro qu'aux
-# onduleurs 30-80 kW (BM3/BM4/EM6) — PAS aux SUN-15K/20K-SG01HP3-EU-AM2 du
-# catalogue (famille AM2 → BOS-G / GB-L). Décision fondateur en attente ;
-# rien ici ne prétend le contraire.
+# approuvées (DY-HV(160-800)-028, 2025-08-09) apparie le BOS-B Pro aux
+# onduleurs C&I 30-80 kW (BM3/BM4/EM6) ; les hybrides du catalogue sont TOUS
+# en basse tension 48 V (SG05LP1/SG02LP1/SG05LP3, PVLV2) — ce système HV ne
+# se compose donc JAMAIS automatiquement avec eux, et aucun document client
+# ne prétend un appariement.
 # ⚠ HAUTE TENSION : ne doit JAMAIS être choisie par l'auto-composition
 # résidentielle BASSE TENSION (48 V, BAT-DEY-5/10) — garde posée côté
 # apps/ventes/services.py (mot-clé « haute tension » exclu du vivier
@@ -432,29 +424,10 @@ FICHES = {
                         'Monitoring Wi-Fi via Solarman Smart / Deye Cloud'),
     } for sku in ('OND-H-DEY-5M', 'OND-H-DEY-10M', 'OND-H-DEY-10T',
                   'OND-H-DEY-15T', 'OND-H-DEY-20T')},
-    # PVG4 — Onduleur Deye 15 kW BASSE TENSION (décision fondateur 2026-08-18,
-    # SUN-15K-SG05LP3-EU-SM2). Le modèle est donné directement par le
-    # fondateur (source WebFetch, pas une supposition) : l'addendum
-    # « Modèle confirmé fondateur : … » est posé automatiquement ci-dessous
-    # via MODELE_SUPPOSE_PVG4/MODELES_CONFIRMES_FONDATEUR, comme OND-H-DEY-10T.
-    'OND-DEY-15K-LV': {
-        'marque': 'Deye',
-        'garantie': 'Garantie constructeur 5 à 10 ans (selon site d\'installation)',
-        'description': ('Onduleur hybride Deye SUN-…K-SG05LP3, série basse tension 48 V (2024)\n'
-                        'Compatible batteries lithium/plomb 48 V (BMS auto-adaptatif)\n'
-                        'Bascule secours (EPS/UPS), monitoring GPRS/WiFi/Bluetooth/4G/LAN'),
-    },
-    # PVOND (18/08/2026) — jumeau BASSE TENSION du palier 20 kW. Même
-    # datasheet de famille que le 15 kW (SUN-14-20K-SG05LP3-EU-SM2). CONFIRMÉ
-    # FONDATEUR le 18/08 (« there is a deye 15kw and 20kw with low voltage ») —
-    # listé dans MODELES_CONFIRMES_FONDATEUR comme le 15K LV.
-    'OND-DEY-20K-LV': {
-        'marque': 'Deye',
-        'garantie': 'Garantie constructeur 5 à 10 ans (selon site d\'installation)',
-        'description': ('Onduleur hybride Deye SUN-…K-SG05LP3, série basse tension 48 V (2024)\n'
-                        'Compatible batteries lithium/plomb 48 V (BMS auto-adaptatif)\n'
-                        'Bascule secours (EPS/UPS), monitoring GPRS/WiFi/Bluetooth/4G/LAN'),
-    },
+    # PVLV2 (21/08/2026) — les fiches commerciales des SKU doublons
+    # OND-DEY-15K-LV/20K-LV sont retirées : produits ARCHIVÉS (cf.
+    # ``ARTEFACTS_ONDULEUR_SKUS``) — les 15/20 kW réels (OND-H-DEY-15T/20T,
+    # SG05LP3 basse tension) héritent de la fiche commune du groupe ci-dessus.
     'PAN-CS-710': {
         'marque': 'Canadien Solar',
         'garantie': '12 ans produit · 30 ans performance linéaire (87,4 %)',
@@ -539,10 +512,9 @@ FICHES = {
     # (200-1000 Vdc). Sources : deye.com « BOS-B Pro-A3 C&I ESS Solution » +
     # brochures officielles 2025-09-28 / 2025-12-11. Garantie 10 ans
     # PUBLIÉE (≥ 6000 cycles, EOL 70 %). La description ne fait AUCUNE
-    # promesse d'appariement onduleur : la liste officielle Deye des
-    # batteries approuvées (DY-HV(160-800)-028, 2025-08-09) n'apparie le
-    # BOS-B Pro qu'aux onduleurs 30-80 kW (BM3/BM4/EM6) — PAS à la famille
-    # AM2 15/20 kW du catalogue. Divergence signalée au fondateur.
+    # promesse d'appariement onduleur : Deye apparie officiellement ce
+    # système aux onduleurs C&I 30-80 kW (liste DY-HV(160-800)-028) ; les
+    # hybrides du catalogue sont tous en 48 V basse tension (PVLV2).
     'BAT-DYN-HV-16': {
         'marque': 'Deye',
         'garantie': 'Garantie constructeur 10 ans (≥ 6000 cycles, EOL 70 %)',
@@ -749,11 +721,13 @@ FICHES = {
 # ONDULEUR_/BATTERIE_FICHES_TECHNIQUES plus bas, où chaque champ porte sa
 # propre source ou reste NULL).
 #
-# ⚠ INCOMPATIBILITÉ MÉTIER remontée au fondateur : les Deye triphasés 15/20
-# kW réels appartiennent à la gamme HAUTE TENSION (batterie HV 160-700 V,
-# SG01HP3) ; la gamme basse tension 51,2 V (SG04LP3/SG05LP3, compatible
-# BAT-DEY-5/10) s'arrête à 12 kW — l'appairage OND-H-DEY-15T/20T + BAT-DEY-5/10
-# est ÉLECTRIQUEMENT IMPOSSIBLE dans la gamme réelle. Les paliers Huawei mono
+# PVLV2 (fondateur 21/08/2026) — l'« incompatibilité métier » anciennement
+# signalée ici était FAUSSE : elle reposait sur l'identification SG01HP3
+# haute tension des 15/20 kW (supposition PVG4) et sur l'idée que la gamme
+# basse tension s'arrêtait à 12 kW. La datasheet officielle SG05LP3 14-20K
+# (240601) prouve le contraire et le fondateur a tranché : ses 15/20 kW sont
+# des SG05LP3 basse tension — l'appairage OND-H-DEY-15T/20T + BAT-DEY-5/10
+# (fenêtre 40-60 V, batterie 51,2 V) est le parc RÉEL. Les paliers Huawei mono
 # réseau 10/12 kW sont eux des ARTEFACTS catalogue : aucun SUN2000 mono
 # réseau réel ne dépasse 6 kW (au-delà la gamme Huawei mono passe en
 # hybride, autre catégorie) — d'où OND-R-HUA-10M / OND-R-HUA-12M SANS fiche
@@ -791,8 +765,12 @@ MODELE_SUPPOSE_PVG4 = {
     # catalogue est un SG05LP3 (révision SM2), PAS le SG04LP3 supposé en PVG4.
     # Seul SKU dont le modèle est CONFIRMÉ (cf. MODELES_CONFIRMES_FONDATEUR).
     'OND-H-DEY-10T': 'Deye SUN-10K-SG05LP3-EU-SM2',      # deyeinverter.com datasheet 2024-09 + manuel 2025-11
-    'OND-H-DEY-15T': 'Deye SUN-15K-SG01HP3-EU-AM2',      # deyeinverter datasheet sun-(5-25)k-sg01hp3
-    'OND-H-DEY-20T': 'Deye SUN-20K-SG01HP3-EU-AM2',      # solarhouse.bg + pretapower
+    # PVLV2 (fondateur 21/08/2026, DÉFINITIF — « i only know 15 and 20kw on
+    # LV ») : les identifications SG01HP3 « haute tension » (PVG4, supposées
+    # depuis solarhouse.bg/pretapower) étaient FAUSSES — le parc réel est la
+    # famille basse tension SG05LP3 14-20K, même datasheet que le 10T.
+    'OND-H-DEY-15T': 'Deye SUN-15K-SG05LP3-EU-SM2',      # deyeinverter.com datasheet_sun-14-20k-sg05lp3-eu-sm2_240601_en.pdf (2024-06-01)
+    'OND-H-DEY-20T': 'Deye SUN-20K-SG05LP3-EU-SM2',      # même datasheet, colonne 20K
     'BAT-DEY-5': 'Dyness DL5.0C',                        # dyness.com DL5.0C datasheet
     # PVCOMPAT (2026-08-21) — tranché entre Pro et G2 par les fiches
     # OFFICIELLES dyness.com : les valeurs seedées (DoD 90 %, 9,216 kWh
@@ -805,17 +783,15 @@ MODELE_SUPPOSE_PVG4 = {
     # deye.com ; le suffixe -A3 exact reste une identification recherche,
     # d'où « supposé » et pas « confirmé fondateur ».
     'BAT-DYN-HV-16': 'Deye BOS-B-Pack16-A3 (BOS-B Pro-A3)',  # deye.com BOS-B Pro-A3 + facture Solarex 27/07/2026
-    # PVG4 — décision fondateur 2026-08-18 : nouveau palier 15 kW basse
-    # tension, modèle donné DIRECTEMENT par le fondateur (pas une supposition
-    # à deviner) — CONFIRMÉ dès la première seed, comme le 10T ci-dessus.
-    'OND-DEY-15K-LV': 'Deye SUN-15K-SG05LP3-EU-SM2',     # deyeinverter.com datasheet_sun-14-20k-sg05lp3-eu-sm2_240601_en.pdf (2024-06-01)
-    'OND-DEY-20K-LV': 'Deye SUN-20K-SG05LP3-EU-SM2',     # deyeinverter.com datasheet_sun-14-20k-sg05lp3-eu-sm2_240601_en.pdf (2024-06-01) — colonne 20K, CONFIRMÉ fondateur 18/08
 }
 # PV85 — SKU dont le modèle constructeur n'est PLUS une supposition : le
 # fondateur a tranché. Leur addendum de description dit « Modèle confirmé
 # fondateur : … » (pas « supposé … — à confirmer »), et c'est cette mention
 # qui autorise le moteur électrique à NOMMER l'appareil sur le schéma.
-MODELES_CONFIRMES_FONDATEUR = ('OND-H-DEY-10T', 'OND-DEY-15K-LV', 'OND-DEY-20K-LV')
+# PVLV2 (21/08/2026) — les 15/20 kW CONFIRMÉS par le fondateur : basse
+# tension SG05LP3 (« i only know 15 and 20kw on LV »), famille dont il a
+# lui-même donné le modèle le 18/08.
+MODELES_CONFIRMES_FONDATEUR = ('OND-H-DEY-10T', 'OND-H-DEY-15T', 'OND-H-DEY-20T')
 
 # Ajoute la mention du modèle (supposé ou confirmé) à la description
 # commerciale existante (SKU déjà présent dans FICHES ci-dessus) — additif,
@@ -879,17 +855,13 @@ PLAGE_BATTERIE_ONDULEUR = {
     'OND-H-DEY-5M': (40, 60),
     'OND-H-DEY-10M': (40, 60),
     'OND-H-DEY-10T': (40, 60),
-    'OND-DEY-15K-LV': (40, 60),
-    'OND-DEY-20K-LV': (40, 60),
-    # Deye HAUTE TENSION — famille SG01HP3, batterie lithium-ion 160-700 V.
-    # Source : datasheet officielle deyeinverter.com
-    # datasheet_sun-(5-25)k-sg01hp3-eu_230724_en.pdf (2023-07-24). C'est
-    # exactement l'incompatibilité métier déjà signalée au fondateur plus haut
-    # (une Dyness 51,2 V ne s'accroche PAS à ces deux appareils) — le garde
-    # data-driven de ``ventes.services`` la fait maintenant respecter par les
-    # CHIFFRES, plus par un mot-clé.
-    'OND-H-DEY-15T': (160, 700),
-    'OND-H-DEY-20T': (160, 700),
+    # PVLV2 (fondateur 21/08/2026) — les 15/20 kW sont eux aussi des SG05LP3
+    # BASSE TENSION (l'ancienne plage 160-700 V venait de la fausse
+    # identification SG01HP3) : fenêtre 40-60 V PARTAGÉE par toute la famille
+    # SG05LP3, même datasheet 14-20K que ci-dessus — les Dyness 51,2 V s'y
+    # accrochent, exactement le parc réel du fondateur.
+    'OND-H-DEY-15T': (40, 60),
+    'OND-H-DEY-20T': (40, 60),
 }
 
 for _sku_bat, _plage_bat in PLAGE_BATTERIE_ONDULEUR.items():
@@ -1149,106 +1121,36 @@ FICHES_TECHNIQUES = {
         'ond_rendement_euro_pct': Decimal('97.0'),
         'ond_v_demarrage_v': Decimal('160.0'), 'ond_isc_max_mppt_a': Decimal('39.0'),
     },
-    # PV85 — Deye SUN-15K-SG05LP3-EU-SM2 (gamme BASSE TENSION SG05LP3,
-    # décision fondateur 2026-08-18 — complète le palier 10 kW déjà seedé
-    # OND-H-DEY-10T ci-dessus, même famille de datasheet).
-    # Source : datasheet officielle deyeinverter.com/deyeinverter/2024/06/01/
-    # datasheet_sun-14-20k-sg05lp3-eu-sm2_240601_en.pdf (2024-06-01), colonne
-    # SUN-15K-SG05LP3-EU-SM2. La plage MPPT/V max/nb de trackers et le
-    # rendement EURO sont donnés PARTAGÉS pour toute la famille SG05LP3
-    # (14-20K) par la datasheet elle-même — pas une extrapolation.
-    # PVOND-H (2026-08-19) — tension de démarrage (160 V, sourcée ci-dessus)
-    # désormais SEEDÉE.
-    # NON seedés faute de champ sur FicheTechnique (jamais inventé, même
-    # garde que OND-H-DEY-10T) : 280 A charge/décharge, poids 50,6 kg. La
-    # PLAGE BATTERIE 40-60 V est désormais logée en DONNÉE sur la description
-    # (PVOND, ``PLAGE_BATTERIE_ONDULEUR``) ET sur le champ dédié (fusionné
-    # plus bas).
-    'OND-DEY-15K-LV': {
-        'type_fiche': 'onduleur', 'ond_n_mppt': 2,
-        'ond_mppt_v_min': Decimal('160.0'), 'ond_mppt_v_max': Decimal('650.0'),
-        'ond_v_max_abs': Decimal('800.0'),
-        # PVOND (2026-08-18, ordre fondateur) — asymétrique 36/20 A (fiche
-        # SG05LP3 14-20K, deyeinverter.com 2024-06-01, 2/2+1 chaînes) —
-        # valeur retenue : 20 A, règle prudente (jamais une config qui
-        # surcharge le tracker faible), même règle que OND-R-HUA-15T.
-        'ond_i_max_mppt_a': Decimal('20.0'),
-        'ond_ac_kw': Decimal('15'), 'ond_phases': 3,
-        'ond_rendement_euro_pct': Decimal('97.0'),
-        'ond_v_demarrage_v': Decimal('160.0'),
-        # PVCOMPAT (2026-08-21) — Isc maxi par MPPT asymétrique 54+30 A sur la
-        # MÊME fiche (datasheet_sun-14-20k-sg05lp3-eu-sm2_240601_en.pdf) —
-        # valeur retenue : 30 A, règle prudente (tracker le plus faible).
-        'ond_isc_max_mppt_a': Decimal('30.0'),
-    },
-    # PVOND (18/08/2026) — Deye SUN-20K-SG05LP3-EU-SM2, jumeau BASSE TENSION
-    # du palier 20 kW (OND-H-DEY-20T est un SG01HP3 HAUTE TENSION 160-700 V,
-    # incompatible avec les batteries 51,2 V de la maison).
-    # Source : MÊME datasheet officielle que le 15 kW ci-dessus —
-    # deyeinverter.com/deyeinverter/2024/06/01/
-    # datasheet_sun-14-20k-sg05lp3-eu-sm2_240601_en.pdf (2024-06-01), colonne
-    # SUN-20K-SG05LP3-EU-SM2. Plage MPPT (160-650 V), tension DC max (800 V),
-    # nombre de trackers (2) et rendement EURO (97,0 %) sont donnés PARTAGÉS
-    # par la datasheet pour toute la famille SG05LP3 14-20K : ce ne sont pas
-    # des extrapolations. Seule la puissance AC (20 kW) est propre à la
-    # colonne 20K.
-    # PVOND-H (2026-08-19) — tension de démarrage (160 V, sourcée ci-dessus)
-    # désormais SEEDÉE.
-    # NON seedés faute de champ sur FicheTechnique (jamais inventé, même garde
-    # que le 15 kW) : courants de charge/décharge, poids. La PLAGE BATTERIE
-    # 40-60 V est logée en DONNÉE sur la description (PVOND,
-    # ``PLAGE_BATTERIE_ONDULEUR``) ET sur le champ dédié (fusionné plus bas).
-    'OND-DEY-20K-LV': {
-        'type_fiche': 'onduleur', 'ond_n_mppt': 2,
-        'ond_mppt_v_min': Decimal('160.0'), 'ond_mppt_v_max': Decimal('650.0'),
-        'ond_v_max_abs': Decimal('800.0'),
-        # Asymétrique 36/20 A sur la fiche (2/2+1 chaînes) — valeur retenue :
-        # 20 A, MÊME règle prudente que le 15 kW LV et OND-R-HUA-15T (jamais
-        # une configuration qui surcharge le tracker le plus faible).
-        'ond_i_max_mppt_a': Decimal('20.0'),
-        'ond_ac_kw': Decimal('20'), 'ond_phases': 3,
-        'ond_rendement_euro_pct': Decimal('97.0'),
-        'ond_v_demarrage_v': Decimal('160.0'),
-        # PVCOMPAT (2026-08-21) — Isc maxi par MPPT 54+30 A (même fiche que le
-        # 15 kW LV) — valeur retenue : 30 A, règle prudente.
-        'ond_isc_max_mppt_a': Decimal('30.0'),
-    },
+    # PVLV2 (fondateur 21/08/2026, DÉFINITIF) — ces deux SKU sont les modèles
+    # BASSE TENSION SUN-15K/20K-SG05LP3-EU-SM2 (« i only know 15 and 20kw on
+    # LV ») : les anciennes valeurs SG01HP3 « haute tension » seedées ici
+    # venaient d'une supposition de recherche (PVG4) jamais validée. Source
+    # UNIQUE des valeurs ci-dessous : deyeinverter.com
+    # datasheet_sun-14-20k-sg05lp3-eu-sm2_240601_en.pdf (2024-06-01), table
+    # PARTAGÉE famille 14-20K (relecture directe 21/08/2026) :
+    # MPPT 160-650 V · 800 V DC max · 2 trackers (2/2+1 chaînes) · courant PV
+    # asymétrique 36+20 A → 20 A retenu (règle prudente, tracker faible) ·
+    # Isc maxi 54+30 A → 30 A retenu (même règle) · démarrage 160 V ·
+    # Euro 97,0 % · plage batterie 40-60 V (cf. PLAGE_BATTERIE_ONDULEUR).
+    # La migration stock 0126 recale les fiches des bases existantes (champ
+    # par champ, uniquement là où la valeur est encore l'ancienne seedée).
     'OND-H-DEY-15T': {
-        # Confiance moyenne : plage FAMILLE SG01HP3 (5-25K) documentée, pas
-        # spécifique au 15T — seedée quand même (règle PVG4), l'incertitude
-        # est portée par la mention « modèle supposé » sur la description.
-        # PVOND — nb de MPPT SOURCÉ (2 trackers) par la fiche officielle
-        # deyeinverter.com datasheet_sun-(5-25)k-sg01hp3-eu_230724_en.pdf.
-        # PVOND (2026-08-18, ordre fondateur) — asymétrique 26/20 A (cette
-        # même fiche) — valeur retenue : 20 A, règle prudente.
         'type_fiche': 'onduleur', 'ond_n_mppt': 2,
-        'ond_mppt_v_min': Decimal('150.0'), 'ond_mppt_v_max': Decimal('850.0'),
-        'ond_v_max_abs': Decimal('1000.0'), 'ond_i_max_mppt_a': Decimal('20.0'),
+        'ond_mppt_v_min': Decimal('160.0'), 'ond_mppt_v_max': Decimal('650.0'),
+        'ond_v_max_abs': Decimal('800.0'), 'ond_i_max_mppt_a': Decimal('20.0'),
         'ond_ac_kw': Decimal('15'), 'ond_phases': 3,
-        # PVCOMPAT (2026-08-21) — rendement euro DÉSORMAIS SOURCÉ DIRECTEMENT :
-        # la fiche famille SG01HP3 (même PDF 230724) publie Max 97,60 % /
-        # Euro 97,00 % PARTAGÉS 5-25K — plus une déduction depuis le 5M.
         'ond_rendement_euro_pct': Decimal('97.0'),
-        # PVCOMPAT (2026-08-21) — tension de démarrage 180 V, même fiche
-        # famille (valeur partagée 5-25K).
-        'ond_v_demarrage_v': Decimal('180.0'),
+        'ond_v_demarrage_v': Decimal('160.0'),
+        'ond_isc_max_mppt_a': Decimal('30.0'),
     },
     'OND-H-DEY-20T': {
-        # L'ancienne source donnait « charge max 50A » : c'est le courant de
-        # charge BATTERIE, pas un courant d'entrée MPPT PV — il n'a jamais eu
-        # sa place ici. PVOND — la fiche OFFICIELLE de la famille
-        # (deyeinverter.com datasheet_sun-(5-25)k-sg01hp3-eu_230724_en.pdf,
-        # 2023-07-24) donne pour le 20K « 26+26 A » : même valeur sur les deux
-        # trackers, donc un courant PAR MPPT propre (26 A) — plus 2 trackers et
-        # un rendement euro de 97,0 %.
         'type_fiche': 'onduleur', 'ond_n_mppt': 2,
-        'ond_mppt_v_min': Decimal('150.0'), 'ond_mppt_v_max': Decimal('850.0'),
-        'ond_v_max_abs': Decimal('1000.0'), 'ond_i_max_mppt_a': Decimal('26.0'),
+        'ond_mppt_v_min': Decimal('160.0'), 'ond_mppt_v_max': Decimal('650.0'),
+        'ond_v_max_abs': Decimal('800.0'), 'ond_i_max_mppt_a': Decimal('20.0'),
         'ond_ac_kw': Decimal('20'), 'ond_phases': 3,
-        # PVCOMPAT (2026-08-21) — Euro 97,00 % publié PARTAGÉ 5-25K par la
-        # fiche famille SG01HP3 ; tension de démarrage 180 V, même fiche.
         'ond_rendement_euro_pct': Decimal('97.0'),
-        'ond_v_demarrage_v': Decimal('180.0'),
+        'ond_v_demarrage_v': Decimal('160.0'),
+        'ond_isc_max_mppt_a': Decimal('30.0'),
     },
     # ── PVG4 — Batteries Dyness ──
     'BAT-DEY-5': {

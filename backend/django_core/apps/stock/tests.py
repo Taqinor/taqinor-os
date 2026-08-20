@@ -1698,96 +1698,108 @@ class TestPvfchComblerFichesManquantes(TestCase):
         self.assertEqual(fiche.pmax_wc, Decimal('710.00'))
 
 
-class TestPvlvTransfertPrixDeyeLv(TestCase):
-    """PVLV (fondateur 21/08/2026) — « the prices that were there were for
-    15kw and 20kw LV inverters » : la migration 0126 transfère les prix des
-    SKU HAUTE TENSION (OND-H-DEY-15T/20T) vers leurs jumeaux BASSE TENSION
-    (OND-DEY-15K-LV/20K-LV), puis remet les HV à zéro (« prix à renseigner »).
-    Une saisie fondateur sur le LV gagne toujours ; les valeurs transférées
-    sont celles DE LA BASE, jamais des constantes."""
+class TestPvlv2GammeLv(TestCase):
+    """PVLV2 (fondateur 21/08/2026) — « i only know 15 and 20kw on LV » :
+    OND-H-DEY-15T/20T SONT les SG05LP3 basse tension, prix d'origine intacts.
+    La migration 0126 archive les SKU doublons « Basse Tension » du 18/08 et
+    recale les fiches des valeurs SG01HP3 (fausse identification) vers les
+    valeurs SG05LP3 — champ par champ, jamais une saisie fondateur."""
 
     MIGRATION = 'apps.stock.migrations.0126_pvlv_prix_deye_lv'
 
     def setUp(self):
-        self.company = make_company(slug='test-cat-pvlv-prix')
+        self.company = make_company(slug='test-cat-pvlv2-lv')
 
     def _migration(self):
         import importlib
         return importlib.import_module(self.MIGRATION)
 
+    def _fiche_15t(self):
+        from apps.stock.models import FicheTechnique
+        return FicheTechnique.objects.get(
+            produit__company=self.company, produit__sku='OND-H-DEY-15T')
+
     def _etat_ancienne_base(self):
-        """Reproduit une base d'AVANT le 21/08 : HV prixé (valeurs fondateur,
-        éventuellement ajustées), LV à zéro — le seeder NEUF fait l'inverse."""
+        """Reproduit une base seedée AVANT le 21/08 : fiche 15T aux valeurs
+        SG01HP3 (fausses) + SKU doublon LV présent, prix vide."""
         seed(self.company)
-        hv = Produit.objects.get(company=self.company, sku='OND-H-DEY-15T')
-        lv = Produit.objects.get(company=self.company, sku='OND-DEY-15K-LV')
-        hv.prix_vente = Decimal('31234.56')   # « son » prix, ajusté en base
-        hv.prix_achat = Decimal('25000.00')
-        hv.save(update_fields=['prix_vente', 'prix_achat'])
-        lv.prix_vente = Decimal('0')
-        lv.prix_achat = Decimal('0')
-        lv.save(update_fields=['prix_vente', 'prix_achat'])
-        return hv, lv
+        fiche = self._fiche_15t()
+        fiche.ond_mppt_v_min = Decimal('150.0')
+        fiche.ond_mppt_v_max = Decimal('850.0')
+        fiche.ond_v_max_abs = Decimal('1000.0')
+        fiche.ond_v_demarrage_v = Decimal('180.0')
+        fiche.ond_bat_v_min = Decimal('160.0')
+        fiche.ond_bat_v_max = Decimal('700.0')
+        fiche.save()
+        quinze_t = Produit.objects.get(
+            company=self.company, sku='OND-H-DEY-15T')
+        doublon = Produit.objects.create(
+            company=self.company,
+            nom='Onduleur hybride Deye 15kW Triphasé Basse Tension',
+            sku='OND-DEY-15K-LV', categorie=quinze_t.categorie,
+            prix_vente=Decimal('0'), prix_achat=Decimal('0'),
+            quantite_stock=0, seuil_alerte=5, tva=Decimal('20.00'))
+        return fiche, doublon
 
-    def test_transfert_des_valeurs_reelles_puis_hv_a_zero(self):
+    def test_doublon_archive_et_fiche_recalee_sg05lp3(self):
         from django.apps import apps as registre
-        hv, lv = self._etat_ancienne_base()
+        fiche, doublon = self._etat_ancienne_base()
 
-        self._migration().transferer_prix_lv(registre, None)
+        self._migration().corriger_gamme_lv(registre, None)
 
-        hv.refresh_from_db()
-        lv.refresh_from_db()
-        # Les valeurs RÉELLES de la base voyagent (pas les constantes seeder).
-        self.assertEqual(lv.prix_vente, Decimal('31234.56'))
-        self.assertEqual(lv.prix_achat, Decimal('25000.00'))
-        self.assertEqual(hv.prix_vente, Decimal('0'))
-        self.assertEqual(hv.prix_achat, Decimal('0'))
+        doublon.refresh_from_db()
+        self.assertTrue(doublon.is_archived)
+        fiche.refresh_from_db()
+        self.assertEqual(fiche.ond_mppt_v_min, Decimal('160.0'))
+        self.assertEqual(fiche.ond_mppt_v_max, Decimal('650.0'))
+        self.assertEqual(fiche.ond_v_max_abs, Decimal('800.0'))
+        self.assertEqual(fiche.ond_v_demarrage_v, Decimal('160.0'))
+        self.assertEqual(fiche.ond_bat_v_min, Decimal('40.0'))
+        self.assertEqual(fiche.ond_bat_v_max, Decimal('60.0'))
 
-    def test_saisie_fondateur_sur_le_lv_gagne_toujours(self):
+    def test_saisie_fondateur_divergente_jamais_touchee(self):
         from django.apps import apps as registre
-        hv, lv = self._etat_ancienne_base()
-        lv.prix_vente = Decimal('39999.00')   # le fondateur a déjà prixé
-        lv.save(update_fields=['prix_vente'])
+        fiche, _ = self._etat_ancienne_base()
+        fiche.ond_mppt_v_max = Decimal('900.0')   # saisie fondateur
+        fiche.save(update_fields=['ond_mppt_v_max'])
 
-        self._migration().transferer_prix_lv(registre, None)
+        self._migration().corriger_gamme_lv(registre, None)
 
-        hv.refresh_from_db()
-        lv.refresh_from_db()
-        self.assertEqual(lv.prix_vente, Decimal('39999.00'))
-        # Rien ne bouge côté HV non plus : la paire est laissée telle quelle.
-        self.assertEqual(hv.prix_vente, Decimal('31234.56'))
+        fiche.refresh_from_db()
+        self.assertEqual(fiche.ond_mppt_v_max, Decimal('900.0'))
+        # Les autres champs, eux, sont bien recalés.
+        self.assertEqual(fiche.ond_v_max_abs, Decimal('800.0'))
 
-    def test_lv_absent_est_cree_sans_stock_fantome(self):
+    def test_prix_fondateur_jamais_touches(self):
         from django.apps import apps as registre
-        hv, lv = self._etat_ancienne_base()
-        MouvementStock.objects.filter(produit=lv).delete()
-        lv.delete()
+        self._etat_ancienne_base()
+        avant = Produit.objects.get(
+            company=self.company, sku='OND-H-DEY-15T').prix_vente
+        self.assertGreater(avant, 0)
 
-        self._migration().transferer_prix_lv(registre, None)
+        self._migration().corriger_gamme_lv(registre, None)
 
-        cree = Produit.objects.get(company=self.company, sku='OND-DEY-15K-LV')
-        self.assertEqual(cree.prix_vente, Decimal('31234.56'))
-        self.assertEqual(cree.categorie, hv.categorie)
-        # Une migration ne crée jamais 500 unités sans mouvement de stock.
-        self.assertEqual(cree.quantite_stock, 0)
+        apres = Produit.objects.get(
+            company=self.company, sku='OND-H-DEY-15T').prix_vente
+        self.assertEqual(apres, avant)
 
     def test_idempotente_et_sans_effet_sur_base_neuve(self):
         from django.apps import apps as registre
-        # Base NEUVE (seeder du 21/08) : LV déjà prixé, HV à zéro — la
-        # migration ne doit strictement rien changer, deux fois de suite.
+        # Base NEUVE : le seeder pose déjà les valeurs SG05LP3 et ne crée
+        # plus les doublons — la migration ne change strictement rien.
         seed(self.company)
-        lv_avant = Produit.objects.get(
-            company=self.company, sku='OND-DEY-15K-LV').prix_vente
-        self.assertGreater(lv_avant, 0)
-
+        fiche = self._fiche_15t()
+        avant = (fiche.ond_mppt_v_min, fiche.ond_mppt_v_max,
+                 fiche.ond_v_max_abs)
         migration = self._migration()
-        migration.transferer_prix_lv(registre, None)
-        migration.transferer_prix_lv(registre, None)
-
-        lv = Produit.objects.get(company=self.company, sku='OND-DEY-15K-LV')
-        hv = Produit.objects.get(company=self.company, sku='OND-H-DEY-15T')
-        self.assertEqual(lv.prix_vente, lv_avant)
-        self.assertEqual(hv.prix_vente, Decimal('0'))
+        migration.corriger_gamme_lv(registre, None)
+        migration.corriger_gamme_lv(registre, None)
+        fiche.refresh_from_db()
+        self.assertEqual(
+            (fiche.ond_mppt_v_min, fiche.ond_mppt_v_max, fiche.ond_v_max_abs),
+            avant)
+        self.assertFalse(Produit.objects.filter(
+            company=self.company, sku='OND-DEY-15K-LV').exists())
 
 
 class TestPvlvIdentiteBatterieBosb(TestCase):
