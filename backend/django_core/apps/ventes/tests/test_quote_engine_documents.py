@@ -379,7 +379,14 @@ class TestBuilderTenantSiteRendered(TestCase):
             ('Onduleur réseau 10kW', '1', '11700'),
             ('Onduleur hybride 5kW', '1', '24000'),
             ('Batterie 5 kWh', '1', '14000'),
-        ], reference='DEV-SCA27-REND', etude_params=DEUX_OPTIONS)
+        ], reference='DEV-SCA27-REND', etude_params={
+            **DEUX_OPTIONS,
+            # M1 — plus de facture proxy : le renderer résidentiel exige des
+            # factures RÉELLES pour ne pas lever Unsupported dans _augment.
+            'factures_mensuelles_reelles': [
+                1200, 1200, 1300, 1400, 1600, 1800,
+                1900, 1900, 1700, 1500, 1300, 1200],
+        })
         data = build_quote_data(devis)
         d = renderer._augment(data)
         html = render.build_html(d)

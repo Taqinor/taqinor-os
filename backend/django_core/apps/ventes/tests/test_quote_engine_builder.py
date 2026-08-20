@@ -590,8 +590,13 @@ class TestQuoteNumbersHonestyPack(TestCase):
         from apps.ventes.quote_engine.builder import build_quote_data
         from apps.ventes.quote_engine.residential import renderer
         devis = self._devis(ref='DEV-QX7-COV')
+        # M1 — plus de facture proxy : le renderer résidentiel exige des
+        # factures RÉELLES pour ne pas lever Unsupported dans _augment.
         devis.etude_params = {**DEUX_OPTIONS, 'conso_annuelle': 12000,
-                              'distributeur': 'onee'}
+                              'distributeur': 'onee',
+                              'factures_mensuelles_reelles': [
+                                  1200, 1200, 1300, 1400, 1600, 1800,
+                                  1900, 1900, 1700, 1500, 1300, 1200]}
         devis.save(update_fields=['etude_params'])
         data = build_quote_data(devis)
         self.assertEqual(data['conso_annuelle_kwh'], 12000)
@@ -609,7 +614,16 @@ class TestQuoteNumbersHonestyPack(TestCase):
         from apps.ventes.quote_engine.builder import build_quote_data
         from apps.ventes.quote_engine.residential import renderer
         devis = self._devis(ref='DEV-QX7-EST')
-        devis.etude_params = {**DEUX_OPTIONS, 'distributeur': 'onee'}
+        # Z2 × M1 — ancrage RÉEL sur les deux plans : un distributeur
+        # (barème réel, donc pas d'omission Z2) ET les 12 factures
+        # mensuelles réelles (M1 : plus de série proxy, `_augment` les
+        # exige). La conso, elle, reste absente : c'est exactement ce que
+        # ce test épingle — la couverture est DÉRIVÉE de la facture au
+        # tarif réel, donc rendue mais étiquetée « estimation ».
+        devis.etude_params = {**DEUX_OPTIONS, 'distributeur': 'onee',
+                              'factures_mensuelles_reelles': [
+                                  1200, 1200, 1300, 1400, 1600, 1800,
+                                  1900, 1900, 1700, 1500, 1300, 1200]}
         devis.save(update_fields=['etude_params'])
         data = build_quote_data(devis)
         self.assertIsNone(data['conso_annuelle_kwh'])
@@ -732,7 +746,14 @@ class TestQuoteNumbersHonestyPack(TestCase):
             ('Onduleur hybride Deye 10kW', '1', '23333.33'),
             ('Batterie Dyness 10 kWh', '1', '25000'),
             ('Installation', '1', '4000'),
-        ], reference='DEV-QX7-BRAND', etude_params=DEUX_OPTIONS)
+        ], reference='DEV-QX7-BRAND', etude_params={
+            **DEUX_OPTIONS,
+            # M1 — plus de facture proxy : le renderer résidentiel exige des
+            # factures RÉELLES pour ne pas lever Unsupported dans _augment.
+            'factures_mensuelles_reelles': [
+                1200, 1200, 1300, 1400, 1600, 1800,
+                1900, 1900, 1700, 1500, 1300, 1200],
+        })
         for li in devis.lignes.all():
             if 'Canadien' in li.designation:
                 li.produit.marque = 'Canadian Solar'
@@ -765,6 +786,13 @@ class TestQuoteNumbersHonestyPack(TestCase):
         from apps.ventes.quote_engine.builder import build_quote_data
         # lignes sans AUCUNE marque → le moteur n'en invente pas une
         devis = self._devis(ref='DEV-QX7-NOBRAND')
+        # M1 — plus de facture proxy : le renderer résidentiel exige des
+        # factures RÉELLES pour ne pas lever Unsupported dans _augment.
+        devis.etude_params = {**devis.etude_params,
+                              'factures_mensuelles_reelles': [
+                                  1200, 1200, 1300, 1400, 1600, 1800,
+                                  1900, 1900, 1700, 1500, 1300, 1200]}
+        devis.save(update_fields=['etude_params'])
         for li in devis.lignes.all():
             li.produit.marque = ''
             li.produit.save(update_fields=['marque'])

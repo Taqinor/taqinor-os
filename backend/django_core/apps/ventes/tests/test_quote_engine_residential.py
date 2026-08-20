@@ -577,7 +577,14 @@ class TestQuoteSignLinkAndPageNumbers(TestCase):
             ('Onduleur hybride Deye 10kW Triphasé', '1', '23333.33'),
             ('Batterie Dyness 10 kWh', '1', '25000'),
             ('Installation', '1', '4000'),
-        ], reference='DEV-QX6-1', etude_params=DEUX_OPTIONS)
+        ], reference='DEV-QX6-1', etude_params={
+            **DEUX_OPTIONS,
+            # M1 — plus de facture proxy : le renderer résidentiel exige des
+            # factures RÉELLES pour ne pas lever Unsupported dans _augment.
+            'factures_mensuelles_reelles': [
+                1200, 1200, 1300, 1400, 1600, 1800,
+                1900, 1900, 1700, 1500, 1300, 1200],
+        })
 
     def test_builder_mints_tokenized_signer_link(self):
         from apps.ventes.models import ShareLink
@@ -658,7 +665,13 @@ class TestResidentialSingleOptionGate(TestCase):
             ('Batterie Dyness 10 kWh', '1', '25000'),
             ('Structures acier', '12', '417'),
             ('Installation', '1', '5000'),
-        ], reference='DEV-QX5-AVEC')
+        ], reference='DEV-QX5-AVEC', etude_params={
+            # M1 — plus de facture proxy : le renderer résidentiel exige des
+            # factures RÉELLES pour ne pas lever Unsupported dans _augment.
+            'factures_mensuelles_reelles': [
+                1200, 1200, 1300, 1400, 1600, 1800,
+                1900, 1900, 1700, 1500, 1300, 1200],
+        })
 
     def test_battery_only_quote_shows_single_option_everywhere(self):
         from weasyprint import HTML
@@ -691,7 +704,14 @@ class TestResidentialSingleOptionGate(TestCase):
             ('Onduleur hybride Deye 10kW Triphasé', '1', '23333.33'),
             ('Batterie Dyness 10 kWh', '1', '25000'),
             ('Installation', '1', '4000'),
-        ], reference='DEV-QX5-DEUX', etude_params=DEUX_OPTIONS)
+        ], reference='DEV-QX5-DEUX', etude_params={
+            **DEUX_OPTIONS,
+            # M1 — plus de facture proxy : le renderer résidentiel exige des
+            # factures RÉELLES pour ne pas lever Unsupported dans _augment.
+            'factures_mensuelles_reelles': [
+                1200, 1200, 1300, 1400, 1600, 1800,
+                1900, 1900, 1700, 1500, 1300, 1200],
+        })
         html = self._resid_html(devis)
         # deux options → les deux cartes + le découpage delta subsistent
         self.assertIn('Option 1', html)
