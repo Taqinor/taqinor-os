@@ -222,10 +222,15 @@ class TestBuilderTwoBillsExposure(TestCase):
 class TestFacturesReellesContract(TestCase):
     """PACT10/QF-REAL (19/08/2026) — quand etude_params porte les 12 VRAIES
     factures mensuelles du client (contrat semé par le devis auto résidentiel
-    — autoQuote.js S1), elles remplacent le proxy circulaire comme série
-    « avant » ; l'absence de la clé (ou une clé malformée) reste
-    BYTE-IDENTIQUE au proxy historique (aucune régression pour un devis
-    existant)."""
+    — autoQuote.js S1), elles deviennent la série « avant ».
+
+    M1 (audit adversarial, 20/08/2026) — CE QUI A CHANGÉ : l'absence de la clé
+    ne retombe PLUS sur le proxy circulaire ``économie / taux
+    d'autoconsommation``. Ce repli reconstruisait la facture à partir de
+    l'économie supposée, elle-même dérivée du même taux : le « −85 % » de la
+    page 1 n'était que le taux forfaitaire redéguisé. Absence ⇒ ``None`` ⇒ la
+    page 1 n'est pas rendue. Les tests ci-dessous épinglent donc désormais
+    l'OMISSION là où ils épinglaient le proxy."""
 
     def setUp(self):
         from authentication.models import Company
@@ -294,12 +299,10 @@ class TestFacturesReellesContract(TestCase):
         self.assertLess(synth['coverage_pct'], 100)
         self.assertGreater(synth['coverage_pct'], 0)
 
-    # Le pin du repli ne RE-DÉRIVE jamais le proxy à la main : le dénominateur
-    # (taux « avec ») dépend du devis et du modèle d'économies retenu — le pin
-    # manuel « / AUTOCONSO_AVEC » était FAUX dès que le modèle « factures »
-    # s'active (rouge CI du 19/08). Le VRAI contrat de S2 : une clé absente ou
-    # malformée rend EXACTEMENT ce que rend le build sans la clé — on compare
-    # donc deux builds construits dans le MÊME test (même catalogue).
+    # Le contrat de S2 : une clé absente ou malformée rend EXACTEMENT ce que
+    # rend le build sans la clé — on compare deux builds construits dans le
+    # MÊME test (même catalogue). Depuis M1, ce « ce que rend le build sans la
+    # clé » est ``None`` : plus rien à re-dériver à la main.
     def _factures_rendues(self, etude_params, reference):
         from apps.ventes.quote_engine import build_quote_data
         return build_quote_data(
@@ -318,19 +321,21 @@ class TestFacturesReellesContract(TestCase):
         self.assertEqual(avec, sans)
         return sans
 
-    def test_absence_of_keys_stays_byte_identical_to_legacy_proxy(self):
-        """Pin du comportement HISTORIQUE : sans factures_mensuelles_reelles,
-        la série « avant » reste le proxy éco/autoconso (12 entiers > 0), et
-        une clé None est traitée comme une clé absente."""
+    def test_absence_de_factures_reelles_donne_none_jamais_un_proxy(self):
+        """M1 — sans factures_mensuelles_reelles, la série « avant » vaut
+        ``None`` : plus aucun proxy éco/autoconso, et une clé ``None`` est
+        traitée comme une clé absente."""
         sans = self._assert_repli_identique(None, 'DEV-QFREAL-0002')
-        self.assertEqual(len(sans), 12)
-        self.assertTrue(all(v > 0 for v in sans), sans)
+        self.assertIsNone(sans)
 
-    def test_wrong_length_falls_back_silently_to_proxy(self):
-        self._assert_repli_identique([1200] * 11, 'DEV-QFREAL-0003')  # 11≠12
+    def test_wrong_length_est_traitee_comme_une_absence(self):
+        self.assertIsNone(
+            self._assert_repli_identique([1200] * 11, 'DEV-QFREAL-0003'))
 
-    def test_non_numeric_values_fall_back_silently_to_proxy(self):
-        self._assert_repli_identique(['x'] * 12, 'DEV-QFREAL-0004')
+    def test_non_numeric_values_est_traitee_comme_une_absence(self):
+        self.assertIsNone(
+            self._assert_repli_identique(['x'] * 12, 'DEV-QFREAL-0004'))
 
-    def test_non_positive_values_fall_back_silently_to_proxy(self):
-        self._assert_repli_identique([0] * 12, 'DEV-QFREAL-0005')
+    def test_non_positive_values_est_traitee_comme_une_absence(self):
+        self.assertIsNone(
+            self._assert_repli_identique([0] * 12, 'DEV-QFREAL-0005'))

@@ -1407,38 +1407,38 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                                 else None),
     }
 
-    # ONEE monthly bill proxy (bars sit above the savings curves): full-price
-    # bill ≈ économies mensuelles option 2 / taux d'autoconsommation RETENU.
-    # Le taux vient de ``roi`` (dérivé de la capacité batterie depuis l'ordre
-    # fondateur du 18/08) — plus de 0,85 codé en dur qui contredirait le calcul.
-    _ac_a_proxy = roi.get("autoconso_avec") or AUTOCONSO_AVEC
-    if not (0 < _ac_a_proxy <= 1):
-        _ac_a_proxy = AUTOCONSO_AVEC
-    # ── PACT10/QF-REAL (fondateur 19/08/2026) — 12 VRAIES factures mensuelles ──
-    # Le devis auto résidentiel (frontend/.../autoQuote.js) sème désormais
-    # etude_params.factures_mensuelles_reelles depuis la facture hiver/été du
-    # lead : quand elles existent, elles remplacent le proxy ci-dessus comme
-    # série « avant » — le proxy reconstruisait la facture depuis l'économie
-    # SUPPOSÉE (circulaire : la couverture solaire valait toujours ≈ le taux
-    # d'autoconsommation forfaitaire, jamais une vraie conso — audit du
-    # 19/08). L'« après » reste calculé plus loin, INCHANGÉ
-    # (before[i] − eco_a_monthly[i], residential/renderer.synthese_economies) :
-    # seule la série « avant » devient réelle. Garde stricte : exactement 12
-    # valeurs numériques strictement positives, sinon repli SILENCIEUX sur le
-    # proxy historique — un contrat malformé ne casse jamais le rendu, et
-    # aucun devis existant (sans la clé) ne change de chiffre.
+    # ── M1 (audit adversarial du 19/08/2026) — PLUS AUCUN PROXY DE FACTURE ────
+    # Les 12 factures mensuelles du client sont une DONNÉE, jamais un calcul.
+    # Elles viennent de ``etude_params.factures_mensuelles_reelles``, semé par
+    # le devis auto résidentiel (frontend/.../autoQuote.js) depuis la facture
+    # hiver/été du lead. Quand elles manquent : ``None`` — et la page 1 (« votre
+    # facture baisse de N % », « ≈ X MAD/mois aujourd'hui ») N'EST PAS RENDUE.
+    #
+    # CE QUI EST MORT ICI : ``facture ≈ économies option 2 / taux
+    # d'autoconsommation``. Ce proxy fabriquait la facture à partir de
+    # l'économie SUPPOSÉE, elle-même dérivée du même taux : le « −85 % » de la
+    # page 1 n'était donc que le taux forfaitaire redéguisé en promesse, et le
+    # « ≈ X MAD/mois aujourd'hui » un rétro-calcul présenté comme la facture du
+    # client. Circulaire de bout en bout, et imprimé comme un fait.
+    # Le lot Z avait déjà supprimé le cas « aucun ancrage réel » ; l'audit
+    # prouve que le proxy tirait ENCORE dès que le tarif était réel mais les
+    # factures absentes. Il n'y a plus de repli du tout.
+    #
+    # DÉGRADATION (voulue, déjà en place) : ``residential/renderer._augment``
+    # refuse une série absente (Unsupported) → le moteur rend le format legacy,
+    # dont la carte mensuelle omet les barres de facture ; la page publique ne
+    # sert plus la série ni la synthèse. Aucun chemin n'invente de chiffre.
+    # Garde stricte sur la donnée réelle : exactement 12 valeurs numériques
+    # strictement positives, sinon rien.
     _factures_reelles = etude.get("factures_mensuelles_reelles")
-    _real_bills = None
+    factures_mensuelles = None
     if isinstance(_factures_reelles, (list, tuple)) and len(_factures_reelles) == 12:
         try:
             _candidats = [float(v) for v in _factures_reelles]
             if all(v > 0 for v in _candidats):
-                _real_bills = [round(v) for v in _candidats]
+                factures_mensuelles = [round(v) for v in _candidats]
         except (TypeError, ValueError):
-            _real_bills = None
-    factures_mensuelles = (
-        _real_bills if _real_bills is not None
-        else [round(v / _ac_a_proxy) for v in roi["eco_a_monthly"]])
+            factures_mensuelles = None
 
     client_name = f"{(client.prenom or '').strip()} {(client.nom or '').strip()}".strip()
 

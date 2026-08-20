@@ -13,6 +13,14 @@ GREY_NEUTRAL = "#555555"
 # dérive de l'autre. Ne modifier QU'ICI puis répercuter à l'identique dans
 # solar.js (et inversement) — jamais l'une sans l'autre.
 GHI = [83.99, 96.79, 133.43, 155.30, 175.28, 179.62, 179.56, 161.17, 137.03, 111.59, 81.91, 74.61]
+
+# M1 (audit du 19/08/2026) — DÉRIVATION UNIQUE des poids mensuels normalisés
+# (somme = 1). `public_views` en portait une SECONDE copie, table GHI recopiée
+# chiffre par chiffre : deux tables identiques aujourd'hui, deux tables
+# divergentes au premier ajustement — et le drift-lock DC9 ne surveille que
+# celle-ci. Sert UNIQUEMENT à répartir un total annuel RÉEL sur 12 mois : on ne
+# fabrique jamais le total, on le distribue.
+MOROCCO_SOLAR_MONTHLY_WEIGHTS = [round(g / sum(GHI), 6) for g in GHI]
 MOIS = ["Jan", "Fév", "Mar", "Avr", "Mai", "Juin", "Juil", "Août", "Sep", "Oct", "Nov", "Déc"]
 DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
 EFFICIENCY = 0.8   # rendement global

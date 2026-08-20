@@ -232,16 +232,16 @@ class ProposalDataServeSyntheseTests(TestCase):
                 remise=Decimal('0'))
         link = ShareLink.objects.create(company=company, devis=devis)
 
-        # Preuve que la fixture reproduit bien la fuite F5 côté données PURES
-        # (sans la garde ``is_residential`` de la vue) — sinon ce test ne
-        # prouverait rien : un devis dont ``synthese_economies`` serait déjà
-        # None ne distinguerait pas « gardé » de « jamais produit ».
+        # M1 (audit adversarial, 20/08/2026) — la fuite F5 est désormais tarie
+        # À LA SOURCE : le builder ne fabrique plus de série de factures PROXY,
+        # donc ``synthese_economies`` renvoie None pour ce devis AVANT même la
+        # garde ``is_residential`` de la vue. Les deux protections coexistent
+        # (défense en profondeur) ; on épingle ici la NOUVELLE, la plus forte —
+        # il n'y a plus rien à garder puisqu'il n'y a plus rien de fabriqué.
         from apps.ventes.quote_engine.builder import build_quote_data
         brut = build_quote_data(devis, {'pdf_mode': 'full'})
-        self.assertIsNotNone(
-            synthese_economies(brut),
-            'fixture invalide : le builder ne produit pas de forme PROXY '
-            'pour ce devis industriel — le test ne prouverait rien.')
+        self.assertIsNone(brut['factures_mensuelles'])
+        self.assertIsNone(synthese_economies(brut))
 
         resp = APIClient().get(
             f'/api/django/public/proposal/{link.token}/data/')

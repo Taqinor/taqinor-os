@@ -305,11 +305,11 @@ MONTHS  = ["Jan","F\u00e9v","Mar","Avr","Mai","Jun",
            "Jul","Ao\u00fb","Sep","Oct","Nov","D\u00e9c"]
 ECO_S_M    = QUOTE_INPUT["eco_s_monthly"]
 ECO_A_M    = QUOTE_INPUT["eco_a_monthly"]
-# Actual monthly bills entered by user; fallback to proxy if not in QUOTE_INPUT
-FACTURES_M = QUOTE_INPUT.get("factures_mensuelles") or [
-    round(v * (ECO_S_ANN / 0.65) / max(1, sum(QUOTE_INPUT["eco_s_monthly"])))
-    for v in QUOTE_INPUT["eco_s_monthly"]
-]
+# M1 (audit 19/08/2026) — factures mensuelles RÉELLES, ou RIEN. L'ancien défaut
+# reconstruisait une facture depuis les économies (÷ 0,65) : une mine, parce
+# qu'il reprenait la main dès que le builder cessait d'en fournir une. Liste
+# vide ⇒ `make_chart_monthly` n'imprime aucune barre et aucune légende ONEE.
+FACTURES_M = list(QUOTE_INPUT.get("factures_mensuelles") or [])
 
 YEARS   = list(range(26))
 CUMUL_S = [-TOTAL_SANS + ECO_S_ANN * y for y in YEARS]
@@ -1010,8 +1010,11 @@ def make_chart_monthly():
     from matplotlib.lines import Line2D
     from matplotlib.patches import Patch
 
-    # Real monthly bills from the simulator input
-    _onee_m = FACTURES_M
+    # M1 — factures RÉELLES uniquement. Vide = le client n'a pas donné ses 12
+    # factures : la carte devient « économies solaires par mois », sans barre
+    # ni légende ONEE. On ne dessine jamais une facture reconstruite.
+    _onee_m = list(FACTURES_M or [])
+    _has_bills = len(_onee_m) == 12
 
     # Même ratio 4:1 que le cadre 680×170 — image pleine, jamais en vignette.
     fig, ax = plt.subplots(figsize=(13.6, 3.4), dpi=140)
@@ -1023,8 +1026,9 @@ def make_chart_monthly():
     x = np.arange(12)
     c_bar = "#B5C0CE"  # light steel-blue/grey for ONEE bill bars
 
-    # Bars: ONEE bill — full-width, one per month
-    ax.bar(x, _onee_m, 0.60, color=c_bar, alpha=0.60, zorder=2, linewidth=0)
+    # Bars: ONEE bill — full-width, one per month (seulement si RÉELLES)
+    if _has_bills:
+        ax.bar(x, _onee_m, 0.60, color=c_bar, alpha=0.60, zorder=2, linewidth=0)
 
     # Lines: Option 1 (navy) and/or Option 2 (amber) based on scenario
     _show_s = SCENARIO != 'Avec batterie'
@@ -1052,7 +1056,11 @@ def make_chart_monthly():
     ax.set_xlim(-0.55, 11.55)
 
     # Custom legend handles: patch for bar, line+marker for each line series
-    legend_handles = [Patch(facecolor=c_bar, alpha=0.60, label="Facture ONEE sans PV", linewidth=0)]
+    legend_handles = []
+    if _has_bills:
+        legend_handles.append(
+            Patch(facecolor=c_bar, alpha=0.60, label="Facture ONEE sans PV",
+                  linewidth=0))
     if _show_s:
         legend_handles.append(Line2D([0], [0], color=CNM, linewidth=2.2, marker="o", markersize=5.5,
                markerfacecolor="white", markeredgewidth=1.8, markeredgecolor=CNM,
@@ -1559,7 +1567,7 @@ def page2(sans_items, img_roi, img_mon):
         f'<line x1="8" y1="1" x2="8" y2="3" stroke="{CN}" stroke-width="1.3" stroke-linecap="round"/>'
         f'</svg> \u00c9conomies mensuelles estim\u00e9es (MAD\u00a0/\u00a0mois)</div>'
         f'<div style="font-size:6pt;color:{CG4};font-style:italic;margin-bottom:4px;flex-shrink:0;">'
-        f'Facture ONEE vs \u00e9conomies solaires par mois</div>'
+        f'{"Facture ONEE vs &#233;conomies solaires par mois" if FACTURES_M else "&#201;conomies solaires par mois"}</div>'
         f'<img src="{img_mon}" style="width:680px;height:170px;display:block;">'
         f'</div>'
     ) if img_mon else ""
@@ -2817,7 +2825,11 @@ def apply_quote_data(data: dict) -> None:
     AVEC_ITEMS   = _guard_huawei_accessories(_esc_items(data["avec_items"]))
     ECO_S_M      = data["eco_s_monthly"]
     ECO_A_M      = data["eco_a_monthly"]
-    FACTURES_M   = list(data["factures_mensuelles"])
+    # M1 — `data["factures_mensuelles"]` vaut None quand le client n'a pas
+    # donné ses 12 factures : `list(None)` faisait EXPLOSER le legacy, seul
+    # chemin de repli du renderer résidentiel. Absence ⇒ liste vide ⇒ le
+    # graphique mensuel omet les barres de facture (jamais un proxy).
+    FACTURES_M   = list(data.get("factures_mensuelles") or [])
     eco_a_cumul  = int(data["eco_a_cumul"])
     CUMUL_S      = [-TOTAL_SANS + ECO_S_ANN * y for y in YEARS]
     CUMUL_A      = [-TOTAL_AVEC + eco_a_cumul  * y for y in YEARS]

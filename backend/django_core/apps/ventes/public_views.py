@@ -24,21 +24,14 @@ from rest_framework.throttling import SimpleRateThrottle
 
 from .models import PaymentLink, ShareLink
 from .quote_engine import clean_pdf_options, generate_premium_devis_pdf
+# ── Profil saisonnier de production solaire au Maroc (T4) ────────────────────
+# M1 — poids mensuels IMPORTÉS de la source unique (quote_engine/constants.py,
+# table GHI verrouillée par le drift-lock DC9). Ce module en portait une copie
+# manuelle de la table : une seconde vérité qu'aucun test ne surveillait.
+from .quote_engine.constants import MOROCCO_SOLAR_MONTHLY_WEIGHTS  # noqa: F401
 from .utils.pdf import cle_facture_pdf_a_jour, download_pdf
 
 logger = logging.getLogger(__name__)
-
-
-# ── Profil saisonnier de production solaire au Maroc (T4) ────────────────────
-# Poids mensuels (Jan…Déc) dérivés du GHI moyen marocain (apps/ventes/
-# quote_engine/constants.py:GHI) puis NORMALISÉS pour sommer à 1. Sert UNIQUEMENT
-# à répartir un total annuel RÉEL sur 12 mois quand seul l'annuel est connu —
-# on ne fabrique jamais le total, on le distribue. Plus d'irradiance en été
-# qu'en hiver, d'où des poids estivaux plus élevés.
-_GHI_MONTHLY = [83.99, 96.79, 133.43, 155.30, 175.28, 179.62,
-                179.56, 161.17, 137.03, 111.59, 81.91, 74.61]
-_GHI_SUM = sum(_GHI_MONTHLY)
-MOROCCO_SOLAR_MONTHLY_WEIGHTS = [round(g / _GHI_SUM, 6) for g in _GHI_MONTHLY]
 
 
 # Avis FR clair montré quand le lien est expiré ou introuvable. Aucune donnée
@@ -1133,6 +1126,14 @@ def proposal_data(request, token):
         # nom. Le calcul interne du builder (`compute_financing_block`) n'est
         # pas touché — seule la republication publique s'arrête.
         data.pop('financing', None)
+        # M1 (audit du 19/08/2026) — la série « facture avant PV » ne franchit
+        # la frontière publique que si elle est RÉELLE. Le builder ne fabrique
+        # plus de proxy (facture ≈ économie / taux d'autoconsommation) : quand
+        # le client n'a pas donné ses 12 factures, la clé vaut None et on la
+        # retire purement et simplement — une page qui ne reçoit rien n'affiche
+        # rien, là où un `null` republié invitait à tracer une courbe vide.
+        if not data.get('factures_mensuelles'):
+            data.pop('factures_mensuelles', None)
         if data.get('nb_options') == 1:
             if not data.get('avec_ok'):
                 data['totaux_avec'] = None
