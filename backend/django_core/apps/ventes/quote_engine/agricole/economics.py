@@ -174,7 +174,12 @@ def compute(data: dict, company_id=None) -> dict:
         fuel_qty_label = (f"{round(bottles):,}".replace(",", " ")
                           + " bonbonnes de butane")
     co2_t = round(co2_kg / 1000.0, 1) if co2_kg > 0 else 0
-    trees = max(0, round(co2_kg / 21.0)) if co2_kg > 0 else 0
+    # M8 (audit du 19/08/2026) — MÊME constante partagée que le PDF
+    # résidentiel et le site (22 kg CO₂/arbre/an) : ce module portait
+    # sa propre copie à 21, donc deux nombres d'arbres pour un même
+    # ordre de grandeur selon le mode du devis.
+    from ..constants import KG_CO2_PAR_ARBRE_AN as _KG_ARBRE
+    trees = max(0, round(co2_kg / _KG_ARBRE)) if co2_kg > 0 else 0
 
     # Annual PV production.
     prod_kwh = round(champ_kwc * _num(cfg["specific_yield_kwh_kwc"])) if champ_kwc > 0 else 0
