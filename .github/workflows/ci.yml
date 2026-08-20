@@ -466,6 +466,13 @@ jobs:
     # lanes `backend-tests-shard` tournent d'ailleurs deja sous `settings.dev`
     # AVEC ce paquet installe, donc la combinaison est eprouvee. Si un diff de
     # contrat inattendu apparaissait un jour ici, c'est la premiere piste.
+    defaults:
+      run:
+        # WOW-CI RONDE 5 — dans un job `container:`, GitHub lance les scripts
+        # avec `sh` (dash) par défaut : le premier `set -o pipefail` (bashisme)
+        # tuait les six shards en ~90 s (run 32316154505). bash est présent
+        # dans l'image — déclaré une fois pour toutes au niveau du job.
+        shell: bash
     container:
       image: ${{ needs.ci-image-check.outputs.image }}
       credentials:
@@ -622,6 +629,13 @@ jobs:
     # setup-python, et `postgresql-client-16` + MinIO sont déjà là. Le pull
     # (~20-40 s) remplace 60 à 150 s d'installation. AUCUN repli silencieux :
     # si le pull échoue, la lane échoue — cf. l'en-tête de `ci-image-check`.
+    defaults:
+      run:
+        # WOW-CI RONDE 5 — dans un job `container:`, GitHub lance les scripts
+        # avec `sh` (dash) par défaut : le premier `set -o pipefail` (bashisme)
+        # tuait les six shards en ~90 s (run 32316154505). bash est présent
+        # dans l'image — déclaré une fois pour toutes au niveau du job.
+        shell: bash
     container:
       image: ${{ needs.ci-image-check.outputs.image }}
       credentials:
@@ -1196,6 +1210,13 @@ jobs:
     permissions:
       contents: read
       packages: read
+    defaults:
+      run:
+        # WOW-CI RONDE 5 — dans un job `container:`, GitHub lance les scripts
+        # avec `sh` (dash) par défaut : le premier `set -o pipefail` (bashisme)
+        # tuait les six shards en ~90 s (run 32316154505). bash est présent
+        # dans l'image — déclaré une fois pour toutes au niveau du job.
+        shell: bash
     container:
       image: ${{ needs.ci-image-check.outputs.image_e2e }}
       credentials:
@@ -1478,6 +1499,13 @@ jobs:
       contents: read
       packages: read
     # WOW-CI RONDE 5 — même image CI figée que les shards (cf. leur en-tête).
+    defaults:
+      run:
+        # WOW-CI RONDE 5 — dans un job `container:`, GitHub lance les scripts
+        # avec `sh` (dash) par défaut : le premier `set -o pipefail` (bashisme)
+        # tuait les six shards en ~90 s (run 32316154505). bash est présent
+        # dans l'image — déclaré une fois pour toutes au niveau du job.
+        shell: bash
     container:
       image: ${{ needs.ci-image-check.outputs.image }}
       credentials:
