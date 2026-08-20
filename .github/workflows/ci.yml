@@ -54,6 +54,38 @@ concurrency:
 #   + backend-tests-shard 6 + frontend-vitest-shard 4 + e2e-shard 2      = 12
 #                                                              TOTAL     = 18
 #
+# RONDE 5 (20/08) — `ci-image-check` AJOUTE UN CRENEAU, MAIS PAS DANS LA VAGUE.
+# Il ne declare AUCUN `needs` : il part a T=0 en meme temps que `changes` et
+# finit en ~25-35 s sur le chemin normal, donc AVANT que la vague backend parte
+# (elle attend `changes` ET lui). Les deux fenetres ne se recouvrent pas :
+#
+#   Fenetre 1 (T=0 a ~T+35 s) — `changes` 1 + `ci-image-check` 1
+#     + stage-names 1 + frontend-static 1 + frontend-vitest-shard 4
+#     + web-build-test 1 + e2e-shard 2                              = 11
+#   Fenetre 2 (apres) — les 6 de la ronde 4 (dont `ci-image-check`
+#     et `changes` sont sortis) : stage-names 1 + backend-lint-fast 1
+#     + backend-openapi 1 + frontend-static 1 + web-build-test 1
+#     + rls-tests 1 = 6, + backend-tests-shard 6
+#     + frontend-vitest-shard 4 + e2e-shard 2 = 12                  = 18
+#
+# LE PIC RESTE DONC 18, inchange — la marge mesuree de 2 creneaux sous le
+# plafond de 20 est preservee. Le chemin LENT de `ci-image-check` (construction
+# en ligne, ~8-12 min, uniquement quand un requirements, un lockfile frontend ou
+# un Dockerfile CI change) allonge sa fenetre mais ne l'elargit pas : c'est
+# toujours 1 creneau, et la vague attend simplement plus longtemps pour demarrer.
+# NOTE : `e2e-shard` attend desormais lui aussi `ci-image-check` (il tourne dans
+# l'image `ci-e2e`), donc il quitte la fenetre 1 pour la fenetre 2 — ce qui
+# BAISSE le pic de la fenetre 1 a 9 et laisse la fenetre 2 a 18. Pic inchange.
+#
+# 3e LANE e2e — REFUSEE, et le calcul est ici pour qu'on ne le reprenne pas a
+# zero. Sur le run vert 32307320397, les etapes de specs des deux lanes valent
+# 129 s et 126 s : elles sont deja equilibrees a 3 s pres, et une 3e lane
+# ramenerait le pire bloc de specs de 123 s a 86 s, soit ~37 s. C'est SOUS le
+# seuil de 60 s qui justifierait de depenser un des 2 derniers creneaux — et
+# apres le volet e2e ci-dessous, une lane e2e a ~306 s serait de toute facon
+# talonnee par `frontend-vitest-shard` (291 s mesurees), qui deviendrait le
+# nouveau plancher : les 37 s ne rapporteraient qu'environ 15 s sur le gate.
+#
 # RONDE 4 (19/08) — la 4e lane vitest depense 1 des 3 creneaux libres MESURES
 # sur le run 32265590843 (17 lanes a nous, 3 creneaux encore idle sous le
 # plafond de 20 a ce moment-la — la contention CodeQL varie d'un run a l'autre,
@@ -167,6 +199,110 @@ jobs:
             echo "code=$code"
           } >> "$GITHUB_OUTPUT"
           echo "Resolved -> backend=$backend frontend=$frontend web=$web e2e(code)=$code"
+
+  # ---------------------------------------------------------------------------
+  # WOW-CI RONDE 5 (20/08/2026) — L'IMAGE CI BACKEND PRE-CONSTRUITE.
+  #
+  # Les lanes backend ne reconstruisent plus leur environnement : elles tournent
+  # DANS une image figee (`.github/ci-image/Dockerfile`, poussee sur GHCR par
+  # `.github/workflows/ci-image.yml`) qui contient deja les bibliotheques
+  # WeasyPrint, tout `requirements-dev.txt`, `postgresql-client-16` et les
+  # binaires MinIO. Ce job calcule l'etiquette (empreinte des deux requirements
+  # + du Dockerfile CI), verifie que le manifeste existe sur GHCR, et l'expose.
+  #
+  # POURQUOI IL NE DECLARE PAS `needs: changes` — pour ne RIEN ajouter au chemin
+  # critique. Il part a T=0, en meme temps que `changes` (~16 s) ; sur le chemin
+  # normal (image presente) il finit en ~25-35 s, soit ~15 s apres `changes`.
+  # Les lanes backend attendent donc les deux et demarrent ~15 s plus tard
+  # qu'avant — contre ~60 a 150 s d'apt+pip+setup-python economisees CHACUNE.
+  #
+  # CHEMIN LENT (miss) : si l'etiquette n'existe pas encore — la PREMIERE PR qui
+  # modifie un requirements ou ce Dockerfile — l'image est construite et poussee
+  # ICI, en ligne (~8-12 min). Ce cout est paye UNE fois : au merge, le workflow
+  # `ci-image.yml` republie la meme etiquette sur `main` et toutes les PR
+  # suivantes retombent sur le chemin rapide.
+  #
+  # PAS DE REPLI SILENCIEUX (regle explicite) : si le pull echoue cote lane, la
+  # lane echoue FRANCHEMENT. On ne garde pas un second chemin « ancien style »
+  # vivant en parallele — deux chemins finissent toujours par diverger, et
+  # l'ancien serait teste par personne. Le repli est MANUEL et visible :
+  # `workflow_dispatch` sur `ci-image.yml`.
+  #
+  # LIMITE CONNUE : une PR issue d'un FORK recoit un GITHUB_TOKEN degrade en
+  # lecture seule ; elle peut PULLER l'image mais pas la construire en ligne.
+  # Ce depot travaille sur des branches internes (`claude/...`), donc le cas ne
+  # se presente pas aujourd'hui ; il est note comme risque residuel.
+  # ---------------------------------------------------------------------------
+  ci-image-check:
+    runs-on: ubuntu-latest
+    # 30 min = le chemin LENT (construction en ligne) avec de la marge. Le
+    # chemin normal rend son verdict en ~25-35 s.
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.tag.outputs.image }}
+      image_e2e: ${{ steps.tag.outputs.image_e2e }}
+    steps:
+      - uses: actions/checkout@v4
+      # Source UNIQUE des etiquettes, partagee avec `ci-image.yml` : si les deux
+      # les calculaient separement, la moindre divergence reconstruirait les
+      # images a chaque run.
+      - name: Calculer les etiquettes des images
+        id: tag
+        run: bash .github/ci-image/tag.sh "${{ github.repository }}" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Les images sont-elles deja publiees ?
+        id: exists
+        run: |
+          set -uo pipefail
+          for couple in "backend:${{ steps.tag.outputs.image }}" "e2e:${{ steps.tag.outputs.image_e2e }}"; do
+            cle="${couple%%:*}"; ref="${couple#*:}"
+            if docker manifest inspect "$ref" >/dev/null 2>&1; then
+              echo "Presente — chemin rapide : $ref"
+              echo "${cle}=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "ABSENTE — construction en ligne : $ref"
+              echo "${cle}=false" >> "$GITHUB_OUTPUT"
+            fi
+          done
+          exit 0
+      - uses: docker/setup-buildx-action@v3
+        if: ${{ steps.exists.outputs.backend != 'true' || steps.exists.outputs.e2e != 'true' }}
+      - name: Construire et pousser ci-backend si elle manque (chemin lent)
+        if: ${{ steps.exists.outputs.backend != 'true' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: backend/django_core
+          file: .github/ci-image/Dockerfile
+          push: true
+          tags: ${{ steps.tag.outputs.image }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+      # Construite PAR-DESSUS ci-backend, donc APRES elle, jamais en parallele.
+      - name: Construire et pousser ci-e2e si elle manque (chemin lent)
+        if: ${{ steps.exists.outputs.e2e != 'true' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          file: .github/ci-image/Dockerfile.e2e
+          build-args: |
+            CI_BACKEND_IMAGE=${{ steps.tag.outputs.image }}
+          push: true
+          tags: ${{ steps.tag.outputs.image_e2e }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+      - name: Resume
+        run: |
+          echo "ci-backend = ${{ steps.tag.outputs.image }} (deja presente = ${{ steps.exists.outputs.backend }})"
+          echo "ci-e2e     = ${{ steps.tag.outputs.image_e2e }} (deja presente = ${{ steps.exists.outputs.e2e }})"
 
   # ---------------------------------------------------------------------------
   # WOW-CI2 (2026-08-18, run 32182877239) — `backend-lint` durait 8 min 25 s, et
@@ -307,17 +443,43 @@ jobs:
   # l'en-tête de scripts/check_openapi_schema.py pour le profil par phase.
   # Elle tourne EN PARALLÈLE de `backend-lint-fast` et des 8 lanes de tests.
   backend-openapi:
-    needs: changes
+    needs: [changes, ci-image-check]
     if: ${{ needs.changes.outputs.backend == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: read
+    # WOW-CI RONDE 5 — l'image CI porte deja Python 3.11 (MEME version que la
+    # prod), les bibliotheques WeasyPrint et TOUT requirements-dev.txt (qui
+    # commence par `-r requirements.txt`, donc le sur-ensemble des deps prod
+    # dont ce generateur a besoin). Les quatre etapes qui suivaient — cache apt,
+    # apt-get, setup-python, pip install — ont disparu avec lui.
+    #
+    # UNE DIFFERENCE ASSUMEE, ET SES LIMITES. Ce job installait auparavant le
+    # seul `requirements.txt` ; il voit desormais aussi les deps de dev. Or
+    # `settings/dev.py` — que `check_openapi_schema.py` charge — ajoute
+    # `nplusone.ext.django` a INSTALLED_APPS/MIDDLEWARE DES QUE le paquet est
+    # importable. L'inventaire d'operations OpenAPI, lui, ne bouge pas : il est
+    # derive du seul ROOT_URLCONF, et `nplusone` n'enregistre aucune route (il
+    # n'expose qu'un middleware de journalisation des requetes N+1). Les six
+    # lanes `backend-tests-shard` tournent d'ailleurs deja sous `settings.dev`
+    # AVEC ce paquet installe, donc la combinaison est eprouvee. Si un diff de
+    # contrat inattendu apparaissait un jour ici, c'est la premiere piste.
+    defaults:
+      run:
+        # WOW-CI RONDE 5 — dans un job `container:`, GitHub lance les scripts
+        # avec `sh` (dash) par défaut : le premier `set -o pipefail` (bashisme)
+        # tuait les six shards en ~90 s (run 32316154505). bash est présent
+        # dans l'image — déclaré une fois pour toutes au niveau du job.
+        shell: bash
+    container:
+      image: ${{ needs.ci-image-check.outputs.image }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'   # MUST match prod (django_core/fastapi Dockerfiles: python:3.11.x).
-          cache: 'pip'   # YAPIC6 — ce job installe requirements.txt en entier (le générateur importe tout l'URLconf) ; sans cache l'install serait payée à chaque run.
-          cache-dependency-path: backend/django_core/requirements.txt
       # YAPIC6 — le schéma OpenAPI (YAPIC5) doit rester GÉNÉRABLE, VALIDE
       # (validation OpenAPI 3 de drf-spectacular) et sans NOUVEL avertissement
       # de génération : un serializer non résolu ou une collision d'operationId
@@ -331,48 +493,15 @@ jobs:
       # de contrat apparaisse dans la PR.
       #
       # COÛT : le générateur importe TOUT l'URLconf, donc les vraies
-      # dépendances backend (WeasyPrint & co) — d'où les deux installations
-      # ci-dessous. Elles n'allongent QUE ce job, qui tourne EN PARALLÈLE des
-      # 4 shards `backend-tests` (le chemin critique du gate) : le temps de mur
-      # du merge est inchangé. AUCUNE base de données n'est nécessaire (le
-      # générateur ne fait qu'introspecter vues et serializers).
-      # WOW-CI ronde 4 (19/08/2026) — MEME cache apt que e2e-shard (meme patron,
-      # meme cle apt-e2e-v2-...) : ce job installe les memes paquets WeasyPrint
-      # et payait le telechargement complet a chaque run, sans jamais partager
-      # le cache que e2e-shard alimente deja. Cle inchangee (lockfile frontend
-      # uniquement) pour rester dans le MEME cache partage — voir le commentaire
-      # WOW-CI7 sur e2e-shard plus bas dans ce fichier.
-      - name: Redirect apt's .deb store into a cacheable directory
-        # JAMAIS BLOQUANT : ce n'est qu'une optimisation. Si quoi que ce soit
-        # échoue ici, apt reprend son magasin par défaut et le job se comporte
-        # exactement comme avant — une accélération ne doit pas pouvoir faire
-        # rougir un check REQUIS.
-        run: |
-          set -uo pipefail
-          mkdir -p "$HOME/apt-archives/partial" || true
-          # apt abandonne ses privilèges vers l'utilisateur `_apt` pour écrire
-          # dans `partial/` : sans droits larges il retombe (bruyamment) sur un
-          # téléchargement non bac-à-sable, ou échoue.
-          chmod -R 777 "$HOME/apt-archives" || true
-          printf 'Dir::Cache::archives "%s";\nBinary::apt::APT::Keep-Downloaded-Packages "true";\n' \
-            "$HOME/apt-archives" | sudo tee /etc/apt/apt.conf.d/99-ci-archive-cache >/dev/null \
-            || echo "AVERTISSEMENT : redirection du cache apt impossible — on continue sans."
-          exit 0
-      - name: Cache apt packages (Playwright system deps + WeasyPrint)
-        uses: actions/cache@v4
-        with:
-          path: ~/apt-archives
-          key: apt-e2e-v2-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
-          restore-keys: |
-            apt-e2e-v2-${{ runner.os }}-
-      - name: Install WeasyPrint system libraries (URLconf import — YAPIC6)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b fonts-dejavu-core
-      - name: Install backend dependencies for schema generation (YAPIC6)
-        working-directory: backend/django_core
-        run: pip install -r requirements.txt
+      # dépendances backend (WeasyPrint & co). AUCUNE base de données n'est
+      # nécessaire (le générateur ne fait qu'introspecter vues et serializers).
+      # WOW-CI RONDE 5 (20/08/2026) — les quatre étapes de mise en place qui
+      # tenaient ici (redirection du magasin apt, cache apt partagé, `apt-get
+      # install` des bibliothèques WeasyPrint, `pip install -r
+      # requirements.txt`) ont été SUPPRIMÉES : l'image CI déclarée en
+      # `container:` plus haut les contient déjà, figées. Le cache apt partagé
+      # `apt-e2e-v2-…` reste alimenté et consommé par `e2e-shard`, qui n'est pas
+      # conteneurisé — cette suppression ne le prive de rien.
       - name: Test the OpenAPI-schema checker itself (YAPIC6)
         run: python -m unittest scripts.tests.test_check_openapi_schema -v
       - name: OpenAPI schema — generate, validate, no NEW warning (YAPIC6)
@@ -385,10 +514,18 @@ jobs:
   # (backend=false), ce qui conserve la sémantique « un check requis sauté
   # compte comme réussi » du filtre de chemins.
   backend-lint:
-    needs: [changes, backend-lint-fast, backend-openapi]
+    needs: [changes, ci-image-check, backend-lint-fast, backend-openapi]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
+      # WOW-CI RONDE 5 — même garde que sur `backend-tests` : `backend-openapi`
+      # dépend de l'image CI, donc un échec de `ci-image-check` le laisserait
+      # « skipped » et ferait passer ce check REQUIS au vert sans rien valider.
+      - name: Fail if the CI image could not be resolved
+        if: ${{ needs.ci-image-check.result == 'failure' || needs.ci-image-check.result == 'cancelled' }}
+        run: |
+          echo "ci-image-check=${{ needs.ci-image-check.result }} — le job backend-openapi n'a pas tourné."
+          exit 1
       - name: Fail if a backend-lint lane failed or was cancelled
         if: ${{ needs.backend-lint-fast.result == 'failure' || needs.backend-lint-fast.result == 'cancelled' || needs.backend-openapi.result == 'failure' || needs.backend-openapi.result == 'cancelled' }}
         run: |
@@ -415,8 +552,52 @@ jobs:
   # `scripts/tests/test_ci_shard.py`, exécuté dans le job `stage-names` — un
   # module qui tomberait du découpage ne serait plus jamais testé pendant que la
   # CI resterait verte, c'est le seul risque que ce mécanisme doit interdire.
-  # On n'augmente toujours PAS `--parallel` (resté à 1 depuis 0d66f6e1 :
-  # `--parallel 2` faisait sauter max_locks / OOM sur test_rls + QW10).
+  #
+  # ---------------------------------------------------------------------------
+  # WOW-CI RONDE 5 (20/08/2026) — `--parallel` REPASSE DE 1 À 4.
+  #
+  # CE QUI LE REND SÛR : `max_locks_per_transaction=2048` sur le Postgres que
+  # `backend-env` démarre maintenant DANS le conteneur du job. Ce n'est PAS la
+  # garde décrite plus bas — elle a été écrite d'abord, elle a échoué en
+  # conditions réelles (run 32316744098, 4 shards rouges), et elle n'est
+  # conservée que comme ceinture. Son erreur : elle comptait les purges larges
+  # des `TransactionTestCase`, alors qu'un simple `Company.delete()` prend un
+  # verrou sur chacune des ~900 tables en cascade sans qu'aucun
+  # `TransactionTestCase` soit impliqué. Le mécanisme décrit ci-dessous reste
+  # exact ; c'est la liste des consommateurs de verrous qui était incomplète, et
+  # l'énumérer était un puits sans fond.
+  #
+  # POURQUOI ÇA AVAIT CASSÉ (commit 0d66f6e1, 16/07 : « --parallel 2->1
+  # max_locks OOM shard 3 test_rls+QW10 »). Le coupable n'est PAS la mémoire du
+  # runner, c'est la TABLE DE VERROUS de Postgres. Un `TransactionTestCase`
+  # termine chaque test par un `flush` = UN SEUL `TRUNCATE` qui, `CASCADE`
+  # aidant, ratisse les ~900 tables du dépôt (c'est écrit noir sur blanc dans
+  # `core/test_utils.WideTeardownTimeoutMixin`, qui existe parce que cette purge
+  # dure 16 à 31 s). Chaque table, chaque index, chaque table TOAST y prend un
+  # `AccessExclusiveLock` : de l'ordre de 4 500 verrous d'un coup. Or la table
+  # de verrous d'un cluster vaut `max_locks_per_transaction × max_connections`
+  # = 64 × 100 = 6 400 entrées, et un service `postgres:` d'Actions ne peut PAS
+  # recevoir de `command:` — donc ce réglage n'est pas relevable ici. DEUX
+  # purges simultanées = ~9 000 > 6 400 = « out of shared memory ». C'est
+  # exactement ce que `--parallel 2` avait déclenché.
+  #
+  # LA GARDE. Django affecte une CLASSE de test entière à UN worker : le risque
+  # n'apparaît donc que si un même shard contient DEUX modules à purge large.
+  # Il n'en existe que trois dans tout le dépôt (`apps/crm/tests_webhook.py`,
+  # `apps/ventes/tests/test_premium_security.py`, `core/tests/test_rls.py` — ce
+  # dernier étant intégralement sauté ici, faute de `POSTGRES_RLS_ENABLED`), et
+  # le découpage LPT actuel les place dans des shards différents. Mais ce
+  # découpage se recalcule sur des durées mesurées : rien ne garantit qu'il en
+  # sera de même demain. L'étape ci-dessous COMPTE donc, à chaque run, les
+  # modules à purge large de SON shard et retombe à `--parallel 1` s'il y en a
+  # deux ou plus. Un shard devient lent au lieu de devenir rouge — et la garde
+  # s'adapte toute seule au prochain `TransactionTestCase` ajouté.
+  #
+  # PARALLÉLISME PROUVÉ AILLEURS : le harnais local canonique
+  # (`scripts/test-backend.ps1`) tourne en `--keepdb --parallel 4` par défaut
+  # depuis toujours — la sûreté des tests eux-mêmes est donc déjà éprouvée ;
+  # seule la contention de verrous ci-dessus était propre à la CI.
+  # ---------------------------------------------------------------------------
   # ROUND 3 (run 32200473257) — `backend-openapi` est retombé à 3 min 20 s une
   # fois son cache pip chaud : il n'est PLUS le plancher, les tests backend le
   # sont. Étape `Run Django test suite` par lane sur ce run :
@@ -442,7 +623,7 @@ jobs:
   # Cout par lane = ~135 s de mise en place + ~22 s de rodage + 1 385/N :
   #   N=6 -> ~6 min 28 s, N=8 -> ~5 min 30 s (hors budget de creneaux).
   backend-tests-shard:
-    needs: changes
+    needs: [changes, ci-image-check]
     if: ${{ needs.changes.outputs.backend == 'true' }}
     strategy:
       fail-fast: false
@@ -450,20 +631,37 @@ jobs:
         shard: [0, 1, 2, 3, 4, 5]
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: read
+    # WOW-CI RONDE 5 (20/08/2026) — la lane tourne DANS l'image CI figée
+    # (`.github/ci-image/Dockerfile`) : plus d'apt, plus de pip, plus de
+    # setup-python, et `postgresql-client-16` + MinIO sont déjà là. Le pull
+    # (~20-40 s) remplace 60 à 150 s d'installation. AUCUN repli silencieux :
+    # si le pull échoue, la lane échoue — cf. l'en-tête de `ci-image-check`.
+    defaults:
+      run:
+        # WOW-CI RONDE 5 — dans un job `container:`, GitHub lance les scripts
+        # avec `sh` (dash) par défaut : le premier `set -o pipefail` (bashisme)
+        # tuait les six shards en ~90 s (run 32316154505). bash est présent
+        # dans l'image — déclaré une fois pour toutes au niveau du job.
+        shell: bash
+    container:
+      image: ${{ needs.ci-image-check.outputs.image }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     services:
-      postgres:
-        image: pgvector/pgvector:pg16
-        env:
-          POSTGRES_DB: erp_db
-          POSTGRES_USER: erp_user
-          POSTGRES_PASSWORD: ci_password
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U erp_user"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
+      # WOW-CI RONDE 5 (20/08/2026) — LE SERVICE `postgres` A DISPARU D'ICI.
+      # Il est remplacé par un serveur local que `backend-env` démarre DANS le
+      # conteneur du job (voir son étape « Demarrer Postgres »). Raison unique
+      # et non négociable : un `services:` d'Actions n'accepte pas de
+      # `command:`, donc `max_locks_per_transaction` y était inatteignable — et
+      # les shards mouraient en `out of shared memory` dès qu'un test purgeait
+      # une société entière (DELETE en cascade sur ~900 tables dans UNE
+      # transaction, contre 6 400 verrous disponibles). Le serveur local tourne
+      # avec 2048 verrous par transaction, ce qui règle la classe entière.
+      # `redis` reste un service : rien à y configurer.
       redis:
         image: redis:7.4-alpine
         ports:
@@ -475,10 +673,29 @@ jobs:
       DB_NAME: erp_db
       DB_USER: erp_user
       DB_PASSWORD: ci_password
+      # WOW-CI RONDE 5 — `localhost` désigne le conteneur du job, et c'est bien
+      # là que tournent désormais Postgres (démarré par `backend-env`, cf. le
+      # commentaire du bloc `services:`) et MinIO. Seul `redis`, resté un
+      # service, s'atteint par son NOM sur le réseau du job.
       DB_HOST: localhost
       DB_PORT: '5432'
-      REDIS_HOST: localhost
+      REDIS_HOST: redis
       REDIS_PORT: '6379'
+      # WOW-CI RONDE 5 — LE GARDE-FOU DE PRODUCTION ÉLARGI POUR LE RUNNER DE
+      # TESTS, ET UNIQUEMENT LUI. NTPLT18 pose `statement_timeout = 30 s` sur
+      # CHAQUE connexion (settings/base.py) pour qu'une requête ORM folle ne
+      # puisse pas épingler un worker gunicorn. Deux opérations légitimes du
+      # runner dépassent ce seuil : le `CREATE DATABASE … WITH TEMPLATE` que
+      # Django exécute pour cloner la base une fois par worker `--parallel`, et
+      # la purge `TRUNCATE` de tout le schéma d'un `TransactionTestCase`
+      # (mesurée 16 à 31 s — c'est précisément la raison d'être de
+      # `core/test_utils.WideTeardownTimeoutMixin`). Annulées, elles laissent la
+      # base à moitié purgée et le test SUIVANT échoue en doublon de clé, très
+      # loin de la vraie cause. On élargit donc à 10 min ICI, dans le job de
+      # test — le réglage de production n'est pas touché, et la variable reste
+      # DÉFINIE, donc `core.tests.test_db_guards` (qui vérifie sa présence dans
+      # OPTIONS, pas sa valeur) continue de passer.
+      DB_STATEMENT_TIMEOUT_MS: '600000'
       MINIO_ENDPOINT: localhost:9000
       MINIO_ROOT_USER: erp_admin
       MINIO_ROOT_PASSWORD: erp_minio_password
@@ -486,18 +703,18 @@ jobs:
       MINIO_BUCKET_UPLOADS: erp-uploads
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'   # MUST match prod (django_core/fastapi Dockerfiles: python:3.11.x). A 3.12+/3.13 CI would not catch 3.11-only SyntaxErrors (e.g. backslash in f-string) that crash the live PDF generator.
-          cache: 'pip'   # WOW4 — cache les deps Python (npm l'était déjà, pas pip) ; clé sur requirements-dev.txt.
-          cache-dependency-path: backend/django_core/requirements-dev.txt
       # WOW7 — shared WeasyPrint + pip (requirements-dev.txt) + MinIO setup.
       # WOW8 — restore the cached pre-migrated test DB (measured: the ~850-
       # migration replay was 2255s of a 2388s shard — 97% of the job); the test
       # step's --keepdb then reuses it and only clones the 4 parallel workers.
+      # WOW-CI RONDE 5 — `prebuilt-image: 'true'` : l'action saute apt/pip (déjà
+      # dans l'image), lance MinIO via son binaire natif et appelle
+      # pg_restore/pg_dump directement au lieu de passer par `docker run`
+      # (indisponible dans un job `container:`).
       - uses: ./.github/actions/backend-env
         with:
           testdb-cache-into: test_erp_db
+          prebuilt-image: 'true'
       # YOPSB5 — anti-dérive modèle<->migration : échoue si un changement de
       # modèle n'a pas sa migration (index nommé à la main divergent,
       # contrainte sans migration…). Tourne AVANT la suite de tests, même
@@ -512,14 +729,103 @@ jobs:
       # (placement LPT déterministe via scripts/ci_shard.py) ; l'union des 8
       # shards == exactement l'ensemble des modules `test*.py` de `apps`,
       # `authentication` et `core`, prouvé par scripts/tests/test_ci_shard.py.
-      # `--parallel 1` est VOLONTAIRE (cf. 0d66f6e1) ; `coverage` reste hors du
-      # gate (WOW3).
+      # `coverage` reste hors du gate (WOW3).
       - name: Run Django test suite — shard ${{ matrix.shard }}/6 (fast tier — excludes pdf/slow)
         working-directory: backend/django_core
         run: |
+          set -euo pipefail
           LABELS=$(python ../../scripts/ci_shard.py ${{ matrix.shard }} 6)
           echo "Shard ${{ matrix.shard }}/6 -> $(echo "$LABELS" | wc -w) modules"
-          python manage.py test $LABELS -v 2 --exclude-tag=pdf --exclude-tag=slow --parallel 1 --keepdb
+
+          # WOW-CI RONDE 5 — GARDE ANTI-`max_locks`, DEVENUE UNE CEINTURE.
+          #
+          # ELLE N'EST PLUS LA PROTECTION PRINCIPALE, et il faut savoir pourquoi
+          # avant de s'y fier. Écrite d'abord seule, elle comptait les modules
+          # déclarant un `TransactionTestCase` — dont le TRUNCATE de fin de test
+          # verrouille tout le schéma. Elle a échoué en conditions réelles (run
+          # 32316744098, 4 shards rouges) parce que la purge large n'est PAS le
+          # seul consommateur de verrous : un simple `Company.delete()` descend
+          # en cascade sur les ~900 tables et en prend autant dans UNE
+          # transaction, sans aucun `TransactionTestCase` à l'horizon
+          # (`test_purges_demo_company_expired_over_90_days`). Énumérer les
+          # classes coupables est un puits sans fond — c'était la mauvaise
+          # couche pour corriger ce défaut.
+          #
+          # LA VRAIE CORRECTION EST EN AMONT : Postgres tourne maintenant dans
+          # le conteneur du job avec `max_locks_per_transaction=2048`, ce qui
+          # règle la classe entière, présente et future (voir l'étape
+          # « Demarrer Postgres » de `.github/actions/backend-env`). Avec ce
+          # budget, deux purges simultanées passent largement.
+          #
+          # ON LA GARDE QUAND MÊME, pour un coût d'une seconde : si un jour le
+          # démarrage local régressait vers un serveur aux réglages par défaut,
+          # elle rendrait un shard lent plutôt que rouge. Elle ne doit plus être
+          # lue comme « ce qui rend `--parallel 4` sûr ».
+          # `core/tests/test_rls.py` reste exclu du compte : sans
+          # `POSTGRES_RLS_ENABLED` toute sa classe est sautée ici (elle a son
+          # propre job `rls-tests`).
+          # Détection par AST, et non par `grep` : `core/test_utils.py` CITE
+          # `TransactionTestCase` une dizaine de fois (docstring du mixin, exemple
+          # d'usage) sans en déclarer un seul — un grep textuel le comptait et
+          # déclenchait la garde pour rien. On ne retient donc que les CLASSES
+          # dont une base est réellement `TransactionTestCase` (ou le mixin
+          # maison `WideTeardownTimeoutMixin`, qui est précisément le marqueur de
+          # cette purge large dans ce dépôt).
+          # On compte des CLASSES, pas des FICHIERS : c'est la classe qui est
+          # l'unité d'affectation de Django à un worker, donc deux classes à
+          # purge large dans UN MÊME module suffiraient à faire tourner deux
+          # purges en parallèle — un comptage par fichier les aurait vues comme
+          # une seule et serait passé à côté.
+          cat > /tmp/purge_large.py <<'PY'
+          import ast
+          import sys
+
+          MARQUEURS = {'TransactionTestCase', 'WideTeardownTimeoutMixin'}
+
+
+          def noms_de_bases(classe):
+              for base in classe.bases:
+                  if isinstance(base, ast.Name):
+                      yield base.id
+                  elif isinstance(base, ast.Attribute):
+                      # `django.test.TransactionTestCase` -> `TransactionTestCase`
+                      yield base.attr
+
+
+          for chemin in sys.argv[1:]:
+              try:
+                  with open(chemin, encoding='utf-8') as fichier:
+                      arbre = ast.parse(fichier.read(), chemin)
+              except (OSError, SyntaxError, UnicodeDecodeError):
+                  # Un fichier illisible n'est pas une raison de bloquer le shard :
+                  # au pire la garde ne le compte pas, au mieux il n'existe pas.
+                  continue
+              for noeud in ast.walk(arbre):
+                  if isinstance(noeud, ast.ClassDef) and MARQUEURS & set(noms_de_bases(noeud)):
+                      print(f'{chemin}::{noeud.name}')
+          PY
+          FILES=""
+          for label in $LABELS; do
+            case "$label" in *test_rls*) continue ;; esac
+            p="$(printf '%s' "$label" | tr '.' '/').py"
+            if [ -f "$p" ]; then FILES="$FILES $p"; fi
+          done
+          WIDE_FILES=""
+          if [ -n "$FILES" ]; then
+            WIDE_FILES=$(python /tmp/purge_large.py $FILES)
+          fi
+          WIDE=$(printf '%s' "$WIDE_FILES" | grep -c . || true)
+          if [ "${WIDE:-0}" -ge 2 ]; then
+            PARALLEL=1
+            echo "GARDE max_locks : $WIDE classes a purge large dans ce shard —"
+            echo "$WIDE_FILES"
+            echo "on retombe a --parallel 1 pour ce shard (lent, mais jamais rouge)."
+          else
+            PARALLEL=4
+            echo "Classes a purge large dans ce shard : ${WIDE:-0} — --parallel 4."
+          fi
+
+          python manage.py test $LABELS -v 2 --exclude-tag=pdf --exclude-tag=slow --parallel "$PARALLEL" --keepdb
 
   # WOW6 — thin aggregator that PRESERVES the required `backend-tests` status
   # check name. Branch protection requires the literal `backend-tests` context
@@ -528,10 +834,21 @@ jobs:
   # shard failed; also passes when the shards SKIP (backend=false), preserving the
   # path-filter "a skipped required check counts as success" behaviour.
   backend-tests:
-    needs: [changes, backend-tests-shard]
+    needs: [changes, ci-image-check, backend-tests-shard]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
+      # WOW-CI RONDE 5 — GARDE OBLIGATOIRE. Les shards déclarent désormais
+      # `needs: ci-image-check` ; si ce job échoue, les shards ne sont pas
+      # « failure » mais « skipped », et sans cette étape cet agrégateur —
+      # qui est un check REQUIS — passerait au VERT alors qu'AUCUN test backend
+      # n'a tourné. Un échec d'image doit bloquer la fusion, pas la déverrouiller.
+      - name: Fail if the CI image could not be resolved
+        if: ${{ needs.ci-image-check.result == 'failure' || needs.ci-image-check.result == 'cancelled' }}
+        run: |
+          echo "ci-image-check=${{ needs.ci-image-check.result }} — l'image CI backend n'a pas pu être publiée/résolue."
+          echo "Les shards n'ont donc PAS tourné. Repli manuel : workflow_dispatch sur ci-image.yml."
+          exit 1
       - name: Fail if any shard failed or was cancelled
         if: ${{ needs.backend-tests-shard.result == 'failure' || needs.backend-tests-shard.result == 'cancelled' }}
         run: |
@@ -881,9 +1198,56 @@ jobs:
   # SA base : deux lanes, `--shard` natif de Playwright sur la partie chromium.
   # Le nom de check REQUIS `e2e` est préservé par l'agrégateur mince plus bas —
   # NE PAS le renommer (protection de branche : contexte littéral).
+  # ---------------------------------------------------------------------------
+  # WOW-CI RONDE 5 (20/08/2026) — CE JOB PASSE DANS L'IMAGE `ci-e2e`.
+  #
+  # J'avais d'abord écarté cette variante sur une estimation. Les mesures du
+  # dernier run VERT (32307320397) l'ont renversée. `e2e-shard (1)` = 369 s,
+  # dont 240 s de MISE EN PLACE pour 129 s de specs, et l'écart entre les deux
+  # lanes (369 s contre 305 s) vient à 62 s sur 64 de cette mise en place.
+  # Ce que l'image supprime, mesuré :
+  #     Install Playwright browsers (chromium + webkit) ....... 55 s
+  #     Cache Playwright browser binaries .....................  7 s
+  #     part apt + pip + MinIO de backend-env ................. ~40 s
+  #     setup-python + redirection/cache apt ..................   7 s
+  #                                                        total ~109 s
+  # Ce qu'elle coûte : le pull de l'image (~40-50 s de plus que les 15 s
+  # d'« Initialize containers » actuels, pour ~950 Mo compressés).
+  # GAIN NET ATTENDU ~60 s : 369 s -> ~306 s.
+  #
+  # Le poste dominant restait `Install Playwright browsers` À 55 s ALORS QUE LES
+  # BINAIRES ÉTAIENT DÉJÀ CACHÉS (l'étape de cache qui les restaure ne coûte que
+  # 7 s) : ces 55 s sont le `--with-deps`, c'est-à-dire le dépaquetage apt des
+  # dépendances système de WebKit. Ni le cache apt ni le cache des binaires ne
+  # l'évitent — seule une image pré-construite le fait.
+  #
+  # POURQUOI CE JOB DEVIENT PRIORITAIRE : une fois les volets A+B appliqués, le
+  # pire `backend-tests-shard` tombe de 425 s à ~263 s, et c'est `e2e-shard` qui
+  # devient le job qui ferme la marche. Le corriger n'est plus un confort.
+  #
+  # `actions/setup-node` RESTE dans le job (il coûte 4 s et apporte le cache npm,
+  # sans lequel `npm ci` passerait de 5 s à plusieurs dizaines) — voir l'en-tête
+  # de `.github/ci-image/Dockerfile.e2e` pour les deux choses qu'il n'embarque
+  # volontairement pas.
+  # ---------------------------------------------------------------------------
   e2e-shard:
-    needs: changes
+    needs: [changes, ci-image-check]
     if: ${{ needs.changes.outputs.code == 'true' }}
+    permissions:
+      contents: read
+      packages: read
+    defaults:
+      run:
+        # WOW-CI RONDE 5 — dans un job `container:`, GitHub lance les scripts
+        # avec `sh` (dash) par défaut : le premier `set -o pipefail` (bashisme)
+        # tuait les six shards en ~90 s (run 32316154505). bash est présent
+        # dans l'image — déclaré une fois pour toutes au niveau du job.
+        shell: bash
+    container:
+      image: ${{ needs.ci-image-check.outputs.image_e2e }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     strategy:
       fail-fast: false
       matrix:
@@ -891,19 +1255,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 18
     services:
-      postgres:
-        image: pgvector/pgvector:pg16
-        env:
-          POSTGRES_DB: erp_db
-          POSTGRES_USER: erp_user
-          POSTGRES_PASSWORD: ci_password
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U erp_user"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
+      # WOW-CI RONDE 5 (20/08/2026) — LE SERVICE `postgres` A DISPARU D'ICI.
+      # Il est remplacé par un serveur local que `backend-env` démarre DANS le
+      # conteneur du job (voir son étape « Demarrer Postgres »). Raison unique
+      # et non négociable : un `services:` d'Actions n'accepte pas de
+      # `command:`, donc `max_locks_per_transaction` y était inatteignable — et
+      # les shards mouraient en `out of shared memory` dès qu'un test purgeait
+      # une société entière (DELETE en cascade sur ~900 tables dans UNE
+      # transaction, contre 6 400 verrous disponibles). Le serveur local tourne
+      # avec 2048 verrous par transaction, ce qui règle la classe entière.
+      # `redis` reste un service : rien à y configurer.
       redis:
         image: redis:7.4-alpine
         ports:
@@ -915,10 +1276,19 @@ jobs:
       DB_NAME: erp_db
       DB_USER: erp_user
       DB_PASSWORD: ci_password
+      # WOW-CI RONDE 5 — `localhost` désigne le conteneur du job : Postgres
+      # (démarré par `backend-env`), MinIO et gunicorn (127.0.0.1:8000, lancé
+      # par l'étape des specs) y tournent tous. Seul `redis`, resté un service,
+      # s'atteint par son NOM sur le réseau du job.
       DB_HOST: localhost
       DB_PORT: '5432'
-      REDIS_HOST: localhost
+      REDIS_HOST: redis
       REDIS_PORT: '6379'
+      # Emplacement des navigateurs BAKÉS dans l'image. Doit être identique à
+      # l'`ENV PLAYWRIGHT_BROWSERS_PATH` du Dockerfile.e2e : sans lui Playwright
+      # les chercherait dans `~/.cache/ms-playwright`, ne les trouverait pas, et
+      # les retéléchargerait — l'image ne servirait à rien.
+      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
       MINIO_ENDPOINT: localhost:9000
       MINIO_ROOT_USER: erp_admin
       MINIO_ROOT_PASSWORD: erp_minio_password
@@ -936,82 +1306,40 @@ jobs:
       TENANT_RATE_LIMIT: '0'
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'   # MUST match prod (django_core/fastapi Dockerfiles: python:3.11.x). A 3.12+/3.13 CI would not catch 3.11-only SyntaxErrors (e.g. backslash in f-string) that crash the live PDF generator.
-          cache: 'pip'   # WOW4 — cache les deps Python (npm l'était déjà, pas pip) ; clé sur requirements-dev.txt.
-          cache-dependency-path: backend/django_core/requirements-dev.txt
+      # WOW-CI RONDE 5 — `actions/setup-python` a disparu (Python 3.11 et toutes
+      # les dépendances sont dans l'image). `actions/setup-node` RESTE : il ne
+      # coûte que 4 s et il apporte le cache npm, sans lequel `npm ci` passerait
+      # de 5 s (mesuré) à plusieurs dizaines de secondes. C'est pour cette raison
+      # précise que l'image n'embarque pas `node_modules`.
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       # -----------------------------------------------------------------------
-      # WOW-CI (2026-08-18) — CACHE DES PAQUETS APT. Mesuré sur le run
-      # 32167530769 : l'étape « Install Playwright browsers » a duré 9 min 10 s,
-      # et son propre journal dit « Fetched 114 MB in 8min 41s (219 kB/s) ».
-      # Autrement dit 95 % du coût est le TÉLÉCHARGEMENT APT des dépendances
-      # système de WebKit (fontes CJK, gstreamer, libavcodec, librsvg…) — pas les
-      # navigateurs : leurs binaires (177 Mo + 101 Mo depuis le CDN Playwright)
-      # descendent en ~14 s. On redirige donc le magasin de .deb d'apt vers un
-      # dossier que `actions/cache` sait restaurer : sur un cache chaud apt trouve
-      # tous les paquets sur place (il revérifie leurs sommes de contrôle) et ne
-      # télécharge RIEN — il ne reste que le dépaquetage. Sur un cache froid, le
-      # comportement est EXACTEMENT celui d'avant : rien n'est sauté, aucune
-      # dépendance n'est retirée, WebKit reste installé et testé.
-      #
-      # Placé AVANT `backend-env` à dessein : ses paquets WeasyPrint passent par
-      # le même magasin et deviennent gratuits eux aussi.
-      #
-      # On ne met VOLONTAIREMENT PAS `~/.cache/ms-playwright` dans le cache :
-      # ~450 Mo pour ~14 s gagnées, alors que le quota de cache du dépôt est déjà
-      # saturé (10,49 Go pour 10 Go au 18/08) — et évincer un dump testdb (WOW8)
-      # coûterait un rebuild à froid d'environ 40 min.
+      # WOW-CI RONDE 5 (20/08/2026) — TOUT LE DISPOSITIF DE CACHE APT A DISPARU
+      # D'ICI, et c'est le but. Il existait parce que `playwright install
+      # --with-deps` retéléchargeait 114 Mo de dépendances système WebKit à
+      # chaque run (jusqu'à « Fetched 114 MB in 59min 15s » sur un miroir
+      # étranglé, le 19/08). Ces paquets sont maintenant DANS l'image `ci-e2e`,
+      # dépaquetés une fois pour toutes : il n'y a plus rien à télécharger, donc
+      # plus rien à cacher, et la pathologie du miroir lent disparaît avec.
+      # Le cache `apt-e2e-v2-…` reste alimenté et consommé par
+      # `.github/actions/backend-env` sur son chemin NON conteneurisé, qui sert
+      # encore `release-verify.yml`.
       # -----------------------------------------------------------------------
-      - name: Redirect apt's .deb store into a cacheable directory
-        # JAMAIS BLOQUANT : ce n'est qu'une optimisation. Si quoi que ce soit
-        # échoue ici, apt reprend son magasin par défaut et le job se comporte
-        # exactement comme avant — une accélération ne doit pas pouvoir faire
-        # rougir un check REQUIS.
-        run: |
-          set -uo pipefail
-          mkdir -p "$HOME/apt-archives/partial" || true
-          # apt abandonne ses privilèges vers l'utilisateur `_apt` pour écrire
-          # dans `partial/` : sans droits larges il retombe (bruyamment) sur un
-          # téléchargement non bac-à-sable, ou échoue.
-          chmod -R 777 "$HOME/apt-archives" || true
-          printf 'Dir::Cache::archives "%s";\nBinary::apt::APT::Keep-Downloaded-Packages "true";\n' \
-            "$HOME/apt-archives" | sudo tee /etc/apt/apt.conf.d/99-ci-archive-cache >/dev/null \
-            || echo "AVERTISSEMENT : redirection du cache apt impossible — on continue sans."
-          exit 0
-      - name: Cache apt packages (Playwright system deps + WeasyPrint)
-        uses: actions/cache@v4
-        with:
-          path: ~/apt-archives
-          # WOW-CI7 (19/08) — LA CLE NE DEPEND PLUS QUE DU LOCK. Elle portait
-          # aussi l'empreinte de `.github/actions/backend-env/action.yml`, ce qui
-          # etait une faute : ce fichier change pour des raisons qui n'ont RIEN a
-          # voir avec la liste des paquets .deb. Mon propre correctif de la ronde 6
-          # (cache de l'environnement Python) l'a modifie, a invalide ce cache, et
-          # le run qui a suivi est tombe sur un miroir Ubuntu etrangle a 32 ko/s :
-          # « Fetched 114 MB in 59min 15s ». Une heure de silence pour une cle
-          # couplee a un fichier sans rapport.
-          # Ce qui determine reellement le jeu de paquets, c'est la version de
-          # Playwright (donc le lock). Si la liste WeasyPrint de backend-env
-          # change un jour, apt telechargera ces quelques paquets en plus et le
-          # cache se recalera tout seul au prochain run `push` — auto-correcteur,
-          # au lieu de tout jeter a chaque edition.
-          key: apt-e2e-v2-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
-          restore-keys: |
-            apt-e2e-v2-${{ runner.os }}-
       # WOW7 — shared WeasyPrint + pip (requirements-dev.txt) + MinIO setup.
       # WOW8 — restore the cached pre-migrated dump straight into erp_db
       # (measured: this job's migrate+seed step was 1796s of a 1915s total —
       # 94% — while the E2E specs themselves ran in 36s). The migrate below
       # becomes a fast no-op; the seeds still run fresh.
+      # WOW-CI RONDE 5 — `prebuilt-image: 'true'` : apt et pip sont déjà dans
+      # l'image, MinIO démarre par son binaire natif et pg_restore/pg_dump sont
+      # appelés directement (docker n'existe pas dans un job `container:`).
       - uses: ./.github/actions/backend-env
         with:
           testdb-cache-into: erp_db
+          prebuilt-image: 'true'
       - name: Migrate + seed throwaway demo data
         working-directory: backend/django_core
         run: |
@@ -1029,38 +1357,31 @@ jobs:
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci --prefer-offline --no-audit --no-fund
-      # WOW-CI5 (19/08) — le cache apt du round 2 fonctionne desormais : ce run
-      # a bien restaure `apt-e2e-v1-...`, donc les dependances systeme de WebKit
-      # ne se retelechargent plus. Les 37 s qui restent sont le telechargement
-      # des NAVIGATEURS depuis le CDN Playwright (chromium 177 Mo + webkit
-      # 101 Mo + ffmpeg). On les cache a leur tour, cle EXACTE sur le lock (donc
-      # sur la version de Playwright) et sans `restore-keys` : un binaire d'une
-      # autre version ferait echouer le lancement avec « Executable doesn't
-      # exist ». `npx playwright install` continue de tourner juste apres — il
-      # est idempotent et ne fait rien quand les binaires sont deja la.
-      # (Au round 1 j'avais ecarte ce cache : ~250 Mo pour ~14 s ne le valaient
-      # pas quand le quota du depot etait sature. Le gain mesure est maintenant
-      # de ~30 s par lane, et les caches evinces en LRU sont les bases CodeQL
-      # par-commit, jamais relues — pas les dumps testdb, relus a chaque run.)
-      - name: Cache Playwright browser binaries
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: pw-browsers-v1-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
+      # WOW-CI RONDE 5 (20/08/2026) — LE CACHE DES BINAIRES A DISPARU, ET
+      # `--with-deps` AVEC LUI. Les deux navigateurs (VX68 : chromium ET webkit,
+      # le passage Safari réel) sont BAKÉS dans l'image `ci-e2e`, à
+      # `PLAYWRIGHT_BROWSERS_PATH=/ms-playwright`, dans la version que
+      # `package-lock.json` fixe — c'est cette même version qui étiquette
+      # l'image, donc un binaire ne peut pas se désynchroniser du
+      # `@playwright/test` que `npm ci` vient d'installer.
+      #
+      # LA MESURE QUI JUSTIFIE CE CHANGEMENT (run vert 32307320397) : l'étape
+      # de cache restaurait bien les binaires en 7 s, et pourtant
+      # `playwright install --with-deps` durait encore 55 s sur la lane 1 (20 s
+      # sur la lane 2, 31 s sur le run précédent). Ces secondes n'étaient donc
+      # PAS les navigateurs : c'était le dépaquetage apt de `--with-deps`. Ni le
+      # cache apt ni le cache des binaires ne pouvaient l'éviter.
+      #
+      # L'appel est CONSERVÉ, sans `--with-deps` : idempotent, il ne fait rien
+      # quand les binaires sont là, et il échouera franchement s'ils manquaient —
+      # ce qui vaut mieux qu'un `playwright test` mourant sur « Executable
+      # doesn't exist ». Le plafond de 10 min reste : si cette étape se met à
+      # retélécharger, l'échec doit la NOMMER (le 19/08 elle a tourné 59 min 44 s
+      # en silence sur un miroir apt étranglé).
       - name: Install Playwright browsers (chromium + webkit)
-        # WOW-CI7 — plafond au niveau de l'ETAPE, pas seulement du job : quand
-        # cette etape est le point de blocage, l'echec doit la NOMMER. Le
-        # 19/08 elle a tourne 59 min 44 s sur un miroir apt etrangle et le job
-        # est mort en silence a 1 h 05. 10 min est large : mesure a 31-37 s sur
-        # un miroir sain, ~9 min sur le pire miroir observe avant celui-ci.
         timeout-minutes: 10
         working-directory: frontend
-        # VX68 — WebKit (Safari réel) en plus de Chromium : le smoke ajoute un
-        # passage `mobile-safari` pour attraper ce qui ne casse QUE sur Safari.
-        # `--with-deps` est CONSERVÉ tel quel (mêmes navigateurs, mêmes
-        # dépendances système) ; c'est le magasin apt caché plus haut qui rend
-        # sa partie « téléchargement » gratuite sur un cache chaud.
-        run: npx playwright install --with-deps chromium webkit
+        run: npx playwright install chromium webkit
       - name: Build frontend (no service worker for E2E)
         working-directory: frontend
         env:
@@ -1099,16 +1420,42 @@ jobs:
           # `fumee-ecrans.spec.js` pesait 183,4 s dans un seul fichier, soit
           # 84 % du temps chromium, et Playwright affecte un fichier ENTIER a un
           # shard : ce fichier fixait donc seul le plancher du job. Il est
-          # desormais scinde en trois groupes de modules equilibres
-          # (141/141/140 routes sur 422 — voir e2e/fumee-ecrans.partition.js,
-          # dont la garde d'union prouve qu'aucun module ni aucune route ne
-          # tombe du decoupage). Durees mesurees sur le run 32206663106 :
-          #   fumee (3 groupes) 61,1 s chacun | devis 20,7 s | health 13,9 s
-          #   mobile-safari 71,3 s
-          # Repartition retenue : 61,1+61,1+20,7 = 142,9 s contre
-          # 61,1+13,9+71,3 = 146,3 s. Une 3e lane descendrait a ~96 s mais le
-          # budget de creneaux est plein (bloc CRENEAUX en tete de fichier) ;
-          # le decoupage la rend possible des qu'un creneau se libere.
+          # scinde en groupes de modules equilibres — voir
+          # e2e/fumee-ecrans.partition.js, dont la garde d'union prouve
+          # qu'aucun module ni aucune route ne tombe du decoupage.
+          #
+          # LE MODELE EST ADDITIF, ET C'EST VERIFIABLE : playwright.config.js
+          # declare `workers: 1, fullyParallel: false`, donc une lane execute
+          # ses fichiers en SERIE et son temps est la SOMME de ses blocs.
+          #
+          # WOW-CI RONDE 5 (20/08/2026) — MESURES REELLES, ET DEUX CHANGEMENTS
+          # QU'ELLES ONT FAIT ABANDONNER. Les durees ci-dessus venaient du run
+          # 32206663106, qui est ANNULE (« cancelled ») : ce n'etait pas une
+          # mesure de reference. Relevees sur le dernier run VERT (32307320397,
+          # etape « Start Django + run E2E specs », attente gunicorn comprise) :
+          #
+          #     lane 1 (fumee-1 + fumee-2 + devis)          129 s
+          #     lane 2 (fumee-3 + health + mobile-safari)   126 s
+          #
+          # LES DEUX LANES SONT DEJA EQUILIBREES A 3 s PRES. Le plafond de tout
+          # rééquilibrage a 2 lanes est donc 3 s — quel que soit le nombre de
+          # groupes de fumee. Scinder la fumee plus finement (essai a 5 groupes)
+          # a bien ete calcule puis ABANDONNE pour cette raison : ca ne rachete
+          # rien tant qu'il n'y a que 2 lanes.
+          #
+          # ET LE DESEQUILIBRE REEL N'EST PAS LA. Sur ce meme run, le job entier
+          # fait 369 s (lane 1) contre 305 s (lane 2) — 64 s d'ecart, dont 62 s
+          # viennent de la MISE EN PLACE, pas des specs :
+          #     backend-env            102 s (lane 1) contre  75 s (lane 2)
+          #     playwright install      55 s (lane 1) contre  20 s (lane 2)
+          # C'est la variance de la mise en place qui fixe le pire e2e, pas la
+          # repartition des specs. On ne corrige donc pas ce qui est deja droit.
+          #
+          # UNE 3e LANE, elle, vaudrait 123 -> 86 s, soit ~37 s : sous le seuil
+          # de 60 s qui justifierait de depenser un des 2 derniers creneaux
+          # (bloc CRENEAUX en tete de fichier — un job qui fait la queue est la
+          # pire lane possible). Le vrai levier reste la mise en place : voir
+          # l'en-tete de ce job.
           if [ "${{ matrix.shard }}" = "1" ]; then
             npx playwright test --project=chromium \
               fumee-ecrans-1.spec.js fumee-ecrans-2.spec.js devis.spec.js
@@ -1131,30 +1478,27 @@ jobs:
           name: playwright-report-${{ matrix.shard }}
           path: frontend/playwright-report
           retention-days: 7
-      # WOW-CI2 — la sauvegarde du cache apt du round 1 a ÉCHOUÉ sur le run
-      # 32182877239 : « tar: ../../../apt-archives/lock: Cannot open: Permission
-      # denied », idem pour `partial/`. apt tourne en root et recrée ces deux
-      # entrées en root ; le tar de post-job, lancé en `runner`, ne peut pas les
-      # lire — donc RIEN n'était sauvegardé et chaque run repayait les 114 Mo.
-      # On retire les deux entrées qui ne sont pas des paquets et on rend le
-      # dossier lisible, juste avant l'étape post d'actions/cache.
-      # `if: always()` : le cache doit s'écrire même quand une spec est rouge,
-      # sinon un run rouge condamne le suivant à repayer le téléchargement.
-      - name: Make the apt store readable for the cache save
-        if: ${{ always() }}
-        run: |
-          set -uo pipefail
-          sudo rm -rf "$HOME/apt-archives/partial" "$HOME/apt-archives/lock" || true
-          sudo chown -R "$(id -u):$(id -g)" "$HOME/apt-archives" || true
-          exit 0
+      # WOW-CI RONDE 5 — l'étape « Make the apt store readable for the cache
+      # save » a été retirée avec le cache apt qu'elle servait : ce job n'écrit
+      # plus dans `~/apt-archives` (les paquets sont dans l'image), et `sudo`
+      # n'existe de toute façon pas dans le conteneur.
 
   # Agrégateur mince qui PRÉSERVE le nom de check requis `e2e` (patron WOW6,
   # identique à `backend-tests` / `frontend-lint` / `backend-lint`).
   e2e:
-    needs: [changes, e2e-shard]
+    needs: [changes, ci-image-check, e2e-shard]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
+      # WOW-CI RONDE 5 — même garde que sur `backend-tests` et `backend-lint` :
+      # `e2e-shard` dépend désormais de l'image CI, donc un `ci-image-check`
+      # rouge le laisserait « skipped » et ferait passer ce check REQUIS au vert
+      # sans qu'aucune spec n'ait tourné.
+      - name: Fail if the CI image could not be resolved
+        if: ${{ needs.ci-image-check.result == 'failure' || needs.ci-image-check.result == 'cancelled' }}
+        run: |
+          echo "ci-image-check=${{ needs.ci-image-check.result }} — les lanes e2e n'ont pas tourné."
+          exit 1
       - name: Fail if an e2e lane failed or was cancelled
         if: ${{ needs.e2e-shard.result == 'failure' || needs.e2e-shard.result == 'cancelled' }}
         run: |
@@ -1170,24 +1514,37 @@ jobs:
   # partout ailleurs, donc n'alourdit jamais le gate backend-tests requis).
   # ---------------------------------------------------------------------------
   rls-tests:
-    needs: changes
+    needs: [changes, ci-image-check]
     if: ${{ needs.changes.outputs.backend == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 12
+    permissions:
+      contents: read
+      packages: read
+    # WOW-CI RONDE 5 — même image CI figée que les shards (cf. leur en-tête).
+    defaults:
+      run:
+        # WOW-CI RONDE 5 — dans un job `container:`, GitHub lance les scripts
+        # avec `sh` (dash) par défaut : le premier `set -o pipefail` (bashisme)
+        # tuait les six shards en ~90 s (run 32316154505). bash est présent
+        # dans l'image — déclaré une fois pour toutes au niveau du job.
+        shell: bash
+    container:
+      image: ${{ needs.ci-image-check.outputs.image }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     services:
-      postgres:
-        image: pgvector/pgvector:pg16
-        env:
-          POSTGRES_DB: erp_db
-          POSTGRES_USER: erp_user
-          POSTGRES_PASSWORD: ci_password
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U erp_user"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
+      # WOW-CI RONDE 5 (20/08/2026) — LE SERVICE `postgres` A DISPARU D'ICI.
+      # Il est remplacé par un serveur local que `backend-env` démarre DANS le
+      # conteneur du job (voir son étape « Demarrer Postgres »). Raison unique
+      # et non négociable : un `services:` d'Actions n'accepte pas de
+      # `command:`, donc `max_locks_per_transaction` y était inatteignable — et
+      # les shards mouraient en `out of shared memory` dès qu'un test purgeait
+      # une société entière (DELETE en cascade sur ~900 tables dans UNE
+      # transaction, contre 6 400 verrous disponibles). Le serveur local tourne
+      # avec 2048 verrous par transaction, ce qui règle la classe entière.
+      # `redis` reste un service : rien à y configurer.
       redis:
         image: redis:7.4-alpine
         ports:
@@ -1199,24 +1556,25 @@ jobs:
       DB_NAME: erp_db
       DB_USER: erp_user
       DB_PASSWORD: ci_password
+      # WOW-CI RONDE 5 — Postgres tourne DANS le conteneur du job, démarré par
+      # `backend-env` (voir le même commentaire sur `backend-tests-shard`).
       DB_HOST: localhost
       DB_PORT: '5432'
-      REDIS_HOST: localhost
+      REDIS_HOST: redis
       REDIS_PORT: '6379'
       MINIO_ENDPOINT: localhost:9000
       MINIO_ROOT_USER: erp_admin
       MINIO_ROOT_PASSWORD: erp_minio_password
       MINIO_BUCKET_PDF: erp-pdf
       MINIO_BUCKET_UPLOADS: erp-uploads
+      # WOW-CI RONDE 5 — même élargissement que sur les shards : cette suite EST
+      # un `TransactionTestCase`, donc chacun de ses tests se termine par la
+      # purge large de 16-31 s que le garde-fou de 30 s annulerait tôt ou tard.
+      DB_STATEMENT_TIMEOUT_MS: '600000'
       # Active la suite RLS (sautée partout ailleurs).
       POSTGRES_RLS_ENABLED: '1'
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: 'pip'
-          cache-dependency-path: backend/django_core/requirements-dev.txt
       # WOW-CI (2026-07-16): reuse the WOW8 pre-migrated dump + --keepdb exactly
       # like the shards. Before this, rls-tests cold-replayed the full ~1,150-
       # migration history on every run (measured 36-52 min, 94-97% of the job;
@@ -1228,9 +1586,23 @@ jobs:
       - uses: ./.github/actions/backend-env
         with:
           testdb-cache-into: test_erp_db
+          prebuilt-image: 'true'
+      # WOW-CI RONDE 5 — CE JOB RESTE DÉLIBÉRÉMENT EN `--parallel 1` (B3).
+      # Deux raisons, pas une :
+      #  1. Il n'exécute qu'UN module, qui ne contient qu'UNE classe
+      #     (`RlsSealTests`). Django affecte une classe entière à un seul
+      #     worker : `--parallel` n'aurait donc STRICTEMENT rien à répartir, il
+      #     ne ferait qu'ajouter le coût de N clones de base.
+      #  2. Cette classe est justement celle qui a fait sauter `max_locks` en
+      #     juillet (commit 0d66f6e1) : c'est un `TransactionTestCase` dont
+      #     chaque test purge tout le schéma. La paralléliser serait reprendre
+      #     le risque en échange de zéro gain.
+      # Ce job n'est de toute façon pas sur le chemin critique du gate : ses
+      # assertions tournent en moins d'une minute, le reste est la restauration
+      # WOW8 que le volet A raccourcit déjà.
       - name: Run RLS seal suite (opt-in — flag ON)
         working-directory: backend/django_core
-        run: python manage.py test core.tests.test_rls -v 2 --keepdb
+        run: python manage.py test core.tests.test_rls -v 2 --keepdb --parallel 1
 
   # ---------------------------------------------------------------------------
   # Always-running aggregate gate. Pin THIS one job as the single required
@@ -1243,6 +1615,7 @@ jobs:
     if: ${{ always() }}
     needs:
       - changes
+      - ci-image-check
       - backend-lint-fast
       - backend-openapi
       - backend-lint
@@ -1260,6 +1633,7 @@ jobs:
       - name: Report job results
         run: |
           echo "changes=${{ needs.changes.result }}"
+          echo "ci-image-check=${{ needs.ci-image-check.result }}"
           echo "backend-lint-fast=${{ needs.backend-lint-fast.result }}"
           echo "backend-openapi=${{ needs.backend-openapi.result }}"
           echo "backend-lint=${{ needs.backend-lint.result }}"

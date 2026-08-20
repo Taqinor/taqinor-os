@@ -561,5 +561,15 @@ class Pub66GeoHaloTests(TestCase):
         halos = aud.fresh_installation_geo_halos(self.company)
         self.assertEqual(
             set(halos[0]['targeting_spec'].keys()), {'geo_locations'})
-        self.assertNotIn(str(self.client_obj.pk),
-                         str(halos[0]['targeting_spec']))
+        # Classe #69 — un garde anti-fuite par SOUS-CHAINE de chiffres nus est
+        # un faux positif garanti : sous --parallel, le pk client redevient
+        # petit (« 2 ») et se retrouve DANS la latitude « 31.6295 ». On borne
+        # la spec a sa forme structurelle : uniquement des cles geo connues et
+        # des VALEURS exactes jamais egales a un identifiant client.
+        loc = halos[0]['targeting_spec']['geo_locations']['custom_locations'][0]
+        self.assertEqual(
+            set(loc.keys()),
+            {'latitude', 'longitude', 'radius', 'distance_unit'})
+        for valeur in loc.values():
+            self.assertNotEqual(str(valeur), str(self.client_obj.pk))
+            self.assertNotEqual(str(valeur), str(self.client_obj.nom))
