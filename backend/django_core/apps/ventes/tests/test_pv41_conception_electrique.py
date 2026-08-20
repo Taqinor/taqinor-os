@@ -23,7 +23,7 @@ from django.test import SimpleTestCase, TestCase
 from rest_framework.test import APIClient
 
 from apps.crm.models import Client
-from apps.stock.models import Produit
+from apps.stock.models import FicheTechnique, Produit
 from apps.ventes import electrical_service as es
 from apps.ventes.models import Devis, LigneDevis
 from authentication.models import Company
@@ -81,11 +81,72 @@ class _FauxDevis:
         self.electrical_design_hash = None
 
 
+# ── PVFCH (fondateur 20/08/2026) — « never invent numbers » ─────────────────
+# Le montage portait jusqu'ici des lignes NUES (« Onduleur réseau 10 kW
+# triphasé ») et le service comblait tout le reste avec les défauts de marché
+# de ``solar_design`` : ces tests VALIDAIENT donc l'invention. Ils montent
+# désormais de VRAIES fiches techniques — ``specs_for_produit`` ne fait que des
+# ``getattr``, aucune base n'est nécessaire.
+#
+# Les valeurs sont celles du catalogue seedé (Canadian Solar TOPHiKu7 710 Wc et
+# un onduleur triphasé 10 kW), pour que le montage ressemble à la production.
+class _FausseFiche:
+    def __init__(self, type_fiche, **champs):
+        self.type_fiche = type_fiche
+        for cle, valeur in champs.items():
+            setattr(self, cle, valeur)
+
+
+class _FauxProduit:
+    def __init__(self, nom, fiche=None, marque="", description="",
+                 garantie=""):
+        self.id = None
+        self.nom = nom
+        self.marque = marque
+        self.description = description
+        self.garantie = garantie
+        self.fiche_technique = fiche
+
+
+def _produit_panneau():
+    return _FauxProduit("Panneau PV 710 Wc mono", marque="Canadien Solar",
+                        fiche=_FausseFiche(
+                            "module",
+                            pmax_wc=Decimal("710.00"),
+                            voc_v=Decimal("48.30"),
+                            isc_a=Decimal("18.59"),
+                            vmp_v=Decimal("40.40"),
+                            imp_a=Decimal("17.59"),
+                            temp_coeff_voc_pct_c=Decimal("-0.250"),
+                            temp_coeff_pmax_pct_c=Decimal("-0.290"),
+                            longueur_mm=2384, largeur_mm=1303))
+
+
+def _produit_onduleur(phases=3, ac_kw="10.00"):
+    return _FauxProduit("Onduleur réseau 10 kW", marque="Huawei",
+                        fiche=_FausseFiche(
+                            "onduleur",
+                            ond_ac_kw=Decimal(ac_kw),
+                            ond_phases=phases,
+                            ond_n_mppt=2,
+                            ond_mppt_v_min=Decimal("200.0"),
+                            ond_mppt_v_max=Decimal("950.0"),
+                            ond_v_max_abs=Decimal("1100.0"),
+                            ond_i_max_mppt_a=Decimal("26.0"),
+                            ond_rendement_euro_pct=Decimal("98.0"),
+                            ond_v_demarrage_v=None,
+                            ond_isc_max_mppt_a=None,
+                            ond_bat_aucune=True,
+                            ond_bat_v_min=None, ond_bat_v_max=None))
+
+
 def _devis_villa():
     return _FauxDevis(
         lignes=[
-            _FausseLigne("Panneau PV 550 Wc mono", 24),
-            _FausseLigne("Onduleur réseau 10 kW triphasé", 1),
+            _FausseLigne("Panneau PV 710 Wc mono", 24,
+                         produit=_produit_panneau()),
+            _FausseLigne("Onduleur réseau 10 kW triphasé", 1,
+                         produit=_produit_onduleur()),
         ],
         roof_layout={"_pans_geometry": [
             {"label": "Sud", "nb_panneaux": 16, "azimut_deg": 180,
@@ -137,8 +198,10 @@ class ContratConceptionElectriqueTest(SimpleTestCase):
 
     def test_repli_sur_les_lignes_sans_calepinage(self):
         devis = _FauxDevis(lignes=[
-            _FausseLigne("Panneau PV 550 Wc mono", 12),
-            _FausseLigne("Onduleur réseau 6 kW", 1),
+            _FausseLigne("Panneau PV 710 Wc mono", 12,
+                         produit=_produit_panneau()),
+            _FausseLigne("Onduleur réseau 6 kW", 1,
+                         produit=_produit_onduleur(ac_kw="6.00")),
         ])
         design = es.build_electrical_design(devis)
         self.assertEqual(sum(c["nb_modules"] for c in design["chaines"]), 12)
@@ -161,16 +224,154 @@ class ContratConceptionElectriqueTest(SimpleTestCase):
     def test_longueur_dc_par_defaut_ne_bouge_pas_avec_le_devis(self):
         villa = es.build_electrical_design(_devis_villa())
         petit = es.build_electrical_design(_FauxDevis(lignes=[
-            _FausseLigne("Panneau PV 550 Wc mono", 4),
-            _FausseLigne("Onduleur réseau 3 kW", 1),
+            _FausseLigne("Panneau PV 710 Wc mono", 4,
+                         produit=_produit_panneau()),
+            _FausseLigne("Onduleur réseau 3 kW", 1,
+                         produit=_produit_onduleur(ac_kw="3.00")),
         ]))
         self.assertEqual(villa["parametres"]["dc_m"],
                          petit["parametres"]["dc_m"])
 
-    def test_triphase_lu_dans_le_libelle(self):
+    def test_phases_lues_sur_la_fiche(self):
+        """PVFCH — les phases viennent de ``FicheTechnique.ond_phases``.
+
+        La regex historique sur le LIBELLÉ est supprimée : elle retombait en
+        monophasé dès que le mot « triphasé » manquait à la ligne, divisant
+        tout le courant AC par √3 sans le dire.
+        """
         design = es.build_electrical_design(_devis_villa())
         self.assertEqual(design["parametres"]["phases"], 3)
         self.assertEqual(design["parametres"]["regime"], "TT")
+
+    def test_phases_monophase_de_la_fiche_malgre_un_libelle_muet(self):
+        devis = _FauxDevis(lignes=[
+            _FausseLigne("Panneau PV 710 Wc mono", 8,
+                         produit=_produit_panneau()),
+            # Le libellé ne dit RIEN des phases : seule la fiche tranche.
+            _FausseLigne("Onduleur réseau 5 kW", 1,
+                         produit=_produit_onduleur(phases=1, ac_kw="5.00")),
+        ])
+        design = es.build_electrical_design(devis)
+        self.assertEqual(design["parametres"]["phases"], 1)
+
+
+class FicheIncompleteTest(SimpleTestCase):
+    """PVFCH (fondateur 20/08/2026) — « never invent numbers ».
+
+    Une variable d'ÉQUIPEMENT vient de la fiche technique, ou le calcul REFUSE
+    en nommant le champ manquant. Aucun défaut de marché, aucune regex sur le
+    libellé de la ligne, aucune valeur déduite d'une autre.
+    """
+
+    def _devis_sans_fiche(self):
+        return _FauxDevis(
+            lignes=[
+                _FausseLigne("Panneau PV 550 Wc mono", 24),
+                _FausseLigne("Onduleur réseau 10 kW triphasé", 1),
+            ],
+            roof_layout={"_pans_geometry": [
+                {"label": "Sud", "nb_panneaux": 24, "azimut_deg": 180,
+                 "inclinaison_deg": 25}]},
+            layout_hash="sansfiche")
+
+    def test_sans_fiche_aucun_nombre_calcule(self):
+        design = es.build_electrical_design(self._devis_sans_fiche())
+        # La FORME du contrat reste entière (l'écran ne .map() jamais sur
+        # undefined) — mais elle ne porte AUCUN nombre fabriqué.
+        self.assertEqual(set(design), CLES_CONTRAT)
+        for clef in ("chaines", "protections", "cables", "bom"):
+            self.assertEqual(design[clef], [], clef)
+        self.assertIsNone(design["ratio_dc_ac"])
+        self.assertIsNone(design["ratio_ac_dc"])
+
+    def test_sans_fiche_le_refus_nomme_les_champs_manquants(self):
+        design = es.build_electrical_design(self._devis_sans_fiche())
+        self.assertFalse(design["conformite"]["conforme"])
+        motifs = " ".join(design["conformite"]["bloquants"])
+        # Le fondateur doit lire le NOM DU CHAMP à remplir, pas « données
+        # insuffisantes » — et l'écran où le remplir.
+        for attendu in ("plage MPPT — tension mini (V)",
+                        "tension DC maximale (V)",
+                        "nombre d'entrées MPPT",
+                        "courant court-circuit — Isc (A)",
+                        "puissance crête (Wc)",
+                        "Stock → Catalogue"):
+            self.assertIn(attendu, motifs)
+
+    def test_une_seule_variable_manquante_suffit_a_refuser(self):
+        """Le verrou est PAR VARIABLE : une fiche à 99 % refuse quand même."""
+        onduleur = _produit_onduleur()
+        onduleur.fiche_technique.ond_v_max_abs = None   # la borne BLOQUANTE
+        devis = _FauxDevis(
+            lignes=[
+                _FausseLigne("Panneau PV 710 Wc mono", 12,
+                             produit=_produit_panneau()),
+                _FausseLigne("Onduleur réseau 10 kW", 1, produit=onduleur),
+            ],
+            roof_layout={"_pans_geometry": [
+                {"label": "Sud", "nb_panneaux": 12, "azimut_deg": 180,
+                 "inclinaison_deg": 25}]})
+        design = es.build_electrical_design(devis)
+        self.assertEqual(design["chaines"], [])
+        motifs = " ".join(design["conformite"]["bloquants"])
+        self.assertIn("tension DC maximale (V)", motifs)
+        # …et RIEN d'autre ne doit être réclamé : les 6 autres variables de
+        # l'onduleur et les 7 du panneau sont bien lues sur la fiche.
+        self.assertEqual(len(design["conformite"]["bloquants"]), 1)
+
+    def test_un_refus_n_est_pas_une_etude_et_ne_se_persiste_pas(self):
+        """Le refus ne doit pas se faire passer pour une étude faite.
+
+        ``Devis.electrical_design`` reste ``None`` : c'est lui qui déclenche
+        l'annexe technique du PDF et le bloc public. Le persister ferait sortir
+        une annexe portant l'esquisse HISTORIQUE (repli du builder) au-dessus
+        d'une nomenclature VIDE — un document d'aspect officiel bâti sur rien.
+        """
+        devis = self._devis_sans_fiche()
+        design = es.build_electrical_design(devis)
+        self.assertTrue(design["conformite"]["bloquants"])
+        self.assertIsNone(devis.electrical_design)
+        self.assertIsNone(devis.electrical_design_hash)
+
+    def test_aucun_schema_unifilaire_sans_fiche(self):
+        """Un schéma remis au gestionnaire de réseau ne se dessine JAMAIS avec
+        une tension maximale ou un Isc supposés."""
+        devis = self._devis_sans_fiche()
+        es.build_electrical_design(devis)
+        self.assertIsNone(es.rendre_schema_du_devis(devis))
+
+    def test_schema_rendu_quand_la_fiche_est_complete(self):
+        devis = _devis_villa()
+        es.build_electrical_design(devis)
+        svg = es.rendre_schema_du_devis(devis)
+        self.assertTrue(svg and svg.lstrip().startswith("<svg"))
+
+    def test_fiche_complete_ne_manque_de_rien(self):
+        self.assertEqual(es.fiches_manquantes_du_devis(_devis_villa()), [])
+        self.assertEqual(es.motifs_fiche_incomplete(_devis_villa()), [])
+
+    def test_devis_sans_materiel_ne_reclame_aucune_fiche(self):
+        """Un devis VIDE n'a pas une fiche incomplète : il n'a pas de matériel.
+        C'est « aucun module à répartir », que le moteur dit déjà lui-même."""
+        self.assertEqual(es.fiches_manquantes_du_devis(_FauxDevis()), [])
+
+    def test_aucun_defaut_de_marche_ne_subsiste_dans_les_specs(self):
+        """Garde ANTI-RETOUR : les défauts de ``solar_design`` (450 Wc, 34 V,
+        41 V, 2 MPPT, 120-500 V, 600 V, 90 V) ne doivent plus JAMAIS traverser
+        ce module. Un futur repli « bien intentionné » rallume ce test."""
+        devis = self._devis_sans_fiche()
+        module = es.spec_module_du_devis(devis)
+        onduleur, phases = es.spec_onduleur_du_devis(devis)
+        for valeur in (module.pmax_wc, module.vmp_v, module.voc_v,
+                       module.isc_a, module.imp_a,
+                       module.temp_coeff_voc_pct_c,
+                       module.temp_coeff_pmax_pct_c,
+                       onduleur.n_mppt, onduleur.mppt_v_min,
+                       onduleur.mppt_v_max, onduleur.v_max_abs,
+                       onduleur.i_max_mppt_a, onduleur.ac_kw, phases):
+            self.assertEqual(valeur, 0)
+        # Isc/Imp ne sont plus DÉDUITS l'un de l'autre ni de Pmax/Vmp.
+        self.assertEqual(module.isc_a, 0.0)
 
 
 class SurchargesTest(SimpleTestCase):
@@ -239,6 +440,23 @@ class ConceptionElectriqueEndpointTest(TestCase):
             company=company, nom="Onduleur réseau 10kW triphasé",
             sku="PV41-OND-%s" % company.id, prix_vente=PRIX_ONDULEUR_VENTE,
             prix_achat=PRIX_ONDULEUR_ACHAT, quantite_stock=10)
+        # PVFCH — les deux fiches techniques : sans elles le service REFUSE de
+        # calculer (« never invent numbers »), et l'endpoint ne testerait plus
+        # que le chemin de refus.
+        FicheTechnique.objects.create(
+            company=company, produit=panneau, type_fiche="module",
+            pmax_wc=Decimal("550.00"), voc_v=Decimal("49.90"),
+            isc_a=Decimal("14.02"), vmp_v=Decimal("41.80"),
+            imp_a=Decimal("13.16"),
+            temp_coeff_voc_pct_c=Decimal("-0.270"),
+            temp_coeff_pmax_pct_c=Decimal("-0.350"))
+        FicheTechnique.objects.create(
+            company=company, produit=onduleur, type_fiche="onduleur",
+            ond_ac_kw=Decimal("10.00"), ond_phases=3, ond_n_mppt=2,
+            ond_mppt_v_min=Decimal("200.0"), ond_mppt_v_max=Decimal("950.0"),
+            ond_v_max_abs=Decimal("1100.0"),
+            ond_i_max_mppt_a=Decimal("26.0"),
+            ond_rendement_euro_pct=Decimal("98.0"), ond_bat_aucune=True)
         LigneDevis.objects.create(
             devis=devis, produit=panneau, designation="Panneau PV 550W mono",
             quantite=20, prix_unitaire=PRIX_PANNEAU_VENTE)

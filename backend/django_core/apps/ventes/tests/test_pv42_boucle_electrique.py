@@ -34,7 +34,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 
 from apps.crm.models import Lead
-from apps.stock.models import Produit
+from apps.stock.models import FicheTechnique, Produit
 from apps.ventes import services
 from apps.ventes.models import Devis
 from authentication.models import Company
@@ -113,6 +113,25 @@ class _Base(TestCase):
             company=self.company, nom='Onduleur réseau Huawei 10kW Triphasé',
             sku='PV42-OND', prix_vente=Decimal('14000'),
             prix_achat=Decimal('11000'), quantite_stock=10)
+        # PVFCH (fondateur 20/08/2026) — « never invent numbers » : sans fiche
+        # technique, la conception électrique REFUSE de calculer au lieu de
+        # combler avec des défauts de marché. La boucle testée ici est celle du
+        # cas NOMINAL : du matériel dont on connaît les caractéristiques.
+        FicheTechnique.objects.create(
+            company=self.company, produit=self.panneau, type_fiche='module',
+            pmax_wc=Decimal('550.00'), voc_v=Decimal('49.90'),
+            isc_a=Decimal('14.02'), vmp_v=Decimal('41.80'),
+            imp_a=Decimal('13.16'),
+            temp_coeff_voc_pct_c=Decimal('-0.270'),
+            temp_coeff_pmax_pct_c=Decimal('-0.350'))
+        FicheTechnique.objects.create(
+            company=self.company, produit=self.onduleur,
+            type_fiche='onduleur',
+            ond_ac_kw=Decimal('10.00'), ond_phases=3, ond_n_mppt=2,
+            ond_mppt_v_min=Decimal('200.0'), ond_mppt_v_max=Decimal('950.0'),
+            ond_v_max_abs=Decimal('1100.0'),
+            ond_i_max_mppt_a=Decimal('26.0'),
+            ond_rendement_euro_pct=Decimal('98.0'), ond_bat_aucune=True)
 
     def _lead(self):
         return Lead.objects.create(

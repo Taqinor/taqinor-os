@@ -28,7 +28,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from apps.crm.models import Lead
-from apps.stock.models import Produit
+from apps.stock.models import FicheTechnique, Produit
 from apps.ventes import services
 from apps.ventes.models import Devis
 from authentication.models import Company
@@ -75,6 +75,37 @@ class _Base(TestCase):
                 company=self.company, nom=nom, sku='%s-%s' % (sku, self.slug),
                 prix_vente=Decimal(prix), prix_achat=Decimal('1'),
                 quantite_stock=500)
+        self._poser_fiches_techniques()
+
+    def _poser_fiches_techniques(self):
+        """PVFCH (fondateur 20/08/2026) — « never invent numbers ».
+
+        La conception électrique ne comble plus une fiche absente avec des
+        défauts de marché : elle REFUSE en nommant le champ manquant. Le
+        catalogue de ce montage porte donc ses fiches, comme le catalogue
+        seedé en production (``seed_catalogue``).
+        """
+        FicheTechnique.objects.create(
+            company=self.company, produit=self.produits['PAN550'],
+            type_fiche='module',
+            pmax_wc=Decimal('550.00'), voc_v=Decimal('49.90'),
+            isc_a=Decimal('14.02'), vmp_v=Decimal('41.80'),
+            imp_a=Decimal('13.16'),
+            temp_coeff_voc_pct_c=Decimal('-0.270'),
+            temp_coeff_pmax_pct_c=Decimal('-0.350'))
+        for sku in ('ONDR5', 'ONDH5'):
+            FicheTechnique.objects.create(
+                company=self.company, produit=self.produits[sku],
+                type_fiche='onduleur',
+                ond_ac_kw=Decimal('5.00'), ond_phases=1, ond_n_mppt=2,
+                ond_mppt_v_min=Decimal('90.0'),
+                ond_mppt_v_max=Decimal('560.0'),
+                ond_v_max_abs=Decimal('600.0'),
+                ond_i_max_mppt_a=Decimal('13.5'),
+                ond_rendement_euro_pct=Decimal('97.0'),
+                ond_bat_aucune=(sku == 'ONDR5'),
+                ond_bat_v_min=(None if sku == 'ONDR5' else Decimal('40.0')),
+                ond_bat_v_max=(None if sku == 'ONDR5' else Decimal('60.0')))
 
     def _lead(self, email='kit@example.com'):
         return Lead.objects.create(

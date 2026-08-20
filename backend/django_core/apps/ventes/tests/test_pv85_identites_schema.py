@@ -206,12 +206,21 @@ class LesEntreesPortentLIdentiteDuMateriel(SimpleTestCase):
         # maxi de fonctionnement (0.0 ici, faute de fiche non plus).
         self.assertIsNone(onduleur.isc_max_mppt_a)
         self.assertEqual(onduleur.courant_isc_max_a, onduleur.i_max_mppt_a)
-        # La tension de démarrage, elle, garde son repli HISTORIQUE
-        # (``solar_design.DEFAULT_INVERTER_WINDOW['v_min']`` — distinct du
-        # bas de la fenêtre MPPT) — jamais un crash sur fiche vide.
-        from apps.ventes import solar_design as sd
-        self.assertEqual(onduleur.v_demarrage_v,
-                         float(sd.DEFAULT_INVERTER_WINDOW["v_min"]))
+        # PVFCH (fondateur 20/08/2026) — la tension de démarrage a PERDU son
+        # repli historique (90 V, ``solar_design.DEFAULT_INVERTER_WINDOW``) :
+        # c'était un nombre de MARCHÉ posé sur un appareil précis. Elle reste
+        # ``None``, et le moteur retombe sur le bas de la fenêtre MPPT — une
+        # valeur de la MÊME fiche, jamais un défaut inventé.
+        self.assertIsNone(onduleur.v_demarrage_v)
+        self.assertEqual(onduleur.tension_demarrage_v, onduleur.mppt_v_min)
+        # …et plus AUCUNE variable d'équipement n'est fabriquée : sans fiche,
+        # tout vaut 0 et le calcul refusera en nommant les champs manquants.
+        self.assertEqual(
+            [onduleur.n_mppt, onduleur.mppt_v_min, onduleur.mppt_v_max,
+             onduleur.v_max_abs, onduleur.ac_kw, module.pmax_wc,
+             module.voc_v, module.isc_a],
+            [0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        self.assertTrue(es.motifs_fiche_incomplete(devis))
 
 
 class LeSchemaNommeLeMateriel(SimpleTestCase):

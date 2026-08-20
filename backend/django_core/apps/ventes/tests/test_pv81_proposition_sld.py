@@ -18,7 +18,7 @@ from django.contrib.auth import get_user_model
 from django.test import Client as DjangoClient, TestCase
 
 from apps.crm.models import Client
-from apps.stock.models import Produit
+from apps.stock.models import FicheTechnique, Produit
 from apps.ventes.models import Devis, LigneDevis, ShareLink
 from apps.ventes.public_views import (
     _conception_electrique_publique,
@@ -56,6 +56,23 @@ class MontageDevisElectrique:
             company=self.company, nom="Onduleur réseau 10kW triphasé",
             sku="PV81-OND", prix_vente=Decimal("12345"),
             prix_achat=Decimal("9876"), quantite_stock=10)
+        # PVFCH (fondateur 20/08/2026) — « never invent numbers » : un schéma
+        # unifilaire ne se dessine QU'À PARTIR des fiches techniques du
+        # matériel. Sans elles, ``rendre_schema_du_devis`` rend ``None``.
+        FicheTechnique.objects.create(
+            company=self.company, produit=panneau, type_fiche="module",
+            pmax_wc=Decimal("550.00"), voc_v=Decimal("49.90"),
+            isc_a=Decimal("14.02"), vmp_v=Decimal("41.80"),
+            imp_a=Decimal("13.16"),
+            temp_coeff_voc_pct_c=Decimal("-0.270"),
+            temp_coeff_pmax_pct_c=Decimal("-0.350"))
+        FicheTechnique.objects.create(
+            company=self.company, produit=onduleur, type_fiche="onduleur",
+            ond_ac_kw=Decimal("10.00"), ond_phases=3, ond_n_mppt=2,
+            ond_mppt_v_min=Decimal("200.0"), ond_mppt_v_max=Decimal("950.0"),
+            ond_v_max_abs=Decimal("1100.0"),
+            ond_i_max_mppt_a=Decimal("26.0"),
+            ond_rendement_euro_pct=Decimal("98.0"), ond_bat_aucune=True)
         LigneDevis.objects.create(
             devis=self.devis, produit=panneau,
             designation="Panneau PV 550W mono", quantite=14,
