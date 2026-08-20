@@ -167,7 +167,22 @@ POMPAGE = [
     ('Pompe immergée solaire 10 CV Triphasé',   'PMP-IMM-10T',  19000, 20, 2, '10', '250', '80'),
     ('Pompe de surface solaire 1.5 CV Monophasé', 'PMP-SUR-1.5M', 3000, 20, 2, '1.5', '40', '20'),
     ('Pompe de surface solaire 3 CV Triphasé',    'PMP-SUR-3T',   5500, 20, 2, '3', '60', '40'),
-    ('Câble solaire 6mm² (au mètre)', 'CAB-6MM-M', 13, 5000, 200, None, None, None),
+    # DC35/G2 (2026-08-20) — même patron que le renommage Dyness (fc883be2) :
+    # la marque doit être visible dans le NOM du produit, pas seulement dans
+    # ``FICHES[...]['marque']``. « (au mètre) » et le SKU sont INCHANGÉS.
+    # DC35/G3 (2026-08-20, CI run 32320136461 shard 3) — SANS ESPACE avant
+    # « mm² » (« 6mm² », pas « 6 mm² ») : DÉLIBÉRÉ, pas une coquille. Le
+    # nom-jumeau AVEC espace ('Câble solaire Nexans 6 mm² (au mètre)') est
+    # DÉJÀ pris par CAB-NEX-DC-6 (ligne ~72 ci-dessus, réglé 18/08). Le garde-
+    # fou anti-doublon du seeder (plus bas, `nom__iexact` sur produits actifs)
+    # SAUTE la création de tout produit dont le nom égale — insensible à la
+    # casse — un produit déjà seedé : avec l'espace, CAB-6MM-M ne serait
+    # JAMAIS créé (skip silencieux dès que CAB-NEX-DC-6 existe), faisant
+    # échouer `Produit.objects.get(sku='CAB-6MM-M')` partout. L'absence
+    # d'espace est l'orthographe D'ORIGINE de ce SKU (avant le renommage
+    # Nexans) : elle reste le disambiguateur naturel entre les deux SKU
+    # câble-6mm historiques, jamais une chaîne inventée.
+    ('Câble solaire Nexans 6mm² (au mètre)', 'CAB-6MM-M', 13, 5000, 200, None, None, None),
 ]
 
 # ── Variateurs VEICHI (prix réels fondateur, 2026-06) ────────────────────────
@@ -239,13 +254,15 @@ OSP = [
 # garde que les pompes OSP (cf. apps/ventes/services._has_price).
 # Câbles vendus AU MÈTRE : suit exactement le précédent CAB-6MM-M
 # (nom seul « (au mètre) », unite_stock laissé au défaut « unité »).
+# DC35/G2 (2026-08-20) — même renommage systémique que CAB-6MM-M ci-dessus :
+# la marque Nexans doit être visible dans le NOM, pas seulement dans FICHES.
 # (nom, sku, qte, seuil)
 CABLES_PROTECTIONS_VIDES = [
     # Câbles solaires H1Z2Z2-K (DC, double isolation, résistant UV)
-    ('Câble solaire H1Z2Z2-K 4 mm² (au mètre)',  'CAB-H1Z2Z2-4-M',  5000, 200),
-    ('Câble solaire H1Z2Z2-K 6 mm² (au mètre)',  'CAB-H1Z2Z2-6-M',  5000, 200),
-    ('Câble solaire H1Z2Z2-K 10 mm² (au mètre)', 'CAB-H1Z2Z2-10-M', 5000, 200),
-    ('Câble solaire H1Z2Z2-K 16 mm² (au mètre)', 'CAB-H1Z2Z2-16-M', 5000, 200),
+    ('Câble solaire Nexans H1Z2Z2-K 4 mm² (au mètre)',  'CAB-H1Z2Z2-4-M',  5000, 200),
+    ('Câble solaire Nexans H1Z2Z2-K 6 mm² (au mètre)',  'CAB-H1Z2Z2-6-M',  5000, 200),
+    ('Câble solaire Nexans H1Z2Z2-K 10 mm² (au mètre)', 'CAB-H1Z2Z2-10-M', 5000, 200),
+    ('Câble solaire Nexans H1Z2Z2-K 16 mm² (au mètre)', 'CAB-H1Z2Z2-16-M', 5000, 200),
     # Fusibles & porte-fusible DC
     ('Fusible gPV 1000 VDC 15 A', 'FUS-GPV-1000-15A', 200, 10),
     ('Fusible gPV 1000 VDC 20 A', 'FUS-GPV-1000-20A', 200, 10),
@@ -488,6 +505,9 @@ FICHES = {
         # du SKU récent CAB-NEX-DC-6. Faits vérifiés sur la datasheet Nexans
         # H1Z2Z2-K SUN PLUS (1,5 kV DC) : nexans.fr/en/products/Renewable/
         # Solar/Photovoltaic-Cables/Nexans-PV-38188.html.
+        # DC35/G2 (2026-08-20) — le NOM du produit (CATALOGUE ci-dessus) porte
+        # désormais lui aussi « Nexans » : la proposition affichait « Câble
+        # solaire 6mm² » sans la marque nulle part dans la désignation.
         'marque': 'Nexans',
         'description': ('Câble solaire H1Z2Z2-K, conducteur cuivre étamé souple classe 5\n'
                         'Isolation et gaine réticulées sans halogène, tenue -40°C à 90°C\n'

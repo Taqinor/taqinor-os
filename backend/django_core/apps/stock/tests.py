@@ -966,6 +966,167 @@ class TestOrthographeDyness(TestCase):
             'Batterie Dyness 5 kWh')
 
 
+# ── Le câble solaire porte Nexans dans le NOM, pas seulement la fiche
+#    (fondateur, 2026-08-20 — même patron que TestOrthographeDyness) ─────────
+class TestCableNexansDansLeNom(TestCase):
+    """Constat fondateur : la ligne de devis affichait « Câble solaire 6mm²
+    (au mètre) » — aucune mention Nexans dans la DÉSIGNATION elle-même, alors
+    que ``FICHES[...]['marque']`` valait déjà 'Nexans' depuis a002d459.
+
+    Deux garanties, indissociables (même structure que Dyness) :
+      1. le SEEDER pose désormais « Nexans » dans le nom sur une base neuve ;
+      2. la MIGRATION 0123 renomme une base DÉJÀ seedée — le seeder étant
+         strictement additif, lui seul ne renommerait jamais l'existant.
+    Les SKU ne bougent pas ; CAB-NEX-DC-6/TER-6 (déjà « Nexans » au nom
+    depuis le 18/08) ne sont pas concernés par cette migration.
+    """
+    MIGRATION = 'apps.stock.migrations.0123_cable_nexans_dans_le_nom'
+
+    SKUS_RENOMMES = {
+        # SANS espace avant « mm² » : DÉLIBÉRÉ, voir le commentaire DC35/G3
+        # dans seed_catalogue.py — 'Câble solaire Nexans 6 mm² (au mètre)'
+        # (AVEC espace) est déjà le nom EXACT de CAB-NEX-DC-6, et le garde-fou
+        # anti-doublon du seeder (nom__iexact) saute la création d'un second
+        # produit actif portant ce nom.
+        'CAB-6MM-M': 'Câble solaire Nexans 6mm² (au mètre)',
+        'CAB-H1Z2Z2-4-M': 'Câble solaire Nexans H1Z2Z2-K 4 mm² (au mètre)',
+        'CAB-H1Z2Z2-6-M': 'Câble solaire Nexans H1Z2Z2-K 6 mm² (au mètre)',
+        'CAB-H1Z2Z2-10-M': 'Câble solaire Nexans H1Z2Z2-K 10 mm² (au mètre)',
+        'CAB-H1Z2Z2-16-M': 'Câble solaire Nexans H1Z2Z2-K 16 mm² (au mètre)',
+    }
+
+    def setUp(self):
+        self.company = make_company(slug='test-cat-cable-nexans')
+
+    def _migration(self):
+        import importlib
+        return importlib.import_module(self.MIGRATION)
+
+    def test_le_seeder_pose_nexans_dans_le_nom(self):
+        seed(self.company)
+        for sku, nom_attendu in self.SKUS_RENOMMES.items():
+            p = Produit.objects.get(company=self.company, sku=sku)
+            self.assertEqual(p.nom, nom_attendu, sku)
+            self.assertIn('Nexans', p.nom, sku)
+            # La fiche (marque) reste posée, sans changer.
+            self.assertEqual(p.marque, 'Nexans', sku)
+
+    def test_un_reseed_ne_duplique_pas_un_cable_a_lancien_nom(self):
+        """Comme Dyness : l'appariement du seeder se fait par SKU AVANT le
+        nom, donc une base encore à l'ancien libellé (migration pas encore
+        passée) est retrouvée et SAUTÉE, jamais re-créée."""
+        seed(self.company)
+        total = Produit.objects.filter(company=self.company).count()
+        Produit.objects.filter(company=self.company, sku='CAB-6MM-M').update(
+            nom='Câble solaire 6mm² (au mètre)')
+        seed(self.company)
+        self.assertEqual(
+            Produit.objects.filter(company=self.company).count(), total,
+            "le re-seed a re-créé un produit au lieu de retrouver son SKU")
+        self.assertEqual(
+            Produit.objects.filter(company=self.company,
+                                   sku='CAB-6MM-M').count(), 1)
+
+    def test_la_migration_renomme_le_catalogue_existant(self):
+        from django.apps import apps as registre
+        migration = self._migration()
+        seed(self.company)
+        Produit.objects.filter(company=self.company, sku='CAB-6MM-M').update(
+            nom='Câble solaire 6mm² (au mètre)')
+        Produit.objects.filter(
+            company=self.company, sku='CAB-H1Z2Z2-4-M').update(
+            nom='Câble solaire H1Z2Z2-K 4 mm² (au mètre)')
+
+        migration.marquer_nexans(registre, None)
+
+        c6 = Produit.objects.get(company=self.company, sku='CAB-6MM-M')
+        c4 = Produit.objects.get(company=self.company, sku='CAB-H1Z2Z2-4-M')
+        self.assertEqual(c6.nom, 'Câble solaire Nexans 6mm² (au mètre)')
+        self.assertEqual(c4.nom,
+                         'Câble solaire Nexans H1Z2Z2-K 4 mm² (au mètre)')
+        # Ni SKU, ni prix, ni quantités ne bougent.
+        self.assertEqual(c6.sku, 'CAB-6MM-M')
+        self.assertEqual(c6.prix_vente, Decimal('10.83'))   # 13 TTC / 1,2
+        self.assertEqual(c6.prix_achat, Decimal('0'))
+
+    def test_la_migration_ne_touche_pas_un_nom_deja_personnalise(self):
+        """Une ligne dont le nom ne correspond plus EXACTEMENT à l'ancien
+        libellé (déjà renommée à la main par le fondateur) n'est pas
+        écrasée : l'appariement est par SKU + ancien nom exact."""
+        from django.apps import apps as registre
+        migration = self._migration()
+        seed(self.company)
+        Produit.objects.filter(company=self.company, sku='CAB-6MM-M').update(
+            nom='Câble solaire spécial toiture (au mètre)')
+
+        migration.marquer_nexans(registre, None)
+
+        p = Produit.objects.get(company=self.company, sku='CAB-6MM-M')
+        self.assertEqual(p.nom, 'Câble solaire spécial toiture (au mètre)')
+
+    def test_la_migration_est_reversible(self):
+        from django.apps import apps as registre
+        migration = self._migration()
+        seed(self.company)
+        Produit.objects.filter(company=self.company, sku='CAB-6MM-M').update(
+            nom='Câble solaire 6mm² (au mètre)')
+
+        migration.marquer_nexans(registre, None)
+        p = Produit.objects.get(company=self.company, sku='CAB-6MM-M')
+        self.assertEqual(p.nom, 'Câble solaire Nexans 6mm² (au mètre)')
+
+        migration.demarquer_nexans(registre, None)
+        p.refresh_from_db()
+        self.assertEqual(p.nom, 'Câble solaire 6mm² (au mètre)')
+
+        migration.marquer_nexans(registre, None)
+        p.refresh_from_db()
+        self.assertEqual(p.nom, 'Câble solaire Nexans 6mm² (au mètre)')
+
+    def test_la_migration_est_idempotente(self):
+        from django.apps import apps as registre
+        migration = self._migration()
+        seed(self.company)
+        migration.marquer_nexans(registre, None)
+        migration.marquer_nexans(registre, None)
+        self.assertEqual(
+            Produit.objects.get(company=self.company, sku='CAB-6MM-M').nom,
+            'Câble solaire Nexans 6mm² (au mètre)')
+
+    def test_classification_categorie_et_h1z2z2k_inchangees(self):
+        """GARDE-FOU : la classification par mot-clé (« cable » substring,
+        classify_categorie) et les faits H1Z2Z2-K/NF EN 50618 continuent de
+        matcher malgré le mot « Nexans » inséré dans le nom."""
+        seed(self.company)
+        for sku in self.SKUS_RENOMMES:
+            p = Produit.objects.get(company=self.company, sku=sku)
+            self.assertEqual(p.categorie.nom, 'Câbles', sku)
+        c4 = Produit.objects.get(company=self.company, sku='CAB-H1Z2Z2-4-M')
+        self.assertIn('H1Z2Z2-K', c4.description)
+        self.assertIn('NF EN 50618', c4.description)
+
+    def test_aucun_nom_de_cable_nexans_ne_collisionne_entre_sections_du_catalogue(self):
+        """RÉGRESSION (CI run 32320136461, PR #542) : le garde-fou anti-doublon
+        du seeder (``nom__iexact`` sur produits actifs) SAUTE la création de
+        tout produit dont le nom égale — insensible à la casse — un produit
+        DÉJÀ créé par une AUTRE section du catalogue (ex. CAB-6MM-M du
+        POMPAGE arrive APRÈS CAB-NEX-DC-6 de CATALOGUE). Un renommage qui
+        rend deux noms byte-identiques fait donc SAUTER silencieusement la
+        création du second, sans qu'aucune exception ne le signale au moment
+        du seed — seul un ``Produit.objects.get(sku=...)`` ultérieur échoue.
+        Ce test verrouille que les 7 SKU câble Nexans sont TOUS créés, avec
+        7 noms mutuellement DISTINCTS."""
+        seed(self.company)
+        skus_cable_nexans = list(self.SKUS_RENOMMES) + ['CAB-NEX-DC-6', 'CAB-NEX-TER-6']
+        noms = []
+        for sku in skus_cable_nexans:
+            p = Produit.objects.get(company=self.company, sku=sku)
+            noms.append(p.nom)
+        self.assertEqual(
+            len(noms), len(set(noms)),
+            f"noms de câble Nexans en collision : {noms}")
+
+
 # ── PVOND — VERROU DE COMPLÉTUDE sur le catalogue onduleur ──────────────────
 class TestContratOnduleurSeede(TestCase):
     """Ajouter un onduleur demain doit être de la pure SAISIE — donc le seeder

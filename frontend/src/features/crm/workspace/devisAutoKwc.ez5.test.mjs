@@ -107,8 +107,25 @@ test('la conversion kWc→panneaux est RÉUTILISÉE, pas réécrite', () => {
   assert.match(autoQuote, /panneauxPourKwc\(tailleKwc, 710\)/)
   // Aucune arithmétique kWc→panneaux recopiée à la main dans autoQuote.
   assert.doesNotMatch(autoQuote, /Math\.ceil\([^)]*\*\s*1000\s*\/\s*710/)
-  // La conversion partagée, elle, dit bien ce que le commercial attend :
-  // « 3 kWc » en panneaux de 710 W → 4 panneaux.
-  assert.equal(panneauxPourKwc(3, 710), 4)
-  assert.equal(panneauxPourKwc(6, 710), 8)
+  // U1 (fondateur 20/08/2026) — la conversion partagée est un PLAFOND : le
+  // devis ne livre JAMAIS moins que la puissance vendue.
+  // « 3 kWc » en panneaux de 710 W → 4,23 → 5 panneaux.
+  assert.equal(panneauxPourKwc(3, 710), 5)
+  // « 6 kWc » → 8,45 → 9 panneaux.
+  assert.equal(panneauxPourKwc(6, 710), 9)
+  // Le cas signalé par le fondateur : 5 kWc en 710 Wc = 8 panneaux, jamais 7.
+  assert.equal(panneauxPourKwc(5, 710), 8)
+})
+
+// U1 — GARDE ANTI-DÉRIVE FLOTTANTE. Un compte de panneaux fait aller-retour
+// par le kWc (`kwp = nb * 710 / 1000`, puis re-dérivation) : sans la tolérance
+// de `plafondPanneaux`, 8 × 710 / 1000 × 1000 / 710 = 8.000000000000002
+// gagnerait un 9ᵉ panneau fantôme à chaque passage. Le plafond doit être
+// STABLE par aller-retour, sans quoi chaque ré-ouverture d'un devis grossit.
+test('U1 — le plafond est stable par aller-retour kWc → panneaux', () => {
+  for (let nb = 1; nb <= 60; nb += 1) {
+    const kwc = nb * 710 / 1000
+    assert.equal(panneauxPourKwc(kwc, 710), nb,
+      `aller-retour instable à ${nb} panneaux (${kwc} kWc)`)
+  }
 })

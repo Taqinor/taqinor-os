@@ -911,6 +911,79 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 optionnelle=bool(li.get('optionnelle', False)),
                 type_ligne='produit', ordre=ordre)
 
+    @action(detail=False, methods=['post'], url_path='composition',
+            permission_classes=[IsResponsableOrAdmin])
+    def composition(self, request):
+        """U3 (fondateur 20/08/2026) — DRY-RUN de la composition résidentielle.
+
+        Compose le kit et rend les lignes SANS RIEN CRÉER : aucun devis, aucune
+        ligne, aucun statut (règle #4). C'est la moitié « à blanc » de la
+        source de vérité unique — même catalogue, même fonction pure, mêmes
+        règles de gamme que ``POST /ventes/devis/auto/`` qui, lui, compose ET
+        crée. L'écran générateur s'en sert pour préremplir ses lignes éditables
+        au lieu de recomposer le kit en JavaScript de son côté ; c'est ce qui
+        fait qu'il n'existe plus « deux sortes de devis ».
+
+        Corps : ``{kwc | nb_panneaux}`` + ``panel_watt?`` / ``scenario?`` /
+        ``structure_type?`` / ``taux_tva?`` / ``mppt_paires?``. La société est
+        TOUJOURS celle du user (le catalogue d'une autre société ne fuite
+        jamais) ; les marques épinglées et l'ordre des lignes sont lus
+        SERVEUR-SIDE dans les réglages Gammes, jamais acceptés du corps.
+        Forme de la réponse : ``contract_samples/devis_composition.json``.
+        """
+        from decimal import Decimal, InvalidOperation
+        from ..services import composer_devis_residentiel, AutoDevisError
+
+        company = request.user.company
+        if company is None:
+            return Response(
+                {'detail': 'Utilisateur sans société.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        def _nombre(cle, defaut=None):
+            brut = request.data.get(cle)
+            if brut in (None, ''):
+                return defaut
+            try:
+                return Decimal(str(brut))
+            except (InvalidOperation, TypeError, ValueError):
+                raise ValueError(cle)
+
+        try:
+            kwc = _nombre('kwc')
+            nb_panneaux = _nombre('nb_panneaux', Decimal('0'))
+            panel_watt = _nombre('panel_watt', Decimal('710'))
+            taux_tva = _nombre('taux_tva', Decimal('20'))
+            mppt_paires = _nombre('mppt_paires', Decimal('1'))
+        except ValueError as exc:
+            return Response(
+                {'detail': 'Valeur numérique invalide : %s.' % exc},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        if (kwc is None or kwc <= 0) and nb_panneaux <= 0:
+            return Response(
+                {'detail': 'Renseignez une puissance (kwc) ou un nombre de '
+                           'panneaux (nb_panneaux).'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        structure = request.data.get('structure_type') or 'acier'
+        try:
+            resultat = composer_devis_residentiel(
+                company=company,
+                kwc=float(kwc) if kwc is not None else 0,
+                nb_panneaux=int(nb_panneaux),
+                panel_watt=float(panel_watt),
+                scenario=request.data.get('scenario'),
+                structure_type=str(structure),
+                taux_tva=taux_tva,
+                mppt_paires=int(mppt_paires),
+            )
+        except AutoDevisError as exc:
+            return Response(
+                {'detail': exc.message, 'field': exc.field},
+                status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+        return Response(resultat, status=status.HTTP_200_OK)
+
     @action(detail=False, methods=['post'], url_path='auto',
             permission_classes=[IsResponsableOrAdmin])
     def auto(self, request):
@@ -976,10 +1049,24 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 {'detail': 'taux_tva / remise_globale invalide.'},
                 status=status.HTTP_400_BAD_REQUEST)
 
+        # U3 — trois réglages POUR CE DEVIS-LÀ, qui ne réécrivent JAMAIS la
+        # fiche du lead : la puissance cible saisie par le commercial (EZ5), le
+        # scénario batterie demandé, et les clés d'étude que l'écran a déjà
+        # calculées (factures mensuelles réelles du contrat PACT10). La
+        # COMPOSITION, elle, est entièrement serveur : l'appelant n'envoie
+        # aucune ligne, aucun prix, aucune marque.
+        etude_extra = request.data.get('etude_params')
+        if etude_extra is not None and not isinstance(etude_extra, dict):
+            return Response(
+                {'detail': 'etude_params doit être un objet.'},
+                status=status.HTTP_400_BAD_REQUEST)
         try:
             devis = build_devis_auto(
                 lead=lead_obj, user=request.user, company=company,
-                taux_tva=taux_tva, remise_globale=remise)
+                taux_tva=taux_tva, remise_globale=remise,
+                target_kwc=request.data.get('target_kwc'),
+                scenario=request.data.get('scenario'),
+                etude_extra=etude_extra)
         except AutoDevisError as exc:
             return Response(
                 {'detail': exc.message, 'field': exc.field},

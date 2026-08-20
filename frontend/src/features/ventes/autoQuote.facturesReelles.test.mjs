@@ -102,28 +102,58 @@ test('ete_differente=false : l\'été ne change rien, comme le dimensionnement e
 })
 
 // ── Verrou anti-dérive : le SOURCE réel porte bien cette même séquence ──────
-test('createAutoQuote : la garde résidentielle est mode === "residentiel" && hiver > 0', () => {
+// U3 (fondateur 20/08/2026) — le bloc PACT10 a MIGRÉ : il vit désormais dans
+// la branche résidentielle qui part au SERVEUR (`if (mode === 'residentiel')`),
+// et ses trois clés voyagent en `etude_params` de POST /ventes/devis/auto/ au
+// lieu d'accompagner des lignes composées ici. La séquence de calcul, elle,
+// est inchangée — c'est tout l'objet des tests de valeurs ci-dessus.
+test('createAutoQuote : la garde résidentielle du contrat PACT10 est `hiver > 0`', () => {
   const src = lire('./autoQuote.js')
-  assert.match(src, /if \(mode === 'residentiel' && hiver > 0\)/)
+  const debut = src.indexOf("if (mode === 'residentiel') {")
+  assert.ok(debut > 0, 'branche résidentielle introuvable')
+  assert.match(src.slice(debut, debut + 1600), /if \(hiver > 0\) \{/)
 })
 
 test('createAutoQuote : les trois clés du contrat PACT10 sont écrites dans ce bloc', () => {
   const src = lire('./autoQuote.js')
-  const debut = src.indexOf("if (mode === 'residentiel' && hiver > 0)")
-  assert.ok(debut > 0, 'garde résidentielle introuvable')
-  const bloc = src.slice(debut, debut + 900)
-  assert.match(bloc, /factures_mensuelles_reelles:\s*facturesReelles/)
-  assert.match(bloc, /conso_annuelle:\s*consoAnnuelleReelle/)
-  assert.match(bloc, /distributeur:\s*distributeurLead/)
+  const debut = src.indexOf("if (mode === 'residentiel') {")
+  assert.ok(debut > 0, 'branche résidentielle introuvable')
+  const bloc = src.slice(debut, debut + 1800)
+  assert.match(bloc, /etudeExtra\.factures_mensuelles_reelles = facturesReelles/)
+  assert.match(bloc, /etudeExtra\.conso_annuelle = consoAnnuelleReelle/)
+  assert.match(bloc, /etudeExtra\.distributeur = distributeurLead/)
 })
 
-test('createAutoQuote : le bloc résidentiel vit APRÈS le scénario batterie et AVANT la branche industriel/commercial', () => {
+test('createAutoQuote : le bloc résidentiel vit AVANT la branche industriel/commercial', () => {
   const src = lire('./autoQuote.js')
-  const scenario = src.indexOf('Les deux (Sans + Avec)')
-  const residentiel = src.indexOf("if (mode === 'residentiel' && hiver > 0)")
+  const residentiel = src.indexOf("if (mode === 'residentiel') {")
   const industriel = src.indexOf("mode === 'industriel' || mode === 'commercial'")
-  assert.ok(scenario > 0 && residentiel > scenario && industriel > residentiel,
-    'ordre attendu : scénario batterie → contrat résidentiel → branche industriel/commercial')
+  assert.ok(residentiel > 0 && industriel > residentiel,
+    'ordre attendu : branche résidentielle (serveur) → branche industriel/commercial')
+})
+
+// ── U3 — LE TEST DE NON-DIVERGENCE, côté écran ──────────────────────────────
+// La moitié frontend de « une seule source de vérité » : le résidentiel ne
+// compose plus AUCUNE ligne ici. S'il repassait un jour par `autoFillLines`,
+// une deuxième composition renaîtrait sans que rien d'autre ne le signale.
+test('U3 — le résidentiel délègue la composition au serveur, sans jamais composer de lignes', () => {
+  const src = lire('./autoQuote.js')
+  const debut = src.indexOf("if (mode === 'residentiel') {")
+  assert.ok(debut > 0, 'branche résidentielle introuvable')
+  // La branche s'arrête à son `return id` : au-delà commence le code
+  // industriel/commercial, qui lui compose encore à l'écran (hors périmètre).
+  const bloc = src.slice(debut, src.indexOf('return id', debut))
+  assert.doesNotMatch(bloc, /autoFillLines/,
+    'le résidentiel ne doit plus composer de lignes à l\'écran')
+  assert.doesNotMatch(bloc, /addLigneDevis/,
+    'le résidentiel ne doit plus créer de lignes une par une')
+  assert.match(bloc, /ventesApi\.creerDevisAuto\(/,
+    'le résidentiel doit passer par POST /ventes/devis/auto/')
+  // Ce que l'écran envoie : la puissance cible, la remise et l'étude — jamais
+  // une ligne, un prix ou une marque (tout cela vit côté serveur).
+  assert.match(bloc, /target_kwc:\s*kwpAuto/)
+  assert.doesNotMatch(bloc, /prix_unitaire|marques:/,
+    'aucun prix ni aucune marque ne doit remonter de l\'écran')
 })
 
 test('createAutoQuote : kwhFromBill est importé de ./solar (même inverse de barème que l\'écran manuel)', () => {

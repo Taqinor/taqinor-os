@@ -73,22 +73,64 @@ class BuildDevisAutoServiceTest(TestCase):
         panel = next(li for li in devis.lignes.all()
                      if 'Panneau' in li.designation)
         self.assertEqual(int(panel.quantite), 16)
+        # U2 (fondateur 20/08/2026) — le lead ne dit rien de la batterie, donc
+        # le devis propose LES DEUX options (et non plus le réseau seul).
         desigs = [li.designation for li in devis.lignes.all()]
         self.assertTrue(any('réseau' in d for d in desigs))
-        self.assertFalse(any('Batterie' in d for d in desigs))
+        self.assertTrue(any('hybride' in d for d in desigs))
+        self.assertTrue(any('Batterie' in d for d in desigs))
+        self.assertEqual(devis.etude_params['scenario'],
+                         'Les deux (Sans + Avec)')
         self.assertAlmostEqual(
             float(devis.etude_params['puissance_kwc']), 11.36, places=2)
 
     def test_sizes_from_taille_souhaitee(self):
-        # 6 kWc → round(6000 / 710) = 8 panneaux.
+        # U1 (fondateur 20/08/2026) — le compte de panneaux est un PLAFOND :
+        # 6 kWc → ceil(6000 / 710) = 9 panneaux. Avec l'arrondi au plus proche
+        # d'hier (8 panneaux = 5,68 kWc), le client payait 6 kWc et recevait
+        # moins ; on ne descend JAMAIS sous la puissance vendue.
         devis = build_devis_auto(
             lead=self._lead(taille_souhaitee_kwc=Decimal('6')),
             user=self.user, company=self.company)
         panel = next(li for li in devis.lignes.all()
                      if 'Panneau' in li.designation)
-        self.assertEqual(int(panel.quantite), 8)
+        self.assertEqual(int(panel.quantite), 9)
+
+    def test_le_compte_de_panneaux_couvre_toujours_la_taille_demandee(self):
+        """U1 — invariant du PLAFOND, sur tout le domaine résidentiel utile.
+
+        Le cas signalé par le fondateur (5 kWc → 8 panneaux, jamais 7) n'est
+        qu'un point ; la règle est que la puissance RÉELLEMENT posée n'est
+        jamais inférieure à la taille demandée, et jamais gonflée d'un panneau
+        entier de trop.
+        """
+        from apps.ventes.services import _residential_panel_count
+        for kwc_x10 in range(10, 205, 5):           # 1,0 → 20,0 kWc
+            kwc = Decimal(kwc_x10) / 10
+            nb = _residential_panel_count(taille_kwc=kwc)
+            pose = nb * 710 / 1000
+            self.assertGreaterEqual(
+                pose + 1e-9, float(kwc),
+                '%s kWc : %d panneaux ne couvrent que %.3f kWc' % (
+                    kwc, nb, pose))
+            self.assertLess(
+                (nb - 1) * 710 / 1000, float(kwc),
+                '%s kWc : %d panneaux, un panneau de trop' % (kwc, nb))
+
+    def test_le_plafond_est_stable_par_aller_retour(self):
+        """U1 — miroir Python de la garde anti-dérive flottante de solar.js :
+        un compte de panneaux repassé par son kWc doit se retrouver À
+        L'IDENTIQUE, sans quoi chaque aller-retour ajouterait un panneau."""
+        from apps.ventes.services import _residential_panel_count
+        for nb in range(1, 61):
+            kwc = Decimal(str(nb * 710 / 1000))
+            self.assertEqual(
+                _residential_panel_count(taille_kwc=kwc), nb,
+                'aller-retour instable à %d panneaux' % nb)
 
     def test_battery_added_when_wanted(self):
+        """U2 — un choix EXPLICITE « avec » reste souverain : on ne repropose
+        pas au client l'option qu'il vient d'écarter."""
         devis = build_devis_auto(
             lead=self._lead(facture_hiver=Decimal('1800'),
                             batterie_souhaitee='avec'),
@@ -97,6 +139,57 @@ class BuildDevisAutoServiceTest(TestCase):
         self.assertTrue(any('hybride' in d for d in desigs))
         self.assertTrue(any('Batterie' in d for d in desigs))
         self.assertFalse(any('réseau' in d for d in desigs))
+        self.assertEqual(devis.etude_params['scenario'], 'Avec batterie')
+
+    def test_choix_explicite_sans_reste_sans(self):
+        """U2 — l'autre moitié du choix explicite : « sans » compose le réseau
+        SEUL, sans batterie ni onduleur hybride."""
+        devis = build_devis_auto(
+            lead=self._lead(facture_hiver=Decimal('1800'),
+                            batterie_souhaitee='sans'),
+            user=self.user, company=self.company)
+        desigs = [li.designation for li in devis.lignes.all()]
+        self.assertTrue(any('réseau' in d for d in desigs))
+        self.assertFalse(any('hybride' in d for d in desigs))
+        self.assertFalse(any('Batterie' in d for d in desigs))
+        self.assertEqual(devis.etude_params['scenario'], 'Sans batterie')
+
+    def test_defaut_deux_options_meme_sur_taille_souhaitee(self):
+        """U2 — le défaut « les deux » ne dépend PAS du chemin de
+        dimensionnement : une taille souhaitée en kWc le donne aussi."""
+        devis = build_devis_auto(
+            lead=self._lead(taille_souhaitee_kwc=Decimal('6')),
+            user=self.user, company=self.company)
+        desigs = [li.designation for li in devis.lignes.all()]
+        self.assertTrue(any('réseau' in d for d in desigs))
+        self.assertTrue(any('hybride' in d for d in desigs))
+        self.assertTrue(any('Batterie' in d for d in desigs))
+        self.assertEqual(devis.etude_params['scenario'],
+                         'Les deux (Sans + Avec)')
+
+    def test_deux_options_les_deux_paniers_sont_chiffrables(self):
+        """U2 — la forme deux options n'a de sens que si CHAQUE panier tient
+        debout tout seul : le panier « sans » (tout sauf batterie + hybride) et
+        le panier « avec » (tout sauf réseau) doivent chacun porter des
+        panneaux ET un onduleur. C'est le découpage exact que lisent l'écran
+        (``optionTotalsTTC``) et le moteur PDF."""
+        devis = build_devis_auto(
+            lead=self._lead(facture_hiver=Decimal('1800')),
+            user=self.user, company=self.company)
+        lignes = list(devis.lignes.all())
+        sans = [li for li in lignes
+                if 'Batterie' not in li.designation
+                and 'hybride' not in li.designation]
+        avec = [li for li in lignes if 'réseau' not in li.designation]
+        for nom, panier in (('sans', sans), ('avec', avec)):
+            self.assertTrue(
+                any('Panneau' in li.designation for li in panier),
+                'panier « %s » sans panneaux' % nom)
+            self.assertTrue(
+                any('Onduleur' in li.designation for li in panier),
+                'panier « %s » sans onduleur' % nom)
+        self.assertTrue(any('Batterie' in li.designation for li in avec))
+        self.assertFalse(any('Batterie' in li.designation for li in sans))
 
     def test_missing_data_raises(self):
         with self.assertRaises(AutoDevisError):

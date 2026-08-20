@@ -6,7 +6,7 @@ import {
 } from '../../ui'
 import ProduitPicker from '../../components/ProduitPicker'
 import {
-  formatMoney, expectedTvaForDesignation, classifyProduct,
+  formatMoney, expectedTvaForDesignation, classifyProduct, htFromTtc,
 } from '../../features/ventes/solar'
 
 // VX188 — ligne de devis extraite en composant mémoïsé. DevisGenerator.jsx a
@@ -47,6 +47,12 @@ function DevisLineRowImpl({
   onMoveDown,
 }) {
   const lineTtc = (parseFloat(l.quantite) || 0) * (parseFloat(l.prix_unit_ttc) || 0)
+  // U4 (fondateur 20/08/2026) — HT dérivé en LECTURE SEULE uniquement pour
+  // l'affichage : l'écran reste 100 % TTC pour la saisie (aucun nouvel
+  // input, aucune conversion au moment de l'enregistrement, payload
+  // inchangé). Formule EXISTANTE (htFromTtc), pas de réécriture.
+  const uniteHt = htFromTtc(l.prix_unit_ttc, l.taux_tva ?? 20)
+  const lineHt = (parseFloat(l.quantite) || 0) * (parseFloat(uniteHt) || 0)
   // Indice non bloquant : la désignation a été éditée et ne correspond plus
   // au nom du produit choisi — la classification (réseau/hybride/batterie/
   // panneau) pourrait changer la répartition d'options du PDF. On n'altère
@@ -188,6 +194,12 @@ function DevisLineRowImpl({
         <Input type="number" min="0" step="any"
                className="h-[var(--control-h-sm)] ta-right" value={l.prix_unit_ttc}
                onChange={e => onSetField(l._key, 'prix_unit_ttc', e.target.value)} />
+        {/* U4 (fondateur 20/08/2026) — HT unitaire dérivé, lecture seule,
+            discret : la saisie reste 100 % TTC (htFromTtc existant, aucune
+            conversion à l'enregistrement). */}
+        <div className="mt-0.5 text-xs text-muted-foreground ta-right">
+          HT : {formatMoney(uniteHt)}
+        </div>
       </td>
       <td data-label="TVA %">
         {/* VX249(b) — 1 des 4 champs VX93 exactement (avec owner/ville sur
@@ -208,7 +220,14 @@ function DevisLineRowImpl({
             JAMAIS la valeur saisie (frappe souveraine). */}
         {tvaWarning && <div className="mt-0.5 text-xs text-warning">{tvaWarning}</div>}
       </td>
-      <td className="line-total" data-label="Total TTC">{formatMoney(lineTtc)}</td>
+      <td className="line-total" data-label="Total TTC">
+        {formatMoney(lineTtc)}
+        {/* U4 — total HT de la ligne (quantité × HT unitaire dérivé), affichage
+            discret secondaire ; le TTC reste la valeur principale. */}
+        <div className="mt-0.5 text-xs text-muted-foreground">
+          HT : {formatMoney(lineHt)}
+        </div>
+      </td>
       {/* XSAL5 — case « option » : coché = ligne optionnelle (add-on) exclue du
           total tant qu'elle n'est pas activée par le client sur la proposition. */}
       <td data-label="Option" className="ta-center">

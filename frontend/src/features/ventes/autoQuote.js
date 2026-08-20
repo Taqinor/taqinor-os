@@ -6,6 +6,10 @@
    mêmes appels que le flux manuel) ou industriel (dimensionnement factures +
    étude d'autoconsommation). Lit le lead directement (pas d'état React). */
 import { createDevis, addLigneDevis } from './store/ventesSlice'
+// U3 — le devis résidentiel auto est COMPOSÉ ET CRÉÉ par le serveur
+// (POST /ventes/devis/auto/) : cet écran ne compose plus de lignes
+// résidentielles. Voir la branche `mode === 'residentiel'` plus bas.
+import ventesApi from '../../api/ventesApi'
 import {
   estimerPanneaux, estimerMois, htFromTtc, ttcFromHt, optionTotalsTTC,
   autoFillLines, computeEtudeIndustrielle, panneauxPourKwc,
@@ -168,6 +172,74 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
       }
     }
     const kwpAuto = panels * 710 / 1000
+
+    // ── U3 (fondateur 20/08/2026) — LE RÉSIDENTIEL NE COMPOSE PLUS ICI ─────
+    // Ordre fondateur APPLIQUÉ par ce fichier : la composition n'a plus
+    // qu'UNE source de vérité (le serveur) et cet écran la consomme.
+    //
+    // Il y en avait bien deux : cet écran composait le kit en JavaScript
+    // (`autoFillLines`) pendant que le serveur le composait en Python
+    // (`composition_residentielle`) — et les deux avaient divergé sur le
+    // câble au mètre, les marques épinglées, l'ordre des lignes et l'arrondi
+    // du nombre de panneaux. Désormais le devis résidentiel auto part au
+    // serveur avec la SEULE chose que l'écran a décidée — la PUISSANCE CIBLE
+    // — et c'est le serveur qui compose ET crée les lignes : catalogue,
+    // ordre (PVORD), marques épinglées (PVMRQ), câble au mètre × paires (C4),
+    // scénario batterie (U2). Aucune ligne, aucun prix, aucune marque ne
+    // remonte d'ici : il n'y a plus rien à faire diverger.
+    //
+    // Ce qui reste À L'ÉCRAN est le DIMENSIONNEMENT (le balayage par palier
+    // au payback le plus court ci-dessus) et l'étude PACT10 : ce sont des
+    // décisions commerciales, pas une composition — elles voyagent en
+    // paramètres, jamais en lignes.
+    if (mode === 'residentiel') {
+      const etudeExtra = {}
+      // PACT10/QF-REAL — les 12 factures RÉELLES du client (et la
+      // consommation annuelle qui s'en déduit) : sans elles, le PDF
+      // reconstruit les « factures avant » depuis l'économie SUPPOSÉE, un
+      // proxy circulaire. Le `scenario`, lui, n'est PLUS envoyé d'ici : le
+      // serveur le décide depuis `lead.batterie_souhaitee` (défaut « les
+      // deux » — U2), sinon on recréerait à l'instant la divergence qu'on
+      // vient de supprimer.
+      if (hiver > 0) {
+        const eteReel = (lead.ete_differente && lead.facture_ete)
+          ? parseFloat(lead.facture_ete) : hiver
+        const facturesReelles = estimerMois(hiver, eteReel)
+        const distributeurLead = ['onee', 'lydec', 'redal'].includes(lead.distributeur)
+          ? lead.distributeur : undefined
+        const consoAnnuelleReelle = Math.round(facturesReelles.reduce(
+          (somme, bill) => somme + (kwhFromBill(bill, distributeurLead).kwhMensuel || 0), 0))
+        etudeExtra.factures_mensuelles_reelles = facturesReelles
+        if (consoAnnuelleReelle > 0) etudeExtra.conso_annuelle = consoAnnuelleReelle
+        if (distributeurLead) etudeExtra.distributeur = distributeurLead
+      }
+      let reponse
+      try {
+        reponse = await ventesApi.creerDevisAuto({
+          lead: lead.id,
+          remise_globale: discountStr || '0',
+          // La puissance retenue par le dimensionnement ci-dessus. Le serveur
+          // en redérive le MÊME nombre de panneaux (plafond tolérant au
+          // flottant, verrouillé des deux côtés par un test d'aller-retour).
+          target_kwc: kwpAuto,
+          ...(Object.keys(etudeExtra).length ? { etude_params: etudeExtra } : {}),
+        })
+      } catch (err) {
+        // Le serveur parle FRANÇAIS (422 : marque épinglée introuvable,
+        // données de dimensionnement manquantes…) et ses appelants lisent
+        // `err.detail` — on rend son message tel quel, jamais un nôtre.
+        throw {
+          detail: err?.response?.data?.detail
+            || "Le devis automatique a échoué — vérifiez la fiche du lead et réessayez.",
+        }
+      }
+      const id = reponse?.data?.id
+      if (!id) {
+        throw { detail: 'Devis créé sans identifiant — ouvrez-le depuis la liste des devis.' }
+      }
+      return id
+    }
+
     rows = autoFillLines(produits, {
       kwp: kwpAuto, panelW: 710, nbPanneaux: panels,
       // QX19 — respecte la préférence de structure du lead (défaut acier).
@@ -211,37 +283,11 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
         : _bat === 'avec' ? 'Avec batterie'
           : 'Les deux (Sans + Avec)',
     }
-    // PACT10/QF-REAL (fondateur 19/08/2026) — un devis résidentiel auto ne
-    // portait QUE {scenario} : le PDF (builder.py) reconstruisait alors les
-    // « factures avant » depuis l'économie SUPPOSÉE (proxy circulaire — la
-    // couverture solaire valait toujours ≈ le taux d'autoconsommation
-    // forfaitaire, jamais une vraie consommation ; voir l'audit du 19/08).
-    // Quand le lead porte une VRAIE facture d'hiver, on sème le contrat
-    // convenu avec le backend (etude_params.factures_mensuelles_reelles /
-    // conso_annuelle / distributeur) : le PDF rend alors les 12 factures
-    // RÉELLES du client comme série « avant » et bascule sur le modèle
-    // « deux factures » par tranche dès que le distributeur est connu
-    // (builder.py QF2). Même interpolation hiver/été que le dimensionnement
-    // ci-dessus (`estimerMois`) et même inverse de barème que l'écran manuel
-    // de DevisGenerator (`kwhFromBill`, miroir exact de pricing.py). Rien
-    // n'est écrit quand le lead n'a pas de facture — l'étude reste
-    // {scenario} seul, comportement historique inchangé (le backend dégrade
-    // alors sur son proxy historique).
-    if (mode === 'residentiel' && hiver > 0) {
-      const eteReel = (lead.ete_differente && lead.facture_ete)
-        ? parseFloat(lead.facture_ete) : hiver
-      const facturesReelles = estimerMois(hiver, eteReel)
-      const distributeurLead = ['onee', 'lydec', 'redal'].includes(lead.distributeur)
-        ? lead.distributeur : undefined
-      const consoAnnuelleReelle = Math.round(facturesReelles.reduce(
-        (somme, bill) => somme + (kwhFromBill(bill, distributeurLead).kwhMensuel || 0), 0))
-      extra.etude_params = {
-        ...extra.etude_params,
-        factures_mensuelles_reelles: facturesReelles,
-        ...(consoAnnuelleReelle > 0 ? { conso_annuelle: consoAnnuelleReelle } : {}),
-        ...(distributeurLead ? { distributeur: distributeurLead } : {}),
-      }
-    }
+    // U3 — le bloc PACT10/QF-REAL (12 factures RÉELLES du client semées dans
+    // `etude_params`) vivait ICI ; il a MIGRÉ dans la branche résidentielle
+    // ci-dessus, qui part au serveur. Il n'est plus atteignable d'ici : à ce
+    // point, `mode` ne peut plus valoir 'residentiel'.
+
     // QX52 — industriel ET commercial partagent l'étude d'autoconsommation ; le
     // day-share diffère (industriel 80 % vs commercial 80 % archétype par défaut)
     // et chaque mode garde SON `mode_installation` (jamais un repli croisé).

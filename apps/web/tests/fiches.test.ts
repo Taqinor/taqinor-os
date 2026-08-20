@@ -79,6 +79,24 @@ describe('fiches techniques — manifest', () => {
     }
   });
 
+  // W199 (fondateur 2026-08-20) — `/fiches/*` est servi
+  // `Cache-Control: immutable, max-age=1 an` (apps/web/public/_headers) : un
+  // remplacement de contenu SOUS LE MÊME NOM reste invisible pour tout
+  // navigateur qui a déjà l'ancien fichier en cache, jusqu'à un an plus tard
+  // (bug constaté : le fondateur voyait un aperçu « faux »/cassé alors que
+  // `curl` servait déjà le bon fichier). Verrou : chaque PDF auto-hébergé
+  // porte un suffixe de version `-AAMM` dans son NOM (schéma documenté en
+  // tête de `src/lib/fiches.ts`) — un remplacement de contenu doit donc
+  // TOUJOURS produire un nouveau nom de fichier, jamais réécrire le même.
+  it('chaque PDF auto-hébergé porte un suffixe de VERSION dans son nom', () => {
+    for (const f of FICHES) {
+      if (f.pdf === null) continue;
+      const filename = f.pdf.split('/').pop()!;
+      expect(filename, `pdf sans suffixe de version (schéma <slug>-<modèle>-AAMM.pdf) : ${f.slug} → ${filename}`)
+        .toMatch(/-\d{4}\.pdf$/);
+    }
+  });
+
   it('le groupement par catégorie couvre toutes les fiches', () => {
     const grouped = fichesByCategorie().flatMap((g) => g.fiches);
     expect(grouped.length).toBe(FICHES.length);
@@ -290,9 +308,20 @@ describe('gabarit 7 blocs des fiches de famille', () => {
   });
 
   it('aucune fiche de famille ne prétend avoir une fiche constructeur', () => {
+    // EXCEPTION : `cablage` (fondateur 2026-08-20, V2) — ce poste générique
+    // nomme déjà une marque unique dans ses `faits` (« Marque Nexans, choix
+    // Taqinor confirmé ») : contrairement aux AUTRES postes génériques
+    // (accessoires-pose, structure-fixation…), il a une VRAIE fiche
+    // constructeur Nexans H1Z2Z2-K derrière lui, désormais auto-hébergée
+    // pour l'aperçu intégré. `protection-ac` cite Schneider de la même façon
+    // mais SANS PDF Nexans/Schneider auto-hébergé demandé par le fondateur :
+    // elle reste donc dans la règle générale ci-dessous, `cablage` seul en
+    // sort.
     for (const slug of GENERIQUES) {
+      if (slug === 'cablage') continue;
       expect(ficheBySlug(slug)!.pdf, `PDF constructeur inventé : ${slug}`).toBeNull();
     }
+    expect(ficheBySlug('cablage')!.pdf).toBe('/fiches/cablage-h1z2z2k-2608.pdf');
   });
 
   it('chaque question de FAQ porte une réponse non vide', () => {

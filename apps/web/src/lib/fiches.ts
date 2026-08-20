@@ -10,8 +10,36 @@
  * `slug` est l'identifiant d'URL `/produits/<slug>` ET la cible des liens du
  * devis premium (le moteur Django mappe chaque ligne d'équipement vers ce même
  * slug — voir `apps/ventes/quote_engine/residential/theme.py:fiche_slug`).
- * `pdf` pointe vers une copie auto-hébergée sous `/public/fiches/<slug>.pdf`
+ * `pdf` pointe vers une copie auto-hébergée sous `/public/fiches/<slug>...pdf`
  * quand elle existe ; sinon la page renvoie vers `datasheet` (source officielle).
+ *
+ * NOMMAGE DES PDF AUTO-HÉBERGÉS — RÈGLE DURE (fondateur 2026-08-20, W199).
+ * `apps/web/public/_headers` sert `/fiches/*` avec
+ * `Cache-Control: public, max-age=31536000, immutable` : le NAVIGATEUR du
+ * client garde le fichier téléchargé UN AN, quoi qu'il arrive côté serveur.
+ * Le bug constaté (fondateur voit un aperçu « faux »/cassé alors que `curl`
+ * sert le bon fichier) venait d'un remplacement de contenu SOUS LE MÊME NOM
+ * (ex. SG04 → SG05) : chaque navigateur qui avait déjà l'ancien fichier en
+ * cache continuait de le montrer, silencieusement, pendant un an.
+ *
+ * RÈGLE : tout fichier sous `public/fiches/` porte un SUFFIXE DE VERSION dans
+ * son NOM — jamais dans un paramètre d'URL (la règle de cache ci-dessus
+ * s'applique au chemin, un `?v=` serait ignoré par certains caches
+ * intermédiaires). Schéma : `<slug>-<modèle-court>-<AAMM>.pdf`
+ *   · `<slug>`         : le slug de la fiche (identique à `f.slug`) ;
+ *   · `<modèle-court>` : jeton court, minuscule, sans espace, identifiant LA
+ *                        RÉVISION du produit/datasheet (ex. `sg05lp3`,
+ *                        `topbihiku7`, `dl50c`, `h1z2z2k`) — c'est ce jeton
+ *                        qui change quand le produit change de génération ;
+ *   · `<AAMM>`         : année(2)+mois(2) où CE fichier a été déposé/vérifié
+ *                        — change à CHAQUE remplacement de contenu, même si
+ *                        `<modèle-court>` reste le même (ex. la même gamme
+ *                        SG05LP3 mais une édition plus récente du PDF).
+ * CONSÉQUENCE NON NÉGOCIABLE : un remplacement de contenu est TOUJOURS un
+ * NOUVEAU nom de fichier (nouveau `<AAMM>`, jamais le même nom réécrit) — le
+ * lien change dans `pdf` ci-dessous, l'ancien fichier est retiré du dépôt
+ * dans le MÊME commit. Le test `tests/fiches.test.ts` verrouille que chaque
+ * `pdf:` non-null porte ce suffixe (`/-\d{4}\.pdf$/`).
  */
 
 import {
@@ -155,7 +183,7 @@ export const FICHES: Fiche[] = [
     pairsWith: ['Onduleurs réseau', 'Onduleurs hybrides', 'Supervision & comptage'],
     datasheet:
       'https://static.csisolar.com/wp-content/uploads/2022/12/12090125/CS-Datasheet-TOPBiHiKu7-TOPCon_CS7N-TB-AG_v1.62C3_EN.pdf',
-    pdf: '/fiches/canadian-solar-710.pdf',
+    pdf: '/fiches/canadian-solar-710-topbihiku7-2608.pdf',
   },
   {
     slug: 'jinko-710',
@@ -180,7 +208,7 @@ export const FICHES: Fiche[] = [
     // self-hostée ci-dessous ; la page produit /en/site/tigerneo n'est pas un PDF.
     datasheet:
       'https://jinkosolarcdn.shwebspace.com/uploads/JKM710-735N-66HL5-BDV-Z4-EN.pdf',
-    pdf: '/fiches/jinko-710.pdf',
+    pdf: '/fiches/jinko-710-tigerneo-2608.pdf',
   },
   {
     slug: 'onduleur-huawei-reseau',
@@ -200,7 +228,7 @@ export const FICHES: Fiche[] = [
     pairsWith: ['Panneaux photovoltaïques', 'Supervision & comptage'],
     datasheet:
       'https://solar.huawei.com/-/media/Solar/attachment/pdf/apac/datasheet/SUN2000-5-10KTL-M0-M1.pdf',
-    pdf: '/fiches/onduleur-huawei-reseau.pdf',
+    pdf: '/fiches/onduleur-huawei-reseau-sun2000-2608.pdf',
   },
   {
     slug: 'onduleur-deye-hybride',
@@ -230,7 +258,7 @@ export const FICHES: Fiche[] = [
     // dans le code mais restait absent de la seule source publique vérifiée.
     datasheetMono:
       'https://www.deyeinverter.com/deyeinverter/2023/07/31/datasheet_sun-(3.6-8)k-sg05lp1-eu_230731_en.pdf',
-    pdf: '/fiches/onduleur-deye-hybride.pdf',
+    pdf: '/fiches/onduleur-deye-hybride-sg05lp3-2608.pdf',
   },
   {
     slug: 'batterie-dyness',
@@ -255,7 +283,7 @@ export const FICHES: Fiche[] = [
     pairsWith: ['Onduleurs hybrides', 'Supervision & comptage'],
     datasheet:
       'https://www.dyness.com/Public/Uploads/uploadfile/files/20241023/DynessDL5.0CdatasheetEN.pdf',
-    pdf: '/fiches/batterie-dyness.pdf',
+    pdf: '/fiches/batterie-dyness-dl50c-2608.pdf',
   },
   // ── DÉCOUPAGE 11 FAMILLES (fondateur 2026-08-18) ──────────────────────────
   // Les postes GÉNÉRIQUES du devis sont les lignes que le client paie sans
@@ -574,10 +602,16 @@ export const FICHES: Fiche[] = [
     ],
     pairsWith: ['Panneaux photovoltaïques', 'Onduleurs réseau', 'Onduleurs hybrides'],
     voirAussi: ['accessoires-pose', 'protection-dc'],
-    // Page officielle AFNOR de la norme qui définit le câble solaire.
+    // Fiche constructeur Nexans PV H1Z2Z2-K SUN PLUS (1,5 kV DC) — le câble
+    // RÉELLEMENT posé (marque Nexans confirmée fondateur, cf. FICHES['CAB-*']
+    // de seed_catalogue.py) — remplace le lien vers la NORME (AFNOR) qui ne
+    // nommait aucun produit. Vérifié 2026-08-20 : contenu du PDF auto-hébergé
+    // ci-dessous confronté au texte extrait (EN 50618, IEC 62930, 1,5/1,8 kV
+    // DC, conducteur cuivre étamé classe 5 — chaque fait cité dans `faits`
+    // ci-dessus s'y retrouve).
     datasheet:
-      'https://norminfo.afnor.org/norme/nf-en-50618/cables-electriques-pour-systemes-photovoltaiques/105484',
-    pdf: null,
+      'https://www.nexans.fr/.rest/catalog/v1/family/pdf/38188/Nexans-PV-H1Z2Z2-K-SUN-PLUS-Cable-1-5kV-DC',
+    pdf: '/fiches/cablage-h1z2z2k-2608.pdf',
     // Connecteurs solaires démontés : corps mâle/femelle, contacts à sertir,
     // presse-étoupes. Aucune marque lisible — cohérent avec la décision
     // fondateur de ne publier AUCUNE référence commerciale de connecteur.
@@ -827,7 +861,7 @@ export const FICHES: Fiche[] = [
     pairsWith: ['Onduleurs réseau', 'Onduleurs hybrides'],
     datasheet:
       'https://solar.huawei.com/~/media/Solar/attachment/pdf/es/datasheet/SmartPowerSensor.pdf',
-    pdf: '/fiches/smart-meter-huawei.pdf',
+    pdf: '/fiches/smart-meter-huawei-dtsu666h-2608.pdf',
   },
   {
     slug: 'wifi-dongle-huawei',
@@ -847,7 +881,7 @@ export const FICHES: Fiche[] = [
     pairsWith: ['Onduleurs réseau', 'Onduleurs hybrides'],
     datasheet:
       'https://solar.huawei.com/-/media/Solar/attachment/pdf/mea/datasheet/SmartDongle-WLAN-FE.pdf',
-    pdf: '/fiches/wifi-dongle-huawei.pdf',
+    pdf: '/fiches/wifi-dongle-huawei-wlanfe-2608.pdf',
   },
 ];
 
