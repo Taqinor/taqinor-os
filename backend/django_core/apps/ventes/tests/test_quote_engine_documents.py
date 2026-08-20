@@ -65,24 +65,55 @@ class TestDocLiteralTemplates(TestCase):
             G._render_pdf_weasyprint = orig
         return cap['html']
 
+    def _echeance(self):
+        """Date d'échéance RÉELLE du devis, lue à LA source du backend.
+
+        Jamais ``date.today()`` : le rendu la dérive de ``date_creation`` du
+        devis, donc la recalculer autrement ferait passer ce test au rouge une
+        nuit sur deux (dérive d'horloge)."""
+        from apps.ventes.utils.expiry import date_expiration
+        return date_expiration(self.devis).strftime('%d/%m/%Y')
+
     def test_default_settings_keep_exact_historical_literals(self):
-        """Réglages par défaut → tous les littéraux historiques présents au
-        caractère et à l'entité HTML près (preuve de byte-identité du devis)."""
+        """Réglages par défaut → littéraux du gabarit ACTUEL, au caractère et à
+        l'entité HTML près.
+
+        Ce test prouve qu'aucun réglage vide ne change le rendu ; il suit donc
+        les décisions qui ont changé le gabarit lui-même :
+
+        * M7 — la validité n'est plus « 30 jours » mais l'ÉCHÉANCE RÉELLE du
+          devis (``date_validite``, sinon création + ``quote_validity_days``) :
+          le portail client l'affichait déjà, le PDF affichait une durée.
+        * Q5 — le délai d'installation a QUITTÉ la boîte « Conditions », où il
+          voisinait la validité, l'échéancier et la TVA et se lisait donc comme
+          contractuel ; il est aux « prochaines étapes », suivi de
+          « (indicatif) », et vient d'un réglage société.
+        * M6 — les garanties ne sont plus des littéraux : sans garantie saisie
+          sur les produits de ce montage, le bloc reste sobre et AUCUNE durée
+          n'est affirmée (le « 87,4 % », spec Canadian Solar, ne s'imprime plus
+          sous un libellé générique).
+        """
         html = self._render()
-        # Validité (badge page 1) + format une page
-        self.assertIn('Validit&#233;&#160;: 30 jours', html)
+        echeance = self._echeance()
+        # Validité (badge page 1) — la VRAIE date, pas une durée.
+        self.assertIn(f'Validit&#233;&#160;: jusqu&#8217;au {echeance}', html)
+        self.assertNotIn('Validit&#233;&#160;: 30 jours', html)
         # Conditions générales — titre + puces (entités/accents EXACTS)
         self.assertIn('Conditions générales du devis', html)
-        self.assertIn('Validité de l&#8217;offre&#160;: 30 jours', html)
+        self.assertIn(
+            f'Validité de l&#8217;offre&#160;: jusqu&#8217;au {echeance}', html)
         self.assertIn('Acompte à la commande&#160;: 30&#37;', html)
         self.assertIn('60&#37; à la réception du matériel', html)
         self.assertIn('10&#37; après la mise en marche', html)
-        self.assertIn('Délai d&#8217;installation&#160;: 7–14 jours ouvrés', html)
         self.assertIn('Tarifs de référence&#160;: barème ONEE/SRM', html)
-        # Garanties — entités HTML EXACTES (cf. test garantie 30 ans)
-        self.assertIn('Garanties jusqu&#8217;à 30 ans', html)
-        self.assertIn('30 ans performance (87,4&#8201;%)', html)
-        self.assertIn('Performance panneau (87,4&#8201;%)', html)
+        # Q5 — le délai est INDICATIF et hors des Conditions.
+        self.assertNotIn('Délai d&#8217;installation&#160;:', html)
+        self.assertIn('7-14 jours ouvrés (indicatif)', html)
+        self.assertIn('Sous 48-72 h (indicatif)', html)
+        # M6 — aucune garantie saisie sur ce montage : rien n'est affirmé.
+        self.assertIn('Nos garanties', html)
+        self.assertNotIn('Garanties jusqu', html)
+        self.assertNotIn('87,4', html)
         # Bon pour accord — titre + mention manuscrite (espaces insécables)
         self.assertIn('Bon pour accord', html)
         self.assertIn(
@@ -90,8 +121,14 @@ class TestDocLiteralTemplates(TestCase):
             html)
 
     def test_onepage_default_validity_literal_preserved(self):
+        """M7 — le format une page porte la MÊME échéance réelle que les trois
+        pages : deux documents du même devis ne peuvent plus annoncer deux
+        dates différentes."""
         html = self._render({'pdf_mode': 'onepage'})
-        self.assertIn('&#183; Validit&#233;&#160;: 30 jours', html)
+        self.assertIn(
+            f'&#183; Validit&#233;&#160;: jusqu&#8217;au {self._echeance()}',
+            html)
+        self.assertNotIn('Validit&#233;&#160;: 30 jours', html)
 
     def test_editing_templates_changes_rendered_html(self):
         from apps.parametres.models_documents import DocumentTemplates
@@ -114,12 +151,23 @@ class TestDocLiteralTemplates(TestCase):
         self.assertNotIn('Conditions générales du devis', html)
 
     def test_empty_template_falls_back_to_literal(self):
-        """Un enregistrement existant mais VIDE = aucun changement (byte-identique)."""
+        """Un enregistrement existant mais VIDE = aucun changement.
+
+        M6 — le repli n'est plus un LITTÉRAL de garantie (« jusqu'à 30 ans »
+        s'imprimait quels que soient les produits) : sans garantie saisie sur
+        les produits de ce montage, le bloc reste sobre. Ce que ce test
+        protège est intact : une surcharge société vide se comporte comme une
+        absence de surcharge.
+        """
         from apps.parametres.models_documents import DocumentTemplates
         DocumentTemplates.get(company=self.company)  # crée la ligne, tout vide
         html = self._render()
         self.assertIn('Conditions générales du devis', html)
-        self.assertIn('Garanties jusqu&#8217;à 30 ans', html)
+        self.assertIn('Nos garanties', html)
+        self.assertNotIn('Garanties jusqu', html)
+        # Le rendu est le MÊME qu'avec aucune ligne DocumentTemplates.
+        DocumentTemplates.objects.filter(company=self.company).delete()
+        self.assertEqual(len(self._render()), len(html))
 
     def test_acceptance_stamp_only_when_accepted(self):
         # Non accepté → aucun tampon

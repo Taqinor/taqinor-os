@@ -106,7 +106,14 @@ class TestHypothesesInData(TestCase):
         self.assertFalse(h['tranche_approximatif'])
         self.assertIn('ONEE', ' '.join(h['items']))
 
-    def test_lydec_source_flagged_approximate(self):
+    def test_lydec_reste_un_libelle_et_n_est_plus_approximatif(self):
+        """Q7 (décision fondateur du 20/08/2026) — le distributeur redevient un
+        LIBELLÉ. Sa grille « approximative » (trois paliers ronds « à
+        confirmer ») est supprimée : elle faisait diverger la facture d'un MÊME
+        client selon un champ de formulaire, puis un drapeau « approximatif »
+        avouait le problème sans le corriger. Le nom continue de s'AFFICHER —
+        c'est bien son distributeur — mais le barème est le national, donc plus
+        rien n'est à relativiser."""
         from apps.ventes.quote_engine import build_quote_data
         devis = make_devis(
             self.company, self.user, self.client_obj,
@@ -115,8 +122,8 @@ class TestHypothesesInData(TestCase):
         data = build_quote_data(devis)
         h = data['hypotheses']
         self.assertEqual(h['tranche_source'], 'Lydec')
-        self.assertTrue(h['tranche_approximatif'])
-        self.assertIn('approximatif', ' '.join(h['items']).lower())
+        self.assertFalse(h['tranche_approximatif'])
+        self.assertNotIn('approximatif', ' '.join(h['items']).lower())
 
     def test_degrades_with_tarif_kwh_text(self):
         """No utility → QRES55 : le tarif interne n'est JAMAIS affiché en

@@ -106,6 +106,26 @@ class _Base(TestCase):
                 ond_bat_aucune=(sku == 'ONDR5'),
                 ond_bat_v_min=(None if sku == 'ONDR5' else Decimal('40.0')),
                 ond_bat_v_max=(None if sku == 'ONDR5' else Decimal('60.0')))
+        # Les BATTERIES aussi portent leur fiche. Sans elle, la composition
+        # n'en retenait AUCUNE et le kit « avec batterie » partait sans
+        # stockage : dès que l'onduleur DÉCLARE une plage batterie (ici
+        # 40-60 V), ``services._batterie_compatible`` exige une tension
+        # MESURÉE et exclut toute candidate muette — c'est le garde-fou voulu
+        # (fondateur 18/08 : une composition électriquement invalide ne doit
+        # plus sortir d'un repli mot-clé), pas un défaut à contourner. Le
+        # montage porte donc les mêmes valeurs constructeur que le catalogue
+        # seedé (``seed_catalogue`` BAT-DEY-5/10, Dyness LV 51,2 V).
+        for sku, kwh_nom, kwh_util, charge_kw in (
+                ('BAT5', '5.12', '4.60', '3.84'),
+                ('BAT10', '10.24', '9.22', '5.12')):
+            FicheTechnique.objects.create(
+                company=self.company, produit=self.produits[sku],
+                type_fiche='batterie',
+                bat_kwh_nominal=Decimal(kwh_nom),
+                bat_kwh_usable=Decimal(kwh_util),
+                bat_dod_pct=Decimal('90.0'),
+                bat_v_nominal=Decimal('51.2'),
+                bat_max_charge_kw=Decimal(charge_kw))
 
     def _lead(self, email='kit@example.com'):
         return Lead.objects.create(

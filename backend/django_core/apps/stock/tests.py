@@ -1197,11 +1197,28 @@ class TestCorrectionGarantiesDeyeGeneriques(TestCase):
 
     def test_la_batterie_dyness_basse_tension_reste_a_120_mois(self):
         """BAT-DEY-5/10 (la batterie de la fiche web `batterie-dyness`) n'est
-        PAS concernée par la correction : 120 mois y était déjà la valeur
-        correcte (harmonisée avec warranty.ts côté web)."""
+        PAS concernée par la correction : 120 mois y est la valeur correcte
+        (harmonisée avec warranty.ts côté web), et 0124 doit la LAISSER
+        intacte — c'est cela que ce test garantit.
+
+        La prémisse a été corrigée : les 120 mois viennent de la règle de
+        données de la migration 0012 (« Batteries / stockage » → 120), qui
+        s'est appliquée aux produits EXISTANTS à son passage.
+        ``seed_catalogue`` ne pose PAS ``garantie_mois`` (aucune occurrence
+        dans le seeder) : sur une base de test fraîche, les produits sont
+        créés APRÈS 0012 et sortent donc à NULL. On reproduit donc ici l'état
+        d'une base réelle — 120 déjà en place — avant d'exécuter 0124, sans
+        quoi le test vérifiait un préalable que rien ne produit.
+        """
         from django.apps import apps as registre
         seed(self.company)
+        # État d'une base réelle après 0012 (cf. docstring).
+        Produit.objects.filter(
+            company=self.company, sku__in=('BAT-DEY-5', 'BAT-DEY-10'),
+        ).update(garantie_mois=120)
+
         self._migration().corriger_garanties(registre, None)
+
         for sku in ('BAT-DEY-5', 'BAT-DEY-10'):
             p = Produit.objects.get(company=self.company, sku=sku)
             self.assertEqual(p.garantie_mois, 120, sku)

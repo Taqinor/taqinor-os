@@ -843,16 +843,38 @@ class TestPdfFormats(TestCase):
         self.assertIn('Acompte&#160;: 30&#37;', html5)
 
     def test_panel_performance_warranty_is_30_years(self):
-        """Plus aucune mention « 25 ans » de performance panneau ; l'horizon
-        ROI « sur 25 ans » (graphique) n'est PAS une garantie et reste."""
+        """Performance panneau : 30 ans, jamais 25 — mais LUE sur la fiche.
+
+        M6 (audit adversarial du 19/08/2026) — ces durées étaient des
+        littéraux : « Garanties jusqu'à 30 ans », « 30 ans performance
+        (87,4 %) » sortaient sur TOUS les devis, y compris un Longi (30 ans
+        mais 88,9 %) et des produits sans aucune garantie saisie. Le document
+        les dérive maintenant des FICHES PRODUIT — la fixture en porte donc,
+        comme le catalogue réel. Le « 87,4 % » ne s'écrit plus : c'est une
+        spec Canadian Solar, elle n'appartient pas au libellé générique.
+
+        L'horizon ROI « sur 25 ans » (graphique) n'est PAS une garantie et
+        reste : c'est ce que ce test protège depuis toujours.
+        """
         self.devis.mode_installation = ''
         self.devis.save(update_fields=['mode_installation'])
+        for ligne in self.devis.lignes.all():
+            nom = ligne.designation.lower()
+            if 'panneau' in nom:
+                ligne.produit.garantie_mois = 144            # 12 ans produit
+                ligne.produit.garantie_production_mois = 360  # 30 ans perf.
+                ligne.produit.save(update_fields=[
+                    'garantie_mois', 'garantie_production_mois'])
+            elif 'onduleur' in nom:
+                ligne.produit.garantie_mois = 120             # 10 ans
+                ligne.produit.save(update_fields=['garantie_mois'])
         html, _ = self._render()
-        self.assertIn('Garanties jusqu&#8217;à 30 ans', html)
-        self.assertIn('30 ans performance (87,4&#8201;%)', html)
-        self.assertIn('Performance panneau (87,4&#8201;%)', html)
+        self.assertIn('Garanties jusqu&#8217;&#224; 30 ans', html)
+        self.assertIn('Performance panneau', html)
         self.assertNotIn('25 ans performance', html)
-        self.assertNotIn('jusqu&#8217;à 25 ans', html)
+        self.assertNotIn('jusqu&#8217;&#224; 25 ans', html)
+        # Le pourcentage d'une marque ne s'imprime plus sous un libellé générique.
+        self.assertNotIn('87,4', html)
 
     def test_ice_rendered_when_present_absent_when_empty(self):
         self.client_obj.ice = '003799642000099'

@@ -421,14 +421,16 @@ def kwh_from_bill(bill_mad, utility=None, tranches_override=None) -> dict:
 
     Returns dict:
         kwh_mensuel   float — consommation mensuelle estimée (kWh).
-        approximatif  bool  — True quand la table utilisée est estimée
-                              (Lydec/Redal, à confirmer).
+        approximatif  bool  — Q7 : TOUJOURS False. Il n'existe plus de table
+                              estimée — les trois distributeurs lisent la
+                              grille nationale. Conservé pour ne casser aucun
+                              appelant.
         estimation    bool  — True quand AUCUNE table n'est disponible ou que la
                               facture est vide : le chiffre est une estimation
                               (prix plat de repli), jamais présenté comme précis.
         label         str   — ESTIMATION_LABEL quand ``estimation`` est True,
-                              « approximatif » quand seule la table est estimée,
-                              '' sinon.
+                              '' sinon (Q7 : plus aucune table estimée à
+                              étiqueter « approximatif »).
     """
     try:
         bill = float(bill_mad or 0)
@@ -480,7 +482,7 @@ def annual_bill_from_kwh(monthly_kwh, utility=None, tranches_override=None) -> d
     Returns dict:
         bill_mensuel  float — facture mensuelle TTC (MAD).
         bill_annuel   float — facture annuelle TTC (MAD) = mensuelle × 12.
-        approximatif  bool  — table estimée (Lydec/Redal, à confirmer).
+        approximatif  bool  — Q7 : toujours False (plus de table estimée).
         estimation    bool  — True quand aucune table n'est disponible (repli
                               plat) ou consommation vide : chiffre étiqueté
                               « estimation », jamais présenté comme précis.
@@ -598,7 +600,7 @@ def two_bills_savings(
         facture_avec   int  — facture annuelle TTC avec solaire (MAD).
         economie       int  — facture_sans − facture_avec (≥ 0).
         autoconso_kwh  int  — kWh autoconsommés retenus (plafonnés à la conso).
-        approximatif   bool — table distributeur estimée (Lydec/Redal).
+        approximatif   bool — Q7 : toujours False (plus de table estimée).
     """
     table, approx = _resolve_tranches(utility, tranches_override)
     if table is None:

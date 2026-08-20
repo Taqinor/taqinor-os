@@ -59,9 +59,19 @@ class TestTwoBillsSavingsPure(SimpleTestCase):
         # NEVER above the full bill (no injection bonus).
         self.assertLessEqual(out["economie"], round(_onee_annual_bill(300)) + 1)
 
-    def test_lydec_flagged_approximatif(self):
-        out = two_bills_savings(6200, 3600, 0.30, utility="lydec")
-        self.assertTrue(out["approximatif"])
+    def test_lydec_lit_la_grille_nationale_et_n_est_plus_approximatif(self):
+        """Q7 (décision fondateur du 20/08/2026) — les grilles « approximatives »
+        Lydec/Redal sont supprimées : trois paliers ronds jamais vérifiés, qui
+        faisaient diverger la facture d'un MÊME client selon un champ de
+        formulaire, puis un drapeau qui avouait le problème sans le corriger.
+        Les trois distributeurs lisent la grille nationale ; le nom n'est plus
+        qu'un libellé."""
+        ref = two_bills_savings(6200, 3600, 0.30, utility="onee")
+        for utility in ("lydec", "redal"):
+            out = two_bills_savings(6200, 3600, 0.30, utility=utility)
+            self.assertFalse(out["approximatif"], utility)
+            self.assertAlmostEqual(out["economie"], ref["economie"],
+                                   places=6, msg=utility)
 
     def test_returns_none_without_table_or_data(self):
         self.assertIsNone(two_bills_savings(6200, 3600, 0.30))         # no table
@@ -185,14 +195,17 @@ class TestBuilderTwoBillsExposure(TestCase):
                          data['eco_s_ann'])
         self.assertFalse(data['factures_approximatif'])
 
-    def test_lydec_bills_flagged_approximatif(self):
+    def test_lydec_n_est_plus_publie_comme_approximatif(self):
+        """Q7 — un devis Lydec est chiffré sur la grille NATIONALE : le modèle
+        « factures » reste actif (barème réel par tranches) et plus aucun
+        drapeau « approximatif » ne franchit la frontière du rendu."""
         from apps.ventes.quote_engine import build_quote_data
         devis = self._devis(
             etude_params={'distributeur': 'lydec', 'conso_annuelle': 6000},
             reference='DEV-QF2-0002')
         data = build_quote_data(devis)
         self.assertEqual(data['savings_model'], 'factures')
-        self.assertTrue(data['factures_approximatif'])
+        self.assertFalse(data['factures_approximatif'])
 
     def test_no_data_path_is_honest(self):
         """No bill/consumption → old estimate, flagged, no fabricated bills."""
