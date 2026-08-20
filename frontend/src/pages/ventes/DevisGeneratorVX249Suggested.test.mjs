@@ -32,7 +32,9 @@ test('withKeys() (lignes auto-quote/import) ne pose PAS _tvaSuggested (taux rée
 test('setLine() retire _tvaSuggested UNIQUEMENT quand la clé modifiée est taux_tva', () => {
   const start = GEN_SRC.indexOf('const setLine = useCallback((key, k, v) => {')
   assert.ok(start >= 0)
-  const body = GEN_SRC.slice(start, start + 400)
+  // N2 — le corps de setLine() a grandi (verrou `prixManuel` sur la frappe du
+  // prix, même patron que `_tvaSuggested`) : fenêtre élargie pour l'englober.
+  const body = GEN_SRC.slice(start, start + 700)
   assert.match(body, /_tvaSuggested: false/)
   assert.match(body, /k === 'taux_tva'/)
 })
