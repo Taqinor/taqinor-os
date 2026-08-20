@@ -1,0 +1,171 @@
+{
+  "endpoint": "POST /api/django/ventes/devis/composition/",
+  "pourquoi": "U3 (fondateur 20/08/2026) — LE DRY-RUN de la composition résidentielle : le serveur compose le kit et rend les lignes SANS RIEN CRÉER (aucun devis, aucun statut, règle #4). C'est la moitié « à blanc » de la source de vérité unique : le même catalogue, la même fonction pure (apps/ventes/services.py::composition_residentielle) et les mêmes règles de gamme que POST /ventes/devis/auto/ qui, lui, compose ET crée. Avant U3 il existait DEUX sortes de devis — l'écran recomposait le kit en JavaScript (solar.js::autoFillLines) pendant que le serveur le recomposait en Python, et les deux ont divergé (câbles, marques épinglées, ordre des lignes, arrondi du nombre de panneaux). Cet endpoint est ce qui permet à l'écran générateur de PRÉREMPLIR ses lignes éditables avec EXACTEMENT ce que le serveur aurait posé. Entrée : {kwc ou nb_panneaux, panel_watt?, scenario? ('sans'|'avec'|'les_deux', défaut 'les_deux'), structure_type? ('acier'|'aluminium'), taux_tva?, mppt_paires?}. Company-scopé : le catalogue d'une autre société ne fuite jamais. Les prix sont rendus en HT (la base fait foi) ET en TTC dérivé (l'écran saisit en TTC) ; `role` porte le rôle ROLES_AUTO_COMPOSITION de chaque ligne, `ordre` l'ordre déjà appliqué (PVORD). `marques_manquantes` liste les rôles dont la marque épinglée n'a AUCUN candidat en stock — l'écran affiche le bandeau, et le chemin de CRÉATION refuse en 422 plutôt que de livrer un devis sans panneaux.",
+  "exemple": {
+    "lignes": [
+      {
+        "ordre": 0,
+        "role": "onduleur_reseau",
+        "produit": 41,
+        "designation": "Onduleur réseau Huawei 5kW Monophasé",
+        "quantite": 1,
+        "prix_unitaire_ht": "14000.00",
+        "prix_unitaire_ttc": "16800.00",
+        "taux_tva": "20"
+      },
+      {
+        "ordre": 1,
+        "role": "onduleur_hybride",
+        "produit": 42,
+        "designation": "Onduleur hybride Deye 5kW Monophasé",
+        "quantite": 1,
+        "prix_unitaire_ht": "17000.00",
+        "prix_unitaire_ttc": "20400.00",
+        "taux_tva": "20"
+      },
+      {
+        "ordre": 2,
+        "role": "smart_meter",
+        "produit": 51,
+        "designation": "Smart Meter",
+        "quantite": 1,
+        "prix_unitaire_ht": "1800.00",
+        "prix_unitaire_ttc": "2160.00",
+        "taux_tva": "20"
+      },
+      {
+        "ordre": 3,
+        "role": "wifi_dongle",
+        "produit": 52,
+        "designation": "Wifi Dongle",
+        "quantite": 1,
+        "prix_unitaire_ht": "1200.00",
+        "prix_unitaire_ttc": "1440.00",
+        "taux_tva": "20"
+      },
+      {
+        "ordre": 4,
+        "role": "panneau",
+        "produit": 12,
+        "designation": "Panneau Canadien Solar 710W",
+        "quantite": 8,
+        "prix_unitaire_ht": "1450.00",
+        "prix_unitaire_ttc": "1740.00",
+        "taux_tva": "20"
+      },
+      {
+        "ordre": 5,
+        "role": "batterie",
+        "produit": 61,
+        "designation": "Batterie Dyness 5 kWh",
+        "quantite": 1,
+        "prix_unitaire_ht": "16000.00",
+        "prix_unitaire_ttc": "19200.00",
+        "taux_tva": "20"
+      },
+      {
+        "ordre": 6,
+        "role": "structure_acier",
+        "produit": 71,
+        "designation": "Structures acier",
+        "quantite": 8,
+        "prix_unitaire_ht": "500.00",
+        "prix_unitaire_ttc": "600.00",
+        "taux_tva": "20"
+      },
+      {
+        "ordre": 7,
+        "role": "socle",
+        "produit": 72,
+        "designation": "Socles",
+        "quantite": 16,
+        "prix_unitaire_ht": "80.00",
+        "prix_unitaire_ttc": "96.00",
+        "taux_tva": "20"
+      },
+      {
+        "ordre": 8,
+        "role": "cable_dc",
+        "produit": 81,
+        "designation": "Câble solaire Nexans 6 mm² (au mètre)",
+        "quantite": 60,
+        "prix_unitaire_ht": "14.40",
+        "prix_unitaire_ttc": "17.28",
+        "taux_tva": "20"
+      },
+      {
+        "ordre": 9,
+        "role": "cable_terre",
+        "produit": 82,
+        "designation": "Câble de terre Nexans 6 mm² (au mètre)",
+        "quantite": 40,
+        "prix_unitaire_ht": "14.40",
+        "prix_unitaire_ttc": "17.28",
+        "taux_tva": "20"
+      },
+      {
+        "ordre": 10,
+        "role": "accessoires",
+        "produit": 91,
+        "designation": "Accessoires",
+        "quantite": 1,
+        "prix_unitaire_ht": "833.33",
+        "prix_unitaire_ttc": "1000.00",
+        "taux_tva": "20"
+      },
+      {
+        "ordre": 11,
+        "role": "tableau",
+        "produit": 92,
+        "designation": "Tableau De Protection AC/DC",
+        "quantite": 1,
+        "prix_unitaire_ht": "1250.00",
+        "prix_unitaire_ttc": "1500.00",
+        "taux_tva": "20"
+      },
+      {
+        "ordre": 12,
+        "role": "installation",
+        "produit": 93,
+        "designation": "Installation",
+        "quantite": 1,
+        "prix_unitaire_ht": "4000.00",
+        "prix_unitaire_ttc": "4800.00",
+        "taux_tva": "20"
+      },
+      {
+        "ordre": 13,
+        "role": "transport",
+        "produit": 94,
+        "designation": "Transport",
+        "quantite": 1,
+        "prix_unitaire_ht": "1000.00",
+        "prix_unitaire_ttc": "1200.00",
+        "taux_tva": "20"
+      }
+    ],
+    "scenario": "Les deux (Sans + Avec)",
+    "nb_panneaux": 8,
+    "panel_watt": 710,
+    "kwc_reel": 5.68,
+    "blocs": 1,
+    "avertissements": [],
+    "marques_manquantes": []
+  },
+  "exemple_marque_introuvable": {
+    "lignes": [],
+    "scenario": "Les deux (Sans + Avec)",
+    "nb_panneaux": 8,
+    "panel_watt": 710,
+    "kwc_reel": 5.68,
+    "blocs": 1,
+    "avertissements": [],
+    "marques_manquantes": [
+      {
+        "role": "panneau",
+        "marque": "Trina",
+        "libelle_role": "Panneaux"
+      }
+    ]
+  }
+}

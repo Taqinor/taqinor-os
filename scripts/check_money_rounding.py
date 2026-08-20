@@ -181,10 +181,14 @@ BASELINE_ALLOWLIST = {
     # d'AFFICHAGE (surface m², kWc ; jamais un montant), simplement déplacés.
     # Lignes relues sur l'arbre courant : 687→753, 690→756, 2135→2263,
     # 2305→2442.
-    "backend/django_core/apps/ventes/services.py:950",
-    "backend/django_core/apps/ventes/services.py:953",
-    "backend/django_core/apps/ventes/services.py:2471",
-    "backend/django_core/apps/ventes/services.py:2538",
+    # U3 (20/08/2026) — MÊMES quatre sites, recalés après le déplacement de
+    # lignes de `services.py` (la composition résidentielle a gagné les règles
+    # câbles/marques/ordre). Aucun n'est monétaire : ce sont une surface de
+    # toit, une puissance en kWc et deux dérivations kWc = panneaux × Wc.
+    "backend/django_core/apps/ventes/services.py:1033",
+    "backend/django_core/apps/ventes/services.py:1036",
+    "backend/django_core/apps/ventes/services.py:2817",
+    "backend/django_core/apps/ventes/services.py:2884",
     "backend/django_core/apps/ventes/quote_engine/builder.py:336",
     "backend/django_core/apps/ventes/quote_engine/builder.py:337",
     "backend/django_core/apps/ventes/quote_engine/builder.py:727",

@@ -407,6 +407,67 @@ def marque_preferee(company, gamme_nom, role):
     return marque or None
 
 
+#: U3 — libellé FR d'un rôle de composition. MIROIR EXACT des clés/libellés de
+#: ``solar.js::PRODUCT_CATEGORIES`` : c'est ce que le commercial lit dans le
+#: message « Marque épinglée introuvable au stock », des deux côtés.
+LIBELLES_ROLES = {
+    'onduleur_reseau': 'Onduleur Injection',
+    'onduleur_hybride': 'Onduleur Hybride',
+    'panneau': 'Panneaux',
+    'batterie': 'Batterie',
+    'structure_acier': 'Structures acier',
+    'structure_alu': 'Structures aluminium',
+    'socle': 'Socles',
+    'cable_dc': 'Câble solaire DC',
+    'cable_terre': 'Câble de terre AC',
+    'smart_meter': 'Smart Meter',
+    'wifi_dongle': 'Wifi Dongle',
+    'accessoires': 'Accessoires',
+    'tableau': 'Tableau De Protection AC/DC',
+    'installation': 'Installation',
+    'transport': 'Transport',
+    'suivi': 'Suivi journalier, maintenance chaque 12 mois pendant 2 ans',
+}
+
+
+def _libelle_role(role):
+    """Libellé FR d'un rôle, ou le rôle brut s'il est inconnu (jamais None)."""
+    return LIBELLES_ROLES.get(role, role)
+
+
+def carte_marques_composition(company, gamme_nom_devis=None):
+    """U3 — la carte ``{rôle: marque}`` à donner à ``composition_residentielle``.
+
+    ``composition_residentielle`` est PURE (elle ne requête rien) : c'est ici
+    que le réglage société est lu, et UNIQUEMENT via ``marque_preferee``, la
+    seule voie de lecture de ``ParametresGammes.marques``. Société sans réglage
+    ⇒ carte vide ⇒ composition byte-identique à l'historique.
+    """
+    from .models import ROLES_AUTO_COMPOSITION
+
+    carte = {}
+    for role in ROLES_AUTO_COMPOSITION:
+        marque = marque_preferee(company, gamme_nom_devis, role)
+        if marque:
+            carte[role] = marque
+    return carte
+
+
+def ordre_lignes_societe(company):
+    """U3/PVORD — la séquence de rôles préférée de la société, ou ``None``.
+
+    Même contrat que ``carte_marques_composition`` : lecture unique du réglage,
+    absence de réglage ⇒ ``None`` ⇒ ordre canonique du simulateur.
+    """
+    from .models import ParametresGammes
+
+    params = ParametresGammes.objects.filter(company=company).first()
+    if params is None:
+        return None
+    ordre = params.ordre_lignes
+    return ordre if isinstance(ordre, list) and ordre else None
+
+
 def create_devis_from_reserve(*, reserve, user):
     """XFSM18 — crée un DEVIS brouillon de réparation à partir d'une réserve
     d'intervention (`installations.Reserve`), pour donner un chemin de devis
@@ -517,6 +578,24 @@ CABLE_TERRE_M_PAR_PALIER = 15
 def metre_cable_dc(paliers):
     """Longueur (m) de câble solaire DC pour ``paliers`` blocs de 5 kWc."""
     n = max(1, int(round(float(paliers or 0))))
+    return n * CABLE_DC_M_PAR_PALIER
+
+
+def metre_cable_dc_par_paires(nb_paires=1):
+    """C4/PVCBL (U3) — longueur (m) de câble solaire DC pour ``nb_paires``.
+
+    Miroir EXACT de ``solar.js::metreCableDcParPaires`` : 30 m rouge + 30 m
+    noir descendent du toit par PAIRE de MPPT réellement utilisée, soit 60 m.
+    La règle « 60 m par palier de 5 kWc » (``metre_cable_dc`` ci-dessus) reste
+    l'approximation des chemins qui n'ont pas de compte MPPT frais sous la main
+    (resynchro de calepinage) ; la COMPOSITION, elle, chiffre par paire.
+
+    Le nombre de paires est un paramètre EXPLICITE : il vit dans le moteur
+    électrique (``solar_design.string_design``) et exige des données que la
+    composition simple (kWc + nb de panneaux) n'a pas à ce stade. Sans lui,
+    repli fondateur EXPLICITEMENT AUTORISÉ : 1 paire — jamais un calcul deviné.
+    """
+    n = max(1, int(round(float(nb_paires or 0))) or 1)
     return n * CABLE_DC_M_PAR_PALIER
 
 
@@ -1621,6 +1700,48 @@ def concevoir_electrique_du_devis(devis, *, origine=''):
 LigneKit = namedtuple('LigneKit',
                       'produit designation quantite prix_unitaire')
 
+
+class CompositionLignes(list):
+    """U3 — le résultat de ``composition_residentielle``.
+
+    C'est une LISTE de ``LigneKit`` (tout appelant historique la parcourt sans
+    rien changer) qui porte EN PLUS les métadonnées de la composition. Une
+    liste nue ne peut pas porter d'attribut : c'est la seule raison de cette
+    sous-classe, et c'est ce qui permet au dry-run de rendre à l'écran ce que
+    le serveur a réellement décidé (wattage retenu, kWc réel, marques
+    introuvables) au lieu de le laisser le recalculer de son côté.
+    """
+
+    roles = ()
+    nb_panneaux = 0
+    panel_watt_reel = 0
+    kwc_reel = 0.0
+    blocs = 1
+    marques_manquantes = ()
+
+
+def ordonner_par_role(taguees, ordre_lignes):
+    """PVORD — trie des couples ``(rôle, objet)`` selon une séquence de rôles.
+
+    Miroir EXACT de ``solar.js::orderLinesByRolePreference`` : un rôle PRÉSENT
+    dans ``ordre_lignes`` est classé à sa position ; un rôle ABSENT garde son
+    rang canonique mais TOUJOURS après tout rôle explicitement préféré. Tri
+    STABLE — les deux lignes « batterie » (5 / 10 kWh) gardent leur ordre
+    relatif. Séquence absente ou vide : la liste est rendue TELLE QUELLE
+    (ordre canonique du simulateur, comportement historique).
+    """
+    couples = list(taguees or [])
+    if not isinstance(ordre_lignes, (list, tuple)) or not ordre_lignes:
+        return couples
+    rangs = {}
+    for position, role in enumerate(ordre_lignes):
+        rangs.setdefault(role, position)
+    grand = len(couples) + len(ordre_lignes) + 1
+    return sorted(
+        couples,
+        key=lambda couple: rangs.get(couple[0], grand))
+
+
 #: Prix TTC des trois lignes FORFAITAIRES, indexés sur la puissance par blocs de
 #: 5 kWc — port littéral de ``auto_fill_from_power`` (le simulateur d'origine).
 _TTC_ACCESSOIRES_PAR_BLOC = 1000
@@ -1711,6 +1832,16 @@ def classer_produit(nom):
         return 'structure'
     if 'socle' in n:
         return 'socle'
+    # U3 — Câbles (règle fondateur 18/08) : MIROIR EXACT de
+    # ``solar.js::classifyProduct``, mêmes mots-clés et MÊME RANG (après le
+    # socle, avant le Smart Meter). Le classifieur Python les ignorait, si
+    # bien que la composition serveur ne pouvait PAS composer de câble là où
+    # l'écran en composait deux — l'écart le plus visible entre les deux
+    # « sortes de devis ».
+    if _is_cable_terre(nom or ''):
+        return 'cable_terre'
+    if _is_cable_dc(nom or ''):
+        return 'cable_dc'
     if 'smart meter' in n:
         return 'smart_meter'
     if 'wifi' in n or 'dongle' in n:
@@ -1774,8 +1905,30 @@ def _v_txt(volts):
 def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
                               avec_batterie=False, structure_type='acier',
                               taux_tva=Decimal('20'), avertissements=None,
-                              deux_options=False):
+                              deux_options=False, marques=None,
+                              ordre_lignes=None, mppt_paires=1):
     """Le KIT résidentiel COMPLET composé depuis un catalogue.
+
+    U3 (fondateur 20/08/2026) — CETTE FONCTION EST LA SOURCE DE VÉRITÉ de la
+    composition résidentielle. Elle porte désormais TOUTES les règles qui
+    n'existaient que dans ``solar.js::autoFillLines`` :
+
+      · ``marques`` — PVMRQ, carte ``{rôle: marque}`` DÉJÀ résolue par
+        l'appelant (via ``marque_preferee``, seule voie de lecture du réglage
+        gammes ; cette fonction reste PURE et ne requête rien). Une marque
+        épinglée restreint le vivier de son rôle À ELLE SEULE ; sans candidat,
+        le vivier est VIDE — jamais un repli silencieux sur une autre marque —
+        et le rôle est consigné dans ``.marques_manquantes``.
+      · ``ordre_lignes`` — PVORD, séquence de rôles préférée ; absente, l'ordre
+        canonique du simulateur est rendu tel quel.
+      · ``mppt_paires`` — C4/PVCBL, nombre de paires de câble DC descendantes
+        (60 m par paire) ; repli fondateur explicite à 1 paire.
+
+    Le résultat est une ``CompositionLignes`` : une LISTE de ``LigneKit`` (tout
+    appelant historique la lit sans rien changer) qui porte en plus les
+    métadonnées de la composition (``nb_panneaux``, ``panel_watt_reel``,
+    ``kwc_reel``, ``roles``, ``marques_manquantes``) — le dry-run les rend à
+    l'écran.
 
     ``deux_options`` (U2, fondateur 20/08/2026) — compose la forme DEUX
     OPTIONS que la proposition résidentielle rend déjà : les DEUX onduleurs
@@ -1823,8 +1976,28 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
         if categorie:
             par_type.setdefault(categorie, []).append(produit)
 
+    # ── PVMRQ (U3) — restriction par marque épinglée ────────────────────────
+    # Miroir EXACT de ``_filtrerParMarque`` (solar.js) : sans préférence, le
+    # vivier passe TEL QUEL ; avec une préférence sans aucun candidat, le
+    # vivier est VIDE et le rôle est consigné UNE fois (jamais un repli
+    # silencieux sur une autre marque — ordre fondateur #5).
+    carte_marques = marques if isinstance(marques, dict) else {}
+    marques_manquantes = []
+    _roles_signales = set()
+
+    def par_marque(pool, role):
+        source = list(pool or [])
+        marque = str(carte_marques.get(role) or '').strip()
+        if not marque:
+            return source
+        filtres = [p for p in source if _marque_correspond(p, marque)]
+        if not filtres and role not in _roles_signales:
+            _roles_signales.add(role)
+            marques_manquantes.append({'role': role, 'marque': marque})
+        return filtres
+
     def premier(categorie):
-        pool = par_type.get(categorie) or []
+        pool = par_marque(par_type.get(categorie), categorie)
         return pool[0] if pool else None
 
     # ── Panneaux : compte explicite, sinon dérivé de la puissance ──
@@ -1844,7 +2017,7 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
         # onduleur au contrat incomplet est écarté de l'auto-composition AVANT
         # le tri par puissance, exactement comme à l'écran.
         for produit in _filtrer_onduleurs_complets(
-                par_type.get(categorie) or []):
+                par_marque(par_type.get(categorie), categorie)):
             kw = _parse_kw(getattr(produit, 'nom', ''))
             if kw and kw > 0:
                 candidats.append((kw, getattr(produit, 'id', 0) or 0, produit))
@@ -1877,8 +2050,11 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     veut_batterie = bool(avec_batterie or deux_options)
 
     # ── Panneau : wattage demandé d'abord, à défaut le plus proche ──
+    # PVMRQ — la marque épinglée restreint le vivier AVANT le rapprochement de
+    # wattage : la substitution « wattage le plus proche » ne joue plus que
+    # DANS la marque retenue, jamais hors d'elle (miroir de l'écran).
     tries = []
-    for produit in par_type.get('panneau') or []:
+    for produit in par_marque(par_type.get('panneau'), 'panneau'):
         w = _parse_watt(getattr(produit, 'nom', ''))
         if w is not None:
             tries.append((w, produit))
@@ -1915,9 +2091,14 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     # l'option « sans ».
     _plage_bat = _plage_batterie_de_l_onduleur(
         onduleur_hybride if veut_batterie else onduleur)
+    # PVMRQ — la compatibilité ÉLECTRIQUE se calcule sur le vivier COMPLET
+    # (c'est elle qui alimente l'avertissement « vivier vide », un motif
+    # DISTINCT de « marque introuvable ») ; la marque ne restreint qu'ENSUITE.
+    # Même ordre que l'écran et que ``_pick_product`` : garde métier d'abord.
     batteries = [(_parse_kwh(getattr(p, 'nom', '')), p)
-                 for p in par_type.get('batterie') or []
-                 if _batterie_compatible(p, _plage_bat)]
+                 for p in par_marque(
+                     [p for p in par_type.get('batterie') or []
+                      if _batterie_compatible(p, _plage_bat)], 'batterie')]
     dyness = [b for b in batteries
               if any(marque in _sans_accents(getattr(b[1], 'nom', ''))
                      for marque in ('dyness', 'deyness'))]
@@ -1942,11 +2123,37 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
         nb10 = 0
 
     # ── Structure : le type demandé (acier par défaut), une par panneau ──
+    # PVMRQ — DEUX rôles distincts (``structure_acier`` / ``structure_alu``,
+    # comme ``ROLES_AUTO_COMPOSITION``) : chacun a sa marque épinglée, appliquée
+    # sur le sous-vivier déjà filtré par mot-clé (même patron que l'écran).
     voulu = ('alu' if _sans_accents(structure_type).startswith('alu')
              else 'acier')
-    structure = next(
-        (p for p in par_type.get('structure') or []
-         if voulu in _sans_accents(getattr(p, 'nom', ''))), None)
+    role_structure = 'structure_alu' if voulu == 'alu' else 'structure_acier'
+    structure = next(iter(par_marque(
+        [p for p in par_type.get('structure') or []
+         if voulu in _sans_accents(getattr(p, 'nom', ''))],
+        role_structure)), None)
+
+    # ── Câbles Nexans 6 mm² AU MÈTRE (C4/PVCBL, fondateur 18-19/08) ─────────
+    # VERROU DE CONDITIONNEMENT : le métrage est en MÈTRES, donc un produit
+    # conditionné en ROULEAU/touret (« … (100m) ») ne doit JAMAIS entrer au
+    # vivier — même chiffré, même seul candidat. L'incident fondateur du 19/08
+    # (60 « unités » d'un rouleau de 100 m = 71 400 MAD de câble) vient
+    # exactement de là. Sans candidat au mètre : aucune ligne, jamais un repli
+    # silencieux sur un autre conditionnement.
+    def choisir_cable(role):
+        pool = par_marque(
+            [p for p in par_type.get(role) or []
+             if _est_au_metre(getattr(p, 'nom', ''))], role)
+        # Préférence NEXANS : un fournisseur confirmé par le fondateur, pas une
+        # préférence de gamme — elle joue DANS le vivier déjà filtré.
+        return next(
+            (p for p in pool
+             if 'nexans' in _sans_accents(getattr(p, 'nom', ''))),
+            next(iter(pool), None))
+
+    cable_dc = choisir_cable('cable_dc')
+    cable_terre = choisir_cable('cable_terre')
 
     # ── Forfaits indexés sur la puissance, par blocs de 5 kWc (TTC) ──
     blocs = max(1, _arrondi_js(kwp / 5))
@@ -1971,18 +2178,23 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     huawei = (_est_huawei(onduleur_reseau) or _est_huawei(onduleur_hybride)
               if deux_options else _est_huawei(onduleur))
 
-    lignes = []
+    taguees = []
 
-    def ajouter(produit, quantite, prix_ht=None):
-        """Ajoute une ligne — sauf produit absent du catalogue ou quantité nulle."""
+    def ajouter(role, produit, quantite, prix_ht=None):
+        """Ajoute une ligne — sauf produit absent du catalogue ou quantité nulle.
+
+        PVORD — chaque ligne est TAGUÉE de son rôle avant l'assemblage final,
+        pour que ``ordre_lignes`` puisse la reclasser sans jamais reclassifier
+        une désignation après coup.
+        """
         if produit is None or quantite <= 0:
             return
-        lignes.append(LigneKit(
+        taguees.append((role, LigneKit(
             produit=produit,
             designation=produit.nom,
             quantite=int(quantite),
             prix_unitaire=(Decimal(produit.prix_vente) if prix_ht is None
-                           else prix_ht)))
+                           else prix_ht))))
 
     # Ordre canonique du simulateur (onduleur, accessoires Huawei, panneaux,
     # batteries, structures, socles, forfaits, transport).
@@ -1990,31 +2202,54 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     # l'écran répartissent ensuite chaque ligne dans l'option qui la concerne).
     # Forme mono-option : un seul, celui qu'``avec_batterie`` a désigné.
     if deux_options:
-        ajouter(onduleur_reseau, quantite_onduleur(kw_reseau))
-        ajouter(onduleur_hybride, quantite_onduleur(kw_hybride))
+        ajouter('onduleur_reseau', onduleur_reseau,
+                quantite_onduleur(kw_reseau))
+        ajouter('onduleur_hybride', onduleur_hybride,
+                quantite_onduleur(kw_hybride))
     else:
-        ajouter(onduleur, quantite_onduleur(kw_onduleur))
-    ajouter(premier('smart_meter'), 1 if huawei else 0)
-    ajouter(premier('wifi_dongle'), 1 if huawei else 0)
-    ajouter(panneau, nb)
+        role_ond = ('onduleur_hybride' if avec_batterie
+                    else 'onduleur_reseau')
+        ajouter(role_ond, onduleur, quantite_onduleur(kw_onduleur))
+    ajouter('smart_meter', premier('smart_meter'), 1 if huawei else 0)
+    ajouter('wifi_dongle', premier('wifi_dongle'), 1 if huawei else 0)
+    ajouter('panneau', panneau, nb)
     if veut_batterie:
-        ajouter(bat5, nb5)
-        ajouter(bat10, nb10)
-    ajouter(structure, nb)
-    ajouter(premier('socle'), nb * 2)
-    ajouter(premier('accessoires'), 1,
+        ajouter('batterie', bat5, nb5)
+        ajouter('batterie', bat10, nb10)
+    ajouter(role_structure, structure, nb)
+    ajouter('socle', premier('socle'), nb * 2)
+    # C4/PVCBL — métrage AU MÈTRE : le DC suit les paires de MPPT, la terre
+    # suit les paliers de 5 kWc (25 m de base + 15 m par palier).
+    ajouter('cable_dc', cable_dc, metre_cable_dc_par_paires(mppt_paires))
+    ajouter('cable_terre', cable_terre, metre_cable_terre(blocs))
+    ajouter('accessoires', premier('accessoires'), 1,
             ht_depuis_ttc(blocs * _TTC_ACCESSOIRES_PAR_BLOC))
-    ajouter(premier('tableau'), 1,
+    ajouter('tableau', premier('tableau'), 1,
             ht_depuis_ttc(blocs * _TTC_TABLEAU_PAR_BLOC))
-    ajouter(premier('installation'), 1,
+    ajouter('installation', premier('installation'), 1,
             ht_depuis_ttc((blocs + 1) * _TTC_INSTALLATION_PAR_BLOC))
-    ajouter(premier('transport'), 1)
+    ajouter('transport', premier('transport'), 1)
+
+    # ── PVORD — ordre PAR DÉFAUT des lignes ────────────────────────────────
+    taguees = ordonner_par_role(taguees, ordre_lignes)
+
+    lignes = CompositionLignes(ligne for _, ligne in taguees)
+    lignes.roles = [role for role, _ in taguees]
+    lignes.nb_panneaux = nb
+    # Le wattage RÉELLEMENT retenu peut différer de celui demandé (substitution
+    # « le plus proche » quand le catalogue n'a pas la puissance demandée) : on
+    # rend le vrai, pour que personne n'affiche un kWc théorique divergent.
+    _watt_reel = _parse_watt(getattr(panneau, 'nom', '')) if panneau else None
+    lignes.panel_watt_reel = _watt_reel or watt
+    lignes.kwc_reel = round(nb * float(lignes.panel_watt_reel) / 1000.0, 3)
+    lignes.blocs = blocs
+    lignes.marques_manquantes = marques_manquantes
     return lignes
 
 
 def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
                             taux_tva=Decimal('20'), remise_globale=Decimal('0'),
-                            deux_options=False):
+                            deux_options=False, journal=None):
     """Q3 — turn a FINALISED roof layout into a coherent, company-scoped Devis.
 
     ``deux_options`` (U2, fondateur 20/08/2026) — compose la forme DEUX
@@ -2022,6 +2257,14 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
     ``composition_residentielle``) et stocke le scénario correspondant. Défaut
     False : le calepinage 3D a DÉJÀ arrêté son scénario à l'écran, il garde
     donc sa composition mono-option, byte-identique à l'historique.
+
+    ``journal`` (U3, optionnel) — dict que l'appelant fournit et que la
+    construction remplit sur place avec ce que la composition a REFUSÉ de
+    faire : ``marques_manquantes`` (rôles épinglés sans AUCUN candidat en
+    stock) et ``avertissements`` (vivier batterie vide…). Sans ce canal, un
+    devis pouvait partir SANS panneaux — la marque épinglée ayant vidé leur
+    vivier — à un prix effondré, sans que personne ne l'apprenne. Absent
+    (``None``) ⇒ comportement inchangé.
 
     ``layout`` is the serialized roofPro11 output (see Devis.roof_layout):
     a ``result`` block ``{panels, kwc, annualKwh, savings}`` plus an optional
@@ -2113,6 +2356,11 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
     # panneau + onduleur ± batterie d'hier : voir ``composition_residentielle``.
     # Un composant absent (ou non tarifé) du catalogue est simplement sauté.
     kwc_composition = kwc or (nb_panneaux * float(watt or 550) / 1000.0)
+    # Sans ``journal``, on ne fournit AUCUN canal d'avertissement : la
+    # composition retombe alors sur son log interne — comportement historique
+    # strictement inchangé. Fournir une liste que personne ne lit reviendrait
+    # à ÉTEINDRE ce log.
+    _avertissements = [] if journal is not None else None
     line_specs = composition_residentielle(
         catalogue_de_la_societe(company),
         kwc=kwc_composition,
@@ -2121,7 +2369,19 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
         avec_batterie=wants_battery,
         taux_tva=taux_tva,
         deux_options=deux_options,
+        # U3 — les règles de gamme vivent CÔTÉ SERVEUR : marques épinglées
+        # (PVMRQ) et ordre par défaut (PVORD) sont lus ici et donnés à la
+        # fonction pure, plus jamais recalculés par l'écran.
+        marques=carte_marques_composition(company),
+        ordre_lignes=ordre_lignes_societe(company),
+        avertissements=_avertissements,
     )
+    if journal is not None:
+        journal['marques_manquantes'] = list(
+            getattr(line_specs, 'marques_manquantes', ()) or ())
+        journal['avertissements'] = list(_avertissements or ())
+        journal['nb_panneaux'] = getattr(line_specs, 'nb_panneaux', 0)
+        journal['kwc_reel'] = getattr(line_specs, 'kwc_reel', 0.0)
 
     etude_params = {}
     # PVSCE — le SCÉNARIO est stocké dès la création. Sans lui, le moteur PDF
@@ -2174,7 +2434,11 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
             etude_params=etude_params or None,
             roof_layout=stored_layout,
         )
-        for spec in line_specs:
+        # U3/PVORD — l'ordre VOULU est posé EXPLICITEMENT (``ordre=index``),
+        # jamais laissé au tri de repli sur ``id`` : c'est la même garantie que
+        # l'écran s'était donnée, et sans elle l'ordre par défaut de la société
+        # ne survivrait pas à la première renumérotation.
+        for index, spec in enumerate(line_specs):
             LigneDevis.objects.create(
                 devis=devis,
                 produit=spec.produit,
@@ -2182,6 +2446,7 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
                 quantite=Decimal(str(spec.quantite)),
                 prix_unitaire=Decimal(spec.prix_unitaire),
                 remise=Decimal('0'),
+                ordre=index,
             )
         return devis
 
@@ -3190,8 +3455,100 @@ def _residential_panel_count(*, facture_hiver=None, taille_kwc=None,
     return 0
 
 
+#: U3 — les trois scénarios batterie qu'un appelant peut demander POUR CE
+#: DEVIS-LÀ, sans jamais réécrire la fiche du lead.
+SCENARIOS_DEMANDABLES = ('sans', 'avec', 'les_deux')
+
+
+def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
+                               panel_watt=_AUTO_PANEL_WATT, scenario=None,
+                               structure_type='acier',
+                               taux_tva=Decimal('20'), mppt_paires=1,
+                               gamme_nom_devis=None):
+    """U3 — LE DRY-RUN : compose sans RIEN créer, et rend le résultat en clair.
+
+    C'est la moitié « à blanc » de la source de vérité : le même catalogue, la
+    même fonction pure, les mêmes règles de gamme que ``build_devis_auto`` —
+    mais aucune écriture, aucun devis, aucun statut. L'écran générateur s'en
+    sert pour PRÉREMPLIR ses lignes éditables au lieu de recomposer de son
+    côté ; c'est ce qui fait qu'il n'existe plus « deux sortes de devis ».
+
+    ``kwc`` OU ``nb_panneaux`` suffit : l'un se déduit de l'autre à
+    ``panel_watt``. Company-scopé (le catalogue d'une autre société ne fuite
+    jamais). Rend un dict SÉRIALISABLE — la forme figée dans
+    ``contract_samples/composition_residentielle.json``.
+    """
+    kwp = float(kwc or 0)
+    nb_force = int(nb_panneaux or 0)
+    watt = float(panel_watt or 0) or float(_AUTO_PANEL_WATT)
+    if kwp <= 0 and nb_force > 0:
+        kwp = nb_force * watt / 1000.0
+
+    demande = (scenario or '').strip().lower()
+    if demande and demande not in SCENARIOS_DEMANDABLES:
+        raise AutoDevisError(
+            'Scénario inconnu « %s » — attendu : %s.'
+            % (scenario, ', '.join(SCENARIOS_DEMANDABLES)),
+            field='scenario')
+    # Même défaut que le devis auto (U2) : sans consigne, on propose LES DEUX.
+    avec_batterie = demande == 'avec'
+    deux_options = demande not in ('avec', 'sans')
+
+    avertissements = []
+    lignes = composition_residentielle(
+        catalogue_de_la_societe(company),
+        kwc=kwp,
+        panel_watt=watt,
+        nb_panneaux=nb_force,
+        avec_batterie=avec_batterie,
+        structure_type=structure_type,
+        taux_tva=taux_tva,
+        avertissements=avertissements,
+        deux_options=deux_options,
+        marques=carte_marques_composition(company, gamme_nom_devis),
+        ordre_lignes=ordre_lignes_societe(company),
+        mppt_paires=mppt_paires,
+    )
+
+    roles = list(getattr(lignes, 'roles', ()) or ())
+    facteur = Decimal('1') + (Decimal(str(taux_tva or 20)) / Decimal('100'))
+    rendu = []
+    for index, ligne in enumerate(lignes):
+        # Le TTC est DÉRIVÉ du HT stocké, jamais l'inverse : l'écran saisit en
+        # TTC mais la base fait foi en HT (même aller-retour qu'`htFromTtc`).
+        ttc = (Decimal(ligne.prix_unitaire) * facteur).quantize(
+            Decimal('0.01'), rounding=ROUND_HALF_UP)
+        rendu.append({
+            'ordre': index,
+            'role': roles[index] if index < len(roles) else None,
+            'produit': getattr(ligne.produit, 'id', None),
+            'designation': ligne.designation,
+            'quantite': int(ligne.quantite),
+            'prix_unitaire_ht': str(Decimal(ligne.prix_unitaire)),
+            'prix_unitaire_ttc': str(ttc),
+            'taux_tva': str(Decimal(str(taux_tva or 20))),
+        })
+
+    return {
+        'lignes': rendu,
+        'scenario': (SCENARIO_LES_DEUX if deux_options
+                     else (SCENARIO_AVEC_BATTERIE if avec_batterie
+                           else SCENARIO_SANS_BATTERIE)),
+        'nb_panneaux': getattr(lignes, 'nb_panneaux', 0),
+        'panel_watt': getattr(lignes, 'panel_watt_reel', watt),
+        'kwc_reel': getattr(lignes, 'kwc_reel', 0.0),
+        'blocs': getattr(lignes, 'blocs', 1),
+        'avertissements': list(avertissements),
+        'marques_manquantes': [
+            {**m, 'libelle_role': _libelle_role(m.get('role'))}
+            for m in (getattr(lignes, 'marques_manquantes', ()) or ())
+        ],
+    }
+
+
 def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
-                     remise_globale=Decimal('0')):
+                     remise_globale=Decimal('0'), target_kwc=None,
+                     scenario=None, etude_extra=None):
     """Crée un devis RÉSIDENTIEL automatiquement dimensionné depuis la fiche lead.
 
     Lit le profil énergétique du lead (taille souhaitée en kWc, sinon facture
@@ -3202,7 +3559,21 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
     (sélection catalogue, numérotation anti-collision, devis ``brouillon``). Lève
     ``AutoDevisError`` (→ 422) si le marché n'est pas résidentiel ou si aucune
     donnée de dimensionnement n'est exploitable — l'agent demande alors la donnée
-    plutôt que de produire un devis vide. Ne change aucun statut (règle #4)."""
+    plutôt que de produire un devis vide. Ne change aucun statut (règle #4).
+
+    Trois réglages POUR CE DEVIS-LÀ (U3), qui ne réécrivent JAMAIS la fiche du
+    lead — c'est un choix ponctuel du commercial, pas une correction du lead :
+
+    * ``target_kwc`` — puissance cible demandée (EZ5) ; passe devant la taille
+      souhaitée du lead ET devant l'estimation par facture d'hiver.
+    * ``scenario`` — ``'sans'`` / ``'avec'`` / ``'les_deux'`` ; passe devant le
+      ``batterie_souhaitee`` du lead. Absent : c'est le lead qui décide, et son
+      silence vaut « les deux » (U2).
+    * ``etude_extra`` — clés d'étude à FUSIONNER dans ``etude_params`` (les
+      factures mensuelles réelles du contrat PACT10, par exemple). Elles
+      complètent ce que la construction a déjà écrit, sans jamais écraser le
+      scénario arrêté ci-dessus.
+    """
     marche = (getattr(lead, 'type_installation', '') or '').lower()
     if marche and marche != 'residentiel':
         raise AutoDevisError(
@@ -3213,8 +3584,23 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
 
     facture_hiver = getattr(lead, 'facture_hiver', None)
     taille_kwc = getattr(lead, 'taille_souhaitee_kwc', None)
+    # U3/EZ5 — une cible demandée pour CE devis passe devant les deux données
+    # du lead, sans les réécrire.
+    cible = None
+    if target_kwc not in (None, ''):
+        from decimal import InvalidOperation
+        try:
+            cible = Decimal(str(target_kwc))
+        except (InvalidOperation, TypeError, ValueError):
+            raise AutoDevisError(
+                'Puissance cible invalide.', field='target_kwc')
+        if cible <= 0:
+            raise AutoDevisError(
+                'La puissance cible doit être supérieure à zéro.',
+                field='target_kwc')
     panneaux = _residential_panel_count(
-        facture_hiver=facture_hiver, taille_kwc=taille_kwc)
+        facture_hiver=facture_hiver,
+        taille_kwc=cible if cible is not None else taille_kwc)
     if panneaux <= 0:
         if facture_hiver not in (None, '') or taille_kwc not in (None, ''):
             msg = ("La facture d'hiver du lead est trop faible pour dimensionner "
@@ -3239,7 +3625,16 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
     # Un choix EXPLICITE du lead reste souverain : « avec » compose l'hybride
     # + batterie seuls, « sans » compose le réseau seul. On ne repropose pas
     # une option que le client a déjà écartée.
-    choix_batterie = (getattr(lead, 'batterie_souhaitee', '') or '').strip()
+    # U3 — un scénario demandé POUR CE DEVIS passe devant la fiche du lead.
+    demande = (scenario or '').strip().lower()
+    if demande and demande not in SCENARIOS_DEMANDABLES:
+        raise AutoDevisError(
+            'Scénario inconnu « %s » — attendu : %s.'
+            % (scenario, ', '.join(SCENARIOS_DEMANDABLES)),
+            field='scenario')
+    choix_batterie = (
+        demande if demande
+        else (getattr(lead, 'batterie_souhaitee', '') or '').strip())
     wants_battery = choix_batterie == 'avec'
     deux_options = choix_batterie not in ('avec', 'sans')
     layout = {
@@ -3247,10 +3642,49 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
         'panelWatt': _AUTO_PANEL_WATT,
         'scenario': 'avec_batterie' if wants_battery else 'reseau',
     }
+    # ── U3 — GARDE MARQUE ÉPINGLÉE, portée côté SERVEUR ────────────────────
+    # Cette garde ne vivait que dans `createAutoQuote` : le chemin backend en
+    # était dépourvu. Une marque réglée dans Paramètres → Gammes mais absente
+    # du stock VIDE le vivier de son rôle — le devis serait parti sans
+    # panneaux, à un prix effondré.
+    #
+    # On le découvre par un DRY-RUN : exactement la composition qui sera
+    # créée, sans aucune écriture. Refuser AVANT de créer vaut mieux que créer
+    # puis effacer — un devis effacé rendrait sa référence au compteur, et le
+    # numéro suivant la reprendrait.
+    apercu = composer_devis_residentiel(
+        company=company, nb_panneaux=panneaux, panel_watt=_AUTO_PANEL_WATT,
+        scenario=choix_batterie or 'les_deux', taux_tva=taux_tva)
+    if apercu['marques_manquantes']:
+        detail = ', '.join(
+            '%s (%s)' % (m.get('marque'), m.get('libelle_role'))
+            for m in apercu['marques_manquantes'])
+        raise AutoDevisError(
+            'Marque épinglée introuvable au stock : %s. Ajoutez le produit ou '
+            'changez la marque dans Paramètres → Gammes.' % detail,
+            field='marques')
+
+    journal = {}
     devis = build_devis_from_layout(
         layout=layout, user=user, company=company, lead=lead,
         taux_tva=taux_tva, remise_globale=remise_globale,
-        deux_options=deux_options)
+        deux_options=deux_options, journal=journal)
+    for avertissement in journal.get('avertissements') or []:
+        logger.warning('Auto-devis %s: %s', devis.reference, avertissement)
+
+    # U3/PACT10 — les clés d'étude apportées par l'appelant (factures
+    # mensuelles réelles, consommation annuelle, distributeur) COMPLÈTENT
+    # l'étude déjà écrite par la construction. Elles ne peuvent pas écraser le
+    # `scenario`, arrêté plus haut : c'est lui qui pilote le rendu du PDF.
+    if isinstance(etude_extra, dict) and etude_extra:
+        etude = dict(devis.etude_params or {})
+        _scenario_arrete = etude.get('scenario')
+        etude.update(etude_extra)
+        if _scenario_arrete:
+            etude['scenario'] = _scenario_arrete
+        devis.etude_params = etude
+        devis.save(update_fields=['etude_params'])
+
     logger.info(
         'Auto-devis %s: %d panneaux, %.2f kWc, batterie=%s, deux_options=%s '
         '(company %s)',
