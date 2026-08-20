@@ -617,10 +617,20 @@ def build_pages(ctx) -> list:
         </div>"""
     # QRES59 — libellé NEUTRE (beaucoup de clients sont chez une régie, pas
     # l'ONEE) ; seule mention « toute hausse vous profite » du document.
+    # Z4 (ORDRE FONDATEUR, 20/08/2026) — le SEUL décrochement de la courbe est la
+    # provision de remplacement de l'onduleur : le tracé s'aplatit cette
+    # année-là puis repart à sa pente normale. Il était SILENCIEUX (les
+    # hypothèses détaillées vivent sur la proposition en ligne, pas sur le
+    # papier — QRES61), donc illisible autrement que comme une erreur de
+    # graphique. La légende, juste sous la courbe, le NOMME. L'année vient de
+    # ``pricing`` (source unique du modèle), jamais d'un littéral recopié.
+    from ..pricing import INVERTER_REPLACE_YEAR as _REPL_AN
     _fin_cap = (
         '<div class="p2-fin-cap">Projection <b>à tarif électricité '
         'constant</b> — toute hausse future du prix de l\'électricité '
-        'accélère votre rentabilité, votre coût solaire restant fixe.</div>')
+        'accélère votre rentabilité, votre coût solaire restant fixe. '
+        f'Le palier en année&nbsp;{_REPL_AN} : provision de remplacement '
+        'de l\'onduleur, déjà déduite.</div>')
 
     # QRES46 — sur la page rentabilité dédiée, le bandeau navy porte déjà le
     # gain net : la carte-stat « Gain net » disparaît (plus de doublon).

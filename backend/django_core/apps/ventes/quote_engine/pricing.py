@@ -654,6 +654,7 @@ def compute_cashflow_payback(
     degradation: float = PANEL_DEGRADATION,
     escalation: float = TARIFF_ESCALATION,
     battery_roundtrip: float = BATTERY_ROUNDTRIP,
+    battery_share: float | None = None,
     inverter_replace_year: int | None = INVERTER_REPLACE_YEAR,
     inverter_replace_fraction: float = INVERTER_REPLACE_FRACTION,
 ) -> dict:
@@ -665,6 +666,16 @@ def compute_cashflow_payback(
     onduleur optionnel retranche une fraction de l'investissement l'année dite.
     Le payback = première année où le cumul devient ≥ 0 (interpolé dans l'année).
     Renvoie le cashflow annuel, le cumul, le payback (années) et le gain net.
+
+    Z5 (ORDRE FONDATEUR, 20/08/2026) — ``battery_share`` : PART de l'économie qui
+    transite RÉELLEMENT par la batterie (0..1). Le rendement aller-retour ne
+    s'applique QU'À elle. Sans ce paramètre, le moteur multipliait TOUTE
+    l'économie de l'option 2 par 0,90 — y compris la part autoconsommée
+    DIRECTEMENT au fil du soleil (le socle de 60 %), qui n'entre jamais dans la
+    batterie et ne subit donc aucune perte de charge/décharge. Cette double
+    peine allongeait le payback de l'option batterie et rabotait son gain net.
+    ``None`` (défaut) conserve le comportement historique pour les appelants
+    directs qui n'ont pas la décomposition.
     """
     inv = float(investment or 0)
     base = float(economie_annee1 or 0)
@@ -673,6 +684,21 @@ def compute_cashflow_payback(
             "payback_years": 0.0, "cashflow": [], "cumulative": [],
             "net_gain": 0.0, "years": years,
         }
+
+    # Z5 — facteur batterie EFFECTIF : la perte aller-retour ne frappe que la
+    # part réellement stockée puis restituée. ``battery_share=None`` → forfait
+    # historique (0,90 sur tout) ; ``0`` → aucune perte (rien ne transite par la
+    # batterie) ; ``1`` → toute l'économie transite (identique au forfait).
+    batt_factor = 1.0
+    if battery:
+        if battery_share is None:
+            batt_factor = float(battery_roundtrip)
+        else:
+            try:
+                part = max(0.0, min(1.0, float(battery_share)))
+            except (TypeError, ValueError):
+                part = 1.0
+            batt_factor = 1.0 - (1.0 - float(battery_roundtrip)) * part
 
     cashflow, cumulative = [], []
     cumul = -inv
@@ -683,7 +709,7 @@ def compute_cashflow_payback(
         tarif_factor = (1 + escalation) ** (y - 1)      # escalade tarifaire
         year_saving = base * prod_factor * tarif_factor
         if battery:
-            year_saving *= battery_roundtrip
+            year_saving *= batt_factor
         year_cf = year_saving
         if inverter_replace_year and y == inverter_replace_year:
             year_cf -= inv * inverter_replace_fraction
@@ -737,6 +763,17 @@ def cashflow_assumptions() -> dict:
             "%/an intégrée ; aucune hausse du tarif électrique supposée — "
             "projection à tarif constant, toute hausse réelle améliore votre "
             "résultat.",
+            # Z4 (ORDRE FONDATEUR, 20/08/2026) — cette provision était SILENCIEUSE :
+            # elle est le SEUL décrochement de la courbe de rentabilité (le tracé
+            # s'aplatit l'année du remplacement puis repart à sa pente normale) et
+            # rien, ni sur le graphe ni dans les hypothèses, ne l'expliquait au
+            # client. Une courbe qui change de pente sans raison énoncée se lit
+            # comme une erreur : la raison voyage désormais AVEC le chiffre.
+            f"Une provision de remplacement de l'onduleur est retranchée en "
+            f"année {INVERTER_REPLACE_YEAR} "
+            f"({_fr_pct(round(INVERTER_REPLACE_FRACTION * 100, 1))} % de "
+            "l'investissement) — c'est le palier visible sur la courbe de "
+            "rentabilité.",
         ],
     }
 
@@ -889,9 +926,21 @@ def calculate_savings_roi(
     # de la batterie (option 2), et un remplacement onduleur optionnel. Le
     # payback = première année où le cumul devient positif (interpolée). Repli
     # sûr sur le ratio année-1 quand l'économie est nulle.
+    # Z5 (ORDRE FONDATEUR, 20/08/2026) — le rendement aller-retour de la batterie
+    # ne frappe QUE la part de l'économie qui transite par elle. Cette part est
+    # DÉRIVÉE des taux déjà calculés : le socle ``autoconso_sans_eff`` est
+    # autoconsommé DIRECTEMENT au fil du soleil (aucune charge/décharge), et seul
+    # le supplément apporté par la capacité batterie
+    # (``autoconso_avec - autoconso_sans_eff``) est stocké puis restitué. Avant
+    # ce correctif, 0,90 s'appliquait à 100 % de l'économie : la part directe
+    # payait une perte de batterie qu'elle ne subit pas, ce qui ALLONGEAIT
+    # artificiellement le payback de l'option « avec batterie ».
+    _batt_part = 0.0
+    if autoconso_avec > 0:
+        _batt_part = max(0.0, (autoconso_avec - autoconso_sans_eff)) / autoconso_avec
     cf_s = compute_cashflow_payback(total_sans, economie_opt1)
     cf_a = compute_cashflow_payback(
-        total_avec, economie_opt2, battery=True)
+        total_avec, economie_opt2, battery=True, battery_share=_batt_part)
     roi_opt1 = cf_s["payback_years"] if economie_opt1 > 0 else 0.0
     roi_opt2 = cf_a["payback_years"] if economie_opt2 > 0 else 0.0
 

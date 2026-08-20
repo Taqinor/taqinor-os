@@ -430,6 +430,104 @@ class TestHonestCashflowPayback(TestCase):
         self.assertTrue(any('82-21' in n for n in a['notes']))
         self.assertTrue(any('injection' in n.lower() for n in a['notes']))
 
+    # ── Z4 (ORDRE FONDATEUR, 20/08/2026) — la courbe ne change JAMAIS de pente
+    #    sans raison de modèle, et le seul palier autorisé est ANNONCÉ ──────────
+    def _points_traces(self, investissement, cumul):
+        """Les points EXACTEMENT tels que residential/charts.payback_curve les
+        trace : l'année 0 vaut −investissement, puis le cumul année par année."""
+        return [-float(investissement)] + [float(v) for v in cumul[:25]]
+
+    def test_curve_has_exactly_one_declared_slope_step(self):
+        """Z4 — le tracé s'aplatit UNE fois (l'année du remplacement onduleur,
+        provisionné par le modèle) puis repart à sa pente normale. C'est le seul
+        « redémarrage » légitime : partout ailleurs la pente DÉCROÎT doucement
+        (dégradation panneau 0,5 %/an, tarif constant). Un second décrochement,
+        ou un dernier segment plus pentu, signalerait un point dupliqué, un
+        décalage d'indice ou un changement de pas — jamais le modèle."""
+        from apps.ventes.quote_engine.pricing import (
+            INVERTER_REPLACE_YEAR, compute_cashflow_payback,
+        )
+        cf = compute_cashflow_payback(50000, 10000)
+        pts = self._points_traces(50000, cf['cumulative'])
+        self.assertEqual(len(pts), 26, "26 points pour les années 0 à 25")
+        pentes = [pts[i + 1] - pts[i] for i in range(len(pts) - 1)]
+        hausses = [i for i in range(1, len(pentes))
+                   if pentes[i] > pentes[i - 1]]
+        # Un SEUL redémarrage, et c'est l'année qui SUIT le remplacement.
+        self.assertEqual(hausses, [INVERTER_REPLACE_YEAR],
+                         f"pentes={[round(p) for p in pentes]}")
+        # Le creux vaut bien la PROVISION annoncée (≈ 8 % de l'investissement),
+        # pas un artefact : c'est ce qui rend le palier explicable au client.
+        from apps.ventes.quote_engine.pricing import INVERTER_REPLACE_FRACTION
+        creux = pentes[INVERTER_REPLACE_YEAR - 2] - pentes[INVERTER_REPLACE_YEAR - 1]
+        self.assertGreater(creux, 50000 * INVERTER_REPLACE_FRACTION * 0.9)
+        # Partout ailleurs la pente décroît strictement (jamais un plateau
+        # inexpliqué, jamais une remontée).
+        for i in range(1, len(pentes)):
+            if i == INVERTER_REPLACE_YEAR:
+                continue
+            self.assertLess(pentes[i], pentes[i - 1], f"segment {i}")
+        # LE SYMPTÔME SIGNALÉ : le dernier segment n'est jamais plus pentu.
+        self.assertLessEqual(pentes[-1], pentes[-2])
+
+    def test_replacement_step_is_declared_in_the_rendered_assumptions(self):
+        """Z4 — le palier de la courbe est le SEUL décrochement du tracé ; il
+        était SILENCIEUX (aucune note ne le mentionnait), donc illisible comme
+        autre chose qu'une erreur. Sa raison voyage désormais avec le chiffre."""
+        from apps.ventes.quote_engine.pricing import (
+            INVERTER_REPLACE_YEAR, cashflow_assumptions,
+        )
+        notes = ' '.join(cashflow_assumptions()['notes']).lower()
+        self.assertIn('onduleur', notes)
+        self.assertIn(str(INVERTER_REPLACE_YEAR), notes)
+
+    # ── Z5 (ORDRE FONDATEUR, 20/08/2026) — le rendement aller-retour ne frappe
+    #    QUE l'énergie qui transite par la batterie ─────────────────────────────
+    def test_battery_roundtrip_only_hits_the_stored_share(self):
+        """Z5 — le moteur multipliait TOUTE l'économie de l'option 2 par 0,90,
+        y compris la part autoconsommée DIRECTEMENT au fil du soleil, qui
+        n'entre jamais dans la batterie. Double peine → payback allongé."""
+        from apps.ventes.quote_engine.pricing import (
+            BATTERY_ROUNDTRIP, compute_cashflow_payback,
+        )
+        sans = compute_cashflow_payback(50000, 10000)
+        part_zero = compute_cashflow_payback(50000, 10000, battery=True,
+                                             battery_share=0.0)
+        part_tout = compute_cashflow_payback(50000, 10000, battery=True,
+                                             battery_share=1.0)
+        forfait = compute_cashflow_payback(50000, 10000, battery=True)
+        # Rien ne transite par la batterie → aucune perte, cashflow identique.
+        self.assertEqual(part_zero['cashflow'], sans['cashflow'])
+        # Tout transite → strictement l'ancien forfait (aucune régression).
+        self.assertEqual(part_tout['cashflow'], forfait['cashflow'])
+        self.assertEqual(part_tout['payback_years'], forfait['payback_years'])
+        # Une part réaliste tombe ENTRE les deux, jamais au-delà.
+        part_40 = compute_cashflow_payback(50000, 10000, battery=True,
+                                           battery_share=0.4)
+        self.assertGreater(part_40['payback_years'], sans['payback_years'])
+        self.assertLess(part_40['payback_years'], forfait['payback_years'])
+        attendu = 1 - (1 - BATTERY_ROUNDTRIP) * 0.4
+        self.assertEqual(part_40['cashflow'][0], round(10000 * attendu))
+
+    def test_roi_uses_the_derived_battery_share_not_a_flat_penalty(self):
+        """Z5 — bout en bout : ``calculate_savings_roi`` dérive la part batterie
+        des taux d'autoconsommation qu'il vient de calculer, donc le payback de
+        l'option 2 est plus COURT qu'avec l'ancien forfait 0,90 appliqué à tout,
+        sans jamais devenir plus court que le cas « aucune perte »."""
+        from apps.ventes.quote_engine.pricing import (
+            calculate_savings_roi, compute_cashflow_payback,
+        )
+        roi = calculate_savings_roi(
+            5.68, 33902, 55902, utility='onee', conso_annuelle_kwh=9000,
+            battery_kwh=10, productible=1651)
+        forfait = compute_cashflow_payback(55902, roi['eco_a_ann'],
+                                           battery=True)
+        aucune_perte = compute_cashflow_payback(55902, roi['eco_a_ann'])
+        self.assertLess(roi['roi_a'], forfait['payback_years'])
+        self.assertGreaterEqual(roi['roi_a'], aucune_perte['payback_years'])
+        # La part batterie est bien DÉRIVÉE (socle direct exclu), pas forfaitaire.
+        self.assertGreater(roi['autoconso_avec'], roi['autoconso_sans'])
+
     def test_builder_roi_from_cashflow_and_assumptions_rendered(self):
         from apps.ventes.quote_engine.builder import build_quote_data
         devis = make_devis(self.company, self.user, self.client_obj, [
