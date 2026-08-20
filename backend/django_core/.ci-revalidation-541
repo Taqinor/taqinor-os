@@ -1,0 +1,5 @@
+Marqueur TEMPORAIRE de revalidation CI (PR #541) : le filtre `changes` saute
+les lanes lourdes sur un diff .github-only « by design », or cette PR refait
+le chemin d execution des tests (container GHCR + --parallel). Ce fichier
+trippe backend=true pour exercer le nouveau chemin SUR la PR ; il est retire
+avant merge.
