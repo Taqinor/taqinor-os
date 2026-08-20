@@ -1,0 +1,67 @@
+# ---------------------------------------------------------------------------
+# WOW-CI RONDE 5 (20/08/2026) — IMAGE CI E2E, CONSTRUITE PAR-DESSUS ci-backend.
+#
+# POURQUOI ELLE EXISTE (mesures du run VERT 32307320397, `e2e-shard (1)`, le
+# job le plus lent des deux lanes avec 369 s). La lane e2e passait 240 s en
+# mise en place pour 129 s de specs, et l'ecart entre les deux lanes (369 s
+# contre 305 s) venait a 62 s sur 64 de cette mise en place — pas des tests.
+# Les deux postes que cette image supprime :
+#
+#   `Install Playwright browsers (chromium + webkit)` .... 55 s (lane 1)
+#                                                          20 s (lane 2)
+#   `Cache Playwright browser binaries` ..................  7 s
+#
+# Les binaires eux-memes etaient DEJA caches (l'etape a 7 s les restaure) : les
+# 20 a 55 s restants sont le `--with-deps`, c'est-a-dire le depaquetage apt des
+# dependances systeme de WebKit, que ni le cache apt ni le cache des binaires
+# n'evitent. Seule une image pre-construite le fait. S'y ajoutent les postes
+# deja supprimes cote backend et herites de la base : apt, pip, setup-python,
+# et les `docker run` de MinIO.
+#
+# CE QU'ELLE N'EMBARQUE PAS, VOLONTAIREMENT :
+#   - Node : `actions/setup-node` reste dans le job. Il coute 4 s ET apporte le
+#     cache npm, sans lequel `npm ci` passerait de 5 s (mesure) a plusieurs
+#     dizaines de secondes. Node n'est ici QU'A LA CONSTRUCTION, pour installer
+#     les navigateurs.
+#   - `node_modules` : `actions/checkout` fait un `git clean -ffdx` qui
+#     effacerait tout ce qui serait pose dans l'espace de travail, et le poser
+#     ailleurs puis le copier couterait ce que `npm ci` coute deja (5 s).
+#
+# ETIQUETTE : voir `.github/ci-image/tag.sh`. Elle porte l'etiquette backend
+# (donc la base) PLUS `frontend/package-lock.json` — qui fixe la version de
+# Playwright, donc celle des binaires de navigateur. Une montee de version de
+# Playwright reconstruit donc l'image AVANT que le job ne la demande, ce qui
+# est exactement la garantie dont on a besoin : un binaire d'une autre version
+# ferait echouer le lancement avec « Executable doesn't exist ».
+#
+# CONTEXTE DE CONSTRUCTION : `frontend/` (pour le lockfile).
+# ---------------------------------------------------------------------------
+ARG CI_BACKEND_IMAGE
+FROM ${CI_BACKEND_IMAGE}
+
+# Node UNIQUEMENT pour la construction (cf. en-tete). Meme version majeure que
+# l'`actions/setup-node` de ci.yml, pour que le `playwright` installe ici soit
+# celui que le job fera tourner.
+COPY --from=node:22-bookworm-slim /usr/local/bin/node /usr/local/bin/node
+COPY --from=node:22-bookworm-slim /usr/local/lib/node_modules /usr/local/lib/node_modules
+RUN set -eux; \
+    ln -sf /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm; \
+    ln -sf /usr/local/lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx; \
+    node --version; npm --version
+
+# Emplacement PARTAGE des navigateurs. Doit etre repris a l'identique par le
+# job (`PLAYWRIGHT_BROWSERS_PATH`), sinon Playwright les rechercherait dans
+# `~/.cache/ms-playwright` et les retelechargerait — l'image ne servirait a rien.
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+
+# La version vient du LOCKFILE, jamais d'un numero ecrit a la main ici : c'est
+# ce qui garantit que les binaires correspondent au `@playwright/test` que
+# `npm ci` installera dans le job.
+COPY package-lock.json /tmp/pw/package-lock.json
+RUN set -eux; \
+    VERSION="$(node -e "const l=require('/tmp/pw/package-lock.json'); const p=(l.packages||{})['node_modules/@playwright/test'] || (l.packages||{})['node_modules/playwright']; if(!p||!p.version) throw new Error('version de Playwright introuvable dans package-lock.json'); process.stdout.write(p.version)")"; \
+    echo "Playwright depuis le lockfile : $VERSION"; \
+    npm i -g "playwright@$VERSION"; \
+    playwright install --with-deps chromium webkit; \
+    rm -rf /tmp/pw /root/.npm; \
+    test -d "$PLAYWRIGHT_BROWSERS_PATH"
