@@ -12,6 +12,7 @@ import {
   CONTRAT_ONDULEUR_FR, manquantesOnduleurLocal,
   typeFicheBackend, ficheFieldsVides, champsFicheDepuisServeur,
   champsFichePourType,
+  LIBELLES_FICHE, VALEUR_ABSENTE, valeurFicheAffichee, groupeFicheAffichage,
 } from './pvondFicheTechnique.js'
 
 // ── Plage de tension batterie — lecture (miroir de plage_batterie_onduleur,
@@ -339,4 +340,95 @@ test('champsFichePourType(structure) : type sans bloc FicheTechnique → objet v
 test('une valeur non numérique devient null plutôt que NaN', () => {
   const payload = champsFichePourType('onduleur_hybride', { ond_ac_kw: 'abc' })
   assert.equal(payload.ond_ac_kw, null)
+})
+
+// ── PVFCH (fondateur 20/08/2026) — AFFICHAGE de la fiche structurée ─────────
+// « i am expecting a fiche produit that includes all the data separately,
+// that I can change — number of MPPT, range of each MPPT, battery voltage… »
+// Le visualiseur produit (ProduitDetail) lit ces fonctions ; elles garantissent
+// qu'un champ VIDE se voit comme un trou, jamais comme une valeur.
+
+test('groupeFicheAffichage(onduleur) : les 12 variables, dans l’ordre du formulaire', () => {
+  const groupe = groupeFicheAffichage({ type_fiche: 'onduleur', ond_n_mppt: 2 })
+  assert.equal(groupe.type, 'onduleur')
+  assert.equal(groupe.titre, 'Onduleur')
+  assert.deepEqual(groupe.lignes.map((l) => l.cle), [
+    'ond_ac_kw', 'ond_phases', 'ond_n_mppt', 'ond_mppt_v_min',
+    'ond_mppt_v_max', 'ond_v_max_abs', 'ond_i_max_mppt_a',
+    'ond_rendement_euro_pct', 'ond_v_demarrage_v', 'ond_isc_max_mppt_a',
+    'ond_bat_v_min', 'ond_bat_v_max',
+  ])
+  // Les trois variables que le fondateur a nommées sont bien SÉPARÉES.
+  const parCle = Object.fromEntries(groupe.lignes.map((l) => [l.cle, l]))
+  assert.equal(parCle.ond_n_mppt.valeur, '2')
+  assert.equal(parCle.ond_n_mppt.libelle, "Nombre d'entrées MPPT")
+  assert.equal(parCle.ond_mppt_v_min.libelle, 'Plage MPPT — tension mini (V)')
+  assert.equal(parCle.ond_bat_v_min.libelle, 'Plage batterie — tension mini (V)')
+})
+
+test('un champ non renseigné affiche « à renseigner », JAMAIS un défaut ni un zéro', () => {
+  const groupe = groupeFicheAffichage({ type_fiche: 'onduleur', ond_n_mppt: 2 })
+  const vides = groupe.lignes.filter((l) => l.absente)
+  assert.equal(vides.length, 11)
+  for (const ligne of vides) assert.equal(ligne.valeur, VALEUR_ABSENTE)
+  // La règle « never invent numbers » à l'écran : aucune valeur de repli.
+  assert.equal(valeurFicheAffichee('ond_v_max_abs', { type_fiche: 'onduleur' }),
+               VALEUR_ABSENTE)
+  assert.equal(valeurFicheAffichee('ond_mppt_v_min', null), VALEUR_ABSENTE)
+})
+
+test('un zéro RÉEL reste affiché (0 est une valeur, pas une absence)', () => {
+  assert.equal(valeurFicheAffichee('ond_v_demarrage_v',
+    { type_fiche: 'onduleur', ond_v_demarrage_v: 0 }), '0')
+})
+
+test('les phases se lisent en toutes lettres — un nombre nu ne se lit pas', () => {
+  assert.equal(valeurFicheAffichee('ond_phases', { ond_phases: 1 }), 'Monophasé')
+  assert.equal(valeurFicheAffichee('ond_phases', { ond_phases: 3 }), 'Triphasé')
+  assert.equal(valeurFicheAffichee('ond_phases', {}), VALEUR_ABSENTE)
+})
+
+test('« aucune batterie » se DIT, au lieu de laisser croire à un oubli', () => {
+  const fiche = { type_fiche: 'onduleur', ond_bat_aucune: true }
+  assert.equal(valeurFicheAffichee('ond_bat_v_min', fiche),
+               'Aucune batterie compatible')
+  assert.equal(valeurFicheAffichee('ond_bat_v_max', fiche),
+               'Aucune batterie compatible')
+  // …et une plage réellement déclarée s'affiche telle quelle.
+  assert.equal(valeurFicheAffichee('ond_bat_v_min',
+    { type_fiche: 'onduleur', ond_bat_v_min: 40 }), '40')
+})
+
+test('groupeFicheAffichage(module/batterie) : leurs propres blocs', () => {
+  const mod = groupeFicheAffichage({ type_fiche: 'module', pmax_wc: '710.00' })
+  assert.equal(mod.titre, 'Panneau photovoltaïque')
+  assert.equal(mod.lignes[0].valeur, '710.00')
+  assert.equal(mod.lignes[0].libelle, 'Puissance crête (Wc)')
+  assert.deepEqual(mod.lignes.map((l) => l.cle), [
+    'pmax_wc', 'voc_v', 'isc_a', 'vmp_v', 'imp_a',
+    'temp_coeff_voc_pct_c', 'temp_coeff_pmax_pct_c',
+    'longueur_mm', 'largeur_mm'])
+
+  const bat = groupeFicheAffichage({ type_fiche: 'batterie', bat_v_nominal: '51.2' })
+  assert.equal(bat.titre, 'Batterie')
+  assert.equal(bat.lignes.find((l) => l.cle === 'bat_v_nominal').valeur, '51.2')
+})
+
+test('produit sans fiche (ou type inconnu) → rien à afficher, jamais un bloc vide', () => {
+  assert.equal(groupeFicheAffichage(null), null)
+  assert.equal(groupeFicheAffichage(undefined), null)
+  assert.equal(groupeFicheAffichage({ type_fiche: '' }), null)
+  assert.equal(groupeFicheAffichage({ type_fiche: 'autre' }), null)
+})
+
+test('tout champ éditable du formulaire porte un libellé d’affichage', () => {
+  // Sans ça, le visualiseur montrerait une clé technique (`ond_v_max_abs`) là
+  // où le formulaire montre « Tension DC maximale (V) ».
+  for (const type of ['onduleur', 'module', 'batterie']) {
+    for (const ligne of groupeFicheAffichage({ type_fiche: type }).lignes) {
+      assert.equal(typeof LIBELLES_FICHE[ligne.cle], 'string',
+                   `libellé manquant pour ${ligne.cle}`)
+      assert.notEqual(ligne.libelle, ligne.cle)
+    }
+  }
 })

@@ -275,3 +275,101 @@ describe('APX21 — rendu du graphe dans l\'onglet Fiche technique', () => {
     expect(screen.queryByTestId('pdet-courbe-pompe')).toBeNull()
   })
 })
+
+/* ============================================================================
+   PVFCH (fondateur 20/08/2026) — la fiche STRUCTURÉE est VISIBLE et MODIFIABLE
+   depuis le visualiseur. « i am expecting a fiche produit that includes all the
+   data separately, that I can change — number of MPPT, range of each MPPT,
+   battery voltage… » : ces champs existaient (FicheTechnique) et étaient
+   éditables dans ProduitForm, mais cet onglet n'affichait que de la prose.
+   ========================================================================== */
+
+describe('PVFCH — fiche technique structurée dans le visualiseur', () => {
+  const onduleur = { ...produit, id: 9, nom: 'Onduleur hybride Deye 10kW', sku: 'OND-H-10' }
+
+  const ficheOnduleur = (over = {}) => ({
+    id: 3, produit: 9, type_fiche: 'onduleur',
+    ond_ac_kw: '10.00', ond_phases: 3, ond_n_mppt: 2,
+    ond_mppt_v_min: '200.0', ond_mppt_v_max: '650.0',
+    ond_v_max_abs: '800.0', ond_i_max_mppt_a: '26.0',
+    ond_rendement_euro_pct: '97.0',
+    ond_v_demarrage_v: '160.0', ond_isc_max_mppt_a: '39.0',
+    ond_bat_aucune: false, ond_bat_v_min: '40.0', ond_bat_v_max: '60.0',
+    ...over,
+  })
+
+  const ouvrirOnglet = async (props = {}) => {
+    render(<ProduitDetail produit={onduleur} onClose={() => {}} {...props} />, { wrapper })
+    await userEvent.click(screen.getByRole('tab', { name: 'Fiche technique' }))
+    return screen.findByTestId('pdet-fiche-structuree')
+  }
+
+  it('affiche chaque variable SÉPARÉMENT, avec son libellé français', async () => {
+    stockApi.getFichesTechniques.mockResolvedValue({ data: [ficheOnduleur()] })
+    stockApi.produitPrevisionnel.mockResolvedValue({ data: null })
+    const bloc = await ouvrirOnglet()
+
+    expect(bloc).toHaveTextContent("Nombre d'entrées MPPT")
+    expect(screen.getByTestId('pdet-ft-ond_n_mppt')).toHaveTextContent('2')
+    // La plage MPPT : deux bornes, deux lignes — jamais un intervalle opaque.
+    expect(screen.getByTestId('pdet-ft-ond_mppt_v_min')).toHaveTextContent('200.0')
+    expect(screen.getByTestId('pdet-ft-ond_mppt_v_max')).toHaveTextContent('650.0')
+    // La tension batterie, l'autre variable nommée par le fondateur.
+    expect(screen.getByTestId('pdet-ft-ond_bat_v_min')).toHaveTextContent('40.0')
+    expect(screen.getByTestId('pdet-ft-ond_bat_v_max')).toHaveTextContent('60.0')
+    // La borne BLOQUANTE du dimensionnement, et les phases en toutes lettres.
+    expect(screen.getByTestId('pdet-ft-ond_v_max_abs')).toHaveTextContent('800.0')
+    expect(screen.getByTestId('pdet-ft-ond_phases')).toHaveTextContent('Triphasé')
+  })
+
+  it('un champ vide dit « à renseigner » — jamais un défaut ni un zéro', async () => {
+    stockApi.getFichesTechniques.mockResolvedValue({
+      data: [ficheOnduleur({ ond_v_max_abs: null, ond_n_mppt: null })],
+    })
+    stockApi.produitPrevisionnel.mockResolvedValue({ data: null })
+    await ouvrirOnglet()
+
+    expect(screen.getByTestId('pdet-ft-ond_v_max_abs')).toHaveTextContent('à renseigner')
+    expect(screen.getByTestId('pdet-ft-ond_n_mppt')).toHaveTextContent('à renseigner')
+    // Le trou doit se VOIR comme un trou : surtout pas « 600 » ni « 2 ».
+    expect(screen.getByTestId('pdet-ft-ond_v_max_abs')).not.toHaveTextContent('600')
+    expect(screen.getByTestId('pdet-ft-ond_n_mppt')).not.toHaveTextContent('2')
+  })
+
+  it('« aucune batterie » se DIT plutôt que de laisser deux lignes vides', async () => {
+    stockApi.getFichesTechniques.mockResolvedValue({
+      data: [ficheOnduleur({ ond_bat_aucune: true, ond_bat_v_min: null, ond_bat_v_max: null })],
+    })
+    stockApi.produitPrevisionnel.mockResolvedValue({ data: null })
+    await ouvrirOnglet()
+    expect(screen.getByTestId('pdet-ft-ond_bat_v_min'))
+      .toHaveTextContent('Aucune batterie compatible')
+  })
+
+  it('« Modifier la fiche » ouvre l\'édition du MÊME produit', async () => {
+    stockApi.getFichesTechniques.mockResolvedValue({ data: [ficheOnduleur()] })
+    stockApi.produitPrevisionnel.mockResolvedValue({ data: null })
+    const onEdit = vi.fn()
+    await ouvrirOnglet({ onEdit })
+
+    await userEvent.click(screen.getByTestId('pdet-modifier-fiche'))
+    expect(onEdit).toHaveBeenCalledTimes(1)
+    expect(onEdit.mock.calls[0][0]).toMatchObject({ id: 9 })
+  })
+
+  it('sans droit d\'écriture (pas de `onEdit`), aucun bouton de modification', async () => {
+    stockApi.getFichesTechniques.mockResolvedValue({ data: [ficheOnduleur()] })
+    stockApi.produitPrevisionnel.mockResolvedValue({ data: null })
+    await ouvrirOnglet()
+    expect(screen.queryByTestId('pdet-modifier-fiche')).not.toBeInTheDocument()
+  })
+
+  it('un produit SANS fiche ne rend aucun bloc structuré vide', async () => {
+    stockApi.getFichesTechniques.mockResolvedValue({ data: [] })
+    stockApi.produitPrevisionnel.mockResolvedValue({ data: null })
+    render(<ProduitDetail produit={onduleur} onClose={() => {}} />, { wrapper })
+    await userEvent.click(screen.getByRole('tab', { name: 'Fiche technique' }))
+    await screen.findByTestId('pdet-fiche-technique')
+    expect(screen.queryByTestId('pdet-fiche-structuree')).not.toBeInTheDocument()
+  })
+})
