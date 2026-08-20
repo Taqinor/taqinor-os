@@ -83,10 +83,17 @@ _RENOMMAGES = (
 def _renommer(apps, mapping):
     """Renomme chaque ligne dont le SKU ET le nom ACTUEL correspondent
     exactement à ``mapping`` — idempotent (aucune écriture si déjà renommé),
-    jamais de doublon créé, jamais de prix/quantité/SKU touché."""
+    jamais de doublon créé, jamais de prix/quantité/SKU touché.
+
+    YOPSB4 — itération ligne à ligne (``.iterator()``) plutôt qu'un
+    ``.update()`` global : le volume réel est minuscule (au plus une ligne
+    par SKU et par société), et la garde des migrations refuse à juste
+    titre tout UPDATE non borné sans marqueur de batching visible."""
     Produit = apps.get_model('stock', 'Produit')
     for sku, ancien, nouveau in mapping:
-        Produit.objects.filter(sku=sku, nom=ancien).update(nom=nouveau)
+        for produit in Produit.objects.filter(sku=sku, nom=ancien).iterator():
+            produit.nom = nouveau
+            produit.save(update_fields=['nom'])
 
 
 def marquer_nexans(apps, schema_editor):
