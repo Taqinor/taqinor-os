@@ -62,25 +62,47 @@ class TestBuildQuoteData(TestCase):
         self.assertEqual(data['watt_par_panneau'], 710)  # vraie puissance lue
         self.assertEqual(data['puissance_kwc'], 7.1)
 
-    def test_unparseable_panel_defaults_to_catalogue_standard_not_stale_450(self):
-        """Repli SÛR : une ligne panneau sans puissance lisible (ni désignation
-        ni nom produit) ne doit PLUS inventer l'ancien 450 W obsolète — elle
-        retombe sur le STANDARD du catalogue (710 W), panneau moderne réaliste.
-        Garde la régression « pourquoi 450 W alors que la donnée est là ? »."""
+    def test_unparseable_panel_omits_the_unit_power_no_catalogue_standard(self):
+        """M3 (audit adversarial du 19/08/2026) — PLUS DE STANDARD CATALOGUE.
+
+        Une ligne panneau sans puissance lisible (ni désignation, ni nom
+        produit, ni fiche) n'a pas de puissance unitaire CONNUE. Le moteur
+        retombait sur 710 W, et ce défaut ressortait imprimé comme une lecture
+        (« 12 panneaux × 710 W ») sur un devis où ce chiffre n'existe nulle
+        part — le kWc en découlait aussi. Désormais : ``None``, le document
+        écrit « 12 panneaux » tout court et OMET le kWc.
+
+        Le COMPTE, lui, reste vrai : 12 panneaux sont bien vendus.
+        """
         from apps.ventes.quote_engine import build_quote_data
-        from apps.ventes.quote_engine.builder import _DEFAULT_WATT
-        # désignation SANS chiffre de puissance + produit lié au même nom : aucun
-        # wattage lisible → le repli s'applique.
+        # désignation SANS chiffre de puissance + produit lié au même nom :
+        # aucun wattage lisible nulle part.
         devis = make_devis(self.company, self.user, self.client_obj, [
             ('Panneau photovoltaïque monocristallin', '12', '1400'),
             ('Onduleur réseau 8kW', '1', '14000'),
         ], reference='DEV-QE-NOWATT')
         data = build_quote_data(devis)
         self.assertEqual(data['nb_panneaux'], 12)
-        # le repli est le standard catalogue, JAMAIS l'ancien 450 périmé
-        self.assertEqual(_DEFAULT_WATT, 710)
-        self.assertEqual(data['watt_par_panneau'], 710)
-        self.assertNotEqual(data['watt_par_panneau'], 450)
+        self.assertIsNone(data['watt_par_panneau'])
+        self.assertIsNone(data['puissance_kwc'])
+        self.assertTrue(data['puissance_inconnue'])
+
+    def test_le_repli_catalogue_survit_pour_le_seul_kpi_interne(self):
+        """M3 — ``puissance_panneaux_lignes`` garde son repli documenté : il
+        sert au KPI INTERNE « conçu vs vendu » (reports.py), qui n'imprime
+        rien au client. Le moteur de devis, lui, lit ``panneaux_et_watt_lu``."""
+        from apps.ventes.quote_engine.builder import (
+            _DEFAULT_WATT, panneaux_et_watt_lu, puissance_panneaux_lignes,
+        )
+
+        class _L:
+            designation = 'Panneau photovoltaïque monocristallin'
+            quantite = 12
+            produit = None
+
+        self.assertEqual(panneaux_et_watt_lu([_L()]), (12, None))
+        self.assertEqual(puissance_panneaux_lignes([_L()]),
+                         (12, _DEFAULT_WATT))
 
     def test_no_hybrid_means_single_option_no_fabricated_battery(self):
         """RÈGLE DURE : sans onduleur hybride, l'option « avec batterie » ne
@@ -97,18 +119,49 @@ class TestBuildQuoteData(TestCase):
         sans = [it['designation'].lower() for it in data['sans_items']]
         self.assertTrue(any('reseau' in d or 'réseau' in d for d in sans))
 
-    def test_residential_hybrid_without_battery_synthesizes_small_module(self):
-        """Échelle résidentielle (≤ 15 kWc) : hybride présent sans batterie →
-        un module par défaut est ajouté (comportement historique conservé)."""
+    def test_residential_hybrid_without_battery_never_synthesizes_a_module(self):
+        """Z1 (ORDRE FONDATEUR, 20/08/2026) — hybride sans ligne batterie :
+        AUCUNE batterie n'est fabriquée. Le moteur ajoutait ici une « Batterie
+        5 kWh » de catalogue pour composer l'option « Avec batterie » : un
+        composant et un prix INVENTÉS sur un document client. Le devis devient
+        mono-option « Sans batterie » (factuellement vrai) et sa composition
+        porte TOUTES ses lignes réelles — l'onduleur hybride compris, donc son
+        total reste le total du devis."""
         from apps.ventes.quote_engine import build_quote_data
         devis = make_devis(self.company, self.user, self.client_obj, [
             ('Panneau mono 550W', '8', '2000'),
             ('Onduleur hybride 5kW', '1', '14000'),
         ])
         data = build_quote_data(devis)
-        self.assertEqual(data['scenario'], 'Avec batterie')
-        avec = [it['designation'].lower() for it in data['avec_items']]
-        self.assertTrue(any('batterie' in d for d in avec))
+        self.assertEqual(data['scenario'], 'Sans batterie')
+        self.assertFalse(data['avec_ok'])
+        self.assertTrue(data['sans_ok'])
+        self.assertFalse(data['deux_options'])
+        # Aucune ligne « batterie » nulle part dans le document rendu.
+        for panier in ('sans_items', 'avec_items'):
+            self.assertFalse(
+                any('batterie' in it['designation'].lower()
+                    for it in data[panier]),
+                f"une batterie fabriquée a survécu dans {panier}")
+        # L'onduleur hybride RÉEL est bien dans l'option rendue (il n'est pas
+        # perdu au passage) et le total du document = total des lignes.
+        sans = [it['designation'].lower() for it in data['sans_items']]
+        self.assertTrue(any('hybride' in d for d in sans))
+        attendu = round(sum(it['quantite'] * it['prix_unit_ht']
+                            for it in data['sans_items']), 2)
+        self.assertAlmostEqual(data['totaux_sans']['ht_brut'], attendu, places=2)
+
+    def test_hybrid_without_battery_still_renders_a_pdf(self):
+        """Z1 — la règle dure « une option ne se rend jamais sans onduleur » ne
+        doit PAS refuser un devis dont le seul onduleur est hybride : il porte
+        bien un onduleur, c'est la batterie qui manque."""
+        from apps.ventes.quote_engine import build_quote_data
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau mono 550W', '8', '2000'),
+            ('Onduleur hybride 5kW', '1', '14000'),
+        ], reference='DEV-QE-HYBNOBAT')
+        data = build_quote_data(devis, {'pdf_mode': 'full'})
+        self.assertEqual(data['nb_options'], 1)
 
     def test_large_plant_never_gets_token_battery(self):
         """> 15 kWc sans batterie : pas de batterie symbolique fabriquée —
@@ -399,6 +452,130 @@ class TestHonestCashflowPayback(TestCase):
         self.assertTrue(any('82-21' in n for n in a['notes']))
         self.assertTrue(any('injection' in n.lower() for n in a['notes']))
 
+    # ── Z4 (ORDRE FONDATEUR, 20/08/2026) — la courbe ne change JAMAIS de pente
+    #    sans raison de modèle, et le seul palier autorisé est ANNONCÉ ──────────
+    def _points_traces(self, investissement, cumul):
+        """Les points EXACTEMENT tels que residential/charts.payback_curve les
+        trace : l'année 0 vaut −investissement, puis le cumul année par année."""
+        return [-float(investissement)] + [float(v) for v in cumul[:25]]
+
+    def test_curve_has_exactly_one_declared_slope_step(self):
+        """Z4 — le tracé s'aplatit UNE fois (l'année du remplacement onduleur,
+        provisionné par le modèle) puis repart à sa pente normale. C'est le seul
+        « redémarrage » légitime : partout ailleurs la pente DÉCROÎT doucement
+        (dégradation panneau 0,5 %/an, tarif constant). Un second décrochement,
+        ou un dernier segment plus pentu, signalerait un point dupliqué, un
+        décalage d'indice ou un changement de pas — jamais le modèle."""
+        from apps.ventes.quote_engine.pricing import (
+            INVERTER_REPLACE_YEAR, compute_cashflow_payback,
+        )
+        # Q1 (décision fondateur du 20/08/2026) — le palier n'existe QUE si le
+        # devis porte une ligne onduleur identifiable, et il vaut son PRIX
+        # FACTURÉ (plus « 8 % de l'investissement », un forfait qui ne
+        # correspondait au prix d'aucun onduleur réel). Le montage porte donc
+        # un onduleur, sinon il n'y aurait aucun décrochement à vérifier.
+        cf = compute_cashflow_payback(50000, 10000,
+                                      inverter_replace_cost=15000)
+        pts = self._points_traces(50000, cf['cumulative'])
+        self.assertEqual(len(pts), 26, "26 points pour les années 0 à 25")
+        pentes = [pts[i + 1] - pts[i] for i in range(len(pts) - 1)]
+        hausses = [i for i in range(1, len(pentes))
+                   if pentes[i] > pentes[i - 1]]
+        # Un SEUL redémarrage, et c'est l'année qui SUIT le remplacement.
+        self.assertEqual(hausses, [INVERTER_REPLACE_YEAR],
+                         f"pentes={[round(p) for p in pentes]}")
+        # Le creux vaut bien la PROVISION annoncée — désormais le PRIX RÉEL de
+        # l'onduleur, pas un pourcentage : c'est ce qui rend le palier
+        # explicable au client, et vérifiable au dirham près.
+        creux = pentes[INVERTER_REPLACE_YEAR - 2] - pentes[INVERTER_REPLACE_YEAR - 1]
+        self.assertAlmostEqual(creux, 15000, delta=100)
+        # Partout ailleurs la pente décroît strictement (jamais un plateau
+        # inexpliqué, jamais une remontée).
+        for i in range(1, len(pentes)):
+            if i == INVERTER_REPLACE_YEAR:
+                continue
+            self.assertLess(pentes[i], pentes[i - 1], f"segment {i}")
+        # LE SYMPTÔME SIGNALÉ : le dernier segment n'est jamais plus pentu.
+        self.assertLessEqual(pentes[-1], pentes[-2])
+
+    def test_sans_ligne_onduleur_la_courbe_n_a_aucun_palier(self):
+        """Q1 — aucun onduleur chiffré ⇒ AUCUNE provision, donc aucun
+        décrochement : la pente décroît de bout en bout. Le document le dit
+        aussi en toutes lettres (voir la note « hors provision » ci-dessous) —
+        on n'invente pas un remplacement pour un équipement qu'on ne vend pas."""
+        from apps.ventes.quote_engine.pricing import compute_cashflow_payback
+        cf = compute_cashflow_payback(50000, 10000)   # pas de coût onduleur
+        pts = self._points_traces(50000, cf['cumulative'])
+        pentes = [pts[i + 1] - pts[i] for i in range(len(pts) - 1)]
+        hausses = [i for i in range(1, len(pentes))
+                   if pentes[i] > pentes[i - 1]]
+        self.assertEqual(hausses, [], f"pentes={[round(p) for p in pentes]}")
+
+    def test_replacement_step_is_declared_in_the_rendered_assumptions(self):
+        """Z4 — le palier de la courbe est le SEUL décrochement du tracé ; il
+        était SILENCIEUX (aucune note ne le mentionnait), donc illisible comme
+        autre chose qu'une erreur. Sa raison voyage désormais avec le chiffre."""
+        from apps.ventes.quote_engine.pricing import (
+            INVERTER_REPLACE_YEAR, cashflow_assumptions,
+        )
+        # Q1 — la note porte le MONTANT RÉEL provisionné, pas un pourcentage.
+        rendu = ' '.join(cashflow_assumptions(inverter_replace_cost=15000)['notes'])
+        notes = rendu.lower()
+        self.assertIn('onduleur', notes)
+        self.assertIn(str(INVERTER_REPLACE_YEAR), notes)
+        self.assertIn('15 000 MAD', rendu)
+        # Et sans onduleur chiffré, la projection l'annonce au lieu de
+        # provisionner un forfait en silence.
+        sans = ' '.join(cashflow_assumptions()['notes']).lower()
+        self.assertIn('hors provision de remplacement onduleur', sans)
+
+    # ── Z5 (ORDRE FONDATEUR, 20/08/2026) — le rendement aller-retour ne frappe
+    #    QUE l'énergie qui transite par la batterie ─────────────────────────────
+    def test_battery_roundtrip_only_hits_the_stored_share(self):
+        """Z5 — le moteur multipliait TOUTE l'économie de l'option 2 par 0,90,
+        y compris la part autoconsommée DIRECTEMENT au fil du soleil, qui
+        n'entre jamais dans la batterie. Double peine → payback allongé."""
+        from apps.ventes.quote_engine.pricing import (
+            BATTERY_ROUNDTRIP, compute_cashflow_payback,
+        )
+        sans = compute_cashflow_payback(50000, 10000)
+        part_zero = compute_cashflow_payback(50000, 10000, battery=True,
+                                             battery_share=0.0)
+        part_tout = compute_cashflow_payback(50000, 10000, battery=True,
+                                             battery_share=1.0)
+        forfait = compute_cashflow_payback(50000, 10000, battery=True)
+        # Rien ne transite par la batterie → aucune perte, cashflow identique.
+        self.assertEqual(part_zero['cashflow'], sans['cashflow'])
+        # Tout transite → strictement l'ancien forfait (aucune régression).
+        self.assertEqual(part_tout['cashflow'], forfait['cashflow'])
+        self.assertEqual(part_tout['payback_years'], forfait['payback_years'])
+        # Une part réaliste tombe ENTRE les deux, jamais au-delà.
+        part_40 = compute_cashflow_payback(50000, 10000, battery=True,
+                                           battery_share=0.4)
+        self.assertGreater(part_40['payback_years'], sans['payback_years'])
+        self.assertLess(part_40['payback_years'], forfait['payback_years'])
+        attendu = 1 - (1 - BATTERY_ROUNDTRIP) * 0.4
+        self.assertEqual(part_40['cashflow'][0], round(10000 * attendu))
+
+    def test_roi_uses_the_derived_battery_share_not_a_flat_penalty(self):
+        """Z5 — bout en bout : ``calculate_savings_roi`` dérive la part batterie
+        des taux d'autoconsommation qu'il vient de calculer, donc le payback de
+        l'option 2 est plus COURT qu'avec l'ancien forfait 0,90 appliqué à tout,
+        sans jamais devenir plus court que le cas « aucune perte »."""
+        from apps.ventes.quote_engine.pricing import (
+            calculate_savings_roi, compute_cashflow_payback,
+        )
+        roi = calculate_savings_roi(
+            5.68, 33902, 55902, utility='onee', conso_annuelle_kwh=9000,
+            battery_kwh=10, productible=1651)
+        forfait = compute_cashflow_payback(55902, roi['eco_a_ann'],
+                                           battery=True)
+        aucune_perte = compute_cashflow_payback(55902, roi['eco_a_ann'])
+        self.assertLess(roi['roi_a'], forfait['payback_years'])
+        self.assertGreaterEqual(roi['roi_a'], aucune_perte['payback_years'])
+        # La part batterie est bien DÉRIVÉE (socle direct exclu), pas forfaitaire.
+        self.assertGreater(roi['autoconso_avec'], roi['autoconso_sans'])
+
     def test_builder_roi_from_cashflow_and_assumptions_rendered(self):
         from apps.ventes.quote_engine.builder import build_quote_data
         devis = make_devis(self.company, self.user, self.client_obj, [
@@ -461,8 +638,13 @@ class TestQuoteNumbersHonestyPack(TestCase):
         from apps.ventes.quote_engine.builder import build_quote_data
         from apps.ventes.quote_engine.residential import renderer
         devis = self._devis(ref='DEV-QX7-COV')
+        # M1 — plus de facture proxy : le renderer résidentiel exige des
+        # factures RÉELLES pour ne pas lever Unsupported dans _augment.
         devis.etude_params = {**DEUX_OPTIONS, 'conso_annuelle': 12000,
-                              'distributeur': 'onee'}
+                              'distributeur': 'onee',
+                              'factures_mensuelles_reelles': [
+                                  1200, 1200, 1300, 1400, 1600, 1800,
+                                  1900, 1900, 1700, 1500, 1300, 1200]}
         devis.save(update_fields=['etude_params'])
         data = build_quote_data(devis)
         self.assertEqual(data['conso_annuelle_kwh'], 12000)
@@ -473,14 +655,64 @@ class TestQuoteNumbersHonestyPack(TestCase):
                          min(100, max(1, round(data['prod_kwh'] / 12000 * 100))))
 
     def test_coverage_flagged_estimation_without_real_conso(self):
-        """Sans conso réelle, la couverture est dérivée honnêtement et
-        étiquetée « estimation » (drapeau vrai)."""
+        """Sans conso réelle MAIS avec un barème distributeur réel, la
+        couverture est DÉRIVÉE de la facture au tarif réel — une dérivation
+        traçable : elle reste rendue, étiquetée « estimation » (drapeau vrai).
+        Z2 ne touche PAS ce cas (voir le test d'omission ci-dessous)."""
         from apps.ventes.quote_engine.builder import build_quote_data
         from apps.ventes.quote_engine.residential import renderer
-        data = build_quote_data(self._devis(ref='DEV-QX7-EST'))
+        devis = self._devis(ref='DEV-QX7-EST')
+        # Z2 × M1 — ancrage RÉEL sur les deux plans : un distributeur
+        # (barème réel, donc pas d'omission Z2) ET les 12 factures
+        # mensuelles réelles (M1 : plus de série proxy, `_augment` les
+        # exige). La conso, elle, reste absente : c'est exactement ce que
+        # ce test épingle — la couverture est DÉRIVÉE de la facture au
+        # tarif réel, donc rendue mais étiquetée « estimation ».
+        devis.etude_params = {**DEUX_OPTIONS, 'distributeur': 'onee',
+                              'factures_mensuelles_reelles': [
+                                  1200, 1200, 1300, 1400, 1600, 1800,
+                                  1900, 1900, 1700, 1500, 1300, 1200]}
+        devis.save(update_fields=['etude_params'])
+        data = build_quote_data(devis)
         self.assertIsNone(data['conso_annuelle_kwh'])
+        self.assertFalse(data['savings_estimated'])
         d = renderer._augment(data)
+        self.assertFalse(d['masquer_synthese'])
         self.assertTrue(d['coverage_estimated'])
+
+    def test_no_real_data_at_all_omits_the_savings_synthesis(self):
+        """Z2 (ORDRE FONDATEUR, 20/08/2026) — un devis SANS aucune donnée
+        réelle d'ancrage (ni 12 factures réelles, ni conso annuelle, ni
+        distributeur/tarif) ne rend PLUS de synthèse économies : le −N %,
+        l'avant/après, la couverture et le graphe mensuel descendaient tous du
+        tarif de REPLI × un taux forfaitaire. Ils disparaissent ENSEMBLE ;
+        aucun « 0 » ne les remplace."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine.residential import renderer
+        data = build_quote_data(self._devis(ref='DEV-Z2-NODATA'))
+        self.assertIsNone(data['conso_annuelle_kwh'])
+        self.assertFalse(data['factures_reelles'])
+        self.assertTrue(data['savings_estimated'])
+        self.assertTrue(renderer.ancrage_reel_absent(data))
+        self.assertIsNone(renderer.synthese_economies(data))
+        # Le document reste rendu (aucune Unsupported), simplement sans sa
+        # couche économique — jamais un bloc à moitié.
+        d = renderer._augment(data)
+        self.assertTrue(d['masquer_synthese'])
+        for k in ('pct_cut', 'annual_before', 'annual_after',
+                  'coverage_pct', 'coverage_estimated',
+                  'bills_before', 'bills_after'):
+            self.assertNotIn(k, d, f"{k} ne doit pas être publié")
+        from apps.ventes.quote_engine.residential import render as r_render
+        html = r_render.build_html(d)
+        for marqueur in ('<div class="c1-bigcut">', '<img class="c1-donut"',
+                         'Votre facture mois par mois', 'Économie estimée',
+                         'Rentabilisé en', 'Rentabilité sur 25 ans',
+                         'Gain net sur 25 ans'):
+            self.assertNotIn(marqueur, html, f"{marqueur} aurait dû être omis")
+        # Ce qui reste est intégralement traçable : prix, puissance, production.
+        self.assertIn('c1-opt-price', html)
+        self.assertIn('Production estimée', html)
 
     # ── (b) échéancier custom sans case morte ───────────────────────────────
     def test_custom_acompte_full_collapses_to_two_boxes(self):
@@ -562,7 +794,14 @@ class TestQuoteNumbersHonestyPack(TestCase):
             ('Onduleur hybride Deye 10kW', '1', '23333.33'),
             ('Batterie Dyness 10 kWh', '1', '25000'),
             ('Installation', '1', '4000'),
-        ], reference='DEV-QX7-BRAND', etude_params=DEUX_OPTIONS)
+        ], reference='DEV-QX7-BRAND', etude_params={
+            **DEUX_OPTIONS,
+            # M1 — plus de facture proxy : le renderer résidentiel exige des
+            # factures RÉELLES pour ne pas lever Unsupported dans _augment.
+            'factures_mensuelles_reelles': [
+                1200, 1200, 1300, 1400, 1600, 1800,
+                1900, 1900, 1700, 1500, 1300, 1200],
+        })
         for li in devis.lignes.all():
             if 'Canadien' in li.designation:
                 li.produit.marque = 'Canadian Solar'
@@ -595,6 +834,13 @@ class TestQuoteNumbersHonestyPack(TestCase):
         from apps.ventes.quote_engine.builder import build_quote_data
         # lignes sans AUCUNE marque → le moteur n'en invente pas une
         devis = self._devis(ref='DEV-QX7-NOBRAND')
+        # M1 — plus de facture proxy : le renderer résidentiel exige des
+        # factures RÉELLES pour ne pas lever Unsupported dans _augment.
+        devis.etude_params = {**devis.etude_params,
+                              'factures_mensuelles_reelles': [
+                                  1200, 1200, 1300, 1400, 1600, 1800,
+                                  1900, 1900, 1700, 1500, 1300, 1200]}
+        devis.save(update_fields=['etude_params'])
         for li in devis.lignes.all():
             li.produit.marque = ''
             li.produit.save(update_fields=['marque'])
@@ -768,7 +1014,9 @@ class TestSavingsMath(TestCase):
         self.assertEqual(r1["eco_s_ann"], r2["eco_s_ann"])
 
     def test_lydec_and_redal_tables_present(self):
-        """Lydec and Redal tables are registered and return non-estimated results."""
+        """Q7 — Lydec et Redal n'ont plus de table PROPRE (les leurs étaient
+        estimées, « à confirmer ») : elles résolvent sur la grille NATIONALE.
+        Le résultat reste donc non-estimé — un barème réel s'applique bien."""
         from apps.ventes.quote_engine.pricing import calculate_savings_roi
         for util in ("lydec", "redal"):
             roi = calculate_savings_roi(5.0, 50000, 80000, utility=util,
@@ -823,8 +1071,15 @@ class TestSavingsMath(TestCase):
         )
         expected_roi_s = compute_cashflow_payback(
             50000, roi["eco_s_ann"])["payback_years"]
+        # M9 (audit du 19/08/2026) — ``battery=True`` était codé en dur ici
+        # comme dans le moteur : cet appel ne déclare AUCUN stockage (ni
+        # ``battery_kwh``, ni ``stockage_present``), donc l'abattement de
+        # rendement aller-retour ne s'applique pas — il pénalisait le payback
+        # de l'option 2 avec la perte d'un équipement absent. L'attendu suit
+        # donc les MÊMES paramètres que le moteur, ce qui est tout l'objet de
+        # ce test : vérifier la DÉLÉGATION, pas re-coder un modèle à côté.
         expected_roi_a = compute_cashflow_payback(
-            80000, roi["eco_a_ann"], battery=True)["payback_years"]
+            80000, roi["eco_a_ann"])["payback_years"]
         self.assertAlmostEqual(roi["roi_s"], expected_roi_s, places=1)
         self.assertAlmostEqual(roi["roi_a"], expected_roi_a, places=1)
 

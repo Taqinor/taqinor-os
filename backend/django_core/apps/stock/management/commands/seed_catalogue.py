@@ -351,6 +351,21 @@ _DESC_OSP = ('Pompe immergée 3 pouces pour forage, triphasée 380 V\n'
 # ── Fiches commerciales (marque / description / garantie) ───────────────────
 # Garanties issues des termes constructeurs publiés (recherche 2026-06) ;
 # descriptions FR factuelles. Mise à jour ADDITIVE de ces 3 champs uniquement.
+#
+# PVFCH (fondateur 20/08/2026) — LA DESCRIPTION RACONTE, ELLE NE CHIFFRE PAS.
+# Ces descriptions portaient des specs chiffrées qui vivent DÉJÀ dans un champ
+# structuré de ``FicheTechnique`` (« 710 Wc » = ``pmax_wc``, « 51,2 V » =
+# ``bat_v_nominal``, « rendement euro 97,0 % » = ``ond_rendement_euro_pct``,
+# « plage 40-60 V » = ``ond_bat_v_min``/``ond_bat_v_max``, « ≈ −0,29 %/°C » =
+# ``temp_coeff_pmax_pct_c``). Deux copies d'un même nombre finissent toujours
+# par diverger — et c'est la copie en PROSE, celle que personne ne recalcule,
+# qui part sur la fiche produit du PDF client.
+#
+# RÈGLE : un nombre reste dans la prose UNIQUEMENT si aucun champ ne le porte
+# (rendement de module, dégradation annuelle, capacité d'une batterie sans
+# fiche…). Supprimer un nombre qui n'a pas d'autre domicile le PERDRAIT — ce
+# serait l'erreur symétrique. Le test ``test_pvfch_description_sans_specs``
+# vérifie les deux sens.
 FICHES = {
     # Onduleurs réseau Huawei (résidentiel ≤ 25 kW : 10 ans ; C&I : 5 ans ext.)
     **{sku: {
@@ -360,7 +375,11 @@ FICHES = {
                                 'OND-R-HUA-12M', 'OND-R-HUA-15T', 'OND-R-HUA-20T',
                                 'OND-R-HUA-25T')
                      else 'Garantie constructeur 5 ans (extensible jusqu\'à 20 ans)'),
-        'description': ('Onduleur string on-grid Huawei SUN2000, rendement max ≈ 98,6 %\n'
+        # Le rendement vit dans ``ond_rendement_euro_pct``, PAR RÉFÉRENCE
+        # (97,8 à 98,4 % selon le palier) : la prose annonçait « 98,6 % » à
+        # l'identique pour les dix, ce qui contredisait le champ de huit d'entre
+        # elles.
+        'description': ('Onduleur string on-grid Huawei SUN2000\n'
                         'Protection d\'arc intelligente AFCI, parafoudres DC/AC intégrés\n'
                         'Supervision temps réel via l\'application FusionSolar\n'
                         'Conforme IEC 62109, indice IP65 (pose intérieure/extérieure)'),
@@ -368,12 +387,31 @@ FICHES = {
                   'OND-R-HUA-15T', 'OND-R-HUA-20T', 'OND-R-HUA-25T', 'OND-R-HUA-50T',
                   'OND-R-HUA-100T', 'OND-R-HUA-150T')},
     # Onduleurs hybrides Deye
+    # O1 (2026-08-20) — HARMONISATION : ce groupe affichait « Garantie
+    # constructeur 10 ans » flat alors que les SKU LV 15K/20K plus bas (même
+    # gamme SUN Series Hybrid, même constructeur) affichent la version nuancée
+    # « 5 à 10 ans (selon site d'installation) ». Source : Deye, « SUN Series
+    # Hybrid inverter 10-Year Limited Warranty for Installation in Europe »
+    # (deyeinverter.com — couvre explicitement TOUTE la gamme SUN Series
+    # Hybrid) + la datasheet technique SG05LP3/SG05LP1 elle-même : ligne
+    # « Warranty : 5 Years/10 Years — the Warranty Period Depends the Final
+    # Installation Site of Inverter ». Les deux groupes de SKU sont désormais
+    # sur LA MÊME phrase, la plus honnête des deux.
     **{sku: {
         'marque': 'Deye',
-        'garantie': 'Garantie constructeur 10 ans',
-        'description': ('Onduleur hybride Deye SUN-…SG, rendement max ≈ 97,6 %\n'
+        'garantie': 'Garantie constructeur 5 à 10 ans (selon site d\'installation)',
+        # Rendement → ``ond_rendement_euro_pct`` (PVFCH). La tension NOMINALE
+        # « 48 V » de la famille de batteries reste : ce n'est pas la PLAGE
+        # (``ond_bat_v_min``/``ond_bat_v_max``), aucun champ ne la porte.
+        # O3 (2026-08-20) — « < 4 ms » (bascule EPS/UPS) est RETIRÉ : aucune
+        # datasheet Deye officielle consultée (SG05LP3 tri, SG05LP1 mono) ne
+        # publie de valeur en ms pour ce temps de bascule ; seules des sources
+        # tierces non vérifiées (forums) citent 4 ms ou 10 ms selon le modèle
+        # — OMISSION plutôt qu'un chiffre non sourcé (aucun champ ne le
+        # portait non plus : ce n'est pas un cas PVFCH, juste invérifiable).
+        'description': ('Onduleur hybride Deye SUN-…SG\n'
                         'Compatible batteries lithium 48 V (BMS CAN/RS485)\n'
-                        'Bascule secours (EPS/UPS) < 4 ms en cas de coupure réseau\n'
+                        'Bascule secours (EPS/UPS) en cas de coupure réseau\n'
                         'Monitoring Wi-Fi via Solarman Smart / Deye Cloud'),
     } for sku in ('OND-H-DEY-5M', 'OND-H-DEY-10M', 'OND-H-DEY-10T',
                   'OND-H-DEY-15T', 'OND-H-DEY-20T')},
@@ -386,9 +424,8 @@ FICHES = {
         'marque': 'Deye',
         'garantie': 'Garantie constructeur 5 à 10 ans (selon site d\'installation)',
         'description': ('Onduleur hybride Deye SUN-…K-SG05LP3, série basse tension 48 V (2024)\n'
-                        'Compatible batteries lithium/plomb 48 V (plage 40-60 V, BMS auto-adaptatif)\n'
-                        'Bascule secours (EPS/UPS), monitoring GPRS/WiFi/Bluetooth/4G/LAN\n'
-                        'Rendement max 97,6 % · rendement euro 97,0 %'),
+                        'Compatible batteries lithium/plomb 48 V (BMS auto-adaptatif)\n'
+                        'Bascule secours (EPS/UPS), monitoring GPRS/WiFi/Bluetooth/4G/LAN'),
     },
     # PVOND (18/08/2026) — jumeau BASSE TENSION du palier 20 kW. Même
     # datasheet de famille que le 15 kW (SUN-14-20K-SG05LP3-EU-SM2). CONFIRMÉ
@@ -398,43 +435,83 @@ FICHES = {
         'marque': 'Deye',
         'garantie': 'Garantie constructeur 5 à 10 ans (selon site d\'installation)',
         'description': ('Onduleur hybride Deye SUN-…K-SG05LP3, série basse tension 48 V (2024)\n'
-                        'Compatible batteries lithium/plomb 48 V (plage 40-60 V, BMS auto-adaptatif)\n'
-                        'Bascule secours (EPS/UPS), monitoring GPRS/WiFi/Bluetooth/4G/LAN\n'
-                        'Rendement max 97,6 % · rendement euro 97,0 %'),
+                        'Compatible batteries lithium/plomb 48 V (BMS auto-adaptatif)\n'
+                        'Bascule secours (EPS/UPS), monitoring GPRS/WiFi/Bluetooth/4G/LAN'),
     },
     'PAN-CS-710': {
         'marque': 'Canadien Solar',
         'garantie': '12 ans produit · 30 ans performance linéaire (87,4 %)',
-        'description': ('Module Canadian Solar TOPHiKu7 710 Wc, cellules N-type TOPCon\n'
+        # « 710 Wc » → ``pmax_wc`` ; « ≈ −0,29 %/°C » → ``temp_coeff_pmax_pct_c``.
+        # Le rendement du MODULE et la dégradation annuelle restent : aucun
+        # champ de ``FicheTechnique`` ne les porte.
+        'description': ('Module Canadian Solar TOPHiKu7, cellules N-type TOPCon\n'
                         'Rendement module jusqu\'à ≈ 22,9 %, dégradation ≤ 0,4 %/an\n'
-                        'Excellent comportement à haute température (≈ −0,29 %/°C)\n'
+                        'Excellent comportement à haute température\n'
                         'Certifié IEC 61215 / IEC 61730, fabricant Tier 1'),
     },
     'PAN-JK-710': {
         'marque': 'Jinko',
         'garantie': '12 ans produit · 30 ans performance linéaire (87,4 %)',
-        'description': ('Module JinkoSolar Tiger Neo 710 Wc, N-type TOPCon\n'
+        # « 710 Wc » → ``pmax_wc``.
+        'description': ('Module JinkoSolar Tiger Neo, N-type TOPCon\n'
                         'Rendement jusqu\'à ≈ 22,9 %, dégradation ≤ 0,4 %/an\n'
                         'Version bifaciale double verre disponible\n'
                         'Certifié IEC 61215 / IEC 61730'),
     },
+    # O1/O3 (2026-08-20) — HARMONISATION avec la fiche web `batterie-dyness`
+    # (apps/web/src/lib/fiches.ts + warranty.ts BATTERY_WARRANTY_YEARS) : ce
+    # bloc affichait « Garantie 5 ans », une valeur introuvable dans AUCUN
+    # document Dyness officiel (contradiction exacte relevée par l'audit — le
+    # web affichait 10 ans pour le même produit DL5.0C). Les documents
+    # officiels dyness.com trouvés donnent 10 ans (version Europe) ou 7 ans
+    # (version Amériques/Pro) selon la région — jamais 5. Harmonisé sur 10 ans,
+    # même valeur et même réserve régionale que le web.
+    # « 90 % DoD » n'est PLUS répété ici (PVFCH) : ``bat_dod_pct`` = 90.0 sur
+    # ces deux SKU dans FICHES_TECHNIQUES ci-dessous PORTE DÉJÀ ce nombre — le
+    # texte le redisait à 80 %, en contradiction avec le champ structuré à
+    # 90 %, exactement le genre de divergence prose/champ que PVFCH corrige.
+    # Source du 90 % : datasheet officielle DL5.0C (dyness.com,
+    # V1.0-20241011) — « Depth of Discharge (DOD): 90% », « Cycle Life[1]:
+    # ≥6000 Cycles », note [1] « 0.2C Charging/Discharging, @25°C, 90% DOD ».
+    # « ≥ 6 000 cycles » reste en prose : aucun champ ne porte le nombre de
+    # cycles.
     **{sku: {
         'marque': 'Dyness',
-        'garantie': 'Garantie 5 ans · ≥ 6 000 cycles (80 % DoD)',
-        'description': ('Batterie lithium LiFePO4 basse tension 51,2 V\n'
+        'garantie': 'Garantie 10 ans (variante régionale : 7 ans) · ≥ 6 000 cycles',
+        # Trou comblé (20/08/2026, revue de la lane moteur) : la migration 0012
+        # backfillait 120 mois sur les batteries EXISTANTES, mais le seeder ne
+        # posait AUCUN garantie_mois — toute base neuve sortait à NULL et le
+        # PDF omettait une garantie POURTANT réelle (dyness.com, DL5.0C ESS
+        # 10-Year Limited Warranty — même source que le texte ci-dessus).
+        'garantie_mois': 120,
+        # « 51,2 V » → ``bat_v_nominal`` (les deux paliers ont leur fiche).
+        'description': ('Batterie lithium LiFePO4 basse tension\n'
                         'Chimie fer-phosphate sûre et durable\n'
                         'BMS intégré CAN/RS485, compatible onduleurs hybrides Deye\n'
                         'Extensible en parallèle'),
     } for sku in ('BAT-DEY-5', 'BAT-DEY-10')},
+    # PVFCH — « 51,2 V » et « 5 kWh » RESTENT en prose : cette référence n'a
+    # PAS de ``FicheTechnique`` (absente de FICHES_TECHNIQUES, contrairement aux
+    # Dyness). Les retirer perdrait la seule trace de ces deux valeurs. Le jour
+    # où sa fiche est saisie, ils partent d'ici — pas avant.
+    # O3 (2026-08-20) — ``garantie`` (un champ SÉPARÉ de la description
+    # ci-dessus, cf. PVFCH) est en revanche RETIRÉ : « Lithium » est une
+    # marque générique non vérifiable (aucun fabricant identifié) — la
+    # garantie « 5 ans » et le « 80 % DoD » n'ont aucune source datasheet et
+    # ne peuvent pas hériter de celle de Dyness (marque différente, non
+    # confirmée identique). Champ retiré plutôt qu'un chiffre non sourcé
+    # (même principe que BAT-DYN-HV-16 ci-dessous).
     'BAT-LIT-5': {
         'marque': 'Lithium',
-        'garantie': 'Garantie 5 ans · ≥ 6 000 cycles (80 % DoD)',
         'description': ('Batterie lithium LiFePO4 basse tension 51,2 V, 5 kWh\n'
                         'BMS intégré, communication CAN/RS485'),
     },
+    # O3 (2026-08-20) — « Gel » est une marque générique non vérifiable
+    # (chimie plomb, sans rapport avec les batteries LFP ci-dessus) : la
+    # garantie « 2 ans » n'a aucune source datasheet — champ retiré plutôt
+    # qu'un chiffre non sourcé.
     'BAT-GEL-22': {
         'marque': 'Gel',
-        'garantie': 'Garantie 2 ans',
         'description': 'Batterie gel plomb étanche sans entretien, usage solaire',
     },
     # PVG4 — Batterie Dyness HAUTE TENSION, 16 kWh (décision fondateur
@@ -493,11 +570,14 @@ FICHES = {
         'description': ('Suivi de production à distance\n'
                         'Visite de maintenance préventive tous les 12 mois pendant 2 ans'),
     },
-    # Pompage
-    **{sku: {'garantie': 'Garantie constructeur 2 ans', 'description': _DESC_POMPE_IMM,
+    # Pompage — O3 (2026-08-20) : ces pompes n'ont aucune marque déclarée
+    # (« pompe immergée/de surface » générique) donc aucune datasheet
+    # constructeur à opposer à « Garantie constructeur 2 ans » — champ retiré
+    # plutôt qu'un chiffre non sourcé.
+    **{sku: {'description': _DESC_POMPE_IMM,
              } for sku in ('PMP-IMM-1.5M', 'PMP-IMM-3M', 'PMP-IMM-4T',
                            'PMP-IMM-5.5T', 'PMP-IMM-7.5T', 'PMP-IMM-10T')},
-    **{sku: {'garantie': 'Garantie constructeur 2 ans', 'description': _DESC_POMPE_SUR,
+    **{sku: {'description': _DESC_POMPE_SUR,
              } for sku in ('PMP-SUR-1.5M', 'PMP-SUR-3T')},
     'CAB-6MM-M': {
         # DC35/G1 (2026-08-19) — le fondateur ne pose que du Nexans : la marque
@@ -514,13 +594,18 @@ FICHES = {
                         'Tension 1,5/1,8 kV DC, conforme NF EN 50618 et CEI 62930 (prix au mètre)'),
     },
     # Variateurs VEICHI
+    # O3 (2026-08-20) — aucune page de garantie corporate veichi.com trouvée ;
+    # les seules mentions « 2 ans » circulant sont des fiches produit de
+    # revendeurs tiers (Alibaba/made-in-china), et d'autres listings tiers
+    # indiquent 18 mois pour la même famille — deux valeurs contradictoires,
+    # aucune ne vient d'un document VEICHI officiel. Champ retiré plutôt qu'un
+    # chiffre non sourcé.
     'VEI-SI22-AFF': {
         'marque': 'VEICHI',
-        'garantie': 'Garantie constructeur 2 ans',
         'description': ('Afficheur déporté pour variateur VEICHI SI22\n'
                         'Lecture des paramètres et défauts au pied du coffret'),
     },
-    **{sku: {'marque': 'VEICHI', 'garantie': 'Garantie constructeur 2 ans',
+    **{sku: {'marque': 'VEICHI',
              'description': _DESC_VEICHI,
              } for sku in ('VEI-SI22-2.2-220', 'VEI-SI23-2.2-220',
                            'VEI-SI23-2.2-380', 'VEI-SI23-4-380',
@@ -530,8 +615,11 @@ FICHES = {
                            'VEI-SI23-30-380', 'VEI-SI23-37-380',
                            'VEI-SI23-45-380', 'VEI-SI23-55-380',
                            'VEI-SI23-75-380')},
-    # Pompes OSP série 30
-    **{sku: {'marque': 'OSP', 'garantie': 'Garantie constructeur 2 ans',
+    # Pompes OSP série 30 — O3 (2026-08-20) : « OSP » n'est pas une marque
+    # identifiable publiquement (aucune page constructeur, aucun document de
+    # garantie trouvé) — « Garantie constructeur 2 ans » n'a donc aucune
+    # source vérifiable. Champ retiré plutôt qu'un chiffre non sourcé.
+    **{sku: {'marque': 'OSP',
              'description': _DESC_OSP,
              } for sku in ('PMP-OSP-30-8', 'PMP-OSP-30-11', 'PMP-OSP-30-13',
                            'PMP-OSP-30-15', 'PMP-OSP-30-16', 'PMP-OSP-30-17',
@@ -1448,11 +1536,14 @@ class Command(BaseCommand):
             produit = Produit.objects.filter(company=company, sku=sku).first()
             if not produit:
                 continue
-            for field in ('marque', 'description', 'garantie'):
+            # `garantie_mois` (structuré, lu par theme.warranties_for) suit le
+            # même contrat de ré-application que le texte de garantie.
+            for field in ('marque', 'description', 'garantie', 'garantie_mois'):
                 if field in fiche:
                     setattr(produit, field, fiche[field])
-            produit.save(update_fields=[f for f in ('marque', 'description', 'garantie')
-                                        if f in fiche])
+            produit.save(update_fields=[
+                f for f in ('marque', 'description', 'garantie', 'garantie_mois')
+                if f in fiche])
             fiches_updated += 1
 
         # ── PV9/PV85 — Fiches techniques (valeurs datasheet constructeur) ──

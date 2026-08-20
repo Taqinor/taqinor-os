@@ -123,6 +123,27 @@ class CompanyProfile(models.Model):
     # Heures de pompage effectives/jour par défaut (mode agricole). Défaut 7.
     agricole_pump_hours = models.DecimalField(
         max_digits=4, decimal_places=1, default=7)
+    # Q4 (fondateur, 20/08/2026) — prix bonbonne butane 12 kg (terrain,
+    # aujourd'hui) et son coût réel non subventionné, utilisés par le moteur
+    # de devis agricole (comparatif carburant + rapport de décompensation :
+    # cout_reel / prix, plus de multiplicateur codé en dur). Défauts = valeurs
+    # terrain mi-2026 ; le fondateur les ajuste à chaque hausse de
+    # décompensation.
+    agricole_prix_bonbonne = models.DecimalField(
+        max_digits=8, decimal_places=2, default=50)
+    agricole_cout_reel_bonbonne = models.DecimalField(
+        max_digits=8, decimal_places=2, default=128)
+    # ── Q5 (fondateur, 20/08/2026) — DÉLAIS COMMERCIAUX PARAMÉTRABLES ─────────
+    # « visite sous 48-72 h » et « installation 7-14 jours » étaient codés en
+    # dur dans quatre renderers ET rendus DANS la boîte « Conditions » du PDF,
+    # où ils se lisaient comme des engagements contractuels. Ils deviennent des
+    # réglages société (texte libre court), s'affichent hors des Conditions et
+    # portent la mention « (indicatif) ». Réglage VIDÉ ⇒ le délai n'apparaît
+    # nulle part (règle du lot : jamais un forfait déguisé en donnée société).
+    delai_visite_technique = models.CharField(
+        max_length=40, blank=True, default='48-72 h')
+    delai_installation = models.CharField(
+        max_length=40, blank=True, default='7-14 jours ouvrés')
     # Préfixes de numérotation des pièces : {devis,facture,avoir,bon_commande}.
     # NULL = repli sur les préfixes historiques (DEV/FAC/AVO/BC).
     doc_prefixes = models.JSONField(null=True, blank=True)

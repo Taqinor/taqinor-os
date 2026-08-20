@@ -32,7 +32,9 @@ import hashlib
 import json
 
 __all__ = ["build_electrical_design", "conception_electrique_stockee",
-           "rendre_schema_du_devis",
+           "rendre_schema_du_devis", "fiches_manquantes_du_devis",
+           "motifs_fiche_incomplete",
+           "VARIABLES_MODULE_REQUISES", "VARIABLES_ONDULEUR_REQUISES",
            "DC_M_MINIMUM", "DC_M_PAR_DEFAUT", "AC_M_DEFAUT"]
 
 #: Longueurs de liaison PAR DÉFAUT (m). DC — F2, décision fondateur
@@ -54,6 +56,79 @@ OVERRIDES_CONNUS = (
     "dc_m", "ac_m", "phases", "regime", "batterie", "zone_keraunique",
     "temp_froid_c", "temp_chaud_c", "longueur_chaine_forcee",
     "plafond_kwc_par_onduleur", "inclure_prise_terre",
+)
+
+
+# ── PVFCH (fondateur 20/08/2026) — « NEVER INVENT NUMBERS » ──────────────────
+#
+# CE QUI A CHANGÉ, ET POURQUOI. Ce module remplissait jusqu'ici les variables
+# d'équipement absentes de la fiche avec les DÉFAUTS de marché de
+# ``solar_design`` (module 450 Wc / 34 V / 41 V / −0,27 %/°C ; onduleur 2 MPPT,
+# fenêtre 120-500 V, 600 V absolus, démarrage 90 V) et, à défaut, avec une
+# REGEX sur le libellé de la ligne (« 10 kW », « triphasé »). Trois de ces
+# nombres décidaient de grandeurs remises à un tiers :
+#
+#   * ``v_max_abs`` (600 V par défaut) est la borne dont le dépassement est
+#     BLOQUANT — un onduleur réel en 1100 V se voyait refuser des chaînes
+#     parfaitement admissibles, et un onduleur réel en 500 V se voyait valider
+#     des chaînes qui l'auraient DÉTRUIT ;
+#   * ``isc_a`` du module, quand la fiche ne le donnait pas, était FABRIQUÉ
+#     (``Imp × 1,06``, Imp lui-même déduit de ``Pmax / Vmp``) — et c'est lui
+#     qui fixe le calibre des fusibles de chaîne (``core.electrique.protections``)
+#     et la section des câbles DC (``core.electrique.cables``) ;
+#   * ``phases`` retombait en monophasé dès que le mot « triphasé » manquait au
+#     libellé, divisant tout le courant AC par √3.
+#
+# LA RÈGLE EST DÉSORMAIS SANS EXCEPTION : une variable d'ÉQUIPEMENT vient de la
+# FICHE TECHNIQUE (``stock.FicheTechnique`` via ``specs_for_produit``) ou le
+# calcul REFUSE en DISANT quel champ manque. Aucun repli, aucune regex, aucune
+# valeur déduite d'une autre.
+#
+# CE QUI RESTE, ET POURQUOI CE N'EST PAS LA MÊME CHOSE : les constantes
+# d'INGÉNIERIE ne sont pas des données d'équipement et gardent leurs valeurs —
+# le forfait de liaison DC/AC (30 m / 15 m, décision fondateur 19/08/2026), les
+# températures de dimensionnement (−5 °C / 70 °C), le régime de neutre TT, et
+# tout le corpus normatif du moteur (ampacités, calibres normalisés, chutes de
+# tension admissibles, NF C 15-100 / UTE C 15-712-1). Elles ne décrivent aucun
+# appareil : elles décrivent le SITE et la NORME.
+#
+# LES DEUX REPLIS DE FICHE CONSERVÉS sont des replis vers une AUTRE VALEUR DE
+# LA MÊME FICHE, jamais vers un nombre inventé, et le moteur les documente
+# déjà : ``v_demarrage_v`` → bas de plage MPPT, ``isc_max_mppt_a`` →
+# ``i_max_mppt_a`` (repli PRUDENT, jamais plus permissif).
+
+#: Variables d'ÉQUIPEMENT du MODULE que le calcul consomme réellement, avec
+#: leur libellé français. Libellés alignés sur ceux du formulaire produit
+#: (``ProduitForm.jsx``, section « Fiche technique ») : le fondateur doit lire
+#: EXACTEMENT le nom du champ qu'il va remplir.
+VARIABLES_MODULE_REQUISES = (
+    ("pmax_wc", "puissance crête (Wc)"),
+    ("voc_v", "tension circuit ouvert — Voc (V)"),
+    ("vmp_v", "tension au point de puissance max — Vmp (V)"),
+    ("isc_a", "courant court-circuit — Isc (A)"),
+    ("imp_a", "courant au point de puissance max — Imp (A)"),
+    ("temp_coeff_voc_pct_c", "coefficient de température Voc (%/°C)"),
+    ("temp_coeff_pmax_pct_c", "coefficient de température Pmax (%/°C)"),
+)
+
+#: Variables d'ÉQUIPEMENT de l'ONDULEUR que le calcul consomme réellement.
+#: Les libellés sont MOT POUR MOT ceux de ``CONTRAT_ONDULEUR``
+#: (``apps/stock/selectors.py``) : le verrou du catalogue et celui-ci doivent
+#: nommer la même variable de la même façon, sans quoi le fondateur cherche
+#: deux champs différents pour un seul trou.
+#:
+#: N'y figurent PAS ``rendement_euro_pct`` (aucun calcul ne le consomme — il
+#: est PUBLIÉ, et reste donc absent du schéma tant qu'une fiche ne le donne
+#: pas), ``v_demarrage_v`` ni ``isc_max_mppt_a`` (leurs replis restent des
+#: valeurs de la MÊME fiche, cf. le bandeau ci-dessus).
+VARIABLES_ONDULEUR_REQUISES = (
+    ("ac_kw", "puissance AC (kW)"),
+    ("phases", "monophasé / triphasé"),
+    ("n_mppt", "nombre d'entrées MPPT"),
+    ("mppt_v_min", "plage MPPT — tension mini (V)"),
+    ("mppt_v_max", "plage MPPT — tension maxi (V)"),
+    ("v_max_abs", "tension DC maximale (V)"),
+    ("i_max_mppt_a", "courant maxi par MPPT (A)"),
 )
 
 
@@ -163,95 +238,87 @@ def _texte_grandeur(valeur, unite, decimales=0):
     return ("%.*f" % (decimales, nombre)).replace(".", ",") + " " + unite
 
 
-def spec_module_du_devis(devis):
-    """``SpecModule`` du panneau du devis — fiche produit, sinon défauts sûrs.
-
-    Les défauts sont ceux de ``solar_design.DEFAULT_MODULE`` (silicium
-    cristallin de marché), à l'exception d'``isc_a``/``imp_a`` que l'historique
-    n'avait pas : ils sont estimés depuis Pmax et Vmp/Voc quand la fiche ne les
-    donne pas, faute de quoi le calibre des fusibles de chaîne serait nul.
-    """
+def specs_module_du_devis(devis):
+    """``(specs, produit, libellé)`` du panneau du devis — fiche BRUTE, sans
+    aucun repli. ``specs`` est le dict de ``specs_for_produit`` : une variable
+    non saisie y est simplement ABSENTE (jamais rendue à ``None``)."""
     from apps.ventes import solar_design as sd
-    from core.electrique.types import SpecModule
 
     produit, libelle = _produit_de_famille(
         devis, lambda designation, nom: sd.is_panel(designation, nom))
-    specs = _specs_produit(produit)
+    return _specs_produit(produit), produit, libelle
 
+
+def spec_module_du_devis(devis):
+    """``SpecModule`` du panneau du devis — LA FICHE, ou rien.
+
+    PVFCH (fondateur 20/08/2026) : plus AUCUN repli. Une variable absente de la
+    fiche vaut ``0.0`` ici et fait REFUSER le calcul en amont
+    (``fiches_manquantes_du_devis``) — elle n'est jamais remplacée par un
+    défaut de marché, par une regex sur le libellé de la ligne, ni déduite
+    d'une autre variable. Un ``0.0`` qui atteindrait le moteur serait un bug de
+    l'appelant, pas une valeur de repli.
+    """
+    from core.electrique.types import SpecModule
+
+    specs, produit, libelle = specs_module_du_devis(devis)
     pmax = _flottant(specs.get("pmax_wc"), 0.0)
-    if pmax <= 0:
-        pmax = float(sd.parse_watt(libelle)
-                     or sd.DEFAULT_MODULE["puissance_w"])
-    vmp = _flottant(specs.get("vmp_v"), float(sd.DEFAULT_MODULE["vmp"]))
-    voc = _flottant(specs.get("voc_v"), float(sd.DEFAULT_MODULE["voc"]))
-    # Isc/Imp : la fiche fait foi ; sinon on les déduit de la puissance (Imp =
-    # Pmax / Vmp) avec la marge usuelle Isc ≈ 1,06 × Imp des fiches silicium.
-    imp = _flottant(specs.get("imp_a"), 0.0)
-    if imp <= 0:
-        imp = (pmax / vmp) if vmp > 0 else 0.0
-    isc = _flottant(specs.get("isc_a"), 0.0)
-    if isc <= 0:
-        isc = imp * 1.06
     return SpecModule(
-        vmp_v=vmp,
-        voc_v=voc,
-        isc_a=isc,
-        imp_a=imp,
+        vmp_v=_flottant(specs.get("vmp_v"), 0.0),
+        voc_v=_flottant(specs.get("voc_v"), 0.0),
+        isc_a=_flottant(specs.get("isc_a"), 0.0),
+        imp_a=_flottant(specs.get("imp_a"), 0.0),
         pmax_wc=pmax,
         temp_coeff_voc_pct_c=_flottant(
-            specs.get("temp_coeff_voc_pct_c"),
-            float(sd.DEFAULT_MODULE["temp_coeff_voc"])),
+            specs.get("temp_coeff_voc_pct_c"), 0.0),
         temp_coeff_pmax_pct_c=_flottant(
-            specs.get("temp_coeff_pmax_pct_c"),
-            float(sd.DEFAULT_MODULE["temp_coeff_vmp"])),
+            specs.get("temp_coeff_pmax_pct_c"), 0.0),
         designation=_designation_materiel(
             produit, libelle, _texte_grandeur(pmax, "Wc")),
     )
 
 
-def spec_onduleur_du_devis(devis):
-    """``SpecOnduleur`` de l'onduleur du devis — fiche produit, sinon défauts.
-
-    Retourne aussi le nombre de PHASES déduit : la fiche d'abord, sinon le
-    libellé (« triphasé » / « tri » / « 400 V ») — un onduleur triphasé mal
-    déclaré ferait chuter le courant AC d'un facteur √3 dans tout le calcul.
-    """
+def specs_onduleur_du_devis(devis):
+    """``(specs, produit, libellé)`` de l'onduleur du devis — fiche BRUTE."""
     from apps.ventes import solar_design as sd
-    from core.electrique.types import SpecOnduleur
 
     produit, libelle = _produit_de_famille(
         devis, lambda designation, nom: sd.is_any_inverter(designation)
         or sd.is_any_inverter(nom))
-    specs = _specs_produit(produit)
-    defauts = sd.DEFAULT_INVERTER_WINDOW
+    return _specs_produit(produit), produit, libelle
 
+
+def spec_onduleur_du_devis(devis):
+    """``SpecOnduleur`` de l'onduleur du devis — LA FICHE, ou rien.
+
+    Retourne aussi le nombre de PHASES : PVFCH (fondateur 20/08/2026) — il se
+    lit sur la fiche (``FicheTechnique.ond_phases``) et NULLE PART ailleurs. La
+    regex historique sur le libellé (« triphasé » / « tétrapolaire ») est
+    SUPPRIMÉE : un onduleur dont la ligne omettait le mot repassait en
+    monophasé sans le dire, divisant tout le courant AC par √3. Sans fiche,
+    ``phases`` vaut 0 et le calcul refuse — il ne devine plus.
+    """
+    from core.electrique.types import SpecOnduleur
+
+    specs, produit, libelle = specs_onduleur_du_devis(devis)
     ac_kw = _flottant(specs.get("ac_kw"), 0.0)
-    if ac_kw <= 0:
-        ac_kw = _flottant(sd.parse_kw(libelle), 0.0)
-
     phases = _entier(specs.get("phases"), 0)
     if phases not in (1, 3):
-        blob = (libelle or "").lower()
-        phases = 3 if ("triphas" in blob or "tétrapolaire" in blob) else 1
+        phases = 0
 
-    # Le courant d'entrée MPPT admissible n'a pas de défaut défendable : à
-    # défaut de fiche, on le laisse à 0 et le moteur SAUTE le verdict de
-    # courant plutôt que d'inventer une limite (il ne dira rien de faux).
     onduleur = SpecOnduleur(
-        n_mppt=max(1, _entier(specs.get("n_mppt"), int(defauts["n_mppt"]))),
-        mppt_v_min=_flottant(specs.get("mppt_v_min"),
-                             float(defauts["v_mppt_min"])),
-        mppt_v_max=_flottant(specs.get("mppt_v_max"),
-                             float(defauts["v_mppt_max"])),
-        v_max_abs=_flottant(specs.get("v_max_abs"), float(defauts["v_max"])),
+        n_mppt=_entier(specs.get("n_mppt"), 0),
+        mppt_v_min=_flottant(specs.get("mppt_v_min"), 0.0),
+        mppt_v_max=_flottant(specs.get("mppt_v_max"), 0.0),
+        v_max_abs=_flottant(specs.get("v_max_abs"), 0.0),
         i_max_mppt_a=_flottant(specs.get("i_max_mppt_a"), 0.0),
         ac_kw=ac_kw,
         phases=phases,
         # PVOND-H (2026-08-19) — la fiche fait foi quand elle la donne
-        # (``FicheTechnique.ond_v_demarrage_v``) ; à défaut, le repli
-        # HISTORIQUE (bas de la fenêtre par défaut) reste inchangé.
-        v_demarrage_v=_flottant(specs.get("v_demarrage_v"),
-                                float(defauts["v_min"])),
+        # (``FicheTechnique.ond_v_demarrage_v``) ; à défaut, le repli reste une
+        # valeur de la MÊME fiche (bas de plage MPPT, cf. ``SpecOnduleur``),
+        # jamais un nombre inventé.
+        v_demarrage_v=(_flottant(specs.get("v_demarrage_v"), 0.0) or None),
         # Le rendement n'a PAS de défaut : il reste None tant qu'une fiche ne
         # le donne pas (il serait sinon publié comme une caractéristique
         # vérifiée de l'appareil sur une pièce technique).
@@ -330,6 +397,54 @@ def _batterie_du_devis(devis):
                 kwh,
                 _flottant(specs.get("v_nominal"), 0.0))
     return (False, "", 0.0, 0.0)
+
+
+# ── PVFCH — le VERROU DE COMPLÉTUDE de l'étude électrique ────────────────────
+
+def fiches_manquantes_du_devis(devis):
+    """``[(matériel, libellé), …]`` — les variables d'équipement ABSENTES.
+
+    Même patron que le verrou du catalogue
+    (``stock.selectors.onduleur_specs_manquantes``, qui grise un onduleur non
+    chiffrable) : on ne calcule pas ce qu'on ne sait pas, et on DIT quel champ
+    manque. Liste vide = toutes les variables consommées par le calcul sont sur
+    la fiche.
+
+    Un devis SANS panneau et SANS onduleur ne rend RIEN : il n'a pas une fiche
+    incomplète, il n'a pas encore de matériel. C'est le cas « aucun module à
+    répartir », que le moteur sait déjà dire lui-même.
+    """
+    manquantes = []
+    specs_module, produit_module, libelle_module = specs_module_du_devis(devis)
+    if produit_module is not None or libelle_module:
+        for cle, libelle in VARIABLES_MODULE_REQUISES:
+            if not _flottant(specs_module.get(cle), 0.0):
+                manquantes.append(("Panneau", libelle))
+
+    specs_ond, produit_ond, libelle_ond = specs_onduleur_du_devis(devis)
+    if produit_ond is not None or libelle_ond:
+        for cle, libelle in VARIABLES_ONDULEUR_REQUISES:
+            if not _flottant(specs_ond.get(cle), 0.0):
+                manquantes.append(("Onduleur", libelle))
+    return manquantes
+
+
+#: Forme GÉNITIVE de chaque matériel — « du panneau », « de l'onduleur ».
+#: L'élision n'est pas un détail : un bandeau qui écrit « du onduleur » se lit
+#: comme une phrase de machine, pas comme un message à un lecteur.
+_GENITIF_MATERIEL = {"Panneau": "du panneau", "Onduleur": "de l'onduleur"}
+
+
+def motifs_fiche_incomplete(devis):
+    """Les motifs de REFUS, en français, prêts à afficher — ``[]`` si complet.
+
+    Un motif par variable manquante : le fondateur doit lire le NOM EXACT du
+    champ à remplir et l'écran où le remplir, pas « données insuffisantes ».
+    """
+    return ["« %s » non renseigné(e) sur la fiche technique %s — "
+            "complétez la fiche technique du produit (Stock → Catalogue)."
+            % (libelle, _GENITIF_MATERIEL.get(materiel, "du matériel"))
+            for materiel, libelle in fiches_manquantes_du_devis(devis)]
 
 
 def construire_entree(devis, overrides=None):
@@ -541,6 +656,12 @@ def rendre_schema_du_devis(devis):
     """
     if conception_electrique_stockee(devis) is None:
         return None
+    # PVFCH (fondateur 20/08/2026) — un schéma unifilaire est une pièce
+    # technique remise au gestionnaire de réseau : il ne se dessine JAMAIS avec
+    # une tension maximale, une fenêtre MPPT ou un Isc inventés. Fiche
+    # incomplète ⇒ pas de schéma, comme un devis sans calepinage.
+    if fiches_manquantes_du_devis(devis):
+        return None
     from core.electrique import concevoir
     from core.electrique.schema import rendre_schema
 
@@ -567,6 +688,7 @@ def build_electrical_design(devis, *, overrides=None):
     au second (idempotence QJ17).
     """
     from core.electrique import concevoir
+    from core.electrique.types import Conformite, ResultatElectrique
 
     entree = construire_entree(devis, overrides)
     empreinte = empreinte_entree(devis, entree)
@@ -575,6 +697,27 @@ def build_electrical_design(devis, *, overrides=None):
     if stockee is not None \
             and getattr(devis, "electrical_design_hash", None) == empreinte:
         return stockee
+
+    # PVFCH (fondateur 20/08/2026) — FICHE INCOMPLÈTE : on rend le contrat
+    # COMPLET EN FORME (toutes les clés, listes vides) mais VIDE DE NOMBRES, et
+    # on DIT dans ``bloquants`` quel champ manque. L'écran affiche déjà cette
+    # liste telle quelle (``ConceptionElectrique.jsx``) et rend « Aucune chaîne
+    # calculée » : il dégrade sans rien inventer, sans une ligne de front.
+    #
+    # ON NE PERSISTE RIEN dans ce cas, et c'est le point important : un refus
+    # n'est PAS une étude. ``Devis.electrical_design`` reste ``None``, donc
+    # l'annexe technique du PDF (déclenchée par la seule EXISTENCE d'une étude)
+    # ne sort pas, le schéma public reste absent, et le repli historique à cinq
+    # blocs du builder n'est jamais réveillé pour couvrir un trou de fiche.
+    # Sans cela, un devis sans fiche aurait imprimé une esquisse d'aspect
+    # officiel au-dessus d'une nomenclature VIDE.
+    motifs = motifs_fiche_incomplete(devis)
+    if motifs:
+        return projeter_contrat(entree, ResultatElectrique(
+            conformite=Conformite(conforme=False, bloquants=tuple(motifs)),
+            note=("Étude non calculée : une pièce technique ne se dessine pas "
+                  "avec des valeurs supposées. Complétez la fiche technique "
+                  "du matériel, puis relancez le calcul.",)))
 
     design = projeter_contrat(entree, concevoir(entree))
     devis.electrical_design = design

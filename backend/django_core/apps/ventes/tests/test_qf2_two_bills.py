@@ -59,9 +59,19 @@ class TestTwoBillsSavingsPure(SimpleTestCase):
         # NEVER above the full bill (no injection bonus).
         self.assertLessEqual(out["economie"], round(_onee_annual_bill(300)) + 1)
 
-    def test_lydec_flagged_approximatif(self):
-        out = two_bills_savings(6200, 3600, 0.30, utility="lydec")
-        self.assertTrue(out["approximatif"])
+    def test_lydec_lit_la_grille_nationale_et_n_est_plus_approximatif(self):
+        """Q7 (décision fondateur du 20/08/2026) — les grilles « approximatives »
+        Lydec/Redal sont supprimées : trois paliers ronds jamais vérifiés, qui
+        faisaient diverger la facture d'un MÊME client selon un champ de
+        formulaire, puis un drapeau qui avouait le problème sans le corriger.
+        Les trois distributeurs lisent la grille nationale ; le nom n'est plus
+        qu'un libellé."""
+        ref = two_bills_savings(6200, 3600, 0.30, utility="onee")
+        for utility in ("lydec", "redal"):
+            out = two_bills_savings(6200, 3600, 0.30, utility=utility)
+            self.assertFalse(out["approximatif"], utility)
+            self.assertAlmostEqual(out["economie"], ref["economie"],
+                                   places=6, msg=utility)
 
     def test_returns_none_without_table_or_data(self):
         self.assertIsNone(two_bills_savings(6200, 3600, 0.30))         # no table
@@ -185,14 +195,17 @@ class TestBuilderTwoBillsExposure(TestCase):
                          data['eco_s_ann'])
         self.assertFalse(data['factures_approximatif'])
 
-    def test_lydec_bills_flagged_approximatif(self):
+    def test_lydec_n_est_plus_publie_comme_approximatif(self):
+        """Q7 — un devis Lydec est chiffré sur la grille NATIONALE : le modèle
+        « factures » reste actif (barème réel par tranches) et plus aucun
+        drapeau « approximatif » ne franchit la frontière du rendu."""
         from apps.ventes.quote_engine import build_quote_data
         devis = self._devis(
             etude_params={'distributeur': 'lydec', 'conso_annuelle': 6000},
             reference='DEV-QF2-0002')
         data = build_quote_data(devis)
         self.assertEqual(data['savings_model'], 'factures')
-        self.assertTrue(data['factures_approximatif'])
+        self.assertFalse(data['factures_approximatif'])
 
     def test_no_data_path_is_honest(self):
         """No bill/consumption → old estimate, flagged, no fabricated bills."""
@@ -222,10 +235,15 @@ class TestBuilderTwoBillsExposure(TestCase):
 class TestFacturesReellesContract(TestCase):
     """PACT10/QF-REAL (19/08/2026) — quand etude_params porte les 12 VRAIES
     factures mensuelles du client (contrat semé par le devis auto résidentiel
-    — autoQuote.js S1), elles remplacent le proxy circulaire comme série
-    « avant » ; l'absence de la clé (ou une clé malformée) reste
-    BYTE-IDENTIQUE au proxy historique (aucune régression pour un devis
-    existant)."""
+    — autoQuote.js S1), elles deviennent la série « avant ».
+
+    M1 (audit adversarial, 20/08/2026) — CE QUI A CHANGÉ : l'absence de la clé
+    ne retombe PLUS sur le proxy circulaire ``économie / taux
+    d'autoconsommation``. Ce repli reconstruisait la facture à partir de
+    l'économie supposée, elle-même dérivée du même taux : le « −85 % » de la
+    page 1 n'était que le taux forfaitaire redéguisé. Absence ⇒ ``None`` ⇒ la
+    page 1 n'est pas rendue. Les tests ci-dessous épinglent donc désormais
+    l'OMISSION là où ils épinglaient le proxy."""
 
     def setUp(self):
         from authentication.models import Company
@@ -294,12 +312,10 @@ class TestFacturesReellesContract(TestCase):
         self.assertLess(synth['coverage_pct'], 100)
         self.assertGreater(synth['coverage_pct'], 0)
 
-    # Le pin du repli ne RE-DÉRIVE jamais le proxy à la main : le dénominateur
-    # (taux « avec ») dépend du devis et du modèle d'économies retenu — le pin
-    # manuel « / AUTOCONSO_AVEC » était FAUX dès que le modèle « factures »
-    # s'active (rouge CI du 19/08). Le VRAI contrat de S2 : une clé absente ou
-    # malformée rend EXACTEMENT ce que rend le build sans la clé — on compare
-    # donc deux builds construits dans le MÊME test (même catalogue).
+    # Le contrat de S2 : une clé absente ou malformée rend EXACTEMENT ce que
+    # rend le build sans la clé — on compare deux builds construits dans le
+    # MÊME test (même catalogue). Depuis M1, ce « ce que rend le build sans la
+    # clé » est ``None`` : plus rien à re-dériver à la main.
     def _factures_rendues(self, etude_params, reference):
         from apps.ventes.quote_engine import build_quote_data
         return build_quote_data(
@@ -318,19 +334,21 @@ class TestFacturesReellesContract(TestCase):
         self.assertEqual(avec, sans)
         return sans
 
-    def test_absence_of_keys_stays_byte_identical_to_legacy_proxy(self):
-        """Pin du comportement HISTORIQUE : sans factures_mensuelles_reelles,
-        la série « avant » reste le proxy éco/autoconso (12 entiers > 0), et
-        une clé None est traitée comme une clé absente."""
+    def test_absence_de_factures_reelles_donne_none_jamais_un_proxy(self):
+        """M1 — sans factures_mensuelles_reelles, la série « avant » vaut
+        ``None`` : plus aucun proxy éco/autoconso, et une clé ``None`` est
+        traitée comme une clé absente."""
         sans = self._assert_repli_identique(None, 'DEV-QFREAL-0002')
-        self.assertEqual(len(sans), 12)
-        self.assertTrue(all(v > 0 for v in sans), sans)
+        self.assertIsNone(sans)
 
-    def test_wrong_length_falls_back_silently_to_proxy(self):
-        self._assert_repli_identique([1200] * 11, 'DEV-QFREAL-0003')  # 11≠12
+    def test_wrong_length_est_traitee_comme_une_absence(self):
+        self.assertIsNone(
+            self._assert_repli_identique([1200] * 11, 'DEV-QFREAL-0003'))
 
-    def test_non_numeric_values_fall_back_silently_to_proxy(self):
-        self._assert_repli_identique(['x'] * 12, 'DEV-QFREAL-0004')
+    def test_non_numeric_values_est_traitee_comme_une_absence(self):
+        self.assertIsNone(
+            self._assert_repli_identique(['x'] * 12, 'DEV-QFREAL-0004'))
 
-    def test_non_positive_values_fall_back_silently_to_proxy(self):
-        self._assert_repli_identique([0] * 12, 'DEV-QFREAL-0005')
+    def test_non_positive_values_est_traitee_comme_une_absence(self):
+        self.assertIsNone(
+            self._assert_repli_identique([0] * 12, 'DEV-QFREAL-0005'))

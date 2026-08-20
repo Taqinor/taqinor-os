@@ -115,6 +115,10 @@ const withKeys = (rows) => rows.map(r => ({
   optionnelle: !!r.optionnelle,
   // XSAL14 — type de ligne : 'produit' (défaut) / 'section' / 'note'.
   typeLigne: r.typeLigne ?? 'produit',
+  // N2 — verrou « prix tapé à la main » : préservé au rechargement d'un
+  // brouillon (VX62 draft restore), sinon False (chargement serveur/auto-fill —
+  // rien n'a encore été tapé sur CES lignes-là).
+  prixManuel: !!r.prixManuel,
 }))
 
 // Nouvelle ligne vide — quantité 0 comme addProductLine() du simulateur
@@ -136,6 +140,8 @@ const emptyLine = () => ({
   optionnelle: false,
   // XSAL14 — type de ligne : 'produit' (défaut) / 'section' / 'note'.
   typeLigne: 'produit',
+  // N2 — aucun prix tapé à la main pour l'instant.
+  prixManuel: false,
 })
 
 // XSAL14 — ligne de SECTION (intertitre) ou de NOTE (texte sans prix). Ne porte
@@ -153,6 +159,7 @@ const structureLine = (typeLigne) => ({
   groupeLabel: '',
   optionnelle: false,
   typeLigne,
+  prixManuel: false,
 })
 
 const fmtNum = (v) => (v !== null && v !== undefined) ? formatNumber(v) : 'N/A'
@@ -748,6 +755,16 @@ export default function DevisGenerator({
     return kwhMensuel > 0 ? Math.round(kwhMensuel * 12) : null
   })()
 
+  // N1/N4 — `monthly` démarre avec les valeurs D'EXEMPLE du simulateur
+  // (DEFAULT_MONTHLY_BILLS) : tant qu'aucune n'a été touchée (hiver/été,
+  // « Estimer 12 mois », ou une case du détail mensuel éditée à la main),
+  // AUCUNE vraie facture client n'existe encore. Sert à la fois à décider si
+  // le graphique écran peut se présenter comme un fait (N4) et si
+  // `etude_params.factures_mensuelles_reelles` doit être semé à
+  // l'enregistrement (N1) — jamais les valeurs d'exemple.
+  const facturesSaisies = monthly.some(
+    (v, i) => Number(v) !== DEFAULT_MONTHLY_BILLS[i])
+
   // Lead prioritaire résolu tôt : le calcul ROI ci-dessous lit sa ville
   // (productible par ville) — doit être déclaré avant le useMemo (pas de TDZ).
   const selectedLead = leads.find(l => String(l.id) === String(leadId))
@@ -1300,14 +1317,22 @@ export default function DevisGenerator({
     const hiver = parseFloat(hiverVal) || 0
     const ete = parseFloat(eteVal) || 0
     if (hiver <= 0) return
-    const sizing = computeAutoSizing(hiver, ete)
-    if (sizing) {
-      setNbPanneaux(String(sizing.nbPanneaux))
-      setSizingInfo(sizing)
-    } else {
-      const suggested = estimerPanneaux(hiver)
-      if (suggested > 0) setNbPanneaux(String(suggested))
-      setSizingInfo(null)
+    // N3 — un nombre de panneaux TAPÉ À LA MAIN (nbPanneauxTouched, le MÊME
+    // garde-fou « intact » qu'applyLead/applySiteProfile ci-dessus) n'est plus
+    // jamais re-forcé par le redimensionnement automatique déclenché par la
+    // frappe sur les factures : il ne se resynchronise qu'via une recomposition
+    // EXPLICITE (« Auto-remplir », ou en retouchant nbPanneaux/kwcCible
+    // eux-mêmes). Les factures (monthly), elles, restent toujours à jour.
+    if (!nbPanneauxTouched.current) {
+      const sizing = computeAutoSizing(hiver, ete)
+      if (sizing) {
+        setNbPanneaux(String(sizing.nbPanneaux))
+        setSizingInfo(sizing)
+      } else {
+        const suggested = estimerPanneaux(hiver)
+        if (suggested > 0) setNbPanneaux(String(suggested))
+        setSizingInfo(null)
+      }
     }
     setMonthly(estimerMois(hiver, ete > 0 ? ete : hiver))
   }
@@ -1345,10 +1370,19 @@ export default function DevisGenerator({
   const setLine = useCallback((key, k, v) => {
     if (k === 'taux_tva') ecrireLastTva(v)
     setLines(ls => ls.map(l => (l._key === key
-      // VX249(b) — une modification MANUELLE du taux retire le style
-      // « suggéré » de CETTE ligne (jamais les autres) ; tout autre champ
-      // laisse `_tvaSuggested` inchangé.
-      ? { ...l, [k]: v, ...(k === 'taux_tva' ? { _tvaSuggested: false } : {}) }
+      ? {
+          ...l, [k]: v,
+          // VX249(b) — une modification MANUELLE du taux retire le style
+          // « suggéré » de CETTE ligne (jamais les autres) ; tout autre champ
+          // laisse `_tvaSuggested` inchangé.
+          ...(k === 'taux_tva' ? { _tvaSuggested: false } : {}),
+          // N2 — la frappe manuelle du prix pose le verrou `prixManuel` : la
+          // résolution de liste de prix (refreshTarif, déclenchée par l'effet
+          // [clientId, lines.length]) ne réécrit plus ce prix tant que le
+          // produit de CETTE ligne n'est pas resélectionné (onProduitChange
+          // lève le verrou).
+          ...(k === 'prix_unit_ttc' ? { prixManuel: true } : {}),
+        }
       : l)))
   }, [setLines])
 
@@ -1376,8 +1410,13 @@ export default function DevisGenerator({
       })
       if (data.source && data.source !== 'standard') {
         setTarifBadges(b => ({ ...b, [key]: data.liste_nom }))
+        // N2 — jamais réécrire un prix TAPÉ À LA MAIN (drapeau `prixManuel`,
+        // relu ICI au moment de l'écriture via la mise à jour fonctionnelle —
+        // jamais un `lines` capturé au lancement de l'appel réseau, qui serait
+        // périmé) : le vendeur reprend la main tant qu'il n'a pas resélectionné
+        // le produit de cette ligne (onProduitChange lève le verrou).
         setLines(ls => ls.map(l =>
-          l._key === key ? { ...l, prix_unit_ttc: String(data.prix) } : l))
+          (l._key === key && !l.prixManuel) ? { ...l, prix_unit_ttc: String(data.prix) } : l))
       } else {
         setTarifBadges(b => { const { [key]: _drop, ...rest } = b; return rest })
       }
@@ -1398,6 +1437,9 @@ export default function DevisGenerator({
             designation: p?.nom ?? l.designation,
             prix_unit_ttc: p ? String(ttcFromHt(p.prix_vente, tauxTvaOf(p))) : l.prix_unit_ttc,
             taux_tva: p ? String(tauxTvaOf(p)) : (l.taux_tva ?? '20'),
+            // N2 — resélectionner un produit reprend la main sur son prix
+            // catalogue : lève le verrou manuel posé par une frappe précédente.
+            prixManuel: false,
           }
         : l
     ))
@@ -1833,6 +1875,33 @@ export default function DevisGenerator({
           fuel_spend_current: farmFuelSpendAnnual !== '' ? farmFuelSpendAnnual : null,
           hmt_static: parseFloat(farmHmtStatic) || null,
           hmt_drawdown: parseFloat(farmHmtDrawdown) || null,
+        }
+      }
+      // N1 — sème les 12 factures RÉELLES du client (etude_params.
+      // factures_mensuelles_reelles) depuis la saisie hiver/été OU le détail
+      // mensuel de CE devis, quand elle a RÉELLEMENT été faite
+      // (facturesSaisies — jamais les valeurs D'EXEMPLE de
+      // DEFAULT_MONTHLY_BILLS). Un devis créé à la main (sans passer par le
+      // devis auto d'un lead) n'avait AUCUN moyen d'alimenter ce champ : sans
+      // lui, le moteur PDF ne peut plus reconstruire la facture « avant »
+      // (page 1 économies). Même patron que le devis auto (autoQuote.js,
+      // bloc PACT10/QF-REAL) : kwhFromBill au barème réel du distributeur
+      // choisi, jamais un chiffre supposé. Rien saisi → aucun changement de
+      // payload (etudeParams reste exactement ce qu'il était).
+      if (facturesSaisies) {
+        const facturesReelles = monthly.map(v => parseFloat(v) || 0)
+        etudeParams = {
+          ...(etudeParams || {}),
+          factures_mensuelles_reelles: facturesReelles,
+        }
+        // conso_annuelle dérivée UNIQUEMENT si aucune source plus directe ne
+        // l'a déjà posée (« Facture réelle du client » QF4/QF5 ci-dessous via
+        // buildEtudeParamsChoice, ou l'étude industrielle/agricole
+        // ci-dessus) — buildEtudeParamsChoice garde alors ce chiffre intact.
+        if (etudeParams.conso_annuelle == null) {
+          const consoDeriveeFactures = Math.round(facturesReelles.reduce(
+            (somme, bill) => somme + (kwhFromBill(bill, distributeur).kwhMensuel || 0), 0))
+          if (consoDeriveeFactures > 0) etudeParams.conso_annuelle = consoDeriveeFactures
         }
       }
       // QF7 — persiste le scénario + l'option recommandée affichés à l'écran
@@ -3171,31 +3240,45 @@ export default function DevisGenerator({
                   )}
                 </div>
                 <div className="gen-chart-title">Économies mensuelles estimées (MAD / mois)</div>
-                <ResponsiveContainer width="100%" height={260}>
-                  <ComposedChart data={chartData}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(0,0,0,0.07)" />
-                    <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                    <YAxis tick={{ fontSize: 11 }}
-                           label={{ value: 'MAD / mois', angle: -90, position: 'insideLeft', fontSize: 11 }}
-                           tickFormatter={(v) => formatNumber(v)} />
-                    <Tooltip formatter={(v, name) => [`${formatMAD(v, { decimals: 0 })}`, name]} />
-                    <Legend wrapperStyle={{ fontSize: 12 }} />
-                    <Bar dataKey="facture" name="Facture ONEE (MAD)"
-                         fill="rgba(181,192,206,0.55)" stroke="rgba(181,192,206,0.8)" radius={[3, 3, 0, 0]} />
-                    {showSans && (
-                      <Line type="monotone" dataKey="ecoSans"
-                            name={'Option 1 – Sans batterie' + (sansRec ? ' ⭐' : '')}
-                            stroke="var(--gen-chart-sans)" strokeWidth={sansRec ? 3.5 : 2.2}
-                            dot={{ r: sansRec ? 5 : 4 }} />
-                    )}
-                    {showAvec && (
-                      <Line type="monotone" dataKey="ecoAvec"
-                            name={'Option 2 – Avec batterie' + (avecRec ? ' ⭐' : '')}
-                            stroke="var(--gen-chart-avec)" strokeWidth={avecRec ? 3.5 : 2.2}
-                            dot={{ r: avecRec ? 5 : 4 }} />
-                    )}
-                  </ComposedChart>
-                </ResponsiveContainer>
+                {/* N4 — tant qu'aucune facture RÉELLE n'a été saisie
+                    (facturesSaisies), `monthly` ne porte que les valeurs
+                    D'EXEMPLE du simulateur (DEFAULT_MONTHLY_BILLS) : le
+                    graphique « Facture ONEE » ne doit alors jamais se
+                    présenter comme une donnée du client — il est masqué au
+                    profit d'un message explicite. */}
+                {facturesSaisies ? (
+                  <ResponsiveContainer width="100%" height={260}>
+                    <ComposedChart data={chartData}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(0,0,0,0.07)" />
+                      <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                      <YAxis tick={{ fontSize: 11 }}
+                             label={{ value: 'MAD / mois', angle: -90, position: 'insideLeft', fontSize: 11 }}
+                             tickFormatter={(v) => formatNumber(v)} />
+                      <Tooltip formatter={(v, name) => [`${formatMAD(v, { decimals: 0 })}`, name]} />
+                      <Legend wrapperStyle={{ fontSize: 12 }} />
+                      <Bar dataKey="facture" name="Facture ONEE (MAD)"
+                           fill="rgba(181,192,206,0.55)" stroke="rgba(181,192,206,0.8)" radius={[3, 3, 0, 0]} />
+                      {showSans && (
+                        <Line type="monotone" dataKey="ecoSans"
+                              name={'Option 1 – Sans batterie' + (sansRec ? ' ⭐' : '')}
+                              stroke="var(--gen-chart-sans)" strokeWidth={sansRec ? 3.5 : 2.2}
+                              dot={{ r: sansRec ? 5 : 4 }} />
+                      )}
+                      {showAvec && (
+                        <Line type="monotone" dataKey="ecoAvec"
+                              name={'Option 2 – Avec batterie' + (avecRec ? ' ⭐' : '')}
+                              stroke="var(--gen-chart-avec)" strokeWidth={avecRec ? 3.5 : 2.2}
+                              dot={{ r: avecRec ? 5 : 4 }} />
+                      )}
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <p className="py-6 text-center text-sm text-muted-foreground" data-testid="chart-no-bills">
+                    Graphique masqué — exemple sans saisie réelle. Renseignez vos
+                    factures (hiver/été ou détail mensuel ci-dessus) pour voir vos
+                    économies mensuelles réelles.
+                  </p>
+                )}
               </>
             )}
           </CardContent>

@@ -45,7 +45,15 @@ def build(ctx):
     client_full = theme.titlecase_name(d.get("client_full") or d.get("client_name") or "Client")
     client_meta = theme.join_meta(d.get("client_addr", ""), d.get("client_city", ""),
                                   d.get("client_phone", ""))
-    validity_days = d.get("validity_days", 30)
+    # M7 (audit du 19/08/2026) — pastille de validité : la VRAIE date
+    # d'échéance du devis (``valid_until``, posée par le builder depuis
+    # ``date_validite`` ou le réglage société ``quote_validity_days``).
+    # Indéterminable ⇒ pastille OMISE : le portail client affichait la
+    # vraie date, le PDF un « 30 jours » codé en dur.
+    _vu = (d.get("valid_until") or "").strip()
+    validity_pill = (
+        f'<div class="c1c-pill">Valable jusqu&#8217;au {_vu}</div>'
+        if _vu else "")
 
     cat = d.get("com_category")
     meta = categories.meta(cat)
@@ -151,7 +159,7 @@ def build(ctx):
         <div class="c1c-rl">Réf. devis</div>
         <div class="c1c-rv">{ref}</div>
         <div class="c1c-hd">{date}</div>
-        <div class="c1c-pill">Validité {validity_days} jours</div>
+        {validity_pill}
       </div>
     </div>
     <div class="c1c-hbody">

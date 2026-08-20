@@ -31,7 +31,10 @@ from .models_documents import DocumentTemplates
 # défaut (FK propres à la société source).
 PROFILE_CONFIG_FIELDS = [
     'couleur_principale', 'payment_terms', 'quote_validity_days',
-    'agricole_pump_hours', 'doc_prefixes', 'doc_numbering',
+    'agricole_pump_hours', 'agricole_prix_bonbonne', 'agricole_cout_reel_bonbonne',
+    # Q5 — délais commerciaux (texte libre court ; vide ⇒ délai non affiché).
+    'delai_visite_technique', 'delai_installation',
+    'doc_prefixes', 'doc_numbering',
     'tva_standard', 'tva_panneaux', 'onee_tarif_kwh', 'productible_kwh_kwc',
     'rendement_global', 'panneaux_par_900mad', 'prix_cible_kwc_defaut',
     'remise_max_pct', 'discount_approval_threshold',

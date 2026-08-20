@@ -10,12 +10,15 @@ Surplus injected to the grid is NOT valued — the ANRE BT residential
 net-billing tariff is unpublished/unconfirmed; including it would be
 fabricating income.
 
-Tranche tables for ONEE, Lydec, Redal are provided as module-level
-constants. ONEE is the founder-verified RÉGIE grid, SELECTIVE above
-150 kWh/month (crossing a step re-prices the WHOLE month) and identical
-to the public estimator's grid; Lydec/Redal stay progressive and flagged
-APPROXIMATIF, subject to revision. They can be overridden per quote via
-``etude_params`` passed to ``calculate_savings_roi``.
+Q7 (décision fondateur du 20/08/2026) — UN SEUL BARÈME NATIONAL : la grille
+ONEE vérifiée (SÉLECTIVE au-delà de 150 kWh/mois — franchir une marche
+re-tarife TOUT le mois), identique à celle de l'estimateur public. Les trois
+distributeurs (ONEE, Lydec, Redal) la lisent ; le nom du distributeur n'est
+plus qu'un LIBELLÉ. Les anciennes grilles « approximatives » Lydec/Redal sont
+supprimées : jamais vérifiées, elles faisaient diverger la facture d'un même
+client selon un champ de formulaire. Une société dont la grille réelle diffère
+la SAISIT (Paramètres → Tarification & ROI, ``TariffSettings``), et un devis
+peut la surcharger via ``etude_params``.
 
 All tables are TTC tariffs (the customer pays TTC, so the avoided cost
 is the TTC tariff).
@@ -23,7 +26,7 @@ is the TTC tariff).
 from __future__ import annotations
 
 # ── Utility tranche tables ─────────────────────────────────────────────────────
-# APPROXIMATIF / À CONFIRMER — tarifs TTC (MAD/kWh, TVA incluse) au 2026.
+# Tarifs TTC (MAD/kWh, TVA incluse) au 2026 — grille NATIONALE vérifiée (Q7).
 # Source: barèmes ONEE/distributeurs publiés (résidentiel BT, compteur monophasé).
 # Ces constantes sont les SEULS prix de référence ; aucun autre fichier ne doit
 # porter de prix kWh en dur. Le vendeur peut les surcharger via etude_params.
@@ -49,9 +52,9 @@ class TrancheTable(list):
     qui PEUT porter la règle SÉLECTIVE marocaine.
 
     Reste une ``list`` de paires à tous points de vue (itération, indexation,
-    égalité avec une liste nue) : les tables purement PROGRESSIVES (Lydec,
-    Redal, barème collé par le vendeur) sont de simples listes et gardent
-    exactement leur comportement historique.
+    égalité avec une liste nue) : une table purement PROGRESSIVE (barème collé
+    par le vendeur, surcharge société) est une simple liste et garde
+    exactement son comportement historique.
 
     Attributs :
         selective_threshold  Conso mensuelle (kWh) au-delà de laquelle la
@@ -170,28 +173,20 @@ ONEE_TRANCHES = TrancheTable(
     boundary_tolerance=10,
 )
 
-# Lydec (Casablanca / Grand Casablanca) — APPROXIMATIF, à confirmer avec tarif Lydec
-# Reste PROGRESSIF : aucune donnée sélective vérifiée pour les délégataires — on
-# n'invente pas des seuils qu'on n'a pas (le drapeau « approximatif » subsiste).
-LYDEC_TRANCHES = [
-    (100, 0.9500),
-    (200, 1.1500),
-    (None, 1.4500),
-]
-
-# Redal (Rabat / Salé / Kénitra) — APPROXIMATIF, à confirmer avec tarif Redal
-# Progressif également (même raison que Lydec).
-REDAL_TRANCHES = [
-    (100, 0.9300),
-    (200, 1.1200),
-    (None, 1.4200),
-]
-
-# Mapping distributer name → tranche table (alias-tolerant)
+# ── Q7 (décision fondateur du 20/08/2026) — UN SEUL BARÈME NATIONAL ──────────
+# Les grilles « approximatives » Lydec et Redal DISPARAISSENT. Elles étaient
+# inventées (« à confirmer avec tarif Lydec », trois paliers ronds jamais
+# vérifiés) et produisaient, sur un même client, une facture différente de
+# celle du barème national — puis un drapeau « approximatif » qui avouait le
+# problème sans le corriger. Les trois distributeurs résolvent désormais sur LA
+# grille nationale ci-dessus, éditable par société (Paramètres → Tarification &
+# ROI). Le nom du distributeur reste un LIBELLÉ (il s'affiche, il ne calcule
+# plus) : un délégataire dont la grille réelle diffère se saisit comme
+# surcharge société, jamais comme approximation codée en dur.
 UTILITY_TABLES = {
     "onee": ONEE_TRANCHES,
-    "lydec": LYDEC_TRANCHES,
-    "redal": REDAL_TRANCHES,
+    "lydec": ONEE_TRANCHES,
+    "redal": ONEE_TRANCHES,
 }
 
 # Taux d'autoconsommation par option (estimation documentée, pas de netting)
@@ -278,9 +273,10 @@ _DEFAULT_PRODUCTIBLE = 1240
 # Label affiché quand on dégrade en estimation (pas de données tarifaires)
 ESTIMATION_LABEL = "estimation"
 
-# Tables de distributeurs privés ESTIMÉES (à confirmer) — tout calcul qui les
-# utilise porte le drapeau « approximatif ». ONEE reste le barème public officiel.
-APPROX_UTILITIES = {"lydec", "redal"}
+# Q7 — plus AUCUNE table approximative : les trois distributeurs lisent la même
+# grille nationale (éditable par société). L'ensemble reste défini, VIDE, pour
+# les appelants qui l'importent encore ; il ne peut plus rien étiqueter.
+APPROX_UTILITIES = frozenset()
 
 
 def _resolve_tranches(utility=None, tranches_override=None):
@@ -289,8 +285,9 @@ def _resolve_tranches(utility=None, tranches_override=None):
     Returns:
         (table | None, approximatif: bool)
         ``table`` est None quand AUCUNE donnée tarifaire n'existe (l'appelant
-        dégrade alors en estimation honnête). ``approximatif`` est True quand la
-        table vient d'un distributeur privé estimé (Lydec/Redal, à confirmer).
+        dégrade alors en estimation honnête). Q7 — ``approximatif`` vaut
+        DÉSORMAIS toujours False : il n'existe plus de table estimée, les trois
+        distributeurs lisant la grille nationale (éditable par société).
     """
     if tranches_override:
         # Une table SÉLECTIVE fournie telle quelle garde sa règle ; une liste de
@@ -299,8 +296,8 @@ def _resolve_tranches(utility=None, tranches_override=None):
             return tranches_override, False
         return list(tranches_override), False
     if utility and str(utility).lower() in UTILITY_TABLES:
-        key = str(utility).lower()
-        return UTILITY_TABLES[key], key in APPROX_UTILITIES
+        # Q7 — le distributeur est un LIBELLÉ : la grille est la même pour tous.
+        return UTILITY_TABLES[str(utility).lower()], False
     return None, False
 
 
@@ -424,14 +421,16 @@ def kwh_from_bill(bill_mad, utility=None, tranches_override=None) -> dict:
 
     Returns dict:
         kwh_mensuel   float — consommation mensuelle estimée (kWh).
-        approximatif  bool  — True quand la table utilisée est estimée
-                              (Lydec/Redal, à confirmer).
+        approximatif  bool  — Q7 : TOUJOURS False. Il n'existe plus de table
+                              estimée — les trois distributeurs lisent la
+                              grille nationale. Conservé pour ne casser aucun
+                              appelant.
         estimation    bool  — True quand AUCUNE table n'est disponible ou que la
                               facture est vide : le chiffre est une estimation
                               (prix plat de repli), jamais présenté comme précis.
         label         str   — ESTIMATION_LABEL quand ``estimation`` est True,
-                              « approximatif » quand seule la table est estimée,
-                              '' sinon.
+                              '' sinon (Q7 : plus aucune table estimée à
+                              étiqueter « approximatif »).
     """
     try:
         bill = float(bill_mad or 0)
@@ -483,7 +482,7 @@ def annual_bill_from_kwh(monthly_kwh, utility=None, tranches_override=None) -> d
     Returns dict:
         bill_mensuel  float — facture mensuelle TTC (MAD).
         bill_annuel   float — facture annuelle TTC (MAD) = mensuelle × 12.
-        approximatif  bool  — table estimée (Lydec/Redal, à confirmer).
+        approximatif  bool  — Q7 : toujours False (plus de table estimée).
         estimation    bool  — True quand aucune table n'est disponible (repli
                               plat) ou consommation vide : chiffre étiqueté
                               « estimation », jamais présenté comme précis.
@@ -601,7 +600,7 @@ def two_bills_savings(
         facture_avec   int  — facture annuelle TTC avec solaire (MAD).
         economie       int  — facture_sans − facture_avec (≥ 0).
         autoconso_kwh  int  — kWh autoconsommés retenus (plafonnés à la conso).
-        approximatif   bool — table distributeur estimée (Lydec/Redal).
+        approximatif   bool — Q7 : toujours False (plus de table estimée).
     """
     table, approx = _resolve_tranches(utility, tranches_override)
     if table is None:
@@ -641,8 +640,15 @@ PANEL_DEGRADATION = 0.005        # 0,5 %/an — perte de production annuelle
 # peut qu'améliorer le résultat.
 TARIFF_ESCALATION = 0.0
 BATTERY_ROUNDTRIP = 0.90         # rendement aller-retour batterie (option 2)
+# ── Q1 (décision fondateur du 20/08/2026) — PROVISION DE REMPLACEMENT ONDULEUR ─
+# Le principe mi-vie (IEA PVPS) est confirmé : l'onduleur se remplace vers
+# l'année 12. Le MONTANT, lui, n'est plus un pourcentage forfaitaire du CAPEX
+# (l'ancien « ≈ 8 % de l'investissement » ne correspondait au prix d'AUCUN
+# onduleur réel) : c'est le PRIX TTC de la ligne onduleur du devis, tel qu'il
+# est facturé. Aucune ligne onduleur identifiable ⇒ AUCUNE provision, et
+# l'hypothèse affichée le DIT. Le palier de la courbe est plus creux qu'avant :
+# c'est le chiffre vrai.
 INVERTER_REPLACE_YEAR = 12       # remplacement onduleur (année) — optionnel
-INVERTER_REPLACE_FRACTION = 0.08  # coût ≈ 8 % de l'investissement, à l'année ci-dessus
 
 
 def compute_cashflow_payback(
@@ -654,17 +660,33 @@ def compute_cashflow_payback(
     degradation: float = PANEL_DEGRADATION,
     escalation: float = TARIFF_ESCALATION,
     battery_roundtrip: float = BATTERY_ROUNDTRIP,
+    battery_share: float | None = None,
     inverter_replace_year: int | None = INVERTER_REPLACE_YEAR,
-    inverter_replace_fraction: float = INVERTER_REPLACE_FRACTION,
+    inverter_replace_cost: float | None = None,
 ) -> dict:
     """QX39 — cashflow 25 ans honnête + payback par croisement du cumul à zéro.
 
     Chaque année : l'économie de base (année 1) est érodée par la dégradation
     panneau (0,5 %/an) MAIS améliorée par l'escalade tarifaire documentée ; la
-    batterie (option 2) applique son rendement aller-retour. Un remplacement
-    onduleur optionnel retranche une fraction de l'investissement l'année dite.
+    batterie applique son rendement aller-retour UNIQUEMENT quand l'option
+    porte réellement du stockage (M9 — l'abattement était appliqué
+    inconditionnellement, y compris à un devis sans batterie).
+
+    Q1 — ``inverter_replace_cost`` est le PRIX RÉEL de l'onduleur du devis, en
+    MAD TTC, retranché à ``inverter_replace_year``. ``None`` ⇒ aucune provision
+    (jamais un pourcentage de repli).
     Le payback = première année où le cumul devient ≥ 0 (interpolé dans l'année).
     Renvoie le cashflow annuel, le cumul, le payback (années) et le gain net.
+
+    Z5 (ORDRE FONDATEUR, 20/08/2026) — ``battery_share`` : PART de l'économie qui
+    transite RÉELLEMENT par la batterie (0..1). Le rendement aller-retour ne
+    s'applique QU'À elle. Sans ce paramètre, le moteur multipliait TOUTE
+    l'économie de l'option 2 par 0,90 — y compris la part autoconsommée
+    DIRECTEMENT au fil du soleil (le socle de 60 %), qui n'entre jamais dans la
+    batterie et ne subit donc aucune perte de charge/décharge. Cette double
+    peine allongeait le payback de l'option batterie et rabotait son gain net.
+    ``None`` (défaut) conserve le comportement historique pour les appelants
+    directs qui n'ont pas la décomposition.
     """
     inv = float(investment or 0)
     base = float(economie_annee1 or 0)
@@ -673,6 +695,21 @@ def compute_cashflow_payback(
             "payback_years": 0.0, "cashflow": [], "cumulative": [],
             "net_gain": 0.0, "years": years,
         }
+
+    # Z5 — facteur batterie EFFECTIF : la perte aller-retour ne frappe que la
+    # part réellement stockée puis restituée. ``battery_share=None`` → forfait
+    # historique (0,90 sur tout) ; ``0`` → aucune perte (rien ne transite par la
+    # batterie) ; ``1`` → toute l'économie transite (identique au forfait).
+    batt_factor = 1.0
+    if battery:
+        if battery_share is None:
+            batt_factor = float(battery_roundtrip)
+        else:
+            try:
+                part = max(0.0, min(1.0, float(battery_share)))
+            except (TypeError, ValueError):
+                part = 1.0
+            batt_factor = 1.0 - (1.0 - float(battery_roundtrip)) * part
 
     cashflow, cumulative = [], []
     cumul = -inv
@@ -683,10 +720,11 @@ def compute_cashflow_payback(
         tarif_factor = (1 + escalation) ** (y - 1)      # escalade tarifaire
         year_saving = base * prod_factor * tarif_factor
         if battery:
-            year_saving *= battery_roundtrip
+            year_saving *= batt_factor
         year_cf = year_saving
-        if inverter_replace_year and y == inverter_replace_year:
-            year_cf -= inv * inverter_replace_fraction
+        if (inverter_replace_year and inverter_replace_cost
+                and y == inverter_replace_year):
+            year_cf -= float(inverter_replace_cost)
         cashflow.append(round(year_cf))
         prev_cumul = cumul
         cumul += year_cf
@@ -714,7 +752,13 @@ def _fr_pct(v) -> str:
     return s.replace(".", ",")
 
 
-def cashflow_assumptions() -> dict:
+def _fr_mad(v) -> str:
+    """12345 -> '12 345' (espace fine insécable, format des documents)."""
+    return f"{int(round(float(v))):,}".replace(",", " ")
+
+
+def cashflow_assumptions(inverter_replace_cost=None,
+                         stockage: bool = False) -> dict:
     """QX39 — hypothèses documentées du cashflow, rendues sur le PDF/la
     proposition (autoconsommation d'abord ; rachat BT surplus toujours non
     publié ; plafond d'injection 20 % pré-intégré via l'autoconso).
@@ -723,21 +767,57 @@ def cashflow_assumptions() -> dict:
     d'injection fusionnés ; plus de « performance garantie 25 ans » redondant
     avec les garanties produit) et les pourcentages s'écrivent à la française
     (« 0,5 %/an », jamais « 0.5 »)."""
+    # ── M9 (audit du 19/08/2026) — LES DEUX HYPOTHÈSES CACHÉES SONT DITES ────
+    # Le rendement aller-retour batterie (90 %) et la provision de remplacement
+    # onduleur à l'année 12 changent le résultat affiché ; elles étaient
+    # appliquées en silence. Elles s'écrivent désormais dans le bloc
+    # « Nos hypothèses », comme la dégradation panneau.
+    notes = [
+        "Loi 82-21 : seuls les kWh autoconsommés réduisent la facture — "
+        "le surplus injecté n'est pas rémunéré (plafond d'injection 20 % "
+        "intégré).",
+        f"Dégradation panneau {_fr_pct(round(PANEL_DEGRADATION * 100, 2))} "
+        "%/an intégrée ; aucune hausse du tarif électrique supposée — "
+        "projection à tarif constant, toute hausse réelle améliore votre "
+        "résultat.",
+    ]
+    if stockage:
+        notes.append(
+            f"Stockage : rendement aller-retour batterie "
+            f"{round(BATTERY_ROUNDTRIP * 100)} % appliqué aux kWh qui "
+            "transitent par la batterie.")
+    # Q1 — le MONTANT de la provision est le prix RÉEL de l'onduleur du devis ;
+    # sans ligne onduleur identifiable, la projection le dit au lieu de
+    # provisionner un pourcentage inventé.
+    if inverter_replace_cost:
+        # Z4 (ordre fondateur, 20/08/2026) — cette provision était SILENCIEUSE :
+        # elle est le SEUL décrochement de la courbe de rentabilité, et rien ne
+        # l'expliquait au client ; une courbe qui change de pente sans raison
+        # énoncée se lit comme une erreur. Q1 va plus loin que Z4 : le montant
+        # n'est plus « 8 % de l'investissement » (un forfait qui ne
+        # correspondait au prix d'AUCUN onduleur réel) mais le prix FACTURÉ de
+        # l'onduleur de ce devis. La raison ET le vrai chiffre voyagent ensemble.
+        notes.append(
+            f"Provision de remplacement de l'onduleur en année "
+            f"{INVERTER_REPLACE_YEAR} : {_fr_mad(inverter_replace_cost)} MAD "
+            "(le prix de l'onduleur de ce devis) — c'est le palier visible sur "
+            "la courbe de rentabilité.")
+    else:
+        notes.append(
+            "Projection établie hors provision de remplacement onduleur "
+            "(aucun onduleur chiffré sur ce devis).")
     return {
         "years": CASHFLOW_YEARS,
         "degradation_pct": round(PANEL_DEGRADATION * 100, 2),
         "escalation_pct": round(TARIFF_ESCALATION * 100, 1),
         "battery_roundtrip_pct": round(BATTERY_ROUNDTRIP * 100),
+        "battery_roundtrip_applique": bool(stockage),
         "inverter_replace_year": INVERTER_REPLACE_YEAR,
-        "notes": [
-            "Loi 82-21 : seuls les kWh autoconsommés réduisent la facture — "
-            "le surplus injecté n'est pas rémunéré (plafond d'injection 20 % "
-            "intégré).",
-            f"Dégradation panneau {_fr_pct(round(PANEL_DEGRADATION * 100, 2))} "
-            "%/an intégrée ; aucune hausse du tarif électrique supposée — "
-            "projection à tarif constant, toute hausse réelle améliore votre "
-            "résultat.",
-        ],
+        # Montant RÉEL provisionné (MAD TTC) ou None — lu par la légende de la
+        # courbe 25 ans, qui affiche le chiffre plutôt qu'un pourcentage.
+        "inverter_replace_cost": (round(float(inverter_replace_cost))
+                                  if inverter_replace_cost else None),
+        "notes": notes,
     }
 
 
@@ -755,6 +835,15 @@ def calculate_savings_roi(
     battery_kwh: float | None = None,
     productible: float | None = None,
     fallback_tarif_kwh: float | None = None,
+    # M9 — l'option 2 porte-t-elle RÉELLEMENT du stockage ? L'abattement de
+    # rendement aller-retour (×0,90) était appliqué inconditionnellement, y
+    # compris à un devis SANS batterie : la projection était pénalisée par un
+    # équipement absent. None ⇒ déduit de ``battery_kwh``.
+    stockage_present: bool | None = None,
+    # Q1 — prix TTC RÉEL de l'onduleur de chaque option (provision de
+    # remplacement à l'année 12). None ⇒ aucune provision pour cette option.
+    inverter_cost_sans: float | None = None,
+    inverter_cost_avec: float | None = None,
 ) -> dict:
     """Auto-compute annual production, savings and ROI — loi 82-21 model.
 
@@ -889,9 +978,35 @@ def calculate_savings_roi(
     # de la batterie (option 2), et un remplacement onduleur optionnel. Le
     # payback = première année où le cumul devient positif (interpolée). Repli
     # sûr sur le ratio année-1 quand l'économie est nulle.
-    cf_s = compute_cashflow_payback(total_sans, economie_opt1)
+    # Z5 (ORDRE FONDATEUR, 20/08/2026) — le rendement aller-retour de la batterie
+    # ne frappe QUE la part de l'économie qui transite par elle. Cette part est
+    # DÉRIVÉE des taux déjà calculés : le socle ``autoconso_sans_eff`` est
+    # autoconsommé DIRECTEMENT au fil du soleil (aucune charge/décharge), et seul
+    # le supplément apporté par la capacité batterie
+    # (``autoconso_avec - autoconso_sans_eff``) est stocké puis restitué. Avant
+    # ce correctif, 0,90 s'appliquait à 100 % de l'économie : la part directe
+    # payait une perte de batterie qu'elle ne subit pas, ce qui ALLONGEAIT
+    # artificiellement le payback de l'option « avec batterie ».
+    _batt_part = 0.0
+    if autoconso_avec > 0:
+        _batt_part = max(0.0, (autoconso_avec - autoconso_sans_eff)) / autoconso_avec
+    # M9 (audit du 19/08/2026) — l'abattement ne s'applique QU'À une option qui
+    # porte RÉELLEMENT du stockage : ``battery=True`` était codé en dur, donc un
+    # devis sans batterie subissait quand même la perte d'un équipement absent.
+    # Il se combine à Z5 : Z5 borne la perte à la part stockée, M9 la supprime
+    # entièrement quand il n'y a rien à stocker.
+    # Q1 (décision fondateur du 20/08/2026) — la provision de remplacement est
+    # le prix TTC RÉEL de la ligne onduleur de CETTE option, jamais un
+    # pourcentage du total ; aucune ligne onduleur ⇒ aucune provision.
+    _stockage = (bool(battery_kwh and battery_kwh > 0)
+                 if stockage_present is None else bool(stockage_present))
+    cf_s = compute_cashflow_payback(
+        total_sans, economie_opt1,
+        inverter_replace_cost=inverter_cost_sans)
     cf_a = compute_cashflow_payback(
-        total_avec, economie_opt2, battery=True)
+        total_avec, economie_opt2, battery=_stockage,
+        battery_share=_batt_part,
+        inverter_replace_cost=inverter_cost_avec)
     roi_opt1 = cf_s["payback_years"] if economie_opt1 > 0 else 0.0
     roi_opt2 = cf_a["payback_years"] if economie_opt2 > 0 else 0.0
 
@@ -932,5 +1047,12 @@ def calculate_savings_roi(
         "cashflow_avec":    cf_a["cumulative"],
         "net_gain_sans":    cf_s["net_gain"],
         "net_gain_avec":    cf_a["net_gain"],
-        "cashflow_assumptions": cashflow_assumptions(),
+        # Les hypothèses RENDUES décrivent CE devis : provision onduleur réelle
+        # (ou son absence explicite) et abattement batterie seulement s'il
+        # s'applique. L'option affichée en priorité est l'option 2 quand elle
+        # existe, sinon l'option 1 — même choix que la courbe 25 ans.
+        "cashflow_assumptions": cashflow_assumptions(
+            inverter_replace_cost=(inverter_cost_avec if _stockage
+                                   else inverter_cost_sans),
+            stockage=_stockage),
     }

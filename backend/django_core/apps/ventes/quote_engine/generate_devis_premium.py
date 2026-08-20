@@ -300,16 +300,21 @@ OPTIONS_PROPOSEES = []
 # byte-identique \u00e0 aujourd'hui (aucun dossier MT \u21d2 aucune omission).
 MASQUER_ECONOMIES = False
 TARIF_MT_MENTION = ""
+# M2 — aucun ancrage réel de puissance (ni ligne panneau, ni fiche produit, ni
+# calepinage) : puissance, production, économies et prix-au-kWc en dérivent
+# tous, donc AUCUN d'eux n'est imprimé. Défaut INERTE (False) : sans la clé du
+# builder, le rendu est byte-identique.
+PUISSANCE_INCONNUE = False
 
 MONTHS  = ["Jan","F\u00e9v","Mar","Avr","Mai","Jun",
            "Jul","Ao\u00fb","Sep","Oct","Nov","D\u00e9c"]
 ECO_S_M    = QUOTE_INPUT["eco_s_monthly"]
 ECO_A_M    = QUOTE_INPUT["eco_a_monthly"]
-# Actual monthly bills entered by user; fallback to proxy if not in QUOTE_INPUT
-FACTURES_M = QUOTE_INPUT.get("factures_mensuelles") or [
-    round(v * (ECO_S_ANN / 0.65) / max(1, sum(QUOTE_INPUT["eco_s_monthly"])))
-    for v in QUOTE_INPUT["eco_s_monthly"]
-]
+# M1 (audit 19/08/2026) — factures mensuelles RÉELLES, ou RIEN. L'ancien défaut
+# reconstruisait une facture depuis les économies (÷ 0,65) : une mine, parce
+# qu'il reprenait la main dès que le builder cessait d'en fournir une. Liste
+# vide ⇒ `make_chart_monthly` n'imprime aucune barre et aucune légende ONEE.
+FACTURES_M = list(QUOTE_INPUT.get("factures_mensuelles") or [])
 
 YEARS   = list(range(26))
 CUMUL_S = [-TOTAL_SANS + ECO_S_ANN * y for y in YEARS]
@@ -323,6 +328,8 @@ PAYMENT_MODE   = "standard"   # "standard" or "custom"
 CUSTOM_ACOMPTE = None          # user-defined acompte (MAD) for custom mode
 # FG52 — devise portée par le document (ISO 4217, défaut MAD). Lue depuis
 # data["devise"] ; permet l'affichage de la bonne devise sur le PDF.
+# Q8 (fondateur, 20/08/2026) — les documents sont en MAD, point. La variable
+# reste (exports/compat) mais n'est plus imprimée : `fmt()` écrit MAD.
 DEVISE = "MAD"
 PAGES_TOTAL = 3                # nombre réel de pages (+1 étude, +1 annexe PV46)
 PAGE3_NUM = 3                  # numéro de la page de signature
@@ -337,6 +344,25 @@ TOTAUX_ALL = None              # totaux canoniques toutes-lignes (one-page)
 PAY_A, PAY_M, PAY_S = 30, 60, 10
 # Devis deux-options rendu en une page : option 1 seule + mention discrète.
 ONEPAGE_NOTE_BATTERIE = False
+# M4 — branche ('sans' | 'avec' | None) dont proviennent les lignes du format
+# une page. Défaut None = aucune économie affichée sur le chemin autonome ;
+# le builder la pose TOUJOURS pour un vrai devis.
+ONEPAGE_BRANCHE = None
+# M7 — date d'échéance RÉELLE du devis, format « JJ/MM/AAAA », ou "" quand elle
+# est indéterminable (les mentions de validité disparaissent alors).
+VALID_UNTIL = ""
+# Q5 (fondateur, 20/08/2026) — délais commerciaux INDICATIFS, réglages
+# société. Vides ⇒ le délai n'apparaît nulle part (jamais un littéral
+# codé ici, jamais dans la boîte « Conditions »).
+DELAI_VISITE = ""
+DELAI_INSTALLATION = ""
+# M10 (audit du 19/08/2026) — le modèle d'économies est-il une ESTIMATION
+# (aucun barème réel du client n'a servi) ? Le builder le calcule depuis
+# toujours (``savings_estimated``) mais AUCUN renderer ne le lisait : le
+# document ne distinguait pas une économie calculée sur le barème réel du
+# client d'une économie estimée sur un tarif de référence. Défaut False =
+# rendu inchangé pour tout appel sans la clé.
+SAVINGS_ESTIMATED = False
 
 # ── DC1 — identité société (multi-tenant) ──────────────────────────────────────
 # Chaque littéral d'identité (nom de marque du footer, coordonnées, ligne légale
@@ -501,16 +527,21 @@ def _apply_seller(seller):
 # substitués par le moteur (PAY_A/PAY_M/PAY_S/TVA_NOTE) — défauts inchangés.
 DEFAULT_DOC_TEXTS = {
     # D2/N60 — validité de l'offre (3 emplacements, libellés distincts).
-    "validite_badge_p1": "Validit&#233;&#160;: 30 jours",
-    "validite_onepage": "&#183; Validit&#233;&#160;: 30 jours",
+    # M7 (audit du 19/08/2026) — plus AUCUN « 30 jours » codé ici : le devis
+    # porte sa vraie échéance (``date_validite``, sinon création + réglage
+    # société ``quote_validity_days``), que le builder sert dans ``valid_until``
+    # et que le marqueur {validite} substitue. Échéance indéterminable ⇒ le
+    # marqueur rend une chaîne VIDE et le badge/la puce DISPARAÎT — jamais une
+    # date fausse en face de la vraie, affichée elle sur le portail client.
+    "validite_badge_p1": "{validite}",
+    "validite_onepage": "&#183; {validite}",
     # D2/N60 — conditions générales (titre + 7 puces ; placeholders substitués).
     "cgv_titre": "Conditions générales du devis",
     "cgv_bullets": [
-        "Validité de l&#8217;offre&#160;: 30 jours",
+        "{validite_offre}",
         "Acompte à la commande&#160;: {acompte}&#37;",
         "{materiel}&#37; à la réception du matériel",
         "{solde}&#37; après la mise en marche",
-        "Délai d&#8217;installation&#160;: 7–14 jours ouvrés",
         "{tva_note}",
         "Tarifs de référence&#160;: barème ONEE/SRM",
     ],
@@ -519,11 +550,17 @@ DEFAULT_DOC_TEXTS = {
     # le moteur résidentiel v2 ne publie plus que les garanties traçables aux
     # fiches produit (theme.WARRANTIES), les deux moteurs disent enfin la même
     # chose. Le reste du littéral est inchangé au caractère près.
-    "garantie_titre": "Garanties jusqu&#8217;à 30 ans",
-    "garantie_detail": ("Panneaux 12 ans produit + 30 ans "
-                        "performance (87,4&#8201;%), onduleur 10 ans. "
-                        "Sérénité totale."),
-    "garantie_perf_label": "Performance panneau (87,4&#8201;%)",
+    # M6 (audit du 19/08/2026) — plus AUCUNE durée ni pourcentage codés ici.
+    # Ces trois littéraux annonçaient « jusqu'à 30 ans », « 12 ans produit +
+    # 30 ans performance (87,4 %) », « Performance panneau (87,4 %) » sur TOUS
+    # les devis, y compris ceux dont le panneau est d'une autre marque (Longi :
+    # 30 ans à 88,9 %) ou dont aucune garantie n'est saisie. Le titre et le
+    # détail sont désormais COMPOSÉS depuis les fiches produit du devis
+    # (``_garanties_du_devis``) ; ces défauts ne servent plus que de repli
+    # non chiffré, et une surcharge société explicite reste souveraine.
+    "garantie_titre": "",
+    "garantie_detail": "",
+    "garantie_perf_label": "Performance panneau",
     # D2/N60 — bloc « Bon pour accord » (titre + mention manuscrite).
     "bpa_titre": "Bon pour accord",
     "bpa_mention": ("Lu et approuvé — Signature précédée "
@@ -678,7 +715,12 @@ def _doc_text(key):
     """Fragment de texte éditable `key`, repli sur le littéral historique."""
     val = DOC_TEXTS.get(key)
     if val is None:
-        return DEFAULT_DOC_TEXTS.get(key, "")
+        val = DEFAULT_DOC_TEXTS.get(key, "")
+    # M7 — {validite} porte la VRAIE échéance du devis, ou rien du tout.
+    if isinstance(val, str) and "{validite}" in val:
+        val = (val.replace("{validite}",
+                           f"Validit&#233;&#160;: jusqu&#8217;au {VALID_UNTIL}")
+               if VALID_UNTIL else "")
     return val
 
 
@@ -693,10 +735,17 @@ def _cgv_bullets_html():
     out = ""
     for raw in bullets:
         try:
-            txt = raw.format(acompte=PAY_A, materiel=PAY_M, solde=PAY_S,
-                             tva_note=TVA_NOTE)
+            txt = raw.format(
+                acompte=PAY_A, materiel=PAY_M, solde=PAY_S,
+                tva_note=TVA_NOTE,
+                # M7 — échéance RÉELLE ; inconnue ⇒ chaîne vide ⇒ puce omise.
+                validite_offre=(
+                    "Validit&#233; de l&#8217;offre&#160;: jusqu&#8217;au "
+                    f"{VALID_UNTIL}" if VALID_UNTIL else ""))
         except (KeyError, IndexError, ValueError):
             txt = raw
+        if not str(txt).strip():
+            continue
         # Enrobage <li> + indentation/retours IDENTIQUES au bloc historique
         # (newline + 8 espaces avant chaque puce) → HTML byte-identique au défaut.
         out += (f'\n        <li style="font-size:12px;color:{CG7};'
@@ -755,22 +804,27 @@ _BRAND_C = {
     "deyness":  ("#FF6B00", "#fff"),
 }
 
-_GAR = {
-    "onduleur":"10 ans","panneaux":"12 ans","batterie":"10 ans","structures":"20 ans",
-    "smart meter":"2 ans","wifi":"2 ans","tableau":"\u2014","installation":"\u2014",
-    "transport":"\u2014","accessoires":"\u2014","socles":"\u2014","suivi":"\u2014",
-}
+# M6 (audit adversarial du 19/08/2026) \u2014 LE DICTIONNAIRE DE REPLI EST SUPPRIM\u00c9.
+# Il attribuait \u00ab 10 ans \u00bb \u00e0 tout ce qui contient \u00ab onduleur \u00bb, \u00ab 12 ans \u00bb \u00e0
+# tout ce qui contient \u00ab panneaux \u00bb, \u00ab 20 ans \u00bb aux structures\u2026 sur la foi d'un
+# mot dans la d\u00e9signation, pour des produits dont AUCUNE garantie n'\u00e9tait
+# saisie. Un document client engageait donc l'entreprise sur des dur\u00e9es
+# invent\u00e9es. D\u00e9sormais : garantie saisie sur la fiche produit \u21d2 affich\u00e9e ;
+# absente \u21d2 \u00ab \u2014 \u00bb. La colonne existe pour dire ce qu'on sait, pas pour la
+# remplir.
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 def fmt(v):
-    """Format as French currency amount: 52\u202f650\u00a0MAD (or DEVISE).
+    """Montant \u00e0 la fran\u00e7aise : 52\u202f650\u00a0MAD.
 
-    FG52 \u2014 utilise le global DEVISE (positionn\u00e9 par _render_premium_pdf depuis
-    data["devise"]) pour afficher la bonne devise sur le PDF. Le comportement
-    reste byte-identique pour MAD (d\u00e9faut = comportement historique).
+    Q8 (d\u00e9cision fondateur du 20/08/2026) \u2014 MAD PARTOUT. Le global ``DEVISE``
+    imprimait l'\u00e9tiquette port\u00e9e par le devis, alors qu'AUCUN montant n'\u00e9tait
+    jamais converti (le ``taux_change`` n'\u00e9tait lu nulle part) : un document
+    \u00e9tiquet\u00e9 EUR aurait affich\u00e9 des dirhams sous un signe euro. L'\u00e9tiquette
+    suit d\u00e9sormais la r\u00e9alit\u00e9 des montants.
     """
     try:
-        return f"{int(round(float(v))):,}".replace(",", "\u202f") + "\u00a0" + DEVISE
+        return f"{int(round(float(v))):,}".replace(",", "\u202f") + "\u00a0MAD"
     except Exception:
         return str(v)
 
@@ -1010,8 +1064,11 @@ def make_chart_monthly():
     from matplotlib.lines import Line2D
     from matplotlib.patches import Patch
 
-    # Real monthly bills from the simulator input
-    _onee_m = FACTURES_M
+    # M1 — factures RÉELLES uniquement. Vide = le client n'a pas donné ses 12
+    # factures : la carte devient « économies solaires par mois », sans barre
+    # ni légende ONEE. On ne dessine jamais une facture reconstruite.
+    _onee_m = list(FACTURES_M or [])
+    _has_bills = len(_onee_m) == 12
 
     # Même ratio 4:1 que le cadre 680×170 — image pleine, jamais en vignette.
     fig, ax = plt.subplots(figsize=(13.6, 3.4), dpi=140)
@@ -1023,8 +1080,9 @@ def make_chart_monthly():
     x = np.arange(12)
     c_bar = "#B5C0CE"  # light steel-blue/grey for ONEE bill bars
 
-    # Bars: ONEE bill — full-width, one per month
-    ax.bar(x, _onee_m, 0.60, color=c_bar, alpha=0.60, zorder=2, linewidth=0)
+    # Bars: ONEE bill — full-width, one per month (seulement si RÉELLES)
+    if _has_bills:
+        ax.bar(x, _onee_m, 0.60, color=c_bar, alpha=0.60, zorder=2, linewidth=0)
 
     # Lines: Option 1 (navy) and/or Option 2 (amber) based on scenario
     _show_s = SCENARIO != 'Avec batterie'
@@ -1052,7 +1110,11 @@ def make_chart_monthly():
     ax.set_xlim(-0.55, 11.55)
 
     # Custom legend handles: patch for bar, line+marker for each line series
-    legend_handles = [Patch(facecolor=c_bar, alpha=0.60, label="Facture ONEE sans PV", linewidth=0)]
+    legend_handles = []
+    if _has_bills:
+        legend_handles.append(
+            Patch(facecolor=c_bar, alpha=0.60, label="Facture ONEE sans PV",
+                  linewidth=0))
     if _show_s:
         legend_handles.append(Line2D([0], [0], color=CNM, linewidth=2.2, marker="o", markersize=5.5,
                markerfacecolor="white", markeredgewidth=1.8, markeredgecolor=CNM,
@@ -1141,21 +1203,83 @@ def _totals_block_rows(totaux, colspan):
     return rows
 
 
+def _ans(mois):
+    """Mois → années entières, ou None si la fiche produit ne dit rien (M6)."""
+    try:
+        m = int(mois)
+    except (TypeError, ValueError):
+        return None
+    return m // 12 if m >= 12 else None
+
+
+def _gar_de_la_fiche(it):
+    """« N ans » lu sur la FICHE PRODUIT de la ligne, ou '' (M6).
+
+    Jamais un mot-clé de désignation : la garantie est une donnée du produit,
+    pas une déduction sur son nom.
+    """
+    n = _ans(it.get("garantie_mois"))
+    return f"{n} ans" if n else ""
+
+
+def _garanties_du_devis():
+    """Garanties RÉELLES des lignes rendues : [(années, libellé), …] (M6).
+
+    Lit les fiches produit des lignes de l'option affichée — onduleur, panneaux
+    (garantie produit), panneaux (garantie de PRODUCTION), batterie. Une
+    famille dont aucune ligne ne porte de garantie saisie est ABSENTE de la
+    liste : les badges de la page signature affichaient « 10 / 12 / 30 ANS »
+    en dur, quels que soient les produits réellement vendus.
+    """
+    rows = AVEC_ITEMS if SCENARIO == 'Avec batterie' else SANS_ITEMS
+    rows = list(rows or []) or list(SANS_ITEMS or []) or list(AVEC_ITEMS or [])
+
+    def _premier(pred, champ):
+        for it in rows:
+            if pred((it.get("designation") or "").lower()):
+                n = _ans(it.get(champ))
+                if n:
+                    return n
+        return None
+
+    _ond = lambda d: "onduleur" in d                      # noqa: E731
+    _pan = lambda d: "panneau" in d or "module" in d      # noqa: E731
+    _bat = lambda d: "batterie" in d                      # noqa: E731
+
+    out = []
+    n = _premier(_ond, "garantie_mois")
+    if n:
+        out.append((n, "Onduleur"))
+    n = _premier(_pan, "garantie_mois")
+    if n:
+        out.append((n, "Panneaux (produit)"))
+    n = _premier(_pan, "garantie_production_mois")
+    if n:
+        # Sans le pourcentage : « 87,4 % » est une spec Canadian Solar, elle ne
+        # vaut pas pour un panneau d'une autre marque garanti la même durée.
+        out.append((n, "Performance panneau"))
+    n = _premier(_bat, "garantie_mois")
+    if n:
+        out.append((n, "Batterie"))
+    return out
+
+
 def equip_rows(items, totaux, hi_bat=False):
     rows = ""
     for i, it in enumerate(items):
         des = it["designation"]; qty = it["quantite"]
         pu_ht = _item_pu_ht(it)
         mar = (it.get("marque") or "").strip()
-        # Enrich panel designation with watt info
-        if "panneaux" in des.lower() and WP:
-            des = f"{des} {WP}\u00a0Wc"
+        # M3 (audit du 19/08/2026) \u2014 la D\u00c9SIGNATION FACTUR\u00c9E N'EST JAMAIS
+        # R\u00c9\u00c9CRITE. Le moteur ajoutait \u00ab 710 Wc \u00bb au libell\u00e9 contractuel d'une
+        # ligne, avec une puissance qui pouvait n'avoir \u00e9t\u00e9 lue nulle part
+        # (d\u00e9faut catalogue) : le document engageait alors une caract\u00e9ristique
+        # que le devis ne portait pas. La ligne s'affiche telle qu'elle est
+        # factur\u00e9e ; la puissance vit dans la vignette \u00ab Puissance install\u00e9e \u00bb,
+        # qui, elle, sait s'omettre.
         ico = icon_img(des, mar); bdg = badge(mar)
-        gar = (it.get("garantie") or "").strip()
-        if not gar:
-            gar = "\u2014"
-            for k, v in _GAR.items():
-                if k in des.lower(): gar = v; break
+        # M6 \u2014 la garantie vient de la FICHE PRODUIT, ou n'est pas affich\u00e9e.
+        gar = (it.get("garantie") or "").strip() or _gar_de_la_fiche(it) or "\u2014"
         # Texte de garantie complet \u2014 il S'ENROULE dans la colonne, jamais
         # tronqu\u00e9 en plein mot.
         is_bat = "batterie" in des.lower() and hi_bat
@@ -1228,9 +1352,13 @@ def page1():
         f'color:{CG4};">Raccordement MOYENNE TENSION&#160;: les &#233;conomies '
         'et le retour sur investissement seront chiffr&#233;s sur le bar&#232;me '
         'MT, jamais au bar&#232;me basse tension.</div>')
-    if MASQUER_ECONOMIES:
+    if MASQUER_ECONOMIES or PUISSANCE_INCONNUE:
+        # M2 — puissance sans ancrage : les économies et le retour sur
+        # investissement en dérivent (ils valent 0), on les OMET plutôt que
+        # d'imprimer « Retour en 0 ans ». La note MT ne s'affiche, elle, que
+        # pour un vrai dossier moyenne tension.
         _roi_pill_s = _roi_pill_a = ""
-        _eco_box_s = _eco_box_a = _mt_note
+        _eco_box_s = _eco_box_a = _mt_note if MASQUER_ECONOMIES else ""
     else:
         _roi_pill_s = (
             '<div style="display:inline-block;align-self:flex-start;'
@@ -1336,18 +1464,81 @@ def page1():
         _eco_val   = '<span style="white-space:nowrap;">&#8212;</span>'
         _eco_size  = "17pt"
         _eco_sub   = "chiffr&#233;es sur bar&#232;me MT"
-    elif SCENARIO == 'Sans batterie':
-        _eco_val   = f'<span style="white-space:nowrap;">{esa_mad}</span>'
-        _eco_size  = "17pt"
-        _eco_sub   = "&#233;conomies par an"
-    elif SCENARIO == 'Avec batterie':
-        _eco_val   = f'<span style="white-space:nowrap;">{eaa_mad}</span>'
-        _eco_size  = "17pt"
-        _eco_sub   = "&#233;conomies par an"
     else:
-        _eco_val   = f'<span style="white-space:nowrap;">{esa_mad}&nbsp;&#8211;&nbsp;{eaa_mad}</span>'
-        _eco_size  = "13pt"
-        _eco_sub   = "selon option choisie"
+        # M10 — une économie du modèle « estimation » porte la mention sur TOUS
+        # les formats : sans barème réel du client, le chiffre est un ordre de
+        # grandeur, et le document doit le dire là où il l'affiche.
+        _est = " (estimation)" if SAVINGS_ESTIMATED else ""
+        if SCENARIO == 'Sans batterie':
+            _eco_val = f'<span style="white-space:nowrap;">{esa_mad}</span>'
+            _eco_size = "17pt"
+            _eco_sub = f"&#233;conomies par an{_est}"
+        elif SCENARIO == 'Avec batterie':
+            _eco_val = f'<span style="white-space:nowrap;">{eaa_mad}</span>'
+            _eco_size = "17pt"
+            _eco_sub = f"&#233;conomies par an{_est}"
+        else:
+            _eco_val = (f'<span style="white-space:nowrap;">{esa_mad}'
+                        f'&nbsp;&#8211;&nbsp;{eaa_mad}</span>')
+            _eco_size = "13pt"
+            _eco_sub = f"selon option choisie{_est}"
+
+    # ── M2 — VIGNETTES CONDITIONNELLES (audit adversarial du 19/08/2026) ──────
+    # La rangée imprimait « {KWC} kWc », « {NB_PAN} panneaux × {WP} W »,
+    # « {pk} kWh » et un montant d'économies comme des FAITS, y compris quand
+    # le kWc venait d'une division du prix total (M2) et le watt d'un défaut
+    # catalogue (M3). Chaque carte n'est désormais rendue que si sa donnée a
+    # un ancrage réel ; une rangée entièrement vide disparaît. Sur un devis
+    # normal (puissance lue sur les lignes), le HTML est celui d'hier.
+    _kpi_cards = []
+    if not PUISSANCE_INCONNUE and KWC > 0:
+        # M3 — « × W » seulement si la puissance unitaire a été LUE quelque
+        # part (désignation ou fiche produit) ; sinon « N panneaux » tout court.
+        if NB_PAN > 0:
+            _pan_line = (f'{NB_PAN} panneaux &#215; {WP}&nbsp;W' if WP > 0
+                         else f'{NB_PAN} panneaux')
+        else:
+            _pan_line = ""
+        _kpi_cards.append(
+            f'<div style="flex:1;min-width:0;margin-right:9px;border:1px solid {CG2};border-left:4px solid {CA};border-radius:6px;padding:14px 12px;background:white;">'
+            f'<div style="font-size:4.5pt;letter-spacing:1.5px;color:{CG4};font-weight:400;text-transform:uppercase;margin-bottom:4px;">Puissance Install&#233;e</div>'
+            f'<div class="serif" style="font-size:19pt;color:{CN};line-height:1.05;">{KWC}&nbsp;kWc</div>'
+            + (f'<div style="font-size:6.5pt;color:{CG4};margin-top:3px;">{_pan_line}</div>'
+               if _pan_line else '')
+            + '</div>')
+    if not PUISSANCE_INCONNUE and PROD_KWH > 0:
+        _kpi_cards.append(
+            f'<div style="flex:1;min-width:0;margin-right:9px;border:1px solid {CG2};border-left:4px solid {CA};border-radius:6px;padding:14px 12px;background:white;">'
+            f'<div style="font-size:4.5pt;letter-spacing:1.5px;color:{CG4};font-weight:400;text-transform:uppercase;margin-bottom:4px;">Production Annuelle</div>'
+            f'<div class="serif" style="font-size:19pt;color:{CN};line-height:1.05;">{pk}&nbsp;kWh</div>'
+            f'<div style="font-size:6.5pt;color:{CG4};margin-top:3px;">&#233;nergie propre / an</div>'
+            '</div>')
+    if not PUISSANCE_INCONNUE:
+        _kpi_cards.append(
+            f'<div style="flex:1;min-width:0;overflow-wrap:anywhere;border:2px solid {CA};border-left:5px solid {CA};border-radius:6px;padding:14px 12px;background:#FFFBF2;box-shadow:0 2px 10px rgba(245,166,35,0.18);">'
+            f'<div style="font-size:4.5pt;letter-spacing:1.5px;color:{CA};font-weight:700;text-transform:uppercase;margin-bottom:4px;">&#201;conomies estim&#233;es / an</div>'
+            f'<div class="serif" style="font-size:{_eco_size};color:{CN};line-height:1.1;">{_eco_val}</div>'
+            f'<div style="font-size:6.5pt;color:{CA};font-weight:600;margin-top:3px;">{_eco_sub}</div>'
+            '</div>')
+    _kpi_cards_html = "\n".join(_kpi_cards)
+
+    # ── Q6 (décision fondateur du 20/08/2026) — LA DONNÉE LOCALE, PAS LE SLOGAN
+    # « 3 000 h/an d'ensoleillement » était un chiffre national arrondi, sans
+    # rapport avec ce client ni ce devis. On imprime le productible PVGIS de SA
+    # ville, celui-là même qui sert à tous les calculs du document. Ville hors
+    # table PVGIS ou productible forcé par un réglage société : la pastille
+    # DISPARAÎT (le builder rend alors None). « Énergie 100 % propre » perd son
+    # chiffre : le qualitatif suffit, le « 100 % » ne se démontre pas.
+    _h = HYPOTHESES if isinstance(HYPOTHESES, dict) else {}
+    _prod_net = _h.get("productible_net_kwh_kwc")
+    _prod_ville = (_h.get("productible_ville") or "").strip()
+    _pill_productible = (
+        '<span style="background:rgba(255,255,255,0.08);border:1px solid '
+        'rgba(255,255,255,0.35);border-radius:11px;padding:2px 7px;'
+        'font-size:6.5pt;color:white;white-space:nowrap;">'
+        f'{SVG_SUN}&#8776;&#160;{fnum(_prod_net)}&#160;kWh par kWc et par an '
+        f'&#224; {_esc(_prod_ville.title())} (donn&#233;e PVGIS)</span>'
+    ) if (_prod_net and _prod_ville) else ""
     return f"""
 <div class="page" style="background:#FFFFFF !important;">
 
@@ -1419,25 +1610,7 @@ def page1():
          carte Économies. Le padding droit du conteneur (42px = 24px de marge
          + 2×9px d'espacement) ramène le bord droit exactement sur la marge. -->
     <div style="display:flex;background:#FFFFFF !important;">
-
-      <div style="flex:1;min-width:0;margin-right:9px;border:1px solid {CG2};border-left:4px solid {CA};border-radius:6px;padding:14px 12px;background:white;">
-        <div style="font-size:4.5pt;letter-spacing:1.5px;color:{CG4};font-weight:400;text-transform:uppercase;margin-bottom:4px;">Puissance Install&#233;e</div>
-        <div class="serif" style="font-size:19pt;color:{CN};line-height:1.05;">{KWC}&nbsp;kWc</div>
-        <div style="font-size:6.5pt;color:{CG4};margin-top:3px;">{NB_PAN} panneaux &#215; {WP}&nbsp;W</div>
-      </div>
-
-      <div style="flex:1;min-width:0;margin-right:9px;border:1px solid {CG2};border-left:4px solid {CA};border-radius:6px;padding:14px 12px;background:white;">
-        <div style="font-size:4.5pt;letter-spacing:1.5px;color:{CG4};font-weight:400;text-transform:uppercase;margin-bottom:4px;">Production Annuelle</div>
-        <div class="serif" style="font-size:19pt;color:{CN};line-height:1.05;">{pk}&nbsp;kWh</div>
-        <div style="font-size:6.5pt;color:{CG4};margin-top:3px;">&#233;nergie propre / an</div>
-      </div>
-
-      <div style="flex:1;min-width:0;overflow-wrap:anywhere;border:2px solid {CA};border-left:5px solid {CA};border-radius:6px;padding:14px 12px;background:#FFFBF2;box-shadow:0 2px 10px rgba(245,166,35,0.18);">
-        <div style="font-size:4.5pt;letter-spacing:1.5px;color:{CA};font-weight:700;text-transform:uppercase;margin-bottom:4px;">&#201;conomies estim&#233;es / an</div>
-        <div class="serif" style="font-size:{_eco_size};color:{CN};line-height:1.1;">{_eco_val}</div>
-        <div style="font-size:6.5pt;color:{CA};font-weight:600;margin-top:3px;">{_eco_sub}</div>
-      </div>
-
+{_kpi_cards_html}
     </div>
   </div>
 
@@ -1496,13 +1669,13 @@ def page1():
   <!-- BOTTOM DARK STRIP — solid edge-to-edge dark navy, compact height -->
   <div style="background:{CN};flex-shrink:0;display:flex;flex-direction:row;align-items:center;justify-content:space-between;padding:8px 24px;gap:16px;">
     <div style="display:flex;gap:5px;flex-shrink:0;">
-      <span style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.35);border-radius:11px;padding:2px 7px;font-size:6.5pt;color:white;white-space:nowrap;">{SVG_SUN}3&#8239;000&#160;h/an d&#8217;ensoleillement</span>
+      {_pill_productible}
       <span style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.35);border-radius:11px;padding:2px 7px;font-size:6.5pt;color:white;white-space:nowrap;">{SVG_ZAP}Prix ONEE en hausse</span>
-      <span style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.35);border-radius:11px;padding:2px 7px;font-size:6.5pt;color:white;white-space:nowrap;">{SVG_GLOBE}&#201;nergie 100&#37; propre</span>
+      <span style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.35);border-radius:11px;padding:2px 7px;font-size:6.5pt;color:white;white-space:nowrap;">{SVG_GLOBE}&#201;nergie propre</span>
     </div>
     <div style="width:1px;height:16px;background:rgba(255,255,255,0.2);flex-shrink:0;"></div>
     <div style="font-size:6.5pt;color:rgba(255,255,255,0.70);white-space:nowrap;flex-shrink:0;">
-      {svg_num(1)} Devis {SVG_ARROW} {svg_num(2)} Visite {SVG_ARROW} {svg_num(3)} Install. 7&#8211;14&#160;j {SVG_ARROW} {svg_num(4)} Mise en service
+      {svg_num(1)} Devis {SVG_ARROW} {svg_num(2)} Visite {SVG_ARROW} {svg_num(3)} Installation {SVG_ARROW} {svg_num(4)} Mise en service
     </div>
   </div>
 
@@ -1547,6 +1720,22 @@ def page2(sans_items, img_roi, img_mon):
     else:
         tbl_css = ""
 
+    # M5 — la carte « Gain cumulé sur 25 ans » disparaît avec sa courbe : un
+    # cadre vide sous un titre qui promet un gain est pire qu'une absence.
+    _roi_card = (
+        f'<div style="flex:1;min-height:0;background:{CG1};border-radius:7px;'
+        f'padding:8px 11px;border:1px solid {CG2};display:flex;'
+        f'flex-direction:column;">'
+        f'<div style="font-size:7pt;font-weight:700;color:{CN};'
+        f'text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;'
+        f'flex-shrink:0;">'
+        f'<svg width="12" height="12" viewBox="0 0 12 12" style="vertical-align:middle;margin-right:3px;"><polyline points="1,10 4,6 7,8 11,2" fill="none" stroke="{CN}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><polyline points="8,2 11,2 11,5" fill="none" stroke="{CN}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+        f' Gain cumulé sur 25 ans — Point de retour sur investissement'
+        f'</div>'
+        f'<img src="{img_roi}" style="width:680px;height:170px;display:block;">'
+        f'</div>'
+    ) if img_roi else ""
+
     _monthly_card = (
         f'<div style="flex:1;min-height:0;background:{CG1};border-radius:7px;padding:8px 11px;'
         f'border:1px solid {CG2};display:flex;flex-direction:column;">'
@@ -1559,7 +1748,7 @@ def page2(sans_items, img_roi, img_mon):
         f'<line x1="8" y1="1" x2="8" y2="3" stroke="{CN}" stroke-width="1.3" stroke-linecap="round"/>'
         f'</svg> \u00c9conomies mensuelles estim\u00e9es (MAD\u00a0/\u00a0mois)</div>'
         f'<div style="font-size:6pt;color:{CG4};font-style:italic;margin-bottom:4px;flex-shrink:0;">'
-        f'Facture ONEE vs \u00e9conomies solaires par mois</div>'
+        f'{"Facture ONEE vs &#233;conomies solaires par mois" if FACTURES_M else "&#201;conomies solaires par mois"}</div>'
         f'<img src="{img_mon}" style="width:680px;height:170px;display:block;">'
         f'</div>'
     ) if img_mon else ""
@@ -1609,12 +1798,7 @@ def page2(sans_items, img_roi, img_mon):
 
   <!-- Charts section -->
   <div style="padding:4px 24px 6px;flex:1;min-height:0;display:flex;flex-direction:column;gap:10px;">
-    <div style="flex:1;min-height:0;background:{CG1};border-radius:7px;padding:8px 11px;border:1px solid {CG2};display:flex;flex-direction:column;">
-      <div style="font-size:7pt;font-weight:700;color:{CN};text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;flex-shrink:0;">
-        <svg width="12" height="12" viewBox="0 0 12 12" style="vertical-align:middle;margin-right:3px;"><polyline points="1,10 4,6 7,8 11,2" fill="none" stroke="{CN}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><polyline points="8,2 11,2 11,5" fill="none" stroke="{CN}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg> Gain cumul\u00e9 sur 25 ans \u2014 Point de retour sur investissement
-      </div>
-      <img src="{img_roi}" style="width:680px;height:170px;display:block;">
-    </div>
+    {_roi_card}
     {_monthly_card}
   </div>
 
@@ -1624,6 +1808,60 @@ def page2(sans_items, img_roi, img_mon):
 
 # ── PAGE 3 — trust, guarantees, conditions, prochaines étapes, signature ─────
 def page3():
+    # ── M6 (audit adversarial du 19/08/2026) — LES BADGES DISENT LES VRAIES
+    # GARANTIES. Ils affichaient « 10 / 12 / 30 ANS » et « Performance panneau
+    # (87,4 %) » en dur : ces chiffres sortaient sur un devis Longi comme sur un
+    # Canadian Solar, et sur des produits dont aucune garantie n'est saisie. Ils
+    # sont désormais dérivés des fiches produit des lignes rendues ; une famille
+    # sans garantie saisie n'a PAS de badge, et la bande entière disparaît quand
+    # le devis n'en porte aucune. Le « 87,4 % » — spec Canadian Solar TOPHiKu7 —
+    # ne s'écrit plus ici : le libellé porte la durée, pas la marque d'un autre.
+    _gars = _garanties_du_devis()
+    if _gars:
+        _cards = "".join(
+            f'<div style="flex:1;border:2px solid '
+            f'{CA if lbl.startswith("Performance") else CN};border-top:4px solid '
+            f'{CN if lbl.startswith("Performance") else CA};border-radius:8px;'
+            f'padding:6px 5px;text-align:center;'
+            f'background:{CAL if lbl.startswith("Performance") else "white"};">'
+            f'<div class="serif" style="font-size:38px;'
+            f'color:{CA if lbl.startswith("Performance") else CN};'
+            f'line-height:1.0;letter-spacing:-1px;">{n}</div>'
+            f'<div style="font-size:12px;font-weight:700;'
+            f'color:{CN if lbl.startswith("Performance") else CA};'
+            f'letter-spacing:1px;text-transform:uppercase;">ANS</div>'
+            f'<div style="font-size:8pt;color:{CG4};margin-top:2px;">{lbl}</div>'
+            f'</div>'
+            for n, lbl in _gars[:4])
+        _badges_garanties_html = (
+            f'<div style="padding:0 24px 4px;margin-bottom:5px;">'
+            f'<div style="display:flex;gap:5px;">{_cards}</div></div>')
+    else:
+        _badges_garanties_html = ""
+
+    # M6 — le titre et le détail « Nos garanties » suivent les MÊMES fiches
+    # produit que les badges. Surcharge société explicite (D2/N67) souveraine ;
+    # à défaut, texte composé ; aucune garantie saisie ⇒ formulation sobre,
+    # sans durée inventée.
+    _gar_titre = _doc_text("garantie_titre") or (
+        f"Garanties jusqu&#8217;&#224; {max(n for n, _ in _gars)} ans"
+        if _gars else "Nos garanties")
+    _gar_detail = _doc_text("garantie_detail") or (
+        ", ".join(f"{lbl.lower()} {n} ans" for n, lbl in _gars).capitalize() + "."
+        if _gars else
+        "Garanties fabricant des produits install&#233;s, telles que "
+        "d&#233;taill&#233;es sur leurs fiches techniques.")
+
+    # Q5 — sous-titres des « prochaines étapes » : délais des réglages
+    # société, toujours suivis de « (indicatif) ». Réglage vidé ⇒
+    # sous-titre VIDE : le document ne promet alors aucun délai. Ces
+    # délais ne figurent plus dans la boîte « Conditions », où ils se
+    # lisaient comme des engagements contractuels.
+    _etape_visite = (f"Sous {DELAI_VISITE} (indicatif)"
+                     if DELAI_VISITE else "")
+    _etape_install = (f"{DELAI_INSTALLATION} (indicatif)"
+                      if DELAI_INSTALLATION else "")
+
     # "Option choisie" tick-boxes — only shown when both options are presented
     _opt = (
         f'<div style="margin-bottom:6px;">'
@@ -1793,8 +2031,8 @@ def page3():
           </svg>
         </div>
         <div>
-          <div style="font-size:10.5pt;font-weight:700;color:{CN};margin-bottom:3px;">{_doc_text("garantie_titre")}</div>
-          <div style="font-size:13px;color:{CG4};line-height:1.4;">{_doc_text("garantie_detail")}</div>
+          <div style="font-size:10.5pt;font-weight:700;color:{CN};margin-bottom:3px;">{_gar_titre}</div>
+          <div style="font-size:13px;color:{CG4};line-height:1.4;">{_gar_detail}</div>
         </div>
       </div>
 
@@ -1814,29 +2052,8 @@ def page3():
     </div>
   </div>
 
-  <!-- GUARANTEE BADGES -->
-  <div style="padding:0 24px 4px;margin-bottom:5px;">
-    <div style="display:flex;gap:5px;">
-      <div style="flex:1;border:2px solid {CN};border-top:4px solid {CA};border-radius:8px;padding:6px 5px;text-align:center;background:white;">
-        <div class="serif" style="font-size:38px;color:{CN};line-height:1.0;letter-spacing:-1px;">10</div>
-        <div style="font-size:12px;font-weight:700;color:{CA};letter-spacing:1px;text-transform:uppercase;">ANS</div>
-        <div style="font-size:8pt;color:{CG4};margin-top:2px;">Onduleur</div>
-      </div>
-      <div style="flex:1;border:2px solid {CN};border-top:4px solid {CA};border-radius:8px;padding:6px 5px;text-align:center;background:white;">
-        <div class="serif" style="font-size:38px;color:{CN};line-height:1.0;letter-spacing:-1px;">12</div>
-        <div style="font-size:12px;font-weight:700;color:{CA};letter-spacing:1px;text-transform:uppercase;">ANS</div>
-        <div style="font-size:8pt;color:{CG4};margin-top:2px;">Panneaux (produit)</div>
-      </div>
-      <!-- QRES56 (fondateur, 2026-08-17) : le badge « 20 ANS — Structure de
-           montage » est retiré (même décision que la ligne garantie_detail) ;
-           les trois badges restants s'élargissent, la hauteur ne bouge pas. -->
-      <div style="flex:1;border:2px solid {CA};border-top:4px solid {CN};border-radius:8px;padding:6px 5px;text-align:center;background:{CAL};">
-        <div class="serif" style="font-size:38px;color:{CA};line-height:1.0;letter-spacing:-1px;">30</div>
-        <div style="font-size:12px;font-weight:700;color:{CN};letter-spacing:1px;text-transform:uppercase;">ANS</div>
-        <div style="font-size:8pt;color:{CG4};margin-top:2px;">{_doc_text("garantie_perf_label")}</div>
-      </div>
-    </div>
-  </div>
+  <!-- GUARANTEE BADGES — M6 : dérivés des FICHES PRODUIT du devis -->
+  {_badges_garanties_html}
 
   <!-- QF3 — COMMENT NOUS CALCULONS VOS ÉCONOMIES (méthode + exemple) -->
   <div style="padding:0 24px;">{_savings_method_html()}</div>
@@ -1881,12 +2098,12 @@ def page3():
         <div style="flex:1;text-align:center;padding:7px 6px;background:white;border-radius:8px;border:1px solid #EAECF0;">
           <div class="serif" style="font-size:36px;font-weight:800;color:{CA};line-height:1.0;">2</div>
           <div style="font-size:12px;color:{CN};font-weight:700;margin-top:2px;">Visite technique</div>
-          <div style="font-size:10px;color:{CG4};margin-top:2px;">Sous 48\u201372&#160;h</div>
+          <div style="font-size:10px;color:{CG4};margin-top:2px;">{_etape_visite}</div>
         </div>
         <div style="flex:1;text-align:center;padding:7px 6px;background:white;border-radius:8px;border:1px solid #EAECF0;">
           <div class="serif" style="font-size:36px;font-weight:800;color:{CA};line-height:1.0;">3</div>
           <div style="font-size:12px;color:{CN};font-weight:700;margin-top:2px;">Installation</div>
-          <div style="font-size:10px;color:{CG4};margin-top:2px;">7\u201314 jours ouvr\u00e9s</div>
+          <div style="font-size:10px;color:{CG4};margin-top:2px;">{_etape_install}</div>
         </div>
         <div style="flex:1;text-align:center;padding:7px 6px;background:white;border-radius:8px;border:1px solid #EAECF0;">
           <div class="serif" style="font-size:36px;font-weight:800;color:{CA};line-height:1.0;">4</div>
@@ -2256,8 +2473,15 @@ def page_annexe_technique():
 
 def build_html():
     print("  Generating charts...")
-    img_roi = make_chart_roi()
-    img_mon = make_chart_monthly() if SHOW_MONTHLY else ""
+    # M5 — la GARDE MOYENNE TENSION s'étend à la page 2. Un dossier MT n'a
+    # aucun chiffre d'économies légitime (ceux disponibles sortent du barème
+    # BASSE TENSION) : la page 1 les omettait déjà, la courbe « Gain cumulé sur
+    # 25 ans » les traçait quand même. Idem quand la puissance n'a aucun
+    # ancrage réel (M2) : sans kWc, le gain cumulé vaut zéro — on n'imprime pas
+    # une courbe plate à zéro, on n'imprime rien.
+    _sans_economies = MASQUER_ECONOMIES or PUISSANCE_INCONNUE
+    img_roi = "" if _sans_economies else make_chart_roi()
+    img_mon = "" if (_sans_economies or not SHOW_MONTHLY) else make_chart_monthly()
     etude_html = page_etude() if (INCLUDE_ETUDE and ETUDE) else ""
     annexe_html = (page_annexe_technique()
                    if (INCLUDE_ANNEXE and ELECTRICAL_DESIGN) else "")
@@ -2344,10 +2568,19 @@ def page_onepage(items):
         # (``ECO_S_ANN``/``ECO_A_ANN``) sort de ``calculate_savings_roi``, au
         # barème BASSE TENSION de l'ONEE : l'imprimer sur un dossier MT donne
         # au client un chiffre qui n'est pas le sien.
-        if not MASQUER_ECONOMIES:
+        # M4 (audit du 19/08/2026) — L'ÉCONOMIE VIENT DE LA MÊME BRANCHE QUE LES
+        # LIGNES. ``max(ECO_S_ANN, ECO_A_ANN)`` affichait l'économie de l'option
+        # AVEC batterie sur un document qui chiffre l'option SANS — et qui le
+        # dit, quelques centimètres plus bas (« voir la proposition complète »).
+        # Deux histoires d'argent sur une seule page. Branche non identifiable
+        # ⇒ vignette OMISE, jamais un maximum arbitraire.
+        _eco_branche = {"sans": ECO_S_ANN, "avec": ECO_A_ANN}.get(
+            ONEPAGE_BRANCHE)
+        if not MASQUER_ECONOMIES and _eco_branche:
             _sum_cells.append(
                 ("&#201;conomie annuelle",
-                 f"{fnum(max(ECO_S_ANN, ECO_A_ANN))} MAD/an"))
+                 f"{fnum(_eco_branche)} MAD/an"
+                 + (" (estimation)" if SAVINGS_ESTIMATED else "")))
         _sum_cells.append(
             ("Prix par kWc", f"{fnum(round(total / KWC))} MAD/kWc"))
     else:
@@ -2663,7 +2896,18 @@ def generate_premium_pdf(data: dict, out_path) -> str:
         return _render_premium_pdf(data, out_path)
 
 
-def _render_premium_pdf(data: dict, out_path) -> str:
+def apply_quote_data(data: dict) -> None:
+    """Ingère ``data`` dans les globales du module (SANS rendre quoi que ce soit).
+
+    Extrait de ``_render_premium_pdf`` le 20/08/2026 : le rendu PDF passait par
+    WeasyPrint, donc AUCUN test ne pouvait scanner le DOCUMENT réellement
+    produit sans une dépendance lourde — c'est exactement le trou qui a laissé
+    passer le « 87,4 % » codé en dur (audit du 18/08). Avec cette fonction, un
+    test pur appelle ``render_html_for(data)`` et cherche (ou refuse) une chaîne
+    dans le HTML EXACT qui part chez WeasyPrint. Le chemin PDF est inchangé :
+    ``_render_premium_pdf`` appelle ces deux fonctions, dans le même ordre,
+    sous le même verrou.
+    """
     global CLIENT_NAME, CLIENT_ADDR, CLIENT_PHONE, CLIENT_ICE, REF, DATE_STR
     global KWC, NB_PAN, WP, PROD_KWH, TOTAL_SANS, TOTAL_AVEC
     global DISCOUNT_PCT, TOTAL_SANS_BEFORE, TOTAL_AVEC_BEFORE
@@ -2688,6 +2932,8 @@ def _render_premium_pdf(data: dict, out_path) -> str:
     global MASQUER_ECONOMIES, TARIF_MT_MENTION
     MASQUER_ECONOMIES = bool(data.get("masquer_economies"))
     TARIF_MT_MENTION = data.get("tarif_mt_mention") or ""
+    global PUISSANCE_INCONNUE  # M2 — puissance sans ancrage réel
+    PUISSANCE_INCONNUE = bool(data.get("puissance_inconnue"))
     global HYPOTHESES  # QK4 — bloc « Nos hypothèses »
     HYPOTHESES = data.get("hypotheses")
     global NB_PROPRIETES, DISPLAY_TOTAL_MULTI, MULTI_VILLA  # QJ30 multi-propriétés
@@ -2705,10 +2951,13 @@ def _render_premium_pdf(data: dict, out_path) -> str:
     CLIENT_ICE   = _esc(data.get("client_ice", ""))
     REF          = str(data["ref"])
     DATE_STR     = data["date"]
-    KWC          = float(data["puissance_kwc"])
-    NB_PAN       = int(data["nb_panneaux"])
-    WP           = int(data["watt_par_panneau"])
-    PROD_KWH     = int(data["prod_kwh"])
+    # M2/M3 — puissance, compte de panneaux et watt unitaire peuvent être
+    # INCONNUS (None) : ils ne sont plus jamais déduits du prix. 0 = « rien à
+    # imprimer », et chaque vignette qui en dépend est omise.
+    KWC          = float(data.get("puissance_kwc") or 0)
+    NB_PAN       = int(data.get("nb_panneaux") or 0)
+    WP           = int(data.get("watt_par_panneau") or 0)
+    PROD_KWH     = int(data.get("prod_kwh") or 0)
     TOTAL_SANS        = float(data["total_sans"])
     TOTAL_AVEC        = float(data["total_avec"])
     DISCOUNT_PCT      = float(data.get("discount_pct", 0))
@@ -2762,6 +3011,17 @@ def _render_premium_pdf(data: dict, out_path) -> str:
     PAY_M = int(_terms.get("materiel", 60))
     PAY_S = int(_terms.get("solde", 10))
     ONEPAGE_NOTE_BATTERIE = bool(data.get("onepage_note_batterie", False))
+    global ONEPAGE_BRANCHE  # M4 — branche des lignes du format une page
+    _br = data.get("onepage_branche")
+    ONEPAGE_BRANCHE = _br if _br in ("sans", "avec") else None
+    global VALID_UNTIL  # M7 — échéance réelle du devis
+    VALID_UNTIL = (data.get("valid_until") or "").strip()
+    global DELAI_VISITE, DELAI_INSTALLATION  # Q5 — délais indicatifs
+    _dl = data.get("delais") or {}
+    DELAI_VISITE = (_dl.get("visite_technique") or "").strip()
+    DELAI_INSTALLATION = (_dl.get("installation") or "").strip()
+    global SAVINGS_ESTIMATED  # M10 — économies estimées ?
+    SAVINGS_ESTIMATED = bool(data.get("savings_estimated"))
     # XSAL14/XSAL5 — structure (sections/notes) + options proposées (rendu seul,
     # hors totaux). Absents → byte-identique. Escapés à l'ingestion (ERR37).
     global LIGNES_STRUCTURE, OPTIONS_PROPOSEES
@@ -2806,18 +3066,45 @@ def _render_premium_pdf(data: dict, out_path) -> str:
     AVEC_ITEMS   = _guard_huawei_accessories(_esc_items(data["avec_items"]))
     ECO_S_M      = data["eco_s_monthly"]
     ECO_A_M      = data["eco_a_monthly"]
-    FACTURES_M   = list(data["factures_mensuelles"])
-    eco_a_cumul  = int(data["eco_a_cumul"])
-    CUMUL_S      = [-TOTAL_SANS + ECO_S_ANN * y for y in YEARS]
-    CUMUL_A      = [-TOTAL_AVEC + eco_a_cumul  * y for y in YEARS]
+    # M1 — `data["factures_mensuelles"]` vaut None quand le client n'a pas
+    # donné ses 12 factures : `list(None)` faisait EXPLOSER le legacy, seul
+    # chemin de repli du renderer résidentiel. Absence ⇒ liste vide ⇒ le
+    # graphique mensuel omet les barres de facture (jamais un proxy).
+    FACTURES_M   = list(data.get("factures_mensuelles") or [])
+    eco_a_cumul  = int(data.get("eco_a_cumul") or 0)
+    # ── M5 (audit adversarial du 19/08/2026) — LA COURBE 25 ANS N'EST PLUS UNE
+    # DROITE. Elle traçait `−total + économie × année` : une économie PLATE sur
+    # 25 ans, alors que le modèle du devis intègre la dégradation panneau
+    # (0,5 %/an), le rendement batterie et la provision onduleur. Écart mesuré
+    # sur le gain final : +14,5 % (option 1) et +36,6 % (option 2) de trop.
+    # Le VRAI cumul est déjà dans les données (``cashflow_sans``/
+    # ``cashflow_avec``, calculé par ``compute_cashflow_payback``) : on le trace
+    # tel quel — la droite ne subsiste qu'en repli, si le cumul manque.
+    _cf_s = list(data.get("cashflow_sans") or [])
+    _cf_a = list(data.get("cashflow_avec") or [])
+    CUMUL_S = ([-TOTAL_SANS] + _cf_s[:25] if len(_cf_s) >= 25
+               else [-TOTAL_SANS + ECO_S_ANN * y for y in YEARS])
+    CUMUL_A = ([-TOTAL_AVEC] + _cf_a[:25] if len(_cf_a) >= 25
+               else [-TOTAL_AVEC + eco_a_cumul * y for y in YEARS])
 
-    out_path = Path(out_path)
-    mode = data.get("pdf_mode", "full")
-    if mode == "onepage":
-        html = build_html_onepage(
+
+def render_html_for(data: dict) -> str:
+    """HTML EXACT que le moteur legacy envoie à WeasyPrint pour ``data``.
+
+    Point d'entrée des tests « document rendu » : aucune dépendance PDF, même
+    ingestion et même sélection de gabarit que le chemin PDF. N'acquiert PAS
+    ``_RENDER_LOCK`` (``_render_premium_pdf`` le tient déjà autour de l'appel).
+    """
+    apply_quote_data(data)
+    if data.get("pdf_mode", "full") == "onepage":
+        return build_html_onepage(
             _guard_huawei_accessories(_esc_items(data.get("all_items", []))))
-    else:
-        html = build_html()
+    return build_html()
+
+
+def _render_premium_pdf(data: dict, out_path) -> str:
+    out_path = Path(out_path)
+    html = render_html_for(data)
 
     with tempfile.NamedTemporaryFile(suffix=".html", delete=False,
                                      mode="w", encoding="utf-8") as tf:

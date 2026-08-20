@@ -957,10 +957,16 @@ test('QF4 — kwhFromBill : inverse EXACT du barème sélectif', () => {
   assert.equal(kwhFromBill(235, 'onee').kwhMensuel, 210)
 })
 
-test('QF4 — kwhFromBill : distributeur privé (Lydec) marqué approximatif', () => {
-  const r = kwhFromBill(500, 'lydec')
-  assert.equal(r.kwhMensuel, 400.0)
-  assert.equal(r.approximatif, true)
+test('Q7 (fondateur 20/08) — kwhFromBill : Lydec/Redal = LA grille nationale, plus d\'approximation', () => {
+  // Il n'existe pas de grille Lydec/Redal distincte : les distributeurs
+  // appliquent la grille nationale unique — même inversion, même résultat
+  // que l'ONEE, et le drapeau « approximatif » n'a plus d'objet.
+  const onee = kwhFromBill(500, 'onee')
+  for (const distributeur of ['lydec', 'redal']) {
+    const r = kwhFromBill(500, distributeur)
+    assert.deepEqual(r, onee, distributeur)
+    assert.equal(r.approximatif, false, distributeur)
+  }
 })
 
 test('QF4 — kwhFromBill : sans distributeur connu → repli FALLBACK_KWH_PRICE, étiqueté estimation', () => {

@@ -1212,7 +1212,15 @@ export default function StockList() {
         <ProduitForm produit={editProduit} onClose={closeForm} onSaved={onSaved} />
       )}
       {detailProduit && (
-        <ProduitDetail produit={detailProduit} onClose={() => setDetailProduit(null)} />
+        /* PVFCH — « Modifier la fiche » depuis le visualiseur : on ferme le
+           détail et on rouvre le MÊME produit dans le formulaire existant
+           (sa section « Fiche technique »). `onEdit` n'est passé qu'avec le
+           droit d'écriture — sans lui, le bouton n'existe pas. */
+        <ProduitDetail
+          produit={detailProduit}
+          onClose={() => setDetailProduit(null)}
+          onEdit={canWrite ? ((prod) => { setDetailProduit(null); openEdit(prod) }) : null}
+        />
       )}
 
       <div className="flex flex-col gap-4 lg:flex-row">

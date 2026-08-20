@@ -344,7 +344,14 @@ BASELINE_CASES = [
         'name': 'residentiel_full',
         'reference': 'DEV-SNAP-FULL',
         'lines': FULL_LINES,
-        'etude_params': DEUX_OPTIONS,
+        # Z2 (ORDRE FONDATEUR, 20/08/2026) — le golden doit capturer le document
+        # COURANT, celui d'un vrai client : un devis sans la moindre donnée
+        # réelle (ni facture, ni conso, ni distributeur) n'imprime plus AUCUN
+        # chiffre d'économies (le −N %, l'avant/après, la couverture et la
+        # rentabilité descendaient tous du tarif de repli). Le barème réel du
+        # distributeur — ce que porte tout devis issu du générateur — ancre donc
+        # ce cas ; l'omission, elle, a ses propres tests unitaires.
+        'etude_params': {**DEUX_OPTIONS, 'distributeur': 'onee'},
         'pdf_options': None,
         'page_count': 3,
         'check_totals': True,

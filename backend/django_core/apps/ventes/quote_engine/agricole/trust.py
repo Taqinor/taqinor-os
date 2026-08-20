@@ -28,7 +28,8 @@ def build(ctx) -> str:
     f_display = fonts["display"]; f_serif = fonts["serif"]; f_sans = fonts["sans"]
 
     client_full = theme.titlecase_name(d.get("client_full") or d.get("client_name")) or "Le client"
-    validity = d.get("validity_days", 30)
+    # M7 — la VRAIE échéance du devis, ou rien (voir cover.py).
+    validity = (d.get("valid_until") or "").strip()
     site_url = d.get("site_url", "taqinor.ma")
     links = d.get("links", {}) or {}
     pay = d.get("payment_terms", {}) or {}
@@ -77,7 +78,8 @@ def build(ctx) -> str:
     paiement = (f"{acompte}% à la commande · {materiel}% à la réception du matériel "
                 f"· {solde}% à la mise en service")
     conditions = [
-        ("Validité de l'offre", f"{validity} jours"),
+        *((("Validité de l'offre", f"jusqu'au {validity}"),)
+          if validity else ()),
         ("Paiement", paiement),
         ("TVA", tva_note or "Selon barème en vigueur"),
         ("Délai d'installation", "selon site & forage"),

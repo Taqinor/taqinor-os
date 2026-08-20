@@ -217,6 +217,107 @@ const CHAMPS_BOOLEENS_PAR_TYPE = {
   onduleur: ['ond_bat_aucune'],
 }
 
+// ── PVFCH (fondateur 20/08/2026) — LIRE la fiche là où on la REGARDE ────────
+// « i am expecting a fiche produit that includes all the data separately, that
+// I can change — number of MPPT, range of each MPPT, battery voltage… »
+//
+// Ces champs EXISTENT (FicheTechnique, PV5/PVOND-H) et sont éditables dans
+// ProduitForm, mais le VISUALISEUR produit (ProduitDetail, onglet « Fiche
+// technique ») n'affichait que marque/garantie/description en prose : le
+// fondateur en a légitimement conclu que la donnée structurée n'existait pas.
+//
+// Le tableau ci-dessous est la SOURCE UNIQUE des libellés d'affichage. Ils
+// sont MOT POUR MOT ceux des <FormField> de ProduitForm : le fondateur lit la
+// fiche, clique « Modifier la fiche », et retrouve le MÊME intitulé — jamais à
+// traduire mentalement d'un écran à l'autre. Les libellés du contrat onduleur
+// (CONTRAT_ONDULEUR_FR, miroir du backend) restent la source du VERROU ; ici
+// il s'agit de l'AFFICHAGE, qui couvre aussi les champs hors contrat.
+export const LIBELLES_FICHE = {
+  // Onduleur
+  ond_ac_kw: 'Puissance AC (kW)',
+  ond_phases: 'Phases',
+  ond_n_mppt: "Nombre d'entrées MPPT",
+  ond_i_max_mppt_a: 'Courant maxi par MPPT (A)',
+  ond_mppt_v_min: 'Plage MPPT — tension mini (V)',
+  ond_mppt_v_max: 'Plage MPPT — tension maxi (V)',
+  ond_v_max_abs: 'Tension DC maximale (V)',
+  ond_rendement_euro_pct: 'Rendement européen (%)',
+  ond_v_demarrage_v: 'Tension de démarrage (V)',
+  ond_isc_max_mppt_a: 'Isc maxi par MPPT (A)',
+  ond_bat_v_min: 'Plage batterie — tension mini (V)',
+  ond_bat_v_max: 'Plage batterie — tension maxi (V)',
+  // Module
+  pmax_wc: 'Puissance crête (Wc)',
+  voc_v: 'Tension circuit ouvert — Voc (V)',
+  isc_a: 'Courant court-circuit — Isc (A)',
+  vmp_v: 'Tension au point de puissance max — Vmp (V)',
+  imp_a: 'Courant au point de puissance max — Imp (A)',
+  temp_coeff_voc_pct_c: 'Coefficient de température Voc (%/°C)',
+  temp_coeff_pmax_pct_c: 'Coefficient de température Pmax (%/°C)',
+  longueur_mm: 'Longueur (mm)',
+  largeur_mm: 'Largeur (mm)',
+  // Batterie
+  bat_kwh_nominal: 'Capacité nominale (kWh)',
+  bat_kwh_usable: 'Capacité utilisable (kWh)',
+  bat_v_nominal: 'Tension nominale (V)',
+  bat_dod_pct: 'Profondeur de décharge — plage utile (%)',
+}
+
+/** Titre de la section affichée, par `type_fiche` backend. */
+export const TITRES_FICHE = {
+  onduleur: 'Onduleur',
+  module: 'Panneau photovoltaïque',
+  batterie: 'Batterie',
+}
+
+/** Ce qu'affiche une valeur ABSENTE. JAMAIS un défaut, jamais un zéro : un
+ * trou doit se VOIR comme un trou — c'est la règle « never invent numbers »
+ * appliquée à l'écran (le calcul, lui, refuse ; cf.
+ * apps/ventes/electrical_service.py). */
+export const VALEUR_ABSENTE = '— à renseigner'
+
+/** Rend une valeur de fiche prête à afficher.
+ *  - `null`/`undefined`/'' → `VALEUR_ABSENTE` ;
+ *  - phases → « Monophasé » / « Triphasé » (le nombre nu ne se lit pas) ;
+ *  - « aucune batterie » déclarée → la plage batterie le DIT au lieu d'être
+ *    rendue vide, sinon on croirait à un oubli. */
+export function valeurFicheAffichee(cle, fiche) {
+  if (!fiche) return VALEUR_ABSENTE
+  if (cle === 'ond_bat_v_min' || cle === 'ond_bat_v_max') {
+    if (fiche.ond_bat_aucune) return 'Aucune batterie compatible'
+  }
+  const v = fiche[cle]
+  if (v === null || v === undefined || v === '') return VALEUR_ABSENTE
+  if (cle === 'ond_phases') {
+    if (String(v) === '1') return 'Monophasé'
+    if (String(v) === '3') return 'Triphasé'
+  }
+  return String(v)
+}
+
+/** Les lignes à AFFICHER pour une fiche chargée du serveur :
+ * `{ titre, lignes: [{ cle, libelle, valeur, absente }] }`, ou `null` quand la
+ * fiche n'a pas de bloc connu (produit sans fiche, ou `type_fiche` vide).
+ *
+ * L'ORDRE est celui de `CHAMPS_PAR_TYPE`, c'est-à-dire celui du formulaire :
+ * la fiche lue et la fiche éditée se parcourent dans le même ordre. Les champs
+ * VIDES sont inclus — c'est même leur raison d'être ici : le fondateur doit
+ * voir ce qui manque, pas seulement ce qui est là. */
+export function groupeFicheAffichage(fiche) {
+  const type = fiche?.type_fiche
+  const cles = CHAMPS_PAR_TYPE[type]
+  if (!cles) return null
+  return {
+    type,
+    titre: TITRES_FICHE[type] ?? 'Fiche technique',
+    lignes: cles.map((cle) => {
+      const valeur = valeurFicheAffichee(cle, fiche)
+      return { cle, libelle: LIBELLES_FICHE[cle] ?? cle, valeur,
+               absente: valeur === VALEUR_ABSENTE }
+    }),
+  }
+}
+
 /** `type_fiche` backend (FicheTechnique.TypeFiche : 'onduleur'/'module'/
  * 'batterie') pour la classification produit CLIENT
  * (`classifyProduct` de solar.js : 'onduleur_hybride'/'onduleur_reseau'/

@@ -69,16 +69,63 @@ def is_residential(devis, options=None) -> bool:
 # page web et la couverture du PDF lisent ainsi le MÊME calcul — le « −85 % »
 # et la donut de couverture ne peuvent plus diverger entre les deux supports.
 # Fonction PURE (dict → dict | None) : aucun accès BD, aucune dépendance lourde.
+def ancrage_reel_absent(data: dict) -> bool:
+    """Z2 (ORDRE FONDATEUR, 20/08/2026) — le devis n'a-t-il AUCUNE donnée réelle ?
+
+    « Aucun ancrage » = le tarif employé est le REPLI (``savings_estimated`` :
+    ni prix plat vendeur, ni barème distributeur, ni barème société) ET le devis
+    ne porte ni 12 factures mensuelles réelles (``factures_reelles``) ni
+    consommation annuelle saisie (``conso_annuelle_kwh``). Tout ce qui serait
+    alors « calculé » descend d'un tarif de repli (1,20 MAD/kWh) multiplié par
+    un taux d'autoconsommation forfaitaire : un chiffre d'apparence factuelle
+    sans aucune saisie derrière — donc OMIS, jamais rendu.
+
+    NE PAS confondre avec ``coverage_estimated`` : là, la consommation est
+    DÉRIVÉE d'une facture réelle au tarif réel — une dérivation traçable, qui
+    reste rendue avec sa mention « (estimation) ».
+    """
+    if not data.get("savings_estimated"):
+        return False                     # tarif réel (vendeur/barème/société)
+    if data.get("factures_reelles"):
+        return False                     # 12 factures RÉELLES du lead
+    try:
+        if float(data.get("conso_annuelle_kwh") or 0) > 0:
+            return False                 # consommation annuelle SAISIE
+    except (TypeError, ValueError):
+        pass
+    return True
+
+
 def synthese_economies(data: dict) -> dict | None:
     """Avant/après facture + couverture solaire, formules de la page 1 du PDF.
 
     Retourne None quand le devis n'a pas la forme requise (12 factures
     mensuelles, économies mensuelles, production) — l'appelant public sert
     alors des None et la page web n'affiche rien, jamais un chiffre inventé.
+
+    Z2 — retourne aussi None quand AUCUNE donnée réelle n'ancre le calcul
+    (``ancrage_reel_absent``) : le −N %, l'avant/après, la couverture et le
+    graphe mensuel disparaissent ALORS ENSEMBLE, du PDF comme de la proposition
+    en ligne (qui lit cette même fonction).
     """
+    if ancrage_reel_absent(data):
+        return None
     try:
         before = list(data.get("factures_mensuelles") or [])
-        eco_m = list(data.get("eco_a_monthly") or [])
+        # ── Q2 (décision fondateur du 20/08/2026) — LA SÉRIE DE L'OPTION
+        # RÉELLEMENT CHIFFRÉE. La page 1 lisait ``eco_a_monthly`` D'OFFICE :
+        # sur un devis réseau MONO-OPTION (aucune batterie vendue, aucune carte
+        # « avec batterie » sur le document), le « −N % », l'avant/après et le
+        # graphe mensuel décrivaient donc l'option AVEC batterie — un second
+        # jeu de chiffres qu'aucune page du document n'assumait. Le choix suit
+        # exactement celui de la courbe 25 ans (options.py) : l'option 2 quand
+        # le document la porte, sinon l'option 1.
+        _avec = bool(data.get("deux_options", True)) or bool(
+            data.get("avec_ok", True))
+        eco_m = list(
+            (data.get("eco_a_monthly") if _avec
+             else (data.get("eco_s_monthly") or data.get("eco_a_monthly")))
+            or [])
         prod_kwh = data.get("prod_kwh") or 0
         if len(before) != 12 or len(eco_m) != 12 or not prod_kwh:
             return None
@@ -116,21 +163,45 @@ def synthese_economies(data: dict) -> dict | None:
 def _augment(data: dict) -> dict:
     """Add the redesigned layout's derived fields onto the built quote data,
     raising Unsupported if the devis isn't the residential two-option shape."""
+    # M1 × Z2 — ``factures_mensuelles`` a QUITTÉ cette liste. Depuis M1 elle
+    # vaut None dès que le client n'a pas donné ses 12 factures (plus aucune
+    # série proxy) : l'exiger ici renvoyait tout le document vers le moteur
+    # legacy, alors que Z2 a précisément construit l'omission EN PLACE — la
+    # proposition résidentielle est rendue, sa couche économique retirée d'un
+    # seul bloc. Le document premium reste donc servi, sans un chiffre inventé.
     need = ("sans_items", "avec_items", "totaux_sans", "totaux_avec",
             "roi_s", "roi_a", "total_sans", "total_avec",
-            "eco_s_ann", "eco_a_ann", "factures_mensuelles", "eco_a_monthly",
+            "eco_s_ann", "eco_a_ann", "eco_a_monthly",
             "puissance_kwc", "prod_kwh", "nb_panneaux", "watt_par_panneau",
             "ref", "date")
     for k in need:
         if data.get(k) in (None, "", [], 0):
             raise Unsupported(f"missing quote field: {k}")
 
-    if len(data["factures_mensuelles"]) != 12:
+    _bills = data.get("factures_mensuelles")
+    if _bills is not None and len(_bills) != 12:
         raise Unsupported("need 12 monthly bills for the avant/après chart")
     # PVCOV — le calcul vit dans synthese_economies (servi tel quel à la
     # proposition en ligne) ; _augment ne fait plus que le consommer.
+    # Z2 — deux raisons distinctes de n'avoir PAS de synthèse :
+    #   · aucune donnée réelle d'ancrage → OMISSION VOULUE : le document est
+    #     rendu normalement, mais sa couche économique (−N %, avant/après,
+    #     couverture, graphe mensuel, économie annuelle, rentabilité) est
+    #     entièrement retirée — jamais un bloc à moitié, jamais un « 0 » ;
+    #   · devis malformé (série de factures inexploitable) → hors périmètre du
+    #     rendu résidentiel, comportement historique inchangé.
     synth = synthese_economies(data)
-    if synth is None:
+    # M1 × Z2 — deux chemins mènent à l'omission VOULUE, et un seul au refus :
+    #   · Z2 : aucune donnée réelle d'ancrage (tarif de repli, ni factures ni
+    #     conso saisie) — tout ce qui serait « calculé » serait un forfait ;
+    #   · M1 : pas de série de factures RÉELLES — or l'avant/après, le −N % et
+    #     la couverture SONT cette série ; sans elle il n'y a rien à montrer,
+    #     et il n'existe plus de proxy pour la fabriquer.
+    # Reste le refus historique : un devis qui PORTE des factures réelles mais
+    # dont la synthèse reste incalculable est malformé → hors périmètre.
+    masquer_synthese = synth is None and (
+        ancrage_reel_absent(data) or not data.get("factures_reelles"))
+    if synth is None and not masquer_synthese:
         raise Unsupported("no bill baseline")
 
     d = dict(data)
@@ -162,8 +233,20 @@ def _augment(data: dict) -> dict:
     links = {**_default_links, **{k: v for k, v in _existing_links.items() if v}}
 
     d.update({
-        **synth,
-        "validity_days": d.get("validity_days", 30),
+        # Z2 — ``synth`` peut être None (aucun ancrage réel) : la couche
+        # économique est alors omise EN BLOC, pas remplacée par des zéros.
+        **(synth or {}),
+        # Z2 — drapeau UNIQUE lu par les trois gabarits (cover/options) et
+        # par charts.build_all : la couche économique est rendue, ou omise.
+        "masquer_synthese": masquer_synthese,
+        # M7 (audit du 19/08/2026) — la validité vient du DEVIS
+        # (``date_validite``, sinon création + réglage société
+        # ``quote_validity_days``), servie par le builder. Plus de
+        # « 30 jours » par défaut : le portail client affichait la vraie
+        # échéance et le PDF une fausse. Indéterminable ⇒ None ⇒ les
+        # gabarits OMETTENT la mention.
+        "validity_days": d.get("validity_days"),
+        "valid_until": d.get("valid_until"),
         "site_url": site_url,
         "links": links,
     })

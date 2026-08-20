@@ -190,20 +190,36 @@ class TestScenarioFondateur(SimpleTestCase):
             595.02954, places=9)
 
 
-class TestLydecRedalRestentProgressifs(SimpleTestCase):
-    """Aucune grille sélective vérifiée pour les délégataires → progressif +
-    drapeau « approximatif », exactement comme avant (zéro régression)."""
+class TestUnSeulBaremeNational(SimpleTestCase):
+    """Q7 (décision fondateur du 20/08/2026) — LES TROIS DISTRIBUTEURS LISENT
+    LA MÊME GRILLE.
 
-    def test_lydec_reste_progressif_et_approximatif(self):
-        # 200 kWh/mois : 100 × 0,9500 + 100 × 1,1500 = 95 + 115 = 210 MAD
-        # (cumulé, PAS 200 × 1,1500 = 230 — Lydec n'est pas sélectif ici).
-        from apps.ventes.quote_engine.pricing import LYDEC_TRANCHES
-        self.assertAlmostEqual(
-            _monthly_bill_from_kwh(200, LYDEC_TRANCHES), 210.0, places=9)
-        self.assertIsNone(getattr(LYDEC_TRANCHES, "selective_threshold", None))
-        out = kwh_from_bill(210, utility="lydec")
-        self.assertTrue(out["approximatif"])
-        self.assertAlmostEqual(out["kwh_mensuel"], 200.0, places=1)
+    Les grilles « approximatives » Lydec/Redal (trois paliers ronds jamais
+    vérifiés, marqués « à confirmer ») sont supprimées : sur un même client,
+    elles produisaient une facture différente du barème national selon un
+    simple champ de formulaire, puis un drapeau « approximatif » qui avouait
+    le problème sans le corriger. Le nom du distributeur n'est plus qu'un
+    LIBELLÉ ; une société dont la grille diffère la SAISIT dans ses réglages.
+    """
+
+    def test_les_trois_distributeurs_donnent_la_meme_facture(self):
+        ref = kwh_from_bill(1800, utility="onee")
+        for utility in ("lydec", "redal"):
+            out = kwh_from_bill(1800, utility=utility)
+            self.assertAlmostEqual(out["kwh_mensuel"], ref["kwh_mensuel"],
+                                   places=6, msg=utility)
+
+    def test_plus_aucune_table_n_est_approximative(self):
+        for utility in ("onee", "lydec", "redal"):
+            out = kwh_from_bill(210, utility=utility)
+            self.assertFalse(out["approximatif"], utility)
+            self.assertEqual(out["label"], "", utility)
+
+    def test_les_grilles_estimees_ont_disparu_du_module(self):
+        from apps.ventes.quote_engine import pricing
+        self.assertFalse(hasattr(pricing, "LYDEC_TRANCHES"))
+        self.assertFalse(hasattr(pricing, "REDAL_TRANCHES"))
+        self.assertEqual(set(pricing.APPROX_UTILITIES), set())
 
     def test_un_bareme_colle_par_le_vendeur_reste_progressif(self):
         # 150 kWh → 100 × 2,0 + 50 × 3,0 = 350 MAD (cumulé).

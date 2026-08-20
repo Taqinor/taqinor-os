@@ -12,10 +12,17 @@ Sources (2026-06):
   · Coût/m³ pompé : Solaire 0,44 · Butane 0,76 · Diesel 1,67 MAD/m³
     (programme national pompage solaire, ministère / AMEE).
   · Bonbonne butane 12 kg : 50 MAD subventionnée → ~128 MAD coût réel
-    (subvention ~78 MAD/bonbonne, en cours de décompensation).
+    (subvention ~78 MAD/bonbonne, en cours de décompensation) — ces deux
+    montants sont désormais des RÉGLAGES société (``CompanyProfile.
+    agricole_prix_bonbonne`` / ``agricole_cout_reel_bonbonne``, décision
+    fondateur 20/08/2026) ; les constantes ci-dessous n'en restent que le
+    DÉFAUT tant que la société ne les édite pas.
   · Gasoil ~13,5 MAD/L (volatile, à relever en direct).
   · Subvention FDA pompage solaire : 30 % (depuis 19/02/2024), versée a
-    posteriori ; plafond ~30 000 MAD à confirmer auprès de la DPA/ORMVA.
+    posteriori. Décision fondateur du 20/08/2026 : le plafond réel n'est pas
+    confirmable (les sources divergent) — AUCUN montant de subvention n'est
+    calculé ni affiché ; seul le taux (30 %, sourcé) est montré, avec une
+    mention qualitative (voir ``FDA_QUALITATIVE_NOTE``).
 """
 
 # Coût de l'eau pompée par source d'énergie (MAD / m³) — chiffres officiels.
@@ -25,10 +32,14 @@ COST_PER_M3 = {
     "diesel": 1.67,    # à confirmer
 }
 
-# Décompensation : multiplicateur coût butane réel / subventionné (≈ 128/50).
-BUTANE_DECOMP_MULTIPLIER = 2.5      # à confirmer (suit le marché GPL mondial)
-BUTANE_12KG_SUBVENTIONNE = 50       # MAD, mi-2026
-BUTANE_12KG_REEL = 128              # MAD, ≈ non subventionné
+# Décompensation : le rapport réel / subventionné (≈ 128/50 = 2,56) est DÉRIVÉ
+# des deux réglages ci-dessous par ``economics.compute`` — plus de multiplicateur
+# codé en dur (décision fondateur 20/08/2026). Ces deux valeurs sont les DÉFAUTS
+# des réglages société éditables ``agricole_prix_bonbonne`` / ``agricole_cout_
+# reel_bonbonne`` (apps.parametres.CompanyProfile) ; overridées par
+# ``economics.load_constants`` quand la société les a renseignées.
+BUTANE_12KG_SUBVENTIONNE = 50       # MAD, mi-2026 — défaut de agricole_prix_bonbonne
+BUTANE_12KG_REEL = 128              # MAD, ≈ non subventionné — défaut de agricole_cout_reel_bonbonne
 BUTANE_SUBVENTION_PAR_BONBONNE = 78  # MAD pris en charge par l'État
 
 # Bilan bottom-up (utilisé pour le CO₂ et l'estimation bonbonnes/an).
@@ -46,9 +57,15 @@ PEAK_TO_AVG = 0.62                  # jour de pointe → moyenne annuelle, à co
 # Production PV : rendement spécifique (kWh / kWc / an) — défaut Maroc prudent.
 SPECIFIC_YIELD_KWH_KWC = 1650       # à confirmer (≈ 1600-1900 selon région)
 
-# Subvention FDA pompage solaire.
+# Subvention FDA pompage solaire — taux SEUL (sourcé, affichable). Décision
+# fondateur 20/08/2026 : le plafond réel n'est pas confirmable (les sources
+# divergent du code) → AUCUN montant n'est calculé/affiché/déduit d'un
+# plafond ; à la place, la mention qualitative ci-dessous, mot pour mot.
 FDA_SUBSIDY_PCT = 30                # %
-FDA_SUBSIDY_CAP = 30000            # MAD — plafond à confirmer (DPA/ORMVA)
+FDA_QUALITATIVE_NOTE = (
+    "Subvention FDA de 30 % possible (dispositif 2024, cumulable irrigation "
+    "localisée) — nous montons le dossier avec vous."
+)
 
 # Répartition mensuelle (12) — irrigation (besoin estival fort) & production PV.
 # Poids normalisés (somme ≈ 1). À confirmer / affiner par région.

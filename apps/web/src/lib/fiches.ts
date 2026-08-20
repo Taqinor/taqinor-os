@@ -195,9 +195,14 @@ export const FICHES: Fiche[] = [
       "La cellule N-type Tiger Neo va chercher le rendement plutôt que la surface — utile quand la toiture est comptée.",
     faits: [
       'Cellule N-type monocristalline haut rendement',
-      'Plage de puissance ≈ 700 – 720 Wc',
+      'Plage de puissance 710 – 735 Wc',
       'Conforme IEC 61215 et IEC 61730',
     ],
+    // O2 (2026-08-20) — la plage affichée disait « ≈ 700-720 Wc », contredite
+    // par sa PROPRE datasheet liée ci-dessous : le nom de fichier constructeur
+    // est explicitement JKM710-735N-66HL5-BDV (confirmé aussi sur le
+    // répertoire ENF Solar, panel-datasheet/crystalline/68315, gamme
+    // Tiger Neo 66HL5-BDV 710-735 W) — la plage réelle est 710-735 Wc.
     garantie: `Garantie produit ${PANEL_PRODUCT_WARRANTY_YEARS} ans · performance linéaire ${PANEL_PERFORMANCE_WARRANTY_YEARS} ans`,
     warranty: {
       years: PANEL_PERFORMANCE_WARRANTY_YEARS,
@@ -239,12 +244,27 @@ export const FICHES: Fiche[] = [
     resume:
       "Le chef d'orchestre de l'installation : il arbitre en temps réel entre panneaux, batterie et réseau.",
     faits: [
-      'Monophasé et triphasé, 5 – 30 kW',
+      'Monophasé et triphasé, 3 – 12 kW',
       'Gestion batterie CAN BMS intégrée',
       'Conforme CEI 61727 et VDE-AR-N-4105',
     ],
-    garantie: 'Garantie 10 ans',
-    warranty: { years: 10 },
+    // O2 (2026-08-20) — la plage affichée disait « 5-30 kW », contredite par
+    // les DEUX datasheets liées ci-dessous : le triphasé SG05LP3 couvre
+    // SUN-3/4/5/6/8/10/12K (3-12 kW), le monophasé SG05LP1 couvre
+    // SUN-3.6/5/6/7.6/8K (3,6-8 kW) — la plage réelle combinée est 3-12 kW,
+    // jamais 30 kW sur AUCUNE des deux fiches liées.
+    garantie: 'Garantie constructeur 5 à 10 ans (selon site d\'installation)',
+    warranty: {
+      years: 10,
+      // WA13-bis (2026-08-20) — même nuance que la batterie Dyness ci-dessous :
+      // la fiche warranty officielle Deye (« SUN Series Hybrid inverter 10-Year
+      // Limited Warranty for Installation in Europe ») conditionne les 10 ans à
+      // un site d'installation EN EUROPE ; la datasheet technique du SG05LP3
+      // liste elle-même « 5 Years/10 Years — the Warranty Period Depends the
+      // Final Installation Site of Inverter ». Aucun certificat distributeur
+      // marocain n'a encore confirmé laquelle des deux bornes s'applique ici.
+      note: 'Garantie constructeur 5 à 10 ans selon le site d\'installation (10 ans pour une installation en Europe, source Deye) — terme exact au Maroc à confirmer contre le certificat du distributeur.',
+    },
     pairsWith: ['Panneaux photovoltaïques', 'Batteries', 'Supervision & comptage'],
     // Fondateur 2026-08-15 : génération réellement en pose = SG05 (10 kW =
     // SUN-10K-SG05LP3-EU-SM2 confirmé, mono = gamme SG05LP1) — l'ancien lien

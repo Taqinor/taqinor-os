@@ -246,6 +246,30 @@ def _battery_kwh_from_items(rows, blob=None) -> float:
     return total
 
 
+def _cout_onduleur(rows, blob=None):
+    """Q1 — prix TTC RÉEL des lignes onduleur d'une option, ou ``None``.
+
+    Décision fondateur du 20/08/2026 : la provision de remplacement de
+    l'onduleur (année 12, principe mi-vie IEA PVPS) vaut le PRIX FACTURÉ de
+    l'onduleur de ce devis — plus un pourcentage du CAPEX, qui ne correspondait
+    au prix d'aucun onduleur réel. Aucune ligne onduleur identifiable ⇒ ``None``
+    ⇒ aucune provision, et l'hypothèse affichée le dit.
+    """
+    total = 0.0
+    for it in rows or []:
+        text = blob(it) if blob else (it.get("designation") or "")
+        if not _is_inverter(text):
+            continue
+        try:
+            qty = float(it.get("quantite") or 0)
+            pu = float(it.get("prix_unit_ttc") or 0)
+        except (TypeError, ValueError):
+            continue
+        if qty > 0 and pu > 0:
+            total += qty * pu
+    return round(total, 2) if total > 0 else None
+
+
 def _is_hybrid_inverter(designation: str) -> bool:
     d = (designation or "").lower()
     return "onduleur" in d and "hybride" in d
@@ -256,9 +280,36 @@ def _is_reseau_inverter(designation: str) -> bool:
     return "onduleur" in d and ("réseau" in d or "reseau" in d or "injection" in d)
 
 
+# ── M2 — DÉTECTION PANNEAU ÉLARGIE (audit adversarial du 19/08/2026) ─────────
+# Le seul mot « panneau » laissait passer les désignations que les vendeurs
+# écrivent vraiment (« Module PV 550 W », « Canadian Solar TOPHiKu7 710 Wc ») :
+# le devis n'avait alors AUCUNE ligne panneau à ses yeux, et l'ancien repli
+# fabriquait un kWc depuis le prix. Élargir la détection, c'est supprimer la
+# cause la plus fréquente de cette invention. Les marques ne suffisent JAMAIS
+# seules — Canadian Solar, Huawei et consorts vendent aussi des onduleurs.
+_PANEL_MODULE_QUALIFIERS = ("pv", "photovolta", "solaire", "solar")
+_PANEL_BRANDS = (
+    "canadian solar", "canadien solar", "jinko", "longi", "trina",
+    "ja solar", "risen", "sunpower", "qcells", "q cells", "astronergy",
+    "znshine",
+)
+
+
 def _is_panel(designation: str, produit_nom: str = "") -> bool:
     blob = f"{designation} {produit_nom}".lower()
-    return "panneau" in blob or "panneaux" in blob
+    if "panneau" in blob or "panneaux" in blob:
+        return True
+    # Exclusions d'abord : un onduleur/une batterie/un accessoire n'est jamais
+    # un panneau, quelle que soit la marque écrite dessus.
+    if (_is_inverter(blob) or _is_battery(blob)
+            or _is_smart_meter(blob) or _is_wifi_dongle(blob)):
+        return False
+    if "module" in blob and any(q in blob for q in _PANEL_MODULE_QUALIFIERS):
+        return True
+    # Marque de panneau ET puissance lisible : sans watt, une marque seule
+    # reste ambiguë — on préfère l'omission à un faux positif.
+    return bool(any(b in blob for b in _PANEL_BRANDS)
+                and _WATT_RE.search(blob))
 
 
 def _is_inverter(designation: str) -> bool:
@@ -343,6 +394,29 @@ def _line_to_item(ligne, taux_tva: Decimal) -> dict:
     }
 
 
+def ligne_tarif_hypothese(tarif_txt, util_name, savings_estimated) -> str:
+    """Ligne « Tarif électricité » du bloc « Nos hypothèses ».
+
+    M11 (audit adversarial du 19/08/2026) — UN RÉGLAGE SOCIÉTÉ POSÉ PAR DÉFAUT
+    N'EST PAS UNE DONNÉE DU CLIENT. Le discriminateur était « ce tarif est-il
+    égal à la constante interne 1,75 ? » : dès qu'une société avait touché son
+    réglage ``onee_tarif_kwh`` — ou en gardait simplement un autre défaut — le
+    document annonçait un tarif « personnalisé pour votre profil de
+    consommation ». C'est un forfait maison, commun à tous ses clients, et le
+    moteur le SAIT : ``savings_estimated`` reste vrai tant qu'aucun barème réel
+    n'a servi. C'est donc ce drapeau qui décide, jamais une comparaison avec une
+    constante. Extrait en fonction PURE pour être épinglé par un test.
+    """
+    if savings_estimated:
+        return ("Tarif électricité : référence prudente (estimation) — "
+                "transmettez une facture récente et nous recalculons vos "
+                "économies par tranches, sur votre barème exact.")
+    if util_name:
+        return f"Tarif électricité retenu : {tarif_txt} MAD/kWh ({util_name})"
+    return (f"Tarif électricité : {tarif_txt} MAD/kWh, saisi pour ce devis — "
+            "un calcul par tranches sur facture réelle reste possible.")
+
+
 def puissance_panneaux_lignes(lignes) -> tuple[int, int]:
     """``(nb_panneaux, watt)`` dérivés des lignes PANNEAU parmi ``lignes``.
 
@@ -356,11 +430,27 @@ def puissance_panneaux_lignes(lignes) -> tuple[int, int]:
     filtrée (lignes produit non optionnelles, ``LigneDevis.compte_dans_totaux``)
     que l'appelant possède ; aucune requête n'est faite ici.
 
-    ``watt`` retombe TOUJOURS sur ``_DEFAULT_WATT`` (710 W) quand aucune ligne
-    panneau n'est exploitable — même repli que l'estimation faute de ligne
-    panneau, historique et inchangé. ``nb_panneaux`` vaut alors 0 : à
-    l'appelant de choisir son propre repli (estimation d'équipement pour le
-    PDF, kWc du calepinage pour le KPI/la page).
+    ``watt`` retombe sur ``_DEFAULT_WATT`` (710 W) quand aucune ligne panneau
+    n'est exploitable. CE REPLI NE SORT JAMAIS SUR UN DOCUMENT CLIENT : depuis
+    M3 (audit du 19/08/2026) le moteur de devis lit ``panneaux_et_watt_lu``,
+    qui rend ``None`` au lieu du défaut. Ce contrat-ci reste inchangé pour le
+    KPI INTERNE « conçu vs vendu » (``apps/ventes/reports.py``), qui a besoin
+    d'un ordre de grandeur et n'imprime rien au client.
+    """
+    nb_panneaux, watt = panneaux_et_watt_lu(lignes)
+    return nb_panneaux, (watt or _DEFAULT_WATT)
+
+
+def panneaux_et_watt_lu(lignes) -> tuple:
+    """``(nb_panneaux, watt LU)`` — ``watt`` vaut ``None`` s'il est ILLISIBLE.
+
+    M3 (audit adversarial du 19/08/2026) — « × 710 W » était imprimé sur des
+    devis dont AUCUNE ligne ni fiche produit ne porte 710 W : le défaut
+    catalogue passait pour une lecture. Une puissance unitaire non lue est
+    désormais absente, et le document écrit « N panneaux » tout court.
+
+    Ordre de lecture, inchangé : fiche technique du produit (PV11) puis
+    désignation / nom du produit.
     """
     nb_panneaux = 0
     watt = None
@@ -373,7 +463,7 @@ def puissance_panneaux_lignes(lignes) -> tuple[int, int]:
             watt = (watt
                     or _fiche_watt(produit)
                     or _parse_watt(designation, produit_nom))
-    return nb_panneaux, (watt or _DEFAULT_WATT)
+    return nb_panneaux, watt
 
 
 # Whitelisted PDF format options (mirroring the simulator's payload). The
@@ -612,7 +702,6 @@ def compute_financing_block(
 def build_quote_data(devis, pdf_options=None) -> dict:
     """Build the dict consumed by generate_premium_pdf from a Devis instance."""
     from .pricing import calculate_savings_roi
-    from .catalog import pick_default_battery
 
     client = devis.client
     taux_tva = devis.taux_tva or Decimal(20)
@@ -648,14 +737,13 @@ def build_quote_data(devis, pdf_options=None) -> dict:
 
     # ── Derive power from the panel line(s) ──────────────────────────────────
     # PV11 — ORDRE DE RÉSOLUTION de la puissance panneau : fiche technique du
-    # produit (Pmax constructeur) > regex sur désignation/nom > repli catalogue.
-    # Sans fiche exploitable, ``_fiche_watt`` rend None et le chemin regex
-    # historique s'applique à l'identique. La première ligne panneau qui donne
-    # une puissance l'emporte, comme avant.
-    # PVUNI — ``puissance_panneaux_lignes`` est LA fonction partagée (aussi
-    # appelée par ``reports.py`` pour le KPI « conçu vs vendu ») : jamais une
-    # seconde dérivation de « combien de panneaux, quel watt » à côté.
-    nb_panneaux, watt = puissance_panneaux_lignes(lignes)
+    # produit (Pmax constructeur) > regex sur désignation/nom. La première
+    # ligne panneau qui donne une puissance l'emporte, comme avant.
+    # M3 — plus de repli catalogue ICI : un watt non lu vaut ``None`` et le
+    # document écrit « N panneaux » sans puissance unitaire. Le KPI interne
+    # (``reports.py``) garde son repli via ``puissance_panneaux_lignes`` — même
+    # boucle, deux contrats, jamais deux dérivations.
+    nb_panneaux, watt = panneaux_et_watt_lu(lignes)
 
     # ── Split into the two options ───────────────────────────────────────────
     # Option 1 "Sans batterie": réseau/injection inverter, NO hybrid, NO battery.
@@ -701,32 +789,65 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     has_hybride = _has_qty(avec_items, _is_hybrid_inverter)
     has_batterie = _has_qty(avec_items, _is_battery)
 
-    # Power: prefer real panels; otherwise estimate from the equipment total.
+    # ── M2 (audit adversarial du 19/08/2026) — LE kWc N'EST PLUS DÉDUIT DU PRIX ─
+    # L'ancien repli sans ligne de panneau : ``kWc = max(3,0 ; total TTC / 12 000)``
+    # puis ``panneaux = kWc / 0,710``. Une puissance crête et un nombre de
+    # panneaux DÉDUITS D'UN MONTANT, imprimés comme des faits sur la couverture,
+    # les cartes d'option, le legacy et la page publique — avec un plancher de
+    # 3 kWc qui garantissait qu'un chiffre sorte toujours, même sans la moindre
+    # donnée technique.
+    #
+    # ORDRE DE RÉSOLUTION, et rien d'autre :
+    #   1. lignes PANNEAU du devis (nb × watt) ;
+    #   2. watt de la FICHE PRODUIT quand la désignation est muette
+    #      (``puissance_panneaux_lignes`` → ``_fiche_watt``) ;
+    #   3. kWc du CALEPINAGE 3D, plus bas, quand le devis ne porte aucune ligne
+    #      panneau (bloc « toiture 3D ») ;
+    #   4. OMISSION — ``None``. Les vignettes puissance / production /
+    #      économies / prix-au-kWc ne sont alors pas rendues du tout.
+    #
     # PVUNI (fondateur, 18/08/2026) — ce drapeau dit si la puissance vient des
-    # LIGNES (nb panneaux × watt du panneau RETENU) ou d'une estimation faute de
-    # ligne de panneau. Il est relu bien plus bas, au bloc « toiture 3D » : un
-    # calepinage ne peut plus écraser une puissance issue des lignes.
+    # LIGNES. Il est relu bien plus bas, au bloc « toiture 3D » : un calepinage
+    # ne peut plus écraser une puissance issue des lignes.
     puissance_des_lignes = nb_panneaux > 0
-    if nb_panneaux > 0:
+    if nb_panneaux > 0 and watt:
         puissance_kwc = round(nb_panneaux * watt / 1000, 2)
     else:
-        _approx = float(sum(r["quantite"] * r["prix_unit_ttc"] for r in sans_items))
-        puissance_kwc = max(3.0, round(_approx / 12000, 2))
-        nb_panneaux = max(1, round(puissance_kwc * 1000 / watt))
+        # M3 — des panneaux comptés mais aucune puissance unitaire LUE : le
+        # compte reste vrai, le kWc devient inconnu. « 14 panneaux », sans
+        # « × 710 W » ni kWc fabriqué à partir de ce 710.
+        puissance_kwc = None
+        if nb_panneaux <= 0:
+            nb_panneaux = None
 
-    # Battery synthesis only at residential scale (≤ 15 kWc) where a single
-    # default module is sensible — never a token battery on a large plant.
-    if has_hybride and not has_batterie and puissance_kwc <= 15:
-        synth = dict(pick_default_battery())
-        # Une batterie n'est jamais un panneau : 20 % en mode réforme,
-        # taux du devis pour les devis historiques.
-        synth_taux = 20.0 if per_line_tva else float(taux_tva)
-        synth.setdefault("taux_tva", synth_taux)
-        synth.setdefault(
-            "prix_unit_ht",
-            round(synth.get("prix_unit_ttc", 0) / (1 + synth_taux / 100), 2))
-        avec_items = avec_items + [synth]
-        has_batterie = True
+    # ── Z1 (ORDRE FONDATEUR, 20/08/2026) — PLUS AUCUNE BATTERIE DE SYNTHÈSE ──
+    #
+    # Le moteur INJECTAIT ici une « Batterie 5 kWh » tirée du catalogue vendorisé
+    # (``catalog.pick_default_battery``) dès qu'un devis portait un onduleur
+    # HYBRIDE sans ligne batterie réelle, pour pouvoir composer l'option « Avec
+    # batterie » du document résidentiel à deux options. Le client recevait donc
+    # un COMPOSANT et un PRIX qui n'existaient dans AUCUN document : le fondateur
+    # l'interdit sans exception (« never invent numbers »).
+    #
+    # Nouvelle règle : l'option « Avec batterie » n'existe QUE depuis des lignes
+    # RÉELLES du devis. Sans batterie réelle, il n'y a pas d'alternative
+    # commerciale à présenter — le document dégrade en OPTION UNIQUE. Sa
+    # composition est alors TOUTES les lignes réelles du devis (mêmes doctrine et
+    # invariant que le repli « artefact deux-onduleurs » plus bas, PV86 : aucune
+    # ligne, aucun dirham ne disparaît, le total du document EST le total du
+    # devis) et son étiquette « Sans batterie » est FACTUELLEMENT vraie.
+    #
+    # Sans ce rattrapage, un devis dont le SEUL onduleur est hybride perdrait son
+    # onduleur (``sans_items`` exclut les hybrides) et se verrait refuser le
+    # rendu par la règle dure « une option ne se rend jamais sans onduleur »,
+    # alors qu'il porte bel et bien un onduleur.
+    #
+    # Conséquence directe : plus aucun chemin ne fait dériver le taux
+    # d'autoconsommation « avec batterie » d'un forfait 0,85 faute de capacité —
+    # il n'y a plus d'option « avec » sans capacité réelle à additionner.
+    hybride_sans_batterie = has_hybride and not has_batterie
+    if hybride_sans_batterie:
+        sans_items = [dict(it) for it in items]
 
     opts = clean_pdf_options(pdf_options)
     mode = devis.mode_installation or ""
@@ -738,6 +859,11 @@ def build_quote_data(devis, pdf_options=None) -> dict:
 
     sans_ok = has_reseau
     avec_ok = has_hybride and has_batterie
+    if hybride_sans_batterie:
+        # Z1 — l'onduleur hybride EST là (l'option unique le porte, cf. la
+        # recomposition de ``sans_items`` ci-dessus) ; c'est la batterie qui
+        # manque. Une seule présentation, honnêtement étiquetée « Sans batterie ».
+        sans_ok, avec_ok = True, False
     if not sans_ok and not avec_ok and pdf_mode == "full":
         # RÈGLE DURE : une option ne se rend JAMAIS sans onduleur. Un devis
         # sans aucun onduleur ne peut pas produire le document à options.
@@ -774,6 +900,13 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # charge utile publique les retire (``public_views.proposal_data``) et aucun
     # renderer ne les lit.
     avertissements_internes = []
+    if hybride_sans_batterie:
+        # Z1 — trace INTERNE : le vendeur doit savoir pourquoi le document est
+        # mono-option (le devis porte un onduleur hybride mais aucune batterie
+        # chiffrée). Jamais rendu au client.
+        avertissements_internes.append(
+            "onduleur hybride sans ligne batterie — document rendu en option "
+            "unique (aucune batterie n'est inventée)")
     # Deux VRAIES options (avant tout repli) — pilote la règle d'intégrité :
     # total d'affichage = option 1, et le une-page ne mélange jamais.
     deux_options = sans_ok and avec_ok and alternative_declaree
@@ -850,6 +983,15 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     elif scenario == 'Avec batterie':
         sans_ok = False
         deux_options = False
+
+    # Z1 — un document MONO-option ne peut pas « recommander » l'option qu'il ne
+    # rend pas : un ``recommended_option`` stocké « Avec batterie » sur un devis
+    # dont la batterie a disparu des lignes ferait choisir au moteur legacy le
+    # total de l'option ABSENTE — le prix fantôme que PV86 a banni. On aligne la
+    # recommandation sur l'option réellement rendue. Sans effet sur un document
+    # à deux options (la recommandation stockée y reste souveraine).
+    if not deux_options:
+        recommended = 'Avec batterie' if avec_ok else 'Sans batterie'
 
     # ── Canonical totals: ONE computation from the stored HT lines ───────────
     # Every page must display these exact values — never re-derive.
@@ -967,15 +1109,23 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # calepinage ne sert plus que de repli quand le devis ne porte AUCUNE
         # ligne de panneau (rien à lire côté lignes) : la géométrie 3D reste
         # exacte, seule son échelle de puissance cesse de faire autorité.
+        # M2 — étape 3 de l'ordre de résolution : le calepinage n'est plus le
+        # repli d'une estimation par le prix, il est le DERNIER ancrage réel
+        # avant l'omission. Le compte de panneaux vient alors de CE MÊME
+        # calepinage (une seule source pour les deux figures) ; la puissance
+        # unitaire, elle, reste inconnue (roofPro modélise à 720 W constants,
+        # ce n'est pas le panneau vendu) — voir M3.
         if _kwc_layout and not puissance_des_lignes:
             puissance_kwc = round(_kwc_layout, 2)
+            nb_panneaux = _panneaux_du_layout(roof_layout) or None
         # Facteur de RECALAGE des figures du calepinage (production, économies)
         # sur la taille réellement vendue : la modélisation de site du
         # calepinage (orientation, inclinaison, ombrage, irradiance) est
         # conservée — seule sa TAILLE est ramenée à celle des lignes. 1.0 quand
         # les deux coïncident, donc sortie inchangée sur un devis sain.
         _recalage = 1.0
-        if puissance_des_lignes and _kwc_layout > 0 and puissance_kwc > 0:
+        if (puissance_des_lignes and _kwc_layout > 0
+                and (puissance_kwc or 0) > 0):
             _recalage = puissance_kwc / _kwc_layout
         _stored = dict(devis.etude_params or {})
         for _cle, _brut in (("production_annuelle", _res.get("annualKwh")),
@@ -995,7 +1145,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # ``etude.puissance_kwc``, ``etude.toiture.kwc``) : il suit la même
         # règle, sans quoi la page publiait encore la base 720 W sous un autre
         # nom. Copies défensives — ``etude_params`` du devis n'est jamais muté.
-        if puissance_des_lignes and puissance_kwc > 0:
+        if puissance_des_lignes and (puissance_kwc or 0) > 0:
             _stored["puissance_kwc"] = puissance_kwc
             _toiture = _stored.get("toiture")
             if isinstance(_toiture, dict) and _nombre(_toiture.get("kwc")):
@@ -1120,8 +1270,20 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                      else (_battery_kwh_from_items(avec_items, _blob) or None)),
         productible=_productible,
         fallback_tarif_kwh=_onee_tarif,
+        # M9 — l'abattement de rendement batterie ne s'applique qu'à une option
+        # qui porte VRAIMENT du stockage (il l'était inconditionnellement).
+        stockage_present=has_batterie,
+        # Q1 — provision de remplacement onduleur = prix TTC RÉEL de la ligne
+        # onduleur de chaque option ; aucune ligne ⇒ aucune provision.
+        inverter_cost_sans=_cout_onduleur(sans_items, _blob),
+        inverter_cost_avec=_cout_onduleur(avec_items, _blob),
     )
-    roi = calculate_savings_roi(puissance_kwc, total_sans, total_avec, **roi_kwargs)
+    # M2 — puissance inconnue ⇒ production et économies le sont aussi (elles en
+    # dérivent toutes). ``calculate_savings_roi`` rend alors des zéros ; le
+    # drapeau ``puissance_inconnue`` fait OMETTRE ces vignettes au rendu, au
+    # lieu d'imprimer « 0 kWh » / « 0 MAD/an » / « Retour en 0 ans ».
+    roi = calculate_savings_roi(puissance_kwc or 0, total_sans, total_avec,
+                                **roi_kwargs)
     if etude.get("production_annuelle"):
         roi["prod_kwh"] = int(etude["production_annuelle"])
         if etude.get("economies_annuelles"):
@@ -1142,7 +1304,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         if etude.get("economies_annuelles"):
             etude["economies_annuelles"] = roi["eco_s_ann"]
             etude["payback"] = roi["roi_s"]
-        if puissance_kwc > 0:
+        if (puissance_kwc or 0) > 0:
             etude["prix_kwc"] = round(_ref_total / puissance_kwc)
 
     # ── QXMT — UN DOSSIER MT NE PORTE JAMAIS UN CHIFFRE BT ───────────────────
@@ -1259,14 +1421,23 @@ def build_quote_data(devis, pdf_options=None) -> dict:
 
     # ── QK4 — « Nos hypothèses » : transparence des hypothèses d'économies ────
     # Surface côté client les hypothèses derrière les économies : tarif MAD/kWh
-    # utilisé, source du barème (ONEE/Lydec/Redal — approximatif pour les
-    # distributeurs privés), autoconsommation d'abord (loi 82-21, injection OFF —
+    # utilisé, source du barème (Q7 : UNE grille nationale, le nom du
+    # distributeur n'est plus qu'un libellé), autoconsommation d'abord
+    # (loi 82-21, injection OFF —
     # rachat BT résidentiel différé par l'ANRE), base de production/dégradation.
     # Toutes les valeurs viennent de roi/etude (une source) ; dégrade proprement.
     _util_labels = {"onee": "ONEE", "lydec": "Lydec", "redal": "Redal"}
     _util_key = (str(_utility).lower() if _utility else "")
     _util_name = _util_labels.get(_util_key, "")
-    _util_approx = _util_key in ("lydec", "redal")
+    # Q7 — plus aucun barème « approximatif » : les trois distributeurs lisent
+    # la grille nationale (éditable par société). Le drapeau reste, toujours
+    # faux, pour ne casser aucun consommateur de la charge utile.
+    _util_approx = False
+    # M10/M11 — LE MODÈLE D'ÉCONOMIES EST-IL UNE ESTIMATION ? ``savings_estimated``
+    # est calculé par ``calculate_savings_roi`` (aucun barème réel n'a servi)
+    # mais n'était lu par AUCUN renderer : le document ne distinguait pas une
+    # économie calculée sur le barème réel du client d'une économie estimée.
+    _savings_estimated = bool(roi.get("savings_estimated"))
     _tarif_val = roi.get("tarif_kwh")
     _tarif_txt = (f"{_tarif_val:.2f}".replace(".", ",")
                   if isinstance(_tarif_val, (int, float)) else None)
@@ -1275,8 +1446,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     if savings_model == "factures" and _util_name:
         hypotheses.append(
             f"Tarif électricité : barème {_util_name} par tranche"
-            + (" (approximatif — distributeur privé)" if _util_approx
-               else " (barème public)"))
+            + " (barème national)")
     elif _tarif_txt:
         # QRES16 (fondateur, 2026-07-18) — ne JAMAIS présenter le défaut
         # interne du simulateur comme un « tarif retenu » réfléchi : le 1,75
@@ -1291,21 +1461,20 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # autre) : la ligne dit la MÉTHODE et le chemin vers l'exactitude.
         # Seul un tarif réellement personnalisé (saisi pour CE devis, différent
         # du défaut) reste affiché, car c'est la donnée du client.
-        from .constants import KWH_PRICE as _KWH_DEFAULT
-        if _util_name:
-            hypotheses.append(
-                f"Tarif électricité retenu : {_tarif_txt} MAD/kWh "
-                f"({_util_name})")
-        elif abs(float(_tarif_val) - float(_KWH_DEFAULT)) < 1e-6:
-            hypotheses.append(
-                "Tarif électricité : référence résidentielle prudente — "
-                "transmettez une facture récente et nous recalculons vos "
-                "économies par tranches, sur votre barème exact.")
-        else:
-            hypotheses.append(
-                f"Tarif électricité : {_tarif_txt} MAD/kWh, personnalisé "
-                "pour votre profil de consommation — un calcul par tranches "
-                "sur facture réelle reste possible.")
+        # Z3 × M11 — MÊME défaut, deux correctifs : on garde le plus
+        # STRICT (M11). Z3 avait identifié la cause — la garde QRES55
+        # comparait le tarif à ``constants.KWH_PRICE`` (1,75, l'ANCIEN
+        # défaut, plus jamais utilisé comme prix) au lieu du repli
+        # réellement appliqué ``_FALLBACK_KWH_PRICE`` (1,20) : l'égalité
+        # n'arrivant jamais, la branche « personnalisé » s'exécutait
+        # TOUJOURS. M11 va plus loin sur trois points : le drapeau
+        # ``savings_estimated`` est testé EN PREMIER (un tarif estimé ne
+        # peut plus être habillé en « tarif retenu (ONEE) »), la ligne
+        # PORTE le mot « (estimation) », et la branche restante dit
+        # « saisi pour ce devis » au lieu de revendiquer un « profil de
+        # consommation » que le moteur n'a jamais analysé.
+        hypotheses.append(ligne_tarif_hypothese(
+            _tarif_txt, _util_name, _savings_estimated))
     # QRES55 — formulations COMPACTES (le fondateur veut la même transparence
     # « en plus petit ») : une idée, une ligne courte.
     hypotheses.append(
@@ -1324,6 +1493,22 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             f"Production estimée : ≈ {_fr_int(_prod_factor * _DERATE)} "
             f"kWh par kWc et par an, pertes système de "
             f"{int(round(_LOSS * 100))} % déduites.")
+    # Q6 — le productible PVGIS de la ville du client, prêt à imprimer, ou None.
+    # Deux conditions STRICTES : la ville doit être dans la table PVGIS (le
+    # calcul, lui, retombe silencieusement sur Casablanca — pas l'affichage),
+    # et aucun réglage société ne doit avoir forcé la valeur (ce ne serait plus
+    # une donnée PVGIS). Sinon : None ⇒ omission.
+    _productible_net_pvgis = None
+    _ville_pvgis = None
+    if _prod_factor:
+        from .productible import ville_reconnue as _ville_ok
+        from .pricing import PRODUCTION_DERATE as _DR
+        _force_societe = bool(
+            _co_productible and abs(float(_co_productible) - 1600) > 0.5)
+        if _ville_ok(_client_city) and not _force_societe:
+            _productible_net_pvgis = int(round(_prod_factor * _DR))
+            _ville_pvgis = _client_city
+
     _ac_s = roi.get("autoconso_sans")
     _ac_a = roi.get("autoconso_avec")
     if _ac_s and _ac_a:
@@ -1357,40 +1542,84 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "autoconso_first": True,
         "productible_kwh_kwc": (int(round(_prod_factor)) if _prod_factor
                                 else None),
+        # ── Q6 (décision fondateur du 20/08/2026) — LA DONNÉE LOCALE REMPLACE
+        # LE SLOGAN. Le PDF affichait « 3 000 h/an d'ensoleillement », un
+        # chiffre national arrondi qui ne décrit ni ce client ni ce devis.
+        # Le productible PVGIS de SA ville est déjà en machine : c'est lui
+        # qu'on imprime, en production NETTE (la même que tous les calculs du
+        # document). Ville hors table PVGIS, ou productible forcé par un
+        # réglage société : la phrase s'OMET — jamais une moyenne nationale
+        # présentée comme la donnée du client.
+        "productible_net_kwh_kwc": _productible_net_pvgis,
+        "productible_ville": _ville_pvgis,
     }
 
-    # ONEE monthly bill proxy (bars sit above the savings curves): full-price
-    # bill ≈ économies mensuelles option 2 / taux d'autoconsommation RETENU.
-    # Le taux vient de ``roi`` (dérivé de la capacité batterie depuis l'ordre
-    # fondateur du 18/08) — plus de 0,85 codé en dur qui contredirait le calcul.
-    _ac_a_proxy = roi.get("autoconso_avec") or AUTOCONSO_AVEC
-    if not (0 < _ac_a_proxy <= 1):
-        _ac_a_proxy = AUTOCONSO_AVEC
-    # ── PACT10/QF-REAL (fondateur 19/08/2026) — 12 VRAIES factures mensuelles ──
-    # Le devis auto résidentiel (frontend/.../autoQuote.js) sème désormais
-    # etude_params.factures_mensuelles_reelles depuis la facture hiver/été du
-    # lead : quand elles existent, elles remplacent le proxy ci-dessus comme
-    # série « avant » — le proxy reconstruisait la facture depuis l'économie
-    # SUPPOSÉE (circulaire : la couverture solaire valait toujours ≈ le taux
-    # d'autoconsommation forfaitaire, jamais une vraie conso — audit du
-    # 19/08). L'« après » reste calculé plus loin, INCHANGÉ
-    # (before[i] − eco_a_monthly[i], residential/renderer.synthese_economies) :
-    # seule la série « avant » devient réelle. Garde stricte : exactement 12
-    # valeurs numériques strictement positives, sinon repli SILENCIEUX sur le
-    # proxy historique — un contrat malformé ne casse jamais le rendu, et
-    # aucun devis existant (sans la clé) ne change de chiffre.
+    # ── M1 (audit adversarial du 19/08/2026) — PLUS AUCUN PROXY DE FACTURE ────
+    # Les 12 factures mensuelles du client sont une DONNÉE, jamais un calcul.
+    # Elles viennent de ``etude_params.factures_mensuelles_reelles``, semé par
+    # le devis auto résidentiel (frontend/.../autoQuote.js) depuis la facture
+    # hiver/été du lead. Quand elles manquent : ``None`` — et la page 1 (« votre
+    # facture baisse de N % », « ≈ X MAD/mois aujourd'hui ») N'EST PAS RENDUE.
+    #
+    # CE QUI EST MORT ICI : ``facture ≈ économies option 2 / taux
+    # d'autoconsommation``. Ce proxy fabriquait la facture à partir de
+    # l'économie SUPPOSÉE, elle-même dérivée du même taux : le « −85 % » de la
+    # page 1 n'était donc que le taux forfaitaire redéguisé en promesse, et le
+    # « ≈ X MAD/mois aujourd'hui » un rétro-calcul présenté comme la facture du
+    # client. Circulaire de bout en bout, et imprimé comme un fait.
+    # Le lot Z avait déjà supprimé le cas « aucun ancrage réel » ; l'audit
+    # prouve que le proxy tirait ENCORE dès que le tarif était réel mais les
+    # factures absentes. Il n'y a plus de repli du tout.
+    #
+    # DÉGRADATION (voulue, déjà en place) : ``residential/renderer._augment``
+    # refuse une série absente (Unsupported) → le moteur rend le format legacy,
+    # dont la carte mensuelle omet les barres de facture ; la page publique ne
+    # sert plus la série ni la synthèse. Aucun chemin n'invente de chiffre.
+    # Garde stricte sur la donnée réelle : exactement 12 valeurs numériques
+    # strictement positives, sinon rien.
     _factures_reelles = etude.get("factures_mensuelles_reelles")
-    _real_bills = None
+    factures_mensuelles = None
     if isinstance(_factures_reelles, (list, tuple)) and len(_factures_reelles) == 12:
         try:
             _candidats = [float(v) for v in _factures_reelles]
             if all(v > 0 for v in _candidats):
-                _real_bills = [round(v) for v in _candidats]
+                factures_mensuelles = [round(v) for v in _candidats]
         except (TypeError, ValueError):
-            _real_bills = None
-    factures_mensuelles = (
-        _real_bills if _real_bills is not None
-        else [round(v / _ac_a_proxy) for v in roi["eco_a_monthly"]])
+            factures_mensuelles = None
+
+    # ── Q5 (décision fondateur du 20/08/2026) — DÉLAIS COMMERCIAUX ───────────
+    # « visite sous 48-72 h » et « installation 7-14 jours » étaient codés en
+    # dur dans quatre renderers ET rendus dans la boîte « Conditions » du PDF,
+    # où ils se lisaient comme des engagements contractuels. Ils viennent
+    # désormais des réglages société, s'affichent hors des Conditions et portent
+    # « (indicatif) ». Réglage VIDÉ ⇒ le délai n'apparaît nulle part.
+    _delais = {"visite_technique": "", "installation": ""}
+    try:
+        from apps.parametres.models import CompanyProfile
+        _prof = CompanyProfile.get(getattr(devis, "company", None))
+        _delais = {
+            "visite_technique": (
+                getattr(_prof, "delai_visite_technique", "") or "").strip(),
+            "installation": (
+                getattr(_prof, "delai_installation", "") or "").strip(),
+        }
+    except Exception:  # noqa: BLE001 — un PDF ne casse jamais sur un réglage
+        _delais = {"visite_technique": "", "installation": ""}
+
+    # ── M7 — date de validité RÉELLE du devis (voir le commentaire du dict) ───
+    _valid_until_txt = None
+    _validity_days = None
+    try:
+        from ..utils.expiry import date_expiration
+        _exp = date_expiration(devis)
+        _cree = devis.date_creation.date() if devis.date_creation else None
+        if _exp and _cree:
+            _jours = (_exp - _cree).days
+            if _jours > 0:
+                _valid_until_txt = _exp.strftime("%d/%m/%Y")
+                _validity_days = _jours
+    except Exception:  # noqa: BLE001 — un PDF ne casse jamais sur une date
+        _valid_until_txt = _validity_days = None
 
     client_name = f"{(client.prenom or '').strip()} {(client.nom or '').strip()}".strip()
 
@@ -1403,14 +1632,24 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # lignes de l'option sans batterie, « Avec » → celles de l'option avec
     # batterie, « Les deux » → option 1 seule (jamais deux onduleurs), sinon
     # tout le devis (liste libre/pompage).
+    # ── M4 (audit adversarial du 19/08/2026) — UNE SEULE BRANCHE, PARTOUT ─────
+    # La page imprimait ``max(économie sans, économie avec)`` : sur un document
+    # qui chiffre l'option SANS batterie (et le DIT, mention « voir la
+    # proposition complète »), le client lisait l'économie de l'option AVEC.
+    # L'économie affichée vient désormais de la MÊME branche que les lignes
+    # facturées ; sans branche identifiable, elle est OMISE.
     if deux_options:
-        onepage_source = sans_items
+        onepage_source, onepage_branche = sans_items, 'sans'
     elif scenario == 'Avec batterie' and avec_ok:
-        onepage_source = avec_items
+        onepage_source, onepage_branche = avec_items, 'avec'
     elif scenario == 'Sans batterie' and has_reseau:
-        onepage_source = sans_items
+        onepage_source, onepage_branche = sans_items, 'sans'
     else:
+        # Liste libre / pompage : les lignes du devis entier. La branche se
+        # déduit alors de la composition RÉELLEMENT facturée — un panier qui
+        # porte une batterie est l'option « avec », sinon « sans ».
         onepage_source = items
+        onepage_branche = 'avec' if has_batterie else 'sans'
     onepage_note_batterie = deux_options
     all_items = [
         {
@@ -1612,6 +1851,10 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "puissance_kwc": puissance_kwc,
         "nb_panneaux": nb_panneaux,
         "watt_par_panneau": watt,
+        # M2 — aucun ancrage réel de puissance (ni ligne panneau, ni fiche
+        # produit, ni calepinage) : les renderers OMETTENT puissance,
+        # production, économies et prix-au-kWc. Jamais un kWc déduit du prix.
+        "puissance_inconnue": puissance_kwc is None,
         # PVUNI — le calepinage 3D ne colle plus aux lignes (quelqu'un a édité
         # une quantité de panneaux sans rejouer la 3D). False sur un devis sain
         # ET sur un devis sans calepinage : rendu inchangé dans les deux cas.
@@ -1639,6 +1882,10 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # : pilote la courbe de rentabilité (plus de droite linéaire « plate »).
         "cashflow_sans": roi.get("cashflow_sans"),
         "cashflow_avec": roi.get("cashflow_avec"),
+        # Q1 — hypothèses du cashflow, SERVIES au rendu : la légende de la
+        # courbe 25 ans y lit le montant RÉEL provisionné pour le remplacement
+        # de l'onduleur (le creux de l'année 12 cesse d'être inexpliqué).
+        "cashflow_assumptions": roi.get("cashflow_assumptions"),
         "net_gain_sans": roi.get("net_gain_sans"),
         "net_gain_avec": roi.get("net_gain_avec"),
         # QJ13 — honest-number guard: True when savings are an estimate (no tariff data)
@@ -1676,6 +1923,17 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # productible). Même dict rendu par le PDF premium et /proposal.
         "hypotheses": hypotheses_block,
         "factures_mensuelles": factures_mensuelles,
+        # Z2 (ORDRE FONDATEUR, 20/08/2026) — la série « avant » est-elle RÉELLE
+        # (12 factures du lead, PACT10/QF-REAL) ou reconstruite depuis l'économie
+        # SUPPOSÉE ? C'est l'ancrage qui autorise la synthèse économies à être
+        # rendue ; sans aucun ancrage réel, elle est OMISE (jamais un chiffre
+        # d'apparence factuelle bâti sur le tarif de repli + un taux forfaitaire).
+        # M1 × Z2 — depuis M1 il n'existe PLUS de série proxy : quand
+        # ``factures_mensuelles`` n'est pas None, elle EST la série
+        # réelle du client. Le drapeau d'ancrage de Z2 se lit donc
+        # directement dessus (il testait la variable intermédiaire que
+        # M1 a supprimée avec le repli qu'elle servait à distinguer).
+        "factures_reelles": factures_mensuelles is not None,
         "sans_items": sans_items,
         "avec_items": avec_items,
         "sans_bullets": _bullets(sans_items),
@@ -1691,6 +1949,10 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "deux_options": bool(deux_options),
         "all_items": all_items,
         "onepage_note_batterie": onepage_note_batterie,
+        # M4 — branche ('sans' | 'avec') dont proviennent les lignes du format
+        # une page : l'économie du résumé système lit CETTE branche, jamais le
+        # maximum des deux.
+        "onepage_branche": onepage_branche,
         "display_total": display_total,
         "nb_options": nb_options,
         "pdf_mode": pdf_mode,
@@ -1737,11 +1999,31 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "date_acceptation": (
             devis.date_acceptation.strftime("%d/%m/%Y")
             if getattr(devis, "date_acceptation", None) else ""),
-        # FG52 — devise portée par le document (ISO 4217, défaut MAD).
-        # Aucun impact sur les montants en base (stockés en MAD) ; uniquement
-        # affiché sur le PDF et porté dans l'export UBL.
-        "devise": (getattr(devis, "devise", None) or "MAD"),
-        "taux_change": float(getattr(devis, "taux_change", 1) or 1),
+        # ── M7 (audit adversarial du 19/08/2026) — LA VRAIE DATE DE VALIDITÉ ──
+        # Les quatre renderers codaient « 30 jours » en dur, en ignorant à la
+        # fois ``Devis.date_validite`` (saisie par le vendeur) et le réglage
+        # société ``quote_validity_days`` : le portail client affichait la VRAIE
+        # échéance, le PDF — y compris le bandeau à signer — une fausse. Deux
+        # dates contradictoires sur un document engageant.
+        # ``utils/expiry.date_expiration`` est LA règle déjà appliquée par le
+        # backend (date_validite, sinon création + réglage société) : le moteur
+        # la lit au lieu d'en inventer une seconde. ``valid_until`` est la date
+        # imprimable ; ``validity_days`` en est le nombre de jours, pour que
+        # l'arithmétique existante des gabarits retombe EXACTEMENT dessus.
+        # Indéterminable ⇒ les deux valent None ⇒ les renderers OMETTENT.
+        "valid_until": _valid_until_txt,
+        "validity_days": _validity_days,
+        # Q5 — délais commerciaux INDICATIFS, réglages société. Vides ⇒ omis.
+        "delais": _delais,
+        # ── Q8 (décision fondateur du 20/08/2026) — LES DOCUMENTS SONT EN MAD ──
+        # Les montants sont stockés en MAD et rendus en MAD. Le `taux_change`
+        # du devis n'était converti nulle part : il était SERVI au moteur (et
+        # republié sur le lien public) sans qu'aucun chiffre ne l'utilise —
+        # une promesse de multi-devise que rien ne tenait. Il ne sort plus
+        # d'ici. Le champ modèle est CONSERVÉ tel quel (aucune migration
+        # destructive) ; seule sa republication s'arrête, exactement comme
+        # `financing` (F6).
+        "devise": "MAD",
     }
     # Q5 — visuel « votre installation » : la clé MinIO du rendu 3D N'EST
     # ajoutée que si le devis en porte un. Sans rendu, aucune clé n'est

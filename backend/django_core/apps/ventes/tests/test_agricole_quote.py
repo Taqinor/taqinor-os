@@ -83,11 +83,15 @@ class TestAgricoleEconomics(SimpleTestCase):
         self.assertGreater(eco["payback"], 0)
         self.assertLess(eco["payback"], 25)
 
-    def test_fda_subsidy_capped(self):
+    def test_fda_subsidy_rate_only_no_amount(self):
+        """Q3 (fondateur, 20/08/2026) — le plafond FDA n'est pas confirmable :
+        seul le TAUX est exposé, plus aucun montant en MAD. Voir
+        test_agricole_reglages_fondateur.py pour le scan du document rendu."""
         eco = economics.compute(self.data)
-        self.assertGreater(eco["fda_amount"], 0)
-        self.assertLessEqual(eco["fda_amount"], eco["fda_cap"])
-        self.assertEqual(eco["net_after_fda"], eco["quote_ttc"] - eco["fda_amount"])
+        self.assertEqual(eco["fda_pct"], 30)
+        self.assertNotIn("fda_amount", eco)
+        self.assertNotIn("fda_cap", eco)
+        self.assertNotIn("net_after_fda", eco)
 
     def test_diesel_reference_when_chosen(self):
         data = sample_data.build("dattier")  # current_fuel = diesel

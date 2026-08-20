@@ -18,6 +18,7 @@ Every money number goes through `ctx["fmt"]`; currency is MAD; language FR.
 
 def build(ctx):
     from . import theme
+    from .. import constants
 
     d = ctx["d"]
     C = ctx["C"]
@@ -70,9 +71,15 @@ def build(ctx):
     roi_s = d["roi_s"]
     roi_a = d["roi_a"]
     eco_a_ann = d["eco_a_ann"]
-    annual_before = d["annual_before"]
-    annual_after = d["annual_after"]
-    coverage_pct = d["coverage_pct"]
+    # Z2 (ORDRE FONDATEUR, 20/08/2026) — sans AUCUNE donnée réelle d'ancrage, la
+    # synthèse économies n'existe pas (``renderer.synthese_economies`` → None) :
+    # le −N %, l'avant/après, la couverture, le graphe mensuel, l'économie
+    # annuelle et la rentabilité sont OMIS D'UN SEUL BLOC — jamais un « 0 »,
+    # jamais un demi-bloc, jamais un avertissement à la place.
+    masquer_eco = bool(d.get("masquer_synthese"))
+    annual_before = d.get("annual_before") or 0
+    annual_after = d.get("annual_after") or 0
+    coverage_pct = d.get("coverage_pct") or 0
     # PVCOV — même valeur que la proposition en ligne (synthese_economies) ;
     # repli sur la formule historique si un appelant fournit un d incomplet.
     pct_cut = d.get("pct_cut")
@@ -83,17 +90,36 @@ def build(ctx):
     month_before = round(annual_before / 12)
     month_after = round(annual_after / 12)
     # Environmental impact — a CALCULATION, not an invented statistic: Moroccan
-    # grid factor ≈ 0.81 t CO₂/MWh (IEA), ~21 kg CO₂ absorbed per tree per year.
-    co2_t = prod_kwh * 0.81 / 1000.0
+    # grid factor + kg CO₂/tree/year now live in quote_engine.constants (M8,
+    # 19/08/2026) — the SAME two numbers the tree count on apps/web reads, so
+    # the same devis never prints two different tree counts on two supports.
+    co2_t = prod_kwh * constants.CO2_T_PAR_MWH / 1000.0
     co2_txt = (f"{co2_t:.1f}".replace(".", ",") if co2_t < 10
                else fmt(co2_t))
-    trees = max(1, round(prod_kwh * 0.81 / 21))
-    validity_days = d["validity_days"]
+    # M8 — plus de plancher « au moins 1 arbre » : un compte à 0 s'affiche 0
+    # (la mention entière s'omet plus bas — « l'équivalent de 0 arbres »
+    # n'aurait aucun sens sur un document client).
+    trees = round(prod_kwh * constants.CO2_T_PAR_MWH
+                  / constants.KG_CO2_PAR_ARBRE_AN)
+    impact_html = (f"""
+    <!-- IMPACT STRIP ───────────────────────────────────────────────────── -->
+    <div class="c1-impact">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M12 21c5-1 8-5 8-11V5l-5 1c-5 1-8 4-8 9 0 .7.1 1.4.3 2"
+        stroke="{green}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M7 21c0-4 2-7 6-9" stroke="{green}" stroke-width="1.7" stroke-linecap="round"/></svg>
+      <div class="c1-impact-t">Et pour la planète&nbsp;: ≈&nbsp;<b>{co2_txt} tonnes de CO<sub>2</sub></b>
+        évitées chaque année — l'équivalent de <b>≈&nbsp;{fmt(trees)} arbres</b> plantés.</div>
+    </div>""" if trees > 0 else "")
+    # M7 (audit du 19/08/2026) — la validité vient du DEVIS (date_validite,
+    # sinon création + réglage société), servie par le builder ; plus de
+    # « 30 jours » par défaut. Indéterminable ⇒ la pastille disparaît.
+    validity_days = d.get("validity_days")
     # QRES31 — échéance absolue sur la pastille (une date butoir concrète
     # engage plus que « 30 jours ») ; repli sur la durée si date illisible.
-    _valid_until = theme.valid_until(date, validity_days)
+    _valid_until = (d.get("valid_until") or "").strip() or (
+        theme.valid_until(date, validity_days) if validity_days else "")
     validity_pill = (f"Valable jusqu'au {_valid_until}" if _valid_until
-                     else f"Validité {validity_days} jours")
+                     else "")
     sans_bullets = d.get("sans_bullets", []) or []
     avec_bullets = d.get("avec_bullets", []) or []
     # QX5 — n'imprime JAMAIS d'option fantôme : deux cartes seulement quand le
@@ -121,7 +147,7 @@ def build(ctx):
                        'l\'option recommandée — avec batterie.</div>')
 
     cov_gap_note = ""
-    if coverage_pct - pct_cut >= 10:
+    if not masquer_eco and coverage_pct - pct_cut >= 10:
         cov_gap_note = (
             '<div class="c1-bigcut-note">Pourquoi pas −{cov} % ? Seuls les kWh '
             'autoconsommés réduisent la facture (loi 82-21) — le surplus '
@@ -160,6 +186,17 @@ def build(ctx):
         )
     else:
         hero_bg = navy_900
+
+    # Z2 — règles ajoutées UNIQUEMENT quand la couche économique est omise :
+    # le document normal garde une feuille de style inchangée au caractère près.
+    sobre_css = ("" if not masquer_eco else """
+/* Z2 — page 1 sans couche économique (aucune donnée réelle d'ancrage) : le
+   bloc « −N % », la donut et le graphe mensuel sont absents ; l'espace rendu
+   revient aux vignettes techniques et aux cartes d'option. */
+.c1-wrap-sobre{padding-top:14mm;}
+.c1-wrap-sobre .c1-kpis{margin-top:0;}
+.c1-wrap-sobre .c1-impact{margin-top:9mm;}
+.c1-wrap-sobre .c1-opts{margin-top:11mm;}""")
 
     # ── CSS (all classes prefixed c1-) ──────────────────────────────────────
     css = f"""
@@ -224,7 +261,7 @@ def build(ctx):
 .c1-trust-txt b{{color:{muted_2};font-weight:700;}}
 
 /* ── MONEY HOOK ────────────────────────────────────────────────────────── */
-.c1-wrap{{padding:3.5mm 14mm 0 14mm;}}
+.c1-wrap{{padding:3.5mm 14mm 0 14mm;}}{sobre_css}
 /* CSS table (not flex) so the two cards auto-equalise height — WeasyPrint flex
    align-stretch left the donut card ~24pt short of the hook card. */
 .c1-hook{{display:table;width:100%;border-spacing:0;}}
@@ -363,9 +400,15 @@ def build(ctx):
                   reco=False, full=False):
         cls = "c1-opt" + (" c1-reco" if reco else "") + (" c1-opt-full" if full else "")
         pill = ('<span class="c1-reco-pill">Recommandé</span>' if reco else "")
+        # Z2 — économie annuelle et payback descendent du MÊME calcul que la
+        # synthèse : sans ancrage réel, ils partent avec elle (le prix, lui,
+        # est une donnée du devis et reste affiché).
         eco_html = (
             f'<div class="c1-opt-eco">Économie estimée ≈ <b>{fmt(eco)} '
-            'MAD/an</b></div>' if eco else "")
+            'MAD/an</b></div>' if (eco and not masquer_eco) else "")
+        roi_html = (
+            f'<div class="c1-roi">{_roi_svg(green)}Rentabilisé en '
+            f'{_yrs(roi_v)} ans</div>' if not masquer_eco else "")
         return (
             f'<div class="{cls}">'
             f'<div class="c1-opt-head"><div>'
@@ -373,7 +416,7 @@ def build(ctx):
             f'<div class="c1-opt-name">{name}</div></div>{pill}</div>'
             f'<div class="c1-opt-price">{fmt(price)}<span class="c1-u">&nbsp;MAD</span></div>'
             f'<div class="c1-opt-kwc">soit {pkwc} MAD/kWc · TTC</div>'
-            f'<div class="c1-roi">{_roi_svg(green)}Rentabilisé en {_yrs(roi_v)} ans</div>'
+            f'{roi_html}'
             f'{eco_html}'
             f'<ul>{bullets(bull)}</ul>'
             f'<div class="c1-note">Détail &amp; équipement en page 2</div>'
@@ -409,45 +452,26 @@ def build(ctx):
     perf_trust = (f"Performance garantie {_perf_ans} ans &middot; "
                   if _perf_ans else "")
 
-    # ── HTML ────────────────────────────────────────────────────────────────
-    html = f"""{css}
-<div class="c1-root">
-
-  <!-- HERO ─────────────────────────────────────────────────────────────── -->
-  <div class="c1-hero">
-    <div class="c1-hero-glow"></div>
-    <div class="c1-hero-top">
-      <img class="c1-logo" src="data:image/png;base64,{logo_dark}" alt="{brand}">
-      <div class="c1-hero-meta">
-        <div class="c1-ref-l">Réf. devis</div>
-        <div class="c1-ref-v">{ref}</div>
-        <div class="c1-date">{date}</div>
-        <div class="c1-pill-gold">{validity_pill}</div>
-      </div>
-    </div>
-    <div class="c1-hero-body">
-      <div class="c1-kicker c1-hero-kicker">Proposition commerciale — Installation solaire</div>
-      <div class="c1-serif c1-hello">Bonjour {first_name},</div>
-      <div class="c1-sub">Votre facture d'électricité réduite d'environ {pct_cut}&nbsp;%{perf_sub}</div>
-    </div>
-  </div>
-
-  <!-- CLIENT LINE ──────────────────────────────────────────────────────── -->
-  <div class="c1-client">
-    <b class="c1-client-nom">{client_full}</b>
-    <span class="c1-client-meta">{client_meta}</span>
-    <span class="c1-tag-cell"><span class="c1-tag">{inst_type}</span></span>
-  </div>
-
-  <!-- CREDIBILITY CUE (number-free) ──────────────────────────────────────── -->
-  <div class="c1-trust">
-    <div class="c1-trust-line"></div>
-    <div class="c1-trust-txt"><b>Ingénieurs solaires</b> &middot; {perf_trust}Suivi en temps réel</div>
-    <div class="c1-trust-line"></div>
-  </div>
-
-  <div class="c1-wrap">
-
+    # ── Z2 — couche économique de la page 1, rendue ou OMISE d'un seul bloc ──
+    # Sans ancrage réel : l'accroche chiffrée, le bloc « −N % / avant-après »,
+    # la donut de couverture, le graphe mensuel et la vignette « Économie
+    # estimée » disparaissent ENSEMBLE. Ce qui reste est intégralement
+    # traçable : identité, puissance et production composées, prix du devis.
+    if masquer_eco:
+        hero_sub_html = (
+            f'<div class="c1-sub">Votre installation solaire'
+            f'{perf_sub}</div>')
+        hook_html = ""
+        bill_html = ""
+        kpi_eco_html = ""
+        # L'espace libéré revient au contenu réel : les vignettes techniques
+        # et les cartes d'option respirent au lieu de laisser un trou.
+        wrap_cls = " c1-wrap-sobre"
+    else:
+        hero_sub_html = (
+            f'<div class="c1-sub">Votre facture d\'électricité réduite '
+            f'd\'environ {pct_cut}&nbsp;%{perf_sub}</div>')
+        hook_html = f"""
     <!-- MONEY HOOK ─────────────────────────────────────────────────────── -->
     <div class="c1-hook">
       <div class="c1-hook-left">
@@ -474,8 +498,8 @@ def build(ctx):
           <div class="c1-donut-cap">de votre consommation<span>annuelle assurée par le solaire{cov_est_txt}</span></div>
         </div></div>
       </div>
-    </div>
-
+    </div>"""
+        bill_html = f"""
     <!-- BILL CHART ─────────────────────────────────────────────────────── -->
     <div class="c1-bill">
       <div class="c1-bill-head">
@@ -486,7 +510,54 @@ def build(ctx):
         </div>
       </div>
       <img src="{charts['bill']}" alt="Facture mensuelle avant / après">
+    </div>"""
+        kpi_eco_html = f"""      <div class="c1-kpi">
+        <div class="c1-kpi-v">{fmt(eco_a_ann)}<span class="c1-u">&nbsp;MAD/an</span></div>
+        <div class="c1-kpi-l">Économie estimée</div>
+      </div>
+"""
+        wrap_cls = ""
+
+    # ── HTML ────────────────────────────────────────────────────────────────
+    html = f"""{css}
+<div class="c1-root">
+
+  <!-- HERO ─────────────────────────────────────────────────────────────── -->
+  <div class="c1-hero">
+    <div class="c1-hero-glow"></div>
+    <div class="c1-hero-top">
+      <img class="c1-logo" src="data:image/png;base64,{logo_dark}" alt="{brand}">
+      <div class="c1-hero-meta">
+        <div class="c1-ref-l">Réf. devis</div>
+        <div class="c1-ref-v">{ref}</div>
+        <div class="c1-date">{date}</div>
+        {'<div class="c1-pill-gold">' + validity_pill + '</div>' if validity_pill else ''}
+      </div>
     </div>
+    <div class="c1-hero-body">
+      <div class="c1-kicker c1-hero-kicker">Proposition commerciale — Installation solaire</div>
+      <div class="c1-serif c1-hello">Bonjour {first_name},</div>
+      {hero_sub_html}
+    </div>
+  </div>
+
+  <!-- CLIENT LINE ──────────────────────────────────────────────────────── -->
+  <div class="c1-client">
+    <b class="c1-client-nom">{client_full}</b>
+    <span class="c1-client-meta">{client_meta}</span>
+    <span class="c1-tag-cell"><span class="c1-tag">{inst_type}</span></span>
+  </div>
+
+  <!-- CREDIBILITY CUE (number-free) ──────────────────────────────────────── -->
+  <div class="c1-trust">
+    <div class="c1-trust-line"></div>
+    <div class="c1-trust-txt"><b>Ingénieurs solaires</b> &middot; {perf_trust}Suivi en temps réel</div>
+    <div class="c1-trust-line"></div>
+  </div>
+
+  <div class="c1-wrap{wrap_cls}">
+{hook_html}
+{bill_html}
 
     <!-- KPI CHIPS ──────────────────────────────────────────────────────── -->
     <div class="c1-kpis">
@@ -498,20 +569,9 @@ def build(ctx):
         <div class="c1-kpi-v">{fmt(prod_kwh)}<span class="c1-u">&nbsp;kWh/an</span></div>
         <div class="c1-kpi-l">Production estimée</div>
       </div>
-      <div class="c1-kpi">
-        <div class="c1-kpi-v">{fmt(eco_a_ann)}<span class="c1-u">&nbsp;MAD/an</span></div>
-        <div class="c1-kpi-l">Économie estimée</div>
-      </div>
-    </div>
+{kpi_eco_html}    </div>
 
-    <!-- IMPACT STRIP ───────────────────────────────────────────────────── -->
-    <div class="c1-impact">
-      <svg viewBox="0 0 24 24" fill="none"><path d="M12 21c5-1 8-5 8-11V5l-5 1c-5 1-8 4-8 9 0 .7.1 1.4.3 2"
-        stroke="{green}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
-        <path d="M7 21c0-4 2-7 6-9" stroke="{green}" stroke-width="1.7" stroke-linecap="round"/></svg>
-      <div class="c1-impact-t">Et pour la planète&nbsp;: ≈&nbsp;<b>{co2_txt} tonnes de CO<sub>2</sub></b>
-        évitées chaque année — l'équivalent de <b>≈&nbsp;{fmt(trees)} arbres</b> plantés.</div>
-    </div>
+    {impact_html}
 
     <!-- OPTION CARDS ───────────────────────────────────────────────────── -->
     <div class="c1-opts">{opts_html}</div>

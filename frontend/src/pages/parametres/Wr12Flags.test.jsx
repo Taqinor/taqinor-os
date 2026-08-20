@@ -13,6 +13,9 @@ afterEach(() => cleanup())
 const baseForm = {
   payment_terms: {}, doc_prefixes: {}, doc_numbering: {},
   quote_validity_days: 30, agricole_pump_hours: 7,
+  agricole_prix_bonbonne: 50, agricole_cout_reel_bonbonne: 128,
+  // Q5 — délais commerciaux indicatifs (texte libre ; vide = non affiché).
+  delai_visite_technique: '48-72 h', delai_installation: '7-14 jours ouvrés',
   commission_mode: 'off', commission_valeur: '',
   dgi_export_actif: false, tva_standard: 20, tva_panneaux: 10,
   referral_enabled: false, referral_reward: '', lead_sla_hours: 24,

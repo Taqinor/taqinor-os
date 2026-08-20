@@ -1,6 +1,6 @@
 import { createElement, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { History, PackageSearch } from 'lucide-react'
+import { History, PackageSearch, Pencil } from 'lucide-react'
 import {
   CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
@@ -24,6 +24,9 @@ import ProduitOptionsTab from './ProduitOptionsTab.jsx'
 // PV8 — badge de complétude datasheet, même règle que CatalogueTable (grille
 // catalogue) : un seul calcul, réutilisé sur les deux écrans.
 import { BadgeCompletudeFiche } from './CatalogueTable.jsx'
+// PVFCH — libellés et mise en forme des champs de fiche : logique PURE
+// partagée avec ProduitForm (mêmes intitulés d'un écran à l'autre).
+import { groupeFicheAffichage } from './pvondFicheTechnique.js'
 
 // ZPUR10 / ZSTK3 — Fiche produit (au-delà du catalogue) : quantité « en
 // commande » (BCF brouillon/envoyé, jamais annulé/reçu) + rapport
@@ -192,7 +195,50 @@ function useFicheTechnique(produitId) {
   return etat.id === produitId ? etat.fiche : undefined
 }
 
-function OngletFicheTechnique({ produit }) {
+/* ── PVFCH (fondateur 20/08/2026) — la fiche STRUCTURÉE, enfin visible ──────
+   « i am expecting a fiche produit that includes all the data separately,
+   that I can change — number of MPPT, range of each MPPT, battery voltage… »
+
+   Ces champs existaient (FicheTechnique, PV5/PVOND-H) et étaient éditables
+   dans ProduitForm, mais cet onglet ne montrait que marque/garantie/
+   description en PROSE : le fondateur regardait la fiche et n'y voyait aucune
+   donnée séparée — il en a conclu qu'elle n'existait pas.
+
+   Un champ vide s'affiche « — à renseigner », JAMAIS un défaut ni un zéro :
+   c'est la règle « never invent numbers » côté écran, le pendant du refus
+   explicite du calcul (apps/ventes/electrical_service.py). Un trou doit se
+   VOIR comme un trou, parce que c'est lui qui bloque le chiffrage. */
+function FicheStructuree({ fiche }) {
+  const groupe = useMemo(() => groupeFicheAffichage(fiche), [fiche])
+  if (!groupe) return null
+  return (
+    <div className="rounded-lg border border-border" data-testid="pdet-fiche-structuree">
+      <p className="border-b border-border px-3 py-2 text-xs uppercase tracking-wide text-muted-foreground">
+        {groupe.titre} — caractéristiques constructeur
+      </p>
+      <div className="px-3 py-1">
+        {groupe.lignes.map(({ cle, libelle, valeur, absente }) => (
+          <div
+            key={cle}
+            data-testid={`pdet-ft-${cle}`}
+            className="flex flex-col gap-0.5 border-b border-border py-2 last:border-b-0 sm:flex-row sm:gap-4"
+          >
+            <span className="w-full shrink-0 text-xs uppercase tracking-wide text-muted-foreground sm:w-64">
+              {libelle}
+            </span>
+            <span className={absente
+              ? 'text-sm italic text-muted-foreground'
+              : 'text-sm font-medium tabular-nums text-foreground'}>
+              {valeur}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function OngletFicheTechnique({ produit, onEdit }) {
   const fiche = useFicheTechnique(produit.id)
   return (
     <div className="flex flex-col gap-3" data-testid="pdet-fiche-technique">
@@ -200,13 +246,30 @@ function OngletFicheTechnique({ produit }) {
           `fiche === undefined` (chargement) → rien, pour ne pas afficher
           « Fiche absente » une fraction de seconde avant la vraie réponse. */}
       {fiche !== undefined && (
-        <div className="flex items-center gap-2" data-testid="pdet-fiche-completude">
+        <div className="flex flex-wrap items-center gap-2" data-testid="pdet-fiche-completude">
           <span className="text-xs uppercase tracking-wide text-muted-foreground">
             Fiche technique (PV5)
           </span>
           <BadgeCompletudeFiche fiche={fiche} />
+          {/* PVFCH — « data … that I can change » : modifier la fiche part de
+              LÀ OÙ on la regarde. Le bouton n'existe que si l'appelant sait
+              ouvrir l'édition (et donc que l'utilisateur a le droit d'écrire :
+              StockList ne passe `onEdit` que dans ce cas). */}
+          {onEdit && (
+            <Button
+              type="button" variant="outline" size="sm" className="ml-auto"
+              data-testid="pdet-modifier-fiche"
+              onClick={() => onEdit(produit)}
+            >
+              <Pencil className="size-4" aria-hidden="true" /> Modifier la fiche
+            </Button>
+          )}
         </div>
       )}
+
+      {/* Les caractéristiques SÉPARÉES, une ligne par variable. */}
+      <FicheStructuree fiche={fiche} />
+
       <div className="rounded-lg border border-border">
         <div className="px-3 py-1">
           <Ligne label="Marque" valeur={produit.marque} />
@@ -223,8 +286,9 @@ function OngletFicheTechnique({ produit }) {
       {/* APX21 — la courbe constructeur, quand le produit en porte une. */}
       <CourbePompe produit={produit} />
       <p className="text-xs text-muted-foreground">
-        Ces informations partent sur la fiche produit des devis. Elles se
-        modifient depuis l&apos;édition du produit (Stock → Catalogue).
+        Ces caractéristiques alimentent le chiffrage, le schéma unifilaire et le
+        tableau AC/DC : une valeur « à renseigner » n&apos;est jamais remplacée
+        par une valeur par défaut — le calcul refuse et dit ce qui manque.
       </p>
     </div>
   )
@@ -352,7 +416,7 @@ function OngletPrevisionnel({ produitId }) {
 }
 
 // Export nommé : testé directement.
-export function ProduitDetail({ produit, onClose }) {
+export function ProduitDetail({ produit, onClose, onEdit }) {
   // VX98 — bouton « Historique » → Journal pré-filtré sur CE produit, visible
   // uniquement avec la permission journal_activite_voir (AuditLog couvre tous
   // les modèles ; le backend re-vérifie la permission).
@@ -412,7 +476,7 @@ export function ProduitDetail({ produit, onClose }) {
             <OngletPrevisionnel produitId={produit.id} />
           </TabsContent>
           <TabsContent value="fiche">
-            <OngletFicheTechnique produit={produit} />
+            <OngletFicheTechnique produit={produit} onEdit={onEdit} />
           </TabsContent>
           <TabsContent value="options">
             <ProduitOptionsTab produitId={produit.id} />

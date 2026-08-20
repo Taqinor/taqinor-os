@@ -93,7 +93,13 @@ def build(ctx) -> str:
 
     client_full = (theme.titlecase_name(
         d.get("client_full") or d.get("client_name")) or "Le client")
-    validity_days = d.get("validity_days", 30)
+    # M7 — la validité vient du DEVIS (date_validite, sinon création + réglage
+    # société), servie par le builder ; plus de « 30 jours » par défaut.
+    validity_days = d.get("validity_days")
+    # Q5 — délais commerciaux INDICATIFS, réglages société ; vides ⇒ omis.
+    _delais = d.get("delais") or {}
+    _delai_visite = (_delais.get("visite_technique") or "").strip()
+    _delai_install = (_delais.get("installation") or "").strip()
     site_url = d.get("site_url", "taqinor.ma")
     links = d.get("links", {}) or {}
     pay = d.get("payment_terms", {}) or {}
@@ -173,16 +179,23 @@ def build(ctx) -> str:
     paiement = (f"{acompte}% à la commande &middot; {materiel}% à la réception "
                 f"du matériel &middot; {solde}% à la mise en service")
     # QRES31 — échéance absolue partout où la validité s'affiche.
-    _valid_until = theme.valid_until(d.get("date"), validity_days)
-    _validite_txt = (f"{validity_days} jours — jusqu'au {_valid_until}"
-                     if _valid_until else f"{validity_days} jours")
+    # M7 — la date imprimée est celle du devis. `valid_until` est déjà posée
+    # par le builder ; l'arithmétique de repli ne sert qu'aux appels sans elle.
+    _valid_until = (d.get("valid_until") or "").strip() or (
+        theme.valid_until(d.get("date"), validity_days)
+        if validity_days else "")
     cta_deadline = (f" Offre valable jusqu'au {_valid_until}."
                     if _valid_until else "")
+    # Q5 — le DÉLAI D'INSTALLATION QUITTE LA BOÎTE « CONDITIONS » : entre la
+    # validité de l'offre, l'échéancier de paiement et la TVA, il se lisait
+    # comme un engagement contractuel. Il rejoint les « prochaines étapes »,
+    # avec la mention « (indicatif) ». Une échéance indéterminable retire aussi
+    # la ligne de validité — jamais « None jours ».
     conditions = [
-        ("Validité de l'offre", _validite_txt),
+        *((("Validité de l'offre", f"jusqu'au {_valid_until}"),)
+          if _valid_until else ()),
         ("Paiement", paiement),
         ("TVA", tva_note or "Selon barème en vigueur"),
-        ("Délai d'installation", "7 à 14 jours ouvrés"),
     ]
     # QF3 / QRES65 (fondateur, 2026-08-18) — « Comment nous calculons vos
     # économies » QUITTE la colonne Conditions. Le texte reste celui du builder
@@ -229,10 +242,15 @@ def build(ctx) -> str:
     )
 
     # ── Next steps ──────────────────────────────────────────────────────────
+    # Q5 — les délais sont des réglages société et portent « (indicatif) » ;
+    # un réglage vidé laisse l'étape sans sous-titre plutôt qu'avec un délai
+    # inventé.
     steps = [
         ("1", "Signature du devis", f"+ acompte {acompte}%"),
-        ("2", "Visite technique", "sous 48–72 h"),
-        ("3", "Installation", "7–14 jours"),
+        ("2", "Visite technique",
+         f"sous {_delai_visite} (indicatif)" if _delai_visite else ""),
+        ("3", "Installation",
+         f"{_delai_install} (indicatif)" if _delai_install else ""),
         ("4", "Mise en service", "tests + formation"),
     ]
     steps_html = "".join(

@@ -508,14 +508,41 @@ class TestGarantiesDerivees(TestCase):
         return {label: n for n, _u, label, _sub in
                 theme.warranties_for({'sans_items': rows})}
 
-    def test_sans_donnee_produit_repli_sur_la_constante(self):
-        from apps.ventes.quote_engine.residential import theme
+    def test_sans_donnee_produit_la_garantie_est_omise(self):
+        """M6 (audit adversarial du 19/08/2026) — LE REPLI-CONSTANTE EST MORT.
+
+        Un produit dont AUCUNE garantie n'est saisie n'a pas de garantie
+        connue : le document l'OMET au lieu de recopier une durée de
+        catalogue. Seules deux entrées survivent sans donnée produit, et
+        chacune pour une raison nommée :
+
+        * « Installation » — 2 ans de main-d'œuvre, l'engagement de
+          l'ENTREPRISE, pas une spec produit : inconditionnel ;
+        * le panneau par défaut du catalogue (Canadian Solar), dont les
+          durées SONT ses valeurs constructeur — une dérivation traçable.
+
+        Tout le reste tombe : l'onduleur Huawei, sans garantie saisie, n'a
+        plus sa ligne « 10 ans » sortie d'un dictionnaire.
+        """
         rows = [
             {'designation': 'Panneau Canadian Solar 710W'},
             {'designation': 'Onduleur réseau Huawei 5kW'},
         ]
+        labels = self._labels(rows)
+        self.assertNotIn('Onduleur', labels)
+        self.assertEqual(labels['Installation'], '2')
+
+    def test_sans_donnee_produit_un_autre_panneau_est_omis_aussi(self):
+        """Le repli du panneau par défaut ne déteint pas sur les autres : un
+        Longi sans garantie saisie n'emprunte pas les durées — ni surtout le
+        « 87,4 % » — d'un Canadian Solar."""
+        from apps.ventes.quote_engine.residential import theme
+        rows = [
+            {'designation': 'Panneau Longi 585W'},
+            {'designation': 'Onduleur réseau Deye 5kW'},
+        ]
         self.assertEqual(theme.warranties_for({'sans_items': rows}),
-                         list(theme.WARRANTIES))
+                         [theme._WARRANTY_FALLBACK['Installation']])
 
     def test_durees_produit_prises_en_compte(self):
         labels = self._labels([

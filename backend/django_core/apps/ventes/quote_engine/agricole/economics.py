@@ -28,10 +28,15 @@ def load_constants(company_id=None) -> dict:
     Paramètres ``agricole_economics`` JSON setting (best-effort; a missing table
     or key leaves the default untouched). Keeps the engine working before the
     Paramètres UI exists (ERP task) — the defaults are flagged « à confirmer ».
+
+    On top of that legacy JSON override, the two butane bonbonne prices have a
+    DEDICATED founder-editable setting (decision 20/08/2026) on
+    ``CompanyProfile.agricole_prix_bonbonne`` / ``agricole_cout_reel_bonbonne`` —
+    the same home as the pre-existing ``agricole_pump_hours``. When present it
+    is the authoritative source and wins over the legacy JSON override.
     """
     cfg = {
         "cost_per_m3": dict(K.COST_PER_M3),
-        "butane_decomp_multiplier": K.BUTANE_DECOMP_MULTIPLIER,
         "butane_12kg_subventionne": K.BUTANE_12KG_SUBVENTIONNE,
         "butane_12kg_reel": K.BUTANE_12KG_REEL,
         "butane_kg_per_h_per_cv": K.BUTANE_KG_PER_H_PER_CV,
@@ -43,7 +48,6 @@ def load_constants(company_id=None) -> dict:
         "peak_to_avg": K.PEAK_TO_AVG,
         "specific_yield_kwh_kwc": K.SPECIFIC_YIELD_KWH_KWC,
         "fda_subsidy_pct": K.FDA_SUBSIDY_PCT,
-        "fda_subsidy_cap": K.FDA_SUBSIDY_CAP,
         "default_current_fuel": K.DEFAULT_CURRENT_FUEL,
     }
     if not company_id:
@@ -59,6 +63,18 @@ def load_constants(company_id=None) -> dict:
                     cfg["cost_per_m3"].update(v)
                 elif k in cfg:
                     cfg[k] = v
+    except Exception:  # noqa: BLE001 — a PDF must never break on settings
+        pass
+    try:
+        from apps.parametres.models_company import CompanyProfile  # type: ignore
+        profile = CompanyProfile.objects.filter(company_id=company_id).first()
+        if profile is not None:
+            prix = getattr(profile, "agricole_prix_bonbonne", None)
+            if prix is not None:
+                cfg["butane_12kg_subventionne"] = prix
+            cout = getattr(profile, "agricole_cout_reel_bonbonne", None)
+            if cout is not None:
+                cfg["butane_12kg_reel"] = cout
     except Exception:  # noqa: BLE001 — a PDF must never break on settings
         pass
     return cfg
@@ -93,7 +109,15 @@ def compute(data: dict, company_id=None) -> dict:
     has_water = annual_m3 > 0
 
     rates = cfg["cost_per_m3"]
-    mult = _num(cfg["butane_decomp_multiplier"], 2.5) or 2.5
+    # Décompensation : rapport réel/subventionné DÉRIVÉ des deux réglages
+    # société (plus de multiplicateur codé en dur — décision fondateur
+    # 20/08/2026). L'un des deux à 0/None → aucun rapport calculable → la
+    # comparaison décompensée est omise (butane_future reste 0), jamais un
+    # multiplicateur inventé.
+    _b_sub_for_mult = _num(cfg["butane_12kg_subventionne"])
+    _b_reel_for_mult = _num(cfg["butane_12kg_reel"])
+    mult = (_b_reel_for_mult / _b_sub_for_mult
+            if (_b_sub_for_mult > 0 and _b_reel_for_mult > 0) else None)
 
     # ANNUAL CASH fuel spend the farmer pays today. Solar burns NO fuel — the
     # sun is free — so its annual carburant cost is 0 (the capital is the quote,
@@ -101,7 +125,7 @@ def compute(data: dict, company_id=None) -> dict:
     # cost (capex amortised) shown only in the cost-per-m³ comparison below.
     solaire = 0
     butane_today = round(annual_m3 * _num(rates.get("butane"))) if has_water else 0
-    butane_future = round(butane_today * mult) if has_water else 0
+    butane_future = round(butane_today * mult) if (has_water and mult) else 0
     diesel = round(annual_m3 * _num(rates.get("diesel"))) if has_water else 0
 
     current_fuel = (etude.get("current_fuel")
@@ -132,11 +156,11 @@ def compute(data: dict, company_id=None) -> dict:
     payback_diesel = _payback(quote_ttc, saving_vs_diesel)
     payback = _payback(quote_ttc, annual_saving)
 
-    # FDA 30% subsidy (capped), on acquisition + installation TTC.
+    # FDA 30% subsidy — RATE ONLY (sourced, may be shown). Decision 20/08/2026:
+    # the real cap can't be confirmed, so no amount is computed/shown/derived
+    # from a cap (no "up to X MAD", no net-after-subsidy). See
+    # ``constants.FDA_QUALITATIVE_NOTE`` for the qualitative wording.
     fda_pct = _num(cfg["fda_subsidy_pct"], 30)
-    fda_cap = _num(cfg["fda_subsidy_cap"], 30000)
-    fda_amount = min(round(quote_ttc * fda_pct / 100), int(fda_cap)) if quote_ttc > 0 else 0
-    net_after_fda = max(0, round(quote_ttc - fda_amount))
 
     # CO₂ avoided (bottom-up from the current fuel) — a calculation, not a stat.
     if current_fuel == "diesel":
@@ -150,7 +174,12 @@ def compute(data: dict, company_id=None) -> dict:
         fuel_qty_label = (f"{round(bottles):,}".replace(",", " ")
                           + " bonbonnes de butane")
     co2_t = round(co2_kg / 1000.0, 1) if co2_kg > 0 else 0
-    trees = max(0, round(co2_kg / 21.0)) if co2_kg > 0 else 0
+    # M8 (audit du 19/08/2026) — MÊME constante partagée que le PDF
+    # résidentiel et le site (22 kg CO₂/arbre/an) : ce module portait
+    # sa propre copie à 21, donc deux nombres d'arbres pour un même
+    # ordre de grandeur selon le mode du devis.
+    from ..constants import KG_CO2_PAR_ARBRE_AN as _KG_ARBRE
+    trees = max(0, round(co2_kg / _KG_ARBRE)) if co2_kg > 0 else 0
 
     # Annual PV production.
     prod_kwh = round(champ_kwc * _num(cfg["specific_yield_kwh_kwc"])) if champ_kwc > 0 else 0
@@ -201,9 +230,6 @@ def compute(data: dict, company_id=None) -> dict:
         "payback_butane": payback_butane,
         "payback_diesel": payback_diesel,
         "fda_pct": int(fda_pct),
-        "fda_amount": fda_amount,
-        "fda_cap": int(fda_cap),
-        "net_after_fda": net_after_fda,
         "co2_t": co2_t,
         "trees": trees,
         "fuel_qty_label": fuel_qty_label,

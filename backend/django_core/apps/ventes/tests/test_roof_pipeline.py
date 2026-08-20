@@ -383,38 +383,59 @@ class TestProposalMonthlyArrays(TestCase):
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertEqual(resp.data['monthly_consumption'], [])
 
+    def test_monthly_consumption_empty_without_a_real_tariff(self):
+        """M10 (audit adversarial du 19/08/2026) — PAS DE BARÈME RÉEL, PAS DE
+        COURBE. Une facture SANS distributeur ne peut être convertie en kWh que
+        par un prix plat de repli ; ``kwh_from_bill`` le signale
+        (``estimation``) et ce drapeau était JETÉ : la page publiait une simple
+        division par un forfait, présentée comme une mesure de consommation.
+        La série part vide et la page masque le graphe — comme elle le fait
+        déjà pour un devis sans facture."""
+        from apps.crm.models import Lead
+        lead = Lead.objects.create(
+            company=self.company, nom='SansBareme', client=self.devis.client,
+            facture_hiver='875', ete_differente=False)   # aucun distributeur
+        self.devis.lead = lead
+        self.devis.save(update_fields=['lead'])
+        resp = self._data()
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['monthly_consumption'], [])
+
     def test_monthly_consumption_winter_year_round(self):
         from apps.crm.models import Lead
         lead = Lead.objects.create(
             company=self.company, nom='Conso', client=self.devis.client,
-            facture_hiver='875', ete_differente=False)
+            facture_hiver='875', ete_differente=False,
+            distributeur='onee')
         self.devis.lead = lead
         self.devis.save(update_fields=['lead'])
         resp = self._data()
         conso = resp.data['monthly_consumption']
         self.assertEqual(len(conso), 12)
-        # Tous les mois identiques (été non différent). QX7d — MAD→kWh via
-        # kwh_from_bill : pas de distributeur renseigné sur ce lead → aucune
-        # table de tranches → repli plat _FALLBACK_KWH_PRICE = 1.20 MAD/kWh
-        # (pas l'ancien prix plat KWH_PRICE=1.75) : 875 / 1.20 = 729.17 → 729.
-        self.assertTrue(all(v == 729 for v in conso))
+        # Tous les mois identiques (été non différent). M10 (audit du
+        # 19/08/2026) — la conversion MAD→kWh n'est servie QUE sur un barème
+        # RÉEL : le lead porte donc son distributeur, et 875 MAD se lisent au
+        # barème national par tranches (539 kWh), plus par une division par un
+        # forfait de 1,20 MAD/kWh présentée comme une mesure.
+        self.assertTrue(all(v == 539 for v in conso))
 
     def test_monthly_consumption_summer_split(self):
         from apps.crm.models import Lead
         lead = Lead.objects.create(
             company=self.company, nom='Split', client=self.devis.client,
-            facture_hiver='1200', facture_ete='600', ete_differente=True)
+            facture_hiver='1200', facture_ete='600', ete_differente=True,
+            distributeur='onee')
         self.devis.lead = lead
         self.devis.save(update_fields=['lead'])
         resp = self._data()
         conso = resp.data['monthly_consumption']
         self.assertEqual(len(conso), 12)
-        # QX7d — MAD→kWh via kwh_from_bill : pas de distributeur renseigné →
-        # repli plat _FALLBACK_KWH_PRICE = 1.20 MAD/kWh.
-        # Hiver : 1200 / 1.20 = 1000.0 → 1000. Été : 600 / 1.20 = 500.0 → 500.
-        # Un mois d'été (index 5 = Juin) < un mois d'hiver (index 0 = Jan).
-        self.assertEqual(conso[0], 1000)
-        self.assertEqual(conso[5], 500)
+        # M10 — barème RÉEL exigé (le lead porte son distributeur), donc
+        # conversion par tranches : 1200 MAD → 739 kWh, 600 MAD → 427 kWh.
+        # Ce que ce test protège est la MÉCANIQUE de répartition, pas le
+        # tarif : un mois d'été (index 5 = Juin) reste sous un mois d'hiver.
+        self.assertEqual(conso[0], 739)
+        self.assertEqual(conso[5], 427)
         self.assertLess(conso[5], conso[0])
 
     def test_consumption_resolves_via_client_when_no_direct_lead(self):
@@ -422,15 +443,15 @@ class TestProposalMonthlyArrays(TestCase):
         from apps.crm.models import Lead
         Lead.objects.create(
             company=self.company, nom='ViaClient', client=self.devis.client,
-            facture_hiver='1000', ete_differente=False)
+            facture_hiver='1000', ete_differente=False, distributeur='onee')
         self.assertIsNone(self.devis.lead)
         resp = self._data()
         conso = resp.data['monthly_consumption']
         self.assertEqual(len(conso), 12)
-        # QX7d — MAD→kWh via kwh_from_bill : pas de distributeur renseigné →
-        # repli plat _FALLBACK_KWH_PRICE = 1.20 MAD/kWh.
-        # 1000 / 1.20 = 833.33 → round(.,1) = 833.3 → round(.) = 833.
-        self.assertEqual(conso[0], 833)
+        # M10 — ce que ce test protège est la RÉSOLUTION du lead via le
+        # client, pas le tarif : le lead porte son distributeur, donc 1000 MAD
+        # se lisent au barème national par tranches (616 kWh).
+        self.assertEqual(conso[0], 616)
 
 
 class TestQ7ProposalAccept(TestCase):

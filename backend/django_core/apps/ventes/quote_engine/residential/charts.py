@@ -248,6 +248,14 @@ def roof_layout(nb_panneaux, w=2.9, h=2.2) -> str:
 
 
 def build_all(data: dict) -> dict:
+    # Z2 (ORDRE FONDATEUR, 20/08/2026) — sans donnée réelle d'ancrage, la couche
+    # économique du document est omise : les trois graphiques qui en descendent
+    # (avant/après mensuel, donut de couverture, courbe de rentabilité) ne sont
+    # même pas calculés — seul le calepinage, dérivé du nombre RÉEL de panneaux,
+    # est produit. Aucun appelant ne lit les clés absentes (cover/options les
+    # référencent uniquement dans leurs branches non masquées).
+    if data.get("masquer_synthese"):
+        return {"roof": roof_layout(data["nb_panneaux"])}
     _pb_kw = dict(
         cashflow_sans=data.get("cashflow_sans"),
         cashflow_avec=data.get("cashflow_avec"),

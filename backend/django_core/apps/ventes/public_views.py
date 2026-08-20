@@ -24,21 +24,14 @@ from rest_framework.throttling import SimpleRateThrottle
 
 from .models import PaymentLink, ShareLink
 from .quote_engine import clean_pdf_options, generate_premium_devis_pdf
+# ── Profil saisonnier de production solaire au Maroc (T4) ────────────────────
+# M1 — poids mensuels IMPORTÉS de la source unique (quote_engine/constants.py,
+# table GHI verrouillée par le drift-lock DC9). Ce module en portait une copie
+# manuelle de la table : une seconde vérité qu'aucun test ne surveillait.
+from .quote_engine.constants import MOROCCO_SOLAR_MONTHLY_WEIGHTS  # noqa: F401
 from .utils.pdf import cle_facture_pdf_a_jour, download_pdf
 
 logger = logging.getLogger(__name__)
-
-
-# ── Profil saisonnier de production solaire au Maroc (T4) ────────────────────
-# Poids mensuels (Jan…Déc) dérivés du GHI moyen marocain (apps/ventes/
-# quote_engine/constants.py:GHI) puis NORMALISÉS pour sommer à 1. Sert UNIQUEMENT
-# à répartir un total annuel RÉEL sur 12 mois quand seul l'annuel est connu —
-# on ne fabrique jamais le total, on le distribue. Plus d'irradiance en été
-# qu'en hiver, d'où des poids estivaux plus élevés.
-_GHI_MONTHLY = [83.99, 96.79, 133.43, 155.30, 175.28, 179.62,
-                179.56, 161.17, 137.03, 111.59, 81.91, 74.61]
-_GHI_SUM = sum(_GHI_MONTHLY)
-MOROCCO_SOLAR_MONTHLY_WEIGHTS = [round(g / _GHI_SUM, 6) for g in _GHI_MONTHLY]
 
 
 # Avis FR clair montré quand le lien est expiré ou introuvable. Aucune donnée
@@ -432,6 +425,17 @@ def _monthly_consumption(devis) -> list:
     ete_months = {4, 5, 6, 7, 8, 9}
     # Barème stable par facture → on mémoïse la conversion (2 valeurs max).
     _cache = {}
+
+    # ── M10 (audit adversarial du 19/08/2026) — PAS DE DISTRIBUTEUR RÉEL, PAS
+    # DE COURBE. Sans distributeur, ``kwh_from_bill`` dégrade sur un prix PLAT
+    # (1,20 MAD/kWh) et le signale (``estimation``) — ce drapeau était JETÉ, et
+    # la page publiait une courbe de consommation en kWh qui n'était qu'une
+    # division de la facture par un forfait, présentée comme une mesure. Le
+    # drapeau décide maintenant : estimation ⇒ série vide ⇒ la page masque le
+    # graphe (elle le fait déjà pour un devis sans facture).
+    _sonde = kwh_from_bill(hiver_mad, utility=utility)
+    if _sonde.get('estimation'):
+        return []
 
     def _kwh(mad):
         if mad not in _cache:
@@ -1080,7 +1084,7 @@ def proposal_data(request, token):
         # PVCOV — synthèse économies/couverture, calculée par LE code de la
         # page 1 du PDF (import paresseux : frontière quote_engine).
         from .quote_engine.residential.renderer import (
-            is_residential, synthese_economies,
+            ancrage_reel_absent, is_residential, synthese_economies,
         )
         # F5 (revue Fable, pré-merge 18/08/2026) — cette synthèse (« −N % »,
         # avant/après annuel, donut de couverture) EST la page 1 du PDF
@@ -1096,8 +1100,8 @@ def proposal_data(request, token):
         # qui décide déjà si LE renderer résidentiel — celui qui rend cette
         # page 1 — s'applique à ce devis : c'est donc l'autorité correcte, et
         # la plus économe (déjà importée juste au-dessus, zéro calcul de plus).
-        synthese = (synthese_economies(data)
-                    if is_residential(devis, {'pdf_mode': 'full'}) else None)
+        _resid_public = is_residential(devis, {'pdf_mode': 'full'})
+        synthese = synthese_economies(data) if _resid_public else None
         # PV86 — VÉRITÉ UNIQUE : la charge utile publique ne transporte QUE les
         # totaux/lignes de l'option réellement proposée. Un devis mono-option
         # laissait passer le second panier (calculé pour le découpage interne) :
@@ -1106,6 +1110,20 @@ def proposal_data(request, token):
         # AUCUN document ne franchit plus la frontière publique. Les
         # avertissements internes (devis à assainir) restent côté vendeur.
         data.pop('avertissements_internes', None)
+        # ── Z2 (ORDRE FONDATEUR, 20/08/2026) — la proposition en ligne HÉRITE de
+        # l'omission du PDF. La synthèse (−N %, avant/après, couverture) est déjà
+        # None ci-dessus, mais la page lit AUSSI `quote.eco_s_ann`/`eco_a_ann`/
+        # `roi_s`/`roi_a`/`eco_a_cumul` en direct : les laisser passer aurait
+        # gardé « Économie ≈ X MAD/an » et « Rentabilisé en Y ans » à l'écran
+        # alors que le PDF du même devis ne les montre plus — un chiffre bâti sur
+        # le tarif de repli × un taux forfaitaire, sans aucune saisie derrière.
+        # Ils partent AVEC la synthèse (la page omet chaque bloc dont la valeur
+        # est nulle). Aucun autre support ne change : le calcul interne du
+        # builder reste intact, seule la republication publique s'arrête.
+        if _resid_public and ancrage_reel_absent(data):
+            for _k in ('eco_s_ann', 'eco_a_ann', 'eco_a_cumul',
+                       'roi_s', 'roi_a', 'savings_method', 'hypotheses'):
+                data[_k] = None
         # F6 (revue Fable, pré-merge 18/08/2026) — QJ12 calcule un bloc
         # `financing` INTERNE (indicatif) ; le fondateur a retiré le crédit de
         # toute surface client à QUATRE reprises (PV80 : plus aucune mensualité
@@ -1119,6 +1137,14 @@ def proposal_data(request, token):
         # nom. Le calcul interne du builder (`compute_financing_block`) n'est
         # pas touché — seule la republication publique s'arrête.
         data.pop('financing', None)
+        # M1 (audit du 19/08/2026) — la série « facture avant PV » ne franchit
+        # la frontière publique que si elle est RÉELLE. Le builder ne fabrique
+        # plus de proxy (facture ≈ économie / taux d'autoconsommation) : quand
+        # le client n'a pas donné ses 12 factures, la clé vaut None et on la
+        # retire purement et simplement — une page qui ne reçoit rien n'affiche
+        # rien, là où un `null` republié invitait à tracer une courbe vide.
+        if not data.get('factures_mensuelles'):
+            data.pop('factures_mensuelles', None)
         if data.get('nb_options') == 1:
             if not data.get('avec_ok'):
                 data['totaux_avec'] = None

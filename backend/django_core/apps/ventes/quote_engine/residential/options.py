@@ -128,6 +128,7 @@ def build_pages(ctx) -> list:
     débordement rogné ni de 4ᵉ page orpheline.
     """
     from . import theme
+    from .. import constants
 
     d = ctx["d"]
     C = ctx["C"]
@@ -141,6 +142,13 @@ def build_pages(ctx) -> list:
     # « commun aux deux options ». Repli sûr : sans drapeau, deux-options.
     deux_options = bool(d.get("deux_options", True))
     avec_ok = bool(d.get("avec_ok", True))
+    # Z2 (ORDRE FONDATEUR, 20/08/2026) — sans AUCUNE donnée réelle d'ancrage, la
+    # couche économique du document est OMISE (cf. renderer.ancrage_reel_absent) :
+    # la rentabilité (payback, gain net 25 ans, courbe de cashflow) descend du
+    # même tarif de repli × taux forfaitaire que la synthèse de la page 1 et part
+    # avec elle. L'équipement, les totaux et la TVA — eux — sont les données du
+    # devis : ils restent rendus à l'identique.
+    masquer_eco = bool(d.get("masquer_synthese"))
 
     if deux_options:
         shared, delta_sans, delta_avec = _split_items(
@@ -293,6 +301,18 @@ def build_pages(ctx) -> list:
     fin_sub = ("gain cumulé, deux scénarios — le point marque le retour "
                "sur investissement" if deux_options
                else "gain cumulé — le point marque le retour sur investissement")
+    # ── Q1 (décision fondateur du 20/08/2026) — LE CREUX DE LA COURBE EST DIT ─
+    # La courbe plonge en année 12 : c'est la provision de remplacement de
+    # l'onduleur. Elle vaut le PRIX RÉEL de l'onduleur de ce devis (plus un
+    # pourcentage forfaitaire du CAPEX), et la légende l'écrit — un creux
+    # inexpliqué se lit comme une erreur de graphe. Aucun onduleur chiffré ⇒
+    # aucune provision ⇒ aucune mention (la courbe n'a alors pas de creux).
+    _cf_assum = d.get("cashflow_assumptions") or {}
+    _prov = _cf_assum.get("inverter_replace_cost")
+    if _prov:
+        _an = _cf_assum.get("inverter_replace_year") or 12
+        fin_sub += (f" · remplacement onduleur provisionné en année {_an} "
+                    f"({f'{int(_prov):,}'.replace(',', ' ')} MAD)")
 
     # QRES57 — les garanties vivent en bande fine sur la page signature
     # (trust.py, source unique theme.WARRANTIES) : plus de cartes badges en
@@ -592,6 +612,27 @@ def build_pages(ctx) -> list:
         f'<div class="p2-tva-note">{tva_note}{fiche_inline}</div>'
         f'{multi_html}')
 
+    # M6 (audit du 19/08/2026) — la carte « Performance garantie » lisait
+    # « 30 ans / 87,4 % » en DUR sur tous les devis, y compris un panneau
+    # Longi (garanti 30 ans mais à 88,9 %). Elle lit désormais la MÊME source
+    # que la bande de garanties de la page signature (theme.warranties_for) :
+    # jamais deux chiffres contradictoires dans le même document. Aucune
+    # entrée « Performance » (composant non reconnu / hors gamme par défaut,
+    # sans donnée produit) ⇒ la carte-stat est OMISE entièrement.
+    _perf_warranty = next(
+        (w for w in theme.warranties_for(d) if w[2] == "Performance"), None)
+
+    def _perf_stat_html():
+        if not _perf_warranty:
+            return ""
+        n, u, _label, sub = _perf_warranty
+        return f"""
+        <div class="p2-side-stat">
+          <span class="p2-stat-k">Performance garantie</span>
+          <span class="p2-stat-v">{n} {u}</span>
+          <span class="p2-stat-s">panneaux — {sub}</span>
+        </div>"""
+
     _stats_html = f"""
         <div class="p2-side-stat">
           <span class="p2-stat-k">Retour sur investissement</span>
@@ -602,18 +643,23 @@ def build_pages(ctx) -> list:
           <span class="p2-stat-k">Gain net sur 25 ans</span>
           <span class="p2-stat-v">≈ {fmt(gain25)} <small>MAD</small></span>
           <span class="p2-stat-s">{gain25_label}{gain_mult_sub}</span>
-        </div>
-        <div class="p2-side-stat">
-          <span class="p2-stat-k">Performance garantie</span>
-          <span class="p2-stat-v">30 ans</span>
-          <span class="p2-stat-s">panneaux — 87,4 % de rendement à 30 ans</span>
-        </div>"""
+        </div>{_perf_stat_html()}"""
     # QRES59 — libellé NEUTRE (beaucoup de clients sont chez une régie, pas
     # l'ONEE) ; seule mention « toute hausse vous profite » du document.
+    # Z4 (ORDRE FONDATEUR, 20/08/2026) — le SEUL décrochement de la courbe est la
+    # provision de remplacement de l'onduleur : le tracé s'aplatit cette
+    # année-là puis repart à sa pente normale. Il était SILENCIEUX (les
+    # hypothèses détaillées vivent sur la proposition en ligne, pas sur le
+    # papier — QRES61), donc illisible autrement que comme une erreur de
+    # graphique. La légende, juste sous la courbe, le NOMME. L'année vient de
+    # ``pricing`` (source unique du modèle), jamais d'un littéral recopié.
+    from ..pricing import INVERTER_REPLACE_YEAR as _REPL_AN
     _fin_cap = (
         '<div class="p2-fin-cap">Projection <b>à tarif électricité '
         'constant</b> — toute hausse future du prix de l\'électricité '
-        'accélère votre rentabilité, votre coût solaire restant fixe.</div>')
+        'accélère votre rentabilité, votre coût solaire restant fixe. '
+        f'Le palier en année&nbsp;{_REPL_AN} : provision de remplacement '
+        'de l\'onduleur, déjà déduite.</div>')
 
     # QRES46 — sur la page rentabilité dédiée, le bandeau navy porte déjà le
     # gain net : la carte-stat « Gain net » disparaît (plus de doublon).
@@ -622,14 +668,11 @@ def build_pages(ctx) -> list:
           <span class="p2-stat-k">Retour sur investissement</span>
           <span class="p2-stat-v">{roi_range}</span>
           <span class="p2-stat-s">l'installation se rembourse</span>
-        </div>
-        <div class="p2-side-stat">
-          <span class="p2-stat-k">Performance garantie</span>
-          <span class="p2-stat-v">30 ans</span>
-          <span class="p2-stat-s">panneaux — 87,4 % de rendement à 30 ans</span>
-        </div>"""
+        </div>{_perf_stat_html()}"""
 
     def _fin_html(xl=False):
+        if masquer_eco:
+            return ""
         if xl:
             # QRES38 — page rentabilité dédiée : composition VERTICALE (courbe
             # pleine largeur, stats en rangée dessous) — la page respire au
@@ -688,7 +731,10 @@ def build_pages(ctx) -> list:
     # tableau), pages « suite » (titre court seulement — la clôture suit le
     # DERNIER morceau de tableau).
     chunks = _chunk_rows(shared, budgets=[118.0, 165.0])
-    pages = []
+    # Z2 — les intérieurs sont gardés pour pouvoir, en mode « économies omises »,
+    # replier l'encart environnemental sur la DERNIÈRE page équipement (dans son
+    # gabarit ``p2-wrap``) au lieu de publier une page « rentabilité » vide.
+    inners = []
     for i, chunk in enumerate(chunks):
         is_first = i == 0
         is_last = i == len(chunks) - 1
@@ -702,12 +748,12 @@ def build_pages(ctx) -> list:
             # QRES62 — joint élastique avant la clôture (totaux) : absorbe le
             # vide résiduel mesuré de la dernière page équipement.
             inner += '<div class="qj" data-w="100"></div>' + closing_html
-        pages.append(_wrap_page(inner))
+        inners.append(inner)
 
     # QRES28 — la page rentabilité dédiée (espace abondant) reçoit le bandeau
     # navy de gain net (le chiffre-héros du document, en pleine largeur).
     _callout = ""
-    if gain_mult_txt:
+    if gain_mult_txt and not masquer_eco:
         _callout = (
             f'<div class="p2-callout">≈ {fmt(gain25)} MAD de gain net sur '
             f'25 ans — <b>{gain_mult_txt}× le prix de votre installation'
@@ -718,18 +764,28 @@ def build_pages(ctx) -> list:
     # SUPPRIMÉE de la page rentabilité. Ne pas la réintroduire.
     # QRES53 — l'impact environnemental complète la page rentabilité (le
     # retour de l'investissement ne se compte pas qu'en dirhams) : mêmes
-    # facteurs de calcul que la page 1 (0,81 t CO₂/MWh, ~21 kg CO₂/arbre/an),
-    # cumul 25 ans PRUDENT (dégradation panneau 0,5 %/an intégrée, ×23,5).
+    # facteurs de calcul que la page 1 — M8 (19/08/2026) : SOURCE UNIQUE et
+    # datée dans quote_engine.constants (CO2_T_PAR_MWH / KG_CO2_PAR_ARBRE_AN),
+    # alignée sur le site web — plus de « 21 » PDF face à « 22 » web pour le
+    # même devis. Cumul 25 ans PRUDENT (dégradation panneau 0,5 %/an
+    # intégrée, ×23,5).
     _prod = d.get("prod_kwh") or 0
     impact_html = ""
     if _prod:
-        _co2_t = _prod * 0.81 / 1000.0
-        _trees = max(1, round(_prod * 0.81 / 21))
+        _co2_t = _prod * constants.CO2_T_PAR_MWH / 1000.0
+        # M8 — plus de plancher « au moins 1 arbre » : la carte s'omet plus
+        # bas plutôt que d'imprimer « l'équivalent de 0 arbres ».
+        _trees = round(_prod * constants.CO2_T_PAR_MWH
+                       / constants.KG_CO2_PAR_ARBRE_AN)
         _co2_25 = _co2_t * 23.5
 
         def _fr1(v):
             return (f"{v:.1f}".replace(".", ",") if v < 10
                     else fmt(round(v)))
+        _trees_card = (
+            f'<div class="p2-imp-c"><span class="p2-imp-v">≈ {fmt(_trees)}'
+            '</span><span class="p2-imp-l">arbres plantés — l\'équivalent '
+            'annuel</span></div>') if _trees > 0 else ""
         impact_html = (
             '<div class="p2-lbl" style="margin-top:7mm">Et pour la planète'
             '</div>'
@@ -737,9 +793,7 @@ def build_pages(ctx) -> list:
             f'<div class="p2-imp-c"><span class="p2-imp-v">≈ {_fr1(_co2_t)} '
             't</span><span class="p2-imp-l">de CO<sub>2</sub> évitées '
             'chaque année</span></div>'
-            f'<div class="p2-imp-c"><span class="p2-imp-v">≈ {fmt(_trees)}'
-            '</span><span class="p2-imp-l">arbres plantés — l\'équivalent '
-            'annuel</span></div>'
+            f'{_trees_card}'
             f'<div class="p2-imp-c"><span class="p2-imp-v">≈ {_fr1(_co2_25)} '
             't</span><span class="p2-imp-l">de CO<sub>2</sub> évitées sur '
             '25 ans</span></div>'
@@ -747,6 +801,14 @@ def build_pages(ctx) -> list:
 
     # QRES62 — joints élastiques de la page rentabilité : le vide mesuré se
     # répartit entre courbe→bandeau→financement→impact (page toujours pleine).
+    if masquer_eco:
+        # Z2 — la page « rentabilité » n'a plus de contenu légitime (courbe,
+        # payback et gain net sont omis) : on ne publie PAS une page-titre vide
+        # avec un seul encart environnemental. L'impact rejoint la dernière page
+        # équipement — le document reste composé, avec UNE page de moins.
+        inners[-1] += impact_html
+        return [_wrap_page(x) for x in inners]
+    pages = [_wrap_page(x) for x in inners]
     pages.append(_wrap_page(
         fin_head_html + _fin_html(xl=True)
         + '<div class="qj" data-w="40"></div>' + _callout
