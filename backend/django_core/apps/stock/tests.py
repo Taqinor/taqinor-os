@@ -1127,6 +1127,126 @@ class TestCableNexansDansLeNom(TestCase):
             f"noms de câble Nexans en collision : {noms}")
 
 
+# ── O1 (2026-08-20) — CORRECTION des garanties structurées Deye/génériques ──
+class TestCorrectionGarantiesDeyeGeneriques(TestCase):
+    """La migration 0012 (classification par mot-clé) posait deux valeurs
+    fausses en ``garantie_mois`` : 60 pour les onduleurs Deye (au lieu de
+    120 — la garantie constructeur officielle Deye est de 10 ans, comme
+    Huawei) et 120 pour trois batteries GÉNÉRIQUES non sourcées (au lieu de
+    vide). La migration 0124 corrige les deux, ciblée par SKU, ET vide le
+    texte libre ``garantie`` de 38 SKU dont ``seed_catalogue.py`` a retiré la
+    clé (le seeder additif ne l'aurait jamais désécrit tout seul sur une base
+    déjà seedée)."""
+
+    MIGRATION = 'apps.stock.migrations.0124_correction_garanties_deye_generiques'
+
+    ONDULEURS_DEYE = (
+        'OND-H-DEY-5M', 'OND-H-DEY-10M', 'OND-H-DEY-10T',
+        'OND-H-DEY-15T', 'OND-H-DEY-20T', 'OND-DEY-15K-LV', 'OND-DEY-20K-LV',
+    )
+    BATTERIES_NON_SOURCEES = ('BAT-DYN-HV-16', 'BAT-LIT-5', 'BAT-GEL-22')
+    TEXTE_GENERIQUE_RETIRE = (
+        'PMP-IMM-1.5M', 'VEI-SI22-AFF', 'VEI-SI23-30-380',
+        'PMP-OSP-30-8', 'PMP-OSP-30-35', 'BAT-LIT-5', 'BAT-GEL-22',
+    )
+
+    def setUp(self):
+        self.company = make_company(slug='test-cat-garanties-deye')
+
+    def _migration(self):
+        import importlib
+        return importlib.import_module(self.MIGRATION)
+
+    def test_les_onduleurs_deye_passent_a_120_mois(self):
+        from django.apps import apps as registre
+        seed(self.company)
+        self._migration().corriger_garanties(registre, None)
+        for sku in self.ONDULEURS_DEYE:
+            p = Produit.objects.get(company=self.company, sku=sku)
+            self.assertEqual(p.garantie_mois, 120, sku)
+
+    def test_les_batteries_generiques_non_sourcees_passent_a_vide(self):
+        from django.apps import apps as registre
+        seed(self.company)
+        self._migration().corriger_garanties(registre, None)
+        for sku in self.BATTERIES_NON_SOURCEES:
+            p = Produit.objects.get(company=self.company, sku=sku)
+            self.assertIsNone(p.garantie_mois, sku)
+
+    def test_le_texte_garantie_generique_non_source_est_vide(self):
+        """Simule une base seedée AVANT le retrait de la clé ``garantie`` côté
+        seeder (donc encore porteuse du texte « Garantie constructeur 2 ans »
+        ou équivalent, comme une base de production non encore migrée) : la
+        migration efface le texte libre — le seeder additif ne l'aurait
+        jamais fait tout seul (il ne pose que les clés PRÉSENTES dans FICHES)."""
+        from django.apps import apps as registre
+        seed(self.company)
+        Produit.objects.filter(
+            company=self.company, sku__in=self.TEXTE_GENERIQUE_RETIRE[:-2],
+        ).update(garantie='Garantie constructeur 2 ans')
+        Produit.objects.filter(company=self.company, sku='BAT-LIT-5').update(
+            garantie='Garantie 5 ans · ≥ 6 000 cycles (80 % DoD)')
+        Produit.objects.filter(company=self.company, sku='BAT-GEL-22').update(
+            garantie='Garantie 2 ans')
+
+        self._migration().corriger_garanties(registre, None)
+
+        for sku in self.TEXTE_GENERIQUE_RETIRE:
+            p = Produit.objects.get(company=self.company, sku=sku)
+            self.assertEqual(p.garantie, '', sku)
+
+    def test_la_batterie_dyness_basse_tension_reste_a_120_mois(self):
+        """BAT-DEY-5/10 (la batterie de la fiche web `batterie-dyness`) n'est
+        PAS concernée par la correction : 120 mois y était déjà la valeur
+        correcte (harmonisée avec warranty.ts côté web)."""
+        from django.apps import apps as registre
+        seed(self.company)
+        self._migration().corriger_garanties(registre, None)
+        for sku in ('BAT-DEY-5', 'BAT-DEY-10'):
+            p = Produit.objects.get(company=self.company, sku=sku)
+            self.assertEqual(p.garantie_mois, 120, sku)
+
+    def test_la_migration_est_idempotente(self):
+        from django.apps import apps as registre
+        seed(self.company)
+        migration = self._migration()
+        migration.corriger_garanties(registre, None)
+        migration.corriger_garanties(registre, None)
+        p = Produit.objects.get(company=self.company, sku='OND-H-DEY-10T')
+        self.assertEqual(p.garantie_mois, 120)
+
+    def test_la_migration_est_reversible(self):
+        from django.apps import apps as registre
+        seed(self.company)
+        migration = self._migration()
+
+        migration.corriger_garanties(registre, None)
+        onduleur = Produit.objects.get(company=self.company, sku='OND-H-DEY-10T')
+        batterie = Produit.objects.get(company=self.company, sku='BAT-GEL-22')
+        veichi = Produit.objects.get(company=self.company, sku='VEI-SI22-AFF')
+        self.assertEqual(onduleur.garantie_mois, 120)
+        self.assertIsNone(batterie.garantie_mois)
+        self.assertEqual(veichi.garantie, '')
+
+        migration.retablir_garanties_0012(registre, None)
+        onduleur.refresh_from_db()
+        batterie.refresh_from_db()
+        veichi.refresh_from_db()
+        self.assertEqual(onduleur.garantie_mois, 60)
+        self.assertEqual(batterie.garantie_mois, 120)
+        self.assertEqual(veichi.garantie, 'Garantie constructeur 2 ans')
+
+        migration.corriger_garanties(registre, None)
+        veichi.refresh_from_db()
+        self.assertEqual(veichi.garantie, '')
+
+        migration.corriger_garanties(registre, None)
+        onduleur.refresh_from_db()
+        batterie.refresh_from_db()
+        self.assertEqual(onduleur.garantie_mois, 120)
+        self.assertIsNone(batterie.garantie_mois)
+
+
 # ── PVOND — VERROU DE COMPLÉTUDE sur le catalogue onduleur ──────────────────
 class TestContratOnduleurSeede(TestCase):
     """Ajouter un onduleur demain doit être de la pure SAISIE — donc le seeder
