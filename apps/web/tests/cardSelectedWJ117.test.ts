@@ -1,8 +1,9 @@
 // WJ117 — État sélectionné des cartes-boutons (bug cascade layers).
 // Les groupes de cartes SURVIVANTS du parcours devis (.mt-mode/.mt-tension/
 // .mt-activity/.mt-water-source/.mt-water-unit/.mt-pro-unit/.mt-equipes/
-// .mt-commercial-cat/.mt-ombrage — type de toit, irrigation et groupe
-// électrogène ont quitté le tunnel, coupe fondateur 18/08)
+// .mt-commercial-cat — type de toit, irrigation et groupe électrogène ont
+// quitté le tunnel à la coupe fondateur du 18/08, et les puces d'ombrage à
+// leur tour le 21/08)
 // togglent aria-pressed + l'utilitaire Tailwind `border-brass-400`, mais ces
 // utilitaires vivent dans un @layer (Tailwind v4) alors que `.cine-card`
 // (global.css) est NON layered et pose `border: 1px solid …` par shorthand —
@@ -110,8 +111,12 @@ describe.each(LOCALES)('WJ117 — toggling aria-pressed dans mon-toit.astro (%s)
   it('le HTML statique porte aria-pressed sur les cartes mode (état initial annoncé aux lecteurs d\'écran)', () => {
     expect(src).toMatch(/data-mode=\{m\.id\}\s+aria-pressed="false"/);
     // Les cartes « type de toit » (data-roof) sont retirées du tunnel (coupe
-    // fondateur 18/08) ; l'ombrage reprend le même patron aria-pressed.
+    // fondateur 18/08) ; les puces d'ombrage l'ont été à leur tour le 21/08.
+    // Le patron aria-pressed reste porté par tous les groupes SURVIVANTS
+    // (wireCardGroup ci-dessus + les puces de créneau de visite).
     expect(src).not.toMatch(/data-roof=/);
-    expect(src).toMatch(/class="mt-ombrage[^"]*"[^>]*aria-pressed="false"/);
+    expect(src).not.toMatch(/class="mt-ombrage/);
+    // Un groupe survivant prouve que le patron statique est toujours en place.
+    expect(src).toMatch(/class="mt-tension[^"]*"[^>]*aria-pressed=/);
   });
 });

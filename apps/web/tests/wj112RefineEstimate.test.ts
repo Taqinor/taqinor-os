@@ -4,14 +4,20 @@
 //  (1) billEstimate.ts: ombrage now derates production/kWc with a DOCUMENTED,
 //      never-a-gain multiplier (OMBRAGE_DERATE); exact kWh now overrides the
 //      bill-derived consumption target when provided;
-//  (2) the 3 mon-toit.astro variants (fr/en/ar) wire OMBRAGE into the
-//      estimateFromBill() call, recompute live on change (no full-page
-//      recalculation delay), and cut the fake "thinking" delay to <=500 ms;
+//  (2) the 3 mon-toit.astro variants (fr/en/ar) keep the fake "thinking" delay
+//      at <=500 ms and stay instant under reduced-motion;
 //  (3) the founder cut of 18/08 finished the job the honesty notes started:
 //      instead of a note explaining that a field changes nothing (roof age,
-//      battery interest, exact kWh…), the field itself LEFT the funnel. Only
-//      ombrage survived that accordion — because it is the only one that ever
-//      moved a number. The lib still accepts `exactKwhMonthly` (other callers).
+//      battery interest, exact kWh…), the field itself LEFT the funnel.
+//  (4) FOUNDER ORDER 21/08 — ombrage now leaves too. It really did derate, but
+//      no leading solar funnel asks shading up front (Zolar averages it, EDF ENR
+//      defers it to the technical visit, Sunroof derives it from imagery), so
+//      asking it demanded expert judgement for a value the visit re-measures
+//      anyway. The DERATE ITSELF STAYS in billEstimate.ts (still asserted below,
+//      still used by other callers): the funnel simply never passes a value, and
+//      `ombrageDerateFactor(undefined) === 1` is the no-derate path that every
+//      visitor who skipped the chips already took. The lib still accepts
+//      `exactKwhMonthly` (other callers).
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -96,24 +102,22 @@ describe.each([
   ['FR', FR],
   ['EN', EN],
   ['AR', AR],
-])('WJ112 — %s mon-toit.astro : ombrage câblé au calcul + délai réduit', (_label, src) => {
-  it('estimateFromBill() reçoit lat/city/ombrage — et PLUS la conso kWh saisie (coupe 18/08)', () => {
-    expect(src).toContain('estimateFromBill(bill, { lat, city, ombrage: ombrage || undefined })');
+])('WJ112 — %s mon-toit.astro : ombrage RETIRÉ du tunnel + délai réduit', (_label, src) => {
+  it('estimateFromBill() ne reçoit plus que lat/city — ni ombrage, ni la conso kWh saisie', () => {
+    // ORDRE FONDATEUR 21/08 — la question d'ombrage a quitté le tunnel : plus
+    // aucune clé `ombrage` ne part au moteur. `ombrageDerateFactor(undefined)`
+    // rend 1 (prouvé plus haut) : c'est EXACTEMENT le chemin qu'empruntait déjà
+    // un visiteur qui ne cliquait aucune puce — aucun chiffre ne bouge pour lui.
+    expect(src).toContain('estimateFromBill(bill, { lat, city })');
+    expect(src).not.toContain('ombrage: ombrage || undefined');
     // La question « Consommation (kWh/mois) » a quitté le tunnel : le moteur
     // refait lui-même la conversion facture MAD → kWh.
     expect(src).not.toContain("num('mt-bill-kwh')");
   });
 
-  it('les clics ombrage déclenchent un recalcul EN DIRECT (computeEstimate)', () => {
-    // Le bloc `let ombrage = ...` jusqu'à sa 2e fermeture `});` couvre le
-    // .forEach(click) complet (le 1er `});` ferme le .setAttribute/.toggle
-    // forEach interne, le 2e ferme le addEventListener('click', ...)).
-    const ombrageDeclStart = src.indexOf("let ombrage = savedWizard?.ombrage");
-    expect(ombrageDeclStart).toBeGreaterThan(-1);
-    const firstClose = src.indexOf('});', ombrageDeclStart);
-    const secondClose = src.indexOf('});', firstClose + 3);
-    const ombrageHandlerBlock = src.slice(ombrageDeclStart, secondClose);
-    expect(ombrageHandlerBlock).toContain('computeEstimate();');
+  it("plus aucun état `ombrage` ne vit dans l'assistant (état, puces et persistance partis ensemble)", () => {
+    expect(src).not.toContain('let ombrage = savedWizard?.ombrage');
+    expect(src).not.toContain("querySelectorAll<HTMLButtonElement>('.mt-ombrage')");
   });
 
   it('le délai de « réflexion » simulé est réduit à <= 500 ms (jamais > 1.5 s comme avant)', () => {
@@ -140,7 +144,12 @@ describe.each([
     for (const id of ['id="mt-roof-age"', 'id="mt-battery-interest"', 'id="mt-bill-kwh"']) {
       expect(src, id).not.toContain(id);
     }
-    // Seul l'ombrage survit à cet étage — parce qu'il dérate vraiment.
-    expect(src).toContain('mt-ombrage');
+    // ORDRE FONDATEUR 21/08 — l'ombrage rejoint enfin ce même sort. Il dératait
+    // vraiment, mais AUCUN tunnel solaire de référence ne pose la question en
+    // amont : Zolar l'annonce moyennée dans ses hypothèses, EDF ENR la renvoie à
+    // la visite technique, Sunroof la DÉRIVE de l'imagerie. La poser demandait
+    // au visiteur un jugement d'expert pour une valeur que la visite reprend de
+    // toute façon. Les puces .mt-ombrage ont quitté le DOM des 3 variantes.
+    expect(src).not.toContain('mt-ombrage');
   });
 });
