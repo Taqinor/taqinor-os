@@ -1,7 +1,16 @@
 import { FormField, Input } from '../../../../ui'
 import { getField } from '../draftCore'
+import { jumpToField } from '../jumpToField'
 
 const RACCORDEMENTS = { monophase: 'Monophasé', triphase: 'Triphasé', inconnu: 'Je ne sais pas' }
+
+// L4 (extension fondateur) — présence en journée, script d'appel. Mêmes
+// clés que crm.Lead.OccupationJour et courbes_journalieres._occupation.
+const OCCUPATION_JOUR = {
+  present: 'Présent en journée',
+  absent: 'Absent en journée',
+  partiel: 'Présence partielle (télétravail/mi-temps)',
+}
 
 const enumOptions = (labels) => [
   <option key="" value="">—</option>,
@@ -67,6 +76,164 @@ export default function SectionEnergie({ state, setField }) {
             <span>Installation existante à régulariser ? (82-21)</span>
           </label>
         </div>
+      </div>
+    </>
+  )
+}
+
+// L4 (21/08/2026) — tri-état Oui/Non/Inconnu : un booléen `null=True` sur le
+// lead veut dire « question pas encore posée », JAMAIS « Non ». Une case à
+// cocher classique (comme `ete_differente`/`regularisation_8221`, toutes deux
+// `default=False`) collapse null à false — ce composant garde les trois états
+// distincts, `''`/`null` affiché comme « — » (pas encore demandé).
+function triStateValue(v) {
+  if (v === true) return 'oui'
+  if (v === false) return 'non'
+  return ''
+}
+function onTriStateChange(setField, key) {
+  return (e) => {
+    const val = e.target.value
+    setField(key, val === 'oui' ? true : val === 'non' ? false : null)
+  }
+}
+function TriStateSelect({ id, value, onChange }) {
+  return (
+    <select id={id} className="form-select" value={triStateValue(value)} onChange={onChange}>
+      <option value="">— (pas encore demandé)</option>
+      <option value="oui">Oui</option>
+      <option value="non">Non</option>
+    </select>
+  )
+}
+
+// L4 (+ extension fondateur) — « Questionnaire d'appel » : TOUTES les
+// questions à poser au téléphone pour composer le profil de consommation
+// (apps/ventes/courbes_journalieres.py `_occupation`/`_equipements`). Le
+// label EST le script d'appel — la question exacte à poser, mot pour mot.
+// Occupation + équipements sont des champs à part entière ici ; les
+// questions déjà portées par d'AUTRES champs du lead (raccordement mono/tri,
+// factures kWh saisonnières) ne sont PAS dupliquées — un lien d'ancrage les
+// pointe vers leur bloc existant (zéro second état pour la même donnée). Les
+// champs de grandeur (kW/pièces/km) n'ont AUCUNE valeur préremplie : pas de
+// source fiable pour un défaut chiffré (règle « zéro chiffre inventé ») — le
+// commercial saisit la valeur réelle, ou laisse vide.
+const AUTRES_QUESTIONS_APPEL = [
+  { label: 'Raccordement : monophasé ou triphasé ?', section: 'energie', field: 'lf-raccordement' },
+  { label: 'Facture mensuelle (MAD/kWh)', section: 'energie', field: 'lf-facture-hiver' },
+  { label: "L'été est différent de l'hiver ?", section: 'energie', field: 'lf-facture-hiver' },
+]
+
+export function SectionEquipements({ state, setField }) {
+  const v = (k) => getField(state, k) ?? ''
+  const piscine = getField(state, 'equip_piscine')
+  const ve = getField(state, 'equip_voiture_electrique')
+  const clim = getField(state, 'equip_clim')
+  return (
+    <>
+      <div className="form-row">
+        <FormField
+          label="Y a-t-il quelqu'un à la maison en journée ?"
+          htmlFor="lf-occupation-jour"
+        >
+          <select
+            id="lf-occupation-jour" className="form-select"
+            value={v('occupation_jour')}
+            onChange={(e) => setField('occupation_jour', e.target.value)}
+          >
+            {enumOptions(OCCUPATION_JOUR)}
+          </select>
+        </FormField>
+      </div>
+      <div className="form-row">
+        <FormField label="Avez-vous une piscine ?" htmlFor="lf-equip-piscine">
+          <TriStateSelect
+            id="lf-equip-piscine" value={piscine}
+            onChange={onTriStateChange(setField, 'equip_piscine')}
+          />
+        </FormField>
+        {piscine === true && (
+          <FormField
+            label="Puissance de la pompe de filtration (kW)"
+            htmlFor="lf-equip-piscine-kw"
+          >
+            <Input
+              id="lf-equip-piscine-kw" type="number" step="any"
+              placeholder="plaque signalétique du moteur"
+              value={v('equip_piscine_pompe_kw')}
+              onChange={(e) => setField('equip_piscine_pompe_kw', e.target.value)}
+            />
+          </FormField>
+        )}
+      </div>
+      <div className="form-row">
+        <FormField
+          label="Avez-vous ou prévoyez-vous un véhicule électrique ?"
+          htmlFor="lf-equip-ve"
+        >
+          <TriStateSelect
+            id="lf-equip-ve" value={ve}
+            onChange={onTriStateChange(setField, 'equip_voiture_electrique')}
+          />
+        </FormField>
+        {ve === true && (
+          <FormField
+            label={<>Combien de km par semaine avec ce véhicule ?<span className="req-auto"> *</span></>}
+            htmlFor="lf-equip-ve-km"
+          >
+            <Input
+              id="lf-equip-ve-km" type="number" step="any" placeholder="ex: 150"
+              value={v('equip_ve_km_semaine')}
+              onChange={(e) => setField('equip_ve_km_semaine', e.target.value)}
+            />
+          </FormField>
+        )}
+      </div>
+      <div className="form-row">
+        <FormField label="Avez-vous la climatisation ?" htmlFor="lf-equip-clim">
+          <TriStateSelect
+            id="lf-equip-clim" value={clim}
+            onChange={onTriStateChange(setField, 'equip_clim')}
+          />
+        </FormField>
+        {clim === true && (
+          <FormField label="Combien de pièces/unités climatisées ?" htmlFor="lf-equip-clim-pieces">
+            <Input
+              id="lf-equip-clim-pieces" type="number" step="1" min="0" placeholder="ex: 2"
+              value={v('equip_clim_pieces')}
+              onChange={(e) => setField('equip_clim_pieces', e.target.value)}
+            />
+          </FormField>
+        )}
+      </div>
+      <div className="form-row">
+        <FormField label="Votre chauffe-eau est-il électrique ?" htmlFor="lf-equip-chauffe-eau">
+          <TriStateSelect
+            id="lf-equip-chauffe-eau" value={getField(state, 'equip_chauffe_eau_electrique')}
+            onChange={onTriStateChange(setField, 'equip_chauffe_eau_electrique')}
+          />
+        </FormField>
+      </div>
+      <p className="gen-hint">
+        <span className="req-auto">*</span> Km/semaine obligatoire pour chiffrer la recharge
+        (aucun défaut : conversion ADEME 19,8 kWh/100 km). Sans grandeur réelle saisie, l&apos;
+        équipement n&apos;ajuste pas la courbe de consommation.
+      </p>
+      {/* Autres questions du même appel, déjà portées par d'autres champs du
+          lead — un lien saute au bloc existant plutôt que de le dupliquer
+          (zéro second état pour la même donnée). */}
+      <div className="lw-todo" role="group" aria-label="Autres questions du script d'appel">
+        <span className="lw-todo-label">Aussi à demander (déjà ailleurs sur la fiche)</span>
+        {AUTRES_QUESTIONS_APPEL.map((q) => (
+          <button
+            key={q.label}
+            type="button"
+            className="lw-todo-chip"
+            onClick={() => jumpToField({ section: q.section, field: q.field })}
+          >
+            {q.label}
+          </button>
+        ))}
       </div>
     </>
   )

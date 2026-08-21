@@ -126,6 +126,17 @@ export const OCCUPANCY_LABELS: Record<OccupancyId, { fr: string; en: string; ar:
  * Ce sont des POIDS DE FORME, pas des kWh. Le NIVEAU vient toujours du serveur
  * (`consommation[saison].kwh_jour`, moyenne des factures réelles du lead) : ce
  * module ne connaît aucune énergie.
+ *
+ * CJ2b (21/08/2026) — LE REPLI, plus la seule source. Le backend peut désormais
+ * servir sa PROPRE forme horaire par saison (`consommation[saison].forme`,
+ * `consommation_forme_source`) — une silhouette calculée depuis la présence
+ * réelle du foyer, pas cette estimation résidentielle générique. Quand elle est
+ * servie et VALIDE (24 nombres finis ≥ 0, somme > 0 — `parseDailyCurves` ne
+ * laisse jamais passer autre chose), `proposalCurve.rawConsumptionShape` la
+ * PRÉFÈRE ; ces trois vecteurs ne sont plus lus que comme repli, byte-identique
+ * au rendu d'avant quand rien n'est servi. Le contenu ci-dessous reste
+ * INCHANGÉ : il est pincé mot pour mot par
+ * `test_etude_horaire.py::test_les_trois_silhouettes_sont_identiques_au_typescript`.
  */
 export const OCCUPANCY_SHAPES: Record<OccupancyId, readonly number[]> = {
   // « Présent en journée » — retraités, foyers mono-actifs, villa occupée.
@@ -182,11 +193,18 @@ export const OCCUPANCY_SHAPES: Record<OccupancyId, readonly number[]> = {
 };
 
 /**
- * Occupation par défaut à partir du drapeau serveur. Le backend ne connaît que
- * `presence_jour` / `absence_jour` (décision fondateur 21/08/2026 : la clientèle
- * résidentielle réelle de TAQINOR est majoritairement présente en journée, d'où
- * `presence_jour` par défaut en résidentiel — c'est une OBSERVATION DE TERRAIN,
- * pas une statistique nationale, et `occupation_source` le dit).
+ * Occupation par défaut à partir du drapeau serveur. Sans réponse du lead au
+ * script d'appel, le backend ne connaît que `presence_jour` / `absence_jour`
+ * (décision fondateur 21/08/2026 : la clientèle résidentielle réelle de
+ * TAQINOR est majoritairement présente en journée, d'où `presence_jour` par
+ * défaut en résidentiel — c'est une OBSERVATION DE TERRAIN, pas une
+ * statistique nationale, et `occupation_source` le dit).
+ *
+ * L4 (extension fondateur, 21/08/2026) — quand le commercial a posé la
+ * question au téléphone (`crm.Lead.occupation_jour`), le backend sert
+ * désormais AUSSI `presence_partielle` directement (source
+ * `lead_occupation_jour:partiel`) : ce n'est plus seulement un choix
+ * VISITEUR côté page, la réponse RÉELLE du client peut la servir en premier.
  *
  * Drapeau absent (bloc `courbes_journalieres` non servi) ⇒ `presence_partielle` :
  * le milieu honnête des trois, et la silhouette la plus proche de l'ancienne
@@ -469,13 +487,46 @@ export interface ServedProduction {
   source: string;
 }
 
-/** Consommation servie pour UNE saison : le NIVEAU seul (la forme reste ici). */
+/**
+ * Consommation servie pour UNE saison. `kwhJour` est le NIVEAU (moyenne des
+ * factures réelles du lead) — servi depuis CJ1.
+ *
+ * CJ2b (21/08/2026) — `forme` est la FORME horaire, désormais servable elle
+ * aussi : 24 parts en HEURE LOCALE (UTC+1), somme = 1, EXACTEMENT la même
+ * convention que `ServedProduction.forme`. Optionnelle : un backend qui ne sert
+ * que le niveau (le cas fréquent avant CJ2b) laisse `forme` absente, et
+ * `proposalCurve.rawConsumptionShape` retombe alors sur la silhouette
+ * d'occupation locale (`OCCUPANCY_SHAPES`), byte-identique au rendu d'avant.
+ */
 export interface ServedConsumption {
   kwhJour: number;
+  forme?: number[];
 }
 
 /** Options de batterie réellement portées par le devis. */
 export type BatteryOptionId = 'sans' | 'avec';
+
+/**
+ * L4 (21/08/2026) — une couche d'équipement composable (script d'appel du
+ * commercial : piscine/VE/clim, `apps/ventes/courbes_journalieres.py
+ * _equipements`). `kw` (piscine/clim) est une puissance RÉELLE saisie par le
+ * commercial ; `kwhJour` (ve) est l'énergie de recharge ajoutée, dérivée du
+ * km/semaine réel × la conversion ADEME. `heures` = la fenêtre SOURCÉE où la
+ * couche s'applique ; `saisons` = les saisons concernées, `null` = toutes.
+ * Piscine/clim REDISTRIBUENT (le total du jour ne bouge pas) ; ve AJOUTE (la
+ * seule charge absente des factures passées — voir le module backend).
+ */
+export interface EquipmentLayer {
+  kw?: number;
+  kwhJour?: number;
+  heures: number[];
+  saisons: SeasonId[] | null;
+  mode: 'redistribution' | 'addition';
+  source: string;
+}
+
+export type EquipmentLayerId = 'piscine' | 'clim' | 've';
+export type EquipmentLayers = Partial<Record<EquipmentLayerId, EquipmentLayer>>;
 
 export interface DailyCurves {
   noteHoraire: string;
@@ -483,9 +534,18 @@ export interface DailyCurves {
   occupationSource: string;
   production: Partial<Record<SeasonId, ServedProduction>>;
   consommation: Partial<Record<SeasonId, ServedConsumption>>;
+  /**
+   * CJ2b — provenance de la forme de consommation SERVIE (ex.
+   * `"silhouette_occupation:presence_jour"`), quand au moins une saison en
+   * porte une. Chaîne vide quand aucune saison ne sert de `forme` — jamais un
+   * texte inventé pour habiller un repli local.
+   */
+  consommationFormeSource: string;
   options: BatteryOptionId[];
   /** Capacité TOTALE de stockage au devis (kWh) — `batterie_kwh_total`. */
   batterieKwh: number | null;
+  /** L4 — couches d'équipement (script d'appel), `{}` quand aucune active. */
+  equipements: EquipmentLayers;
 }
 
 function positiveNumber(v: unknown): number | null {
@@ -534,14 +594,55 @@ export function parseDailyCurves(raw: unknown): DailyCurves | null {
     for (const season of SEASON_IDS) {
       const entry = (consSrc as Record<string, unknown>)[season];
       if (!entry || typeof entry !== 'object') continue;
-      const kwhJour = positiveNumber((entry as Record<string, unknown>).kwh_jour);
+      const e = entry as Record<string, unknown>;
+      const kwhJour = positiveNumber(e.kwh_jour);
       if (kwhJour === null) continue;
-      consommation[season] = { kwhJour };
+      // CJ2b — même discipline de validation que la forme de PRODUCTION :
+      // exactement 24 nombres finis ≥ 0, somme > 0, sinon on écarte la forme
+      // plutôt que de dessiner une silhouette à moitié lue. Le NIVEAU (kwhJour,
+      // déjà validé ci-dessus) reste servi même quand la forme est illisible.
+      const formeRaw = Array.isArray(e.forme) ? e.forme.map((v) => Number(v)) : null;
+      const formeValid =
+        !!formeRaw && formeRaw.length === 24 && formeRaw.every((v) => Number.isFinite(v) && v >= 0)
+        && formeRaw.reduce((a, b) => a + b, 0) > 0;
+      consommation[season] = formeValid ? { kwhJour, forme: formeRaw! } : { kwhJour };
     }
   }
 
   const rawOptions = Array.isArray(src.options) ? src.options : [];
   const options = (['sans', 'avec'] as const).filter((o) => rawOptions.includes(o));
+
+  // L4 — lecture DÉFENSIVE d'``equipements`` : une couche illisible (mode
+  // inconnu, heures vides, grandeur non finie) est simplement écartée, jamais
+  // approximée. `heures` est filtré aux entiers 0-23 valides uniquement.
+  const equipements: EquipmentLayers = {};
+  const equipSrc = src.equipements;
+  if (equipSrc && typeof equipSrc === 'object') {
+    for (const key of ['piscine', 'clim', 've'] as const) {
+      const entry = (equipSrc as Record<string, unknown>)[key];
+      if (!entry || typeof entry !== 'object') continue;
+      const e = entry as Record<string, unknown>;
+      const mode = e.mode === 'redistribution' || e.mode === 'addition' ? e.mode : null;
+      if (!mode) continue;
+      const heuresRaw = Array.isArray(e.heures) ? e.heures.map((h) => Number(h)) : [];
+      const heures = heuresRaw.filter((h) => Number.isInteger(h) && h >= 0 && h <= 23);
+      if (heures.length === 0) continue;
+      const saisonsRaw = Array.isArray(e.saisons) ? e.saisons : null;
+      const saisons = saisonsRaw ? SEASON_IDS.filter((s) => saisonsRaw.includes(s)) : null;
+      const kw = mode === 'redistribution' ? positiveNumber(e.kw) : null;
+      const kwhJour = mode === 'addition' ? positiveNumber(e.kwh_jour) : null;
+      if (mode === 'redistribution' && kw === null) continue;
+      if (mode === 'addition' && kwhJour === null) continue;
+      equipements[key] = {
+        ...(kw !== null ? { kw } : {}),
+        ...(kwhJour !== null ? { kwhJour } : {}),
+        heures,
+        saisons,
+        mode,
+        source: typeof e.source === 'string' ? e.source : '',
+      };
+    }
+  }
 
   const occupationRaw = typeof src.occupation === 'string' ? src.occupation : '';
   return {
@@ -552,9 +653,51 @@ export function parseDailyCurves(raw: unknown): DailyCurves | null {
     occupationSource: typeof src.occupation_source === 'string' ? src.occupation_source : '',
     production,
     consommation,
+    consommationFormeSource: typeof src.consommation_forme_source === 'string'
+      ? src.consommation_forme_source
+      : '',
     options,
     batterieKwh: positiveNumber(src.batterie_kwh),
+    equipements,
   };
+}
+
+/** L4 — libellés FR/EN/AR des couches d'équipement, pour la légende sobre de
+ *  la courbe (« profil ajusté : piscine, climatisation »). */
+export const EQUIPMENT_LAYER_LABELS: Record<EquipmentLayerId, { fr: string; en: string; ar: string }> = {
+  piscine: { fr: 'piscine', en: 'pool', ar: 'المسبح' },
+  clim: { fr: 'climatisation', en: 'air conditioning', ar: 'التكييف' },
+  ve: { fr: 'véhicule électrique', en: 'electric vehicle', ar: 'السيارة الكهربائية' },
+};
+
+/** Couches d'équipement actives pour UNE saison (filtre `saisons`, `null` = toutes). */
+export function activeEquipmentLayers(
+  equipements: EquipmentLayers | null | undefined,
+  season: SeasonId | null | undefined,
+): EquipmentLayerId[] {
+  if (!equipements) return [];
+  return (['piscine', 'clim', 've'] as const).filter((id) => {
+    const layer = equipements[id];
+    if (!layer) return false;
+    return !season || !layer.saisons || layer.saisons.includes(season);
+  });
+}
+
+/**
+ * L4 — légende SOBRE de la courbe quand au moins une couche d'équipement
+ * s'applique à la saison affichée (« profil ajusté : piscine, climatisation »).
+ * Chaîne vide quand rien n'est actif — la page n'affiche alors RIEN de neuf.
+ */
+export function equipmentLegendLabel(
+  equipements: EquipmentLayers | null | undefined,
+  season: SeasonId | null | undefined,
+  lang: 'fr' | 'en' | 'ar' = 'fr',
+): string {
+  const actifs = activeEquipmentLayers(equipements, season);
+  if (actifs.length === 0) return '';
+  const noms = actifs.map((id) => EQUIPMENT_LAYER_LABELS[id][lang]).join(lang === 'ar' ? '، ' : ', ');
+  const prefix = { fr: 'profil ajusté : ', en: 'adjusted profile: ', ar: 'نمط معدَّل: ' }[lang];
+  return `${prefix}${noms}`;
 }
 
 /** Les saisons réellement servies (production OU consommation), dans l'ordre. */

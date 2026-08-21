@@ -501,6 +501,11 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // de facture ou nouveau tracé.
   let neededPanels = 0;
   let neededAuto = true;
+  // L2 — vrai dès que `applyDevisHydration` a tourné (devis OU affaire AO) : figé pour
+  // toute la session, jamais remis à false. Lu par optimizer.ts (placedFor/buildPitchedLocks)
+  // pour distinguer « besoin nul, mode lead » (remplir ce qui tient, historique) de
+  // « besoin nul, mode devis » (cible vendue = 0 panneau, on ne pose RIEN).
+  let devisMode = false;
 
   // ═══════════ « PLUSIEURS ZONES » — modèle additif « zone sélectionnée » ═══════════
   // L'utilisateur trace la zone 1 (flux existant), puis peut en AJOUTER d'autres ; le
@@ -689,6 +694,9 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     },
     set neededAuto(v) {
       neededAuto = v;
+    },
+    get devisMode() {
+      return devisMode;
     },
     get rec() {
       return rec;
@@ -1405,8 +1413,21 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
    * Dans les deux cas la CIBLE vendue impose le besoin (`neededAuto = false`) : c'est le
    * nombre de panneaux du devis qui pilote l'optimiseur, pas la facture. La puissance
    * unitaire et le scénario vendus sont mémorisés pour l'export (jamais devinés).
+   *
+   * L2 — incident PROUVÉ (DEV-202608-0016, onduleur+batterie SANS ligne panneau) : quand
+   * le devis ne porte AUCUNE cible (`h.neededPanels == null`), l'ancien code faisait un
+   * NO-OP silencieux qui laissait `neededAuto = true` (défaut) → au premier calcul,
+   * l'optimiseur retombait en mode estimateur « remplir ce qui tient » et le toit se
+   * couvrait tout seul (25 panneaux inventés dans l'incident). Un devis sans ligne
+   * panneau est une CIBLE VENDUE DE ZÉRO, pas une absence de cible : on impose
+   * `neededPanels = 0, neededAuto = false` (donc AUCUN remplissage automatique) et on
+   * marque `devisMode` pour toute la session — voir optimizer.ts `placedFor` (toit plat)
+   * et `buildPitchedLocks`/`estimatorBrainV8.needImposedZero` (toit en pente), qui
+   * refusent de remplir tant que personne (facture/saisie manuelle) n'a fixé un nombre.
+   * Le mode LEAD (cette fonction jamais appelée) garde le remplissage-au-mieux historique.
    */
   function applyDevisHydration(devis: import('./roofPro11/prefill').DevisPayload): boolean {
+    devisMode = true;
     const h = hydrateFromDevis(devis);
     const layout = devis.geometrie?.roof_layout ?? null;
     const setIf = (id: string, v?: string) => {
@@ -1419,14 +1440,16 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // Origine du design : reprise telle quelle dans l'export (meta de sérialisation).
     devisOrigin = { devisId: h.devisId, panelWatt: h.panelWatt, scenario: h.scenario };
 
-    /** Impose la cible VENDUE sur l'état vivant + la zone active (avant le calcul). */
+    /** Impose la cible VENDUE sur l'état vivant + la zone active (avant le calcul).
+     *  `h.neededPanels == null` = devis SANS ligne panneau : cible vendue de ZÉRO,
+     *  jamais un remplissage-au-mieux (L2, voir docstring de la fonction). */
     const imposeTarget = () => {
-      if (h.neededPanels == null) return;
-      neededPanels = clampNeeded(h.neededPanels);
+      const n = h.neededPanels == null ? 0 : clampNeeded(h.neededPanels);
+      neededPanels = n;
       neededAuto = false;
       const a = activeArea();
       if (a) {
-        a.neededPanels = neededPanels;
+        a.neededPanels = n;
         a.neededAuto = false;
       }
     };

@@ -74,6 +74,11 @@ class TestLeadViewSetNPlusOne(TestCase):
     def test_list_query_count_flat_as_row_count_grows(self):
         # 5 leads, each with an owner + resolved client + one devis.
         self._make_leads(5)
+        # Un premier appel NON mesuré amorce les caches transverses
+        # (ContentType, permissions…) : sans lui, la toute première mesure
+        # porte une requête de chauffe de plus et l'égalité stricte 5-vs-10
+        # devient flaky (rouge CI observé : 13 vs 12 — le compte BAISSAIT).
+        self._list_query_count()
         count_5, resp_5 = self._list_query_count()
         results_5 = (
             resp_5.data['results']

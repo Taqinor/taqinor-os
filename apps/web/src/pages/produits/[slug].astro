@@ -233,7 +233,7 @@ const jsonLd = {
           <div class="v2-rise mt-10">
             <h2 class="tech-label text-brass-300">Aperçu de la fiche</h2>
             {/* Desktop : aperçu inline, boîte de hauteur réservée → zéro CLS, aucune animation. */}
-            <div class="mt-4 hidden h-[80vh] max-h-[900px] w-full overflow-hidden rounded border border-white/15 bg-white/5 sm:block">
+            <div id="fiche-apercu-pdf" class="mt-4 hidden h-[80vh] max-h-[900px] w-full overflow-hidden rounded border border-white/15 bg-white/5 sm:block">
               <iframe
                 src={`${fiche.pdf}#view=FitH`}
                 title={`Fiche technique ${fiche.nom} (PDF)`}
@@ -241,8 +241,13 @@ const jsonLd = {
                 class="h-full w-full"
               ></iframe>
             </div>
-            {/* Mobile / sans lecteur PDF : repli téléchargement net. */}
+            {/* Mobile / sans lecteur PDF : repli téléchargement net. Le lecteur PDF
+                intégré peut être DÉSACTIVÉ dans Chrome (« télécharger les PDF » ou
+                une extension) : navigator.pdfViewerEnabled=false → l'iframe rend un
+                document cassé gris sur TOUTES les fiches. On le détecte et on montre
+                ce même repli au lieu de l'aperçu mort (incident fondateur 21/08). */}
             <a
+              id="fiche-repli-pdf"
               href={fiche.pdf}
               target="_blank"
               rel="noopener"
@@ -250,6 +255,14 @@ const jsonLd = {
             >
               Télécharger la fiche (PDF)
             </a>
+            <script is:inline>
+              if (navigator.pdfViewerEnabled === false) {
+                var apercu = document.getElementById('fiche-apercu-pdf');
+                var repli = document.getElementById('fiche-repli-pdf');
+                if (apercu) apercu.style.display = 'none';
+                if (repli) repli.classList.remove('sm:hidden');
+              }
+            </script>
           </div>
         )}
 

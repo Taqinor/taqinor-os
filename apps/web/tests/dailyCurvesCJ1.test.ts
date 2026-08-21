@@ -252,6 +252,19 @@ describe('CJ1 — occupation : trois silhouettes, défaut donné par le serveur'
     expect(parseDailyCurves({ ...PAYLOAD, occupation: 'absence_jour' })!.occupation).toBe('absence_jour');
   });
 
+  // L4 (extension fondateur, 21/08/2026) — crm.Lead.occupation_jour='partiel'
+  // fait désormais du serveur la SOURCE de la 3e silhouette (avant : un choix
+  // VISITEUR uniquement) ; le contrat servi (source `lead_occupation_jour:*`)
+  // suit exactement le même chemin que les deux drapeaux historiques.
+  it('« presence_partielle » servie par le serveur (occupation_jour du lead) est lue comme les deux autres', () => {
+    const curves = parseDailyCurves({
+      ...PAYLOAD, occupation: 'presence_partielle',
+      occupation_source: 'lead_occupation_jour:partiel',
+    })!;
+    expect(curves.occupation).toBe('presence_partielle');
+    expect(curves.occupationSource).toBe('lead_occupation_jour:partiel');
+  });
+
   it('drapeau absent/inconnu → « présence partielle », le milieu honnête des trois', () => {
     expect(parseDailyCurves({ ...PAYLOAD, occupation: undefined })!.occupation).toBeNull();
     expect(occupancyFromFlag(null)).toBe('presence_partielle');

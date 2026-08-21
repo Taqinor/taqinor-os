@@ -2869,6 +2869,69 @@ def _completer_kit_residentiel(devis, *, kwc, watt, nb_panneaux,
     return ajoutees
 
 
+def _refuser_couple_panneau_onduleur_impossible(devis, lignes, lignes_panneau,
+                                                cible_panneaux, watt, gamme):
+    """DEV-202608-0016 — la resynchro 3D n'ÉCRIT PAS une composition impossible.
+
+    L'outil 3D a posé 25 panneaux Canadian Solar 710 Wc (Isc 18,59 A par
+    chaîne) sur un devis dont l'onduleur vendu est un Deye 5 kW monophasé dont
+    chaque entrée MPPT admet 17 A en court-circuit. La resynchro prenait
+    ``layout.result.panels`` pour vérité et écrivait la ligne sans jamais
+    regarder l'onduleur du devis : le couple est physiquement impossible — UNE
+    chaîne seule sort déjà de la borne — et rien ne le disait.
+
+    LE VERDICT N'EST PAS RÉÉCRIT ICI : on appelle ``verdict_panneau_onduleur``,
+    la logique compose-time qui existait déjà et qui n'avait simplement jamais
+    été branchée sur ce chemin. Elle ne conclut ``incompatible`` que si AUCUNE
+    configuration de chaînes n'évite un BLOQUANT — c'est-à-dire quand le couple
+    lui-même est en cause, jamais parce que le compte du calepinage tombe mal.
+    Les chiffres cités viennent des deux FICHES TECHNIQUES (règle fondateur du
+    21/08/2026 : aucun seuil, aucune marge, aucun ratio inventé).
+
+    Lève ``SyncLayoutError`` AVANT toute écriture — la transaction reste
+    intacte. Un couple ``compatible``/``sous réserve``/``inconnu`` passe : une
+    fiche muette ne fait pas un refus (c'est le domaine de PVFCH).
+    """
+    from apps.ventes.compatibilites import (STATUT_INCOMPATIBLE,
+                                            verdict_panneau_onduleur)
+
+    if cible_panneaux <= 0:
+        return
+
+    # Le panneau CONCERNÉ : celui que la resynchro va ajuster (la ligne
+    # dominante, même politique que l'écriture plus bas), ou celui qu'elle
+    # créerait s'il n'y a encore aucune ligne panneau.
+    candidats = [li for li in lignes_panneau
+                 if getattr(li, 'produit', None) is not None]
+    if candidats:
+        panneau = max(candidats,
+                      key=lambda li: Decimal(str(li.quantite or 0))).produit
+    else:
+        panneau = _pick_product(devis.company, _is_panel, watt=watt,
+                                role='panneau', gamme=gamme)
+    if panneau is None:
+        return
+
+    onduleurs = [li.produit for li in lignes
+                 if getattr(li, 'produit', None) is not None
+                 and (_classe_ligne(li, _is_hybrid_inverter)
+                      or _classe_ligne(li, _is_reseau_inverter))]
+    for onduleur in onduleurs:
+        verdict = verdict_panneau_onduleur(panneau, onduleur)
+        if verdict.get('statut') != STATUT_INCOMPATIBLE:
+            continue
+        raisons = verdict.get('raisons') or []
+        raise SyncLayoutError(
+            '%d panneaux « %s » sont incompatibles avec « %s » : %s. '
+            'Corrigez le nombre de panneaux ou changez d\'onduleur — le devis '
+            'n\'a pas été modifié.'
+            % (cible_panneaux, getattr(panneau, 'nom', '') or 'panneau',
+               getattr(onduleur, 'nom', '') or 'onduleur',
+               raisons[0] if raisons else
+               'le couple sort des bornes de la fiche constructeur'),
+            revision_possible=False)
+
+
 def sync_devis_from_layout(devis, layout, user=None):
     """PV18 — aligne les LIGNES d'un devis brouillon sur un nouveau calepinage.
 
@@ -3004,6 +3067,17 @@ def sync_devis_from_layout(devis, layout, user=None):
         # la resynchro des câbles plus bas, jamais un layout qui ne change
         # rien aux panneaux.
         panneaux_ont_change = False
+        panneaux_avant = total_panneaux
+
+        # ── DEV-202608-0016 — LE VERROU DE POSSIBILITÉ, AVANT LA PREMIÈRE
+        # ÉCRITURE ──
+        #
+        # Placé ICI et pas plus haut : le court-circuit « même géométrie » est
+        # déjà passé (re-poster un layout identique n'écrit rien, donc n'a rien
+        # à refuser), et aucune ligne n'a encore bougé — un refus laisse la
+        # transaction absolument intacte.
+        _refuser_couple_panneau_onduleur_impossible(
+            verrou, lignes, lignes_panneau, cible_panneaux, watt, gamme)
 
         # ── Panneaux : porter le compte à la cible ──
         if cible_panneaux > 0 and not lignes_panneau:
@@ -3049,6 +3123,15 @@ def sync_devis_from_layout(devis, layout, user=None):
             total_panneaux = sum(
                 int(li.quantite or 0) for li in lignes_panneau)
             panneaux_ont_change = True
+
+        # DEV-202608-0016 — la resynchro DIT ce qu'elle a changé. Le compte de
+        # panneaux est la décision commerciale la plus lourde de cet écran
+        # (il porte le kWc, donc le prix) : qu'il bouge sous l'effet d'une
+        # conception 3D ne doit pas se découvrir en relisant le devis.
+        if panneaux_ont_change and total_panneaux != panneaux_avant:
+            avertissements.append(
+                'La conception 3D porte le devis de %d à %d panneaux.'
+                % (panneaux_avant, total_panneaux))
 
         # ── Kilowattage RETENU — déplacé ICI (F8) : le kit (PVHEAL) ET les
         # câbles (PVCBL, juste en dessous) en ont tous les deux besoin, et le
@@ -3614,6 +3697,263 @@ class AutoDevisError(Exception):
         self.field = field
 
 
+def profil_reel_existe(lead):
+    """CJ2a — le lead porte-t-il un PROFIL réel, et non juste une facture ?
+
+    « Profil » = ce que le script d'appel a réellement recueilli et qui change
+    la forme de la consommation heure par heure :
+
+    * la présence en journée (``occupation_jour``) — le signal le plus fort :
+      à facture égale, un foyer présent en journée autoconsomme presque le
+      double d'un foyer absent ;
+    * un équipement déclaré AVEC sa grandeur (piscine + kW, clim + pièces, VE +
+      km/semaine) — les seules couches que le moteur sait composer ;
+    * douze factures mensuelles réelles saisies sur le devis.
+
+    C'est la CONDITION du dimensionnement horaire (ordre fondateur : la nouvelle
+    règle s'applique « quand le profil existe »). Sans profil, le moteur
+    n'aurait qu'une facture répétée douze fois et une silhouette de repli : la
+    règle historique des 900 DH/mois reste alors le choix honnête, et rien ne
+    change pour les devis d'aujourd'hui.
+    """
+    if lead is None:
+        return False
+    if getattr(lead, 'occupation_jour', None) in ('present', 'absent', 'partiel'):
+        return True
+    couples = (
+        ('equip_piscine', 'equip_piscine_pompe_kw'),
+        ('equip_clim', 'equip_clim_pieces'),
+        ('equip_voiture_electrique', 'equip_ve_km_semaine'),
+    )
+    for drapeau, grandeur in couples:
+        if getattr(lead, drapeau, None) is True:
+            valeur = getattr(lead, grandeur, None)
+            if valeur not in (None, ''):
+                try:
+                    if float(valeur) > 0:
+                        return True
+                except (TypeError, ValueError):
+                    continue
+    return False
+
+
+def phase_client_pour_dimensionnement(lead):
+    """Raccordement normalisé du lead (mono/tri/None) — PVCOMPAT, une seule
+    lecture. Isolé pour être appelable AVANT le dimensionnement, alors que
+    ``build_devis_auto`` ne résout la phase qu'au moment de composer."""
+    from apps.ventes.compatibilites import normaliser_phase
+    return normaliser_phase(getattr(lead, 'raccordement', None))
+
+
+def _panneaux_dimensionnement_horaire(*, lead, company, phase):
+    """``(nb_panneaux, panel_watt, source)`` recommandés par le moteur horaire.
+
+    Traduit la fiche du lead en entrées du dimensionnement, puis lit la
+    recommandation. ``panel_watt`` est le wattage du panneau RÉEL sur lequel le
+    balayage a décidé : l'appelant doit composer avec le MÊME, sinon la
+    puissance livrée ne serait pas celle qui a été évaluée.
+
+    Toute impossibilité (pas de facture, localisation non résolue par PVGIS,
+    catalogue incomplet) rend ``(0, None, 'regle_900dh')`` : l'appelant retombe
+    alors sur la règle historique, ÉTIQUETÉE comme telle. Ne lève jamais.
+    """
+    try:
+        from apps.crm.selectors import equipements_pour_devis  # noqa: F401
+        from apps.ventes.courbes_journalieres import (
+            OCCUPATION_ABSENCE, OCCUPATION_PARTIELLE, OCCUPATION_PRESENCE,
+            composer_equipements,
+        )
+        from apps.ventes.dimensionnement import recommander_taille
+        from apps.ventes.etude_horaire import profil_depuis_factures
+
+        conso, source, _detail = profil_depuis_factures(
+            facture_hiver_mad=getattr(lead, 'facture_hiver', None),
+            facture_ete_mad=getattr(lead, 'facture_ete', None),
+            ete_differente=getattr(lead, 'ete_differente', False))
+        if not conso:
+            return 0, None, 'regle_900dh'
+
+        drapeaux = {'present': OCCUPATION_PRESENCE,
+                    'absent': OCCUPATION_ABSENCE,
+                    'partiel': OCCUPATION_PARTIELLE}
+        occupation = drapeaux.get(getattr(lead, 'occupation_jour', None))
+        equipements = composer_equipements({
+            'piscine': getattr(lead, 'equip_piscine', None),
+            'piscine_pompe_kw': getattr(lead, 'equip_piscine_pompe_kw', None),
+            'voiture_electrique': getattr(lead, 'equip_voiture_electrique', None),
+            've_km_semaine': getattr(lead, 'equip_ve_km_semaine', None),
+            'clim': getattr(lead, 'equip_clim', None),
+            'clim_pieces': getattr(lead, 'equip_clim_pieces', None),
+        })
+
+        resultat = recommander_taille(
+            company=company, conso_kwh_mensuelles=conso,
+            ville=getattr(lead, 'ville', None),
+            lat=getattr(lead, 'gps_lat', None),
+            lon=getattr(lead, 'gps_lng', None),
+            occupation=occupation, equipements=equipements, phase=phase,
+            source_conso=source)
+        recommandation = resultat.get('recommandation')
+        if not recommandation:
+            return 0, None, 'regle_900dh'
+        return (int(recommandation['panneaux']),
+                recommandation.get('panel_watt'), 'moteur_horaire')
+    except Exception:  # noqa: BLE001 — jamais bloquant : on retombe sur 900 DH
+        logger.warning('dimensionnement horaire indisponible', exc_info=True)
+        return 0, None, 'regle_900dh'
+
+
+def rafraichir_etude_horaire(devis, *, kwc=None, batterie_kwh_utile=None):
+    """CJ2a — (re)calcule ``etude_params['etude_horaire']`` et le RANGE.
+
+    Point d'entrée unique pour poser le bloc canonique sur un devis. Écrit avec
+    ``update_fields=['etude_params']`` UNIQUEMENT : ce chemin ne peut donc
+    toucher NI le statut du devis, NI ses lignes, NI ses totaux (règle #4).
+
+    Bloc non calculable (pas de facture, pas de localisation PVGIS, pas de
+    puissance) ⇒ la clé est RETIRÉE plutôt que laissée périmée, et l'appelant
+    retombe sur le forfait étiqueté (règle Z2). Ne lève jamais : une étude
+    n'empêche pas d'enregistrer un devis.
+    """
+    from apps.ventes.etude_horaire import etude_horaire_pour_devis
+    try:
+        bloc = etude_horaire_pour_devis(
+            devis, kwc=kwc, batterie_kwh_utile=batterie_kwh_utile)
+        etude = dict(getattr(devis, 'etude_params', None) or {})
+        if bloc is None:
+            if 'etude_horaire' not in etude:
+                return None
+            etude.pop('etude_horaire', None)
+        else:
+            etude['etude_horaire'] = bloc
+        devis.etude_params = etude
+        devis.save(update_fields=['etude_params'])
+        return bloc
+    except Exception:  # noqa: BLE001 — jamais bloquant pour un devis
+        logger.warning('etude_horaire non rafraîchie sur %s',
+                       getattr(devis, 'reference', '?'), exc_info=True)
+        return None
+
+
+def _bloc_horaire_deja_a_jour(devis, kwc):
+    """CJ2b — le bloc rangé sur ce devis décrit-il DÉJÀ cette composition ?
+
+    RAISON D'ÊTRE : ÉVITER UN RECALCUL INUTILE DANS UN HANDLER HTTP. Un calcul
+    horaire résout la localisation PVGIS du chantier, ce qui peut coûter un
+    appel réseau (cache système de 30 jours, mais un cache froid part sur le
+    réseau). Le déclencher à CHAQUE ligne ajoutée/modifiée/retirée ferait payer
+    cette latence à l'utilisateur pour un bloc qui n'aurait pas bougé d'un
+    chiffre — c'est exactement le genre d'appel qu'on ne veut pas voir
+    apparaître dans une boucle d'édition.
+
+    LE CRITÈRE EST CELUI DU MOTEUR, PAS UN SECOND. La tolérance vient de
+    ``pricing._HORAIRE_TOLERANCE_KWC`` : ce qui rend un bloc PÉRIMÉ pour le
+    document est exactement ce qui le rend À RECALCULER ici. Deux seuils
+    différents laisseraient une zone où le document refuse un bloc que ce
+    garde-fou juge encore frais — donc un devis sans économies, sans raison
+    visible.
+
+    La capacité batterie compte AUSSI : elle change l'autoconsommation et donc
+    toutes les économies, sans toucher au kWc (remplacer une batterie 5 kWh par
+    une 10 kWh ne bouge pas la puissance PV).
+
+    Renvoie ``False`` au moindre doute — on préfère recalculer pour rien que
+    servir un bloc qui ne décrit plus le devis.
+    """
+    bloc = (getattr(devis, 'etude_params', None) or {}).get('etude_horaire')
+    if not isinstance(bloc, dict) or not kwc:
+        return False
+    try:
+        from apps.ventes.quote_engine.pricing import _HORAIRE_TOLERANCE_KWC
+        kwc_bloc = float(bloc.get('kwc') or 0)
+        if kwc_bloc <= 0:
+            return False
+        if abs(kwc_bloc - float(kwc)) / float(kwc) > _HORAIRE_TOLERANCE_KWC:
+            return False
+        from apps.ventes.etude_horaire import capacite_batterie_du_devis
+        actuelle = capacite_batterie_du_devis(devis)
+        rangee = bloc.get('batterie_kwh_utile')
+        if (actuelle is None) != (rangee is None):
+            return False
+        if actuelle is not None and abs(float(actuelle) - float(rangee)) > 0.05:
+            return False
+        return True
+    except Exception:  # noqa: BLE001 — au moindre doute, on recalcule
+        return False
+
+
+def rafraichir_etude_horaire_devis(devis, *, force=False):
+    """CJ2b — pose le bloc horaire canonique après une écriture SERVEUR d'un
+    devis résidentiel (lignes ajoutées/modifiées/retirées, calepinage
+    resynchronisé, devis mis à jour).
+
+    Avant CJ2b, ``rafraichir_etude_horaire`` n'était appelé QUE par l'auto-devis
+    (voir plus haut) : un devis résidentiel ÉDITÉ ensuite — panneau ajouté ou
+    retiré, remplacement d'onduleur — gardait un bloc ``etude_horaire`` PÉRIMÉ
+    ou ABSENT, et la page/le PDF retombaient alors sur le modèle « facture »/
+    forfait alors qu'un calcul heure par heure exact restait possible. Ce point
+    d'entrée unique referme la boucle depuis les chemins d'écriture du devis
+    (``DevisViewSet.perform_update``, ``sync-layout``, ``LigneDevisViewSet``).
+
+    RÉSIDENTIEL STRICT (``mode_installation == 'residentiel'``), volontairement
+    PLUS STRICT que ``quote_engine.residential.renderer.is_residential`` (qui
+    traite un mode VIDE comme résidentiel — un défaut d'AFFICHAGE PDF choisi
+    pour ne jamais perdre le rendu d'un devis, pas une preuve que ce devis EST
+    résidentiel). Poser un calcul horaire sur un devis dont le marché n'a
+    simplement pas encore été choisi calculerait une étude sur une hypothèse
+    non confirmée ; un devis dont le mode passe plus tard à 'residentiel'
+    reçoit son bloc au prochain enregistrement — aucune perte, un calcul
+    seulement différé.
+
+    La puissance kWc vient EXCLUSIVEMENT de
+    ``quote_engine.builder.panneaux_et_watt_lu``, sur le MÊME filtre de lignes
+    que ``build_quote_data`` (lignes produit, non optionnelles) — jamais une
+    seconde règle de dérivation (l'incident DEV-202608-0007 est précisément né
+    de deux dérivations qui divergent). Sans panneau lisible, le rafraîchissement
+    est appelé QUAND MÊME avec ``kwc=None`` : c'est ``rafraichir_etude_horaire``
+    lui-même qui RETIRE alors le bloc devenu périmé plutôt que de le laisser
+    décrire une installation qui n'existe plus (règle Z2 appliquée à la
+    fraîcheur) — jamais un bloc laissé en place au hasard.
+
+    ``force`` — recalculer MÊME si la composition n'a pas bougé. Les chemins
+    « lignes » (ajout/modification/suppression, calepinage) ne touchent QUE la
+    composition : quand celle-ci est inchangée, le bloc l'est aussi et
+    ``_bloc_horaire_deja_a_jour`` court-circuite un calcul qui peut coûter un
+    appel PVGIS. Les chemins « devis » (``perform_update``, ``replace-lines``)
+    peuvent en revanche avoir changé les FACTURES ou le profil dans
+    ``etude_params`` — grandeurs qu'aucune lecture de lignes ne verrait : ils
+    passent ``force=True`` et acceptent le recalcul.
+
+    Ne lève JAMAIS, ne touche NI le statut NI les lignes NI les totaux du devis
+    (règle #4) : appelable en toute sécurité juste après une sauvegarde.
+    """
+    try:
+        mode = (getattr(devis, 'mode_installation', None) or '').strip().lower()
+        if mode != 'residentiel':
+            return None
+        from apps.ventes.quote_engine.builder import panneaux_et_watt_lu
+        # Même filtre que build_quote_data : lignes PRODUIT non optionnelles
+        # (les sections/notes n'ont pas de produit, les add-ons XSAL5 non
+        # activés ne comptent pas encore dans la composition réelle).
+        lignes = [
+            li for li in devis.lignes.select_related(
+                'produit', 'produit__fiche_technique').all()
+            if getattr(li, 'type_ligne', 'produit') == 'produit'
+            and not getattr(li, 'optionnelle', False)
+        ]
+        nb_panneaux, watt = panneaux_et_watt_lu(lignes)
+        kwc = (round(nb_panneaux * watt / 1000, 2)
+               if nb_panneaux > 0 and watt else None)
+        if not force and _bloc_horaire_deja_a_jour(devis, kwc):
+            return (devis.etude_params or {}).get('etude_horaire')
+        return rafraichir_etude_horaire(devis, kwc=kwc)
+    except Exception:  # noqa: BLE001 — un rafraîchissement raté n'empêche
+        # jamais une sauvegarde de devis/ligne.
+        logger.warning('rafraichir_etude_horaire_devis indisponible sur %s',
+                       getattr(devis, 'reference', '?'), exc_info=True)
+        return None
+
+
 def _residential_panel_count(*, facture_hiver=None, taille_kwc=None,
                              panel_watt=_AUTO_PANEL_WATT):
     """Nombre de panneaux pour un lead résidentiel.
@@ -3778,9 +4118,41 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
             raise AutoDevisError(
                 'La puissance cible doit être supérieure à zéro.',
                 field='target_kwc')
-    panneaux = _residential_panel_count(
-        facture_hiver=facture_hiver,
-        taille_kwc=cible if cible is not None else taille_kwc)
+    # ── CJ2a (ORDRE FONDATEUR) — LE DIMENSIONNEMENT HORAIRE PASSE DEVANT ────
+    # « this calculus might be the base of deciding which installation for each
+    # client, instead of my 900dh/month rule ».
+    #
+    # Trois conditions, toutes nécessaires, pour que la nouvelle règle décide :
+    #   · aucune cible explicite (une puissance demandée reste souveraine — le
+    #     commercial sait ce qu'il vend) ;
+    #   · aucune taille souhaitée sur la fiche du lead (même raison) ;
+    #   · le lead porte un PROFIL RÉEL (``profil_reel_existe``) — sinon le
+    #     moteur n'aurait qu'une facture répétée douze fois et une silhouette
+    #     de repli, ce qui ne vaut pas mieux que la règle historique.
+    #
+    # Faute de quoi : règle des 900 DH/mois, INCHANGÉE. C'est ce qui garantit
+    # qu'aucun devis d'aujourd'hui ne change de taille sans qu'un commercial
+    # ait réellement rempli le questionnaire d'appel.
+    panneaux = 0
+    source_dimensionnement = 'regle_900dh'
+    # Le wattage du panneau doit être CELUI SUR LEQUEL LE BALAYAGE A DÉCIDÉ :
+    # dimensionner sur un panneau de 550 Wc puis composer à 710 Wc livrerait
+    # une autre puissance que celle qui a été évaluée.
+    watt_dimensionnement = _AUTO_PANEL_WATT
+    if cible is None and taille_kwc in (None, '') and profil_reel_existe(lead):
+        panneaux, watt_retenu, source_dimensionnement = (
+            _panneaux_dimensionnement_horaire(
+                lead=lead, company=company,
+                phase=phase_client_pour_dimensionnement(lead)))
+        if panneaux > 0 and watt_retenu:
+            watt_dimensionnement = watt_retenu
+
+    if panneaux <= 0:
+        panneaux = _residential_panel_count(
+            facture_hiver=facture_hiver,
+            taille_kwc=cible if cible is not None else taille_kwc)
+        source_dimensionnement = 'regle_900dh'
+        watt_dimensionnement = _AUTO_PANEL_WATT
     if panneaux <= 0:
         if facture_hiver not in (None, '') or taille_kwc not in (None, ''):
             msg = ("La facture d'hiver du lead est trop faible pour dimensionner "
@@ -3792,7 +4164,7 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
                    "kWc) du lead.")
         raise AutoDevisError(msg, field='facture_hiver')
 
-    kwc = round(panneaux * _AUTO_PANEL_WATT / 1000, 2)
+    kwc = round(panneaux * watt_dimensionnement / 1000, 2)
     # ── U2 (fondateur 20/08/2026) — LE DÉFAUT EST « LES DEUX OPTIONS » ──────
     # « le devis auto sort SANS batterie alors que le calepinage 3D sort AVEC ;
     # le DÉFAUT doit être le devis avec LES DEUX options ». Le devis auto ne
@@ -3819,7 +4191,7 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
     deux_options = choix_batterie not in ('avec', 'sans')
     layout = {
         'result': {'panels': panneaux, 'kwc': kwc},
-        'panelWatt': _AUTO_PANEL_WATT,
+        'panelWatt': watt_dimensionnement,
         'scenario': 'avec_batterie' if wants_battery else 'reseau',
     }
     # ── U3 — GARDE MARQUE ÉPINGLÉE, portée côté SERVEUR ────────────────────
@@ -3843,7 +4215,8 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
     phase_client = normaliser_phase(getattr(lead, 'raccordement', None))
 
     apercu = composer_devis_residentiel(
-        company=company, nb_panneaux=panneaux, panel_watt=_AUTO_PANEL_WATT,
+        company=company, nb_panneaux=panneaux,
+        panel_watt=watt_dimensionnement,
         scenario=choix_batterie or 'les_deux', taux_tva=taux_tva,
         phase=phase_client)
     if apercu['marques_manquantes']:
@@ -3876,11 +4249,18 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
         devis.etude_params = etude
         devis.save(update_fields=['etude_params'])
 
+    # CJ2a — le bloc canonique d'étude horaire est posé APRÈS la construction :
+    # il a besoin de la puissance réellement composée et de la capacité de
+    # stockage réellement chiffrée. Best-effort et non bloquant : un devis
+    # reste parfaitement valide sans lui (le moteur de devis retombe alors sur
+    # son forfait ÉTIQUETÉ — règle Z2).
+    rafraichir_etude_horaire(devis, kwc=kwc)
+
     logger.info(
-        'Auto-devis %s: %d panneaux, %.2f kWc, batterie=%s, deux_options=%s '
-        '(company %s)',
+        'Auto-devis %s: %d panneaux, %.2f kWc, batterie=%s, deux_options=%s, '
+        'dimensionnement=%s (company %s)',
         devis.reference, panneaux, kwc, wants_battery, deux_options,
-        getattr(company, 'id', '?'))
+        source_dimensionnement, getattr(company, 'id', '?'))
     return devis
 
 

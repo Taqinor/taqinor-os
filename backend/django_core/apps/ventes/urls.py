@@ -61,6 +61,7 @@ from .journal_view import journal_ventes, export_comptable, export_status
 from .numbering_view import numerotation_audit, numerotation_preview
 from .extra_docs_views import lettre_relance_premium, fiche_remise_premium
 from .diagram_views import schema_unifilaire, schema_unifilaire_devis  # FG252
+from .etude_horaire_view import etude_horaire_preview  # CJ2a
 from .roof_load_view import roof_load_check  # FG253
 from .connection_declaration_view import declaration_raccordement  # FG272
 from .calendrier_view import calendrier_reglementaire  # FG273
@@ -216,6 +217,11 @@ urlpatterns = [
          declaration_raccordement, name='devis-declaration-raccordement'),
     # FG253 — aide au calcul de charge structure toiture (alerte dépassement).
     path('toiture/charge/', roof_load_check, name='toiture-charge'),
+    # CJ2a — moteur horaire : économies RÉELLES (intégration production ×
+    # consommation, mois par mois) + dimensionnement. Aucune écriture ; c'est
+    # la source UNIQUE des chiffres d'économie que l'écran affichera (CJ2b).
+    path('etude-horaire/preview/', etude_horaire_preview,
+         name='etude-horaire-preview'),
     # N87 — état du compte d'envoi email (informatif, lecture seule).
     path('email-config/', email_config, name='email-config'),
     # Config carte pour l'outil de conception 3D de toiture (ERP même origine) :

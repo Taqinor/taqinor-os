@@ -1046,6 +1046,115 @@ def _bankable_headline(devis, data):
     }
 
 
+#: CJ2b — sources RÉELLES de consommation qui portent une VRAIE variation
+#: mensuelle (``etude_horaire.profil_depuis_factures``) : 12 kWh mesurés ou 12
+#: factures réelles saisies. Les deux autres sources valides
+#: (``facture_hiver``/``facture_hiver_ete``) répètent HONNÊTEMENT un ou deux
+#: points réels sur l'année — la variation mois par mois y est donc estimée.
+_SOURCES_CONSO_MESUREES = ('kwh_mensuels_saisis', 'factures_mensuelles_reelles')
+
+
+def _note_economies_mensuelles(modele, source_consommation, estimation):
+    """CJ2b — phrase FR qui dit d'où viennent les 12 valeurs, jamais un chiffre
+    dans le texte (RULE #4 : aucun montant/prix d'achat). Dit « estimation »
+    quand ``estimation`` est vrai (contrat public)."""
+    if modele == 'horaire' and not estimation:
+        return ('Calculé heure par heure : production PVGIS contre votre '
+                'courbe de consommation issue de vos factures mensuelles '
+                'réelles.')
+    if modele == 'horaire':
+        return ('Estimation heure par heure : production PVGIS contre une '
+                "consommation dérivée de votre facture d'hiver (et d'été), "
+                'répétée sur les douze mois faute de facture mois par mois.')
+    if modele == 'factures':
+        return ('Estimation : économie annuelle calculée sur vos factures '
+                'réelles par tranche tarifaire, répartie sur les douze mois '
+                'selon un profil saisonnier type (pas encore un calcul '
+                'mois par mois).')
+    return ('Estimation : production annuelle × taux d\'autoconsommation de '
+            'référence, répartie sur les douze mois selon un profil '
+            'saisonnier type — transmettez vos factures pour un calcul '
+            'plus précis.')
+
+
+def _economies_mensuelles_publiques(devis, data, synthese):
+    """CJ2b (fondateur, 21/08/2026) — bloc ``economies_mensuelles`` : les 12
+    valeurs MAD/mois sans/avec batterie « qu'on ne voit ni ... calculée ni la
+    donnée pvgis ». JAMAIS un second calcul : ``sans``/``avec`` viennent tels
+    quels du moteur (``eco_s_monthly``/``eco_a_monthly``, la même série que la
+    courbe mensuelle du PDF).
+
+    ``None`` quand la couche économique n'est pas servable — MÊME garde que
+    ``synthese_economies`` (``synthese`` est déjà ``None`` si Z2 s'applique) :
+    aucune ré-implémentation de l'ancrage.
+
+    ``avec``/``total_avec`` ne sont servis QUE quand le devis porte VRAIMENT
+    les deux options (``avec_ok`` ET ``deux_options``, le même repère que
+    ``courbes_journalieres._options_reelles``) — jamais un chiffre « avec
+    batterie » sur une option que ce devis ne peut pas livrer (CJ2a a trouvé un
+    vrai trou catalogue : la batterie non livrable en résidentiel monophasé).
+    RULE #4 — aucun prix d'achat/marge, uniquement les montants client TTC déjà
+    calculés par le moteur.
+    """
+    if synthese is None:
+        return None
+    try:
+        return _economies_mensuelles_calcul(devis, data)
+    except Exception:  # noqa: BLE001 — voir ci-dessous
+        # UN BLOC D'AFFICHAGE ADDITIF NE FAIT JAMAIS TOMBER LA PAGE CLIENT.
+        # Cet appel vit dans le grand ``try`` de ``proposal_data``, dont le
+        # ``except`` répond 404 « Proposition indisponible » : sans cette garde,
+        # un défaut dans DOUZE CHIFFRES D'AFFICHAGE priverait le client de sa
+        # proposition ENTIÈRE (prix, composition, signature). Même discipline
+        # que ``construire_courbes_journalieres``, qui porte déjà la sienne.
+        logger.warning('economies_mensuelles indisponibles', exc_info=True)
+        return None
+
+
+def _economies_mensuelles_calcul(devis, data):
+    """Cœur de :func:`_economies_mensuelles_publiques` (exceptions gérées
+    au-dessus)."""
+    sans = data.get('eco_s_monthly')
+    if not (isinstance(sans, (list, tuple)) and len(sans) == 12
+            and all(isinstance(v, (int, float)) and not isinstance(v, bool)
+                    for v in sans)):
+        return None
+
+    avec = data.get('eco_a_monthly')
+    avec_reellement_vendable = (
+        bool(data.get('avec_ok')) and bool(data.get('deux_options')))
+    if not (avec_reellement_vendable
+            and isinstance(avec, (list, tuple)) and len(avec) == 12
+            and all(isinstance(v, (int, float)) and not isinstance(v, bool)
+                    for v in avec)):
+        avec = None
+
+    modele = data.get('savings_model')
+    if modele not in ('horaire', 'factures'):
+        # 'etude' (override industriel/commercial saisi) ou toute autre valeur
+        # inattendue : jamais montré comme 'horaire'/'factures' sans l'être.
+        modele = 'estimation'
+    bloc_horaire = ((getattr(devis, 'etude_params', None) or {})
+                    .get('etude_horaire') or {})
+    source_consommation = bloc_horaire.get('source_consommation')
+    estimation = (
+        bool(data.get('savings_estimated'))
+        or modele != 'horaire'
+        or source_consommation not in _SOURCES_CONSO_MESUREES)
+
+    return {
+        'sans': [round(v) for v in sans],
+        'avec': [round(v) for v in avec] if avec is not None else None,
+        'total_sans': round(sum(sans)),
+        'total_avec': round(sum(avec)) if avec is not None else None,
+        'devise': 'MAD',
+        'modele': modele,
+        'estimation': estimation,
+        'note': _note_economies_mensuelles(
+            modele, source_consommation, estimation),
+    }
+
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 @throttle_classes([PublicLinkRateThrottle])
@@ -1152,6 +1261,27 @@ def proposal_data(request, token):
             if not data.get('sans_ok'):
                 data['totaux_sans'] = None
                 data['sans_items'] = []
+        # CJ2b (21/08/2026) — même règle que `financing` ci-dessus : quand
+        # l'option batterie n'est pas RÉELLEMENT vendable (`avec_ok` faux),
+        # AUCUN chiffre « avec batterie » ne franchit la frontière publique.
+        # `economies_mensuelles.avec` était déjà nul, mais `'quote': data`
+        # republiait les MÊMES séries sous leurs noms de moteur — un JSON
+        # récupérable contredisait le document remis au client.
+        if not data.get('avec_ok'):
+            for cle in ('eco_a_monthly', 'eco_a_ann', 'eco_a_cumul',
+                        'roi_a', 'cashflow_avec', 'net_gain_avec',
+                        'facture_avec_solaire_a'):
+                data[cle] = None
+        # …et le bloc moteur BRUT (`etude_params['etude_horaire']`, recopié
+        # dans `data['etude']` par le builder) ne franchit JAMAIS la frontière
+        # publique : ses lignes mensuelles portent `economie_avec_mad` même
+        # quand l'option batterie n'est pas vendable. La page ne lit que le
+        # bloc curaté `economies_mensuelles` — le brut est interne moteur.
+        # (`data['etude']` est une copie superficielle : le pop ne touche pas
+        # `devis.etude_params`.)
+        etude_publique = data.get('etude')
+        if isinstance(etude_publique, dict):
+            etude_publique.pop('etude_horaire', None)
         # COURBES (21/08/2026) — série de consommation calculée UNE fois : elle
         # est republiée telle quelle ET sert de NIVEAU réel au graphe journalier.
         _conso_mensuelle = _monthly_consumption(devis)
@@ -1306,6 +1436,15 @@ def proposal_data(request, token):
             devis, data, monthly_consumption=_conso_mensuelle)
         if _courbes is not None:
             payload['courbes_journalieres'] = _courbes
+        # CJ2b (fondateur, 21/08/2026) — « we cannot see the real calculated
+        # saving neither the pvgis data ». 12 valeurs MAD/mois sans/avec
+        # batterie, à côté de monthly_production/monthly_consumption
+        # ci-dessus : même patron additif — la clé n'est AJOUTÉE que lorsque la
+        # couche économique est servable (hérite l'ancrage Z2 de `synthese`,
+        # déjà calculé plus haut), sinon la page garde son affichage actuel.
+        _economies = _economies_mensuelles_publiques(devis, data, synthese)
+        if _economies is not None:
+            payload['economies_mensuelles'] = _economies
     except Exception:  # noqa: BLE001
         # 404 volontairement muet cote client (jamais de detail interne sur un
         # lien public) — mais TRACE cote serveur : un garde-fou moteur qui

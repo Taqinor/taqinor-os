@@ -114,12 +114,27 @@ class LigneDevisViewSet(CompanyScopedModelViewSet):
         self._check_tenant(serializer)
         self._check_devis_not_frozen(serializer.validated_data.get('devis'))
         serializer.save()
+        # CJ2b — une ligne AJOUTÉE peut changer la puissance kWc résidentielle :
+        # le bloc horaire canonique doit repartir de la composition COURANTE
+        # du devis, jamais rester calé sur l'ancienne. Best-effort, ne lève
+        # jamais (voir la docstring de la fonction).
+        from ..services import rafraichir_etude_horaire_devis
+        rafraichir_etude_horaire_devis(serializer.instance.devis)
 
     def perform_update(self, serializer):
         self._check_tenant(serializer)
         self._check_devis_not_frozen(serializer.instance.devis)
         serializer.save()
+        # CJ2b — voir perform_create ci-dessus (même raison : la ligne MODIFIÉE
+        # peut changer la puissance kWc).
+        from ..services import rafraichir_etude_horaire_devis
+        rafraichir_etude_horaire_devis(serializer.instance.devis)
 
     def perform_destroy(self, instance):
         self._check_devis_not_frozen(instance.devis)
+        devis = instance.devis
         instance.delete()
+        # CJ2b — voir perform_create ci-dessus (même raison : une ligne
+        # RETIRÉE peut changer, voire annuler, la puissance kWc).
+        from ..services import rafraichir_etude_horaire_devis
+        rafraichir_etude_horaire_devis(devis)

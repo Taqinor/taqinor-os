@@ -62,6 +62,15 @@ export interface PitchedLocks {
   layout?: PitchedLayoutAxis;
   margin?: PitchedMarginAxis;
   need?: number;
+  /**
+   * L2 — ADDITIF, absent/false = comportement historique INCHANGÉ (repli « remplir ce
+   * qui tient » quand `need` est absent — l'estimateur/lead public). Quand vrai (posé
+   * par l'appelant DEVIS quand la cible vendue vaut zéro, `need` alors absent), le
+   * besoin effectif nul est traité comme une CIBLE IMPOSÉE plutôt qu'une absence de
+   * contrainte : `evalPitched` pose 0 panneau au lieu de retomber sur `fitCount`. Un
+   * devis sans ligne panneau n'invente jamais un calepinage.
+   */
+  needImposedZero?: boolean;
 }
 
 export interface PitchedLiveEval {
@@ -126,6 +135,9 @@ interface PitchedCtx {
   facingAzimuthDeg: number;
   target: number;
   effectiveNeed: number;
+  /** L2 — voir `PitchedLocks.needImposedZero` : besoin nul IMPOSÉ (jamais un repli
+   *  « remplir ce qui tient »). Défaut false = comportement historique inchangé. */
+  needImposedZero: boolean;
   obstructions: LngLat[][];
   /** W109 — débord panneaux autorisé au-delà de la rive (m). 0 → calepinage inchangé. */
   overhangM: number;
@@ -160,7 +172,15 @@ function evalPitched(ctx: PitchedCtx, layout: PitchedLayoutAxis, margin: Pitched
   const fitCount = Number.isFinite(grid.count) && grid.count > 0 ? Math.floor(grid.count) : 0;
   // Pan orienté nord : on ne pose RIEN (honnêteté — surplus nord non rentable). Posé =
   // min(besoin, ce qui tient) ≤ besoin, plafond TOUJOURS respecté, jamais < 0.
-  const placedCount = pack.northFacing ? 0 : ctx.effectiveNeed > 0 ? Math.max(0, Math.min(ctx.effectiveNeed, fitCount)) : fitCount;
+  // L2 — `needImposedZero` : besoin nul IMPOSÉ (devis sans ligne panneau) ≠ absence de
+  // besoin (repli historique `fitCount`, mode lead/estimateur) — on pose 0.
+  const placedCount = pack.northFacing
+    ? 0
+    : ctx.effectiveNeed > 0
+      ? Math.max(0, Math.min(ctx.effectiveNeed, fitCount))
+      : ctx.needImposedZero
+        ? 0
+        : fitCount;
   const perKwcPanel = fitCount > 0 && Number.isFinite(grid.kwc) ? grid.kwc / fitCount : PANEL2_WATT / 1000;
   const kwc = placedCount * perKwcPanel;
   const y = resolvePitchedYield(ctx.yieldFn, ctx.latitudeDeg, ctx.pitchDeg, ctx.facingAzimuthDeg);
@@ -289,6 +309,7 @@ export function solveLivePitched(
     facingAzimuthDeg,
     target,
     effectiveNeed,
+    needImposedZero: locks.needImposedZero === true,
     obstructions,
     overhangM: Math.max(0, options.overhangM ?? 0),
     obstructionClearancesM: options.obstructionClearancesM, // PV61
@@ -305,7 +326,12 @@ export function solveLivePitched(
   const northFacing = winner.pack.northFacing;
   // W74 — pan trop petit / contraint à néant SANS être nord : le gagnant ne loge AUCUN
   // panneau (fit 0 → 0 kWh). Distinct du pan nord (production quasi nulle par orientation).
-  const noViableConfig = !northFacing && (winner.fitCount <= 0 || winner.annualKwh <= 0);
+  // L2 — `winner.annualKwh <= 0` ne prouve « non viable » QUE hors `needImposedZero` : en
+  // devis-cible-zéro, annualKwh vaut 0 PARCE QUE `placedCount` est délibérément posé à 0
+  // (le toit tient très bien des panneaux, le devis n'en vend juste aucun) — sans cette
+  // garde le message « toit trop petit » serait FAUX. `fitCount <= 0` reste un fait
+  // géométrique réel, jamais suppressible.
+  const noViableConfig = !northFacing && (winner.fitCount <= 0 || (!ctx.needImposedZero && winner.annualKwh <= 0));
 
   // Optimum GLOBAL = axes libres, besoin dérivé de la facture (cible de « Réinitialiser »).
   let globalWinner = winner;

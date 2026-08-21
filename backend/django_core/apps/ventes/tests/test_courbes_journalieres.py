@@ -154,10 +154,14 @@ class ConsommationTests(_CourbesBase):
         self.assertGreater(bloc['consommation']['ete']['kwh_jour'],
                            bloc['consommation']['hiver']['kwh_jour'])
 
-    def test_la_forme_24h_de_consommation_reste_cote_page(self):
+    def test_la_forme_de_base_ne_porte_que_kwh_jour_et_forme(self):
+        """CJ2b — le serveur sert désormais la forme DE BASE (silhouette
+        d'occupation) à côté du niveau ; les couches équipements restent
+        composées CÔTÉ PAGE par-dessus elle (``proposalCurve.ts``), jamais ici
+        — les recomposer ici les compterait deux fois."""
         bloc = self._bloc(conso=CASA_CONSO)
         for serie in bloc['consommation'].values():
-            self.assertEqual(list(serie), ['kwh_jour'])
+            self.assertEqual(set(serie), {'kwh_jour', 'forme'})
 
     def test_sans_facture_pas_de_consommation(self):
         for vide in (None, [], [1, 2, 3]):
@@ -225,6 +229,92 @@ class OccupationTests(_CourbesBase):
         self.assertEqual(bloc['occupation'], 'absence_jour')
 
 
+# ── L4 (extension fondateur, 21/08/2026) — occupation_jour du lead PRIME ─────
+class OccupationLeadTests(_CourbesBase):
+    """``crm.Lead.occupation_jour`` (script d'appel) PRIME sur tout le reste
+    quand renseigné ; absent ⇒ comportement HISTORIQUE (``OccupationTests``
+    ci-dessus, byte-identique — aucun mock de ``occupation_jour_pour_devis``
+    n'est posé par ces tests-là, donc le VRAI sélecteur tourne sur
+    ``object()`` et renvoie ``None``)."""
+
+    def _bloc_occ(self, occ, data=None):
+        with mock.patch('apps.crm.selectors.occupation_jour_pour_devis',
+                        return_value=occ):
+            return self._bloc(data=data, conso=CASA_CONSO)
+
+    def test_partiel_prime_sur_le_defaut_residentiel(self):
+        bloc = self._bloc_occ('partiel')
+        self.assertEqual(bloc['occupation'], 'presence_partielle')
+        self.assertEqual(bloc['occupation_source'], 'lead_occupation_jour:partiel')
+
+    def test_absent_prime_sur_le_defaut_residentiel(self):
+        bloc = self._bloc_occ('absent')
+        self.assertEqual(bloc['occupation'], 'absence_jour')
+        self.assertEqual(bloc['occupation_source'], 'lead_occupation_jour:absent')
+
+    def test_present_prime_sur_le_defaut_non_residentiel(self):
+        bloc = self._bloc_occ('present', _data(mode_installation='industriel'))
+        self.assertEqual(bloc['occupation'], 'presence_jour')
+        self.assertEqual(bloc['occupation_source'], 'lead_occupation_jour:present')
+
+    def test_valeur_non_reconnue_ignoree_retombe_sur_le_defaut(self):
+        bloc = self._bloc_occ('n_importe_quoi')
+        self.assertEqual(bloc['occupation_source'], 'defaut_residentiel_fondateur')
+
+    def test_absent_du_lead_comportement_historique_inchange(self):
+        # Aucun mock posé : le VRAI sélecteur tourne sur object() (pas de
+        # .lead) ⇒ None ⇒ repli identique à OccupationTests d'avant L4.
+        bloc = self._bloc(conso=CASA_CONSO)
+        self.assertEqual(bloc['occupation'], 'presence_jour')
+        self.assertEqual(bloc['occupation_source'], 'defaut_residentiel_fondateur')
+
+
+# ── CJ2b (21/08/2026) — la forme de base de consommation devient SERVEUR ────
+class FormeConsommationServieTests(_CourbesBase):
+    """Le serveur sert désormais la silhouette d'occupation (24 parts, somme
+    1,0) sur CHAQUE saison de consommation servie, et nomme sa provenance."""
+
+    def test_chaque_saison_porte_une_forme_de_24_parts_qui_somme_a_un(self):
+        bloc = self._bloc(conso=CASA_CONSO)
+        for saison, serie in bloc['consommation'].items():
+            self.assertIn('forme', serie, saison)
+            self.assertEqual(len(serie['forme']), 24, saison)
+            self.assertAlmostEqual(sum(serie['forme']), 1.0, places=4,
+                                   msg=saison)
+
+    def test_la_source_nomme_l_occupation_reellement_servie(self):
+        bloc = self._bloc(conso=CASA_CONSO)
+        # Défaut résidentiel fondateur (OccupationTests) : présent en journée.
+        self.assertEqual(bloc['occupation'], 'presence_jour')
+        self.assertEqual(bloc['consommation_forme_source'],
+                         'silhouette_occupation:presence_jour')
+
+    def test_la_forme_suit_l_occupation_reellement_servie_pas_un_defaut_fige(self):
+        with mock.patch('apps.crm.selectors.occupation_jour_pour_devis',
+                        return_value='absent'):
+            bloc = self._bloc(conso=CASA_CONSO)
+        self.assertEqual(bloc['occupation'], 'absence_jour')
+        self.assertEqual(bloc['consommation_forme_source'],
+                         'silhouette_occupation:absence_jour')
+        attendu = cj.silhouette_occupation('absence_jour')
+        for saison, serie in bloc['consommation'].items():
+            self.assertEqual(serie['forme'], attendu, saison)
+
+    def test_forme_absente_sans_bloc_consommation(self):
+        # Aucune facture ⇒ pas de bloc consommation ⇒ rien à sourcer.
+        bloc = self._bloc(conso=[])
+        self.assertNotIn('consommation', bloc)
+        self.assertNotIn('consommation_forme_source', bloc)
+
+    def test_la_forme_de_base_est_identique_a_la_production_servie(self):
+        # « part du total du jour, somme = 1 » : même unité que la forme de
+        # production déjà servie (bloc['unites']['forme']).
+        bloc = self._bloc(conso=CASA_CONSO)
+        self.assertIn('forme', bloc['unites'])
+        self.assertEqual(bloc['unites']['forme'],
+                         'part du total du jour (somme = 1)')
+
+
 class OmissionTests(_CourbesBase):
     def test_rien_a_servir_renvoie_none(self):
         # Ville inconnue ET aucune facture → la page garde son affichage actuel.
@@ -238,3 +328,108 @@ class OmissionTests(_CourbesBase):
     def test_donnee_illisible_ne_casse_jamais_la_page(self):
         self.assertIsNone(cj.construire_courbes_journalieres(
             object(), None, monthly_consumption=None))
+
+
+# ── L4 (21/08/2026) — Équipements du lead : couches sourcées de la courbe ────
+class EquipementsTests(_CourbesBase):
+    """``apps.crm.selectors.equipements_pour_devis`` mocké par test (comme
+    ``site_location_for_devis``/``profil_activite_pour_devis`` ci-dessus) : la
+    base ``_CourbesBase`` laisse le VRAI sélecteur tourner sur un ``object()``
+    (aucun ``.lead``) ⇒ ``{}`` ⇒ tests existants byte-identiques (pinné par
+    ``ConsommationTests.test_la_forme_24h_de_consommation_reste_cote_page``)."""
+
+    def _bloc_equip(self, equip, data=None, conso=None):
+        with mock.patch('apps.crm.selectors.equipements_pour_devis',
+                        return_value=equip):
+            return self._bloc(data=data, conso=CASA_CONSO if conso is None else conso)
+
+    def test_aucun_equipement_ne_change_rien(self):
+        bloc = self._bloc_equip({})
+        self.assertNotIn('equipements', bloc)
+        for saison in pp.SAISONS:
+            attendu = round(pp.moyenne_journaliere_saison(CASA_CONSO, saison), 1)
+            self.assertEqual(bloc['consommation'][saison]['kwh_jour'], attendu)
+
+    def test_piscine_avec_puissance_reelle_redistribue_sans_changer_le_niveau(self):
+        bloc = self._bloc_equip({'piscine': True, 'piscine_pompe_kw': 1.5})
+        self.assertEqual(bloc['equipements']['piscine'], {
+            'kw': 1.5,
+            'heures': list(range(10, 18)),
+            'saisons': ['ete'],
+            'mode': 'redistribution',
+            'source': 'memo_2026-08-21_etage2:piscine_bloc_10_18h',
+        })
+        # Redistribution PURE : le niveau kwh_jour reste EXACTEMENT celui des
+        # factures — la piscine ne fait que déplacer la forme, jamais ajouter.
+        for saison in pp.SAISONS:
+            attendu = round(pp.moyenne_journaliere_saison(CASA_CONSO, saison), 1)
+            self.assertEqual(bloc['consommation'][saison]['kwh_jour'], attendu,
+                             msg=saison)
+
+    def test_piscine_sans_puissance_ne_produit_aucune_couche(self):
+        # Bool vrai mais AUCUNE grandeur réelle saisie ⇒ omission (jamais un
+        # défaut de puissance inventé).
+        bloc = self._bloc_equip({'piscine': True, 'piscine_pompe_kw': None})
+        self.assertNotIn('equipements', bloc)
+
+    def test_clim_kw_derive_du_nombre_de_pieces(self):
+        bloc = self._bloc_equip({'clim': True, 'clim_pieces': 2})
+        self.assertEqual(bloc['equipements']['clim'], {
+            'kw': 2.8,  # 2 pièces × 1,4 kWh/h (mémo, 12000 BTU non-inverter)
+            'heures': list(range(13, 21)),
+            'saisons': ['ete'],
+            'mode': 'redistribution',
+            'source': 'memo_2026-08-21_etage2:clim_12000btu_1p4kwh_h',
+        })
+
+    def test_ve_ajoute_au_niveau_toutes_saisons(self):
+        # 140 km/sem × 19,8 kWh/100 km ADEME ÷ 7 = 3,96 kWh/jour — la SEULE
+        # couche qui change kwh_jour (charge future, absente des factures).
+        bloc = self._bloc_equip(
+            {'voiture_electrique': True, 've_km_semaine': 140})
+        self.assertEqual(bloc['equipements']['ve'], {
+            'kwh_jour': 3.96,
+            'heures': [21, 22, 23, 0, 1, 2, 3, 4, 5],
+            'saisons': None,
+            'mode': 'addition',
+            'source': 'memo_2026-08-21_etage2:ve_ademe_19_8kwh_100km',
+        })
+        for saison in pp.SAISONS:
+            attendu = round(
+                pp.moyenne_journaliere_saison(CASA_CONSO, saison) + 3.96, 1)
+            self.assertEqual(bloc['consommation'][saison]['kwh_jour'], attendu,
+                             msg=saison)
+
+    def test_ve_sans_km_saisi_ne_produit_aucune_couche(self):
+        # « PAS de défaut km, saisie obligatoire » (mémo) — bool seul n'ajoute
+        # rien tant que le km/semaine réel n'est pas connu.
+        bloc = self._bloc_equip(
+            {'voiture_electrique': True, 've_km_semaine': None})
+        self.assertNotIn('equipements', bloc)
+        for saison in pp.SAISONS:
+            attendu = round(pp.moyenne_journaliere_saison(CASA_CONSO, saison), 1)
+            self.assertEqual(bloc['consommation'][saison]['kwh_jour'], attendu)
+
+    def test_chauffe_eau_ne_produit_jamais_de_couche(self):
+        # Aucune fenêtre/puissance sourcée pour le chauffe-eau (mémo : kWh/
+        # personne/an sans champ « nombre de personnes ») — omission voulue,
+        # même quand le booléen est vrai.
+        bloc = self._bloc_equip({'chauffe_eau_electrique': True})
+        self.assertNotIn('equipements', bloc)
+
+    def test_plusieurs_couches_actives_coexistent(self):
+        bloc = self._bloc_equip({
+            'piscine': True, 'piscine_pompe_kw': 1.0,
+            'clim': True, 'clim_pieces': 1,
+            'voiture_electrique': True, 've_km_semaine': 70,
+            'chauffe_eau_electrique': True,
+        })
+        self.assertEqual(set(bloc['equipements']), {'piscine', 'clim', 've'})
+
+    def test_equipements_absent_sans_courbe_de_conso_a_ajuster(self):
+        # Piscine renseignée mais AUCUNE facture ⇒ pas de bloc consommation
+        # ⇒ rien à composer : la clé equipements reste absente.
+        bloc = self._bloc_equip(
+            {'piscine': True, 'piscine_pompe_kw': 1.5}, conso=[])
+        self.assertNotIn('consommation', bloc)
+        self.assertNotIn('equipements', bloc)

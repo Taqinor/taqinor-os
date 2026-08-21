@@ -33,6 +33,9 @@ import ventesApi from '../../api/ventesApi'
 import aoApi from '../../api/aoApi'
 import { originFrom } from '../../api/origin'
 import { toastInfo } from '../../lib/toast'
+// L2 — confirmation maison (APX17 : jamais une popup système) avant une écriture qui
+// diverge de la cible vendue du devis (voir enregistrerConception ci-dessous).
+import { useConfirmDialog } from '../../ui/confirm'
 import '../../styles/roofbuilder.css'
 
 // ── Helpers de livraison (portés de apps/web/src/lib/devisDesign.ts +
@@ -226,8 +229,17 @@ function httpMessage(status, responseData) {
     if (Array.isArray(errors) && errors.length > 0) return errors[0]
     return 'Composition invalide — vérifiez le catalogue produits puis réessayez.'
   }
-  if (status === 400)
+  // L2 — sync-layout renvoie désormais un 400 explicite quand la composition posée est
+  // incompatible avec l'onduleur (même patron que le 422 ci-dessus) : le message SERVEUR
+  // s'affiche TEL QUEL, jamais reformulé — sans `detail`, on garde le message générique
+  // historique (création de devis, tracé invalide) pour ne rien changer aux autres 400.
+  if (status === 400) {
+    const detail = responseData?.detail
+    if (detail) return detail
+    const errors = responseData?.errors
+    if (Array.isArray(errors) && errors.length > 0) return errors[0]
     return "Le devis n'a pas pu être créé : données du tracé invalides. Vérifiez le toit puis réessayez."
+  }
   if (status === 403) return "Accès refusé pour ce lead. Contactez un administrateur."
   if (status === 404) return "Lead introuvable côté ERP. Vérifiez le lien puis réessayez."
   if (status >= 500) return `Le serveur a renvoyé une erreur (${status}). Réessayez dans un instant.`
@@ -238,6 +250,9 @@ export default function ToitureDesign({ mode = 'lead' }) {
   const { id: idParam } = useParams()
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
+  // L2 — confirmation maison (APX17) avant d'écrire un calepinage qui diverge de la
+  // cible vendue du devis — voir enregistrerConception.
+  const { confirm } = useConfirmDialog()
   // PV20 — deux modes sur le MÊME écran. `lead` (défaut) est le flux d'origine,
   // strictement inchangé ; `devis` démarre SUR un devis existant.
   // Mode `ao` — TROISIÈME mode, MÊME écran et MÊME builder, pour une AFFAIRE
@@ -641,11 +656,30 @@ export default function ToitureDesign({ mode = 'lead' }) {
       setGenError('Outil non prêt — ajustez le calepinage puis réessayez.')
       return
     }
+    const layout = apiTool.serializeLayout()
+
+    // L2 — incident PROUVÉ (DEV-202608-0016, onduleur+batterie sans ligne panneau
+    // rempli au boot par erreur) : avant TOUTE écriture, on compare le calepinage
+    // RÉELLEMENT posé à la cible vendue du devis — y COMPRIS une cible de zéro. Un
+    // écart (dans un sens ou l'autre) prévient explicitement AVANT de réécrire les
+    // lignes/câbles/structures du devis ; annuler = AUCUN appel réseau. Cible/posé
+    // égaux (le cas courant) → aucun dialogue, comportement inchangé.
+    const panneauxPoses = Number(layout?.result?.panels) || 0
+    const panneauxDevis = Number(contexte?.cible?.panneaux) || 0
+    if (panneauxPoses !== panneauxDevis) {
+      const ok = await confirm({
+        title: 'Le calepinage diverge du devis',
+        description:
+          `La conception pose ${panneauxPoses} panneaux ; le devis en porte ${panneauxDevis}. `
+          + `Enregistrer mettra le devis à jour (lignes, câbles, structures). Continuer ?`,
+        confirmLabel: 'Enregistrer quand même',
+      })
+      if (!ok) return
+    }
+
     setSending(true)
     setGenStatus('Enregistrement de la conception…')
     try {
-      const layout = apiTool.serializeLayout()
-
       // 1) Resynchronisation chirurgicale des lignes sur le calepinage.
       let resultat
       try {

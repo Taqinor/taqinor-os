@@ -1,6 +1,6 @@
 import { createElement, useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import {
-  User, TrendingUp, Zap, Droplet, Home, ClipboardList, Globe, FileText, ClipboardCheck,
+  User, TrendingUp, Zap, Droplet, Home, ClipboardList, Globe, FileText, ClipboardCheck, Phone,
 } from 'lucide-react'
 import { ErrorBoundary } from '../../../ui'
 import { useKeyboardAwareScroll } from '../../../hooks/useKeyboardAwareScroll'
@@ -12,7 +12,7 @@ import { chipsAComplete, sectionsPointees } from './missingFields'
 import { jumpToField } from './jumpToField'
 import SectionContact from './sections/SectionContact'
 import SectionPipeline from './sections/SectionPipeline'
-import SectionEnergie, { SectionPompage } from './sections/SectionEnergie'
+import SectionEnergie, { SectionPompage, SectionEquipements } from './sections/SectionEnergie'
 import SectionSite from './sections/SectionSite'
 import SectionVisite from './sections/SectionVisite'
 import SectionDivers, { SectionOrigine, SectionWebQuestionnaire } from './sections/SectionDivers'
@@ -94,6 +94,12 @@ export default function SectionsPane({
     { id: 'contact', label: 'Contact', Icon: User, Comp: SectionContact },
     { id: 'pipeline', label: 'Suivi commercial', Icon: TrendingUp, Comp: SectionPipeline },
     { id: 'energie', label: 'Profil énergétique', Icon: Zap, Comp: SectionEnergie },
+    // L4 (+ extension fondateur) — questionnaire d'appel : occupation en
+    // journée + équipements (piscine/VE/clim/chauffe-eau), regroupés avec un
+    // renvoi vers les autres questions du même appel (raccordement, factures)
+    // déjà portées ailleurs. Compose la courbe de consommation journalière
+    // montrée au client.
+    { id: 'equipements', label: "Questionnaire d'appel", Icon: Phone, Comp: SectionEquipements },
     ...(agricole ? [{ id: 'pompage', label: 'Pompage', Icon: Droplet, Comp: SectionPompage }] : []),
     { id: 'toiture', label: 'Toiture & site', Icon: Home, Comp: SectionSite },
     { id: 'visite', label: 'Visite technique', Icon: ClipboardList, Comp: SectionVisite },

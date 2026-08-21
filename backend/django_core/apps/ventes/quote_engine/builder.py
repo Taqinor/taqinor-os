@@ -1275,6 +1275,11 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # onduleur de chaque option ; aucune ligne ⇒ aucune provision.
         inverter_cost_sans=_cout_onduleur(sans_items, _blob),
         inverter_cost_avec=_cout_onduleur(avec_items, _blob),
+        # CJ2a (ORDRE FONDATEUR) — le bloc du moteur HORAIRE, quand le devis en
+        # porte un : les économies deviennent l'intégration réelle production ×
+        # consommation, mois par mois, au lieu du forfait 60 %. Absent ⇒
+        # ``calculate_savings_roi`` garde EXACTEMENT son comportement d'avant.
+        etude_horaire=etude.get("etude_horaire"),
     )
     # M2 — puissance inconnue ⇒ production et économies le sont aussi (elles en
     # dérivent toutes). ``calculate_savings_roi`` rend alors des zéros ; le
@@ -1584,6 +1589,53 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                 factures_mensuelles = [round(v) for v in _candidats]
         except (TypeError, ValueError):
             factures_mensuelles = None
+
+    # ── CJ2b (ORDRE FONDATEUR, 21/08/2026) — LE BLOC HORAIRE EST UN ANCRAGE ───
+    # « bring [the annual saving chart per month] back to the quote pdf because
+    # it disappeared from there ».
+    #
+    # POURQUOI IL AVAIT DISPARU. Z2/M1 ont eu raison de supprimer le proxy :
+    # sans les douze factures du lead, la série « avant » était fabriquée à
+    # partir de l'économie SUPPOSÉE, donc circulaire. Résultat : sur l'immense
+    # majorité des devis — où le client donne UNE facture d'hiver, pas douze —
+    # ``factures_reelles`` restait faux, ``masquer_synthese`` vrai, et TOUTE la
+    # couche économique du document (le −N %, l'avant/après, la couverture, le
+    # graphe mensuel) disparaissait avec le proxy. La règle est juste ; il
+    # manquait la troisième source, ni douze factures ni invention.
+    #
+    # CETTE SOURCE EXISTE DEPUIS CJ2a. Le bloc ``etude_params['etude_horaire']``
+    # part du montant RÉELLEMENT payé par le client, l'inverse au barème pour
+    # obtenir des kWh, intègre heure par heure la production PVGIS de SA ville
+    # contre SA courbe de consommation, puis revalorise chaque mois au barème.
+    # Les douze ``facture_avant_mad`` qu'il porte sont donc une DÉRIVATION
+    # TRAÇABLE d'une saisie réelle — exactement le second cas autorisé par la
+    # règle « zéro chiffre inventé ». Le proxy tué par M1 partait de l'économie
+    # supposée et y revenait ; celui-ci part de la facture payée.
+    #
+    # Z2 N'EST PAS AFFAIBLIE : un devis SANS rien (ni facture, ni conso saisie,
+    # ni localisation PVGIS) n'a pas de bloc horaire du tout — ``etude_horaire``
+    # vaut None, cette branche ne tire pas, et le document omet sa couche
+    # économique comme avant. On n'élargit l'ancrage qu'aux devis qui portent
+    # une VRAIE facture.
+    #
+    # La garde de fraîcheur kWc (``pricing._HORAIRE_TOLERANCE_KWC``, 2 %) est
+    # déjà appliquée en amont par ``_lire_etude_horaire`` : une série qui décrit
+    # une AUTRE puissance ne remonte jamais jusqu'ici.
+    factures_source = "lead_12_mois" if factures_mensuelles is not None else None
+    if factures_mensuelles is None and roi.get("factures_avant_monthly"):
+        factures_mensuelles = list(roi["factures_avant_monthly"])
+        factures_source = "etude_horaire"
+
+    # ÉTIQUETAGE (motif Z2). La série est ancrée dans une facture réelle, mais
+    # sa VARIATION d'un mois à l'autre n'est mesurée que lorsque le client a
+    # donné douze points (douze factures) ou douze relevés kWh. Avec une seule
+    # facture d'hiver — le cas courant — la consommation est répétée sur les
+    # douze mois : le niveau est réel, la variation est une hypothèse. Le
+    # document le DIT au lieu de laisser croire à douze mesures.
+    _source_conso = roi.get("source_consommation")
+    factures_mensuelles_estimation = bool(
+        factures_source == "etude_horaire"
+        and _source_conso in ("facture_hiver", "facture_hiver_ete"))
 
     # ── Q5 (décision fondateur du 20/08/2026) — DÉLAIS COMMERCIAUX ───────────
     # « visite sous 48-72 h » et « installation 7-14 jours » étaient codés en
@@ -1931,7 +1983,20 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # réelle du client. Le drapeau d'ancrage de Z2 se lit donc
         # directement dessus (il testait la variable intermédiaire que
         # M1 a supprimée avec le repli qu'elle servait à distinguer).
+        # CJ2b — deux sources RÉELLES portent désormais ce drapeau : les douze
+        # factures du lead, et la série reconstituée par le moteur horaire
+        # depuis la facture réellement payée. ``factures_source`` dit LAQUELLE
+        # (aucun appelant n'a besoin de deviner) ; le proxy circulaire tué par
+        # M1 n'est revenu sous aucune des deux formes.
         "factures_reelles": factures_mensuelles is not None,
+        "factures_source": factures_source,
+        # Z2 — la VARIATION mensuelle est-elle mesurée, ou une facture réelle
+        # répétée sur douze mois ? Vrai ⇒ le document écrit « estimation ».
+        "factures_mensuelles_estimation": factures_mensuelles_estimation,
+        # CJ2b — provenance de la consommation du moteur horaire, telle quelle
+        # ('facture_hiver', 'factures_mensuelles_reelles'…). None hors modèle
+        # horaire. Sert l'étiquetage, jamais un calcul.
+        "source_consommation": _source_conso,
         "sans_items": sans_items,
         "avec_items": avec_items,
         "sans_bullets": _bullets(sans_items),

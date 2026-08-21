@@ -419,6 +419,16 @@ class Lead(SoftDeleteModel):
     # Charges futures prévues (clés autorisées de `futures_charges`).
     FUTURES_CHARGES_KEYS = ('clim', 've', 'pompe')
 
+    # L4 (21/08/2026, extension fondateur) — présence au foyer en JOURNÉE,
+    # posée au téléphone. Distincte d'``Ownership`` (statut juridique) et
+    # d'``occupation_pct`` (taux d'occupation hôtelier) : aucun des deux ne
+    # dit qui est là le jour (voir apps/ventes/courbes_journalieres._occupation
+    # docstring). Pilote directement la silhouette de consommation servie.
+    class OccupationJour(models.TextChoices):
+        PRESENT = 'present', 'Présent en journée'
+        ABSENT = 'absent', 'Absent en journée'
+        PARTIEL = 'partiel', 'Présence partielle (télétravail/mi-temps)'
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -528,6 +538,68 @@ class Lead(SoftDeleteModel):
         max_length=12, choices=Raccordement.choices, blank=True, null=True)
     # Installation existante à régulariser ? (Loi 82-21)
     regularisation_8221 = models.BooleanField(default=False)
+
+    # ── L4 (21/08/2026) — Équipements électriques : script d'appel commercial ──
+    # Réponses posées AU TÉLÉPHONE, distinctes de `futures_charges` (case à
+    # cocher SANS paramètre, posée par le QUESTIONNAIRE WEB — QW2/QK1). Ici :
+    # trois états (Oui/Non/Inconnu — `null=True` = pas encore posée, JAMAIS
+    # confondu avec « Non ») + une grandeur réelle par équipement quand elle
+    # existe. Ces champs composent les couches de `courbes_journalieres`
+    # (apps/ventes/courbes_journalieres.py, fonction ``_equipements``) — voir
+    # ce module pour la provenance SOURCÉE de chaque défaut/conversion utilisé
+    # (mémo estimation-consommation du 21/08/2026, étage 2). Le help_text de
+    # chaque champ EST le script d'appel (RÈGLE : « la question exacte à
+    # poser » vit ici + dans l'UI CRM, jamais réinventée ailleurs).
+    occupation_jour = models.CharField(
+        max_length=10, choices=OccupationJour.choices, null=True, blank=True,
+        verbose_name='Présence en journée',
+        help_text="Question à l'appel : « Y a-t-il quelqu'un à la maison "
+                  'en journée ? » (Présent/Absent/Présence partielle — '
+                  'vide = pas encore posée). Renseigné : PILOTE la '
+                  'silhouette de consommation servie '
+                  '(apps/ventes/courbes_journalieres.py _occupation) — '
+                  'sinon repli sur le défaut fondateur actuel, inchangé.')
+    equip_piscine = models.BooleanField(
+        null=True, blank=True, verbose_name='Piscine',
+        help_text="Question à l'appel : « Avez-vous une piscine ? » "
+                  '(Oui/Non — laisser vide tant que la question n\'a pas '
+                  'été posée : vide ≠ Non).')
+    equip_piscine_pompe_kw = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        verbose_name='Puissance pompe piscine (kW)',
+        help_text='Puissance de la pompe de filtration (kW, plaque '
+                  'signalétique du moteur). Aucune valeur par défaut : '
+                  "le mémo ne cite aucune puissance fiable pour ce parc — "
+                  'à relever sur place ou à demander au client, sinon '
+                  'laisser vide (aucune couche piscine sans cette valeur).')
+    equip_voiture_electrique = models.BooleanField(
+        null=True, blank=True, verbose_name='Véhicule électrique',
+        help_text="Question à l'appel : « Avez-vous ou prévoyez-vous un "
+                  'véhicule électrique ? » (Oui/Non — vide = pas encore '
+                  'posée).')
+    equip_ve_km_semaine = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='VE — km parcourus/semaine',
+        help_text="Question à l'appel : « Combien de km parcourez-vous par "
+                  'semaine avec ce véhicule ? » SAISIE OBLIGATOIRE pour '
+                  'chiffrer la recharge (aucun défaut : mémo étage 2 — '
+                  'conversion ADEME 19,8 kWh/100 km, sans hypothèse de '
+                  'kilométrage).')
+    equip_clim = models.BooleanField(
+        null=True, blank=True, verbose_name='Climatisation',
+        help_text="Question à l'appel : « Avez-vous la climatisation ? » "
+                  '(Oui/Non — vide = pas encore posée).')
+    equip_clim_pieces = models.PositiveSmallIntegerField(
+        null=True, blank=True, verbose_name='Clim — nombre de pièces/unités',
+        help_text="Question à l'appel : « Combien de pièces/unités "
+                  'climatisées ? » (chaque unité ≈ 1,4 kWh/h pour un split '
+                  '12000 BTU non-inverter — mémo étage 2).')
+    equip_chauffe_eau_electrique = models.BooleanField(
+        null=True, blank=True, verbose_name='Chauffe-eau électrique',
+        help_text="Question à l'appel : « Votre chauffe-eau est-il "
+                  'électrique ? » Champ INFORMATIF uniquement : le mémo ne '
+                  "donne qu'un ordre de grandeur kWh/personne/an (aucun "
+                  "champ « nombre de personnes » collecté) — il n'ajuste "
+                  "AUCUNE courbe (omission plutôt qu'un défaut inventé).")
 
     # ── Pompage solaire (leads Agricole) — mêmes entrées que le générateur ──
     pompe_cv = models.DecimalField(
@@ -698,10 +770,10 @@ class Lead(SoftDeleteModel):
         verbose_name='Référence client (générée navigateur)')
     # WREF2-PONT (21/08/2026) — le code PROVISOIRE que le site a AFFICHÉ au
     # client (« TQ-XXXX », généré navigateur) quand la référence serveur
-    # NOM-N a pris ``client_ref``. Tant que l'écran de succès n'affiche pas
-    # la référence serveur (transfert fire-and-forget, option B en attente),
-    # c'est CE code que le client dicte sur WhatsApp : il est indexé par les
-    # trois recherches, au même titre que ``client_ref``.
+    # NOM-N a pris ``client_ref``. L'écran de succès relève la référence
+    # serveur après coup (option B — ``public_lead_ref_views``) mais peut
+    # échouer silencieusement : c'est alors CE code que le client dicte sur
+    # WhatsApp. Indexé par les trois recherches, comme ``client_ref``.
     client_ref_provisoire = models.CharField(
         max_length=24, blank=True, null=True,
         verbose_name='Référence provisoire affichée par le site')

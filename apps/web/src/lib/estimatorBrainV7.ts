@@ -81,6 +81,15 @@ export interface AxisLocks {
   layout?: LayoutAxis;
   margin?: MarginAxis;
   need?: number;
+  /**
+   * L2 — ADDITIF, absent/false = comportement historique INCHANGÉ (repli « remplir ce
+   * qui tient » quand `need` est absent — l'estimateur/lead public). Quand vrai (posé par
+   * l'appelant DEVIS quand la cible vendue vaut zéro, `need` alors absent), le besoin
+   * effectif nul est traité comme une CIBLE IMPOSÉE plutôt qu'une absence de contrainte :
+   * `evalOne` pose 0 panneau au lieu de retomber sur `fitCount`. Un devis sans ligne
+   * panneau n'invente jamais un calepinage.
+   */
+  needImposedZero?: boolean;
 }
 
 /** Une configuration évaluée (un point de l'espace d'axes), production PVGIS/estimé. */
@@ -159,6 +168,9 @@ interface SolveCtx {
   latitudeDeg: number;
   target: number;
   effectiveNeed: number;
+  /** L2 — voir `AxisLocks.needImposedZero` : besoin nul IMPOSÉ (jamais un repli
+   *  « remplir ce qui tient »). Défaut false = comportement historique inchangé. */
+  needImposedZero: boolean;
   obstructions: LngLat[][];
   defaultSetbackM: number;
   /** W109 — débord panneaux autorisé au-delà de la rive (m). 0 → calepinage inchangé. */
@@ -222,7 +234,13 @@ function evalOne(
   // W48 — borne défensive : un pavage ne rend JAMAIS un compte négatif/non entier/NaN.
   const fitCount = Number.isFinite(grid.count) && grid.count > 0 ? Math.floor(grid.count) : 0;
   // Posé = min(besoin, ce qui tient) ≤ besoin, plafond TOUJOURS respecté, jamais < 0.
-  const placedCount = ctx.effectiveNeed > 0 ? Math.max(0, Math.min(ctx.effectiveNeed, fitCount)) : fitCount;
+  // L2 — `needImposedZero` : besoin nul IMPOSÉ (devis sans ligne panneau) ≠ absence de
+  // besoin (repli historique `fitCount`, mode lead/estimateur) — on pose 0.
+  const placedCount = ctx.effectiveNeed > 0
+    ? Math.max(0, Math.min(ctx.effectiveNeed, fitCount))
+    : ctx.needImposedZero
+      ? 0
+      : fitCount;
   const kwc = (placedCount * PANEL2_WATT) / 1000;
   const aspect = aspectForAzimuth(family, pack.azimuthDeg);
   let annualKwh: number;
@@ -396,6 +414,7 @@ export function solveLive(
     ring,
     latitudeDeg,
     target,
+    needImposedZero: locks.needImposedZero === true, // L2 — voir AxisLocks.needImposedZero
     obstructions,
     defaultSetbackM: PERIMETER_SETBACK_M,
     overhangM: Math.max(0, options.overhangM ?? 0),
@@ -445,7 +464,12 @@ export function solveLive(
   // « gagnant » n'est alors qu'un repli de départage (moins de matériel), pas un vrai
   // choix : on le signale honnêtement pour que l'UI affiche « configuration non viable »
   // au lieu d'un faux 0-panneau gagnant.
-  const noViableConfig = winner.fitCount <= 0 || winner.annualKwh <= 0;
+  // L2 — `winner.annualKwh <= 0` ne prouve « non viable » QUE hors `needImposedZero` : en
+  // devis-cible-zéro, annualKwh vaut 0 PARCE QUE `placedCount` est délibérément posé à 0
+  // (le toit tient très bien des panneaux, le devis n'en vend juste aucun) — sans cette
+  // garde le message « toit trop petit » serait FAUX. `fitCount <= 0` reste un fait
+  // géométrique réel, jamais suppressible.
+  const noViableConfig = winner.fitCount <= 0 || (!ctx.needImposedZero && winner.annualKwh <= 0);
 
   return {
     target,

@@ -3,12 +3,14 @@
 
 Ce que ces tests ARMENT, dans l'ordre où ça compte :
 
-1. **La sévérité est celle du NOYAU, pas une règle maison.** Un courant
-   d'entrée MPPT dépassé est une ALERTE de ``core.electrique.chaines``
-   (``_verdicts_courant`` écrit dans ``alertes``, jamais dans ``bloquants``) :
-   le verdict est donc ``reserve``, PAS ``incompatible``. Un test le prouve
-   depuis le noyau lui-même, pour qu'un futur durcissement de ce module devienne
-   rouge au lieu de mentir dans l'autre sens.
+1. **La sévérité est celle du NOYAU, pas une règle maison.** Les DEUX bornes de
+   courant d'entrée MPPT de ``core.electrique.chaines`` n'ont pas la même
+   gravité, et c'est la FICHE qui tranche (DEV-202608-0016) : l'**Imp** cumulé
+   au-dessus du courant admissible fait ÉCRÊTER (alerte → ``reserve``), l'**Isc**
+   cumulé au-dessus de la borne de court-circuit PUBLIÉE sort de la
+   spécification constructeur (bloquant → ``incompatible``). Des tests le
+   prouvent depuis le noyau lui-même, sur le MÊME onduleur réel, pour qu'une
+   dérive de ce module devienne rouge au lieu de mentir dans un sens ou l'autre.
 2. **Une fiche incomplète rend « inconnu », jamais un faux OK.**
 3. **La forme rendue est celle du contrat COMMITTÉ**
    ``apps/stock/contract_samples/produit_compatibilites.json`` — comparée AU
@@ -170,24 +172,50 @@ def _batterie(pk=7, nom='Batterie Dyness 10 kWh', v_nominal='51.2'):
 # 1. La SÉVÉRITÉ du noyau — le socle de tout le reste
 # ═══════════════════════════════════════════════════════════════════════════
 class SeveriteDuNoyauTest(SimpleTestCase):
-    """Un courant d'entrée dépassé est une ALERTE, jamais un BLOQUANT.
+    """Les DEUX bornes de courant, chacune à sa juste sévérité (DEV-202608-0016).
 
-    C'est le noyau qui le décide (``chaines._verdicts_courant`` écrit dans
-    ``alertes``) ; ce test l'interroge DIRECTEMENT pour que la taxonomie de ce
-    lot ne puisse pas dériver de la sienne.
+    C'est le noyau qui décide (``chaines._verdicts_courant``) ; ces tests
+    l'interrogent DIRECTEMENT pour que la taxonomie de ce lot ne puisse pas
+    dériver de la sienne. La ligne de partage est celle de la FICHE :
+
+    * **Imp** au-dessus du courant d'entrée admissible = écrêtage. L'onduleur
+      ne casse pas, il produit moins : ALERTE.
+    * **Isc** au-dessus de la borne de court-circuit PUBLIÉE = la fiche
+      constructeur n'autorise pas ce montage : BLOQUANT.
+
+    Les deux cas ci-dessous tournent sur le MÊME onduleur réel (Deye 10 kW,
+    26 A par entrée, 39 A d'Isc admissible) : seul le nombre de chaînes change.
     """
 
-    def test_courant_depasse_est_une_alerte_pas_un_bloquant(self):
+    def test_ecretage_sur_l_imp_est_une_alerte(self):
+        """36 × 710 Wc = 2 chaînes par entrée : Imp 35,2 A > 26 A (écrêtage),
+        mais Isc 37,2 A reste SOUS les 39 A publiés. Rien n'est bloqué."""
         module = sd.specs_module_pour_produit(_panneau_710())
-        fenetre = sd.fenetre_onduleur_pour_produit(_onduleur_5k_mono())
-        verdicts = sd.verdicts_chaines(8, module=module, inverter=fenetre)
+        fenetre = sd.fenetre_onduleur_pour_produit(
+            _onduleur(13, 'Onduleur hybride Deye 10kW Triphasé'))
+        verdicts = sd.verdicts_chaines(36, module=module, inverter=fenetre)
         self.assertTrue(verdicts['alertes_courant'],
                         'le noyau doit prononcer un verdict de courant')
         joint = ' '.join(verdicts['alertes_courant'])
         self.assertIn('MPPT', joint)
-        # LA garantie : rien de tout cela n'est bloquant.
-        for alerte in verdicts['alertes_courant']:
-            self.assertNotIn(alerte, verdicts['bloquants'])
+        self.assertIn('ÉCRÊTAGE', joint)
+        self.assertEqual(verdicts['bloquants'], [])
+
+    def test_isc_hors_borne_publiee_est_un_bloquant(self):
+        """30 × 710 Wc = 3 chaînes par entrée : Isc 55,8 A > 39 A publiés —
+        hors spécification matérielle, donc BLOQUANT."""
+        module = sd.specs_module_pour_produit(_panneau_710())
+        fenetre = sd.fenetre_onduleur_pour_produit(
+            _onduleur(13, 'Onduleur hybride Deye 10kW Triphasé'))
+        verdicts = sd.verdicts_chaines(30, module=module, inverter=fenetre)
+        self.assertTrue(verdicts['bloquants'])
+        joint = ' '.join(verdicts['bloquants'])
+        self.assertIn('55,8 A', joint)
+        self.assertIn('39,0 A', joint)
+        # Le verdict de courant reste LISIBLE dans la liste dédiée : le message
+        # le plus grave ne doit pas être le seul à disparaître des warnings.
+        self.assertTrue(any('Isc cumulé' in c
+                            for c in verdicts['alertes_courant']))
 
     def test_string_design_publie_desormais_les_verdicts_de_courant(self):
         module = sd.specs_module_pour_produit(_panneau_710())
@@ -212,18 +240,26 @@ class SeveriteDuNoyauTest(SimpleTestCase):
 # 2. Les verdicts deux à deux
 # ═══════════════════════════════════════════════════════════════════════════
 class VerdictPanneauOnduleurTest(SimpleTestCase):
-    def test_courant_depasse_donne_reserve_avec_les_chiffres(self):
+    def test_isc_hors_borne_donne_incompatible_avec_les_chiffres(self):
+        """DEV-202608-0016 — LE couple du fondateur : 710 Wc sur Deye 5 kW.
+
+        UNE chaîne apporte 18,59 A d'Isc dans une entrée que la fiche donne
+        pour 17 A : aucun nombre de panneaux ne rend ce couple installable.
+        Ce n'est donc pas « sous réserve » (ça écrête, ça marche), c'est
+        INCOMPATIBLE — et c'est ce verdict que la resynchro 3D consulte
+        désormais avant d'écrire quoi que ce soit.
+        """
         verdict = cp.verdict_panneau_onduleur(
             _panneau_710(), _onduleur_5k_mono())
-        self.assertEqual(verdict['statut'], cp.STATUT_RESERVE)
+        self.assertEqual(verdict['statut'], cp.STATUT_INCOMPATIBLE)
         self.assertTrue(verdict['raisons'])
         joint = ' '.join(verdict['raisons'])
         # Les chiffres RÉELS des deux fiches, écrits à la française.
-        self.assertIn('17,6 A', joint)
-        self.assertIn('13,0 A', joint)
-        # Une configuration est quand même proposée (ça s'installe, ça écrête).
-        self.assertGreater(verdict['nb_panneaux'], 0)
-        self.assertIn('MPPT', verdict['detail'])
+        self.assertIn('18,6 A', joint)
+        self.assertIn('17,0 A', joint)
+        # Aucune configuration n'est proposée : il n'y en a pas.
+        self.assertIsNone(verdict['nb_panneaux'])
+        self.assertEqual(verdict['detail'], '')
 
     def test_couple_sain_donne_compatible_sans_raison(self):
         verdict = cp.verdict_panneau_onduleur(
@@ -506,9 +542,16 @@ class CompositionCoupleElectriqueTest(SimpleTestCase):
         self.assertNotIn('Onduleur hybride Deye 5kW Monophasé', designations)
         self.assertEqual(avertissements, [])
 
-    def test_couple_sous_reserve_est_annonce(self):
-        """Catalogue dont le SEUL hybride est le Deye 5 kW : le couple
-        s'installe mais écrête — la composition le compose ET le dit."""
+    def test_couple_hors_borne_est_annonce_sans_tuer_la_composition(self):
+        """Catalogue dont le SEUL hybride est le Deye 5 kW, et rien d'autre
+        au wattage : depuis DEV-202608-0016 le couple 710 Wc / 5 kW est
+        INCOMPATIBLE (Isc 18,6 A > 17 A publiés), pas « sous réserve ».
+
+        La règle « jamais une composition morte » tient toujours : les deux
+        lignes restent, et le motif porte les chiffres des DEUX fiches. C'est
+        ensuite le schéma unifilaire qui refusera de dessiner ce montage, et
+        la resynchro 3D qui refusera de l'écrire.
+        """
         avertissements = []
         lignes = sv.composition_residentielle(
             _catalogue(avec_hybride_tri=False), kwc=3.55, panel_watt=710,
@@ -519,8 +562,9 @@ class CompositionCoupleElectriqueTest(SimpleTestCase):
         self.assertIn('Panneau Canadien Solar 710W', designations)
         self.assertTrue(avertissements)
         joint = ' '.join(avertissements)
-        self.assertIn('17,6 A', joint)
-        self.assertIn('13,0 A', joint)
+        self.assertIn('INCOMPATIBLE', joint)
+        self.assertIn('18,6 A', joint)
+        self.assertIn('17,0 A', joint)
 
     def test_panneau_incompatible_declenche_un_repli_annonce(self):
         """Le 710 Wc dépasse à lui seul la tension maximale de cet onduleur

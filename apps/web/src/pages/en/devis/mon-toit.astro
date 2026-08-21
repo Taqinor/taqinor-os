@@ -4100,6 +4100,47 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     return whatsappLink(WHATSAPP_LEADS, text);
   }
 
+  // ——— WREF2-L3 (founder GO 21/08/2026, option B): fetching the real "NOM-N"
+  // server reference AFTER the fire-and-forget send ———
+  // The success screen shows the PROVISIONAL code immediately (unchanged
+  // behaviour, buildClientRef()/getOrCreateClientRef() above): sending the
+  // lead never waits for the CRM webhook's response. This lookup polls the
+  // same-origin proxy /api/lead-ref-lookup (key = the idempotencyKey already
+  // sent in the body) a few times, spaced out; as soon as it answers, the
+  // displayed code AND the WhatsApp prefill switch to the real reference.
+  // Silent on failure in every case (backend unreachable, not yet assigned,
+  // attempts exhausted): the provisional code stays displayed — an already
+  // tolerated degradation, the record stays findable in the CRM via
+  // `client_ref_provisoire`. Total budget < 10 s even if every attempt times
+  // out (1+1.5 + 1.5+1.5 + 2+1.5 = 9 s worst case).
+  const LEAD_REF_LOOKUP_WAITS_MS = [1000, 1500, 2000];
+  const LEAD_REF_LOOKUP_TIMEOUT_MS = 1500;
+  function pollServerClientRef(idempotencyKey: string) {
+    if (!idempotencyKey) return;
+    void (async () => {
+      for (const waitMs of LEAD_REF_LOOKUP_WAITS_MS) {
+        await new Promise((resolve) => setTimeout(resolve, waitMs));
+        try {
+          const res = await fetch(`/api/lead-ref-lookup?key=${encodeURIComponent(idempotencyKey)}`, {
+            signal: AbortSignal.timeout(LEAD_REF_LOOKUP_TIMEOUT_MS),
+          });
+          const data = (await res.json().catch(() => null)) as { ok?: boolean; client_ref?: string } | null;
+          if (data?.ok && data.client_ref) {
+            clientRef = data.client_ref; // getOrCreateClientRef() now returns the real reference.
+            const refEl = $('mt-client-ref');
+            if (refEl) refEl.textContent = clientRef;
+            const waLink = $('mt-success-wa') as HTMLAnchorElement | null;
+            if (waLink) waLink.href = buildWaUrl();
+            return;
+          }
+        } catch {
+          // silent — retry; the last exhausted attempt simply leaves the
+          // provisional code displayed (current behaviour).
+        }
+      }
+    })();
+  }
+
   // ——— submission -> /api/capture-lead (contract UNCHANGED) ———
   const form = $('mt-form') as HTMLFormElement | null;
   const errEl = $('mt-error');
@@ -4192,6 +4233,10 @@ const noscriptTelHref = `tel:${NAP.phone}`;
           if (refEl) refEl.textContent = getOrCreateClientRef();
           const waLink = $('mt-success-wa') as HTMLAnchorElement | null;
           if (waLink) waLink.href = waUrl;
+          // WREF2-L3 — best-effort fetch of the real server reference (see
+          // pollServerClientRef above): swaps the displayed code + WhatsApp
+          // link the moment it arrives, silent otherwise.
+          pollServerClientRef(getOrCreateDedupTokens().idempotencyKey);
           // WJ3/WJ51 — on mobile, offer WhatsApp right away when the contact
           // preference is "WhatsApp only" (the option checked by default).
           const wantsWa = ($('mt-contact-phone') as HTMLInputElement | null)?.checked !== true;

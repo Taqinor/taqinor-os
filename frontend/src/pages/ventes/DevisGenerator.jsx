@@ -75,6 +75,14 @@ import {
   deriveRoleOrderFromLines,
 } from '../../features/ventes/solar'
 import { formatNumber, formatMAD, formatDateTime } from '../../lib/format'
+// CJ2b — aperçu du moteur horaire résidentiel (PVGIS réel × consommation
+// réelle du client, mois par mois) : source UNIQUE des chiffres d'économie à
+// l'écran, à la place du miroir local `computeROI` dès que le serveur a
+// répondu (voir `roi` ci-dessous, conservé comme repli hors-ligne).
+import {
+  construireCorpsPreview, etiquetteSource, lignesAffichables,
+  useEtudeHorairePreview, verdictBatteriePourTaille,
+} from '../../features/ventes/etudeHorairePreview'
 
 // QX43 — 4 marchés réels : industriel et commercial sont désormais distincts.
 const MODE_OPTIONS = [
@@ -83,6 +91,10 @@ const MODE_OPTIONS = [
   { value: 'commercial', label: '🏪 Commercial' },
   { value: 'agricole', label: '🌾 Agricole (pompage)' },
 ]
+
+// CJ2b — libellés FR des 3 saisons de l'étude horaire (etude.saisons, clés
+// serveur inchangeables).
+const SAISON_LABELS = { hiver: 'Hiver', mi_saison: 'Mi-saison', ete: 'Été' }
 
 let _keyCounter = 0
 const newKey = () => ++_keyCounter
@@ -794,6 +806,78 @@ export default function DevisGenerator({
     })
   }, [dKwp, dMonthly, dDayUsage, dTotals, dLines, quoteLogic,
     consoAnnuelleReelle, distributeur, selectedLead])
+
+  // CJ2b — ORDRE FONDATEUR : « on ne voit ni l'économie réelle calculée, ni
+  // les données PVGIS — cette donnée devrait être comparée à la courbe de
+  // consommation ». Résidentiel UNIQUEMENT : appelle le moteur horaire
+  // serveur (intégration PVGIS réelle × consommation réelle, mois par mois)
+  // au lieu de ne montrer QUE le miroir local `roi` ci-dessus (conservé
+  // intact comme repli hors-ligne). `null` = rien à ancrer (aucune facture,
+  // aucun devis) : aucun appel réseau (règle d'honnêteté — on omet, on
+  // n'invente pas).
+  const etudeHoraireCorps = modeInstallation === 'residentiel'
+    ? construireCorpsPreview({
+        modeInstallation,
+        editId,
+        fHiver,
+        fEte,
+        eteDifferente: !!fEte && Number(fEte) > 0,
+        ville: selectedLead?.ville || '',
+        raccordement: selectedLead?.raccordement || '',
+        kwp,
+        batterieKwh: batteryKwhFromLines(lines),
+      })
+    : null
+  const {
+    donnees: etudeHoraireDonnees,
+    chargement: etudeHoraireChargement,
+    erreur: etudeHoraireErreur,
+  } = useEtudeHorairePreview(etudeHoraireCorps)
+  // Le serveur GAGNE dès qu'il a répondu (etude non nul) : `roi` reste le
+  // seul chiffre affiché tant que la réponse n'est pas là (ou a échoué).
+  const etudeHoraireAnnuel = etudeHoraireDonnees?.etude?.annuel || null
+  const etudeHoraireSourceServeur = !!etudeHoraireAnnuel
+  const etudeHoraireLignes = useMemo(
+    () => lignesAffichables(etudeHoraireDonnees?.dimensionnement),
+    [etudeHoraireDonnees])
+  const etudeHoraireSourceLabel = etudeHoraireDonnees?.consommation
+    ? etiquetteSource(etudeHoraireDonnees.consommation.source)
+    : null
+
+  // CJ2b — chiffres AFFICHÉS dans le bloc « Aperçu de la Simulation »
+  // (Production / Économies / ROI) : le serveur horaire gagne dès qu'il a
+  // répondu, sinon repli SUR `roi` tel quel (miroir local inchangé — c'est
+  // uniquement la SOURCE de ce qui est montré à l'écran qui bascule). Le
+  // payback affiché en mode serveur est une simple division coût réel des
+  // lignes / économie réelle serveur — jamais un chiffre inventé.
+  const apercuProductionKwh = etudeHoraireSourceServeur
+    ? etudeHoraireAnnuel.production_kwh : roi?.production_annuelle_kwh
+  const apercuEcoSans = etudeHoraireSourceServeur
+    ? etudeHoraireAnnuel.economie_sans_mad : roi?.eco_annuelle_sans
+  // CJ2b — ORDRE FONDATEUR (« l'omission honnête, jamais un zéro inventé ») :
+  // le moteur dit, POUR LA TAILLE CHIFFRÉE, si l'option batterie est
+  // électriquement livrable. Quand elle ne l'est pas, les cartes « Avec
+  // batterie » n'affichent AUCUN montant — elles affichent la raison. C'est le
+  // trou catalogue RÉEL exhumé par CJ2a (panneau 710 Wc + hybride 5 kW
+  // monophasé : Isc 18,6 A > 17,0 A) : sans cette garde, l'écran promettait au
+  // vendeur l'économie d'une installation qu'on ne peut pas livrer.
+  // `null` (le moteur ne dit rien sur cette taille) ⇒ comportement d'avant.
+  const verdictBatterieServeur = etudeHoraireSourceServeur
+    ? verdictBatteriePourTaille(etudeHoraireLignes, kwp)
+    : null
+  const batterieInvendableServeur = verdictBatterieServeur
+    ? !verdictBatterieServeur.vendable : false
+  const apercuEcoAvec = etudeHoraireSourceServeur
+    ? (batterieInvendableServeur ? null : etudeHoraireAnnuel.economie_avec_mad)
+    : roi?.eco_annuelle_avec
+  const apercuPaybackSans = etudeHoraireSourceServeur
+    ? (totals.totalSans > 0 && apercuEcoSans > 0
+        ? Math.round((totals.totalSans / apercuEcoSans) * 100) / 100 : null)
+    : roi?.payback_sans
+  const apercuPaybackAvec = etudeHoraireSourceServeur
+    ? (totals.totalAvec > 0 && apercuEcoAvec > 0
+        ? Math.round((totals.totalAvec / apercuEcoAvec) * 100) / 100 : null)
+    : roi?.payback_avec
 
   const chartData = useMemo(() => {
     if (!roi) return []
@@ -1757,6 +1841,31 @@ export default function DevisGenerator({
     setOnduleursIncomplets(metaOnduleursIncomplets)
     setLines(withKeys(generated))
   }
+
+  // CJ2b — bouton « Appliquer cette taille » d'une ligne du tableau de
+  // dimensionnement (moteur horaire serveur) : pose `nbPanneaux`/`panelW`
+  // depuis la ligne choisie puis relance EXACTEMENT le même chemin de
+  // composition que le bouton « Auto-remplir » (`handleAutoFill`) — jamais
+  // une seconde règle de composition. `setState` est asynchrone : on ne peut
+  // pas appeler `handleAutoFill()` dans la même passe (il lirait encore
+  // l'ancien `nbPanneaux`/`panelW` par fermeture) — un drapeau + un effet
+  // déclenchent l'auto-remplissage une fois les deux champs à jour.
+  const appliquerTaillePending = useRef(false)
+  const appliquerTailleDimensionnement = (ligne) => {
+    if (!ligne || !(ligne.panneaux > 0)) return
+    nbPanneauxTouched.current = true
+    setSizingInfo(null)
+    setKwcCible(ligne.kwc != null ? String(ligne.kwc) : '')
+    if (ligne.panel_watt) setPanelW(String(ligne.panel_watt))
+    setNbPanneaux(String(ligne.panneaux))
+    appliquerTaillePending.current = true
+  }
+  useEffect(() => {
+    if (!appliquerTaillePending.current) return
+    appliquerTaillePending.current = false
+    handleAutoFill()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ne réagit qu'au drapeau « Appliquer cette taille », pas à chaque frappe de nbPanneaux/panelW
+  }, [nbPanneaux, panelW])
 
   // ── Sauvegarde ──
   // Une ligne est enregistrée si elle a un produit et une quantité > 0 ;
@@ -3171,6 +3280,116 @@ export default function DevisGenerator({
             </Button>
           </GenCardHeader>
           <CardContent className={`gen-preview-body pt-4${previewCollapsed ? ' m-collapsed' : ''}`}>
+            {/* CJ2b — ORDRE FONDATEUR (20/08) : « on ne voit ni l'économie
+                réelle calculée, ni les données PVGIS — cette donnée devrait
+                être comparée à la courbe de consommation ». Résidentiel
+                uniquement, sous le bandeau de source (serveur vs estimation
+                locale, règle d'honnêteté #2/#4), le tableau de
+                dimensionnement (paliers candidats du moteur horaire, chacun
+                avec sa réalité batterie — règle #1) et le détail saisonnier
+                production × consommation. */}
+            {modeInstallation === 'residentiel' && etudeHoraireCorps && (
+              <div className="mb-4" data-testid="etude-horaire-block">
+                {etudeHoraireSourceServeur ? (
+                  <p className="mb-2 text-xs font-medium text-success" data-testid="etude-horaire-source">
+                    Chiffres du moteur horaire (serveur) — PVGIS réel × consommation réelle du client.
+                    {etudeHoraireSourceLabel?.estimation && (
+                      <> {' '}Détail mensuel : {etudeHoraireSourceLabel.libelle}.</>
+                    )}
+                  </p>
+                ) : (
+                  <p className="mb-2 text-xs text-muted-foreground" data-testid="etude-horaire-source">
+                    {etudeHoraireChargement
+                      ? 'Calcul du moteur horaire en cours…'
+                      : (etudeHoraireErreur
+                          || 'Estimation locale (hors ligne) — en attente du moteur horaire serveur.')}
+                  </p>
+                )}
+                {etudeHoraireDonnees?.avertissements?.length > 0 && (
+                  <ul className="mb-3 list-disc pl-5 text-xs text-warning" data-testid="etude-horaire-avertissements">
+                    {etudeHoraireDonnees.avertissements.map((a) => <li key={a}>{a}</li>)}
+                  </ul>
+                )}
+                {etudeHoraireLignes.length > 0 && (
+                  <div style={{ overflowX: 'auto' }}>
+                    <table className="w-full border-collapse text-xs" data-testid="etude-horaire-dimensionnement">
+                      <thead>
+                        <tr className="border-b border-border text-left text-muted-foreground">
+                          <th className="py-1 pr-3 font-medium">kWc</th>
+                          <th className="py-1 pr-3 font-medium">Onduleur (règle 80 %)</th>
+                          <th className="py-1 pr-3 font-medium">Autoconso.</th>
+                          <th className="py-1 pr-3 font-medium">Couverture</th>
+                          <th className="py-1 pr-3 font-medium">Éco. sans (MAD/an)</th>
+                          <th className="py-1 pr-3 font-medium">Éco. avec (MAD/an)</th>
+                          <th className="py-1 pr-3 font-medium">Payback</th>
+                          <th className="py-1" />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {etudeHoraireLignes.map((ligne) => {
+                          const estRecommandee = etudeHoraireDonnees?.dimensionnement
+                            ?.recommandation?.panneaux === ligne.panneaux
+                          return (
+                            <tr key={ligne.panneaux}
+                                className={`border-b border-border${estRecommandee ? ' bg-success/10' : ''}`}>
+                              <td className="py-1.5 pr-3">
+                                {formatNumber(ligne.kwc, { decimals: 2 })} kWc
+                                {estRecommandee && <span className="gen-rec-badge"> ★ Recommandé</span>}
+                              </td>
+                              <td className="py-1.5 pr-3">
+                                {ligne.onduleur} — {formatNumber(ligne.ratio_onduleur_kwc * 100, { decimals: 0 })} % du kWc
+                                {!ligne.regle_80_pct_respectee && (
+                                  <span className="text-warning"> (sous 80 %)</span>
+                                )}
+                              </td>
+                              <td className="py-1.5 pr-3">{formatNumber(ligne.taux_autoconso_sans * 100, { decimals: 0 })} %</td>
+                              <td className="py-1.5 pr-3">{formatNumber(ligne.couverture_sans * 100, { decimals: 0 })} %</td>
+                              <td className="py-1.5 pr-3">{fmtNum(Math.round(ligne.economie_sans_mad))}</td>
+                              <td className="py-1.5 pr-3">
+                                {ligne.batterieVendable
+                                  ? fmtNum(Math.round(ligne.economie_avec_mad))
+                                  : <span className="text-muted-foreground">{ligne.raisonBatterie}</span>}
+                              </td>
+                              <td className="py-1.5 pr-3">{ligne.payback_sans_annees != null ? `${ligne.payback_sans_annees} ans` : 'N/A'}</td>
+                              <td className="py-1.5">
+                                <Button type="button" size="sm" variant="outline"
+                                        onClick={() => appliquerTailleDimensionnement(ligne)}>
+                                  Appliquer cette taille
+                                </Button>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                    {etudeHoraireDonnees?.dimensionnement?.motivation && (
+                      <p className="mt-2 text-xs text-muted-foreground" data-testid="etude-horaire-motivation">
+                        {etudeHoraireDonnees.dimensionnement.motivation}
+                      </p>
+                    )}
+                  </div>
+                )}
+                {etudeHoraireDonnees?.etude?.saisons && (
+                  <div className="mt-3 grid gap-2 sm:grid-cols-3" data-testid="etude-horaire-saisons">
+                    {Object.entries(SAISON_LABELS).map(([cle, libelle]) => {
+                      const s = etudeHoraireDonnees.etude.saisons[cle]
+                      if (!s) return null
+                      return (
+                        <div key={cle} className="rounded-lg border border-border p-2">
+                          <div className="text-xs font-medium">{libelle}</div>
+                          <div className="text-xs text-muted-foreground">
+                            Production {fmtNum(Math.round(s.production_kwh))} kWh
+                            {' · '}Consommation {fmtNum(Math.round(s.consommation_kwh))} kWh
+                            {' · '}Autoconsommé {fmtNum(Math.round(s.autoconsomme_sans_kwh))} kWh
+                            {' '}({formatNumber(s.taux_autoconso_sans * 100, { decimals: 0 })} %)
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
             {etudeCI && (
               <div className="gen-metrics-grid" style={{ marginBottom: '0.75rem' }}>
                 <MetricCard label="Taux d'autoconsommation"
@@ -3236,9 +3455,22 @@ export default function DevisGenerator({
                   </div>
                 )}
                 <div className="gen-metrics-grid">
+                  {/* CJ2b — Production/Autoconso/Couverture : le serveur
+                      horaire (PVGIS réel) gagne dès qu'il a répondu (résidentiel),
+                      sinon repli sur `roi` (miroir local, inchangé). */}
                   <MetricCard label="Production annuelle"
-                              value={fmtNum(Math.round(roi.production_annuelle_kwh))}
+                              value={fmtNum(Math.round(apercuProductionKwh))}
                               unit="kWh / an" accent />
+                  {etudeHoraireSourceServeur && (
+                    <>
+                      <MetricCard label="Taux d'autoconsommation (sans)"
+                                  value={`${formatNumber(etudeHoraireAnnuel.taux_autoconso_sans * 100, { decimals: 0 })} %`}
+                                  unit="part de la production consommée" />
+                      <MetricCard label="Taux de couverture (sans)"
+                                  value={`${formatNumber(etudeHoraireAnnuel.couverture_sans * 100, { decimals: 0 })} %`}
+                                  unit="part de la conso couverte" />
+                    </>
+                  )}
                 </div>
                 {/* VX138 — comparateur Sans/Avec : 2 colonnes NOMMÉES au lieu
                     d'une grille homogène de jusqu'à 6 cartes reliées par la
@@ -3252,10 +3484,10 @@ export default function DevisGenerator({
                         {sansRec && <span className="gen-rec-badge">★ Recommandé</span>}
                       </div>
                       <MetricCard label="Économies"
-                                  value={fmtNum(Math.round(roi.eco_annuelle_sans))}
+                                  value={fmtNum(Math.round(apercuEcoSans))}
                                   unit="MAD / an" />
                       <MetricCard label="ROI"
-                                  value={roi.payback_sans !== null ? roi.payback_sans + ' ans' : 'N/A'}
+                                  value={apercuPaybackSans != null ? apercuPaybackSans + ' ans' : 'N/A'}
                                   unit="retour sur invest." accent />
                       <MetricCard label="Coût"
                                   value={fmtNum(Math.round(totals.totalSans))}
@@ -3268,15 +3500,30 @@ export default function DevisGenerator({
                         Avec batterie
                         {avecRec && <span className="gen-rec-badge">★ Recommandé</span>}
                       </div>
-                      <MetricCard label="Économies"
-                                  value={fmtNum(Math.round(roi.eco_annuelle_avec))}
-                                  unit="MAD / an" />
-                      <MetricCard label="ROI"
-                                  value={roi.payback_avec !== null ? roi.payback_avec + ' ans' : 'N/A'}
-                                  unit="retour sur invest." accent />
-                      <MetricCard label="Coût"
-                                  value={fmtNum(Math.round(totals.totalAvec))}
-                                  unit="MAD TTC" />
+                      {/* CJ2b — OMISSION HONNÊTE. Le moteur horaire dit que
+                          l'option batterie n'est pas livrable à cette taille :
+                          on affiche SA raison, jamais un montant — et surtout
+                          jamais le « 0 MAD » que produirait un arrondi sur une
+                          valeur absente. */}
+                      {batterieInvendableServeur ? (
+                        <p className="text-xs text-muted-foreground"
+                           data-testid="etude-horaire-batterie-invendable">
+                          Option batterie non livrable pour cette taille :{' '}
+                          {verdictBatterieServeur.raison}
+                        </p>
+                      ) : (
+                        <>
+                          <MetricCard label="Économies"
+                                      value={fmtNum(Math.round(apercuEcoAvec))}
+                                      unit="MAD / an" />
+                          <MetricCard label="ROI"
+                                      value={apercuPaybackAvec != null ? apercuPaybackAvec + ' ans' : 'N/A'}
+                                      unit="retour sur invest." accent />
+                          <MetricCard label="Coût"
+                                      value={fmtNum(Math.round(totals.totalAvec))}
+                                      unit="MAD TTC" />
+                        </>
+                      )}
                     </div>
                   )}
                 </div>

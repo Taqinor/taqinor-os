@@ -62,11 +62,13 @@ apps/ventes/utils/filenames.py
 apps/ventes/views/roof_config.py
 frontend/src/components/layout/Sidebar.jsx
 frontend/src/components/layout/Sidebar.test.jsx
+frontend/src/features/crm/workspace/DevisTab.jsx
 frontend/src/features/gestion_projet/pages/RisquesPage.jsx
 frontend/src/features/kb/ArticleEditor.test.jsx
 frontend/src/features/kb/kbMarkdown.test.jsx
 frontend/src/features/messaging/richText.test.jsx
 frontend/src/features/onboarding/OnboardingCoachmarks.jsx
+frontend/src/features/ventes/clientProposalLink.js
 frontend/src/pages/Landing.jsx
 frontend/src/pages/Login.jsx
 frontend/src/pages/admin/UsersManagement.test.jsx

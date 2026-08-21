@@ -133,6 +133,15 @@ export interface Ctx {
   // — Besoin « panneaux nécessaires » de la zone active (mutable) —
   neededPanels: number;
   neededAuto: boolean;
+  /**
+   * L2 — vrai dès que le boot a hydraté depuis un DEVIS (ou une affaire AO), figé pour
+   * toute la session d'édition (jamais réinitialisé par un nouveau tracé/zone). Sert de
+   * garde-fou : « panneaux nécessaires » à 0 en mode devis est une CIBLE VENDUE (le devis
+   * ne porte aucune ligne panneau), jamais une invite au remplissage-au-mieux — voir
+   * optimizer.ts `placedFor`/`buildPitchedLocks`. En mode LEAD/estimateur (false), 0
+   * garde le comportement historique (remplir ce qui tient). Read-only depuis les modules
+   * consommateurs : seul roof-tool-pro11.ts (l'hydratation) l'écrit. */
+  readonly devisMode: boolean;
 
   // — Recommandation/optimum courant + flag « caler sur la reco » (mutable) —
   rec: Recommendation | null;

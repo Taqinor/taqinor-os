@@ -241,3 +241,48 @@ describe('W74 — pente : pan nord vs pan non viable, états honnêtes', () => {
     expect(res.noViableConfig).toBe(false);
   });
 });
+
+// L2 — jumeau pente du correctif V7 (incident PROUVÉ DEV-202608-0016 : devis sans ligne
+// panneau ouvert dans « Concevoir en 3D » → le toit se remplissait tout seul). Sans `need`
+// verrouillé (aucune facture en mode devis, `effectiveNeed` retombe à 0), le repli
+// HISTORIQUE (mode lead/estimateur, `needImposedZero` absent) remplit tout ce qui tient —
+// `needImposedZero` bascule ce même cas en « cible imposée à zéro » : pose RIEN.
+describe('L2 — needImposedZero (pente) : un devis sans ligne panneau ne remplit jamais le pan', () => {
+  const ring = squareRing(28); // pan spacieux, largement de quoi loger des panneaux
+
+  it('absent (par défaut) : comportement historique inchangé — remplit ce qui tient', () => {
+    const res = solveLivePitched(ring, LAT, 0, PITCH, FACING, [], {}); // bill=0 → aucun besoin dérivé
+    expect(res.effectiveNeed).toBe(0);
+    expect(res.winner.fitCount).toBeGreaterThan(0);
+    expect(res.winner.placedCount).toBe(res.winner.fitCount); // repli « remplir ce qui tient »
+  });
+
+  it('needImposedZero=true : pose 0, jamais un remplissage inventé', () => {
+    const res = solveLivePitched(ring, LAT, 0, PITCH, FACING, [], { needImposedZero: true });
+    expect(res.effectiveNeed).toBe(0);
+    expect(res.winner.fitCount).toBeGreaterThan(0); // le pan tient bel et bien des panneaux
+    expect(res.winner.placedCount).toBe(0); // ... mais RIEN n'est posé (cible vendue = 0)
+    expect(res.winner.kwc).toBe(0);
+    expect(res.winner.annualKwh).toBe(0);
+  });
+
+  it('needImposedZero=true SANS pan trop petit : noViableConfig reste false (pas un faux « pan trop petit »)', () => {
+    const res = solveLivePitched(ring, LAT, 0, PITCH, FACING, [], { needImposedZero: true });
+    // Le pan est PARFAITEMENT viable — annualKwh=0 vient de la cible imposée, pas d'un
+    // pan trop petit : le message « configuration non viable » serait FAUX ici.
+    expect(res.noViableConfig).toBe(false);
+  });
+
+  it('un pan GENUINEMENT trop petit reste noViableConfig=true même avec needImposedZero', () => {
+    const res = solveLivePitched(squareRing(1), LAT, 0, PITCH, FACING, [], { needImposedZero: true });
+    expect(res.winner.fitCount).toBe(0); // fait géométrique réel, jamais suppressible
+    expect(res.noViableConfig).toBe(true);
+  });
+
+  it('un besoin RÉEL (`need` verrouillé) l\'emporte toujours sur needImposedZero', () => {
+    const res = solveLivePitched(ring, LAT, 0, PITCH, FACING, [], { need: 6 });
+    expect(res.effectiveNeed).toBe(6);
+    expect(res.winner.placedCount).toBeLessThanOrEqual(6);
+    expect(res.winner.placedCount).toBeGreaterThan(0);
+  });
+});
