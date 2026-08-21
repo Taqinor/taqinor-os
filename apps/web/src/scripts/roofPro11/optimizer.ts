@@ -287,32 +287,55 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
 
   // — Plafond « panneaux nécessaires » (Change A) —
   const clampNeeded = (n: number): number => Math.max(1, Math.min(400, Math.round(n)));
-  /** Posés = min(plafond besoin, ce qui tient). Sans facture (besoin 0) il n'y a
-   *  pas de besoin à plafonner → on montre ce qui tient (comportement historique). */
+  /** Posés = min(plafond besoin, ce qui tient). Sans besoin (0) HORS devis (mode lead/
+   *  estimateur) il n'y a pas de besoin à plafonner → on montre ce qui tient (comportement
+   *  historique). L2 — EN DEVIS (`ctx.devisMode`), un besoin nul est une CIBLE VENDUE DE
+   *  ZÉRO (devis sans ligne panneau, incident DEV-202608-0016) : on ne pose RIEN tant que
+   *  personne (facture/saisie manuelle) n'a fixé un nombre — jamais un remplissage inventé. */
   const placedFor = (grid: PanelGrid): number =>
-    ctx.neededPanels > 0 ? Math.max(0, Math.min(ctx.neededPanels, grid.count)) : grid.count;
+    ctx.neededPanels > 0
+      ? Math.max(0, Math.min(ctx.neededPanels, grid.count))
+      : ctx.devisMode
+        ? 0
+        : grid.count;
 
-  /** Synchronise le contrôle éditable + sa note honnête (besoin vs ce qui tient). */
+  /** Synchronise le contrôle éditable + sa note honnête (besoin vs ce qui tient).
+   *  L2 — en mode devis, les libellés parlent du DEVIS (jamais « votre facture », un
+   *  champ qui n'existe même pas dans cet écran) et affichent « X posés / N au devis »
+   *  (repère DOM stable `rp9-need-note`, préfixe HUD existant). */
   function syncNeedControl(fitCount: number, familyLabel: string) {
     const active = ctx.neededPanels > 0;
+    // L2 — en mode devis, le champ reste ACTIONNABLE même à 0 : aucune facture n'existe
+    // dans cet écran pour dériver un besoin automatiquement (le champ facture est retiré
+    // en devis), donc la SEULE porte de sortie d'une cible imposée à zéro est la saisie
+    // manuelle/+ — désactiver le champ à 0 comme en mode lead la condamnerait pour de bon
+    // (« fixez le nombre » sans aucun moyen de le faire). Mode lead inchangé : le champ
+    // reste désactivé tant qu'aucune facture n'a dérivé un besoin.
+    const editable = active || ctx.devisMode;
     if (needInputEl) {
-      needInputEl.disabled = !active;
+      needInputEl.disabled = !editable;
       if (document.activeElement !== needInputEl) needInputEl.value = active ? fmt(ctx.neededPanels) : '—';
     }
     if (needMinusEl) needMinusEl.disabled = !active || ctx.neededPanels <= 1;
-    if (needPlusEl) needPlusEl.disabled = !active || ctx.neededPanels >= 400;
+    if (needPlusEl) needPlusEl.disabled = !editable || ctx.neededPanels >= 400;
     if (!needNoteEl) return;
     if (!active) {
-      needNoteEl.textContent = 'Indiquez votre facture pour dimensionner le nombre de panneaux.';
+      needNoteEl.textContent = ctx.devisMode
+        ? 'Ce devis ne porte aucun panneau — fixez le nombre (facture ou saisie) pour poser des modules.'
+        : 'Indiquez votre facture pour dimensionner le nombre de panneaux.';
       return;
     }
     const placed = Math.min(ctx.neededPanels, fitCount);
     if (placed < ctx.neededPanels) {
-      needNoteEl.textContent = `${fmt(ctx.neededPanels)} nécessaires — ${fmt(placed)} tiennent en ${familyLabel} (toit ou obstacles). On pose ${fmt(placed)}.`;
+      needNoteEl.textContent = ctx.devisMode
+        ? `${fmt(placed)} posés / ${fmt(ctx.neededPanels)} au devis — seuls ${fmt(placed)} tiennent en ${familyLabel} (toit ou obstacles).`
+        : `${fmt(ctx.neededPanels)} nécessaires — ${fmt(placed)} tiennent en ${familyLabel} (toit ou obstacles). On pose ${fmt(placed)}.`;
     } else if (fitCount > ctx.neededPanels) {
-      needNoteEl.textContent = `${fmt(ctx.neededPanels)} couvrent votre facture (+10 %) — il reste de la place sur le toit, laissée libre.`;
+      needNoteEl.textContent = ctx.devisMode
+        ? `${fmt(placed)} posés / ${fmt(ctx.neededPanels)} au devis — il reste de la place sur le toit, laissée libre.`
+        : `${fmt(ctx.neededPanels)} couvrent votre facture (+10 %) — il reste de la place sur le toit, laissée libre.`;
     } else {
-      needNoteEl.textContent = `On pose ${fmt(placed)} panneaux.`;
+      needNoteEl.textContent = ctx.devisMode ? `${fmt(placed)} posés / ${fmt(ctx.neededPanels)} au devis.` : `On pose ${fmt(placed)} panneaux.`;
     }
   }
 
@@ -383,7 +406,13 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
 
   /** Verrous courants dérivés des axes épinglés (pinned) + de la cible « besoin ».
    *  L'orientation (un seul axe V7) est reconstruite depuis les groupes Orientation
-   *  (famille) et Azimut de la page. */
+   *  (famille) et Azimut de la page.
+   *  L2 — c'est ICI, pas `placedFor` (qui ne gate que le rendu d'une carte matrice
+   *  choisie manuellement), que passe le rendu PRIMAIRE (`liveResolveFlat`, appelé à
+   *  CHAQUE recompute — dont l'hydratation devis au boot) : en mode devis avec un
+   *  besoin nul (cible vendue de zéro, devis sans ligne panneau), on IMPOSE
+   *  `needImposedZero` pour que `solveLive` (estimatorBrainV7) ne retombe pas sur son
+   *  repli « remplir ce qui tient » — voir sa docstring. Mode lead/estimateur inchangé. */
   function buildFlatLocks(): AxisLocks {
     const locks: AxisLocks = {};
     if (ctx.pinned.has('family') && ctx.sel.family === 'eastwest') locks.orientation = 'eastwest';
@@ -394,6 +423,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     if (ctx.pinned.has('orient') && ctx.sel.orient !== 'auto') locks.layout = ctx.sel.orient as LayoutAxis;
     if (ctx.pinned.has('margin')) locks.margin = ctx.sel.margin;
     if (!ctx.neededAuto && ctx.neededPanels > 0) locks.need = ctx.neededPanels;
+    if (ctx.devisMode && ctx.neededPanels <= 0) locks.needImposedZero = true;
     return locks;
   }
 
@@ -468,11 +498,15 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     const cov = Math.round(pct);
     // W74 — AUCUNE config viable (toit trop petit / contraint à néant) : on n'affiche
     // PAS un faux « 0 panneau gagnant », mais un message honnête.
+    // L2 — devis sans ligne panneau (cible vendue = 0) : message dédié AVANT le générique
+    // « facture » (absente en devis) — jamais un calepinage inventé sur un toit viable.
     const why = res.noViableConfig
       ? `Configuration non viable sur ce toit : aucun panneau ne tient (tracé trop petit ou entièrement occupé par des obstacles). Agrandissez la zone ou retirez des obstacles.`
-      : isReco
-        ? `Meilleure combinaison pour votre facture : ${liveOrientationLabel(w)} à ${w.tiltDeg}°, ${w.placedCount} panneaux ≈ ${cov} % de la facture. Touchez une option pour la verrouiller — le reste se re-résout.`
-        : `Vos choix sont tenus, le reste a été re-résolu : ${w.placedCount} panneaux ≈ ${cov} % de la facture. Les badges « Recommandé » montrent l'option optimale de chaque groupe.`;
+      : ctx.devisMode && ctx.neededPanels <= 0
+        ? `Ce devis ne porte aucun panneau — aucune pose proposée. Fixez un nombre (facture ou saisie) pour calepiner.`
+        : isReco
+          ? `Meilleure combinaison pour votre facture : ${liveOrientationLabel(w)} à ${w.tiltDeg}°, ${w.placedCount} panneaux ≈ ${cov} % de la facture. Touchez une option pour la verrouiller — le reste se re-résout.`
+          : `Vos choix sont tenus, le reste a été re-résolu : ${w.placedCount} panneaux ≈ ${cov} % de la facture. Les badges « Recommandé » montrent l'option optimale de chaque groupe.`;
     paintCard(
       {
         title: `${liveOrientationLabel(w)} ${w.tiltDeg}° · ${w.layoutLabel}`,
@@ -841,12 +875,17 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
   // inclinaison = pente et azimut = face IMPOSÉS (jamais optimisés). Verrouiller un axe
   // le tient et re-résout l'autre ; production PVGIS au (pente, face), pose 'building'.
 
-  /** Verrous pente courants (pose + marge) + cible besoin (partagée via neededAuto). */
-  function buildPitchedLocks(): { layout?: PitchedLayoutAxis; margin?: PitchedMarginAxis; need?: number } {
-    const locks: { layout?: PitchedLayoutAxis; margin?: PitchedMarginAxis; need?: number } = {};
+  /** Verrous pente courants (pose + marge) + cible besoin (partagée via neededAuto).
+   *  L2 — pendant du `placedFor` plat : en mode devis (`ctx.devisMode`) avec un besoin
+   *  nul (cible vendue de zéro, devis sans ligne panneau), on IMPOSE `needImposedZero`
+   *  pour que `solveLivePitched` (estimatorBrainV8) ne retombe pas sur son repli
+   *  « remplir ce qui tient » — voir sa docstring. Mode lead/estimateur inchangé. */
+  function buildPitchedLocks(): { layout?: PitchedLayoutAxis; margin?: PitchedMarginAxis; need?: number; needImposedZero?: boolean } {
+    const locks: { layout?: PitchedLayoutAxis; margin?: PitchedMarginAxis; need?: number; needImposedZero?: boolean } = {};
     if (ctx.pitchedLocks.layout) locks.layout = ctx.pitchedLocks.layout;
     if (ctx.pitchedLocks.margin) locks.margin = ctx.pitchedLocks.margin;
     if (!ctx.neededAuto && ctx.neededPanels > 0) locks.need = ctx.neededPanels;
+    if (ctx.devisMode && ctx.neededPanels <= 0) locks.needImposedZero = true;
     return locks;
   }
 
@@ -882,13 +921,18 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     const tiltTxt = `${Math.round(ctx.pitchDeg)}°`;
     // W74 — pan orienté nord (production quasi nulle) ET pan non viable (trop petit /
     // contraint à néant) ont chacun leur message honnête, distincts d'un faux gagnant.
+    // L2 — devis sans ligne panneau (cible vendue = 0) : message dédié AVANT le générique
+    // « optimale » (qui parlerait à tort de « facture », absente en devis) — jamais un
+    // calepinage inventé sur un pan pourtant tout à fait viable.
     const why = res.northFacing
       ? `Ce pan est orienté nord (face ${facingLabel(ctx.facingAzimuthDeg)}) : production quasi nulle, aucune pose rentable proposée. Indiquez la vraie face descendante du pan.`
       : res.noViableConfig
         ? `Configuration non viable sur ce toit : aucun panneau ne tient sur ce pan (trop petit ou entièrement occupé par des obstacles). Agrandissez le pan ou retirez des obstacles.`
-        : isReco
-          ? `Pose affleurante optimale : ${w.placedCount} panneaux (${w.layoutLabel}, ${w.marginLabel}) ≈ ${cov} % de la facture. Inclinaison ${tiltTxt} = pente, azimut = face — imposés par la toiture, non optimisés.`
-          : `Vos choix sont tenus, le reste re-résolu : ${w.placedCount} panneaux ≈ ${cov} % de la facture. Les badges « Recommandé » montrent la pose/marge optimale.`;
+        : ctx.devisMode && ctx.neededPanels <= 0
+          ? `Ce devis ne porte aucun panneau — aucune pose proposée sur ce pan. Fixez un nombre (facture ou saisie) pour calepiner.`
+          : isReco
+            ? `Pose affleurante optimale : ${w.placedCount} panneaux (${w.layoutLabel}, ${w.marginLabel}) ≈ ${cov} % de la facture. Inclinaison ${tiltTxt} = pente, azimut = face — imposés par la toiture, non optimisés.`
+            : `Vos choix sont tenus, le reste re-résolu : ${w.placedCount} panneaux ≈ ${cov} % de la facture. Les badges « Recommandé » montrent la pose/marge optimale.`;
     paintCard(
       {
         title: `Toit en pente ~${tiltTxt} · face ${facingLabel(ctx.facingAzimuthDeg)} · ${w.layoutLabel}`,

@@ -312,3 +312,51 @@ describe('W74 — « configuration non viable » sur un toit minuscule', () => {
     expect(res.noViableConfig).toBe(false);
   });
 });
+
+// L2 — incident PROUVÉ DEV-202608-0016 (devis onduleur+batterie SANS ligne panneau ouvert
+// dans « Concevoir en 3D » → le toit se remplissait tout seul, 25 panneaux inventés). Sans
+// `need` verrouillé (`effectiveNeed` retombe à 0, aucune facture en mode devis), le repli
+// HISTORIQUE (mode lead/estimateur, `needImposedZero` absent) remplit tout ce qui tient —
+// `needImposedZero` bascule ce même cas en « cible imposée à zéro » : pose RIEN.
+describe('L2 — needImposedZero : un devis sans ligne panneau ne remplit jamais le toit', () => {
+  const ring = squareRing(30); // grand toit (même taille que « posé = min(besoin, ce qui tient) » ci-dessus) : tient largement, pour tout tie-break sur perPanelYield
+
+  it('absent (par défaut) : comportement historique inchangé — remplit ce qui tient', () => {
+    const res = solveLive(ring, LAT, 0, [], {}); // bill=0 → target=0 → aucun besoin dérivé
+    expect(res.effectiveNeed).toBe(0);
+    expect(res.winner.fitCount).toBeGreaterThan(0);
+    expect(res.winner.placedCount).toBe(res.winner.fitCount); // repli « remplir ce qui tient »
+  });
+
+  it('needImposedZero=true : pose 0, jamais un remplissage inventé', () => {
+    const res = solveLive(ring, LAT, 0, [], { needImposedZero: true });
+    expect(res.effectiveNeed).toBe(0);
+    expect(res.winner.fitCount).toBeGreaterThan(0); // le toit tient bel et bien des panneaux
+    expect(res.winner.placedCount).toBe(0); // ... mais RIEN n'est posé (cible vendue = 0)
+    expect(res.winner.kwc).toBe(0);
+    expect(res.winner.annualKwh).toBe(0);
+  });
+
+  it('needImposedZero=true SANS toit trop petit : noViableConfig reste false (pas un faux « toit trop petit »)', () => {
+    const res = solveLive(ring, LAT, 0, [], { needImposedZero: true });
+    // Le toit est PARFAITEMENT viable — annualKwh=0 vient de la cible imposée, pas d'un
+    // pan trop petit : le message « configuration non viable » serait FAUX ici.
+    expect(res.noViableConfig).toBe(false);
+  });
+
+  it('un toit GENUINEMENT trop petit reste noViableConfig=true même avec needImposedZero', () => {
+    const res = solveLive(squareRing(1), LAT, 0, [], { needImposedZero: true });
+    expect(res.winner.fitCount).toBe(0); // fait géométrique réel, jamais suppressible
+    expect(res.noViableConfig).toBe(true);
+  });
+
+  it('un besoin RÉEL (`need` verrouillé) l\'emporte toujours sur needImposedZero', () => {
+    // Cas d'un devis dont la cible vendue N'EST PAS zéro : `need` est posé, l'ancien
+    // chemin `effectiveNeed > 0` s'applique — needImposedZero (jamais posé dans ce cas
+    // par l'appelant) n'a aucune incidence.
+    const res = solveLive(ring, LAT, 0, [], { need: 6 });
+    expect(res.effectiveNeed).toBe(6);
+    expect(res.winner.placedCount).toBeLessThanOrEqual(6);
+    expect(res.winner.placedCount).toBeGreaterThan(0);
+  });
+});
