@@ -1,0 +1,11 @@
+{
+  "endpoint": "GET /api/django/crm/public/lead-ref/<str:idempotency_key>/",
+  "pourquoi": "WREF2-L3 (fondateur, GO 21/08/2026 — option B) — l'envoi du lead depuis le site (POST /api/capture-lead) est fire-and-forget : le formulaire n'attend jamais la réponse du webhook website-leads, donc l'écran de succès ne connaît PAS la référence serveur « NOM-N » (webhooks.assign_client_ref) au moment où il s'affiche, seulement le code provisoire tiré par le navigateur (TQ-XXXX). Ce petit endpoint public est la RELÈVE : le site l'interroge après coup (2-3 tentatives espacées, clé = idempotencyKey déjà envoyée dans le payload du lead, lib/lead.ts) pour remplacer le code provisoire par la vraie référence dès qu'elle est attribuée. AUCUNE authentification (endpoint public, comme webhooks/website-leads/), throttlé (SimpleRateThrottle IP+clé), 404 à corps CONSTANT et opaque dans tous les cas d'échec (clé mal formée, société non résolue, aucune ligne trouvée, lead sans référence encore attribuée) — anti-énumération : aucune donnée du lead (nom/téléphone/ville) n'est jamais exposée ici, seule la référence courte.",
+  "exemple": {
+    "client_ref": "BENALI-1"
+  },
+  "exemple_404": {
+    "pourquoi": "corps STRICTEMENT identique quel que soit le motif de l'échec (jamais une distinction qui aiderait à énumérer les idempotencyKey ou à deviner si une soumission existe) — statut HTTP 404.",
+    "detail": "Introuvable."
+  }
+}

@@ -1196,12 +1196,15 @@ def _map_and_link_lead(raw, data, company):
     # écraser la référence déjà donnée au client. Le code provisoire reste
     # conservé tel quel dans le payload brut (WebsiteLeadPayload.payload) et
     # rappelé dans la note de création.
-    # WREF2-PONT — tant que l'écran de succès du site ne peut pas afficher la
-    # référence SERVEUR (le transfert est volontairement fire-and-forget,
-    # zéro-perte — option B en attente d'un GO fondateur), le client ne
-    # connaît QUE ce code provisoire : il doit donc rester RETROUVABLE.
-    # Champ dédié + indexé par les trois recherches, jamais silencieusement
-    # perdu — sinon on recrée exactement le bug fondateur d'origine.
+    # WREF2-PONT — le transfert reste volontairement fire-and-forget, zéro-
+    # perte : l'écran de succès du site relève désormais la référence SERVEUR
+    # après coup (option B, GO fondateur 21/08/2026 — voir
+    # `public_lead_ref_views.lead_ref_lookup`), mais cette relève PEUT
+    # échouer silencieusement (panne réseau, timeout, tentatives épuisées) —
+    # le client garde alors CE code provisoire. Il doit donc rester
+    # RETROUVABLE dans tous les cas : champ dédié + indexé par les trois
+    # recherches, jamais silencieusement perdu — sinon on recrée exactement
+    # le bug fondateur d'origine.
     provisional_ref = fields.pop('client_ref', None)
     if provisional_ref:
         fields['client_ref_provisoire'] = provisional_ref

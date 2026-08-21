@@ -698,10 +698,12 @@ class Lead(SoftDeleteModel):
         verbose_name='Référence client (générée navigateur)')
     # WREF2-PONT (21/08/2026) — le code PROVISOIRE que le site a AFFICHÉ au
     # client (« TQ-XXXX », généré navigateur) quand la référence serveur
-    # NOM-N a pris ``client_ref``. Tant que l'écran de succès n'affiche pas
-    # la référence serveur (transfert fire-and-forget, option B en attente),
-    # c'est CE code que le client dicte sur WhatsApp : il est indexé par les
-    # trois recherches, au même titre que ``client_ref``.
+    # NOM-N a pris ``client_ref``. L'écran de succès relève désormais la
+    # référence serveur après coup (option B, GO fondateur — voir
+    # ``apps.crm.public_lead_ref_views.lead_ref_lookup``), mais cette relève
+    # reste fire-and-forget et peut échouer silencieusement : si elle échoue,
+    # c'est CE code que le client dicte sur WhatsApp. Indexé par les trois
+    # recherches, au même titre que ``client_ref``.
     client_ref_provisoire = models.CharField(
         max_length=24, blank=True, null=True,
         verbose_name='Référence provisoire affichée par le site')
