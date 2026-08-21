@@ -1275,6 +1275,11 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # onduleur de chaque option ; aucune ligne ⇒ aucune provision.
         inverter_cost_sans=_cout_onduleur(sans_items, _blob),
         inverter_cost_avec=_cout_onduleur(avec_items, _blob),
+        # CJ2a (ORDRE FONDATEUR) — le bloc du moteur HORAIRE, quand le devis en
+        # porte un : les économies deviennent l'intégration réelle production ×
+        # consommation, mois par mois, au lieu du forfait 60 %. Absent ⇒
+        # ``calculate_savings_roi`` garde EXACTEMENT son comportement d'avant.
+        etude_horaire=etude.get("etude_horaire"),
     )
     # M2 — puissance inconnue ⇒ production et économies le sont aussi (elles en
     # dérivent toutes). ``calculate_savings_roi`` rend alors des zéros ; le
