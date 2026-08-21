@@ -42,6 +42,7 @@
 import {
   OCCUPANCY_SHAPES,
   SEASON_INLINE,
+  type EquipmentLayers,
   type OccupancyId,
   type RamadanWindow,
   type SeasonId,
@@ -356,6 +357,74 @@ export function consumptionKwhShape(
   return normalizeToSum1(rawConsumptionShape(options)).map((part) => part * total);
 }
 
+/**
+ * L4 (21/08/2026) — applique les couches d'équipement du lead (script
+ * d'appel : piscine/clim/ve, `apps/ventes/courbes_journalieres.py
+ * _equipements`) à une silhouette déjà mise à l'échelle réelle.
+ *
+ * DEUX PASSES, pour respecter EXACTEMENT la contrainte backend (« les
+ * couches REDISTRIBUENT, elles n'ajoutent pas de kWh que la facture ne
+ * contient pas — sauf le véhicule électrique, l'exception du mémo ») :
+ *
+ *  1. REDISTRIBUTION (piscine/clim) — chaque couche ajoute sa puissance
+ *     RÉELLE (`kw`, saisie par le commercial) sur ses heures sourcées, PUIS
+ *     l'ensemble est renormalisé pour que la somme reste EXACTEMENT
+ *     ``dailyKwhAvantVe`` (le niveau facture, VE exclu) : ces heures
+ *     grossissent, le reste de la journée rétrécit d'autant — aucun kWh
+ *     gagné, seulement déplacé.
+ *  2. ADDITION (ve) — ajoutée APRÈS la renormalisation, SANS être rediluée :
+ *     c'est la seule couche qui doit vraiment grossir le total. Son énergie
+ *     (`kwhJour`, dérivée du km/semaine réel × conversion ADEME) est déjà
+ *     comptée dans le ``dailyKwh`` total servi par le backend
+ *     (``consommation[saison].kwh_jour`` — voir ``_consommation`` côté
+ *     serveur), donc la somme finale ici retombe pile sur ``dailyKwh``.
+ *
+ * ``dailyKwh`` = le niveau TOTAL déjà servi (facture + ve si actif — c'est
+ * ``served.consumptionKwhJour``, jamais recalculé ici). Aucune couche
+ * illisible/hors-saison n'est appliquée (silencieusement ignorée).
+ */
+export function equipmentAdjustedConsumptionKwhShape(
+  dailyKwh: number,
+  equipements: EquipmentLayers | null | undefined,
+  season: SeasonId,
+  options: ConsumptionShapeOptions = {},
+): number[] {
+  const total = Number.isFinite(dailyKwh) && dailyKwh > 0 ? dailyKwh : 0;
+  if (total <= 0) return new Array(24).fill(0);
+  if (!equipements) return consumptionKwhShape(total, options);
+
+  const veLayer = equipements.ve;
+  const veActive =
+    veLayer && veLayer.mode === 'addition' && typeof veLayer.kwhJour === 'number'
+      && (!veLayer.saisons || veLayer.saisons.includes(season));
+  const veKwh = veActive ? (veLayer!.kwhJour as number) : 0;
+  const baseTotal = Math.max(0, total - veKwh);
+
+  // Passe 1 — redistribution (piscine/clim) sur la base HORS ve.
+  const base = consumptionKwhShape(baseTotal, options);
+  const bump = new Array(24).fill(0);
+  for (const id of ['piscine', 'clim'] as const) {
+    const layer = equipements[id];
+    if (!layer || layer.mode !== 'redistribution' || typeof layer.kw !== 'number') continue;
+    if (layer.saisons && !layer.saisons.includes(season)) continue;
+    for (const h of layer.heures) if (h >= 0 && h <= 23) bump[h] += layer.kw;
+  }
+  let out = base.map((v, h) => v + bump[h]);
+  const bumped = out.reduce((a, b) => a + b, 0);
+  if (bumped > 0 && baseTotal > 0) {
+    const factor = baseTotal / bumped;
+    out = out.map((v) => v * factor);
+  }
+
+  // Passe 2 — addition (ve), jamais rediluée.
+  if (veActive && veKwh > 0) {
+    const heures = veLayer!.heures.filter((h) => h >= 0 && h <= 23);
+    const parHeure = veKwh / (heures.length || 1);
+    for (const h of heures) out[h] += parHeure;
+  }
+  return out;
+}
+
 function esc(s: string): string {
   return String(s)
     .replace(/&/g, '&amp;')
@@ -489,10 +558,13 @@ const SCALE_LABELS: Record<
 export interface ServedCurveScale {
   /** Forme + niveaux de production PVGIS de la saison affichée. */
   production?: ServedProduction | null;
-  /** kWh/jour RÉEL de consommation de la saison affichée (factures du lead). */
+  /** kWh/jour RÉEL de consommation de la saison affichée (factures du lead,
+   *  + la couche ve si active — voir ``_consommation`` côté serveur). */
   consumptionKwhJour?: number | null;
   /** Saison affichée — pour l'incise « (été) » du repère d'axe. */
   season?: SeasonId | null;
+  /** L4 — couches d'équipement du lead (script d'appel), `{}`/absent = aucune. */
+  equipements?: EquipmentLayers | null;
 }
 
 /**
@@ -547,7 +619,18 @@ export function renderYearCurve(
   // serait plus trompeur qu'une forme honnête : dans ce cas on garde la
   // silhouette normalisée d'avant.
   const hasRealConsScale = hasServedShape && consKwhJour !== null;
-  const consKwh = hasRealConsScale ? consumptionKwhShape(consKwhJour!, consumptionOptions) : null;
+  // L4 — des couches d'équipement actives (piscine/clim/ve) composent la
+  // silhouette au lieu de la silhouette d'occupation nue ; `{}`/absent ⇒
+  // exactement `consumptionKwhShape` d'avant (repli byte-identique).
+  const equipements = served?.equipements;
+  const hasEquipements = !!equipements && Object.keys(equipements).length > 0;
+  const seasonForEquip = served?.season ?? null;
+  const consKwh = hasRealConsScale
+    ? (hasEquipements && seasonForEquip
+        ? equipmentAdjustedConsumptionKwhShape(
+            consKwhJour!, equipements!, seasonForEquip, consumptionOptions)
+        : consumptionKwhShape(consKwhJour!, consumptionOptions))
+    : null;
 
   let solarAt: (h: number) => number;
   let consAt: (h: number) => number;
