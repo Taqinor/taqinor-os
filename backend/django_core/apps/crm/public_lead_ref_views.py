@@ -41,6 +41,8 @@ référence courte quand elle existe.
 import re
 
 from rest_framework import status
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers
 from rest_framework.decorators import (
     api_view, permission_classes, throttle_classes,
 )
@@ -98,6 +100,15 @@ def _find_client_ref(company, idempotency_key: str, field: str):
     )
 
 
+@extend_schema(
+    responses=inline_serializer('LeadRefLookupResponse', {
+        'client_ref': serializers.CharField(
+            help_text='Référence serveur NOM-N attribuée au lead'),
+    }),
+    description=('Relève publique de la référence client par idempotencyKey '
+                 '(contract_samples/lead_ref_lookup.json). 404 opaque constant '
+                 'pour tout échec — anti-énumération.'),
+)
 @api_view(['GET'])
 @permission_classes([AllowAny])
 @throttle_classes([PublicLeadRefLookupThrottle])
