@@ -15,6 +15,7 @@ from .public_chat_views import (
 )
 from .public_booking_views import public_booking_status, public_booking_reserve
 from .public_views import public_salle_vente, public_apporteur_mes_deals
+from .public_lead_ref_views import lead_ref_lookup
 # ODX13 — mêmes ViewSets que ``apps.compta.urls`` (basenames explicitement
 # préfixés ``crm-…`` pour NE PAS entrer en collision avec les noms d'URL du
 # routeur compta, qui reverse ``partenaire-list`` etc.).
@@ -88,6 +89,13 @@ urlpatterns = [
     # XMKT32 — Sync Meta Lead Ads (gated, no-op sans jeton — voir webhooks.py)
     # headless: rappel entrant de Meta, appele par leur serveur
     path('webhooks/meta-lead-ads/', meta_lead_ads_webhook, name='meta-lead-ads-webhook'),
+    # WREF2-L3 — relève publique de la référence serveur « NOM-N » pour
+    # l'écran de succès du site (voir public_lead_ref_views.py) : le transfert
+    # du lead reste fire-and-forget, donc l'écran interroge CET endpoint
+    # après coup avec l'idempotencyKey déjà envoyée.
+    # headless: appele par le site public (apps/web), jamais par un ecran ERP
+    path('public/lead-ref/<str:idempotency_key>/', lead_ref_lookup,
+         name='public-lead-ref-lookup'),
     # Employés assignables (sélecteur de responsable) — ouvert à la Commerciale.
     path('assignable-users/', assignable_users, name='assignable-users'),
     # ZSAL3 — Tableau de bord « Mes équipes ». Doit précéder include(router.urls)
