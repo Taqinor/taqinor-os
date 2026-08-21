@@ -7264,6 +7264,17 @@ textarea.form-control {
 .lw-context-devis-track {
   margin: 0.1rem 0;
 }
+/* L5 — Page client / WhatsApp / Aperçu interne : TOUJOURS visibles (jamais
+   gardées par un survol), contrairement aux actions secondaires ci-dessous
+   (facture/chantier, réservées au devis accepté) — c'est précisément ce que
+   le fondateur reproche : ces liens n'étaient découvrables que dans l'outil
+   3D. */
+.lw-context-devis-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
 /* LW33 — actions secondaires (Facture/Chantier, devis accepté) révélées au
    survol de la carte, patron "group-hover" (blueprint D4#7, sans reflow :
    uniquement opacity, l'espace reste réservé par le flex normal). GARDÉ
