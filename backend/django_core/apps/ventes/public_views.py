@@ -1261,6 +1261,16 @@ def proposal_data(request, token):
             if not data.get('sans_ok'):
                 data['totaux_sans'] = None
                 data['sans_items'] = []
+        # CJ2b (21/08/2026) — même règle que `financing` ci-dessus : quand
+        # l'option batterie n'est pas RÉELLEMENT vendable (`avec_ok` faux),
+        # AUCUN chiffre « avec batterie » ne franchit la frontière publique.
+        # `economies_mensuelles.avec` était déjà nul, mais `'quote': data`
+        # republiait les MÊMES séries sous leurs noms de moteur — un JSON
+        # récupérable contredisait le document remis au client.
+        if not data.get('avec_ok'):
+            for cle in ('eco_a_monthly', 'eco_a_ann', 'eco_a_cumul',
+                        'roi_a', 'cashflow_avec'):
+                data[cle] = None
         # COURBES (21/08/2026) — série de consommation calculée UNE fois : elle
         # est republiée telle quelle ET sert de NIVEAU réel au graphe journalier.
         _conso_mensuelle = _monthly_consumption(devis)

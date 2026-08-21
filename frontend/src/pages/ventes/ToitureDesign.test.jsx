@@ -43,6 +43,12 @@ vi.mock('../../api/aoApi', () => ({
   },
 }))
 vi.mock('../../lib/toast', () => ({ toastInfo: vi.fn() }))
+// L2 — la confirmation « le calepinage diverge du devis » passe par le
+// provider racine, absent de ce harnais : on répond OUI d'office, le flux
+// PV21 (resynchroniser puis livrer) reste le comportement testé ici.
+vi.mock('../../providers/confirm-context', () => ({
+  useConfirm: () => () => Promise.resolve(true),
+}))
 const navigateMock = vi.fn()
 vi.mock('react-router-dom', async (importOriginal) => {
   const actual = await importOriginal()

@@ -514,7 +514,13 @@ class TestCompletionDuKit(TestCase):
             self.assertIn(designation, lignes,
                           '%s manque au kit' % designation)
         self.assertEqual(resp.data['lignes_ajoutees'], len(KIT_ATTENDU))
-        self.assertEqual(resp.data['avertissements'], [])
+        # L1 (21/08/2026, incident DEV-202608-0016) — un changement du nombre
+        # de panneaux par la conception 3D est désormais ANNONCÉ : c'est le
+        # SEUL avertissement attendu ici, le kit lui-même reste silencieux.
+        self.assertEqual(
+            [a for a in resp.data['avertissements']
+             if 'panneaux' not in a],
+            [])
 
         # Quantités : une structure par panneau, DEUX socles par panneau, et
         # les forfaits à l'unité (16 panneaux de 550 Wc = 8,8 kWc → 2 blocs).
@@ -560,7 +566,13 @@ class TestCompletionDuKit(TestCase):
         lignes = self._par_designation(devis)
         self.assertNotIn('Smart Meter', lignes)
         self.assertNotIn('Wifi Dongle', lignes)
-        self.assertEqual(resp.data['avertissements'], [])
+        # L1 (21/08/2026, incident DEV-202608-0016) — un changement du nombre
+        # de panneaux par la conception 3D est désormais ANNONCÉ : c'est le
+        # SEUL avertissement attendu ici, le kit lui-même reste silencieux.
+        self.assertEqual(
+            [a for a in resp.data['avertissements']
+             if 'panneaux' not in a],
+            [])
         # Le reste du kit, lui, est bien là.
         self.assertIn('Tableau De Protection AC/DC', lignes)
 
@@ -589,7 +601,13 @@ class TestCompletionDuKit(TestCase):
         self.assertEqual(int(lignes['Smart Meter'].quantite), 1)
         self.assertEqual(lignes['Smart Meter'].prix_unitaire,
                          Decimal('1800.00'))
-        self.assertEqual(resp.data['avertissements'], [])
+        # L1 (21/08/2026, incident DEV-202608-0016) — un changement du nombre
+        # de panneaux par la conception 3D est désormais ANNONCÉ : c'est le
+        # SEUL avertissement attendu ici, le kit lui-même reste silencieux.
+        self.assertEqual(
+            [a for a in resp.data['avertissements']
+             if 'panneaux' not in a],
+            [])
 
     def test_une_classe_deja_presente_n_est_jamais_dupliquee(self):
         """La présence se lit au CLASSIFIEUR, pas au libellé : une pose
@@ -620,8 +638,12 @@ class TestCompletionDuKit(TestCase):
         self.assertNotIn('Structures acier', lignes)
         self.assertEqual(resp.data['lignes_ajoutees'], len(KIT_ATTENDU) - 1)
         # Un avertissement FRANÇAIS, explicite, affichable tel quel.
-        self.assertEqual(len(resp.data['avertissements']), 1)
-        message = resp.data['avertissements'][0]
+        # L1 — l'avis de changement de panneaux s'ajoute désormais ; seul
+        # l'avertissement STRUCTURE nous intéresse ici.
+        hors_panneaux = [a for a in resp.data['avertissements']
+                         if 'panneaux' not in a]
+        self.assertEqual(len(hors_panneaux), 1)
+        message = hors_panneaux[0]
         self.assertIn('Structure de fixation', message)
         self.assertIn('ligne non ajoutée', message)
         # Tout le reste du kit est bien entré.
