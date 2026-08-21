@@ -1,5 +1,7 @@
 import { useState } from 'react'
-import { Zap, FileText } from 'lucide-react'
+import {
+  Zap, FileText, Link2, Check, ExternalLink, MessageCircle, Eye,
+} from 'lucide-react'
 import {
   Button, Checkbox, Input, StatusPill,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
@@ -11,6 +13,9 @@ import ventesApi from '../../../api/ventesApi'
 import installationsApi from '../../../api/installationsApi'
 import { formatMAD, formatDate, normalizeMaPhone } from '../../../lib/format'
 import { toastError, errorMessageFrom } from '../../../lib/toast'
+// L5 (fondateur 21/08/2026) — lien PAGE CLIENT + message WhatsApp, MÊME
+// FORMAT que l'outil 3D (ToitureDesign.jsx). Fonctions pures, testées à part.
+import { clientProposalUrl, proposalWhatsappText, buildWaUrl } from '../../ventes/clientProposalLink'
 // ROUND 5 — LE saut canonique (déplie toujours la section cible), partagé avec
 // le centre : le même clic donne désormais le même résultat des deux côtés.
 import { jumpToField } from './jumpToField'
@@ -24,6 +29,23 @@ import SalleVenteAnalyticsBadge from '../../../pages/crm/leads/SalleVenteAnalyti
 // à l'identique (LeadForm.jsx:383-411, 1737-1801) mais avec `wa.selected/
 // langue/preview` vivant sur le MOTEUR (via ContextRail) — la sélection ne
 // peut plus structurellement survivre à un changement de lead (P1#2).
+//
+// L5 (fondateur 21/08/2026) — chaque carte devis expose en plus 3 actions
+// TOUJOURS visibles (jamais réservées à l'outil 3D) : « Page client » (copie/
+// ouvre le lien de la page devis web publique), « WhatsApp » (même format de
+// message que ToitureDesign.jsx, sur CE lien), « Aperçu interne (sans
+// notification) » — qui rouvre le panneau PDF déjà en service (`view-devis` →
+// LeadDevisPanel → GET /ventes/devis/<id>/proposal/, le chemin canonique
+// AUTHENTIFIÉ de la règle #4). Ce dernier ne touche JAMAIS le ShareLink
+// public (ni `first_viewed_at`/`view_count`, ni la note chatter « devis
+// ouvert », ni la notification au responsable posées par
+// `apps/ventes/public_views.py::_stamp_view`/`_notify_first_open`) : il ne
+// résout même pas de token, donc rien de ce mécanisme ne peut s'y déclencher
+// — sûr par CONSTRUCTION, pas par un indicateur qu'on pourrait oublier de
+// vérifier.
+
+// L5 — site public (page client), même résolution que ToitureDesign.jsx.
+const PUBLIC_SITE_URL = import.meta.env.VITE_PUBLIC_SITE_URL || 'https://taqinor.ma'
 
 // eslint-disable-next-line react-refresh/only-export-components -- constante co-localisée (testable), même motif que DEVIS_MINI_TRACK
 export const STATUT_DEVIS = {
@@ -108,6 +130,70 @@ export default function DevisTab({
   // à 1 clic du commercial est INCHANGÉ.
   const [kwcCible, setKwcCible] = useState('')
   const [waBusy, setWaBusy] = useState(false)
+
+  // L5 — les 3 actions « Page client / WhatsApp / Aperçu interne » ci-dessous.
+  // Busy PAR devis + PAR action (préfixes `l-`/`o-`/`w-`), distinct de
+  // `busyAction` (facture/chantier) : deux familles d'actions indépendantes,
+  // jamais de collision de clé.
+  const [linkBusy, setLinkBusy] = useState(null)
+  const [copiedId, setCopiedId] = useState(null)
+
+  // Mint (ou réutilise — idempotent côté serveur) le ShareLink du devis et
+  // renvoie l'URL ABSOLUE de la page client (chemin_proposition backend),
+  // MÊME lien que celui déjà envoyé par email/WhatsApp/l'outil 3D.
+  const mintProposalUrl = async (d) => {
+    const res = await ventesApi.shareLinkDevis(d.id)
+    return clientProposalUrl(res.data?.path, PUBLIC_SITE_URL)
+  }
+
+  const copierPageClient = async (d) => {
+    setLinkBusy(`l-${d.id}`)
+    setActionMsg(null)
+    try {
+      const url = await mintProposalUrl(d)
+      try {
+        await navigator.clipboard?.writeText(url)
+        setCopiedId(d.id)
+        window.setTimeout(() => setCopiedId((cur) => (cur === d.id ? null : cur)), 2000)
+      } catch { /* presse-papier indisponible — le lien reste ouvrable */ }
+    } catch (err) {
+      setActionMsg(errorMessageFrom(err, 'Lien de la page client indisponible.'))
+    } finally {
+      setLinkBusy(null)
+    }
+  }
+
+  const ouvrirPageClient = async (d) => {
+    setLinkBusy(`o-${d.id}`)
+    setActionMsg(null)
+    try {
+      const url = await mintProposalUrl(d)
+      window.open(url, '_blank', 'noopener')
+    } catch (err) {
+      setActionMsg(errorMessageFrom(err, 'Lien de la page client indisponible.'))
+    } finally {
+      setLinkBusy(null)
+    }
+  }
+
+  // WhatsApp PAR devis (distinct de la barre multi-devis LW22 ci-dessous :
+  // celle-ci lie le PDF direct `/api/django/public/document/<token>/` ; ici on
+  // partage la PAGE CLIENT web, MÊME message que ToitureDesign.jsx).
+  const envoyerWhatsAppUnique = async (d) => {
+    if (!leadPhoneOk) return
+    setLinkBusy(`w-${d.id}`)
+    setActionMsg(null)
+    try {
+      const url = await mintProposalUrl(d)
+      const nom = `${state.server?.nom ?? ''} ${state.server?.prenom ?? ''}`.trim()
+      const waUrl = buildWaUrl(normalizeMaPhone(leadPhone), proposalWhatsappText(nom, url))
+      if (waUrl) window.open(waUrl, '_blank', 'noopener')
+    } catch (err) {
+      setActionMsg(errorMessageFrom(err, 'Lien WhatsApp indisponible.'))
+    } finally {
+      setLinkBusy(null)
+    }
+  }
 
   const genererFacture = (d) => {
     setBusyAction(`f-${d.id}`)
@@ -244,6 +330,48 @@ export default function DevisTab({
               <div className="lw-context-devis-card-body">
                 <span className="num">{formatMAD(d.total_ttc, { decimals: 0 })}</span>
                 <span className="lw-context-devis-date">{formatDate(d.date_creation)}</span>
+              </div>
+              {/* L5 — TOUJOURS visibles (jamais réservées à l'outil 3D) : le
+                  lien de la page client, son bouton WhatsApp, et l'aperçu
+                  interne qui n'enclenche aucune notification. */}
+              <div className="lw-context-devis-links">
+                <Button
+                  type="button" size="sm" variant="outline"
+                  disabled={linkBusy === `l-${d.id}`}
+                  title="Copier le lien de la page client (page devis web publique)"
+                  onClick={() => copierPageClient(d)}
+                >
+                  {copiedId === d.id
+                    ? <Check size={14} aria-hidden="true" />
+                    : <Link2 size={14} aria-hidden="true" />}
+                  {copiedId === d.id ? 'Copié' : 'Page client'}
+                </Button>
+                <Button
+                  type="button" size="sm" variant="ghost"
+                  disabled={linkBusy === `o-${d.id}`}
+                  aria-label={`Ouvrir la page client de ${d.reference} dans un nouvel onglet`}
+                  title="Ouvrir la page client dans un nouvel onglet"
+                  onClick={() => ouvrirPageClient(d)}
+                >
+                  <ExternalLink size={14} aria-hidden="true" />
+                </Button>
+                <Button
+                  type="button" size="sm" variant="outline"
+                  disabled={!leadPhoneOk || linkBusy === `w-${d.id}`}
+                  title={leadPhoneOk
+                    ? 'Envoyer le lien de la page client par WhatsApp'
+                    : 'Aucun numéro de téléphone exploitable'}
+                  onClick={() => envoyerWhatsAppUnique(d)}
+                >
+                  <MessageCircle size={14} aria-hidden="true" /> WhatsApp
+                </Button>
+                <Button
+                  type="button" size="sm" variant="outline"
+                  title="Ouvre le PDF client sans notifier le lead ni marquer le devis consulté (chemin interne /proposal — ne touche jamais le ShareLink public)"
+                  onClick={() => onAction?.('view-devis', d.id)}
+                >
+                  <Eye size={14} aria-hidden="true" /> Aperçu interne (sans notification)
+                </Button>
               </div>
               {d.statut === 'accepte' && (
                 <>

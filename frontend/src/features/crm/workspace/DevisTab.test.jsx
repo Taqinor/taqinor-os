@@ -10,14 +10,19 @@ import DevisTab, { devisTrackCurrent, devisIntent, missingFieldTarget, waArmed }
    WhatsApp multi-devis FR/Darija (état `wa` fourni par le parent — ici des
    props contrôlées, comme le fera réellement ContextRail). */
 
-const { genererFacture, createFromDevis, whatsappDevis } = vi.hoisted(() => ({
+const { genererFacture, createFromDevis, whatsappDevis, shareLinkDevis } = vi.hoisted(() => ({
   genererFacture: vi.fn(() => Promise.resolve({ data: { reference: 'FAC-1', type_facture_display: 'Facture' } })),
   createFromDevis: vi.fn(() => Promise.resolve({ data: { reference: 'CHT-1' } })),
   whatsappDevis: vi.fn(() => Promise.resolve({
     data: { message: 'Bonjour, voici votre devis', links: [{ devis_id: 1, reference: 'DEV-1', url: 'https://x/1' }], wa_url: 'https://wa.me/212600000000?text=x' },
   })),
+  // L5 — mint/réutilisation du ShareLink pour « Page client »/WhatsApp
+  // (unique, format identique à ce que renvoie POST .../share-link/).
+  shareLinkDevis: vi.fn(() => Promise.resolve({
+    data: { token: 'tok-abc', path: '/proposition/karim/tok-abc' },
+  })),
 }))
-vi.mock('../../../api/ventesApi', () => ({ default: { genererFacture } }))
+vi.mock('../../../api/ventesApi', () => ({ default: { genererFacture, shareLinkDevis } }))
 vi.mock('../../../api/installationsApi', () => ({ default: { createFromDevis } }))
 // NTCRM19 — badge de consultation salle de vente : résolu en no-op (aucune
 // salle) pour ne pas polluer ces tests, déjà couverts par son propre test.
@@ -250,5 +255,75 @@ describe('LW22 — WhatsApp multi-devis', () => {
     const { onWaLangue } = renderTab({ state: leadState({ devis: [devis1] }) })
     await user.click(screen.getByRole('button', { name: 'Darija' }))
     expect(onWaLangue).toHaveBeenCalledWith('darija')
+  })
+})
+
+describe('L5 — Page client / WhatsApp / Aperçu interne (TOUJOURS visibles, par devis)', () => {
+  const devis1 = {
+    id: 1, reference: 'DEV-1', statut: 'envoye', total_ttc: '5000',
+    date_creation: '2026-01-01', chantier: null,
+  }
+
+  it('« Page client » mint le ShareLink (share-link) et copie l’URL absolue', async () => {
+    const user = userEvent.setup()
+    const writeText = vi.fn(() => Promise.resolve())
+    // navigator.clipboard peut être un getter en lecture seule selon la
+    // version de jsdom → defineProperty (configurable), même motif que
+    // DevisList.test.jsx (WR2 — copier le lien de proposition).
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText }, configurable: true, writable: true,
+    })
+    renderTab({ state: leadState({ devis: [devis1] }) })
+    await user.click(screen.getByRole('button', { name: /Page client/ }))
+    await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(1))
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(
+      'https://taqinor.ma/proposition/karim/tok-abc',
+    ))
+    expect(await screen.findByText('Copié')).toBeInTheDocument()
+  })
+
+  it('« Ouvrir dans un nouvel onglet » mint le même lien et l’ouvre', async () => {
+    const user = userEvent.setup()
+    window.open = vi.fn(() => ({}))
+    renderTab({ state: leadState({ devis: [devis1] }) })
+    await user.click(screen.getByRole('button', {
+      name: /Ouvrir la page client de DEV-1 dans un nouvel onglet/,
+    }))
+    await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(1))
+    await waitFor(() => expect(window.open).toHaveBeenCalledWith(
+      'https://taqinor.ma/proposition/karim/tok-abc', '_blank', 'noopener',
+    ))
+  })
+
+  it('« WhatsApp » par devis : mint le lien puis ouvre wa.me, MÊME format de message que l’outil 3D', async () => {
+    const user = userEvent.setup()
+    window.open = vi.fn(() => ({}))
+    renderTab({ state: leadState({ telephone: '0612345678', devis: [devis1] }) })
+    await user.click(screen.getByRole('button', { name: 'WhatsApp' }))
+    await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(1))
+    await waitFor(() => expect(window.open).toHaveBeenCalledWith(
+      'https://wa.me/212612345678?text='
+      + encodeURIComponent(
+        "Bonjour Karim, voici votre proposition d'installation solaire Taqinor : "
+        + 'https://taqinor.ma/proposition/karim/tok-abc '
+        + "N'hésitez pas à me poser vos questions.",
+      ),
+      '_blank', 'noopener',
+    ))
+  })
+
+  it('« WhatsApp » par devis désactivé sans numéro exploitable', () => {
+    renderTab({ state: leadState({ telephone: '', whatsapp: '', devis: [devis1] }) })
+    expect(screen.getByRole('button', { name: 'WhatsApp' })).toBeDisabled()
+  })
+
+  it('« Aperçu interne (sans notification) » appelle onAction(\'view-devis\', id) sans jamais toucher le ShareLink public', async () => {
+    const user = userEvent.setup()
+    const { onAction } = renderTab({ state: leadState({ devis: [devis1] }) })
+    await user.click(screen.getByRole('button', { name: /Aperçu interne \(sans notification\)/ }))
+    expect(onAction).toHaveBeenCalledWith('view-devis', 1)
+    // L'aperçu interne passe par LeadDevisPanel → GET /proposal (authentifié,
+    // ne résout aucun token) — il ne mint JAMAIS de ShareLink.
+    expect(shareLinkDevis).not.toHaveBeenCalled()
   })
 })
