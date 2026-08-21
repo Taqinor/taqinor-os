@@ -128,22 +128,28 @@ def serie_mad_mensuelle(facture_hiver_mad, facture_ete_mad=None,
     ]
 
 
-def serie_kwh_depuis_mad(serie_mad, *, tranches=None,
-                         redevance_compteur_mad=None, tppan=True):
+def serie_kwh_depuis_mad(serie_mad, *, tranches=None, charges_fixes_mad=None,
+                         tppan=True, millesime=bareme.MILLESIME_COURANT):
     """12 montants MAD/mois → 12 consommations kWh/mois (back-calcul barème).
 
     ORDRE FONDATEUR : « back-calculating the kwh he consumed looking at his
     bill and tranches ». L'inversion passe par
     :func:`~apps.ventes.quote_engine.bareme.kwh_depuis_facture_mad` — les
-    VRAIES tranches (progressif ≤ 150, sélectif au-delà avec tolérance),
-    charges fixes retirées d'abord. JAMAIS une division par un prix moyen.
+    VRAIES tranches (progressif ≤ 150, sélectif au-delà avec tolérance), les
+    DEUX lignes fixes (location du compteur + entretien du branchement) et la
+    TPPAN retirées correctement. JAMAIS une division par un prix moyen.
+
+    JOURS DE RÉFÉRENCE. Le lead déclare un montant « par mois », pas une
+    période de relevé : on inverse donc sur le mois PLEIN de 30 jours
+    (:data:`bareme.TPPAN_JOURS_REFERENCE`), la base même du barème TPPAN. La
+    proratisation aux jours réels n'intervient qu'ensuite, mois par mois, dans
+    le calcul des économies.
 
     Mémoïsé : le lead ne porte au plus que deux montants distincts, on
     n'inverse donc qu'au plus deux fois.
 
-    Renvoie ``(kwh_mensuels, detail)`` où ``detail`` porte le biais éventuel
-    (redevance compteur inconnue ⇒ kWh légèrement surestimé), ou
-    ``(None, {})`` si la série d'entrée est inexploitable.
+    Renvoie ``(kwh_mensuels, detail)``, ou ``(None, {})`` si la série d'entrée
+    est inexploitable.
     """
     if not serie_mad or len(serie_mad) != 12:
         return None, {}
@@ -153,8 +159,8 @@ def serie_kwh_depuis_mad(serie_mad, *, tranches=None,
     def _inverser(mad):
         if mad not in cache:
             cache[mad] = bareme.kwh_depuis_facture_mad(
-                mad, tranches=tranches,
-                redevance_compteur_mad=redevance_compteur_mad, tppan=tppan)
+                mad, tranches=tranches, charges_fixes_mad=charges_fixes_mad,
+                tppan=tppan, millesime=millesime)
         return cache[mad]
 
     kwh = []
@@ -167,9 +173,10 @@ def serie_kwh_depuis_mad(serie_mad, *, tranches=None,
 
     exemple = next(iter(cache.values()))
     return kwh, {
-        'redevance_connue': exemple['redevance_connue'],
-        'biais_redevance_inconnue': exemple['biais_redevance_inconnue'],
         'methode': 'inversion_bareme_tranches',
+        'charges_fixes_mad': round(exemple['location_entretien_mad'], 2),
+        'charges_fixes_source': exemple['charges_fixes_source'],
+        'millesime': millesime,
     }
 
 
@@ -319,9 +326,9 @@ def calculer_etude_horaire(*, kwc, conso_kwh_mensuelles,
                            ville=None, lat=None, lon=None,
                            occupation=None, equipements=None,
                            batterie_kwh_utile=None,
-                           tranches=None, redevance_compteur_mad=None,
-                           tppan=True, source_conso=None,
-                           detail_conso=None):
+                           tranches=None, charges_fixes_mad=None,
+                           tppan=True, millesime=bareme.MILLESIME_COURANT,
+                           source_conso=None, detail_conso=None):
     """LE calcul canonique. Renvoie le bloc ``etude_horaire``, ou ``None``.
 
     Paramètres
@@ -341,7 +348,10 @@ def calculer_etude_horaire(*, kwc, conso_kwh_mensuelles,
     batterie_kwh_utile : capacité UTILE du stockage (kWh). Absente ⇒ la
         variante « avec batterie » est identique à « sans » (aucune énergie
         décalée inventée).
-    tranches / redevance_compteur_mad / tppan : passés tels quels au barème.
+    tranches / charges_fixes_mad / tppan / millesime : passés tels quels au
+        barème. ``charges_fixes_mad`` remplace en bloc les deux lignes fixes
+        (location du compteur + entretien du branchement) quand la société a
+        relevé les siennes ; ``None`` ⇒ les valeurs SOURCÉES des factures.
 
     Renvoie un dict JSON-sérialisable ::
 
@@ -418,14 +428,18 @@ def calculer_etude_horaire(*, kwc, conso_kwh_mensuelles,
         auto_mois_avec = auto_jour_avec * jours
 
         # ── L'ARGENT : deux factures, au MOIS (l'unité du barème) ──
+        # ``jours`` est le nombre RÉEL de jours du mois : les bornes du barème
+        # TPPAN se proratisent dessus (vérifié sur les factures du fondateur).
+        _bareme_kwargs = {
+            'jours': jours, 'millesime': millesime, 'tranches': tranches,
+            'charges_fixes_mad': charges_fixes_mad, 'tppan': tppan,
+        }
         eco_sans = bareme.economie_deux_factures_mad(
             conso_mois_kwh, max(0.0, conso_mois_kwh - auto_mois_sans),
-            tranches=tranches, redevance_compteur_mad=redevance_compteur_mad,
-            tppan=tppan)
+            **_bareme_kwargs)
         eco_avec = bareme.economie_deux_factures_mad(
             conso_mois_kwh, max(0.0, conso_mois_kwh - auto_mois_avec),
-            tranches=tranches, redevance_compteur_mad=redevance_compteur_mad,
-            tppan=tppan)
+            **_bareme_kwargs)
 
         bloc = {
             'production_kwh': prod_mois_kwh,
@@ -484,7 +498,7 @@ def calculer_etude_horaire(*, kwc, conso_kwh_mensuelles,
 def profil_depuis_factures(*, facture_hiver_mad=None, facture_ete_mad=None,
                            ete_differente=False, factures_mensuelles_mad=None,
                            conso_kwh_mensuelles=None, tranches=None,
-                           redevance_compteur_mad=None, tppan=True):
+                           charges_fixes_mad=None, tppan=True):
     """Résout la série 12 mois en kWh depuis ce que le client a réellement donné.
 
     Ordre de PRIORITÉ (le plus réel d'abord) :
@@ -508,7 +522,7 @@ def profil_depuis_factures(*, facture_hiver_mad=None, facture_ete_mad=None,
         if all(v > 0 for v in valeurs):
             kwh, detail = serie_kwh_depuis_mad(
                 valeurs, tranches=tranches,
-                redevance_compteur_mad=redevance_compteur_mad, tppan=tppan)
+                charges_fixes_mad=charges_fixes_mad, tppan=tppan)
             if kwh:
                 return kwh, 'factures_mensuelles_reelles', detail
 
@@ -517,7 +531,7 @@ def profil_depuis_factures(*, facture_hiver_mad=None, facture_ete_mad=None,
     if serie_mad:
         kwh, detail = serie_kwh_depuis_mad(
             serie_mad, tranches=tranches,
-            redevance_compteur_mad=redevance_compteur_mad, tppan=tppan)
+            charges_fixes_mad=charges_fixes_mad, tppan=tppan)
         if kwh:
             source = ('facture_hiver_ete' if (ete_differente
                                               and _num(facture_ete_mad) > 0)
@@ -528,17 +542,21 @@ def profil_depuis_factures(*, facture_hiver_mad=None, facture_ete_mad=None,
 
 
 def _reglages_tarifaires(company):
-    """``(tranches, redevance)`` de la société — best-effort, jamais bloquant.
+    """``(tranches, charges_fixes)`` de la société — best-effort, jamais bloquant.
 
     ``parametres`` est une app FONDATION (exemptée de la frontière cross-app) ;
     l'import reste local au point d'usage, comme partout dans ``apps/ventes``.
     Réglages illisibles ⇒ ``(None, None)`` : le barème applique alors la grille
-    nationale et ignore la redevance — exactement le comportement d'aujourd'hui.
+    du millésime et les charges fixes SOURCÉES des factures du fondateur.
+
+    ``charges_fixes`` (réglage ``redevance_compteur_mad_mois``) REMPLACE en
+    bloc les deux lignes fixes quand une société a relevé les siennes — une
+    autre zone / un autre calibre de compteur peut légitimement différer.
     """
     if company is None:
         return None, None
     tranches = None
-    redevance = None
+    charges_fixes = None
     try:
         from apps.parametres.selectors import residential_tranches_for
         surcharge = residential_tranches_for(company)
@@ -558,10 +576,10 @@ def _reglages_tarifaires(company):
         from apps.parametres.models_tariff import TariffSettings
         reglages = TariffSettings.get(company=company)
         brut = getattr(reglages, 'redevance_compteur_mad_mois', None)
-        redevance = float(brut) if brut is not None else None
-    except Exception:  # noqa: BLE001 — réglage absent ⇒ charge ignorée
-        redevance = None
-    return tranches, redevance
+        charges_fixes = float(brut) if brut is not None else None
+    except Exception:  # noqa: BLE001 — réglage absent ⇒ défaut sourcé
+        charges_fixes = None
+    return tranches, charges_fixes
 
 
 def etude_horaire_pour_devis(devis, *, kwc=None, batterie_kwh_utile=None,
@@ -601,7 +619,7 @@ def _etude_horaire_pour_devis(devis, *, kwc, batterie_kwh_utile, data):
     lon = localisation.get('gps_lng')
 
     company = getattr(devis, 'company', None)
-    tranches, redevance = _reglages_tarifaires(company)
+    tranches, charges_fixes = _reglages_tarifaires(company)
 
     etude_params = getattr(devis, 'etude_params', None) or {}
     factures_mensuelles = etude_params.get('factures_mensuelles_reelles')
@@ -613,7 +631,7 @@ def _etude_horaire_pour_devis(devis, *, kwc, batterie_kwh_utile, data):
         ete_differente=bills.get('ete_differente'),
         factures_mensuelles_mad=factures_mensuelles,
         conso_kwh_mensuelles=etude_params.get('conso_kwh_mensuelles'),
-        tranches=tranches, redevance_compteur_mad=redevance)
+        tranches=tranches, charges_fixes_mad=charges_fixes)
     if not conso:
         return None
 
@@ -632,7 +650,7 @@ def _etude_horaire_pour_devis(devis, *, kwc, batterie_kwh_utile, data):
         ville=ville, lat=lat, lon=lon,
         occupation=occupation, equipements=equipements,
         batterie_kwh_utile=capacite,
-        tranches=tranches, redevance_compteur_mad=redevance,
+        tranches=tranches, charges_fixes_mad=charges_fixes,
         source_conso=source_conso, detail_conso=detail_conso)
     if resultat is not None:
         resultat['occupation_source'] = occupation_source
