@@ -141,10 +141,22 @@ def build(ctx):
     # parlant pour un ménage) ; l'annuel passe en secondaire. Quand le devis
     # porte deux options, une légende dit sur QUELLE option les chiffres du
     # hook sont calculés (ils lisent l'option recommandée avec batterie).
+    # CJ2b — le libellé de cette légende SUIT désormais la série réellement
+    # employée par la synthèse (``eco_option``, publié par
+    # ``renderer.synthese_economies``) au lieu de supposer « avec batterie ».
+    # Les deux coïncidaient toujours, mais par coïncidence : si la règle Q2
+    # changeait d'option, la légende aurait continué d'annoncer l'autre. La
+    # CONDITION d'affichage, elle, ne bouge pas (deux options) — la couverture
+    # est une page pleine, on ne lui ajoute pas une ligne au passage.
     opt_caption = ""
     if deux_options:
+        _opt_txt = ("avec batterie" if d.get("eco_option", "avec") == "avec"
+                    else "sans batterie")
+        # Guillemets DOUBLES à l'extérieur : aucun antislash dans la f-string
+        # (RENDERING_NOTES.md §3 — la prod rend les PDF sur Python 3.11, où un
+        # antislash dans une f-string est une SyntaxError).
         opt_caption = ('<div class="c1-bigcut-cap">Chiffres calculés pour '
-                       'l\'option recommandée — avec batterie.</div>')
+                       + f"l'option recommandée — {_opt_txt}.</div>")
 
     cov_gap_note = ""
     if not masquer_eco and coverage_pct - pct_cut >= 10:
