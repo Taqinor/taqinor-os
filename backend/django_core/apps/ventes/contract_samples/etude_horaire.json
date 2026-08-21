@@ -1,0 +1,211 @@
+{
+  "endpoint": "POST /api/django/ventes/etude-horaire/preview/",
+  "pourquoi": "CJ2a — LE calcul canonique des economies residentielles (integration horaire production PVGIS x consommation reelle du client, mois par mois, valorisee au bareme) et le dimensionnement qui succede a la regle « 900 DH/mois » ; l'ecran generateur (CJ2b) appelle CET endpoint au lieu de recalculer, ce qui met fin au miroir JS/Python pour ces chiffres. Contrat pose D'ABORD (PACT10) pour que les deux moities ne puissent pas inventer deux formes.",
+  "notes": {
+    "cle_toujours_presente": "« etude » et « dimensionnement » valent null quand ils ne sont pas calculables — jamais une cle absente : l'ecran n'a jamais a deviner.",
+    "regle_z2": "Sans ancrage reel (aucune facture exploitable), « etude » est null et « avertissements » dit pourquoi. On omet, on n'approxime pas.",
+    "critere_par_defaut": "meilleur_payback, puis meilleure couverture a egalite (< 0,25 an d'ecart). Change par le champ « critere » ; les valeurs possibles sont rendues dans « criteres_disponibles ».",
+    "regle_80_pct": "L'onduleur n'est pas choisi ici : composition_residentielle applique deja « jamais moins de 80 % de la puissance PV » (ordre fondateur). Le tableau RE-EXPOSE le ratio obtenu (ratio_onduleur_kwc + regle_80_pct_respectee) pour que la regle soit verifiable a l'oeil.",
+    "argent": "Les economies viennent du modele « deux factures » applique AU MOIS (facture(conso) - facture(conso - autoconsomme)), jamais de « kWh evites x prix moyen ». Les charges fixes s'annulent dans la difference ; la TPPAN, qui suit le kWh, non.",
+    "montants": "Tous les MAD sont TTC. Aucun prix d'achat ni marge n'est expose (regle #4)."
+  },
+  "exemple": {
+    "etude": {
+      "version": 1,
+      "kwc": 6.0,
+      "source_production": "pvgis_ville:casablanca",
+      "source_productible": "pvgis_ville:casablanca",
+      "source_consommation": "facture_hiver",
+      "detail_consommation": {
+        "methode": "inversion_bareme_tranches",
+        "charges_fixes_mad": 39.94,
+        "charges_fixes_source": "factures SRM Casablanca-Settat du fondateur",
+        "millesime": 2026
+      },
+      "occupation": "presence_jour",
+      "occupation_source": "lead_occupation_jour:present",
+      "equipements_actifs": ["clim"],
+      "batterie_kwh_utile": 10.0,
+      "mois": [
+        {
+          "mois": 1,
+          "saison": "hiver",
+          "jours": 31,
+          "production_kwh": 742.38,
+          "consommation_kwh": 653.2,
+          "autoconsomme_sans_kwh": 305.11,
+          "autoconsomme_avec_kwh": 483.62,
+          "surplus_sans_kwh": 437.27,
+          "import_sans_kwh": 348.09,
+          "economie_sans_mad": 636.42,
+          "economie_avec_mad": 921.35,
+          "facture_avant_mad": 1200.0,
+          "facture_apres_sans_mad": 563.58,
+          "facture_apres_avec_mad": 278.65,
+          "taux_autoconso_sans": 0.411,
+          "taux_autoconso_avec": 0.6514,
+          "couverture_sans": 0.4671,
+          "couverture_avec": 0.7404
+        }
+      ],
+      "saisons": {
+        "hiver": {
+          "production_kwh": 2194.5,
+          "consommation_kwh": 1937.79,
+          "autoconsomme_sans_kwh": 903.44,
+          "autoconsomme_avec_kwh": 1432.05,
+          "surplus_sans_kwh": 1291.06,
+          "import_sans_kwh": 1034.35,
+          "economie_sans_mad": 1885.36,
+          "economie_avec_mad": 2729.72,
+          "facture_avant_mad": 3557.31,
+          "facture_apres_sans_mad": 1671.95,
+          "facture_apres_avec_mad": 827.59,
+          "taux_autoconso_sans": 0.4117,
+          "taux_autoconso_avec": 0.6526,
+          "couverture_sans": 0.4662,
+          "couverture_avec": 0.739
+        }
+      },
+      "annuel": {
+        "production_kwh": 10314.96,
+        "consommation_kwh": 7838.4,
+        "autoconsomme_sans_kwh": 4127.06,
+        "autoconsomme_avec_kwh": 6391.24,
+        "surplus_sans_kwh": 6187.9,
+        "import_sans_kwh": 3711.34,
+        "economie_sans_mad": 8689.13,
+        "economie_avec_mad": 12551.42,
+        "facture_avant_mad": 14400.0,
+        "facture_apres_sans_mad": 5710.87,
+        "facture_apres_avec_mad": 1848.58,
+        "taux_autoconso_sans": 0.4001,
+        "taux_autoconso_avec": 0.6196,
+        "couverture_sans": 0.5265,
+        "couverture_avec": 0.8154
+      },
+      "avertissements": []
+    },
+    "dimensionnement": {
+      "critere": "meilleur_payback",
+      "criteres_disponibles": ["meilleur_payback", "meilleure_couverture", "economie_max"],
+      "regle_onduleur_min": 0.8,
+      "motivation": "meilleur payback (6.2 ans), sans egalite — critere « meilleur_payback »",
+      "tableau": [
+        {
+          "panneaux": 8,
+          "panel_watt": 710.0,
+          "kwc": 5.68,
+          "composable": true,
+          "production_annuelle_kwh": 9764.16,
+          "consommation_annuelle_kwh": 7838.4,
+          "taux_autoconso_sans": 0.4123,
+          "taux_autoconso_avec": 0.6402,
+          "couverture_sans": 0.5136,
+          "couverture_avec": 0.7975,
+          "economie_sans_mad": 8471.2,
+          "economie_avec_mad": 12244.6,
+          "cout_sans_ttc": 52800.0,
+          "cout_avec_ttc": 79200.0,
+          "payback_sans_annees": 6.23,
+          "payback_avec_annees": 6.47,
+          "onduleur": "Onduleur reseau 5 kW monophase",
+          "onduleur_kw": 5.0,
+          "onduleur_triphase": false,
+          "ratio_onduleur_kwc": 0.88,
+          "regle_80_pct_respectee": true,
+          "batterie_kwh": 10.0,
+          "avertissements": [],
+          "lignes_sans": [
+            {
+              "role": "panneau",
+              "designation": "Panneau 710 Wc",
+              "quantite": 8,
+              "prix_unitaire_ht": 1450.0
+            }
+          ],
+          "lignes_avec": [
+            {
+              "role": "batterie",
+              "designation": "Batterie 10 kWh",
+              "quantite": 1,
+              "prix_unitaire_ht": 22000.0
+            }
+          ]
+        }
+      ],
+      "recommandation": {
+        "panneaux": 8,
+        "panel_watt": 710.0,
+        "kwc": 5.68,
+        "composable": true,
+        "production_annuelle_kwh": 9764.16,
+        "consommation_annuelle_kwh": 7838.4,
+        "taux_autoconso_sans": 0.4123,
+        "taux_autoconso_avec": 0.6402,
+        "couverture_sans": 0.5136,
+        "couverture_avec": 0.7975,
+        "economie_sans_mad": 8471.2,
+        "economie_avec_mad": 12244.6,
+        "cout_sans_ttc": 52800.0,
+        "cout_avec_ttc": 79200.0,
+        "payback_sans_annees": 6.23,
+        "payback_avec_annees": 6.47,
+        "onduleur": "Onduleur reseau 5 kW monophase",
+        "onduleur_kw": 5.0,
+        "onduleur_triphase": false,
+        "ratio_onduleur_kwc": 0.88,
+        "regle_80_pct_respectee": true,
+        "batterie_kwh": 10.0,
+        "avertissements": [],
+        "lignes_sans": [
+          {
+            "role": "panneau",
+            "designation": "Panneau 710 Wc",
+            "quantite": 8,
+            "prix_unitaire_ht": 1450.0
+          }
+        ],
+        "lignes_avec": [
+          {
+            "role": "batterie",
+            "designation": "Batterie 10 kWh",
+            "quantite": 1,
+            "prix_unitaire_ht": 22000.0
+          }
+        ]
+      }
+    },
+    "consommation": {
+      "source": "facture_hiver",
+      "kwh_mensuels": [653.2, 653.2, 653.2, 653.2, 653.2, 653.2, 653.2, 653.2, 653.2, 653.2, 653.2, 653.2],
+      "detail": {
+        "methode": "inversion_bareme_tranches",
+        "charges_fixes_mad": 39.94,
+        "charges_fixes_source": "factures SRM Casablanca-Settat du fondateur",
+        "millesime": 2026
+      }
+    },
+    "profil": {
+      "occupation": "presence_jour",
+      "equipements_actifs": ["clim"]
+    },
+    "avertissements": []
+  },
+  "exemple_vide": {
+    "etude": null,
+    "dimensionnement": null,
+    "consommation": {
+      "source": "absente",
+      "kwh_mensuels": [],
+      "detail": {}
+    },
+    "profil": {
+      "occupation": null,
+      "equipements_actifs": []
+    },
+    "avertissements": [
+      "Aucune facture exploitable : sans ancrage reel, le moteur ne calcule rien plutot que d'afficher une estimation deguisee en mesure."
+    ]
+  }
+}

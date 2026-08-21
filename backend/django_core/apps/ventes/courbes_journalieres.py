@@ -357,6 +357,17 @@ def _equipements(lead_equip):
     return out
 
 
+def composer_equipements(lead_equip):
+    """Couches composables depuis un dict d'équipements BRUT — façade publique.
+
+    Même règle que :func:`_equipements` (une couche n'existe que si son booléen
+    est vrai ET sa grandeur réelle est renseignée). Sert l'aperçu générateur,
+    qui reçoit les réponses du script d'appel sans devis persisté : un seul
+    endroit décide de ce qui compose une couche, jamais deux.
+    """
+    return _equipements(lead_equip)
+
+
 def equipements_du_devis(devis):
     """Couches d'équipement composables du lead d'un devis (``{}`` si aucune).
 
