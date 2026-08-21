@@ -37,6 +37,20 @@ CLES_CONTRAT = ('sans', 'avec', 'total_sans', 'total_avec', 'devise',
                 'modele', 'estimation', 'note')
 
 
+def _nombres_avec_chemins(obj, chemin=''):
+    """Comme :func:`_tous_les_nombres` mais rend (chemin, valeur) — le message
+    d'échec doit NOMMER où vit le nombre fautif (classe de bug #44), sinon
+    chaque fuite coûte une ronde CI de devinettes."""
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            yield from _nombres_avec_chemins(v, f'{chemin}.{k}')
+    elif isinstance(obj, list):
+        for i, v in enumerate(obj):
+            yield from _nombres_avec_chemins(v, f'{chemin}[{i}]')
+    elif isinstance(obj, (int, float)) and not isinstance(obj, bool):
+        yield chemin, obj
+
+
 def _tous_les_nombres(obj):
     """Parcourt récursivement un JSON déjà décodé et rend TOUS les nombres
     (feuilles), jamais des sous-chaînes de texte — bug class #69 : on scanne
@@ -213,12 +227,14 @@ class AvecBatterieNonVendableTests(_CJ2bBase):
                               'courbes_journalieres', 'conception_electrique',
                               'roof_layout', 'sld_svg'):
             surface_monetaire.pop(bloc_physique, None)
-        presentes = set(_tous_les_nombres(surface_monetaire))
-        fuite = propres_a_avec & presentes
+        paires = list(_nombres_avec_chemins(surface_monetaire))
+        fuite = {
+            (chemin, v) for chemin, v in paires
+            if (round(v) if isinstance(v, float) else v) in propres_a_avec}
         self.assertFalse(
             fuite,
             f'chiffre "avec batterie" interdit trouvé dans le payload '
-            f'public : {fuite}')
+            f'public (chemin → valeur) : {sorted(fuite)}')
 
 
 class EstimationDeclareeTests(_CJ2bBase):
