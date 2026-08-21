@@ -2869,6 +2869,69 @@ def _completer_kit_residentiel(devis, *, kwc, watt, nb_panneaux,
     return ajoutees
 
 
+def _refuser_couple_panneau_onduleur_impossible(devis, lignes, lignes_panneau,
+                                                cible_panneaux, watt, gamme):
+    """DEV-202608-0016 — la resynchro 3D n'ÉCRIT PAS une composition impossible.
+
+    L'outil 3D a posé 25 panneaux Canadian Solar 710 Wc (Isc 18,59 A par
+    chaîne) sur un devis dont l'onduleur vendu est un Deye 5 kW monophasé dont
+    chaque entrée MPPT admet 17 A en court-circuit. La resynchro prenait
+    ``layout.result.panels`` pour vérité et écrivait la ligne sans jamais
+    regarder l'onduleur du devis : le couple est physiquement impossible — UNE
+    chaîne seule sort déjà de la borne — et rien ne le disait.
+
+    LE VERDICT N'EST PAS RÉÉCRIT ICI : on appelle ``verdict_panneau_onduleur``,
+    la logique compose-time qui existait déjà et qui n'avait simplement jamais
+    été branchée sur ce chemin. Elle ne conclut ``incompatible`` que si AUCUNE
+    configuration de chaînes n'évite un BLOQUANT — c'est-à-dire quand le couple
+    lui-même est en cause, jamais parce que le compte du calepinage tombe mal.
+    Les chiffres cités viennent des deux FICHES TECHNIQUES (règle fondateur du
+    21/08/2026 : aucun seuil, aucune marge, aucun ratio inventé).
+
+    Lève ``SyncLayoutError`` AVANT toute écriture — la transaction reste
+    intacte. Un couple ``compatible``/``sous réserve``/``inconnu`` passe : une
+    fiche muette ne fait pas un refus (c'est le domaine de PVFCH).
+    """
+    from apps.ventes.compatibilites import (STATUT_INCOMPATIBLE,
+                                            verdict_panneau_onduleur)
+
+    if cible_panneaux <= 0:
+        return
+
+    # Le panneau CONCERNÉ : celui que la resynchro va ajuster (la ligne
+    # dominante, même politique que l'écriture plus bas), ou celui qu'elle
+    # créerait s'il n'y a encore aucune ligne panneau.
+    candidats = [li for li in lignes_panneau
+                 if getattr(li, 'produit', None) is not None]
+    if candidats:
+        panneau = max(candidats,
+                      key=lambda li: Decimal(str(li.quantite or 0))).produit
+    else:
+        panneau = _pick_product(devis.company, _is_panel, watt=watt,
+                                role='panneau', gamme=gamme)
+    if panneau is None:
+        return
+
+    onduleurs = [li.produit for li in lignes
+                 if getattr(li, 'produit', None) is not None
+                 and (_classe_ligne(li, _is_hybrid_inverter)
+                      or _classe_ligne(li, _is_reseau_inverter))]
+    for onduleur in onduleurs:
+        verdict = verdict_panneau_onduleur(panneau, onduleur)
+        if verdict.get('statut') != STATUT_INCOMPATIBLE:
+            continue
+        raisons = verdict.get('raisons') or []
+        raise SyncLayoutError(
+            '%d panneaux « %s » sont incompatibles avec « %s » : %s. '
+            'Corrigez le nombre de panneaux ou changez d\'onduleur — le devis '
+            'n\'a pas été modifié.'
+            % (cible_panneaux, getattr(panneau, 'nom', '') or 'panneau',
+               getattr(onduleur, 'nom', '') or 'onduleur',
+               raisons[0] if raisons else
+               'le couple sort des bornes de la fiche constructeur'),
+            revision_possible=False)
+
+
 def sync_devis_from_layout(devis, layout, user=None):
     """PV18 — aligne les LIGNES d'un devis brouillon sur un nouveau calepinage.
 
@@ -3004,6 +3067,17 @@ def sync_devis_from_layout(devis, layout, user=None):
         # la resynchro des câbles plus bas, jamais un layout qui ne change
         # rien aux panneaux.
         panneaux_ont_change = False
+        panneaux_avant = total_panneaux
+
+        # ── DEV-202608-0016 — LE VERROU DE POSSIBILITÉ, AVANT LA PREMIÈRE
+        # ÉCRITURE ──
+        #
+        # Placé ICI et pas plus haut : le court-circuit « même géométrie » est
+        # déjà passé (re-poster un layout identique n'écrit rien, donc n'a rien
+        # à refuser), et aucune ligne n'a encore bougé — un refus laisse la
+        # transaction absolument intacte.
+        _refuser_couple_panneau_onduleur_impossible(
+            verrou, lignes, lignes_panneau, cible_panneaux, watt, gamme)
 
         # ── Panneaux : porter le compte à la cible ──
         if cible_panneaux > 0 and not lignes_panneau:
@@ -3049,6 +3123,15 @@ def sync_devis_from_layout(devis, layout, user=None):
             total_panneaux = sum(
                 int(li.quantite or 0) for li in lignes_panneau)
             panneaux_ont_change = True
+
+        # DEV-202608-0016 — la resynchro DIT ce qu'elle a changé. Le compte de
+        # panneaux est la décision commerciale la plus lourde de cet écran
+        # (il porte le kWc, donc le prix) : qu'il bouge sous l'effet d'une
+        # conception 3D ne doit pas se découvrir en relisant le devis.
+        if panneaux_ont_change and total_panneaux != panneaux_avant:
+            avertissements.append(
+                'La conception 3D porte le devis de %d à %d panneaux.'
+                % (panneaux_avant, total_panneaux))
 
         # ── Kilowattage RETENU — déplacé ICI (F8) : le kit (PVHEAL) ET les
         # câbles (PVCBL, juste en dessous) en ont tous les deux besoin, et le

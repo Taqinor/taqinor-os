@@ -149,6 +149,124 @@ class PropositionSldTest(MontageDevisElectrique, TestCase):
         self.assertEqual(self.devis.lignes.count(), 2)
 
 
+class SchemaRefuseUneConfigurationNonConformeTest(TestCase):
+    """DEV-202608-0016 — le schéma ne DESSINE PAS un montage impossible.
+
+    Le devis du fondateur : l'outil 3D a posé 25 Canadian Solar 710 Wc
+    (Isc 18,59 A par chaîne) sur un Deye 5 kW monophasé dont chaque entrée MPPT
+    admet 17 A en court-circuit. Le moteur répartissait 5 chaînes de 5 sur les
+    2 entrées — « MPPT 1 · 3 chaînes », soit 55,8 A dans une entrée à 17 A — et
+    le dessinait sans broncher, sur une pièce technique destinée au
+    gestionnaire de réseau.
+
+    Les fiches sont COMPLÈTES ici : le refus vient de la CONFORMITÉ, pas de
+    PVFCH — et le test le prouve en vérifiant qu'aucune fiche ne manque.
+    """
+
+    def setUp(self):
+        self.company = Company.objects.create(nom="Acme", slug="dev16-acme")
+        self.crm_client = Client.objects.create(
+            company=self.company, nom="Client DEV16",
+            email="dev16@example.com")
+        self.devis = Devis.objects.create(
+            company=self.company, reference="DV-DEV16-1",
+            client=self.crm_client,
+            roof_layout={"_pans_geometry": [
+                {"label": "Sud", "nb_panneaux": 25, "azimut_deg": 180,
+                 "inclinaison_deg": 20}]})
+        # Canadian Solar CS7N-710TB-AG — les valeurs du seeder (PAN-CS-710).
+        panneau = Produit.objects.create(
+            company=self.company, nom="Panneau Canadien Solar 710W",
+            sku="DEV16-PAN", prix_vente=Decimal("1500"),
+            prix_achat=Decimal("1100"), quantite_stock=100)
+        # Deye SUN-5K-SG05LP1-EU — les chiffres du seeder (OND-H-DEY-5M) :
+        # 13 A par entrée, 17 A d'Isc admissible.
+        onduleur = Produit.objects.create(
+            company=self.company, nom="Onduleur hybride Deye 5kW Monophasé",
+            sku="DEV16-OND", prix_vente=Decimal("14000"),
+            prix_achat=Decimal("11000"), quantite_stock=10)
+        FicheTechnique.objects.create(
+            company=self.company, produit=panneau, type_fiche="module",
+            pmax_wc=Decimal("710.00"), voc_v=Decimal("48.30"),
+            isc_a=Decimal("18.59"), vmp_v=Decimal("40.40"),
+            imp_a=Decimal("17.59"),
+            temp_coeff_voc_pct_c=Decimal("-0.250"),
+            temp_coeff_pmax_pct_c=Decimal("-0.290"))
+        FicheTechnique.objects.create(
+            company=self.company, produit=onduleur, type_fiche="onduleur",
+            ond_ac_kw=Decimal("5.00"), ond_phases=1, ond_n_mppt=2,
+            ond_mppt_v_min=Decimal("125.0"), ond_mppt_v_max=Decimal("425.0"),
+            ond_v_max_abs=Decimal("500.0"),
+            ond_i_max_mppt_a=Decimal("13.0"),
+            ond_isc_max_mppt_a=Decimal("17.0"),
+            ond_v_demarrage_v=Decimal("125.0"),
+            ond_bat_v_min=Decimal("40.0"), ond_bat_v_max=Decimal("60.0"))
+        LigneDevis.objects.create(
+            devis=self.devis, produit=panneau,
+            designation="Panneau Canadien Solar 710W", quantite=25,
+            prix_unitaire=Decimal("1500"))
+        LigneDevis.objects.create(
+            devis=self.devis, produit=onduleur,
+            designation="Onduleur hybride Deye 5kW Monophasé", quantite=1,
+            prix_unitaire=Decimal("14000"))
+
+    def _concevoir(self):
+        from apps.ventes.electrical_service import build_electrical_design
+        return build_electrical_design(self.devis)
+
+    def test_les_fiches_sont_completes_le_refus_n_est_pas_pvfch(self):
+        from apps.ventes.electrical_service import fiches_manquantes_du_devis
+        self.assertEqual(fiches_manquantes_du_devis(self.devis), [])
+
+    def test_l_etude_porte_le_bloquant_avec_les_amperes_des_fiches(self):
+        design = self._concevoir()
+        bloquants = design['conformite']['bloquants']
+        self.assertFalse(design['conformite']['conforme'])
+        self.assertTrue(bloquants)
+        joint = ' '.join(bloquants)
+        self.assertIn('55,8 A', joint)      # 3 × 18,59 A sur l'entrée MPPT 1
+        self.assertIn('17,0 A', joint)      # la borne PUBLIÉE de l'entrée
+
+    def test_aucun_schema_pour_une_configuration_non_conforme(self):
+        from apps.ventes.electrical_service import rendre_schema_du_devis
+        self._concevoir()
+        self.assertIsNone(rendre_schema_du_devis(self.devis))
+        self.assertIsNone(_safe_sld_svg(self.devis))
+
+    def test_le_motif_est_lisible_et_nomme_la_non_conformite(self):
+        from apps.ventes.electrical_service import (
+            motifs_non_conformite_du_devis)
+        self._concevoir()
+        motifs = motifs_non_conformite_du_devis(self.devis)
+        self.assertTrue(motifs)
+        self.assertTrue(motifs[0].startswith(
+            'Configuration électrique non conforme :'), motifs[0])
+        self.assertIn('17,0 A', ' '.join(motifs))
+
+    def test_la_page_publique_n_affiche_aucun_schema(self):
+        self._concevoir()
+        jeton = str(uuid.uuid4())
+        ShareLink.objects.create(
+            company=self.company, devis=self.devis, token=jeton)
+        resp = DjangoClient().get(
+            '/api/django/public/proposal/%s/data/' % jeton)
+        self.assertEqual(resp.status_code, 200)
+        charge = resp.json()
+        self.assertIn('sld_svg', charge)
+        self.assertIsNone(charge['sld_svg'])
+
+    def test_le_refus_n_ecrit_ni_statut_ni_ligne(self):
+        """Règle #4 — refuser un dessin ne touche pas le document."""
+        self._concevoir()
+        self.devis.refresh_from_db()
+        statut = self.devis.statut
+        from apps.ventes.electrical_service import rendre_schema_du_devis
+        rendre_schema_du_devis(self.devis)
+        self.devis.refresh_from_db()
+        self.assertEqual(self.devis.statut, statut)
+        self.assertEqual(self.devis.lignes.count(), 2)
+
+
 class ConceptionElectriquePubliqueTest(MontageDevisElectrique, TestCase):
     """Décision fondateur 2026-08-18 — LE DÉTAIL ÉLECTRIQUE EST EXPOSÉ AU CLIENT.
 

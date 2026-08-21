@@ -417,7 +417,7 @@ def concevoir_chaines(entree):
             homogene=homogene))
 
     bloquants.extend(_verdicts_tension(chaines, onduleur, fenetre, alertes))
-    _verdicts_courant(chaines, onduleur, alertes)
+    bloquants.extend(_verdicts_courant(chaines, onduleur, alertes))
 
     return ResultatChaines(
         chaines=tuple(chaines),
@@ -471,29 +471,65 @@ def _verdicts_courant(chaines, onduleur, alertes):
     """Courant d'entrée MPPT : les chaînes d'une même entrée s'ADDITIONNENT.
 
     DEUX bornes, deux natures — la fiche constructeur publie les deux et le
-    moteur ne les confond pas :
+    moteur ne les confond NI dans le calcul, NI dans la SÉVÉRITÉ :
 
+    * la somme des **Isc** contre ``isc_max_mppt_a`` — borne MATÉRIELLE, la
+      seule qui parle du court-circuit. La dépasser, c'est sortir de la
+      SPÉCIFICATION de l'appareil : ce n'est pas une perte de production, c'est
+      une configuration que la fiche constructeur n'autorise pas. Elle est donc
+      **BLOQUANTE**, au même titre que le Voc à froid au-dessus de la tension
+      maximale absolue (incident DEV-202608-0016 : 25 × CS7N-710, Isc 18,59 A
+      par chaîne, sur un Deye 5 kW mono dont chaque entrée admet 17 A — une
+      chaîne SEULE sort déjà de la borne, et le schéma se dessinait quand
+      même) ;
     * la somme des **Imp** contre ``i_max_mppt_a`` — borne de FONCTIONNEMENT.
-      C'est elle qui interdit deux chaînes de gros modules sur une entrée
-      étroite (deux chaînes de CS7N-710 : 2 × 17,59 = 35,18 A sur une entrée
-      Deye SG05LP3 à 26 A) : l'onduleur ne casse pas, il écrête toute l'année
-      et la perte n'apparaît nulle part au bordereau ;
-    * la somme des **Isc** contre ``courant_isc_max_a`` — borne MATÉRIELLE, et
-      c'est la seule qui parle du court-circuit. Elle n'est PAS répétée quand
-      la borne de fonctionnement a déjà parlé pour la même entrée : le message
-      d'écrêtage porte déjà le chiffre d'Isc.
+      Deux chaînes de gros modules sur une entrée large mais pas assez (deux
+      chaînes de CS7N-710 : 2 × 17,59 = 35,18 A sur une entrée Deye SG05LP3 à
+      26 A, Isc 37,18 A sous les 39 A admis) : l'onduleur ne casse pas, il
+      écrête toute l'année. C'est une pratique LÉGITIME dont la perte n'apparaît
+      nulle part au bordereau — elle reste donc une **ALERTE**.
+
+    Ordre et non-répétition : la borne matérielle parle la PREMIÈRE et seule
+    (l'écrêtage ne masque plus le dépassement de spécification, et ne le
+    redouble pas non plus — la configuration est refusée de toute façon).
+
+    **Aucun seuil n'est inventé ici** (règle fondateur du 21/08/2026) : chaque
+    contrôle compare deux chiffres de FICHE et ne s'évalue QUE si sa propre
+    borne est publiée. ``isc_max_mppt_a`` absent ⇒ aucun bloquant : le repli
+    prudent ``courant_isc_max_a`` (qui recopie ``i_max_mppt_a``) reste ce qu'il
+    a toujours été, une ALERTE — refuser un dossier sur une borne substituée
+    reviendrait à refuser sur un nombre que le constructeur n'a jamais écrit.
     """
-    if not chaines or onduleur.i_max_mppt_a <= 0:
-        return
+    bloquants = []
+    if not chaines:
+        return bloquants
     par_mppt = {}
     for chaine in chaines:
         par_mppt.setdefault(chaine.mppt, []).append(chaine)
+    # Borne d'Isc PUBLIÉE par la fiche (``None`` = non publiée), à ne pas
+    # confondre avec le repli ``courant_isc_max_a``.
+    isc_publie = onduleur.isc_max_mppt_a
     for entree_mppt in sorted(par_mppt):
         lot = par_mppt[entree_mppt]
         courant_imp = sum(c.imp_a for c in lot)
         courant_isc = sum(c.isc_a for c in lot)
-        ecrete = courant_imp > onduleur.i_max_mppt_a + 1e-9
-        if ecrete:
+
+        # 1. Borne MATÉRIELLE publiée — dépassement = hors spécification.
+        if isc_publie is not None and isc_publie > 0 \
+                and courant_isc > isc_publie + 1e-9:
+            bloquants.append(
+                "entrée MPPT %d : %d chaîne(s) en parallèle → Isc cumulé %s > "
+                "%s maxi admissible en court-circuit sur l'entrée MPPT %d "
+                "(fiche constructeur) — configuration HORS SPÉCIFICATION, "
+                "réduire le nombre de chaînes sur cette entrée ou prendre un "
+                "onduleur à entrées plus larges"
+                % (entree_mppt, len(lot), fr_a(courant_isc),
+                   fr_a(isc_publie), entree_mppt))
+            continue
+
+        # 2. Borne de FONCTIONNEMENT — écrêtage, légitime mais jamais tu.
+        if onduleur.i_max_mppt_a > 0 \
+                and courant_imp > onduleur.i_max_mppt_a + 1e-9:
             alertes.append(
                 "entrée MPPT %d : %d chaînes en parallèle → Imp cumulé %s > "
                 "courant d'entrée admissible %s (Isc cumulé %s) — ÉCRÊTAGE "
@@ -501,10 +537,15 @@ def _verdicts_courant(chaines, onduleur, alertes):
                 "onduleur à entrées plus larges"
                 % (entree_mppt, len(lot), fr_a(courant_imp),
                    fr_a(onduleur.i_max_mppt_a), fr_a(courant_isc)))
-        if not ecrete and courant_isc > onduleur.courant_isc_max_a + 1e-9:
+            continue
+
+        # 3. Fiche muette sur l'Isc : le repli PRUDENT alerte, il ne bloque pas.
+        if isc_publie is None and onduleur.i_max_mppt_a > 0 \
+                and courant_isc > onduleur.courant_isc_max_a + 1e-9:
             alertes.append(
                 "entrée MPPT %d : %d chaînes en parallèle → Isc cumulé %s > "
                 "courant d'entrée admissible %s — répartir les chaînes sur "
                 "d'autres entrées"
                 % (entree_mppt, len(lot), fr_a(courant_isc),
                    fr_a(onduleur.courant_isc_max_a)))
+    return bloquants
