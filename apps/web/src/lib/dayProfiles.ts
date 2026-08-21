@@ -126,6 +126,17 @@ export const OCCUPANCY_LABELS: Record<OccupancyId, { fr: string; en: string; ar:
  * Ce sont des POIDS DE FORME, pas des kWh. Le NIVEAU vient toujours du serveur
  * (`consommation[saison].kwh_jour`, moyenne des factures réelles du lead) : ce
  * module ne connaît aucune énergie.
+ *
+ * CJ2b (21/08/2026) — LE REPLI, plus la seule source. Le backend peut désormais
+ * servir sa PROPRE forme horaire par saison (`consommation[saison].forme`,
+ * `consommation_forme_source`) — une silhouette calculée depuis la présence
+ * réelle du foyer, pas cette estimation résidentielle générique. Quand elle est
+ * servie et VALIDE (24 nombres finis ≥ 0, somme > 0 — `parseDailyCurves` ne
+ * laisse jamais passer autre chose), `proposalCurve.rawConsumptionShape` la
+ * PRÉFÈRE ; ces trois vecteurs ne sont plus lus que comme repli, byte-identique
+ * au rendu d'avant quand rien n'est servi. Le contenu ci-dessous reste
+ * INCHANGÉ : il est pincé mot pour mot par
+ * `test_etude_horaire.py::test_les_trois_silhouettes_sont_identiques_au_typescript`.
  */
 export const OCCUPANCY_SHAPES: Record<OccupancyId, readonly number[]> = {
   // « Présent en journée » — retraités, foyers mono-actifs, villa occupée.
@@ -476,9 +487,20 @@ export interface ServedProduction {
   source: string;
 }
 
-/** Consommation servie pour UNE saison : le NIVEAU seul (la forme reste ici). */
+/**
+ * Consommation servie pour UNE saison. `kwhJour` est le NIVEAU (moyenne des
+ * factures réelles du lead) — servi depuis CJ1.
+ *
+ * CJ2b (21/08/2026) — `forme` est la FORME horaire, désormais servable elle
+ * aussi : 24 parts en HEURE LOCALE (UTC+1), somme = 1, EXACTEMENT la même
+ * convention que `ServedProduction.forme`. Optionnelle : un backend qui ne sert
+ * que le niveau (le cas fréquent avant CJ2b) laisse `forme` absente, et
+ * `proposalCurve.rawConsumptionShape` retombe alors sur la silhouette
+ * d'occupation locale (`OCCUPANCY_SHAPES`), byte-identique au rendu d'avant.
+ */
 export interface ServedConsumption {
   kwhJour: number;
+  forme?: number[];
 }
 
 /** Options de batterie réellement portées par le devis. */
@@ -512,6 +534,13 @@ export interface DailyCurves {
   occupationSource: string;
   production: Partial<Record<SeasonId, ServedProduction>>;
   consommation: Partial<Record<SeasonId, ServedConsumption>>;
+  /**
+   * CJ2b — provenance de la forme de consommation SERVIE (ex.
+   * `"silhouette_occupation:presence_jour"`), quand au moins une saison en
+   * porte une. Chaîne vide quand aucune saison ne sert de `forme` — jamais un
+   * texte inventé pour habiller un repli local.
+   */
+  consommationFormeSource: string;
   options: BatteryOptionId[];
   /** Capacité TOTALE de stockage au devis (kWh) — `batterie_kwh_total`. */
   batterieKwh: number | null;
@@ -565,9 +594,18 @@ export function parseDailyCurves(raw: unknown): DailyCurves | null {
     for (const season of SEASON_IDS) {
       const entry = (consSrc as Record<string, unknown>)[season];
       if (!entry || typeof entry !== 'object') continue;
-      const kwhJour = positiveNumber((entry as Record<string, unknown>).kwh_jour);
+      const e = entry as Record<string, unknown>;
+      const kwhJour = positiveNumber(e.kwh_jour);
       if (kwhJour === null) continue;
-      consommation[season] = { kwhJour };
+      // CJ2b — même discipline de validation que la forme de PRODUCTION :
+      // exactement 24 nombres finis ≥ 0, somme > 0, sinon on écarte la forme
+      // plutôt que de dessiner une silhouette à moitié lue. Le NIVEAU (kwhJour,
+      // déjà validé ci-dessus) reste servi même quand la forme est illisible.
+      const formeRaw = Array.isArray(e.forme) ? e.forme.map((v) => Number(v)) : null;
+      const formeValid =
+        !!formeRaw && formeRaw.length === 24 && formeRaw.every((v) => Number.isFinite(v) && v >= 0)
+        && formeRaw.reduce((a, b) => a + b, 0) > 0;
+      consommation[season] = formeValid ? { kwhJour, forme: formeRaw! } : { kwhJour };
     }
   }
 
@@ -615,6 +653,9 @@ export function parseDailyCurves(raw: unknown): DailyCurves | null {
     occupationSource: typeof src.occupation_source === 'string' ? src.occupation_source : '',
     production,
     consommation,
+    consommationFormeSource: typeof src.consommation_forme_source === 'string'
+      ? src.consommation_forme_source
+      : '',
     options,
     batterieKwh: positiveNumber(src.batterie_kwh),
     equipements,
