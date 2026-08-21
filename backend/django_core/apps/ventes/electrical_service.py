@@ -30,10 +30,13 @@ dépôt). Le PDF client reste l'affaire exclusive de ``/proposal`` (règle #4).
 """
 import hashlib
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 __all__ = ["build_electrical_design", "conception_electrique_stockee",
            "rendre_schema_du_devis", "fiches_manquantes_du_devis",
-           "motifs_fiche_incomplete",
+           "motifs_fiche_incomplete", "motifs_non_conformite_du_devis",
            "VARIABLES_MODULE_REQUISES", "VARIABLES_ONDULEUR_REQUISES",
            "DC_M_MINIMUM", "DC_M_PAR_DEFAUT", "AC_M_DEFAUT"]
 
@@ -447,6 +450,38 @@ def motifs_fiche_incomplete(devis):
             for materiel, libelle in fiches_manquantes_du_devis(devis)]
 
 
+#: Préfixe des motifs de refus ÉLECTRIQUE — le pendant, pour la conformité, du
+#: « non renseigné(e) sur la fiche technique » de PVFCH. Deux refus voisins mais
+#: distincts : PVFCH dit « je ne SAIS pas » (fiche muette), celui-ci dit « je
+#: sais, et c'est NON » (deux chiffres de fiche qui ne vont pas ensemble).
+MOTIF_NON_CONFORME = "Configuration électrique non conforme : %s"
+
+
+def motifs_non_conformite_du_devis(devis):
+    """Les motifs de refus ÉLECTRIQUE de l'étude STOCKÉE — ``[]`` si conforme.
+
+    DEV-202608-0016 — le schéma unifilaire d'un devis dont l'étude porte un
+    BLOQUANT (Isc cumulé au-dessus de la borne d'entrée MPPT publiée, Voc à
+    froid au-dessus de la tension maximale absolue, fenêtre de tension vide)
+    n'est plus dessiné : une pièce technique qui montre proprement un montage
+    que la fiche constructeur n'autorise pas est pire qu'une pièce absente.
+
+    Symétrique de ``motifs_fiche_incomplete`` : même forme (liste de phrases
+    françaises prêtes à afficher), même portail (la conception STOCKÉE, seule
+    vérité de ``rendre_schema_du_devis``), et AUCUN chiffre ajouté — les
+    ampères et les volts cités viennent du moteur, qui les tient lui-même des
+    deux fiches. Ne lève jamais.
+    """
+    conception = conception_electrique_stockee(devis)
+    if not conception:
+        return []
+    conformite = conception.get("conformite")
+    if not isinstance(conformite, dict):
+        return []
+    return [MOTIF_NON_CONFORME % bloquant
+            for bloquant in (conformite.get("bloquants") or [])]
+
+
 def construire_entree(devis, overrides=None):
     """``EntreeElectrique`` complète d'un devis (+ les overrides appliqués).
 
@@ -653,6 +688,17 @@ def rendre_schema_du_devis(devis):
     Lecture PURE : aucun statut, aucune ligne, aucun prix (règle #4 ; le moteur
     ignore jusqu'à l'existence d'un montant). Jamais bloquant — une étude
     illisible rend ``None``, pas une erreur.
+
+    TROIS PORTAILS, et un dessin ne sort que s'ils s'ouvrent tous les trois :
+    l'étude existe (PV41), les fiches sont complètes (PVFCH), et la conception
+    est CONFORME (DEV-202608-0016). Le troisième est le plus récent : 25
+    panneaux Canadian Solar 710 Wc (Isc 18,59 A) posés par l'outil 3D sur un
+    Deye 5 kW mono dont chaque entrée MPPT admet 17 A se dessinaient sans
+    broncher — « MPPT 1 · 3 chaînes », soit trois fois la limite de l'entrée,
+    sur un schéma d'aspect officiel destiné au gestionnaire de réseau. Un
+    montage que la fiche constructeur n'autorise pas ne se DESSINE pas : le
+    motif est journalisé et lisible sur l'étude (``conformite.bloquants``,
+    ``motifs_non_conformite_du_devis``), le dessin, lui, n'existe pas.
     """
     if conception_electrique_stockee(devis) is None:
         return None
@@ -668,13 +714,26 @@ def rendre_schema_du_devis(devis):
     entree = construire_entree(devis)
     if not entree.groupes:
         return None
+
+    resultat = concevoir(entree)
+    # DEV-202608-0016 — CONFORMITÉ : le rendu lit enfin le verdict qu'il
+    # ignorait. Même omission que PVFCH (``None``, jamais une erreur, jamais
+    # une esquisse de repli), mais le motif est JOURNALISÉ : un schéma qui
+    # disparaît sans laisser de trace est indébuggable.
+    if resultat.conformite.bloquants:
+        logger.warning(
+            "DEV-202608-0016 : schéma unifilaire NON rendu pour le devis %s — "
+            "%s", getattr(devis, "pk", None),
+            MOTIF_NON_CONFORME % resultat.conformite.bloquants[0])
+        return None
+
     date_creation = getattr(devis, "date_creation", None)
     cartouche = {
         "client": getattr(getattr(devis, "client", None), "nom", "") or "",
         "reference": getattr(devis, "reference", "") or "",
         "date": date_creation.strftime("%d/%m/%Y") if date_creation else "",
     }
-    return rendre_schema(entree, concevoir(entree), cartouche=cartouche)
+    return rendre_schema(entree, resultat, cartouche=cartouche)
 
 
 def build_electrical_design(devis, *, overrides=None):
