@@ -107,6 +107,23 @@ import {
   type DailyCurve,
   type CurveLang,
 } from '../../lib/proposalCurve';
+// CJ1 — le bloc backend additif `courbes_journalieres` (formes PVGIS + niveaux
+// réels par saison), les 3 silhouettes d'occupation, la saison du jour et la
+// fenêtre de Ramadan calculée par date. Tout est PUR et testé sous vitest.
+import {
+  parseDailyCurves,
+  seasonForDate,
+  servedSeasons,
+  ramadanWindow,
+  formatHourLabel,
+  OCCUPANCY_IDS,
+  OCCUPANCY_LABELS,
+  SEASON_LABELS,
+  DEFAULT_LAT,
+  DEFAULT_LON,
+  type OccupancyId,
+  type SeasonId,
+} from '../../lib/dayProfiles';
 // WJ120 — simulateur « et avec N batteries ? » (moteur horaire glouton PUR).
 import {
   simulateBattery,
@@ -386,14 +403,80 @@ const chartHasConso = chartSeries.mode === 'comparison';
 // résidentiel/commercial pré-rendent aussi été/Ramadan (toggle discret côté
 // page, CURVE_VARIANTS) — industriel/agricole gardent une seule forme (aucun
 // poids HTML supplémentaire quand le toggle ne s'applique pas).
-const EMPTY_DAILY_CURVE: DailyCurve = { svg: '', hasRealScale: false };
+// ── CJ1 (21/08/2026) — LE GRAPHE JOURNALIER DEVIENT RÉEL ────────────────────
+// Le backend sert désormais `courbes_journalieres` (clé ADDITIVE, ABSENTE quand
+// rien n'est servable) : forme de production PVGIS par saison (24 parts, heure
+// locale, somme 1) + `kwh_jour`/`pic_kw` du devis, et le kWh/jour RÉEL de
+// consommation par saison (moyenne des factures du lead). Trois effets ici :
+// la cloche sin² cède la place à la forme servie, le repère de pointe est
+// libellé en kW (une pointe est une PUISSANCE), et la silhouette de conso est
+// mise à l'échelle du vrai kWh/jour — les deux courbes partagent enfin un axe.
+// Bloc absent ⇒ tout ce qui suit retombe EXACTEMENT sur le rendu d'avant.
+const dailyCurves = ok
+  ? parseDailyCurves((data as unknown as Record<string, unknown> | null)?.courbes_journalieres)
+  : null;
+// Saisons réellement servies + saison de départ = celle de la date du JOUR
+// (bornes identiques au serveur : hiver DJF / été JJA / mi-saison le reste).
+// Elle est SÉRIALISÉE plus bas : le script client la relit au lieu de relire
+// l'horloge, donc les deux passes ne peuvent pas diverger d'un rendu à l'autre.
+const curveSeasons = servedSeasons(dailyCurves);
+const seasonToday = seasonForDate(new Date());
+const curveSeasonDefault: SeasonId | null = curveSeasons.length === 0
+  ? null
+  : (curveSeasons.includes(seasonToday) ? seasonToday : curveSeasons[0]);
+// Silhouettes d'occupation : proposées au VISITEUR en résidentiel uniquement
+// (une usine ou un forage n'a pas d'« occupation du logement »). Le défaut vient
+// du drapeau serveur `occupation` ; absent ⇒ `presence_partielle`, le milieu.
+const curveOccupancies: readonly OccupancyId[] = curveMode === 'residentiel' ? OCCUPANCY_IDS : [];
+const curveOccupancyDefault: OccupancyId = dailyCurves?.occupation ?? 'presence_partielle';
+// Point GPS du chantier (1er sommet du 1er pan de toiture) pour le coucher de
+// soleil du Ramadan — repli Casablanca. Le layout est re-parsé ici (fonction
+// PURE, coût nul) parce que `roofLayout` n'est construit que plus bas.
+const curveSiteLatLng = ok
+  ? (roofLayoutOutlineLatLng(parseRoofLayout(data?.roof_layout))[0] ?? null)
+  : null;
+// Fenêtre de Ramadan CALCULÉE (plage grégorienne + coucher de soleil NOAA au
+// point du chantier), plus jamais les « 3h-5h / 19h » codés en dur qui n'étaient
+// vrais que pour un Ramadan d'été. `null` hors table (après 2033) ⇒ repli
+// documenté côté proposalCurve, et AUCUNE heure affichée sur la puce.
+const curveRamadan = ramadanWindow(
+  new Date(),
+  curveSiteLatLng ? curveSiteLatLng[0] : DEFAULT_LAT,
+  curveSiteLatLng ? curveSiteLatLng[1] : DEFAULT_LON,
+);
+// Libellé auto-honnête de la puce Ramadan : elle DIT la fenêtre qu'elle a
+// calculée (« Ramadan · iftar ≈ 18h31 ») plutôt que de moduler en silence.
+const ramadanIftarFr = curveRamadan ? formatHourLabel(curveRamadan.iftarHour, 'fr') : '';
+const ramadanIftarEn = curveRamadan ? formatHourLabel(curveRamadan.iftarHour, 'en') : '';
+const ramadanIftarAr = curveRamadan ? formatHourLabel(curveRamadan.iftarHour, 'ar') : '';
+
+/** Ce que le serveur a servi pour UNE saison (production + niveau de conso). */
+function servedScaleFor(season: SeasonId | null) {
+  if (!season || !dailyCurves) return null;
+  return {
+    production: dailyCurves.production[season] ?? null,
+    consumptionKwhJour: dailyCurves.consommation[season]?.kwhJour ?? null,
+    season,
+  };
+}
+
+const EMPTY_DAILY_CURVE: DailyCurve = {
+  svg: '', hasRealScale: false, hasServedShape: false, hasRealConsScale: false,
+};
 const dailyCurvesByVariant: Record<CurveLang, Partial<Record<ProposalCurveVariant, DailyCurve>>> = {
   fr: {}, en: {}, ar: {},
 };
 if (ok) {
+  const served = servedScaleFor(curveSeasonDefault);
   for (const lang of ['fr', 'en', 'ar'] as const) {
     for (const variant of CURVE_VARIANTS) {
-      dailyCurvesByVariant[lang][variant] = renderYearCurve(prodKwh, undefined, lang, { mode: curveMode, variant });
+      dailyCurvesByVariant[lang][variant] = renderYearCurve(
+        prodKwh,
+        undefined,
+        lang,
+        { mode: curveMode, variant, occupancy: curveOccupancyDefault, ramadan: curveRamadan },
+        served,
+      );
     }
   }
 }
@@ -401,6 +484,19 @@ const dailyCurveFr = dailyCurvesByVariant.fr.normal ?? EMPTY_DAILY_CURVE;
 const dailyCurveEn = dailyCurvesByVariant.en.normal ?? EMPTY_DAILY_CURVE;
 const dailyCurveAr = dailyCurvesByVariant.ar.normal ?? EMPTY_DAILY_CURVE;
 const dailyCurve = dailyCurveFr;
+// Configuration du RE-RENDU client (changement de saison / d'occupation) : le
+// navigateur rejoue la MÊME fonction pure `renderYearCurve` avec les MÊMES
+// nombres servis — jamais un second moteur, jamais un chiffre recalculé.
+const curveConfig = ok && dailyCurve.svg
+  ? JSON.stringify({
+      prodKwh: prodKwh ?? null,
+      mode: curveMode,
+      variants: CURVE_VARIANTS,
+      ramadan: curveRamadan ? { imsakHour: curveRamadan.imsakHour, iftarHour: curveRamadan.iftarHour } : null,
+      production: dailyCurves?.production ?? {},
+      consommation: dailyCurves?.consommation ?? {},
+    })
+  : '';
 
 // ── WJ120 — Simulateur « et avec N batteries ? » (résidentiel + commercial) ──
 // Moteur horaire glouton PUR (lib/batterySim, jour 2 simulé) : conso journalière
@@ -425,11 +521,20 @@ const dailyProdKwh = prodKwh && prodKwh > 0 ? prodKwh / 365 : 0;
 const offerBatteryAvec = resolveOfferBattery(ok ? (q?.avec_items ?? null) : null);
 const offerBatterySans = resolveOfferBattery(ok ? (q?.sans_items ?? null) : null);
 const offerBattery = offerBatteryAvec.present ? offerBatteryAvec : offerBatterySans;
-// Capacité du curseur : TOUJOURS celle de la ligne du devis ; le repli catalogue
-// ne sert plus qu'à une ligne batterie dont la désignation ne dit pas ses kWh
-// (le simulateur, lui, n'existe plus du tout sans ligne batterie).
-const batteryUnitCapacityKwh = offerBattery.capacityKwhPerUnit ?? DEFAULT_UNIT_CAPACITY_KWH;
 const offeredUnits = offerBattery.present && offerBattery.units > 0 ? offerBattery.units : 0;
+// Capacité du curseur : TOUJOURS celle de la ligne du devis en premier.
+// CJ1 — quand la désignation de la ligne ne dit PAS ses kWh, on ne retombe plus
+// sur la capacité catalogue par défaut (5 kWh, liée à rien de ce devis) : on
+// prend la capacité TOTALE servie par le backend
+// (`courbes_journalieres.batterie_kwh` = `batterie_kwh_total` du moteur), divisée
+// par le nombre d'unités du devis. Deux nombres RÉELS et une division, jamais
+// une valeur de catalogue. Le repli catalogue ne survit qu'en dernier recours.
+const servedBatteryTotalKwh = dailyCurves?.batterieKwh ?? null;
+const servedUnitCapacityKwh = servedBatteryTotalKwh !== null
+  ? servedBatteryTotalKwh / Math.max(1, offeredUnits)
+  : null;
+const batteryUnitCapacityKwh =
+  offerBattery.capacityKwhPerUnit ?? servedUnitCapacityKwh ?? DEFAULT_UNIT_CAPACITY_KWH;
 const BATTERY_SIM_MAX_UNITS = 3;
 // Curseur au départ : les unités offertes (bornées à 3) si le devis porte une
 // batterie, sinon 1 (« et avec 1 batterie ? »).
@@ -444,14 +549,28 @@ const avecTtc = ok && offerBatteryAvec.present && hasRealPrice(data!, 'avec_batt
 // Il s'affichait dès que le mode était résidentiel/commercial et retombait sur une
 // capacité catalogue par défaut : un devis sans batterie exhibait donc un curseur
 // « et avec 1 batterie ? » construit sur une unité que le client n'achète pas.
+// CJ1 — et le backend a maintenant le DERNIER mot : `courbes_journalieres.options`
+// dit les variantes que le devis porte VRAIMENT (lues sur les drapeaux du moteur
+// `sans_ok`/`avec_ok`/`deux_options`). Un devis explicitement « sans » ⇒ AUCUN
+// calque batterie, aucune commande, aucune config sérialisée — pas seulement une
+// case masquée. Clé absente ⇒ comportement historique inchangé.
+const batteryOptionsServed = dailyCurves?.options ?? [];
 const showBatterySim = batterySimEligible && offerBattery.present
-  && dailyConsKwh > 0 && dailyProdKwh > 0;
+  && dailyConsKwh > 0 && dailyProdKwh > 0
+  && (batteryOptionsServed.length === 0 || batteryOptionsServed.includes('avec'));
 // Silhouettes horaires (mode courant, variante NORMALE) — passées au client pour un
 // recalcul 100 % local au curseur (aucun re-fetch). Rendu serveur INCHANGÉ : toujours
 // la variante 'normal' ; l'hydratation (script client) prend le relais pour recalculer
 // avec la variante active des onglets Standard/Été/Ramadan (PACT-battery, 2026-08-15).
 const batteryConsShape = showBatterySim
-  ? consumptionShapeHours(HOURS_PER_DAY, { mode: curveMode, variant: 'normal' })
+  ? consumptionShapeHours(HOURS_PER_DAY, {
+      mode: curveMode,
+      variant: 'normal',
+      // CJ1 — la silhouette du simulateur suit la MÊME base d'occupation que la
+      // courbe nue : les deux dessins racontent le même foyer.
+      occupancy: curveOccupancyDefault,
+      ramadan: curveRamadan,
+    })
   : [];
 const batterySolarShape = showBatterySim
   ? Array.from({ length: HOURS_PER_DAY }, (_, h) => solarProfile(h))
@@ -492,6 +611,13 @@ const batterySimConfig = showBatterySim
       sansTtc,
       avecTtc,
       mode: curveMode,
+      // CJ1 — occupation de DÉPART et fenêtre de Ramadan calculée : le client
+      // reconstruit la silhouette avec exactement les mêmes entrées que le
+      // serveur quand le visiteur change de puce.
+      occupancy: curveOccupancyDefault,
+      ramadan: curveRamadan
+        ? { imsakHour: curveRamadan.imsakHour, iftarHour: curveRamadan.iftarHour }
+        : null,
     })
   : '';
 
@@ -509,6 +635,15 @@ const productionAvailability: ProductionAvailability = {
   daily: !!dailyCurve.svg,
   variants: CURVE_VARIANTS,
   battery: showBatterySim && !!batteryInitial,
+  // CJ1 — puces de saison / d'occupation, et options de batterie RÉELLEMENT
+  // portées par le devis (`courbes_journalieres.options`) : ['sans'] retire le
+  // calque batterie, ['avec'] le montre sans case à décocher, l'absence de clé
+  // laisse le comportement historique intact.
+  seasons: curveSeasons,
+  defaultSeason: curveSeasonDefault,
+  occupancies: curveOccupancies,
+  defaultOccupancy: curveOccupancyDefault,
+  batteryOptions: batteryOptionsServed.length ? batteryOptionsServed : undefined,
 };
 const showProduction = hasProductionBlock(productionAvailability);
 const prodState0 = initialProductionState(productionAvailability);
@@ -1756,7 +1891,7 @@ const signConfig = ok
             {/* ── CALQUE JOURNÉE : la cloche solaire vs la conso (inchangé), avec
                    ses onglets Standard/Été/Ramadan. ───────────────────── */}
             {dailyCurve.svg && (
-              <div data-prod-layer="daily" hidden={!prodLayers.daily}>
+              <div data-prod-layer="daily" data-curve-config={curveConfig} hidden={!prodLayers.daily}>
               <!-- WJ80 — mêmes trois variantes langue pré-rendues que le graphe
                    ci-dessus (FR visible par défaut). WJ119 — croisées avec la
                    variante été/Ramadan (normal/ete/ramadan) quand le toggle
@@ -1788,13 +1923,30 @@ const signConfig = ok
                   <span class="text-lune-faint" data-i18n data-fr="profil — année type (forme indicative)" data-en="profile — typical year (indicative shape)" data-ar="نمط — سنة نموذجية (شكل إرشادي)">profil — année type (forme indicative)</span>
                 )}
               </div>
-              <!-- WJ119 — libellé honnête : jamais « mesuré », toujours « type ». -->
-              <p class="mt-1 text-xs text-lune-faint" data-i18n
-                data-fr="Profil type au Maroc, ajusté à votre facture."
-                data-en="Typical Moroccan profile, adjusted to your bill."
-                data-ar="نمط نموذجي في المغرب، معدّل حسب فاتورتكم.">
-                Profil type au Maroc, ajusté à votre facture.
-              </p>
+              <!-- WJ119/CJ1 — libellé honnête : jamais « mesuré », toujours
+                   « type ». CJ1 le rend EXACT dans les deux sens : quand le
+                   backend a servi le kWh/jour réel du client, la silhouette est
+                   VRAIMENT calée sur ses factures et la phrase le dit en
+                   nommant le profil choisi ; sinon elle garde mot pour mot la
+                   formulation prudente d'avant. Cette ligne est réécrite en JS
+                   (changement de puce d'occupation) : elle ne passe donc PAS par
+                   `data-i18n` mais par le registre `__propRegisterBusyLabel`,
+                   comme les autres libellés pilotés par un état. -->
+              <p id="curve-profile-note" class="mt-1 text-xs text-lune-faint">{
+                dailyCurve.hasRealConsScale
+                  ? (curveMode === 'residentiel'
+                      ? `Profil « ${OCCUPANCY_LABELS[curveOccupancyDefault].fr} » calé sur vos factures.`
+                      : 'Profil type au Maroc, calé sur vos factures.')
+                  : 'Profil type au Maroc, ajusté à votre facture.'
+              }</p>
+              {dailyCurves?.noteHoraire && dailyCurve.hasServedShape && (
+                <p class="mt-1 text-xs text-lune-faint" data-i18n
+                  data-fr={dailyCurves.noteHoraire}
+                  data-en="Times shown in Moroccan civil time (UTC+1). During Ramadan Morocco reverts to UTC+0: the curve then shifts one hour earlier."
+                  data-ar="التوقيت المدني المغربي (UTC+1). خلال رمضان يعود المغرب إلى UTC+0: ينزاح المنحنى عندئذ ساعة إلى الأمام.">
+                  {dailyCurves.noteHoraire}
+                </p>
+              )}
               <p class="v2-body mt-4 text-sm text-lune-soft" data-i18n
                 data-fr={`Le soleil produit en pleine journée : chaque kWh consommé à ce moment-là ne vient plus du réseau. ${dailyCurve.hasRealScale ? 'Les repères sont calés sur votre production estimée.' : 'Cette courbe illustre une journée type — votre profil exact est précisé avec votre conseiller.'}`}
                 data-en={`The sun produces during the day: every kWh consumed at that moment no longer comes from the grid. ${dailyCurve.hasRealScale ? 'The markers are calibrated on your estimated production.' : 'This curve illustrates a typical day — your exact profile is confirmed with your advisor.'}`}
@@ -1891,6 +2043,43 @@ const signConfig = ok
               </div>
             )}
 
+            {/* ── CJ1 · PUCES DE SAISON — Hiver / Mi-saison / Été. Elles ne
+                   changent PAS d'unité de récit : elles sélectionnent la saison
+                   RÉELLEMENT servie par le backend (forme PVGIS + kWh/jour de
+                   cette saison-là). Une seule saison servie ⇒ aucune puce (il
+                   n'y aurait rien à comparer). Rangée SŒUR du contrôle de
+                   variante ci-dessous : le placement des calques et leur gating
+                   (productionLayers) ne bougent pas d'un pixel. */}
+            {curveSeasons.length > 1 && (
+              <div data-prod-season-control class="mt-3 flex flex-wrap items-center gap-2" role="group" aria-label="Saison affichée" hidden={!prodLayers.showSeasonTabs}>
+                {curveSeasons.map((season) => (
+                  <button type="button" data-curve-season-btn={season}
+                    aria-pressed={season === prodLayers.season ? 'true' : 'false'}
+                    class="btn-pill px-3 py-1 text-xs"
+                    style={season === prodLayers.season ? 'background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)' : undefined}
+                    data-i18n data-fr={SEASON_LABELS[season].fr} data-en={SEASON_LABELS[season].en} data-ar={SEASON_LABELS[season].ar}>{SEASON_LABELS[season].fr}</button>
+                ))}
+              </div>
+            )}
+
+            {/* ── CJ1 · PUCES D'OCCUPATION — « qui est à la maison en journée ? ».
+                   Le fondateur voulait trois choix : la silhouette moyenne unique
+                   ne ressemblait ni à un retraité présent toute la journée ni à
+                   un couple d'actifs absent de 8h à 18h. Résidentiel uniquement
+                   (une usine n'a pas d'occupation de logement) ; le défaut vient
+                   du drapeau serveur `occupation`. */}
+            {curveOccupancies.length > 1 && (
+              <div data-prod-occupancy-control class="mt-3 flex flex-wrap items-center gap-2" role="group" aria-label="Occupation du logement en journée" hidden={!prodLayers.showOccupancyTabs}>
+                {curveOccupancies.map((occ) => (
+                  <button type="button" data-curve-occupancy-btn={occ}
+                    aria-pressed={occ === prodLayers.occupancy ? 'true' : 'false'}
+                    class="btn-pill px-3 py-1 text-xs"
+                    style={occ === prodLayers.occupancy ? 'background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)' : undefined}
+                    data-i18n data-fr={OCCUPANCY_LABELS[occ].fr} data-en={OCCUPANCY_LABELS[occ].en} data-ar={OCCUPANCY_LABELS[occ].ar}>{OCCUPANCY_LABELS[occ].fr}</button>
+                ))}
+              </div>
+            )}
+
             {/* ── Onglets de profil Standard/Été/Ramadan : COMMUNS aux deux
                    calques de la vue journée (courbe nue ET batterie) — le
                    fondateur a demandé que « Avec batterie » se COMBINE avec
@@ -1901,7 +2090,10 @@ const signConfig = ok
                    showVariantTabs — quel que soit le dessin affiché. Changer
                    d'onglet pendant que la batterie est active recalcule la
                    silhouette de consommation ET rejoue le simulateur (script
-                   client), jamais un chiffre inventé ici. */}
+                   client), jamais un chiffre inventé ici.
+                   CJ1 — Été et Ramadan sont des MODIFICATEURS ORTHOGONAUX : ils
+                   se posent sur la silhouette d'occupation choisie ci-dessus,
+                   ils ne la remplacent pas. */}
             {curveVariantToggle && (
               <div data-prod-variant-control class="mt-3 flex flex-wrap items-center gap-2" role="group" aria-label="Variante du profil de consommation" hidden={!prodLayers.showVariantTabs}>
                 <button type="button" id="curve-variant-normal" data-curve-variant-btn="normal" aria-pressed="true"
@@ -1910,19 +2102,46 @@ const signConfig = ok
                 <button type="button" id="curve-variant-ete" data-curve-variant-btn="ete" aria-pressed="false"
                   class="btn-pill px-3 py-1 text-xs"
                   data-i18n data-fr="Été (clim)" data-en="Summer (AC)" data-ar="الصيف (تكييف)">Été (clim)</button>
+                {/* CJ1 — la puce Ramadan DIT la fenêtre qu'elle a calculée
+                    (coucher de soleil NOAA au point du chantier, à la date du
+                    mois de Ramadan) : sans cette heure affichée, une modulation
+                    invisible resterait invérifiable par le client. Hors table
+                    des plages (après 2033) ⇒ aucune heure, seulement « Ramadan ». */}
                 <button type="button" id="curve-variant-ramadan" data-curve-variant-btn="ramadan" aria-pressed="false"
                   class="btn-pill px-3 py-1 text-xs"
-                  data-i18n data-fr="Ramadan" data-en="Ramadan" data-ar="رمضان">Ramadan</button>
+                  data-i18n
+                  data-fr={ramadanIftarFr ? `Ramadan · iftar ≈ ${ramadanIftarFr}` : 'Ramadan'}
+                  data-en={ramadanIftarEn ? `Ramadan · iftar ≈ ${ramadanIftarEn}` : 'Ramadan'}
+                  data-ar={ramadanIftarAr ? `رمضان · الإفطار ≈ ${ramadanIftarAr}` : 'رمضان'}>{
+                    ramadanIftarFr ? `Ramadan · iftar ≈ ${ramadanIftarFr}` : 'Ramadan'
+                  }</button>
               </div>
             )}
 
             {/* ── Le calque batterie se commande ICI, sous le graphique. ──── */}
             {productionAvailability.battery && (
               <div data-prod-battery-control class="mt-4 border-t border-white/10 pt-4" hidden={!prodLayers.showBatteryToggle}>
-                <label for="prod-battery-toggle" class="flex cursor-pointer items-center gap-2.5 text-sm text-lune">
-                  <input type="checkbox" id="prod-battery-toggle" class="h-4 w-4 accent-brass-400" checked={prodLayers.battery} aria-describedby="prod-battery-hint" />
-                  <span data-i18n data-fr="Avec batterie" data-en="With a battery" data-ar="مع بطارية">Avec batterie</span>
-                </label>
+                {/* CJ1 — la commande suit les options que le DEVIS porte
+                    vraiment (`courbes_journalieres.options`). Deux options
+                    (['sans','avec']) ⇒ la case à cocher historique. UNE seule
+                    option « avec » ⇒ il n'existe pas de variante sans stockage
+                    à ce devis : on montre le calque et on l'ÉTIQUETTE, sans
+                    offrir une case qui ne correspondrait à aucun prix. (Le cas
+                    ['sans'] ne passe même pas ici : `battery` est faux.) */}
+                {prodLayers.batteryLocked ? (
+                  <p class="flex items-center gap-2.5 text-sm text-lune" aria-describedby="prod-battery-hint">
+                    <span class="inline-block h-2 w-2 rounded-full" style="background: var(--color-brass-400)" aria-hidden="true"></span>
+                    <span data-i18n
+                      data-fr="Avec batterie — l’option retenue à votre devis"
+                      data-en="With a battery — the option quoted for you"
+                      data-ar="مع بطارية — الخيار المعتمد في عرضكم">Avec batterie — l’option retenue à votre devis</span>
+                  </p>
+                ) : (
+                  <label for="prod-battery-toggle" class="flex cursor-pointer items-center gap-2.5 text-sm text-lune">
+                    <input type="checkbox" id="prod-battery-toggle" class="h-4 w-4 accent-brass-400" checked={prodLayers.battery} aria-describedby="prod-battery-hint" />
+                    <span data-i18n data-fr="Avec batterie" data-en="With a battery" data-ar="مع بطارية">Avec batterie</span>
+                  </label>
+                )}
                 <p id="prod-battery-hint" class="ms-7 mt-1 text-xs text-lune-faint" data-i18n
                   data-fr="Rejoue la même journée avec une batterie : ce qui est consommé en direct, ce qui est stocké, ce qui reste au réseau."
                   data-en="Replays the same day with a battery: what is used directly, what is stored, what still comes from the grid."
@@ -3558,7 +3777,20 @@ const signConfig = ok
     setProductionView,
     setCurveVariant,
     setBatteryLayer,
+    setSeason,
+    setOccupancy,
   } from '../../lib/propositionPage';
+  // CJ1 — re-rendu CLIENT de la courbe journalière au changement de saison ou
+  // d'occupation. C'est la MÊME fonction pure que le rendu serveur, appelée avec
+  // les MÊMES nombres servis (sérialisés dans `data-curve-config`) : aucune
+  // seconde implémentation, aucun chiffre recalculé dans le navigateur.
+  import { renderYearCurve, type ProposalCurveMode, type ProposalCurveVariant } from '../../lib/proposalCurve';
+  import {
+    OCCUPANCY_LABELS,
+    type OccupancyId,
+    type SeasonId,
+    type ServedProduction,
+  } from '../../lib/dayProfiles';
 
   interface SignConfig {
     token: string;
@@ -3725,6 +3957,92 @@ const signConfig = ok
     }
     let state = initialProductionState(availability);
 
+    // ── CJ1 — CONFIG DE RE-RENDU (saison / occupation) ─────────────────────
+    // Tout ce que le serveur a servi, tel qu'il l'a servi. Absent (bloc backend
+    // non fourni) ⇒ `null` ⇒ les puces n'existent pas dans le DOM et rien de ce
+    // qui suit ne s'exécute : la page se comporte exactement comme avant.
+    interface CurveConfig {
+      prodKwh: number | null;
+      mode: ProposalCurveMode;
+      variants: ProposalCurveVariant[];
+      ramadan: { imsakHour: number; iftarHour: number } | null;
+      production: Partial<Record<SeasonId, ServedProduction>>;
+      consommation: Partial<Record<SeasonId, { kwhJour: number }>>;
+    }
+    const dailyLayer = section.querySelector<HTMLElement>('[data-prod-layer="daily"]');
+    let curveCfg: CurveConfig | null = null;
+    try {
+      const rawCurve = dailyLayer?.getAttribute('data-curve-config') || '';
+      curveCfg = rawCurve ? (JSON.parse(rawCurve) as CurveConfig) : null;
+    } catch {
+      curveCfg = null;
+    }
+
+    /** Phrase « d'où vient ce profil » — réécrite à chaque changement de puce
+     *  ET à chaque bascule de langue (registre propI18nBusyLabels). Elle ne dit
+     *  « calé sur vos factures » QUE si le niveau servi existe vraiment. */
+    function renderProfileNote(): void {
+      const el = document.getElementById('curve-profile-note');
+      if (!el) return;
+      const served = curveCfg?.production?.[state.season] ?? null;
+      const consKwh = curveCfg?.consommation?.[state.season]?.kwhJour ?? null;
+      const real = !!served && typeof consKwh === 'number' && consKwh > 0;
+      const label = OCCUPANCY_LABELS[state.occupancy]?.[currentLang] ?? '';
+      const isResidential = curveCfg?.mode === 'residentiel';
+      if (!real) {
+        el.textContent = currentLang === 'en'
+          ? 'Typical Moroccan profile, adjusted to your bill.'
+          : currentLang === 'ar'
+            ? 'نمط نموذجي في المغرب، معدّل حسب فاتورتكم.'
+            : 'Profil type au Maroc, ajusté à votre facture.';
+        return;
+      }
+      if (isResidential && label) {
+        el.textContent = currentLang === 'en'
+          ? `Profile “${label}” calibrated on your bills.`
+          : currentLang === 'ar'
+            ? `نمط «${label}» معاير على فواتيركم.`
+            : `Profil « ${label} » calé sur vos factures.`;
+        return;
+      }
+      el.textContent = currentLang === 'en'
+        ? 'Typical Moroccan profile, calibrated on your bills.'
+        : currentLang === 'ar'
+          ? 'نمط نموذجي في المغرب، معاير على فواتيركم.'
+          : 'Profil type au Maroc, calé sur vos factures.';
+    }
+
+    /** Redessine les SVG pré-rendus (3 langues × variantes) pour la saison et
+     *  l'occupation courantes. Les conteneurs et leur visibilité ne bougent pas :
+     *  seul le contenu du SVG change, donc les écouteurs tap-to-reveal posés sur
+     *  `.daily-curve-wrap` survivent, et `applyCurveVisibility()` reste maître
+     *  de qui est affiché. */
+    function rerenderCurves(): void {
+      if (!curveCfg || !dailyLayer) return;
+      const served = {
+        production: curveCfg.production?.[state.season] ?? null,
+        consumptionKwhJour: curveCfg.consommation?.[state.season]?.kwhJour ?? null,
+        season: state.season,
+      };
+      dailyLayer.querySelectorAll<HTMLElement>('[data-curve-lang]').forEach((el) => {
+        const lang = (el.dataset.curveLang as 'fr' | 'en' | 'ar' | undefined) ?? 'fr';
+        const variant = (el.dataset.curveVariant as ProposalCurveVariant | undefined) ?? 'normal';
+        el.innerHTML = renderYearCurve(
+          curveCfg!.prodKwh,
+          undefined,
+          lang,
+          {
+            mode: curveCfg!.mode,
+            variant,
+            occupancy: state.occupancy,
+            ramadan: curveCfg!.ramadan,
+          },
+          served,
+        ).svg;
+      });
+      renderProfileNote();
+    }
+
     function apply(): void {
       const layers = productionLayers(state, availability);
       const setLayer = (key: string, on: boolean) => {
@@ -3750,6 +4068,24 @@ const signConfig = ok
       // visibles tant que la vue journée les rend, quel que soit le dessin actif.
       const variantControl = section!.querySelector<HTMLElement>('[data-prod-variant-control]');
       if (variantControl) variantControl.hidden = !layers.showVariantTabs;
+      // CJ1 — les deux nouvelles rangées de puces suivent la MÊME règle : elles
+      // n'existent que sur la vue journée, et seulement s'il y a un choix réel.
+      const seasonControl = section!.querySelector<HTMLElement>('[data-prod-season-control]');
+      if (seasonControl) seasonControl.hidden = !layers.showSeasonTabs;
+      const occupancyControl = section!.querySelector<HTMLElement>('[data-prod-occupancy-control]');
+      if (occupancyControl) occupancyControl.hidden = !layers.showOccupancyTabs;
+      const markPressed = (attr: string, active: string) => {
+        section!.querySelectorAll<HTMLElement>(`[${attr}]`).forEach((btn) => {
+          const on = btn.getAttribute(attr) === active;
+          btn.setAttribute('aria-pressed', String(on));
+          btn.setAttribute(
+            'style',
+            on ? 'background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)' : '',
+          );
+        });
+      };
+      markPressed('data-curve-season-btn', layers.season);
+      markPressed('data-curve-occupancy-btn', layers.occupancy);
       // La courbe journalière reste synchrone de l'onglet de profil actif.
       if (layers.variant !== currentCurveVariant) applyCurveVariant(layers.variant);
       // PACT-battery — le calque batterie REMPLACE la courbe nue mais doit
@@ -3757,8 +4093,8 @@ const signConfig = ok
       // île <script>, pont window comme __propApplyLang ci-dessous) avec la MÊME
       // variante, exactement comme au déplacement du curseur d'unités.
       if (layers.battery) {
-        (window as unknown as { __propSetBatteryVariant?: (v: CurveVariantId) => void })
-          .__propSetBatteryVariant?.(layers.variant);
+        (window as unknown as { __propSetBatteryVariant?: (v: CurveVariantId, occ?: OccupancyId) => void })
+          .__propSetBatteryVariant?.(layers.variant, layers.occupancy);
       }
     }
 
@@ -3781,12 +4117,43 @@ const signConfig = ok
         apply();
       });
     });
+    // CJ1 — puces de saison : elles changent la SAISON SERVIE (forme PVGIS +
+    // kWh/jour de cette saison), donc les SVG sont redessinés par la même
+    // fonction pure que le serveur avant d'être ré-affichés.
+    section.querySelectorAll<HTMLElement>('[data-curve-season-btn]').forEach((btn) => {
+      const season = btn.getAttribute('data-curve-season-btn') as SeasonId | null;
+      if (!season) return;
+      btn.addEventListener('click', () => {
+        const next = setSeason(state, season, availability);
+        if (next === state) return;
+        state = next;
+        rerenderCurves();
+        apply();
+      });
+    });
+    // CJ1 — puces d'occupation : elles changent la SILHOUETTE de base, donc la
+    // courbe nue ET (via le pont) le simulateur batterie.
+    section.querySelectorAll<HTMLElement>('[data-curve-occupancy-btn]').forEach((btn) => {
+      const occ = btn.getAttribute('data-curve-occupancy-btn') as OccupancyId | null;
+      if (!occ) return;
+      btn.addEventListener('click', () => {
+        const next = setOccupancy(state, occ, availability);
+        if (next === state) return;
+        state = next;
+        rerenderCurves();
+        apply();
+      });
+    });
     const batteryToggle = document.getElementById('prod-battery-toggle') as HTMLInputElement | null;
     batteryToggle?.addEventListener('change', () => {
       state = setBatteryLayer(state, batteryToggle.checked, availability);
       if (batteryToggle.checked !== state.battery) batteryToggle.checked = state.battery;
       apply();
     });
+    // CJ1 — la phrase « d'où vient ce profil » se retraduit comme les autres
+    // libellés pilotés par un état (elle est réécrite en JS, donc invisible au
+    // mécanisme data-i18n).
+    propI18nBusyLabels.push(() => renderProfileNote());
     apply();
   })();
   // Exposé aux AUTRES <script> de cette page (PDF affordance) — chaque bloc
@@ -4493,6 +4860,10 @@ const signConfig = ok
   // consommation pour la variante active des onglets Standard/Été/Ramadan, sans
   // jamais diverger entre les deux passes.
   import { consumptionShapeHours, type ProposalCurveVariant, type ProposalCurveMode } from '../../lib/proposalCurve';
+  // CJ1 — la silhouette du simulateur suit AUSSI la puce d'occupation choisie
+  // (présent / absent / partiel en journée) : le calque batterie et la courbe
+  // nue décrivent le même foyer, jamais deux foyers différents.
+  import type { OccupancyId } from '../../lib/dayProfiles';
   // WJ129 — géométrie PURE (testée sous vitest, propositionSldViewerWJ129.test.ts)
   // de la visionneuse plein écran du schéma électrique. Regroupée dans CE
   // script (cf. note WJ34/WJ53 ci-dessous : un <script> supplémentaire isolé
@@ -4823,6 +5194,11 @@ const signConfig = ok
       // éligibles au simulateur batterie) : nécessaire pour recalculer
       // consShape via consumptionShapeHours() à chaque onglet de profil.
       mode: ProposalCurveMode;
+      // CJ1 — occupation de DÉPART (drapeau serveur) et fenêtre de Ramadan
+      // CALCULÉE : les mêmes entrées que le rendu serveur, pour que le recalcul
+      // client produise exactement la même silhouette.
+      occupancy: OccupancyId;
+      ramadan: { imsakHour: number; iftarHour: number } | null;
     }
     const section = document.getElementById('battery-sim');
     if (!section) return;
@@ -4875,6 +5251,9 @@ const signConfig = ok
     // ce calque batterie est actif, fait bouger cette variable (pont
     // __propSetBatteryVariant, exposé plus bas).
     let currentVariant: ProposalCurveVariant = 'normal';
+    // CJ1 — même logique pour l'occupation : le rendu serveur a utilisé
+    // `cfg.occupancy`, on part de là et on ne bouge qu'au clic d'une puce.
+    let currentOccupancy: OccupancyId = cfg.occupancy ?? 'presence_partielle';
 
     function renderPrice(n: number): void {
       const el = document.getElementById('battery-sim-price');
@@ -4889,9 +5268,14 @@ const signConfig = ok
     // passe par la MÊME fonction pure que le rendu serveur (consumptionShapeHours,
     // proposalCurve.ts) — jamais un chiffre inventé ici.
     function activeConsShape(): number[] {
-      return currentVariant === 'normal'
+      return currentVariant === 'normal' && currentOccupancy === (cfg.occupancy ?? 'presence_partielle')
         ? cfg.consShape
-        : consumptionShapeHours(HOURS_PER_DAY, { mode: cfg.mode, variant: currentVariant });
+        : consumptionShapeHours(HOURS_PER_DAY, {
+            mode: cfg.mode,
+            variant: currentVariant,
+            occupancy: currentOccupancy,
+            ramadan: cfg.ramadan,
+          });
     }
 
     function update(n: number): void {
@@ -4948,10 +5332,16 @@ const signConfig = ok
     // est affiché ET que l'onglet Standard/Été/Ramadan change, pour rejouer
     // EXACTEMENT le même chemin que le curseur d'unités (activeConsShape →
     // simulateBattery → renderBatterySplitSvg), jamais un second moteur.
-    (window as unknown as { __propSetBatteryVariant?: (v: ProposalCurveVariant) => void }).__propSetBatteryVariant =
-      (v: ProposalCurveVariant) => {
-        if (v === currentVariant) return;
+    // CJ1 — le pont porte AUSSI l'occupation choisie : changer de puce
+    // « Présent / Absent / Présence partielle » pendant que le calque batterie
+    // est affiché rejoue le simulateur sur la NOUVELLE silhouette, exactement
+    // comme un changement d'onglet Standard/Été/Ramadan.
+    (window as unknown as { __propSetBatteryVariant?: (v: ProposalCurveVariant, occ?: OccupancyId) => void })
+      .__propSetBatteryVariant = (v: ProposalCurveVariant, occ?: OccupancyId) => {
+        const nextOcc = occ ?? currentOccupancy;
+        if (v === currentVariant && nextOcc === currentOccupancy) return;
         currentVariant = v;
+        currentOccupancy = nextOcc;
         update(currentN);
       };
   })();

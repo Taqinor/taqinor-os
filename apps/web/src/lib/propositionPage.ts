@@ -21,6 +21,14 @@
  *     TOUJOURS le DERNIER segment ; le slug n'est jamais validé ni interprété.
  */
 
+import {
+  OCCUPANCY_IDS,
+  SEASON_IDS,
+  type BatteryOptionId,
+  type OccupancyId,
+  type SeasonId,
+} from './dayProfiles';
+
 /** Les deux échelles de temps du graphique fusionné. */
 export type ProductionView = 'annee' | 'journee';
 
@@ -40,6 +48,31 @@ export interface ProductionAvailability {
   variants: readonly CurveVariantId[];
   /** Calque batterie (simulateur horaire) présent. */
   battery: boolean;
+  /**
+   * CJ1 — saisons RÉELLEMENT servies par `courbes_journalieres` (production ou
+   * consommation). Absent/vide ⇒ aucune puce de saison : la page garde son
+   * unique courbe d'avant, exactement comme aujourd'hui.
+   */
+  seasons?: readonly SeasonId[];
+  /** CJ1 — saison affichée au premier rendu (celle de la date du jour côté
+   *  serveur, sérialisée pour que le client N'AIT PAS à relire l'horloge). */
+  defaultSeason?: SeasonId | null;
+  /**
+   * CJ1 — silhouettes d'occupation proposées au visiteur (résidentiel
+   * uniquement). Absent/vide ⇒ aucune puce d'occupation.
+   */
+  occupancies?: readonly OccupancyId[];
+  /** CJ1 — occupation retenue au premier rendu (drapeau `occupation` servi). */
+  defaultOccupancy?: OccupancyId | null;
+  /**
+   * CJ1 — options de batterie que le DEVIS porte vraiment (`options` servi) :
+   *  - absent            → comportement historique (case à cocher si `battery`) ;
+   *  - ['sans','avec']   → la case à cocher, comme aujourd'hui ;
+   *  - ['avec']          → le devis n'a QUE l'option batterie : le calque est
+   *                        montré et ÉTIQUETÉ, sans case pour le désactiver ;
+   *  - ['sans']          → aucun calque batterie, aucune commande du tout.
+   */
+  batteryOptions?: readonly BatteryOptionId[];
 }
 
 /** État courant du bloc « Votre production ». */
@@ -48,6 +81,10 @@ export interface ProductionState {
   variant: CurveVariantId;
   /** Le client a coché « Avec batterie » (mémorisé même en vue année). */
   battery: boolean;
+  /** CJ1 — saison affichée (puces Hiver/Mi-saison/Été). */
+  season: SeasonId;
+  /** CJ1 — silhouette d'occupation retenue (puces Présent/Absent/Partiel). */
+  occupancy: OccupancyId;
 }
 
 /** Ce qui doit être visible à l'écran — un seul dessin à la fois, toujours. */
@@ -66,22 +103,85 @@ export interface ProductionLayers {
   showVariantTabs: boolean;
   /** Case « Avec batterie » : vue journée + calque batterie rendu. */
   showBatteryToggle: boolean;
+  /** CJ1 — saison à afficher (toujours une valeur servie quand il y en a). */
+  season: SeasonId;
+  /** CJ1 — silhouette d'occupation à afficher. */
+  occupancy: OccupancyId;
+  /** CJ1 — puces Hiver/Mi-saison/Été : vue journée + ≥ 2 saisons servies. */
+  showSeasonTabs: boolean;
+  /** CJ1 — puces d'occupation : vue journée + ≥ 2 silhouettes proposées. */
+  showOccupancyTabs: boolean;
+  /**
+   * CJ1 — le devis ne porte QUE l'option batterie (`options === ['avec']`) : le
+   * calque est montré et ÉTIQUETÉ, mais il n'y a rien à décocher — il n'existe
+   * pas d'option sans batterie à ce devis.
+   */
+  batteryLocked: boolean;
+}
+
+/** Disponibilité NORMALISÉE : les champs optionnels de `ProductionAvailability`
+ *  y sont tous résolus, pour que le reste du module n'ait plus rien à deviner. */
+interface NormalizedAvailability {
+  monthly: boolean;
+  daily: boolean;
+  variants: readonly CurveVariantId[];
+  battery: boolean;
+  seasons: readonly SeasonId[];
+  defaultSeason: SeasonId | null;
+  occupancies: readonly OccupancyId[];
+  defaultOccupancy: OccupancyId | null;
+  batteryOptions: readonly BatteryOptionId[] | null;
 }
 
 /** Normalise une disponibilité partielle (lecture défensive). */
-function normalize(a: Partial<ProductionAvailability> | null | undefined): ProductionAvailability {
+function normalize(a: Partial<ProductionAvailability> | null | undefined): NormalizedAvailability {
   const daily = !!a?.daily;
   const rawVariants = Array.isArray(a?.variants) ? a!.variants : [];
   const variants = CURVE_VARIANT_IDS.filter((v) => rawVariants.includes(v));
+  // CJ1 — `options` servi : la seule chose qui peut RETIRER le calque batterie
+  // (un devis explicitement sans stockage) ou le VERROUILLER (un devis qui n'a
+  // que l'option avec batterie). Clé absente ⇒ comportement historique intact.
+  const rawOptions = Array.isArray(a?.batteryOptions) ? a!.batteryOptions! : null;
+  const batteryOptions = rawOptions
+    ? (['sans', 'avec'] as const).filter((o) => rawOptions.includes(o))
+    : null;
+  const optionAllowsBattery = !batteryOptions || batteryOptions.length === 0
+    ? true
+    : batteryOptions.includes('avec');
+  const rawSeasons = Array.isArray(a?.seasons) ? a!.seasons! : [];
+  const seasons = SEASON_IDS.filter((s) => rawSeasons.includes(s));
+  const rawOccupancies = Array.isArray(a?.occupancies) ? a!.occupancies! : [];
+  const occupancies = OCCUPANCY_IDS.filter((o) => rawOccupancies.includes(o));
   return {
     monthly: !!a?.monthly,
     daily,
     // Une courbe journalière rendue implique au moins la silhouette standard.
     variants: daily && variants.length === 0 ? (['normal'] as const) : variants,
-    // Le calque batterie ne peut exister que par-dessus une courbe journalière.
-    battery: !!a?.battery && daily,
+    // Le calque batterie ne peut exister que par-dessus une courbe journalière,
+    // et seulement si le devis porte réellement une option « avec ».
+    battery: !!a?.battery && daily && optionAllowsBattery,
+    seasons,
+    defaultSeason: seasons.includes(a?.defaultSeason as SeasonId)
+      ? (a!.defaultSeason as SeasonId)
+      : (seasons[0] ?? null),
+    occupancies,
+    defaultOccupancy: occupancies.includes(a?.defaultOccupancy as OccupancyId)
+      ? (a!.defaultOccupancy as OccupancyId)
+      : (occupancies[0] ?? null),
+    batteryOptions,
   };
 }
+
+/** Le devis n'offre QUE la batterie : rien à décocher (cf. `batteryLocked`). */
+function isBatteryLocked(av: NormalizedAvailability): boolean {
+  const opts = av.batteryOptions;
+  return !!opts && opts.length === 1 && opts[0] === 'avec' && av.battery;
+}
+
+/** Saison de repli quand rien n'est servi — jamais affichée (aucune puce). */
+const FALLBACK_SEASON: SeasonId = 'mi_saison';
+/** Occupation de repli — le milieu honnête des trois (cf. dayProfiles). */
+const FALLBACK_OCCUPANCY: OccupancyId = 'presence_partielle';
 
 /** Les vues réellement proposables, dans l'ordre d'affichage.
  *  Fondateur 2026-08-15 : la JOURNÉE d'abord — le client ouvre sur « Sur une
@@ -114,7 +214,14 @@ export function initialProductionState(
   return {
     view: views[0] ?? 'annee',
     variant: av.variants[0] ?? 'normal',
-    battery: false,
+    // CJ1 — SAUF quand le devis n'a QUE l'option batterie : là, « décochée »
+    // n'a pas de sens (il n'existe pas de variante sans stockage à ce devis).
+    battery: isBatteryLocked(av),
+    // CJ1 — la saison de départ est celle que le SERVEUR a calculée depuis la
+    // date du jour (sérialisée dans la disponibilité) : le client la relit
+    // telle quelle, donc les deux passes ne peuvent pas diverger sur l'horloge.
+    season: av.defaultSeason ?? FALLBACK_SEASON,
+    occupancy: av.defaultOccupancy ?? FALLBACK_OCCUPANCY,
   };
 }
 
@@ -150,8 +257,30 @@ export function setBatteryLayer(
 ): ProductionState {
   const av = normalize(a);
   if (!av.battery) return { ...state, battery: false };
-  if (!on) return { ...state, battery: false };
+  // CJ1 — devis « avec batterie » seul : rien à décocher, la demande est ignorée
+  // (la commande n'est d'ailleurs pas rendue en case à cocher dans ce cas).
+  if (!on) return isBatteryLocked(av) ? state : { ...state, battery: false };
   return { ...state, battery: true, view: 'journee' };
+}
+
+/** CJ1 — Choix de saison (ignoré si la saison n'est pas servie). */
+export function setSeason(
+  state: ProductionState,
+  season: SeasonId,
+  a: Partial<ProductionAvailability> | null | undefined,
+): ProductionState {
+  if (!normalize(a).seasons.includes(season)) return state;
+  return { ...state, season };
+}
+
+/** CJ1 — Choix de silhouette d'occupation (ignoré si elle n'est pas proposée). */
+export function setOccupancy(
+  state: ProductionState,
+  occupancy: OccupancyId,
+  a: Partial<ProductionAvailability> | null | undefined,
+): ProductionState {
+  if (!normalize(a).occupancies.includes(occupancy)) return state;
+  return { ...state, occupancy };
 }
 
 /**
@@ -169,7 +298,14 @@ export function productionLayers(
   const variant: CurveVariantId = av.variants.includes(state.variant)
     ? state.variant
     : (av.variants[0] ?? 'normal');
-  const batteryOn = view === 'journee' && av.battery && state.battery;
+  const locked = isBatteryLocked(av);
+  const batteryOn = view === 'journee' && av.battery && (state.battery || locked);
+  const season: SeasonId = av.seasons.includes(state.season)
+    ? state.season
+    : (av.defaultSeason ?? FALLBACK_SEASON);
+  const occupancy: OccupancyId = av.occupancies.includes(state.occupancy)
+    ? state.occupancy
+    : (av.defaultOccupancy ?? FALLBACK_OCCUPANCY);
   return {
     monthly: view === 'annee' && av.monthly,
     daily: view === 'journee' && av.daily && !batteryOn,
@@ -178,6 +314,13 @@ export function productionLayers(
     showViewTabs: views.length > 1,
     showVariantTabs: view === 'journee' && av.variants.length > 1,
     showBatteryToggle: view === 'journee' && av.battery,
+    season,
+    occupancy,
+    // Une seule saison servie ⇒ aucune puce : il n'y a rien à comparer, et une
+    // puce unique laisserait croire à un choix qui n'existe pas.
+    showSeasonTabs: view === 'journee' && av.seasons.length > 1,
+    showOccupancyTabs: view === 'journee' && av.occupancies.length > 1,
+    batteryLocked: locked,
   };
 }
 

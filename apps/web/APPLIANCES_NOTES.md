@@ -99,3 +99,87 @@ La courbe de départ (`BASELINE_SHAPE`) est une **silhouette** résidentielle pl
 forme**, pas des kWh. Le **total réel** vient toujours de la facture
 (`billToAnnualKwh ÷ 365`). Le client peut ensuite tout éditer à la main (glisser les
 barres ou saisir les valeurs) et « Recaler sur ma facture » pour ré-imposer ce total.
+
+> `BASELINE_SHAPE` reste la silhouette de l'outil **« Affiner ma consommation »**
+> (`/preview/toiture-3d-pro-11`). La **courbe journalière de `/proposition`**, elle, ne
+> l'utilise plus : elle a ses trois silhouettes d'occupation (section suivante).
+
+## Courbe journalière de `/proposition` — occupation, saison, Ramadan (CJ1, 21/08/2026)
+
+Le graphe « Sur une journée » de la page proposition dessinait **une seule** silhouette
+de consommation pour tout le monde et une cloche de production **synthétique** dont le
+sommet était libellé « kWh » alors que c'est une **puissance**. Trois corrections, toutes
+dans `src/lib/dayProfiles.ts` (pur, testé dans `tests/dailyCurvesCJ1.test.ts`) :
+
+### 1. Trois silhouettes d'occupation au lieu d'une moyenne
+
+`OCCUPANCY_SHAPES` porte **24 poids de forme** (jamais des kWh) pour chacun des trois
+profils que le visiteur choisit par une puce :
+
+| Profil | Qui | Signature |
+|---|---|---|
+| **Présent en journée** (`presence_jour`) | retraités, foyers mono-actifs, villa occupée | plateau diurne réel, midi marqué, pointe du soir la moins creusée |
+| **Absent en journée** (`absence_jour`) | actifs partis au travail | pointe du matin (départ), creux diurne profond (9h-16h), pointe du soir la plus forte |
+| **Présence partielle** (`presence_partielle`) | télétravail, mi-temps, foyer mixte | plateau diurne bas mais réel — **c'est le repli** quand le serveur ne dit rien |
+
+Le **défaut** vient du drapeau serveur `courbes_journalieres.occupation` (décision
+fondateur 21/08/2026 : la clientèle résidentielle réelle de TAQINOR est majoritairement
+présente en journée, d'où `presence_jour` par défaut en résidentiel — c'est une
+**observation de terrain**, pas une statistique nationale, et `occupation_source` le dit).
+
+**Provenance de chaque heure** (étiquetée en commentaire dans le code) :
+
+- **[A] fait marocain sourcé** — la fenêtre de pointe nationale est publiée : tarif
+  bi-horaire ONEE **18h-23h en été / 17h-22h en hiver** (one.org.ma) ; record historique
+  d'appel de puissance du réseau le **25/07/2019 à 21h45** (presse économique, Le Desk /
+  Boursenews). La domination du soir n'est pas une hypothèse.
+- **[S] motif de clustering sourcé, magnitude estimée** — la séparation présent/absent/
+  partiel et l'allure de chaque groupe viennent de la littérature de clustering de courbes
+  de charge résidentielles (étude sur données Dubaï, ScienceDirect S377877882300333X ;
+  arXiv 2102.11027 ; IOPscience ade3fa). Les **valeurs exactes sont nos estimations**.
+- **[i] interpolation** entre deux heures étiquetées ci-dessus.
+
+### 2. Le NIVEAU vient du serveur, la FORME reste ici
+
+`courbes_journalieres` sert, **par saison** (hiver = DJF, mi-saison = MAM+SON, été = JJA —
+les mêmes bornes que `pvgis_profils.MOIS_PAR_SAISON`) :
+
+- `production[saison].forme` — 24 parts PVGIS, heure locale, **somme = 1** ;
+- `production[saison].kwh_jour` et `pic_kw` — énergie du jour moyen et **puissance** de
+  l'heure de pointe, calculées côté serveur (productible PVGIS × kWc du devis) ;
+- `consommation[saison].kwh_jour` — moyenne des **factures réelles** du lead.
+
+`consumptionKwhShape(dailyKwh, …)` met la silhouette choisie à l'échelle de ce kWh/jour :
+l'intégrale journalière vaut **exactement** le chiffre servi. C'est ce qui rend la phrase
+« ajusté à votre facture » vraie et permet aux deux courbes de partager **un seul axe en
+kW**. Bloc absent (le cas fréquent) ⇒ repli inchangé : cloche sin² + `prod_kwh/365` et
+silhouette normalisée, avec la formulation prudente d'origine.
+
+**Le pic est désormais libellé `kW` partout**, y compris sur le chemin de repli — c'est une
+puissance moyenne d'heure de pointe, jamais une énergie.
+
+### 3. Été et Ramadan : des MODIFICATEURS orthogonaux, calculés
+
+- **Été (clim)** — ×1.5 sur **13h-21h** (la fenêtre s'arrêtait à 18h et coupait la moitié
+  du phénomène : les guides d'usage de la climatisation et la fenêtre de pointe ONEE d'été
+  situent la sollicitation des splits l'après-midi **et** en début de soirée). Le
+  multiplicateur reste une **estimation**, à confirmer sur des factures d'été réelles.
+  Reste une **puce** que le visiteur clique — la page ne décide jamais à sa place s'il
+  climatise.
+- **Ramadan** — les heures ne sont plus codées en dur (`3h-5h suhoor / 19h iftar`
+  n'étaient vraies que pour un Ramadan d'été ; le mois recule de ~11 jours par an et tombe
+  en hiver jusqu'en 2033). `ramadanWindow(date, lat, lon)` combine :
+  - une **table des plages grégoriennes 2025→2033** (`RAMADAN_RANGES`, hégire 1446→1455),
+    estimations astronomiques relevées sur **aladhan.com** et recoupées avec **sajda.com** ;
+    le Maroc confirme le 1ᵉʳ jour par **observation lunaire**, d'où ±1 jour — sans effet, la
+    table ne sert qu'à choisir un jour représentatif ;
+  - le **coucher de soleil NOAA** au point GPS du chantier (repli Casablanca 33,57 / −7,59),
+    exprimé en **UTC+0** : le Maroc repasse à UTC+0 **pendant le Ramadan** (c'est ce que dit
+    la note horaire servie par le backend, et « Time in Morocco », en.wikipedia.org), donc
+    l'iftar affiché est bien l'heure que le client connaît ;
+  - l'**imsak ≈ lever − 80 min** — approximation assumée du fajr (l'écart lever↔aube varie
+    de ~70 à ~95 min sous nos latitudes) ; seule l'heure d'**iftar**, calculée exactement,
+    est affichée sur la puce (« Ramadan · iftar ≈ 18h31 »), pour que la modulation soit
+    vérifiable par le client.
+  Les **magnitudes sont inchangées** et restent des ordres de grandeur documentés : jour de
+  jeûne ×0.65, suhoor ×2.5 sur les 2 h avant l'imsak, iftar ×1.8 sur l'heure de la rupture.

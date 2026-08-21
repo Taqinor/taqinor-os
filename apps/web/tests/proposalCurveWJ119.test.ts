@@ -11,7 +11,10 @@ import {
   renderYearCurve,
   type ProposalCurveMode,
 } from '../src/lib/proposalCurve';
-import { BASELINE_SHAPE } from '../src/lib/applianceConsumption';
+// CJ1 — la base résidentielle n'est plus l'unique BASELINE_SHAPE mais l'une des
+// TROIS silhouettes d'occupation ; le repli sans drapeau serveur est
+// « présence partielle ».
+import { OCCUPANCY_SHAPES } from '../src/lib/dayProfiles';
 
 const HOURS = Array.from({ length: 17 }, (_, i) => 5 + i); // 5..21 (fenêtre du graphe)
 
@@ -42,7 +45,7 @@ describe('WJ119 — resolveProposalCurveMode (champ backend ProposalQuote.inst_t
   });
 });
 
-describe('WJ119 — résidentiel/normal porte BASELINE_SHAPE (silhouette marocaine soirée-dominante)', () => {
+describe('WJ119/CJ1 — résidentiel/normal porte une silhouette marocaine soirée-dominante', () => {
   it('19h-21h STRICTEMENT dominant sur la mi-journée (12h-16h)', () => {
     const evening = [19, 20, 21].map((h) => consumptionProfile(h));
     const midday = [12, 13, 14, 15, 16].map((h) => consumptionProfile(h));
@@ -51,13 +54,37 @@ describe('WJ119 — résidentiel/normal porte BASELINE_SHAPE (silhouette marocai
     expect(minEvening).toBeGreaterThan(maxMidday);
   });
 
-  it('19h-21h concentre une part significative de l’énergie de la fenêtre 5h-21h (≈ pic 26 % annoncé)', () => {
-    // Somme sur les heures ENTIÈRES 5..21 des poids BASELINE_SHAPE bruts (avant
-    // normalisation) — même source que le module (BASELINE_SHAPE importé ici
-    // directement pour vérifier le PORTAGE, pas une nouvelle donnée inventée).
-    const windowSum = HOURS.reduce((acc, h) => acc + BASELINE_SHAPE[h], 0);
-    const eveningSum = BASELINE_SHAPE[19] + BASELINE_SHAPE[20] + BASELINE_SHAPE[21];
-    expect(eveningSum / windowSum).toBeGreaterThan(0.25);
+  it('19h-21h concentre une part significative de l’énergie de la fenêtre 5h-21h (fenêtre de pointe ONEE)', () => {
+    // Somme sur les heures ENTIÈRES 5..21 des poids BRUTS (avant normalisation)
+    // de la silhouette de repli — importée ici directement pour vérifier le
+    // PORTAGE, pas une nouvelle donnée inventée. L'invariant vaut pour LES TROIS
+    // silhouettes : la pointe du soir est un fait de réseau marocain, pas une
+    // caractéristique d'un profil particulier.
+    for (const shape of Object.values(OCCUPANCY_SHAPES)) {
+      const windowSum = HOURS.reduce((acc, h) => acc + shape[h], 0);
+      const eveningSum = shape[19] + shape[20] + shape[21];
+      expect(eveningSum / windowSum).toBeGreaterThan(0.25);
+    }
+  });
+
+  // CJ1 — les TROIS silhouettes existent et se DISTINGUENT là où c'est le sujet :
+  // la journée. Un foyer absent creuse, un foyer présent tient un plateau.
+  it('les trois occupations diffèrent RÉELLEMENT en journée (10h-16h)', () => {
+    const midday = (occupancy: 'presence_jour' | 'absence_jour' | 'presence_partielle') =>
+      [10, 11, 12, 13, 14, 15, 16]
+        .map((h) => consumptionProfile(h, { mode: 'residentiel', occupancy }))
+        .reduce((a, b) => a + b, 0);
+    expect(midday('presence_jour')).toBeGreaterThan(midday('presence_partielle'));
+    expect(midday('presence_partielle')).toBeGreaterThan(midday('absence_jour'));
+  });
+
+  it('« absent en journée » garde une pointe du matin (départ) que « présent » n’a pas', () => {
+    const morningAbsent = consumptionProfile(7, { mode: 'residentiel', occupancy: 'absence_jour' });
+    const middayAbsent = consumptionProfile(12, { mode: 'residentiel', occupancy: 'absence_jour' });
+    expect(morningAbsent).toBeGreaterThan(middayAbsent);
+    const morningPresent = consumptionProfile(7, { mode: 'residentiel', occupancy: 'presence_jour' });
+    const middayPresent = consumptionProfile(12, { mode: 'residentiel', occupancy: 'presence_jour' });
+    expect(morningPresent).toBeLessThan(middayPresent);
   });
 
   it('toutes les heures restent dans [0,1] (profil normalisé, jamais un chiffre)', () => {
@@ -69,13 +96,37 @@ describe('WJ119 — résidentiel/normal porte BASELINE_SHAPE (silhouette marocai
   });
 });
 
-describe('WJ119 — variante été (résidentiel) : +40-60 % 13h-18h (climatisation)', () => {
-  it('la fenêtre 13h-18h monte strictement par rapport au profil normal', () => {
-    for (const h of [13, 14, 15, 16, 17, 18]) {
-      const normal = consumptionProfile(h, { mode: 'residentiel', variant: 'normal' });
-      const ete = consumptionProfile(h, { mode: 'residentiel', variant: 'ete' });
-      expect(ete).toBeGreaterThan(normal);
-    }
+describe('WJ119/CJ1 — variante été (résidentiel) : +50 % sur 13h-21h (climatisation)', () => {
+  // CJ1 — la fenêtre s'arrêtait à 18h et coupait la moitié du phénomène : les
+  // guides d'usage de la clim ET la fenêtre de pointe ONEE (18h-23h l'été)
+  // situent la sollicitation des splits l'après-midi ET en début de soirée.
+  // Comme la courbe est normalisée (comportement historique documenté), l'effet
+  // se lit en PART DE JOURNÉE, pas en valeur absolue d'une heure — on teste
+  // donc le déplacement RÉEL, exactement comme pour l'archétype commercial.
+  it('la part de la journée qui tombe entre 13h et 21h augmente en été', () => {
+    const share = (variant: 'normal' | 'ete') => {
+      const all = Array.from({ length: 24 }, (_, h) =>
+        consumptionProfile(h, { mode: 'residentiel', variant }),
+      );
+      const total = all.reduce((a, b) => a + b, 0);
+      const window = all.slice(13, 22).reduce((a, b) => a + b, 0);
+      return window / total;
+    };
+    expect(share('ete')).toBeGreaterThan(share('normal'));
+  });
+
+  it('l’après-midi climatisé monte RELATIVEMENT au matin non climatisé', () => {
+    const ratio = (variant: 'normal' | 'ete') =>
+      consumptionProfile(15, { mode: 'residentiel', variant }) /
+      consumptionProfile(10, { mode: 'residentiel', variant });
+    expect(ratio('ete')).toBeGreaterThan(ratio('normal'));
+  });
+
+  it('la soirée reste dans la fenêtre boostée (l’ancienne coupure à 18h est levée)', () => {
+    const ratio = (variant: 'normal' | 'ete') =>
+      consumptionProfile(21, { mode: 'residentiel', variant }) /
+      consumptionProfile(10, { mode: 'residentiel', variant });
+    expect(ratio('ete')).toBeGreaterThan(ratio('normal'));
   });
 
   it('reste borné [0,1] même après le boost (renormalisation interne)', () => {
@@ -85,8 +136,12 @@ describe('WJ119 — variante été (résidentiel) : +40-60 % 13h-18h (climatisat
   });
 });
 
-describe('WJ119 — variante Ramadan (résidentiel) : jour réduit, pic iftar, bosse suhoor', () => {
-  it('bosse suhoor 3h-5h : nettement au-dessus du creux nocturne environnant', () => {
+describe('WJ119/CJ1 — variante Ramadan (résidentiel) : jour réduit, pic iftar, bosse suhoor', () => {
+  // CJ1 — sans fenêtre calculée, le module retombe sur RAMADAN_FALLBACK_WINDOW
+  // (imsak 5h30 / iftar 18h30, valeurs médianes d'un Ramadan à Casablanca) :
+  // suhoor sur 3h-4h, jeûne 6h-17h, iftar à 18h. Les magnitudes (×2.5 / ×0.65 /
+  // ×1.8) n'ont PAS changé — seules les heures sont devenues calculables.
+  it('bosse suhoor (2 h avant l’imsak) : nettement au-dessus du creux nocturne environnant', () => {
     const suhoor = consumptionProfile(4, { mode: 'residentiel', variant: 'ramadan' });
     const before = consumptionProfile(2, { mode: 'residentiel', variant: 'ramadan' });
     const after = consumptionProfile(6, { mode: 'residentiel', variant: 'ramadan' });
@@ -97,20 +152,37 @@ describe('WJ119 — variante Ramadan (résidentiel) : jour réduit, pic iftar, b
     expect(suhoor).toBeGreaterThan(consumptionProfile(4, { mode: 'residentiel', variant: 'normal' }));
   });
 
-  it('pic iftar (coucher du soleil, ~19h) : devient le maximum de la journée', () => {
-    const iftar = consumptionProfile(19, { mode: 'residentiel', variant: 'ramadan' });
+  it('pic iftar (coucher du soleil) : devient le maximum de la journée', () => {
+    const iftarHour = 18; // repli documenté : coucher médian 18h30 → heure 18
+    const iftar = consumptionProfile(iftarHour, { mode: 'residentiel', variant: 'ramadan' });
     for (let h = 0; h < 24; h++) {
-      if (h === 19) continue;
+      if (h === iftarHour) continue;
       expect(iftar).toBeGreaterThanOrEqual(consumptionProfile(h, { mode: 'residentiel', variant: 'ramadan' }));
     }
   });
 
-  it('journée de jeûne (6h-18h) réduite par rapport au profil normal', () => {
-    for (let h = 6; h <= 18; h++) {
+  it('journée de jeûne (heures pleines imsak→iftar) réduite par rapport au profil normal', () => {
+    for (let h = 6; h <= 17; h++) {
       const normal = consumptionProfile(h, { mode: 'residentiel', variant: 'normal' });
       const ramadan = consumptionProfile(h, { mode: 'residentiel', variant: 'ramadan' });
       if (normal > 0) expect(ramadan).toBeLessThan(normal);
     }
+  });
+
+  // CJ1 — LE VRAI CORRECTIF : les heures SUIVENT la fenêtre fournie. Le codage
+  // en dur « suhoor 3h-5h / iftar 19h » n'était juste que pour un Ramadan d'été
+  // — or le Ramadan tombe en hiver jusqu'en 2033.
+  it('une fenêtre PLUS TARDIVE déplace réellement le pic d’iftar (heures calculées, pas codées)', () => {
+    const late = { imsakHour: 4.5, iftarHour: 20.5 };
+    const at20 = consumptionProfile(20, { mode: 'residentiel', variant: 'ramadan', ramadan: late });
+    const at18 = consumptionProfile(18, { mode: 'residentiel', variant: 'ramadan', ramadan: late });
+    // 20h porte le ×1.8 ; 18h est retombé dans la journée de jeûne (×0.65).
+    expect(at20).toBeGreaterThan(at18);
+    const normal18 = consumptionProfile(18, { mode: 'residentiel', variant: 'normal' });
+    expect(at18).toBeLessThan(normal18);
+    // …et le suhoor a suivi lui aussi (2 h avant 4h30 → heures 2 et 3).
+    const suhoorLate = consumptionProfile(2, { mode: 'residentiel', variant: 'ramadan', ramadan: late });
+    expect(suhoorLate).toBeGreaterThan(consumptionProfile(2, { mode: 'residentiel', variant: 'normal' }));
   });
 });
 

@@ -13,19 +13,40 @@
  *    « profil — année type » (forme illustrative, AUCUN chiffre d'axe) — le visuel
  *    le plus persuasif ne disparaît jamais, mais ne ment pas non plus.
  *  - WJ119 — la forme horaire de consommation N'EST PLUS une double-gaussienne
- *    générique : elle porte `BASELINE_SHAPE` (applianceConsumption.ts, la même
- *    silhouette marocaine soirée-dominante que l'outil « Affiner ma consommation »,
- *    pic 19h-21h ≈26 % de l'énergie), avec des variantes été/Ramadan et des
- *    profils dédiés par MODE (industriel équipes, commercial, agricole pompage).
- *    Reste un PROFIL normalisé à 1, jamais une donnée chiffrée affichée — le
- *    libellé « profil type au Maroc, ajusté à votre facture » (page) le dit
- *    explicitement, jamais « mesuré ».
+ *    générique : elle porte une silhouette marocaine soirée-dominante, avec des
+ *    variantes été/Ramadan et des profils dédiés par MODE (industriel équipes,
+ *    commercial, agricole pompage). Reste un PROFIL, jamais une donnée chiffrée
+ *    inventée.
+ *  - CJ1 (21/08/2026) — LE GRAPHE DEVIENT VRAI. Le backend sert désormais un
+ *    bloc additif `courbes_journalieres` (apps/ventes/courbes_journalieres.py) :
+ *    forme de production PVGIS par saison (24 parts, heure locale, somme 1),
+ *    énergie `kwh_jour` et PUISSANCE de pointe `pic_kw` du devis, et le niveau
+ *    RÉEL de consommation par saison (moyenne des factures du lead). Trois
+ *    conséquences ici :
+ *      (a) la cloche sin² n'est plus dessinée quand une forme PVGIS est servie ;
+ *      (b) le repère de pointe est libellé en **kW** — c'est une PUISSANCE ;
+ *          l'ancien « pic ≈ 14,3 kWh » confondait énergie et puissance ;
+ *      (c) la silhouette de consommation est mise à l'échelle du VRAI kWh/jour
+ *          du client, donc les deux courbes partagent enfin un axe réel — c'est
+ *          ce qui rend la phrase « ajusté à votre facture » exacte.
+ *    Bloc absent (le cas fréquent) ⇒ RIEN ne change : repli byte-identique sur
+ *    la cloche sin² + `prod_kwh/365` et la silhouette normalisée.
+ *  - CJ1 — les silhouettes résidentielles sont désormais TROIS (présent/absent/
+ *    partiel en journée, dayProfiles.ts) au lieu de l'unique `BASELINE_SHAPE` :
+ *    le visiteur choisit la sienne, le serveur en propose une par défaut.
  *
  * Mouvement : l'animation (tracé de la courbe + soleil qui se lève) est gérée 100 %
  * en CSS dans la page et GATÉE derrière `prefers-reduced-motion: no-preference` —
  * ce module n'émet que la géométrie statique (zéro CLS, lisible sans JS ni motion).
  */
-import { BASELINE_SHAPE } from './applianceConsumption';
+import {
+  OCCUPANCY_SHAPES,
+  SEASON_INLINE,
+  type OccupancyId,
+  type RamadanWindow,
+  type SeasonId,
+  type ServedProduction,
+} from './dayProfiles';
 
 /** Heures représentées (5 h → 21 h), pas horaire. */
 const HOUR_START = 5;
@@ -68,6 +89,22 @@ export interface ConsumptionShapeOptions {
   mode?: ProposalCurveMode;
   variant?: ProposalCurveVariant;
   industrialShift?: IndustrialShift;
+  /**
+   * CJ1 — silhouette d'occupation RÉSIDENTIELLE choisie (présent / absent /
+   * partiel en journée). Ignorée hors résidentiel : une usine ou un forage
+   * n'a pas d'« occupation du logement ». Absente ⇒ `presence_partielle`, le
+   * milieu honnête des trois (dayProfiles.occupancyFromFlag).
+   */
+  occupancy?: OccupancyId;
+  /**
+   * CJ1 — fenêtre de Ramadan CALCULÉE par date + coordonnées du chantier
+   * (dayProfiles.ramadanWindow). Seules les deux heures comptent ici, donc le
+   * type est volontairement MINIMAL : le script client peut passer les deux
+   * nombres sérialisés sans reconstruire un `RamadanWindow` complet, et un
+   * `RamadanWindow` reste accepté tel quel. `null`/absente ⇒ repli documenté
+   * `RAMADAN_FALLBACK_WINDOW`, jamais une heure présentée comme calculée.
+   */
+  ramadan?: Pick<RamadanWindow, 'imsakHour' | 'iftarHour'> | null;
 }
 
 /**
@@ -113,34 +150,84 @@ function sampleShape(shape: readonly number[], hour: number): number {
   return v0 + (v1 - v0) * frac;
 }
 
-/** WJ119 — été/intérieur : +40-60 % 13h-18h (climatisation) — ESTIMATION (multi-
- *  plicateur médian retenu, à confirmer/affiner avec des factures d'été réelles,
- *  APPLIANCES_NOTES.md). Ne s'applique qu'au résidentiel/commercial (toggle page). */
-const SUMMER_BOOST_HOURS: readonly number[] = [13, 14, 15, 16, 17, 18];
+/**
+ * WJ119/CJ1 — été/intérieur : +50 % sur la fenêtre de climatisation.
+ *
+ * La fenêtre était 13h-18h ; elle court désormais de 13h à 21h INCLUS. Raison
+ * sourcée : les guides d'usage de la climatisation (et la fenêtre de pointe
+ * ONEE elle-même, 18h-23h en été — one.org.ma) situent le pic de sollicitation
+ * des splits l'après-midi ET en début de soirée, quand l'inertie du bâtiment
+ * restitue la chaleur de la journée. S'arrêter à 18h coupait exactement la
+ * moitié du phénomène. Le MULTIPLICATEUR (×1.5) reste une ESTIMATION, à
+ * confirmer avec des factures d'été réelles (APPLIANCES_NOTES.md).
+ *
+ * C'est un MODIFICATEUR ORTHOGONAL : il s'applique à la silhouette de base
+ * choisie (occupation), il ne la remplace pas. Il n'a de sens que pour la
+ * saison « été » — mais il reste une PUCE que le visiteur clique, jamais un
+ * effet appliqué d'office : la page ne décide pas à sa place s'il climatise.
+ */
+const SUMMER_BOOST_HOURS: readonly number[] = [13, 14, 15, 16, 17, 18, 19, 20, 21];
 const SUMMER_BOOST_MULT = 1.5;
 
-/** WJ119 — Ramadan : journée de jeûne −30 à −40 % (retenu −35 %, ESTIMATION),
- *  pic iftar au coucher du soleil (retenu 19 h, ×1.8) et bosse suhoor 3h-5h
- *  (repas avant l'aube, retenu ×2.5) — ordres de grandeur documentés, jamais un
- *  chiffre mesuré. */
-const RAMADAN_DAY_HOUR_START = 6;
-const RAMADAN_DAY_HOUR_END = 18; // inclus
+/**
+ * WJ119/CJ1 — Ramadan : journée de jeûne −35 %, bosse suhoor ×2.5 sur les 2 h
+ * qui précèdent l'imsak, pic iftar ×1.8 sur l'heure de la rupture du jeûne.
+ * Les MAGNITUDES sont inchangées (ordres de grandeur documentés, jamais des
+ * mesures) ; ce qui change, c'est que les HEURES ne sont plus codées en dur.
+ *
+ * Avant : « jour 6h-18h, suhoor 3h-5h, iftar 19h ». Ces heures n'étaient vraies
+ * que pour un Ramadan d'ÉTÉ — or le Ramadan recule de ~11 jours par an et se
+ * tient en hiver jusqu'en 2033. Un iftar figé à 19 h se trompait de plus d'une
+ * heure. Elles viennent maintenant de `dayProfiles.ramadanWindow` (coucher du
+ * soleil NOAA au point GPS du chantier, à la date réelle du mois).
+ */
 const RAMADAN_DAY_FACTOR = 0.65;
-const RAMADAN_SUHOOR_HOURS: readonly number[] = [3, 4, 5];
 const RAMADAN_SUHOOR_MULT = 2.5;
-const RAMADAN_IFTAR_HOUR = 19;
 const RAMADAN_IFTAR_MULT = 1.8;
+/** Nombre d'heures de bosse suhoor, juste avant l'imsak (repas avant l'aube). */
+const RAMADAN_SUHOOR_HOURS = 2;
+
+/**
+ * Repli quand la date sort de la table des plages (après 2033) : les valeurs
+ * MÉDIANES d'un Ramadan à Casablanca (imsak ≈ 5h30, iftar ≈ 18h30, heure de
+ * Ramadan UTC+0). La forme reste alors plausible, et la page N'AFFICHE AUCUNE
+ * heure sur la puce — on ne présente jamais un repli comme un calcul.
+ */
+export const RAMADAN_FALLBACK_WINDOW: Readonly<{ imsakHour: number; iftarHour: number }> = {
+  imsakHour: 5.5,
+  iftarHour: 18.5,
+};
+
+/** Applique la modulation Ramadan (heures RÉELLES) à une forme de base. */
+function applyRamadan(
+  out: number[],
+  win: { imsakHour: number; iftarHour: number },
+): void {
+  const wrap = (h: number) => ((h % 24) + 24) % 24;
+  const imsak = Math.min(23.999, Math.max(0, win.imsakHour));
+  const iftar = Math.min(23.999, Math.max(0, win.iftarHour));
+  const iftarHour = Math.floor(iftar);
+  // Heures ENTIÈREMENT dans le jeûne : de la 1re heure pleine après l'imsak
+  // jusqu'à l'heure d'iftar EXCLUE (celle-là, c'est le repas, pas le jeûne).
+  for (let h = Math.ceil(imsak); h < iftarHour; h++) out[wrap(h)] *= RAMADAN_DAY_FACTOR;
+  // Suhoor : les 2 h qui précèdent l'imsak (repas avant l'aube).
+  const suhoorStart = Math.floor(imsak) - RAMADAN_SUHOOR_HOURS;
+  for (let i = 0; i < RAMADAN_SUHOOR_HOURS; i++) out[wrap(suhoorStart + i)] *= RAMADAN_SUHOOR_MULT;
+  out[iftarHour] *= RAMADAN_IFTAR_MULT;
+}
 
 /** Applique la variante été/Ramadan à une forme de base (résidentiel ou
  *  commercial) ; 'normal' renvoie la forme telle quelle. */
-function applySeasonalVariant(base: readonly number[], variant: ProposalCurveVariant): number[] {
+function applySeasonalVariant(
+  base: readonly number[],
+  variant: ProposalCurveVariant,
+  ramadan?: Pick<RamadanWindow, 'imsakHour' | 'iftarHour'> | null,
+): number[] {
   const out = base.slice();
   if (variant === 'ete') {
     for (const h of SUMMER_BOOST_HOURS) out[h] *= SUMMER_BOOST_MULT;
   } else if (variant === 'ramadan') {
-    for (let h = RAMADAN_DAY_HOUR_START; h <= RAMADAN_DAY_HOUR_END; h++) out[h] *= RAMADAN_DAY_FACTOR;
-    for (const h of RAMADAN_SUHOOR_HOURS) out[h] *= RAMADAN_SUHOOR_MULT;
-    out[RAMADAN_IFTAR_HOUR] *= RAMADAN_IFTAR_MULT;
+    applyRamadan(out, ramadan ?? RAMADAN_FALLBACK_WINDOW);
   }
   return out;
 }
@@ -189,19 +276,28 @@ function agricoleShape(): number[] {
 function rawConsumptionShape(options: ConsumptionShapeOptions): number[] {
   const mode = options.mode ?? 'residentiel';
   const variant = options.variant ?? 'normal';
+  const ramadan = options.ramadan ?? null;
   switch (mode) {
     case 'industriel':
       return industrialShape(options.industrialShift ?? '1x8');
     case 'commercial':
       // Été/Ramadan restent pertinents pour un commerce (clim, horaires resserrés
       // pendant le jeûne) — même modulation que le résidentiel, appliquée à
-      // l'archétype commercial plutôt qu'à BASELINE_SHAPE.
-      return applySeasonalVariant(commercialShape(), variant);
+      // l'archétype commercial plutôt qu'à une silhouette de logement.
+      return applySeasonalVariant(commercialShape(), variant, ramadan);
     case 'agricole':
       return agricoleShape();
     case 'residentiel':
     default:
-      return applySeasonalVariant(BASELINE_SHAPE, variant);
+      // CJ1 — la BASE résidentielle est la silhouette d'OCCUPATION choisie
+      // (présent / absent / partiel en journée, dayProfiles.OCCUPANCY_SHAPES),
+      // et non plus l'unique BASELINE_SHAPE moyenne. Été et Ramadan restent des
+      // MODIFICATEURS ORTHOGONAUX appliqués par-dessus cette base.
+      return applySeasonalVariant(
+        OCCUPANCY_SHAPES[options.occupancy ?? 'presence_partielle'],
+        variant,
+        ramadan,
+      );
   }
 }
 
@@ -228,6 +324,36 @@ export function consumptionProfile(hour: number, options: ConsumptionShapeOption
  */
 export function consumptionShapeHours(hours: number, options: ConsumptionShapeOptions = {}): number[] {
   return Array.from({ length: Math.max(0, hours) }, (_, h) => consumptionProfile(h, options));
+}
+
+/** Normalise une forme brute à une SOMME de 1 (parts du jour) — la convention
+ *  du serveur pour `production[saison].forme`. Somme nulle → tout à zéro. */
+function normalizeToSum1(shape: readonly number[]): number[] {
+  let sum = 0;
+  for (const w of shape) if (Number.isFinite(w) && w > 0) sum += w;
+  if (sum <= 0) return shape.map(() => 0);
+  return shape.map((w) => (Number.isFinite(w) && w > 0 ? w / sum : 0));
+}
+
+/**
+ * CJ1 — Silhouette de consommation en ÉNERGIE RÉELLE : 24 valeurs en kWh dont
+ * la somme vaut EXACTEMENT `dailyKwh` (le `consommation[saison].kwh_jour` servi
+ * par le backend, moyenne des factures réelles du lead).
+ *
+ * C'est la fonction qui rend la phrase « ajusté à votre facture » exacte : la
+ * FORME reste notre estimation étiquetée, le NIVEAU est celui du client. Une
+ * valeur horaire en kWh sur une heure vaut aussi la PUISSANCE MOYENNE de cette
+ * heure en kW — c'est ce qui permet de partager un seul axe avec la production.
+ *
+ * `dailyKwh` ≤ 0 ou non fini ⇒ tableau de zéros (on n'invente aucun niveau).
+ */
+export function consumptionKwhShape(
+  dailyKwh: number,
+  options: ConsumptionShapeOptions = {},
+): number[] {
+  const total = Number.isFinite(dailyKwh) && dailyKwh > 0 ? dailyKwh : 0;
+  if (total <= 0) return new Array(24).fill(0);
+  return normalizeToSum1(rawConsumptionShape(options)).map((part) => part * total);
 }
 
 function esc(s: string): string {
@@ -293,20 +419,47 @@ export interface DailyCurve {
   /** SVG inline complet (string). */
   svg: string;
   /**
-   * Vrai quand l'axe porte des kWh RÉELS (production annuelle backend fournie) ;
-   * faux → mode « année type » (forme illustrative, aucun chiffre d'axe).
+   * Vrai quand le repère d'axe porte des chiffres RÉELS (forme de production
+   * servie, ou à défaut production annuelle backend) ; faux → mode « année
+   * type » (forme illustrative, aucun chiffre d'axe).
    */
   hasRealScale: boolean;
+  /**
+   * CJ1 — vrai quand la courbe de PRODUCTION est la forme horaire PVGIS servie
+   * par le backend pour la saison affichée (et non la cloche sin² de repli).
+   */
+  hasServedShape: boolean;
+  /**
+   * CJ1 — vrai quand la silhouette de CONSOMMATION est mise à l'échelle du
+   * kWh/jour RÉEL du client (`consommation[saison].kwh_jour`) sur le MÊME axe
+   * que la production. C'est la seule condition dans laquelle la page a le
+   * droit d'écrire « calé sur vos factures ».
+   */
+  hasRealConsScale: boolean;
 }
 
-/** Format kWh court, virgule/point décimal selon la langue. */
-function fmtKwh(n: number, lang: CurveLang = 'fr'): string {
+/** Nombre court (1 décimale), virgule/point décimal selon la langue. */
+function fmtNumber(n: number, lang: CurveLang = 'fr'): string {
   const v = Number.isFinite(n) && n > 0 ? n : 0;
   const rounded = (Math.round(v * 10) / 10).toString();
   // WJ80 — FR/AR gardent la virgule décimale (convention déjà utilisée
   // ailleurs sur la page en arabe) ; EN utilise le point décimal.
-  const grouped = lang === 'en' ? rounded : rounded.replace('.', ',');
-  return `${grouped} kWh`;
+  return lang === 'en' ? rounded : rounded.replace('.', ',');
+}
+
+/** Format kWh court (ÉNERGIE). */
+function fmtKwh(n: number, lang: CurveLang = 'fr'): string {
+  return `${fmtNumber(n, lang)} kWh`;
+}
+
+/**
+ * CJ1 — Format kW court (PUISSANCE). Le repère de pointe l'utilise DÉSORMAIS
+ * partout : un « pic » est une puissance, jamais une énergie. L'ancien libellé
+ * « pic ≈ 14,3 kWh » — y compris sur le chemin de repli sans donnée servie —
+ * était une faute d'unité pure et simple.
+ */
+function fmtKw(n: number, lang: CurveLang = 'fr'): string {
+  return `${fmtNumber(n, lang)} kW`;
 }
 
 /** WJ80 — Libellés horaires (lever/midi/coucher) FR/EN/AR. */
@@ -316,12 +469,31 @@ const HOUR_TICK_LABELS: Record<CurveLang, { sunrise: string; noon: string; sunse
   ar: { sunrise: 'الشروق', noon: 'الظهر', sunset: 'الغروب' },
 };
 
-/** WJ80 — Texte du repère d'échelle (pic + moyenne journalière ou repli « année type »). */
-const SCALE_LABELS: Record<CurveLang, { peak: string; dailyAvg: string; typicalYear: string }> = {
-  fr: { peak: 'pic ≈', dailyAvg: '/ jour en moyenne', typicalYear: 'profil — année type' },
-  en: { peak: 'peak ≈', dailyAvg: '/ day on average', typicalYear: 'profile — typical year' },
-  ar: { peak: 'الذروة ≈', dailyAvg: '/ يومياً في المتوسط', typicalYear: 'نمط — سنة نموذجية' },
+/** WJ80 — Texte du repère d'échelle (pic + moyenne journalière ou repli « année type »).
+ *  CJ1 — `perDay` sert la ligne saisonnière « 48,2 kWh/jour (été) » quand le
+ *  backend a servi la saison ; `dailyAvg` reste la ligne du repli annuel. */
+const SCALE_LABELS: Record<
+  CurveLang,
+  { peak: string; dailyAvg: string; typicalYear: string; perDay: string }
+> = {
+  fr: { peak: 'pic ≈', dailyAvg: '/ jour en moyenne', typicalYear: 'profil — année type', perDay: '/jour' },
+  en: { peak: 'peak ≈', dailyAvg: '/ day on average', typicalYear: 'profile — typical year', perDay: '/day' },
+  ar: { peak: 'الذروة ≈', dailyAvg: '/ يومياً في المتوسط', typicalYear: 'نمط — سنة نموذجية', perDay: '/يوم' },
 };
+
+/**
+ * CJ1 — Ce que le SERVEUR a servi pour la saison AFFICHÉE. Tout est optionnel :
+ * chaque morceau manquant fait retomber ce module sur son comportement d'avant,
+ * jamais sur une approximation (décision fondateur Q6 : on omet).
+ */
+export interface ServedCurveScale {
+  /** Forme + niveaux de production PVGIS de la saison affichée. */
+  production?: ServedProduction | null;
+  /** kWh/jour RÉEL de consommation de la saison affichée (factures du lead). */
+  consumptionKwhJour?: number | null;
+  /** Saison affichée — pour l'incise « (été) » du repère d'axe. */
+  season?: SeasonId | null;
+}
 
 /**
  * WJ16 — Construit le SVG de la courbe journalière production-vs-consommation.
@@ -337,22 +509,70 @@ const SCALE_LABELS: Record<CurveLang, { peak: string; dailyAvg: string; typicalY
  *
  * WJ119 — `consumptionOptions` sélectionne le MODE (residentiel/industriel/
  * commercial/agricole) et la variante (normal/été/Ramadan) de la silhouette de
- * consommation — repli residentiel/normal (BASELINE_SHAPE), rétro-compatible :
- * un appelant qui n'en fournit pas obtient exactement le nouveau profil marocain
- * par défaut, jamais l'ancienne double-gaussienne.
+ * consommation — repli residentiel/normal, rétro-compatible : un appelant qui
+ * n'en fournit pas obtient le profil marocain par défaut, jamais l'ancienne
+ * double-gaussienne.
+ *
+ * CJ1 — `served` porte ce que le backend a servi POUR LA SAISON AFFICHÉE. Absent
+ * (le cas fréquent) ⇒ tout le rendu est byte-identique à celui d'avant. Présent ⇒
+ * la production est la forme PVGIS servie, la consommation est calée sur le
+ * kWh/jour réel du client, et les deux partagent un axe en kW.
  */
 export function renderYearCurve(
   annualProdKwh: number | null | undefined,
   box: CurveBox = DEFAULT_CURVE_BOX,
   lang: CurveLang = 'fr',
   consumptionOptions: ConsumptionShapeOptions = {},
+  served: ServedCurveScale | null = null,
 ): DailyCurve {
   const annual = typeof annualProdKwh === 'number' && Number.isFinite(annualProdKwh) && annualProdKwh > 0
     ? annualProdKwh : null;
-  const hasRealScale = annual !== null;
 
-  const solar = pathFromProfile(solarProfile, box, true);
-  const cons = pathFromProfile((h) => consumptionProfile(h, consumptionOptions), box, false);
+  // ── CJ1 — L'AXE RÉEL, quand le serveur a servi la saison ─────────────────
+  // `forme` somme à 1 : `kwhJour × forme[h]` est donc l'énergie de l'heure h en
+  // kWh, c'est-à-dire aussi la PUISSANCE MOYENNE de cette heure en kW. La
+  // consommation est mise à la même échelle (consumptionKwhShape), donc les
+  // deux courbes partagent UN SEUL axe, en kW. `picKw` vient du serveur : on ne
+  // le recalcule pas, on cale le dessin dessus (aucune divergence possible
+  // entre l'étiquette et la hauteur du trait).
+  const prod = served?.production ?? null;
+  const hasServedShape = !!prod && Array.isArray(prod.forme) && prod.forme.length === 24 && prod.picKw > 0;
+  const consKwhJour =
+    typeof served?.consumptionKwhJour === 'number' && Number.isFinite(served.consumptionKwhJour)
+      && served.consumptionKwhJour > 0
+      ? served.consumptionKwhJour
+      : null;
+  // La consommation ne prend une échelle RÉELLE que s'il existe un axe réel à
+  // partager (production servie). Un vrai chiffre posé sur un axe illustratif
+  // serait plus trompeur qu'une forme honnête : dans ce cas on garde la
+  // silhouette normalisée d'avant.
+  const hasRealConsScale = hasServedShape && consKwhJour !== null;
+  const consKwh = hasRealConsScale ? consumptionKwhShape(consKwhJour!, consumptionOptions) : null;
+
+  let solarAt: (h: number) => number;
+  let consAt: (h: number) => number;
+  if (hasServedShape) {
+    const prodKwhAt = (h: number) => prod!.kwhJour * sampleShape(prod!.forme, h);
+    const consKwhAt = consKwh ? (h: number) => sampleShape(consKwh, h) : null;
+    // Sommet de l'axe : le pic SERVI, relevé si la consommation le dépasse
+    // (un foyer très consommateur doit rester dans le cadre, pas être coupé).
+    let axisMax = prod!.picKw;
+    if (consKwhAt) {
+      for (let h = 0; h < 24; h++) axisMax = Math.max(axisMax, consKwhAt(h));
+    }
+    const denom = axisMax > 0 ? axisMax : 1;
+    solarAt = (h) => prodKwhAt(h) / denom;
+    consAt = consKwhAt
+      ? (h) => consKwhAt(h) / denom
+      : (h) => consumptionProfile(h, consumptionOptions);
+  } else {
+    solarAt = solarProfile;
+    consAt = (h) => consumptionProfile(h, consumptionOptions);
+  }
+  const hasRealScale = hasServedShape || annual !== null;
+
+  const solar = pathFromProfile(solarAt, box, true);
+  const cons = pathFromProfile(consAt, box, false);
 
   const plotH = box.height - box.padTop - box.padBottom;
   const baseY = box.padTop + plotH;
@@ -370,18 +590,31 @@ export function renderYearCurve(
     .join('');
 
   const scale = SCALE_LABELS[lang];
-  // Repère d'axe Y réel : production journalière moyenne (annuel / 365), libellée.
+  // Repère d'axe Y. Le PIC est TOUJOURS libellé en kW (c'est une puissance) —
+  // sur le chemin servi comme sur le repli annuel.
   let scaleLabel = '';
   if (hasRealScale) {
-    const dailyAvg = annual! / 365;
-    // Le pic horaire vaut env. dailyAvg / surface-sous-la-cloche (≈ 4,6 h équiv.).
-    const peak = dailyAvg / 4.6;
-    const peakFmt = fmtKwh(peak, lang);
-    const avgFmt = fmtKwh(dailyAvg, lang);
+    let peakFmt: string;
+    let avgFmt: string;
+    if (hasServedShape) {
+      // Chemin servi : les DEUX chiffres viennent du backend, aucun n'est dérivé
+      // ici (pic_kw = kwh_jour × max(forme), calculé côté serveur).
+      peakFmt = fmtKw(prod!.picKw, lang);
+      const seasonId = served?.season ?? null;
+      const inline = seasonId ? ` (${SEASON_INLINE[seasonId][lang]})` : '';
+      avgFmt = `${fmtKwh(prod!.kwhJour, lang)}${scale.perDay}${inline}`;
+    } else {
+      // Repli inchangé : moyenne journalière = annuel / 365, et le pic vaut env.
+      // dailyAvg / surface-sous-la-cloche (≈ 4,6 h équivalent pleine puissance).
+      // C'est une PUISSANCE moyenne d'heure de pointe — d'où « kW », pas « kWh ».
+      const dailyAvg = annual! / 365;
+      peakFmt = fmtKw(dailyAvg / 4.6, lang);
+      avgFmt = `${fmtKwh(dailyAvg, lang)} ${scale.dailyAvg}`;
+    }
     scaleLabel =
-      `<g data-curve-scale data-peak="${esc(peakFmt)}" data-avg="${esc(avgFmt)}" tabindex="0" role="button" aria-label="${esc(scale.peak)} ${esc(peakFmt)}, ${esc(avgFmt)} ${esc(scale.dailyAvg)}">` +
+      `<g data-curve-scale data-peak="${esc(`${scale.peak} ${peakFmt}`)}" data-avg="${esc(avgFmt)}" tabindex="0" role="button" aria-label="${esc(scale.peak)} ${esc(peakFmt)}, ${esc(avgFmt)}">` +
       `<text x="${(box.padLeft + 2).toFixed(2)}" y="${(box.padTop + 8).toFixed(2)}" font-size="9" fill="var(--color-brass-300, #f3cc66)">${esc(scale.peak)} ${esc(peakFmt)}</text>` +
-      `<text x="${(box.padLeft + 2).toFixed(2)}" y="${(box.padTop + 19).toFixed(2)}" font-size="8.5" fill="var(--color-lune-faint, #8d96b4)">${esc(avgFmt)} ${esc(scale.dailyAvg)}</text>` +
+      `<text x="${(box.padLeft + 2).toFixed(2)}" y="${(box.padTop + 19).toFixed(2)}" font-size="8.5" fill="var(--color-lune-faint, #8d96b4)">${esc(avgFmt)}</text>` +
       `</g>`;
   } else {
     scaleLabel =
@@ -424,5 +657,5 @@ export function renderYearCurve(
     scaleLabel +
     `</svg>`;
 
-  return { svg, hasRealScale };
+  return { svg, hasRealScale, hasServedShape, hasRealConsScale };
 }

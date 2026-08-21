@@ -109,7 +109,16 @@ describe('P18 — le simulateur de batterie suit la ligne du devis', () => {
   });
 
   it('la capacité du curseur reste celle de la ligne (le repli catalogue n’est qu’un secours)', () => {
-    expect(CODE).toContain('offerBattery.capacityKwhPerUnit ?? DEFAULT_UNIT_CAPACITY_KWH');
+    // La ligne du devis passe TOUJOURS en premier — c'est l'invariant gardé ici.
+    // CJ1 (21/08/2026) — la chaîne de repli s'est allongée d'un maillon RÉEL : quand
+    // la désignation de la ligne ne dit pas ses kWh, on prend désormais la capacité
+    // TOTALE servie par le backend (`courbes_journalieres.batterie_kwh`) divisée par
+    // les unités du devis, AVANT de toucher à la valeur catalogue. Le catalogue est
+    // donc un secours encore plus lointain qu'avant, jamais un premier choix.
+    expect(CODE).toContain(
+      'offerBattery.capacityKwhPerUnit ?? servedUnitCapacityKwh ?? DEFAULT_UNIT_CAPACITY_KWH',
+    );
+    expect(CODE).toContain('const servedBatteryTotalKwh = dailyCurves?.batterieKwh ?? null;');
   });
 });
 
