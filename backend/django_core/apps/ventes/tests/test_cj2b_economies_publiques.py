@@ -227,6 +227,19 @@ class AvecBatterieNonVendableTests(_CJ2bBase):
                               'courbes_journalieres', 'conception_electrique',
                               'roof_layout', 'sld_svg'):
             surface_monetaire.pop(bloc_physique, None)
+        # …et les LIGNES du devis non plus : leurs prix (HT/TTC/quantités)
+        # sont imprimés sur le devis que le client possède déjà — un prix
+        # unitaire n'est jamais une « économie avec batterie » (collision
+        # réelle attrapée par le chemin : panneau 1 166,67 HT × 1,20 =
+        # 1 400,00 TTC face à une économie de 1 400 MAD, CI du 21/08).
+        quote_scan = surface_monetaire.get('quote')
+        if isinstance(quote_scan, dict):
+            quote_scan = dict(quote_scan)
+            for cle_lignes in ('all_items', 'sans_items', 'avec_items',
+                               'items'):
+                quote_scan.pop(cle_lignes, None)
+            surface_monetaire = dict(surface_monetaire)
+            surface_monetaire['quote'] = quote_scan
         paires = list(_nombres_avec_chemins(surface_monetaire))
         fuite = {
             (chemin, v) for chemin, v in paires
