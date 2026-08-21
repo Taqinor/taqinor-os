@@ -49,7 +49,7 @@ def _spec_lead(co, q):
         # WREF (fondateur 21/08) — le « TQ-XXXX » remis au client retrouve le
         # lead depuis l'omnibox aussi. (code_parrainage vit sur crm.Client,
         # pas sur Lead — l'y interroger casserait TOUTES les recherches.)
-        | Q(client_ref__icontains=q)
+        | Q(client_ref__icontains=q) | Q(client_ref_provisoire__icontains=q)
     ).order_by('-date_creation')
     return 'lead', 'Leads', qs, lambda le: {
         'id': le.id,

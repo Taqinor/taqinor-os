@@ -684,12 +684,27 @@ class Lead(SoftDeleteModel):
     visit_window_week = models.CharField(
         max_length=20, choices=VisitWindowWeek.choices, blank=True, null=True,
         verbose_name='Semaine de visite préférée')
-    # Référence courte générée CÔTÉ CLIENT (aucune garantie d'unicité globale —
-    # sert de corrélation best-effort avec une conversation WhatsApp/support,
-    # jamais une clé d'unicité serveur).
+    # Référence courte remise au client. WREF2 (fondateur 21/08/2026) : elle
+    # est désormais ATTRIBUÉE PAR LE SERVEUR à la création du lead, au format
+    # « NOM-N » (nom de famille tel que tapé + compteur, unique par société et
+    # par nom — cf. `apps.crm.webhooks.assign_client_ref`). Le « TQ-XXXX »
+    # tiré au hasard par le navigateur n'est plus qu'un code PROVISOIRE
+    # d'affichage, conservé dans le payload brut, jamais écrit ici — les
+    # fiches d'avant WREF2 le portent encore (le verbose_name ci-dessous date
+    # de cette période). Clé de secours HUMAINE : le téléphone reste la clé de
+    # rapprochement, il n'y a pas de contrainte d'unicité en base ici.
     client_ref = models.CharField(
         max_length=24, blank=True, null=True,
         verbose_name='Référence client (générée navigateur)')
+    # WREF2-PONT (21/08/2026) — le code PROVISOIRE que le site a AFFICHÉ au
+    # client (« TQ-XXXX », généré navigateur) quand la référence serveur
+    # NOM-N a pris ``client_ref``. Tant que l'écran de succès n'affiche pas
+    # la référence serveur (transfert fire-and-forget, option B en attente),
+    # c'est CE code que le client dicte sur WhatsApp : il est indexé par les
+    # trois recherches, au même titre que ``client_ref``.
+    client_ref_provisoire = models.CharField(
+        max_length=24, blank=True, null=True,
+        verbose_name='Référence provisoire affichée par le site')
     # Diaspora/MRE : `phoneE164` étranger (indicatif ≠ 212) — une motion
     # commerciale distincte, badge-worthy (jamais utilisé pour qualifiesForCrm).
     phone_is_foreign = models.BooleanField(

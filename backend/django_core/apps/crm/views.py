@@ -559,11 +559,14 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         'devis', 'devis__lignes').all()
     serializer_class = LeadSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    # WREF (fondateur 21/08) — client_ref = le « TQ-XXXX » remis au client par
-    # le site : stocké mais introuvable (3 recherches, 0 index). NB :
+    # WREF (fondateur 21/08) — client_ref = la référence remise au client :
+    # stockée mais introuvable (3 recherches, 0 index). Depuis WREF2 c'est la
+    # référence « NOM-N » attribuée par le serveur (les fiches d'avant portent
+    # encore le « TQ-XXXX » du navigateur) — les deux formats se cherchent
+    # ici de la même façon. NB :
     # code_parrainage vit sur crm.Client, PAS sur Lead — ne pas l'ajouter ici.
     search_fields = ['nom', 'prenom', 'societe', 'email', 'telephone', 'ville',
-                     'client_ref']
+                     'client_ref', 'client_ref_provisoire']
     ordering_fields = ['nom', 'date_creation', 'stage', 'score']
     ordering = ['-date_creation']
 
