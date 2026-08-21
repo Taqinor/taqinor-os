@@ -4212,6 +4212,9 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
       city: (val('mt-city') || addressEl?.value || '').trim(),
       kwcLabel: lastKwcLabel || undefined,
       savingsLabel: lastSavingsLabel || undefined,
+      // WREF — le code promis par l'écran de succès voyage ENFIN dans le
+      // message (le client n'a plus à le retaper de mémoire).
+      clientRef: getOrCreateClientRef(),
     });
     return whatsappLink(WHATSAPP_LEADS, text);
   }

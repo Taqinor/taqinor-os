@@ -46,6 +46,9 @@ def _spec_lead(co, q):
     qs = Lead.objects.filter(**co).filter(
         Q(nom__icontains=q) | Q(prenom__icontains=q) | Q(societe__icontains=q)
         | Q(email__icontains=q) | Q(telephone__icontains=q) | Q(ville__icontains=q)
+        # WREF (fondateur 21/08) — le « TQ-XXXX » remis au client et le code
+        # de parrainage retrouvent le lead depuis l'omnibox aussi.
+        | Q(client_ref__icontains=q) | Q(code_parrainage__icontains=q)
     ).order_by('-date_creation')
     return 'lead', 'Leads', qs, lambda le: {
         'id': le.id,

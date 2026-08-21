@@ -300,7 +300,12 @@ export function filterLeads(leads, filters, { myUsername } = {}) {
       (l.email ?? '').toLowerCase().includes(q) ||
       (l.telephone ?? '').includes(f.q.trim()) ||
       (l.whatsapp ?? '').includes(f.q.trim()) ||
-      (l.ville ?? '').toLowerCase().includes(q)
+      (l.ville ?? '').toLowerCase().includes(q) ||
+      // WREF (fondateur 21/08) — le code que le CLIENT reçoit sur l'écran de
+      // succès du site (« Votre référence : TQ-XXXX ») et le code de
+      // parrainage doivent retrouver le lead — c'était tout leur intérêt.
+      (l.client_ref ?? '').toLowerCase().includes(q) ||
+      (l.code_parrainage ?? '').toLowerCase().includes(q)
     )
   })
 }

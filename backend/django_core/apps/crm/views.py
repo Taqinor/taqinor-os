@@ -559,7 +559,11 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         'devis', 'devis__lignes').all()
     serializer_class = LeadSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ['nom', 'prenom', 'societe', 'email', 'telephone', 'ville']
+    # WREF (fondateur 21/08) — client_ref = le « TQ-XXXX » remis au client par
+    # le site ; code_parrainage = le code parrain. Les deux doivent retrouver
+    # le lead (ils étaient stockés mais introuvables — 3 recherches, 0 index).
+    search_fields = ['nom', 'prenom', 'societe', 'email', 'telephone', 'ville',
+                     'client_ref', 'code_parrainage']
     ordering_fields = ['nom', 'date_creation', 'stage', 'score']
     ordering = ['-date_creation']
 

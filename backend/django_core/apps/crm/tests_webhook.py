@@ -919,3 +919,43 @@ class SousSeuilTriageTests(TestCase):
         from .webhooks import CALLBACK_SOUS_SEUIL_MARKER
         self.assertFalse(LeadActivity.objects.filter(
             lead=lead, body__startswith=CALLBACK_SOUS_SEUIL_MARKER).exists())
+
+
+class WrefRechercheClientRefTests(TestCase):
+    """WREF (fondateur 21/08/2026) — le « TQ-XXXX » remis au client par le
+    site était STOCKÉ mais INTROUVABLE : aucune des trois recherches (liste
+    Leads, DRF ?search=, omnibox reporting) n'indexait ``client_ref``. Ces
+    tests épinglent les deux recherches serveur (la barre de la liste est
+    côté écran, épinglée dans ``stages.test.mjs``)."""
+
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+        self.company = Company.objects.create(
+            nom='Wref Test Co', slug='wref-test-co')
+        self.lead = Lead.objects.create(
+            company=self.company, nom='Alaoui', prenom='Karim',
+            client_ref='TQ-PKEA')
+        Lead.objects.create(company=self.company, nom='Bennani')
+        self.user = get_user_model().objects.create_user(
+            username='wref_user', password='x', role_legacy='responsable',
+            company=self.company)
+
+    def _api(self):
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import AccessToken
+        api = APIClient()
+        api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+        return api
+
+    def test_drf_search_retrouve_le_lead_par_client_ref(self):
+        res = self._api().get('/api/django/crm/leads/', {'search': 'TQ-PKEA'})
+        self.assertEqual(res.status_code, 200)
+        rows = res.json()
+        rows = rows.get('results', rows)
+        self.assertEqual([r['nom'] for r in rows], ['Alaoui'])
+
+    def test_omnibox_retrouve_le_lead_par_client_ref(self):
+        from apps.reporting.search import _spec_lead
+        qs = _spec_lead({'company': self.company}, 'PKEA')
+        self.assertEqual(list(qs.values_list('nom', flat=True)), ['Alaoui'])

@@ -68,6 +68,14 @@ describe('WJ50 — invitation au vocal dans le parcours (captureWhatsappText)', 
     expect(withoutEstimate).toContain(VOICE_NOTE_INVITE);
   });
 
+  it('WREF — le code de référence promis par l’écran de succès voyage dans le message', () => {
+    const withRef = captureWhatsappText({ fullName: 'Karim', city: 'Rabat', clientRef: 'TQ-PKEA' });
+    expect(withRef).toContain('Ma référence : TQ-PKEA.');
+    // Sans code : message inchangé à l’octet (paramètre optionnel).
+    const without = captureWhatsappText({ fullName: 'Karim', city: 'Rabat' });
+    expect(without).not.toContain('Ma référence');
+  });
+
   it('ne casse jamais le message : toujours complet, jamais de blanc ni de "undefined"', () => {
     const msg = captureWhatsappText({ fullName: '', city: '' });
     expect(msg).not.toContain('undefined');
