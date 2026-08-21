@@ -3835,6 +3835,125 @@ def rafraichir_etude_horaire(devis, *, kwc=None, batterie_kwh_utile=None):
         return None
 
 
+def _bloc_horaire_deja_a_jour(devis, kwc):
+    """CJ2b — le bloc rangé sur ce devis décrit-il DÉJÀ cette composition ?
+
+    RAISON D'ÊTRE : ÉVITER UN RECALCUL INUTILE DANS UN HANDLER HTTP. Un calcul
+    horaire résout la localisation PVGIS du chantier, ce qui peut coûter un
+    appel réseau (cache système de 30 jours, mais un cache froid part sur le
+    réseau). Le déclencher à CHAQUE ligne ajoutée/modifiée/retirée ferait payer
+    cette latence à l'utilisateur pour un bloc qui n'aurait pas bougé d'un
+    chiffre — c'est exactement le genre d'appel qu'on ne veut pas voir
+    apparaître dans une boucle d'édition.
+
+    LE CRITÈRE EST CELUI DU MOTEUR, PAS UN SECOND. La tolérance vient de
+    ``pricing._HORAIRE_TOLERANCE_KWC`` : ce qui rend un bloc PÉRIMÉ pour le
+    document est exactement ce qui le rend À RECALCULER ici. Deux seuils
+    différents laisseraient une zone où le document refuse un bloc que ce
+    garde-fou juge encore frais — donc un devis sans économies, sans raison
+    visible.
+
+    La capacité batterie compte AUSSI : elle change l'autoconsommation et donc
+    toutes les économies, sans toucher au kWc (remplacer une batterie 5 kWh par
+    une 10 kWh ne bouge pas la puissance PV).
+
+    Renvoie ``False`` au moindre doute — on préfère recalculer pour rien que
+    servir un bloc qui ne décrit plus le devis.
+    """
+    bloc = (getattr(devis, 'etude_params', None) or {}).get('etude_horaire')
+    if not isinstance(bloc, dict) or not kwc:
+        return False
+    try:
+        from apps.ventes.quote_engine.pricing import _HORAIRE_TOLERANCE_KWC
+        kwc_bloc = float(bloc.get('kwc') or 0)
+        if kwc_bloc <= 0:
+            return False
+        if abs(kwc_bloc - float(kwc)) / float(kwc) > _HORAIRE_TOLERANCE_KWC:
+            return False
+        from apps.ventes.etude_horaire import capacite_batterie_du_devis
+        actuelle = capacite_batterie_du_devis(devis)
+        rangee = bloc.get('batterie_kwh_utile')
+        if (actuelle is None) != (rangee is None):
+            return False
+        if actuelle is not None and abs(float(actuelle) - float(rangee)) > 0.05:
+            return False
+        return True
+    except Exception:  # noqa: BLE001 — au moindre doute, on recalcule
+        return False
+
+
+def rafraichir_etude_horaire_devis(devis, *, force=False):
+    """CJ2b — pose le bloc horaire canonique après une écriture SERVEUR d'un
+    devis résidentiel (lignes ajoutées/modifiées/retirées, calepinage
+    resynchronisé, devis mis à jour).
+
+    Avant CJ2b, ``rafraichir_etude_horaire`` n'était appelé QUE par l'auto-devis
+    (voir plus haut) : un devis résidentiel ÉDITÉ ensuite — panneau ajouté ou
+    retiré, remplacement d'onduleur — gardait un bloc ``etude_horaire`` PÉRIMÉ
+    ou ABSENT, et la page/le PDF retombaient alors sur le modèle « facture »/
+    forfait alors qu'un calcul heure par heure exact restait possible. Ce point
+    d'entrée unique referme la boucle depuis les chemins d'écriture du devis
+    (``DevisViewSet.perform_update``, ``sync-layout``, ``LigneDevisViewSet``).
+
+    RÉSIDENTIEL STRICT (``mode_installation == 'residentiel'``), volontairement
+    PLUS STRICT que ``quote_engine.residential.renderer.is_residential`` (qui
+    traite un mode VIDE comme résidentiel — un défaut d'AFFICHAGE PDF choisi
+    pour ne jamais perdre le rendu d'un devis, pas une preuve que ce devis EST
+    résidentiel). Poser un calcul horaire sur un devis dont le marché n'a
+    simplement pas encore été choisi calculerait une étude sur une hypothèse
+    non confirmée ; un devis dont le mode passe plus tard à 'residentiel'
+    reçoit son bloc au prochain enregistrement — aucune perte, un calcul
+    seulement différé.
+
+    La puissance kWc vient EXCLUSIVEMENT de
+    ``quote_engine.builder.panneaux_et_watt_lu``, sur le MÊME filtre de lignes
+    que ``build_quote_data`` (lignes produit, non optionnelles) — jamais une
+    seconde règle de dérivation (l'incident DEV-202608-0007 est précisément né
+    de deux dérivations qui divergent). Sans panneau lisible, le rafraîchissement
+    est appelé QUAND MÊME avec ``kwc=None`` : c'est ``rafraichir_etude_horaire``
+    lui-même qui RETIRE alors le bloc devenu périmé plutôt que de le laisser
+    décrire une installation qui n'existe plus (règle Z2 appliquée à la
+    fraîcheur) — jamais un bloc laissé en place au hasard.
+
+    ``force`` — recalculer MÊME si la composition n'a pas bougé. Les chemins
+    « lignes » (ajout/modification/suppression, calepinage) ne touchent QUE la
+    composition : quand celle-ci est inchangée, le bloc l'est aussi et
+    ``_bloc_horaire_deja_a_jour`` court-circuite un calcul qui peut coûter un
+    appel PVGIS. Les chemins « devis » (``perform_update``, ``replace-lines``)
+    peuvent en revanche avoir changé les FACTURES ou le profil dans
+    ``etude_params`` — grandeurs qu'aucune lecture de lignes ne verrait : ils
+    passent ``force=True`` et acceptent le recalcul.
+
+    Ne lève JAMAIS, ne touche NI le statut NI les lignes NI les totaux du devis
+    (règle #4) : appelable en toute sécurité juste après une sauvegarde.
+    """
+    try:
+        mode = (getattr(devis, 'mode_installation', None) or '').strip().lower()
+        if mode != 'residentiel':
+            return None
+        from apps.ventes.quote_engine.builder import panneaux_et_watt_lu
+        # Même filtre que build_quote_data : lignes PRODUIT non optionnelles
+        # (les sections/notes n'ont pas de produit, les add-ons XSAL5 non
+        # activés ne comptent pas encore dans la composition réelle).
+        lignes = [
+            li for li in devis.lignes.select_related(
+                'produit', 'produit__fiche_technique').all()
+            if getattr(li, 'type_ligne', 'produit') == 'produit'
+            and not getattr(li, 'optionnelle', False)
+        ]
+        nb_panneaux, watt = panneaux_et_watt_lu(lignes)
+        kwc = (round(nb_panneaux * watt / 1000, 2)
+               if nb_panneaux > 0 and watt else None)
+        if not force and _bloc_horaire_deja_a_jour(devis, kwc):
+            return (devis.etude_params or {}).get('etude_horaire')
+        return rafraichir_etude_horaire(devis, kwc=kwc)
+    except Exception:  # noqa: BLE001 — un rafraîchissement raté n'empêche
+        # jamais une sauvegarde de devis/ligne.
+        logger.warning('rafraichir_etude_horaire_devis indisponible sur %s',
+                       getattr(devis, 'reference', '?'), exc_info=True)
+        return None
+
+
 def _residential_panel_count(*, facture_hiver=None, taille_kwc=None,
                              panel_watt=_AUTO_PANEL_WATT):
     """Nombre de panneaux pour un lead résidentiel.
