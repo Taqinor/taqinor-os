@@ -1520,6 +1520,88 @@ export function couvertureSolaire(p: ProposalResponse): CouvertureSolaire | null
   return { pct, estimated: p?.coverage_estimated === true };
 }
 
+// ── CJ2b (21/08/2026) · Économies MENSUELLES réelles, contre la courbe ──────
+// Le fondateur : « on ne voit ni l'économie calculée réelle ni la donnée PVGIS
+// — elles doivent servir à COMPARER la courbe de consommation ». `courbes_
+// journalieres` (dayProfiles.ts) donne déjà la FORME ; cette clé additive
+// sœur donne l'ARGENT, mois par mois, pour que le client voie production,
+// consommation ET économie dans le même chapitre.
+
+/** Douze lectures MAD/mois (index 0 = janvier), comparées au graphe production/consommation. */
+export interface EconomiesMensuelles {
+  /** 12 valeurs MAD économisées par mois, SANS batterie. */
+  sans: number[];
+  /**
+   * 12 valeurs MAD économisées par mois AVEC batterie — `null` quand l'option
+   * n'est pas VENDABLE à ce devis (jamais un zéro déguisé en absence d'offre).
+   */
+  avec: number[] | null;
+  /** Somme annuelle SANS batterie (MAD/an). */
+  totalSans: number;
+  /** Somme annuelle AVEC batterie (MAD/an) — `null` quand `avec` l'est. */
+  totalAvec: number | null;
+  devise: string;
+  /** Provenance du calcul — `'estimation'` ⇒ la page DOIT l'étiqueter. */
+  modele: 'horaire' | 'factures' | 'estimation';
+  estimation: boolean;
+  /** Phrase source, prête à afficher TELLE QUELLE (jamais réécrite). */
+  note: string;
+}
+
+/** Exactement 12 nombres finis, sinon `null` (jamais un tableau à moitié lu). */
+function finiteMonthlyArray(v: unknown): number[] | null {
+  if (!Array.isArray(v) || v.length !== 12) return null;
+  const out = v.map((x) => Number(x));
+  return out.every((n) => Number.isFinite(n)) ? out : null;
+}
+
+/**
+ * CJ2b — Lit `economies_mensuelles`, clé ADDITIVE au NIVEAU RACINE du payload
+ * (sœur de `courbes_journalieres`, jamais dans `quote`) : le moteur horaire
+ * compare production PVGIS et consommation réelle heure par heure et sert le
+ * résultat déjà en MAD, mois par mois. ABSENTE tant que le calcul n'est pas
+ * servable (décision fondateur Q6 : on omet, on n'approxime jamais) ⇒ `null`
+ * ⇒ la page ne rend RIEN, jamais un bloc à zéro. `avec`/`totalAvec` restent
+ * `null` quand l'option batterie n'est pas VENDABLE à ce devis — jamais une
+ * figure batterie posée sur un devis qui n'en porte pas.
+ *
+ * Non typée dans `ProposalResponse` (comme `courbes_journalieres`) : lue
+ * défensivement via cast, exactement la même discipline que `dayProfiles.
+ * parseDailyCurves`.
+ */
+export function economiesMensuelles(p: ProposalResponse | null | undefined): EconomiesMensuelles | null {
+  const raw = (p as unknown as Record<string, unknown> | null | undefined)?.economies_mensuelles;
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  const sans = finiteMonthlyArray(r.sans);
+  const totalSans = servedNumber(r.total_sans);
+  if (!sans || totalSans === null) return null;
+  const avecRaw = finiteMonthlyArray(r.avec);
+  const totalAvecRaw = servedNumber(r.total_avec);
+  const hasAvec = avecRaw !== null && totalAvecRaw !== null;
+  const modeleRaw = typeof r.modele === 'string' ? r.modele : '';
+  const modele: EconomiesMensuelles['modele'] =
+    modeleRaw === 'horaire' || modeleRaw === 'factures' ? modeleRaw : 'estimation';
+  return {
+    sans,
+    avec: hasAvec ? avecRaw : null,
+    totalSans,
+    totalAvec: hasAvec ? totalAvecRaw : null,
+    devise: typeof r.devise === 'string' && r.devise ? r.devise : 'MAD',
+    modele,
+    // FAIL-SAFE, PAS FAIL-OPEN. `r.estimation === true` seul retombait sur
+    // `false` — « c'est mesuré » — dès que le drapeau manquait ou arrivait
+    // malformé : le pire défaut possible sous la règle « zéro chiffre
+    // inventé », puisqu'il présente un modèle comme une mesure. Un chiffre
+    // n'échappe à l'étiquette « estimation » que lorsque le serveur affirme
+    // DEUX choses : le modèle horaire, et l'absence d'estimation. Même règle
+    // que celle appliquée côté serveur (`_economies_mensuelles_publiques`) —
+    // au moindre doute, on étiquette.
+    estimation: r.estimation === true || modele !== 'horaire',
+    note: typeof r.note === 'string' ? r.note : '',
+  };
+}
+
 // ── WJ14 · Impact environnemental humain (CO₂ ≈ arbres) ──────────────────────
 
 export interface EnvironmentalImpact {

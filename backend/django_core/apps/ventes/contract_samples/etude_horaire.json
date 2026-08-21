@@ -3,6 +3,7 @@
   "pourquoi": "CJ2a — LE calcul canonique des economies residentielles (integration horaire production PVGIS x consommation reelle du client, mois par mois, valorisee au bareme) et le dimensionnement qui succede a la regle « 900 DH/mois » ; l'ecran generateur (CJ2b) appelle CET endpoint au lieu de recalculer, ce qui met fin au miroir JS/Python pour ces chiffres. Contrat pose D'ABORD (PACT10) pour que les deux moities ne puissent pas inventer deux formes.",
   "notes": {
     "cle_toujours_presente": "« etude » et « dimensionnement » valent null quand ils ne sont pas calculables — jamais une cle absente : l'ecran n'a jamais a deviner.",
+    "champ_detail": "« detail » n'apparait QUE sur la reponse 400 (corps de requete inexploitable) et porte alors le message en francais. Sur un 200 il vaut null. Il figure dans l'exemple parce que le contrat enumere TOUT ce que cet endpoint peut renvoyer : c'est ce que verifie check_api_shapes.py, qui compare l'exemple a l'ensemble des dictionnaires reellement retournes par la vue. L'omettre laisserait un champ HORS contrat — exactement la faille de l'ecran AO du 03/08/2026.",
     "regle_z2": "Sans ancrage reel (aucune facture exploitable), « etude » est null et « avertissements » dit pourquoi. On omet, on n'approxime pas.",
     "critere_par_defaut": "meilleur_payback, puis meilleure couverture a egalite (< 0,25 an d'ecart). Change par le champ « critere » ; les valeurs possibles sont rendues dans « criteres_disponibles ».",
     "regle_80_pct": "L'onduleur n'est pas choisi ici : composition_residentielle applique deja « jamais moins de 80 % de la puissance PV » (ordre fondateur). Le tableau RE-EXPOSE le ratio obtenu (ratio_onduleur_kwc + regle_80_pct_respectee) pour que la regle soit verifiable a l'oeil.",
@@ -12,6 +13,7 @@
     "onduleur_quantite": "« onduleur_kw » est la puissance TOTALE installee (kW unitaire x quantite) : la composition quote plusieurs onduleurs quand un seul ne couvre pas le champ. C'est cette puissance totale que la regle des 80 % compare aux kWc."
   },
   "exemple": {
+    "detail": null,
     "etude": {
       "version": 1,
       "kwc": 6.0,
@@ -230,6 +232,7 @@
     "avertissements": []
   },
   "exemple_vide": {
+    "detail": null,
     "etude": null,
     "dimensionnement": null,
     "consommation": {

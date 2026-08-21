@@ -48,8 +48,8 @@ BASELINE_ALLOWLIST = {
     # le barème société de builder.py [+21/+45]) : 935→950, 938→953,
     # 2456→2471, 2523→2538 ; builder 1112→1133, 1125→1146, 1777→1822,
     # 1783→1828, 1836→1881, 1837→1882. Vérifié formule par formule.
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1820",  # QJ29 multi-villa ×N (réécrit PVUNI, formule préexistante revue)
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1879",  # total_ttc ligne gamme (réécrit PVUNI, formule préexistante revue)
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1867",  # QJ29 multi-villa ×N (réécrit PVUNI, formule préexistante revue)
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1926",  # total_ttc ligne gamme (réécrit PVUNI, formule préexistante revue)
     "backend/django_core/apps/ventes/quote_engine/builder.py:626",
     "backend/django_core/apps/ventes/quote_engine/builder.py:628",
     "backend/django_core/apps/ventes/quote_engine/builder.py:684",
@@ -132,10 +132,10 @@ BASELINE_ALLOWLIST = {
     # chemin_proposition + son commentaire ajoutés au bloc "signer" ont
     # décalé les MÊMES 4 arrondis d'affichage (PU/total ligne) de +2 lignes ;
     # aucune logique déplacée, aucun NOUVEAU site — bug-class #34.
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1712",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1658",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1711",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1652",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1759",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1705",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1758",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1699",
     # PV86 (2026-08-15, « la seule vérité est le devis ») — le bloc qui exige
     # qu'une alternative soit DÉCLARÉE avant de rendre deux options a inséré
     # 46 lignes dans builder.py : les MÊMES arrondis d'affichage (HT brut,
@@ -146,10 +146,10 @@ BASELINE_ALLOWLIST = {
     "backend/django_core/apps/ventes/quote_engine/builder.py:866",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1064",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1082",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1670",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1704",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1826",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1698",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1717",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1751",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1873",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1745",
     # GAMMES (2026-08-18, offre à deux gammes) — RE-CALAGE file:line, PAS de
     # nouveau site (bug-class #34). Deux insertions purement additives :
     #   * `apps/ventes/services.py` — le bloc de services « gamme »
@@ -205,10 +205,10 @@ BASELINE_ALLOWLIST = {
     # 1585→1621, 1638→1674, 1639→1675. Décalage UNIFORME, aucune logique
     # déplacée, aucun NOUVEAU `round()` — bug-class #34. Les neuf sites
     # au-dessus (300…985) sont AVANT l'insertion et ne bougent pas.
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1807",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1753",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:2117",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1747",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1854",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1800",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:2177",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1794",
     # Z1/Z2 (20/08/2026) — RE-CALAGE file:line, PAS de nouveau site
     # (bug-class #34), et un site MONÉTAIRE EN MOINS. Le bloc « batterie de
     # synthèse » de `build_quote_data` a été SUPPRIMÉ (ordre fondateur : aucun
@@ -254,10 +254,10 @@ BASELINE_ALLOWLIST = {
     #   1293→1298, 1306→1311, 2111→2116, 2117→2122, 2170→2175, 2171→2176
     "backend/django_core/apps/ventes/quote_engine/builder.py:1298",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1311",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:2116",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:2122",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:2175",
     "backend/django_core/apps/ventes/quote_engine/builder.py:2176",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:2182",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:2235",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:2236",
 }
 
 TARGET_FILES = [

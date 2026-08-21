@@ -16,10 +16,16 @@ PROPRIÉTAIRE SERVEUR et des chiffres réels :
 Ce module NE TOUCHE À AUCUN CALCUL D'ARGENT (règle #4) : il lit la sortie du
 moteur de devis, il ne la modifie pas.
 
-Les FORMES 24 h de CONSOMMATION restent côté page : ce sont des estimations
-étiquetées comme telles. Le serveur ne sert que le NIVEAU réel (``kwh_jour``)
-pour que la page puisse enfin mettre ces formes à l'échelle du vrai client, et
-le drapeau ``occupation`` qui dit quelle forme choisir.
+CJ2b (21/08/2026) — LA FORME DE BASE DE CONSOMMATION DEVIENT SERVEUR. Jusqu'ici
+seul le NIVEAU réel (``kwh_jour``) était servi ; la forme 24 h restait une
+copie tenue à la main côté page (``dayProfiles.OCCUPANCY_SHAPES``). Chaque
+saison de ``consommation`` porte désormais AUSSI ``forme`` — la silhouette
+d'occupation SERVEUR (:func:`silhouette_occupation`, section CJ2a plus bas), et
+le bloc porte ``consommation_forme_source`` qui nomme l'occupation servie
+(``silhouette_occupation:presence_jour`` etc.). C'est la forme DE BASE
+UNIQUEMENT : les couches équipements (piscine/clim/VE, voir :func:`_equipements`
+ci-dessous) restent composées CÔTÉ PAGE par-dessus cette forme
+(``proposalCurve.ts``) — les recomposer ici les compterait deux fois.
 
 L4 (21/08/2026) — ÉQUIPEMENTS DU LEAD (script d'appel commercial : piscine,
 véhicule électrique, climatisation, chauffe-eau). Le serveur reste dans le
@@ -612,6 +618,20 @@ def construire_courbes_journalieres(devis, data, monthly_consumption=None):
         if production:
             bloc['production'] = production
         if consommation:
+            # CJ2b — la forme DE BASE (silhouette d'occupation, AVANT les
+            # couches équipements) devient SERVEUR : posée sur CHAQUE saison
+            # déjà servie, jamais une forme sans niveau. La page continue de
+            # composer ``equipements`` PAR-DESSUS elle-même (les recomposer
+            # ici les compterait deux fois — voir l'en-tête du module).
+            _forme_base = silhouette_occupation(occupation)
+            if _forme_base is not None:
+                for _serie_saison in consommation.values():
+                    # Une COPIE par saison : partager la même liste entre les
+                    # trois saisons ferait qu'une mutation en aval les
+                    # changerait toutes les trois à la fois.
+                    _serie_saison['forme'] = list(_forme_base)
+                bloc['consommation_forme_source'] = (
+                    'silhouette_occupation:%s' % occupation)
             bloc['consommation'] = consommation
             # L4 — servi seulement s'il existe une courbe de conso à ajuster
             # (sinon les fenêtres/kw n'ont rien à composer côté page).

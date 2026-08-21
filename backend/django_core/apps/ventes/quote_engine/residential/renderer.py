@@ -150,11 +150,29 @@ def synthese_economies(data: dict) -> dict | None:
                 conso = max(1, round(annual_before))  # dernier repli (1 MAD/kWh)
             coverage_estimated = True
         coverage = min(100, max(1, round(prod_kwh / conso * 100)))
+        # ── CJ2b (ORDRE FONDATEUR, 21/08/2026) — L'ÉCONOMIE DEVIENT CHIFFRÉE ──
+        # « after correcting the annual saving chart (per month) bring it back
+        # to the quote pdf ». Le graphe portait déjà l'économie EN CREUX (l'écart
+        # entre la barre grise et la barre or) ; elle n'était nulle part écrite.
+        #
+        # La série rendue ici est l'écart RÉELLEMENT DESSINÉ (``before − after``),
+        # pas ``eco_m`` : ``after`` est planché à 0, donc sur un mois où
+        # l'économie dépasserait la facture, ``eco_m`` et l'écart des barres
+        # diffèrent. En publiant l'écart, les chiffres imprimés au-dessus des
+        # barres ne peuvent, par construction, jamais contredire les barres.
+        eco_mensuelles = [b - a for b, a in zip(before, after)]
         return {
             "bills_before": before, "bills_after": after,
             "annual_before": annual_before, "annual_after": annual_after,
             "pct_cut": pct_cut,
             "coverage_pct": coverage, "coverage_estimated": coverage_estimated,
+            "eco_mensuelles": eco_mensuelles,
+            "eco_mensuelles_total": annual_before - annual_after,
+            # Q2 — SUR QUELLE OPTION porte cette série. Le document ne montre
+            # qu'un seul jeu de chiffres (décision fondateur du 20/08) ; il doit
+            # dire lequel, sinon le client lit « l'économie » sans savoir si
+            # elle suppose la batterie qu'il n'a peut-être pas commandée.
+            "eco_option": "avec" if _avec else "sans",
         }
     except (TypeError, ValueError):
         return None

@@ -106,6 +106,19 @@ export interface ConsumptionShapeOptions {
    * `RAMADAN_FALLBACK_WINDOW`, jamais une heure présentée comme calculée.
    */
   ramadan?: Pick<RamadanWindow, 'imsakHour' | 'iftarHour'> | null;
+  /**
+   * CJ2b (21/08/2026) — silhouette de consommation SERVIE par le backend pour
+   * la saison affichée (`courbes_journalieres.consommation[saison].forme` —
+   * déjà validée par `dayProfiles.parseDailyCurves` : 24 nombres finis ≥ 0,
+   * somme > 0). Résidentiel UNIQUEMENT (les autres modes gardent leur propre
+   * archétype — usine/pompage n'ont pas d'« occupation du logement »). Le
+   * SERVEUR devient ainsi propriétaire de la FORME, plus seulement du niveau —
+   * ce n'est plus l'estimation résidentielle générique `OCCUPANCY_SHAPES`.
+   * Absente/invalide (longueur ≠ 24) ⇒ repli EXACT sur `OCCUPANCY_SHAPES`,
+   * byte-identique au rendu d'avant : un appelant qui ne la passe jamais
+   * (ancien payload, ou tout consommateur non mis à jour) ne change rien.
+   */
+  servedShape?: readonly number[] | null;
 }
 
 /**
@@ -289,16 +302,21 @@ function rawConsumptionShape(options: ConsumptionShapeOptions): number[] {
     case 'agricole':
       return agricoleShape();
     case 'residentiel':
-    default:
-      // CJ1 — la BASE résidentielle est la silhouette d'OCCUPATION choisie
-      // (présent / absent / partiel en journée, dayProfiles.OCCUPANCY_SHAPES),
-      // et non plus l'unique BASELINE_SHAPE moyenne. Été et Ramadan restent des
-      // MODIFICATEURS ORTHOGONAUX appliqués par-dessus cette base.
-      return applySeasonalVariant(
-        OCCUPANCY_SHAPES[options.occupancy ?? 'presence_partielle'],
-        variant,
-        ramadan,
-      );
+    default: {
+      // CJ2b — la base résidentielle PRÉFÈRE désormais la silhouette SERVIE par
+      // le backend pour la saison affichée (`servedShape`, déjà validée en
+      // amont) : le serveur devient propriétaire de la FORME, pas seulement du
+      // niveau. Repli EXACT sur la silhouette d'OCCUPATION choisie (présent /
+      // absent / partiel en journée, dayProfiles.OCCUPANCY_SHAPES) quand rien
+      // n'est servi — byte-identique au rendu CJ1. Été et Ramadan restent des
+      // MODIFICATEURS ORTHOGONAUX appliqués par-dessus la base retenue, servie
+      // ou locale.
+      const served = options.servedShape;
+      const base = served && served.length === 24
+        ? served
+        : OCCUPANCY_SHAPES[options.occupancy ?? 'presence_partielle'];
+      return applySeasonalVariant(base, variant, ramadan);
+    }
   }
 }
 

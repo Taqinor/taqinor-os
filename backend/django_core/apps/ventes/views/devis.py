@@ -547,6 +547,12 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         # (``inchange``) n'annonce rien : il ne s'est rien passé.
         if not (isinstance(resultat, dict) and resultat.get('inchange')):
             _emettre_layout_finalise(devis, request.user)
+            # CJ2b — les lignes viennent d'être resynchronisées (quantités de
+            # panneaux, batterie, onduleur) : le bloc horaire canonique doit
+            # repartir de cette composition COURANTE (best-effort, jamais
+            # bloquant — voir la docstring de la fonction).
+            from ..services import rafraichir_etude_horaire_devis
+            rafraichir_etude_horaire_devis(devis)
         return Response(resultat)
 
     @action(detail=True, methods=['get', 'post'],
@@ -837,6 +843,18 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         except Exception as exc:  # noqa: BLE001 — rollback : lignes d'origine
             return Response({'detail': f'Remplacement échoué : {exc}'},
                             status=status.HTTP_400_BAD_REQUEST)
+        # CJ2b — C'EST LE CHEMIN D'ENREGISTREMENT DU GÉNÉRATEUR. L'écran de
+        # devis sauvegarde une édition en deux appels : ``PATCH /devis/<id>/``
+        # puis CE remplacement atomique de TOUTES les lignes. Sans ce
+        # rafraîchissement, la composition qui vient d'être posée (panneaux,
+        # onduleur, batterie) ne serait jamais celle que le bloc horaire décrit,
+        # et le devis retomberait sur le modèle forfaitaire alors qu'un calcul
+        # heure par heure exact est possible. ``force`` : les lignes ET
+        # ``etude_params`` peuvent avoir changé dans le même enregistrement.
+        # HORS de la transaction ci-dessus, et best-effort : un devis
+        # correctement remplacé ne doit jamais être annulé par une étude.
+        from ..services import rafraichir_etude_horaire_devis
+        rafraichir_etude_horaire_devis(devis, force=True)
         return Response(DevisSerializer(
             devis, context={'request': request}).data)
 
@@ -2318,6 +2336,19 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             serializer.instance, ancien_statut,
             serializer.instance.statut, self.request.user,
         )
+        # CJ2b — le bloc horaire canonique doit refléter le devis TEL QU'IL EST
+        # APRÈS cette écriture (puissance, factures, profil ont pu changer) :
+        # sans ce rafraîchissement, un devis résidentiel édité hors auto-devis
+        # gardait un bloc PÉRIMÉ ou ABSENT et retombait sur le modèle
+        # « facture »/forfait alors qu'un calcul heure par heure exact restait
+        # possible. Best-effort, ne lève jamais (voir la docstring de la
+        # fonction) : un rafraîchissement raté n'empêche jamais la sauvegarde.
+        # ``force`` : une mise à jour de devis peut avoir changé les FACTURES
+        # ou le profil dans ``etude_params`` — grandeurs invisibles depuis les
+        # lignes, donc le court-circuit « composition inchangée » ne s'applique
+        # pas ici.
+        from ..services import rafraichir_etude_horaire_devis
+        rafraichir_etude_horaire_devis(serializer.instance, force=True)
 
     @action(
         detail=True,

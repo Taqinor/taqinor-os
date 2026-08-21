@@ -154,10 +154,14 @@ class ConsommationTests(_CourbesBase):
         self.assertGreater(bloc['consommation']['ete']['kwh_jour'],
                            bloc['consommation']['hiver']['kwh_jour'])
 
-    def test_la_forme_24h_de_consommation_reste_cote_page(self):
+    def test_la_forme_de_base_ne_porte_que_kwh_jour_et_forme(self):
+        """CJ2b — le serveur sert désormais la forme DE BASE (silhouette
+        d'occupation) à côté du niveau ; les couches équipements restent
+        composées CÔTÉ PAGE par-dessus elle (``proposalCurve.ts``), jamais ici
+        — les recomposer ici les compterait deux fois."""
         bloc = self._bloc(conso=CASA_CONSO)
         for serie in bloc['consommation'].values():
-            self.assertEqual(list(serie), ['kwh_jour'])
+            self.assertEqual(set(serie), {'kwh_jour', 'forme'})
 
     def test_sans_facture_pas_de_consommation(self):
         for vide in (None, [], [1, 2, 3]):
@@ -263,6 +267,52 @@ class OccupationLeadTests(_CourbesBase):
         bloc = self._bloc(conso=CASA_CONSO)
         self.assertEqual(bloc['occupation'], 'presence_jour')
         self.assertEqual(bloc['occupation_source'], 'defaut_residentiel_fondateur')
+
+
+# ── CJ2b (21/08/2026) — la forme de base de consommation devient SERVEUR ────
+class FormeConsommationServieTests(_CourbesBase):
+    """Le serveur sert désormais la silhouette d'occupation (24 parts, somme
+    1,0) sur CHAQUE saison de consommation servie, et nomme sa provenance."""
+
+    def test_chaque_saison_porte_une_forme_de_24_parts_qui_somme_a_un(self):
+        bloc = self._bloc(conso=CASA_CONSO)
+        for saison, serie in bloc['consommation'].items():
+            self.assertIn('forme', serie, saison)
+            self.assertEqual(len(serie['forme']), 24, saison)
+            self.assertAlmostEqual(sum(serie['forme']), 1.0, places=4,
+                                   msg=saison)
+
+    def test_la_source_nomme_l_occupation_reellement_servie(self):
+        bloc = self._bloc(conso=CASA_CONSO)
+        # Défaut résidentiel fondateur (OccupationTests) : présent en journée.
+        self.assertEqual(bloc['occupation'], 'presence_jour')
+        self.assertEqual(bloc['consommation_forme_source'],
+                         'silhouette_occupation:presence_jour')
+
+    def test_la_forme_suit_l_occupation_reellement_servie_pas_un_defaut_fige(self):
+        with mock.patch('apps.crm.selectors.occupation_jour_pour_devis',
+                        return_value='absent'):
+            bloc = self._bloc(conso=CASA_CONSO)
+        self.assertEqual(bloc['occupation'], 'absence_jour')
+        self.assertEqual(bloc['consommation_forme_source'],
+                         'silhouette_occupation:absence_jour')
+        attendu = cj.silhouette_occupation('absence_jour')
+        for saison, serie in bloc['consommation'].items():
+            self.assertEqual(serie['forme'], attendu, saison)
+
+    def test_forme_absente_sans_bloc_consommation(self):
+        # Aucune facture ⇒ pas de bloc consommation ⇒ rien à sourcer.
+        bloc = self._bloc(conso=[])
+        self.assertNotIn('consommation', bloc)
+        self.assertNotIn('consommation_forme_source', bloc)
+
+    def test_la_forme_de_base_est_identique_a_la_production_servie(self):
+        # « part du total du jour, somme = 1 » : même unité que la forme de
+        # production déjà servie (bloc['unites']['forme']).
+        bloc = self._bloc(conso=CASA_CONSO)
+        self.assertIn('forme', bloc['unites'])
+        self.assertEqual(bloc['unites']['forme'],
+                         'part du total du jour (somme = 1)')
 
 
 class OmissionTests(_CourbesBase):

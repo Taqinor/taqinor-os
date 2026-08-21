@@ -184,6 +184,17 @@ const ventesApi = {
   // le `crm.SiteProfile` du client (profil énergie/toiture/pompage réutilisable).
   getPrefillSite: (clientId) =>
     api.get('/ventes/devis/prefill-site/', { params: { client: clientId } }),
+  // CJ2a/CJ2b — aperçu du moteur horaire résidentiel (intégration PVGIS réelle
+  // × consommation réelle, mois par mois) + dimensionnement (`dimensionner:
+  // true`), SANS AUCUNE écriture. LA source unique des chiffres d'économie
+  // résidentiels : l'écran générateur l'appelle au lieu de recalculer de son
+  // côté (fin du miroir JS/Python pour ces chiffres-là). Forme exacte de la
+  // réponse : `apps/ventes/contract_samples/etude_horaire.json`. `config` (ex.
+  // `{signal}`) transmis pour l'annulation en vol — même patron que
+  // getProposalPdf/getDevis ci-dessus : l'instance axios partagée ne relaie
+  // pas un AbortSignal toute seule.
+  postEtudeHorairePreview: (body, config = {}) =>
+    api.post('/ventes/etude-horaire/preview/', body, config),
   // WIR96 — suivi marketing d'un devis : ouverture du lien de partage
   // (« vu le … ») + relances de devis abandonné consignées.
   getSuiviPartageDevis: (id) => api.get(`/ventes/devis/${id}/suivi-partage/`),
