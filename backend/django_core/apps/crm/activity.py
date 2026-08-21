@@ -69,6 +69,17 @@ TRACKED_FIELDS = {
     'visit_window_week': 'Semaine de visite préférée',
     'roof_age': 'Âge de la toiture (ans)',
     'ownership': "Statut d'occupation",
+    # L4 (21/08/2026) — questionnaire d'appel (présence en journée +
+    # équipements électriques), voir apps/ventes/courbes_journalieres.py
+    # pour leur usage dans la courbe de consommation servie.
+    'occupation_jour': 'Présence en journée',
+    'equip_piscine': 'Piscine',
+    'equip_piscine_pompe_kw': 'Puissance pompe piscine (kW)',
+    'equip_voiture_electrique': 'Véhicule électrique',
+    'equip_ve_km_semaine': 'VE — km parcourus/semaine',
+    'equip_clim': 'Climatisation',
+    'equip_clim_pieces': 'Clim — nombre de pièces/unités',
+    'equip_chauffe_eau_electrique': 'Chauffe-eau électrique',
 }
 
 _CHOICE_FIELDS = {
@@ -79,6 +90,8 @@ _CHOICE_FIELDS = {
     # date_cloture_prevue et roof_age sont des valeurs libres, pas des choices).
     'distributeur', 'project_timeline', 'financing_intent', 'facility_type',
     'site_count', 'visit_window_part', 'visit_window_week', 'ownership',
+    # L4 — occupation_jour est un choices (present/absent/partiel).
+    'occupation_jour',
 }
 
 _BOOL_LABELS = {True: 'Oui', False: 'Non'}
