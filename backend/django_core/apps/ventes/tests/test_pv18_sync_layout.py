@@ -18,7 +18,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.crm.models import Client
-from apps.stock.models import Produit
+from apps.stock.models import FicheTechnique, Produit
 from apps.ventes.models import Devis
 from apps.ventes.services import layout_hash
 
@@ -929,3 +929,146 @@ class TestSyncLayoutCables(TestCase):
         # lignes_modifiees ne compte QUE le panneau : les deux câbles étaient
         # déjà au métrage cible, donc chacun est un no-op (jamais compté).
         self.assertEqual(resp.data['lignes_modifiees'], 1)
+
+
+class TestSyncRefuseUneCompositionImpossible(TestCase):
+    """DEV-202608-0016 — la resynchro 3D n'écrit pas l'électriquement impossible.
+
+    L'outil 3D a posé 25 Canadian Solar 710 Wc (Isc 18,59 A par chaîne) sur un
+    devis dont l'onduleur vendu est un Deye 5 kW monophasé dont chaque entrée
+    MPPT admet 17 A en court-circuit. ``sync_devis_from_layout`` prenait
+    ``layout.result.panels`` pour vérité et écrivait la ligne sans jamais
+    regarder l'onduleur : UNE chaîne seule sort déjà de la borne.
+
+    Le refus repose EXCLUSIVEMENT sur les deux fiches techniques (règle
+    fondateur du 21/08/2026) : aucune marge, aucun ratio, aucun seuil ajouté.
+    Une fiche muette ne refuse donc RIEN — c'est le domaine de PVFCH, et les
+    derniers tests de cette classe l'épinglent.
+    """
+
+    def setUp(self):
+        self.company = make_company('dev16-co')
+        self.user = User.objects.create_user(
+            username='dev16user', password='x', role_legacy='responsable',
+            company=self.company)
+        self.api = auth_client(self.user)
+        self.client_obj = Client.objects.create(
+            company=self.company, nom='Client DEV16')
+        self.panneau = Produit.objects.create(
+            company=self.company, nom='Panneau Canadien Solar 710W',
+            sku='DEV16-PAN', prix_vente=Decimal('1500'),
+            prix_achat=Decimal('1100'), quantite_stock=100)
+        # Canadian Solar CS7N-710TB-AG — valeurs du seeder (PAN-CS-710).
+        FicheTechnique.objects.create(
+            company=self.company, produit=self.panneau, type_fiche='module',
+            pmax_wc=Decimal('710.00'), voc_v=Decimal('48.30'),
+            isc_a=Decimal('18.59'), vmp_v=Decimal('40.40'),
+            imp_a=Decimal('17.59'),
+            temp_coeff_voc_pct_c=Decimal('-0.250'),
+            temp_coeff_pmax_pct_c=Decimal('-0.290'))
+        self.onduleur = Produit.objects.create(
+            company=self.company,
+            nom='Onduleur hybride Deye 5kW Monophasé', sku='DEV16-OND',
+            prix_vente=Decimal('14000'), prix_achat=Decimal('11000'),
+            quantite_stock=100)
+        # Deye SUN-5K-SG05LP1-EU — chiffres du seeder (OND-H-DEY-5M) :
+        # 13 A par entrée MPPT, 17 A d'Isc admissible.
+        self.fiche_onduleur = FicheTechnique.objects.create(
+            company=self.company, produit=self.onduleur,
+            type_fiche='onduleur',
+            ond_ac_kw=Decimal('5.00'), ond_phases=1, ond_n_mppt=2,
+            ond_mppt_v_min=Decimal('125.0'), ond_mppt_v_max=Decimal('425.0'),
+            ond_v_max_abs=Decimal('500.0'),
+            ond_i_max_mppt_a=Decimal('13.0'),
+            ond_isc_max_mppt_a=Decimal('17.0'),
+            ond_v_demarrage_v=Decimal('125.0'),
+            ond_bat_v_min=Decimal('40.0'), ond_bat_v_max=Decimal('60.0'))
+        self.compteur = 0
+
+    def _devis(self, panneaux=12):
+        self.compteur += 1
+        devis = Devis.objects.create(
+            company=self.company, reference=f'DEV-DEV16-{self.compteur}',
+            client=self.client_obj, statut=Devis.Statut.BROUILLON,
+            created_by=self.user)
+        devis.lignes.create(
+            produit=self.panneau, designation='Panneau Canadien Solar 710W',
+            quantite=Decimal(str(panneaux)), prix_unitaire=Decimal('1500'),
+            remise=Decimal('5'), ordre=1)
+        devis.lignes.create(
+            produit=self.onduleur,
+            designation='Onduleur hybride Deye 5kW Monophasé',
+            quantite=Decimal('1'), prix_unitaire=Decimal('14000'), ordre=2)
+        return devis
+
+    def _post(self, devis, corps):
+        return self.api.post(
+            f'/api/django/ventes/devis/{devis.id}/sync-layout/',
+            corps, format='json')
+
+    def _layout_25(self):
+        return layout(panels=25, kwc=17.75, panelWatt=710)
+
+    def _sans_borne_isc_publiee(self):
+        """Retire la SEULE borne qui bloque — la fiche redevient muette."""
+        self.fiche_onduleur.ond_isc_max_mppt_a = None
+        self.fiche_onduleur.save(update_fields=['ond_isc_max_mppt_a'])
+
+    def test_couple_impossible_refuse_avec_les_chiffres_des_fiches(self):
+        devis = self._devis(panneaux=12)
+        resp = self._post(devis, self._layout_25())
+        self.assertEqual(resp.status_code, 409, resp.content)
+        detail = resp.data['detail']
+        self.assertIn('25 panneaux', detail)
+        self.assertIn('Panneau Canadien Solar 710W', detail)
+        self.assertIn('Onduleur hybride Deye 5kW Monophasé', detail)
+        # Les ampères viennent des DEUX fiches, jamais d'un seuil ajouté.
+        self.assertIn('18,6 A', detail)
+        self.assertIn('17,0 A', detail)
+        # Le message dit quoi FAIRE, pas seulement ce qui ne va pas.
+        self.assertIn('Corrigez le nombre de panneaux', detail)
+        self.assertFalse(resp.data['revision_possible'])
+
+    def test_le_refus_n_ecrit_absolument_rien(self):
+        devis = self._devis(panneaux=12)
+        resp = self._post(devis, self._layout_25())
+        self.assertEqual(resp.status_code, 409)
+        # La transaction est intacte : quantité, layout, empreinte, statut.
+        self.assertEqual(
+            int(devis.lignes.get(
+                designation='Panneau Canadien Solar 710W').quantite), 12)
+        self.assertEqual(devis.lignes.count(), 2)
+        devis.refresh_from_db()
+        self.assertIsNone(devis.roof_layout)
+        self.assertFalse(devis.layout_hash)
+        self.assertEqual(devis.statut, Devis.Statut.BROUILLON)
+
+    def test_une_fiche_muette_ne_refuse_rien(self):
+        """Règle fondateur 21/08/2026 — on ne bloque JAMAIS sur un chiffre que
+        le constructeur n'a pas écrit. Sans borne d'Isc publiée, la resynchro
+        passe : la complétude des fiches est le domaine de PVFCH."""
+        self._sans_borne_isc_publiee()
+        devis = self._devis(panneaux=12)
+        resp = self._post(devis, self._layout_25())
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.data['panneaux'], 25)
+
+    def test_le_changement_de_composition_est_annonce(self):
+        """La resynchro DIT que la conception 3D a changé le compte."""
+        self._sans_borne_isc_publiee()
+        devis = self._devis(panneaux=12)
+        resp = self._post(devis, self._layout_25())
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertIn('La conception 3D porte le devis de 12 à 25 panneaux.',
+                      resp.data['avertissements'])
+
+    def test_sans_changement_de_compte_aucun_avertissement_de_composition(self):
+        """Un layout qui ne bouge pas les panneaux n'annonce aucun changement."""
+        self._sans_borne_isc_publiee()
+        devis = self._devis(panneaux=12)
+        resp = self._post(devis, layout(panels=12, kwc=8.52, panelWatt=710))
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertFalse(
+            [a for a in resp.data['avertissements']
+             if 'La conception 3D porte le devis' in a],
+            resp.data['avertissements'])
