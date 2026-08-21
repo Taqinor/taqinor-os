@@ -380,11 +380,20 @@ def _alertes_courant(resultat_chaines, entree):
     verdicts de courant, en rappelant sa fonction dédiée sur une liste neuve :
     aucun tri par mot-clé, donc aucune divergence possible le jour où le noyau
     reformule ses phrases.
+
+    Les verdicts de courant ont DEUX sévérités depuis DEV-202608-0016 (Isc
+    cumulé au-dessus de la borne matérielle PUBLIÉE = bloquant ; écrêtage sur
+    l'Imp = alerte). Cette liste les rend TOUS les deux : elle répond « quels
+    verdicts de courant le noyau prononce-t-il ? », pas « lesquels sont
+    graves ? » — la sévérité se lit dans ``bloquants``/``alertes``, qui
+    viennent du noyau eux aussi. Sans cela, le message le plus grave serait le
+    seul à disparaître des ``warnings`` de ``string_design``.
     """
     from core.electrique.chaines import _verdicts_courant
     alertes = []
-    _verdicts_courant(resultat_chaines.chaines, entree.onduleur, alertes)
-    return alertes
+    bloquants = _verdicts_courant(resultat_chaines.chaines, entree.onduleur,
+                                  alertes)
+    return list(bloquants) + alertes
 
 
 def verdicts_chaines(n_panels, module=None, inverter=None,

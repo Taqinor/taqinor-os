@@ -19,14 +19,20 @@ QUATRE RÈGLES GRAVÉES ICI, dans l'ordre où elles comptent :
 
 * **La TAXONOMIE est celle du noyau, jamais une règle maison.** ``incompatible``
   = le noyau prononce un BLOQUANT (``core.electrique.chaines`` : Voc à froid
-  au-dessus de la tension maximale absolue, ou fenêtre de tension vide — les
-  deux seuls cas où du matériel casse ou aucune chaîne n'existe). ``reserve`` =
-  le noyau ne prononce que des ALERTES (production dégradée : écrêtage MPPT,
-  MPPT hors plage en été, ET LES DEUX BORNES DE COURANT D'ENTRÉE — c'est là que
-  tombe le cas du fondateur, cf. ``chaines._verdicts_courant`` qui écrit dans
-  ``alertes`` et jamais dans ``bloquants``). On ne durcit ni n'assouplit : un
-  courant d'entrée dépassé N'EST PAS bloquant, il fait écrêter — le dire
-  bloquant mentirait autant que le taire.
+  au-dessus de la tension maximale absolue, fenêtre de tension vide, ou — depuis
+  DEV-202608-0016 — **Isc cumulé au-dessus de la borne de court-circuit PUBLIÉE
+  par l'entrée MPPT** : les cas où du matériel casse, où aucune chaîne n'existe,
+  ou où le montage sort de la spécification constructeur). ``reserve`` = le
+  noyau ne prononce que des ALERTES (production dégradée : écrêtage MPPT, MPPT
+  hors plage en été, et l'ÉCRÊTAGE sur l'Imp d'entrée).
+
+  La ligne de partage entre les deux bornes de courant est celle de la FICHE, et
+  elle n'est pas cosmétique : dépasser l'**Imp** admissible fait ÉCRÊTER (ça
+  s'installe, ça produit moins — alerte) ; dépasser l'**Isc** publié sort de ce
+  que le constructeur garantit (25 × 710 Wc sur un Deye 5 kW mono : 18,59 A
+  d'Isc par chaîne dans une entrée donnée pour 17 A — bloquant). On ne durcit ni
+  n'assouplit AU-DELÀ des deux chiffres de fiche : sans borne d'Isc publiée,
+  rien n'est bloqué (le repli prudent reste une alerte).
 * **Une variable absente rend « inconnu », JAMAIS un faux OK.** Le verdict cite
   alors le LIBELLÉ FRANÇAIS de ce qui manque, pour que le fondateur sache quoi
   saisir.

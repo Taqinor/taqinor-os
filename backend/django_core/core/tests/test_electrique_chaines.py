@@ -370,6 +370,11 @@ class CouplePV85_CS710_SurDeyeSG05LP3(unittest.TestCase):
         self.assertIn("26,0 A", ecretage[0])
         # Le message dit quoi FAIRE, pas seulement ce qui ne va pas.
         self.assertIn("une chaîne par entrée MPPT", ecretage[0])
+        # DEV-202608-0016 — LA DISTINCTION : l'Isc cumulé (2 × 18,59 = 37,2 A)
+        # reste SOUS les 39 A que la fiche du SG05LP3 admet en court-circuit.
+        # Rien ne sort de la spécification : l'écrêtage est une pratique
+        # légitime, il ALERTE et ne bloque pas.
+        self.assertEqual(res.bloquants, ())
 
     def test_l_isc_garde_sa_propre_borne_materielle(self):
         """26 A (fonctionnement) et 39 A (Isc) ne sont pas la même borne."""
@@ -383,6 +388,74 @@ class CouplePV85_CS710_SurDeyeSG05LP3(unittest.TestCase):
         res = concevoir_chaines(self._entree(14, batterie=True))
         self.assertEqual(res.bloquants, ())
         self.assertEqual(res.nb_chaines, 2)
+
+
+#: Deye SUN-5K-SG05LP1-EU (monophasé) — LES CHIFFRES DU SEEDER, ceux que
+#: ``seed_catalogue`` pose sur la FicheTechnique du SKU OND-H-DEY-5M : 2 MPPT,
+#: 125-425 V, 500 V absolus, 13 A par entrée et **17 A d'Isc admissible**.
+DEYE_5K_MONO = SpecOnduleur(n_mppt=2, mppt_v_min=125.0, mppt_v_max=425.0,
+                            v_max_abs=500.0, i_max_mppt_a=13.0,
+                            isc_max_mppt_a=17.0, ac_kw=5.0, phases=1,
+                            v_demarrage_v=125.0)
+
+
+class IncidentDEV0016_25x710_SurDeye5kMono(unittest.TestCase):
+    """DEV-202608-0016 — l'outil 3D a posé 25 × 710 Wc sur un Deye 5 kW mono.
+
+    Le moteur dessinait « MPPT 1 · 3 chaînes » — 3 × 18,59 = 55,8 A d'Isc dans
+    une entrée que la fiche donne pour 17 A. UNE chaîne seule sort déjà de la
+    borne : le couple est physiquement impossible, et rien ne le disait.
+    """
+
+    def _entree(self, nb_modules):
+        return EntreeElectrique(
+            module=CS7N_710, onduleur=DEYE_5K_MONO,
+            groupes=(GroupePan("Toiture", nb_modules, 180.0, 15.0),),
+            phases=1)
+
+    def test_l_isc_hors_borne_publiee_est_BLOQUANT_avec_ses_amperes(self):
+        res = concevoir_chaines(self._entree(25))
+        # La répartition INCRIMINÉE, telle que l'écran l'affichait.
+        self.assertEqual(res.nb_chaines, 5)
+        self.assertEqual(res.chaines_par_mppt, (3, 2))
+        self.assertTrue(res.bloquants, "un dépassement de spécification "
+                                       "matérielle ne peut pas être une alerte")
+        premier = res.bloquants[0]
+        # Les DEUX chiffres, et ils viennent des DEUX fiches : 3 × 18,59 A
+        # d'Isc contre les 17 A publiés de l'entrée. Aucun seuil ajouté.
+        self.assertIn("55,8 A", premier)
+        self.assertIn("17,0 A", premier)
+        self.assertIn("entrée MPPT 1", premier)
+        # Les deux entrées sont hors borne, les deux le disent.
+        self.assertEqual(len(res.bloquants), 2, res.bloquants)
+
+    def test_une_seule_chaine_suffit_a_sortir_de_la_borne(self):
+        """5 modules = 1 chaîne = 18,59 A > 17 A : le couple, pas le compte."""
+        res = concevoir_chaines(self._entree(5))
+        self.assertEqual(res.nb_chaines, 1)
+        self.assertTrue(res.bloquants)
+        self.assertIn("18,6 A", res.bloquants[0])
+
+    def test_l_ecretage_ne_masque_ni_ne_redouble_le_bloquant(self):
+        """Imp cumulé (52,8 A) dépasse aussi les 13 A — sans le dire deux fois.
+
+        L'ancienne règle « ne pas répéter » faisait taire l'Isc dès que
+        l'écrêtage avait parlé : c'est la borne MATÉRIELLE qui parle en premier
+        et seule, l'écrêtage ne vient plus la couvrir.
+        """
+        res = concevoir_chaines(self._entree(25))
+        self.assertFalse([a for a in res.alertes if "ÉCRÊTAGE" in a],
+                         res.alertes)
+
+    def test_sans_borne_isc_publiee_rien_n_est_bloque(self):
+        """Fiche muette sur l'Isc ⇒ ALERTE, jamais un refus sur un nombre
+        que le constructeur n'a pas écrit (règle fondateur 21/08/2026)."""
+        sans_isc = dataclasses.replace(DEYE_5K_MONO, isc_max_mppt_a=None)
+        res = concevoir_chaines(EntreeElectrique(
+            module=CS7N_710, onduleur=sans_isc,
+            groupes=(GroupePan("Toiture", 25, 180.0, 15.0),), phases=1))
+        self.assertEqual(res.bloquants, ())
+        self.assertTrue(res.alertes)
 
 
 # ── Réconciliation des DEUX conventions de ratio ──────────────────────────────
