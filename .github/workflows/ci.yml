@@ -109,6 +109,42 @@ concurrency:
 # gagner que ~15 s de gate, plafonnes par vitest a 291 s. Le prochain vrai
 # levier est la mise en place e2e/vitest elle-meme, pas un creneau de plus.
 #
+# PLIER DEUX JOBS COURTS EN SERIE POUR FINANCER UN CRENEAU — LES DEUX PISTES
+# ONT ETE INSTRUITES LE 21/08 (volet G) ET LES DEUX SONT REFUSEES. Le calcul
+# est ici pour qu'on ne le reprenne pas a zero.
+#
+#   a) `rls-tests` (114 s) plie dans une lane `backend-tests-shard`.
+#      TECHNIQUEMENT possible : meme image CI, meme `backend-env`, meme base
+#      `test_erp_db`, et `POSTGRES_RLS_ENABLED=1` se pose au niveau de l'etape.
+#      REFUSE POUR DEUX RAISONS, dont une purement arithmetique :
+#      1. `rls-tests` tourne aujourd'hui EN PARALLELE et n'est JAMAIS sur le
+#         chemin critique. Le plier convertirait 114 s de temps gratuit en
+#         ~30-60 s de temps SERIE ajoutes a une lane qui, elle, est sur le
+#         chemin critique. On echangerait un creneau (dont on a la marge)
+#         contre des secondes de gate (dont on n'a pas la marge).
+#      2. Le job est DELIBEREMENT non-requis (voir son en-tete). Le plier dans
+#         `backend-tests-shard` le ferait entrer dans le check REQUIS
+#         `backend-tests` : une suite consultative deviendrait bloquante pour
+#         toute fusion. C'est une decision du fondateur, pas un reglage de CI.
+#
+#   b) `backend-openapi` (150-168 s) plie dans `backend-lint-fast` (78-102 s).
+#      REFUSE. `backend-lint-fast` est le SEUL job backend qui ne declare pas
+#      `needs: ci-image-check` : il rend le verdict qui attrape 99 % des rouges
+#      en ~1,5 min, sans attendre l'image et meme si GHCR est indisponible.
+#      `backend-openapi`, lui, ne peut tourner QUE dans l'image. Les plier
+#      obligerait `backend-lint-fast` a entrer dans le conteneur, donc a
+#      attendre `ci-image-check` : +25-35 s sur le chemin rapide, mais surtout
+#      +8 a 12 min sur le chemin LENT (toute PR qui touche un requirements ou
+#      le Dockerfile CI) — c'est-a-dire precisement sur les PR les plus
+#      risquees. WOW-CI2 avait SEPARE ces deux moities sur mesure ; les
+#      recoller pour un creneau dont on a la marge serait defaire ce gain.
+#
+# CONCLUSION DU VOLET G SUR LES CRENEAUX : rien n'est a financer. Depuis que le
+# backend est sorti du chemin critique, une lane de plus (backend, e2e ou
+# vitest) n'achete plus de temps de mur — le plancher est la MISE EN PLACE de
+# `e2e-shard` (57 % du job) et de `frontend-vitest-shard`. C'est la qu'ira le
+# prochain volet, pas dans un creneau supplementaire.
+#
 # RONDE 4 (19/08) — la 4e lane vitest depense 1 des 3 creneaux libres MESURES
 # sur le run 32265590843 (17 lanes a nous, 3 creneaux encore idle sous le
 # plafond de 20 a ce moment-la — la contention CodeQL varie d'un run a l'autre,
