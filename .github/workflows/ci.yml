@@ -51,14 +51,23 @@ concurrency:
 #
 #   stage-names 1 + backend-lint-fast 1 + backend-openapi 1 + frontend-static 1
 #   + web-build-test 1 + rls-tests 1                                     =  6
-#   + backend-tests-shard 5 + frontend-vitest-shard 4 + e2e-shard 2      = 11
-#                                                              TOTAL     = 17
+#   + backend-tests-shard 6 + frontend-vitest-shard 4 + e2e-shard 2      = 12
+#                                                              TOTAL     = 18
 #
-# VOLET F (20/08) — 18 -> 17 : `backend-tests-shard` passe de 6 a 5 lanes SANS
-# rien ralentir. Le palier backend est borne par UNE classe de test indivisible
-# (~195 s) ; a 5 comme a 6 lanes la pire lane vaut 196 s, la 6e ne servait qu'a
-# alleger des lanes qui n'etaient deja plus le chemin critique. Un creneau de
-# marge en plus sous le plafond de 20 — trois desormais.
+# VOLET F (20/08) — 18 -> 17 : `backend-tests-shard` etait passe de 6 a 5 lanes
+# SANS rien ralentir. Le palier backend etait borne par UNE classe de test
+# indivisible (~195 s) ; a 5 comme a 6 lanes la pire lane valait 196 s, la 6e
+# ne servait qu'a alleger des lanes qui n'etaient deja plus le chemin critique.
+#
+# VOLET G (21/08) — 17 -> 18 : la classe qui bornait tout (3 tests, MESURES a
+# ~380 s a eux seuls sur trois runs verts — voir l'en-tete de
+# `backend-tests-shard`) est eclatee en trois classes/modules d'un test. Le
+# plancher indivisible tombe de 195 s a 135 s, et une 6e lane redevient utile :
+# elle fait passer le palier de 211 s a 176 s, ce qui pose le job backend a
+# ~296 s, SOUS `e2e-shard` (306-336 s). Le creneau depense achete donc un vrai
+# raccourcissement du gate ; la 7e et la 8e lane, elles, n'achetent plus rien
+# (le chemin critique n'est plus le backend) et sont refusees pour cela.
+# Marge restante sous le plafond de 20 : deux creneaux.
 #
 # RONDE 5 (20/08) — `ci-image-check` AJOUTE UN CRENEAU, MAIS PAS DANS LA VAGUE.
 # Il ne declare AUCUN `needs` : il part a T=0 en meme temps que `changes` et
@@ -67,30 +76,38 @@ concurrency:
 #
 #   Fenetre 1 (T=0 a ~T+35 s) — `changes` 1 + `ci-image-check` 1
 #     + stage-names 1 + frontend-static 1 + frontend-vitest-shard 4
-#     + web-build-test 1 + e2e-shard 2                              = 11
-#   Fenetre 2 (apres) — les 6 de la ronde 4 (dont `ci-image-check`
-#     et `changes` sont sortis) : stage-names 1 + backend-lint-fast 1
-#     + backend-openapi 1 + frontend-static 1 + web-build-test 1
-#     + rls-tests 1 = 6, + backend-tests-shard 5
-#     + frontend-vitest-shard 4 + e2e-shard 2 = 11                  = 17
+#     + web-build-test 1                                            =  9
+#     (`e2e-shard` a quitte cette fenetre : il attend desormais lui aussi
+#      `ci-image-check`, car il tourne dans l'image `ci-e2e`.)
+#   Fenetre 2 (apres) — `changes` et `ci-image-check` sont sortis :
+#     stage-names 1 + backend-lint-fast 1 + backend-openapi 1
+#     + frontend-static 1 + web-build-test 1 + rls-tests 1  = 6,
+#     + backend-tests-shard 6 + frontend-vitest-shard 4
+#     + e2e-shard 2                                        = 12     = 18
 #
-# LE PIC EST DONC 17 (volet F : 18 - 1 lane backend), soit TROIS creneaux de
-# marge mesuree sous le plafond de 20 au lieu de deux. Le chemin LENT de `ci-image-check` (construction
-# en ligne, ~8-12 min, uniquement quand un requirements, un lockfile frontend ou
-# un Dockerfile CI change) allonge sa fenetre mais ne l'elargit pas : c'est
-# toujours 1 creneau, et la vague attend simplement plus longtemps pour demarrer.
-# NOTE : `e2e-shard` attend desormais lui aussi `ci-image-check` (il tourne dans
-# l'image `ci-e2e`), donc il quitte la fenetre 1 pour la fenetre 2 — ce qui
-# BAISSE le pic de la fenetre 1 a 9 et laisse la fenetre 2 a 18. Pic inchange.
+# LE PIC EST DONC 18 (volet G : 17 + 1 lane backend), soit DEUX creneaux de
+# marge mesuree sous le plafond de 20. Le chemin LENT de `ci-image-check`
+# (construction en ligne, ~8-12 min, uniquement quand un requirements, un
+# lockfile frontend ou un Dockerfile CI change) allonge sa fenetre mais ne
+# l'elargit pas : c'est toujours 1 creneau, et la vague attend simplement plus
+# longtemps pour demarrer.
 #
-# 3e LANE e2e — REFUSEE, et le calcul est ici pour qu'on ne le reprenne pas a
-# zero. Sur le run vert 32307320397, les etapes de specs des deux lanes valent
-# 129 s et 126 s : elles sont deja equilibrees a 3 s pres, et une 3e lane
+# 3e LANE e2e — TOUJOURS REFUSEE, et le calcul est ici pour qu'on ne le reprenne
+# pas a zero. Sur le run vert 32307320397, les etapes de specs des deux lanes
+# valent 129 s et 126 s : elles sont deja equilibrees a 3 s pres, et une 3e lane
 # ramenerait le pire bloc de specs de 123 s a 86 s, soit ~37 s. C'est SOUS le
-# seuil de 60 s qui justifierait de depenser un des 2 derniers creneaux — et
-# apres le volet e2e ci-dessous, une lane e2e a ~306 s serait de toute facon
-# talonnee par `frontend-vitest-shard` (291 s mesurees), qui deviendrait le
-# nouveau plancher : les 37 s ne rapporteraient qu'environ 15 s sur le gate.
+# seuil de 60 s qui justifierait de depenser un creneau — et une lane e2e a
+# ~306 s est de toute facon talonnee par `frontend-vitest-shard` (291 s
+# mesurees), qui deviendrait le nouveau plancher : les 37 s ne rapporteraient
+# qu'environ 15 s sur le gate.
+#
+# VOLET G (21/08) — CE CALCUL A ETE REVERIFIE APRES LE RECALAGE BACKEND, ET IL
+# TIENT TOUJOURS. Maintenant que le backend descend a ~296 s, `e2e-shard` EST
+# le chemin critique — mais son plancher n'est pas la repartition des specs
+# (deja droite a 3 s pres), c'est sa MISE EN PLACE, qui vaut 57 % du job. Une
+# 3e lane e2e paierait donc une TROISIEME mise en place complete pour ne
+# gagner que ~15 s de gate, plafonnes par vitest a 291 s. Le prochain vrai
+# levier est la mise en place e2e/vitest elle-meme, pas un creneau de plus.
 #
 # RONDE 4 (19/08) — la 4e lane vitest depense 1 des 3 creneaux libres MESURES
 # sur le run 32265590843 (17 lanes a nous, 3 creneaux encore idle sous le
@@ -468,7 +485,7 @@ jobs:
     # `nplusone.ext.django` a INSTALLED_APPS/MIDDLEWARE DES QUE le paquet est
     # importable. L'inventaire d'operations OpenAPI, lui, ne bouge pas : il est
     # derive du seul ROOT_URLCONF, et `nplusone` n'enregistre aucune route (il
-    # n'expose qu'un middleware de journalisation des requetes N+1). Les six
+    # n'expose qu'un middleware de journalisation des requetes N+1). Les
     # lanes `backend-tests-shard` tournent d'ailleurs deja sous `settings.dev`
     # AVEC ce paquet installe, donc la combinaison est eprouvee. Si un diff de
     # contrat inattendu apparaissait un jour ici, c'est la premiere piste.
@@ -637,16 +654,58 @@ jobs:
   #    des CLASSES ; une classe ne se scinde pas. Le cout d'une lane est donc
   #    `max(somme de ses contributions, sa plus grosse classe)`, pas une somme.
   #
-  # CE QUI BORNE MAINTENANT : `TestAcceptationGamme` a ~195 s. Aucun decoupage
-  # ne descend sous ce chiffre — c'est pour cela que 6 lanes ne valaient pas
-  # mieux que 5 (196 s dans les deux cas), et que la 6e ne faisait que creuser
-  # l'ecart. Plan a 5 lanes : 196 / 163 / 163 / 163 / 163 s, ecart 17 %.
-  # `python scripts/ci_shard.py --plan N` rejoue tout ce calcul et NOMME la
-  # classe qui borne.
+  # CE QUI BORNAIT ALORS : `TestAcceptationGamme` a ~195 s. Aucun decoupage ne
+  # descendait sous ce chiffre — c'est pour cela que 6 lanes ne valaient pas
+  # mieux que 5 (196 s dans les deux cas). Le volet F concluait : « POUR
+  # DESCENDRE PLUS BAS il faut scinder cette classe ». C'est fait.
   #
-  # POUR DESCENDRE PLUS BAS il faut scinder cette classe — un changement de code
-  # de TEST (apps/ventes/tests/test_gammes_offre.py), pas de CI. Tant qu'elle
-  # existe, ajouter des lanes ne rachete rien.
+  # ---------------------------------------------------------------------------
+  # VOLET G (21/08/2026) — LA CLASSE QUI BORNAIT TOUT EST ECLATEE, ET LE
+  # PLANIFICATEUR SE TROMPAIT ENCORE D'UN FACTEUR DEUX.
+  #
+  # Point de depart mesure : `backend-tests-shard (0)` ne contenait QU'UN
+  # module — `apps.ventes.tests.test_gammes_offre` — et durait ~8,7 min. Il
+  # etait le chemin critique de CHAQUE run pendant que les cinq autres lanes
+  # attendaient. Les journaux de trois runs verts consecutifs :
+  #
+  #   run 32439017665 : « Ran 42 tests in 350,345s » ; 348,81 s de SILENCE
+  #                     entre la derniere ligne de TestPayloadPublic
+  #                     (02:14:39.2014982Z) et la premiere de
+  #                     TestAcceptationGamme (02:20:28.0130228Z)
+  #   run 32434442077 : « Ran 42 tests in 406,976s » ; silence 405,38 s
+  #   run 32400031804 : « Ran 42 tests in 385,627s » ; silence 383,97 s
+  #
+  # DEUX FAITS, ET ILS CHANGENT LA CONCLUSION DU VOLET F :
+  #  1. TROIS tests valaient 99,5 a 99,7 % du module (~110 a 150 s chacun,
+  #     decoupage visible aux trois triplets de diagnostics n+1 identiques
+  #     pendant le silence) pendant que les 39 autres pesaient ~1,5 s ENSEMBLE.
+  #  2. La table disait 194,83 s pour cette classe : la moitie de la realite.
+  #     Le plan annoncait donc « pire lane 196 s » pour un job qui en mesurait
+  #     520. Les poids sont recales sur ces journaux (poids = MAX des runs
+  #     recents, la garde de variance de `--update-timings`).
+  #
+  # CE QUI A ETE FAIT — DANS LE CODE DE TEST, pas dans la CI. Une CLASSE est
+  # l'unite INDIVISIBLE de `manage.py test --parallel` : Django affecte une
+  # classe entiere a UN worker. Les trois tests sont donc passes a UN TEST PAR
+  # CLASSE, UNE CLASSE PAR MODULE (test_gammes_offre_acceptation.py,
+  # _acceptation_signature.py, _acceptation_choix.py), ce qui les rend a la
+  # fois parallelisables par Django DANS une lane et deplacables par
+  # `ci_shard.py` ENTRE les lanes. Deplacement PUR : les 54 fonctions du
+  # fichier d'origine ont un AST identique a l'octet pres.
+  #
+  # LE NOUVEAU PALIER (`python scripts/ci_shard.py --plan N`) :
+  #     4 lanes 264 s | 5 lanes 211 s | 6 lanes 176 s | 7 lanes 151 s
+  #     8 lanes 135 s  <- la borne indivisible est passee de 195 s a 135 s
+  #
+  # POURQUOI 6 ET PAS 8 : le critere est le gain sur le GATE, pas sur la lane.
+  # Avec ~2 min de mise en place par lane, 6 lanes posent le job backend a
+  # ~296 s, donc SOUS `e2e-shard` (306-336 s mesurees) et a peine au-dessus de
+  # `frontend-vitest-shard` (291 s). A partir de la, le chemin critique du run
+  # n'est PLUS le backend : les 25 s d'une 7e lane et les 41 s d'une 8e ne se
+  # voient nulle part sur le temps de mur, et elles couteraient les deux
+  # derniers creneaux (bloc CRENEAUX — un job qui fait la queue est la pire
+  # lane possible). Le prochain levier n'est donc pas ici : il est dans la
+  # mise en place e2e/vitest.
   # ---------------------------------------------------------------------------
   backend-tests-shard:
     needs: [changes, ci-image-check]
@@ -654,15 +713,20 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # WOW-CI RONDE 5 / VOLET F (20/08/2026) — 6 lanes -> 5. Ce n'est pas une
-        # economie de confort : au-dela de 5, une lane de plus ne raccourcit
-        # RIEN. Le palier est borne par UNE classe indivisible
-        # (`test_gammes_offre.TestAcceptationGamme`, ~195 s mesurees), donc la
-        # pire lane vaut 196 s a 5 comme a 6 lanes — la 6e ne faisait que
-        # creuser l'ecart (33 % contre 17 %) en liberant les autres lanes sans
-        # toucher au plancher. Le creneau recupere va au budget du bloc CRENEAUX.
-        # `python scripts/ci_shard.py --plan N` rejoue ce calcul.
-        shard: [0, 1, 2, 3, 4]
+        # VOLET G (21/08/2026) — 5 lanes -> 6, une fois la classe qui bornait
+        # tout eclatee (cf. l'en-tete ci-dessus). Plans mesures par
+        # `python scripts/ci_shard.py --plan N`, poids recales sur les
+        # journaux de trois runs verts :
+        #     4 lanes 264 s | 5 lanes 211 s | 6 lanes 176 s
+        #     7 lanes 151 s | 8 lanes 135 s (= la borne indivisible)
+        # On s'arrete a 6, et le critere n'est PAS « le gain par lane » mais
+        # « le gain sur le GATE » : avec ~2 min de mise en place, 6 lanes
+        # posent le job backend a ~296 s, c'est-a-dire SOUS `e2e-shard`
+        # (306-336 s mesurees) qui devient alors le chemin critique. Les
+        # 25 s que rapporterait une 7e lane ne se voient donc nulle part sur
+        # le temps de mur du run, et elles couteraient le dernier creneau de
+        # marge. Le pic passe de 17 a 18 (bloc CRENEAUX en tete de fichier).
+        shard: [0, 1, 2, 3, 4, 5]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -760,16 +824,16 @@ jobs:
       # (rendu WeasyPrint, golden PDF…). Ceux-ci tournent dans release-verify
       # (manuel + nightly), pour un retour rapide sur chaque merge.
       # WOW6/WOW-CI2 — ce shard n'exécute QUE sa tranche de MODULES de test
-      # (placement LPT déterministe via scripts/ci_shard.py) ; l'union des 8
+      # (placement LPT déterministe via scripts/ci_shard.py) ; l'union des
       # shards == exactement l'ensemble des modules `test*.py` de `apps`,
       # `authentication` et `core`, prouvé par scripts/tests/test_ci_shard.py.
       # `coverage` reste hors du gate (WOW3).
-      - name: Run Django test suite — shard ${{ matrix.shard }}/5 (fast tier — excludes pdf/slow)
+      - name: Run Django test suite — shard ${{ matrix.shard }}/6 (fast tier — excludes pdf/slow)
         working-directory: backend/django_core
         run: |
           set -euo pipefail
-          LABELS=$(python ../../scripts/ci_shard.py ${{ matrix.shard }} 5)
-          echo "Shard ${{ matrix.shard }}/5 -> $(echo "$LABELS" | wc -w) modules"
+          LABELS=$(python ../../scripts/ci_shard.py ${{ matrix.shard }} 6)
+          echo "Shard ${{ matrix.shard }}/6 -> $(echo "$LABELS" | wc -w) modules"
 
           # WOW-CI RONDE 5 — GARDE ANTI-`max_locks`, DEVENUE UNE CEINTURE.
           #
