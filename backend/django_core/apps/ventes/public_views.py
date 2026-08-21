@@ -1269,7 +1269,8 @@ def proposal_data(request, token):
         # récupérable contredisait le document remis au client.
         if not data.get('avec_ok'):
             for cle in ('eco_a_monthly', 'eco_a_ann', 'eco_a_cumul',
-                        'roi_a', 'cashflow_avec'):
+                        'roi_a', 'cashflow_avec', 'net_gain_avec',
+                        'facture_avec_solaire_a'):
                 data[cle] = None
         # …et le bloc moteur BRUT (`etude_params['etude_horaire']`, recopié
         # dans `data['etude']` par le builder) ne franchit JAMAIS la frontière

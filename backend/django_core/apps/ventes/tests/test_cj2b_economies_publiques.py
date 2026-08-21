@@ -203,7 +203,17 @@ class AvecBatterieNonVendableTests(_CJ2bBase):
         # PV86 (garde déjà en place ailleurs) — même vérité côté totaux.
         self.assertIsNone(payload['option_totals']['avec_batterie'])
 
-        presentes = set(_tous_les_nombres(payload))
+        # Classe de bug #69 — on scanne le rendu MONÉTAIRE : les blocs
+        # PHYSIQUES (kWh, courbes, géométrie) sont exclus du balayage, sinon
+        # une simple coïncidence numérique (un mois de production à 1 400 kWh
+        # face à une économie « avec » de 1 400 MAD — cas réel, CI du 21/08)
+        # ferait accuser une fuite qui n'existe pas.
+        surface_monetaire = dict(payload)
+        for bloc_physique in ('monthly_production', 'monthly_consumption',
+                              'courbes_journalieres', 'conception_electrique',
+                              'roof_layout', 'sld_svg'):
+            surface_monetaire.pop(bloc_physique, None)
+        presentes = set(_tous_les_nombres(surface_monetaire))
         fuite = propres_a_avec & presentes
         self.assertFalse(
             fuite,
