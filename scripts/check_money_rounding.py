@@ -187,8 +187,8 @@ BASELINE_ALLOWLIST = {
     # toit, une puissance en kWc et deux dérivations kWc = panneaux × Wc.
     "backend/django_core/apps/ventes/services.py:1033",
     "backend/django_core/apps/ventes/services.py:1036",
-    "backend/django_core/apps/ventes/services.py:2993",
-    "backend/django_core/apps/ventes/services.py:3060",
+    "backend/django_core/apps/ventes/services.py:3056",
+    "backend/django_core/apps/ventes/services.py:3143",
     "backend/django_core/apps/ventes/quote_engine/builder.py:385",
     "backend/django_core/apps/ventes/quote_engine/builder.py:386",
     "backend/django_core/apps/ventes/quote_engine/builder.py:725",

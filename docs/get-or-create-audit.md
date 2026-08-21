@@ -322,8 +322,8 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/uxviews/models.py:174` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/veille_ao/services.py:895` | get_or_create | SourceVeille.objects | code, company |
 | `backend/django_core/apps/ventes/services.py:342` | get_or_create | ParametresGammes.objects | company |
-| `backend/django_core/apps/ventes/services.py:6013` | get_or_create | Produit.objects | company, nom |
-| `backend/django_core/apps/ventes/services.py:7383` | get_or_create | Produit.objects | company, sku |
+| `backend/django_core/apps/ventes/services.py:6096` | get_or_create | Produit.objects | company, nom |
+| `backend/django_core/apps/ventes/services.py:7466` | get_or_create | Produit.objects | company, sku |
 | `backend/django_core/apps/ventes/views/liste_prix.py:72` | update_or_create | LignePrixListe.objects | liste, produit_id |
 | `backend/django_core/apps/ventes/views/remise_encaissement.py:81` | get_or_create | LigneRemiseEncaissement.objects | paiement, remise |
 | `backend/django_core/apps/voip/services.py:26` | get_or_create | VoipParametres.objects | company |
