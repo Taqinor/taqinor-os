@@ -5,7 +5,7 @@ import * as axeMatchers from 'vitest-axe/matchers'
 import { initState } from '../draftCore'
 import SectionContact from './SectionContact'
 import SectionPipeline from './SectionPipeline'
-import SectionEnergie, { SectionPompage } from './SectionEnergie'
+import SectionEnergie, { SectionPompage, SectionEquipements } from './SectionEnergie'
 import SectionSite from './SectionSite'
 import SectionVisite from './SectionVisite'
 import SectionDivers, { SectionOrigine, SectionWebQuestionnaire } from './SectionDivers'
@@ -74,6 +74,94 @@ describe('LW11 — rendu des sections (port 1:1 des champs)', () => {
     expect(document.querySelector('#lf-pompe-cv')).toBeInTheDocument()
     expect(document.querySelector('#lf-pompe-hmt')).toBeInTheDocument()
     expect(document.querySelector('#lf-pompe-debit')).toBeInTheDocument()
+  })
+
+  // L4 — script d'appel équipements : tri-état par défaut, la grandeur
+  // n'apparaît QUE quand le booléen passe à « Oui », aucune n'a de défaut.
+  it('SectionEquipements — tri-état « — » par défaut, aucune grandeur affichée', () => {
+    render(<SectionEquipements state={createState()} {...base} />)
+    expect(document.querySelector('#lf-occupation-jour').value).toBe('')
+    expect(document.querySelector('#lf-equip-piscine').value).toBe('')
+    expect(document.querySelector('#lf-equip-ve').value).toBe('')
+    expect(document.querySelector('#lf-equip-clim').value).toBe('')
+    expect(document.querySelector('#lf-equip-chauffe-eau').value).toBe('')
+    expect(document.querySelector('#lf-equip-piscine-kw')).toBeNull()
+    expect(document.querySelector('#lf-equip-ve-km')).toBeNull()
+    expect(document.querySelector('#lf-equip-clim-pieces')).toBeNull()
+  })
+
+  it('SectionEquipements — occupation en journée : valeur du lead affichée, changement appelle setField', () => {
+    const setField = vi.fn()
+    const state = initState({ lead: { id: 1, occupation_jour: 'partiel' }, mode: 'edit' })
+    render(<SectionEquipements state={state} {...base} setField={setField} />)
+    expect(document.querySelector('#lf-occupation-jour').value).toBe('partiel')
+    fireEvent.change(document.querySelector('#lf-occupation-jour'), { target: { value: 'present' } })
+    expect(setField).toHaveBeenCalledWith('occupation_jour', 'present')
+  })
+
+  it('SectionEquipements — renvoie vers les autres questions du même appel (raccordement, facture)', () => {
+    render(<SectionEquipements state={createState()} {...base} />)
+    expect(screen.getByRole('button', { name: 'Raccordement : monophasé ou triphasé ?' }))
+      .toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Facture mensuelle (MAD/kWh)' }))
+      .toBeInTheDocument()
+  })
+
+  it('cliquer « Raccordement » depuis le questionnaire d\'appel déplie « Énergie » et y focalise le champ', async () => {
+    const { container } = render(
+      <SectionsPane
+        state={initState({ lead: { id: 1, nom: 'Test' }, mode: 'edit' })}
+        setField={vi.fn()} errors={{}} mode="edit"
+        refData={{ users: [], tagOptions: [], motifOptions: [] }}
+      />,
+    )
+    // « Questionnaire d'appel » n'a pas de cœur déclaré : vide → repliée par
+    // défaut (comme « Visite »). On la déplie d'abord pour atteindre le
+    // renvoi qu'elle porte.
+    const equipHead = container.querySelector('[data-nav-id="equipements"] .lw-section-head')
+    if (equipHead?.getAttribute('aria-expanded') === 'false') fireEvent.click(equipHead)
+    fireEvent.click(screen.getByRole('button', { name: 'Raccordement : monophasé ou triphasé ?' }))
+    await waitFor(() => expect(document.getElementById('lf-raccordement')).toBeInTheDocument())
+  })
+
+  it('SectionEquipements — passer un booléen à Oui révèle son champ de grandeur, SANS valeur préremplie', () => {
+    const state = initState({
+      lead: {
+        id: 1, equip_piscine: true, equip_voiture_electrique: true, equip_clim: true,
+      },
+      mode: 'edit',
+    })
+    render(<SectionEquipements state={state} {...base} />)
+    expect(document.querySelector('#lf-equip-piscine').value).toBe('oui')
+    const kw = document.querySelector('#lf-equip-piscine-kw')
+    expect(kw).toBeInTheDocument()
+    expect(kw.value).toBe('') // aucun défaut chiffré (source non fiable)
+    expect(document.querySelector('#lf-equip-ve-km')).toBeInTheDocument()
+    expect(document.querySelector('#lf-equip-clim-pieces')).toBeInTheDocument()
+  })
+
+  it('SectionEquipements — Non reste un Non explicite, distinct de « — » (inconnu)', () => {
+    const state = initState({ lead: { id: 1, equip_chauffe_eau_electrique: false }, mode: 'edit' })
+    render(<SectionEquipements state={state} {...base} />)
+    expect(document.querySelector('#lf-equip-chauffe-eau').value).toBe('non')
+  })
+
+  it('SectionEquipements — sélectionner Oui appelle setField avec `true` (booléen, pas une chaîne)', () => {
+    const setField = vi.fn()
+    render(<SectionEquipements state={createState()} {...base} setField={setField} />)
+    fireEvent.change(document.querySelector('#lf-equip-piscine'), { target: { value: 'oui' } })
+    expect(setField).toHaveBeenCalledWith('equip_piscine', true)
+  })
+
+  it('la section « Équipements » apparaît dans le registre SectionsPane', () => {
+    const { container } = render(
+      <SectionsPane
+        state={createState()} setField={vi.fn()} errors={{}} mode="create"
+        formId="lw-create" onSubmit={vi.fn()}
+        refData={{ users: [], tagOptions: [], motifOptions: [] }}
+      />,
+    )
+    expect(container.querySelector('[data-nav-id="equipements"]')).toBeInTheDocument()
   })
 
   it('SectionSite rend toiture/surface/orientation/étages', () => {
