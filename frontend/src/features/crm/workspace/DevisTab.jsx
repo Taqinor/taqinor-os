@@ -350,7 +350,7 @@ export default function DevisTab({
                   type="button" size="sm" variant="ghost"
                   disabled={linkBusy === `o-${d.id}`}
                   aria-label={`Ouvrir la page client de ${d.reference} dans un nouvel onglet`}
-                  title="Ouvrir la page client dans un nouvel onglet"
+                  title="Ouvrir la VRAIE page client (compte comme une lecture côté suivi — pour regarder sans notifier, utilisez l'aperçu interne)"
                   onClick={() => ouvrirPageClient(d)}
                 >
                   <ExternalLink size={14} aria-hidden="true" />
