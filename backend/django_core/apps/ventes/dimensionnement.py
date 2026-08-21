@@ -229,12 +229,16 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, ville=None, lat=None,
     marques = carte_marques_composition(company, gamme_nom_devis)
     ordre = ordre_lignes_societe(company)
 
-    # Watt du panneau RÉEL du catalogue : on compose une fois à vide pour le
-    # lire, plutôt que de supposer 710 Wc (le catalogue peut changer).
+    # Watt du panneau RÉELLEMENT retenu par le catalogue. On ne le SUPPOSE
+    # pas : on compose une fois (un panneau) en visant le wattage de référence
+    # du catalogue, puis on lit ``panel_watt_reel`` — le panneau effectivement
+    # choisi. Le jour où le catalogue change de panneau, la granularité du
+    # balayage suit toute seule.
+    from apps.ventes.services import _AUTO_PANEL_WATT
     sonde_avert = []
     sonde = composition_residentielle(
-        catalogue, kwc=1.0, panel_watt=0, nb_panneaux=1,
-        avec_batterie=False, structure_type=structure_type,
+        catalogue, kwc=_AUTO_PANEL_WATT / 1000.0, panel_watt=_AUTO_PANEL_WATT,
+        nb_panneaux=1, avec_batterie=False, structure_type=structure_type,
         taux_tva=taux_tva, avertissements=sonde_avert, deux_options=False,
         marques=marques, ordre_lignes=ordre, phase=phase)
     panel_watt = _num(getattr(sonde, 'panel_watt_reel', 0))
