@@ -36,9 +36,10 @@ class TestSeedCatalogue(TestCase):
         seed(self.company)
         qs = Produit.objects.filter(company=self.company)
         # 31 solaire + 9 pompage + 16 VEICHI + 11 pompes OSP + 22 câbles/protections
-        # + 2 onduleurs Deye basse tension 15/20 kW (PVG4 + PVOND)
-        # + 1 batterie Dyness HV 16 kWh (PVG4)
-        self.assertEqual(qs.count(), 94)
+        # + 1 batterie Deye BOS-B Pro HV 16 kWh (PVG4, identité PVLV2)
+        # (PVLV2 21/08/2026 : les 2 doublons « Deye basse tension 15/20 kW »
+        # du 18/08 ne sont PLUS seedés — les SKU historiques SONT les LV)
+        self.assertEqual(qs.count(), 92)
         # Spot-check key items: HT price = simulator TTC / 1.2
         huawei_10t = qs.get(sku='OND-R-HUA-10T')
         self.assertEqual(huawei_10t.nom, 'Onduleur réseau Huawei 10kW Triphasé')
@@ -56,7 +57,7 @@ class TestSeedCatalogue(TestCase):
         # Traceability: one entry movement per product
         self.assertEqual(
             MouvementStock.objects.filter(
-                company=self.company, reference='SEED-CATALOGUE').count(), 94,
+                company=self.company, reference='SEED-CATALOGUE').count(), 92,
         )
 
     def test_fiches_and_pompage_seeded(self):
