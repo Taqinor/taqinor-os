@@ -2277,6 +2277,21 @@ def contexte_conception_devis(devis, company):
             'situer le bâtiment sur la carte.')
 
     client = getattr(devis, 'client', None)
+    # PV23bis (fondateur 20/08/2026 : « link this 3D layouter to the quote »)
+    # — l'outil 3D doit connaître le CLIENT du devis, pas seulement son nom :
+    # téléphone, ville et adresse alimentent le formulaire du builder
+    # (`hydrateFromDevis` sait déjà les lire) et le centrage de la carte quand
+    # aucune géométrie n'existe. Client d'abord, repli sur le lead (même
+    # priorité whatsapp > téléphone que le mode lead de l'écran) ; vide quand
+    # personne ne le sait — jamais une valeur inventée.
+    telephone = (getattr(client, 'telephone', '') or '').strip() if client else ''
+    adresse = (getattr(client, 'adresse', '') or '').strip() if client else ''
+    ville = ''  # crm.Client ne porte pas de ville — elle vient du lead.
+    if lead is not None:
+        telephone = telephone or (getattr(lead, 'whatsapp', '') or '').strip() \
+            or (getattr(lead, 'telephone', '') or '').strip()
+        adresse = adresse or (getattr(lead, 'adresse', '') or '').strip()
+        ville = (getattr(lead, 'ville', '') or '').strip()
     return {
         'devis': {
             'id': devis.pk,
@@ -2286,6 +2301,9 @@ def contexte_conception_devis(devis, company):
             'lead': devis.lead_id,
             'client': devis.client_id,
             'client_nom': (getattr(client, 'nom', '') or '') if client else '',
+            'client_telephone': telephone,
+            'client_ville': ville,
+            'client_adresse': adresse,
         },
         'geometrie': {
             'source': source,
@@ -2299,3 +2317,52 @@ def contexte_conception_devis(devis, company):
         'raison_lecture_seule': raison,
         'avertissements': avertissements,
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PVCOMPAT (fondateur 20/08/2026) — COMPATIBILITÉ DEUX À DEUX, point d'entrée
+# cross-app.
+#
+# Le CALCUL vit dans ``apps.ventes.compatibilites`` (il tient au moteur
+# électrique et au catalogue solaire, donc au domaine Ventes) ; l'ÉCRAN, lui,
+# est la fiche produit du STOCK. Les trois fonctions ci-dessous sont la façade
+# LICITE de ce calcul : `apps.stock` (et tout autre appelant) les appelle sans
+# jamais importer `apps.ventes.compatibilites` ni, à plus forte raison, les
+# modèles de ventes — exactement la règle cross-app de CLAUDE.md.
+#
+# Import FONCTION-LOCAL : ce module est chargé très tôt (les modèles y font des
+# appels différés), et `compatibilites` tire `solar_design` + le noyau
+# `core.electrique`. Le différer garde ce fichier sans dépendance au chargement.
+# ═══════════════════════════════════════════════════════════════════════════
+def compatibilites_du_produit(produit, company):
+    """PVCOMPAT — la fiche « Compatibilités » d'un produit du stock.
+
+    Forme CONTRACTUELLE committée dans
+    ``apps/stock/contract_samples/produit_compatibilites.json`` :
+    ``{produit, fiche_incomplete, installable, bilan, familles}``. Lecture
+    seule, aucun prix (ni de vente, ni d'achat) ne traverse cette fonction.
+    """
+    from .compatibilites import compatibilites_du_produit as _impl
+    return _impl(produit, company)
+
+
+def verdict_panneau_onduleur(panneau, onduleur):
+    """PVCOMPAT — ``{statut, raisons, …}`` pour un couple panneau/onduleur.
+
+    ``statut`` ∈ ``compatible`` / ``reserve`` / ``incompatible`` / ``inconnu``,
+    avec la TAXONOMIE du noyau ``core.electrique`` (bloquant → incompatible,
+    alerte → réserve) et jamais un faux OK sur une fiche incomplète.
+    """
+    from .compatibilites import verdict_panneau_onduleur as _impl
+    return _impl(panneau, onduleur)
+
+
+def verdict_batterie_onduleur(batterie, onduleur):
+    """PVCOMPAT — ``{statut, raisons, …}`` pour un couple batterie/onduleur.
+
+    Délègue à la règle batterie UNIQUE du dépôt
+    (``services._batterie_compatible``) : l'écran et la composition ne peuvent
+    pas diverger.
+    """
+    from .compatibilites import verdict_batterie_onduleur as _impl
+    return _impl(batterie, onduleur)

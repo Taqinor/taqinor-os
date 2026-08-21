@@ -137,6 +137,10 @@ describe('ToitureDesign — mode devis (PV20)', () => {
         scenario: CTX.cible.scenario,
       },
       fullName: CTX.devis.client_nom,
+      // PV23bis — le builder connaît déjà ces deux champs (hydrateFromDevis) :
+      // le contexte serveur les porte, cette projection ne doit plus les taire.
+      phone: CTX.devis.client_telephone,
+      city: CTX.devis.client_ville,
     })
     // PV75 — aucune étude bancable rangée sur le devis (mock par défaut) : la
     // fenêtre de production ne reçoit rien à afficher en plus.
@@ -152,6 +156,11 @@ describe('ToitureDesign — mode devis (PV20)', () => {
     // Le bouton du flux LEAD n'existe jamais ici : on ne recrée pas un devis.
     expect(screen.queryByRole('button',
       { name: /Générer le devis & envoyer au client/ })).toBeNull()
+    // PV23bis — la barre d'adresse est pré-remplie depuis adresse+ville du
+    // devis (même geste que le mode lead, GOLDEN plus bas) : elle donne à la
+    // carte un point de départ tant qu'aucun repère n'est encore posé.
+    expect(document.getElementById('rp9-address').value)
+      .toBe(`${CTX.devis.client_adresse}, ${CTX.devis.client_ville}`)
   })
 
   it('fondateur 18/08 — bouton Fermer (X) en haut à droite referme la fenêtre (retour SPA)', async () => {

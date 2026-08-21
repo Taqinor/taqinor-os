@@ -140,6 +140,14 @@ function contexteToDevisPayload(contexte) {
   const geo = contexte.geometrie ?? {}
   const cible = contexte.cible ?? {}
   const nom = (contexte.devis?.client_nom ?? '').trim()
+  // PV23bis (fondateur 20/08) — téléphone + ville du client, au même titre
+  // que `fullName` ci-dessus et que `leadToBuilderPayload` en mode lead : le
+  // builder les connaît DÉJÀ (roofPro11/prefill.ts `hydrateFromDevis` remplit
+  // lf-phone/lf-city dès qu'ils sont présents) — seule cette projection ne
+  // les lui transmettait pas encore, alors que le contexte serveur les porte
+  // (`devis.client_telephone`/`client_ville`, client d'abord puis lead en repli).
+  const phone = (contexte.devis?.client_telephone ?? '').trim()
+  const city = (contexte.devis?.client_ville ?? '').trim()
   return {
     id: contexte.devis?.id ?? null,
     geometrie: {
@@ -153,6 +161,8 @@ function contexteToDevisPayload(contexte) {
       scenario: cible.scenario || null,
     },
     fullName: nom || undefined,
+    phone: phone || undefined,
+    city: city || undefined,
   }
 }
 
@@ -453,6 +463,18 @@ export default function ToitureDesign({ mode = 'lead' }) {
         bankable,
         onApiReady: (a) => { builderApi.current = a },
       })
+      // PV23bis — pré-remplit la barre de recherche d'adresse depuis
+      // adresse+ville du devis, comme le mode lead le fait déjà ci-dessus
+      // (`boot()`, `addrEl.value = leadData.ville`) : elle donne à la carte
+      // un point de départ tant que le devis n'a pas ENCORE de repère posé ;
+      // dès qu'un repère existe, l'hydratation ci-dessus centre déjà la carte
+      // et cette barre ne sert plus qu'à chercher ailleurs.
+      const addrEl = document.getElementById('rp9-address')
+      const adresse = [ctx?.devis?.client_adresse, ctx?.devis?.client_ville]
+        .map((v) => (v ?? '').trim())
+        .filter(Boolean)
+        .join(', ')
+      if (addrEl && adresse) addrEl.value = adresse
       const reference = ctx?.devis?.reference ?? ''
       setStatus(
         ctx?.modifiable

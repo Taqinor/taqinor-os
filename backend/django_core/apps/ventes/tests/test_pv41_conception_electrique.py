@@ -340,6 +340,32 @@ class FicheIncompleteTest(SimpleTestCase):
         es.build_electrical_design(devis)
         self.assertIsNone(es.rendre_schema_du_devis(devis))
 
+    def test_annexe_sans_esquisse_quand_la_fiche_se_degrade(self):
+        """PVFCH-ANNEXE — étude RANGÉE puis fiche redevenue incomplète (le cas
+        des études calculées AVANT le verrou PVFCH) : la page client omet le
+        schéma (``rendre`` → None) et l'annexe PDF n'imprime PLUS l'esquisse
+        historique à cinq blocs à sa place — même trou de fiche, même réponse
+        sur les deux surfaces."""
+        from apps.ventes.quote_engine.builder import _sld_svg
+        onduleur = _produit_onduleur()
+        devis = _FauxDevis(
+            lignes=[
+                _FausseLigne("Panneau PV 710 Wc mono", 24,
+                             produit=_produit_panneau()),
+                _FausseLigne("Onduleur réseau 10 kW triphasé", 1,
+                             produit=onduleur),
+            ],
+            roof_layout={"_pans_geometry": [
+                {"label": "Sud", "nb_panneaux": 16, "azimut_deg": 180,
+                 "inclinaison_deg": 25}]},
+            layout_hash="fiche-degradee")
+        es.build_electrical_design(devis)
+        self.assertTrue(devis.electrical_design)
+        # La fiche perd une variable APRÈS l'étude (v_max_abs retirée).
+        onduleur.fiche_technique.ond_v_max_abs = None
+        self.assertIsNone(es.rendre_schema_du_devis(devis))
+        self.assertEqual(_sld_svg(devis), "")
+
     def test_schema_rendu_quand_la_fiche_est_complete(self):
         devis = _devis_villa()
         es.build_electrical_design(devis)

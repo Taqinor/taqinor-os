@@ -9,7 +9,10 @@
       "mode_installation": "residentiel",
       "lead": 88,
       "client": 51,
-      "client_nom": "Youssef Alaoui"
+      "client_nom": "Youssef Alaoui",
+      "client_telephone": "+212661234567",
+      "client_ville": "Casablanca",
+      "client_adresse": "12 rue des Orangers, Maârif"
     },
     "geometrie": {
       "source": "devis",
@@ -42,7 +45,10 @@
       "mode_installation": "agricole",
       "lead": 102,
       "client": 77,
-      "client_nom": "Ferme Doukkala"
+      "client_nom": "Ferme Doukkala",
+      "client_telephone": "",
+      "client_ville": "",
+      "client_adresse": ""
     },
     "geometrie": {
       "source": "none",

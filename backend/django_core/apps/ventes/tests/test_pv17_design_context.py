@@ -26,7 +26,8 @@ User = get_user_model()
 CLES_RACINE = {'devis', 'geometrie', 'cible', 'carte', 'modifiable',
                'raison_lecture_seule', 'avertissements'}
 CLES_DEVIS = {'id', 'reference', 'statut', 'mode_installation', 'lead',
-              'client', 'client_nom'}
+              'client', 'client_nom', 'client_telephone', 'client_ville',
+              'client_adresse'}
 CLES_GEOMETRIE = {'source', 'roof_layout', 'pin', 'outline'}
 CLES_CIBLE = {'panneaux', 'kwc', 'panel_watt', 'scenario', 'batterie',
               'avertissements', 'bill_kwh'}
@@ -90,6 +91,39 @@ class TestDesignContext(TestCase):
         self.assertEqual(set(data['geometrie']), CLES_GEOMETRIE)
         self.assertEqual(set(data['cible']), CLES_CIBLE)
         self.assertEqual(set(data['carte']), CLES_CARTE)
+
+    # ── PV23bis — coordonnées client pour l'outil 3D (client, repli lead) ────
+    def test_coordonnees_client_du_client_d_abord(self):
+        """Le téléphone/adresse viennent du CLIENT quand il les porte ; la
+        ville vient toujours du lead (crm.Client n'en a pas)."""
+        self.client_obj.telephone = '+212600112233'
+        self.client_obj.adresse = '5 rue des Fleurs'
+        self.client_obj.save(update_fields=['telephone', 'adresse'])
+        lead = self._lead(telephone='+212677889900', whatsapp='+212677000000',
+                          ville='Rabat', adresse='Hay Riad')
+        devis = self._devis(lead=lead)
+        data = self._get(devis).data
+        self.assertEqual(data['devis']['client_telephone'], '+212600112233')
+        self.assertEqual(data['devis']['client_adresse'], '5 rue des Fleurs')
+        self.assertEqual(data['devis']['client_ville'], 'Rabat')
+
+    def test_coordonnees_client_repli_sur_le_lead(self):
+        """Client muet → repli lead, whatsapp AVANT téléphone (même priorité
+        que le mode lead de l'écran) ; sans lead ni saisie → chaînes vides,
+        jamais une valeur inventée."""
+        lead = self._lead(telephone='+212677889900', whatsapp='+212677000000',
+                          ville='Rabat', adresse='Hay Riad')
+        devis = self._devis(lead=lead)
+        data = self._get(devis).data
+        self.assertEqual(data['devis']['client_telephone'], '+212677000000')
+        self.assertEqual(data['devis']['client_ville'], 'Rabat')
+        self.assertEqual(data['devis']['client_adresse'], 'Hay Riad')
+
+        muet = self._devis()
+        data = self._get(muet).data
+        self.assertEqual(data['devis']['client_telephone'], '')
+        self.assertEqual(data['devis']['client_ville'], '')
+        self.assertEqual(data['devis']['client_adresse'], '')
 
     # ── Forme du contrat, sur les DEUX chemins de géométrie ─────────────────
     def test_forme_complete_geometrie_depuis_le_devis(self):

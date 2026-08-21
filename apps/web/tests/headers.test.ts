@@ -44,6 +44,12 @@ describe('applySecurityHeaders', () => {
     const connectSrc = csp.split(';').find((d) => d.trim().startsWith('connect-src')) ?? '';
     expect(imgSrc).toContain('https://api.mapbox.com');
     expect(connectSrc).toContain('https://api.mapbox.com');
+    // WJCSP — MapLibre rend le repère maison et le contour du toit (sources
+    // GeoJSON rp9-*) dans un web worker créé depuis un blob:. Sans worker-src
+    // le repli est script-src (sans blob:) : worker bloqué en silence, le
+    // client ne VOIT jamais ni son repère ni son tracé (régression W315,
+    // invisible ~7 semaines). Le nginx de l'ERP porte la même directive.
+    expect(CONTENT_SECURITY_POLICY).toContain("worker-src 'self' blob:");
     // PVGIS est proxyé côté serveur uniquement (src/lib/roofEstimate.ts) —
     // jamais appelé depuis le navigateur, donc absent de connect-src.
     expect(CONTENT_SECURITY_POLICY).not.toContain('jrc.ec.europa.eu');

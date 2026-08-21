@@ -139,6 +139,12 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                 'export_xlsx', 'resolve', 'previsionnel', 'tracer',
                 'etiquettes_showroom', 'casiers', 'plan_picking',
                 'classe_abc', 'tracabilite',
+                # PVCOMPAT — `compatibilites` est LECTURE SEULE et ne rend
+                # AUCUN prix (que des grandeurs électriques et des verdicts) :
+                # même garde `IsAnyRole` que `previsionnel`. Ce cas explicite
+                # est OBLIGATOIRE — `get_permissions` prime sur le
+                # `permission_classes` de l'@action, sinon repli IsAdminRole.
+                'compatibilites',
                 # NTDST10 — `atp` est LECTURE SEULE (aucun prix, aucun coût).
                 'atp',
                 # NTRET17 — étiquette PRIX de rayon : impression, LECTURE
@@ -936,6 +942,28 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         from ..services import forecast_produit
         produit = self.get_object()
         return Response(forecast_produit(request.user.company, produit))
+
+    @action(detail=True, methods=['get'], url_path='compatibilites',
+            permission_classes=[IsAnyRole])
+    def compatibilites(self, request, pk=None):
+        """PVCOMPAT — ce produit est-il INSTALLABLE avec le reste du stock ?
+
+        La fiche produit ne doit pas seulement dire si la FICHE est complète :
+        elle doit dire quelle composition ce produit rejoindrait, quels
+        produits des autres familles lui vont, et NOMMER le problème quand rien
+        ne convient (« courant maxi par MPPT inférieur au courant de chaque
+        panneau »).
+
+        Le CALCUL vit côté Ventes (moteur ``core.electrique``) et se lit par le
+        sélecteur de cette app — jamais un import de ses modèles. Forme
+        contractuelle : ``contract_samples/produit_compatibilites.json``.
+        Company-scopé par ``get_object`` (le produit d'une autre société est un
+        404), LECTURE SEULE, aucun prix dans la réponse.
+        """
+        from apps.ventes.selectors import compatibilites_du_produit
+        produit = self.get_object()
+        return Response(
+            compatibilites_du_produit(produit, request.user.company))
 
     @action(detail=False, methods=['get'], url_path='tracer',
             permission_classes=[IsAnyRole])

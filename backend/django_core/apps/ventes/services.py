@@ -1902,11 +1902,66 @@ def _v_txt(volts):
     return str(int(f)) if f == int(f) else ('%g' % f)
 
 
+def _vivier_onduleurs_par_phase(candidats, phase):
+    """PVCOMPAT — restreint un vivier d'onduleurs au RACCORDEMENT du client.
+
+    Le client déclare son raccordement sur sa fiche lead (``raccordement``), et
+    jusqu'ici la composition l'ignorait complètement : un client MONOPHASÉ
+    pouvait se voir composer un onduleur triphasé — impossible à raccorder chez
+    lui, donc un devis à refaire.
+
+    Deux traitements DIFFÉRENTS, et c'est voulu :
+
+    * ``monophase`` — les triphasés sont ÉCARTÉS du vivier (on ne raccorde pas
+      du triphasé sur un abonnement monophasé). Si cela vide le vivier, on rend
+      le vivier D'ORIGINE et on le DIT : mieux vaut un devis à valider qu'aucun
+      onduleur du tout (même principe que ``_filtrer_onduleurs_complets`` : un
+      verrou qui vide la table est une panne).
+    * ``triphase`` — le vivier n'est PAS restreint (un triphasé accepte un
+      onduleur monophasé sur une de ses phases) ; c'est seulement le départage
+      à puissance égale qui devient une préférence DURE, cf. ``choisir_onduleur``.
+
+    Rend ``(vivier, a_replie)``. ``phase`` vide/inconnue ⇒ vivier inchangé, donc
+    comportement d'avant à l'octet près.
+    """
+    from apps.ventes.compatibilites import PHASE_MONO, est_triphase_produit
+    source = list(candidats or [])
+    if phase != PHASE_MONO:
+        return source, False
+    monophases = [p for p in source if not est_triphase_produit(p)]
+    if monophases:
+        return monophases, False
+    return source, True
+
+
+def _statut_couple_panneau(panneau, onduleurs):
+    """PVCOMPAT — le PIRE verdict d'un panneau face aux onduleurs VENDUS.
+
+    En forme deux options les DEUX onduleurs partent au devis : un panneau qui
+    coince avec l'un des deux coince pour le devis entier. L'ordre de sévérité
+    est celui du noyau — ``incompatible`` (bloquant matériel) l'emporte sur
+    ``reserve`` (production dégradée), qui l'emporte sur ``inconnu`` (fiche
+    incomplète), qui l'emporte sur ``compatible``.
+    """
+    from apps.ventes.compatibilites import (
+        STATUT_COMPATIBLE, STATUT_INCOMPATIBLE, STATUT_INCONNU,
+        STATUT_RESERVE, verdict_panneau_onduleur)
+    severite = {STATUT_INCOMPATIBLE: 3, STATUT_RESERVE: 2,
+                STATUT_INCONNU: 1, STATUT_COMPATIBLE: 0}
+    pire = (0, STATUT_COMPATIBLE, None)
+    for onduleur in onduleurs:
+        verdict = verdict_panneau_onduleur(panneau, onduleur)
+        rang = severite.get(verdict['statut'], 0)
+        if rang > pire[0]:
+            pire = (rang, verdict['statut'], (onduleur, verdict))
+    return pire[1], pire[2]
+
+
 def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
                               avec_batterie=False, structure_type='acier',
                               taux_tva=Decimal('20'), avertissements=None,
                               deux_options=False, marques=None,
-                              ordre_lignes=None, mppt_paires=1):
+                              ordre_lignes=None, mppt_paires=1, phase=None):
     """Le KIT résidentiel COMPLET composé depuis un catalogue.
 
     U3 (fondateur 20/08/2026) — CETTE FONCTION EST LA SOURCE DE VÉRITÉ de la
@@ -1923,6 +1978,22 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
         canonique du simulateur est rendu tel quel.
       · ``mppt_paires`` — C4/PVCBL, nombre de paires de câble DC descendantes
         (60 m par paire) ; repli fondateur explicite à 1 paire.
+      · ``phase`` — PVCOMPAT, le RACCORDEMENT déclaré par le client
+        (``'monophase'`` / ``'triphase'``, cf.
+        ``compatibilites.normaliser_phase``). Monophasé : les onduleurs
+        triphasés sortent du vivier ; triphasé : le départage à puissance égale
+        préfère DUREMENT le triphasé. ``None`` (défaut) ⇒ aucun filtre, donc
+        comportement byte-identique à l'historique.
+
+    PVCOMPAT (fondateur 20/08/2026) — LE COUPLE PANNEAU/ONDULEUR EST VÉRIFIÉ.
+    Le panneau et l'onduleur étaient choisis INDÉPENDAMMENT (l'un au wattage
+    demandé, l'autre à la puissance) et rien ne vérifiait qu'ils allaient
+    ensemble : « il n'y a pas de PV parce que le courant maxi par MPPT de cet
+    onduleur est sous le courant de nos panneaux » ne pouvait pas être dit. Le
+    verdict du noyau électrique est désormais consulté APRÈS les deux choix :
+    un couple INCOMPATIBLE fait chercher un autre panneau du vivier (marque
+    épinglée respectée) ; à défaut, le choix d'origine est CONSERVÉ — jamais
+    une composition morte — et le problème est ANNONCÉ par ``avertissements``.
 
     Le résultat est une ``CompositionLignes`` : une LISTE de ``LigneKit`` (tout
     appelant historique la lit sans rien changer) qui porte en plus les
@@ -2011,13 +2082,39 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     # gros du catalogue ; à puissance égale, Triphasé au-delà de 10 kW ──
     seuil = kwp * 0.8
 
+    # PVCOMPAT — le raccordement déclaré, normalisé une seule fois.
+    from apps.ventes.compatibilites import (
+        PHASE_MONO, PHASE_TRI, avertissement_raccordement, normaliser_phase)
+    phase_client = normaliser_phase(phase)
+
+    def _avertir(message):
+        """Consigne un avertissement UNE fois (deux onduleurs, un message)."""
+        if avertissements is None:
+            logger.warning('PVCOMPAT: %s', message)
+            return
+        if message not in avertissements:
+            avertissements.append(message)
+
+    # PVCOMPAT — catégories dont le vivier a dû IGNORER le raccordement
+    # déclaré. On ne prévient PAS ici : les deux catégories sont toujours
+    # explorées (réseau ET hybride) alors qu'une seule part au devis en forme
+    # mono-option — avertir depuis le vivier ferait crier l'onduleur invendu.
+    # Le message est prononcé plus bas, pour les seules catégories VENDUES.
+    replis_phase = {}
+
     def choisir_onduleur(categorie):
         candidats = []
         # PVOND — VERROU DE COMPLÉTUDE, miroir de solar.js::pickInverter : un
         # onduleur au contrat incomplet est écarté de l'auto-composition AVANT
         # le tri par puissance, exactement comme à l'écran.
-        for produit in _filtrer_onduleurs_complets(
-                par_marque(par_type.get(categorie), categorie)):
+        # PVCOMPAT — puis le RACCORDEMENT du client réduit le vivier (monophasé
+        # seulement : un triphasé accepte un onduleur monophasé).
+        vivier, replie = _vivier_onduleurs_par_phase(
+            _filtrer_onduleurs_complets(
+                par_marque(par_type.get(categorie), categorie)),
+            phase_client)
+        replis_phase[categorie] = replie
+        for produit in vivier:
             kw = _parse_kw(getattr(produit, 'nom', ''))
             if kw and kw > 0:
                 candidats.append((kw, getattr(produit, 'id', 0) or 0, produit))
@@ -2027,7 +2124,16 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
         valides = [c for c in candidats if c[0] >= seuil] or [candidats[-1]]
         meilleure = valides[0][0]
         memes = [c for c in valides if c[0] == meilleure]
-        prefere_tri = meilleure >= 10
+        # PVCOMPAT — un raccordement DÉCLARÉ passe devant l'heuristique
+        # « ≥ 10 kW ⇒ triphasé » : le client sait de quel abonnement il dispose,
+        # la puissance n'en est qu'un indice. Sans déclaration, l'heuristique
+        # historique décide seule, à l'identique.
+        if phase_client == PHASE_TRI:
+            prefere_tri = True
+        elif phase_client == PHASE_MONO:
+            prefere_tri = False
+        else:
+            prefere_tri = meilleure >= 10
         assortis = [c for c in memes
                     if _est_triphase(getattr(c[2], 'nom', '')) == prefere_tri]
         retenu = (assortis or memes)[0]
@@ -2044,6 +2150,22 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     onduleur_hybride, kw_hybride = choisir_onduleur('onduleur_hybride')
     onduleur = onduleur_hybride if avec_batterie else onduleur_reseau
     kw_onduleur = kw_hybride if avec_batterie else kw_reseau
+
+    # PVCOMPAT — le raccordement n'a pas pu être tenu SUR UN ONDULEUR VENDU :
+    # on le dit UNE fois. Un repli sur une catégorie qui ne part pas au devis
+    # (l'hybride d'un devis « sans batterie », par exemple) ne concerne
+    # personne et reste muet.
+    _categories_vendues = (
+        ('onduleur_reseau', 'onduleur_hybride') if deux_options
+        else (('onduleur_hybride',) if avec_batterie
+              else ('onduleur_reseau',)))
+    _onduleurs_par_categorie = {'onduleur_reseau': onduleur_reseau,
+                                'onduleur_hybride': onduleur_hybride}
+    if phase_client and any(
+            replis_phase.get(categorie)
+            and _onduleurs_par_categorie.get(categorie) is not None
+            for categorie in _categories_vendues):
+        _avertir(avertissement_raccordement(PHASE_MONO))
     # U2 — en forme DEUX OPTIONS, le stockage fait partie du devis : les
     # batteries sont composées même si ``avec_batterie`` est faux, puisque
     # c'est l'option « avec » qui les porte.
@@ -2068,6 +2190,53 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
         panneau = min(tries, key=lambda c: abs(c[0] - watt))[1]
     else:
         panneau = None
+
+    # ── PVCOMPAT — LE COUPLE PANNEAU / ONDULEUR EST VÉRIFIÉ ────────────────
+    # Les deux choix ci-dessus sont INDÉPENDANTS : rien ne garantissait qu'ils
+    # allaient ensemble. On demande au noyau électrique son verdict et on agit
+    # SANS JAMAIS produire une composition morte :
+    #   · incompatible → on cherche un autre panneau du vivier (le vivier DÉJÀ
+    #     restreint par la marque épinglée : on ne contourne pas une consigne
+    #     de gamme pour réparer une incompatibilité) ; si aucun ne va, on GARDE
+    #     le choix d'origine et on DIT le problème ;
+    #   · réserve      → on garde et on DIT (écrêtage : ça s'installe, ça
+    #     produit moins — le client doit l'apprendre du devis, pas du toit) ;
+    #   · inconnu      → on se tait : la fiche incomplète est déjà signalée
+    #     ailleurs (verrou de complétude), le répéter ne dirait rien de neuf.
+    onduleurs_vendus = [o for o in (
+        (onduleur_reseau, onduleur_hybride) if deux_options else (onduleur,))
+        if o is not None]
+    if panneau is not None and onduleurs_vendus:
+        from apps.ventes.compatibilites import (
+            STATUT_INCOMPATIBLE, STATUT_RESERVE,
+            avertissement_panneau_onduleur)
+        statut, coince = _statut_couple_panneau(panneau, onduleurs_vendus)
+        if statut == STATUT_INCOMPATIBLE:
+            # Repli ORDONNÉ : d'abord les wattages exacts (l'ordre de départage
+            # de l'écran), puis les plus proches — la même préférence que le
+            # choix initial, appliquée aux candidats restants.
+            replis = [c[1] for c in exacts] + [
+                c[1] for c in sorted(tries, key=lambda c: abs(c[0] - watt))]
+            vus = set()
+            for candidat in replis:
+                if id(candidat) in vus or candidat is panneau:
+                    vus.add(id(candidat))
+                    continue
+                vus.add(id(candidat))
+                statut_bis, coince_bis = _statut_couple_panneau(
+                    candidat, onduleurs_vendus)
+                if statut_bis != STATUT_INCOMPATIBLE:
+                    _avertir(
+                        'Panneau remplacé pour compatibilité électrique : '
+                        '« %s » ne se raccorde pas à l\'onduleur retenu, '
+                        '« %s » a été composé à la place.'
+                        % (getattr(panneau, 'nom', '') or '?',
+                           getattr(candidat, 'nom', '') or '?'))
+                    panneau, statut, coince = candidat, statut_bis, coince_bis
+                    break
+        if statut in (STATUT_INCOMPATIBLE, STATUT_RESERVE) and coince:
+            _avertir(avertissement_panneau_onduleur(
+                panneau, coince[0], coince[1]))
 
     # ── Batteries : cible = kWc arrondi au multiple de 5 (5 kWh au minimum),
     # servie en modules Dyness 10 kWh + un 5 kWh d'appoint ──
@@ -2249,7 +2418,7 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
 
 def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
                             taux_tva=Decimal('20'), remise_globale=Decimal('0'),
-                            deux_options=False, journal=None):
+                            deux_options=False, journal=None, phase=None):
     """Q3 — turn a FINALISED roof layout into a coherent, company-scoped Devis.
 
     ``deux_options`` (U2, fondateur 20/08/2026) — compose la forme DEUX
@@ -2265,6 +2434,11 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
     devis pouvait partir SANS panneaux — la marque épinglée ayant vidé leur
     vivier — à un prix effondré, sans que personne ne l'apprenne. Absent
     (``None``) ⇒ comportement inchangé.
+
+    ``phase`` (PVCOMPAT, optionnel) — le RACCORDEMENT déclaré par le client
+    (``'monophase'``/``'triphase'``), transmis tel quel à
+    ``composition_residentielle`` : un abonnement monophasé n'accepte pas un
+    onduleur triphasé. ``None`` ⇒ aucun filtre, comportement inchangé.
 
     ``layout`` is the serialized roofPro11 output (see Devis.roof_layout):
     a ``result`` block ``{panels, kwc, annualKwh, savings}`` plus an optional
@@ -2375,6 +2549,8 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
         marques=carte_marques_composition(company),
         ordre_lignes=ordre_lignes_societe(company),
         avertissements=_avertissements,
+        # PVCOMPAT — le raccordement du client, quand l'appelant le connaît.
+        phase=phase,
     )
     if journal is not None:
         journal['marques_manquantes'] = list(
@@ -3464,7 +3640,7 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
                                panel_watt=_AUTO_PANEL_WATT, scenario=None,
                                structure_type='acier',
                                taux_tva=Decimal('20'), mppt_paires=1,
-                               gamme_nom_devis=None):
+                               gamme_nom_devis=None, phase=None):
     """U3 — LE DRY-RUN : compose sans RIEN créer, et rend le résultat en clair.
 
     C'est la moitié « à blanc » de la source de vérité : le même catalogue, la
@@ -3508,6 +3684,10 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
         marques=carte_marques_composition(company, gamme_nom_devis),
         ordre_lignes=ordre_lignes_societe(company),
         mppt_paires=mppt_paires,
+        # PVCOMPAT — le DRY-RUN doit voir la MÊME contrainte de raccordement
+        # que la construction, sinon l'aperçu montrerait un onduleur que le
+        # devis ne composerait pas.
+        phase=phase,
     )
 
     roles = list(getattr(lignes, 'roles', ()) or ())
@@ -3652,9 +3832,20 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
     # créée, sans aucune écriture. Refuser AVANT de créer vaut mieux que créer
     # puis effacer — un devis effacé rendrait sa référence au compteur, et le
     # numéro suivant la reprendrait.
+    # ── PVCOMPAT — LE RACCORDEMENT DU CLIENT DESCEND JUSQU'À LA COMPOSITION ──
+    # ``crm.Lead.raccordement`` ('monophase'/'triphase'/'inconnu') existe depuis
+    # l'assistant du site et n'était lu NULLE PART côté composition : un client
+    # monophasé pouvait se voir composer un onduleur triphasé, impossible à
+    # raccorder chez lui. « inconnu » (ou vide) laisse la composition décider
+    # exactement comme avant. Le DRY-RUN le reçoit aussi, sinon l'aperçu et le
+    # devis ne parleraient pas du même onduleur.
+    from apps.ventes.compatibilites import normaliser_phase
+    phase_client = normaliser_phase(getattr(lead, 'raccordement', None))
+
     apercu = composer_devis_residentiel(
         company=company, nb_panneaux=panneaux, panel_watt=_AUTO_PANEL_WATT,
-        scenario=choix_batterie or 'les_deux', taux_tva=taux_tva)
+        scenario=choix_batterie or 'les_deux', taux_tva=taux_tva,
+        phase=phase_client)
     if apercu['marques_manquantes']:
         detail = ', '.join(
             '%s (%s)' % (m.get('marque'), m.get('libelle_role'))
@@ -3668,7 +3859,7 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
     devis = build_devis_from_layout(
         layout=layout, user=user, company=company, lead=lead,
         taux_tva=taux_tva, remise_globale=remise_globale,
-        deux_options=deux_options, journal=journal)
+        deux_options=deux_options, journal=journal, phase=phase_client)
     for avertissement in journal.get('avertissements') or []:
         logger.warning('Auto-devis %s: %s', devis.reference, avertissement)
 

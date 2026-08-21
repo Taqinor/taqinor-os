@@ -351,7 +351,28 @@ class DevisSerializer(serializers.ModelSerializer):
                 },
             }
         except Exception:
-            return None
+            # PVAB — moteur en échec mais deux options déclarées : les totaux
+            # « A / B » viennent du repli léger déjà calculé par display_totals
+            # (chaîne canonique, mêmes prédicats). Le ROI, lui, exige le moteur
+            # → None, jamais un chiffre approximé.
+            repli = d.get('comparaison_repli')
+            if not repli:
+                return None
+
+            def _f(valeur):
+                return float(valeur) if valeur is not None else None
+
+            return {
+                'nb_options': 2,
+                'sans': {'ttc': _f(repli['sans'].get('ttc')),
+                         'ht_net': _f(repli['sans'].get('ht')),
+                         'remise': _f(repli['sans'].get('remise'))},
+                'avec': {'ttc': _f(repli['avec'].get('ttc')),
+                         'ht_net': _f(repli['avec'].get('ht')),
+                         'remise': _f(repli['avec'].get('remise'))},
+                'roi': {'prod_kwh': None, 'eco_s_ann': None,
+                        'eco_a_ann': None, 'roi_s': None, 'roi_a': None},
+            }
 
     # QJ22 — État de signature électronique (loi 53-05). Lecture seule.
     # ``est_signe`` : True si un DevisSignature immuable existe pour ce devis.

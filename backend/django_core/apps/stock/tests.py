@@ -36,9 +36,10 @@ class TestSeedCatalogue(TestCase):
         seed(self.company)
         qs = Produit.objects.filter(company=self.company)
         # 31 solaire + 9 pompage + 16 VEICHI + 11 pompes OSP + 22 câbles/protections
-        # + 2 onduleurs Deye basse tension 15/20 kW (PVG4 + PVOND)
-        # + 1 batterie Dyness HV 16 kWh (PVG4)
-        self.assertEqual(qs.count(), 94)
+        # + 1 batterie Deye BOS-B Pro HV 16 kWh (PVG4, identité PVLV2)
+        # (PVLV2 21/08/2026 : les 2 doublons « Deye basse tension 15/20 kW »
+        # du 18/08 ne sont PLUS seedés — les SKU historiques SONT les LV)
+        self.assertEqual(qs.count(), 92)
         # Spot-check key items: HT price = simulator TTC / 1.2
         huawei_10t = qs.get(sku='OND-R-HUA-10T')
         self.assertEqual(huawei_10t.nom, 'Onduleur réseau Huawei 10kW Triphasé')
@@ -56,7 +57,7 @@ class TestSeedCatalogue(TestCase):
         # Traceability: one entry movement per product
         self.assertEqual(
             MouvementStock.objects.filter(
-                company=self.company, reference='SEED-CATALOGUE').count(), 94,
+                company=self.company, reference='SEED-CATALOGUE').count(), 92,
         )
 
     def test_fiches_and_pompage_seeded(self):
@@ -214,32 +215,29 @@ class TestSeedCatalogue(TestCase):
         fiche.refresh_from_db()
         self.assertEqual(fiche.ond_i_max_mppt_a, Decimal('26.0'))
 
-    # ── PVOND — jumeau BASSE TENSION du palier 20 kW ────────────────────────
-    def test_pvond_onduleur_deye_20k_lv_seede_avec_prix_vide(self):
+    # ── PVLV2 (fondateur 21/08/2026) — le 20 kW EST le SG05LP3 basse tension ──
+    def test_pvlv2_le_20kw_est_le_sg05lp3_basse_tension_avec_ses_prix(self):
+        """« I only know 15 and 20kw on LV » : le SKU HISTORIQUE porte le
+        modèle basse tension, ses prix d'origine et une fiche complète."""
         from apps.stock.models import FicheTechnique
         from apps.stock.selectors import (
             onduleur_specs_manquantes, plage_batterie_onduleur,
         )
         from apps.ventes.services import _has_price
         seed(self.company)
-        p = Produit.objects.get(company=self.company, sku='OND-DEY-20K-LV')
-        self.assertEqual(
-            p.nom, 'Onduleur hybride Deye 20kW Triphasé Basse Tension')
-        self.assertEqual(p.prix_vente, Decimal('0'))   # jamais inventé
-        self.assertEqual(p.prix_achat, Decimal('0'))
-        self.assertEqual(p.categorie.nom, 'Onduleurs hybrides')
+        p = Produit.objects.get(company=self.company, sku='OND-H-DEY-20T')
+        self.assertEqual(p.nom, 'Onduleur hybride Deye 20kW Triphasé')
+        self.assertEqual(p.prix_vente, Decimal('40000.00'))   # 48 000 TTC
+        self.assertEqual(p.prix_achat, Decimal('35000.00'))   # 42 000 TTC
         self.assertEqual(p.marque, 'Deye')
-        # Modèle CONFIRMÉ fondateur (18/08/2026 : « there is a deye 15kw and
-        # 20kw with low voltage ») — même marquage que le 15K LV, et c'est
-        # cette mention qui autorise le moteur électrique à NOMMER l'appareil.
         self.assertIn('Modèle confirmé fondateur : Deye SUN-20K-SG05LP3-EU-SM2',
                       p.description)
         self.assertNotIn('Modèle supposé', p.description)
-        # Prix vide → exclu du chiffrage automatique (garde des pompes OSP).
-        self.assertFalse(_has_price(p))
-        # Basse tension : la plage batterie 48 V de la famille SG05LP3.
+        self.assertNotIn('SG01HP3', p.description)
+        self.assertTrue(_has_price(p))
+        # Basse tension : la plage batterie 48 V de la famille SG05LP3 —
+        # les Dyness 51,2 V s'y accrochent (le parc réel du fondateur).
         self.assertEqual(plage_batterie_onduleur(p), (40.0, 60.0))
-        # Contrat COMPLET dès le seed : rien à griser.
         self.assertEqual(onduleur_specs_manquantes(p), [])
         fiche = FicheTechnique.objects.get(produit=p)
         self.assertEqual(fiche.ond_ac_kw, Decimal('20'))
@@ -249,18 +247,24 @@ class TestSeedCatalogue(TestCase):
         self.assertEqual(fiche.ond_v_max_abs, Decimal('800.0'))
         self.assertEqual(fiche.ond_i_max_mppt_a, Decimal('20.0'))
         self.assertEqual(fiche.ond_rendement_euro_pct, Decimal('97.0'))
+        self.assertEqual(fiche.ond_v_demarrage_v, Decimal('160.0'))
+        self.assertEqual(fiche.ond_isc_max_mppt_a, Decimal('30.0'))
 
-    def test_pvond_les_deux_20kW_deye_restent_deux_appareils_distincts(self):
-        """OND-H-DEY-20T (SG01HP3, 160-700 V) et OND-DEY-20K-LV (SG05LP3,
-        40-60 V) sont deux appareils RÉELS différents au même palier : leurs
-        plages batterie ne doivent jamais se confondre."""
-        from apps.stock.selectors import plage_batterie_onduleur
+    def test_pvlv2_les_doublons_basse_tension_ne_renaissent_jamais(self):
+        """PVLV2 — les SKU « Basse Tension » du 18/08 étaient des DOUBLONS nés
+        d'une fausse identification : une base neuve ne les crée plus, et une
+        base ancienne qui les porte encore les voit ARCHIVÉS par le seeder
+        (``ARTEFACTS_ONDULEUR_SKUS``), jamais supprimés."""
+        legacy = Produit.objects.create(
+            company=self.company,
+            nom='Onduleur hybride Deye 15kW Triphasé Basse Tension',
+            sku='OND-DEY-15K-LV', prix_vente=Decimal('0'),
+            quantite_stock=0)
         seed(self.company)
-        hv = Produit.objects.get(company=self.company, sku='OND-H-DEY-20T')
-        lv = Produit.objects.get(company=self.company, sku='OND-DEY-20K-LV')
-        self.assertEqual(plage_batterie_onduleur(hv), (160.0, 700.0))
-        self.assertEqual(plage_batterie_onduleur(lv), (40.0, 60.0))
-        self.assertNotEqual(hv.nom, lv.nom)
+        legacy.refresh_from_db()
+        self.assertTrue(legacy.is_archived)
+        self.assertFalse(Produit.objects.filter(
+            company=self.company, sku='OND-DEY-20K-LV').exists())
 
     def test_pvond_completer_les_specs_ne_resynchronise_aucun_devis(self):
         """PVSYNC — vérification du chemin de resynchronisation.
@@ -349,8 +353,9 @@ class TestSeedCatalogue(TestCase):
             fiche = FicheTechnique.objects.get(
                 produit=Produit.objects.get(company=self.company, sku=sku))
             self.assertEqual(fiche.ond_i_max_mppt_a, Decimal('20.0'), sku)
-        # « 26+20 A » (SG01HP3) et « 36+20 A » (SG05LP3 14-20K) → 20 A.
-        for sku in ('OND-H-DEY-15T', 'OND-DEY-15K-LV'):
+        # « 36+20 A » (SG05LP3 14-20K, PVLV2 — les 15/20 kW SONT cette
+        # famille basse tension) → 20 A.
+        for sku in ('OND-H-DEY-15T', 'OND-H-DEY-20T'):
             fiche = FicheTechnique.objects.get(
                 produit=Produit.objects.get(company=self.company, sku=sku))
             self.assertEqual(fiche.ond_i_max_mppt_a, Decimal('20.0'), sku)
@@ -581,20 +586,24 @@ class TestSeedCatalogue(TestCase):
 
     # ── PVG4 — Onduleur Deye 15 kW basse tension (décision fondateur
     # 2026-08-18, SUN-15K-SG05LP3-EU-SM2) ─────────────────────────────────
-    def test_pvg4_onduleur_deye_15k_lv_seeded_with_empty_price(self):
+    def test_pvlv2_le_15kw_est_le_sg05lp3_basse_tension_avec_ses_prix(self):
+        """PVLV2 (fondateur 21/08/2026) — le 15 kW du catalogue est le SKU
+        HISTORIQUE OND-H-DEY-15T : SG05LP3 basse tension, prix d'origine,
+        fiche complète sur la datasheet 14-20K."""
         from apps.stock.models import FicheTechnique
         from apps.ventes.services import _has_price
         seed(self.company)
-        p = Produit.objects.get(company=self.company, sku='OND-DEY-15K-LV')
-        self.assertEqual(p.nom, 'Onduleur hybride Deye 15kW Triphasé Basse Tension')
-        self.assertEqual(p.prix_vente, Decimal('0'))   # à renseigner par le fondateur
-        self.assertEqual(p.prix_achat, Decimal('0'))
-        self.assertEqual(p.categorie.nom, 'Onduleurs hybrides')
+        # Le doublon du 18/08 n'existe plus sur une base neuve.
+        self.assertFalse(Produit.objects.filter(
+            company=self.company, sku='OND-DEY-15K-LV').exists())
+        p = Produit.objects.get(company=self.company, sku='OND-H-DEY-15T')
+        self.assertEqual(p.nom, 'Onduleur hybride Deye 15kW Triphasé')
+        self.assertEqual(p.prix_vente, Decimal('30000.00'))   # 36 000 TTC
+        self.assertEqual(p.prix_achat, Decimal('25000.00'))   # 30 000 TTC
         self.assertEqual(p.marque, 'Deye')
         self.assertIn('Modèle confirmé fondateur : Deye SUN-15K-SG05LP3-EU-SM2',
                       p.description)
-        # Prix vide → exclu du chiffrage automatique (même garde que les OSP).
-        self.assertFalse(_has_price(p))
+        self.assertTrue(_has_price(p))
 
         fiche = FicheTechnique.objects.get(produit=p)
         self.assertEqual(fiche.type_fiche, 'onduleur')
@@ -605,38 +614,47 @@ class TestSeedCatalogue(TestCase):
         self.assertEqual(fiche.ond_ac_kw, Decimal('15'))
         self.assertEqual(fiche.ond_phases, 3)
         self.assertEqual(fiche.ond_rendement_euro_pct, Decimal('97.0'))
-        # PVOND (2026-08-18) — courant asymétrique 36/20 A sur 2 trackers :
-        # valeur retenue = le tracker LE PLUS FAIBLE (20 A), règle prudente,
-        # même règle que OND-R-HUA-15T.
+        # Courant asymétrique 36/20 A sur 2 trackers : valeur retenue = le
+        # tracker LE PLUS FAIBLE (20 A) ; Isc maxi 54/30 A → 30 A, même règle.
         self.assertEqual(fiche.ond_i_max_mppt_a, Decimal('20.0'))
+        self.assertEqual(fiche.ond_isc_max_mppt_a, Decimal('30.0'))
 
     # ── PVG4 — Batterie Dyness haute tension, 16 kWh (décision fondateur
     # 2026-08-18) ───────────────────────────────────────────────────────
-    def test_pvg4_batterie_dyness_hv_16kwh_seeded(self):
+    def test_pvlv2_batterie_hv_16kwh_est_une_deye_bosb_pro(self):
+        """PVLV2 (21/08/2026) — l'identité est CONNUE : facture Solarex
+        S26/001708 → Deye BOS-B-Pack16-A3 (BOS-B Pro). SKU historique
+        inchangé, prix d'achat réel, fiche sourcée SANS tension nominale
+        (51,2 V = tension MODULE, jamais celle que voit l'onduleur)."""
         from apps.stock.models import FicheTechnique
         from apps.ventes.services import _has_price
         seed(self.company)
         p = Produit.objects.get(company=self.company, sku='BAT-DYN-HV-16')
-        self.assertEqual(p.nom, 'Batterie Dyness haute tension — 16 kWh')
+        self.assertEqual(p.nom, 'Batterie Deye BOS-B Pro haute tension — 16 kWh')
         self.assertEqual(p.prix_vente, Decimal('40000.00'))   # 48 000 TTC / tranche
-        self.assertEqual(p.prix_achat, Decimal('0'))          # non communiqué
+        self.assertEqual(p.prix_achat, Decimal('28000.00'))   # 33 600 TTC (facture)
         self.assertEqual(p.tva, Decimal('20.00'))
         self.assertEqual(p.categorie.nom, 'Batteries')
-        self.assertEqual(p.marque, 'Dyness')
+        self.assertEqual(p.marque, 'Deye')
         self.assertEqual(p.unite_stock, 'tranche')
         self.assertIn('rack et control box', p.description.lower())
+        self.assertIn('BOS-B-Pack16-A3', p.description)
+        self.assertIn('10 ans', p.garantie)
         # Un vrai prix de vente → PAS exclu de l'auto-composition par _has_price
-        # (seul prix_vente=0 exclut — le prix d'achat vide n'y change rien).
+        # (le mot-clé « haute tension » du nom, lui, garde le vivier LV).
         self.assertTrue(_has_price(p))
-        # Aucune configuration Dyness officielle ne fait 16 kWh (vérifié) :
-        # aucun modèle inventé → aucune FicheTechnique créée pour ce SKU.
-        self.assertFalse(FicheTechnique.objects.filter(produit=p).exists())
+        fiche = FicheTechnique.objects.get(produit=p)
+        self.assertEqual(fiche.bat_kwh_nominal, Decimal('16.08'))
+        self.assertEqual(fiche.bat_dod_pct, Decimal('90.0'))
+        self.assertEqual(fiche.bat_max_charge_kw, Decimal('9.22'))
+        self.assertIsNone(fiche.bat_v_nominal)
 
     def test_pvg4_new_products_idempotent_second_run(self):
         seed(self.company)
         seed(self.company)
+        # PVLV2 — le doublon 15K-LV ne renaît sur AUCUN passage.
         self.assertEqual(
-            Produit.objects.filter(company=self.company, sku='OND-DEY-15K-LV').count(), 1)
+            Produit.objects.filter(company=self.company, sku='OND-DEY-15K-LV').count(), 0)
         self.assertEqual(
             Produit.objects.filter(company=self.company, sku='BAT-DYN-HV-16').count(), 1)
         bat = Produit.objects.get(company=self.company, sku='BAT-DYN-HV-16')
@@ -700,7 +718,8 @@ class TestSeedCatalogue(TestCase):
         out = seed(self.company)
         self.assertEqual(
             Produit.objects.filter(company=self.company).count(), count_after_first)
-        self.assertIn('0 created, 94 already present', out)
+        # PVLV2 — les deux doublons « Basse Tension » ne sont plus créés.
+        self.assertIn('0 created, 92 already present', out)
 
     def test_never_overwrites_existing_product(self):
         # Pre-existing product with the same name but a different price
@@ -1140,9 +1159,13 @@ class TestCorrectionGarantiesDeyeGeneriques(TestCase):
 
     MIGRATION = 'apps.stock.migrations.0124_correction_garanties_deye_generiques'
 
+    # PVLV2 (21/08/2026) — les SKU doublons OND-DEY-15K-LV/20K-LV ne sont
+    # plus seedés (archivés sur bases existantes) : la migration 0124 les
+    # cible encore par ``filter`` (sans erreur sur une base qui ne les a
+    # pas), mais ce test de base NEUVE ne peut plus les charger.
     ONDULEURS_DEYE = (
         'OND-H-DEY-5M', 'OND-H-DEY-10M', 'OND-H-DEY-10T',
-        'OND-H-DEY-15T', 'OND-H-DEY-20T', 'OND-DEY-15K-LV', 'OND-DEY-20K-LV',
+        'OND-H-DEY-15T', 'OND-H-DEY-20T',
     )
     BATTERIES_NON_SOURCEES = ('BAT-DYN-HV-16', 'BAT-LIT-5', 'BAT-GEL-22')
     TEXTE_GENERIQUE_RETIRE = (
@@ -1381,18 +1404,25 @@ class TestContratOnduleurSeede(TestCase):
                 'fiche produit')
 
     def test_la_plage_batterie_des_deye_basse_tension_est_48V(self):
+        # PVLV2 — TOUT le parc hybride triphasé est SG05LP3 basse tension.
         seed(self.company)
         from apps.stock.selectors import plage_batterie_onduleur
-        for sku in ('OND-H-DEY-10T', 'OND-DEY-15K-LV'):
+        for sku in ('OND-H-DEY-10T', 'OND-H-DEY-15T', 'OND-H-DEY-20T'):
             produit = Produit.objects.get(company=self.company, sku=sku)
             self.assertEqual(plage_batterie_onduleur(produit), (40.0, 60.0))
 
-    def test_la_plage_batterie_des_deye_haute_tension_est_160_700V(self):
+    def test_pvlv2_aucun_onduleur_haute_tension_au_catalogue(self):
+        """PVLV2 (fondateur 21/08/2026) — « i dont even have them in high
+        voltage » : plus AUCUN onduleur du catalogue ne déclare une plage
+        batterie haute tension (l'ancien 160-700 V venait de la fausse
+        identification SG01HP3)."""
         seed(self.company)
         from apps.stock.selectors import plage_batterie_onduleur
-        for sku in ('OND-H-DEY-15T', 'OND-H-DEY-20T'):
-            produit = Produit.objects.get(company=self.company, sku=sku)
-            self.assertEqual(plage_batterie_onduleur(produit), (160.0, 700.0))
+        for produit in self._onduleurs():
+            plage = plage_batterie_onduleur(produit)
+            if plage is None:
+                continue
+            self.assertNotEqual(plage, (160.0, 700.0), produit.sku)
 
     def test_les_huawei_reseau_declarent_aucune_batterie(self):
         seed(self.company)
@@ -1532,15 +1562,16 @@ class TestPvfchDescriptionSansSpecs(TestCase):
                          Decimal('51.2'))
         self.assertEqual(FICHES_TECHNIQUES['BAT-DEY-10']['bat_v_nominal'],
                          Decimal('51.2'))
+        # PVLV2 — le 15 kW est le SKU historique OND-H-DEY-15T (SG05LP3).
         self.assertEqual(
-            FICHES_TECHNIQUES['OND-DEY-15K-LV']['ond_rendement_euro_pct'],
+            FICHES_TECHNIQUES['OND-H-DEY-15T']['ond_rendement_euro_pct'],
             Decimal('97.0'))
         # La plage batterie des Deye LV, retirée de la parenthèse en prose,
         # reste portée par le champ dédié (fusionné depuis la source unique
         # PLAGE_BATTERIE_ONDULEUR).
-        self.assertEqual(FICHES_TECHNIQUES['OND-DEY-15K-LV']['ond_bat_v_min'],
+        self.assertEqual(FICHES_TECHNIQUES['OND-H-DEY-15T']['ond_bat_v_min'],
                          Decimal('40'))
-        self.assertEqual(FICHES_TECHNIQUES['OND-DEY-15K-LV']['ond_bat_v_max'],
+        self.assertEqual(FICHES_TECHNIQUES['OND-H-DEY-15T']['ond_bat_v_max'],
                          Decimal('60'))
 
     def test_un_nombre_sans_champ_reste_en_prose(self):
@@ -1564,8 +1595,319 @@ class TestPvfchDescriptionSansSpecs(TestCase):
         LIGNE MARQUÉE — lue par ``plage_batterie_onduleur`` en repli — est
         posée par un autre mécanisme et reste écrite telle quelle."""
         seed(self.company)
+        # PVLV2 — même vérification, sur le SKU historique (SG05LP3).
         produit = Produit.objects.get(company=self.company,
-                                      sku='OND-DEY-15K-LV')
+                                      sku='OND-H-DEY-15T')
         self.assertIn('Plage batterie : 40-60 V', produit.description)
         # …et la prose ne redit plus la même plage juste au-dessus.
         self.assertNotIn('(plage 40-60 V', produit.description)
+
+
+class TestPvfchComblerFichesManquantes(TestCase):
+    """PVFCH (fondateur 20/08/2026) — ``apps/ventes/electrical_service.py``
+    (commit ff38e6e3) refuse le schéma unifilaire dès qu'UNE SEULE des 7
+    variables MODULE ou 7 variables ONDULEUR de ``FicheTechnique`` est
+    absente. ``manage.py seed_catalogue`` (qui pose ces valeurs) n'a
+    longtemps jamais été appelé par ``scripts/deploy-prod.ps1`` — une base de
+    production peut donc porter une fiche NULL ou partiellement remplie.
+
+    La migration 0125 soigne ce trou : elle crée la fiche manquante ou ne
+    comble QUE les champs vides, à partir du dictionnaire ``FICHES_TECHNIQUES``
+    du seeder (source unique, importée) — jamais une valeur déjà saisie par
+    le fondateur n'est écrasée."""
+
+    MIGRATION = 'apps.stock.migrations.0125_pvfch_combler_fiches_manquantes'
+
+    def setUp(self):
+        self.company = make_company(slug='test-cat-pvfch-fiches')
+
+    def _migration(self):
+        import importlib
+        return importlib.import_module(self.MIGRATION)
+
+    def test_cree_la_fiche_manquante_avec_les_valeurs_du_seeder(self):
+        """PAN-CS-710 seedé SANS fiche technique (base restée en arrière du
+        seeder, ex. société jamais couverte par le déploiement PVOND) : la
+        migration la crée avec exactement les valeurs sourcées."""
+        from django.apps import apps as registre
+        from apps.stock.models import FicheTechnique
+        seed(self.company)
+        produit = Produit.objects.get(company=self.company, sku='PAN-CS-710')
+        FicheTechnique.objects.filter(produit=produit).delete()
+        self.assertFalse(
+            FicheTechnique.objects.filter(produit=produit).exists())
+
+        self._migration().soigner_fiches_manquantes(registre, None)
+
+        fiche = FicheTechnique.objects.get(produit=produit)
+        self.assertEqual(fiche.company_id, self.company.id)
+        self.assertEqual(fiche.type_fiche, 'module')
+        self.assertEqual(fiche.pmax_wc, Decimal('710.00'))
+        self.assertEqual(fiche.voc_v, Decimal('48.30'))
+        self.assertEqual(fiche.temp_coeff_voc_pct_c, Decimal('-0.250'))
+        self.assertEqual(fiche.temp_coeff_pmax_pct_c, Decimal('-0.290'))
+
+    def test_ne_jamais_ecraser_un_champ_deja_saisi(self):
+        """OND-H-DEY-5M seedé avec sa fiche : ``ond_ac_kw`` porte une valeur
+        DIFFÉRENTE de celle du seeder (simule une saisie fondateur, fût-elle
+        fausse) et ``ond_v_max_abs`` est vidé (champ pas encore comblé).
+        Après la migration : ``ond_ac_kw`` INCHANGÉ, ``ond_v_max_abs``
+        COMBLÉ."""
+        from django.apps import apps as registre
+        from apps.stock.management.commands.seed_catalogue import (
+            FICHES_TECHNIQUES)
+        from apps.stock.models import FicheTechnique
+        seed(self.company)
+        produit = Produit.objects.get(company=self.company, sku='OND-H-DEY-5M')
+        fiche = FicheTechnique.objects.get(produit=produit)
+        valeur_seeder = FICHES_TECHNIQUES['OND-H-DEY-5M']['ond_ac_kw']
+        valeur_saisie = valeur_seeder + Decimal('1')  # différente : simule une saisie fondateur
+        fiche.ond_ac_kw = valeur_saisie
+        fiche.ond_v_max_abs = None
+        fiche.save(update_fields=['ond_ac_kw', 'ond_v_max_abs'])
+
+        self._migration().soigner_fiches_manquantes(registre, None)
+
+        fiche.refresh_from_db()
+        self.assertEqual(fiche.ond_ac_kw, valeur_saisie)
+        self.assertEqual(
+            fiche.ond_v_max_abs,
+            FICHES_TECHNIQUES['OND-H-DEY-5M']['ond_v_max_abs'])
+
+    def test_sku_absent_du_dictionnaire_reste_intact(self):
+        """Un produit dont le SKU n'est PAS dans ``FICHES_TECHNIQUES`` (ex.
+        un variateur VEICHI) : aucune fiche créée, rien ne bouge."""
+        from django.apps import apps as registre
+        from apps.stock.management.commands.seed_catalogue import (
+            FICHES_TECHNIQUES)
+        from apps.stock.models import FicheTechnique
+        seed(self.company)
+        produit = Produit.objects.get(company=self.company, sku='VEI-SI22-AFF')
+        self.assertNotIn('VEI-SI22-AFF', FICHES_TECHNIQUES)
+        self.assertFalse(
+            FicheTechnique.objects.filter(produit=produit).exists())
+
+        self._migration().soigner_fiches_manquantes(registre, None)
+
+        self.assertFalse(
+            FicheTechnique.objects.filter(produit=produit).exists())
+
+    def test_la_migration_est_idempotente(self):
+        """Un second passage n'écrit rien de plus (aucune fiche dupliquée,
+        aucun champ retouché)."""
+        from django.apps import apps as registre
+        from apps.stock.models import FicheTechnique
+        seed(self.company)
+        produit = Produit.objects.get(company=self.company, sku='PAN-CS-710')
+        FicheTechnique.objects.filter(produit=produit).delete()
+        migration = self._migration()
+
+        migration.soigner_fiches_manquantes(registre, None)
+        migration.soigner_fiches_manquantes(registre, None)
+
+        self.assertEqual(
+            FicheTechnique.objects.filter(produit=produit).count(), 1)
+        fiche = FicheTechnique.objects.get(produit=produit)
+        self.assertEqual(fiche.pmax_wc, Decimal('710.00'))
+
+    def test_reverse_est_un_noop(self):
+        """La migration inverse ne défait rien (``RunPython.noop``) — un
+        champ comblé par le passage aller reste comblé après un rollback."""
+        from django.apps import apps as registre
+        from django.db import migrations as dj_migrations
+        from apps.stock.models import FicheTechnique
+        seed(self.company)
+        produit = Produit.objects.get(company=self.company, sku='PAN-CS-710')
+        FicheTechnique.objects.filter(produit=produit).delete()
+        migration = self._migration()
+        migration.soigner_fiches_manquantes(registre, None)
+
+        reverse = migration.Migration.operations[0].reverse_code
+        self.assertIs(reverse, dj_migrations.RunPython.noop)
+        reverse(registre, None)
+
+        fiche = FicheTechnique.objects.get(produit=produit)
+        self.assertEqual(fiche.pmax_wc, Decimal('710.00'))
+
+
+class TestPvlv2GammeLv(TestCase):
+    """PVLV2 (fondateur 21/08/2026) — « i only know 15 and 20kw on LV » :
+    OND-H-DEY-15T/20T SONT les SG05LP3 basse tension, prix d'origine intacts.
+    La migration 0126 archive les SKU doublons « Basse Tension » du 18/08 et
+    recale les fiches des valeurs SG01HP3 (fausse identification) vers les
+    valeurs SG05LP3 — champ par champ, jamais une saisie fondateur."""
+
+    MIGRATION = 'apps.stock.migrations.0126_pvlv_prix_deye_lv'
+
+    def setUp(self):
+        self.company = make_company(slug='test-cat-pvlv2-lv')
+
+    def _migration(self):
+        import importlib
+        return importlib.import_module(self.MIGRATION)
+
+    def _fiche_15t(self):
+        from apps.stock.models import FicheTechnique
+        return FicheTechnique.objects.get(
+            produit__company=self.company, produit__sku='OND-H-DEY-15T')
+
+    def _etat_ancienne_base(self):
+        """Reproduit une base seedée AVANT le 21/08 : fiche 15T aux valeurs
+        SG01HP3 (fausses) + SKU doublon LV présent, prix vide."""
+        seed(self.company)
+        fiche = self._fiche_15t()
+        fiche.ond_mppt_v_min = Decimal('150.0')
+        fiche.ond_mppt_v_max = Decimal('850.0')
+        fiche.ond_v_max_abs = Decimal('1000.0')
+        fiche.ond_v_demarrage_v = Decimal('180.0')
+        fiche.ond_bat_v_min = Decimal('160.0')
+        fiche.ond_bat_v_max = Decimal('700.0')
+        fiche.save()
+        quinze_t = Produit.objects.get(
+            company=self.company, sku='OND-H-DEY-15T')
+        doublon = Produit.objects.create(
+            company=self.company,
+            nom='Onduleur hybride Deye 15kW Triphasé Basse Tension',
+            sku='OND-DEY-15K-LV', categorie=quinze_t.categorie,
+            prix_vente=Decimal('0'), prix_achat=Decimal('0'),
+            quantite_stock=0, seuil_alerte=5, tva=Decimal('20.00'))
+        return fiche, doublon
+
+    def test_doublon_archive_et_fiche_recalee_sg05lp3(self):
+        from django.apps import apps as registre
+        fiche, doublon = self._etat_ancienne_base()
+
+        self._migration().corriger_gamme_lv(registre, None)
+
+        doublon.refresh_from_db()
+        self.assertTrue(doublon.is_archived)
+        fiche.refresh_from_db()
+        self.assertEqual(fiche.ond_mppt_v_min, Decimal('160.0'))
+        self.assertEqual(fiche.ond_mppt_v_max, Decimal('650.0'))
+        self.assertEqual(fiche.ond_v_max_abs, Decimal('800.0'))
+        self.assertEqual(fiche.ond_v_demarrage_v, Decimal('160.0'))
+        self.assertEqual(fiche.ond_bat_v_min, Decimal('40.0'))
+        self.assertEqual(fiche.ond_bat_v_max, Decimal('60.0'))
+
+    def test_saisie_fondateur_divergente_jamais_touchee(self):
+        from django.apps import apps as registre
+        fiche, _ = self._etat_ancienne_base()
+        fiche.ond_mppt_v_max = Decimal('900.0')   # saisie fondateur
+        fiche.save(update_fields=['ond_mppt_v_max'])
+
+        self._migration().corriger_gamme_lv(registre, None)
+
+        fiche.refresh_from_db()
+        self.assertEqual(fiche.ond_mppt_v_max, Decimal('900.0'))
+        # Les autres champs, eux, sont bien recalés.
+        self.assertEqual(fiche.ond_v_max_abs, Decimal('800.0'))
+
+    def test_prix_fondateur_jamais_touches(self):
+        from django.apps import apps as registre
+        self._etat_ancienne_base()
+        avant = Produit.objects.get(
+            company=self.company, sku='OND-H-DEY-15T').prix_vente
+        self.assertGreater(avant, 0)
+
+        self._migration().corriger_gamme_lv(registre, None)
+
+        apres = Produit.objects.get(
+            company=self.company, sku='OND-H-DEY-15T').prix_vente
+        self.assertEqual(apres, avant)
+
+    def test_idempotente_et_sans_effet_sur_base_neuve(self):
+        from django.apps import apps as registre
+        # Base NEUVE : le seeder pose déjà les valeurs SG05LP3 et ne crée
+        # plus les doublons — la migration ne change strictement rien.
+        seed(self.company)
+        fiche = self._fiche_15t()
+        avant = (fiche.ond_mppt_v_min, fiche.ond_mppt_v_max,
+                 fiche.ond_v_max_abs)
+        migration = self._migration()
+        migration.corriger_gamme_lv(registre, None)
+        migration.corriger_gamme_lv(registre, None)
+        fiche.refresh_from_db()
+        self.assertEqual(
+            (fiche.ond_mppt_v_min, fiche.ond_mppt_v_max, fiche.ond_v_max_abs),
+            avant)
+        self.assertFalse(Produit.objects.filter(
+            company=self.company, sku='OND-DEY-15K-LV').exists())
+
+
+class TestPvlvIdentiteBatterieBosb(TestCase):
+    """PVLV (21/08/2026) — la batterie HV « 16 kWh » est une Deye BOS-B Pro
+    (facture Solarex S26/001708), pas une Dyness. La migration 0127 corrige
+    nom + marque sur les bases existantes, SKU inchangé ; un nom retouché par
+    le fondateur n'est jamais touché."""
+
+    MIGRATION = 'apps.stock.migrations.0127_pvlv_identite_batterie_bosb'
+    ANCIEN = 'Batterie Dyness haute tension — 16 kWh'
+    NOUVEAU = 'Batterie Deye BOS-B Pro haute tension — 16 kWh'
+
+    def setUp(self):
+        self.company = make_company(slug='test-cat-pvlv-bosb')
+
+    def _migration(self):
+        import importlib
+        return importlib.import_module(self.MIGRATION)
+
+    def _etat_ancienne_base(self):
+        seed(self.company)
+        produit = Produit.objects.get(
+            company=self.company, sku='BAT-DYN-HV-16')
+        produit.nom = self.ANCIEN
+        produit.marque = 'Dyness'
+        produit.save(update_fields=['nom', 'marque'])
+        return produit
+
+    def test_rename_nom_et_marque_sku_inchange(self):
+        from django.apps import apps as registre
+        produit = self._etat_ancienne_base()
+
+        self._migration().corriger_identite(registre, None)
+
+        produit.refresh_from_db()
+        self.assertEqual(produit.nom, self.NOUVEAU)
+        self.assertEqual(produit.marque, 'Deye')
+        self.assertEqual(produit.sku, 'BAT-DYN-HV-16')
+        # Le mot-clé de la garde anti-composition basse tension survit.
+        self.assertIn('haute tension', produit.nom.lower())
+
+    def test_nom_retouche_par_le_fondateur_intouchable(self):
+        from django.apps import apps as registre
+        produit = self._etat_ancienne_base()
+        produit.nom = 'Batterie HV projet Bouskoura'
+        produit.save(update_fields=['nom'])
+
+        self._migration().corriger_identite(registre, None)
+
+        produit.refresh_from_db()
+        self.assertEqual(produit.nom, 'Batterie HV projet Bouskoura')
+        # La marque, elle, reste corrigeable (Dyness était factuellement faux).
+        self.assertEqual(produit.marque, 'Deye')
+
+    def test_idempotente_et_base_neuve_sans_effet(self):
+        from django.apps import apps as registre
+        seed(self.company)   # base NEUVE : le seeder crée déjà le bon nom
+        migration = self._migration()
+        migration.corriger_identite(registre, None)
+        migration.corriger_identite(registre, None)
+        produit = Produit.objects.get(
+            company=self.company, sku='BAT-DYN-HV-16')
+        self.assertEqual(produit.nom, self.NOUVEAU)
+        self.assertEqual(produit.marque, 'Deye')
+
+    def test_le_seeder_neuf_pose_la_fiche_bosb(self):
+        """La fiche (16,08 kWh / DoD 90 / 9,22 kW) est posée par le seeder —
+        et ``bat_v_nominal`` reste ABSENT (tension MODULE ≠ tension système :
+        la poser ferait entrer ce composant HV dans la fenêtre 40-60 V des
+        onduleurs basse tension)."""
+        from apps.stock.models import FicheTechnique
+        seed(self.company)
+        produit = Produit.objects.get(
+            company=self.company, sku='BAT-DYN-HV-16')
+        fiche = FicheTechnique.objects.get(produit=produit)
+        self.assertEqual(fiche.bat_kwh_nominal, Decimal('16.08'))
+        self.assertEqual(fiche.bat_dod_pct, Decimal('90.0'))
+        self.assertEqual(fiche.bat_max_charge_kw, Decimal('9.22'))
+        self.assertIsNone(fiche.bat_v_nominal)

@@ -83,6 +83,21 @@ def option_lines(devis, option=None):
     return filter_lines_for_option(lignes, option)
 
 
+def _totaux_canoniques(devis, lignes) -> dict:
+    """Totaux canoniques d'une liste de lignes de CE devis — le cœur partagé
+    d'``option_totaux`` et du repli sans moteur (``totaux_affichage_repli``) :
+    HT brut → remise globale → TVA par taux → TTC, au centime."""
+    from apps.ventes.selectors import _canonical_totaux
+    can = _canonical_totaux(
+        lignes,
+        remise_globale_pct=getattr(devis, 'remise_globale', 0) or 0,
+        fallback_taux=devis.taux_tva)
+    return {
+        'ht': can['ht_net'], 'tva': can['tva'], 'ttc': can['ttc'],
+        'ht_brut': can['ht_brut'], 'remise': can['remise'],
+    }
+
+
 def option_totaux(devis, option=None) -> dict:
     """Totaux HT / TVA / TTC (Decimals, centime) pour l'option retenue.
 
@@ -98,7 +113,6 @@ def option_totaux(devis, option=None) -> dict:
     documents qui affichent la ligne « Remise globale » (BC). Sans option double
     et sans remise, les valeurs restent identiques au comportement historique.
     """
-    from apps.ventes.selectors import _canonical_totaux
     if option is None:
         option = getattr(devis, 'option_acceptee', '') or ''
     if not option or not has_two_options(devis):
@@ -106,11 +120,53 @@ def option_totaux(devis, option=None) -> dict:
     else:
         lignes = filter_lines_for_option(
             list(devis.lignes.select_related('produit').all()), option)
-    can = _canonical_totaux(
-        lignes,
-        remise_globale_pct=getattr(devis, 'remise_globale', 0) or 0,
-        fallback_taux=devis.taux_tva)
+    return _totaux_canoniques(devis, lignes)
+
+
+# ── Repli SANS MOTEUR — l'affichage de la liste (PVAB, fondateur 20/08) ──────
+
+def deux_options_declarees(devis) -> bool:
+    """Prédicat LÉGER « devis à deux options », sans le moteur PDF.
+
+    Miroir volontairement PRUDENT de la décision de ``build_quote_data``
+    (PV86) : l'alternative doit être DÉCLARÉE (``etude_params['scenario']``)
+    ET les lignes doivent réellement porter les deux familles — onduleur
+    réseau d'un côté, onduleur hybride AVEC batterie de l'autre (Z1 : sans
+    batterie réelle, jamais deux options). Consommé UNIQUEMENT quand le
+    moteur lève : dans le doute il répond False et l'affichage retombe sur le
+    total stocké, comme avant.
+    """
+    scenario = (getattr(devis, 'etude_params', None) or {}).get('scenario')
+    if scenario not in ('Sans batterie', 'Avec batterie',
+                        'Les deux (Sans + Avec)'):
+        return False
+    blobs = [_blob(li) for li in devis.lignes.select_related('produit').all()
+             if li.compte_dans_totaux]
+    return (any(_is_reseau_inverter(b) for b in blobs)
+            and any(_is_hybrid_inverter(b) for b in blobs)
+            and any(_is_battery(b) for b in blobs))
+
+
+def totaux_affichage_repli(devis) -> dict:
+    """Repli de ``display_totals`` quand ``build_quote_data`` lève.
+
+    L'incident (DEV-202608-0015) : le repli historique renvoyait
+    ``devis.total_ttc`` — pour un devis à deux options, la SOMME des deux
+    paniers, un montant qui n'existe dans AUCUN document — sans badge (le
+    ``nb_options: 1`` du repli masquait tout). Ici : deux options déclarées →
+    total de l'option 1 par la même chaîne canonique que le PDF, et
+    ``comparaison_repli`` porte les deux totaux pour l'affichage « A / B » de
+    la liste. Mono-option → total stocké, comportement historique inchangé.
+    """
+    if not deux_options_declarees(devis):
+        return {'total': float(devis.total_ttc), 'nb_options': 1}
+    lignes = list(devis.lignes.select_related('produit').all())
+    sans = _totaux_canoniques(
+        devis, filter_lines_for_option(lignes, SANS_BATTERIE))
+    avec = _totaux_canoniques(
+        devis, filter_lines_for_option(lignes, AVEC_BATTERIE))
     return {
-        'ht': can['ht_net'], 'tva': can['tva'], 'ttc': can['ttc'],
-        'ht_brut': can['ht_brut'], 'remise': can['remise'],
+        'total': float(sans['ttc']),
+        'nb_options': 2,
+        'comparaison_repli': {'sans': sans, 'avec': avec},
     }

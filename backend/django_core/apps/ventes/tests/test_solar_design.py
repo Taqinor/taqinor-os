@@ -2066,9 +2066,13 @@ class SpecsProduitBridgeTest(TestCase):
     # ── (2) Avec fiche : mapping des clés et vraies valeurs ──
     def test_module_keys_mapped_to_default_module_names(self):
         specs = sd.specs_module_pour_produit(self.pan_fiche)
+        # PVCOMPAT — ``isc_a`` descend désormais jusqu'au noyau (les verdicts
+        # de courant en dépendent) ; ``imp_a``, absent de CETTE fiche, reste
+        # OMIS : une clé manquante vaut « on ne sait pas », jamais un défaut.
         self.assertEqual(specs, {"vmp": 40.0, "voc": 48.0,
                                  "puissance_w": 710.0,
-                                 "temp_coeff_voc": -0.25})
+                                 "temp_coeff_voc": -0.25,
+                                 "isc_a": 18.5})
         # Des flottants, jamais des Decimal (les calculs mélangent les deux).
         for value in specs.values():
             self.assertIsInstance(value, float)
@@ -2079,9 +2083,12 @@ class SpecsProduitBridgeTest(TestCase):
 
     def test_inverter_keys_mapped_to_default_window_names(self):
         window = sd.fenetre_onduleur_pour_produit(self.ond_fiche)
+        # PVCOMPAT — ``i_max_mppt_a`` descend désormais jusqu'au noyau ;
+        # ``isc_max_mppt_a`` et ``v_demarrage_v``, absents de CETTE fiche,
+        # restent OMIS (le noyau retombe sur ses replis prudents).
         self.assertEqual(window, {"n_mppt": 1, "v_mppt_min": 200.0,
                                   "v_mppt_max": 900.0, "v_max": 1100.0,
-                                  "ac_kw": 12.0})
+                                  "ac_kw": 12.0, "i_max_mppt_a": 30.0})
         self.assertIsInstance(window["n_mppt"], int)
         # v_min (démarrage) absent de la fiche → défaut conservé.
         merged = {**sd.DEFAULT_INVERTER_WINDOW, **window}
