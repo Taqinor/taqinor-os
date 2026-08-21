@@ -336,7 +336,35 @@ class TestPdfFormats(TestCase):
         _, doc = self._render({'include_annexe_technique': False})
         self.assertEqual(len(doc.pages), 3)
 
+    def _equiper_fiches_annexe(self):
+        """PVFCH-ANNEXE — le schéma de l'annexe est celui du MOTEUR, jamais
+        plus l'esquisse historique : il exige des fiches techniques COMPLÈTES
+        (7 variables module + 7 onduleur). Ce helper les pose sur le panneau
+        et l'onduleur du devis de la classe (valeurs de fixture plausibles,
+        fenêtres larges — le sujet du test est la PAGE, pas le dimensionnement)."""
+        from apps.stock.models import FicheTechnique
+        panneau = onduleur = None
+        for ligne in self.devis.lignes.all():
+            nom = (ligne.designation or '').lower()
+            if panneau is None and 'panneau' in nom:
+                panneau = ligne.produit
+            elif onduleur is None and 'onduleur' in nom:
+                onduleur = ligne.produit
+        FicheTechnique.objects.create(
+            company=self.company, produit=panneau, type_fiche='module',
+            pmax_wc=Decimal('550'), voc_v=Decimal('49.9'),
+            vmp_v=Decimal('41.9'), isc_a=Decimal('14.0'),
+            imp_a=Decimal('13.2'),
+            temp_coeff_voc_pct_c=Decimal('-0.25'),
+            temp_coeff_pmax_pct_c=Decimal('-0.29'))
+        FicheTechnique.objects.create(
+            company=self.company, produit=onduleur, type_fiche='onduleur',
+            ond_ac_kw=Decimal('10'), ond_phases=3, ond_n_mppt=2,
+            ond_mppt_v_min=Decimal('200.0'), ond_mppt_v_max=Decimal('950.0'),
+            ond_v_max_abs=Decimal('1100.0'), ond_i_max_mppt_a=Decimal('26.0'))
+
     def test_annexe_technique_adds_a_fourth_page(self):
+        self._equiper_fiches_annexe()
         self.devis.electrical_design = self._ELECTRICAL_DESIGN
         self.devis.save(update_fields=['electrical_design'])
         html, doc = self._render({'include_annexe_technique': True})
@@ -347,6 +375,21 @@ class TestPdfFormats(TestCase):
         self.assertIn('Schéma unifilaire', html)
         self.assertIn('<svg', html)
         self.assertIn('Page 4', html)   # la signature reste la DERNIÈRE page
+
+    def test_annexe_sans_fiche_complete_n_imprime_plus_l_esquisse(self):
+        """PVFCH-ANNEXE (21/08/2026) — étude rangée mais fiches INCOMPLÈTES
+        (le cas des études d'avant le verrou PVFCH) : l'annexe sort avec sa
+        nomenclature, mais SANS schéma — plus jamais l'esquisse à cinq blocs,
+        qui ignorait l'étude et contredisait la page client."""
+        self.devis.electrical_design = self._ELECTRICAL_DESIGN
+        self.devis.save(update_fields=['electrical_design'])
+        html, _doc = self._render({'include_annexe_technique': True})
+        self.assertIn('Annexe technique', html)
+        self.assertIn('Nomenclature électrique', html)
+        # La SECTION schéma n'apparaît pas (les <svg> des graphiques du corps
+        # du devis, eux, existent toujours — on épingle la section, pas la
+        # simple présence d'un svg).
+        self.assertNotIn('Schéma unifilaire', html)
 
     def test_annexe_technique_degrades_without_design(self):
         """Drapeau activé mais aucune conception électrique → 3 pages, sans
