@@ -302,10 +302,9 @@ export function filterLeads(leads, filters, { myUsername } = {}) {
       (l.whatsapp ?? '').includes(f.q.trim()) ||
       (l.ville ?? '').toLowerCase().includes(q) ||
       // WREF (fondateur 21/08) — le code que le CLIENT reçoit sur l'écran de
-      // succès du site (« Votre référence : TQ-XXXX ») et le code de
-      // parrainage doivent retrouver le lead — c'était tout leur intérêt.
-      (l.client_ref ?? '').toLowerCase().includes(q) ||
-      (l.code_parrainage ?? '').toLowerCase().includes(q)
+      // succès du site (« Votre référence : TQ-XXXX ») doit retrouver le
+      // lead — c'était tout son intérêt. (code_parrainage vit sur Client.)
+      (l.client_ref ?? '').toLowerCase().includes(q)
     )
   })
 }

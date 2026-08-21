@@ -207,7 +207,7 @@ BASELINE_ALLOWLIST = {
     # au-dessus (300…985) sont AVANT l'insertion et ne bougent pas.
     "backend/django_core/apps/ventes/quote_engine/builder.py:1807",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1753",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:2108",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:2117",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1747",
     # Z1/Z2 (20/08/2026) — RE-CALAGE file:line, PAS de nouveau site
     # (bug-class #34), et un site MONÉTAIRE EN MOINS. Le bloc « batterie de
@@ -247,10 +247,10 @@ BASELINE_ALLOWLIST = {
     "backend/django_core/apps/ventes/quote_engine/builder.py:1037",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1293",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1306",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:2102",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:2108",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:2161",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:2162",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:2111",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:2117",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:2170",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:2171",
 }
 
 TARGET_FILES = [
