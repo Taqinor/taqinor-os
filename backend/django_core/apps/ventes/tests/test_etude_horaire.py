@@ -195,10 +195,24 @@ class SilhouettesSourcePinTest(SimpleTestCase):
 
     CHEMIN_TS = ('apps', 'web', 'src', 'lib', 'dayProfiles.ts')
 
+    def _fichier_typescript(self):
+        """Remonte l'arborescence jusqu'au fichier TS, ou ``None``.
+
+        On REMONTE au lieu de compter les niveaux : le harnais docker monte
+        le code à ``/app`` (donc ``backend/django_core`` SEUL, sans
+        ``apps/web``) alors que la CI et l'hôte ont le dépôt complet. Un
+        ``parents[5]`` codé en dur lève ``IndexError`` dans le conteneur — un
+        rouge qui n'apprend rien sur les silhouettes.
+        """
+        for parent in Path(__file__).resolve().parents:
+            candidat = parent.joinpath(*self.CHEMIN_TS)
+            if candidat.exists():
+                return candidat
+        return None
+
     def _shapes_typescript(self):
-        racine = Path(__file__).resolve().parents[5]
-        fichier = racine.joinpath(*self.CHEMIN_TS)
-        if not fichier.exists():
+        fichier = self._fichier_typescript()
+        if fichier is None:
             return None
         texte = fichier.read_text(encoding='utf-8')
         bloc = texte.split('OCCUPANCY_SHAPES', 1)[1].split('\n};', 1)[0]
@@ -213,7 +227,10 @@ class SilhouettesSourcePinTest(SimpleTestCase):
     def test_les_trois_silhouettes_sont_identiques_au_typescript(self):
         ts = self._shapes_typescript()
         if ts is None:
-            self.skipTest('apps/web absent de ce checkout')
+            # Le conteneur de test ne monte que backend/django_core : rien à
+            # épingler ici. La CI, elle, a le dépôt complet et FAIT la
+            # comparaison — c'est là que la garde compte.
+            self.skipTest('apps/web absent de cet arbre (conteneur backend)')
         for cle, valeurs in ts.items():
             with self.subTest(occupation=cle):
                 python = list(CJ.SILHOUETTES_OCCUPATION[cle])
