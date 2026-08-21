@@ -275,7 +275,7 @@ def simuler_batterie_jour(conso_24h, prod_24h, capacite_kwh_utile,
 # 4. LE MOTEUR
 # ════════════════════════════════════════════════════════════════════════════
 
-def _bloc_vide(cle_prefixe=''):
+def _bloc_vide():
     """Agrégat neutre (tous compteurs à zéro) — jamais de ``None`` arithmétique."""
     return {
         'production_kwh': 0.0,
