@@ -362,15 +362,46 @@ export const PANEL_DEGRADATION = 0.005
 // Toute hausse réelle du tarif ne peut qu'améliorer le résultat du client.
 export const TARIFF_ESCALATION = 0.0
 export const BATTERY_ROUNDTRIP = 0.90
+// Q1 (décision fondateur du 20/08/2026) — PROVISION DE REMPLACEMENT ONDULEUR :
+// le principe mi-vie (année 12, IEA PVPS) est confirmé, mais le MONTANT n'est
+// plus un pourcentage forfaitaire du CAPEX (l'ancien ≈ 8 % ne correspondait au
+// prix d'AUCUN onduleur réel) — c'est le PRIX TTC RÉEL de la ligne onduleur du
+// devis (`inverterReplaceCost`, résolu par `inverterCostFromLines`/`isAnyInverter`
+// ci-dessous). Aucune ligne onduleur identifiable ⇒ AUCUNE provision — jamais
+// un pourcentage de repli.
 export const INVERTER_REPLACE_YEAR = 12
-export const INVERTER_REPLACE_FRACTION = 0.08
 
-export function computeCashflowPayback(investment, economieAnnee1, { battery = false } = {}) {
+export function computeCashflowPayback(investment, economieAnnee1, {
+  battery = false,
+  // Z5 (ORDRE FONDATEUR, 20/08/2026) — PART de l'économie qui transite
+  // RÉELLEMENT par la batterie (0..1). Le rendement aller-retour ne frappe QUE
+  // elle, jamais le socle autoconsommé directement au fil du soleil (qui ne
+  // subit aucune perte de charge/décharge). `null` (défaut) conserve le
+  // forfait historique (0,90 sur 100 % de l'économie) pour un appelant direct
+  // sans la décomposition sans/avec.
+  batteryShare = null,
+  // Q1 — prix TTC RÉEL de l'onduleur de cette option, retranché à
+  // INVERTER_REPLACE_YEAR. `null`/0 ⇒ aucune provision.
+  inverterReplaceCost = null,
+} = {}) {
   const inv = parseFloat(investment) || 0
   const base = parseFloat(economieAnnee1) || 0
   if (base <= 0 || inv <= 0) {
     return { paybackYears: null, cumulative: [], netGain: 0, years: CASHFLOW_YEARS }
   }
+  // Z5 — facteur batterie EFFECTIF : la perte aller-retour ne frappe que la
+  // part réellement stockée puis restituée. `batteryShare=null` → forfait
+  // historique (0,90 sur tout) ; `0` → aucune perte ; `1` → identique au forfait.
+  let battFactor = 1
+  if (battery) {
+    if (batteryShare === null || batteryShare === undefined) {
+      battFactor = BATTERY_ROUNDTRIP
+    } else {
+      const part = Math.max(0, Math.min(1, parseFloat(batteryShare) || 0))
+      battFactor = 1 - (1 - BATTERY_ROUNDTRIP) * part
+    }
+  }
+  const invCost = parseFloat(inverterReplaceCost) || 0
   const cumulative = []
   let cumul = -inv
   let payback = null
@@ -379,10 +410,10 @@ export function computeCashflowPayback(investment, economieAnnee1, { battery = f
     const prodFactor = (1 - PANEL_DEGRADATION) ** (y - 1)
     const tarifFactor = (1 + TARIFF_ESCALATION) ** (y - 1)
     let yearSaving = base * prodFactor * tarifFactor
-    if (battery) yearSaving *= BATTERY_ROUNDTRIP
+    if (battery) yearSaving *= battFactor
     let yearCf = yearSaving
-    if (INVERTER_REPLACE_YEAR && y === INVERTER_REPLACE_YEAR) {
-      yearCf -= inv * INVERTER_REPLACE_FRACTION
+    if (INVERTER_REPLACE_YEAR && invCost > 0 && y === INVERTER_REPLACE_YEAR) {
+      yearCf -= invCost
     }
     prev = cumul
     cumul += yearCf
@@ -407,6 +438,12 @@ export function computeCashflowPayback(investment, economieAnnee1, { battery = f
 export function computeROI({
   kwp, factures, dayUsagePct, totalSans, totalAvec, batteryKwh, kwhPrice, efficiency,
   consoAnnuelleKwh, utility, productible,
+  // Q1 (fondateur 20/08/2026) — lignes RÉELLES du devis, pour retrouver le
+  // prix TTC de l'onduleur de chaque option (provision de remplacement à
+  // l'année 12). Optionnel : sans lignes, aucune provision (jamais un
+  // pourcentage de repli) — comportement inchangé pour un appelant qui ne les
+  // fournit pas (encore).
+  lines = [],
 }) {
   // Tarif ONEE et rendement éditables (Paramètres → Avancé) ; sans valeur, on
   // garde EXACTEMENT les constantes historiques (parité simulateur garantie).
@@ -548,10 +585,37 @@ export function computeROI({
     }
   }
 
+  // Q1 — prix TTC RÉEL des lignes onduleur de CHAQUE option (miroir builder.py
+  // sans_items/avec_items : « sans » exclut batterie + onduleur hybride,
+  // « avec » exclut l'onduleur réseau — mêmes filtres que optionTotalsTTC).
+  const linesSans = lines.filter(l => !isBattery(l.designation) && !isHybridInverter(l.designation))
+  const linesAvec = lines.filter(l => !isReseauInverter(l.designation))
+  const inverterCostSans = inverterCostFromLines(linesSans)
+  const inverterCostAvec = inverterCostFromLines(linesAvec)
+
+  // M9 — l'option 2 porte-t-elle RÉELLEMENT du stockage ? Dérivé des VRAIES
+  // lignes (`batteryKwh` = `batteryKwhFromLines(...)` chez l'appelant), jamais
+  // codé en dur : un devis sans batterie ne subit plus la perte d'un
+  // équipement absent.
+  const stockagePresent = (parseFloat(batteryKwh) || 0) > 0
+
+  // Z5 — PART de l'économie qui transite RÉELLEMENT par la batterie : le
+  // socle autoconsommé directement (autoconsoSansEff) n'entre jamais dans la
+  // batterie ; seul le supplément apporté par la capacité batterie
+  // (autoconsoAvecEff − autoconsoSansEff) est stocké puis restitué.
+  let battPart = 0
+  if (autoconsoAvecEff > 0) {
+    battPart = Math.max(0, autoconsoAvecEff - autoconsoSansEff) / autoconsoAvecEff
+  }
+
   // QX39 — payback par croisement du cumul du cashflow 25 ans (miroir backend),
   // pas un ratio année-1 : écran/PDF/proposition affichent le MÊME payback.
-  const cfSans = computeCashflowPayback(totalSans, ecoAnnuelleSans)
-  const cfAvec = computeCashflowPayback(totalAvec, ecoAnnuelleAvec, { battery: true })
+  const cfSans = computeCashflowPayback(totalSans, ecoAnnuelleSans, {
+    inverterReplaceCost: inverterCostSans,
+  })
+  const cfAvec = computeCashflowPayback(totalAvec, ecoAnnuelleAvec, {
+    battery: stockagePresent, batteryShare: battPart, inverterReplaceCost: inverterCostAvec,
+  })
   const paybackSans = (ecoAnnuelleSans > 0 && totalSans > 0) ? cfSans.paybackYears : null
   const paybackAvec = (ecoAnnuelleAvec > 0 && totalAvec > 0) ? cfAvec.paybackYears : null
 
@@ -824,7 +888,26 @@ export const isReseauInverter = (d) => {
   const n = _norm(d)
   return n.includes('onduleur') && (n.includes('reseau') || n.includes('injection'))
 }
+// Q1 (fondateur 20/08/2026) — TOUT onduleur, hybride/réseau/non classé (ex.
+// micro-onduleur) : miroir exact de builder.py `_is_inverter` (« onduleur »
+// suffit). Sert à repérer la ligne dont le prix réel provisionne le
+// remplacement à l'année 12 — jamais un forfait sur l'investissement.
+export const isAnyInverter = (d) => _norm(d).includes('onduleur')
 export const isPanel = (d) => _norm(d).includes('panneau')
+
+// Q1 — prix TTC RÉEL des lignes onduleur d'une option, ou `null` si aucune
+// identifiable. Miroir exact de builder.py `_cout_onduleur` : Σ qty × prix
+// unitaire TTC des lignes onduleur — jamais un pourcentage de repli.
+export function inverterCostFromLines(lines) {
+  let total = 0
+  for (const l of lines || []) {
+    if (!isAnyInverter(l.designation)) continue
+    const qty = parseFloat(l.quantite) || 0
+    const pu = parseFloat(l.prix_unit_ttc) || 0
+    if (qty > 0 && pu > 0) total += qty * pu
+  }
+  return total > 0 ? Math.round(total * 100) / 100 : null
+}
 
 // ── PVOND — CONTRAT ONDULEUR & garde batterie PILOTÉ PAR LA DONNÉE ──────────
 //
