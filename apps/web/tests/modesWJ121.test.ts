@@ -203,8 +203,9 @@ describe.each(LOCALES)('WJ121 — 4 cartes de mode dans mon-toit.astro (%s)', (_
   });
 
   it('le fil d’étapes a un libellé par mode pour industriel ET commercial', () => {
-    expect(src).toMatch(/industriel: \['[^']+', '[^']+', '[^']+'\]/);
-    expect(src).toMatch(/commercial: \['[^']+', '[^']+', '[^']+'\]/);
+    // COUPE 21/08 — le tunnel n'a plus que DEUX écrans : deux libellés par mode.
+    expect(src).toMatch(/industriel: \['[^']+', '[^']+'\]/);
+    expect(src).toMatch(/commercial: \['[^']+', '[^']+'\]/);
   });
 
   it('la grille passe à 4 cartes (2×2 dès sm:)', () => {

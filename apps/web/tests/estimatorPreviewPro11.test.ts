@@ -831,7 +831,9 @@ describe('pro-11 — W88 : pick + highlight + suppression d\'un panneau ciblé e
     const fn = scene.slice(scene.indexOf('function setPanelHighlight'));
     // tinte or pour la cellule sélectionnée, blanc (neutre) pour les autres.
     expect(fn).toContain('map[i] === cellIndex');
-    expect(fn).toContain('col.setXYZ(i, 1.0, 0.78, 0.32)'); // GOLD
+    // PV31 — la teinte passe par setTint (GAIN ×14 : instanceColor MULTIPLIE
+    // une texture de panneau quasi noire, l'or nu était invisible).
+    expect(fn).toContain('setTint(col, i, TINT_SELECTED)'); // GOLD gainé
     expect(fn).toContain('col.setXYZ(i, 1, 1, 1)'); // teinte d'origine
     expect(fn).toContain('col.needsUpdate = true');
     // ctx expose les champs requis (pick/highlight).
