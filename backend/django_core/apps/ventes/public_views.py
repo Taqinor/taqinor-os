@@ -1152,6 +1152,9 @@ def proposal_data(request, token):
             if not data.get('sans_ok'):
                 data['totaux_sans'] = None
                 data['sans_items'] = []
+        # COURBES (21/08/2026) — série de consommation calculée UNE fois : elle
+        # est republiée telle quelle ET sert de NIVEAU réel au graphe journalier.
+        _conso_mensuelle = _monthly_consumption(devis)
         roof_url = None
         if data.get('roof_image_key'):
             try:
@@ -1215,7 +1218,7 @@ def proposal_data(request, token):
             'monthly_production': _monthly_production(data),
             # Consommation : factures RÉELLES du lead (MAD→kWh, tarif interne),
             # [] sans facture → la page masque le graphe.
-            'monthly_consumption': _monthly_consumption(devis),
+            'monthly_consumption': _conso_mensuelle,
             # F6 (revue Fable, 18/08/2026) — 'financing' n'est PLUS servi ici :
             # le fondateur a retiré le crédit de toute surface client (PV80),
             # rien ne le rend, et `data.pop('financing', None)` ci-dessus a déjà
@@ -1289,6 +1292,20 @@ def proposal_data(request, token):
         # la charge utile publique est exactement celle d'aujourd'hui.
         if bankable is not None:
             payload['bankable'] = bankable
+        # COURBES (21/08/2026) — graphe « une journée type » : formes horaires
+        # PVGIS (live au point GPS, sinon courbe de référence de la ville),
+        # niveaux RÉELS (productible × kWc du devis / factures du lead), pic en
+        # kW et non en kWh, variantes batterie réellement portées par le devis,
+        # drapeau d'occupation en journée. Même patron que `bankable` : la clé
+        # n'est AJOUTÉE que lorsqu'il y a une vraie donnée à servir — sinon la
+        # page garde EXACTEMENT son affichage d'aujourd'hui (Q6 : on omet).
+        # La logique vit dans son propre module : le moteur de devis (règle #4)
+        # ne rend que des documents, il ne sert pas de graphe.
+        from .courbes_journalieres import construire_courbes_journalieres
+        _courbes = construire_courbes_journalieres(
+            devis, data, monthly_consumption=_conso_mensuelle)
+        if _courbes is not None:
+            payload['courbes_journalieres'] = _courbes
     except Exception:  # noqa: BLE001
         # 404 volontairement muet cote client (jamais de detail interne sur un
         # lien public) — mais TRACE cote serveur : un garde-fou moteur qui

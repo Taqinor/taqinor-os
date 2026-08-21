@@ -85,7 +85,11 @@ const billRanges = BILL_RANGES.map((b) => ({ ...b, label: BILL_RANGE_LABEL_EN[b.
 
 // WJ6 — assistant steps (English labels; residential defaults, overridden
 // per-mode client-side by syncStepLabels()).
-const STEPS = ['Your roof', 'Your bill', 'Your estimate'];
+// COUPE FONDATEUR 21/08 — le tunnel passe de TROIS écrans à DEUX : les questions
+// de profil (ex-écran « Votre facture ») et l'estimation + le formulaire de
+// contact vivent désormais sur le MÊME écran, la révélation se faisant sur place
+// au clic de « Voir mon estimation » (aucune navigation d'étape supplémentaire).
+const STEPS = ['Your roof', 'Your estimate'];
 
 // WJ6/QX — project-type selector. No mode is preselected: the profile drives
 // an entirely different step-2 questionnaire (bill / pro energy / pumping),
@@ -126,7 +130,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
        the map is never booted (no key/address fallback). -->
   <link rel="preconnect" href="https://api.maptiler.com" crossorigin />
   <link rel="preconnect" href="https://api.mapbox.com" crossorigin />
-  <!-- QX — the "estimate document" (step 3) is set in DM Serif Display / DM
+  <!-- QX — the "estimate document" (the revelation) is set in DM Serif Display / DM
        Sans, the SAME fonts as the premium quote PDF (copied from
        quote_engine/assets/fonts). Preloaded ONLY on this page (the rest of
        the site stays on Archivo/Hanken); font-display:swap in the
@@ -191,7 +195,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       </p>
 
       <!-- WJ6 — labelled progress bar -->
-      <ol id="mt-progress" class="mt-6 grid grid-cols-3 gap-2" aria-label="Progress">
+      <ol id="mt-progress" class="mt-6 grid grid-cols-2 gap-2" aria-label="Progress">
         {STEPS.map((s, i) => (
           <li class="mt-step flex flex-col gap-1.5" data-step={i}>
             <span class="h-1.5 w-full rounded-full bg-white/10 mt-step-bar transition-colors"></span>
@@ -409,18 +413,17 @@ const noscriptTelHref = `tel:${NAP.phone}`;
             <span>Detected range&nbsp;: <strong id="mt-bill-detected-value" class="font-semibold text-white">—</strong></span>
           </p>
 
-          <!-- SHADING — the ONLY question left after the bill: a single tap,
-               and it REALLY adjusts the calculation (billEstimate.ts
-               OMBRAGE_DERATE). Moved up here from the old "Refine my
-               estimate" accordion, which disappears with the founder cut of 18/08. -->
-          <fieldset>
-            <legend class="text-sm text-lune-soft">Shading on the roof</legend>
-            <div class="mt-2 grid grid-cols-3 gap-2">
-              <button type="button" class="mt-ombrage cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="aucun" aria-pressed="false">None</button>
-              <button type="button" class="mt-ombrage cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="partiel" aria-pressed="false">Partial</button>
-              <button type="button" class="mt-ombrage cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="important" aria-pressed="false">Significant</button>
-            </div>
-          </fieldset>
+          <!-- OMBRAGE RETIRÉ DU TUNNEL (ordre fondateur 21/08) — aucun tunnel
+               solaire de référence ne pose la question de l'ombrage en amont :
+               Zolar l'annonce moyennée dans ses hypothèses, EDF ENR la renvoie à
+               la visite technique, et Sunroof la DÉRIVE de l'imagerie. La poser
+               ici demandait au visiteur un jugement d'expert (« partiel » ?
+               « important » ?) pour un chiffre qui de toute façon sera repris à
+               la visite. Le dérate (billEstimate.ts OMBRAGE_DERATE) reste en
+               place et intact : sans réponse, `ombrageDerateFactor(undefined)`
+               rend 1 — EXACTEMENT le chemin qu'empruntait déjà tout visiteur qui
+               ne cliquait aucune puce. Le commercial renseigne l'ombrage réel
+               dans l'ERP après la visite. -->
         </div>
 
         <!-- REMOVED FROM THE FUNNEL (founder cut 18/08) — the sales rep fills
@@ -759,10 +762,16 @@ const noscriptTelHref = `tel:${NAP.phone}`;
         </div>
       </div>
 
-      <!-- ============ STEP 3 — YOUR ESTIMATE (WJ1) + CONTACT (WJ3) ============ -->
-      <div id="mt-panel-2" class="mt-step-panel" hidden>
-        <!-- WJ88 — real h2 landmark (see step 0 note). -->
-        <h2 id="mt-h2-2" class="sr-only">{STEPS[2]}</h2>
+      <!-- ====== RÉVÉLATION — VOTRE ESTIMATION (WJ1) + CONTACT (WJ3) ======
+           COUPE FONDATEUR 21/08 — ce bloc ÉTAIT l'écran 3 (#mt-panel-2). Il
+           n'est plus une étape : c'est la seconde moitié de l'écran 1, révélée
+           SUR PLACE au clic de « Voir mon estimation », juste sous les questions
+           qui viennent de la produire. Frère (et non enfant) de #mt-panel-1 :
+           l'imbrication existante n'est pas touchée, seule renderStep() décide
+           de sa visibilité (`step === 1 && revealed`). Le landmark <h2> de
+           l'ancienne étape 3 disparaît avec elle — l'écran 1 a UN seul titre de
+           repère (#mt-h2-1), exactement comme l'écran 0. -->
+      <div id="mt-reveal" class="mt-step-panel" hidden>
         <p class="tech-label mt-6 text-brass-300">Your instant estimate</p>
         <!-- WJ48 — short branded anticipation animation before the real
              numbers appear (the calculation is synchronous — without this
@@ -1215,15 +1224,12 @@ const noscriptTelHref = `tel:${NAP.phone}`;
             <span>WhatsApp reply within 1 h, 7 days a week</span>
           </p>
 
-          <div class="flex items-center justify-between gap-3">
-            <button type="button" id="mt-back-2"
-              class="inline-flex items-center gap-1 px-2 py-2 text-sm font-semibold text-lune-soft transition-colors hover:text-white">
-              <svg aria-hidden="true" width="10" height="10" viewBox="0 0 10 10" fill="none">
-                <polyline points="7,1 3,5 7,9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
-              </svg>
-              <span>Back</span>
-            </button>
-          </div>
+          <!-- COUPE FONDATEUR 21/08 — le « Retour » de bas de formulaire
+               (#mt-back-2) disparaît avec l'ancienne étape 3 : il ramenait à un
+               écran de questions qui est désormais VISIBLE juste au-dessus, sur
+               le même écran. L'affordance de retour reste servie par #mt-back-1
+               (« Retour » → écran 0), placé entre les questions et cette
+               révélation — un seul bouton de retour par écran, comme l'écran 0. -->
 
           <!-- WJ5 — qualified success (≥ threshold: the request reaches the CRM) -->
           <div id="mt-success" hidden class="border border-ok-600/40 bg-ok-600/10 p-4 text-sm text-white">
@@ -1905,18 +1911,22 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   }
   const funnelToken = getFunnelToken();
   const funnelStepReached = new Set<string>(); // avoids duplicate "reached" events on re-render.
-  // WB30 — consent (the checkbox) only exists in panel 2 (contact): until the
+  // WB30 — consent (the checkbox) only exists in the revelation (contact): until the
   // visitor has reached that panel, no behavioural signal should leave, even
   // anonymous/best-effort. `hasReachedConsentStep` reads the `step` variable
-  // (the wizard step number, declared below) — checked at CALL time, never
+  // and `revealed` (both declared below) — checked at CALL time, never
   // inside `sendFunnelBeacon` (whose `step` parameter deliberately shadows it).
+  // COUPE FONDATEUR 21/08 — la garantie WB30 est STRICTEMENT la même, seule sa
+  // coordonnée change : le bloc contact était l'écran 2 (`step >= 2`), il est
+  // désormais la RÉVÉLATION de l'écran 1. Tant qu'elle n'est pas ouverte, la
+  // case de consentement n'est pas à l'écran — donc aucun beacon.
   function hasReachedConsentStep(): boolean {
-    return step >= 2;
+    return step >= 1 && revealed;
   }
   /** Best-effort, NEVER blocking: sendBeacon survives tab close, with a
    *  fetch(keepalive) fallback if sendBeacon is unavailable. No PII possible
    *  in this body (4 fields only — see lib/funnelBeacon.ts). WB30 — emits
-   *  nothing before the consent step (panel 2) is reached — see
+   *  nothing before the consent step (the revelation) is reached — see
    *  hasReachedConsentStep, checked by every caller.
    *  WJ104 — `action` widened to `viewed`/`callback_requested`; `reached`/
    *  `abandoned` stay unchanged for every existing caller. */
@@ -1984,8 +1994,17 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   const WIZARD_STORAGE_KEY = 'mt-wizard-v1';
   interface WizardSnapshot {
     step?: number;
+    // COUPE FONDATEUR 21/08 — `revealed` : sur l'écran 1, l'estimation + le
+    // formulaire de contact sont révélés SUR PLACE (plus d'étape 3). Persisté
+    // pour qu'un rafraîchissement ne renvoie pas le visiteur à ses questions
+    // alors qu'il avait déjà son estimation à l'écran. Un instantané de
+    // l'ANCIEN assistant 3 étapes (step === 2, sans `revealed`) est migré à la
+    // relecture — voir `let revealed` plus bas.
+    revealed?: boolean;
     mode?: string;
-    ombrage?: string;
+    // `ombrage` retiré du tunnel (ordre fondateur 21/08) — plus rien à
+    // persister ; un ancien instantané qui en porte encore un est simplement
+    // ignoré (champ inconnu, aucune lecture).
     visitWindowPart?: string;
     visitWindowWeek?: string;
     // `futureLoads` removed from the funnel (founder cut 18/08) — the sales
@@ -2043,7 +2062,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
         if (el) checks[id] = el.checked;
       }
       const snapshot: WizardSnapshot = {
-        step, mode, ombrage,
+        step, revealed, mode,
         visitWindowPart, visitWindowWeek,
         sel: { proUnit, tension, activity, surfaceType, waterSource, waterUnit, commercialCategory, ccUnit, equipes, regionAgricole, roofInputMode },
         capturePin, captureOutline,
@@ -2120,11 +2139,17 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     return m === 'industriel' || m === 'commercial' || m === 'professionnel';
   }
   // QX — stepper labels + document dressing per profile.
-  const STEP_LABELS_BY_MODE: Record<string, [string, string, string]> = {
-    residentiel: ['Your roof', 'Your bill', 'Your estimate'],
-    industriel: ['Your site', 'Your energy', 'Your estimate'],
-    commercial: ['Your premises', 'Your energy', 'Your estimate'],
-    agricole: ['Your land', 'Your pumping', 'Your estimate'],
+  // COUPE FONDATEUR 21/08 — DEUX libellés par profil : l'ancien libellé de
+  // l'étape 2 (« Votre facture »/« Votre énergie »/« Votre pompage ») et celui
+  // de l'étape 3 (« Votre estimation ») décrivaient deux moitiés d'un écran
+  // désormais UNIQUE. On garde celui de la DESTINATION (« Votre estimation »),
+  // qui est aussi le libellé du bouton qui la révèle — le fil d'étapes annonce
+  // où l'on va, jamais un écran qui n'existe plus.
+  const STEP_LABELS_BY_MODE: Record<string, [string, string]> = {
+    residentiel: ['Your roof', 'Your estimate'],
+    industriel: ['Your site', 'Your estimate'],
+    commercial: ['Your premises', 'Your estimate'],
+    agricole: ['Your land', 'Your estimate'],
   };
   const MODE_LABEL: Record<string, string> = {
     residentiel: 'Residential', industriel: 'Industrial', commercial: 'Commercial', agricole: 'Agricultural',
@@ -2139,7 +2164,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     document.querySelectorAll<HTMLElement>('.mt-step-label').forEach((el, i) => {
       if (labels[i]) el.textContent = labels[i];
     });
-    [0, 1, 2].forEach((i) => {
+    [0, 1].forEach((i) => {
       const h = $(`mt-h2-${i}`);
       if (h && labels[i]) h.textContent = labels[i];
     });
@@ -2185,7 +2210,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       syncStep2Panels();
       markDataEntered();
       saveWizardState();
-      // WJ111 — if the estimate (step 3) was already computed, switching
+      // WJ111 — if the estimate (screen 1's revelation) was already computed, switching
       // to/from agricultural must update the document IMMEDIATELY (numeric
       // <-> qualitative card) without waiting for a fresh click on "See my estimate".
       if (!$('mt-estimate-body')?.hidden || !$('mt-estimate-agricole')?.hidden) computeEstimate();
@@ -2202,39 +2227,22 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   // validate here. `roofType` stays required by validateLead — resolveRoofType
   // now DERIVES it for every profile.
 
-  // ——— WJ31 : single-toggle chip (shading) — one active choice at a time ———
-  // WJ112 — shading is no longer decorative: it now REALLY derates
-  // production/kWc (billEstimate.ts OMBRAGE_DERATE); recompute live on click,
-  // exactly like mode or the bill.
-  let ombrage = savedWizard?.ombrage || '';
-  document.querySelectorAll<HTMLButtonElement>('.mt-ombrage').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const same = ombrage === btn.dataset.value;
-      ombrage = same ? '' : (btn.dataset.value || '');
-      document.querySelectorAll<HTMLButtonElement>('.mt-ombrage').forEach((b) => {
-        const on = !same && b === btn;
-        b.setAttribute('aria-pressed', String(on));
-        b.classList.toggle('border-brass-400', on);
-        b.classList.toggle('border-white/15', !on);
-      });
-      markDataEntered();
-      saveWizardState();
-      computeEstimate();
-    });
-  });
-  if (ombrage) {
-    document.querySelectorAll<HTMLButtonElement>('.mt-ombrage').forEach((b) => {
-      const on = b.dataset.value === ombrage;
-      b.setAttribute('aria-pressed', String(on));
-      b.classList.toggle('border-brass-400', on);
-      b.classList.toggle('border-white/15', !on);
-    });
-  }
+  // ——— OMBRAGE : question RETIRÉE du tunnel (ordre fondateur 21/08) ———
+  // La puce à bascule WJ31/WJ112 et son état n'existent plus : plus aucun
+  // visiteur ne déclare son ombrage sur cette page. (Sa classe CSS est épinglée
+  // ABSENTE de ce fichier par tests/wj112RefineEstimate.test.ts, qui lit la
+  // source BRUTE — ne pas la réécrire ici, même en commentaire.)
+  // Le dérate reste INTACT côté
+  // moteur (billEstimate.ts OMBRAGE_DERATE + ombrageDerateFactor) — simplement,
+  // `estimateFromBill` n'en reçoit plus, et `ombrageDerateFactor(undefined)`
+  // rend 1 : c'est LE MÊME chemin, au facteur près, que suivait déjà tout
+  // visiteur qui n'avait cliqué aucune puce (l'état initial `''` partait en
+  // `ombrage: undefined`). Aucun changement de chiffre pour ce visiteur-là.
 
   // ——— W353 : technical visit slot — two INDEPENDENT single-select toggles
-  // (time of day + week), same pattern as .mt-ombrage above. STATIC and
-  // OPTIONAL preference: no calendar, no confirmed booking — a human
-  // validates the real slot after contact. ———
+  // (time of day + week), same aria-pressed pattern as the other card groups
+  // in this funnel. STATIC and OPTIONAL preference: no calendar, no confirmed
+  // booking — a human validates the real slot after contact. ———
   let visitWindowPart = savedWizard?.visitWindowPart || '';
   let visitWindowWeek = savedWizard?.visitWindowWeek || '';
   function wireVisitToggle(selector: string, getCurrent: () => string, setCurrent: (v: string) => void) {
@@ -2381,11 +2389,28 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   // ——— WJ6 : multi-step wizard + progress bar ———
   // WJ61 — the initial step reprises the sessionStorage snapshot if present
   // (refresh/back mid-journey), otherwise 0 as before.
-  let step = savedWizard?.step != null ? Math.max(0, Math.min(2, savedWizard.step)) : 0;
-  const panels = [0, 1, 2].map((i) => $(`mt-panel-${i}`));
+  // COUPE FONDATEUR 21/08 — MIGRATION DÉFENSIVE des instantanés de l'ANCIEN
+  // assistant à 3 étapes : un `step` de 2 (ex-écran estimation+contact) devient
+  // l'écran 1 AVEC sa révélation déjà ouverte — le visiteur retrouve exactement
+  // ce qu'il avait à l'écran, jamais un plantage ni un retour en arrière muet.
+  // Le `Math.min(1, …)` borne aussi toute valeur aberrante (3, 42, NaN écarté
+  // par le `!= null` + les bornes) : l'assistant ne peut plus viser un panneau
+  // qui n'existe pas.
+  const savedStepRaw = savedWizard?.step;
+  let step = savedStepRaw != null ? Math.max(0, Math.min(1, savedStepRaw)) : 0;
+  /** COUPE FONDATEUR 21/08 — l'estimation + le contact sont RÉVÉLÉS sur l'écran
+   *  1 (jamais une étape de plus). `revealed` est le seul état qui pilote leur
+   *  visibilité ; il survit à un rafraîchissement (instantané WJ61) et se migre
+   *  depuis un ancien `step === 2`. */
+  let revealed = savedWizard?.revealed === true || savedStepRaw === 2;
+  const panels = [0, 1].map((i) => $(`mt-panel-${i}`));
+  const revealEl = $('mt-reveal');
   let firstRender = true;
   function renderStep() {
     panels.forEach((p, i) => { if (p) p.hidden = i !== step; });
+    // La révélation vit DANS l'écran 1 : elle ne s'affiche que sur cet écran, et
+    // seulement une fois « Voir mon estimation » pressé (ou restauré).
+    if (revealEl) revealEl.hidden = !(step === 1 && revealed);
     document.querySelectorAll<HTMLElement>('.mt-step').forEach((li, i) => {
       const bar = li.querySelector<HTMLElement>('.mt-step-bar');
       const label = li.querySelector<HTMLElement>('.mt-step-label');
@@ -2398,8 +2423,15 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     if (step === 0) ensureMapBooted();
     // WJ59 — "step reached", deduped by sendFunnelBeacon (once per step per
     // visit, even after a Back/Continue round trip).
-    // WB30 — no beacon before the consent step (panel 2) is reached.
-    if (hasReachedConsentStep()) sendFunnelBeacon(step === 0 ? 'toit' : step === 1 ? 'facture' : 'estimation', 'reached');
+    // WB30 — no beacon before the consent step (the REVELATION, which carries
+    // the consent checkbox — see hasReachedConsentStep) is reached.
+    // WJ59/WJ104 — VOCABULAIRE D'ÉVÉNEMENTS INCHANGÉ (4 identifiants figés dans
+    // lib/telemetryEvents.ts) : la fusion d'écrans ne renomme RIEN, elle
+    // reprojette. ANCIEN → NOUVEAU : 'toit' = écran 0 (inchangé) ; 'facture' =
+    // écran 1 AVANT révélation (ex-écran 1) ; 'estimation' = écran 1 APRÈS
+    // révélation (ex-écran 2, désormais émis par le bouton « Voir mon
+    // estimation ») ; 'contact' inchangé (émis par computeEstimate).
+    if (hasReachedConsentStep()) sendFunnelBeacon(step === 0 ? 'toit' : revealed ? 'estimation' : 'facture', 'reached');
     // WJ61 — on the very first render (load/rehydration), don't force a
     // scroll: the visitor just arrived/came back, the page hasn't moved under
     // them yet. Scrolling stays for every SUBSEQUENT step.
@@ -2412,16 +2444,24 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   // failure of an accidental "back"). `fromPopstate` avoids re-pushing a
   // state while already reacting to a `popstate`.
   function goStep(n: number, fromPopstate = false) {
-    step = Math.max(0, Math.min(2, n));
+    step = Math.max(0, Math.min(1, n));
     renderStep();
     saveWizardState();
     if (!fromPopstate) {
-      history.pushState({ mtStep: step }, '', location.href);
+      history.pushState({ mtStep: step, mtRevealed: revealed }, '', location.href);
     }
   }
+  // COUPE FONDATEUR 21/08 — l'historique porte désormais la PAIRE (étape,
+  // révélation) : la révélation ayant remplacé une étape entière, le bouton
+  // précédent du navigateur doit encore pouvoir la refermer, exactement comme
+  // il ramenait de l'ancien écran 3 à l'écran 2. Une entrée d'historique
+  // héritée (assistant 3 étapes, sans `mtRevealed`) est migrée à la lecture :
+  // `mtStep === 2` valait « estimation affichée ».
   window.addEventListener('popstate', (e) => {
-    const st = (e.state as { mtStep?: number } | null)?.mtStep;
-    goStep(st != null ? st : Math.max(0, step - 1), true);
+    const st = e.state as { mtStep?: number; mtRevealed?: boolean } | null;
+    const n = st?.mtStep != null ? st.mtStep : Math.max(0, step - 1);
+    revealed = st?.mtRevealed === true || st?.mtStep === 2;
+    goStep(n, true);
   });
   // QX — the map step now requires a chosen PROFILE (inline nudge on the
   // cards, never an alert): the profile drives the whole step-2 questionnaire.
@@ -2429,13 +2469,13 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     if (validateStep0()) goStep(1);
   });
   $('mt-back-1')?.addEventListener('click', () => goStep(0));
-  $('mt-back-2')?.addEventListener('click', () => goStep(1));
+  // `mt-back-2` retiré avec l'ancienne étape 3 (voir la note dans le markup).
   // WJ61 — push a first history entry on load so the very first "back" has an
   // `mtStep` state to consult.
-  history.replaceState({ mtStep: step }, '', location.href);
+  history.replaceState({ mtStep: step, mtRevealed: revealed }, '', location.href);
   renderStep();
   // WJ96(c) — a visitor who RESUMES their journey (WJ61 sessionStorage
-  // snapshot) directly at step 1/2 never triggers `ensureMapBooted()` via
+  // snapshot) directly at screen 1 never triggers `ensureMapBooted()` via
   // `renderStep()` (which only boots at `step === 0`): clicking "Back" to the
   // map step used to show the loading skeleton every time, instead of an
   // already-ready map. We prewarm the config/map in the background as soon
@@ -2505,7 +2545,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   }
 
   // ——— QX : single-select card/chip groups of the PRO and AGRICULTURAL
-  // sub-panels (same visual/ARIA pattern as .mt-ombrage). `recompute`
+  // sub-panels (same visual/ARIA aria-pressed pattern). `recompute`
   // re-runs the estimate live when the choice drives a shown figure. LV +
   // "Daytime" come preselected: VISIBLE defaults on screen (never a hidden
   // assumption), one tap to change. ———
@@ -3325,10 +3365,14 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     // Founder cut 18/08 — the exact kWh/month consumption is removed from
     // the funnel: `exactKwhMonthly` is no longer forwarded, so estimateFromBill
     // falls back to its own MAD-to-kWh conversion (ONEE rate), exactly as for
-    // any visitor who left that field empty. SHADING stays: it's the only
-    // question kept after the bill and it honestly derates production
-    // (see billEstimate.ts OMBRAGE_DERATE — documented, never fabricated).
-    const est = bill != null ? estimateFromBill(bill, { lat, city, ombrage: ombrage || undefined }) : null;
+    // any visitor who left that field empty. FOUNDER ORDER 21/08 — SHADING, the
+    // last survivor of that layer, now leaves too: no `ombrage` key is forwarded
+    // any more. `ombrageDerateFactor(undefined)` returns 1, so this is the
+    // NO-derate path — exactly the one every visitor who skipped the chips
+    // already took. The derate itself stays INTACT in billEstimate.ts
+    // (OMBRAGE_DERATE — documented, never fabricated) for its other callers; it
+    // is the FUNNEL that no longer asks the question.
+    const est = bill != null ? estimateFromBill(bill, { lat, city }) : null;
     if (!est) {
       if (card) card.hidden = true;
       if (note) note.hidden = true;
@@ -3441,7 +3485,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     fillDocChrome();
     updatePanels3dVisibility();
     // WJ59 — the real estimate is when the contact form becomes the relevant action.
-    // WB30 — no beacon before the consent step (panel 2).
+    // WB30 — no beacon before the consent step (the revelation).
     if (hasReachedConsentStep()) sendFunnelBeacon('contact', 'reached');
     // WJ88 — single, clean final announcement (never during the skeleton phase).
     announceEstimate(`Your estimate: ${formatKwc(est.kwc)} kWc, estimated savings ${monthly}/month, payback ${est.paybackLabel}.`);
@@ -3476,7 +3520,8 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   // instant — a very short perceived delay still lets the visitor "see" a
   // calculation happen (Enpal/EnergySage's pattern) without breaking
   // WJ112's <=0.5 s first-number promise, including live recalcs
-  // (shading/exact kWh/mode). reduced-motion -> INSTANT (no artificial
+  // (bill/exact kWh/mode — the shading chip left the funnel on 21/08).
+  // reduced-motion -> INSTANT (no artificial
   // delay, no spinner to watch) — unchanged.
   const THINKING_MIN_MS = 250;
   const THINKING_MAX_MS = 450;
@@ -3492,7 +3537,29 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     showEstimateSkeleton();
     const thinkingEl = $('mt-estimate-thinking');
     if (thinkingEl) thinkingEl.hidden = false;
-    goStep(2);
+    // COUPE FONDATEUR 21/08 — RÉVÉLATION SUR PLACE, à la place de l'ancien
+    // `goStep(2)`. Le calcul déclenché est EXACTEMENT le même (squelette →
+    // puce « calcul » WJ48 → rAF → délai perçu ≤500 ms, 0 ms en reduced-motion
+    // → computeEstimate()) : seule la destination change — le teaser verrouillé
+    // et le formulaire apparaissent sous les questions, sur le même écran.
+    revealed = true;
+    // On dévoile le bloc DIRECTEMENT plutôt que via renderStep() : à `step === 1`
+    // rien d'autre ne bouge (mêmes panneaux, mêmes barres de progression déjà
+    // actives), et renderStep() ramènerait la page tout en haut — un défilement
+    // parasite juste avant celui, voulu, vers la révélation.
+    if (revealEl) revealEl.hidden = false;
+    saveWizardState();
+    // Le pas d'historique de l'ancien écran 3 est conservé : le bouton
+    // précédent du navigateur referme la révélation au lieu de quitter la page.
+    history.pushState({ mtStep: step, mtRevealed: true }, '', location.href);
+    // WJ59 — 'estimation' / 'reached' était émis par renderStep() en arrivant
+    // sur l'ancien écran 3 ; il est désormais émis ICI, au même instant du
+    // parcours. Vocabulaire de télémétrie strictement inchangé (dédupliqué par
+    // sendFunnelBeacon : un seul envoi par visite).
+    if (hasReachedConsentStep()) sendFunnelBeacon('estimation', 'reached');
+    // La révélation vient d'apparaître SOUS les questions : on l'amène à
+    // l'écran (l'ancien changement d'étape faisait remonter la page en haut).
+    revealEl?.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' });
     const triggerEl = e.currentTarget as HTMLElement | null;
     requestAnimationFrame(() => {
       setTimeout(() => {
@@ -3872,9 +3939,16 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       // page has no FR/AR toggle (the /en/ URL already declares the locale)
       // and `langue_preferee` only accepts fr/ar (src/lib/lead.ts LEAD_LANGS): omitted.
       mode,
-      // SHADING — the sole survivor of the old "Refine my estimate" step:
-      // it's the only one of these fields that changed a figure shown.
-      ombrage: ombrage || undefined,
+      // `ombrage` RETIRÉ du tunnel (ordre fondateur 21/08) : la clé est
+      // désormais ABSENTE du corps — jamais une chaîne vide. Le contrat webhook
+      // est INCHANGÉ (lib/lead.ts la valide toujours comme facultative et
+      // l'accepte d'autres sources : c'est le commercial qui la renseigne dans
+      // l'ERP après la visite technique). Rien ne change non plus sur le fil :
+      // l'ancienne expression de cette clé produisait déjà `undefined` pour un
+      // visiteur sans réponse, et JSON.stringify omet les `undefined`.
+      // (L'expression elle-même est épinglée ABSENTE de ce fichier par
+      // tests/wj112RefineEstimate.test.ts, qui lit la source BRUTE — ne pas la
+      // réécrire ici, même en commentaire.)
       // Removed from the funnel (founder cut 18/08) — the sales rep fills
       // them in the ERP, their keys are simply ABSENT from the body
       // (lib/lead.ts still accepts them from other sources, webhook contract
@@ -4171,7 +4245,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   // mobile tab) AND peak interest (instant estimate shown). Same modal, same
   // `exitShown` guard (only shows ONCE, whatever the trigger): exit-intent
   // stays a SAFETY NET for whoever didn't see the offer at peak interest
-  // (e.g. closes the tab before step 3), never a duplicate. ———
+  // (e.g. closes the tab before the revelation), never a duplicate. ———
   const exitModal = $('mt-exit') as HTMLElement | null;
   const exitPhoneInput = $('mt-exit-phone') as HTMLInputElement | null;
   const exitWaLink = $('mt-exit-wa') as HTMLAnchorElement | null;
@@ -4245,10 +4319,17 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     // only interrupt if the visitor has at least started (mode/bill or step > 0)
     const started2 = step > 0 || resolveMonthlyBill() != null || (capturePin != null);
     if (!started2) return;
-    // WB30 — no "abandoned" beacon before the consent step (panel 2).
+    // WB30 — no "abandoned" beacon before the consent step (the revelation).
     if (!submitted && !funnelAbandonSent && hasReachedConsentStep()) {
       funnelAbandonSent = true;
-      const currentStep = step === 0 ? 'toit' : step === 1 ? 'facture' : (lastKwc != null ? 'contact' : 'estimation');
+      // COUPE FONDATEUR 21/08 — même projection que renderStep() : 'toit' =
+      // écran 0, 'facture' = écran 1 avant révélation, puis 'contact' si les
+      // chiffres sont réellement sortis, sinon 'estimation'. Vocabulaire figé.
+      const currentStep = step === 0
+        ? 'toit'
+        : !revealed
+          ? 'facture'
+          : (lastKwc != null ? 'contact' : 'estimation');
       sendFunnelBeacon(currentStep, 'abandoned');
     }
     showWhatsappOffer(triggerEl);
@@ -4319,8 +4400,9 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   // ——— QX : initial state after full rehydration (everything defined here) ———
   // Range derived from a restored exact amount (fix "redundant range").
   syncBillRangeFromExact();
-  // Journey restored directly at the estimate step (WJ61): recompute the
-  // document immediately — otherwise dashes until the first interaction.
-  if (step === 2) computeEstimate();
+  // Parcours restauré avec l'estimation DÉJÀ révélée (WJ61 — y compris migré
+  // depuis un ancien `step === 2`) : recalcule le document immédiatement —
+  // sinon des tirets jusqu'à la première interaction.
+  if (step === 1 && revealed) computeEstimate();
 
 </script>

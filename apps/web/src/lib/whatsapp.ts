@@ -74,6 +74,11 @@ export function captureWhatsappText(p: {
   city: string;
   kwcLabel?: string;
   savingsLabel?: string;
+  /** WREF — le code affiché sur l'écran de succès (« Votre référence :
+   *  TQ-XXXX »). L'écran promettait « Mentionnez ce code sur WhatsApp » mais
+   *  le message pré-rempli ne le portait JAMAIS : le client devait le retaper
+   *  de mémoire. Optionnel : absent, le message reste identique à l'octet. */
+  clientRef?: string;
 }): string {
   const name = p.fullName.trim() || 'un visiteur';
   const city = p.city.trim();
@@ -81,6 +86,9 @@ export function captureWhatsappText(p: {
     `Bonjour, je suis ${name}${city ? ` (${city})` : ''}.`,
     "Je souhaite recevoir mon estimation solaire de taqinor.ma.",
   ];
+  if (p.clientRef?.trim()) {
+    parts.push(`Ma référence : ${p.clientRef.trim()}.`);
+  }
   if (p.kwcLabel?.trim() || p.savingsLabel?.trim()) {
     const bits: string[] = [];
     if (p.kwcLabel?.trim()) bits.push(`installation estimée ${p.kwcLabel.trim()}`);

@@ -18,6 +18,8 @@ import {
   TARIF_MT_ONEE, tarifMtDisponible, tarifMtMoyen, normaliserRepartitionMt,
   isReseauInverter, batterieCompatible, plageBatterieOnduleur, DAYS_IN_MONTH,
   PRODUCTIBLE_NET_FACTOR, TARIFF_ESCALATION,
+  isBattery, isHybridInverter, isAnyInverter, inverterCostFromLines,
+  batteryKwhFromLines, INVERTER_REPLACE_YEAR, BATTERY_ROUNDTRIP,
 } from './solar.js'
 
 // Reflet du catalogue seedé (prix HT = TTC simulateur / 1.2, 2 décimales)
@@ -1149,6 +1151,143 @@ test('QX39 — batterie (rendement aller-retour) allonge le payback', () => {
   const no = computeCashflowPayback(50000, 10000)
   const bat = computeCashflowPayback(50000, 10000, { battery: true })
   assert.ok(bat.paybackYears >= no.paybackYears)
+})
+
+// ── Z5 (ORDRE FONDATEUR, 20/08/2026) — le rendement aller-retour batterie ne
+// frappe QUE la part de l'économie qui transite RÉELLEMENT par elle, jamais
+// 100 % (miroir pricing.py compute_cashflow_payback, batt_factor). ──────────
+test('Z5 — batteryShare borne la perte aller-retour à la part réellement stockée', () => {
+  // Investissement 50 000, économie année 1 = 10 000 MAD, moitié de
+  // l'économie transite par la batterie (batteryShare = 0,5).
+  //   batt_factor = 1 − (1 − 0,90) × 0,5 = 1 − 0,05 = 0,95
+  //   Année 1 (dégradation/escalade = ×1 encore) :
+  //     yearSaving = 10 000 × 0,95 = 9 500 → cumul = −50 000 + 9 500 = −40 500
+  const half = computeCashflowPayback(50000, 10000, { battery: true, batteryShare: 0.5 })
+  assert.equal(half.cumulative[0], -40500)
+
+  // batteryShare = 0 : RIEN ne transite par la batterie (tout est autoconsommé
+  // au fil du soleil) → aucune perte → IDENTIQUE au cashflow sans batterie.
+  const zero = computeCashflowPayback(50000, 10000, { battery: true, batteryShare: 0 })
+  const none = computeCashflowPayback(50000, 10000)
+  assert.deepEqual(zero.cumulative, none.cumulative)
+
+  // batteryShare = 1 (toute l'économie transite) et batteryShare = null/absent
+  // (repli historique, appelant direct sans décomposition) sont IDENTIQUES au
+  // forfait plein 0,90 sur 100 % — comportement inchangé pour ces appelants.
+  const full = computeCashflowPayback(50000, 10000, { battery: true, batteryShare: 1 })
+  const legacy = computeCashflowPayback(50000, 10000, { battery: true })
+  assert.deepEqual(full.cumulative, legacy.cumulative)
+  assert.equal(legacy.cumulative[0], -50000 + 10000 * BATTERY_ROUNDTRIP) // −41 000
+
+  // AVANT Z5, batteryShare était ignoré : la part diurne directe (qui ne
+  // traverse jamais la batterie) payait quand même 10 % de perte — une double
+  // peine qui allongeait le payback « avec batterie ». Le payback à
+  // batteryShare=0,5 doit désormais se situer STRICTEMENT ENTRE les deux bornes.
+  assert.ok(half.paybackYears >= zero.paybackYears)
+  assert.ok(half.paybackYears <= legacy.paybackYears)
+})
+
+// ── Q1 (ORDRE FONDATEUR, 20/08/2026) — la provision de remplacement onduleur
+// (année 12) vaut le PRIX RÉEL de la ligne onduleur du devis, jamais un
+// pourcentage forfaitaire de l'investissement (miroir pricing.py
+// compute_cashflow_payback + builder.py _cout_onduleur). ─────────────────────
+test('Q1 — computeCashflowPayback : la provision = prix RÉEL, jamais 8 % de l\'investissement', () => {
+  const investment = 80000
+  const economieAnnee1 = 12000
+  const withoutProvision = computeCashflowPayback(investment, economieAnnee1)
+  // Prix réel d'une ligne onduleur — délibérément DIFFÉRENT de l'ancien
+  // forfait 8 % (0,08 × 80 000 = 6 400) pour prouver qu'il n'est plus utilisé.
+  const realInverterPrice = 15300
+  assert.notEqual(realInverterPrice, Math.round(investment * 0.08))
+  const withProvision = computeCashflowPayback(investment, economieAnnee1, {
+    inverterReplaceCost: realInverterPrice,
+  })
+  // Avant l'année de remplacement (12) : STRICTEMENT AUCUNE différence.
+  for (let i = 0; i < INVERTER_REPLACE_YEAR - 1; i++) {
+    assert.equal(withProvision.cumulative[i], withoutProvision.cumulative[i],
+      `année ${i + 1} : la provision ne doit rien changer avant l'année ${INVERTER_REPLACE_YEAR}`)
+  }
+  // À l'année 12 (indice 11) et pour tout le reste de la projection : le cumul
+  // « avec provision » est en retrait EXACTEMENT du prix réel de l'onduleur —
+  // jamais un pourcentage (round(a) − round(a − k) = k pour k entier : la
+  // preuve tient quelle que soit la valeur exacte du cumul non arrondi).
+  for (let i = INVERTER_REPLACE_YEAR - 1; i < 25; i++) {
+    assert.equal(
+      withoutProvision.cumulative[i] - withProvision.cumulative[i],
+      realInverterPrice,
+      `année ${i + 1} : écart ≠ prix réel de l'onduleur`)
+  }
+  // Aucune ligne onduleur identifiable (inverterReplaceCost null/absent) :
+  // AUCUNE provision — jamais un repli sur un pourcentage.
+  const omitted = computeCashflowPayback(investment, economieAnnee1, { inverterReplaceCost: null })
+  assert.deepEqual(omitted.cumulative, withoutProvision.cumulative)
+})
+
+test('Q1 — computeROI dérive la provision onduleur des VRAIES lignes (sans/avec), jamais un forfait', () => {
+  const lignes = [
+    { designation: 'Onduleur réseau Huawei 10kW Triphasé', quantite: '1', prix_unit_ttc: '20000' },
+    { designation: 'Onduleur hybride Deye 10kW Triphasé', quantite: '1', prix_unit_ttc: '28000' },
+    { designation: 'Batterie Dyness 10 kWh', quantite: '1', prix_unit_ttc: '17000' },
+    { designation: 'Panneau Canadien Solar 710W', quantite: '14', prix_unit_ttc: '1400' },
+  ]
+  // « sans » exclut batterie + onduleur hybride (miroir optionTotalsTTC /
+  // builder.py sans_items) → il ne reste que le réseau (20 000 MAD).
+  // « avec » exclut l'onduleur réseau (miroir avec_items) → il ne reste que
+  // l'hybride (28 000 MAD).
+  const linesSans = lignes.filter(l => !isBattery(l.designation) && !isHybridInverter(l.designation))
+  const linesAvec = lignes.filter(l => !isReseauInverter(l.designation))
+  assert.equal(inverterCostFromLines(linesSans), 20000)
+  assert.equal(inverterCostFromLines(linesAvec), 28000)
+  assert.equal(isAnyInverter('Onduleur réseau Huawei 10kW Triphasé'), true)
+  assert.equal(isAnyInverter('Panneau Canadien Solar 710W'), false)
+
+  const base = {
+    kwp: 10, factures: Array(12).fill(1500), dayUsagePct: 60,
+    totalSans: 100000, totalAvec: 140000, batteryKwh: batteryKwhFromLines(lignes),
+  }
+  const withLines = computeROI({ ...base, lines: lignes })
+  const withoutLines = computeROI({ ...base, lines: [] })
+  // La provision ne touche QUE le cashflow/payback, jamais l'économie année 1.
+  assert.equal(withLines.eco_annuelle_avec, withoutLines.eco_annuelle_avec)
+  // Écart exact = prix RÉEL de l'onduleur hybride (28 000), jamais 8 % de
+  // l'investissement « avec » (0,08 × 140 000 = 11 200).
+  assert.notEqual(28000, Math.round(base.totalAvec * 0.08))
+  assert.equal(
+    withoutLines.cashflow_avec[INVERTER_REPLACE_YEAR - 1]
+      - withLines.cashflow_avec[INVERTER_REPLACE_YEAR - 1],
+    28000)
+  // Le côté « sans » porte SA PROPRE provision (l'onduleur réseau, 20 000) —
+  // jamais mélangée avec celle de l'option « avec ».
+  assert.equal(
+    withoutLines.cashflow_sans[INVERTER_REPLACE_YEAR - 1]
+      - withLines.cashflow_sans[INVERTER_REPLACE_YEAR - 1],
+    20000)
+})
+
+// ── M9 (audit du 19/08/2026) — l'option « avec batterie » ne porte le
+// rendement aller-retour QUE lorsqu'une VRAIE batterie est chiffrée sur le
+// devis (dérivé de batteryKwhFromLines(lignes) > 0), jamais codé en dur. ─────
+test('M9 — la présence de batterie vient des VRAIES lignes, jamais codée en dur', () => {
+  const base = {
+    kwp: 8, factures: Array(12).fill(1200), dayUsagePct: 60,
+    totalSans: 90000, totalAvec: 90000, kwhPrice: 1.20,
+  }
+  // batteryKwh=0 (aucune vraie batterie) : le cashflow « avec » doit être
+  // STRUCTURELLEMENT IDENTIQUE à un cashflow sans aucune perte de batterie —
+  // avant M9, `battery: true` était codé en dur pour l'option 2 et infligeait
+  // quand même 10 % de perte à un devis qui ne porte aucune batterie.
+  const roiNoBattery = computeROI({ ...base, batteryKwh: 0 })
+  const refNoBattery = computeCashflowPayback(base.totalAvec, roiNoBattery.eco_annuelle_avec)
+  assert.deepEqual(roiNoBattery.cashflow_avec, refNoBattery.cumulative)
+  assert.equal(roiNoBattery.payback_avec, refNoBattery.paybackYears)
+
+  // Avec une VRAIE capacité (10 kWh) sur les mêmes entrées par ailleurs : la
+  // perte aller-retour DOIT désormais s'appliquer — le cashflow diverge du
+  // cashflow « sans aucune perte » calculé sur la MÊME économie avec batterie.
+  const roiWithBattery = computeROI({ ...base, batteryKwh: 10 })
+  const refWithBatteryNoLoss = computeCashflowPayback(
+    base.totalAvec, roiWithBattery.eco_annuelle_avec)
+  assert.notDeepEqual(roiWithBattery.cashflow_avec, refWithBatteryNoLoss.cumulative)
 })
 
 // ── QX40 — pompage : compatibilité phase/tension pompe ↔ variateur ──────────

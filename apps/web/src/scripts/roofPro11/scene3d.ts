@@ -1489,6 +1489,29 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     modelMatrix = null;
   }
 
+  /**
+   * PV31 — GAIN du surlignage. `instanceColor` MULTIPLIE la couleur diffuse, et la texture
+   * d'un panneau photovoltaïque est quasi NOIRE (dégradé #0c0c0f→#050507, soit ~0,05 en
+   * linéaire — voir `panelTexture.ts`). Une teinte « or » de 0,78 y donnait donc 0,05 × 0,78
+   * ≈ 0,04 : un noir imperceptiblement plus chaud. C'est la raison RÉELLE pour laquelle le
+   * fondateur ne voyait NI sa sélection, NI le clignotement rouge de refus — pas un problème
+   * de CSP (la 3D est une couche WebGL Three.js, elle ne passe par aucun worker).
+   *
+   * On multiplie donc la teinte par ce gain pour repasser au-dessus du noir : 0,05 × 14 ≈ 0,66,
+   * un or franchement lisible. Le rendu utilise ACESFilmicToneMapping (voir le renderer), qui
+   * absorbe en douceur les valeurs > 1 du cadre alu — le panneau sélectionné « s'allume » au
+   * lieu de se cramer. Les panneaux NON sélectionnés restent à 1 (teinte d'origine intacte).
+   */
+  const HIGHLIGHT_GAIN = 14;
+  /** Teintes de surlignage, AVANT gain (lisibles telles quelles). */
+  const TINT_SELECTED: [number, number, number] = [1.0, 0.78, 0.32]; // laiton
+  const TINT_HOVER: [number, number, number] = [1.0, 0.92, 0.72]; // laiton clair
+  const TINT_REFUSED: [number, number, number] = [1.0, 0.36, 0.32]; // rouge (refus)
+  /** Applique une teinte gainée à l'instance `i`. */
+  function setTint(col: THREE.InstancedBufferAttribute, i: number, tint: [number, number, number]) {
+    col.setXYZ(i, tint[0] * HIGHLIGHT_GAIN, tint[1] * HIGHLIGHT_GAIN, tint[2] * HIGHLIGHT_GAIN);
+  }
+
   /** W88 — surligne (or) l'instance de panneau dont la cellule de lattice est `cellIndex`,
    *  toutes les autres à leur teinte d'origine (blanc = pas de modification). `cellIndex`
    *  null → tout remis à blanc (aucun panneau sélectionné). No-op sans mesh de panneaux. */
@@ -1500,7 +1523,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     for (let i = 0; i < map.length; i++) {
       if (cellIndex != null && map[i] === cellIndex) {
         // teinte laiton (GOLD) : panneau sélectionné/survolé bien visible.
-        col.setXYZ(i, 1.0, 0.78, 0.32);
+        setTint(col, i, TINT_SELECTED);
       } else {
         col.setXYZ(i, 1, 1, 1); // teinte d'origine (instanceColor neutre)
       }
@@ -1537,10 +1560,9 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
       const cell = map[i];
       if (sel.has(cell)) {
         // ROUGE = refus (rien n'a bougé), sinon laiton (sélectionné).
-        if (refused) col.setXYZ(i, 1.0, 0.36, 0.32);
-        else col.setXYZ(i, 1.0, 0.78, 0.32);
+        setTint(col, i, refused ? TINT_REFUSED : TINT_SELECTED);
       } else if (hover != null && cell === hover) {
-        col.setXYZ(i, 1.0, 0.92, 0.72); // laiton clair = survol
+        setTint(col, i, TINT_HOVER); // laiton clair = survol
       } else {
         col.setXYZ(i, 1, 1, 1); // teinte d'origine (instanceColor neutre)
       }

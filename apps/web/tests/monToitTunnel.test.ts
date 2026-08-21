@@ -120,8 +120,9 @@ const ALL_CUT = [...CUT_RESIDENTIEL, ...CUT_PRO, ...CUT_AGRICOLE];
 
 /** Ce qui RESTE avant l'estimation : uniquement ce que les moteurs lisent. */
 const KEPT_DOM = [
-  // Résidentiel : facture exacte OU tranche, + ombrage (1 clic, il dérate).
-  'id="mt-facture-hiver"', 'id="mt-bill"', 'mt-ombrage',
+  // Résidentiel : facture exacte OU tranche. L'ombrage a quitté le tunnel le
+  // 21/08 (ordre fondateur) — il reste dérivé/relevé à la visite technique.
+  'id="mt-facture-hiver"', 'id="mt-bill"',
   // Industriel / commercial : facture, BT/MT, activité, équipes, surface, catégorie.
   'id="mt-pro-bill"', 'mt-pro-unit', 'mt-tension', 'mt-activity', 'mt-equipes',
   'id="mt-surface-m2"', 'mt-surface-type', 'mt-commercial-cat', 'id="mt-cc-bill"',
@@ -183,13 +184,16 @@ describe('Chantier 1 — la coupe du tunnel (fondateur, 18/08)', () => {
       for (const id of KEPT_DOM) expect(dom, id).toContain(id);
     });
 
-    it(`${lang} — l'ombrage a quitté l'accordéon pour la carte facture`, () => {
-      // Plus AUCUN accordéon « affiner » : l'ombrage est visible d'emblée,
-      // juste sous la facture, parce qu'il change vraiment le chiffre.
+    it(`${lang} — l'ombrage a quitté le tunnel ENTIÈREMENT (DOM + payload)`, () => {
+      // Plus AUCUN accordéon « affiner » (coupe 18/08)…
       expect(dom).not.toContain('<details id="mt-more');
-      const card = slice(dom, 'id="mt-facture-hiver"', '</fieldset>');
-      expect(card).toContain('mt-ombrage');
-      expect(payloadLine(src, 'ombrage')).not.toBe('');
+      // …et, ORDRE FONDATEUR 21/08, plus aucune puce d'ombrage non plus : la
+      // question demandait au visiteur un jugement d'expert que la visite
+      // technique reprend de toute façon. Le dérate reste dans billEstimate.ts
+      // (autres appelants) — c'est le TUNNEL qui n'en produit plus.
+      expect(dom).not.toContain('mt-ombrage');
+      // Clé ABSENTE du corps de lead — jamais une chaîne vide.
+      expect(payloadLine(src, 'ombrage')).toBe('');
     });
 
     it(`${lang} — la raison sociale est passée sur l'écran CONTACT`, () => {
@@ -213,7 +217,7 @@ describe('Chantier 1 — la coupe du tunnel (fondateur, 18/08)', () => {
       expect(payloadLine(src, 'roofType')).toContain('resolveRoofType()');
     });
 
-    it(`${lang} — l'étape 2 n'exige plus qu'une facture (résidentiel)`, () => {
+    it(`${lang} — l'écran 1 n'exige plus qu'une facture (résidentiel)`, () => {
       const fn = stripLineComments(slice(src, 'function validateStep1()', '\n  }\n'));
       expect(fn).not.toContain("val('mt-roof')");
       expect(fn).not.toContain('mt-puissance-kva');
@@ -260,8 +264,9 @@ describe('Chantier 1 — la coupe du tunnel (fondateur, 18/08)', () => {
   });
 
   it("un lead SANS aucun des champs coupés reste parfaitement valide", () => {
-    // Exactement ce que le tunnel envoie désormais côté résidentiel : facture,
-    // ombrage, coordonnées, consentement — et roofType dérivé ('autre').
+    // Le tunnel n'envoie plus d'ombrage depuis le 21/08 — mais le CONTRAT, lui,
+    // ne change pas : lib/lead.ts continue de l'accepter d'une autre source
+    // (l'ERP, après la visite technique). C'est ce que cette épingle protège.
     const r = validateLead({
       fullName: 'Karim Benali',
       phone: '06 12 34 56 78',
@@ -302,9 +307,9 @@ describe("Chantier 1 bis — l'estimation tient debout sans les questions coupé
 
   for (const [lang, rel] of LOCALES) {
     const src = read(rel);
-    it(`${lang} — le tunnel appelle bien le moteur SANS conso kWh`, () => {
+    it(`${lang} — le tunnel appelle bien le moteur SANS conso kWh NI ombrage`, () => {
       expect(stripLineComments(src))
-        .toContain('estimateFromBill(bill, { lat, city, ombrage: ombrage || undefined })');
+        .toContain('estimateFromBill(bill, { lat, city })');
     });
     it(`${lang} — le moteur eau est appelé SANS méthode d'irrigation`, () => {
       expect(stripLineComments(src))
@@ -511,5 +516,100 @@ describe('Chantier 3 — pointer OU dessiner, avec confirmation visuelle', () =>
     // les deux branches sont gardées par `opts.roofInputMode?.()`.
     expect(boot).toContain("opts.roofInputMode?.() === 'draw'");
     expect(boot).toContain("opts.roofInputMode?.() === 'point'");
+  });
+});
+
+// ———————————————————————————————————————————————————————————————————————————
+// Chantier 4 (ORDRE FONDATEUR 21/08) — le tunnel n'a plus que DEUX écrans.
+// L'ancien écran 3 (estimation + contact) n'est plus une étape : c'est une
+// RÉVÉLATION rendue SUR PLACE dans l'écran 1, sous les questions qui viennent
+// de la produire, au clic de « Voir mon estimation ». Ces épingles valent pour
+// les TROIS variantes de langue — c'est exactement le genre de fusion qu'une
+// seule locale peut rater en silence.
+describe("Chantier 4 — l'assistant est passé de 3 à 2 écrans", () => {
+  for (const [lang, rel] of LOCALES) {
+    const src = read(rel);
+    const dom = stripHtmlComments(src);
+    const script = stripLineComments(src);
+
+    it(`${lang} — il ne reste QUE deux panneaux d'assistant`, () => {
+      expect(dom).toContain('id="mt-panel-0"');
+      expect(dom).toContain('id="mt-panel-1"');
+      expect(dom).not.toContain('id="mt-panel-2"');
+      // …et le tableau de panneaux du script suit (jamais un panneau fantôme).
+      expect(script).toContain("const panels = [0, 1].map((i) => $(`mt-panel-${i}`));");
+    });
+
+    it(`${lang} — la barre de progression compte DEUX colonnes`, () => {
+      expect(dom).toContain('grid grid-cols-2 gap-2" aria-label');
+      expect(dom).not.toContain('grid grid-cols-3 gap-2" aria-label');
+    });
+
+    it(`${lang} — un seul landmark sr-only par écran (WJ88), donc DEUX`, () => {
+      expect(dom).toContain('id="mt-h2-0"');
+      expect(dom).toContain('id="mt-h2-1"');
+      expect(dom).not.toContain('id="mt-h2-2"');
+      expect(script).toContain('[0, 1].forEach((i) => {');
+    });
+
+    it(`${lang} — la révélation existe, part MASQUÉE, et porte le teaser PUIS le contact`, () => {
+      expect(dom).toContain('<div id="mt-reveal" class="mt-step-panel" hidden>');
+      // Ordre du document : questions → bouton → teaser verrouillé → formulaire.
+      const iPanel1 = dom.indexOf('id="mt-panel-1"');
+      const iButton = dom.indexOf('id="mt-estimate"');
+      const iReveal = dom.indexOf('id="mt-reveal"');
+      const iTeaser = dom.indexOf('id="mt-teaser"');
+      const iForm = dom.indexOf('<form id="mt-form"');
+      expect(iPanel1, 'mt-panel-1').toBeGreaterThan(-1);
+      expect(iButton, 'mt-estimate').toBeGreaterThan(-1);
+      expect(iReveal, 'mt-reveal').toBeGreaterThan(-1);
+      expect(iTeaser, 'mt-teaser').toBeGreaterThan(-1);
+      expect(iForm, 'mt-form').toBeGreaterThan(-1);
+      expect(iPanel1).toBeLessThan(iButton);
+      expect(iButton).toBeLessThan(iReveal);
+      expect(iReveal).toBeLessThan(iTeaser);
+      expect(iTeaser).toBeLessThan(iForm);
+    });
+
+    it(`${lang} — « Voir mon estimation » RÉVÈLE sur place (plus aucun goStep(2))`, () => {
+      expect(script).not.toContain('goStep(2)');
+      const handler = slice(script, "$('mt-estimate')?.addEventListener('click'", 'requestAnimationFrame');
+      expect(handler).toContain('if (!validateStep1()) return;');
+      expect(handler).toContain('showEstimateSkeleton();');
+      expect(handler).toContain('revealed = true;');
+      expect(handler).toContain('if (revealEl) revealEl.hidden = false;');
+      // WJ48 — la puce « calcul » reste allumée avant le rendu des chiffres.
+      expect(handler).toContain('thinkingEl.hidden = false');
+    });
+
+    it(`${lang} — la révélation ne s'affiche QUE sur l'écran 1 et QUE si elle est ouverte`, () => {
+      expect(script).toContain('if (revealEl) revealEl.hidden = !(step === 1 && revealed);');
+      // WB30 — le consentement vit dans la révélation : pas de beacon avant.
+      expect(script).toContain('return step >= 1 && revealed;');
+    });
+
+    it(`${lang} — un instantané de l'ANCIEN assistant 3 étapes ne casse rien (clamp + migration)`, () => {
+      // Une étape restaurée est BORNÉE à 1 : plus jamais un panneau inexistant.
+      expect(script).toContain('Math.min(1, savedStepRaw)');
+      // …et l'ancien `step === 2` (estimation affichée) revient AVEC sa
+      // révélation ouverte, jamais sur un écran de questions muet.
+      expect(script).toContain('let revealed = savedWizard?.revealed === true || savedStepRaw === 2;');
+      // Idem pour une entrée d'historique héritée (sans `mtRevealed`).
+      expect(script).toContain("revealed = st?.mtRevealed === true || st?.mtStep === 2;");
+    });
+
+    it(`${lang} — le VOCABULAIRE de télémétrie du tunnel est inchangé (4 identifiants)`, () => {
+      // La fusion d'écrans REPROJETTE, elle ne renomme rien : lib/telemetryEvents
+      // fige toit/facture/estimation/contact et le tunnel les émet toujours tous.
+      expect(script).toContain("sendFunnelBeacon(step === 0 ? 'toit' : revealed ? 'estimation' : 'facture', 'reached')");
+      expect(script).toContain("sendFunnelBeacon('estimation', 'reached')");
+      expect(script).toContain("sendFunnelBeacon('contact', 'reached')");
+      expect(script).toContain("sendFunnelBeacon(currentStep, 'abandoned')");
+    });
+  }
+
+  it('les 4 identifiants d\'étape restent EXACTEMENT ceux de lib/telemetryEvents', () => {
+    const lib = read('../src/lib/telemetryEvents.ts');
+    expect(lib).toContain("export const TELEMETRY_STEP_IDS = ['toit', 'facture', 'estimation', 'contact'] as const;");
   });
 });

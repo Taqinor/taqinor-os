@@ -1206,6 +1206,33 @@ def site_location_for_devis(devis):
     }
 
 
+#: Valeurs admises pour le profil d'activité PRO, telles que le webhook web les
+#: valide déjà à l'entrée (``apps/crm/webhooks.py`` — QW2). Toute autre valeur
+#: est traitée comme absente : on ne devine jamais un profil d'occupation.
+PROFILS_ACTIVITE = ('day', 'day_evening', 'continuous')
+
+
+def profil_activite_pour_devis(devis):
+    """Profil d'activité PRO du lead d'un devis, ou ``None``.
+
+    Point d'entrée cross-app LECTURE SEULE (``apps.ventes`` n'importe jamais
+    ``apps.crm.models``). Renvoie la valeur de
+    ``Lead.web_questionnaire['activity_profile']`` — le SEUL signal
+    d'occupation en journée réellement câblé aujourd'hui, et seulement en mode
+    PRO — quand elle fait partie de :data:`PROFILS_ACTIVITE`. Aucun lead, pas
+    de questionnaire, valeur inconnue ⇒ ``None`` : l'appelant applique alors
+    son propre défaut, jamais une valeur inventée ici.
+    """
+    lead = getattr(devis, 'lead', None)
+    if lead is None:
+        return None
+    questionnaire = getattr(lead, 'web_questionnaire', None)
+    if not isinstance(questionnaire, dict):
+        return None
+    valeur = questionnaire.get('activity_profile')
+    return valeur if valeur in PROFILS_ACTIVITE else None
+
+
 # Champs Lead autorisés dans les règles JSON d'un segment marketing (XMKT6,
 # apps.compta). Whitelist stricte — toute clé inconnue est rejetée côté
 # validation, jamais évaluée à l'aveugle.

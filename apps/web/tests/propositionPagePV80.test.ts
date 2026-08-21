@@ -77,7 +77,16 @@ describe('PV80 — graphique fusionné : vues disponibles', () => {
 
 describe('PV80 — graphique fusionné : état initial', () => {
   it('démarre sur l’année, profil standard, batterie décochée', () => {
-    expect(initialProductionState(FULL)).toEqual({ view: 'journee', variant: 'normal', battery: false });
+    // CJ1 — l'état porte en plus la saison et l'occupation ; sans bloc backend
+    // servi (le cas de FULL), ce sont les replis documentés : mi-saison et
+    // « présence partielle », le milieu honnête des trois silhouettes.
+    expect(initialProductionState(FULL)).toEqual({
+      view: 'journee',
+      variant: 'normal',
+      battery: false,
+      season: 'mi_saison',
+      occupancy: 'presence_partielle',
+    });
   });
 
   it('démarre sur la journée quand les barres mensuelles manquent', () => {

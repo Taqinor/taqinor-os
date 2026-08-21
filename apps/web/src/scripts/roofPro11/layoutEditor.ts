@@ -44,6 +44,9 @@ import { createLayoutHistory, createValueHistory } from './layoutHistory';
 // PV30 — placement libre : géométrie PURE + pont vers le pavage gagnant.
 import {
   moveFreePanels,
+  placeFreePanels,
+  normalizeRectENU,
+  panelsInRectENU,
   addFreePanel,
   removeFreePanel,
   checkPanelAt,
@@ -322,6 +325,48 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   /** PV29 — durée du clignotement ROUGE d'un déplacement REFUSÉ (ms). */
   const REFUSAL_FLASH_MS = 900;
 
+  // ── PV31 — RECTANGLE DE SÉLECTION VISIBLE ────────────────────────────────────
+  // Le cadre existait depuis PV25 mais n'était DESSINÉ nulle part : on ne voyait que le
+  // compte en texte. On le peint ici en surcouche DOM du conteneur de carte, en pixels
+  // ÉCRAN (les deux coins du geste) — volontairement PAS une source GeoJSON MapLibre ni un
+  // objet Three.js : un simple <div> ne dépend d'aucun worker, d'aucun contexte WebGL, et
+  // reste visible quoi qu'il arrive à la couche 3D.
+  let marqueeEl: HTMLDivElement | null = null;
+  function marqueeLayer(): HTMLDivElement | null {
+    if (typeof document === 'undefined') return null;
+    if (marqueeEl) return marqueeEl;
+    const container = typeof map.getContainer === 'function' ? map.getContainer() : null;
+    if (!container) return null;
+    const el = document.createElement('div');
+    el.id = 'rp9-marquee';
+    el.setAttribute('aria-hidden', 'true'); // pur retour visuel : le compte est annoncé en texte
+    el.style.cssText = [
+      'position:absolute',
+      'pointer-events:none', // ne vole jamais un événement à la carte
+      'z-index:6',
+      'display:none',
+      'border:2px dashed #e0b25c',
+      'background:rgba(224,178,92,0.18)',
+      'box-shadow:0 0 0 1px rgba(0,0,0,0.55)', // lisible aussi sur une photo satellite claire
+    ].join(';');
+    container.appendChild(el);
+    marqueeEl = el;
+    return el;
+  }
+  /** Peint le cadre entre les deux coins ÉCRAN du geste (dans n'importe quel sens). */
+  function showMarquee(a: maplibregl.Point, b: maplibregl.Point) {
+    const el = marqueeLayer();
+    if (!el) return;
+    el.style.left = `${Math.min(a.x, b.x)}px`;
+    el.style.top = `${Math.min(a.y, b.y)}px`;
+    el.style.width = `${Math.abs(a.x - b.x)}px`;
+    el.style.height = `${Math.abs(a.y - b.y)}px`;
+    el.style.display = 'block';
+  }
+  function hideMarquee() {
+    if (marqueeEl) marqueeEl.style.display = 'none';
+  }
+
   // ── PV29 — PEINTURE de la 3D : sélection (or) + survol (or clair) + refus (rouge) ──
   // `deps.setPanelHighlight` (W88) ne connaît qu'UNE cellule : la sélection multiple et la
   // rangée étaient invisibles sur la 3D. On centralise donc TOUT le rendu de sélection ici,
@@ -344,6 +389,14 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
       return;
     }
     sceneHighlight(hoverCell ?? (selection.length ? selection[0] : null));
+  }
+
+  /** PV31 — peint une sélection CANDIDATE (les panneaux actuellement encadrés) sans la
+   *  committer : `selection` ne change qu'au relâchement du cadre. Sans le peintre
+   *  multi-cellules, on ne montre rien plutôt que de mentir avec une seule cellule. */
+  function paintPreviewSelection(candidate: readonly number[]) {
+    if (!sceneSelection) return;
+    sceneSelection(candidate, hoverCell, false);
   }
 
   /** W88 — surlignage du panneau SURVOLÉ. PV29 : il ne remplace plus la sélection, il
@@ -486,17 +539,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   function freeInRect(rect: { x0: number; y0: number; x1: number; y1: number }): number[] {
     const st = freeState();
     if (!st) return [];
-    const xMin = Math.min(rect.x0, rect.x1);
-    const xMax = Math.max(rect.x0, rect.x1);
-    const yMin = Math.min(rect.y0, rect.y1);
-    const yMax = Math.max(rect.y0, rect.y1);
-    const out: number[] = [];
-    for (let i = 0; i < st.panels.length; i++) {
-      const p = st.panels[i];
-      if (p.cx < xMin || p.cx > xMax || p.cy < yMin || p.cy > yMax) continue;
-      out.push(i);
-    }
-    return out;
+    return panelsInRectENU(st.panels, normalizeRectENU(rect.x0, rect.y0, rect.x1, rect.y1));
   }
 
   /** Membres de la RANGÉE d'un panneau libre : ceux qui partagent sa coordonnée
@@ -677,6 +720,25 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     }
   }
 
+  /**
+   * PV31 — re-rendu 3D SEUL du placement libre (grille SYNTHÉTIQUE dont les panneaux sont
+   * les positions libres : même chemin de rendu, mêmes matériaux, même mapping
+   * instance→index, donc le surlignage de sélection marche à l'identique). Séparé de
+   * `renderCustomLayout` parce que l'APERÇU VIVANT d'un glissé le rappelle à chaque image :
+   * un déplacement ne change NI le nombre de panneaux NI la production, il serait donc
+   * absurde (et lent) de recalculer la fenêtre de production 60 fois par seconde.
+   */
+  function renderFreeScene() {
+    if (!ctx.layoutPlan || !ctx.freeState) return;
+    const st = ctx.freeState;
+    const grid = { ...ctx.layoutPlan.grid, panels: st.panels.map((p) => ({ ...p })), count: st.panels.length };
+    const all = new Set(st.panels.map((_, i) => i));
+    renderScene(ctx.layoutPlan.pack, grid, ctx.layoutPlan.tiltDeg, ctx.layoutPlan.family, st.panels.length, ctx.layoutPlan.flush, all);
+    // Re-rendre la scène reconstruit les instances (teintes remises à blanc) : on REPEINT
+    // la sélection juste après, sinon elle disparaîtrait à chaque image de l'aperçu.
+    paintScene();
+  }
+
   /** Re-rend la 3D avec l'occupation PERSONNALISÉE courante (même plan, même rendement
    *  par panneau ; seul le NOMBRE change), puis recompute la production/économies par le
    *  chemin PVGIS-par-comptage existant (la fenêtre de production suit prodPanels). */
@@ -689,14 +751,12 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     // en mode lattice.
     if (freeActive()) {
       const st = ctx.freeState!;
-      const grid = { ...ctx.layoutPlan.grid, panels: st.panels.map((p) => ({ ...p })), count: st.panels.length };
-      const all = new Set(st.panels.map((_, i) => i));
-      renderScene(ctx.layoutPlan.pack, grid, ctx.layoutPlan.tiltDeg, ctx.layoutPlan.family, st.panels.length, ctx.layoutPlan.flush, all);
+      renderFreeScene();
       const cfgFree = prodConfigFromState();
       if (cfgFree) updateProductionWindow({ ...cfgFree, panels: st.panels.length });
       snapshotActiveAreaResult();
       renderAreasPanel();
-      paintScene();
+      paintScene(); // PV29 — la sélection se repeint EN DERNIER (ordre historique préservé)
       return;
     }
     if (!ctx.layoutState) return;
@@ -777,7 +837,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     syncFreeInputs(); // PV30
     if (layoutNoteEl && !layoutNoteEl.textContent) {
       layoutNoteEl.textContent = freeOn
-        ? 'Placement libre : clic = sélectionner, Maj + clic = ajouter au groupe, double-clic = toute la rangée. Glissez pour déplacer au millimètre, flèches pour ajuster, Alt + clic pour retirer. « Ajouter un panneau » puis un clic pose un panneau de plus.'
+        ? 'Placement libre : clic = sélectionner, Maj + clic = ajouter au groupe, Maj + glissé (ou « ▭ Sélection » au doigt) = encadrer une rangée ou un groupe, double-clic = toute la rangée. Glissez un panneau (ou n’importe quel panneau du groupe sélectionné) pour le déplacer où vous voulez — il suit le curseur. Flèches pour ajuster au centimètre, Alt + clic pour retirer, clic dans le vide pour lâcher la sélection. « Ajouter un panneau » puis un clic pose un panneau de plus.'
         : 'Sur la 3D : clic = sélectionner, Maj + clic = ajouter au groupe, Maj + glissé = encadrer, double-clic = toute la rangée. Glissez pour déplacer, flèches pour ajuster, Alt + clic pour retirer un panneau. Ou touchez un panneau (bleu) puis un emplacement libre (vert) dans le plan ci-dessous.';
     }
   }
@@ -1167,6 +1227,9 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
       ctx.layoutSel = null;
       setSelection([]); // PV29 — une sélection ne survit pas à la sortie du mode
       setPanelHighlight(null); // W88 — efface tout surlignage de panneau en quittant le mode
+      hideMarquee(); // PV31 — jamais un cadre orphelin après la sortie du mode disposition
+      marquee = null;
+      emptyPress = null;
       if (ctx.closed) renderActive();
     }
     renderLayoutPanel();
@@ -1461,7 +1524,29 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   // proche, commit au relâchement. Désactive le pan de la carte pendant le glissé.
   // PV29 — `altKey` mémorise le modificateur DE SUPPRESSION appuyé au moment de la saisie :
   // un clic simple SÉLECTIONNE désormais, seul Alt + clic supprime (voir endLayoutDrag).
-  let layoutDrag: { from: number; startPoint: maplibregl.Point; moved: boolean; altKey: boolean } | null = null;
+  // PV31 — en placement LIBRE, le glissé porte en plus de quoi rejouer le geste à chaque
+  // image : les positions d'ORIGINE de tous les membres (on repart TOUJOURS de là, jamais de
+  // l'aperçu précédent → aucune dérive) et le décalage de SAISIE (le panneau garde le point
+  // où on l'a attrapé sous le curseur, au lieu de sauter par son centre).
+  let layoutDrag:
+    | {
+        from: number;
+        startPoint: maplibregl.Point;
+        moved: boolean;
+        altKey: boolean;
+        freeOrigin?: { index: number; cx: number; cy: number }[];
+        grabDx?: number;
+        grabDy?: number;
+        freePreviewed?: boolean;
+        /** Dernier verdict de REFUS rencontré pendant l'aperçu — sert à NOMMER la raison au
+         *  relâchement (« sortirait du toit », « chevaucherait un autre panneau »…) plutôt
+         *  que de se contenter d'un « refusé » muet. */
+        freeBlocked?: FreeCheck;
+      }
+    | null = null;
+  /** PV31 — point du dernier appui « dans le vide » (aucun panneau saisi), pour distinguer un
+   *  CLIC (qui efface la sélection) d'un déplacement de carte (qui ne l'efface pas). */
+  let emptyPress: maplibregl.Point | null = null;
   function layoutPanelAt(point: maplibregl.Point): number | null {
     if (freeActive()) return freePanelAt(point); // PV30 — même geste, autre liste
     const layoutState = ctx.layoutState;
@@ -1506,18 +1591,106 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
       // seul panneau dans la sélection). Avant, un Maj + clic terminait sur un rectangle de
       // surface nulle et VIDAIT donc la sélection — l'inverse de ce que le geste veut dire.
       marquee = { x0: enu.x, y0: enu.y, x1: enu.x, y1: enu.y, moved: false, startPoint: point };
+      emptyPress = null;
+      showMarquee(point, point); // PV31 — le cadre est VISIBLE dès le premier pixel
       map.dragPan.disable();
       map.getCanvas().style.cursor = 'crosshair';
       return true;
     }
     const from = layoutPanelAt(point);
-    if (from == null) return false;
-    layoutDrag = { from, startPoint: point, moved: false, altKey };
+    if (from == null) {
+      // PV31 — appui dans le VIDE : on le mémorise, un simple clic effacera la sélection
+      // (un glissé, lui, reste un déplacement de carte et n'y touche pas).
+      emptyPress = point;
+      return false;
+    }
+    emptyPress = null;
+    const drag: NonNullable<typeof layoutDrag> = { from, startPoint: point, moved: false, altKey };
+    layoutDrag = drag;
+    // PV31 — placement libre : on fige l'ORIGINE du geste (positions de départ des membres
+    // + décalage de saisie) et on photographie l'état UNE fois pour tout le glissé.
+    if (freeActive()) {
+      const st = ctx.freeState!;
+      const grabbed = st.panels[from];
+      const enu = screenToENU(point);
+      if (grabbed && enu) {
+        const members = selection.length > 1 && selection.includes(from) ? [...selection] : [from];
+        drag.freeOrigin = members.map((i) => ({ index: i, cx: st.panels[i].cx, cy: st.panels[i].cy }));
+        drag.grabDx = grabbed.cx - enu.x;
+        drag.grabDy = grabbed.cy - enu.y;
+        recordFreeHistory(); // une seule photo pour tout le geste (retirée s'il ne pose rien)
+      }
+    }
     ctx.layoutSel = from;
     map.dragPan.disable();
     map.getCanvas().style.cursor = 'grabbing';
     renderLayoutPanel();
     return true;
+  }
+
+  /**
+   * PV31 — APERÇU VIVANT d'un glissé LIBRE : les panneaux SUIVENT le curseur, au lieu de ne
+   * bouger qu'au relâchement (le fondateur ne voyait donc rien se passer et concluait que
+   * « le déplacement ne marche pas »).
+   *
+   * On rejoue le geste depuis les positions d'ORIGINE à chaque image — jamais en cumulant
+   * l'aperçu précédent — donc le glissé ne dérive pas et reste annulable d'un seul coup. Le
+   * lot entier est TOUT OU RIEN : si la position visée viole une contrainte, on GARDE le
+   * dernier aperçu valide à l'écran et on NOMME ce qui bloque (rive, voisin, obstacle…).
+   */
+  function previewFreeDrag(point: maplibregl.Point): void {
+    const d = layoutDrag;
+    const st = freeState();
+    const g = freeGeom();
+    if (!d || !d.freeOrigin || !d.freeOrigin.length || !st || !g) return;
+    const enu = screenToENU(point);
+    if (!enu) return;
+    const anchor = d.freeOrigin.find((o) => o.index === d.from) ?? d.freeOrigin[0];
+    // Le panneau saisi garde le point d'accroche sous le curseur (décalage de saisie).
+    const dx = quantizeFree(enu.x + (d.grabDx ?? 0)) - anchor.cx;
+    const dy = quantizeFree(enu.y + (d.grabDy ?? 0)) - anchor.cy;
+    const res = placeFreePanels(
+      st,
+      g,
+      d.freeOrigin.map((o) => ({ index: o.index, cx: o.cx + dx, cy: o.cy + dy })),
+      margins(),
+    );
+    if (!res.ok) {
+      d.freeBlocked = res.blocked;
+      if (res.blocked) showMeasure(res.blocked);
+      if (layoutNoteEl) {
+        const why = res.blocked ? res.blocked.violations.map(violationLabel).join(', ') : 'placement invalide';
+        layoutNoteEl.textContent = `Ici : ${why}.`;
+      }
+      return; // le dernier aperçu VALIDE reste affiché — rien ne clignote, rien ne saute
+    }
+    d.freeBlocked = undefined;
+    d.freePreviewed = true;
+    // Mesures affichées pour le panneau SAISI, à sa position d'aperçu (rive / voisin) : la
+    // marge réduite reste un acte VU et CHOISI, jamais un glissement silencieux.
+    const posed = st.panels[d.from];
+    if (posed) {
+      const chk = checkPanelAt(st, g, d.from, posed.cx, posed.cy, margins());
+      showMeasure(chk);
+      if (layoutNoteEl) {
+        layoutNoteEl.textContent = `Relâchez pour poser — rive ${cm(chk.edgeM)}, voisin ${chk.panelM === null ? '—' : cm(chk.panelM)}.`;
+      }
+    }
+    scheduleFreePreviewPaint();
+  }
+
+  /** PV31 — au plus UN re-rendu 3D par image pendant un glissé (les événements pointeur
+   *  arrivent bien plus vite que l'écran ne rafraîchit). */
+  let freePreviewPending = false;
+  function scheduleFreePreviewPaint() {
+    if (freePreviewPending) return;
+    freePreviewPending = true;
+    const run = () => {
+      freePreviewPending = false;
+      renderFreeScene();
+    };
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(run);
+    else run();
   }
   /** Glissé en cours (souris OU doigt) : au-delà du seuil LAYOUT_GRAB_PX, retour visuel
    *  « relâchez sur un emplacement valide / aucun libre ». Le seuil évite qu'un simple
@@ -1529,11 +1702,15 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
       if (!enu) return;
       marquee.x1 = enu.x;
       marquee.y1 = enu.y;
+      showMarquee(marquee.startPoint, point); // PV31 — le cadre suit le geste, à l'écran
       // PV29 — au-delà du seuil, c'est un vrai cadre (et plus un Maj + clic).
       if (Math.abs(point.x - marquee.startPoint.x) >= LAYOUT_GRAB_PX || Math.abs(point.y - marquee.startPoint.y) >= LAYOUT_GRAB_PX) {
         marquee.moved = true;
       }
       const hits = freeActive() ? freeInRect(marquee) : cellsInRect(ctx.layoutState, marquee);
+      // PV31 — les panneaux encadrés s'allument DÉJÀ pendant le geste : on voit ce qu'on
+      // attrape avant même de relâcher.
+      paintPreviewSelection(hits);
       if (layoutNoteEl) {
         layoutNoteEl.textContent = hits.length
           ? `${fmt(hits.length)} panneaux dans la sélection — relâchez pour les sélectionner.`
@@ -1552,18 +1729,9 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     // la rive et au voisin le plus proche, en cm) et on annonce le verdict. Réduire une
     // marge devient un acte VU et CHOISI — jamais un glissement silencieux.
     if (freeActive()) {
-      const st = ctx.freeState!;
-      const g = freeGeom();
-      const from = layoutDrag.from;
-      if (g && st.panels[from]) {
-        const chk = checkPanelAt(st, g, from, quantizeFree(enu.x), quantizeFree(enu.y), margins());
-        showMeasure(chk);
-        if (layoutNoteEl) {
-          layoutNoteEl.textContent = chk.ok
-            ? `Relâchez pour poser — rive ${cm(chk.edgeM)}, voisin ${chk.panelM === null ? '—' : cm(chk.panelM)}.`
-            : `Ici : ${chk.violations.map(violationLabel).join(', ')}.`;
-        }
-      }
+      // PV31 — les panneaux suivent RÉELLEMENT le curseur (aperçu vivant), au lieu de se
+      // contenter d'une mesure en texte qui ne bougeait rien à l'écran.
+      previewFreeDrag(point);
       return;
     }
     const target = nearestEmptyCell(ctx.layoutState, enu.x, enu.y);
@@ -1603,6 +1771,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
       const dragged = marquee.moved;
       const hits = freeActive() ? freeInRect(marquee) : cellsInRect(ctx.layoutState, marquee); // PV30
       marquee = null;
+      hideMarquee(); // PV31 — le cadre disparaît, la sélection qu'il a produite reste allumée
       map.dragPan.enable();
       map.getCanvas().style.cursor = '';
       if (!dragged) {
@@ -1630,16 +1799,36 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     const from = layoutDrag.from;
     const moved = layoutDrag.moved;
     const altTap = layoutDrag.altKey; // PV29 — modificateur de SUPPRESSION saisi au mousedown
+    // PV31 — un geste LIBRE qui n'a pas bougé (simple clic, Alt + clic) n'est pas un
+    // déplacement : on retire la photo prise à la saisie, sinon « annuler » consommerait un
+    // pas pour ne rien changer. Les actions qui suivent reprennent leur propre photo.
+    if (!moved && layoutDrag.freeOrigin) freeHistory.drop();
     if (moved && freeActive()) {
-      // PV30 — commit d'un glissé LIBRE : translation rigide de toute la sélection (ou du
-      // seul panneau saisi), quantifiée au centimètre. Tout ou rien, refus visible.
-      const enu = screenToENU(point);
-      const st = ctx.freeState!;
-      const grabbed = st.panels[from];
-      if (enu && grabbed) {
-        const members = selection.length > 1 && selection.includes(from) ? selection : [from];
-        freeMoveSelection(enu.x - grabbed.cx, enu.y - grabbed.cy, members);
+      // PV31 — commit d'un glissé LIBRE. L'APERÇU VIVANT a déjà posé les panneaux à leur
+      // dernière position VALIDE : il n'y a plus rien à recalculer ici, seulement à
+      // confirmer. La photo d'historique a été prise UNE fois au début du geste ; si aucun
+      // aperçu n'a jamais été validé (le curseur n'a jamais visé un endroit possible), on
+      // la retire — un geste qui n'a rien bougé n'est pas une action à annuler.
+      const d = layoutDrag;
+      const members = d?.freeOrigin?.map((o) => o.index) ?? [from];
+      if (d?.freePreviewed) {
+        if (layoutNoteEl) {
+          layoutNoteEl.textContent = `Déplacé — ${fmt(members.length)} panneau${members.length > 1 ? 'x' : ''} (placement libre).`;
+        }
+        renderCustomLayout(); // recompute des chiffres + repeint la sélection
+      } else {
+        freeHistory.drop();
+        flashRefusal(members); // refus VISIBLE (rouge), rien n'a bougé
+        if (d?.freeBlocked) showMeasure(d.freeBlocked);
+        if (layoutNoteEl) {
+          // On NOMME ce qui a bloqué (relevé pendant l'aperçu), jamais un « refusé » muet.
+          const why = d?.freeBlocked
+            ? d.freeBlocked.violations.map(violationLabel).join(', ')
+            : 'aucune position valide sous le curseur';
+          layoutNoteEl.textContent = `Déplacement refusé : ${why} — rien n’a bougé.`;
+        }
       }
+      renderLayoutPanel();
       layoutDrag = null;
       ctx.layoutSel = null;
       map.dragPan.enable();
@@ -1751,8 +1940,31 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     if (!ctx.layoutMode || isObstacleMode() || !ctx.layoutState) return;
     setPanelHighlight(layoutPanelAt(e.point));
   });
-  map.on('mouseup', (e) => endLayoutDrag(e.point, true)); // clic sans glissé = supprimer (W88)
-                                                          // PV25 — un marquee en cours est committé par le même chemin.
+  map.on('mouseup', (e) => {
+    const hadGesture = !!layoutDrag || !!marquee;
+    endLayoutDrag(e.point, true); // clic sans glissé = supprimer (W88)
+                                  // PV25 — un marquee en cours est committé par le même chemin.
+    if (!hadGesture) clearSelectionOnEmptyClick(e.point);
+  });
+
+  /**
+   * PV31 — un CLIC sur le vide (aucun panneau saisi, aucun cadre en cours) EFFACE la
+   * sélection : le geste standard de tout éditeur, et le seul moyen évident de « lâcher »
+   * un groupe. Un GLISSÉ parti du vide reste un déplacement de carte et ne touche à rien.
+   */
+  function clearSelectionOnEmptyClick(point: maplibregl.Point) {
+    const press = emptyPress;
+    emptyPress = null;
+    if (!press) return;
+    if (!ctx.layoutMode || isObstacleMode() || !ctx.layoutState) return;
+    const dragged =
+      Math.abs(point.x - press.x) >= LAYOUT_GRAB_PX || Math.abs(point.y - press.y) >= LAYOUT_GRAB_PX;
+    if (dragged) return; // la carte a été déplacée : ce n'était pas un clic
+    if (!selection.length) return;
+    setSelection([]);
+    if (layoutNoteEl) layoutNoteEl.textContent = 'Sélection effacée.';
+    renderLayoutPanel();
+  }
 
   // W80 — TOUCH : glissé-déplacer au DOIGT, miroir du chemin souris, gardé par layoutMode
   // (via beginLayoutDrag). On ne saisit qu'à UN seul doigt (un pinch/zoom à deux doigts ne
@@ -1778,10 +1990,18 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
       longPressTimer = setTimeout(() => {
         longPressTimer = null;
         if (layoutDrag && !layoutDrag.moved && cell >= 0) {
+          const wasFreeGrab = !!layoutDrag.freeOrigin;
           layoutDrag = null;
           map.dragPan.enable();
           map.getCanvas().style.cursor = '';
-          removePanelInScene(cell);
+          // PV31 — la photo prise à la saisie n'a servi à rien (le doigt n'a pas bougé) :
+          // on la retire, la suppression reprend la sienne.
+          if (wasFreeGrab) freeHistory.drop();
+          // PV31 — en placement LIBRE, l'index saisi indexe la LISTE des panneaux libres,
+          // pas une cellule de lattice : l'appui long doit retirer le panneau LIBRE (le
+          // chemin lattice mutait silencieusement une occupation qui ne gouverne plus rien).
+          if (freeActive()) freeRemoveAt(cell);
+          else removePanelInScene(cell);
         }
       }, LONG_PRESS_MS);
     }
@@ -1794,7 +2014,10 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   });
   map.on('touchend', (e) => {
     cancelLongPress(); // tap bref / fin de glissé : pas de suppression par appui long
-    if (!layoutDrag && !marquee) return;
+    if (!layoutDrag && !marquee) {
+      clearSelectionOnEmptyClick(e.point); // PV31 — un tap dans le vide lâche la sélection
+      return;
+    }
     endLayoutDrag(e.point); // tactile : pas de suppression sur tap bref (removeOnTap=false)
   });
 

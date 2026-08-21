@@ -778,6 +778,9 @@ export default function DevisGenerator({
       totalSans: dTotals.totalSans,
       totalAvec: dTotals.totalAvec,
       batteryKwh: batteryKwhFromLines(dLines),
+      // Q1 (fondateur 20/08/2026) — lignes RÉELLES pour la provision de
+      // remplacement onduleur (prix TTC de la ligne, jamais 8 % forfaitaires).
+      lines: dLines,
       kwhPrice: quoteLogic.kwhPrice,
       efficiency: quoteLogic.efficiency,
       // QF5 — bascule sur le modèle « deux factures » par tranche (parité

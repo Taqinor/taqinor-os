@@ -348,15 +348,31 @@ class QW2SiteFieldsTests(TestCase):
         self.assertEqual(lead.visit_window_part, 'matin')
         self.assertEqual(lead.visit_window_week, 'cette_semaine')
 
-    def test_client_ref_persisted_and_garbage_rejected(self):
+    def test_client_ref_du_navigateur_est_provisoire_et_remplace(self):
+        """WREF2 — le code du navigateur ne s'écrit PLUS sur ``client_ref`` :
+        le serveur attribue « NOM-N ». Mais tant que l'écran de succès du
+        site AFFICHE le code provisoire (transfert fire-and-forget), c'est
+        LUI que le client dicte : il vit dans ``client_ref_provisoire``
+        (WREF2-PONT, migration 0077), retrouvable comme la référence serveur
+        — jamais perdu (payload brut + note de création aussi)."""
         res = self.post(payload_site(clientRef='AB12-CD34'))
         lead = Lead.objects.get(pk=res.json()['lead_id'])
-        self.assertEqual(lead.client_ref, 'AB12-CD34')
+        self.assertEqual(lead.client_ref, 'BENALI-1')
+        self.assertEqual(lead.client_ref_provisoire, 'AB12-CD34')
+        self.assertEqual(
+            WebsiteLeadPayload.objects.get(lead=lead).payload['clientRef'],
+            'AB12-CD34')
+        creation = LeadActivity.objects.get(
+            lead=lead, kind=LeadActivity.Kind.CREATION)
+        self.assertIn('BENALI-1', creation.body)
+        self.assertIn('AB12-CD34', creation.body)
 
+        # Code provisoire invalide (trop court, jamais mappé) : la référence
+        # serveur est attribuée exactement pareil.
         res2 = self.post(payload_site(
-            phoneE164='+212600000010', clientRef='a'))  # trop court
+            phoneE164='+212600000010', clientRef='a'))
         lead2 = Lead.objects.get(pk=res2.json()['lead_id'])
-        self.assertIsNone(lead2.client_ref)
+        self.assertEqual(lead2.client_ref, 'BENALI-2')
 
     def test_phone_is_foreign_persisted(self):
         res = self.post(payload_site(phoneIsForeign=True))
@@ -919,3 +935,240 @@ class SousSeuilTriageTests(TestCase):
         from .webhooks import CALLBACK_SOUS_SEUIL_MARKER
         self.assertFalse(LeadActivity.objects.filter(
             lead=lead, body__startswith=CALLBACK_SOUS_SEUIL_MARKER).exists())
+
+
+class WrefRechercheClientRefTests(TestCase):
+    """WREF (fondateur 21/08/2026) — le « TQ-XXXX » remis au client par le
+    site était STOCKÉ mais INTROUVABLE : aucune des trois recherches (liste
+    Leads, DRF ?search=, omnibox reporting) n'indexait ``client_ref``. Ces
+    tests épinglent les deux recherches serveur (la barre de la liste est
+    côté écran, épinglée dans ``stages.test.mjs``)."""
+
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+        self.company = Company.objects.create(
+            nom='Wref Test Co', slug='wref-test-co')
+        self.lead = Lead.objects.create(
+            company=self.company, nom='Alaoui', prenom='Karim',
+            client_ref='TQ-PKEA')
+        Lead.objects.create(company=self.company, nom='Bennani')
+        self.user = get_user_model().objects.create_user(
+            username='wref_user', password='x', role_legacy='responsable',
+            company=self.company)
+
+    def _api(self):
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import AccessToken
+        api = APIClient()
+        api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+        return api
+
+    def test_drf_search_retrouve_le_lead_par_client_ref(self):
+        res = self._api().get('/api/django/crm/leads/', {'search': 'TQ-PKEA'})
+        self.assertEqual(res.status_code, 200)
+        rows = res.json()
+        rows = rows.get('results', rows)
+        self.assertEqual([r['nom'] for r in rows], ['Alaoui'])
+
+    def test_omnibox_retrouve_le_lead_par_client_ref(self):
+        from apps.reporting.search import _spec_lead
+        _, _, qs, _ = _spec_lead({'company': self.company}, 'PKEA')
+        self.assertEqual(list(qs.values_list('nom', flat=True)), ['Alaoui'])
+
+    def test_le_code_provisoire_affiche_par_le_site_retrouve_aussi_le_lead(self):
+        """WREF2-PONT — le client dicte le code que le SITE lui a montré
+        (provisoire) : les deux recherches serveur le retrouvent."""
+        from apps.reporting.search import _spec_lead
+        Lead.objects.create(
+            company=self.company, nom='Rassam',
+            client_ref='RASSAM-1', client_ref_provisoire='TQ-ZW42')
+        res = self._api().get('/api/django/crm/leads/', {'search': 'TQ-ZW42'})
+        rows = res.json()
+        rows = rows.get('results', rows)
+        self.assertEqual([r['nom'] for r in rows], ['Rassam'])
+        _, _, qs, _ = _spec_lead({'company': self.company}, 'ZW42')
+        self.assertEqual(list(qs.values_list('nom', flat=True)), ['Rassam'])
+
+
+class Wref2SlugTests(TestCase):
+    """WREF2 (fondateur 21/08/2026) — règles du RADICAL de la référence.
+
+    Le code remis au client n'est plus tiré au hasard par le navigateur : il
+    part de SON nom, tel qu'il l'a tapé. Ces tests figent les arbitrages :
+    dernier mot du nom, accents dépliés, tout ce qui n'est pas A-Z jeté,
+    12 caractères max, et une cascade de replis explicite quand le nom ne
+    donne aucune lettre latine (jamais un radical inventé)."""
+
+    def test_dernier_mot_du_nom(self):
+        from .webhooks import client_ref_slug
+        # Le site capture un `fullName` unique : le NOM DE FAMILLE est le
+        # dernier mot — « El Amrani » donne AMRANI (le client se présente
+        # par « Amrani »), pas ELAMRANI.
+        self.assertEqual(client_ref_slug('Amina Benali'), 'BENALI')
+        self.assertEqual(client_ref_slug('Youssef El Amrani'), 'AMRANI')
+        self.assertEqual(client_ref_slug('Bennani'), 'BENNANI')
+
+    def test_accents_deplies_et_caracteres_non_az_jetes(self):
+        from .webhooks import client_ref_slug
+        self.assertEqual(client_ref_slug('Zoubir Benâli'), 'BENALI')
+        self.assertEqual(client_ref_slug('Éric Lefèvre'), 'LEFEVRE')
+        self.assertEqual(client_ref_slug("Sara O'Brien"), 'OBRIEN')
+        self.assertEqual(client_ref_slug('Ali Ben-Jelloun'), 'BENJELLOUN')
+
+    def test_tronque_a_douze_caracteres(self):
+        from .webhooks import client_ref_slug
+        self.assertEqual(
+            client_ref_slug('Sara Abderrahmanioui'), 'ABDERRAHMANI')
+
+    def test_replis_quand_le_dernier_mot_ne_donne_aucune_lettre(self):
+        from .webhooks import client_ref_slug
+        # Dernier mot sans lettre latine → repli sur le nom entier recollé.
+        self.assertEqual(client_ref_slug('Mohamed أمين'), 'MOHAMED')
+        self.assertEqual(client_ref_slug('Karim Alaoui 2'), 'KARIMALAOUI')
+        # Nom entièrement en écriture arabe → repli sur le prénom, puis LEAD.
+        self.assertEqual(client_ref_slug('أمين', 'Karim'), 'KARIM')
+        self.assertEqual(client_ref_slug('أمين'), 'LEAD')
+        self.assertEqual(client_ref_slug(''), 'LEAD')
+        self.assertEqual(client_ref_slug(None), 'LEAD')
+        # Le nom de repli posé par le mapping quand le site n'envoie pas de
+        # `fullName` ne doit jamais produire un radical « WEB ».
+        self.assertEqual(client_ref_slug('Lead site web'), 'LEAD')
+
+
+@override_settings(WEBSITE_LEAD_WEBHOOK_SECRET=SECRET)
+class Wref2ReferenceServeurTests(TestCase):
+    """WREF2 — la référence client est ATTRIBUÉE PAR LE SERVEUR à la création.
+
+    Format « NOM-N » : radical du nom (cf. ``Wref2SlugTests``) + compteur en
+    chiffres, unique par (société, radical). Le « TQ-XXXX » du navigateur
+    redevient un simple code PROVISOIRE, conservé dans le payload brut."""
+
+    def setUp(self):
+        self.company = Company.objects.create(
+            nom='Wref2 Co', slug='wref2-co')
+        self.url = reverse('website-lead-webhook')
+
+    def post(self, data, secret=SECRET):
+        headers = {'HTTP_X_WEBHOOK_SECRET': secret} if secret is not None else {}
+        return self.client.post(
+            self.url, data=json.dumps(data),
+            content_type='application/json', **headers)
+
+    def test_reference_attribuee_a_la_creation_et_renvoyee(self):
+        res = self.post(payload_site(
+            fullName='Youssef El Amrani', clientRef='TQ-PKEA'))
+        self.assertEqual(res.status_code, 201, res.content)
+        self.assertEqual(res.json()['client_ref'], 'AMRANI-1')
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertEqual(lead.client_ref, 'AMRANI-1')
+        # Le code provisoire du navigateur n'est PAS la référence de la fiche,
+        # mais il n'est pas perdu : il reste dans le payload brut.
+        self.assertEqual(
+            WebsiteLeadPayload.objects.get(lead=lead).payload['clientRef'],
+            'TQ-PKEA')
+
+    def test_compteur_par_nom(self):
+        r1 = self.post(payload_site(
+            fullName='Youssef El Amrani', phoneE164='+212600000001'))
+        r2 = self.post(payload_site(
+            fullName='Salma Amrani', phoneE164='+212600000002'))
+        r3 = self.post(payload_site(
+            fullName='Hind Bennani', phoneE164='+212600000003'))
+        self.assertEqual(
+            [r.json()['client_ref'] for r in (r1, r2, r3)],
+            ['AMRANI-1', 'AMRANI-2', 'BENNANI-1'])
+
+    def test_compteur_isole_par_societe(self):
+        r1 = self.post(payload_site(
+            fullName='Salma Amrani', phoneE164='+212600000001'))
+        autre = Company.objects.create(nom='Wref2 Autre', slug='wref2-autre')
+        with override_settings(WEBSITE_LEADS_COMPANY_ID=autre.pk):
+            r2 = self.post(payload_site(
+                fullName='Salma Amrani', phoneE164='+212600000002'))
+        self.assertEqual(r1.json()['client_ref'], 'AMRANI-1')
+        self.assertEqual(r2.json()['client_ref'], 'AMRANI-1')
+        self.assertEqual(
+            Lead.objects.get(pk=r2.json()['lead_id']).company, autre)
+
+    def test_plus_haut_utilise_plus_un_jamais_count_plus_un(self):
+        # Une seule fiche AMRANI en base, mais elle porte déjà le n° 7 (les
+        # 1-6 ont été supprimées) : `count()+1` donnerait AMRANI-2 et
+        # entrerait en collision. La règle du dépôt est plus-haut-utilisé+1.
+        Lead.objects.create(
+            company=self.company, nom='Salma Amrani', client_ref='AMRANI-7')
+        # Queues non purement numériques et radicaux voisins : ignorés.
+        Lead.objects.create(
+            company=self.company, nom='X', client_ref='AMRANI-9B')
+        Lead.objects.create(
+            company=self.company, nom='Y', client_ref='AMRANIBIS-12')
+        res = self.post(payload_site(fullName='Salma Amrani'))
+        self.assertEqual(res.json()['client_ref'], 'AMRANI-8')
+
+    def test_une_reference_mise_a_la_corbeille_n_est_jamais_re_donnee(self):
+        # Soft-delete : la fiche sort du manager par défaut mais sa ligne (et
+        # sa référence, restaurable) reste. Le compteur doit la voir, sinon
+        # deux clients repartent avec « AMRANI-1 ».
+        r1 = self.post(payload_site(
+            fullName='Salma Amrani', phoneE164='+212600000001'))
+        lead1 = Lead.objects.get(pk=r1.json()['lead_id'])
+        self.assertEqual(lead1.client_ref, 'AMRANI-1')
+        lead1.soft_delete()
+        self.assertFalse(Lead.objects.filter(pk=lead1.pk).exists())
+        r2 = self.post(payload_site(
+            fullName='Salma Amrani', phoneE164='+212600000002'))
+        self.assertEqual(r2.json()['client_ref'], 'AMRANI-2')
+
+    def test_rejeu_moins_de_60s_ne_reattribue_jamais_la_reference(self):
+        r1 = self.post(payload_site(
+            fullName='Salma Amrani', clientRef='TQ-AAAA'))
+        lead = Lead.objects.get(pk=r1.json()['lead_id'])
+        self.assertEqual(lead.client_ref, 'AMRANI-1')
+        # MÊME soumission renvoyée (même téléphone, < 60 s) avec un AUTRE code
+        # provisoire : la fiche est complétée, la référence reste la sienne.
+        r2 = self.post(payload_site(
+            fullName='Salma Amrani', clientRef='TQ-BBBB', city='Rabat'))
+        self.assertEqual(r2.status_code, 200, r2.content)
+        self.assertEqual(r2.json()['lead_id'], lead.pk)
+        self.assertEqual(r2.json()['client_ref'], 'AMRANI-1')
+        lead.refresh_from_db()
+        self.assertEqual(lead.client_ref, 'AMRANI-1')
+        self.assertEqual(lead.ville, 'Rabat')
+        self.assertEqual(Lead.objects.count(), 1)
+
+    def test_nom_non_latin_replie_sur_LEAD(self):
+        r1 = self.post(payload_site(
+            fullName='أمين', phoneE164='+212600000001'))
+        r2 = self.post(payload_site(fullName='', phoneE164='+212600000002'))
+        self.assertEqual(
+            [r.json()['client_ref'] for r in (r1, r2)], ['LEAD-1', 'LEAD-2'])
+
+    def test_note_de_creation_porte_les_deux_codes(self):
+        res = self.post(payload_site(
+            fullName='Salma Amrani', clientRef='TQ-PKEA'))
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        creation = LeadActivity.objects.get(
+            lead=lead, kind=LeadActivity.Kind.CREATION)
+        self.assertIn('site web', creation.body)
+        self.assertIn('AMRANI-1', creation.body)
+        self.assertIn('TQ-PKEA', creation.body)
+
+    def test_drf_search_retrouve_le_lead_par_reference_serveur(self):
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import AccessToken
+        self.post(payload_site(
+            fullName='Salma Amrani', phoneE164='+212600000001'))
+        self.post(payload_site(
+            fullName='Hicham Amrani', phoneE164='+212600000002'))
+        user = get_user_model().objects.create_user(
+            username='wref2_user', password='x', role_legacy='responsable',
+            company=self.company)
+        api = APIClient()
+        api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+        res = api.get('/api/django/crm/leads/', {'search': 'AMRANI-2'})
+        self.assertEqual(res.status_code, 200)
+        rows = res.json()
+        rows = rows.get('results', rows)
+        self.assertEqual([r['nom'] for r in rows], ['Hicham Amrani'])

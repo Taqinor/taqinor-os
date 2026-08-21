@@ -30,8 +30,11 @@ import hashlib
 import hmac
 import json
 import logging
+import re
+import unicodedata
 
 from django.conf import settings
+from django.db import IntegrityError, transaction
 from django.http import JsonResponse
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -795,13 +798,16 @@ def _map_payload_to_fields(data: dict) -> dict:
         Lead.VisitWindowWeek.values)
     if visit_window_week is not None:
         fields['visit_window_week'] = visit_window_week
-    # Référence courte générée côté client — anti-garbage minimal (le format
-    # émis par buildClientRef() côté site : lettres/chiffres/tirets, 4-24).
+    # Référence courte PROVISOIRE générée côté client (buildClientRef(),
+    # « TQ-XXXX ») — anti-garbage minimal (lettres/chiffres/tirets, 4-24).
+    # WREF2 : elle n'est plus la référence de la fiche. `_map_and_link_lead`
+    # la RETIRE de ce dict et lui substitue la référence attribuée par le
+    # serveur (voir `assign_client_ref`) ; elle reste tracée dans le payload
+    # brut (WebsiteLeadPayload.payload) et dans la note de création.
     client_ref_raw = data.get('clientRef') or data.get('client_ref')
     if client_ref_raw:
         candidate = str(client_ref_raw).strip()[:24]
-        import re as _re_ref
-        if _re_ref.match(r'^[A-Za-z0-9-]{4,24}$', candidate):
+        if re.match(r'^[A-Za-z0-9-]{4,24}$', candidate):
             fields['client_ref'] = candidate
     # Diaspora/MRE : numéro E.164 étranger (indicatif ≠ 212).
     if 'phoneIsForeign' in data or 'phone_is_foreign' in data:
@@ -868,6 +874,145 @@ def _map_payload_to_fields(data: dict) -> dict:
     if _is_sous_seuil(data):
         fields['tags'] = SOUS_SEUIL_TAG
     return fields
+
+
+# ── WREF2 (fondateur 21/08/2026) — RÉFÉRENCE CLIENT ATTRIBUÉE PAR LE SERVEUR ──
+#
+# Le code remis au client n'est plus le « TQ-XXXX » tiré au hasard par le
+# navigateur : c'est « NOM-N » — le nom de famille tel qu'il l'a tapé, suivi
+# d'un compteur en chiffres, attribué ICI à la création du lead.
+#   · pas de préfixe de marque (le client dit son nom, pas notre marque) ;
+#   · suffixe UNIQUEMENT numérique (zéro ambiguïté à l'oral : pas de O/0, I/1) ;
+#   · unique par (société, radical de nom) — « BENALI-1 » et « AMRANI-1 »
+#     coexistent, et deux sociétés locataires ont chacune leur compteur.
+# Le téléphone reste la CLÉ DE RAPPROCHEMENT primaire (dédup, garde anti-rejeu) ;
+# cette référence est la clé de secours HUMAINE (dictée sur WhatsApp/au comptoir).
+CLIENT_REF_SLUG_MAX = 12
+CLIENT_REF_FALLBACK_SLUG = 'LEAD'
+#: Réessais sur course (même discipline que `core.numbering.MAX_ATTEMPTS`).
+CLIENT_REF_MAX_ATTEMPTS = 5
+#: Nom de repli posé par `_map_payload_to_fields` quand le site n'a pas de
+#: `fullName` — jamais un nom de famille, donc jamais un radical « WEB ».
+_CLIENT_REF_PLACEHOLDER_NOM = 'lead site web'
+
+
+def _slugify_ref_part(raw):
+    """Radical A-Z d'un morceau de nom : accents dépliés, tout le reste jeté.
+
+    « Benâli » → BENALI, « O'Brien » → OBRIEN, « El-Amrani » → ELAMRANI,
+    « أمين » → '' (l'écriture arabe ne se translittère pas ici : on rend une
+    chaîne vide et l'appelant passe au repli suivant — jamais un radical
+    inventé). Tronqué à ``CLIENT_REF_SLUG_MAX`` pour rester dictable.
+    """
+    if not raw:
+        return ''
+    deplie = ''.join(
+        c for c in unicodedata.normalize('NFKD', str(raw))
+        if not unicodedata.combining(c)
+    )
+    return re.sub(r'[^A-Z]', '', deplie.upper())[:CLIENT_REF_SLUG_MAX]
+
+
+def client_ref_slug(nom, prenom=''):
+    """Radical de la référence = le NOM DE FAMILLE tel que le client l'a tapé.
+
+    Règle retenue : le DERNIER mot de ``nom`` (le site capture un `fullName`
+    unique, « Amina Benali » → BENALI ; « Youssef El Amrani » → AMRANI, jamais
+    ELAMRANI — le client se présente par « Amrani », pas par sa particule).
+    Replis successifs, dans l'ordre, dès qu'un candidat ne donne aucune lettre
+    latine : le ``nom`` entier recollé (« Mohamed أمين » → MOHAMED), puis le
+    dernier mot du ``prenom``, puis le ``prenom`` entier, puis
+    ``CLIENT_REF_FALLBACK_SLUG`` (nom en écriture non latine, nom vide).
+    """
+    nom = (nom or '').strip()
+    if nom.lower() == _CLIENT_REF_PLACEHOLDER_NOM:
+        nom = ''
+    candidats = []
+    for source in (nom, (prenom or '').strip()):
+        if not source:
+            continue
+        mots = source.split()
+        if mots:
+            candidats.append(mots[-1])
+        candidats.append(source)
+    for candidat in candidats:
+        slug = _slugify_ref_part(candidat)
+        if slug:
+            return slug
+    return CLIENT_REF_FALLBACK_SLUG
+
+
+def _next_client_ref(company, slug):
+    """« SLUG-N » avec N = PLUS HAUT NUMÉRO UTILISÉ + 1 pour cette société.
+
+    JAMAIS ``count()+1`` (règle du dépôt, cf. `core.numbering` : le compte
+    rétrécit quand une fiche est supprimée et deux fiches se retrouvent avec
+    le même code). On lit les références déjà posées qui commencent par
+    « SLUG- », on ne retient que celles de la forme EXACTE ``^SLUG-\\d+$``
+    (« AMRANI-9B » ne doit pas faire avancer le compteur) et on prend le
+    maximum des queues numériques.
+
+    Lecture sur ``all_objects`` (et non ``objects``) : ``Lead`` est en
+    soft-delete — une fiche mise à la corbeille SORT du manager par défaut
+    mais sa ligne, et donc sa référence, existent toujours (et peuvent être
+    restaurées). La compter permettrait de re-donner « AMRANI-3 » à un second
+    client : c'est la même collision que ``count()+1``, par une autre porte.
+    """
+    queue_re = re.compile(rf'^{re.escape(slug)}-(\d+)$')
+    plus_haut = 0
+    refs = (
+        Lead.all_objects
+        .filter(company=company, client_ref__startswith=f'{slug}-')
+        .values_list('client_ref', flat=True)
+    )
+    for ref in refs:
+        m = queue_re.match(ref or '')
+        if m:
+            plus_haut = max(plus_haut, int(m.group(1)))
+    return f'{slug}-{plus_haut + 1}'
+
+
+def assign_client_ref(lead):
+    """Attribue et PERSISTE la référence serveur du lead ; la renvoie.
+
+    Même discipline que la numérotation des documents (`core.numbering`) :
+    plus-haut-utilisé+1, dans un savepoint (``transaction.atomic``), avec
+    quelques réessais. Différence ASSUMÉE et documentée : ``Lead.client_ref``
+    n'a PAS de contrainte d'unicité en base, donc aucune ``IntegrityError`` ne
+    viendra arbitrer une vraie course. Poser cette contrainte serait un pari
+    sur des données existantes qu'on ne contrôle pas (les anciens « TQ-XXXX »
+    tirés au hasard par le navigateur PEUVENT déjà être en double en base — 4
+    caractères d'entropie) : une migration qui pose une contrainte unique
+    échouerait alors en production sur des lignes historiques. On garde donc
+    l'algorithme + le re-contrôle d'existence DANS le savepoint (fenêtre de
+    course réduite à quelques millisecondes) et on assume le résidu : deux
+    homonymes qui soumettent EXACTEMENT en même temps peuvent partager un
+    numéro. C'est une clé de secours humaine — le téléphone reste la clé de
+    rapprochement, et la garde d'idempotence QW10 couvre déjà le cas fréquent
+    (la MÊME soumission renvoyée).
+    """
+    slug = client_ref_slug(lead.nom, lead.prenom)
+    derniere_exc = None
+    for _ in range(CLIENT_REF_MAX_ATTEMPTS):
+        candidat = _next_client_ref(lead.company, slug)
+        try:
+            with transaction.atomic():
+                deja_pris = (
+                    Lead.all_objects
+                    .filter(company=lead.company, client_ref=candidat)
+                    .exclude(pk=lead.pk)
+                    .exists()
+                )
+                if deja_pris:
+                    continue
+                lead.client_ref = candidat
+                lead.save(update_fields=['client_ref'])
+            return candidat
+        except IntegrityError as exc:  # pragma: no cover — sans contrainte unique
+            derniere_exc = exc
+    if derniere_exc is not None:
+        raise derniere_exc
+    return lead.client_ref
 
 
 def _owners_habilites(company, owner_ids):
@@ -1043,6 +1188,23 @@ def _map_and_link_lead(raw, data, company):
     anti-rejeu < 60 s (même téléphone + source site web) — c'est la même
     soumission qui revient, pas un visiteur revenant."""
     fields = _map_payload_to_fields(data)
+    # WREF2 — le « TQ-XXXX » du navigateur est PROVISOIRE : il ne s'écrit
+    # jamais sur la fiche. On le sort du dict AVANT toute écriture, ce qui
+    # garantit les deux moitiés de la règle : (a) à la création, c'est
+    # `assign_client_ref` qui pose « NOM-N » ; (b) sur le chemin anti-rejeu
+    # < 60 s, le renvoi de la MÊME soumission ne peut PAS réattribuer ni
+    # écraser la référence déjà donnée au client. Le code provisoire reste
+    # conservé tel quel dans le payload brut (WebsiteLeadPayload.payload) et
+    # rappelé dans la note de création.
+    # WREF2-PONT — tant que l'écran de succès du site ne peut pas afficher la
+    # référence SERVEUR (le transfert est volontairement fire-and-forget,
+    # zéro-perte — option B en attente d'un GO fondateur), le client ne
+    # connaît QUE ce code provisoire : il doit donc rester RETROUVABLE.
+    # Champ dédié + indexé par les trois recherches, jamais silencieusement
+    # perdu — sinon on recrée exactement le bug fondateur d'origine.
+    provisional_ref = fields.pop('client_ref', None)
+    if provisional_ref:
+        fields['client_ref_provisoire'] = provisional_ref
     telephone = fields.get('telephone') or ''
     email = fields.get('email') or ''
     # Le TRI promis au site (capture-lead.ts : « le récepteur accepte le
@@ -1153,10 +1315,28 @@ def _map_and_link_lead(raw, data, company):
                 'owner', default_responsable_for(company, lead_attrs=fields))
         lead = Lead.objects.create(company=company, **fields)
         created = True
+        # WREF2 — référence client attribuée par le SERVEUR, immédiatement
+        # après la création (avant la note de création, pour que celle-ci la
+        # porte). Best-effort comme tous les blocs de cette fonction : une
+        # attribution en échec laisse la fiche SANS référence (état déjà
+        # possible aujourd'hui) mais ne remet JAMAIS le lead en cause.
+        server_ref = None
+        try:
+            server_ref = assign_client_ref(lead)
+        except Exception as _exc:  # noqa: BLE001 — le lead prime sur son code
+            logger.warning(
+                'website_lead_webhook: référence client non attribuée '
+                '(lead #%s) : %s', lead.pk, _exc)
+        creation_body = 'Lead créé via le site web'
+        if server_ref:
+            creation_body += f' — référence client : {server_ref}'
+        if provisional_ref and provisional_ref != server_ref:
+            creation_body += (
+                f' (code provisoire affiché au visiteur : {provisional_ref})')
         LeadActivity.objects.create(
             company=lead.company, lead=lead, user=None,
             kind=LeadActivity.Kind.CREATION,
-            body='Lead créé via le site web',
+            body=creation_body,
         )
         # QJ2 (a) — speed-to-lead : notifie le owner dès la création (voit
         # déjà l'owner hérité ci-dessus s'il y en a un — jamais un round-robin
@@ -1379,7 +1559,13 @@ def website_lead_webhook(request):
         # clés qu'il ne connaît pas) : ils disent au clair qu'un lead au même
         # téléphone/e-mail existe déjà, et si c'est très probablement le même
         # client — sans que RIEN n'ait été fusionné.
-        body = {'detail': detail, 'lead_id': lead.pk, 'payload_id': raw.pk}
+        # WREF2 — `client_ref` est ADDITIF lui aussi : la référence « NOM-N »
+        # attribuée par le serveur est renvoyée à l'émetteur pour qu'il puisse
+        # (le jour où son transfert n'est plus en arrière-plan) l'afficher au
+        # client à la place du code provisoire. Peut être ``null`` : émetteur
+        # sans nom exploitable, ou attribution en échec (best-effort ci-dessus).
+        body = {'detail': detail, 'lead_id': lead.pk, 'payload_id': raw.pk,
+                'client_ref': lead.client_ref}
         body.update(extra)
         return JsonResponse(body, status=201 if created else 200)
     except Exception as exc:  # noqa: BLE001 — la donnée brute prime

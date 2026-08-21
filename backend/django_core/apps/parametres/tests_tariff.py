@@ -205,6 +205,74 @@ class RoiTest(TestCase):
         self.assertIsNone(r['payback_annees'])
 
 
+# ── ROI « deux factures » — le modèle MARGINAL doit être super-linéaire ───────
+class RoiTwoBillsMarginalModelTest(TestCase):
+    """N64 — ``compute_roi`` valorise l'économie via facture SANS − facture
+    AVEC solaire (mois par mois), PAS autoconsommée × prix moyen (l'ancien
+    calcul flat). Ces deux tests pincent l'effet SUPER-LINÉAIRE du barème
+    ONEE sélectif : redescendre sous une marche re-tarife TOUT le mois
+    restant, pas seulement les kWh effacés."""
+
+    def setUp(self):
+        self.s = TariffSettings.get(company=_company())
+
+    def test_top_of_high_month_beats_bottom_tranche_price(self):
+        # Conso 700 kWh/mois → SÉLECTIF, palier ouvert (>510, 1.622856
+        # MAD/kWh). On autoconsomme 50 kWh/mois (kwc=1, productible=600
+        # kWh/kWc/an → prod annuelle 600 = 50/mois à 100 % d'autoconso :
+        # AUCUN franchissement de marche, 700-50=650 reste >510).
+        #
+        # facture_sans = 700 × 1.622856 = 1135.9992 → 1136.00 (arrondi cent).
+        # facture_avec = 650 × 1.622856 = 1054.8564 → 1054.86.
+        # économie/mois = 1136.00 − 1054.86 = 81.14 → économie/an = 973.68.
+        #
+        # Même SANS franchir de marche, le prix marginal utilisé est celui du
+        # palier ATTEINT (1.622856), très au-dessus du prix du bas de barème
+        # (0.916272) : l'économie annuelle doit largement dépasser
+        # autoconsommée_annuelle(600) × prix_bas_de_barème = 549.7632 MAD —
+        # la valorisation n'est jamais celle du premier kWh, mais celle du
+        # kWh RÉELLEMENT évité en haut de facture.
+        r = tariff_service.compute_roi(
+            self.s, kwc=1, conso_mensuelle_kwh=700, cout_total_ttc=50000,
+            autoconsommation_pct=100, productible_kwh_kwc=600)
+        self.assertEqual(r['production_annuelle_kwh'], Decimal('600.00'))
+        self.assertEqual(r['autoconsommee_kwh'], Decimal('600.00'))
+        self.assertEqual(r['surplus_kwh'], Decimal('0.00'))
+        self.assertEqual(r['economie_annuelle_ttc'], Decimal('973.68'))
+        bottom_tranche_estimate = Decimal('600') * Decimal('0.916272')
+        self.assertGreater(
+            r['economie_annuelle_ttc'], bottom_tranche_estimate)
+
+    def test_dropping_below_selective_threshold_reprices_whole_month(self):
+        # Conso 200 kWh/mois → SÉLECTIF, tranche 151-210 (1.091388 MAD/kWh,
+        # tout le mois à ce tarif unique). On autoconsomme 100 kWh/mois
+        # (kwc=1, productible=1200 kWh/kWc/an → prod annuelle 1200 = 100/mois
+        # à 100 % d'autoconso) : le résiduel 200-100=100 kWh repasse SOUS le
+        # seuil sélectif (150) → PROGRESSIF, entièrement dans le 1er palier
+        # (0-100, 0.916272).
+        #
+        # facture_sans = 200 × 1.091388 = 218.2776 → 218.28.
+        # facture_avec = 100 × 0.916272 = 91.6272 → 91.63.
+        # économie/mois = 218.28 − 91.63 = 126.65 → économie/an = 1519.80.
+        #
+        # Comparaison à l'estimation NAÏVE « même tranche » (les 100 kWh
+        # effacés valorisés au prix de LEUR tranche d'origine 1.091388, sans
+        # tenir compte du fait que TOUT le mois retombe à un tarif plus bas) :
+        # 1200 × 1.091388 = 1309.6656 MAD. L'économie réelle (1519.80) est
+        # SUPÉRIEURE : c'est l'effet « saut sélectif » — tout le mois
+        # restant, pas seulement les kWh effacés, change de tarif.
+        r = tariff_service.compute_roi(
+            self.s, kwc=1, conso_mensuelle_kwh=200, cout_total_ttc=20000,
+            autoconsommation_pct=100, productible_kwh_kwc=1200)
+        self.assertEqual(r['production_annuelle_kwh'], Decimal('1200.00'))
+        self.assertEqual(r['autoconsommee_kwh'], Decimal('1200.00'))
+        self.assertEqual(r['surplus_kwh'], Decimal('0.00'))
+        self.assertEqual(r['economie_annuelle_ttc'], Decimal('1519.80'))
+        same_tranche_naive_estimate = Decimal('1200') * Decimal('1.091388')
+        self.assertGreater(
+            r['economie_annuelle_ttc'], same_tranche_naive_estimate)
+
+
 # ── PVGIS — repli hors-ligne (jamais de réseau dans les tests) ────────────────
 class PvgisFallbackTest(TestCase):
     def setUp(self):

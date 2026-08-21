@@ -1945,6 +1945,15 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "sans_ok": bool(sans_ok),
         "avec_ok": bool(avec_ok),
         "deux_options": bool(deux_options),
+        # COURBES (21/08/2026) — capacité batterie TOTALE (kWh) de l'option
+        # « avec », PUBLIÉE : c'est EXACTEMENT le chiffre que la simulation
+        # utilise déjà en interne (ligne batterie × capacité lue, défaut
+        # fondateur 5 kWh quand la désignation ne l'écrit pas — cf.
+        # `_battery_kwh_from_items`). Clé ADDITIVE en lecture seule : aucun
+        # calcul d'argent n'en dépend, elle sert au graphe journalier de la
+        # proposition. None quand l'option « avec » ne porte aucun stockage.
+        "batterie_kwh_total": (_battery_kwh_from_items(avec_items, _blob)
+                               or None),
         "all_items": all_items,
         "onepage_note_batterie": onepage_note_batterie,
         # M4 — branche ('sans' | 'avec') dont proviennent les lignes du format

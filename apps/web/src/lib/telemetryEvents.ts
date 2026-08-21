@@ -44,10 +44,12 @@
 
 /**
  * Identifiants d'étape du parcours /devis/mon-toit — MIROIR exact de
- * `FUNNEL_STEP_IDS` (lib/funnelBeacon.ts, WJ59) : les 4 VRAIES étapes de
- * l'assistant (Votre toit → Votre facture → Votre estimation → contact/porte
- * de conversion). Ne JAMAIS ajouter un id ici qui ne correspond à aucune
- * étape réelle de l'assistant.
+ * `FUNNEL_STEP_IDS` (lib/funnelBeacon.ts, WJ59) : les 4 JALONS du parcours.
+ * COUPE FONDATEUR 21/08/2026 — l'assistant n'a plus que DEUX écrans, mais le
+ * vocabulaire télémétrique est CONSERVÉ par re-projection (comparabilité des
+ * séries) : `toit` = écran 0 ; `facture` = écran 1 avant révélation ;
+ * `estimation` = écran 1 après « Voir mon estimation » ; `contact` inchangé.
+ * Ne JAMAIS ajouter un id ici qui ne correspond à aucun jalon réel.
  */
 export const TELEMETRY_STEP_IDS = ['toit', 'facture', 'estimation', 'contact'] as const;
 export type TelemetryStepId = (typeof TELEMETRY_STEP_IDS)[number];

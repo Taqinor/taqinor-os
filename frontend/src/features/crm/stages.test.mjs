@@ -100,6 +100,16 @@ test('filterLeads : texte libre, canal, responsable, priorité, tag', () => {
   assert.equal(filterLeads(leads, EMPTY_FILTERS).length, 2)
 })
 
+test('WREF — la référence client du site retrouve le lead', () => {
+  const leads = [
+    { id: 1, stage: 'NEW', nom: 'Alaoui', client_ref: 'TQ-PKEA' },
+    { id: 2, stage: 'NEW', nom: 'Bennani' },
+  ]
+  // Le code remis au client sur l'écran de succès du site (casse indifférente).
+  assert.deepEqual(filterLeads(leads, { q: 'tq-pkea' }).map((l) => l.id), [1])
+  assert.deepEqual(filterLeads(leads, { q: 'PKEA' }).map((l) => l.id), [1])
+})
+
 test('VX224 : filterLeads — toggle « Mes leads » (mesLeads) scope à myUsername', () => {
   const leads = [
     { id: 1, stage: 'NEW', nom: 'Alaoui', owner_nom: 'meryem' },

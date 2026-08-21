@@ -108,12 +108,16 @@ describe('WJ17 — mon-toit.astro : le toggle WJ33 reste la référence + couvre
     expect(MON_TOIT).toContain('data-fr="Voir les panneaux sur votre toit" data-ar="مشاهدة الألواح على سطحك"');
   });
 
-  it("l'ombrage — seule question conservée sous la facture — reste AR-labellé", () => {
-    // L'étage « Affiner mon estimation (facultatif, 1 minute) » et ses deux
-    // autres accordéons ont quitté le tunnel (coupe fondateur 18/08) : seul
-    // l'ombrage remonte dans la carte facture, et il garde sa paire FR/AR.
-    expect(MON_TOIT).toContain('data-fr="Ombrage sur le toit" data-ar="التظليل على السطح"');
+  it("l'étage de précision a entièrement quitté le tunnel — et la carte facture reste AR-labellée", () => {
+    // L'étage « Affiner mon estimation (facultatif, 1 minute) » et ses trois
+    // accordéons ont quitté le tunnel (coupe fondateur 18/08) ; l'ombrage, son
+    // dernier rescapé, est parti à son tour le 21/08 (ordre fondateur) — aucun
+    // tunnel solaire de référence ne pose la question en amont.
     expect(MON_TOIT).not.toContain('Affiner mon estimation');
+    expect(MON_TOIT).not.toContain('data-fr="Ombrage sur le toit"');
+    // Ce qui RESTE sous la facture garde sa paire FR/AR : le toggle dual-node
+    // doit continuer de couvrir la carte facture après la coupe.
+    expect(MON_TOIT).toContain('data-fr="Facture mensuelle exacte (MAD)" data-ar="الفاتورة الشهرية الدقيقة (درهم)"');
   });
 
   it('applyLang pilote dir/lang document + une hauteur de ligne AR plus généreuse', () => {

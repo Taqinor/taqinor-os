@@ -31,19 +31,24 @@ describe('WJ16 — profils horaires normalisés', () => {
     expect(consumptionProfile(20)).toBeGreaterThan(consumptionProfile(15));
   });
 
-  // WJ119 — la double-gaussienne générique a été remplacée par BASELINE_SHAPE
-  // (applianceConsumption.ts, silhouette marocaine soirée-dominante, pic
-  // 19h-21h ≈26 % de l'énergie) : on épingle deux valeurs précises qui n'ont de
-  // sens QUE pour cette forme (repli residentiel/normal, rétro-compatible sans
-  // options), pour qu'une régression vers l'ancienne courbe soit détectée.
-  it('consumptionProfile — repli résidentiel/normal porte BASELINE_SHAPE (WJ119)', () => {
-    // 20h est le maximum de BASELINE_SHAPE (2.4) → normalisé à 1 exactement.
+  // WJ119 — la double-gaussienne générique a été remplacée par une silhouette
+  // marocaine soirée-dominante. CJ1 — ce repli n'est plus l'unique
+  // `BASELINE_SHAPE` mais la silhouette d'occupation « présence partielle »
+  // (dayProfiles.OCCUPANCY_SHAPES), le milieu honnête des trois quand le
+  // backend n'a rien dit. On épingle deux valeurs précises qui n'ont de sens
+  // QUE pour cette forme, pour qu'une régression soit détectée.
+  it('consumptionProfile — repli résidentiel/normal = silhouette « présence partielle » (CJ1)', () => {
+    // 20h est le maximum de la silhouette (2.2) → normalisé à 1 exactement.
     expect(consumptionProfile(20)).toBeCloseTo(1, 9);
-    // 13h (poids 1.0) / 20h (poids 2.4) = 0.41666… — signature de la forme portée,
+    // 13h (poids 1.1) / 20h (poids 2.2) = 0.5 — signature de la forme portée,
     // très différente du plateau ~1.0 (clampé) que rendait l'ancienne gaussienne.
-    expect(consumptionProfile(13)).toBeCloseTo(1 / 2.4, 6);
+    expect(consumptionProfile(13)).toBeCloseTo(1.1 / 2.2, 6);
     // Appel sans options === repli explicite { mode: 'residentiel', variant: 'normal' }.
     expect(consumptionProfile(20)).toBe(consumptionProfile(20, { mode: 'residentiel', variant: 'normal' }));
+    // …et ce repli est bien « présence partielle », jamais un quatrième profil.
+    expect(consumptionProfile(13)).toBe(
+      consumptionProfile(13, { mode: 'residentiel', occupancy: 'presence_partielle' }),
+    );
   });
 
   // PACT-battery (2026-08-15) — consumptionShapeHours est la SEULE fonction qui
@@ -80,6 +85,29 @@ describe('WJ16 — rendu SVG', () => {
     expect(out.svg).toContain('<svg');
     expect(out.svg).toContain('kWh');
     expect(out.svg).not.toContain('année type');
+    // CJ1 — sans bloc backend servi, le repli reste la cloche sin² + prod/365.
+    expect(out.hasServedShape).toBe(false);
+    expect(out.hasRealConsScale).toBe(false);
+  });
+
+  // CJ1 — LE DÉFAUT D'UNITÉ CORRIGÉ : un « pic » est une PUISSANCE. Le repli
+  // annuel affichait « pic ≈ 14,3 kWh » — la même valeur, avec la mauvaise
+  // unité. Ce test vaut sur le chemin de repli comme sur le chemin servi.
+  it('le repère de pointe est libellé en kW, JAMAIS en kWh (repli annuel compris)', () => {
+    const out = renderYearCurve(10000);
+    // Le <text> visible du repère (le seul endroit où le client LIT le pic).
+    const peakText = out.svg.match(/>pic ≈ ([^<]*)</)?.[1] ?? '';
+    expect(peakText).toContain('kW');
+    expect(peakText).not.toContain('kWh');
+    // …et l'attribut tap-to-reveal qui reprend le même libellé.
+    const peakAttr = out.svg.match(/data-peak="([^"]*)"/)?.[1] ?? '';
+    expect(peakAttr).toContain('kW');
+    expect(peakAttr).not.toContain('kWh');
+    // La valeur elle-même n'a pas changé : seule son unité est enfin juste
+    // (moyenne journalière / 4,6 h équivalent pleine puissance).
+    const dailyAvg = 10000 / 365;
+    const expected = (Math.round((dailyAvg / 4.6) * 10) / 10).toString().replace('.', ',');
+    expect(peakText).toContain(expected);
   });
 
   it('production absente/nulle → repli « année type » CLAIREMENT libellé', () => {
