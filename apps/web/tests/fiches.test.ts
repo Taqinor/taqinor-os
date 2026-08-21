@@ -374,6 +374,17 @@ describe('W147 — fiche intégrée sur /produits/<slug>', () => {
     expect(slugPage).toContain('{fiche.pdf && (');
   });
 
+  // Incident fondateur 21/08/2026 — lecteur PDF intégré DÉSACTIVÉ dans Chrome
+  // (navigator.pdfViewerEnabled=false : « télécharger les PDF » ou extension) :
+  // l'iframe rendait un document cassé gris sur TOUTES les fiches. Le gabarit
+  // doit détecter ce cas et montrer le repli téléchargement à la place.
+  it('lecteur PDF désactivé → l’aperçu cède la place au repli téléchargement', () => {
+    expect(slugPage).toContain('navigator.pdfViewerEnabled === false');
+    expect(slugPage).toContain("getElementById('fiche-apercu-pdf')");
+    expect(slugPage).toContain("getElementById('fiche-repli-pdf')");
+    expect(slugPage).toContain("classList.remove('sm:hidden')");
+  });
+
   it('l’aperçu inline est un iframe lazy pointant le PDF auto-hébergé', () => {
     expect(slugPage).toContain('<iframe');
     expect(slugPage).toContain('loading="lazy"');
