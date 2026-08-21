@@ -334,6 +334,58 @@ export interface FreeMoveResult {
   blockedIndex?: number;
 }
 
+/** PV31 — un panneau et la position ABSOLUE où on veut le poser (repère ENU). */
+export interface FreePlacement {
+  index: number;
+  cx: number;
+  cy: number;
+}
+
+/**
+ * PV31 — pose un lot de panneaux à des positions ABSOLUES. C'est la primitive commune du
+ * déplacement : `moveFreePanels` (translation rigide) n'en est qu'un cas particulier, et
+ * l'APERÇU VIVANT d'un glissé s'en sert pour rejouer le geste depuis les positions
+ * d'ORIGINE à chaque image (sans jamais cumuler l'aperçu précédent, donc sans dérive).
+ *
+ * TOUT OU RIEN, exactement comme le mode lattice : si un seul membre viole une contrainte
+ * à l'arrivée, rien n'est muté. Les membres s'ignorent entre eux à leur position de DÉPART
+ * (ils la libèrent) et se voient à leur position d'ARRIVÉE (un lot ne peut pas se replier
+ * sur lui-même).
+ */
+export function placeFreePanels(
+  state: FreeLayoutState,
+  g: FreeGeom,
+  placements: readonly FreePlacement[],
+  margins: FreeMargins,
+): FreeMoveResult {
+  const seen = new Set<number>();
+  const wanted: FreePlacement[] = [];
+  for (const p of placements) {
+    if (!Number.isInteger(p.index) || p.index < 0 || p.index >= state.panels.length) continue;
+    if (seen.has(p.index)) continue;
+    if (!Number.isFinite(p.cx) || !Number.isFinite(p.cy)) return { ok: false, positions: [] };
+    seen.add(p.index);
+    wanted.push(p);
+  }
+  if (!wanted.length) return { ok: false, positions: [] };
+  const ignore = seen;
+  const placed: RectUV[] = [];
+  const positions: { cx: number; cy: number }[] = [];
+  for (const w of wanted) {
+    const [cu, cv] = toUV(g, w.cx, w.cy);
+    const r = rectAt(g, cu, cv);
+    const chk = checkRect(state, g, r, margins, ignore, placed);
+    if (!chk.ok) return { ok: false, positions: [], blocked: chk, blockedIndex: w.index };
+    placed.push(r);
+    positions.push({ cx: w.cx, cy: w.cy });
+  }
+  // Commit atomique : rien n'a été muté tant que tous les membres n'étaient pas validés.
+  wanted.forEach((w, k) => {
+    state.panels[w.index] = { ...state.panels[w.index], cx: positions[k].cx, cy: positions[k].cy };
+  });
+  return { ok: true, positions };
+}
+
 /**
  * Déplace un groupe de panneaux de (dx, dy) mètres ENU — RIGIDEMENT : tous les membres
  * subissent EXACTEMENT la même translation, donc une rangée reste une rangée et un
@@ -354,25 +406,49 @@ export function moveFreePanels(
   const members = [...new Set(indices)].filter((i) => i >= 0 && i < state.panels.length);
   if (!members.length) return { ok: false, positions: [] };
   if (!Number.isFinite(dx) || !Number.isFinite(dy)) return { ok: false, positions: [] };
-  const ignore = new Set(members);
-  const placed: RectUV[] = [];
-  const positions: { cx: number; cy: number }[] = [];
-  for (const i of members) {
-    const p = state.panels[i];
-    const cx = p.cx + dx;
-    const cy = p.cy + dy;
-    const [cu, cv] = toUV(g, cx, cy);
-    const r = rectAt(g, cu, cv);
-    const chk = checkRect(state, g, r, margins, ignore, placed);
-    if (!chk.ok) return { ok: false, positions: [], blocked: chk, blockedIndex: i };
-    placed.push(r);
-    positions.push({ cx, cy });
+  return placeFreePanels(
+    state,
+    g,
+    members.map((i) => ({ index: i, cx: state.panels[i].cx + dx, cy: state.panels[i].cy + dy })),
+    margins,
+  );
+}
+
+/** PV31 — rectangle de sélection en ENU, coins dans n'importe quel ordre. */
+export interface RectENU {
+  xMin: number;
+  xMax: number;
+  yMin: number;
+  yMax: number;
+}
+
+/** PV31 — normalise les deux coins d'un cadre tracé à la souris/au doigt (le geste peut
+ *  partir de n'importe quel coin, y compris vers le haut ou vers la gauche). */
+export function normalizeRectENU(x0: number, y0: number, x1: number, y1: number): RectENU {
+  return {
+    xMin: Math.min(x0, x1),
+    xMax: Math.max(x0, x1),
+    yMin: Math.min(y0, y1),
+    yMax: Math.max(y0, y1),
+  };
+}
+
+/**
+ * PV31 — panneaux dont le CENTRE tombe dans le cadre. Le critère « centre dedans » (et non
+ * « panneau entièrement dedans ») est celui qu'attend un opérateur : on encadre grossièrement
+ * une rangée et elle est prise, sans devoir englober chaque bord au pixel près.
+ */
+export function panelsInRectENU(
+  panels: readonly { cx: number; cy: number }[],
+  rect: RectENU,
+): number[] {
+  const out: number[] = [];
+  for (let i = 0; i < panels.length; i++) {
+    const p = panels[i];
+    if (p.cx < rect.xMin || p.cx > rect.xMax || p.cy < rect.yMin || p.cy > rect.yMax) continue;
+    out.push(i);
   }
-  // Commit atomique : rien n'a été muté tant que tous les membres n'étaient pas validés.
-  members.forEach((i, k) => {
-    state.panels[i] = { ...state.panels[i], cx: positions[k].cx, cy: positions[k].cy };
-  });
-  return { ok: true, positions };
+  return out;
 }
 
 /** Pose un NOUVEAU panneau au point ENU visé. Refus (rien n'est ajouté) si une contrainte
