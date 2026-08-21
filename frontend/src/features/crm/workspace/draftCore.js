@@ -28,6 +28,13 @@ export const TRACKED_KEYS = [
   // Énergie
   'facture_hiver', 'facture_ete', 'ete_differente', 'conso_mensuelle_kwh',
   'tranche_onee', 'raccordement', 'regularisation_8221',
+  // Questionnaire d'appel (L4) — occupation + équipements, tri-état : null =
+  // pas encore posée.
+  'occupation_jour',
+  'equip_piscine', 'equip_piscine_pompe_kw',
+  'equip_voiture_electrique', 'equip_ve_km_semaine',
+  'equip_clim', 'equip_clim_pieces',
+  'equip_chauffe_eau_electrique',
   // Pompage (agricole)
   'pompe_cv', 'pompe_hmt_m', 'pompe_debit_m3h',
   // Toiture & site
@@ -145,6 +152,13 @@ export const SECTION_FIELDS = {
     'type_installation', 'montant_estime', 'date_cloture_prevue'],
   energie: ['facture_hiver', 'facture_ete', 'ete_differente',
     'conso_mensuelle_kwh', 'tranche_onee', 'raccordement', 'regularisation_8221'],
+  // L4 — questionnaire d'appel (occupation + équipements piscine/VE/clim/
+  // chauffe-eau). Les questions déjà couvertes par d'autres sections
+  // (raccordement, factures) ne sont PAS dupliquées ici — voir la référence
+  // d'ancrage dans SectionEquipements.
+  equipements: ['occupation_jour', 'equip_piscine', 'equip_piscine_pompe_kw',
+    'equip_voiture_electrique', 'equip_ve_km_semaine',
+    'equip_clim', 'equip_clim_pieces', 'equip_chauffe_eau_electrique'],
   pompage: ['pompe_cv', 'pompe_hmt_m', 'pompe_debit_m3h'],
   toiture: ['type_toiture', 'surface_toiture_m2', 'orientation',
     'inclinaison_deg', 'ombrage', 'ombrage_notes', 'nb_etages',
@@ -168,6 +182,9 @@ const SECTION_COEUR = {
   pompage: ['pompe_cv', 'pompe_hmt_m', 'pompe_debit_m3h'],
   visite: [],
   divers: [],
+  // L4 — aucun champ n'est requis à lui seul (tous optionnels) : jugée sur le
+  // vide, comme visite/divers.
+  equipements: [],
 }
 
 // Miroir EXACT de apps/crm/devis_auto.py `champs_manquants` (mêmes modes,
@@ -249,6 +266,14 @@ export function buildCreateDefaults({ currentUserId = null, lastVille = '' } = {
     facture_hiver: '', facture_ete: '', ete_differente: false,
     conso_mensuelle_kwh: '', tranche_onee: '', raccordement: '',
     regularisation_8221: false,
+    // L4 — tri-état : '' (⇒ null serveur) = question pas encore posée, JAMAIS
+    // false par défaut (false = « Non » répondu, une affirmation qu'on ne
+    // fait pas tant que le commercial n'a rien demandé).
+    occupation_jour: '',
+    equip_piscine: '', equip_piscine_pompe_kw: '',
+    equip_voiture_electrique: '', equip_ve_km_semaine: '',
+    equip_clim: '', equip_clim_pieces: '',
+    equip_chauffe_eau_electrique: '',
     pompe_cv: '', pompe_hmt_m: '', pompe_debit_m3h: '',
     type_toiture: '', surface_toiture_m2: '', orientation: '', inclinaison_deg: '',
     ombrage: '', ombrage_notes: '', nb_etages: '', structure_pref: '',

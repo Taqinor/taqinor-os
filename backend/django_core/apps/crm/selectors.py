@@ -1233,6 +1233,49 @@ def profil_activite_pour_devis(devis):
     return valeur if valeur in PROFILS_ACTIVITE else None
 
 
+def occupation_jour_pour_devis(devis):
+    """L4 (extension fondateur, 21/08/2026) — présence en journée déclarée
+    au téléphone (``crm.Lead.occupation_jour``), ou ``None``.
+
+    Point d'entrée cross-app LECTURE SEULE : ``apps/ventes/courbes_journalieres.py
+    _occupation`` la consulte AVANT son défaut fondateur habituel — quand le
+    commercial a posé la question, la réponse RÉELLE du lead prime. ``None``
+    (lead absent, ou question pas encore posée) laisse l'appelant retomber
+    sur son comportement actuel, inchangé.
+    """
+    lead = getattr(devis, 'lead', None)
+    if lead is None:
+        return None
+    valeur = getattr(lead, 'occupation_jour', None)
+    return valeur if valeur in ('present', 'absent', 'partiel') else None
+
+
+def equipements_pour_devis(devis):
+    """L4 (21/08/2026) — équipements électriques du lead d'un devis, ou ``{}``.
+
+    Point d'entrée cross-app LECTURE SEULE (``apps.ventes`` n'importe jamais
+    ``apps.crm.models``) : ``apps/ventes/courbes_journalieres.py`` compose ses
+    couches d'équipement à partir de ce dict. Valeurs BRUTES du lead — script
+    d'appel du commercial (piscine/VE/clim/chauffe-eau), DISTINCT de
+    ``futures_charges`` (case du questionnaire web, sans paramètre). Chaque
+    valeur est ``None`` quand la question n'a pas été posée ou que le lead
+    n'existe pas : aucune valeur n'est devinée ici, l'appelant décide de son
+    propre repli (généralement : omettre la couche).
+    """
+    lead = getattr(devis, 'lead', None)
+    if lead is None:
+        return {}
+    return {
+        'piscine': lead.equip_piscine,
+        'piscine_pompe_kw': lead.equip_piscine_pompe_kw,
+        'voiture_electrique': lead.equip_voiture_electrique,
+        've_km_semaine': lead.equip_ve_km_semaine,
+        'clim': lead.equip_clim,
+        'clim_pieces': lead.equip_clim_pieces,
+        'chauffe_eau_electrique': lead.equip_chauffe_eau_electrique,
+    }
+
+
 # Champs Lead autorisés dans les règles JSON d'un segment marketing (XMKT6,
 # apps.compta). Whitelist stricte — toute clé inconnue est rejetée côté
 # validation, jamais évaluée à l'aveugle.

@@ -121,6 +121,7 @@ import {
   SEASON_LABELS,
   DEFAULT_LAT,
   DEFAULT_LON,
+  equipmentLegendLabel,
   type OccupancyId,
   type SeasonId,
 } from '../../lib/dayProfiles';
@@ -457,6 +458,8 @@ function servedScaleFor(season: SeasonId | null) {
     production: dailyCurves.production[season] ?? null,
     consumptionKwhJour: dailyCurves.consommation[season]?.kwhJour ?? null,
     season,
+    // L4 — couches d'équipement (piscine/clim/ve), composées par renderYearCurve.
+    equipements: dailyCurves.equipements ?? null,
   };
 }
 
@@ -495,6 +498,7 @@ const curveConfig = ok && dailyCurve.svg
       ramadan: curveRamadan ? { imsakHour: curveRamadan.imsakHour, iftarHour: curveRamadan.iftarHour } : null,
       production: dailyCurves?.production ?? {},
       consommation: dailyCurves?.consommation ?? {},
+      equipements: dailyCurves?.equipements ?? {},
     })
   : '';
 
@@ -1933,11 +1937,18 @@ const signConfig = ok
                    `data-i18n` mais par le registre `__propRegisterBusyLabel`,
                    comme les autres libellés pilotés par un état. -->
               <p id="curve-profile-note" class="mt-1 text-xs text-lune-faint">{
-                dailyCurve.hasRealConsScale
-                  ? (curveMode === 'residentiel'
-                      ? `Profil « ${OCCUPANCY_LABELS[curveOccupancyDefault].fr} » calé sur vos factures.`
-                      : 'Profil type au Maroc, calé sur vos factures.')
-                  : 'Profil type au Maroc, ajusté à votre facture.'
+                (() => {
+                  // L4 — même suffixe sobre que le re-rendu client (renderProfileNote),
+                  // pour que le premier affichage (sans JS) le porte déjà.
+                  const equipSuffix = equipmentLegendLabel(
+                    dailyCurves?.equipements ?? null, curveSeasonDefault, 'fr');
+                  const base = dailyCurve.hasRealConsScale
+                    ? (curveMode === 'residentiel'
+                        ? `Profil « ${OCCUPANCY_LABELS[curveOccupancyDefault].fr} » calé sur vos factures.`
+                        : 'Profil type au Maroc, calé sur vos factures.')
+                    : 'Profil type au Maroc, ajusté à votre facture.';
+                  return equipSuffix ? `${base} · ${equipSuffix}` : base;
+                })()
               }</p>
               {dailyCurves?.noteHoraire && dailyCurve.hasServedShape && (
                 <p class="mt-1 text-xs text-lune-faint" data-i18n
@@ -3787,6 +3798,8 @@ const signConfig = ok
   import { renderYearCurve, type ProposalCurveMode, type ProposalCurveVariant } from '../../lib/proposalCurve';
   import {
     OCCUPANCY_LABELS,
+    equipmentLegendLabel,
+    type EquipmentLayers,
     type OccupancyId,
     type SeasonId,
     type ServedProduction,
@@ -3968,6 +3981,8 @@ const signConfig = ok
       ramadan: { imsakHour: number; iftarHour: number } | null;
       production: Partial<Record<SeasonId, ServedProduction>>;
       consommation: Partial<Record<SeasonId, { kwhJour: number }>>;
+      // L4 — couches d'équipement (script d'appel), `{}` = aucune active.
+      equipements: EquipmentLayers;
     }
     const dailyLayer = section.querySelector<HTMLElement>('[data-prod-layer="daily"]');
     let curveCfg: CurveConfig | null = null;
@@ -3980,7 +3995,10 @@ const signConfig = ok
 
     /** Phrase « d'où vient ce profil » — réécrite à chaque changement de puce
      *  ET à chaque bascule de langue (registre propI18nBusyLabels). Elle ne dit
-     *  « calé sur vos factures » QUE si le niveau servi existe vraiment. */
+     *  « calé sur vos factures » QUE si le niveau servi existe vraiment.
+     *  L4 — quand une couche d'équipement (piscine/clim/ve) s'applique à la
+     *  saison affichée, la phrase se termine SOBREMENT par « · profil ajusté :
+     *  piscine, climatisation » ; aucune couche active ⇒ rien de neuf. */
     function renderProfileNote(): void {
       const el = document.getElementById('curve-profile-note');
       if (!el) return;
@@ -3989,27 +4007,29 @@ const signConfig = ok
       const real = !!served && typeof consKwh === 'number' && consKwh > 0;
       const label = OCCUPANCY_LABELS[state.occupancy]?.[currentLang] ?? '';
       const isResidential = curveCfg?.mode === 'residentiel';
+      const equipSuffix = equipmentLegendLabel(curveCfg?.equipements ?? null, state.season, currentLang);
+      const withEquip = (base: string) => (equipSuffix ? `${base} · ${equipSuffix}` : base);
       if (!real) {
-        el.textContent = currentLang === 'en'
+        el.textContent = withEquip(currentLang === 'en'
           ? 'Typical Moroccan profile, adjusted to your bill.'
           : currentLang === 'ar'
             ? 'نمط نموذجي في المغرب، معدّل حسب فاتورتكم.'
-            : 'Profil type au Maroc, ajusté à votre facture.';
+            : 'Profil type au Maroc, ajusté à votre facture.');
         return;
       }
       if (isResidential && label) {
-        el.textContent = currentLang === 'en'
+        el.textContent = withEquip(currentLang === 'en'
           ? `Profile “${label}” calibrated on your bills.`
           : currentLang === 'ar'
             ? `نمط «${label}» معاير على فواتيركم.`
-            : `Profil « ${label} » calé sur vos factures.`;
+            : `Profil « ${label} » calé sur vos factures.`);
         return;
       }
-      el.textContent = currentLang === 'en'
+      el.textContent = withEquip(currentLang === 'en'
         ? 'Typical Moroccan profile, calibrated on your bills.'
         : currentLang === 'ar'
           ? 'نمط نموذجي في المغرب، معاير على فواتيركم.'
-          : 'Profil type au Maroc, calé sur vos factures.';
+          : 'Profil type au Maroc, calé sur vos factures.');
     }
 
     /** Redessine les SVG pré-rendus (3 langues × variantes) pour la saison et
@@ -4023,6 +4043,8 @@ const signConfig = ok
         production: curveCfg.production?.[state.season] ?? null,
         consumptionKwhJour: curveCfg.consommation?.[state.season]?.kwhJour ?? null,
         season: state.season,
+        // L4 — couches d'équipement (piscine/clim/ve), composées par renderYearCurve.
+        equipements: curveCfg.equipements ?? null,
       };
       dailyLayer.querySelectorAll<HTMLElement>('[data-curve-lang]').forEach((el) => {
         const lang = (el.dataset.curveLang as 'fr' | 'en' | 'ar' | undefined) ?? 'fr';
