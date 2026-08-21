@@ -63,7 +63,7 @@ from apps.ventes.courbes_journalieres import (
     occupation_du_devis,
 )
 from apps.ventes.quote_engine import bareme
-from apps.ventes.quote_engine.pricing import BATTERY_ROUNDTRIP
+from apps.ventes.quote_engine.pricing import BATTERY_ROUNDTRIP, PRODUCTION_DERATE
 from apps.ventes.solar_design import hourly_self_consumption
 
 logger = logging.getLogger(__name__)
@@ -402,7 +402,14 @@ def calculer_etude_horaire(*, kwc, conso_kwh_mensuelles,
             continue
 
         # ── Production du JOUR MOYEN de ce mois ──
-        prod_mois_kwh = _num(productibles[index]) * puissance
+        # PERTES SYSTÈME — ordre fondateur (18/08) : 20 % AU TOTAL. Les
+        # productibles PVGIS sont demandés à ``loss=14``
+        # (``pvgis_profils.PVGIS_LOSS_PCT``), donc 14 % sont DÉJÀ dedans : on
+        # n'applique que le COMPLÉMENT, ``PRODUCTION_DERATE`` ≈ 0,9302 — la
+        # MÊME constante que ``pricing`` et ``builder``. Sans elle, ce moteur
+        # annoncerait ~7,5 % de production (et donc d'économies) de plus que
+        # tout le reste de la chaîne, sur la même installation.
+        prod_mois_kwh = _num(productibles[index]) * puissance * PRODUCTION_DERATE
         prod_jour_kwh = prod_mois_kwh / jours if jours else 0.0
         prod_24h = [part * prod_jour_kwh for part in forme_prod]
 
@@ -463,7 +470,11 @@ def calculer_etude_horaire(*, kwc, conso_kwh_mensuelles,
         sortie_mois['jours'] = jours
         mois_sortie.append(sortie_mois)
 
-    if not mois_sortie:
+    # ANNÉE COMPLÈTE OU RIEN. Un mois manquant (saison sans forme PVGIS)
+    # donnerait un « annuel » qui n'est pas une année : des consommateurs le
+    # liraient comme un total sur douze mois et sous-estimeraient tout. On OMET
+    # plutôt que de servir un agrégat trompeur (même règle que Z2).
+    if len(mois_sortie) != 12:
         return None
 
     if annuel_cumul['production_kwh'] <= 0:
@@ -539,6 +550,35 @@ def profil_depuis_factures(*, facture_hiver_mad=None, facture_ete_mad=None,
             return kwh, source, detail
 
     return None, 'absente', {}
+
+
+def capacite_batterie_du_devis(devis):
+    """Capacité UTILE totale (kWh) réellement chiffrée sur un devis, ou ``None``.
+
+    Somme les lignes classées ``batterie`` par ``services.classer_produit`` (le
+    MÊME classifieur que la composition — jamais une seconde règle de
+    reconnaissance) en lisant la capacité utile de chaque fiche
+    (``dimensionnement.capacite_utile_batterie``).
+
+    ``None`` (et non 0,0) quand le devis ne porte aucune batterie : le moteur
+    distingue ainsi « pas de stockage » de « stockage de capacité nulle ».
+    """
+    try:
+        from apps.ventes.dimensionnement import capacite_utile_batterie
+        from apps.ventes.services import classer_produit
+        total = 0.0
+        for ligne in devis.lignes.all():
+            designation = getattr(ligne, 'designation', '') or ''
+            if classer_produit(designation) != 'batterie':
+                continue
+            kwh = capacite_utile_batterie(
+                getattr(ligne, 'produit', None), designation)
+            if kwh:
+                total += float(kwh) * float(getattr(ligne, 'quantite', 0) or 0)
+        return total if total > 0 else None
+    except Exception:  # noqa: BLE001 — lignes illisibles ⇒ pas de stockage
+        logger.warning('capacité batterie illisible', exc_info=True)
+        return None
 
 
 def _reglages_tarifaires(company):
@@ -639,11 +679,27 @@ def _etude_horaire_pour_devis(devis, *, kwc, batterie_kwh_utile, data):
         detail_conso = {**detail_conso,
                         'distributeur': bills['distributeur']}
 
-    occupation, occupation_source = occupation_du_devis(devis, data)
+    # L'OCCUPATION A BESOIN DU MARCHÉ. ``_occupation`` applique le défaut
+    # fondateur ``presence_jour`` UNIQUEMENT quand elle sait que le devis est
+    # résidentiel ; sans ``mode_installation`` elle retombe sur
+    # ``absence_jour`` (le défaut NON résidentiel) et le devis serait calculé
+    # avec la pire silhouette d'autoconsommation — l'inverse de la décision
+    # terrain du fondateur. On le lit donc sur le devis quand l'appelant ne le
+    # fournit pas, sans jamais écraser ce qu'il fournit.
+    contexte = dict(data)
+    if not contexte.get('mode_installation'):
+        contexte['mode_installation'] = getattr(devis, 'mode_installation', None)
+    occupation, occupation_source = occupation_du_devis(devis, contexte)
     equipements = equipements_du_devis(devis)
 
-    capacite = (batterie_kwh_utile if batterie_kwh_utile is not None
-                else data.get('batterie_kwh_total'))
+    # LA BATTERIE VIENT DU DEVIS RÉEL. Sans cela, un devis « deux options »
+    # sortirait avec « avec batterie » économisant EXACTEMENT autant que
+    # « sans » — donc plus cher pour rien sur la proposition client.
+    capacite = batterie_kwh_utile
+    if capacite is None:
+        capacite = data.get('batterie_kwh_total')
+    if capacite is None:
+        capacite = capacite_batterie_du_devis(devis)
 
     resultat = calculer_etude_horaire(
         kwc=puissance, conso_kwh_mensuelles=conso,

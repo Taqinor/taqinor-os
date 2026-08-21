@@ -363,6 +363,34 @@ class PhysiqueDuMoteurTest(SimpleTestCase):
         self.assertGreaterEqual(annuel['economie_avec_mad'],
                                 annuel['economie_sans_mad'])
 
+    def test_pertes_systeme_alignees_sur_le_reste_de_la_chaine(self):
+        """20 % de pertes AU TOTAL (ordre fondateur) : le productible PVGIS
+        étant déjà net de 14 %, seul le complément s'applique. Sans cette
+        règle, ce moteur annoncerait ~7,5 % de production de plus que le reste
+        de la chaîne sur la MÊME installation."""
+        from apps.parametres.pvgis_profils import productible_mensuel
+        brut = sum(productible_mensuel(ville=self.VILLE)[0])
+        etude = EH.calculer_etude_horaire(
+            kwc=1.0, conso_kwh_mensuelles=self._conso(), ville=self.VILLE,
+            occupation=CJ.OCCUPATION_PRESENCE)
+        self.assertAlmostEqual(
+            etude['annuel']['production_kwh'],
+            brut * pricing.PRODUCTION_DERATE, delta=1.0)
+
+    def test_annee_complete_ou_rien(self):
+        """Un « annuel » qui ne couvre pas douze mois serait lu comme une
+        année et sous-estimerait tout."""
+        etude = EH.calculer_etude_horaire(
+            kwc=6.0, conso_kwh_mensuelles=self._conso(), ville=self.VILLE,
+            occupation=CJ.OCCUPATION_PRESENCE)
+        self.assertEqual(len(etude['mois']), 12)
+        self.assertAlmostEqual(
+            sum(m['production_kwh'] for m in etude['mois']),
+            etude['annuel']['production_kwh'], places=1)
+        self.assertAlmostEqual(
+            sum(m['economie_sans_mad'] for m in etude['mois']),
+            etude['annuel']['economie_sans_mad'], places=1)
+
     def test_saisonnalite_reelle_pas_un_coefficient(self):
         """La production d'été DOIT dépasser celle d'hiver — la saisonnalité
         vient des données PVGIS, pas d'une clé de répartition."""
@@ -490,6 +518,37 @@ class PricingInchangeTest(SimpleTestCase):
         """AUCUNE constante supprimée : le forfait survit, étiqueté."""
         self.assertEqual(pricing.AUTOCONSO_SANS, 0.60)
         self.assertEqual(pricing.AUTOCONSO_AVEC, 0.85)
+
+    def test_bloc_perime_est_ignore(self):
+        """Le devis a été repuissancé, l'étude pas rafraîchie : ses chiffres
+        décrivent une AUTRE installation. Mieux vaut le repli honnête qu'un
+        chiffre précis et faux."""
+        conso, _s, _d = EH.profil_depuis_factures(facture_hiver_mad=1200)
+        bloc = EH.calculer_etude_horaire(
+            kwc=6.0, conso_kwh_mensuelles=conso, ville='Casablanca',
+            occupation=CJ.OCCUPATION_PRESENCE)
+        # Même puissance (à l'arrondi près) → accepté.
+        roi = pricing.calculate_savings_roi(
+            6.05, 90000.0, 130000.0, etude_horaire=bloc, **self.KWARGS)
+        self.assertEqual(roi['savings_model'], 'horaire')
+        # Puissance franchement différente → REJETÉ.
+        for kwc in (3.0, 9.0, 12.0):
+            with self.subTest(kwc=kwc):
+                roi = pricing.calculate_savings_roi(
+                    kwc, 90000.0, 130000.0, etude_horaire=bloc, **self.KWARGS)
+                self.assertNotEqual(roi['savings_model'], 'horaire')
+
+    def test_productible_rendu_decrit_la_production_rendue(self):
+        """« production ÷ kWc » et « productible » ne peuvent pas se
+        contredire sur la même page."""
+        conso, _s, _d = EH.profil_depuis_factures(facture_hiver_mad=1200)
+        bloc = EH.calculer_etude_horaire(
+            kwc=6.0, conso_kwh_mensuelles=conso, ville='Casablanca',
+            occupation=CJ.OCCUPATION_PRESENCE)
+        roi = pricing.calculate_savings_roi(
+            6.0, 90000.0, 130000.0, etude_horaire=bloc, **self.KWARGS)
+        self.assertAlmostEqual(roi['productible'], roi['prod_kwh'] / 6.0,
+                               places=3)
 
     def test_agricole_intouche_aucun_pourcentage(self):
         """Aucun taux d'autoconsommation ne doit apparaître sans conso ni

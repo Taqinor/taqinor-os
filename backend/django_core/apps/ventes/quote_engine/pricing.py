@@ -821,7 +821,15 @@ def cashflow_assumptions(inverter_replace_cost=None,
     }
 
 
-def _lire_etude_horaire(bloc) -> dict | None:
+#: CJ2a — écart RELATIF de puissance au-delà duquel un bloc horaire est jugé
+#: PÉRIMÉ. Le bloc est calculé pour une puissance donnée ; si le devis a été
+#: repuissancé depuis (lignes éditées, panneaux ajoutés) sans que l'étude soit
+#: rafraîchie, ses économies ne décrivent plus CE devis. 2 % absorbe les
+#: arrondis kWc/panneaux sans laisser passer un vrai changement de taille.
+_HORAIRE_TOLERANCE_KWC = 0.02
+
+
+def _lire_etude_horaire(bloc, puissance_kwc=None) -> dict | None:
     """CJ2a — lit le bloc ``etude_params['etude_horaire']`` de façon DÉFENSIVE.
 
     Renvoie ``None`` dès que le bloc est absent, malformé, ou ne porte pas les
@@ -855,6 +863,21 @@ def _lire_etude_horaire(bloc) -> dict | None:
         return None
     if len(mois) != 12:
         return None
+
+    # GARDE ANTI-PÉRIMÉ : le bloc dit pour quelle puissance il a été calculé.
+    # Si le devis ne fait plus cette puissance, ses chiffres décrivent une
+    # AUTRE installation — on préfère le repli honnête à un chiffre précis et
+    # faux (c'est la même logique que la règle Z2, appliquée à la fraîcheur).
+    if puissance_kwc:
+        try:
+            kwc_bloc = float(bloc.get("kwc") or 0)
+            kwc_devis = float(puissance_kwc)
+        except (TypeError, ValueError):
+            return None
+        if kwc_bloc <= 0 or kwc_devis <= 0:
+            return None
+        if abs(kwc_bloc - kwc_devis) / kwc_devis > _HORAIRE_TOLERANCE_KWC:
+            return None
     try:
         eco_s_monthly = [round(float(m["economie_sans_mad"])) for m in mois]
         eco_a_monthly = [round(float(m["economie_avec_mad"])) for m in mois]
@@ -1055,12 +1078,18 @@ def calculate_savings_roi(
     # industriel/commercial de ``builder`` (étude saisie par le vendeur) passe
     # APRÈS et reste souverain — un chiffre saisi par un humain bat un calcul.
     eco_monthly_reel = None
-    _h = _lire_etude_horaire(etude_horaire)
+    _h = _lire_etude_horaire(etude_horaire, puissance_kwc)
     if _h:
         savings_model = "horaire"
         savings_estimated = False
         factures_approximatif = False
         production_annuelle = _h["prod_kwh"]
+        # Le productible RENDU doit décrire la production rendue, sinon
+        # « production ÷ kWc » et « productible » se contrediraient sur la
+        # même page. Ici il devient le productible NET réellement obtenu au
+        # point du chantier (PVGIS × pertes), pas le repère société.
+        if puissance_kwc:
+            prod_factor = production_annuelle / float(puissance_kwc)
         economie_opt1 = _h["eco_sans"]
         economie_opt2 = _h["eco_avec"]
         autoconso_sans_eff = _h["autoconso_sans"]

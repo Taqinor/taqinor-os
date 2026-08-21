@@ -66,6 +66,17 @@ EGALITE_PAYBACK_ANNEES = 0.25
 #: le tableau lisible, jamais pour re-décider (source : services.py:2083).
 RATIO_ONDULEUR_MIN = 0.80
 
+#: PLAFOND DUR du balayage (nombre de panneaux). Ce n'est PAS une règle métier
+#: — la borne métier reste la parité production/consommation
+#: (:func:`bornes_candidates`) — c'est un GARDE-FOU : une facture saisie avec
+#: un zéro de trop (1 200 000 au lieu de 1 200) ferait sinon balayer des
+#: milliers de tailles, chacune avec deux compositions catalogue et une
+#: simulation horaire de douze mois, SYNCHRONEMENT dans la création du devis.
+#: 120 panneaux ≈ 85 kWc en 710 Wc : très au-delà de tout résidentiel réel, et
+#: au-delà du plus gros onduleur du catalogue (50 kW). Atteindre ce plafond
+#: produit un avertissement — on ne tronque jamais en silence.
+MAX_PANNEAUX_BALAYAGE = 120
+
 
 def _num(valeur, defaut=0.0):
     """Flottant tolérant — illisible/``None`` → ``defaut``."""
@@ -110,6 +121,40 @@ def _ratio_onduleur(kw_onduleur, kwc):
     return kw_onduleur / kwc
 
 
+def capacite_utile_batterie(produit, designation):
+    """Capacité UTILE (kWh) d'une batterie — la fiche d'abord, le nom ensuite.
+
+    Le moteur horaire simule une charge/décharge RÉELLE : ce qu'il lui faut
+    est l'énergie réellement disponible, pas la capacité nominale imprimée sur
+    l'étiquette. Ordre de résolution :
+
+    1. ``kwh_usable`` de la fiche technique (``apps.stock.selectors`` — lecture
+       cross-app par sélecteur, jamais ``stock.models``) : la vraie grandeur ;
+    2. ``kwh_nominal × dod_pct`` quand la profondeur de décharge est fichée ;
+    3. à défaut seulement, le kWh lu dans le NOM du produit — c'est-à-dire le
+       NOMINAL. Le simulateur décale alors un peu plus d'énergie que la
+       batterie n'en rendrait vraiment : c'est le seul cas optimiste du moteur,
+       il est ici DIT plutôt que caché, et il disparaît dès que la fiche porte
+       la donnée (règle PVFCH : aucun calcul sur une valeur supposée quand la
+       vraie existe).
+    """
+    if produit is not None:
+        try:
+            from apps.stock.selectors import specs_for_produit
+            specs = (specs_for_produit(produit) or {}).get('batterie') or {}
+            utile = specs.get('kwh_usable')
+            if utile:
+                return float(utile)
+            nominal = specs.get('kwh_nominal')
+            dod = specs.get('dod_pct')
+            if nominal and dod:
+                return float(nominal) * float(dod) / 100.0
+        except Exception:  # noqa: BLE001 — fiche absente ⇒ repli sur le nom
+            pass
+    from apps.ventes.services import _parse_kwh
+    return _parse_kwh(designation)
+
+
 def _lire_composition(lignes, taux_tva):
     """Extrait d'une composition ce dont le tableau a besoin.
 
@@ -121,7 +166,7 @@ def _lire_composition(lignes, taux_tva):
     # analyseurs de libellé sont la SEULE lecture correcte des noms catalogue
     # (« Batterie 5 kWh » n'est pas un onduleur de 5 kW) — les redéfinir ici
     # créerait un second analyseur qui divergerait au premier produit exotique.
-    from apps.ventes.services import _est_triphase, _parse_kw, _parse_kwh
+    from apps.ventes.services import _est_triphase, _parse_kw
 
     roles = list(getattr(lignes, 'roles', ()) or ())
     facteur = 1.0 + _num(taux_tva, 20.0) / 100.0
@@ -129,6 +174,8 @@ def _lire_composition(lignes, taux_tva):
     cout_ht = 0.0
     onduleur = None
     onduleur_kw = None
+    onduleur_kw_unitaire = None
+    onduleur_quantite = 0
     onduleur_tri = None
     batterie_kwh = 0.0
     rendu = []
@@ -142,10 +189,19 @@ def _lire_composition(lignes, taux_tva):
 
         if role in ('onduleur_reseau', 'onduleur_hybride') and onduleur is None:
             onduleur = nom
-            onduleur_kw = _parse_kw(nom)
+            # LA QUANTITÉ COMPTE. ``composition_residentielle`` quote PLUSIEURS
+            # onduleurs quand un seul ne couvre pas le champ
+            # (``quantite_onduleur``, services.py:2142) : 2 × 10 kW font 20 kW
+            # de puissance installée. Ne lire que le kW UNITAIRE diviserait le
+            # ratio par deux et ferait déclarer « règle des 80 % non
+            # respectée » un kit qui la respecte parfaitement.
+            unitaire = _parse_kw(nom)
+            onduleur_kw = (unitaire * quantite) if unitaire else None
+            onduleur_kw_unitaire = unitaire
+            onduleur_quantite = int(quantite)
             onduleur_tri = _est_triphase(nom)
         if role == 'batterie':
-            kwh = _parse_kwh(nom)
+            kwh = capacite_utile_batterie(getattr(ligne, 'produit', None), nom)
             if kwh:
                 batterie_kwh += kwh * quantite
 
@@ -161,6 +217,8 @@ def _lire_composition(lignes, taux_tva):
         'cout_ttc': round(cout_ht * facteur, 2),
         'onduleur': onduleur,
         'onduleur_kw': onduleur_kw,
+        'onduleur_kw_unitaire': onduleur_kw_unitaire,
+        'onduleur_quantite': onduleur_quantite,
         'onduleur_triphase': onduleur_tri,
         'batterie_kwh': round(batterie_kwh, 2) if batterie_kwh else 0.0,
         'lignes': rendu,
@@ -255,6 +313,14 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, ville=None, lat=None,
     fin = int(max_panneaux) if max_panneaux else borne_max
     debut = max(1, debut)
     fin = max(debut, fin)
+    # GARDE-FOU (jamais silencieux) — voir MAX_PANNEAUX_BALAYAGE.
+    plafond_atteint = fin > MAX_PANNEAUX_BALAYAGE
+    if plafond_atteint:
+        fin = max(debut, MAX_PANNEAUX_BALAYAGE)
+        logger.warning(
+            'balayage plafonné à %d panneaux (parité calculée : %d) — '
+            'consommation probablement aberrante',
+            MAX_PANNEAUX_BALAYAGE, borne_max)
 
     tableau = []
     for panneaux in range(debut, fin + 1):
@@ -262,7 +328,10 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, ville=None, lat=None,
 
         variantes = {}
         composable = True
-        avertissements = []
+        avertissements = ([
+            'Balayage plafonné à %d panneaux : la consommation déduite est '
+            'anormalement élevée — vérifier la facture saisie.'
+            % MAX_PANNEAUX_BALAYAGE] if plafond_atteint else [])
         for cle, avec_batterie in (('sans', False), ('avec', True)):
             avert = []
             try:
@@ -325,6 +394,10 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, ville=None, lat=None,
             'payback_avec_annees': _arrondi(_payback(cout_avec, eco_avec)),
             'onduleur': (variantes.get('sans') or {}).get('onduleur'),
             'onduleur_kw': onduleur,
+            'onduleur_kw_unitaire': (variantes.get('sans') or {}).get(
+                'onduleur_kw_unitaire'),
+            'onduleur_quantite': (variantes.get('sans') or {}).get(
+                'onduleur_quantite'),
             'onduleur_triphase': (variantes.get('sans') or {}).get(
                 'onduleur_triphase'),
             'ratio_onduleur_kwc': round(ratio, 3) if ratio else None,

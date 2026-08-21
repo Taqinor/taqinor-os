@@ -27,6 +27,8 @@ from __future__ import annotations
 
 import logging
 
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
@@ -115,6 +117,86 @@ def _profil_depuis_devis(devis, corps):
     return conso, source, detail, occupation, equipements
 
 
+# SCHÉMA RÉELLEMENT DÉCLARÉ, PAS BASELINÉ NI VIDE.
+#
+# Deux facilités étaient possibles ici, toutes deux refusées :
+#   · baseliner l'endpoint dans ``scripts/openapi_schema_allow.txt`` comme le
+#     calculateur voisin ``roof_load_check`` — un aveu toléré, mais cet
+#     endpoint EST le contrat que l'écran CJ2b consommera ;
+#   · déclarer ``OpenApiTypes.OBJECT`` — un « type: object » sans aucune
+#     propriété, qui valide TOUT et ne protège donc RIEN (exactement ce que
+#     déclarait /ao/tableau-marches/ le jour où l'écran a planté, 03/08/2026 —
+#     `check_openapi_shapes.py` le refuse, à raison).
+#
+# On déclare donc les cinq clés de premier niveau, avec leur nullabilité. Le
+# DÉTAIL d'``etude``/``dimensionnement`` reste décrit par
+# ``contract_samples/etude_horaire.json`` (PACT10), vérifié par
+# ``check_api_shapes.py`` : le recopier en sérialiseur imbriqué créerait une
+# SECONDE définition à maintenir en parallèle, ce que PACT10 interdit
+# précisément.
+@extend_schema(
+    request=inline_serializer('EtudeHorairePreviewRequest', {
+        'devis': serializers.IntegerField(
+            required=False, help_text='Profil lu sur ce devis (scopé société)'),
+        'ville': serializers.CharField(required=False),
+        'lat': serializers.FloatField(required=False),
+        'lon': serializers.FloatField(required=False),
+        'facture_hiver': serializers.FloatField(
+            required=False, help_text='MAD/mois — ancrage réel'),
+        'facture_ete': serializers.FloatField(required=False),
+        'ete_differente': serializers.BooleanField(required=False),
+        'factures_mensuelles': serializers.ListField(
+            child=serializers.FloatField(), required=False,
+            help_text='12 factures MAD réelles'),
+        'conso_kwh_mensuelles': serializers.ListField(
+            child=serializers.FloatField(), required=False,
+            help_text='12 consommations kWh saisies'),
+        'occupation': serializers.ChoiceField(
+            choices=OCCUPATIONS, required=False),
+        'equipements': serializers.DictField(required=False),
+        'raccordement': serializers.CharField(required=False),
+        'kwc': serializers.FloatField(required=False),
+        'batterie_kwh': serializers.FloatField(required=False),
+        'dimensionner': serializers.BooleanField(required=False),
+        'critere': serializers.CharField(required=False),
+    }),
+    responses={
+        200: inline_serializer('EtudeHorairePreviewResponse', {
+            'etude': serializers.JSONField(
+                allow_null=True,
+                help_text="Bloc etude_horaire (12 mois, 3 saisons, annuel) — "
+                          "null quand rien n'est calculable"),
+            'dimensionnement': serializers.JSONField(
+                allow_null=True,
+                help_text='Tableau des tailles + recommandation motivée — '
+                          'null si non demandé ou non calculable'),
+            'consommation': inline_serializer('EtudeHoraireConsommation', {
+                'source': serializers.CharField(),
+                'kwh_mensuels': serializers.ListField(
+                    child=serializers.FloatField()),
+                'detail': serializers.JSONField(),
+            }),
+            'profil': inline_serializer('EtudeHoraireProfil', {
+                'occupation': serializers.CharField(allow_null=True),
+                'equipements_actifs': serializers.ListField(
+                    child=serializers.CharField()),
+            }),
+            'avertissements': serializers.ListField(
+                child=serializers.CharField()),
+        }),
+        400: inline_serializer('EtudeHorairePreviewErreur', {
+            'detail': serializers.CharField(),
+        }),
+    },
+    summary="CJ2a — étude horaire + dimensionnement (aperçu, aucune écriture)",
+    description=(
+        "Économies résidentielles calculées par intégration HORAIRE de la "
+        "production PVGIS réelle contre la courbe de consommation réelle du "
+        "client, mois par mois, valorisées au barème ONEE. Renvoie aussi, sur "
+        "demande (`dimensionner: true`), le tableau des tailles candidates et "
+        "la taille recommandée. Forme exacte de la réponse : "
+        "apps/ventes/contract_samples/etude_horaire.json."),
+)
 @api_view(['POST'])
 @permission_classes([IsAnyRole])
 def etude_horaire_preview(request):

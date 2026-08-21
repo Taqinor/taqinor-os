@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 9411, operations: 16922, components: 4939}
+counts: {paths: 9415, operations: 16926, components: 4946}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -2674,6 +2674,7 @@ operations:
 - post /api/django/crm/public/chat/sessions/ -> django_crm_public_chat_sessions_create
 - get /api/django/crm/public/chat/sessions/{token}/ -> django_crm_public_chat_sessions_retrieve
 - post /api/django/crm/public/chat/sessions/{token}/messages/ -> django_crm_public_chat_sessions_messages_create
+- get /api/django/crm/public/lead-ref/{idempotency_key}/ -> django_crm_public_lead_ref_retrieve
 - get /api/django/crm/rapports/attribution/ -> django_crm_rapports_attribution_retrieve
 - get /api/django/crm/revues-compte/ -> django_crm_revues_compte_list
 - post /api/django/crm/revues-compte/ -> django_crm_revues_compte_create
@@ -8321,6 +8322,7 @@ operations:
 - post /api/django/ventes/dossiers-reglementaires/{id}/generer-schema/ -> django_ventes_dossiers_reglementaires_generer_schema_create
 - get /api/django/ventes/email-config/ -> django_ventes_email_config_retrieve
 - get /api/django/ventes/etats/analyse-facturation/ -> django_ventes_etats_analyse_facturation_retrieve
+- post /api/django/ventes/etude-horaire/preview/ -> django_ventes_etude_horaire_preview_create
 - get /api/django/ventes/export-comptable/ -> django_ventes_export_comptable_retrieve
 - get /api/django/ventes/export/status/{token}/ -> django_ventes_export_status_retrieve
 - get /api/django/ventes/factures-lignes/ -> django_ventes_factures_lignes_list
@@ -11171,6 +11173,7 @@ operations:
 - post /api/v1/crm/public/chat/sessions/ -> v1_crm_public_chat_sessions_create
 - get /api/v1/crm/public/chat/sessions/{token}/ -> v1_crm_public_chat_sessions_retrieve
 - post /api/v1/crm/public/chat/sessions/{token}/messages/ -> v1_crm_public_chat_sessions_messages_create
+- get /api/v1/crm/public/lead-ref/{idempotency_key}/ -> v1_crm_public_lead_ref_retrieve
 - get /api/v1/crm/rapports/attribution/ -> v1_crm_rapports_attribution_retrieve
 - get /api/v1/crm/revues-compte/ -> v1_crm_revues_compte_list
 - post /api/v1/crm/revues-compte/ -> v1_crm_revues_compte_create
@@ -16774,6 +16777,7 @@ operations:
 - post /api/v1/ventes/dossiers-reglementaires/{id}/generer-schema/ -> v1_ventes_dossiers_reglementaires_generer_schema_create
 - get /api/v1/ventes/email-config/ -> v1_ventes_email_config_retrieve
 - get /api/v1/ventes/etats/analyse-facturation/ -> v1_ventes_etats_analyse_facturation_retrieve
+- post /api/v1/ventes/etude-horaire/preview/ -> v1_ventes_etude_horaire_preview_create
 - get /api/v1/ventes/export-comptable/ -> v1_ventes_export_comptable_retrieve
 - get /api/v1/ventes/export/status/{token}/ -> v1_ventes_export_status_retrieve
 - get /api/v1/ventes/factures-lignes/ -> v1_ventes_factures_lignes_list
@@ -18030,6 +18034,11 @@ components:
 - EtatLieuxImmoMomentEnum
 - EtatLieuxImmoRequest
 - EtatLieuxImmoStatutEnum
+- EtudeHoraireConsommation
+- EtudeHorairePreviewErreur
+- EtudeHorairePreviewRequestRequest
+- EtudeHorairePreviewResponse
+- EtudeHoraireProfil
 - Evaluation
 - EvaluationEmploye
 - EvaluationEmployeIssueEnum
@@ -18748,6 +18757,8 @@ components:
 - ObstacleAO
 - ObstacleAONatureEnum
 - ObstacleAORequest
+- OccupationEnum
+- OccupationJourEnum
 - OfflineOperation
 - OfflineOperationStatutEnum
 - OffreFinancement

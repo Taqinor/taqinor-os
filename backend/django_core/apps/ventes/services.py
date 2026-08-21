@@ -3746,11 +3746,15 @@ def phase_client_pour_dimensionnement(lead):
 
 
 def _panneaux_dimensionnement_horaire(*, lead, company, phase):
-    """(nb_panneaux, source) recommandés par le moteur horaire, ou ``(0, ...)``.
+    """``(nb_panneaux, panel_watt, source)`` recommandés par le moteur horaire.
 
     Traduit la fiche du lead en entrées du dimensionnement, puis lit la
-    recommandation. Toute impossibilité (pas de facture, localisation non
-    résolue par PVGIS, catalogue incomplet) rend ``0`` : l'appelant retombe
+    recommandation. ``panel_watt`` est le wattage du panneau RÉEL sur lequel le
+    balayage a décidé : l'appelant doit composer avec le MÊME, sinon la
+    puissance livrée ne serait pas celle qui a été évaluée.
+
+    Toute impossibilité (pas de facture, localisation non résolue par PVGIS,
+    catalogue incomplet) rend ``(0, None, 'regle_900dh')`` : l'appelant retombe
     alors sur la règle historique, ÉTIQUETÉE comme telle. Ne lève jamais.
     """
     try:
@@ -3767,7 +3771,7 @@ def _panneaux_dimensionnement_horaire(*, lead, company, phase):
             facture_ete_mad=getattr(lead, 'facture_ete', None),
             ete_differente=getattr(lead, 'ete_differente', False))
         if not conso:
-            return 0, 'regle_900dh'
+            return 0, None, 'regle_900dh'
 
         drapeaux = {'present': OCCUPATION_PRESENCE,
                     'absent': OCCUPATION_ABSENCE,
@@ -3791,11 +3795,12 @@ def _panneaux_dimensionnement_horaire(*, lead, company, phase):
             source_conso=source)
         recommandation = resultat.get('recommandation')
         if not recommandation:
-            return 0, 'regle_900dh'
-        return int(recommandation['panneaux']), 'moteur_horaire'
+            return 0, None, 'regle_900dh'
+        return (int(recommandation['panneaux']),
+                recommandation.get('panel_watt'), 'moteur_horaire')
     except Exception:  # noqa: BLE001 — jamais bloquant : on retombe sur 900 DH
         logger.warning('dimensionnement horaire indisponible', exc_info=True)
-        return 0, 'regle_900dh'
+        return 0, None, 'regle_900dh'
 
 
 def rafraichir_etude_horaire(devis, *, kwc=None, batterie_kwh_utile=None):
@@ -4011,15 +4016,24 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
     # ait réellement rempli le questionnaire d'appel.
     panneaux = 0
     source_dimensionnement = 'regle_900dh'
+    # Le wattage du panneau doit être CELUI SUR LEQUEL LE BALAYAGE A DÉCIDÉ :
+    # dimensionner sur un panneau de 550 Wc puis composer à 710 Wc livrerait
+    # une autre puissance que celle qui a été évaluée.
+    watt_dimensionnement = _AUTO_PANEL_WATT
     if cible is None and taille_kwc in (None, '') and profil_reel_existe(lead):
-        panneaux, source_dimensionnement = _panneaux_dimensionnement_horaire(
-            lead=lead, company=company, phase=phase_client_pour_dimensionnement(lead))
+        panneaux, watt_retenu, source_dimensionnement = (
+            _panneaux_dimensionnement_horaire(
+                lead=lead, company=company,
+                phase=phase_client_pour_dimensionnement(lead)))
+        if panneaux > 0 and watt_retenu:
+            watt_dimensionnement = watt_retenu
 
     if panneaux <= 0:
         panneaux = _residential_panel_count(
             facture_hiver=facture_hiver,
             taille_kwc=cible if cible is not None else taille_kwc)
         source_dimensionnement = 'regle_900dh'
+        watt_dimensionnement = _AUTO_PANEL_WATT
     if panneaux <= 0:
         if facture_hiver not in (None, '') or taille_kwc not in (None, ''):
             msg = ("La facture d'hiver du lead est trop faible pour dimensionner "
@@ -4031,7 +4045,7 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
                    "kWc) du lead.")
         raise AutoDevisError(msg, field='facture_hiver')
 
-    kwc = round(panneaux * _AUTO_PANEL_WATT / 1000, 2)
+    kwc = round(panneaux * watt_dimensionnement / 1000, 2)
     # ── U2 (fondateur 20/08/2026) — LE DÉFAUT EST « LES DEUX OPTIONS » ──────
     # « le devis auto sort SANS batterie alors que le calepinage 3D sort AVEC ;
     # le DÉFAUT doit être le devis avec LES DEUX options ». Le devis auto ne
@@ -4058,7 +4072,7 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
     deux_options = choix_batterie not in ('avec', 'sans')
     layout = {
         'result': {'panels': panneaux, 'kwc': kwc},
-        'panelWatt': _AUTO_PANEL_WATT,
+        'panelWatt': watt_dimensionnement,
         'scenario': 'avec_batterie' if wants_battery else 'reseau',
     }
     # ── U3 — GARDE MARQUE ÉPINGLÉE, portée côté SERVEUR ────────────────────
@@ -4082,7 +4096,8 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
     phase_client = normaliser_phase(getattr(lead, 'raccordement', None))
 
     apercu = composer_devis_residentiel(
-        company=company, nb_panneaux=panneaux, panel_watt=_AUTO_PANEL_WATT,
+        company=company, nb_panneaux=panneaux,
+        panel_watt=watt_dimensionnement,
         scenario=choix_batterie or 'les_deux', taux_tva=taux_tva,
         phase=phase_client)
     if apercu['marques_manquantes']:

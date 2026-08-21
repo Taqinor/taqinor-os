@@ -51,8 +51,30 @@ TAG = 'EXEMPLE FONDATEUR'
 VILLE = 'Casablanca'
 
 #: Mots qui, dans un avertissement de composition, signalent un verdict
-#: ÉLECTRIQUE bloquant (et non une simple remarque de catalogue).
-MOTS_BLOQUANTS = ('ne se raccorde pas', 'incompatible', 'compatibilité')
+#: ÉLECTRIQUE resté bloquant.
+#:
+#: SUBTILITÉ QUI COÛTE UN FAUX ROUGE : ``composition_residentielle`` émet, sur
+#: une réparation RÉUSSIE, « Panneau remplacé pour compatibilité électrique :
+#: « X » ne se raccorde pas à l'onduleur retenu, « Y » a été composé à la
+#: place. » — un message qui contient « compatibilité » ET « ne se raccorde
+#: pas » alors que le problème est RÉSOLU. C'est exactement le trou de
+#: catalogue documenté (hybride mono 5 kW / panneaux 710 Wc) : le moteur doit
+#: BASCULER honnêtement, et l'exemple imprime ce choix. On ne compte donc comme
+#: bloquant que ce qui subsiste APRÈS réparation.
+MOTS_BLOQUANTS = ('ne se raccorde pas', 'incompatible')
+
+#: Préfixe des avertissements de RÉPARATION réussie — informatifs, jamais
+#: bloquants (ils sont imprimés dans le rapport, pas comptés comme échec).
+PREFIXES_REPARATION = ('Panneau remplacé',)
+
+
+def _est_bloquant(avertissement):
+    """Un avertissement décrit-il un problème électrique NON résolu ?"""
+    texte = (avertissement or '').strip()
+    if texte.startswith(PREFIXES_REPARATION):
+        return False
+    minuscule = texte.lower()
+    return any(mot in minuscule for mot in MOTS_BLOQUANTS)
 
 
 class Cas:
@@ -201,9 +223,14 @@ class ExemplesFondateurTest(TestCase):
             print('%s    >>> AUCUNE TAILLE RECOMMANDEE — %s'
                   % (TAG, resultat['motivation']))
             return
-        print('%s    >>> RECOMMANDE : %d panneaux, %.2f kWc, onduleur %s'
+        print('%s    >>> RECOMMANDE : %d panneaux, %.2f kWc, onduleur %d x %s '
+              '= %s kW (ratio %.2f x kWc, regle 80%% %s)'
               % (TAG, recommandation['panneaux'], recommandation['kwc'],
-                 recommandation['onduleur'] or '-'))
+                 recommandation['onduleur_quantite'] or 1,
+                 recommandation['onduleur'] or '-',
+                 recommandation['onduleur_kw'],
+                 recommandation['ratio_onduleur_kwc'] or 0,
+                 'OK' if recommandation['regle_80_pct_respectee'] else 'NON'))
         print('%s        motif : %s' % (TAG, resultat['motivation']))
         print('%s        economie %s DH/an sans batterie, %s DH/an avec '
               '(facture %s DH/an) — couverture %s'
@@ -246,7 +273,7 @@ class ExemplesFondateurTest(TestCase):
 
         # 2. Aucun verdict ELECTRIQUE bloquant sur la recommandation.
         bloquants = [a for a in recommandation['avertissements']
-                     if any(mot in a.lower() for mot in MOTS_BLOQUANTS)]
+                     if _est_bloquant(a)]
         self.assertEqual(
             bloquants, [],
             '%s : la taille recommandee porte un verdict bloquant' % libelle)
