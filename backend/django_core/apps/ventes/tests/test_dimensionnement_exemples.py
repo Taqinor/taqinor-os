@@ -37,7 +37,11 @@ from apps.ventes.courbes_journalieres import (
     OCCUPATION_PRESENCE,
     composer_equipements,
 )
-from apps.ventes.dimensionnement import RATIO_ONDULEUR_MIN, recommander_taille
+from apps.ventes.dimensionnement import (
+    RATIO_ONDULEUR_MIN,
+    recommander_taille,
+    verdict_bloquant,
+)
 from apps.ventes.etude_horaire import profil_depuis_factures
 from authentication.models import Company
 
@@ -50,31 +54,8 @@ TAG = 'EXEMPLE FONDATEUR'
 #: la société (et la ville des trois factures qui étalonnent le barème).
 VILLE = 'Casablanca'
 
-#: Mots qui, dans un avertissement de composition, signalent un verdict
-#: ÉLECTRIQUE resté bloquant.
-#:
-#: SUBTILITÉ QUI COÛTE UN FAUX ROUGE : ``composition_residentielle`` émet, sur
-#: une réparation RÉUSSIE, « Panneau remplacé pour compatibilité électrique :
-#: « X » ne se raccorde pas à l'onduleur retenu, « Y » a été composé à la
-#: place. » — un message qui contient « compatibilité » ET « ne se raccorde
-#: pas » alors que le problème est RÉSOLU. C'est exactement le trou de
-#: catalogue documenté (hybride mono 5 kW / panneaux 710 Wc) : le moteur doit
-#: BASCULER honnêtement, et l'exemple imprime ce choix. On ne compte donc comme
-#: bloquant que ce qui subsiste APRÈS réparation.
-MOTS_BLOQUANTS = ('ne se raccorde pas', 'incompatible')
-
-#: Préfixe des avertissements de RÉPARATION réussie — informatifs, jamais
-#: bloquants (ils sont imprimés dans le rapport, pas comptés comme échec).
-PREFIXES_REPARATION = ('Panneau remplacé',)
-
-
-def _est_bloquant(avertissement):
-    """Un avertissement décrit-il un problème électrique NON résolu ?"""
-    texte = (avertissement or '').strip()
-    if texte.startswith(PREFIXES_REPARATION):
-        return False
-    minuscule = texte.lower()
-    return any(mot in minuscule for mot in MOTS_BLOQUANTS)
+#: Le détecteur de verdict bloquant vient du MODULE, pas du test : une seconde
+#: définition ici finirait par diverger de celle qui décide vraiment.
 
 
 class Cas:
@@ -207,15 +188,19 @@ class ExemplesFondateurTest(TestCase):
                                   'OK' if ligne['regle_80_pct_respectee']
                                   else '!!')
                      if ligne['ratio_onduleur_kwc'] else '   n/a')
+            eco_avec = (_mad(ligne['economie_avec_mad'])
+                        if ligne['batterie_disponible'] else 'impossible')
             print('%s %s %-4d %-7.2f %-22s %-9s %-6s %-6s %-10s %-10s %-8s'
                   % (TAG, marque, ligne['panneaux'], ligne['kwc'],
                      (ligne['onduleur'] or '-')[:22], ratio,
                      _pct(ligne['taux_autoconso_sans']),
                      _pct(ligne['couverture_sans']),
-                     _mad(ligne['economie_sans_mad']),
-                     _mad(ligne['economie_avec_mad']),
+                     _mad(ligne['economie_sans_mad']), eco_avec,
                      _annees(ligne['payback_sans_annees'])))
-            for avertissement in ligne['avertissements']:
+            for avertissement in ligne['verdicts_bloquants_avec']:
+                print('%s      [option batterie ECARTEE] %s'
+                      % (TAG, avertissement))
+            for avertissement in ligne['avertissements_sans']:
                 print('%s      ! %s' % (TAG, avertissement))
 
         recommandation = resultat['recommandation']
@@ -232,14 +217,27 @@ class ExemplesFondateurTest(TestCase):
                  recommandation['ratio_onduleur_kwc'] or 0,
                  'OK' if recommandation['regle_80_pct_respectee'] else 'NON'))
         print('%s        motif : %s' % (TAG, resultat['motivation']))
-        print('%s        economie %s DH/an sans batterie, %s DH/an avec '
-              '(facture %s DH/an) — couverture %s'
-              % (TAG, _mad(recommandation['economie_sans_mad']),
-                 _mad(recommandation['economie_avec_mad']), _mad(annuel_mad),
-                 _pct(recommandation['couverture_sans'])))
-        print('%s        cout %s DH TTC sans batterie, %s DH TTC avec'
-              % (TAG, _mad(recommandation['cout_sans_ttc']),
-                 _mad(recommandation['cout_avec_ttc'])))
+        if recommandation['batterie_disponible']:
+            print('%s        economie %s DH/an sans batterie, %s DH/an avec '
+                  '(facture %s DH/an) — couverture %s'
+                  % (TAG, _mad(recommandation['economie_sans_mad']),
+                     _mad(recommandation['economie_avec_mad']),
+                     _mad(annuel_mad),
+                     _pct(recommandation['couverture_sans'])))
+            print('%s        cout %s DH TTC sans batterie, %s DH TTC avec'
+                  % (TAG, _mad(recommandation['cout_sans_ttc']),
+                     _mad(recommandation['cout_avec_ttc'])))
+        else:
+            print('%s        economie %s DH/an (facture %s DH/an) — '
+                  'couverture %s ; cout %s DH TTC'
+                  % (TAG, _mad(recommandation['economie_sans_mad']),
+                     _mad(annuel_mad),
+                     _pct(recommandation['couverture_sans']),
+                     _mad(recommandation['cout_sans_ttc'])))
+            print('%s        OPTION BATTERIE IMPOSSIBLE a cette taille — '
+                  'aucun chiffre affiche pour elle :' % TAG)
+            for avertissement in recommandation['verdicts_bloquants_avec']:
+                print('%s          %s' % (TAG, avertissement))
         print('%s        lignes du devis (sans batterie) :' % TAG)
         for ligne in recommandation['lignes_sans']:
             print('%s          %2d x %-46s (%s)'
@@ -271,28 +269,47 @@ class ExemplesFondateurTest(TestCase):
             % (libelle, recommandation['ratio_onduleur_kwc']))
         self.assertTrue(recommandation['regle_80_pct_respectee'], libelle)
 
-        # 2. Aucun verdict ELECTRIQUE bloquant sur la recommandation.
-        bloquants = [a for a in recommandation['avertissements']
-                     if _est_bloquant(a)]
+        # 2. L'option de BASE (sans batterie) est electriquement saine. Un
+        #    verdict bloquant sur la variante BATTERIE n'invalide pas la
+        #    taille : il retire l'option batterie, ce que le rapport imprime
+        #    (c'est le trou de catalogue documente n° 2 — on le MONTRE).
         self.assertEqual(
-            bloquants, [],
-            '%s : la taille recommandee porte un verdict bloquant' % libelle)
+            recommandation['verdicts_bloquants_sans'], [],
+            '%s : la taille recommandee porte un verdict bloquant sur '
+            'l\'option de base' % libelle)
+        for avertissement in recommandation['avertissements_sans']:
+            self.assertFalse(
+                verdict_bloquant(avertissement),
+                '%s : avertissement bloquant non detecte : %s'
+                % (libelle, avertissement))
 
-        # 3. La batterie ne peut PAS faire économiser moins.
-        self.assertGreaterEqual(
-            recommandation['economie_avec_mad'],
-            recommandation['economie_sans_mad'] - 1e-6,
-            '%s : la batterie economise MOINS que sans batterie' % libelle)
+        # 3. Quand l'option batterie EXISTE, elle ne peut pas economiser moins.
+        #    Quand elle n'existe pas, elle ne porte AUCUN chiffre (on
+        #    n'affiche jamais l'economie d'une installation non livrable).
+        if recommandation['batterie_disponible']:
+            self.assertGreaterEqual(
+                recommandation['economie_avec_mad'],
+                recommandation['economie_sans_mad'] - 1e-6,
+                '%s : la batterie economise MOINS que sans batterie' % libelle)
+        else:
+            for cle in ('economie_avec_mad', 'cout_avec_ttc',
+                        'payback_avec_annees', 'couverture_avec'):
+                self.assertIsNone(
+                    recommandation[cle],
+                    '%s : option batterie impossible mais « %s » est chiffre'
+                    % (libelle, cle))
 
         # 4. On n'economise jamais plus que ce que le client paie.
         facture_annuelle = (cas.hiver * 6 + cas.ete * 6) \
             if cas.ete_differente else cas.hiver * 12
         for cle in ('economie_sans_mad', 'economie_avec_mad'):
+            valeur = recommandation[cle]
+            if valeur is None:
+                continue
             self.assertLess(
-                recommandation[cle], facture_annuelle,
+                valeur, facture_annuelle,
                 '%s : economie %s (%s) >= facture annuelle (%s)'
-                % (libelle, cle, _mad(recommandation[cle]),
-                   _mad(facture_annuelle)))
+                % (libelle, cle, _mad(valeur), _mad(facture_annuelle)))
 
         # 5. La taille recommandee est composable et chiffree.
         self.assertTrue(recommandation['composable'], libelle)

@@ -7,7 +7,9 @@
     "critere_par_defaut": "meilleur_payback, puis meilleure couverture a egalite (< 0,25 an d'ecart). Change par le champ « critere » ; les valeurs possibles sont rendues dans « criteres_disponibles ».",
     "regle_80_pct": "L'onduleur n'est pas choisi ici : composition_residentielle applique deja « jamais moins de 80 % de la puissance PV » (ordre fondateur). Le tableau RE-EXPOSE le ratio obtenu (ratio_onduleur_kwc + regle_80_pct_respectee) pour que la regle soit verifiable a l'oeil.",
     "argent": "Les economies viennent du modele « deux factures » applique AU MOIS (facture(conso) - facture(conso - autoconsomme)), jamais de « kWh evites x prix moyen ». Les charges fixes s'annulent dans la difference ; la TPPAN, qui suit le kWh, non.",
-    "montants": "Tous les MAD sont TTC. Aucun prix d'achat ni marge n'est expose (regle #4)."
+    "montants": "Tous les MAD sont TTC. Aucun prix d'achat ni marge n'est expose (regle #4).",
+    "option_batterie": "« batterie_disponible » dit si l'option batterie est ELECTRIQUEMENT livrable a cette taille. Quand elle vaut false (trou de catalogue reel : panneau 710 Wc + onduleur hybride 5 kW mono, Isc 18,6 A > 17,0 A), TOUS les champs « _avec » valent null — economie_avec_mad, cout_avec_ttc, payback_avec_annees, couverture_avec, taux_autoconso_avec. On n'affiche jamais l'economie d'une installation qu'on ne peut pas livrer ; « verdicts_bloquants_avec » porte la raison, en francais.",
+    "onduleur_quantite": "« onduleur_kw » est la puissance TOTALE installee (kW unitaire x quantite) : la composition quote plusieurs onduleurs quand un seul ne couvre pas le champ. C'est cette puissance totale que la regle des 80 % compare aux kWc."
   },
   "exemple": {
     "etude": {
@@ -24,7 +26,9 @@
       },
       "occupation": "presence_jour",
       "occupation_source": "lead_occupation_jour:present",
-      "equipements_actifs": ["clim"],
+      "equipements_actifs": [
+        "clim"
+      ],
       "batterie_kwh_utile": 10.0,
       "mois": [
         {
@@ -88,7 +92,11 @@
     },
     "dimensionnement": {
       "critere": "meilleur_payback",
-      "criteres_disponibles": ["meilleur_payback", "meilleure_couverture", "economie_max"],
+      "criteres_disponibles": [
+        "meilleur_payback",
+        "meilleure_couverture",
+        "economie_max"
+      ],
       "regle_onduleur_min": 0.8,
       "motivation": "meilleur payback (6.2 ans), sans egalite — critere « meilleur_payback »",
       "tableau": [
@@ -131,7 +139,14 @@
               "quantite": 1,
               "prix_unitaire_ht": 22000.0
             }
-          ]
+          ],
+          "batterie_disponible": true,
+          "avertissements_sans": [],
+          "avertissements_avec": [],
+          "verdicts_bloquants_sans": [],
+          "verdicts_bloquants_avec": [],
+          "onduleur_kw_unitaire": 5.0,
+          "onduleur_quantite": 1
         }
       ],
       "recommandation": {
@@ -173,12 +188,32 @@
             "quantite": 1,
             "prix_unitaire_ht": 22000.0
           }
-        ]
+        ],
+        "batterie_disponible": true,
+        "avertissements_sans": [],
+        "avertissements_avec": [],
+        "verdicts_bloquants_sans": [],
+        "verdicts_bloquants_avec": [],
+        "onduleur_kw_unitaire": 5.0,
+        "onduleur_quantite": 1
       }
     },
     "consommation": {
       "source": "facture_hiver",
-      "kwh_mensuels": [653.2, 653.2, 653.2, 653.2, 653.2, 653.2, 653.2, 653.2, 653.2, 653.2, 653.2, 653.2],
+      "kwh_mensuels": [
+        653.2,
+        653.2,
+        653.2,
+        653.2,
+        653.2,
+        653.2,
+        653.2,
+        653.2,
+        653.2,
+        653.2,
+        653.2,
+        653.2
+      ],
       "detail": {
         "methode": "inversion_bareme_tranches",
         "charges_fixes_mad": 39.94,
@@ -188,7 +223,9 @@
     },
     "profil": {
       "occupation": "presence_jour",
-      "equipements_actifs": ["clim"]
+      "equipements_actifs": [
+        "clim"
+      ]
     },
     "avertissements": []
   },

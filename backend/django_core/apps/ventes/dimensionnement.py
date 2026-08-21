@@ -77,6 +77,39 @@ RATIO_ONDULEUR_MIN = 0.80
 #: produit un avertissement — on ne tronque jamais en silence.
 MAX_PANNEAUX_BALAYAGE = 120
 
+#: Marqueurs d'un verdict électrique resté BLOQUANT dans un avertissement de
+#: composition. ``composition_residentielle`` ne lève jamais : elle AVERTIT.
+#: Il faut donc lire ses messages pour savoir si un couple panneau/onduleur
+#: est seulement « à vérifier » (écrêtage de courant — vendable, à surveiller)
+#: ou HORS SPÉCIFICATION (tension/Isc au-delà de la fiche constructeur — pas
+#: vendable).
+_MARQUEURS_BLOQUANTS = ('incompatible', 'hors spécification',
+                        'hors specification')
+
+#: Préfixe des avertissements de RÉPARATION RÉUSSIE. « Panneau remplacé pour
+#: compatibilité électrique : « X » ne se raccorde pas…, « Y » a été composé à
+#: la place » décrit un problème RÉSOLU : le compter comme bloquant ferait
+#: rejeter une composition parfaitement saine.
+_PREFIXES_REPARATION = ('Panneau remplacé',)
+
+
+def verdict_bloquant(avertissement):
+    """Cet avertissement décrit-il un problème électrique NON résolu ?
+
+    Distingue les trois natures de message que la composition émet :
+      · réparation réussie (« Panneau remplacé… ») → PAS bloquant ;
+      · réserve (« à vérifier… ÉCRÊTAGE permanent ») → PAS bloquant, le kit se
+        vend, l'installateur répartit les chaînes ;
+      · INCOMPATIBLE / HORS SPÉCIFICATION → bloquant, le couple sort des
+        bornes publiées de la fiche constructeur (règle L1 : on refuse
+        l'impossible).
+    """
+    texte = (avertissement or '').strip()
+    if texte.startswith(_PREFIXES_REPARATION):
+        return False
+    minuscule = texte.lower()
+    return any(marqueur in minuscule for marqueur in _MARQUEURS_BLOQUANTS)
+
 
 def _num(valeur, defaut=0.0):
     """Flottant tolérant — illisible/``None`` → ``defaut``."""
@@ -332,6 +365,14 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, ville=None, lat=None,
             'Balayage plafonné à %d panneaux : la consommation déduite est '
             'anormalement élevée — vérifier la facture saisie.'
             % MAX_PANNEAUX_BALAYAGE] if plafond_atteint else [])
+        # LES DEUX VARIANTES ONT LEURS PROPRES VERDICTS, ET IL FAUT LES GARDER
+        # SÉPARÉS. Cas réel du catalogue (trou documenté n° 2) : le panneau
+        # 710 Wc passe avec l'onduleur RÉSEAU 5 kW (réserve d'écrêtage) mais
+        # est HORS SPÉCIFICATION avec l'HYBRIDE 5 kW (Isc 18,6 A > 17,0 A). Un
+        # sac d'avertissements commun ferait rejeter une taille dont l'option
+        # réseau est parfaitement saine — ou pire, laisserait vendre une option
+        # batterie impossible.
+        avert_par_variante = {'sans': [], 'avec': []}
         for cle, avec_batterie in (('sans', False), ('avec', True)):
             avert = []
             try:
@@ -344,17 +385,32 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, ville=None, lat=None,
             except Exception:  # noqa: BLE001 — une taille impossible ne stoppe
                 logger.warning('composition impossible à %s panneaux',
                                panneaux, exc_info=True)
-                composable = False
-                avertissements.append(
+                if cle == 'sans':
+                    composable = False
+                avert_par_variante[cle].append(
                     'composition impossible à %d panneaux' % panneaux)
                 continue
             variantes[cle] = _lire_composition(lignes, taux_tva)
-            avertissements.extend(a for a in avert if a not in avertissements)
+            avert_par_variante[cle] = list(avert)
+
+        for cle in ('sans', 'avec'):
+            avertissements.extend(
+                a for a in avert_par_variante[cle] if a not in avertissements)
 
         if 'sans' not in variantes:
             composable = False
 
-        batterie_kwh = (variantes.get('avec') or {}).get('batterie_kwh') or 0.0
+        bloquants_sans = [a for a in avert_par_variante['sans']
+                          if verdict_bloquant(a)]
+        bloquants_avec = [a for a in avert_par_variante['avec']
+                          if verdict_bloquant(a)]
+        # L'option batterie N'EXISTE PAS quand son couple est hors spec : on ne
+        # chiffre pas une installation que l'électricité interdit (règle L1,
+        # « refuser l'impossible »).
+        batterie_disponible = ('avec' in variantes and not bloquants_avec)
+
+        batterie_kwh = ((variantes.get('avec') or {}).get('batterie_kwh') or 0.0
+                        if batterie_disponible else 0.0)
 
         etude = calculer_etude_horaire(
             kwc=kwc, conso_kwh_mensuelles=conso_kwh_mensuelles,
@@ -368,9 +424,13 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, ville=None, lat=None,
         annuel = etude['annuel']
 
         cout_sans = (variantes.get('sans') or {}).get('cout_ttc') or 0.0
-        cout_avec = (variantes.get('avec') or {}).get('cout_ttc') or 0.0
         eco_sans = annuel['economie_sans_mad']
-        eco_avec = annuel['economie_avec_mad']
+        # Option batterie hors spec ⇒ AUCUN chiffre pour elle. On n'affiche
+        # jamais l'économie d'une installation qu'on ne peut pas livrer.
+        cout_avec = ((variantes.get('avec') or {}).get('cout_ttc') or 0.0
+                     if batterie_disponible else None)
+        eco_avec = (annuel['economie_avec_mad'] if batterie_disponible
+                    else None)
 
         onduleur = (variantes.get('sans') or {}).get('onduleur_kw')
         ratio = _ratio_onduleur(onduleur, kwc)
@@ -383,15 +443,24 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, ville=None, lat=None,
             'production_annuelle_kwh': annuel['production_kwh'],
             'consommation_annuelle_kwh': annuel['consommation_kwh'],
             'taux_autoconso_sans': annuel['taux_autoconso_sans'],
-            'taux_autoconso_avec': annuel['taux_autoconso_avec'],
+            'taux_autoconso_avec': (annuel['taux_autoconso_avec']
+                                    if batterie_disponible else None),
             'couverture_sans': annuel['couverture_sans'],
-            'couverture_avec': annuel['couverture_avec'],
+            'couverture_avec': (annuel['couverture_avec']
+                                if batterie_disponible else None),
             'economie_sans_mad': eco_sans,
             'economie_avec_mad': eco_avec,
             'cout_sans_ttc': cout_sans,
             'cout_avec_ttc': cout_avec,
             'payback_sans_annees': _arrondi(_payback(cout_sans, eco_sans)),
-            'payback_avec_annees': _arrondi(_payback(cout_avec, eco_avec)),
+            'payback_avec_annees': (
+                _arrondi(_payback(cout_avec, eco_avec))
+                if batterie_disponible else None),
+            'batterie_disponible': batterie_disponible,
+            'avertissements_sans': list(avert_par_variante['sans']),
+            'avertissements_avec': list(avert_par_variante['avec']),
+            'verdicts_bloquants_sans': bloquants_sans,
+            'verdicts_bloquants_avec': bloquants_avec,
             'onduleur': (variantes.get('sans') or {}).get('onduleur'),
             'onduleur_kw': onduleur,
             'onduleur_kw_unitaire': (variantes.get('sans') or {}).get(
@@ -433,15 +502,20 @@ def choisir_recommandation(tableau, critere=CRITERE_DEFAUT):
     if critere not in CRITERES:
         critere = CRITERE_DEFAUT
 
+    # Une taille n'est éligible que si l'option de BASE (sans batterie) est
+    # composable, chiffrable ET électriquement saine. Un verdict bloquant sur
+    # la variante batterie n'écarte PAS la taille — il retire seulement
+    # l'option batterie (``batterie_disponible``), ce que le tableau montre.
     eligibles = [
         ligne for ligne in (tableau or [])
         if ligne.get('composable')
         and ligne.get('payback_sans_annees') is not None
+        and not ligne.get('verdicts_bloquants_sans')
     ]
     if not eligibles:
         return None, (
             'aucune taille recommandable : le catalogue ne compose aucune '
-            'variante chiffrable pour ce profil'
+            'variante chiffrable et électriquement conforme pour ce profil'
         )
 
     if critere == 'economie_max':
