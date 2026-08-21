@@ -93,6 +93,32 @@ class TariffSettings(models.Model):
     # Défaut 150 (spec : ≤150 progressif, >150 sélectif).
     selective_threshold_kwh = models.PositiveIntegerField(default=150)
 
+    # ── CJ2a — redevance de location du compteur (charge FIXE mensuelle) ──
+    # ORDRE FONDATEUR (CJ2) : « don't forget the rent of compteur and media tax
+    # in both calculators kwh→mad and mad→kwh ». La taxe audiovisuelle (TPPAN)
+    # a un barème PUBLIÉ (art. 16 dahir 1-96-77 — codé dans
+    # apps/ventes/quote_engine/bareme.py) ; la redevance compteur, elle, n'est
+    # publiée par AUCUN distributeur marocain (recherche du 21/08/2026). Elle
+    # n'est donc PAS codée en dur : elle vit ici, éditable, et vaut NULL tant
+    # que la société ne l'a pas relevée sur une facture réelle.
+    #
+    # NULL ≠ 0 : NULL veut dire « inconnue » (le calcul l'ignore, exactement
+    # comme aujourd'hui, et signale le biais) ; 0 voudrait dire « mesurée à
+    # zéro ». Le barème rend ``redevance_connue`` pour que l'appelant ne
+    # confonde jamais les deux.
+    #
+    # EFFET : s'annule EXACTEMENT dans une économie (facture avant − facture
+    # après, charge fixe des deux côtés) ; ne compte QUE pour le back-calcul
+    # MAD→kWh, qu'elle rend plus juste (sans elle, ses dirhams sont comptés
+    # comme de l'énergie et le kWh déduit est légèrement surestimé).
+    redevance_compteur_mad_mois = models.DecimalField(
+        max_digits=7, decimal_places=2, null=True, blank=True,
+        verbose_name='Redevance location compteur (MAD/mois)',
+        help_text="Montant exact lu sur votre facture réelle, ligne "
+                  "location/entretien compteur. Laisser VIDE tant qu'il n'a "
+                  "pas été relevé : vide = charge ignorée (comportement "
+                  "actuel), jamais un montant supposé.")
+
     # ── N64 — classe « force motrice / agricole » (séparée, moins chère) ──
     # Tarif unique MAD/kWh TTC pour pompage/force motrice : ~0.90–0.95, JAMAIS
     # le haut barème résidentiel. Défaut conservateur 0.9500.
