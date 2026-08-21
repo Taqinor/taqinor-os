@@ -1271,6 +1271,16 @@ def proposal_data(request, token):
             for cle in ('eco_a_monthly', 'eco_a_ann', 'eco_a_cumul',
                         'roi_a', 'cashflow_avec'):
                 data[cle] = None
+        # …et le bloc moteur BRUT (`etude_params['etude_horaire']`, recopié
+        # dans `data['etude']` par le builder) ne franchit JAMAIS la frontière
+        # publique : ses lignes mensuelles portent `economie_avec_mad` même
+        # quand l'option batterie n'est pas vendable. La page ne lit que le
+        # bloc curaté `economies_mensuelles` — le brut est interne moteur.
+        # (`data['etude']` est une copie superficielle : le pop ne touche pas
+        # `devis.etude_params`.)
+        etude_publique = data.get('etude')
+        if isinstance(etude_publique, dict):
+            etude_publique.pop('etude_horaire', None)
         # COURBES (21/08/2026) — série de consommation calculée UNE fois : elle
         # est republiée telle quelle ET sert de NIVEAU réel au graphe journalier.
         _conso_mensuelle = _monthly_consumption(devis)
