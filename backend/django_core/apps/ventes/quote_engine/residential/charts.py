@@ -24,6 +24,10 @@ GREY_2 = "#AEB8C7"
 INK = "#1f2937"
 MUTED = "#7A8699"
 GRID = "#EEF1F6"
+# CJ2b — or ASSOMBRI pour les chiffres d'économie écrits sur le graphe mensuel.
+# Le GOLD des barres (#F5A623) est trop clair pour du texte de 5 pt à
+# l'impression ; ce ton reste de la même famille et passe le contraste.
+ECO_INK = "#B4770F"
 
 plt.rcParams.update({
     "font.family": "DejaVu Sans",
@@ -58,10 +62,25 @@ def _clean(ax, keep_bottom=True):
     ax.set_axisbelow(True)
 
 
-def bill_before_after(bills_before, bills_after, w=6.6, h=2.0) -> str:
+def bill_before_after(bills_before, bills_after, economies=None,
+                      variation_estimee=False, w=6.6, h=2.0) -> str:
     """QRES19 — barres APPARIÉES (gris|or côte à côte) : la superposition
-    pouvait se lire comme un empilement. Le mois de pointe porte l'étiquette
-    « −X % » (l'économie réelle de CE mois), l'axe Y est étiqueté MAD."""
+    pouvait se lire comme un empilement. L'axe Y est étiqueté MAD.
+
+    CJ2b (ORDRE FONDATEUR, 21/08/2026) — ``economies`` : les douze économies
+    MAD du mois, ÉCRITES au-dessus de chaque paire de barres. C'est le « annual
+    saving chart (per month) » que le fondateur redemande : il vivait déjà dans
+    l'écart entre les deux barres, sans qu'un seul chiffre soit lisible.
+
+    L'appelant passe l'écart RÉELLEMENT dessiné (``before − after``, cf.
+    ``renderer.synthese_economies``) : les nombres imprimés ne peuvent donc pas
+    contredire les barres qu'ils surmontent. ``economies=None`` ⇒ rendu
+    strictement identique à avant CJ2b (aucun devis existant ne bouge).
+
+    L'ancienne étiquette « −X % » du mois de pointe est REMPLACÉE par cette
+    série : elle occupait exactement la place des chiffres et le même
+    pourcentage figure déjà en grand sur la couverture (``pct_cut``).
+    """
     import numpy as np
     x = np.arange(12)
     fig, ax = plt.subplots(figsize=(w, h))
@@ -71,15 +90,47 @@ def bill_before_after(bills_before, bills_after, w=6.6, h=2.0) -> str:
         ax.bar(xi - 0.19, b, bw, color=grey, edgecolor="none", zorder=2)
         ax.bar(xi + 0.19, a, bw, color=GOLD, edgecolor="none", zorder=3)
     ymax = max(list(bills_before) + [1])
-    ax.set_ylim(0, ymax * 1.22)
-    # Étiquette « −X % » sur le mois de pointe (calculée, jamais inventée).
-    peak = int(np.argmax(bills_before))
-    pb, pa = bills_before[peak], bills_after[peak]
-    if pb > 0 and pa < pb:
-        cut = round((1 - pa / pb) * 100)
-        ax.annotate(f"−{cut} %", (peak, pb), textcoords="offset points",
-                    xytext=(0, 4), ha="center", fontsize=8.2, color=GOLD,
-                    fontweight="bold")
+    # Douze nombres à écrire au-dessus des barres : il leur faut plus de ciel
+    # que l'unique étiquette « −X % » d'avant (1,22 → 1,30). La HAUTEUR de
+    # l'image ne change pas (``h`` inchangé, CSS ``height:33.5mm`` inchangé) —
+    # seule l'échelle interne respire, donc la pagination du document non plus.
+    _eco = list(economies) if economies else []
+    ax.set_ylim(0, ymax * (1.30 if len(_eco) == 12 else 1.22))
+    if len(_eco) == 12:
+        for xi, (b, eco) in enumerate(zip(bills_before, _eco)):
+            valeur = round(float(eco))
+            if valeur <= 0:
+                continue      # aucun gain ce mois-là : on n'écrit rien
+            # 7,6 pt DANS la figure ⇒ ≈ 5 pt une fois l'image ramenée à
+            # 33,5 mm de haut par le CSS (facteur 0,66) : lisible à
+            # l'impression, ce que 6 pt ne serait pas.
+            ax.annotate(f"{valeur:,}".replace(",", " "), (xi, b),
+                        textcoords="offset points", xytext=(0, 4),
+                        ha="center", fontsize=7.6, color=ECO_INK,
+                        fontweight="bold", zorder=4)
+        # La légende de cette troisième série vit DANS l'image, pas dans
+        # l'en-tête HTML de la carte : cet en-tête est une rangée flex déjà
+        # pleine (titre + deux pastilles), et RENDERING_NOTES.md rappelle que
+        # WeasyPrint gère mal ces rangées. Une ligne de plus la ferait passer
+        # à deux lignes et pousserait toute la couverture — alors qu'ici elle
+        # ne coûte rien : l'image reste haute de 33,5 mm par le CSS.
+        note = "économie du mois, en MAD"
+        if variation_estimee:
+            # Motif Z2 — le NIVEAU vient d'une facture réellement payée, mais
+            # la variation d'un mois à l'autre est une hypothèse tant que le
+            # client n'a pas donné douze points. On le dit, on ne le tait pas.
+            note += "  ·  variation mensuelle estimée"
+        ax.text(1.0, 1.03, note, transform=ax.transAxes, fontsize=7,
+                color=ECO_INK, ha="right", va="bottom", fontweight="bold")
+    else:
+        # Repli historique : étiquette « −X % » sur le mois de pointe.
+        peak = int(np.argmax(bills_before))
+        pb, pa = bills_before[peak], bills_after[peak]
+        if pb > 0 and pa < pb:
+            cut = round((1 - pa / pb) * 100)
+            ax.annotate(f"−{cut} %", (peak, pb), textcoords="offset points",
+                        xytext=(0, 4), ha="center", fontsize=8.2, color=GOLD,
+                        fontweight="bold")
     ax.set_xticks(x); ax.set_xticklabels(_MONTHS, fontsize=7.5, color=MUTED)
     ax.tick_params(axis="y", labelsize=7, colors=MUTED)
     ax.yaxis.set_major_formatter(
@@ -265,7 +316,15 @@ def build_all(data: dict) -> dict:
                 data["eco_s_ann"], data["eco_a_ann"],
                 data["roi_s"], data["roi_a"])
     return {
-        "bill": bill_before_after(data["bills_before"], data["bills_after"]),
+        # CJ2b — la SÉRIE d'économies chiffrée revient sur le graphe mensuel.
+        # ``eco_mensuelles`` est l'écart réellement dessiné, publié par
+        # ``renderer.synthese_economies`` ; absent (vieux dict d'appelant) ⇒
+        # ``bill_before_after`` retombe sur son rendu d'avant.
+        "bill": bill_before_after(
+            data["bills_before"], data["bills_after"],
+            data.get("eco_mensuelles"),
+            variation_estimee=bool(
+                data.get("factures_mensuelles_estimation"))),
         "coverage": coverage_donut(data["coverage_pct"]),
         "payback": payback_curve(*_pb_args, **_pb_kw),
         # QRES51 — variante PLEINE PAGE pour la page rentabilité dédiée :

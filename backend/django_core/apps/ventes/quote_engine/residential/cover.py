@@ -511,9 +511,19 @@ def build(ctx):
       </div>
       <img src="{charts['bill']}" alt="Facture mensuelle avant / après">
     </div>"""
+        # CJ2b (ORDRE FONDATEUR, 21/08/2026) — « we cannot see the real
+        # calculated saving ». Le libellé disait « estimée » même quand le
+        # moteur horaire (CJ2a) avait CALCULÉ le chiffre heure par heure sur la
+        # production PVGIS du chantier et la courbe de consommation du client.
+        # Un calcul présenté comme une estimation est aussi malhonnête qu'une
+        # estimation présentée comme un calcul : le mot suit désormais le
+        # modèle réellement employé (``savings_model``, posé par ``pricing``).
+        eco_kpi_label = ("Économie calculée"
+                         if d.get("savings_model") == "horaire"
+                         else "Économie estimée")
         kpi_eco_html = f"""      <div class="c1-kpi">
         <div class="c1-kpi-v">{fmt(eco_a_ann)}<span class="c1-u">&nbsp;MAD/an</span></div>
-        <div class="c1-kpi-l">Économie estimée</div>
+        <div class="c1-kpi-l">{eco_kpi_label}</div>
       </div>
 """
         wrap_cls = ""

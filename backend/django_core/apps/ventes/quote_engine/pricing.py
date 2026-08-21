@@ -884,6 +884,26 @@ def _lire_etude_horaire(bloc, puissance_kwc=None) -> dict | None:
     except (TypeError, ValueError, KeyError):
         return None
 
+    # ── CJ2b — LA SÉRIE « AVANT » DU BLOC HORAIRE ────────────────────────────
+    # Douze factures MENSUELLES, reconstituées par le barème à partir de la
+    # consommation du mois — laquelle descend elle-même des factures RÉELLES
+    # du client (inversion du barème, cf. ``etude_horaire.profil_depuis_
+    # factures``). Ce n'est donc PAS le proxy circulaire que M1 a tué (« facture
+    # ≈ économie supposée ÷ taux forfaitaire ») : la chaîne part d'un montant
+    # réellement payé et y revient. Elle rend au document sa série « avant »
+    # quand le client n'a donné qu'une facture d'hiver au lieu des douze.
+    #
+    # Garde STRICTE, comme partout ailleurs ici : douze valeurs numériques
+    # strictement positives, sinon ``None`` — le reste du bloc reste utilisable
+    # (les économies ne dépendent pas de cette série).
+    factures_avant = None
+    try:
+        _candidats = [float(m["facture_avant_mad"]) for m in mois]
+        if len(_candidats) == 12 and all(v > 0 for v in _candidats):
+            factures_avant = [round(v) for v in _candidats]
+    except (TypeError, ValueError, KeyError):
+        factures_avant = None
+
     def _entier(valeur):
         try:
             return round(float(valeur))
@@ -901,6 +921,10 @@ def _lire_etude_horaire(bloc, puissance_kwc=None) -> dict | None:
         "facture_avec_a": _entier(annuel.get("facture_apres_avec_mad")),
         "eco_s_monthly": eco_s_monthly,
         "eco_a_monthly": eco_a_monthly,
+        # CJ2b — série « avant » + provenance de la consommation, pour que le
+        # document sache si la VARIATION mensuelle est mesurée ou répétée.
+        "factures_avant_monthly": factures_avant,
+        "source_consommation": (bloc.get("source_consommation") or None),
     }
 
 
@@ -1078,6 +1102,11 @@ def calculate_savings_roi(
     # industriel/commercial de ``builder`` (étude saisie par le vendeur) passe
     # APRÈS et reste souverain — un chiffre saisi par un humain bat un calcul.
     eco_monthly_reel = None
+    # CJ2b — série « avant » servie par le bloc horaire, et provenance de la
+    # consommation qui la porte. Restent None hors modèle horaire : le document
+    # garde alors EXACTEMENT son comportement d'avant.
+    factures_avant_horaire = None
+    source_consommation_horaire = None
     _h = _lire_etude_horaire(etude_horaire, puissance_kwc)
     if _h:
         savings_model = "horaire"
@@ -1098,6 +1127,8 @@ def calculate_savings_roi(
         facture_avec_s = _h["facture_avec_s"]
         facture_avec_a = _h["facture_avec_a"]
         eco_monthly_reel = (_h["eco_s_monthly"], _h["eco_a_monthly"])
+        factures_avant_horaire = _h.get("factures_avant_monthly")
+        source_consommation_horaire = _h.get("source_consommation")
 
     # ── QX39 — retour sur investissement par CASHFLOW 25 ans (honnête) ────────
     # Le payback n'est plus un simple ratio année-1 (ni conservateur, ni
@@ -1177,6 +1208,14 @@ def calculate_savings_roi(
         #                  sur un taux d'autoconsommation forfaitaire ;
         #   'estimation' — repli étiqueté : production × forfait × prix moyen.
         "savings_model":    savings_model,
+        # CJ2b — les douze factures « avant » reconstituées par le moteur
+        # horaire (None hors modèle 'horaire'), et la provenance de la
+        # consommation qui les porte ('facture_hiver', 'facture_hiver_ete',
+        # 'factures_mensuelles_reelles', 'kwh_mensuels_saisis'). Le document
+        # s'en sert pour retrouver son graphe mensuel ET pour dire honnêtement
+        # si la VARIATION d'un mois à l'autre est mesurée ou répétée.
+        "factures_avant_monthly": factures_avant_horaire,
+        "source_consommation":    source_consommation_horaire,
         "facture_sans":     facture_sans,
         "facture_avec_s":   facture_avec_s,
         "facture_avec_a":   facture_avec_a,
