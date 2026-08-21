@@ -93,6 +93,34 @@ class TariffSettings(models.Model):
     # Défaut 150 (spec : ≤150 progressif, >150 sélectif).
     selective_threshold_kwh = models.PositiveIntegerField(default=150)
 
+    # ── CJ2a — charges FIXES mensuelles de l'abonnement (MAD TTC/mois) ──
+    # ORDRE FONDATEUR (CJ2) : « don't forget the rent of compteur and media tax
+    # in both calculators kwh→mad and mad→kwh ».
+    #
+    # Trois factures RÉELLES du fondateur (SRM Casablanca-Settat, zone
+    # Nouaceur) donnent DEUX lignes fixes, pas une : « LOCATION DU COMPTEUR »
+    # 18,28 HT et « ENTRETIEN DU BRANCHEMENT » 15,00 HT — soit 39,94 TTC/mois
+    # à la TVA 2026 de 20 %. Ces montants sont le DÉFAUT SOURCÉ, codé dans
+    # apps/ventes/quote_engine/bareme.py avec sa provenance.
+    #
+    # Ce champ n'existe donc PAS pour combler une inconnue, mais pour qu'une
+    # société d'une AUTRE zone (ou avec un autre calibre de compteur) puisse
+    # substituer ses propres relevés. VIDE = on applique le défaut sourcé ;
+    # renseigné = ce montant REMPLACE EN BLOC les deux lignes.
+    #
+    # EFFET : s'annule EXACTEMENT dans une économie (charge fixe des deux
+    # côtés de « facture avant − facture après ») — la compter comme une
+    # économie serait un mensonge, le client garde son abonnement. Elle ne
+    # compte QUE pour le back-calcul MAD→kWh, qu'elle rend juste.
+    redevance_compteur_mad_mois = models.DecimalField(
+        max_digits=7, decimal_places=2, null=True, blank=True,
+        verbose_name='Charges fixes abonnement (MAD TTC/mois)',
+        help_text="Total TTC des lignes fixes de votre facture (location du "
+                  "compteur + entretien du branchement). Laisser VIDE pour "
+                  "appliquer le défaut relevé sur facture réelle "
+                  "(39,94 MAD TTC/mois en 2026) ; renseigner pour le "
+                  "remplacer par vos propres montants.")
+
     # ── N64 — classe « force motrice / agricole » (séparée, moins chère) ──
     # Tarif unique MAD/kWh TTC pour pompage/force motrice : ~0.90–0.95, JAMAIS
     # le haut barème résidentiel. Défaut conservateur 0.9500.

@@ -821,6 +821,89 @@ def cashflow_assumptions(inverter_replace_cost=None,
     }
 
 
+#: CJ2a — écart RELATIF de puissance au-delà duquel un bloc horaire est jugé
+#: PÉRIMÉ. Le bloc est calculé pour une puissance donnée ; si le devis a été
+#: repuissancé depuis (lignes éditées, panneaux ajoutés) sans que l'étude soit
+#: rafraîchie, ses économies ne décrivent plus CE devis. 2 % absorbe les
+#: arrondis kWc/panneaux sans laisser passer un vrai changement de taille.
+_HORAIRE_TOLERANCE_KWC = 0.02
+
+
+def _lire_etude_horaire(bloc, puissance_kwc=None) -> dict | None:
+    """CJ2a — lit le bloc ``etude_params['etude_horaire']`` de façon DÉFENSIVE.
+
+    Renvoie ``None`` dès que le bloc est absent, malformé, ou ne porte pas les
+    grandeurs indispensables (production et consommation strictement
+    positives) : l'appelant garde alors son modèle « factures » ou son forfait
+    étiqueté. Un bloc douteux ne doit JAMAIS remplacer un calcul honnête.
+
+    La série mensuelle n'est retenue que si elle compte exactement 12 mois :
+    une série partielle (un mois sans forme PVGIS) reste une information utile
+    dans le bloc d'étude, mais ne peut pas servir de répartition annuelle.
+
+    Fonction pure — ``pricing`` n'importe rien (pas même ``etude_horaire``) :
+    il reçoit un dict déjà calculé, exactement comme il reçoit ``etude``.
+    """
+    if not isinstance(bloc, dict):
+        return None
+    annuel = bloc.get("annuel")
+    mois = bloc.get("mois")
+    if not isinstance(annuel, dict) or not isinstance(mois, list):
+        return None
+    try:
+        prod = float(annuel.get("production_kwh") or 0)
+        conso = float(annuel.get("consommation_kwh") or 0)
+        eco_sans = float(annuel.get("economie_sans_mad") or 0)
+        eco_avec = float(annuel.get("economie_avec_mad") or 0)
+        auto_sans = float(annuel.get("taux_autoconso_sans") or 0)
+        auto_avec = float(annuel.get("taux_autoconso_avec") or 0)
+    except (TypeError, ValueError):
+        return None
+    if prod <= 0 or conso <= 0:
+        return None
+    if len(mois) != 12:
+        return None
+
+    # GARDE ANTI-PÉRIMÉ : le bloc dit pour quelle puissance il a été calculé.
+    # Si le devis ne fait plus cette puissance, ses chiffres décrivent une
+    # AUTRE installation — on préfère le repli honnête à un chiffre précis et
+    # faux (c'est la même logique que la règle Z2, appliquée à la fraîcheur).
+    if puissance_kwc:
+        try:
+            kwc_bloc = float(bloc.get("kwc") or 0)
+            kwc_devis = float(puissance_kwc)
+        except (TypeError, ValueError):
+            return None
+        if kwc_bloc <= 0 or kwc_devis <= 0:
+            return None
+        if abs(kwc_bloc - kwc_devis) / kwc_devis > _HORAIRE_TOLERANCE_KWC:
+            return None
+    try:
+        eco_s_monthly = [round(float(m["economie_sans_mad"])) for m in mois]
+        eco_a_monthly = [round(float(m["economie_avec_mad"])) for m in mois]
+    except (TypeError, ValueError, KeyError):
+        return None
+
+    def _entier(valeur):
+        try:
+            return round(float(valeur))
+        except (TypeError, ValueError):
+            return None
+
+    return {
+        "prod_kwh": round(prod),
+        "eco_sans": round(eco_sans),
+        "eco_avec": round(eco_avec),
+        "autoconso_sans": auto_sans,
+        "autoconso_avec": auto_avec,
+        "facture_sans": _entier(annuel.get("facture_avant_mad")),
+        "facture_avec_s": _entier(annuel.get("facture_apres_sans_mad")),
+        "facture_avec_a": _entier(annuel.get("facture_apres_avec_mad")),
+        "eco_s_monthly": eco_s_monthly,
+        "eco_a_monthly": eco_a_monthly,
+    }
+
+
 def calculate_savings_roi(
     puissance_kwc: float,
     total_sans: float,
@@ -844,6 +927,11 @@ def calculate_savings_roi(
     # remplacement à l'année 12). None ⇒ aucune provision pour cette option.
     inverter_cost_sans: float | None = None,
     inverter_cost_avec: float | None = None,
+    # CJ2a — bloc ``etude_params['etude_horaire']`` calculé par
+    # ``apps.ventes.etude_horaire``. Présent et valide ⇒ il REMPLACE le modèle
+    # forfaitaire (voir le bloc « LE MODÈLE HORAIRE PREND LA MAIN » plus bas).
+    # Absent ⇒ comportement byte-identique à avant CJ2a.
+    etude_horaire: dict | None = None,
 ) -> dict:
     """Auto-compute annual production, savings and ROI — loi 82-21 model.
 
@@ -971,6 +1059,46 @@ def calculate_savings_roi(
             facture_avec_a = _tb_a["facture_avec"]
             factures_approximatif = _tb_s["approximatif"]
 
+    # ── CJ2a (ORDRE FONDATEUR) — LE MODÈLE HORAIRE PREND LA MAIN ────────────
+    # « the total saving should be function of [saisons] and not just assuming
+    # client will consume 60 % of total pv production but rather follow the
+    # consumption curves fixed in the call ».
+    #
+    # Quand ``apps.ventes.etude_horaire`` a pu calculer (factures RÉELLES +
+    # localisation PVGIS résolue), ses chiffres REMPLACENT tout ce qui précède :
+    # ils sortent de l'intégration heure par heure de la production PVGIS réelle
+    # contre la courbe de consommation RÉELLE du client, mois par mois, chaque
+    # mois valorisé au barème. Les forfaits ``AUTOCONSO_SANS``/``AUTOCONSO_AVEC``
+    # ne survivent que comme REPLI, quand le moteur horaire n'a rien pu ancrer —
+    # et restent alors étiquetés « estimation » (règle Z2 : on omet plutôt que
+    # de déguiser un forfait en mesure).
+    #
+    # Placé ICI, AVANT le cashflow : le payback, la part batterie et la courbe
+    # 25 ans se recalculent tous sur les économies réelles. L'override
+    # industriel/commercial de ``builder`` (étude saisie par le vendeur) passe
+    # APRÈS et reste souverain — un chiffre saisi par un humain bat un calcul.
+    eco_monthly_reel = None
+    _h = _lire_etude_horaire(etude_horaire, puissance_kwc)
+    if _h:
+        savings_model = "horaire"
+        savings_estimated = False
+        factures_approximatif = False
+        production_annuelle = _h["prod_kwh"]
+        # Le productible RENDU doit décrire la production rendue, sinon
+        # « production ÷ kWc » et « productible » se contrediraient sur la
+        # même page. Ici il devient le productible NET réellement obtenu au
+        # point du chantier (PVGIS × pertes), pas le repère société.
+        if puissance_kwc:
+            prod_factor = production_annuelle / float(puissance_kwc)
+        economie_opt1 = _h["eco_sans"]
+        economie_opt2 = _h["eco_avec"]
+        autoconso_sans_eff = _h["autoconso_sans"]
+        autoconso_avec = max(_h["autoconso_avec"], _h["autoconso_sans"])
+        facture_sans = _h["facture_sans"]
+        facture_avec_s = _h["facture_avec_s"]
+        facture_avec_a = _h["facture_avec_a"]
+        eco_monthly_reel = (_h["eco_s_monthly"], _h["eco_a_monthly"])
+
     # ── QX39 — retour sur investissement par CASHFLOW 25 ans (honnête) ────────
     # Le payback n'est plus un simple ratio année-1 (ni conservateur, ni
     # optimiste) : on cumule le cashflow réel avec dégradation panneau 0,5 %/an,
@@ -1010,11 +1138,20 @@ def calculate_savings_roi(
     roi_opt1 = cf_s["payback_years"] if economie_opt1 > 0 else 0.0
     roi_opt2 = cf_a["payback_years"] if economie_opt2 > 0 else 0.0
 
-    # Répartition mensuelle saisonnière (12 facteurs, somme = 1,000)
-    _SF = [0.053, 0.062, 0.083, 0.098, 0.114, 0.116,
-           0.116, 0.101, 0.087, 0.070, 0.052, 0.048]
-    eco_s_monthly = [round(economie_opt1 * f) for f in _SF]
-    eco_a_monthly = [round(economie_opt2 * f) for f in _SF]
+    # Répartition mensuelle saisonnière.
+    # CJ2a — quand le moteur horaire a calculé, les douze valeurs sont les
+    # économies RÉELLEMENT calculées mois par mois (production PVGIS du mois ×
+    # courbe de consommation du mois, valorisées au barème) : la saisonnalité
+    # cesse d'être une clé de répartition. Sinon, repli sur les douze facteurs
+    # historiques ci-dessous (somme = 1,000), qui restent une CLÉ de forme
+    # appliquée à un total annuel — jamais douze calculs.
+    if eco_monthly_reel:
+        eco_s_monthly, eco_a_monthly = eco_monthly_reel
+    else:
+        _SF = [0.053, 0.062, 0.083, 0.098, 0.114, 0.116,
+               0.116, 0.101, 0.087, 0.070, 0.052, 0.048]
+        eco_s_monthly = [round(economie_opt1 * f) for f in _SF]
+        eco_a_monthly = [round(economie_opt2 * f) for f in _SF]
 
     return {
         "prod_kwh":         production_annuelle,
@@ -1032,8 +1169,13 @@ def calculate_savings_roi(
         "autoconso_avec":   autoconso_avec,
         "tarif_kwh":        prix_kwh,
         "utility":          utility,
-        # QF2 — modèle « deux factures » : 'factures' quand l'économie vient de
-        # facture_sans − facture_avec (par tranche), 'estimation' sinon.
+        # Modèle d'économie effectivement employé, du plus fort au plus faible :
+        #   'horaire'    — CJ2a : intégration heure par heure de la production
+        #                  PVGIS réelle contre la courbe de consommation réelle
+        #                  du client, mois par mois, valorisée au barème ;
+        #   'factures'   — QF2 : facture_sans − facture_avec, par tranche, mais
+        #                  sur un taux d'autoconsommation forfaitaire ;
+        #   'estimation' — repli étiqueté : production × forfait × prix moyen.
         "savings_model":    savings_model,
         "facture_sans":     facture_sans,
         "facture_avec_s":   facture_avec_s,

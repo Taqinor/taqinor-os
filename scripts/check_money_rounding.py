@@ -245,12 +245,19 @@ BASELINE_ALLOWLIST = {
     "backend/django_core/apps/ventes/quote_engine/builder.py:1010",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1035",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1037",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1293",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1306",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:2111",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:2117",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:2170",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:2171",
+    # 2026-08-21 — CJ2a (lane moteur horaire) : RECALAGE DE LIGNES, AUCUN
+    # NOUVEAU SITE. Le passage de `etude_horaire=` à `calculate_savings_roi`
+    # a inséré 5 lignes dans `roi_kwargs` (builder.py ~1278), décalant de +5
+    # les six sites d'arrondi déjà relus ci-dessous. Vérifié par diff contre
+    # 196c8870 : avec le builder.py de base, la garde est VERTE — les six
+    # « nouveaux » sites sont les six anciens, au mot près.
+    #   1293→1298, 1306→1311, 2111→2116, 2117→2122, 2170→2175, 2171→2176
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1298",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1311",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:2116",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:2122",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:2175",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:2176",
 }
 
 TARGET_FILES = [

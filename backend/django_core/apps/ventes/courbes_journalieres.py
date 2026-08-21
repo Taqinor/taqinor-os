@@ -357,6 +357,221 @@ def _equipements(lead_equip):
     return out
 
 
+def composer_equipements(lead_equip):
+    """Couches composables depuis un dict d'équipements BRUT — façade publique.
+
+    Même règle que :func:`_equipements` (une couche n'existe que si son booléen
+    est vrai ET sa grandeur réelle est renseignée). Sert l'aperçu générateur,
+    qui reçoit les réponses du script d'appel sans devis persisté : un seul
+    endroit décide de ce qui compose une couche, jamais deux.
+    """
+    return _equipements(lead_equip)
+
+
+def equipements_du_devis(devis):
+    """Couches d'équipement composables du lead d'un devis (``{}`` si aucune).
+
+    Façade PUBLIQUE de la composition L4 (:func:`_equipements` appliquée au
+    dict du sélecteur CRM) : le moteur horaire CJ2a la consomme sans dupliquer
+    une seule règle de provenance ni une seule fenêtre horaire.
+    """
+    return _equipements(_equipements_lead(devis))
+
+
+def occupation_du_devis(devis, data=None):
+    """``(drapeau, source)`` d'occupation — façade publique de :func:`_occupation`.
+
+    Même chaîne de résolution que la page (réponse RÉELLE du lead d'abord,
+    puis défaut fondateur résidentiel, puis profil d'activité PRO) : un seul
+    propriétaire pour ce choix, jamais un second défaut dans le moteur.
+    """
+    return _occupation(devis, data or {})
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# CJ2a — LES SILHOUETTES D'OCCUPATION, CÔTÉ SERVEUR
+# ════════════════════════════════════════════════════════════════════════════
+# Jusqu'ici les trois silhouettes 24 h vivaient UNIQUEMENT dans la page
+# (``apps/web/src/lib/dayProfiles.ts`` ``OCCUPANCY_SHAPES``) : le serveur ne
+# servait que le NIVEAU (kWh/jour) et le DRAPEAU d'occupation. Le moteur horaire
+# CJ2a (``apps.ventes.etude_horaire``) doit, lui, INTÉGRER heure par heure une
+# consommation contre une production — il lui faut donc la FORME, en Python.
+#
+# LES VALEURS SONT RECOPIÉES VERBATIM de dayProfiles.ts, avec leurs étiquettes
+# de provenance — ce ne sont PAS de nouveaux chiffres (règle « zéro chiffre
+# inventé »). Un test épingle les deux fichiers l'un à l'autre
+# (``test_silhouettes_source_pin``) : si l'un bouge seul, il passe au rouge.
+# C'est le serveur qui devient PROPRIÉTAIRE ; la copie TS reste le miroir que
+# CJ2b pourra retirer quand l'écran appellera l'endpoint.
+#
+# PROVENANCE DES POIDS HORAIRES (recherche du 21/08/2026), étiquettes reprises
+# telles quelles :
+#   [A] FAIT MAROCAIN SOURCÉ — fenêtre de pointe nationale publiée (tarif
+#       bi-horaire ONEE : 18h-23h en été, 17h-22h en hiver, one.org.ma) ; record
+#       historique d'appel de puissance du réseau marocain le 25/07/2019 à
+#       21h45 (presse économique). La domination du soir n'est pas une
+#       hypothèse : c'est la forme du réseau marocain.
+#   [S] MOTIF DE CLUSTERING SOURCÉ, MAGNITUDE ESTIMÉE — la séparation
+#       présent/absent/partiel et l'allure de chaque groupe viennent de la
+#       littérature de clustering de courbes de charge résidentielles
+#       (ScienceDirect S377877882300333X ; arXiv 2102.11027 ; IOPscience
+#       ade3fa). Les VALEURS exactes sont nos estimations calées sur ces allures.
+#   [i] INTERPOLATION entre deux heures étiquetées ci-dessus.
+#
+# Ce sont des POIDS DE FORME, pas des kWh : le NIVEAU vient toujours des
+# factures RÉELLES du client.
+SILHOUETTES_OCCUPATION = {
+    # « Présent en journée » — retraités, foyers mono-actifs, villa occupée.
+    OCCUPATION_PRESENCE: (
+        0.4, 0.4, 0.4, 0.4, 0.4, 0.4,        # 00-05 h — socle de nuit      [S]
+        0.5, 0.8, 1.0, 1.0, 1.1, 1.1,        # 06-11 h            [i][S][S][S][S][i]
+        1.35, 1.35, 1.35,                    # 12-14 h — repas + clim        [S]
+        1.0, 1.0, 1.0,                       # 15-17 h            [i][i][A]
+        1.2, 1.5, 1.8, 1.7,                  # 18-21 h — pointe nationale    [A]
+        1.2, 0.7,                            # 22-23 h            [A][i]
+    ),
+    # « Absent en journée » — actifs partis au travail : creux diurne profond,
+    # pointe du soir la plus marquée des trois.
+    OCCUPATION_ABSENCE: (
+        0.4, 0.4, 0.4, 0.4, 0.4, 0.4,        # 00-05 h                       [S]
+        0.7, 1.6,                            # 06-07 h — départ         [i][S]
+        1.0,                                 # 08 h                          [i]
+        0.45, 0.45, 0.45, 0.45,              # 09-12 h — logement vide       [S]
+        0.45, 0.45, 0.45, 0.45,              # 13-16 h — logement vide       [S]
+        0.9, 1.4, 1.9, 2.4, 2.3,             # 17-21 h — retour + pointe     [A]
+        1.5, 0.9,                            # 22-23 h            [A][i]
+    ),
+    # « Présence partielle » — télétravail, mi-temps, foyer mixte.
+    OCCUPATION_PARTIELLE: (
+        0.4, 0.4, 0.4, 0.4, 0.4, 0.4,        # 00-05 h                       [S]
+        0.5, 0.9, 1.0,                       # 06-08 h            [i][S][i]
+        0.95, 0.95, 0.95,                    # 09-11 h — bureau maison       [S]
+        1.1, 1.1,                            # 12-13 h — déjeuner            [S]
+        0.9, 0.9, 0.9,                       # 14-16 h                       [S]
+        1.1, 1.5, 1.9, 2.2, 2.0,             # 17-21 h — pointe ONEE         [A]
+        1.3, 0.8,                            # 22-23 h            [A][i]
+    ),
+}
+
+#: Silhouette de repli quand le drapeau d'occupation est absent/illisible — le
+#: MILIEU HONNÊTE des trois, exactement le choix de ``occupancyFromFlag`` côté
+#: page. Jamais un défaut « présent » qui flatterait l'autoconsommation.
+OCCUPATION_REPLI = OCCUPATION_PARTIELLE
+
+# POURQUOI LE « BOOST ÉTÉ » (×1,5 sur 13h-21h) DE LA PAGE N'EST PAS APPLIQUÉ ICI.
+# Côté page, c'est une PUCE que le visiteur clique pour explorer un scénario ;
+# elle module une forme dont le niveau est le même toute l'année. Le moteur
+# horaire, lui, met chaque mois à l'échelle de la facture RÉELLE de ce mois
+# (facture d'été quand le lead en déclare une distincte) : la surconsommation
+# estivale de climatisation est DÉJÀ dans le niveau. Ré-appliquer le
+# multiplicateur la compterait DEUX FOIS. La saisonnalité du moteur vient donc
+# de la donnée client, jamais d'un coefficient — c'est plus juste ET c'est la
+# règle « zéro chiffre inventé ».
+
+
+def _normaliser_a_un(forme):
+    """Ramène une forme positive à une somme de 1,0 (``None`` si insommable)."""
+    try:
+        vals = [max(0.0, float(v)) for v in forme]
+    except (TypeError, ValueError):
+        return None
+    total = sum(vals)
+    if total <= 0:
+        return None
+    return [v / total for v in vals]
+
+
+def silhouette_occupation(occupation):
+    """Forme 24 h (somme = 1) de l'occupation demandée, repli inclus.
+
+    ``occupation`` est l'un des drapeaux servis par :func:`_occupation`
+    (``presence_jour`` / ``absence_jour`` / ``presence_partielle``). Valeur
+    inconnue/absente ⇒ :data:`OCCUPATION_REPLI`, jamais une exception.
+    """
+    brute = SILHOUETTES_OCCUPATION.get(
+        occupation, SILHOUETTES_OCCUPATION[OCCUPATION_REPLI])
+    return _normaliser_a_un(brute)
+
+
+def forme_consommation_kwh(kwh_jour, occupation, *, saison=None,
+                           equipements=None):
+    """Consommation horaire RÉELLE d'un jour : 24 kWh dont la somme = ``kwh_jour``.
+
+    C'est la fonction que le moteur horaire intègre contre la production. Elle
+    applique EXACTEMENT la règle L4 déjà tenue côté page
+    (``proposalCurve.equipmentAdjustedConsumptionKwhShape``), en DEUX PASSES :
+
+    1. **REDISTRIBUTION** (piscine, climatisation) — chaque couche ajoute sa
+       puissance RÉELLE (``kw``, saisie par le commercial) sur ses heures
+       sourcées, puis l'ensemble est renormalisé pour que la somme retombe
+       EXACTEMENT sur le niveau facture (VE exclu) : ces heures grossissent, le
+       reste du jour rétrécit d'autant. AUCUN kWh gagné — l'équipement existe
+       déjà et sa consommation est DÉJÀ dans la facture, seule la FORME change.
+    2. **ADDITION** (véhicule électrique) — ajoutée APRÈS la renormalisation,
+       sans être rediluée : c'est la seule charge FUTURE, absente des factures
+       passées, donc la seule qui doit vraiment grossir le total. Son énergie
+       est déjà comptée dans ``kwh_jour`` par :func:`_consommation`.
+
+    ``kwh_jour`` ≤ 0 ⇒ 24 zéros (aucun niveau inventé). Une couche illisible ou
+    hors-saison est ignorée silencieusement, jamais approximée.
+    """
+    try:
+        total = float(kwh_jour)
+    except (TypeError, ValueError):
+        total = 0.0
+    if total <= 0:
+        return [0.0] * 24
+
+    forme = silhouette_occupation(occupation) or [1.0 / 24.0] * 24
+    couches = equipements or {}
+
+    # Le VE est retiré du niveau AVANT la passe 1 : il ne doit pas être dilué
+    # par la renormalisation (il sera rajouté tel quel en passe 2).
+    ve = couches.get('ve')
+    ve_actif = bool(
+        ve and ve.get('mode') == 'addition'
+        and _nombre_positif(ve.get('kwh_jour')) is not None
+        and (not ve.get('saisons') or saison is None
+             or saison in ve['saisons']))
+    ve_kwh = float(ve['kwh_jour']) if ve_actif else 0.0
+    base_total = max(0.0, total - ve_kwh)
+
+    sortie = [part * base_total for part in forme]
+
+    # ── Passe 1 : redistribution (piscine / clim) ──
+    bosse = [0.0] * 24
+    for cle in ('piscine', 'clim'):
+        couche = couches.get(cle)
+        if not couche or couche.get('mode') != 'redistribution':
+            continue
+        kw = _nombre_positif(couche.get('kw'))
+        if kw is None:
+            continue
+        saisons = couche.get('saisons')
+        if saisons and saison is not None and saison not in saisons:
+            continue
+        for heure in couche.get('heures') or ():
+            if isinstance(heure, int) and 0 <= heure <= 23:
+                bosse[heure] += kw
+    if any(bosse):
+        sortie = [v + bosse[h] for h, v in enumerate(sortie)]
+        somme = sum(sortie)
+        if somme > 0 and base_total > 0:
+            facteur = base_total / somme
+            sortie = [v * facteur for v in sortie]
+
+    # ── Passe 2 : addition (VE), jamais rediluée ──
+    if ve_actif and ve_kwh > 0:
+        heures = [h for h in (ve.get('heures') or ())
+                  if isinstance(h, int) and 0 <= h <= 23]
+        if heures:
+            par_heure = ve_kwh / len(heures)
+            for heure in heures:
+                sortie[heure] += par_heure
+
+    return sortie
+
+
 def construire_courbes_journalieres(devis, data, monthly_consumption=None):
     """Bloc ``courbes_journalieres`` de la charge utile publique, ou ``None``.
 
