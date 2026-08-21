@@ -973,7 +973,7 @@ class WrefRechercheClientRefTests(TestCase):
 
     def test_omnibox_retrouve_le_lead_par_client_ref(self):
         from apps.reporting.search import _spec_lead
-        qs = _spec_lead({'company': self.company}, 'PKEA')
+        _, _, qs, _ = _spec_lead({'company': self.company}, 'PKEA')
         self.assertEqual(list(qs.values_list('nom', flat=True)), ['Alaoui'])
 
     def test_le_code_provisoire_affiche_par_le_site_retrouve_aussi_le_lead(self):
@@ -987,7 +987,7 @@ class WrefRechercheClientRefTests(TestCase):
         rows = res.json()
         rows = rows.get('results', rows)
         self.assertEqual([r['nom'] for r in rows], ['Rassam'])
-        qs = _spec_lead({'company': self.company}, 'ZW42')
+        _, _, qs, _ = _spec_lead({'company': self.company}, 'ZW42')
         self.assertEqual(list(qs.values_list('nom', flat=True)), ['Rassam'])
 
 

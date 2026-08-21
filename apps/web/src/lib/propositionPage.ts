@@ -134,7 +134,9 @@ interface NormalizedAvailability {
 }
 
 /** Normalise une disponibilité partielle (lecture défensive). */
-function normalize(a: Partial<ProductionAvailability> | null | undefined): NormalizedAvailability {
+function normalize(
+  a: Partial<ProductionAvailability> | NormalizedAvailability | null | undefined,
+): NormalizedAvailability {
   const daily = !!a?.daily;
   const rawVariants = Array.isArray(a?.variants) ? a!.variants : [];
   const variants = CURVE_VARIANT_IDS.filter((v) => rawVariants.includes(v));
@@ -187,7 +189,9 @@ const FALLBACK_OCCUPANCY: OccupancyId = 'presence_partielle';
  *  Fondateur 2026-08-15 : la JOURNÉE d'abord — le client ouvre sur « Sur une
  *  journée » (le récit le plus parlant : le soleil produit, vous consommez),
  *  puis peut passer à l'année. */
-export function availableViews(a: Partial<ProductionAvailability> | null | undefined): ProductionView[] {
+export function availableViews(
+  a: Partial<ProductionAvailability> | NormalizedAvailability | null | undefined,
+): ProductionView[] {
   const av = normalize(a);
   const views: ProductionView[] = [];
   if (av.daily) views.push('journee');
