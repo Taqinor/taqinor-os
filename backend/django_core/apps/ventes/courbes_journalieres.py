@@ -95,7 +95,7 @@ def _occupation(devis, data):
     """(drapeau, source) — le client est-il chez lui en journée ?
 
     DÉCISION TERRAIN DU FONDATEUR (21/08/2026) : la clientèle résidentielle
-    réelle de TAQINOR est majoritairement RETRAITÉE et présente dans sa villa
+    réelle de la société est majoritairement RETRAITÉE et présente dans sa villa
     en journée. La courbe de consommation « standard » à double pic (départ au
     travail / retour le soir) ne lui ressemble pas. Le défaut résidentiel est
     donc ``presence_jour``. C'est une OBSERVATION DE TERRAIN du fondateur, PAS
