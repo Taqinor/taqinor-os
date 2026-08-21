@@ -94,16 +94,19 @@ SECONDS_PER_TEST = 0.55
 MIN_UNIT_SECONDS = 0.4
 
 # Nombre de processus que `manage.py test --parallel N` lance dans CHAQUE lane.
-# DOIT rester aligne sur la commande de `.github/workflows/ci.yml` : le plan est
-# calcule pour ce parallelisme, et un ecart ne casserait rien (le decoupage
-# reste complet) mais rendrait l'equilibrage faux.
+# DOIT rester aligne sur le `PARALLEL` de l'etape « Run Django test suite » de
+# `.github/workflows/ci.yml` (4, ou 1 si la garde anti-`max_locks` se declenche
+# sur ce shard) : le plan est calcule pour ce parallelisme, et un ecart ne
+# casserait rien (le decoupage reste complet) mais rendrait l'equilibrage faux.
+# Le NOMBRE DE LANES, lui, ne vit pas ici : il est dans `matrix.shard` de ci.yml
+# et passe en argument (`ci_shard.py <shard> <total>`) — 6 depuis le volet G.
 DEFAULT_PARALLEL = 4
 
 # Seuil au-dessus duquel une CLASSE est retenue dans `ci_shard_class_timings.json`.
 # En dessous, elle ne peut pas etre le facteur limitant d'une lane (la charge
-# moyenne d'une lane est de l'ordre de 160 s) : son cout reste compte dans le
-# total de son module, seule sa capacite a BORNER disparait — ce qu'elle n'a
-# jamais eue.
+# moyenne d'une lane est de l'ordre de 175 s a 6 lanes) : son cout reste compte
+# dans le total de son module, seule sa capacite a BORNER disparait — ce qu'elle
+# n'a jamais eue.
 CLASS_FLOOR_SECONDS = 1.0
 
 # WOW-CI RONDE 5 / VOLET F (20/08/2026) — LE PARALLELISME CHANGE LE COUT D'UNE
@@ -255,10 +258,13 @@ def class_weights(unit: str, weight: float, repo_root: str = REPO_ROOT) -> list:
        classes non mesurees) ;
     2. sinon, le poids du module est reparti au prorata du nombre de tests.
 
-    La difference n'est pas cosmetique : `test_gammes_offre` pese 26 s au total
-    dans l'ancienne table alors que sa seule classe `TestAcceptationGamme` en
-    consomme 195 — extrapoler au prorata des tests aurait continue de la rendre
-    invisible.
+    La difference n'est pas cosmetique : `test_gammes_offre` pesait 26 s au
+    total dans l'ancienne table alors que sa seule classe `TestAcceptationGamme`
+    en consommait 195 — extrapoler au prorata des tests aurait continue de la
+    rendre invisible. (Volet G, 21/08/2026 : cette classe a depuis ete eclatee
+    en trois modules d'un test — `test_gammes_offre_acceptation`,
+    `_acceptation_signature`, `_acceptation_choix` — donc l'exemple est
+    historique ; le mecanisme, lui, reste indispensable.)
     """
     return [poids for _nom, poids in class_weight_items(unit, weight, repo_root)]
 
@@ -486,8 +492,14 @@ def parse_log_durations(lines) -> dict:
        l'imputait a la ligne PRECEDENTE : un decalage d'un cran qui attribuait
        systematiquement le cout d'une classe lente a sa voisine rapide.
        Consequence mesuree : `test_gammes_offre` etait pesee 25,9 s alors que sa
-       classe `TestAcceptationGamme` consomme 194,8 s a elle seule — 70 % du
-       shard le plus lent, invisible dans la table.
+       classe `TestAcceptationGamme` en consommait 194,8 s a elle seule — 70 %
+       du shard le plus lent, invisible dans la table. (Volet G, 21/08/2026 :
+       la relecture des journaux de trois runs verts a montre que meme 194,8 s
+       etait la MOITIE de la realite — 348,8 / 405,4 / 384,0 s — et que ces
+       trois tests valaient 99,5 a 99,7 % du module. Le module a ete scinde,
+       la classe eclatee en trois, et la table recalee sur ces mesures. Ce que
+       ce parser rend est donc juste, mais il faut le REJOUER : une table qui
+       n'est jamais rafraichie derive silencieusement d'un facteur deux.)
 
     2. LA GRANULARITE. On mesure desormais la CLASSE, pas le module. Sous
        `--parallel`, la classe est l'unite indivisible : c'est elle qui fixe le
