@@ -18,9 +18,16 @@ Les prix du barème sont déjà TTC (jamais de TVA ajoutée par-dessus).
 Une classe SÉPARÉE « force motrice / agricole » facture au tarif unique
 ``force_motrice_prix_kwh_ttc`` (moins cher), jamais au haut barème résidentiel.
 
-Le ROI : économie annuelle = énergie autoconsommée × prix kWh évité. Le surplus
-injecté n'est valorisé QUE si ``surplus_injecte_compense`` est vrai (par défaut
-faux : surplus = 0). Les hypothèses par défaut sont conservatrices.
+Le ROI : économie annuelle = facture SANS solaire − facture AVEC solaire
+(modèle « deux factures », tarifée au MOIS — l'unité du barème — puis
+annualisée), PAS une simple multiplication énergie autoconsommée × prix
+moyen. Sur le barème SÉLECTIF (ONEE), redescendre sous une marche re-tarife
+TOUT le mois restant : un calcul flat sous-estime cette chute super-linéaire.
+Miroir du modèle du moteur de devis (``apps/ventes/quote_engine/pricing.py``
+``two_bills_savings``) — deux implémentations volontairement séparées, voir
+la note de tête de ``monthly_bill_residentiel`` ci-dessous. Le surplus
+injecté n'est valorisé QUE si ``surplus_injecte_compense`` est vrai (par
+défaut faux : surplus = 0). Les hypothèses par défaut sont conservatrices.
 
 Fonctions PURES : pas d'I/O, pas d'ORM (on reçoit un ``TariffSettings`` déjà
 chargé). Les montants sont des ``Decimal`` arrondis au centime.
@@ -205,6 +212,10 @@ def compute_roi(settings, kwc, conso_mensuelle_kwh, cout_total_ttc,
     surplus_kwh, prix_kwh_evite, economie_annuelle_ttc, valorisation_surplus,
     economie_totale_annuelle, payback_annees.
 
+    ``economie_annuelle_ttc`` est le modèle « deux factures » (facture SANS
+    solaire − facture AVEC solaire, au barème réel, mois par mois) — voir la
+    note de tête de ce module.
+
     Conservateur : le surplus ne vaut quelque chose QUE si la compensation est
     activée ; sinon il est valorisé à zéro (on dimensionne sur l'autoconso).
     """
@@ -225,8 +236,30 @@ def compute_roi(settings, kwc, conso_mensuelle_kwh, cout_total_ttc,
         autoconsommee = min(autoconsommee, conso_annuelle)
     surplus = max(Decimal('0'), prod_annuelle - autoconsommee)
 
+    # prix_kwh_evite reste un indicateur d'AFFICHAGE (prix moyen réellement
+    # payé au niveau de conso actuel) — champ inchangé, PAS la base du calcul
+    # d'économie ci-dessous.
     prix_kwh = effective_kwh_price(settings, conso_mois, classe)
-    economie = _q(autoconsommee * prix_kwh)
+
+    # Économie « deux factures » (miroir du modèle du moteur de devis —
+    # apps/ventes/quote_engine/pricing.py::two_bills_savings ; DEUX
+    # implémentations volontairement séparées, verrouillées d'accord par
+    # apps/ventes/tests/test_tariff_drift_lock.py) : facture SANS solaire −
+    # facture AVEC solaire, tarifée au MOIS (l'unité du barème sélectif),
+    # PAS autoconsommée × prix moyen. Sur une grille SÉLECTIVE (ONEE),
+    # redescendre sous une marche re-tarife TOUT le mois restant — un calcul
+    # flat sous-estimait cette chute super-linéaire (ordre fondateur
+    # 18/08/2026, déjà appliqué côté moteur de devis). ``autoconsommee`` est
+    # ANNUELLE (ci-dessus) : on la ramène au mois pour tarifer au mois — le
+    # seuil des marches est mensuel, jamais diviser l'année APRÈS tarification.
+    autoconsommee_mois = (
+        autoconsommee / Decimal('12') if autoconsommee else Decimal('0'))
+    conso_mois_residuelle = max(Decimal('0'), conso_mois - autoconsommee_mois)
+    facture_mensuelle_sans = monthly_bill(settings, conso_mois, classe)
+    facture_mensuelle_avec = monthly_bill(
+        settings, conso_mois_residuelle, classe)
+    economie_mensuelle = facture_mensuelle_sans - facture_mensuelle_avec
+    economie = _q(economie_mensuelle * 12)
 
     # Surplus : zéro sauf compensation activée.
     if settings.surplus_injecte_compense:
