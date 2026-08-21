@@ -1,6 +1,6 @@
 """GAMMES — 3. Charge utile publique.
 
-Partie 3 sur 6 de l'ancien `test_gammes_offre.py`, scindé PAR CLASSE le
+Partie 3 sur 8 de l'ancien `test_gammes_offre.py`, scindé PAR CLASSE le
 2026-08-21 (voir `_gammes_offre_common.py`). Aucune assertion n'a changé.
 
 Ce que garde cette partie : ce qui franchit (ou non) la frontière publique —

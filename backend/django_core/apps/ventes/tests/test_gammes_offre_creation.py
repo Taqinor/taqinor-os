@@ -1,6 +1,6 @@
 """GAMMES — 1. Création de la variante de gamme.
 
-Partie 1 sur 6 de l'ancien `test_gammes_offre.py`, scindé PAR CLASSE le
+Partie 1 sur 8 de l'ancien `test_gammes_offre.py`, scindé PAR CLASSE le
 2026-08-21 (voir `_gammes_offre_common.py`). Aucune assertion n'a changé.
 
 Décisions fondateur 2026-08-18 couvertes ici :

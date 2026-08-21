@@ -9,7 +9,9 @@ lanes différentes, quel que soit le nombre de lanes.
 
 Le préfixe `_` garde ce fichier HORS de la découverte Django (`test*.py`) :
 il ne porte aucun test, seulement les fabriques et la classe de base
-partagées par les six parties.
+partagées par les huit parties (la 4e — l'acceptation — a elle-même été
+éclatée en trois modules d'un test : voir l'en-tête de
+`test_gammes_offre_acceptation.py`).
 
 Aucun helper n'a changé d'un octet : mêmes objets, mêmes valeurs.
 """

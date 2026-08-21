@@ -133,13 +133,19 @@ class BalanceTests(unittest.TestCase):
         VOLET F (20/08) — LA REFERENCE N'EST PLUS LA MOYENNE, C'EST LE PLANCHER
         THEORIQUE. Comparer la pire lane a `total / lanes` supposait le travail
         infiniment divisible. Il ne l'est pas : une CLASSE de test est
-        indivisible sous `--parallel`, et le depot en porte une de ~195 s
+        indivisible sous `--parallel`, et le depot en portait une de ~195 s
         (`test_gammes_offre.TestAcceptationGamme`) alors que la moyenne a 8
-        lanes vaut ~106 s. Une lane a 1,85x de la moyenne etait donc signalee
+        lanes valait ~106 s. Une lane a 1,85x de la moyenne etait donc signalee
         comme un desequilibre alors que c'etait le decoupage OPTIMAL — aucune
-        assignation ne peut faire mieux tant que cette classe existe.
+        assignation ne peut faire mieux tant qu'une telle classe existe.
         `theoretical_floor` prend le plus grand des deux (moyenne, plus grosse
         classe) : c'est la seule borne qu'un planificateur puisse viser.
+
+        VOLET G (21/08) — cette classe-la a ete ECLATEE (trois modules d'un
+        test : `test_gammes_offre_acceptation` et ses deux freres), donc le
+        plancher indivisible du depot est passe de ~195 s a ~135 s. Le test
+        ci-dessous ne nomme volontairement aucune classe : il compare toujours
+        la pire lane au plancher du moment, quel qu'il soit.
         """
         units, weights, lanes = ci_shard.plan(8)
         murs = [ci_shard.lane_makespan(lane, weights) for lane in lanes]
@@ -156,6 +162,11 @@ class BalanceTests(unittest.TestCase):
         repartir le poids du module au prorata du nombre de tests la rendait
         invisible, et le planificateur se declarait equilibre a 1,00x pendant
         que le shard 4 tournait trois fois plus longtemps que le shard 2.
+
+        Le test ne nomme AUCUNE classe : il prend la plus lourde de la table du
+        moment (aujourd'hui, apres le volet G, l'un des trois modules
+        d'acceptation a ~135 s) et verifie qu'elle traverse `class_weights`
+        sans etre moyennee.
         """
         mesures = dict(ci_shard.load_class_timings())
         if not mesures:

@@ -1,6 +1,6 @@
 """GAMMES — 6. Garanties du PDF dérivées de la composition.
 
-Partie 6 sur 6 de l'ancien `test_gammes_offre.py`, scindé PAR CLASSE le
+Partie 6 sur 8 de l'ancien `test_gammes_offre.py`, scindé PAR CLASSE le
 2026-08-21 (voir `_gammes_offre_common.py`). Aucune assertion n'a changé.
 
 Décision fondateur 2026-08-18 couverte ici : les garanties du PDF dérivent de
