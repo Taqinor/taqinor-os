@@ -339,7 +339,9 @@ class PhysiqueDuMoteurTest(SimpleTestCase):
 
     def test_batterie_restitue_au_plus_90_pct_de_ce_qu_elle_charge(self):
         """L'invariant physique : le rendement aller-retour ne se contourne
-        pas, et la batterie part vide (choix conservateur assumé)."""
+        pas — en RÉGIME ÉTABLI (ordre fondateur 24/08/2026 : le reliquat du
+        soir sert le déficit d'avant l'aube), la conservation sur le cycle
+        périodique garantit restitué ≤ 0,90 × chargé."""
         conso = [2.0] * 6 + [0.2] * 10 + [3.0] * 8
         prod = [0.0] * 7 + [1.5] * 10 + [0.0] * 7
         for capacite in (1.0, 5.0, 10.0, 50.0):
@@ -350,6 +352,26 @@ class PhysiqueDuMoteurTest(SimpleTestCase):
                     r['charge_kwh'] * pricing.BATTERY_ROUNDTRIP + 1e-9)
                 self.assertLessEqual(r['capacite_utilisee_kwh'],
                                      capacite + 1e-9)
+
+    def test_regime_etabli_sert_le_deficit_d_avant_l_aube(self):
+        """Le surplus de midi non consommé le soir survit à minuit et sert le
+        creux 00h-06h : le régime établi doit restituer STRICTEMENT plus que
+        l'ancien départ-à-vide sur un profil où la nuit précède le surplus."""
+        # Nuit gourmande (00h-06h), midi très excédentaire, soirée modérée :
+        # au départ-à-vide, le creux nocturne n'était jamais servi.
+        conso = [2.0] * 6 + [0.2] * 10 + [1.0] * 8
+        prod = [0.0] * 7 + [3.0] * 10 + [0.0] * 7
+        r = EH.simuler_batterie_jour(conso, prod, 10.0)
+        # L'ancien modèle plafonnait à la seule soirée : 8 h × 1,0 kWh = 8 kWh
+        # moins la production de 17h-18h... ici le point dur : il faut servir
+        # AUSSI une part du creux nocturne, donc dépasser le seul besoin du
+        # soir résiduel (6,0 kWh une fois la production soustraite).
+        besoin_soiree_seule = sum(max(0.0, c - p) for c, p in
+                                  zip(conso[17:], prod[17:]))
+        self.assertGreater(r['restitue_kwh'], besoin_soiree_seule)
+        self.assertLessEqual(
+            r['restitue_kwh'],
+            r['charge_kwh'] * pricing.BATTERY_ROUNDTRIP + 1e-9)
 
     def test_batterie_absente_ne_decale_rien(self):
         r = EH.simuler_batterie_jour([1.0] * 24, [2.0] * 24, 0)

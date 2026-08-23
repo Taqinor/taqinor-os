@@ -202,9 +202,10 @@ def _lire_composition(lignes, taux_tva):
     from apps.ventes.services import _est_triphase, _parse_kw
 
     roles = list(getattr(lignes, 'roles', ()) or ())
-    facteur = 1.0 + _num(taux_tva, 20.0) / 100.0
+    facteur_devis = 1.0 + _num(taux_tva, 20.0) / 100.0
 
     cout_ht = 0.0
+    cout_ttc = 0.0
     onduleur = None
     onduleur_kw = None
     onduleur_kw_unitaire = None
@@ -218,6 +219,17 @@ def _lire_composition(lignes, taux_tva):
         quantite = _num(getattr(ligne, 'quantite', 0))
         pu_ht = _num(getattr(ligne, 'prix_unitaire', 0))
         cout_ht += quantite * pu_ht
+        # TVA PAR LIGNE (fondateur, 24/08/2026 — le tableau surestimait le
+        # TTC de ~1 270 DH à 10 panneaux) : chaque produit porte SON taux
+        # (panneaux 10 %, le reste 20 %), exactement comme le devis réel le
+        # facture. Repli = taux du devis quand le produit n'en déclare pas.
+        tva_ligne = _num(getattr(getattr(ligne, 'produit', None), 'tva', None),
+                         defaut=-1.0)
+        if tva_ligne >= 0:
+            facteur_ligne = 1.0 + tva_ligne / 100.0
+        else:
+            facteur_ligne = facteur_devis
+        cout_ttc += quantite * pu_ht * facteur_ligne
         nom = getattr(ligne, 'designation', '') or ''
 
         if role in ('onduleur_reseau', 'onduleur_hybride') and onduleur is None:
@@ -247,7 +259,7 @@ def _lire_composition(lignes, taux_tva):
 
     return {
         'cout_ht': round(cout_ht, 2),
-        'cout_ttc': round(cout_ht * facteur, 2),
+        'cout_ttc': round(cout_ttc, 2),
         'onduleur': onduleur,
         'onduleur_kw': onduleur_kw,
         'onduleur_kw_unitaire': onduleur_kw_unitaire,

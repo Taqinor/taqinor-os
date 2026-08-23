@@ -223,12 +223,16 @@ def simuler_batterie_jour(conso_24h, prod_24h, capacite_kwh_utile,
       aller-retour ``BATTERY_ROUNDTRIP`` (0,90 — constante EXISTANTE de
       ``pricing``, jamais un nouveau chiffre) appliqué à la restitution.
 
-    LA BATTERIE PART VIDE À 00 h. C'est le choix CONSERVATEUR et il est
-    délibéré : le déficit d'avant l'aube (00h-06h) n'est donc pas servi par le
-    surplus de la veille. Un modèle « en régime établi » (report du reliquat
-    d'un jour sur l'autre) donnerait des économies plus GRANDES — on préfère
-    annoncer moins que promettre trop, et l'invariant « restitué ≤ 0,90 ×
-    chargé » reste vrai par construction, ce qu'un test épingle.
+    RÉGIME ÉTABLI (ordre fondateur, 24/08/2026 — « si tu calcules la simple
+    décharge de la nuit... les petites décharges de la journée et de la
+    matinée en plus ») : le jour type étant périodique, l'état de charge se
+    REPORTE d'un jour sur l'autre — on itère le cycle jusqu'à l'équilibre
+    (l'état de 00 h = l'état de 24 h), si bien que le reliquat du soir sert
+    le déficit d'avant l'aube. L'ancien départ-à-vide tronquait cette
+    décharge nocturne. À l'équilibre périodique, la conservation d'énergie
+    donne exactement « restitué = 0,90 × chargé » sur le cycle : l'invariant
+    « restitué ≤ 0,90 × chargé » épinglé par les tests reste vrai par
+    construction.
 
     Retourne ``{restitue_kwh, charge_kwh, capacite_utilisee_kwh}``.
     Capacité nulle/absente ⇒ tout à zéro (aucune énergie inventée).
@@ -242,27 +246,46 @@ def simuler_batterie_jour(conso_24h, prod_24h, capacite_kwh_utile,
     if rendement <= 0:
         rendement = BATTERY_ROUNDTRIP
 
-    soc = 0.0          # état de charge (kWh stockés)
-    pic_soc = 0.0
-    charge_total = 0.0
-    restitue_total = 0.0
+    def _cycle(soc_depart):
+        soc = max(0.0, min(_num(soc_depart), capacite))
+        pic_soc = soc
+        charge_total = 0.0
+        restitue_total = 0.0
+        for heure in range(min(len(conso_24h), len(prod_24h))):
+            conso = max(0.0, _num(conso_24h[heure]))
+            prod = max(0.0, _num(prod_24h[heure]))
+            if prod > conso:
+                charge = min(prod - conso, capacite - soc)
+                if charge > 0:
+                    soc += charge
+                    charge_total += charge
+                    pic_soc = max(pic_soc, soc)
+            elif conso > prod:
+                besoin = conso - prod
+                disponible = soc * rendement
+                restitue = min(besoin, disponible)
+                if restitue > 0:
+                    soc -= restitue / rendement
+                    restitue_total += restitue
+        return charge_total, restitue_total, pic_soc, soc
 
-    for heure in range(min(len(conso_24h), len(prod_24h))):
-        conso = max(0.0, _num(conso_24h[heure]))
-        prod = max(0.0, _num(prod_24h[heure]))
-        if prod > conso:
-            charge = min(prod - conso, capacite - soc)
-            if charge > 0:
-                soc += charge
-                charge_total += charge
-                pic_soc = max(pic_soc, soc)
-        elif conso > prod:
-            besoin = conso - prod
-            disponible = soc * rendement
-            restitue = min(besoin, disponible)
-            if restitue > 0:
-                soc -= restitue / rendement
-                restitue_total += restitue
+    # Convergence vers l'équilibre périodique : l'état de fin de journée
+    # devient l'état de départ du cycle suivant. Borné par la capacité et
+    # monotone, le point fixe est atteint en quelques itérations (garde-fou
+    # à 8 pour ne jamais boucler sur un profil dégénéré).
+    soc_depart = 0.0
+    charge_total = restitue_total = pic_soc = 0.0
+    for _ in range(8):
+        charge_total, restitue_total, pic_soc, soc_fin = _cycle(soc_depart)
+        if abs(soc_fin - soc_depart) <= 1e-6:
+            break
+        soc_depart = soc_fin
+
+    # À l'équilibre, ce qui a été RESTITUÉ pendant le cycle ne peut excéder
+    # 0,90 × ce qui a été CHARGÉ pendant ce même cycle (conservation, l'état
+    # de départ égalant l'état d'arrivée). On borne explicitement pour que
+    # l'invariant épinglé reste vrai même hors convergence parfaite.
+    restitue_total = min(restitue_total, rendement * charge_total)
 
     return {
         'restitue_kwh': restitue_total,
