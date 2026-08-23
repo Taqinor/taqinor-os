@@ -655,6 +655,37 @@ def avertissement_raccordement(phase):
             'avec le client.')
 
 
+#: Libellés FRANÇAIS des deux familles d'onduleurs, pour NOMMER celle qui
+#: manque en triphasé (« aucun onduleur hybride triphasé » n'est pas la même
+#: information que « aucun onduleur réseau triphasé »).
+_FAMILLE_ONDULEUR = {
+    'onduleur_reseau': 'réseau',
+    'onduleur_hybride': 'hybride',
+}
+
+
+def avertissement_tri_sans_onduleur(categorie=None):
+    """Le message FRANÇAIS d'un client TRIPHASÉ sans onduleur triphasé possible.
+
+    BUG FONDATEUR DU 24/08/2026 — « pourquoi j'ai du mono alors que le client
+    est tri ». Sur un abonnement triphasé, retomber en monophasé n'est PAS un
+    repli acceptable : c'est le défaut à éradiquer. Quand le catalogue n'offre
+    aucun onduleur triphasé de la famille vendue, la composition part donc SANS
+    onduleur et le dit ici — le candidat est REFUSÉ, jamais rabattu.
+
+    Le mot « incompatible » est délibéré : ``dimensionnement.verdict_bloquant``
+    le reconnaît, si bien que le balayage ÉCARTE la taille au lieu de la
+    chiffrer avec un onduleur qu'on ne peut pas raccorder.
+    """
+    famille = _FAMILLE_ONDULEUR.get(categorie)
+    precision = (' %s' % famille) if famille else ''
+    return ('Raccordement TRIPHASÉ déclaré : aucun onduleur%s triphasé au '
+            'catalogue — composition incompatible avec le raccordement du '
+            'client. Un onduleur monophasé n\'est JAMAIS composé sur un '
+            'abonnement triphasé ; ajoutez un onduleur triphasé au catalogue.'
+            % precision)
+
+
 def avertissement_panneau_onduleur(panneau, onduleur, verdict):
     """Le message FRANÇAIS d'un couple panneau/onduleur qui coince.
 

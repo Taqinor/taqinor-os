@@ -275,6 +275,95 @@ def simuler_batterie_jour(conso_24h, prod_24h, capacite_kwh_utile,
 # 4. LE MOTEUR
 # ════════════════════════════════════════════════════════════════════════════
 
+def jours_types_annee(*, kwc, conso_kwh_mensuelles, ville=None, lat=None,
+                      lon=None, occupation=None, equipements=None):
+    """Les DOUZE JOURS TYPES d'une installation : consommation et production 24 h.
+
+    SOURCE UNIQUE des courbes horaires du moteur. :func:`calculer_etude_horaire`
+    (l'étude complète) et :func:`balayer_stockage_horaire` (le balayage du
+    stockage, DIM2) lisent le MÊME jour type : deux constructions parallèles
+    finiraient immanquablement par diverger d'un derate, d'une silhouette ou
+    d'un nombre de jours — et les deux moitiés du tableau ne parleraient plus du
+    même client.
+
+    Renvoie ``(jours, avertissements, sources)``. ``jours`` vaut ``None`` dès
+    qu'un ancrage manque (puissance nulle, série de consommation absente,
+    localisation non résolue par PVGIS) — règle Z2 : on omet, on n'approxime
+    pas. Un mois dont la saison n'a pas de forme PVGIS est OMIS de la liste et
+    consigné dans ``avertissements`` : l'appelant décide (les deux appelants
+    exigent les douze).
+    """
+    puissance = _num(kwc)
+    if puissance <= 0:
+        return None, [], {}
+
+    if not conso_kwh_mensuelles or len(conso_kwh_mensuelles) != 12:
+        return None, [], {}
+    conso_mois = [max(0.0, _num(v)) for v in conso_kwh_mensuelles]
+    if not any(v > 0 for v in conso_mois):
+        return None, [], {}
+
+    formes, source_prod = _formes_production_par_saison(
+        ville=ville, lat=lat, lon=lon)
+    if not formes:
+        return None, [], {}
+
+    mensuel = productible_mensuel(ville=ville, lat=lat, lon=lon)
+    if not mensuel:
+        return None, [], {}
+    productibles, source_productible = mensuel
+
+    couches = equipements or {}
+    avertissements = []
+    jours_types = []
+
+    for index in range(12):
+        numero = index + 1
+        saison = saison_du_mois(numero)
+        jours = JOURS_PAR_MOIS[index]
+        forme_prod = formes.get(saison)
+        if forme_prod is None:
+            avertissements.append(
+                'saison %s sans forme PVGIS — mois %d omis du calcul'
+                % (saison, numero))
+            continue
+
+        # ── Production du JOUR MOYEN de ce mois ──
+        # PERTES SYSTÈME — ordre fondateur (18/08) : 20 % AU TOTAL. Les
+        # productibles PVGIS sont demandés à ``loss=14``
+        # (``pvgis_profils.PVGIS_LOSS_PCT``), donc 14 % sont DÉJÀ dedans : on
+        # n'applique que le COMPLÉMENT, ``PRODUCTION_DERATE`` ≈ 0,9302 — la
+        # MÊME constante que ``pricing`` et ``builder``. Sans elle, ce moteur
+        # annoncerait ~7,5 % de production (et donc d'économies) de plus que
+        # tout le reste de la chaîne, sur la même installation.
+        prod_mois_kwh = _num(productibles[index]) * puissance * PRODUCTION_DERATE
+        prod_jour_kwh = prod_mois_kwh / jours if jours else 0.0
+        prod_24h = [part * prod_jour_kwh for part in forme_prod]
+
+        # ── Consommation du JOUR MOYEN de ce mois (silhouette + équipements) ──
+        conso_mois_kwh = conso_mois[index]
+        conso_jour_kwh = conso_mois_kwh / jours if jours else 0.0
+        conso_24h = forme_consommation_kwh(
+            conso_jour_kwh, occupation, saison=saison, equipements=couches)
+
+        jours_types.append({
+            'mois': numero,
+            'saison': saison,
+            'jours': jours,
+            'conso_mois_kwh': conso_mois_kwh,
+            'conso_jour_kwh': conso_jour_kwh,
+            'prod_mois_kwh': prod_mois_kwh,
+            'prod_jour_kwh': prod_jour_kwh,
+            'conso_24h': conso_24h,
+            'prod_24h': prod_24h,
+        })
+
+    return jours_types, avertissements, {
+        'production': source_prod,
+        'productible': source_productible,
+    }
+
+
 def _bloc_vide():
     """Agrégat neutre (tous compteurs à zéro) — jamais de ``None`` arithmétique."""
     return {
@@ -366,58 +455,32 @@ def calculer_etude_horaire(*, kwc, conso_kwh_mensuelles,
     if puissance <= 0:
         return None
 
-    if not conso_kwh_mensuelles or len(conso_kwh_mensuelles) != 12:
+    jours_types, avertissements, sources = jours_types_annee(
+        kwc=puissance, conso_kwh_mensuelles=conso_kwh_mensuelles,
+        ville=ville, lat=lat, lon=lon,
+        occupation=occupation, equipements=equipements)
+    if jours_types is None:
         return None
-    conso_mois = [max(0.0, _num(v)) for v in conso_kwh_mensuelles]
-    if not any(v > 0 for v in conso_mois):
-        return None
-
-    formes, source_prod = _formes_production_par_saison(
-        ville=ville, lat=lat, lon=lon)
-    if not formes:
-        return None
-
-    mensuel = productible_mensuel(ville=ville, lat=lat, lon=lon)
-    if not mensuel:
-        return None
-    productibles, source_productible = mensuel
+    source_prod = sources.get('production')
+    source_productible = sources.get('productible')
 
     capacite = _num(batterie_kwh_utile)
     couches = equipements or {}
-    avertissements = []
 
     mois_sortie = []
     saisons_cumul = {saison: _bloc_vide() for saison in SAISONS}
     annuel_cumul = _bloc_vide()
 
-    for index in range(12):
-        numero = index + 1
-        saison = saison_du_mois(numero)
-        jours = JOURS_PAR_MOIS[index]
-        forme_prod = formes.get(saison)
-        if forme_prod is None:
-            avertissements.append(
-                'saison %s sans forme PVGIS — mois %d omis du calcul'
-                % (saison, numero))
-            continue
-
-        # ── Production du JOUR MOYEN de ce mois ──
-        # PERTES SYSTÈME — ordre fondateur (18/08) : 20 % AU TOTAL. Les
-        # productibles PVGIS sont demandés à ``loss=14``
-        # (``pvgis_profils.PVGIS_LOSS_PCT``), donc 14 % sont DÉJÀ dedans : on
-        # n'applique que le COMPLÉMENT, ``PRODUCTION_DERATE`` ≈ 0,9302 — la
-        # MÊME constante que ``pricing`` et ``builder``. Sans elle, ce moteur
-        # annoncerait ~7,5 % de production (et donc d'économies) de plus que
-        # tout le reste de la chaîne, sur la même installation.
-        prod_mois_kwh = _num(productibles[index]) * puissance * PRODUCTION_DERATE
-        prod_jour_kwh = prod_mois_kwh / jours if jours else 0.0
-        prod_24h = [part * prod_jour_kwh for part in forme_prod]
-
-        # ── Consommation du JOUR MOYEN de ce mois (silhouette + équipements) ──
-        conso_mois_kwh = conso_mois[index]
-        conso_jour_kwh = conso_mois_kwh / jours if jours else 0.0
-        conso_24h = forme_consommation_kwh(
-            conso_jour_kwh, occupation, saison=saison, equipements=couches)
+    for jour_type in jours_types:
+        numero = jour_type['mois']
+        saison = jour_type['saison']
+        jours = jour_type['jours']
+        prod_mois_kwh = jour_type['prod_mois_kwh']
+        prod_jour_kwh = jour_type['prod_jour_kwh']
+        prod_24h = jour_type['prod_24h']
+        conso_mois_kwh = jour_type['conso_mois_kwh']
+        conso_jour_kwh = jour_type['conso_jour_kwh']
+        conso_24h = jour_type['conso_24h']
 
         # ── Recouvrement horaire — LE moteur existant, courbes RÉELLES ──
         recouvrement = hourly_self_consumption(
@@ -499,6 +562,192 @@ def calculer_etude_horaire(*, kwc, conso_kwh_mensuelles,
                     or cumul['production_kwh'] > 0},
         'annuel': _finaliser(annuel_cumul),
         'avertissements': avertissements,
+    }
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# 4 bis. DIM2 — LE STOCKAGE COMME DEUXIÈME DIMENSION DU BALAYAGE
+# ════════════════════════════════════════════════════════════════════════════
+# ORDRE FONDATEUR (24/08/2026) : « peut-être rajouter des batteries », puis, le
+# même jour, la règle qui la borne — « le stockage avec des batteries toujours
+# pleines..... pas rajouter du stockage pour ne pas le charger ».
+#
+# Jusqu'ici la batterie était une CONSÉQUENCE des kWc (``composition_
+# residentielle`` vise ``max(5, arrondi(kwp/5) × 5)`` kWh). Un client qui paie
+# 3 500 DH/mois plafonnait donc à 15 kWh de stockage et ne voyait JAMAIS la
+# configuration qui ferait retomber son résiduel sous la marche des 500 kWh/mois
+# — là où tout le mois se re-tarife de 1,62 à 1,38.
+#
+# Cette fonction rend le stockage MESURABLE : pour UNE taille de champ, elle
+# évalue plusieurs capacités d'un seul parcours des douze jours types, et
+# expose de quoi refuser un palier qui ne se remplirait pas.
+
+
+def balayer_stockage_horaire(*, kwc, conso_kwh_mensuelles, capacites_kwh,
+                             ville=None, lat=None, lon=None,
+                             occupation=None, equipements=None,
+                             tranches=None, charges_fixes_mad=None,
+                             tppan=True, millesime=bareme.MILLESIME_COURANT):
+    """DIM2 — plusieurs capacités de stockage évaluées sur UNE taille de champ.
+
+    UN SEUL parcours des douze jours types (:func:`jours_types_annee`) sert
+    TOUTES les capacités : évaluer douze paliers coûte donc un douzième de
+    boucle mensuelle, pas douze études complètes.
+
+    LES DEUX PLAFONDS PHYSIQUES, tous deux MESURÉS sur ce client-ci — aucun des
+    deux n'est un chiffre choisi :
+
+    * ``plafond_remplissage_kwh`` — RÈGLE FONDATEUR : la batterie doit se
+      remplir TOUS LES JOURS. C'est donc le SURPLUS QUOTIDIEN (production moins
+      autoconsommation directe) du MOIS LE PLUS FAIBLE de l'année : au-delà,
+      il existe un mois — décembre ou janvier — où le champ ne produit pas
+      assez pour charger la banque, et l'on vendrait des kWh de batterie qui
+      dorment. Conséquence VOULUE : stockage et champ montent ENSEMBLE.
+    * ``plafond_deficit_kwh`` — le déficit du jour type le plus gourmand divisé
+      par le rendement aller-retour : la restitution vaut au plus
+      ``capacité × rendement``, donc au-delà, un kWh de plus ne peut RIEN
+      restituer de plus, quelle que soit la production.
+
+    ``plafond_stockage_kwh`` est le plus contraignant des deux, et
+    ``plafond_motif`` DIT lequel — un refus muet serait un refus incompris.
+
+    ``capacites_kwh`` est évalué TEL QUEL, y compris au-dessus des plafonds :
+    c'est ce qui permet à l'appelant d'AFFICHER un palier refusé avec son taux
+    de remplissage du pire mois (« 20 kWh refusé : rempli 62 % en janvier »).
+    L'admissibilité est une décision de l'appelant, pas un silence d'ici.
+
+    Renvoie ``None`` quand l'année n'est pas complète (même règle que
+    :func:`calculer_etude_horaire` : une année tronquée n'est pas une année).
+    """
+    jours_types, _avertissements, _sources = jours_types_annee(
+        kwc=kwc, conso_kwh_mensuelles=conso_kwh_mensuelles,
+        ville=ville, lat=lat, lon=lon,
+        occupation=occupation, equipements=equipements)
+    if not jours_types or len(jours_types) != 12:
+        return None
+
+    capacites = sorted({round(_num(c), 3) for c in (capacites_kwh or ())
+                        if _num(c) > 0})
+
+    production_kwh = 0.0
+    consommation_kwh = 0.0
+    autoconsomme_direct_kwh = 0.0
+    surplus_min = None
+    surplus_min_mois = None
+    deficit_max = 0.0
+    deficit_max_mois = None
+    cumuls = {c: {'economie_mad': 0.0, 'autoconsomme_kwh': 0.0,
+                  'import_kwh': 0.0, 'remplissage_somme': 0.0,
+                  'remplissage_min': None} for c in capacites}
+
+    for jour_type in jours_types:
+        conso_24h = jour_type['conso_24h']
+        prod_24h = jour_type['prod_24h']
+        jours = jour_type['jours']
+        conso_mois_kwh = jour_type['conso_mois_kwh']
+        conso_jour_kwh = jour_type['conso_jour_kwh']
+        prod_jour_kwh = jour_type['prod_jour_kwh']
+
+        production_kwh += jour_type['prod_mois_kwh']
+        consommation_kwh += conso_mois_kwh
+
+        recouvrement = hourly_self_consumption(
+            load_curve=conso_24h, production_curve=prod_24h)
+        auto_direct_jour = recouvrement['self_consumed_kwh']
+        autoconsomme_direct_kwh += auto_direct_jour * jours
+
+        # LE SURPLUS DU JOUR TYPE : l'énergie réellement disponible pour
+        # charger — c'est ELLE que la règle « batteries toujours pleines »
+        # borne, pas la production brute.
+        surplus_jour = max(0.0, prod_jour_kwh - auto_direct_jour)
+        if surplus_min is None or surplus_jour < surplus_min:
+            surplus_min = surplus_jour
+            surplus_min_mois = jour_type['mois']
+
+        deficit_jour = sum(
+            max(0.0, _num(conso_24h[h]) - _num(prod_24h[h]))
+            for h in range(min(len(conso_24h), len(prod_24h))))
+        if deficit_jour > deficit_max:
+            deficit_max = deficit_jour
+            deficit_max_mois = jour_type['mois']
+
+        bareme_kwargs = {
+            'jours': jours, 'millesime': millesime, 'tranches': tranches,
+            'charges_fixes_mad': charges_fixes_mad, 'tppan': tppan,
+        }
+        for capacite in capacites:
+            batterie = simuler_batterie_jour(conso_24h, prod_24h, capacite)
+            auto_jour = min(auto_direct_jour + batterie['restitue_kwh'],
+                            conso_jour_kwh, prod_jour_kwh)
+            auto_mois = auto_jour * jours
+            eco = bareme.economie_deux_factures_mad(
+                conso_mois_kwh, max(0.0, conso_mois_kwh - auto_mois),
+                **bareme_kwargs)
+            cumul = cumuls[capacite]
+            cumul['economie_mad'] += eco['economie_mad']
+            cumul['autoconsomme_kwh'] += auto_mois
+            cumul['import_kwh'] += max(0.0, conso_mois_kwh - auto_mois)
+            ratio = batterie['charge_kwh'] / capacite if capacite > 0 else 0.0
+            cumul['remplissage_somme'] += ratio
+            pire = cumul['remplissage_min']
+            if pire is None or ratio < pire['ratio']:
+                cumul['remplissage_min'] = {
+                    'mois': jour_type['mois'],
+                    'ratio': ratio,
+                    'charge_jour_kwh': batterie['charge_kwh'],
+                    'surplus_jour_kwh': surplus_jour,
+                }
+
+    plafond_remplissage = max(0.0, surplus_min or 0.0)
+    plafond_deficit = (deficit_max / BATTERY_ROUNDTRIP
+                       if BATTERY_ROUNDTRIP > 0 else deficit_max)
+    if plafond_remplissage <= plafond_deficit:
+        plafond, motif = plafond_remplissage, 'remplissage_quotidien'
+    else:
+        plafond, motif = plafond_deficit, 'deficit_nocturne'
+
+    paliers = []
+    for capacite in capacites:
+        cumul = cumuls[capacite]
+        pire = cumul['remplissage_min'] or {}
+        paliers.append({
+            'capacite_kwh': round(capacite, 2),
+            'economie_mad': round(cumul['economie_mad'], 2),
+            'autoconsomme_kwh': round(cumul['autoconsomme_kwh'], 2),
+            'import_kwh': round(cumul['import_kwh'], 2),
+            'residuel_kwh_mois': round(cumul['import_kwh'] / 12.0, 2),
+            'taux_autoconso': round(
+                _taux(cumul['autoconsomme_kwh'], production_kwh), 4),
+            'couverture': round(
+                _taux(cumul['autoconsomme_kwh'], consommation_kwh), 4),
+            'remplissage_moyen': round(cumul['remplissage_somme'] / 12.0, 4),
+            'remplissage_pire_mois': {
+                'mois': pire.get('mois'),
+                'ratio': round(_num(pire.get('ratio')), 4),
+                'charge_jour_kwh': round(_num(pire.get('charge_jour_kwh')), 2),
+                'surplus_jour_kwh': round(
+                    _num(pire.get('surplus_jour_kwh')), 2),
+            },
+            'se_remplit_tous_les_jours': bool(capacite <= plafond_remplissage),
+            'sous_plafond_physique': bool(capacite <= plafond),
+        })
+
+    import_direct = max(0.0, consommation_kwh - autoconsomme_direct_kwh)
+    return {
+        'kwc': round(_num(kwc), 3),
+        'production_annuelle_kwh': round(production_kwh, 2),
+        'consommation_annuelle_kwh': round(consommation_kwh, 2),
+        'residuel_sans_kwh_mois': round(import_direct / 12.0, 2),
+        'surplus_jour_min_kwh': round(plafond_remplissage, 2),
+        'surplus_jour_min_mois': surplus_min_mois,
+        'deficit_jour_max_kwh': round(deficit_max, 2),
+        'deficit_jour_max_mois': deficit_max_mois,
+        'plafond_remplissage_kwh': round(plafond_remplissage, 2),
+        'plafond_deficit_kwh': round(plafond_deficit, 2),
+        'plafond_stockage_kwh': round(plafond, 2),
+        'plafond_motif': motif,
+        'rendement_batterie': BATTERY_ROUNDTRIP,
+        'paliers': paliers,
     }
 
 

@@ -59,6 +59,8 @@ from .pricing import (
     TrancheTable,
     _monthly_bill_from_kwh,
     _resolve_tranches,
+    _selective_rule,
+    _split_tranches,
 )
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -485,4 +487,135 @@ def economie_deux_factures_mad(kwh_avant, kwh_apres, *,
         'facture_avant_mad': avant['total_mad'],
         'facture_apres_mad': apres['total_mad'],
         'economie_mad': max(0.0, avant['total_mad'] - apres['total_mad']),
+    }
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# 6. LA MARCHE — dans quelle tranche retombe le résiduel, et laquelle viser
+# ════════════════════════════════════════════════════════════════════════════
+# DIM2 (fondateur 24/08/2026). Sur la grille SÉLECTIVE, l'économie ne vient pas
+# seulement des kWh effacés : elle vient de la MARCHE franchie — à 501 kWh tout
+# le mois est facturé 1,6229, à 500 il l'est 1,3817. Le tableau de
+# dimensionnement doit donc RENDRE VISIBLE où retombe la consommation résiduelle
+# du client, et quelle marche il y a juste en dessous. Ces deux fonctions ne
+# créent AUCUN chiffre : elles LISENT les bornes de la table déjà en vigueur
+# (millésime ou surcharge société), avec la MÊME règle de tolérance que
+# :func:`facture_mad`.
+
+
+def _borne_txt(valeur):
+    """« 210.0 » → « 210 » (une borne entière ne s'écrit pas avec un ,0)."""
+    if valeur is None:
+        return '∞'
+    return str(int(valeur)) if float(valeur) == int(valeur) else ('%g' % valeur)
+
+
+def _tranche(rang, basse, haute, prix, regime):
+    """Descripteur d'une tranche — forme unique, JSON-sérialisable."""
+    if haute is None:
+        libelle = '> %s kWh/mois' % _borne_txt(basse)
+    else:
+        libelle = '%s-%s kWh/mois' % (_borne_txt(basse), _borne_txt(haute))
+    return {
+        'rang': rang,
+        'libelle': libelle,
+        'borne_basse_kwh': round(float(basse), 1),
+        'borne_haute_kwh': None if haute is None else round(float(haute), 1),
+        'prix_mad_kwh': round(float(prix), 6),
+        'regime': regime,
+    }
+
+
+def tranche_du_kwh_mensuel(kwh_mensuel, *, millesime=MILLESIME_COURANT,
+                           tranches=None):
+    """DIM2 — LA TRANCHE du barème où retombe une consommation mensuelle.
+
+    Les bornes rendues sont les bornes EFFECTIVES, tolérance comprise : au-delà
+    du seuil sélectif, la source officielle accorde « une tolérance de
+    dépassement de 10 kWh/mois pour chaque tranche », d'où les bornes 210/310/510
+    que :func:`~apps.ventes.quote_engine.pricing._monthly_bill_from_kwh` applique
+    RÉELLEMENT. Réutiliser sa règle (``_selective_rule`` / ``_split_tranches``)
+    plutôt que la réécrire est le seul moyen que la tranche AFFICHÉE soit celle
+    qui FACTURE.
+
+    Renvoie ``{rang, libelle, borne_basse_kwh, borne_haute_kwh, prix_mad_kwh,
+    regime}`` — ``regime`` valant ``'progressif'`` ou ``'selectif'`` — ou
+    ``None`` pour une consommation nulle (aucune tranche n'est atteinte).
+    """
+    kwh = _num(kwh_mensuel)
+    if kwh <= 0:
+        return None
+    table = _tranches_effectives(tranches, millesime)
+    paires = list(table)
+    if not paires:
+        return None
+
+    regle = _selective_rule(table)
+    if regle is None:
+        basse = 0.0
+        for rang, (plafond, prix) in enumerate(paires, start=1):
+            haute = None if plafond is None else float(plafond)
+            if haute is None or kwh <= haute:
+                return _tranche(rang, basse, haute, prix, 'progressif')
+            basse = haute
+        # Table close (aucune bande ouverte) : au-delà du dernier plafond, la
+        # dernière bande reste celle qui tarife — on la NOMME plutôt que de
+        # rendre None, sinon le tableau perdrait sa colonne pour les gros
+        # consommateurs.
+        return _tranche(len(paires), basse, None, paires[-1][1], 'progressif')
+
+    seuil, tol = regle
+    prog, sel = _split_tranches(table, seuil)
+    if kwh <= seuil:
+        basse = 0.0
+        for rang, (plafond, prix) in enumerate(prog, start=1):
+            haute = float(plafond)
+            if kwh <= haute:
+                return _tranche(rang, basse, haute, prix, 'progressif')
+            basse = haute
+    basse = float(seuil)
+    for decalage, (plafond, prix) in enumerate(sel, start=1):
+        haute = None if plafond is None else float(plafond) + tol
+        if haute is None or kwh <= haute:
+            return _tranche(len(prog) + decalage, basse, haute, prix,
+                            'selectif')
+        basse = haute
+    return None
+
+
+def falaise_sous_kwh_mensuel(kwh_mensuel, *, millesime=MILLESIME_COURANT,
+                             tranches=None):
+    """DIM2 — LA MARCHE juste en dessous d'une consommation mensuelle.
+
+    « Descendre sous 500 kWh/mois » n'est pas un chiffre inventé : 500 est le
+    PLAFOND NOMINAL de la tranche T5 dans la table en vigueur, et repasser
+    dessous re-tarife TOUT le mois (1,6229 → 1,3817 en 2026). Cette fonction
+    NOMME cette marche pour n'importe quel client, sans jamais coder « 500 » :
+    elle rend le plafond NOMINAL de la tranche immédiatement inférieure à celle
+    du client.
+
+    Pourquoi le plafond NOMINAL (500) et non l'effectif (510) : la tolérance est
+    une faveur du distributeur, pas une garantie qu'on peut vendre. Viser 500
+    fait tomber la facture dans la tranche basse À COUP SÛR ; viser 510 en
+    dépendrait. On promet moins que ce qu'on obtiendra, jamais l'inverse.
+
+    Renvoie ``{cible_kwh_mois, tranche_actuelle, tranche_visee}``, ou ``None``
+    quand le client est déjà dans la tranche la plus basse (aucune marche à
+    franchir) ou quand la consommation est nulle.
+    """
+    actuelle = tranche_du_kwh_mensuel(kwh_mensuel, millesime=millesime,
+                                      tranches=tranches)
+    if actuelle is None or actuelle['rang'] <= 1:
+        return None
+    table = _tranches_effectives(tranches, millesime)
+    paires = list(table)
+    plafond_dessous = paires[actuelle['rang'] - 2][0]
+    if plafond_dessous is None or float(plafond_dessous) <= 0:
+        return None
+    cible = float(plafond_dessous)
+    return {
+        'cible_kwh_mois': round(cible, 1),
+        'tranche_actuelle': actuelle,
+        'tranche_visee': tranche_du_kwh_mensuel(
+            cible, millesime=millesime, tranches=tranches),
     }
