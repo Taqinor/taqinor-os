@@ -2,9 +2,9 @@
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
 pydantic==2.10.4
-python-multipart==0.0.20
-python-dotenv==1.0.1
-PyJWT==2.10.1
+python-multipart==0.0.31
+python-dotenv==1.2.2
+PyJWT==2.13.0
 
 # Database
 sqlalchemy==2.0.36
@@ -19,8 +19,8 @@ sqlparse>=0.5,<0.6
 redis==5.2.1
 
 # AI - Agent SQL
-langchain==0.3.14
-langchain-community==0.3.14
+langchain==0.3.30
+langchain-community==0.3.27
 langchain-groq==0.2.3
 langchain-openai==0.2.14
 langchain-anthropic==0.3.3
