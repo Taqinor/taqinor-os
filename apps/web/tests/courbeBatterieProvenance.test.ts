@@ -56,6 +56,17 @@ function scaleTexts(svg: string): string[] {
   return [...group.matchAll(/<text[^>]*>([^<]*)<\/text>/g)].map((m) => m[1]);
 }
 
+/** La couleur de remplissage de chaque <text> du repère, dans le même ordre. */
+function scaleFills(svg: string): string[] {
+  const group = svg.match(/<g data-curve-scale[\s\S]*?<\/g>/)?.[0] ?? '';
+  return [...group.matchAll(/<text[^>]*fill="([^"]*)"[^>]*>/g)].map((m) => m[1]);
+}
+
+/** Le token de couleur d'une courbe : laiton = production, azur = consommation. */
+const LAITON = 'var(--color-brass-300, #f3cc66)';
+const AZUR = 'var(--color-azur-300, #7fb4e8)';
+const NEUTRE = 'var(--color-lune-faint, #8d96b4)';
+
 // ════════════════════════════════════════════════════════════════════════════
 describe('1. Provenance — le repère NOMME la courbe dont il parle', () => {
   it('le kWh/jour du repère est la PRODUCTION servie, explicitement libellée', () => {
@@ -95,6 +106,37 @@ describe('1. Provenance — le repère NOMME la courbe dont il parle', () => {
     const texts = scaleTexts(renderYearCurve(11000).svg);
     expect(texts[0]).toContain('pic de production ≈');
     expect(texts[1]).toContain('production estimée :');
+  });
+
+  // ── ORDRE FONDATEUR (24/08/2026) — chaque annotation porte la couleur de SA
+  // courbe. « production estimée : … » était écrite en gris-bleu (lune-faint) :
+  // le client la lisait comme la couleur de la courbe de CONSOMMATION (azur),
+  // alors qu'elle nomme un chiffre de PRODUCTION.
+  it('les deux lignes de PRODUCTION sont en laiton, la consommation en azur', () => {
+    const fills = scaleFills(renderYearCurve(11000, undefined, 'fr', {}, served()).svg);
+    expect(fills).toHaveLength(3);
+    expect(fills[0]).toBe(LAITON); // pic de production ≈ …
+    expect(fills[1]).toBe(LAITON); // production estimée : … ← le correctif
+    expect(fills[2]).toBe(AZUR); // votre consommation : …
+    // Aucune annotation de production ne porte plus le gris-bleu.
+    expect(fills.slice(0, 2)).not.toContain(NEUTRE);
+  });
+
+  it('même règle sur le repli annuel (c’est la même annotation)', () => {
+    const fills = scaleFills(renderYearCurve(11000).svg);
+    expect(fills).toHaveLength(2);
+    expect(fills[0]).toBe(LAITON);
+    expect(fills[1]).toBe(LAITON);
+  });
+
+  it('« profil — année type » reste NEUTRE : il ne nomme aucune courbe', () => {
+    // Aucune échelle réelle (ni forme servie, ni production annuelle) : le
+    // repère se réduit à ce libellé, hors du groupe `data-curve-scale`.
+    const svg = renderYearCurve(null).svg;
+    expect(svg).toContain('profil — année type');
+    expect(svg).not.toContain('data-curve-scale');
+    const ligne = svg.match(/<text[^>]*fill="([^"]*)"[^>]*>profil — année type<\/text>/);
+    expect(ligne?.[1]).toBe(NEUTRE);
   });
 });
 

@@ -1014,19 +1014,51 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # (``Devis.option_acceptee``) ne rétrécit rien ici : les deux axes sont
     # séparés, et le défaut reste le document composé par le commercial.
     #
-    # GARDE-FOU : l'override n'existe QUE sur un document qui publie réellement
-    # les deux options (le commercial a déclaré « Les deux », et l'équipement
-    # sert les deux côtés). Sur un devis mono-option, une variante demandée est
-    # ignorée — jamais une option que le devis ne peut pas livrer, jamais un
-    # prix que le commercial n'a pas présenté. Aucun statut n'est touché : le
-    # moteur ne fait que RENDRE (règle #4).
-    if (opts.get('variante_option')
-            and scenario == 'Les deux (Sans + Avec)' and sans_ok and avec_ok):
+    # SERVABILITÉ PHYSIQUE — figée ICI, avant tout rétrécissement de confort.
+    # À ce point du flux, ``sans_ok``/``avec_ok`` décrivent ce que l'ÉQUIPEMENT
+    # permet : le repli artefact PV86 (plus haut) les a déjà rendus mutuellement
+    # exclusifs sur un devis à deux onduleurs non déclarés, tandis que le
+    # rétrécissement QF6 (plus bas) n'a PAS encore appliqué le scénario stocké.
+    # C'est exactement la bonne base : la variante suit la capacité réelle du
+    # devis, jamais un état de données pollué.
+    _sans_servable = sans_ok
+    _avec_servable = avec_ok
+    # PACT10 — LE CONTRAT PARTAGÉ : la page publique doit pouvoir proposer le
+    # sélecteur de variante INDÉPENDAMMENT de ``nb_options`` (un devis rétréci
+    # sert une seule option mais peut en livrer deux). Liste ORDONNÉE,
+    # sous-ensemble de ['sans', 'avec'] : deux jetons, aucun montant, aucun prix
+    # d'achat — publiable tel quel (règle #4).
+    variantes_servables = [
+        nom for nom, servable in (('sans', _sans_servable),
+                                  ('avec', _avec_servable)) if servable
+    ]
+    # GARDE-FOU (élargi par ordre fondateur du 24/08/2026) : l'override existe
+    # dès que les DEUX options sont PHYSIQUEMENT SERVABLES par les lignes du
+    # devis — et non plus seulement quand le scénario stocké dit « Les deux ».
+    # L'ancienne condition se neutralisait sur un devis pollué (resync 3D qui
+    # rétrécit ``etude_params['scenario']`` à « Avec batterie » alors que les
+    # lignes portent réseau + hybride + batterie) : le client ne pouvait alors
+    # plus rien choisir. Ce qui reste INTERDIT est inchangé : sur un devis
+    # mono-option (batterie ou onduleur réseau absent des lignes) et sur
+    # l'artefact PV86, une variante demandée est ignorée — jamais une option que
+    # le devis ne peut pas livrer, jamais un prix que le commercial n'a pas
+    # présenté. Aucun statut n'est touché : le moteur ne fait que RENDRE
+    # (règle #4).
+    if opts.get('variante_option') and _sans_servable and _avec_servable:
         if opts['variante_option'] == 'sans':
             scenario = 'Sans batterie'
         elif opts['variante_option'] == 'avec':
             scenario = 'Avec batterie'
-        # 'les_deux' → le document complet, exactement le rendu par défaut.
+        elif opts['variante_option'] == 'les_deux':
+            # Le document COMPLET, explicitement : sur un devis dont le
+            # scénario stocké a été rétréci à une seule option alors que les
+            # deux côtés sont servables, c'est ce qui rend les deux options.
+            # ``deux_options`` vaut DÉJÀ True ici (les deux côtés servables
+            # après le repli PV86 impliquent une alternative déclarée, cf. le
+            # calcul plus haut) ; on l'affirme pour que l'invariant « les_deux
+            # ⇒ document à deux options » ne dépende pas d'un calcul distant.
+            scenario = 'Les deux (Sans + Avec)'
+            deux_options = True
 
     # QF6 — le scénario STOCKÉ « Sans/Avec » restreint le document à une seule
     # option même si les deux existent dans les lignes. On aligne donc les
@@ -2094,6 +2126,13 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "sans_ok": bool(sans_ok),
         "avec_ok": bool(avec_ok),
         "deux_options": bool(deux_options),
+        # L-VAR/PACT10 — variantes PHYSIQUEMENT SERVABLES par les lignes du
+        # devis, AVANT le rétrécissement QF6 : c'est ce que le client peut
+        # légitimement demander en téléchargement (``?variante=…``), même quand
+        # ``nb_options`` vaut 1 parce que le scénario stocké a été rétréci.
+        # Distinct de ``sans_ok``/``avec_ok``, qui décrivent ce que CE rendu-ci
+        # publie. Toujours présente ; jamais vide dès qu'un onduleur existe.
+        "variantes_servables": list(variantes_servables),
         # COURBES (21/08/2026) — capacité batterie TOTALE (kWh) de l'option
         # « avec », PUBLIÉE : c'est EXACTEMENT le chiffre que la simulation
         # utilise déjà en interne (ligne batterie × capacité lue, défaut

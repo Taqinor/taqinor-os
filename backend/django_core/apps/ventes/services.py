@@ -3122,6 +3122,13 @@ def sync_devis_from_layout(devis, layout, user=None):
       ramené à celui du scénario — mais l'intrus n'est retiré que s'il est
       resté AU PRIX CATALOGUE, sans remise. Un prix modifié vaut prix négocié :
       la ligne est conservée et un avertissement le dit (PVHEAL) ;
+    * L-2OPT — un devis DÉCLARÉ « Les deux (Sans + Avec) » (U2) échappe aux
+      trois règles ci-dessus, qui ne connaissaient que les devis mono : ses
+      DEUX onduleurs sont légitimes (aucun intrus, aucun avertissement), sa
+      batterie n'est jamais retirée (elle EST l'option « avec »), l'onduleur
+      qui manque est COMPLÉTÉ depuis le catalogue au lieu d'être permuté, et
+      le scénario re-stocké reste « Les deux » — sauf si les lignes ne peuvent
+      plus servir les deux côtés, auquel cas il dégrade au libellé mono ;
     * le KIT MANQUANT est COMPLÉTÉ (PVHEAL) : structures, socles, accessoires,
       tableau de protection AC/DC, installation, transport — et le duo Smart
       Meter + clé Wifi derrière un onduleur Huawei. Ces classes sont AJOUTÉES
@@ -3170,6 +3177,25 @@ def sync_devis_from_layout(devis, layout, user=None):
         # chaque ``_pick_product``/``_pick_batterie`` de cette resynchro.
         gamme = gamme_nom(verrou)
 
+        # ── L-2OPT — LE DEVIS « LES DEUX » EST LU AVANT LA PREMIÈRE ÉCRITURE ──
+        #
+        # Incident DEV-202608-0023 (production) : un devis né « Les deux (Sans +
+        # Avec) » (U2) porte LÉGITIMEMENT les deux onduleurs — réseau pour
+        # l'option « sans », hybride + batterie pour l'option « avec ». La
+        # resynchro, elle, ne connaissait que les devis MONO : elle voyait dans
+        # l'onduleur réseau l'« intrus » de l'artefact deux-onduleurs, retirait
+        # la batterie dès qu'un layout n'en voulait pas, et réécrivait le
+        # scénario avec un libellé mono. Le moteur PDF relisait alors une
+        # déclaration mono (PV86/QF6) : ``nb_options`` retombait à 1 et la page
+        # publique ne montrait plus qu'une option — celle que le commercial
+        # n'avait jamais choisie seule. Une resynchronisation de calepinage n'a
+        # jamais le droit de retirer au client une option qu'on lui a promise.
+        #
+        # C'est la DÉCLARATION STOCKÉE qui fait foi (la même que le moteur lit),
+        # relue ici sous verrou, avant que quoi que ce soit n'ait bougé.
+        devis_deux_options = (
+            (verrou.etude_params or {}).get('scenario') == SCENARIO_LES_DEUX)
+
         # ── Garde de statut : LECTURE du statut, jamais une écriture ──
         if verrou.statut == Devis.Statut.ENVOYE:
             raise SyncLayoutError(
@@ -3211,7 +3237,12 @@ def sync_devis_from_layout(devis, layout, user=None):
                 'inchange': True,
                 'panneaux': total_panneaux,
                 'kwc': round(total_panneaux * watt / 1000.0, 3),
-                'scenario': 'avec_batterie' if a_batterie else 'reseau',
+                # L-2OPT — un devis à deux options le DIT, même quand il n'y a
+                # rien eu à écrire : l'écran ne doit jamais lire « réseau » sur
+                # un document qui propose les deux.
+                'scenario': ('les_deux' if devis_deux_options
+                             else ('avec_batterie' if a_batterie
+                                   else 'reseau')),
                 'batterie': a_batterie,
                 'lignes_modifiees': 0,
                 'lignes_ajoutees': 0,
@@ -3415,7 +3446,10 @@ def sync_devis_from_layout(devis, layout, user=None):
                     remise=Decimal('0'))
                 lignes_modifiees += 1
                 a_batterie = True
-        elif not veut_batterie and a_batterie:
+        elif not veut_batterie and a_batterie and not devis_deux_options:
+            # L-2OPT — sur un devis « Les deux », la batterie EST l'option
+            # « avec » : un calepinage qui n'en veut pas décrit l'option
+            # « sans », il ne retire pas l'autre du document.
             for ligne in lignes_batterie:
                 ligne.delete()
             lignes_modifiees += len(lignes_batterie)
@@ -3453,7 +3487,12 @@ def sync_devis_from_layout(devis, layout, user=None):
         # négocié : la ligne est conservée et l'écran le dit. Supprimer en
         # silence une ligne que quelqu'un a retouchée serait exactement la
         # perte que PV18 s'interdit.
-        if lignes_reseau and lignes_hybride:
+        #
+        # L-2OPT — SAUF sur un devis « Les deux » : là, les DEUX onduleurs sont
+        # la composition NORMALE (réseau pour l'option « sans », hybride pour
+        # l'option « avec »). Il n'y a pas d'intrus à retirer, ni rien à
+        # signaler — c'est ce bloc qui rétrécissait DEV-202608-0023.
+        if lignes_reseau and lignes_hybride and not devis_deux_options:
             intrus = lignes_reseau if a_batterie else lignes_hybride
             conserves = []
             for ligne in intrus:
@@ -3486,7 +3525,51 @@ def sync_devis_from_layout(devis, layout, user=None):
                                       'prix_unitaire'])
             return True
 
-        if a_batterie and lignes_reseau and not lignes_hybride:
+        def _poser_onduleur_manquant(predicat, role, motif_absence):
+            """L-2OPT — POSE l'onduleur qui manque à un devis « Les deux ».
+
+            Un devis à deux options a besoin des DEUX familles : permuter celle
+            qui reste reviendrait à détruire l'option qu'elle sert. On complète
+            donc depuis le catalogue, au prix catalogue et sans remise (aucun
+            chiffre inventé) ; sans produit tarifé, on le DIT et on laisse le
+            scénario stocké dégrader honnêtement plus bas.
+            """
+            produit = _pick_product(verrou.company, predicat, role=role,
+                                    gamme=gamme)
+            if produit is None:
+                avertissements.append(motif_absence)
+                return None
+            ordre_max = max([int(li.ordre or 0)
+                             for li in verrou.lignes.all()] or [0])
+            return LigneDevis.objects.create(
+                devis=verrou, produit=produit, designation=produit.nom,
+                quantite=Decimal('1'),
+                prix_unitaire=Decimal(produit.prix_vente),
+                remise=Decimal('0'), ordre=ordre_max + 1)
+
+        if devis_deux_options:
+            # Les deux familles sont légitimes : on COMPLÈTE ce qui manque, on
+            # ne permute JAMAIS (une permutation retirerait au client l'option
+            # que la ligne permutée servait).
+            if lignes_hybride and not lignes_reseau:
+                ligne = _poser_onduleur_manquant(
+                    _is_reseau_inverter, 'onduleur_reseau',
+                    'Aucun onduleur réseau tarifé au catalogue : ce devis à '
+                    'deux options ne peut pas présenter l\'option sans '
+                    'batterie. Ajoutez un onduleur réseau tarifé.')
+                if ligne is not None:
+                    lignes_reseau = [ligne]
+                    lignes_modifiees += 1
+            elif lignes_reseau and a_batterie and not lignes_hybride:
+                ligne = _poser_onduleur_manquant(
+                    _is_hybrid_inverter, 'onduleur_hybride',
+                    'Aucun onduleur hybride tarifé au catalogue : ce devis à '
+                    'deux options ne peut pas présenter l\'option avec '
+                    'batterie. Ajoutez un onduleur hybride tarifé.')
+                if ligne is not None:
+                    lignes_hybride = [ligne]
+                    lignes_modifiees += 1
+        elif a_batterie and lignes_reseau and not lignes_hybride:
             if _permuter_onduleur(
                     lignes_reseau[0], _is_hybrid_inverter, 'onduleur_hybride',
                     'Aucun onduleur hybride tarifé au catalogue : l\'onduleur '
@@ -3526,7 +3609,11 @@ def sync_devis_from_layout(devis, layout, user=None):
         else:
             lignes_ajoutees = _completer_kit_residentiel(
                 verrou, kwc=kwc, watt=watt, nb_panneaux=total_panneaux,
-                avec_batterie=a_batterie, avertissements=avertissements)
+                # L-2OPT — un devis à deux options doit porter le kit de
+                # l'option la PLUS équipée : celle avec batterie. Le compléter
+                # « sans » laisserait l'option « avec » incomplète au PDF.
+                avec_batterie=True if devis_deux_options else a_batterie,
+                avertissements=avertissements)
 
         # ── Étude : les clés géométriques + le scénario, jamais les champs
         # d'étude du générateur ──
@@ -3542,8 +3629,21 @@ def sync_devis_from_layout(devis, layout, user=None):
         # PVSCE — le scénario suit l'état RÉEL des lignes après resynchro : sans
         # lui, le moteur PDF garderait le choix stocké d'avant (ou déduirait
         # « Sans batterie » par repli) alors que l'équipement vient de changer.
-        etude['scenario'] = _scenario_stocke(
-            a_batterie and bool(lignes_hybride))
+        #
+        # L-2OPT — un devis NÉ « Les deux » re-stocke « Les deux », jamais un
+        # libellé mono : c'est cette déclaration que le moteur PDF lit pour
+        # rendre la comparaison (PV86/QF6). Même garde anti-mensonge qu'à la
+        # création (U2) : on ne le re-stocke que si les lignes peuvent
+        # RÉELLEMENT servir les deux côtés (réseau d'un côté, hybride +
+        # batterie de l'autre) — sinon on dégrade au libellé mono honnête.
+        deux_options_servies = bool(
+            devis_deux_options and lignes_reseau and lignes_hybride
+            and a_batterie)
+        if deux_options_servies:
+            etude['scenario'] = SCENARIO_LES_DEUX
+        else:
+            etude['scenario'] = _scenario_stocke(
+                a_batterie and bool(lignes_hybride))
 
         # QJ21 — le layout stocké porte la géométrie par pan DÉJÀ traitée, pour
         # que ses consommateurs n'aient pas à ré-extraire. Copie, jamais une
@@ -3574,7 +3674,11 @@ def sync_devis_from_layout(devis, layout, user=None):
             'inchange': False,
             'panneaux': total_panneaux,
             'kwc': kwc,
-            'scenario': 'avec_batterie' if a_batterie else 'reseau',
+            # L-2OPT — le champ dit l'état RÉEL du devis après resynchro :
+            # « les_deux » (vocabulaire déjà en place, cf.
+            # ``SCENARIOS_DEMANDABLES``) quand les deux options sont servies.
+            'scenario': ('les_deux' if deux_options_servies
+                         else ('avec_batterie' if a_batterie else 'reseau')),
             'batterie': a_batterie,
             'lignes_modifiees': lignes_modifiees,
             'lignes_ajoutees': lignes_ajoutees,

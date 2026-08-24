@@ -336,7 +336,11 @@ describe('CJ2b — le bouton « Avec batterie » revient, dans le langage `.btn-
 
   it('honnêteté #4 — l’option batterie disparaît quand `economies_mensuelles.avec` est explicitement null', () => {
     expect(CODE).toContain('ecoMensuellesForbidsBattery');
-    expect(CODE).toContain('!!ecoMensuelles && ecoMensuelles.avec === null');
+    // Le garde-fou est une fonction PURE testée (`economiesInterdisentBatterie`,
+    // lib/proposition.ts) et non plus un `&&` au fil de la page : c'est ce qui
+    // épingle l'invariant « bloc ABSENT ⇒ n'interdit RIEN » (la case batterie a
+    // disparu trois fois par cette inversion — cf. caseBatterieGraphePV80).
+    expect(CODE).toContain('const ecoMensuellesForbidsBattery = economiesInterdisentBatterie(ecoMensuelles);');
     expect(CODE).toContain('battery: showBatterySim && !!batteryInitial && !ecoMensuellesForbidsBattery');
   });
 });
