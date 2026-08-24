@@ -4110,12 +4110,6 @@ const signConfig = ok
           </form>
         </div>
 
-        <!-- ── P3/WJ34 · TÉLÉCHARGER LE DEVIS PDF (même token, nouvel onglet) ───
-             Affordance « génération du PDF… » : le rendu backend (WeasyPrint)
-             prend quelques secondes, l'utilisateur doit voir qu'il se passe
-             quelque chose. Le lien continue de s'ouvrir normalement (nouvel
-             onglet) — l'affordance retombe seule après quelques secondes ou
-             dès que l'utilisateur revient sur cet onglet. -->
         {/* ── L-VAR · QUELLE VERSION TÉLÉCHARGER (devis à deux options) ─────
              Le choix de signature n'engage QUE la signature : le devis
              COMPLET reste toujours téléchargeable. Ces trois boutons pilotent
@@ -4146,6 +4140,12 @@ const signConfig = ok
           </div>
         )}
 
+        <!-- ── P3/WJ34 · TÉLÉCHARGER LE DEVIS PDF (même token, nouvel onglet) ───
+             Affordance « génération du PDF… » : le rendu backend (WeasyPrint)
+             prend quelques secondes, l'utilisateur doit voir qu'il se passe
+             quelque chose. Le lien continue de s'ouvrir normalement (nouvel
+             onglet) — l'affordance retombe seule après quelques secondes ou
+             dès que l'utilisateur revient sur cet onglet. -->
         <div class="mt-6 text-center">
           <a
             id="pdf-download"
