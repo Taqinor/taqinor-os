@@ -370,26 +370,134 @@ def simuler_batterie_jour(conso_24h, prod_24h, capacite_kwh_utile,
 #: rafale ne dépasse cette durée : au-delà, l'énergie s'éclate en plusieurs.
 #: Ce n'est PAS un paramètre d'ajustement — c'est une borne donnée par le
 #: fondateur, que la calibration Deye pourra resserrer, jamais desserrer.
+#:
+#: CALIBRATION DU 24/08/2026 — LE PLAFOND EST CONFIRMÉ PAR LA MESURE, et n'est
+#: donc PAS touché : sur les 510 rafales des 39 journées réelles de la flotte,
+#: 99,8 % durent 30 minutes ou moins, et une seule (35 min) dépasse. Le
+#: fondateur avait vu juste à l'œil nu ; le banc n'a rien eu à resserrer.
+#: Détail des durées : :data:`DUREES_RAFALE_MESUREES`.
 RAFALE_PLAFOND_MINUTES = 30.0
 
-#: Pas d'échantillonnage de la résolution fine — 5 minutes, la granularité des
-#: exports de la flotte d'onduleurs Deye du fondateur. C'est la seule
-#: « vérité terrain » disponible aujourd'hui pour trancher plus fin que l'heure,
-#: donc le seul pas qu'on s'autorise : descendre à la minute produirait une
-#: précision que rien ne pourrait vérifier.
+# ---------------------------------------------------------------------------
+# BANC DE CALIBRATION — FLOTTE DU FONDATEUR, 40 JOURNÉES, AOÛT 2026
+# ---------------------------------------------------------------------------
+# SOURCE UNIQUE de tous les chiffres de ce bloc : les exports DeyeCloud 5 min
+# de quatre villas réellement instrumentées (lahlou, hanim, britel, benaissa),
+# 40 fichiers-jour du 14 au 23/08/2026, dont 39 JOURNÉES VALIDES retenues.
+# Écarté : benaissa_2026-08-16.xlsx, doublon octet pour octet du 17/08 (le
+# compter deux fois aurait pesé deux fois dans la moyenne) ; le jour calendaire
+# 15/08 de cette villa est absent du lot. Aucune extrapolation, aucun trou
+# comblé : les statistiques ne portent que sur les pas réellement mesurés.
+#
+# DÉFINITION DE RAFALE (identique sur les quatre villas) : un pas de 5 min dont
+# la consommation dépasse 1,5 × la moyenne horaire LOCALE de son heure ; une
+# rafale = une suite de pas consécutifs au-dessus du seuil. 510 rafales sur les
+# 39 journées.
+#
+# CE QUE ÇA REMPLACE : les valeurs d'intérim posées le 24/08 faute de mesure.
+# La position de rafale était POSÉE au début de l'heure (0,0), « en le
+# disant » ; la mesure dit le contraire — le départ moyen tombe à la minute
+# 26,0 de l'heure, c'est-à-dire quasiment au MILIEU. Le plafond de 30 minutes
+# du fondateur, lui, est CONFIRMÉ par la mesure et n'est pas touché.
+
+#: Provenance opposable de tout ce bloc — citée telle quelle dans les notes.
+CALIBRATION_RAFALE_SOURCE = 'mesure_flotte_fondateur_2026-08_39j_4villas'
+
+#: Métadonnées du banc : ce sur quoi les chiffres ci-dessous ont été mesurés.
+CALIBRATION_RAFALE_BANC = {
+    'source': CALIBRATION_RAFALE_SOURCE,
+    'villas': ('lahlou', 'hanim', 'britel', 'benaissa'),
+    'periode': '2026-08-14 → 2026-08-23',
+    'jours_valides': 39,          # 40 fichiers - 1 doublon benaissa 16/08
+    'pas_export_minutes': 5.0,    # granularité native DeyeCloud
+    'rafales_mesurees': 510,
+    'seuil': 'consommation > 1,5 x moyenne horaire locale',
+    'saison': 'ete_seulement_aout',   # cf. limites : une seule saison
+}
+
+#: Pas d'échantillonnage de la résolution fine — INCHANGÉ à 5 minutes, et
+#: désormais CONFIRMÉ plutôt que supposé : 67,6 % des rafales mesurées durent
+#: exactement UN pas. C'est aussi le plancher de ce que l'export sait voir :
+#: rien de plus court que 5 min n'est observable, donc rien de plus court ne
+#: sera modélisé (mesuré flotte fondateur, 40 j, août 2026).
 PAS_FIN_MINUTES = 5.0
 SOUS_PAS_PAR_HEURE = 12  # 60 / 5
 
 #: POSITION de chaque rafale dans sa fenêtre, en part de la marge disponible
 #: (0,0 = collée au début, 0,5 = centrée, 1,0 = collée à la fin).
 #:
-#: VALEUR D'INTERIM ASSUMÉE — À CALIBRER SUR LES EXPORTS DEYE 5 MIN DE LA FLOTTE
-#: DU FONDATEUR (le banc de calibration est le chantier suivant). Rien dans les
-#: données collectées aujourd'hui ne dit à quelle minute de l'heure un
-#: compresseur démarre : on POSE le début de fenêtre, on le DIT, et on range ce
-#: choix dans une constante nommée pour que la calibration le remplace sans
-#: toucher une ligne de moteur.
-RAFALE_POSITION_INTERIM = 0.0
+#: VALEUR MESURÉE (remplace l'intérim 0,0 « début d'heure »). Minute de départ
+#: moyenne des 510 rafales = 26,0 (médiane 25,0) ; par villa 26,3 / 27,9 /
+#: 21,1 / 24,7. Conversion vers la convention « part de marge » du moteur, à la
+#: durée MÉDIANE mesurée (5 min, donc 55 min de marge dans l'heure) :
+#: 26,0 ÷ 55 = 0,473 → 0,47. (À la durée MOYENNE de 8,1 min, la même mesure
+#: donne 0,50 : la valeur est robuste, la rafale part au milieu de l'heure.)
+#: Mesuré flotte fondateur, 40 j, août 2026.
+RAFALE_POSITION_MESUREE = 0.47
+
+#: Minute de départ BRUTE conservée telle quelle : le jour où le moteur saura
+#: caler une rafale à une minute absolue plutôt qu'à une part de marge, c'est
+#: ce chiffre-là qu'il lira, sans repasser par la conversion ci-dessus.
+RAFALE_DEPART_MINUTE_MESUREE = 26.0
+RAFALE_DEPART_MINUTE_MEDIANE = 25.0
+
+#: Étiquette de provenance servie dans le bloc ``glitch`` à la place de
+#: ``'interim_a_calibrer_deye_5min'``.
+RAFALE_POSITION_SOURCE = CALIBRATION_RAFALE_SOURCE
+
+#: DURÉES MESURÉES — 510 rafales, part de chaque tranche. Le plafond fondateur
+#: de 30 minutes n'est pas desserré d'une seconde : la mesure le CONFIRME
+#: (99,8 % des rafales ≤ 30 min ; une seule, à 35 min, dépasse en 39 jours).
+#: Médiane 5 min, moyenne 8,1 min, p90 15 min, p95 20 min, maximum 35 min.
+#: Mesuré flotte fondateur, 40 j, août 2026.
+DUREES_RAFALE_MESUREES = {
+    'le_5min': 0.676,    # 345 rafales — un seul pas d'export
+    '10_15min': 0.241,   # 123 rafales (10 min : 80 ; 15 min : 43)
+    '20_30min': 0.080,   # 41 rafales (20 min : 24 ; 25 min : 14 ; 30 min : 3)
+    'sup_30min': 0.002,  # 1 seule rafale, à 35 min, sur 510
+}
+DUREE_RAFALE_MEDIANE_MIN = 5.0
+DUREE_RAFALE_MOYENNE_MIN = 8.1
+
+#: NOMBRE DE RAFALES PAR HEURE PORTEUSE — 510 rafales réparties sur 377 heures
+#: porteuses (couple jour+heure portant au moins un départ) = 1,35 par heure
+#: porteuse ; 9,67 heures porteuses par jour, 13,1 rafales par jour.
+#: Autrement dit : une heure qui « pique » ne pique le plus souvent QU'UNE
+#: fois — le découpage en plusieurs rafales du moteur reste l'exception, comme
+#: la mesure. Mesuré flotte fondateur, 40 j, août 2026.
+RAFALES_PAR_HEURE_PORTEUSE = 1.35
+HEURES_PORTEUSES_PAR_JOUR = 9.67
+RAFALES_PAR_JOUR = 13.1
+RAFALES_PAR_HEURE_PORTEUSE_DISTRIB = {
+    1: 0.719,  # 271 heures porteuses sur 377 n'en portent qu'une
+    2: 0.220,  # 83
+    3: 0.050,  # 19
+    4: 0.011,  # 4 (maximum observé en 39 jours)
+}
+
+#: PLAGES HORAIRES DOMINANTES (heure de DÉBUT de rafale). Aucune plage ne
+#: domine franchement : le soir et la journée sont à égalité, et surtout la
+#: NUIT n'est pas vide (23,7 % — frigo, pompes, veilles, recharges).
+#: Mesuré flotte fondateur, 40 j, août 2026.
+PLAGES_RAFALE_MESUREES = {
+    'soir_17_24': 0.294,     # 150 rafales — plage la plus chargée
+    'journee_10_17': 0.290,  # 148
+    'nuit_0_6': 0.237,       # 121 — la nuit n'est pas plate
+    'matin_6_10': 0.178,     # 91
+}
+
+#: AMPLITUDE mesurée du pic au-dessus de la moyenne horaire locale : médiane
+#: +1,90 kW (moyenne +2,08 kW). Cohérent avec le seuil de l'appareil ≥ 2 kW
+#: de Beck & al. 2016 — c'est bien un GROS appareil qui fait la rafale.
+#: Mesuré flotte fondateur, 40 j, août 2026.
+AMPLITUDE_RAFALE_MEDIANE_KW = 1.90
+
+#: Part des rafales pendant lesquelles la batterie est en décharge : 42,0 %
+#: (214 sur 510). La batterie n'absorbe donc PAS la majorité des pointes —
+#: le reste passe par le réseau. Chiffre d'observation : il ne pilote aucun
+#: calcul aujourd'hui, il documente ce que la simulation doit reproduire.
+#: Mesuré flotte fondateur, 40 j, août 2026.
+BATTERIE_SOUTIEN_RAFALE_PART = 0.420
 
 #: Numéro de forme du bloc ``glitch`` servi en sortie (indépendant de
 #: :data:`ETUDE_HORAIRE_VERSION` — voir le commentaire de
@@ -397,55 +505,49 @@ RAFALE_POSITION_INTERIM = 0.0
 GLITCH_VERSION = 1
 
 #: PROFIL DE CYCLE PAR ÉQUIPEMENT — des DONNÉES, jamais des littéraux dispersés
-#: dans le moteur : la calibration Deye remplacera ces lignes et rien d'autre.
+#: dans le moteur. ``puissance`` dit d'où vient la puissance concentrée ;
+#: ``cycle`` dit d'où vient la sous-structure. Le champ ``cycle`` ne dit plus
+#: « intérim à calibrer » : il cite le banc de mesure.
 #:
-#: ``puissance`` dit d'où vient la puissance concentrée (règle « zéro chiffre
-#: inventé » : jamais une puissance supposée). ``cycle`` dit d'où vient la
-#: sous-structure (nombre et position des rafales) — aujourd'hui l'interim
-#: ci-dessus pour tout le monde. Le jour où une source RÉELLE documente un cycle
-#: (le mémo de consommation pour la clim, une fiche constructeur pour une pompe),
-#: elle prime sur l'interim et se cite ici.
+#: ATTENTION — CE QUE LA MESURE NE DIT PAS. Le banc mesure la MORPHOLOGIE
+#: GLOBALE des quatre villas (compteur maison entier), pas l'appareil qui a
+#: causé chaque rafale : aucune de ces maisons n'a d'inventaire d'équipements
+#: relevé. La position calibrée s'applique donc IDENTIQUEMENT à la piscine et à
+#: la clim — non parce qu'on les croit semblables, mais parce que rien dans la
+#: donnée ne permet de les distinguer. Le jour où une source RÉELLE documente
+#: un cycle par appareil, elle prime et se cite ici, ligne par ligne.
 PROFILS_RAFALE = {
     'piscine': {
         'actif': True,
         'plafond_minutes': RAFALE_PLAFOND_MINUTES,
-        'position_fenetre': RAFALE_POSITION_INTERIM,
+        'position_fenetre': RAFALE_POSITION_MESUREE,
         'puissance': 'lead:equip_piscine_pompe_kw',
-        'cycle': 'interim_a_calibrer_deye_5min',
+        'cycle': CALIBRATION_RAFALE_SOURCE,
     },
     'clim': {
         'actif': True,
         'plafond_minutes': RAFALE_PLAFOND_MINUTES,
-        'position_fenetre': RAFALE_POSITION_INTERIM,
+        'position_fenetre': RAFALE_POSITION_MESUREE,
         'puissance': 'memo_2026-08-21_etage2:clim_12000btu_1p4kwh_h',
-        'cycle': 'interim_a_calibrer_deye_5min',
+        'cycle': CALIBRATION_RAFALE_SOURCE,
     },
     # CHAUFFE-EAU — EXCEPTION DOCUMENTÉE, INERTE AUJOURD'HUI. Un chauffe-eau
     # électrique chauffe EN CONTINU jusqu'à coupure du thermostat : il ne cycle
-    # pas comme un compresseur, et sa rafale serait donc d'un seul tenant.
-    # Elle resterait néanmoins plafonnée à 30 minutes tant que rien de mieux
-    # n'est prouvé (le plafond fondateur ne se desserre pas sur une intuition).
-    # RIEN NE SORT AUJOURD'HUI : aucune puissance de chauffe-eau n'est collectée
-    # au téléphone, donc ``courbes_journalieres`` ne compose AUCUNE couche pour
-    # lui — l'équipement reste informatif. ``actif: False`` le dit à voix haute
-    # plutôt que de le laisser deviner par l'absence.
+    # pas comme un compresseur. RIEN NE SORT : aucune puissance de chauffe-eau
+    # n'est collectée au téléphone, donc ``courbes_journalieres`` ne compose
+    # AUCUNE couche pour lui. La calibration ne change rien à ce statut — elle
+    # ne sait pas isoler un chauffe-eau dans un compteur de maison entière.
     'chauffe_eau': {
         'actif': False,
         'plafond_minutes': RAFALE_PLAFOND_MINUTES,
-        'position_fenetre': RAFALE_POSITION_INTERIM,
+        'position_fenetre': RAFALE_POSITION_MESUREE,
         'puissance': None,
         'cycle': 'chauffe_continue_jusqu_a_coupure_thermostat',
         'motif_inactif': 'aucune_puissance_collectee',
     },
-    # VÉHICULE ÉLECTRIQUE — DÉLIBÉRÉMENT ABSENT DE CETTE TABLE. Sa couche L4
-    # porte une ÉNERGIE (kWh/jour ADEME × km déclarés) répartie sur la fenêtre
-    # nocturne, et la puissance du CHARGEUR n'est pas collectée. La seule
-    # « puissance » qu'on pourrait en tirer est kWh_jour ÷ 9 h — c'est-à-dire
-    # exactement le plat que la couche pose déjà : concentrer à cette
-    # puissance-là ne changerait rien, et concentrer à une puissance de chargeur
-    # supposée (3,7 ? 7,4 ? 11 kW ?) serait un chiffre inventé. On ne fait donc
-    # RIEN, conformément à l'ordre : « uniquement si une puissance dérivable
-    # existe, sinon rien ».
+    # VÉHICULE ÉLECTRIQUE — DÉLIBÉRÉMENT ABSENT DE CETTE TABLE (inchangé) :
+    # sa couche porte une ÉNERGIE, la puissance du chargeur n'est pas
+    # collectée, et la calibration ne la fournit pas davantage.
 }
 
 #: Profil de repli quand une couche n'a pas d'entrée nommée — jamais un plafond
@@ -453,9 +555,9 @@ PROFILS_RAFALE = {
 PROFIL_RAFALE_DEFAUT = {
     'actif': True,
     'plafond_minutes': RAFALE_PLAFOND_MINUTES,
-    'position_fenetre': RAFALE_POSITION_INTERIM,
+    'position_fenetre': RAFALE_POSITION_MESUREE,
     'puissance': 'couche_l4',
-    'cycle': 'interim_a_calibrer_deye_5min',
+    'cycle': CALIBRATION_RAFALE_SOURCE,
 }
 
 
@@ -496,7 +598,7 @@ def rafales_de_l_heure(energie_kwh, puissance_kw, *, profil=None):
     duree_rafale = duree_totale / nb
     fenetre = 60.0 / nb
 
-    position = _num(profil.get('position_fenetre'), RAFALE_POSITION_INTERIM)
+    position = _num(profil.get('position_fenetre'), RAFALE_POSITION_MESUREE)
     position = min(1.0, max(0.0, position))
     decalage = position * max(0.0, fenetre - duree_rafale)
 
@@ -1201,8 +1303,8 @@ def calculer_etude_horaire(*, kwc, conso_kwh_mensuelles,
             'pas_minutes': PAS_FIN_MINUTES,
             'plafond_rafale_minutes': RAFALE_PLAFOND_MINUTES,
             'plafond_source': 'fondateur_2026-08-24',
-            'position_rafale_fenetre': RAFALE_POSITION_INTERIM,
-            'position_source': 'interim_a_calibrer_deye_5min',
+            'position_rafale_fenetre': RAFALE_POSITION_MESUREE,
+            'position_source': RAFALE_POSITION_SOURCE,
             'production_dans_l_heure': 'plate',
             # L-DECH — LES DEUX GOULOTS, ET CELUI QUI A MORDU. Un plafond muet
             # est un plafond incompris : la sortie dit la décharge des PACKS,

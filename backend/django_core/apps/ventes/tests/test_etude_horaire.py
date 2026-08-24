@@ -621,7 +621,13 @@ class RafalesDeriveesTest(SimpleTestCase):
         self.assertEqual(rafale['nb_rafales'], 1)
         self.assertAlmostEqual(rafale['duree_totale_min'], 30.0, places=9)
         self.assertAlmostEqual(rafale['duree_rafale_min'], 30.0, places=9)
-        self.assertEqual(rafale['fenetres'], [(0.0, 30.0)])
+        # La POSITION vient de la calibration (départ moyen mesuré à la minute
+        # 26 de l'heure), plus du début d'heure posé en interim : la fenêtre
+        # est donc décalée de 0,47 × la marge disponible (60 − 30 = 30 min).
+        debut, fin = rafale['fenetres'][0]
+        decalage = EH.RAFALE_POSITION_MESUREE * 30.0
+        self.assertAlmostEqual(debut, decalage, places=9)
+        self.assertAlmostEqual(fin, decalage + 30.0, places=9)
         # L'énergie rendue est celle qu'on a donnée : rien créé, rien perdu.
         self.assertAlmostEqual(rafale['energie_rafales_kwh'], 1.5, places=12)
 
@@ -657,8 +663,12 @@ class RafalesDeriveesTest(SimpleTestCase):
         self.assertAlmostEqual(rafale['duree_totale_min'], 45.0, places=9)
         self.assertAlmostEqual(rafale['duree_rafale_min'], 22.5, places=9)
         # Une rafale par demi-heure : elles ne se collent pas l'une à l'autre.
+        # Chacune est posée à la position CALIBRÉE dans SA fenêtre de 30 min
+        # (marge 30 − 22,5 = 7,5 min), donc les deux départs restent espacés
+        # d'exactement une demi-heure.
         debuts = [round(d, 6) for d, _f in rafale['fenetres']]
-        self.assertEqual(debuts, [0.0, 30.0])
+        decalage = round(EH.RAFALE_POSITION_MESUREE * 7.5, 6)
+        self.assertEqual(debuts, [decalage, round(decalage + 30.0, 6)])
 
     def test_aucune_puissance_aucune_impulsion(self):
         """Sans puissance (ou sans énergie), on ne concentre RIEN — jamais une
@@ -673,8 +683,16 @@ class RafalesDeriveesTest(SimpleTestCase):
         ces lignes-là et rien d'autre. Aucun profil ne peut desserrer le
         plafond fondateur."""
         self.assertEqual(EH.PAS_FIN_MINUTES * EH.SOUS_PAS_PAR_HEURE, 60.0)
-        self.assertGreaterEqual(EH.RAFALE_POSITION_INTERIM, 0.0)
-        self.assertLessEqual(EH.RAFALE_POSITION_INTERIM, 1.0)
+        self.assertGreaterEqual(EH.RAFALE_POSITION_MESUREE, 0.0)
+        self.assertLessEqual(EH.RAFALE_POSITION_MESUREE, 1.0)
+        # Le banc de calibration DIT sur quoi il a mesuré — et sa LIMITE : une
+        # seule saison (août). Une position « mesurée » sans provenance ni
+        # périmètre serait un chiffre posé de plus, pas une mesure.
+        banc = EH.CALIBRATION_RAFALE_BANC
+        self.assertEqual(banc['source'], EH.CALIBRATION_RAFALE_SOURCE)
+        self.assertEqual(banc['jours_valides'], 39)
+        self.assertEqual(banc['rafales_mesurees'], 510)
+        self.assertEqual(banc['saison'], 'ete_seulement_aout')
         for cle, profil in EH.PROFILS_RAFALE.items():
             with self.subTest(couche=cle):
                 self.assertLessEqual(profil['plafond_minutes'],
@@ -830,8 +848,11 @@ class GlitchSortieMoteurTest(SimpleTestCase):
         self.assertEqual(glitch['plafond_rafale_minutes'],
                          EH.RAFALE_PLAFOND_MINUTES)
         self.assertEqual(glitch['pas_minutes'], EH.PAS_FIN_MINUTES)
-        # Le choix d'interim est ÉTIQUETÉ comme tel dans la sortie servie.
-        self.assertIn('interim', glitch['position_source'])
+        # La sortie servie CITE le banc de mesure — plus un interim posé.
+        self.assertEqual(glitch['position_source'],
+                         EH.CALIBRATION_RAFALE_SOURCE)
+        self.assertEqual(glitch['position_rafale_fenetre'],
+                         EH.RAFALE_POSITION_MESUREE)
         self.assertEqual(glitch['porte_sur'], ['sans', 'avec'])
         self.assertGreater(etude['annuel']['part_glitch_sans_kwh'], 0.0)
 
