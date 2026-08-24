@@ -727,6 +727,13 @@ SPECTACULAR_SETTINGS = {
         # (assurances.EcheancePrime).
         'RecurrenceMensuelleAnnuelleEnum':
             'apps.installations.models_intervention.RecurrenceIntervention.Regle',
+        # matin / apres_midi / soir / journee — jeu IDENTIQUE porté par
+        # crm.Lead.CreneauClim (equip_clim_creneau) et crm.Lead.CreneauPiscine
+        # (equip_piscine_creneau) : deux questions d'appel distinctes, même
+        # vocabulaire de créneau. Sans cette entrée le générateur émet
+        # « multiple names for the same choice set » et deux composants
+        # jumeaux. Nommage de schéma uniquement — aucun choix ne change.
+        'CreneauEquipementEnum': 'apps.crm.models.Lead.CreneauClim',
         # particulier / entreprise
         'TypeTiersParticulierEntrepriseEnum': 'apps.tiers.models.Tiers.TypeTiers',
         # mensuel / trimestriel / semestriel / annuel — même jeu sous `unite`

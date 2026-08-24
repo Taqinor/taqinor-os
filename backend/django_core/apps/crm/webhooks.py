@@ -59,6 +59,12 @@ DEDUP_WINDOW_SECONDS = 60
 #: s'appuie dessus (étiquetage + notification atténuée).
 SOUS_SEUIL_TAG = 'Sous le seuil 1 000 MAD'
 
+#: Ordre fondateur (24/08/2026) — champs GPS protégés contre l'écrasement dans
+#: la boucle de complétion anti-rejeu de ``_map_and_link_lead`` : une fois
+#: posés, plus jamais remplacés par un renvoi ultérieur de la même soumission
+#: (voir le commentaire au point d'usage).
+_GPS_FIELDS = ('gps_lat', 'gps_lng')
+
 
 def _is_sous_seuil(data) -> bool:
     """Le site a-t-il déclaré CETTE soumission sous le seuil de facture ?
@@ -426,6 +432,26 @@ def _extract_web_questionnaire(data):
     _bool('equip_clim', 'equip_clim')
     _num('equip_clim_pieces', 'equip_clim_pieces', hi=1000)
     _bool('equip_chauffe_eau_electrique', 'equip_chauffe_eau_electrique')
+
+    # ── L-WEBT2 (24/08/2026) — précisions FACULTATIVES kW/créneau, reprises
+    # du tunnel web (section « Affiner mon profil », visible uniquement pour
+    # un équipement déjà coché) : mêmes 10 colonnes ``crm.Lead`` que le
+    # commercial saisit à l'appel (L-BACK/L-BACK2, models.py), mêmes bornes
+    # que leurs équivalents ci-dessus (kW ≤ 1000, comme
+    # ``equip_piscine_pompe_kw``), créneaux WHITELISTÉS sur les enums réels
+    # (une valeur hors choices est silencieusement ignorée — jamais d'erreur,
+    # jamais un défaut inventé). ``_map_payload_to_fields`` les extrait
+    # ensuite directement sur ``fields`` comme le reste du bloc L-BACK.
+    _num('equip_chauffe_eau_kw', 'equip_chauffe_eau_kw', hi=1000)
+    _choice('equip_chauffe_eau_creneau', 'equip_chauffe_eau_creneau',
+            Lead.CreneauChauffeEau.values)
+    _num('equip_ve_chargeur_kw', 'equip_ve_chargeur_kw', hi=1000)
+    _choice('equip_ve_creneau', 'equip_ve_creneau', Lead.CreneauVe.values)
+    _num('equip_clim_kw', 'equip_clim_kw', hi=1000)
+    _choice('equip_clim_creneau', 'equip_clim_creneau', Lead.CreneauClim.values)
+    _num('equip_piscine_heures_jour', 'equip_piscine_heures_jour', hi=24)
+    _choice('equip_piscine_creneau', 'equip_piscine_creneau',
+            Lead.CreneauPiscine.values)
     return out
 
 
@@ -894,6 +920,19 @@ def _map_payload_to_fields(data: dict) -> dict:
         clim_pieces = questionnaire.pop('equip_clim_pieces', None)
         if clim_pieces is not None:
             fields['equip_clim_pieces'] = int(clim_pieces)
+        # L-WEBT2 (24/08/2026) — précisions kW/créneau facultatives : mêmes
+        # colonnes Lead que les 6+2 champs déjà commercial-only (L-BACK/
+        # L-BACK2), désormais aussi alimentables par le client lui-même
+        # depuis le tunnel. Une clé absente/invalide ne touche jamais le
+        # champ correspondant (même discipline que le reste de ce bloc).
+        for equip_key in (
+                'equip_chauffe_eau_kw', 'equip_chauffe_eau_creneau',
+                'equip_ve_chargeur_kw', 'equip_ve_creneau',
+                'equip_clim_kw', 'equip_clim_creneau',
+                'equip_piscine_heures_jour', 'equip_piscine_creneau'):
+            val = questionnaire.pop(equip_key, None)
+            if val is not None:
+                fields[equip_key] = val
         if questionnaire:
             fields['web_questionnaire'] = questionnaire
     estimate = _clean_estimate_shown(
@@ -1303,8 +1342,21 @@ def _map_and_link_lead(raw, data, company):
         # donnée déjà captée par du vide. Un second payload plus pauvre
         # (champ absent → None/'') ne doit pas annuler ce que le premier a
         # rempli — on n'écrit donc que les valeurs réellement renseignées.
+        #
+        # ORDRE FONDATEUR (24/08/2026) — le GPS ne doit JAMAIS être écrasé ni
+        # supplanté par l'adresse : une fois gps_lat/gps_lng posés sur CE
+        # lead (pin explicite du client), aucun renvoi ultérieur de la même
+        # soumission — même porteur d'une valeur non vide, p. ex. un pas
+        # suivant du tunnel où seule l'adresse a été retouchée — ne les
+        # remplace. Une mise à jour qui n'apporte pas de nouvelles
+        # coordonnées explicites ne touche donc jamais aux existantes ;
+        # contrairement aux autres champs (complétés par tout non-vide), le
+        # GPS suit la même discipline « jamais d'écrasement » que
+        # `services._MERGE_FILL_FIELDS` (fusion manuelle de leads).
         for key, value in fields.items():
             if value is None or value == '':
+                continue
+            if key in _GPS_FIELDS and getattr(existing, key) is not None:
                 continue
             setattr(existing, key, value)
         existing.save()

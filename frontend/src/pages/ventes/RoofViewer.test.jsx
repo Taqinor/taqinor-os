@@ -88,6 +88,52 @@ describe('RoofViewer — rendu', () => {
     expect(img.getAttribute('src')).toBe('blob:mock')
   })
 
+  // Correction fondateur 24/08 — l'outil 3D ne recevait toujours pas le devis
+  // et son contenu réel : RoofViewer sait désormais afficher l'identité
+  // client/lead + la composition réelle (lignes du devis), reçues telles
+  // quelles depuis l'appelant (aucun appel réseau ici).
+  it('correction 24/08 — affiche le client et la composition réelle des lignes du devis', () => {
+    render(
+      <RoofViewer
+        layout={sampleLayout()}
+        clientNom="Youssef Alaoui"
+        lignes={[
+          { id: 1, designation: 'Panneau Jinko 550W', quantite: '12' },
+          { id: 2, designation: 'Onduleur Deye 8kW', quantite: '1' },
+          // Ligne SECTION (sans quantité) : ignorée, pas de composition fictive.
+          { id: 3, designation: 'Équipements', quantite: null },
+        ]}
+      />,
+    )
+    expect(screen.getByText(/Client : Youssef Alaoui/)).toBeTruthy()
+    expect(screen.getByText('12 × Panneau Jinko 550W')).toBeTruthy()
+    expect(screen.getByText('1 × Onduleur Deye 8kW')).toBeTruthy()
+    expect(screen.queryByText(/Équipements/)).toBeNull()
+    // Zéro chiffre inventé : le catalogue ne porte aucune dimension.
+    expect(screen.getByText(/Dimensions produit non renseignées au catalogue/)).toBeTruthy()
+  })
+
+  it('correction 24/08 — sans client ni lignes, aucun bloc composition n\'apparaît', () => {
+    render(<RoofViewer layout={sampleLayout()} />)
+    expect(screen.queryByTestId('roofviewer-composition')).toBeNull()
+  })
+
+  it('correction 24/08 — repli sur le lead quand aucun client n\'est rattaché', () => {
+    render(<RoofViewer layout={sampleLayout()} leadNom="Amine Bennani" />)
+    expect(screen.getByText(/Client : Amine Bennani/)).toBeTruthy()
+  })
+
+  it('correction 24/08 — état vide (sans plan) montre quand même client/composition si fournis', () => {
+    render(
+      <RoofViewer layout={null} clientNom="Ferme Doukkala"
+        lignes={[{ id: 1, designation: 'Panneau Jinko 550W', quantite: 8 }]}
+      />,
+    )
+    expect(screen.getByTestId('roofviewer-empty')).toBeTruthy()
+    expect(screen.getByText(/Client : Ferme Doukkala/)).toBeTruthy()
+    expect(screen.getByText('8 × Panneau Jinko 550W')).toBeTruthy()
+  })
+
   it('affiche le compte POSÉ (geometry.count) plutôt que la cible neededPanels', () => {
     // PV27/WJ24 — après édition manuelle, la zone porte geometry.count (posé,
     // ici 10) qui prime sur neededPanels (cible d'étude, 12) : l'aperçu doit

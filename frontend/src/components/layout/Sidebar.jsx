@@ -161,8 +161,11 @@ export default function Sidebar({ collapsed, onToggle, onNavigate }) {
   const { doneCount: onboardingDone, total: onboardingTotal, allDone: onboardingAllDone } = useOnboardingSteps()
 
   // N93 — traduit un libellé de la coquille via sa clé i18n, en gardant le
-  // libellé FR en dur comme repli (modules « coquille » sans clé → FR inchangé).
-  const tr = (key, fallback) => (key ? t(key) : fallback)
+  // libellé FR en dur comme repli — modules « coquille » sans clé → FR inchangé
+  // ET clé i18n déclarée mais absente du dictionnaire (toute locale, tout
+  // overrides) → FR inchangé aussi, JAMAIS la clé brute affichée (`t()` reçoit
+  // `fallback` en 3e argument : cf. `resolveValue`/`I18nProvider`).
+  const tr = (key, fallback) => (key ? t(key, undefined, fallback) : fallback)
 
   // VX189(b) — ODX6 — masque les sections des modules désactivés (liste vide
   // ⇒ no-op). Chemin LEGACY uniquement (flag ODY30 OFF) : en mode Apps, la nav

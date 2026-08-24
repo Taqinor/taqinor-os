@@ -58,11 +58,24 @@ class MonoReseauHuitPanneaux(unittest.TestCase):
                         self.resultat.conformite.bloquants)
         self.assertEqual(self.resultat.conformite.bloquants, ())
 
-    def test_deux_chaines_de_quatre_une_par_mppt(self):
-        self.assertEqual(self.resultat.nb_chaines, 2)
-        self.assertEqual([c.nb_modules for c in self.resultat.chaines], [4, 4])
-        self.assertEqual(sorted(c.mppt for c in self.resultat.chaines), [1, 2])
+    def test_une_seule_chaine_de_huit_sur_une_entree_mppt(self):
+        """RÈGLE FONDATEUR 24/08/2026 — 8 panneaux = UNE chaîne série.
+
+        Ce dossier figeait auparavant « 2 chaînes de 4, une par MPPT » : le
+        moteur coupait le champ en deux pour occuper les deux entrées de
+        l'onduleur, alors que les 8 modules tiennent dans la fenêtre de tension
+        (borne haute à 11 modules ici). L'installateur câble UNE chaîne ; on ne
+        splitte que lorsque la physique l'impose.
+        """
+        self.assertEqual(self.resultat.nb_chaines, 1)
+        self.assertEqual([c.nb_modules for c in self.resultat.chaines], [8])
+        self.assertEqual([c.mppt for c in self.resultat.chaines], [1])
         self.assertAlmostEqual(self.resultat.puissance_kwc, 4.4, places=6)
+        # Et la chaîne unique reste DANS la fenêtre : c'est ce qui l'autorise.
+        chaine = self.resultat.chaines[0]
+        self.assertLess(chaine.voc_froid_v, 600.0)
+        self.assertLess(chaine.vmp_froid_v, 550.0)
+        self.assertGreater(chaine.vmp_chaud_v, 90.0)
 
     def test_les_deux_ratios(self):
         self.assertAlmostEqual(self.resultat.ratio_dc_ac.valeur, 1.1, places=6)
@@ -228,7 +241,7 @@ class ContratDesTiroirs(unittest.TestCase):
     def test_les_libelles_sont_en_francais_et_renseignes(self):
         donnees = self._resultat().tiroirs["electrique"]
         self.assertEqual(donnees["chaine"]["libelle_taille"],
-                         "2 chaînes de 4 modules")
+                         "1 chaîne de 8 modules")
         self.assertEqual(donnees["chaine"]["reste_texte"], "")
         self.assertEqual(donnees["onduleurs"]["nombre_texte"], "1 onduleur")
         self.assertEqual(donnees["onduleurs"]["puissance_texte"], "4,0 kW AC")
@@ -252,8 +265,8 @@ class ContratDesTiroirs(unittest.TestCase):
         self.assertIn("REFUSÉE", conformite["alerte"])
         proposition = conformite["repartition_proposee"]
         self.assertIsNotNone(proposition)
-        self.assertEqual(proposition["patch"], {"taille_chaine": 4})
-        self.assertEqual(proposition["texte"], "2 chaînes de 4 modules")
+        self.assertEqual(proposition["patch"], {"taille_chaine": 8})
+        self.assertEqual(proposition["texte"], "1 chaîne de 8 modules")
 
     def test_le_reste_est_annonce_quand_il_existe(self):
         entree = EntreeElectrique(

@@ -65,7 +65,8 @@ class LeadEquipementFieldsTests(TestCase):
 
 
 class LeadEquipementFieldsV2Tests(TestCase):
-    """L-BACK (24/08/2026) — les 6 champs complémentaires (kW/créneau)."""
+    """L-BACK (24/08/2026) — les 6 champs complémentaires (kW/créneau) +
+    L-BACK2 (24/08/2026) — les 2 créneaux clim/piscine complémentaires."""
 
     def setUp(self):
         self.company = _company()
@@ -78,6 +79,8 @@ class LeadEquipementFieldsV2Tests(TestCase):
         self.assertIsNone(lead.equip_ve_creneau)
         self.assertIsNone(lead.equip_clim_kw)
         self.assertIsNone(lead.equip_piscine_heures_jour)
+        self.assertIsNone(lead.equip_clim_creneau)
+        self.assertIsNone(lead.equip_piscine_creneau)
 
     def test_valeurs_reelles_persistees(self):
         lead = Lead.objects.create(
@@ -88,6 +91,8 @@ class LeadEquipementFieldsV2Tests(TestCase):
             equip_ve_creneau=Lead.CreneauVe.NUIT,
             equip_clim_kw=Decimal('3.50'),
             equip_piscine_heures_jour=Decimal('6.5'),
+            equip_clim_creneau=Lead.CreneauClim.SOIR,
+            equip_piscine_creneau=Lead.CreneauPiscine.MATIN,
         )
         lead.refresh_from_db()
         self.assertEqual(lead.equip_chauffe_eau_kw, Decimal('2.20'))
@@ -96,6 +101,8 @@ class LeadEquipementFieldsV2Tests(TestCase):
         self.assertEqual(lead.equip_ve_creneau, 'nuit')
         self.assertEqual(lead.equip_clim_kw, Decimal('3.50'))
         self.assertEqual(lead.equip_piscine_heures_jour, Decimal('6.5'))
+        self.assertEqual(lead.equip_clim_creneau, 'soir')
+        self.assertEqual(lead.equip_piscine_creneau, 'matin')
 
 
 class TrackedFieldsTests(TestCase):
@@ -192,6 +199,20 @@ class TrackedFieldsTests(TestCase):
         self.assertEqual(
             self._modifications('equip_piscine_heures_jour').count(), 1)
 
+    def test_patch_equip_clim_creneau_logs_choice_label(self):
+        resp = self._patch(equip_clim_creneau='soir')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        acts = self._modifications('equip_clim_creneau')
+        self.assertEqual(acts.count(), 1)
+        self.assertEqual(acts.first().new_value, 'Soir')
+
+    def test_patch_equip_piscine_creneau_logs_choice_label(self):
+        resp = self._patch(equip_piscine_creneau='matin')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        acts = self._modifications('equip_piscine_creneau')
+        self.assertEqual(acts.count(), 1)
+        self.assertEqual(acts.first().new_value, 'Matin')
+
 
 class _DevisAvecLead:
     """Stand-in minimal pour un ``ventes.Devis`` — jamais le vrai modèle
@@ -238,6 +259,8 @@ class EquipementsPourDevisSelectorTests(TestCase):
             've_creneau': None,
             'clim_kw': None,
             'piscine_heures_jour': None,
+            'clim_creneau': None,
+            'piscine_creneau': None,
         })
 
 

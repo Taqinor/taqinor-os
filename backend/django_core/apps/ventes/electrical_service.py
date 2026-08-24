@@ -35,6 +35,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 __all__ = ["build_electrical_design", "conception_electrique_stockee",
+           "rafraichir_conception_electrique_devis",
            "rendre_schema_du_devis", "fiches_manquantes_du_devis",
            "motifs_fiche_incomplete", "motifs_non_conformite_du_devis",
            "VARIABLES_MODULE_REQUISES", "VARIABLES_ONDULEUR_REQUISES",
@@ -810,3 +811,60 @@ def build_electrical_design(devis, *, overrides=None):
         devis.save(update_fields=["electrical_design",
                                   "electrical_design_hash"])
     return design
+
+
+def rafraichir_conception_electrique_devis(devis):
+    """L-SLD (24/08/2026) — pose l'étude électrique À L'ENREGISTREMENT du devis.
+
+    LE TROU QUE CECI BOUCHE. ``build_electrical_design`` n'avait qu'UN SEUL
+    appelant en production : l'action ``conception-electrique`` du devis,
+    c'est-à-dire l'OUVERTURE de l'onglet par un vendeur. Un devis créé par
+    l'écran générateur (``POST /devis/atomic/``) et jamais ouvert dans cet
+    onglet n'avait donc AUCUNE ``electrical_design`` — et comme la conception
+    stockée est le PORTAIL unique du schéma unifilaire
+    (``rendre_schema_du_devis``), la page client (même au niveau « confiance »)
+    et l'annexe technique du PDF étaient muettes sur un devis pourtant complet.
+    Même esprit et même place que ``services.rafraichir_etude_horaire_devis`` /
+    ``rafraichir_dimensionnement_devis`` : le chemin d'enregistrement pose ce
+    que les écrans lisent, au lieu d'attendre un geste humain.
+
+    LES TROIS PORTAILS SONT CEUX DU SCHÉMA, mot pour mot — on ne range une
+    étude automatiquement que si elle est DESSINABLE : des modules à répartir
+    (``entree.groupes``), des fiches techniques COMPLÈTES (PVFCH), et une
+    conformité SANS bloquant (DEV-202608-0016). Sinon on ne persiste RIEN et
+    ``Devis.electrical_design`` reste ``None`` — dégradé propre, jamais une
+    étude vide : l'annexe technique du PDF se déclenche sur la seule EXISTENCE
+    d'une conception (``quote_engine/builder``), et un devis de pompage, un
+    devis à micro-onduleurs non modélisés ou une fiche muette imprimeraient
+    sinon une annexe sans nomenclature. Le vendeur, lui, garde le diagnostic
+    complet : l'onglet ``conception-electrique`` calcule toujours à la demande
+    et DIT ce qui manque.
+
+    Zéro chiffre inventé : tout vient des lignes du devis et des deux fiches
+    (le moteur ``core.electrique`` est pur et ignore jusqu'à l'existence d'un
+    montant). Ne lève JAMAIS, ne touche ni statut, ni ligne, ni prix
+    (règle #4) — un devis correctement enregistré n'est jamais annulé par une
+    étude. Rend le contrat rangé, ou ``None``.
+    """
+    try:
+        entree = construire_entree(devis)
+        if not entree.groupes:
+            return None
+        if fiches_manquantes_du_devis(devis):
+            return None
+        from core.electrique import concevoir
+        resultat = concevoir(entree)
+        if resultat.conformite.bloquants:
+            logger.info(
+                "L-SLD : conception électrique NON rangée pour le devis %s — "
+                "%s", getattr(devis, "reference", "?"),
+                MOTIF_NON_CONFORME % resultat.conformite.bloquants[0])
+            return None
+        return build_electrical_design(devis)
+    except Exception:  # noqa: BLE001 — une étude ratée n'empêche jamais un
+        # enregistrement de devis/lignes (même contrat que les rafraîchisseurs
+        # de ``services.py``).
+        logger.warning(
+            "rafraichir_conception_electrique_devis indisponible sur %s",
+            getattr(devis, "reference", "?"), exc_info=True)
+        return None

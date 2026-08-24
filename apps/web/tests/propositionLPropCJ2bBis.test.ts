@@ -279,3 +279,21 @@ describe('[...token].astro — couleurs VALIDÉES fondateur, PINNED', () => {
     expect(CODE).toContain('poids de forme (sans unité)');
   });
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+// D. Remplissage batterie ≥ 100 % re-libellé côté client (décision fondateur
+//    24/08) : le ratio brut peut dépasser 100 % (le générateur interne le
+//    montre tel quel) — jamais montré tel quel au client, jamais plafonné,
+//    re-libellé en phrase qualitative sans aucun pourcentage inventé.
+// ════════════════════════════════════════════════════════════════════════════
+
+describe('[...token].astro — remplissage batterie ≥ 100 % re-libellé côté client', () => {
+  it('un ratio ≥ 100 % rend la phrase qualitative, jamais le pourcentage brut', () => {
+    expect(CODE).toContain('battRegime.remplissageMoyenPct >= 100 ? (');
+    expect(CODE).toContain('La batterie se remplit chaque jour');
+  });
+
+  it('un ratio < 100 % garde l’affichage du pourcentage réel (branche else inchangée)', () => {
+    expect(CODE).toContain('{formatNumber(battRegime.remplissageMoyenPct, 0)} %');
+  });
+});

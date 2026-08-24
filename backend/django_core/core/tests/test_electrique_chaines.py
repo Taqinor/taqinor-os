@@ -229,6 +229,105 @@ class LongueurImposee(unittest.TestCase):
         self.assertTrue(any("REFUSÉE" in b for b in res.bloquants))
 
 
+# ── UNE chaîne tant que la physique l'admet (règle fondateur 24/08/2026) ─────
+class UneChaineTantQueLaPhysiqueLAdmet(unittest.TestCase):
+    """Le SPLIT est une CONSÉQUENCE de la physique, jamais un réflexe.
+
+    Le bug d'origine : 8 panneaux sur un onduleur à 2 entrées MPPT sortaient en
+    « 2 chaînes de 4 » parce que le moteur préférait un nombre de chaînes
+    multiple des entrées AVANT la longueur. L'installateur, lui, câble les
+    8 panneaux en UNE chaîne série — et c'est électriquement valide tant que la
+    tension de chaîne reste dans la fenêtre d'entrée de l'onduleur.
+    """
+
+    def test_huit_panneaux_font_une_seule_chaine(self):
+        res = concevoir_chaines(_entree(8))
+        self.assertTrue(res.fenetre.admet(8))
+        self.assertEqual(res.nb_chaines, 1)
+        self.assertEqual(res.chaines[0].nb_modules, 8)
+        self.assertEqual(res.repartitions[0].nb_chaines, 1)
+        self.assertEqual(res.reste_total, 0)
+
+    def test_le_split_n_arrive_que_quand_la_tension_ferme_la_chaine(self):
+        """Même champ, fenêtre plus étroite → le split devient JUSTIFIÉ."""
+        # Fenêtre large : 8 en une chaîne. Ici le haut de plage MPPT (160 V)
+        # ferme la chaîne à 4 modules (Vmp froid 37,57 V × 5 = 187,9 V) — le
+        # split n'est plus un choix de câblage, c'est la tension qui l'impose.
+        etroit = _onduleur(mppt_min=100.0, mppt_max=160.0, v_max=1000.0)
+        res = concevoir_chaines(_entree(8, onduleur=etroit))
+        self.assertEqual(res.fenetre.longueur_max, 4)
+        self.assertEqual(res.nb_chaines, 2)
+        self.assertEqual([c.nb_modules for c in res.chaines], [4, 4])
+
+    def test_le_split_arrive_aussi_quand_le_courant_d_entree_l_exige(self):
+        """Une chaîne unique n'est pas retenue si elle écrête l'entrée MPPT.
+
+        Ici la fenêtre admet 8 modules d'un seul tenant, mais l'Imp de deux
+        chaînes de 4 tient sur deux entrées séparées alors qu'une chaîne unique
+        ne change rien au courant : le critère de courant ne départage donc
+        RIEN ici — c'est bien la longueur qui décide, et elle dit UNE chaîne.
+        """
+        res = concevoir_chaines(_entree(8, module=_module(imp=13.0),
+                                        onduleur=_onduleur(i_max=13.0)))
+        self.assertEqual(res.nb_chaines, 1)
+        self.assertFalse([a for a in res.alertes if "ÉCRÊTAGE" in a])
+
+
+class AucuneBorneFABRIQUEEQuandLaFicheEstMuette(unittest.TestCase):
+    """Une tension absente ne devient JAMAIS une limite de longueur.
+
+    L'ancien repli posait « 1 module par chaîne » dès que le Voc du module ou
+    la tension maximale de l'onduleur manquait : 8 panneaux ressortaient en
+    8 chaînes d'un module, sur un chiffre que personne n'avait écrit. Le moteur
+    ne suppose plus rien — il pose la chaîne d'un seul tenant et NOMME la borne
+    qu'il n'a pas pu vérifier.
+    """
+
+    def _muet(self, **kwargs):
+        return SpecOnduleur(n_mppt=2, mppt_v_min=0.0, mppt_v_max=0.0,
+                            v_max_abs=0.0, i_max_mppt_a=0.0, ac_kw=5.0,
+                            phases=1, **kwargs)
+
+    def test_onduleur_sans_tensions_donne_UNE_chaine_de_tous_les_modules(self):
+        res = concevoir_chaines(_entree(8, onduleur=self._muet()))
+        self.assertEqual(res.nb_chaines, 1)
+        self.assertEqual(res.chaines[0].nb_modules, 8)
+        self.assertEqual(res.reste_total, 0)
+
+    def test_les_bornes_non_verifiables_sont_None_et_NOMMEES(self):
+        fenetre = fenetre_admissible(_module(), self._muet(), -5.0, 70.0)
+        self.assertIsNone(fenetre.max_par_voc)
+        self.assertIsNone(fenetre.max_par_mppt)
+        self.assertTrue(fenetre.plafond_non_verifiable)
+        self.assertFalse(fenetre.trop_etroite)
+        self.assertEqual(len(fenetre.bornes_non_verifiables), 2)
+        self.assertIn("NON VÉRIFIABLE", fenetre.texte)
+
+    def test_l_alerte_dit_ce_qui_manque_et_ne_bloque_pas(self):
+        res = concevoir_chaines(_entree(8, onduleur=self._muet()))
+        self.assertEqual(res.bloquants, ())
+        alerte = [a for a in res.alertes if "NON VÉRIFIABLE" in a]
+        self.assertEqual(len(alerte), 1, res.alertes)
+        self.assertIn("fiche technique", alerte[0])
+
+    def test_module_sans_tension_ne_ferme_rien_non_plus(self):
+        muet = SpecModule(vmp_v=0.0, voc_v=0.0, isc_a=0.0, imp_a=0.0,
+                          pmax_wc=550.0)
+        res = concevoir_chaines(_entree(8, module=muet))
+        self.assertEqual(res.nb_chaines, 1)
+        self.assertEqual(res.chaines[0].nb_modules, 8)
+        self.assertTrue(res.fenetre.bornes_non_verifiables)
+        # Et AUCUN verdict de tension fabriqué contre un « 0 V » de fiche.
+        self.assertEqual(res.bloquants, ())
+
+    def test_la_note_de_calcul_ecrit_la_borne_non_verifiable(self):
+        from core.electrique.note import note_de_calcul
+        entree = _entree(8, onduleur=self._muet())
+        note = "\n".join(note_de_calcul(entree, concevoir_chaines(entree)))
+        self.assertIn("NON VÉRIFIABLE", note)
+        self.assertIn("ALERTE —", note)
+
+
 # ── Un groupe par PAN, jamais mélangé sur une entrée MPPT ─────────────────────
 class GroupementParPan(unittest.TestCase):
     def _deux_pans(self, **kwargs):
@@ -336,9 +435,27 @@ class CouplePV85_CS710_SurDeyeSG05LP3(unittest.TestCase):
         self.assertLess(15 * fenetre.voc_froid_unitaire_v,
                         DEYE_SG05LP3.v_max_abs)
 
-    def test_une_chaine_par_entree_mppt_jamais_deux(self):
-        """2 × 17,59 A = 35,18 A sur une entrée à 26 A : jamais au calcul."""
+    def test_quatorze_modules_tiennent_en_UNE_chaine(self):
+        """RÈGLE FONDATEUR 24/08/2026 — la fenêtre ferme à 14, donc 14 = 1 chaîne.
+
+        Ce cas figeait « 2 chaînes de 7 » : le moteur coupait pour occuper les
+        deux entrées MPPT. 14 modules tiennent exactement dans la fenêtre
+        (6 à 14) — l'installateur câble UNE chaîne, et le second départ DC
+        n'existe plus.
+        """
         res = concevoir_chaines(self._entree(14))
+        self.assertEqual(res.nb_chaines, 1)
+        self.assertEqual(res.chaines[0].nb_modules, 14)
+        self.assertEqual(res.chaines[0].mppt, 1)
+        self.assertFalse([a for a in res.alertes if "ÉCRÊTAGE" in a])
+        self.assertEqual(res.bloquants, ())
+
+    def test_deux_chaines_restent_une_par_entree_quand_le_split_est_impose(self):
+        """28 modules : la fenêtre ferme à 14 → 2 chaînes, une par entrée.
+
+        2 × 17,59 A = 35,18 A sur une seule entrée à 26 A : jamais au calcul.
+        """
+        res = concevoir_chaines(self._entree(28))
         self.assertEqual(res.nb_chaines, 2)
         self.assertEqual(sorted(c.mppt for c in res.chaines), [1, 2])
         for chaine in res.chaines:
@@ -387,7 +504,7 @@ class CouplePV85_CS710_SurDeyeSG05LP3(unittest.TestCase):
         """51,2 V est dans la plage batterie 40-60 V du SG05LP3."""
         res = concevoir_chaines(self._entree(14, batterie=True))
         self.assertEqual(res.bloquants, ())
-        self.assertEqual(res.nb_chaines, 2)
+        self.assertEqual(res.nb_chaines, 1)
 
 
 #: Deye SUN-5K-SG05LP1-EU (monophasé) — LES CHIFFRES DU SEEDER, ceux que

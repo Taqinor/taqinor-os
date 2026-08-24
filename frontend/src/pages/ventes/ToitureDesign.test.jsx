@@ -169,6 +169,24 @@ describe('ToitureDesign — mode devis (PV20)', () => {
       .toBe(`${CTX.devis.client_adresse}, ${CTX.devis.client_ville}`)
   })
 
+  // Correction fondateur 24/08 — le backend (PV17 + repli GPS) porte déjà le
+  // pin ou son absence dans `geometrie.pin` : sans lui, l'écran le DIT.
+  it('correction 24/08 — sans aucune position (geometrie.pin=null) : message discret affiché', async () => {
+    const ctxSansPin = {
+      data: {
+        ...exempleContrat('ventes', 'devis_design_context'),
+        geometrie: { source: 'none', roof_layout: null, pin: null, outline: [] },
+      },
+    }
+    ventesApi.getDevisDesignContext.mockResolvedValue(ctxSansPin)
+
+    rendreDevis(CTX.devis.id)
+
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    expect(await screen.findByTestId('pv-sans-gps')).toHaveTextContent(
+      'Pas de position GPS sur la fiche')
+  })
+
   it('fondateur 18/08 — bouton Fermer (X) en haut à droite referme la fenêtre (retour SPA)', async () => {
     ventesApi.getDevisDesignContext.mockResolvedValue(
       reponseContrat('ventes', 'devis_design_context'))
@@ -267,7 +285,7 @@ describe('ToitureDesign — PV21 : enregistrer la conception', () => {
     return screen.findByRole('button', { name: /Enregistrer la conception/ })
   }
 
-  it('resynchronise les lignes, envoie la 3D et ouvre le bloc de livraison', async () => {
+  it('resynchronise les lignes, envoie la 3D et confirme sans rien envoyer au client', async () => {
     snapshot.mockReturnValue('data:image/png;base64,QUJD')
     ventesApi.syncDevisLayout.mockResolvedValue({
       data: {
@@ -292,26 +310,23 @@ describe('ToitureDesign — PV21 : enregistrer la conception', () => {
     // Instantané 3D poussé sur le MÊME devis (best-effort, patron du flux lead).
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
       `/ventes/devis/${CTX.devis.id}/roof-image/`, expect.any(FormData)))
-    // Livraison : lien tokenisé + aperçu WhatsApp LECTURE SEULE (aucun
-    // marquage « envoyé »).
-    expect(await screen.findByText('Prêt à envoyer')).toBeInTheDocument()
-    // PV86 — le bouton WhatsApp ouvre un choix (proposition / PDF seul) au
-    // lieu de naviguer directement.
-    await userEvent.click(screen.getByRole('button', { name: 'WhatsApp' }))
-    expect(screen.getByRole('link', { name: 'Envoyer le lien de la proposition' }))
-      .toHaveAttribute('href', 'https://wa.me/212600000000?text=x')
-    expect(screen.getByDisplayValue('https://taqinor.ma/proposition/tok'))
-      .toBeInTheDocument()
+    // L-SECT (fondateur 24/08/2026) — l'écran CONFIRME, il n'envoie plus :
+    // le lien, le menu WhatsApp, le mailto et le bouton copier ont déménagé
+    // dans la fiche lead (onglet Devis → « Envoyer au client »), le seul
+    // endroit où le niveau, l'OTP et les sections se choisissent.
+    expect(await screen.findByText('Conception enregistrée')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'WhatsApp' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Copier le lien' })).toBeNull()
+    // …et surtout AUCUN lien public n'est frappé au passage.
+    expect(ventesApi.shareLinkDevis).not.toHaveBeenCalled()
+    // Renvoi explicite vers la fiche lead du devis (contexte : `devis.lead`).
+    expect(screen.getByTestId('rp9-vers-fiche-lead'))
+      .toHaveAttribute('href', `/crm/leads/${CTX.devis.lead}`)
     // Aucun devis n'a été recréé.
     expect(ventesApi.reviserDevis).not.toHaveBeenCalled()
   })
 
   it('même calepinage : « Aucun changement », rien n\'est envoyé ni livré', async () => {
-    // PV86 — le lien client est désormais frappé DÈS LE CHARGEMENT (best-
-    // effort, indépendant du bouton) : on neutralise CET appel-là pour que
-    // ce test reste concentré sur le flux d'enregistrement — aucun panneau
-    // de livraison n'apparaît tant que le calepinage n'a pas changé.
-    ventesApi.shareLinkDevis.mockRejectedValueOnce(new Error('reseau'))
     ventesApi.syncDevisLayout.mockResolvedValue({
       data: {
         inchange: true, panneaux: 24, kwc: 17.04, scenario: 'reseau',
@@ -324,10 +339,10 @@ describe('ToitureDesign — PV21 : enregistrer la conception', () => {
 
     await waitFor(() => expect(toastInfo).toHaveBeenCalledWith('Aucun changement'))
     expect(api.post).not.toHaveBeenCalled()
-    // Un seul appel : celui du CHARGEMENT (lien permanent, PV86) — le flux
-    // « Aucun changement » n'en déclenche pas de second.
-    expect(ventesApi.shareLinkDevis).toHaveBeenCalledTimes(1)
-    expect(screen.queryByText('Prêt à envoyer')).toBeNull()
+    // L-SECT — cet écran ne frappe plus AUCUN lien public : ni au chargement,
+    // ni sur un enregistrement, ni sur un « Aucun changement ».
+    expect(ventesApi.shareLinkDevis).not.toHaveBeenCalled()
+    expect(screen.queryByText('Conception enregistrée')).toBeNull()
   })
 
   it('409 révisable : encart « Réviser (v2) » → nouvelle version puis sa conception', async () => {
@@ -378,17 +393,18 @@ describe('ToitureDesign — PV21 : enregistrer la conception', () => {
 
 /* PV86 — trois demandes fondateur sur l'écran de conception : (1) le bloc
    facture disparaît en mode devis (dimensionnement imposé par le devis, la
-   facture y est redondante) ; (2) le lien client vit EN PERMANENCE en bas de
-   page, frappé dès le chargement — pas seulement après un enregistrement ;
-   (3) le bouton WhatsApp du panneau ouvre un choix entre le lien de la
-   proposition et le PDF seul (même numéro, texte différent). */
-describe('ToitureDesign — PV86 : lien client permanent + choix WhatsApp', () => {
+   facture y est redondante).
+   L-SECT (fondateur 24/08/2026) — les points (2) « lien client permanent frappé
+   au chargement » et (3) « choix WhatsApp proposition / PDF seul » sont
+   SUPPRIMÉS : cet écran ne frappe plus aucun ShareLink et n'envoie plus rien.
+   L'envoi vit dans la fiche lead (onglet Devis → « Envoyer au client »), le
+   seul endroit où le niveau, l'OTP et les sections se choisissent — un lien
+   frappé ici partait toujours aux DÉFAUTS. Les tests remplaçants pinnent
+   l'ABSENCE de mint et le renvoi vers la fiche. */
+describe('ToitureDesign — PV86 / L-SECT : plus aucun envoi depuis l’outil 3D', () => {
   it('bloc facture retiré en mode devis (le dimensionnement vient du devis, pas de la facture)', async () => {
     ventesApi.getDevisDesignContext.mockResolvedValue(
       reponseContrat('ventes', 'devis_design_context'))
-    // Neutralise le lien permanent (hors sujet de ce test).
-    ventesApi.shareLinkDevis.mockRejectedValueOnce(new Error('reseau'))
-
     rendreDevis(CTX.devis.id)
 
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
@@ -399,69 +415,26 @@ describe('ToitureDesign — PV86 : lien client permanent + choix WhatsApp', () =
     expect(document.getElementById('rp9-bill-kwh')).toBeNull()
   })
 
-  it('au chargement, frappe shareLinkDevis et affiche le panneau de livraison SANS enregistrement', async () => {
+  it('au chargement, AUCUN ShareLink n’est frappé et aucun panneau d’envoi n’apparaît', async () => {
     ventesApi.getDevisDesignContext.mockResolvedValue(
       reponseContrat('ventes', 'devis_design_context'))
-    ventesApi.shareLinkDevis.mockResolvedValueOnce({
-      data: { token: 'tok-boot', path: '/proposition/tok-boot' },
-    })
-    ventesApi.whatsappPreviewDevis.mockResolvedValueOnce({
-      data: { wa_url: 'https://wa.me/212600000000?text=boot', phone: '0600000000' },
-    })
-
-    rendreDevis(CTX.devis.id)
-
-    await waitFor(() => expect(ventesApi.shareLinkDevis)
-      .toHaveBeenCalledWith(String(CTX.devis.id)))
-    expect(await screen.findByText('Prêt à envoyer')).toBeInTheDocument()
-    expect(screen.getByDisplayValue('https://taqinor.ma/proposition/tok-boot'))
-      .toBeInTheDocument()
-    // Rien n'a été enregistré : le bouton d'action reste, LUI AUSSI, affiché
-    // (le panneau de livraison est un bloc séparé, jamais un remplacement).
-    expect(screen.getByRole('button', { name: /Enregistrer la conception/ }))
-      .toBeInTheDocument()
-    expect(ventesApi.syncDevisLayout).not.toHaveBeenCalled()
-  })
-
-  it('échec réseau au chargement du lien : aucun panneau, pas d\'erreur bloquante', async () => {
-    ventesApi.getDevisDesignContext.mockResolvedValue(
-      reponseContrat('ventes', 'devis_design_context'))
-    ventesApi.shareLinkDevis.mockRejectedValueOnce(new Error('reseau'))
 
     rendreDevis(CTX.devis.id)
 
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    // Ouvrir l'outil 3D ne doit RIEN publier : avant L-SECT, le boot mintait
+    // un lien public sans que personne ne l'ait demandé, et toujours aux
+    // réglages par défaut (ni niveau, ni sections).
+    expect(ventesApi.shareLinkDevis).not.toHaveBeenCalled()
+    expect(ventesApi.whatsappPreviewDevis).not.toHaveBeenCalled()
     expect(screen.queryByText('Prêt à envoyer')).toBeNull()
-    expect(screen.queryByRole('alert')).toBeNull()
-  })
-
-  it('clic WhatsApp : deux choix — lien de la proposition vs PDF seul, même numéro', async () => {
-    ventesApi.getDevisDesignContext.mockResolvedValue(
-      reponseContrat('ventes', 'devis_design_context'))
-    ventesApi.shareLinkDevis.mockResolvedValueOnce({
-      data: { token: 'tok42', path: '/proposition/tok42' },
-    })
-    ventesApi.whatsappPreviewDevis.mockResolvedValueOnce({
-      data: { wa_url: 'https://wa.me/212600000000?text=proposition', phone: '0600000000' },
-    })
-
-    rendreDevis(CTX.devis.id)
-
-    const boutonWa = await screen.findByRole('button', { name: 'WhatsApp' })
-    await userEvent.click(boutonWa)
-
-    const choixProposition = screen.getByRole('link', { name: 'Envoyer le lien de la proposition' })
-    expect(choixProposition).toHaveAttribute(
-      'href', 'https://wa.me/212600000000?text=proposition')
-
-    const choixPdf = screen.getByRole('link', { name: 'Envoyer le PDF seul' })
-    const hrefPdf = choixPdf.getAttribute('href')
-    // Même numéro que le premier choix (relu depuis le lien déjà validé) —
-    // seul le TEXTE change.
-    expect(hrefPdf.startsWith('https://wa.me/212600000000?text=')).toBe(true)
-    const texte = decodeURIComponent(hrefPdf.split('text=')[1])
-    expect(texte).toContain(`${window.location.origin}/api/django/public/proposal/tok42/pdf/`)
-    expect(texte).toContain(CTX.devis.reference)
+    expect(screen.queryByText('Conception enregistrée')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'WhatsApp' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Copier le lien' })).toBeNull()
+    // Le bouton d'action, lui, est bien là : rien d'autre n'a bougé.
+    expect(await screen.findByRole('button', { name: /Enregistrer la conception/ }))
+      .toBeInTheDocument()
+    expect(ventesApi.syncDevisLayout).not.toHaveBeenCalled()
   })
 })
 
@@ -632,5 +605,68 @@ describe('ToitureDesign — mode lead GOLDEN (inchangé par PV20)', () => {
     expect(screen.getByRole('button',
       { name: /Générer le devis & envoyer au client/ })).toBeInTheDocument()
     expect(screen.queryByTestId('pv20-lecture-seule')).toBeNull()
+    // Une épingle publique existe déjà : pas de message GPS.
+    expect(screen.queryByTestId('pv-sans-gps')).toBeNull()
+  })
+})
+
+// ── Correction fondateur 24/08 — repli GPS de la fiche lead ────────────────
+describe('ToitureDesign — mode lead : repli GPS de la fiche (correction 24/08)', () => {
+  it('sans roof_point mais avec gps_lat/gps_lng : hydrate.lead.roof_point vient du GPS de la fiche', async () => {
+    const lead = {
+      id: 89, nom: 'Bennani', prenom: 'Amine', ville: 'Marrakech',
+      telephone: '0611111111', roof_point: null, roof_outline: null,
+      gps_lat: '31.629472', gps_lng: '-8.008889',
+    }
+    api.get.mockImplementation((url) => {
+      if (url.startsWith('/crm/leads/')) return Promise.resolve({ data: lead })
+      if (url === '/ventes/roof-config/') {
+        return Promise.resolve({ data: { available: true, maptilerKey: 'k-lead' } })
+      }
+      return Promise.reject(new Error(`URL inattendue ${url}`))
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/devis-design/89']}>
+        <Routes>
+          <Route path="/devis-design/:id" element={<ToitureDesign />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    const options = initRoofToolPro8.mock.calls[0][0]
+    expect(options.hydrate.lead.roof_point).toEqual({ lat: 31.629472, lng: -8.008889 })
+    // Une position réelle existe (via le GPS) : pas de message « sans GPS ».
+    expect(screen.queryByTestId('pv-sans-gps')).toBeNull()
+  })
+
+  it('sans roof_point ni GPS : la carte reste au niveau Maroc, message discret affiché', async () => {
+    const lead = {
+      id: 90, nom: 'Idrissi', prenom: 'Sara', ville: '',
+      telephone: '', roof_point: null, roof_outline: null,
+      gps_lat: null, gps_lng: null,
+    }
+    api.get.mockImplementation((url) => {
+      if (url.startsWith('/crm/leads/')) return Promise.resolve({ data: lead })
+      if (url === '/ventes/roof-config/') {
+        return Promise.resolve({ data: { available: true, maptilerKey: 'k-lead' } })
+      }
+      return Promise.reject(new Error(`URL inattendue ${url}`))
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/devis-design/90']}>
+        <Routes>
+          <Route path="/devis-design/:id" element={<ToitureDesign />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    const options = initRoofToolPro8.mock.calls[0][0]
+    expect(options.hydrate.lead.roof_point).toBeNull()
+    expect(await screen.findByTestId('pv-sans-gps')).toHaveTextContent(
+      'Pas de position GPS sur la fiche')
   })
 })

@@ -92,7 +92,7 @@ TIMESTAMP_AS_DATEFIELD_ALLOWLIST = {
     # Remappé 2210->2276 (lot moteur 24/08 : +66 lignes — champs équipements
     # Lead 0079 insérés AVANT CommissionPartenaire) — MÊME champ, déclaration
     # identique avant/après (vérifié contre origin/main). Bug-class #34.
-    "backend/django_core/apps/crm/models.py:2276",  # CommissionPartenaire.paye_le
+    "backend/django_core/apps/crm/models.py:2316",  # CommissionPartenaire.paye_le
     # Remappé 2017->2027 (lanes NTCRM14-30 : +10 lignes insérées avant
     # CommissionPartenaire dans crm/models.py) — MÊME champ, déclaration
     # identique avant/après (vérifié contre origin/main), pas un nouveau site.

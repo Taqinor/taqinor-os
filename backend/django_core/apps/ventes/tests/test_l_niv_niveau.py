@@ -10,10 +10,15 @@ Covered here:
   (c) proposal_data payload — 'confiance' stays byte-identical to
       pre-L-NIV behaviour (roof_layout present, full sld_svg, full
       conception_electrique); 'standard' degrades exactly the three
-      surfaces this chantier owns (roof_layout omitted, sld_svg without
+      surfaces this chantier owns (sld_svg without
       the nomenclature table, conception_electrique without
       calibre/cables) while brand/model strings and every money figure
       stay identical between the two levels.
+      NOTE L-SECT (fondateur 24/08/2026) — roof_layout n'est PLUS dégradé au
+      niveau standard : le calepinage 3D est servi AUX DEUX NIVEAUX par défaut
+      (« le client ne voit pas ses panneaux sur son toit »), et ne se retire
+      que par la case explicite ``sections['roof3d'] = False``
+      (voir test_l_sect_sections.py).
 
 Run:
     docker compose exec django_core python manage.py test \
@@ -212,11 +217,22 @@ class TestProposalDataNiveau(TestCase):
         payload = self._payload(devis, ShareLink.NIVEAU_CONFIANCE)
         self.assertIsNotNone(payload['roof_layout'])
 
-    def test_standard_omits_roof_layout_entirely(self):
+    def test_standard_sert_aussi_le_calepinage_3d(self):
+        """DÉCISION FONDATEUR 24/08/2026 (L-SECT) — RENVERSE le comportement
+        L-NIV d'origine (« standard omet roof_layout »).
+
+        Constat du fondateur : « le client ne voit pas ses panneaux sur son
+        toit ». Le calepinage 3D est un VISUEL de vente, pas du savoir-faire
+        d'ingénierie : il est désormais servi AUX DEUX NIVEAUX par défaut. Seule
+        une décision explicite du commercial (case « Calepinage 3D » décochée →
+        ``sections['roof3d'] = False``) le retire — voir
+        ``test_l_sect_sections.py``. Ce qui reste dégradé au niveau standard est
+        inchangé : sld_svg sans nomenclature, conception_electrique sans
+        calibres/câbles, kit agrégé (tests ci-dessous)."""
         devis = make_devis(self.company, self.user, self.client_obj,
                            'DEV-LNIV-S1', roof_layout=sample_layout())
         payload = self._payload(devis, ShareLink.NIVEAU_STANDARD)
-        self.assertIsNone(payload['roof_layout'])
+        self.assertIsNotNone(payload['roof_layout'])
 
     def test_brand_names_stay_visible_in_both_levels(self):
         """Founder rule: brands/models exact stay VISIBLE in BOTH levels."""

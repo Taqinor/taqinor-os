@@ -1282,6 +1282,10 @@ def equipements_pour_devis(devis):
         've_creneau': lead.equip_ve_creneau,
         'clim_kw': lead.equip_clim_kw,
         'piscine_heures_jour': lead.equip_piscine_heures_jour,
+        # L-BACK2 (24/08/2026) — créneaux clim/piscine (enrichissement d'une
+        # couche déjà active, jamais une paire requise). Mêmes None-par-défaut.
+        'clim_creneau': lead.equip_clim_creneau,
+        'piscine_creneau': lead.equip_piscine_creneau,
     }
 
 

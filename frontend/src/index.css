@@ -7292,6 +7292,20 @@ textarea.form-control {
 .lw-context-devis-niveau-hint {
   margin: 0;
 }
+/* L-SECT (fondateur 24/08/2026) — cases « ce que le client reçoit », dans le
+   dialogue « Envoyer au client ». Une case par ligne : la liste se lit comme
+   un sommaire de la page client, pas comme une barre d'outils. */
+.lw-context-devis-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+}
+.lw-context-devis-section {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
 /* L5 — Page client / WhatsApp / Aperçu interne : TOUJOURS visibles (jamais
    gardées par un survol), contrairement aux actions secondaires ci-dessous
    (facture/chantier, réservées au devis accepté) — c'est précisément ce que

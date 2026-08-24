@@ -164,6 +164,27 @@ class LaChaineCanoniqueSuitLesRegles(unittest.TestCase):
         self.assertIn("batterie", avec)
         self.assertNotIn("batterie", sans)
 
+    def test_huit_panneaux_dessinent_UNE_chaine_et_UN_depart_dc(self):
+        """RÈGLE FONDATEUR 24/08/2026 — le schéma suit la chaîne unique.
+
+        Le dessin annonçait « 2 × 4 modules », un coffret à 2 chaînes et DEUX
+        amorces MPPT. Avec la chaîne unique : un seul départ DC (une paire
+        descendante), donc deux conducteurs au câble W1 — le courant de chaîne,
+        lui, ne change pas (les modules sont en SÉRIE), c'est le courant du
+        départ commun qui n'additionne plus deux chaînes.
+        """
+        entree = _mono_reseau()
+        resultat = concevoir(entree)
+        textes = _textes(rendre_schema(entree, resultat))
+        self.assertIn("MPPT 1 · 1 chaîne(s)", textes)
+        self.assertNotIn("MPPT 2 · 1 chaîne(s)", textes)
+        sous_titres = {b.clef: b.sous_titre
+                       for b in blocs_du_schema(entree, resultat)}
+        self.assertIn("1 × 8 modules", sous_titres["champ"])
+        self.assertIn("1 chaîne(s)", sous_titres["coffret_dc"])
+        dc = [c for c in resultat.cables if c.repere == "W1"][0]
+        self.assertEqual(dc.nb_conducteurs, 2)
+
     def test_les_amorces_mppt_annoncent_leurs_chaines(self):
         entree = _triphase_deux_pans()
         textes = _textes(rendre_schema(entree, concevoir(entree)))

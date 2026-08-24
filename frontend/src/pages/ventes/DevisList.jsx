@@ -1186,7 +1186,12 @@ function DevisRow({ d, ctx }) {
               </div>
             </div>
             <div className="max-w-2xl">
-              <RoofViewer layout={d.roof_layout} />
+              <RoofViewer
+                layout={d.roof_layout}
+                clientNom={d.client_nom}
+                leadNom={d.lead_nom}
+                lignes={d.lignes}
+              />
             </div>
           </div>
         </td>

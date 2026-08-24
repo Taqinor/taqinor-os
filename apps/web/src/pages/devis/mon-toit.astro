@@ -1219,8 +1219,18 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
 
           <label class="block text-sm text-lune-soft">
             <span data-i18n data-fr="Adresse / ville" data-ar="العنوان / المدينة">Adresse / ville</span>
+            <!-- ORDRE FONDATEUR (24/08/2026) — quand la position GPS est déjà posée
+                 (repère carte), l'adresse devient SECONDAIRE : elle reste visible (elle
+                 sert au courrier) mais n'est plus obligatoire. `required`/`aria-required`
+                 sont mis à jour dynamiquement par syncCityRequirement() (jamais retirés
+                 en dur ici — un visiteur SANS repère doit toujours voir le champ requis). -->
             <input id="mt-city" name="city" type="text" autocomplete="address-level2" required aria-required="true"
-              aria-describedby="mt-city-err" placeholder="Lue depuis la carte — modifiable si besoin" class={`${inputClass} mt-1`} />
+              aria-describedby="mt-city-err mt-city-hint" placeholder="Lue depuis la carte — modifiable si besoin" class={`${inputClass} mt-1`} />
+            <span id="mt-city-hint" hidden class="mt-1 block text-xs text-lune-faint" data-i18n
+              data-fr="Facultatif — votre position GPS est déjà enregistrée. L'adresse reste utile pour le courrier."
+              data-ar="اختياري — تم تسجيل موقعكم عبر GPS بالفعل. يبقى العنوان مفيدًا للمراسلة.">
+              Facultatif — votre position GPS est déjà enregistrée. L'adresse reste utile pour le courrier.
+            </span>
             <span id="mt-city-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
           </label>
 
@@ -1314,14 +1324,19 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
                l'autre) : aucun poids n'est inventé ici, ce composant ne fait
                QUE du rendu. Les questions équipements reprennent MOT POUR MOT
                le script d'appel déjà validé par le fondateur sur
-               `crm.Lead` (help_text de chaque champ, apps/crm/models.py) —
-               volontairement SANS puissance/créneau pour le chauffe-eau (le
-               moteur backend le dit lui-même : « champ informatif
-               uniquement… n'ajuste AUCUNE courbe ») et sans créneau
-               horaire pour VE/clim/piscine (les fenêtres — 21h-6h, 13h-21h,
-               10h-18h — sont des CONSTANTES serveur sourcées, pas un choix du
-               visiteur ; lui en demander un créneau collecterait une réponse
-               qu'aucun moteur ne lit). -->
+               `crm.Lead` (help_text de chaque champ, apps/crm/models.py).
+
+               L-WEBT2 (24/08/2026, ordre fondateur) — chaque équipement coché
+               révèle maintenant AUSSI un détail kW/créneau ENCORE PLUS
+               FACULTATIF (jamais requis, jamais de valeur pré-remplie) : le
+               visiteur qui connaît sa consommation détaillée (heures de la
+               clim, de la piscine…) peut la préciser lui-même, exactement les
+               mêmes colonnes `crm.Lead` que le commercial saisit à l'appel
+               (L-BACK/L-BACK2) — désormais alimentables par les deux canaux.
+               Le chauffe-eau électrique garde son booléen INFORMATIF en plus
+               de son détail (le moteur ne compose une couche chauffe-eau que
+               si la puissance ET le créneau sont TOUS LES DEUX renseignés —
+               apps/ventes/courbes_journalieres.py). -->
           <details class="mt-1 cine-card border border-white/10 text-white">
             <summary class="cursor-pointer select-none p-3 text-sm font-semibold" data-i18n
               data-fr="Affiner mon profil de consommation (facultatif)"
@@ -1372,10 +1387,40 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
                   Équipements (facultatif — affine votre étude)
                 </legend>
 
-                <label class="flex items-center gap-2 text-sm">
-                  <input id="mt-equip-chauffe-eau" type="checkbox" class="h-4 w-4 accent-brass-400" />
-                  <span data-i18n data-fr="Chauffe-eau électrique" data-ar="سخان ماء كهربائي">Chauffe-eau électrique</span>
-                </label>
+                <div>
+                  <label class="flex items-center gap-2 text-sm">
+                    <input id="mt-equip-chauffe-eau" type="checkbox" class="h-4 w-4 accent-brass-400" />
+                    <span data-i18n data-fr="Chauffe-eau électrique" data-ar="سخان ماء كهربائي">Chauffe-eau électrique</span>
+                  </label>
+                  <!-- L-WEBT2 — détail kW/créneau ENCORE PLUS facultatif : la
+                       couche chauffe-eau du moteur n'existe que si les DEUX
+                       sont renseignés (apps/ventes/courbes_journalieres.py) ;
+                       une seule moitié saisie ne produit rien, jamais une
+                       erreur. -->
+                  <div data-equip-detail hidden class="mt-1.5 pl-6">
+                    <label class="block text-xs text-lune-faint" data-i18n
+                      data-fr="Puissance du chauffe-eau (kW, facultatif)"
+                      data-ar="قدرة سخان الماء (كيلوواط، اختياري)">
+                      Puissance du chauffe-eau (kW, facultatif)
+                    </label>
+                    <input id="mt-equip-chauffe-eau-kw" type="number" min="0" step="any" inputmode="decimal"
+                      placeholder="ex : 2.4"
+                      class="mt-1 w-full border border-white/15 bg-transparent p-2 text-sm text-white" />
+                    <label class="mt-2 block text-xs text-lune-faint" data-i18n
+                      data-fr="Il chauffe surtout quand ? (facultatif)"
+                      data-ar="متى يسخّن أكثر؟ (اختياري)">
+                      Il chauffe surtout quand&nbsp;? (facultatif)
+                    </label>
+                    <select id="mt-equip-chauffe-eau-creneau"
+                      class="mt-1 w-full border border-white/15 bg-transparent p-2 text-sm text-white">
+                      <option value="">—</option>
+                      <option value="matin">Matin</option>
+                      <option value="soir">Soir</option>
+                      <option value="nuit">Nuit</option>
+                      <option value="journee">Toute la journée</option>
+                    </select>
+                  </div>
+                </div>
 
                 <div>
                   <label class="flex items-center gap-2 text-sm">
@@ -1390,6 +1435,29 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
                     </label>
                     <input id="mt-equip-ve-km" type="number" min="0" step="1" inputmode="numeric"
                       class="mt-1 w-full border border-white/15 bg-transparent p-2 text-sm text-white" />
+                    <!-- L-WEBT2 — précision facultative : chargeur réel +
+                         créneau réel, quand connus, resserrent la fenêtre de
+                         recharge servie (sinon la fenêtre 21h-6h par défaut). -->
+                    <label class="mt-2 block text-xs text-lune-faint" data-i18n
+                      data-fr="Puissance du chargeur (kW, facultatif)"
+                      data-ar="قدرة الشاحن (كيلوواط، اختياري)">
+                      Puissance du chargeur (kW, facultatif)
+                    </label>
+                    <input id="mt-equip-ve-kw" type="number" min="0" step="any" inputmode="decimal"
+                      placeholder="ex : 7.4"
+                      class="mt-1 w-full border border-white/15 bg-transparent p-2 text-sm text-white" />
+                    <label class="mt-2 block text-xs text-lune-faint" data-i18n
+                      data-fr="Vous rechargez surtout quand ? (facultatif)"
+                      data-ar="متى تشحنون أكثر؟ (اختياري)">
+                      Vous rechargez surtout quand&nbsp;? (facultatif)
+                    </label>
+                    <select id="mt-equip-ve-creneau"
+                      class="mt-1 w-full border border-white/15 bg-transparent p-2 text-sm text-white">
+                      <option value="">—</option>
+                      <option value="nuit">Nuit</option>
+                      <option value="jour">Jour</option>
+                      <option value="soir">Soir</option>
+                    </select>
                   </div>
                 </div>
 
@@ -1406,6 +1474,29 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
                     </label>
                     <input id="mt-equip-clim-pieces" type="number" min="0" step="1" inputmode="numeric"
                       class="mt-1 w-full border border-white/15 bg-transparent p-2 text-sm text-white" />
+                    <!-- L-WEBT2 — puissance réelle (facultative) : remplace
+                         l'estimation par nombre de pièces si connue. -->
+                    <label class="mt-2 block text-xs text-lune-faint" data-i18n
+                      data-fr="Puissance totale réelle (kW, facultatif)"
+                      data-ar="القدرة الإجمالية الفعلية (كيلوواط، اختياري)">
+                      Puissance totale réelle (kW, facultatif)
+                    </label>
+                    <input id="mt-equip-clim-kw" type="number" min="0" step="any" inputmode="decimal"
+                      placeholder="ex : 2.8"
+                      class="mt-1 w-full border border-white/15 bg-transparent p-2 text-sm text-white" />
+                    <label class="mt-2 block text-xs text-lune-faint" data-i18n
+                      data-fr="Elle tourne surtout quand ? (facultatif)"
+                      data-ar="متى تعمل أكثر؟ (اختياري)">
+                      Elle tourne surtout quand&nbsp;? (facultatif)
+                    </label>
+                    <select id="mt-equip-clim-creneau"
+                      class="mt-1 w-full border border-white/15 bg-transparent p-2 text-sm text-white">
+                      <option value="">—</option>
+                      <option value="matin">Matin</option>
+                      <option value="apres_midi">Après-midi</option>
+                      <option value="soir">Soir</option>
+                      <option value="journee">Toute la journée</option>
+                    </select>
                   </div>
                 </div>
 
@@ -1422,6 +1513,30 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
                     </label>
                     <input id="mt-equip-piscine-kw" type="number" min="0" step="any" inputmode="decimal"
                       class="mt-1 w-full border border-white/15 bg-transparent p-2 text-sm text-white" />
+                    <!-- L-WEBT2 — durée/créneau réels (facultatifs) : la durée
+                         remplace le défaut 8h, le créneau déplace le départ
+                         (10h par défaut) — indépendants, se composent librement. -->
+                    <label class="mt-2 block text-xs text-lune-faint" data-i18n
+                      data-fr="Heures de filtration par jour (facultatif)"
+                      data-ar="ساعات الترشيح يومياً (اختياري)">
+                      Heures de filtration par jour (facultatif)
+                    </label>
+                    <input id="mt-equip-piscine-heures" type="number" min="0" max="24" step="any" inputmode="decimal"
+                      placeholder="ex : 6"
+                      class="mt-1 w-full border border-white/15 bg-transparent p-2 text-sm text-white" />
+                    <label class="mt-2 block text-xs text-lune-faint" data-i18n
+                      data-fr="Elle tourne surtout quand ? (facultatif)"
+                      data-ar="متى تعمل أكثر؟ (اختياري)">
+                      Elle tourne surtout quand&nbsp;? (facultatif)
+                    </label>
+                    <select id="mt-equip-piscine-creneau"
+                      class="mt-1 w-full border border-white/15 bg-transparent p-2 text-sm text-white">
+                      <option value="">—</option>
+                      <option value="matin">Matin</option>
+                      <option value="apres_midi">Après-midi</option>
+                      <option value="soir">Soir</option>
+                      <option value="journee">Toute la journée</option>
+                    </select>
                   </div>
                 </div>
               </fieldset>
@@ -2168,6 +2283,24 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   let cityTouched = false;
   cityEl?.addEventListener('input', () => { cityTouched = true; });
 
+  // ORDRE FONDATEUR (24/08/2026) — le GPS est la source de vérité de
+  // localisation : dès qu'un repère est posé (capturePin), l'adresse/ville
+  // n'est plus BLOQUANTE. `validateLead` (lib/lead.ts, même condition GPS)
+  // porte déjà la garde réelle côté validation — cette fonction ne fait que
+  // refléter l'état côté UI (aria-required + indice visuel), jamais l'inverse.
+  // Rejouée à chaque changement de repère (onCaptureChange) et à la
+  // restauration WJ61 — jamais un simple libellé figé qui pourrait diverger.
+  function syncCityRequirement() {
+    const hasGps = capturePin != null;
+    if (cityEl) {
+      cityEl.required = !hasGps;
+      cityEl.setAttribute('aria-required', hasGps ? 'false' : 'true');
+    }
+    const hint = $('mt-city-hint');
+    if (hint) hint.hidden = !hasGps;
+  }
+  syncCityRequirement();
+
   // ——— WJ6/WJ33 : bascule de langue FR/AR (data-i18n) ———
   // WJ30 — la langue active est transmise au webhook (langue_preferee).
   //
@@ -2303,6 +2436,11 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     // L-WEBT — équipements (facultatifs, section repliable « Affiner mon
     // profil de consommation »).
     'mt-equip-ve-km', 'mt-equip-clim-pieces', 'mt-equip-piscine-kw',
+    // L-WEBT2 (24/08/2026) — détails kW/créneau encore plus facultatifs.
+    'mt-equip-chauffe-eau-kw', 'mt-equip-chauffe-eau-creneau',
+    'mt-equip-ve-kw', 'mt-equip-ve-creneau',
+    'mt-equip-clim-kw', 'mt-equip-clim-creneau',
+    'mt-equip-piscine-heures', 'mt-equip-piscine-creneau',
   ];
   // 'mt-ete-differente', 'mt-battery-interest' et 'mt-weekend' retirés du tunnel
   // (coupe fondateur 18/08) — le commercial les complète dans l'ERP.
@@ -2634,7 +2772,9 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   // entière tant que la case n'est pas cochée).
   // ════════════════════════════════════════════════════════════════════════
   const EQUIP_TOGGLES: Array<{ checkId: string; detailId?: string }> = [
-    { checkId: 'mt-equip-chauffe-eau' },
+    // L-WEBT2 — le chauffe-eau gagne enfin un détail (kW/créneau) : le
+    // detailId change de mt-equip-chauffe-eau-kw, plus [] vide.
+    { checkId: 'mt-equip-chauffe-eau', detailId: 'mt-equip-chauffe-eau-kw' },
     { checkId: 'mt-equip-ve', detailId: 'mt-equip-ve-km' },
     { checkId: 'mt-equip-clim', detailId: 'mt-equip-clim-pieces' },
     { checkId: 'mt-equip-piscine', detailId: 'mt-equip-piscine-kw' },
@@ -2746,6 +2886,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
         onCaptureChange: (s) => {
           capturePin = s.pin;
           captureOutline = s.outline;
+          syncCityRequirement();
           // QX/Lane C — le contour a changé : l'instantané satellite mis en
           // cache ne correspond plus, on le laissera se reconstruire.
           roofImageSpecPromise = null;
@@ -2969,6 +3110,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     syncEquipDetails();
     if (savedWizard.capturePin) capturePin = savedWizard.capturePin;
     if (savedWizard.captureOutline?.length) captureOutline = savedWizard.captureOutline;
+    syncCityRequirement();
     if (Object.keys(savedWizard.fields ?? {}).length > 0 || savedWizard.capturePin) markDataEntered();
     restoring = false;
   }
@@ -4494,10 +4636,9 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
       // — ce sont les noms EXACTS des champs `crm.Lead` (apps/crm/models.py :
       // occupation_jour, equip_piscine, equip_piscine_pompe_kw,
       // equip_voiture_electrique, equip_ve_km_semaine, equip_clim,
-      // equip_clim_pieces, equip_chauffe_eau_electrique) pour que le futur
-      // câblage backend (webhooks.py _extract_web_questionnaire, absent
-      // aujourd'hui — voir HANDOFF du rapport de lane) n'ait qu'à lire la clé
-      // telle quelle. Case décochée = question jamais posée : la clé est
+      // equip_clim_pieces, equip_chauffe_eau_electrique) que
+      // ``webhooks.py _extract_web_questionnaire`` lit directement, sans
+      // traduction. Case décochée = question jamais posée : la clé est
       // ABSENTE (jamais un booléen `false` fabriqué), exactement la discipline
       // WJ30 déjà en vigueur sur ce fichier.
       occupation_jour: occupationJour || undefined,
@@ -4508,6 +4649,20 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
       equip_clim_pieces: ($('mt-equip-clim') as HTMLInputElement | null)?.checked ? (num('mt-equip-clim-pieces') ?? undefined) : undefined,
       equip_piscine: ($('mt-equip-piscine') as HTMLInputElement | null)?.checked || undefined,
       equip_piscine_pompe_kw: ($('mt-equip-piscine') as HTMLInputElement | null)?.checked ? (num('mt-equip-piscine-kw') ?? undefined) : undefined,
+      // L-WEBT2 (24/08/2026, ordre fondateur) — détails kW/créneau ENCORE
+      // PLUS facultatifs : mêmes 8 colonnes `crm.Lead` que le commercial
+      // saisit à l'appel (L-BACK/L-BACK2), désormais aussi alimentables par
+      // le client depuis ce tunnel. Même garde `checked ? … : undefined` que
+      // les 4 détails ci-dessus — jamais de saisie fantôme si la case
+      // parente n'est pas cochée.
+      equip_chauffe_eau_kw: ($('mt-equip-chauffe-eau') as HTMLInputElement | null)?.checked ? (num('mt-equip-chauffe-eau-kw') ?? undefined) : undefined,
+      equip_chauffe_eau_creneau: ($('mt-equip-chauffe-eau') as HTMLInputElement | null)?.checked ? (val('mt-equip-chauffe-eau-creneau') || undefined) : undefined,
+      equip_ve_chargeur_kw: ($('mt-equip-ve') as HTMLInputElement | null)?.checked ? (num('mt-equip-ve-kw') ?? undefined) : undefined,
+      equip_ve_creneau: ($('mt-equip-ve') as HTMLInputElement | null)?.checked ? (val('mt-equip-ve-creneau') || undefined) : undefined,
+      equip_clim_kw: ($('mt-equip-clim') as HTMLInputElement | null)?.checked ? (num('mt-equip-clim-kw') ?? undefined) : undefined,
+      equip_clim_creneau: ($('mt-equip-clim') as HTMLInputElement | null)?.checked ? (val('mt-equip-clim-creneau') || undefined) : undefined,
+      equip_piscine_heures_jour: ($('mt-equip-piscine') as HTMLInputElement | null)?.checked ? (num('mt-equip-piscine-heures') ?? undefined) : undefined,
+      equip_piscine_creneau: ($('mt-equip-piscine') as HTMLInputElement | null)?.checked ? (val('mt-equip-piscine-creneau') || undefined) : undefined,
       // W317 — honeypot : vide pour tout visiteur humain (champ masqué hors
       // écran, jamais rempli sciemment) ; rejeté côté serveur si non vide.
       website_url: val('mt-hp'),

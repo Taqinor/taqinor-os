@@ -823,6 +823,16 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             rafraichir_dimensionnement_devis, rafraichir_etude_horaire_devis)
         rafraichir_etude_horaire_devis(devis, force=True)
         rafraichir_dimensionnement_devis(devis, force=True)
+        # L-SLD (24/08/2026) — MÊME TROU, TROISIÈME ÉTUDE : la conception
+        # électrique n'était produite QUE par l'ouverture de l'onglet
+        # « Conception électrique ». Un devis créé ici et jamais ouvert
+        # n'avait donc pas de schéma unifilaire sur la page client ni dans
+        # l'annexe du PDF, faute d'``electrical_design``. Best-effort et
+        # trois portails (modules, fiches complètes, conformité) dans le
+        # service : rien n'est rangé si rien n'est dessinable.
+        from ..electrical_service import (
+            rafraichir_conception_electrique_devis)
+        rafraichir_conception_electrique_devis(devis)
         return Response(DevisSerializer(
             devis, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
@@ -880,6 +890,13 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         # profil (factures/occupation/équipements) peut avoir changé dans le
         # même PATCH, best-effort, jamais bloquant.
         rafraichir_dimensionnement_devis(devis, force=True)
+        # L-SLD (24/08/2026) — la composition vient de changer : l'étude
+        # électrique doit décrire les lignes COURANTES (empreinte différente ⇒
+        # recalcul, empreinte identique ⇒ aucune écriture). Best-effort, même
+        # place et mêmes garde-fous qu'à la création.
+        from ..electrical_service import (
+            rafraichir_conception_electrique_devis)
+        rafraichir_conception_electrique_devis(devis)
         return Response(DevisSerializer(
             devis, context={'request': request}).data)
 
@@ -1141,7 +1158,11 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         RÉVOQUE ou change le niveau d'un lien EXISTANT sans jamais régénérer
         le jeton (le lien déjà envoyé au client continue de fonctionner).
         Absents du corps → valeurs du lien inchangées (déjà posées, ou les
-        défauts du modèle sur un lien fraîchement créé)."""
+        défauts du modèle sur un lien fraîchement créé).
+
+        L-SECT (24/08/2026) — ``sections`` (dict {clé: bool}) dit CE QUE le
+        client reçoit sur sa page devis, choisi dans le dialogue « Envoyer au
+        client ». Mêmes garanties : optionnel, révocable, jeton inchangé."""
         from ..models import ShareLink
         devis = self.get_object()
         # GAMME — le mode d'envoi (« seule » / « les_deux ») accompagne le lien
@@ -1166,12 +1187,38 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             if link.otp_lecture != otp_lecture:
                 link.otp_lecture = otp_lecture
                 champs_modifies.append('otp_lecture')
+        # L-SECT (24/08/2026) — sections servies au client, choisies dans le
+        # dialogue « Envoyer au client ». Whitelist STRICTE de clés + valeurs
+        # BOOLÉENNES seulement : rien d'autre n'entre en base. Absent du corps
+        # → sections du lien inchangées (comportement d'aujourd'hui).
+        if 'sections' in request.data:
+            brut = request.data.get('sections')
+            if not isinstance(brut, dict):
+                return Response(
+                    {'detail': 'sections invalide (objet attendu).'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            inconnues = sorted(set(brut) - set(ShareLink.SECTIONS_CLES))
+            if inconnues:
+                return Response(
+                    {'detail': 'sections invalide — clés inconnues : '
+                               + ', '.join(inconnues) + '.'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            non_bool = sorted(k for k, v in brut.items() if not isinstance(v, bool))
+            if non_bool:
+                return Response(
+                    {'detail': 'sections invalide — valeurs booléennes '
+                               'attendues : ' + ', '.join(non_bool) + '.'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            if (link.sections or {}) != brut:
+                link.sections = brut
+                champs_modifies.append('sections')
         if champs_modifies:
             link.save(update_fields=champs_modifies)
         return Response(
             {'token': link.token, 'path': chemin_proposition(devis, link.token),
              'gamme': _gamme_envoi_payload(devis),
-             'niveau': link.niveau, 'otp_lecture': link.otp_lecture},
+             'niveau': link.niveau, 'otp_lecture': link.otp_lecture,
+             'sections': link.sections or {}},
             status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='envoyer-email',

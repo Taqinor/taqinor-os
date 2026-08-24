@@ -468,6 +468,19 @@ class LeadSerializer(serializers.ModelSerializer):
                             or (undo and self._undo_of_last_stage_change(current, target))):
                         raise serializers.ValidationError(
                             {'stage': "On ne recule pas une étape."})
+        # ORDRE FONDATEUR (24/08/2026) — le GPS ne doit JAMAIS être écrasé ni
+        # supplanté par l'adresse. Le Lead Workspace (LW9, draftCore.js) ne
+        # PATCH déjà que les clés réellement modifiées (dirty keys) — éditer
+        # l'adresse seule n'envoie donc jamais gps_lat/gps_lng. Ce garde est
+        # une DÉFENSE EN PROFONDEUR pour tout AUTRE appelant (import, script,
+        # futur écran) : une mise à jour qui n'apporte pas de nouvelles
+        # coordonnées EXPLICITES (vide/nulle) ne doit jamais effacer un GPS
+        # déjà posé sur ce lead.
+        if self.instance is not None:
+            for gps_field in ('gps_lat', 'gps_lng'):
+                if (gps_field in attrs and attrs[gps_field] in (None, '')
+                        and getattr(self.instance, gps_field) is not None):
+                    attrs.pop(gps_field)
         # Champs personnalisés (T11) : valider/nettoyer contre les définitions
         # du module « lead ». À la création on valide toujours (champs
         # obligatoires) ; en mise à jour, uniquement si custom_data est fourni
@@ -607,6 +620,23 @@ class LeadSerializer(serializers.ModelSerializer):
                 installation_summaries_for_devis,
             )
             chantiers = installation_summaries_for_devis(rows)
+        # L-NIV-UI (24/08/2026) — niveau/otp_lecture du ShareLink DÉJÀ EXISTANT
+        # (jamais un mint) : sans ça, l'onglet Devis (DevisTab.jsx) n'affichait
+        # le badge de niveau qu'après un premier clic sur le sélecteur/case,
+        # car son état `linkMeta` ne se remplissait qu'à partir de la réponse
+        # d'un POST share-link explicite. Lecture cross-app via
+        # `apps.ventes.selectors` (jamais `apps.ventes.models`).
+        # YOPSB13 — MÊME garde N+1 que ``chantier_map`` : sur une LISTE,
+        # ``LeadViewSet.list()`` précharge les ShareLink de TOUS les devis de
+        # la page en UNE requête (``share_link_map`` dans le contexte). Sans
+        # ce préchargement (retrieve, usage direct du serializer), on retombe
+        # sur l'appel pour ce lead seul — comportement identique.
+        share_link_map = self.context.get('share_link_map')
+        if share_link_map is not None:
+            niveau_map = share_link_map
+        else:
+            from apps.ventes.selectors import share_link_niveau_map
+            niveau_map = share_link_niveau_map([d.id for d in rows])
         return [
             {
                 'id': d.id,
@@ -616,6 +646,7 @@ class LeadSerializer(serializers.ModelSerializer):
                 'date_creation': d.date_creation.isoformat(),
                 'option_acceptee': d.option_acceptee,
                 'chantier': chantiers.get(d.id),
+                'share_link': niveau_map.get(d.id),
             }
             for d in rows
         ]
