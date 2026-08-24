@@ -9,7 +9,6 @@ const RACCORDEMENTS = { monophase: 'Monophasé', triphase: 'Triphasé', inconnu:
 const CRENEAU_CHAUFFE_EAU = { matin: 'Matin', soir: 'Soir', nuit: 'Nuit', journee: 'Journée' }
 // source-choix: crm.Lead.equip_ve_creneau
 const CRENEAU_VE = { nuit: 'Nuit', jour: 'Jour', soir: 'Soir' }
-const CRENEAU_CLIM = { jour: 'Jour', soir: 'Soir', nuit: 'Nuit' }
 
 // L4 (extension fondateur) — présence en journée, script d'appel. Mêmes
 // clés que crm.Lead.OccupationJour et courbes_journalieres._occupation.
@@ -173,20 +172,12 @@ export function SectionEquipements({ state, setField }) {
           </FormField>
         )}
       </div>
-      {/* L-FRONT lot 4 — grandeurs estimation_conso (contrat L-BACK) : la
-          puissance de pompe demandée ci-dessus reste `equip_piscine_pompe_kw`
-          (question script d'appel existante) ; `equip_piscine_kw` est la
-          puissance retenue par le moteur pour l'estimation mensuelle — deux
-          clés distinctes du contrat, jamais fusionnées. */}
+      {/* L-FRONT lot 4 (contrat L-BACK, 24/08) — grandeur complémentaire pour
+          estimation_conso : la puissance de pompe reste `equip_piscine_pompe_kw`
+          (question script d'appel ci-dessus, seule kW retenue par le moteur —
+          aucune clé « kw estimation » séparée n'existe côté serveur). */}
       {piscine === true && (
         <div className="form-row">
-          <FormField label="Puissance piscine pour l'estimation (kW)" htmlFor="lf-equip-piscine-kw2">
-            <Input
-              id="lf-equip-piscine-kw2" type="number" step="any" placeholder="ex: 1.1"
-              value={v('equip_piscine_kw')}
-              onChange={(e) => setField('equip_piscine_kw', e.target.value)}
-            />
-          </FormField>
           <FormField label="Heures de filtration par jour" htmlFor="lf-equip-piscine-heures">
             <Input
               id="lf-equip-piscine-heures" type="number" step="any" min="0" max="24" placeholder="ex: 6"
@@ -237,13 +228,6 @@ export function SectionEquipements({ state, setField }) {
               {enumOptions(CRENEAU_VE)}
             </select>
           </FormField>
-          <FormField label="Sessions de charge par semaine" htmlFor="lf-equip-ve-sessions">
-            <Input
-              id="lf-equip-ve-sessions" type="number" step="1" min="0" placeholder="ex: 4"
-              value={v('equip_ve_sessions_semaine')}
-              onChange={(e) => setField('equip_ve_sessions_semaine', e.target.value)}
-            />
-          </FormField>
         </div>
       )}
       <div className="form-row">
@@ -272,24 +256,6 @@ export function SectionEquipements({ state, setField }) {
               onChange={(e) => setField('equip_clim_kw', e.target.value)}
             />
           </FormField>
-          <FormField label="Créneau d'utilisation principal" htmlFor="lf-equip-clim-creneau">
-            <select
-              id="lf-equip-clim-creneau" className="form-select"
-              value={v('equip_clim_creneau')}
-              onChange={(e) => setField('equip_clim_creneau', e.target.value)}
-            >
-              {enumOptions(CRENEAU_CLIM)}
-            </select>
-          </FormField>
-          <div className="form-group" style={{ alignSelf: 'flex-end' }}>
-            <label className="pdf-toggle">
-              <input
-                type="checkbox" checked={!!v('equip_clim_ete_seulement')}
-                onChange={(e) => setField('equip_clim_ete_seulement', e.target.checked)}
-              />
-              <span>Climatisation utilisée seulement l&apos;été ?</span>
-            </label>
-          </div>
         </div>
       )}
       <div className="form-row">

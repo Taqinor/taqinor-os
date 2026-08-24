@@ -159,13 +159,10 @@ describe('LW11 — rendu des sections (port 1:1 des champs)', () => {
   // setField.
   it('SectionEquipements lot4 — masquées par défaut, aucune valeur préremplie', () => {
     render(<SectionEquipements state={createState()} {...base} />)
-    expect(document.querySelector('#lf-equip-piscine-kw2')).toBeNull()
     expect(document.querySelector('#lf-equip-piscine-heures')).toBeNull()
     expect(document.querySelector('#lf-equip-ve-chargeur-kw')).toBeNull()
     expect(document.querySelector('#lf-equip-ve-creneau')).toBeNull()
-    expect(document.querySelector('#lf-equip-ve-sessions')).toBeNull()
     expect(document.querySelector('#lf-equip-clim-kw')).toBeNull()
-    expect(document.querySelector('#lf-equip-clim-creneau')).toBeNull()
     expect(document.querySelector('#lf-equip-chauffe-eau-kw')).toBeNull()
     expect(document.querySelector('#lf-equip-chauffe-eau-creneau')).toBeNull()
   })
@@ -179,18 +176,15 @@ describe('LW11 — rendu des sections (port 1:1 des champs)', () => {
       mode: 'edit',
     })
     render(<SectionEquipements state={state} {...base} />)
-    expect(document.querySelector('#lf-equip-piscine-kw2').value).toBe('')
     expect(document.querySelector('#lf-equip-piscine-heures').value).toBe('')
     expect(document.querySelector('#lf-equip-ve-chargeur-kw').value).toBe('')
     expect(document.querySelector('#lf-equip-ve-creneau').value).toBe('')
-    expect(document.querySelector('#lf-equip-ve-sessions').value).toBe('')
     expect(document.querySelector('#lf-equip-clim-kw').value).toBe('')
-    expect(document.querySelector('#lf-equip-clim-creneau').value).toBe('')
     expect(document.querySelector('#lf-equip-chauffe-eau-kw').value).toBe('')
     expect(document.querySelector('#lf-equip-chauffe-eau-creneau').value).toBe('')
   })
 
-  it('SectionEquipements lot4 — champ de créneau/puissance/sessions appelle setField (round-trip Lead API)', () => {
+  it('SectionEquipements lot4 — champ de créneau/puissance appelle setField (round-trip Lead API)', () => {
     const setField = vi.fn()
     const state = initState({
       lead: { id: 1, equip_voiture_electrique: true }, mode: 'edit',
@@ -200,17 +194,6 @@ describe('LW11 — rendu des sections (port 1:1 des champs)', () => {
     expect(setField).toHaveBeenCalledWith('equip_ve_chargeur_kw', '7.4')
     fireEvent.change(document.querySelector('#lf-equip-ve-creneau'), { target: { value: 'nuit' } })
     expect(setField).toHaveBeenCalledWith('equip_ve_creneau', 'nuit')
-    fireEvent.change(document.querySelector('#lf-equip-ve-sessions'), { target: { value: '4' } })
-    expect(setField).toHaveBeenCalledWith('equip_ve_sessions_semaine', '4')
-  })
-
-  it('SectionEquipements lot4 — climatisation « été seulement » est un booléen explicite', () => {
-    const setField = vi.fn()
-    const state = initState({ lead: { id: 1, equip_clim: true }, mode: 'edit' })
-    render(<SectionEquipements state={state} {...base} setField={setField} />)
-    const toggle = screen.getByRole('checkbox', { name: /seulement l.été/i })
-    fireEvent.click(toggle)
-    expect(setField).toHaveBeenCalledWith('equip_clim_ete_seulement', true)
   })
 
   it('la section « Équipements » apparaît dans le registre SectionsPane', () => {
