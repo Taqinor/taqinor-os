@@ -87,6 +87,9 @@ TRACKED_FIELDS = {
     'equip_ve_creneau': 'Créneau de recharge du VE',
     'equip_clim_kw': 'Puissance clim déclarée (kW)',
     'equip_piscine_heures_jour': 'Piscine — heures de filtration/jour',
+    # L-BACK2 (24/08/2026) — créneaux clim/piscine.
+    'equip_clim_creneau': 'Créneau de fonctionnement de la clim',
+    'equip_piscine_creneau': 'Créneau de filtration de la piscine',
 }
 
 _CHOICE_FIELDS = {
@@ -101,6 +104,8 @@ _CHOICE_FIELDS = {
     'occupation_jour',
     # L-BACK — les deux créneaux sont aussi des choices.
     'equip_chauffe_eau_creneau', 'equip_ve_creneau',
+    # L-BACK2 — créneaux clim/piscine.
+    'equip_clim_creneau', 'equip_piscine_creneau',
 }
 
 _BOOL_LABELS = {True: 'Oui', False: 'Non'}

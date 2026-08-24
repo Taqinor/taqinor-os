@@ -9,6 +9,9 @@ const RACCORDEMENTS = { monophase: 'Monophasé', triphase: 'Triphasé', inconnu:
 const CRENEAU_CHAUFFE_EAU = { matin: 'Matin', soir: 'Soir', nuit: 'Nuit', journee: 'Journée' }
 // source-choix: crm.Lead.equip_ve_creneau
 const CRENEAU_VE = { nuit: 'Nuit', jour: 'Jour', soir: 'Soir' }
+// L-FRONT lot 5 (contrat L-BACK2, 24/08) — mêmes 4 créneaux pour clim/piscine.
+// source-choix: crm.Lead.equip_clim_creneau / crm.Lead.equip_piscine_creneau
+const CRENEAU_JOUR = { matin: 'Matin', apres_midi: 'Après-midi', soir: 'Soir', journee: 'Toute la journée' }
 
 // L4 (extension fondateur) — présence en journée, script d'appel. Mêmes
 // clés que crm.Lead.OccupationJour et courbes_journalieres._occupation.
@@ -185,6 +188,15 @@ export function SectionEquipements({ state, setField }) {
               onChange={(e) => setField('equip_piscine_heures_jour', e.target.value)}
             />
           </FormField>
+          <FormField label="Quand la pompe tourne-t-elle le plus ?" htmlFor="lf-equip-piscine-creneau">
+            <select
+              id="lf-equip-piscine-creneau" className="form-select"
+              value={v('equip_piscine_creneau')}
+              onChange={(e) => setField('equip_piscine_creneau', e.target.value)}
+            >
+              {enumOptions(CRENEAU_JOUR)}
+            </select>
+          </FormField>
         </div>
       )}
       <div className="form-row">
@@ -255,6 +267,15 @@ export function SectionEquipements({ state, setField }) {
               value={v('equip_clim_kw')}
               onChange={(e) => setField('equip_clim_kw', e.target.value)}
             />
+          </FormField>
+          <FormField label="Quand la clim tourne-t-elle le plus ?" htmlFor="lf-equip-clim-creneau">
+            <select
+              id="lf-equip-clim-creneau" className="form-select"
+              value={v('equip_clim_creneau')}
+              onChange={(e) => setField('equip_clim_creneau', e.target.value)}
+            >
+              {enumOptions(CRENEAU_JOUR)}
+            </select>
           </FormField>
         </div>
       )}

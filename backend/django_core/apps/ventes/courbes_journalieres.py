@@ -328,6 +328,29 @@ VE_CRENEAUX = {
     'soir': tuple(range(18, 21)),         # 18h-21h
 }
 
+# ── L-BACK2 (24/08/2026) — créneaux clim/piscine. Comme CHAUFFE_EAU_CRENEAUX/
+# VE_CRENEAUX ci-dessus, ce ne sont PAS des puissances/conversions mesurées :
+# des découpages horaires conventionnels donnant un sens concret aux mots du
+# script d'appel. Contrairement à ces deux paires, un créneau clim/piscine
+# ENRICHIT une couche déjà active (via equip_clim_kw/clim_pieces ou
+# equip_piscine_pompe_kw) — il ne compose jamais de couche à lui seul.
+CLIM_CRENEAUX = {
+    'matin': tuple(range(8, 13)),         # 8h-13h (borne haute exclue), 5 h
+    'apres_midi': tuple(range(13, 21)),   # 13h-21h — identique au défaut
+    'soir': tuple(range(18, 23)),         # 18h-23h (borne haute exclue), 5 h
+    'journee': tuple(range(8, 23)),       # 8h-23h (borne haute exclue), 15 h
+}
+
+# Heures de DÉPART par créneau piscine — la LONGUEUR de la fenêtre reste
+# pilotée par equip_piscine_heures_jour (ou le défaut 8h, PISCINE_HEURES) ;
+# le créneau ne déplace que le départ, jamais la durée.
+PISCINE_CRENEAUX_DEPART = {
+    'matin': 6,
+    'apres_midi': 12,
+    'soir': 16,
+    'journee': PISCINE_HEURES[0],  # 10h — identique au défaut
+}
+
 
 def _nombre_positif(valeur):
     try:
@@ -361,13 +384,23 @@ def _equipements(lead_equip):
         kw = _nombre_positif(lead_equip.get('piscine_pompe_kw'))
         if kw is not None:
             # L-BACK — heures/jour réelles, quand connues, remplacent la
-            # durée par défaut du mémo (8h) ; même heure de départ (10h),
-            # seule la LONGUEUR de la fenêtre change.
+            # durée par défaut du mémo (8h). L-BACK2 — le créneau réel,
+            # quand connu, remplace l'heure de DÉPART par défaut (10h) ; les
+            # deux sont indépendants et se composent librement.
             heures_jour = _nombre_positif(lead_equip.get('piscine_heures_jour'))
-            if heures_jour is not None:
-                n = max(1, min(24, round(heures_jour)))
-                heures = [(PISCINE_HEURES[0] + i) % 24 for i in range(n)]
-                source = 'lead:equip_piscine_heures_jour'
+            creneau_piscine = lead_equip.get('piscine_creneau')
+            depart = PISCINE_CRENEAUX_DEPART.get(creneau_piscine)
+            if heures_jour is not None or depart is not None:
+                n = (max(1, min(24, round(heures_jour)))
+                     if heures_jour is not None else len(PISCINE_HEURES))
+                start = depart if depart is not None else PISCINE_HEURES[0]
+                heures = [(start + i) % 24 for i in range(n)]
+                parts = []
+                if heures_jour is not None:
+                    parts.append('equip_piscine_heures_jour')
+                if depart is not None:
+                    parts.append('equip_piscine_creneau')
+                source = 'lead:' + '+'.join(parts)
             else:
                 heures = list(PISCINE_HEURES)
                 source = 'memo_2026-08-21_etage2:piscine_bloc_10_18h'
@@ -392,9 +425,18 @@ def _equipements(lead_equip):
         else:
             kw = None
         if kw is not None:
+            # L-BACK2 — créneau réel, quand connu, remplace la fenêtre par
+            # défaut (13h-21h) SANS toucher la puissance retenue ci-dessus.
+            creneau_clim = lead_equip.get('clim_creneau')
+            fenetre_clim = CLIM_CRENEAUX.get(creneau_clim)
+            if fenetre_clim:
+                heures = list(fenetre_clim)
+                source += '+lead:equip_clim_creneau'
+            else:
+                heures = list(CLIM_HEURES)
             out['clim'] = {
                 'kw': round(kw, 2),
-                'heures': list(CLIM_HEURES),
+                'heures': heures,
                 'saisons': list(CLIM_SAISONS),
                 'mode': 'redistribution',
                 'source': source,
