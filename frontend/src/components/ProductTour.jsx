@@ -69,13 +69,24 @@ export default function ProductTour() {
     // (défaut serveur True) — jamais un flash de désactivation involontaire.
     const toursActifs = user?.company_tours_actifs !== false
     const eligible = toursActifs && Boolean(tour) && !tour.vu && isNewUser(user)
-    // setState différé au prochain microtask (jamais synchrone dans l'effet) —
-    // évite react-hooks/set-state-in-effect sans changer le comportement visible.
-    queueMicrotask(() => {
-      setActiveKey(eligible ? tour.tour_key : null)
-      setStep(0)
-      setOpen(eligible)
-    })
+    // L-FRONT (24/08) — setState SYNCHRONE dans l'effet, comme partout ailleurs
+    // dans le dépôt (voir Avatar.jsx/FollowToggle.jsx/WelcomeMoment.jsx…) :
+    // un `queueMicrotask` déférait ces 3 mises à jour hors du flush react-dom
+    // synchrone que `act()`/`fireEvent`/`render` couvrent déjà pour un effet
+    // « normal », ajoutant un aller-retour microtask INUTILE entre le rendu et
+    // l'ouverture réelle du tour — sans changer le comportement visible (même
+    // constat que le commentaire retiré), mais avec un coût réel : sous charge
+    // CI, cet aller-retour supplémentaire, empilé sur la promesse déjà async de
+    // `fetchTours()`, pouvait faire dépasser le budget par défaut de
+    // `findByText`/`waitFor` (ProductTour.test.jsx, échecs mouvants constatés
+    // sur 2 PR). Aucun `queueMicrotask` ⇒ un seul aller-retour asynchrone réel
+    // (la promesse réseau), déterministe sous test.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- dérive l'ouverture du tour depuis tour/pathname, jamais lu dans le MÊME rendu
+    setActiveKey(eligible ? tour.tour_key : null)
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setStep(0)
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setOpen(eligible)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tour, pathname])
 
