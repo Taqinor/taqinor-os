@@ -77,6 +77,7 @@ from apps.parametres.pvgis_profils import (
     JOURS_PAR_MOIS,
     MOIS_PAR_SAISON,
     SAISONS,
+    moyenne_journaliere_saison,
     productible_mensuel,
     profil_production_journalier,
     vers_heure_locale,
@@ -1134,6 +1135,88 @@ def jours_types_publics(*, kwc, conso_kwh_mensuelles, ville=None, lat=None,
     except Exception:  # noqa: BLE001 — un jeu jour-type ne casse jamais la page
         logger.warning('jours_types_publics indisponible', exc_info=True)
         return None
+
+
+def production_annuelle_pour_kwc(kwc, *, ville=None, lat=None, lon=None):
+    """PACT10 (« deux optimiseurs ») — production ANNUELLE (kWh) pour un
+    ``kwc`` DONNÉ, lecture pure, aucune persistance.
+
+    Réutilise EXACTEMENT la même dérivation que :func:`jours_types_annee`
+    (productible mensuel PVGIS × kWc × ``PRODUCTION_DERATE`` — le MÊME derate
+    que ``pricing``/``builder``, jamais un second facteur), sommée sur les
+    douze mois — jamais un second calcul de productible. Sert
+    ``dimensionnement_options.<sans|avec>.production_annuelle_kwh`` : chaque
+    option d'un devis résidentiel peut porter son PROPRE kWc (nb panneaux
+    différent entre « Sans » et « Avec batterie »), donc sa propre annuelle.
+
+    ``None`` (jamais un chiffre inventé) quand ``kwc`` est absent/nul, ou que
+    le productible PVGIS n'est pas résolu (ni coordonnées live, ni ville
+    reconnue) — même discipline Z2 que le reste du moteur horaire."""
+    try:
+        kwc_f = _num(kwc, 0.0)
+        if kwc_f <= 0:
+            return None
+        mensuel = productible_mensuel(ville=ville, lat=lat, lon=lon)
+        if not mensuel:
+            return None
+        valeurs, _source = mensuel
+        total = sum(_num(v) for v in valeurs) * kwc_f * PRODUCTION_DERATE
+        return round(total) if total > 0 else None
+    except Exception:  # noqa: BLE001 — un bloc d'affichage ne leve jamais
+        logger.warning('production_annuelle_pour_kwc indisponible', exc_info=True)
+        return None
+
+
+def production_journaliere_par_saison(kwc, *, ville=None, lat=None, lon=None):
+    """PACT10 (« deux optimiseurs ») — bloc production PAR SAISON pour un
+    ``kwc`` DONNÉ, MÊME FORME que ``courbes_journalieres._production`` (celle
+    déjà servie sous ``payload.courbes_journalieres.production``) : chaque
+    saison porte ``forme`` (24 parts, heure locale, somme 1,0), ``kwh_jour``,
+    ``pic_kw`` (puissance, jamais des kWh) et ses deux ``source*``.
+
+    Réutilise les MÊMES primitives PVGIS que ``courbes_journalieres`` (aucune
+    seconde dérivation de la forme horaire ou du productible) : sert
+    ``production_par_option`` quand un devis résidentiel porte deux
+    dimensionnements DIVERGENTS (kWc différent par option) — la page ne peut
+    alors plus lire une seule courbe de production pour les deux cartes
+    d'option. Lecture pure, aucune persistance.
+
+    ``{}`` (jamais un chiffre inventé) quand ``kwc`` est absent/nul ou que le
+    productible/la forme PVGIS ne sont pas résolus."""
+    try:
+        kwc_f = _num(kwc, 0.0)
+        if kwc_f <= 0:
+            return {}
+        mensuel = productible_mensuel(ville=ville, lat=lat, lon=lon)
+        if not mensuel:
+            return {}
+        valeurs, source_mensuel = mensuel
+        out = {}
+        for saison in SAISONS:
+            resolu = profil_production_journalier(
+                saison=saison, lat=lat, lon=lon, ville=ville)
+            if not resolu:
+                continue
+            forme_utc, source_forme = resolu
+            forme = vers_heure_locale(forme_utc)
+            if not forme:
+                continue
+            kwh_kwc_jour = moyenne_journaliere_saison(valeurs, saison)
+            if kwh_kwc_jour is None:
+                continue
+            kwh_jour = kwh_kwc_jour * kwc_f
+            out[saison] = {
+                'forme': forme,
+                'kwh_jour': round(kwh_jour, 1),
+                'pic_kw': round(kwh_jour * max(forme), 2),
+                'source': source_forme,
+                'source_productible': source_mensuel,
+            }
+        return out
+    except Exception:  # noqa: BLE001 — un bloc d'affichage ne leve jamais
+        logger.warning(
+            'production_journaliere_par_saison indisponible', exc_info=True)
+        return {}
 
 
 def _bloc_vide():
