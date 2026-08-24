@@ -34,6 +34,7 @@ from .quote_engine import clean_pdf_options, generate_premium_devis_pdf
 # manuelle de la table : une seconde vérité qu'aucun test ne surveillait.
 from .quote_engine.constants import MOROCCO_SOLAR_MONTHLY_WEIGHTS  # noqa: F401
 from .utils.anticopie import (
+    LIBELLE_KIT as _LIBELLE_KIT,
     agreger_designations_kit as _agreger_designations_kit,
     agreger_lignes_kit as _agreger_lignes_kit,
 )
@@ -244,6 +245,40 @@ def _niveau_lien(link):
     ``getattr`` défensif au cas où un test construit un lien à la main."""
     return (getattr(link, 'niveau', ShareLink.NIVEAU_CONFIANCE)
             or ShareLink.NIVEAU_CONFIANCE)
+
+
+def _niveau_masque(payload):
+    """L-NIV-VU (24/08/2026) — CE QUE LE NIVEAU « STANDARD » MASQUE VRAIMENT
+    SUR CETTE PAGE-CI, constaté sur la charge utile DÉJÀ dégradée.
+
+    Constat fondateur du 24/08 : « je bascule standard ↔ confiance et je ne
+    vois AUCUNE différence ». La chaîne fonctionne, mais chaque dégradation est
+    CONDITIONNELLE au contenu du devis : l'agrégation « kit » ne se déclenche
+    qu'à partir de DEUX lignes fixation/câblage/protection
+    (``anticopie.agreger_lignes_kit``), et le schéma unifilaire comme le détail
+    électrique n'existent que si la conception électrique (PV41) a été faite.
+    Sur un devis qui n'a ni l'un ni l'autre, les deux niveaux servent
+    RIGOUREUSEMENT la même page — et c'est normal.
+
+    Cette liste rend ce fait LISIBLE au lieu de le laisser deviner : elle est
+    construite à partir de ce que la charge utile porte réellement, jamais
+    d'une promesse générique. Vide ⇒ la page n'annonce rien (dire « version
+    simplifiée » quand rien n'est simplifié serait faux — règle fondateur
+    « zéro chiffre/fait inventé »). Aucune dégradation nouvelle n'est
+    introduite ici : la fonction ne fait que CONSTATER, en lecture pure.
+    """
+    quote = payload.get('quote') or {}
+    items = quote.get('sans_items') or quote.get('avec_items') or []
+    masque = []
+    if any(isinstance(it, dict) and it.get('designation') == _LIBELLE_KIT
+           for it in items):
+        masque.append('nomenclature_kit')
+    # ``conception_electrique`` non nul au niveau standard ⇒ les protections
+    # ont PERDU leur calibre et le bloc ``cables`` a été omis en bloc
+    # (``_PUBLIC_PROTECTION_STANDARD``) : la dégradation a bien eu lieu.
+    if payload.get('conception_electrique'):
+        masque.append('dimensionnement_electrique')
+    return masque
 
 
 def _section_servie(link, cle):
@@ -2058,6 +2093,11 @@ def proposal_data(request, token):
         _jours = _jours_types_publique(devis) if _jour_type_servi else None
         if _jours is not None:
             payload['jours_types'] = _jours
+        # L-NIV-VU (24/08/2026) — la page peut enfin DIRE au client qu'elle est
+        # simplifiée, mais SEULEMENT quand c'est vrai sur SON devis (liste
+        # vide ⇒ rien d'affiché). Calculé en dernier : la charge utile est
+        # complète, donc constatée telle qu'elle part réellement.
+        payload['niveau_masque'] = _niveau_masque(payload) if est_standard else []
     except Exception:  # noqa: BLE001
         # 404 volontairement muet cote client (jamais de detail interne sur un
         # lien public) — mais TRACE cote serveur : un garde-fou moteur qui

@@ -81,6 +81,7 @@ import {
   buildViewerModel,
   roofLayoutOutlineLatLng,
   hasSldSvg,
+  noteVersionSimplifiee,
   sldSvgFilename,
   parseConceptionElectrique,
   conceptionPourLigne,
@@ -1033,6 +1034,12 @@ const showSld = ok && data ? hasSldSvg(data) : false;
 const sldSvg = showSld ? (data!.sld_svg ?? '') : '';
 const sldFilename = showSld ? sldSvgFilename(reference) : '';
 
+// ── L-NIV-VU — « Version simplifiée », affichée SEULEMENT si c'est vrai.
+// `noteVersionSimplifiee` rend `null` au niveau « confiance », sur un backend
+// antérieur, ET au niveau « standard » quand aucune dégradation ne s'est
+// déclenchée sur ce devis-là : la page n'annonce alors rien du tout.
+const noteSimplifiee = ok && data ? noteVersionSimplifiee(data) : null;
+
 // ── W342 — « L'installation la plus proche de chez vous » ────────────────────
 // Priorité au VRAI GPS du toit (premier sommet du premier pan de
 // roofLayout — [lng, lat]) quand le backend l'expose (QJ26) ; à défaut,
@@ -1847,6 +1854,19 @@ const signConfig = ok
                 data-ar="معدات جديدة، مع ضمانات الصانع. تفاصيل الأسعار مذكورة أسفل، في «ثمنكم».">
                 Matériel neuf, garanties constructeur incluses. Le détail des prix figure plus bas, dans « Votre prix ».
               </p>
+              {/* L-NIV-VU (24/08/2026) — ICI, et seulement ici, parce que c'est
+                  ICI que la simplification se voit : la ligne « kit » regroupée
+                  et le volet « Dans votre installation » sans calibres. Rendu
+                  UNIQUEMENT quand le serveur a constaté une dégradation réelle
+                  sur CE devis (`niveau_masque` non vide) — au niveau
+                  « confiance », ou au niveau « standard » sans rien à masquer,
+                  cette phrase n'existe pas. Aucun prix, aucune marque n'est
+                  touché : les marques restent affichées AUX DEUX NIVEAUX. */}
+              {noteSimplifiee && (
+                <p class="mt-2 text-xs text-lune-faint" data-niveau-simplifie>
+                  {noteSimplifiee}
+                </p>
+              )}
             </div>
           )}
         </section>

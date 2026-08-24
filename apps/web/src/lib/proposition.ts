@@ -234,6 +234,24 @@ export interface ProposalResponse {
    */
   conception_electrique?: unknown;
   /**
+   * L-NIV-VU (24/08/2026) — CE QUE LE NIVEAU « standard » MASQUE RÉELLEMENT
+   * SUR CETTE PAGE-CI, constaté serveur sur la charge utile déjà dégradée
+   * (`public_views._niveau_masque`) : `'nomenclature_kit'` (les lignes
+   * fixation/câblage/protection ont fusionné en une ligne « kit ») et/ou
+   * `'dimensionnement_electrique'` (calibres, sections et longueurs de câble
+   * retirés du schéma et du détail électrique).
+   *
+   * Liste VIDE ou absente ⇒ la page n'annonce RIEN : au niveau « confiance »,
+   * bien sûr, mais AUSSI au niveau « standard » sur un devis où il n'y avait
+   * rien à masquer (moins de deux lignes kit, pas de conception électrique).
+   * Annoncer « version simplifiée » là serait un fait inventé — règle
+   * fondateur « zéro chiffre/fait inventé ».
+   *
+   * Les marques et modèles, eux, restent TOUJOURS affichés aux deux niveaux
+   * (décision fondateur 24/08/2026) : ils ne figurent jamais dans cette liste.
+   */
+  niveau_masque?: string[] | null;
+  /**
    * WJ32 — bloc de financement backend (QJ12, `compute_financing_block`),
    * DIFFÉRENT du calcul générique `financingComparison` ci-dessus : porte un
    * programme réel (Tatwir Croissance Verte / ISTIDAMA…) et une comparaison
@@ -943,6 +961,47 @@ export function monthlySeries(arr: number[] | undefined | null): number[] | null
  */
 export function hasProductionSeries(p: ProposalResponse): boolean {
   return monthlySeries(p.monthly_production) !== null;
+}
+
+// ── L-NIV-VU · « Version simplifiée » — SEULEMENT quand c'est vrai ─────────
+//
+// Constat fondateur du 24/08/2026 : basculer « Client standard » ↔ « Client de
+// confiance » ne se VOYAIT pas sur la page client. La chaîne fonctionnait — ce
+// qui manquait, c'est que la page DISE ce qui a été simplifié, et seulement
+// quand quelque chose l'a réellement été (`niveau_masque`, constaté serveur).
+//
+// Aucune dégradation nouvelle n'est introduite ici : ce bloc n'AJOUTE qu'une
+// phrase, et les marques/modèles comme tous les montants restent identiques
+// aux deux niveaux (décision fondateur, armée par des tests Django).
+
+/** Libellés client des dégradations réellement appliquées. */
+const LIBELLES_NIVEAU_MASQUE: Record<string, string> = {
+  nomenclature_kit:
+    'le détail des fournitures de pose (fixations, câblage, protections) est'
+    + ' regroupé en une seule ligne',
+  dimensionnement_electrique:
+    'les calibres, sections de câble et longueurs du dimensionnement'
+    + ' électrique ne sont pas détaillés',
+};
+
+/**
+ * Phrase à afficher au client, ou `null` quand il n'y a RIEN à annoncer.
+ *
+ * `null` dans les trois cas honnêtes : niveau « confiance », clé absente
+ * (backend antérieur à L-NIV-VU), ou niveau « standard » sur un devis où
+ * aucune dégradation ne s'est déclenchée. Une clé inconnue est IGNORÉE plutôt
+ * que rendue telle quelle — jamais de jargon serveur sur une page client.
+ */
+export function noteVersionSimplifiee(
+  p: Pick<ProposalResponse, 'niveau_masque'>,
+): string | null {
+  const cles = Array.isArray(p.niveau_masque) ? p.niveau_masque : [];
+  const raisons = cles
+    .map((c) => LIBELLES_NIVEAU_MASQUE[c])
+    .filter((libelle): libelle is string => typeof libelle === 'string');
+  if (raisons.length === 0) return null;
+  return `Version simplifiée : ${raisons.join(' ; ')}.`
+    + ' Demandez la version détaillée à votre conseiller.';
 }
 
 // ── WJ128 · Schéma électrique (SLD) — affichage + téléchargement SVG ────────

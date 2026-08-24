@@ -521,10 +521,16 @@ export default function DevisTab({
                       Exiger un code de lecture (OTP)
                     </label>
                   </div>
+                  {/* L-NIV-VU (24/08/2026) — le texte DÉCRIT l'inventaire RÉEL
+                      des dégradations (public_views : agrégation kit, schéma
+                      sans nomenclature, calibres/câbles retirés, filigrane PDF),
+                      et prévient que sur un devis sans lignes de pose ni étude
+                      électrique il n'y a RIEN à masquer : c'est exactement le cas
+                      où le commercial ne voyait « aucune différence ». */}
                   <p className="gen-hint lw-context-devis-niveau-hint">
                     {getNiveau(d) === 'confiance'
-                      ? 'Confiance : dossier technique complet.'
-                      : 'Standard : masque le dimensionnement détaillé — marques et prix complets visibles.'}
+                      ? 'Confiance : dossier technique complet — nomenclature détaillée, calibres et sections de câble, schéma avec sa nomenclature, PDF sans filigrane.'
+                      : 'Standard : les fournitures de pose sont regroupées en une ligne « kit », les calibres/sections disparaissent du schéma et du détail électrique, et le PDF porte un filigrane au nom du prospect. Marques, modèles et prix restent entièrement visibles. Sur un devis sans lignes de pose ni étude électrique, il n’y a rien à masquer : les deux niveaux rendent alors la même page.'}
                   </p>
                   {/* L-SECT — les sections servies. Toutes cochées par défaut ;
                       décocher RETIRE la section de la page client (et, pour le
