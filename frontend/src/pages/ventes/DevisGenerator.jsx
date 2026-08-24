@@ -1099,17 +1099,21 @@ export default function DevisGenerator({
     if (!lead) return
     // Pré-réglage du mode depuis le lead UNIQUEMENT si l'utilisateur n'a pas
     // déjà choisi un mode lui-même — son choix ne se réinitialise JAMAIS.
-    if (!modeTouched.current
-        && lead.type_installation && LEAD_TYPE_TO_MODE[lead.type_installation]) {
-      onModeChange(LEAD_TYPE_TO_MODE[lead.type_installation])
-    }
+    const modeLead = !modeTouched.current && lead.type_installation
+      ? LEAD_TYPE_TO_MODE[lead.type_installation] : null
+    if (modeLead) onModeChange(modeLead)
+    // Mode RÉELLEMENT visé par ce pré-remplissage : `modeInstallation` est
+    // encore la valeur du rendu courant après `onModeChange` (setState ne
+    // rafraîchit pas la constante fermée).
+    const modeCible = modeLead || modeInstallation
     // ORDRE FONDATEUR (24/08) — le scénario du lead est un choix DÉJÀ FAIT
     // (tunnel : batterie_souhaitee) : il l'emporte sur le défaut du mode, dans
     // les deux sens (« sans » restreint, « les deux » rouvre un mode qui
     // partait mono). Rien de renseigné → le défaut du mode reste, exactement
     // comme le devis auto (autoQuote.js, QX19). Posé APRÈS `onModeChange`
-    // ci-dessus, qui repose justement ce défaut.
-    if (!scenarioTouched.current) {
+    // ci-dessus, qui repose justement ce défaut. JAMAIS en pompage : un devis
+    // agricole ne porte ni batterie ni onduleur, quoi qu'ait coché le lead.
+    if (!scenarioTouched.current && modeCible !== 'agricole') {
       const scenarioLead = BATTERIE_LEAD_VERS_SCENARIO[String(lead.batterie_souhaitee ?? '')]
       if (scenarioLead) setScenario(scenarioLead)
     }
