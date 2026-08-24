@@ -1,6 +1,6 @@
 {
   "endpoint": "GET /api/django/ventes/devis/<int:pk>/conception-electrique/",
-  "pourquoi": "L'étude électrique agrégée (chaînage MPPT, conformité tension chaîne/onduleur, protections DC/AC, sections de câble et chutes de tension, nomenclature) que l'écran de conception électrique lit EN UN SEUL appel : GET pour l'afficher, POST (même chemin, mêmes clés en sortie) pour le recalculer après une modification de disposition. PACT10 : ce contrat part SEUL, avant les deux lanes front/back — sans lui chacune invente sa propre forme, exactement l'incident du 03/08/2026. AUCUN champ de prix ici, JAMAIS : `Produit.prix_achat` est un indicateur de marge réservé au générateur (règle du dépôt) et ne doit jamais apparaître dans un contrat consommé par un écran client. Source de vérité prévue : apps/ventes/selectors.py::conception_electrique (à construire).",
+  "pourquoi": "L'étude électrique agrégée (chaînage MPPT, conformité tension chaîne/onduleur, protections DC/AC, sections de câble et chutes de tension, nomenclature) que l'écran de conception électrique lit EN UN SEUL appel : GET pour l'afficher, POST (même chemin, mêmes clés en sortie) pour le recalculer après une modification de disposition. PACT10 : ce contrat part SEUL, avant les deux lanes front/back — sans lui chacune invente sa propre forme, exactement l'incident du 03/08/2026. AUCUN champ de prix ici, JAMAIS : `Produit.prix_achat` est un indicateur de marge réservé au générateur (règle du dépôt) et ne doit jamais apparaître dans un contrat consommé par un écran client. Source de vérité prévue : apps/ventes/selectors.py::conception_electrique (à construire). L-1V (24/08/2026) — L'ARTEFACT SE SUFFIT À LUI-MÊME : `materiel` (module/onduleur/stockage/nombre de modules), `cote` sur chaque protection, `repere`+`nb_conducteurs` sur chaque câble et l'estampille `version_moteur`/`schema_version` sont là pour que le SCHÉMA UNIFILAIRE se redessine depuis CE contrat au lieu de rappeler le moteur sur les lignes courantes du devis (deux vérités électriques sur la même page). `cote` est décidé par le moteur (`core.electrique.protections`), JAMAIS déduit d'un libellé en aval.",
   "exemple": {
     "chaines": [
       {
@@ -39,19 +39,28 @@
     "ratio_dc_ac": 1.18,
     "ratio_ac_dc": 0.847,
     "protections": [
-      { "repere": "Q1", "designation": "Disjoncteur DC chaîne 1", "calibre": "16 A", "quantite": 2 },
-      { "repere": "F1", "designation": "Parafoudre DC type 2", "calibre": "1000 V", "quantite": 1 },
-      { "repere": "Q10", "designation": "Disjoncteur AC général", "calibre": "32 A", "quantite": 1 }
+      { "repere": "QDC1", "designation": "Interrupteur-sectionneur DC en amont de l'onduleur", "calibre": "1000 V DC, 37 A", "quantite": 1, "cote": "dc" },
+      { "repere": "PDC1", "designation": "Parafoudre DC Type 2 (coffret de chaînes)", "calibre": "1000 V DC, In 20 kA, Up ≤ 4 kV", "quantite": 1, "cote": "dc" },
+      { "repere": "QAC1", "designation": "Disjoncteur AC bipolaire courbe C", "calibre": "32 A / 230 V", "quantite": 1, "cote": "ac" },
+      { "repere": "ARM1", "designation": "Coffret de protection AC/DC (tableau)", "calibre": "IP65, 2 organe(s) DC + 1 organe(s) AC", "quantite": 1, "cote": "commun" }
     ],
     "cables": [
-      { "liaison": "Chaîne 1 → coffret DC", "longueur_m": 18.5, "section_mm2": 6, "chute_pct": 0.62 },
-      { "liaison": "Onduleur → tableau AC", "longueur_m": 12.0, "section_mm2": 10, "chute_pct": 0.41 }
+      { "repere": "W1", "liaison": "Chaîne 1 → coffret DC", "longueur_m": 18.5, "section_mm2": 6, "chute_pct": 0.62, "nb_conducteurs": 4 },
+      { "repere": "W2", "liaison": "Onduleur → tableau AC", "longueur_m": 12.0, "section_mm2": 10, "chute_pct": 0.41, "nb_conducteurs": 3 }
     ],
     "bom": [
       { "designation": "Câble solaire H1Z2Z2-K 6 mm²", "quantite": 120, "spec": "1500 V DC, double isolation" },
       { "designation": "Disjoncteur DC 16 A", "quantite": 2, "spec": "gPV, 1000 V DC" }
     ],
     "note": ["Étude réalisée à -10°C / +70°C (températures extrêmes du site)."],
-    "parametres": { "dc_m": 18.5, "ac_m": 12.0, "phases": 3, "regime": "TT" }
+    "parametres": { "dc_m": 18.5, "ac_m": 12.0, "phases": 3, "regime": "TT" },
+    "materiel": {
+      "nb_modules": 46,
+      "module": { "designation": "Canadian Solar 710 Wc", "pmax_wc": 710.0 },
+      "onduleur": { "designation": "Deye SUN-10K-SG04LP3", "ac_kw": 10.0, "n_mppt": 2, "rendement_euro_pct": null },
+      "batterie": { "presente": true, "designation": "Dyness 5,1 kWh", "kwh": 5.1, "v_nominal": 51.2 }
+    },
+    "version_moteur": "3.1.0",
+    "schema_version": 2
   }
 }

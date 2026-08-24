@@ -42,7 +42,8 @@ import math
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
-from core.electrique.types import Protection, REGIME_TT, fr, fr_a
+from core.electrique.types import (
+    COTE_AC, COTE_COMMUN, COTE_DC, Protection, REGIME_TT, fr, fr_a)
 
 __all__ = [
     "CALIBRES_FUSIBLE_GPV_A", "CALIBRES_DISJONCTEUR_A",
@@ -191,6 +192,7 @@ def concevoir_protections(entree, resultat_chaines=None, evaluation=None):
         if calibre_fusible is not None:
             protections.append(Protection(
                 repere="F1",
+                cote=COTE_DC,
                 designation="Fusible gPV de chaîne, sur les deux pôles (+ et −)",
                 calibre="%s A / 1000 V DC" % fr(calibre_fusible, 0),
                 quantite=2 * nb_chaines,
@@ -218,6 +220,7 @@ def concevoir_protections(entree, resultat_chaines=None, evaluation=None):
                        % (fr(dc_m, 1), fr(LONGUEUR_DC_SANS_PARAFOUDRE_M, 0)))
         protections.append(Protection(
             repere="PDC1",
+            cote=COTE_DC,
             designation="Parafoudre DC Type 2 (coffret de chaînes)",
             calibre="1000 V DC, In 20 kA, Up ≤ 4 kV",
             quantite=max(1, nb_onduleurs),
@@ -233,6 +236,7 @@ def concevoir_protections(entree, resultat_chaines=None, evaluation=None):
     if nb_chaines:
         protections.append(Protection(
             repere="QDC1",
+            cote=COTE_DC,
             designation="Interrupteur-sectionneur DC en amont de l'onduleur",
             calibre="1000 V DC, %s"
                     % fr_a(_courant_dc_total(resultat_chaines), 0),
@@ -249,6 +253,7 @@ def concevoir_protections(entree, resultat_chaines=None, evaluation=None):
         triphase = int(entree.phases or 1) == 3
         protections.append(Protection(
             repere="QAC1",
+            cote=COTE_AC,
             designation="Disjoncteur AC %s courbe C"
                         % ("tétrapolaire" if triphase else "bipolaire"),
             calibre="%s A / %s V" % (fr(calibre_ac, 0),
@@ -270,6 +275,7 @@ def concevoir_protections(entree, resultat_chaines=None, evaluation=None):
     if ib_ac > 0:
         protections.append(Protection(
             repere="PAC1",
+            cote=COTE_AC,
             designation="Parafoudre AC Type 2 %s"
                         % ("triphasé" if int(entree.phases or 1) == 3
                            else "monophasé"),
@@ -286,6 +292,7 @@ def concevoir_protections(entree, resultat_chaines=None, evaluation=None):
         if regime == REGIME_TT:
             protections.append(Protection(
                 repere="DDR1",
+                cote=COTE_AC,
                 designation="Interrupteur différentiel type A",
                 calibre="%d mA, %s A"
                         % (SENSIBILITE_DDR_MA,
@@ -321,6 +328,10 @@ def concevoir_protections(entree, resultat_chaines=None, evaluation=None):
             # chaîne par tout contrôle textuel (bordereau, note) — piège réel,
             # débusqué par ``test_electrique_nomenclature.py``.
             repere="ARM1",
+            # UNE seule enveloppe pour les deux côtés : la ranger côté DC la
+            # ferait disparaître d'un dossier qui n'a qu'une ligne « protection
+            # AC », et réciproquement.
+            cote=COTE_COMMUN,
             designation="Coffret de protection AC/DC (tableau)",
             calibre="IP65, %d organe(s) DC + %d organe(s) AC"
                     % (organes_dc, organes_ac),
@@ -341,6 +352,7 @@ def concevoir_protections(entree, resultat_chaines=None, evaluation=None):
         if entree.inclure_prise_terre:
             protections.append(Protection(
                 repere="T1",
+                cote=COTE_COMMUN,
                 designation=("Prise de terre : piquet + barrette de coupure "
                              "(si absente chez le client — service en sus)"),
                 calibre="≤ 100 Ω",
@@ -363,6 +375,7 @@ def concevoir_protections(entree, resultat_chaines=None, evaluation=None):
                 "coupure en service en sus si absente")
         protections.append(Protection(
             repere="T2",
+            cote=COTE_COMMUN,
             designation=("Liaison équipotentielle des masses "
                          "(structure, cadres modules, coffrets)"),
             calibre="6 mm² Cu minimum",
