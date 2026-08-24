@@ -626,8 +626,17 @@ class LeadSerializer(serializers.ModelSerializer):
         # car son état `linkMeta` ne se remplissait qu'à partir de la réponse
         # d'un POST share-link explicite. Lecture cross-app via
         # `apps.ventes.selectors` (jamais `apps.ventes.models`).
-        from apps.ventes.selectors import share_link_niveau_map
-        niveau_map = share_link_niveau_map([d.id for d in rows])
+        # YOPSB13 — MÊME garde N+1 que ``chantier_map`` : sur une LISTE,
+        # ``LeadViewSet.list()`` précharge les ShareLink de TOUS les devis de
+        # la page en UNE requête (``share_link_map`` dans le contexte). Sans
+        # ce préchargement (retrieve, usage direct du serializer), on retombe
+        # sur l'appel pour ce lead seul — comportement identique.
+        share_link_map = self.context.get('share_link_map')
+        if share_link_map is not None:
+            niveau_map = share_link_map
+        else:
+            from apps.ventes.selectors import share_link_niveau_map
+            niveau_map = share_link_niveau_map([d.id for d in rows])
         return [
             {
                 'id': d.id,

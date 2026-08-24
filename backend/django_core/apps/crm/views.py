@@ -587,6 +587,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             'next_activity_map': self._next_activity_map(objects),
             'chantier_map': self._chantier_map(objects),
             'stage_since_map': self._stage_since_map(objects),
+            'share_link_map': self._share_link_map(objects),
         }
         if page is not None:
             serializer = self.get_serializer(
@@ -649,6 +650,20 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         from apps.ventes.models import Devis
         rows = Devis.objects.filter(id__in=devis_ids)
         return installation_summaries_for_devis(rows)
+
+    @staticmethod
+    def _share_link_map(leads):
+        """{devis_id: {niveau, otp_lecture, sections}} pour TOUS les devis de
+        TOUS les leads du lot, en UNE requête (au lieu d'une par lead via
+        ``get_devis``). Sans ce préchargement, L-NIV-UI ré-interrogeait
+        ``ShareLink`` pour CHAQUE ligne de la liste (N+1 réel : le budget de
+        requêtes passait de 17 à 22 entre 5 et 10 leads). Lecture cross-app
+        par ``apps.ventes.selectors`` uniquement."""
+        from apps.ventes.selectors import share_link_niveau_map
+        devis_ids = [d.id for lead in leads for d in lead.devis.all()]
+        if not devis_ids:
+            return {}
+        return share_link_niveau_map(devis_ids)
 
     @staticmethod
     def _stage_since_map(leads):
