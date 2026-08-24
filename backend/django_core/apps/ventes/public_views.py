@@ -1673,6 +1673,136 @@ def _jours_types_publique(devis):
         return None
 
 
+def _localisation_pour_moteur_horaire(devis, data):
+    """PACT10 (« deux optimiseurs ») — ``(ville, lat, lon)`` best-effort pour
+    le moteur horaire, MÊME LECTURE que ``courbes_journalieres._production``
+    (``data['client_city']`` en priorité, sinon la ville du chantier via le
+    sélecteur CRM, jamais ses modèles). Ne lève jamais : ``(None, None,
+    None)`` quand la localisation est indisponible — l'appelant omet alors
+    ce que ça dérive (Q6), il n'approxime pas."""
+    try:
+        _kwc, _conso, ville_lead, lat, lon, _occ, _equip = (
+            _profil_horaire_pour_devis(devis))
+    except Exception:  # noqa: BLE001 — un lead absent/illisible n'arrête rien
+        ville_lead, lat, lon = None, None, None
+    ville = data.get('client_city') or ville_lead
+    return ville, lat, lon
+
+
+def _dimensionnement_option_depuis_items(items):
+    """PACT10 (« deux optimiseurs ») — nb panneaux / kWc / batteries D'UNE
+    option, dérivés des lignes RÉELLES de cette option (``sans_items``/
+    ``avec_items`` du builder — déjà splittés par option). MÊME discipline
+    que ``quote_engine.builder.panneaux_et_watt_lu`` : un watt illisible
+    laisse ``puissance_kwc`` à ``None`` (jamais le repli 710 W, réservé au
+    KPI interne — CE REPLI NE SORT JAMAIS SUR UN DOCUMENT CLIENT). Une
+    batterie sans capacité lisible retombe sur ``BATTERY_DEFAULT_KWH`` —
+    même défaut que le moteur (``builder._battery_kwh_from_items``)."""
+    from .quote_engine.builder import (
+        BATTERY_DEFAULT_KWH, _is_battery, _is_panel, _parse_kwh, _parse_watt,
+    )
+    nb_panneaux = 0
+    watt = None
+    nb_batteries = 0.0
+    capacite_batterie_kwh = 0.0
+    for it in items or []:
+        designation = it.get('designation') or ''
+        produit_nom = it.get('_produit_nom') or ''
+        try:
+            qty = float(it.get('quantite') or 0)
+        except (TypeError, ValueError):
+            qty = 0.0
+        if qty <= 0:
+            continue
+        if _is_panel(designation, produit_nom):
+            nb_panneaux += int(round(qty))
+            watt = watt or _parse_watt(designation, produit_nom)
+        elif _is_battery(designation):
+            nb_batteries += qty
+            capacite_batterie_kwh += qty * (
+                _parse_kwh(designation) or BATTERY_DEFAULT_KWH)
+    puissance_kwc = (
+        round(nb_panneaux * watt / 1000, 2)
+        if (nb_panneaux and watt) else None)
+    nb_batteries_int = int(round(nb_batteries))
+    return {
+        'nb_panneaux': nb_panneaux,
+        'puissance_kwc': puissance_kwc,
+        'nb_batteries': nb_batteries_int,
+        'capacite_batterie_kwh': (
+            round(capacite_batterie_kwh, 2) if nb_batteries_int else None),
+    }
+
+
+def _dimensionnement_options_publique(devis, data):
+    """PACT10 (« deux optimiseurs ») — clé ``dimensionnement_options`` :
+    nb panneaux/kWc/batteries PAR OPTION (contrat
+    ``apps/ventes/contract_samples/dimensionnement_options.json``), dérivés
+    des lignes RÉELLES (``sans_items``/``avec_items``, déjà splittés par
+    option par le builder) — jamais un chiffre inventé.
+
+    L-VAR — la branche ``'avec'`` n'est servie QUE si ``avec_ok`` (même
+    discipline que ``_economies_mensuelles_calcul``/CJ2b) : jamais un
+    dimensionnement « avec batterie » sur une option que ce devis ne livre
+    pas. ``divergent`` compare les deux nb_panneaux — ``False`` sans branche
+    ``'avec'`` (rien à comparer). ``production_annuelle_kwh`` vient du
+    moteur horaire (lecture pure) quand la localisation est résolue, sinon
+    ``None``. ``None`` best-effort — un bloc d'affichage additif ne fait
+    jamais tomber la page client."""
+    try:
+        from .etude_horaire import production_annuelle_pour_kwc
+        sans = _dimensionnement_option_depuis_items(data.get('sans_items'))
+        out = {'sans': sans, 'divergent': False}
+        avec = None
+        if bool(data.get('avec_ok')):
+            avec = _dimensionnement_option_depuis_items(data.get('avec_items'))
+            out['avec'] = avec
+            out['divergent'] = sans['nb_panneaux'] != avec['nb_panneaux']
+        ville, lat, lon = _localisation_pour_moteur_horaire(devis, data)
+        sans['production_annuelle_kwh'] = production_annuelle_pour_kwc(
+            sans['puissance_kwc'], ville=ville, lat=lat, lon=lon)
+        if avec is not None:
+            avec['production_annuelle_kwh'] = production_annuelle_pour_kwc(
+                avec['puissance_kwc'], ville=ville, lat=lat, lon=lon)
+        return out
+    except Exception:  # noqa: BLE001
+        logger.warning('dimensionnement_options indisponible', exc_info=True)
+        return None
+
+
+def _production_par_option_publique(devis, data, dimensionnement_options):
+    """PACT10 (« deux optimiseurs ») — clé ``production_par_option`` :
+    séries de production journalière PAR OPTION (même forme que
+    ``courbes_journalieres.production``, contrat
+    ``apps/ventes/contract_samples/dimensionnement_options.json``),
+    calculées à la volée avec le kWc DE CHAQUE OPTION — UNIQUEMENT quand
+    ``dimensionnement_options.divergent`` est vrai : deux options au MÊME
+    kWc partagent déjà la même courbe (``courbes_journalieres``), la
+    recalculer deux fois ferait diverger deux séries censées être
+    identiques. Sinon (ou sur toute erreur) : ``{'sans': None, 'avec':
+    None}`` — la page retombe sur la courbe unique déjà servie. Lecture
+    pure, rien n'est persisté."""
+    resultat = {'sans': None, 'avec': None}
+    if not dimensionnement_options or not dimensionnement_options.get('divergent'):
+        return resultat
+    try:
+        from .etude_horaire import production_journaliere_par_saison
+        ville, lat, lon = _localisation_pour_moteur_horaire(devis, data)
+        sans_kwc = (dimensionnement_options.get('sans') or {}).get('puissance_kwc')
+        if sans_kwc:
+            resultat['sans'] = production_journaliere_par_saison(
+                sans_kwc, ville=ville, lat=lat, lon=lon) or None
+        avec_bloc = dimensionnement_options.get('avec') or {}
+        avec_kwc = avec_bloc.get('puissance_kwc')
+        if avec_kwc:
+            resultat['avec'] = production_journaliere_par_saison(
+                avec_kwc, ville=ville, lat=lat, lon=lon) or None
+        return resultat
+    except Exception:  # noqa: BLE001
+        logger.warning('production_par_option indisponible', exc_info=True)
+        return {'sans': None, 'avec': None}
+
+
 def _economies_mensuelles_publiques(devis, data, synthese,
                                     niveau=ShareLink.NIVEAU_CONFIANCE):
     """CJ2b (fondateur, 21/08/2026) — bloc ``economies_mensuelles`` : les 12
@@ -2214,6 +2344,20 @@ def proposal_data(request, token):
         _jours = _jours_types_publique(devis) if _jour_type_servi else None
         if _jours is not None:
             payload['jours_types'] = _jours
+        # PACT10 (« deux optimiseurs », 25/08/2026) — un devis résidentiel
+        # peut porter des dimensionnements DIFFÉRENTS par option (nb
+        # panneaux/kWc/batteries) : `dimensionnement_options` le dit, dérivé
+        # des lignes RÉELLES (sans_items/avec_items, déjà splittés par
+        # option) — jamais un chiffre inventé. `production_par_option` ne
+        # calcule une SECONDE courbe que lorsque `divergent` est vrai — sinon
+        # la page retombe sur la courbe unique déjà servie
+        # (`courbes_journalieres`). Contrat :
+        # apps/ventes/contract_samples/dimensionnement_options.json.
+        _dimensionnement_options = _dimensionnement_options_publique(devis, data)
+        if _dimensionnement_options is not None:
+            payload['dimensionnement_options'] = _dimensionnement_options
+            payload['production_par_option'] = _production_par_option_publique(
+                devis, data, _dimensionnement_options)
         # L-NIV-VU (24/08/2026) — la page peut enfin DIRE au client qu'elle est
         # simplifiée, mais SEULEMENT quand c'est vrai sur SON devis (liste
         # vide ⇒ rien d'affiché). Calculé en dernier : la charge utile est
