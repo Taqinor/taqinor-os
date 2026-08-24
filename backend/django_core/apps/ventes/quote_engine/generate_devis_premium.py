@@ -3166,6 +3166,29 @@ def apply_quote_data(data: dict) -> None:
     global ONEPAGE_BRANCHE  # M4 — branche des lignes du format une page
     _br = data.get("onepage_branche")
     ONEPAGE_BRANCHE = _br if _br in ("sans", "avec") else None
+    # ── L-2OPT (chantier « deux optimiseurs », 24/08/2026) — LA PUISSANCE SUIT
+    # LA BRANCHE FACTURÉE ────────────────────────────────────────────────────
+    # Même doctrine que M4 pour l'économie annuelle : la page UNE chiffre UNE
+    # branche (``ONEPAGE_BRANCHE``, celle de ses lignes). Depuis que les deux
+    # options peuvent porter des nombres de panneaux différents, le scalaire
+    # GLOBAL (``puissance_kwc``/``nb_panneaux``, qui porte l'option AVEC) ne
+    # décrit plus la branche imprimée : « Puissance crête » et « Prix par kWc »
+    # mélangeraient le champ PV d'une option au prix de l'autre. On lit donc les
+    # figures DE CETTE BRANCHE dès que les deux divergent. Options égales (tout
+    # l'existant) ⇒ aucune réécriture, sortie byte-identique.
+    if (data.get("pdf_mode", "full") == "onepage" and ONEPAGE_BRANCHE
+            and data.get("panneaux_divergents")):
+        _kwc_br = data.get(f"puissance_kwc_{ONEPAGE_BRANCHE}")
+        _nb_br = data.get(f"nb_panneaux_{ONEPAGE_BRANCHE}")
+        _wp_br = data.get(f"watt_par_panneau_{ONEPAGE_BRANCHE}")
+        # Valeur illisible (None) ⇒ on ne remplace RIEN par un repli : la
+        # vignette correspondante s'omet déjà d'elle-même sur un 0.
+        if _kwc_br:
+            KWC = float(_kwc_br)
+        if _nb_br:
+            NB_PAN = int(_nb_br)
+        if _wp_br:
+            WP = int(_wp_br)
     global VALID_UNTIL  # M7 — échéance réelle du devis
     VALID_UNTIL = (data.get("valid_until") or "").strip()
     global DELAI_VISITE, DELAI_INSTALLATION  # Q5 — délais indicatifs
