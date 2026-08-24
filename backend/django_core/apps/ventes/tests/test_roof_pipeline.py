@@ -454,8 +454,30 @@ class TestProposalMonthlyArrays(TestCase):
         self.assertEqual(conso[0], 616)
 
 
-class TestQ7ProposalAccept(TestCase):
-    """Q7 — tokenized e-signature acceptance reusing the existing stamp."""
+class _Q7ProposalAcceptBase(TestCase):
+    """Q7 — shared fixture for every tokenized e-signature acceptance
+    scenario.
+
+    SHARD SPLIT (24/08/2026) — this used to be ONE class,
+    ``TestQ7ProposalAccept``, measured at 254.8 s in
+    ``scripts/ci_shard_class_timings.json`` (run 32711511999): the single
+    slowest indivisible block of the whole suite, because ``accept_devis``
+    (``apps/ventes/services.py``) calls the REAL premium quote engine
+    (``generate_premium_devis_pdf`` via ``_store_signed_pdf``, rule #4) to
+    persist the signed PDF on every successful acceptance — a genuine
+    WeasyPrint render, not test overhead. Three of the five scenarios below
+    (Success/Idempotence/Chain) reach that render; the other two
+    (Validation/Token) fail before ``accept_devis`` is ever called and are
+    comparatively cheap. Splitting by scenario turns one 254.8 s block into
+    five, letting the LPT scheduler in ``scripts/ci_shard.py`` place each on
+    whichever lane has room instead of pinning one lane to the whole cost.
+
+    Each scenario keeps ITS OWN ``setUp`` fixture (company/client/devis/
+    ShareLink) via this base class — unittest already re-runs ``setUp`` once
+    per test method regardless of class grouping, so this is not new
+    duplication, it is the existing per-test cost, now visible as separate
+    schedulable units. That is the price of parallelization, not a
+    weakening of any test."""
 
     def setUp(self):
         from apps.ventes.models import ShareLink
@@ -468,6 +490,13 @@ class TestQ7ProposalAccept(TestCase):
 
     def _url(self, token):
         return f'/api/django/ventes/proposal/{token}/accept/'
+
+
+class TestQ7ProposalAcceptSuccess(_Q7ProposalAcceptBase):
+    """Q7 — signature réussie : bascule de statut + tampon écrit.
+
+    Rend un PDF signé RÉEL via le moteur premium (``_store_signed_pdf``) —
+    c'est la portion coûteuse historique de l'ex-``TestQ7ProposalAccept``."""
 
     def test_accept_flips_status_and_writes_stamp(self):
         resp = self.api.post(
@@ -483,11 +512,24 @@ class TestQ7ProposalAccept(TestCase):
         bodies = [a.body or '' for a in self.devis.activites.all()]
         self.assertTrue(any('IP' in b for b in bodies))
 
+
+class TestQ7ProposalAcceptValidation(_Q7ProposalAcceptBase):
+    """Q7 — validation avant toute écriture (nom requis).
+
+    Échoue AVANT ``accept_devis`` : pas de rendu PDF, scénario léger."""
+
     def test_name_required(self):
         resp = self.api.post(self._url(self.link.token), {}, format='json')
         self.assertEqual(resp.status_code, 400)
         self.devis.refresh_from_db()
         self.assertEqual(self.devis.statut, 'envoye')
+
+
+class TestQ7ProposalAcceptIdempotence(_Q7ProposalAcceptBase):
+    """Q7 — double soumission idempotente.
+
+    Le premier POST rend un PDF réel (accepte) ; le second est un no-op
+    AVANT tout rendu (déjà accepté) — un seul rendu au total."""
 
     def test_idempotent_double_submit(self):
         first = self.api.post(
@@ -504,11 +546,24 @@ class TestQ7ProposalAccept(TestCase):
         # exactly one acceptance event recorded
         self.assertEqual(self.devis.statut, 'accepte')
 
+
+class TestQ7ProposalAcceptToken(_Q7ProposalAcceptBase):
+    """Q7 — jeton invalide → 404 amical.
+
+    Échoue AVANT ``accept_devis`` : pas de rendu PDF, scénario léger."""
+
     def test_invalid_token_404(self):
         self.assertEqual(
             self.api.post(self._url('bad'),
                           {'nom': 'X', 'consent_esign': True}, format='json')
             .status_code, 404)
+
+
+class TestQ7ProposalAcceptChain(_Q7ProposalAcceptBase):
+    """Q7 — la chaîne BonCommande/Facture reste préservée 1:1 après une
+    acceptation tokenisée, exactement comme une acceptation in-app.
+
+    Rend un PDF signé RÉEL via le moteur premium (même coût que Success)."""
 
     def test_bon_commande_chain_preserved(self):
         # After tokenized accept, the devis can be converted to a BC exactly
