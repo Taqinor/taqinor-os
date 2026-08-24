@@ -115,6 +115,14 @@ import {
   type StorageSweepInfo,
   type EstimationConsoAffichable,
   type OccupancyScenarios,
+  // L-DEUXOPT (lane « deux optimiseurs », 25/08/2026) — deux dimensionnements
+  // différents (ex. 22 panneaux sans batterie / 26 avec), quand le backend
+  // l'affirme explicitement (`dimensionnement_options.divergent`).
+  dimensionnementOption,
+  dimensionnementDivergent,
+  productionSeriesForOption,
+  type DimensionnementOption,
+  type VarianteServable,
 } from '../../lib/proposition';
 import {
   renderYearCurve,
@@ -362,6 +370,27 @@ const paybackAvec = formatPayback(q?.roi_a);
 const ecoHero = reco === 'avec_batterie' ? (ecoAvec ?? ecoSans) : (ecoSans ?? ecoAvec);
 const paybackHero = reco === 'avec_batterie' ? (paybackAvec ?? paybackSans) : (paybackSans ?? paybackAvec);
 
+// ── L-DEUXOPT (lane « deux optimiseurs », 25/08/2026) — DEUX DIMENSIONNEMENTS
+// DIFFÉRENTS (ex. 22 panneaux sans batterie / 26 avec), quand le backend
+// l'affirme EXPLICITEMENT (`dimensionnement_options.divergent === true`) —
+// jamais déduit d'une différence de nombres qui pourrait n'être qu'un
+// arrondi. `divergentSizing` faux/absent ⇒ tout ce qui suit reste `null` et
+// la page ne bouge pas d'un pixel (cas historique, un seul dimensionnement).
+const divergentSizing = ok ? dimensionnementDivergent(data!) : false;
+const dimSans: DimensionnementOption | null = divergentSizing ? dimensionnementOption(data!, 'sans') : null;
+const dimAvec: DimensionnementOption | null = divergentSizing ? dimensionnementOption(data!, 'avec') : null;
+// Variante contrat ('sans'/'avec') de l'option affichée en tête de page (déjà
+// résolue par `reco` — jamais un second calcul de « quelle option recommander »).
+const recoVariante: VarianteServable = reco === 'avec_batterie' ? 'avec' : 'sans';
+const dimReco = recoVariante === 'avec' ? dimAvec : dimSans;
+const dimOther = recoVariante === 'avec' ? dimSans : dimAvec;
+// Le chiffre « phare » (kWc/panneaux) devient celui de l'option AFFICHÉE
+// (recommandée) quand les deux options divergent — jamais un mélange des
+// deux tailles. Repli sur le scalaire historique quand ce côté-là ne porte
+// pas le champ (jamais un défaut fabriqué : simplement l'ancien chiffre réel).
+const heroKwc = divergentSizing ? (dimReco?.puissanceKwc ?? puissance) : puissance;
+const heroNbPanneaux = divergentSizing ? (dimReco?.nbPanneaux ?? nbPanneaux) : nbPanneaux;
+
 // WJ126 — CORRECTIF : ce libellé branchait sur `q?.inst_type` en le comparant à
 // des littéraux MINUSCULES ('agricole'…), alors que la vraie valeur runtime est
 // un libellé CAPITALISÉ ('Agricole'/'Industrielle'…) — la comparaison ne matchait
@@ -562,7 +591,19 @@ const batterySimEligible = ok && (curveMode === 'residentiel' || curveMode === '
 const consMonthly = ok ? monthlySeries(data?.monthly_consumption) : null;
 const annualConsKwh = consMonthly ? consMonthly.reduce((a, b) => a + b, 0) : 0;
 const dailyConsKwh = annualConsKwh > 0 ? annualConsKwh / 365 : 0;
-const dailyProdKwh = prodKwh && prodKwh > 0 ? prodKwh / 365 : 0;
+// L-DEUXOPT (25/08/2026) — production PROPRE à l'option « avec batterie »,
+// quand les deux options divergent ET que le backend la sert
+// (`production_par_option.avec`, MÊME FORME que `courbes_journalieres.
+// production`) : le simulateur batterie rejoue alors la production RÉELLE de
+// CETTE option (plus de panneaux ⇒ courbe différente) au lieu du repli
+// générique (silhouette solaire fixe × production annuelle de l'option
+// affichée par défaut). Absent/non exploitable pour la saison affichée ⇒
+// repli EXACT sur le comportement historique (rien ne bouge).
+const avecProdSeries = divergentSizing
+  ? productionSeriesForOption(data!, 'avec', curveSeasonDefault)
+  : null;
+const dailyProdKwh = avecProdSeries?.kwhJour
+  ?? (prodKwh && prodKwh > 0 ? prodKwh / 365 : 0);
 // La batterie RÉELLEMENT au devis : capacité/unité (réf catalogue) + nb d'unités,
 // cherchée dans les DEUX options (l'option « avec batterie » d'abord ; un devis
 // mono-option porte parfois sa batterie dans `sans_items`).
@@ -639,7 +680,10 @@ const batteryConsShape = showBatterySim
     })
   : [];
 const batterySolarShape = showBatterySim
-  ? Array.from({ length: HOURS_PER_DAY }, (_, h) => solarProfile(h))
+  // L-DEUXOPT — forme RÉELLE de l'option « avec » quand servie (voir
+  // `avecProdSeries` ci-dessus) ; sinon la silhouette solaire générique
+  // historique, byte-identique au rendu d'avant.
+  ? (avecProdSeries?.forme ?? Array.from({ length: HOURS_PER_DAY }, (_, h) => solarProfile(h)))
   : [];
 // Rendu SERVEUR initial (au N de départ) : le bloc n'est jamais vide avant hydratation.
 const batteryInitial = showBatterySim
@@ -1155,6 +1199,10 @@ const nearestMeasuredAr = nearestMeasured
 // ajoute, au lieu d'un second tableau.
 const equipmentOption: OptionKey = reco ?? 'sans_batterie';
 const equipmentItems = ok ? optionItems(data!, equipmentOption) : [];
+// L-DEUXOPT — l'option NON détaillée ici (le flip de `equipmentOption`), pour
+// la phrase sobre « l'autre option compte N panneaux » (dimensionnement
+// divergent uniquement — `dimOther` porte déjà son dimensionnement).
+const otherOptionKey: OptionKey = equipmentOption === 'avec_batterie' ? 'sans_batterie' : 'avec_batterie';
 // WJ131 — chaque ligne emporte le slug de SA fiche technique, calculé UNE fois
 // ici (fonction pure, testée) : le tableau se contente d'afficher le lien quand
 // il existe. `null` = ligne sans lien, l'affichage ne change pas d'un pixel.
@@ -1774,20 +1822,43 @@ const signConfig = ok
               en UNE ligne au-dessus du tableau : c'est une légende, pas un
               tableau de bord. Chaque valeur reste celle du devis backend. */}
           <p class="mt-4 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-lune-soft">
-            {puissance ? (
-              <span class="fig text-xl text-lune" dir="ltr">{formatNumber(puissance, 2)} <span class="text-sm text-lune-soft">kWc</span></span>
+            {heroKwc ? (
+              <span class="fig text-xl text-lune" dir="ltr">{formatNumber(heroKwc, 2)} <span class="text-sm text-lune-soft">kWc</span></span>
             ) : null}
-            {puissance && nbPanneaux ? <span class="text-lune-faint" aria-hidden="true">·</span> : null}
-            {nbPanneaux ? (
+            {heroKwc && heroNbPanneaux ? <span class="text-lune-faint" aria-hidden="true">·</span> : null}
+            {heroNbPanneaux ? (
               <span class="fig text-xl text-lune" dir="ltr">
-                {formatNumber(nbPanneaux)}
+                {formatNumber(heroNbPanneaux)}
                 {wattPanneau ? <span class="text-sm text-lune-soft"> × {formatNumber(wattPanneau)} W</span> : null}
                 <span class="ms-1 text-sm text-lune-soft" data-i18n data-fr="panneaux" data-en="panels" data-ar="لوحاً">panneaux</span>
               </span>
             ) : null}
-            {(puissance || nbPanneaux) ? <span class="text-lune-faint" aria-hidden="true">·</span> : null}
+            {(heroKwc || heroNbPanneaux) ? <span class="text-lune-faint" aria-hidden="true">·</span> : null}
             <span class="text-lune">{instLabel}</span>
           </p>
+          {/* L-DEUXOPT (25/08/2026) — quand les deux options divergent, le
+              chiffre ci-dessus est celui de l'option AFFICHÉE (recommandée) :
+              on le dit sobrement, avec un renvoi vers #options pour le
+              dimensionnement de l'autre option — jamais un mélange muet des
+              deux tailles. Rien de neuf quand `divergentSizing` est faux. */}
+          {divergentSizing && (heroKwc || heroNbPanneaux) && (
+            <p class="mt-1 text-xs text-lune-faint">
+              <span data-i18n
+                data-fr={`Dimensionnement de l’option ${optionLabel(reco ?? 'sans_batterie')}. `}
+                data-en={`Sizing for the ${optionLabelEn(reco ?? 'sans_batterie')} option. `}
+                data-ar={`مقاس خيار ${optionLabelAr(reco ?? 'sans_batterie')}. `}>
+                Dimensionnement de l’option {optionLabel(reco ?? 'sans_batterie')}.{' '}
+              </span>
+              {dimOther && (dimOther.nbPanneaux !== null || dimOther.puissanceKwc !== null) && (
+                <a href="#options" class="underline-offset-2 hover:underline" data-i18n
+                  data-fr="L’autre option a son propre dimensionnement."
+                  data-en="The other option has its own sizing."
+                  data-ar="للخيار الآخر مقاسه الخاص.">
+                  L’autre option a son propre dimensionnement.
+                </a>
+              )}
+            </p>
+          )}
 
           <!-- ── PV80 · CE QUI SERA POSÉ CHEZ VOUS — tableau STRUCTURÉ ────────
                Désignation × quantité, groupé par famille (production, stockage,
@@ -1814,6 +1885,23 @@ const signConfig = ok
                   </p>
                 )}
               </div>
+              {/* L-DEUXOPT (25/08/2026) — quand les deux options divergent,
+                  l'autre option a SON PROPRE dimensionnement : une phrase
+                  sobre le dit, sans un second tableau matériel complet. */}
+              {divergentSizing && dimOther && dimOther.nbPanneaux !== null && (
+                <p class="mt-2 text-xs text-lune-faint">
+                  <span data-i18n
+                    data-fr={`L’option « ${optionLabel(otherOptionKey)} » compte ${formatNumber(dimOther.nbPanneaux)} panneaux. `}
+                    data-en={`The “${optionLabelEn(otherOptionKey)}” option has ${formatNumber(dimOther.nbPanneaux)} panels. `}
+                    data-ar={`يضم خيار «${optionLabelAr(otherOptionKey)}» ${formatNumber(dimOther.nbPanneaux)} لوحاً. `}>
+                    L’option « {optionLabel(otherOptionKey)} » compte {formatNumber(dimOther.nbPanneaux)} panneaux.{' '}
+                  </span>
+                  <a href="#options" class="underline-offset-2 hover:underline" data-i18n
+                    data-fr="Voir le détail" data-en="See the detail" data-ar="عرض التفاصيل">
+                    Voir le détail
+                  </a>
+                </p>
+              )}
               <div class="mt-4 space-y-5">
                 {equipmentGroups.map((group) => (
                   <div>
@@ -2937,6 +3025,18 @@ const signConfig = ok
                       Résiduel importé du réseau : environ {formatNumber(tarifStory.residuelKwhMois, 0)} kWh/mois.
                     </p>
                   )}
+                  {/* L-DEUXOPT (25/08/2026) — quand les deux options divergent,
+                      ce dimensionnement (falaise tarifaire) est celui de
+                      l'option AFFICHÉE : une clause sobre le précise, sans
+                      refonte du bloc. */}
+                  {divergentSizing && (
+                    <p class="mt-2 text-xs text-lune-faint" data-i18n
+                      data-fr={`Dimensionnement décrit ici : l’option ${optionLabel(reco ?? 'sans_batterie')}.`}
+                      data-en={`Sizing described here: the ${optionLabelEn(reco ?? 'sans_batterie')} option.`}
+                      data-ar={`التصميم الموصوف هنا: خيار ${optionLabelAr(reco ?? 'sans_batterie')}.`}>
+                      Dimensionnement décrit ici : l’option {optionLabel(reco ?? 'sans_batterie')}.
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -3552,6 +3652,9 @@ const signConfig = ok
             // les deux cas ; sans prix réel on affiche un message honnête à la
             // place — jamais un chiffre fabriqué.
             const realPrice = hasRealPrice(data!, opt);
+            // L-DEUXOPT (25/08/2026) — dimensionnement PROPRE à cette carte,
+            // quand les deux options divergent (contrat `dimensionnement_options`).
+            const dim = opt === 'avec_batterie' ? dimAvec : dimSans;
             return (
               <article
                 class="cine-card relative flex flex-col rounded-2xl p-6"
@@ -3563,6 +3666,25 @@ const signConfig = ok
                   </span>
                 )}
                 <h3 class="display text-xl text-lune" data-i18n data-fr={optionLabel(opt)} data-en={optionLabelEn(opt)} data-ar={optionLabelAr(opt)}>{optionLabel(opt)}</h3>
+                {/* L-DEUXOPT — « N panneaux · X kWc » (+ « Batteries : Y kWh »
+                    côté avec) : données du contrat UNIQUEMENT, chaque
+                    sous-valeur omise individuellement si `null` — jamais un
+                    défaut fabriqué. Ligne entière absente hors divergence. */}
+                {divergentSizing && dim && (dim.nbPanneaux !== null || dim.puissanceKwc !== null) && (
+                  <p class="mt-1 text-xs text-lune-faint" dir="ltr">
+                    {dim.nbPanneaux !== null && (
+                      <span>{formatNumber(dim.nbPanneaux)} <span data-i18n data-fr="panneaux" data-en="panels" data-ar="لوحاً">panneaux</span></span>
+                    )}
+                    {dim.nbPanneaux !== null && dim.puissanceKwc !== null && <span class="mx-1" aria-hidden="true">·</span>}
+                    {dim.puissanceKwc !== null && <span>{formatNumber(dim.puissanceKwc, 2)} kWc</span>}
+                    {opt === 'avec_batterie' && dim.capaciteBatterieKwh !== null && (
+                      <span>
+                        <span class="mx-1" aria-hidden="true">·</span>
+                        <span data-i18n data-fr="Batteries" data-en="Batteries" data-ar="البطاريات">Batteries</span> : {formatNumber(dim.capaciteBatterieKwh, 1)} kWh
+                      </span>
+                    )}
+                  </p>
+                )}
                 {realPrice ? (
                   <>
                     <p class="fig fig-md lum mt-3" dir="ltr">{formatMAD(optionTtc(data!, opt))}</p>
