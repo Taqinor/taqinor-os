@@ -588,8 +588,17 @@ export function computeROI({
   // Q1 — prix TTC RÉEL des lignes onduleur de CHAQUE option (miroir builder.py
   // sans_items/avec_items : « sans » exclut batterie + onduleur hybride,
   // « avec » exclut l'onduleur réseau — mêmes filtres que optionTotalsTTC).
-  const linesSans = lines.filter(l => !isBattery(l.designation) && !isHybridInverter(l.designation))
-  const linesAvec = lines.filter(l => !isReseauInverter(l.designation))
+  // L-2OPT (fondateur 24/08) — `variante` ('' commun | 'sans' | 'avec', posée
+  // par `fusionnerVariantes`) écarte D'ABORD la ligne taguée pour l'AUTRE
+  // option, puis le filtre mot-clé historique s'applique EXACTEMENT comme
+  // avant (une ligne sans `variante` — tout devis hors « Les deux » — n'est
+  // jamais affectée : `undefined !== 'avec'`/`'sans'` vaut toujours vrai).
+  const linesSans = lines
+    .filter(l => l.variante !== 'avec')
+    .filter(l => !isBattery(l.designation) && !isHybridInverter(l.designation))
+  const linesAvec = lines
+    .filter(l => l.variante !== 'sans')
+    .filter(l => !isReseauInverter(l.designation))
   const inverterCostSans = inverterCostFromLines(linesSans)
   const inverterCostAvec = inverterCostFromLines(linesAvec)
 
@@ -1148,6 +1157,11 @@ export function htFromTtc(ttc, tauxTva = TVA_STANDARD_DEFAUT) {
 export function batteryKwhFromLines(lines) {
   return lines.reduce((sum, l) => {
     if (!isBattery(l.designation)) return sum
+    // L-2OPT — une ligne taguée 'sans' (voir fusionnerVariantes) porte une
+    // quantité issue de la composition SANS batterie, jamais destinée à
+    // compter dans quelque capacité que ce soit ; sans tag (comportement
+    // historique) ce garde-fou est un no-op (`undefined !== 'sans'`).
+    if (l.variante === 'sans') return sum
     const qty = parseFloat(l.quantite) || 0
     return sum + qty * (parseKwh(l.designation) ?? 5.0)
   }, 0)
@@ -1158,10 +1172,17 @@ export function batteryKwhFromLines(lines) {
 // Option 2 AVEC batterie : exclut Onduleur réseau.
 export function optionTotalsTTC(lines, discountPct) {
   const ttc = (l) => (parseFloat(l.quantite) || 0) * (parseFloat(l.prix_unit_ttc) || 0)
+  // L-2OPT — filtre `variante` D'ABORD (écarte la ligne taguée pour l'AUTRE
+  // option, voir fusionnerVariantes), mots-clés EN REPLI ensuite — même
+  // exclusion qu'hier, appliquée qu'une ligne porte un `variante` ou non
+  // (`undefined !== 'avec'`/`'sans'` vaut toujours vrai : aucune régression
+  // sur les lignes legacy/hors « Les deux »).
   const totalSansBrut = lines
+    .filter(l => l.variante !== 'avec')
     .filter(l => !isBattery(l.designation) && !isHybridInverter(l.designation))
     .reduce((s, l) => s + ttc(l), 0)
   const totalAvecBrut = lines
+    .filter(l => l.variante !== 'sans')
     .filter(l => !isReseauInverter(l.designation))
     .reduce((s, l) => s + ttc(l), 0)
 
@@ -1169,6 +1190,52 @@ export function optionTotalsTTC(lines, discountPct) {
   const totalSans = pct > 0 ? Math.round(totalSansBrut * (1 - pct / 100)) : totalSansBrut
   const totalAvec = pct > 0 ? Math.round(totalAvecBrut * (1 - pct / 100)) : totalAvecBrut
   return { totalSansBrut, totalAvecBrut, totalSans, totalAvec }
+}
+
+// ── L-2OPT — deux optimiseurs indépendants (fondateur 24/08) ─────────────────
+// Un devis résidentiel « Les deux (Sans + Avec) » ne dimensionne plus les
+// deux options sur le MÊME kWc : `autoFillLines` est appelé une fois par
+// optimum (sans-batterie / avec-batterie, chacun son propre kWc payback-
+// optimal — voir `optimalKwcByPayback({ avecBatterie })`) et les deux
+// compositions résultantes sont FUSIONNÉES ici, ligne par ligne (les deux
+// tableaux partagent le même ordre de rôles canonique — `ordreLignes`/
+// `marques` identiques des deux côtés — donc un appariement POSITIONNEL est
+// fiable) :
+//   • ligne identique (produit, désignation, prix unitaire TTC, taux TVA,
+//     quantité) → UNE ligne commune, `variante: ''` ;
+//   • quantité (ou produit) divergente → DEUX lignes, `variante: 'sans'` /
+//     `'avec'`, chacune portant la quantité/le produit de SA composition ;
+//   • présente d'un seul côté (tableaux de longueurs différentes — ne
+//     devrait pas arriver avec deux appels `autoFillLines` aux mêmes options,
+//     mais l'appariement reste défensif) → sa variante.
+// Repli de sécurité : deux compositions IDENTIQUES (même kWc des deux côtés,
+// le cas le plus courant) fusionnent en lignes 100 % `variante: ''` —
+// résultat BYTE-IDENTIQUE à l'ancienne composition unique, aucune ligne
+// variantée. Fonction PURE, testable indépendamment de l'écran.
+function _memeLigne(a, b) {
+  if (!a || !b) return false
+  return String(a.produit ?? '') === String(b.produit ?? '')
+    && String(a.designation ?? '') === String(b.designation ?? '')
+    && (parseFloat(a.prix_unit_ttc) || 0) === (parseFloat(b.prix_unit_ttc) || 0)
+    && (parseFloat(a.taux_tva) || 0) === (parseFloat(b.taux_tva) || 0)
+    && (parseFloat(a.quantite) || 0) === (parseFloat(b.quantite) || 0)
+}
+
+export function fusionnerVariantes(lignesSans, lignesAvec) {
+  const sans = Array.isArray(lignesSans) ? lignesSans : []
+  const avec = Array.isArray(lignesAvec) ? lignesAvec : []
+  const n = Math.max(sans.length, avec.length)
+  const out = []
+  for (let i = 0; i < n; i++) {
+    const s = sans[i]
+    const a = avec[i]
+    if (s && !a) { out.push({ ...s, variante: 'sans' }); continue }
+    if (a && !s) { out.push({ ...a, variante: 'avec' }); continue }
+    if (_memeLigne(s, a)) { out.push({ ...s, variante: '' }); continue }
+    out.push({ ...s, variante: 'sans' })
+    out.push({ ...a, variante: 'avec' })
+  }
+  return out
 }
 
 // ── QJ31 — Multi-propriétés : aperçu écran (TTC) miroir du backend QJ29 ──────
