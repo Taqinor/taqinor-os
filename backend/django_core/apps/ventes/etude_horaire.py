@@ -967,6 +967,148 @@ def jours_types_annee(*, kwc, conso_kwh_mensuelles, ville=None, lat=None,
     }
 
 
+def estimation_conso_mensuelle(conso_kwh_mensuelles, equipements):
+    """T4 (24/08/2026) — décomposition MENSUELLE base/ajouts/total de la
+    consommation, contrat public ``estimation_conso`` (voir
+    ``apps.ventes.public_views`` et ``apps/web/src/lib/proposition.ts``) :
+    ``{base_mensuelle:[12], ajouts:{cle:[12]}, totale_mensuelle:[12]}``.
+
+    ``None`` quand la série de 12 mois n'est pas exploitable OU qu'aucune
+    couche d'équipement n'est active (rien à décomposer — la page garde alors
+    son affichage actuel, un seul total sans détail).
+
+    LA RÈGLE : les couches de REDISTRIBUTION (piscine, clim, chauffe_eau —
+    voir ``courbes_journalieres._equipements``) sont DÉJÀ dans la facture :
+    leur « ajout » mensuel est donc RETIRÉ du ``base_mensuelle`` pour ne
+    jamais compter deux fois la même énergie — la ligne « ajout » n'est qu'un
+    ÉCLAIRAGE de ce que la facture contient déjà. Le véhicule électrique
+    (mode ADDITION, charge future absente des factures passées) s'ajoute
+    PAR-DESSUS le total sans rien retirer à la base — exactement la même
+    distinction que :func:`courbes_journalieres.forme_consommation_detaillee`.
+    ``totale_mensuelle`` retombe donc EXACTEMENT sur
+    ``conso_kwh_mensuelles`` pour les mois sans VE, et l'excède seulement de
+    la charge VE de ce mois.
+
+    L'énergie mensuelle d'une couche de redistribution = puissance déclarée
+    (kW) × nombre d'heures de sa fenêtre × nombre de jours du mois, UNIQUEMENT
+    dans les mois de sa saison active (``PISCINE_SAISONS``/``CLIM_SAISONS`` =
+    été seulement ; le chauffe-eau L-BACK n'a pas de restriction saisonnière).
+    Ne lève jamais.
+    """
+    if not conso_kwh_mensuelles or len(conso_kwh_mensuelles) != 12:
+        return None
+    couches = equipements or {}
+    if not couches:
+        return None
+
+    base = [max(0.0, _num(v)) for v in conso_kwh_mensuelles]
+    ajouts = {}
+    for index in range(12):
+        numero = index + 1
+        saison = saison_du_mois(numero)
+        jours = JOURS_PAR_MOIS[index]
+
+        for cle in ('piscine', 'clim', 'chauffe_eau'):
+            couche = couches.get(cle)
+            if not couche or couche.get('mode') != 'redistribution':
+                continue
+            kw = _num(couche.get('kw'))
+            heures = couche.get('heures') or ()
+            saisons = couche.get('saisons')
+            if kw <= 0 or not heures:
+                continue
+            if saisons and saison not in saisons:
+                continue
+            kwh_mois = round(kw * len(heures) * jours, 2)
+            ajouts.setdefault(cle, [0.0] * 12)
+            ajouts[cle][index] = kwh_mois
+            base[index] = max(0.0, base[index] - kwh_mois)
+
+        ve = couches.get('ve')
+        if ve and ve.get('mode') == 'addition':
+            kwh_jour = _num(ve.get('kwh_jour'))
+            saisons = ve.get('saisons')
+            if kwh_jour > 0 and (not saisons or saison in saisons):
+                ajouts.setdefault('ve', [0.0] * 12)
+                ajouts['ve'][index] = round(kwh_jour * jours, 2)
+
+    if not ajouts:
+        return None
+    base = [round(v, 2) for v in base]
+    total = [round(base[i] + sum(vals[i] for vals in ajouts.values()), 2)
+             for i in range(12)]
+    return {
+        'base_mensuelle': base,
+        'ajouts': ajouts,
+        'totale_mensuelle': total,
+    }
+
+
+#: T4 (24/08/2026) — les mois « jour type » servis au public (payload
+#: ``jours_types``), MÊME quatre mois que le tunnel web
+#: (``apps/web/src/lib/jourTypeData.ts``) : janvier/avril/juillet/novembre,
+#: un par saison PVGIS (hiver/mi-saison×2/été).
+JOURS_TYPES_PUBLICS_MOIS = (1, 4, 7, 11)
+
+
+def jours_types_publics(*, kwc, conso_kwh_mensuelles, ville=None, lat=None,
+                        lon=None, occupation=None, equipements=None):
+    """T4 (24/08/2026) — les 4 mois « jour type » du payload public
+    ``jours_types`` (contrat ``apps/web/src/lib/proposition.ts
+    ProposalResponse.jours_types``) : ``{"1"|"4"|"7"|"11": {prod_kw[24],
+    conso_kw[24], conso_jour_kwh, prod_jour_kwh, autoconsomme_kwh,
+    surplus_kwh}}``.
+
+    RÉUTILISE :func:`jours_types_annee` — SOURCE UNIQUE des courbes horaires
+    (même jour type que l'étude complète et le balayage du stockage) — puis
+    n'en garde QUE les quatre mois publics, sans aucun second calcul de
+    courbe. ``autoconsomme_kwh``/``surplus_kwh`` viennent de
+    ``apps.ventes.solar_design.hourly_self_consumption`` (même intégrale
+    Σ min(charge, production) que tout le reste du moteur).
+
+    ``None`` quand ``jours_types_annee`` ne peut rien calculer, ou que l'UN
+    des quatre mois publics manque (saison sans forme PVGIS) — discipline
+    « tout ou rien » côté page (``proposalJoursTypes``) : jamais un jeu
+    partiel. Ne lève jamais.
+    """
+    try:
+        from .solar_design import hourly_self_consumption
+
+        jours_types, _avertissements, _sources = jours_types_annee(
+            kwc=kwc, conso_kwh_mensuelles=conso_kwh_mensuelles,
+            ville=ville, lat=lat, lon=lon,
+            occupation=occupation, equipements=equipements)
+        if not jours_types:
+            return None
+        par_mois = {j['mois']: j for j in jours_types}
+
+        out = {}
+        for numero in JOURS_TYPES_PUBLICS_MOIS:
+            jour = par_mois.get(numero)
+            if jour is None:
+                return None
+            prod_24h = jour.get('prod_24h') or []
+            conso_24h = jour.get('conso_24h') or []
+            if len(prod_24h) != 24 or len(conso_24h) != 24:
+                return None
+            recouvrement = hourly_self_consumption(
+                load_curve=conso_24h, production_curve=prod_24h)
+            out[str(numero)] = {
+                'prod_kw': [round(max(0.0, v), 3) for v in prod_24h],
+                'conso_kw': [round(max(0.0, v), 3) for v in conso_24h],
+                'conso_jour_kwh': round(jour.get('conso_jour_kwh') or 0.0, 2),
+                'prod_jour_kwh': round(jour.get('prod_jour_kwh') or 0.0, 2),
+                'autoconsomme_kwh': round(
+                    recouvrement.get('self_consumed_kwh') or 0.0, 2),
+                'surplus_kwh': round(
+                    recouvrement.get('surplus_kwh') or 0.0, 2),
+            }
+        return out
+    except Exception:  # noqa: BLE001 — un jeu jour-type ne casse jamais la page
+        logger.warning('jours_types_publics indisponible', exc_info=True)
+        return None
+
+
 def _bloc_vide():
     """Agrégat neutre (tous compteurs à zéro) — jamais de ``None`` arithmétique."""
     return {

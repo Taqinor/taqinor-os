@@ -1077,6 +1077,140 @@ def _note_economies_mensuelles(modele, source_consommation, estimation):
             'plus précis.')
 
 
+def _tranche_tarifaire_publique(dimensionnement):
+    """L-BACK T4 (24/08/2026) — sous-ensemble PUBLIC, client-safe, du bloc
+    « falaise » de ``apps.ventes.dimensionnement.recommander_taille`` (déjà
+    persisté sur le devis résidentiel par
+    ``services.rafraichir_dimensionnement_devis``) : contrat
+    ``apps/web/src/lib/proposition.ts ProposalResponse.tranche_tarifaire``.
+
+    ``tranche_actuelle``/``tranche_visee``/``cible_kwh_mois`` viennent de
+    ``dimensionnement['falaise']`` ; ``residuel_kwh_mois`` de
+    ``dimensionnement['meilleure_falaise']`` (LA combinaison qui franchit
+    réellement la marche — un résiduel différent de la falaise visée serait un
+    second chiffre inventé). ``None`` (⇒ clé absente) quand ``falaise`` est
+    absent : le client est déjà dans la tranche la plus basse, rien à
+    annoncer. Ne lève jamais."""
+    falaise = (dimensionnement or {}).get('falaise')
+    if not isinstance(falaise, dict):
+        return None
+    meilleure = (dimensionnement or {}).get('meilleure_falaise')
+    residuel = (meilleure or {}).get('residuel_kwh_mois')
+    return {
+        'tranche_actuelle': {
+            'libelle': (falaise.get('tranche_actuelle') or {}).get('libelle'),
+        },
+        'tranche_visee': {
+            'libelle': (falaise.get('tranche_visee') or {}).get('libelle'),
+        },
+        'cible_kwh_mois': falaise.get('cible_kwh_mois'),
+        'residuel_kwh_mois': residuel,
+    }
+
+
+def _batterie_regime_publique(dimensionnement, bloc_horaire):
+    """L-BACK T4 — remplissage batterie moyen (recommandation AVEC batterie,
+    ``dimensionnement.recommandation_avec.remplissage.moyen``) + couverture
+    des « glitchs » (part des pointes d'équipements que la batterie rattrape,
+    ``bloc_horaire['annuel']['part_glitch_batterie_kwh'] /
+    part_glitch_sans_kwh``). Sous-ensemble public des deux blocs internes,
+    contrat ``ProposalResponse.batterie_regime``.
+
+    Chaque sous-champ manque INDÉPENDAMMENT ; ``None`` (⇒ clé absente) quand
+    les DEUX sont illisibles — rien à montrer. Ne lève jamais."""
+    remplissage_pct = None
+    recommandation_avec = (dimensionnement or {}).get('recommandation_avec')
+    if isinstance(recommandation_avec, dict):
+        moyen = (recommandation_avec.get('remplissage') or {}).get('moyen')
+        if isinstance(moyen, (int, float)) and not isinstance(moyen, bool):
+            remplissage_pct = round(moyen * 100, 1)
+
+    couverture_pct = None
+    annuel = (bloc_horaire or {}).get('annuel')
+    if isinstance(annuel, dict):
+        perdu = annuel.get('part_glitch_sans_kwh')
+        recapte = annuel.get('part_glitch_batterie_kwh')
+        if (isinstance(perdu, (int, float)) and perdu > 0
+                and isinstance(recapte, (int, float))):
+            couverture_pct = round(
+                min(1.0, max(0.0, recapte / perdu)) * 100, 1)
+
+    if remplissage_pct is None and couverture_pct is None:
+        return None
+    return {
+        'remplissage_moyen_pct': remplissage_pct,
+        'couverture_glitch_pct': couverture_pct,
+    }
+
+
+def _profil_horaire_pour_devis(devis):
+    """L-BACK T4 — ``(kwc, conso, ville, lat, lon, occupation, equipements)``
+    d'un devis, MÊME LECTURE que ``services.rafraichir_dimensionnement_devis``/
+    ``etude_horaire._etude_horaire_pour_devis`` (kWc du bloc horaire déjà
+    persisté — jamais une seconde dérivation depuis les lignes ici, cet
+    endpoint est en lecture seule). ``kwc`` vaut ``None`` quand aucun bloc
+    horaire n'est encore posé (devis non résidentiel, ou pas encore
+    rafraîchi) — l'appelant omet alors les clés qui en dépendent."""
+    from apps.crm.selectors import lead_bills_for_devis, site_location_for_devis
+
+    from .courbes_journalieres import equipements_du_devis, occupation_du_devis
+    from .etude_horaire import profil_depuis_factures
+
+    etude_params = getattr(devis, 'etude_params', None) or {}
+    bloc_horaire = etude_params.get('etude_horaire') or {}
+    kwc = bloc_horaire.get('kwc')
+
+    bills = lead_bills_for_devis(devis) or {}
+    conso, _source, _detail = profil_depuis_factures(
+        facture_hiver_mad=bills.get('facture_hiver'),
+        facture_ete_mad=bills.get('facture_ete'),
+        ete_differente=bills.get('ete_differente'),
+        factures_mensuelles_mad=etude_params.get(
+            'factures_mensuelles_reelles'),
+        conso_kwh_mensuelles=etude_params.get('conso_kwh_mensuelles'))
+
+    localisation = site_location_for_devis(devis) or {}
+    ville = localisation.get('site_ville')
+    lat, lon = localisation.get('gps_lat'), localisation.get('gps_lng')
+
+    mode = (getattr(devis, 'mode_installation', None) or '').strip().lower()
+    occupation, _source_occ = occupation_du_devis(
+        devis, {'mode_installation': mode})
+    equipements = equipements_du_devis(devis)
+    return kwc, conso, ville, lat, lon, occupation, equipements
+
+
+def _estimation_conso_publique(devis):
+    """L-BACK T4 — bloc ``estimation_conso`` (contrat public, voir
+    ``etude_horaire.estimation_conso_mensuelle``). ``None`` best-effort — un
+    bloc d'affichage additif ne fait jamais tomber la page client."""
+    try:
+        from .etude_horaire import estimation_conso_mensuelle
+        _kwc, conso, _v, _lat, _lon, _occ, equipements = (
+            _profil_horaire_pour_devis(devis))
+        return estimation_conso_mensuelle(conso, equipements)
+    except Exception:  # noqa: BLE001 — voir _economies_mensuelles_publiques
+        logger.warning('estimation_conso indisponible', exc_info=True)
+        return None
+
+
+def _jours_types_publique(devis):
+    """L-BACK T4 — bloc ``jours_types`` (contrat public, voir
+    ``etude_horaire.jours_types_publics``). ``None`` best-effort."""
+    try:
+        from .etude_horaire import jours_types_publics
+        kwc, conso, ville, lat, lon, occupation, equipements = (
+            _profil_horaire_pour_devis(devis))
+        if not kwc:
+            return None
+        return jours_types_publics(
+            kwc=kwc, conso_kwh_mensuelles=conso, ville=ville, lat=lat,
+            lon=lon, occupation=occupation, equipements=equipements)
+    except Exception:  # noqa: BLE001 — voir _economies_mensuelles_publiques
+        logger.warning('jours_types indisponible', exc_info=True)
+        return None
+
+
 def _economies_mensuelles_publiques(devis, data, synthese):
     """CJ2b (fondateur, 21/08/2026) — bloc ``economies_mensuelles`` : les 12
     valeurs MAD/mois sans/avec batterie « qu'on ne voit ni ... calculée ni la
@@ -1445,6 +1579,30 @@ def proposal_data(request, token):
         _economies = _economies_mensuelles_publiques(devis, data, synthese)
         if _economies is not None:
             payload['economies_mensuelles'] = _economies
+        # L-BACK T4 (24/08/2026) — quatre clés PUBLIC-SAFE de plus, MÊME
+        # PATRON additif que ci-dessus (la clé n'est AJOUTÉE que lorsqu'il y
+        # a une vraie donnée à servir, sinon la page garde son affichage
+        # actuel) : le pitch tranche tarifaire + régime batterie (sous-
+        # ensembles du dimensionnement/étude horaire déjà persistés), la
+        # décomposition mensuelle de l'estimation de consommation, et les 4
+        # mois « jour type » (contrat PACT10, forme convenue avec
+        # `apps/web/src/lib/proposition.ts`). Chacune retombe sur `None` au
+        # moindre doute, jamais bloquante pour le reste de la page.
+        _etude_params_devis = getattr(devis, 'etude_params', None) or {}
+        _dimensionnement = _etude_params_devis.get('dimensionnement')
+        _tranche = _tranche_tarifaire_publique(_dimensionnement)
+        if _tranche is not None:
+            payload['tranche_tarifaire'] = _tranche
+        _bloc_horaire_devis = _etude_params_devis.get('etude_horaire')
+        _regime = _batterie_regime_publique(_dimensionnement, _bloc_horaire_devis)
+        if _regime is not None:
+            payload['batterie_regime'] = _regime
+        _estimation = _estimation_conso_publique(devis)
+        if _estimation is not None:
+            payload['estimation_conso'] = _estimation
+        _jours = _jours_types_publique(devis)
+        if _jours is not None:
+            payload['jours_types'] = _jours
     except Exception:  # noqa: BLE001
         # 404 volontairement muet cote client (jamais de detail interne sur un
         # lien public) — mais TRACE cote serveur : un garde-fou moteur qui
