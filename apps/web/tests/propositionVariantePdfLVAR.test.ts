@@ -28,25 +28,32 @@ describe('L-VAR — sélecteur de variante au-dessus du bouton PDF', () => {
     expect(PROPOSITION).toContain('data-en="Both options"');
   });
 
-  it('le défaut est la composition du COMMERCIAL, lue dans la donnée (quote.scenario) — jamais une déduction', () => {
-    expect(PROPOSITION).toContain('const pdfVariantDefault');
-    expect(PROPOSITION).toContain("q?.scenario === 'Sans batterie' ? 'sans'");
-    expect(PROPOSITION).toContain("q?.scenario === 'Avec batterie' ? 'avec'");
-    expect(PROPOSITION).toContain(": 'les_deux'");
+  it('le défaut est « les_deux », TOUJOURS (ordre fondateur : le téléchargement est complet par défaut)', () => {
+    expect(PROPOSITION).toContain("const pdfVariantDefault: 'sans' | 'avec' | 'les_deux' = 'les_deux';");
+    // L'ancien défaut suivait la composition du commercial (`quote.scenario`) et
+    // livrait donc un document AMPUTÉ à un client qui n'avait rien demandé.
+    expect(PROPOSITION).not.toContain("q?.scenario === 'Sans batterie'");
+    expect(PROPOSITION).not.toContain("q?.scenario === 'Avec batterie'");
   });
 
-  it('le sélecteur ne s\'affiche que sur un devis à deux options', () => {
+  it('le sélecteur s\'affiche dès que les DEUX côtés sont physiquement servables', () => {
     const bloc = PROPOSITION.slice(
       PROPOSITION.indexOf('L-VAR · QUELLE VERSION TÉLÉCHARGER'),
       PROPOSITION.indexOf('id="pdf-download"'),
     );
-    expect(bloc).toContain('{twoOptions && (');
+    // Découplé de `twoOptions` : un devis rétréci côté backend (nb_options
+    // retombé à 1, incident DEV-202608-0023) gardait un équipement capable de
+    // servir les deux côtés et perdait pourtant tout le sélecteur.
+    expect(bloc).toContain('{showPdfVariants && (');
+    expect(bloc).not.toContain('{twoOptions && (');
+    expect(PROPOSITION).toContain('const showPdfVariants = ok ? showVariantSelector(data!) : false;');
   });
 
   it('le clic ne change QUE le paramètre ?variante= du lien PDF existant (pas de second chemin PDF)', () => {
     expect(PROPOSITION).toContain('pdfLink.href = `${variantBase}?variante=${value}`');
-    // Le lien de départ porte déjà le défaut sur un devis à deux options.
-    expect(PROPOSITION).toContain('href={twoOptions ? `${pdfUrl}?variante=${pdfVariantDefault}` : pdfUrl}');
+    // Le lien de départ porte déjà le défaut quand le sélecteur est rendu ; un
+    // devis qui ne sert qu'un côté garde son URL nue, exactement comme avant.
+    expect(PROPOSITION).toContain('href={showPdfVariants ? `${pdfUrl}?variante=${pdfVariantDefault}` : pdfUrl}');
     // Une seule fabrique d'URL PDF : proposalPdfEndpoint (aucun endpoint parallèle).
     expect(PROPOSITION.match(/proposalPdfEndpoint\(/g) ?? []).toHaveLength(1);
   });

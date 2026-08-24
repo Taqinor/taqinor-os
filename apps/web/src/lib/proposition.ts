@@ -194,6 +194,16 @@ export interface ProposalResponse {
   coverage_pct?: number | null;
   coverage_estimated?: boolean | null;
   option_totals: OptionTotals;
+  /**
+   * L-VAR (ordre fondateur, 24/08/2026) — LES CÔTÉS QUE L'ÉQUIPEMENT SERT.
+   *
+   * Liste ordonnée, sous-ensemble de `['sans','avec']` : ce que le matériel du
+   * devis peut PHYSIQUEMENT livrer, indépendamment du nombre d'options que le
+   * document PRÉSENTE (`option_totals.nb_options`, qui ne commande plus que la
+   * signature). Absente ⇒ backend antérieur au contrat : `variantesServables`
+   * retombe sur le signal historique et la page ne bouge pas d'un pixel.
+   */
+  variantes_servables?: string[] | null;
   accepted: boolean;
   accepte_par_nom?: string | null;
   date_acceptation?: string | null;
@@ -672,6 +682,53 @@ export function optionTotaux(p: ProposalResponse, opt: OptionKey): ProposalTotau
 export function defaultSelectedOption(p: ProposalResponse): OptionKey {
   if (hasTwoOptions(p)) return recommendedOption(p);
   return p.quote?.totaux_avec && !p.quote?.totaux_sans ? 'avec_batterie' : 'sans_batterie';
+}
+
+// ── L-VAR (ordre fondateur, 24/08/2026) — CE QUE L'ÉQUIPEMENT PEUT SERVIR ────
+
+/** Un côté servable du devis, dans l'écriture du contrat backend. */
+export type VarianteServable = 'sans' | 'avec';
+
+/** L'ordre d'affichage canonique — jamais celui, arbitraire, du payload. */
+const VARIANTES_CANONIQUES: readonly VarianteServable[] = ['sans', 'avec'];
+
+/**
+ * Les variantes que l'équipement du devis peut PHYSIQUEMENT servir.
+ *
+ * ORDRE FONDATEUR (24/08/2026) — LE TÉLÉCHARGEMENT NE DÉPEND PLUS DU NOMBRE
+ * D'OPTIONS PRÉSENTÉES. Un devis à deux options rétréci côté backend
+ * (`nb_options` retombé à 1 : incident DEV-202608-0023) faisait disparaître
+ * D'UN COUP la case de signature, le sélecteur de variante PDF et le
+ * `?variante=` — alors que l'équipement, lui, servait toujours les deux côtés.
+ * Les deux sujets sont désormais SÉPARÉS : `hasTwoOptions` ne commande plus que
+ * la SIGNATURE (le devis ne PRÉSENTE qu'une option ⇒ rien à choisir en
+ * signant), tandis que le téléchargement lit cette liste-ci.
+ *
+ * Source : clé RACINE `variantes_servables` du payload public (liste ordonnée,
+ * sous-ensemble de ['sans','avec']). Lecture DÉFENSIVE : tout ce qui n'est pas
+ * l'une des deux valeurs canoniques est ignoré. Clé absente / vide / illisible
+ * (backend antérieur au contrat) ⇒ REPLI sur le signal historique, donc rendu
+ * strictement inchangé sur les payloads d'avant : deux options présentées ⇒ les
+ * deux côtés, sinon le seul côté que le devis porte.
+ */
+export function variantesServables(p: ProposalResponse | null | undefined): VarianteServable[] {
+  if (!p) return [];
+  const raw = p.variantes_servables;
+  if (Array.isArray(raw)) {
+    const servables = VARIANTES_CANONIQUES.filter((v) => raw.includes(v));
+    if (servables.length > 0) return servables;
+  }
+  if (hasTwoOptions(p)) return ['sans', 'avec'];
+  return defaultSelectedOption(p) === 'avec_batterie' ? ['avec'] : ['sans'];
+}
+
+/**
+ * Le sélecteur « quelle version télécharger ? » n'a de sens que si les DEUX
+ * côtés sont servables — sinon il n'y aurait rien à choisir.
+ */
+export function showVariantSelector(p: ProposalResponse | null | undefined): boolean {
+  const servables = variantesServables(p);
+  return servables.includes('sans') && servables.includes('avec');
 }
 
 /** Vrai si la proposition est déjà acceptée (signée) — affiche l'état confirmé. */
