@@ -1247,11 +1247,14 @@ def cible_depuis_lignes(devis):
     L-2OPT — LA CIBLE SE LIT PAR VARIANTE. Un devis « Les deux » dont les deux
     optimums divergent porte DEUX comptes de panneaux : les lignes
     ``variante=''`` + ``'sans'`` font l'option SANS, les lignes ``''`` +
-    ``'avec'`` font l'option AVEC. Trois clés s'ajoutent, toutes ADDITIVES —
-    ``panneaux_sans``, ``panneaux_avec``, ``variantes`` — et ``panneaux`` /
-    ``kwc`` restent ceux de l'option SANS (l'option 1 du document). Sur un devis
-    NON varianté (tous ceux d'hier) les trois vues sont le même nombre et rien
-    ne change.
+    ``'avec'`` font l'option AVEC. ``panneaux`` / ``kwc`` sont ceux de l'option
+    SANS — l'option 1 du document, celle que l'écran de calepinage dessine.
+    Additionner les deux vues (ce que faisait la somme brute des lignes)
+    donnerait un nombre qui ne décrit AUCUNE installation.
+
+    LA FORME DU DICT NE BOUGE PAS : ces six clés sont un contrat gelé (le
+    contexte de conception PV17 le repique tel quel). Un devis NON varianté —
+    tous ceux d'hier — rend donc exactement les mêmes valeurs qu'avant.
 
     LECTURE PURE : aucun statut, aucune ligne, aucune étude n'est écrite.
     """
@@ -1269,17 +1272,14 @@ def cible_depuis_lignes(devis):
         except (ArithmeticError, TypeError, ValueError):
             return 0
 
-    panneaux_sans = sum(
+    # L-2OPT — LE COMPTE EST CELUI DE L'OPTION SANS : les lignes COMMUNES
+    # (``variante=''``, c'est-à-dire toutes celles d'un devis d'hier) plus
+    # celles propres à « sans ». Une ligne « avec » décrit l'AUTRE option — la
+    # compter ici donnerait la somme des deux paniers, un nombre de panneaux
+    # qu'aucune installation ne porte.
+    panneaux = sum(
         _quantite(li) for li in lignes_panneau
         if (getattr(li, 'variante', '') or '') in ('', VARIANTE_SANS))
-    panneaux_avec = sum(
-        _quantite(li) for li in lignes_panneau
-        if (getattr(li, 'variante', '') or '') in ('', VARIANTE_AVEC))
-    variantes = any((getattr(li, 'variante', '') or '')
-                    for li in lignes_panneau)
-    # Le compte NOMINAL reste celui de l'option SANS : c'est l'option 1, celle
-    # que l'écran de calepinage dessine et que tout appelant historique lit.
-    panneaux = panneaux_sans
 
     batterie = any(_classe_ligne(li, _is_battery) for li in lignes)
     hybride = any(_classe_ligne(li, _is_hybrid_inverter) for li in lignes)
@@ -1359,15 +1359,6 @@ def cible_depuis_lignes(devis):
         'scenario': scenario,
         'batterie': bool(batterie),
         'avertissements': avertissements,
-        # ── L-2OPT — les deux vues, toujours présentes ───────────────────────
-        # Sur un devis NON varianté elles valent le même nombre que
-        # ``panneaux`` : aucun consommateur ne peut lire un trou, et le cas
-        # « deux optimiseurs » se reconnaît à ``variantes``.
-        'panneaux_sans': panneaux_sans,
-        'panneaux_avec': panneaux_avec,
-        'kwc_avec': (round(panneaux_avec * panel_watt / 1000.0, 3)
-                     if panneaux_avec else 0.0),
-        'variantes': bool(variantes),
     }
 
 
@@ -3486,10 +3477,11 @@ def sync_devis_from_layout(devis, layout, user=None):
 
     Renvoie toujours le même dict :
     ``{inchange, panneaux, kwc, scenario, batterie, lignes_modifiees,
-    lignes_ajoutees, avertissements}`` (+ ``panneaux_avec`` / ``variantes``,
-    L-2OPT, additifs) — ``lignes_modifiees`` compte ce que la logique
-    chirurgicale a touché, ``lignes_ajoutees`` ce que la complétion du kit a
-    ajouté.
+    lignes_ajoutees, avertissements}`` — forme GELÉE, inchangée par L-2OPT ;
+    sur un devis varianté ``panneaux`` est le compte de l'option SANS (l'option
+    1), jamais la somme des deux (un nombre qui ne décrit aucune installation).
+    ``lignes_modifiees`` compte ce que la logique chirurgicale a touché,
+    ``lignes_ajoutees`` ce que la complétion du kit a ajouté.
     """
     from django.db import transaction
 
@@ -3607,10 +3599,6 @@ def sync_devis_from_layout(devis, layout, user=None):
                 'lignes_modifiees': 0,
                 'lignes_ajoutees': 0,
                 'avertissements': avertissements,
-                # L-2OPT — additif : le compte de l'option « avec » (identique
-                # au nominal sur un devis non varianté).
-                'panneaux_avec': total_panneaux_avec,
-                'variantes': devis_variante,
             }
 
         lignes_modifiees = 0
@@ -4119,11 +4107,6 @@ def sync_devis_from_layout(devis, layout, user=None):
             'lignes_modifiees': lignes_modifiees,
             'lignes_ajoutees': lignes_ajoutees,
             'avertissements': avertissements,
-            # L-2OPT — additif : le compte de l'option « avec » (identique au
-            # nominal sur un devis non varianté) et le drapeau qui dit si ce
-            # devis porte réellement deux champs PV.
-            'panneaux_avec': total_panneaux_avec,
-            'variantes': devis_variante,
         }
 
     # PV42 — la toiture a bougé : la conception ÉLECTRIQUE la suit, par pan.
