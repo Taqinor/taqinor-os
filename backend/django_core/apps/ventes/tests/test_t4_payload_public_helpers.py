@@ -153,23 +153,97 @@ class BalayageStockagePubliqueTests(SimpleTestCase):
                     'cout_ttc': 42000.0,
                     'remplissage': {'moyen': 0.982, 'pire_mois': {'ratio': 0.91}},
                     'lignes_batterie': [{'quantite': 1, 'designation': 'Dyness 5kWh'}],
+                    'payback_annees': 6.2,
+                    'economie_mad': 6774.19,
                 },
                 {
                     'capacite_kwh': 10.0,
                     'cout_ttc': 78000.0,
                     'remplissage': {'moyen': 0.915, 'pire_mois': {'ratio': 0.80}},
                     'lignes_batterie': [{'quantite': 2, 'designation': 'Dyness 5kWh'}],
+                    'payback_annees': 7.9,
+                    'economie_mad': 9873.42,
                 },
             ],
         }}
         bloc = _balayage_stockage_publique(dimensionnement)
         self.assertEqual(bloc['paliers'], [
             {'nb_packs': 1, 'capacite_kwh': 5.0, 'cout_ttc': 42000.0,
-             'remplissage_moyen_pct': 98.2},
+             'remplissage_moyen_pct': 98.2, 'payback_annees': 6.2,
+             'economie_mad': 6774.19},
             {'nb_packs': 2, 'capacite_kwh': 10.0, 'cout_ttc': 78000.0,
-             'remplissage_moyen_pct': 91.5},
+             'remplissage_moyen_pct': 91.5, 'payback_annees': 7.9,
+             'economie_mad': 9873.42},
         ])
         self.assertIsNone(bloc['refuse'])
+
+    def test_payback_et_economie_sont_la_passe_directe_du_moteur(self):
+        """Les deux valeurs sortent EXACTEMENT celles du palier moteur —
+        jamais une constante, jamais un recalcul depuis cout_ttc ici."""
+        dimensionnement = {'recommandation_avec': {
+            'balayage_stockage': [{
+                'capacite_kwh': 5.0,
+                'cout_ttc': 42000.0,
+                'lignes_batterie': [{'quantite': 1}],
+                'payback_annees': 4.37,
+                'economie_mad': 9610.99,
+            }],
+        }}
+        bloc = _balayage_stockage_publique(dimensionnement)
+        self.assertEqual(bloc['paliers'][0]['payback_annees'], 4.37)
+        self.assertEqual(bloc['paliers'][0]['economie_mad'], 9610.99)
+
+    def test_payback_absent_ou_non_finissable_sort_none_sans_toucher_au_reste(self):
+        """Palier moteur sans payback_annees exploitable (absent, 0, None,
+        négatif ou non numérique) ⇒ omission propre côté public, le reste du
+        palier reste intact."""
+        cas = [
+            {},
+            {'payback_annees': None},
+            {'payback_annees': 0},
+            {'payback_annees': -3.1},
+            {'payback_annees': float('nan')},
+            {'payback_annees': float('inf')},
+            {'payback_annees': 'six ans'},
+        ]
+        for extra in cas:
+            with self.subTest(extra=extra):
+                dimensionnement = {'recommandation_avec': {
+                    'balayage_stockage': [{
+                        'capacite_kwh': 5.0,
+                        'cout_ttc': 42000.0,
+                        'lignes_batterie': [{'quantite': 1}],
+                        **extra,
+                    }],
+                }}
+                bloc = _balayage_stockage_publique(dimensionnement)
+                palier = bloc['paliers'][0]
+                self.assertIsNone(palier['payback_annees'])
+                self.assertEqual(palier['nb_packs'], 1)
+                self.assertEqual(palier['capacite_kwh'], 5.0)
+                self.assertEqual(palier['cout_ttc'], 42000.0)
+
+    def test_economie_absente_ou_non_finissable_sort_none(self):
+        cas = [
+            {},
+            {'economie_mad': None},
+            {'economie_mad': 0},
+            {'economie_mad': -50.0},
+            {'economie_mad': float('nan')},
+            {'economie_mad': 'beaucoup'},
+        ]
+        for extra in cas:
+            with self.subTest(extra=extra):
+                dimensionnement = {'recommandation_avec': {
+                    'balayage_stockage': [{
+                        'capacite_kwh': 5.0,
+                        'cout_ttc': 42000.0,
+                        'lignes_batterie': [{'quantite': 1}],
+                        **extra,
+                    }],
+                }}
+                bloc = _balayage_stockage_publique(dimensionnement)
+                self.assertIsNone(bloc['paliers'][0]['economie_mad'])
 
     def test_palier_refuse_rend_le_pourcentage_reel_du_pire_mois(self):
         """Le pourcentage rendu est EXACTEMENT celui que ``motif_refus``
@@ -209,4 +283,5 @@ class BalayageStockagePubliqueTests(SimpleTestCase):
         }}
         bloc = _balayage_stockage_publique(dimensionnement)
         self.assertEqual(set(bloc['paliers'][0].keys()),
-                         {'nb_packs', 'capacite_kwh', 'cout_ttc', 'remplissage_moyen_pct'})
+                         {'nb_packs', 'capacite_kwh', 'cout_ttc',
+                          'remplissage_moyen_pct', 'payback_annees', 'economie_mad'})

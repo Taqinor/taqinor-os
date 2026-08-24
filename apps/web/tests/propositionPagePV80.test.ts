@@ -117,12 +117,15 @@ describe('PV80 — graphique fusionné : un seul dessin visible à la fois', () 
     expect(l.showViewTabs).toBe(true);
   });
 
-  it('calque batterie : REMPLACE la courbe nue, jamais un second graphique', () => {
+  // ORDRE FONDATEUR (24/08/2026) — le calque batterie ne REMPLACE plus la
+  // courbe : elle reste visible et porte la couche « couvert par la batterie »
+  // (c'est CE graphe que le client regarde). Seule l'exclusion année ↔ journée
+  // reste un invariant.
+  it('calque batterie : la courbe journalière RESTE visible (elle porte la couche)', () => {
     const l = productionLayers({ view: 'journee', variant: 'normal', battery: true }, FULL);
     expect(l.battery).toBe(true);
-    expect(l.daily).toBe(false);
+    expect(l.daily).toBe(true);
     expect(l.monthly).toBe(false);
-    expect(onlyOne(l)).toBe(1);
   });
 
   it('le calque batterie reste invisible tant qu’on est sur la vue année', () => {
@@ -206,18 +209,20 @@ describe('PV80 — graphique fusionné : transitions', () => {
   });
 
   // PACT-battery (2026-08-15) — fondateur : « quand on active le bouton avec
-  // batterie on peut encore voir l'effet le ramadan et l'été ». Le calque
-  // batterie REMPLACE la courbe nue (un seul dessin), mais les onglets de
-  // profil doivent rester visibles et actifs, et changer d'onglet doit
-  // continuer à changer la variante retenue par productionLayers — c'est ce
-  // que le script client relit pour recalculer le simulateur batterie.
+  // batterie on peut encore voir l'effet le ramadan et l'été ». Les onglets de
+  // profil restent visibles et actifs, et changer d'onglet change la variante
+  // retenue par productionLayers — c'est ce que le script client relit pour
+  // recalculer le simulateur batterie.
+  // ORDRE FONDATEUR (24/08/2026) — le calque batterie ne remplace plus la
+  // courbe : les deux calques journée coexistent (la courbe porte la couche).
   it('les onglets Standard/Été/Ramadan restent actifs ET changent la silhouette quand la batterie est cochée', () => {
     let s = setBatteryLayer(initialProductionState(FULL), true, FULL);
     expect(s.battery).toBe(true);
     let l = productionLayers(s, FULL);
-    // Un seul dessin : la batterie remplace la courbe, jamais un second graphe.
+    // La courbe journalière RESTE affichée (elle porte la couche batterie) ;
+    // la vue année, elle, reste exclue.
     expect(l.battery).toBe(true);
-    expect(l.daily).toBe(false);
+    expect(l.daily).toBe(true);
     expect(l.monthly).toBe(false);
     // Les onglets restent proposés ET utilisables pendant que la batterie est active.
     expect(l.showVariantTabs).toBe(true);
@@ -227,13 +232,13 @@ describe('PV80 — graphique fusionné : transitions', () => {
     l = productionLayers(s, FULL);
     expect(l.battery).toBe(true);
     expect(l.variant).toBe('ete');
-    expect([l.monthly, l.daily, l.battery].filter(Boolean)).toHaveLength(1);
+    expect(l.monthly).toBe(false);
 
     s = setCurveVariant(s, 'ramadan', FULL);
     l = productionLayers(s, FULL);
     expect(l.battery).toBe(true);
     expect(l.variant).toBe('ramadan');
-    expect([l.monthly, l.daily, l.battery].filter(Boolean)).toHaveLength(1);
+    expect(l.monthly).toBe(false);
   });
 
   it('changer de variante ne touche jamais à l’état de la case batterie', () => {

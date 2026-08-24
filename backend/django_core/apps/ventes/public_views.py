@@ -9,6 +9,7 @@ pour rester hors des moteurs de recherche, et l'accès est limité en débit par
 IP + jeton (throttle cache-based, sans dépendance externe ni rendu modifié).
 """
 import logging
+import math
 import re
 
 from django.db import models
@@ -1406,8 +1407,12 @@ def _balayage_stockage_publique(dimensionnement):
     chaque jour). Alimente le sélecteur « N packs » de la page publique.
 
     Chaque palier ne rend que ``nb_packs``/``capacite_kwh``/``cout_ttc``/
-    ``remplissage_moyen_pct`` — jamais ``prix_achat``/marge (RULE #4). Le
-    refus ne rend que le pourcentage RÉEL de remplissage du pire mois (le
+    ``remplissage_moyen_pct``/``payback_annees``/``economie_mad`` — jamais
+    ``prix_achat``/marge (RULE #4). ``payback_annees`` et ``economie_mad``
+    sont une PASSE DIRECTE des valeurs calculées par le moteur
+    (``dimensionnement._palier_rendu``) — jamais recalculées ici ; ``None``
+    (omission propre) si le moteur ne rend rien de fini et strictement
+    positif pour ce palier. Le refus ne rend que le pourcentage RÉEL de remplissage du pire mois (le
     même nombre que ``motif_refus`` calcule en interne) : la page compose son
     message d'elle-même, aucun texte interne (jargon « plafond de
     remplissage ») ne fuite côté client. Ne lève jamais ; ``None`` quand rien
@@ -1441,6 +1446,16 @@ def _balayage_stockage_publique(dimensionnement):
             return round(ratio * 100, 1)
         return None
 
+    def _nombre_positif_ou_none(valeur):
+        """Passe directe d'un nombre du moteur — jamais recalculé ici.
+        ``None`` (omission propre) si absent/nul/négatif/non fini (NaN/inf) :
+        le payback affiché au client est celui du moteur ou rien."""
+        if isinstance(valeur, bool) or not isinstance(valeur, (int, float)):
+            return None
+        if not math.isfinite(valeur) or valeur <= 0:
+            return None
+        return valeur
+
     paliers_public = []
     for palier in reco.get('balayage_stockage') or []:
         if not isinstance(palier, dict):
@@ -1454,6 +1469,8 @@ def _balayage_stockage_publique(dimensionnement):
             'capacite_kwh': capacite,
             'cout_ttc': palier.get('cout_ttc'),
             'remplissage_moyen_pct': _remplissage_moyen_pct(palier),
+            'payback_annees': _nombre_positif_ou_none(palier.get('payback_annees')),
+            'economie_mad': _nombre_positif_ou_none(palier.get('economie_mad')),
         })
 
     refuse_public = None

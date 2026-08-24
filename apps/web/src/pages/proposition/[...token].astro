@@ -668,6 +668,17 @@ const batteryInitialOverStorage =
   storageSweep?.refuse != null && batterySimInitialN === storageSweep.refuse.nbPacks
     ? storageSweep.refuse
     : null;
+// ORDRE FONDATEUR (24/08/2026) — payback et remplissage moyen DU PALIER au N de
+// départ : deux nombres SERVIS par le moteur (jamais dérivés ici). `null` ⇒ la
+// ligne correspondante ne rend rien.
+const batteryInitialPayback = storagePalierAtInitialN?.paybackAnnees ?? null;
+// Message « charge incomplète » : uniquement sous 100 % (à 100 % ou plus, la
+// batterie se remplit chaque jour — rien à signaler).
+const batteryInitialFillPct =
+  storagePalierAtInitialN?.remplissageMoyenPct != null
+    && storagePalierAtInitialN.remplissageMoyenPct < 100
+    ? storagePalierAtInitialN.remplissageMoyenPct
+    : null;
 // Config sérialisée pour le script client (recalcul au curseur, sans réseau).
 // PACT-battery — `mode` (curveMode) permet au client de recalculer `consShape`
 // via consumptionShapeHours() pour la variante active des onglets Standard/
@@ -685,7 +696,15 @@ const batterySimConfig = showBatterySim
       // ORDRE FONDATEUR — paliers RÉELS (prix TTC par N de packs) + premier
       // refusé (N + pourcentage de remplissage du pire mois, RÉEL) : le
       // script client les relit au curseur, jamais un nouveau calcul.
-      storagePaliers: storagePaliersSorted.map((p) => ({ n: p.nbPacks, ttc: p.coutTtc })),
+      // ORDRE FONDATEUR (24/08/2026) — chaque palier porte AUSSI son payback
+      // moteur (`payback_annees`) et son remplissage moyen : le script client
+      // les LIT au curseur, il n'en calcule aucun.
+      storagePaliers: storagePaliersSorted.map((p) => ({
+        n: p.nbPacks,
+        ttc: p.coutTtc,
+        payback: p.paybackAnnees,
+        remplissagePct: p.remplissageMoyenPct,
+      })),
       storageRefuse: storageSweep?.refuse
         ? { n: storageSweep.refuse.nbPacks, pireMoisPct: storageSweep.refuse.remplissagePireMoisPct }
         : null,
@@ -736,6 +755,33 @@ const productionAvailability: ProductionAvailability = {
 const showProduction = hasProductionBlock(productionAvailability);
 const prodState0 = initialProductionState(productionAvailability);
 const prodLayers = productionLayers(prodState0, productionAvailability);
+// ORDRE FONDATEUR (24/08/2026) — quand le calque batterie est actif DÈS LE
+// PREMIER RENDU (devis « avec batterie » verrouillé), la courbe journalière est
+// re-rendue AVEC sa couche batterie : la part horaire de consommation fournie
+// par la batterie, telle que la calcule le MÊME moteur horaire que l'aire
+// empilée du simulateur (`batteryInitial.hourly.battery`) — aucune série
+// inventée. Calque inactif ⇒ ce bloc ne s'exécute pas et le rendu est
+// byte-identique à celui d'avant.
+if (ok && prodLayers.battery && batteryInitial) {
+  const servedAvecBatterie = {
+    ...(servedScaleFor(curveSeasonDefault) ?? {}),
+    batterieHoraireKwh: batteryInitial.hourly.battery,
+  };
+  for (const lang of ['fr', 'en', 'ar'] as const) {
+    for (const variant of CURVE_VARIANTS) {
+      dailyCurvesByVariant[lang][variant] = renderYearCurve(
+        prodKwh,
+        undefined,
+        lang,
+        {
+          mode: curveMode, variant, occupancy: curveOccupancyDefault, ramadan: curveRamadan,
+          servedShape: curveServedShape,
+        },
+        servedAvecBatterie,
+      );
+    }
+  }
+}
 const productionConfig = showProduction ? JSON.stringify(productionAvailability) : '';
 
 // ── WJ15 — Fenêtre de validité honnête (date backend réelle, jamais inventée) ─
@@ -2253,6 +2299,13 @@ const signConfig = ok
                   <span class="inline-block h-3 w-3 rounded-sm" style="background: var(--color-azur-300, #7fb4e8)" aria-hidden="true"></span>
                   <span data-i18n data-fr="Votre consommation" data-en="Your consumption" data-ar="استهلاككم">Votre consommation</span>
                 </span>
+                {/* ORDRE FONDATEUR (24/08/2026) — légende de la COUCHE BATTERIE
+                    dessinée sur CE graphe. Visible exactement quand le calque
+                    batterie l'est (piloté par `apply()` côté client). */}
+                <span data-prod-battery-legend class="inline-flex items-center gap-2 text-lune-soft" hidden={!prodLayers.battery}>
+                  <span class="inline-block h-3 w-3 rounded-sm" style="background: var(--color-azur-300, #7fb4e8); opacity: 0.45" aria-hidden="true"></span>
+                  <span data-i18n data-fr="Couvert par la batterie" data-en="Covered by the battery" data-ar="مغطى بالبطارية">Couvert par la batterie</span>
+                </span>
                 {!dailyCurve.hasRealScale && (
                   <span class="text-lune-faint" data-i18n data-fr="profil — année type (forme indicative)" data-en="profile — typical year (indicative shape)" data-ar="نمط — سنة نموذجية (شكل إرشادي)">profil — année type (forme indicative)</span>
                 )}
@@ -2377,6 +2430,38 @@ const signConfig = ok
               <p class="mt-4 text-sm">
                 <span class="text-lune-soft" data-i18n data-fr="Prix de cette configuration :" data-en="Price for this configuration:" data-ar="سعر هذا التكوين:">Prix de cette configuration :</span>
                 <span class="ms-1 font-semibold text-brass-300" id="battery-sim-price" dir="ltr">{batteryInitialPrice ?? 'Sur étude'}</span>
+              </p>
+
+              <!-- ORDRE FONDATEUR (24/08/2026) — LA PÉRIODE DE RETOUR DU PALIER.
+                   Le chiffre est celui du MOTEUR (`balayage_stockage.paliers[].
+                   payback_annees` = coût TTC du palier ÷ économie annuelle du
+                   palier, calculé dans `dimensionnement._palier_rendu`) : cette
+                   page ne fait que le CHOISIR et l'habiller — aucune
+                   arithmétique en JS. Quand le curseur s'écarte de la
+                   configuration du devis, les DEUX chiffres servis sont montrés
+                   (« X ans → Y ans »). Palier sans payback servi ⇒ ligne
+                   masquée (omission, jamais une valeur approchée). -->
+              <p id="battery-sim-payback" class="mt-2 text-sm" hidden={batteryInitialPayback == null}>
+                <span class="text-lune-soft" data-i18n
+                  data-fr="Retour sur investissement :" data-en="Payback period:" data-ar="مدة استرداد الاستثمار:">Retour sur investissement :</span>
+                <span class="ms-1 font-semibold text-brass-300" id="battery-sim-payback-value" dir="ltr">{batteryInitialPayback != null ? `${formatNumber(batteryInitialPayback, 1)} ans` : ''}</span>
+              </p>
+
+              <!-- ORDRE FONDATEUR (24/08/2026) — CHARGE INCOMPLÈTE d'un palier
+                   ACCEPTÉ (à distinguer du palier REFUSÉ ci-dessous) : le
+                   moteur retient ce palier mais sa batterie n'est remplie qu'à
+                   `remplissage_moyen_pct` en moyenne. Le pourcentage est celui
+                   du palier, servi tel quel ; ≥ 100 % ⇒ aucun message (la
+                   batterie se remplit chaque jour — même règle de libellé que
+                   le bloc « régime batterie »). -->
+              <p id="battery-sim-fill" class="mt-3 rounded-lg border border-azur-300/30 bg-azur-300/10 px-3 py-2 text-xs text-lune-soft" hidden={batteryInitialFillPct == null}>
+                <span data-i18n
+                  data-fr="La batterie supplémentaire ne se remplira pas à 100 %"
+                  data-en="The extra battery will not be filled to 100%"
+                  data-ar="لن تمتلئ البطارية الإضافية بنسبة 100٪">La batterie supplémentaire ne se remplira pas à 100 %</span
+                ><span dir="ltr"> (<span data-fill-pct-num>{batteryInitialFillPct != null ? formatPercent(batteryInitialFillPct, 0) : ''}</span></span
+                ><span data-i18n data-fr=" en moyenne)" data-en=" on average)" data-ar=" في المتوسط)"> en moyenne)</span
+                ><span data-i18n data-fr=" — la production solaire ne suffit pas." data-en=" — the solar production is not enough." data-ar=" — الإنتاج الشمسي غير كافٍ."> — la production solaire ne suffit pas.</span>
               </p>
 
               <!-- ORDRE FONDATEUR (24/08/2026, soir) — message de sur-stockage : ne
@@ -4575,6 +4660,10 @@ const signConfig = ok
       return;
     }
     let state = initialProductionState(availability);
+    // ORDRE FONDATEUR (24/08/2026) — dernier état CONNU du calque batterie, pour
+    // ne redessiner la courbe qu'aux bascules réelles (le rendu serveur porte
+    // déjà la couche quand le calque démarre actif).
+    let lastBatteryLayer = productionLayers(state, availability).battery;
 
     // ── CJ1 — CONFIG DE RE-RENDU (saison / occupation) ─────────────────────
     // Tout ce que le serveur a servi, tel qu'il l'a servi. Absent (bloc backend
@@ -4647,12 +4736,25 @@ const signConfig = ok
      *  de qui est affiché. */
     function rerenderCurves(): void {
       if (!curveCfg || !dailyLayer) return;
+      // ORDRE FONDATEUR (24/08/2026) — la couche batterie est dessinée sur CE
+      // graphe quand le calque est actif. La série vient du simulateur (pont
+      // `__propBatteryHourly`, moteur horaire unique) : ce script ne calcule
+      // rien, il transmet. Calque inactif ou série absente ⇒ `null`, et la
+      // courbe est exactement celle d'avant.
+      // `productionLayers` (et non `state.battery`) : sur un devis « avec
+      // batterie » verrouillé, le calque est actif sans que l'état porte le
+      // drapeau.
+      const batterieHoraireKwh = productionLayers(state, availability).battery
+        ? ((window as unknown as { __propBatteryHourly?: () => number[] | null })
+            .__propBatteryHourly?.() ?? null)
+        : null;
       const served = {
         production: curveCfg.production?.[state.season] ?? null,
         consumptionKwhJour: curveCfg.consommation?.[state.season]?.kwhJour ?? null,
         season: state.season,
         // L4 — couches d'équipement (piscine/clim/ve), composées par renderYearCurve.
         equipements: curveCfg.equipements ?? null,
+        batterieHoraireKwh,
       };
       dailyLayer.querySelectorAll<HTMLElement>('[data-curve-lang]').forEach((el) => {
         const lang = (el.dataset.curveLang as 'fr' | 'en' | 'ar' | undefined) ?? 'fr';
@@ -4677,6 +4779,11 @@ const signConfig = ok
       });
       renderProfileNote();
     }
+    // ORDRE FONDATEUR (24/08/2026) — pont exposé au simulateur batterie : à
+    // chaque recalcul (curseur, variante, occupation), il redemande le dessin
+    // de la courbe avec sa nouvelle série horaire.
+    (window as unknown as { __propRerenderCurves?: () => void }).__propRerenderCurves =
+      () => rerenderCurves();
 
     function apply(): void {
       const layers = productionLayers(state, availability);
@@ -4698,6 +4805,11 @@ const signConfig = ok
       });
       const control = section!.querySelector<HTMLElement>('[data-prod-battery-control]');
       if (control) control.hidden = !layers.showBatteryToggle;
+      // ORDRE FONDATEUR (24/08/2026) — la légende « Couvert par la batterie »
+      // suit exactement la couche dessinée sur la courbe.
+      section!.querySelectorAll<HTMLElement>('[data-prod-battery-legend]').forEach((el) => {
+        el.hidden = !layers.battery;
+      });
       // CJ2b — le bouton « Avec batterie » suit désormais le MÊME langage de
       // puce que ses voisins (aria-pressed + remplissage laiton), plus une
       // case à cocher isolée. Absent du DOM (calque verrouillé ou batterie
@@ -4735,6 +4847,13 @@ const signConfig = ok
       markPressed('data-curve-occupancy-btn', layers.occupancy);
       // La courbe journalière reste synchrone de l'onglet de profil actif.
       if (layers.variant !== currentCurveVariant) applyCurveVariant(layers.variant);
+      // ORDRE FONDATEUR (24/08/2026) — activer/désactiver « Avec batterie »
+      // ajoute/retire la COUCHE sur la courbe : elle est redessinée à chaque
+      // bascule du calque (et à ce moment-là seulement).
+      if (layers.battery !== lastBatteryLayer) {
+        lastBatteryLayer = layers.battery;
+        rerenderCurves();
+      }
       // PACT-battery — le calque batterie REMPLACE la courbe nue mais doit
       // continuer à réagir à l'onglet de profil : on rejoue le simulateur (autre
       // île <script>, pont window comme __propApplyLang ci-dessous) avec la MÊME
@@ -5926,7 +6045,12 @@ const signConfig = ok
       // stockage (prix TTC par N de packs) + premier palier REFUSÉ (N +
       // remplissage du pire mois, RÉEL) : jamais un chiffre inventé, relus
       // tels quels au curseur.
-      storagePaliers: Array<{ n: number; ttc: number | null }>;
+      // ORDRE FONDATEUR (24/08/2026) — `payback` (années) et `remplissagePct`
+      // par palier : DEUX NOMBRES DU MOTEUR, relus tels quels (aucun calcul).
+      storagePaliers: Array<{
+        n: number; ttc: number | null;
+        payback: number | null; remplissagePct: number | null;
+      }>;
       storageRefuse: { n: number; pireMoisPct: number | null } | null;
     }
     const section = document.getElementById('battery-sim');
@@ -6003,6 +6127,48 @@ const signConfig = ok
       else el.textContent = ON_STUDY[curLang()];
     }
 
+    // ORDRE FONDATEUR (24/08/2026) — LA PÉRIODE DE RETOUR, AU CURSEUR.
+    // `palierAt(n).payback` est la valeur DU MOTEUR pour ce palier ; ce script
+    // ne fait que la choisir, l'habiller de son unité et — quand le curseur
+    // s'écarte de la configuration du devis — l'afficher À CÔTÉ de celle de
+    // départ (« X ans → Y ans »). Aucune arithmétique : les deux nombres sont
+    // servis. Palier sans payback ⇒ ligne masquée (omission).
+    const YEARS_UNIT: Record<BsLang, string> = { fr: 'ans', en: 'years', ar: 'سنوات' };
+    function palierAt(n: number): { n: number; ttc: number | null; payback: number | null; remplissagePct: number | null } | null {
+      return cfg.storagePaliers.find((x) => x.n === n) ?? null;
+    }
+    const refPayback = palierAt(cfg.initialN)?.payback ?? null;
+    function renderPayback(n: number): void {
+      const row = document.getElementById('battery-sim-payback');
+      const el = document.getElementById('battery-sim-payback-value');
+      if (!row || !el) return;
+      const payback = palierAt(n)?.payback ?? null;
+      row.hidden = payback == null;
+      if (payback == null) return;
+      const unit = YEARS_UNIT[curLang()];
+      const now = `${fmtNum(payback, 1)} ${unit}`;
+      el.textContent = refPayback != null && n !== cfg.initialN && refPayback !== payback
+        ? `${fmtNum(refPayback, 1)} ${unit} → ${now}`
+        : now;
+    }
+
+    // ORDRE FONDATEUR (24/08/2026) — CHARGE INCOMPLÈTE d'un palier ACCEPTÉ :
+    // le moteur retient ce palier, mais sa batterie n'est remplie qu'à
+    // `remplissagePct` en moyenne. Le pourcentage est SERVI ; ≥ 100 % ⇒ aucun
+    // message (elle se remplit chaque jour, même règle de libellé que le bloc
+    // « régime batterie »). Distinct du message de SUR-STOCKAGE ci-dessous, qui
+    // ne concerne que le palier REFUSÉ.
+    function renderFill(n: number): void {
+      const el = document.getElementById('battery-sim-fill');
+      if (!el) return;
+      const pct = palierAt(n)?.remplissagePct ?? null;
+      const show = pct != null && pct < 100;
+      el.hidden = !show;
+      if (!show || pct == null) return;
+      const numEl = el.querySelector<HTMLElement>('[data-fill-pct-num]');
+      if (numEl) numEl.textContent = fmtPct(pct);
+    }
+
     // ORDRE FONDATEUR — message de sur-stockage : visible UNIQUEMENT quand N
     // atteint le premier palier REFUSÉ par le moteur (la batterie ne se
     // rechargerait plus chaque jour à cette capacité). Le pourcentage inséré
@@ -6061,7 +6227,15 @@ const signConfig = ok
       const chart = document.getElementById('battery-sim-chart');
       if (chart) chart.innerHTML = renderBatterySplitSvg(res.hourly, undefined, curLang());
       renderPrice(n);
+      renderPayback(n);
+      renderFill(n);
       renderOverStorage(n);
+      // ORDRE FONDATEUR (24/08/2026) — la COURBE de la vue « Sur une journée »
+      // porte la couche batterie : elle est redessinée avec la série horaire
+      // que ce moteur vient de produire (`res.hourly.battery`). Le pont est
+      // volontairement dans ce sens (le simulateur POSSÈDE la série, la courbe
+      // la LIT) — jamais deux moteurs.
+      (window as unknown as { __propRerenderCurves?: () => void }).__propRerenderCurves?.();
     }
 
     // QRES66 — délégation au NIVEAU DOCUMENT, jamais un listener direct sur le
@@ -6083,9 +6257,19 @@ const signConfig = ok
     // data-i18n car réécrit en JS après le premier rendu).
     bsWin.__propRegisterBusyLabel?.((l: BsLang) => {
       renderPrice(currentN);
+      // ORDRE FONDATEUR — « ans / years / سنوات » suit la langue (le nombre, lui,
+      // ne bouge jamais : c'est celui du moteur).
+      renderPayback(currentN);
       const chart = document.getElementById('battery-sim-chart');
       if (chart && lastHourly) chart.innerHTML = renderBatterySplitSvg(lastHourly, undefined, l);
     });
+
+    // ORDRE FONDATEUR (24/08/2026) — la série horaire « fourni par la batterie »
+    // du dernier calcul, exposée à l'île de la courbe journalière (qui la
+    // DESSINE sans jamais la recalculer). `null` tant qu'aucun calcul n'a eu
+    // lieu, ou quand le curseur est à 0 batterie (aucune couche à dessiner).
+    (window as unknown as { __propBatteryHourly?: () => number[] | null }).__propBatteryHourly =
+      () => (currentN > 0 ? (lastHourly?.battery ?? null) : null);
 
     // Recalcule une fois au chargement (idempotent avec le rendu serveur).
     update(currentN);

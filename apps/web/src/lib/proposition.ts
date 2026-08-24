@@ -323,6 +323,13 @@ export interface ProposalResponse {
       capacite_kwh?: number | null;
       cout_ttc?: number | null;
       remplissage_moyen_pct?: number | null;
+      // ORDRE FONDATEUR (24/08/2026) — période de retour et économie annuelle
+      // DU PALIER, calculées par le moteur (`dimensionnement._palier_rendu` :
+      // `payback_annees` = coût TTC ÷ économie annuelle du palier) et servies
+      // telles quelles. Absentes ⇒ la page n'affiche AUCUN payback pour ce
+      // palier (jamais une valeur approchée, jamais un calcul en JS).
+      payback_annees?: number | null;
+      economie_mad?: number | null;
     }> | null;
     refuse?: {
       nb_packs?: number | null;
@@ -3648,6 +3655,11 @@ export interface StoragePalier {
   capaciteKwh: number;
   coutTtc: number | null;
   remplissageMoyenPct: number | null;
+  /** Période de retour DU PALIER, en années — moteur (`payback_annees`), jamais
+   *  recalculée ici. `null` quand le moteur ne la donne pas : on l'OMET. */
+  paybackAnnees: number | null;
+  /** Économie annuelle DU PALIER (MAD) — moteur (`economie_mad`). `null` ⇒ omise. */
+  economieMad: number | null;
 }
 
 /** Le premier palier REFUSÉ — au-delà, la batterie ne se rechargerait plus chaque jour. */
@@ -3683,6 +3695,8 @@ export function storageSweepInfo(
       capaciteKwh,
       coutTtc: finiteOrNull(raw?.cout_ttc),
       remplissageMoyenPct: finiteOrNull(raw?.remplissage_moyen_pct),
+      paybackAnnees: finiteOrNull(raw?.payback_annees),
+      economieMad: finiteOrNull(raw?.economie_mad),
     });
   }
   let refuse: StoragePalierRefuse | null = null;
