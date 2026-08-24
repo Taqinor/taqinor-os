@@ -150,7 +150,23 @@ const PER_CHUNK_BUDGET_KB = 350
 // générateur, ordre par défaut mémorisé, champs fiche technique MPPT/batterie
 // du formulaire produit, message d'attente aperçu). Total mesuré 3345,3 Ko —
 // croissance produit légitime, aucune nouvelle dépendance npm, palier serré.
-const TOTAL_BUDGET_KB = 3355
+// 2026-08-24 — 3355 -> 3375. Lot « run nuit » (anticopie PDF, sections du
+// dialogue d'envoi, GPS, créneaux clim/piscine, i18n nav, 3D toiture,
+// balayage stockage). Mesuré 3355,5 Ko en CI et 3357,7 Ko en local — le
+// palier précédent était dépassé de 0,5 Ko. Vérifié AVANT ce bump :
+//   * AUCUNE nouvelle dépendance npm — `git diff origin/main..HEAD --
+//     frontend/package.json frontend/package-lock.json` est VIDE.
+//   * La croissance est répartie sur des écrans DÉJÀ lazy-loadés
+//     (DevisTab, ToitureDesign/RoofViewer, SectionEnergie) : aucun chunk
+//     n'approche PER_CHUNK_BUDGET_KB (350), et le compte de chunks reste
+//     sous plafond (754/760).
+//   * Le seul poids ajouté au chunk partagé est ~93 lignes de traductions
+//     (catalogs fr/en/ar) + `resolve.js` : `i18nCatalogs.js` ne fait
+//     qu'EXTRAIRE les imports JSON statiques qui vivaient déjà dans
+//     `context.js` depuis N93 — pas un nouvel import statique.
+// Palier serré (~17 Ko de marge sur le réel) : croissance produit légitime
+// déjà bien rangée, palier honnête plutôt qu'une marge cumulée.
+const TOTAL_BUDGET_KB = 3375
 const VENDOR_CHUNK_BUDGETS_KB = {
   recharts: 450,
   'pdfjs-dist': 450,
