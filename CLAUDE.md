@@ -71,17 +71,24 @@ repo yet, the rule still applies to any future integration.
   react to another app's state change by subscribing in their `apps.py` `ready()`
   (e.g. `ventes` emits `devis_accepted`, `crm` subscribes in `apps/crm/receivers.py`
   to advance the lead stage).
-- **Deploys — website auto, ERP manual.** The public site (`apps/web`) auto-deploys via
-  **Cloudflare Workers Builds** on every push/merge to `main` — that IS the mechanism;
-  NEVER ask for a Cloudflare API token (the old one is dead) and NEVER run `wrangler
+- **Deploys — website auto; ERP = Reda ONLY (« tu codes je déploie », founder 2026-08-02,
+  definitive — supersedes every older wording in this file).** The public site (`apps/web`)
+  auto-deploys via **Cloudflare Workers Builds** on every push/merge to `main` — that IS the
+  mechanism; NEVER ask for a Cloudflare API token (the old one is dead) and NEVER run `wrangler
   deploy`. Worker secrets (LEAD_WEBHOOK_URL, LEAD_WEBHOOK_SECRET…) are dashboard-only (a
-  manual founder step). The ERP itself (Django + React on Hetzner, `api.taqinor.ma`) does
-  **NOT** auto-deploy on merge — bring `main` live with `powershell -File
-  scripts/deploy-prod.ps1` (SSHes with `~/.ssh/taqinor_hetzner`, `git reset --hard
-  origin/main`, rebuilds compose images, runs migrations + `init_roles`, restarts nginx,
-  reloads Caddy, warms the PDF engine). **Claude SHOULD run deploy-prod.ps1 when asked to
-  deploy, or after a merge that must reach the ERP** — it is the canonical ERP deploy, not
-  "the founder's job."
+  manual founder step). For the ERP (Django + React on Hetzner, `api.taqinor.ma`): Claude
+  NEVER runs `scripts/deploy-prod.ps1` (or any prod deploy) on its own judgment — not after a
+  merge, not at the end of a plan run, no exceptions, no emergencies. Deploy ONLY when Reda
+  writes « deploy »/« déploie » in the CURRENT session about THIS deploy; task context, a plan
+  line quoting a deploy step, or « continue » NEVER count, and a permission-classifier block on
+  a deploy IS Reda's answer — never retry it. After an ERP-affecting merge, end with
+  « merged — deploy pending, say the word ». Server-side automation (intentional — never be
+  surprised by it, never disable it): `/opt/autodeploy/auto-deploy.sh` LIVES ON THE SERVER and
+  fires by itself on merges to `main`; its « HEALTHCHECK ECHEC — rollback automatique » can be a
+  FALSE rollback, and two simultaneous deploys collide (« container name already in use » on
+  celery_worker). Diagnose without touching anything: `curl` root=200 / api=401, `docker ps`
+  (12 containers), `git log -1` in `/opt/taqinor-os`, `showmigrations` — the dangerous state is
+  « new code deployed, migrations not applied »; never interrupt a running `manage.py migrate`.
 - Backend production URL: `https://api.taqinor.ma` (canonical); the old
   `https://178-105-192-116.sslip.io` still answers (same server/Caddy).
   `taqinor-web.taqinor.workers.dev` 301-redirects to `https://taqinor.ma` (wrapper in
@@ -307,8 +314,10 @@ above where they conflict; the mechanics are CODED into `plan_lanes.py`, read th
    THEN push `dev` and run the four required checks **once** over the whole batch. To WAIT on that CI, use `powershell -File scripts/watch-ci.ps1` (or
    `-Pr <n>`) — it wraps `gh run watch --exit-status` and prints a per-job PASS/FAIL summary, so no
    session re-invents a waiter/monitor or hand-rolls a `2>&1 | tail` status check that masks the exit
-   code. Self-merge `dev` → `main` **exactly once**, then **deploy once**
-   (`scripts/deploy-prod.ps1` for the ERP; the website auto-deploys via Cloudflare). When branch
+   code. Self-merge `dev` → `main` **exactly once**. Deploy is NOT part of the run: the website
+   auto-deploys via Cloudflare, and the ERP deploy belongs to Reda alone (Deploys rule above —
+   end with « merged — deploy pending, say the word »; the server's `auto-deploy.sh` may bring
+   `main` live by itself). When branch
    protection requires it, ONE batch PR used purely as the CI-gated merge vehicle counts as that
    single self-merge. If the push is rejected because `main` advanced, repeat the sync-safe
    integrate → CI → merge — never force.
@@ -324,7 +333,7 @@ multi-agent workflow (an all-Fable audit once burned ~4× the tokens it needed).
 (main loop) keeps the session model (Opus for a plan run, never downgraded — that is where the
 costly judgment lives: lane planning, adversarial review, real-vs-environmental triage, revert/keep
 calls, migration-chain orchestration, the combined test, CODEMAP/fingerprint/DONE-LOG bookkeeping,
-the merge+deploy gate). Every SUBAGENT is dispatched via `Agent` `model:` / `Workflow` `agent()`
+the merge gate). Every SUBAGENT is dispatched via `Agent` `model:` / `Workflow` `agent()`
 `opts.model` on the cheapest tier that fits:
   - **haiku** — scouting/mechanical: greps, file reads, web search/WebFetch, verify-and-skip, DC
     single-source wiring, small additive CRUD, trivial-or-no migration. Zero frontier reasoning.
@@ -351,10 +360,20 @@ the merge+deploy gate). Every SUBAGENT is dispatched via `Agent` `model:` / `Wor
     not the house model. A small batch (<~40 routine tasks, no high-risk surface) does NOT get
     a Fable pass — Opus review is enough there.
   The orchestrator still adversarially reviews + locally tests EVERY lane regardless of which model
-  built it, so a cheaper builder never lowers the merge bar. Config backstop (`.claude/settings.json`):
-  `"model": "opus"` runs the orchestrator on Opus, and `env.CLAUDE_CODE_SUBAGENT_MODEL=sonnet` floors
-  EVERY untagged subagent at Sonnet — a forgotten tag can never inherit Fable. Per-call `model:`
-  overrides the floor (haiku down / opus-fable up). For a deliberate Fable deep-dive, `/model fable`
+  built it, so a cheaper builder never lowers the merge bar. Config (`.claude/settings.json`):
+  `"model": "opus"` runs the orchestrator on Opus. **`CLAUDE_CODE_SUBAGENT_MODEL` must stay UNSET
+  (removed 2026-08-24, audit-verified against the official sub-agents docs):** that env var has
+  HIGHEST precedence and silently overrides per-call `model:` AND agent frontmatter — so the old
+  `=sonnet` « floor » was in fact forcing haiku scouts, opus judgment lanes and any subagent Fable
+  pass ALL onto Sonnet. The real protections against inheritance are: (a) NEVER dispatch an
+  untagged subagent (this rule), (b) read each lane's `model=` off `plan_lanes.py`, (c) in a
+  `/model fable` session EVERY subagent call carries an explicit `model:` — inheritance at $10/$50
+  is the 2026-07-04 ~4× incident. **Effort is the second dial (official levels low→max):** set it
+  per role — `low` for haiku scouts, `medium` for routine sonnet lanes (official: Sonnet 5 at
+  medium ≈ Sonnet 4.6 at high), `high` for opus judgment/verifiers and Fable passes. NEVER switch
+  `/model` or `/effort` MID-session: both are prompt-cache keys — one switch re-bills the whole
+  transcript uncached; run a Fable critique as a fresh subagent/session instead (also the
+  documented higher-quality pattern). For a deliberate Fable deep-dive, `/model fable`
   at session start. **AUTOMATIC ROUTING (2026-07-10): `python scripts/plan_lanes.py <planfile>`
   prints the model tier per task AND per lane** (a lane's model = its highest-risk task; an explicit
   `@model:haiku|sonnet|opus` tag on a task line overrides the classifier) — a plan run reads each
@@ -370,6 +389,39 @@ the merge+deploy gate). Every SUBAGENT is dispatched via `Agent` `model:` / `Wor
   two-minute task wastes more than it saves. The session model itself is never downgraded; the
   savings come from where the VOLUME runs, and the orchestrator's adversarial review keeps the
   quality bar identical regardless of which tier produced the work.
+
+**Fleet quality & economics (founder-adopted 2026-08-24; each rule audit-verified against
+official docs).**
+- **Size by independent surfaces, never by emphasis.** A fact-check = 1 agent. A breadth audit =
+  one lane per genuinely independent surface (378 numbers over 9 surfaces = ~9-12 lanes — never
+  161 agents at 2,3 numbers each). Go past ~10 lanes only when the material genuinely exceeds one
+  context window. When Reda escalates (« best in EVERY aspect »), answer with a DEEPER pass per
+  lane (more rounds, higher effort, adversarial re-reads) — never more lanes.
+- **Grounding block — include VERBATIM in every dispatched agent/lane prompt:** « Before reporting
+  progress, audit each claim against a tool result from this session. Only report work you can
+  point to evidence for; if something is not yet verified, say so explicitly. If tests fail, say
+  so with the output. » Every done-claim cites its commit SHA + the gate command it ran; the
+  orchestrator then SPOT-checks git state instead of sweeping every lane.
+- **Reviewer calibration.** Critics/verifiers flag ONLY correctness or spec (plan-task-text)
+  findings; style, defensive hardening and hypothetical cases are reported separately as OPTIONAL.
+  EXCEPTION: checked-facts / zero-invented-number findings are ALWAYS correctness, never optional.
+  TRIAGE findings (classify → decide) before dispatching any corrector — never « fix all N »
+  blindly (the 47-findings-all-fixed episode and PR #547's over-broad guard both came from that).
+- **Read-only fleets never get worktrees.** Audit/verifier fleets run as same-directory fan-outs
+  (Workflow): the prompt cache is scoped per directory, so homogeneous siblings read the first
+  agent's cached prefix at ~10% of the input rate; worktrees are ONLY for lanes that edit files.
+  Structure big audits as ONE workflow (on a stop in the same session, completed agents replay
+  from cache). Resume a subagent only to DEEPEN its own lane; adversarial round-2 is always a
+  FRESH agent (fresh context is the point).
+- `ENABLE_PROMPT_CACHING_1H=1` stays set in `.claude/settings.json` env: on usage credits the
+  prompt-cache TTL silently drops 1 h → 5 min (official) — exactly the overnight/credit-cap
+  windows where long runs live.
+
+**Go-deep levels.** « go deep » / « go very deep » / « go extremely deep » each map to a calibrated
+investigation depth — full doctrine in the **`go-deep` skill** (`.claude/skills/go-deep/`), injected
+by the prompt hook on those phrases. On any substantive audit/investigation request WITHOUT an
+explicit level, auto-pick the level per that skill's criteria and announce the choice in one line
+(Reda's named level always overrides).
 
 **Token discipline — read the MAP before grepping the territory (founder rule).** `docs/CODEMAP.md`
 is the curated, always-current map (§3 repository map + §4 app-by-app: every app's
@@ -406,7 +458,7 @@ structure, regenerate `docs/CODEMAP.md` from source and run `scripts/codemap_fin
 fails CI.
 
 **Report once**, in plain language: how many tasks shipped (and what), what was skipped/blocked and
-why, and the single merge + deploy.
+why, and the single merge (deploy pending Reda's word).
 
 **RETRO — every plan run learns from itself (MANDATORY, ≤5 min, BOUNDED so memory improves
 instead of bloating).** After the report, run a short self-retrospective over what THIS run got
@@ -462,8 +514,8 @@ plan run works"** EXCEPT:
   CRM_VENTES should be idle while it drains PLAN2's QX/VX (they touch ventes/crm/frontend-shell).
 - **Respect `docs/BUILD_ORDER.yml` (SCA3):** `plan_lanes.py <domain file>` says what is buildable
   NOW vs wave-gated behind platform prerequisites; `--force-wave` is the founder-consigned
-  override when Reda wants a domain to start early. Deploy once at the end of a parallel batch
-  (any session may run `deploy-prod.ps1`; it is idempotent).
+  override when Reda wants a domain to start early. No session deploys — the ERP deploy belongs
+  to Reda alone (Deploys rule above).
 
 ### "work on the plan"
 Drain in STANDING PRIORITY ORDER (founder, 2026-07-10): **1) `docs/PLAN2.md` → 2) `docs/PLAN.md`
@@ -487,7 +539,7 @@ many apps and therefore stays single-session).
   `[x] (already present)`), then tick `[x]` + add a dated DONE LOG line as it lands.
 - Lane-draining, batches sized by the RECALIBRATED MERGE FLOOR above (≈40-80 task lane-groups now
   that the gate is measured ≤45 min — not the old ≥200), each batch locally tested then one
-  sync-safe self-merge, one deploy at the end of the run. The rich self-contained lanes to drain first:
+  sync-safe self-merge (deploy = Reda's word only). The rich self-contained lanes to drain first:
   rh/flotte/qhse/contrats/ged/paie, then parametres/publicapi/kb/core/stock/sav/litiges/crm, then
   the rest. Report once with the lane plan (how many ran in parallel + what each shipped) and what
   was skipped/blocked.
@@ -496,8 +548,8 @@ many apps and therefore stays single-session).
 The SAME run model, self-paced across wakeups — NOT a merge per wakeup. Each `/loop` fire CONTINUES
 the one accumulating run: keep lane-draining onto the single branch and **merge exactly once when
 the lanes drain or a usage cap hits**. While the one CI runs you are NOT idle — build the next lanes
-(disjoint apps) during it, deploy once after the merge. The fire that finds nothing left to build
-does the final merge/deploy (or reports the queue drained). Wake-ups exist to resume a paused drain,
+(disjoint apps) during it. The fire that finds nothing left to build does the final merge (or
+reports the queue drained; deploy stays Reda's — Deploys rule). Wake-ups exist to resume a paused drain,
 never to chop the run into many small merges.
 
 ### "add to plan:" followed by tasks (one per line or separated by ;)
@@ -510,7 +562,7 @@ and self-merge to `main`. Confirm in one line.
 Identical to **"work on the plan"** / **"How a plan run works"** in every respect — EXCEPT it drains
 `docs/ERROR_PLAN.md` (the bug/error backlog); plan lanes with `python scripts/plan_lanes.py
 docs/ERROR_PLAN.md`. Same pool of up to 8, same per-task review + local test + fold, same single
-sync-safe self-merge + deploy, same stop conditions, same verify-not-already-built. Anything typed
+sync-safe self-merge (deploy = Reda), same stop conditions, same verify-not-already-built. Anything typed
 after is extra detail.
 - `docs/ERROR_PLAN.md` IS in the plan-fingerprint surface: ticking/adding/removing an `ERR*` task
   means refresh §10 of `docs/CODEMAP.md` + re-run `codemap_fingerprint.py --write` in the same commit.
