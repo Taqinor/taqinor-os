@@ -513,10 +513,90 @@ def _monthly_production(data) -> list:
     return [round(annual * w) for w in MOROCCO_SOLAR_MONTHLY_WEIGHTS]
 
 
-def _monthly_consumption(devis) -> list:
-    """T4 — consommation mensuelle (kWh/mois) depuis les factures RÉELLES.
+#: Sources de consommation du bloc horaire canonique qui reposent sur une
+#: donnée RÉELLE du client. Chacune est soit une saisie en kWh, soit une (ou
+#: douze) facture(s) RÉELLE(S) back-calculée(s) par le barème (tranches
+#: progressives puis sélectives — ``bareme.kwh_depuis_facture_mad`` inverse la
+#: VRAIE fonction de facturation par dichotomie, JAMAIS une division par un
+#: prix moyen). Tout le reste — ``absente``, ``inconnue``, toute valeur future
+#: non listée ici — est refusé : la série publiée est une lecture, jamais une
+#: supposition.
+#:
+#: À NE PAS CONFONDRE avec ``_SOURCES_CONSO_MESUREES`` (plus bas), qui répond à
+#: une AUTRE question : la VARIATION mensuelle est-elle mesurée ? Une facture
+#: d'hiver seule est une donnée réelle (elle a droit de cité ici) mais elle est
+#: répétée sur douze mois, donc sa variation reste estimée (elle est absente
+#: de l'autre liste, et la note du bloc « économies » le dit).
+_SOURCES_CONSO_REELLES = (
+    'kwh_mensuels_saisis',
+    'factures_mensuelles_reelles',
+    'facture_hiver',
+    'facture_hiver_ete',
+)
 
-    Lit les factures du lead du devis via le sélecteur CRM (cross-app lecture
+
+def _monthly_consumption_etude(devis) -> list:
+    """Les 12 kWh/mois DÉJÀ résolus par le bloc horaire canonique, ou ``[]``.
+
+    LA SEULE VÉRITÉ. ``services.rafraichir_etude_horaire_devis`` persiste sur
+    le devis (``etude_params['etude_horaire']``) la série de consommation que
+    LE MOTEUR utilise pour tout le reste : les économies mensuelles, la
+    synthèse de la page 1 du PDF, le dimensionnement. Elle est résolue par
+    ``etude_horaire.profil_depuis_factures``, dont l'échelle de priorité est
+    plus riche que celle du repli ci-dessous : 12 kWh saisis, sinon 12 factures
+    RÉELLES, sinon la facture d'hiver (+ celle d'été si distincte) —
+    back-calculées au barème de la SOCIÉTÉ, ou à la grille nationale du
+    millésime à défaut.
+
+    Sans cette lecture, la page publiait une consommation issue d'un SECOND
+    chemin, plus étroit (``kwh_from_bill`` exige le ``distributeur`` du lead) :
+    un lead venu du tunnel dont le distributeur n'est pas renseigné — ou vaut
+    « autre », ce que le webhook pose explicitement quand le visiteur répond
+    « inconnu » — servait ``monthly_consumption: []`` et le graphe perdait la
+    ligne « votre consommation », alors que le devis affichait juste à côté des
+    économies calculées sur cette même consommation. Deux chemins, deux
+    vérités : celui-ci est la seule.
+
+    Renvoie ``[]`` (jamais une série partielle) au moindre doute : bloc absent,
+    source non réelle, mois manquants, valeur non numérique ou négative.
+    """
+    bloc = (getattr(devis, 'etude_params', None) or {}).get('etude_horaire')
+    if not isinstance(bloc, dict):
+        return []
+    if bloc.get('source_consommation') not in _SOURCES_CONSO_REELLES:
+        return []
+    mois = bloc.get('mois')
+    if not isinstance(mois, list) or len(mois) != 12:
+        return []
+    par_numero = {}
+    for entree in mois:
+        if not isinstance(entree, dict):
+            return []
+        numero, valeur = entree.get('mois'), entree.get('consommation_kwh')
+        if (isinstance(numero, bool) or not isinstance(numero, int)
+                or not 1 <= numero <= 12):
+            return []
+        if (isinstance(valeur, bool)
+                or not isinstance(valeur, (int, float)) or valeur < 0):
+            return []
+        par_numero[numero] = valeur
+    if len(par_numero) != 12:
+        return []
+    serie = [round(par_numero[numero]) for numero in range(1, 13)]
+    # Une année entièrement nulle n'est pas une consommation : on omet.
+    return serie if any(v > 0 for v in serie) else []
+
+
+def _monthly_consumption(devis) -> list:
+    """T4 — consommation mensuelle (kWh/mois) depuis les données RÉELLES.
+
+    SOURCE PRIORITAIRE (24/08/2026) : la série déjà résolue par le bloc horaire
+    canonique du devis (:func:`_monthly_consumption_etude`) — le MÊME chiffre
+    que celui sur lequel le moteur a calculé les économies affichées sur la
+    même page. Aucun second calcul, aucune seconde règle.
+
+    REPLI, inchangé, quand aucun bloc horaire n'est persisté sur le devis :
+    lit les factures du lead du devis via le sélecteur CRM (cross-app lecture
     seule, jamais d'import direct de ``apps.crm.models``). QX7d — convertit
     MAD→kWh par le MÊME barème réel (progressif puis sélectif) que le chemin ROI
     (``quote_engine.pricing.kwh_from_bill`` : tranches ONEE/Lydec/Redal du
@@ -525,6 +605,9 @@ def _monthly_consumption(devis) -> list:
     proposition. Facture d'hiver toute l'année, ou hiver+été quand
     ``ete_differente`` (été = mois ~Mai→Oct). Sans facture → [] (la page masque
     alors le graphe)."""
+    depuis_etude = _monthly_consumption_etude(devis)
+    if depuis_etude:
+        return depuis_etude
     from apps.crm.selectors import lead_bills_for_devis
     bills = lead_bills_for_devis(devis)
     if not bills:
