@@ -433,3 +433,99 @@ class EquipementsTests(_CourbesBase):
             {'piscine': True, 'piscine_pompe_kw': 1.5}, conso=[])
         self.assertNotIn('consommation', bloc)
         self.assertNotIn('equipements', bloc)
+
+
+class EquipementsLBackTests(_CourbesBase):
+    """L-BACK (24/08/2026) — les 4 grandeurs complémentaires (kW/créneau)."""
+
+    def _bloc_equip(self, equip, data=None, conso=None):
+        with mock.patch('apps.crm.selectors.equipements_pour_devis',
+                        return_value=equip):
+            return self._bloc(data=data, conso=CASA_CONSO if conso is None else conso)
+
+    def test_piscine_heures_jour_remplace_la_duree_par_defaut(self):
+        bloc = self._bloc_equip({
+            'piscine': True, 'piscine_pompe_kw': 1.5,
+            'piscine_heures_jour': 4,
+        })
+        self.assertEqual(bloc['equipements']['piscine'], {
+            'kw': 1.5,
+            'heures': [10, 11, 12, 13],  # 4h à partir de 10h (même départ)
+            'saisons': ['ete'],
+            'mode': 'redistribution',
+            'source': 'lead:equip_piscine_heures_jour',
+        })
+
+    def test_piscine_sans_heures_jour_garde_le_defaut(self):
+        bloc = self._bloc_equip({
+            'piscine': True, 'piscine_pompe_kw': 1.5,
+            'piscine_heures_jour': None,
+        })
+        self.assertEqual(bloc['equipements']['piscine']['heures'],
+                         list(range(10, 18)))
+        self.assertEqual(bloc['equipements']['piscine']['source'],
+                         'memo_2026-08-21_etage2:piscine_bloc_10_18h')
+
+    def test_clim_kw_declare_remplace_l_estimation_par_piece(self):
+        bloc = self._bloc_equip({
+            'clim': True, 'clim_pieces': 5, 'clim_kw': 4.2,
+        })
+        self.assertEqual(bloc['equipements']['clim'], {
+            'kw': 4.2,
+            'heures': list(range(13, 21)),
+            'saisons': ['ete'],
+            'mode': 'redistribution',
+            'source': 'lead:equip_clim_kw',
+        })
+
+    def test_clim_kw_absent_retombe_sur_l_estimation_par_piece(self):
+        bloc = self._bloc_equip({'clim': True, 'clim_pieces': 2, 'clim_kw': None})
+        self.assertEqual(bloc['equipements']['clim']['kw'], 2.8)
+        self.assertEqual(bloc['equipements']['clim']['source'],
+                         'memo_2026-08-21_etage2:clim_12000btu_1p4kwh_h')
+
+    def test_ve_chargeur_et_creneau_resserrent_la_fenetre(self):
+        # 140 km/sem × 19,8/100 ÷ 7 = 3,96 kWh/jour ; à 7,4 kW ⇒ 3,96/7,4×60
+        # ≈ 32 min ⇒ 1 seule heure nécessaire dans le créneau 'nuit'.
+        bloc = self._bloc_equip({
+            'voiture_electrique': True, 've_km_semaine': 140,
+            've_chargeur_kw': 7.4, 've_creneau': 'nuit',
+        })
+        couche = bloc['equipements']['ve']
+        self.assertEqual(couche['kwh_jour'], 3.96)
+        self.assertEqual(couche['heures'], [21])
+        self.assertEqual(
+            couche['source'],
+            'memo_2026-08-21_etage2:ve_ademe_19_8kwh_100km'
+            '+lead:equip_ve_chargeur_kw+creneau')
+
+    def test_ve_sans_chargeur_garde_la_fenetre_par_defaut(self):
+        bloc = self._bloc_equip({
+            'voiture_electrique': True, 've_km_semaine': 140,
+            've_chargeur_kw': None, 've_creneau': None,
+        })
+        self.assertEqual(bloc['equipements']['ve']['heures'],
+                         [21, 22, 23, 0, 1, 2, 3, 4, 5])
+
+    def test_chauffe_eau_kw_et_creneau_composent_une_couche(self):
+        bloc = self._bloc_equip({
+            'chauffe_eau_electrique': True,
+            'chauffe_eau_kw': 2.2, 'chauffe_eau_creneau': 'nuit',
+        })
+        self.assertEqual(bloc['equipements']['chauffe_eau'], {
+            'kw': 2.2,
+            'heures': [23, 0, 1, 2, 3, 4, 5],
+            'saisons': None,
+            'mode': 'redistribution',
+            'source': 'lead:equip_chauffe_eau_kw+creneau',
+        })
+
+    def test_chauffe_eau_moitie_de_paire_ne_produit_rien(self):
+        bloc = self._bloc_equip({
+            'chauffe_eau_kw': 2.2, 'chauffe_eau_creneau': None,
+        })
+        self.assertNotIn('equipements', bloc)
+        bloc2 = self._bloc_equip({
+            'chauffe_eau_kw': None, 'chauffe_eau_creneau': 'nuit',
+        })
+        self.assertNotIn('equipements', bloc2)

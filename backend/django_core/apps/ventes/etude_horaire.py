@@ -531,19 +531,26 @@ PROFILS_RAFALE = {
         'puissance': 'memo_2026-08-21_etage2:clim_12000btu_1p4kwh_h',
         'cycle': CALIBRATION_RAFALE_SOURCE,
     },
-    # CHAUFFE-EAU — EXCEPTION DOCUMENTÉE, INERTE AUJOURD'HUI. Un chauffe-eau
-    # électrique chauffe EN CONTINU jusqu'à coupure du thermostat : il ne cycle
-    # pas comme un compresseur. RIEN NE SORT : aucune puissance de chauffe-eau
-    # n'est collectée au téléphone, donc ``courbes_journalieres`` ne compose
-    # AUCUNE couche pour lui. La calibration ne change rien à ce statut — elle
-    # ne sait pas isoler un chauffe-eau dans un compteur de maison entière.
+    # CHAUFFE-EAU — EXCEPTION DOCUMENTÉE, INERTE PAR PHYSIQUE (pas par
+    # absence de donnée). Un chauffe-eau électrique chauffe EN CONTINU
+    # jusqu'à coupure du thermostat : il ne cycle pas en rafales courtes
+    # comme un compresseur (pompe/clim). L-BACK (24/08/2026) : une puissance
+    # RÉELLE peut désormais être collectée au téléphone
+    # (``crm.Lead.equip_chauffe_eau_kw``+créneau, voir
+    # ``courbes_journalieres._equipements``) — sa couche compose bien une
+    # fenêtre PLATE sur son créneau (heure entière), mais reste
+    # DÉLIBÉRÉMENT hors de ce modèle de rafales COURTES : la concentrer en
+    # impulsions de quelques minutes inventerait un cycle qu'aucune source
+    # ne documente pour cet appareil. La calibration ne change rien à ce
+    # statut — elle ne sait pas isoler un chauffe-eau dans un compteur de
+    # maison entière.
     'chauffe_eau': {
         'actif': False,
         'plafond_minutes': RAFALE_PLAFOND_MINUTES,
         'position_fenetre': RAFALE_POSITION_MESUREE,
         'puissance': None,
         'cycle': 'chauffe_continue_jusqu_a_coupure_thermostat',
-        'motif_inactif': 'aucune_puissance_collectee',
+        'motif_inactif': 'ne_cycle_pas_comme_un_compresseur',
     },
     # VÉHICULE ÉLECTRIQUE — DÉLIBÉRÉMENT ABSENT DE CETTE TABLE (inchangé) :
     # sa couche porte une ÉNERGIE, la puissance du chargeur n'est pas

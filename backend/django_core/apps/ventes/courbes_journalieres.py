@@ -40,6 +40,7 @@ grandeur réelle saisie NE PRODUIT AUCUNE couche (omission > invention).
 from __future__ import annotations
 
 import logging
+import math
 
 from apps.parametres.pvgis_profils import (
     SAISONS,
@@ -266,11 +267,21 @@ def _consommation(monthly_consumption, equipements=None):
 # l'EXCEPTION que le mémo indique explicitement : une charge FUTURE, absente
 # des factures passées, donc AJOUTÉE au niveau (voir :func:`_consommation`).
 #
-# Le chauffe-eau électrique n'a NI fenêtre horaire NI puissance sourcées dans
-# le mémo (il ne cite qu'un ordre de grandeur kWh/personne/an, et le nombre
-# de personnes du foyer n'est pas un champ collecté) : le champ existe sur le
-# lead pour le script d'appel et le chatter, mais ne produit ICI aucune
-# couche — omission délibérée, jamais une magnitude inventée.
+# Le chauffe-eau électrique (``equip_chauffe_eau_electrique``) n'a NI fenêtre
+# horaire NI puissance sourcées dans le mémo (il ne cite qu'un ordre de
+# grandeur kWh/personne/an, et le nombre de personnes du foyer n'est pas un
+# champ collecté) : ce champ booléen existe sur le lead pour le script
+# d'appel et le chatter, mais ne produit ICI aucune couche — omission
+# délibérée, jamais une magnitude inventée.
+#
+# L-BACK (24/08/2026) — DEUX PAIRES DE GRANDEURS RÉELLES COMPLÉMENTAIRES,
+# distinctes des booléens ci-dessus : puissance chauffe-eau (kW) + créneau,
+# puissance chargeur VE (kW) + créneau, puissance clim déclarée (kW), heures
+# de filtration piscine/jour (``crm.Lead`` L-BACK). Une couche ne se compose
+# que si TOUTE la paire nécessaire est renseignée — jamais une moitié.
+# CHAUFFE_EAU_CRENEAUX/VE_CRENEAUX (ci-dessous) NE SONT PAS des puissances
+# sourcées : ce sont des fenêtres horaires CONVENTIONNELLES qui donnent un
+# sens concret aux mots du script d'appel.
 
 # Source : mémo étage 2 — « piscine (règle T°eau÷2 → 13-14 h/j été,
 # bloc 10-18 h) ». La DURÉE totale citée (13-14 h/j) est incompatible avec la
@@ -293,6 +304,29 @@ CLIM_SAISONS = ('ete',)  # même fenêtre saisonnière que le boost été exista
 # pas un usage saisonnier au sens du mémo).
 VE_HEURES = (21, 22, 23, 0, 1, 2, 3, 4, 5)
 VE_KWH_PAR_100KM = 19.8  # ADEME, cité par le mémo
+
+# ── L-BACK (24/08/2026) — créneaux de la paire kW/créneau chauffe-eau et VE.
+# Ces fenêtres NE SONT PAS des puissances/conversions mesurées (rien à
+# « sourcer » comme VE_KWH_PAR_100KM/CLIM_KWH_PAR_UNITE_H) : ce sont des
+# DÉCOUPAGES horaires conventionnels et non-chevauchants qui donnent un sens
+# concret aux quatre mots du script d'appel (matin/soir/nuit/journée). La
+# puissance réelle, elle, vient TOUJOURS de la grandeur saisie par le
+# commercial (``equip_chauffe_eau_kw``/``equip_ve_chargeur_kw``) — jamais
+# inventée.
+CHAUFFE_EAU_CRENEAUX = {
+    'matin': tuple(range(6, 9)),          # 6h-9h (borne haute exclue), 3 h
+    'soir': tuple(range(18, 21)),         # 18h-21h (borne haute exclue), 3 h
+    'nuit': (23, 0, 1, 2, 3, 4, 5),       # 23h-6h, 7 h
+    'journee': tuple(range(9, 18)),       # 9h-18h (borne haute exclue), 9 h
+}
+
+VE_CRENEAUX = {
+    # Même fenêtre que le défaut heures-creuses ONEE ci-dessus — le créneau
+    # « nuit » du script d'appel EST ce défaut, nommé explicitement.
+    'nuit': VE_HEURES,
+    'jour': tuple(range(9, 18)),          # 9h-18h — ex. recharge sur PV
+    'soir': tuple(range(18, 21)),         # 18h-21h
+}
 
 
 def _nombre_positif(valeur):
@@ -326,39 +360,89 @@ def _equipements(lead_equip):
     if lead_equip.get('piscine') is True:
         kw = _nombre_positif(lead_equip.get('piscine_pompe_kw'))
         if kw is not None:
+            # L-BACK — heures/jour réelles, quand connues, remplacent la
+            # durée par défaut du mémo (8h) ; même heure de départ (10h),
+            # seule la LONGUEUR de la fenêtre change.
+            heures_jour = _nombre_positif(lead_equip.get('piscine_heures_jour'))
+            if heures_jour is not None:
+                n = max(1, min(24, round(heures_jour)))
+                heures = [(PISCINE_HEURES[0] + i) % 24 for i in range(n)]
+                source = 'lead:equip_piscine_heures_jour'
+            else:
+                heures = list(PISCINE_HEURES)
+                source = 'memo_2026-08-21_etage2:piscine_bloc_10_18h'
             out['piscine'] = {
                 'kw': round(kw, 2),
-                'heures': list(PISCINE_HEURES),
+                'heures': heures,
                 'saisons': list(PISCINE_SAISONS),
                 'mode': 'redistribution',
-                'source': 'memo_2026-08-21_etage2:piscine_bloc_10_18h',
+                'source': source,
             }
 
     if lead_equip.get('clim') is True:
         pieces = _entier_positif(lead_equip.get('clim_pieces'))
-        if pieces is not None:
+        # L-BACK — puissance RÉELLE déclarée, quand connue, remplace
+        # l'estimation par pièce × constante non-inverter.
+        clim_kw_declare = _nombre_positif(lead_equip.get('clim_kw'))
+        if clim_kw_declare is not None:
+            kw, source = clim_kw_declare, 'lead:equip_clim_kw'
+        elif pieces is not None:
+            kw = pieces * CLIM_KWH_PAR_UNITE_H
+            source = 'memo_2026-08-21_etage2:clim_12000btu_1p4kwh_h'
+        else:
+            kw = None
+        if kw is not None:
             out['clim'] = {
-                'kw': round(pieces * CLIM_KWH_PAR_UNITE_H, 2),
+                'kw': round(kw, 2),
                 'heures': list(CLIM_HEURES),
                 'saisons': list(CLIM_SAISONS),
                 'mode': 'redistribution',
-                'source': 'memo_2026-08-21_etage2:clim_12000btu_1p4kwh_h',
+                'source': source,
             }
 
     if lead_equip.get('voiture_electrique') is True:
         km_semaine = _nombre_positif(lead_equip.get('ve_km_semaine'))
         if km_semaine is not None:
             kwh_jour = km_semaine * VE_KWH_PAR_100KM / 100.0 / 7.0
+            heures = list(VE_HEURES)
+            source = 'memo_2026-08-21_etage2:ve_ademe_19_8kwh_100km'
+            # L-BACK — chargeur réel + créneau réel, quand les deux sont
+            # connus : la fenêtre de recharge se resserre au nombre d'heures
+            # RÉELLEMENT nécessaires à CETTE puissance (plutôt que la
+            # fenêtre heures-creuses par défaut de 9h) — jamais plus large
+            # que le créneau choisi.
+            chargeur_kw = _nombre_positif(lead_equip.get('ve_chargeur_kw'))
+            creneau = lead_equip.get('ve_creneau')
+            fenetre = VE_CRENEAUX.get(creneau)
+            if chargeur_kw is not None and fenetre:
+                duree_h = kwh_jour / chargeur_kw
+                n = max(1, min(len(fenetre), math.ceil(duree_h - 1e-9)))
+                heures = list(fenetre[:n])
+                source += '+lead:equip_ve_chargeur_kw+creneau'
             out['ve'] = {
                 'kwh_jour': round(kwh_jour, 2),
-                'heures': list(VE_HEURES),
+                'heures': heures,
                 'saisons': None,  # toutes saisons — charge non saisonnière
                 'mode': 'addition',
-                'source': 'memo_2026-08-21_etage2:ve_ademe_19_8kwh_100km',
+                'source': source,
             }
 
-    # chauffe_eau_electrique : DÉLIBÉRÉMENT absent d'``out`` — voir le
-    # commentaire d'en-tête (aucune fenêtre/puissance sourcée exploitable).
+    # chauffe_eau_electrique (booléen informatif) reste sans couche — voir le
+    # commentaire d'en-tête. L-BACK ajoute une paire DISTINCTE
+    # (``chauffe_eau_kw``/``chauffe_eau_creneau``) qui, elle, EN produit une
+    # quand les DEUX sont renseignées : puissance réelle sur son créneau,
+    # jamais un chiffre inventé pour l'une sans l'autre.
+    chauffe_eau_kw = _nombre_positif(lead_equip.get('chauffe_eau_kw'))
+    chauffe_eau_creneau = lead_equip.get('chauffe_eau_creneau')
+    fenetre_ce = CHAUFFE_EAU_CRENEAUX.get(chauffe_eau_creneau)
+    if chauffe_eau_kw is not None and fenetre_ce:
+        out['chauffe_eau'] = {
+            'kw': round(chauffe_eau_kw, 2),
+            'heures': list(fenetre_ce),
+            'saisons': None,
+            'mode': 'redistribution',
+            'source': 'lead:equip_chauffe_eau_kw+creneau',
+        }
 
     return out
 
