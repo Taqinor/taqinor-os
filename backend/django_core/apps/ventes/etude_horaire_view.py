@@ -15,6 +15,15 @@ Deux usages, un seul endpoint :
 
 Les deux se demandent ensemble.
 
+DIM2 (fondateur 24/08/2026) — le bloc ``dimensionnement`` porte désormais DEUX
+dimensions : la taille du champ ET le stockage. Chaque ligne du tableau expose
+son ``balayage_stockage`` (les paliers de batteries réellement composables, avec
+coût, économie marginale, résiduel et taux de remplissage), le palier REFUSÉ qui
+prouve la borne (« batteries toujours pleines »), les colonnes
+``residuel_kwh_mois`` / ``tranche_apres`` qui rendent la marche du barème
+visible, et le bloc rend en plus ``recommandation_avec``, ``falaise`` et
+``meilleure_falaise``. Forme exacte : ``contract_samples/etude_horaire.json``.
+
 AUCUNE ÉCRITURE : ni devis, ni statut, ni ligne. C'est un calculateur — comme
 ``roof_load_view``, dont il reprend la forme (fonction ``@api_view``, jamais
 une action de ViewSet, donc AUCUN piège ``get_permissions``).
@@ -168,8 +177,10 @@ def _profil_depuis_devis(devis, corps):
                           "null quand rien n'est calculable"),
             'dimensionnement': serializers.JSONField(
                 allow_null=True,
-                help_text='Tableau des tailles + recommandation motivée — '
-                          'null si non demandé ou non calculable'),
+                help_text='Tableau des tailles × paliers de STOCKAGE (DIM2) + '
+                          'recommandations motivées (sans batterie et avec) + '
+                          'la marche du barème et la première combinaison qui '
+                          'la franchit — null si non demandé ou non calculable'),
             'consommation': inline_serializer('EtudeHoraireConsommation', {
                 'source': serializers.CharField(),
                 'kwh_mensuels': serializers.ListField(

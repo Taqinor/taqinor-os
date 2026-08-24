@@ -1961,7 +1961,8 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
                               avec_batterie=False, structure_type='acier',
                               taux_tva=Decimal('20'), avertissements=None,
                               deux_options=False, marques=None,
-                              ordre_lignes=None, mppt_paires=1, phase=None):
+                              ordre_lignes=None, mppt_paires=1, phase=None,
+                              batterie_cible_kwh=None):
     """Le KIT résidentiel COMPLET composé depuis un catalogue.
 
     U3 (fondateur 20/08/2026) — CETTE FONCTION EST LA SOURCE DE VÉRITÉ de la
@@ -2021,6 +2022,16 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     lignes, dont ``taux_tva`` reste vide) : il sert à reconvertir en HT les
     trois prix forfaitaires que le simulateur exprime en TTC, pour que le
     montant vu par le client soit le même des deux côtés.
+
+    ``batterie_cible_kwh`` (DIM2, fondateur 24/08/2026) — capacité de stockage
+    VISÉE, en kWh, servie par les modules du catalogue. ``None`` (LE DÉFAUT,
+    épinglé par un test) ⇒ la règle historique du simulateur reste seule maître
+    à bord : ``cible = max(5, arrondi(kwp / 5) × 5)``. **Le devis automatique ne
+    passe JAMAIS ce paramètre** : sa batterie reste une conséquence des kWc,
+    exactement comme avant. Seul le TABLEAU de dimensionnement
+    (``apps.ventes.dimensionnement``) l'utilise, pour EXPLORER le stockage comme
+    une deuxième dimension et montrer au fondateur ce qu'une banque plus grande
+    changerait — explorer n'est pas décider.
 
     ``avertissements`` (optionnel) est LE CANAL de cette fonction : une liste
     que l'appelant fournit et que la composition enrichit sur place quand elle
@@ -2244,7 +2255,12 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     # fondateur 2026-08-18) ; un produit encore nommé « Deyness » (base non
     # migrée, saisie manuelle, fixture ancienne) doit rester reconnu, sans quoi
     # le vivier retomberait sur TOUTES les batteries du catalogue.
-    cible_kwh = max(5, _arrondi_js(kwp / 5) * 5)
+    # DIM2 — une cible EXPLICITE (balayage du stockage) prime sur la règle
+    # kWc ; sans elle, la règle historique décide seule, à l'octet près.
+    if batterie_cible_kwh is not None and float(batterie_cible_kwh) > 0:
+        cible_kwh = max(5, _arrondi_js(float(batterie_cible_kwh) / 5) * 5)
+    else:
+        cible_kwh = max(5, _arrondi_js(kwp / 5) * 5)
     nb10 = int(cible_kwh // 10)
     nb5 = 1 if (cible_kwh % 10) >= 5 else 0
     # PVOND — GARDE BATTERIE PILOTÉ PAR LA DONNÉE (remplace le mot-clé PVG4) :
@@ -2413,6 +2429,14 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     lignes.kwc_reel = round(nb * float(lignes.panel_watt_reel) / 1000.0, 3)
     lignes.blocs = blocs
     lignes.marques_manquantes = marques_manquantes
+    # DIM2 — LES CAPACITÉS RÉELLEMENT DISPONIBLES, en kWh nominaux, telles que
+    # le vivier batterie les a retenues (compatibilité de tension avec
+    # l'onduleur hybride comprise). Le balayage du stockage lit CETTE liste
+    # pour construire ses paliers : sans elle il devrait redevine
+    # « 5 et 10 kWh », c'est-à-dire recréer un second catalogue en dur qui
+    # divergerait au premier module ajouté.
+    lignes.capacites_batterie_vivier = sorted(
+        {float(cap) for cap, _p in vivier if cap and float(cap) > 0})
     return lignes
 
 
