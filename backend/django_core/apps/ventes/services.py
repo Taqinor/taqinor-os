@@ -1902,6 +1902,22 @@ def _v_txt(volts):
     return str(int(f)) if f == int(f) else ('%g' % f)
 
 
+def avertissement_aucun_onduleur_triphase():
+    """L-TRI — le message FRANÇAIS d'un client TRIPHASÉ sans onduleur triphasé.
+
+    Une seule formulation, comme ``avertissement_vivier_batterie_vide`` : le
+    commercial doit lire la MÊME phrase quel que soit le bouton utilisé. Elle
+    dit la seule chose vraie — la composition a été REFUSÉE, il manque une
+    référence au catalogue — et surtout PAS « composition en monophasé à
+    valider » : un onduleur monophasé n'est pas une solution dégradée pour un
+    client triphasé, c'est une erreur de devis (ordre fondateur 24/08/2026).
+    """
+    return ('Raccordement TRIPHASÉ déclaré — aucun onduleur TRIPHASÉ '
+            'disponible au catalogue : la composition a été REFUSÉE plutôt '
+            'que de coter un onduleur monophasé. Ajoutez un onduleur '
+            'triphasé (tarifé, fiche technique complète) au catalogue.')
+
+
 def _vivier_onduleurs_par_phase(candidats, phase):
     """PVCOMPAT — restreint un vivier d'onduleurs au RACCORDEMENT du client.
 
@@ -1917,15 +1933,28 @@ def _vivier_onduleurs_par_phase(candidats, phase):
       le vivier D'ORIGINE et on le DIT : mieux vaut un devis à valider qu'aucun
       onduleur du tout (même principe que ``_filtrer_onduleurs_complets`` : un
       verrou qui vide la table est une panne).
-    * ``triphase`` — le vivier n'est PAS restreint (un triphasé accepte un
-      onduleur monophasé sur une de ses phases) ; c'est seulement le départage
-      à puissance égale qui devient une préférence DURE, cf. ``choisir_onduleur``.
+    * ``triphase`` — L-TRI (incident fondateur 24/08/2026 : « pourquoi j'ai du
+      mono alors que le client est tri ») — les monophasés sont ÉCARTÉS, sans
+      AUCUN repli. La préférence tri d'hier n'était qu'un départage À PUISSANCE
+      ÉGALE (``choisir_onduleur``) : dès que le premier palier triphasé du
+      catalogue (10 kW) était plus GROS que le plus petit modèle ≥ 80 % du kWc,
+      le monophasé gagnait — un client triphasé se voyait coter un « Onduleur
+      réseau Huawei 5kW Monophasé ». Le vivier est donc TRIPHASÉ EXCLUSIVEMENT :
+      un petit kWc prend le plus petit triphasé du catalogue, même très
+      surdimensionné (la règle des 80 % est un PLANCHER, jamais une raison de
+      retomber en monophasé), et un catalogue sans triphasé ne compose AUCUN
+      onduleur — le refus est annoncé par ``choisir_onduleur``.
 
-    Rend ``(vivier, a_replie)``. ``phase`` vide/inconnue ⇒ vivier inchangé, donc
-    comportement d'avant à l'octet près.
+    Rend ``(vivier, a_replie)``. ``a_replie`` reste le drapeau du SEUL repli qui
+    subsiste, celui du monophasé. ``phase`` vide/inconnue ⇒ vivier inchangé,
+    donc comportement d'avant à l'octet près.
     """
-    from apps.ventes.compatibilites import PHASE_MONO, est_triphase_produit
+    from apps.ventes.compatibilites import (
+        PHASE_MONO, PHASE_TRI, est_triphase_produit)
     source = list(candidats or [])
+    if phase == PHASE_TRI:
+        # Jamais de repli : un vivier vide vaut mieux qu'une ligne monophasée.
+        return [p for p in source if est_triphase_produit(p)], False
     if phase != PHASE_MONO:
         return source, False
     monophases = [p for p in source if not est_triphase_produit(p)]
@@ -2112,26 +2141,40 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     # mono-option — avertir depuis le vivier ferait crier l'onduleur invendu.
     # Le message est prononcé plus bas, pour les seules catégories VENDUES.
     replis_phase = {}
+    # L-TRI — catégories dont le vivier TRIPHASÉ est VIDE alors que le client
+    # est triphasé : la composition a REFUSÉ de coter un monophasé. Même
+    # discipline que ``replis_phase`` — on ne prononce le message que pour les
+    # catégories réellement VENDUES.
+    refus_tri = {}
 
     def choisir_onduleur(categorie):
         candidats = []
         # PVOND — VERROU DE COMPLÉTUDE, miroir de solar.js::pickInverter : un
         # onduleur au contrat incomplet est écarté de l'auto-composition AVANT
         # le tri par puissance, exactement comme à l'écran.
-        # PVCOMPAT — puis le RACCORDEMENT du client réduit le vivier (monophasé
-        # seulement : un triphasé accepte un onduleur monophasé).
-        vivier, replie = _vivier_onduleurs_par_phase(
-            _filtrer_onduleurs_complets(
-                par_marque(par_type.get(categorie), categorie)),
-            phase_client)
+        # PVCOMPAT/L-TRI — puis le RACCORDEMENT du client réduit le vivier :
+        # monophasé (les triphasés sortent, repli toléré) comme triphasé (les
+        # monophasés sortent, AUCUN repli).
+        complets = _filtrer_onduleurs_complets(
+            par_marque(par_type.get(categorie), categorie))
+        vivier, replie = _vivier_onduleurs_par_phase(complets, phase_client)
         replis_phase[categorie] = replie
+        refus_tri[categorie] = False
         for produit in vivier:
             kw = _parse_kw(getattr(produit, 'nom', ''))
             if kw and kw > 0:
                 candidats.append((kw, getattr(produit, 'id', 0) or 0, produit))
         if not candidats:
+            # L-TRI — distinguer « catalogue vide pour cette catégorie »
+            # (silence historique) de « il y avait des onduleurs, mais AUCUN
+            # triphasé » : ce second cas est un REFUS, et un refus se dit.
+            refus_tri[categorie] = bool(
+                phase_client == PHASE_TRI and complets)
             return None, None
         candidats.sort(key=lambda c: (c[0], c[1]))
+        # Le plus petit modèle ≥ 80 % du kWc : sur un vivier déjà réduit au
+        # raccordement du client, ce PLANCHER ne peut plus faire changer de
+        # phase — un petit kWc prend simplement le plus petit triphasé.
         valides = [c for c in candidats if c[0] >= seuil] or [candidats[-1]]
         meilleure = valides[0][0]
         memes = [c for c in valides if c[0] == meilleure]
@@ -2177,6 +2220,12 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
             and _onduleurs_par_categorie.get(categorie) is not None
             for categorie in _categories_vendues):
         _avertir(avertissement_raccordement(PHASE_MONO))
+    # L-TRI — le raccordement TRIPHASÉ n'a AUCUN onduleur au catalogue sur une
+    # catégorie VENDUE : la composition part sans onduleur (jamais un
+    # monophasé), et elle le DIT — sinon le devis mentirait par omission.
+    if phase_client == PHASE_TRI and any(
+            refus_tri.get(categorie) for categorie in _categories_vendues):
+        _avertir(avertissement_aucun_onduleur_triphase())
     # U2 — en forme DEUX OPTIONS, le stockage fait partie du devis : les
     # batteries sont composées même si ``avec_batterie`` est faux, puisque
     # c'est l'option « avec » qui les porte.
