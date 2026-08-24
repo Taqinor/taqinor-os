@@ -1023,6 +1023,15 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # devis, jamais un état de données pollué.
     _sans_servable = sans_ok
     _avec_servable = avec_ok
+    # PACT10 — LE CONTRAT PARTAGÉ : la page publique doit pouvoir proposer le
+    # sélecteur de variante INDÉPENDAMMENT de ``nb_options`` (un devis rétréci
+    # sert une seule option mais peut en livrer deux). Liste ORDONNÉE,
+    # sous-ensemble de ['sans', 'avec'] : deux jetons, aucun montant, aucun prix
+    # d'achat — publiable tel quel (règle #4).
+    variantes_servables = [
+        nom for nom, servable in (('sans', _sans_servable),
+                                  ('avec', _avec_servable)) if servable
+    ]
     # GARDE-FOU (élargi par ordre fondateur du 24/08/2026) : l'override existe
     # dès que les DEUX options sont PHYSIQUEMENT SERVABLES par les lignes du
     # devis — et non plus seulement quand le scénario stocké dit « Les deux ».
@@ -2117,6 +2126,13 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "sans_ok": bool(sans_ok),
         "avec_ok": bool(avec_ok),
         "deux_options": bool(deux_options),
+        # L-VAR/PACT10 — variantes PHYSIQUEMENT SERVABLES par les lignes du
+        # devis, AVANT le rétrécissement QF6 : c'est ce que le client peut
+        # légitimement demander en téléchargement (``?variante=…``), même quand
+        # ``nb_options`` vaut 1 parce que le scénario stocké a été rétréci.
+        # Distinct de ``sans_ok``/``avec_ok``, qui décrivent ce que CE rendu-ci
+        # publie. Toujours présente ; jamais vide dès qu'un onduleur existe.
+        "variantes_servables": list(variantes_servables),
         # COURBES (21/08/2026) — capacité batterie TOTALE (kWh) de l'option
         # « avec », PUBLIÉE : c'est EXACTEMENT le chiffre que la simulation
         # utilise déjà en interne (ligne batterie × capacité lue, défaut

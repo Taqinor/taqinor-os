@@ -1938,6 +1938,16 @@ def proposal_data(request, token):
                 'display_total': data.get('display_total'),
                 'nb_options': data.get('nb_options'),
             },
+            # L-VAR/PACT10 (24/08/2026) — CONTRAT PARTAGÉ
+            # (``apps/ventes/contract_samples/variantes_servables.json``).
+            # Liste ordonnée, sous-ensemble de ['sans', 'avec'] : les variantes
+            # que les LIGNES du devis peuvent réellement livrer. La page s'en
+            # sert pour proposer (ou non) le sélecteur de version PDF
+            # — indépendamment de ``nb_options``, qui ne dit que ce que CE
+            # document publie : un devis rétréci par la resynchronisation 3D
+            # sert une seule option tout en pouvant en livrer deux. Deux
+            # jetons, aucun montant, aucun prix d'achat (règle #4).
+            'variantes_servables': list(data.get('variantes_servables') or []),
             # Le devis est-il déjà accepté ? (pilote l'UI e-signature)
             'accepted': devis.statut == 'accepte',
             'accepte_par_nom': data.get('accepte_par_nom') or '',
