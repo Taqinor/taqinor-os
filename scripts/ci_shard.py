@@ -62,6 +62,7 @@ static weight (their test-method count), which is a decent proxy until measured.
 from __future__ import annotations
 
 import argparse
+import ast
 import functools
 import json
 import os
@@ -108,6 +109,10 @@ DEFAULT_PARALLEL = 4
 # dans le total de son module, seule sa capacite a BORNER disparait — ce qu'elle
 # n'a jamais eue.
 CLASS_FLOOR_SECONDS = 1.0
+
+# Marqueurs d'une classe « a purge large » — DOIT rester aligne sur le script
+# `/tmp/purge_large.py` de l'etape « Run Django test suite » de ci.yml.
+PURGE_MARQUEURS = frozenset({"TransactionTestCase", "WideTeardownTimeoutMixin"})
 
 # WOW-CI RONDE 5 / VOLET F (20/08/2026) — LE PARALLELISME CHANGE LE COUT D'UNE
 # LANE, ET LE PLANIFICATEUR L'IGNORAIT.
@@ -415,25 +420,80 @@ def assign(units, total: int, weights, parallel: int = DEFAULT_PARALLEL,
 
     Deterministe : modules ordonnes par (-poids, label) ; a egalite de cout
     resultant, la lane d'indice le plus bas gagne.
+
+    VOLET H (24/08) — CONTRAINTE D'ANTI-AFFINITE « purge large ». Le LPT seul
+    n'est pas libre de placer n'importe quoi n'importe ou : la garde `max_locks`
+    de ci.yml fait retomber a `--parallel 1` tout shard qui contient DEUX
+    classes a purge large. Un plan « equilibre » qui les reunit se fait donc
+    punir d'un facteur ~4 sur cette lane. Mesure du 24/08 : le recalage des
+    poids seul posait `apps.crm.tests_webhook` ET
+    `apps.ventes.tests.test_premium_security` sur la lane 4. Le depot n'en
+    compte que DEUX (une classe chacun, 5,7 s et 3,9 s) : les separer ne coute
+    rien en equilibre, et les laisser ensemble coutait la lane entiere.
     """
     if total < 1:
         raise ValueError("shard_total must be >= 1")
     lanes: list[list[str]] = [[] for _ in range(total)]
     sommes = [0.0] * total          # contributions cumulees au temps de mur
     plus_gros = [0.0] * total       # plus grosse CLASSE deja posee sur la lane
+    purges = [0] * total            # classes a purge large deja posees
 
     for unit in sorted(units, key=lambda u: (-weights[u], u)):
         blocs = class_weights(unit, weights[unit], repo_root)
         s, g = sum(blocs), (max(blocs) if blocs else 0.0)
-        meilleure, meilleur_cout = 0, None
-        for i in range(total):
+        n_purge = wide_purge_classes(unit, repo_root)
+        # Une lane est interdite si y poser ce module ferait passer son compte
+        # de classes a purge large a 2 ou plus. Si TOUTES le sont (plus de
+        # modules a purge large que de lanes), on ne bloque pas le decoupage :
+        # on retombe sur le choix non contraint — la garde rendra ce shard lent,
+        # jamais rouge, ce qui reste son contrat.
+        permises = [i for i in range(total) if purges[i] + n_purge < 2]
+        if not permises:
+            permises = list(range(total))
+        meilleure, meilleur_cout = permises[0], None
+        for i in permises:
             cout = max(sommes[i] + s, plus_gros[i], g)
             if meilleur_cout is None or cout < meilleur_cout - 1e-12:
                 meilleure, meilleur_cout = i, cout
         lanes[meilleure].append(unit)
         sommes[meilleure] += s
         plus_gros[meilleure] = max(plus_gros[meilleure], g)
+        purges[meilleure] += n_purge
     return [sorted(lane) for lane in lanes]
+
+
+def _bases_de(classe):
+    for base in classe.bases:
+        if isinstance(base, ast.Name):
+            yield base.id
+        elif isinstance(base, ast.Attribute):
+            yield base.attr
+
+
+@functools.lru_cache(maxsize=None)
+def wide_purge_classes(unit: str, repo_root: str = REPO_ROOT) -> int:
+    """Nombre de CLASSES a purge large declarees par le module.
+
+    Miroir EXACT de la garde `max_locks` de l'etape « Run Django test suite »
+    (`.github/workflows/ci.yml`) : meme detection par AST, memes marqueurs, meme
+    exclusion de `test_rls` (sans `POSTGRES_RLS_ENABLED` sa classe est sautee
+    dans ce job). Si cette garde compte >= 2 classes dans UN shard, ce shard
+    retombe a `--parallel 1` — c'est-a-dire qu'il quadruple. Le planificateur
+    doit donc connaitre la contrainte, sinon il peut « equilibrer » vers un plan
+    que la garde punit aussitot.
+    """
+    if "test_rls" in unit:
+        return 0
+    path = os.path.join(repo_root, "backend", "django_core", *unit.split(".")) + ".py"
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            arbre = ast.parse(fh.read(), path)
+    except (OSError, SyntaxError, ValueError):
+        return 0
+    return sum(
+        1 for noeud in ast.walk(arbre)
+        if isinstance(noeud, ast.ClassDef) and PURGE_MARQUEURS & set(_bases_de(noeud))
+    )
 
 
 def lane_makespan(lane, weights, parallel: int = DEFAULT_PARALLEL,

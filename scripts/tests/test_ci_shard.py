@@ -184,6 +184,34 @@ class BalanceTests(unittest.TestCase):
                 "sa duree mesuree, sinon le plancher d'une lane est sous-estime",
         )
 
+    def test_les_classes_a_purge_large_ne_se_retrouvent_jamais_a_deux(self):
+        """VOLET H (24/08) — la garde `max_locks` est une CONTRAINTE de plan.
+
+        `ci.yml` fait retomber a `--parallel 1` tout shard qui contient deux
+        classes a purge large (`TransactionTestCase` / `WideTeardownTimeoutMixin`).
+        Le recalage des poids du 24/08, sans contrainte, posait
+        `apps.crm.tests_webhook` ET `apps.ventes.tests.test_premium_security`
+        sur la meme lane a 6 shards : la lane la mieux equilibree du plan aurait
+        tourne ~4x plus longtemps. Tant que le depot compte moins de modules a
+        purge large que de lanes, le plan doit les separer — et ce test le prouve
+        pour chaque total reellement utilise en CI.
+        """
+        for total in (2, 4, 6, 8):
+            with self.subTest(total=total):
+                _u, _w, lanes = ci_shard.plan(total)
+                comptes = [
+                    sum(ci_shard.wide_purge_classes(u) for u in lane)
+                    for lane in lanes
+                ]
+                purge_total = sum(comptes)
+                if purge_total > total:
+                    continue  # pas assez de lanes : la garde reprend la main
+                self.assertLessEqual(
+                    max(comptes), 1,
+                    f"a {total} lanes, une lane porte {max(comptes)} classes a "
+                    f"purge large ({comptes}) — elle retombera a --parallel 1",
+                )
+
     def test_heavy_apps_are_spread_not_pinned(self):
         """apps.ventes must not land on a single lane again."""
         _u, _w, lanes = ci_shard.plan(8)
