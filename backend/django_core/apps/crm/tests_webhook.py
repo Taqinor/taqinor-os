@@ -107,6 +107,59 @@ class WebsiteLeadWebhookTests(TestCase):
             lead=lead, kind=LeadActivity.Kind.NOTE,
             body__startswith='Mis à jour via le site web').exists())
 
+    def test_relance_avec_adresse_seule_ne_touche_pas_au_gps_existant(self):
+        """Ordre fondateur 24/08/2026 — le GPS ne doit jamais être écrasé ni
+        supplanté par l'adresse. Un premier envoi pose un pin GPS explicite ;
+        le renvoi (< 60 s, même téléphone) ne porte QUE l'adresse — le GPS
+        déjà posé doit rester intact."""
+        first = self.post(payload_site(gpsLat=33.5, gpsLng=-7.6))
+        self.assertEqual(first.status_code, 201)
+        lead = Lead.objects.get()
+        self.assertEqual(float(lead.gps_lat), 33.5)
+        self.assertEqual(float(lead.gps_lng), -7.6)
+
+        retry = self.post(payload_site(adresse='12 rue Nouvelle'))
+        self.assertEqual(retry.status_code, 200)
+        lead.refresh_from_db()
+        self.assertEqual(lead.adresse, '12 rue Nouvelle')
+        # Le GPS explicite reste intact — jamais effacé par l'absence de
+        # gpsLat/gpsLng dans le second envoi.
+        self.assertEqual(float(lead.gps_lat), 33.5)
+        self.assertEqual(float(lead.gps_lng), -7.6)
+
+    def test_relance_avec_gps_deja_pose_ignore_toute_nouvelle_valeur(self):
+        """Même garde, cas plus dur : le second envoi porte À LA FOIS une
+        adresse ET un gps_lat/gps_lng (ex. un pas ultérieur du tunnel qui
+        aurait re-résolu une position depuis l'adresse tapée) — le pin
+        d'origine, explicitement posé par le client, doit primer."""
+        first = self.post(payload_site(gpsLat=33.5, gpsLng=-7.6))
+        self.assertEqual(first.status_code, 201)
+        lead = Lead.objects.get()
+
+        retry = self.post(payload_site(
+            adresse='12 rue Nouvelle', gpsLat=34.0, gpsLng=-6.8))
+        self.assertEqual(retry.status_code, 200)
+        lead.refresh_from_db()
+        self.assertEqual(lead.adresse, '12 rue Nouvelle')
+        self.assertEqual(float(lead.gps_lat), 33.5)
+        self.assertEqual(float(lead.gps_lng), -7.6)
+
+    def test_relance_pose_un_gps_explicite_nouveau_quand_absent(self):
+        """Le GPS explicite reste ACCEPTÉ tant qu'il n'y en avait pas déjà un
+        — la garde protège une valeur EXISTANTE, elle ne bloque jamais la
+        toute première pose."""
+        first = self.post(payload_site())
+        self.assertEqual(first.status_code, 201)
+        lead = Lead.objects.get()
+        self.assertIsNone(lead.gps_lat)
+        self.assertIsNone(lead.gps_lng)
+
+        retry = self.post(payload_site(gpsLat=33.5, gpsLng=-7.6))
+        self.assertEqual(retry.status_code, 200)
+        lead.refresh_from_db()
+        self.assertEqual(float(lead.gps_lat), 33.5)
+        self.assertEqual(float(lead.gps_lng), -7.6)
+
     def test_sous_seuil_accepte_et_etiquete(self):
         res = self.post(payload_site(
             billRange='800-1000', qualified=False,
