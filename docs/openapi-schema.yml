@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 9421, operations: 16932, components: 4951}
+counts: {paths: 9421, operations: 16932, components: 4952}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -17659,6 +17659,7 @@ components:
 - CreneauEmploiDuTemps
 - CreneauEmploiDuTempsRequest
 - CreneauEnum
+- CreneauEquipementEnum
 - CritereAudit
 - CritereAuditRequest
 - CumulAnnuel
