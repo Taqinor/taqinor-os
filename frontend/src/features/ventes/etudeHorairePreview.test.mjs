@@ -45,6 +45,32 @@ test('construireCorpsPreview : un devis existant (édition) suffit aussi, sans a
   assert.equal('facture_hiver' in corps, false)
 })
 
+test('construireCorpsPreview : un lead seul (sans devis, sans facture) suffit à ancrer', () => {
+  const corps = construireCorpsPreview({
+    modeInstallation: 'residentiel', leadId: 17,
+  })
+  assert.equal(corps.lead, 17)
+  assert.equal('facture_hiver' in corps, false)
+  assert.equal('devis' in corps, false)
+})
+
+test('construireCorpsPreview : un devis existant PRIME sur le lead (même chaîne que le serveur)', () => {
+  const corps = construireCorpsPreview({
+    modeInstallation: 'residentiel', editId: 42, leadId: 17,
+  })
+  assert.equal(corps.devis, 42)
+  assert.equal('lead' in corps, false)
+})
+
+test('construireCorpsPreview : leadId vide/nul n\'ancre rien tout seul', () => {
+  assert.equal(construireCorpsPreview({
+    modeInstallation: 'residentiel', leadId: '', fHiver: '0',
+  }), null)
+  assert.equal(construireCorpsPreview({
+    modeInstallation: 'residentiel', leadId: null, fHiver: '0',
+  }), null)
+})
+
 test('construireCorpsPreview : facture été distincte transmise seulement si réellement différente', () => {
   const avecEte = construireCorpsPreview({
     modeInstallation: 'residentiel', fHiver: '1200', fEte: '1600', eteDifferente: true,

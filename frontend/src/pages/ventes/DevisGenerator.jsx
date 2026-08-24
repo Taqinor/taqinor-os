@@ -821,6 +821,7 @@ export default function DevisGenerator({
     ? construireCorpsPreview({
         modeInstallation,
         editId,
+        leadId,
         fHiver,
         fEte,
         eteDifferente: !!fEte && Number(fEte) > 0,
