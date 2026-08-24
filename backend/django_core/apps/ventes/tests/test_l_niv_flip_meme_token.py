@@ -207,6 +207,17 @@ class FlipNiveauMemeTokenTest(TestCase):
             self.assertIn('Deye', blob)
             self.assertIn('Canadian Solar', blob)
 
+    def test_niveau_masque_dit_la_verite_sur_ce_devis(self):
+        """L-NIV-VU — la page ne peut annoncer « version simplifiée » que sur
+        du réel : la liste énumère les dégradations qui ONT eu lieu, et se vide
+        au niveau confiance."""
+        standard = self._payload()
+        self.assertEqual(
+            sorted(standard['niveau_masque']),
+            ['dimensionnement_electrique', 'nomenclature_kit'])
+        self._basculer(ShareLink.NIVEAU_CONFIANCE)
+        self.assertEqual(self._payload()['niveau_masque'], [])
+
     def test_aucun_montant_ne_bouge_entre_les_deux_niveaux(self):
         """L'autre invariant : le niveau change la GRANULARITÉ, jamais un
         chiffre d'argent."""
@@ -215,3 +226,56 @@ class FlipNiveauMemeTokenTest(TestCase):
         confiance = self._payload()
         for key in ('total_sans', 'total_avec', 'display_total'):
             self.assertEqual(standard['quote'][key], confiance['quote'][key])
+
+
+class NiveauMasqueVideSurDevisNuTest(TestCase):
+    """L-NIV-VU — LE cas qui explique le constat fondateur.
+
+    Un devis SANS lignes de pose et SANS conception électrique n'a rien à
+    masquer : au niveau standard, la charge utile est identique à celle du
+    niveau confiance, et ``niveau_masque`` est VIDE. La page n'annonce donc
+    rien — dire « version simplifiée » là serait un fait inventé."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='LNIVNU', slug='lnivnu')
+        self.user = User.objects.create_user(
+            username='lnivnu', password='x', role_legacy='admin',
+            company=self.company)
+        crm_client = Client.objects.create(
+            company=self.company, nom='Nu', prenom='Test',
+            email='lnivnu@example.com', telephone='+212600000012')
+        self.devis = Devis.objects.create(
+            company=self.company, reference='DEV-LNIV-NU', statut='envoye',
+            client=crm_client, taux_tva=Decimal('20.00'),
+            remise_globale=Decimal('0'), created_by=self.user)
+        for desig, qty, pu in [('Onduleur réseau Deye 8kW', '1', '14000'),
+                               ('Panneau Canadian Solar 550W', '10', '1400')]:
+            produit = Produit.objects.create(
+                company=self.company, nom=desig, sku=f'NU-{desig[:8]}',
+                prix_vente=Decimal(pu), prix_achat=Decimal('1'),
+                quantite_stock=50)
+            LigneDevis.objects.create(
+                devis=self.devis, produit=produit, designation=desig,
+                quantite=Decimal(qty), prix_unitaire=Decimal(pu),
+                remise=Decimal('0'))
+
+    def _payload(self, niveau):
+        import uuid
+        token = str(uuid.uuid4())
+        ShareLink.objects.create(
+            company=self.company, devis=self.devis, token=token,
+            niveau=niveau)
+        resp = DjangoClient().get(
+            f'/api/django/public/proposal/{token}/data/')
+        self.assertEqual(resp.status_code, 200)
+        return resp.json()
+
+    def test_rien_a_masquer_donc_aucune_annonce(self):
+        standard = self._payload(ShareLink.NIVEAU_STANDARD)
+        self.assertEqual(standard['niveau_masque'], [])
+        # Et, de fait, aucune des deux dégradations n'a eu lieu.
+        items = (standard['quote'].get('sans_items')
+                 or standard['quote'].get('avec_items') or [])
+        self.assertNotIn(KIT_AGREGE, {it['designation'] for it in items})
+        self.assertIsNone(standard['conception_electrique'])
+        self.assertIsNone(standard['sld_svg'])
