@@ -292,20 +292,29 @@ test('auto-fill 14 panneaux × 710 W : équipements et prix identiques au simula
   assert.equal(by('Socles').quantite, 28)
   assert.equal(by('Socles').prix_unit_ttc, 80)
 
-  // Prix indexés sur la puissance : blocs de 5 kWc → 2 blocs
-  assert.equal(by('Accessoires').prix_unit_ttc, 2000)
-  assert.equal(by('Tableau').prix_unit_ttc, 3000)
-  assert.equal(by('Installation').prix_unit_ttc, 7200)
+  // L-FORFAIT (fondateur 24/08/2026) — cotés AU PANNEAU (miroir TTC des
+  // champs Stock) : accessoires 62,5×n, tableau 243,75×n, installation
+  // 2 400 + 300×n. À 14 panneaux :
+  assert.equal(by('Accessoires').prix_unit_ttc, 875)
+  assert.equal(by('Tableau').prix_unit_ttc, 3412.5)
+  assert.equal(by('Installation').prix_unit_ttc, 6600)
   assert.equal(by('Transport').prix_unit_ttc, 1000)
   assert.equal(by('Suivi').quantite, 0)
 
-  // Tous les prix de la table sont des entiers (aucune décimale à l'écran)
-  rows.forEach(r => assert.ok(CLEAN_INT(r.prix_unit_ttc), `prix non entier: ${r.designation} ${r.prix_unit_ttc}`))
+  // Prix entiers à l'écran — SAUF les trois forfaits au panneau : les taux
+  // dérivés du fondateur (÷2 et +30 % sur les anciens ancrages) portent des
+  // centimes légitimes ; la chaîne de totaux les traite exactement.
+  const FORFAITS = ['Accessoires', 'Tableau', 'Installation']
+  rows.forEach(r => {
+    if (FORFAITS.some(f => r.designation.includes(f))) return
+    assert.ok(CLEAN_INT(r.prix_unit_ttc), `prix non entier: ${r.designation} ${r.prix_unit_ttc}`)
+  })
 
   // Totaux par option, exactement comme updateTotals du simulateur
+  // (recalés L-FORFAIT : −1 312,50 de forfaits vs l'ancienne règle par blocs)
   const totals = optionTotalsTTC(rows, 0)
-  assert.equal(totals.totalSansBrut, 65040)
-  assert.equal(totals.totalAvecBrut, 103040)
+  assert.equal(totals.totalSansBrut, 63727.5)
+  assert.equal(totals.totalAvecBrut, 101727.5)
 })
 
 test('auto-fill 24 panneaux × 710 W : batterie composée 10+5, structures alu', () => {
@@ -317,9 +326,9 @@ test('auto-fill 24 panneaux × 710 W : batterie composée 10+5, structures alu',
   assert.equal(by('aluminium').quantite, 24)
   assert.equal(by('aluminium').prix_unit_ttc, 850)
   assert.equal(by('acier').quantite, 0)
-  // blocs = round(17.04/5) = 3
-  assert.equal(by('Accessoires').prix_unit_ttc, 3000)
-  assert.equal(by('Tableau').prix_unit_ttc, 4500)
+  // L-FORFAIT — au panneau, 24 panneaux : 62,5×24 / 243,75×24 / 2 400+300×24
+  assert.equal(by('Accessoires').prix_unit_ttc, 1500)
+  assert.equal(by('Tableau').prix_unit_ttc, 5850)
   assert.equal(by('Installation').prix_unit_ttc, 9600)
   // réseau : plus petit ≥ 13.63 → Huawei 15kW Triphasé
   assert.equal(rows.find(r => r.designation.includes('réseau')).designation,

@@ -681,6 +681,34 @@ class Produit(models.Model):
         null=True, blank=True,
         help_text='Garantie production (panneaux) en mois — souvent 300 à 360.')
 
+    # ── L-FORFAIT (fondateur 24/08/2026) — TARIF FORFAITAIRE AU PANNEAU ─────
+    # « dans le stock ceci devra être bien fait, c'est-à-dire chaque case de
+    # installation, tableau AC/DC et accessoires devra avoir une partie fixe
+    # et une par panneau que je pourrai changer par la suite ».
+    #
+    # Trois lignes du kit résidentiel (Installation, Tableau De Protection
+    # AC/DC, Accessoires) ne se vendent pas à l'unité catalogue : leur montant
+    # est une DROITE en nombre de panneaux. Ces deux champs SONT cette droite,
+    # et ils vivent ici — dans le catalogue, modifiables par le fondateur —
+    # plutôt qu'en dur dans le code de composition.
+    #
+    # Règle de lecture (cf. ``apps.ventes.services.prix_forfait_ht``) : dès que
+    # l'UN des deux est renseigné, la composition résidentielle côte la ligne
+    # ``prix_fixe_ht + prix_par_panneau_ht × nb_panneaux`` (HT, quantité 1) au
+    # lieu de ``prix_vente``. Les DEUX vides (défaut, cas de tout le reste du
+    # catalogue) ⇒ ``prix_vente``, comportement historique inchangé.
+    prix_fixe_ht = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        help_text="Tarif forfaitaire — part FIXE en DH HT, due quel que soit "
+                  "le nombre de panneaux (ex. Installation : 2000). Laisser "
+                  "vide pour un produit vendu au prix de vente catalogue.")
+    prix_par_panneau_ht = models.DecimalField(
+        max_digits=10, decimal_places=4, null=True, blank=True,
+        help_text="Tarif forfaitaire — part PAR PANNEAU en DH HT, multipliée "
+                  "par le nombre de panneaux du devis (ex. Installation : "
+                  "250). Laisser vide pour un produit vendu au prix de vente "
+                  "catalogue.")
+
     # ── Spécifications pompage solaire (mode Agricole) ──
     pompe_cv = models.DecimalField(
         max_digits=6, decimal_places=2, null=True, blank=True,

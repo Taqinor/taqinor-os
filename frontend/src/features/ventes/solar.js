@@ -1582,12 +1582,15 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
   const structChosen = (structureType === 'aluminium' ? structuresAlu : structuresAcier)[0] ?? null
   const structOther = (structureType === 'aluminium' ? structuresAcier : structuresAlu)[0] ?? null
 
-  // Accessoires / Tableau / Installation : prix indexés sur la puissance
-  // (blocs de 5 kWc), exactement comme auto_fill_from_power. TTC.
-  const blocks = Math.max(1, Math.round(kwp / 5))
-  const prixAccessoires = blocks * 1000
-  const prixTableau = blocks * 1500
-  const prixInstallation = (blocks + 1) * 2400
+  // L-FORFAIT (fondateur 24/08/2026) — Accessoires / Tableau / Installation
+  // se cotent AU PANNEAU : partie fixe + par-panneau, MIROIR TTC des champs
+  // Stock seedés (HT : installation 2 000 + 250×n ; accessoires 52,0833×n ;
+  // tableau 203,125×n — TVA 20 % sur ces items). Repli d'écran hors-ligne :
+  // si le fondateur édite les champs dans Stock, c'est l'aperçu SERVEUR qui
+  // fait foi (CJ2b — les chiffres serveur priment à l'écran).
+  const prixAccessoires = 62.5 * nbPanneaux
+  const prixTableau = 243.75 * nbPanneaux
+  const prixInstallation = 2400 + 300 * nbPanneaux
 
   // QF8 — Smart Meter + Clé Wifi : UNIQUEMENT quand l'onduleur retenu (réseau
   // OU hybride) est de marque Huawei (miroir du garde `info_hw` de l'ancien

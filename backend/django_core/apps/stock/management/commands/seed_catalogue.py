@@ -1274,6 +1274,37 @@ def _fiche_champ_vide(valeur):
     return isinstance(valeur, str) and not valeur.strip()
 
 
+# ── L-FORFAIT (ordre fondateur 24/08/2026) — BARÈME FORFAITAIRE AU PANNEAU ──
+# « chaque case de installation, tableau AC/DC et accessoires devra avoir une
+# partie fixe et une par panneau que je pourrai changer par la suite ».
+#
+# Ces trois lignes ne se vendent pas à l'unité : leur montant est une DROITE en
+# nombre de panneaux, ``prix_fixe_ht + prix_par_panneau_ht × nb_panneaux`` (DH
+# HT), lue par ``apps.ventes.services.prix_forfait_ht``. Le barème vit ICI et
+# dans le stock — plus aucun chiffre en dur dans le code de composition.
+#
+#   · Installation — chiffres BRUTS du fondateur : 2 000 fixe + 250/panneau.
+#     Ancrages conservés : 8 panneaux → 4 000 HT, 16 → 6 000 HT ; l'entre-deux
+#     se lisse désormais (10 → 4 500 HT) au lieu de sauter par marches.
+#   · Accessoires — DÉRIVÉ de l'ancienne règle (1 000 TTC par bloc de 5 kWc,
+#     soit 833,33 HT à 8 panneaux et 1 666,67 HT à 16) : aucune part fixe,
+#     1 000/1,20/8 = 104,1666…/panneau, PUIS ÷ 2 (« reduce the price of
+#     accesoirs by half »). 52,0833 — et non 52,08 — garde la MOITIÉ EXACTE
+#     aux deux ancrages.
+#   · Tableau De Protection AC/DC — même dérivation (1 500 TTC/bloc ⇒ 1 250 HT
+#     à 8 panneaux, 2 500 HT à 16) : 1 500/1,20/8 = 156,25/panneau EXACT, PUIS
+#     + 30 % (« add 30% to tableau DC AC total price ») = 203,125.
+#
+# Le ``prix_vente`` catalogue de ces trois SKU est LAISSÉ TEL QUEL : il n'est
+# plus ce qui les tarife, mais l'effacer casserait le garde « produit sans
+# prix » qui les exclurait du kit.
+BAREMES_FORFAIT = {
+    'INST-CAT': (Decimal('2000'), Decimal('250')),
+    'ACC-CAT': (Decimal('0'), Decimal('52.0833')),
+    'TAB-PROT': (Decimal('0'), Decimal('203.1250')),
+}
+
+
 class Command(BaseCommand):
     help = "Seed the stock with the devis-simulator catalogue (idempotent, additive only)."
 
@@ -1532,6 +1563,27 @@ class Command(BaseCommand):
                 if f in fiche])
             fiches_updated += 1
 
+        # ── L-FORFAIT — barème forfaitaire au panneau (cf. BAREMES_FORFAIT) ──
+        # ADDITIF au sens le plus strict : on ne pose le barème que si les DEUX
+        # champs sont VIDES. Dès que le fondateur a saisi l'une des deux parts
+        # au stock, le seeder n'y touche plus JAMAIS — y compris au
+        # redéploiement, où il tourne à chaque fois (scripts/deploy-prod.ps1).
+        # Poser 0 est une SAISIE (Accessoires n'a pas de part fixe) : c'est
+        # pourquoi le test porte sur ``is None``, jamais sur la fausseté.
+        baremes_poses = 0
+        for sku, (fixe, par_panneau) in BAREMES_FORFAIT.items():
+            produit = Produit.objects.filter(company=company, sku=sku).first()
+            if not produit:
+                continue
+            if (produit.prix_fixe_ht is not None
+                    or produit.prix_par_panneau_ht is not None):
+                continue
+            produit.prix_fixe_ht = fixe
+            produit.prix_par_panneau_ht = par_panneau
+            produit.save(
+                update_fields=['prix_fixe_ht', 'prix_par_panneau_ht'])
+            baremes_poses += 1
+
         # ── PV9/PV85 — Fiches techniques (valeurs datasheet constructeur) ──
         # Additif + idempotent : SKU absent du catalogue → ignoré. Produit SANS
         # fiche → la fiche est CRÉÉE complète (c'est ce qui répare une base de
@@ -1648,6 +1700,7 @@ class Command(BaseCommand):
             f"({champs_combles} champs "
             f"{'ré-appliqués' if reappliquer else 'comblés'}), "
             f"{archived_count} placeholders archivés, "
+            f"{baremes_poses} barèmes forfaitaires posés (au panneau), "
             f"{tva_updated} taux TVA alignés (réforme 10 % panneaux), "
             f"{recategorises} produits rangés dans la taxonomie."
         ))
