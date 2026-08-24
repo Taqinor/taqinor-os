@@ -9,6 +9,7 @@ pour rester hors des moteurs de recherche, et l'accès est limité en débit par
 IP + jeton (throttle cache-based, sans dépendance externe ni rendu modifié).
 """
 import logging
+import re
 
 from django.db import models
 from django.db.models import F
@@ -634,6 +635,35 @@ def _safe_sld_svg(devis):
         return None
 
 
+#: L-NIV (fondateur 24/08/2026) — le bloc « Nomenclature des équipements »
+#: rendu par ``core.electrique.schema._tableau`` est toujours le SEUL bloc de
+#: la planche qui commence par ce titre exact ; il est TOUJOURS immédiatement
+#: suivi du cartouche (``_cartouche``), qui commence par un second ``<rect``.
+#: On peut donc l'ôter par un simple filtre texte, SANS toucher au moteur
+#: ``core.electrique`` (hors périmètre de cette lane — apps/ventes seul) :
+#: on retire tout depuis le ``<rect`` qui précède le titre jusqu'au ``<rect``
+#: suivant (celui du cartouche), non-inclus. Le marqueur est stable — un
+#: test l'arme (si le libellé change côté moteur, le filtre redevient un
+#: no-op visible en test, jamais un crash silencieux).
+_SLD_NOMENCLATURE_RE = re.compile(
+    r'<rect[^>]*/>\s*<text[^>]*>Nomenclature des équipements</text>.*?(?=<rect)',
+    re.DOTALL,
+)
+
+
+def _standard_sld_svg(svg):
+    """L-NIV — dégrade un schéma unifilaire SVG en TOPOLOGIE simplifiée.
+
+    Retire le tableau « Nomenclature des équipements » (repères, calibres,
+    sections, quantités) — les BLOCS d'organes, leurs libellés (marques/
+    modèles compris — décision fondateur : les marques restent visibles dans
+    LES DEUX niveaux) et le tracé restent identiques. ``None``/chaîne vide en
+    entrée → ``None`` en sortie (même contrat que ``_safe_sld_svg``)."""
+    if not svg:
+        return None
+    return _SLD_NOMENCLATURE_RE.sub('', svg)
+
+
 #: Décision fondateur 2026-08-18 — LE DÉTAIL ÉLECTRIQUE EST EXPOSÉ AU CLIENT,
 #: SANS PRIX. Le contrat interne ``contract_samples/conception_electrique.json``
 #: porte déjà zéro montant (le moteur ``core.electrique`` ignore jusqu'à
@@ -654,6 +684,11 @@ _PUBLIC_PROTECTION = ('repere', 'designation', 'calibre', 'quantite')
 #: ``liaison`` = le libellé du tronçon (« Chaîne 1 → coffret DC ») : sans lui, une
 #: section et une longueur ne veulent rien dire sur une page client.
 _PUBLIC_CABLE = ('liaison', 'section_mm2', 'longueur_m')
+#: L-NIV (fondateur 24/08/2026) — au niveau « standard », la protection perd
+#: son calibre (« ce que le client peut aller vérifier dans son coffret »
+#: cesse de s'appliquer : la page ne dit plus QUEL calibre, seulement QUEL
+#: organe). Câbles (section/longueur) omis EN BLOC — c'est la nomenclature.
+_PUBLIC_PROTECTION_STANDARD = ('repere', 'designation', 'quantite')
 
 
 def _liste_blanche(source, champs):
@@ -674,7 +709,7 @@ def _liste_blanche(source, champs):
     return sortie
 
 
-def _conception_electrique_publique(devis):
+def _conception_electrique_publique(devis, niveau=ShareLink.NIVEAU_CONFIANCE):
     """Le détail électrique CLIENT-SAFE du devis, ou ``None``.
 
     Même portail que ``_safe_sld_svg`` : sans ``Devis.electrical_design``
@@ -682,16 +717,23 @@ def _conception_electrique_publique(devis):
     l'étude a réellement été faite, jamais une composition fabriquée pour
     remplir la page.
 
-    Ce que le client obtient, et RIEN d'autre :
+    Niveau « confiance » (défaut — comportement byte-identique d'avant L-NIV) :
       · ``chaines``     — combien de modules sur quel MPPT, pan par pan ;
       · ``protections`` — les organes réellement posés : repère, désignation,
                           calibre, quantité ;
       · ``cables``      — la section et la longueur de chaque liaison.
 
-    Ce qui NE SORT JAMAIS : ``bom`` (nomenclature d'achat), ``parametres``
-    (entrées du calcul), ``conformite``/``ratio_*`` (verdicts d'ingénierie),
-    les tensions de chaîne et la chute de tension par liaison — et, cela va de
-    soi, aucun montant (règle #4 ; le moteur électrique n'en connaît aucun).
+    Niveau « standard » (L-NIV, 24/08/2026 — topologie SANS calibres/sections/
+    nomenclature) : ``protections`` perd son ``calibre`` et ``cables`` est omis
+    en bloc — les organes et leurs repères restent visibles (marques/modèles
+    JAMAIS dégradés, décision fondateur), seule l'ingénierie fine (« quel
+    calibre install poser », « quelle section de câble ») disparaît.
+
+    Ce qui NE SORT JAMAIS, quel que soit le niveau : ``bom`` (nomenclature
+    d'achat), ``parametres`` (entrées du calcul), ``conformite``/``ratio_*``
+    (verdicts d'ingénierie), les tensions de chaîne et la chute de tension par
+    liaison — et, cela va de soi, aucun montant (règle #4 ; le moteur
+    électrique n'en connaît aucun).
 
     Lecture PURE : rien n'est écrit. Jamais bloquant : une étude illisible rend
     ``None``, pas une erreur 500.
@@ -702,12 +744,15 @@ def _conception_electrique_publique(devis):
         design = conception_electrique_stockee(devis)
         if not design:
             return None
+        standard = niveau == ShareLink.NIVEAU_STANDARD
         public = {
             'chaines': _liste_blanche(design.get('chaines'), _PUBLIC_CHAINE),
-            'protections': _liste_blanche(design.get('protections'),
-                                          _PUBLIC_PROTECTION),
-            'cables': _liste_blanche(design.get('cables'), _PUBLIC_CABLE),
+            'protections': _liste_blanche(
+                design.get('protections'),
+                _PUBLIC_PROTECTION_STANDARD if standard else _PUBLIC_PROTECTION),
         }
+        if not standard:
+            public['cables'] = _liste_blanche(design.get('cables'), _PUBLIC_CABLE)
         # Une étude qui ne dit rien de montrable ne mérite pas un bloc vide.
         if not any(public.values()):
             return None
@@ -1308,6 +1353,14 @@ def proposal_data(request, token):
     if is_first:
         _notify_first_open(link)
 
+    # L-NIV (24/08/2026) — niveau d'affichage RÉVOCABLE, posé sur le lien
+    # (jamais sur le jeton). Un lien créé avant la migration 0100 vaut
+    # 'confiance' (bascule de compatibilité arrière — voir la migration) ;
+    # ``getattr`` défensif au cas où un test construit un lien à la main
+    # sans passer par le manager.
+    niveau = getattr(link, 'niveau', ShareLink.NIVEAU_CONFIANCE) or ShareLink.NIVEAU_CONFIANCE
+    est_standard = niveau == ShareLink.NIVEAU_STANDARD
+
     try:
         from .quote_engine.builder import build_quote_data
         devis = link.devis
@@ -1427,6 +1480,9 @@ def proposal_data(request, token):
             except Exception:  # noqa: BLE001 — un rendu absent ne casse rien
                 roof_url = None
         payload = {
+            # L-NIV — indique à la page CE niveau (elle n'a rien à deviner :
+            # les dégradations sont posées ici, pas re-décidées côté client).
+            'niveau': niveau,
             'reference': data['ref'],
             'date': data['date'],
             'client_name': data['client_name'],
@@ -1442,7 +1498,10 @@ def proposal_data(request, token):
             # QJ26 — layout de toiture ASSAINI (géométrie + par-pan uniquement,
             # jamais de prix/marge/champ interne). None quand absent → le PNG
             # poster (roof_image_url) reste le repli.
-            'roof_layout': _safe_roof_layout(devis),
+            # L-NIV — niveau « standard » : OMIS en bloc (jamais les coordonnées
+            # cx/cy machine du calepinage) ; le PNG poster (roof_image_url,
+            # ci-dessus) reste le repli visuel, identique aux deux niveaux.
+            'roof_layout': None if est_standard else _safe_roof_layout(devis),
             # PVUNI (fondateur, 18/08/2026) — LE CALEPINAGE NE COLLE PLUS AUX
             # LIGNES. La vue 3D montre le compte de panneaux pour lequel elle a
             # été jouée ; les lignes, elles, peuvent avoir bougé depuis (édition
@@ -1459,14 +1518,19 @@ def proposal_data(request, token):
             # le moteur électrique SANS AUCUN PRIX (il n'en connaît aucun).
             # None tant que la conception électrique (PV41) n'a pas été faite :
             # le client ne voit un schéma que lorsqu'il en existe un vrai.
-            'sld_svg': _safe_sld_svg(devis),
+            # L-NIV — niveau « standard » : topologie simplifiée, sans le
+            # tableau « Nomenclature des équipements » (calibres/sections).
+            'sld_svg': (
+                _standard_sld_svg(_safe_sld_svg(devis))
+                if est_standard else _safe_sld_svg(devis)
+            ),
             # Fondateur 2026-08-18 — le DÉTAIL ÉLECTRIQUE, exposé au client
             # SANS PRIX : chaînes (modules/MPPT), protections nominatives
             # (repère, désignation, calibre, quantité) et câbles (section,
             # longueur). Whitelist STRICTE (_PUBLIC_CHAINE/_PROTECTION/_CABLE) :
             # ni nomenclature d'achat, ni paramètres internes, ni montant.
             # None tant que la conception électrique (PV41) n'a pas été faite.
-            'conception_electrique': _conception_electrique_publique(devis),
+            'conception_electrique': _conception_electrique_publique(devis, niveau),
             'option_totals': {
                 'sans_batterie': data.get('totaux_sans'),
                 'avec_batterie': data.get('totaux_avec'),

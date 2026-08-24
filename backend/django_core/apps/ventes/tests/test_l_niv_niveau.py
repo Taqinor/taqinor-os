@@ -1,0 +1,219 @@
+"""L-NIV — deux niveaux d'affichage RÉVOCABLES pour le lien public de
+proposition (ShareLink.niveau : 'standard' | 'confiance').
+
+Founder-designed feature (24/08/2026): protects engineering know-how on the
+publicly shared quote page while keeping every money figure identical.
+Covered here:
+  (a) model/migration — default 'standard' for freshly-created links.
+  (b) share-link action — accepts/returns niveau + otp_lecture, never
+      regenerates the token when changing the level.
+  (c) proposal_data payload — 'confiance' stays byte-identical to
+      pre-L-NIV behaviour (roof_layout present, full sld_svg, full
+      conception_electrique); 'standard' degrades exactly the three
+      surfaces this chantier owns (roof_layout omitted, sld_svg without
+      the nomenclature table, conception_electrique without
+      calibre/cables) while brand/model strings and every money figure
+      stay identical between the two levels.
+
+Run:
+    docker compose exec django_core python manage.py test \
+        apps.ventes.tests.test_l_niv_niveau -v 2
+"""
+import json
+import uuid
+from decimal import Decimal
+
+from django.contrib.auth import get_user_model
+from django.test import Client as DjangoClient, TestCase
+from rest_framework.test import APIClient
+
+from authentication.models import Company
+from apps.crm.models import Client
+from apps.stock.models import Produit
+from apps.ventes.models import Devis, LigneDevis, ShareLink
+
+User = get_user_model()
+
+
+def make_company(slug):
+    c, _ = Company.objects.get_or_create(slug=slug, defaults={'nom': slug})
+    return c
+
+
+def make_user(company, role='responsable'):
+    return User.objects.create_user(
+        username=f'lniv_{company.slug}_{role}', password='x',
+        role_legacy=role, company=company)
+
+
+def make_client(company):
+    return Client.objects.create(
+        company=company, nom='LNIV', prenom='Test',
+        email=f'lniv_{company.slug}@ex.com', telephone='+212600000010')
+
+
+def make_devis(company, user, client, reference, roof_layout=None):
+    devis = Devis.objects.create(
+        company=company, reference=reference, client=client,
+        statut='envoye', taux_tva=Decimal('20.00'),
+        remise_globale=Decimal('0'), created_by=user, roof_layout=roof_layout)
+    for desig, qty, pu in [('Onduleur Deye 8kW', '1', '14000'),
+                           ('Panneau Canadian Solar 550W', '10', '1400')]:
+        produit = Produit.objects.create(
+            company=company, nom=desig, sku=f'{reference[-6:]}-{desig[:8]}',
+            prix_vente=Decimal(pu), prix_achat=Decimal('9999'),
+            quantite_stock=50)
+        LigneDevis.objects.create(
+            devis=devis, produit=produit, designation=desig,
+            quantite=Decimal(qty), prix_unitaire=Decimal(pu),
+            remise=Decimal('0'))
+    return devis
+
+
+def sample_layout():
+    return {
+        'version': 1, 'scenario': 'reseau',
+        'result': {'panels': 16, 'kwc': 8.8, 'annualKwh': 14000},
+        'zones': [{
+            'id': 'z1', 'label': 'Pan Sud',
+            'vertices': [[0, 0], [10, 0], [10, 6], [0, 6]],
+            'obstacles': [], 'roofType': 'pitched', 'pitchDeg': 30,
+            'facingAzimuthDeg': 0, 'neededPanels': 12,
+        }],
+        '_pans_geometry': [{
+            'label': 'Pan Sud', 'orientation': 'Sud', 'azimut_deg': 0,
+            'inclinaison_deg': 30, 'nb_panneaux': 12, 'kwc': 6.6,
+            'roof_type': 'pitched',
+        }],
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# (a) Model / migration default
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestNiveauDefault(TestCase):
+    def test_freshly_created_link_defaults_to_standard(self):
+        company = make_company('lniv-mdl')
+        user = make_user(company)
+        client_obj = make_client(company)
+        devis = make_devis(company, user, client_obj, 'DEV-LNIV-MDL1')
+        link = ShareLink.objects.create(company=company, devis=devis)
+        self.assertEqual(link.niveau, ShareLink.NIVEAU_STANDARD)
+        self.assertFalse(link.otp_lecture)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# (b) share-link action
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestShareLinkActionNiveau(TestCase):
+    def setUp(self):
+        self.company = make_company('lniv-act')
+        self.user = make_user(self.company, role='admin')
+        self.client_obj = make_client(self.company)
+        self.api = APIClient()
+        self.api.force_authenticate(self.user)
+
+    def _devis(self, ref):
+        return make_devis(self.company, self.user, self.client_obj, ref)
+
+    def test_share_link_default_is_standard_and_returned(self):
+        devis = self._devis('DEV-LNIV-A1')
+        resp = self.api.post(f'/api/django/ventes/devis/{devis.id}/share-link/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['niveau'], 'standard')
+        self.assertFalse(resp.data['otp_lecture'])
+
+    def test_share_link_switches_level_without_regenerating_token(self):
+        devis = self._devis('DEV-LNIV-A2')
+        first = self.api.post(f'/api/django/ventes/devis/{devis.id}/share-link/')
+        token = first.data['token']
+        second = self.api.post(
+            f'/api/django/ventes/devis/{devis.id}/share-link/',
+            {'niveau': 'confiance', 'otp_lecture': True}, format='json')
+        self.assertEqual(second.status_code, 200, second.data)
+        self.assertEqual(second.data['token'], token)  # SAME token — revocable
+        self.assertEqual(second.data['niveau'], 'confiance')
+        self.assertTrue(second.data['otp_lecture'])
+        link = ShareLink.objects.get(token=token)
+        self.assertEqual(link.niveau, 'confiance')
+        self.assertTrue(link.otp_lecture)
+
+    def test_share_link_revoke_back_to_standard_same_token(self):
+        devis = self._devis('DEV-LNIV-A3')
+        first = self.api.post(
+            f'/api/django/ventes/devis/{devis.id}/share-link/',
+            {'niveau': 'confiance'}, format='json')
+        token = first.data['token']
+        second = self.api.post(
+            f'/api/django/ventes/devis/{devis.id}/share-link/',
+            {'niveau': 'standard'}, format='json')
+        self.assertEqual(second.data['token'], token)
+        self.assertEqual(second.data['niveau'], 'standard')
+
+    def test_share_link_rejects_invalid_niveau(self):
+        devis = self._devis('DEV-LNIV-A4')
+        resp = self.api.post(
+            f'/api/django/ventes/devis/{devis.id}/share-link/',
+            {'niveau': 'bogus'}, format='json')
+        self.assertEqual(resp.status_code, 400)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# (c) proposal_data payload — confiance pinned, standard degraded
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestProposalDataNiveau(TestCase):
+    def setUp(self):
+        self.company = make_company('lniv-pub')
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+
+    def _payload(self, devis, niveau):
+        token = str(uuid.uuid4())
+        ShareLink.objects.create(
+            company=self.company, devis=devis, token=token, niveau=niveau)
+        resp = DjangoClient().get(f'/api/django/public/proposal/{token}/')
+        self.assertEqual(resp.status_code, 200)
+        return resp.json()
+
+    def test_confiance_payload_matches_niveau_key(self):
+        devis = self._devis_no_layout()
+        payload = self._payload(devis, ShareLink.NIVEAU_CONFIANCE)
+        self.assertEqual(payload['niveau'], 'confiance')
+
+    def test_confiance_roof_layout_present_when_devis_has_one(self):
+        devis = make_devis(self.company, self.user, self.client_obj,
+                           'DEV-LNIV-C1', roof_layout=sample_layout())
+        payload = self._payload(devis, ShareLink.NIVEAU_CONFIANCE)
+        self.assertIsNotNone(payload['roof_layout'])
+
+    def test_standard_omits_roof_layout_entirely(self):
+        devis = make_devis(self.company, self.user, self.client_obj,
+                           'DEV-LNIV-S1', roof_layout=sample_layout())
+        payload = self._payload(devis, ShareLink.NIVEAU_STANDARD)
+        self.assertIsNone(payload['roof_layout'])
+
+    def test_brand_names_stay_visible_in_both_levels(self):
+        """Founder rule: brands/models exact stay VISIBLE in BOTH levels."""
+        devis = self._devis_no_layout()
+        confiance = self._payload(devis, ShareLink.NIVEAU_CONFIANCE)
+        standard = self._payload(devis, ShareLink.NIVEAU_STANDARD)
+        for payload in (confiance, standard):
+            blob = json.dumps(payload)
+            self.assertIn('Deye', blob)
+            self.assertIn('Canadian Solar', blob)
+
+    def test_money_totals_identical_across_levels(self):
+        """Founder rule: money figures IDENTICAL in both levels, always."""
+        devis = self._devis_no_layout()
+        confiance = self._payload(devis, ShareLink.NIVEAU_CONFIANCE)
+        standard = self._payload(devis, ShareLink.NIVEAU_STANDARD)
+        self.assertEqual(
+            confiance['quote']['total_ttc'], standard['quote']['total_ttc'])
+        self.assertEqual(
+            confiance['quote']['total_ht'], standard['quote']['total_ht'])
+
+    def _devis_no_layout(self, ref='DEV-LNIV-NOLAY'):
+        return make_devis(self.company, self.user, self.client_obj, ref)
