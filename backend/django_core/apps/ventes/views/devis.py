@@ -1121,16 +1121,44 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         """B2 — frappe (ou réutilise) un lien public de proposition pour ce
         devis. Permet au site de (re)générer le lien de proposition d'un devis
         existant lors de la livraison. Le devis est déjà borné à la société de
-        l'utilisateur par ``get_queryset`` (autre société → 404)."""
+        l'utilisateur par ``get_queryset`` (autre société → 404).
+
+        L-NIV (24/08/2026) — ``niveau`` (« standard » | « confiance ») et
+        ``otp_lecture`` (bool) sont optionnels dans le corps : le commercial
+        RÉVOQUE ou change le niveau d'un lien EXISTANT sans jamais régénérer
+        le jeton (le lien déjà envoyé au client continue de fonctionner).
+        Absents du corps → valeurs du lien inchangées (déjà posées, ou les
+        défauts du modèle sur un lien fraîchement créé)."""
         from ..models import ShareLink
         devis = self.get_object()
         # GAMME — le mode d'envoi (« seule » / « les_deux ») accompagne le lien
         # quand le vendeur le précise ; absent du corps → mode déjà posé.
         _appliquer_gamme_envoi(devis, request.data.get('gamme_envoi'))
         link = ShareLink.for_devis(devis)
+        # L-NIV — ne touche jamais au jeton : simple mise à jour de champs sur
+        # le lien déjà résolu (créé ou réutilisé) ci-dessus.
+        champs_modifies = []
+        niveau = request.data.get('niveau')
+        if niveau is not None:
+            if niveau not in dict(ShareLink.NIVEAU_CHOICES):
+                return Response(
+                    {'detail': "niveau invalide (attendu : 'standard' ou "
+                               "'confiance')."},
+                    status=status.HTTP_400_BAD_REQUEST)
+            if link.niveau != niveau:
+                link.niveau = niveau
+                champs_modifies.append('niveau')
+        if 'otp_lecture' in request.data:
+            otp_lecture = bool(request.data.get('otp_lecture'))
+            if link.otp_lecture != otp_lecture:
+                link.otp_lecture = otp_lecture
+                champs_modifies.append('otp_lecture')
+        if champs_modifies:
+            link.save(update_fields=champs_modifies)
         return Response(
             {'token': link.token, 'path': chemin_proposition(devis, link.token),
-             'gamme': _gamme_envoi_payload(devis)},
+             'gamme': _gamme_envoi_payload(devis),
+             'niveau': link.niveau, 'otp_lecture': link.otp_lecture},
             status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='envoyer-email',

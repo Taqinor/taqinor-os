@@ -274,6 +274,10 @@ CLIENT_NAME  = QUOTE_INPUT["client_name"]
 CLIENT_ADDR  = QUOTE_INPUT["client_addr"]
 CLIENT_PHONE = QUOTE_INPUT["client_phone"]
 CLIENT_ICE   = QUOTE_INPUT.get("client_ice", "")
+# L-NIV (24/08/2026) — filigrane PDF DISCRET, posé UNIQUEMENT sur le PDF
+# public niveau standard (jamais le PDF interne). None par défaut → les
+# footers restent byte-identiques à avant L-NIV (mêmes tests de page-count).
+WATERMARK_STANDARD = None
 REF          = QUOTE_INPUT["ref"]
 DATE_STR     = QUOTE_INPUT["date"]
 KWC          = QUOTE_INPUT["puissance_kwc"]
@@ -938,6 +942,17 @@ def logo_p1_dark():
             f'TAQIN<span style="color:{CA};">&#9733;</span>R</div>'
             f'</div>')
 
+def _filigrane_suffixe():
+    """L-NIV (24/08/2026) suffixe DISCRET ajoute a la ligne
+    Page N / Total | Ref. XXX existante quand WATERMARK_STANDARD
+    est pose (niveau standard du lien public UNIQUEMENT, jamais le PDF
+    interne). SUFFIXE d'une ligne deja la, jamais une nouvelle rangee :
+    ZERO changement de hauteur de pied de page, donc zero changement de
+    pagination, les tests de page-count tournent aussi filigrane actif."""
+    if not WATERMARK_STANDARD:
+        return ""
+    return f" &nbsp;|&nbsp; {WATERMARK_STANDARD}"
+
 def footer_p1():
     """Page 1 footer — white background."""
     return (f'<div style="background:white;padding:7px 24px;flex-shrink:0;display:flex;'
@@ -945,7 +960,7 @@ def footer_p1():
             f'<div style="font-size:9pt;font-weight:800;color:{CA};letter-spacing:1px;">{ENT_NOM_MARQUE}</div>'
             f'<div style="font-size:7pt;color:#888888;text-align:center;">'
             f'{ENT_CONTACT_LINE}</div>'
-            f'<div style="font-size:7pt;color:#888888;">Page 1&nbsp;/&nbsp;{PAGES_TOTAL} &nbsp;|&nbsp; R\u00e9f.&nbsp;{REF}</div>'
+            f'<div style="font-size:7pt;color:#888888;">Page 1&nbsp;/&nbsp;{PAGES_TOTAL} &nbsp;|&nbsp; R\u00e9f.&nbsp;{REF}{_filigrane_suffixe()}</div>'
             f'</div>')
 
 def footer(n, total=None):
@@ -956,7 +971,7 @@ def footer(n, total=None):
             f'<div style="font-size:9pt;font-weight:800;color:{CA};letter-spacing:1px;">{ENT_NOM_MARQUE}</div>'
             f'<div style="font-size:7pt;color:#888;text-align:center;">'
             f'{ENT_CONTACT_LINE}</div>'
-            f'<div style="font-size:7pt;color:#888;">Page {n}&nbsp;/&nbsp;{total} &nbsp;|&nbsp; R\u00e9f.&nbsp;{REF}</div>'
+            f'<div style="font-size:7pt;color:#888;">Page {n}&nbsp;/&nbsp;{total} &nbsp;|&nbsp; R\u00e9f.&nbsp;{REF}{_filigrane_suffixe()}</div>'
             f'</div>')
 
 def footer_p3(extra_style=""):
@@ -966,7 +981,7 @@ def footer_p3(extra_style=""):
             f'<div style="font-size:9pt;font-weight:800;color:{CA};letter-spacing:1px;">{ENT_NOM_MARQUE}</div>'
             f'<div style="font-size:7pt;color:#888;text-align:center;">'
             f'{ENT_CONTACT_LINE}</div>'
-            f'<div style="font-size:7pt;color:#888;">Page {PAGE3_NUM}&nbsp;/&nbsp;{PAGES_TOTAL} &nbsp;|&nbsp; R\u00e9f.&nbsp;{REF}</div>'
+            f'<div style="font-size:7pt;color:#888;">Page {PAGE3_NUM}&nbsp;/&nbsp;{PAGES_TOTAL} &nbsp;|&nbsp; R\u00e9f.&nbsp;{REF}{_filigrane_suffixe()}</div>'
             f'</div>'
             f'<div style="font-size:7.5px;color:#888;text-align:center;font-style:italic;">'
             f'{ENT_LEGAL_LINE}'
@@ -3056,7 +3071,9 @@ def apply_quote_data(data: dict) -> None:
     global DOC_TEXTS, ACCEPTE_PAR_NOM, DATE_ACCEPTATION
     global DEVISE  # FG52 — devise du document (ISO 4217)
     global SAVINGS_METHOD  # QF3 — bloc « Comment nous calculons vos économies »
+    global WATERMARK_STANDARD  # L-NIV — filigrane PDF public niveau standard
     SAVINGS_METHOD = data.get("savings_method")
+    WATERMARK_STANDARD = data.get("_watermark_standard")
     # QXMT — un dossier MT sans économies d'étude n'imprime AUCUN chiffre
     # d'économies : ceux disponibles ici sont calculés au barème BASSE TENSION.
     global MASQUER_ECONOMIES, TARIF_MT_MENTION

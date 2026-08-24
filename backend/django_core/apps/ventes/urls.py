@@ -50,6 +50,7 @@ from .public_views import (
     # QW5 — mêmes vues QJ27, aliasées ici sous le mount `ventes/` (le site
     # les appelle ici, pas sous `public/` — jamais de logique dupliquée).
     proposal_contact_request, proposal_request_otp,
+    proposal_request_otp_lecture, proposal_verify_otp_lecture,  # L-NIV
     proposal_engagement,  # XSAL16
     proposal_virement_declare,  # QX33be
     proposal_activate_option,  # XSAL5
@@ -156,6 +157,14 @@ urlpatterns = [
     # headless: code a usage unique demande par la page publique (apps/web)
     path('proposal/<str:token>/otp/', proposal_request_otp,
          name='proposal-otp-ventes'),
+    # L-NIV (24/08/2026) — OTP de LECTURE (ShareLink.otp_lecture), distinct de
+    # l'OTP de signature ci-dessus. headless: demandé/vérifié par la page
+    # publique (apps/web) avant que proposal_data/proposal_pdf ne servent la
+    # proposition sur un lien où le commercial l'a activé.
+    path('proposal/<str:token>/otp-lecture/demander/',
+         proposal_request_otp_lecture, name='proposal-otp-lecture-demander'),
+    path('proposal/<str:token>/otp-lecture/verifier/',
+         proposal_verify_otp_lecture, name='proposal-otp-lecture-verifier'),
     # XSAL16 — beacon d'engagement par section (backend only ; l'émission
     # côté page proposition part dans docs/WEB_PLAN.md).
     # headless: beacon d'engagement emis par la page publique (apps/web)

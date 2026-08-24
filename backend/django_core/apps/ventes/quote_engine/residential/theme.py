@@ -716,9 +716,18 @@ def page_footer(data: dict, ident: dict | None = None, total_pages: int = 3) -> 
     # QX6 — le pied lit le NOMBRE RÉEL de pages rendues (jamais « / 3 » codé).
     ident = ident or company_identity(data)
     site = ident.get("site") or _DEFAULT_SITE
+    # L-NIV (24/08/2026) — filigrane PDF DISCRET niveau standard (nom + tél.
+    # du prospect). Posé par le générateur (jamais côté client — voir
+    # generate_devis_premium.apply_quote_data / builder.generate_premium_devis_pdf)
+    # comme un SUFFIXE de la ligne « Page N / Total » existante plutôt qu'une
+    # nouvelle rangée : ZÉRO changement de hauteur de pied de page, donc zéro
+    # changement de pagination. Absent (niveau confiance / PDF interne) →
+    # ligne byte-identique à avant L-NIV.
+    filigrane = _esc(data.get('_watermark_standard') or '')
+    suffixe = f" &nbsp;·&nbsp; {filigrane}" if filigrane else ""
     return f"""
 <div class="foot">
   <div><b>{ident['brand_name']}</b> &nbsp;·&nbsp; {ident['email']} &nbsp;·&nbsp; {ident['phone']}</div>
-  <div>Page {{page}} / {total_pages} &nbsp;·&nbsp; Réf. {data['ref']} &nbsp;·&nbsp; <a>{site}</a></div>
+  <div>Page {{page}} / {total_pages} &nbsp;·&nbsp; Réf. {data['ref']} &nbsp;·&nbsp; <a>{site}</a>{suffixe}</div>
 </div>
 """
