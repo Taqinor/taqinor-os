@@ -20,6 +20,12 @@ User = get_user_model()
 
 PNG_BYTES = b'\x89PNG\r\n\x1a\n' + b'\x00' * 64
 
+# Clé MinIO factice rendue par le bouchon du moteur premium dans les scénarios
+# Q7 qui n'affirment RIEN du PDF (cf. le docstring de ``_Q7ProposalAcceptBase``).
+# Même valeur de forme que la vraie clé (``devis/<id>/<reference>.pdf``) pour que
+# le bouchon reste indiscernable du moteur du point de vue de ``_store_signed_pdf``.
+FAUX_PDF_KEY = 'devis/1/DEV-Q7-0001.pdf'
+
 
 def make_company(slug):
     from authentication.models import Company
@@ -477,7 +483,32 @@ class _Q7ProposalAcceptBase(TestCase):
     per test method regardless of class grouping, so this is not new
     duplication, it is the existing per-test cost, now visible as separate
     schedulable units. That is the price of parallelization, not a
-    weakening of any test."""
+    weakening of any test.
+
+    BOUCHON DU MOTEUR (24/08/2026, second temps) — la scission a rendu les
+    cinq scénarios planifiables, elle n'a rien enlevé au coût : trois d'entre
+    eux payaient encore un rendu WeasyPrint chacun. Deux le paient désormais
+    en bouchon (``Idempotence``, ``Chain``), UN SEUL garde le rendu RÉEL de
+    bout en bout (``Success``). Le bouchon est sûr, et le raisonnement doit
+    tenir test par test, pas en gros :
+
+      * ``_store_signed_pdf`` est *best-effort* — tout son corps est dans un
+        ``try/except`` qui AVALE l'exception (services.py). Le résultat du
+        rendu ne peut donc, par construction, changer AUCUNE des assertions
+        de ces deux scénarios : elles portent sur le statut du devis, le nom
+        du signataire et la chaîne BonCommande, toutes écrites AVANT l'appel.
+      * Aucun des deux n'affirme quoi que ce soit du PDF : ni octets, ni
+        pages, ni clé MinIO, ni appel du moteur. Rien de mocké n'était donc
+        vérifié.
+      * Ce que le bouchon pourrait masquer est prouvé ailleurs, sans lui :
+        le stockage de ``signed_pdf_key`` et le ``persist=True`` par
+        ``apps.ventes.tests.test_qj22_signed_artifact``, et le rendu réel
+        de bout en bout par ``TestQ7ProposalAcceptSuccess`` ci-dessous.
+
+    Cible de patch : ``apps.ventes.quote_engine.generate_premium_devis_pdf``,
+    l'attribut du PAQUET — c'est bien lui que ``_store_signed_pdf`` lit, son
+    ``from ... import`` étant local à la fonction donc résolu à l'appel. Même
+    cible que celle déjà employée par test_qj22_signed_artifact."""
 
     def setUp(self):
         from apps.ventes.models import ShareLink
@@ -495,15 +526,32 @@ class _Q7ProposalAcceptBase(TestCase):
 class TestQ7ProposalAcceptSuccess(_Q7ProposalAcceptBase):
     """Q7 — signature réussie : bascule de statut + tampon écrit.
 
-    Rend un PDF signé RÉEL via le moteur premium (``_store_signed_pdf``) —
-    c'est la portion coûteuse historique de l'ex-``TestQ7ProposalAccept``."""
+    LE SEUL scénario Q7 qui rend un PDF signé RÉEL (moteur premium NON
+    bouchonné, via ``_store_signed_pdf``) : c'est la portion coûteuse
+    historique de l'ex-``TestQ7ProposalAccept``, gardée ici exprès pour que la
+    chaîne acceptation → moteur premium → ``persist=True`` reste exercée de
+    bout en bout par au moins un test. Le ``wraps`` ci-dessous n'empêche RIEN :
+    la vraie fonction s'exécute ; l'espion sert uniquement à rendre explicite —
+    et donc non silencieusement régressable — le fait que ce test-ci est celui
+    qui paie le rendu réel."""
 
     def test_accept_flips_status_and_writes_stamp(self):
-        resp = self.api.post(
-            self._url(self.link.token),
-            {'nom': 'Salma Bennani', 'consent_esign': True},
-            format='json')
+        from apps.ventes import quote_engine
+        with mock.patch(
+            'apps.ventes.quote_engine.generate_premium_devis_pdf',
+            wraps=quote_engine.generate_premium_devis_pdf,
+        ) as espion:
+            resp = self.api.post(
+                self._url(self.link.token),
+                {'nom': 'Salma Bennani', 'consent_esign': True},
+                format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
+        # Le moteur premium RÉEL a bien été appelé une fois, avec persist=True
+        # (rule #4 : un seul moteur, et c'est lui qui écrit la proposition
+        # signée). Le stockage de la clé qui en résulte est prouvé par
+        # test_qj22_signed_artifact.TestSignedPdfKeyStored.
+        espion.assert_called_once()
+        self.assertTrue(espion.call_args.kwargs.get('persist') is True)
         self.devis.refresh_from_db()
         self.assertEqual(self.devis.statut, 'accepte')
         self.assertEqual(self.devis.accepte_par_nom, 'Salma Bennani')
@@ -528,10 +576,16 @@ class TestQ7ProposalAcceptValidation(_Q7ProposalAcceptBase):
 class TestQ7ProposalAcceptIdempotence(_Q7ProposalAcceptBase):
     """Q7 — double soumission idempotente.
 
-    Le premier POST rend un PDF réel (accepte) ; le second est un no-op
-    AVANT tout rendu (déjà accepté) — un seul rendu au total."""
+    Le premier POST déclenche le moteur premium (BOUCHONNÉ ici, cf. le
+    docstring de la classe de base) ; le second est un no-op AVANT tout
+    rendu (déjà accepté). Ce test n'affirme rien du PDF — il affirme que le
+    signataire reste le premier — et ``_store_signed_pdf`` avale de toute
+    façon toute exception du moteur : le bouchon ne peut donc pas changer son
+    verdict."""
 
-    def test_idempotent_double_submit(self):
+    @mock.patch('apps.ventes.quote_engine.generate_premium_devis_pdf',
+                return_value=FAUX_PDF_KEY)
+    def test_idempotent_double_submit(self, _moteur):
         first = self.api.post(
             self._url(self.link.token),
             {'nom': 'A', 'consent_esign': True}, format='json')
@@ -563,9 +617,14 @@ class TestQ7ProposalAcceptChain(_Q7ProposalAcceptBase):
     """Q7 — la chaîne BonCommande/Facture reste préservée 1:1 après une
     acceptation tokenisée, exactement comme une acceptation in-app.
 
-    Rend un PDF signé RÉEL via le moteur premium (même coût que Success)."""
+    Moteur premium BOUCHONNÉ (cf. le docstring de la classe de base) : ce
+    test affirme la chaîne documentaire (statut → BonCommande), jamais le
+    PDF ; et le rendu, best-effort, ne peut de toute façon pas influer sur
+    elle. Le rendu réel reste couvert par ``TestQ7ProposalAcceptSuccess``."""
 
-    def test_bon_commande_chain_preserved(self):
+    @mock.patch('apps.ventes.quote_engine.generate_premium_devis_pdf',
+                return_value=FAUX_PDF_KEY)
+    def test_bon_commande_chain_preserved(self, _moteur):
         # After tokenized accept, the devis can be converted to a BC exactly
         # like an in-app acceptance (chain preserved 1:1).
         self.api.post(self._url(self.link.token),
