@@ -1,0 +1,20 @@
+{
+  "endpoint": "GET /api/django/public/proposal/<token>/data/",
+  "pourquoi": "L-VAR (ordre fondateur, 24/08/2026) — clé `variantes_servables` du payload public de la proposition : les variantes de devis que les LIGNES peuvent réellement livrer, indépendamment du nombre d'options que CE document publie. La page s'en sert pour proposer (ou non) le sélecteur « quelle version télécharger ? » au-dessus du bouton PDF, qui appelle ensuite `?variante=sans|avec|les_deux`. Les deux moitiés (apps/ventes/quote_engine/builder.py `variantes_servables` → apps/ventes/public_views.py `proposal_data`, et la page publique) lisent CE fichier.",
+  "notes": {
+    "forme": "Liste ORDONNÉE, sous-ensemble de [\"sans\", \"avec\"]. Toujours PRÉSENTE (jamais absente, jamais null) ; jamais vide dès que le devis porte un onduleur. Un devis sans aucun onduleur (pompage/agricole) sert [\"sans\"] — le format une-page n'a pas d'options.",
+    "pourquoi_pas_nb_options": "`option_totals.nb_options` dit ce que CE document publie ; `variantes_servables` dit ce que le devis peut LIVRER. Les deux divergent légitimement : un devis rétréci par la resynchronisation 3D (scénario stocké mono « Avec batterie », lignes réseau + hybride + batterie) sert nb_options = 1 ET variantes_servables = [\"sans\", \"avec\"]. La page doit lire la SECONDE pour afficher le sélecteur, sinon le client ne peut plus rien choisir.",
+    "servabilite": "'sans' est servable quand le devis porte un onduleur RÉSEAU ; 'avec' quand il porte un onduleur HYBRIDE ET une batterie — mêmes règles de classification que la composition (`quote_engine/builder.py`), jamais une seconde règle de reconnaissance. Le drapeau est figé AVANT le rétrécissement QF6 (le scénario stocké) et APRÈS le repli artefact PV86 : un devis à deux onduleurs sans alternative déclarée est un ÉTAT DE DONNÉES, pas une alternative commerciale — il sert donc une seule variante.",
+    "argent": "Deux jetons de texte, aucun montant, aucun prix d'achat, aucune marge (règle #4). La clé est publiable telle quelle à tous les niveaux de partage.",
+    "signature": "Sans effet sur la SIGNATURE : ce que le client coche pour signer reste `Devis.option_acceptee`. La variante n'est qu'un choix de LECTURE et ne touche aucun statut."
+  },
+  "exemple": {
+    "variantes_servables": ["sans", "avec"]
+  },
+  "exemple_mono_avec_batterie": {
+    "variantes_servables": ["avec"]
+  },
+  "exemple_mono_reseau": {
+    "variantes_servables": ["sans"]
+  }
+}

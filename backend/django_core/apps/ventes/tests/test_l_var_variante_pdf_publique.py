@@ -22,7 +22,12 @@ Couvert ici :
       (kit agrégé + filigrane) INCHANGÉE sur les 3 variantes, 404 quand
       ``sections['pdf'] = False`` sur les 3 variantes ;
   (f) clés MinIO distinctes par variante (aucune ne peut écraser l'autre) et
-      aucune persistance sur ``devis.fichier_pdf``.
+      aucune persistance sur ``devis.fichier_pdf`` ;
+  (g) l'override suit la SERVABILITÉ PHYSIQUE des lignes, plus le scénario
+      stocké (ordre fondateur du 24/08/2026) : un devis rétréci par la resync
+      3D (scénario mono, lignes réseau + hybride + batterie) redevient
+      téléchargeable en document COMPLET via ``?variante=les_deux``, tandis que
+      l'artefact PV86 (deux onduleurs, aucun scénario) reste mono-option.
 
 Run:
     docker compose exec django_core python manage.py test \
@@ -176,6 +181,98 @@ class TestMonoOptionNonElargie(TestCase):
                 DESIGNATION_BATTERIE, _designations(data['all_items']),
                 'une variante ne doit JAMAIS faire apparaître une option que '
                 'le devis ne porte pas')
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# (g) — L-VAR élargi (ordre fondateur 24/08/2026) : l'override suit la
+#       SERVABILITÉ PHYSIQUE, plus le scénario stocké
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestVarianteSurDevisRetreciParResync(_Base):
+    """Le devis de production DEV-202608-0023 : la resynchronisation 3D a
+    rétréci ``etude_params['scenario']`` à « Avec batterie » alors que les
+    LIGNES portent toujours réseau + hybride + batterie. L'ancienne garde
+    (``scenario == 'Les deux'``) se neutralisait donc exactement là où le
+    client avait besoin de choisir."""
+
+    def setUp(self):
+        super().setUp()
+        self.devis.etude_params = {'scenario': 'Avec batterie'}
+        self.devis.save(update_fields=['etude_params'])
+
+    def test_sans_variante_le_document_du_commercial_est_inchange(self):
+        """Aucune régression : le défaut reste ce que le commercial a composé
+        (mono-option « Avec batterie »)."""
+        data = self._data()
+        self.assertEqual(data['scenario'], 'Avec batterie')
+        self.assertEqual(data['nb_options'], 1)
+
+    def test_variante_sans_rend_l_option_sans_batterie(self):
+        data = self._data('sans')
+        self.assertEqual(data['scenario'], 'Sans batterie')
+        self.assertEqual(data['nb_options'], 1)
+        noms = _designations(data['sans_items'])
+        self.assertIn(DESIGNATION_RESEAU, noms)
+        self.assertNotIn(DESIGNATION_BATTERIE, noms)
+
+    def test_variante_les_deux_rend_le_document_complet(self):
+        """Le cœur de l'ordre fondateur : « le téléchargement est TOUJOURS
+        complet par défaut » — même quand le scénario stocké a été rétréci."""
+        data = self._data('les_deux')
+        self.assertEqual(data['scenario'], SCENARIO_LES_DEUX)
+        self.assertEqual(data['nb_options'], 2)
+        self.assertIn(DESIGNATION_RESEAU, _designations(data['sans_items']))
+        self.assertIn(DESIGNATION_BATTERIE, _designations(data['avec_items']))
+
+    def test_les_totaux_ne_sont_jamais_recalcules(self):
+        """Zéro chiffre inventé : chaque variante sert les totaux du moteur."""
+        complet = self._data('les_deux')
+        self.assertEqual(self._data('sans')['totaux_sans'],
+                         complet['totaux_sans'])
+        self.assertEqual(self._data('avec')['totaux_avec'],
+                         complet['totaux_avec'])
+
+    def test_le_moteur_ne_change_aucun_statut(self):
+        """Règle #4 — élargir la variante ne touche toujours à rien."""
+        avant = (self.devis.statut, self.devis.option_acceptee,
+                 self.devis.etude_params)
+        for valeur in ('sans', 'avec', 'les_deux'):
+            self._data(valeur)
+        self.devis.refresh_from_db()
+        self.assertEqual(
+            (self.devis.statut, self.devis.option_acceptee,
+             self.devis.etude_params), avant)
+
+
+class TestArtefactDeuxOnduleursNonElargi(TestCase):
+    """PV86 — deux onduleurs en lignes NON optionnelles et AUCUN scénario
+    stocké : c'est un ÉTAT DE DONNÉES, pas une alternative commerciale. Le
+    repli l'a ramené à UNE présentation ; la variante ne doit pas ressusciter
+    les deux options (ni le prix fantôme que PV86 a banni)."""
+
+    def setUp(self):
+        self.company = make_company(f'lvarart-{uuid.uuid4().hex[:8]}')
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+        self.devis = make_devis(
+            self.company, self.user, self.client_obj,
+            f'DEV-LVARA-{uuid.uuid4().hex[:4]}')
+        _add_ligne(self.devis, DESIGNATION_HYBRIDE, '1', '16000')
+        _add_ligne(self.devis, DESIGNATION_BATTERIE, '1', '22000')
+        # AUCUN scénario stocké — c'est ce qui fait l'artefact.
+        self.devis.etude_params = {}
+        self.devis.save(update_fields=['etude_params'])
+
+    def test_aucune_variante_ne_reouvre_les_deux_options(self):
+        reference = build_quote_data(self.devis, clean_pdf_options({}))
+        self.assertEqual(reference['nb_options'], 1)
+        for valeur in ('sans', 'avec', 'les_deux'):
+            data = build_quote_data(
+                self.devis, clean_pdf_options({'variante_option': valeur}))
+            self.assertEqual(data['nb_options'], 1, valeur)
+            self.assertEqual(data['scenario'], reference['scenario'], valeur)
+            self.assertEqual(data['display_total'],
+                             reference['display_total'], valeur)
 
 
 # ═══════════════════════════════════════════════════════════════════════════

@@ -304,6 +304,72 @@ class AvecBatterieNonVendableTests(_CJ2bBase):
             f'public (chemin → valeur) : {sorted(fuite)}')
 
 
+class MonoOptionAvecBatterieTests(_CJ2bBase):
+    """CJ2b/L-VAR (24/08/2026) — LE MIROIR de la classe ci-dessus, et le bug de
+    DEV-202608-0023 : un devis MONO-option dont l'unique option EST celle avec
+    batterie doit servir sa série « avec ».
+
+    L'ancienne garde exigeait ``avec_ok`` ET ``deux_options``. Sur ce devis
+    (``avec_ok`` vrai, ``deux_options`` faux — la resynchronisation 3D a rétréci
+    le scénario stocké), elle annulait la série du SEUL document que le client
+    possède, et la page lisait ``avec === null`` comme « batterie non vendable »
+    (le calque batterie du graphe de production disparaissait), pendant que
+    ``courbes_journalieres.options`` disait ``['avec']``. Les deux blocs lisent
+    désormais le MÊME repère : ``avec_ok``."""
+
+    def test_le_devis_mono_avec_batterie_sert_bien_sa_serie(self):
+        devis, link = self._devis('cj2b-monoavec', scenario='Avec batterie')
+        rafraichir_etude_horaire_devis(devis)
+
+        from apps.ventes.quote_engine.builder import build_quote_data
+        brut = build_quote_data(devis, {'pdf_mode': 'full'})
+        # La forme EXACTE qui était cassée : servable, mais mono-option.
+        self.assertTrue(brut.get('avec_ok'))
+        self.assertFalse(brut.get('deux_options'))
+
+        payload = self._payload(link)
+        self.assertIn('economies_mensuelles', payload)
+        em = payload['economies_mensuelles']
+        self.assertEqual(em['avec'],
+                         [round(v) for v in brut['eco_a_monthly']])
+        self.assertEqual(len(em['avec']), 12)
+        self.assertEqual(em['total_avec'], round(sum(brut['eco_a_monthly'])))
+
+    def test_le_bloc_economies_et_les_courbes_ne_se_contredisent_plus(self):
+        """L'INCOHÉRENCE constatée en production : ``economies_mensuelles``
+        disait « pas de figure avec batterie » sur un devis dont
+        ``courbes_journalieres.options`` disait ``['avec']``."""
+        devis, link = self._devis('cj2b-coherence', scenario='Avec batterie')
+        rafraichir_etude_horaire_devis(devis)
+
+        payload = self._payload(link)
+        self.assertIn('courbes_journalieres', payload,
+                      'fixture invalide : sans le bloc des courbes, ce test '
+                      'ne peut pas prouver la cohérence entre les deux blocs')
+        self.assertEqual(payload['courbes_journalieres'].get('options'),
+                         ['avec'])
+        self.assertIn('economies_mensuelles', payload)
+        self.assertIsNotNone(payload['economies_mensuelles']['avec'])
+
+    def test_un_devis_sans_batterie_servable_garde_avec_a_null(self):
+        """Témoin NÉGATIF — la garde CJ2a reste entièrement portée : sans
+        batterie dans les lignes, aucun chiffre « avec batterie » n'est servi.
+        """
+        devis, link = self._devis(
+            'cj2b-reseauseul', scenario='Sans batterie', avec_batterie=False)
+        rafraichir_etude_horaire_devis(devis)
+
+        from apps.ventes.quote_engine.builder import build_quote_data
+        brut = build_quote_data(devis, {'pdf_mode': 'full'})
+        self.assertFalse(brut.get('avec_ok'))
+
+        payload = self._payload(link)
+        self.assertIn('economies_mensuelles', payload)
+        em = payload['economies_mensuelles']
+        self.assertIsNone(em['avec'])
+        self.assertIsNone(em['total_avec'])
+
+
 class EstimationDeclareeTests(_CJ2bBase):
     """La source de consommation du bloc horaire n'est qu'un point réel
     (facture d'hiver) répété sur les douze mois : la variation mensuelle est
