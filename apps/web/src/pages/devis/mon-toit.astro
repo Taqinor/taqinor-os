@@ -1219,8 +1219,18 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
 
           <label class="block text-sm text-lune-soft">
             <span data-i18n data-fr="Adresse / ville" data-ar="العنوان / المدينة">Adresse / ville</span>
+            <!-- ORDRE FONDATEUR (24/08/2026) — quand la position GPS est déjà posée
+                 (repère carte), l'adresse devient SECONDAIRE : elle reste visible (elle
+                 sert au courrier) mais n'est plus obligatoire. `required`/`aria-required`
+                 sont mis à jour dynamiquement par syncCityRequirement() (jamais retirés
+                 en dur ici — un visiteur SANS repère doit toujours voir le champ requis). -->
             <input id="mt-city" name="city" type="text" autocomplete="address-level2" required aria-required="true"
-              aria-describedby="mt-city-err" placeholder="Lue depuis la carte — modifiable si besoin" class={`${inputClass} mt-1`} />
+              aria-describedby="mt-city-err mt-city-hint" placeholder="Lue depuis la carte — modifiable si besoin" class={`${inputClass} mt-1`} />
+            <span id="mt-city-hint" hidden class="mt-1 block text-xs text-lune-faint" data-i18n
+              data-fr="Facultatif — votre position GPS est déjà enregistrée. L'adresse reste utile pour le courrier."
+              data-ar="اختياري — تم تسجيل موقعكم عبر GPS بالفعل. يبقى العنوان مفيدًا للمراسلة.">
+              Facultatif — votre position GPS est déjà enregistrée. L'adresse reste utile pour le courrier.
+            </span>
             <span id="mt-city-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
           </label>
 
@@ -2168,6 +2178,24 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   let cityTouched = false;
   cityEl?.addEventListener('input', () => { cityTouched = true; });
 
+  // ORDRE FONDATEUR (24/08/2026) — le GPS est la source de vérité de
+  // localisation : dès qu'un repère est posé (capturePin), l'adresse/ville
+  // n'est plus BLOQUANTE. `validateLead` (lib/lead.ts, même condition GPS)
+  // porte déjà la garde réelle côté validation — cette fonction ne fait que
+  // refléter l'état côté UI (aria-required + indice visuel), jamais l'inverse.
+  // Rejouée à chaque changement de repère (onCaptureChange) et à la
+  // restauration WJ61 — jamais un simple libellé figé qui pourrait diverger.
+  function syncCityRequirement() {
+    const hasGps = capturePin != null;
+    if (cityEl) {
+      cityEl.required = !hasGps;
+      cityEl.setAttribute('aria-required', hasGps ? 'false' : 'true');
+    }
+    const hint = $('mt-city-hint');
+    if (hint) hint.hidden = !hasGps;
+  }
+  syncCityRequirement();
+
   // ——— WJ6/WJ33 : bascule de langue FR/AR (data-i18n) ———
   // WJ30 — la langue active est transmise au webhook (langue_preferee).
   //
@@ -2746,6 +2774,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
         onCaptureChange: (s) => {
           capturePin = s.pin;
           captureOutline = s.outline;
+          syncCityRequirement();
           // QX/Lane C — le contour a changé : l'instantané satellite mis en
           // cache ne correspond plus, on le laissera se reconstruire.
           roofImageSpecPromise = null;
@@ -2969,6 +2998,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     syncEquipDetails();
     if (savedWizard.capturePin) capturePin = savedWizard.capturePin;
     if (savedWizard.captureOutline?.length) captureOutline = savedWizard.captureOutline;
+    syncCityRequirement();
     if (Object.keys(savedWizard.fields ?? {}).length > 0 || savedWizard.capturePin) markDataEntered();
     restoring = false;
   }

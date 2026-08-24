@@ -613,3 +613,86 @@ describe("Chantier 4 — l'assistant est passé de 3 à 2 écrans", () => {
     expect(lib).toContain("export const TELEMETRY_STEP_IDS = ['toit', 'facture', 'estimation', 'contact'] as const;");
   });
 });
+
+// ———————————————————————————————————————————————————————————————————————————
+// Chantier 5 (ORDRE FONDATEUR 24/08) — le GPS est la source de vérité de
+// localisation : dès que le client a posé sa position (repère carte / champs
+// gps*), l'adresse/ville ne bloque plus la soumission — elle reste visible
+// (utile pour le courrier) mais devient SECONDAIRE. Épingles côté validation
+// (lib/lead.ts, partagée par les trois locales) ET côté UI (les trois pages
+// mettent à jour required/aria-required + un indice visuel).
+describe("Chantier 5 — le GPS rend l'adresse secondaire, jamais bloquante", () => {
+  const base = {
+    fullName: 'Karim Benali',
+    phone: '06 12 34 56 78',
+    roofType: 'villa',
+    billRange: '1500-3000',
+    consent: true,
+  };
+
+  it('validateLead NE BLOQUE PLUS sans ville quand un repère carte (roofPoint) est posé', () => {
+    const r = validateLead({ ...base, roofPoint: { lat: 33.5, lng: -7.6 } });
+    expect(r.ok).toBe(true);
+  });
+
+  it('validateLead NE BLOQUE PLUS sans ville quand gpsLat/gpsLng bruts sont posés', () => {
+    const r = validateLead({ ...base, gpsLat: 33.5, gpsLng: -7.6 });
+    expect(r.ok).toBe(true);
+  });
+
+  it('validateLead BLOQUE TOUJOURS sans ville ET sans aucun GPS', () => {
+    const r = validateLead({ ...base });
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.errors.city).toBe('Ville / commune requise');
+  });
+
+  it('un GPS hors bornes Maroc ne dispense pas de la ville (garde-fou anti-garbage inchangé)', () => {
+    const r = validateLead({ ...base, gpsLat: 48.85, gpsLng: 2.35 }); // Paris
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.errors.city).toBe('Ville / commune requise');
+  });
+
+  it('la ville reste TOUJOURS acceptée quand elle est fournie, GPS ou pas', () => {
+    const r = validateLead({ ...base, city: 'Casablanca' });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.lead.city).toBe('Casablanca');
+  });
+
+  for (const [lang, rel] of LOCALES) {
+    const src = read(rel);
+    const script = stripLineComments(src);
+    const dom = stripHtmlComments(src);
+
+    it(`${lang} — syncCityRequirement() existe et bascule required/aria-required sur capturePin`, () => {
+      const fn = stripLineComments(slice(src, 'function syncCityRequirement() {', '\n  }'));
+      expect(fn).toContain('const hasGps = capturePin != null;');
+      expect(fn).toContain('cityEl.required = !hasGps;');
+      expect(fn).toContain("cityEl.setAttribute('aria-required', hasGps ? 'false' : 'true');");
+    });
+
+    it(`${lang} — syncCityRequirement() est rejouée à chaque changement de repère ET à la restauration WJ61`, () => {
+      // (1) onCaptureChange — juste après `capturePin = s.pin;`.
+      const onChange = slice(script, 'capturePin = s.pin;', 'roofImageSpecPromise = null;');
+      expect(onChange).toContain('syncCityRequirement();');
+      // (2) restauration WJ61 — juste après la relecture du repère sauvegardé.
+      const restore = slice(script, 'if (savedWizard.capturePin) capturePin = savedWizard.capturePin;', 'markDataEntered();');
+      expect(restore).toContain('syncCityRequirement();');
+    });
+
+    it(`${lang} — le champ adresse porte un indice visuel « facultatif » masqué par défaut`, () => {
+      expect(dom).toContain('id="mt-city-hint"');
+      expect(dom).toContain('aria-describedby="mt-city-err mt-city-hint"');
+      // Masqué par défaut : un visiteur SANS repère voit toujours le champ requis.
+      const hintTag = dom.match(/<span id="mt-city-hint"[^>]*>/)?.[0] ?? '';
+      expect(hintTag).toContain('hidden');
+    });
+
+    it(`${lang} — le champ reste visible dans les deux cas (il sert au courrier, jamais retiré)`, () => {
+      expect(dom).toContain('id="mt-city"');
+      expect(dom).not.toContain('id="mt-city" hidden');
+    });
+  }
+});

@@ -877,8 +877,21 @@ export function validateLead(body: unknown): ValidationResult {
   //   3 champs requis qu'avant — contrat inchangé octet pour octet pour elles.
   const quickCallback = b.quickCallback === true;
 
+  // ORDRE FONDATEUR (24/08/2026) — le GPS est la source de vérité de
+  // localisation : dès que le client a posé un repère explicite (roofPoint)
+  // ou des gps_lat/gps_lng valides ∈ bornes Maroc, l'adresse/ville ne bloque
+  // plus la soumission — elle reste utile pour le courrier mais devient
+  // secondaire à cette étape. Même condition que la construction de
+  // `opt.gpsLat`/`opt.gpsLng` plus haut (roofPoint prime, sinon gpsLat/gpsLng
+  // bruts) : une seule source de vérité pour « le client a déjà une position ».
+  const rawGpsLat = Number(b.gpsLat);
+  const rawGpsLng = Number(b.gpsLng);
+  const hasExplicitGps = !!cleanRoofPoint(b.roofPoint)
+    || (b.gpsLat != null && b.gpsLng != null
+        && isMoroccoLat(rawGpsLat) && isMoroccoLng(rawGpsLng));
+
   const city = cleanStr(b.city, 100);
-  if (!quickCallback && city.length < 2) errors.city = 'Ville / commune requise';
+  if (!quickCallback && !hasExplicitGps && city.length < 2) errors.city = 'Ville / commune requise';
 
   const roofType = cleanStr(b.roofType, 20);
   if (!quickCallback && !ROOF_TYPES.some((r) => r.id === roofType)) errors.roofType = 'Type de toiture requis';
