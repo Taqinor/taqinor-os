@@ -2177,6 +2177,10 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "nb_panneaux_avec": nb_panneaux_avec,
         "puissance_kwc_sans": puissance_kwc_sans,
         "puissance_kwc_avec": puissance_kwc_avec,
+        # Puissance unitaire LUE dans chaque option (deux gammes de panneau
+        # possibles) — None si illisible, jamais un watt de repli.
+        "watt_par_panneau_sans": _scal["watt_sans"],
+        "watt_par_panneau_avec": _scal["watt_avec"],
         "panneaux_divergents": bool(panneaux_divergents),
         # M2 — aucun ancrage réel de puissance (ni ligne panneau, ni fiche
         # produit, ni calepinage) : les renderers OMETTENT puissance,

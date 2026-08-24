@@ -12,19 +12,44 @@ Every class is prefixed `p2-` so it never clashes with pages 1/3.
 from __future__ import annotations
 
 
+def _qty_par_designation(items):
+    """{désignation: quantité TOTALE} — somme des lignes de même désignation."""
+    out = {}
+    for it in items:
+        try:
+            q = float(it.get("quantite") or 0)
+        except (TypeError, ValueError):
+            q = 0.0
+        out[it["designation"]] = out.get(it["designation"], 0.0) + q
+    return out
+
+
 def _split_items(sans_items, avec_items):
-    """Partition lines by designation membership across the two options.
+    """Partition lines by designation AND quantity across the two options.
 
     Returns (shared, delta_sans, delta_avec). `shared` keeps the order of
     sans_items; the value used is the sans-side line (prices match avec-side).
+
+    L-2OPT (chantier « deux optimiseurs », 24/08/2026) — L'APPARTENANCE SE
+    JUGE SUR (DÉSIGNATION, QUANTITÉ). Depuis que les deux options peuvent
+    porter des nombres de panneaux différents (22 sans / 26 avec), une même
+    désignation présente des deux côtés n'est PLUS forcément un équipement
+    commun : à quantités divergentes elle part en delta de CHAQUE option, avec
+    SA quantité. L'ancien découpage la déclarait « commune » et n'imprimait
+    qu'UNE quantité — celle du côté sans — pour les deux options : le client
+    lisait 22 panneaux sur une option qui en compte 26.
+
+    Quantités égales ⇒ ``shared``, exactement comme avant (tout devis dont
+    aucune ligne ne porte de variante est rendu au bit près).
     """
-    avec_names = {it["designation"] for it in avec_items}
-    sans_names = {it["designation"] for it in sans_items}
-    common = sans_names & avec_names
+    sans_q = _qty_par_designation(sans_items)
+    avec_q = _qty_par_designation(avec_items)
+    common = {n for n in (sans_q.keys() & avec_q.keys())
+              if sans_q[n] == avec_q[n]}
 
     shared = [it for it in sans_items if it["designation"] in common]
-    delta_sans = [it for it in sans_items if it["designation"] not in avec_names]
-    delta_avec = [it for it in avec_items if it["designation"] not in sans_names]
+    delta_sans = [it for it in sans_items if it["designation"] not in common]
+    delta_avec = [it for it in avec_items if it["designation"] not in common]
     return shared, delta_sans, delta_avec
 
 
@@ -161,9 +186,36 @@ def build_pages(ctx) -> list:
         delta_sans, delta_avec = [], []
 
     # ── Top spec list ────────────────────────────────────────────────────────
+    # L-2OPT — quand les deux options n'ont PAS le même nombre de panneaux, un
+    # scalaire unique ne décrit qu'une des deux : la bande porte alors les DEUX
+    # valeurs (« 15,6 · 18,5 » / « kWc installés (sans · avec) »). Sinon, ou sur
+    # un document mono-option, l'affichage historique est intact.
+    _kwc_s, _kwc_a = d.get("puissance_kwc_sans"), d.get("puissance_kwc_avec")
+    _nb_s, _nb_a = d.get("nb_panneaux_sans"), d.get("nb_panneaux_avec")
+    _divergent = bool(deux_options and d.get("panneaux_divergents"))
+
+    def _num(v):
+        return f'{v:g}'.replace(".", ",")
+
+    if _divergent and _kwc_s and _kwc_a:
+        spec_kwc = (f'{_num(_kwc_s)} · {_num(_kwc_a)}',
+                    "kWc installés (sans · avec)")
+    else:
+        spec_kwc = (_num(d["puissance_kwc"]), "kWc installés")
+    _w_s, _w_a = d.get("watt_par_panneau_sans"), d.get("watt_par_panneau_avec")
+    if _divergent and _nb_s and _nb_a:
+        # Puissance unitaire écrite seulement si elle est LA MÊME des deux
+        # côtés ; deux modèles de panneau différents ⇒ le détail est dans le
+        # tableau comparatif, jamais un watt qui vaudrait pour une seule option.
+        _wtxt = f' · {_w_s:g} W' if (_w_s and _w_s == _w_a) else ''
+        spec_pan = (f'{_nb_s:g} · {_nb_a:g}',
+                    f'panneaux (sans · avec){_wtxt}')
+    else:
+        spec_pan = (f'{d["nb_panneaux"]:g}',
+                    f'panneaux · {d["watt_par_panneau"]:g} W')
     specs = [
-        (f'{d["puissance_kwc"]:g}'.replace(".", ","), "kWc installés"),
-        (f'{d["nb_panneaux"]:g}', f'panneaux · {d["watt_par_panneau"]:g} W'),
+        spec_kwc,
+        spec_pan,
         (fmt(d["prod_kwh"]), "kWh / an produits"),
     ]
     spec_html = "".join(
@@ -296,6 +348,57 @@ def build_pages(ctx) -> list:
         f" — soit ≈ <b>{gain_mult_txt}×</b> votre investissement"
         if gain_mult_txt else "")
 
+    # ── L-2OPT — TABLEAU COMPARATIF DE SYNTHÈSE (deux optimiseurs) ───────────
+    # Rendu UNIQUEMENT sur un document à deux options dont les compositions
+    # DIVERGENT réellement (nombres de panneaux différents) : c'est là que les
+    # deux cartes de totaux ne suffisent plus à comprendre ce qui change d'une
+    # option à l'autre. Un devis à deux options « classique » (même champ PV
+    # des deux côtés) reste rendu au bit près — donc sans 4ᵉ page induite.
+    #
+    # RÈGLE FONDATEUR — ZÉRO CHIFFRE INVENTÉ : chaque ligne lit une valeur DÉJÀ
+    # calculée par le moteur ; une ligne dont une valeur manque est OMISE (ni
+    # tiret de remplissage, ni estimation). Seule exception assumée, le tiret de
+    # la case « Batteries » côté SANS : l'absence de stockage y est un FAIT du
+    # devis, pas une donnée manquante.
+    cmp_rows = []
+    if _divergent:
+        def _cell_pan(nb, watt):
+            return f'{nb:g} × {watt:g} W' if watt else f'{nb:g}'
+
+        if _nb_s and _nb_a:
+            cmp_rows.append(("Panneaux", _cell_pan(_nb_s, _w_s),
+                             _cell_pan(_nb_a, _w_a)))
+        if _kwc_s and _kwc_a:
+            cmp_rows.append(("Puissance", f'{_num(_kwc_s)} kWc',
+                             f'{_num(_kwc_a)} kWc'))
+        _bat_kwh = d.get("batterie_kwh_total")
+        if _bat_kwh:
+            cmp_rows.append(("Batteries", "—", f'{_num(_bat_kwh)} kWh'))
+        _ts, _ta = d.get("totaux_sans") or {}, d.get("totaux_avec") or {}
+        if _ts.get("ttc") and _ta.get("ttc"):
+            cmp_rows.append(("Prix TTC", f'{fmt(_ts["ttc"])} MAD',
+                             f'{fmt(_ta["ttc"])} MAD'))
+        _eco_s, _eco_a = d.get("eco_s_ann"), d.get("eco_a_ann")
+        if not masquer_eco and _eco_s and _eco_a:
+            cmp_rows.append(("Économies estimées / an",
+                             f'{fmt(_eco_s)} MAD', f'{fmt(_eco_a)} MAD'))
+        if not masquer_eco and roi_s and roi_a:
+            cmp_rows.append(("Retour sur investissement",
+                             f'{_yrs(roi_s)} ans', f'{_yrs(roi_a)} ans'))
+
+    if cmp_rows:
+        _crows = "".join(
+            f'<tr><td class="p2-cmp-k">{k}</td>'
+            f'<td class="p2-cmp-v">{a}</td>'
+            f'<td class="p2-cmp-v p2-cmp-a">{b}</td></tr>'
+            for k, a, b in cmp_rows)
+        comparatif_html = (
+            '<table class="p2-cmp"><thead><tr><th></th>'
+            '<th>Sans batterie</th><th>Avec batterie</th></tr></thead>'
+            f'<tbody>{_crows}</tbody></table>')
+    else:
+        comparatif_html = ""
+
     # QRES3 — sous-titre du graphe fidèle au devis : « deux scénarios »
     # seulement quand le document porte réellement deux options.
     fin_sub = ("gain cumulé, deux scénarios — le point marque le retour "
@@ -334,13 +437,22 @@ def build_pages(ctx) -> list:
         rows = max(len(delta_sans), len(delta_avec), 1)
         return 7.0 + rows * 4.6
 
+    def _comparatif_mm():
+        """L-2OPT — hauteur du tableau comparatif, IMPUTÉE au même budget.
+
+        Sans cela le comparatif s'ajouterait par-dessus une page déjà jugée
+        « tient sur une page » et déborderait sur une 4ᵉ page. Absent ⇒ 0,0,
+        donc décision de pagination identique à l'historique.
+        """
+        return 5.0 + len(cmp_rows) * 4.0 if cmp_rows else 0.0
+
     # QRES49/57 (fondateur, 2026-07-18) — un devis de la taille RÉELLE des
     # devis du fondateur (~13 lignes, fixture « plus5 ») tient en 3 pages AVEC
     # la grande courbe : on a retiré de la page 2 ce qui était redondant (les
     # cartes badges → bande fine sur la page signature ; la ligne « fiches
     # techniques » → fusionnée à la légende TVA). Seuls les très gros devis
     # (~12 lignes communes et plus) passent en 4 pages.
-    fits_one = (_table_mm(shared) + _deltas_mm()) <= 68.0
+    fits_one = (_table_mm(shared) + _deltas_mm() + _comparatif_mm()) <= 68.0
 
     def _chunk_rows(items, budgets):
         """Découpe les lignes par tranches de hauteur (budgets mm par page)."""
@@ -538,6 +650,22 @@ def build_pages(ctx) -> list:
   .p2-imp-l {{ display:block; font-size:7pt; color:{C['muted']};
     margin-top:1mm; line-height:1.3; }}
 
+  /* L-2OPT — tableau comparatif de synthèse (deux optimiseurs). Compact par
+     construction : il s'insère sous les cartes de totaux sans pousser de 4ᵉ
+     page (sa hauteur est imputée au budget de pagination). */
+  .p2-cmp {{ width:100%; border-collapse:collapse; font-size:8.1pt;
+    margin-top:2mm; }}
+  .p2-cmp thead th {{ font-size:7pt; letter-spacing:.08em;
+    text-transform:uppercase; color:{C['muted_2']}; font-weight:700;
+    text-align:right; padding:0 2.5mm 1.2mm; border-bottom:1.5px solid {C['line']}; }}
+  .p2-cmp thead th:first-child {{ text-align:left; }}
+  .p2-cmp td {{ padding:0.85mm 2.5mm; border-bottom:1px solid {C['line_soft']};
+    text-align:right; font-feature-settings:'tnum' 1; }}
+  .p2-cmp tbody tr:last-child td {{ border-bottom:none; }}
+  .p2-cmp .p2-cmp-k {{ text-align:left; color:{C['muted']}; }}
+  .p2-cmp .p2-cmp-v {{ color:{C['ink']}; font-weight:600; white-space:nowrap; }}
+  .p2-cmp .p2-cmp-a {{ color:{C['navy']}; }}
+
   /* QJ30 — multi-propriétés */
   .p2-multi-wrap {{ margin-top:2.5mm; }}
   .p2-multi-n {{ background:{C['wash']}; border:1px solid {C['gold']};
@@ -609,6 +737,9 @@ def build_pages(ctx) -> list:
     closing_html = (
         f'{deltas_html}'
         f'<div class="p2-totals{totals_wrap_cls}">{totals_html}</div>'
+        # L-2OPT — le comparatif se lit JUSTE SOUS les deux cartes de totaux,
+        # à l'endroit où le client compare. Vide ⇒ page inchangée.
+        f'{comparatif_html}'
         f'<div class="p2-tva-note">{tva_note}{fiche_inline}</div>'
         f'{multi_html}')
 
