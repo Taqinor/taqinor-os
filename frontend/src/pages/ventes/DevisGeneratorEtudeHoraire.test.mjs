@@ -139,3 +139,79 @@ test('DevisGenerator : les avertissements serveur sont affichés VERBATIM (jamai
   const bloc = DG.slice(idx - 200, idx + 300)
   assert.match(bloc, /etudeHoraireDonnees\.avertissements\.map\(/)
 })
+
+// ── L-FRONT lot 4 — falaise/résiduel/remplissage/glitch/mini-balayage/estimation ──
+
+test("DevisGenerator lot4 : importe les nouvelles aides pures (falaise/glitch/balayage/estimation)", () => {
+  const idx = DG.indexOf("} from '../../features/ventes/etudeHorairePreview'")
+  assert.ok(idx > -1)
+  const bloc = DG.slice(Math.max(0, idx - 400), idx)
+  for (const nom of ['falaiseAffichable', 'glitchAnnuel',
+    'balayageStockageAffichable', 'estimationConsoAffichable', 'LIBELLES_MOIS']) {
+    assert.ok(bloc.includes(nom), `export « ${nom} » absent de l'import`)
+  }
+})
+
+test('DevisGenerator lot4 : les trois blocs dérivés sont memoïsés depuis le MÊME payload (aucun second appel réseau)', () => {
+  assert.match(DG, /const etudeHoraireFalaise = useMemo\(\s*\n\s*\(\) => falaiseAffichable\(etudeHoraireDonnees\?\.dimensionnement\)/)
+  assert.match(DG, /const etudeHoraireGlitch = useMemo\(\s*\n\s*\(\) => glitchAnnuel\(etudeHoraireDonnees\?\.etude\)/)
+  assert.match(DG, /const etudeHoraireEstimationConso = useMemo\(\s*\n\s*\(\) => estimationConsoAffichable\(etudeHoraireDonnees\?\.estimation_conso\)/)
+})
+
+test('DevisGenerator lot4 : colonnes résiduel + remplissage batterie rendues dans le tableau de dimensionnement, omises sans donnée', () => {
+  assert.match(DG, /data-testid="etude-horaire-residuel"/)
+  assert.match(DG, /data-testid="etude-horaire-remplissage"/)
+  const idxR = DG.indexOf('data-testid="etude-horaire-residuel"')
+  const blocR = DG.slice(idxR, idxR + 250)
+  assert.match(blocR, /residuelApres != null/)
+  const idxM = DG.indexOf('data-testid="etude-horaire-remplissage"')
+  const blocM = DG.slice(idxM, idxM + 250)
+  assert.match(blocM, /remplissageMoyen != null/)
+})
+
+test('DevisGenerator lot4 : mini-balayage stockage — un bouton toggle par ligne, rendu seulement si des paliers existent', () => {
+  assert.match(DG, /data-testid="etude-horaire-stockage-toggle"/)
+  assert.match(DG, /paliersStockage\.length > 0/)
+  assert.match(DG, /data-testid="etude-horaire-balayage-stockage"/)
+  assert.match(DG, /balayageStockageAffichable\(ligne\)/)
+})
+
+test('DevisGenerator lot4 : bloc falaise tarifaire omis en entier quand falaiseAffichable renvoie null', () => {
+  const idx = DG.indexOf('data-testid="etude-horaire-falaise"')
+  assert.ok(idx > -1)
+  const bloc = DG.slice(idx - 200, idx)
+  assert.match(bloc, /\{etudeHoraireFalaise && \(/)
+})
+
+test('DevisGenerator lot4 : résumé glitch omis en entier quand glitchAnnuel renvoie null', () => {
+  const idx = DG.indexOf('data-testid="etude-horaire-glitch"')
+  assert.ok(idx > -1)
+  const bloc = DG.slice(idx - 200, idx)
+  assert.match(bloc, /\{etudeHoraireGlitch && \(/)
+})
+
+test('DevisGenerator lot4 : décomposition mensuelle estimation_conso omise en entier quand la clé est absente', () => {
+  const idx = DG.indexOf('data-testid="etude-horaire-estimation-conso"')
+  assert.ok(idx > -1)
+  const bloc = DG.slice(idx - 400, idx)
+  assert.match(bloc, /\{etudeHoraireEstimationConso && \(/)
+  // Les lignes d'ajout ne sont posées que pour les clés réellement présentes.
+  assert.match(DG, /etudeHoraireEstimationConso\.ajouts\.map\(\(a\) => \(/)
+})
+
+test('DevisGenerator lot4 : le formulaire garde noValidate — les nouveaux blocs n\'ajoutent aucun champ de saisie', () => {
+  assert.match(DG, /noValidate/)
+  // Les blocs lot4 (résiduel/remplissage/falaise/glitch/estimation/mini-
+  // balayage) sont tous en LECTURE SEULE (<td>/<div> texte) : aucun <input>
+  // ne peut donc y romprer la garde anti-snap step="any" des champs existants.
+  for (const testid of ['etude-horaire-residuel', 'etude-horaire-remplissage',
+    'etude-horaire-falaise', 'etude-horaire-glitch',
+    'etude-horaire-estimation-conso', 'etude-horaire-balayage-stockage']) {
+    const idx = DG.indexOf(`data-testid="${testid}"`)
+    assert.ok(idx > -1, `bloc ${testid} introuvable`)
+    const bloc = DG.slice(idx, idx + 1200)
+    const fin = bloc.search(/\n {12}\)\}/) // fin approximative du bloc conditionnel
+    const zone = fin > -1 ? bloc.slice(0, fin) : bloc.slice(0, 600)
+    assert.doesNotMatch(zone, /<input\b/i, `${testid} ne doit porter aucun <input> brut`)
+  }
+})

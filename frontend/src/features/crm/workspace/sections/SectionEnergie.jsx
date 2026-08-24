@@ -4,6 +4,12 @@ import { jumpToField } from '../jumpToField'
 
 const RACCORDEMENTS = { monophase: 'Monophasé', triphase: 'Triphasé', inconnu: 'Je ne sais pas' }
 
+// L-FRONT lot 4 (contrat L-BACK, 24/08) — créneaux horaires par équipement,
+// mêmes valeurs que le contrat `estimation_conso` (crm.Lead.equip_*_creneau).
+const CRENEAU_CHAUFFE_EAU = { matin: 'Matin', soir: 'Soir', nuit: 'Nuit', journee: 'Journée' }
+const CRENEAU_VE = { nuit: 'Nuit', jour: 'Jour', soir: 'Soir' }
+const CRENEAU_CLIM = { jour: 'Jour', soir: 'Soir', nuit: 'Nuit' }
+
 // L4 (extension fondateur) — présence en journée, script d'appel. Mêmes
 // clés que crm.Lead.OccupationJour et courbes_journalieres._occupation.
 const OCCUPATION_JOUR = {
@@ -166,6 +172,29 @@ export function SectionEquipements({ state, setField }) {
           </FormField>
         )}
       </div>
+      {/* L-FRONT lot 4 — grandeurs estimation_conso (contrat L-BACK) : la
+          puissance de pompe demandée ci-dessus reste `equip_piscine_pompe_kw`
+          (question script d'appel existante) ; `equip_piscine_kw` est la
+          puissance retenue par le moteur pour l'estimation mensuelle — deux
+          clés distinctes du contrat, jamais fusionnées. */}
+      {piscine === true && (
+        <div className="form-row">
+          <FormField label="Puissance piscine pour l'estimation (kW)" htmlFor="lf-equip-piscine-kw2">
+            <Input
+              id="lf-equip-piscine-kw2" type="number" step="any" placeholder="ex: 1.1"
+              value={v('equip_piscine_kw')}
+              onChange={(e) => setField('equip_piscine_kw', e.target.value)}
+            />
+          </FormField>
+          <FormField label="Heures de filtration par jour" htmlFor="lf-equip-piscine-heures">
+            <Input
+              id="lf-equip-piscine-heures" type="number" step="any" min="0" max="24" placeholder="ex: 6"
+              value={v('equip_piscine_heures_jour')}
+              onChange={(e) => setField('equip_piscine_heures_jour', e.target.value)}
+            />
+          </FormField>
+        </div>
+      )}
       <div className="form-row">
         <FormField
           label="Avez-vous ou prévoyez-vous un véhicule électrique ?"
@@ -189,6 +218,33 @@ export function SectionEquipements({ state, setField }) {
           </FormField>
         )}
       </div>
+      {ve === true && (
+        <div className="form-row">
+          <FormField label="Puissance du chargeur/borne (kW)" htmlFor="lf-equip-ve-chargeur-kw">
+            <Input
+              id="lf-equip-ve-chargeur-kw" type="number" step="any" placeholder="ex: 7.4"
+              value={v('equip_ve_chargeur_kw')}
+              onChange={(e) => setField('equip_ve_chargeur_kw', e.target.value)}
+            />
+          </FormField>
+          <FormField label="Quand rechargez-vous le plus souvent ?" htmlFor="lf-equip-ve-creneau">
+            <select
+              id="lf-equip-ve-creneau" className="form-select"
+              value={v('equip_ve_creneau')}
+              onChange={(e) => setField('equip_ve_creneau', e.target.value)}
+            >
+              {enumOptions(CRENEAU_VE)}
+            </select>
+          </FormField>
+          <FormField label="Sessions de charge par semaine" htmlFor="lf-equip-ve-sessions">
+            <Input
+              id="lf-equip-ve-sessions" type="number" step="1" min="0" placeholder="ex: 4"
+              value={v('equip_ve_sessions_semaine')}
+              onChange={(e) => setField('equip_ve_sessions_semaine', e.target.value)}
+            />
+          </FormField>
+        </div>
+      )}
       <div className="form-row">
         <FormField label="Avez-vous la climatisation ?" htmlFor="lf-equip-clim">
           <TriStateSelect
@@ -206,6 +262,35 @@ export function SectionEquipements({ state, setField }) {
           </FormField>
         )}
       </div>
+      {clim === true && (
+        <div className="form-row">
+          <FormField label="Puissance totale climatisation (kW)" htmlFor="lf-equip-clim-kw">
+            <Input
+              id="lf-equip-clim-kw" type="number" step="any" placeholder="ex: 2.8"
+              value={v('equip_clim_kw')}
+              onChange={(e) => setField('equip_clim_kw', e.target.value)}
+            />
+          </FormField>
+          <FormField label="Créneau d'utilisation principal" htmlFor="lf-equip-clim-creneau">
+            <select
+              id="lf-equip-clim-creneau" className="form-select"
+              value={v('equip_clim_creneau')}
+              onChange={(e) => setField('equip_clim_creneau', e.target.value)}
+            >
+              {enumOptions(CRENEAU_CLIM)}
+            </select>
+          </FormField>
+          <div className="form-group" style={{ alignSelf: 'flex-end' }}>
+            <label className="pdf-toggle">
+              <input
+                type="checkbox" checked={!!v('equip_clim_ete_seulement')}
+                onChange={(e) => setField('equip_clim_ete_seulement', e.target.checked)}
+              />
+              <span>Climatisation utilisée seulement l&apos;été ?</span>
+            </label>
+          </div>
+        </div>
+      )}
       <div className="form-row">
         <FormField label="Votre chauffe-eau est-il électrique ?" htmlFor="lf-equip-chauffe-eau">
           <TriStateSelect
@@ -214,6 +299,26 @@ export function SectionEquipements({ state, setField }) {
           />
         </FormField>
       </div>
+      {getField(state, 'equip_chauffe_eau_electrique') === true && (
+        <div className="form-row">
+          <FormField label="Puissance chauffe-eau (kW)" htmlFor="lf-equip-chauffe-eau-kw">
+            <Input
+              id="lf-equip-chauffe-eau-kw" type="number" step="any" placeholder="ex: 2.4"
+              value={v('equip_chauffe_eau_kw')}
+              onChange={(e) => setField('equip_chauffe_eau_kw', e.target.value)}
+            />
+          </FormField>
+          <FormField label="Créneau de chauffe principal" htmlFor="lf-equip-chauffe-eau-creneau">
+            <select
+              id="lf-equip-chauffe-eau-creneau" className="form-select"
+              value={v('equip_chauffe_eau_creneau')}
+              onChange={(e) => setField('equip_chauffe_eau_creneau', e.target.value)}
+            >
+              {enumOptions(CRENEAU_CHAUFFE_EAU)}
+            </select>
+          </FormField>
+        </div>
+      )}
       <p className="gen-hint">
         <span className="req-auto">*</span> Km/semaine obligatoire pour chiffrer la recharge
         (aucun défaut : conversion ADEME 19,8 kWh/100 km). Sans grandeur réelle saisie, l&apos;
