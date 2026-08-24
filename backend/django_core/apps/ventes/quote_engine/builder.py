@@ -468,6 +468,117 @@ def panneaux_et_watt_lu(lignes) -> tuple:
     return nb_panneaux, watt
 
 
+# ── L-2OPT (chantier « deux optimiseurs », 24/08/2026) ───────────────────────
+# Les deux options d'un devis résidentiel peuvent désormais porter des NOMBRES
+# DE PANNEAUX DIFFÉRENTS (ex. 22 sans batterie, 26 avec) : la ligne panneau est
+# alors DÉDOUBLÉE, chaque exemplaire portant sa variante. Le champ
+# ``LigneDevis.variante`` ('' commun | 'sans' | 'avec') est ajouté par une autre
+# lane ; ce moteur le lit par ``getattr`` avec le défaut '' — il compile, rend et
+# se teste à l'identique sans lui.
+def _variante_de_ligne(ligne) -> str:
+    """Variante déclarée par la ligne : ``''`` (commune), ``'sans'``, ``'avec'``.
+
+    UNIQUE point de lecture du champ dans le moteur : une valeur inconnue ou
+    absente vaut « commune », donc un devis historique se répartit exactement
+    comme avant (mots-clés seuls).
+    """
+    valeur = str(getattr(ligne, "variante", "") or "").strip().lower()
+    return valeur if valeur in ("sans", "avec") else ""
+
+
+def _blob_item(it) -> str:
+    """Texte classifiable d'un item : désignation ET nom du produit lié.
+
+    Une désignation éditée à la main ne peut pas casser silencieusement le
+    découpage — c'est le contrat historique, extrait ici en fonction de module
+    pour être partagé par la répartition et ses appelants.
+    """
+    return f"{it['designation']} {it.get('_produit_nom', '')}"
+
+
+def _repartir_options(paires):
+    """``(sans, avec, contradictions)`` — LA VARIANTE D'ABORD, LES MOTS-CLÉS APRÈS.
+
+    ``paires`` est la liste ordonnée des couples ``(ligne, item)``. Chaque couple
+    est routé ainsi :
+
+    * variante ``''`` (commune) — comportement HISTORIQUE, au bit près : la
+      ligne entre dans « sans » sauf batterie/onduleur hybride, et dans « avec »
+      sauf onduleur réseau ;
+    * variante ``'sans'`` / ``'avec'`` — la ligne n'entre QUE dans l'option
+      déclarée. Une déclaration explicite du vendeur prime sur l'heuristique.
+
+    CEINTURE-BRETELLES, SANS PERTE DE LIGNE : la classification par mots-clés est
+    quand même évaluée sur une ligne déclarée ; si elle CONTREDIT la déclaration
+    (une batterie marquée « sans »), la ligne reste du côté déclaré et la
+    contradiction est REMONTÉE en avertissement INTERNE. Jamais l'inverse : la
+    retirer de son option la ferait disparaître du document, et l'invariant du
+    moteur est qu'aucune ligne, aucun dirham ne s'évapore entre le devis et son
+    PDF.
+
+    Rend des listes de COUPLES : l'appelant a besoin des lignes ORM (pour lire la
+    puissance panneau de chaque option) autant que des items de rendu.
+    """
+    sans, avec, contradictions = [], [], []
+    for ligne, it in paires:
+        variante = _variante_de_ligne(ligne)
+        blob = _blob_item(it)
+        ok_sans = not _is_battery(blob) and not _is_hybrid_inverter(blob)
+        ok_avec = not _is_reseau_inverter(blob)
+        if variante == "sans":
+            sans.append((ligne, it))
+            if not ok_sans:
+                contradictions.append(it["designation"])
+        elif variante == "avec":
+            avec.append((ligne, it))
+            if not ok_avec:
+                contradictions.append(it["designation"])
+        else:
+            if ok_sans:
+                sans.append((ligne, it))
+            if ok_avec:
+                avec.append((ligne, it))
+    return sans, avec, contradictions
+
+
+def _scalaires_par_option(sans_lignes, avec_lignes) -> dict:
+    """Panneaux et kWc de CHAQUE option, lus sur les lignes de CETTE option.
+
+    Même règle de lecture que le scalaire global (``panneaux_et_watt_lu`` :
+    fiche technique du produit, puis désignation), appliquée séparément aux deux
+    paniers. Aucun chiffre n'est fabriqué : une option sans ligne panneau
+    exploitable rend ``None`` et les vignettes correspondantes sont omises.
+
+    CHOIX DOCUMENTÉ POUR LES CLÉS LEGACY ``nb_panneaux`` / ``puissance_kwc``
+    (servies au rendu depuis toujours, et lues par tous les gabarits) :
+
+    * options ÉGALES (tout devis dont aucune ligne ne porte de variante — donc
+      la totalité de l'existant) : ``divergents`` vaut False, l'appelant ne
+      touche à RIEN et la sortie reste byte-identique ;
+    * options DIVERGENTES : l'appelant fait porter aux clés legacy la valeur de
+      l'option **AVEC** — l'option MISE EN AVANT du document (carte
+      « Recommandé », cible du ``recommended`` par défaut). Un scalaire unique
+      doit décrire l'option que le client lit en premier ; ni une moyenne (qui
+      ne décrit aucune option réelle), ni la somme des deux paniers (48
+      panneaux pour un devis 22/26 — le compte de personne).
+    """
+    nb_sans, watt_sans = panneaux_et_watt_lu(sans_lignes)
+    nb_avec, watt_avec = panneaux_et_watt_lu(avec_lignes)
+
+    def _kwc(nb, watt):
+        return round(nb * watt / 1000, 2) if nb > 0 and watt else None
+
+    return {
+        "nb_sans": nb_sans or None,
+        "nb_avec": nb_avec or None,
+        "watt_sans": watt_sans,
+        "watt_avec": watt_avec,
+        "kwc_sans": _kwc(nb_sans, watt_sans),
+        "kwc_avec": _kwc(nb_avec, watt_avec),
+        "divergents": bool(nb_sans and nb_avec and nb_sans != nb_avec),
+    }
+
+
 # Whitelisted PDF format options (mirroring the simulator's payload). The
 # defaults reproduce today's premium 3-page output exactly.
 DEFAULT_PDF_OPTIONS = {
@@ -788,17 +899,13 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # inverter at all cannot produce an option-based PDF at all.
     # Classification sur désignation ET nom du produit lié : une désignation
     # éditée à la main ne peut pas casser silencieusement le découpage.
-    def _blob(it):
-        return f"{it['designation']} {it.get('_produit_nom', '')}"
-
-    sans_items = [
-        it for it in items
-        if not _is_battery(_blob(it)) and not _is_hybrid_inverter(_blob(it))
-    ]
-    avec_items = [
-        it for it in items
-        if not _is_reseau_inverter(_blob(it))
-    ]
+    # L-2OPT — le découpage lit d'ABORD ``LigneDevis.variante`` (absente ⇒ ''),
+    # puis applique les exclusions par mots-clés ci-dessus. Il travaille sur des
+    # couples (ligne, item) : les scalaires par option (panneaux, kWc) se lisent
+    # sur les LIGNES de chaque panier, jamais sur le devis entier.
+    _blob = _blob_item
+    _sans_paires, _avec_paires, _variante_contradictions = _repartir_options(
+        list(zip(lignes, items)))
 
     # ── QF9 — Smart Meter + Clé Wifi (dongle) uniquement si onduleur Huawei ───
     # Ces accessoires sont propres à l'onduleur Huawei ; sur une option dont
@@ -807,15 +914,21 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # évalue Huawei PAR option (l'onduleur réseau de « sans » peut être Huawei
     # alors que l'onduleur hybride de « avec » est Deye) et on retire les lignes
     # Smart Meter / Wifi de l'option non-Huawei.
-    def _drop_huawei_accessories(rows):
+    def _drop_huawei_accessories(paires):
+        rows = [it for _, it in paires]
         if _quote_is_huawei(rows):
-            return rows
-        return [it for it in rows
+            return paires
+        return [(li, it) for li, it in paires
                 if not _is_smart_meter(it.get("designation", ""))
                 and not _is_wifi_dongle(it.get("designation", ""))]
 
-    sans_items = _drop_huawei_accessories(sans_items)
-    avec_items = _drop_huawei_accessories(avec_items)
+    _sans_paires = _drop_huawei_accessories(_sans_paires)
+    _avec_paires = _drop_huawei_accessories(_avec_paires)
+    sans_items = [it for _, it in _sans_paires]
+    avec_items = [it for _, it in _avec_paires]
+    # Lignes ORM de chaque option, tenues en phase avec les items ci-dessus.
+    sans_lignes = [li for li, _ in _sans_paires]
+    avec_lignes = [li for li, _ in _avec_paires]
 
     def _has_qty(rows, pred):
         return any(pred(_blob(r)) and r["quantite"] > 0 for r in rows)
@@ -883,6 +996,9 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     hybride_sans_batterie = has_hybride and not has_batterie
     if hybride_sans_batterie:
         sans_items = [dict(it) for it in items]
+        # L-2OPT — l'option unique porte TOUTES les lignes : ses scalaires se
+        # lisent donc sur toutes les lignes (aucune divergence possible).
+        sans_lignes = list(lignes)
 
     opts = clean_pdf_options(pdf_options)
     mode = devis.mode_installation or ""
@@ -942,6 +1058,14 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         avertissements_internes.append(
             "onduleur hybride sans ligne batterie — document rendu en option "
             "unique (aucune batterie n'est inventée)")
+    for _desig in _variante_contradictions:
+        # L-2OPT — trace INTERNE : la variante déclarée sur la ligne contredit
+        # sa nature lue par mots-clés (une batterie marquée « sans »…). La
+        # déclaration est honorée (aucune ligne ne disparaît) ; le vendeur est
+        # averti pour corriger la source. Jamais rendu au client.
+        avertissements_internes.append(
+            f"ligne « {_desig} » : variante déclarée incompatible avec sa "
+            "nature — déclaration conservée, devis à vérifier")
     # Deux VRAIES options (avant tout repli) — pilote la règle d'intégrité :
     # total d'affichage = option 1, et le une-page ne mélange jamais.
     deux_options = sans_ok and avec_ok and alternative_declaree
@@ -957,11 +1081,36 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         _batterie_reelle = _has_qty(items, _is_battery)
         sans_items = [dict(it) for it in items]
         avec_items = [dict(it) for it in items]
+        # L-2OPT — les deux paniers portent la MÊME vérité : mêmes lignes des
+        # deux côtés, donc mêmes scalaires (jamais de divergence sur un artefact).
+        sans_lignes = list(lignes)
+        avec_lignes = list(lignes)
         sans_ok = not _batterie_reelle
         avec_ok = bool(_batterie_reelle)
         avertissements_internes.append(
             "deux onduleurs non optionnels — devis à assainir par "
             "resynchronisation")
+
+    # ── L-2OPT — SCALAIRES PAR OPTION (panneaux, kWc) ────────────────────────
+    # Lus ICI, après TOUTE recomposition des deux paniers (Z1 hybride sans
+    # batterie, artefact PV86) et avant tout rétrécissement de confort : ce que
+    # chaque option contient RÉELLEMENT. Sur un devis sans variante les deux
+    # comptes sont égaux, ``divergents`` est faux et rien n'est touché.
+    _scal = _scalaires_par_option(sans_lignes, avec_lignes)
+    nb_panneaux_sans = _scal["nb_sans"]
+    nb_panneaux_avec = _scal["nb_avec"]
+    puissance_kwc_sans = _scal["kwc_sans"]
+    puissance_kwc_avec = _scal["kwc_avec"]
+    panneaux_divergents = _scal["divergents"]
+    if panneaux_divergents:
+        # Repli documenté (cf. ``_scalaires_par_option``) : les clés legacy
+        # portent l'option AVEC, celle que le document met en avant. Sans cela
+        # elles porteraient la SOMME des deux paniers (22 + 26 = 48 panneaux),
+        # un compte qui n'existe sur aucune option.
+        nb_panneaux = nb_panneaux_avec
+        watt = _scal["watt_avec"] or watt
+        puissance_kwc = puissance_kwc_avec
+        puissance_des_lignes = True
 
     # ── QF6 — respecter le choix avec/sans-batterie STOCKÉ par le vendeur ─────
     # L'écran générateur persiste le scénario choisi dans etude_params
@@ -2017,6 +2166,22 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "puissance_kwc": puissance_kwc,
         "nb_panneaux": nb_panneaux,
         "watt_par_panneau": watt,
+        # ── L-2OPT — les MÊMES figures, PAR OPTION ───────────────────────────
+        # Les deux options peuvent porter des nombres de panneaux différents
+        # (chantier « deux optimiseurs »). Ces clés disent ce que CHAQUE option
+        # contient ; ``panneaux_divergents`` dit si elles se distinguent — les
+        # gabarits s'en servent pour ne plus imprimer un scalaire unique quand
+        # il ne décrit qu'une des deux. None = non lisible ⇒ OMIS, jamais
+        # remplacé par un chiffre de repli.
+        "nb_panneaux_sans": nb_panneaux_sans,
+        "nb_panneaux_avec": nb_panneaux_avec,
+        "puissance_kwc_sans": puissance_kwc_sans,
+        "puissance_kwc_avec": puissance_kwc_avec,
+        # Puissance unitaire LUE dans chaque option (deux gammes de panneau
+        # possibles) — None si illisible, jamais un watt de repli.
+        "watt_par_panneau_sans": _scal["watt_sans"],
+        "watt_par_panneau_avec": _scal["watt_avec"],
+        "panneaux_divergents": bool(panneaux_divergents),
         # M2 — aucun ancrage réel de puissance (ni ligne panneau, ni fiche
         # produit, ni calepinage) : les renderers OMETTENT puissance,
         # production, économies et prix-au-kWc. Jamais un kWc déduit du prix.
