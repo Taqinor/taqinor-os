@@ -435,7 +435,20 @@ runs:
         elif [ "${{ github.event_name }}" = 'pull_request' ]; then
           echo "Run de PR — la sauvegarde du cache est desactivee ici, donc on ne re-dumpe pas (le dump serait jete)."
         else
-          rm -f /tmp/testdb.dump
+          # LES DEUX fichiers restaures doivent etre SUPPRIMES avant reecriture,
+          # pas ecrases (incident du 24/08/2026, runs push 32744147678 et
+          # 32747775524 : `/tmp/testdb.manifest: Permission denied` a la ligne
+          # 126 de ce script, sur les 6 shards + rls-tests + les 2 lanes e2e).
+          # Depuis le passage en job `container:`, actions/cache restaure ces
+          # deux fichiers avec leur proprietaire d'origine (root, mode 644) alors
+          # que le script tourne sous l'utilisateur de l'image : le `>` sur un
+          # fichier EXISTANT qui ne nous appartient pas est refuse, tandis que la
+          # creation d'un fichier NEUF dans /tmp passe (d'ou le succes de
+          # `manifest > /tmp/cur.manifest` plus haut, et du pg_dump ci-dessous
+          # apres son `rm -f`). Le dump avait deja son `rm -f` ; le manifeste ne
+          # l'avait pas — c'est TOUT l'ecart, et il rendait rouge chaque run
+          # `push` sur main, donc le cache WOW8 ne s'avancait plus jamais.
+          rm -f /tmp/testdb.dump /tmp/testdb.manifest
           pgtool pg_dump -h "$PGHOST" -U "$PGUSER" -Fc -f /tmp/testdb.dump "$TARGET"
           manifest > /tmp/testdb.manifest
           echo "Re-dumped + manifest under the new key — the save step below persists it (push runs only, first save wins)."

@@ -10,6 +10,8 @@ Lancer :
     docker compose exec django_core python manage.py test \
         apps.ventes.tests.test_gammes_offre_acceptation_choix -v 2
 """
+from unittest import mock
+
 from rest_framework.test import APIClient
 
 from apps.ventes.models import ShareLink
@@ -19,8 +21,19 @@ from apps.ventes.tests._gammes_offre_common import GammeBase, url_accept
 
 
 class TestAcceptationChoix(GammeBase):
+    """MOTEUR PDF BOUCHONNÉ (24/08/2026) — mêmes raisons, mêmes preuves que
+    `test_gammes_offre_acceptation_signature.TestAcceptationSignature` (lire
+    son docstring : il porte le raisonnement complet).
 
-    def test_gamme_refusee_disparait_du_choix(self):
+    Mesure propre à cette classe : 138,5 s puis 99,6 s pour UN test (runs
+    32711511999 et 32746943023) — deuxième bloc indivisible le plus lourd de
+    la suite, et là encore c'est le rendu WeasyPrint de `_store_signed_pdf`
+    qui coûte, pas le test. Les deux assertions portent sur la disparition de
+    la gamme refusée (`gamme_soeur`, `_gammes_public`) : rien du PDF."""
+
+    @mock.patch('apps.ventes.quote_engine.generate_premium_devis_pdf',
+                return_value='devis/1/DEV-GAM-042.pdf')
+    def test_gamme_refusee_disparait_du_choix(self, _moteur):
         source, soeur = self._paire('DEV-GAM-042')
         lien_soeur = ShareLink.for_devis(soeur)
         APIClient().post(url_accept(lien_soeur.token), {
