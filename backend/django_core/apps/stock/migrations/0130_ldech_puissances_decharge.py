@@ -81,7 +81,7 @@ def combler_puissances_decharge(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('stock', '0127_pvlv_identite_batterie_bosb'),
+        ('stock', '0129_lforfait_tarif_au_panneau'),
     ]
 
     operations = [
