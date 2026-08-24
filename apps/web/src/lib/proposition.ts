@@ -1896,6 +1896,26 @@ export function economiesMensuelles(p: ProposalResponse | null | undefined): Eco
   };
 }
 
+/**
+ * CJ2b — LE SEUL SIGNAL QUI PEUT RETIRER LA CASE BATTERIE DU GRAPHE.
+ *
+ * Quand le bloc `economies_mensuelles` EST servi mais dit explicitement qu'il
+ * n'existe pas de figure « avec batterie » (`avec === null`), l'option n'est pas
+ * VENDABLE à ce devis : aucun bouton, aucune figure, jamais un zéro déguisé.
+ *
+ * MAIS un bloc ABSENT (`null` — le cas de très loin le plus courant, et celui de
+ * tous les devis d'avant CJ2b) n'affirme RIEN : il ne doit donc rien interdire.
+ * C'est exactement l'inversion qui a fait disparaître la case sur un devis
+ * batterie-seule (le backend ne servait pas `avec`), pour la troisième fois.
+ * Cette fonction existe pour que l'invariant « absent ⇒ n'interdit rien » soit
+ * ÉPINGLÉ par un test, plutôt que confié à un `&&` au fil de la page.
+ */
+export function economiesInterdisentBatterie(
+  eco: Pick<EconomiesMensuelles, 'avec'> | null | undefined,
+): boolean {
+  return !!eco && eco.avec === null;
+}
+
 // ── WJ14 · Impact environnemental humain (CO₂ ≈ arbres) ──────────────────────
 
 export interface EnvironmentalImpact {

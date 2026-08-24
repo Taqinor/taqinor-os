@@ -73,6 +73,7 @@ import {
   syntheseEconomies,
   couvertureSolaire,
   economiesMensuelles,
+  economiesInterdisentBatterie,
   environmentalImpact,
   whatsappLink,
   whatsappLinkForIntent,
@@ -742,7 +743,7 @@ const batterySimConfig = showBatterySim
 // aucune figure, jamais un zéro déguisé. Bloc absent (non servi du tout) ⇒
 // aucun avis ici, on retombe sur le seul signal historique (`courbes_
 // journalieres.options` via `showBatterySim`/`batteryInitial`).
-const ecoMensuellesForbidsBattery = !!ecoMensuelles && ecoMensuelles.avec === null;
+const ecoMensuellesForbidsBattery = economiesInterdisentBatterie(ecoMensuelles);
 const productionAvailability: ProductionAvailability = {
   monthly: showChart,
   daily: !!dailyCurve.svg,
