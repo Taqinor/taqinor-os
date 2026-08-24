@@ -15,7 +15,17 @@ def _niveau_confiance_pour_liens_existants(apps, schema_editor):
     seule fois, pour TOUT lien qui existe au moment de la migration.
     """
     ShareLink = apps.get_model('ventes', 'ShareLink')
-    ShareLink.objects.all().update(niveau='confiance')
+    # Batching (garde check_safe_migrations) : mise à jour par tranches de pks
+    # via .iterator() — la table est petite aujourd'hui, mais un update global
+    # non borné verrouillerait toute la table le temps de la transaction.
+    batch = []
+    for pk in ShareLink.objects.values_list('pk', flat=True).iterator(chunk_size=500):
+        batch.append(pk)
+        if len(batch) >= 500:
+            ShareLink.objects.filter(pk__in=batch).update(niveau='confiance')
+            batch = []
+    if batch:
+        ShareLink.objects.filter(pk__in=batch).update(niveau='confiance')
 
 
 def _noop_reverse(apps, schema_editor):

@@ -57,7 +57,9 @@ def make_devis(company, user, client, reference, roof_layout=None):
         company=company, reference=reference, client=client,
         statut='envoye', taux_tva=Decimal('20.00'),
         remise_globale=Decimal('0'), created_by=user, roof_layout=roof_layout)
-    for desig, qty, pu in [('Onduleur Deye 8kW', '1', '14000'),
+    # Vocabulaire du classifieur d'options (builder.py : réseau/hybride) — un
+    # « Onduleur » nu ne tombe dans AUCUNE option → refus sécurité → 404.
+    for desig, qty, pu in [('Onduleur réseau Deye 8kW', '1', '14000'),
                            ('Panneau Canadian Solar 550W', '10', '1400')]:
         produit = Produit.objects.create(
             company=company, nom=desig, sku=f'{reference[-6:]}-{desig[:8]}',

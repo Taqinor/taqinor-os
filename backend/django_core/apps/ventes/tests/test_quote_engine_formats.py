@@ -711,14 +711,14 @@ class TestPdfFormats(TestCase):
         self.assertIn('Tranche 5', html)
         self.assertIn('Tranche 6', html)
         self.assertIn('Remplissage batterie', html)
-        self.assertIn('62 %', html)
+        self.assertIn('62 %', html)  # espace insécable posée par la passe typo du moteur
 
     def test_cj2b_bis_part_glitch_rendue_quand_le_bloc_horaire_existe(self):
         self._devis_avec_falaise(etude_horaire=self._ETUDE_HORAIRE_GLITCH_SAMPLE)
         html, doc = self._render({'include_etude': True})
         self.assertEqual(len(doc.pages), 4)
         self.assertIn('Part des pointes rattrapée par la batterie', html)
-        self.assertIn('67 %', html)  # 120 / 180 = 66,7 % → arrondi 67
+        self.assertIn('67 %', html)  # 120 / 180 = 66,7 % → arrondi 67 (espace insécable, passe typo)
 
     def test_cj2b_bis_absent_ne_change_rien(self):
         """Sans ``dimensionnement`` ni glitch : page Étude byte-identique à

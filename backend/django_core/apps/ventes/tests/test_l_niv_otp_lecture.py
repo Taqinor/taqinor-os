@@ -47,9 +47,23 @@ def make_client_obj(company, phone='', email=''):
 
 
 def make_devis(company, client_obj, ref):
-    return Devis.objects.create(
+    devis = Devis.objects.create(
         company=company, reference=ref, client=client_obj,
         statut='envoye', taux_tva=Decimal('20'))
+    # Un devis SANS onduleur classifiable (vocabulaire réseau/hybride du
+    # builder) fait refuser build_quote_data → 404 public : lignes minimales.
+    from apps.stock.models import Produit
+    from apps.ventes.models import LigneDevis
+    for desig, qty, pu in [('Onduleur réseau Deye 8kW', '1', '14000'),
+                           ('Panneau Canadian Solar 550W', '10', '1400')]:
+        produit = Produit.objects.create(
+            company=company, nom=desig, sku=f'{ref[-6:]}-{desig[:8]}',
+            prix_vente=Decimal(pu), quantite_stock=50)
+        LigneDevis.objects.create(
+            devis=devis, produit=produit, designation=desig,
+            quantite=Decimal(qty), prix_unitaire=Decimal(pu),
+            remise=Decimal('0'))
+    return devis
 
 
 def make_link(devis, otp_lecture=False, niveau=ShareLink.NIVEAU_CONFIANCE):
