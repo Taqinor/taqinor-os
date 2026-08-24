@@ -35,6 +35,14 @@ export const TRACKED_KEYS = [
   'equip_voiture_electrique', 'equip_ve_km_semaine',
   'equip_clim', 'equip_clim_pieces',
   'equip_chauffe_eau_electrique',
+  // L-FRONT lot 4 (contrat L-BACK, 24/08) — grandeurs/créneaux pour
+  // `estimation_conso` (moteur horaire) : puissance/créneau par équipement,
+  // jamais de défaut chiffré (zéro chiffre inventé — le commercial saisit la
+  // valeur réelle ou laisse vide).
+  'equip_chauffe_eau_kw', 'equip_chauffe_eau_creneau',
+  'equip_ve_chargeur_kw', 'equip_ve_creneau', 'equip_ve_sessions_semaine',
+  'equip_clim_kw', 'equip_clim_creneau', 'equip_clim_ete_seulement',
+  'equip_piscine_kw', 'equip_piscine_heures_jour',
   // Pompage (agricole)
   'pompe_cv', 'pompe_hmt_m', 'pompe_debit_m3h',
   // Toiture & site
@@ -158,7 +166,11 @@ export const SECTION_FIELDS = {
   // d'ancrage dans SectionEquipements.
   equipements: ['occupation_jour', 'equip_piscine', 'equip_piscine_pompe_kw',
     'equip_voiture_electrique', 'equip_ve_km_semaine',
-    'equip_clim', 'equip_clim_pieces', 'equip_chauffe_eau_electrique'],
+    'equip_clim', 'equip_clim_pieces', 'equip_chauffe_eau_electrique',
+    'equip_chauffe_eau_kw', 'equip_chauffe_eau_creneau',
+    'equip_ve_chargeur_kw', 'equip_ve_creneau', 'equip_ve_sessions_semaine',
+    'equip_clim_kw', 'equip_clim_creneau', 'equip_clim_ete_seulement',
+    'equip_piscine_kw', 'equip_piscine_heures_jour'],
   pompage: ['pompe_cv', 'pompe_hmt_m', 'pompe_debit_m3h'],
   toiture: ['type_toiture', 'surface_toiture_m2', 'orientation',
     'inclinaison_deg', 'ombrage', 'ombrage_notes', 'nb_etages',
@@ -274,6 +286,12 @@ export function buildCreateDefaults({ currentUserId = null, lastVille = '' } = {
     equip_voiture_electrique: '', equip_ve_km_semaine: '',
     equip_clim: '', equip_clim_pieces: '',
     equip_chauffe_eau_electrique: '',
+    // L-FRONT lot 4 — grandeurs/créneaux du contrat estimation_conso : aucune
+    // valeur préremplie (zéro chiffre inventé).
+    equip_chauffe_eau_kw: '', equip_chauffe_eau_creneau: '',
+    equip_ve_chargeur_kw: '', equip_ve_creneau: '', equip_ve_sessions_semaine: '',
+    equip_clim_kw: '', equip_clim_creneau: '', equip_clim_ete_seulement: false,
+    equip_piscine_kw: '', equip_piscine_heures_jour: '',
     pompe_cv: '', pompe_hmt_m: '', pompe_debit_m3h: '',
     type_toiture: '', surface_toiture_m2: '', orientation: '', inclinaison_deg: '',
     ombrage: '', ombrage_notes: '', nb_etages: '', structure_pref: '',
