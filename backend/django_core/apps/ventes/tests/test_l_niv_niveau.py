@@ -233,10 +233,10 @@ class TestProposalDataNiveau(TestCase):
         devis = self._devis_no_layout()
         confiance = self._payload(devis, ShareLink.NIVEAU_CONFIANCE)
         standard = self._payload(devis, ShareLink.NIVEAU_STANDARD)
-        self.assertEqual(
-            confiance['quote']['total_ttc'], standard['quote']['total_ttc'])
-        self.assertEqual(
-            confiance['quote']['total_ht'], standard['quote']['total_ht'])
+        # Clés réelles du payload public : total_sans/total_avec (TTC) +
+        # display_total — pas de total_ht/total_ttc à ce niveau.
+        for key in ('total_sans', 'total_avec', 'display_total'):
+            self.assertEqual(confiance['quote'][key], standard['quote'][key])
 
     def _devis_no_layout(self, ref='DEV-LNIV-NOLAY'):
         return make_devis(self.company, self.user, self.client_obj, ref)
@@ -311,7 +311,5 @@ class TestKitLineAggregation(TestCase):
             self.company, self.user, self.client_obj, 'DEV-LNIV-KIT4'))
         confiance = self._payload(devis, ShareLink.NIVEAU_CONFIANCE)
         standard = self._payload(devis, ShareLink.NIVEAU_STANDARD)
-        self.assertEqual(
-            confiance['quote']['total_ht'], standard['quote']['total_ht'])
-        self.assertEqual(
-            confiance['quote']['total_ttc'], standard['quote']['total_ttc'])
+        for key in ('total_sans', 'total_avec', 'display_total'):
+            self.assertEqual(confiance['quote'][key], standard['quote'][key])
