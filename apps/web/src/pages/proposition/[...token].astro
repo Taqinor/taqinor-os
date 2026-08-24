@@ -84,6 +84,7 @@ import {
   sldSvgFilename,
   parseConceptionElectrique,
   conceptionPourLigne,
+  repartirOrganes,
   indexHoteDesCables,
   chaineLabel,
   protectionLabel,
@@ -1096,10 +1097,14 @@ const conception = ok ? parseConceptionElectrique(data!) : null;
 // Deux corrections de CATALOGUE RÉEL (le devis résidentiel type ne porte comme
 // postes génériques que « Tableau De Protection AC/DC », « Accessoires »,
 // « Socles », « Structures acier/aluminium ») :
-//  · la ligne « AC/DC » tombe sur la fiche protection-dc, donc le dépliant
-//    n'aurait montré que le côté continu — la moitié AC (disjoncteur, parafoudre,
-//    différentiel, terre, liaison équipotentielle) disparaissait sous une ligne
-//    qui s'appelle pourtant « AC/DC » : `estProtectionAcDc` la rend entière ;
+//  · L-1V (24/08/2026) — LES CÔTÉS VIENNENT DU SERVEUR. La page rangeait chaque
+//    organe d'un côté ou de l'autre en cherchant « dc » dans sa désignation ;
+//    depuis que l'anticopie fusionne les lignes du kit en un seul « Kit de
+//    fixation, câblage et protection complet », ce test envoyait le poste entier
+//    du côté alternatif et TOUS les organes continus disparaissaient de la page
+//    alors que le schéma unifilaire, lui, les dessinait. `repartirOrganes`
+//    distribue les groupes servis par le moteur — une PARTITION : aucun organe
+//    en double, aucun orphelin ;
 //  · aucune ligne « câble » n'est facturée, donc les sections et longueurs
 //    calculées par l'étude n'apparaissaient nulle part : `indexHoteDesCables`
 //    les accroche à UNE seule ligne de protection (jamais deux), sous un
@@ -1112,6 +1117,12 @@ const cableHostIndex = indexHoteDesCables(equipmentSlugs);
 // La ligne hôte est désignée PAR IDENTITÉ (jamais par un index recalculé) :
 // `null` quand il n'y en a pas, et alors aucune ligne ne se compare vraie.
 const cableHostLine = cableHostIndex >= 0 ? equipmentRendered[cableHostIndex] : null;
+// Les organes, répartis UNE fois sur les lignes rendues (partition : aucun
+// doublon, aucun orphelin). La ligne est retrouvée PAR IDENTITÉ ensuite.
+const organesParLigne = repartirOrganes(conception, equipmentSlugs);
+const organesDeLaLigne = new Map(
+  equipmentRendered.map((it, i) => [it, organesParLigne[i]]),
+);
 const equipmentGroups = equipmentGrouped.map((group) => ({
   id: group.id,
   lines: group.lines.map((it) => {
@@ -1120,7 +1131,7 @@ const equipmentGroups = equipmentGrouped.map((group) => ({
       ...it,
       ficheSlug,
       detail: conceptionPourLigne(conception, ficheSlug, {
-        designation: it.designation,
+        organes: organesDeLaLigne.get(it) ?? [],
         rattacherCables: it === cableHostLine,
       }),
     };
