@@ -114,6 +114,91 @@ describe('validateLead — équipements du script d\'appel (L-WEBT)', () => {
   });
 });
 
+describe('validateLead — détails kW/créneau facultatifs (L-WEBT2, 24/08/2026)', () => {
+  it('accepte le chauffe-eau : puissance + créneau', () => {
+    const r = validateLead({
+      ...validBody, equip_chauffe_eau_electrique: true,
+      equip_chauffe_eau_kw: 2.4, equip_chauffe_eau_creneau: 'nuit',
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.lead.equip_chauffe_eau_kw).toBe(2.4);
+    expect(r.lead.equip_chauffe_eau_creneau).toBe('nuit');
+  });
+
+  it('accepte le VE : puissance du chargeur + créneau', () => {
+    const r = validateLead({
+      ...validBody, equip_voiture_electrique: true, equip_ve_km_semaine: 150,
+      equip_ve_chargeur_kw: 7.4, equip_ve_creneau: 'soir',
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.lead.equip_ve_chargeur_kw).toBe(7.4);
+    expect(r.lead.equip_ve_creneau).toBe('soir');
+  });
+
+  it('accepte la clim : puissance réelle + créneau', () => {
+    const r = validateLead({
+      ...validBody, equip_clim: true, equip_clim_pieces: 3,
+      equip_clim_kw: 3.5, equip_clim_creneau: 'matin',
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.lead.equip_clim_kw).toBe(3.5);
+    expect(r.lead.equip_clim_creneau).toBe('matin');
+  });
+
+  it('accepte la piscine : heures/jour + créneau', () => {
+    const r = validateLead({
+      ...validBody, equip_piscine: true, equip_piscine_pompe_kw: 1.1,
+      equip_piscine_heures_jour: 6.5, equip_piscine_creneau: 'soir',
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.lead.equip_piscine_heures_jour).toBe(6.5);
+    expect(r.lead.equip_piscine_creneau).toBe('soir');
+  });
+
+  it('un créneau hors des 4 choix réels est écarté (jamais bloquant, jamais un défaut)', () => {
+    const r = validateLead({
+      ...validBody, equip_clim: true,
+      equip_clim_creneau: 'minuit', equip_ve_creneau: 'apres_midi',
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.lead.equip_clim_creneau).toBeUndefined();
+    expect(r.lead.equip_ve_creneau).toBeUndefined();
+  });
+
+  it('une puissance kW hors bornes (> 1000) est écartée', () => {
+    const r = validateLead({ ...validBody, equip_clim: true, equip_clim_kw: 50_000 });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.lead.equip_clim_kw).toBeUndefined();
+  });
+
+  it('des heures/jour piscine > 24 sont écartées (physiquement impossible)', () => {
+    const r = validateLead({ ...validBody, equip_piscine: true, equip_piscine_heures_jour: 30 });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.lead.equip_piscine_heures_jour).toBeUndefined();
+  });
+
+  it('absents de la saisie ⇒ absents du lead validé (jamais un défaut fabriqué)', () => {
+    const r = validateLead(validBody);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.lead.equip_chauffe_eau_kw).toBeUndefined();
+    expect(r.lead.equip_chauffe_eau_creneau).toBeUndefined();
+    expect(r.lead.equip_ve_chargeur_kw).toBeUndefined();
+    expect(r.lead.equip_ve_creneau).toBeUndefined();
+    expect(r.lead.equip_clim_kw).toBeUndefined();
+    expect(r.lead.equip_clim_creneau).toBeUndefined();
+    expect(r.lead.equip_piscine_heures_jour).toBeUndefined();
+    expect(r.lead.equip_piscine_creneau).toBeUndefined();
+  });
+});
+
 describe('mon-toit.astro — la case décochée omet la clé du corps envoyé (source pin)', () => {
   it('buildBody() gate chaque grandeur équipement sur la case cochée correspondante', () => {
     // Preuve que la page n'envoie JAMAIS une grandeur sans que la case ait
@@ -144,5 +229,50 @@ describe('mon-toit.astro — la case décochée omet la clé du corps envoyé (s
     expect(PAGE).toContain("presence_jour: { stroke: '#2a78d6', dash: null, fill: 'rgba(42,120,214,0.10)' }");
     expect(PAGE).toContain("absence_jour: { stroke: '#eb6834', dash: '6,3' }");
     expect(PAGE).toContain("presence_partielle: { stroke: '#1baf7a', dash: '2,3' }");
+  });
+});
+
+describe('mon-toit.astro — détails kW/créneau (L-WEBT2) gatés sur la case parente', () => {
+  it('buildBody() gate chaque détail kW/créneau sur la case équipement correspondante', () => {
+    // Même discipline que le bloc L-WEBT ci-dessus : jamais un num()/val() nu
+    // qui enverrait une saisie fantôme si la case parente n'est pas cochée.
+    expect(PAGE).toMatch(
+      /equip_chauffe_eau_kw:\s*\(\$\('mt-equip-chauffe-eau'\)[^)]*\)\?\.checked \? \(num\('mt-equip-chauffe-eau-kw'\) \?\? undefined\) : undefined/,
+    );
+    expect(PAGE).toMatch(
+      /equip_chauffe_eau_creneau:\s*\(\$\('mt-equip-chauffe-eau'\)[^)]*\)\?\.checked \? \(val\('mt-equip-chauffe-eau-creneau'\) \|\| undefined\) : undefined/,
+    );
+    expect(PAGE).toMatch(
+      /equip_ve_chargeur_kw:\s*\(\$\('mt-equip-ve'\)[^)]*\)\?\.checked \? \(num\('mt-equip-ve-kw'\) \?\? undefined\) : undefined/,
+    );
+    expect(PAGE).toMatch(
+      /equip_ve_creneau:\s*\(\$\('mt-equip-ve'\)[^)]*\)\?\.checked \? \(val\('mt-equip-ve-creneau'\) \|\| undefined\) : undefined/,
+    );
+    expect(PAGE).toMatch(
+      /equip_clim_kw:\s*\(\$\('mt-equip-clim'\)[^)]*\)\?\.checked \? \(num\('mt-equip-clim-kw'\) \?\? undefined\) : undefined/,
+    );
+    expect(PAGE).toMatch(
+      /equip_clim_creneau:\s*\(\$\('mt-equip-clim'\)[^)]*\)\?\.checked \? \(val\('mt-equip-clim-creneau'\) \|\| undefined\) : undefined/,
+    );
+    expect(PAGE).toMatch(
+      /equip_piscine_heures_jour:\s*\(\$\('mt-equip-piscine'\)[^)]*\)\?\.checked \? \(num\('mt-equip-piscine-heures'\) \?\? undefined\) : undefined/,
+    );
+    expect(PAGE).toMatch(
+      /equip_piscine_creneau:\s*\(\$\('mt-equip-piscine'\)[^)]*\)\?\.checked \? \(val\('mt-equip-piscine-creneau'\) \|\| undefined\) : undefined/,
+    );
+  });
+
+  it('les 4 <select> créneau existent avec une option vide neutre par défaut', () => {
+    for (const id of [
+      'mt-equip-chauffe-eau-creneau', 'mt-equip-ve-creneau',
+      'mt-equip-clim-creneau', 'mt-equip-piscine-creneau',
+    ]) {
+      const re = new RegExp(`<select id="${id}"[\\s\\S]*?<option value="">—</option>`);
+      expect(PAGE).toMatch(re);
+    }
+  });
+
+  it("le détail chauffe-eau (kW/créneau) est désormais révélé par le toggle EQUIP_TOGGLES", () => {
+    expect(PAGE).toContain("{ checkId: 'mt-equip-chauffe-eau', detailId: 'mt-equip-chauffe-eau-kw' }");
   });
 });
