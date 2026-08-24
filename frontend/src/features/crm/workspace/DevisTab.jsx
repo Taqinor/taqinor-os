@@ -132,18 +132,66 @@ export default function DevisTab({
   const [waBusy, setWaBusy] = useState(false)
 
   // L5 — les 3 actions « Page client / WhatsApp / Aperçu interne » ci-dessous.
-  // Busy PAR devis + PAR action (préfixes `l-`/`o-`/`w-`), distinct de
+  // Busy PAR devis + PAR action (préfixes `l-`/`o-`/`w-`/`n-`), distinct de
   // `busyAction` (facture/chantier) : deux familles d'actions indépendantes,
   // jamais de collision de clé.
   const [linkBusy, setLinkBusy] = useState(null)
   const [copiedId, setCopiedId] = useState(null)
 
-  // Mint (ou réutilise — idempotent côté serveur) le ShareLink du devis et
-  // renvoie l'URL ABSOLUE de la page client (chemin_proposition backend),
-  // MÊME lien que celui déjà envoyé par email/WhatsApp/l'outil 3D.
+  // L-NIV-UI — niveau de la page client choisi PAR devis avant le premier
+  // mint (défaut 'standard', comme le backend), l'exigence d'OTP lecture, et
+  // les métadonnées du DERNIER share-link minté (niveau/otp_lecture/token
+  // renvoyés par le serveur) — sert au badge et à prouver que changer de
+  // niveau NE régénère PAS le token (même lien, choix revocable).
+  const [niveauSel, setNiveauSel] = useState({}) // id -> 'standard'|'confiance'
+  const [otpSel, setOtpSel] = useState({}) // id -> bool
+  const [linkMeta, setLinkMeta] = useState({}) // id -> { niveau, otp_lecture, token }
+  const getNiveau = (id) => niveauSel[id] ?? 'standard'
+  const getOtp = (id) => otpSel[id] ?? false
+
+  // Mint (ou réutilise — idempotent côté serveur) le ShareLink du devis, AU
+  // niveau/OTP actuellement choisis pour CE devis, et renvoie l'URL ABSOLUE
+  // de la page client (chemin_proposition backend), MÊME lien que celui déjà
+  // envoyé par email/WhatsApp/l'outil 3D.
   const mintProposalUrl = async (d) => {
-    const res = await ventesApi.shareLinkDevis(d.id)
+    const res = await ventesApi.shareLinkDevis(d.id, { niveau: getNiveau(d.id), otp_lecture: getOtp(d.id) })
+    setLinkMeta((cur) => ({
+      ...cur,
+      [d.id]: { niveau: res.data?.niveau, otp_lecture: res.data?.otp_lecture, token: res.data?.token },
+    }))
     return clientProposalUrl(res.data?.path, PUBLIC_SITE_URL)
+  }
+
+  // L-NIV-UI — le sélecteur/case OTP changent le choix immédiatement ; si un
+  // lien a DÉJÀ été minté pour ce devis, on re-poste tout de suite sur la
+  // MÊME route share-link avec le nouveau choix : le backend renvoie le MÊME
+  // token (lien inchangé, seul le niveau affiché au client change) — le badge
+  // se met à jour depuis la réponse, jamais deviné côté écran.
+  const appliquerNiveauSiMinte = async (d, niveau, otpLecture) => {
+    if (!linkMeta[d.id]) return
+    setLinkBusy(`n-${d.id}`)
+    setActionMsg(null)
+    try {
+      const res = await ventesApi.shareLinkDevis(d.id, { niveau, otp_lecture: otpLecture })
+      setLinkMeta((cur) => ({
+        ...cur,
+        [d.id]: { niveau: res.data?.niveau, otp_lecture: res.data?.otp_lecture, token: res.data?.token },
+      }))
+    } catch (err) {
+      setActionMsg(errorMessageFrom(err, 'Changement de niveau impossible.'))
+    } finally {
+      setLinkBusy(null)
+    }
+  }
+
+  const onNiveauChange = (d, niveau) => {
+    setNiveauSel((cur) => ({ ...cur, [d.id]: niveau }))
+    appliquerNiveauSiMinte(d, niveau, getOtp(d.id))
+  }
+
+  const onOtpChange = (d, otpLecture) => {
+    setOtpSel((cur) => ({ ...cur, [d.id]: otpLecture }))
+    appliquerNiveauSiMinte(d, getNiveau(d.id), otpLecture)
   }
 
   const copierPageClient = async (d) => {
@@ -331,6 +379,47 @@ export default function DevisTab({
                 <span className="num">{formatMAD(d.total_ttc, { decimals: 0 })}</span>
                 <span className="lw-context-devis-date">{formatDate(d.date_creation)}</span>
               </div>
+              {/* L-NIV-UI — niveau de la page client (contrat L-NIV) : choix
+                  AVANT mint, et re-postable après (le lien reste le même —
+                  seul le niveau affiché au client change). Jamais de chiffre
+                  différent entre niveaux : la seule différence est le
+                  dimensionnement technique masqué ou non. */}
+              <div className="lw-context-devis-niveau">
+                <label className="lw-context-devis-niveau-select">
+                  <select
+                    value={getNiveau(d.id)}
+                    disabled={linkBusy === `n-${d.id}`}
+                    aria-label={`Niveau de la page client de ${d.reference}`}
+                    onChange={(e) => onNiveauChange(d, e.target.value)}
+                  >
+                    <option value="standard">Standard (prospect)</option>
+                    <option value="confiance">Confiance (après contact réel)</option>
+                  </select>
+                </label>
+                <label className="lw-context-devis-otp">
+                  <Checkbox
+                    checked={getOtp(d.id)}
+                    disabled={linkBusy === `n-${d.id}`}
+                    onCheckedChange={(v) => onOtpChange(d, !!v)}
+                    aria-label={`Exiger un code de lecture pour la page client de ${d.reference}`}
+                  />
+                  Exiger un code de lecture (OTP)
+                </label>
+                {linkMeta[d.id] && (
+                  <span
+                    className="lw-context-devis-niveau-badge"
+                    title="Le lien reste le même — seul le niveau affiché au client change."
+                  >
+                    {linkMeta[d.id].niveau === 'confiance' ? 'Confiance' : 'Standard'}
+                    {linkMeta[d.id].otp_lecture ? ' · OTP' : ''}
+                  </span>
+                )}
+              </div>
+              <p className="gen-hint lw-context-devis-niveau-hint">
+                {getNiveau(d.id) === 'confiance'
+                  ? 'Confiance : dossier technique complet.'
+                  : 'Standard : masque le dimensionnement détaillé — marques et prix complets visibles.'}
+              </p>
               {/* L5 — TOUJOURS visibles (jamais réservées à l'outil 3D) : le
                   lien de la page client, son bouton WhatsApp, et l'aperçu
                   interne qui n'enclenche aucune notification. */}

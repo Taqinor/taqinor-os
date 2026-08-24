@@ -7264,6 +7264,34 @@ textarea.form-control {
 .lw-context-devis-track {
   margin: 0.1rem 0;
 }
+/* L-NIV-UI — niveau de la page client (standard/confiance) + OTP lecture,
+   choisis AVANT le premier mint et re-postables ensuite (même carte que les
+   actions Page client/WhatsApp ci-dessous, jamais un second écran). */
+.lw-context-devis-niveau {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+.lw-context-devis-niveau-select select {
+  font-size: 0.85rem;
+}
+.lw-context-devis-otp {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.lw-context-devis-niveau-badge {
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+}
+.lw-context-devis-niveau-hint {
+  margin: 0;
+}
 /* L5 — Page client / WhatsApp / Aperçu interne : TOUJOURS visibles (jamais
    gardées par un survol), contrairement aux actions secondaires ci-dessous
    (facture/chantier, réservées au devis accepté) — c'est précisément ce que
