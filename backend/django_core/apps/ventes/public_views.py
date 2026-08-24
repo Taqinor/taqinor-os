@@ -1602,11 +1602,13 @@ def _economies_mensuelles_publiques(devis, data, synthese,
     ``synthese_economies`` (``synthese`` est déjà ``None`` si Z2 s'applique) :
     aucune ré-implémentation de l'ancrage.
 
-    ``avec``/``total_avec`` ne sont servis QUE quand le devis porte VRAIMENT
-    les deux options (``avec_ok`` ET ``deux_options``, le même repère que
-    ``courbes_journalieres._options_reelles``) — jamais un chiffre « avec
-    batterie » sur une option que ce devis ne peut pas livrer (CJ2a a trouvé un
-    vrai trou catalogue : la batterie non livrable en résidentiel monophasé).
+    ``avec``/``total_avec`` ne sont servis QUE quand le document REND l'option
+    batterie (``avec_ok``, le drapeau post-repli/post-QF6 du moteur — le même
+    repère que ``courbes_journalieres._options_reelles``) — jamais un chiffre
+    « avec batterie » sur une option que ce devis ne peut pas livrer (CJ2a a
+    trouvé un vrai trou catalogue : la batterie non livrable en résidentiel
+    monophasé). Un devis MONO-option « Avec batterie » sert donc bien sa série,
+    puisque c'est la seule option qu'il présente.
     RULE #4 — aucun prix d'achat/marge, uniquement les montants client TTC déjà
     calculés par le moteur.
     """
@@ -1635,8 +1637,22 @@ def _economies_mensuelles_calcul(devis, data, niveau=ShareLink.NIVEAU_CONFIANCE)
         return None
 
     avec = data.get('eco_a_monthly')
-    avec_reellement_vendable = (
-        bool(data.get('avec_ok')) and bool(data.get('deux_options')))
+    # CJ2b/L-VAR (24/08/2026) — LA SERVABILITÉ SE LIT SUR ``avec_ok`` SEUL.
+    # L'ancienne condition exigeait EN PLUS ``deux_options`` : sur un devis
+    # MONO-option « Avec batterie » (avec_ok vrai, deux_options faux — le cas
+    # exact de DEV-202608-0023, rétréci par la resynchronisation 3D), elle
+    # annulait la série « avec » du SEUL document que le client possède. La
+    # page lisait alors ``avec === null`` comme « la batterie n'est pas
+    # vendable » et masquait le calque batterie du graphe de production —
+    # alors que l'unique option de ce devis EST celle avec batterie.
+    # ``avec_ok`` est le drapeau POST-repli/POST-QF6 du moteur (builder.py) :
+    # il vaut déjà faux quand le document ne rend pas l'option batterie (devis
+    # sans batterie, hybride sans batterie Z1, scénario stocké « Sans
+    # batterie »), donc la garde CJ2a — jamais un chiffre « avec batterie » sur
+    # une option que ce devis ne livre pas — reste entièrement portée. C'est
+    # aussi EXACTEMENT le repère que lit ``courbes_journalieres.
+    # _options_reelles`` : les deux blocs ne peuvent plus se contredire.
+    avec_reellement_vendable = bool(data.get('avec_ok'))
     if not (avec_reellement_vendable
             and isinstance(avec, (list, tuple)) and len(avec) == 12
             and all(isinstance(v, (int, float)) and not isinstance(v, bool)
