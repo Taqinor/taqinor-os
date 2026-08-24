@@ -398,4 +398,44 @@ describe('L-NIV-UI — niveau de la page client (standard/confiance) + OTP', () 
     const badge = await screen.findByTitle(/Le lien reste le même/)
     expect(badge).toHaveTextContent('Confiance')
   })
+
+  // BUGFIX (24/08/2026) — après rechargement de la fiche, le serveur connaît
+  // déjà le niveau du ShareLink (`apps.crm.serializers.get_devis` pose
+  // `share_link: { niveau, otp_lecture }` via `apps.ventes.selectors
+  // .share_link_niveau_map`, lecture seule, jamais de mint) mais l'écran
+  // n'affichait le badge qu'après un premier clic. Le badge doit apparaître
+  // DÈS le montage, sans aucune interaction ni appel réseau supplémentaire.
+  it('le badge de niveau s\'affiche AU CHARGEMENT depuis `share_link` du serveur, sans interaction', () => {
+    const devisConfianceDejaMinte = {
+      ...devis1,
+      share_link: { niveau: 'confiance', otp_lecture: true },
+    }
+    renderTab({ state: leadState({ devis: [devisConfianceDejaMinte] }) })
+
+    const badge = screen.getByTitle(/Le lien reste le même/)
+    expect(badge).toHaveTextContent('Confiance')
+    expect(badge).toHaveTextContent('OTP')
+    // Le sélecteur/la case reflètent aussi l'état serveur, pas le défaut.
+    expect(screen.getByRole('combobox', { name: /Niveau de la page client de DEV-1/ })).toHaveValue('confiance')
+    expect(screen.getByRole('checkbox', { name: /Exiger un code de lecture pour la page client de DEV-1/ })).toBeChecked()
+    // Rien n'a été minté/re-posté au montage : lecture serveur uniquement.
+    expect(shareLinkDevis).not.toHaveBeenCalled()
+  })
+
+  it('changer de niveau après rechargement (aucun mint local) re-poste quand même, sur l\'état déjà connu du serveur', async () => {
+    const user = userEvent.setup()
+    const devisStandardDejaMinte = {
+      ...devis1,
+      share_link: { niveau: 'standard', otp_lecture: false },
+    }
+    renderTab({ state: leadState({ devis: [devisStandardDejaMinte] }) })
+
+    await user.selectOptions(
+      screen.getByRole('combobox', { name: /Niveau de la page client de DEV-1/ }),
+      'confiance',
+    )
+    await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(
+      1, { niveau: 'confiance', otp_lecture: false },
+    ))
+  })
 })

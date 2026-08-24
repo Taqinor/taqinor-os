@@ -2366,3 +2366,39 @@ def verdict_batterie_onduleur(batterie, onduleur):
     """
     from .compatibilites import verdict_batterie_onduleur as _impl
     return _impl(batterie, onduleur)
+
+
+def share_link_niveau_map(devis_ids):
+    """L-NIV-UI (24/08/2026) — ``niveau``/``otp_lecture`` des ``ShareLink``
+    DÉJÀ EXISTANTS (jamais un mint) pour un lot de devis.
+
+    Sert à ``apps.crm.serializers`` (fiche lead, onglet Devis) pour que le
+    badge de niveau s'affiche dès le chargement de la fiche sans attendre un
+    premier clic — le bug corrigé ici : avant, seul un POST ``share-link``
+    (mint/re-mint explicite) alimentait l'état affiché côté écran, donc rien
+    n'apparaissait après un simple rechargement tant que l'utilisateur n'avait
+    pas ré-interagi. Lecture seule pure : ne crée jamais de lien, n'expose
+    aucun token (aucun besoin pour le badge) — un devis sans lien encore minté
+    est simplement absent du dict retourné."""
+    from django.utils import timezone
+
+    from .models import ShareLink
+    ids = [i for i in (devis_ids or []) if i is not None]
+    if not ids:
+        return {}
+    rows = (
+        ShareLink.objects
+        .filter(devis_id__in=ids, expires_at__gt=timezone.now())
+        .order_by('devis_id', '-expires_at')
+        .values('devis_id', 'niveau', 'otp_lecture')
+    )
+    out = {}
+    for row in rows:
+        devis_id = row['devis_id']
+        if devis_id in out:  # garde la plus récente (première rencontrée)
+            continue
+        out[devis_id] = {
+            'niveau': row['niveau'],
+            'otp_lecture': row['otp_lecture'],
+        }
+    return out
