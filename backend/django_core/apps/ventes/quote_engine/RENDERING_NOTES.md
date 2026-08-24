@@ -55,6 +55,29 @@ docker run --rm -v <repo>/backend/django_core:/app -v <tmp>:/repro \
 ```
 then view the PDF→PNG with PyMuPDF (`fitz`, installed locally).
 
+## CJ2b-bis (L-PDF, lot 4) — falaise tarifaire / remplissage / part des glitchs
+
+`generate_devis_premium._falaise_context()` / `._part_glitch_pct()` render the
+tariff-bracket cliff, average battery fill and burst-recovery share on the
+étude page (4-page premium) and a one-line summary cell on the onepage
+format — but **only when the data is already in context**:
+
+* `etude_params['etude_horaire']['annuel']['part_glitch_*']` — REAL and
+  already persisted on every residential devis whose equipment triggers
+  bursts (`services.rafraichir_etude_horaire_devis` → `etude_horaire.
+  _finaliser_glitch`). This half is live today.
+* `etude_params['dimensionnement']` (falaise/résiduel/tranche_apres/
+  remplissage) — **[HANDOFF, still pending]**. It mirrors the exact shape
+  `apps.ventes.dimensionnement.recommander_taille()` returns (same as
+  `POST /ventes/etude-horaire/preview/` with `dimensionner: true`,
+  `apps/ventes/contract_samples/etude_horaire.json`), but as of this lot NO
+  backend write-path persists it onto `Devis.etude_params` — it only exists
+  transiently in the generator-screen preview (`DevisGenerator.jsx`), never
+  round-tripped on save. Until a producer lane writes that key, this half of
+  the renderer stays dark (renders `''`, byte-identical to before this lot)
+  on every real quote. The renderer code and its tests are ready for when it
+  lands — no quote_engine change will be needed on that day.
+
 ## How to catch overlaps before shipping
 
 Render the PDF, then scan each page for colliding card rectangles with PyMuPDF
