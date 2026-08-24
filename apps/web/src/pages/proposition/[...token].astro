@@ -739,6 +739,11 @@ const joursTypes = ok ? proposalJoursTypes(data!) : null;
 // une nouvelle clé : `null` quand rien n'est servi (aucune n'est « choisie »).
 const occSilhouetteMax = Math.max(...OCCUPANCY_IDS.flatMap((id) => OCCUPANCY_SHAPES[id] as readonly number[]));
 const clientOccupancyChoice: OccupancyId | null = curveMode === 'residentiel' ? (dailyCurves?.occupation ?? null) : null;
+// Couleurs validées fondateur (24/08) — hissées ici : un objet littéral dans un
+// `${{ … }}` d'attribut casse le compilateur Astro (rouge web-build-test).
+const OCC_STROKES: Record<OccupancyId, string> = {
+  presence_jour: '#2a78d6', absence_jour: '#eb6834', presence_partielle: '#1baf7a',
+};
 
 // ── WJ14 — Impact environnemental humain (CO₂ ≈ arbres), depuis la production ─
 const enviro = ok ? environmentalImpact(prodKwh) : null;
@@ -2580,7 +2585,7 @@ const signConfig = ok
               <div class="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs">
                 {OCCUPANCY_IDS.map((id) => (
                   <span class="inline-flex items-center gap-1.5" style={id === clientOccupancyChoice ? 'color: var(--color-lune)' : 'color: var(--color-lune-faint)'}>
-                    <span aria-hidden="true" style={`display:inline-block;width:10px;height:2px;background:${{ presence_jour: '#2a78d6', absence_jour: '#eb6834', presence_partielle: '#1baf7a' }[id]}`}></span>
+                    <span aria-hidden="true" style={`display:inline-block;width:10px;height:2px;background:${OCC_STROKES[id]}`}></span>
                     {OCCUPANCY_LABELS[id].fr}
                     {id === clientOccupancyChoice && (
                       <span class="tech-label text-brass-300" data-i18n data-fr="CHOISIE pour ce client" data-en="CHOSEN for this client" data-ar="مُختار لهذا العميل"> · CHOISIE pour ce client</span>

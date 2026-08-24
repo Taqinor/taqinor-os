@@ -4,9 +4,10 @@ import { jumpToField } from '../jumpToField'
 
 const RACCORDEMENTS = { monophase: 'Monophasé', triphase: 'Triphasé', inconnu: 'Je ne sais pas' }
 
-// L-FRONT lot 4 (contrat L-BACK, 24/08) — créneaux horaires par équipement,
-// mêmes valeurs que le contrat `estimation_conso` (crm.Lead.equip_*_creneau).
+// L-FRONT lot 4 (contrat L-BACK, 24/08) — créneaux horaires par équipement.
+// source-choix: crm.Lead.equip_chauffe_eau_creneau
 const CRENEAU_CHAUFFE_EAU = { matin: 'Matin', soir: 'Soir', nuit: 'Nuit', journee: 'Journée' }
+// source-choix: crm.Lead.equip_ve_creneau
 const CRENEAU_VE = { nuit: 'Nuit', jour: 'Jour', soir: 'Soir' }
 const CRENEAU_CLIM = { jour: 'Jour', soir: 'Soir', nuit: 'Nuit' }
 
