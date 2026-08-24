@@ -10,6 +10,7 @@ recalculer : ``apps.ventes.public_views._tranche_tarifaire_publique`` et
 from django.test import SimpleTestCase
 
 from apps.ventes.public_views import (
+    _balayage_stockage_publique,
     _batterie_regime_publique,
     _tranche_tarifaire_publique,
 )
@@ -119,3 +120,93 @@ class BatterieRegimePubliqueTests(SimpleTestCase):
             'remplissage_moyen_pct': 50.0,
             'couverture_glitch_pct': 50.0,
         })
+
+
+class BalayageStockagePubliqueTests(SimpleTestCase):
+    """ORDRE FONDATEUR (24/08/2026, soir) — sélection de plusieurs packs de
+    batterie + message de sur-stockage sur la page publique : le
+    sous-ensemble public de ``dimensionnement.recommandation_avec.
+    balayage_stockage``/``stockage_refuse``."""
+
+    def test_dimensionnement_absent_renvoie_none(self):
+        self.assertIsNone(_balayage_stockage_publique(None))
+        self.assertIsNone(_balayage_stockage_publique({}))
+
+    def test_recommandation_avec_absente_renvoie_none(self):
+        self.assertIsNone(_balayage_stockage_publique({'recommandation_avec': None}))
+
+    def test_palier_sans_ligne_batterie_est_omis(self):
+        """Aucune ligne role=batterie ⇒ aucun N de packs lisible : le palier
+        interne ne sort pas (jamais un N inventé/à zéro)."""
+        dimensionnement = {'recommandation_avec': {
+            'balayage_stockage': [
+                {'capacite_kwh': 5.0, 'cout_ttc': 42000.0, 'lignes_batterie': []},
+            ],
+        }}
+        self.assertIsNone(_balayage_stockage_publique(dimensionnement))
+
+    def test_paliers_retenus_composent_nb_packs_depuis_les_lignes(self):
+        dimensionnement = {'recommandation_avec': {
+            'balayage_stockage': [
+                {
+                    'capacite_kwh': 5.0,
+                    'cout_ttc': 42000.0,
+                    'remplissage': {'moyen': 0.982, 'pire_mois': {'ratio': 0.91}},
+                    'lignes_batterie': [{'quantite': 1, 'designation': 'Dyness 5kWh'}],
+                },
+                {
+                    'capacite_kwh': 10.0,
+                    'cout_ttc': 78000.0,
+                    'remplissage': {'moyen': 0.915, 'pire_mois': {'ratio': 0.80}},
+                    'lignes_batterie': [{'quantite': 2, 'designation': 'Dyness 5kWh'}],
+                },
+            ],
+        }}
+        bloc = _balayage_stockage_publique(dimensionnement)
+        self.assertEqual(bloc['paliers'], [
+            {'nb_packs': 1, 'capacite_kwh': 5.0, 'cout_ttc': 42000.0,
+             'remplissage_moyen_pct': 98.2},
+            {'nb_packs': 2, 'capacite_kwh': 10.0, 'cout_ttc': 78000.0,
+             'remplissage_moyen_pct': 91.5},
+        ])
+        self.assertIsNone(bloc['refuse'])
+
+    def test_palier_refuse_rend_le_pourcentage_reel_du_pire_mois(self):
+        """Le pourcentage rendu est EXACTEMENT celui que ``motif_refus``
+        calcule en interne (dimensionnement.py) — jamais un second calcul."""
+        dimensionnement = {'recommandation_avec': {
+            'balayage_stockage': [],
+            'stockage_refuse': {
+                'capacite_kwh': 15.0,
+                'remplissage': {'pire_mois': {'ratio': 0.417}},
+                'lignes_batterie': [{'quantite': 3, 'designation': 'Dyness 5kWh'}],
+            },
+        }}
+        bloc = _balayage_stockage_publique(dimensionnement)
+        self.assertEqual(bloc['paliers'], [])
+        self.assertEqual(bloc['refuse'], {
+            'nb_packs': 3, 'capacite_kwh': 15.0, 'remplissage_pire_mois_pct': 41.7,
+        })
+
+    def test_ne_leve_jamais_sur_une_forme_malformee(self):
+        dimensionnement = {'recommandation_avec': {
+            'balayage_stockage': [None, 'oops', {'capacite_kwh': 'x'}],
+            'stockage_refuse': 'oops',
+        }}
+        self.assertIsNone(_balayage_stockage_publique(dimensionnement))
+
+    def test_jamais_de_prix_achat_ou_marge_dans_le_rendu(self):
+        """RULE #4 — le palier interne peut porter des champs de marge, le
+        sous-ensemble public n'en recopie AUCUN."""
+        dimensionnement = {'recommandation_avec': {
+            'balayage_stockage': [{
+                'capacite_kwh': 5.0,
+                'cout_ttc': 42000.0,
+                'prix_achat': 30000.0,
+                'marge_mad': 12000.0,
+                'lignes_batterie': [{'quantite': 1}],
+            }],
+        }}
+        bloc = _balayage_stockage_publique(dimensionnement)
+        self.assertEqual(set(bloc['paliers'][0].keys()),
+                         {'nb_packs', 'capacite_kwh', 'cout_ttc', 'remplissage_moyen_pct'})
