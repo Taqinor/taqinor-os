@@ -323,3 +323,75 @@ class TrousDeMappingCombles(TestCase):
         raw = WebsiteLeadPayload.objects.get(lead=lead)
         self.assertEqual(raw.payload['cleTotalementInconnue'],
                          'valeur-du-futur')
+
+
+@override_settings(WEBSITE_LEAD_WEBHOOK_SECRET=SECRET)
+class LBackTunnelEquipementsWebhookTests(TestCase):
+    """L-BACK (24/08/2026) — le tunnel web reprend occupation_jour + les 7
+    champs équipements (script d'appel) : ce sont des colonnes ``crm.Lead``
+    DÉDIÉES (L4/L-BACK), jamais laissées dans le blob ``web_questionnaire``."""
+
+    def setUp(self):
+        self.company = Company.objects.create(
+            nom='QJ Web Co 3', slug='qj-web-co-3')
+        self.url = reverse('website-lead-webhook')
+
+    def post(self, data):
+        return self.client.post(
+            self.url, data=json.dumps(data),
+            content_type='application/json',
+            HTTP_X_WEBHOOK_SECRET=SECRET)
+
+    def test_payload_complet_atterrit_sur_les_colonnes_dediees(self):
+        res = self.post(payload_site(
+            occupation_jour='partiel',
+            equip_piscine=True, equip_piscine_pompe_kw=1.1,
+            equip_voiture_electrique=True, equip_ve_km_semaine=150,
+            equip_clim=True, equip_clim_pieces=3,
+            equip_chauffe_eau_electrique=False,
+        ))
+        self.assertEqual(res.status_code, 201, res.content)
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertEqual(lead.occupation_jour, 'partiel')
+        self.assertTrue(lead.equip_piscine)
+        self.assertEqual(str(lead.equip_piscine_pompe_kw), '1.10')
+        self.assertTrue(lead.equip_voiture_electrique)
+        self.assertEqual(lead.equip_ve_km_semaine, 150)
+        self.assertTrue(lead.equip_clim)
+        self.assertEqual(lead.equip_clim_pieces, 3)
+        self.assertFalse(lead.equip_chauffe_eau_electrique)
+        # Aucune de ces 8 réponses ne pollue web_questionnaire.
+        self.assertEqual(lead.web_questionnaire, {})
+
+    def test_absence_des_cles_ne_touche_rien(self):
+        """Comportement inchangé pour un payload sans ces 8 clés — même
+        style tolérant que le reste du webhook (jamais un défaut inventé)."""
+        res = self.post(payload_site(mode='residentiel'))
+        self.assertEqual(res.status_code, 201, res.content)
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertIsNone(lead.occupation_jour)
+        self.assertIsNone(lead.equip_piscine)
+        self.assertIsNone(lead.equip_piscine_pompe_kw)
+        self.assertIsNone(lead.equip_voiture_electrique)
+        self.assertIsNone(lead.equip_ve_km_semaine)
+        self.assertIsNone(lead.equip_clim)
+        self.assertIsNone(lead.equip_clim_pieces)
+        self.assertIsNone(lead.equip_chauffe_eau_electrique)
+
+    def test_valeur_choice_invalide_est_ignoree(self):
+        """``occupation_jour`` hors vocabulaire (present/absent/partiel) est
+        silencieusement ignorée — jamais une erreur 4xx, jamais un défaut."""
+        res = self.post(payload_site(occupation_jour='peut-etre'))
+        self.assertEqual(res.status_code, 201, res.content)
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertIsNone(lead.occupation_jour)
+
+    def test_seule_la_moitie_kw_sans_bool_reste_coherente(self):
+        """``equip_piscine_pompe_kw`` seule (sans le booléen) est acceptée
+        telle quelle sur la colonne — c'est ``courbes_journalieres`` qui
+        exige les DEUX pour composer une couche, pas le webhook."""
+        res = self.post(payload_site(equip_piscine_pompe_kw=1.5))
+        self.assertEqual(res.status_code, 201, res.content)
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertIsNone(lead.equip_piscine)
+        self.assertEqual(str(lead.equip_piscine_pompe_kw), '1.50')
