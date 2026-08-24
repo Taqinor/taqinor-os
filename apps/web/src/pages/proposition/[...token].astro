@@ -165,6 +165,9 @@ import {
 } from '../../lib/propositionPage';
 // WJ131 — appariement PUR « ligne de devis → fiche technique /produits/<slug> »
 // (aucune correspondance certaine → aucun lien, jamais la fiche d'une autre marque).
+// L-ECO — lecture SEULE du bloc public `economies_periodes` (fichier dédié :
+// aucune arithmétique d'économie ne vit côté page).
+import { economiesPeriodes } from '../../lib/economiesPeriodes';
 import { ficheSlugPourLigne } from '../../lib/ficheMatcher';
 import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
 // W342 — « installation la plus proche » : haversine sur un point GPS réel
@@ -891,6 +894,62 @@ const occOptimalTri = (s: {
     ar: `النظام الأمثل لهذا السلوك: ${kwc} kWc${batt ? ` + ${batt} kWh بطارية` : ''}.`,
   };
 };
+
+// ── L-ECO (ordre fondateur, 24/08/2026) — LE BANDEAU D'ÉCONOMIES SOUS LE
+//    GRAPHE « SUR UNE JOURNÉE ». « économies du jour type affiché (qui change
+//    avec la puce saison ET le profil), du mois, de l'année — l'année NE CHANGE
+//    PAS avec la saison — et le retour sur investissement. »
+//
+//    TOUT EST CALCULÉ PAR LE MOTEUR (`apps/ventes/economies_periodes.py`, qui
+//    ne fait lui-même que DÉCLINER les douze valeurs de `economies_mensuelles`
+//    et reprendre le retour sur investissement DÉJÀ servi `quote.roi_s/roi_a` —
+//    aucune troisième définition du payback). Cette page REND toutes les
+//    combinaisons et en montre UNE : son script ne fait que basculer `hidden`,
+//    il ne multiplie, ne divise et n'additionne RIEN (règle « zéro chiffre
+//    inventé », épinglée par un test qui interdit toute arithmétique dans ce
+//    script). `null` ⇒ le bandeau n'existe pas dans le DOM, la page est
+//    exactement celle d'avant L-ECO.
+const ecoPeriodes = ok ? economiesPeriodes(data!) : null;
+/** Les profils réellement servis avec leurs périodes, sinon un seul « défaut »
+ *  (le devis lui-même) : jamais une puce qui montrerait les chiffres d'un
+ *  autre comportement. */
+const ecoProfilIds: readonly string[] = ecoPeriodes
+  ? (ecoPeriodes.profils.length > 0
+      ? ecoPeriodes.profils.map((p) => p.occupancy)
+      : [''])
+  : [];
+/** Les variantes à afficher côte à côte : « sans batterie » et, seulement si le
+ *  devis peut VRAIMENT la livrer (le serveur omet `avec` sinon), « avec ». */
+const ecoVariantes: readonly ('sans' | 'avec')[] = ecoPeriodes
+  ? (ecoPeriodes.avec ? ['sans', 'avec'] : ['sans'])
+  : [];
+const ECO_VARIANTE_LABELS: Record<'sans' | 'avec', OccTri> = {
+  sans: { fr: 'Sans batterie', en: 'Without battery', ar: 'بدون بطارية' },
+  avec: { fr: 'Avec batterie', en: 'With battery', ar: 'مع بطارية' },
+};
+/** Le bloc servi pour un (profil, variante) — pure LECTURE d'un objet déjà
+ *  calculé, jamais un mélange entre deux comportements. */
+const ecoBloc = (profil: string, variante: 'sans' | 'avec') => {
+  if (!ecoPeriodes) return null;
+  const source = profil
+    ? (ecoPeriodes.profils.find((p) => p.occupancy === profil) ?? null)
+    : ecoPeriodes;
+  if (!source) return null;
+  return variante === 'avec' ? source.avec : source.sans;
+};
+/** Le profil montré au chargement : celui que la puce d'occupation a déjà
+ *  sélectionné (drapeau serveur), sinon le premier servi. */
+const ecoProfilDefaut: string = ecoProfilIds.length === 0
+  ? ''
+  : (ecoProfilIds.includes(prodLayers.occupancy as string)
+      ? (prodLayers.occupancy as string)
+      : ecoProfilIds[0]);
+/** Le retour sur investissement n'est porté que par le devis lui-même (les
+ *  profils comparatifs n'en portent pas) : on le lit donc TOUJOURS à la racine
+ *  — un profil alternatif ne change pas le prix de l'installation. */
+const ecoRetourAns = (variante: 'sans' | 'avec') =>
+  (variante === 'avec' ? ecoPeriodes?.avec : ecoPeriodes?.sans)
+    ?.retourInvestissementAns ?? null;
 
 // ── WJ14 — Impact environnemental humain (CO₂ ≈ arbres), depuis la production ─
 const enviro = ok ? environmentalImpact(prodKwh) : null;
@@ -2459,6 +2518,92 @@ const signConfig = ok
                   data-ar={ramadanIftarAr ? `رمضان · الإفطار ≈ ${ramadanIftarAr}` : 'رمضان'}>{
                     ramadanIftarFr ? `Ramadan · iftar ≈ ${ramadanIftarFr}` : 'Ramadan'
                   }</button>
+              </div>
+            )}
+
+            {/* ── L-ECO (ordre fondateur, 24/08/2026) — CE QUE CE GRAPHE VAUT
+                   EN DIRHAMS. Le graphe montrait la forme sans jamais dire ce
+                   qu'elle rapporte : ce bandeau met le chiffre sous la courbe.
+                   Le jour type et le mois SUIVENT la puce de saison et la puce
+                   de profil ; l'ANNÉE, elle, ne bouge pas (une année contient
+                   toutes les saisons) — c'est l'ancre du bandeau, et c'est
+                   écrit noir sur blanc à côté. TOUTES les combinaisons sont
+                   RENDUES ICI par le serveur ; le script ne fait que basculer
+                   `hidden`. Il ne calcule AUCUNE économie (test épinglé). */}
+            {ecoPeriodes && (
+              <div data-eco-periodes class="mt-4 grid gap-3 sm:grid-cols-2">
+                {ecoVariantes.map((variante) => (
+                  <div class="cine-card rounded-xl p-4" data-eco-carte={variante}>
+                    <p class="tech-label text-lune-faint" data-i18n
+                      data-fr={ECO_VARIANTE_LABELS[variante].fr}
+                      data-en={ECO_VARIANTE_LABELS[variante].en}
+                      data-ar={ECO_VARIANTE_LABELS[variante].ar}>{ECO_VARIANTE_LABELS[variante].fr}</p>
+
+                    {/* Jour type — change avec la saison ET le profil. */}
+                    <p class="mt-3 text-sm text-lune-soft">
+                      <span data-i18n data-fr="Sur une journée type : " data-en="On a typical day: " data-ar="في يوم نموذجي: ">Sur une journée type : </span>
+                      {ecoProfilIds.map((profil) => curveSeasons.map((season) => {
+                        const valeur = ecoBloc(profil, variante)?.saisons?.[season]?.jourMad ?? null;
+                        return valeur === null ? null : (
+                          <span class="fig text-lune" dir="ltr" data-eco-valeur="jour"
+                            data-eco-variante={variante} data-eco-profil={profil} data-eco-saison={season}
+                            hidden={!(profil === ecoProfilDefaut && season === prodLayers.season)}>{formatMAD(valeur)}</span>
+                        );
+                      }))}
+                    </p>
+
+                    {/* Un mois de cette saison — même double clé. */}
+                    <p class="mt-1 text-sm text-lune-soft">
+                      <span data-i18n data-fr="Sur un mois de cette saison : " data-en="Over a month of that season: " data-ar="خلال شهر من هذا الموسم: ">Sur un mois de cette saison : </span>
+                      {ecoProfilIds.map((profil) => curveSeasons.map((season) => {
+                        const valeur = ecoBloc(profil, variante)?.saisons?.[season]?.moisMoyenMad ?? null;
+                        return valeur === null ? null : (
+                          <span class="fig text-lune" dir="ltr" data-eco-valeur="mois"
+                            data-eco-variante={variante} data-eco-profil={profil} data-eco-saison={season}
+                            hidden={!(profil === ecoProfilDefaut && season === prodLayers.season)}>{formatMAD(valeur)}</span>
+                        );
+                      }))}
+                    </p>
+
+                    {/* L'ANNÉE — ancre visuelle : elle ne dépend PAS de la
+                        saison affichée (une année les contient toutes), donc
+                        elle ne porte aucune clé de saison. */}
+                    <p class="mt-3 border-t border-lune-faint/20 pt-3">
+                      <span class="tech-label text-lune-faint" data-i18n data-fr="Sur l’année" data-en="Over the year" data-ar="على مدار السنة">Sur l’année</span>
+                      <span class="fig fig-md ms-2 text-lune" dir="ltr">
+                        {ecoProfilIds.map((profil) => {
+                          const valeur = ecoBloc(profil, variante)?.annuelMad ?? null;
+                          return valeur === null ? null : (
+                            <span data-eco-valeur="annuel" data-eco-variante={variante} data-eco-profil={profil}
+                              hidden={profil !== ecoProfilDefaut}>{formatMAD(valeur)}</span>
+                          );
+                        })}
+                      </span>
+                    </p>
+                    <p class="mt-1 text-xs text-lune-faint" data-i18n
+                      data-fr="Ce total annuel ne change pas avec la saison affichée."
+                      data-en="This yearly total does not change with the season shown."
+                      data-ar="هذا المجموع السنوي لا يتغير بتغير الموسم المعروض.">Ce total annuel ne change pas avec la saison affichée.</p>
+
+                    {/* Retour sur investissement — porté par le DEVIS, pas par
+                        un profil alternatif : un autre comportement ne change
+                        pas le prix de l'installation. Omis quand le moteur ne
+                        l'a pas calculé (jamais « 0 an »). */}
+                    {ecoRetourAns(variante) !== null && (
+                      <p class="mt-2 text-sm text-lune-soft">
+                        <span data-i18n data-fr="Retour sur investissement : " data-en="Return on investment: " data-ar="العائد على الاستثمار: ">Retour sur investissement : </span>
+                        <span class="fig text-lune" dir="ltr">{formatNumber(ecoRetourAns(variante) as number, 1)}</span>
+                        <span data-i18n data-fr=" ans" data-en=" years" data-ar=" سنوات"> ans</span>
+                      </p>
+                    )}
+                  </div>
+                ))}
+                {ecoPeriodes.estimation && (
+                  <p class="text-xs text-lune-faint sm:col-span-2" data-i18n
+                    data-fr="Estimation : transmettez vos douze factures pour un calcul mois par mois."
+                    data-en="Estimate: send your twelve bills for a month-by-month calculation."
+                    data-ar="تقدير: أرسلوا فواتيركم الاثني عشر لحساب شهرًا بشهر.">Estimation : transmettez vos douze factures pour un calcul mois par mois.</p>
+                )}
               </div>
             )}
 
@@ -4811,6 +4956,47 @@ const signConfig = ok
         if (id) selectionner(id);
       });
     }
+  })();
+
+  // ——— L-ECO : le bandeau en dirhams sous le graphe « Sur une journée » ————
+  // IL NE CALCULE RIEN, ET C'EST LE POINT. Toutes les combinaisons
+  // (saison × profil × variante) sont RENDUES par le serveur au chargement ;
+  // ce script se contente de basculer `hidden` sur celles qui correspondent
+  // aux puces choisies. Aucune multiplication, aucune division, aucune somme :
+  // le chiffre lu par le client est celui du moteur, à l'unité près (règle
+  // « zéro chiffre inventé », épinglée par un test qui relit ce bloc).
+  // Les valeurs SANS clé de saison (le total annuel) restent visibles quelle
+  // que soit la saison : une année contient toutes les saisons.
+  (() => {
+    const zone = document.querySelector<HTMLElement>('[data-eco-periodes]');
+    if (!zone) return;
+    const valeurs = Array.from(zone.querySelectorAll<HTMLElement>('[data-eco-valeur]'));
+    if (valeurs.length === 0) return;
+    const profilsRendus = new Set(valeurs.map((n) => n.getAttribute('data-eco-profil') || ''));
+    const depart = valeurs.find((n) => !n.hidden) ?? valeurs[0];
+    let saison = depart.getAttribute('data-eco-saison') || '';
+    let profil = depart.getAttribute('data-eco-profil') || '';
+    const appliquer = () => {
+      for (const noeud of valeurs) {
+        const cleSaison = noeud.getAttribute('data-eco-saison');
+        const memeProfil = (noeud.getAttribute('data-eco-profil') || '') === profil;
+        noeud.hidden = !(memeProfil && (cleSaison === null || cleSaison === saison));
+      }
+    };
+    document.addEventListener('click', (ev) => {
+      const cible = ev.target instanceof Element
+        ? ev.target.closest('[data-curve-season-btn],[data-curve-occupancy-btn]')
+        : null;
+      if (!cible) return;
+      const s = cible.getAttribute('data-curve-season-btn');
+      const o = cible.getAttribute('data-curve-occupancy-btn');
+      if (s) saison = s;
+      // Un profil que le serveur n'a pas rendu ne devient JAMAIS l'état
+      // courant : sinon la puce viderait le bandeau au lieu de le changer.
+      if (o && profilsRendus.has(o)) profil = o;
+      appliquer();
+    });
+    appliquer();
   })();
   // Exposé aux AUTRES <script> de cette page (PDF affordance) — chaque bloc
   // <script> d'une île Astro est un module séparé, donc pas de portée
