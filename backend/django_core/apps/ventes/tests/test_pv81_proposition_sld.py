@@ -88,8 +88,11 @@ class MontageDevisElectrique:
 
     def _token(self):
         jeton = str(uuid.uuid4())
+        # L-NIV (24/08) : un lien NEUF vaut 'standard' (SLD/câbles dégradés) —
+        # ces pins du dossier technique complet passent en 'confiance'.
         ShareLink.objects.create(
-            company=self.company, devis=self.devis, token=jeton)
+            company=self.company, devis=self.devis, token=jeton,
+            niveau=ShareLink.NIVEAU_CONFIANCE)
         return jeton
 
 
@@ -246,8 +249,11 @@ class SchemaRefuseUneConfigurationNonConformeTest(TestCase):
     def test_la_page_publique_n_affiche_aucun_schema(self):
         self._concevoir()
         jeton = str(uuid.uuid4())
+        # L-NIV (24/08) : un lien NEUF vaut 'standard' (SLD/câbles dégradés) —
+        # ces pins du dossier technique complet passent en 'confiance'.
         ShareLink.objects.create(
-            company=self.company, devis=self.devis, token=jeton)
+            company=self.company, devis=self.devis, token=jeton,
+            niveau=ShareLink.NIVEAU_CONFIANCE)
         resp = DjangoClient().get(
             '/api/django/public/proposal/%s/data/' % jeton)
         self.assertEqual(resp.status_code, 200)

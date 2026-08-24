@@ -19,6 +19,8 @@ from rest_framework import status
 from rest_framework.decorators import (
     api_view, permission_classes, throttle_classes,
 )
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
@@ -1955,6 +1957,18 @@ def proposal_request_otp(request, token):
     return _noindex(Response({'detail': 'Code envoyé.'}))
 
 
+# L-NIV — formes déclarées des deux vues otp-lecture (le compteur R2 de
+# check_openapi_shapes est un plafond gelé : toute vue publique nouvelle
+# DOIT déclarer sa forme au lieu de laisser le générateur deviner).
+_OTP_LECTURE_DETAIL_RESPONSE = inline_serializer('PublicOtpLectureDetail', {
+    'detail': drf_serializers.CharField(),
+})
+_OTP_LECTURE_VERIFY_REQUEST = inline_serializer('PublicOtpLectureVerifyRequest', {
+    'otp_code': drf_serializers.CharField(),
+})
+
+
+@extend_schema(request=None, responses={200: _OTP_LECTURE_DETAIL_RESPONSE})
 @api_view(['POST'])
 @permission_classes([AllowAny])
 @throttle_classes([PublicLinkRateThrottle])
@@ -1980,6 +1994,7 @@ def proposal_request_otp_lecture(request, token):
     return _noindex(Response({'detail': 'Code envoyé.'}))
 
 
+@extend_schema(request=_OTP_LECTURE_VERIFY_REQUEST, responses={200: _OTP_LECTURE_DETAIL_RESPONSE})
 @api_view(['POST'])
 @permission_classes([AllowAny])
 @throttle_classes([PublicLinkRateThrottle])

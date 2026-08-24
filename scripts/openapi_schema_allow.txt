@@ -340,9 +340,7 @@ Error|proposal_contact_request|unable to guess serializer. This is graceful fall
 Error|proposal_data|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|proposal_engagement|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|proposal_pdf|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
-Error|proposal_request_otp_lecture|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|proposal_request_otp|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
-Error|proposal_verify_otp_lecture|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|proposal_virement_declare|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|public_article|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|public_bcf_document|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
