@@ -318,7 +318,14 @@ class TestSeedCatalogue(TestCase):
         # Rated PV Input Voltage 370 (125-500) V sur la fiche SG05LP1 : 500 V,
         # PAS 600 V (l'ancienne valeur, jamais vérifiée sur une fiche SG05LP1).
         self.assertEqual(fiche.ond_v_max_abs, Decimal('500.0'))
-        self.assertEqual(fiche.ond_i_max_mppt_a, Decimal('13.0'))
+        # L-22A (fondateur 24/08/2026) — « increase their mppt current to more
+        # then 20A so they accept the canadian solar pannels » : les DEUX
+        # bornes de courant sont DÉCLARÉES à 22 A (elles valaient 13 A d'Imp
+        # et 17 A d'Isc, identification datasheet SG05LP1). Le reste de la
+        # fiche reste sourcé sur cette datasheet — c'est tout l'objet de ce
+        # test, que la correction L-22A ne dilue pas.
+        self.assertEqual(fiche.ond_i_max_mppt_a, Decimal('22.0'))
+        self.assertEqual(fiche.ond_isc_max_mppt_a, Decimal('22.0'))
         self.assertEqual(fiche.ond_ac_kw, Decimal('5'))
         self.assertEqual(fiche.ond_phases, 1)
         self.assertEqual(fiche.ond_rendement_euro_pct, Decimal('96.5'))
@@ -334,7 +341,11 @@ class TestSeedCatalogue(TestCase):
         self.assertEqual(f5m.ond_mppt_v_min, Decimal('90.0'))
         self.assertEqual(f5m.ond_mppt_v_max, Decimal('560.0'))
         self.assertEqual(f5m.ond_v_max_abs, Decimal('600.0'))
-        self.assertEqual(f5m.ond_i_max_mppt_a, Decimal('12.5'))
+        # L-22A (fondateur 24/08/2026) — bornes de courant DÉCLARÉES à 22 A
+        # (l'Imp valait 12,5 A, SUN2000-5KTL-L1 ; l'Isc n'avait jamais été
+        # seedé du tout — le champ était NULL, il est maintenant DÉCLARÉ).
+        self.assertEqual(f5m.ond_i_max_mppt_a, Decimal('22.0'))
+        self.assertEqual(f5m.ond_isc_max_mppt_a, Decimal('22.0'))
         self.assertEqual(f5m.ond_ac_kw, Decimal('5'))
         self.assertEqual(f5m.ond_phases, 1)
         self.assertEqual(f5m.ond_rendement_euro_pct, Decimal('97.8'))
