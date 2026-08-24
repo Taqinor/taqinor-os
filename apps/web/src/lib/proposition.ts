@@ -1063,6 +1063,24 @@ export interface ConceptionProtection {
   quantite?: number;
 }
 
+/**
+ * Les organes, PRÉ-ROUTÉS PAR LE SERVEUR (L-1V, 24/08/2026).
+ *
+ * La page rangeait auparavant chaque organe d'un côté ou de l'autre en
+ * cherchant « dc », « gpv » ou « chaîne » dans SA DÉSIGNATION. Le jour où
+ * l'anticopie a fusionné les lignes du kit en un seul « Kit de fixation,
+ * câblage et protection complet », l'heuristique a classé le poste entier du
+ * côté alternatif : le client a perdu TOUS ses organes continus (fusibles gPV,
+ * parafoudre DC, sectionneur DC) sur sa fiche technique, pendant que le schéma
+ * unifilaire de la même page continuait de les dessiner. Le côté est désormais
+ * une décision du MOTEUR (`core.electrique.protections`), servie telle quelle.
+ */
+export interface GroupesOrganes {
+  dc: ConceptionProtection[];
+  ac: ConceptionProtection[];
+  communs: ConceptionProtection[];
+}
+
 /** Une liaison câblée : ce qu'elle relie, sa section, sa longueur. */
 export interface ConceptionCable {
   liaison?: string;
@@ -1072,7 +1090,10 @@ export interface ConceptionCable {
 
 export interface ConceptionElectrique {
   chaines: ConceptionChaine[];
+  /** TOUS les organes, dans l'ordre du moteur (c'est l'ordre du schéma). */
   protections: ConceptionProtection[];
+  /** Les mêmes, répartis PAR LE SERVEUR — la page ne décide plus d'un côté. */
+  groupes: GroupesOrganes;
   cables: ConceptionCable[];
 }
 
@@ -1123,15 +1144,24 @@ export function parseConceptionElectrique(
   }
 
   // Un ORGANE sans désignation ne serait qu'un repère orphelin : écarté.
-  const protections: ConceptionProtection[] = [];
-  for (const o of liste(src.protections)) {
-    const item: Record<string, unknown> = {};
-    poser(item, 'repere', texteNonVide(o.repere));
-    poser(item, 'designation', texteNonVide(o.designation));
-    poser(item, 'calibre', texteNonVide(o.calibre));
-    poser(item, 'quantite', nombrePositif(o.quantite));
-    if (item.designation !== undefined) protections.push(item as ConceptionProtection);
-  }
+  const organes = (v: unknown): ConceptionProtection[] => {
+    const sortie: ConceptionProtection[] = [];
+    for (const o of liste(v)) {
+      const item: Record<string, unknown> = {};
+      poser(item, 'repere', texteNonVide(o.repere));
+      poser(item, 'designation', texteNonVide(o.designation));
+      poser(item, 'calibre', texteNonVide(o.calibre));
+      poser(item, 'quantite', nombrePositif(o.quantite));
+      if (item.designation !== undefined) sortie.push(item as ConceptionProtection);
+    }
+    return sortie;
+  };
+  const protections = organes(src.protections);
+  const groupes: GroupesOrganes = {
+    dc: organes(src.protections_dc),
+    ac: organes(src.protections_ac),
+    communs: organes(src.protections_communes),
+  };
 
   // Une LIAISON sans section NI longueur n'apprend rien : écartée.
   const cables: ConceptionCable[] = [];
@@ -1146,41 +1176,62 @@ export function parseConceptionElectrique(
   }
 
   if (!chaines.length && !protections.length && !cables.length) return null;
-  return { chaines, protections, cables };
+  return { chaines, protections, groupes, cables };
 }
 
-/**
- * Marqueurs du CÔTÉ CONTINU sur un libellé d'organe. Test par SOUS-CHAÎNE, avec
- * les deux graphies de « chaîne » — exactement la règle du moteur de devis
- * Django (`quote_engine/residential/theme.py::_MARQUEURS_DC`), pour que la page
- * et le PDF rangent le même organe du même côté.
- */
-const MARQUEURS_DC: readonly string[] = [
-  'dc', 'continu', 'gpv', 'string', 'chaîne', 'chaine',
-];
-
-/** Un organe appartient-il au côté continu ? (sinon : côté alternatif). */
-function estOrganeDc(o: ConceptionProtection): boolean {
-  const libelle = `${o.repere ?? ''} ${o.designation ?? ''} ${o.calibre ?? ''}`.toLowerCase();
-  return MARQUEURS_DC.some((m) => libelle.includes(m));
-}
+/** Les deux familles de fiche qui accueillent des organes de protection. */
+const SLUGS_PROTECTION: readonly string[] = ['protection-dc', 'protection-ac'];
 
 /**
- * Marqueurs d'une ligne de protection COMBINÉE (les deux côtés dans un même
- * poste). Le catalogue réel ne facture pas deux coffrets : il porte UNE ligne
- * « Tableau De Protection AC/DC ». Cette ligne tombe sur la fiche
- * `protection-dc` (marqueur « dc », règle 1 de ficheMatcher) — si le dépliant
- * s'en tenait au côté continu, le client verrait ses disjoncteurs DC et
- * PERDRAIT tout le côté alternatif (disjoncteur AC, parafoudre type 2,
- * différentiel type A, prise de terre, liaison équipotentielle) sous une ligne
- * qui s'appelle pourtant « AC/DC ». Trois graphies observées.
+ * RÉPARTIT les organes de l'étude sur les lignes rendues — une PARTITION, pas
+ * un filtre : chaque organe apparaît EXACTEMENT UNE FOIS, et aucun ne peut
+ * rester orphelin. Rend un tableau aligné sur `slugs` (organes par ligne).
+ *
+ * La règle, dans l'ordre :
+ *  1. chaque ligne `protection-dc` reçoit le groupe DC du serveur, chaque ligne
+ *     `protection-ac` le groupe AC — les côtés viennent du MOTEUR, la page ne
+ *     lit plus aucune désignation pour en décider ;
+ *  2. les organes COMMUNS (coffret AC/DC, mise à la terre) vont sur la PREMIÈRE
+ *     ligne de protection : ils n'appartiennent exclusivement à aucun côté ;
+ *  3. **un groupe sans ligne d'accueil rejoint cette même première ligne.**
+ *     C'est le cas du catalogue réel depuis l'anticopie : le devis ne porte
+ *     plus qu'UNE ligne « Kit de fixation, câblage et protection complet ».
+ *     Sans cette règle, tout un côté du dossier disparaîtrait de la page alors
+ *     que le schéma unifilaire, lui, le dessine — la contradiction que ce
+ *     chantier ferme.
+ *
+ * Aucune ligne de protection dans le devis ⇒ que des tableaux vides (il n'y a
+ * rien à quoi accrocher un organe ; la page n'invente pas une ligne).
  */
-const MARQUEURS_AC_DC: readonly string[] = ['ac/dc', 'ac-dc', 'ac dc'];
-
-/** La désignation annonce-t-elle un poste qui porte LES DEUX côtés ? */
-export function estProtectionAcDc(designation?: string | null): boolean {
-  const libelle = String(designation ?? '').toLowerCase();
-  return MARQUEURS_AC_DC.some((m) => libelle.includes(m));
+export function repartirOrganes(
+  conception: ConceptionElectrique | null,
+  slugs: ReadonlyArray<string | null | undefined>,
+): ConceptionProtection[][] {
+  const parLigne: ConceptionProtection[][] = slugs.map(() => []);
+  if (!conception) return parLigne;
+  const indices = slugs
+    .map((s, i) => (SLUGS_PROTECTION.includes(String(s)) ? i : -1))
+    .filter((i) => i >= 0);
+  if (!indices.length) return parLigne;
+  const premier = indices[0];
+  const { dc, ac, communs } = conception.groupes;
+  let dcPlace = false;
+  let acPlace = false;
+  // La PREMIÈRE ligne de chaque famille sert d'accueil : deux lignes
+  // « protection-dc » ne montrent pas deux fois les mêmes organes.
+  for (const i of indices) {
+    if (slugs[i] === 'protection-dc' && !dcPlace) {
+      parLigne[i].push(...dc);
+      dcPlace = true;
+    } else if (slugs[i] === 'protection-ac' && !acPlace) {
+      parLigne[i].push(...ac);
+      acPlace = true;
+    }
+  }
+  if (!dcPlace) parLigne[premier].push(...dc);
+  if (!acPlace) parLigne[premier].push(...ac);
+  parLigne[premier].push(...communs);
+  return parLigne;
 }
 
 /** Ce qu'un dépliant « Dans votre installation » montre pour une famille donnée. */
@@ -1196,8 +1247,9 @@ export interface ConceptionPourLigne {
 
 /** Options de rattachement d'une ligne d'équipement (toutes facultatives). */
 export interface ConceptionPourLigneOpts {
-  /** La désignation TELLE QU'ELLE EST FACTURÉE (décide du poste combiné AC/DC). */
-  designation?: string | null;
+  /** Les organes QUE LE SERVEUR A ROUTÉS vers cette ligne (`repartirOrganes`).
+   *  La page ne filtre plus rien elle-même : elle affiche ce qu'on lui donne. */
+  organes?: ConceptionProtection[];
   /** Cette ligne accueille-t-elle les câbles faute de ligne « câblage » dédiée ?
    *  Le choix de la ligne hôte appartient à l'appelant (`indexHoteDesCables`),
    *  pour qu'une seule ligne les porte — jamais les deux protections. */
@@ -1223,10 +1275,8 @@ export function indexHoteDesCables(slugs: ReadonlyArray<string | null | undefine
  * Le détail à déplier SOUS une ligne d'équipement, choisi par la FAMILLE de sa
  * fiche technique (le slug rendu par `ficheSlugPourLigne`) :
  *
- *  · `protection-dc`  → ses organes du côté continu (repère + calibre) ;
- *  · `protection-ac`  → ses organes du côté alternatif ;
- *  · une protection dont la DÉSIGNATION dit « AC/DC » → LES DEUX familles,
- *    dans l'ordre où l'étude les a posées (c'est un seul coffret facturé) ;
+ *  · `protection-dc` / `protection-ac` → les organes que `repartirOrganes` a
+ *    routés vers CETTE ligne, tels quels (côtés décidés par le moteur) ;
  *  · `cablage`        → les sections et longueurs de liaison ;
  *  · panneaux/onduleur → le chaînage (modules par MPPT).
  *
@@ -1248,16 +1298,13 @@ export function conceptionPourLigne(
   // Une FABRIQUE, pas une constante partagée : chaque appel repart de trois
   // tableaux neufs (aucun aliasing possible entre deux lignes du devis).
   const vide = (): ConceptionPourLigne => ({ chaines: [], protections: [], cables: [], cablesRattaches: false });
-  const estProtection = ficheSlug === 'protection-dc' || ficheSlug === 'protection-ac';
+  const estProtection = SLUGS_PROTECTION.includes(ficheSlug);
   let bloc: ConceptionPourLigne;
-  if (estProtection && estProtectionAcDc(opts?.designation)) {
-    // Un seul coffret facturé « AC/DC » : on ne coupe pas son contenu en deux.
-    // Ordre du moteur électrique conservé — c'est l'ordre du schéma.
-    bloc = { ...vide(), protections: [...conception.protections] };
-  } else if (ficheSlug === 'protection-dc') {
-    bloc = { ...vide(), protections: conception.protections.filter(estOrganeDc) };
-  } else if (ficheSlug === 'protection-ac') {
-    bloc = { ...vide(), protections: conception.protections.filter((o) => !estOrganeDc(o)) };
+  if (estProtection) {
+    // Les organes viennent PRÉ-ROUTÉS (`repartirOrganes`) : aucune lecture de
+    // libellé ici, donc aucun côté ne peut plus disparaître parce qu'une
+    // désignation a changé. Ordre du moteur conservé — c'est celui du schéma.
+    bloc = { ...vide(), protections: [...(opts?.organes ?? [])] };
   } else if (ficheSlug === 'cablage') {
     bloc = { ...vide(), cables: conception.cables };
   } else if (

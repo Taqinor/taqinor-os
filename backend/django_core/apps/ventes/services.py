@@ -4198,6 +4198,50 @@ def rafraichir_dimensionnement_devis(devis, *, force=False):
         return None
 
 
+def rafraichir_etudes_du_devis(devis, *, force=False):
+    """L-1V (24/08/2026) — LES QUATRE ÉTUDES D'UN DEVIS, EN UN SEUL GESTE.
+
+    LE TROU QUE CECI BOUCHE. Un devis porte quatre études dérivées de ses
+    lignes : le bloc horaire, le tableau de dimensionnement, les profils
+    comparatifs et la conception électrique. Trois chemins d'écriture les
+    posaient — ``atomic`` et ``replace-lines`` en rafraîchissaient les QUATRE
+    (deux listes recopiées à la main, donc deux occasions d'en oublier une),
+    tandis que ``LigneDevisViewSet`` (ajout/modification/suppression d'UNE
+    ligne) n'en rafraîchissait qu'UNE : le bloc horaire. Modifier une ligne
+    depuis l'écran de devis faisait donc bouger le graphe horaire de la page
+    client SANS toucher à la conception électrique — et le client voyait un
+    schéma unifilaire décrivant une composition qui n'existait plus. Une seule
+    fonction, appelée par TOUS les chemins : on ne peut plus en oublier une.
+
+    Chacune est BEST-EFFORT et indépendante (chaque rafraîchisseur avale déjà
+    ses propres erreurs) : une étude en échec n'empêche jamais les trois autres,
+    et n'annule JAMAIS l'enregistrement du devis ou de la ligne qui l'a
+    déclenchée. Aucun statut, aucune ligne, aucun prix n'est touché (règle #4).
+
+    L'ORDRE COMPTE, et il est celui que ``replace-lines`` avait déjà : le
+    dimensionnement après le bloc horaire, les profils comparatifs après le
+    dimensionnement (le profil RÉEL réutilise alors le tableau qui vient d'être
+    calculé au lieu d'en refaire un), la conception électrique en dernier.
+
+    Rend le dict des quatre résultats (``None`` pour celles qui n'ont rien
+    produit) — pour un appelant qui veut savoir, jamais pour décider.
+    """
+    from apps.ventes.profils_comparatifs import (
+        rafraichir_profils_comparatifs_devis)
+    from apps.ventes.electrical_service import (
+        rafraichir_conception_electrique_devis)
+
+    return {
+        'etude_horaire': rafraichir_etude_horaire_devis(devis, force=force),
+        'dimensionnement': rafraichir_dimensionnement_devis(devis,
+                                                            force=force),
+        'profils_comparatifs': rafraichir_profils_comparatifs_devis(
+            devis, force=force),
+        # Idempotente par empreinte : mêmes entrées ⇒ aucune écriture.
+        'conception_electrique': rafraichir_conception_electrique_devis(devis),
+    }
+
+
 def _residential_panel_count(*, facture_hiver=None, taille_kwc=None,
                              panel_watt=_AUTO_PANEL_WATT):
     """Nombre de panneaux pour un lead résidentiel.

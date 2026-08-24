@@ -32,14 +32,23 @@ Journal des MAJEUR :
   PAIRE DESCENDANTE (une par entrée MPPT réellement utilisée), plus jamais
   par chaîne. La section ou le métrage DC publiés peuvent donc changer à
   entrée identique : c'est un MAJEUR.
+
+Journal des MINEUR récents :
+
+* **3.1.0 — L-1V, 24/08/2026 : le côté d'un organe, et l'identité des blocs
+  du schéma.** ``Protection`` porte désormais son ``cote``
+  (``dc``/``ac``/``commun``) — décidé par la règle qui l'a retenu, plus jamais
+  déduit de son libellé en aval — et chaque bloc du schéma émet son
+  ``data-repere``. Capacité ajoutée : AUCUN nombre publié ne change (mêmes
+  calibres, mêmes sections, mêmes chaînes), seul le format d'échange s'enrichit.
 """
 
-VERSION_MOTEUR = "3.0.0"
+VERSION_MOTEUR = "3.1.0"
 
 #: Version du schéma d'échange (dictionnaires de projection ``tiroirs`` et
 #: nomenclature). Elle évolue indépendamment de ``VERSION_MOTEUR`` : le moteur
 #: peut gagner une règle sans changer le format d'échange.
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def version_tuple(version=VERSION_MOTEUR):

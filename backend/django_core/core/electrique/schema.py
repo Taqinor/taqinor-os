@@ -125,11 +125,21 @@ _ANCRE_DE_BRANCHE = "onduleur"
 
 @dataclass(frozen=True)
 class Bloc:
-    """Un bloc du schéma : sa clef stable, son titre, sa ligne de détail."""
+    """Un bloc du schéma : sa clef stable, son titre, sa ligne de détail.
+
+    ``repere`` (L-1V, 24/08/2026) — le REPÈRE de l'organe du dossier que ce bloc
+    dessine (« QDC1 », « DDR1 »), vide pour un bloc de TOPOLOGIE qui ne
+    correspond à aucun organe de protection (le champ PV, le coffret de chaînes,
+    l'onduleur, le TGBT, le compteur ONEE). Il est émis dans le SVG en
+    ``data-repere`` : c'est ce qui permet à un test de comparer, repère par
+    repère, ce que le SCHÉMA montre et ce que la FICHE liste — les deux
+    surfaces se contredisaient sans que rien ne le voie.
+    """
 
     clef: str
     titre: str
     sous_titre: str = ""
+    repere: str = ""
 
 
 def _esc(texte):
@@ -151,8 +161,18 @@ def _protection(resultat, repere):
 
 
 # ─────────────────────────────────────────────────────── chaîne canonique
-def blocs_du_schema(entree, resultat):
-    """La chaîne canonique, RÉDUITE aux organes réellement retenus."""
+def blocs_du_schema(entree, resultat, standard=False):
+    """La chaîne canonique, RÉDUITE aux organes réellement retenus.
+
+    ``standard`` (L-NIV, fondateur 24/08/2026) — au niveau de partage
+    « standard », la planche montre la TOPOLOGIE : désignations, quantités et
+    repères, JAMAIS un calibre ni une section. La règle valait déjà pour la
+    liste « Dans votre installation » et pour le tableau de nomenclature, mais
+    les sous-titres des blocs, eux, continuaient d'imprimer « 32 A / 230 V » :
+    le même lien montrait le calibre d'un côté et le cachait de l'autre. Ici,
+    ce sont les MÊMES blocs, aux mêmes places — seul le sous-titre de calibre
+    disparaît.
+    """
     blocs = []
     chaines = resultat.chaines
     nb_chaines = len(chaines)
@@ -172,18 +192,27 @@ def blocs_du_schema(entree, resultat):
     fusible = _protection(resultat, "F1")
     if fusible is not None:
         blocs.append(Bloc("fusibles", "Fusibles gPV",
-                          "%d × %s" % (fusible.quantite, fusible.calibre)))
+                          "%d u" % fusible.quantite if standard
+                          else "%d × %s" % (fusible.quantite, fusible.calibre),
+                          repere=fusible.repere))
     if nb_chaines:
+        # PAS de repère : le coffret de chaînes est un nœud de TOPOLOGIE, pas un
+        # organe du bordereau. Son sous-titre est dérivé du champ ``chaines`` de
+        # l'étude — donc justifiable par l'artefact, comme tout le reste de la
+        # planche (l'enveloppe FACTURÉE, elle, est l'organe ARM1 « Coffret de
+        # protection AC/DC », qui figure au tableau de nomenclature).
         blocs.append(Bloc("coffret_dc", "Coffret DC",
                           "%d chaîne(s) raccordée(s)" % nb_chaines))
     parafoudre_dc = _protection(resultat, "PDC1")
     if parafoudre_dc is not None:
         blocs.append(Bloc("parafoudre_dc", "Parafoudre DC Type 2",
-                          parafoudre_dc.calibre))
+                          "" if standard else parafoudre_dc.calibre,
+                          repere=parafoudre_dc.repere))
     sectionneur = _protection(resultat, "QDC1")
     if sectionneur is not None:
         blocs.append(Bloc("sectionneur_dc", "Sectionneur DC",
-                          sectionneur.calibre))
+                          "" if standard else sectionneur.calibre,
+                          repere=sectionneur.repere))
 
     onduleur = entree.onduleur
     detail_onduleur = [
@@ -205,14 +234,18 @@ def blocs_du_schema(entree, resultat):
     disjoncteur = _protection(resultat, "QAC1")
     if disjoncteur is not None:
         blocs.append(Bloc("disjoncteur_ac", "Disjoncteur AC",
-                          disjoncteur.calibre))
+                          "" if standard else disjoncteur.calibre,
+                          repere=disjoncteur.repere))
     parafoudre_ac = _protection(resultat, "PAC1")
     if parafoudre_ac is not None:
         blocs.append(Bloc("parafoudre_ac", "Parafoudre AC Type 2",
-                          parafoudre_ac.calibre))
+                          "" if standard else parafoudre_ac.calibre,
+                          repere=parafoudre_ac.repere))
     ddr = _protection(resultat, "DDR1")
     if ddr is not None:
-        blocs.append(Bloc("ddr", "Différentiel type A", ddr.calibre))
+        blocs.append(Bloc("ddr", "Différentiel type A",
+                          "" if standard else ddr.calibre,
+                          repere=ddr.repere))
 
     if disjoncteur is not None:
         blocs.append(Bloc("compteur_production", "Compteur de production",
@@ -242,16 +275,27 @@ def _conducteurs_texte(entree):
 
 
 # ─────────────────────────────────────────────────── tableau d'équipements
-def lignes_tableau(resultat):
+def lignes_tableau(resultat, standard=False):
     """Le tableau d'équipements — MÊME source que le bordereau.
 
     Une ligne par protection retenue, puis une par câble dimensionné :
     ``(repère, désignation, calibre ou section, quantité)``.
+
+    ``standard`` (L-NIV) — le niveau « standard » garde le tableau (repères,
+    désignations, quantités : le client doit pouvoir NOMMER ce qu'il a) et lui
+    retire la colonne « Calibre / section ». Les CÂBLES en sortent en bloc :
+    une ligne câble n'est faite que d'une section et d'un métrage, c'est-à-dire
+    exactement ce que ce niveau ne publie pas. Retirer le tableau ENTIER (le
+    comportement d'avant) faisait disparaître des repères que le SCHÉMA
+    continuait pourtant d'afficher.
     """
     lignes = []
     for protection in resultat.protections:
         lignes.append((protection.repere, protection.designation,
-                       protection.calibre, "%d u" % protection.quantite))
+                       "" if standard else protection.calibre,
+                       "%d u" % protection.quantite))
+    if standard:
+        return tuple(lignes)
     for cable in resultat.cables:
         lignes.append((cable.repere, cable.designation,
                        "%s mm²" % fr(cable.section_mm2, 1),
@@ -367,8 +411,19 @@ def _chevauche(x, y, places):
 
 # ─────────────────────────────────────────────────────────────── primitives
 def _bloc_svg(x, y, bloc):
+    """Un bloc, ENVELOPPÉ dans un ``<g>`` qui porte son identité.
+
+    ``data-bloc`` = la clef stable de topologie, ``data-repere`` = le repère de
+    l'organe du bordereau quand ce bloc en dessine un (L-1V). Ces deux attributs
+    sont un CONTRAT de lecture : le garde-fou « une seule vérité » compare le jeu
+    des ``data-repere`` de la planche à celui des groupes servis à la fiche
+    technique, et NOMME les orphelins des deux côtés quand ils divergent.
+    """
     cx = x + _BLOC_L / 2
     parties = [
+        '<g data-bloc="%s"%s>' % (
+            _esc(bloc.clef),
+            ' data-repere="%s"' % _esc(bloc.repere) if bloc.repere else ""),
         '<rect x="%s" y="%s" width="%s" height="%s" rx="6" fill="%s" '
         'stroke="%s" stroke-width="2"/>'
         % (_n(x), _n(y), _n(_BLOC_L), _n(_BLOC_H), _teinte(bloc.clef), _TRAIT),
@@ -382,6 +437,7 @@ def _bloc_svg(x, y, bloc):
             '<text x="%s" y="%s" text-anchor="middle" font-size="9" '
             'fill="%s">%s</text>'
             % (_n(cx), _n(y + 38 + rang * 13), _TEXTE_SECONDAIRE, _esc(ligne)))
+    parties.append('</g>')
     return "".join(parties)
 
 
@@ -482,14 +538,20 @@ def _symbole_terre(x, y):
 
 
 # ────────────────────────────────────────────────────────────────── planche
-def rendre_schema(entree, resultat, cartouche=None, positions=None):
+def rendre_schema(entree, resultat, cartouche=None, positions=None,
+                  standard=False):
     """PV39 — rend le schéma unifilaire en SVG (texte), jamais un fichier.
 
     ``cartouche`` : ``{client, reference, date, indice}`` — aucun montant n'y a
     sa place, c'est un document technique. ``positions`` : surcharge ``{clef:
-    {"x": .., "y": ..}}`` par organe.
+    {"x": .., "y": ..}}`` par organe. ``standard`` : niveau de partage
+    « standard » — désignations, quantités et repères, jamais un calibre ni une
+    section (cf. ``blocs_du_schema`` et ``lignes_tableau``). La dégradation se
+    fait donc ICI, à la SOURCE du dessin, et non par un filtre texte appliqué
+    au SVG déjà rendu : un filtre ne pouvait pas atteindre les calibres écrits
+    dans les sous-titres des blocs, et les laissait donc en place.
     """
-    blocs = blocs_du_schema(entree, resultat)
+    blocs = blocs_du_schema(entree, resultat, standard=standard)
     # Seuls les blocs EN SÉRIE remplissent les rangées du serpentin : la
     # branche batterie pend sous son porteur et n'occupe aucune rangée — la
     # compter ici basculait en A3 une planche dont la chaîne tient sur A4
@@ -521,7 +583,7 @@ def rendre_schema(entree, resultat, cartouche=None, positions=None):
     svg.append(_branches(places))
     svg.append(_amorces_mppt(entree, resultat, places))
     svg.append(_barrette_de_terre(places))
-    svg.append(_tableau(resultat, largeur))
+    svg.append(_tableau(resultat, largeur, standard=standard))
     svg.append(_cartouche(entree, resultat, largeur, hauteur, cartouche))
     svg.append("</svg>")
     return "".join(svg)
@@ -694,9 +756,16 @@ def _barrette_de_terre(places):
     return "".join(morceaux)
 
 
-def _tableau(resultat, largeur):
-    """Tableau d'équipements, à droite — même source que le bordereau."""
-    lignes = lignes_tableau(resultat)
+def _tableau(resultat, largeur, standard=False):
+    """Tableau d'équipements, à droite — même source que le bordereau.
+
+    Chaque ligne est enveloppée dans un ``<g>`` portant ``data-repere`` (organe
+    de protection) ou ``data-cable`` (liaison) : le garde-fou « une seule
+    vérité » lit les premiers, et un câble ne se fait donc jamais compter pour
+    un organe.
+    """
+    lignes = lignes_tableau(resultat, standard=standard)
+    nb_protections = len(resultat.protections)
     x = largeur - _MARGE - _TABLEAU_L
     y = _MARGE + 54.0
     hauteur_ligne = 17.0
@@ -709,21 +778,29 @@ def _tableau(resultat, largeur):
         'Nomenclature des équipements</text>'
         % (_n(x + 8), _n(y + 16), _TRAIT),
     ]
-    entetes = ("Repère", "Désignation", "Calibre / section", "Qté")
+    entetes = ("Repère", "Désignation",
+               "" if standard else "Calibre / section", "Qté")
     colonnes = (x + 8, x + 58, x + 214, x + 296)
     ligne_y = y + 16 + hauteur_ligne
     for index, entete in enumerate(entetes):
+        if not entete:
+            continue
         morceaux.append(
             '<text x="%s" y="%s" font-size="8" font-weight="700" fill="%s">'
             '%s</text>' % (_n(colonnes[index]), _n(ligne_y), _TRAIT,
                            _esc(entete)))
-    for ligne in lignes:
+    for rang, ligne in enumerate(lignes):
         ligne_y += hauteur_ligne
+        attribut = 'data-repere' if rang < nb_protections else 'data-cable'
+        morceaux.append('<g %s="%s">' % (attribut, _esc(ligne[0])))
         for index, valeur in enumerate(ligne):
+            if valeur == "":
+                continue
             morceaux.append(
                 '<text x="%s" y="%s" font-size="8" fill="%s">%s</text>'
                 % (_n(colonnes[index]), _n(ligne_y), _TEXTE_SECONDAIRE,
                    _esc(_tronquer(valeur, 34 if index == 1 else 20))))
+        morceaux.append('</g>')
     return "".join(morceaux)
 
 

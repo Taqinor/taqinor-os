@@ -33,6 +33,7 @@ __all__ = [
     "Conformite", "ResultatElectrique",
     "TEMPERATURE_STC_C", "TEMP_FROID_DEFAUT_C", "TEMP_CHAUD_DEFAUT_C",
     "REGIME_TT", "REGIME_TN", "REGIME_IT", "REGIMES_CONNUS",
+    "COTE_DC", "COTE_AC", "COTE_COMMUN", "COTES_CONNUS",
 ]
 
 # ------------------------------------------------------------------ constantes
@@ -54,6 +55,24 @@ REGIME_TT = "TT"
 REGIME_TN = "TN"
 REGIME_IT = "IT"
 REGIMES_CONNUS = frozenset({REGIME_TT, REGIME_TN, REGIME_IT})
+
+#: CÔTÉ d'un organe de protection — décidé PAR LE MOTEUR, jamais par une lecture
+#: de texte en aval. C'est la correction du 24/08/2026 : la page de proposition
+#: rangeait chaque organe d'un côté ou de l'autre en cherchant « dc » dans SA
+#: DÉSIGNATION. Le jour où l'anticopie a fusionné les lignes du kit en un seul
+#: « Kit de fixation, câblage et protection complet », l'heuristique a classé le
+#: poste entier du côté alternatif et TOUS les organes continus (fusibles gPV,
+#: parafoudre DC, sectionneur DC) ont disparu de la fiche technique du client,
+#: pendant que le schéma unifilaire, lui, continuait de les dessiner. Un côté qui
+#: se DÉDUIT d'un libellé est un côté qu'un changement de libellé fait changer.
+COTE_DC = "dc"
+COTE_AC = "ac"
+#: Organes qui n'appartiennent EXCLUSIVEMENT à aucun des deux côtés : le coffret
+#: AC/DC (une seule enveloppe pour les deux) et la mise à la terre (une seule
+#: barrette pour toutes les masses). Les ranger de force d'un côté ferait
+#: disparaître le coffret d'un dossier qui n'a qu'une ligne « protection DC ».
+COTE_COMMUN = "commun"
+COTES_CONNUS = frozenset({COTE_DC, COTE_AC, COTE_COMMUN})
 
 
 # ------------------------------------------------------------------ formatage
@@ -302,6 +321,11 @@ class Protection:
     calibre: str
     quantite: int
     regle_source: str
+    #: ``COTE_DC`` / ``COTE_AC`` / ``COTE_COMMUN`` — le côté est une PROPRIÉTÉ
+    #: de l'organe, posée par la règle qui l'a retenu (cf. le bandeau des côtés
+    #: plus haut). Défaut ``COTE_COMMUN`` : un organe dont personne n'a tranché
+    #: le côté reste visible des deux côtés plutôt que d'en disparaître.
+    cote: str = COTE_COMMUN
 
 
 @dataclass(frozen=True)

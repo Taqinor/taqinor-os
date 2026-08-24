@@ -38,8 +38,17 @@ __all__ = ["build_electrical_design", "conception_electrique_stockee",
            "rafraichir_conception_electrique_devis",
            "rendre_schema_du_devis", "fiches_manquantes_du_devis",
            "motifs_fiche_incomplete", "motifs_non_conformite_du_devis",
+           "groupes_protections", "objets_moteur_depuis_contrat",
+           "artefact_a_rejouer", "FORMAT_CONTRAT",
            "VARIABLES_MODULE_REQUISES", "VARIABLES_ONDULEUR_REQUISES",
            "DC_M_MINIMUM", "DC_M_PAR_DEFAUT", "AC_M_DEFAUT"]
+
+#: L-1V (24/08/2026) — VERSION DU FORMAT de l'artefact ``electrical_design``.
+#: Elle entre dans l'empreinte des entrées : un devis dont l'étude a été rangée
+#: sous un format antérieur voit donc son empreinte ne plus concorder, et le
+#: PROCHAIN rafraîchissement la recalcule au format courant, sans migration de
+#: données ni geste humain. À monter dès qu'une CLÉ est ajoutée au contrat.
+FORMAT_CONTRAT = 2
 
 #: Longueurs de liaison PAR DÉFAUT (m). DC — F2, décision fondateur
 #: 19/08/2026 : chaque paire descendante (+ et −, une par entrée MPPT
@@ -589,6 +598,11 @@ def empreinte_entree(devis, entree):
     import dataclasses
 
     charge = {
+        # L-1V — le FORMAT fait partie des entrées : sans lui, un artefact rangé
+        # sous l'ancien format (sans ``materiel``, sans ``version_moteur``)
+        # gardait une empreinte VALIDE et n'était donc jamais recalculé, alors
+        # que le rendu du schéma a désormais besoin de ces clés.
+        "format_contrat": FORMAT_CONTRAT,
         "layout_hash": getattr(devis, "layout_hash", None) or "",
         "module": dataclasses.asdict(entree.module),
         "onduleur": dataclasses.asdict(entree.onduleur),
@@ -633,6 +647,28 @@ def projeter_contrat(entree, resultat):
 
     Toutes les clés sont TOUJOURS présentes (liste vide plutôt qu'absente) :
     c'est la garantie qui empêche un écran de ``.map()`` sur ``undefined``.
+
+    L-1V (24/08/2026) — **L'ARTEFACT SE SUFFIT À LUI-MÊME.** Le contrat portait
+    jusqu'ici le RÉSULTAT du calcul mais pas ce qu'il fallait pour le REDESSINER :
+    ni l'identité du matériel, ni le nombre de modules, ni les repères de câble,
+    ni la version du moteur. Le schéma unifilaire rappelait donc ``concevoir()``
+    sur les LIGNES COURANTES du devis à chaque rendu — un second calcul, qui
+    pouvait dire autre chose que l'étude rangée (c'est exactement ce qui a fait
+    diverger la planche et la fiche technique du client). Trois ajouts ferment
+    la porte :
+
+    * ``materiel``  — module, onduleur, parc de stockage, nombre de modules :
+      tout ce que le CARTOUCHE et les BLOCS nomment. Rien d'inventé — chaque
+      valeur vient de l'entrée, et une désignation inconnue reste vide ;
+    * ``cote`` sur chaque protection, ``repere``/``nb_conducteurs`` sur chaque
+      câble — l'identité des organes, pour que la répartition AC/DC soit une
+      DÉCISION DU MOTEUR et non une lecture de libellé en aval ;
+    * ``version_moteur``/``schema_version`` — l'estampille, sans laquelle deux
+      artefacts identiques à l'œil peuvent sortir de deux moteurs différents
+      (même discipline que ``core.calepinage.serialisation``).
+
+    AUCUN de ces champs n'est un nombre nouveau : ce sont les entrées et les
+    sorties DÉJÀ calculées, rangées au lieu d'être jetées.
     """
     index_par_pan = {}
     for groupe in entree.groupes:
@@ -665,12 +701,15 @@ def projeter_contrat(entree, resultat):
             "designation": protection.designation,
             "calibre": protection.calibre,
             "quantite": protection.quantite,
+            "cote": protection.cote,
         } for protection in resultat.protections],
         "cables": [{
+            "repere": cable.repere,
             "liaison": cable.designation,
             "longueur_m": _arrondi(cable.longueur_m),
             "section_mm2": _arrondi(cable.section_mm2, 2),
             "chute_pct": _arrondi(cable.chute_tension_pct, 2),
+            "nb_conducteurs": int(cable.nb_conducteurs or 0),
         } for cable in resultat.cables],
         "bom": [{
             "designation": ligne.designation,
@@ -684,7 +723,200 @@ def projeter_contrat(entree, resultat):
             "phases": entree.phases,
             "regime": entree.regime,
         },
+        "materiel": {
+            "nb_modules": int(entree.nb_modules),
+            "module": {
+                "designation": entree.module.designation or "",
+                "pmax_wc": _arrondi(entree.module.pmax_wc),
+            },
+            "onduleur": {
+                "designation": entree.onduleur.designation or "",
+                "ac_kw": _arrondi(entree.onduleur.ac_kw, 2),
+                "n_mppt": int(entree.onduleur.n_mppt or 0),
+                # Reste ``None`` tant qu'aucune fiche ne le donne : le schéma ne
+                # publie un rendement que lorsqu'il en connaît un (cf. PVFCH).
+                "rendement_euro_pct": _arrondi(
+                    entree.onduleur.rendement_euro_pct)
+                if entree.onduleur.rendement_euro_pct else None,
+            },
+            "batterie": {
+                "presente": bool(entree.batterie),
+                "designation": entree.batterie_designation or "",
+                "kwh": _arrondi(entree.batterie_kwh),
+                "v_nominal": _arrondi(entree.batterie_v_nominal),
+            },
+        },
+        "version_moteur": resultat.version_moteur or "",
+        "schema_version": int(resultat.schema_version or 0),
     }
+
+
+# ── L-1V — RELIRE l'artefact : du contrat rangé aux objets du moteur ─────────
+
+def groupes_protections(design):
+    """Les organes de l'étude, PRÉ-ROUTÉS par côté — ``{dc, ac, commun}``.
+
+    LE ROUTAGE EST UNE DÉCISION DU MOTEUR, pas une lecture de libellé. La page
+    de proposition classait chaque organe en cherchant « dc », « gpv » ou
+    « chaîne » dans SA DÉSIGNATION ; le jour où l'anticopie a fusionné les
+    lignes du kit en un seul « Kit de fixation, câblage et protection complet »,
+    le poste entier est parti du côté alternatif et le client a perdu, sur sa
+    fiche technique, TOUS les organes continus que le schéma unifilaire de la
+    même page continuait pourtant de dessiner.
+
+    Un organe sans ``cote`` (artefact d'un format antérieur) est rangé en
+    ``commun`` : il reste VISIBLE des deux côtés — jamais escamoté.
+    """
+    from core.electrique.types import COTE_AC, COTE_COMMUN, COTE_DC
+
+    groupes = {COTE_DC: [], COTE_AC: [], COTE_COMMUN: []}
+    for organe in (design or {}).get("protections") or []:
+        if not isinstance(organe, dict):
+            continue
+        cote = organe.get("cote")
+        groupes.setdefault(cote if cote in groupes else COTE_COMMUN,
+                           []).append(organe)
+    return groupes
+
+
+def artefact_a_rejouer(design):
+    """L'étude rangée doit-elle être RECALCULÉE avant d'être dessinée ?
+
+    Deux cas, et deux seulement :
+
+    * **format antérieur** — l'artefact ne porte pas ``materiel`` : il a été
+      rangé avant L-1V et ne suffit pas à redessiner la planche ;
+    * **MAJEUR du moteur qui a bougé** (``core.electrique.version.compatible``) —
+      un MAJEUR signifie qu'un nombre publiable a changé à entrée identique.
+      Dessiner l'ancien résultat avec le moteur d'aujourd'hui produirait un
+      MÉLANGE des deux : on rejoue plutôt le calcul.
+
+    Un artefact d'un MINEUR antérieur reste dessiné TEL QUEL : c'est la
+    définition même du MINEUR (aucun nombre publié ne change).
+    """
+    from core.electrique.version import compatible
+
+    if not isinstance(design, dict) or not design:
+        return True
+    if not isinstance(design.get("materiel"), dict) or not design["materiel"]:
+        return True
+    version = design.get("version_moteur") or ""
+    try:
+        return not compatible(version)
+    except ValueError:
+        return True
+
+
+def objets_moteur_depuis_contrat(design):
+    """``(entree, resultat)`` RECONSTRUITS depuis le contrat rangé — POUR LE RENDU.
+
+    **CES OBJETS NE SONT PAS RECALCULABLES.** Ils portent exactement ce que le
+    contrat conserve : les grandeurs que le DESSIN affiche. Les variables de
+    fiche qui n'entrent que dans le CALCUL (Voc, Isc, fenêtre MPPT, tension
+    maximale absolue…) n'y sont pas et valent ``0.0`` — les passer à
+    ``concevoir()`` produirait un résultat faux. Ils ne servent qu'à
+    ``core.electrique.schema.rendre_schema``, qui ne lit que des désignations,
+    des quantités, des repères et des calibres.
+
+    ``None`` quand le contrat ne porte pas de quoi dessiner (aucun module) :
+    l'appelant rend alors ``None``, jamais une planche à moitié vraie.
+    """
+    from core.electrique.types import (
+        Chaine, Conformite, Cable, EntreeElectrique, GroupePan, Protection,
+        ResultatElectrique, SpecModule, SpecOnduleur)
+
+    if not isinstance(design, dict) or not design:
+        return None
+    materiel = design.get("materiel") if isinstance(
+        design.get("materiel"), dict) else {}
+    module_src = materiel.get("module") or {}
+    onduleur_src = materiel.get("onduleur") or {}
+    batterie_src = materiel.get("batterie") or {}
+    parametres = design.get("parametres") if isinstance(
+        design.get("parametres"), dict) else {}
+
+    nb_modules = _entier(materiel.get("nb_modules"), 0)
+    if nb_modules <= 0:
+        return None
+
+    phases = _entier(parametres.get("phases"), 1)
+    phases = 3 if phases == 3 else 1
+    entree = EntreeElectrique(
+        module=SpecModule(
+            vmp_v=0.0, voc_v=0.0, isc_a=0.0, imp_a=0.0,
+            pmax_wc=_flottant(module_src.get("pmax_wc"), 0.0),
+            designation=str(module_src.get("designation") or ""),
+        ),
+        onduleur=SpecOnduleur(
+            n_mppt=_entier(onduleur_src.get("n_mppt"), 0),
+            mppt_v_min=0.0, mppt_v_max=0.0, v_max_abs=0.0, i_max_mppt_a=0.0,
+            ac_kw=_flottant(onduleur_src.get("ac_kw"), 0.0),
+            phases=phases,
+            rendement_euro_pct=(
+                _flottant(onduleur_src.get("rendement_euro_pct"), 0.0) or None),
+            designation=str(onduleur_src.get("designation") or ""),
+        ),
+        groupes=(GroupePan(label="Toiture", nb_modules=nb_modules,
+                           azimut_deg=0.0, inclinaison_deg=0.0),),
+        dc_m=_flottant(parametres.get("dc_m"), 0.0),
+        ac_m=_flottant(parametres.get("ac_m"), 0.0),
+        phases=phases,
+        regime=str(parametres.get("regime") or "TT"),
+        batterie=bool(batterie_src.get("presente")),
+        batterie_designation=str(batterie_src.get("designation") or ""),
+        batterie_kwh=_flottant(batterie_src.get("kwh"), 0.0),
+        batterie_v_nominal=_flottant(batterie_src.get("v_nominal"), 0.0),
+    )
+
+    chaines = tuple(Chaine(
+        repere="", pan=str(c.get("pan") or ""),
+        nb_modules=_entier(c.get("nb_modules"), 0),
+        mppt=_entier(c.get("mppt"), 1),
+        voc_froid_v=_flottant(c.get("voc_froid_v"), 0.0),
+        vmp_froid_v=_flottant(c.get("vmp_froid_v"), 0.0),
+        vmp_chaud_v=_flottant(c.get("vmp_chaud_v"), 0.0),
+        vmp_stc_v=0.0, isc_a=0.0, imp_a=0.0, puissance_kwc=0.0,
+    ) for c in (design.get("chaines") or []) if isinstance(c, dict))
+
+    protections = tuple(Protection(
+        repere=str(p.get("repere") or ""),
+        designation=str(p.get("designation") or ""),
+        calibre=str(p.get("calibre") or ""),
+        quantite=_entier(p.get("quantite"), 0),
+        regle_source="",
+        cote=str(p.get("cote") or "commun"),
+    ) for p in (design.get("protections") or []) if isinstance(p, dict))
+
+    cables = tuple(Cable(
+        repere=str(c.get("repere") or ""),
+        designation=str(c.get("liaison") or ""),
+        section_mm2=_flottant(c.get("section_mm2"), 0.0),
+        longueur_m=_flottant(c.get("longueur_m"), 0.0),
+        nb_conducteurs=_entier(c.get("nb_conducteurs"), 1) or 1,
+        ib_a=0.0, in_a=None, iz_a=0.0,
+        chute_tension_pct=_flottant(c.get("chute_pct"), 0.0),
+        chute_cible_pct=0.0, chute_max_pct=0.0, conforme=True,
+        critere_dimensionnant="", regle_source="",
+    ) for c in (design.get("cables") or []) if isinstance(c, dict))
+
+    conformite_src = design.get("conformite") if isinstance(
+        design.get("conformite"), dict) else {}
+    resultat = ResultatElectrique(
+        chaines=chaines,
+        conformite=Conformite(
+            conforme=bool(conformite_src.get("conforme", True)),
+            bloquants=tuple(conformite_src.get("bloquants") or ()),
+            alertes=tuple(conformite_src.get("alertes") or ()),
+        ),
+        protections=protections,
+        cables=cables,
+        note=tuple(design.get("note") or ()),
+        # Le cartouche imprime LA VERSION DE L'ARTEFACT, pas celle du moteur qui
+        # tourne : c'est l'estampille du dossier remis, pas celle du jour.
+        version_moteur=str(design.get("version_moteur") or ""),
+        schema_version=_entier(design.get("schema_version"), 0),
+    )
+    return entree, resultat
 
 
 # ── API publique ─────────────────────────────────────────────────────────────
@@ -695,7 +927,46 @@ def conception_electrique_stockee(devis):
     return design if isinstance(design, dict) and design else None
 
 
-def rendre_schema_du_devis(devis):
+def _artefact_rejouable(devis):
+    """L'étude rangée du devis, RECALCULÉE UNE FOIS si son format a vieilli.
+
+    Rejeu ONE-SHOT, jamais un dégradé silencieux : un artefact d'un format
+    antérieur (ou d'un MAJEUR de moteur périmé) est recalculé au premier rendu
+    qui en a besoin, puis rangé — les rendus suivants relisent simplement. Sans
+    ce rejeu, un devis d'avant L-1V perdrait son schéma jusqu'à sa prochaine
+    modification de lignes. L'empreinte porte ``FORMAT_CONTRAT``, donc le calcul
+    a réellement lieu (le raccourci d'idempotence ne se déclenche pas).
+
+    Ne lève jamais : un rejeu impossible rend ``None`` et le schéma est
+    simplement absent — jamais une planche mi-ancienne mi-nouvelle.
+    """
+    design = conception_electrique_stockee(devis)
+    if design is None:
+        return None
+    if not artefact_a_rejouer(design):
+        return design
+    try:
+        # L'empreinte porte le FORMAT (donc un artefact écrit par du code
+        # antérieur ne concorde plus), mais un artefact devenu illisible pour
+        # une AUTRE raison — MAJEUR périmé — garderait une empreinte valide et
+        # le raccourci d'idempotence rendrait l'ancien contrat tel quel. On
+        # invalide donc explicitement : « ceci n'est pas utilisable, recalcule ».
+        devis.electrical_design_hash = None
+        rejoue = build_electrical_design(devis)
+    except Exception:  # noqa: BLE001
+        logger.warning(
+            "L-1V : rejeu de la conception électrique impossible sur %s",
+            getattr(devis, "reference", "?"), exc_info=True)
+        return None
+    if artefact_a_rejouer(rejoue):
+        # Le rejeu n'a rien produit de dessinable (fiche redevenue incomplète —
+        # ``build_electrical_design`` rend alors un contrat de REFUS non
+        # persisté). Dégradé propre : pas de schéma.
+        return None
+    return rejoue
+
+
+def rendre_schema_du_devis(devis, *, standard=False):
     """PV81/PVSLD — le schéma unifilaire d'un devis, en SVG, ou ``None``.
 
     **UNE SEULE VÉRITÉ.** Le schéma a longtemps existé en deux exemplaires qui
@@ -705,11 +976,22 @@ def rendre_schema_du_devis(devis):
     conception — et affichait donc autre chose que la nomenclature imprimée
     juste dessous. Les deux appelants passent maintenant ICI.
 
-    LA CONCEPTION STOCKÉE EST LE PORTAIL : sans ``Devis.electrical_design``
-    (PV41), on rend ``None`` — jamais une esquisse fabriquée à la volée. Le SVG
-    lui-même est re-RENDU depuis les mêmes entrées (le calcul est pur et
-    idempotent par empreinte), parce que le rendu demande les objets du moteur,
-    que le contrat stocké ne conserve pas.
+    **L-1V (fondateur 24/08/2026) — LA CONCEPTION STOCKÉE EST LA SOURCE, PLUS
+    SEULEMENT LE PORTAIL.** Jusqu'ici, l'artefact ne servait que de laissez-
+    passer : sa présence autorisait le dessin, mais le dessin lui-même était
+    RECALCULÉ depuis les lignes COURANTES du devis (``construire_entree`` +
+    ``concevoir``). Deux surfaces de la même page lisaient donc deux vérités —
+    la planche parlait des lignes d'aujourd'hui, la fiche technique de l'étude
+    rangée hier — et rien ne pouvait le signaler. Le contrat porte désormais
+    tout ce que le dessin réclame (``materiel``, repères de câble, estampille),
+    et le SVG se reconstruit à partir de LUI
+    (``objets_moteur_depuis_contrat``) : le schéma ne peut plus montrer un
+    organe absent de l'étude, ni en taire un qu'elle porte.
+
+    ``standard`` — niveau de partage « standard » : désignations, quantités et
+    repères, jamais un calibre ni une section (L-NIV). La dégradation est faite
+    par le moteur de rendu lui-même, plus par un filtre appliqué au SVG fini
+    (qui laissait les calibres dans les sous-titres des blocs).
 
     Lecture PURE : aucun statut, aucune ligne, aucun prix (règle #4 ; le moteur
     ignore jusqu'à l'existence d'un montant). Jamais bloquant — une étude
@@ -726,32 +1008,37 @@ def rendre_schema_du_devis(devis):
     motif est journalisé et lisible sur l'étude (``conformite.bloquants``,
     ``motifs_non_conformite_du_devis``), le dessin, lui, n'existe pas.
     """
-    if conception_electrique_stockee(devis) is None:
+    design = _artefact_rejouable(devis)
+    if design is None:
         return None
     # PVFCH (fondateur 20/08/2026) — un schéma unifilaire est une pièce
     # technique remise au gestionnaire de réseau : il ne se dessine JAMAIS avec
     # une tension maximale, une fenêtre MPPT ou un Isc inventés. Fiche
-    # incomplète ⇒ pas de schéma, comme un devis sans calepinage.
+    # incomplète ⇒ pas de schéma, comme un devis sans calepinage. Ce portail
+    # lit les fiches COURANTES : c'est un REFUS, jamais une source de dessin —
+    # il peut faire disparaître la planche, jamais en changer un trait.
     if fiches_manquantes_du_devis(devis):
         return None
-    from core.electrique import concevoir
     from core.electrique.schema import rendre_schema
 
-    entree = construire_entree(devis)
-    if not entree.groupes:
-        return None
-
-    resultat = concevoir(entree)
-    # DEV-202608-0016 — CONFORMITÉ : le rendu lit enfin le verdict qu'il
-    # ignorait. Même omission que PVFCH (``None``, jamais une erreur, jamais
-    # une esquisse de repli), mais le motif est JOURNALISÉ : un schéma qui
-    # disparaît sans laisser de trace est indébuggable.
-    if resultat.conformite.bloquants:
+    # DEV-202608-0016 — CONFORMITÉ : le verdict lu est celui de L'ÉTUDE RANGÉE
+    # (``motifs_non_conformite_du_devis`` lit la même source), plus celui d'un
+    # calcul refait à la volée. Même omission que PVFCH (``None``, jamais une
+    # erreur, jamais une esquisse de repli), mais le motif est JOURNALISÉ : un
+    # schéma qui disparaît sans laisser de trace est indébuggable.
+    bloquants = ((design.get("conformite") or {}).get("bloquants")
+                 if isinstance(design.get("conformite"), dict) else None)
+    if bloquants:
         logger.warning(
             "DEV-202608-0016 : schéma unifilaire NON rendu pour le devis %s — "
             "%s", getattr(devis, "pk", None),
-            MOTIF_NON_CONFORME % resultat.conformite.bloquants[0])
+            MOTIF_NON_CONFORME % bloquants[0])
         return None
+
+    objets = objets_moteur_depuis_contrat(design)
+    if objets is None:
+        return None
+    entree, resultat = objets
 
     date_creation = getattr(devis, "date_creation", None)
     cartouche = {
@@ -759,7 +1046,8 @@ def rendre_schema_du_devis(devis):
         "reference": getattr(devis, "reference", "") or "",
         "date": date_creation.strftime("%d/%m/%Y") if date_creation else "",
     }
-    return rendre_schema(entree, resultat, cartouche=cartouche)
+    return rendre_schema(entree, resultat, cartouche=cartouche,
+                         standard=standard)
 
 
 def build_electrical_design(devis, *, overrides=None):

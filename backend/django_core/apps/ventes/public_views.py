@@ -10,7 +10,6 @@ IP + jeton (throttle cache-based, sans dépendance externe ni rendu modifié).
 """
 import logging
 import math
-import re
 
 from django.db import models
 from django.db.models import F
@@ -714,7 +713,7 @@ def _safe_roof_layout(devis) -> dict | None:
     return safe or None
 
 
-def _safe_sld_svg(devis):
+def _safe_sld_svg(devis, standard=False):
     """PV81 — schéma unifilaire CLIENT-SAFE de la proposition (SVG, ou None).
 
     Même discipline que ``_safe_roof_layout`` : on ne publie que ce qui est
@@ -725,55 +724,34 @@ def _safe_sld_svg(devis):
     puissance, régime) ; ni montant, ni marge, ni note interne n'y ont accès,
     et un test l'arme.
 
-    LA CONCEPTION STOCKÉE EST LE PORTAIL : sans ``Devis.electrical_design``
-    (PV41), on retourne ``None`` — le client ne voit un schéma que lorsque
-    l'étude a réellement été faite, jamais une esquisse fabriquée à la volée.
-    Le SVG lui-même est re-RENDU depuis les mêmes entrées (le calcul est pur et
-    idempotent par empreinte, cf. ``electrical_service``), parce que le rendu
-    demande les objets du moteur, que le contrat stocké ne conserve pas.
+    L-1V (fondateur 24/08/2026) — LA CONCEPTION STOCKÉE EST LA SOURCE : le SVG
+    se reconstruit depuis ``Devis.electrical_design`` (l'artefact porte
+    désormais tout ce que le dessin réclame), il n'est plus recalculé depuis les
+    lignes courantes du devis. C'est ce recalcul qui faisait diverger la planche
+    et la fiche technique de la MÊME page.
 
-    Lecture pure : rien n'est écrit (aucun statut, aucune ligne — règle #4).
-    Jamais bloquant : une étude illisible rend ``None``, pas une erreur 500.
+    ``standard`` (L-NIV) — le niveau de partage « standard » est appliqué PAR LE
+    MOTEUR DE RENDU (désignations, quantités, repères ; jamais un calibre ni une
+    section), plus par un filtre texte sur le SVG fini : ce filtre ôtait le
+    tableau de nomenclature ENTIER mais laissait les calibres écrits dans les
+    sous-titres des blocs — le même lien cachait le calibre dans sa liste et
+    l'affichait sur son schéma.
+
+    Lecture pure côté client : rien de métier n'est écrit (aucun statut, aucune
+    ligne, aucun prix — règle #4 ; seul un artefact d'un format antérieur est
+    rejoué une fois, cf. ``electrical_service._artefact_rejouable``). Jamais
+    bloquant : une étude illisible rend ``None``, pas une erreur 500.
     """
     try:
         from .electrical_service import rendre_schema_du_devis
 
         # PVSLD — une seule vérité : la page client et l'annexe du PDF rendent
         # désormais le MÊME schéma (celui du moteur, avec ses protections).
-        return rendre_schema_du_devis(devis)
+        return rendre_schema_du_devis(devis, standard=standard)
     except Exception:  # noqa: BLE001 — un schéma absent ne casse pas la page
         logger.warning("PV81 : schéma unifilaire indisponible pour le devis %s",
                        getattr(devis, "pk", None))
         return None
-
-
-#: L-NIV (fondateur 24/08/2026) — le bloc « Nomenclature des équipements »
-#: rendu par ``core.electrique.schema._tableau`` est toujours le SEUL bloc de
-#: la planche qui commence par ce titre exact ; il est TOUJOURS immédiatement
-#: suivi du cartouche (``_cartouche``), qui commence par un second ``<rect``.
-#: On peut donc l'ôter par un simple filtre texte, SANS toucher au moteur
-#: ``core.electrique`` (hors périmètre de cette lane — apps/ventes seul) :
-#: on retire tout depuis le ``<rect`` qui précède le titre jusqu'au ``<rect``
-#: suivant (celui du cartouche), non-inclus. Le marqueur est stable — un
-#: test l'arme (si le libellé change côté moteur, le filtre redevient un
-#: no-op visible en test, jamais un crash silencieux).
-_SLD_NOMENCLATURE_RE = re.compile(
-    r'<rect[^>]*/>\s*<text[^>]*>Nomenclature des équipements</text>.*?(?=<rect)',
-    re.DOTALL,
-)
-
-
-def _standard_sld_svg(svg):
-    """L-NIV — dégrade un schéma unifilaire SVG en TOPOLOGIE simplifiée.
-
-    Retire le tableau « Nomenclature des équipements » (repères, calibres,
-    sections, quantités) — les BLOCS d'organes, leurs libellés (marques/
-    modèles compris — décision fondateur : les marques restent visibles dans
-    LES DEUX niveaux) et le tracé restent identiques. ``None``/chaîne vide en
-    entrée → ``None`` en sortie (même contrat que ``_safe_sld_svg``)."""
-    if not svg:
-        return None
-    return _SLD_NOMENCLATURE_RE.sub('', svg)
 
 
 #: Décision fondateur 2026-08-18 — LE DÉTAIL ÉLECTRIQUE EST EXPOSÉ AU CLIENT,
@@ -848,6 +826,17 @@ def _conception_electrique_publique(devis, niveau=ShareLink.NIVEAU_CONFIANCE):
     JAMAIS dégradés, décision fondateur), seule l'ingénierie fine (« quel
     calibre install poser », « quelle section de câble ») disparaît.
 
+    **L-1V (24/08/2026) — LE PAYLOAD SORT PRÉ-ROUTÉ.** Aux deux niveaux, la
+    charge porte ``protections`` (TOUS les organes, dans l'ordre du moteur) ET
+    les trois groupes ``protections_dc`` / ``protections_ac`` /
+    ``protections_communes``, découpés sur le ``cote`` que le MOTEUR a posé sur
+    chaque organe. La page n'a plus rien à deviner : elle affichait jusqu'ici le
+    côté d'un organe en cherchant « dc » dans sa désignation, et le jour où
+    l'anticopie a fusionné les lignes du kit en un seul « Kit de fixation,
+    câblage et protection complet », TOUS les organes continus (fusibles gPV,
+    parafoudre DC, sectionneur DC) ont disparu de la fiche du client pendant que
+    le schéma de la même page continuait de les dessiner.
+
     Ce qui NE SORT JAMAIS, quel que soit le niveau : ``bom`` (nomenclature
     d'achat), ``parametres`` (entrées du calcul), ``conformite``/``ratio_*``
     (verdicts d'ingénierie), les tensions de chaîne et la chute de tension par
@@ -858,17 +847,24 @@ def _conception_electrique_publique(devis, niveau=ShareLink.NIVEAU_CONFIANCE):
     ``None``, pas une erreur 500.
     """
     try:
-        from .electrical_service import conception_electrique_stockee
+        from .electrical_service import (
+            conception_electrique_stockee, groupes_protections)
+        from core.electrique.types import COTE_AC, COTE_COMMUN, COTE_DC
 
         design = conception_electrique_stockee(devis)
         if not design:
             return None
         standard = niveau == ShareLink.NIVEAU_STANDARD
+        champs = (_PUBLIC_PROTECTION_STANDARD if standard
+                  else _PUBLIC_PROTECTION)
+        groupes = groupes_protections(design)
         public = {
             'chaines': _liste_blanche(design.get('chaines'), _PUBLIC_CHAINE),
-            'protections': _liste_blanche(
-                design.get('protections'),
-                _PUBLIC_PROTECTION_STANDARD if standard else _PUBLIC_PROTECTION),
+            'protections': _liste_blanche(design.get('protections'), champs),
+            'protections_dc': _liste_blanche(groupes[COTE_DC], champs),
+            'protections_ac': _liste_blanche(groupes[COTE_AC], champs),
+            'protections_communes': _liste_blanche(
+                groupes[COTE_COMMUN], champs),
         }
         if not standard:
             public['cables'] = _liste_blanche(design.get('cables'), _PUBLIC_CABLE)
@@ -1898,17 +1894,16 @@ def proposal_data(request, token):
             # le moteur électrique SANS AUCUN PRIX (il n'en connaît aucun).
             # None tant que la conception électrique (PV41) n'a pas été faite :
             # le client ne voit un schéma que lorsqu'il en existe un vrai.
-            # L-NIV — niveau « standard » : topologie simplifiée, sans le
-            # tableau « Nomenclature des équipements » (calibres/sections).
+            # L-NIV — niveau « standard » : topologie simplifiée. MÊME RÈGLE
+            # QUE LA LISTE : désignations, quantités et repères restent (le
+            # client doit pouvoir NOMMER ce qu'il a), calibres et sections
+            # partent — des blocs COMME du tableau de nomenclature.
             # L-SECT — case « Schéma unifilaire » décochée → la clé vaut None
             # (la page omet le bloc, elle sait déjà le faire sur un devis sans
             # conception électrique). Le détail `conception_electrique`
             # ci-dessous part avec elle : c'est LA MÊME section pour le client.
             'sld_svg': (
-                (
-                    _standard_sld_svg(_safe_sld_svg(devis))
-                    if est_standard else _safe_sld_svg(devis)
-                )
+                _safe_sld_svg(devis, standard=est_standard)
                 if _section_servie(link, 'sld') else None
             ),
             # Fondateur 2026-08-18 — le DÉTAIL ÉLECTRIQUE, exposé au client

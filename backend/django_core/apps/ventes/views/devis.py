@@ -553,12 +553,14 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         # (``inchange``) n'annonce rien : il ne s'est rien passé.
         if not (isinstance(resultat, dict) and resultat.get('inchange')):
             _emettre_layout_finalise(devis, request.user)
-            # CJ2b — les lignes viennent d'être resynchronisées (quantités de
-            # panneaux, batterie, onduleur) : le bloc horaire canonique doit
-            # repartir de cette composition COURANTE (best-effort, jamais
-            # bloquant — voir la docstring de la fonction).
-            from ..services import rafraichir_etude_horaire_devis
-            rafraichir_etude_horaire_devis(devis)
+            # CJ2b / L-1V — les lignes viennent d'être resynchronisées
+            # (quantités de panneaux, batterie, onduleur) : les QUATRE études
+            # doivent repartir de cette composition COURANTE — pas seulement le
+            # bloc horaire, sans quoi le schéma unifilaire de la page client
+            # décrirait la composition d'avant (best-effort, jamais bloquant —
+            # voir ``services.rafraichir_etudes_du_devis``).
+            from ..services import rafraichir_etudes_du_devis
+            rafraichir_etudes_du_devis(devis)
         return Response(resultat)
 
     @action(detail=True, methods=['get', 'post'],
@@ -819,28 +821,13 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         # déclenchait. HORS de la transaction ci-dessus, best-effort (voir la
         # docstring des deux fonctions) : un devis correctement créé ne doit
         # jamais être annulé par une étude.
-        from ..services import (
-            rafraichir_dimensionnement_devis, rafraichir_etude_horaire_devis)
-        rafraichir_etude_horaire_devis(devis, force=True)
-        rafraichir_dimensionnement_devis(devis, force=True)
-        # L-PCMP (24/08/2026) — les TROIS variantes d'occupation servies à la
-        # page publique (« et si j'étais absent en journée ? »). Posé APRÈS le
-        # dimensionnement à dessein : le profil RÉEL réutilise alors le tableau
-        # qui vient d'être calculé au lieu d'en refaire un — deux balayages au
-        # lieu de trois. Best-effort et jamais bloquant, comme les deux
-        # au-dessus (un balayage est le calcul le plus lourd du devis).
-        from ..profils_comparatifs import rafraichir_profils_comparatifs_devis
-        rafraichir_profils_comparatifs_devis(devis, force=True)
-        # L-SLD (24/08/2026) — MÊME TROU, TROISIÈME ÉTUDE : la conception
-        # électrique n'était produite QUE par l'ouverture de l'onglet
-        # « Conception électrique ». Un devis créé ici et jamais ouvert
-        # n'avait donc pas de schéma unifilaire sur la page client ni dans
-        # l'annexe du PDF, faute d'``electrical_design``. Best-effort et
-        # trois portails (modules, fiches complètes, conformité) dans le
-        # service : rien n'est rangé si rien n'est dessinable.
-        from ..electrical_service import (
-            rafraichir_conception_electrique_devis)
-        rafraichir_conception_electrique_devis(devis)
+        # L-1V (24/08/2026) — LES QUATRE ÉTUDES EN UN SEUL GESTE : la liste
+        # recopiée ici (et une deuxième fois dans ``replace_lines``, et une
+        # TROISIÈME, incomplète, dans ``LigneDevisViewSet``) vit maintenant
+        # dans ``services.rafraichir_etudes_du_devis``. Une étude ajoutée
+        # demain part sur les trois chemins d'écriture, ou sur aucun.
+        from ..services import rafraichir_etudes_du_devis
+        rafraichir_etudes_du_devis(devis, force=True)
         return Response(DevisSerializer(
             devis, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
@@ -890,29 +877,12 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         # ``etude_params`` peuvent avoir changé dans le même enregistrement.
         # HORS de la transaction ci-dessus, et best-effort : un devis
         # correctement remplacé ne doit jamais être annulé par une étude.
-        from ..services import (
-            rafraichir_dimensionnement_devis, rafraichir_etude_horaire_devis)
-        rafraichir_etude_horaire_devis(devis, force=True)
-        # T5 (24/08/2026) — le TABLEAU de dimensionnement (falaise, tranche
-        # visée, régime batterie) suit le même chemin d'enregistrement : le
-        # profil (factures/occupation/équipements) peut avoir changé dans le
-        # même PATCH, best-effort, jamais bloquant.
-        rafraichir_dimensionnement_devis(devis, force=True)
-        # L-PCMP (24/08/2026) — les TROIS variantes d'occupation servies à la
-        # page publique (« et si j'étais absent en journée ? »). Posé APRÈS le
-        # dimensionnement à dessein : le profil RÉEL réutilise alors le tableau
-        # qui vient d'être calculé au lieu d'en refaire un — deux balayages au
-        # lieu de trois. Best-effort et jamais bloquant, comme les deux
-        # au-dessus (un balayage est le calcul le plus lourd du devis).
-        from ..profils_comparatifs import rafraichir_profils_comparatifs_devis
-        rafraichir_profils_comparatifs_devis(devis, force=True)
-        # L-SLD (24/08/2026) — la composition vient de changer : l'étude
-        # électrique doit décrire les lignes COURANTES (empreinte différente ⇒
-        # recalcul, empreinte identique ⇒ aucune écriture). Best-effort, même
-        # place et mêmes garde-fous qu'à la création.
-        from ..electrical_service import (
-            rafraichir_conception_electrique_devis)
-        rafraichir_conception_electrique_devis(devis)
+        # L-1V (24/08/2026) — LES QUATRE ÉTUDES EN UN SEUL GESTE (bloc horaire,
+        # dimensionnement, profils comparatifs, conception électrique) : voir
+        # ``services.rafraichir_etudes_du_devis``. La composition vient de
+        # changer, les quatre études doivent décrire les lignes COURANTES.
+        from ..services import rafraichir_etudes_du_devis
+        rafraichir_etudes_du_devis(devis, force=True)
         return Response(DevisSerializer(
             devis, context={'request': request}).data)
 
