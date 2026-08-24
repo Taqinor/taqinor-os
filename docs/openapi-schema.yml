@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 9415, operations: 16926, components: 4947}
+counts: {paths: 9421, operations: 16932, components: 4949}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -6078,6 +6078,8 @@ operations:
 - post /api/django/public/proposal/{token}/contact/ -> django_public_proposal_contact_create
 - get /api/django/public/proposal/{token}/data/ -> django_public_proposal_data_retrieve
 - post /api/django/public/proposal/{token}/engagement/ -> django_public_proposal_engagement_create
+- post /api/django/public/proposal/{token}/otp-lecture/demander/ -> django_public_proposal_otp_lecture_demander_create
+- post /api/django/public/proposal/{token}/otp-lecture/verifier/ -> django_public_proposal_otp_lecture_verifier_create
 - post /api/django/public/proposal/{token}/otp/ -> django_public_proposal_otp_create
 - get /api/django/public/proposal/{token}/pdf/ -> django_public_proposal_pdf_retrieve
 - post /api/django/public/proposal/{token}/virement/ -> django_public_proposal_virement_create
@@ -8435,6 +8437,8 @@ operations:
 - post /api/django/ventes/proposal/{token}/activer-option/ -> django_ventes_proposal_activer_option_create
 - post /api/django/ventes/proposal/{token}/contact/ -> django_ventes_proposal_contact_create
 - post /api/django/ventes/proposal/{token}/engagement/ -> django_ventes_proposal_engagement_create
+- post /api/django/ventes/proposal/{token}/otp-lecture/demander/ -> django_ventes_proposal_otp_lecture_demander_create
+- post /api/django/ventes/proposal/{token}/otp-lecture/verifier/ -> django_ventes_proposal_otp_lecture_verifier_create
 - post /api/django/ventes/proposal/{token}/otp/ -> django_ventes_proposal_otp_create
 - get /api/django/ventes/proposal/{token}/pdf/ -> django_ventes_proposal_pdf_retrieve
 - post /api/django/ventes/proposal/{token}/virement/ -> django_ventes_proposal_virement_create
@@ -16890,6 +16894,8 @@ operations:
 - post /api/v1/ventes/proposal/{token}/activer-option/ -> v1_ventes_proposal_activer_option_create
 - post /api/v1/ventes/proposal/{token}/contact/ -> v1_ventes_proposal_contact_create
 - post /api/v1/ventes/proposal/{token}/engagement/ -> v1_ventes_proposal_engagement_create
+- post /api/v1/ventes/proposal/{token}/otp-lecture/demander/ -> v1_ventes_proposal_otp_lecture_demander_create
+- post /api/v1/ventes/proposal/{token}/otp-lecture/verifier/ -> v1_ventes_proposal_otp_lecture_verifier_create
 - post /api/v1/ventes/proposal/{token}/otp/ -> v1_ventes_proposal_otp_create
 - get /api/v1/ventes/proposal/{token}/pdf/ -> v1_ventes_proposal_pdf_retrieve
 - post /api/v1/ventes/proposal/{token}/virement/ -> v1_ventes_proposal_virement_create
@@ -17989,6 +17995,8 @@ components:
 - EnvoiCampagneStatutEnum
 - EpiCatalogue
 - EpiCatalogueRequest
+- EquipChauffeEauCreneauEnum
+- EquipVeCreneauEnum
 - Equipe
 - EquipeCommerciale
 - EquipeCommercialeRequest

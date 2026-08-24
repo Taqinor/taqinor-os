@@ -89,7 +89,10 @@ TIMESTAMP_AS_DATEFIELD_ALLOWLIST = {
     # insertions successives dans crm/models.py (fusion de deux sessions
     # parallèles le 14/08/2026). Une seule entrée désormais, les doublons
     # périmés ci-dessous ayant été retirés. Bug-class #34.
-    "backend/django_core/apps/crm/models.py:2210",  # CommissionPartenaire.paye_le
+    # Remappé 2210->2276 (lot moteur 24/08 : +66 lignes — champs équipements
+    # Lead 0079 insérés AVANT CommissionPartenaire) — MÊME champ, déclaration
+    # identique avant/après (vérifié contre origin/main). Bug-class #34.
+    "backend/django_core/apps/crm/models.py:2276",  # CommissionPartenaire.paye_le
     # Remappé 2017->2027 (lanes NTCRM14-30 : +10 lignes insérées avant
     # CommissionPartenaire dans crm/models.py) — MÊME champ, déclaration
     # identique avant/après (vérifié contre origin/main), pas un nouveau site.
