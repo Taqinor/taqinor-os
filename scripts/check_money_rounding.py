@@ -52,10 +52,14 @@ BASELINE_ALLOWLIST = {
     # Recalées par CONTENU sur l'arbre INTÉGRÉ du 24/08/2026 (L-TRI +49 et
     # L-FORFAIT +84 lignes ont décalé le fichier ; leurs recalages faits
     # chacun dans son worktree se contredisaient — vraies lignes relues).
+    # 2026-08-24 (soir) — DEUX ENTRÉES RECALÉES sur l'arbre intégré L-2OPT
+    # (+~26/+31 lignes de préservation « Les deux » dans sync_devis_from_layout
+    # au-dessus d'elles) : 3213→3239, 3300→3331. Vérifié par contenu (mêmes
+    # formules kWc `round(total_panneaux * watt / 1000.0, 3)`, main vs arbre).
     "backend/django_core/apps/ventes/services.py:1033",
     "backend/django_core/apps/ventes/services.py:1036",
-    "backend/django_core/apps/ventes/services.py:3213",
-    "backend/django_core/apps/ventes/services.py:3300",
+    "backend/django_core/apps/ventes/services.py:3239",
+    "backend/django_core/apps/ventes/services.py:3331",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1906",  # QJ29 multi-villa ×N (réécrit PVUNI, formule préexistante revue)
     "backend/django_core/apps/ventes/quote_engine/builder.py:1926",  # total_ttc ligne gamme (réécrit PVUNI, formule préexistante revue)
     "backend/django_core/apps/ventes/quote_engine/builder.py:644",
