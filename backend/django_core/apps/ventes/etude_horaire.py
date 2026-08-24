@@ -15,6 +15,17 @@ RÉEL, heure par heure, entre :
   d'appel, ``crm.Lead.occupation_jour``) + couches d'équipement (piscine, clim,
   véhicule électrique), mise à l'échelle de la facture RÉELLE de CE mois-là.
 
+L-ECO (24/08/2026) — LA SILHOUETTE DE CONSOMMATION SUIT MAINTENANT LA SAISON,
+ET LE RAMADAN. Jusqu'ici, ``saison=`` n'activait que les couches d'équipement :
+la FORME de base était la même de janvier à décembre. Elle porte désormais
+(1) la fenêtre de pointe ONEE de la saison (18h-23h en été, 17h-22h en hiver —
+one.org.ma : la pointe recule d'une heure l'hiver) et (2) la journée de Ramadan
+pour la PART du mois qui tombe dans la plage, à la fenêtre imsak/iftar calculée
+par date et au point GPS du chantier (:mod:`apps.ventes.ramadan`). Ce sont des
+PERMUTATIONS et des modulations RE-NORMALISÉES : le NIVEAU reste la facture du
+mois, seule l'heure à laquelle l'énergie se consomme bouge — donc seule change
+la part qui croise le soleil.
+
 MOIS PAR MOIS, jamais une moyenne annuelle : c'est là que vit la saisonnalité
 que le fondateur réclame. Un été où la production culmine PENDANT que la
 climatisation tourne n'a rien à voir avec un hiver où la pointe de consommation
@@ -60,6 +71,8 @@ from __future__ import annotations
 import logging
 import math
 
+from django.utils import timezone
+
 from apps.parametres.pvgis_profils import (
     JOURS_PAR_MOIS,
     MOIS_PAR_SAISON,
@@ -69,6 +82,7 @@ from apps.parametres.pvgis_profils import (
     vers_heure_locale,
 )
 from apps.ventes.courbes_journalieres import (
+    contexte_ramadan_du_mois,
     equipements_du_devis,
     forme_consommation_detaillee,
     occupation_du_devis,
@@ -868,7 +882,8 @@ def simuler_batterie_pas_fins(pas, capacite_kwh_utile, *,
 # ════════════════════════════════════════════════════════════════════════════
 
 def jours_types_annee(*, kwc, conso_kwh_mensuelles, ville=None, lat=None,
-                      lon=None, occupation=None, equipements=None):
+                      lon=None, occupation=None, equipements=None,
+                      jour_reference=None):
     """Les DOUZE JOURS TYPES d'une installation : consommation et production 24 h.
 
     SOURCE UNIQUE des courbes horaires du moteur. :func:`calculer_etude_horaire`
@@ -909,6 +924,17 @@ def jours_types_annee(*, kwc, conso_kwh_mensuelles, ville=None, lat=None,
     avertissements = []
     jours_types = []
 
+    # L-ECO — LE RAMADAN QUE CE CLIENT VA VIVRE, pas un Ramadan moyen. La
+    # fenêtre (imsak/iftar) est calculée par DATE et au point GPS du chantier,
+    # exactement comme l'affichage le fait déjà côté page
+    # (``apps/web/src/lib/dayProfiles.ts``) ; ``contexte_ramadan_du_mois`` dit
+    # ensuite quelle PART de chaque mois tombe dans la plage. Hors table
+    # (après 2033) ⇒ ``None``, et le moteur retrouve EXACTEMENT son
+    # comportement d'avant cette couche : on n'affirme rien qu'on ne sache.
+    _jour_ref = jour_reference or timezone.localdate()
+    contexte_ramadan = contexte_ramadan_du_mois(
+        _jour_ref, lat=lat, lon=lon, ville=ville) or {}
+
     for index in range(12):
         numero = index + 1
         saison = saison_du_mois(numero)
@@ -936,7 +962,8 @@ def jours_types_annee(*, kwc, conso_kwh_mensuelles, ville=None, lat=None,
         conso_mois_kwh = conso_mois[index]
         conso_jour_kwh = conso_mois_kwh / jours if jours else 0.0
         conso_24h, couches_horaires = forme_consommation_detaillee(
-            conso_jour_kwh, occupation, saison=saison, equipements=couches)
+            conso_jour_kwh, occupation, saison=saison, equipements=couches,
+            ramadan=contexte_ramadan.get(numero))
 
         # L-GLITCH — la chronologie FINE du même jour type, posée ICI et nulle
         # part ailleurs : le balayage du stockage (DIM2) et l'étude complète

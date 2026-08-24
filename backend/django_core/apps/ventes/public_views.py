@@ -26,6 +26,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 
+from .economies_periodes import construire_economies_periodes
 from .models import PaymentLink, ShareLink
 from .quote_engine import clean_pdf_options, generate_premium_devis_pdf
 # ── Profil saisonnier de production solaire au Maroc (T4) ────────────────────
@@ -2087,6 +2088,22 @@ def proposal_data(request, token):
                     if _section_servie(link, 'economies') else None)
         if _profils is not None:
             payload['profils_comparatifs'] = _profils
+        # L-ECO (fondateur, 24/08/2026) — le bandeau d'économies sous le graphe
+        # « Sur une journée » : jour type affiché, mois, ANNÉE (invariante par
+        # saison) et retour sur investissement, déclinés par profil
+        # d'occupation. AUCUN nouveau calcul : le bloc DÉCLINE les douze valeurs
+        # de `economies_mensuelles` ci-dessus (source unique — deux séries
+        # finiraient par se contredire dans la même page) et reprend le retour
+        # sur investissement DÉJÀ servi (`quote.roi_s`/`roi_a`). Même patron
+        # additif, et même section que les économies : si `sections.economies`
+        # est décochée, ce bandeau ne part pas non plus.
+        _periodes = (
+            construire_economies_periodes(data, _economies,
+                                          _etude_params_devis)
+            if (_economies is not None
+                and _section_servie(link, 'economies')) else None)
+        if _periodes is not None:
+            payload['economies_periodes'] = _periodes
         _estimation = _estimation_conso_publique(devis)
         if _estimation is not None:
             payload['estimation_conso'] = _estimation
