@@ -53,11 +53,12 @@ export function I18nProvider({ children }) {
     applyDocumentAttrs(value)
   }, [])
 
-  // t(key, vars?) : surcharge(locale) → statique(locale) → statique(FR) → clé.
-  // Quand `overrides` est vide, resolveValue est byte-identique au comportement
-  // statique N93 (garde-fou anti-régression).
-  const t = useCallback((key, vars) =>
-    interpolate(resolveValue(key, locale, overrides), vars),
+  // t(key, vars?, fallback?) : surcharge(locale) → statique(locale) →
+  // statique(FR) → fallback (si fourni) → clé. Quand `overrides` est vide et
+  // qu'aucun `fallback` n'est passé, resolveValue est byte-identique au
+  // comportement statique N93 (garde-fou anti-régression).
+  const t = useCallback((key, vars, fallback) =>
+    interpolate(resolveValue(key, locale, overrides, fallback), vars),
   [locale, overrides])
 
   const value = useMemo(() => ({
