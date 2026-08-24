@@ -14,6 +14,7 @@ Couvre :
 from datetime import timedelta
 
 from django.conf import settings
+from django.core.cache import cache
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.core.management.base import CommandError
@@ -32,6 +33,12 @@ class TestAuthCookieCsrfStrategy(TestCase):
     en silence (retour à Strict cassant iOS, ou passage dangereux à None)."""
 
     def setUp(self):
+        # Le throttle de connexion (5/min) vit dans le cache, PARTAGÉ entre les
+        # tests d'un même processus : selon la composition du shard, les logins
+        # des classes voisines font monter le compteur et /token/ rend 429 au
+        # lieu du statut attendu (même patron que tests_2fa /
+        # tests_sessions_rotation).
+        cache.clear()
         self.company = Company.objects.create(nom='Cookie Co', slug='cookie-co')
         self.user = User.objects.create_user(
             username='cookie_user', password='secretpass1',
@@ -102,6 +109,9 @@ class TestLoginAuditActorNormalization(TestCase):
     de la chaîne brute (casse différente) fournie par le client."""
 
     def setUp(self):
+        # Même garde anti-429 que TestAuthCookieCsrfStrategy : le compteur du
+        # throttle de connexion ne doit rien hériter des tests voisins.
+        cache.clear()
         self.company = Company.objects.create(nom='Audit Co', slug='audit-co')
         self.user = User.objects.create_user(
             username='AuditUser', password='secretpass1',

@@ -823,6 +823,14 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             rafraichir_dimensionnement_devis, rafraichir_etude_horaire_devis)
         rafraichir_etude_horaire_devis(devis, force=True)
         rafraichir_dimensionnement_devis(devis, force=True)
+        # L-PCMP (24/08/2026) — les TROIS variantes d'occupation servies à la
+        # page publique (« et si j'étais absent en journée ? »). Posé APRÈS le
+        # dimensionnement à dessein : le profil RÉEL réutilise alors le tableau
+        # qui vient d'être calculé au lieu d'en refaire un — deux balayages au
+        # lieu de trois. Best-effort et jamais bloquant, comme les deux
+        # au-dessus (un balayage est le calcul le plus lourd du devis).
+        from ..profils_comparatifs import rafraichir_profils_comparatifs_devis
+        rafraichir_profils_comparatifs_devis(devis, force=True)
         # L-SLD (24/08/2026) — MÊME TROU, TROISIÈME ÉTUDE : la conception
         # électrique n'était produite QUE par l'ouverture de l'onglet
         # « Conception électrique ». Un devis créé ici et jamais ouvert
@@ -890,6 +898,14 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         # profil (factures/occupation/équipements) peut avoir changé dans le
         # même PATCH, best-effort, jamais bloquant.
         rafraichir_dimensionnement_devis(devis, force=True)
+        # L-PCMP (24/08/2026) — les TROIS variantes d'occupation servies à la
+        # page publique (« et si j'étais absent en journée ? »). Posé APRÈS le
+        # dimensionnement à dessein : le profil RÉEL réutilise alors le tableau
+        # qui vient d'être calculé au lieu d'en refaire un — deux balayages au
+        # lieu de trois. Best-effort et jamais bloquant, comme les deux
+        # au-dessus (un balayage est le calcul le plus lourd du devis).
+        from ..profils_comparatifs import rafraichir_profils_comparatifs_devis
+        rafraichir_profils_comparatifs_devis(devis, force=True)
         # L-SLD (24/08/2026) — la composition vient de changer : l'étude
         # électrique doit décrire les lignes COURANTES (empreinte différente ⇒
         # recalcul, empreinte identique ⇒ aucune écriture). Best-effort, même

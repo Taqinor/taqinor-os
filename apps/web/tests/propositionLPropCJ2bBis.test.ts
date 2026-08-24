@@ -250,7 +250,13 @@ describe('[...token].astro — les trois nouveaux blocs se masquent quand rien n
   });
 
   it('les 3 silhouettes ne rendent rien sans occupation client connue', () => {
-    expect(CODE).toContain("curveMode === 'residentiel' && clientOccupancyChoice && (");
+    // L-PCMP (24/08/2026) — la carte s'ouvre AUSSI quand le moteur sert le
+    // comparatif des 3 comportements (`profils_comparatifs`), même si le
+    // drapeau d'occupation du client est absent : c'est le seul ajout à la
+    // garde. Sans NI l'un NI l'autre, elle ne rend toujours rien.
+    expect(CODE).toContain(
+      "curveMode === 'residentiel' && (clientOccupancyChoice || occScenarios) && (",
+    );
   });
 
   it('« Une journée type » ne rend rien tant que `jours_types` est absent', () => {

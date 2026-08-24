@@ -1284,6 +1284,111 @@ def _batterie_regime_publique(dimensionnement, bloc_horaire):
     }
 
 
+#: L-PCMP — la note de méthode des variantes d'occupation, par niveau. Les
+#: CHIFFRES sont EXACTEMENT les mêmes aux deux niveaux (règle fondateur : seul
+#: le texte de méthode se neutralise, jamais un nombre).
+_NOTE_PROFILS_CONFIANCE = (
+    'Simulation sur VOS factures réelles : seule la répartition de votre '
+    'consommation dans la journée change d\'un profil à l\'autre. Calcul '
+    'heure par heure, même moteur que votre devis.')
+_NOTE_PROFILS_STANDARD = (
+    'Simulation sur vos factures : seule la répartition de votre '
+    'consommation dans la journée change d\'un profil à l\'autre.')
+
+
+def _profils_comparatifs_publique(etude_params,
+                                  niveau=ShareLink.NIVEAU_CONFIANCE):
+    """L-PCMP (fondateur, 24/08/2026) — sous-ensemble PUBLIC, client-safe, du
+    bloc ``etude_params['profils_comparatifs']`` posé par
+    ``apps.ventes.profils_comparatifs``.
+
+    Le client change de silhouette d'occupation sur la page et voit les
+    économies de CHAQUE comportement plus l'installation optimale pour
+    celui-là. Les trois blocs sont donc SERVIS CALCULÉS : la page n'a plus
+    qu'à basculer d'affichage, elle ne calcule AUCUNE économie (règle
+    « zéro chiffre inventé » — un chiffre qui apparaît côté client sort du
+    moteur, ou n'apparaît pas).
+
+    Whitelist STRICTE de scalaires (économies MAD, taux, kWc, kWh) : ni
+    ``prix_achat``, ni marge, ni ligne de composition ne peut fuiter par
+    construction. ``None`` quand rien n'est lisible (devis non résidentiel,
+    bloc pas encore posé) — clé alors ABSENTE du payload, la page masque la
+    section entière."""
+    bloc = (etude_params or {}).get('profils_comparatifs')
+    if not isinstance(bloc, dict):
+        return None
+
+    def _num(valeur):
+        if isinstance(valeur, bool) or not isinstance(valeur, (int, float)):
+            return None
+        return float(valeur)
+
+    def _pct(valeur):
+        """Un taux du moteur (0..1) rendu en POURCENTAGE, comme partout
+        ailleurs sur cette page — jamais un ratio brut que la page devrait
+        re-multiplier de son côté."""
+        nombre = _num(valeur)
+        return None if nombre is None else round(nombre * 100, 1)
+
+    def _mad(valeur):
+        nombre = _num(valeur)
+        return None if nombre is None else round(nombre)
+
+    def _optimal(brut):
+        if not isinstance(brut, dict):
+            return None
+        kwc = _num(brut.get('kwc'))
+        if kwc is None or kwc <= 0:
+            return None
+        identique = brut.get('identique_au_devis')
+        return {
+            'kwc': round(kwc, 2),
+            'panneaux': (int(brut['panneaux'])
+                         if isinstance(brut.get('panneaux'), int) else None),
+            'batterie_kwh': _num(brut.get('batterie_kwh')) or 0.0,
+            'avec_batterie': bool(brut.get('avec_batterie')),
+            'economie_mad': _mad(brut.get('economie_mad')),
+            # Tri-état VOULU : True/False quand la comparaison a pu être faite,
+            # None quand le kWc du devis n'était pas lisible — la page se tait
+            # alors plutôt que d'affirmer « déjà optimal ».
+            'identique_au_devis': (identique if isinstance(identique, bool)
+                                   else None),
+        }
+
+    profils = []
+    for entree in bloc.get('profils') or []:
+        if not isinstance(entree, dict):
+            continue
+        occupation = entree.get('occupation')
+        economie_sans = _mad(entree.get('economie_sans_mad'))
+        if not occupation or economie_sans is None:
+            continue
+        profils.append({
+            'occupation': occupation,
+            'est_profil_reel': bool(entree.get('est_profil_reel')),
+            'economie_sans_mad': economie_sans,
+            'economie_avec_mad': _mad(entree.get('economie_avec_mad')),
+            'taux_autoconso_sans_pct': _pct(entree.get('taux_autoconso_sans')),
+            'taux_autoconso_avec_pct': _pct(entree.get('taux_autoconso_avec')),
+            'couverture_sans_pct': _pct(entree.get('couverture_sans')),
+            'couverture_avec_pct': _pct(entree.get('couverture_avec')),
+            'optimal': _optimal(entree.get('optimal')),
+        })
+    if not profils:
+        return None
+    return {
+        'profil_reel': bloc.get('profil_reel'),
+        'kwc_devis': _num(bloc.get('kwc_devis')),
+        'batterie_kwh_devis': _num(bloc.get('batterie_kwh_devis')) or 0.0,
+        'avec_batterie': bool(bloc.get('avec_batterie')),
+        'devise': 'MAD',
+        'profils': profils,
+        'note': (_NOTE_PROFILS_STANDARD
+                 if niveau == ShareLink.NIVEAU_STANDARD
+                 else _NOTE_PROFILS_CONFIANCE),
+    }
+
+
 def _balayage_stockage_publique(dimensionnement):
     """ORDRE FONDATEUR (24/08/2026, soir) — sous-ensemble PUBLIC, client-safe,
     du mini-balayage de stockage (``apps.ventes.dimensionnement`` DIM2) :
@@ -1912,6 +2017,16 @@ def proposal_data(request, token):
         _balayage = _balayage_stockage_publique(_dimensionnement)
         if _balayage is not None:
             payload['balayage_stockage'] = _balayage
+        # L-PCMP (fondateur, 24/08/2026) — « le client doit pouvoir CHANGER son
+        # profil de consommation et voir DIRECTEMENT les économies de chaque
+        # comportement ». Même patron additif que les clés ci-dessus, et MÊME
+        # section que les économies (`sections.economies` décochée ⇒ ni les 12
+        # valeurs mensuelles ni ces variantes ne partent : les deux disent la
+        # même chose au client, elles ne peuvent pas se dégrader séparément).
+        _profils = (_profils_comparatifs_publique(_etude_params_devis, niveau)
+                    if _section_servie(link, 'economies') else None)
+        if _profils is not None:
+            payload['profils_comparatifs'] = _profils
         _estimation = _estimation_conso_publique(devis)
         if _estimation is not None:
             payload['estimation_conso'] = _estimation

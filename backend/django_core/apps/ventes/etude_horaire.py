@@ -2010,7 +2010,7 @@ def _reglages_tarifaires(company):
 
 
 def etude_horaire_pour_devis(devis, *, kwc=None, batterie_kwh_utile=None,
-                             data=None):
+                             data=None, occupation=None):
     """Bloc ``etude_horaire`` d'un devis RÉSIDENTIEL, ou ``None``.
 
     Lit tout ce dont le moteur a besoin sur le devis et son lead — toujours par
@@ -2021,18 +2021,26 @@ def etude_horaire_pour_devis(devis, *, kwc=None, batterie_kwh_utile=None,
     la règle Z2 — l'appelant retombe alors sur le forfait ÉTIQUETÉ de
     ``pricing``, jamais sur un chiffre d'apparence factuelle.
 
+    ``occupation`` — L-PCMP (25/08/2026) : FORCER la silhouette d'occupation au
+    lieu de la lire sur le lead. UNIQUEMENT pour les VARIANTES de simulation de
+    ``apps.ventes.profils_comparatifs`` (« et si j'étais absent en journée ? »),
+    jamais pour le bloc canonique du devis — celui-ci garde le profil RÉEL
+    résolu par ``occupation_du_devis``. Sans ce paramètre, comportement
+    byte-identique à avant.
+
     Ne lève JAMAIS : un calcul d'étude n'empêche pas d'enregistrer un devis.
     """
     try:
         return _etude_horaire_pour_devis(
             devis, kwc=kwc, batterie_kwh_utile=batterie_kwh_utile,
-            data=data or {})
+            data=data or {}, occupation=occupation)
     except Exception:  # noqa: BLE001 — l'étude ne casse jamais un devis
         logger.warning('etude_horaire indisponible', exc_info=True)
         return None
 
 
-def _etude_horaire_pour_devis(devis, *, kwc, batterie_kwh_utile, data):
+def _etude_horaire_pour_devis(devis, *, kwc, batterie_kwh_utile, data,
+                              occupation=None):
     """Cœur de :func:`etude_horaire_pour_devis` (exceptions gérées au-dessus)."""
     from apps.crm.selectors import lead_bills_for_devis, site_location_for_devis
 
@@ -2076,7 +2084,12 @@ def _etude_horaire_pour_devis(devis, *, kwc, batterie_kwh_utile, data):
     contexte = dict(data)
     if not contexte.get('mode_installation'):
         contexte['mode_installation'] = getattr(devis, 'mode_installation', None)
-    occupation, occupation_source = occupation_du_devis(devis, contexte)
+    if occupation:
+        # L-PCMP — variante DEMANDÉE par l'appelant : la silhouette est imposée,
+        # et la source le DIT (jamais présentée comme le profil du client).
+        occupation_source = 'variante_demandee:%s' % occupation
+    else:
+        occupation, occupation_source = occupation_du_devis(devis, contexte)
     equipements = equipements_du_devis(devis)
 
     # LA BATTERIE VIENT DU DEVIS RÉEL. Sans cela, un devis « deux options »
