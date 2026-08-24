@@ -429,6 +429,21 @@ class Lead(SoftDeleteModel):
         ABSENT = 'absent', 'Absent en journée'
         PARTIEL = 'partiel', 'Présence partielle (télétravail/mi-temps)'
 
+    # L-BACK (24/08/2026) — créneaux du script d'appel pour chauffe-eau/VE.
+    # Voir apps/ventes/courbes_journalieres.py pour les fenêtres horaires
+    # exactes servies à chaque créneau (convention interne documentée là-bas,
+    # pas une mesure).
+    class CreneauChauffeEau(models.TextChoices):
+        MATIN = 'matin', 'Matin'
+        SOIR = 'soir', 'Soir'
+        NUIT = 'nuit', 'Nuit'
+        JOURNEE = 'journee', 'Toute la journée'
+
+    class CreneauVe(models.TextChoices):
+        NUIT = 'nuit', 'Nuit'
+        JOUR = 'jour', 'Jour'
+        SOIR = 'soir', 'Soir'
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -600,6 +615,57 @@ class Lead(SoftDeleteModel):
                   "donne qu'un ordre de grandeur kWh/personne/an (aucun "
                   "champ « nombre de personnes » collecté) — il n'ajuste "
                   "AUCUNE courbe (omission plutôt qu'un défaut inventé).")
+
+    # ── L-BACK (24/08/2026) — grandeurs réelles complémentaires. Champs
+    # INERTES tant que leur paire n'est pas complète (kW + créneau/heures) :
+    # une seule moitié renseignée NE produit AUCUNE couche (même règle
+    # « zéro chiffre inventé » que le reste du bloc L4 ci-dessus). Voir
+    # apps/ventes/courbes_journalieres.py pour la composition.
+    equip_chauffe_eau_kw = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        verbose_name='Puissance chauffe-eau (kW)',
+        help_text='Puissance de la résistance du chauffe-eau électrique '
+                  '(kW, plaque signalétique). Avec le créneau ci-dessous : '
+                  'compose une couche « impulsion » sur ce créneau. Seule, '
+                  'ne produit rien.')
+    equip_chauffe_eau_creneau = models.CharField(
+        max_length=10, choices=CreneauChauffeEau.choices, null=True,
+        blank=True, verbose_name='Créneau de chauffe du chauffe-eau',
+        help_text="Question à l'appel : « À quel moment le chauffe-eau "
+                  'chauffe-t-il le plus (matin/soir/nuit/toute la '
+                  'journée) ? » Avec la puissance ci-dessus : compose une '
+                  'couche « impulsion » sur ce créneau. Seul, ne produit '
+                  'rien.')
+    equip_ve_chargeur_kw = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        verbose_name='Puissance chargeur VE (kW)',
+        help_text='Puissance du chargeur du véhicule électrique (kW, '
+                  'prise renforcée/wallbox). Avec le créneau ci-dessous : '
+                  "borne la fenêtre de recharge à l'énergie hebdomadaire "
+                  '÷ cette puissance, au lieu de la fenêtre 21h-6h par '
+                  'défaut. Seule, ne change rien.')
+    equip_ve_creneau = models.CharField(
+        max_length=10, choices=CreneauVe.choices, null=True, blank=True,
+        verbose_name='Créneau de recharge du VE',
+        help_text="Question à l'appel : « À quel moment rechargez-vous "
+                  'le véhicule (nuit/jour/soir) ? » Avec la puissance '
+                  'ci-dessus : borne la fenêtre de recharge réelle. Seul, '
+                  'ne change rien.')
+    equip_clim_kw = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        verbose_name='Puissance clim déclarée (kW)',
+        help_text='Puissance totale RÉELLE de la climatisation (kW, '
+                  "relevée sur plaque signalétique), quand elle est "
+                  "connue : remplace l'estimation par défaut "
+                  '(pièces × 1,4 kWh/h non-inverter). Vide : la couche '
+                  'clim reste composée depuis le nombre de pièces.')
+    equip_piscine_heures_jour = models.DecimalField(
+        max_digits=4, decimal_places=1, null=True, blank=True,
+        verbose_name='Piscine — heures de filtration/jour',
+        help_text='Durée réelle de filtration déclarée (h/jour), quand '
+                  "elle est connue : remplace la durée par défaut du "
+                  'mémo (8h, bloc 10h-18h). Vide : la couche piscine '
+                  'reste composée avec la fenêtre par défaut.')
 
     # ── Pompage solaire (leads Agricole) — mêmes entrées que le générateur ──
     pompe_cv = models.DecimalField(

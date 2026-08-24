@@ -64,6 +64,40 @@ class LeadEquipementFieldsTests(TestCase):
         self.assertFalse(lead.equip_chauffe_eau_electrique)
 
 
+class LeadEquipementFieldsV2Tests(TestCase):
+    """L-BACK (24/08/2026) — les 6 champs complémentaires (kW/créneau)."""
+
+    def setUp(self):
+        self.company = _company()
+
+    def test_defauts_a_la_creation_sont_inconnus(self):
+        lead = Lead.objects.create(company=self.company, nom='LB Lead')
+        self.assertIsNone(lead.equip_chauffe_eau_kw)
+        self.assertIsNone(lead.equip_chauffe_eau_creneau)
+        self.assertIsNone(lead.equip_ve_chargeur_kw)
+        self.assertIsNone(lead.equip_ve_creneau)
+        self.assertIsNone(lead.equip_clim_kw)
+        self.assertIsNone(lead.equip_piscine_heures_jour)
+
+    def test_valeurs_reelles_persistees(self):
+        lead = Lead.objects.create(
+            company=self.company, nom='LB Lead 2',
+            equip_chauffe_eau_kw=Decimal('2.20'),
+            equip_chauffe_eau_creneau=Lead.CreneauChauffeEau.NUIT,
+            equip_ve_chargeur_kw=Decimal('7.40'),
+            equip_ve_creneau=Lead.CreneauVe.NUIT,
+            equip_clim_kw=Decimal('3.50'),
+            equip_piscine_heures_jour=Decimal('6.5'),
+        )
+        lead.refresh_from_db()
+        self.assertEqual(lead.equip_chauffe_eau_kw, Decimal('2.20'))
+        self.assertEqual(lead.equip_chauffe_eau_creneau, 'nuit')
+        self.assertEqual(lead.equip_ve_chargeur_kw, Decimal('7.40'))
+        self.assertEqual(lead.equip_ve_creneau, 'nuit')
+        self.assertEqual(lead.equip_clim_kw, Decimal('3.50'))
+        self.assertEqual(lead.equip_piscine_heures_jour, Decimal('6.5'))
+
+
 class TrackedFieldsTests(TestCase):
     """Les 7 champs sont journalisés dans le chatter (activity.TRACKED_FIELDS)."""
 
@@ -121,6 +155,43 @@ class TrackedFieldsTests(TestCase):
         self.assertEqual(acts.count(), 1)
         self.assertEqual(acts.first().new_value, 'Non')
 
+    def test_patch_equip_chauffe_eau_kw_logs_one_modification(self):
+        resp = self._patch(equip_chauffe_eau_kw='2.20')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(
+            self._modifications('equip_chauffe_eau_kw').count(), 1)
+
+    def test_patch_equip_chauffe_eau_creneau_logs_choice_label(self):
+        resp = self._patch(equip_chauffe_eau_creneau='nuit')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        acts = self._modifications('equip_chauffe_eau_creneau')
+        self.assertEqual(acts.count(), 1)
+        self.assertEqual(acts.first().new_value, 'Nuit')
+
+    def test_patch_equip_ve_chargeur_kw_logs_one_modification(self):
+        resp = self._patch(equip_ve_chargeur_kw='7.40')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(
+            self._modifications('equip_ve_chargeur_kw').count(), 1)
+
+    def test_patch_equip_ve_creneau_logs_choice_label(self):
+        resp = self._patch(equip_ve_creneau='soir')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        acts = self._modifications('equip_ve_creneau')
+        self.assertEqual(acts.count(), 1)
+        self.assertEqual(acts.first().new_value, 'Soir')
+
+    def test_patch_equip_clim_kw_logs_one_modification(self):
+        resp = self._patch(equip_clim_kw='3.50')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(self._modifications('equip_clim_kw').count(), 1)
+
+    def test_patch_equip_piscine_heures_jour_logs_one_modification(self):
+        resp = self._patch(equip_piscine_heures_jour='6.5')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(
+            self._modifications('equip_piscine_heures_jour').count(), 1)
+
 
 class _DevisAvecLead:
     """Stand-in minimal pour un ``ventes.Devis`` — jamais le vrai modèle
@@ -161,6 +232,12 @@ class EquipementsPourDevisSelectorTests(TestCase):
             'clim': False,
             'clim_pieces': None,
             'chauffe_eau_electrique': None,
+            'chauffe_eau_kw': None,
+            'chauffe_eau_creneau': None,
+            've_chargeur_kw': None,
+            've_creneau': None,
+            'clim_kw': None,
+            'piscine_heures_jour': None,
         })
 
 
