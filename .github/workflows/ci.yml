@@ -742,6 +742,59 @@ jobs:
   # derniers creneaux (bloc CRENEAUX — un job qui fait la queue est la pire
   # lane possible). Le prochain levier n'est donc pas ici : il est dans la
   # mise en place e2e/vitest.
+  #
+  # ---------------------------------------------------------------------------
+  # VOLET H (24/08/2026) — LA TABLE DE POIDS AVAIT DECROCHE DU DEPOT, ET LE
+  # PLANIFICATEUR S'AUTO-DECLARAIT PARFAIT PENDANT UN ECART DE 2,6x.
+  #
+  # Mesure, run VERT 32711511999 (PR #560), etape « Run Django test suite » de
+  # chacune des six lanes — c'est le temps de TEST, mise en place deduite :
+  #
+  #     shard | tests mesures | modules | job complet | part fixe
+  #        0  |   218,4 s     |   407   |   363 s     |  115 s
+  #        1  |   171,2 s     |   407   |   287 s     |   92 s
+  #        2  |   218,2 s     |   407   |   372 s     |  122 s
+  #        3  |   245,7 s     |   508   |   407 s     |  126 s
+  #        4  |   367,7 s     |   515   |   493 s     |  100 s  <- chemin critique
+  #        5  |   139,0 s     |   519   |   285 s     |  117 s
+  #
+  # Le run precedent (32691264853) donne le meme diagnostic en pire : shard 4 a
+  # 637 s quand ses cinq freres tenaient en 332-353 s. Pendant ce temps
+  # `ci_shard.py --plan 6` affichait « pire lane 178 s / desequilibre 1.00x ».
+  #
+  # CAUSE UNIQUE, ET ELLE N'EST PAS DANS LA CI : `--update-timings` sur les
+  # journaux de ce run montre que `apps.ventes.tests.test_roof_pipeline` est
+  # passe de 38,43 s a 257,03 s — dont 254,8 s pour la SEULE classe
+  # `TestQ7ProposalAccept`. Le travail du palier est passe de 17,8 a 25,9 min
+  # sans que la table le sache, donc le LPT plaçait au hasard le seul module
+  # qui compte. Les poids sont recales sur ce run (44 autres modules corriges
+  # au passage, dont test_gammes_offre_acceptation_signature 135 -> 168 s).
+  #
+  # NOUVEAU PALIER MESURE (`python scripts/ci_shard.py --plan N`) :
+  #     6 lanes 258 s  |  7 lanes 257 s  <- plancher indivisible : 255 s
+  # La capacite de calcul d'une 7e lane (222 s par lane a 7x4 workers) passe
+  # SOUS la classe qui borne tout : une lane de plus rapporte 1 s et couterait
+  # ~112 s de mise en place plus un creneau. ON RESTE A 6 — le critere du
+  # fondateur (« n'ajoute un shard que si son gain depasse la part fixe ») est
+  # ici tranche par la mesure, pas par le gout. Le prochain levier backend est
+  # de scinder `TestQ7ProposalAccept`, exactement comme le volet G avait scinde
+  # `TestAcceptationGamme` ; tant qu'elle existe, 6 lanes EST l'optimum.
+  #
+  # ATTENDU SUR LE GATE : pire lane 367,7 -> ~258 s de tests, soit un job a
+  # ~370 s au lieu de 493 s. Le backend repasse alors SOUS `e2e-shard`
+  # (352-379 s mesurees sur le meme run), qui redevient le chemin critique.
+  #
+  # EFFET DE BORD ATTRAPE AVANT LA FUSION — LA GARDE `max_locks` EST UNE
+  # CONTRAINTE DE PLAN, PAS SEULEMENT UNE CEINTURE. Le seul recalage des poids
+  # posait `apps.crm.tests_webhook` ET `apps.ventes.tests.test_premium_security`
+  # sur la lane 4 : deux classes a purge large dans un shard, donc `--parallel 1`
+  # (cf. l'etape « Run Django test suite » plus bas) et une lane ~4x plus
+  # lente — un « equilibrage » qui aurait EMPIRE le gate. `ci_shard.py` connait
+  # desormais la contrainte (`wide_purge_classes`, meme detection AST et memes
+  # marqueurs que la garde) et refuse d'en reunir deux tant qu'il y a plus de
+  # lanes que de modules concernes ; le depot n'en compte que deux (5,7 s et
+  # 3,9 s), les separer ne coute rien. Prouve par
+  # `scripts/tests/test_ci_shard.py` (job `stage-names`) a 2, 4, 6 et 8 lanes.
   # ---------------------------------------------------------------------------
   backend-tests-shard:
     needs: [changes, ci-image-check]
@@ -762,6 +815,14 @@ jobs:
         # 25 s que rapporterait une 7e lane ne se voient donc nulle part sur
         # le temps de mur du run, et elles couteraient le dernier creneau de
         # marge. Le pic passe de 17 a 18 (bloc CRENEAUX en tete de fichier).
+        #
+        # VOLET H (24/08) — REVERIFIE APRES LE RECALAGE DES POIDS, ET 6 TIENT
+        # POUR UNE RAISON PLUS FORTE QU'EN VOLET G : le plancher indivisible
+        # est remonte a 255 s (`test_roof_pipeline.TestQ7ProposalAccept`), donc
+        # `--plan 7` rend 257 s la ou `--plan 6` rend 258 s. Une 7e lane
+        # rapporte UNE seconde. Ce n'est plus « le gain ne se voit pas sur le
+        # gate », c'est « il n'y a plus de gain du tout tant que cette classe
+        # n'est pas scindee ».
         shard: [0, 1, 2, 3, 4, 5]
     runs-on: ubuntu-latest
     timeout-minutes: 15
