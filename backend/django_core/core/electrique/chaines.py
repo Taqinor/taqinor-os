@@ -224,21 +224,34 @@ def _choisir_longueur(nb_modules, n_mppt, longueur_min, longueur_max,
                       imp_a=0.0, i_max_mppt_a=0.0):
     """``(longueur, nb_chaines)`` — chaînes ÉGALES, longueur admissible.
 
-    Port du choix de ``string_design`` : on cherche une partition de
-    ``nb_modules`` en chaînes ÉGALES dont la longueur tient dans la plage, en
-    privilégiant un nombre de chaînes multiple des entrées MPPT (usage équilibré)
-    puis les chaînes les plus longues (moins de câblage). ``(0, 0)`` si aucune
-    partition égale n'existe.
+    On cherche une partition de ``nb_modules`` en chaînes ÉGALES dont la
+    longueur tient dans la plage admissible. ``(0, 0)`` si aucune partition
+    égale n'existe.
 
-    CE QUE LE NOYAU AJOUTE (PV85) : le courant d'entrée MPPT passe AVANT les
-    deux autres critères. Une partition qui obligerait à empiler deux chaînes
-    sur une entrée trop étroite (deux chaînes de CS7N-710 = 35,18 A sur les
-    26 A d'un Deye SG05LP3) est reléguée derrière toute partition qui tient
-    UNE chaîne par entrée — l'écrêtage qui en résulterait est permanent et
-    n'apparaîtrait sur aucune ligne du bordereau. Quand AUCUNE partition ne
-    tient (plus de chaînes que d'entrées, quoi qu'on fasse), le choix retombe
-    à l'identique sur les critères historiques et ``_verdicts_courant``
-    prononce l'avertissement de conformité.
+    DEUX critères, dans cet ordre, et RIEN d'autre :
+
+    1. **Le courant d'entrée MPPT** (PV85). Une partition qui obligerait à
+       empiler deux chaînes sur une entrée trop étroite (deux chaînes de
+       CS7N-710 = 35,18 A sur les 26 A d'un Deye SG05LP3) est reléguée
+       derrière toute partition qui tient UNE chaîne par entrée — l'écrêtage
+       qui en résulterait est permanent et n'apparaîtrait sur aucune ligne du
+       bordereau. Quand AUCUNE partition ne tient (plus de chaînes que
+       d'entrées, quoi qu'on fasse), ce critère ne départage plus rien et
+       ``_verdicts_courant`` prononce l'avertissement de conformité.
+    2. **La chaîne la plus LONGUE**, donc le MOINS de chaînes possible.
+
+    RÈGLE FONDATEUR 24/08/2026 — LE CRITÈRE « nombre de chaînes multiple des
+    entrées MPPT » EST SUPPRIMÉ. Il passait AVANT la longueur et coupait donc
+    en deux tout champ dont la moitié tenait encore dans la fenêtre de tension :
+    8 panneaux sur un onduleur à 2 entrées ressortaient en 2 chaînes de 4 alors
+    qu'une chaîne unique de 8 est électriquement valide — et c'est ainsi que
+    l'installateur câble. Un champ n'est SPLITÉ que lorsque la physique
+    l'impose (la fenêtre de tension ferme la longueur, ou le courant d'entrée
+    MPPT ci-dessus) ou lorsque les modules sont sur des PANS distincts (traité
+    en amont : un pan ne partage jamais une entrée). « Occuper les deux
+    entrées » n'est pas une exigence électrique : c'est un confort de câblage
+    qui coûtait un départ DC, un jeu de connecteurs et une longueur de câble
+    en plus, sur chaque dossier.
     """
     meilleur = (0, 0)
     meilleur_score = None
@@ -250,8 +263,7 @@ def _choisir_longueur(nb_modules, n_mppt, longueur_min, longueur_max,
             continue
         surcharge = 1 if _surcharge_mppt(nb_chaines, n_mppt, imp_a,
                                          i_max_mppt_a) else 0
-        equilibre = 0 if nb_chaines % n_mppt == 0 else 1
-        score = (surcharge, equilibre, -longueur)
+        score = (surcharge, -longueur)
         if meilleur_score is None or score < meilleur_score:
             meilleur_score = score
             meilleur = (longueur, nb_chaines)
