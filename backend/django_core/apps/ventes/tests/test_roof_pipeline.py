@@ -551,7 +551,8 @@ class TestQ7ProposalAcceptSuccess(_Q7ProposalAcceptBase):
         # signée). Le stockage de la clé qui en résulte est prouvé par
         # test_qj22_signed_artifact.TestSignedPdfKeyStored.
         espion.assert_called_once()
-        self.assertTrue(espion.call_args.kwargs.get('persist') is True)
+        self.assertIs(espion.call_args.kwargs.get('persist'), True,
+                      espion.call_args)
         self.devis.refresh_from_db()
         self.assertEqual(self.devis.statut, 'accepte')
         self.assertEqual(self.devis.accepte_par_nom, 'Salma Bennani')
