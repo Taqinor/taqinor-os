@@ -1,0 +1,66 @@
+{
+  "_contrat": "L-PCMP (24/08/2026) — clé `profils_comparatifs` du payload public de la proposition (GET /api/django/ventes/public/proposition/<token>/). Additive : ABSENTE quand le moteur n'a rien de calculable, ou quand la section `economies` du ShareLink est décochée. Les deux moitiés (apps/ventes/public_views.py `_profils_comparatifs_publique` et apps/web/src/lib/proposition.ts `occupancyScenarios`) lisent CE fichier.",
+  "_regle": "Zéro chiffre inventé : chaque nombre ci-dessous sort du moteur (etude_horaire + dimensionnement). La page N'EN CALCULE AUCUN — elle bascule d'affichage entre les blocs servis. Les taux sont déjà en POURCENTAGE, les économies en MAD/an arrondies au dirham.",
+  "profil_reel": "presence_jour",
+  "kwc_devis": 6.39,
+  "batterie_kwh_devis": 10.0,
+  "avec_batterie": true,
+  "devise": "MAD",
+  "note": "Simulation sur VOS factures réelles : seule la répartition de votre consommation dans la journée change d'un profil à l'autre. Calcul heure par heure, même moteur que votre devis.",
+  "profils": [
+    {
+      "occupation": "presence_jour",
+      "est_profil_reel": true,
+      "economie_sans_mad": 11420,
+      "economie_avec_mad": 14180,
+      "taux_autoconso_sans_pct": 58.4,
+      "taux_autoconso_avec_pct": 81.2,
+      "couverture_sans_pct": 46.1,
+      "couverture_avec_pct": 64.0,
+      "optimal": {
+        "kwc": 6.39,
+        "panneaux": 9,
+        "batterie_kwh": 10.0,
+        "avec_batterie": true,
+        "economie_mad": 14180,
+        "identique_au_devis": true
+      }
+    },
+    {
+      "occupation": "absence_jour",
+      "est_profil_reel": false,
+      "economie_sans_mad": 8930,
+      "economie_avec_mad": 13640,
+      "taux_autoconso_sans_pct": 41.7,
+      "taux_autoconso_avec_pct": 78.9,
+      "couverture_sans_pct": 33.0,
+      "couverture_avec_pct": 62.2,
+      "optimal": {
+        "kwc": 8.52,
+        "panneaux": 12,
+        "batterie_kwh": 15.0,
+        "avec_batterie": true,
+        "economie_mad": 16050,
+        "identique_au_devis": false
+      }
+    },
+    {
+      "occupation": "presence_partielle",
+      "est_profil_reel": false,
+      "economie_sans_mad": 10210,
+      "economie_avec_mad": 13910,
+      "taux_autoconso_sans_pct": 50.2,
+      "taux_autoconso_avec_pct": 80.1,
+      "couverture_sans_pct": 39.6,
+      "couverture_avec_pct": 63.1,
+      "optimal": {
+        "kwc": 7.1,
+        "panneaux": 10,
+        "batterie_kwh": 10.0,
+        "avec_batterie": true,
+        "economie_mad": 14760,
+        "identique_au_devis": false
+      }
+    }
+  ]
+}
