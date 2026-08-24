@@ -83,9 +83,9 @@ export default function ProductTour() {
     // (la promesse réseau), déterministe sous test.
     // eslint-disable-next-line react-hooks/set-state-in-effect -- dérive l'ouverture du tour depuis tour/pathname, jamais lu dans le MÊME rendu
     setActiveKey(eligible ? tour.tour_key : null)
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+     
     setStep(0)
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+     
     setOpen(eligible)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tour, pathname])
