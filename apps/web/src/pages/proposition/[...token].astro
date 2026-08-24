@@ -98,6 +98,15 @@ import {
   objectionFaq,
   sellerNote,
   resyncApresEnvoi,
+  tarifBracketStory,
+  batteryRegimeInfo,
+  estimationConsoAffichable,
+  proposalJoursTypes,
+  PROPOSAL_JOUR_TYPE_MONTH_IDS,
+  PROPOSAL_JOUR_TYPE_MONTH_LABELS,
+  type TarifBracketStory,
+  type BatteryRegimeInfo,
+  type EstimationConsoAffichable,
 } from '../../lib/proposition';
 import {
   renderYearCurve,
@@ -120,6 +129,7 @@ import {
   formatHourLabel,
   OCCUPANCY_IDS,
   OCCUPANCY_LABELS,
+  OCCUPANCY_SHAPES,
   SEASON_LABELS,
   DEFAULT_LAT,
   DEFAULT_LON,
@@ -707,6 +717,28 @@ const showCouvertureDonut = installMode === 'residentiel' && !!couverture;
 const DONUT_R = 42;
 const donutCirc = 2 * Math.PI * DONUT_R;
 const donutDash = couverture ? (donutCirc * couverture.pct) / 100 : 0;
+
+// ── L-PROP CJ2b-bis (lot 4, 24/08) — falaise tarifaire / régime batterie /
+// estimation de consommation, sous-ensemble PUBLIC servi par le backend
+// [HANDOFF public payload — voir lib/proposition.ts pour la forme attendue].
+// Chaque bloc est `null` sur un devis SANS ces clés (tous les devis générés
+// avant le lot 4) : la page ne rend alors RIEN de neuf, zéro régression.
+const tarifStory: TarifBracketStory | null = ok ? tarifBracketStory(data!) : null;
+const battRegime: BatteryRegimeInfo | null = ok ? batteryRegimeInfo(data!) : null;
+const estimConso: EstimationConsoAffichable | null = ok ? estimationConsoAffichable(data!) : null;
+const showFalaiseBlock = installMode === 'residentiel' && !!(tarifStory || battRegime || estimConso);
+
+// L-PROP TASK2 — « Une journée type », par devis. `null` tant que le backend
+// ne sert pas `jours_types` — la section ci-dessous se masque entièrement.
+const joursTypes = ok ? proposalJoursTypes(data!) : null;
+
+// L-PROP TASK3 — les 3 silhouettes d'occupation superposées (visuel VALIDÉ
+// fondateur, reproduit à l'identique de `/devis/mon-toit`), résidentiel
+// uniquement. La silhouette du client vient du MÊME drapeau serveur que la
+// puce d'occupation CJ1 ci-dessus (`courbes_journalieres.occupation`) — pas
+// une nouvelle clé : `null` quand rien n'est servi (aucune n'est « choisie »).
+const occSilhouetteMax = Math.max(...OCCUPANCY_IDS.flatMap((id) => OCCUPANCY_SHAPES[id] as readonly number[]));
+const clientOccupancyChoice: OccupancyId | null = curveMode === 'residentiel' ? (dailyCurves?.occupation ?? null) : null;
 
 // ── WJ14 — Impact environnemental humain (CO₂ ≈ arbres), depuis la production ─
 const enviro = ok ? environmentalImpact(prodKwh) : null;
@@ -2403,6 +2435,196 @@ const signConfig = ok
                     </div>
                   </div>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* ── L-PROP CJ2b-bis (lot 4, 24/08) — falaise tarifaire / régime
+                 batterie / décomposition de l'estimation de consommation.
+                 CHAQUE sous-bloc est indépendant : une clé absente masque
+                 SEULEMENT ce sous-bloc, jamais toute la carte (sauf quand les
+                 trois manquent — `showFalaiseBlock` est alors faux et la carte
+                 entière disparaît). Résidentiel uniquement, et jamais un
+                 chiffre recalculé côté web : tout vient tel quel du payload. */}
+          {showFalaiseBlock && (
+            <div id="tarif-falaise" class="cine-card mt-4 rounded-xl p-5 sm:p-6">
+              {tarifStory && (
+                <div>
+                  <p class="tech-label text-lune-faint" data-i18n
+                    data-fr="Un dimensionnement pensé pour votre facture" data-en="A sizing built around your bill" data-ar="تصميم يراعي فاتورتكم">
+                    Un dimensionnement pensé pour votre facture
+                  </p>
+                  <p class="v2-body mt-2 text-sm text-lune-soft" data-i18n
+                    data-fr={
+                      tarifStory.trancheActuelleLibelle && tarifStory.trancheViseeLibelle
+                        ? `Votre consommation atterrit aujourd’hui dans la tranche « ${tarifStory.trancheActuelleLibelle} » ; ce dimensionnement vise franchement la tranche « ${tarifStory.trancheViseeLibelle} » — la marche tarifaire suivante, plus économique.`
+                        : 'Ce dimensionnement vise franchement le palier tarifaire suivant, plus économique.'
+                    }
+                    data-en={
+                      tarifStory.trancheActuelleLibelle && tarifStory.trancheViseeLibelle
+                        ? `Your consumption sits today in the “${tarifStory.trancheActuelleLibelle}” bracket; this sizing plainly targets the “${tarifStory.trancheViseeLibelle}” bracket — the next, cheaper tariff step.`
+                        : 'This sizing plainly targets the next, cheaper tariff step.'
+                    }
+                    data-ar={
+                      tarifStory.trancheActuelleLibelle && tarifStory.trancheViseeLibelle
+                        ? `يقع استهلاككم اليوم ضمن شريحة « ${tarifStory.trancheActuelleLibelle} » ؛ يستهدف هذا التصميم بوضوح شريحة « ${tarifStory.trancheViseeLibelle} » — الدرجة التعريفية التالية الأوفر.`
+                        : 'يستهدف هذا التصميم بوضوح الدرجة التعريفية التالية الأوفر.'
+                    }>
+                    {tarifStory.trancheActuelleLibelle && tarifStory.trancheViseeLibelle
+                      ? `Votre consommation atterrit aujourd’hui dans la tranche « ${tarifStory.trancheActuelleLibelle} » ; ce dimensionnement vise franchement la tranche « ${tarifStory.trancheViseeLibelle} » — la marche tarifaire suivante, plus économique.`
+                      : 'Ce dimensionnement vise franchement le palier tarifaire suivant, plus économique.'}
+                  </p>
+                  {tarifStory.residuelKwhMois !== null && (
+                    <p class="mt-2 text-sm text-lune-soft" data-i18n
+                      data-fr={`Résiduel importé du réseau : environ ${formatNumber(tarifStory.residuelKwhMois, 0)} kWh/mois.`}
+                      data-en={`Residual grid import: about ${formatNumber(tarifStory.residuelKwhMois, 0)} kWh/month.`}
+                      data-ar={`المستورد المتبقي من الشبكة: نحو ${formatNumber(tarifStory.residuelKwhMois, 0)} كيلوواط.س/شهرياً.`}>
+                      Résiduel importé du réseau : environ {formatNumber(tarifStory.residuelKwhMois, 0)} kWh/mois.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {battRegime && (
+                <div class={tarifStory ? 'mt-5 border-t border-white/10 pt-4' : ''}>
+                  <div class="flex flex-wrap gap-x-8 gap-y-3">
+                    {battRegime.remplissageMoyenPct !== null && (
+                      <div>
+                        <p class="tech-label text-lune-faint" data-i18n data-fr="Remplissage batterie moyen" data-en="Average battery fill" data-ar="متوسط امتلاء البطارية">Remplissage batterie moyen</p>
+                        <p class="fig fig-md mt-1 text-lune" dir="ltr">{formatNumber(battRegime.remplissageMoyenPct, 0)} %</p>
+                      </div>
+                    )}
+                    {battRegime.couvertureGlitchPct !== null && (
+                      <div>
+                        <p class="tech-label text-lune-faint" data-i18n data-fr="Couverture des pointes" data-en="Peak coverage" data-ar="تغطية الذروات">Couverture des pointes</p>
+                        <p class="fig fig-md mt-1 text-lune" dir="ltr">{formatNumber(battRegime.couvertureGlitchPct, 0)} %</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {estimConso && (
+                <div class={tarifStory || battRegime ? 'mt-5 border-t border-white/10 pt-4' : ''}>
+                  <p class="tech-label text-lune-faint" data-i18n data-fr="Estimation de consommation, mois par mois" data-en="Estimated consumption, month by month" data-ar="تقدير الاستهلاك شهراً بشهر">Estimation de consommation, mois par mois</p>
+                  <div class="mt-3 overflow-x-auto">
+                    <table class="w-full text-xs" dir="ltr">
+                      <thead>
+                        <tr class="text-lune-faint">
+                          <th class="pe-3 text-start font-normal">&nbsp;</th>
+                          {MONTHS_SHORT.fr.map((m) => <th class="px-1 text-end font-normal">{m}</th>)}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td class="pe-3 text-lune-soft" data-i18n data-fr="Base" data-en="Base" data-ar="أساسي">Base</td>
+                          {estimConso.base.map((v) => <td class="px-1 text-end text-lune-soft">{formatNumber(v, 0)}</td>)}
+                        </tr>
+                        {estimConso.ajouts.map((a) => (
+                          <tr>
+                            <td class="pe-3 text-lune-soft">{a.libelle}</td>
+                            {a.valeurs.map((v) => <td class="px-1 text-end text-lune-soft">{formatNumber(v, 0)}</td>)}
+                          </tr>
+                        ))}
+                        <tr class="border-t border-white/10 font-semibold">
+                          <td class="pe-3 text-lune" data-i18n data-fr="Total" data-en="Total" data-ar="المجموع">Total</td>
+                          {estimConso.total.map((v) => <td class="px-1 text-end text-lune">{formatNumber(v, 0)}</td>)}
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <p class="mt-2 text-[11px] text-lune-faint" data-i18n data-fr="kWh par mois" data-en="kWh per month" data-ar="كيلوواط.س شهرياً">kWh par mois</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── L-PROP TASK3 — les 3 silhouettes d'occupation superposées
+                 (couleurs VALIDÉES fondateur, mêmes que /devis/mon-toit) :
+                 présent bleu plein #2a78d6 (remplissage 10 %), absent orange
+                 pointillé [6,3] #eb6834, partiel vert pointillé [2,3] #1baf7a.
+                 La silhouette du CLIENT (drapeau serveur) est mise en évidence
+                 « CHOISIE pour ce client ». `null` ⇒ section masquée entière. */}
+          {curveMode === 'residentiel' && clientOccupancyChoice && (
+            <div id="occ-silhouettes" class="cine-card mt-4 rounded-xl p-5 sm:p-6">
+              <p class="tech-label text-lune-faint" data-i18n data-fr="Profils d’occupation du logement" data-en="Home occupancy profiles" data-ar="أنماط شغل المسكن">Profils d’occupation du logement</p>
+              <svg viewBox="0 0 320 140" width="100%" height="140" role="img"
+                aria-label="Poids de forme (sans unité) des trois profils d’occupation, sur 24 h">
+                {OCCUPANCY_IDS.map((id) => {
+                  const shape = OCCUPANCY_SHAPES[id];
+                  const colors: Record<OccupancyId, { stroke: string; dash: string | null; fill?: string }> = {
+                    presence_jour: { stroke: '#2a78d6', dash: null, fill: 'rgba(42,120,214,0.10)' },
+                    absence_jour: { stroke: '#eb6834', dash: '6,3' },
+                    presence_partielle: { stroke: '#1baf7a', dash: '2,3' },
+                  };
+                  const c = colors[id];
+                  const w = 320; const h = 140; const pad = 8;
+                  const x = (i: number) => pad + (i / (shape.length - 1)) * (w - 2 * pad);
+                  const y = (v: number) => pad + (1 - (occSilhouetteMax > 0 ? v / occSilhouetteMax : 0)) * (h - 2 * pad);
+                  const pts = shape.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`);
+                  const line = `M${pts.join(' L')}`;
+                  const area = `${line} L${x(shape.length - 1).toFixed(1)},${(h - pad).toFixed(1)} L${x(0).toFixed(1)},${(h - pad).toFixed(1)} Z`;
+                  const chosen = id === clientOccupancyChoice;
+                  return (
+                    <>
+                      {c.fill && <path d={area} fill={c.fill} stroke="none"></path>}
+                      <path d={line} fill="none" stroke={c.stroke} stroke-width={chosen ? 3 : 2}
+                        stroke-dasharray={c.dash ?? undefined} opacity={chosen ? 1 : 0.55}>
+                        <title>{OCCUPANCY_LABELS[id].fr}</title>
+                      </path>
+                    </>
+                  );
+                })}
+              </svg>
+              <p class="mt-1 text-[11px] text-lune-faint" data-i18n data-fr="poids de forme (sans unité)" data-en="shape weight (unitless)" data-ar="وزن الشكل (بدون وحدة)">poids de forme (sans unité)</p>
+              <div class="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                {OCCUPANCY_IDS.map((id) => (
+                  <span class="inline-flex items-center gap-1.5" style={id === clientOccupancyChoice ? 'color: var(--color-lune)' : 'color: var(--color-lune-faint)'}>
+                    <span aria-hidden="true" style={`display:inline-block;width:10px;height:2px;background:${{ presence_jour: '#2a78d6', absence_jour: '#eb6834', presence_partielle: '#1baf7a' }[id]}`}></span>
+                    {OCCUPANCY_LABELS[id].fr}
+                    {id === clientOccupancyChoice && (
+                      <span class="tech-label text-brass-300" data-i18n data-fr="CHOISIE pour ce client" data-en="CHOSEN for this client" data-ar="مُختار لهذا العميل"> · CHOISIE pour ce client</span>
+                    )}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── L-PROP TASK2 — « Une journée type » PAR DEVIS (production dorée
+                 vs consommation bleue pointillée, 4 petits multiples). `null`
+                 tant que le backend ne sert pas `jours_types`
+                 [HANDOFF : voir apps.ventes.etude_horaire.jours_types_annee
+                 côté backend — voir lib/proposition.ts pour la forme attendue]. */}
+          {curveMode === 'residentiel' && joursTypes && (
+            <div id="jour-type" class="cine-card mt-4 rounded-xl p-5 sm:p-6">
+              <p class="tech-label text-lune-faint" data-i18n data-fr="Une journée type" data-en="A typical day" data-ar="يوم نموذجي">Une journée type</p>
+              <div class="mt-3 grid gap-3 sm:grid-cols-2">
+                {PROPOSAL_JOUR_TYPE_MONTH_IDS.map((m) => {
+                  const d = joursTypes[m];
+                  const w = 280; const h = 120; const pad = 6;
+                  const max = Math.max(0.001, ...d.prodKw, ...d.consoKw);
+                  const x = (i: number) => pad + (i / (d.prodKw.length - 1)) * (w - 2 * pad);
+                  const y = (v: number) => pad + (1 - v / max) * (h - 2 * pad);
+                  const lineOf = (arr: number[]) => `M${arr.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' L')}`;
+                  const prodLine = lineOf(d.prodKw);
+                  const prodArea = `${prodLine} L${x(d.prodKw.length - 1).toFixed(1)},${(h - pad).toFixed(1)} L${x(0).toFixed(1)},${(h - pad).toFixed(1)} Z`;
+                  const consoLine = lineOf(d.consoKw);
+                  return (
+                    <div class="border border-white/10 bg-white/5 p-2">
+                      <p class="text-xs font-semibold text-lune">{PROPOSAL_JOUR_TYPE_MONTH_LABELS[m].fr}</p>
+                      <svg viewBox={`0 0 ${w} ${h}`} width="100%" height="120" preserveAspectRatio="none" role="img"
+                        aria-label="Production (doré) et consommation (bleu pointillé) sur 24 h, en kW">
+                        <path d={prodArea} fill="rgba(237,161,0,0.18)" stroke="none"></path>
+                        <path d={prodLine} fill="none" stroke="#eda100" stroke-width="2"><title>Production (kW)</title></path>
+                        <path d={consoLine} fill="none" stroke="#2a78d6" stroke-width="2" stroke-dasharray="6,3"><title>Consommation (kW)</title></path>
+                      </svg>
+                      <p class="mt-1 text-[11px] text-lune-faint" dir="ltr">
+                        Conso {d.consoJourKwh.toFixed(2)}&nbsp;kWh · Prod {d.prodJourKwh.toFixed(2)}&nbsp;kWh · Autoconso {d.autoconsommeKwh.toFixed(2)}&nbsp;kWh · Surplus {d.surplusKwh.toFixed(2)}&nbsp;kWh
+                      </p>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
