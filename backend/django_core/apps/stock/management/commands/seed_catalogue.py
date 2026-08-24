@@ -1056,6 +1056,31 @@ FICHES_TECHNIQUES = {
     # MODELE_SUPPOSE_PVG4 ci-dessus). PVOND (2026-08-18) : ces deux SKU ne
     # sont plus GRISÉS mais ARCHIVÉS (``ARTEFACTS_ONDULEUR_SKUS``).
     # ── PVG4 — Onduleurs hybrides Deye ──
+    #
+    # L-DECH (fondateur 24/08/2026) — « mais l'onduleur aussi a un max de
+    # charge et de décharge, cherche bien et rajoute aussi ces numéros ».
+    #
+    # LA CONVENTION DE TENSION, UNE FOIS POUR LES CINQ (le détail par SKU se
+    # limite ensuite aux ampères et à l'URL). Les datasheets Deye publient ces
+    # bornes en AMPÈRES dans le bloc « Battery Input Data », avec une plage de
+    # port 40-60 V (« 48 V low voltage battery ») mais AUCUNE tension nominale.
+    # On convertit donc à 51,2 V — la tension nominale des packs Dyness que ce
+    # même catalogue quote (``bat_v_nominal``), donc le point de
+    # fonctionnement RÉEL de l'installation. Ce choix est délibéré et unique :
+    # le moteur compare ces deux bornes par un ``min()`` (Σ packs vs port), et
+    # deux conventions de tension différentes rendraient cette comparaison
+    # fausse. Convertir à 48 V donnerait une borne plus basse, mais à une
+    # tension qu'aucune batterie du catalogue n'a.
+    #
+    # DANS LES CINQ DATASHEETS, « Max. Charging Current » et « Max.
+    # Discharging Current » sont DEUX lignes distinctes portant la MÊME valeur
+    # pour chaque colonne-modèle — ce n'est pas une ligne unique dédoublée
+    # ici : les deux champs sont bien lus séparément, ils coïncident.
+    #
+    # DEUX DE CES CINQ CHIFFRES ÉTAIENT DÉJÀ DANS CE FICHIER, en commentaire
+    # « NON seedés faute de champ sur FicheTechnique » (120 A pour le 5M,
+    # 210 A pour le 10T) : la recherche du 24/08 les retrouve à l'identique
+    # sur les datasheets officielles. Ils ont enfin un champ.
     'OND-H-DEY-5M': {
         # G4 (2026-08-19) — RE-SOURCÉ intégralement sur la datasheet OFFICIELLE
         # deyeinverter.com datasheet_sun-(3.6-8)k-sg05lp1-eu_230731_en.pdf
@@ -1079,8 +1104,12 @@ FICHES_TECHNIQUES = {
         #     « 17+17 » (famille 3.6/5/6K) → 17 A d'Isc max par MPPT —
         #     valeur SUPPLANTÉE le 24/08/2026, cf. L-22A ci-dessous.
         # NON seedés faute de champ sur FicheTechnique (jamais inventé) :
-        # Max. Charging/Discharging Current 120 A,
         # Max. Continuous AC Passthrough 35 A, poids 24 kg, IP65.
+        # L-DECH (24/08/2026) — « Max. Charging/Discharging Current » 120 A,
+        # relu sur la MÊME datasheet officielle citée ci-dessus
+        # (datasheet_sun-(3.6-8)k-sg05lp1-eu_230731_en.pdf, colonne SUN-5K) :
+        # ce chiffre était déjà écrit ici « faute de champ », il en a un.
+        # 120 A × 51,2 V = 6,144 kW → 6,14.
         #
         # L-22A (2026-08-24) — « change both inverter of 5kw to increase their
         # mppt current to more then 20A so they accept the canadian solar
@@ -1100,6 +1129,8 @@ FICHES_TECHNIQUES = {
         'ond_ac_kw': Decimal('5'), 'ond_phases': 1,
         'ond_rendement_euro_pct': Decimal('96.5'),
         'ond_v_demarrage_v': Decimal('125.0'), 'ond_isc_max_mppt_a': Decimal('22.0'),
+        'ond_bat_max_charge_kw': Decimal('6.14'),
+        'ond_bat_max_decharge_kw': Decimal('6.14'),
     },
     'OND-H-DEY-10M': {
         # PVOND (2026-08-18, ordre fondateur « ne laisse rien griser ») — la
@@ -1120,6 +1151,13 @@ FICHES_TECHNIQUES = {
         'ond_v_max_abs': Decimal('600.0'), 'ond_i_max_mppt_a': Decimal('26.0'),
         'ond_ac_kw': Decimal('10'), 'ond_phases': 1,
         'ond_rendement_euro_pct': Decimal('97.0'),
+        # L-DECH (24/08/2026) — datasheet OFFICIELLE deyeinverter.com
+        # datasheet_sun-7.6-12kk-sg02lp1-eu-am2_240927_en.pdf (2024-09-27,
+        # « kk » est une coquille dans le nom de fichier CHEZ DEYE), famille
+        # SUN-7.6/8K-AM2 + SUN-10/12K-AM3 : colonne SUN-10K, charge et
+        # décharge 220 A. 220 A × 51,2 V = 11,264 kW → 11,26.
+        'ond_bat_max_charge_kw': Decimal('11.26'),
+        'ond_bat_max_decharge_kw': Decimal('11.26'),
     },
     # PV85 — Deye SUN-10K-SG05LP3-EU-SM2, modèle CONFIRMÉ FONDATEUR.
     # Sources : datasheet deyeinverter.com 2024-09 + manuel 2025-11.
@@ -1134,9 +1172,13 @@ FICHES_TECHNIQUES = {
     # (39 A/MPPT, révision actuelle 2 chaînes) désormais SEEDÉES : ces deux
     # valeurs étaient déjà SOURCÉES ci-dessus mais restaient en commentaire
     # faute de champ sur FicheTechnique.
-    # NON seedés faute de champ sur FicheTechnique (jamais inventé) : 210 A
-    # charge/décharge, rendement MAX 97,6 % (le champ est le rendement EURO),
-    # poids 35,2 kg.
+    # NON seedés faute de champ sur FicheTechnique (jamais inventé) :
+    # rendement MAX 97,6 % (le champ est le rendement EURO), poids 35,2 kg.
+    # L-DECH (24/08/2026) — les 210 A charge/décharge qui figuraient ici
+    # « faute de champ » sont CONFIRMÉS sur la datasheet officielle
+    # deyeinverter.com datasheet_sun-3-12k-sg05lp3-eu-sm2_240927_en.pdf
+    # (2024-09-27, colonne SUN-10K) et enfin seedés :
+    # 210 A × 51,2 V = 10,752 kW → 10,75.
     # La PLAGE BATTERIE 40-60 V, elle, n'est plus perdue : PVOND la loge en
     # DONNÉE sur la description (``PLAGE_BATTERIE_ONDULEUR`` plus haut) ET,
     # depuis PVOND-H, sur le champ dédié (même dict, fusionné plus bas).
@@ -1147,6 +1189,8 @@ FICHES_TECHNIQUES = {
         'ond_ac_kw': Decimal('10'), 'ond_phases': 3,
         'ond_rendement_euro_pct': Decimal('97.0'),
         'ond_v_demarrage_v': Decimal('160.0'), 'ond_isc_max_mppt_a': Decimal('39.0'),
+        'ond_bat_max_charge_kw': Decimal('10.75'),
+        'ond_bat_max_decharge_kw': Decimal('10.75'),
     },
     # PVLV2 (fondateur 21/08/2026, DÉFINITIF) — ces deux SKU sont les modèles
     # BASSE TENSION SUN-15K/20K-SG05LP3-EU-SM2 (« i only know 15 and 20kw on
@@ -1161,6 +1205,10 @@ FICHES_TECHNIQUES = {
     # Euro 97,0 % · plage batterie 40-60 V (cf. PLAGE_BATTERIE_ONDULEUR).
     # La migration stock 0126 recale les fiches des bases existantes (champ
     # par champ, uniquement là où la valeur est encore l'ancienne seedée).
+    # L-DECH (24/08/2026) — MÊME datasheet 14-20K, bloc « Battery Input
+    # Data » : charge = décharge, mais les DEUX COLONNES DIFFÈRENT — 280 A
+    # pour le SUN-15K, 350 A pour le SUN-20K. Aucune valeur n'est reportée de
+    # l'une à l'autre (à 51,2 V : 14,336 → 14,34 kW et 17,92 kW).
     'OND-H-DEY-15T': {
         'type_fiche': 'onduleur', 'ond_n_mppt': 2,
         'ond_mppt_v_min': Decimal('160.0'), 'ond_mppt_v_max': Decimal('650.0'),
@@ -1169,6 +1217,8 @@ FICHES_TECHNIQUES = {
         'ond_rendement_euro_pct': Decimal('97.0'),
         'ond_v_demarrage_v': Decimal('160.0'),
         'ond_isc_max_mppt_a': Decimal('30.0'),
+        'ond_bat_max_charge_kw': Decimal('14.34'),
+        'ond_bat_max_decharge_kw': Decimal('14.34'),
     },
     'OND-H-DEY-20T': {
         'type_fiche': 'onduleur', 'ond_n_mppt': 2,
@@ -1178,6 +1228,8 @@ FICHES_TECHNIQUES = {
         'ond_rendement_euro_pct': Decimal('97.0'),
         'ond_v_demarrage_v': Decimal('160.0'),
         'ond_isc_max_mppt_a': Decimal('30.0'),
+        'ond_bat_max_charge_kw': Decimal('17.92'),
+        'ond_bat_max_decharge_kw': Decimal('17.92'),
     },
     # ── PVG4 — Batteries Dyness ──
     'BAT-DEY-5': {
@@ -1186,6 +1238,20 @@ FICHES_TECHNIQUES = {
         'bat_dod_pct': Decimal('90.0'), 'bat_v_nominal': Decimal('51.2'),
         # 75 A continu × 51,2 V ≈ 3,84 kW (valeur constructeur, dyness.com).
         'bat_max_charge_kw': Decimal('3.84'),
+        # L-DECH (24/08/2026) — datasheet OFFICIELLE Dyness DL5.0C,
+        # https://dyness.com/Public/Uploads/uploadfile/files/20250318/
+        # DynessDL5.0Cdatasheet20250228EN.pdf (version 20250228-EN), ligne
+        # « Max. Charge/Discharge Current » : « Charge 75 A / Discharge 100 A ».
+        # 100 A × 51,2 V = 5,12 kW.
+        # ⇒ RÈGLE GÉNÉRALE FONDATEUR CONFIRMÉE À L'AMPÈRE PRÈS (« en général
+        #   c'est 100 A multiplié par les 52 V » ≈ 5,1 kW).
+        # ⇒ ET ELLE PROUVE POURQUOI ON NE DÉDUIT JAMAIS LA DÉCHARGE DE LA
+        #   CHARGE : ce pack accepte 75 A et en rend 100. Les deux champs sont
+        #   sourcés séparément, jamais recopiés l'un dans l'autre.
+        # NON seedé (aucun champ, jamais inventé) : pic 110 A pendant 15 s —
+        # un pic de quinze secondes ne borne pas une rafale de trente minutes,
+        # c'est le CONTINU qui fait foi ici.
+        'bat_max_decharge_kw': Decimal('5.12'),
     },
     'BAT-DEY-10': {
         'type_fiche': 'batterie',
@@ -1195,6 +1261,25 @@ FICHES_TECHNIQUES = {
         'bat_dod_pct': Decimal('90.0'), 'bat_v_nominal': Decimal('51.2'),
         # 100 A × 51,2 V = 5,12 kW (valeur constructeur).
         'bat_max_charge_kw': Decimal('5.12'),
+        # L-DECH (24/08/2026) — datasheet OFFICIELLE Dyness Powerbox Pro,
+        # https://www.dyness.com/Public/Uploads/uploadfile/files/20250102/
+        # PowerboxProdatasheetEN20241231-432.pdf (version 20241231-EN, celle
+        # déjà citée par ce seeder) : 100 A × 51,2 V = 5,12 kW.
+        # ⇒ RÈGLE GÉNÉRALE FONDATEUR CONFIRMÉE (100 A × ~52 V).
+        # NUANCE À DIRE À VOIX HAUTE — cette datasheet ne publie PAS deux
+        # lignes « max charge » / « max décharge » distinctes comme le DL5.0C :
+        # son seul champ de courant est « Recommended Charge/Discharge
+        # Current » = 100 A (label COMBINÉ, couvrant donc explicitement la
+        # décharge), cohérent avec la « Nominal Power » 5,12 kW publiée juste
+        # à côté. C'est EXACTEMENT la valeur dont ce seeder tire déjà
+        # ``bat_max_charge_kw`` ci-dessus : la retenir aussi en décharge est
+        # la lecture cohérente du même chiffre publié, et elle est
+        # CONSERVATRICE (un courant recommandé est inférieur ou égal au
+        # maximum). Aucune valeur « max » distincte n'a été trouvée sur les
+        # versions officielles EU et AU/NZ ; les 150 A annoncés par certains
+        # REVENDEURS n'apparaissent dans AUCUN document Dyness et ne sont donc
+        # PAS retenus. À recaler si Dyness publie un jour la ligne « max ».
+        'bat_max_decharge_kw': Decimal('5.12'),
     },
     # PVLV (21/08/2026) — Deye BOS-B-Pack16-A3 (système BOS-B Pro-A3),
     # identifié par la facture Solarex S26/001708 + fiches officielles
@@ -1218,6 +1303,25 @@ FICHES_TECHNIQUES = {
         'bat_dod_pct': Decimal('90.0'),   # « Recommend DoD: 90 % » (officiel)
         # 180 A × 51,2 V = 9,216 kW par module (courant max officiel).
         'bat_max_charge_kw': Decimal('9.22'),
+        # L-DECH (24/08/2026) — brochure OFFICIELLE deyeinverter.com
+        # « BOS-B Pro-A3 series » du 2025-09-28 : le module BOS-B-Pack16-A3
+        # publie UN SEUL champ combiné « Nominal Charge/Discharge Current »
+        # = 180 A (au niveau système : « Recommend 157 A / Max 180 A », même
+        # valeur combinée, aucune séparation charge vs décharge). Deye ne
+        # publie donc pas deux grandeurs distinctes ici : 180 A × 51,2 V
+        # = 9,216 kW s'applique aux deux sens, exactement comme la charge
+        # déjà seedée ci-dessus.
+        # ⚠ ÉCART ASSUMÉ VS LA RÈGLE GÉNÉRALE FONDATEUR (100 A × 52 V) : ce
+        #   pack haute tension publie 180 A, presque le double. LA DATASHEET
+        #   FAIT FOI — c'est un module de 16 kWh, pas un mural de 5 ou 10 kWh,
+        #   et la règle des 100 A décrit ces derniers (elle est vérifiée à
+        #   l'ampère près sur les deux Dyness ci-dessus). Écart SIGNALÉ au
+        #   fondateur, jamais lissé.
+        # RAPPEL : ce produit reste HORS de toute auto-composition (aucune
+        # ``bat_v_nominal`` — cf. le commentaire PVLV ci-dessus), donc cette
+        # valeur ne borne aucun devis aujourd'hui ; elle est fichée pour le
+        # jour où la décision fondateur sur les HV tombera.
+        'bat_max_decharge_kw': Decimal('9.22'),
     },
 }
 

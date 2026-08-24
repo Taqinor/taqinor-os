@@ -1542,8 +1542,12 @@ class FicheTechniqueSerializer(serializers.ModelSerializer):
             # simplement aucun champ pour les porter jusqu'ici.
             'ond_v_demarrage_v', 'ond_isc_max_mppt_a',
             'ond_bat_aucune', 'ond_bat_v_min', 'ond_bat_v_max',
+            # L-DECH (2026-08-24) — les deux bornes du PORT batterie de
+            # l'hybride, et la décharge PAR PACK côté batterie : le moteur
+            # horaire borne le chemin batterie par le plus petit des deux.
+            'ond_bat_max_charge_kw', 'ond_bat_max_decharge_kw',
             'bat_kwh_nominal', 'bat_kwh_usable', 'bat_dod_pct',
-            'bat_v_nominal', 'bat_max_charge_kw',
+            'bat_v_nominal', 'bat_max_charge_kw', 'bat_max_decharge_kw',
             'pdf', 'date_creation', 'date_mise_a_jour',
         ]
         # company is force-assigned in perform_create — never from the body.
