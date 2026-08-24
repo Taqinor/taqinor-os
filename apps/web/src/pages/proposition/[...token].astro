@@ -6211,7 +6211,24 @@ const signConfig = ok
         if (!caption) return;
         const peak = target.dataset.peak ?? '';
         const avg = target.dataset.avg ?? '';
-        caption.textContent = [peak, avg].filter(Boolean).join(' · ');
+        // ORDRE FONDATEUR (24/08/2026) — la consommation servie (`data-cons`,
+        // posée par le SVG quand le backend sert le kWh/jour réel) s'affiche
+        // aussi au tap, dans la couleur de SA courbe (azur) — les deux chiffres
+        // de production restent dans le laiton du <p> porteur. Absente ⇒ rien
+        // de plus, jamais un chiffre inventé.
+        const cons = target.dataset.cons ?? '';
+        caption.textContent = '';
+        caption.append([peak, avg].filter(Boolean).join(' · '));
+        if (cons) {
+          caption.append(' · ');
+          const span = document.createElement('span');
+          // Même écriture que la courbe elle-même (`proposalCurve.ts`) : la
+          // teinte azur n'existe pas dans le thème Tailwind (200 → 600), seul
+          // le repli du `var()` porte réellement la couleur.
+          span.style.color = 'var(--color-azur-300, #7fb4e8)';
+          span.textContent = cons;
+          caption.append(span);
+        }
       }
     }
 

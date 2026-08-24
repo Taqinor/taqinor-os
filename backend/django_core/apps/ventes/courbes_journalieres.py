@@ -227,9 +227,11 @@ def _production(kwc, mensuel, ville, lat, lon):
 def _consommation(monthly_consumption, equipements=None):
     """Bloc consommation par saison (niveau RÉEL uniquement), ou ``{}``.
 
-    ``monthly_consumption`` = la série M10 déjà servie (12 kWh/mois issus des
-    factures réelles du lead ; ``[]`` quand elle serait une estimation). On n'en
-    tire QUE la moyenne journalière par saison : la forme 24 h reste côté page.
+    ``monthly_consumption`` = la série M10 déjà servie (12 kWh/mois RÉELS — la
+    série canonique du bloc horaire persisté est lue d'abord, les factures du
+    lead en repli : voir ``public_views._monthly_consumption_etude`` ; ``[]``
+    quand elle serait une estimation). On n'en tire QUE la moyenne journalière
+    par saison : la forme 24 h reste côté page.
 
     L4 — quand une couche ``ve`` (véhicule électrique) est active, son
     ``kwh_jour`` (charge FUTURE, absente des factures passées — voir
