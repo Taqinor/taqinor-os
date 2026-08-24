@@ -415,8 +415,13 @@ def build(ctx):
         # Z2 — économie annuelle et payback descendent du MÊME calcul que la
         # synthèse : sans ancrage réel, ils partent avec elle (le prix, lui,
         # est une donnée du devis et reste affiché).
+        # …et le MOT suit le modèle, comme le KPI plus bas : « calculée »
+        # quand le moteur horaire a réellement calculé (savings_model
+        # 'horaire'), « estimée » sinon — même règle, une seule vérité.
+        eco_mot = ("calculée" if d.get("savings_model") == "horaire"
+                   else "estimée")
         eco_html = (
-            f'<div class="c1-opt-eco">Économie estimée ≈ <b>{fmt(eco)} '
+            f'<div class="c1-opt-eco">Économie {eco_mot} ≈ <b>{fmt(eco)} '
             'MAD/an</b></div>' if (eco and not masquer_eco) else "")
         roi_html = (
             f'<div class="c1-roi">{_roi_svg(green)}Rentabilisé en '
