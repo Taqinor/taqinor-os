@@ -315,6 +315,13 @@ class ProduitSerializer(serializers.ModelSerializer):
             'unite_stock', 'unite', 'unite_stock_display',
             # Prix (prix_achat gardé par permission, cf. get_fields)
             'prix_achat', 'prix_vente', 'tva',
+            # L-FORFAIT (fondateur 24/08/2026) — barème forfaitaire AU PANNEAU
+            # (Installation / Tableau De Protection AC/DC / Accessoires) :
+            # part fixe + part par panneau, en DH HT. Lecture ET écriture
+            # (permissions d'écriture existantes du stock) : c'est par là que
+            # le fondateur change ces prix sans toucher au code. Vides ⇒ le
+            # produit se vend à son `prix_vente`, comme tout le reste.
+            'prix_fixe_ht', 'prix_par_panneau_ht',
             # ZPUR1 — politique de facturation d'achat (sur_reception/
             # sur_commande) — INTERNE, jamais client-facing (achat).
             'politique_facturation_achat',
@@ -1535,8 +1542,12 @@ class FicheTechniqueSerializer(serializers.ModelSerializer):
             # simplement aucun champ pour les porter jusqu'ici.
             'ond_v_demarrage_v', 'ond_isc_max_mppt_a',
             'ond_bat_aucune', 'ond_bat_v_min', 'ond_bat_v_max',
+            # L-DECH (2026-08-24) — les deux bornes du PORT batterie de
+            # l'hybride, et la décharge PAR PACK côté batterie : le moteur
+            # horaire borne le chemin batterie par le plus petit des deux.
+            'ond_bat_max_charge_kw', 'ond_bat_max_decharge_kw',
             'bat_kwh_nominal', 'bat_kwh_usable', 'bat_dod_pct',
-            'bat_v_nominal', 'bat_max_charge_kw',
+            'bat_v_nominal', 'bat_max_charge_kw', 'bat_max_decharge_kw',
             'pdf', 'date_creation', 'date_mise_a_jour',
         ]
         # company is force-assigned in perform_create — never from the body.

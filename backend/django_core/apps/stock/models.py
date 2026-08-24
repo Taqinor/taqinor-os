@@ -681,6 +681,34 @@ class Produit(models.Model):
         null=True, blank=True,
         help_text='Garantie production (panneaux) en mois — souvent 300 à 360.')
 
+    # ── L-FORFAIT (fondateur 24/08/2026) — TARIF FORFAITAIRE AU PANNEAU ─────
+    # « dans le stock ceci devra être bien fait, c'est-à-dire chaque case de
+    # installation, tableau AC/DC et accessoires devra avoir une partie fixe
+    # et une par panneau que je pourrai changer par la suite ».
+    #
+    # Trois lignes du kit résidentiel (Installation, Tableau De Protection
+    # AC/DC, Accessoires) ne se vendent pas à l'unité catalogue : leur montant
+    # est une DROITE en nombre de panneaux. Ces deux champs SONT cette droite,
+    # et ils vivent ici — dans le catalogue, modifiables par le fondateur —
+    # plutôt qu'en dur dans le code de composition.
+    #
+    # Règle de lecture (cf. ``apps.ventes.services.prix_forfait_ht``) : dès que
+    # l'UN des deux est renseigné, la composition résidentielle côte la ligne
+    # ``prix_fixe_ht + prix_par_panneau_ht × nb_panneaux`` (HT, quantité 1) au
+    # lieu de ``prix_vente``. Les DEUX vides (défaut, cas de tout le reste du
+    # catalogue) ⇒ ``prix_vente``, comportement historique inchangé.
+    prix_fixe_ht = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        help_text="Tarif forfaitaire — part FIXE en DH HT, due quel que soit "
+                  "le nombre de panneaux (ex. Installation : 2000). Laisser "
+                  "vide pour un produit vendu au prix de vente catalogue.")
+    prix_par_panneau_ht = models.DecimalField(
+        max_digits=10, decimal_places=4, null=True, blank=True,
+        help_text="Tarif forfaitaire — part PAR PANNEAU en DH HT, multipliée "
+                  "par le nombre de panneaux du devis (ex. Installation : "
+                  "250). Laisser vide pour un produit vendu au prix de vente "
+                  "catalogue.")
+
     # ── Spécifications pompage solaire (mode Agricole) ──
     pompe_cv = models.DecimalField(
         max_digits=6, decimal_places=2, null=True, blank=True,
@@ -2001,6 +2029,30 @@ class FicheTechnique(models.Model):
         help_text='Plage de tension batterie compatible — borne haute (V). '
                   'Onduleur hybride uniquement.')
 
+    # ── L-DECH (fondateur 24/08/2026) — « mais l'onduleur aussi a un max de
+    # charge et de décharge, cherche bien et rajoute aussi ces numéros ».
+    #
+    # LE PORT BATTERIE EST UN GOULOT À PART ENTIÈRE. Deux packs qui rendent
+    # 5,12 kW chacun derrière un onduleur dont le port n'admet que 6,14 kW ne
+    # servent PAS 10,24 kW à la pointe : le chemin batterie vaut
+    # ``min(Σ packs, port onduleur)``, dans LES DEUX SENS (un surplus de 8 kW
+    # ne charge pas plus vite que le port ne l'accepte non plus).
+    #
+    # Les datasheets Deye publient ces bornes en AMPÈRES sur la ligne
+    # « Max. Charging/Discharging Current » du bloc « Battery Input Data » ;
+    # ``seed_catalogue`` les convertit en kW à 51,2 V — la MÊME convention de
+    # tension que ``bat_v_nominal`` des packs du catalogue, pour que les deux
+    # bornes soient comparables par un ``min()`` (le détail de la conversion et
+    # de son choix de tension est écrit SKU par SKU dans le seeder).
+    ond_bat_max_charge_kw = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        help_text='Puissance de CHARGE maximale du port batterie (kW). '
+                  'Onduleur hybride uniquement.')
+    ond_bat_max_decharge_kw = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        help_text='Puissance de DÉCHARGE maximale du port batterie (kW). '
+                  'Onduleur hybride uniquement.')
+
     # ── PV5 — Batterie ──
     bat_kwh_nominal = models.DecimalField(
         max_digits=6, decimal_places=2, null=True, blank=True,
@@ -2017,6 +2069,25 @@ class FicheTechnique(models.Model):
     bat_max_charge_kw = models.DecimalField(
         max_digits=5, decimal_places=2, null=True, blank=True,
         help_text='Puissance de charge maximale (kW).')
+    # ── L-DECH (fondateur 24/08/2026) — « pour la décharge, source-la, mais en
+    # général c'est 100 A multiplié par les 52 V ».
+    #
+    # LA PUISSANCE QUI MANQUAIT. ``bat_max_charge_kw`` existait seul, et le
+    # moteur horaire (L-GLITCH, ``apps/ventes/etude_horaire.py``) le disait
+    # noir sur blanc : sans décharge PUBLIÉE, il applique une règle
+    # conservatrice et laisse la pointe partir au réseau. Ce champ est celui
+    # qu'il attendait. Il ne se DÉDUIT jamais de la charge — un pack peut
+    # accepter 75 A et en rendre 100 (c'est exactement le cas du DL5.0C) :
+    # recopier l'une dans l'autre inventerait une équivalence que le
+    # constructeur ne publie pas.
+    #
+    # PAR PACK, et ADDITIF EN PARALLÈLE (précision fondateur du même jour :
+    # « n'oublie pas de considérer le cas avec deux batteries où c'est 100 A
+    # par batterie ») : la borne d'une composition vaut Σ (valeur de fiche ×
+    # quantité de la ligne), chaque unité à SA valeur.
+    bat_max_decharge_kw = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        help_text='Puissance de décharge maximale (kW), par pack.')
 
     # ── PDF constructeur d'origine (optionnel) ──
     pdf = models.FileField(

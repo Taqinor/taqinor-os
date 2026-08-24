@@ -109,8 +109,8 @@
         "produit": 91,
         "designation": "Accessoires",
         "quantite": 1,
-        "prix_unitaire_ht": "833.33",
-        "prix_unitaire_ttc": "1000.00",
+        "prix_unitaire_ht": "416.67",
+        "prix_unitaire_ttc": "500.00",
         "taux_tva": "20"
       },
       {
@@ -119,8 +119,8 @@
         "produit": 92,
         "designation": "Tableau De Protection AC/DC",
         "quantite": 1,
-        "prix_unitaire_ht": "1250.00",
-        "prix_unitaire_ttc": "1500.00",
+        "prix_unitaire_ht": "1625.00",
+        "prix_unitaire_ttc": "1950.00",
         "taux_tva": "20"
       },
       {

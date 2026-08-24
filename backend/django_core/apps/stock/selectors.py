@@ -1190,9 +1190,13 @@ def specs_for_produit(produit):
         largeur_mm}`` ;
       * ``onduleur`` → ``{n_mppt, mppt_v_min, mppt_v_max, v_max_abs,
         i_max_mppt_a, ac_kw, phases, rendement_euro_pct, v_demarrage_v,
-        isc_max_mppt_a}`` ;
+        isc_max_mppt_a, bat_max_charge_kw, bat_max_decharge_kw}`` ;
       * ``batterie`` → ``{kwh_nominal, kwh_usable, dod_pct, v_nominal,
-        max_charge_kw}``.
+        max_charge_kw, max_decharge_kw}``.
+
+    ⚠ LE DICT RENDU EST PLAT — c'est le BLOC du ``type_fiche``, pas un dict de
+    blocs : lire ``specs_for_produit(p)['batterie']`` rend toujours ``None``.
+    (Ce faux pas a réellement coûté un moteur muet, cf. L-DECH.)
 
     Une clé dont la valeur est NULL sur la fiche est OMISE (jamais rendue à
     ``None``) : un appelant qui fait ``{**DEFAUT, **specs_for_produit(p)}``
@@ -1234,6 +1238,13 @@ def specs_for_produit(produit):
             # les porter jusqu'ici (cf. le nouveau bloc PVOND-H du modèle).
             ('v_demarrage_v', fiche.ond_v_demarrage_v),
             ('isc_max_mppt_a', fiche.ond_isc_max_mppt_a),
+            # L-DECH (2026-08-24) — le PORT BATTERIE de l'hybride, deuxième
+            # goulot du chemin batterie : le moteur horaire borne la puissance
+            # servie/absorbée par ``min(Σ packs, port onduleur)``.
+            # getattr : les doubles de test (_FausseFiche) ne portent pas
+            # forcément les champs récents — absent ≡ NULL (non évaluable).
+            ('bat_max_charge_kw', getattr(fiche, 'ond_bat_max_charge_kw', None)),
+            ('bat_max_decharge_kw', getattr(fiche, 'ond_bat_max_decharge_kw', None)),
         ):
             _put(out, key, value)
     elif fiche.type_fiche == 'batterie':
@@ -1243,6 +1254,11 @@ def specs_for_produit(produit):
             ('dod_pct', fiche.bat_dod_pct),
             ('v_nominal', fiche.bat_v_nominal),
             ('max_charge_kw', fiche.bat_max_charge_kw),
+            # L-DECH (2026-08-24) — la puissance de décharge PAR PACK, celle
+            # que ``apps/ventes/etude_horaire.py`` attendait par son nom.
+            # getattr : les doubles de test (_FausseFiche) ne portent pas
+            # forcément les champs récents — absent ≡ NULL (non évaluable).
+            ('max_decharge_kw', getattr(fiche, 'bat_max_decharge_kw', None)),
         ):
             _put(out, key, value)
     return out

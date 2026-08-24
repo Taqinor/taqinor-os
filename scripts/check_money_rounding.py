@@ -48,6 +48,14 @@ BASELINE_ALLOWLIST = {
     # le barème société de builder.py [+21/+45]) : 935→950, 938→953,
     # 2456→2471, 2523→2538 ; builder 1112→1133, 1125→1146, 1777→1822,
     # 1783→1828, 1836→1881, 1837→1882. Vérifié formule par formule.
+    # apps/ventes/services.py — 4 dérivations de PUISSANCE (kWc), pas d'argent.
+    # Recalées par CONTENU sur l'arbre INTÉGRÉ du 24/08/2026 (L-TRI +49 et
+    # L-FORFAIT +84 lignes ont décalé le fichier ; leurs recalages faits
+    # chacun dans son worktree se contredisaient — vraies lignes relues).
+    "backend/django_core/apps/ventes/services.py:1033",
+    "backend/django_core/apps/ventes/services.py:1036",
+    "backend/django_core/apps/ventes/services.py:3213",
+    "backend/django_core/apps/ventes/services.py:3300",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1867",  # QJ29 multi-villa ×N (réécrit PVUNI, formule préexistante revue)
     "backend/django_core/apps/ventes/quote_engine/builder.py:1926",  # total_ttc ligne gamme (réécrit PVUNI, formule préexistante revue)
     "backend/django_core/apps/ventes/quote_engine/builder.py:626",
@@ -185,10 +193,10 @@ BASELINE_ALLOWLIST = {
     # lignes de `services.py` (la composition résidentielle a gagné les règles
     # câbles/marques/ordre). Aucun n'est monétaire : ce sont une surface de
     # toit, une puissance en kWc et deux dérivations kWc = panneaux × Wc.
-    "backend/django_core/apps/ventes/services.py:1033",
-    "backend/django_core/apps/ventes/services.py:1036",
-    "backend/django_core/apps/ventes/services.py:3056",
-    "backend/django_core/apps/ventes/services.py:3143",
+    # 24/08/2026 — RE-CALAGE par CONTENU sur l'arbre INTÉGRÉ (L-TRI +49 lignes
+    # ET L-FORFAIT +84 lignes dans apps/ventes/services.py, chacune avait
+    # recalé dans son propre worktree ; les deux mêmes dérivations
+    # kWc = panneaux × Wc vivent désormais aux lignes 3213 et 3300).
     "backend/django_core/apps/ventes/quote_engine/builder.py:385",
     "backend/django_core/apps/ventes/quote_engine/builder.py:386",
     "backend/django_core/apps/ventes/quote_engine/builder.py:725",

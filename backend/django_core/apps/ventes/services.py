@@ -1742,11 +1742,80 @@ def ordonner_par_role(taguees, ordre_lignes):
         key=lambda couple: rangs.get(couple[0], grand))
 
 
-#: Prix TTC des trois lignes FORFAITAIRES, indexés sur la puissance par blocs de
-#: 5 kWc — port littéral de ``auto_fill_from_power`` (le simulateur d'origine).
-_TTC_ACCESSOIRES_PAR_BLOC = 1000
-_TTC_TABLEAU_PAR_BLOC = 1500
-_TTC_INSTALLATION_PAR_BLOC = 2400
+# ── L-FORFAIT (ordre fondateur 24/08/2026) — LES TROIS FORFAITS SE COTENT AU
+# PANNEAU, PLUS PAR BLOCS DE 5 kWc ───────────────────────────────────────────
+# Verbatim : « change the rule of calculating instalation cost to be per pannel
+# plus 2000dh HT always there plus 250 dh HT per pannel, so 8 pannels is still
+# 4000dh HT and 16 pannels is 6000dh HT. but now what is inbetween changes,
+# also make the same for the tableau AC DC and the accesoirs, also now reduce
+# the price of accesoirs by half and add 30% to tableau DC AC total price ».
+#
+# L'ANCIENNE RÈGLE (port littéral de ``auto_fill_from_power``) montait par
+# MARCHES : 1 000 / 1 500 TTC par bloc de 5 kWc, et (blocs + 1) × 2 400 TTC
+# pour l'installation, avec ``blocs = max(1, round(kWc / 5))``. Deux toitures
+# différentes (8 et 12 panneaux) tombaient donc au MÊME prix tant qu'elles
+# restaient dans le même bloc, puis sautaient d'une marche entière. La règle
+# est désormais une DROITE en NOMBRE DE PANNEAUX : les deux ancrages du
+# fondateur (8 → 4 000, 16 → 6 000 pour l'installation) sont conservés au
+# centime près, et seul l'entre-deux change — il se lisse.
+#
+# Ces montants sont nativement HT (le fondateur les a dictés en HT) : ils ne
+# passent PLUS par la conversion TTC→HT et ne dépendent donc plus du taux de
+# TVA du devis. Le câble de terre, lui, reste indexé sur les paliers de 5 kWc
+# (``blocs``) — cette règle-là n'est pas touchée.
+#
+# ⚠ LE BARÈME NE VIT PAS ICI (ordre fondateur, même jour : « dans le stock
+# ceci devra être bien fait, c'est-à-dire chaque case de installation, tableau
+# AC/DC et accessoires devra avoir une partie fixe et une par panneau que je
+# pourrai changer par la suite »). Les deux parts sont des CHAMPS CATALOGUE —
+# ``stock.Produit.prix_fixe_ht`` et ``prix_par_panneau_ht`` (migration
+# ``stock/0128``, qui pose aussi les valeurs du fondateur) — que le fondateur
+# modifie depuis le stock sans toucher au code. Ce module ne porte QUE la
+# formule générique ci-dessous : aucun 2 000 / 250 / 52,08 / 203,125 en dur.
+#
+# Le montant de ces lignes vient donc du BARÈME, jamais du ``prix_vente`` du
+# produit qui les porte — et un produit SANS barème (les deux champs vides,
+# c'est-à-dire tout le reste du catalogue) garde exactement son ``prix_vente``.
+
+
+def _au_centime(montant):
+    """Arrondi MONÉTAIRE des forfaits : 2 décimales, moitié vers le haut.
+
+    Même arrondi que le reste de la composition (l'ancienne conversion
+    TTC→HT quantizait déjà ainsi) : un prix unitaire de devis n'a jamais plus
+    de deux décimales.
+    """
+    return Decimal(montant).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+
+def prix_forfait_ht(produit, nb_panneaux):
+    """L-FORFAIT — le prix HT d'une ligne TARIFÉE AU PANNEAU, sinon ``None``.
+
+    ``prix_fixe_ht + prix_par_panneau_ht × nb_panneaux``, arrondi au centime.
+    Rend ``None`` — et l'appelant retombe alors sur le ``prix_vente``
+    catalogue, comportement historique byte-identique — dès que le produit ne
+    porte AUCUN barème (les deux champs vides), ce qui est le cas de tout le
+    catalogue sauf les forfaits.
+
+    UNE SEULE VÉRITÉ : tout chemin qui (re)compose le kit résidentiel —
+    création depuis un calepinage, ``sync-layout``/PVHEAL, dry-run — passe par
+    ``composition_residentielle``, donc par cette fonction. Changer le nombre
+    de panneaux requote mécaniquement les forfaits ; changer le barème au
+    stock les requote aussi, sans qu'aucun appelant n'ait sa propre copie de
+    la règle.
+    """
+    if produit is None:
+        return None
+    fixe = getattr(produit, 'prix_fixe_ht', None)
+    par_panneau = getattr(produit, 'prix_par_panneau_ht', None)
+    if fixe is None and par_panneau is None:
+        return None
+    n = int(nb_panneaux or 0)
+    total = Decimal(str(fixe or 0))
+    if n > 0:
+        total += Decimal(str(par_panneau or 0)) * Decimal(n)
+    return _au_centime(total)
+
 
 _KW_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*(?:kw|kva)\b", re.IGNORECASE)
 _KWH_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*kwh\b", re.IGNORECASE)
@@ -1902,6 +1971,22 @@ def _v_txt(volts):
     return str(int(f)) if f == int(f) else ('%g' % f)
 
 
+def avertissement_aucun_onduleur_triphase():
+    """L-TRI — le message FRANÇAIS d'un client TRIPHASÉ sans onduleur triphasé.
+
+    Une seule formulation, comme ``avertissement_vivier_batterie_vide`` : le
+    commercial doit lire la MÊME phrase quel que soit le bouton utilisé. Elle
+    dit la seule chose vraie — la composition a été REFUSÉE, il manque une
+    référence au catalogue — et surtout PAS « composition en monophasé à
+    valider » : un onduleur monophasé n'est pas une solution dégradée pour un
+    client triphasé, c'est une erreur de devis (ordre fondateur 24/08/2026).
+    """
+    return ('Raccordement TRIPHASÉ déclaré — aucun onduleur TRIPHASÉ '
+            'disponible au catalogue : la composition a été REFUSÉE plutôt '
+            'que de coter un onduleur monophasé. Ajoutez un onduleur '
+            'triphasé (tarifé, fiche technique complète) au catalogue.')
+
+
 def _vivier_onduleurs_par_phase(candidats, phase):
     """PVCOMPAT — restreint un vivier d'onduleurs au RACCORDEMENT du client.
 
@@ -1917,15 +2002,28 @@ def _vivier_onduleurs_par_phase(candidats, phase):
       le vivier D'ORIGINE et on le DIT : mieux vaut un devis à valider qu'aucun
       onduleur du tout (même principe que ``_filtrer_onduleurs_complets`` : un
       verrou qui vide la table est une panne).
-    * ``triphase`` — le vivier n'est PAS restreint (un triphasé accepte un
-      onduleur monophasé sur une de ses phases) ; c'est seulement le départage
-      à puissance égale qui devient une préférence DURE, cf. ``choisir_onduleur``.
+    * ``triphase`` — L-TRI (incident fondateur 24/08/2026 : « pourquoi j'ai du
+      mono alors que le client est tri ») — les monophasés sont ÉCARTÉS, sans
+      AUCUN repli. La préférence tri d'hier n'était qu'un départage À PUISSANCE
+      ÉGALE (``choisir_onduleur``) : dès que le premier palier triphasé du
+      catalogue (10 kW) était plus GROS que le plus petit modèle ≥ 80 % du kWc,
+      le monophasé gagnait — un client triphasé se voyait coter un « Onduleur
+      réseau Huawei 5kW Monophasé ». Le vivier est donc TRIPHASÉ EXCLUSIVEMENT :
+      un petit kWc prend le plus petit triphasé du catalogue, même très
+      surdimensionné (la règle des 80 % est un PLANCHER, jamais une raison de
+      retomber en monophasé), et un catalogue sans triphasé ne compose AUCUN
+      onduleur — le refus est annoncé par ``choisir_onduleur``.
 
-    Rend ``(vivier, a_replie)``. ``phase`` vide/inconnue ⇒ vivier inchangé, donc
-    comportement d'avant à l'octet près.
+    Rend ``(vivier, a_replie)``. ``a_replie`` reste le drapeau du SEUL repli qui
+    subsiste, celui du monophasé. ``phase`` vide/inconnue ⇒ vivier inchangé,
+    donc comportement d'avant à l'octet près.
     """
-    from apps.ventes.compatibilites import PHASE_MONO, est_triphase_produit
+    from apps.ventes.compatibilites import (
+        PHASE_MONO, PHASE_TRI, est_triphase_produit)
     source = list(candidats or [])
+    if phase == PHASE_TRI:
+        # Jamais de repli : un vivier vide vaut mieux qu'une ligne monophasée.
+        return [p for p in source if est_triphase_produit(p)], False
     if phase != PHASE_MONO:
         return source, False
     monophases = [p for p in source if not est_triphase_produit(p)]
@@ -1961,7 +2059,8 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
                               avec_batterie=False, structure_type='acier',
                               taux_tva=Decimal('20'), avertissements=None,
                               deux_options=False, marques=None,
-                              ordre_lignes=None, mppt_paires=1, phase=None):
+                              ordre_lignes=None, mppt_paires=1, phase=None,
+                              batterie_cible_kwh=None):
     """Le KIT résidentiel COMPLET composé depuis un catalogue.
 
     U3 (fondateur 20/08/2026) — CETTE FONCTION EST LA SOURCE DE VÉRITÉ de la
@@ -2017,10 +2116,23 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     appelante (voir ``catalogue_de_la_societe``) ; les produits sans prix de
     vente en sont écartés d'entrée de jeu.
 
-    ``taux_tva`` est le taux du DEVIS (celui qui s'appliquera réellement aux
-    lignes, dont ``taux_tva`` reste vide) : il sert à reconvertir en HT les
-    trois prix forfaitaires que le simulateur exprime en TTC, pour que le
-    montant vu par le client soit le même des deux côtés.
+    ``taux_tva`` — le taux du DEVIS. Il servait à reconvertir en HT les trois
+    prix forfaitaires que le simulateur exprimait en TTC ; depuis L-FORFAIT
+    (fondateur 24/08/2026) ces forfaits sont dictés EN HT et lus au catalogue
+    (``stock.Produit.prix_fixe_ht`` / ``prix_par_panneau_ht``), donc plus rien
+    ici ne convertit quoi que ce soit. Le paramètre est CONSERVÉ — tous les
+    appelants le passent et la TVA reste celle du devis — mais il n'influence
+    plus aucun montant composé.
+
+    ``batterie_cible_kwh`` (DIM2, fondateur 24/08/2026) — capacité de stockage
+    VISÉE, en kWh, servie par les modules du catalogue. ``None`` (LE DÉFAUT,
+    épinglé par un test) ⇒ la règle historique du simulateur reste seule maître
+    à bord : ``cible = max(5, arrondi(kwp / 5) × 5)``. **Le devis automatique ne
+    passe JAMAIS ce paramètre** : sa batterie reste une conséquence des kWc,
+    exactement comme avant. Seul le TABLEAU de dimensionnement
+    (``apps.ventes.dimensionnement``) l'utilise, pour EXPLORER le stockage comme
+    une deuxième dimension et montrer au fondateur ce qu'une banque plus grande
+    changerait — explorer n'est pas décider.
 
     ``avertissements`` (optionnel) est LE CANAL de cette fonction : une liste
     que l'appelant fournit et que la composition enrichit sur place quand elle
@@ -2101,26 +2213,40 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     # mono-option — avertir depuis le vivier ferait crier l'onduleur invendu.
     # Le message est prononcé plus bas, pour les seules catégories VENDUES.
     replis_phase = {}
+    # L-TRI — catégories dont le vivier TRIPHASÉ est VIDE alors que le client
+    # est triphasé : la composition a REFUSÉ de coter un monophasé. Même
+    # discipline que ``replis_phase`` — on ne prononce le message que pour les
+    # catégories réellement VENDUES.
+    refus_tri = {}
 
     def choisir_onduleur(categorie):
         candidats = []
         # PVOND — VERROU DE COMPLÉTUDE, miroir de solar.js::pickInverter : un
         # onduleur au contrat incomplet est écarté de l'auto-composition AVANT
         # le tri par puissance, exactement comme à l'écran.
-        # PVCOMPAT — puis le RACCORDEMENT du client réduit le vivier (monophasé
-        # seulement : un triphasé accepte un onduleur monophasé).
-        vivier, replie = _vivier_onduleurs_par_phase(
-            _filtrer_onduleurs_complets(
-                par_marque(par_type.get(categorie), categorie)),
-            phase_client)
+        # PVCOMPAT/L-TRI — puis le RACCORDEMENT du client réduit le vivier :
+        # monophasé (les triphasés sortent, repli toléré) comme triphasé (les
+        # monophasés sortent, AUCUN repli).
+        complets = _filtrer_onduleurs_complets(
+            par_marque(par_type.get(categorie), categorie))
+        vivier, replie = _vivier_onduleurs_par_phase(complets, phase_client)
         replis_phase[categorie] = replie
+        refus_tri[categorie] = False
         for produit in vivier:
             kw = _parse_kw(getattr(produit, 'nom', ''))
             if kw and kw > 0:
                 candidats.append((kw, getattr(produit, 'id', 0) or 0, produit))
         if not candidats:
+            # L-TRI — distinguer « catalogue vide pour cette catégorie »
+            # (silence historique) de « il y avait des onduleurs, mais AUCUN
+            # triphasé » : ce second cas est un REFUS, et un refus se dit.
+            refus_tri[categorie] = bool(
+                phase_client == PHASE_TRI and complets)
             return None, None
         candidats.sort(key=lambda c: (c[0], c[1]))
+        # Le plus petit modèle ≥ 80 % du kWc : sur un vivier déjà réduit au
+        # raccordement du client, ce PLANCHER ne peut plus faire changer de
+        # phase — un petit kWc prend simplement le plus petit triphasé.
         valides = [c for c in candidats if c[0] >= seuil] or [candidats[-1]]
         meilleure = valides[0][0]
         memes = [c for c in valides if c[0] == meilleure]
@@ -2166,6 +2292,12 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
             and _onduleurs_par_categorie.get(categorie) is not None
             for categorie in _categories_vendues):
         _avertir(avertissement_raccordement(PHASE_MONO))
+    # L-TRI — le raccordement TRIPHASÉ n'a AUCUN onduleur au catalogue sur une
+    # catégorie VENDUE : la composition part sans onduleur (jamais un
+    # monophasé), et elle le DIT — sinon le devis mentirait par omission.
+    if phase_client == PHASE_TRI and any(
+            refus_tri.get(categorie) for categorie in _categories_vendues):
+        _avertir(avertissement_aucun_onduleur_triphase())
     # U2 — en forme DEUX OPTIONS, le stockage fait partie du devis : les
     # batteries sont composées même si ``avec_batterie`` est faux, puisque
     # c'est l'option « avec » qui les porte.
@@ -2244,7 +2376,12 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     # fondateur 2026-08-18) ; un produit encore nommé « Deyness » (base non
     # migrée, saisie manuelle, fixture ancienne) doit rester reconnu, sans quoi
     # le vivier retomberait sur TOUTES les batteries du catalogue.
-    cible_kwh = max(5, _arrondi_js(kwp / 5) * 5)
+    # DIM2 — une cible EXPLICITE (balayage du stockage) prime sur la règle
+    # kWc ; sans elle, la règle historique décide seule, à l'octet près.
+    if batterie_cible_kwh is not None and float(batterie_cible_kwh) > 0:
+        cible_kwh = max(5, _arrondi_js(float(batterie_cible_kwh) / 5) * 5)
+    else:
+        cible_kwh = max(5, _arrondi_js(kwp / 5) * 5)
     nb10 = int(cible_kwh // 10)
     nb5 = 1 if (cible_kwh % 10) >= 5 else 0
     # PVOND — GARDE BATTERIE PILOTÉ PAR LA DONNÉE (remplace le mot-clé PVG4) :
@@ -2324,13 +2461,21 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     cable_dc = choisir_cable('cable_dc')
     cable_terre = choisir_cable('cable_terre')
 
-    # ── Forfaits indexés sur la puissance, par blocs de 5 kWc (TTC) ──
+    # ── Paliers de 5 kWc — ne servent plus QUE au métrage du câble de terre ──
     blocs = max(1, _arrondi_js(kwp / 5))
-    facteur = Decimal('1') + (Decimal(str(taux_tva or 20)) / Decimal('100'))
 
-    def ht_depuis_ttc(ttc):
-        return (Decimal(str(ttc)) / facteur).quantize(
-            Decimal('0.01'), rounding=ROUND_HALF_UP)
+    # ── L-FORFAIT (fondateur 24/08/2026) — les trois forfaits se cotent AU
+    # PANNEAU, depuis le BARÈME PORTÉ PAR LE PRODUIT (cf. ``prix_forfait_ht``) :
+    # plus de marches par bloc de 5 kWc, et plus aucune conversion TTC→HT —
+    # c'est pourquoi ``taux_tva`` ne sert plus ici.
+    #
+    # Le barème est appliqué à ces TROIS rôles NOMMÉMENT, jamais dans
+    # ``ajouter`` : une part « par panneau » posée par erreur sur un produit
+    # vendu à la quantité (panneau, structure, socle…) se multiplierait alors
+    # DEUX fois — une fois dans le prix, une fois dans la quantité.
+    produit_accessoires = premier('accessoires')
+    produit_tableau = premier('tableau')
+    produit_installation = premier('installation')
 
     # ── Smart Meter + clé Wifi : UNIQUEMENT derrière un onduleur Huawei ──
     # (miroir du garde ``info_hw`` de l'ancien simulateur). L'écran teste les
@@ -2391,12 +2536,16 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     # suit les paliers de 5 kWc (25 m de base + 15 m par palier).
     ajouter('cable_dc', cable_dc, metre_cable_dc_par_paires(mppt_paires))
     ajouter('cable_terre', cable_terre, metre_cable_terre(blocs))
-    ajouter('accessoires', premier('accessoires'), 1,
-            ht_depuis_ttc(blocs * _TTC_ACCESSOIRES_PAR_BLOC))
-    ajouter('tableau', premier('tableau'), 1,
-            ht_depuis_ttc(blocs * _TTC_TABLEAU_PAR_BLOC))
-    ajouter('installation', premier('installation'), 1,
-            ht_depuis_ttc((blocs + 1) * _TTC_INSTALLATION_PAR_BLOC))
+    # L-FORFAIT — une SEULE ligne par forfait, quantité 1, dont le prix
+    # unitaire EST le total du barème (désignations inchangées). Barème absent
+    # du produit ⇒ ``prix_forfait_ht`` rend ``None`` et ``ajouter`` retombe sur
+    # le ``prix_vente`` catalogue, comme n'importe quelle autre ligne.
+    ajouter('accessoires', produit_accessoires, 1,
+            prix_forfait_ht(produit_accessoires, nb))
+    ajouter('tableau', produit_tableau, 1,
+            prix_forfait_ht(produit_tableau, nb))
+    ajouter('installation', produit_installation, 1,
+            prix_forfait_ht(produit_installation, nb))
     ajouter('transport', premier('transport'), 1)
 
     # ── PVORD — ordre PAR DÉFAUT des lignes ────────────────────────────────
@@ -2413,6 +2562,14 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     lignes.kwc_reel = round(nb * float(lignes.panel_watt_reel) / 1000.0, 3)
     lignes.blocs = blocs
     lignes.marques_manquantes = marques_manquantes
+    # DIM2 — LES CAPACITÉS RÉELLEMENT DISPONIBLES, en kWh nominaux, telles que
+    # le vivier batterie les a retenues (compatibilité de tension avec
+    # l'onduleur hybride comprise). Le balayage du stockage lit CETTE liste
+    # pour construire ses paliers : sans elle il devrait redevine
+    # « 5 et 10 kWh », c'est-à-dire recréer un second catalogue en dur qui
+    # divergerait au premier module ajouté.
+    lignes.capacites_batterie_vivier = sorted(
+        {float(cap) for cap, _p in vivier if cap and float(cap) > 0})
     return lignes
 
 

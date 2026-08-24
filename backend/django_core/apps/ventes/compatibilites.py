@@ -29,10 +29,14 @@ QUATRE RÈGLES GRAVÉES ICI, dans l'ordre où elles comptent :
   La ligne de partage entre les deux bornes de courant est celle de la FICHE, et
   elle n'est pas cosmétique : dépasser l'**Imp** admissible fait ÉCRÊTER (ça
   s'installe, ça produit moins — alerte) ; dépasser l'**Isc** publié sort de ce
-  que le constructeur garantit (25 × 710 Wc sur un Deye 5 kW mono : 18,59 A
-  d'Isc par chaîne dans une entrée donnée pour 17 A — bloquant). On ne durcit ni
-  n'assouplit AU-DELÀ des deux chiffres de fiche : sans borne d'Isc publiée,
-  rien n'est bloqué (le repli prudent reste une alerte).
+  que le constructeur garantit (incident DEV-202608-0016 : 25 × 710 Wc sur le
+  Deye 5 kW mono, 18,59 A d'Isc par chaîne dans une entrée alors donnée pour
+  17 A — bloquant). On ne durcit ni n'assouplit AU-DELÀ des deux chiffres de
+  fiche : sans borne d'Isc publiée, rien n'est bloqué (le repli prudent reste
+  une alerte). L-22A (fondateur 24/08/2026) — cet exemple est désormais
+  HISTORIQUE : les deux onduleurs 5 kW du catalogue portent 22 A sur leurs deux
+  bornes (« more then 20A so they accept the canadian solar pannels »), donc ce
+  couple-là passe. C'est la DONNÉE qui a changé, jamais la règle ci-dessus.
 * **Une variable absente rend « inconnu », JAMAIS un faux OK.** Le verdict cite
   alors le LIBELLÉ FRANÇAIS de ce qui manque, pour que le fondateur sache quoi
   saisir.
