@@ -59,6 +59,12 @@ DEDUP_WINDOW_SECONDS = 60
 #: s'appuie dessus (étiquetage + notification atténuée).
 SOUS_SEUIL_TAG = 'Sous le seuil 1 000 MAD'
 
+#: Ordre fondateur (24/08/2026) — champs GPS protégés contre l'écrasement dans
+#: la boucle de complétion anti-rejeu de ``_map_and_link_lead`` : une fois
+#: posés, plus jamais remplacés par un renvoi ultérieur de la même soumission
+#: (voir le commentaire au point d'usage).
+_GPS_FIELDS = ('gps_lat', 'gps_lng')
+
 
 def _is_sous_seuil(data) -> bool:
     """Le site a-t-il déclaré CETTE soumission sous le seuil de facture ?
@@ -1303,8 +1309,21 @@ def _map_and_link_lead(raw, data, company):
         # donnée déjà captée par du vide. Un second payload plus pauvre
         # (champ absent → None/'') ne doit pas annuler ce que le premier a
         # rempli — on n'écrit donc que les valeurs réellement renseignées.
+        #
+        # ORDRE FONDATEUR (24/08/2026) — le GPS ne doit JAMAIS être écrasé ni
+        # supplanté par l'adresse : une fois gps_lat/gps_lng posés sur CE
+        # lead (pin explicite du client), aucun renvoi ultérieur de la même
+        # soumission — même porteur d'une valeur non vide, p. ex. un pas
+        # suivant du tunnel où seule l'adresse a été retouchée — ne les
+        # remplace. Une mise à jour qui n'apporte pas de nouvelles
+        # coordonnées explicites ne touche donc jamais aux existantes ;
+        # contrairement aux autres champs (complétés par tout non-vide), le
+        # GPS suit la même discipline « jamais d'écrasement » que
+        # `services._MERGE_FILL_FIELDS` (fusion manuelle de leads).
         for key, value in fields.items():
             if value is None or value == '':
+                continue
+            if key in _GPS_FIELDS and getattr(existing, key) is not None:
                 continue
             setattr(existing, key, value)
         existing.save()

@@ -468,6 +468,19 @@ class LeadSerializer(serializers.ModelSerializer):
                             or (undo and self._undo_of_last_stage_change(current, target))):
                         raise serializers.ValidationError(
                             {'stage': "On ne recule pas une étape."})
+        # ORDRE FONDATEUR (24/08/2026) — le GPS ne doit JAMAIS être écrasé ni
+        # supplanté par l'adresse. Le Lead Workspace (LW9, draftCore.js) ne
+        # PATCH déjà que les clés réellement modifiées (dirty keys) — éditer
+        # l'adresse seule n'envoie donc jamais gps_lat/gps_lng. Ce garde est
+        # une DÉFENSE EN PROFONDEUR pour tout AUTRE appelant (import, script,
+        # futur écran) : une mise à jour qui n'apporte pas de nouvelles
+        # coordonnées EXPLICITES (vide/nulle) ne doit jamais effacer un GPS
+        # déjà posé sur ce lead.
+        if self.instance is not None:
+            for gps_field in ('gps_lat', 'gps_lng'):
+                if (gps_field in attrs and attrs[gps_field] in (None, '')
+                        and getattr(self.instance, gps_field) is not None):
+                    attrs.pop(gps_field)
         # Champs personnalisés (T11) : valider/nettoyer contre les définitions
         # du module « lead ». À la création on valide toujours (champs
         # obligatoires) ; en mise à jour, uniquement si custom_data est fourni

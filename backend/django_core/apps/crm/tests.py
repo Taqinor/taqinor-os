@@ -93,6 +93,51 @@ class TestLeadAPI(TestCase):
         names = [row['nom'] for row in data]
         self.assertEqual(names, ['Imported'])
 
+    def test_patch_adresse_seule_ne_touche_pas_au_gps_existant(self):
+        """Ordre fondateur 24/08/2026 — un PATCH de l'adresse (sans clé
+        gps_lat/gps_lng) ne doit jamais effacer un GPS déjà posé. Le Lead
+        Workspace ne PATCH que les clés dirty (pas de régression possible ici
+        par construction), mais la garde serveur (LeadSerializer.validate)
+        protège aussi tout autre appelant qui enverrait explicitement des
+        valeurs vides."""
+        from decimal import Decimal
+        lead = Lead.objects.create(
+            company=self.company, nom='Avec GPS', adresse='ancienne adresse',
+            gps_lat=Decimal('33.5'), gps_lng=Decimal('-7.6'))
+        resp = self.api.patch(
+            f'/api/django/crm/leads/{lead.id}/',
+            {'adresse': 'nouvelle adresse'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        lead.refresh_from_db()
+        self.assertEqual(lead.adresse, 'nouvelle adresse')
+        self.assertEqual(lead.gps_lat, Decimal('33.500000'))
+        self.assertEqual(lead.gps_lng, Decimal('-7.600000'))
+
+        # Même garde si l'appelant envoie explicitement gps_lat/gps_lng vides
+        # aux côtés de l'adresse (le cas le plus dur).
+        resp = self.api.patch(
+            f'/api/django/crm/leads/{lead.id}/',
+            {'adresse': 'encore une autre', 'gps_lat': None, 'gps_lng': None},
+            format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        lead.refresh_from_db()
+        self.assertEqual(lead.adresse, 'encore une autre')
+        self.assertEqual(lead.gps_lat, Decimal('33.500000'))
+        self.assertEqual(lead.gps_lng, Decimal('-7.600000'))
+
+    def test_patch_gps_explicite_nouveau_accepte_quand_absent(self):
+        """La garde protège une valeur EXISTANTE, jamais la toute première
+        pose d'un GPS explicite."""
+        lead = Lead.objects.create(company=self.company, nom='Sans GPS')
+        self.assertIsNone(lead.gps_lat)
+        resp = self.api.patch(
+            f'/api/django/crm/leads/{lead.id}/',
+            {'gps_lat': 33.5, 'gps_lng': -7.6}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        lead.refresh_from_db()
+        self.assertAlmostEqual(float(lead.gps_lat), 33.5)
+        self.assertAlmostEqual(float(lead.gps_lng), -7.6)
+
 
 class TestClientAPI(TestCase):
     """Création de client par l'API : la société vient du serveur (jamais du
