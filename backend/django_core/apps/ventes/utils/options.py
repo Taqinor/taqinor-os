@@ -37,25 +37,58 @@ def _blob(ligne) -> str:
     return f"{desig} {nom}"
 
 
+#: L-2OPT — les deux variantes EXPLICITES de ``LigneDevis.variante`` ('' =
+#: ligne commune, soumise au découpage par mots-clés comme avant).
+VARIANTE_SANS = 'sans'
+VARIANTE_AVEC = 'avec'
+
+
+def _variante(ligne) -> str:
+    """Variante déclarée d'une ligne, '' quand elle n'en porte pas (ligne
+    commune, ligne historique, ou objet de test sans le champ)."""
+    return getattr(ligne, 'variante', '') or ''
+
+
 def filter_lines_for_option(lignes, option):
     """Filtre PUR d'une liste de lignes selon l'option (testable sans Django).
 
     Miroir exact du split de ``build_quote_data`` : « sans » = ni batterie ni
     onduleur hybride ; « avec » = pas d'onduleur réseau. Toute autre valeur
     (vide / inconnue) renvoie toutes les lignes.
+
+    L-2OPT — LA VARIANTE DÉCLARÉE PASSE DEVANT LES MOTS-CLÉS, et elle est
+    EXCLUSIVE : une ligne ``variante='avec'`` ne part JAMAIS dans un document
+    aval « sans batterie », et réciproquement. C'est ce qui rend facturable un
+    devis dont les deux options n'ont pas le même champ PV — sans elle, les
+    panneaux, la structure et la pose des DEUX options seraient commandés,
+    puisque les mots-clés les classent « commun ». Une ligne SANS variante
+    ('' — toutes celles d'hier) reste soumise aux mots-clés, mot pour mot :
+    aucun devis existant ne change de périmètre.
     """
     if option == SANS_BATTERIE:
         return [li for li in lignes
-                if not _is_battery(_blob(li))
+                if _variante(li) != VARIANTE_AVEC
+                and not _is_battery(_blob(li))
                 and not _is_hybrid_inverter(_blob(li))]
     if option == AVEC_BATTERIE:
-        return [li for li in lignes if not _is_reseau_inverter(_blob(li))]
+        return [li for li in lignes
+                if _variante(li) != VARIANTE_SANS
+                and not _is_reseau_inverter(_blob(li))]
     return list(lignes)
 
 
 def has_two_options(devis) -> bool:
     """True si le devis comporte deux VRAIES options (réseau ET hybride+batterie)
     — seul cas où l'option retenue change réellement le périmètre facturé."""
+    # L-2OPT — une ligne VARIANTÉE est à elle seule la preuve d'un devis à deux
+    # options : elle n'existe que parce que la composition a distingué les deux.
+    # Contrôlé AVANT le moteur (une requête, aucun rendu) et sans jamais lever :
+    # un devis à deux champs PV doit être filtré même si le PDF échoue.
+    try:
+        if devis is not None and devis.lignes.exclude(variante='').exists():
+            return True
+    except Exception:  # noqa: BLE001 — l'aval ne doit jamais casser ici
+        pass
     try:
         from apps.ventes.quote_engine.builder import build_quote_data
         data = build_quote_data(devis, {'pdf_mode': 'onepage'})

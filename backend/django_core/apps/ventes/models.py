@@ -501,6 +501,36 @@ class LigneDevis(models.Model):
         help_text='Ligne optionnelle (add-on) : proposée au client hors total '
                   "tant qu'elle n'est pas activée. Défaut False = ligne normale.")
 
+    # ── L-2OPT — VARIANTE : à QUELLE option cette ligne appartient-elle ? ─────
+    # Un devis résidentiel « Les deux (Sans + Avec) » propose DEUX kits. Tant
+    # que les deux optimums économiques tombaient sur le même champ PV, le
+    # découpage par MOTS-CLÉS suffisait (batterie → « avec », onduleur réseau →
+    # « sans », tout le reste → commun). Dès que l'optimum AVEC batterie choisit
+    # un AUTRE nombre de panneaux que l'optimum SANS, ce découpage ment : les
+    # panneaux, la structure et la pose tombent dans les DEUX options avec la
+    # MÊME quantité, alors qu'elles diffèrent.
+    #
+    # ``variante`` porte cette appartenance EXPLICITEMENT :
+    #   · ''      (LE DÉFAUT) — ligne COMMUNE aux deux options. Toute ligne
+    #     existante vaut '' ⇒ comportement historique strictement inchangé, et
+    #     un devis mono-option n'a jamais que des lignes communes ;
+    #   · 'sans'  — la ligne n'appartient qu'à l'option SANS batterie ;
+    #   · 'avec'  — la ligne n'appartient qu'à l'option AVEC batterie.
+    #
+    # Le champ COMPLÈTE le découpage par mots-clés (il ne le remplace pas) :
+    # une ligne variantée est filtrée sur sa variante, une ligne commune reste
+    # soumise aux mots-clés comme avant.
+    class Variante(models.TextChoices):
+        COMMUNE = '', 'Commune aux deux options'
+        SANS = 'sans', 'Option « sans batterie » seulement'
+        AVEC = 'avec', 'Option « avec batterie » seulement'
+
+    variante = models.CharField(
+        max_length=8, choices=Variante.choices, blank=True, default='',
+        help_text="Option à laquelle la ligne appartient : vide = commune aux "
+                  "deux options (défaut), « sans » ou « avec » = propre à "
+                  "cette option-là.")
+
     # ── NTCPQ18 — Rattachement à un LOT (site/bâtiment) — additif, optionnel ──
     # NULL = ligne « hors lot » (comportement historique strictement inchangé :
     # un devis sans lot ne connaît aucun sous-total de lot).
