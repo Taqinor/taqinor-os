@@ -2502,7 +2502,11 @@ const signConfig = ok
                     {battRegime.remplissageMoyenPct !== null && (
                       <div>
                         <p class="tech-label text-lune-faint" data-i18n data-fr="Remplissage batterie moyen" data-en="Average battery fill" data-ar="متوسط امتلاء البطارية">Remplissage batterie moyen</p>
-                        <p class="fig fig-md mt-1 text-lune" dir="ltr">{formatNumber(battRegime.remplissageMoyenPct, 0)} %</p>
+                        {battRegime.remplissageMoyenPct >= 100 ? (
+                          <p class="fig fig-md mt-1 text-lune" data-i18n data-fr="La batterie se remplit chaque jour" data-en="The battery fills up every day" data-ar="تمتلئ البطارية كل يوم">La batterie se remplit chaque jour</p>
+                        ) : (
+                          <p class="fig fig-md mt-1 text-lune" dir="ltr">{formatNumber(battRegime.remplissageMoyenPct, 0)} %</p>
+                        )}
                       </div>
                     )}
                     {battRegime.couvertureGlitchPct !== null && (

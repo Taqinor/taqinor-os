@@ -2432,9 +2432,14 @@ def page_etude():
             _fcells.append(
                 card("Tranche actuelle", _esc(_falaise_ctx["tranche_actuelle"])))
         if _falaise_ctx and _falaise_ctx.get("remplissage_pct") is not None:
-            _fcells.append(card(
-                "Remplissage batterie (moyen)",
-                f"{_falaise_ctx['remplissage_pct']} %"))
+            # Décision fondateur 24/08 — un ratio brut ≥ 100 % (le
+            # générateur interne le montre tel quel) est ABSURDE côté
+            # client : re-libellé en phrase qualitative, jamais un
+            # pourcentage > 100 % ni un pourcentage plafonné inventé.
+            _rpct = _falaise_ctx["remplissage_pct"]
+            _rval = ("La batterie se remplit chaque jour" if _rpct >= 100
+                      else f"{_rpct} %")
+            _fcells.append(card("Remplissage batterie (moyen)", _rval))
         if _glitch_pct is not None:
             _fcells.append(card(
                 "Part des pointes rattrapée par la batterie",

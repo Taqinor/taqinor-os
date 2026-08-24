@@ -713,6 +713,30 @@ class TestPdfFormats(TestCase):
         self.assertIn('Remplissage batterie', html)
         self.assertIn('62 %', html)  # espace insécable posée par la passe typo du moteur
 
+    def test_cj2b_bis_remplissage_100_pct_ou_plus_relibelle_cote_client(self):
+        """Décision fondateur 24/08 : un ratio brut ≥ 100 % (le générateur
+        interne le montre tel quel, hors scope de ce lot) est re-libellé en
+        phrase qualitative côté PDF client — jamais un pourcentage > 100 %
+        ni un pourcentage plafonné inventé."""
+        dim = {
+            'falaise': self._DIMENSIONNEMENT_SAMPLE['falaise'],
+            'meilleure_falaise': {
+                **self._DIMENSIONNEMENT_SAMPLE['meilleure_falaise'],
+                'remplissage': {
+                    'moyen': 1.10,
+                    'pire_mois': {'mois': 1, 'ratio': 1.10,
+                                  'charge_jour_kwh': 8.0, 'surplus_jour_kwh': 9.0},
+                },
+            },
+        }
+        self._devis_avec_falaise(dimensionnement=dim)
+        html, doc = self._render({'include_etude': True})
+        self.assertEqual(len(doc.pages), 4)
+        self.assertIn('Remplissage batterie', html)
+        self.assertIn('La batterie se remplit chaque jour', html)
+        self.assertNotIn('110 %', html)
+        self.assertNotIn('110\xa0%', html)
+
     def test_cj2b_bis_part_glitch_rendue_quand_le_bloc_horaire_existe(self):
         self._devis_avec_falaise(etude_horaire=self._ETUDE_HORAIRE_GLITCH_SAMPLE)
         html, doc = self._render({'include_etude': True})
