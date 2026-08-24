@@ -554,6 +554,43 @@ function positiveNumber(v: unknown): number | null {
 }
 
 /**
+ * L-DEUXOPT (25/08/2026) — valide UNE entrée de production (forme 24 h +
+ * niveaux réels) : le cœur, isolé et réutilisable, de la lecture DÉFENSIVE de
+ * `courbes_journalieres.production[saison]`. `null` sur toute forme illisible
+ * (taille ≠ 24, valeur négative/non finie, somme nulle) ou niveau manquant —
+ * jamais une valeur approchée. Exporté pour `production_par_option`
+ * (`lib/proposition.ts`), qui promet la MÊME forme, une entrée à la fois.
+ */
+export function parseServedProductionEntry(raw: unknown): ServedProduction | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const e = raw as Record<string, unknown>;
+  const forme = Array.isArray(e.forme) ? e.forme.map((v) => Number(v)) : null;
+  const kwhJour = positiveNumber(e.kwh_jour);
+  const picKw = positiveNumber(e.pic_kw);
+  if (!forme || forme.length !== 24 || forme.some((v) => !Number.isFinite(v) || v < 0)) return null;
+  // Une forme entièrement nulle ne dit rien : on l'écarte plutôt que de
+  // dessiner une ligne plate qui ressemblerait à une production nulle.
+  if (forme.reduce((a, b) => a + b, 0) <= 0) return null;
+  if (kwhJour === null || picKw === null) return null;
+  return { forme, kwhJour, picKw, source: typeof e.source === 'string' ? e.source : '' };
+}
+
+/**
+ * Carte par saison de `parseServedProductionEntry` — MÊME lecture défensive
+ * que ci-dessus ; une saison illisible est simplement absente de la carte.
+ */
+export function parseServedProductionMap(raw: unknown): Partial<Record<SeasonId, ServedProduction>> {
+  const production: Partial<Record<SeasonId, ServedProduction>> = {};
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return production;
+  const src = raw as Record<string, unknown>;
+  for (const season of SEASON_IDS) {
+    const entry = parseServedProductionEntry(src[season]);
+    if (entry) production[season] = entry;
+  }
+  return production;
+}
+
+/**
  * Normalise le bloc additif `courbes_journalieres`. Clé ABSENTE (le cas le plus
  * fréquent : devis sans factures réelles ou sans kWc) ⇒ `null` ⇒ la page garde
  * EXACTEMENT son rendu d'avant. Toute sous-clé peut manquer indépendamment
@@ -564,29 +601,7 @@ export function parseDailyCurves(raw: unknown): DailyCurves | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const src = raw as Record<string, unknown>;
 
-  const production: Partial<Record<SeasonId, ServedProduction>> = {};
-  const prodSrc = src.production;
-  if (prodSrc && typeof prodSrc === 'object') {
-    for (const season of SEASON_IDS) {
-      const entry = (prodSrc as Record<string, unknown>)[season];
-      if (!entry || typeof entry !== 'object') continue;
-      const e = entry as Record<string, unknown>;
-      const forme = Array.isArray(e.forme) ? e.forme.map((v) => Number(v)) : null;
-      const kwhJour = positiveNumber(e.kwh_jour);
-      const picKw = positiveNumber(e.pic_kw);
-      if (!forme || forme.length !== 24 || forme.some((v) => !Number.isFinite(v) || v < 0)) continue;
-      // Une forme entièrement nulle ne dit rien : on l'écarte plutôt que de
-      // dessiner une ligne plate qui ressemblerait à une production nulle.
-      if (forme.reduce((a, b) => a + b, 0) <= 0) continue;
-      if (kwhJour === null || picKw === null) continue;
-      production[season] = {
-        forme,
-        kwhJour,
-        picKw,
-        source: typeof e.source === 'string' ? e.source : '',
-      };
-    }
-  }
+  const production = parseServedProductionMap(src.production);
 
   const consommation: Partial<Record<SeasonId, ServedConsumption>> = {};
   const consSrc = src.consommation;

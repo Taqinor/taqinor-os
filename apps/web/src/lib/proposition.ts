@@ -16,7 +16,11 @@
 // L-PCMP — import de TYPE uniquement (effacé à la compilation) : ce module
 // reste sans aucune dépendance à l'exécution, mais les silhouettes
 // d'occupation gardent UNE seule définition (`lib/dayProfiles.ts`).
-import type { OccupancyId } from './dayProfiles';
+import type { OccupancyId, SeasonId, ServedProduction } from './dayProfiles';
+// L-DEUXOPT (25/08/2026) — lecture de `production_par_option` : réutilise
+// STRICTEMENT le même validateur que `courbes_journalieres.production`
+// (aucune seconde définition de « forme 24 h valide »).
+import { parseServedProductionEntry, parseServedProductionMap } from './dayProfiles';
 
 /** Une ligne d'équipement telle que renvoyée par le backend (champs publics). */
 export interface ProposalItem {
@@ -435,6 +439,125 @@ export interface ProposalResponse {
       } | null;
     }> | null;
   } | null;
+  /**
+   * L-DEUXOPT (lane « deux optimiseurs », 25/08/2026) — DEUX DIMENSIONNEMENTS
+   * PHYSIQUEMENT DIFFÉRENTS quand ajouter une batterie change le calcul
+   * optimal du nombre de panneaux (ex. 22 panneaux sans batterie / 26 avec).
+   * [HANDOFF public payload] — forme CONVENUE avec la lane backend du même
+   * lot. `divergent` EXPLICITE (jamais déduit d'une différence de nombres qui
+   * pourrait n'être qu'un arrondi) : `true` ⇒ les deux côtés ci-dessous
+   * décrivent CHACUN son propre système ; `false`/absent ⇒ la page ne bouge
+   * pas d'un pixel (cas historique, un seul dimensionnement pour les deux
+   * options). Chaque champ de `sans`/`avec` peut être `null` individuellement
+   * — omis à l'écran, jamais un défaut fabriqué (règle fondateur « zéro
+   * chiffre inventé »).
+   */
+  dimensionnement_options?: {
+    sans?: {
+      nb_panneaux?: number | null;
+      puissance_kwc?: number | null;
+      nb_batteries?: number | null;
+      capacite_batterie_kwh?: number | null;
+      production_annuelle_kwh?: number | null;
+    } | null;
+    avec?: {
+      nb_panneaux?: number | null;
+      puissance_kwc?: number | null;
+      nb_batteries?: number | null;
+      capacite_batterie_kwh?: number | null;
+      production_annuelle_kwh?: number | null;
+    } | null;
+    divergent?: boolean | null;
+  } | null;
+  /**
+   * L-DEUXOPT — série de production PROPRE À CHAQUE option, MÊME FORME que le
+   * bloc `courbes_journalieres.production` (voir `dayProfiles.ts`
+   * `ServedProduction`, par saison) — soit une carte par saison, soit une
+   * entrée UNIQUE (repli, un seul « jour type » pour ce côté). Sert à rejouer
+   * le simulateur batterie sur la production RÉELLE de l'option « avec »
+   * (plus de panneaux ⇒ courbe différente) au lieu du repli générique.
+   * Typé `unknown` À DESSEIN : n'entre dans la page qu'à travers
+   * `productionSeriesForOption`, qui valide et renvoie `null` sur tout ce qui
+   * n'est pas exploitable — jamais un chiffre inventé. `null`/absent par côté
+   * ⇒ le simulateur garde son repli historique pour ce côté.
+   */
+  production_par_option?: {
+    sans?: unknown;
+    avec?: unknown;
+  } | null;
+}
+
+/** L-DEUXOPT — dimensionnement RÉEL d'une option, sanitisé champ par champ. */
+export interface DimensionnementOption {
+  nbPanneaux: number | null;
+  puissanceKwc: number | null;
+  nbBatteries: number | null;
+  capaciteBatterieKwh: number | null;
+  productionAnnuelleKwh: number | null;
+}
+
+// `finiteOrNull` est déjà défini plus bas dans ce module (bloc falaise
+// tarifaire/CJ2b-bis) : function declaration → hoisté, réutilisable ici sans
+// seconde définition (TypeScript refuserait la redéclaration).
+
+/**
+ * L-DEUXOPT — dimensionnement RÉEL d'UNE option (`'sans'`/`'avec'`, l'écriture
+ * du contrat backend — voir `VarianteServable`), sanitisé champ par champ :
+ * toute valeur non numérique finie devient `null` — jamais un défaut fabriqué.
+ * `null` global quand le bloc entier ou cette option est absent.
+ */
+export function dimensionnementOption(
+  p: Pick<ProposalResponse, 'dimensionnement_options'>,
+  opt: VarianteServable,
+): DimensionnementOption | null {
+  const raw = p?.dimensionnement_options?.[opt];
+  if (!raw || typeof raw !== 'object') return null;
+  return {
+    nbPanneaux: finiteOrNull(raw.nb_panneaux),
+    puissanceKwc: finiteOrNull(raw.puissance_kwc),
+    nbBatteries: finiteOrNull(raw.nb_batteries),
+    capaciteBatterieKwh: finiteOrNull(raw.capacite_batterie_kwh),
+    productionAnnuelleKwh: finiteOrNull(raw.production_annuelle_kwh),
+  };
+}
+
+/**
+ * Vrai UNIQUEMENT quand le backend affirme EXPLICITEMENT une divergence de
+ * dimensionnement entre les deux options. Absent/`false` ⇒ la page rend
+ * exactement ce qu'elle rendait avant ce lot (aucun des blocs
+ * `dimensionnementOption`/`productionSeriesForOption` n'est censé être
+ * consulté par la page dans ce cas — c'est cette fonction qui le garde).
+ */
+export function dimensionnementDivergent(
+  p: Pick<ProposalResponse, 'dimensionnement_options'>,
+): boolean {
+  return p?.dimensionnement_options?.divergent === true;
+}
+
+/**
+ * L-DEUXOPT — série de production propre à UNE option (`'sans'`/`'avec'`),
+ * MÊME FORME que `courbes_journalieres.production` (voir dayProfiles.ts,
+ * `ServedProduction`) : soit une entrée UNIQUE servie à la racine (repli le
+ * plus simple, un seul « jour type » pour ce côté), soit une carte par
+ * saison — dans ce cas `season` sélectionne l'entrée à utiliser (même saison
+ * que celle affichée par la courbe journalière). `null` quand rien
+ * d'exploitable n'est servi pour ce côté ou cette saison — le simulateur
+ * batterie garde alors son repli historique.
+ */
+export function productionSeriesForOption(
+  p: Pick<ProposalResponse, 'production_par_option'>,
+  opt: VarianteServable,
+  season: SeasonId | null,
+): ServedProduction | null {
+  const raw = p?.production_par_option?.[opt];
+  if (raw === null || raw === undefined) return null;
+  const flat = parseServedProductionEntry(raw);
+  if (flat) return flat;
+  if (season) {
+    const bySeason = parseServedProductionMap(raw);
+    if (bySeason[season]) return bySeason[season] as ServedProduction;
+  }
+  return null;
 }
 
 /** WJ32 — bloc `financing` backend (QJ12), structure de `compute_financing_block`. */
