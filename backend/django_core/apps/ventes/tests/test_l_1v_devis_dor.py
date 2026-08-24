@@ -413,7 +413,7 @@ class FraicheurDesDeuxSurfaces(TestCase):
 
         ligne = devis.lignes.get(produit=self.panneau)
         resp = self.api.patch(
-            f'/api/django/ventes/lignes-devis/{ligne.id}/',
+            f'/api/django/ventes/devis-lignes/{ligne.id}/',
             {'quantite': '12'}, format='json')
         self.assertEqual(resp.status_code, 200, resp.content)
 
@@ -435,7 +435,7 @@ class FraicheurDesDeuxSurfaces(TestCase):
         self.assertTrue(devis.electrical_design)
         ligne = devis.lignes.get(produit=self.onduleur)
         resp = self.api.delete(
-            f'/api/django/ventes/lignes-devis/{ligne.id}/')
+            f'/api/django/ventes/devis-lignes/{ligne.id}/')
         self.assertEqual(resp.status_code, 204, resp.content)
         devis.refresh_from_db()
         # Sans onduleur, plus d'étude dessinable : les DEUX surfaces se taisent
