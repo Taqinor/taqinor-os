@@ -143,18 +143,30 @@ export default function DevisTab({
   // les métadonnées du DERNIER share-link minté (niveau/otp_lecture/token
   // renvoyés par le serveur) — sert au badge et à prouver que changer de
   // niveau NE régénère PAS le token (même lien, choix revocable).
+  //
+  // BUGFIX (24/08/2026) — au rechargement de la fiche, `linkMeta` repartait
+  // vide : le badge (et le sélecteur) n'affichaient donc RIEN tant que le
+  // commercial n'avait pas re-cliqué, alors même que le serveur connaît déjà
+  // le niveau du lien (`GET` fiche lead → `Lead.devis[].share_link`, posé par
+  // `apps.crm.serializers.LeadDetailSerializer.get_devis` via le sélecteur
+  // cross-app `apps.ventes.selectors.share_link_niveau_map` — lecture seule,
+  // jamais de mint). `getNiveau`/`getOtp`/le badge retombent maintenant sur
+  // `d.share_link` (l'état déjà connu du serveur) quand aucune action locale
+  // n'a encore eu lieu dans CETTE session d'écran.
   const [niveauSel, setNiveauSel] = useState({}) // id -> 'standard'|'confiance'
   const [otpSel, setOtpSel] = useState({}) // id -> bool
   const [linkMeta, setLinkMeta] = useState({}) // id -> { niveau, otp_lecture, token }
-  const getNiveau = (id) => niveauSel[id] ?? 'standard'
-  const getOtp = (id) => otpSel[id] ?? false
+  const serverLinkMeta = (d) => (d?.share_link ? d.share_link : null)
+  const currentLinkMeta = (d) => linkMeta[d.id] ?? serverLinkMeta(d)
+  const getNiveau = (d) => niveauSel[d.id] ?? serverLinkMeta(d)?.niveau ?? 'standard'
+  const getOtp = (d) => otpSel[d.id] ?? serverLinkMeta(d)?.otp_lecture ?? false
 
   // Mint (ou réutilise — idempotent côté serveur) le ShareLink du devis, AU
   // niveau/OTP actuellement choisis pour CE devis, et renvoie l'URL ABSOLUE
   // de la page client (chemin_proposition backend), MÊME lien que celui déjà
   // envoyé par email/WhatsApp/l'outil 3D.
   const mintProposalUrl = async (d) => {
-    const res = await ventesApi.shareLinkDevis(d.id, { niveau: getNiveau(d.id), otp_lecture: getOtp(d.id) })
+    const res = await ventesApi.shareLinkDevis(d.id, { niveau: getNiveau(d), otp_lecture: getOtp(d) })
     setLinkMeta((cur) => ({
       ...cur,
       [d.id]: { niveau: res.data?.niveau, otp_lecture: res.data?.otp_lecture, token: res.data?.token },
@@ -163,12 +175,14 @@ export default function DevisTab({
   }
 
   // L-NIV-UI — le sélecteur/case OTP changent le choix immédiatement ; si un
-  // lien a DÉJÀ été minté pour ce devis, on re-poste tout de suite sur la
-  // MÊME route share-link avec le nouveau choix : le backend renvoie le MÊME
-  // token (lien inchangé, seul le niveau affiché au client change) — le badge
-  // se met à jour depuis la réponse, jamais deviné côté écran.
+  // lien EXISTE DÉJÀ pour ce devis (minté cette session OU connu du serveur
+  // depuis le chargement de la fiche — `currentLinkMeta`, pas seulement
+  // `linkMeta` local), on re-poste tout de suite sur la MÊME route
+  // share-link avec le nouveau choix : le backend renvoie le MÊME token
+  // (lien inchangé, seul le niveau affiché au client change) — le badge se
+  // met à jour depuis la réponse, jamais deviné côté écran.
   const appliquerNiveauSiMinte = async (d, niveau, otpLecture) => {
-    if (!linkMeta[d.id]) return
+    if (!currentLinkMeta(d)) return
     setLinkBusy(`n-${d.id}`)
     setActionMsg(null)
     try {
@@ -186,12 +200,12 @@ export default function DevisTab({
 
   const onNiveauChange = (d, niveau) => {
     setNiveauSel((cur) => ({ ...cur, [d.id]: niveau }))
-    appliquerNiveauSiMinte(d, niveau, getOtp(d.id))
+    appliquerNiveauSiMinte(d, niveau, getOtp(d))
   }
 
   const onOtpChange = (d, otpLecture) => {
     setOtpSel((cur) => ({ ...cur, [d.id]: otpLecture }))
-    appliquerNiveauSiMinte(d, getNiveau(d.id), otpLecture)
+    appliquerNiveauSiMinte(d, getNiveau(d), otpLecture)
   }
 
   const copierPageClient = async (d) => {
@@ -387,7 +401,7 @@ export default function DevisTab({
               <div className="lw-context-devis-niveau">
                 <label className="lw-context-devis-niveau-select">
                   <select
-                    value={getNiveau(d.id)}
+                    value={getNiveau(d)}
                     disabled={linkBusy === `n-${d.id}`}
                     aria-label={`Niveau de la page client de ${d.reference}`}
                     onChange={(e) => onNiveauChange(d, e.target.value)}
@@ -398,25 +412,25 @@ export default function DevisTab({
                 </label>
                 <label className="lw-context-devis-otp">
                   <Checkbox
-                    checked={getOtp(d.id)}
+                    checked={getOtp(d)}
                     disabled={linkBusy === `n-${d.id}`}
                     onCheckedChange={(v) => onOtpChange(d, !!v)}
                     aria-label={`Exiger un code de lecture pour la page client de ${d.reference}`}
                   />
                   Exiger un code de lecture (OTP)
                 </label>
-                {linkMeta[d.id] && (
+                {currentLinkMeta(d) && (
                   <span
                     className="lw-context-devis-niveau-badge"
                     title="Le lien reste le même — seul le niveau affiché au client change."
                   >
-                    {linkMeta[d.id].niveau === 'confiance' ? 'Confiance' : 'Standard'}
-                    {linkMeta[d.id].otp_lecture ? ' · OTP' : ''}
+                    {currentLinkMeta(d).niveau === 'confiance' ? 'Confiance' : 'Standard'}
+                    {currentLinkMeta(d).otp_lecture ? ' · OTP' : ''}
                   </span>
                 )}
               </div>
               <p className="gen-hint lw-context-devis-niveau-hint">
-                {getNiveau(d.id) === 'confiance'
+                {getNiveau(d) === 'confiance'
                   ? 'Confiance : dossier technique complet.'
                   : 'Standard : masque le dimensionnement détaillé — marques et prix complets visibles.'}
               </p>
