@@ -96,7 +96,9 @@ describe('WJ16 — rendu SVG', () => {
   it('le repère de pointe est libellé en kW, JAMAIS en kWh (repli annuel compris)', () => {
     const out = renderYearCurve(10000);
     // Le <text> visible du repère (le seul endroit où le client LIT le pic).
-    const peakText = out.svg.match(/>pic ≈ ([^<]*)</)?.[1] ?? '';
+    // ORDRE FONDATEUR (24/08/2026) — le repère NOMME sa courbe (« pic de
+    // production »), la règle d'unité est inchangée.
+    const peakText = out.svg.match(/>pic de production ≈ ([^<]*)</)?.[1] ?? '';
     expect(peakText).toContain('kW');
     expect(peakText).not.toContain('kWh');
     // …et l'attribut tap-to-reveal qui reprend le même libellé.
