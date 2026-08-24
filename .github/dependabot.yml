@@ -13,6 +13,35 @@ updates:
         patterns:
           - "*"
 
+  # Sécurité 2026-08-24 — apps/web et backend/fastapi_ia n'étaient PAS
+  # surveillés : leurs alertes (astro/wrangler/undici, PyJWT/langchain…)
+  # s'accumulaient sans jamais produire de PR. Mêmes réglages groupés hebdo.
+  - package-ecosystem: "npm"
+    directory: "/apps/web"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "chore"
+    groups:
+      npm-web-weekly:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "pip"
+    directory: "/backend/fastapi_ia"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "chore"
+    groups:
+      pip-ia-weekly:
+        patterns:
+          - "*"
+
   - package-ecosystem: "pip"
     directory: "/backend/django_core"
     schedule:
