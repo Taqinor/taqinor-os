@@ -1125,8 +1125,16 @@ const noscriptTelHref = `tel:${NAP.phone}`;
 
           <label class="block text-sm text-lune-soft">
             <span>Address / city</span>
+            <!-- FOUNDER ORDER (2026-08-24) — once a GPS position is already set (map
+                 pin), the address becomes SECONDARY: still visible (useful for mail)
+                 but no longer required. required/aria-required toggled dynamically by
+                 syncCityRequirement() — never hardcoded off (a visitor WITHOUT a pin
+                 must still see the field as required). -->
             <input id="mt-city" name="city" type="text" autocomplete="address-level2" required aria-required="true"
-              aria-describedby="mt-city-err" placeholder="Read from the map — editable if needed" class={`${inputClass} mt-1`} />
+              aria-describedby="mt-city-err mt-city-hint" placeholder="Read from the map — editable if needed" class={`${inputClass} mt-1`} />
+            <span id="mt-city-hint" hidden class="mt-1 block text-xs text-lune-faint">
+              Optional — your GPS position is already recorded. The address is still useful for mail.
+            </span>
             <span id="mt-city-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
           </label>
 
@@ -1961,6 +1969,24 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   let cityTouched = false;
   cityEl?.addEventListener('input', () => { cityTouched = true; });
 
+  // FOUNDER ORDER (2026-08-24) — GPS is the source of truth for location: once
+  // a pin is set (capturePin), the address/city is no longer BLOCKING.
+  // validateLead (lib/lead.ts, same GPS condition) already carries the real
+  // validation guard — this only reflects that state in the UI (aria-required
+  // + visual hint), never the other way around. Replayed on every pin change
+  // (onCaptureChange) and on WJ61 restore — never a static label that could
+  // drift out of sync.
+  function syncCityRequirement() {
+    const hasGps = capturePin != null;
+    if (cityEl) {
+      cityEl.required = !hasGps;
+      cityEl.setAttribute('aria-required', hasGps ? 'false' : 'true');
+    }
+    const hint = $('mt-city-hint');
+    if (hint) hint.hidden = !hasGps;
+  }
+  syncCityRequirement();
+
   // WJ39 — no in-page language toggle on this route: the /en/ URL already
   // declares the locale (Layout.astro sets <html lang="en" dir="ltr">), so
   // the FR/AR dual-node data-i18n toggle used by the FR/AR variants doesn't
@@ -2320,6 +2346,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
         onCaptureChange: (s) => {
           capturePin = s.pin;
           captureOutline = s.outline;
+          syncCityRequirement();
           // QX/Lane C — the outline changed: the cached satellite snapshot no
           // longer matches, let it rebuild.
           roofImageSpecPromise = null;
@@ -2532,6 +2559,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     syncCallbackSla();
     if (savedWizard.capturePin) capturePin = savedWizard.capturePin;
     if (savedWizard.captureOutline?.length) captureOutline = savedWizard.captureOutline;
+    syncCityRequirement();
     if (Object.keys(savedWizard.fields ?? {}).length > 0 || savedWizard.capturePin) markDataEntered();
     restoring = false;
   }
