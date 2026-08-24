@@ -600,6 +600,140 @@ OCCUPATION_REPLI = OCCUPATION_PARTIELLE
 # de la donnée client, jamais d'un coefficient — c'est plus juste ET c'est la
 # règle « zéro chiffre inventé ».
 
+# ════════════════════════════════════════════════════════════════════════════
+# L-ECO (24/08/2026) — LA FORME SUIT LA SAISON, LE NIVEAU RESTE LA FACTURE
+# ════════════════════════════════════════════════════════════════════════════
+# ORDRE FONDATEUR : « la courbe de conso doit varier par saison ». Jusqu'ici une
+# SEULE silhouette servait les douze mois : le moteur passait bien ``saison=`` à
+# :func:`forme_consommation_detaillee`, mais elle ne s'en servait QUE pour
+# activer/désactiver les couches d'équipement (piscine, clim) — jamais pour la
+# FORME de base, identique de janvier à décembre.
+#
+# CE QU'ON FAIT VARIER, ET RIEN D'AUTRE : la POSITION de la pointe du soir. Le
+# NIVEAU continue de venir des factures RÉELLES du mois (voir le bloc ci-dessus
+# sur le « boost été », qui reste NON appliqué : la surconsommation de
+# climatisation est déjà DANS la facture d'été, la ré-appliquer la compterait
+# deux fois).
+#
+# LA SOURCE EST CELLE DÉJÀ CITÉE, ET ELLE EST DÉJÀ SAISONNIÈRE. L'étiquette [A]
+# des silhouettes ci-dessus dit : « tarif bi-horaire ONEE : 18h-23h en été,
+# 17h-22h en hiver (one.org.ma) ». La fenêtre de pointe nationale publiée bouge
+# donc D'UNE HEURE entre l'été et l'hiver — c'est un FAIT PUBLIÉ, pas une
+# hypothèse de comportement, et c'est le seul chiffre saisonnier qu'on utilise.
+# Aucun coefficient n'est introduit : on DÉPLACE des valeurs existantes.
+#
+# COMMENT — UNE PERMUTATION, DONC ZÉRO ÉNERGIE CRÉÉE OU PERDUE. Les deux
+# fenêtres publiées (5 h chacune) forment une union de six heures, 17h→22h. La
+# silhouette d'hiver est cette union tournée d'une heure vers la gauche : chaque
+# valeur du bloc recule d'une heure, celle qui sort par la gauche revient à la
+# fin du bloc. C'est une PERMUTATION des valeurs déjà sourcées : la somme est
+# rigoureusement identique, la normalisation à 1 reste vraie, et la pointe du
+# soir tombe une heure plus tôt — exactement ce que la grille ONEE affirme.
+#
+# MI-SAISON : LA SOURCE NE LA NOMME PAS, ON PREND LE CHOIX CONSERVATEUR. La
+# grille ONEE ne publie que deux fenêtres. Pour la mi-saison (mars-mai,
+# septembre-novembre) on garde donc la fenêtre la PLUS TARDIVE — celle qui
+# croise le MOINS de soleil, donc celle qui donne le MOINS d'autoconsommation et
+# le MOINS d'économies. Jamais un défaut qui flatterait le devis (même règle que
+# :data:`OCCUPATION_REPLI`).
+FENETRE_POINTE_ONEE = {
+    'ete': tuple(range(18, 23)),    # 18h-23h, borne haute exclue — 5 h
+    'hiver': tuple(range(17, 22)),  # 17h-22h, borne haute exclue — 5 h
+}
+
+#: Union des deux fenêtres publiées : le bloc dans lequel la pointe se déplace.
+BLOC_POINTE_SAISONNIER = tuple(range(17, 23))
+
+#: Décalage (en heures) de la pointe du soir par rapport à la silhouette de
+#: base, qui est calée sur la fenêtre d'ÉTÉ (sa pointe [A] vit à 18h-21h).
+DECALAGE_POINTE_PAR_SAISON = {
+    'ete': 0,
+    'hiver': -1,       # 17h-22h au lieu de 18h-23h — grille ONEE
+    'mi_saison': 0,    # non publiée ⇒ fenêtre la plus tardive (conservateur)
+}
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# L-ECO — LE MOIS DE RAMADAN DANS LA FORMULE D'ÉCONOMIES
+# ════════════════════════════════════════════════════════════════════════════
+# La modulation ci-dessous est recopiée VERBATIM de la page
+# (``apps/web/src/lib/proposalCurve.ts``), avec sa provenance :
+#
+#   « Ramadan : journée de jeûne −35 %, bosse suhoor ×2.5 sur les 2 h qui
+#     précèdent l'imsak, pic iftar ×1.8 sur l'heure de la rupture du jeûne. Les
+#     MAGNITUDES sont des ordres de grandeur documentés, jamais des mesures ;
+#     les HEURES, elles, ne sont pas codées en dur : elles viennent du coucher
+#     du soleil NOAA au point GPS du chantier, à la date réelle du mois. »
+#
+# Aucune magnitude nouvelle n'est introduite ici : ce sont les trois mêmes
+# facteurs que la page applique déjà sous les yeux du client. Les heures
+# viennent de :mod:`apps.ventes.ramadan` (table des plages + NOAA), ramenées au
+# repère civil UTC+1 du moteur — voir l'en-tête de ce module-là.
+#
+# L'ÉNERGIE NE BOUGE PAS. La forme modulée est RE-NORMALISÉE à 1 avant d'être
+# mise à l'échelle de la facture du mois : le Ramadan déplace la consommation
+# dans la journée, il n'en fabrique ni n'en supprime. Le −35 % du jeûne est un
+# transfert vers le suhoor et l'iftar, pas une facture qui baisse.
+RAMADAN_JEUNE_FACTEUR = 0.65
+RAMADAN_SUHOOR_MULT = 2.5
+RAMADAN_IFTAR_MULT = 1.8
+#: Nombre d'heures de bosse suhoor, juste avant l'imsak (repas avant l'aube).
+RAMADAN_SUHOOR_HEURES = 2
+
+
+def _decaler_bloc(forme, bloc, decalage):
+    """Tourne les valeurs de ``bloc`` de ``decalage`` heures, en cycle.
+
+    PERMUTATION PURE : aucune valeur n'est créée, aucune n'est perdue, la somme
+    est identique au millionième. ``decalage`` nul ⇒ la forme d'origine, telle
+    quelle (aucune copie inutile côté appelant).
+    """
+    if not decalage or not bloc:
+        return list(forme)
+    sortie = list(forme)
+    taille = len(bloc)
+    for position, heure in enumerate(bloc):
+        source = bloc[(position - decalage) % taille]
+        sortie[heure] = forme[source]
+    return sortie
+
+
+def _appliquer_ramadan(forme, fenetre):
+    """Module ``forme`` (somme = 1) par la journée de Ramadan, et renormalise.
+
+    Port fidèle de ``proposalCurve.applyRamadan``, aux heures RÉELLES fournies
+    par :func:`apps.ventes.ramadan.fenetre_ramadan` (déjà ramenées au repère
+    civil du moteur). ``None`` si la fenêtre est inexploitable — l'appelant
+    garde alors sa forme ordinaire plutôt que d'afficher un Ramadan inventé.
+    """
+    try:
+        imsak = float(fenetre['imsak_h'])
+        iftar = float(fenetre['iftar_h'])
+    except (KeyError, TypeError, ValueError):
+        return None
+    if not (math.isfinite(imsak) and math.isfinite(iftar)):
+        return None
+    imsak = min(23.999, max(0.0, imsak))
+    iftar = min(23.999, max(0.0, iftar))
+    heure_iftar = int(math.floor(iftar))
+
+    sortie = list(forme)
+
+    def _boucle(h):
+        return int(h) % 24
+
+    # Heures ENTIÈREMENT dans le jeûne : de la 1re heure pleine après l'imsak
+    # jusqu'à l'heure d'iftar EXCLUE (celle-là, c'est le repas, pas le jeûne).
+    for heure in range(int(math.ceil(imsak)), heure_iftar):
+        sortie[_boucle(heure)] *= RAMADAN_JEUNE_FACTEUR
+    # Suhoor : les heures qui précèdent l'imsak (repas avant l'aube).
+    debut_suhoor = int(math.floor(imsak)) - RAMADAN_SUHOOR_HEURES
+    for pas in range(RAMADAN_SUHOOR_HEURES):
+        sortie[_boucle(debut_suhoor + pas)] *= RAMADAN_SUHOOR_MULT
+    sortie[heure_iftar] *= RAMADAN_IFTAR_MULT
+
+    return _normaliser_a_un(sortie)
+
 
 def _normaliser_a_un(forme):
     """Ramène une forme positive à une somme de 1,0 (``None`` si insommable)."""
@@ -613,20 +747,88 @@ def _normaliser_a_un(forme):
     return [v / total for v in vals]
 
 
-def silhouette_occupation(occupation):
+def silhouette_occupation(occupation, saison=None):
     """Forme 24 h (somme = 1) de l'occupation demandée, repli inclus.
 
     ``occupation`` est l'un des drapeaux servis par :func:`_occupation`
     (``presence_jour`` / ``absence_jour`` / ``presence_partielle``). Valeur
     inconnue/absente ⇒ :data:`OCCUPATION_REPLI`, jamais une exception.
+
+    L-ECO — ``saison`` déplace la pointe du soir sur la fenêtre ONEE de cette
+    saison (:data:`DECALAGE_POINTE_PAR_SAISON`). ``None`` ou saison inconnue ⇒
+    la silhouette de base, BYTE-IDENTIQUE à celle d'avant cette couche : tous
+    les appelants historiques (page, tests d'épinglage) sont inchangés.
     """
     brute = SILHOUETTES_OCCUPATION.get(
         occupation, SILHOUETTES_OCCUPATION[OCCUPATION_REPLI])
-    return _normaliser_a_un(brute)
+    forme = _normaliser_a_un(brute)
+    if forme is None:
+        return None
+    decalage = DECALAGE_POINTE_PAR_SAISON.get(saison, 0)
+    if not decalage:
+        return forme
+    return _decaler_bloc(forme, BLOC_POINTE_SAISONNIER, decalage)
+
+
+def silhouette_jour(occupation, saison=None, ramadan=None):
+    """Silhouette 24 h (somme = 1) d'un JOUR TYPE : saison + part de Ramadan.
+
+    ``ramadan`` est ``{'part': <0..1>, 'fenetre': {...}}`` tel que le compose
+    :func:`contexte_ramadan_du_mois` ; absent/nul ⇒ la seule silhouette
+    saisonnière, sans un centième de différence.
+
+    LA MOYENNE EST PONDÉRÉE PAR LES JOURS, PAS DEVINÉE. Un mois à moitié en
+    Ramadan a une journée type qui est la moyenne d'une journée de jeûne et
+    d'une journée ordinaire, au prorata des jours RÉELS de la plage
+    (``ramadan.part_ramadan_par_mois``). C'est de l'arithmétique de calendrier
+    sur une table de dates sourcée — pas un coefficient de plus.
+    """
+    base = silhouette_occupation(occupation, saison=saison)
+    if base is None:
+        return None
+    if not isinstance(ramadan, dict):
+        return base
+    try:
+        part = float(ramadan.get('part') or 0.0)
+    except (TypeError, ValueError):
+        return base
+    if not (0.0 < part <= 1.0):
+        return base
+    fenetre = ramadan.get('fenetre')
+    if not isinstance(fenetre, dict):
+        return base
+    jeune = _appliquer_ramadan(base, fenetre)
+    if jeune is None:
+        return base
+    melange = [(1.0 - part) * base[h] + part * jeune[h] for h in range(24)]
+    return _normaliser_a_un(melange) or base
+
+
+def contexte_ramadan_du_mois(jour_reference, lat=None, lon=None):
+    """``{mois 1-12: {'part', 'fenetre'}}`` pour le Ramadan que le client vivra.
+
+    ``None`` (⇒ aucun mois modulé, comportement d'avant cette couche) quand la
+    date sort de la table des plages ou que le calcul solaire n'aboutit pas :
+    on préfère ne rien affirmer plutôt que servir un Ramadan approximatif.
+    Ne lève jamais.
+    """
+    try:
+        from .ramadan import fenetre_ramadan, part_ramadan_par_mois
+        parts = part_ramadan_par_mois(jour_reference)
+        if not parts:
+            return None
+        fenetre = fenetre_ramadan(jour_reference, lat=lat, lon=lon)
+        if not fenetre:
+            return None
+        return {index + 1: {'part': part, 'fenetre': fenetre}
+                for index, part in enumerate(parts) if part > 0}
+    except Exception:  # noqa: BLE001 — le Ramadan ne casse jamais une étude
+        logger.warning('contexte_ramadan indisponible', exc_info=True)
+        return None
 
 
 def forme_consommation_kwh(kwh_jour, occupation, *, saison=None,
-                           equipements=None):
+                           equipements=None, ramadan=None):
     """Consommation horaire RÉELLE d'un jour : 24 kWh dont la somme = ``kwh_jour``.
 
     Façade historique de :func:`forme_consommation_detaillee` — elle n'en rend
@@ -635,11 +837,12 @@ def forme_consommation_kwh(kwh_jour, occupation, *, saison=None,
     même liste de 24 kWh.
     """
     return forme_consommation_detaillee(
-        kwh_jour, occupation, saison=saison, equipements=equipements)[0]
+        kwh_jour, occupation, saison=saison, equipements=equipements,
+        ramadan=ramadan)[0]
 
 
 def forme_consommation_detaillee(kwh_jour, occupation, *, saison=None,
-                                 equipements=None):
+                                 equipements=None, ramadan=None):
     """``(conso_24h, couches_horaires)`` — la courbe ET sa décomposition L4.
 
     C'est la fonction que le moteur horaire intègre contre la production. Elle
@@ -679,7 +882,10 @@ def forme_consommation_detaillee(kwh_jour, occupation, *, saison=None,
     if total <= 0:
         return [0.0] * 24, {}
 
-    forme = silhouette_occupation(occupation) or [1.0 / 24.0] * 24
+    # L-ECO — la FORME suit la saison (fenêtre de pointe ONEE) et la part du
+    # mois passée en Ramadan ; le NIVEAU (``total``) reste la facture du mois.
+    forme = (silhouette_jour(occupation, saison=saison, ramadan=ramadan)
+             or [1.0 / 24.0] * 24)
     couches = equipements or {}
 
     # Le VE est retiré du niveau AVANT la passe 1 : il ne doit pas être dilué
