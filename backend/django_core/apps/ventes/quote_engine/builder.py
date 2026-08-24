@@ -17,6 +17,10 @@ import tempfile
 from decimal import Decimal
 from pathlib import Path
 
+# L-NIV — LA règle d'agrégation « kit » du niveau standard, partagée avec la
+# charge utile JSON publique et le comparatif de gammes (une seule vérité).
+from apps.ventes.utils.anticopie import agreger_lignes_kit
+
 logger = logging.getLogger(__name__)
 
 _WATT_RE = re.compile(r"(\d{3,4})\s*(?:wc|w)\b", re.IGNORECASE)
@@ -489,6 +493,16 @@ DEFAULT_PDF_OPTIONS = {
     'show_schematic': True,        # system schematic on the study page
     'show_water_yield': True,      # water-delivered-per-month chart
     'current_fuel': None,          # 'butane' | 'diesel' | 'none' (else étude/default)
+    # ── L-NIV (24/08/2026) — anticopie « niveau standard » ────────────────────
+    # ``True`` regroupe les lignes fixation/câblage/protection en UNE ligne
+    # « Kit … » au sous-total EXACT (``utils/anticopie.agreger_lignes_kit`` —
+    # LA règle, partagée avec la charge utile JSON publique). Le client ne peut
+    # plus recopier la nomenclature accessoire ; les TOTAUX ne bougent pas d'un
+    # centime (ils sont figés avant la dégradation). Défaut ``False`` : le
+    # chemin ERP authentifié (generer-pdf, Celery, /proposal en confiance) reste
+    # byte-identique. Posé côté SERVEUR par les vues publiques d'après
+    # ``ShareLink.niveau`` — jamais une décision du client.
+    'kit_agrege': False,
 }
 
 
@@ -504,6 +518,11 @@ def clean_pdf_options(raw) -> dict:
         opts['devis_final'] = bool(raw['devis_final'])
     if 'include_etude' in raw:
         opts['include_etude'] = bool(raw['include_etude'])
+    # L-NIV — dégradation anticopie : ne peut QUE retirer du détail, jamais en
+    # révéler. La whitelister est donc sans risque (aucun appelant existant ne
+    # la porte ⇒ défaut ``False`` ⇒ rendu inchangé partout).
+    if 'kit_agrege' in raw:
+        opts['kit_agrege'] = bool(raw['kit_agrege'])
     if 'include_annexe_technique' in raw:
         _annexe = raw['include_annexe_technique']
         # Tri-état : ``None`` EXPLICITE vaut « auto » (le défaut), jamais un
@@ -1701,6 +1720,31 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         onepage_source = items
         onepage_branche = 'avec' if has_batterie else 'sans'
     onepage_note_batterie = deux_options
+
+    # ── L-NIV (24/08/2026) — anticopie « niveau standard » ───────────────────
+    # ``opts['kit_agrege']`` (posé par les vues PUBLIQUES d'après
+    # ``ShareLink.niveau``, jamais par un appel interne) regroupe les lignes
+    # fixation/câblage/protection en UNE ligne au sous-total EXACT, sur TOUS
+    # les formats : le 3-pages résidentiel lit ``sans_items``/``avec_items``,
+    # le une-page et les renderers industriel/commercial/agricole lisent
+    # ``all_items`` — les trois passent donc par LA MÊME règle partagée avec la
+    # charge utile JSON publique (``utils/anticopie``). Ce que le lien montre à
+    # l'écran et ce que son PDF imprime ne peuvent plus diverger.
+    #
+    # PLACÉ ICI, LE PLUS TARD POSSIBLE, ET SUR DES LISTES SÉPARÉES : tous les
+    # totaux (``totaux_sans``/``totaux_avec``/``totaux_all``) et toutes les
+    # dérivations techniques (kWc, kWh batterie, coût onduleur, classification
+    # d'options) sont déjà figés au-dessus, sur les lignes RÉELLES. La
+    # dégradation ne change donc que l'affichage — jamais un chiffre.
+    # Dérivation technique lue APRÈS ce point : figée AVANT la dégradation,
+    # sur les lignes RÉELLES (une ligne « protection batterie » agrégée ne peut
+    # donc pas déplacer d'un kWh la capacité publiée).
+    _batterie_kwh_total = _battery_kwh_from_items(avec_items, _blob) or None
+    if opts.get('kit_agrege'):
+        sans_items = agreger_lignes_kit(sans_items)
+        avec_items = agreger_lignes_kit(avec_items)
+        onepage_source = agreger_lignes_kit(onepage_source)
+
     all_items = [
         {
             **{k: v for k, v in it.items() if k != "_produit_nom"},
@@ -2017,8 +2061,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # `_battery_kwh_from_items`). Clé ADDITIVE en lecture seule : aucun
         # calcul d'argent n'en dépend, elle sert au graphe journalier de la
         # proposition. None quand l'option « avec » ne porte aucun stockage.
-        "batterie_kwh_total": (_battery_kwh_from_items(avec_items, _blob)
-                               or None),
+        "batterie_kwh_total": _batterie_kwh_total,
         "all_items": all_items,
         "onepage_note_batterie": onepage_note_batterie,
         # M4 — branche ('sans' | 'avec') dont proviennent les lignes du format
@@ -2504,7 +2547,13 @@ def generate_premium_devis_pdf(devis_id, pdf_options=None, persist=True) -> str:
         finally:
             Path(tmp_path).unlink(missing_ok=True)
 
-    _filigrane_actif = bool((pdf_options or {}).get('watermark'))
+    # L-NIV — un rendu PUBLIC dégradé (filigrane OU kit agrégé) part sous la
+    # clé séparée ``__pub-standard`` et n'est JAMAIS persisté sur
+    # ``devis.fichier_pdf`` : le bouton interne « Télécharger » ne peut pas
+    # servir, sans le savoir, une copie amputée de sa nomenclature.
+    _filigrane_actif = bool(
+        (pdf_options or {}).get('watermark')
+        or (pdf_options or {}).get('kit_agrege'))
     key = _pdf_key(devis, watermark=_filigrane_actif)
     _ensure_pdf_bucket()
     _upload_pdf(pdf_bytes, key)

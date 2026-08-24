@@ -32,6 +32,10 @@ from .quote_engine import clean_pdf_options, generate_premium_devis_pdf
 # table GHI verrouillée par le drift-lock DC9). Ce module en portait une copie
 # manuelle de la table : une seconde vérité qu'aucun test ne surveillait.
 from .quote_engine.constants import MOROCCO_SOLAR_MONTHLY_WEIGHTS  # noqa: F401
+from .utils.anticopie import (
+    agreger_designations_kit as _agreger_designations_kit,
+    agreger_lignes_kit as _agreger_lignes_kit,
+)
 from .utils.pdf import cle_facture_pdf_a_jour, download_pdf
 
 logger = logging.getLogger(__name__)
@@ -233,6 +237,39 @@ def _notifier_variante_consultee(link):
     link.save(update_fields=['engagement_triggers_fired'])
 
 
+def _niveau_lien(link):
+    """L-NIV — le niveau d'affichage RÉVOCABLE porté par le lien (jamais par le
+    jeton). Un lien créé avant la migration 0100 vaut « confiance » ;
+    ``getattr`` défensif au cas où un test construit un lien à la main."""
+    return (getattr(link, 'niveau', ShareLink.NIVEAU_CONFIANCE)
+            or ShareLink.NIVEAU_CONFIANCE)
+
+
+def _opts_pdf_public(link):
+    """Options de rendu du PDF CLIENT servi derrière un jeton ShareLink.
+
+    SOURCE UNIQUE du gating anticopie des DEUX flux PDF publics
+    (``proposal_pdf`` et ``public_document``) : ils servent le même document au
+    même client, ils ne peuvent pas dégrader différemment. Le flux JSON de la
+    proposition applique la même règle sur la même donnée
+    (``utils.anticopie.agreger_lignes_kit``).
+
+    Les deux drapeaux sont des flags SERVEUR : ``clean_pdf_options({})`` reçoit
+    un dict VIDE, rien de ce que le client envoie n'entre ici.
+
+    · niveau « confiance » (défaut) → options nues, rendu byte-identique à
+      avant L-NIV, sur tous les formats ;
+    · niveau « standard » → filigrane discret (nom · téléphone du prospect) +
+      nomenclature accessoire regroupée en une ligne « Kit … » au sous-total
+      EXACT. Aucun total ne bouge.
+    """
+    opts = clean_pdf_options({})
+    if _niveau_lien(link) == ShareLink.NIVEAU_STANDARD:
+        opts['watermark'] = True
+        opts['kit_agrege'] = True
+    return opts
+
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 @throttle_classes([PublicLinkRateThrottle])
@@ -254,8 +291,13 @@ def public_document(request, token):
         if link.devis_id:
             # ERR74 — public share link is a safe GET: render + stream without
             # persisting fichier_pdf on every access (persist=False).
+            # L-NIV (24/08/2026) — CE flux servait le PDF COMPLET sans même
+            # lire ``link.niveau`` : un lien « standard » masquait la
+            # nomenclature à l'écran et la livrait intégralement en PDF, par le
+            # même jeton. Il applique désormais EXACTEMENT le même gating que
+            # ``proposal_pdf`` (même fonction, aucune seconde décision).
             key = generate_premium_devis_pdf(
-                link.devis_id, clean_pdf_options({}), persist=False)
+                link.devis_id, _opts_pdf_public(link), persist=False)
             pdf_bytes = download_pdf(key)
             # QD2 — nom cohérent (société _ type _ client _ référence).
             devis = link.devis
@@ -693,69 +735,11 @@ _PUBLIC_CABLE = ('liaison', 'section_mm2', 'longueur_m')
 _PUBLIC_PROTECTION_STANDARD = ('repere', 'designation', 'quantite')
 
 
-#: L-NIV (fondateur 24/08/2026) — mots-clés identifiant une ligne « kit »
-#: (structure de fixation, câblage, protection) parmi les lignes du devis.
-#: Alignés sur le vocabulaire du générateur de nomenclature accessoire
-#: (``solar_design.compute_bom`` : catégories « Structure », « Protection AC/
-#: DC », « Coffret », « Mise à la terre », « Batterie »/« Protection
-#: batterie ») — même discipline que ``solar.js`` vs ``quote_engine/
-#: builder.py`` (CLAUDE.md) : les deux vocabulaires restent alignés à la main.
-_KIT_KEYWORDS = (
-    'fixation', 'rail', 'crochet', 'pince',
-    'câblage', 'cablage', 'câble', 'cable', 'gaine', 'goulotte',
-    'presse-étoupe', 'presse étoupe', 'connecteur mc4',
-    'protection', 'disjoncteur', 'parafoudre', 'sectionneur', 'fusible',
-    'différentiel', 'coffret', 'mise à la terre', 'terre',
-)
-
-
-def _est_ligne_kit(designation):
-    d = (designation or '').lower()
-    return any(mot in d for mot in _KIT_KEYWORDS)
-
-
-def _agreger_lignes_kit(items):
-    """L-NIV — regroupe les lignes fixation/câblage/protection d'``items`` en
-    UNE ligne « Kit de fixation, câblage et protection complet », au
-    sous-total EXACT (somme HT/TTC préservée — testé). Les autres lignes
-    (panneaux, onduleur, batterie…) restent inchangées, à leur place. Moins
-    de deux lignes « kit » → ``items`` inchangé (rien à agréger)."""
-    if not items:
-        return items
-    kit_indices = [i for i, it in enumerate(items)
-                   if _est_ligne_kit(it.get('designation'))]
-    if len(kit_indices) < 2:
-        return items
-    from decimal import Decimal
-    kit = [items[i] for i in kit_indices]
-    total_ht = sum(
-        (Decimal(str(it.get('quantite', 0) or 0))
-         * Decimal(str(it.get('prix_unit_ht', 0) or 0))) for it in kit)
-    total_ttc = sum(
-        (Decimal(str(it.get('quantite', 0) or 0))
-         * Decimal(str(it.get('prix_unit_ttc', 0) or 0))) for it in kit)
-    ligne_agregee = {
-        'designation': 'Kit de fixation, câblage et protection complet',
-        'marque': '', 'description': '', 'garantie': '',
-        'garantie_mois': None, 'garantie_production_mois': None,
-        'quantite': 1.0,
-        'prix_unit_ht': float(round(total_ht, 2)),
-        'prix_unit_ttc': float(round(total_ttc, 2)),
-        'taux_tva': kit[0].get('taux_tva', 20),
-        'ordre': min((it.get('ordre', 0) or 0) for it in kit),
-        '_produit_nom': '',
-    }
-    kit_set = set(kit_indices)
-    out = []
-    inserted = False
-    for i, it in enumerate(items):
-        if i in kit_set:
-            if not inserted:
-                out.append(ligne_agregee)
-                inserted = True
-            continue
-        out.append(it)
-    return out
+#: L-NIV — la règle d'agrégation « kit » vit dans UN SEUL endroit
+#: (``utils/anticopie.py``, importé en tête de module) : la charge utile JSON
+#: ci-dessous, le PDF public rendu par le moteur et le comparatif de gammes la
+#: lisent tous là. Deux implémentations parallèles avaient déjà divergé (JSON
+#: dégradé, PDF du même lien complet) — une seule, désormais.
 
 
 def _liste_blanche(source, champs):
@@ -905,8 +889,14 @@ def _variant_summaries(devis) -> list:
 # signer. En mode « seule » : rien de la sœur ne franchit la frontière.
 # UN PDF = UNE GAMME : chaque carte pointe vers le PDF de SA gamme (le jeton
 # de la sœur), jamais un PDF fusionné.
-def _gamme_lignes_publiques(devis):
+def _gamme_lignes_publiques(devis, est_standard=False):
     """Composition CLIENT d'un devis : (désignation, quantité) par ligne.
+
+    L-NIV (24/08/2026) — ``est_standard`` applique LA règle d'agrégation « kit »
+    (``utils.anticopie``, la même que la charge utile JSON et le PDF public)
+    AVANT de publier la composition : sans elle, le comparatif de gammes
+    republiait ligne à ligne la nomenclature fixation/câblage/protection que le
+    reste de la page venait de masquer — la fuite par la porte de côté.
 
     Whitelist stricte — ni prix d'achat, ni marge, ni champ interne (règle #4).
     Sert au tableau comparatif factuel des lignes qui diffèrent entre gammes.
@@ -936,6 +926,8 @@ def _gamme_lignes_publiques(devis):
         except (TypeError, ValueError):
             qte = None
         lignes.append({'designation': designation, 'quantite': qte})
+    if est_standard:
+        lignes = _agreger_designations_kit(lignes)
     return lignes
 
 
@@ -976,8 +968,11 @@ def _gamme_comparatif(lignes_ici, lignes_soeur):
     return lignes
 
 
-def _gammes_public(devis):
+def _gammes_public(devis, est_standard=False):
     """Bloc « choix de gamme » de la charge utile publique, ou ``None``.
+
+    ``est_standard`` (L-NIV) est passé tel quel à ``_gamme_lignes_publiques`` :
+    le comparatif obéit au MÊME niveau que le reste de la page.
 
     ``None`` (clé absente) dans TOUS les cas où le client ne doit rien voir de
     l'autre gamme : devis sans gamme, gamme sans sœur vivante, ou mode d'envoi
@@ -1019,8 +1014,8 @@ def _gammes_public(devis):
                    if total_courant is not None else None)
         ecart = (round(total_soeur - courant, 2)
                  if (total_soeur is not None and courant is not None) else None)
-        lignes_ici = _gamme_lignes_publiques(devis)
-        lignes_soeur = _gamme_lignes_publiques(soeur)
+        lignes_ici = _gamme_lignes_publiques(devis, est_standard)
+        lignes_soeur = _gamme_lignes_publiques(soeur, est_standard)
         return {
             'envoi': GAMME_ENVOI_LES_DEUX,
             'courante': {
@@ -1451,7 +1446,7 @@ def proposal_data(request, token):
     # 'confiance' (bascule de compatibilité arrière — voir la migration) ;
     # ``getattr`` défensif au cas où un test construit un lien à la main
     # sans passer par le manager.
-    niveau = getattr(link, 'niveau', ShareLink.NIVEAU_CONFIANCE) or ShareLink.NIVEAU_CONFIANCE
+    niveau = _niveau_lien(link)
     est_standard = niveau == ShareLink.NIVEAU_STANDARD
 
     try:
@@ -1701,7 +1696,7 @@ def proposal_data(request, token):
             # GAMMES — choix de gamme AVANT/AVEC la signature. Clé présente
             # uniquement en mode d'envoi « les_deux » ; absente sinon (le lien
             # rend alors le devis exactement comme aujourd'hui).
-            'gammes': _gammes_public(devis),
+            'gammes': _gammes_public(devis, est_standard),
             # PVSYNC — TRANSPARENCE d'une resynchronisation POST-ENVOI. Posée
             # par ``services.resynchroniser_devis_pour_produit`` quand une
             # correction du catalogue a recalé les lignes d'un devis DÉJÀ
@@ -1813,17 +1808,12 @@ def proposal_pdf(request, token):
 
     try:
         # ERR74 — GET sûr : rendu + flux sans persister fichier_pdf.
-        # L-NIV (24/08/2026) — ``watermark`` est un flag SERVEUR (jamais lu
-        # depuis le corps de la requête, ``clean_pdf_options({})`` reçoit un
-        # dict vide) : posé UNIQUEMENT quand ``link.niveau`` est « standard »,
-        # d'après le lien résolu par le jeton — jamais depuis une entrée
-        # client. Stocké sous une clé MinIO séparée (voir ``builder._pdf_key``)
-        # pour ne jamais écraser le PDF interne.
-        _opts = clean_pdf_options({})
-        if getattr(link, 'niveau', ShareLink.NIVEAU_CONFIANCE) == ShareLink.NIVEAU_STANDARD:
-            _opts['watermark'] = True
+        # L-NIV (24/08/2026) — options d'anticopie posées SERVEUR d'après
+        # ``link.niveau`` (voir ``_opts_pdf_public``), jamais depuis le corps
+        # de la requête. Stocké sous une clé MinIO séparée (voir
+        # ``builder._pdf_key``) pour ne jamais écraser le PDF interne.
         key = generate_premium_devis_pdf(
-            link.devis_id, _opts, persist=False)
+            link.devis_id, _opts_pdf_public(link), persist=False)
         pdf_bytes = download_pdf(key)
         filename = f'Devis_{link.devis.reference}.pdf'
     except Exception:  # noqa: BLE001 — jamais de fuite, 404 amical
