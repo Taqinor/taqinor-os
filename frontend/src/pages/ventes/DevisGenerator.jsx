@@ -98,6 +98,23 @@ const MODE_OPTIONS = [
 // serveur inchangeables).
 const SAISON_LABELS = { hiver: 'Hiver', mi_saison: 'Mi-saison', ete: 'Été' }
 
+// ORDRE FONDATEUR (24/08) — « tous les devis sont générés par défaut avec DEUX
+// OPTIONS (sans + avec batterie), sauf si le commercial le précise sur le devis
+// modifiable ». Le vocabulaire est le contrat EXACT du moteur PDF (constantes
+// SCENARIO_* d'apps/ventes/services.py) : jamais reformulé ici.
+const SCENARIO_LES_DEUX = 'Les deux (Sans + Avec)'
+const SCENARIO_SANS = 'Sans batterie'
+const SCENARIO_AVEC = 'Avec batterie'
+const SCENARIOS_VALIDES = [SCENARIO_LES_DEUX, SCENARIO_SANS, SCENARIO_AVEC]
+// QX19 — scénario déjà CHOISI par le client dans le tunnel (crm.Lead.
+// batterie_souhaitee) : même table de correspondance que le devis auto
+// (features/ventes/autoQuote.js), jamais une seconde traduction divergente.
+const BATTERIE_LEAD_VERS_SCENARIO = {
+  sans: SCENARIO_SANS,
+  avec: SCENARIO_AVEC,
+  les_deux: SCENARIO_LES_DEUX,
+}
+
 let _keyCounter = 0
 const newKey = () => ++_keyCounter
 
@@ -266,6 +283,10 @@ export default function DevisGenerator({
   const tensionTouched = useRef(false)
   const pompeAlimTouched = useRef(false)
   const nbPanneauxTouched = useRef(false)
+  // ORDRE FONDATEUR (24/08) — le scénario par défaut est « Les deux (Sans +
+  // Avec) » ; il ne cède qu'à un choix EXPLICITE (celui du commercial à
+  // l'écran, ou celui déjà porté par le lead / le devis rouvert).
+  const scenarioTouched = useRef(false)
 
   // EZ3 — L'ABANDON POST-CRÉATION. En pleine page, `finish()` renvoyait sur la
   // liste NUE en JETANT l'id du devis qu'on venait de passer 20 minutes à
@@ -358,7 +379,8 @@ export default function DevisGenerator({
   const [clientQuickCreateOpen, setClientQuickCreateOpen] = useState(false)
   const [dateValidite, setDateValidite] = useState('')
   const [instType, setInstType] = useState('Résidentielle')
-  const [scenario, setScenario] = useState('Les deux (Sans + Avec)')
+  // Défaut fondateur : DEUX options (sans + avec batterie) sur tout devis vierge.
+  const [scenario, setScenario] = useState(SCENARIO_LES_DEUX)
   const [recommendedChoice, setRecommendedChoice] = useState('Auto')
   const [note, setNote] = useState('')
 
@@ -606,7 +628,9 @@ export default function DevisGenerator({
     if (d.clientId != null) setClientId(d.clientId)
     if (d.dateValidite != null) setDateValidite(d.dateValidite)
     if (d.instType != null) setInstType(d.instType)
-    if (d.scenario != null) setScenario(d.scenario)
+    // Le scénario du brouillon local est lui aussi un choix déjà posé : un lead
+    // sélectionné après restauration ne le réécrit pas.
+    if (d.scenario != null) { scenarioTouched.current = true; setScenario(d.scenario) }
     if (d.recommendedChoice != null) setRecommendedChoice(d.recommendedChoice)
     if (d.note != null) setNote(d.note)
     if (d.fHiver != null) setFHiver(d.fHiver)
@@ -925,17 +949,24 @@ export default function DevisGenerator({
     setModeInstallation(m)
     if (m === 'industriel') {
       onInstTypeChange('Industrielle')
-      setScenario('Sans batterie') // défaut industriel : sans batterie, réseau
+      // Défaut industriel : sans batterie, réseau. L'auto-remplissage de ces
+      // deux marchés MET À ZÉRO batterie + onduleur hybride (voir
+      // `handleAutoFill`) et l'écran annonce un « document à option unique » :
+      // le double scénario n'y est donc PAS servable, l'ordre fondateur des
+      // deux options par défaut ne s'y applique pas.
+      setScenario(SCENARIO_SANS)
     } else if (m === 'commercial') {
       // QX43 — commercial : comme l'industriel, autoconsommation réseau sans
       // batterie par défaut (l'étude par catégorie arrive avec QX44).
       onInstTypeChange('Commerciale')
-      setScenario('Sans batterie')
+      setScenario(SCENARIO_SANS)
     } else if (m === 'agricole') {
+      // Pompage : ni batterie ni onduleur (règle du repo) — le scénario n'est
+      // pas touché, aucune option batterie n'est composée de toute façon.
       onInstTypeChange('Agricole')
     } else {
       onInstTypeChange('Résidentielle')
-      setScenario('Les deux (Sans + Avec)')
+      setScenario(SCENARIO_LES_DEUX)
     }
   }
 
@@ -959,6 +990,9 @@ export default function DevisGenerator({
 
   // ── Scénario / recommandation : réinitialisation si incompatible ──
   const onScenarioChange = (v) => {
+    // « sauf si le commercial le précise » : dès qu'il choisit lui-même, aucun
+    // pré-remplissage (lead, profil site) ne réécrit son scénario.
+    scenarioTouched.current = true
     setScenario(v)
     if ((v === 'Sans batterie' && recommendedChoice === 'Avec batterie') ||
         (v === 'Avec batterie' && recommendedChoice === 'Sans batterie')) {
@@ -1068,6 +1102,16 @@ export default function DevisGenerator({
     if (!modeTouched.current
         && lead.type_installation && LEAD_TYPE_TO_MODE[lead.type_installation]) {
       onModeChange(LEAD_TYPE_TO_MODE[lead.type_installation])
+    }
+    // ORDRE FONDATEUR (24/08) — le scénario du lead est un choix DÉJÀ FAIT
+    // (tunnel : batterie_souhaitee) : il l'emporte sur le défaut du mode, dans
+    // les deux sens (« sans » restreint, « les deux » rouvre un mode qui
+    // partait mono). Rien de renseigné → le défaut du mode reste, exactement
+    // comme le devis auto (autoQuote.js, QX19). Posé APRÈS `onModeChange`
+    // ci-dessus, qui repose justement ce défaut.
+    if (!scenarioTouched.current) {
+      const scenarioLead = BATTERIE_LEAD_VERS_SCENARIO[String(lead.batterie_souhaitee ?? '')]
+      if (scenarioLead) setScenario(scenarioLead)
     }
     // Structure préférée du lead (acier/aluminium) si non touchée par l'utilisateur.
     if (!structureTouched.current
@@ -1288,6 +1332,23 @@ export default function DevisGenerator({
       // auto-remplissages suivants de CE devis (voir `marquesActives`).
       if (e.gamme && typeof e.gamme === 'object' && e.gamme.nom) {
         setGammeNomDevis(String(e.gamme.nom))
+      }
+      // ORDRE FONDATEUR (24/08) — round-trip du SCÉNARIO déjà choisi sur ce
+      // devis (etude_params.scenario/recommended_choice, posés par
+      // `buildEtudeParamsChoice` à l'enregistrement). Sans lui, rouvrir un
+      // brouillon reposait le défaut du MODE (`onModeChange` ci-dessus) et
+      // l'enregistrement suivant ÉCRASAIT silencieusement le choix du client —
+      // un devis « Avec batterie » repartait « Les deux », un devis
+      // industriel « Les deux » repartait « Sans batterie ». Le défaut ne vaut
+      // que pour un devis VIERGE. Valeurs inconnues ignorées : le Select ne
+      // doit jamais afficher un scénario hors contrat du moteur PDF.
+      if (SCENARIOS_VALIDES.includes(e.scenario)) {
+        scenarioTouched.current = true
+        setScenario(e.scenario)
+      }
+      if (['Auto', 'Aucune recommandation', SCENARIO_SANS, SCENARIO_AVEC]
+        .includes(e.recommended_choice)) {
+        setRecommendedChoice(e.recommended_choice)
       }
       // QX50 — round-trip de l'injection 82-21 (flag activé si l'étude la porte).
       if (e.injection_82_21 || e.injection_dh_an != null) setInjectionEnabled(true)
