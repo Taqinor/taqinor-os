@@ -835,6 +835,14 @@ def _glitch_vide():
     doit rester BYTE-IDENTIQUE à celle d'avant cette couche (épinglé par test).
     Des clés à zéro glissées dans l'agrégat historique la casseraient pour tous
     les devis du parc, y compris ceux que rien ne concerne.
+
+    UNITÉS. Les ``part_glitch_*`` sont des kWh (ou des MAD) du MOIS, donc ils
+    s'additionnent naturellement en saison puis en année. ``heures_impulsion``,
+    lui, compte les heures PORTEUSES du JOUR TYPE : au niveau du mois il se lit
+    « 8 heures de la journée type portent une impulsion » ; cumulé en saison ou
+    en année, c'est une somme de jours types (4 mois d'été × 8 h = 32), pas une
+    durée de journée. Le nombre de rafales du jour type, lui, est servi une
+    seule fois dans le bloc ``glitch`` racine.
     """
     return {
         # PAR VARIANTE (précision fondateur, 24/08/2026 : « je ne veux pas que
