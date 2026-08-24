@@ -933,10 +933,7 @@ def jours_types_annee(*, kwc, conso_kwh_mensuelles, ville=None, lat=None,
     # comportement d'avant cette couche : on n'affirme rien qu'on ne sache.
     _jour_ref = jour_reference or timezone.localdate()
     contexte_ramadan = contexte_ramadan_du_mois(
-        _jour_ref,
-        lat if lat is not None else None,
-        lon if lon is not None else None,
-    ) or {}
+        _jour_ref, lat=lat, lon=lon, ville=ville) or {}
 
     for index in range(12):
         numero = index + 1

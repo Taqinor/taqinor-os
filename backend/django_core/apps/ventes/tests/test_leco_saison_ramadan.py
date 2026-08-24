@@ -157,6 +157,28 @@ class FenetreRamadanTest(SimpleTestCase):
             self.assertGreater(bloc['part'], 0)
             self.assertIn('imsak_h', bloc['fenetre'])
 
+    def test_l_heure_de_l_iftar_suit_la_ville_du_chantier(self):
+        """L'iftar est un coucher de soleil : sans GPS, il vient des
+        coordonnées d'ancrage de la VILLE dans la table PVGIS — la même table
+        qui sert déjà la forme de production de ce devis, jamais une seconde
+        géographie ni un repli Casablanca silencieux."""
+        from apps.parametres.pvgis_profils import PRODUCTIBLE_MENSUEL_VILLE
+        oujda = PRODUCTIBLE_MENSUEL_VILLE.get('oujda') or {}
+        if not oujda.get('lat'):
+            self.skipTest('Oujda absente de la table de référence')
+        par_ville = CJ.contexte_ramadan_du_mois(_PLAGE_2028, ville='Oujda')
+        par_gps = CJ.contexte_ramadan_du_mois(
+            _PLAGE_2028, lat=oujda['lat'], lon=oujda['lon'])
+        self.assertEqual(par_ville[2]['fenetre'], par_gps[2]['fenetre'])
+        casa = CJ.contexte_ramadan_du_mois(_PLAGE_2028)
+        self.assertNotEqual(par_ville[2]['fenetre']['iftar_h'],
+                            casa[2]['fenetre']['iftar_h'])
+
+    def test_une_ville_inconnue_retombe_sur_le_repli_documente(self):
+        inconnue = CJ.contexte_ramadan_du_mois(_PLAGE_2028, ville='Atlantis')
+        casa = CJ.contexte_ramadan_du_mois(_PLAGE_2028)
+        self.assertEqual(inconnue[2]['fenetre'], casa[2]['fenetre'])
+
 
 class SilhouetteRamadanTest(SimpleTestCase):
     """Le Ramadan DÉPLACE l'énergie ; il n'en crée ni n'en supprime."""

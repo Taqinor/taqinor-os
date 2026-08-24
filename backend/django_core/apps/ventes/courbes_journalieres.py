@@ -804,7 +804,31 @@ def silhouette_jour(occupation, saison=None, ramadan=None):
     return _normaliser_a_un(melange) or base
 
 
-def contexte_ramadan_du_mois(jour_reference, lat=None, lon=None):
+def _coordonnees_du_chantier(lat, lon, ville):
+    """``(lat, lon)`` du chantier : le GPS s'il existe, sinon la ville CONNUE.
+
+    L'heure de l'iftar est un coucher de soleil : elle dépend d'OÙ est le
+    chantier. Le GPS prime ; à défaut, on prend les coordonnées d'ancrage de la
+    ville dans la table PVGIS (la MÊME table qui sert déjà la forme de
+    production de ce devis — jamais une seconde géographie). Ni l'un ni
+    l'autre ⇒ ``(None, None)`` et :func:`apps.ventes.ramadan.fenetre_ramadan`
+    applique son repli Casablanca DOCUMENTÉ.
+    """
+    if lat is not None and lon is not None:
+        return lat, lon
+    try:
+        from apps.parametres.pvgis_profils import (
+            PRODUCTIBLE_MENSUEL_VILLE, cle_ville)
+        cle = cle_ville(ville)
+        if cle:
+            entree = PRODUCTIBLE_MENSUEL_VILLE.get(cle) or {}
+            return entree.get('lat'), entree.get('lon')
+    except Exception:  # noqa: BLE001 — une ville illisible n'est pas une panne
+        logger.warning('coordonnees ville indisponibles', exc_info=True)
+    return None, None
+
+
+def contexte_ramadan_du_mois(jour_reference, lat=None, lon=None, ville=None):
     """``{mois 1-12: {'part', 'fenetre'}}`` pour le Ramadan que le client vivra.
 
     ``None`` (⇒ aucun mois modulé, comportement d'avant cette couche) quand la
@@ -817,7 +841,8 @@ def contexte_ramadan_du_mois(jour_reference, lat=None, lon=None):
         parts = part_ramadan_par_mois(jour_reference)
         if not parts:
             return None
-        fenetre = fenetre_ramadan(jour_reference, lat=lat, lon=lon)
+        lat_eff, lon_eff = _coordonnees_du_chantier(lat, lon, ville)
+        fenetre = fenetre_ramadan(jour_reference, lat=lat_eff, lon=lon_eff)
         if not fenetre:
             return None
         return {index + 1: {'part': part, 'fenetre': fenetre}
