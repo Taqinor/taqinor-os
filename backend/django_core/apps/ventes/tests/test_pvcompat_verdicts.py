@@ -149,11 +149,42 @@ def _onduleur_haute_tension_fictif(pk=99):
 
 
 def _onduleur_5k_mono(pk=12):
-    """Deye SUN-5K-SG : les CHIFFRES du seeder — courant maxi par MPPT 13 A,
-    Isc maxi 17 A, fenêtre 125-425 V, V_max 500 V. C'est LE cas du fondateur :
-    une chaîne de CS7N-710 y apporte 17,59 A d'Imp et 18,59 A d'Isc."""
+    """Deye 5 kW mono : les CHIFFRES du seeder — courant maxi par MPPT 22 A,
+    Isc maxi 22 A, fenêtre 125-425 V, V_max 500 V.
+
+    L-22A (fondateur 24/08/2026) : « change both inverter of 5kw to increase
+    their mppt current to more then 20A so they accept the canadian solar
+    pannels ». Les deux bornes de courant sont passées de 13 A / 17 A
+    (identification datasheet SG05LP1) à 22 A — valeur DÉCLARÉE fondateur,
+    cf. ``seed_catalogue.FICHES_TECHNIQUES`` et ``stock.0128_l22a_bornes_
+    mppt_5kw``. Une chaîne de CS7N-710 y apporte 17,59 A d'Imp et 18,59 A
+    d'Isc : elle passe désormais sous les deux bornes.
+    """
     return _onduleur(
         pk, 'Onduleur hybride Deye 5kW Monophasé',
+        ond_ac_kw=Decimal('5.00'), ond_phases=1,
+        ond_mppt_v_min=Decimal('125.0'), ond_mppt_v_max=Decimal('425.0'),
+        ond_v_max_abs=Decimal('500.0'), ond_i_max_mppt_a=Decimal('22.0'),
+        ond_v_demarrage_v=Decimal('125.0'),
+        ond_isc_max_mppt_a=Decimal('22.0'),
+        ond_bat_v_min=Decimal('40.0'), ond_bat_v_max=Decimal('60.0'))
+
+
+def _onduleur_isc_etroit_fictif(pk=98):
+    """Onduleur à Isc ÉTROIT **fictif** — 17,0 A publiés par entrée MPPT.
+
+    Depuis L-22A (24/08/2026) AUCUNE référence du catalogue ne publie une
+    borne d'Isc qu'une seule chaîne de 710 Wc (18,59 A) dépasse : les deux
+    onduleurs 5 kW sont montés à 22 A sur ordre fondateur, et les paliers
+    supérieurs sont plus larges encore. Le mécanisme de refus L1 (Isc
+    au-dessus de la borne PUBLIÉE = BLOQUANT, DEV-202608-0016) doit pourtant
+    rester armé : ce montage est donc DÉLIBÉRÉMENT anonyme et déclare sa borne
+    en clair — même patron que ``_onduleur_haute_tension_fictif``. Il n'existe
+    que pour prouver la RÈGLE, jamais pour prêter un chiffre à un produit réel
+    (et le catalogue n'est PAS modifié pour créer le cas).
+    """
+    return _onduleur(
+        pk, 'Onduleur hybride Isc étroit fictif 5kW Monophasé',
         ond_ac_kw=Decimal('5.00'), ond_phases=1,
         ond_mppt_v_min=Decimal('125.0'), ond_mppt_v_max=Decimal('425.0'),
         ond_v_max_abs=Decimal('500.0'), ond_i_max_mppt_a=Decimal('13.0'),
@@ -218,9 +249,14 @@ class SeveriteDuNoyauTest(SimpleTestCase):
                             for c in verdicts['alertes_courant']))
 
     def test_string_design_publie_desormais_les_verdicts_de_courant(self):
+        """Même couple RÉEL que ``test_ecretage_sur_l_imp_est_une_alerte``
+        (36 × 710 Wc sur le Deye 10 kW tri) : ce que le noyau prononce doit
+        aussi ressortir dans les ``warnings`` de ``string_design``, sinon le
+        verdict le plus utile n'atteint jamais l'écran."""
         module = sd.specs_module_pour_produit(_panneau_710())
-        fenetre = sd.fenetre_onduleur_pour_produit(_onduleur_5k_mono())
-        design = sd.string_design(8, module=module, inverter=fenetre)
+        fenetre = sd.fenetre_onduleur_pour_produit(
+            _onduleur(13, 'Onduleur hybride Deye 10kW Triphasé'))
+        design = sd.string_design(36, module=module, inverter=fenetre)
         self.assertTrue(
             any('MPPT' in w and ('Imp cumulé' in w or 'Isc cumulé' in w)
                 for w in design['warnings']),
@@ -241,25 +277,62 @@ class SeveriteDuNoyauTest(SimpleTestCase):
 # ═══════════════════════════════════════════════════════════════════════════
 class VerdictPanneauOnduleurTest(SimpleTestCase):
     def test_isc_hors_borne_donne_incompatible_avec_les_chiffres(self):
-        """DEV-202608-0016 — LE couple du fondateur : 710 Wc sur Deye 5 kW.
+        """DEV-202608-0016 — la RÈGLE, sur un onduleur fictif à Isc étroit.
 
         UNE chaîne apporte 18,59 A d'Isc dans une entrée que la fiche donne
         pour 17 A : aucun nombre de panneaux ne rend ce couple installable.
         Ce n'est donc pas « sous réserve » (ça écrête, ça marche), c'est
         INCOMPATIBLE — et c'est ce verdict que la resynchro 3D consulte
-        désormais avant d'écrire quoi que ce soit.
+        avant d'écrire quoi que ce soit.
+
+        L-22A (24/08/2026) : ce cas se jouait jusqu'ici sur le Deye 5 kW du
+        catalogue, dont les bornes sont passées à 22 A sur ordre fondateur.
+        Plus AUCUN couple réel ne dépasse — le montage est donc fictif et
+        déclaré tel quel (``_onduleur_isc_etroit_fictif``), pour que la règle
+        reste armée sans qu'on touche au catalogue pour fabriquer le cas.
         """
         verdict = cp.verdict_panneau_onduleur(
-            _panneau_710(), _onduleur_5k_mono())
+            _panneau_710(), _onduleur_isc_etroit_fictif())
         self.assertEqual(verdict['statut'], cp.STATUT_INCOMPATIBLE)
         self.assertTrue(verdict['raisons'])
         joint = ' '.join(verdict['raisons'])
-        # Les chiffres RÉELS des deux fiches, écrits à la française.
+        # Les chiffres des deux fiches, écrits à la française.
         self.assertIn('18,6 A', joint)
         self.assertIn('17,0 A', joint)
         # Aucune configuration n'est proposée : il n'y en a pas.
         self.assertIsNone(verdict['nb_panneaux'])
         self.assertEqual(verdict['detail'], '')
+
+    def test_les_deux_5kw_du_catalogue_acceptent_le_710(self):
+        """L-22A (fondateur 24/08/2026) — L'ORDRE, épinglé.
+
+        « Change both inverter of 5kw to increase their mppt current to more
+        then 20A so they accept the canadian solar pannels. » Les deux
+        onduleurs 5 kW du catalogue portent désormais 22,0 A sur leurs DEUX
+        bornes : une chaîne de CS7N-710 (17,59 A d'Imp, 18,59 A d'Isc) passe
+        sous chacune. Verdict attendu : COMPATIBLE, sans réserve — ni le
+        BLOQUANT d'Isc côté Deye, ni l'ALERTE d'écrêtage côté Huawei (qui
+        publiait 12,5 A d'Imp et aucune borne d'Isc).
+        """
+        huawei_5k_mono = _onduleur(
+            50, 'Onduleur réseau Huawei 5kW Monophasé',
+            ond_ac_kw=Decimal('5.00'), ond_phases=1,
+            ond_mppt_v_min=Decimal('90.0'), ond_mppt_v_max=Decimal('560.0'),
+            ond_v_max_abs=Decimal('600.0'), ond_i_max_mppt_a=Decimal('22.0'),
+            ond_isc_max_mppt_a=Decimal('22.0'),
+            ond_v_demarrage_v=Decimal('90.0'),
+            ond_bat_aucune=True, ond_bat_v_min=None, ond_bat_v_max=None)
+        for onduleur in (_onduleur_5k_mono(), huawei_5k_mono):
+            with self.subTest(onduleur=onduleur.nom):
+                verdict = cp.verdict_panneau_onduleur(
+                    _panneau_710(), onduleur)
+                self.assertEqual(verdict['statut'], cp.STATUT_COMPATIBLE,
+                                 verdict['raisons'])
+                self.assertEqual(verdict['raisons'], [])
+                self.assertGreater(verdict['nb_panneaux'], 0)
+                # Le détail NOMME la borne franchie sans encombre : c'est le
+                # chiffre que le fondateur a déclaré, pas un seuil déduit.
+                self.assertIn('22,0 A', verdict['detail'])
 
     def test_couple_sain_donne_compatible_sans_raison(self):
         verdict = cp.verdict_panneau_onduleur(
@@ -543,21 +616,29 @@ class CompositionCoupleElectriqueTest(SimpleTestCase):
         self.assertEqual(avertissements, [])
 
     def test_couple_hors_borne_est_annonce_sans_tuer_la_composition(self):
-        """Catalogue dont le SEUL hybride est le Deye 5 kW, et rien d'autre
-        au wattage : depuis DEV-202608-0016 le couple 710 Wc / 5 kW est
-        INCOMPATIBLE (Isc 18,6 A > 17 A publiés), pas « sous réserve ».
+        """Catalogue dont le SEUL hybride publie une borne d'Isc qu'une chaîne
+        de 710 Wc dépasse à elle seule, et rien d'autre au wattage : le couple
+        est INCOMPATIBLE (Isc 18,6 A > 17 A publiés), pas « sous réserve ».
 
         La règle « jamais une composition morte » tient toujours : les deux
         lignes restent, et le motif porte les chiffres des DEUX fiches. C'est
         ensuite le schéma unifilaire qui refusera de dessiner ce montage, et
         la resynchro 3D qui refusera de l'écrire.
+
+        L-22A (24/08/2026) — l'onduleur du montage est FICTIF et déclaré tel
+        quel (``_onduleur_isc_etroit_fictif``) : les deux 5 kW réels du
+        catalogue sont montés à 22 A sur ordre fondateur, plus aucun ne joue
+        ce rôle. Le CHEMIN testé, lui, est inchangé.
         """
         avertissements = []
+        catalogue = [_panneau_710(), _onduleur_isc_etroit_fictif(),
+                     _batterie()]
         lignes = sv.composition_residentielle(
-            _catalogue(avec_hybride_tri=False), kwc=3.55, panel_watt=710,
+            catalogue, kwc=3.55, panel_watt=710,
             nb_panneaux=5, avec_batterie=True, avertissements=avertissements)
         designations = [ligne.designation for ligne in lignes]
-        self.assertIn('Onduleur hybride Deye 5kW Monophasé', designations)
+        self.assertIn('Onduleur hybride Isc étroit fictif 5kW Monophasé',
+                      designations)
         # La composition n'est PAS morte, et le motif porte les chiffres.
         self.assertIn('Panneau Canadien Solar 710W', designations)
         self.assertTrue(avertissements)
@@ -565,6 +646,21 @@ class CompositionCoupleElectriqueTest(SimpleTestCase):
         self.assertIn('INCOMPATIBLE', joint)
         self.assertIn('18,6 A', joint)
         self.assertIn('17,0 A', joint)
+
+    def test_le_deye_5kw_reel_compose_sans_aucune_reserve(self):
+        """L-22A (fondateur 24/08/2026) — le pendant POSITIF du test
+        ci-dessus, sur le vrai produit : catalogue dont le seul hybride est le
+        Deye 5 kW mono (22 A sur ses deux bornes) et dont le seul panneau est
+        le 710 Wc. La composition retient le couple et n'a RIEN à annoncer —
+        c'est exactement ce que l'ordre fondateur demandait."""
+        avertissements = []
+        lignes = sv.composition_residentielle(
+            _catalogue(avec_hybride_tri=False), kwc=3.55, panel_watt=710,
+            nb_panneaux=5, avec_batterie=True, avertissements=avertissements)
+        designations = [ligne.designation for ligne in lignes]
+        self.assertIn('Onduleur hybride Deye 5kW Monophasé', designations)
+        self.assertIn('Panneau Canadien Solar 710W', designations)
+        self.assertEqual(avertissements, [])
 
     def test_panneau_incompatible_declenche_un_repli_annonce(self):
         """Le 710 Wc dépasse à lui seul la tension maximale de cet onduleur
@@ -635,18 +731,40 @@ class CompositionRaccordementTest(SimpleTestCase):
         replis = [a for a in avertissements if 'monophasé déclaré' in a]
         self.assertEqual(len(replis), 1, avertissements)
 
-    def test_triphase_ne_restreint_pas_le_vivier(self):
-        """Un abonnement triphasé accepte un onduleur monophasé : le vivier
-        reste entier, seule la préférence de départage devient dure."""
-        avertissements = []
-        lignes = sv.composition_residentielle(
-            _catalogue(), kwc=7.1, panel_watt=710, nb_panneaux=10,
-            avec_batterie=True, avertissements=avertissements,
-            phase='triphase')
-        designations = [ligne.designation for ligne in lignes]
-        self.assertIn('Onduleur hybride Deye 10kW Triphasé', designations)
-        self.assertEqual(
-            [a for a in avertissements if 'déclaré' in a], [])
+    def test_triphase_vivier_tri_exclusif(self):
+        """L-TRI — un raccordement TRIPHASÉ déclaré rend le vivier onduleurs
+        TRI EXCLUSIF : ``_vivier_onduleurs_par_phase`` écarte les monophasés
+        SANS repli. Ce n'est plus une simple préférence de départage (doctrine
+        d'avant L-TRI, où un mono pouvait gagner s'il collait mieux au seuil
+        des 80 %) — c'est une exclusion.
+
+        Conséquences encodées ici :
+
+        * petit kWc — à 3,55 kWc le mono 5 kW est POURTANT le plus proche du
+          seuil (le 10 kW tri est surdimensionné du double) : il doit quand
+          même perdre. C'est LE cas discriminant — sous l'ancienne doctrine ce
+          test est rouge, ce qui est exactement le but d'un pin de doctrine.
+        * gros kWc — à 7,1 kWc le tri gagnait déjà sous les deux doctrines :
+          le cas est conservé comme non-régression, jamais comme preuve.
+
+        Le refus NOMMÉ quand aucun tri n'existe au catalogue est, lui, épinglé
+        par ``test_monophase_sans_candidat_replie_et_avertit`` côté mono ; ici
+        le catalogue en porte un, donc rien à annoncer.
+        """
+        for kwc, nb_panneaux in ((3.55, 5), (7.1, 10)):
+            with self.subTest(kwc=kwc):
+                avertissements = []
+                lignes = sv.composition_residentielle(
+                    _catalogue(), kwc=kwc, panel_watt=710,
+                    nb_panneaux=nb_panneaux, avec_batterie=True,
+                    avertissements=avertissements, phase='triphase')
+                designations = [ligne.designation for ligne in lignes]
+                self.assertIn('Onduleur hybride Deye 10kW Triphasé',
+                              designations)
+                self.assertNotIn('Onduleur hybride Deye 5kW Monophasé',
+                                 designations)
+                self.assertEqual(
+                    [a for a in avertissements if 'déclaré' in a], [])
 
     def test_raccordement_inconnu_ne_change_rien(self):
         reference = [ligne.designation for ligne in
