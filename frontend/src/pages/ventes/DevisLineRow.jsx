@@ -148,6 +148,24 @@ function DevisLineRowImpl({
             Désignation modifiée (produit : {prodLie.nom})
           </div>
         )}
+        {/* L-2OPT (fondateur 24/08) — badge de variante : posé par
+            `fusionnerVariantes` (solar.js) quand les deux optimiseurs
+            résidentiels (sans/avec batterie) divergent. Une ligne commune
+            (`variante` vide/absente — comportement historique, TOUT devis
+            hors « Les deux » divergent) ne porte AUCUN badge — jamais de
+            bruit visuel sur le cas courant. */}
+        {l.variante === 'sans' && (
+          <span className="mt-0.5 inline-block rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground"
+                title="Cette ligne n'appartient qu'à l'option SANS batterie">
+            Option sans batterie
+          </span>
+        )}
+        {l.variante === 'avec' && (
+          <span className="mt-0.5 inline-block rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary"
+                title="Cette ligne n'appartient qu'à l'option AVEC batterie">
+            Option avec batterie
+          </span>
+        )}
       </td>
       <td data-label="Produit (stock)">
         <ProduitPicker

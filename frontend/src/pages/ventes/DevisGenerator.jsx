@@ -69,6 +69,9 @@ import {
   // PVMRQ — libellé FR d'un rôle ROLES_AUTO_COMPOSITION, pour le bandeau
   // « marque épinglée introuvable ».
   roleLabel,
+  // L-2OPT (fondateur 24/08) — deux optimiseurs indépendants (sans/avec
+  // batterie) fusionnés en lignes taguées `variante`.
+  fusionnerVariantes,
   // PVORD (fondateur 19/08/2026) — ordre par défaut des lignes de devis :
   // dérive la séquence de rôles depuis l'écran (bouton « Enregistrer cet
   // ordre »), appliquée par autoFillLines via ordreLignes.
@@ -118,6 +121,22 @@ const BATTERIE_LEAD_VERS_SCENARIO = {
 let _keyCounter = 0
 const newKey = () => ++_keyCounter
 
+// L-2OPT (fondateur 24/08) — déduplique une liste par clé, garde la PREMIÈRE
+// occurrence : même patron que `marquesManquantes`/`onduleursIncomplets`
+// (solar.js), utilisé quand les DEUX compositions (sans/avec) de
+// `handleAutoFill` signalent le même trou catalogue.
+const dedupeParCle = (items, keyFn) => {
+  const seen = new Set()
+  const out = []
+  for (const it of items) {
+    const k = keyFn(it)
+    if (seen.has(k)) continue
+    seen.add(k)
+    out.push(it)
+  }
+  return out
+}
+
 // VX93 — défaut intelligent : dernier taux TVA saisi sur une ligne ajoutée à la
 // main (localStorage). Repli sur le taux standard (20 %) si absent. Toujours
 // modifiable ligne par ligne ; jamais bloquant.
@@ -150,6 +169,11 @@ const withKeys = (rows) => rows.map(r => ({
   // brouillon (VX62 draft restore), sinon False (chargement serveur/auto-fill —
   // rien n'a encore été tapé sur CES lignes-là).
   prixManuel: !!r.prixManuel,
+  // L-2OPT (fondateur 24/08) — '' commun (défaut, comportement historique
+  // inchangé) | 'sans' | 'avec' : posée par `fusionnerVariantes` quand les
+  // deux optimiseurs résidentiels divergent, préservée au rechargement d'un
+  // brouillon/devis (VX62, réouverture ?edit=).
+  variante: r.variante ?? '',
 }))
 
 // Nouvelle ligne vide — quantité 0 comme addProductLine() du simulateur
@@ -173,6 +197,8 @@ const emptyLine = () => ({
   typeLigne: 'produit',
   // N2 — aucun prix tapé à la main pour l'instant.
   prixManuel: false,
+  // L-2OPT — ligne ajoutée à la main : commune par défaut.
+  variante: '',
 })
 
 // XSAL14 — ligne de SECTION (intertitre) ou de NOTE (texte sans prix). Ne porte
@@ -191,6 +217,7 @@ const structureLine = (typeLigne) => ({
   optionnelle: false,
   typeLigne,
   prixManuel: false,
+  variante: '',
 })
 
 const fmtNum = (v) => (v !== null && v !== undefined) ? formatNumber(v) : 'N/A'
@@ -1080,16 +1107,55 @@ export default function DevisGenerator({
     const key = [hiver, eteEff, besoinKwc, dayUsagePct, panelW, structureType,
       discountPct, produits.length, JSON.stringify(marquesActives)].join('|')
     if (sizingCacheRef.current.key === key) return sizingCacheRef.current.result
+    const factures = estimerMois(hiver, eteEff)
     const opt = optimalKwcByPayback({
-      produits, factures: estimerMois(hiver, eteEff), dayUsagePct,
+      produits, factures, dayUsagePct,
       panelW, structureType, discountPct,
       kwhPrice: quoteLogic.kwhPrice, efficiency: quoteLogic.efficiency,
       besoinKwc, marques: marquesActives,
     })
-    const result = (opt.nbPanneaux > 0) ? { besoinKwc, ...opt } : null
+    // L-2OPT (fondateur 24/08) — second optimiseur, MÊME balayage, objectif
+    // AVEC batterie (`avecBatterie: true` — optimalKwcByPayback l'accepte
+    // déjà, jamais utilisé jusqu'ici) : la taille optimale « avec » peut
+    // différer de la taille optimale « sans » (le coût batterie déplace le
+    // point de payback minimal). Exposé en `.avec`, JAMAIS à la place du
+    // résultat plat ci-dessous (`sizing.nbPanneaux` reste le SANS — contrat
+    // gardé par DevisGeneratorNbPanneauxTouched.test.mjs).
+    const optAvec = optimalKwcByPayback({
+      produits, factures, dayUsagePct,
+      panelW, structureType, discountPct,
+      kwhPrice: quoteLogic.kwhPrice, efficiency: quoteLogic.efficiency,
+      besoinKwc, marques: marquesActives, avecBatterie: true,
+    })
+    let result = null
+    if (opt.nbPanneaux > 0) {
+      const sansPart = { besoinKwc, ...opt }
+      // Jamais de chiffre inventé (règle #4) : sans optimum AVEC exploitable,
+      // il retombe sur le SANS — aucune divergence fabriquée entre les deux
+      // branches.
+      const avecPart = (optAvec.nbPanneaux > 0) ? { besoinKwc, ...optAvec } : sansPart
+      result = { ...sansPart, avec: avecPart }
+    }
     sizingCacheRef.current = { key, result }
     return result
   }, [modeInstallation, panelW, structureType, discountPct, produits, quoteLogic, marquesActives])
+
+  // L-2OPT — kWc de la branche AVEC batterie POUR LA COMPOSITION EN COURS :
+  // le moteur horaire serveur (recommandation_avec, source de vérité) prime
+  // dès qu'il a répondu pour ce contexte ; repli local (même balayage
+  // payback que ci-dessus, objectif avecBatterie) ; repli ultime kwc_sans —
+  // jamais un chiffre inventé (règle #4). Un nombre de panneaux TAPÉ À LA
+  // MAIN (nbPanneauxTouched, même garde-fou que partout ailleurs sur ce
+  // champ) vaut pour les DEUX branches : aucune divergence n'est recomposée
+  // par-dessus un choix déjà fait par l'utilisateur.
+  const resolveKwcAvec = () => {
+    if (nbPanneauxTouched.current) return kwp
+    const backendAvec = etudeHoraireDonnees?.dimensionnement?.recommandation_avec
+    if (Number(backendAvec?.kwc) > 0) return Number(backendAvec.kwc)
+    const sizing = computeAutoSizing(fHiver, fEte)
+    if (sizing?.avec?.kwcOptimal > 0) return sizing.avec.kwcOptimal
+    return kwp
+  }
 
   const applyLead = (id) => {
     setLeadId(id)
@@ -1113,9 +1179,13 @@ export default function DevisGenerator({
     // comme le devis auto (autoQuote.js, QX19). Posé APRÈS `onModeChange`
     // ci-dessus, qui repose justement ce défaut. JAMAIS en pompage : un devis
     // agricole ne porte ni batterie ni onduleur, quoi qu'ait coché le lead.
+    // L-2OPT — scénario RÉELLEMENT visé après cette ligne (setScenario est
+    // asynchrone) : sert au choix sans/avec de computeAutoSizing ci-dessous,
+    // même patron que `modeCible` juste au-dessus.
+    let scenarioCible = scenario
     if (!scenarioTouched.current && modeCible !== 'agricole') {
       const scenarioLead = BATTERIE_LEAD_VERS_SCENARIO[String(lead.batterie_souhaitee ?? '')]
-      if (scenarioLead) setScenario(scenarioLead)
+      if (scenarioLead) { setScenario(scenarioLead); scenarioCible = scenarioLead }
     }
     // Structure préférée du lead (acier/aluminium) si non touchée par l'utilisateur.
     if (!structureTouched.current
@@ -1163,8 +1233,12 @@ export default function DevisGenerator({
       if (fromTaille <= 0) {
         const sizing = computeAutoSizing(hiver, ete)
         if (sizing) {
-          setNbPanneaux(String(sizing.nbPanneaux))
-          setSizingInfo(sizing)
+          // L-2OPT — un scénario mono « Avec batterie » compose l'optimum
+          // AVEC seul (payback minimal AVEC batterie), pas l'optimum SANS.
+          const retenu = (modeCible === 'residentiel' && scenarioCible === SCENARIO_AVEC)
+            ? sizing.avec : sizing
+          setNbPanneaux(String(retenu.nbPanneaux))
+          setSizingInfo(retenu)
         } else {
           const suggested = estimerPanneaux(hiver, quoteLogic.panneauxParTranche)
           if (suggested > 0) setNbPanneaux(String(suggested))
@@ -1207,8 +1281,12 @@ export default function DevisGenerator({
       if (!nbPanneauxTouched.current) {
         const sizing = computeAutoSizing(hiver, ete)
         if (sizing) {
-          setNbPanneaux(String(sizing.nbPanneaux))
-          setSizingInfo(sizing)
+          // L-2OPT — même choix sans/avec qu'applyLead (le mode a déjà pu
+          // être posé par onModeChange juste au-dessus).
+          const retenu = (modeInstallation === 'residentiel' && scenario === SCENARIO_AVEC)
+            ? sizing.avec : sizing
+          setNbPanneaux(String(retenu.nbPanneaux))
+          setSizingInfo(retenu)
         } else {
           const suggested = estimerPanneaux(hiver, quoteLogic.panneauxParTranche)
           if (suggested > 0) setNbPanneaux(String(suggested))
@@ -1322,11 +1400,18 @@ export default function DevisGenerator({
           optionnelle: !!l.optionnelle,
           // XSAL14 — préserve le type de ligne (produit / section / note).
           typeLigne: l.type_ligne ?? 'produit',
+          // L-2OPT — préserve le tag de variante posé par le serveur (champ
+          // pas encore accepté par TOUS les backends — `?? ''` en repli,
+          // comportement historique inchangé tant qu'il est absent).
+          variante: l.variante ?? '',
         }))
       setLines(withKeys(rows))
       linesInitialized.current = true
+      // L-2OPT — le nombre de panneaux affiché reste celui de la branche
+      // SANS (commun + 'sans' ; une ligne 'avec' divergente ne compte pas
+      // ici, sinon les deux optima s'additionneraient).
       const panneaux = rows
-        .filter(r => /panneau/i.test(r.designation))
+        .filter(r => /panneau/i.test(r.designation) && r.variante !== 'avec')
         .reduce((s, r) => s + (parseFloat(r.quantite) || 0), 0)
       if (panneaux > 0) setNbPanneaux(String(panneaux))
       const e = d.etude_params || {}
@@ -1496,8 +1581,15 @@ export default function DevisGenerator({
     if (!nbPanneauxTouched.current) {
       const sizing = computeAutoSizing(hiver, ete)
       if (sizing) {
-        setNbPanneaux(String(sizing.nbPanneaux))
-        setSizingInfo(sizing)
+        // L-2OPT — un scénario mono « Avec batterie » compose l'optimum
+        // AVEC seul (même choix qu'applyLead/applySiteProfile ci-dessus).
+        if (modeInstallation === 'residentiel' && scenario === SCENARIO_AVEC) {
+          setNbPanneaux(String(sizing.avec.nbPanneaux))
+          setSizingInfo(sizing.avec)
+        } else {
+          setNbPanneaux(String(sizing.nbPanneaux))
+          setSizingInfo(sizing)
+        }
       } else {
         const suggested = estimerPanneaux(hiver)
         if (suggested > 0) setNbPanneaux(String(suggested))
@@ -1861,6 +1953,44 @@ export default function DevisGenerator({
       // absent/vide = ordre canonique du simulateur (comportement historique).
       ordreLignes: gammesConfig?.ordre_lignes,
     })
+    // L-2OPT (fondateur 24/08) — deux optimiseurs indépendants : en
+    // résidentiel, un scénario qui sert RÉELLEMENT l'option AVEC (« Les
+    // deux » ou « Avec batterie » seule) compose CETTE branche à SON PROPRE
+    // optimum (kwc_avec, potentiellement différent du kwc_sans ci-dessus).
+    // Fusion générique (fusionnerVariantes, solar.js) : deux tailles égales
+    // (le cas le plus courant, et le repli quand aucune source n'a d'avis)
+    // retombent sur la composition unique ci-dessus, BYTE-IDENTIQUE à
+    // l'historique — aucune ligne variantée, repli de sécurité épinglé par
+    // test.
+    if (modeInstallation === 'residentiel'
+        && (scenario === SCENARIO_LES_DEUX || scenario === SCENARIO_AVEC)) {
+      const kwpAvec = resolveKwcAvec()
+      if (Math.abs(kwpAvec - kwp) > 1e-9) {
+        const composeAvec = () => autoFillLines(produits, {
+          kwp: kwpAvec,
+          panelW: parseFloat(panelW) || 710,
+          structureType,
+          marques: marquesActives,
+          ordreLignes: gammesConfig?.ordre_lignes,
+        })
+        if (scenario === SCENARIO_AVEC) {
+          // mono avec : compose l'optimum AVEC seul, aucune fusion.
+          generated = composeAvec()
+        } else {
+          const lignesSans = generated
+          const lignesAvec = composeAvec()
+          generated = fusionnerVariantes(lignesSans, lignesAvec)
+          generated.actualPanelW = lignesSans.actualPanelW
+          generated.kwcReel = lignesSans.kwcReel
+          generated.onduleursIncomplets = dedupeParCle(
+            [...(lignesSans.onduleursIncomplets ?? []), ...(lignesAvec.onduleursIncomplets ?? [])],
+            (o) => o.id)
+          generated.marquesManquantes = dedupeParCle(
+            [...(lignesSans.marquesManquantes ?? []), ...(lignesAvec.marquesManquantes ?? [])],
+            (m) => `${m.role}|${m.marque}`)
+        }
+      }
+    }
     // Les MÉTADONNÉES du tableau (wattage réel, kWc réel, onduleurs grisés)
     // sont relevées ICI, avant tout `.map()` : un `.map()` rend un tableau NEUF
     // et les perdrait en route (les modes industriel/commercial ci-dessous en
@@ -2166,6 +2296,11 @@ export default function DevisGenerator({
           // XSAL14 — type produit (défaut) + position d'affichage.
           type_ligne: 'produit',
           ordre: idx,
+          // L-2OPT (fondateur 24/08) — '' commun | 'sans' | 'avec', posée par
+          // `fusionnerVariantes` quand les deux optimiseurs résidentiels
+          // divergent. Envoyée systématiquement (le champ absent d'un ancien
+          // backend est simplement ignoré par le serializer — jamais bloquant).
+          variante: l.variante || '',
         }
       })
 
@@ -3414,6 +3549,13 @@ export default function DevisGenerator({
                         {etudeHoraireLignes.map((ligne) => {
                           const estRecommandee = etudeHoraireDonnees?.dimensionnement
                             ?.recommandation?.panneaux === ligne.panneaux
+                          // L-2OPT (fondateur 24/08) — second optimiseur, même
+                          // patron : surligne DISTINCTEMENT le palier optimal
+                          // AVEC batterie (recommandation_avec, moteur horaire
+                          // serveur) — peut différer de `estRecommandee`
+                          // ci-dessus (les deux optima peuvent diverger).
+                          const estRecommandeeAvec = etudeHoraireDonnees?.dimensionnement
+                            ?.recommandation_avec?.panneaux === ligne.panneaux
                           // L-FRONT lot 4 — résiduel/tranche après la meilleure option
                           // chiffrée (avec batterie si vendable, sinon sans), et
                           // remplissage moyen du stockage retenu pour cette taille.
@@ -3430,10 +3572,11 @@ export default function DevisGenerator({
                           return (
                             <Fragment key={ligne.panneaux}>
                               <tr
-                                  className={`border-b border-border${estRecommandee ? ' bg-success/10' : ''}`}>
+                                  className={`border-b border-border${estRecommandee ? ' bg-success/10' : ''}${estRecommandeeAvec ? ' bg-info/10' : ''}`}>
                                 <td className="py-1.5 pr-3">
                                   {formatNumber(ligne.kwc, { decimals: 2 })} kWc
-                                  {estRecommandee && <span className="gen-rec-badge"> ★ Recommandé</span>}
+                                  {estRecommandee && <span className="gen-rec-badge"> ★ Recommandé (sans)</span>}
+                                  {estRecommandeeAvec && <span className="gen-rec-badge" data-testid="etude-horaire-reco-avec"> ★ Recommandé (avec)</span>}
                                 </td>
                                 <td className="py-1.5 pr-3">
                                   {ligne.onduleur} — {formatNumber(ligne.ratio_onduleur_kwc * 100, { decimals: 0 })} % du kWc
