@@ -107,26 +107,35 @@ def _par_mois(serie, saison_du_mois):
 
 
 def _par_saison(mois):
-    """``{saison: {mad, jours, jour_mad}}`` — somme des mois de la saison.
+    """``{saison: {mad, jours, nb_mois, jour_mad, mois_moyen_mad}}``.
 
     Le jour type de la saison est la somme des MAD divisée par la somme des
     JOURS (moyenne pondérée), jamais la moyenne des jours types mensuels : un
     février de 28 jours ne pèse pas autant qu'un juillet de 31.
+
+    ``mois_moyen_mad`` répond à la question que pose le bandeau (« et sur un
+    mois ? ») quand l'écran affiche une SAISON et non un mois précis : c'est la
+    somme de la saison divisée par son nombre de mois. Calculé ici, servi tel
+    quel — la page ne divise jamais.
     """
     cumuls = {}
     for entree in mois:
         saison = entree.get('saison')
         if not saison:
             continue
-        cumul = cumuls.setdefault(saison, {'mad': 0, 'jours': 0})
+        cumul = cumuls.setdefault(saison, {'mad': 0, 'jours': 0, 'nb': 0})
         cumul['mad'] += entree['mad']
         cumul['jours'] += entree['jours']
+        cumul['nb'] += 1
     return {
         saison: {
             'mad': cumul['mad'],
             'jours': cumul['jours'],
+            'nb_mois': cumul['nb'],
             'jour_mad': (round(cumul['mad'] / cumul['jours'], 2)
                          if cumul['jours'] else None),
+            'mois_moyen_mad': (round(cumul['mad'] / cumul['nb'])
+                               if cumul['nb'] else None),
         }
         for saison, cumul in cumuls.items()
     }

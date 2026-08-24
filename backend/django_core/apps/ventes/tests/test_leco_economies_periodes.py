@@ -103,12 +103,17 @@ class PeriodesDerivationTest(SimpleTestCase):
             attendu_jours = sum(
                 JOURS_PAR_MOIS[m - 1] for m in range(1, 13)
                 if saison_du_mois(m) == saison)
+            attendu_nb = sum(
+                1 for m in range(1, 13) if saison_du_mois(m) == saison)
             with self.subTest(saison=saison):
                 self.assertEqual(valeurs['mad'], attendu_mad)
                 self.assertEqual(valeurs['jours'], attendu_jours)
+                self.assertEqual(valeurs['nb_mois'], attendu_nb)
                 self.assertAlmostEqual(valeurs['jour_mad'],
                                        round(attendu_mad / attendu_jours, 2),
                                        places=9)
+                self.assertEqual(valeurs['mois_moyen_mad'],
+                                 round(attendu_mad / attendu_nb))
 
 
 class RetourInvestissementTest(SimpleTestCase):
