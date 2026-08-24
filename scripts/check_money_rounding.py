@@ -135,7 +135,8 @@ BASELINE_ALLOWLIST = {
     "backend/django_core/apps/ventes/quote_engine/builder.py:824",
     "backend/django_core/apps/ventes/quote_engine/builder.py:805",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1055",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1068",
+    # 1068→1100 : recalage L-VAR du 24/08/2026, voir le bloc daté plus bas.
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1100",
     # PV84 (chemin_proposition — nom du client dans le lien) — l'import
     # chemin_proposition + son commentaire ajoutés au bloc "signer" ont
     # décalé les MÊMES 4 arrondis d'affichage (PU/total ligne) de +2 lignes ;
@@ -279,18 +280,32 @@ BASELINE_ALLOWLIST = {
     #   1035→1054 tva_amt · 1037→1056 ttc_exact · 1298→1317 roi_s
     #   1311→1330 prix_kwc · 2176→2220 montant TVA ×N · 2182→2226
     #   display_total_multi · 2235→2279 total_ht · 2236→2280 total_ttc.
+    # 2026-08-24 — LANE L-VAR (variante servable + contrat variantes_servables)
+    # : RECALAGE DE LIGNES, AUCUN NOUVEAU SITE. La garde L-VAR élargie (+32
+    # lignes, milieu de fichier) et la clé `variantes_servables` du
+    # dictionnaire de sortie (+7 lignes, après le bloc multi-villa) ont décalé
+    # les MÊMES treize sites d'arrondi d'affichage déjà relus. Aucun `round()`
+    # n'a été ajouté par cette lane. Chaque numéro est retrouvé PAR PREUVE DE
+    # CONTENU (ligne de base à `git show 0fd60ae7:…builder.py` et nouvelle
+    # ligne IDENTIQUES à la lettre, les treize vérifiées), jamais par décalage
+    # supposé :
+    #   272/389/390 inchangés (avant les insertions) ·
+    #   1066→1098 ht_brut · 1068→1100 ht_net · 1093→1125 tva_amt ·
+    #   1095→1127 ttc_exact · 1356→1388 roi_s · 1369→1401 prix_kwc ·
+    #   2258→2297 montant TVA ×N · 2264→2303 display_total_multi ·
+    #   2317→2356 total_ht · 2318→2357 total_ttc.
     "backend/django_core/apps/ventes/quote_engine/builder.py:272",
     "backend/django_core/apps/ventes/quote_engine/builder.py:389",
     "backend/django_core/apps/ventes/quote_engine/builder.py:390",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1066",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1093",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1095",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1356",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1369",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:2258",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:2264",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:2317",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:2318",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1098",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1125",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1127",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1388",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1401",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:2297",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:2303",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:2356",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:2357",
 }
 
 TARGET_FILES = [
