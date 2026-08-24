@@ -185,10 +185,16 @@ BASELINE_ALLOWLIST = {
     # lignes de `services.py` (la composition résidentielle a gagné les règles
     # câbles/marques/ordre). Aucun n'est monétaire : ce sont une surface de
     # toit, une puissance en kWc et deux dérivations kWc = panneaux × Wc.
+    # L-TRI (24/08/2026) — RE-CALAGE file:line, PAS de nouveau site
+    # (bug-class #34). Insertion purement additive dans `apps/ventes/services.py`
+    # (`avertissement_aucun_onduleur_triphase` + le vivier onduleurs restreint au
+    # raccordement triphasé). Vérifié sur le diff : il n'ajoute AUCUN `round()`
+    # — ce sont les MÊMES dérivations kWc = panneaux × Wc, décalées de +49
+    # lignes. Lignes relues sur l'arbre courant : 3056→3105, 3143→3192.
     "backend/django_core/apps/ventes/services.py:1033",
     "backend/django_core/apps/ventes/services.py:1036",
-    "backend/django_core/apps/ventes/services.py:3056",
-    "backend/django_core/apps/ventes/services.py:3143",
+    "backend/django_core/apps/ventes/services.py:3105",
+    "backend/django_core/apps/ventes/services.py:3192",
     "backend/django_core/apps/ventes/quote_engine/builder.py:385",
     "backend/django_core/apps/ventes/quote_engine/builder.py:386",
     "backend/django_core/apps/ventes/quote_engine/builder.py:725",
