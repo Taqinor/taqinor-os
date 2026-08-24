@@ -306,6 +306,10 @@ const CHAMPS_ONDULEUR_NUM = [
   ['ond_i_max_mppt_a', 'Courant max par MPPT (A)'],
   ['ond_ac_kw', 'Puissance AC nominale (kW)'],
   ['ond_rendement_euro_pct', 'Rendement européen (%)'],
+  // L-DECH — le port batterie de l'hybride borne le chemin batterie dans les
+  // deux sens ; le fondateur doit pouvoir lire et corriger ces deux valeurs.
+  ['ond_bat_max_charge_kw', 'Charge max port batterie (kW)'],
+  ['ond_bat_max_decharge_kw', 'Décharge max port batterie (kW)'],
 ]
 const CHAMPS_BATTERIE_NUM = [
   ['bat_kwh_nominal', 'Capacité nominale (kWh)'],
@@ -313,6 +317,9 @@ const CHAMPS_BATTERIE_NUM = [
   ['bat_dod_pct', 'Profondeur de décharge (%)'],
   ['bat_v_nominal', 'Tension nominale (V)'],
   ['bat_max_charge_kw', 'Puissance de charge max (kW)'],
+  // L-DECH — par PACK : la borne d'une composition est la somme sur les
+  // lignes batterie (valeur de fiche × quantité).
+  ['bat_max_decharge_kw', 'Puissance de décharge max (kW)'],
 ]
 const TYPE_FICHE_OPTIONS = [
   ['module', 'Module (panneau)'], ['onduleur', 'Onduleur'],

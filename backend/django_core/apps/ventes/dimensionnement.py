@@ -439,6 +439,9 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, ville=None, lat=None,
     from apps.ventes.etude_horaire import (
         balayer_stockage_horaire,
         calculer_etude_horaire,
+        # L-DECH — SOURCE UNIQUE : l'étude d'un devis et ce balayage lisent la
+        # MÊME lecture de fiches, jamais deux implémentations parallèles.
+        puissances_batterie_des_lignes,
     )
     from apps.ventes.services import (
         carte_marques_composition,
@@ -659,6 +662,17 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, ville=None, lat=None,
         # livrée (fiche technique), jamais l'étiquette du produit.
         compositions = []
         vues = {}
+        # L-DECH — LES BORNES DE PUISSANCE, PALIER PAR PALIER. Chaque cible est
+        # une composition DIFFÉRENTE (15 kWh = un 10 + un 5, 20 kWh = deux 10) :
+        # la décharge disponible s'additionne avec les packs, et le port
+        # batterie de l'onduleur la re-borne. Lues par la MÊME fonction que
+        # l'étude complète (``puissances_batterie_des_lignes``) sur les lignes
+        # RÉELLES de cette composition — jamais une valeur moyenne recopiée
+        # d'un palier à l'autre. C'est le câblage qui manquait : ce balayage
+        # appelait le moteur SANS aucune borne, si bien que l'écran de
+        # dimensionnement créditait le stockage d'une puissance que l'étude du
+        # même devis lui refusait.
+        bornes_par_capacite = {}
         for cible in cibles:
             journal = []
             lignes = _composer(panneaux, kwc, True, cible, journal)
@@ -670,11 +684,19 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, ville=None, lat=None,
                 continue
             vues[capacite] = (cible, vue)
             compositions.append(capacite)
+            puissances = puissances_batterie_des_lignes(
+                lignes, roles=getattr(lignes, 'roles', None))
+            bornes_par_capacite[round(capacite, 3)] = {
+                'decharge_kw': puissances['packs_decharge_kw'],
+                'decharge_onduleur_kw': puissances['ond_decharge_kw'],
+                'charge_kw': puissances['charge_kw'],
+            }
         if not compositions:
             return [], None, None, False, []
 
         energie = balayer_stockage_horaire(
-            kwc=kwc, capacites_kwh=compositions, **etude_kwargs)
+            kwc=kwc, capacites_kwh=compositions,
+            puissances_par_capacite=bornes_par_capacite, **etude_kwargs)
         if energie is None:
             return [], None, None, False, []
         par_capacite = {p['capacite_kwh']: p for p in energie['paliers']}

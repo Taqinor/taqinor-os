@@ -43,7 +43,15 @@ from apps.ventes.dimensionnement import (
     recommander_taille,
     verdict_bloquant,
 )
-from apps.ventes.etude_horaire import profil_depuis_factures
+from apps.ventes.etude_horaire import (
+    BATTERY_ROUNDTRIP,
+    CALIBRATION_RAFALE_SOURCE,
+    RAFALE_POSITION_MESUREE,
+    jours_types_annee,
+    profil_depuis_factures,
+    recouvrement_pas_fins,
+    simuler_batterie_pas_fins,
+)
 from authentication.models import Company
 
 User = get_user_model()
@@ -827,3 +835,88 @@ class ExemplesFondateurTest(TestCase):
         if couverture and payback:
             self.assertGreaterEqual(couverture['couverture_sans'],
                                     payback['couverture_sans'] - 1e-9)
+
+    def test_l_dech_borne_reelle_sur_le_jour_type_de_juillet(self):
+        """L-DECH — CE QUE LA DÉCHARGE FICHÉE CHANGE, EN CLAIR.
+
+        Le rapport L-GLITCH annonçait « décharge non bornée restituerait 17,0
+        au lieu de 10,0 kWh » sur le jour type de juillet du cas piscine/clim.
+        Les fiches publient désormais une décharge SOURCÉE (Dyness : 100 A ×
+        51,2 V = 5,12 kW par pack) et l'onduleur son port batterie (Deye
+        SUN-5K : 120 A × 51,2 V = 6,14 kW) : ce test IMPRIME ce que la borne
+        réelle donne, palier par palier, pour que le fondateur lise le chiffre
+        plutôt que de le croire.
+
+        Le calcul est PUR (aucune composition en base) : c'est le même jour
+        type que celui qui chiffre l'économie, lu par la même fonction.
+        """
+        conso, _source, _detail = profil_depuis_factures(
+            facture_hiver_mad=2500)
+        equipements = composer_equipements(
+            {'piscine': True, 'piscine_pompe_kw': 1.1,
+             'clim': True, 'clim_pieces': 5})
+        jours, _avert, _src = jours_types_annee(
+            kwc=8.0, conso_kwh_mensuelles=conso, ville=VILLE,
+            occupation=OCCUPATION_PRESENCE, equipements=equipements)
+        juillet = next(j for j in jours if j['mois'] == 7)
+        pas = juillet['pas_fins']
+        self.assertIsNotNone(pas, 'le cas piscine/clim doit porter des '
+                                  'impulsions en juillet')
+        capacite = 10.0
+
+        scenarios = (
+            ('regle conservatrice (aucune fiche)', None, None),
+            ('1 pack Dyness -> 5,12 kW', 5.12, None),
+            ('2 packs Dyness -> 10,24 kW', 2 * 5.12, None),
+            ('2 packs MAIS port onduleur 3,3 kW', 2 * 5.12, 3.3),
+            ('reel catalogue : 1 pack + port 5M', 5.12, 6.14),
+            ('decharge NON bornee (irrealiste)', 1e6, None),
+        )
+        rendus = {}
+        print('')
+        print('%s ══ L-DECH — JOUR TYPE DE JUILLET (piscine + clim, 8 kWc, '
+              '%s kWh utile)' % (TAG, capacite))
+        print('%s    autoconsommation directe %.2f kWh ; position de rafale '
+              '%.2f (%s)'
+              % (TAG, recouvrement_pas_fins(pas), RAFALE_POSITION_MESUREE,
+                 CALIBRATION_RAFALE_SOURCE))
+        print('%s    %-38s %10s %10s' % (TAG, 'BORNE DE DECHARGE',
+                                         'restitue', 'charge'))
+        for libelle, packs, port in scenarios:
+            resultat = simuler_batterie_pas_fins(
+                pas, capacite, puissance_decharge_kw=packs,
+                puissance_decharge_onduleur_kw=port)
+            rendus[libelle] = resultat
+            print('%s    %-38s %10.2f %10.2f'
+                  % (TAG, libelle, resultat['restitue_kwh'],
+                     resultat['charge_kwh']))
+            # L'invariant de conservation tient sous CHAQUE borne.
+            self.assertLessEqual(
+                resultat['restitue_kwh'],
+                BATTERY_ROUNDTRIP * resultat['charge_kwh'] + 1e-9)
+
+        conservatrice = rendus['regle conservatrice (aucune fiche)']
+        un_pack = rendus['1 pack Dyness -> 5,12 kW']
+        port_etroit = rendus['2 packs MAIS port onduleur 3,3 kW']
+        deux_packs = rendus['2 packs Dyness -> 10,24 kW']
+
+        # 1. La décharge FICHÉE libère strictement plus que la règle
+        #    conservatrice : c'est tout l'objet de L-DECH.
+        self.assertGreater(un_pack['restitue_kwh'],
+                           conservatrice['restitue_kwh'])
+        print('%s    >>> la fiche rend %.2f kWh de plus que la regle '
+              'conservatrice' % (TAG, un_pack['restitue_kwh']
+                                 - conservatrice['restitue_kwh']))
+
+        # 2. Deux packs ne restituent JAMAIS moins qu'un seul (la quantité
+        #    compte, et elle compte dans le bon sens).
+        self.assertGreaterEqual(deux_packs['restitue_kwh'],
+                                un_pack['restitue_kwh'] - 1e-9)
+
+        # 3. Le port de l'onduleur reprend ce que les packs offraient : un
+        #    goulot étroit se voit, il n'est jamais silencieux.
+        self.assertLess(port_etroit['restitue_kwh'],
+                        deux_packs['restitue_kwh'])
+        print('%s    >>> un port de 3,3 kW coute %.2f kWh face a 2 packs'
+              % (TAG, deux_packs['restitue_kwh']
+                 - port_etroit['restitue_kwh']))
