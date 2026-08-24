@@ -54,10 +54,12 @@ describe('storageSweepInfo — mini-balayage de stockage, client-safe', () => {
         refuse: null,
       },
     });
+    // ORDRE FONDATEUR (24/08/2026) — `paybackAnnees`/`economieMad` s'ajoutent au
+    // palier ; absents du payload ⇒ `null` (jamais une valeur fabriquée).
     expect(r).toEqual({
       paliers: [
-        { nbPacks: 1, capaciteKwh: 5, coutTtc: 42000, remplissageMoyenPct: 98.2 },
-        { nbPacks: 2, capaciteKwh: 10, coutTtc: 78000, remplissageMoyenPct: 91.5 },
+        { nbPacks: 1, capaciteKwh: 5, coutTtc: 42000, remplissageMoyenPct: 98.2, paybackAnnees: null, economieMad: null },
+        { nbPacks: 2, capaciteKwh: 10, coutTtc: 78000, remplissageMoyenPct: 91.5, paybackAnnees: null, economieMad: null },
       ],
       refuse: null,
     });
@@ -117,7 +119,8 @@ describe('[...token].astro — le plafond du curseur batterie suit le balayage R
   });
 
   it('la config client relit les paliers réels (prix TTC) et le premier refusé (jamais un nouveau calcul)', () => {
-    expect(CODE).toContain('storagePaliers: storagePaliersSorted.map((p) => ({ n: p.nbPacks, ttc: p.coutTtc }))');
+    expect(CODE).toContain('storagePaliers: storagePaliersSorted.map((p) => ({');
+    expect(CODE).toContain('ttc: p.coutTtc,');
     expect(CODE).toContain('{ n: storageSweep.refuse.nbPacks, pireMoisPct: storageSweep.refuse.remplissagePireMoisPct }');
   });
 
