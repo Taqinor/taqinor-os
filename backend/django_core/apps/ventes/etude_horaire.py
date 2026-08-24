@@ -38,6 +38,16 @@ ni profil — ce module renvoie ``None``. Le forfait 60 % survit alors comme
 REPLI ÉTIQUETÉ dans ``pricing``, jamais déguisé en mesure. On omet, on
 n'approxime pas.
 
+L-GLITCH (ordre fondateur, 24/08/2026) — LA RÉSOLUTION FINE. « are you also
+counting the small glitches in your calculus now ? those glitches might go up
+for 30min ». Un pas HORAIRE lisse les pointes d'appareil et fait croire qu'une
+pompe de piscine ou une climatisation est autoconsommée alors que sa pointe
+dépasse la production. Les équipements DÉCLARÉS à l'appel dont la puissance est
+CONNUE sont donc restitués en IMPULSIONS dérivées de leur propre couche, et les
+heures qui en portent sont recalculées à cinq minutes. Mêmes kWh, pointes
+visibles — voir la section « 3 bis » plus bas pour la méthode, ses sources et
+ses choix d'interim.
+
 RÈGLE #4 : ce module ne rend AUCUN PDF, ne change AUCUN statut, n'expose AUCUN
 prix d'achat ni marge. Il CALCULE et rend un dict ; c'est l'appelant qui le
 range dans ``Devis.etude_params['etude_horaire']``.
@@ -48,6 +58,7 @@ lit un ``Devis`` et le CRM, toujours via ``apps.crm.selectors``.
 from __future__ import annotations
 
 import logging
+import math
 
 from apps.parametres.pvgis_profils import (
     JOURS_PAR_MOIS,
@@ -59,7 +70,7 @@ from apps.parametres.pvgis_profils import (
 )
 from apps.ventes.courbes_journalieres import (
     equipements_du_devis,
-    forme_consommation_kwh,
+    forme_consommation_detaillee,
     occupation_du_devis,
 )
 from apps.ventes.quote_engine import bareme
@@ -295,6 +306,407 @@ def simuler_batterie_jour(conso_24h, prod_24h, capacite_kwh_utile,
 
 
 # ════════════════════════════════════════════════════════════════════════════
+# 3 bis. L-GLITCH — LES IMPULSIONS D'APPAREIL, ET LA RÉSOLUTION FINE
+# ════════════════════════════════════════════════════════════════════════════
+# ORDRE FONDATEUR (24/08/2026) : « are you also counting the small glitches in
+# your calculus now ? those glitches might go up for 30min », puis la précision
+# du même jour : « j'ai dit JUSQU'À 30 min... tu cherches le timing le plus
+# réaliste ».
+#
+# LE BIAIS QUE CETTE COUCHE CORRIGE (recherche du 24/08/2026, sourcée). Un pas
+# de temps HORAIRE lisse les pointes d'appareil : l'énergie d'un compresseur qui
+# tire 3 kW pendant une demi-heure est étalée en 1,5 kW pendant soixante
+# minutes. Sous la courbe de production, ce lissage fait croire que tout est
+# autoconsommé, alors qu'en réalité la pointe DÉPASSE la production pendant la
+# demi-heure et retombe à zéro ensuite. Conséquences mesurées dans la
+# littérature : l'autoconsommation directe est SURESTIMÉE (~9 points,
+# Ayala-Gilardón & al. 2018), le besoin de batterie SOUS-estimé ; le seuil
+# critique est l'appareil ≥ 2 kW (Beck & al. 2016) ; l'erreur est maximale quand
+# production ≈ consommation.
+#
+# CE QU'ON NE FAIT PAS. Aucun FACTEUR DE CORRECTION publié n'existe pour ce
+# biais, et aucun modèle stochastique européen de charge n'est transposable au
+# parc marocain : en inventer un violerait la règle « zéro chiffre inventé ».
+#
+# CE QU'ON FAIT — INJECTION D'IMPULSIONS DÉRIVÉES. Pour chaque équipement que le
+# client a DÉCLARÉ à l'appel ET dont la puissance est CONNUE (piscine : la
+# puissance de pompe saisie ; clim : 1,4 kW/unité du mémo × nombre de pièces),
+# l'énergie que SA couche L4 place déjà dans une heure donnée n'est pas
+# réinventée : elle est CONCENTRÉE. La puissance est la puissance déclarée ; la
+# durée en découle par division. 1,5 kWh d'un appareil de 3 kW = 30 minutes à
+# 3 kW — le « glitch » du fondateur, DÉRIVÉ d'une donnée réelle, pas décrété.
+# Le total de kWh du jour, du mois et de l'année ne bouge pas d'un iota : c'est
+# un RAFFINEMENT de la même énergie (conservation épinglée par test).
+#
+# LE PLAFOND DES 30 MINUTES EST UN PLAFOND, PAS UNE DURÉE (correction fondateur
+# du 24/08). Quand l'énergie divisée par la puissance dépasse 30 minutes,
+# l'énergie s'éclate en PLUSIEURS rafales égales de 30 minutes au plus : les
+# compresseurs et les pompes CYCLENT, ils ne tiennent pas une heure pleine d'un
+# seul tenant.
+
+#: PLAFOND FONDATEUR (24/08/2026, verbatim « j'ai dit JUSQU'À 30 min »). Aucune
+#: rafale ne dépasse cette durée : au-delà, l'énergie s'éclate en plusieurs.
+#: Ce n'est PAS un paramètre d'ajustement — c'est une borne donnée par le
+#: fondateur, que la calibration Deye pourra resserrer, jamais desserrer.
+RAFALE_PLAFOND_MINUTES = 30.0
+
+#: Pas d'échantillonnage de la résolution fine — 5 minutes, la granularité des
+#: exports de la flotte d'onduleurs Deye du fondateur. C'est la seule
+#: « vérité terrain » disponible aujourd'hui pour trancher plus fin que l'heure,
+#: donc le seul pas qu'on s'autorise : descendre à la minute produirait une
+#: précision que rien ne pourrait vérifier.
+PAS_FIN_MINUTES = 5.0
+SOUS_PAS_PAR_HEURE = 12  # 60 / 5
+
+#: POSITION de chaque rafale dans sa fenêtre, en part de la marge disponible
+#: (0,0 = collée au début, 0,5 = centrée, 1,0 = collée à la fin).
+#:
+#: VALEUR D'INTERIM ASSUMÉE — À CALIBRER SUR LES EXPORTS DEYE 5 MIN DE LA FLOTTE
+#: DU FONDATEUR (le banc de calibration est le chantier suivant). Rien dans les
+#: données collectées aujourd'hui ne dit à quelle minute de l'heure un
+#: compresseur démarre : on POSE le début de fenêtre, on le DIT, et on range ce
+#: choix dans une constante nommée pour que la calibration le remplace sans
+#: toucher une ligne de moteur.
+RAFALE_POSITION_INTERIM = 0.0
+
+#: Numéro de forme du bloc ``glitch`` servi en sortie (indépendant de
+#: :data:`ETUDE_HORAIRE_VERSION` — voir le commentaire de
+#: :func:`calculer_etude_horaire`).
+GLITCH_VERSION = 1
+
+#: PROFIL DE CYCLE PAR ÉQUIPEMENT — des DONNÉES, jamais des littéraux dispersés
+#: dans le moteur : la calibration Deye remplacera ces lignes et rien d'autre.
+#:
+#: ``puissance`` dit d'où vient la puissance concentrée (règle « zéro chiffre
+#: inventé » : jamais une puissance supposée). ``cycle`` dit d'où vient la
+#: sous-structure (nombre et position des rafales) — aujourd'hui l'interim
+#: ci-dessus pour tout le monde. Le jour où une source RÉELLE documente un cycle
+#: (le mémo de consommation pour la clim, une fiche constructeur pour une pompe),
+#: elle prime sur l'interim et se cite ici.
+PROFILS_RAFALE = {
+    'piscine': {
+        'actif': True,
+        'plafond_minutes': RAFALE_PLAFOND_MINUTES,
+        'position_fenetre': RAFALE_POSITION_INTERIM,
+        'puissance': 'lead:equip_piscine_pompe_kw',
+        'cycle': 'interim_a_calibrer_deye_5min',
+    },
+    'clim': {
+        'actif': True,
+        'plafond_minutes': RAFALE_PLAFOND_MINUTES,
+        'position_fenetre': RAFALE_POSITION_INTERIM,
+        'puissance': 'memo_2026-08-21_etage2:clim_12000btu_1p4kwh_h',
+        'cycle': 'interim_a_calibrer_deye_5min',
+    },
+    # CHAUFFE-EAU — EXCEPTION DOCUMENTÉE, INERTE AUJOURD'HUI. Un chauffe-eau
+    # électrique chauffe EN CONTINU jusqu'à coupure du thermostat : il ne cycle
+    # pas comme un compresseur, et sa rafale serait donc d'un seul tenant.
+    # Elle resterait néanmoins plafonnée à 30 minutes tant que rien de mieux
+    # n'est prouvé (le plafond fondateur ne se desserre pas sur une intuition).
+    # RIEN NE SORT AUJOURD'HUI : aucune puissance de chauffe-eau n'est collectée
+    # au téléphone, donc ``courbes_journalieres`` ne compose AUCUNE couche pour
+    # lui — l'équipement reste informatif. ``actif: False`` le dit à voix haute
+    # plutôt que de le laisser deviner par l'absence.
+    'chauffe_eau': {
+        'actif': False,
+        'plafond_minutes': RAFALE_PLAFOND_MINUTES,
+        'position_fenetre': RAFALE_POSITION_INTERIM,
+        'puissance': None,
+        'cycle': 'chauffe_continue_jusqu_a_coupure_thermostat',
+        'motif_inactif': 'aucune_puissance_collectee',
+    },
+    # VÉHICULE ÉLECTRIQUE — DÉLIBÉRÉMENT ABSENT DE CETTE TABLE. Sa couche L4
+    # porte une ÉNERGIE (kWh/jour ADEME × km déclarés) répartie sur la fenêtre
+    # nocturne, et la puissance du CHARGEUR n'est pas collectée. La seule
+    # « puissance » qu'on pourrait en tirer est kWh_jour ÷ 9 h — c'est-à-dire
+    # exactement le plat que la couche pose déjà : concentrer à cette
+    # puissance-là ne changerait rien, et concentrer à une puissance de chargeur
+    # supposée (3,7 ? 7,4 ? 11 kW ?) serait un chiffre inventé. On ne fait donc
+    # RIEN, conformément à l'ordre : « uniquement si une puissance dérivable
+    # existe, sinon rien ».
+}
+
+#: Profil de repli quand une couche n'a pas d'entrée nommée — jamais un plafond
+#: plus large que celui du fondateur.
+PROFIL_RAFALE_DEFAUT = {
+    'actif': True,
+    'plafond_minutes': RAFALE_PLAFOND_MINUTES,
+    'position_fenetre': RAFALE_POSITION_INTERIM,
+    'puissance': 'couche_l4',
+    'cycle': 'interim_a_calibrer_deye_5min',
+}
+
+
+def rafales_de_l_heure(energie_kwh, puissance_kw, *, profil=None):
+    """Découpe l'énergie d'UNE heure en rafales à ``puissance_kw``, ou ``None``.
+
+    L'unique dérivation de la couche : ``durée = énergie ÷ puissance``. 1,5 kWh
+    d'un appareil de 3 kW font 30 minutes à 3 kW — pas un pourcentage de marche
+    choisi, pas un profil emprunté à une autre géographie.
+
+    * La durée totale est bornée à 60 minutes : au-delà, l'appareil consomme
+      déjà plus que sa puissance nominale sur l'heure (donnée incohérente ou
+      plusieurs unités), et il n'y a plus rien à concentrer.
+    * Le PLAFOND fondateur découpe ensuite : ``n = ⌈durée ÷ plafond⌉`` rafales
+      ÉGALES de ``durée ÷ n`` minutes, une par fenêtre de ``60 ÷ n`` minutes.
+      Une clim dont la couche pèse 45 minutes sort donc en DEUX rafales de
+      22,5 minutes, pas en un bloc continu.
+    * La POSITION dans la fenêtre vient du profil (interim documenté).
+
+    Renvoie ``{puissance_kw, duree_totale_min, nb_rafales, duree_rafale_min,
+    fenetres: [(début_min, fin_min)], energie_rafales_kwh}``.
+    """
+    energie = _num(energie_kwh)
+    puissance = _num(puissance_kw)
+    if energie <= 0 or puissance <= 0:
+        return None
+
+    profil = profil or PROFIL_RAFALE_DEFAUT
+    plafond = _num(profil.get('plafond_minutes'), RAFALE_PLAFOND_MINUTES)
+    # Le plafond fondateur est un MAXIMUM : un profil ne peut que le resserrer.
+    if not 0 < plafond <= RAFALE_PLAFOND_MINUTES:
+        plafond = RAFALE_PLAFOND_MINUTES
+
+    duree_totale = min(60.0, energie / puissance * 60.0)
+    # La tolérance évite qu'une durée EXACTEMENT égale au plafond (30,0 min)
+    # ne se scinde en deux rafales à cause d'un dernier bit flottant.
+    nb = max(1, int(math.ceil(duree_totale / plafond - 1e-9)))
+    duree_rafale = duree_totale / nb
+    fenetre = 60.0 / nb
+
+    position = _num(profil.get('position_fenetre'), RAFALE_POSITION_INTERIM)
+    position = min(1.0, max(0.0, position))
+    decalage = position * max(0.0, fenetre - duree_rafale)
+
+    fenetres = []
+    for index in range(nb):
+        debut = index * fenetre + decalage
+        fenetres.append((debut, debut + duree_rafale))
+
+    return {
+        'puissance_kw': puissance,
+        'duree_totale_min': duree_totale,
+        'nb_rafales': nb,
+        'duree_rafale_min': duree_rafale,
+        'fenetres': fenetres,
+        'energie_rafales_kwh': puissance * duree_totale / 60.0,
+    }
+
+
+def _repartir_rafale(parts, debut_min, fin_min, puissance_kw,
+                     pas_minutes=PAS_FIN_MINUTES):
+    """Verse l'énergie d'une rafale dans les sous-pas qu'elle recouvre.
+
+    Le recouvrement est calculé EXACTEMENT (une rafale de 22,5 min remplit
+    quatre pas de 5 min et la moitié du cinquième) : l'énergie versée vaut
+    toujours ``puissance × durée``, jamais un arrondi de grille. Le pas de
+    5 minutes est la résolution d'ÉCHANTILLONNAGE, pas une contrainte de
+    calage — sinon la conservation d'énergie dépendrait de la grille.
+    """
+    for index in range(len(parts)):
+        borne_basse = index * pas_minutes
+        borne_haute = borne_basse + pas_minutes
+        chevauchement = min(fin_min, borne_haute) - max(debut_min, borne_basse)
+        if chevauchement > 0:
+            parts[index] += puissance_kw * chevauchement / 60.0
+
+
+def pas_fins_du_jour(conso_24h, prod_24h, couches_horaires):
+    """Chronologie FINE d'un jour type, ou ``(None, {})`` sans impulsion.
+
+    RÉSOLUTION FINE SEULEMENT LÀ OÙ ELLE SERT : seules les heures qui portent
+    une impulsion sont sous-découpées en pas de 5 minutes ; les autres restent
+    UN pas d'une heure. Sous-découper les vingt-quatre heures coûterait douze
+    fois plus pour un résultat identique — l'heure sans appareil déclaré est
+    déjà plate par construction.
+
+    Dans une heure porteuse :
+
+    * les rafales sont posées à la puissance DÉCLARÉE de leur équipement ;
+    * le RÉSIDUEL de l'heure (tout ce qui n'appartient pas aux couches
+      concentrées : éclairage, veilles, frigo, et la part non concentrée) est
+      étalé PLAT sur les soixante minutes. C'est le socle sur lequel la rafale
+      s'ajoute — un appareil démarre PAR-DESSUS le reste du logement, il ne le
+      remplace pas ;
+    * la PRODUCTION est PLATE dans l'heure. Le soleil varie LENTEMENT à
+      l'échelle de cinq minutes (la course du soleil, pas un interrupteur) :
+      lui inventer une sous-structure serait ajouter du bruit non mesuré, alors
+      que l'erreur corrigée ici vient de la CHARGE, qui commute.
+
+    Deux couches qui tombent sur la même heure (piscine 10h-18h et clim
+    13h-21h se recouvrent) posent chacune SON cycle, indépendamment : leur
+    superposition est une CONSÉQUENCE arithmétique, jamais une hypothèse de
+    simultanéité qu'on aurait décrétée.
+
+    Chaque pas porte ``plafond_decharge_kw`` = le déficit HORAIRE de son heure
+    (voir :func:`simuler_batterie_pas_fins`).
+
+    Renvoie ``(pas, meta)``.
+    """
+    rafales_par_heure = {}
+    couches_utilisees = set()
+    for cle, info in (couches_horaires or {}).items():
+        profil = PROFILS_RAFALE.get(cle, PROFIL_RAFALE_DEFAUT)
+        if not profil.get('actif', True):
+            continue
+        puissance = _num((info or {}).get('kw'))
+        if puissance <= 0:
+            continue
+        for heure, energie in enumerate((info or {}).get('heures_kwh') or ()):
+            rafale = rafales_de_l_heure(energie, puissance, profil=profil)
+            if rafale is None:
+                continue
+            rafales_par_heure.setdefault(heure, []).append(rafale)
+            couches_utilisees.add(cle)
+
+    if not rafales_par_heure:
+        return None, {}
+
+    pas = []
+    for heure in range(24):
+        conso_h = max(0.0, _num(conso_24h[heure])) if heure < len(conso_24h) else 0.0
+        prod_h = max(0.0, _num(prod_24h[heure])) if heure < len(prod_24h) else 0.0
+        plafond_decharge = max(0.0, conso_h - prod_h)
+        rafales = rafales_par_heure.get(heure)
+        if not rafales:
+            pas.append({'heure': heure, 'duree_h': 1.0,
+                        'conso_kwh': conso_h, 'prod_kwh': prod_h,
+                        'plafond_decharge_kw': plafond_decharge})
+            continue
+
+        energie_rafales = sum(r['energie_rafales_kwh'] for r in rafales)
+        # Le résiduel ne peut pas être négatif : les couches concentrées sont
+        # une PART de l'heure servie (elles y ont été posées puis renormalisées
+        # avec elle). La borne est une ceinture, pas une correction.
+        residuel = max(0.0, conso_h - energie_rafales)
+        parts = [residuel / SOUS_PAS_PAR_HEURE] * SOUS_PAS_PAR_HEURE
+        for rafale in rafales:
+            for debut, fin in rafale['fenetres']:
+                _repartir_rafale(parts, debut, fin, rafale['puissance_kw'])
+
+        prod_pas = prod_h / SOUS_PAS_PAR_HEURE
+        duree_pas = 1.0 / SOUS_PAS_PAR_HEURE
+        for part in parts:
+            pas.append({'heure': heure, 'duree_h': duree_pas,
+                        'conso_kwh': part, 'prod_kwh': prod_pas,
+                        'plafond_decharge_kw': plafond_decharge})
+
+    meta = {
+        'heures_impulsion': sorted(rafales_par_heure),
+        'couches': sorted(couches_utilisees),
+        'nb_rafales': sum(r['nb_rafales'] for liste in rafales_par_heure.values()
+                          for r in liste),
+    }
+    return pas, meta
+
+
+def recouvrement_pas_fins(pas):
+    """Autoconsommation DIRECTE sur la chronologie fine (kWh/jour).
+
+    Même intégrale que ``solar_design.hourly_self_consumption``, à un pas plus
+    fin : ``Σ min(consommation, production)``. Elle est TOUJOURS inférieure ou
+    égale à la version horaire — c'est exactement le biais de lissage que cette
+    couche corrige, et un test l'épingle dans ce sens.
+    """
+    return sum(min(_num(p['conso_kwh']), _num(p['prod_kwh'])) for p in pas)
+
+
+def simuler_batterie_pas_fins(pas, capacite_kwh_utile, *,
+                              puissance_decharge_kw=None,
+                              rendement=BATTERY_ROUNDTRIP):
+    """:func:`simuler_batterie_jour` sur la chronologie FINE, décharge BORNÉE.
+
+    Même modèle en RÉGIME ÉTABLI (point fixe sur l'état de charge, le reliquat
+    du soir sert l'avant-aube), même rendement aller-retour — une seule
+    différence : la puissance de décharge est BORNÉE, parce qu'à cinq minutes
+    la question « la batterie suit-elle la pointe ? » a enfin un sens.
+
+    LA BORNE, ET POURQUOI ELLE EST CELLE-LÀ :
+
+    * ``puissance_decharge_kw`` fourni ⇒ c'est LUI. Il ne vient que d'une
+      donnée PUBLIÉE sur la fiche batterie (voir
+      :func:`puissance_batterie_du_devis`) ;
+    * absent ⇒ RÈGLE CONSERVATRICE du fondateur (« si aucune puissance publiée
+      sur la fiche... elle ne sert pas le pic et le pic tire du réseau ») :
+      chaque pas est borné au ``plafond_decharge_kw`` de son heure, c'est-à-dire
+      au débit que le modèle HORAIRE prouvait déjà. La batterie continue donc de
+      faire exactement ce qu'elle faisait, et le DÉPASSEMENT créé par
+      l'impulsion part au réseau. Aucune puissance n'est supposée : on refuse
+      simplement de créditer la batterie d'une performance que rien ne prouve.
+
+    Cette borne est NON CONTRAIGNANTE sur une heure sans impulsion (un pas
+    d'une heure, plafond = déficit de l'heure) : sur un jour sans impulsion,
+    cette fonction rend donc EXACTEMENT ce que rend :func:`simuler_batterie_jour`
+    — un test l'épingle. Sur une heure porteuse, elle mord franchement : sur le
+    jour type de juillet du cas piscine+clim, une décharge non bornée
+    restituerait 17,0 kWh là où la règle conservatrice en restitue 10,0.
+
+    NUANCE À NE PAS SE CACHER : la batterie ne récupère pas RIEN pour autant.
+    Elle ne SUIT PAS la pointe, mais l'autoconsommation directe ayant baissé,
+    il reste davantage de surplus à CHARGER dans la journée — et ce surplus-là,
+    elle le rend le soir dans les règles. La reprise est donc réelle mais
+    MINORITAIRE, et elle ne doit rien à une performance supposée : elle ne vient
+    que d'énergie réellement disponible. C'est pourquoi
+    ``part_glitch_batterie_kwh`` n'est pas nul alors qu'aucune puissance de
+    décharge n'est publiée.
+    """
+    capacite = _num(capacite_kwh_utile)
+    if capacite <= 0 or not pas:
+        return {'restitue_kwh': 0.0, 'charge_kwh': 0.0,
+                'capacite_utilisee_kwh': 0.0}
+
+    rendement = _num(rendement, BATTERY_ROUNDTRIP)
+    if rendement <= 0:
+        rendement = BATTERY_ROUNDTRIP
+
+    borne_fiche = _num(puissance_decharge_kw)
+
+    def _cycle(soc_depart):
+        soc = max(0.0, min(_num(soc_depart), capacite))
+        pic_soc = soc
+        charge_total = 0.0
+        restitue_total = 0.0
+        for etape in pas:
+            conso = max(0.0, _num(etape['conso_kwh']))
+            prod = max(0.0, _num(etape['prod_kwh']))
+            if prod > conso:
+                charge = min(prod - conso, capacite - soc)
+                if charge > 0:
+                    soc += charge
+                    charge_total += charge
+                    pic_soc = max(pic_soc, soc)
+            elif conso > prod:
+                besoin = conso - prod
+                if borne_fiche > 0:
+                    plafond_kw = borne_fiche
+                else:
+                    plafond_kw = _num(etape.get('plafond_decharge_kw'))
+                plafond_kwh = plafond_kw * _num(etape['duree_h'])
+                disponible = soc * rendement
+                restitue = min(besoin, disponible, plafond_kwh)
+                if restitue > 0:
+                    soc -= restitue / rendement
+                    restitue_total += restitue
+        return charge_total, restitue_total, pic_soc, soc
+
+    soc_depart = 0.0
+    charge_total = restitue_total = pic_soc = 0.0
+    for _ in range(8):
+        charge_total, restitue_total, pic_soc, soc_fin = _cycle(soc_depart)
+        if abs(soc_fin - soc_depart) <= 1e-6:
+            break
+        soc_depart = soc_fin
+
+    restitue_total = min(restitue_total, rendement * charge_total)
+
+    return {
+        'restitue_kwh': restitue_total,
+        'charge_kwh': charge_total,
+        'capacite_utilisee_kwh': pic_soc,
+    }
+
+
+# ════════════════════════════════════════════════════════════════════════════
 # 4. LE MOTEUR
 # ════════════════════════════════════════════════════════════════════════════
 
@@ -366,8 +778,16 @@ def jours_types_annee(*, kwc, conso_kwh_mensuelles, ville=None, lat=None,
         # ── Consommation du JOUR MOYEN de ce mois (silhouette + équipements) ──
         conso_mois_kwh = conso_mois[index]
         conso_jour_kwh = conso_mois_kwh / jours if jours else 0.0
-        conso_24h = forme_consommation_kwh(
+        conso_24h, couches_horaires = forme_consommation_detaillee(
             conso_jour_kwh, occupation, saison=saison, equipements=couches)
+
+        # L-GLITCH — la chronologie FINE du même jour type, posée ICI et nulle
+        # part ailleurs : le balayage du stockage (DIM2) et l'étude complète
+        # lisent la MÊME liste de pas. Deux constructions parallèles finiraient
+        # par diverger d'une rafale, et les deux moitiés du tableau ne
+        # parleraient plus du même client.
+        pas_fins, impulsions = pas_fins_du_jour(
+            conso_24h, prod_24h, couches_horaires)
 
         jours_types.append({
             'mois': numero,
@@ -379,6 +799,9 @@ def jours_types_annee(*, kwc, conso_kwh_mensuelles, ville=None, lat=None,
             'prod_jour_kwh': prod_jour_kwh,
             'conso_24h': conso_24h,
             'prod_24h': prod_24h,
+            'couches_horaires': couches_horaires,
+            'pas_fins': pas_fins,
+            'impulsions': impulsions,
         })
 
     return jours_types, avertissements, {
@@ -402,6 +825,45 @@ def _bloc_vide():
         'facture_apres_sans_mad': 0.0,
         'facture_apres_avec_mad': 0.0,
     }
+
+
+def _glitch_vide():
+    """Compteurs L-GLITCH neutres — cumulés à PART de l'agrégat historique.
+
+    Ils vivent dans leur propre dictionnaire, jamais dans :func:`_bloc_vide`,
+    pour une raison de contrat : sans équipement déclaré, la sortie du moteur
+    doit rester BYTE-IDENTIQUE à celle d'avant cette couche (épinglé par test).
+    Des clés à zéro glissées dans l'agrégat historique la casseraient pour tous
+    les devis du parc, y compris ceux que rien ne concerne.
+
+    UNITÉS. Les ``part_glitch_*`` sont des kWh (ou des MAD) du MOIS, donc ils
+    s'additionnent naturellement en saison puis en année. ``heures_impulsion``,
+    lui, compte les heures PORTEUSES du JOUR TYPE : au niveau du mois il se lit
+    « 8 heures de la journée type portent une impulsion » ; cumulé en saison ou
+    en année, c'est une somme de jours types (4 mois d'été × 8 h = 32), pas une
+    durée de journée. Le nombre de rafales du jour type, lui, est servi une
+    seule fois dans le bloc ``glitch`` racine.
+    """
+    return {
+        # PAR VARIANTE (précision fondateur, 24/08/2026 : « je ne veux pas que
+        # tu appliques ces glitchs que sur le avec batterie, il faudra aussi le
+        # sans batterie »). Les impulsions vivent dans la COURBE DE
+        # CONSOMMATION du jour type, donc les DEUX options intègrent contre la
+        # même courbe hachée — et les deux y perdent.
+        'part_glitch_sans_kwh': 0.0,   # kWh partis au réseau, SANS batterie
+        'part_glitch_avec_kwh': 0.0,   # kWh partis au réseau, AVEC batterie
+        'part_glitch_batterie_kwh': 0.0,  # ce que la batterie rattrape
+        'part_glitch_sans_mad': 0.0,
+        'part_glitch_avec_mad': 0.0,
+        'heures_impulsion': 0.0,
+    }
+
+
+def _finaliser_glitch(glitch):
+    """Arrondis d'affichage des compteurs L-GLITCH (heures en entier)."""
+    sortie = {cle: round(val, 2) for cle, val in glitch.items()}
+    sortie['heures_impulsion'] = int(round(glitch['heures_impulsion']))
+    return sortie
 
 
 def _cumuler(cible, source):
@@ -438,6 +900,8 @@ def calculer_etude_horaire(*, kwc, conso_kwh_mensuelles,
                            ville=None, lat=None, lon=None,
                            occupation=None, equipements=None,
                            batterie_kwh_utile=None,
+                           batterie_puissance_decharge_kw=None,
+                           batterie_puissance_charge_kw=None,
                            tranches=None, charges_fixes_mad=None,
                            tppan=True, millesime=bareme.MILLESIME_COURANT,
                            source_conso=None, detail_conso=None):
@@ -460,6 +924,15 @@ def calculer_etude_horaire(*, kwc, conso_kwh_mensuelles,
     batterie_kwh_utile : capacité UTILE du stockage (kWh). Absente ⇒ la
         variante « avec batterie » est identique à « sans » (aucune énergie
         décalée inventée).
+    batterie_puissance_decharge_kw : puissance de décharge PUBLIÉE sur la fiche
+        (kW). Elle ne sert QUE la résolution fine (L-GLITCH) : c'est elle qui
+        décide si la batterie suit une pointe de trente minutes. ``None`` ⇒
+        règle conservatrice (la pointe tire du réseau) — jamais une puissance
+        supposée. Voir :func:`simuler_batterie_pas_fins`.
+    batterie_puissance_charge_kw : puissance de charge publiée (kW), servie
+        telle quelle en sortie à titre INFORMATIF. Elle ne borne rien : c'est
+        une grandeur de charge, et s'en servir comme borne de décharge serait
+        une équivalence inventée.
     tranches / charges_fixes_mad / tppan / millesime : passés tels quels au
         barème. ``charges_fixes_mad`` remplace en bloc les deux lignes fixes
         (location du compteur + entretien du branchement) quand la société a
@@ -489,10 +962,16 @@ def calculer_etude_horaire(*, kwc, conso_kwh_mensuelles,
 
     capacite = _num(batterie_kwh_utile)
     couches = equipements or {}
+    decharge_kw = _num(batterie_puissance_decharge_kw)
 
     mois_sortie = []
     saisons_cumul = {saison: _bloc_vide() for saison in SAISONS}
     annuel_cumul = _bloc_vide()
+    glitch_mois = []
+    glitch_saisons = {saison: _glitch_vide() for saison in SAISONS}
+    glitch_annuel = _glitch_vide()
+    glitch_couches = set()
+    glitch_rafales = 0
 
     for jour_type in jours_types:
         numero = jour_type['mois']
@@ -504,14 +983,31 @@ def calculer_etude_horaire(*, kwc, conso_kwh_mensuelles,
         conso_mois_kwh = jour_type['conso_mois_kwh']
         conso_jour_kwh = jour_type['conso_jour_kwh']
         conso_24h = jour_type['conso_24h']
+        pas_fins = jour_type.get('pas_fins')
 
         # ── Recouvrement horaire — LE moteur existant, courbes RÉELLES ──
         recouvrement = hourly_self_consumption(
             load_curve=conso_24h, production_curve=prod_24h)
-        auto_jour_sans = recouvrement['self_consumed_kwh']
+        auto_jour_horaire = recouvrement['self_consumed_kwh']
 
         # ── Variante batterie : le surplus du jour sert le déficit du soir ──
-        batterie = simuler_batterie_jour(conso_24h, prod_24h, capacite)
+        batterie_horaire = simuler_batterie_jour(conso_24h, prod_24h, capacite)
+        auto_avec_horaire = min(
+            auto_jour_horaire + batterie_horaire['restitue_kwh'],
+            conso_jour_kwh, prod_jour_kwh)
+
+        # ── L-GLITCH : le MÊME jour, à cinq minutes, quand un appareil déclaré
+        # y pose des impulsions. Sans équipement déclaré, ``pas_fins`` est
+        # ``None`` et l'on reste EXACTEMENT sur le chemin horaire ci-dessus.
+        if pas_fins:
+            auto_jour_sans = recouvrement_pas_fins(pas_fins)
+            batterie = simuler_batterie_pas_fins(
+                pas_fins, capacite,
+                puissance_decharge_kw=decharge_kw or None)
+        else:
+            auto_jour_sans = auto_jour_horaire
+            batterie = batterie_horaire
+
         auto_jour_avec = auto_jour_sans + batterie['restitue_kwh']
         # Garde d'honnêteté : on n'autoconsomme jamais plus que ce que le
         # client consomme, ni plus que ce que le champ produit.
@@ -533,6 +1029,43 @@ def calculer_etude_horaire(*, kwc, conso_kwh_mensuelles,
         eco_avec = bareme.economie_deux_factures_mad(
             conso_mois_kwh, max(0.0, conso_mois_kwh - auto_mois_avec),
             **_bareme_kwargs)
+
+        # ── CE QUE LES IMPULSIONS ONT CHANGÉ, chiffré et nommé ──
+        glitch = _glitch_vide()
+        if pas_fins:
+            impulsions = jour_type.get('impulsions') or {}
+            glitch_couches.update(impulsions.get('couches') or ())
+            glitch_rafales += int(impulsions.get('nb_rafales') or 0)
+            glitch['heures_impulsion'] = float(
+                len(impulsions.get('heures_impulsion') or ()))
+            perdu_direct = max(0.0, auto_jour_horaire - auto_jour_sans) * jours
+            perdu_avec = max(0.0, auto_avec_horaire - auto_jour_avec) * jours
+            eco_sans_horaire = bareme.economie_deux_factures_mad(
+                conso_mois_kwh,
+                max(0.0, conso_mois_kwh - auto_jour_horaire * jours),
+                **_bareme_kwargs)
+            eco_avec_horaire = bareme.economie_deux_factures_mad(
+                conso_mois_kwh,
+                max(0.0, conso_mois_kwh - auto_avec_horaire * jours),
+                **_bareme_kwargs)
+            # LES DEUX VARIANTES PERDENT. Les impulsions vivent dans la COURBE
+            # DE CONSOMMATION, pas dans l'option batterie : « sans » perd
+            # l'autoconsommation directe que le lissage lui prêtait, « avec »
+            # perd ce que la batterie ne peut pas rattraper.
+            glitch['part_glitch_sans_kwh'] = perdu_direct
+            glitch['part_glitch_avec_kwh'] = perdu_avec
+            # Ce que la batterie REPREND de la pointe : l'écart entre les deux
+            # pertes. C'est EXACTEMENT de combien l'argument batterie
+            # (avec − sans) grandit une fois les pointes rendues visibles.
+            glitch['part_glitch_batterie_kwh'] = max(
+                0.0, perdu_direct - perdu_avec)
+            glitch['part_glitch_sans_mad'] = (
+                eco_sans_horaire['economie_mad'] - eco_sans['economie_mad'])
+            glitch['part_glitch_avec_mad'] = (
+                eco_avec_horaire['economie_mad'] - eco_avec['economie_mad'])
+        glitch_mois.append(glitch)
+        _cumuler(glitch_saisons[saison], glitch)
+        _cumuler(glitch_annuel, glitch)
 
         bloc = {
             'production_kwh': prod_mois_kwh,
@@ -568,7 +1101,7 @@ def calculer_etude_horaire(*, kwc, conso_kwh_mensuelles,
             'production annuelle nulle — vérifier la puissance et la '
             'localisation du chantier')
 
-    return {
+    resultat = {
         'version': ETUDE_HORAIRE_VERSION,
         'kwc': round(puissance, 3),
         'source_production': source_prod,
@@ -586,6 +1119,51 @@ def calculer_etude_horaire(*, kwc, conso_kwh_mensuelles,
         'annuel': _finaliser(annuel_cumul),
         'avertissements': avertissements,
     }
+
+    # ── L-GLITCH : des champs ADDITIFS, et SEULEMENT quand ils ont un sens ──
+    # AUCUN équipement concentrable déclaré ⇒ pas une seule clé de plus, pas un
+    # centième de différence : la sortie est celle d'avant cette couche, pour
+    # tout le parc existant. C'est aussi pourquoi ``ETUDE_HORAIRE_VERSION`` ne
+    # bouge PAS — la forme du bloc historique est inchangée ; le bloc ``glitch``
+    # porte son propre numéro de forme (:data:`GLITCH_VERSION`).
+    if glitch_annuel['heures_impulsion'] > 0:
+        for index, sortie_mois in enumerate(mois_sortie):
+            sortie_mois.update(_finaliser_glitch(glitch_mois[index]))
+        for saison, bloc_saison in resultat['saisons'].items():
+            bloc_saison.update(_finaliser_glitch(glitch_saisons[saison]))
+        resultat['annuel'].update(_finaliser_glitch(glitch_annuel))
+        resultat['glitch'] = {
+            'version': GLITCH_VERSION,
+            'methode': 'impulsions_derivees',
+            'couches': sorted(glitch_couches),
+            'nb_rafales_jour_type': glitch_rafales,
+            'pas_minutes': PAS_FIN_MINUTES,
+            'plafond_rafale_minutes': RAFALE_PLAFOND_MINUTES,
+            'plafond_source': 'fondateur_2026-08-24',
+            'position_rafale_fenetre': RAFALE_POSITION_INTERIM,
+            'position_source': 'interim_a_calibrer_deye_5min',
+            'production_dans_l_heure': 'plate',
+            'batterie_puissance_decharge_kw': (
+                round(decharge_kw, 2) if decharge_kw > 0 else None),
+            'batterie_puissance_decharge_source': (
+                'fiche_technique' if decharge_kw > 0
+                else 'aucune_publiee_regle_conservatrice'),
+            'batterie_puissance_charge_kw': (
+                round(_num(batterie_puissance_charge_kw), 2)
+                if _num(batterie_puissance_charge_kw) > 0 else None),
+            'porte_sur': ['sans', 'avec'],
+            'note': (
+                "Les appareils déclarés à l'appel (pompe de piscine, "
+                "climatisation) sont restitués en impulsions à leur puissance "
+                "réelle plutôt qu'étalés sur l'heure : mêmes kWh, pointes "
+                "visibles. Les impulsions vivent dans la courbe de "
+                "consommation : les DEUX options (sans et avec batterie) "
+                "intègrent contre la même courbe hachée. Sans puissance de "
+                "décharge publiée sur la fiche batterie, la pointe n'est pas "
+                "suivie par le stockage et part au réseau."),
+        }
+
+    return resultat
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -609,6 +1187,7 @@ def calculer_etude_horaire(*, kwc, conso_kwh_mensuelles,
 def balayer_stockage_horaire(*, kwc, conso_kwh_mensuelles, capacites_kwh,
                              ville=None, lat=None, lon=None,
                              occupation=None, equipements=None,
+                             batterie_puissance_decharge_kw=None,
                              tranches=None, charges_fixes_mad=None,
                              tppan=True, millesime=bareme.MILLESIME_COURANT):
     """DIM2 — plusieurs capacités de stockage évaluées sur UNE taille de champ.
@@ -651,6 +1230,7 @@ def balayer_stockage_horaire(*, kwc, conso_kwh_mensuelles, capacites_kwh,
 
     capacites = sorted({round(_num(c), 3) for c in (capacites_kwh or ())
                         if _num(c) > 0})
+    decharge_kw = _num(batterie_puissance_decharge_kw)
 
     production_kwh = 0.0
     consommation_kwh = 0.0
@@ -670,13 +1250,23 @@ def balayer_stockage_horaire(*, kwc, conso_kwh_mensuelles, capacites_kwh,
         conso_mois_kwh = jour_type['conso_mois_kwh']
         conso_jour_kwh = jour_type['conso_jour_kwh']
         prod_jour_kwh = jour_type['prod_jour_kwh']
+        # L-GLITCH — LA SOURCE EST UNIQUE. Le balayage lit la MÊME chronologie
+        # fine que l'étude complète (posée une fois par ``jours_types_annee``) :
+        # les paliers de stockage sont donc évalués contre les MÊMES impulsions
+        # que celles qui chiffrent l'économie. Un balayage resté à l'heure
+        # pendant que l'étude descend à cinq minutes recommanderait une capacité
+        # calibrée sur un client qui n'existe pas.
+        pas_fins = jour_type.get('pas_fins')
 
         production_kwh += jour_type['prod_mois_kwh']
         consommation_kwh += conso_mois_kwh
 
-        recouvrement = hourly_self_consumption(
-            load_curve=conso_24h, production_curve=prod_24h)
-        auto_direct_jour = recouvrement['self_consumed_kwh']
+        if pas_fins:
+            auto_direct_jour = recouvrement_pas_fins(pas_fins)
+        else:
+            recouvrement = hourly_self_consumption(
+                load_curve=conso_24h, production_curve=prod_24h)
+            auto_direct_jour = recouvrement['self_consumed_kwh']
         autoconsomme_direct_kwh += auto_direct_jour * jours
 
         # LE SURPLUS DU JOUR TYPE : l'énergie réellement disponible pour
@@ -687,9 +1277,14 @@ def balayer_stockage_horaire(*, kwc, conso_kwh_mensuelles, capacites_kwh,
             surplus_min = surplus_jour
             surplus_min_mois = jour_type['mois']
 
-        deficit_jour = sum(
-            max(0.0, _num(conso_24h[h]) - _num(prod_24h[h]))
-            for h in range(min(len(conso_24h), len(prod_24h))))
+        if pas_fins:
+            deficit_jour = sum(
+                max(0.0, _num(p['conso_kwh']) - _num(p['prod_kwh']))
+                for p in pas_fins)
+        else:
+            deficit_jour = sum(
+                max(0.0, _num(conso_24h[h]) - _num(prod_24h[h]))
+                for h in range(min(len(conso_24h), len(prod_24h))))
         if deficit_jour > deficit_max:
             deficit_max = deficit_jour
             deficit_max_mois = jour_type['mois']
@@ -699,7 +1294,12 @@ def balayer_stockage_horaire(*, kwc, conso_kwh_mensuelles, capacites_kwh,
             'charges_fixes_mad': charges_fixes_mad, 'tppan': tppan,
         }
         for capacite in capacites:
-            batterie = simuler_batterie_jour(conso_24h, prod_24h, capacite)
+            if pas_fins:
+                batterie = simuler_batterie_pas_fins(
+                    pas_fins, capacite,
+                    puissance_decharge_kw=decharge_kw or None)
+            else:
+                batterie = simuler_batterie_jour(conso_24h, prod_24h, capacite)
             auto_jour = min(auto_direct_jour + batterie['restitue_kwh'],
                             conso_jour_kwh, prod_jour_kwh)
             auto_mois = auto_jour * jours
@@ -862,6 +1462,73 @@ def capacite_batterie_du_devis(devis):
         return None
 
 
+def puissance_batterie_du_devis(devis):
+    """Puissances PUBLIÉES de la batterie d'un devis — ce que la fiche PROUVE.
+
+    L-GLITCH a besoin de savoir si le stockage peut SUIVRE une pointe de trente
+    minutes. Cette fonction ne répond que par des grandeurs réellement fichées
+    (``apps.stock.selectors.specs_for_produit``, lecture cross-app par sélecteur,
+    jamais ``stock.models``) :
+
+    * ``decharge_kw`` — la puissance de DÉCHARGE. **Aucune fiche du catalogue ne
+      la publie aujourd'hui** : le modèle ``FicheTechnique`` porte
+      ``bat_max_charge_kw`` (« Puissance de charge maximale »), et rien pour la
+      décharge. La clé ``max_decharge_kw`` est lue quand même — le jour où le
+      champ existera, ce moteur s'en servira sans une ligne de plus.
+    * ``charge_kw`` — la puissance de CHARGE publiée (BAT-DEY-5 : 3,84 kW =
+      75 A × 51,2 V, valeur constructeur). Rendue à titre INFORMATIF et servie
+      telle quelle dans le bloc ``glitch``.
+
+    POURQUOI LA CHARGE NE SERT PAS DE BORNE DE DÉCHARGE. Ce sont deux grandeurs
+    distinctes : un pack peut parfaitement accepter 75 A en charge et en rendre
+    100 en décharge, ou l'inverse. Recopier l'une dans l'autre serait inventer
+    une équivalence que le constructeur ne publie pas — exactement ce que la
+    règle « zéro chiffre inventé » interdit. Sans décharge publiée, le moteur
+    applique la règle CONSERVATRICE (la pointe tire du réseau), et le dit.
+
+    Renvoie ``{'decharge_kw': …|None, 'decharge_source': …, 'charge_kw': …|None,
+    'charge_source': …}``. Ne lève jamais.
+    """
+    resultat = {'decharge_kw': None,
+                'decharge_source': 'aucune_publiee_regle_conservatrice',
+                'charge_kw': None, 'charge_source': None}
+    try:
+        from apps.stock.selectors import specs_for_produit
+        from apps.ventes.services import classer_produit
+        decharge = None
+        charge = None
+        for ligne in devis.lignes.all():
+            designation = getattr(ligne, 'designation', '') or ''
+            if classer_produit(designation) != 'batterie':
+                continue
+            produit = getattr(ligne, 'produit', None)
+            if produit is None:
+                continue
+            specs = (specs_for_produit(produit) or {}).get('batterie') or {}
+            # LA PLUS PETITE DES FICHES BORNE L'ENSEMBLE : deux packs en
+            # parallèle dont l'un plafonne à 3,84 kW ne prouvent pas 7,68 kW —
+            # additionner supposerait un câblage et un BMS qu'on ne voit pas.
+            for cle, courant in (('max_decharge_kw', decharge),
+                                 ('max_charge_kw', charge)):
+                valeur = specs.get(cle)
+                if not valeur:
+                    continue
+                valeur = float(valeur)
+                if cle == 'max_decharge_kw':
+                    decharge = valeur if courant is None else min(courant, valeur)
+                else:
+                    charge = valeur if courant is None else min(courant, valeur)
+        if decharge and decharge > 0:
+            resultat['decharge_kw'] = decharge
+            resultat['decharge_source'] = 'fiche:max_decharge_kw'
+        if charge and charge > 0:
+            resultat['charge_kw'] = charge
+            resultat['charge_source'] = 'fiche:max_charge_kw'
+    except Exception:  # noqa: BLE001 — fiche illisible ⇒ règle conservatrice
+        logger.warning('puissances batterie illisibles', exc_info=True)
+    return resultat
+
+
 def _reglages_tarifaires(company):
     """``(tranches, charges_fixes)`` de la société — best-effort, jamais bloquant.
 
@@ -982,11 +1649,18 @@ def _etude_horaire_pour_devis(devis, *, kwc, batterie_kwh_utile, data):
     if capacite is None:
         capacite = capacite_batterie_du_devis(devis)
 
+    # L-GLITCH — les puissances PUBLIÉES de la banque, lues sur les fiches du
+    # devis. Elles ne décident rien d'autre que ceci : la batterie suit-elle une
+    # pointe de trente minutes ? Sans décharge publiée, non (règle fondateur).
+    puissances = puissance_batterie_du_devis(devis)
+
     resultat = calculer_etude_horaire(
         kwc=puissance, conso_kwh_mensuelles=conso,
         ville=ville, lat=lat, lon=lon,
         occupation=occupation, equipements=equipements,
         batterie_kwh_utile=capacite,
+        batterie_puissance_decharge_kw=puissances['decharge_kw'],
+        batterie_puissance_charge_kw=puissances['charge_kw'],
         tranches=tranches, charges_fixes_mad=charges_fixes,
         source_conso=source_conso, detail_conso=detail_conso)
     if resultat is not None:

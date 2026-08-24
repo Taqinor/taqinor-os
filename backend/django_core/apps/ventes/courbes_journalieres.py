@@ -503,6 +503,19 @@ def forme_consommation_kwh(kwh_jour, occupation, *, saison=None,
                            equipements=None):
     """Consommation horaire RÉELLE d'un jour : 24 kWh dont la somme = ``kwh_jour``.
 
+    Façade historique de :func:`forme_consommation_detaillee` — elle n'en rend
+    que la courbe. Signature et valeurs INCHANGÉES : tous les appelants déjà
+    câblés (moteur horaire, aperçu, tests) continuent de lire exactement la
+    même liste de 24 kWh.
+    """
+    return forme_consommation_detaillee(
+        kwh_jour, occupation, saison=saison, equipements=equipements)[0]
+
+
+def forme_consommation_detaillee(kwh_jour, occupation, *, saison=None,
+                                 equipements=None):
+    """``(conso_24h, couches_horaires)`` — la courbe ET sa décomposition L4.
+
     C'est la fonction que le moteur horaire intègre contre la production. Elle
     applique EXACTEMENT la règle L4 déjà tenue côté page
     (``proposalCurve.equipmentAdjustedConsumptionKwhShape``), en DEUX PASSES :
@@ -520,13 +533,25 @@ def forme_consommation_kwh(kwh_jour, occupation, *, saison=None,
 
     ``kwh_jour`` ≤ 0 ⇒ 24 zéros (aucun niveau inventé). Une couche illisible ou
     hors-saison est ignorée silencieusement, jamais approximée.
+
+    L-GLITCH (24/08/2026) — LA DEUXIÈME VALEUR DE RETOUR. ``couches_horaires``
+    dit, pour chaque couche de REDISTRIBUTION réellement appliquée, sa puissance
+    déclarée (``kw``) et l'énergie qu'elle place dans CHAQUE heure APRÈS la
+    renormalisation (``heures_kwh``). Sans elle, le moteur horaire devrait
+    refaire cette composition pour savoir quelle part de l'heure appartient à la
+    pompe ou à la clim — c'est-à-dire tenir un SECOND compositeur qui finirait
+    par diverger de celui-ci d'une fenêtre ou d'un facteur. La composition reste
+    donc à UN seul propriétaire : ce module. Le VE en est absent
+    volontairement — sa couche porte une ÉNERGIE (kWh/jour) et aucune puissance
+    de chargeur n'est collectée, donc rien à concentrer (voir
+    ``etude_horaire.PROFILS_RAFALE``).
     """
     try:
         total = float(kwh_jour)
     except (TypeError, ValueError):
         total = 0.0
     if total <= 0:
-        return [0.0] * 24
+        return [0.0] * 24, {}
 
     forme = silhouette_occupation(occupation) or [1.0 / 24.0] * 24
     couches = equipements or {}
@@ -546,6 +571,7 @@ def forme_consommation_kwh(kwh_jour, occupation, *, saison=None,
 
     # ── Passe 1 : redistribution (piscine / clim) ──
     bosse = [0.0] * 24
+    actives = {}
     for cle in ('piscine', 'clim'):
         couche = couches.get(cle)
         if not couche or couche.get('mode') != 'redistribution':
@@ -556,9 +582,17 @@ def forme_consommation_kwh(kwh_jour, occupation, *, saison=None,
         saisons = couche.get('saisons')
         if saisons and saison is not None and saison not in saisons:
             continue
+        heures_couche = []
         for heure in couche.get('heures') or ():
             if isinstance(heure, int) and 0 <= heure <= 23:
                 bosse[heure] += kw
+                heures_couche.append(heure)
+        if heures_couche:
+            actives[cle] = {'kw': kw, 'heures': heures_couche,
+                            'source': couche.get('source')}
+    # ``facteur`` reste à 1,0 tant qu'aucune bosse n'est posée — exactement le
+    # chemin historique, qui ne renormalisait pas dans ce cas.
+    facteur = 1.0
     if any(bosse):
         sortie = [v + bosse[h] for h, v in enumerate(sortie)]
         somme = sum(sortie)
@@ -575,7 +609,18 @@ def forme_consommation_kwh(kwh_jour, occupation, *, saison=None,
             for heure in heures:
                 sortie[heure] += par_heure
 
-    return sortie
+    # L'ÉNERGIE DE LA COUCHE, APRÈS RENORMALISATION. La bosse brute (``kw``) est
+    # posée AVANT la renormalisation : ce que la couche pèse RÉELLEMENT dans
+    # l'heure servie est donc ``kw × facteur``. C'est cette énergie-là — pas la
+    # bosse brute — que le moteur concentre en impulsions, sinon il sortirait de
+    # l'heure plus d'énergie que la courbe n'en contient.
+    for info in actives.values():
+        heures_kwh = [0.0] * 24
+        for heure in info['heures']:
+            heures_kwh[heure] += info['kw'] * facteur
+        info['heures_kwh'] = heures_kwh
+
+    return sortie, actives
 
 
 def construire_courbes_journalieres(devis, data, monthly_consumption=None):

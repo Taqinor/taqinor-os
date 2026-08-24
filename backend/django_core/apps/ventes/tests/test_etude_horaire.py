@@ -595,3 +595,517 @@ class PricingInchangeTest(SimpleTestCase):
         roi = pricing.calculate_savings_roi(6.0, 90000.0, 90000.0)
         self.assertEqual(roi['savings_model'], 'estimation')
         self.assertTrue(roi['savings_estimated'])
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# L-GLITCH — LES IMPULSIONS D'APPAREIL (ordre fondateur du 24/08/2026)
+# ════════════════════════════════════════════════════════════════════════════
+
+#: Le lead-type de la mission : villa avec pompe de piscine ET climatisation,
+#: les DEUX équipements dont la puissance est réellement connue. Ce sont les
+#: réponses au script d'appel, pas des grandeurs choisies pour le test.
+EQUIP_PISCINE_CLIM = {
+    'piscine': True, 'piscine_pompe_kw': 1.1,
+    'clim': True, 'clim_pieces': 5,
+}
+
+
+class RafalesDeriveesTest(SimpleTestCase):
+    """La dérivation elle-même : durée = énergie ÷ puissance, plafond 30 min."""
+
+    def test_duree_derivee_exacte_un_kwh_et_demi_a_trois_kw(self):
+        """L'exemple du fondateur, au chiffre près : 1,5 kWh d'un appareil de
+        3 kW font EXACTEMENT 30 minutes à 3 kW — une seule rafale, puisque
+        c'est précisément le plafond."""
+        rafale = EH.rafales_de_l_heure(1.5, 3.0)
+        self.assertEqual(rafale['nb_rafales'], 1)
+        self.assertAlmostEqual(rafale['duree_totale_min'], 30.0, places=9)
+        self.assertAlmostEqual(rafale['duree_rafale_min'], 30.0, places=9)
+        self.assertEqual(rafale['fenetres'], [(0.0, 30.0)])
+        # L'énergie rendue est celle qu'on a donnée : rien créé, rien perdu.
+        self.assertAlmostEqual(rafale['energie_rafales_kwh'], 1.5, places=12)
+
+    def test_trente_minutes_est_un_plafond_jamais_une_duree(self):
+        """Correction fondateur : « j'ai dit JUSQU'À 30 min ». Sur dix mille
+        couples énergie/puissance tirés au hasard, AUCUNE rafale ne dépasse
+        trente minutes et aucune ne sort de son heure."""
+        import random
+        tirage = random.Random(20260824)
+        plus_longue = 0.0
+        for _ in range(10000):
+            energie = tirage.uniform(0.001, 12.0)
+            puissance = tirage.uniform(0.2, 9.0)
+            rafale = EH.rafales_de_l_heure(energie, puissance)
+            plus_longue = max(plus_longue, rafale['duree_rafale_min'])
+            self.assertLessEqual(rafale['duree_rafale_min'],
+                                 EH.RAFALE_PLAFOND_MINUTES + 1e-9)
+            for debut, fin in rafale['fenetres']:
+                self.assertGreaterEqual(debut, -1e-9)
+                self.assertLessEqual(fin, 60.0 + 1e-9)
+                self.assertLessEqual(debut, fin)
+        # Le plafond est ATTEINT quelque part : sinon le test ne prouverait
+        # qu'une borne jamais approchée.
+        self.assertAlmostEqual(plus_longue, EH.RAFALE_PLAFOND_MINUTES,
+                               places=6)
+
+    def test_energie_qui_deborde_le_plafond_cycle_en_plusieurs_rafales(self):
+        """L'exemple de la correction : une clim de 1,4 kW dont la couche pèse
+        1,05 kWh dans l'heure ne tient pas un bloc de 45 minutes — elle CYCLE
+        en deux rafales de 22,5 minutes, comme un compresseur."""
+        rafale = EH.rafales_de_l_heure(1.05, 1.4)
+        self.assertEqual(rafale['nb_rafales'], 2)
+        self.assertAlmostEqual(rafale['duree_totale_min'], 45.0, places=9)
+        self.assertAlmostEqual(rafale['duree_rafale_min'], 22.5, places=9)
+        # Une rafale par demi-heure : elles ne se collent pas l'une à l'autre.
+        debuts = [round(d, 6) for d, _f in rafale['fenetres']]
+        self.assertEqual(debuts, [0.0, 30.0])
+
+    def test_aucune_puissance_aucune_impulsion(self):
+        """Sans puissance (ou sans énergie), on ne concentre RIEN — jamais une
+        puissance supposée pour faire tourner la machine."""
+        self.assertIsNone(EH.rafales_de_l_heure(1.0, 0))
+        self.assertIsNone(EH.rafales_de_l_heure(1.0, None))
+        self.assertIsNone(EH.rafales_de_l_heure(0.0, 3.0))
+
+    def test_profils_sont_des_donnees_calibrables_et_sourcees(self):
+        """La position et la sous-structure des rafales sont des DONNÉES
+        nommées, pas des littéraux dispersés : la calibration Deye remplacera
+        ces lignes-là et rien d'autre. Aucun profil ne peut desserrer le
+        plafond fondateur."""
+        self.assertEqual(EH.PAS_FIN_MINUTES * EH.SOUS_PAS_PAR_HEURE, 60.0)
+        self.assertGreaterEqual(EH.RAFALE_POSITION_INTERIM, 0.0)
+        self.assertLessEqual(EH.RAFALE_POSITION_INTERIM, 1.0)
+        for cle, profil in EH.PROFILS_RAFALE.items():
+            with self.subTest(couche=cle):
+                self.assertLessEqual(profil['plafond_minutes'],
+                                     EH.RAFALE_PLAFOND_MINUTES)
+                self.assertTrue(profil.get('cycle'),
+                                'le profil %s doit DIRE d\'où vient son '
+                                'cycle (source réelle ou interim)' % cle)
+                if profil.get('actif'):
+                    self.assertTrue(
+                        profil.get('puissance'),
+                        'un profil actif doit citer la provenance de sa '
+                        'puissance : %s' % cle)
+        # Le chauffe-eau est l'exception DOCUMENTÉE et INERTE : rien n'est
+        # collecté pour lui, donc rien ne sort.
+        self.assertFalse(EH.PROFILS_RAFALE['chauffe_eau']['actif'])
+        # Le véhicule électrique n'a AUCUNE entrée : sa couche porte une
+        # énergie, jamais une puissance de chargeur.
+        self.assertNotIn('ve', EH.PROFILS_RAFALE)
+
+
+class ConservationEnergieGlitchTest(SimpleTestCase):
+    """Le raffinement ne crée ni ne détruit un seul kWh."""
+
+    def _jour(self, saison='ete', kwh_jour=20.0):
+        equipements = CJ.composer_equipements(EQUIP_PISCINE_CLIM)
+        conso, couches = CJ.forme_consommation_detaillee(
+            kwh_jour, CJ.OCCUPATION_PRESENCE, saison=saison,
+            equipements=equipements)
+        prod = [0.0] * 6 + [1.0, 2.5, 4.0, 5.0, 5.5, 5.8,
+                            5.8, 5.5, 5.0, 4.0, 2.5, 1.0] + [0.0] * 6
+        return conso, prod, couches
+
+    def test_la_chronologie_fine_porte_exactement_la_meme_energie(self):
+        conso, prod, couches = self._jour()
+        pas, _meta = EH.pas_fins_du_jour(conso, prod, couches)
+        self.assertIsNotNone(pas, 'piscine + clim doivent produire des '
+                                  'impulsions en été')
+        self.assertAlmostEqual(sum(p['conso_kwh'] for p in pas),
+                               sum(conso), places=9)
+        self.assertAlmostEqual(sum(p['prod_kwh'] for p in pas),
+                               sum(prod), places=9)
+        self.assertAlmostEqual(sum(p['duree_h'] for p in pas), 24.0, places=9)
+
+    def test_seules_les_heures_porteuses_sont_sous_decoupees(self):
+        """Pas de 24 × 12 partout : une heure sans appareil déclaré reste UN
+        pas d'une heure."""
+        conso, prod, couches = self._jour()
+        pas, meta = EH.pas_fins_du_jour(conso, prod, couches)
+        porteuses = set(meta['heures_impulsion'])
+        self.assertTrue(porteuses)
+        for heure in range(24):
+            etapes = [p for p in pas if p['heure'] == heure]
+            attendu = EH.SOUS_PAS_PAR_HEURE if heure in porteuses else 1
+            self.assertEqual(len(etapes), attendu, 'heure %d' % heure)
+            # L'énergie de l'heure est conservée heure par heure, pas
+            # seulement sur le total du jour.
+            self.assertAlmostEqual(sum(e['conso_kwh'] for e in etapes),
+                                   conso[heure], places=9)
+
+    def test_la_production_reste_plate_dans_l_heure(self):
+        """Le soleil varie LENTEMENT : lui inventer une sous-structure à cinq
+        minutes ajouterait du bruit non mesuré. Seule la CHARGE commute."""
+        conso, prod, couches = self._jour()
+        pas, meta = EH.pas_fins_du_jour(conso, prod, couches)
+        for heure in meta['heures_impulsion']:
+            etapes = [p for p in pas if p['heure'] == heure]
+            valeurs = {round(e['prod_kwh'], 12) for e in etapes}
+            self.assertEqual(len(valeurs), 1, 'heure %d' % heure)
+
+    def test_l_impulsion_depasse_vraiment_le_plat_qu_elle_remplace(self):
+        """Le « glitch » du fondateur EXISTE dans la courbe : le pic de cinq
+        minutes est strictement plus haut que l'heure lissée qu'il remplace."""
+        conso, prod, couches = self._jour()
+        pas, meta = EH.pas_fins_du_jour(conso, prod, couches)
+        for heure in meta['heures_impulsion']:
+            etapes = [p for p in pas if p['heure'] == heure]
+            pic_kw = max(e['conso_kwh'] for e in etapes) / (1.0 / 12)
+            self.assertGreater(pic_kw, conso[heure] * 1.05,
+                               'heure %d : aucune pointe' % heure)
+
+
+class GlitchSortieMoteurTest(SimpleTestCase):
+    """Ce que la couche change — et ce qu'elle ne change SURTOUT pas."""
+
+    VILLE = 'Casablanca'
+
+    def _conso(self, mad=2500):
+        conso, _source, _detail = EH.profil_depuis_factures(
+            facture_hiver_mad=mad)
+        return conso
+
+    def _etude(self, **extra):
+        base = dict(kwc=8.0, conso_kwh_mensuelles=self._conso(),
+                    ville=self.VILLE, occupation=CJ.OCCUPATION_PRESENCE)
+        base.update(extra)
+        return EH.calculer_etude_horaire(**base)
+
+    #: Les clés HISTORIQUES d'un mois. Cette liste est un CONTRAT : sans
+    #: équipement concentrable, la sortie du moteur ne doit pas gagner une
+    #: seule clé — sinon tout le parc de devis déjà calculé change de forme.
+    CLES_MOIS_HISTORIQUES = {
+        'mois', 'saison', 'jours', 'production_kwh', 'consommation_kwh',
+        'autoconsomme_sans_kwh', 'autoconsomme_avec_kwh', 'surplus_sans_kwh',
+        'import_sans_kwh', 'economie_sans_mad', 'economie_avec_mad',
+        'facture_avant_mad', 'facture_apres_sans_mad',
+        'facture_apres_avec_mad', 'taux_autoconso_sans', 'taux_autoconso_avec',
+        'couverture_sans', 'couverture_avec',
+    }
+    CLES_RACINE_HISTORIQUES = {
+        'version', 'kwc', 'source_production', 'source_productible',
+        'source_consommation', 'detail_consommation', 'occupation',
+        'equipements_actifs', 'batterie_kwh_utile', 'mois', 'saisons',
+        'annuel', 'avertissements',
+    }
+
+    def test_sans_equipement_la_sortie_est_celle_d_avant(self):
+        """RÈGLE DE LA MISSION : aucun équipement déclaré ⇒ sortie
+        BYTE-IDENTIQUE. Pas une clé de plus, pas un centième de différence."""
+        etude = self._etude(batterie_kwh_utile=10.0)
+        self.assertEqual(set(etude), self.CLES_RACINE_HISTORIQUES)
+        self.assertNotIn('glitch', etude)
+        for mois in etude['mois']:
+            self.assertEqual(set(mois), self.CLES_MOIS_HISTORIQUES)
+        for bloc in etude['saisons'].values():
+            self.assertNotIn('part_glitch_sans_kwh', bloc)
+            self.assertNotIn('part_glitch_avec_kwh', bloc)
+        self.assertNotIn('part_glitch_sans_kwh', etude['annuel'])
+        self.assertNotIn('part_glitch_avec_kwh', etude['annuel'])
+        # La version du bloc historique ne bouge PAS : sa forme est inchangée.
+        self.assertEqual(etude['version'], EH.ETUDE_HORAIRE_VERSION)
+
+    def test_un_equipement_sans_puissance_ne_produit_aucune_impulsion(self):
+        """« uniquement si une puissance dérivable existe, sinon rien » : le
+        véhicule électrique porte des kWh et aucune puissance de chargeur, le
+        chauffe-eau ne porte rien du tout."""
+        equipements = CJ.composer_equipements({
+            'voiture_electrique': True, 've_km_semaine': 300,
+            'chauffe_eau_electrique': True,
+        })
+        self.assertIn('ve', equipements)
+        etude = self._etude(equipements=equipements, batterie_kwh_utile=10.0)
+        self.assertNotIn('glitch', etude)
+        self.assertEqual(set(etude['mois'][0]), self.CLES_MOIS_HISTORIQUES)
+
+    def test_piscine_et_clim_declarees_font_apparaitre_le_bloc(self):
+        etude = self._etude(
+            equipements=CJ.composer_equipements(EQUIP_PISCINE_CLIM),
+            batterie_kwh_utile=10.0)
+        self.assertIn('glitch', etude)
+        glitch = etude['glitch']
+        self.assertEqual(glitch['methode'], 'impulsions_derivees')
+        self.assertEqual(sorted(glitch['couches']), ['clim', 'piscine'])
+        self.assertEqual(glitch['plafond_rafale_minutes'],
+                         EH.RAFALE_PLAFOND_MINUTES)
+        self.assertEqual(glitch['pas_minutes'], EH.PAS_FIN_MINUTES)
+        # Le choix d'interim est ÉTIQUETÉ comme tel dans la sortie servie.
+        self.assertIn('interim', glitch['position_source'])
+        self.assertEqual(glitch['porte_sur'], ['sans', 'avec'])
+        self.assertGreater(etude['annuel']['part_glitch_sans_kwh'], 0.0)
+
+    def test_le_glitch_ne_fait_que_RETIRER_de_l_autoconsommation(self):
+        """Le lissage horaire SURESTIME l'autoconsommation directe : la
+        résolution fine ne peut donc que la faire baisser, jamais monter
+        (Jensen — le minimum d'une somme dépasse la somme des minimums)."""
+        etude = self._etude(
+            equipements=CJ.composer_equipements(EQUIP_PISCINE_CLIM),
+            batterie_kwh_utile=10.0)
+        for mois in etude['mois']:
+            with self.subTest(mois=mois['mois']):
+                self.assertGreaterEqual(mois['part_glitch_sans_kwh'], 0.0)
+                self.assertGreaterEqual(mois['part_glitch_avec_kwh'], 0.0)
+                self.assertGreaterEqual(mois['part_glitch_batterie_kwh'], 0.0)
+                # Ce que l'impulsion retire au « sans » part SOIT au réseau
+                # (perte du « avec »), SOIT dans la batterie — jamais nulle
+                # part.
+                self.assertAlmostEqual(
+                    mois['part_glitch_sans_kwh'],
+                    mois['part_glitch_batterie_kwh']
+                    + mois['part_glitch_avec_kwh'], places=1)
+
+    def test_le_glitch_frappe_AUSSI_l_option_sans_batterie(self):
+        """PRÉCISION FONDATEUR (24/08/2026) : « je ne veux pas que tu appliques
+        ces glitchs que sur le avec batterie, il faudra aussi le sans
+        batterie ». Les impulsions vivent dans la COURBE DE CONSOMMATION du
+        jour type — la variante SANS batterie intègre contre la même courbe
+        hachée, et son économie BAISSE elle aussi. C'est l'honnêteté voulue :
+        le modèle lissé la surestimait."""
+        etude = self._etude(
+            equipements=CJ.composer_equipements(EQUIP_PISCINE_CLIM),
+            batterie_kwh_utile=10.0)
+        annuel = etude['annuel']
+        # L'effet sur le SANS n'est pas résiduel : il est strictement positif,
+        # en kWh comme en dirhams.
+        self.assertGreater(annuel['part_glitch_sans_kwh'], 0.0)
+        self.assertGreater(annuel['part_glitch_sans_mad'], 0.0)
+        # EN kWh, il frappe le SANS au moins aussi fort que le AVEC : la
+        # batterie ne peut que rattraper de l'énergie, jamais en détruire.
+        # (En DIRHAMS, ce n'est PAS garanti — voir
+        # ``test_la_falaise_selective_peut_inverser_le_verdict_en_dirhams``.)
+        self.assertGreaterEqual(annuel['part_glitch_sans_kwh'],
+                                annuel['part_glitch_avec_kwh'] - 1e-9)
+
+        # Même chose SANS aucune batterie au devis : l'effet reste entier.
+        sans_stockage = self._etude(
+            equipements=CJ.composer_equipements(EQUIP_PISCINE_CLIM),
+            batterie_kwh_utile=0)
+        self.assertGreater(sans_stockage['annuel']['part_glitch_sans_kwh'],
+                           0.0)
+        self.assertGreater(sans_stockage['annuel']['part_glitch_sans_mad'],
+                           0.0)
+
+    def test_l_ecart_avec_moins_sans_grandit_avec_les_impulsions(self):
+        """Rendre les pointes visibles RENFORCE l'argument batterie, et d'un
+        montant exactement mesuré : l'écart « avec − sans » grandit de
+        ``part_glitch_batterie_kwh``, c'est-à-dire de ce que la batterie
+        rattrape vraiment. Aucun argument commercial n'est fabriqué : il est
+        DÉRIVÉ."""
+        etude = self._etude(
+            equipements=CJ.composer_equipements(EQUIP_PISCINE_CLIM),
+            batterie_kwh_utile=10.0)
+        annuel = etude['annuel']
+        gain_batterie = annuel['part_glitch_batterie_kwh']
+        self.assertGreater(gain_batterie, 0.0)
+        # L'IDENTITÉ : écart_fin − écart_lissé = part_glitch_sans −
+        # part_glitch_avec = ce que la batterie rattrape.
+        self.assertAlmostEqual(
+            annuel['part_glitch_sans_kwh'] - annuel['part_glitch_avec_kwh'],
+            gain_batterie, places=1)
+        # Et la batterie reste ce qu'elle a toujours été : jamais moins bonne.
+        self.assertGreaterEqual(annuel['economie_avec_mad'],
+                                annuel['economie_sans_mad'] - 1e-6)
+
+    def test_la_falaise_selective_peut_inverser_le_verdict_en_dirhams(self):
+        """CE N'EST PAS UN BUG — c'est la grille SÉLECTIVE marocaine, et il
+        faut que quelqu'un le sache avant de « corriger » ce comportement.
+
+        En ÉNERGIE, la batterie rattrape toujours une part de ce que les
+        impulsions retirent : ``part_glitch_sans_kwh ≥ part_glitch_avec_kwh``,
+        toujours. En ARGENT, non : sur la grille sélective, redescendre sous
+        une marche re-tarife TOUT le mois. Quand le résiduel de la variante
+        AVEC batterie se tient JUSTE au-dessus d'une marche (à 14 kWc + 15 kWh
+        sur le cas piscine+clim, juillet sort à ~616 kWh contre la marche des
+        500), les impulsions le poussent de l'autre côté et lui coûtent PLUS de
+        dirhams qu'au « sans », pourtant plus gourmand en kWh.
+
+        La leçon commerciale est l'inverse d'un défaut : elle DURCIT l'argument
+        de DIM2 — il faut dimensionner le stockage pour atterrir FRANCHEMENT
+        sous la marche, pas la frôler, parce que les pointes d'appareil mangent
+        la marge qui vous y tenait.
+        """
+        conso, _s, _d = EH.profil_depuis_factures(
+            facture_hiver_mad=2500, facture_ete_mad=4000, ete_differente=True)
+        etude = EH.calculer_etude_horaire(
+            kwc=14.0, conso_kwh_mensuelles=conso, ville=self.VILLE,
+            occupation=CJ.OCCUPATION_PRESENCE,
+            equipements=CJ.composer_equipements(EQUIP_PISCINE_CLIM),
+            batterie_kwh_utile=15.0)
+        mois_inverses = [
+            m for m in etude['mois']
+            if m['part_glitch_avec_mad'] > m['part_glitch_sans_mad'] + 0.5]
+        self.assertTrue(
+            mois_inverses,
+            'ce cas est justement celui où la falaise inverse le verdict en '
+            'dirhams : s\'il ne le fait plus, le barème ou la couche a bougé')
+        for mois in mois_inverses:
+            with self.subTest(mois=mois['mois']):
+                # L'inversion est bien MONÉTAIRE seulement : en kWh, le
+                # « avec » perd toujours moins.
+                self.assertLessEqual(mois['part_glitch_avec_kwh'],
+                                     mois['part_glitch_sans_kwh'] + 1e-9)
+        # Et malgré tout, la batterie reste globalement gagnante.
+        self.assertGreater(etude['annuel']['economie_avec_mad'],
+                           etude['annuel']['economie_sans_mad'])
+
+    def test_le_total_de_kwh_ne_bouge_pas_d_un_iota(self):
+        """Un RAFFINEMENT, pas un nouveau calcul : à équipements identiques,
+        la production et la consommation annuelles sont les mêmes que sans la
+        couche fine (seule leur RENCONTRE change)."""
+        equipements = CJ.composer_equipements(EQUIP_PISCINE_CLIM)
+        etude = self._etude(equipements=equipements, batterie_kwh_utile=10.0)
+        jours, _avert, _src = EH.jours_types_annee(
+            kwc=8.0, conso_kwh_mensuelles=self._conso(), ville=self.VILLE,
+            occupation=CJ.OCCUPATION_PRESENCE, equipements=equipements)
+        conso_attendue = sum(j['conso_mois_kwh'] for j in jours)
+        prod_attendue = sum(j['prod_mois_kwh'] for j in jours)
+        self.assertAlmostEqual(etude['annuel']['consommation_kwh'],
+                               round(conso_attendue, 2), places=1)
+        self.assertAlmostEqual(etude['annuel']['production_kwh'],
+                               round(prod_attendue, 2), places=1)
+
+    def test_les_monotonies_survivent_a_la_couche_fine(self):
+        """Les invariants du moteur restent vrais avec les impulsions : plus
+        de kWc ⇒ plus de production, batterie ⇒ jamais moins d'économie, et
+        jamais plus d'économie que la facture."""
+        equipements = CJ.composer_equipements(EQUIP_PISCINE_CLIM)
+        precedent = 0.0
+        for kwc in (4.0, 6.0, 8.0, 12.0):
+            etude = self._etude(kwc=kwc, equipements=equipements,
+                                batterie_kwh_utile=10.0)
+            annuel = etude['annuel']
+            self.assertGreater(annuel['production_kwh'], precedent)
+            precedent = annuel['production_kwh']
+            self.assertGreaterEqual(annuel['economie_avec_mad'],
+                                    annuel['economie_sans_mad'] - 1e-6)
+            self.assertLessEqual(annuel['economie_sans_mad'],
+                                 annuel['facture_avant_mad'] + 1e-6)
+            self.assertLessEqual(annuel['autoconsomme_sans_kwh'],
+                                 annuel['autoconsomme_avec_kwh'] + 1e-6)
+
+    def test_le_balayage_stockage_voit_les_memes_impulsions(self):
+        """SOURCE UNIQUE (DIM2) : un balayage resté à l'heure pendant que
+        l'étude descend à cinq minutes recommanderait une capacité calibrée sur
+        un client qui n'existe pas."""
+        equipements = CJ.composer_equipements(EQUIP_PISCINE_CLIM)
+        commun = dict(kwc=8.0, conso_kwh_mensuelles=self._conso(),
+                      ville=self.VILLE, occupation=CJ.OCCUPATION_PRESENCE,
+                      equipements=equipements)
+        balayage = EH.balayer_stockage_horaire(capacites_kwh=[10.0], **commun)
+        etude = EH.calculer_etude_horaire(batterie_kwh_utile=10.0, **commun)
+        self.assertIsNotNone(balayage)
+        palier = balayage['paliers'][0]
+        self.assertAlmostEqual(palier['autoconsomme_kwh'],
+                               etude['annuel']['autoconsomme_avec_kwh'],
+                               delta=0.5)
+
+
+class BatterieDevantLaPointeTest(SimpleTestCase):
+    """La batterie ne sert la pointe qu'à hauteur de ce que sa fiche PROUVE."""
+
+    VILLE = 'Casablanca'
+
+    def _commun(self, **extra):
+        conso, _s, _d = EH.profil_depuis_factures(facture_hiver_mad=2500)
+        base = dict(kwc=8.0, conso_kwh_mensuelles=conso, ville=self.VILLE,
+                    occupation=CJ.OCCUPATION_PRESENCE,
+                    equipements=CJ.composer_equipements(EQUIP_PISCINE_CLIM),
+                    batterie_kwh_utile=10.0)
+        base.update(extra)
+        return base
+
+    def test_sans_puissance_publiee_la_pointe_n_est_pas_servie(self):
+        """RÈGLE CONSERVATRICE DU FONDATEUR, et la PREUVE qu'elle mord.
+
+        Aucune fiche du catalogue ne publie de puissance de DÉCHARGE (le modèle
+        porte ``bat_max_charge_kw``, une puissance de CHARGE) : le moteur refuse
+        donc de créditer le stockage d'une performance que rien ne prouve. Sur
+        un jour de juillet réel, une décharge non bornée ferait restituer près
+        du double — ces kWh-là, on ne les annonce pas.
+
+        NUANCE HONNÊTE : la batterie ne récupère pas RIEN pour autant. Elle ne
+        SUIT PAS la pointe, mais l'autoconsommation directe ayant baissé, il
+        reste plus de surplus à CHARGER dans la journée — et ce surplus-là, elle
+        le rend le soir. La reprise est donc réelle mais MINORITAIRE : l'essentiel
+        du dépassement part bien au réseau."""
+        etude = EH.calculer_etude_horaire(**self._commun())
+        glitch = etude['glitch']
+        self.assertIsNone(glitch['batterie_puissance_decharge_kw'])
+        self.assertEqual(glitch['batterie_puissance_decharge_source'],
+                         'aucune_publiee_regle_conservatrice')
+        annuel = etude['annuel']
+        self.assertGreater(annuel['part_glitch_avec_kwh'],
+                           annuel['part_glitch_batterie_kwh'],
+                           'la pointe doit majoritairement tirer du réseau')
+
+        # La borne MORD : sur le jour type de juillet, laisser la batterie
+        # suivre la pointe lui ferait restituer strictement plus.
+        commun = self._commun()
+        jours, _avert, _src = EH.jours_types_annee(
+            kwc=commun['kwc'],
+            conso_kwh_mensuelles=commun['conso_kwh_mensuelles'],
+            ville=commun['ville'], occupation=commun['occupation'],
+            equipements=commun['equipements'])
+        juillet = [j for j in jours if j['mois'] == 7][0]
+        self.assertIsNotNone(juillet['pas_fins'])
+        conservatrice = EH.simuler_batterie_pas_fins(juillet['pas_fins'], 10.0)
+        sans_borne = EH.simuler_batterie_pas_fins(
+            juillet['pas_fins'], 10.0, puissance_decharge_kw=1e6)
+        self.assertLess(conservatrice['restitue_kwh'],
+                        sans_borne['restitue_kwh'] * 0.75,
+                        'la règle conservatrice doit vraiment retenir la '
+                        'batterie, pas être un no-op décoratif')
+
+    def test_une_puissance_publiee_borne_vraiment_la_decharge(self):
+        """Le jour où une fiche publiera sa décharge, le moteur s'en sert — et
+        une banque plus « lente » restitue strictement moins, jamais plus que
+        sa puissance × la durée des heures déficitaires."""
+        conso = [0.4] * 6 + [0.3] * 6 + [0.3] * 6 + [3.0] * 6
+        prod = [0.0] * 7 + [1.5, 3.0, 4.0, 4.5, 4.5,
+                            4.5, 4.0, 3.0, 1.5] + [0.0] * 8
+        pas = [{'heure': h, 'duree_h': 1.0, 'conso_kwh': conso[h],
+                'prod_kwh': prod[h],
+                'plafond_decharge_kw': max(0.0, conso[h] - prod[h])}
+               for h in range(24)]
+        libre = EH.simuler_batterie_pas_fins(pas, 12.0)
+        bride = EH.simuler_batterie_pas_fins(pas, 12.0,
+                                             puissance_decharge_kw=0.5)
+        self.assertLess(bride['restitue_kwh'], libre['restitue_kwh'])
+        heures_deficit = sum(1 for h in range(24) if conso[h] > prod[h])
+        self.assertLessEqual(bride['restitue_kwh'],
+                             0.5 * heures_deficit + 1e-9)
+        # Monotone : plus lente encore ⇒ restitue encore moins.
+        plus_lente = EH.simuler_batterie_pas_fins(
+            pas, 12.0, puissance_decharge_kw=0.2)
+        self.assertLess(plus_lente['restitue_kwh'], bride['restitue_kwh'])
+
+    def test_sur_un_jour_sans_impulsion_la_fine_egale_l_horaire(self):
+        """La borne conservatrice est NON CONTRAIGNANTE au pas horaire : c'est
+        ce qui garantit que rien ne bouge sans équipement déclaré."""
+        conso = [0.5] * 6 + [1.2] * 10 + [2.4] * 8
+        prod = [0.0] * 6 + [0.5, 1.5, 3.0, 4.0, 4.5, 4.8,
+                            4.8, 4.5, 4.0, 3.0, 1.5, 0.5] + [0.0] * 6
+        pas = [{'heure': h, 'duree_h': 1.0, 'conso_kwh': conso[h],
+                'prod_kwh': prod[h],
+                'plafond_decharge_kw': max(0.0, conso[h] - prod[h])}
+               for h in range(24)]
+        for capacite in (0.0, 5.0, 10.0, 30.0):
+            with self.subTest(capacite=capacite):
+                horaire = EH.simuler_batterie_jour(conso, prod, capacite)
+                fine = EH.simuler_batterie_pas_fins(pas, capacite)
+                for cle in ('restitue_kwh', 'charge_kwh',
+                            'capacite_utilisee_kwh'):
+                    self.assertAlmostEqual(fine[cle], horaire[cle], places=9)
+        # Et l'autoconsommation directe aussi.
+        self.assertAlmostEqual(
+            EH.recouvrement_pas_fins(pas),
+            sum(min(conso[h], prod[h]) for h in range(24)), places=9)
+
+    def test_le_rendement_aller_retour_tient_toujours(self):
+        """Même à cinq minutes : restitué ≤ 0,90 × chargé."""
+        etude = EH.calculer_etude_horaire(**self._commun(kwc=12.0))
+        for mois in etude['mois']:
+            self.assertLessEqual(mois['autoconsomme_avec_kwh'],
+                                 min(mois['production_kwh'],
+                                     mois['consommation_kwh']) + 1e-6)

@@ -640,6 +640,124 @@ class ExemplesFondateurTest(TestCase):
             else:
                 self.assertLess(ete_kwh, hiver_kwh, cas.libelle)
 
+    def test_l_glitch_bouge_les_cas_a_equipements_declares(self):
+        """L-GLITCH (ordre fondateur 24/08/2026) — AVANT / APRÈS, imprimé.
+
+        « are you also counting the small glitches in your calculus now ? »
+        Les appareils déclarés à l'appel dont la puissance est connue (pompe de
+        piscine saisie, clim = 1,4 kW/unité × pièces) reviennent en IMPULSIONS
+        à leur puissance réelle au lieu d'être étalés sur l'heure. Le total de
+        kWh ne bouge pas ; ce qui bouge, c'est le RECOUVREMENT avec le soleil.
+
+        Ce test IMPRIME l'écart pour chaque cas fondateur qui déclare un tel
+        équipement — c'est le chiffre que le fondateur voulait voir — et il
+        VÉRIFIE que le cas SANS équipement déclaré, lui, n'a pas bougé d'un
+        centime (aucun bloc ``glitch`` n'apparaît).
+        """
+        from apps.ventes.etude_horaire import calculer_etude_horaire
+
+        vus = 0
+        for cas in SAISONNIERS:
+            conso, source, _detail, resultat = self._evaluer(cas)
+            recommandation = resultat.get('recommandation')
+            if not recommandation:
+                continue
+            kwc = recommandation['kwc']
+            batterie = recommandation.get('batterie_kwh') or 0.0
+            etude = calculer_etude_horaire(
+                kwc=kwc, conso_kwh_mensuelles=conso, ville=VILLE,
+                occupation=cas.occupation,
+                equipements=composer_equipements(cas.equipements),
+                batterie_kwh_utile=batterie, source_conso=source)
+            self.assertIsNotNone(etude, cas.libelle)
+
+            print('')
+            print('%s ══ L-GLITCH — %s' % (TAG, cas.libelle))
+            print('%s    taille recommandee %.2f kWc, batterie %s kWh'
+                  % (TAG, kwc, _kwh(batterie)))
+
+            if not cas.equipements:
+                # AUCUN équipement déclaré ⇒ la couche n'existe pas : la sortie
+                # est celle d'avant, à l'octet près.
+                self.assertNotIn(
+                    'glitch', etude,
+                    '%s ne declare aucun equipement : rien ne doit bouger'
+                    % cas.libelle)
+                print('%s    aucun equipement declare -> AUCUNE impulsion, '
+                      'resultat inchange' % TAG)
+                continue
+
+            self.assertIn('glitch', etude,
+                          '%s declare %s : des impulsions sont attendues'
+                          % (cas.libelle, sorted(cas.equipements)))
+            glitch = etude['glitch']
+            annuel = etude['annuel']
+            # AVANT = APRÈS + ce que les impulsions ont retiré. Aucun second
+            # moteur n'est nécessaire : l'écart est un champ de sortie.
+            avant_sans = annuel['economie_sans_mad'] + annuel[
+                'part_glitch_sans_mad']
+            avant_avec = annuel['economie_avec_mad'] + annuel[
+                'part_glitch_avec_mad']
+            avant_auto = annuel['autoconsomme_sans_kwh'] + annuel[
+                'part_glitch_sans_kwh']
+
+            print('%s    impulsions : couches %s, %d rafales/jour type, '
+                  'plafond %s min, pas %s min'
+                  % (TAG, ', '.join(glitch['couches']),
+                     glitch['nb_rafales_jour_type'],
+                     _kwh(glitch['plafond_rafale_minutes']),
+                     _kwh(glitch['pas_minutes'])))
+            print('%s    %-34s %12s %12s %10s'
+                  % (TAG, '', 'AVANT (h)', 'APRES (5min)', 'ecart'))
+            for libelle, avant, apres in (
+                    ('autoconsommation directe (kWh/an)',
+                     avant_auto, annuel['autoconsomme_sans_kwh']),
+                    ('economie SANS batterie (DH/an)',
+                     avant_sans, annuel['economie_sans_mad']),
+                    ('economie AVEC batterie (DH/an)',
+                     avant_avec, annuel['economie_avec_mad'])):
+                print('%s    %-34s %12s %12s %10s'
+                      % (TAG, libelle, _mad(avant), _mad(apres),
+                         _mad(apres - avant)))
+            print('%s    dont la batterie rattrape : %s kWh/an '
+                  '(le reste part au reseau : %s kWh/an)'
+                  % (TAG, _kwh(annuel['part_glitch_batterie_kwh']),
+                     _kwh(annuel['part_glitch_avec_kwh'])))
+            print('%s    argument batterie (avec - sans) : %s DH/an avant, '
+                  '%s DH/an apres'
+                  % (TAG, _mad(avant_avec - avant_sans),
+                     _mad(annuel['economie_avec_mad']
+                          - annuel['economie_sans_mad'])))
+
+            # LE CAS DOIT VRAIMENT BOUGER — sinon la couche ne sert à rien.
+            self.assertGreater(
+                annuel['part_glitch_sans_kwh'], 0.0,
+                '%s : les impulsions n\'ont rien change' % cas.libelle)
+            self.assertGreater(annuel['part_glitch_sans_mad'], 0.0,
+                               cas.libelle)
+            # ... mais les kWh totaux, eux, ne bougent PAS d'un iota.
+            self.assertAlmostEqual(
+                sum(m['consommation_kwh'] for m in etude['mois']),
+                annuel['consommation_kwh'], places=1)
+            # EN ÉNERGIE, la batterie rattrape toujours une part : jamais le
+            # contraire. (En DIRHAMS, la falaise sélective peut inverser le
+            # verdict quand le résiduel « avec » frôle une marche — épinglé
+            # par ``test_la_falaise_selective_peut_inverser_le_verdict_en_
+            # dirhams`` dans test_etude_horaire.)
+            self.assertGreaterEqual(
+                annuel['part_glitch_sans_kwh'],
+                annuel['part_glitch_avec_kwh'] - 1e-9, cas.libelle)
+            self.assertGreaterEqual(annuel['part_glitch_batterie_kwh'], 0.0,
+                                    cas.libelle)
+            # La batterie reste gagnante, glitch ou pas.
+            self.assertGreaterEqual(annuel['economie_avec_mad'],
+                                    annuel['economie_sans_mad'] - 1e-6,
+                                    cas.libelle)
+            vus += 1
+
+        self.assertGreaterEqual(
+            vus, 2, 'les deux cas a equipements declares doivent etre couverts')
+
     def test_occupation_change_la_recommandation(self):
         """À FACTURE IDENTIQUE, « présent en journée » et « absent en journée »
         ne doivent pas donner le même dossier : c'est la raison d'être du
