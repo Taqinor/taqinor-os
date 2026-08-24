@@ -100,12 +100,14 @@ import {
   resyncApresEnvoi,
   tarifBracketStory,
   batteryRegimeInfo,
+  storageSweepInfo,
   estimationConsoAffichable,
   proposalJoursTypes,
   PROPOSAL_JOUR_TYPE_MONTH_IDS,
   PROPOSAL_JOUR_TYPE_MONTH_LABELS,
   type TarifBracketStory,
   type BatteryRegimeInfo,
+  type StorageSweepInfo,
   type EstimationConsoAffichable,
 } from '../../lib/proposition';
 import {
@@ -530,6 +532,13 @@ const curveConfig = ok && dailyCurve.svg
     })
   : '';
 
+// ORDRE FONDATEUR (24/08/2026, soir) — mini-balayage de stockage public
+// (paliers réels + premier refusé), calculé ICI (avant BATTERY_SIM_MAX_UNITS
+// ci-dessous qui en dépend) : alimente le sélecteur « N packs » du curseur
+// batterie. `null` sur un devis sans cette clé — le simulateur retombe alors
+// sur son curseur historique 0..3 sans paliers réels.
+const storageSweep: StorageSweepInfo | null = ok ? storageSweepInfo(data!) : null;
+
 // ── WJ120 — Simulateur « et avec N batteries ? » (résidentiel + commercial) ──
 // Moteur horaire glouton PUR (lib/batterySim, jour 2 simulé) : conso journalière
 // RÉELLE du client (monthly_consumption /365) opposée à la production estimée
@@ -567,9 +576,25 @@ const servedUnitCapacityKwh = servedBatteryTotalKwh !== null
   : null;
 const batteryUnitCapacityKwh =
   offerBattery.capacityKwhPerUnit ?? servedUnitCapacityKwh ?? DEFAULT_UNIT_CAPACITY_KWH;
-const BATTERY_SIM_MAX_UNITS = 3;
-// Curseur au départ : les unités offertes (bornées à 3) si le devis porte une
-// batterie, sinon 1 (« et avec 1 batterie ? »).
+// ORDRE FONDATEUR (24/08/2026, soir) — « sélection de plusieurs batteries » :
+// le plafond du curseur suit désormais le mini-balayage RÉEL du moteur
+// (storageSweep) quand il est servi, au lieu d'un « 3 » arbitraire. Il monte
+// jusqu'au premier palier REFUSÉ inclus (pour pouvoir montrer le message de
+// sur-stockage), sinon jusqu'au dernier palier RETENU ; jamais en-dessous des
+// unités RÉELLEMENT au devis (offeredUnits) ; repli sur l'ancien plafond fixe
+// (3) quand aucun balayage n'est servi — comportement historique inchangé.
+const storagePaliersSorted = storageSweep
+  ? [...storageSweep.paliers].sort((a, b) => a.nbPacks - b.nbPacks)
+  : [];
+const storageMaxRetenu = storagePaliersSorted.length
+  ? storagePaliersSorted[storagePaliersSorted.length - 1].nbPacks
+  : null;
+// Le plus haut des deux (refusé et dernier retenu) — défensif, au cas où le
+// backend renverrait un jour un refusé sous le dernier retenu.
+const storageRealMax = Math.max(storageSweep?.refuse?.nbPacks ?? 0, storageMaxRetenu ?? 0);
+const BATTERY_SIM_MAX_UNITS = Math.max(offeredUnits, storageRealMax || 3);
+// Curseur au départ : les unités offertes (bornées au plafond) si le devis
+// porte une batterie, sinon 1 (« et avec 1 batterie ? »).
 const batterySimInitialN = offeredUnits >= 1 ? Math.min(offeredUnits, BATTERY_SIM_MAX_UNITS) : 1;
 // Prix RÉELS des options (jamais recalculés/inventés) : N=0 ↔ option sans batterie,
 // N = unités offertes ↔ option avec batterie (cohérent avec totaux_sans/totaux_avec).
@@ -619,12 +644,27 @@ const batteryInitial = showBatterySim
     })
   : null;
 const batterySplitSvgInitial = batteryInitial ? renderBatterySplitSvg(batteryInitial.hourly, undefined, 'fr') : '';
+// ORDRE FONDATEUR — un palier du balayage RÉEL dont nb_packs == N a un prix
+// TTC RÉEL (cout_ttc), qu'il coïncide ou non avec l'option « avec batterie »
+// du devis (deux sources concordantes quand N == offeredUnits : le moteur ET
+// le balayage donnent le même chiffre par construction).
+const storagePalierAtInitialN = storagePaliersSorted.find((p) => p.nbPacks === batterySimInitialN) ?? null;
 // Prix affiché au N initial : réel si N == unités offertes (option avec batterie),
-// sinon « sur étude » (jamais un prix batterie extrapolé/inventé).
+// sinon le prix RÉEL du palier du balayage à ce N (s'il existe), sinon « sur
+// étude » (jamais un prix batterie extrapolé/inventé).
 const batteryInitialPrice = batterySimInitialN === offeredUnits && avecTtc !== null
   ? formatMAD(avecTtc)
   : batterySimInitialN === 0 && sansTtc !== null
     ? formatMAD(sansTtc)
+    : storagePalierAtInitialN?.coutTtc != null
+      ? formatMAD(storagePalierAtInitialN.coutTtc)
+      : null;
+// Sur-stockage au N initial (rare : seulement si le devis porte lui-même une
+// quantité au-delà de ce que le PV remplit chaque jour) — même dérivation que
+// le message JS ci-dessous (aucun chiffre inventé, voir setupBatterySim).
+const batteryInitialOverStorage =
+  storageSweep?.refuse != null && batterySimInitialN === storageSweep.refuse.nbPacks
+    ? storageSweep.refuse
     : null;
 // Config sérialisée pour le script client (recalcul au curseur, sans réseau).
 // PACT-battery — `mode` (curveMode) permet au client de recalculer `consShape`
@@ -640,6 +680,13 @@ const batterySimConfig = showBatterySim
       maxUnits: BATTERY_SIM_MAX_UNITS,
       initialN: batterySimInitialN,
       offeredUnits,
+      // ORDRE FONDATEUR — paliers RÉELS (prix TTC par N de packs) + premier
+      // refusé (N + pourcentage de remplissage du pire mois, RÉEL) : le
+      // script client les relit au curseur, jamais un nouveau calcul.
+      storagePaliers: storagePaliersSorted.map((p) => ({ n: p.nbPacks, ttc: p.coutTtc })),
+      storageRefuse: storageSweep?.refuse
+        ? { n: storageSweep.refuse.nbPacks, pireMoisPct: storageSweep.refuse.remplissagePireMoisPct }
+        : null,
       sansTtc,
       avecTtc,
       mode: curveMode,
@@ -2154,7 +2201,9 @@ const signConfig = ok
                 Déplacez le curseur : voyez ce qu’une ou plusieurs batteries changeraient — plus de solaire gardé chez vous, moins de réseau le soir, et des heures d’autonomie en cas de coupure.
               </p>
 
-              <!-- Curseur 0/1/2/3 unités -->
+              <!-- ORDRE FONDATEUR (24/08/2026, soir) — curseur 0..N unités,
+                   N = plafond RÉEL (storageSweep) quand servi, sinon 3
+                   (comportement historique). -->
               <div class="mt-5">
                 <div class="flex items-center justify-between text-sm">
                   <label for="battery-sim-slider" class="text-lune-soft" data-i18n data-fr="Nombre de batteries" data-en="Number of batteries" data-ar="عدد البطاريات">Nombre de batteries</label>
@@ -2162,7 +2211,9 @@ const signConfig = ok
                 </div>
                 <input type="range" id="battery-sim-slider" min="0" max={BATTERY_SIM_MAX_UNITS} step="1" value={batterySimInitialN} class="mt-2 w-full accent-brass-400" aria-describedby="battery-sim-assumptions" />
                 <div class="mt-1 flex justify-between text-xs text-lune-faint" aria-hidden="true">
-                  <span>0</span><span>1</span><span>2</span><span>3</span>
+                  {Array.from({ length: BATTERY_SIM_MAX_UNITS + 1 }, (_, n) => (
+                    <span>{n}</span>
+                  ))}
                 </div>
               </div>
 
@@ -2210,10 +2261,26 @@ const signConfig = ok
                 </p>
               </div>
 
-              <!-- Prix : réel du devis quand N correspond à l'offre, sinon « sur étude ». -->
+              <!-- Prix : réel du devis quand N correspond à l'offre, sinon le prix
+                   RÉEL du palier de stockage à ce N (balayage), sinon « sur étude ». -->
               <p class="mt-4 text-sm">
                 <span class="text-lune-soft" data-i18n data-fr="Prix de cette configuration :" data-en="Price for this configuration:" data-ar="سعر هذا التكوين:">Prix de cette configuration :</span>
                 <span class="ms-1 font-semibold text-brass-300" id="battery-sim-price" dir="ltr">{batteryInitialPrice ?? 'Sur étude'}</span>
+              </p>
+
+              <!-- ORDRE FONDATEUR (24/08/2026, soir) — message de sur-stockage : ne
+                   s'affiche QUE quand storageRefuse est servi ET que N sélectionné
+                   l'atteint (le moteur a refusé ce palier car la batterie ne se
+                   rechargerait plus chaque jour). Le pourcentage inséré est RÉEL
+                   (remplissage du pire mois, servi par le backend) — jamais une
+                   nouvelle donnée calculée côté client. -->
+              <p id="battery-sim-overstorage" class="mt-3 rounded-lg border border-brass-400/30 bg-brass-400/10 px-3 py-2 text-xs text-lune-soft" hidden={!batteryInitialOverStorage}>
+                <span data-i18n
+                  data-fr="Au-delà de cette quantité, votre toit ne remplirait plus la batterie tous les jours"
+                  data-en="Beyond this quantity, your roof would no longer fill the battery every day"
+                  data-ar="بعد هذه الكمية، لن يملأ سطحكم البطارية كل يوم">Au-delà de cette quantité, votre toit ne remplirait plus la batterie tous les jours</span
+                ><span data-overstorage-pct dir="ltr" hidden={batteryInitialOverStorage?.remplissagePireMoisPct == null}> (<span data-overstorage-pct-num>{batteryInitialOverStorage?.remplissagePireMoisPct != null ? formatPercent(batteryInitialOverStorage.remplissagePireMoisPct, 0) : ''}</span><span data-i18n data-fr=" le mois le plus faible" data-en=" in the weakest month" data-ar=" في أضعف شهر"> le mois le plus faible</span>)</span
+                ><span data-i18n data-fr=" — une capacité plus petite se rentabilise mieux." data-en=" — a smaller capacity pays back faster." data-ar=" — سعة أصغر تكون أكثر ربحية."> — une capacité plus petite se rentabilise mieux.</span>
               </p>
 
               <!-- Hypothèses (DoD / rendement) + libellé honnête « jamais mesuré ». -->
@@ -5571,6 +5638,12 @@ const signConfig = ok
       // client produise exactement la même silhouette.
       occupancy: OccupancyId;
       ramadan: { imsakHour: number; iftarHour: number } | null;
+      // ORDRE FONDATEUR (24/08/2026, soir) — paliers RÉELS du mini-balayage de
+      // stockage (prix TTC par N de packs) + premier palier REFUSÉ (N +
+      // remplissage du pire mois, RÉEL) : jamais un chiffre inventé, relus
+      // tels quels au curseur.
+      storagePaliers: Array<{ n: number; ttc: number | null }>;
+      storageRefuse: { n: number; pireMoisPct: number | null } | null;
     }
     const section = document.getElementById('battery-sim');
     if (!section) return;
@@ -5627,12 +5700,45 @@ const signConfig = ok
     // `cfg.occupancy`, on part de là et on ne bouge qu'au clic d'une puce.
     let currentOccupancy: OccupancyId = cfg.occupancy ?? 'presence_partielle';
 
+    // ORDRE FONDATEUR — le prix réel du devis (offeredUnits) l'emporte
+    // toujours (même chiffre, cohérent avec les cartes d'options plus haut) ;
+    // à défaut, le prix RÉEL du palier de stockage à ce N (balayage) si le
+    // moteur en a chiffré un ; sinon « sur étude », jamais un prix inventé.
+    function palierPriceAt(n: number): number | null {
+      const p = cfg.storagePaliers.find((x) => x.n === n);
+      return p ? p.ttc : null;
+    }
+
     function renderPrice(n: number): void {
       const el = document.getElementById('battery-sim-price');
       if (!el) return;
+      const palierTtc = palierPriceAt(n);
       if (n === cfg.offeredUnits && cfg.avecTtc != null) el.textContent = fmtMad(cfg.avecTtc);
       else if (n === 0 && cfg.sansTtc != null) el.textContent = fmtMad(cfg.sansTtc);
+      else if (palierTtc != null) el.textContent = fmtMad(palierTtc);
       else el.textContent = ON_STUDY[curLang()];
+    }
+
+    // ORDRE FONDATEUR — message de sur-stockage : visible UNIQUEMENT quand N
+    // atteint le premier palier REFUSÉ par le moteur (la batterie ne se
+    // rechargerait plus chaque jour à cette capacité). Le pourcentage inséré
+    // est celui, RÉEL, que le backend a déjà calculé — jamais un nouveau
+    // calcul ici, seulement son insertion dans un gabarit FR/EN/AR fixe.
+    function renderOverStorage(n: number): void {
+      const el = document.getElementById('battery-sim-overstorage');
+      if (!el) return;
+      const refuse = cfg.storageRefuse;
+      const hit = !!refuse && refuse.n === n;
+      el.hidden = !hit;
+      if (!hit || !refuse) return;
+      const pctEl = el.querySelector<HTMLElement>('[data-overstorage-pct]');
+      if (pctEl) {
+        pctEl.hidden = refuse.pireMoisPct == null;
+        if (refuse.pireMoisPct != null) {
+          const numEl = pctEl.querySelector<HTMLElement>('[data-overstorage-pct-num]');
+          if (numEl) numEl.textContent = fmtPct(refuse.pireMoisPct);
+        }
+      }
     }
 
     // Silhouette de consommation active : le rendu serveur ('normal') reste
@@ -5671,6 +5777,7 @@ const signConfig = ok
       const chart = document.getElementById('battery-sim-chart');
       if (chart) chart.innerHTML = renderBatterySplitSvg(res.hourly, undefined, curLang());
       renderPrice(n);
+      renderOverStorage(n);
     }
 
     // QRES66 — délégation au NIVEAU DOCUMENT, jamais un listener direct sur le

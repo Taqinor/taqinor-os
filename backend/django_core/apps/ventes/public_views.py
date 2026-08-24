@@ -1261,6 +1261,82 @@ def _batterie_regime_publique(dimensionnement, bloc_horaire):
     }
 
 
+def _balayage_stockage_publique(dimensionnement):
+    """ORDRE FONDATEUR (24/08/2026, soir) — sous-ensemble PUBLIC, client-safe,
+    du mini-balayage de stockage (``apps.ventes.dimensionnement`` DIM2) :
+    ``dimensionnement.recommandation_avec.balayage_stockage`` (les paliers de
+    capacité RETENUS — batterie « toujours pleine ») + ``...stockage_refuse``
+    (le premier palier au-delà, refusé parce qu'il ne se rechargerait plus
+    chaque jour). Alimente le sélecteur « N packs » de la page publique.
+
+    Chaque palier ne rend que ``nb_packs``/``capacite_kwh``/``cout_ttc``/
+    ``remplissage_moyen_pct`` — jamais ``prix_achat``/marge (RULE #4). Le
+    refus ne rend que le pourcentage RÉEL de remplissage du pire mois (le
+    même nombre que ``motif_refus`` calcule en interne) : la page compose son
+    message d'elle-même, aucun texte interne (jargon « plafond de
+    remplissage ») ne fuite côté client. Ne lève jamais ; ``None`` quand rien
+    n'est lisible (devis non résidentiel, dimensionnement pas encore
+    rafraîchi, ou aucun palier composable)."""
+    reco = (dimensionnement or {}).get('recommandation_avec')
+    if not isinstance(reco, dict):
+        return None
+
+    def _nb_packs(palier):
+        lignes = palier.get('lignes_batterie') or []
+        total = 0
+        for ligne in lignes:
+            if not isinstance(ligne, dict):
+                continue
+            quantite = ligne.get('quantite')
+            if isinstance(quantite, (int, float)) and not isinstance(quantite, bool):
+                total += quantite
+        return int(total) if total > 0 else None
+
+    def _remplissage_moyen_pct(palier):
+        moyen = (palier.get('remplissage') or {}).get('moyen')
+        if isinstance(moyen, (int, float)) and not isinstance(moyen, bool):
+            return round(moyen * 100, 1)
+        return None
+
+    def _remplissage_pire_mois_pct(palier):
+        pire = (palier.get('remplissage') or {}).get('pire_mois')
+        ratio = pire.get('ratio') if isinstance(pire, dict) else None
+        if isinstance(ratio, (int, float)) and not isinstance(ratio, bool):
+            return round(ratio * 100, 1)
+        return None
+
+    paliers_public = []
+    for palier in reco.get('balayage_stockage') or []:
+        if not isinstance(palier, dict):
+            continue
+        nb_packs = _nb_packs(palier)
+        capacite = palier.get('capacite_kwh')
+        if nb_packs is None or not isinstance(capacite, (int, float)):
+            continue
+        paliers_public.append({
+            'nb_packs': nb_packs,
+            'capacite_kwh': capacite,
+            'cout_ttc': palier.get('cout_ttc'),
+            'remplissage_moyen_pct': _remplissage_moyen_pct(palier),
+        })
+
+    refuse_public = None
+    refuse = reco.get('stockage_refuse')
+    if isinstance(refuse, dict):
+        nb_packs = _nb_packs(refuse)
+        capacite = refuse.get('capacite_kwh')
+        if nb_packs is not None and isinstance(capacite, (int, float)):
+            refuse_public = {
+                'nb_packs': nb_packs,
+                'capacite_kwh': capacite,
+                'remplissage_pire_mois_pct': _remplissage_pire_mois_pct(refuse),
+            }
+
+    if not paliers_public and refuse_public is None:
+        return None
+    return {'paliers': paliers_public, 'refuse': refuse_public}
+
+
 def _profil_horaire_pour_devis(devis):
     """L-BACK T4 — ``(kwc, conso, ville, lat, lon, occupation, equipements)``
     d'un devis, MÊME LECTURE que ``services.rafraichir_dimensionnement_devis``/
@@ -1761,6 +1837,13 @@ def proposal_data(request, token):
         _regime = _batterie_regime_publique(_dimensionnement, _bloc_horaire_devis)
         if _regime is not None:
             payload['batterie_regime'] = _regime
+        # ORDRE FONDATEUR (24/08/2026, soir) — sélection de plusieurs packs de
+        # batterie + message de sur-stockage sur la page publique : le mini-
+        # balayage de stockage (paliers RETENUS + premier REFUSÉ), même patron
+        # additif que les clés ci-dessus.
+        _balayage = _balayage_stockage_publique(_dimensionnement)
+        if _balayage is not None:
+            payload['balayage_stockage'] = _balayage
         _estimation = _estimation_conso_publique(devis)
         if _estimation is not None:
             payload['estimation_conso'] = _estimation

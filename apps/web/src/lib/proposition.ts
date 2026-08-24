@@ -304,6 +304,28 @@ export interface ProposalResponse {
     couverture_glitch_pct?: number | null;
   } | null;
   /**
+   * ORDRE FONDATEUR (24/08/2026, soir) — le mini-balayage de stockage
+   * (`apps.ventes.dimensionnement` DIM2), sous-ensemble public : les paliers
+   * de capacité RETENUS pour la taille recommandée (batterie « toujours
+   * pleine ») + le premier palier REFUSÉ (celui qui ne se rechargerait plus
+   * chaque jour). Alimente le sélecteur « N packs » de la page publique —
+   * jamais un prix/pourcentage inventé, uniquement ceux déjà calculés par le
+   * moteur (`apps/ventes/public_views.py _balayage_stockage_publique`).
+   */
+  balayage_stockage?: {
+    paliers?: Array<{
+      nb_packs?: number | null;
+      capacite_kwh?: number | null;
+      cout_ttc?: number | null;
+      remplissage_moyen_pct?: number | null;
+    }> | null;
+    refuse?: {
+      nb_packs?: number | null;
+      capacite_kwh?: number | null;
+      remplissage_pire_mois_pct?: number | null;
+    } | null;
+  } | null;
+  /**
    * L-PROP CJ2b-bis — décomposition mensuelle de l'estimation de
    * consommation, MÊME CONTRAT que le moteur horaire interne
    * (`estimation_conso: { base_mensuelle:[12], ajouts:{...},
@@ -3574,6 +3596,63 @@ export function batteryRegimeInfo(
   const couvertureGlitchPct = finiteOrNull(b.couverture_glitch_pct);
   if (remplissageMoyenPct === null && couvertureGlitchPct === null) return null;
   return { remplissageMoyenPct, couvertureGlitchPct };
+}
+
+/** Un palier de capacité du mini-balayage de stockage — batterie « toujours pleine ». */
+export interface StoragePalier {
+  nbPacks: number;
+  capaciteKwh: number;
+  coutTtc: number | null;
+  remplissageMoyenPct: number | null;
+}
+
+/** Le premier palier REFUSÉ — au-delà, la batterie ne se rechargerait plus chaque jour. */
+export interface StoragePalierRefuse {
+  nbPacks: number;
+  capaciteKwh: number;
+  remplissagePireMoisPct: number | null;
+}
+
+/** Mini-balayage de stockage public : paliers retenus + premier refusé. */
+export interface StorageSweepInfo {
+  paliers: StoragePalier[];
+  refuse: StoragePalierRefuse | null;
+}
+
+/**
+ * `null` quand `balayage_stockage` est absent ou qu'aucun palier retenu ni
+ * refusé n'est lisible — rien à montrer, le sélecteur retombe sur son
+ * comportement historique (curseur 0..3 sans paliers réels).
+ */
+export function storageSweepInfo(
+  p: Pick<ProposalResponse, 'balayage_stockage'>,
+): StorageSweepInfo | null {
+  const b = p.balayage_stockage;
+  if (!b || typeof b !== 'object') return null;
+  const paliers: StoragePalier[] = [];
+  for (const raw of b.paliers ?? []) {
+    const nbPacks = finiteOrNull(raw?.nb_packs);
+    const capaciteKwh = finiteOrNull(raw?.capacite_kwh);
+    if (nbPacks === null || capaciteKwh === null) continue;
+    paliers.push({
+      nbPacks,
+      capaciteKwh,
+      coutTtc: finiteOrNull(raw?.cout_ttc),
+      remplissageMoyenPct: finiteOrNull(raw?.remplissage_moyen_pct),
+    });
+  }
+  let refuse: StoragePalierRefuse | null = null;
+  const nbPacksRefuse = finiteOrNull(b.refuse?.nb_packs);
+  const capaciteKwhRefuse = finiteOrNull(b.refuse?.capacite_kwh);
+  if (nbPacksRefuse !== null && capaciteKwhRefuse !== null) {
+    refuse = {
+      nbPacks: nbPacksRefuse,
+      capaciteKwh: capaciteKwhRefuse,
+      remplissagePireMoisPct: finiteOrNull(b.refuse?.remplissage_pire_mois_pct),
+    };
+  }
+  if (paliers.length === 0 && refuse === null) return null;
+  return { paliers, refuse };
 }
 
 /** Libellés FR des ajouts d'estimation de consommation — mêmes clés que le
