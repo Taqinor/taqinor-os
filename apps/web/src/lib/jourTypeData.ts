@@ -60,15 +60,48 @@ export const JOUR_TYPE_MONTH_LABELS: Record<JourTypeMonthId, { fr: string; ar: s
 };
 
 /**
- * Jeu de données — VIDE par construction (voir [HANDOFF] ci-dessus). Ne
- * jamais remplacer un `null` par une estimation « pour faire joli » : un
- * composant masqué est toujours préférable à un graphe qui ment.
+ * Jeu de données — GÉNÉRÉ le 2026-08-24 par l'orchestrateur du run, en
+ * exécutant réellement `apps.ventes.etude_horaire.jours_types_annee(
+ *   kwc=7.10, conso_kwh_mensuelles=[2070.5]*12, ville='Casablanca',
+ *   occupation='presence_jour')` sur le moteur calibré lot 4 (commit
+ * aed87896 de main) — les paramètres EXACTS du graphe validé fondateur du
+ * 24/08 (villa 10 panneaux, 3 500 DH/mois). Aucune valeur inventée : chaque
+ * nombre sort du moteur ; pour changer de profil, régénérer via le même
+ * appel et coller le résultat ici.
  */
 export const JOUR_TYPE_DATA: Record<JourTypeMonthId, JourTypeMonth | null> = {
-  1: null,
-  4: null,
-  7: null,
-  11: null,
+  1: {
+    consoKw: [1.16, 1.16, 1.16, 1.16, 1.16, 1.16, 1.45, 2.32, 2.9, 2.9, 3.19, 3.19, 3.91, 3.91, 3.91, 2.9, 2.9, 2.9, 3.48, 4.35, 5.22, 4.93, 3.48, 2.03],
+    prodKw: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.71, 1.9, 2.93, 3.69, 3.98, 3.88, 3.59, 2.93, 2.01, 0.74, 0.0, 0.0, 0.0, 0.0, 0.0],
+    consoJourKwh: 66.8,
+    prodJourKwh: 26.4,
+    autoconsommeKwh: 25.6,
+    surplusKwh: 0.79,
+  },
+  4: {
+    consoKw: [1.2, 1.2, 1.2, 1.2, 1.2, 1.2, 1.5, 2.4, 2.99, 2.99, 3.29, 3.29, 4.04, 4.04, 4.04, 2.99, 2.99, 2.99, 3.59, 4.49, 5.39, 5.09, 3.59, 2.1],
+    prodKw: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.03, 0.64, 1.63, 2.61, 3.49, 4.21, 4.61, 4.58, 4.21, 3.53, 2.51, 1.42, 0.41, 0.0, 0.0, 0.0, 0.0],
+    consoJourKwh: 69.0,
+    prodJourKwh: 33.9,
+    autoconsommeKwh: 30.6,
+    surplusKwh: 3.24,
+  },
+  7: {
+    consoKw: [1.16, 1.16, 1.16, 1.16, 1.16, 1.16, 1.45, 2.32, 2.9, 2.9, 3.19, 3.19, 3.91, 3.91, 3.91, 2.9, 2.9, 2.9, 3.48, 4.35, 5.22, 4.93, 3.48, 2.03],
+    prodKw: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.18, 0.71, 1.62, 2.64, 3.56, 4.3, 4.69, 4.65, 4.3, 3.63, 2.64, 1.59, 0.63, 0.14, 0.0, 0.0, 0.0],
+    consoJourKwh: 66.8,
+    prodJourKwh: 35.3,
+    autoconsommeKwh: 30.9,
+    surplusKwh: 4.41,
+  },
+  11: {
+    consoKw: [1.2, 1.2, 1.2, 1.2, 1.2, 1.2, 1.5, 2.4, 2.99, 2.99, 3.29, 3.29, 4.04, 4.04, 4.04, 2.99, 2.99, 2.99, 3.59, 4.49, 5.39, 5.09, 3.59, 2.1],
+    prodKw: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.03, 0.5, 1.25, 2.01, 2.69, 3.24, 3.55, 3.52, 3.24, 2.71, 1.93, 1.1, 0.31, 0.0, 0.0, 0.0, 0.0],
+    consoJourKwh: 69.0,
+    prodJourKwh: 26.1,
+    autoconsommeKwh: 25.8,
+    surplusKwh: 0.25,
+  },
 };
 
 function isValidHourlyShape(a: unknown): a is number[] {
