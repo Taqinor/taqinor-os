@@ -384,8 +384,26 @@ def _batterie_du_devis(devis):
     Seul le booléen pilote les règles (il l'a toujours fait) ; les trois
     autres valeurs servent UNIQUEMENT à nommer le matériel sur le schéma, et
     restent vides quand la fiche ne les donne pas.
+
+    RÉGIME ÉTABLI (lot4) — un parc de batteries compte souvent PLUSIEURS
+    unités (packs) en parallèle sur le même bus DC : une ligne « Batterie
+    stockage 10 kWh » avec ``quantite=3`` porte 30 kWh, pas 10. Avant ce
+    correctif, seule la fiche de l'UNITÉ était lue (``kwh_nominal`` brut),
+    quelle que soit la quantité commandée — un devis à 3 packs affichait le
+    même « 10,0 kWh » qu'un devis à un seul, sur une pièce technique montrée
+    au client. La capacité totale est désormais la somme, sur TOUTES les
+    lignes batterie du devis, de ``kwh_nominal × quantite`` (même convention
+    que ``quote_engine/builder._battery_kwh_from_items``, qui fait déjà ce
+    calcul pour l'estimation d'économies). La tension nominale, elle, ne se
+    somme pas : des packs en parallèle partagent la même tension de bus, donc
+    celle de la PREMIÈRE ligne batterie identifiée fait foi.
     """
     from apps.ventes import solar_design as sd
+    presente = False
+    kwh_total = 0.0
+    designation_ref = ""
+    produit_ref = None
+    v_nominal = 0.0
     for ligne in _lignes_du_devis(devis):
         designation = ligne.designation or ""
         produit = getattr(ligne, "produit", None)
@@ -393,13 +411,20 @@ def _batterie_du_devis(devis):
         if not (sd.is_battery(designation) or sd.is_battery(nom)):
             continue
         specs = _specs_produit(produit)
-        kwh = _flottant(specs.get("kwh_nominal"), 0.0)
-        return (True,
-                _designation_materiel(produit, designation or nom,
-                                      _texte_grandeur(kwh, "kWh", 1)),
-                kwh,
-                _flottant(specs.get("v_nominal"), 0.0))
-    return (False, "", 0.0, 0.0)
+        quantite = _flottant(getattr(ligne, "quantite", 1), 1.0) or 1.0
+        kwh_total += _flottant(specs.get("kwh_nominal"), 0.0) * quantite
+        if not presente:
+            designation_ref = designation or nom
+            produit_ref = produit
+            v_nominal = _flottant(specs.get("v_nominal"), 0.0)
+        presente = True
+    if not presente:
+        return (False, "", 0.0, 0.0)
+    return (True,
+            _designation_materiel(produit_ref, designation_ref,
+                                  _texte_grandeur(kwh_total, "kWh", 1)),
+            kwh_total,
+            v_nominal)
 
 
 # ── PVFCH — le VERROU DE COMPLÉTUDE de l'étude électrique ────────────────────
