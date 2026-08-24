@@ -95,8 +95,27 @@ def _kwc_du_devis(devis):
     return None
 
 
+def _serie_mensuelle(bloc, cle):
+    """Les 12 économies MAD/mois d'un bloc horaire, ou ``None``.
+
+    L-ECO — le moteur les calcule DÉJÀ mois par mois pour chaque silhouette
+    (``etude_horaire.calculer_etude_horaire`` → ``mois[i]['economie_*_mad']``) ;
+    on les recopie telles quelles pour que le bandeau « économies par période »
+    puisse décliner l'année, le mois et le jour type de CHAQUE profil sans
+    jamais relancer un calcul côté page. Une année incomplète (moins de douze
+    mois) ⇒ ``None`` : on omet plutôt que de servir un agrégat tronqué.
+    """
+    mois = (bloc or {}).get('mois')
+    if not isinstance(mois, list) or len(mois) != 12:
+        return None
+    valeurs = [_num((m or {}).get(cle)) for m in mois]
+    if any(v is None for v in valeurs):
+        return None
+    return valeurs
+
+
 def _mesures_du_bloc(bloc):
-    """Les six chiffres d'affichage d'un bloc horaire, ou ``None``.
+    """Les chiffres d'affichage d'un bloc horaire, ou ``None``.
 
     Whitelist STRICTE : rien d'autre que ces clés ne sort d'ici (aucun prix
     d'achat, aucune marge, aucune ligne de composition ne peut fuiter par
@@ -114,6 +133,13 @@ def _mesures_du_bloc(bloc):
     }
     if mesures['economie_sans_mad'] is None:
         return None
+    # L-ECO — ADDITIF, et seulement quand la série est complète : un bloc
+    # antérieur à cette couche reste lisible tel quel (clé simplement absente).
+    for cle, source in (('economies_mois_sans', 'economie_sans_mad'),
+                        ('economies_mois_avec', 'economie_avec_mad')):
+        serie = _serie_mensuelle(bloc, source)
+        if serie is not None:
+            mesures[cle] = serie
     return mesures
 
 

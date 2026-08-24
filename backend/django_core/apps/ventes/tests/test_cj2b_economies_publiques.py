@@ -169,6 +169,60 @@ class BlocServiQuandAncreTests(_CJ2bBase):
         self.assertEqual(em['avec'], [round(v) for v in brut['eco_a_monthly']])
 
 
+class LEcoEconomiesPeriodesTests(_CJ2bBase):
+    """L-ECO (fondateur, 24/08/2026) — le bandeau « économies par période »
+    est bien SERVI par l'API, et chacune de ses valeurs est une PASSE DIRECTE
+    des douze mois déjà servis. La moitié pure (année = somme des mois, jour
+    type = mois ÷ jours, retour d'investissement) vit dans
+    ``test_leco_economies_periodes.py`` ; ici on épingle le CÂBLAGE."""
+
+    def test_le_bandeau_decline_exactement_les_douze_mois_servis(self):
+        devis, link = self._devis(
+            'leco-periodes', scenario='Les deux (Sans + Avec)')
+        rafraichir_etude_horaire_devis(devis)
+
+        payload = self._payload(link)
+        self.assertIn('economies_periodes', payload)
+        ep = payload['economies_periodes']
+        em = payload['economies_mensuelles']
+
+        self.assertEqual([m['mad'] for m in ep['sans']['mois']], em['sans'])
+        self.assertEqual(ep['sans']['annuel_mad'], sum(em['sans']))
+        self.assertEqual([m['mad'] for m in ep['avec']['mois']], em['avec'])
+        self.assertEqual(ep['avec']['annuel_mad'], sum(em['avec']))
+        self.assertEqual(ep['devise'], 'MAD')
+        self.assertEqual(ep['modele'], em['modele'])
+        self.assertEqual(ep['estimation'], em['estimation'])
+
+    def test_le_retour_investissement_est_celui_deja_servi(self):
+        """AUCUNE troisième définition du payback : la valeur du bandeau est
+        celle que la page affiche déjà en « Rentabilisé en X ans »."""
+        devis, link = self._devis(
+            'leco-payback', scenario='Les deux (Sans + Avec)')
+        rafraichir_etude_horaire_devis(devis)
+
+        payload = self._payload(link)
+        ep = payload['economies_periodes']
+        for variante, cle in (('sans', 'roi_s'), ('avec', 'roi_a')):
+            attendu = payload.get('quote', {}).get(cle)
+            with self.subTest(variante=variante):
+                if isinstance(attendu, (int, float)) and attendu > 0:
+                    self.assertEqual(
+                        ep[variante]['retour_investissement_ans'],
+                        round(float(attendu), 1))
+                else:
+                    self.assertNotIn('retour_investissement_ans',
+                                     ep[variante])
+
+    def test_sans_ancrage_le_bandeau_est_absent(self):
+        """Hérite l'omission Z2 d'``economies_mensuelles`` : pas de mois
+        servables ⇒ clé ABSENTE, jamais un bandeau à zéro."""
+        _devis, link = self._devis('leco-vide', avec_lead=False)
+        payload = self._payload(link)
+        self.assertNotIn('economies_mensuelles', payload)
+        self.assertNotIn('economies_periodes', payload)
+
+
 class BlocAbsentSansAncrageTests(_CJ2bBase):
     """Z2 (ORDRE FONDATEUR, 20/08/2026) — sans AUCUNE donnée réelle d'ancrage
     (ni facture, ni conso saisie, ni bloc horaire), la clé ne doit JAMAIS
