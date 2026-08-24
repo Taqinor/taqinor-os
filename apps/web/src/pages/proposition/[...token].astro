@@ -739,10 +739,16 @@ const joursTypes = ok ? proposalJoursTypes(data!) : null;
 // une nouvelle clé : `null` quand rien n'est servi (aucune n'est « choisie »).
 const occSilhouetteMax = Math.max(...OCCUPANCY_IDS.flatMap((id) => OCCUPANCY_SHAPES[id] as readonly number[]));
 const clientOccupancyChoice: OccupancyId | null = curveMode === 'residentiel' ? (dailyCurves?.occupation ?? null) : null;
-// Couleurs validées fondateur (24/08) — hissées ici : un objet littéral dans un
-// `${{ … }}` d'attribut casse le compilateur Astro (rouge web-build-test).
+// Couleurs validées fondateur (24/08) — hissées ici : une annotation GÉNÉRIQUE
+// (`Record<…>`) dans une expression du TEMPLATE casse le compilateur Astro
+// (il lit `<OccupancyId…>` comme une balise) — rouge web-build-test.
 const OCC_STROKES: Record<OccupancyId, string> = {
   presence_jour: '#2a78d6', absence_jour: '#eb6834', presence_partielle: '#1baf7a',
+};
+const OCC_CURVE_STYLE: Record<OccupancyId, { stroke: string; dash: string | null; fill?: string }> = {
+  presence_jour: { stroke: '#2a78d6', dash: null, fill: 'rgba(42,120,214,0.10)' },
+  absence_jour: { stroke: '#eb6834', dash: '6,3' },
+  presence_partielle: { stroke: '#1baf7a', dash: '2,3' },
 };
 
 // ── WJ14 — Impact environnemental humain (CO₂ ≈ arbres), depuis la production ─
@@ -2557,12 +2563,7 @@ const signConfig = ok
                 aria-label="Poids de forme (sans unité) des trois profils d’occupation, sur 24 h">
                 {OCCUPANCY_IDS.map((id) => {
                   const shape = OCCUPANCY_SHAPES[id];
-                  const colors: Record<OccupancyId, { stroke: string; dash: string | null; fill?: string }> = {
-                    presence_jour: { stroke: '#2a78d6', dash: null, fill: 'rgba(42,120,214,0.10)' },
-                    absence_jour: { stroke: '#eb6834', dash: '6,3' },
-                    presence_partielle: { stroke: '#1baf7a', dash: '2,3' },
-                  };
-                  const c = colors[id];
+                  const c = OCC_CURVE_STYLE[id];
                   const w = 320; const h = 140; const pad = 8;
                   const x = (i: number) => pad + (i / (shape.length - 1)) * (w - 2 * pad);
                   const y = (v: number) => pad + (1 - (occSilhouetteMax > 0 ? v / occSilhouetteMax : 0)) * (h - 2 * pad);

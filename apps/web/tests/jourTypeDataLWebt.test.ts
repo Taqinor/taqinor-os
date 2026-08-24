@@ -54,7 +54,8 @@ describe('hasJourTypeData — zero-invented-number guarantee', () => {
   it('stays false when only some months are filled (no half-rendered comparison grid)', () => {
     JOUR_TYPE_DATA[1] = fakeMonth();
     JOUR_TYPE_DATA[4] = fakeMonth();
-    // 7 and 11 stay null
+    JOUR_TYPE_DATA[7] = null;
+    JOUR_TYPE_DATA[11] = null;
     expect(hasJourTypeData()).toBe(false);
   });
 
