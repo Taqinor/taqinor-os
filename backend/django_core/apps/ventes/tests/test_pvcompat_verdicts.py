@@ -214,8 +214,15 @@ class SeveriteDuNoyauTest(SimpleTestCase):
     * **Isc** au-dessus de la borne de court-circuit PUBLIÉE = la fiche
       constructeur n'autorise pas ce montage : BLOQUANT.
 
-    Les deux cas ci-dessous tournent sur le MÊME onduleur réel (Deye 10 kW,
-    26 A par entrée, 39 A d'Isc admissible) : seul le nombre de chaînes change.
+    Le cas d'écrêtage tourne sur l'onduleur réel (Deye 10 kW, 26 A par entrée,
+    39 A d'Isc admissible). Le cas BLOQUANT, lui, tourne sur le montage
+    ``_onduleur_isc_etroit_fictif`` (17 A d'Isc publiés) : depuis la règle
+    fondateur du 24/08/2026 (chaîne UNIQUE tant que la tension l'admet, plus
+    aucun split pour « occuper les deux entrées »), le moteur pose 3 chaînes de
+    10 sur le Deye 10 kW au lieu de 6 chaînes de 5 — l'Isc cumulé y reste sous
+    les 39 A publiés. La configuration n'est donc plus hors spécification : ce
+    serait mentir que de continuer à l'exiger. La RÈGLE, elle, reste armée sur
+    le montage anonyme prévu exactement pour ça.
     """
 
     def test_ecretage_sur_l_imp_est_une_alerte(self):
@@ -233,16 +240,16 @@ class SeveriteDuNoyauTest(SimpleTestCase):
         self.assertEqual(verdicts['bloquants'], [])
 
     def test_isc_hors_borne_publiee_est_un_bloquant(self):
-        """30 × 710 Wc = 3 chaînes par entrée : Isc 55,8 A > 39 A publiés —
+        """30 × 710 Wc = 3 chaînes par entrée : Isc 55,8 A > 17 A publiés —
         hors spécification matérielle, donc BLOQUANT."""
         module = sd.specs_module_pour_produit(_panneau_710())
         fenetre = sd.fenetre_onduleur_pour_produit(
-            _onduleur(13, 'Onduleur hybride Deye 10kW Triphasé'))
+            _onduleur_isc_etroit_fictif())
         verdicts = sd.verdicts_chaines(30, module=module, inverter=fenetre)
         self.assertTrue(verdicts['bloquants'])
         joint = ' '.join(verdicts['bloquants'])
         self.assertIn('55,8 A', joint)
-        self.assertIn('39,0 A', joint)
+        self.assertIn('17,0 A', joint)
         # Le verdict de courant reste LISIBLE dans la liste dédiée : le message
         # le plus grave ne doit pas être le seul à disparaître des warnings.
         self.assertTrue(any('Isc cumulé' in c

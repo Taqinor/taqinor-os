@@ -20,6 +20,25 @@ from core.electrique.types import fr, fr_a, fr_v
 __all__ = ["note_de_calcul"]
 
 
+def _plafond(borne):
+    """« … modules au plus », ou l'aveu que la fiche ne permet pas de le dire.
+
+    Une borne à ``None`` n'est pas une borne à zéro : c'est une tension absente
+    des fiches. La note l'ÉCRIT plutôt que de laisser croire à une limite
+    calculée (règle fondateur « zéro chiffre inventé »).
+    """
+    if borne is None:
+        return "borne NON VÉRIFIABLE, tension absente de la fiche"
+    return "%d modules au plus" % borne
+
+
+def _plancher(borne):
+    """« … modules au moins », même règle que ``_plafond``."""
+    if borne is None:
+        return "borne NON VÉRIFIABLE, tension absente de la fiche"
+    return "%d modules au moins" % borne
+
+
 def note_de_calcul(entree, resultat_chaines=None, evaluation=None,
                    resultat_protections=None, resultat_cables=None,
                    resultat_nomenclature=None):
@@ -41,23 +60,23 @@ def note_de_calcul(entree, resultat_chaines=None, evaluation=None,
                fenetre.texte))
         lignes.append(
             "borne haute — Voc à froid %s par module, tension maximale "
-            "onduleur %s : %d modules au plus"
+            "onduleur %s : %s"
             % (fr_v(fenetre.voc_froid_unitaire_v, 2),
-               fr_v(onduleur.v_max_abs), fenetre.max_par_voc))
+               fr_v(onduleur.v_max_abs), _plafond(fenetre.max_par_voc)))
         lignes.append(
             "borne haute — Vmp à froid %s par module, haut de plage MPPT %s : "
-            "%d modules au plus"
+            "%s"
             % (fr_v(fenetre.vmp_froid_unitaire_v, 2),
-               fr_v(onduleur.mppt_v_max), fenetre.max_par_mppt))
+               fr_v(onduleur.mppt_v_max), _plafond(fenetre.max_par_mppt)))
         lignes.append(
             "borne basse — Vmp à chaud %s par module, bas de plage MPPT %s : "
-            "%d modules au moins"
+            "%s"
             % (fr_v(fenetre.vmp_chaud_unitaire_v, 2),
-               fr_v(onduleur.mppt_v_min), fenetre.min_par_mppt))
+               fr_v(onduleur.mppt_v_min), _plancher(fenetre.min_par_mppt)))
         lignes.append(
-            "borne basse — tension de démarrage onduleur %s : %d modules au "
-            "moins" % (fr_v(onduleur.tension_demarrage_v),
-                       fenetre.min_par_demarrage))
+            "borne basse — tension de démarrage onduleur %s : %s"
+            % (fr_v(onduleur.tension_demarrage_v),
+               _plancher(fenetre.min_par_demarrage)))
 
     if resultat_chaines is not None:
         if resultat_chaines.longueur_forcee is not None:
