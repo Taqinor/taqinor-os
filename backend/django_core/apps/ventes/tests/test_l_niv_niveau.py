@@ -70,6 +70,27 @@ def make_devis(company, user, client, reference, roof_layout=None):
     return devis
 
 
+def add_kit_lines(devis):
+    """Lignes fixation/câblage/protection — celles que le niveau standard
+    doit AGRÉGER en une seule ligne « Kit de fixation, câblage et protection
+    complet », au sous-total EXACT."""
+    for desig, qty, pu in [
+        ('Rail de fixation aluminium', '20', '35'),
+        ('Câble DC 6mm² rouge/noir', '30', '4.5'),
+        ('Disjoncteur AC 20A tétrapolaire', '1', '180'),
+    ]:
+        produit = Produit.objects.create(
+            company=devis.company, nom=desig,
+            sku=f'{devis.reference[-6:]}-K-{desig[:6]}',
+            prix_vente=Decimal(pu), prix_achat=Decimal('1'),
+            quantite_stock=99)
+        LigneDevis.objects.create(
+            devis=devis, produit=produit, designation=desig,
+            quantite=Decimal(qty), prix_unitaire=Decimal(pu),
+            remise=Decimal('0'))
+    return devis
+
+
 def sample_layout():
     return {
         'version': 1, 'scenario': 'reseau',
@@ -217,3 +238,78 @@ class TestProposalDataNiveau(TestCase):
 
     def _devis_no_layout(self, ref='DEV-LNIV-NOLAY'):
         return make_devis(self.company, self.user, self.client_obj, ref)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# (d) chantier 3 — agrégation des lignes kit (fixation/câblage/protection)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestKitLineAggregation(TestCase):
+    def setUp(self):
+        self.company = make_company('lniv-kit')
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+
+    def _payload(self, devis, niveau):
+        token = str(uuid.uuid4())
+        ShareLink.objects.create(
+            company=self.company, devis=devis, token=token, niveau=niveau)
+        resp = DjangoClient().get(f'/api/django/public/proposal/{token}/')
+        self.assertEqual(resp.status_code, 200)
+        return resp.json()
+
+    def _kit_designations(self):
+        return {'Rail de fixation aluminium',
+                'Câble DC 6mm² rouge/noir',
+                'Disjoncteur AC 20A tétrapolaire'}
+
+    def _items(self, payload):
+        return (payload['quote'].get('sans_items')
+                or payload['quote'].get('avec_items') or [])
+
+    def test_standard_aggregates_kit_lines_into_one(self):
+        devis = add_kit_lines(make_devis(
+            self.company, self.user, self.client_obj, 'DEV-LNIV-KIT1'))
+        payload = self._payload(devis, ShareLink.NIVEAU_STANDARD)
+        items = self._items(payload)
+        designations = {it['designation'] for it in items}
+        self.assertIn('Kit de fixation, câblage et protection complet',
+                      designations)
+        self.assertFalse(designations & self._kit_designations(),
+                         "les lignes kit individuelles ne doivent plus "
+                         "apparaître au niveau standard")
+
+    def test_confiance_keeps_kit_lines_separate(self):
+        devis = add_kit_lines(make_devis(
+            self.company, self.user, self.client_obj, 'DEV-LNIV-KIT2'))
+        payload = self._payload(devis, ShareLink.NIVEAU_CONFIANCE)
+        designations = {it['designation'] for it in self._items(payload)}
+        self.assertTrue(self._kit_designations() <= designations)
+        self.assertNotIn('Kit de fixation, câblage et protection complet',
+                         designations)
+
+    def test_aggregated_line_subtotal_equals_exact_sum(self):
+        devis = add_kit_lines(make_devis(
+            self.company, self.user, self.client_obj, 'DEV-LNIV-KIT3'))
+        confiance = self._payload(devis, ShareLink.NIVEAU_CONFIANCE)
+        standard = self._payload(devis, ShareLink.NIVEAU_STANDARD)
+        kit_names = self._kit_designations()
+        somme_ht_attendue = sum(
+            it['quantite'] * it['prix_unit_ht']
+            for it in self._items(confiance) if it['designation'] in kit_names)
+        agregee = next(
+            it for it in self._items(standard)
+            if it['designation'] == 'Kit de fixation, câblage et protection complet')
+        self.assertAlmostEqual(
+            agregee['quantite'] * agregee['prix_unit_ht'],
+            somme_ht_attendue, places=2)
+
+    def test_overall_total_unaffected_by_aggregation(self):
+        devis = add_kit_lines(make_devis(
+            self.company, self.user, self.client_obj, 'DEV-LNIV-KIT4'))
+        confiance = self._payload(devis, ShareLink.NIVEAU_CONFIANCE)
+        standard = self._payload(devis, ShareLink.NIVEAU_STANDARD)
+        self.assertEqual(
+            confiance['quote']['total_ht'], standard['quote']['total_ht'])
+        self.assertEqual(
+            confiance['quote']['total_ttc'], standard['quote']['total_ttc'])

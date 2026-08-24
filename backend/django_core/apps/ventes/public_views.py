@@ -691,6 +691,71 @@ _PUBLIC_CABLE = ('liaison', 'section_mm2', 'longueur_m')
 _PUBLIC_PROTECTION_STANDARD = ('repere', 'designation', 'quantite')
 
 
+#: L-NIV (fondateur 24/08/2026) — mots-clés identifiant une ligne « kit »
+#: (structure de fixation, câblage, protection) parmi les lignes du devis.
+#: Alignés sur le vocabulaire du générateur de nomenclature accessoire
+#: (``solar_design.compute_bom`` : catégories « Structure », « Protection AC/
+#: DC », « Coffret », « Mise à la terre », « Batterie »/« Protection
+#: batterie ») — même discipline que ``solar.js`` vs ``quote_engine/
+#: builder.py`` (CLAUDE.md) : les deux vocabulaires restent alignés à la main.
+_KIT_KEYWORDS = (
+    'fixation', 'rail', 'crochet', 'pince',
+    'câblage', 'cablage', 'câble', 'cable', 'gaine', 'goulotte',
+    'presse-étoupe', 'presse étoupe', 'connecteur mc4',
+    'protection', 'disjoncteur', 'parafoudre', 'sectionneur', 'fusible',
+    'différentiel', 'coffret', 'mise à la terre', 'terre',
+)
+
+
+def _est_ligne_kit(designation):
+    d = (designation or '').lower()
+    return any(mot in d for mot in _KIT_KEYWORDS)
+
+
+def _agreger_lignes_kit(items):
+    """L-NIV — regroupe les lignes fixation/câblage/protection d'``items`` en
+    UNE ligne « Kit de fixation, câblage et protection complet », au
+    sous-total EXACT (somme HT/TTC préservée — testé). Les autres lignes
+    (panneaux, onduleur, batterie…) restent inchangées, à leur place. Moins
+    de deux lignes « kit » → ``items`` inchangé (rien à agréger)."""
+    if not items:
+        return items
+    kit_indices = [i for i, it in enumerate(items)
+                   if _est_ligne_kit(it.get('designation'))]
+    if len(kit_indices) < 2:
+        return items
+    from decimal import Decimal
+    kit = [items[i] for i in kit_indices]
+    total_ht = sum(
+        (Decimal(str(it.get('quantite', 0) or 0))
+         * Decimal(str(it.get('prix_unit_ht', 0) or 0))) for it in kit)
+    total_ttc = sum(
+        (Decimal(str(it.get('quantite', 0) or 0))
+         * Decimal(str(it.get('prix_unit_ttc', 0) or 0))) for it in kit)
+    ligne_agregee = {
+        'designation': 'Kit de fixation, câblage et protection complet',
+        'marque': '', 'description': '', 'garantie': '',
+        'garantie_mois': None, 'garantie_production_mois': None,
+        'quantite': 1.0,
+        'prix_unit_ht': float(round(total_ht, 2)),
+        'prix_unit_ttc': float(round(total_ttc, 2)),
+        'taux_tva': kit[0].get('taux_tva', 20),
+        'ordre': min((it.get('ordre', 0) or 0) for it in kit),
+        '_produit_nom': '',
+    }
+    kit_set = set(kit_indices)
+    out = []
+    inserted = False
+    for i, it in enumerate(items):
+        if i in kit_set:
+            if not inserted:
+                out.append(ligne_agregee)
+                inserted = True
+            continue
+        out.append(it)
+    return out
+
+
 def _liste_blanche(source, champs):
     """Projette une liste de dicts sur ``champs`` — valeur absente = clé OMISE.
 
@@ -1122,6 +1187,17 @@ def _note_economies_mensuelles(modele, source_consommation, estimation):
             'plus précis.')
 
 
+def _note_economies_mensuelles_standard():
+    """L-NIV (24/08/2026) — méthodologie NEUTRE (niveau standard) : ni
+    « PVGIS », ni « heure par heure », ni « tranches » — la mécanique interne
+    du moteur n'est pas montrable à un prospect pas encore qualifié. Les 12
+    valeurs MAD/mois, elles, restent EXACTEMENT les mêmes (règle fondateur :
+    les chiffres ne changent jamais, seul le texte de méthode se neutralise)."""
+    return ('Estimation basée sur votre profil de consommation et la '
+            'production estimée de votre installation, répartie sur les '
+            'douze mois selon un profil saisonnier type.')
+
+
 def _tranche_tarifaire_publique(dimensionnement):
     """L-BACK T4 (24/08/2026) — sous-ensemble PUBLIC, client-safe, du bloc
     « falaise » de ``apps.ventes.dimensionnement.recommander_taille`` (déjà
@@ -1256,7 +1332,8 @@ def _jours_types_publique(devis):
         return None
 
 
-def _economies_mensuelles_publiques(devis, data, synthese):
+def _economies_mensuelles_publiques(devis, data, synthese,
+                                    niveau=ShareLink.NIVEAU_CONFIANCE):
     """CJ2b (fondateur, 21/08/2026) — bloc ``economies_mensuelles`` : les 12
     valeurs MAD/mois sans/avec batterie « qu'on ne voit ni ... calculée ni la
     donnée pvgis ». JAMAIS un second calcul : ``sans``/``avec`` viennent tels
@@ -1278,7 +1355,7 @@ def _economies_mensuelles_publiques(devis, data, synthese):
     if synthese is None:
         return None
     try:
-        return _economies_mensuelles_calcul(devis, data)
+        return _economies_mensuelles_calcul(devis, data, niveau)
     except Exception:  # noqa: BLE001 — voir ci-dessous
         # UN BLOC D'AFFICHAGE ADDITIF NE FAIT JAMAIS TOMBER LA PAGE CLIENT.
         # Cet appel vit dans le grand ``try`` de ``proposal_data``, dont le
@@ -1290,7 +1367,7 @@ def _economies_mensuelles_publiques(devis, data, synthese):
         return None
 
 
-def _economies_mensuelles_calcul(devis, data):
+def _economies_mensuelles_calcul(devis, data, niveau=ShareLink.NIVEAU_CONFIANCE):
     """Cœur de :func:`_economies_mensuelles_publiques` (exceptions gérées
     au-dessus)."""
     sans = data.get('eco_s_monthly')
@@ -1329,8 +1406,12 @@ def _economies_mensuelles_calcul(devis, data):
         'devise': 'MAD',
         'modele': modele,
         'estimation': estimation,
-        'note': _note_economies_mensuelles(
-            modele, source_consommation, estimation),
+        'note': (
+            _note_economies_mensuelles_standard()
+            if niveau == ShareLink.NIVEAU_STANDARD
+            else _note_economies_mensuelles(
+                modele, source_consommation, estimation)
+        ),
     }
 
 
@@ -1406,6 +1487,18 @@ def proposal_data(request, token):
         # AUCUN document ne franchit plus la frontière publique. Les
         # avertissements internes (devis à assainir) restent côté vendeur.
         data.pop('avertissements_internes', None)
+        # L-NIV (24/08/2026) — niveau « standard » : les lignes fixation /
+        # câblage / protection se REGROUPENT en une seule ligne « Kit de
+        # fixation, câblage et protection complet », au sous-total EXACT
+        # (aucun chiffre perdu — un test somme les lignes). Les totaux
+        # ``totaux_sans``/``totaux_avec`` ci-dessus sont déjà figés PLUS HAUT
+        # par le moteur (avant cette dégradation) : ils restent identiques
+        # entre les deux niveaux, seule la granularité d'affichage change.
+        if est_standard:
+            if data.get('sans_items'):
+                data['sans_items'] = _agreger_lignes_kit(data['sans_items'])
+            if data.get('avec_items'):
+                data['avec_items'] = _agreger_lignes_kit(data['avec_items'])
         # ── Z2 (ORDRE FONDATEUR, 20/08/2026) — la proposition en ligne HÉRITE de
         # l'omission du PDF. La synthèse (−N %, avant/après, couverture) est déjà
         # None ci-dessus, mais la page lit AUSSI `quote.eco_s_ann`/`eco_a_ann`/
@@ -1640,7 +1733,7 @@ def proposal_data(request, token):
         # ci-dessus : même patron additif — la clé n'est AJOUTÉE que lorsque la
         # couche économique est servable (hérite l'ancrage Z2 de `synthese`,
         # déjà calculé plus haut), sinon la page garde son affichage actuel.
-        _economies = _economies_mensuelles_publiques(devis, data, synthese)
+        _economies = _economies_mensuelles_publiques(devis, data, synthese, niveau)
         if _economies is not None:
             payload['economies_mensuelles'] = _economies
         # L-BACK T4 (24/08/2026) — quatre clés PUBLIC-SAFE de plus, MÊME
