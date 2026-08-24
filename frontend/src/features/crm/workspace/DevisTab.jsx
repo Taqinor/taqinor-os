@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import {
-  Zap, FileText, Link2, Check, ExternalLink, MessageCircle, Eye,
+  Zap, FileText, Link2, Check, ExternalLink, MessageCircle, Eye, Send,
 } from 'lucide-react'
 import {
   Button, Checkbox, Input, StatusPill,
@@ -85,6 +85,35 @@ export function devisTrackCurrent(d) {
 // eslint-disable-next-line react-refresh/only-export-components -- réexport de logique pure (testable), même motif que ChatterTimeline.OUTCOME_LABELS
 export { DEVIS_AUTO_FIELD_IDS, missingFieldTarget } from './missingFields'
 
+// ── L-SECT (fondateur 24/08/2026) — « le commercial choisit ce que le client
+// reçoit avant d'envoyer la page devis ». Les 7 sections cochables du dialogue
+// « Envoyer au client », dans l'ordre où elles apparaissent sur la page client.
+// Les clés sont EXACTEMENT la whitelist serveur (ShareLink.SECTIONS_CLES) : une
+// clé inconnue est refusée en 400, donc les deux listes ne peuvent pas diverger
+// en silence.
+// eslint-disable-next-line react-refresh/only-export-components -- constante co-localisée (testable), même motif que DEVIS_MINI_TRACK
+export const SECTIONS_ENVOI = [
+  { key: 'roof3d', label: 'Calepinage 3D' },
+  { key: 'sld', label: 'Schéma unifilaire' },
+  { key: 'pdf', label: 'PDF téléchargeable' },
+  { key: 'bankable', label: 'Étude bancable' },
+  { key: 'economies', label: "Synthèse d'économies" },
+  { key: 'jour_type', label: 'Journée type & courbes' },
+  { key: 'gammes', label: 'Comparatif de gammes' },
+]
+
+// L-SECT — les 7 cases sont COCHÉES par défaut (le client reçoit tout), et
+// l'état d'un lien déjà envoyé prime : une clé absente du serveur vaut « servie »
+// (même sémantique à trois états que `ShareLink.section_servie`), une clé à
+// False décoche la case. Fonction pure → testable sans rendu.
+// eslint-disable-next-line react-refresh/only-export-components -- logique pure co-localisée (testable)
+export function sectionsDepuisServeur(sections) {
+  const src = sections && typeof sections === 'object' ? sections : {}
+  return Object.fromEntries(
+    SECTIONS_ENVOI.map(({ key }) => [key, src[key] !== false]),
+  )
+}
+
 // eslint-disable-next-line react-refresh/only-export-components -- logique pure co-localisée (testable)
 export function waArmed(phone, selectedCount) {
   return !!normalizeMaPhone(phone) && selectedCount > 0
@@ -161,15 +190,36 @@ export default function DevisTab({
   const getNiveau = (d) => niveauSel[d.id] ?? serverLinkMeta(d)?.niveau ?? 'standard'
   const getOtp = (d) => otpSel[d.id] ?? serverLinkMeta(d)?.otp_lecture ?? false
 
+  // L-SECT — dialogue « Envoyer au client » : quel devis est ouvert, et quelles
+  // sections sont cochées pour lui. Comme le niveau, le choix local prime, et à
+  // défaut on repart de l'état RÉEL du lien déjà connu du serveur
+  // (`share_link.sections`) plutôt que des défauts — rouvrir le dialogue sur un
+  // lien déjà envoyé montre ce que le client reçoit VRAIMENT aujourd'hui.
+  const [envoiOuvert, setEnvoiOuvert] = useState(null) // id du devis | null
+  const [sectionsSel, setSectionsSel] = useState({}) // id -> { clé: bool }
+  const getSections = (d) => (
+    sectionsSel[d.id] ?? sectionsDepuisServeur(currentLinkMeta(d)?.sections)
+  )
+  const onSectionChange = (d, cle, valeur) => {
+    setSectionsSel((cur) => ({
+      ...cur, [d.id]: { ...getSections(d), [cle]: !!valeur },
+    }))
+  }
+
   // Mint (ou réutilise — idempotent côté serveur) le ShareLink du devis, AU
   // niveau/OTP actuellement choisis pour CE devis, et renvoie l'URL ABSOLUE
   // de la page client (chemin_proposition backend), MÊME lien que celui déjà
   // envoyé par email/WhatsApp/l'outil 3D.
   const mintProposalUrl = async (d) => {
-    const res = await ventesApi.shareLinkDevis(d.id, { niveau: getNiveau(d), otp_lecture: getOtp(d) })
+    const res = await ventesApi.shareLinkDevis(d.id, {
+      niveau: getNiveau(d), otp_lecture: getOtp(d), sections: getSections(d),
+    })
     setLinkMeta((cur) => ({
       ...cur,
-      [d.id]: { niveau: res.data?.niveau, otp_lecture: res.data?.otp_lecture, token: res.data?.token },
+      [d.id]: {
+        niveau: res.data?.niveau, otp_lecture: res.data?.otp_lecture,
+        token: res.data?.token, sections: res.data?.sections,
+      },
     }))
     return clientProposalUrl(res.data?.path, PUBLIC_SITE_URL)
   }
@@ -186,10 +236,15 @@ export default function DevisTab({
     setLinkBusy(`n-${d.id}`)
     setActionMsg(null)
     try {
-      const res = await ventesApi.shareLinkDevis(d.id, { niveau, otp_lecture: otpLecture })
+      const res = await ventesApi.shareLinkDevis(d.id, {
+        niveau, otp_lecture: otpLecture, sections: getSections(d),
+      })
       setLinkMeta((cur) => ({
         ...cur,
-        [d.id]: { niveau: res.data?.niveau, otp_lecture: res.data?.otp_lecture, token: res.data?.token },
+        [d.id]: {
+          niveau: res.data?.niveau, otp_lecture: res.data?.otp_lecture,
+          token: res.data?.token, sections: res.data?.sections,
+        },
       }))
     } catch (err) {
       setActionMsg(errorMessageFrom(err, 'Changement de niveau impossible.'))
@@ -393,33 +448,11 @@ export default function DevisTab({
                 <span className="num">{formatMAD(d.total_ttc, { decimals: 0 })}</span>
                 <span className="lw-context-devis-date">{formatDate(d.date_creation)}</span>
               </div>
-              {/* L-NIV-UI — niveau de la page client (contrat L-NIV) : choix
-                  AVANT mint, et re-postable après (le lien reste le même —
-                  seul le niveau affiché au client change). Jamais de chiffre
-                  différent entre niveaux : la seule différence est le
-                  dimensionnement technique masqué ou non. */}
-              <div className="lw-context-devis-niveau">
-                <label className="lw-context-devis-niveau-select">
-                  <select
-                    value={getNiveau(d)}
-                    disabled={linkBusy === `n-${d.id}`}
-                    aria-label={`Niveau de la page client de ${d.reference}`}
-                    onChange={(e) => onNiveauChange(d, e.target.value)}
-                  >
-                    <option value="standard">Standard (prospect)</option>
-                    <option value="confiance">Confiance (après contact réel)</option>
-                  </select>
-                </label>
-                <label className="lw-context-devis-otp">
-                  <Checkbox
-                    checked={getOtp(d)}
-                    disabled={linkBusy === `n-${d.id}`}
-                    onCheckedChange={(v) => onOtpChange(d, !!v)}
-                    aria-label={`Exiger un code de lecture pour la page client de ${d.reference}`}
-                  />
-                  Exiger un code de lecture (OTP)
-                </label>
-                {currentLinkMeta(d) && (
+              {/* L-NIV-UI — badge d'état du lien, TOUJOURS visible sur la carte
+                  (le dialogue d'envoi ci-dessous n'a pas à être ouvert pour
+                  savoir ce que le client reçoit aujourd'hui). */}
+              {currentLinkMeta(d) && (
+                <div className="lw-context-devis-niveau">
                   <span
                     className="lw-context-devis-niveau-badge"
                     title="Le lien reste le même — seul le niveau affiché au client change."
@@ -427,46 +460,19 @@ export default function DevisTab({
                     {currentLinkMeta(d).niveau === 'confiance' ? 'Confiance' : 'Standard'}
                     {currentLinkMeta(d).otp_lecture ? ' · OTP' : ''}
                   </span>
-                )}
-              </div>
-              <p className="gen-hint lw-context-devis-niveau-hint">
-                {getNiveau(d) === 'confiance'
-                  ? 'Confiance : dossier technique complet.'
-                  : 'Standard : masque le dimensionnement détaillé — marques et prix complets visibles.'}
-              </p>
-              {/* L5 — TOUJOURS visibles (jamais réservées à l'outil 3D) : le
-                  lien de la page client, son bouton WhatsApp, et l'aperçu
-                  interne qui n'enclenche aucune notification. */}
+                </div>
+              )}
+              {/* L-SECT (fondateur 24/08/2026) — TOUT l'envoi passe par UN
+                  dialogue : le commercial choisit le niveau, l'OTP et les
+                  sections que le client reçoit, PUIS copie / ouvre / envoie.
+                  L'aperçu interne reste hors dialogue : il ne touche jamais le
+                  ShareLink public, ce n'est pas un envoi. */}
               <div className="lw-context-devis-links">
                 <Button
-                  type="button" size="sm" variant="outline"
-                  disabled={linkBusy === `l-${d.id}`}
-                  title="Copier le lien de la page client (page devis web publique)"
-                  onClick={() => copierPageClient(d)}
+                  type="button" size="sm" variant="default"
+                  onClick={() => setEnvoiOuvert(d.id)}
                 >
-                  {copiedId === d.id
-                    ? <Check size={14} aria-hidden="true" />
-                    : <Link2 size={14} aria-hidden="true" />}
-                  {copiedId === d.id ? 'Copié' : 'Page client'}
-                </Button>
-                <Button
-                  type="button" size="sm" variant="ghost"
-                  disabled={linkBusy === `o-${d.id}`}
-                  aria-label={`Ouvrir la page client de ${d.reference} dans un nouvel onglet`}
-                  title="Ouvrir la VRAIE page client (compte comme une lecture côté suivi — pour regarder sans notifier, utilisez l'aperçu interne)"
-                  onClick={() => ouvrirPageClient(d)}
-                >
-                  <ExternalLink size={14} aria-hidden="true" />
-                </Button>
-                <Button
-                  type="button" size="sm" variant="outline"
-                  disabled={!leadPhoneOk || linkBusy === `w-${d.id}`}
-                  title={leadPhoneOk
-                    ? 'Envoyer le lien de la page client par WhatsApp'
-                    : 'Aucun numéro de téléphone exploitable'}
-                  onClick={() => envoyerWhatsAppUnique(d)}
-                >
-                  <MessageCircle size={14} aria-hidden="true" /> WhatsApp
+                  <Send size={14} aria-hidden="true" /> Envoyer au client
                 </Button>
                 <Button
                   type="button" size="sm" variant="outline"
@@ -476,6 +482,107 @@ export default function DevisTab({
                   <Eye size={14} aria-hidden="true" /> Aperçu interne (sans notification)
                 </Button>
               </div>
+              <Dialog
+                open={envoiOuvert === d.id}
+                onOpenChange={(o) => setEnvoiOuvert(o ? d.id : null)}
+              >
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Envoyer au client</DialogTitle>
+                    <DialogDescription>
+                      Devis {d.reference} — choisissez ce que le client verra sur
+                      sa page, puis copiez ou envoyez le lien.
+                    </DialogDescription>
+                  </DialogHeader>
+                  {/* L-NIV-UI — niveau de la page client (contrat L-NIV) :
+                      choix AVANT mint, et re-postable après (le lien reste le
+                      même — seul le niveau affiché au client change). Jamais de
+                      chiffre différent entre niveaux : la seule différence est
+                      le dimensionnement technique masqué ou non. */}
+                  <div className="lw-context-devis-niveau">
+                    <label className="lw-context-devis-niveau-select">
+                      <select
+                        value={getNiveau(d)}
+                        disabled={linkBusy === `n-${d.id}`}
+                        aria-label={`Niveau de la page client de ${d.reference}`}
+                        onChange={(e) => onNiveauChange(d, e.target.value)}
+                      >
+                        <option value="standard">Client standard</option>
+                        <option value="confiance">Client de confiance</option>
+                      </select>
+                    </label>
+                    <label className="lw-context-devis-otp">
+                      <Checkbox
+                        checked={getOtp(d)}
+                        disabled={linkBusy === `n-${d.id}`}
+                        onCheckedChange={(v) => onOtpChange(d, !!v)}
+                        aria-label={`Exiger un code de lecture pour la page client de ${d.reference}`}
+                      />
+                      Exiger un code de lecture (OTP)
+                    </label>
+                  </div>
+                  <p className="gen-hint lw-context-devis-niveau-hint">
+                    {getNiveau(d) === 'confiance'
+                      ? 'Confiance : dossier technique complet.'
+                      : 'Standard : masque le dimensionnement détaillé — marques et prix complets visibles.'}
+                  </p>
+                  {/* L-SECT — les sections servies. Toutes cochées par défaut ;
+                      décocher RETIRE la section de la page client (et, pour le
+                      PDF, rend son lien introuvable). Aucun montant du devis ne
+                      change jamais. */}
+                  <div className="lw-context-devis-sections">
+                    <p className="gen-hint">Ce que le client reçoit :</p>
+                    {SECTIONS_ENVOI.map(({ key, label }) => (
+                      <label key={key} className="lw-context-devis-section">
+                        <Checkbox
+                          checked={getSections(d)[key]}
+                          onCheckedChange={(v) => onSectionChange(d, key, v)}
+                          aria-label={`${label} — page client de ${d.reference}`}
+                        />
+                        {label}
+                      </label>
+                    ))}
+                    <p className="gen-hint">
+                      Le comparatif de gammes n’apparaît que sur un devis qui en
+                      porte une ; décocher les autres cases retire la section de
+                      la page, jamais un montant du devis.
+                    </p>
+                  </div>
+                  <div className="lw-context-devis-links">
+                    <Button
+                      type="button" size="sm" variant="outline"
+                      disabled={linkBusy === `l-${d.id}`}
+                      title="Copier le lien de la page client (page devis web publique)"
+                      onClick={() => copierPageClient(d)}
+                    >
+                      {copiedId === d.id
+                        ? <Check size={14} aria-hidden="true" />
+                        : <Link2 size={14} aria-hidden="true" />}
+                      {copiedId === d.id ? 'Copié' : 'Page client'}
+                    </Button>
+                    <Button
+                      type="button" size="sm" variant="ghost"
+                      disabled={linkBusy === `o-${d.id}`}
+                      aria-label={`Ouvrir la page client de ${d.reference} dans un nouvel onglet`}
+                      title="Ouvrir la VRAIE page client (compte comme une lecture côté suivi — pour regarder sans notifier, utilisez l'aperçu interne)"
+                      onClick={() => ouvrirPageClient(d)}
+                    >
+                      <ExternalLink size={14} aria-hidden="true" />
+                    </Button>
+                    <Button
+                      type="button" size="sm" variant="outline"
+                      disabled={!leadPhoneOk || linkBusy === `w-${d.id}`}
+                      title={leadPhoneOk
+                        ? 'Envoyer le lien de la page client par WhatsApp'
+                        : 'Aucun numéro de téléphone exploitable'}
+                      onClick={() => envoyerWhatsAppUnique(d)}
+                    >
+                      <MessageCircle size={14} aria-hidden="true" /> WhatsApp
+                    </Button>
+                  </div>
+                  {actionMsg && <p className="gen-hint" role="status">{actionMsg}</p>}
+                </DialogContent>
+              </Dialog>
               {d.statut === 'accepte' && (
                 <>
                   <DocumentStageTrack

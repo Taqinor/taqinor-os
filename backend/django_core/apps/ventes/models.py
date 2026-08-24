@@ -1366,6 +1366,40 @@ class ShareLink(models.Model):
     otp_lecture = models.BooleanField(
         default=False, verbose_name='OTP requis pour consulter')
 
+    # ── L-SECT (fondateur 24/08/2026) — « le commercial choisit ce que le
+    # client reçoit AVANT d'envoyer la page devis ». Dict {clé: bool} des
+    # sections servies, posé au moment de l'envoi (action ``share-link``),
+    # RÉVOCABLE sans régénérer le jeton, exactement comme ``niveau``.
+    #
+    # Sémantique à TROIS états, volontairement :
+    #   · clé ABSENTE  → comportement par défaut (celui d'avant L-SECT) ;
+    #   · clé à False  → la section est RETIRÉE du payload / de la page ;
+    #   · clé à True   → la section est servie.
+    # Défaut ``dict`` vide → tous les liens EXISTANTS gardent leur
+    # comportement d'aujourd'hui (aucune clé, donc aucun retrait), et le
+    # champ est purement additif.
+    #
+    # Clés supportées (whitelist unique — voir SECTIONS_CLES ci-dessous) :
+    # roof3d, sld, pdf, bankable, economies, jour_type, gammes.
+    SECTIONS_CLES = (
+        'roof3d', 'sld', 'pdf', 'bankable', 'economies', 'jour_type', 'gammes',
+    )
+    sections = models.JSONField(
+        default=dict, blank=True,
+        verbose_name='Sections servies au client')
+
+    def section_servie(self, cle):
+        """L-SECT — la section ``cle`` doit-elle être servie sur ce lien ?
+
+        UNE seule décision, partagée par tous les flux publics (payload JSON,
+        PDF, document tokenisé) : clé absente → True (comportement par
+        défaut), clé à False → False. Défensif (``getattr``/type) au cas où un
+        test construit un lien à la main sans passer par le manager."""
+        sections = getattr(self, 'sections', None)
+        if not isinstance(sections, dict):
+            return True
+        return sections.get(cle) is not False
+
     class Meta:
         ordering = ['-created_at']
         indexes = [models.Index(fields=['token'])]

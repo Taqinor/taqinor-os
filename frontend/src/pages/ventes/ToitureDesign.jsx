@@ -16,8 +16,10 @@
  *           proposal_token, proposal_path}
  *        b. POST /ventes/devis/<id>/layout/  (persistance idempotente du layout)
  *        c. capture le PNG de la 3D → POST /ventes/devis/<id>/roof-image/ (multipart)
- *        d. bascule sur l'état « Prêt à envoyer » : lien de proposition tokenisé
- *           + WhatsApp / e-mail / copier.
+ *        d. bascule sur un bloc de CONFIRMATION. L-SECT (24/08/2026) : l'envoi
+ *           au client (lien, WhatsApp, e-mail, copie) a quitté cet écran pour
+ *           la fiche lead, onglet Devis, où le commercial choisit le niveau,
+ *           l'OTP et les sections que le client reçoit.
  *   En cas d'échec, le tracé de Meriem n'est JAMAIS perdu et le bouton se
  *   réactive pour relancer (messages FR lisibles).
  *
@@ -31,63 +33,11 @@ import { X } from 'lucide-react'
 import api from '../../api/axios'
 import ventesApi from '../../api/ventesApi'
 import aoApi from '../../api/aoApi'
-import { originFrom } from '../../api/origin'
 import { toastInfo } from '../../lib/toast'
 // L2 — confirmation maison (APX17 : jamais une popup système) avant une écriture qui
 // diverge de la cible vendue du devis (voir enregistrerConception ci-dessous).
 import { useConfirmDialog } from '../../ui/confirm'
 import '../../styles/roofbuilder.css'
-
-// ── Helpers de livraison (portés de apps/web/src/lib/devisDesign.ts +
-//    whatsapp.ts — purs, sans dépendance ; on ne réimporte pas la source web). ──
-function designProposalUrl(origin, proposalPath) {
-  const base = (origin || '').replace(/\/+$/, '')
-  const path = proposalPath?.startsWith('/') ? proposalPath : `/${proposalPath ?? ''}`
-  return `${base}${path}`
-}
-function designWhatsappText(name, proposalUrl) {
-  const hello = name?.trim() ? `Bonjour ${name.trim()}, ` : 'Bonjour, '
-  return (
-    `${hello}voici votre proposition d'installation solaire Taqinor : ${proposalUrl} ` +
-    `N'hésitez pas à me poser vos questions.`
-  )
-}
-function whatsappLink(number, text) {
-  const digits = (number || '').replace(/\D/g, '')
-  return `https://wa.me/${digits}?text=${encodeURIComponent(text)}`
-}
-function designMailto(email, name, proposalUrl) {
-  const hello = name?.trim() ? `Bonjour ${name.trim()},` : 'Bonjour,'
-  const subject = encodeURIComponent('Votre proposition solaire Taqinor')
-  const body = encodeURIComponent(
-    `${hello}\n\n` +
-    `Voici votre proposition d'installation solaire Taqinor :\n${proposalUrl}\n\n` +
-    `Je reste à votre disposition pour toute question.\n\n` +
-    `Cordialement,\nL'équipe Taqinor`
-  )
-  return `mailto:${email}?subject=${subject}&body=${body}`
-}
-
-// PV86 — second choix WhatsApp (« Envoyer le PDF seul »). L'URL publique du
-// PDF suit EXACTEMENT le même schéma que les liens `public/proposal/...`
-// déjà construits côté backend (apps/ventes/public_views.py) : préfixe
-// `/api/django/public/proposal/<token>/pdf/` sur l'origine de l'API. Le
-// token est celui du lien frappé par `shareLinkDevis` — jamais reconstruit.
-function proposalPdfUrl(origin, token) {
-  const base = (origin || '').replace(/\/+$/, '')
-  return `${base}/api/django/public/proposal/${token}/pdf/`
-}
-function pdfWhatsappText(reference, pdfUrl) {
-  return `Voici votre devis Taqinor (réf. ${reference}) en PDF : ${pdfUrl}`
-}
-// Relit le numéro déjà validé dans un lien wa.me existant (`deliver.waUrl`,
-// normalisé côté serveur en mode devis ou construit ci-dessus en mode lead) :
-// le second choix WhatsApp utilise ainsi TOUJOURS le même numéro que le
-// premier, sans dupliquer une logique de normalisation téléphonique ici.
-function waNumberFromLink(waUrl) {
-  const m = /^https:\/\/wa\.me\/(\d+)/.exec(waUrl || '')
-  return m ? m[1] : ''
-}
 
 // Convertit un data URL PNG en Blob (upload multipart de la 3D).
 function dataUrlToBlob(dataUrl) {
@@ -99,19 +49,6 @@ function dataUrlToBlob(dataUrl) {
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
   return new Blob([bytes], { type: mime })
 }
-
-// PV84 — le proposal_path renvoyé par le backend est /proposition/<slug-client>/
-// <token> (slug cosmétique, jamais vérifié côté serveur — voir chemin_proposition
-// côté backend) ; le lien client vit sur le site public taqinor.ma (configurable
-// via VITE_PUBLIC_SITE_URL). Consommé TEL QUEL — jamais reconstruit ici.
-const PUBLIC_SITE_URL = import.meta.env.VITE_PUBLIC_SITE_URL || 'https://taqinor.ma'
-
-// PV86 — origine de l'API pour le lien PDF public (second choix WhatsApp).
-// Même résolution que `api/axios.js` (`ORIGIN`) : VITE_API_URL si posé,
-// sinon repli sur l'origine de LA PAGE — valide ici précisément parce que
-// cet écran est MÊME ORIGINE que le backend (cf. l'en-tête du fichier).
-const API_ORIGIN = originFrom(import.meta.env.VITE_API_URL) ||
-  (typeof window !== 'undefined' ? window.location.origin : '')
 
 // Correction fondateur 24/08 — quand le client n'a JAMAIS posé d'épingle
 // publique (`roof_point`, alimenté par l'outil site web), la fiche lead porte
@@ -317,10 +254,9 @@ export default function ToitureDesign({ mode = 'lead' }) {
   const [sending, setSending] = useState(false)
   const [genError, setGenError] = useState(null)
   const [genStatus, setGenStatus] = useState(null)
-  const [deliver, setDeliver] = useState(null) // {reference, proposalUrl, token, waUrl, mailUrl}
-  const [copied, setCopied] = useState(false)
-  // PV86 — petit menu de choix WhatsApp (proposition vs PDF seul), fermé par défaut.
-  const [waMenuOpen, setWaMenuOpen] = useState(false)
+  // L-SECT — ne porte plus que { reference } : le lien, le menu WhatsApp, le
+  // mailto et le bouton copier ont quitté cet écran pour la fiche lead.
+  const [deliver, setDeliver] = useState(null) // { reference }
   // PV21 — conflit 409 renvoyé par sync-layout : {detail, revision_possible}.
   // Le texte est TOUJOURS celui du serveur ; l'écran choisit seulement entre
   // l'encart « Réviser (v2) » et le bandeau de document clos.
@@ -436,42 +372,14 @@ export default function ToitureDesign({ mode = 'lead' }) {
       if (cancelled) return
       setContexte(ctx)
 
-      // PV86 — le lien client vit EN PERMANENCE en bas de page, même sans
-      // enregistrement : frappe (idempotente, aucun statut touché) dès que
-      // le devis est identifié, best-effort et JAMAIS bloquante pour le
-      // boot carte/3D ci-dessous (appel non attendu). Un échec réseau reste
-      // silencieux (pas de panneau plutôt qu'une erreur bloquante) ; une
-      // réponse inexploitable (mock de test non configuré, etc.) reçoit le
-      // même repli.
-      async function chargerLivraisonDevis() {
-        let lien
-        try {
-          lien = await ventesApi.shareLinkDevis(devisId)
-        } catch {
-          return
-        }
-        if (cancelled) return
-        const path = lien?.data?.path
-        if (!path) return
-        setDeliver({
-          reference: ctx?.devis?.reference ?? '',
-          proposalUrl: designProposalUrl(PUBLIC_SITE_URL, path),
-          token: lien?.data?.token || '',
-          waUrl: null,
-          mailUrl: null,
-        })
-        // WhatsApp best-effort, séparé : un client sans numéro garde quand
-        // même son lien de proposition (le bouton WhatsApp disparaît seul).
-        try {
-          const apercu = await ventesApi.whatsappPreviewDevis(devisId)
-          if (cancelled) return
-          const waUrl = apercu?.data?.wa_url
-          if (waUrl) {
-            setDeliver((prev) => (prev ? { ...prev, waUrl } : prev))
-          }
-        } catch { /* pas de numéro chez ce client → pas de bouton WhatsApp */ }
-      }
-      chargerLivraisonDevis()
+      // L-SECT (fondateur 24/08/2026) — PV86 frappait ICI, AU BOOT, un
+      // ShareLink sans aucune option (`shareLinkDevis(devisId)`) pour afficher
+      // en permanence un panneau d'envoi en bas de page. Deux problèmes : le
+      // lien partait toujours aux DÉFAUTS (jamais le niveau ni les sections
+      // choisis), et ouvrir l'outil 3D mintait un lien public sans que
+      // personne ne l'ait demandé. L'envoi vit désormais dans la fiche lead
+      // (onglet Devis → « Envoyer au client ») : cet écran ne mint plus rien
+      // au chargement.
 
       const carte = ctx?.carte ?? {}
       if (!carte.available || !carte.maptilerKey) {
@@ -636,21 +544,13 @@ export default function ToitureDesign({ mode = 'lead' }) {
         }
       }
 
-      // 4) Bascule sur « Prêt à envoyer » : lien tokenisé + WhatsApp / e-mail.
-      const proposalUrl = designProposalUrl(PUBLIC_SITE_URL, devis.proposal_path)
-      const name = `${lead?.nom ?? ''} ${lead?.prenom ?? ''}`.trim()
-      const phone = (lead?.whatsapp || lead?.telephone || '').trim()
-      const email = (lead?.email || '').trim()
-      setDeliver({
-        reference: devis.reference,
-        proposalUrl,
-        token: devis.proposal_token || '',
-        waUrl: phone ? whatsappLink(phone, designWhatsappText(name, proposalUrl)) : null,
-        mailUrl: email ? designMailto(email, name, proposalUrl) : null,
-      })
+      // 4) L-SECT — bascule sur le bloc de confirmation. L'envoi lui-même a
+      //    quitté cet écran : il se fait depuis la fiche lead, onglet Devis,
+      //    où le commercial choisit niveau / OTP / sections (voir blocLivraison).
+      setDeliver({ reference: devis.reference })
       setGenStatus(null)
       setSending(false)
-      setStatus(`Devis ${devis.reference} créé — prêt à envoyer au client.`)
+      setStatus(`Devis ${devis.reference} créé — à envoyer depuis la fiche lead.`)
     } catch {
       setGenStatus(null)
       setGenError('Erreur réseau pendant la génération. Vérifiez votre connexion puis réessayez.')
@@ -749,30 +649,11 @@ export default function ToitureDesign({ mode = 'lead' }) {
         }
       }
 
-      // 4) Lien client : le lien tokenisé est (re)frappé sans aucune transition
-      //    de statut, et l'aperçu WhatsApp est LECTURE SEULE (QX22 : ouvrir
-      //    l'aperçu ne marque jamais un devis « envoyé »).
-      setGenStatus('Préparation du lien client…')
-      let proposalUrl = ''
-      let token = ''
-      try {
-        const lien = await ventesApi.shareLinkDevis(devisId)
-        proposalUrl = designProposalUrl(PUBLIC_SITE_URL, lien.data?.path)
-        token = lien.data?.token || ''
-      } catch { /* le lien reste optionnel */ }
-      let waUrl = null
-      try {
-        const apercu = await ventesApi.whatsappPreviewDevis(devisId)
-        waUrl = apercu.data?.wa_url || null
-      } catch { /* pas de numéro chez ce client → pas de bouton WhatsApp */ }
-
-      setDeliver({
-        reference: contexte?.devis?.reference ?? '',
-        proposalUrl,
-        token,
-        waUrl,
-        mailUrl: null,
-      })
+      // 4) L-SECT — plus AUCUN mint ici : enregistrer une conception ne doit
+      //    pas frapper un lien public aux réglages par défaut. L'écran confirme,
+      //    et renvoie vers la fiche lead où l'envoi se choisit (voir
+      //    blocLivraison). Aucun statut de devis n'est touché, comme avant.
+      setDeliver({ reference: contexte?.devis?.reference ?? '' })
       setGenStatus(null)
       setSending(false)
       const ajoutees = Number(resultat.lignes_ajoutees) || 0
@@ -854,15 +735,6 @@ export default function ToitureDesign({ mode = 'lead' }) {
     }
   }
 
-  const copyLink = () => {
-    if (!deliver?.proposalUrl) return
-    try {
-      navigator.clipboard?.writeText(deliver.proposalUrl)
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 2000)
-    } catch { /* presse-papier indispo */ }
-  }
-
   // Fondateur 18/08 — bouton Fermer (X, haut-droite) : cette fenêtre de
   // calepinage 3D n'avait aucune sortie visible une fois ouverte (lead,
   // liste des devis, générateur, ou la nouvelle entrée « Conception 3D » du
@@ -919,75 +791,43 @@ export default function ToitureDesign({ mode = 'lead' }) {
   // conçu depuis sa propre fiche se livre exactement comme un devis né d'un
   // lead (mêmes liens, même bouton copier). Une seule différence : la phrase
   // qui dit ce qui vient de se passer.
-  const blocLivraison = () => {
-    // PV86 — second choix WhatsApp : même numéro que `deliver.waUrl` (relu
-    // depuis le lien déjà validé), texte pointant l'URL PDF publique (jamais
-    // reconstruite ailleurs que via le token frappé par shareLinkDevis).
-    const pdfUrl = deliver.token ? proposalPdfUrl(API_ORIGIN, deliver.token) : ''
-    const waNumber = waNumberFromLink(deliver.waUrl)
-    const waUrlPdf = waNumber && pdfUrl
-      ? whatsappLink(waNumber, pdfWhatsappText(deliver.reference, pdfUrl))
-      : null
-    return (
+  // L-SECT (fondateur 24/08/2026) — L'ENVOI A QUITTÉ CET ÉCRAN. Le lien, le
+  // menu WhatsApp, le mailto et le bouton copier vivaient ici, dans l'outil de
+  // calepinage : le commercial y envoyait donc la page client SANS pouvoir
+  // choisir le niveau ni les sections (`shareLinkDevis` était appelé sans
+  // aucune option — le lien partait toujours aux défauts). Il n'y a plus qu'UN
+  // seul point d'envoi, la fiche lead → onglet Devis → « Envoyer au client »,
+  // où ces choix existent. Cet écran confirme seulement ce qu'il vient de faire
+  // et renvoie là-bas.
+  const leadFiche = estDevis
+    ? (contexte?.devis?.lead ?? null)
+    : (lead?.id ?? (leadId || null))
+  const blocLivraison = () => (
     <div className="space-y-4">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <p className="tech-label rule-brass text-brass-300">Prêt à envoyer</p>
+        <p className="tech-label rule-brass text-brass-300">Conception enregistrée</p>
         <p className="text-sm text-lune-soft">Devis <span className="font-semibold text-white">{deliver.reference}</span></p>
       </div>
       <p className="text-sm text-lune-soft">
         {estDevis
-          ? 'La conception est enregistrée et la vue 3D mise à jour. Envoyez le lien au client par WhatsApp, e-mail, ou copiez-le.'
-          : 'Le devis est créé et la vue 3D enregistrée. Envoyez le lien au client par WhatsApp, e-mail, ou copiez-le.'}
+          ? 'La conception est enregistrée et la vue 3D mise à jour.'
+          : 'Le devis est créé et la vue 3D enregistrée.'}
+        {' '}
+        L’envoi au client se fait depuis la fiche lead, onglet Devis : c’est là
+        que vous choisissez le niveau, le code de lecture et les sections que le
+        client reçoit.
       </p>
-      {deliver.proposalUrl && (
-        <label className="block text-sm text-lune-soft">
-          Lien de la proposition
-          <input type="text" readOnly value={deliver.proposalUrl} className={`${inputClass} mt-1`} />
-        </label>
-      )}
-      <div className="flex flex-wrap items-center gap-3">
-        {deliver.waUrl && (
-          <div className="relative">
-            <button type="button" onClick={() => setWaMenuOpen((o) => !o)}
-              aria-haspopup="true" aria-expanded={waMenuOpen} aria-controls="rp9-wa-choix"
-              className="inline-flex items-center gap-2 px-5 py-3 text-base font-bold text-white"
-              style={{ background: 'var(--rp-ok-600)' }}>WhatsApp</button>
-            {waMenuOpen && (
-              <div id="rp9-wa-choix" role="group" aria-label="Choisir le message WhatsApp"
-                className="absolute left-0 top-full z-10 mt-2 flex w-72 flex-col gap-2 border border-white/15 bg-nuit-900 p-3">
-                <a href={deliver.waUrl} target="_blank" rel="noopener"
-                  onClick={() => setWaMenuOpen(false)}
-                  className="px-4 py-2 text-sm font-bold text-white" style={{ background: 'var(--rp-ok-600)' }}>
-                  Envoyer le lien de la proposition
-                </a>
-                {waUrlPdf && (
-                  <a href={waUrlPdf} target="_blank" rel="noopener"
-                    onClick={() => setWaMenuOpen(false)}
-                    className="border border-brass-400 px-4 py-2 text-sm font-bold text-brass-300">
-                    Envoyer le PDF seul
-                  </a>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-        {deliver.mailUrl && (
-          <a href={deliver.mailUrl}
-            className="inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-brass-300">E-mail</a>
-        )}
-        <button type="button" onClick={copyLink}
-          className="inline-flex items-center gap-2 border border-white/25 px-5 py-3 text-base font-semibold text-lune-soft">Copier le lien</button>
-        {copied && <span className="text-sm font-semibold text-ok-400" aria-live="polite">Lien copié</span>}
-      </div>
-      {deliver.proposalUrl && (
-        <a href={deliver.proposalUrl} target="_blank" rel="noopener"
-          className="inline-block text-sm text-lune-faint underline">
-          Ouvrir la proposition dans un nouvel onglet
-        </a>
+      {leadFiche && (
+        <Link
+          to={`/crm/leads/${leadFiche}`}
+          data-testid="rp9-vers-fiche-lead"
+          className="inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-brass-300"
+        >
+          Ouvrir la fiche lead
+        </Link>
       )}
     </div>
-    )
-  }
+  )
 
   return (
     <div className="rp9-host">

@@ -2,7 +2,10 @@ import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest'
 import { render, screen, cleanup, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { initState } from './draftCore'
-import DevisTab, { devisTrackCurrent, devisIntent, missingFieldTarget, waArmed } from './DevisTab'
+import DevisTab, {
+  devisTrackCurrent, devisIntent, missingFieldTarget, waArmed,
+  SECTIONS_ENVOI, sectionsDepuisServeur,
+} from './DevisTab'
 
 /* LW21/LW22 — `DevisTab` : cartes devis (StatusPill statut devis, total TTC
    `.num`, actions facture/chantier busy-par-id), CTA « Devis automatique »
@@ -261,7 +264,20 @@ describe('LW22 — WhatsApp multi-devis', () => {
   })
 })
 
-describe('L5 — Page client / WhatsApp / Aperçu interne (TOUJOURS visibles, par devis)', () => {
+/* L-SECT (fondateur 24/08/2026) — l'envoi passe désormais par UN dialogue
+   « Envoyer au client » : niveau + OTP + les 7 cases de sections y vivent, avec
+   les boutons copier/ouvrir/WhatsApp. Les tests L5/L-NIV ci-dessous ouvrent
+   donc le dialogue avant d'agir, et le corps posté à share-link porte en plus
+   `sections` (les 7 clés, toutes à true par défaut). */
+const TOUTES_SECTIONS = {
+  roof3d: true, sld: true, pdf: true, bankable: true,
+  economies: true, jour_type: true, gammes: true,
+}
+const ouvrirEnvoi = (user) => user.click(
+  screen.getByRole('button', { name: /Envoyer au client/ }),
+)
+
+describe('L5 — Page client / WhatsApp / Aperçu interne (par devis, via le dialogue d’envoi)', () => {
   const devis1 = {
     id: 1, reference: 'DEV-1', statut: 'envoye', total_ttc: '5000',
     date_creation: '2026-01-01', chantier: null,
@@ -277,8 +293,11 @@ describe('L5 — Page client / WhatsApp / Aperçu interne (TOUJOURS visibles, pa
       value: { writeText }, configurable: true, writable: true,
     })
     renderTab({ state: leadState({ devis: [devis1] }) })
+    await ouvrirEnvoi(user)
     await user.click(screen.getByRole('button', { name: /Page client/ }))
-    await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(1, { niveau: 'standard', otp_lecture: false }))
+    await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(
+      1, { niveau: 'standard', otp_lecture: false, sections: TOUTES_SECTIONS },
+    ))
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(
       'https://taqinor.ma/proposition/karim/tok-abc',
     ))
@@ -289,10 +308,13 @@ describe('L5 — Page client / WhatsApp / Aperçu interne (TOUJOURS visibles, pa
     const user = userEvent.setup()
     window.open = vi.fn(() => ({}))
     renderTab({ state: leadState({ devis: [devis1] }) })
+    await ouvrirEnvoi(user)
     await user.click(screen.getByRole('button', {
       name: /Ouvrir la page client de DEV-1 dans un nouvel onglet/,
     }))
-    await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(1, { niveau: 'standard', otp_lecture: false }))
+    await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(
+      1, { niveau: 'standard', otp_lecture: false, sections: TOUTES_SECTIONS },
+    ))
     await waitFor(() => expect(window.open).toHaveBeenCalledWith(
       'https://taqinor.ma/proposition/karim/tok-abc', '_blank', 'noopener',
     ))
@@ -302,8 +324,11 @@ describe('L5 — Page client / WhatsApp / Aperçu interne (TOUJOURS visibles, pa
     const user = userEvent.setup()
     window.open = vi.fn(() => ({}))
     renderTab({ state: leadState({ telephone: '0612345678', devis: [devis1] }) })
+    await ouvrirEnvoi(user)
     await user.click(screen.getByRole('button', { name: 'WhatsApp' }))
-    await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(1, { niveau: 'standard', otp_lecture: false }))
+    await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(
+      1, { niveau: 'standard', otp_lecture: false, sections: TOUTES_SECTIONS },
+    ))
     await waitFor(() => expect(window.open).toHaveBeenCalledWith(
       'https://wa.me/212612345678?text='
       + encodeURIComponent(
@@ -315,8 +340,10 @@ describe('L5 — Page client / WhatsApp / Aperçu interne (TOUJOURS visibles, pa
     ))
   })
 
-  it('« WhatsApp » par devis désactivé sans numéro exploitable', () => {
+  it('« WhatsApp » par devis désactivé sans numéro exploitable', async () => {
+    const user = userEvent.setup()
     renderTab({ state: leadState({ telephone: '', whatsapp: '', devis: [devis1] }) })
+    await ouvrirEnvoi(user)
     expect(screen.getByRole('button', { name: 'WhatsApp' })).toBeDisabled()
   })
 
@@ -340,23 +367,25 @@ describe('L-NIV-UI — niveau de la page client (standard/confiance) + OTP', () 
   it('« Page client » poste le niveau choisi (confiance) au lieu du défaut standard', async () => {
     const user = userEvent.setup()
     renderTab({ state: leadState({ devis: [devis1] }) })
+    await ouvrirEnvoi(user)
     await user.selectOptions(
       screen.getByRole('combobox', { name: /Niveau de la page client de DEV-1/ }),
       'confiance',
     )
     await user.click(screen.getByRole('button', { name: /Page client/ }))
     await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(
-      1, { niveau: 'confiance', otp_lecture: false },
+      1, { niveau: 'confiance', otp_lecture: false, sections: TOUTES_SECTIONS },
     ))
   })
 
   it('la case OTP est postée avec le niveau', async () => {
     const user = userEvent.setup()
     renderTab({ state: leadState({ devis: [devis1] }) })
+    await ouvrirEnvoi(user)
     await user.click(screen.getByRole('checkbox', { name: /Exiger un code de lecture pour la page client de DEV-1/ }))
     await user.click(screen.getByRole('button', { name: /Page client/ }))
     await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(
-      1, { niveau: 'standard', otp_lecture: true },
+      1, { niveau: 'standard', otp_lecture: true, sections: TOUTES_SECTIONS },
     ))
   })
 
@@ -364,6 +393,7 @@ describe('L-NIV-UI — niveau de la page client (standard/confiance) + OTP', () 
     const user = userEvent.setup()
     renderTab({ state: leadState({ devis: [devis1] }) })
     expect(screen.queryByTitle(/Le lien reste le même/)).not.toBeInTheDocument()
+    await ouvrirEnvoi(user)
     await user.click(screen.getByRole('button', { name: /Page client/ }))
     expect(await screen.findByTitle(/Le lien reste le même/)).toHaveTextContent('Standard')
   })
@@ -382,6 +412,7 @@ describe('L-NIV-UI — niveau de la page client (standard/confiance) + OTP', () 
         },
       })
     renderTab({ state: leadState({ devis: [devis1] }) })
+    await ouvrirEnvoi(user)
     await user.click(screen.getByRole('button', { name: /Page client/ }))
     await screen.findByTitle(/Le lien reste le même/)
 
@@ -393,8 +424,10 @@ describe('L-NIV-UI — niveau de la page client (standard/confiance) + OTP', () 
     // MÊME devis — le backend renvoie le MÊME token (aucun second devis, aucune
     // régénération) ; on le vérifie via les 2 appels reçus, identiques hors niveau.
     await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledTimes(2))
-    expect(shareLinkDevis).toHaveBeenNthCalledWith(1, 1, { niveau: 'standard', otp_lecture: false })
-    expect(shareLinkDevis).toHaveBeenNthCalledWith(2, 1, { niveau: 'confiance', otp_lecture: false })
+    expect(shareLinkDevis).toHaveBeenNthCalledWith(
+      1, 1, { niveau: 'standard', otp_lecture: false, sections: TOUTES_SECTIONS })
+    expect(shareLinkDevis).toHaveBeenNthCalledWith(
+      2, 1, { niveau: 'confiance', otp_lecture: false, sections: TOUTES_SECTIONS })
     const badge = await screen.findByTitle(/Le lien reste le même/)
     expect(badge).toHaveTextContent('Confiance')
   })
@@ -405,17 +438,20 @@ describe('L-NIV-UI — niveau de la page client (standard/confiance) + OTP', () 
   // .share_link_niveau_map`, lecture seule, jamais de mint) mais l'écran
   // n'affichait le badge qu'après un premier clic. Le badge doit apparaître
   // DÈS le montage, sans aucune interaction ni appel réseau supplémentaire.
-  it('le badge de niveau s\'affiche AU CHARGEMENT depuis `share_link` du serveur, sans interaction', () => {
+  it('le badge de niveau s\'affiche AU CHARGEMENT depuis `share_link` du serveur, sans interaction', async () => {
+    const user = userEvent.setup()
     const devisConfianceDejaMinte = {
       ...devis1,
       share_link: { niveau: 'confiance', otp_lecture: true },
     }
     renderTab({ state: leadState({ devis: [devisConfianceDejaMinte] }) })
 
+    // Le badge est sur la CARTE : lisible sans ouvrir le dialogue d'envoi.
     const badge = screen.getByTitle(/Le lien reste le même/)
     expect(badge).toHaveTextContent('Confiance')
     expect(badge).toHaveTextContent('OTP')
     // Le sélecteur/la case reflètent aussi l'état serveur, pas le défaut.
+    await ouvrirEnvoi(user)
     expect(screen.getByRole('combobox', { name: /Niveau de la page client de DEV-1/ })).toHaveValue('confiance')
     expect(screen.getByRole('checkbox', { name: /Exiger un code de lecture pour la page client de DEV-1/ })).toBeChecked()
     // Rien n'a été minté/re-posté au montage : lecture serveur uniquement.
@@ -430,12 +466,121 @@ describe('L-NIV-UI — niveau de la page client (standard/confiance) + OTP', () 
     }
     renderTab({ state: leadState({ devis: [devisStandardDejaMinte] }) })
 
+    await ouvrirEnvoi(user)
     await user.selectOptions(
       screen.getByRole('combobox', { name: /Niveau de la page client de DEV-1/ }),
       'confiance',
     )
     await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(
-      1, { niveau: 'confiance', otp_lecture: false },
+      1, { niveau: 'confiance', otp_lecture: false, sections: TOUTES_SECTIONS },
     ))
+  })
+})
+
+/* ══════════════════════════════════════════════════════════════════════════
+   L-SECT (fondateur 24/08/2026) — « le commercial choisit ce que le client
+   reçoit avant d'envoyer la page devis ». Les 7 cases du dialogue « Envoyer au
+   client », leurs défauts, et le corps réellement posté à share-link.
+   ══════════════════════════════════════════════════════════════════════════ */
+describe('L-SECT — dialogue « Envoyer au client » : les sections servies', () => {
+  const devis1 = {
+    id: 1, reference: 'DEV-1', statut: 'envoye', total_ttc: '5000',
+    date_creation: '2026-01-01', chantier: null,
+  }
+
+  it('les 7 cases sont présentes et TOUTES cochées par défaut', async () => {
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [devis1] }) })
+    await ouvrirEnvoi(user)
+    for (const { key, label } of SECTIONS_ENVOI) {
+      const box = screen.getByRole('checkbox', { name: new RegExp(`^${label} — page client de DEV-1`) })
+      expect(box, key).toBeChecked()
+    }
+  })
+
+  it('décocher « Calepinage 3D » poste sections.roof3d = false', async () => {
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [devis1] }) })
+    await ouvrirEnvoi(user)
+    await user.click(screen.getByRole('checkbox', { name: /^Calepinage 3D — page client de DEV-1/ }))
+    await user.click(screen.getByRole('button', { name: /Page client/ }))
+    await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(1, {
+      niveau: 'standard', otp_lecture: false,
+      sections: { ...TOUTES_SECTIONS, roof3d: false },
+    }))
+  })
+
+  it('décocher « PDF téléchargeable » et « Étude bancable » poste les deux à false', async () => {
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [devis1] }) })
+    await ouvrirEnvoi(user)
+    await user.click(screen.getByRole('checkbox', { name: /^PDF téléchargeable — page client de DEV-1/ }))
+    await user.click(screen.getByRole('checkbox', { name: /^Étude bancable — page client de DEV-1/ }))
+    await user.click(screen.getByRole('button', { name: /Page client/ }))
+    await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(1, {
+      niveau: 'standard', otp_lecture: false,
+      sections: { ...TOUTES_SECTIONS, pdf: false, bankable: false },
+    }))
+  })
+
+  it('re-cocher une case revient au corps par défaut (toutes servies)', async () => {
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [devis1] }) })
+    await ouvrirEnvoi(user)
+    const box = screen.getByRole('checkbox', { name: /^Schéma unifilaire — page client de DEV-1/ })
+    await user.click(box)
+    await user.click(box)
+    await user.click(screen.getByRole('button', { name: /Page client/ }))
+    await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(
+      1, { niveau: 'standard', otp_lecture: false, sections: TOUTES_SECTIONS },
+    ))
+  })
+
+  it('un lien DÉJÀ envoyé rouvre sur ses sections réelles, pas sur les défauts', async () => {
+    const user = userEvent.setup()
+    const devisDejaEnvoye = {
+      ...devis1,
+      share_link: {
+        niveau: 'confiance', otp_lecture: false,
+        sections: { sld: false, gammes: false },
+      },
+    }
+    renderTab({ state: leadState({ devis: [devisDejaEnvoye] }) })
+    await ouvrirEnvoi(user)
+    expect(screen.getByRole('checkbox', { name: /^Schéma unifilaire — page client de DEV-1/ })).not.toBeChecked()
+    expect(screen.getByRole('checkbox', { name: /^Comparatif de gammes — page client de DEV-1/ })).not.toBeChecked()
+    // Clé absente du serveur → servie (sémantique à trois états côté modèle).
+    expect(screen.getByRole('checkbox', { name: /^Calepinage 3D — page client de DEV-1/ })).toBeChecked()
+  })
+
+  it('changer le niveau re-poste AUSSI les sections déjà choisies', async () => {
+    const user = userEvent.setup()
+    const devisDejaMinte = {
+      ...devis1,
+      share_link: { niveau: 'standard', otp_lecture: false, sections: { pdf: false } },
+    }
+    renderTab({ state: leadState({ devis: [devisDejaMinte] }) })
+    await ouvrirEnvoi(user)
+    await user.selectOptions(
+      screen.getByRole('combobox', { name: /Niveau de la page client de DEV-1/ }),
+      'confiance',
+    )
+    await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(1, {
+      niveau: 'confiance', otp_lecture: false,
+      sections: { ...TOUTES_SECTIONS, pdf: false },
+    }))
+  })
+
+  it('sectionsDepuisServeur — trois états : absente = servie, false = retirée, true = servie', () => {
+    expect(sectionsDepuisServeur(undefined)).toEqual(TOUTES_SECTIONS)
+    expect(sectionsDepuisServeur({})).toEqual(TOUTES_SECTIONS)
+    expect(sectionsDepuisServeur({ pdf: false, roof3d: true }))
+      .toEqual({ ...TOUTES_SECTIONS, pdf: false })
+  })
+
+  it('les libellés des cases couvrent exactement la whitelist serveur', () => {
+    expect(SECTIONS_ENVOI.map((s) => s.key)).toEqual([
+      'roof3d', 'sld', 'pdf', 'bankable', 'economies', 'jour_type', 'gammes',
+    ])
   })
 })
