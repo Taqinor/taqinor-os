@@ -859,8 +859,14 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         # ``etude_params`` peuvent avoir changé dans le même enregistrement.
         # HORS de la transaction ci-dessus, et best-effort : un devis
         # correctement remplacé ne doit jamais être annulé par une étude.
-        from ..services import rafraichir_etude_horaire_devis
+        from ..services import (
+            rafraichir_dimensionnement_devis, rafraichir_etude_horaire_devis)
         rafraichir_etude_horaire_devis(devis, force=True)
+        # T5 (24/08/2026) — le TABLEAU de dimensionnement (falaise, tranche
+        # visée, régime batterie) suit le même chemin d'enregistrement : le
+        # profil (factures/occupation/équipements) peut avoir changé dans le
+        # même PATCH, best-effort, jamais bloquant.
+        rafraichir_dimensionnement_devis(devis, force=True)
         return Response(DevisSerializer(
             devis, context={'request': request}).data)
 
@@ -2353,8 +2359,11 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         # ou le profil dans ``etude_params`` — grandeurs invisibles depuis les
         # lignes, donc le court-circuit « composition inchangée » ne s'applique
         # pas ici.
-        from ..services import rafraichir_etude_horaire_devis
+        from ..services import (
+            rafraichir_dimensionnement_devis, rafraichir_etude_horaire_devis)
         rafraichir_etude_horaire_devis(serializer.instance, force=True)
+        # T5 — même raison ci-dessus, pour le tableau de dimensionnement.
+        rafraichir_dimensionnement_devis(serializer.instance, force=True)
 
     @action(
         detail=True,

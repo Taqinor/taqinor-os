@@ -4111,6 +4111,93 @@ def rafraichir_etude_horaire_devis(devis, *, force=False):
         return None
 
 
+def rafraichir_dimensionnement_devis(devis, *, force=False):
+    """T5 (24/08/2026) — pose ``etude_params['dimensionnement']`` sur un devis
+    RÉSIDENTIEL, même point d'entrée-esprit que
+    :func:`rafraichir_etude_horaire_devis` (RÉSIDENTIEL STRICT, mêmes chemins
+    d'écriture) mais pour le TABLEAU de dimensionnement
+    (``apps.ventes.dimensionnement.recommander_taille``) plutôt que le bloc
+    horaire d'UNE taille : c'est ce que lit désormais le moteur PDF
+    (``ETUDE['dimensionnement']``) et le payload public (T4 — falaise,
+    tranche visée, régime batterie).
+
+    Contrairement à ``rafraichir_etude_horaire_devis``, aucune donnée de
+    LIGNES n'entre dans ce calcul (le tableau balaye TOUTES les tailles
+    candidates, il ne lit pas la composition posée) : ``force`` n'a donc de
+    sens ici que pour forcer un recalcul après un changement de profil
+    (factures/occupation/équipements) — inchangé sinon, on ne recalcule pas à
+    chaque sauvegarde de devis pour un profil qui n'a pas bougé.
+
+    Ne lève JAMAIS, ne touche NI le statut NI les lignes NI les totaux
+    (règle #4). ``None`` (⇒ clé ABSENTE) quand le profil n'est pas
+    exploitable (pas de facture, pas de société, catalogue incomplet,
+    localisation non résolue) — jamais un tableau inventé.
+    """
+    try:
+        mode = (getattr(devis, 'mode_installation', None) or '').strip().lower()
+        if mode != 'residentiel':
+            return None
+        company = getattr(devis, 'company', None)
+        if company is None:
+            return None
+
+        from apps.crm.selectors import (
+            lead_bills_for_devis, site_location_for_devis)
+        from apps.ventes.courbes_journalieres import (
+            equipements_du_devis, occupation_du_devis)
+        from apps.ventes.etude_horaire import profil_depuis_factures
+
+        bills = lead_bills_for_devis(devis) or {}
+        etude_params = getattr(devis, 'etude_params', None) or {}
+        conso, source_conso, _detail = profil_depuis_factures(
+            facture_hiver_mad=bills.get('facture_hiver'),
+            facture_ete_mad=bills.get('facture_ete'),
+            ete_differente=bills.get('ete_differente'),
+            factures_mensuelles_mad=etude_params.get(
+                'factures_mensuelles_reelles'),
+            conso_kwh_mensuelles=etude_params.get('conso_kwh_mensuelles'))
+        if not conso:
+            if not force and 'dimensionnement' not in etude_params:
+                return None
+            etude = dict(etude_params)
+            etude.pop('dimensionnement', None)
+            devis.etude_params = etude
+            devis.save(update_fields=['etude_params'])
+            return None
+
+        if not force and 'dimensionnement' in etude_params:
+            return etude_params['dimensionnement']
+
+        localisation = site_location_for_devis(devis) or {}
+        ville = localisation.get('site_ville')
+        lat, lon = localisation.get('gps_lat'), localisation.get('gps_lng')
+        # Même relai que ``etude_horaire._etude_horaire_pour_devis`` : sans
+        # ``mode_installation`` explicite, ``_occupation`` retombe sur le
+        # défaut NON résidentiel — on lui donne donc le mode du devis (déjà
+        # vérifié 'residentiel' ci-dessus) pour que le défaut fondateur
+        # résidentiel s'applique.
+        occupation, _source_occ = occupation_du_devis(
+            devis, {'mode_installation': mode})
+        equipements = equipements_du_devis(devis)
+
+        from apps.ventes.dimensionnement import recommander_taille
+        resultat = recommander_taille(
+            company=company, conso_kwh_mensuelles=conso, ville=ville,
+            lat=lat, lon=lon, occupation=occupation, equipements=equipements,
+            source_conso=source_conso)
+
+        etude = dict(etude_params)
+        etude['dimensionnement'] = resultat
+        devis.etude_params = etude
+        devis.save(update_fields=['etude_params'])
+        return resultat
+    except Exception:  # noqa: BLE001 — un rafraîchissement raté n'empêche
+        # jamais une sauvegarde de devis/ligne.
+        logger.warning('rafraichir_dimensionnement_devis indisponible sur %s',
+                       getattr(devis, 'reference', '?'), exc_info=True)
+        return None
+
+
 def _residential_panel_count(*, facture_hiver=None, taille_kwc=None,
                              panel_watt=_AUTO_PANEL_WATT):
     """Nombre de panneaux pour un lead résidentiel.
