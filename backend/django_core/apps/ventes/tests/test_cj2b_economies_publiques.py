@@ -289,3 +289,48 @@ class AucuneCleConfidentielleTests(_CJ2bBase):
         blob = json.dumps(payload)
         for interdit in ('prix_achat', 'marge', 'revendeur', '7777'):
             self.assertNotIn(interdit, blob, interdit)
+
+
+class LBackQuatreClesPubliquesTests(_CJ2bBase):
+    """L-BACK T4 (24/08/2026) — les 4 nouvelles clés publiques additives
+    (tranche_tarifaire/batterie_regime/estimation_conso/jours_types) suivent
+    EXACTEMENT le même patron que ``economies_mensuelles`` : absentes sans
+    ancrage réel/blocs persistés, jamais un ``null`` publié à leur place."""
+
+    def test_sans_dimensionnement_ni_etude_horaire_les_quatre_cles_absentes(self):
+        """Devis résidentiel avec ancrage (facture) mais AUCUN rafraîchissement
+        moteur encore lancé : comportement d'AVANT ce lot, byte-identique."""
+        devis, link = self._devis('lback-t4-vide', scenario='Sans batterie')
+        payload = self._payload(link)
+        for cle in ('tranche_tarifaire', 'batterie_regime',
+                    'estimation_conso', 'jours_types'):
+            self.assertNotIn(cle, payload, cle)
+
+    def test_jours_types_present_apres_rafraichissement_horaire(self):
+        """Le bloc horaire seul (sans dimensionnement) suffit à servir
+        ``jours_types`` — il ne dépend que de kwc + conso + localisation,
+        pas du tableau de dimensionnement."""
+        devis, link = self._devis(
+            'lback-t4-jourstype', scenario='Les deux (Sans + Avec)')
+        rafraichir_etude_horaire_devis(devis)
+
+        payload = self._payload(link)
+        self.assertIn('jours_types', payload)
+        self.assertEqual(set(payload['jours_types']), {'1', '4', '7', '11'})
+        # Sans dimensionnement rafraîchi, ces deux clés restent absentes.
+        self.assertNotIn('tranche_tarifaire', payload)
+        self.assertNotIn('batterie_regime', payload)
+
+    def test_aucune_cle_confidentielle_dans_les_quatre_blocs(self):
+        """RULE #4 — même garde que ci-dessus, étendue aux 4 nouvelles clés."""
+        devis, link = self._devis(
+            'lback-t4-conf', scenario='Les deux (Sans + Avec)',
+            prix_achat_panneau='8888.00')
+        rafraichir_etude_horaire_devis(devis)
+        from apps.ventes.services import rafraichir_dimensionnement_devis
+        rafraichir_dimensionnement_devis(devis)
+
+        payload = self._payload(link)
+        blob = json.dumps(payload)
+        for interdit in ('prix_achat', 'marge', 'revendeur', '8888'):
+            self.assertNotIn(interdit, blob, interdit)

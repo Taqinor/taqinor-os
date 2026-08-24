@@ -80,6 +80,13 @@ TRACKED_FIELDS = {
     'equip_clim': 'Climatisation',
     'equip_clim_pieces': 'Clim — nombre de pièces/unités',
     'equip_chauffe_eau_electrique': 'Chauffe-eau électrique',
+    # L-BACK (24/08/2026) — grandeurs complémentaires (voir models.py).
+    'equip_chauffe_eau_kw': 'Puissance chauffe-eau (kW)',
+    'equip_chauffe_eau_creneau': 'Créneau de chauffe du chauffe-eau',
+    'equip_ve_chargeur_kw': 'Puissance chargeur VE (kW)',
+    'equip_ve_creneau': 'Créneau de recharge du VE',
+    'equip_clim_kw': 'Puissance clim déclarée (kW)',
+    'equip_piscine_heures_jour': 'Piscine — heures de filtration/jour',
 }
 
 _CHOICE_FIELDS = {
@@ -92,6 +99,8 @@ _CHOICE_FIELDS = {
     'site_count', 'visit_window_part', 'visit_window_week', 'ownership',
     # L4 — occupation_jour est un choices (present/absent/partiel).
     'occupation_jour',
+    # L-BACK — les deux créneaux sont aussi des choices.
+    'equip_chauffe_eau_creneau', 'equip_ve_creneau',
 }
 
 _BOOL_LABELS = {True: 'Oui', False: 'Non'}
