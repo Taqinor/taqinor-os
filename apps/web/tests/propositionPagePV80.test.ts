@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import {
   parseConceptionElectrique,
   conceptionPourLigne,
-  estProtectionAcDc,
+  repartirOrganes,
   indexHoteDesCables,
   resyncApresEnvoi,
   chaineLabel,
@@ -117,12 +117,15 @@ describe('PV80 — graphique fusionné : un seul dessin visible à la fois', () 
     expect(l.showViewTabs).toBe(true);
   });
 
-  it('calque batterie : REMPLACE la courbe nue, jamais un second graphique', () => {
+  // ORDRE FONDATEUR (24/08/2026) — le calque batterie ne REMPLACE plus la
+  // courbe : elle reste visible et porte la couche « couvert par la batterie »
+  // (c'est CE graphe que le client regarde). Seule l'exclusion année ↔ journée
+  // reste un invariant.
+  it('calque batterie : la courbe journalière RESTE visible (elle porte la couche)', () => {
     const l = productionLayers({ view: 'journee', variant: 'normal', battery: true }, FULL);
     expect(l.battery).toBe(true);
-    expect(l.daily).toBe(false);
+    expect(l.daily).toBe(true);
     expect(l.monthly).toBe(false);
-    expect(onlyOne(l)).toBe(1);
   });
 
   it('le calque batterie reste invisible tant qu’on est sur la vue année', () => {
@@ -206,18 +209,20 @@ describe('PV80 — graphique fusionné : transitions', () => {
   });
 
   // PACT-battery (2026-08-15) — fondateur : « quand on active le bouton avec
-  // batterie on peut encore voir l'effet le ramadan et l'été ». Le calque
-  // batterie REMPLACE la courbe nue (un seul dessin), mais les onglets de
-  // profil doivent rester visibles et actifs, et changer d'onglet doit
-  // continuer à changer la variante retenue par productionLayers — c'est ce
-  // que le script client relit pour recalculer le simulateur batterie.
+  // batterie on peut encore voir l'effet le ramadan et l'été ». Les onglets de
+  // profil restent visibles et actifs, et changer d'onglet change la variante
+  // retenue par productionLayers — c'est ce que le script client relit pour
+  // recalculer le simulateur batterie.
+  // ORDRE FONDATEUR (24/08/2026) — le calque batterie ne remplace plus la
+  // courbe : les deux calques journée coexistent (la courbe porte la couche).
   it('les onglets Standard/Été/Ramadan restent actifs ET changent la silhouette quand la batterie est cochée', () => {
     let s = setBatteryLayer(initialProductionState(FULL), true, FULL);
     expect(s.battery).toBe(true);
     let l = productionLayers(s, FULL);
-    // Un seul dessin : la batterie remplace la courbe, jamais un second graphe.
+    // La courbe journalière RESTE affichée (elle porte la couche batterie) ;
+    // la vue année, elle, reste exclue.
     expect(l.battery).toBe(true);
-    expect(l.daily).toBe(false);
+    expect(l.daily).toBe(true);
     expect(l.monthly).toBe(false);
     // Les onglets restent proposés ET utilisables pendant que la batterie est active.
     expect(l.showVariantTabs).toBe(true);
@@ -227,13 +232,13 @@ describe('PV80 — graphique fusionné : transitions', () => {
     l = productionLayers(s, FULL);
     expect(l.battery).toBe(true);
     expect(l.variant).toBe('ete');
-    expect([l.monthly, l.daily, l.battery].filter(Boolean)).toHaveLength(1);
+    expect(l.monthly).toBe(false);
 
     s = setCurveVariant(s, 'ramadan', FULL);
     l = productionLayers(s, FULL);
     expect(l.battery).toBe(true);
     expect(l.variant).toBe('ramadan');
-    expect([l.monthly, l.daily, l.battery].filter(Boolean)).toHaveLength(1);
+    expect(l.monthly).toBe(false);
   });
 
   it('changer de variante ne touche jamais à l’état de la case batterie', () => {
@@ -362,16 +367,24 @@ describe('PV80 — token depuis la route catch-all (le token est le DERNIER segm
 // ════════════════════════════════════════════════════════════════════════════
 
 /** Un bloc backend réaliste (mêmes clés que la whitelist serveur). */
+const ORGANE_DC1 = { repere: 'QDC1', designation: 'Sectionneur DC', calibre: '16 A', quantite: 2 };
+const ORGANE_DC2 = { repere: 'PDC1', designation: 'Parafoudre DC type 2', calibre: '1000 V', quantite: 1 };
+const ORGANE_AC1 = { repere: 'QAC1', designation: 'Disjoncteur AC général', calibre: '32 A', quantite: 1 };
+const ORGANE_COMMUN = { repere: 'ARM1', designation: 'Coffret de protection AC/DC', calibre: 'IP65', quantite: 1 };
+
+// L-1V (24/08/2026) — LE BACKEND SERT LES GROUPES DÉJÀ ROUTÉS. Le fixture les
+// porte donc : `protections` (tous, ordre du moteur) + les trois groupes que
+// `public_views._conception_electrique_publique` calcule depuis le `cote` que
+// le MOTEUR a posé sur chaque organe.
 const CONCEPTION = {
   chaines: [
     { pan: 1, mppt: 1, nb_modules: 16 },
     { pan: 2, mppt: 2, nb_modules: 14 },
   ],
-  protections: [
-    { repere: 'Q1', designation: 'Disjoncteur DC chaîne 1', calibre: '16 A', quantite: 2 },
-    { repere: 'F1', designation: 'Parafoudre DC type 2', calibre: '1000 V', quantite: 1 },
-    { repere: 'Q10', designation: 'Disjoncteur AC général', calibre: '32 A', quantite: 1 },
-  ],
+  protections: [ORGANE_DC1, ORGANE_DC2, ORGANE_AC1, ORGANE_COMMUN],
+  protections_dc: [ORGANE_DC1, ORGANE_DC2],
+  protections_ac: [ORGANE_AC1],
+  protections_communes: [ORGANE_COMMUN],
   cables: [
     { liaison: 'Chaîne 1 → coffret DC', longueur_m: 18.5, section_mm2: 6 },
     { liaison: 'Onduleur → tableau AC', longueur_m: 12, section_mm2: 10 },
@@ -384,9 +397,13 @@ describe('détail électrique — lecture défensive du bloc backend', () => {
   it('un bloc complet est lu tel quel', () => {
     const c = parseConceptionElectrique(AVEC)!;
     expect(c.chaines).toHaveLength(2);
-    expect(c.protections).toHaveLength(3);
+    expect(c.protections).toHaveLength(4);
     expect(c.cables).toHaveLength(2);
     expect(c.chaines[0]).toEqual({ pan: 1, mppt: 1, nb_modules: 16 });
+    // Les groupes SERVEUR sont lus TELS QUELS — la page n'en recalcule aucun.
+    expect(c.groupes.dc.map((o) => o.repere)).toEqual(['QDC1', 'PDC1']);
+    expect(c.groupes.ac.map((o) => o.repere)).toEqual(['QAC1']);
+    expect(c.groupes.communs.map((o) => o.repere)).toEqual(['ARM1']);
   });
 
   it('absent, null ou vide → null (aucun dépliant, la page ne bouge pas d’un pixel)', () => {
@@ -438,17 +455,24 @@ describe('détail électrique — lecture défensive du bloc backend', () => {
 
 describe('détail électrique — chaque ligne d’équipement reçoit SA part', () => {
   const c = parseConceptionElectrique(AVEC);
+  /** Ce que la page fait vraiment : répartir UNE fois, puis servir. */
+  const bloc2 = (slugs: string[], i: number, opts: Record<string, unknown> = {}) =>
+    conceptionPourLigne(c, slugs[i], { organes: repartirOrganes(c, slugs)[i], ...opts });
 
-  it('protection DC → ses organes du côté continu, et eux seuls', () => {
-    const bloc = conceptionPourLigne(c, 'protection-dc')!;
-    expect(bloc.protections.map((o) => o.repere)).toEqual(['Q1', 'F1']);
+  it('protection DC → les organes que le SERVEUR a routés vers elle', () => {
+    const slugs = ['protection-dc', 'protection-ac'];
+    const bloc = bloc2(slugs, 0)!;
+    // Le côté continu + les organes COMMUNS (le coffret AC/DC, la terre) :
+    // ils n'appartiennent exclusivement à aucun côté et se posent sur la
+    // première ligne de protection — jamais en double.
+    expect(bloc.protections.map((o) => o.repere)).toEqual(['QDC1', 'PDC1', 'ARM1']);
     expect(bloc.cables).toHaveLength(0);
     expect(bloc.chaines).toHaveLength(0);
   });
 
   it('protection AC → ses organes du côté alternatif, et eux seuls', () => {
-    const bloc = conceptionPourLigne(c, 'protection-ac')!;
-    expect(bloc.protections.map((o) => o.repere)).toEqual(['Q10']);
+    const slugs = ['protection-dc', 'protection-ac'];
+    expect(bloc2(slugs, 1)!.protections.map((o) => o.repere)).toEqual(['QAC1']);
   });
 
   it('câblage → les sections et longueurs de liaison', () => {
@@ -476,41 +500,68 @@ describe('détail électrique — chaque ligne d’équipement reçoit SA part',
 
   it('famille concernée mais étude muette pour elle → null (jamais un volet vide)', () => {
     const sansCable = parseConceptionElectrique({
-      conception_electrique: { chaines: [], protections: CONCEPTION.protections, cables: [] },
+      conception_electrique: {
+        chaines: [], protections: CONCEPTION.protections,
+        protections_ac: CONCEPTION.protections_ac, cables: [],
+      },
     } as unknown as ProposalResponse);
     expect(conceptionPourLigne(sansCable, 'cablage')).toBeNull();
-    expect(conceptionPourLigne(sansCable, 'protection-ac')).not.toBeNull();
+    expect(conceptionPourLigne(sansCable, 'protection-ac', {
+      organes: repartirOrganes(sansCable, ['protection-ac'])[0],
+    })).not.toBeNull();
   });
 });
 
-// Le CATALOGUE RÉEL n'a pas la forme des fixtures : le devis résidentiel type
-// porte UNE ligne générique « Tableau De Protection AC/DC » (qui tombe sur la
-// fiche protection-dc) et AUCUNE ligne câble. Sans les deux règles ci-dessous,
-// le client ouvrait un dépliant qui perdait tout le côté alternatif et ne
-// montrait jamais une seule section de câble.
-describe('détail électrique — le catalogue réel (poste AC/DC, aucune ligne câble)', () => {
-  const c = parseConceptionElectrique(AVEC);
+// ════════════════════════════════════════════════════════════════════════════
+// L-1V (24/08/2026) — LA FICHE CONSOMME LES GROUPES SERVEUR, TELS QUELS.
+//
+// Ce bloc REMPLACE les tests de routage par le texte (`MARQUEURS_DC`,
+// `estOrganeDc`, `estProtectionAcDc`), supprimés avec l'heuristique qu'ils
+// épinglaient. Cette heuristique cherchait « dc » dans la DÉSIGNATION d'un
+// organe ; depuis que l'anticopie fusionne les lignes du kit en un seul « Kit
+// de fixation, câblage et protection complet » (qui tombe sur la fiche
+// `protection-ac`), elle envoyait le dossier entier du côté alternatif et TOUS
+// les organes continus disparaissaient de la page — pendant que le schéma
+// unifilaire de la même page continuait de les dessiner.
+//
+// Le côté est désormais une décision du MOTEUR, servie pré-routée. La page ne
+// fait plus qu'une chose : distribuer les groupes sur les lignes rendues, sans
+// jamais lire un libellé.
+// ════════════════════════════════════════════════════════════════════════════
+describe('détail électrique — les groupes viennent du serveur (jamais du libellé)', () => {
+  const c = parseConceptionElectrique(AVEC)!;
+  const tous = ['QDC1', 'PDC1', 'QAC1', 'ARM1'];
 
-  it('une ligne dont la désignation dit « AC/DC » montre LES DEUX familles', () => {
-    const bloc = conceptionPourLigne(c, 'protection-dc', { designation: 'Tableau De Protection AC/DC' })!;
-    expect(bloc.protections.map((o) => o.repere)).toEqual(['Q1', 'F1', 'Q10']);
+  it('AUCUN organe n’est perdu, quel que soit le découpage des lignes', () => {
+    for (const slugs of [
+      ['protection-ac'],                                   // la ligne KIT de l'anticopie
+      ['protection-dc'],
+      ['protection-dc', 'protection-ac'],
+      ['canadian-solar-710', 'protection-ac', 'accessoires-pose'],
+      ['protection-ac', 'protection-dc', 'protection-ac'],  // doublon de famille
+    ]) {
+      const vus = repartirOrganes(c, slugs).flat().map((o) => o.repere);
+      expect(new Set(vus), slugs.join('+')).toEqual(new Set(tous));
+      // …et une PARTITION : jamais deux fois le même organe.
+      expect(vus.length, slugs.join('+')).toBe(tous.length);
+    }
   });
 
-  it('les trois graphies sont reconnues, casse comprise', () => {
-    for (const d of ['Tableau De Protection AC/DC', 'Coffret ac-dc 6 modules', 'Protection AC DC']) {
-      expect(estProtectionAcDc(d), d).toBe(true);
-      expect(conceptionPourLigne(c, 'protection-dc', { designation: d })!.protections, d).toHaveLength(3);
-    }
-    for (const d of ['Coffret DC', 'Disjoncteur AC', '', null, undefined]) {
-      expect(estProtectionAcDc(d), String(d)).toBe(false);
-    }
+  it('la ligne KIT unique (anticopie) montre TOUT le dossier, DC compris', () => {
+    // C'est LE cas qui a cassé : « Kit de fixation, câblage et protection
+    // complet » → fiche `protection-ac`, et l'ancienne heuristique n'y mettait
+    // que le côté alternatif.
+    const slugs = ['canadian-solar-710', 'protection-ac'];
+    const organes = repartirOrganes(c, slugs)[1];
+    expect(organes.map((o) => o.repere)).toEqual(['QAC1', 'QDC1', 'PDC1', 'ARM1']);
+    const bloc = conceptionPourLigne(c, 'protection-ac', { organes })!;
+    expect(bloc.protections.map((o) => o.repere)).toEqual(['QAC1', 'QDC1', 'PDC1', 'ARM1']);
   });
 
-  it('sans désignation combinée, chaque côté reste séparé (comportement d’origine)', () => {
-    expect(conceptionPourLigne(c, 'protection-dc', { designation: 'Coffret DC 2 chaînes' })!
-      .protections.map((o) => o.repere)).toEqual(['Q1', 'F1']);
-    expect(conceptionPourLigne(c, 'protection-ac', { designation: 'Coffret AC' })!
-      .protections.map((o) => o.repere)).toEqual(['Q10']);
+  it('aucune ligne de protection ⇒ rien n’est accroché (la page n’invente pas une ligne)', () => {
+    expect(repartirOrganes(c, ['canadian-solar-710', 'cablage']).flat()).toHaveLength(0);
+    expect(repartirOrganes(null, ['protection-dc']).flat()).toHaveLength(0);
+    expect(repartirOrganes(c, [])).toEqual([]);
   });
 
   it('la ligne HÔTE des câbles : la 1ʳᵉ protection, et seulement faute de ligne câblage', () => {
@@ -526,26 +577,35 @@ describe('détail électrique — le catalogue réel (poste AC/DC, aucune ligne 
   });
 
   it('rattachés, les câbles arrivent sous la protection et se disent rattachés', () => {
-    const bloc = conceptionPourLigne(c, 'protection-dc', {
-      designation: 'Tableau De Protection AC/DC',
+    const slugs = ['protection-ac'];
+    const bloc = conceptionPourLigne(c, 'protection-ac', {
+      organes: repartirOrganes(c, slugs)[0],
       rattacherCables: true,
     })!;
     expect(bloc.cables).toHaveLength(2);
     expect(bloc.cablesRattaches).toBe(true);
-    expect(bloc.protections).toHaveLength(3);
+    expect(bloc.protections).toHaveLength(4);
   });
 
   it('sous une VRAIE ligne câblage, rien n’est « rattaché » (aucun intertitre)', () => {
     expect(conceptionPourLigne(c, 'cablage')!.cablesRattaches).toBe(false);
-    expect(conceptionPourLigne(c, 'protection-dc')!.cablesRattaches).toBe(false);
+    expect(conceptionPourLigne(c, 'protection-dc', {
+      organes: repartirOrganes(c, ['protection-dc'])[0],
+    })!.cablesRattaches).toBe(false);
   });
 
   it('le rattachement ne FABRIQUE rien : sans liaison à l’étude, aucun câble', () => {
     const sansCable = parseConceptionElectrique({
-      conception_electrique: { chaines: [], protections: CONCEPTION.protections, cables: [] },
+      conception_electrique: {
+        chaines: [], protections: CONCEPTION.protections,
+        protections_dc: CONCEPTION.protections_dc,
+        protections_ac: CONCEPTION.protections_ac,
+        protections_communes: CONCEPTION.protections_communes,
+        cables: [],
+      },
     } as unknown as ProposalResponse);
     const bloc = conceptionPourLigne(sansCable, 'protection-dc', {
-      designation: 'Tableau De Protection AC/DC',
+      organes: repartirOrganes(sansCable, ['protection-dc'])[0],
       rattacherCables: true,
     })!;
     expect(bloc.cables).toHaveLength(0);
@@ -589,8 +649,12 @@ describe('détail électrique — rendu dans le tableau d’équipement', () => 
   it('la page lit le bloc backend par la fonction pure, une seule fois', () => {
     expect(PAGE).toContain('parseConceptionElectrique(data!)');
     expect(PAGE).toContain('conceptionPourLigne(conception, ficheSlug, {');
-    // …avec la désignation FACTURÉE (poste combiné AC/DC) et l'hôte des câbles.
-    expect(PAGE).toContain('designation: it.designation');
+    // L-1V — les organes viennent PRÉ-ROUTÉS du serveur, répartis UNE fois sur
+    // les lignes rendues. La page ne lit plus aucune désignation pour décider
+    // d'un côté : `designation: it.designation` a disparu avec l'heuristique.
+    expect(PAGE).toContain('repartirOrganes(conception, equipmentSlugs)');
+    expect(PAGE).toContain('organes: organesDeLaLigne.get(it)');
+    expect(PAGE).not.toContain('designation: it.designation');
     expect(PAGE).toContain('indexHoteDesCables(equipmentSlugs)');
     expect(PAGE).toContain('rattacherCables: it === cableHostLine');
   });

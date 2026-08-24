@@ -523,6 +523,13 @@ export interface DailyCurve {
    * droit d'écrire « calé sur vos factures ».
    */
   hasRealConsScale: boolean;
+  /**
+   * ORDRE FONDATEUR (24/08/2026) — vrai quand la COUCHE BATTERIE est dessinée
+   * sur CE graphe (l'aire de consommation réellement couverte par la batterie,
+   * heure par heure). Faux dès qu'il manque un axe réel ou la série horaire :
+   * on ne dessine JAMAIS une couche batterie sur un axe illustratif.
+   */
+  hasBatteryLayer: boolean;
 }
 
 /** Nombre court (1 décimale), virgule/point décimal selon la langue. */
@@ -558,14 +565,43 @@ const HOUR_TICK_LABELS: Record<CurveLang, { sunrise: string; noon: string; sunse
 
 /** WJ80 — Texte du repère d'échelle (pic + moyenne journalière ou repli « année type »).
  *  CJ1 — `perDay` sert la ligne saisonnière « 48,2 kWh/jour (été) » quand le
- *  backend a servi la saison ; `dailyAvg` reste la ligne du repli annuel. */
+ *  backend a servi la saison ; `dailyAvg` reste la ligne du repli annuel.
+ *
+ *  ORDRE FONDATEUR (24/08/2026) — LEVÉE D'AMBIGUÏTÉ. Le repère affichait
+ *  « pic ≈ 4 kW / 30,2 kWh/jour (été) » SANS jamais dire de quelle courbe il
+ *  parlait : posé sur un graphe à deux courbes (production laiton, consommation
+ *  azur), un client a naturellement lu sa CONSOMMATION — et l'a jugée
+ *  incohérente avec sa facture. Les deux chiffres ont toujours été ceux de la
+ *  PRODUCTION (`courbes_journalieres.production[saison]`, moteur serveur) : ils
+ *  le DISENT désormais (`peak` = « pic de production ≈ », `prodPrefix` =
+ *  « production estimée : »), et le kWh/jour RÉEL de consommation servi pour
+ *  la même saison est affiché sur sa propre ligne (`consPrefix`) quand il
+ *  existe — jamais un chiffre de plus, seulement des chiffres nommés. */
 const SCALE_LABELS: Record<
   CurveLang,
-  { peak: string; dailyAvg: string; typicalYear: string; perDay: string }
+  {
+    peak: string; dailyAvg: string; typicalYear: string; perDay: string;
+    prodPrefix: string; consPrefix: string; batteryLegend: string;
+  }
 > = {
-  fr: { peak: 'pic ≈', dailyAvg: '/ jour en moyenne', typicalYear: 'profil — année type', perDay: '/jour' },
-  en: { peak: 'peak ≈', dailyAvg: '/ day on average', typicalYear: 'profile — typical year', perDay: '/day' },
-  ar: { peak: 'الذروة ≈', dailyAvg: '/ يومياً في المتوسط', typicalYear: 'نمط — سنة نموذجية', perDay: '/يوم' },
+  fr: {
+    peak: 'pic de production ≈', dailyAvg: '/ jour en moyenne',
+    typicalYear: 'profil — année type', perDay: '/jour',
+    prodPrefix: 'production estimée :', consPrefix: 'votre consommation :',
+    batteryLegend: 'couvert par la batterie',
+  },
+  en: {
+    peak: 'production peak ≈', dailyAvg: '/ day on average',
+    typicalYear: 'profile — typical year', perDay: '/day',
+    prodPrefix: 'estimated production:', consPrefix: 'your consumption:',
+    batteryLegend: 'covered by the battery',
+  },
+  ar: {
+    peak: 'ذروة الإنتاج ≈', dailyAvg: '/ يومياً في المتوسط',
+    typicalYear: 'نمط — سنة نموذجية', perDay: '/يوم',
+    prodPrefix: 'الإنتاج المقدّر:', consPrefix: 'استهلاككم:',
+    batteryLegend: 'مغطى بالبطارية',
+  },
 };
 
 /**
@@ -583,6 +619,16 @@ export interface ServedCurveScale {
   season?: SeasonId | null;
   /** L4 — couches d'équipement du lead (script d'appel), `{}`/absent = aucune. */
   equipements?: EquipmentLayers | null;
+  /**
+   * ORDRE FONDATEUR (24/08/2026) — LA COUCHE BATTERIE, SUR CE GRAPHE-LÀ.
+   * 24 valeurs en kWh : la part de la consommation de chaque heure RÉELLEMENT
+   * fournie par la batterie. Elle sort du MÊME moteur horaire que l'aire
+   * empilée du simulateur (`batterySim.simulateBattery(...).hourly.battery`),
+   * lui-même nourri des séries SERVIES (kWh/jour réels + forme PVGIS) — aucune
+   * courbe synthétique n'est fabriquée ici. Absente/invalide/toute nulle ⇒
+   * aucune couche n'est dessinée (rendu byte-identique à celui d'avant).
+   */
+  batterieHoraireKwh?: readonly number[] | null;
 }
 
 /**
@@ -672,8 +718,33 @@ export function renderYearCurve(
   }
   const hasRealScale = hasServedShape || annual !== null;
 
+  // ── ORDRE FONDATEUR (24/08/2026) — LA COUCHE BATTERIE SUR CE GRAPHE ───────
+  // Le bouton « Avec batterie » remplaçait ce dessin par un autre : le client
+  // perdait de vue la journée qu'il regardait. La part de sa consommation
+  // fournie par la batterie se dessine désormais ICI, sur le MÊME axe (kW) que
+  // les deux courbes, à partir de la série horaire servie — jamais une forme
+  // inventée, et jamais posée sur un axe illustratif (`hasRealConsScale`).
+  const batterieSerie = served?.batterieHoraireKwh;
+  const batterieValide = hasRealConsScale
+    && Array.isArray(batterieSerie)
+    && batterieSerie.length === 24
+    && batterieSerie.every((v) => typeof v === 'number' && Number.isFinite(v) && v >= 0)
+    && batterieSerie.some((v) => v > 0);
+  const hasBatteryLayer = !!batterieValide;
+
   const solar = pathFromProfile(solarAt, box, true);
   const cons = pathFromProfile(consAt, box, false);
+  // Aire batterie : même échelle (division par le MÊME `axisMax` que les deux
+  // courbes, via `battAt`), fermée sous la ligne de base.
+  let batteryArea = '';
+  if (hasBatteryLayer) {
+    const serie = batterieSerie as readonly number[];
+    let axisMax = prod!.picKw;
+    if (consKwh) for (let h = 0; h < 24; h++) axisMax = Math.max(axisMax, sampleShape(consKwh, h));
+    const denom = axisMax > 0 ? axisMax : 1;
+    const battAt = (h: number) => sampleShape(serie as number[], h) / denom;
+    batteryArea = pathFromProfile(battAt, box, true).d;
+  }
 
   const plotH = box.height - box.padTop - box.padBottom;
   const baseY = box.padTop + plotH;
@@ -703,19 +774,32 @@ export function renderYearCurve(
       peakFmt = fmtKw(prod!.picKw, lang);
       const seasonId = served?.season ?? null;
       const inline = seasonId ? ` (${SEASON_INLINE[seasonId][lang]})` : '';
-      avgFmt = `${fmtKwh(prod!.kwhJour, lang)}${scale.perDay}${inline}`;
+      // ORDRE FONDATEUR — le chiffre est NOMMÉ : c'est la production estimée du
+      // système sur un jour moyen de cette saison, pas la consommation.
+      avgFmt = `${scale.prodPrefix} ${fmtKwh(prod!.kwhJour, lang)}${scale.perDay}${inline}`;
     } else {
       // Repli inchangé : moyenne journalière = annuel / 365, et le pic vaut env.
       // dailyAvg / surface-sous-la-cloche (≈ 4,6 h équivalent pleine puissance).
       // C'est une PUISSANCE moyenne d'heure de pointe — d'où « kW », pas « kWh ».
       const dailyAvg = annual! / 365;
       peakFmt = fmtKw(dailyAvg / 4.6, lang);
-      avgFmt = `${fmtKwh(dailyAvg, lang)} ${scale.dailyAvg}`;
+      avgFmt = `${scale.prodPrefix} ${fmtKwh(dailyAvg, lang)} ${scale.dailyAvg}`;
     }
+    // ORDRE FONDATEUR — troisième ligne : le kWh/jour RÉEL de consommation de
+    // la même saison (celui qui met la courbe azur à l'échelle). Il n'existe
+    // que sur le chemin `hasRealConsScale` — sinon rien n'est écrit (aucune
+    // consommation approchée n'est affichée).
+    const consFmt = hasRealConsScale
+      ? `${scale.consPrefix} ${fmtKwh(consKwhJour!, lang)}${scale.perDay}`
+      : '';
+    const consLine = consFmt
+      ? `<text x="${(box.padLeft + 2).toFixed(2)}" y="${(box.padTop + 30).toFixed(2)}" font-size="8.5" fill="var(--color-azur-300, #7fb4e8)">${esc(consFmt)}</text>`
+      : '';
     scaleLabel =
-      `<g data-curve-scale data-peak="${esc(`${scale.peak} ${peakFmt}`)}" data-avg="${esc(avgFmt)}" tabindex="0" role="button" aria-label="${esc(scale.peak)} ${esc(peakFmt)}, ${esc(avgFmt)}">` +
+      `<g data-curve-scale data-peak="${esc(`${scale.peak} ${peakFmt}`)}" data-avg="${esc(avgFmt)}"${consFmt ? ` data-cons="${esc(consFmt)}"` : ''} tabindex="0" role="button" aria-label="${esc(scale.peak)} ${esc(peakFmt)}, ${esc(avgFmt)}${consFmt ? `, ${esc(consFmt)}` : ''}">` +
       `<text x="${(box.padLeft + 2).toFixed(2)}" y="${(box.padTop + 8).toFixed(2)}" font-size="9" fill="var(--color-brass-300, #f3cc66)">${esc(scale.peak)} ${esc(peakFmt)}</text>` +
       `<text x="${(box.padLeft + 2).toFixed(2)}" y="${(box.padTop + 19).toFixed(2)}" font-size="8.5" fill="var(--color-lune-faint, #8d96b4)">${esc(avgFmt)}</text>` +
+      consLine +
       `</g>`;
   } else {
     scaleLabel =
@@ -752,11 +836,17 @@ export function renderYearCurve(
     baseline +
     sun +
     `<path class="curve-solar-fill" d="${solar.d}" fill="url(#solarFill)" stroke="none"/>` +
+    // ORDRE FONDATEUR — la part de la consommation couverte par la batterie,
+    // sous la courbe de consommation, dans le bleu de la batterie (le même que
+    // l'aire empilée du simulateur). Absente quand la série ne l'est pas.
+    (hasBatteryLayer
+      ? `<path class="curve-battery-fill" data-curve-battery d="${batteryArea}" fill="var(--color-azur-300, #7fb4e8)" fill-opacity="0.28" stroke="none"><title>${esc(SCALE_LABELS[lang].batteryLegend)}</title></path>`
+      : '') +
     `<path class="curve-solar-line" d="${solar.d.replace(/ L[\d.]+ [\d.]+ L[\d.]+ [\d.]+ Z$/, '')}" fill="none" stroke="var(--color-brass-400, #e8b54a)" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>` +
     `<path class="curve-cons-line" d="${cons.d}" fill="none" stroke="var(--color-azur-300, #7fb4e8)" stroke-width="2" stroke-dasharray="4 3" stroke-linejoin="round" stroke-linecap="round"/>` +
     ticks +
     scaleLabel +
     `</svg>`;
 
-  return { svg, hasRealScale, hasServedShape, hasRealConsScale };
+  return { svg, hasRealScale, hasServedShape, hasRealConsScale, hasBatteryLayer };
 }

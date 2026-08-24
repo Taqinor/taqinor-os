@@ -288,9 +288,17 @@ export function setOccupancy(
 }
 
 /**
- * Résout l'état en calques visibles. INVARIANT CENTRAL de la refonte : au plus
- * UN dessin visible à la fois (`monthly`, `daily` et `battery` ne sont jamais
- * deux à `true`). Le calque batterie REMPLACE la courbe nue.
+ * Résout l'état en calques visibles. INVARIANT : les vues ANNÉE et JOURNÉE ne
+ * cohabitent jamais (`monthly` exclut `daily` et `battery`).
+ *
+ * ORDRE FONDATEUR (24/08/2026) — LE CALQUE BATTERIE NE REMPLACE PLUS LA COURBE.
+ * PV80 faisait disparaître le graphe production-vs-consommation dès qu'on
+ * cliquait « Avec batterie » : le client perdait exactement le dessin qu'il
+ * était en train de lire. La courbe RESTE désormais visible et porte la couche
+ * batterie (l'aire de consommation couverte par la batterie, `renderYearCurve`
+ * `batterieHoraireKwh`) ; le bloc simulateur (curseur + chiffres + aire
+ * empilée) s'ajoute EN DESSOUS. `daily` et `battery` peuvent donc être vrais
+ * ensemble — `monthly` reste exclusif.
  */
 export function productionLayers(
   state: ProductionState,
@@ -312,7 +320,7 @@ export function productionLayers(
     : (av.defaultOccupancy ?? FALLBACK_OCCUPANCY);
   return {
     monthly: view === 'annee' && av.monthly,
-    daily: view === 'journee' && av.daily && !batteryOn,
+    daily: view === 'journee' && av.daily,
     battery: batteryOn,
     variant,
     showViewTabs: views.length > 1,

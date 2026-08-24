@@ -81,9 +81,11 @@ import {
   buildViewerModel,
   roofLayoutOutlineLatLng,
   hasSldSvg,
+  noteVersionSimplifiee,
   sldSvgFilename,
   parseConceptionElectrique,
   conceptionPourLigne,
+  repartirOrganes,
   indexHoteDesCables,
   chaineLabel,
   protectionLabel,
@@ -165,6 +167,9 @@ import {
 } from '../../lib/propositionPage';
 // WJ131 — appariement PUR « ligne de devis → fiche technique /produits/<slug> »
 // (aucune correspondance certaine → aucun lien, jamais la fiche d'une autre marque).
+// L-ECO — lecture SEULE du bloc public `economies_periodes` (fichier dédié :
+// aucune arithmétique d'économie ne vit côté page).
+import { economiesPeriodes } from '../../lib/economiesPeriodes';
 import { ficheSlugPourLigne } from '../../lib/ficheMatcher';
 import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
 // W342 — « installation la plus proche » : haversine sur un point GPS réel
@@ -668,6 +673,17 @@ const batteryInitialOverStorage =
   storageSweep?.refuse != null && batterySimInitialN === storageSweep.refuse.nbPacks
     ? storageSweep.refuse
     : null;
+// ORDRE FONDATEUR (24/08/2026) — payback et remplissage moyen DU PALIER au N de
+// départ : deux nombres SERVIS par le moteur (jamais dérivés ici). `null` ⇒ la
+// ligne correspondante ne rend rien.
+const batteryInitialPayback = storagePalierAtInitialN?.paybackAnnees ?? null;
+// Message « charge incomplète » : uniquement sous 100 % (à 100 % ou plus, la
+// batterie se remplit chaque jour — rien à signaler).
+const batteryInitialFillPct =
+  storagePalierAtInitialN?.remplissageMoyenPct != null
+    && storagePalierAtInitialN.remplissageMoyenPct < 100
+    ? storagePalierAtInitialN.remplissageMoyenPct
+    : null;
 // Config sérialisée pour le script client (recalcul au curseur, sans réseau).
 // PACT-battery — `mode` (curveMode) permet au client de recalculer `consShape`
 // via consumptionShapeHours() pour la variante active des onglets Standard/
@@ -685,7 +701,15 @@ const batterySimConfig = showBatterySim
       // ORDRE FONDATEUR — paliers RÉELS (prix TTC par N de packs) + premier
       // refusé (N + pourcentage de remplissage du pire mois, RÉEL) : le
       // script client les relit au curseur, jamais un nouveau calcul.
-      storagePaliers: storagePaliersSorted.map((p) => ({ n: p.nbPacks, ttc: p.coutTtc })),
+      // ORDRE FONDATEUR (24/08/2026) — chaque palier porte AUSSI son payback
+      // moteur (`payback_annees`) et son remplissage moyen : le script client
+      // les LIT au curseur, il n'en calcule aucun.
+      storagePaliers: storagePaliersSorted.map((p) => ({
+        n: p.nbPacks,
+        ttc: p.coutTtc,
+        payback: p.paybackAnnees,
+        remplissagePct: p.remplissageMoyenPct,
+      })),
       storageRefuse: storageSweep?.refuse
         ? { n: storageSweep.refuse.nbPacks, pireMoisPct: storageSweep.refuse.remplissagePireMoisPct }
         : null,
@@ -736,6 +760,33 @@ const productionAvailability: ProductionAvailability = {
 const showProduction = hasProductionBlock(productionAvailability);
 const prodState0 = initialProductionState(productionAvailability);
 const prodLayers = productionLayers(prodState0, productionAvailability);
+// ORDRE FONDATEUR (24/08/2026) — quand le calque batterie est actif DÈS LE
+// PREMIER RENDU (devis « avec batterie » verrouillé), la courbe journalière est
+// re-rendue AVEC sa couche batterie : la part horaire de consommation fournie
+// par la batterie, telle que la calcule le MÊME moteur horaire que l'aire
+// empilée du simulateur (`batteryInitial.hourly.battery`) — aucune série
+// inventée. Calque inactif ⇒ ce bloc ne s'exécute pas et le rendu est
+// byte-identique à celui d'avant.
+if (ok && prodLayers.battery && batteryInitial) {
+  const servedAvecBatterie = {
+    ...(servedScaleFor(curveSeasonDefault) ?? {}),
+    batterieHoraireKwh: batteryInitial.hourly.battery,
+  };
+  for (const lang of ['fr', 'en', 'ar'] as const) {
+    for (const variant of CURVE_VARIANTS) {
+      dailyCurvesByVariant[lang][variant] = renderYearCurve(
+        prodKwh,
+        undefined,
+        lang,
+        {
+          mode: curveMode, variant, occupancy: curveOccupancyDefault, ramadan: curveRamadan,
+          servedShape: curveServedShape,
+        },
+        servedAvecBatterie,
+      );
+    }
+  }
+}
 const productionConfig = showProduction ? JSON.stringify(productionAvailability) : '';
 
 // ── WJ15 — Fenêtre de validité honnête (date backend réelle, jamais inventée) ─
@@ -892,6 +943,62 @@ const occOptimalTri = (s: {
   };
 };
 
+// ── L-ECO (ordre fondateur, 24/08/2026) — LE BANDEAU D'ÉCONOMIES SOUS LE
+//    GRAPHE « SUR UNE JOURNÉE ». « économies du jour type affiché (qui change
+//    avec la puce saison ET le profil), du mois, de l'année — l'année NE CHANGE
+//    PAS avec la saison — et le retour sur investissement. »
+//
+//    TOUT EST CALCULÉ PAR LE MOTEUR (`apps/ventes/economies_periodes.py`, qui
+//    ne fait lui-même que DÉCLINER les douze valeurs de `economies_mensuelles`
+//    et reprendre le retour sur investissement DÉJÀ servi `quote.roi_s/roi_a` —
+//    aucune troisième définition du payback). Cette page REND toutes les
+//    combinaisons et en montre UNE : son script ne fait que basculer `hidden`,
+//    il ne multiplie, ne divise et n'additionne RIEN (règle « zéro chiffre
+//    inventé », épinglée par un test qui interdit toute arithmétique dans ce
+//    script). `null` ⇒ le bandeau n'existe pas dans le DOM, la page est
+//    exactement celle d'avant L-ECO.
+const ecoPeriodes = ok ? economiesPeriodes(data!) : null;
+/** Les profils réellement servis avec leurs périodes, sinon un seul « défaut »
+ *  (le devis lui-même) : jamais une puce qui montrerait les chiffres d'un
+ *  autre comportement. */
+const ecoProfilIds: readonly string[] = ecoPeriodes
+  ? (ecoPeriodes.profils.length > 0
+      ? ecoPeriodes.profils.map((p) => p.occupancy)
+      : [''])
+  : [];
+/** Les variantes à afficher côte à côte : « sans batterie » et, seulement si le
+ *  devis peut VRAIMENT la livrer (le serveur omet `avec` sinon), « avec ». */
+const ecoVariantes: readonly ('sans' | 'avec')[] = ecoPeriodes
+  ? (ecoPeriodes.avec ? ['sans', 'avec'] : ['sans'])
+  : [];
+const ECO_VARIANTE_LABELS: Record<'sans' | 'avec', OccTri> = {
+  sans: { fr: 'Sans batterie', en: 'Without battery', ar: 'بدون بطارية' },
+  avec: { fr: 'Avec batterie', en: 'With battery', ar: 'مع بطارية' },
+};
+/** Le bloc servi pour un (profil, variante) — pure LECTURE d'un objet déjà
+ *  calculé, jamais un mélange entre deux comportements. */
+const ecoBloc = (profil: string, variante: 'sans' | 'avec') => {
+  if (!ecoPeriodes) return null;
+  const source = profil
+    ? (ecoPeriodes.profils.find((p) => p.occupancy === profil) ?? null)
+    : ecoPeriodes;
+  if (!source) return null;
+  return variante === 'avec' ? source.avec : source.sans;
+};
+/** Le profil montré au chargement : celui que la puce d'occupation a déjà
+ *  sélectionné (drapeau serveur), sinon le premier servi. */
+const ecoProfilDefaut: string = ecoProfilIds.length === 0
+  ? ''
+  : (ecoProfilIds.includes(prodLayers.occupancy as string)
+      ? (prodLayers.occupancy as string)
+      : ecoProfilIds[0]);
+/** Le retour sur investissement n'est porté que par le devis lui-même (les
+ *  profils comparatifs n'en portent pas) : on le lit donc TOUJOURS à la racine
+ *  — un profil alternatif ne change pas le prix de l'installation. */
+const ecoRetourAns = (variante: 'sans' | 'avec') =>
+  (variante === 'avec' ? ecoPeriodes?.avec : ecoPeriodes?.sans)
+    ?.retourInvestissementAns ?? null;
+
 // ── WJ14 — Impact environnemental humain (CO₂ ≈ arbres), depuis la production ─
 const enviro = ok ? environmentalImpact(prodKwh) : null;
 
@@ -936,6 +1043,23 @@ const waLinkReferral = ok ? whatsappReferralLink(Astro.url.origin, reference) : 
 // ── P3 — Lien public du devis PDF premium (même token, nouvel onglet) ────────
 const pdfUrl = ok ? proposalPdfEndpoint(API_BASE, token) : '';
 
+// ── L-VAR (ordre fondateur, 24/08/2026) — VARIANTE TÉLÉCHARGÉE ──────────────
+// Ce que le client coche pour SIGNER n'engage QUE sa signature : le devis
+// COMPLET reste toujours téléchargeable. Le sélecteur ci-dessous (au-dessus du
+// bouton de téléchargement) pilote le paramètre `?variante=` du même endpoint
+// PDF — jamais un second chemin PDF (règle #4).
+//
+// DÉFAUT = la composition du COMMERCIAL, lue dans la donnée
+// (`quote.scenario`, posé à la création : etude_params['scenario']). Aucune
+// déduction : un document « Les deux (Sans + Avec) » démarre sur « Les deux »
+// (le complet). Il n'existe AUCUN autre champ de recommandation exploitable
+// ici — `recommended_option` n'est écrit que par l'écran générateur de l'ERP
+// et ne désigne qu'une option MISE EN AVANT, pas le périmètre du document.
+const pdfVariantDefault: 'sans' | 'avec' | 'les_deux' =
+  q?.scenario === 'Sans batterie' ? 'sans'
+  : q?.scenario === 'Avec batterie' ? 'avec'
+  : 'les_deux';
+
 // ── WJ25 — visionneuse 3D en lecture seule (layout backend QJ26) ────────────
 // Le backend expose `roof_layout` depuis QJ26 (_safe_roof_layout,
 // apps/ventes/public_views.py) : quand le devis porte un layout exploitable,
@@ -969,6 +1093,12 @@ const viewerConfig = show3d ? JSON.stringify({ model: viewerModel, roofOutlineLa
 const showSld = ok && data ? hasSldSvg(data) : false;
 const sldSvg = showSld ? (data!.sld_svg ?? '') : '';
 const sldFilename = showSld ? sldSvgFilename(reference) : '';
+
+// ── L-NIV-VU — « Version simplifiée », affichée SEULEMENT si c'est vrai.
+// `noteVersionSimplifiee` rend `null` au niveau « confiance », sur un backend
+// antérieur, ET au niveau « standard » quand aucune dégradation ne s'est
+// déclenchée sur ce devis-là : la page n'annonce alors rien du tout.
+const noteSimplifiee = ok && data ? noteVersionSimplifiee(data) : null;
 
 // ── W342 — « L'installation la plus proche de chez vous » ────────────────────
 // Priorité au VRAI GPS du toit (premier sommet du premier pan de
@@ -1033,10 +1163,14 @@ const conception = ok ? parseConceptionElectrique(data!) : null;
 // Deux corrections de CATALOGUE RÉEL (le devis résidentiel type ne porte comme
 // postes génériques que « Tableau De Protection AC/DC », « Accessoires »,
 // « Socles », « Structures acier/aluminium ») :
-//  · la ligne « AC/DC » tombe sur la fiche protection-dc, donc le dépliant
-//    n'aurait montré que le côté continu — la moitié AC (disjoncteur, parafoudre,
-//    différentiel, terre, liaison équipotentielle) disparaissait sous une ligne
-//    qui s'appelle pourtant « AC/DC » : `estProtectionAcDc` la rend entière ;
+//  · L-1V (24/08/2026) — LES CÔTÉS VIENNENT DU SERVEUR. La page rangeait chaque
+//    organe d'un côté ou de l'autre en cherchant « dc » dans sa désignation ;
+//    depuis que l'anticopie fusionne les lignes du kit en un seul « Kit de
+//    fixation, câblage et protection complet », ce test envoyait le poste entier
+//    du côté alternatif et TOUS les organes continus disparaissaient de la page
+//    alors que le schéma unifilaire, lui, les dessinait. `repartirOrganes`
+//    distribue les groupes servis par le moteur — une PARTITION : aucun organe
+//    en double, aucun orphelin ;
 //  · aucune ligne « câble » n'est facturée, donc les sections et longueurs
 //    calculées par l'étude n'apparaissaient nulle part : `indexHoteDesCables`
 //    les accroche à UNE seule ligne de protection (jamais deux), sous un
@@ -1049,6 +1183,12 @@ const cableHostIndex = indexHoteDesCables(equipmentSlugs);
 // La ligne hôte est désignée PAR IDENTITÉ (jamais par un index recalculé) :
 // `null` quand il n'y en a pas, et alors aucune ligne ne se compare vraie.
 const cableHostLine = cableHostIndex >= 0 ? equipmentRendered[cableHostIndex] : null;
+// Les organes, répartis UNE fois sur les lignes rendues (partition : aucun
+// doublon, aucun orphelin). La ligne est retrouvée PAR IDENTITÉ ensuite.
+const organesParLigne = repartirOrganes(conception, equipmentSlugs);
+const organesDeLaLigne = new Map(
+  equipmentRendered.map((it, i) => [it, organesParLigne[i]]),
+);
 const equipmentGroups = equipmentGrouped.map((group) => ({
   id: group.id,
   lines: group.lines.map((it) => {
@@ -1057,7 +1197,7 @@ const equipmentGroups = equipmentGrouped.map((group) => ({
       ...it,
       ficheSlug,
       detail: conceptionPourLigne(conception, ficheSlug, {
-        designation: it.designation,
+        organes: organesDeLaLigne.get(it) ?? [],
         rattacherCables: it === cableHostLine,
       }),
     };
@@ -1784,6 +1924,19 @@ const signConfig = ok
                 data-ar="معدات جديدة، مع ضمانات الصانع. تفاصيل الأسعار مذكورة أسفل، في «ثمنكم».">
                 Matériel neuf, garanties constructeur incluses. Le détail des prix figure plus bas, dans « Votre prix ».
               </p>
+              {/* L-NIV-VU (24/08/2026) — ICI, et seulement ici, parce que c'est
+                  ICI que la simplification se voit : la ligne « kit » regroupée
+                  et le volet « Dans votre installation » sans calibres. Rendu
+                  UNIQUEMENT quand le serveur a constaté une dégradation réelle
+                  sur CE devis (`niveau_masque` non vide) — au niveau
+                  « confiance », ou au niveau « standard » sans rien à masquer,
+                  cette phrase n'existe pas. Aucun prix, aucune marque n'est
+                  touché : les marques restent affichées AUX DEUX NIVEAUX. */}
+              {noteSimplifiee && (
+                <p class="mt-2 text-xs text-lune-faint" data-niveau-simplifie>
+                  {noteSimplifiee}
+                </p>
+              )}
             </div>
           )}
         </section>
@@ -2236,6 +2389,13 @@ const signConfig = ok
                   <span class="inline-block h-3 w-3 rounded-sm" style="background: var(--color-azur-300, #7fb4e8)" aria-hidden="true"></span>
                   <span data-i18n data-fr="Votre consommation" data-en="Your consumption" data-ar="استهلاككم">Votre consommation</span>
                 </span>
+                {/* ORDRE FONDATEUR (24/08/2026) — légende de la COUCHE BATTERIE
+                    dessinée sur CE graphe. Visible exactement quand le calque
+                    batterie l'est (piloté par `apply()` côté client). */}
+                <span data-prod-battery-legend class="inline-flex items-center gap-2 text-lune-soft" hidden={!prodLayers.battery}>
+                  <span class="inline-block h-3 w-3 rounded-sm" style="background: var(--color-azur-300, #7fb4e8); opacity: 0.45" aria-hidden="true"></span>
+                  <span data-i18n data-fr="Couvert par la batterie" data-en="Covered by the battery" data-ar="مغطى بالبطارية">Couvert par la batterie</span>
+                </span>
                 {!dailyCurve.hasRealScale && (
                   <span class="text-lune-faint" data-i18n data-fr="profil — année type (forme indicative)" data-en="profile — typical year (indicative shape)" data-ar="نمط — سنة نموذجية (شكل إرشادي)">profil — année type (forme indicative)</span>
                 )}
@@ -2362,6 +2522,38 @@ const signConfig = ok
                 <span class="ms-1 font-semibold text-brass-300" id="battery-sim-price" dir="ltr">{batteryInitialPrice ?? 'Sur étude'}</span>
               </p>
 
+              <!-- ORDRE FONDATEUR (24/08/2026) — LA PÉRIODE DE RETOUR DU PALIER.
+                   Le chiffre est celui du MOTEUR (`balayage_stockage.paliers[].
+                   payback_annees` = coût TTC du palier ÷ économie annuelle du
+                   palier, calculé dans `dimensionnement._palier_rendu`) : cette
+                   page ne fait que le CHOISIR et l'habiller — aucune
+                   arithmétique en JS. Quand le curseur s'écarte de la
+                   configuration du devis, les DEUX chiffres servis sont montrés
+                   (« X ans → Y ans »). Palier sans payback servi ⇒ ligne
+                   masquée (omission, jamais une valeur approchée). -->
+              <p id="battery-sim-payback" class="mt-2 text-sm" hidden={batteryInitialPayback == null}>
+                <span class="text-lune-soft" data-i18n
+                  data-fr="Retour sur investissement :" data-en="Payback period:" data-ar="مدة استرداد الاستثمار:">Retour sur investissement :</span>
+                <span class="ms-1 font-semibold text-brass-300" id="battery-sim-payback-value" dir="ltr">{batteryInitialPayback != null ? `${formatNumber(batteryInitialPayback, 1)} ans` : ''}</span>
+              </p>
+
+              <!-- ORDRE FONDATEUR (24/08/2026) — CHARGE INCOMPLÈTE d'un palier
+                   ACCEPTÉ (à distinguer du palier REFUSÉ ci-dessous) : le
+                   moteur retient ce palier mais sa batterie n'est remplie qu'à
+                   `remplissage_moyen_pct` en moyenne. Le pourcentage est celui
+                   du palier, servi tel quel ; ≥ 100 % ⇒ aucun message (la
+                   batterie se remplit chaque jour — même règle de libellé que
+                   le bloc « régime batterie »). -->
+              <p id="battery-sim-fill" class="mt-3 rounded-lg border border-azur-300/30 bg-azur-300/10 px-3 py-2 text-xs text-lune-soft" hidden={batteryInitialFillPct == null}>
+                <span data-i18n
+                  data-fr="La batterie supplémentaire ne se remplira pas à 100 %"
+                  data-en="The extra battery will not be filled to 100%"
+                  data-ar="لن تمتلئ البطارية الإضافية بنسبة 100٪">La batterie supplémentaire ne se remplira pas à 100 %</span
+                ><span dir="ltr"> (<span data-fill-pct-num>{batteryInitialFillPct != null ? formatPercent(batteryInitialFillPct, 0) : ''}</span></span
+                ><span data-i18n data-fr=" en moyenne)" data-en=" on average)" data-ar=" في المتوسط)"> en moyenne)</span
+                ><span data-i18n data-fr=" — la production solaire ne suffit pas." data-en=" — the solar production is not enough." data-ar=" — الإنتاج الشمسي غير كافٍ."> — la production solaire ne suffit pas.</span>
+              </p>
+
               <!-- ORDRE FONDATEUR (24/08/2026, soir) — message de sur-stockage : ne
                    s'affiche QUE quand storageRefuse est servi ET que N sélectionné
                    l'atteint (le moteur a refusé ce palier car la batterie ne se
@@ -2459,6 +2651,92 @@ const signConfig = ok
                   data-ar={ramadanIftarAr ? `رمضان · الإفطار ≈ ${ramadanIftarAr}` : 'رمضان'}>{
                     ramadanIftarFr ? `Ramadan · iftar ≈ ${ramadanIftarFr}` : 'Ramadan'
                   }</button>
+              </div>
+            )}
+
+            {/* ── L-ECO (ordre fondateur, 24/08/2026) — CE QUE CE GRAPHE VAUT
+                   EN DIRHAMS. Le graphe montrait la forme sans jamais dire ce
+                   qu'elle rapporte : ce bandeau met le chiffre sous la courbe.
+                   Le jour type et le mois SUIVENT la puce de saison et la puce
+                   de profil ; l'ANNÉE, elle, ne bouge pas (une année contient
+                   toutes les saisons) — c'est l'ancre du bandeau, et c'est
+                   écrit noir sur blanc à côté. TOUTES les combinaisons sont
+                   RENDUES ICI par le serveur ; le script ne fait que basculer
+                   `hidden`. Il ne calcule AUCUNE économie (test épinglé). */}
+            {ecoPeriodes && (
+              <div data-eco-periodes class="mt-4 grid gap-3 sm:grid-cols-2">
+                {ecoVariantes.map((variante) => (
+                  <div class="cine-card rounded-xl p-4" data-eco-carte={variante}>
+                    <p class="tech-label text-lune-faint" data-i18n
+                      data-fr={ECO_VARIANTE_LABELS[variante].fr}
+                      data-en={ECO_VARIANTE_LABELS[variante].en}
+                      data-ar={ECO_VARIANTE_LABELS[variante].ar}>{ECO_VARIANTE_LABELS[variante].fr}</p>
+
+                    {/* Jour type — change avec la saison ET le profil. */}
+                    <p class="mt-3 text-sm text-lune-soft">
+                      <span data-i18n data-fr="Sur une journée type : " data-en="On a typical day: " data-ar="في يوم نموذجي: ">Sur une journée type : </span>
+                      {ecoProfilIds.map((profil) => curveSeasons.map((season) => {
+                        const valeur = ecoBloc(profil, variante)?.saisons?.[season]?.jourMad ?? null;
+                        return valeur === null ? null : (
+                          <span class="fig text-lune" dir="ltr" data-eco-valeur="jour"
+                            data-eco-variante={variante} data-eco-profil={profil} data-eco-saison={season}
+                            hidden={!(profil === ecoProfilDefaut && season === prodLayers.season)}>{formatMAD(valeur)}</span>
+                        );
+                      }))}
+                    </p>
+
+                    {/* Un mois de cette saison — même double clé. */}
+                    <p class="mt-1 text-sm text-lune-soft">
+                      <span data-i18n data-fr="Sur un mois de cette saison : " data-en="Over a month of that season: " data-ar="خلال شهر من هذا الموسم: ">Sur un mois de cette saison : </span>
+                      {ecoProfilIds.map((profil) => curveSeasons.map((season) => {
+                        const valeur = ecoBloc(profil, variante)?.saisons?.[season]?.moisMoyenMad ?? null;
+                        return valeur === null ? null : (
+                          <span class="fig text-lune" dir="ltr" data-eco-valeur="mois"
+                            data-eco-variante={variante} data-eco-profil={profil} data-eco-saison={season}
+                            hidden={!(profil === ecoProfilDefaut && season === prodLayers.season)}>{formatMAD(valeur)}</span>
+                        );
+                      }))}
+                    </p>
+
+                    {/* L'ANNÉE — ancre visuelle : elle ne dépend PAS de la
+                        saison affichée (une année les contient toutes), donc
+                        elle ne porte aucune clé de saison. */}
+                    <p class="mt-3 border-t border-lune-faint/20 pt-3">
+                      <span class="tech-label text-lune-faint" data-i18n data-fr="Sur l’année" data-en="Over the year" data-ar="على مدار السنة">Sur l’année</span>
+                      <span class="fig fig-md ms-2 text-lune" dir="ltr">
+                        {ecoProfilIds.map((profil) => {
+                          const valeur = ecoBloc(profil, variante)?.annuelMad ?? null;
+                          return valeur === null ? null : (
+                            <span data-eco-valeur="annuel" data-eco-variante={variante} data-eco-profil={profil}
+                              hidden={profil !== ecoProfilDefaut}>{formatMAD(valeur)}</span>
+                          );
+                        })}
+                      </span>
+                    </p>
+                    <p class="mt-1 text-xs text-lune-faint" data-i18n
+                      data-fr="Ce total annuel ne change pas avec la saison affichée."
+                      data-en="This yearly total does not change with the season shown."
+                      data-ar="هذا المجموع السنوي لا يتغير بتغير الموسم المعروض.">Ce total annuel ne change pas avec la saison affichée.</p>
+
+                    {/* Retour sur investissement — porté par le DEVIS, pas par
+                        un profil alternatif : un autre comportement ne change
+                        pas le prix de l'installation. Omis quand le moteur ne
+                        l'a pas calculé (jamais « 0 an »). */}
+                    {ecoRetourAns(variante) !== null && (
+                      <p class="mt-2 text-sm text-lune-soft">
+                        <span data-i18n data-fr="Retour sur investissement : " data-en="Return on investment: " data-ar="العائد على الاستثمار: ">Retour sur investissement : </span>
+                        <span class="fig text-lune" dir="ltr">{formatNumber(ecoRetourAns(variante) as number, 1)}</span>
+                        <span data-i18n data-fr=" ans" data-en=" years" data-ar=" سنوات"> ans</span>
+                      </p>
+                    )}
+                  </div>
+                ))}
+                {ecoPeriodes.estimation && (
+                  <p class="text-xs text-lune-faint sm:col-span-2" data-i18n
+                    data-fr="Estimation : transmettez vos douze factures pour un calcul mois par mois."
+                    data-en="Estimate: send your twelve bills for a month-by-month calculation."
+                    data-ar="تقدير: أرسلوا فواتيركم الاثني عشر لحساب شهرًا بشهر.">Estimation : transmettez vos douze factures pour un calcul mois par mois.</p>
+                )}
               </div>
             )}
 
@@ -4093,6 +4371,36 @@ const signConfig = ok
           </form>
         </div>
 
+        {/* ── L-VAR · QUELLE VERSION TÉLÉCHARGER (devis à deux options) ─────
+             Le choix de signature n'engage QUE la signature : le devis
+             COMPLET reste toujours téléchargeable. Ces trois boutons pilotent
+             le paramètre `?variante=` du MÊME endpoint PDF ; le défaut est la
+             composition du commercial (`quote.scenario`). Masqué sur un devis
+             mono-option — il n'y aurait rien à choisir. */}
+        {twoOptions && (
+          <div class="mt-6 text-center">
+            <p class="text-xs text-lune-faint" data-i18n
+              data-fr="Quelle version télécharger ?"
+              data-en="Which version would you like?"
+              data-ar="أي نسخة تريدون تحميلها؟">Quelle version télécharger ?</p>
+            <div id="pdf-variante" class="mt-2 inline-flex flex-wrap justify-center gap-2" role="group"
+              aria-label="Version du devis à télécharger" data-variante-default={pdfVariantDefault}>
+              <button type="button" class="btn-pill px-3 py-1.5 text-sm" data-pdf-variante="sans"
+                aria-pressed={pdfVariantDefault === 'sans' ? 'true' : 'false'}>
+                <span data-i18n data-fr="Sans batterie" data-en="Without battery" data-ar="بدون بطارية">Sans batterie</span>
+              </button>
+              <button type="button" class="btn-pill px-3 py-1.5 text-sm" data-pdf-variante="avec"
+                aria-pressed={pdfVariantDefault === 'avec' ? 'true' : 'false'}>
+                <span data-i18n data-fr="Avec batterie" data-en="With battery" data-ar="مع بطارية">Avec batterie</span>
+              </button>
+              <button type="button" class="btn-pill px-3 py-1.5 text-sm" data-pdf-variante="les_deux"
+                aria-pressed={pdfVariantDefault === 'les_deux' ? 'true' : 'false'}>
+                <span data-i18n data-fr="Les deux" data-en="Both options" data-ar="الخياران معاً">Les deux</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         <!-- ── P3/WJ34 · TÉLÉCHARGER LE DEVIS PDF (même token, nouvel onglet) ───
              Affordance « génération du PDF… » : le rendu backend (WeasyPrint)
              prend quelques secondes, l'utilisateur doit voir qu'il se passe
@@ -4102,7 +4410,7 @@ const signConfig = ok
         <div class="mt-6 text-center">
           <a
             id="pdf-download"
-            href={pdfUrl}
+            href={twoOptions ? `${pdfUrl}?variante=${pdfVariantDefault}` : pdfUrl}
             target="_blank"
             rel="noopener noreferrer"
             class="btn-pill inline-flex items-center justify-center gap-2"
@@ -4528,6 +4836,10 @@ const signConfig = ok
       return;
     }
     let state = initialProductionState(availability);
+    // ORDRE FONDATEUR (24/08/2026) — dernier état CONNU du calque batterie, pour
+    // ne redessiner la courbe qu'aux bascules réelles (le rendu serveur porte
+    // déjà la couche quand le calque démarre actif).
+    let lastBatteryLayer = productionLayers(state, availability).battery;
 
     // ── CJ1 — CONFIG DE RE-RENDU (saison / occupation) ─────────────────────
     // Tout ce que le serveur a servi, tel qu'il l'a servi. Absent (bloc backend
@@ -4600,12 +4912,25 @@ const signConfig = ok
      *  de qui est affiché. */
     function rerenderCurves(): void {
       if (!curveCfg || !dailyLayer) return;
+      // ORDRE FONDATEUR (24/08/2026) — la couche batterie est dessinée sur CE
+      // graphe quand le calque est actif. La série vient du simulateur (pont
+      // `__propBatteryHourly`, moteur horaire unique) : ce script ne calcule
+      // rien, il transmet. Calque inactif ou série absente ⇒ `null`, et la
+      // courbe est exactement celle d'avant.
+      // `productionLayers` (et non `state.battery`) : sur un devis « avec
+      // batterie » verrouillé, le calque est actif sans que l'état porte le
+      // drapeau.
+      const batterieHoraireKwh = productionLayers(state, availability).battery
+        ? ((window as unknown as { __propBatteryHourly?: () => number[] | null })
+            .__propBatteryHourly?.() ?? null)
+        : null;
       const served = {
         production: curveCfg.production?.[state.season] ?? null,
         consumptionKwhJour: curveCfg.consommation?.[state.season]?.kwhJour ?? null,
         season: state.season,
         // L4 — couches d'équipement (piscine/clim/ve), composées par renderYearCurve.
         equipements: curveCfg.equipements ?? null,
+        batterieHoraireKwh,
       };
       dailyLayer.querySelectorAll<HTMLElement>('[data-curve-lang]').forEach((el) => {
         const lang = (el.dataset.curveLang as 'fr' | 'en' | 'ar' | undefined) ?? 'fr';
@@ -4630,6 +4955,11 @@ const signConfig = ok
       });
       renderProfileNote();
     }
+    // ORDRE FONDATEUR (24/08/2026) — pont exposé au simulateur batterie : à
+    // chaque recalcul (curseur, variante, occupation), il redemande le dessin
+    // de la courbe avec sa nouvelle série horaire.
+    (window as unknown as { __propRerenderCurves?: () => void }).__propRerenderCurves =
+      () => rerenderCurves();
 
     function apply(): void {
       const layers = productionLayers(state, availability);
@@ -4651,6 +4981,11 @@ const signConfig = ok
       });
       const control = section!.querySelector<HTMLElement>('[data-prod-battery-control]');
       if (control) control.hidden = !layers.showBatteryToggle;
+      // ORDRE FONDATEUR (24/08/2026) — la légende « Couvert par la batterie »
+      // suit exactement la couche dessinée sur la courbe.
+      section!.querySelectorAll<HTMLElement>('[data-prod-battery-legend]').forEach((el) => {
+        el.hidden = !layers.battery;
+      });
       // CJ2b — le bouton « Avec batterie » suit désormais le MÊME langage de
       // puce que ses voisins (aria-pressed + remplissage laiton), plus une
       // case à cocher isolée. Absent du DOM (calque verrouillé ou batterie
@@ -4688,6 +5023,13 @@ const signConfig = ok
       markPressed('data-curve-occupancy-btn', layers.occupancy);
       // La courbe journalière reste synchrone de l'onglet de profil actif.
       if (layers.variant !== currentCurveVariant) applyCurveVariant(layers.variant);
+      // ORDRE FONDATEUR (24/08/2026) — activer/désactiver « Avec batterie »
+      // ajoute/retire la COUCHE sur la courbe : elle est redessinée à chaque
+      // bascule du calque (et à ce moment-là seulement).
+      if (layers.battery !== lastBatteryLayer) {
+        lastBatteryLayer = layers.battery;
+        rerenderCurves();
+      }
       // PACT-battery — le calque batterie REMPLACE la courbe nue mais doit
       // continuer à réagir à l'onglet de profil : on rejoue le simulateur (autre
       // île <script>, pont window comme __propApplyLang ci-dessous) avec la MÊME
@@ -4811,6 +5153,47 @@ const signConfig = ok
         if (id) selectionner(id);
       });
     }
+  })();
+
+  // ——— L-ECO : le bandeau en dirhams sous le graphe « Sur une journée » ————
+  // IL NE CALCULE RIEN, ET C'EST LE POINT. Toutes les combinaisons
+  // (saison × profil × variante) sont RENDUES par le serveur au chargement ;
+  // ce script se contente de basculer `hidden` sur celles qui correspondent
+  // aux puces choisies. Aucune multiplication, aucune division, aucune somme :
+  // le chiffre lu par le client est celui du moteur, à l'unité près (règle
+  // « zéro chiffre inventé », épinglée par un test qui relit ce bloc).
+  // Les valeurs SANS clé de saison (le total annuel) restent visibles quelle
+  // que soit la saison : une année contient toutes les saisons.
+  (() => {
+    const zone = document.querySelector<HTMLElement>('[data-eco-periodes]');
+    if (!zone) return;
+    const valeurs = Array.from(zone.querySelectorAll<HTMLElement>('[data-eco-valeur]'));
+    if (valeurs.length === 0) return;
+    const profilsRendus = new Set(valeurs.map((n) => n.getAttribute('data-eco-profil') || ''));
+    const depart = valeurs.find((n) => !n.hidden) ?? valeurs[0];
+    let saison = depart.getAttribute('data-eco-saison') || '';
+    let profil = depart.getAttribute('data-eco-profil') || '';
+    const appliquer = () => {
+      for (const noeud of valeurs) {
+        const cleSaison = noeud.getAttribute('data-eco-saison');
+        const memeProfil = (noeud.getAttribute('data-eco-profil') || '') === profil;
+        noeud.hidden = !(memeProfil && (cleSaison === null || cleSaison === saison));
+      }
+    };
+    document.addEventListener('click', (ev) => {
+      const cible = ev.target instanceof Element
+        ? ev.target.closest('[data-curve-season-btn],[data-curve-occupancy-btn]')
+        : null;
+      if (!cible) return;
+      const s = cible.getAttribute('data-curve-season-btn');
+      const o = cible.getAttribute('data-curve-occupancy-btn');
+      if (s) saison = s;
+      // Un profil que le serveur n'a pas rendu ne devient JAMAIS l'état
+      // courant : sinon la puce viderait le bandeau au lieu de le changer.
+      if (o && profilsRendus.has(o)) profil = o;
+      appliquer();
+    });
+    appliquer();
   })();
   // Exposé aux AUTRES <script> de cette page (PDF affordance) — chaque bloc
   // <script> d'une île Astro est un module séparé, donc pas de portée
@@ -5749,6 +6132,26 @@ const signConfig = ok
     });
   }
 
+  // ── L-VAR — sélecteur « quelle version télécharger » (devis à deux options)
+  // Le choix de SIGNATURE n'est pas touché : ces boutons ne pilotent que le
+  // paramètre `?variante=` du lien PDF existant (même endpoint, même token).
+  // Le backend applique une liste blanche stricte — une valeur bricolée y
+  // retombe sur le document complet.
+  if (pdfLink) {
+    const variantGroup = document.getElementById('pdf-variante');
+    const variantBase = pdfLink.href.split('?')[0];
+    variantGroup?.querySelectorAll<HTMLButtonElement>('[data-pdf-variante]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const value = btn.dataset.pdfVariante || '';
+        if (value !== 'sans' && value !== 'avec' && value !== 'les_deux') return;
+        variantGroup
+          .querySelectorAll<HTMLButtonElement>('[data-pdf-variante]')
+          .forEach((b) => b.setAttribute('aria-pressed', b === btn ? 'true' : 'false'));
+        pdfLink.href = `${variantBase}?variante=${value}`;
+      });
+    });
+  }
+
   // ── WJ56 — « Partager sur WhatsApp » : Web Share API native quand disponible
   // (feuille de partage système — la meilleure expérience sur mobile/tablette,
   // laisse le client choisir WhatsApp OU tout autre canal), repli sur le lien
@@ -5859,7 +6262,12 @@ const signConfig = ok
       // stockage (prix TTC par N de packs) + premier palier REFUSÉ (N +
       // remplissage du pire mois, RÉEL) : jamais un chiffre inventé, relus
       // tels quels au curseur.
-      storagePaliers: Array<{ n: number; ttc: number | null }>;
+      // ORDRE FONDATEUR (24/08/2026) — `payback` (années) et `remplissagePct`
+      // par palier : DEUX NOMBRES DU MOTEUR, relus tels quels (aucun calcul).
+      storagePaliers: Array<{
+        n: number; ttc: number | null;
+        payback: number | null; remplissagePct: number | null;
+      }>;
       storageRefuse: { n: number; pireMoisPct: number | null } | null;
     }
     const section = document.getElementById('battery-sim');
@@ -5936,6 +6344,48 @@ const signConfig = ok
       else el.textContent = ON_STUDY[curLang()];
     }
 
+    // ORDRE FONDATEUR (24/08/2026) — LA PÉRIODE DE RETOUR, AU CURSEUR.
+    // `palierAt(n).payback` est la valeur DU MOTEUR pour ce palier ; ce script
+    // ne fait que la choisir, l'habiller de son unité et — quand le curseur
+    // s'écarte de la configuration du devis — l'afficher À CÔTÉ de celle de
+    // départ (« X ans → Y ans »). Aucune arithmétique : les deux nombres sont
+    // servis. Palier sans payback ⇒ ligne masquée (omission).
+    const YEARS_UNIT: Record<BsLang, string> = { fr: 'ans', en: 'years', ar: 'سنوات' };
+    function palierAt(n: number): { n: number; ttc: number | null; payback: number | null; remplissagePct: number | null } | null {
+      return cfg.storagePaliers.find((x) => x.n === n) ?? null;
+    }
+    const refPayback = palierAt(cfg.initialN)?.payback ?? null;
+    function renderPayback(n: number): void {
+      const row = document.getElementById('battery-sim-payback');
+      const el = document.getElementById('battery-sim-payback-value');
+      if (!row || !el) return;
+      const payback = palierAt(n)?.payback ?? null;
+      row.hidden = payback == null;
+      if (payback == null) return;
+      const unit = YEARS_UNIT[curLang()];
+      const now = `${fmtNum(payback, 1)} ${unit}`;
+      el.textContent = refPayback != null && n !== cfg.initialN && refPayback !== payback
+        ? `${fmtNum(refPayback, 1)} ${unit} → ${now}`
+        : now;
+    }
+
+    // ORDRE FONDATEUR (24/08/2026) — CHARGE INCOMPLÈTE d'un palier ACCEPTÉ :
+    // le moteur retient ce palier, mais sa batterie n'est remplie qu'à
+    // `remplissagePct` en moyenne. Le pourcentage est SERVI ; ≥ 100 % ⇒ aucun
+    // message (elle se remplit chaque jour, même règle de libellé que le bloc
+    // « régime batterie »). Distinct du message de SUR-STOCKAGE ci-dessous, qui
+    // ne concerne que le palier REFUSÉ.
+    function renderFill(n: number): void {
+      const el = document.getElementById('battery-sim-fill');
+      if (!el) return;
+      const pct = palierAt(n)?.remplissagePct ?? null;
+      const show = pct != null && pct < 100;
+      el.hidden = !show;
+      if (!show || pct == null) return;
+      const numEl = el.querySelector<HTMLElement>('[data-fill-pct-num]');
+      if (numEl) numEl.textContent = fmtPct(pct);
+    }
+
     // ORDRE FONDATEUR — message de sur-stockage : visible UNIQUEMENT quand N
     // atteint le premier palier REFUSÉ par le moteur (la batterie ne se
     // rechargerait plus chaque jour à cette capacité). Le pourcentage inséré
@@ -5994,7 +6444,15 @@ const signConfig = ok
       const chart = document.getElementById('battery-sim-chart');
       if (chart) chart.innerHTML = renderBatterySplitSvg(res.hourly, undefined, curLang());
       renderPrice(n);
+      renderPayback(n);
+      renderFill(n);
       renderOverStorage(n);
+      // ORDRE FONDATEUR (24/08/2026) — la COURBE de la vue « Sur une journée »
+      // porte la couche batterie : elle est redessinée avec la série horaire
+      // que ce moteur vient de produire (`res.hourly.battery`). Le pont est
+      // volontairement dans ce sens (le simulateur POSSÈDE la série, la courbe
+      // la LIT) — jamais deux moteurs.
+      (window as unknown as { __propRerenderCurves?: () => void }).__propRerenderCurves?.();
     }
 
     // QRES66 — délégation au NIVEAU DOCUMENT, jamais un listener direct sur le
@@ -6016,9 +6474,19 @@ const signConfig = ok
     // data-i18n car réécrit en JS après le premier rendu).
     bsWin.__propRegisterBusyLabel?.((l: BsLang) => {
       renderPrice(currentN);
+      // ORDRE FONDATEUR — « ans / years / سنوات » suit la langue (le nombre, lui,
+      // ne bouge jamais : c'est celui du moteur).
+      renderPayback(currentN);
       const chart = document.getElementById('battery-sim-chart');
       if (chart && lastHourly) chart.innerHTML = renderBatterySplitSvg(lastHourly, undefined, l);
     });
+
+    // ORDRE FONDATEUR (24/08/2026) — la série horaire « fourni par la batterie »
+    // du dernier calcul, exposée à l'île de la courbe journalière (qui la
+    // DESSINE sans jamais la recalculer). `null` tant qu'aucun calcul n'a eu
+    // lieu, ou quand le curseur est à 0 batterie (aucune couche à dessiner).
+    (window as unknown as { __propBatteryHourly?: () => number[] | null }).__propBatteryHourly =
+      () => (currentN > 0 ? (lastHourly?.battery ?? null) : null);
 
     // Recalcule une fois au chargement (idempotent avec le rendu serveur).
     update(currentN);

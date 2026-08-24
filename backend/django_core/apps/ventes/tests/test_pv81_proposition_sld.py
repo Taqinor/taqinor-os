@@ -302,10 +302,20 @@ class ConceptionElectriquePubliqueTest(MontageDevisElectrique, TestCase):
         self._concevoir()
         bloc = _conception_electrique_publique(self.devis)
         self.assertIsNotNone(bloc)
-        self.assertEqual(set(bloc), {'chaines', 'protections', 'cables'})
-        # Les trois clés sont TOUJOURS là (une page qui ferait `.map()` sur
+        # RECALÉ le 24/08/2026 (L-1V) : le payload sort désormais PRÉ-ROUTÉ.
+        # Aux trois clés d'origine s'ajoutent les groupes AC/DC/communs
+        # décidés par le MOTEUR (`Protection.cote`). L'assertion d'avant
+        # épinglait l'époque où la page rangeait elle-même chaque organe en
+        # cherchant « dc » dans sa désignation — l'heuristique qui a fait
+        # disparaître tout le côté continu de la fiche du client le jour où
+        # l'anticopie a fusionné les lignes du kit.
+        self.assertEqual(
+            set(bloc), {'chaines', 'protections', 'protections_dc',
+                        'protections_ac', 'protections_communes', 'cables'})
+        # Les clés sont TOUJOURS là (une page qui ferait `.map()` sur
         # `undefined` planterait), et l'étude dit au moins quelque chose.
-        for cle in ('chaines', 'protections', 'cables'):
+        for cle in ('chaines', 'protections', 'protections_dc',
+                    'protections_ac', 'protections_communes', 'cables'):
             self.assertIsInstance(bloc[cle], list)
         self.assertTrue(any(bloc.values()), 'bloc public entièrement vide')
 
@@ -323,8 +333,14 @@ class ConceptionElectriquePubliqueTest(MontageDevisElectrique, TestCase):
         # (b) chaque élément est projeté sur SA liste blanche, clé par clé.
         for chaine in bloc['chaines']:
             self.assertTrue(set(chaine) <= set(_PUBLIC_CHAINE), chaine)
+        for cle in ('protections', 'protections_dc', 'protections_ac',
+                    'protections_communes'):
+            for organe in bloc[cle]:
+                self.assertTrue(set(organe) <= set(_PUBLIC_PROTECTION), organe)
+        # Le `cote` posé par le moteur reste INTERNE : le client lit des
+        # groupes déjà routés, jamais le champ qui a servi à les router.
         for organe in bloc['protections']:
-            self.assertTrue(set(organe) <= set(_PUBLIC_PROTECTION), organe)
+            self.assertNotIn('cote', organe)
         for cable in bloc['cables']:
             self.assertTrue(set(cable) <= set(_PUBLIC_CABLE), cable)
         # (c) les grandeurs d'ingénierie par élément restent côté vendeur.
@@ -351,7 +367,10 @@ class ConceptionElectriquePubliqueTest(MontageDevisElectrique, TestCase):
         self.assertEqual(resp.status_code, 200)
         bloc = resp.json()['conception_electrique']
         self.assertIsNotNone(bloc)
-        self.assertEqual(set(bloc), {'chaines', 'protections', 'cables'})
+        # RECALÉ le 24/08/2026 (L-1V) — cf. `test_present_apres_conception`.
+        self.assertEqual(
+            set(bloc), {'chaines', 'protections', 'protections_dc',
+                        'protections_ac', 'protections_communes', 'cables'})
 
     def test_cle_toujours_presente_meme_sans_design(self):
         # Une clé absente forcerait la page publique à deviner : elle vaut

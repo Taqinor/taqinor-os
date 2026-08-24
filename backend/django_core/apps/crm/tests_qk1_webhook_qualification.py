@@ -175,3 +175,67 @@ class WebhookQualificationTests(TestCase):
         lead = Lead.objects.get(pk=res.json()['lead_id'])
         # Résolue côté serveur : première Company (setUp), jamais du corps.
         self.assertEqual(lead.company, self.company)
+
+    # ── Bug fondateur 24/08 : tracé perdu (pin posé, puis dessiné, seul le pin
+    # atterrissait en CRM). La cause était côté client (apps/web/src/scripts/
+    # roofPro11/captureBoot.ts — un clic APRÈS la fermeture du contour effaçait
+    # `vertices`/`closed` en silence). Ces tests couvrent la moitié BACKEND du
+    # contrat : le contour, quand il arrive au webhook, est posé ; absent, il
+    # ne touche rien ; invalide, il est ignoré proprement ; et un re-POST SANS
+    # contour (visiteur revenant, session raccourcie...) n'efface JAMAIS un
+    # contour déjà capté — même discipline que la garde GPS/attribution
+    # first-touch déjà en place pour les autres champs additifs.
+    def test_roof_outline_absent_ne_persiste_rien(self):
+        """Aucun roofOutline dans le payload → lead.roof_outline reste None
+        (le pin seul, lui, est bien posé)."""
+        res = self.post(payload_site(
+            roofPoint={'lat': 33.589, 'lng': -7.603}))
+        self.assertEqual(res.status_code, 201, res.content)
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertEqual(lead.roof_point, {'lat': 33.589, 'lng': -7.603})
+        self.assertIsNone(lead.roof_outline)
+
+    def test_roof_outline_invalide_ignore_proprement(self):
+        """Un roofOutline malformé (pas une liste, ou < 3 points valides) est
+        écarté silencieusement — jamais d'erreur 500, jamais de valeur
+        aberrante persistée."""
+        res = self.post(payload_site(
+            roofPoint={'lat': 33.589, 'lng': -7.603},
+            roofOutline='pas-une-liste'))
+        self.assertEqual(res.status_code, 201, res.content)
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertIsNone(lead.roof_outline)
+
+        res2 = self.post(payload_site(
+            phoneE164='+212661000222',
+            roofPoint={'lat': 33.589, 'lng': -7.603},
+            # Un seul point valide : sous le minimum de 3 sommets d'un polygone.
+            roofOutline=[[33.589, -7.603]]))
+        self.assertEqual(res2.status_code, 201, res2.content)
+        lead2 = Lead.objects.get(pk=res2.json()['lead_id'])
+        self.assertIsNone(lead2.roof_outline)
+
+    def test_visiteur_revenant_sans_polygone_necrase_pas_lexistant(self):
+        """Scénario du bug fondateur, côté serveur : un premier POST pose le
+        contour tracé ; un second POST du même visiteur (dedup téléphone),
+        SANS roofOutline cette fois (ex. un re-POST du pin seul après une
+        manip qui l'a effacé côté client), ne doit JAMAIS écraser le contour
+        déjà capté par du vide — même esprit que la garde GPS existante."""
+        outline = [[33.589, -7.603], [33.590, -7.603], [33.590, -7.604]]
+        first = self.post(payload_site(
+            roofPoint={'lat': 33.589, 'lng': -7.603},
+            roofOutline=outline))
+        self.assertEqual(first.status_code, 201, first.content)
+        lead_id = first.json()['lead_id']
+        lead = Lead.objects.get(pk=lead_id)
+        self.assertEqual(len(lead.roof_outline), 3)
+
+        # Re-POST < 60 s (même téléphone) : SANS roofOutline cette fois.
+        retry = self.post(payload_site(
+            roofPoint={'lat': 33.589, 'lng': -7.603}))
+        self.assertEqual(retry.status_code, 200, retry.content)
+        self.assertEqual(Lead.objects.count(), 1)
+        lead.refresh_from_db()
+        # Le contour déjà capté survit — jamais écrasé par un payload plus pauvre.
+        self.assertEqual(len(lead.roof_outline), 3)
+        self.assertEqual(lead.roof_outline, outline)

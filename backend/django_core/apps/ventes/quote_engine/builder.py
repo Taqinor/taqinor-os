@@ -503,7 +503,19 @@ DEFAULT_PDF_OPTIONS = {
     # byte-identique. Posé côté SERVEUR par les vues publiques d'après
     # ``ShareLink.niveau`` — jamais une décision du client.
     'kit_agrege': False,
+    # ── L-VAR (ordre fondateur, 24/08/2026) — VARIANTE TÉLÉCHARGÉE ───────────
+    # ``None`` (défaut) = le document tel que le COMMERCIAL l'a composé
+    # (``etude_params['scenario']``) : tous les appelants existants restent
+    # byte-identiques. ``'sans'`` / ``'avec'`` / ``'les_deux'`` = le CLIENT
+    # choisit quelle version du devis il télécharge depuis la page publique.
+    # C'est un choix de LECTURE : il ne touche aucun statut (règle #4) et
+    # n'engage rien — l'option SIGNÉE reste ``Devis.option_acceptee``.
+    'variante_option': None,
 }
+
+#: Valeurs acceptées pour ``variante_option`` (liste blanche STRICTE — tout le
+#: reste retombe sur ``None``, c'est-à-dire le document complet du commercial).
+VARIANTES_PDF = ('sans', 'avec', 'les_deux')
 
 
 def clean_pdf_options(raw) -> dict:
@@ -523,6 +535,12 @@ def clean_pdf_options(raw) -> dict:
     # la porte ⇒ défaut ``False`` ⇒ rendu inchangé partout).
     if 'kit_agrege' in raw:
         opts['kit_agrege'] = bool(raw['kit_agrege'])
+    # L-VAR — variante téléchargée : liste blanche STRICTE. Une valeur inconnue
+    # (ou absente) laisse ``None`` = document complet du commercial : un
+    # paramètre bricolé ne peut donc RIEN faire d'autre que le comportement
+    # historique.
+    if raw.get('variante_option') in VARIANTES_PDF:
+        opts['variante_option'] = raw['variante_option']
     if 'include_annexe_technique' in raw:
         _annexe = raw['include_annexe_technique']
         # Tri-état : ``None`` EXPLICITE vaut « auto » (le défaut), jamais un
@@ -988,6 +1006,27 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     else:
         scenario = "Avec batterie"
         recommended = "Avec batterie"
+
+    # ── L-VAR (ordre fondateur, 24/08/2026) — LA VARIANTE EST UN CHOIX DE
+    # LECTURE, JAMAIS UN ENGAGEMENT ──────────────────────────────────────────
+    # Le client peut télécharger « Sans batterie », « Avec batterie » ou le
+    # devis COMPLET depuis sa page publique. Ce qu'il coche pour SIGNER
+    # (``Devis.option_acceptee``) ne rétrécit rien ici : les deux axes sont
+    # séparés, et le défaut reste le document composé par le commercial.
+    #
+    # GARDE-FOU : l'override n'existe QUE sur un document qui publie réellement
+    # les deux options (le commercial a déclaré « Les deux », et l'équipement
+    # sert les deux côtés). Sur un devis mono-option, une variante demandée est
+    # ignorée — jamais une option que le devis ne peut pas livrer, jamais un
+    # prix que le commercial n'a pas présenté. Aucun statut n'est touché : le
+    # moteur ne fait que RENDRE (règle #4).
+    if (opts.get('variante_option')
+            and scenario == 'Les deux (Sans + Avec)' and sans_ok and avec_ok):
+        if opts['variante_option'] == 'sans':
+            scenario = 'Sans batterie'
+        elif opts['variante_option'] == 'avec':
+            scenario = 'Avec batterie'
+        # 'les_deux' → le document complet, exactement le rendu par défaut.
 
     # QF6 — le scénario STOCKÉ « Sans/Avec » restreint le document à une seule
     # option même si les deux existent dans les lignes. On aligne donc les
@@ -2151,16 +2190,15 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # porte une conception électrique (PV41). Sans étude, aucune clé nouvelle →
     # charge utile strictement identique à aujourd'hui.
     #
-    # L'option est TRI-ÉTAT : ``None`` (défaut) veut dire « auto — dès que
-    # l'étude existe ». Sans cela l'annexe était structurellement inatteignable
-    # par un client : `/proposal`, le document public et le PDF signé passent
-    # tous par `clean_pdf_options({})`, donc restaient sur un défaut `False`.
-    # Un booléen EXPLICITE reste souverain, opt-out compris.
+    # L-1V (24/08/2026 soir) — le « auto dès que l'étude existe » est retiré :
+    # depuis que la conception est posée À LA CRÉATION de chaque devis
+    # (rafraichir_etudes_du_devis), « l'étude existe » est vrai partout et
+    # l'auto ajoutait une 4e page à TOUS les PDF 'full' (doctrine : 3 pages).
+    # L'annexe est désormais un OPT-IN explicite (dialogue PDF / options) —
+    # le client, lui, voit le schéma sur sa page proposition aux deux niveaux.
     _design = getattr(devis, "electrical_design", None)
     _design = _design if isinstance(_design, dict) and _design else None
-    _veut_annexe = opts['include_annexe_technique']
-    if _veut_annexe is None:
-        _veut_annexe = _design is not None
+    _veut_annexe = bool(opts['include_annexe_technique'])
     if _veut_annexe and _design is not None:
         data["include_annexe_technique"] = True
         data["electrical_design"] = _design
@@ -2400,7 +2438,7 @@ def _panneaux_du_layout(roof_layout) -> int:
     return total
 
 
-def _pdf_key(devis, *, watermark=False) -> str:
+def _pdf_key(devis, *, watermark=False, variante=None) -> str:
     """MinIO key, scoped by company to avoid cross-tenant collisions.
 
     L-NIV (24/08/2026) — ``watermark=True`` (PDF public niveau standard)
@@ -2408,9 +2446,17 @@ def _pdf_key(devis, *, watermark=False) -> str:
     filigrané écraserait le fichier persisté (``devis.fichier_pdf`` — même clé
     déterministe) que le bouton interne « Télécharger » sert TEL QUEL sans
     régénérer : un commercial aurait pu récupérer, sans le savoir, la copie
-    filigranée nom+téléphone d'un client à la place de son PDF interne."""
+    filigranée nom+téléphone d'un client à la place de son PDF interne.
+
+    L-VAR (24/08/2026) — ``variante`` ('sans'|'avec'|'les_deux', demandée par le
+    client sur sa page publique) stocke SOUS SA PROPRE CLÉ : la clé étant
+    déterministe, deux variantes du même devis se seraient écrasées l'une
+    l'autre dans MinIO et un client aurait pu récupérer la variante d'un
+    téléchargement précédent. ``None`` (défaut) = clé historique inchangée."""
     company_id = getattr(devis, "company_id", None) or "0"
     suffixe = "__pub-standard" if watermark else ""
+    if variante in VARIANTES_PDF:
+        suffixe += f"__opt-{variante}"
     return f"devis/{company_id}/{devis.reference}{suffixe}.pdf"
 
 
@@ -2555,14 +2601,20 @@ def generate_premium_devis_pdf(devis_id, pdf_options=None, persist=True) -> str:
     _filigrane_actif = bool(
         (pdf_options or {}).get('watermark')
         or (pdf_options or {}).get('kit_agrege'))
-    key = _pdf_key(devis, watermark=_filigrane_actif)
+    # L-VAR — une variante demandée par le client est un rendu PARTIEL : clé
+    # séparée (jamais d'écrasement entre variantes) et JAMAIS persistée sur
+    # ``devis.fichier_pdf`` (le bouton interne « Télécharger » doit toujours
+    # servir le document complet du commercial).
+    _variante_rendue = clean_pdf_options(pdf_options).get('variante_option')
+    key = _pdf_key(devis, watermark=_filigrane_actif,
+                   variante=_variante_rendue)
     _ensure_pdf_bucket()
     _upload_pdf(pdf_bytes, key)
 
     # L-NIV — le rendu filigrané (clé séparée ci-dessus) n'est JAMAIS persisté
     # sur devis.fichier_pdf, quel que soit ``persist`` : le PDF interne
     # (« Télécharger ») doit toujours pointer sur la clé SANS filigrane.
-    if _filigrane_actif:
+    if _filigrane_actif or _variante_rendue:
         return key
 
     # Persist the key only when asked AND when it actually changed: a safe GET

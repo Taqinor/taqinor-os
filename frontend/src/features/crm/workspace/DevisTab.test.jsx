@@ -389,6 +389,39 @@ describe('L-NIV-UI — niveau de la page client (standard/confiance) + OTP', () 
     ))
   })
 
+  // L-NIV-VU (24/08/2026) — le commercial basculait le niveau sans voir de
+  // différence sur la page client. Une des causes : le texte du dialogue
+  // promettait vaguement « masque le dimensionnement détaillé » sans dire QUOI,
+  // ni prévenir que sur un devis sans lignes de pose ni étude électrique il n'y
+  // a RIEN à masquer. Ce test épingle les trois dégradations RÉELLES
+  // (public_views : kit agrégé, calibres retirés, filigrane PDF) et la règle
+  // fondateur « les marques restent visibles ».
+  it('le texte du dialogue décrit les dégradations RÉELLES du niveau standard', async () => {
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [devis1] }) })
+    await ouvrirEnvoi(user)
+    const hint = document.querySelector('.lw-context-devis-niveau-hint')
+    expect(hint.textContent).toMatch(/kit/i)
+    expect(hint.textContent).toMatch(/calibres/i)
+    expect(hint.textContent).toMatch(/filigrane/i)
+    expect(hint.textContent).toMatch(/marques/i)
+    // …et il prévient du cas « aucune différence visible ».
+    expect(hint.textContent).toMatch(/rien à masquer/i)
+  })
+
+  it('niveau confiance : le texte annonce le dossier technique complet', async () => {
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [devis1] }) })
+    await ouvrirEnvoi(user)
+    await user.selectOptions(
+      screen.getByRole('combobox', { name: /Niveau de la page client de DEV-1/ }),
+      'confiance',
+    )
+    const hint = document.querySelector('.lw-context-devis-niveau-hint')
+    expect(hint.textContent).toMatch(/complet/i)
+    expect(hint.textContent).toMatch(/filigrane/i)
+  })
+
   it('le badge de niveau se rend depuis la réponse serveur après un premier mint', async () => {
     const user = userEvent.setup()
     renderTab({ state: leadState({ devis: [devis1] }) })

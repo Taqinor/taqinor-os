@@ -9,7 +9,7 @@ pour rester hors des moteurs de recherche, et l'accès est limité en débit par
 IP + jeton (throttle cache-based, sans dépendance externe ni rendu modifié).
 """
 import logging
-import re
+import math
 
 from django.db import models
 from django.db.models import F
@@ -25,6 +25,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 
+from .economies_periodes import construire_economies_periodes
 from .models import PaymentLink, ShareLink
 from .quote_engine import clean_pdf_options, generate_premium_devis_pdf
 # ── Profil saisonnier de production solaire au Maroc (T4) ────────────────────
@@ -33,6 +34,7 @@ from .quote_engine import clean_pdf_options, generate_premium_devis_pdf
 # manuelle de la table : une seconde vérité qu'aucun test ne surveillait.
 from .quote_engine.constants import MOROCCO_SOLAR_MONTHLY_WEIGHTS  # noqa: F401
 from .utils.anticopie import (
+    LIBELLE_KIT as _LIBELLE_KIT,
     agreger_designations_kit as _agreger_designations_kit,
     agreger_lignes_kit as _agreger_lignes_kit,
 )
@@ -245,6 +247,40 @@ def _niveau_lien(link):
             or ShareLink.NIVEAU_CONFIANCE)
 
 
+def _niveau_masque(payload):
+    """L-NIV-VU (24/08/2026) — CE QUE LE NIVEAU « STANDARD » MASQUE VRAIMENT
+    SUR CETTE PAGE-CI, constaté sur la charge utile DÉJÀ dégradée.
+
+    Constat fondateur du 24/08 : « je bascule standard ↔ confiance et je ne
+    vois AUCUNE différence ». La chaîne fonctionne, mais chaque dégradation est
+    CONDITIONNELLE au contenu du devis : l'agrégation « kit » ne se déclenche
+    qu'à partir de DEUX lignes fixation/câblage/protection
+    (``anticopie.agreger_lignes_kit``), et le schéma unifilaire comme le détail
+    électrique n'existent que si la conception électrique (PV41) a été faite.
+    Sur un devis qui n'a ni l'un ni l'autre, les deux niveaux servent
+    RIGOUREUSEMENT la même page — et c'est normal.
+
+    Cette liste rend ce fait LISIBLE au lieu de le laisser deviner : elle est
+    construite à partir de ce que la charge utile porte réellement, jamais
+    d'une promesse générique. Vide ⇒ la page n'annonce rien (dire « version
+    simplifiée » quand rien n'est simplifié serait faux — règle fondateur
+    « zéro chiffre/fait inventé »). Aucune dégradation nouvelle n'est
+    introduite ici : la fonction ne fait que CONSTATER, en lecture pure.
+    """
+    quote = payload.get('quote') or {}
+    items = quote.get('sans_items') or quote.get('avec_items') or []
+    masque = []
+    if any(isinstance(it, dict) and it.get('designation') == _LIBELLE_KIT
+           for it in items):
+        masque.append('nomenclature_kit')
+    # ``conception_electrique`` non nul au niveau standard ⇒ les protections
+    # ont PERDU leur calibre et le bloc ``cables`` a été omis en bloc
+    # (``_PUBLIC_PROTECTION_STANDARD``) : la dégradation a bien eu lieu.
+    if payload.get('conception_electrique'):
+        masque.append('dimensionnement_electrique')
+    return masque
+
+
 def _section_servie(link, cle):
     """L-SECT (24/08/2026) — LA décision « cette section part-elle chez ce
     client ? », prise UNE fois pour tous les flux publics.
@@ -259,7 +295,7 @@ def _section_servie(link, cle):
     return True
 
 
-def _opts_pdf_public(link):
+def _opts_pdf_public(link, variante=None):
     """Options de rendu du PDF CLIENT servi derrière un jeton ShareLink.
 
     SOURCE UNIQUE du gating anticopie des DEUX flux PDF publics
@@ -276,8 +312,16 @@ def _opts_pdf_public(link):
     · niveau « standard » → filigrane discret (nom · téléphone du prospect) +
       nomenclature accessoire regroupée en une ligne « Kit … » au sous-total
       EXACT. Aucun total ne bouge.
+
+    L-VAR (ordre fondateur, 24/08/2026) — ``variante`` est la SEULE chose que le
+    client puisse influencer ici : quelle version du devis à deux options il
+    télécharge (« sans » / « avec » / « les_deux »). Elle passe par la liste
+    blanche du moteur (``clean_pdf_options``) : toute autre valeur retombe sur
+    ``None`` = le document complet composé par le commercial. La dégradation
+    anticopie ci-dessus reste posée SERVEUR et s'applique à TOUTES les
+    variantes — le client ne peut pas la contourner par un paramètre.
     """
-    opts = clean_pdf_options({})
+    opts = clean_pdf_options({'variante_option': variante})
     if _niveau_lien(link) == ShareLink.NIVEAU_STANDARD:
         opts['watermark'] = True
         opts['kit_agrege'] = True
@@ -669,7 +713,7 @@ def _safe_roof_layout(devis) -> dict | None:
     return safe or None
 
 
-def _safe_sld_svg(devis):
+def _safe_sld_svg(devis, standard=False):
     """PV81 — schéma unifilaire CLIENT-SAFE de la proposition (SVG, ou None).
 
     Même discipline que ``_safe_roof_layout`` : on ne publie que ce qui est
@@ -680,55 +724,34 @@ def _safe_sld_svg(devis):
     puissance, régime) ; ni montant, ni marge, ni note interne n'y ont accès,
     et un test l'arme.
 
-    LA CONCEPTION STOCKÉE EST LE PORTAIL : sans ``Devis.electrical_design``
-    (PV41), on retourne ``None`` — le client ne voit un schéma que lorsque
-    l'étude a réellement été faite, jamais une esquisse fabriquée à la volée.
-    Le SVG lui-même est re-RENDU depuis les mêmes entrées (le calcul est pur et
-    idempotent par empreinte, cf. ``electrical_service``), parce que le rendu
-    demande les objets du moteur, que le contrat stocké ne conserve pas.
+    L-1V (fondateur 24/08/2026) — LA CONCEPTION STOCKÉE EST LA SOURCE : le SVG
+    se reconstruit depuis ``Devis.electrical_design`` (l'artefact porte
+    désormais tout ce que le dessin réclame), il n'est plus recalculé depuis les
+    lignes courantes du devis. C'est ce recalcul qui faisait diverger la planche
+    et la fiche technique de la MÊME page.
 
-    Lecture pure : rien n'est écrit (aucun statut, aucune ligne — règle #4).
-    Jamais bloquant : une étude illisible rend ``None``, pas une erreur 500.
+    ``standard`` (L-NIV) — le niveau de partage « standard » est appliqué PAR LE
+    MOTEUR DE RENDU (désignations, quantités, repères ; jamais un calibre ni une
+    section), plus par un filtre texte sur le SVG fini : ce filtre ôtait le
+    tableau de nomenclature ENTIER mais laissait les calibres écrits dans les
+    sous-titres des blocs — le même lien cachait le calibre dans sa liste et
+    l'affichait sur son schéma.
+
+    Lecture pure côté client : rien de métier n'est écrit (aucun statut, aucune
+    ligne, aucun prix — règle #4 ; seul un artefact d'un format antérieur est
+    rejoué une fois, cf. ``electrical_service._artefact_rejouable``). Jamais
+    bloquant : une étude illisible rend ``None``, pas une erreur 500.
     """
     try:
         from .electrical_service import rendre_schema_du_devis
 
         # PVSLD — une seule vérité : la page client et l'annexe du PDF rendent
         # désormais le MÊME schéma (celui du moteur, avec ses protections).
-        return rendre_schema_du_devis(devis)
+        return rendre_schema_du_devis(devis, standard=standard)
     except Exception:  # noqa: BLE001 — un schéma absent ne casse pas la page
         logger.warning("PV81 : schéma unifilaire indisponible pour le devis %s",
                        getattr(devis, "pk", None))
         return None
-
-
-#: L-NIV (fondateur 24/08/2026) — le bloc « Nomenclature des équipements »
-#: rendu par ``core.electrique.schema._tableau`` est toujours le SEUL bloc de
-#: la planche qui commence par ce titre exact ; il est TOUJOURS immédiatement
-#: suivi du cartouche (``_cartouche``), qui commence par un second ``<rect``.
-#: On peut donc l'ôter par un simple filtre texte, SANS toucher au moteur
-#: ``core.electrique`` (hors périmètre de cette lane — apps/ventes seul) :
-#: on retire tout depuis le ``<rect`` qui précède le titre jusqu'au ``<rect``
-#: suivant (celui du cartouche), non-inclus. Le marqueur est stable — un
-#: test l'arme (si le libellé change côté moteur, le filtre redevient un
-#: no-op visible en test, jamais un crash silencieux).
-_SLD_NOMENCLATURE_RE = re.compile(
-    r'<rect[^>]*/>\s*<text[^>]*>Nomenclature des équipements</text>.*?(?=<rect)',
-    re.DOTALL,
-)
-
-
-def _standard_sld_svg(svg):
-    """L-NIV — dégrade un schéma unifilaire SVG en TOPOLOGIE simplifiée.
-
-    Retire le tableau « Nomenclature des équipements » (repères, calibres,
-    sections, quantités) — les BLOCS d'organes, leurs libellés (marques/
-    modèles compris — décision fondateur : les marques restent visibles dans
-    LES DEUX niveaux) et le tracé restent identiques. ``None``/chaîne vide en
-    entrée → ``None`` en sortie (même contrat que ``_safe_sld_svg``)."""
-    if not svg:
-        return None
-    return _SLD_NOMENCLATURE_RE.sub('', svg)
 
 
 #: Décision fondateur 2026-08-18 — LE DÉTAIL ÉLECTRIQUE EST EXPOSÉ AU CLIENT,
@@ -803,6 +826,17 @@ def _conception_electrique_publique(devis, niveau=ShareLink.NIVEAU_CONFIANCE):
     JAMAIS dégradés, décision fondateur), seule l'ingénierie fine (« quel
     calibre install poser », « quelle section de câble ») disparaît.
 
+    **L-1V (24/08/2026) — LE PAYLOAD SORT PRÉ-ROUTÉ.** Aux deux niveaux, la
+    charge porte ``protections`` (TOUS les organes, dans l'ordre du moteur) ET
+    les trois groupes ``protections_dc`` / ``protections_ac`` /
+    ``protections_communes``, découpés sur le ``cote`` que le MOTEUR a posé sur
+    chaque organe. La page n'a plus rien à deviner : elle affichait jusqu'ici le
+    côté d'un organe en cherchant « dc » dans sa désignation, et le jour où
+    l'anticopie a fusionné les lignes du kit en un seul « Kit de fixation,
+    câblage et protection complet », TOUS les organes continus (fusibles gPV,
+    parafoudre DC, sectionneur DC) ont disparu de la fiche du client pendant que
+    le schéma de la même page continuait de les dessiner.
+
     Ce qui NE SORT JAMAIS, quel que soit le niveau : ``bom`` (nomenclature
     d'achat), ``parametres`` (entrées du calcul), ``conformite``/``ratio_*``
     (verdicts d'ingénierie), les tensions de chaîne et la chute de tension par
@@ -813,17 +847,24 @@ def _conception_electrique_publique(devis, niveau=ShareLink.NIVEAU_CONFIANCE):
     ``None``, pas une erreur 500.
     """
     try:
-        from .electrical_service import conception_electrique_stockee
+        from .electrical_service import (
+            conception_electrique_stockee, groupes_protections)
+        from core.electrique.types import COTE_AC, COTE_COMMUN, COTE_DC
 
         design = conception_electrique_stockee(devis)
         if not design:
             return None
         standard = niveau == ShareLink.NIVEAU_STANDARD
+        champs = (_PUBLIC_PROTECTION_STANDARD if standard
+                  else _PUBLIC_PROTECTION)
+        groupes = groupes_protections(design)
         public = {
             'chaines': _liste_blanche(design.get('chaines'), _PUBLIC_CHAINE),
-            'protections': _liste_blanche(
-                design.get('protections'),
-                _PUBLIC_PROTECTION_STANDARD if standard else _PUBLIC_PROTECTION),
+            'protections': _liste_blanche(design.get('protections'), champs),
+            'protections_dc': _liste_blanche(groupes[COTE_DC], champs),
+            'protections_ac': _liste_blanche(groupes[COTE_AC], champs),
+            'protections_communes': _liste_blanche(
+                groupes[COTE_COMMUN], champs),
         }
         if not standard:
             public['cables'] = _liste_blanche(design.get('cables'), _PUBLIC_CABLE)
@@ -1398,8 +1439,12 @@ def _balayage_stockage_publique(dimensionnement):
     chaque jour). Alimente le sélecteur « N packs » de la page publique.
 
     Chaque palier ne rend que ``nb_packs``/``capacite_kwh``/``cout_ttc``/
-    ``remplissage_moyen_pct`` — jamais ``prix_achat``/marge (RULE #4). Le
-    refus ne rend que le pourcentage RÉEL de remplissage du pire mois (le
+    ``remplissage_moyen_pct``/``payback_annees``/``economie_mad`` — jamais
+    ``prix_achat``/marge (RULE #4). ``payback_annees`` et ``economie_mad``
+    sont une PASSE DIRECTE des valeurs calculées par le moteur
+    (``dimensionnement._palier_rendu``) — jamais recalculées ici ; ``None``
+    (omission propre) si le moteur ne rend rien de fini et strictement
+    positif pour ce palier. Le refus ne rend que le pourcentage RÉEL de remplissage du pire mois (le
     même nombre que ``motif_refus`` calcule en interne) : la page compose son
     message d'elle-même, aucun texte interne (jargon « plafond de
     remplissage ») ne fuite côté client. Ne lève jamais ; ``None`` quand rien
@@ -1433,6 +1478,16 @@ def _balayage_stockage_publique(dimensionnement):
             return round(ratio * 100, 1)
         return None
 
+    def _nombre_positif_ou_none(valeur):
+        """Passe directe d'un nombre du moteur — jamais recalculé ici.
+        ``None`` (omission propre) si absent/nul/négatif/non fini (NaN/inf) :
+        le payback affiché au client est celui du moteur ou rien."""
+        if isinstance(valeur, bool) or not isinstance(valeur, (int, float)):
+            return None
+        if not math.isfinite(valeur) or valeur <= 0:
+            return None
+        return valeur
+
     paliers_public = []
     for palier in reco.get('balayage_stockage') or []:
         if not isinstance(palier, dict):
@@ -1446,6 +1501,8 @@ def _balayage_stockage_publique(dimensionnement):
             'capacite_kwh': capacite,
             'cout_ttc': palier.get('cout_ttc'),
             'remplissage_moyen_pct': _remplissage_moyen_pct(palier),
+            'payback_annees': _nombre_positif_ou_none(palier.get('payback_annees')),
+            'economie_mad': _nombre_positif_ou_none(palier.get('economie_mad')),
         })
 
     refuse_public = None
@@ -1837,17 +1894,16 @@ def proposal_data(request, token):
             # le moteur électrique SANS AUCUN PRIX (il n'en connaît aucun).
             # None tant que la conception électrique (PV41) n'a pas été faite :
             # le client ne voit un schéma que lorsqu'il en existe un vrai.
-            # L-NIV — niveau « standard » : topologie simplifiée, sans le
-            # tableau « Nomenclature des équipements » (calibres/sections).
+            # L-NIV — niveau « standard » : topologie simplifiée. MÊME RÈGLE
+            # QUE LA LISTE : désignations, quantités et repères restent (le
+            # client doit pouvoir NOMMER ce qu'il a), calibres et sections
+            # partent — des blocs COMME du tableau de nomenclature.
             # L-SECT — case « Schéma unifilaire » décochée → la clé vaut None
             # (la page omet le bloc, elle sait déjà le faire sur un devis sans
             # conception électrique). Le détail `conception_electrique`
             # ci-dessous part avec elle : c'est LA MÊME section pour le client.
             'sld_svg': (
-                (
-                    _standard_sld_svg(_safe_sld_svg(devis))
-                    if est_standard else _safe_sld_svg(devis)
-                )
+                _safe_sld_svg(devis, standard=est_standard)
                 if _section_servie(link, 'sld') else None
             ),
             # Fondateur 2026-08-18 — le DÉTAIL ÉLECTRIQUE, exposé au client
@@ -2027,12 +2083,33 @@ def proposal_data(request, token):
                     if _section_servie(link, 'economies') else None)
         if _profils is not None:
             payload['profils_comparatifs'] = _profils
+        # L-ECO (fondateur, 24/08/2026) — le bandeau d'économies sous le graphe
+        # « Sur une journée » : jour type affiché, mois, ANNÉE (invariante par
+        # saison) et retour sur investissement, déclinés par profil
+        # d'occupation. AUCUN nouveau calcul : le bloc DÉCLINE les douze valeurs
+        # de `economies_mensuelles` ci-dessus (source unique — deux séries
+        # finiraient par se contredire dans la même page) et reprend le retour
+        # sur investissement DÉJÀ servi (`quote.roi_s`/`roi_a`). Même patron
+        # additif, et même section que les économies : si `sections.economies`
+        # est décochée, ce bandeau ne part pas non plus.
+        _periodes = (
+            construire_economies_periodes(data, _economies,
+                                          _etude_params_devis)
+            if (_economies is not None
+                and _section_servie(link, 'economies')) else None)
+        if _periodes is not None:
+            payload['economies_periodes'] = _periodes
         _estimation = _estimation_conso_publique(devis)
         if _estimation is not None:
             payload['estimation_conso'] = _estimation
         _jours = _jours_types_publique(devis) if _jour_type_servi else None
         if _jours is not None:
             payload['jours_types'] = _jours
+        # L-NIV-VU (24/08/2026) — la page peut enfin DIRE au client qu'elle est
+        # simplifiée, mais SEULEMENT quand c'est vrai sur SON devis (liste
+        # vide ⇒ rien d'affiché). Calculé en dernier : la charge utile est
+        # complète, donc constatée telle qu'elle part réellement.
+        payload['niveau_masque'] = _niveau_masque(payload) if est_standard else []
     except Exception:  # noqa: BLE001
         # 404 volontairement muet cote client (jamais de detail interne sur un
         # lien public) — mais TRACE cote serveur : un garde-fou moteur qui
@@ -2086,8 +2163,16 @@ def proposal_pdf(request, token):
         # ``link.niveau`` (voir ``_opts_pdf_public``), jamais depuis le corps
         # de la requête. Stocké sous une clé MinIO séparée (voir
         # ``builder._pdf_key``) pour ne jamais écraser le PDF interne.
+        #
+        # L-VAR (ordre fondateur, 24/08/2026) — le client choisit la VARIANTE
+        # téléchargée (« sans » / « avec » / « les_deux ») par un paramètre de
+        # requête whitelisté côté moteur. Ce qu'il a coché pour SIGNER ne
+        # restreint plus son téléchargement : il peut toujours récupérer le
+        # devis COMPLET. Aucun statut n'est touché.
         key = generate_premium_devis_pdf(
-            link.devis_id, _opts_pdf_public(link), persist=False)
+            link.devis_id,
+            _opts_pdf_public(link, (request.GET.get('variante') or '').strip()),
+            persist=False)
         pdf_bytes = download_pdf(key)
         filename = f'Devis_{link.devis.reference}.pdf'
     except Exception:  # noqa: BLE001 — jamais de fuite, 404 amical
