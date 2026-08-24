@@ -432,6 +432,26 @@ def _extract_web_questionnaire(data):
     _bool('equip_clim', 'equip_clim')
     _num('equip_clim_pieces', 'equip_clim_pieces', hi=1000)
     _bool('equip_chauffe_eau_electrique', 'equip_chauffe_eau_electrique')
+
+    # ── L-WEBT2 (24/08/2026) — précisions FACULTATIVES kW/créneau, reprises
+    # du tunnel web (section « Affiner mon profil », visible uniquement pour
+    # un équipement déjà coché) : mêmes 10 colonnes ``crm.Lead`` que le
+    # commercial saisit à l'appel (L-BACK/L-BACK2, models.py), mêmes bornes
+    # que leurs équivalents ci-dessus (kW ≤ 1000, comme
+    # ``equip_piscine_pompe_kw``), créneaux WHITELISTÉS sur les enums réels
+    # (une valeur hors choices est silencieusement ignorée — jamais d'erreur,
+    # jamais un défaut inventé). ``_map_payload_to_fields`` les extrait
+    # ensuite directement sur ``fields`` comme le reste du bloc L-BACK.
+    _num('equip_chauffe_eau_kw', 'equip_chauffe_eau_kw', hi=1000)
+    _choice('equip_chauffe_eau_creneau', 'equip_chauffe_eau_creneau',
+            Lead.CreneauChauffeEau.values)
+    _num('equip_ve_chargeur_kw', 'equip_ve_chargeur_kw', hi=1000)
+    _choice('equip_ve_creneau', 'equip_ve_creneau', Lead.CreneauVe.values)
+    _num('equip_clim_kw', 'equip_clim_kw', hi=1000)
+    _choice('equip_clim_creneau', 'equip_clim_creneau', Lead.CreneauClim.values)
+    _num('equip_piscine_heures_jour', 'equip_piscine_heures_jour', hi=24)
+    _choice('equip_piscine_creneau', 'equip_piscine_creneau',
+            Lead.CreneauPiscine.values)
     return out
 
 
@@ -900,6 +920,19 @@ def _map_payload_to_fields(data: dict) -> dict:
         clim_pieces = questionnaire.pop('equip_clim_pieces', None)
         if clim_pieces is not None:
             fields['equip_clim_pieces'] = int(clim_pieces)
+        # L-WEBT2 (24/08/2026) — précisions kW/créneau facultatives : mêmes
+        # colonnes Lead que les 6+2 champs déjà commercial-only (L-BACK/
+        # L-BACK2), désormais aussi alimentables par le client lui-même
+        # depuis le tunnel. Une clé absente/invalide ne touche jamais le
+        # champ correspondant (même discipline que le reste de ce bloc).
+        for equip_key in (
+                'equip_chauffe_eau_kw', 'equip_chauffe_eau_creneau',
+                'equip_ve_chargeur_kw', 'equip_ve_creneau',
+                'equip_clim_kw', 'equip_clim_creneau',
+                'equip_piscine_heures_jour', 'equip_piscine_creneau'):
+            val = questionnaire.pop(equip_key, None)
+            if val is not None:
+                fields[equip_key] = val
         if questionnaire:
             fields['web_questionnaire'] = questionnaire
     estimate = _clean_estimate_shown(

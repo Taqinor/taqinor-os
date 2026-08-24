@@ -395,3 +395,103 @@ class LBackTunnelEquipementsWebhookTests(TestCase):
         lead = Lead.objects.get(pk=res.json()['lead_id'])
         self.assertIsNone(lead.equip_piscine)
         self.assertEqual(str(lead.equip_piscine_pompe_kw), '1.50')
+
+
+@override_settings(WEBSITE_LEAD_WEBHOOK_SECRET=SECRET)
+class LWebt2TunnelEquipementsDetailWebhookTests(TestCase):
+    """L-WEBT2 (24/08/2026) — précisions kW/créneau FACULTATIVES, désormais
+    saisissables par le CLIENT lui-même depuis la section « Affiner mon
+    profil » (avant : commercial-only, L-BACK/L-BACK2 sur ``crm.Lead``).
+    Mêmes 8 colonnes dédiées, jamais laissées dans ``web_questionnaire``."""
+
+    def setUp(self):
+        self.company = Company.objects.create(
+            nom='QJ Web Co 4', slug='qj-web-co-4')
+        self.url = reverse('website-lead-webhook')
+
+    def post(self, data):
+        return self.client.post(
+            self.url, data=json.dumps(data),
+            content_type='application/json',
+            HTTP_X_WEBHOOK_SECRET=SECRET)
+
+    def test_payload_complet_atterrit_sur_les_colonnes_dediees(self):
+        res = self.post(payload_site(
+            equip_chauffe_eau_kw=2.2, equip_chauffe_eau_creneau='nuit',
+            equip_ve_chargeur_kw=7.4, equip_ve_creneau='soir',
+            equip_clim_kw=3.5, equip_clim_creneau='matin',
+            equip_piscine_heures_jour=6.5, equip_piscine_creneau='soir',
+        ))
+        self.assertEqual(res.status_code, 201, res.content)
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertEqual(str(lead.equip_chauffe_eau_kw), '2.20')
+        self.assertEqual(lead.equip_chauffe_eau_creneau, 'nuit')
+        self.assertEqual(str(lead.equip_ve_chargeur_kw), '7.40')
+        self.assertEqual(lead.equip_ve_creneau, 'soir')
+        self.assertEqual(str(lead.equip_clim_kw), '3.50')
+        self.assertEqual(lead.equip_clim_creneau, 'matin')
+        self.assertEqual(str(lead.equip_piscine_heures_jour), '6.5')
+        self.assertEqual(lead.equip_piscine_creneau, 'soir')
+        # Aucune de ces 8 réponses ne pollue web_questionnaire.
+        self.assertEqual(lead.web_questionnaire, {})
+
+    def test_absence_des_cles_ne_touche_rien(self):
+        res = self.post(payload_site(mode='residentiel'))
+        self.assertEqual(res.status_code, 201, res.content)
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertIsNone(lead.equip_chauffe_eau_kw)
+        self.assertIsNone(lead.equip_chauffe_eau_creneau)
+        self.assertIsNone(lead.equip_ve_chargeur_kw)
+        self.assertIsNone(lead.equip_ve_creneau)
+        self.assertIsNone(lead.equip_clim_kw)
+        self.assertIsNone(lead.equip_clim_creneau)
+        self.assertIsNone(lead.equip_piscine_heures_jour)
+        self.assertIsNone(lead.equip_piscine_creneau)
+
+    def test_creneaux_hors_vocabulaire_sont_ignores(self):
+        """Un créneau hors des 4 choix réels (whitelist stricte sur les
+        enums ``crm.Lead``) est silencieusement ignoré — jamais une erreur
+        4xx, jamais une valeur hors-contrat persistée."""
+        res = self.post(payload_site(
+            equip_chauffe_eau_creneau='minuit',
+            equip_ve_creneau='apres_midi',  # pas dans CreneauVe (nuit/jour/soir)
+            equip_clim_creneau='aube',
+            equip_piscine_creneau='crepuscule',
+        ))
+        self.assertEqual(res.status_code, 201, res.content)
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertIsNone(lead.equip_chauffe_eau_creneau)
+        self.assertIsNone(lead.equip_ve_creneau)
+        self.assertIsNone(lead.equip_clim_creneau)
+        self.assertIsNone(lead.equip_piscine_creneau)
+
+    def test_kw_hors_bornes_est_ignore(self):
+        """Une puissance kW hors bornes raisonnables (> 1000) est rejetée
+        silencieusement, comme le reste des champs kW du webhook."""
+        res = self.post(payload_site(equip_clim_kw=50000))
+        self.assertEqual(res.status_code, 201, res.content)
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertIsNone(lead.equip_clim_kw)
+
+    def test_heures_jour_hors_bornes_est_ignore(self):
+        """``equip_piscine_heures_jour`` > 24 h/jour est physiquement
+        impossible — rejeté silencieusement (même borne que
+        ``heuresPompage``)."""
+        res = self.post(payload_site(equip_piscine_heures_jour=30))
+        self.assertEqual(res.status_code, 201, res.content)
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertIsNone(lead.equip_piscine_heures_jour)
+
+    def test_ne_touche_pas_une_valeur_existante_quand_le_renvoi_est_vide(self):
+        """Renvoi de la MÊME soumission (< 1 min, même téléphone) sans ces
+        clés : la valeur déjà captée n'est jamais écrasée par du vide —
+        même discipline que le reste du webhook (``existing`` merge)."""
+        first = self.post(payload_site(
+            phoneE164='+212661000999', equip_clim_kw=3.5,
+            equip_clim_creneau='matin'))
+        self.assertEqual(first.status_code, 201, first.content)
+        second = self.post(payload_site(phoneE164='+212661000999'))
+        self.assertEqual(second.status_code, 201, second.content)
+        lead = Lead.objects.get(pk=second.json()['lead_id'])
+        self.assertEqual(str(lead.equip_clim_kw), '3.50')
+        self.assertEqual(lead.equip_clim_creneau, 'matin')

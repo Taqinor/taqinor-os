@@ -198,18 +198,28 @@ export type RegionAgricoleId = (typeof REGIONS_AGRICOLES)[number];
 // d'appel commercial. SOURCE : `crm.Lead` (backend/django_core/apps/crm/
 // models.py) — ce sont les VRAIS champs du modèle (occupation_jour,
 // equip_piscine[_pompe_kw], equip_voiture_electrique/equip_ve_km_semaine,
-// equip_clim[_pieces], equip_chauffe_eau_electrique), PAS un contrat
-// générique inventé : la piscine/clim n'ont ni puissance-kW-libre ni créneau
-// choisi par le visiteur (les fenêtres horaires sont des CONSTANTES SERVEUR
-// sourcées — apps/ventes/courbes_journalieres.py PISCINE_HEURES/CLIM_HEURES),
-// le chauffe-eau électrique reste un booléen INFORMATIF seul (le moteur ne
-// lui compose aucune couche — même module, commentaire d'en-tête). Ces clés
-// sont SNAKE_CASE par exception à la convention camelCase de ce fichier :
-// elles reprennent MOT POUR MOT le nom du champ Django pour que le câblage
-// backend futur (`_extract_web_questionnaire`, apps/crm/webhooks.py — absent
-// aujourd'hui, voir HANDOFF) n'ait aucune traduction à inventer.
+// equip_clim[_pieces], equip_chauffe_eau_electrique). Ces clés sont
+// SNAKE_CASE par exception à la convention camelCase de ce fichier : elles
+// reprennent MOT POUR MOT le nom du champ Django pour que le câblage backend
+// (`_extract_web_questionnaire`, apps/crm/webhooks.py) n'ait aucune
+// traduction à inventer.
+//
+// L-WEBT2 (24/08/2026, ordre fondateur) — le CLIENT peut désormais préciser
+// LUI-MÊME la puissance/créneau réels d'un équipement déjà coché (chauffe-eau
+// kW+créneau, chargeur VE kW+créneau, clim kW+créneau, piscine heures/jour+
+// créneau), exactement les mêmes 8 colonnes `crm.Lead` que le commercial
+// saisit à l'appel (L-BACK/L-BACK2) — désormais alimentables par les DEUX
+// canaux. Facultatifs, jamais requis, jamais un défaut inventé : une valeur
+// absente/invalide n'aboutit simplement à aucune clé.
 export const OCCUPATION_JOUR_VALUES = ['present', 'absent', 'partiel'] as const;
 export type OccupationJourId = (typeof OCCUPATION_JOUR_VALUES)[number];
+
+// L-WEBT2 — créneaux whitelistés, EXACTEMENT les enums `crm.Lead`
+// (CreneauChauffeEau/CreneauVe/CreneauClim/CreneauPiscine, models.py).
+export const CRENEAU_CHAUFFE_EAU_VALUES = ['matin', 'soir', 'nuit', 'journee'] as const;
+export const CRENEAU_VE_VALUES = ['nuit', 'jour', 'soir'] as const;
+export const CRENEAU_CLIM_VALUES = ['matin', 'apres_midi', 'soir', 'journee'] as const;
+export const CRENEAU_PISCINE_VALUES = ['matin', 'apres_midi', 'soir', 'journee'] as const;
 
 /**
  * Plafond de facture mensuelle saisissable (MAD) PAR MODE — les modes C&I
@@ -454,6 +464,18 @@ export interface ValidatedLead {
   equip_clim?: boolean;
   equip_clim_pieces?: number;
   equip_chauffe_eau_electrique?: boolean;
+  // L-WEBT2 — précisions kW/créneau facultatives (voir le commentaire de
+  // CRENEAU_CHAUFFE_EAU_VALUES ci-dessus). Jamais requises, jamais de
+  // défaut : visibles uniquement dans le lead validé quand le visiteur les
+  // a réellement saisies.
+  equip_chauffe_eau_kw?: number;
+  equip_chauffe_eau_creneau?: (typeof CRENEAU_CHAUFFE_EAU_VALUES)[number];
+  equip_ve_chargeur_kw?: number;
+  equip_ve_creneau?: (typeof CRENEAU_VE_VALUES)[number];
+  equip_clim_kw?: number;
+  equip_clim_creneau?: (typeof CRENEAU_CLIM_VALUES)[number];
+  equip_piscine_heures_jour?: number;
+  equip_piscine_creneau?: (typeof CRENEAU_PISCINE_VALUES)[number];
 }
 
 export type ValidationResult =
@@ -852,6 +874,29 @@ function validateOptionalFields(b: Record<string, unknown>): Partial<ValidatedLe
   if (equipClimPieces != null) opt.equip_clim_pieces = Math.round(equipClimPieces);
 
   if (b.equip_chauffe_eau_electrique === true) opt.equip_chauffe_eau_electrique = true;
+
+  // L-WEBT2 (24/08/2026) — précisions kW/créneau facultatives : mêmes bornes
+  // que leurs équivalents commerciaux (webhooks.py hi=1000 kW / hi=24 h),
+  // créneaux WHITELISTÉS sur les enums réels (cf. CRENEAU_*_VALUES).
+  const equipChauffeEauKw = cleanPositiveNumber(b.equip_chauffe_eau_kw, 1_000);
+  if (equipChauffeEauKw != null) opt.equip_chauffe_eau_kw = equipChauffeEauKw;
+  const equipChauffeEauCreneau = cleanEnum(b.equip_chauffe_eau_creneau, CRENEAU_CHAUFFE_EAU_VALUES);
+  if (equipChauffeEauCreneau) opt.equip_chauffe_eau_creneau = equipChauffeEauCreneau;
+
+  const equipVeChargeurKw = cleanPositiveNumber(b.equip_ve_chargeur_kw, 1_000);
+  if (equipVeChargeurKw != null) opt.equip_ve_chargeur_kw = equipVeChargeurKw;
+  const equipVeCreneau = cleanEnum(b.equip_ve_creneau, CRENEAU_VE_VALUES);
+  if (equipVeCreneau) opt.equip_ve_creneau = equipVeCreneau;
+
+  const equipClimKw = cleanPositiveNumber(b.equip_clim_kw, 1_000);
+  if (equipClimKw != null) opt.equip_clim_kw = equipClimKw;
+  const equipClimCreneau = cleanEnum(b.equip_clim_creneau, CRENEAU_CLIM_VALUES);
+  if (equipClimCreneau) opt.equip_clim_creneau = equipClimCreneau;
+
+  const equipPiscineHeuresJour = cleanPositiveNumber(b.equip_piscine_heures_jour, 24);
+  if (equipPiscineHeuresJour != null) opt.equip_piscine_heures_jour = equipPiscineHeuresJour;
+  const equipPiscineCreneau = cleanEnum(b.equip_piscine_creneau, CRENEAU_PISCINE_VALUES);
+  if (equipPiscineCreneau) opt.equip_piscine_creneau = equipPiscineCreneau;
 
   return opt;
 }
