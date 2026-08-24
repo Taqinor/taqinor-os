@@ -23,6 +23,8 @@ import ventesApi from '../../api/ventesApi'
 export {
   construireCorpsPreview, etiquetteSource, lignesAffichables,
   verdictBatteriePourTaille,
+  libelleTranche, falaiseAffichable, glitchAnnuel, balayageStockageAffichable,
+  estimationConsoAffichable, LIBELLES_MOIS,
 } from './etudeHorairePreviewPur'
 
 /**

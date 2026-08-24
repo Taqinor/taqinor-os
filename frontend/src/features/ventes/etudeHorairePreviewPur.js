@@ -115,6 +115,129 @@ export function lignesAffichables(dimensionnement) {
   })
 }
 
+// ── L-FRONT (lot 4, 24/08) — falaise/résiduel/remplissage/glitch/estimation ──
+// Le moteur horaire porte désormais, sur `dimensionnement` et `etude`, des
+// colonnes supplémentaires (voir `apps/ventes/contract_samples/etude_horaire.
+// json`, notes `dim2_falaise`/`dim2_batteries_toujours_pleines`/`glitch`) :
+// pas de nouvel appel réseau, ces aides lisent seulement le MÊME payload déjà
+// consommé par `lignesAffichables`. Même discipline d'honnêteté qu'au-dessus :
+// une clé absente rend `null`/`[]`, jamais un calcul de repli côté écran.
+
+/**
+ * Libellé FR court d'une tranche tarifaire (`{ libelle, prix_mad_kwh, ... }`
+ * telle que renvoyée par le moteur) — `null` quand la tranche est absente
+ * (jamais un "—" fabriqué à la place d'une donnée serveur).
+ */
+export function libelleTranche(tranche) {
+  if (!tranche || typeof tranche !== 'object') return null
+  return tranche.libelle || null
+}
+
+/**
+ * Bloc « falaise » prêt à afficher (palier tarifaire visé + meilleure
+ * combinaison du balayage qui y passe), ou `null` quand le moteur n'a rien
+ * calculé (mode non résidentiel, aucun ancrage réel — Z2). Ne recalcule
+ * jamais : ne fait que sélectionner/nommer les clés déjà servies par
+ * `dimensionnement.falaise`/`dimensionnement.meilleure_falaise`.
+ */
+export function falaiseAffichable(dimensionnement) {
+  const falaise = dimensionnement?.falaise
+  if (!falaise || typeof falaise !== 'object') return null
+  const meilleure = dimensionnement?.meilleure_falaise || null
+  return {
+    cibleKwhMois: falaise.cible_kwh_mois ?? null,
+    trancheActuelle: libelleTranche(falaise.tranche_actuelle),
+    trancheVisee: libelleTranche(falaise.tranche_visee),
+    meilleure: meilleure ? {
+      panneaux: meilleure.panneaux ?? null,
+      kwc: meilleure.kwc ?? null,
+      batterieKwh: meilleure.batterie_kwh ?? null,
+      residuelKwhMois: meilleure.residuel_kwh_mois ?? null,
+      trancheApres: libelleTranche(meilleure.tranche_apres),
+      economieMad: meilleure.economie_mad ?? null,
+      paybackAnnees: meilleure.payback_annees ?? null,
+      remplissageMoyen: meilleure.remplissage?.moyen ?? null,
+    } : null,
+  }
+}
+
+/**
+ * Résumé annuel « glitch » (impulsions équipements déclarés — climatisation,
+ * pompe piscine…) : `null` quand `etude.glitch` est absent, ce qui — d'après
+ * le moteur — veut dire qu'AUCUN équipement concentrable n'est déclaré : la
+ * sortie est alors byte-identique à celle d'avant la couche, il n'y a donc
+ * rien d'honnête à montrer.
+ */
+export function glitchAnnuel(etude) {
+  if (!etude || typeof etude !== 'object' || !etude.glitch) return null
+  const annuel = etude.annuel
+  if (!annuel || typeof annuel !== 'object') return null
+  return {
+    sansKwh: annuel.part_glitch_sans_kwh ?? null,
+    avecKwh: annuel.part_glitch_avec_kwh ?? null,
+    batterieKwh: annuel.part_glitch_batterie_kwh ?? null,
+    heuresImpulsion: annuel.heures_impulsion ?? null,
+    couches: Array.isArray(etude.glitch.couches) ? etude.glitch.couches : [],
+  }
+}
+
+/**
+ * Lignes du mini-balayage stockage d'UNE taille de champ (`ligne.
+ * balayage_stockage`), prêtes à l'affichage — tableau vide (jamais une
+ * exception) quand absent ou non-tableau.
+ */
+export function balayageStockageAffichable(ligne) {
+  const paliers = ligne?.balayage_stockage
+  if (!Array.isArray(paliers)) return []
+  return paliers.map((p) => ({
+    capaciteKwh: p.capacite_kwh ?? null,
+    coutTtc: p.cout_ttc ?? null,
+    economieMad: p.economie_mad ?? null,
+    economieMarginaleMad: p.economie_marginale_mad ?? null,
+    paybackAnnees: p.payback_annees ?? null,
+    residuelKwhMois: p.residuel_kwh_mois ?? null,
+    trancheApres: libelleTranche(p.tranche_apres),
+    couverture: p.couverture ?? null,
+    remplissageMoyen: p.remplissage?.moyen ?? null,
+  }))
+}
+
+// Les 12 mois FR courts, dans l'ordre du serveur (janvier → décembre) — même
+// convention que `SAISON_LABELS` (DevisGenerator.jsx), purement un libellé.
+export const LIBELLES_MOIS = [
+  'Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin',
+  'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc',
+]
+
+const CLES_AJOUT_ESTIMATION = ['chauffe_eau', 've', 'clim', 'piscine']
+
+const LIBELLES_AJOUT_ESTIMATION = {
+  chauffe_eau: 'Chauffe-eau électrique',
+  ve: 'Véhicule électrique',
+  clim: 'Climatisation',
+  piscine: 'Piscine',
+}
+
+/**
+ * Décomposition mensuelle prête à l'affichage à partir de
+ * `estimation_conso: { base_mensuelle:[12], ajouts:{...}, totale_mensuelle:
+ * [12] }` (lot 4 — contrat backend). `null` quand la clé est absente du
+ * payload (rien à montrer : jamais une décomposition inventée) ; chaque ligne
+ * d'ajout n'apparaît que si sa série est réellement présente (le contrat dit
+ * les clés absentes omises).
+ */
+export function estimationConsoAffichable(estimationConso) {
+  const base = estimationConso?.base_mensuelle
+  const total = estimationConso?.totale_mensuelle
+  if (!Array.isArray(base) || base.length !== 12
+      || !Array.isArray(total) || total.length !== 12) return null
+  const ajoutsSource = estimationConso.ajouts || {}
+  const ajouts = CLES_AJOUT_ESTIMATION
+    .filter((cle) => Array.isArray(ajoutsSource[cle]) && ajoutsSource[cle].length === 12)
+    .map((cle) => ({ cle, libelle: LIBELLES_AJOUT_ESTIMATION[cle], valeurs: ajoutsSource[cle] }))
+  return { base, total, ajouts }
+}
+
 /**
  * CJ2b — verdict batterie du moteur POUR LA TAILLE RÉELLEMENT CHIFFRÉE.
  *
