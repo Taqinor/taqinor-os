@@ -369,6 +369,11 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
     description:    produit?.description    ?? '',
     prix_vente:     String(produit?.prix_vente  ?? ''),
     prix_achat:     String(produit?.prix_achat  ?? '0'),
+    // L-STOCKUI (fondateur 24/08) — tarification forfaitaire par composition
+    // (partie fixe + partie par panneau, DH HT) : nullable, vide par défaut —
+    // ne remplace le prix de vente que si le fondateur les renseigne.
+    prix_fixe_ht:        produit?.prix_fixe_ht        != null ? String(produit.prix_fixe_ht)        : '',
+    prix_par_panneau_ht: produit?.prix_par_panneau_ht != null ? String(produit.prix_par_panneau_ht) : '',
     // VX93 — nouveau produit : dernier taux TVA saisi (localStorage, défaut 20 %) ;
     // l'édition conserve la valeur existante (y compris « Sans TVA »).
     tva:            produit?.tva != null ? String(produit.tva) : (isEdit ? '' : lireLastTva()),
@@ -625,6 +630,11 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
         description:    fields.description.trim() || null,
         prix_vente:     fields.prix_vente,
         prix_achat:     fields.prix_achat,
+        // L-STOCKUI — vidés → null (nullable côté serveur), jamais 0 : un
+        // champ vide doit vraiment dire « pas de tarification forfaitaire »,
+        // pas « fixe à 0 DH ».
+        prix_fixe_ht:        fields.prix_fixe_ht        !== '' ? fields.prix_fixe_ht        : null,
+        prix_par_panneau_ht: fields.prix_par_panneau_ht !== '' ? fields.prix_par_panneau_ht : null,
         tva:            fields.tva !== '' ? parseFloat(fields.tva) : null,
         quantite_stock: parseInt(fields.quantite_stock) || 0,
         seuil_alerte:   parseInt(fields.seuil_alerte)   || 0,
@@ -973,6 +983,42 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
                 )}
               </div>
             ) : null}
+
+            {/* L-STOCKUI (fondateur 24/08) — tarification forfaitaire par
+                composition : une partie FIXE + une partie PAR PANNEAU (DH HT),
+                que le devis pourra coter à la place du prix de vente. Visible
+                sur TOUTE fiche produit — aucun filtrage par catégorie, c'est
+                le fondateur qui décide où il les remplit (Installation,
+                Tableau AC-DC, Accessoires…) — mais REPLIÉE par défaut (bloc
+                secondaire), même patron `<details>` que le « Plusieurs
+                propriétés ? » de DevisGenerator.jsx. Rien ici ne calcule ni
+                ne cote le devis : ce sont deux champs de saisie ; la
+                composition (fixe + par-panneau × nb panneaux) est le travail
+                d'une lane séparée côté générateur de devis. */}
+            <details className="sm:col-span-2 rounded-lg border border-border bg-muted/30">
+              <summary id="pf-tarif-summary" className="cursor-pointer select-none px-3 py-3 font-display text-sm font-semibold tracking-tight sm:px-4">
+                Tarification forfaitaire (composition)
+                {(fields.prix_fixe_ht !== '' || fields.prix_par_panneau_ht !== '') && (
+                  <span className="ml-2 text-xs font-normal text-muted-foreground">(renseignée)</span>
+                )}
+              </summary>
+              <div className="grid gap-4 border-t border-border p-3 sm:grid-cols-2 sm:p-4">
+                <p className="text-xs text-muted-foreground sm:col-span-2">
+                  Si renseignés, la composition du devis cote cette ligne : fixe + par-panneau
+                  × nb panneaux (HT), à la place du prix de vente. Laisser vide = prix de vente classique.
+                </p>
+                <FormField label="Partie fixe (DH HT)" htmlFor="pf-tarif-fixe">
+                  <Input id="pf-tarif-fixe" type="number" min="0" step="any" inputMode="decimal"
+                         value={fields.prix_fixe_ht}
+                         onChange={e => setField('prix_fixe_ht', e.target.value)} />
+                </FormField>
+                <FormField label="Par panneau (DH HT)" htmlFor="pf-tarif-panneau">
+                  <Input id="pf-tarif-panneau" type="number" min="0" step="any" inputMode="decimal"
+                         value={fields.prix_par_panneau_ht}
+                         onChange={e => setField('prix_par_panneau_ht', e.target.value)} />
+                </FormField>
+              </div>
+            </details>
           </FormSection>
 
           <FormSection title="Stock & alerte">
