@@ -444,6 +444,23 @@ class Lead(SoftDeleteModel):
         JOUR = 'jour', 'Jour'
         SOIR = 'soir', 'Soir'
 
+    # L-BACK2 (24/08/2026) — créneaux clim/piscine. Mêmes quatre créneaux
+    # pour les deux (script d'appel identique) ; contrairement à
+    # CreneauChauffeEau/CreneauVe, ces créneaux ENRICHISSENT une couche déjà
+    # active (clim/piscine) au lieu d'en composer une nouvelle — voir
+    # apps/ventes/courbes_journalieres.py.
+    class CreneauClim(models.TextChoices):
+        MATIN = 'matin', 'Matin'
+        APRES_MIDI = 'apres_midi', 'Après-midi'
+        SOIR = 'soir', 'Soir'
+        JOURNEE = 'journee', 'Toute la journée'
+
+    class CreneauPiscine(models.TextChoices):
+        MATIN = 'matin', 'Matin'
+        APRES_MIDI = 'apres_midi', 'Après-midi'
+        SOIR = 'soir', 'Soir'
+        JOURNEE = 'journee', 'Toute la journée'
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -666,6 +683,29 @@ class Lead(SoftDeleteModel):
                   "elle est connue : remplace la durée par défaut du "
                   'mémo (8h, bloc 10h-18h). Vide : la couche piscine '
                   'reste composée avec la fenêtre par défaut.')
+
+    # ── L-BACK2 (24/08/2026) — créneaux clim/piscine, même granularité
+    # horaire que le bloc L-BACK ci-dessus mais en ENRICHISSEMENT d'une
+    # couche déjà active (clim via kW/pièces, piscine via pompe kW), jamais
+    # une paire requise pour exister. Voir
+    # apps/ventes/courbes_journalieres.py pour la composition.
+    equip_clim_creneau = models.CharField(
+        max_length=10, choices=CreneauClim.choices, null=True, blank=True,
+        verbose_name='Créneau de fonctionnement de la clim',
+        help_text="Question à l'appel : « À quel moment la climatisation "
+                  'tourne-t-elle le plus (matin/après-midi/soir/toute la '
+                  'journée) ? » Avec la puissance déclarée (ou à défaut '
+                  "l'estimation par pièces) : place la couche « clim » sur "
+                  'ce créneau au lieu du bloc 13h-21h par défaut. Seul, ne '
+                  'change rien.')
+    equip_piscine_creneau = models.CharField(
+        max_length=10, choices=CreneauPiscine.choices, null=True,
+        blank=True, verbose_name='Créneau de filtration de la piscine',
+        help_text="Question à l'appel : « À quel moment la pompe de "
+                  'filtration tourne-t-elle le plus (matin/après-midi/'
+                  'soir/toute la journée) ? » Change l\'heure de DÉPART '
+                  'de la fenêtre (equip_piscine_heures_jour en contrôle '
+                  'toujours la longueur). Seul, ne change rien.')
 
     # ── Pompage solaire (leads Agricole) — mêmes entrées que le générateur ──
     pompe_cv = models.DecimalField(

@@ -529,3 +529,82 @@ class EquipementsLBackTests(_CourbesBase):
             'chauffe_eau_kw': None, 'chauffe_eau_creneau': 'nuit',
         })
         self.assertNotIn('equipements', bloc2)
+
+
+class EquipementsLBack2Tests(_CourbesBase):
+    """L-BACK2 (24/08/2026) — créneaux clim/piscine (comble la lacune : ces
+    deux couches n'avaient AUCUNE granularité horaire, contrairement à la
+    paire kW/créneau du chauffe-eau/VE)."""
+
+    def _bloc_equip(self, equip, data=None, conso=None):
+        with mock.patch('apps.crm.selectors.equipements_pour_devis',
+                        return_value=equip):
+            return self._bloc(data=data, conso=CASA_CONSO if conso is None else conso)
+
+    def test_clim_creneau_deplace_la_fenetre_sans_toucher_la_puissance(self):
+        bloc = self._bloc_equip({
+            'clim': True, 'clim_pieces': 2, 'clim_kw': 3.5,
+            'clim_creneau': 'matin',
+        })
+        self.assertEqual(bloc['equipements']['clim'], {
+            'kw': 3.5,
+            'heures': list(range(8, 13)),
+            'saisons': ['ete'],
+            'mode': 'redistribution',
+            'source': 'lead:equip_clim_kw+lead:equip_clim_creneau',
+        })
+
+    def test_clim_sans_creneau_garde_la_fenetre_par_defaut(self):
+        bloc = self._bloc_equip({
+            'clim': True, 'clim_pieces': 2, 'clim_kw': None,
+            'clim_creneau': None,
+        })
+        self.assertEqual(bloc['equipements']['clim']['heures'],
+                         list(range(13, 21)))
+        self.assertEqual(bloc['equipements']['clim']['source'],
+                         'memo_2026-08-21_etage2:clim_12000btu_1p4kwh_h')
+
+    def test_clim_creneau_inconnu_est_ignore(self):
+        # Valeur hors choices (ne devrait jamais arriver via l'API, mais le
+        # moteur ne doit jamais planter) ⇒ repli sur la fenêtre par défaut.
+        bloc = self._bloc_equip({
+            'clim': True, 'clim_pieces': 2, 'clim_creneau': 'inconnu',
+        })
+        self.assertEqual(bloc['equipements']['clim']['heures'],
+                         list(range(13, 21)))
+
+    def test_piscine_creneau_deplace_le_depart_sans_toucher_la_duree(self):
+        bloc = self._bloc_equip({
+            'piscine': True, 'piscine_pompe_kw': 1.5,
+            'piscine_creneau': 'matin',
+        })
+        self.assertEqual(bloc['equipements']['piscine'], {
+            'kw': 1.5,
+            'heures': list(range(6, 14)),  # 8h (défaut) à partir de 6h
+            'saisons': ['ete'],
+            'mode': 'redistribution',
+            'source': 'lead:equip_piscine_creneau',
+        })
+
+    def test_piscine_creneau_et_heures_jour_se_composent(self):
+        bloc = self._bloc_equip({
+            'piscine': True, 'piscine_pompe_kw': 1.5,
+            'piscine_heures_jour': 4, 'piscine_creneau': 'soir',
+        })
+        self.assertEqual(bloc['equipements']['piscine'], {
+            'kw': 1.5,
+            'heures': [16, 17, 18, 19],  # 4h à partir de 16h (créneau soir)
+            'saisons': ['ete'],
+            'mode': 'redistribution',
+            'source': 'lead:equip_piscine_heures_jour+equip_piscine_creneau',
+        })
+
+    def test_piscine_sans_creneau_ni_heures_jour_garde_le_defaut(self):
+        bloc = self._bloc_equip({
+            'piscine': True, 'piscine_pompe_kw': 1.5,
+            'piscine_heures_jour': None, 'piscine_creneau': None,
+        })
+        self.assertEqual(bloc['equipements']['piscine']['heures'],
+                         list(range(10, 18)))
+        self.assertEqual(bloc['equipements']['piscine']['source'],
+                         'memo_2026-08-21_etage2:piscine_bloc_10_18h')

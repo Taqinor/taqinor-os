@@ -43,6 +43,10 @@ export const TRACKED_KEYS = [
   'equip_ve_chargeur_kw', 'equip_ve_creneau',
   'equip_clim_kw',
   'equip_piscine_heures_jour',
+  // L-FRONT lot 5 (contrat L-BACK2, 24/08) — créneaux clim/piscine, même
+  // granularité que le lot 4 ci-dessus, en enrichissement d'une couche déjà
+  // active (jamais une paire requise).
+  'equip_clim_creneau', 'equip_piscine_creneau',
   // Pompage (agricole)
   'pompe_cv', 'pompe_hmt_m', 'pompe_debit_m3h',
   // Toiture & site
@@ -170,7 +174,8 @@ export const SECTION_FIELDS = {
     'equip_chauffe_eau_kw', 'equip_chauffe_eau_creneau',
     'equip_ve_chargeur_kw', 'equip_ve_creneau',
     'equip_clim_kw',
-    'equip_piscine_heures_jour'],
+    'equip_piscine_heures_jour',
+    'equip_clim_creneau', 'equip_piscine_creneau'],
   pompage: ['pompe_cv', 'pompe_hmt_m', 'pompe_debit_m3h'],
   toiture: ['type_toiture', 'surface_toiture_m2', 'orientation',
     'inclinaison_deg', 'ombrage', 'ombrage_notes', 'nb_etages',
@@ -292,6 +297,8 @@ export function buildCreateDefaults({ currentUserId = null, lastVille = '' } = {
     equip_ve_chargeur_kw: '', equip_ve_creneau: '',
     equip_clim_kw: '',
     equip_piscine_heures_jour: '',
+    // L-FRONT lot 5 — créneaux clim/piscine (contrat L-BACK2, 24/08).
+    equip_clim_creneau: '', equip_piscine_creneau: '',
     pompe_cv: '', pompe_hmt_m: '', pompe_debit_m3h: '',
     type_toiture: '', surface_toiture_m2: '', orientation: '', inclinaison_deg: '',
     ombrage: '', ombrage_notes: '', nb_etages: '', structure_pref: '',
