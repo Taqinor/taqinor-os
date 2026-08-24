@@ -1241,8 +1241,10 @@ def specs_for_produit(produit):
             # L-DECH (2026-08-24) — le PORT BATTERIE de l'hybride, deuxième
             # goulot du chemin batterie : le moteur horaire borne la puissance
             # servie/absorbée par ``min(Σ packs, port onduleur)``.
-            ('bat_max_charge_kw', fiche.ond_bat_max_charge_kw),
-            ('bat_max_decharge_kw', fiche.ond_bat_max_decharge_kw),
+            # getattr : les doubles de test (_FausseFiche) ne portent pas
+            # forcément les champs récents — absent ≡ NULL (non évaluable).
+            ('bat_max_charge_kw', getattr(fiche, 'ond_bat_max_charge_kw', None)),
+            ('bat_max_decharge_kw', getattr(fiche, 'ond_bat_max_decharge_kw', None)),
         ):
             _put(out, key, value)
     elif fiche.type_fiche == 'batterie':

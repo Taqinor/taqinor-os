@@ -185,7 +185,9 @@ describe('ProduitForm — tarification forfaitaire par composition (L-STOCKUI)',
     await screen.findByText('Nouveau produit')
 
     fireEvent.change(screen.getByPlaceholderText('Nom du produit'), { target: { value: 'Structure au sol' } })
-    fireEvent.change(screen.getByLabelText('Prix de vente HT'), { target: { value: '500' } })
+    // Ciblage par id (même contournement que pf-tarif-summary plus haut) :
+    // en mode création l'association label/champ ne résout pas sous jsdom.
+    fireEvent.change(document.getElementById('pf-vente'), { target: { value: '500' } })
     fireEvent.click(screen.getByRole('button', { name: 'Créer le produit' }))
 
     await waitFor(() => expect(createProduitApi).toHaveBeenCalled())
