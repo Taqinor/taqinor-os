@@ -27,10 +27,23 @@ try {
         exit 1
     }
 
-    # PR mode: gh already has a purpose-built watcher that exits non-zero on failure.
+    # PR mode. FIRST the mergeable state: a CONFLICTING PR dispatches ZERO workflows, which
+    # looks exactly like a "CI outage" (two ~30-min misdiagnoses, 2026-07/08). THEN watch
+    # REQUIRED checks only - the chronically-red, non-required CodeQL check must never
+    # red-exit this watcher (it used to, producing false reds).
     if ($Pr -gt 0) {
-        gh pr checks $Pr --watch
-        exit $LASTEXITCODE
+        $prState = gh pr view $Pr --json mergeable,mergeStateStatus | ConvertFrom-Json
+        if ($prState -and $prState.mergeable -eq 'CONFLICTING') {
+            Write-Host "CONFLICTING - PR #$Pr has a merge conflict, so CI dispatches NOTHING." -ForegroundColor Red
+            Write-Host "This is NOT a CI outage. Integrate the base branch, resolve, push - then re-watch." -ForegroundColor Red
+            exit 1
+        }
+        gh pr checks $Pr --required --watch
+        $rc = $LASTEXITCODE
+        if ($rc -ne 0) {
+            Write-Host "A REQUIRED check failed (non-required checks like CodeQL are excluded from this verdict)." -ForegroundColor Red
+        }
+        exit $rc
     }
 
     if (-not $Sha) { $Sha = (git rev-parse HEAD).Trim() }
@@ -39,7 +52,8 @@ try {
     # The Actions run for a just-pushed SHA may not be registered instantly - retry.
     $runId = $null
     for ($i = 1; $i -le 10; $i++) {
-        $out = gh run list --commit $Sha --branch $branch --limit 1 --json databaseId 2>$null
+        # --workflow ci.yml so this never latches onto a CodeQL (or other side-workflow) run.
+        $out = gh run list --commit $Sha --branch $branch --workflow ci.yml --limit 1 --json databaseId 2>$null
         if ($out) {
             $parsed = $out | ConvertFrom-Json
             if ($parsed -and $parsed.Count -gt 0) { $runId = $parsed[0].databaseId; break }
