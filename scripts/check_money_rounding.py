@@ -215,7 +215,7 @@ BASELINE_ALLOWLIST = {
     # au-dessus (300…985) sont AVANT l'insertion et ne bougent pas.
     "backend/django_core/apps/ventes/quote_engine/builder.py:1893",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1839",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:2216",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:2215",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1794",
     # Z1/Z2 (20/08/2026) — RE-CALAGE file:line, PAS de nouveau site
     # (bug-class #34), et un site MONÉTAIRE EN MOINS. Le bloc « batterie de
@@ -262,10 +262,10 @@ BASELINE_ALLOWLIST = {
     #   1293→1298, 1306→1311, 2111→2116, 2117→2122, 2170→2175, 2171→2176
     "backend/django_core/apps/ventes/quote_engine/builder.py:1298",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1350",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:2215",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:2221",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:2214",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:2220",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:2273",
     "backend/django_core/apps/ventes/quote_engine/builder.py:2274",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:2275",
     # 2026-08-24 — LANE ANTICOPIE (PDF public « standard ») : RECALAGE DE
     # LIGNES, AUCUN NOUVEAU SITE. Les commits a798d33d (« règle d'agrégation
     # kit factorisée + appliquée au PDF public ») et 5e6b75ac ont inséré
@@ -287,10 +287,10 @@ BASELINE_ALLOWLIST = {
     "backend/django_core/apps/ventes/quote_engine/builder.py:1095",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1356",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1369",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:2259",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:2265",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:2258",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:2264",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:2317",
     "backend/django_core/apps/ventes/quote_engine/builder.py:2318",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:2319",
 }
 
 TARGET_FILES = [
