@@ -1794,8 +1794,17 @@ def proposal_pdf(request, token):
 
     try:
         # ERR74 — GET sûr : rendu + flux sans persister fichier_pdf.
+        # L-NIV (24/08/2026) — ``watermark`` est un flag SERVEUR (jamais lu
+        # depuis le corps de la requête, ``clean_pdf_options({})`` reçoit un
+        # dict vide) : posé UNIQUEMENT quand ``link.niveau`` est « standard »,
+        # d'après le lien résolu par le jeton — jamais depuis une entrée
+        # client. Stocké sous une clé MinIO séparée (voir ``builder._pdf_key``)
+        # pour ne jamais écraser le PDF interne.
+        _opts = clean_pdf_options({})
+        if getattr(link, 'niveau', ShareLink.NIVEAU_CONFIANCE) == ShareLink.NIVEAU_STANDARD:
+            _opts['watermark'] = True
         key = generate_premium_devis_pdf(
-            link.devis_id, clean_pdf_options({}), persist=False)
+            link.devis_id, _opts, persist=False)
         pdf_bytes = download_pdf(key)
         filename = f'Devis_{link.devis.reference}.pdf'
     except Exception:  # noqa: BLE001 — jamais de fuite, 404 amical

@@ -2356,10 +2356,18 @@ def _panneaux_du_layout(roof_layout) -> int:
     return total
 
 
-def _pdf_key(devis) -> str:
-    """MinIO key, scoped by company to avoid cross-tenant collisions."""
+def _pdf_key(devis, *, watermark=False) -> str:
+    """MinIO key, scoped by company to avoid cross-tenant collisions.
+
+    L-NIV (24/08/2026) — ``watermark=True`` (PDF public niveau standard)
+    stocke sous une clé SÉPARÉE (``__pub-standard`` suffix). Sans ça, le rendu
+    filigrané écraserait le fichier persisté (``devis.fichier_pdf`` — même clé
+    déterministe) que le bouton interne « Télécharger » sert TEL QUEL sans
+    régénérer : un commercial aurait pu récupérer, sans le savoir, la copie
+    filigranée nom+téléphone d'un client à la place de son PDF interne."""
     company_id = getattr(devis, "company_id", None) or "0"
-    return f"devis/{company_id}/{devis.reference}.pdf"
+    suffixe = "__pub-standard" if watermark else ""
+    return f"devis/{company_id}/{devis.reference}{suffixe}.pdf"
 
 
 def _ensure_pdf_bucket() -> None:
@@ -2377,6 +2385,21 @@ def _ensure_pdf_bucket() -> None:
             logger.info("Created MinIO bucket: %s", bucket)
         except Exception as exc:
             logger.warning("Could not ensure MinIO bucket %s: %s", bucket, exc)
+
+
+def _filigrane_standard_texte(devis):
+    """L-NIV (24/08/2026) — « Nom · Téléphone » du prospect, pour le filigrane
+    DISCRET du PDF public niveau standard. Nom/téléphone du CLIENT du devis
+    (déjà résolu, éventuellement depuis le lead — ``crm.services.
+    resolve_client_for_lead``) ; ``''`` (donc pas de filigrane, le footer
+    reste identique) quand ni l'un ni l'autre n'est connu."""
+    client = getattr(devis, 'client', None)
+    nom = (getattr(client, 'nom', '') or '').strip()
+    prenom = (getattr(client, 'prenom', '') or '').strip()
+    nom_complet = f'{prenom} {nom}'.strip()
+    tel = (getattr(client, 'telephone', '') or '').strip()
+    morceaux = [m for m in (nom_complet, tel) if m]
+    return ' · '.join(morceaux)
 
 
 def generate_premium_devis_pdf(devis_id, pdf_options=None, persist=True) -> str:
@@ -2406,6 +2429,16 @@ def generate_premium_devis_pdf(devis_id, pdf_options=None, persist=True) -> str:
     )
 
     data = build_quote_data(devis, pdf_options)
+
+    # L-NIV (24/08/2026) — filigrane PDF DISCRET, posé UNIQUEMENT sur le PDF
+    # PUBLIC (share-link) rendu au niveau standard : ``pdf_options['watermark']``
+    # est un flag SERVEUR (jamais lu depuis un corps client — voir
+    # ``public_views.proposal_pdf``, qui le pose lui-même après avoir résolu
+    # ``link.niveau``). ``clean_pdf_options`` ne le whiteliste pas : un appel
+    # interne (generer-pdf / envoyer-email) n'en porte jamais, donc n'importe
+    # quel autre appelant reste byte-identique.
+    if (pdf_options or {}).get('watermark'):
+        data['_watermark_standard'] = _filigrane_standard_texte(devis)
 
     # ONE engine, two renderers. The redesigned 3-page layout renders
     # residential quotes (full format); the legacy renderer serves every other
@@ -2471,9 +2504,16 @@ def generate_premium_devis_pdf(devis_id, pdf_options=None, persist=True) -> str:
         finally:
             Path(tmp_path).unlink(missing_ok=True)
 
-    key = _pdf_key(devis)
+    _filigrane_actif = bool((pdf_options or {}).get('watermark'))
+    key = _pdf_key(devis, watermark=_filigrane_actif)
     _ensure_pdf_bucket()
     _upload_pdf(pdf_bytes, key)
+
+    # L-NIV — le rendu filigrané (clé séparée ci-dessus) n'est JAMAIS persisté
+    # sur devis.fichier_pdf, quel que soit ``persist`` : le PDF interne
+    # (« Télécharger ») doit toujours pointer sur la clé SANS filigrane.
+    if _filigrane_actif:
+        return key
 
     # Persist the key only when asked AND when it actually changed: a safe GET
     # (persist=False) never writes; the default path writes once.
