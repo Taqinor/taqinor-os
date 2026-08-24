@@ -13,6 +13,11 @@
  * lit donc que les champs publics du contrat vérifié.
  */
 
+// L-PCMP — import de TYPE uniquement (effacé à la compilation) : ce module
+// reste sans aucune dépendance à l'exécution, mais les silhouettes
+// d'occupation gardent UNE seule définition (`lib/dayProfiles.ts`).
+import type { OccupancyId } from './dayProfiles';
+
 /** Une ligne d'équipement telle que renvoyée par le backend (champs publics). */
 export interface ProposalItem {
   designation: string;
@@ -356,6 +361,45 @@ export interface ProposalResponse {
     autoconsomme_kwh?: unknown;
     surplus_kwh?: unknown;
   }> | null;
+  /**
+   * L-PCMP (fondateur, 24/08/2026) — les TROIS silhouettes d'occupation
+   * calculées par le moteur sur les MÊMES factures réelles du client, plus
+   * l'installation OPTIMALE que le balayage retient pour chacune.
+   *
+   * CONTRAT PARTAGÉ (PACT10) :
+   * `backend/django_core/apps/ventes/contract_samples/profils_comparatifs.json`
+   * — c'est CE fichier que les deux moitiés lisent, pas cette interface.
+   *
+   * La page N'EN CALCULE AUCUN CHIFFRE : elle bascule d'affichage entre les
+   * trois blocs SERVIS. Les taux arrivent déjà en POURCENTAGE, les économies
+   * en MAD/an entiers. Clé absente / `null` ⇒ section masquée entière.
+   */
+  profils_comparatifs?: {
+    profil_reel?: string | null;
+    kwc_devis?: number | null;
+    batterie_kwh_devis?: number | null;
+    avec_batterie?: boolean | null;
+    devise?: string | null;
+    note?: string | null;
+    profils?: Array<{
+      occupation?: string | null;
+      est_profil_reel?: boolean | null;
+      economie_sans_mad?: number | null;
+      economie_avec_mad?: number | null;
+      taux_autoconso_sans_pct?: number | null;
+      taux_autoconso_avec_pct?: number | null;
+      couverture_sans_pct?: number | null;
+      couverture_avec_pct?: number | null;
+      optimal?: {
+        kwc?: number | null;
+        panneaux?: number | null;
+        batterie_kwh?: number | null;
+        avec_batterie?: boolean | null;
+        economie_mad?: number | null;
+        identique_au_devis?: boolean | null;
+      } | null;
+    }> | null;
+  } | null;
 }
 
 /** WJ32 — bloc `financing` backend (QJ12), structure de `compute_financing_block`. */
@@ -3766,4 +3810,102 @@ export function proposalJoursTypes(
   return PROPOSAL_JOUR_TYPE_MONTH_IDS.every((m) => !!out[m])
     ? (out as Record<ProposalJourTypeMonthId, ProposalJourTypeMonth>)
     : null;
+}
+
+
+// ── L-PCMP — les trois silhouettes d'occupation, PRÊTES À AFFICHER ──────────
+// Aucune économie n'est calculée ici : cette fonction ne fait que LIRE et
+// VALIDER les blocs déjà calculés par le moteur (règle « zéro chiffre
+// inventé »). Un bloc dont l'économie de base est illisible est OMIS — jamais
+// complété par une estimation locale.
+
+/** L'installation que le moteur retient comme optimale POUR CETTE silhouette. */
+export interface OccupancyOptimal {
+  kwc: number;
+  panneaux: number | null;
+  batterieKwh: number;
+  avecBatterie: boolean;
+  economieMad: number | null;
+  /**
+   * `null` quand la comparaison n'a pas pu être faite côté serveur — la page
+   * se tait alors plutôt que d'affirmer « déjà optimal ».
+   */
+  identiqueAuDevis: boolean | null;
+}
+
+/** Un comportement d'occupation, avec ses chiffres SERVEUR. */
+export interface OccupancyScenario {
+  occupancy: OccupancyId;
+  estProfilReel: boolean;
+  economieSansMad: number;
+  economieAvecMad: number | null;
+  tauxAutoconsoSansPct: number | null;
+  tauxAutoconsoAvecPct: number | null;
+  couvertureSansPct: number | null;
+  couvertureAvecPct: number | null;
+  optimal: OccupancyOptimal | null;
+}
+
+/** Le comparatif complet des silhouettes d'occupation. */
+export interface OccupancyScenarios {
+  /** Le profil RÉELLEMENT déclaré par le client — sélectionné par défaut. */
+  profilReel: OccupancyId | null;
+  kwcDevis: number | null;
+  batterieKwhDevis: number;
+  avecBatterie: boolean;
+  note: string | null;
+  scenarios: OccupancyScenario[];
+}
+
+function isOccupancyId(v: unknown): v is OccupancyId {
+  return v === 'presence_jour' || v === 'absence_jour' || v === 'presence_partielle';
+}
+
+/**
+ * `null` quand `profils_comparatifs` est absent, illisible, ou qu'aucune
+ * silhouette n'est exploitable — la page masque alors la section entière et
+ * garde son affichage d'avant, exactement comme pour `balayage_stockage`.
+ */
+export function occupancyScenarios(
+  p: Pick<ProposalResponse, 'profils_comparatifs'>,
+): OccupancyScenarios | null {
+  const b = p.profils_comparatifs;
+  if (!b || typeof b !== 'object') return null;
+  const scenarios: OccupancyScenario[] = [];
+  for (const raw of b.profils ?? []) {
+    const occupancy = raw?.occupation;
+    const economieSansMad = finiteOrNull(raw?.economie_sans_mad);
+    if (!isOccupancyId(occupancy) || economieSansMad === null) continue;
+    const opt = raw?.optimal;
+    const optKwc = finiteOrNull(opt?.kwc);
+    scenarios.push({
+      occupancy,
+      estProfilReel: raw?.est_profil_reel === true,
+      economieSansMad,
+      economieAvecMad: finiteOrNull(raw?.economie_avec_mad),
+      tauxAutoconsoSansPct: finiteOrNull(raw?.taux_autoconso_sans_pct),
+      tauxAutoconsoAvecPct: finiteOrNull(raw?.taux_autoconso_avec_pct),
+      couvertureSansPct: finiteOrNull(raw?.couverture_sans_pct),
+      couvertureAvecPct: finiteOrNull(raw?.couverture_avec_pct),
+      optimal: optKwc === null || optKwc <= 0 ? null : {
+        kwc: optKwc,
+        panneaux: finiteOrNull(opt?.panneaux),
+        batterieKwh: finiteOrNull(opt?.batterie_kwh) ?? 0,
+        avecBatterie: opt?.avec_batterie === true,
+        economieMad: finiteOrNull(opt?.economie_mad),
+        identiqueAuDevis: typeof opt?.identique_au_devis === 'boolean'
+          ? opt.identique_au_devis
+          : null,
+      },
+    });
+  }
+  if (scenarios.length === 0) return null;
+  return {
+    profilReel: isOccupancyId(b.profil_reel) ? b.profil_reel : null,
+    kwcDevis: finiteOrNull(b.kwc_devis),
+    batterieKwhDevis: finiteOrNull(b.batterie_kwh_devis) ?? 0,
+    avecBatterie: b.avec_batterie === true,
+    note: nonEmptyStringOrNull(b.note),
+    scenarios,
+  };
 }
