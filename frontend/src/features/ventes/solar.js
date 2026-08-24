@@ -1591,6 +1591,10 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
   const prixAccessoires = 62.5 * nbPanneaux
   const prixTableau = 243.75 * nbPanneaux
   const prixInstallation = 2400 + 300 * nbPanneaux
+  // Le MÉTRAGE du câble de terre reste indexé sur les blocs de 5 kWc :
+  // l'ordre forfaits-au-panneau ne couvrait qu'Installation/Tableau/
+  // Accessoires — les métrés de câble sont inchangés.
+  const blocks = Math.max(1, Math.round(kwp / 5))
 
   // QF8 — Smart Meter + Clé Wifi : UNIQUEMENT quand l'onduleur retenu (réseau
   // OU hybride) est de marque Huawei (miroir du garde `info_hw` de l'ancien
