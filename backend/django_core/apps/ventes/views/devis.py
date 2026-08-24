@@ -823,6 +823,16 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             rafraichir_dimensionnement_devis, rafraichir_etude_horaire_devis)
         rafraichir_etude_horaire_devis(devis, force=True)
         rafraichir_dimensionnement_devis(devis, force=True)
+        # L-SLD (24/08/2026) — MÊME TROU, TROISIÈME ÉTUDE : la conception
+        # électrique n'était produite QUE par l'ouverture de l'onglet
+        # « Conception électrique ». Un devis créé ici et jamais ouvert
+        # n'avait donc pas de schéma unifilaire sur la page client ni dans
+        # l'annexe du PDF, faute d'``electrical_design``. Best-effort et
+        # trois portails (modules, fiches complètes, conformité) dans le
+        # service : rien n'est rangé si rien n'est dessinable.
+        from ..electrical_service import (
+            rafraichir_conception_electrique_devis)
+        rafraichir_conception_electrique_devis(devis)
         return Response(DevisSerializer(
             devis, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
@@ -880,6 +890,13 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         # profil (factures/occupation/équipements) peut avoir changé dans le
         # même PATCH, best-effort, jamais bloquant.
         rafraichir_dimensionnement_devis(devis, force=True)
+        # L-SLD (24/08/2026) — la composition vient de changer : l'étude
+        # électrique doit décrire les lignes COURANTES (empreinte différente ⇒
+        # recalcul, empreinte identique ⇒ aucune écriture). Best-effort, même
+        # place et mêmes garde-fous qu'à la création.
+        from ..electrical_service import (
+            rafraichir_conception_electrique_devis)
+        rafraichir_conception_electrique_devis(devis)
         return Response(DevisSerializer(
             devis, context={'request': request}).data)
 
