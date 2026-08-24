@@ -100,6 +100,11 @@ REACHABLE_MATRIX = (
     Saveur('réseau triphasé 30 kW (bascule sur le 25T)', 30, False,
            'reseau', 'tri', 25, ()),
     Saveur('réseau triphasé 50 kW', 50, False, 'reseau', 'tri', 50, ()),
+    # L-22A (fondateur 24/08/2026) — saveur RENDUE à la matrice : les bornes
+    # de courant du OND-H-DEY-5M sont passées à 22 A, le 710 Wc y entre
+    # (cf. la note historique du TROU n°2 plus bas).
+    Saveur('hybride monophasé 5 kW avec batterie', 5, True,
+           'hybride', 'mono', 5, ()),
     Saveur('hybride monophasé 10 kW avec batterie (vivier forcé)', 10, True,
            'hybride', 'mono', 10, (_ONDULEUR_HYBRIDE_10T,)),
     Saveur('hybride triphasé basse tension 10 kW avec batterie', 10, True,
@@ -117,18 +122,27 @@ REACHABLE_MATRIX = (
 #: module : jamais dans ``REACHABLE_MATRIX``, sortie dégradée PAS pinnée.
 TROUS_DOCUMENTES_KWC = (30,)
 
-#: TROU DOCUMENTÉ n°2 (21/08/2026, découvert en durcissant les verdicts de
-#: courant) — « hybride monophasé 5 kW avec batterie » est HORS SPÉCIFICATION
-#: CONSTRUCTEUR avec le catalogue actuel : les deux seuls panneaux seedés font
-#: 710 Wc (Isc 18,59/18,53 A) et l'OND-H-DEY-5M publie 17,0 A maxi en
-#: court-circuit par entrée MPPT — UNE chaîne seule dépasse déjà, aucun nombre
-#: de panneaux ne rend le couple conforme (prouvé sur 5→14 panneaux). Aucun
-#: chiffre inventé : ce sont les deux bornes datasheet du catalogue. EN
-#: ATTENTE D'UNE DÉCISION FONDATEUR (panneau ≤ 17 A Isc au catalogue, autre
-#: onduleur 5 kW, ou abandon du palier). Le refus lui-même est pinné par
-#: ``test_hybride_mono_5_est_refuse_hors_specification`` ci-dessous — le jour
-#: où la décision tombe, ré-ajoutez la saveur à ``REACHABLE_MATRIX`` et
-#: retirez ce pin.
+#: TROU DOCUMENTÉ n°2 — REFERMÉ LE 24/08/2026 SUR ORDRE FONDATEUR (note
+#: HISTORIQUE, plus une contrainte active).
+#:
+#: Du 21/08 au 24/08/2026, « hybride monophasé 5 kW avec batterie » était HORS
+#: SPÉCIFICATION CONSTRUCTEUR : les deux seuls panneaux seedés font 710 Wc
+#: (Isc 18,59/18,53 A) et l'OND-H-DEY-5M publiait 17,0 A maxi en court-circuit
+#: par entrée MPPT — UNE chaîne seule dépassait déjà, aucun nombre de panneaux
+#: ne rendait le couple conforme (prouvé sur 5→14 panneaux). La saveur était
+#: donc RETIRÉE de ``REACHABLE_MATRIX`` et le refus lui-même pinné par un test
+#: dédié, en attente d'une décision fondateur.
+#:
+#: La décision est tombée le 24/08/2026 (L-22A) : « change both inverter of 5kw
+#: to increase their mppt current to more then 20A so they accept the canadian
+#: solar pannels ». Les deux bornes de courant des DEUX onduleurs 5 kW du
+#: catalogue (OND-H-DEY-5M et OND-R-HUA-5M) sont passées à 22,0 A — valeur
+#: DÉCLARÉE fondateur, cf. ``seed_catalogue.FICHES_TECHNIQUES`` et la migration
+#: ``stock.0128_l22a_bornes_mppt_5kw``. La saveur est REVENUE dans la matrice
+#: ci-dessus et le pin de refus a été retiré, exactement comme son docstring le
+#: prévoyait. Le mécanisme de refus sur l'Isc, lui, reste testé ailleurs
+#: (``apps.ventes.tests.test_pvcompat_verdicts``) : c'est la CONFIGURATION qui a
+#: changé, pas la règle.
 
 
 class QuoteFullRange5To50Test(TestCase):
@@ -328,36 +342,6 @@ class QuoteFullRange5To50Test(TestCase):
                 self._assert_kit_coherent(
                     lignes, saveur.label, famille=saveur.famille,
                     phase=saveur.phase, kw_attendu=saveur.kw_attendu)
-
-    def test_hybride_mono_5_est_refuse_hors_specification(self):
-        """TROU DOCUMENTÉ n°2 — le refus EST le comportement décidé.
-
-        Le couple OND-H-DEY-5M (Isc maxi publié 17,0 A par entrée MPPT) ↔
-        panneau 710 Wc (Isc 18,59 A) dépasse la borne datasheet dès UNE
-        chaîne : l'étude électrique doit porter un BLOQUANT de courant
-        nommant la borne constructeur, et le schéma unifilaire doit être
-        REFUSÉ (None) — jamais dessiné. Comparaison datasheet contre
-        datasheet, aucun seuil inventé (règle fondateur du 21/08/2026).
-        """
-        devis = self._devis_layout(kwc=5, avec_batterie=True)
-        onduleurs = [
-            li for li in devis.lignes.all()
-            if 'OND-H-DEY-5M' == getattr(li.produit, 'reference', None)]
-        if not onduleurs:
-            self.skipTest(
-                'le sélecteur ne compose plus le Deye 5 kW mono — si un '
-                'nouvel onduleur 5 kW conforme est arrivé au catalogue, '
-                'ré-ajoutez la saveur à REACHABLE_MATRIX et retirez ce pin')
-        design = electrical_service.build_electrical_design(devis)
-        bloquants = list(design['conformite']['bloquants'])
-        self.assertTrue(
-            any('court-circuit' in b for b in bloquants),
-            'hybride mono 5 kW : le dépassement de la borne Isc publiée '
-            'devrait être BLOQUANT — bloquants=%r' % bloquants)
-        self.assertIsNone(
-            electrical_service.rendre_schema_du_devis(devis),
-            'hybride mono 5 kW : le schéma a été rendu malgré une '
-            'configuration hors spécification constructeur')
 
     def test_trous_catalogue_documentes_ne_cassent_jamais(self):
         """PVLV — au-delà du dernier palier hybride du catalogue (20 kW LV),

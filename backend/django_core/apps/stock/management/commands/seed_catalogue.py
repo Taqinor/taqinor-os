@@ -963,11 +963,24 @@ FICHES_TECHNIQUES = {
     # champ interpolé/« non confirmé »/divergent selon la source reste NULL
     # — voir docs/PLAN2.md PVG4 pour le détail par palier). ──
     'OND-R-HUA-5M': {
+        # L-22A (2026-08-24) — « change both inverter of 5kw to increase their
+        # mppt current to more then 20A so they accept the canadian solar
+        # pannels ». Les DEUX bornes de courant d'entrée MPPT valent 22,0 A
+        # (le plancher qui respecte « plus de 20 A ») : valeur DÉCLARÉE
+        # fondateur 24/08/2026 — remplace l'identification datasheet qui
+        # refusait les panneaux 710 Wc (Isc 18,59 A) ; à recaler sur référence
+        # constructeur exacte si fournie. Ancienne valeur : 12,5 A d'Imp
+        # admissible (SUN2000-5KTL-L1) — sous l'Imp 17,59 A d'une SEULE chaîne
+        # de 710 Wc, donc écrêtage permanent annoncé. L'Isc admissible n'avait
+        # JAMAIS été seedé (champ NULL, le noyau retombait alors sur la borne
+        # d'Imp en simple ALERTE) : il est désormais DÉCLARÉ, pas déduit.
+        # Les autres champs de cette fiche restent ceux de la datasheet.
         'type_fiche': 'onduleur', 'ond_n_mppt': 2,
         'ond_mppt_v_min': Decimal('90.0'), 'ond_mppt_v_max': Decimal('560.0'),
-        'ond_v_max_abs': Decimal('600.0'), 'ond_i_max_mppt_a': Decimal('12.5'),
+        'ond_v_max_abs': Decimal('600.0'), 'ond_i_max_mppt_a': Decimal('22.0'),
         'ond_ac_kw': Decimal('5'), 'ond_phases': 1,
         'ond_rendement_euro_pct': Decimal('97.8'),
+        'ond_isc_max_mppt_a': Decimal('22.0'),
     },
     'OND-R-HUA-10T': {
         'type_fiche': 'onduleur', 'ond_n_mppt': 2,
@@ -1052,7 +1065,7 @@ FICHES_TECHNIQUES = {
         #     par rapport à l'ancienne fiche SG04LP1 (même plage, re-vérifiée
         #     sur la nouvelle source, pas recopiée sans preuve).
         #   • PV Input Current « 13+13 A » (famille 3.6/5/6K) = 13 A PAR MPPT
-        #     — INCHANGÉ, re-confirmé sur la nouvelle fiche.
+        #     — valeur SUPPLANTÉE le 24/08/2026, cf. L-22A ci-dessous.
         #   • Rated PV Input Voltage « 370 (125-500) V » ⇒ tension DC MAX
         #     ABSOLUE = 500 V, PAS 600 V (c'était l'ancienne valeur SG04LP1,
         #     jamais vérifiée sur une fiche SG05LP1 — CORRIGÉE ici).
@@ -1063,16 +1076,30 @@ FICHES_TECHNIQUES = {
         #   • PVOND-H (2026-08-19) — DEUX champs enfin saisissables, comblés
         #     sur la MÊME datasheet : Start-up Voltage 125 V (partagée par
         #     toute la famille) → tension de démarrage ; Max. PV Isc(A)
-        #     « 17+17 » (famille 3.6/5/6K) → 17 A d'Isc max par MPPT.
+        #     « 17+17 » (famille 3.6/5/6K) → 17 A d'Isc max par MPPT —
+        #     valeur SUPPLANTÉE le 24/08/2026, cf. L-22A ci-dessous.
         # NON seedés faute de champ sur FicheTechnique (jamais inventé) :
         # Max. Charging/Discharging Current 120 A,
         # Max. Continuous AC Passthrough 35 A, poids 24 kg, IP65.
+        #
+        # L-22A (2026-08-24) — « change both inverter of 5kw to increase their
+        # mppt current to more then 20A so they accept the canadian solar
+        # pannels ». Les DEUX bornes de courant d'entrée MPPT passent à 22,0 A
+        # (le plancher qui respecte « plus de 20 A ») : valeur DÉCLARÉE
+        # fondateur 24/08/2026 — remplace l'identification datasheet qui
+        # refusait les panneaux 710 Wc (Isc 18,59 A) ; à recaler sur référence
+        # constructeur exacte si fournie. Les deux anciennes valeurs
+        # (13,0 A d'Imp admissible / 17,0 A d'Isc, famille SUN-3.6/5/6K-SG05LP1
+        # -EU) restent écrites ci-dessus : ce n'est PAS un chiffre inventé qui
+        # remplace un chiffre sourcé, c'est une DÉCLARATION de matériel qui
+        # remplace une IDENTIFICATION de modèle jamais confirmée à l'achat.
+        # Les autres champs de cette fiche restent ceux de la datasheet.
         'type_fiche': 'onduleur', 'ond_n_mppt': 2,
         'ond_mppt_v_min': Decimal('150.0'), 'ond_mppt_v_max': Decimal('425.0'),
-        'ond_v_max_abs': Decimal('500.0'), 'ond_i_max_mppt_a': Decimal('13.0'),
+        'ond_v_max_abs': Decimal('500.0'), 'ond_i_max_mppt_a': Decimal('22.0'),
         'ond_ac_kw': Decimal('5'), 'ond_phases': 1,
         'ond_rendement_euro_pct': Decimal('96.5'),
-        'ond_v_demarrage_v': Decimal('125.0'), 'ond_isc_max_mppt_a': Decimal('17.0'),
+        'ond_v_demarrage_v': Decimal('125.0'), 'ond_isc_max_mppt_a': Decimal('22.0'),
     },
     'OND-H-DEY-10M': {
         # PVOND (2026-08-18, ordre fondateur « ne laisse rien griser ») — la
