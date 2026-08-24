@@ -963,9 +963,18 @@ FICHES_TECHNIQUES = {
     # champ interpolé/« non confirmé »/divergent selon la source reste NULL
     # — voir docs/PLAN2.md PVG4 pour le détail par palier). ──
     'OND-R-HUA-5M': {
+        # DÉCISION FONDATEUR DU 24/08/2026, verbatim : « change both inverter
+        # of 5kw to increase their mppt current to more then 20A so they accept
+        # the canadian solar pannels ». Les deux bornes MPPT passent donc à
+        # 22,0 A — le plancher qui respecte « plus de 20 A ».
+        # PROVENANCE : valeur DÉCLARÉE par le fondateur, elle REMPLACE
+        # l'identification datasheet SUN2000-5KTL-L1 (12,5 A par MPPT, Isc non
+        # publiée) qui refusait les panneaux 710 Wc (Isc 18,59 A). À RECALER
+        # sur la référence constructeur exacte le jour où elle est fournie.
         'type_fiche': 'onduleur', 'ond_n_mppt': 2,
         'ond_mppt_v_min': Decimal('90.0'), 'ond_mppt_v_max': Decimal('560.0'),
-        'ond_v_max_abs': Decimal('600.0'), 'ond_i_max_mppt_a': Decimal('12.5'),
+        'ond_v_max_abs': Decimal('600.0'), 'ond_i_max_mppt_a': Decimal('22.0'),
+        'ond_isc_max_mppt_a': Decimal('22.0'),
         'ond_ac_kw': Decimal('5'), 'ond_phases': 1,
         'ond_rendement_euro_pct': Decimal('97.8'),
     },
@@ -1067,12 +1076,22 @@ FICHES_TECHNIQUES = {
         # NON seedés faute de champ sur FicheTechnique (jamais inventé) :
         # Max. Charging/Discharging Current 120 A,
         # Max. Continuous AC Passthrough 35 A, poids 24 kg, IP65.
+        # DÉCISION FONDATEUR DU 24/08/2026, verbatim : « change both inverter
+        # of 5kw to increase their mppt current to more then 20A so they accept
+        # the canadian solar pannels ». Les DEUX bornes de courant passent à
+        # 22,0 A — le plancher qui respecte « plus de 20 A ».
+        # PROVENANCE : valeur DÉCLARÉE par le fondateur, elle REMPLACE les
+        # « 13+13 A » et « 17+17 A » lus sur la datasheet SG05LP1 ci-dessus,
+        # qui refusaient les panneaux 710 Wc (Isc 18,59 A > 17,0 A — le « trou
+        # de catalogue n° 2 »). À RECALER sur la référence constructeur exacte
+        # le jour où elle est fournie. Le reste de la fiche (tensions,
+        # rendement, démarrage) est INCHANGÉ et reste sourcé datasheet.
         'type_fiche': 'onduleur', 'ond_n_mppt': 2,
         'ond_mppt_v_min': Decimal('150.0'), 'ond_mppt_v_max': Decimal('425.0'),
-        'ond_v_max_abs': Decimal('500.0'), 'ond_i_max_mppt_a': Decimal('13.0'),
+        'ond_v_max_abs': Decimal('500.0'), 'ond_i_max_mppt_a': Decimal('22.0'),
         'ond_ac_kw': Decimal('5'), 'ond_phases': 1,
         'ond_rendement_euro_pct': Decimal('96.5'),
-        'ond_v_demarrage_v': Decimal('125.0'), 'ond_isc_max_mppt_a': Decimal('17.0'),
+        'ond_v_demarrage_v': Decimal('125.0'), 'ond_isc_max_mppt_a': Decimal('22.0'),
     },
     'OND-H-DEY-10M': {
         # PVOND (2026-08-18, ordre fondateur « ne laisse rien griser ») — la

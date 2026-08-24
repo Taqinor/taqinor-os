@@ -107,7 +107,12 @@ const LIGNE_BATTERIE_INDISPONIBLE = {
   economie_sans_mad: 8471.2, economie_avec_mad: null,
   cout_avec_ttc: null, payback_avec_annees: null,
   couverture_avec: null, taux_autoconso_avec: null,
-  verdicts_bloquants_avec: ['Isc 18,6 A > 17,0 A — panneau 710 Wc incompatible avec cet onduleur hybride.'],
+  // Fixture SYNTHÉTIQUE — les chiffres n'ont plus (depuis le 24/08/2026) de
+  // pendant réel au catalogue (le couple panneau 710 Wc / hybride 5 kW mono
+  // qui inspirait ces valeurs a été rendu compatible, cf. CJ2b-historique
+  // dans etudeHorairePreviewPur.js) ; seul le motif "Isc ... A > ... A"
+  // exercé par le test ci-dessous compte ici, pas un fait catalogue.
+  verdicts_bloquants_avec: ['Isc 30,0 A > 25,0 A — panneau fixture incompatible avec cet onduleur hybride.'],
 }
 
 const LIGNE_BATTERIE_DISPONIBLE = {

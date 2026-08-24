@@ -705,6 +705,13 @@ def balayer_stockage_horaire(*, kwc, conso_kwh_mensuelles, capacites_kwh,
         plafond, motif = plafond_remplissage, 'remplissage_quotidien'
     else:
         plafond, motif = plafond_deficit, 'deficit_nocturne'
+    # LE VERDICT SE PRONONCE SUR LES CHIFFRES PUBLIÉS. Comparer les valeurs
+    # brutes ferait refuser une banque de 35,00 kWh devant un plafond de
+    # 34,9962 kWh — soit 4 Wh d'écart — tout en AFFICHANT « 35,00 > 35,00 » :
+    # un refus que personne ne peut comprendre en lisant le tableau. On ne
+    # prétend pas connaître un surplus quotidien au milliwattheure.
+    plafond_publie = round(plafond, 2)
+    plafond_remplissage_publie = round(plafond_remplissage, 2)
 
     paliers = []
     for capacite in capacites:
@@ -728,8 +735,10 @@ def balayer_stockage_horaire(*, kwc, conso_kwh_mensuelles, capacites_kwh,
                 'surplus_jour_kwh': round(
                     _num(pire.get('surplus_jour_kwh')), 2),
             },
-            'se_remplit_tous_les_jours': bool(capacite <= plafond_remplissage),
-            'sous_plafond_physique': bool(capacite <= plafond),
+            'se_remplit_tous_les_jours': bool(
+                round(capacite, 2) <= plafond_remplissage_publie),
+            'sous_plafond_physique': bool(
+                round(capacite, 2) <= plafond_publie),
         })
 
     import_direct = max(0.0, consommation_kwh - autoconsomme_direct_kwh)

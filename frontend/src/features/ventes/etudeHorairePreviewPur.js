@@ -122,8 +122,14 @@ export function lignesAffichables(dimensionnement) {
  * est électriquement livrable. Le vendeur, lui, chiffre UNE taille : c'est
  * SON verdict qu'il faut appliquer aux cartes de comparaison en haut de
  * l'écran, sinon elles continuent d'annoncer une économie « avec batterie »
- * pour une installation que le catalogue ne peut pas livrer (le trou réel
- * exhumé par CJ2a : panneau 710 Wc + hybride 5 kW mono, Isc 18,6 A > 17,0 A).
+ * pour une installation que le catalogue ne peut pas livrer — le blocage
+ * reste un cas réel du moteur électrique (verdict Isc, règle L1) même si
+ * l'exemple historique exhumé par CJ2a (panneau 710 Wc + hybride 5 kW mono,
+ * Isc 18,6 A > 17,0 A) est CLOS depuis le 24/08/2026 : le fondateur a relevé
+ * le courant MPPT maxi des deux onduleurs 5 kW à 22 A, au-dessus des 18,6 A
+ * du panneau — cette combinaison précise n'est plus bloquante, mais le
+ * chemin de rendu ci-dessous reste nécessaire pour toute autre paire hors
+ * spécification constructeur.
  *
  * `null` quand le moteur ne dit rien sur cette taille (aucun tableau, ou
  * aucune ligne assez proche) : l'écran garde alors son comportement d'avant —

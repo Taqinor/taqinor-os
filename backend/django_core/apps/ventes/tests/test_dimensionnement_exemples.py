@@ -38,6 +38,7 @@ from apps.ventes.courbes_journalieres import (
     composer_equipements,
 )
 from apps.ventes.dimensionnement import (
+    MAX_PALIERS_STOCKAGE,
     RATIO_ONDULEUR_MIN,
     recommander_taille,
     verdict_bloquant,
@@ -115,6 +116,16 @@ def _mad(valeur):
         return '?'
 
 
+def _kwh(valeur):
+    """Capacité/énergie lisible : « 0,2 » plutôt que « 0 » (les petits surplus
+    d'hiver se comptent au dixième de kWh — les arrondir à l'entier ferait
+    disparaître la raison même d'un refus de stockage)."""
+    try:
+        return '%.1f' % float(valeur)
+    except (TypeError, ValueError):
+        return '?'
+
+
 def _pct(valeur):
     try:
         return '%.1f%%' % (float(valeur) * 100)
@@ -177,9 +188,18 @@ class ExemplesFondateurTest(TestCase):
               % (TAG, cas.occupation, cas.phase or 'inconnu',
                  (', equipements ' + ', '.join(sorted(cas.equipements)))
                  if cas.equipements else ''))
-        print('%s    %-4s %-7s %-22s %-9s %-6s %-6s %-10s %-10s %-8s'
+        if resultat.get('falaise'):
+            falaise = resultat['falaise']
+            print('%s    barème   : aujourd\'hui en %s ; la marche juste en '
+                  'dessous est %s kWh/mois (%s)'
+                  % (TAG, falaise['tranche_actuelle']['libelle'],
+                     _mad(falaise['cible_kwh_mois']),
+                     (falaise.get('tranche_visee') or {}).get('libelle') or '?'))
+        print('%s    %-4s %-7s %-22s %-9s %-6s %-6s %-10s %-10s %-8s %-7s %-9s '
+              '%-16s'
               % (TAG, 'pan.', 'kWc', 'onduleur', 'ratio80', 'auto', 'couv',
-                 'eco/an', 'eco+bat/an', 'payback'))
+                 'eco/an', 'eco+bat/an', 'payback', 'bat kWh', 'resid/mois',
+                 'tranche apres'))
         for ligne in resultat['tableau']:
             marque = '>>' if (resultat['recommandation']
                               and ligne['panneaux']
@@ -190,16 +210,23 @@ class ExemplesFondateurTest(TestCase):
                      if ligne['ratio_onduleur_kwc'] else '   n/a')
             eco_avec = (_mad(ligne['economie_avec_mad'])
                         if ligne['batterie_disponible'] else 'impossible')
-            print('%s %s %-4d %-7.2f %-22s %-9s %-6s %-6s %-10s %-10s %-8s'
+            print('%s %s %-4d %-7.2f %-22s %-9s %-6s %-6s %-10s %-10s %-8s '
+                  '%-7s %-9s %-16s'
                   % (TAG, marque, ligne['panneaux'], ligne['kwc'],
                      (ligne['onduleur'] or '-')[:22], ratio,
                      _pct(ligne['taux_autoconso_sans']),
                      _pct(ligne['couverture_sans']),
                      _mad(ligne['economie_sans_mad']), eco_avec,
-                     _annees(ligne['payback_sans_annees'])))
+                     _annees(ligne['payback_sans_annees']),
+                     _mad(ligne['batterie_kwh']),
+                     _mad(ligne['residuel_kwh_mois']),
+                     ((ligne['tranche_apres'] or {}).get('libelle') or '-')[:16]))
             for avertissement in ligne['verdicts_bloquants_avec']:
                 print('%s      [option batterie ECARTEE] %s'
                       % (TAG, avertissement))
+            if ligne.get('stockage_refuse'):
+                print('%s      [stockage REFUSE] %s'
+                      % (TAG, ligne['stockage_refuse']['motif_refus']))
             for avertissement in ligne['avertissements_sans']:
                 print('%s      ! %s' % (TAG, avertissement))
 
@@ -238,13 +265,169 @@ class ExemplesFondateurTest(TestCase):
                   'aucun chiffre affiche pour elle :' % TAG)
             for avertissement in recommandation['verdicts_bloquants_avec']:
                 print('%s          %s' % (TAG, avertissement))
+            if recommandation.get('stockage_refuse'):
+                print('%s          %s'
+                      % (TAG, recommandation['stockage_refuse']['motif_refus']))
         print('%s        lignes du devis (sans batterie) :' % TAG)
         for ligne in recommandation['lignes_sans']:
             print('%s          %2d x %-46s (%s)'
                   % (TAG, ligne['quantite'], ligne['designation'][:46],
                      ligne['role'] or '-'))
 
+    # ── DIM2 — le mini-balayage du stockage, imprimé ─────────────────────
+
+    def _imprimer_un_balayage(self, titre, ligne):
+        """Le mini-balayage du stockage d'UNE taille de champ."""
+        if ligne is None:
+            return
+        print('')
+        print('%s ══ MINI-BALAYAGE STOCKAGE — %s (%d panneaux, %.2f kWc)'
+              % (TAG, titre, ligne['panneaux'], ligne['kwc']))
+        print('%s    plafond de stockage %s kWh (motif : %s) — surplus '
+              'quotidien le plus faible %s kWh au mois %s'
+              % (TAG, _kwh(ligne['stockage_plafond_kwh']),
+                 ligne['stockage_plafond_motif'] or '-',
+                 _kwh(ligne['stockage_surplus_jour_min_kwh']),
+                 ligne['stockage_surplus_jour_min_mois']))
+        print('%s    %-8s %-11s %-11s %-11s %-8s %-10s %-16s %-11s'
+              % (TAG, 'kWh bat', 'cout TTC', 'eco/an', 'marginal',
+                 'payback', 'resid/mois', 'tranche apres', 'remplissage'))
+        for palier in ligne['balayage_stockage']:
+            pire = palier['remplissage']['pire_mois']
+            print('%s    %-8s %-11s %-11s %-11s %-8s %-10s %-16s %s (mois %s)'
+                  % (TAG, _kwh(palier['capacite_kwh']),
+                     _mad(palier['cout_ttc']), _mad(palier['economie_mad']),
+                     _mad(palier['economie_marginale_mad']),
+                     _annees(palier['payback_annees']),
+                     _mad(palier['residuel_kwh_mois']),
+                     ((palier['tranche_apres'] or {}).get('libelle') or '-')[:16],
+                     _pct(pire['ratio']), pire['mois']))
+        if not ligne['balayage_stockage']:
+            print('%s    (aucun palier candidat : voir le refus ci-dessous)'
+                  % TAG)
+        if ligne.get('stockage_refuse'):
+            print('%s    REFUSE : %s'
+                  % (TAG, ligne['stockage_refuse']['motif_refus']))
+
+    def _imprimer_stockage(self, resultat):
+        """Le MINI-BALAYAGE du stockage + la falaise.
+
+        C'est LA sortie que le fondateur a demandée le 24/08/2026 : voir, pour
+        une taille de champ donnée, ce que chaque palier de batteries change —
+        et si la marche du barème est atteignable.
+
+        DEUX tailles sont imprimées, et c'est délibéré : la taille RECOMMANDÉE
+        (choisie sans batterie) et celle du MEILLEUR PAYBACK AVEC batterie.
+        Elles ne coïncident pas, et c'est tout le propos de DIM2 : sur la
+        recommandée, le champ est souvent trop petit pour remplir la moindre
+        banque — le balayage y est donc VIDE, avec son refus motivé.
+        """
+        self._imprimer_un_balayage('taille recommandee (sans batterie)',
+                                   resultat.get('recommandation'))
+        avec = resultat.get('recommandation_avec')
+        if avec is not None:
+            self._imprimer_un_balayage('meilleur payback AVEC batterie', avec)
+            print('%s    >>> MEILLEUR PAYBACK AVEC BATTERIE : %s'
+                  % (TAG, resultat['motivation_avec']))
+        falaise = resultat.get('meilleure_falaise')
+        if falaise is None:
+            print('%s    >>> FALAISE : aucune combinaison du balayage ne fait '
+                  'passer le residuel sous la marche.' % TAG)
+        else:
+            print('%s    >>> FALAISE FRANCHIE : %d panneaux + %s kWh — cout %s '
+                  'DH TTC, economie %s DH/an, payback %s, residuel %s kWh/mois '
+                  '(%s), remplissage du pire mois %s'
+                  % (TAG, falaise['panneaux'], _mad(falaise['batterie_kwh']),
+                     _mad(falaise['cout_ttc']), _mad(falaise['economie_mad']),
+                     _annees(falaise['payback_annees']),
+                     _mad(falaise['residuel_kwh_mois']),
+                     (falaise['tranche_apres'] or {}).get('libelle') or '-',
+                     _pct(falaise['remplissage']['pire_mois']['ratio'])))
+
     # ── Assertions de santé, communes à tous les cas ─────────────────────
+
+    def _verifier_stockage(self, cas, resultat):
+        """DIM2 — les invariants du mini-balayage, sur TOUTES les tailles."""
+        libelle = cas.libelle
+        for ligne in resultat['tableau']:
+            paliers = ligne['balayage_stockage']
+            contexte = '%s, %d panneaux' % (libelle, ligne['panneaux'])
+
+            self.assertLessEqual(
+                len(paliers), MAX_PALIERS_STOCKAGE,
+                '%s : plus de %d paliers de stockage'
+                % (contexte, MAX_PALIERS_STOCKAGE))
+
+            capacites = [p['capacite_kwh'] for p in paliers]
+            self.assertEqual(
+                capacites, sorted(set(capacites)),
+                '%s : les paliers ne sont pas strictement croissants : %s'
+                % (contexte, capacites))
+
+            for palier in paliers:
+                # 1. Une économie marginale NÉGATIVE serait un contresens
+                #    physique : plus de stockage ne peut pas décaler moins
+                #    d'énergie (la simulation est monotone en capacité).
+                self.assertGreaterEqual(
+                    palier['economie_marginale_mad'], -1e-6,
+                    '%s : palier %s kWh à economie marginale NEGATIVE (%s)'
+                    % (contexte, palier['capacite_kwh'],
+                       palier['economie_marginale_mad']))
+                # 2. RÈGLE FONDATEUR — « batteries toujours pleines » : aucun
+                #    palier retenu ne dépasse le plafond de remplissage.
+                self.assertLessEqual(
+                    palier['capacite_kwh'],
+                    ligne['stockage_plafond_kwh'] + 1e-6,
+                    '%s : palier %s kWh retenu AU-DESSUS du plafond %s kWh'
+                    % (contexte, palier['capacite_kwh'],
+                       ligne['stockage_plafond_kwh']))
+
+            # 3. À CHAMP FIXE, le résiduel DÉCROÎT quand le stockage croît.
+            residuels = [p['residuel_kwh_mois'] for p in paliers]
+            for avant, apres in zip(residuels, residuels[1:]):
+                self.assertLessEqual(
+                    apres, avant + 1e-6,
+                    '%s : le residuel REMONTE quand le stockage augmente : %s'
+                    % (contexte, residuels))
+
+            # 4. AUCUN palier au-delà de la coupe à marginal nul : seul le
+            #    DERNIER peut porter une économie marginale nulle (il est gardé
+            #    parce qu'il PROUVE le retournement).
+            for palier in paliers[:-1]:
+                self.assertGreater(
+                    palier['economie_marginale_mad'], 0,
+                    '%s : un palier a marginal nul est suivi d\'autres paliers '
+                    '— la coupe n\'a pas eu lieu (%s kWh)'
+                    % (contexte, palier['capacite_kwh']))
+
+            # 5. Le résiduel affiché est cohérent avec la variante retenue.
+            if ligne['batterie_disponible']:
+                self.assertEqual(ligne['residuel_kwh_mois'],
+                                 ligne['residuel_avec_kwh_mois'], contexte)
+            else:
+                self.assertEqual(ligne['residuel_kwh_mois'],
+                                 ligne['residuel_sans_kwh_mois'], contexte)
+
+    def _verifier_raccordement(self, cas, resultat):
+        """VERROU ANTI-RÉCIDIVE (bug fondateur 24/08) — un client TRIPHASÉ ne
+        reçoit JAMAIS un onduleur monophasé, à AUCUNE taille du balayage."""
+        if cas.phase != 'triphase':
+            return
+        for ligne in resultat['tableau']:
+            for cle in ('lignes_sans', 'lignes_avec'):
+                for produit in ligne[cle]:
+                    self.assertNotIn(
+                        'monophas', produit['designation'].lower(),
+                        '%s : raccordement TRIPHASE mais « %s » est composé à '
+                        '%d panneaux (%s) — c\'est EXACTEMENT le bug du '
+                        '24/08/2026'
+                        % (cas.libelle, produit['designation'],
+                           ligne['panneaux'], cle))
+            self.assertFalse(
+                ligne['onduleur'] and 'monophas' in ligne['onduleur'].lower(),
+                '%s : onduleur MONOPHASE « %s » retenu à %d panneaux pour un '
+                'client triphase' % (cas.libelle, ligne['onduleur'],
+                                     ligne['panneaux']))
 
     def _verifier(self, cas, conso, resultat):
         libelle = cas.libelle
@@ -333,6 +516,11 @@ class ExemplesFondateurTest(TestCase):
             % libelle)
         self.assertEqual(len(conso), 12, libelle)
 
+        # 7. DIM2 — les invariants du mini-balayage du stockage, et le verrou
+        #    anti-recidive du raccordement triphase.
+        self._verifier_stockage(cas, resultat)
+        self._verifier_raccordement(cas, resultat)
+
     # ── LES TESTS ────────────────────────────────────────────────────────
 
     def test_sept_paliers_de_facture(self):
@@ -366,6 +554,54 @@ class ExemplesFondateurTest(TestCase):
             valeurs[-1], valeurs[0],
             '4500 DH/mois doit donner une installation plus grande que '
             '500 DH/mois : %s' % valeurs)
+
+    def test_dim2_le_stockage_est_une_deuxieme_dimension(self):
+        """DIM2 (fondateur 24/08/2026) — « peut-être rajouter des batteries ».
+
+        LE cas de référence : 3 500 DH/mois en triphasé, présent en journée.
+        Le rapport imprime le MINI-BALAYAGE du stockage de la taille
+        recommandée (chaque palier, son coût, son économie marginale, son
+        résiduel, la tranche où il retombe et son taux de remplissage du pire
+        mois) puis la ligne FALAISE — la première combinaison, s'il en existe
+        une, dont le résiduel passe sous la marche du barème.
+        """
+        cas = next(c for c in PALIERS if c.hiver == 3500)
+        conso, source, _detail, resultat = self._evaluer(cas)
+        self._imprimer(cas, conso, source, resultat)
+        self._verifier(cas, conso, resultat)
+        self._imprimer_stockage(resultat)
+
+        # La MARCHE existe pour ce client : à ~2 070 kWh/mois il est dans la
+        # tranche haute, et le barème en a une juste en dessous.
+        falaise = resultat['falaise']
+        self.assertIsNotNone(
+            falaise,
+            'un client à 3 500 DH/mois doit avoir une marche de barème sous '
+            'lui — sinon la chasse à la falaise n\'a aucun sens')
+        self.assertGreater(falaise['cible_kwh_mois'], 0)
+
+        # Le balayage EXPLORE vraiment le stockage : au moins une taille du
+        # tableau propose plus d'un palier, sinon DIM2 n'aurait rien changé.
+        paliers_max = max((len(ligne['balayage_stockage'])
+                           for ligne in resultat['tableau']), default=0)
+        self.assertGreater(
+            paliers_max, 1,
+            'aucune taille n\'explore plus d\'un palier de stockage : le '
+            'balayage du stockage ne balaie rien')
+
+        # Il EXPLORE aussi le champ au-delà de la parité tant que la marche
+        # n'est pas franchie — c'est l'extension de bornes_candidates.
+        self.assertTrue(resultat['tableau'])
+
+        # Et la règle « batteries toujours pleines » se VOIT : à petite taille
+        # de champ, un palier de stockage est refusé avec son motif nommé.
+        refus = [ligne['stockage_refuse'] for ligne in resultat['tableau']
+                 if ligne.get('stockage_refuse')]
+        self.assertTrue(
+            refus,
+            'aucun palier de stockage refusé sur tout le tableau : la règle '
+            '« pas de stockage qu\'on ne charge pas » ne se lit nulle part')
+        self.assertIn('plafond de remplissage', refus[0]['motif_refus'])
 
     def test_regle_du_palier_triphase(self):
         """Le MÊME client à 1 200 DH, mono puis tri : seul le raccordement
