@@ -2255,6 +2255,23 @@ def contexte_conception_devis(devis, company):
         outline = contour_lead if isinstance(contour_lead, list) else []
         source = 'lead' if (pin or outline) else 'none'
 
+    # Correction fondateur 24/08 — sans épingle posée (ni sur le layout ni sur
+    # `lead.roof_point`, tous deux alimentés par le pointeur PUBLIC du site),
+    # la carte démarrait systématiquement au niveau Maroc alors que la FICHE
+    # du lead porte souvent déjà des coordonnées GPS réelles (`Lead.gps_lat`/
+    # `gps_lng`, saisies côté « Toiture & site » du CRM — bornées ±90/±180 en
+    # base). Repli RÉEL, jamais une valeur inventée : n'écrit rien nulle part,
+    # centre seulement la carte. `source` reste 'lead' (le repère vient bien
+    # du lead, juste par un autre champ) ; un devis SANS lead ou dont le lead
+    # ne porte aucune des deux coordonnées garde `pin = None` (vue Maroc).
+    if pin is None and lead is not None:
+        lat = getattr(lead, 'gps_lat', None)
+        lng = getattr(lead, 'gps_lng', None)
+        if lat is not None and lng is not None:
+            pin = {'lat': float(lat), 'lng': float(lng)}
+            if source == 'none':
+                source = 'lead'
+
     # ── Modifiable ? Trois raisons de LECTURE SEULE, toutes en français ──
     raison = ''
     if devis.statut in (Devis.Statut.ACCEPTE, Devis.Statut.REFUSE,
