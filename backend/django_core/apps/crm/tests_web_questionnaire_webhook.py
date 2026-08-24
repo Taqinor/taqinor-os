@@ -485,13 +485,21 @@ class LWebt2TunnelEquipementsDetailWebhookTests(TestCase):
     def test_ne_touche_pas_une_valeur_existante_quand_le_renvoi_est_vide(self):
         """Renvoi de la MÊME soumission (< 1 min, même téléphone) sans ces
         clés : la valeur déjà captée n'est jamais écrasée par du vide —
-        même discipline que le reste du webhook (``existing`` merge)."""
+        même discipline que le reste du webhook (``existing`` merge).
+
+        RECALAGE (24/08/2026) — le 2e envoi renvoie **200**, pas 201 : la
+        déduplication « même envoi < 1 min » du webhook (``created=False`` →
+        « Lead mis à jour (même envoi < 1 min). ») MET À JOUR le lead existant
+        au lieu d'en créer un second. C'est exactement le comportement que ce
+        test veut prouver ; le 201 initialement écrit contredisait sa propre
+        prémisse (un 201 signifierait un lead DOUBLON créé)."""
         first = self.post(payload_site(
             phoneE164='+212661000999', equip_clim_kw=3.5,
             equip_clim_creneau='matin'))
         self.assertEqual(first.status_code, 201, first.content)
         second = self.post(payload_site(phoneE164='+212661000999'))
-        self.assertEqual(second.status_code, 201, second.content)
+        self.assertEqual(second.status_code, 200, second.content)
+        self.assertEqual(first.json()['lead_id'], second.json()['lead_id'])
         lead = Lead.objects.get(pk=second.json()['lead_id'])
         self.assertEqual(str(lead.equip_clim_kw), '3.50')
         self.assertEqual(lead.equip_clim_creneau, 'matin')
