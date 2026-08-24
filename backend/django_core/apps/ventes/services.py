@@ -1244,6 +1244,15 @@ def cible_depuis_lignes(devis):
       résidentiel, même arbitrage que ``build_devis_from_layout``).
     * ``avertissements`` — messages FRANÇAIS affichables tels quels.
 
+    L-2OPT — LA CIBLE SE LIT PAR VARIANTE. Un devis « Les deux » dont les deux
+    optimums divergent porte DEUX comptes de panneaux : les lignes
+    ``variante=''`` + ``'sans'`` font l'option SANS, les lignes ``''`` +
+    ``'avec'`` font l'option AVEC. Trois clés s'ajoutent, toutes ADDITIVES —
+    ``panneaux_sans``, ``panneaux_avec``, ``variantes`` — et ``panneaux`` /
+    ``kwc`` restent ceux de l'option SANS (l'option 1 du document). Sur un devis
+    NON varianté (tous ceux d'hier) les trois vues sont le même nombre et rien
+    ne change.
+
     LECTURE PURE : aucun statut, aucune ligne, aucune étude n'est écrite.
     """
     lignes = _lignes_produit(devis)
@@ -1252,13 +1261,25 @@ def cible_depuis_lignes(devis):
         return ligne.designation or getattr(ligne.produit, 'nom', '') or ''
 
     lignes_panneau = [li for li in lignes if _classe_ligne(li, _is_panel)]
-    panneaux = 0
-    for ligne in lignes_panneau:
+
+    def _quantite(ligne):
         try:
             # ArithmeticError couvre decimal.InvalidOperation.
-            panneaux += int(Decimal(str(ligne.quantite or 0)))
+            return int(Decimal(str(ligne.quantite or 0)))
         except (ArithmeticError, TypeError, ValueError):
-            continue
+            return 0
+
+    panneaux_sans = sum(
+        _quantite(li) for li in lignes_panneau
+        if (getattr(li, 'variante', '') or '') in ('', VARIANTE_SANS))
+    panneaux_avec = sum(
+        _quantite(li) for li in lignes_panneau
+        if (getattr(li, 'variante', '') or '') in ('', VARIANTE_AVEC))
+    variantes = any((getattr(li, 'variante', '') or '')
+                    for li in lignes_panneau)
+    # Le compte NOMINAL reste celui de l'option SANS : c'est l'option 1, celle
+    # que l'écran de calepinage dessine et que tout appelant historique lit.
+    panneaux = panneaux_sans
 
     batterie = any(_classe_ligne(li, _is_battery) for li in lignes)
     hybride = any(_classe_ligne(li, _is_hybrid_inverter) for li in lignes)
@@ -1286,6 +1307,12 @@ def cible_depuis_lignes(devis):
 
     # Deux modèles de panneau différents dans un même devis : le calepinage ne
     # sait pas répartir l'écart — on le DIT au lieu de choisir en silence.
+    #
+    # L-2OPT — L'IDENTITÉ NE COMPTE PAS LA VARIANTE, EXPRÈS : deux lignes
+    # variantées du MÊME modèle (8 panneaux « sans » / 10 panneaux « avec »)
+    # sont UN SEUL modèle, et cet avertissement ne doit surtout pas se
+    # déclencher pour elles — sinon tout devis à deux optimiseurs crierait au
+    # « devis à deux modèles » alors qu'il n'en porte qu'un.
     identites = {
         (li.produit_id, (li.designation or '').strip().lower())
         for li in lignes_panneau
@@ -1332,6 +1359,15 @@ def cible_depuis_lignes(devis):
         'scenario': scenario,
         'batterie': bool(batterie),
         'avertissements': avertissements,
+        # ── L-2OPT — les deux vues, toujours présentes ───────────────────────
+        # Sur un devis NON varianté elles valent le même nombre que
+        # ``panneaux`` : aucun consommateur ne peut lire un trou, et le cas
+        # « deux optimiseurs » se reconnaît à ``variantes``.
+        'panneaux_sans': panneaux_sans,
+        'panneaux_avec': panneaux_avec,
+        'kwc_avec': (round(panneaux_avec * panel_watt / 1000.0, 3)
+                     if panneaux_avec else 0.0),
+        'variantes': bool(variantes),
     }
 
 
@@ -3429,14 +3465,31 @@ def sync_devis_from_layout(devis, layout, user=None):
       ``economies_annuelles`` / ``toiture`` / ``scenario`` — les champs d'étude
       du générateur (autoconsommation, payback, pompe…) ne sont jamais touchés.
 
+    L-2OPT / RÈGLE TOIT — UN DEVIS À LIGNES VARIANTÉES (deux optimiseurs) SE
+    RESYNCHRONISE PAR VARIANTE, ET LE CALEPINAGE N'Y EST QU'UN PLAFOND :
+
+    * la ligne DOMINANTE se lit PAR VARIANTE — les lignes ``variante=''`` +
+      ``'sans'`` pour l'option sans, ``''`` + ``'avec'`` pour l'option avec ;
+    * le compte du calepinage est le nombre de panneaux PHYSIQUEMENT POSABLES.
+      Une option dont le compte le DÉPASSE est ramenée à ce plafond (sur sa
+      dominante) ; une option qui reste EN DESSOUS n'est JAMAIS augmentée —
+      l'optimum économique a le droit de choisir moins que le toit, et une
+      resynchro n'a pas à lui vendre des panneaux qu'il a refusés ;
+    * les structures et les socles suivent le compte DE LEUR VARIANTE.
+
+    Un devis SANS aucune ligne variantée (tous ceux d'hier) garde la règle
+    historique mot pour mot : le compte est porté À LA CIBLE, à la hausse comme
+    à la baisse.
+
     Re-soumettre le MÊME layout (même empreinte) ne fait AUCUNE écriture et
     renvoie ``inchange=True``.
 
     Renvoie toujours le même dict :
     ``{inchange, panneaux, kwc, scenario, batterie, lignes_modifiees,
-    lignes_ajoutees, avertissements}`` — ``lignes_modifiees`` compte ce que la
-    logique chirurgicale a touché, ``lignes_ajoutees`` ce que la complétion du
-    kit a ajouté.
+    lignes_ajoutees, avertissements}`` (+ ``panneaux_avec`` / ``variantes``,
+    L-2OPT, additifs) — ``lignes_modifiees`` compte ce que la logique
+    chirurgicale a touché, ``lignes_ajoutees`` ce que la complétion du kit a
+    ajouté.
     """
     from django.db import transaction
 
@@ -3500,7 +3553,29 @@ def sync_devis_from_layout(devis, layout, user=None):
         lignes_batterie = [li for li in lignes
                            if _classe_ligne(li, _is_battery)]
         a_batterie = bool(lignes_batterie)
-        total_panneaux = sum(int(li.quantite or 0) for li in lignes_panneau)
+
+        # ── L-2OPT — LES DEUX VUES DU CHAMP PV ─────────────────────────────
+        # ``devis_variante`` est faux sur TOUS les devis d'hier (aucune ligne
+        # variantée) : la resynchro reprend alors sa règle historique, mot pour
+        # mot. Il n'est vrai que pour un devis composé par les deux
+        # optimiseurs, et c'est là — et là seulement — que le calepinage
+        # devient un PLAFOND plutôt qu'une cible.
+        def _var(ligne):
+            return getattr(ligne, 'variante', '') or ''
+
+        def _lignes_de(variante):
+            return [li for li in lignes_panneau
+                    if _var(li) in ('', variante)]
+
+        def _total_de(variante):
+            return sum(int(li.quantite or 0) for li in _lignes_de(variante))
+
+        devis_variante = any(_var(li) for li in lignes_panneau)
+        total_panneaux = (_total_de(VARIANTE_SANS) if devis_variante
+                          else sum(int(li.quantite or 0)
+                                   for li in lignes_panneau))
+        total_panneaux_avec = (_total_de(VARIANTE_AVEC) if devis_variante
+                               else total_panneaux)
 
         avertissements = []
         # Cohérence avec PV17 : ces deux cas y sont déclarés NON modifiables.
@@ -3532,6 +3607,10 @@ def sync_devis_from_layout(devis, layout, user=None):
                 'lignes_modifiees': 0,
                 'lignes_ajoutees': 0,
                 'avertissements': avertissements,
+                # L-2OPT — additif : le compte de l'option « avec » (identique
+                # au nominal sur un devis non varianté).
+                'panneaux_avec': total_panneaux_avec,
+                'variantes': devis_variante,
             }
 
         lignes_modifiees = 0
@@ -3567,7 +3646,10 @@ def sync_devis_from_layout(devis, layout, user=None):
                     prix_unitaire=Decimal(panneau.prix_vente),
                     remise=Decimal('0'))
                 lignes_modifiees += 1
+                # La ligne créée est COMMUNE (``variante=''`` par défaut) :
+                # elle sert donc les deux vues à l'identique.
                 total_panneaux = cible_panneaux
+                total_panneaux_avec = cible_panneaux
                 panneaux_ont_change = True
         elif cible_panneaux <= 0:
             # Un layout sans compte de panneaux ne DÉTRUIT pas les lignes en
@@ -3575,6 +3657,43 @@ def sync_devis_from_layout(devis, layout, user=None):
             avertissements.append(
                 'Ce calepinage ne porte aucun panneau : les lignes de '
                 'panneaux du devis n\'ont pas été modifiées.')
+        elif lignes_panneau and devis_variante:
+            # ── L-2OPT / RÈGLE TOIT — le calepinage est un PLAFOND ──────────
+            # Chaque option a son propre compte, choisi par l'économie. Le
+            # calepinage dit combien de panneaux TIENNENT sur le toit : une
+            # option qui dépasse ce plafond est ramenée dessus (elle n'est
+            # PHYSIQUEMENT pas posable), une option en dessous n'est jamais
+            # augmentée — on ne rajoute pas au client des panneaux que
+            # l'optimum a délibérément écartés.
+            for variante in (VARIANTE_SANS, VARIANTE_AVEC):
+                vue = _lignes_de(variante)
+                total_vue = sum(int(li.quantite or 0) for li in vue)
+                if not vue or total_vue <= cible_panneaux:
+                    continue
+                # Rogner d'abord une ligne PROPRE à cette variante : toucher la
+                # ligne commune rétrécirait AUSSI l'autre option, qui, elle,
+                # tient peut-être sur le toit.
+                propres = [li for li in vue if _var(li) == variante]
+                dominante = max(
+                    propres or vue,
+                    key=lambda li: Decimal(str(li.quantite or 0)))
+                nouvelle = int(dominante.quantite or 0) - (
+                    total_vue - cible_panneaux)
+                if nouvelle < 0:
+                    # Même garde qu'en mono-option : jamais sous zéro, jamais
+                    # une suppression silencieuse.
+                    nouvelle = 0
+                    avertissements.append(
+                        'Le plafond du calepinage dépasse la plus grosse ligne '
+                        'de panneaux de l\'option « %s » : elle a été ramenée '
+                        'à 0, les autres lignes n\'ont pas été touchées.'
+                        % variante)
+                dominante.quantite = Decimal(str(nouvelle))
+                dominante.save(update_fields=['quantite'])
+                lignes_modifiees += 1
+                panneaux_ont_change = True
+            total_panneaux = _total_de(VARIANTE_SANS)
+            total_panneaux_avec = _total_de(VARIANTE_AVEC)
         elif lignes_panneau and cible_panneaux != total_panneaux:
             # L'écart va sur la PLUS GROSSE ligne, elle seule : les autres
             # lignes panneau restent telles que le commercial les a posées.
@@ -3595,6 +3714,7 @@ def sync_devis_from_layout(devis, layout, user=None):
             lignes_modifiees += 1
             total_panneaux = sum(
                 int(li.quantite or 0) for li in lignes_panneau)
+            total_panneaux_avec = total_panneaux
             panneaux_ont_change = True
 
         # DEV-202608-0016 — la resynchro DIT ce qu'elle a changé. Le compte de
@@ -3633,15 +3753,21 @@ def sync_devis_from_layout(devis, layout, user=None):
         # resynchro). Ne se déclenche QUE si le compte de panneaux a bougé —
         # un layout qui ne change rien aux panneaux ne touche pas aux câbles
         # non plus.
-        def _resynchroniser_quantite(predicat, cible):
+        def _resynchroniser_quantite(predicat, cible, variante=None):
             """Porte à ``cible`` la quantité de la famille ``predicat``.
 
             Ne touche QUE des lignes déjà présentes ET rattachées à un produit
             catalogue ; renvoie True quand une ligne a réellement bougé.
+
+            L-2OPT — ``variante`` restreint la famille aux lignes de CETTE
+            option-là (jamais les communes : une ligne commune sert les deux
+            options, la porter au compte d'une seule fausserait l'autre).
+            ``None`` (LE DÉFAUT, tous les appels d'hier) ⇒ aucune restriction.
             """
             candidats = [li for li in lignes
                          if getattr(li, 'produit', None) is not None
-                         and _classe_ligne(li, predicat)]
+                         and _classe_ligne(li, predicat)
+                         and (variante is None or _var(li) == variante)]
             if not candidats:
                 return False
             # Plusieurs lignes de la même famille (rare) : seule la PLUS
@@ -3685,13 +3811,38 @@ def sync_devis_from_layout(devis, layout, user=None):
         # note, jamais une ligne INVENTÉE — une ferrure absente reste à la
         # charge de PVHEAL juste en dessous, qui l'ajoute au bon compte), et ne
         # se déclenche QUE si le compte de panneaux a réellement bougé.
+        #
+        # L-2OPT — sur un devis VARIANTÉ, la ferrure suit le compte DE SA
+        # VARIANTE : les structures « sans » sur le champ « sans », les
+        # « avec » sur le champ « avec ». Une ligne de ferrure restée COMMUNE
+        # n'est PAS touchée — elle vaut pour les deux options, la porter au
+        # compte d'une seule fausserait l'autre (et la fusion, elle, variante
+        # toujours la ferrure quand les champs divergent : une commune ne peut
+        # venir que d'une retouche manuelle, que PV18 ne réécrit jamais).
         if panneaux_ont_change and total_panneaux > 0:
-            if _resynchroniser_quantite(
-                    _is_structure, total_panneaux * STRUCTURES_PAR_PANNEAU):
-                lignes_modifiees += 1
-            if _resynchroniser_quantite(
-                    _is_socle, total_panneaux * SOCLES_PAR_PANNEAU):
-                lignes_modifiees += 1
+            if devis_variante:
+                for variante, total_vue in (
+                        (VARIANTE_SANS, total_panneaux),
+                        (VARIANTE_AVEC, total_panneaux_avec)):
+                    if total_vue <= 0:
+                        continue
+                    if _resynchroniser_quantite(
+                            _is_structure,
+                            total_vue * STRUCTURES_PAR_PANNEAU,
+                            variante=variante):
+                        lignes_modifiees += 1
+                    if _resynchroniser_quantite(
+                            _is_socle, total_vue * SOCLES_PAR_PANNEAU,
+                            variante=variante):
+                        lignes_modifiees += 1
+            else:
+                if _resynchroniser_quantite(
+                        _is_structure,
+                        total_panneaux * STRUCTURES_PAR_PANNEAU):
+                    lignes_modifiees += 1
+                if _resynchroniser_quantite(
+                        _is_socle, total_panneaux * SOCLES_PAR_PANNEAU):
+                    lignes_modifiees += 1
 
         # ── Batterie : présente si (et seulement si) le layout en veut une ──
         if veut_batterie and not a_batterie:
@@ -3968,6 +4119,11 @@ def sync_devis_from_layout(devis, layout, user=None):
             'lignes_modifiees': lignes_modifiees,
             'lignes_ajoutees': lignes_ajoutees,
             'avertissements': avertissements,
+            # L-2OPT — additif : le compte de l'option « avec » (identique au
+            # nominal sur un devis non varianté) et le drapeau qui dit si ce
+            # devis porte réellement deux champs PV.
+            'panneaux_avec': total_panneaux_avec,
+            'variantes': devis_variante,
         }
 
     # PV42 — la toiture a bougé : la conception ÉLECTRIQUE la suit, par pan.
