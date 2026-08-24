@@ -341,3 +341,82 @@ describe('capture — choix explicite du geste (pointer / dessiner)', () => {
     expect(map.cameraTargets.length).toBe(0);
   });
 });
+
+// ——— BUG FONDATEUR (24/08) : pin posé, puis passage en « Dessiner mon toit »,
+// contour tracé — la fiche CRM ne montrait ensuite QUE le pin. Cause racine :
+// un clic de carte APRÈS la fermeture du contour retombait dans `setPin()`,
+// qui efface `vertices`/`closed` sans confirmation. Ces tests prouvent (a) que
+// le pin posé en mode « pointer » devient le 1ᵉʳ sommet du tracé au lieu
+// d'être perdu au changement de mode, et (b) qu'un contour FERMÉ survit à un
+// clic de carte supplémentaire — seul « Effacer » peut désormais le vider.
+describe('capture — pin puis tracé : rien ne se perd au changement de mode', () => {
+  beforeEach(() => {
+    fakeMaps.length = 0;
+    setupCaptureDom();
+  });
+  afterEach(() => {
+    vi.resetModules();
+    vi.unstubAllGlobals();
+  });
+
+  it('pin posé en « pointer », puis tracé en « dessiner » : le pin devient le 1ᵉʳ sommet du contour', async () => {
+    const init = await loadTool();
+    let last: { pin: { lat: number; lng: number } | null; outline: Array<[number, number]> } | null = null;
+    let mode: 'point' | 'draw' = 'point';
+    init({
+      maptilerKey: 'test',
+      reducedMotion: true,
+      captureOnly: true,
+      roofInputMode: () => mode,
+      onCaptureChange: (s) => { last = s; },
+    });
+    const map = fakeMaps[0];
+    map.fire('load', {});
+    // 1) « Pointer mon toit » : un clic pose le pin.
+    map.fire('click', { lngLat: { lng: -7.6, lat: 33.59 }, point: { x: 0, y: 0 } });
+    expect(last!.pin).toEqual({ lat: 33.59, lng: -7.6 });
+    expect(last!.outline).toEqual([]);
+    // 2) Le visiteur bascule sur « Dessiner mon toit » (aucune interaction carte).
+    mode = 'draw';
+    // 3) Deux clics de plus suffisent à fermer un triangle (le pin posé plus haut
+    //    compte comme le 1ᵉʳ sommet) — la fiche doit porter les 3 sommets, pas
+    //    seulement le pin d'origine.
+    map.fire('click', { lngLat: { lng: -7.599, lat: 33.59 }, point: { x: 0, y: 0 } });
+    map.fire('click', { lngLat: { lng: -7.599, lat: 33.591 }, point: { x: 0, y: 0 } });
+    expect(last!.outline.length).toBe(3);
+    // Le pin d'origine est bien l'un des sommets tracés (converti, pas jeté).
+    expect(last!.outline).toContainEqual([33.59, -7.6]);
+  });
+
+  it('un contour FERMÉ survit à un clic de carte supplémentaire — seul « Effacer » le vide', async () => {
+    const init = await loadTool();
+    let last: { pin: { lat: number; lng: number } | null; outline: Array<[number, number]> } | null = null;
+    init({
+      maptilerKey: 'test',
+      reducedMotion: true,
+      captureOnly: true,
+      roofInputMode: () => 'draw' as const,
+      onCaptureChange: (s) => { last = s; },
+    });
+    const map = fakeMaps[0];
+    map.fire('load', {});
+    map.fire('click', { lngLat: { lng: -7.6, lat: 33.59 }, point: { x: 0, y: 0 } });
+    map.fire('click', { lngLat: { lng: -7.599, lat: 33.59 }, point: { x: 0, y: 0 } });
+    map.fire('click', { lngLat: { lng: -7.599, lat: 33.591 }, point: { x: 0, y: 0 } });
+    const finish = document.getElementById('rp9-finish') as HTMLButtonElement;
+    finish.dispatchEvent(new Event('click'));
+    expect(last!.outline.length).toBe(3);
+    const outlineBeforeStrayClick = last!.outline;
+
+    // Clic accidentel APRÈS la fermeture du contour : ne doit RIEN effacer.
+    map.fire('click', { lngLat: { lng: 12.34, lat: 56.78 }, point: { x: 0, y: 0 } });
+    expect(last!.outline).toEqual(outlineBeforeStrayClick);
+    expect(last!.outline.length).toBe(3);
+
+    // Seul le bouton « Effacer » remet tout à zéro.
+    const clear = document.getElementById('rp9-clear') as HTMLButtonElement;
+    clear.dispatchEvent(new Event('click'));
+    expect(last!.outline).toEqual([]);
+    expect(last!.pin).toBeNull();
+  });
+});

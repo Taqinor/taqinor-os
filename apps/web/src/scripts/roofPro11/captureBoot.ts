@@ -300,8 +300,24 @@ export function bootCaptureOnly(opts: CaptureOptions): void {
 
   // Clic carte : en mode capture, un clic SIMPLE pose/déplace le pin. Si le visiteur
   // a commencé un contour (≥1 sommet via le double-clic), le clic ajoute un sommet.
+  //
+  // BUG FONDATEUR (24/08) — un contour déjà FERMÉ (closed === true, ≥3 sommets)
+  // tombait dans le repli `setPin(lngLat)` tout en bas de ce handler, qui fait
+  // INCONDITIONNELLEMENT `vertices = []; closed = false;` : un simple clic sur la
+  // carte APRÈS avoir terminé le tracé — qu'il vienne d'un visiteur qui rebascule
+  // sur « Pointer mon toit » pour ajuster, d'une main qui glisse, ou d'un doigt sur
+  // mobile — effaçait tout le contour EN SILENCE et le remplaçait par un pin seul.
+  // Scénario vécu : pin posé, puis passage en « Dessiner mon toit » et tracé
+  // terminé → la fiche CRM ne montrait plus que le pin. Un contour fermé ne se
+  // réinitialise plus que via le bouton explicite « Effacer » (rp9-clear,
+  // ci-dessous) — jamais un clic de carte : même esprit que la garde GPS du
+  // webhook (jamais d'écrasement d'une donnée déjà captée par du vide).
   map.on('click', (e) => {
     const lngLat: LngLat = [e.lngLat.lng, e.lngLat.lat];
+    if (closed) {
+      setStatus(t.outlineTraced);
+      return;
+    }
     if (vertices.length > 0 && !closed) {
       addVertex(lngLat);
       pin = null;
@@ -317,6 +333,11 @@ export function bootCaptureOnly(opts: CaptureOptions): void {
     // double-clic restait la seule porte d'entrée du tracé et rien ne
     // l'annonçait — une interaction qui n'existe même pas au doigt sur mobile.
     if (!closed && opts.roofInputMode?.() === 'draw') {
+      // Un pin déjà posé (visiteur d'abord passé par « Pointer mon toit ») devient
+      // le PREMIER sommet du tracé au lieu d'être silencieusement perdu — même
+      // patron que le double-clic historique plus bas (`vertices = pin ? [pin] :
+      // []`) : le pin reste la position de départ, le tracé ajoute la forme.
+      if (pin) vertices = [pin];
       pin = null;
       redrawPin();
       // `addVertex` pose lui-même le bon message (« Coin N placé… », puis
