@@ -204,10 +204,13 @@ class BlocPrincipalIntactTests(_PcmpBase):
 class PayloadPublicTests(_PcmpBase):
     """La projection publique : client-safe par construction, additive."""
 
-    def _bloc_publie(self, niveau=None):
+    def _bloc_publie(self, niveau=None, slug='pcmp-public'):
+        # ``slug`` distinct par appel dans un MÊME test : la référence du devis
+        # est dérivée du slug et (company, reference) est unique — deux appels
+        # avec le même slug violeraient la contrainte.
         from apps.ventes.models import ShareLink
         from apps.ventes.public_views import _profils_comparatifs_publique
-        devis = self._devis('pcmp-public')
+        devis = self._devis(slug)
         rafraichir_profils_comparatifs_devis(devis, force=True)
         devis.refresh_from_db()
         return _profils_comparatifs_publique(
@@ -283,8 +286,10 @@ class PayloadPublicTests(_PcmpBase):
 
     def test_le_niveau_standard_neutralise_le_texte_pas_les_chiffres(self):
         from apps.ventes.models import ShareLink
-        confiance, _d1 = self._bloc_publie(ShareLink.NIVEAU_CONFIANCE)
-        standard, _d2 = self._bloc_publie(ShareLink.NIVEAU_STANDARD)
+        confiance, _d1 = self._bloc_publie(
+            ShareLink.NIVEAU_CONFIANCE, slug='pcmp-conf')
+        standard, _d2 = self._bloc_publie(
+            ShareLink.NIVEAU_STANDARD, slug='pcmp-std')
         self.assertNotEqual(confiance['note'], standard['note'])
         self.assertNotIn('heure par heure', standard['note'])
         self.assertEqual(confiance['profils'], standard['profils'])
