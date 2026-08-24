@@ -2783,7 +2783,13 @@ def composition_deux_optimiseurs(produits, *, panel_watt,
                       if batterie_cible_kwh not in (None, '')
                       and float(batterie_cible_kwh) > 0 else None)
     kwc_s = float(kwc_sans or 0)
-    kwc_a = float(kwc_avec or 0) or kwc_s
+    # Un champ « avec » de 10 panneaux évalué à la puissance du champ « sans »
+    # se verrait dimensionner l'onduleur (et la batterie) de l'autre option :
+    # à défaut de kWc fourni, on le DÉRIVE de son propre compte de panneaux,
+    # jamais on ne recopie celui d'en face.
+    kwc_a = (float(kwc_avec or 0)
+             or (nb_avec * float(panel_watt or 0) / 1000.0)
+             or kwc_s)
     # Le catalogue est parcouru DEUX fois (un kit chacun) : on le matérialise
     # une bonne fois, sans quoi un itérable à usage unique livrerait un second
     # kit VIDE.
