@@ -43,7 +43,9 @@ CATALOGUE = [
     ('Onduleur réseau Huawei 100kW Triphasé',  'OND-R-HUA-100T', 'Onduleurs', 78000, 56600, 500, 5),
     ('Onduleur réseau Huawei 150kW Triphasé',  'OND-R-HUA-150T', 'Onduleurs', 123000, 87000, 500, 5),
     # ── Onduleurs hybrides (Deye) ──
-    ('Onduleur hybride Deye 5kW Monophasé',    'OND-H-DEY-5M',   'Onduleurs', 17000, 12000, 500, 5),
+    # Prix fondateur 25/08/2026 : 17 000 → 15 000 TTC (migration stock 0131
+    # recale les bases existantes, gardée par l'ancienne valeur).
+    ('Onduleur hybride Deye 5kW Monophasé',    'OND-H-DEY-5M',   'Onduleurs', 15000, 12000, 500, 5),
     ('Onduleur hybride Deye 10kW Monophasé',   'OND-H-DEY-10M',  'Onduleurs', 28000, 24000, 500, 5),
     ('Onduleur hybride Deye 10kW Triphasé',    'OND-H-DEY-10T',  'Onduleurs', 28000, 24000, 500, 5),
     # PVLV2 (fondateur 21/08/2026, DÉFINITIF — « i only know 15 and 20kw on
@@ -66,7 +68,9 @@ CATALOGUE = [
     # BAT-DEY-* NE CHANGENT PAS : l'appariement du seeder se fait par SKU
     # d'abord, donc une base déjà seedée est retrouvée et SAUTÉE (aucun
     # doublon), que la migration de renommage soit passée ou non.
-    ('Batterie Dyness 5 kWh',  'BAT-DEY-5',  'Batteries', 17000, 13000, 500, 5),
+    # Prix fondateur 25/08/2026 : 17 000 → 14 000 TTC (migration stock 0131
+    # recale les bases existantes, gardée par l'ancienne valeur).
+    ('Batterie Dyness 5 kWh',  'BAT-DEY-5',  'Batteries', 14000, 13000, 500, 5),
     ('Batterie Dyness 10 kWh', 'BAT-DEY-10', 'Batteries', 30000, 22000, 500, 5),
     ('Batterie Lithium 5 kWh',  'BAT-LIT-5',  'Batteries', 15500, 13200, 500, 5),
     ('Batterie Gel 2.2 kWh',    'BAT-GEL-22', 'Batteries', 5000, 3100, 500, 5),
