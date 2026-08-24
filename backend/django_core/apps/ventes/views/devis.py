@@ -450,10 +450,16 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 },
                 status=status.HTTP_200_OK)
 
+        # L-TRI (fondateur 24/08/2026 : « cette erreur ne doit pas se
+        # répéter ») — le chemin 3D ne transmettait PAS la phase du lead :
+        # un client triphasé pouvait encore recevoir un onduleur mono par
+        # ICI alors que l'auto-devis (services.py, PVCOMPAT) la passait déjà.
+        from apps.ventes.compatibilites import normaliser_phase
         devis = build_devis_from_layout(
             layout=layout, user=request.user, company=company,
             lead=lead_obj, client=client_obj,
-            taux_tva=taux_tva, remise_globale=remise)
+            taux_tva=taux_tva, remise_globale=remise,
+            phase=normaliser_phase(getattr(lead_obj, 'raccordement', None)))
 
         # QJ17 — persist the layout hash on the newly-created devis so future
         # duplicate requests are caught in O(1).
