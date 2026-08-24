@@ -259,7 +259,7 @@ def _section_servie(link, cle):
     return True
 
 
-def _opts_pdf_public(link):
+def _opts_pdf_public(link, variante=None):
     """Options de rendu du PDF CLIENT servi derrière un jeton ShareLink.
 
     SOURCE UNIQUE du gating anticopie des DEUX flux PDF publics
@@ -276,8 +276,16 @@ def _opts_pdf_public(link):
     · niveau « standard » → filigrane discret (nom · téléphone du prospect) +
       nomenclature accessoire regroupée en une ligne « Kit … » au sous-total
       EXACT. Aucun total ne bouge.
+
+    L-VAR (ordre fondateur, 24/08/2026) — ``variante`` est la SEULE chose que le
+    client puisse influencer ici : quelle version du devis à deux options il
+    télécharge (« sans » / « avec » / « les_deux »). Elle passe par la liste
+    blanche du moteur (``clean_pdf_options``) : toute autre valeur retombe sur
+    ``None`` = le document complet composé par le commercial. La dégradation
+    anticopie ci-dessus reste posée SERVEUR et s'applique à TOUTES les
+    variantes — le client ne peut pas la contourner par un paramètre.
     """
-    opts = clean_pdf_options({})
+    opts = clean_pdf_options({'variante_option': variante})
     if _niveau_lien(link) == ShareLink.NIVEAU_STANDARD:
         opts['watermark'] = True
         opts['kit_agrege'] = True
@@ -2086,8 +2094,16 @@ def proposal_pdf(request, token):
         # ``link.niveau`` (voir ``_opts_pdf_public``), jamais depuis le corps
         # de la requête. Stocké sous une clé MinIO séparée (voir
         # ``builder._pdf_key``) pour ne jamais écraser le PDF interne.
+        #
+        # L-VAR (ordre fondateur, 24/08/2026) — le client choisit la VARIANTE
+        # téléchargée (« sans » / « avec » / « les_deux ») par un paramètre de
+        # requête whitelisté côté moteur. Ce qu'il a coché pour SIGNER ne
+        # restreint plus son téléchargement : il peut toujours récupérer le
+        # devis COMPLET. Aucun statut n'est touché.
         key = generate_premium_devis_pdf(
-            link.devis_id, _opts_pdf_public(link), persist=False)
+            link.devis_id,
+            _opts_pdf_public(link, (request.GET.get('variante') or '').strip()),
+            persist=False)
         pdf_bytes = download_pdf(key)
         filename = f'Devis_{link.devis.reference}.pdf'
     except Exception:  # noqa: BLE001 — jamais de fuite, 404 amical

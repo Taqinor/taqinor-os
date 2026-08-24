@@ -936,6 +936,23 @@ const waLinkReferral = ok ? whatsappReferralLink(Astro.url.origin, reference) : 
 // ── P3 — Lien public du devis PDF premium (même token, nouvel onglet) ────────
 const pdfUrl = ok ? proposalPdfEndpoint(API_BASE, token) : '';
 
+// ── L-VAR (ordre fondateur, 24/08/2026) — VARIANTE TÉLÉCHARGÉE ──────────────
+// Ce que le client coche pour SIGNER n'engage QUE sa signature : le devis
+// COMPLET reste toujours téléchargeable. Le sélecteur ci-dessous (au-dessus du
+// bouton de téléchargement) pilote le paramètre `?variante=` du même endpoint
+// PDF — jamais un second chemin PDF (règle #4).
+//
+// DÉFAUT = la composition du COMMERCIAL, lue dans la donnée
+// (`quote.scenario`, posé à la création : etude_params['scenario']). Aucune
+// déduction : un document « Les deux (Sans + Avec) » démarre sur « Les deux »
+// (le complet). Il n'existe AUCUN autre champ de recommandation exploitable
+// ici — `recommended_option` n'est écrit que par l'écran générateur de l'ERP
+// et ne désigne qu'une option MISE EN AVANT, pas le périmètre du document.
+const pdfVariantDefault: 'sans' | 'avec' | 'les_deux' =
+  q?.scenario === 'Sans batterie' ? 'sans'
+  : q?.scenario === 'Avec batterie' ? 'avec'
+  : 'les_deux';
+
 // ── WJ25 — visionneuse 3D en lecture seule (layout backend QJ26) ────────────
 // Le backend expose `roof_layout` depuis QJ26 (_safe_roof_layout,
 // apps/ventes/public_views.py) : quand le devis porte un layout exploitable,
@@ -4093,6 +4110,36 @@ const signConfig = ok
           </form>
         </div>
 
+        {/* ── L-VAR · QUELLE VERSION TÉLÉCHARGER (devis à deux options) ─────
+             Le choix de signature n'engage QUE la signature : le devis
+             COMPLET reste toujours téléchargeable. Ces trois boutons pilotent
+             le paramètre `?variante=` du MÊME endpoint PDF ; le défaut est la
+             composition du commercial (`quote.scenario`). Masqué sur un devis
+             mono-option — il n'y aurait rien à choisir. */}
+        {twoOptions && (
+          <div class="mt-6 text-center">
+            <p class="text-xs text-lune-faint" data-i18n
+              data-fr="Quelle version télécharger ?"
+              data-en="Which version would you like?"
+              data-ar="أي نسخة تريدون تحميلها؟">Quelle version télécharger ?</p>
+            <div id="pdf-variante" class="mt-2 inline-flex flex-wrap justify-center gap-2" role="group"
+              aria-label="Version du devis à télécharger" data-variante-default={pdfVariantDefault}>
+              <button type="button" class="btn-pill px-3 py-1.5 text-sm" data-pdf-variante="sans"
+                aria-pressed={pdfVariantDefault === 'sans' ? 'true' : 'false'}>
+                <span data-i18n data-fr="Sans batterie" data-en="Without battery" data-ar="بدون بطارية">Sans batterie</span>
+              </button>
+              <button type="button" class="btn-pill px-3 py-1.5 text-sm" data-pdf-variante="avec"
+                aria-pressed={pdfVariantDefault === 'avec' ? 'true' : 'false'}>
+                <span data-i18n data-fr="Avec batterie" data-en="With battery" data-ar="مع بطارية">Avec batterie</span>
+              </button>
+              <button type="button" class="btn-pill px-3 py-1.5 text-sm" data-pdf-variante="les_deux"
+                aria-pressed={pdfVariantDefault === 'les_deux' ? 'true' : 'false'}>
+                <span data-i18n data-fr="Les deux" data-en="Both options" data-ar="الخياران معاً">Les deux</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         <!-- ── P3/WJ34 · TÉLÉCHARGER LE DEVIS PDF (même token, nouvel onglet) ───
              Affordance « génération du PDF… » : le rendu backend (WeasyPrint)
              prend quelques secondes, l'utilisateur doit voir qu'il se passe
@@ -4102,7 +4149,7 @@ const signConfig = ok
         <div class="mt-6 text-center">
           <a
             id="pdf-download"
-            href={pdfUrl}
+            href={twoOptions ? `${pdfUrl}?variante=${pdfVariantDefault}` : pdfUrl}
             target="_blank"
             rel="noopener noreferrer"
             class="btn-pill inline-flex items-center justify-center gap-2"
@@ -5746,6 +5793,26 @@ const signConfig = ok
     // PDF dans le nouvel onglet), on considère la génération terminée.
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') setPdfLoading(false);
+    });
+  }
+
+  // ── L-VAR — sélecteur « quelle version télécharger » (devis à deux options)
+  // Le choix de SIGNATURE n'est pas touché : ces boutons ne pilotent que le
+  // paramètre `?variante=` du lien PDF existant (même endpoint, même token).
+  // Le backend applique une liste blanche stricte — une valeur bricolée y
+  // retombe sur le document complet.
+  if (pdfLink) {
+    const variantGroup = document.getElementById('pdf-variante');
+    const variantBase = pdfLink.href.split('?')[0];
+    variantGroup?.querySelectorAll<HTMLButtonElement>('[data-pdf-variante]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const value = btn.dataset.pdfVariante || '';
+        if (value !== 'sans' && value !== 'avec' && value !== 'les_deux') return;
+        variantGroup
+          .querySelectorAll<HTMLButtonElement>('[data-pdf-variante]')
+          .forEach((b) => b.setAttribute('aria-pressed', b === btn ? 'true' : 'false'));
+        pdfLink.href = `${variantBase}?variante=${value}`;
+      });
     });
   }
 
