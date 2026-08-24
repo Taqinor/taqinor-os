@@ -16,10 +16,13 @@ const { genererFacture, createFromDevis, whatsappDevis, shareLinkDevis } = vi.ho
   whatsappDevis: vi.fn(() => Promise.resolve({
     data: { message: 'Bonjour, voici votre devis', links: [{ devis_id: 1, reference: 'DEV-1', url: 'https://x/1' }], wa_url: 'https://wa.me/212600000000?text=x' },
   })),
-  // L5 — mint/réutilisation du ShareLink pour « Page client »/WhatsApp
-  // (unique, format identique à ce que renvoie POST .../share-link/).
+  // L5/L-NIV-UI — mint/réutilisation du ShareLink pour « Page client »/
+  // WhatsApp (unique, format identique à ce que renvoie POST
+  // .../share-link/ : {token, path, niveau, otp_lecture} — contrat L-NIV).
   shareLinkDevis: vi.fn(() => Promise.resolve({
-    data: { token: 'tok-abc', path: '/proposition/karim/tok-abc' },
+    data: {
+      token: 'tok-abc', path: '/proposition/karim/tok-abc', niveau: 'standard', otp_lecture: false,
+    },
   })),
 }))
 vi.mock('../../../api/ventesApi', () => ({ default: { genererFacture, shareLinkDevis } }))
@@ -275,7 +278,7 @@ describe('L5 — Page client / WhatsApp / Aperçu interne (TOUJOURS visibles, pa
     })
     renderTab({ state: leadState({ devis: [devis1] }) })
     await user.click(screen.getByRole('button', { name: /Page client/ }))
-    await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(1))
+    await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(1, { niveau: 'standard', otp_lecture: false }))
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(
       'https://taqinor.ma/proposition/karim/tok-abc',
     ))
@@ -289,7 +292,7 @@ describe('L5 — Page client / WhatsApp / Aperçu interne (TOUJOURS visibles, pa
     await user.click(screen.getByRole('button', {
       name: /Ouvrir la page client de DEV-1 dans un nouvel onglet/,
     }))
-    await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(1))
+    await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(1, { niveau: 'standard', otp_lecture: false }))
     await waitFor(() => expect(window.open).toHaveBeenCalledWith(
       'https://taqinor.ma/proposition/karim/tok-abc', '_blank', 'noopener',
     ))
@@ -300,7 +303,7 @@ describe('L5 — Page client / WhatsApp / Aperçu interne (TOUJOURS visibles, pa
     window.open = vi.fn(() => ({}))
     renderTab({ state: leadState({ telephone: '0612345678', devis: [devis1] }) })
     await user.click(screen.getByRole('button', { name: 'WhatsApp' }))
-    await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(1))
+    await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(1, { niveau: 'standard', otp_lecture: false }))
     await waitFor(() => expect(window.open).toHaveBeenCalledWith(
       'https://wa.me/212612345678?text='
       + encodeURIComponent(
@@ -325,5 +328,74 @@ describe('L5 — Page client / WhatsApp / Aperçu interne (TOUJOURS visibles, pa
     // L'aperçu interne passe par LeadDevisPanel → GET /proposal (authentifié,
     // ne résout aucun token) — il ne mint JAMAIS de ShareLink.
     expect(shareLinkDevis).not.toHaveBeenCalled()
+  })
+})
+
+describe('L-NIV-UI — niveau de la page client (standard/confiance) + OTP', () => {
+  const devis1 = {
+    id: 1, reference: 'DEV-1', statut: 'envoye', total_ttc: '5000',
+    date_creation: '2026-01-01', chantier: null,
+  }
+
+  it('« Page client » poste le niveau choisi (confiance) au lieu du défaut standard', async () => {
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [devis1] }) })
+    await user.selectOptions(
+      screen.getByRole('combobox', { name: /Niveau de la page client de DEV-1/ }),
+      'confiance',
+    )
+    await user.click(screen.getByRole('button', { name: /Page client/ }))
+    await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(
+      1, { niveau: 'confiance', otp_lecture: false },
+    ))
+  })
+
+  it('la case OTP est postée avec le niveau', async () => {
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [devis1] }) })
+    await user.click(screen.getByRole('checkbox', { name: /Exiger un code de lecture pour la page client de DEV-1/ }))
+    await user.click(screen.getByRole('button', { name: /Page client/ }))
+    await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(
+      1, { niveau: 'standard', otp_lecture: true },
+    ))
+  })
+
+  it('le badge de niveau se rend depuis la réponse serveur après un premier mint', async () => {
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [devis1] }) })
+    expect(screen.queryByTitle(/Le lien reste le même/)).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /Page client/ }))
+    expect(await screen.findByTitle(/Le lien reste le même/)).toHaveTextContent('Standard')
+  })
+
+  it('changer de niveau APRÈS un premier mint re-poste sans régénérer le token (même lien)', async () => {
+    const user = userEvent.setup()
+    shareLinkDevis
+      .mockResolvedValueOnce({
+        data: {
+          token: 'tok-abc', path: '/proposition/karim/tok-abc', niveau: 'standard', otp_lecture: false,
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          token: 'tok-abc', path: '/proposition/karim/tok-abc', niveau: 'confiance', otp_lecture: false,
+        },
+      })
+    renderTab({ state: leadState({ devis: [devis1] }) })
+    await user.click(screen.getByRole('button', { name: /Page client/ }))
+    await screen.findByTitle(/Le lien reste le même/)
+
+    await user.selectOptions(
+      screen.getByRole('combobox', { name: /Niveau de la page client de DEV-1/ }),
+      'confiance',
+    )
+    // Re-poste immédiatement (lien déjà minté) avec le NOUVEAU niveau, sur le
+    // MÊME devis — le backend renvoie le MÊME token (aucun second devis, aucune
+    // régénération) ; on le vérifie via les 2 appels reçus, identiques hors niveau.
+    await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledTimes(2))
+    expect(shareLinkDevis).toHaveBeenNthCalledWith(1, 1, { niveau: 'standard', otp_lecture: false })
+    expect(shareLinkDevis).toHaveBeenNthCalledWith(2, 1, { niveau: 'confiance', otp_lecture: false })
+    const badge = await screen.findByTitle(/Le lien reste le même/)
+    expect(badge).toHaveTextContent('Confiance')
   })
 })

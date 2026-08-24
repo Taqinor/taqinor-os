@@ -3,6 +3,7 @@ from .public_views import (
     public_document, public_bcf_document, pay_page, pay_webhook,
     proposal_data, proposal_pdf, proposal_accept,
     proposal_contact_request, proposal_request_otp,
+    proposal_request_otp_lecture, proposal_verify_otp_lecture,  # L-NIV
     proposal_engagement,  # XSAL16
     proposal_virement_declare,  # QX33be
     proposal_activate_option,  # XSAL5
@@ -23,6 +24,12 @@ urlpatterns = [
     # QJ11 — demande d'OTP (toggle ESIGN_OTP_ENABLED).
     path('proposal/<str:token>/otp/', proposal_request_otp,
          name='public-proposal-otp'),
+    # L-NIV (24/08/2026) — OTP de LECTURE (ShareLink.otp_lecture par lien,
+    # distinct du toggle société ci-dessus).
+    path('proposal/<str:token>/otp-lecture/demander/',
+         proposal_request_otp_lecture, name='public-proposal-otp-lecture-demander'),
+    path('proposal/<str:token>/otp-lecture/verifier/',
+         proposal_verify_otp_lecture, name='public-proposal-otp-lecture-verifier'),
     path('proposal/<str:token>/accept/', proposal_accept,
          name='public-proposal-accept'),
     # QX33be — le client déclare avoir effectué le virement de l'acompte.

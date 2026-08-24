@@ -298,8 +298,12 @@ class TestProposalRoofLayoutPayload(TestCase):
 
     def _get_payload(self, devis):
         token = str(uuid.uuid4())
+        # L-NIV (24/08) : un lien NEUF vaut 'standard' (roof_layout omis par
+        # design) — ce test épingle la SANITISATION du layout, donc niveau
+        # confiance (comportement intégral).
         ShareLink.objects.create(
-            company=self.company, devis=devis, token=token)
+            company=self.company, devis=devis, token=token,
+            niveau=ShareLink.NIVEAU_CONFIANCE)
         c = DjangoClient()
         return c.get(f'/api/django/public/proposal/{token}/data/')
 

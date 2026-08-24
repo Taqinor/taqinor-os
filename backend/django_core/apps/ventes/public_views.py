@@ -9,6 +9,7 @@ pour rester hors des moteurs de recherche, et l'accès est limité en débit par
 IP + jeton (throttle cache-based, sans dépendance externe ni rendu modifié).
 """
 import logging
+import re
 
 from django.db import models
 from django.db.models import F
@@ -18,6 +19,8 @@ from rest_framework import status
 from rest_framework.decorators import (
     api_view, permission_classes, throttle_classes,
 )
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
@@ -634,6 +637,35 @@ def _safe_sld_svg(devis):
         return None
 
 
+#: L-NIV (fondateur 24/08/2026) — le bloc « Nomenclature des équipements »
+#: rendu par ``core.electrique.schema._tableau`` est toujours le SEUL bloc de
+#: la planche qui commence par ce titre exact ; il est TOUJOURS immédiatement
+#: suivi du cartouche (``_cartouche``), qui commence par un second ``<rect``.
+#: On peut donc l'ôter par un simple filtre texte, SANS toucher au moteur
+#: ``core.electrique`` (hors périmètre de cette lane — apps/ventes seul) :
+#: on retire tout depuis le ``<rect`` qui précède le titre jusqu'au ``<rect``
+#: suivant (celui du cartouche), non-inclus. Le marqueur est stable — un
+#: test l'arme (si le libellé change côté moteur, le filtre redevient un
+#: no-op visible en test, jamais un crash silencieux).
+_SLD_NOMENCLATURE_RE = re.compile(
+    r'<rect[^>]*/>\s*<text[^>]*>Nomenclature des équipements</text>.*?(?=<rect)',
+    re.DOTALL,
+)
+
+
+def _standard_sld_svg(svg):
+    """L-NIV — dégrade un schéma unifilaire SVG en TOPOLOGIE simplifiée.
+
+    Retire le tableau « Nomenclature des équipements » (repères, calibres,
+    sections, quantités) — les BLOCS d'organes, leurs libellés (marques/
+    modèles compris — décision fondateur : les marques restent visibles dans
+    LES DEUX niveaux) et le tracé restent identiques. ``None``/chaîne vide en
+    entrée → ``None`` en sortie (même contrat que ``_safe_sld_svg``)."""
+    if not svg:
+        return None
+    return _SLD_NOMENCLATURE_RE.sub('', svg)
+
+
 #: Décision fondateur 2026-08-18 — LE DÉTAIL ÉLECTRIQUE EST EXPOSÉ AU CLIENT,
 #: SANS PRIX. Le contrat interne ``contract_samples/conception_electrique.json``
 #: porte déjà zéro montant (le moteur ``core.electrique`` ignore jusqu'à
@@ -654,6 +686,76 @@ _PUBLIC_PROTECTION = ('repere', 'designation', 'calibre', 'quantite')
 #: ``liaison`` = le libellé du tronçon (« Chaîne 1 → coffret DC ») : sans lui, une
 #: section et une longueur ne veulent rien dire sur une page client.
 _PUBLIC_CABLE = ('liaison', 'section_mm2', 'longueur_m')
+#: L-NIV (fondateur 24/08/2026) — au niveau « standard », la protection perd
+#: son calibre (« ce que le client peut aller vérifier dans son coffret »
+#: cesse de s'appliquer : la page ne dit plus QUEL calibre, seulement QUEL
+#: organe). Câbles (section/longueur) omis EN BLOC — c'est la nomenclature.
+_PUBLIC_PROTECTION_STANDARD = ('repere', 'designation', 'quantite')
+
+
+#: L-NIV (fondateur 24/08/2026) — mots-clés identifiant une ligne « kit »
+#: (structure de fixation, câblage, protection) parmi les lignes du devis.
+#: Alignés sur le vocabulaire du générateur de nomenclature accessoire
+#: (``solar_design.compute_bom`` : catégories « Structure », « Protection AC/
+#: DC », « Coffret », « Mise à la terre », « Batterie »/« Protection
+#: batterie ») — même discipline que ``solar.js`` vs ``quote_engine/
+#: builder.py`` (CLAUDE.md) : les deux vocabulaires restent alignés à la main.
+_KIT_KEYWORDS = (
+    'fixation', 'rail', 'crochet', 'pince',
+    'câblage', 'cablage', 'câble', 'cable', 'gaine', 'goulotte',
+    'presse-étoupe', 'presse étoupe', 'connecteur mc4',
+    'protection', 'disjoncteur', 'parafoudre', 'sectionneur', 'fusible',
+    'différentiel', 'coffret', 'mise à la terre', 'terre',
+)
+
+
+def _est_ligne_kit(designation):
+    d = (designation or '').lower()
+    return any(mot in d for mot in _KIT_KEYWORDS)
+
+
+def _agreger_lignes_kit(items):
+    """L-NIV — regroupe les lignes fixation/câblage/protection d'``items`` en
+    UNE ligne « Kit de fixation, câblage et protection complet », au
+    sous-total EXACT (somme HT/TTC préservée — testé). Les autres lignes
+    (panneaux, onduleur, batterie…) restent inchangées, à leur place. Moins
+    de deux lignes « kit » → ``items`` inchangé (rien à agréger)."""
+    if not items:
+        return items
+    kit_indices = [i for i, it in enumerate(items)
+                   if _est_ligne_kit(it.get('designation'))]
+    if len(kit_indices) < 2:
+        return items
+    from decimal import Decimal
+    kit = [items[i] for i in kit_indices]
+    total_ht = sum(
+        (Decimal(str(it.get('quantite', 0) or 0))
+         * Decimal(str(it.get('prix_unit_ht', 0) or 0))) for it in kit)
+    total_ttc = sum(
+        (Decimal(str(it.get('quantite', 0) or 0))
+         * Decimal(str(it.get('prix_unit_ttc', 0) or 0))) for it in kit)
+    ligne_agregee = {
+        'designation': 'Kit de fixation, câblage et protection complet',
+        'marque': '', 'description': '', 'garantie': '',
+        'garantie_mois': None, 'garantie_production_mois': None,
+        'quantite': 1.0,
+        'prix_unit_ht': float(round(total_ht, 2)),
+        'prix_unit_ttc': float(round(total_ttc, 2)),
+        'taux_tva': kit[0].get('taux_tva', 20),
+        'ordre': min((it.get('ordre', 0) or 0) for it in kit),
+        '_produit_nom': '',
+    }
+    kit_set = set(kit_indices)
+    out = []
+    inserted = False
+    for i, it in enumerate(items):
+        if i in kit_set:
+            if not inserted:
+                out.append(ligne_agregee)
+                inserted = True
+            continue
+        out.append(it)
+    return out
 
 
 def _liste_blanche(source, champs):
@@ -674,7 +776,7 @@ def _liste_blanche(source, champs):
     return sortie
 
 
-def _conception_electrique_publique(devis):
+def _conception_electrique_publique(devis, niveau=ShareLink.NIVEAU_CONFIANCE):
     """Le détail électrique CLIENT-SAFE du devis, ou ``None``.
 
     Même portail que ``_safe_sld_svg`` : sans ``Devis.electrical_design``
@@ -682,16 +784,23 @@ def _conception_electrique_publique(devis):
     l'étude a réellement été faite, jamais une composition fabriquée pour
     remplir la page.
 
-    Ce que le client obtient, et RIEN d'autre :
+    Niveau « confiance » (défaut — comportement byte-identique d'avant L-NIV) :
       · ``chaines``     — combien de modules sur quel MPPT, pan par pan ;
       · ``protections`` — les organes réellement posés : repère, désignation,
                           calibre, quantité ;
       · ``cables``      — la section et la longueur de chaque liaison.
 
-    Ce qui NE SORT JAMAIS : ``bom`` (nomenclature d'achat), ``parametres``
-    (entrées du calcul), ``conformite``/``ratio_*`` (verdicts d'ingénierie),
-    les tensions de chaîne et la chute de tension par liaison — et, cela va de
-    soi, aucun montant (règle #4 ; le moteur électrique n'en connaît aucun).
+    Niveau « standard » (L-NIV, 24/08/2026 — topologie SANS calibres/sections/
+    nomenclature) : ``protections`` perd son ``calibre`` et ``cables`` est omis
+    en bloc — les organes et leurs repères restent visibles (marques/modèles
+    JAMAIS dégradés, décision fondateur), seule l'ingénierie fine (« quel
+    calibre install poser », « quelle section de câble ») disparaît.
+
+    Ce qui NE SORT JAMAIS, quel que soit le niveau : ``bom`` (nomenclature
+    d'achat), ``parametres`` (entrées du calcul), ``conformite``/``ratio_*``
+    (verdicts d'ingénierie), les tensions de chaîne et la chute de tension par
+    liaison — et, cela va de soi, aucun montant (règle #4 ; le moteur
+    électrique n'en connaît aucun).
 
     Lecture PURE : rien n'est écrit. Jamais bloquant : une étude illisible rend
     ``None``, pas une erreur 500.
@@ -702,12 +811,15 @@ def _conception_electrique_publique(devis):
         design = conception_electrique_stockee(devis)
         if not design:
             return None
+        standard = niveau == ShareLink.NIVEAU_STANDARD
         public = {
             'chaines': _liste_blanche(design.get('chaines'), _PUBLIC_CHAINE),
-            'protections': _liste_blanche(design.get('protections'),
-                                          _PUBLIC_PROTECTION),
-            'cables': _liste_blanche(design.get('cables'), _PUBLIC_CABLE),
+            'protections': _liste_blanche(
+                design.get('protections'),
+                _PUBLIC_PROTECTION_STANDARD if standard else _PUBLIC_PROTECTION),
         }
+        if not standard:
+            public['cables'] = _liste_blanche(design.get('cables'), _PUBLIC_CABLE)
         # Une étude qui ne dit rien de montrable ne mérite pas un bloc vide.
         if not any(public.values()):
             return None
@@ -1077,7 +1189,153 @@ def _note_economies_mensuelles(modele, source_consommation, estimation):
             'plus précis.')
 
 
-def _economies_mensuelles_publiques(devis, data, synthese):
+def _note_economies_mensuelles_standard():
+    """L-NIV (24/08/2026) — méthodologie NEUTRE (niveau standard) : ni
+    « PVGIS », ni « heure par heure », ni « tranches » — la mécanique interne
+    du moteur n'est pas montrable à un prospect pas encore qualifié. Les 12
+    valeurs MAD/mois, elles, restent EXACTEMENT les mêmes (règle fondateur :
+    les chiffres ne changent jamais, seul le texte de méthode se neutralise)."""
+    return ('Estimation basée sur votre profil de consommation et la '
+            'production estimée de votre installation, répartie sur les '
+            'douze mois selon un profil saisonnier type.')
+
+
+def _tranche_tarifaire_publique(dimensionnement):
+    """L-BACK T4 (24/08/2026) — sous-ensemble PUBLIC, client-safe, du bloc
+    « falaise » de ``apps.ventes.dimensionnement.recommander_taille`` (déjà
+    persisté sur le devis résidentiel par
+    ``services.rafraichir_dimensionnement_devis``) : contrat
+    ``apps/web/src/lib/proposition.ts ProposalResponse.tranche_tarifaire``.
+
+    ``tranche_actuelle``/``tranche_visee``/``cible_kwh_mois`` viennent de
+    ``dimensionnement['falaise']`` ; ``residuel_kwh_mois`` de
+    ``dimensionnement['meilleure_falaise']`` (LA combinaison qui franchit
+    réellement la marche — un résiduel différent de la falaise visée serait un
+    second chiffre inventé). ``None`` (⇒ clé absente) quand ``falaise`` est
+    absent : le client est déjà dans la tranche la plus basse, rien à
+    annoncer. Ne lève jamais."""
+    falaise = (dimensionnement or {}).get('falaise')
+    if not isinstance(falaise, dict):
+        return None
+    meilleure = (dimensionnement or {}).get('meilleure_falaise')
+    residuel = (meilleure or {}).get('residuel_kwh_mois')
+    return {
+        'tranche_actuelle': {
+            'libelle': (falaise.get('tranche_actuelle') or {}).get('libelle'),
+        },
+        'tranche_visee': {
+            'libelle': (falaise.get('tranche_visee') or {}).get('libelle'),
+        },
+        'cible_kwh_mois': falaise.get('cible_kwh_mois'),
+        'residuel_kwh_mois': residuel,
+    }
+
+
+def _batterie_regime_publique(dimensionnement, bloc_horaire):
+    """L-BACK T4 — remplissage batterie moyen (recommandation AVEC batterie,
+    ``dimensionnement.recommandation_avec.remplissage.moyen``) + couverture
+    des « glitchs » (part des pointes d'équipements que la batterie rattrape,
+    ``bloc_horaire['annuel']['part_glitch_batterie_kwh'] /
+    part_glitch_sans_kwh``). Sous-ensemble public des deux blocs internes,
+    contrat ``ProposalResponse.batterie_regime``.
+
+    Chaque sous-champ manque INDÉPENDAMMENT ; ``None`` (⇒ clé absente) quand
+    les DEUX sont illisibles — rien à montrer. Ne lève jamais."""
+    remplissage_pct = None
+    recommandation_avec = (dimensionnement or {}).get('recommandation_avec')
+    if isinstance(recommandation_avec, dict):
+        moyen = (recommandation_avec.get('remplissage') or {}).get('moyen')
+        if isinstance(moyen, (int, float)) and not isinstance(moyen, bool):
+            remplissage_pct = round(moyen * 100, 1)
+
+    couverture_pct = None
+    annuel = (bloc_horaire or {}).get('annuel')
+    if isinstance(annuel, dict):
+        perdu = annuel.get('part_glitch_sans_kwh')
+        recapte = annuel.get('part_glitch_batterie_kwh')
+        if (isinstance(perdu, (int, float)) and perdu > 0
+                and isinstance(recapte, (int, float))):
+            couverture_pct = round(
+                min(1.0, max(0.0, recapte / perdu)) * 100, 1)
+
+    if remplissage_pct is None and couverture_pct is None:
+        return None
+    return {
+        'remplissage_moyen_pct': remplissage_pct,
+        'couverture_glitch_pct': couverture_pct,
+    }
+
+
+def _profil_horaire_pour_devis(devis):
+    """L-BACK T4 — ``(kwc, conso, ville, lat, lon, occupation, equipements)``
+    d'un devis, MÊME LECTURE que ``services.rafraichir_dimensionnement_devis``/
+    ``etude_horaire._etude_horaire_pour_devis`` (kWc du bloc horaire déjà
+    persisté — jamais une seconde dérivation depuis les lignes ici, cet
+    endpoint est en lecture seule). ``kwc`` vaut ``None`` quand aucun bloc
+    horaire n'est encore posé (devis non résidentiel, ou pas encore
+    rafraîchi) — l'appelant omet alors les clés qui en dépendent."""
+    from apps.crm.selectors import lead_bills_for_devis, site_location_for_devis
+
+    from .courbes_journalieres import equipements_du_devis, occupation_du_devis
+    from .etude_horaire import profil_depuis_factures
+
+    etude_params = getattr(devis, 'etude_params', None) or {}
+    bloc_horaire = etude_params.get('etude_horaire') or {}
+    kwc = bloc_horaire.get('kwc')
+
+    bills = lead_bills_for_devis(devis) or {}
+    conso, _source, _detail = profil_depuis_factures(
+        facture_hiver_mad=bills.get('facture_hiver'),
+        facture_ete_mad=bills.get('facture_ete'),
+        ete_differente=bills.get('ete_differente'),
+        factures_mensuelles_mad=etude_params.get(
+            'factures_mensuelles_reelles'),
+        conso_kwh_mensuelles=etude_params.get('conso_kwh_mensuelles'))
+
+    localisation = site_location_for_devis(devis) or {}
+    ville = localisation.get('site_ville')
+    lat, lon = localisation.get('gps_lat'), localisation.get('gps_lng')
+
+    mode = (getattr(devis, 'mode_installation', None) or '').strip().lower()
+    occupation, _source_occ = occupation_du_devis(
+        devis, {'mode_installation': mode})
+    equipements = equipements_du_devis(devis)
+    return kwc, conso, ville, lat, lon, occupation, equipements
+
+
+def _estimation_conso_publique(devis):
+    """L-BACK T4 — bloc ``estimation_conso`` (contrat public, voir
+    ``etude_horaire.estimation_conso_mensuelle``). ``None`` best-effort — un
+    bloc d'affichage additif ne fait jamais tomber la page client."""
+    try:
+        from .etude_horaire import estimation_conso_mensuelle
+        _kwc, conso, _v, _lat, _lon, _occ, equipements = (
+            _profil_horaire_pour_devis(devis))
+        return estimation_conso_mensuelle(conso, equipements)
+    except Exception:  # noqa: BLE001 — voir _economies_mensuelles_publiques
+        logger.warning('estimation_conso indisponible', exc_info=True)
+        return None
+
+
+def _jours_types_publique(devis):
+    """L-BACK T4 — bloc ``jours_types`` (contrat public, voir
+    ``etude_horaire.jours_types_publics``). ``None`` best-effort."""
+    try:
+        from .etude_horaire import jours_types_publics
+        kwc, conso, ville, lat, lon, occupation, equipements = (
+            _profil_horaire_pour_devis(devis))
+        if not kwc:
+            return None
+        return jours_types_publics(
+            kwc=kwc, conso_kwh_mensuelles=conso, ville=ville, lat=lat,
+            lon=lon, occupation=occupation, equipements=equipements)
+    except Exception:  # noqa: BLE001 — voir _economies_mensuelles_publiques
+        logger.warning('jours_types indisponible', exc_info=True)
+        return None
+
+
+def _economies_mensuelles_publiques(devis, data, synthese,
+                                    niveau=ShareLink.NIVEAU_CONFIANCE):
     """CJ2b (fondateur, 21/08/2026) — bloc ``economies_mensuelles`` : les 12
     valeurs MAD/mois sans/avec batterie « qu'on ne voit ni ... calculée ni la
     donnée pvgis ». JAMAIS un second calcul : ``sans``/``avec`` viennent tels
@@ -1099,7 +1357,7 @@ def _economies_mensuelles_publiques(devis, data, synthese):
     if synthese is None:
         return None
     try:
-        return _economies_mensuelles_calcul(devis, data)
+        return _economies_mensuelles_calcul(devis, data, niveau)
     except Exception:  # noqa: BLE001 — voir ci-dessous
         # UN BLOC D'AFFICHAGE ADDITIF NE FAIT JAMAIS TOMBER LA PAGE CLIENT.
         # Cet appel vit dans le grand ``try`` de ``proposal_data``, dont le
@@ -1111,7 +1369,7 @@ def _economies_mensuelles_publiques(devis, data, synthese):
         return None
 
 
-def _economies_mensuelles_calcul(devis, data):
+def _economies_mensuelles_calcul(devis, data, niveau=ShareLink.NIVEAU_CONFIANCE):
     """Cœur de :func:`_economies_mensuelles_publiques` (exceptions gérées
     au-dessus)."""
     sans = data.get('eco_s_monthly')
@@ -1150,8 +1408,12 @@ def _economies_mensuelles_calcul(devis, data):
         'devise': 'MAD',
         'modele': modele,
         'estimation': estimation,
-        'note': _note_economies_mensuelles(
-            modele, source_consommation, estimation),
+        'note': (
+            _note_economies_mensuelles_standard()
+            if niveau == ShareLink.NIVEAU_STANDARD
+            else _note_economies_mensuelles(
+                modele, source_consommation, estimation)
+        ),
     }
 
 
@@ -1169,10 +1431,28 @@ def proposal_data(request, token):
     if link is None:
         return _not_found()
 
+    # L-NIV (24/08/2026) — otp_lecture : quand posé sur CE lien, la lecture
+    # exige un OTP vérifié (même mécanique que la signature QJ11/QX10, sous
+    # un espace de clés séparé — apps.ventes.services.otp_lecture_verified).
+    # Gate posé AVANT tout effet de bord (stamp de vue) : une tentative non
+    # vérifiée ne compte pas comme une consultation.
+    from .services import otp_lecture_verified
+    if not otp_lecture_verified(link):
+        return _noindex(Response(
+            {'detail': 'otp_required'}, status=status.HTTP_403_FORBIDDEN))
+
     # QJ1 — stamp the view (best-effort; True = first open).
     is_first = _stamp_view(link)
     if is_first:
         _notify_first_open(link)
+
+    # L-NIV (24/08/2026) — niveau d'affichage RÉVOCABLE, posé sur le lien
+    # (jamais sur le jeton). Un lien créé avant la migration 0100 vaut
+    # 'confiance' (bascule de compatibilité arrière — voir la migration) ;
+    # ``getattr`` défensif au cas où un test construit un lien à la main
+    # sans passer par le manager.
+    niveau = getattr(link, 'niveau', ShareLink.NIVEAU_CONFIANCE) or ShareLink.NIVEAU_CONFIANCE
+    est_standard = niveau == ShareLink.NIVEAU_STANDARD
 
     try:
         from .quote_engine.builder import build_quote_data
@@ -1219,6 +1499,18 @@ def proposal_data(request, token):
         # AUCUN document ne franchit plus la frontière publique. Les
         # avertissements internes (devis à assainir) restent côté vendeur.
         data.pop('avertissements_internes', None)
+        # L-NIV (24/08/2026) — niveau « standard » : les lignes fixation /
+        # câblage / protection se REGROUPENT en une seule ligne « Kit de
+        # fixation, câblage et protection complet », au sous-total EXACT
+        # (aucun chiffre perdu — un test somme les lignes). Les totaux
+        # ``totaux_sans``/``totaux_avec`` ci-dessus sont déjà figés PLUS HAUT
+        # par le moteur (avant cette dégradation) : ils restent identiques
+        # entre les deux niveaux, seule la granularité d'affichage change.
+        if est_standard:
+            if data.get('sans_items'):
+                data['sans_items'] = _agreger_lignes_kit(data['sans_items'])
+            if data.get('avec_items'):
+                data['avec_items'] = _agreger_lignes_kit(data['avec_items'])
         # ── Z2 (ORDRE FONDATEUR, 20/08/2026) — la proposition en ligne HÉRITE de
         # l'omission du PDF. La synthèse (−N %, avant/après, couverture) est déjà
         # None ci-dessus, mais la page lit AUSSI `quote.eco_s_ann`/`eco_a_ann`/
@@ -1293,6 +1585,9 @@ def proposal_data(request, token):
             except Exception:  # noqa: BLE001 — un rendu absent ne casse rien
                 roof_url = None
         payload = {
+            # L-NIV — indique à la page CE niveau (elle n'a rien à deviner :
+            # les dégradations sont posées ici, pas re-décidées côté client).
+            'niveau': niveau,
             'reference': data['ref'],
             'date': data['date'],
             'client_name': data['client_name'],
@@ -1308,7 +1603,10 @@ def proposal_data(request, token):
             # QJ26 — layout de toiture ASSAINI (géométrie + par-pan uniquement,
             # jamais de prix/marge/champ interne). None quand absent → le PNG
             # poster (roof_image_url) reste le repli.
-            'roof_layout': _safe_roof_layout(devis),
+            # L-NIV — niveau « standard » : OMIS en bloc (jamais les coordonnées
+            # cx/cy machine du calepinage) ; le PNG poster (roof_image_url,
+            # ci-dessus) reste le repli visuel, identique aux deux niveaux.
+            'roof_layout': None if est_standard else _safe_roof_layout(devis),
             # PVUNI (fondateur, 18/08/2026) — LE CALEPINAGE NE COLLE PLUS AUX
             # LIGNES. La vue 3D montre le compte de panneaux pour lequel elle a
             # été jouée ; les lignes, elles, peuvent avoir bougé depuis (édition
@@ -1325,14 +1623,19 @@ def proposal_data(request, token):
             # le moteur électrique SANS AUCUN PRIX (il n'en connaît aucun).
             # None tant que la conception électrique (PV41) n'a pas été faite :
             # le client ne voit un schéma que lorsqu'il en existe un vrai.
-            'sld_svg': _safe_sld_svg(devis),
+            # L-NIV — niveau « standard » : topologie simplifiée, sans le
+            # tableau « Nomenclature des équipements » (calibres/sections).
+            'sld_svg': (
+                _standard_sld_svg(_safe_sld_svg(devis))
+                if est_standard else _safe_sld_svg(devis)
+            ),
             # Fondateur 2026-08-18 — le DÉTAIL ÉLECTRIQUE, exposé au client
             # SANS PRIX : chaînes (modules/MPPT), protections nominatives
             # (repère, désignation, calibre, quantité) et câbles (section,
             # longueur). Whitelist STRICTE (_PUBLIC_CHAINE/_PROTECTION/_CABLE) :
             # ni nomenclature d'achat, ni paramètres internes, ni montant.
             # None tant que la conception électrique (PV41) n'a pas été faite.
-            'conception_electrique': _conception_electrique_publique(devis),
+            'conception_electrique': _conception_electrique_publique(devis, niveau),
             'option_totals': {
                 'sans_batterie': data.get('totaux_sans'),
                 'avec_batterie': data.get('totaux_avec'),
@@ -1442,9 +1745,33 @@ def proposal_data(request, token):
         # ci-dessus : même patron additif — la clé n'est AJOUTÉE que lorsque la
         # couche économique est servable (hérite l'ancrage Z2 de `synthese`,
         # déjà calculé plus haut), sinon la page garde son affichage actuel.
-        _economies = _economies_mensuelles_publiques(devis, data, synthese)
+        _economies = _economies_mensuelles_publiques(devis, data, synthese, niveau)
         if _economies is not None:
             payload['economies_mensuelles'] = _economies
+        # L-BACK T4 (24/08/2026) — quatre clés PUBLIC-SAFE de plus, MÊME
+        # PATRON additif que ci-dessus (la clé n'est AJOUTÉE que lorsqu'il y
+        # a une vraie donnée à servir, sinon la page garde son affichage
+        # actuel) : le pitch tranche tarifaire + régime batterie (sous-
+        # ensembles du dimensionnement/étude horaire déjà persistés), la
+        # décomposition mensuelle de l'estimation de consommation, et les 4
+        # mois « jour type » (contrat PACT10, forme convenue avec
+        # `apps/web/src/lib/proposition.ts`). Chacune retombe sur `None` au
+        # moindre doute, jamais bloquante pour le reste de la page.
+        _etude_params_devis = getattr(devis, 'etude_params', None) or {}
+        _dimensionnement = _etude_params_devis.get('dimensionnement')
+        _tranche = _tranche_tarifaire_publique(_dimensionnement)
+        if _tranche is not None:
+            payload['tranche_tarifaire'] = _tranche
+        _bloc_horaire_devis = _etude_params_devis.get('etude_horaire')
+        _regime = _batterie_regime_publique(_dimensionnement, _bloc_horaire_devis)
+        if _regime is not None:
+            payload['batterie_regime'] = _regime
+        _estimation = _estimation_conso_publique(devis)
+        if _estimation is not None:
+            payload['estimation_conso'] = _estimation
+        _jours = _jours_types_publique(devis)
+        if _jours is not None:
+            payload['jours_types'] = _jours
     except Exception:  # noqa: BLE001
         # 404 volontairement muet cote client (jamais de detail interne sur un
         # lien public) — mais TRACE cote serveur : un garde-fou moteur qui
@@ -1472,6 +1799,13 @@ def proposal_pdf(request, token):
     if link is None:
         return _not_found()
 
+    # L-NIV (24/08/2026) — même gate otp_lecture que proposal_data (voir son
+    # commentaire) : le flux PDF public est aussi une LECTURE.
+    from .services import otp_lecture_verified
+    if not otp_lecture_verified(link):
+        return _noindex(Response(
+            {'detail': 'otp_required'}, status=status.HTTP_403_FORBIDDEN))
+
     # QJ1 — stamp the view (best-effort; True = first open).
     is_first = _stamp_view(link)
     if is_first:
@@ -1479,8 +1813,17 @@ def proposal_pdf(request, token):
 
     try:
         # ERR74 — GET sûr : rendu + flux sans persister fichier_pdf.
+        # L-NIV (24/08/2026) — ``watermark`` est un flag SERVEUR (jamais lu
+        # depuis le corps de la requête, ``clean_pdf_options({})`` reçoit un
+        # dict vide) : posé UNIQUEMENT quand ``link.niveau`` est « standard »,
+        # d'après le lien résolu par le jeton — jamais depuis une entrée
+        # client. Stocké sous une clé MinIO séparée (voir ``builder._pdf_key``)
+        # pour ne jamais écraser le PDF interne.
+        _opts = clean_pdf_options({})
+        if getattr(link, 'niveau', ShareLink.NIVEAU_CONFIANCE) == ShareLink.NIVEAU_STANDARD:
+            _opts['watermark'] = True
         key = generate_premium_devis_pdf(
-            link.devis_id, clean_pdf_options({}), persist=False)
+            link.devis_id, _opts, persist=False)
         pdf_bytes = download_pdf(key)
         filename = f'Devis_{link.devis.reference}.pdf'
     except Exception:  # noqa: BLE001 — jamais de fuite, 404 amical
@@ -1612,6 +1955,69 @@ def proposal_request_otp(request, token):
         return _noindex(Response(
             {'detail': err}, status=status.HTTP_400_BAD_REQUEST))
     return _noindex(Response({'detail': 'Code envoyé.'}))
+
+
+# L-NIV — formes déclarées des deux vues otp-lecture (le compteur R2 de
+# check_openapi_shapes est un plafond gelé : toute vue publique nouvelle
+# DOIT déclarer sa forme au lieu de laisser le générateur deviner).
+_OTP_LECTURE_DETAIL_RESPONSE = inline_serializer('PublicOtpLectureDetail', {
+    'detail': drf_serializers.CharField(),
+})
+_OTP_LECTURE_VERIFY_REQUEST = inline_serializer('PublicOtpLectureVerifyRequest', {
+    'otp_code': drf_serializers.CharField(),
+})
+
+
+@extend_schema(request=None, responses={200: _OTP_LECTURE_DETAIL_RESPONSE})
+@api_view(['POST'])
+@permission_classes([AllowAny])
+@throttle_classes([PublicLinkRateThrottle])
+def proposal_request_otp_lecture(request, token):
+    """L-NIV (24/08/2026) — Demande l'envoi d'un OTP de LECTURE.
+
+    Distinct de ``proposal_request_otp`` (QJ11, OTP de SIGNATURE, gouverné par
+    le toggle société ``ESIGN_OTP_ENABLED``) : ici le gate est
+    ``link.otp_lecture``, un réglage PAR LIEN posé par le commercial — actif
+    dès que ce booléen est vrai, sans dépendre d'aucun toggle. Un lien dont
+    ``otp_lecture`` est False renvoie 200 immédiatement (rien à demander,
+    comportement inchangé — la lecture n'est de toute façon pas gatée)."""
+    link = _resolve_proposal_link(token)
+    if link is None:
+        return _not_found()
+    if not link.otp_lecture:
+        return _noindex(Response({'detail': 'Aucun code requis pour ce lien.'}))
+    from .services import request_otp_lecture
+    err = request_otp_lecture(link)
+    if err:
+        return _noindex(Response(
+            {'detail': err}, status=status.HTTP_400_BAD_REQUEST))
+    return _noindex(Response({'detail': 'Code envoyé.'}))
+
+
+@extend_schema(request=_OTP_LECTURE_VERIFY_REQUEST, responses={200: _OTP_LECTURE_DETAIL_RESPONSE})
+@api_view(['POST'])
+@permission_classes([AllowAny])
+@throttle_classes([PublicLinkRateThrottle])
+def proposal_verify_otp_lecture(request, token):
+    """L-NIV (24/08/2026) — Vérifie l'OTP de LECTURE soumis.
+
+    Succès → la LECTURE de ce lien reste déverrouillée pendant
+    ``OTP_LECTURE_VERIFIED_TTL`` (1 h) : ``proposal_data``/``proposal_pdf``
+    relisent ce drapeau à chaque appel plutôt que d'exiger un code par GET
+    (contrairement à l'acceptation, la lecture est consultée plusieurs
+    fois)."""
+    link = _resolve_proposal_link(token)
+    if link is None:
+        return _not_found()
+    if not link.otp_lecture:
+        return _noindex(Response({'detail': 'Aucun code requis pour ce lien.'}))
+    from .services import validate_otp_lecture
+    otp_code = (request.data.get('otp_code') or '').strip()
+    err = validate_otp_lecture(link, otp_code)
+    if err:
+        return _noindex(Response(
+            {'detail': err}, status=status.HTTP_400_BAD_REQUEST))
+    return _noindex(Response({'detail': 'Code vérifié.'}))
 
 
 # Sections reconnues du beacon d'engagement (XSAL16). Une section inconnue est

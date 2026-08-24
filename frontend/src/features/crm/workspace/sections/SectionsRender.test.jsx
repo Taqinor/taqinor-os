@@ -153,6 +153,49 @@ describe('LW11 — rendu des sections (port 1:1 des champs)', () => {
     expect(setField).toHaveBeenCalledWith('equip_piscine', true)
   })
 
+  // L-FRONT lot 4 (contrat L-BACK) — grandeurs/créneaux estimation_conso :
+  // masquées par défaut, révélées avec le même booléen que la question
+  // existante, jamais de valeur préremplie, posent bien au Lead API via
+  // setField.
+  it('SectionEquipements lot4 — masquées par défaut, aucune valeur préremplie', () => {
+    render(<SectionEquipements state={createState()} {...base} />)
+    expect(document.querySelector('#lf-equip-piscine-heures')).toBeNull()
+    expect(document.querySelector('#lf-equip-ve-chargeur-kw')).toBeNull()
+    expect(document.querySelector('#lf-equip-ve-creneau')).toBeNull()
+    expect(document.querySelector('#lf-equip-clim-kw')).toBeNull()
+    expect(document.querySelector('#lf-equip-chauffe-eau-kw')).toBeNull()
+    expect(document.querySelector('#lf-equip-chauffe-eau-creneau')).toBeNull()
+  })
+
+  it('SectionEquipements lot4 — piscine/VE/clim/chauffe-eau à Oui révèle puissance+créneau, sans défaut chiffré', () => {
+    const state = initState({
+      lead: {
+        id: 1, equip_piscine: true, equip_voiture_electrique: true,
+        equip_clim: true, equip_chauffe_eau_electrique: true,
+      },
+      mode: 'edit',
+    })
+    render(<SectionEquipements state={state} {...base} />)
+    expect(document.querySelector('#lf-equip-piscine-heures').value).toBe('')
+    expect(document.querySelector('#lf-equip-ve-chargeur-kw').value).toBe('')
+    expect(document.querySelector('#lf-equip-ve-creneau').value).toBe('')
+    expect(document.querySelector('#lf-equip-clim-kw').value).toBe('')
+    expect(document.querySelector('#lf-equip-chauffe-eau-kw').value).toBe('')
+    expect(document.querySelector('#lf-equip-chauffe-eau-creneau').value).toBe('')
+  })
+
+  it('SectionEquipements lot4 — champ de créneau/puissance appelle setField (round-trip Lead API)', () => {
+    const setField = vi.fn()
+    const state = initState({
+      lead: { id: 1, equip_voiture_electrique: true }, mode: 'edit',
+    })
+    render(<SectionEquipements state={state} {...base} setField={setField} />)
+    fireEvent.change(document.querySelector('#lf-equip-ve-chargeur-kw'), { target: { value: '7.4' } })
+    expect(setField).toHaveBeenCalledWith('equip_ve_chargeur_kw', '7.4')
+    fireEvent.change(document.querySelector('#lf-equip-ve-creneau'), { target: { value: 'nuit' } })
+    expect(setField).toHaveBeenCalledWith('equip_ve_creneau', 'nuit')
+  })
+
   it('la section « Équipements » apparaît dans le registre SectionsPane', () => {
     const { container } = render(
       <SectionsPane

@@ -490,7 +490,12 @@ def rendre_schema(entree, resultat, cartouche=None, positions=None):
     {"x": .., "y": ..}}`` par organe.
     """
     blocs = blocs_du_schema(entree, resultat)
-    largeur, hauteur = _format_planche(len(blocs))
+    # Seuls les blocs EN SÉRIE remplissent les rangées du serpentin : la
+    # branche batterie pend sous son porteur et n'occupe aucune rangée — la
+    # compter ici basculait en A3 une planche dont la chaîne tient sur A4
+    # (3 rangées avec branche : 658 pt < 794 pt de haut, vérifié).
+    en_serie = sum(1 for b in blocs if b.clef not in _EN_BRANCHE)
+    largeur, hauteur = _format_planche(en_serie)
     places = _positions(blocs, largeur, positions)
 
     svg = [

@@ -193,6 +193,24 @@ export const REGIONS_AGRICOLES = [
 ] as const;
 export type RegionAgricoleId = (typeof REGIONS_AGRICOLES)[number];
 
+// ——— L-WEBT : « Affiner mon profil de consommation » (facultatif, section
+// repliable de /devis/mon-toit) — occupation_jour + équipements du script
+// d'appel commercial. SOURCE : `crm.Lead` (backend/django_core/apps/crm/
+// models.py) — ce sont les VRAIS champs du modèle (occupation_jour,
+// equip_piscine[_pompe_kw], equip_voiture_electrique/equip_ve_km_semaine,
+// equip_clim[_pieces], equip_chauffe_eau_electrique), PAS un contrat
+// générique inventé : la piscine/clim n'ont ni puissance-kW-libre ni créneau
+// choisi par le visiteur (les fenêtres horaires sont des CONSTANTES SERVEUR
+// sourcées — apps/ventes/courbes_journalieres.py PISCINE_HEURES/CLIM_HEURES),
+// le chauffe-eau électrique reste un booléen INFORMATIF seul (le moteur ne
+// lui compose aucune couche — même module, commentaire d'en-tête). Ces clés
+// sont SNAKE_CASE par exception à la convention camelCase de ce fichier :
+// elles reprennent MOT POUR MOT le nom du champ Django pour que le câblage
+// backend futur (`_extract_web_questionnaire`, apps/crm/webhooks.py — absent
+// aujourd'hui, voir HANDOFF) n'ait aucune traduction à inventer.
+export const OCCUPATION_JOUR_VALUES = ['present', 'absent', 'partiel'] as const;
+export type OccupationJourId = (typeof OCCUPATION_JOUR_VALUES)[number];
+
 /**
  * Plafond de facture mensuelle saisissable (MAD) PAR MODE — les modes C&I
  * (industriel/commercial, et l'alias hérité professionnel) montent à 1 M MAD,
@@ -424,6 +442,18 @@ export interface ValidatedLead {
   terrain?: boolean;
   // Instantané de l'estimation affichée (liste blanche stricte — cf. EstimateShown).
   estimateShown?: EstimateShown;
+  // — L-WEBT : occupation_jour + équipements (facultatifs, voir le
+  //   commentaire de OCCUPATION_JOUR_VALUES ci-dessus pour la provenance et
+  //   la raison des clés snake_case). Case décochée côté page ⇒ clé ABSENTE,
+  //   jamais un booléen `false` fabriqué.
+  occupation_jour?: OccupationJourId;
+  equip_piscine?: boolean;
+  equip_piscine_pompe_kw?: number;
+  equip_voiture_electrique?: boolean;
+  equip_ve_km_semaine?: number;
+  equip_clim?: boolean;
+  equip_clim_pieces?: number;
+  equip_chauffe_eau_electrique?: boolean;
 }
 
 export type ValidationResult =
@@ -800,6 +830,28 @@ function validateOptionalFields(b: Record<string, unknown>): Partial<ValidatedLe
 
   const estimateShown = cleanEstimateShown(b.estimateShown);
   if (estimateShown) opt.estimateShown = estimateShown;
+
+  // ——— L-WEBT : occupation_jour + équipements (facultatifs — cf. le
+  // commentaire de OCCUPATION_JOUR_VALUES). Chaque booléen n'est accepté que
+  // s'il vaut littéralement `true` (jamais `false` : une case décochée ne
+  // doit jamais devenir un « Non » fabriqué côté serveur non plus — la page
+  // omet déjà la clé, cette garde est une seconde ligne de défense). ———
+  const occupationJour = cleanEnum(b.occupation_jour, OCCUPATION_JOUR_VALUES);
+  if (occupationJour) opt.occupation_jour = occupationJour;
+
+  if (b.equip_piscine === true) opt.equip_piscine = true;
+  const equipPiscinePompeKw = cleanPositiveNumber(b.equip_piscine_pompe_kw, 50);
+  if (equipPiscinePompeKw != null) opt.equip_piscine_pompe_kw = equipPiscinePompeKw;
+
+  if (b.equip_voiture_electrique === true) opt.equip_voiture_electrique = true;
+  const equipVeKmSemaine = cleanPositiveNumber(b.equip_ve_km_semaine, 5_000);
+  if (equipVeKmSemaine != null) opt.equip_ve_km_semaine = equipVeKmSemaine;
+
+  if (b.equip_clim === true) opt.equip_clim = true;
+  const equipClimPieces = cleanPositiveNumber(b.equip_clim_pieces, 50);
+  if (equipClimPieces != null) opt.equip_clim_pieces = Math.round(equipClimPieces);
+
+  if (b.equip_chauffe_eau_electrique === true) opt.equip_chauffe_eau_electrique = true;
 
   return opt;
 }

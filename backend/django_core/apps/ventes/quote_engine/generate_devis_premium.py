@@ -274,6 +274,10 @@ CLIENT_NAME  = QUOTE_INPUT["client_name"]
 CLIENT_ADDR  = QUOTE_INPUT["client_addr"]
 CLIENT_PHONE = QUOTE_INPUT["client_phone"]
 CLIENT_ICE   = QUOTE_INPUT.get("client_ice", "")
+# L-NIV (24/08/2026) — filigrane PDF DISCRET, posé UNIQUEMENT sur le PDF
+# public niveau standard (jamais le PDF interne). None par défaut → les
+# footers restent byte-identiques à avant L-NIV (mêmes tests de page-count).
+WATERMARK_STANDARD = None
 REF          = QUOTE_INPUT["ref"]
 DATE_STR     = QUOTE_INPUT["date"]
 KWC          = QUOTE_INPUT["puissance_kwc"]
@@ -938,6 +942,17 @@ def logo_p1_dark():
             f'TAQIN<span style="color:{CA};">&#9733;</span>R</div>'
             f'</div>')
 
+def _filigrane_suffixe():
+    """L-NIV (24/08/2026) suffixe DISCRET ajoute a la ligne
+    Page N / Total | Ref. XXX existante quand WATERMARK_STANDARD
+    est pose (niveau standard du lien public UNIQUEMENT, jamais le PDF
+    interne). SUFFIXE d'une ligne deja la, jamais une nouvelle rangee :
+    ZERO changement de hauteur de pied de page, donc zero changement de
+    pagination, les tests de page-count tournent aussi filigrane actif."""
+    if not WATERMARK_STANDARD:
+        return ""
+    return f" &nbsp;|&nbsp; {WATERMARK_STANDARD}"
+
 def footer_p1():
     """Page 1 footer — white background."""
     return (f'<div style="background:white;padding:7px 24px;flex-shrink:0;display:flex;'
@@ -945,7 +960,7 @@ def footer_p1():
             f'<div style="font-size:9pt;font-weight:800;color:{CA};letter-spacing:1px;">{ENT_NOM_MARQUE}</div>'
             f'<div style="font-size:7pt;color:#888888;text-align:center;">'
             f'{ENT_CONTACT_LINE}</div>'
-            f'<div style="font-size:7pt;color:#888888;">Page 1&nbsp;/&nbsp;{PAGES_TOTAL} &nbsp;|&nbsp; R\u00e9f.&nbsp;{REF}</div>'
+            f'<div style="font-size:7pt;color:#888888;">Page 1&nbsp;/&nbsp;{PAGES_TOTAL} &nbsp;|&nbsp; R\u00e9f.&nbsp;{REF}{_filigrane_suffixe()}</div>'
             f'</div>')
 
 def footer(n, total=None):
@@ -956,7 +971,7 @@ def footer(n, total=None):
             f'<div style="font-size:9pt;font-weight:800;color:{CA};letter-spacing:1px;">{ENT_NOM_MARQUE}</div>'
             f'<div style="font-size:7pt;color:#888;text-align:center;">'
             f'{ENT_CONTACT_LINE}</div>'
-            f'<div style="font-size:7pt;color:#888;">Page {n}&nbsp;/&nbsp;{total} &nbsp;|&nbsp; R\u00e9f.&nbsp;{REF}</div>'
+            f'<div style="font-size:7pt;color:#888;">Page {n}&nbsp;/&nbsp;{total} &nbsp;|&nbsp; R\u00e9f.&nbsp;{REF}{_filigrane_suffixe()}</div>'
             f'</div>')
 
 def footer_p3(extra_style=""):
@@ -966,7 +981,7 @@ def footer_p3(extra_style=""):
             f'<div style="font-size:9pt;font-weight:800;color:{CA};letter-spacing:1px;">{ENT_NOM_MARQUE}</div>'
             f'<div style="font-size:7pt;color:#888;text-align:center;">'
             f'{ENT_CONTACT_LINE}</div>'
-            f'<div style="font-size:7pt;color:#888;">Page {PAGE3_NUM}&nbsp;/&nbsp;{PAGES_TOTAL} &nbsp;|&nbsp; R\u00e9f.&nbsp;{REF}</div>'
+            f'<div style="font-size:7pt;color:#888;">Page {PAGE3_NUM}&nbsp;/&nbsp;{PAGES_TOTAL} &nbsp;|&nbsp; R\u00e9f.&nbsp;{REF}{_filigrane_suffixe()}</div>'
             f'</div>'
             f'<div style="font-size:7.5px;color:#888;text-align:center;font-style:italic;">'
             f'{ENT_LEGAL_LINE}'
@@ -2278,6 +2293,83 @@ def _bankable_block_html(bank):
         f'{ligne_html}{pertes_html}</div>')
 
 
+def _falaise_context():
+    """CJ2b-bis — falaise tarifaire + remplissage batterie, lus À PLAT depuis
+    ``etude_params['dimensionnement']`` (contrat DIM2 :
+    ``apps.ventes.dimensionnement.recommander_taille`` / le même que sert
+    ``POST /ventes/etude-horaire/preview/`` avec ``dimensionner: true`` — voir
+    ``apps/ventes/contract_samples/etude_horaire.json``).
+
+    [HANDOFF backend] À la date de ce lot, AUCUN devis réel ne porte cette
+    clé : ``recommander_taille`` n'est appelé QUE par l'aperçu écran du
+    générateur (``etude_horaire_view._dimensionner``), jamais persisté sur
+    ``Devis.etude_params`` (``services.rafraichir_etude_horaire`` ne pose que
+    le bloc ``etude_horaire``, pas ``dimensionnement``). Cette fonction lit
+    défensivement le contrat au cas où un producteur backend viendrait à
+    poser ``etude_params['dimensionnement']`` — tant que cette clé est
+    absente, elle rend ``None`` et le PDF est BYTE-IDENTIQUE à avant ce lot.
+    Zero chiffre inventé : chaque valeur vient telle quelle du contrat, rien
+    n'est recalculé ici (le moteur ne fait que RENDRE — règle #4).
+    """
+    dim = ETUDE.get("dimensionnement")
+    if not isinstance(dim, dict):
+        return None
+    falaise = dim.get("falaise")
+    meilleure = dim.get("meilleure_falaise")
+    tranche_actuelle = None
+    if isinstance(falaise, dict):
+        _ta = falaise.get("tranche_actuelle")
+        if isinstance(_ta, dict):
+            tranche_actuelle = _ta.get("libelle")
+    residuel = tranche_apres = remplissage_pct = None
+    if isinstance(meilleure, dict):
+        residuel = meilleure.get("residuel_kwh_mois")
+        _tap = meilleure.get("tranche_apres")
+        if isinstance(_tap, dict):
+            tranche_apres = _tap.get("libelle")
+        _rempl = meilleure.get("remplissage")
+        if isinstance(_rempl, dict):
+            _moyen = _rempl.get("moyen")
+            if isinstance(_moyen, (int, float)):
+                remplissage_pct = round(_moyen * 100)
+    if tranche_actuelle is None and residuel is None:
+        return None
+    return {
+        "tranche_actuelle": tranche_actuelle,
+        "residuel_kwh_mois": residuel,
+        "tranche_apres": tranche_apres,
+        "remplissage_pct": remplissage_pct,
+    }
+
+
+def _part_glitch_pct():
+    """CJ2b-bis — part des pointes (glitchs) rattrapée par la batterie, en %.
+
+    Source RELLE et DÉJÀ PERSISTÉE (contrairement à ``_falaise_context``
+    ci-dessus) : ``etude_params['etude_horaire']['annuel']`` est posé sur
+    CHAQUE devis résidentiel par ``services.rafraichir_etude_horaire_devis``
+    dès qu'un équipement à impulsions (piscine, clim…) est déclaré
+    (``etude_horaire._finaliser_glitch``, clés ``part_glitch_*``). Le ratio
+    rendu ici est une DIVISION de deux kWh annuels réels déjà calculés par
+    le moteur — jamais un chiffre inventé : la part de l'énergie perdue en
+    pointe (``part_glitch_sans_kwh``) que la batterie rattrape
+    (``part_glitch_batterie_kwh``).
+    """
+    annuel = (ETUDE.get("etude_horaire") or {}).get("annuel")
+    if not isinstance(annuel, dict):
+        return None
+    _sans = annuel.get("part_glitch_sans_kwh")
+    _batt = annuel.get("part_glitch_batterie_kwh")
+    try:
+        _sans = float(_sans)
+        _batt = float(_batt)
+    except (TypeError, ValueError):
+        return None
+    if _sans <= 0:
+        return None
+    return round(max(0.0, min(_batt, _sans)) / _sans * 100)
+
+
 def page_etude():
     """\u00c9tude d'autoconsommation (industriel) : param\u00e8tres, taux, graphique."""
     e = ETUDE
@@ -2323,6 +2415,46 @@ def page_etude():
         "* Taux d'autoconsommation : part de la production solaire "
         "consommée sur site. Taux de couverture : part de la "
         "consommation totale couverte par le solaire. ") if has_conso else ""
+    # CJ2b-bis — falaise tarifaire / remplissage batterie / part des glitchs.
+    # ADDITIF, comme le bloc bancable ci-dessous : absent des deux sources ⇒
+    # '' → page BYTE-IDENTIQUE à avant ce lot (aucun des deux devis de test
+    # existants ne change de rendu).
+    _falaise_ctx = _falaise_context()
+    _glitch_pct = _part_glitch_pct()
+    falaise_cards = ""
+    falaise_sentence = ""
+    if _falaise_ctx or _glitch_pct is not None:
+        _fcells = []
+        if _falaise_ctx and _falaise_ctx.get("residuel_kwh_mois") is not None:
+            _txt = f"{fnum(_falaise_ctx['residuel_kwh_mois'])} kWh/mois"
+            _fcells.append(card("Résiduel sous la marche", _txt, accent=True))
+        if _falaise_ctx and _falaise_ctx.get("tranche_actuelle"):
+            _fcells.append(
+                card("Tranche actuelle", _esc(_falaise_ctx["tranche_actuelle"])))
+        if _falaise_ctx and _falaise_ctx.get("remplissage_pct") is not None:
+            _fcells.append(card(
+                "Remplissage batterie (moyen)",
+                f"{_falaise_ctx['remplissage_pct']} %"))
+        if _glitch_pct is not None:
+            _fcells.append(card(
+                "Part des pointes rattrapée par la batterie",
+                f"{_glitch_pct} %"))
+        if _fcells:
+            falaise_cards = (
+                f'<div style="display:flex;gap:9px;margin-top:9px;">'
+                f'{"".join(_fcells)}</div>')
+        if (_falaise_ctx and _falaise_ctx.get("tranche_actuelle")
+                and _falaise_ctx.get("residuel_kwh_mois") is not None):
+            _sous = (
+                f" sous la marche {_esc(_falaise_ctx['tranche_apres'])}"
+                if _falaise_ctx.get("tranche_apres") else "")
+            falaise_sentence = (
+                f'<div style="margin-top:8px;font-size:7pt;color:{CG4};">'
+                f'Aujourd&rsquo;hui, votre facture se calcule sur la tranche '
+                f'{_esc(_falaise_ctx["tranche_actuelle"])}. Ce dimensionnement '
+                f'fait atterrir votre consommation résiduelle à '
+                f'{fnum(_falaise_ctx["residuel_kwh_mois"])} kWh/mois{_sous}.'
+                f'</div>')
     # PV77 — bloc bancable ADDITIF : présent uniquement quand le devis porte
     # une simulation (etude_params['simulation']), sinon '' → page inchangée.
     bankable_html = _bankable_block_html(e.get("bankable"))
@@ -2354,6 +2486,8 @@ def page_etude():
     </div>
     <div style="display:flex;gap:9px;margin-bottom:9px;">{cards1}</div>
     <div style="display:flex;gap:9px;">{cards2}</div>
+    {falaise_cards}
+    {falaise_sentence}
     {bankable_html}
     {chart_html}
     <div style="margin-top:10px;font-size:6.5pt;color:{CG4};font-style:italic;">
@@ -2583,6 +2717,17 @@ def page_onepage(items):
                  + (" (estimation)" if SAVINGS_ESTIMATED else "")))
         _sum_cells.append(
             ("Prix par kWc", f"{fnum(round(total / KWC))} MAD/kWc"))
+        # CJ2b-bis — mention falaise/tranche en UNE cellule, seulement si le
+        # contrat DIM2 est posé (voir _falaise_context) : le budget densité
+        # adaptative de cette page ne dépend que du nombre de LIGNES produit
+        # (ci-dessous), pas du nombre de vignettes du résumé — une cellule de
+        # plus dans cette rangée fixe ne fait jamais déborder la page.
+        _fctx_onepage = _falaise_context()
+        if _fctx_onepage and _fctx_onepage.get("residuel_kwh_mois") is not None:
+            _rtxt = f"{fnum(_fctx_onepage['residuel_kwh_mois'])} kWh/mois"
+            if _fctx_onepage.get("tranche_apres"):
+                _rtxt += f" ({_fctx_onepage['tranche_apres']})"
+            _sum_cells.append(("R&#233;siduel vis&#233;", _rtxt))
     else:
         _sum_cells = []
     summary_html = ""
@@ -2926,7 +3071,9 @@ def apply_quote_data(data: dict) -> None:
     global DOC_TEXTS, ACCEPTE_PAR_NOM, DATE_ACCEPTATION
     global DEVISE  # FG52 — devise du document (ISO 4217)
     global SAVINGS_METHOD  # QF3 — bloc « Comment nous calculons vos économies »
+    global WATERMARK_STANDARD  # L-NIV — filigrane PDF public niveau standard
     SAVINGS_METHOD = data.get("savings_method")
+    WATERMARK_STANDARD = data.get("_watermark_standard")
     # QXMT — un dossier MT sans économies d'étude n'imprime AUCUN chiffre
     # d'économies : ceux disponibles ici sont calculés au barème BASSE TENSION.
     global MASQUER_ECONOMIES, TARIF_MT_MENTION

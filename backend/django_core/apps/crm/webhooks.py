@@ -411,6 +411,21 @@ def _extract_web_questionnaire(data):
     _num('surfaceToitureM2', 'surface_toiture_m2', hi=1000000)
     _bool('ombriere', 'ombriere')
     _bool('terrain', 'terrain')
+
+    # ── L-BACK (24/08/2026) — questionnaire d'appel repris par le tunnel web
+    # (présence en journée + équipements électriques). Ces clés portent DÉJÀ
+    # les noms EXACTS des colonnes ``crm.Lead`` (voir models.py, L4/L-BACK) —
+    # ``_map_payload_to_fields`` les extrait ensuite directement sur
+    # ``fields`` (jamais laissées dans le reste ``web_questionnaire``), même
+    # style tolérant : une clé absente/invalide n'écrase rien.
+    _choice('occupation_jour', 'occupation_jour', Lead.OccupationJour.values)
+    _bool('equip_piscine', 'equip_piscine')
+    _num('equip_piscine_pompe_kw', 'equip_piscine_pompe_kw', hi=1000)
+    _bool('equip_voiture_electrique', 'equip_voiture_electrique')
+    _num('equip_ve_km_semaine', 'equip_ve_km_semaine', hi=100000)
+    _bool('equip_clim', 'equip_clim')
+    _num('equip_clim_pieces', 'equip_clim_pieces', hi=1000)
+    _bool('equip_chauffe_eau_electrique', 'equip_chauffe_eau_electrique')
     return out
 
 
@@ -859,6 +874,26 @@ def _map_payload_to_fields(data: dict) -> dict:
             pro_mad = questionnaire.pop('pro_monthly_mad', None)
             if pro_mad is not None:
                 fields['facture_hiver'] = pro_mad
+        # L-BACK — présence en journée + équipements du script d'appel :
+        # colonnes Lead DÉDIÉES (jamais laissées dans web_questionnaire).
+        occ = questionnaire.pop('occupation_jour', None)
+        if occ is not None:
+            fields['occupation_jour'] = occ
+        for equip_key in (
+                'equip_piscine', 'equip_voiture_electrique', 'equip_clim',
+                'equip_chauffe_eau_electrique'):
+            val = questionnaire.pop(equip_key, None)
+            if val is not None:
+                fields[equip_key] = val
+        piscine_kw = questionnaire.pop('equip_piscine_pompe_kw', None)
+        if piscine_kw is not None:
+            fields['equip_piscine_pompe_kw'] = piscine_kw
+        ve_km = questionnaire.pop('equip_ve_km_semaine', None)
+        if ve_km is not None:
+            fields['equip_ve_km_semaine'] = int(ve_km)
+        clim_pieces = questionnaire.pop('equip_clim_pieces', None)
+        if clim_pieces is not None:
+            fields['equip_clim_pieces'] = int(clim_pieces)
         if questionnaire:
             fields['web_questionnaire'] = questionnaire
     estimate = _clean_estimate_shown(

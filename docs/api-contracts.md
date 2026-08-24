@@ -959,13 +959,13 @@
 - frontend/src/api/ventesApi.js :: lienPaiementFacture -> /api/django/ventes/factures/<>/lien-paiement
     detail:texte, expires_at:texte, montant:texte, pay_url:inconnu, provider:inconnu, statut:inconnu, token:inconnu
 - frontend/src/api/ventesApi.js :: postEtudeHorairePreview -> /api/django/ventes/etude-horaire/preview
-    avertissements:inconnu, consommation:objet, detail:texte, dimensionnement:inconnu, etude:inconnu, profil:objet
+    avertissements:inconnu, consommation:objet, detail:texte, dimensionnement:inconnu, estimation_conso:inconnu, etude:inconnu, profil:objet
 - frontend/src/api/ventesApi.js :: rejeterEtapeDevis -> /api/django/ventes/devis/<>/rejeter-etape
     detail:texte, etape_id:inconnu
 - frontend/src/api/ventesApi.js :: setVarianteConfig -> /api/django/ventes/devis/variante-config
     detail:texte, variante_pct:texte
 - frontend/src/api/ventesApi.js :: shareLinkDevis -> /api/django/ventes/devis/<>/share-link
-    gamme:inconnu, path:inconnu, token:inconnu
+    detail:texte, gamme:inconnu, niveau:inconnu, otp_lecture:inconnu, path:inconnu, token:inconnu
 - frontend/src/api/ventesApi.js :: simulerEtudeDevis -> /api/django/ventes/devis/<>/simuler
     detail:texte, job_id:inconnu, status:texte, status_url:inconnu, zones:nombre
 - frontend/src/api/ventesApi.js :: superiorContactStatus -> /api/django/ventes/devis/<>/superior-contact-status

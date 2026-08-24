@@ -1483,3 +1483,108 @@ class BorneChargeDuCheminBatterieTest(SimpleTestCase):
                             'capacite_utilisee_kwh'):
                     self.assertAlmostEqual(obtenu[cle], attendu[cle],
                                            places=12)
+
+
+class EstimationConsoMensuelleTests(SimpleTestCase):
+    """L-BACK T4 (24/08/2026) — décomposition mensuelle base/ajouts/total,
+    contrat public ``estimation_conso``."""
+
+    CONSO_12 = [400.0] * 12
+
+    def test_aucun_equipement_renvoie_none(self):
+        self.assertIsNone(EH.estimation_conso_mensuelle(self.CONSO_12, {}))
+        self.assertIsNone(EH.estimation_conso_mensuelle(self.CONSO_12, None))
+
+    def test_serie_invalide_renvoie_none(self):
+        equip = {'piscine': {'kw': 1.5, 'heures': list(range(10, 18)),
+                             'saisons': ['ete'], 'mode': 'redistribution'}}
+        self.assertIsNone(EH.estimation_conso_mensuelle([100.0] * 11, equip))
+        self.assertIsNone(EH.estimation_conso_mensuelle([], equip))
+
+    def test_piscine_redistribution_retire_de_la_base_ete_seulement(self):
+        equip = {'piscine': {'kw': 1.5, 'heures': list(range(10, 18)),
+                             'saisons': ['ete'], 'mode': 'redistribution'}}
+        bloc = EH.estimation_conso_mensuelle(self.CONSO_12, equip)
+        self.assertIsNotNone(bloc)
+        self.assertEqual(len(bloc['base_mensuelle']), 12)
+        self.assertEqual(len(bloc['totale_mensuelle']), 12)
+        self.assertIn('piscine', bloc['ajouts'])
+        # SAISONS['ete'] = juin/juillet/août/septembre (voir SAISONS ci-dessous
+        # dans pvgis_profils) — seuls ces mois portent un ajout piscine.
+        mois_ete = [i for i, v in enumerate(bloc['ajouts']['piscine']) if v > 0]
+        self.assertTrue(mois_ete)
+        for i in mois_ete:
+            with self.subTest(mois=i + 1):
+                # base = conso - ajout (redistribution : rien n'est ajouté au
+                # total réel, seulement retiré de la « base » affichée).
+                self.assertAlmostEqual(
+                    bloc['base_mensuelle'][i] + bloc['ajouts']['piscine'][i],
+                    self.CONSO_12[i], places=2)
+                self.assertAlmostEqual(
+                    bloc['totale_mensuelle'][i], self.CONSO_12[i], places=2)
+        for i in range(12):
+            if i not in mois_ete:
+                self.assertEqual(bloc['ajouts']['piscine'][i], 0.0)
+                self.assertAlmostEqual(bloc['totale_mensuelle'][i],
+                                       self.CONSO_12[i], places=2)
+
+    def test_ve_addition_grossit_le_total_toutes_saisons(self):
+        equip = {'ve': {'kwh_jour': 4.0, 'heures': [21, 22, 23],
+                        'saisons': None, 'mode': 'addition'}}
+        bloc = EH.estimation_conso_mensuelle(self.CONSO_12, equip)
+        self.assertIsNotNone(bloc)
+        self.assertEqual(bloc['base_mensuelle'], [400.0] * 12)
+        for i in range(12):
+            with self.subTest(mois=i + 1):
+                self.assertGreater(bloc['ajouts']['ve'][i], 0.0)
+                self.assertAlmostEqual(
+                    bloc['totale_mensuelle'][i],
+                    bloc['base_mensuelle'][i] + bloc['ajouts']['ve'][i],
+                    places=2)
+
+    def test_couche_sans_grandeur_reelle_ne_produit_aucun_ajout(self):
+        equip = {'piscine': {'kw': 0, 'heures': [], 'saisons': ['ete'],
+                             'mode': 'redistribution'}}
+        self.assertIsNone(EH.estimation_conso_mensuelle(self.CONSO_12, equip))
+
+
+class JoursTypesPublicsTests(SimpleTestCase):
+    """L-BACK T4 — les 4 mois publics (contrat ``jours_types``), Casablanca
+    (table de référence PVGIS, aucun accès réseau)."""
+
+    VILLE = 'Casablanca'
+
+    def _conso(self, mad=1200):
+        conso, _source, _detail = EH.profil_depuis_factures(
+            facture_hiver_mad=mad)
+        return conso
+
+    def test_quatre_mois_avec_les_six_cles_du_contrat(self):
+        bloc = EH.jours_types_publics(
+            kwc=6.0, conso_kwh_mensuelles=self._conso(), ville=self.VILLE,
+            occupation=CJ.OCCUPATION_PRESENCE)
+        self.assertIsNotNone(bloc)
+        self.assertEqual(set(bloc), {'1', '4', '7', '11'})
+        for numero, mois in bloc.items():
+            with self.subTest(mois=numero):
+                self.assertEqual(len(mois['prod_kw']), 24)
+                self.assertEqual(len(mois['conso_kw']), 24)
+                for cle in ('conso_jour_kwh', 'prod_jour_kwh',
+                            'autoconsomme_kwh', 'surplus_kwh'):
+                    self.assertIsInstance(mois[cle], float)
+                # Conservation : autoconsommé ≤ min(prod, conso) du jour.
+                self.assertLessEqual(
+                    mois['autoconsomme_kwh'],
+                    min(mois['prod_jour_kwh'], mois['conso_jour_kwh']) + 1e-6)
+
+    def test_sans_puissance_renvoie_none(self):
+        self.assertIsNone(EH.jours_types_publics(
+            kwc=0, conso_kwh_mensuelles=self._conso(), ville=self.VILLE))
+
+    def test_sans_localisation_renvoie_none(self):
+        self.assertIsNone(EH.jours_types_publics(
+            kwc=6.0, conso_kwh_mensuelles=self._conso(), ville=None))
+
+    def test_sans_consommation_renvoie_none(self):
+        self.assertIsNone(EH.jours_types_publics(
+            kwc=6.0, conso_kwh_mensuelles=[], ville=self.VILLE))

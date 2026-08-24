@@ -1273,6 +1273,15 @@ def equipements_pour_devis(devis):
         'clim': lead.equip_clim,
         'clim_pieces': lead.equip_clim_pieces,
         'chauffe_eau_electrique': lead.equip_chauffe_eau_electrique,
+        # L-BACK (24/08/2026) — grandeurs complémentaires (voir models.py) :
+        # kW/créneau chauffe-eau, kW/créneau chargeur VE, kW clim déclarée,
+        # heures/jour piscine. Mêmes None-par-défaut ; l'appelant décide.
+        'chauffe_eau_kw': lead.equip_chauffe_eau_kw,
+        'chauffe_eau_creneau': lead.equip_chauffe_eau_creneau,
+        've_chargeur_kw': lead.equip_ve_chargeur_kw,
+        've_creneau': lead.equip_ve_creneau,
+        'clim_kw': lead.equip_clim_kw,
+        'piscine_heures_jour': lead.equip_piscine_heures_jour,
     }
 
 

@@ -1,4 +1,4 @@
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch } from 'react-redux'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
@@ -82,6 +82,8 @@ import { formatNumber, formatMAD, formatDateTime } from '../../lib/format'
 import {
   construireCorpsPreview, etiquetteSource, lignesAffichables,
   useEtudeHorairePreview, verdictBatteriePourTaille,
+  falaiseAffichable, glitchAnnuel, balayageStockageAffichable,
+  estimationConsoAffichable, LIBELLES_MOIS,
 } from '../../features/ventes/etudeHorairePreview'
 
 // QX43 — 4 marchés réels : industriel et commercial sont désormais distincts.
@@ -819,6 +821,7 @@ export default function DevisGenerator({
     ? construireCorpsPreview({
         modeInstallation,
         editId,
+        leadId,
         fHiver,
         fEte,
         eteDifferente: !!fEte && Number(fEte) > 0,
@@ -843,6 +846,21 @@ export default function DevisGenerator({
   const etudeHoraireSourceLabel = etudeHoraireDonnees?.consommation
     ? etiquetteSource(etudeHoraireDonnees.consommation.source)
     : null
+  // L-FRONT lot 4 — falaise tarifaire (palier visé + meilleure combinaison du
+  // balayage qui y passe), résumé annuel des impulsions équipements (glitch)
+  // et décomposition mensuelle de la consommation estimée : les trois `null`
+  // quand le moteur n'a rien calculé (mode non résidentiel, Z2, aucun
+  // équipement concentrable) — jamais un bloc affiché sur un chiffre absent.
+  const etudeHoraireFalaise = useMemo(
+    () => falaiseAffichable(etudeHoraireDonnees?.dimensionnement),
+    [etudeHoraireDonnees])
+  const etudeHoraireGlitch = useMemo(
+    () => glitchAnnuel(etudeHoraireDonnees?.etude),
+    [etudeHoraireDonnees])
+  const etudeHoraireEstimationConso = useMemo(
+    () => estimationConsoAffichable(etudeHoraireDonnees?.estimation_conso),
+    [etudeHoraireDonnees])
+  const [ligneStockageOuverte, setLigneStockageOuverte] = useState(null)
 
   // CJ2b — chiffres AFFICHÉS dans le bloc « Aperçu de la Simulation »
   // (Production / Économies / ROI) : le serveur horaire gagne dès qu'il a
@@ -3322,6 +3340,8 @@ export default function DevisGenerator({
                           <th className="py-1 pr-3 font-medium">Éco. sans (MAD/an)</th>
                           <th className="py-1 pr-3 font-medium">Éco. avec (MAD/an)</th>
                           <th className="py-1 pr-3 font-medium">Payback</th>
+                          <th className="py-1 pr-3 font-medium">Résiduel après (kWh/mois)</th>
+                          <th className="py-1 pr-3 font-medium">Remplissage batterie</th>
                           <th className="py-1" />
                         </tr>
                       </thead>
@@ -3329,35 +3349,109 @@ export default function DevisGenerator({
                         {etudeHoraireLignes.map((ligne) => {
                           const estRecommandee = etudeHoraireDonnees?.dimensionnement
                             ?.recommandation?.panneaux === ligne.panneaux
+                          // L-FRONT lot 4 — résiduel/tranche après la meilleure option
+                          // chiffrée (avec batterie si vendable, sinon sans), et
+                          // remplissage moyen du stockage retenu pour cette taille.
+                          // `null`/absent -> cellule vide, jamais un calcul de repli.
+                          const residuelApres = ligne.batterieVendable
+                            ? (ligne.residuel_avec_kwh_mois ?? ligne.residuel_kwh_mois)
+                            : ligne.residuel_sans_kwh_mois
+                          const trancheApres = ligne.batterieVendable
+                            ? (ligne.tranche_apres_avec?.libelle ?? ligne.tranche_apres?.libelle)
+                            : ligne.tranche_apres_sans?.libelle
+                          const remplissageMoyen = ligne.remplissage?.moyen
+                          const paliersStockage = balayageStockageAffichable(ligne)
+                          const stockageOuvert = ligneStockageOuverte === ligne.panneaux
                           return (
-                            <tr key={ligne.panneaux}
-                                className={`border-b border-border${estRecommandee ? ' bg-success/10' : ''}`}>
-                              <td className="py-1.5 pr-3">
-                                {formatNumber(ligne.kwc, { decimals: 2 })} kWc
-                                {estRecommandee && <span className="gen-rec-badge"> ★ Recommandé</span>}
-                              </td>
-                              <td className="py-1.5 pr-3">
-                                {ligne.onduleur} — {formatNumber(ligne.ratio_onduleur_kwc * 100, { decimals: 0 })} % du kWc
-                                {!ligne.regle_80_pct_respectee && (
-                                  <span className="text-warning"> (sous 80 %)</span>
-                                )}
-                              </td>
-                              <td className="py-1.5 pr-3">{formatNumber(ligne.taux_autoconso_sans * 100, { decimals: 0 })} %</td>
-                              <td className="py-1.5 pr-3">{formatNumber(ligne.couverture_sans * 100, { decimals: 0 })} %</td>
-                              <td className="py-1.5 pr-3">{fmtNum(Math.round(ligne.economie_sans_mad))}</td>
-                              <td className="py-1.5 pr-3">
-                                {ligne.batterieVendable
-                                  ? fmtNum(Math.round(ligne.economie_avec_mad))
-                                  : <span className="text-muted-foreground">{ligne.raisonBatterie}</span>}
-                              </td>
-                              <td className="py-1.5 pr-3">{ligne.payback_sans_annees != null ? `${ligne.payback_sans_annees} ans` : 'N/A'}</td>
-                              <td className="py-1.5">
-                                <Button type="button" size="sm" variant="outline"
-                                        onClick={() => appliquerTailleDimensionnement(ligne)}>
-                                  Appliquer cette taille
-                                </Button>
-                              </td>
-                            </tr>
+                            <Fragment key={ligne.panneaux}>
+                              <tr
+                                  className={`border-b border-border${estRecommandee ? ' bg-success/10' : ''}`}>
+                                <td className="py-1.5 pr-3">
+                                  {formatNumber(ligne.kwc, { decimals: 2 })} kWc
+                                  {estRecommandee && <span className="gen-rec-badge"> ★ Recommandé</span>}
+                                </td>
+                                <td className="py-1.5 pr-3">
+                                  {ligne.onduleur} — {formatNumber(ligne.ratio_onduleur_kwc * 100, { decimals: 0 })} % du kWc
+                                  {!ligne.regle_80_pct_respectee && (
+                                    <span className="text-warning"> (sous 80 %)</span>
+                                  )}
+                                </td>
+                                <td className="py-1.5 pr-3">{formatNumber(ligne.taux_autoconso_sans * 100, { decimals: 0 })} %</td>
+                                <td className="py-1.5 pr-3">{formatNumber(ligne.couverture_sans * 100, { decimals: 0 })} %</td>
+                                <td className="py-1.5 pr-3">{fmtNum(Math.round(ligne.economie_sans_mad))}</td>
+                                <td className="py-1.5 pr-3">
+                                  {ligne.batterieVendable
+                                    ? fmtNum(Math.round(ligne.economie_avec_mad))
+                                    : <span className="text-muted-foreground">{ligne.raisonBatterie}</span>}
+                                </td>
+                                <td className="py-1.5 pr-3">{ligne.payback_sans_annees != null ? `${ligne.payback_sans_annees} ans` : 'N/A'}</td>
+                                <td className="py-1.5 pr-3" data-testid="etude-horaire-residuel">
+                                  {residuelApres != null
+                                    ? <>{fmtNum(Math.round(residuelApres))} kWh{trancheApres && <> — {trancheApres}</>}</>
+                                    : '—'}
+                                </td>
+                                <td className="py-1.5 pr-3" data-testid="etude-horaire-remplissage">
+                                  {remplissageMoyen != null
+                                    ? `${formatNumber(remplissageMoyen * 100, { decimals: 0 })} %`
+                                    : '—'}
+                                </td>
+                                <td className="py-1.5">
+                                  <div style={{ display: 'flex', gap: '0.375rem' }}>
+                                    <Button type="button" size="sm" variant="outline"
+                                            onClick={() => appliquerTailleDimensionnement(ligne)}>
+                                      Appliquer cette taille
+                                    </Button>
+                                    {paliersStockage.length > 0 && (
+                                      <Button type="button" size="sm" variant="ghost"
+                                              data-testid="etude-horaire-stockage-toggle"
+                                              onClick={() => setLigneStockageOuverte(
+                                                stockageOuvert ? null : ligne.panneaux)}>
+                                        {stockageOuvert ? 'Masquer stockage' : 'Détail stockage'}
+                                      </Button>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                              {stockageOuvert && paliersStockage.length > 0 && (
+                                <tr className="border-b border-border">
+                                  <td colSpan={9} className="bg-muted/30 py-2 pr-3">
+                                    <div style={{ overflowX: 'auto' }}>
+                                      <table className="w-full border-collapse text-xs"
+                                             data-testid="etude-horaire-balayage-stockage">
+                                        <thead>
+                                          <tr className="text-left text-muted-foreground">
+                                            <th className="py-1 pr-3 font-medium">Batterie (kWh)</th>
+                                            <th className="py-1 pr-3 font-medium">Coût TTC</th>
+                                            <th className="py-1 pr-3 font-medium">Éco. (MAD/an)</th>
+                                            <th className="py-1 pr-3 font-medium">Éco. marginale</th>
+                                            <th className="py-1 pr-3 font-medium">Payback</th>
+                                            <th className="py-1 pr-3 font-medium">Résiduel (kWh/mois)</th>
+                                            <th className="py-1 pr-3 font-medium">Remplissage moyen</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {paliersStockage.map((p) => (
+                                            <tr key={p.capaciteKwh}>
+                                              <td className="py-1 pr-3">{fmtNum(p.capaciteKwh)} kWh</td>
+                                              <td className="py-1 pr-3">{p.coutTtc != null ? `${fmtNum(Math.round(p.coutTtc))} MAD` : '—'}</td>
+                                              <td className="py-1 pr-3">{p.economieMad != null ? fmtNum(Math.round(p.economieMad)) : '—'}</td>
+                                              <td className="py-1 pr-3">{p.economieMarginaleMad != null ? fmtNum(Math.round(p.economieMarginaleMad)) : '—'}</td>
+                                              <td className="py-1 pr-3">{p.paybackAnnees != null ? `${p.paybackAnnees} ans` : '—'}</td>
+                                              <td className="py-1 pr-3">
+                                                {p.residuelKwhMois != null
+                                                  ? <>{fmtNum(Math.round(p.residuelKwhMois))}{p.trancheApres && <> — {p.trancheApres}</>}</>
+                                                  : '—'}
+                                              </td>
+                                              <td className="py-1 pr-3">{p.remplissageMoyen != null ? `${formatNumber(p.remplissageMoyen * 100, { decimals: 0 })} %` : '—'}</td>
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+                            </Fragment>
                           )
                         })}
                       </tbody>
@@ -3386,6 +3480,94 @@ export default function DevisGenerator({
                         </div>
                       )
                     })}
+                  </div>
+                )}
+                {/* L-FRONT lot 4 — falaise tarifaire : la marche du barème juste
+                    sous la consommation actuelle (« land frankly under the
+                    cliff »), + la meilleure combinaison du balayage qui y passe.
+                    Omis en bloc quand le moteur n'a rien calculé. */}
+                {etudeHoraireFalaise && (
+                  <div className="mt-3 rounded-lg border border-border p-3" data-testid="etude-horaire-falaise">
+                    <div className="text-xs font-medium">Falaise tarifaire</div>
+                    <div className="text-xs text-muted-foreground">
+                      Palier visé : {fmtNum(etudeHoraireFalaise.cibleKwhMois)} kWh/mois
+                      {etudeHoraireFalaise.trancheActuelle && (
+                        <> — actuellement en {etudeHoraireFalaise.trancheActuelle}</>
+                      )}
+                      {etudeHoraireFalaise.trancheVisee && (
+                        <>, marche visée : {etudeHoraireFalaise.trancheVisee}</>
+                      )}
+                      .
+                    </div>
+                    {etudeHoraireFalaise.meilleure && (
+                      <div className="mt-1 text-xs text-muted-foreground" data-testid="etude-horaire-meilleure-falaise">
+                        Meilleure combinaison sous la marche : {etudeHoraireFalaise.meilleure.panneaux} panneaux
+                        {etudeHoraireFalaise.meilleure.kwc != null && <> ({formatNumber(etudeHoraireFalaise.meilleure.kwc, { decimals: 2 })} kWc)</>}
+                        {etudeHoraireFalaise.meilleure.batterieKwh
+                          ? <> + {fmtNum(etudeHoraireFalaise.meilleure.batterieKwh)} kWh de batterie</>
+                          : ''}
+                        {etudeHoraireFalaise.meilleure.residuelKwhMois != null && (
+                          <> — résiduel {fmtNum(Math.round(etudeHoraireFalaise.meilleure.residuelKwhMois))} kWh/mois
+                            {etudeHoraireFalaise.meilleure.trancheApres && <> ({etudeHoraireFalaise.meilleure.trancheApres})</>}</>
+                        )}
+                        {etudeHoraireFalaise.meilleure.paybackAnnees != null && (
+                          <> — payback {etudeHoraireFalaise.meilleure.paybackAnnees} ans</>
+                        )}.
+                      </div>
+                    )}
+                  </div>
+                )}
+                {/* L-FRONT lot 4 — résumé annuel des impulsions équipements
+                    (glitch) : n'apparaît que si le moteur a vraiment déclaré au
+                    moins un équipement concentrable (part_glitch additif). */}
+                {etudeHoraireGlitch && (
+                  <div className="mt-3 rounded-lg border border-border p-3" data-testid="etude-horaire-glitch">
+                    <div className="text-xs font-medium">Pointes équipements ({etudeHoraireGlitch.couches.join(', ')})</div>
+                    <div className="text-xs text-muted-foreground">
+                      {fmtNum(Math.round(etudeHoraireGlitch.sansKwh))} kWh/an partent au réseau sans batterie
+                      {etudeHoraireGlitch.batterieKwh != null && (
+                        <>, dont {fmtNum(Math.round(etudeHoraireGlitch.batterieKwh))} kWh/an rattrapés par le stockage</>
+                      )}.
+                    </div>
+                  </div>
+                )}
+                {/* L-FRONT lot 4 — décomposition mensuelle de la consommation
+                    estimée (base + chaque équipement déclaré), pour que le
+                    commercial voie chaque ajout compté. Omise en bloc si la clé
+                    `estimation_conso` est absente du payload. */}
+                {etudeHoraireEstimationConso && (
+                  <div className="mt-3" style={{ overflowX: 'auto' }}>
+                    <div className="mb-1 text-xs font-medium">Décomposition mensuelle de la consommation (kWh)</div>
+                    <table className="w-full border-collapse text-xs" data-testid="etude-horaire-estimation-conso">
+                      <thead>
+                        <tr className="border-b border-border text-left text-muted-foreground">
+                          <th className="py-1 pr-3 font-medium">Poste</th>
+                          {LIBELLES_MOIS.map((m) => <th key={m} className="py-1 pr-2 font-medium">{m}</th>)}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr className="border-b border-border">
+                          <td className="py-1 pr-3">Base</td>
+                          {etudeHoraireEstimationConso.base.map((v, i) => (
+                            <td key={LIBELLES_MOIS[i]} className="py-1 pr-2">{fmtNum(Math.round(v))}</td>
+                          ))}
+                        </tr>
+                        {etudeHoraireEstimationConso.ajouts.map((a) => (
+                          <tr key={a.cle} className="border-b border-border">
+                            <td className="py-1 pr-3">+ {a.libelle}</td>
+                            {a.valeurs.map((v, i) => (
+                              <td key={LIBELLES_MOIS[i]} className="py-1 pr-2">{fmtNum(Math.round(v))}</td>
+                            ))}
+                          </tr>
+                        ))}
+                        <tr className="font-medium">
+                          <td className="py-1 pr-3">Total</td>
+                          {etudeHoraireEstimationConso.total.map((v, i) => (
+                            <td key={LIBELLES_MOIS[i]} className="py-1 pr-2">{fmtNum(Math.round(v))}</td>
+                          ))}
+                        </tr>
+                      </tbody>
+                    </table>
                   </div>
                 )}
               </div>

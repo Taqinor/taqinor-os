@@ -13,7 +13,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
-from apps.crm.models import Client
+from apps.crm.models import Client, Lead
 from apps.stock.models import Produit
 from apps.ventes.models import Devis
 
@@ -101,6 +101,41 @@ class Qx21AtomicDevisTests(TestCase):
         devis.refresh_from_db()
         self.assertEqual(devis.lignes.count(), 1)
         self.assertEqual(devis.lignes.first().produit_id, self.p2.id)
+
+    def test_atomic_create_poses_etude_horaire_and_dimensionnement(self):
+        """L-QA1 (24/08/2026) — le chemin de CRÉATION du générateur
+        (``POST /devis/atomic/``) doit poser ``etude_params['etude_horaire']``
+        ET ``etude_params['dimensionnement']`` dès la création, exactement
+        comme ``replace-lines`` (l'édition) le fait déjà — sans qu'un
+        enregistrement ultérieur soit nécessaire pour les faire apparaître.
+        Panneau nommé 'Panneau ... 710W' pour que ``panneaux_et_watt_lu`` lise
+        une puissance kWc (14 × 710 W), lead à Casablanca (table de référence
+        PVGIS, aucun accès réseau) avec une facture d'hiver réelle."""
+        lead = Lead.objects.create(
+            company=self.company, nom='Lead', prenom='QX21Atomic',
+            telephone='+212600000057', ville='Casablanca',
+            facture_hiver=1800, ete_differente=False)
+        panneau = Produit.objects.create(
+            company=self.company, nom='Panneau Canadien Solar 710W',
+            sku='QX21-PV710', prix_vente=Decimal('1166.67'),
+            quantite_stock=50)
+        resp = self.api.post('/api/django/ventes/devis/atomic/', {
+            'lead': lead.id,
+            'statut': 'brouillon', 'taux_tva': '20',
+            'mode_installation': 'residentiel',
+            'lignes': [
+                {'produit': panneau.id, 'quantite': '14',
+                 'prix_unitaire': '1166.67',
+                 'designation': 'Panneau Canadien Solar 710W'},
+            ],
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        devis = Devis.objects.get(id=resp.data['id'])
+        etude_params = devis.etude_params or {}
+        self.assertIn('etude_horaire', etude_params)
+        self.assertIsNotNone(etude_params['etude_horaire'])
+        self.assertIn('dimensionnement', etude_params)
+        self.assertIsNotNone(etude_params['dimensionnement'])
 
     def test_replace_lines_rollback_preserves_old(self):
         devis = Devis.objects.create(

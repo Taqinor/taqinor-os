@@ -4,14 +4,6 @@
 # liste (nouveau serializer non resolu, nouvelle collision d'operationId,
 # nouveau type non resolu...). Une entree qui disparait est un progres :
 # elle peut etre retiree d'ici lors de la prochaine regeneration.
-# NTMKT45 (lot crm_ventes vague 2) — CampagneViewSetAudite (apps/marketing/views.py)
-# etend CampagneViewSet (apps/compta/views.py) SANS toucher a son serializer :
-# les 4 avertissements ci-dessous sont le MEME defaut deja accepte 4 lignes
-# plus haut pour CampagneViewSet > CampagneSerializer (get_taux_*_pct non type),
-# duplique uniquement parce que drf-spectacular signe par nom de classe de vue.
-# Le vrai correctif (typer les SerializerMethodField de CampagneSerializer)
-# vit dans apps/compta, hors perimetre d'ecriture CRM_VENTES (contrat de
-# propriete docs/plans/PLAN_CRM_VENTES.md) : jamais touche par cette vue fine.
 Error|AccountAuditView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|AchatsParametresViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|AdChatterView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base

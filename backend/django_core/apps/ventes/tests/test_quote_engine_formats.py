@@ -652,6 +652,106 @@ class TestPdfFormats(TestCase):
                        {'pr': {'loss_breakdown': {}}}):
             self.assertEqual(G._bankable_block_html(entree), '')
 
+    # ── CJ2b-bis (L-PDF, lot 4) — falaise tarifaire / remplissage batterie /
+    # part des glitchs, additifs sur la page Étude. ``dimensionnement`` suit
+    # le contrat ``apps.ventes.dimensionnement.recommander_taille`` (le même
+    # que ``POST /ventes/etude-horaire/preview/`` — voir
+    # ``apps/ventes/contract_samples/etude_horaire.json``) : AUCUN devis réel
+    # ne le porte encore ([HANDOFF backend], voir generate_devis_premium.
+    # _falaise_context), donc ces tests le posent directement pour prouver le
+    # rendu une fois le producteur câblé. ``etude_horaire`` en revanche EST
+    # déjà posé sur de vrais devis par ``services.rafraichir_etude_horaire_
+    # devis`` — le sous-ensemble ``annuel.part_glitch_*`` testé ici est réel.
+    _DIMENSIONNEMENT_SAMPLE = {
+        'falaise': {
+            'cible_kwh_mois': 500.0,
+            'tranche_actuelle': {'rang': 6, 'libelle': 'Tranche 6 (> 500 kWh)'},
+            'tranche_visee': {'rang': 5, 'libelle': 'Tranche 5 (401-500 kWh)'},
+        },
+        'meilleure_falaise': {
+            'panneaux': 14, 'kwc': 7.7, 'batterie_kwh': 10.0,
+            'residuel_kwh_mois': 420.0,
+            'tranche_apres': {'rang': 5, 'libelle': 'Tranche 5 (401-500 kWh)'},
+            'remplissage': {
+                'moyen': 0.62,
+                'pire_mois': {'mois': 1, 'ratio': 0.62,
+                              'charge_jour_kwh': 8.0, 'surplus_jour_kwh': 5.0},
+            },
+            'cible_kwh_mois': 500.0,
+        },
+    }
+
+    _ETUDE_HORAIRE_GLITCH_SAMPLE = {
+        'annuel': {
+            'part_glitch_sans_kwh': 180.0,
+            'part_glitch_avec_kwh': 60.0,
+            'part_glitch_batterie_kwh': 120.0,
+            'part_glitch_sans_mad': 216.0,
+            'part_glitch_avec_mad': 72.0,
+        },
+    }
+
+    def _devis_avec_falaise(self, dimensionnement=None, etude_horaire=None):
+        etude = {**DEUX_OPTIONS, **self._ETUDE_INDUSTRIELLE}
+        if dimensionnement is not None:
+            etude['dimensionnement'] = dimensionnement
+        if etude_horaire is not None:
+            etude['etude_horaire'] = etude_horaire
+        self.devis.mode_installation = 'industriel'
+        self.devis.etude_params = etude
+        self.devis.save()
+        return self.devis
+
+    def test_cj2b_bis_falaise_et_remplissage_rendus_quand_le_contrat_existe(self):
+        self._devis_avec_falaise(dimensionnement=self._DIMENSIONNEMENT_SAMPLE)
+        html, doc = self._render({'include_etude': True})
+        self.assertEqual(len(doc.pages), 4)
+        self.assertIn('Résiduel sous la marche', html)
+        self.assertIn('420', html)
+        self.assertIn('Tranche 5', html)
+        self.assertIn('Tranche 6', html)
+        self.assertIn('Remplissage batterie', html)
+        self.assertIn('62 %', html)  # espace insécable posée par la passe typo du moteur
+
+    def test_cj2b_bis_part_glitch_rendue_quand_le_bloc_horaire_existe(self):
+        self._devis_avec_falaise(etude_horaire=self._ETUDE_HORAIRE_GLITCH_SAMPLE)
+        html, doc = self._render({'include_etude': True})
+        self.assertEqual(len(doc.pages), 4)
+        self.assertIn('Part des pointes rattrapée par la batterie', html)
+        self.assertIn('67 %', html)  # 120 / 180 = 66,7 % → arrondi 67 (espace insécable, passe typo)
+
+    def test_cj2b_bis_absent_ne_change_rien(self):
+        """Sans ``dimensionnement`` ni glitch : page Étude byte-identique à
+        avant ce lot — aucune des trois nouvelles cartes n'apparaît."""
+        self._devis_avec_falaise()
+        html, doc = self._render({'include_etude': True})
+        self.assertEqual(len(doc.pages), 4)
+        for texte in ('Résiduel sous la marche', 'Remplissage batterie',
+                      'Part des pointes rattrapée par la batterie'):
+            self.assertNotIn(texte, html)
+
+    def test_cj2b_bis_dimensionnement_malforme_est_ignore(self):
+        """Contrat cassé (types inattendus) : omission propre, jamais une
+        exception ni un tiret fabriqué."""
+        self._devis_avec_falaise(
+            dimensionnement={'falaise': 'invalide', 'meilleure_falaise': None})
+        html, doc = self._render({'include_etude': True})
+        self.assertEqual(len(doc.pages), 4)
+        self.assertNotIn('Résiduel sous la marche', html)
+
+    def test_cj2b_bis_onepage_mentionne_le_residuel_quand_present(self):
+        self._devis_avec_falaise(dimensionnement=self._DIMENSIONNEMENT_SAMPLE)
+        html, doc = self._render({'pdf_mode': 'onepage'})
+        self.assertEqual(len(doc.pages), 1)
+        self.assertIn('R&#233;siduel vis&#233;', html)
+        self.assertIn('420', html)
+
+    def test_cj2b_bis_onepage_sans_contrat_est_celui_d_hier(self):
+        self._devis_avec_falaise()
+        html, doc = self._render({'pdf_mode': 'onepage'})
+        self.assertEqual(len(doc.pages), 1)
+        self.assertNotIn('R&#233;siduel vis&#233;', html)
+
     def test_pompage_summary_on_onepage(self):
         """A pompage quote shows pump CV/débit/HMT in the one-page summary."""
         self.devis.mode_installation = 'agricole'

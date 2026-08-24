@@ -1340,6 +1340,32 @@ class ShareLink(models.Model):
     # nullable → aucun lien existant n'en porte (comportement inchangé).
     engagement_triggers_fired = models.JSONField(null=True, blank=True)
 
+    # ── L-NIV (fondateur 24/08/2026) — NIVEAU d'affichage de la proposition
+    # publique. Deux niveaux, RÉVOCABLES sans régénérer le jeton : « standard »
+    # (par défaut pour un prospect pas encore qualifié) dégrade quelques
+    # surfaces PUBLIQUES (schéma unifilaire simplifié, roof_layout omis, kit
+    # agrégé, note neutre, filigrane PDF) ; « confiance » = comportement
+    # actuel byte-identique (marques/modèles et TOUS les chiffres identiques
+    # dans les deux niveaux — jamais dégradés). La migration donne « confiance »
+    # aux lignes EXISTANTES (déjà partagées sous comportement complet) et
+    # « standard » aux NOUVEAUX liens (``default`` du champ, appliqué à toute
+    # création après la migration) — voir la migration 0100 pour le détail.
+    NIVEAU_STANDARD = 'standard'
+    NIVEAU_CONFIANCE = 'confiance'
+    NIVEAU_CHOICES = (
+        (NIVEAU_STANDARD, 'Standard'),
+        (NIVEAU_CONFIANCE, 'Confiance'),
+    )
+    niveau = models.CharField(
+        max_length=16, choices=NIVEAU_CHOICES, default=NIVEAU_STANDARD,
+        verbose_name="Niveau d'affichage de la proposition")
+    # otp_lecture — quand True, la LECTURE de la proposition publique (pas
+    # seulement la signature QJ11/QX10) exige un code OTP vérifié. Défaut
+    # False : comportement inchangé pour tout lien existant ou nouveau tant
+    # que le commercial ne l'active pas explicitement.
+    otp_lecture = models.BooleanField(
+        default=False, verbose_name='OTP requis pour consulter')
+
     class Meta:
         ordering = ['-created_at']
         indexes = [models.Index(fields=['token'])]

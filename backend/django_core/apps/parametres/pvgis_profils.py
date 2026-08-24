@@ -444,12 +444,42 @@ def cle_ville(ville):
 
     Aucune approximation : une ville absente de la table renvoie ``None`` et
     l'appelant OMET la donnée (Q6), il n'invente pas une ville voisine.
+
+    L-QA1 (24/08/2026) FIX2 — repli TOLÉRANT quand la correspondance exacte
+    échoue. Le tunnel web range du texte LIBRE dans ``Lead.ville`` (cas réel :
+    « Hay Riad, Rabat »), et l'égalité stricte échouait alors avec « ni GPS,
+    ni ville reconnue » alors que « Rabat » figure bel et bien dans la table.
+    Le repli cherche un nom de ville CONNU comme MOT ENTIER dans le texte
+    (:func:`_cle_ville_tolerante`) — jamais une ville hors table devinée, Q6
+    tient toujours : un texte sans aucune ville connue reste ``None``.
     """
     key = _normaliser(ville)
     if not key:
         return None
-    key = _ORTHOGRAPHES.get(key, key)
-    return key if key in PRODUCTIBLE_MENSUEL_VILLE else None
+    alias = _ORTHOGRAPHES.get(key, key)
+    if alias in PRODUCTIBLE_MENSUEL_VILLE:
+        return alias
+    return _cle_ville_tolerante(key)
+
+
+def _cle_ville_tolerante(texte_normalise):
+    """Cherche un nom de ville CONNU (table + orthographes) comme séquence de
+    MOTS ENTIERS dans ``texte_normalise`` (déjà passé par :func:`_normaliser`),
+    virgules traitées comme des séparateurs — ``None`` si aucune ville connue
+    n'apparaît. Les candidats multi-mots (« el jadida ») sont essayés AVANT
+    les mono-mots pour ne jamais laisser un mot isolé chevaucher un nom
+    composé."""
+    mots = texte_normalise.replace(',', ' ').split()
+    if not mots:
+        return None
+    candidats = set(PRODUCTIBLE_MENSUEL_VILLE) | set(_ORTHOGRAPHES)
+    for candidat in sorted(candidats, key=lambda c: -len(c.split())):
+        mots_candidat = candidat.split()
+        n = len(mots_candidat)
+        for i in range(len(mots) - n + 1):
+            if mots[i:i + n] == mots_candidat:
+                return _ORTHOGRAPHES.get(candidat, candidat)
+    return None
 
 
 def ville_connue(ville) -> bool:

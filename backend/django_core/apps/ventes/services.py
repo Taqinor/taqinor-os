@@ -4111,6 +4111,93 @@ def rafraichir_etude_horaire_devis(devis, *, force=False):
         return None
 
 
+def rafraichir_dimensionnement_devis(devis, *, force=False):
+    """T5 (24/08/2026) — pose ``etude_params['dimensionnement']`` sur un devis
+    RÉSIDENTIEL, même point d'entrée-esprit que
+    :func:`rafraichir_etude_horaire_devis` (RÉSIDENTIEL STRICT, mêmes chemins
+    d'écriture) mais pour le TABLEAU de dimensionnement
+    (``apps.ventes.dimensionnement.recommander_taille``) plutôt que le bloc
+    horaire d'UNE taille : c'est ce que lit désormais le moteur PDF
+    (``ETUDE['dimensionnement']``) et le payload public (T4 — falaise,
+    tranche visée, régime batterie).
+
+    Contrairement à ``rafraichir_etude_horaire_devis``, aucune donnée de
+    LIGNES n'entre dans ce calcul (le tableau balaye TOUTES les tailles
+    candidates, il ne lit pas la composition posée) : ``force`` n'a donc de
+    sens ici que pour forcer un recalcul après un changement de profil
+    (factures/occupation/équipements) — inchangé sinon, on ne recalcule pas à
+    chaque sauvegarde de devis pour un profil qui n'a pas bougé.
+
+    Ne lève JAMAIS, ne touche NI le statut NI les lignes NI les totaux
+    (règle #4). ``None`` (⇒ clé ABSENTE) quand le profil n'est pas
+    exploitable (pas de facture, pas de société, catalogue incomplet,
+    localisation non résolue) — jamais un tableau inventé.
+    """
+    try:
+        mode = (getattr(devis, 'mode_installation', None) or '').strip().lower()
+        if mode != 'residentiel':
+            return None
+        company = getattr(devis, 'company', None)
+        if company is None:
+            return None
+
+        from apps.crm.selectors import (
+            lead_bills_for_devis, site_location_for_devis)
+        from apps.ventes.courbes_journalieres import (
+            equipements_du_devis, occupation_du_devis)
+        from apps.ventes.etude_horaire import profil_depuis_factures
+
+        bills = lead_bills_for_devis(devis) or {}
+        etude_params = getattr(devis, 'etude_params', None) or {}
+        conso, source_conso, _detail = profil_depuis_factures(
+            facture_hiver_mad=bills.get('facture_hiver'),
+            facture_ete_mad=bills.get('facture_ete'),
+            ete_differente=bills.get('ete_differente'),
+            factures_mensuelles_mad=etude_params.get(
+                'factures_mensuelles_reelles'),
+            conso_kwh_mensuelles=etude_params.get('conso_kwh_mensuelles'))
+        if not conso:
+            if not force and 'dimensionnement' not in etude_params:
+                return None
+            etude = dict(etude_params)
+            etude.pop('dimensionnement', None)
+            devis.etude_params = etude
+            devis.save(update_fields=['etude_params'])
+            return None
+
+        if not force and 'dimensionnement' in etude_params:
+            return etude_params['dimensionnement']
+
+        localisation = site_location_for_devis(devis) or {}
+        ville = localisation.get('site_ville')
+        lat, lon = localisation.get('gps_lat'), localisation.get('gps_lng')
+        # Même relai que ``etude_horaire._etude_horaire_pour_devis`` : sans
+        # ``mode_installation`` explicite, ``_occupation`` retombe sur le
+        # défaut NON résidentiel — on lui donne donc le mode du devis (déjà
+        # vérifié 'residentiel' ci-dessus) pour que le défaut fondateur
+        # résidentiel s'applique.
+        occupation, _source_occ = occupation_du_devis(
+            devis, {'mode_installation': mode})
+        equipements = equipements_du_devis(devis)
+
+        from apps.ventes.dimensionnement import recommander_taille
+        resultat = recommander_taille(
+            company=company, conso_kwh_mensuelles=conso, ville=ville,
+            lat=lat, lon=lon, occupation=occupation, equipements=equipements,
+            source_conso=source_conso)
+
+        etude = dict(etude_params)
+        etude['dimensionnement'] = resultat
+        devis.etude_params = etude
+        devis.save(update_fields=['etude_params'])
+        return resultat
+    except Exception:  # noqa: BLE001 — un rafraîchissement raté n'empêche
+        # jamais une sauvegarde de devis/ligne.
+        logger.warning('rafraichir_dimensionnement_devis indisponible sur %s',
+                       getattr(devis, 'reference', '?'), exc_info=True)
+        return None
+
+
 def _residential_panel_count(*, facture_hiver=None, taille_kwc=None,
                              panel_watt=_AUTO_PANEL_WATT):
     """Nombre de panneaux pour un lead résidentiel.
@@ -4615,6 +4702,113 @@ def validate_esign_otp(link, otp_code):
     cache.delete(cache_key)
     cache.delete(attempts_key)
     return None
+
+
+# ── L-NIV (24/08/2026) — OTP de LECTURE, par lien (``ShareLink.otp_lecture``)
+# ─────────────────────────────────────────────────────────────────────────
+# Distinct de l'OTP de SIGNATURE ci-dessus (QJ11/QX10, gouverné par le toggle
+# ``ESIGN_OTP_ENABLED``) : ``otp_lecture`` est un réglage PAR LIEN, posé par le
+# commercial (action share-link), jamais un toggle société — donc actif dès
+# que ``link.otp_lecture`` vaut True, SANS dépendre d'``ESIGN_OTP_ENABLED``.
+# Réutilise EXACTEMENT la même mécanique (code à 6 chiffres, cache Django TTL
+# 10 min, compteur anti-brute-force) sous un espace de clés SÉPARÉ — jamais
+# de collision avec l'OTP de signature d'un même lien, et la « vérification »
+# de lecture pose en plus un DRAPEAU vérifié (TTL 1 h) que ``proposal_data``
+# relit à chaque GET, puisque la lecture n'est pas un formulaire ponctuel
+# (POST) comme l'acceptation — c'est une page consultée plusieurs fois.
+OTP_LECTURE_VERIFIED_TTL = 3600  # 1 heure
+
+
+def _otp_lecture_cache_key(link_token):
+    return f'otp_lecture:{link_token}'
+
+
+def _otp_lecture_attempts_key(link_token):
+    return f'otp_lecture_attempts:{link_token}'
+
+
+def _otp_lecture_verified_key(link_token):
+    return f'otp_lecture_verified:{link_token}'
+
+
+def request_otp_lecture(link):
+    """L-NIV — génère et envoie un OTP de LECTURE au contact du devis.
+
+    Toujours actif (pas de toggle société) : l'appelant (vue publique)
+    n'appelle cette fonction QUE quand ``link.otp_lecture`` est True. Retourne
+    None (succès) ou un message d'erreur FR lisible — même contrat que
+    ``request_esign_otp``."""
+    from django.core.cache import cache
+    code = _generate_otp()
+    cache.set(_otp_lecture_cache_key(link.token), code, timeout=OTP_CACHE_TTL)
+    cache.delete(_otp_lecture_attempts_key(link.token))
+
+    devis = link.devis
+    client = getattr(devis, 'client', None)
+    phone = (getattr(client, 'telephone', '') or '').strip()
+    email = (getattr(client, 'email', '') or '').strip()
+
+    sent = False
+    if phone:
+        sent = _send_otp_whatsapp(phone=phone, code=code, devis_ref=devis.reference)
+    if not sent:
+        sent = _send_otp_email(email=email, code=code, devis_ref=devis.reference,
+                               company=devis.company)
+    if not sent:
+        logger.warning(
+            'L-NIV: OTP lecture généré pour %s mais aucun canal disponible '
+            '(phone=%s, email=%s)', devis.reference, bool(phone), bool(email))
+    else:
+        logger.info('L-NIV: OTP lecture envoyé pour devis %s', devis.reference)
+    return None
+
+
+def validate_otp_lecture(link, otp_code):
+    """L-NIV — valide l'OTP de lecture soumis contre le cache.
+
+    Succès → pose le drapeau ``otp_lecture_verified`` (TTL 1 h) et retourne
+    None ; échec → message d'erreur FR, même discipline anti-brute-force que
+    ``validate_esign_otp`` (QX10, ``OTP_MAX_ATTEMPTS`` tentatives)."""
+    if not otp_code:
+        return 'Un code de confirmation est requis. Demandez-le via le bouton « Envoyer le code ».'
+
+    from django.core.cache import cache
+    attempts_key = _otp_lecture_attempts_key(link.token)
+    attempts = cache.get(attempts_key, 0)
+    if attempts >= OTP_MAX_ATTEMPTS:
+        return ('Trop de tentatives incorrectes. Redemandez un nouveau code '
+                'de confirmation et réessayez.')
+
+    cache_key = _otp_lecture_cache_key(link.token)
+    stored = cache.get(cache_key)
+    if stored is None:
+        return 'Le code de confirmation a expiré ou n\'a pas été demandé. Redemandez un nouveau code.'
+    if stored != otp_code.strip():
+        cache.set(attempts_key, attempts + 1, timeout=OTP_CACHE_TTL)
+        restantes = max(0, OTP_MAX_ATTEMPTS - (attempts + 1))
+        if restantes == 0:
+            return ('Trop de tentatives incorrectes. Redemandez un nouveau '
+                    'code de confirmation et réessayez.')
+        return 'Code de confirmation incorrect. Vérifiez le code reçu et réessayez.'
+
+    # Code valide : consommé (one-time use), compteur remis à zéro, la
+    # LECTURE reste déverrouillée pendant OTP_LECTURE_VERIFIED_TTL (la page
+    # est consultée plusieurs fois, contrairement à l'acceptation ponctuelle).
+    cache.delete(cache_key)
+    cache.delete(attempts_key)
+    cache.set(_otp_lecture_verified_key(link.token), True,
+              timeout=OTP_LECTURE_VERIFIED_TTL)
+    return None
+
+
+def otp_lecture_verified(link):
+    """True si la lecture de ``link`` a déjà été déverrouillée par un OTP
+    valide dans la dernière heure. Toujours True si ``link.otp_lecture`` est
+    False (rien à déverrouiller — comportement d'aujourd'hui)."""
+    if not getattr(link, 'otp_lecture', False):
+        return True
+    from django.core.cache import cache
+    return bool(cache.get(_otp_lecture_verified_key(link.token)))
 
 
 def _send_otp_whatsapp(phone, code, devis_ref):

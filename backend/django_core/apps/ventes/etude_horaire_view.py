@@ -61,6 +61,36 @@ def _num(valeur, defaut=None):
         return defaut
 
 
+class _DevisDepuisLead:
+    """L-QA1 (24/08/2026) FIX1 — duck-type minimal exposant SEULEMENT
+    ``.lead``, pour réutiliser TELS QUELS les sélecteurs devis→lead
+    (``equipements_du_devis``, ``occupation_du_devis``, ``lead_bills_for_devis``,
+    ``site_location_for_devis`` — tous ``getattr(devis, 'lead', None)``) pour un
+    LEAD SANS DEVIS PERSISTÉ (écran générateur, avant tout enregistrement).
+    Sans lui, ces quatre règles de provenance devraient être dupliquées ici
+    pour le seul chemin lead — exactement ce que ces façades existent pour
+    éviter."""
+    __slots__ = ('lead',)
+
+    def __init__(self, lead):
+        self.lead = lead
+
+
+def _lead_de_la_societe(request, lead_id):
+    """Lead demandé, SCOPÉ à la société de l'appelant, ou ``None``.
+
+    Même garde que :func:`_devis_de_la_societe` : un identifiant fourni dans
+    le corps ne doit jamais permettre de lire le profil d'un lead d'une autre
+    société."""
+    if not lead_id:
+        return None
+    company = getattr(request.user, 'company', None)
+    if company is None:
+        return None
+    from apps.crm.selectors import get_company_lead
+    return get_company_lead(company, lead_id)
+
+
 def _devis_de_la_societe(request, devis_id):
     """Devis demandé, SCOPÉ à la société de l'appelant, ou ``None``.
 
@@ -126,6 +156,36 @@ def _profil_depuis_devis(devis, corps):
     return conso, source, detail, occupation, equipements
 
 
+def _profil_depuis_lead(lead, corps):
+    """L-QA1 (24/08/2026) FIX1 — profil de consommation lu directement sur un
+    LEAD SANS DEVIS PERSISTÉ (écran générateur, avant tout enregistrement).
+
+    AVANT ce chemin, un ``lead`` sans ``devis`` retombait sur
+    ``_profil_depuis_corps`` : l'aperçu répondait alors avec
+    ``occupation: null, equipements_actifs: []`` même quand le lead portait un
+    script d'appel COMPLET (occupation_jour, VE, clim, piscine, chauffe-eau) —
+    le commercial ne voyait jamais l'effet réel de ces réponses avant
+    l'enregistrement. Mêmes fonctions EXACTES que le chemin devis (via le
+    duck-type :class:`_DevisDepuisLead`), aucune règle dupliquée."""
+    from apps.crm.selectors import lead_bills_for_devis
+
+    from .courbes_journalieres import equipements_du_devis, occupation_du_devis
+    from .etude_horaire import profil_depuis_factures
+
+    devis_duck = _DevisDepuisLead(lead)
+    bills = lead_bills_for_devis(devis_duck) or {}
+    conso, source, detail = profil_depuis_factures(
+        facture_hiver_mad=bills.get('facture_hiver'),
+        facture_ete_mad=bills.get('facture_ete'),
+        ete_differente=bills.get('ete_differente'),
+        factures_mensuelles_mad=corps.get('factures_mensuelles'),
+        conso_kwh_mensuelles=corps.get('conso_kwh_mensuelles'))
+
+    occupation, _source_occ = occupation_du_devis(devis_duck, corps)
+    equipements = equipements_du_devis(devis_duck)
+    return conso, source, detail, occupation, equipements
+
+
 # SCHÉMA RÉELLEMENT DÉCLARÉ, PAS BASELINÉ NI VIDE.
 #
 # Deux facilités étaient possibles ici, toutes deux refusées :
@@ -137,7 +197,7 @@ def _profil_depuis_devis(devis, corps):
 #     déclarait /ao/tableau-marches/ le jour où l'écran a planté, 03/08/2026 —
 #     `check_openapi_shapes.py` le refuse, à raison).
 #
-# On déclare donc les cinq clés de premier niveau, avec leur nullabilité. Le
+# On déclare donc les six clés de premier niveau, avec leur nullabilité. Le
 # DÉTAIL d'``etude``/``dimensionnement`` reste décrit par
 # ``contract_samples/etude_horaire.json`` (PACT10), vérifié par
 # ``check_api_shapes.py`` : le recopier en sérialiseur imbriqué créerait une
@@ -147,6 +207,11 @@ def _profil_depuis_devis(devis, corps):
     request=inline_serializer('EtudeHorairePreviewRequest', {
         'devis': serializers.IntegerField(
             required=False, help_text='Profil lu sur ce devis (scopé société)'),
+        'lead': serializers.IntegerField(
+            required=False,
+            help_text='L-QA1 — profil lu directement sur ce lead SANS devis '
+                      'persisté (écran générateur), scopé société. Un `devis` '
+                      'fourni en même temps PRIME toujours sur `lead`.'),
         'ville': serializers.CharField(required=False),
         'lat': serializers.FloatField(required=False),
         'lon': serializers.FloatField(required=False),
@@ -194,6 +259,11 @@ def _profil_depuis_devis(devis, corps):
             }),
             'avertissements': serializers.ListField(
                 child=serializers.CharField()),
+            'estimation_conso': serializers.JSONField(
+                allow_null=True,
+                help_text='Décomposition MENSUELLE base/ajouts/total '
+                          '(T4/L-QA1) — null quand aucune couche équipement '
+                          "n'est décomposable."),
         }),
         400: inline_serializer('EtudeHorairePreviewErreur', {
             'detail': serializers.CharField(),
@@ -217,7 +287,9 @@ def etude_horaire_preview(request):
 
         {
           "devis": 123,                  // profil lu sur ce devis (scopé société)
-          "ville": "Casablanca",         // sinon ville du chantier du devis
+          "lead": 17,                    // L-QA1 — sinon profil lu sur ce lead SANS
+                                          // devis (un `devis` fourni prime toujours)
+          "ville": "Casablanca",         // sinon ville du chantier du devis/lead
           "lat": 33.57, "lon": -7.59,    // PVGIS live au point exact
           "facture_hiver": 1200,         // MAD/mois — ancrage réel
           "facture_ete": 1600, "ete_differente": true,
@@ -254,15 +326,30 @@ def etude_horaire_preview(request):
             'Devis introuvable dans votre société — profil lu depuis le corps '
             'de la requête.')
 
+    # L-QA1 (24/08/2026) FIX1 — un ``lead`` n'est résolu QUE si aucun devis
+    # utilisable n'a été fourni : un devis existant prime toujours (même
+    # chaîne que ``_devis_de_la_societe`` ci-dessus).
+    lead = None
+    if devis is None:
+        lead = _lead_de_la_societe(request, corps.get('lead'))
+        if corps.get('lead') and lead is None:
+            avertissements.append(
+                'Lead introuvable dans votre société — profil lu depuis le '
+                'corps de la requête.')
+
     if devis is not None:
         conso, source, detail, occupation, equipements = _profil_depuis_devis(
             devis, corps)
         company = getattr(devis, 'company', None) or company
+    elif lead is not None:
+        conso, source, detail, occupation, equipements = _profil_depuis_lead(
+            lead, corps)
+        company = getattr(lead, 'company', None) or company
     else:
         conso, source, detail, occupation, equipements = _profil_depuis_corps(
             corps)
 
-    ville, lat, lon = _localisation(corps, devis)
+    ville, lat, lon = _localisation(corps, devis, lead)
 
     if not conso:
         avertissements.append(
@@ -295,20 +382,29 @@ def etude_horaire_preview(request):
             occupation=occupation, equipements=equipements, corps=corps,
             source=source, avertissements=avertissements)
 
+    # T4/L-QA1 — même décomposition mensuelle que le devis enregistré
+    # (``services.rafraichir_etude_horaire_devis`` ne l'expose nulle part sur
+    # l'APERÇU jusqu'ici) : best-effort, ``None`` quand rien n'est
+    # décomposable (aucune couche équipement, ou série non exploitable).
+    from .etude_horaire import estimation_conso_mensuelle
+    estimation_conso = estimation_conso_mensuelle(conso, equipements)
+
     return Response(_reponse(
         etude, dimensionnement, conso, source, detail, occupation,
-        equipements, avertissements))
+        equipements, avertissements, estimation_conso))
 
 
-def _localisation(corps, devis):
-    """(ville, lat, lon) — corps d'abord, puis le chantier du devis."""
+def _localisation(corps, devis, lead=None):
+    """(ville, lat, lon) — corps d'abord, puis le chantier du devis/lead."""
     ville = (corps.get('ville') or '').strip() or None
     lat = _num(corps.get('lat'))
     lon = _num(corps.get('lon'))
-    if devis is not None and not (ville or (lat and lon)):
+    source_localisation = devis if devis is not None else (
+        _DevisDepuisLead(lead) if lead is not None else None)
+    if source_localisation is not None and not (ville or (lat and lon)):
         try:
             from apps.crm.selectors import site_location_for_devis
-            loc = site_location_for_devis(devis) or {}
+            loc = site_location_for_devis(source_localisation) or {}
             ville = ville or loc.get('site_ville')
             lat = lat if lat is not None else loc.get('gps_lat')
             lon = lon if lon is not None else loc.get('gps_lng')
@@ -343,7 +439,7 @@ def _dimensionner(*, company, conso, ville, lat, lon, occupation, equipements,
 
 
 def _reponse(etude, dimensionnement, conso, source, detail, occupation,
-             equipements, avertissements):
+             equipements, avertissements, estimation_conso=None):
     """Charge utile de l'endpoint — forme STABLE, clés toujours présentes."""
     return {
         'etude': etude,
@@ -358,4 +454,7 @@ def _reponse(etude, dimensionnement, conso, source, detail, occupation,
             'equipements_actifs': sorted((equipements or {}).keys()),
         },
         'avertissements': avertissements,
+        # T4/L-QA1 — décomposition MENSUELLE base/ajouts/total, même fonction
+        # que le devis enregistré. None quand rien n'est décomposable.
+        'estimation_conso': estimation_conso,
     }

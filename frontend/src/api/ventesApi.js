@@ -57,8 +57,12 @@ const ventesApi = {
     }),
   convertirDevisEnBC: (id) => api.post(`/ventes/devis/${id}/convertir-bc/`),
   // B2/WR2 — (re)mint le lien public de proposition sans passer par l'envoi
-  // email/WhatsApp (ex. pour le copier manuellement).
-  shareLinkDevis: (id) => api.post(`/ventes/devis/${id}/share-link/`),
+  // email/WhatsApp (ex. pour le copier manuellement). L-NIV-UI — `opts` porte
+  // en plus `{ niveau, otp_lecture }` (contrat L-NIV) : changer le niveau
+  // re-poste sur la MÊME route sans faire tourner le token (lien inchangé).
+  // `opts` reste optionnel pour les appelants existants (body vide = défauts
+  // serveur : niveau 'standard').
+  shareLinkDevis: (id, opts) => api.post(`/ventes/devis/${id}/share-link/`, opts),
   // Révision : crée une nouvelle version (v2, v3…) d'un devis.
   reviserDevis: (id) => api.post(`/ventes/devis/${id}/reviser/`),
   // PV20 — TOUT ce que l'écran de conception 3D doit savoir d'un devis, en UN

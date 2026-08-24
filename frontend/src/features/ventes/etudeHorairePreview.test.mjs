@@ -8,6 +8,8 @@ import assert from 'node:assert/strict'
 import {
   construireCorpsPreview, etiquetteSource, lignesAffichables,
   verdictBatteriePourTaille,
+  libelleTranche, falaiseAffichable, glitchAnnuel, balayageStockageAffichable,
+  estimationConsoAffichable,
 } from './etudeHorairePreviewPur.js'
 
 test('construireCorpsPreview : null hors résidentiel, même avec facture', () => {
@@ -41,6 +43,32 @@ test('construireCorpsPreview : un devis existant (édition) suffit aussi, sans a
   })
   assert.equal(corps.devis, 42)
   assert.equal('facture_hiver' in corps, false)
+})
+
+test('construireCorpsPreview : un lead seul (sans devis, sans facture) suffit à ancrer', () => {
+  const corps = construireCorpsPreview({
+    modeInstallation: 'residentiel', leadId: 17,
+  })
+  assert.equal(corps.lead, 17)
+  assert.equal('facture_hiver' in corps, false)
+  assert.equal('devis' in corps, false)
+})
+
+test('construireCorpsPreview : un devis existant PRIME sur le lead (même chaîne que le serveur)', () => {
+  const corps = construireCorpsPreview({
+    modeInstallation: 'residentiel', editId: 42, leadId: 17,
+  })
+  assert.equal(corps.devis, 42)
+  assert.equal('lead' in corps, false)
+})
+
+test('construireCorpsPreview : leadId vide/nul n\'ancre rien tout seul', () => {
+  assert.equal(construireCorpsPreview({
+    modeInstallation: 'residentiel', leadId: '', fHiver: '0',
+  }), null)
+  assert.equal(construireCorpsPreview({
+    modeInstallation: 'residentiel', leadId: null, fHiver: '0',
+  }), null)
 })
 
 test('construireCorpsPreview : facture été distincte transmise seulement si réellement différente', () => {
@@ -186,4 +214,127 @@ test('verdictBatteriePourTaille : null quand le moteur ne dit rien sur cette tai
   assert.equal(verdictBatteriePourTaille([], 5.68), null)
   assert.equal(verdictBatteriePourTaille(null, 5.68), null)
   assert.equal(verdictBatteriePourTaille(LIGNES_VERDICT, 0), null)
+})
+
+// ── L-FRONT lot 4 — falaise / résiduel / remplissage / glitch / estimation ──
+
+test('libelleTranche : renvoie le libellé, null quand la tranche est absente', () => {
+  assert.equal(libelleTranche({ libelle: '310-510 kWh/mois', rang: 5 }), '310-510 kWh/mois')
+  assert.equal(libelleTranche(null), null)
+  assert.equal(libelleTranche(undefined), null)
+  assert.equal(libelleTranche({}), null)
+})
+
+test('falaiseAffichable : null quand dimensionnement.falaise est absent (mode non résidentiel / Z2)', () => {
+  assert.equal(falaiseAffichable(null), null)
+  assert.equal(falaiseAffichable({}), null)
+  assert.equal(falaiseAffichable({ falaise: null }), null)
+})
+
+test('falaiseAffichable : lit cible/tranches/meilleure combinaison telles quelles, sans recalcul', () => {
+  const dim = {
+    falaise: {
+      cible_kwh_mois: 500,
+      tranche_actuelle: { libelle: '> 510 kWh/mois' },
+      tranche_visee: { libelle: '310-510 kWh/mois' },
+    },
+    meilleure_falaise: {
+      panneaux: 21, kwc: 14.91, batterie_kwh: 20,
+      residuel_kwh_mois: 476.48,
+      tranche_apres: { libelle: '310-510 kWh/mois' },
+      economie_mad: 32240.25, payback_annees: 5.02,
+      remplissage: { moyen: 1.0 },
+    },
+  }
+  const f = falaiseAffichable(dim)
+  assert.equal(f.cibleKwhMois, 500)
+  assert.equal(f.trancheActuelle, '> 510 kWh/mois')
+  assert.equal(f.trancheVisee, '310-510 kWh/mois')
+  assert.equal(f.meilleure.panneaux, 21)
+  assert.equal(f.meilleure.residuelKwhMois, 476.48)
+  assert.equal(f.meilleure.trancheApres, '310-510 kWh/mois')
+  assert.equal(f.meilleure.remplissageMoyen, 1.0)
+})
+
+test('falaiseAffichable : meilleure vaut null quand le moteur ne renvoie aucune combinaison passante', () => {
+  const f = falaiseAffichable({ falaise: { cible_kwh_mois: 500 }, meilleure_falaise: null })
+  assert.equal(f.meilleure, null)
+})
+
+test('glitchAnnuel : null quand etude.glitch est absent (aucun équipement concentrable déclaré)', () => {
+  assert.equal(glitchAnnuel(null), null)
+  assert.equal(glitchAnnuel({}), null)
+  assert.equal(glitchAnnuel({ glitch: null, annuel: { part_glitch_sans_kwh: 10 } }), null)
+})
+
+test('glitchAnnuel : null quand annuel est absent même si glitch est présent (jamais un chiffre partiel inventé)', () => {
+  assert.equal(glitchAnnuel({ glitch: { couches: ['clim'] } }), null)
+})
+
+test('glitchAnnuel : lit les kWh annuels tels quels quand les deux blocs sont présents', () => {
+  const g = glitchAnnuel({
+    glitch: { couches: ['clim'] },
+    annuel: {
+      part_glitch_sans_kwh: 245.16, part_glitch_avec_kwh: 0,
+      part_glitch_batterie_kwh: 245.16, heures_impulsion: 24,
+    },
+  })
+  assert.equal(g.sansKwh, 245.16)
+  assert.equal(g.avecKwh, 0)
+  assert.equal(g.batterieKwh, 245.16)
+  assert.equal(g.heuresImpulsion, 24)
+  assert.deepEqual(g.couches, ['clim'])
+})
+
+test('balayageStockageAffichable : tableau vide (jamais une exception) quand absent/non-tableau', () => {
+  assert.deepEqual(balayageStockageAffichable(null), [])
+  assert.deepEqual(balayageStockageAffichable({}), [])
+  assert.deepEqual(balayageStockageAffichable({ balayage_stockage: 'x' }), [])
+})
+
+test('balayageStockageAffichable : une ligne par palier, clés renommées, sans recalcul', () => {
+  const [p] = balayageStockageAffichable({
+    balayage_stockage: [{
+      capacite_kwh: 5, cout_ttc: 97039.9, economie_mad: 22361.57,
+      economie_marginale_mad: 2665.54, payback_annees: 4.34,
+      residuel_kwh_mois: 922.24, tranche_apres: { libelle: '> 510 kWh/mois' },
+      couverture: 0.5546, remplissage: { moyen: 1.0 },
+    }],
+  })
+  assert.equal(p.capaciteKwh, 5)
+  assert.equal(p.economieMarginaleMad, 2665.54)
+  assert.equal(p.trancheApres, '> 510 kWh/mois')
+  assert.equal(p.remplissageMoyen, 1.0)
+})
+
+test('estimationConsoAffichable : null quand base_mensuelle/totale_mensuelle absents ou mal formés', () => {
+  assert.equal(estimationConsoAffichable(null), null)
+  assert.equal(estimationConsoAffichable({}), null)
+  assert.equal(estimationConsoAffichable({ base_mensuelle: [1, 2, 3] }), null)
+  assert.equal(estimationConsoAffichable({
+    base_mensuelle: new Array(12).fill(100), totale_mensuelle: new Array(11).fill(100),
+  }), null)
+})
+
+test('estimationConsoAffichable : ajouts absents -> tableau vide (jamais une ligne fabriquée)', () => {
+  const r = estimationConsoAffichable({
+    base_mensuelle: new Array(12).fill(300), totale_mensuelle: new Array(12).fill(300),
+  })
+  assert.equal(r.base.length, 12)
+  assert.deepEqual(r.ajouts, [])
+})
+
+test('estimationConsoAffichable : ne garde que les clés d\'ajout réellement présentes (12 valeurs)', () => {
+  const r = estimationConsoAffichable({
+    base_mensuelle: new Array(12).fill(300),
+    totale_mensuelle: new Array(12).fill(350),
+    ajouts: {
+      clim: new Array(12).fill(50),
+      chauffe_eau: [1, 2], // mal formé -> omis
+    },
+  })
+  assert.equal(r.ajouts.length, 1)
+  assert.equal(r.ajouts[0].cle, 'clim')
+  assert.equal(r.ajouts[0].libelle, 'Climatisation')
+  assert.equal(r.ajouts[0].valeurs.length, 12)
 })

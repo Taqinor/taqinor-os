@@ -1033,6 +1033,23 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
                 aria-label="Répartition mensuelle indicative de la production solaire annuelle"></div>
               <p class="mt-doc-note">Répartition indicative de votre production annuelle selon l'ensoleillement mensuel moyen au Maroc.</p>
             </div>
+            <!-- (4ter) L-WEBT TASK2 — « Une journée type » (production vs
+                 consommation, 4 mois). Reste MASQUÉ tant que jourTypeData.ts
+                 n'a pas reçu de vraies données du moteur
+                 (apps.ventes.etude_horaire.jours_types_annee) — voir le
+                 [HANDOFF] de ce fichier et du rapport de lane. Un `<div>`
+                 vide est le rendu attendu et CORRECT aujourd'hui, jamais un
+                 bug : la règle « zéro chiffre inventé » interdit de dessiner
+                 quoi que ce soit sans ces données. -->
+            <div id="mt-jourtype-wrap" hidden class="mt-doc-section">
+              <p class="mt-doc-section-title" data-i18n data-fr="Une journée type" data-ar="يوم نموذجي">Une journée type</p>
+              <div id="mt-jourtype-grid" class="grid grid-cols-1 gap-3 sm:grid-cols-2"></div>
+              <p class="mt-doc-note" data-i18n
+                data-fr="Production (doré) vs consommation (bleu, pointillé) sur 24 h, pour quatre mois représentatifs."
+                data-ar="الإنتاج (ذهبي) مقابل الاستهلاك (أزرق، متقطع) على مدى 24 ساعة، لأربعة أشهر تمثيلية.">
+                Production (doré) vs consommation (bleu, pointillé) sur 24&nbsp;h, pour quatre mois représentatifs.
+              </p>
+            </div>
             <!-- (4bis) bande de flux pompage (agricole) : soleil → pompe → eau -->
             <div id="mt-doc-flow" hidden class="mt-doc-section">
               <p class="mt-doc-section-title">Votre pompage en un coup d'œil</p>
@@ -1286,6 +1303,130 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
               <button type="button" class="mt-visit-week cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="semaine_prochaine" aria-pressed="false" data-i18n data-fr="La semaine prochaine" data-ar="الأسبوع المقبل">La semaine prochaine</button>
             </div>
           </fieldset>
+
+          <!-- L-WEBT — « Affinez votre profil de consommation » : FACULTATIF et
+               REPLIABLE (<details> fermé par défaut) — un visiteur qui saute
+               cette section ne voit pas le tunnel s'allonger. Les trois
+               silhouettes viennent VERBATIM du serveur
+               (backend/django_core/apps/ventes/courbes_journalieres.py
+               SILHOUETTES_OCCUPATION, recopiées dans lib/dayProfiles.ts
+               OCCUPANCY_SHAPES — CJ2a, un test épingle les deux fichiers l'un à
+               l'autre) : aucun poids n'est inventé ici, ce composant ne fait
+               QUE du rendu. Les questions équipements reprennent MOT POUR MOT
+               le script d'appel déjà validé par le fondateur sur
+               `crm.Lead` (help_text de chaque champ, apps/crm/models.py) —
+               volontairement SANS puissance/créneau pour le chauffe-eau (le
+               moteur backend le dit lui-même : « champ informatif
+               uniquement… n'ajuste AUCUNE courbe ») et sans créneau
+               horaire pour VE/clim/piscine (les fenêtres — 21h-6h, 13h-21h,
+               10h-18h — sont des CONSTANTES serveur sourcées, pas un choix du
+               visiteur ; lui en demander un créneau collecterait une réponse
+               qu'aucun moteur ne lit). -->
+          <details class="mt-1 cine-card border border-white/10 text-white">
+            <summary class="cursor-pointer select-none p-3 text-sm font-semibold" data-i18n
+              data-fr="Affiner mon profil de consommation (facultatif)"
+              data-ar="تحسين نمط استهلاكي (اختياري)">
+              Affiner mon profil de consommation (facultatif)
+            </summary>
+            <div class="flex flex-col gap-4 border-t border-white/10 p-3">
+              <fieldset>
+                <legend class="text-sm text-lune-soft" data-i18n
+                  data-fr="Passez-vous la journée à la maison ?"
+                  data-ar="هل تقضون النهار في المنزل؟">
+                  Passez-vous la journée à la maison&nbsp;?
+                </legend>
+                <div class="mt-2 border border-white/10 bg-white/5 p-2">
+                  <svg id="mt-occ-chart" width="100%" height="140" viewBox="0 0 320 140"
+                    preserveAspectRatio="none" role="img"
+                    aria-label="Poids de forme horaires des trois profils d'occupation"></svg>
+                  <p class="mt-1 text-[11px] text-lune-faint" data-i18n
+                    data-fr="Axe vertical : poids de forme (sans unité)"
+                    data-ar="المحور العمودي: وزن الشكل (بدون وحدة)">
+                    Axe vertical&nbsp;: poids de forme (sans unité)
+                  </p>
+                </div>
+                <div class="mt-2 grid grid-cols-3 gap-2">
+                  <button type="button" class="mt-occ-btn cine-card relative border border-white/15 p-2.5 text-center text-xs text-white transition-colors" data-occ-id="presence_jour" aria-pressed="false">
+                    <span class="mx-auto mb-1 block h-1.5 w-6" style="background:#2a78d6"></span>
+                    <span data-i18n data-fr="Présent" data-ar="حاضر">Présent</span>
+                    <span class="mt-occ-chosen mt-1 block text-[10px] font-bold text-ok-400" hidden data-i18n data-fr="CHOISIE pour ce client" data-ar="مُختار لهذا العميل">CHOISIE pour ce client</span>
+                  </button>
+                  <button type="button" class="mt-occ-btn cine-card relative border border-white/15 p-2.5 text-center text-xs text-white transition-colors" data-occ-id="absence_jour" aria-pressed="false">
+                    <span class="mx-auto mb-1 block h-1.5 w-6" style="background:#eb6834"></span>
+                    <span data-i18n data-fr="Absent" data-ar="غائب">Absent</span>
+                    <span class="mt-occ-chosen mt-1 block text-[10px] font-bold text-ok-400" hidden data-i18n data-fr="CHOISIE pour ce client" data-ar="مُختار لهذا العميل">CHOISIE pour ce client</span>
+                  </button>
+                  <button type="button" class="mt-occ-btn cine-card relative border border-white/15 p-2.5 text-center text-xs text-white transition-colors" data-occ-id="presence_partielle" aria-pressed="false">
+                    <span class="mx-auto mb-1 block h-1.5 w-6" style="background:#1baf7a"></span>
+                    <span data-i18n data-fr="Partiel" data-ar="جزئي">Partiel</span>
+                    <span class="mt-occ-chosen mt-1 block text-[10px] font-bold text-ok-400" hidden data-i18n data-fr="CHOISIE pour ce client" data-ar="مُختار لهذا العميل">CHOISIE pour ce client</span>
+                  </button>
+                </div>
+                <input type="hidden" id="mt-occupation-jour" name="occupation_jour" />
+              </fieldset>
+
+              <fieldset class="flex flex-col gap-3">
+                <legend class="text-sm text-lune-soft" data-i18n
+                  data-fr="Équipements (facultatif — affine votre étude)"
+                  data-ar="التجهيزات (اختياري)">
+                  Équipements (facultatif — affine votre étude)
+                </legend>
+
+                <label class="flex items-center gap-2 text-sm">
+                  <input id="mt-equip-chauffe-eau" type="checkbox" class="h-4 w-4 accent-brass-400" />
+                  <span data-i18n data-fr="Chauffe-eau électrique" data-ar="سخان ماء كهربائي">Chauffe-eau électrique</span>
+                </label>
+
+                <div>
+                  <label class="flex items-center gap-2 text-sm">
+                    <input id="mt-equip-ve" type="checkbox" class="h-4 w-4 accent-brass-400" />
+                    <span data-i18n data-fr="Véhicule électrique (actuel ou prévu)" data-ar="سيارة كهربائية (حالية أو مستقبلية)">Véhicule électrique (actuel ou prévu)</span>
+                  </label>
+                  <div data-equip-detail hidden class="mt-1.5 pl-6">
+                    <label class="block text-xs text-lune-faint" data-i18n
+                      data-fr="Km parcourus par semaine avec ce véhicule"
+                      data-ar="عدد الكيلومترات المقطوعة أسبوعياً بهذه السيارة">
+                      Km parcourus par semaine avec ce véhicule
+                    </label>
+                    <input id="mt-equip-ve-km" type="number" min="0" step="1" inputmode="numeric"
+                      class="mt-1 w-full border border-white/15 bg-transparent p-2 text-sm text-white" />
+                  </div>
+                </div>
+
+                <div>
+                  <label class="flex items-center gap-2 text-sm">
+                    <input id="mt-equip-clim" type="checkbox" class="h-4 w-4 accent-brass-400" />
+                    <span data-i18n data-fr="Climatisation" data-ar="تكييف الهواء">Climatisation</span>
+                  </label>
+                  <div data-equip-detail hidden class="mt-1.5 pl-6">
+                    <label class="block text-xs text-lune-faint" data-i18n
+                      data-fr="Nombre de pièces/unités climatisées"
+                      data-ar="عدد الغرف/الوحدات المكيّفة">
+                      Nombre de pièces/unités climatisées
+                    </label>
+                    <input id="mt-equip-clim-pieces" type="number" min="0" step="1" inputmode="numeric"
+                      class="mt-1 w-full border border-white/15 bg-transparent p-2 text-sm text-white" />
+                  </div>
+                </div>
+
+                <div>
+                  <label class="flex items-center gap-2 text-sm">
+                    <input id="mt-equip-piscine" type="checkbox" class="h-4 w-4 accent-brass-400" />
+                    <span data-i18n data-fr="Piscine" data-ar="مسبح">Piscine</span>
+                  </label>
+                  <div data-equip-detail hidden class="mt-1.5 pl-6">
+                    <label class="block text-xs text-lune-faint" data-i18n
+                      data-fr="Puissance de la pompe de filtration (kW)"
+                      data-ar="قدرة مضخة الترشيح (كيلوواط)">
+                      Puissance de la pompe de filtration (kW)
+                    </label>
+                    <input id="mt-equip-piscine-kw" type="number" min="0" step="any" inputmode="decimal"
+                      class="mt-1 w-full border border-white/15 bg-transparent p-2 text-sm text-white" />
+                  </div>
+                </div>
+              </fieldset>
+            </div>
+          </details>
 
           <label class="flex items-start gap-3 text-sm text-lune-soft">
             <input id="mt-consent" name="consent" type="checkbox" required aria-required="true"
@@ -1935,6 +2076,14 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   // W342 — « installation la plus proche » : haversine client-side sur le
   // repère GPS posé (aucun appel réseau).
   import { nearestRealisation } from '../../lib/realisations';
+  // L-WEBT — silhouettes d'occupation SERVEUR (CJ2a) : lib/dayProfiles.ts
+  // recopie VERBATIM backend/django_core/apps/ventes/courbes_journalieres.py
+  // SILHOUETTES_OCCUPATION (test croisé backend↔TS). Aucun poids inventé ici.
+  import { OCCUPANCY_IDS, OCCUPANCY_SHAPES, type OccupancyId } from '../../lib/dayProfiles';
+  // L-WEBT TASK2 — « Une journée type » : jeu de données VIDE par construction
+  // (voir jourTypeData.ts, [HANDOFF]) — le composant se masque tant qu'aucune
+  // vraie donnée moteur n'a été collée.
+  import { JOUR_TYPE_MONTH_IDS, JOUR_TYPE_MONTH_LABELS, JOUR_TYPE_DATA, hasJourTypeData } from '../../lib/jourTypeData';
 
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const $ = (id: string) => document.getElementById(id);
@@ -2151,10 +2300,17 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     // QX — sous-panneau AGRICOLE (étape 2).
     'mt-profondeur', 'mt-hmt', 'mt-water-need', 'mt-heures-pompage',
     'mt-culture', 'mt-surface-ha', 'mt-fuel-spend',
+    // L-WEBT — équipements (facultatifs, section repliable « Affiner mon
+    // profil de consommation »).
+    'mt-equip-ve-km', 'mt-equip-clim-pieces', 'mt-equip-piscine-kw',
   ];
   // 'mt-ete-differente', 'mt-battery-interest' et 'mt-weekend' retirés du tunnel
   // (coupe fondateur 18/08) — le commercial les complète dans l'ERP.
-  const PERSISTED_CHECK_FIELDS = ['mt-contact-whatsapp', 'mt-contact-phone', 'mt-consent'];
+  const PERSISTED_CHECK_FIELDS = [
+    'mt-contact-whatsapp', 'mt-contact-phone', 'mt-consent',
+    // L-WEBT — équipements (facultatifs).
+    'mt-equip-chauffe-eau', 'mt-equip-ve', 'mt-equip-clim', 'mt-equip-piscine',
+  ];
   let restoring = false; // WJ61 — évite de ré-enregistrer PENDANT la réhydratation elle-même.
   function saveWizardState() {
     if (restoring) return;
@@ -2172,7 +2328,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
       const snapshot: WizardSnapshot = {
         step, revealed, mode,
         visitWindowPart, visitWindowWeek,
-        sel: { proUnit, tension, activity, surfaceType, waterSource, waterUnit, commercialCategory, ccUnit, equipes, regionAgricole, roofInputMode },
+        sel: { proUnit, tension, activity, surfaceType, waterSource, waterUnit, commercialCategory, ccUnit, equipes, regionAgricole, roofInputMode, occupationJour },
         capturePin, captureOutline,
         fields, checks,
         idempotencyKey: dedupIdempotencyKey, eventId: dedupEventId,
@@ -2386,6 +2542,166 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   }
   wireVisitToggle('.mt-visit-part', () => visitWindowPart, (v) => { visitWindowPart = v; });
   wireVisitToggle('.mt-visit-week', () => visitWindowWeek, (v) => { visitWindowWeek = v; });
+
+  // ════════════════════════════════════════════════════════════════════════
+  // L-WEBT TASK1/3 — « Passez-vous la journée à la maison ? » : trois
+  // silhouettes 24 h superposées (couleurs VALIDÉES fondateur, reproduites à
+  // l'identique) — présent bleu plein #2a78d6 (remplissage 10 %), absent
+  // orange pointillé [6,3] #eb6834, partiel vert pointillé [2,3] #1baf7a.
+  // Les 24 poids par silhouette sont ceux du SERVEUR (import ci-dessus) —
+  // ce bloc ne fait QUE tracer, il n'invente aucun chiffre.
+  // ════════════════════════════════════════════════════════════════════════
+  const OCC_COLORS: Record<OccupancyId, { stroke: string; dash: string | null; fill?: string }> = {
+    presence_jour: { stroke: '#2a78d6', dash: null, fill: 'rgba(42,120,214,0.10)' },
+    absence_jour: { stroke: '#eb6834', dash: '6,3' },
+    presence_partielle: { stroke: '#1baf7a', dash: '2,3' },
+  };
+  // Lead.occupation_jour (backend crm.Lead, apps/crm/models.py) n'utilise PAS
+  // le même vocabulaire que les identifiants d'affichage OCCUPANCY_IDS —
+  // cette table est la SEULE traduction entre les deux (voir aussi
+  // apps/ventes/courbes_journalieres.py _OCCUPATION_JOUR_VERS_DRAPEAU côté
+  // serveur, sens inverse).
+  const OCC_TO_LEAD_FIELD: Record<OccupancyId, 'present' | 'absent' | 'partiel'> = {
+    presence_jour: 'present', absence_jour: 'absent', presence_partielle: 'partiel',
+  };
+
+  function occShapePaths(shape: readonly number[], w: number, h: number, pad: number): { line: string; area: string } {
+    const max = Math.max(...OCCUPANCY_IDS.flatMap((id) => OCCUPANCY_SHAPES[id] as readonly number[]));
+    const x = (i: number) => pad + (i / (shape.length - 1)) * (w - 2 * pad);
+    const y = (v: number) => pad + (1 - (max > 0 ? v / max : 0)) * (h - 2 * pad);
+    const pts = shape.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`);
+    const line = `M${pts.join(' L')}`;
+    const area = `${line} L${x(shape.length - 1).toFixed(1)},${(h - pad).toFixed(1)} L${x(0).toFixed(1)},${(h - pad).toFixed(1)} Z`;
+    return { line, area };
+  }
+
+  function renderOccupancyChart() {
+    const svg = $('mt-occ-chart');
+    if (!svg) return;
+    const W = 320;
+    const H = 140;
+    const PAD = 8;
+    let markup = '';
+    for (const id of OCCUPANCY_IDS) {
+      const shape = OCCUPANCY_SHAPES[id];
+      const { line, area } = occShapePaths(shape, W, H, PAD);
+      const c = OCC_COLORS[id];
+      if (c.fill) markup += `<path d="${area}" fill="${c.fill}" stroke="none"></path>`;
+      markup += `<path data-occ-line="${id}" d="${line}" fill="none" stroke="${c.stroke}" stroke-width="2"${c.dash ? ` stroke-dasharray="${c.dash}"` : ''}></path>`;
+    }
+    svg.innerHTML = markup;
+  }
+  renderOccupancyChart();
+
+  let occupationJour = savedWizard?.sel?.occupationJour || '';
+  function syncOccupancySelection() {
+    document.querySelectorAll<HTMLButtonElement>('.mt-occ-btn').forEach((btn) => {
+      const id = (btn.dataset.occId || '') as OccupancyId;
+      const field = OCC_TO_LEAD_FIELD[id];
+      const on = !!field && occupationJour === field;
+      btn.setAttribute('aria-pressed', String(on));
+      btn.classList.toggle('border-brass-400', on);
+      btn.classList.toggle('border-white/15', !on);
+      const badge = btn.querySelector<HTMLElement>('.mt-occ-chosen');
+      if (badge) badge.hidden = !on;
+    });
+    document.querySelectorAll<SVGPathElement>('[data-occ-line]').forEach((p) => {
+      const id = (p.getAttribute('data-occ-line') || '') as OccupancyId;
+      const on = !occupationJour || OCC_TO_LEAD_FIELD[id] === occupationJour;
+      p.style.opacity = on ? '1' : '0.25';
+      p.setAttribute('stroke-width', OCC_TO_LEAD_FIELD[id] === occupationJour ? '3' : '2');
+    });
+    const hidden = $('mt-occupation-jour') as HTMLInputElement | null;
+    if (hidden) hidden.value = occupationJour;
+  }
+  document.querySelectorAll<HTMLButtonElement>('.mt-occ-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = (btn.dataset.occId || '') as OccupancyId;
+      const field = OCC_TO_LEAD_FIELD[id];
+      if (!field) return;
+      occupationJour = occupationJour === field ? '' : field;
+      syncOccupancySelection();
+      markDataEntered();
+      saveWizardState();
+    });
+  });
+  syncOccupancySelection();
+
+  // ════════════════════════════════════════════════════════════════════════
+  // L-WEBT TASK3 — équipements (facultatifs, jamais bloquants) : la case
+  // révèle son détail SEULEMENT si coché (case décochée = question jamais
+  // posée, jamais un « Non » fabriqué — buildBody() plus bas omet la clé
+  // entière tant que la case n'est pas cochée).
+  // ════════════════════════════════════════════════════════════════════════
+  const EQUIP_TOGGLES: Array<{ checkId: string; detailId?: string }> = [
+    { checkId: 'mt-equip-chauffe-eau' },
+    { checkId: 'mt-equip-ve', detailId: 'mt-equip-ve-km' },
+    { checkId: 'mt-equip-clim', detailId: 'mt-equip-clim-pieces' },
+    { checkId: 'mt-equip-piscine', detailId: 'mt-equip-piscine-kw' },
+  ];
+  // Ré-appelée après la réhydratation WJ61 (plus bas) : affecter `.checked`
+  // par script ne déclenche pas `change`, donc un détail restauré coché
+  // resterait masqué sans ce second passage — même patron que syncCallbackSla.
+  function syncEquipDetails() {
+    for (const { checkId, detailId } of EQUIP_TOGGLES) {
+      const chk = $(checkId) as HTMLInputElement | null;
+      const detail = detailId ? $(detailId) : null;
+      const wrap = detail?.closest<HTMLElement>('[data-equip-detail]') || null;
+      if (wrap) wrap.hidden = !chk?.checked;
+    }
+  }
+  for (const { checkId } of EQUIP_TOGGLES) {
+    const chk = $(checkId) as HTMLInputElement | null;
+    chk?.addEventListener('change', () => { syncEquipDetails(); markDataEntered(); saveWizardState(); });
+  }
+  syncEquipDetails();
+
+  // ════════════════════════════════════════════════════════════════════════
+  // L-WEBT TASK2 — « Une journée type » : production (doré #eda100, fond
+  // 18 %) vs consommation (bleu #2a78d6, pointillé [6,3]) sur 24 h, 4 petits
+  // multiples (janvier/avril/juillet/novembre). `hasJourTypeData()` (voir
+  // lib/jourTypeData.ts) est `false` tant que personne n'a collé la vraie
+  // sortie du moteur (apps.ventes.etude_horaire.jours_types_annee) — cette
+  // fonction masque alors ENTIÈREMENT la section, jamais un graphe dessiné
+  // sur des zéros inventés.
+  // ════════════════════════════════════════════════════════════════════════
+  function jourTypeChartSvg(prodKw: number[], consoKw: number[], w: number, h: number, pad: number): string {
+    const max = Math.max(0.001, ...prodKw, ...consoKw);
+    const x = (i: number) => pad + (i / (prodKw.length - 1)) * (w - 2 * pad);
+    const y = (v: number) => pad + (1 - v / max) * (h - 2 * pad);
+    const lineOf = (arr: number[]) => `M${arr.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' L')}`;
+    const prodLine = lineOf(prodKw);
+    const prodArea = `${prodLine} L${x(prodKw.length - 1).toFixed(1)},${(h - pad).toFixed(1)} L${x(0).toFixed(1)},${(h - pad).toFixed(1)} Z`;
+    const consoLine = lineOf(consoKw);
+    return `<svg viewBox="0 0 ${w} ${h}" width="100%" height="120" preserveAspectRatio="none" role="img" aria-label="Production (doré) et consommation (bleu pointillé) sur 24 h, en kW">` +
+      `<path d="${prodArea}" fill="rgba(237,161,0,0.18)" stroke="none"></path>` +
+      `<path d="${prodLine}" fill="none" stroke="#eda100" stroke-width="2"><title>Production (kW)</title></path>` +
+      `<path d="${consoLine}" fill="none" stroke="#2a78d6" stroke-width="2" stroke-dasharray="6,3"><title>Consommation (kW)</title></path>` +
+      `</svg>`;
+  }
+  function renderJourType() {
+    const wrap = $('mt-jourtype-wrap');
+    const grid = $('mt-jourtype-grid');
+    if (!wrap || !grid) return;
+    if (!hasJourTypeData()) {
+      wrap.hidden = true;
+      return;
+    }
+    let markup = '';
+    for (const m of JOUR_TYPE_MONTH_IDS) {
+      const d = JOUR_TYPE_DATA[m];
+      if (!d) continue;
+      const label = JOUR_TYPE_MONTH_LABELS[m].fr;
+      markup += `<div class="border border-white/10 bg-white/5 p-2">` +
+        `<p class="text-xs font-semibold text-white">${label}</p>` +
+        jourTypeChartSvg(d.prodKw, d.consoKw, 280, 120, 6) +
+        `<p class="mt-1 text-[11px] text-lune-faint">Conso ${d.consoJourKwh.toFixed(2)}&nbsp;kWh · Prod ${d.prodJourKwh.toFixed(2)}&nbsp;kWh · Autoconso ${d.autoconsommeKwh.toFixed(2)}&nbsp;kWh · Surplus ${d.surplusKwh.toFixed(2)}&nbsp;kWh</p>` +
+        `</div>`;
+    }
+    grid.innerHTML = markup;
+    wrap.hidden = false;
+  }
+  renderJourType();
 
   // « Charges futures envisagées » (.mt-future-load) et « Photo du compteur ou
   // de la facture » (mt-meter-photo) sont retirées du tunnel (coupe fondateur
@@ -2647,6 +2963,10 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     // visibilité de la SLA de rappel (affecter `.checked` par script ne
     // déclenche pas `change`).
     syncCallbackSla();
+    // L-WEBT — même raison : un détail équipement restauré coché reste masqué
+    // sans ce second passage (`.checked` affecté par script ne déclenche pas
+    // `change`).
+    syncEquipDetails();
     if (savedWizard.capturePin) capturePin = savedWizard.capturePin;
     if (savedWizard.captureOutline?.length) captureOutline = savedWizard.captureOutline;
     if (Object.keys(savedWizard.fields ?? {}).length > 0 || savedWizard.capturePin) markDataEntered();
@@ -4168,6 +4488,26 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
       // QX — EXACTEMENT les chiffres affichés dans le document d'estimation
       // (le conseiller CRM voit ce que le client a vu — jamais plus).
       estimateShown: estimateShown ?? undefined,
+      // L-WEBT — « Affiner mon profil de consommation » (facultatif,
+      // repliable) : occupation_jour + équipements. Noms de clé SNAKE_CASE
+      // délibérément (seule exception à la convention camelCase de ce fichier)
+      // — ce sont les noms EXACTS des champs `crm.Lead` (apps/crm/models.py :
+      // occupation_jour, equip_piscine, equip_piscine_pompe_kw,
+      // equip_voiture_electrique, equip_ve_km_semaine, equip_clim,
+      // equip_clim_pieces, equip_chauffe_eau_electrique) pour que le futur
+      // câblage backend (webhooks.py _extract_web_questionnaire, absent
+      // aujourd'hui — voir HANDOFF du rapport de lane) n'ait qu'à lire la clé
+      // telle quelle. Case décochée = question jamais posée : la clé est
+      // ABSENTE (jamais un booléen `false` fabriqué), exactement la discipline
+      // WJ30 déjà en vigueur sur ce fichier.
+      occupation_jour: occupationJour || undefined,
+      equip_chauffe_eau_electrique: ($('mt-equip-chauffe-eau') as HTMLInputElement | null)?.checked || undefined,
+      equip_voiture_electrique: ($('mt-equip-ve') as HTMLInputElement | null)?.checked || undefined,
+      equip_ve_km_semaine: ($('mt-equip-ve') as HTMLInputElement | null)?.checked ? (num('mt-equip-ve-km') ?? undefined) : undefined,
+      equip_clim: ($('mt-equip-clim') as HTMLInputElement | null)?.checked || undefined,
+      equip_clim_pieces: ($('mt-equip-clim') as HTMLInputElement | null)?.checked ? (num('mt-equip-clim-pieces') ?? undefined) : undefined,
+      equip_piscine: ($('mt-equip-piscine') as HTMLInputElement | null)?.checked || undefined,
+      equip_piscine_pompe_kw: ($('mt-equip-piscine') as HTMLInputElement | null)?.checked ? (num('mt-equip-piscine-kw') ?? undefined) : undefined,
       // W317 — honeypot : vide pour tout visiteur humain (champ masqué hors
       // écran, jamais rempli sciemment) ; rejeté côté serveur si non vide.
       website_url: val('mt-hp'),
