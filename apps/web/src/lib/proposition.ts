@@ -276,6 +276,64 @@ export interface ProposalResponse {
     /** URL de la photo du vendeur. */
     photo_url?: string | null;
   } | null;
+  /**
+   * L-PROP CJ2b-bis (lot 4, 24/08) — sous-ensemble PUBLIC, client-safe, du
+   * bloc « falaise » du moteur horaire interne (`dimensionnement.falaise` /
+   * `meilleure_falaise` — voir `frontend/src/features/ventes/
+   * etudeHorairePreviewPur.js falaiseAffichable`, même lot). Le pitch : le
+   * dimensionnement retenu atterrit franchement SOUS le palier tarifaire
+   * suivant. [HANDOFF public payload] — clé pas encore servie par
+   * `apps/ventes/public_views.py` au moment de cette lane ; forme CONVENUE
+   * avec la lane backend du même lot. `null`/absent ⇒ bloc entier masqué,
+   * jamais un chiffre recalculé côté web (zéro chiffre inventé, CLAUDE.md).
+   */
+  tranche_tarifaire?: {
+    tranche_actuelle?: { libelle?: string | null } | null;
+    tranche_visee?: { libelle?: string | null } | null;
+    cible_kwh_mois?: number | null;
+    residuel_kwh_mois?: number | null;
+  } | null;
+  /**
+   * L-PROP CJ2b-bis — remplissage batterie moyen + couverture des « glitchs »
+   * (part des pointes d'équipements que la batterie rattrape), sous-ensemble
+   * public des blocs internes `remplissage`/`etude.glitch.annuel` (même lot).
+   * [HANDOFF public payload] — même statut que `tranche_tarifaire` ci-dessus.
+   */
+  batterie_regime?: {
+    remplissage_moyen_pct?: number | null;
+    couverture_glitch_pct?: number | null;
+  } | null;
+  /**
+   * L-PROP CJ2b-bis — décomposition mensuelle de l'estimation de
+   * consommation, MÊME CONTRAT que le moteur horaire interne
+   * (`estimation_conso: { base_mensuelle:[12], ajouts:{...},
+   * totale_mensuelle:[12] }` — voir `estimationConsoAffichable` côté CRM,
+   * même lot 4). [HANDOFF public payload] — même statut ci-dessus.
+   */
+  estimation_conso?: {
+    base_mensuelle?: number[];
+    ajouts?: Record<string, number[]>;
+    totale_mensuelle?: number[];
+  } | null;
+  /**
+   * L-PROP TASK2 — « Une journée type » (production PV vs consommation, jour
+   * moyen des 4 mois janvier/avril/juillet/novembre), MÊME FORME que
+   * `apps/web/src/lib/jourTypeData.ts` (tunnel `/devis/mon-toit`) mais servie
+   * PAR DEVIS ici plutôt qu'un jeu de données générique. Clé objet indexée par
+   * mois (« 1 »/« 4 »/« 7 »/« 11 » en chaîne) → { prod_kw[24], conso_kw[24],
+   * conso_jour_kwh, prod_jour_kwh, autoconsomme_kwh, surplus_kwh }.
+   * [HANDOFF public payload] — clé pas encore servie par `public_views.py` au
+   * moment de cette lane ; voir `apps.ventes.etude_horaire.jours_types_annee`
+   * côté backend pour la calculer. `null`/absent ⇒ section masquée entière.
+   */
+  jours_types?: Record<string, {
+    prod_kw?: unknown;
+    conso_kw?: unknown;
+    conso_jour_kwh?: unknown;
+    prod_jour_kwh?: unknown;
+    autoconsomme_kwh?: unknown;
+    surplus_kwh?: unknown;
+  }> | null;
 }
 
 /** WJ32 — bloc `financing` backend (QJ12), structure de `compute_financing_block`. */
@@ -3447,3 +3505,186 @@ export const MONTHS_SHORT: Record<PropLang, string[]> = {
   en: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
   ar: ['ينا', 'فبر', 'مار', 'أبر', 'ماي', 'يون', 'يول', 'غشت', 'شت', 'أكت', 'نون', 'دجن'],
 };
+
+// ════════════════════════════════════════════════════════════════════════════
+// L-PROP CJ2b-bis — falaise tarifaire / régime batterie / estimation conso,
+// sous-ensemble PUBLIC des blocs du moteur horaire interne (lot 4, 24/08).
+// DISCIPLINE : chaque parseur renvoie `null` dès que la clé est absente ou
+// que sa forme ne peut pas être validée — jamais un chiffre recalculé ni un
+// défaut fabriqué côté web (CLAUDE.md, zéro chiffre inventé). Les payloads
+// « anciens » (devis générés avant le lot 4) n'ont simplement pas ces clés :
+// la page ne doit ni planter ni afficher un bloc vide.
+// ════════════════════════════════════════════════════════════════════════════
+
+/** Bloc « falaise » client-safe — palier tarifaire actuel/visé + résiduel. */
+export interface TarifBracketStory {
+  trancheActuelleLibelle: string | null;
+  trancheViseeLibelle: string | null;
+  cibleKwhMois: number | null;
+  residuelKwhMois: number | null;
+}
+
+function finiteOrNull(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) ? v : null;
+}
+
+function nonEmptyStringOrNull(v: unknown): string | null {
+  return typeof v === 'string' && v.trim() !== '' ? v : null;
+}
+
+/**
+ * Le pitch tarifaire prêt à afficher, ou `null` quand le backend n'a rien
+ * servi (clé `tranche_tarifaire` absente — devis pré-lot-4 — ou aucun des
+ * quatre sous-champs n'est lisible). Chaque sous-champ manque INDÉPENDAMMENT
+ * (un résiduel sans tranche nommée reste affichable) — jamais de valeur de
+ * repli fabriquée à sa place.
+ */
+export function tarifBracketStory(
+  p: Pick<ProposalResponse, 'tranche_tarifaire'>,
+): TarifBracketStory | null {
+  const t = p.tranche_tarifaire;
+  if (!t || typeof t !== 'object') return null;
+  const trancheActuelleLibelle = nonEmptyStringOrNull(t.tranche_actuelle?.libelle);
+  const trancheViseeLibelle = nonEmptyStringOrNull(t.tranche_visee?.libelle);
+  const cibleKwhMois = finiteOrNull(t.cible_kwh_mois);
+  const residuelKwhMois = finiteOrNull(t.residuel_kwh_mois);
+  if (!trancheActuelleLibelle && !trancheViseeLibelle && cibleKwhMois === null && residuelKwhMois === null) {
+    return null;
+  }
+  return { trancheActuelleLibelle, trancheViseeLibelle, cibleKwhMois, residuelKwhMois };
+}
+
+/** Remplissage batterie moyen + couverture des glitchs (pointes rattrapées). */
+export interface BatteryRegimeInfo {
+  remplissageMoyenPct: number | null;
+  couvertureGlitchPct: number | null;
+}
+
+/**
+ * `null` quand `batterie_regime` est absent ou que ses deux champs sont
+ * illisibles ensemble (rien à montrer). Un seul des deux présent reste
+ * affichable — la page affiche alors seulement celui-là.
+ */
+export function batteryRegimeInfo(
+  p: Pick<ProposalResponse, 'batterie_regime'>,
+): BatteryRegimeInfo | null {
+  const b = p.batterie_regime;
+  if (!b || typeof b !== 'object') return null;
+  const remplissageMoyenPct = finiteOrNull(b.remplissage_moyen_pct);
+  const couvertureGlitchPct = finiteOrNull(b.couverture_glitch_pct);
+  if (remplissageMoyenPct === null && couvertureGlitchPct === null) return null;
+  return { remplissageMoyenPct, couvertureGlitchPct };
+}
+
+/** Libellés FR des ajouts d'estimation de consommation — mêmes clés que le
+ *  moteur horaire interne (chauffe-eau/VE/clim/piscine). */
+const ESTIMATION_CONSO_AJOUT_LABELS: Record<string, string> = {
+  chauffe_eau: 'Chauffe-eau électrique',
+  ve: 'Véhicule électrique',
+  clim: 'Climatisation',
+  piscine: 'Piscine',
+};
+
+export interface EstimationConsoAjout {
+  cle: string;
+  libelle: string;
+  valeurs: number[];
+}
+
+export interface EstimationConsoAffichable {
+  base: number[];
+  total: number[];
+  ajouts: EstimationConsoAjout[];
+}
+
+function isValidMonthly12(a: unknown): a is number[] {
+  return Array.isArray(a) && a.length === 12 && a.every((v) => typeof v === 'number' && Number.isFinite(v));
+}
+
+/**
+ * Décomposition mensuelle prête à l'affichage, ou `null` quand `base_mensuelle`
+ * / `totale_mensuelle` ne sont pas EXACTEMENT 12 nombres finis chacun. Chaque
+ * ligne d'ajout n'apparaît que si sa propre série de 12 est valide — une clé
+ * d'ajout illisible est simplement omise, jamais remplacée par des zéros.
+ */
+export function estimationConsoAffichable(
+  p: Pick<ProposalResponse, 'estimation_conso'>,
+): EstimationConsoAffichable | null {
+  const e = p.estimation_conso;
+  if (!e || typeof e !== 'object') return null;
+  const base = e.base_mensuelle;
+  const total = e.totale_mensuelle;
+  if (!isValidMonthly12(base) || !isValidMonthly12(total)) return null;
+  const ajoutsSrc = e.ajouts && typeof e.ajouts === 'object' ? (e.ajouts as Record<string, unknown>) : {};
+  const ajouts: EstimationConsoAjout[] = Object.keys(ajoutsSrc)
+    .filter((cle) => isValidMonthly12(ajoutsSrc[cle]))
+    .map((cle) => ({
+      cle,
+      libelle: ESTIMATION_CONSO_AJOUT_LABELS[cle] ?? cle,
+      valeurs: ajoutsSrc[cle] as number[],
+    }));
+  return { base, total, ajouts };
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// L-PROP TASK2 — « Une journée type » PAR DEVIS (production vs consommation,
+// 4 petits multiples janvier/avril/juillet/novembre). MÊME discipline « tout
+// ou rien » que `apps/web/src/lib/jourTypeData.ts hasJourTypeData()` : un jeu
+// PARTIEL serait plus trompeur qu'utile, les quatre mois sont conçus pour se
+// comparer entre eux.
+// ════════════════════════════════════════════════════════════════════════════
+
+export type ProposalJourTypeMonthId = 1 | 4 | 7 | 11;
+
+export interface ProposalJourTypeMonth {
+  /** 24 valeurs — puissance PRODUITE moyenne de chaque heure du jour moyen (kW). */
+  prodKw: number[];
+  /** 24 valeurs — puissance CONSOMMÉE moyenne de chaque heure du jour moyen (kW). */
+  consoKw: number[];
+  consoJourKwh: number;
+  prodJourKwh: number;
+  autoconsommeKwh: number;
+  surplusKwh: number;
+}
+
+export const PROPOSAL_JOUR_TYPE_MONTH_IDS: readonly ProposalJourTypeMonthId[] = [1, 4, 7, 11];
+
+export const PROPOSAL_JOUR_TYPE_MONTH_LABELS: Record<ProposalJourTypeMonthId, { fr: string; en: string; ar: string }> = {
+  1: { fr: 'Janvier', en: 'January', ar: 'يناير' },
+  4: { fr: 'Avril', en: 'April', ar: 'أبريل' },
+  7: { fr: 'Juillet', en: 'July', ar: 'يوليوز' },
+  11: { fr: 'Novembre', en: 'November', ar: 'نونبر' },
+};
+
+function isValidHourly24(a: unknown): a is number[] {
+  return Array.isArray(a) && a.length === 24 && a.every((v) => typeof v === 'number' && Number.isFinite(v) && v >= 0);
+}
+
+/**
+ * Les 4 mois « jour type » prêts à l'affichage, ou `null` tant que le backend
+ * ne sert pas encore `jours_types` (clé absente aujourd'hui — voir le
+ * [HANDOFF] sur `ProposalResponse.jours_types`), qu'aucun devis ne l'a, ou que
+ * l'un des quatre mois est illisible : PAS de jeu partiel affiché.
+ */
+export function proposalJoursTypes(
+  p: Pick<ProposalResponse, 'jours_types'>,
+): Record<ProposalJourTypeMonthId, ProposalJourTypeMonth> | null {
+  const src = p.jours_types;
+  if (!src || typeof src !== 'object') return null;
+  const out: Partial<Record<ProposalJourTypeMonthId, ProposalJourTypeMonth>> = {};
+  for (const m of PROPOSAL_JOUR_TYPE_MONTH_IDS) {
+    const entry = (src as Record<string, unknown>)[String(m)];
+    if (!entry || typeof entry !== 'object') continue;
+    const e = entry as Record<string, unknown>;
+    if (!isValidHourly24(e.prod_kw) || !isValidHourly24(e.conso_kw)) continue;
+    const consoJourKwh = finiteOrNull(e.conso_jour_kwh);
+    const prodJourKwh = finiteOrNull(e.prod_jour_kwh);
+    const autoconsommeKwh = finiteOrNull(e.autoconsomme_kwh);
+    const surplusKwh = finiteOrNull(e.surplus_kwh);
+    if (consoJourKwh === null || prodJourKwh === null || autoconsommeKwh === null || surplusKwh === null) continue;
+    out[m] = { prodKw: e.prod_kw, consoKw: e.conso_kw, consoJourKwh, prodJourKwh, autoconsommeKwh, surplusKwh };
+  }
+  return PROPOSAL_JOUR_TYPE_MONTH_IDS.every((m) => !!out[m])
+    ? (out as Record<ProposalJourTypeMonthId, ProposalJourTypeMonth>)
+    : null;
+}
