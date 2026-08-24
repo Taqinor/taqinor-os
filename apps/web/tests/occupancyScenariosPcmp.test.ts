@@ -28,9 +28,11 @@ const CODE = PAGE
   .replace(/\/\*[\s\S]*?\*\//g, ' ')
   .replace(/^[ \t]*\/\/.*$/gm, ' ');
 
+// L'échantillon partagé porte l'enveloppe PACT10 {endpoint, pourquoi, exemple}
+// exigée par check_api_shapes ; le payload vit sous exemple.profils_comparatifs.
 const CONTRAT = JSON.parse(read(
   '../../../backend/django_core/apps/ventes/contract_samples/profils_comparatifs.json',
-));
+)).exemple.profils_comparatifs;
 
 describe('occupancyScenarios — les 3 silhouettes, chiffres SERVEUR', () => {
   it('null quand `profils_comparatifs` est absent ou vide', () => {

@@ -265,7 +265,10 @@ class PayloadPublicTests(_PcmpBase):
         publie, _devis = self._bloc_publie()
         chemin = (Path(__file__).resolve().parent.parent
                   / 'contract_samples' / 'profils_comparatifs.json')
-        contrat = json.loads(chemin.read_text(encoding='utf-8'))
+        # L'échantillon porte l'enveloppe PACT10 {endpoint, pourquoi, exemple}
+        # exigée par check_api_shapes ; le payload vit sous exemple.
+        contrat = json.loads(chemin.read_text(
+            encoding='utf-8'))['exemple']['profils_comparatifs']
         attendues = {c for c in contrat if not c.startswith('_')}
         self.assertEqual(set(publie), attendues)
         self.assertEqual(set(publie['profils'][0]),
