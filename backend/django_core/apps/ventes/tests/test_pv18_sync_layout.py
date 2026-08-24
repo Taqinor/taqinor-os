@@ -438,6 +438,16 @@ CATALOGUE_KIT = [
     ('Transport', 'HEAL-TRANS', '1000'),
 ]
 
+#: L-FORFAIT (fondateur 24/08/2026) — le barème AU PANNEAU des trois forfaits,
+#: tel que ``seed_catalogue`` le pose : ``(part fixe HT, part par panneau HT)``.
+#: Une resynchronisation qui change le nombre de panneaux REQUOTE donc ces
+#: trois lignes ; c'est exactement ce que vérifie ``TestCompletionDuKit``.
+BAREMES_FORFAIT = {
+    'HEAL-INST': ('2000', '250'),       # 8 p → 4 000 HT ; 16 p → 6 000 HT
+    'HEAL-ACC': ('0', '52.0833'),       # ancien barème ÷ 2
+    'HEAL-TAB': ('0', '203.1250'),      # ancien barème + 30 %
+}
+
 #: Les huit classes que la complétion sait ajouter, par leur désignation
 #: catalogue — l'ordre n'a pas d'importance ici, la présence si.
 KIT_ATTENDU = ('Smart Meter', 'Wifi Dongle', 'Structures acier', 'Socles',
@@ -464,10 +474,15 @@ class TestCompletionDuKit(TestCase):
         for nom, sku, prix in CATALOGUE_KIT:
             if nom in sans:
                 continue
+            fixe, par_panneau = BAREMES_FORFAIT.get(sku, (None, None))
             self.produits[nom] = Produit.objects.create(
                 company=self.company, nom=nom, sku=sku,
                 prix_vente=Decimal(prix), prix_achat=Decimal('1'),
-                quantite_stock=500)
+                quantite_stock=500,
+                # L-FORFAIT — le barème vit au STOCK (cf. BAREMES_FORFAIT).
+                prix_fixe_ht=None if fixe is None else Decimal(fixe),
+                prix_par_panneau_ht=(None if par_panneau is None
+                                     else Decimal(par_panneau)))
         return self.produits
 
     def _squelette(self, *, panneaux=12, onduleur='Onduleur réseau Huawei 5kW',
@@ -523,20 +538,22 @@ class TestCompletionDuKit(TestCase):
             [])
 
         # Quantités : une structure par panneau, DEUX socles par panneau, et
-        # les forfaits à l'unité (16 panneaux de 550 Wc = 8,8 kWc → 2 blocs).
+        # les forfaits à l'unité (une seule ligne chacun, quel que soit le
+        # nombre de panneaux — c'est le prix unitaire qui porte le total).
         self.assertEqual(int(lignes['Structures acier'].quantite), 16)
         self.assertEqual(int(lignes['Socles'].quantite), 32)
         self.assertEqual(int(lignes['Accessoires'].quantite), 1)
         self.assertEqual(int(lignes['Smart Meter'].quantite), 1)
 
-        # Prix des forfaits : le simulateur les exprime en TTC par bloc de
-        # 5 kWc, le devis stocke du HT (TVA 20 %).
+        # L-FORFAIT (fondateur 24/08/2026) — prix des forfaits recotés AU
+        # PANNEAU depuis le barème catalogue, en HT : le calepinage annonce 16
+        # panneaux, les trois lignes les suivent.
         self.assertEqual(lignes['Accessoires'].prix_unitaire,
-                         Decimal('1666.67'))   # 2 × 1000 TTC
+                         Decimal('833.33'))    # 52,0833 × 16
         self.assertEqual(lignes['Tableau De Protection AC/DC'].prix_unitaire,
-                         Decimal('2500.00'))   # 2 × 1500 TTC
+                         Decimal('3250.00'))   # 203,1250 × 16
         self.assertEqual(lignes['Installation'].prix_unitaire,
-                         Decimal('6000.00'))   # (2+1) × 2400 TTC
+                         Decimal('6000.00'))   # 2 000 + 250 × 16 — ANCRAGE
         # …et un produit non forfaitaire garde son prix catalogue.
         self.assertEqual(lignes['Structures acier'].prix_unitaire,
                          Decimal('500.00'))

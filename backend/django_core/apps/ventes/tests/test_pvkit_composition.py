@@ -57,6 +57,18 @@ CATALOGUE = [
      'SUIVI-2A', '5000'),
 ]
 
+#: L-FORFAIT (fondateur 24/08/2026) — le barème AU PANNEAU des trois forfaits,
+#: tel que ``seed_catalogue`` le pose : ``(part fixe HT, part par panneau HT)``.
+#: Ces trois lignes ne se vendent plus au ``prix_vente`` catalogue ci-dessus :
+#: leur montant est ``fixe + par_panneau × nb_panneaux``, et il vit dans le
+#: STOCK (champs ``Produit.prix_fixe_ht`` / ``prix_par_panneau_ht``) pour que le
+#: fondateur puisse le changer sans toucher au code.
+BAREMES_FORFAIT = {
+    'INST-CAT': ('2000', '250'),        # 8 p → 4 000 HT ; 16 p → 6 000 HT
+    'ACC-CAT': ('0', '52.0833'),        # ancien barème ÷ 2
+    'TAB-PROT': ('0', '203.1250'),      # ancien barème + 30 %
+}
+
 
 class _Base(TestCase):
     """8 panneaux de 550 Wc = 4,4 kWc — le cas résidentiel de référence."""
@@ -71,10 +83,16 @@ class _Base(TestCase):
             role_legacy='responsable', company=self.company)
         self.produits = {}
         for nom, sku, prix in CATALOGUE:
+            fixe, par_panneau = BAREMES_FORFAIT.get(sku, (None, None))
             self.produits[sku] = Produit.objects.create(
                 company=self.company, nom=nom, sku='%s-%s' % (sku, self.slug),
                 prix_vente=Decimal(prix), prix_achat=Decimal('1'),
-                quantite_stock=500)
+                quantite_stock=500,
+                # L-FORFAIT — le barème vit au STOCK : le catalogue de ce
+                # montage le porte comme celui de la production.
+                prix_fixe_ht=None if fixe is None else Decimal(fixe),
+                prix_par_panneau_ht=(None if par_panneau is None
+                                     else Decimal(par_panneau)))
         self._poser_fiches_techniques()
 
     def _poser_fiches_techniques(self):
@@ -164,12 +182,15 @@ class LeKitResidentielEstComplet(_Base):
         self.assertEqual(kit['Structures acier'], (8, Decimal('500.00')))
         self.assertEqual(kit['Socles'], (16, Decimal('80.00')))
 
-        # Les trois forfaits indexés sur la puissance : 4,4 kWc → 1 bloc de
-        # 5 kWc. Le simulateur les exprime en TTC (1 000 / 1 500 / 2×2 400) ;
-        # le modèle stocke du HT, d'où la division par 1,20.
-        self.assertEqual(kit['Accessoires'], (1, Decimal('833.33')))
+        # L-FORFAIT (fondateur 24/08/2026) — les trois forfaits se cotent AU
+        # PANNEAU, depuis le barème porté par le produit (HT) : une ligne,
+        # quantité 1, prix unitaire = total de la formule.
+        #   · Installation = 2 000 + 250 × 8  = 4 000 HT  ← ANCRAGE FONDATEUR
+        #   · Accessoires  =    52,0833 × 8   =   416,67 HT (ancien ÷ 2)
+        #   · Tableau      =   203,1250 × 8   = 1 625,00 HT (ancien + 30 %)
+        self.assertEqual(kit['Accessoires'], (1, Decimal('416.67')))
         self.assertEqual(kit['Tableau De Protection AC/DC'],
-                         (1, Decimal('1250.00')))
+                         (1, Decimal('1625.00')))
         self.assertEqual(kit['Installation'], (1, Decimal('4000.00')))
         self.assertEqual(kit['Transport'], (1, Decimal('1000.00')))
 
@@ -204,17 +225,19 @@ class LeKitResidentielEstComplet(_Base):
         self.assertNotIn('Wifi Dongle', kit)
 
     def test_une_grosse_installation_monte_les_paliers(self):
-        """20 panneaux = 11 kWc : 2 blocs de prix, et 3 modules de batterie."""
+        """20 panneaux = 11 kWc : les forfaits suivent, et 3 modules de bat."""
         kit = self._kit(self._devis(scenario='avec_batterie',
                                     panels=20, kwc=11.0))
         self.assertEqual(kit['Panneau Jinko 550W'][0], 20)
         self.assertEqual(kit['Structures acier'][0], 20)
         self.assertEqual(kit['Socles'][0], 40)
-        # blocs = round(11/5) = 2 → 2 000 / 3 000 / 7 200 TTC.
-        self.assertEqual(kit['Accessoires'][1], Decimal('1666.67'))
+        # L-FORFAIT — 20 panneaux : 52,0833×20 / 203,1250×20 / 2 000+250×20.
+        # (L'ancienne règle par blocs les figeait au MÊME prix qu'à 16
+        # panneaux, 11 kWc et 8,8 kWc tombant tous deux sur 2 blocs.)
+        self.assertEqual(kit['Accessoires'][1], Decimal('1041.67'))
         self.assertEqual(kit['Tableau De Protection AC/DC'][1],
-                         Decimal('2500.00'))
-        self.assertEqual(kit['Installation'][1], Decimal('6000.00'))
+                         Decimal('4062.50'))
+        self.assertEqual(kit['Installation'][1], Decimal('7000.00'))
         # Cible batterie = 10 kWh → un module de 10, aucun de 5.
         self.assertEqual(kit['Batterie Dyness 10 kWh'][0], 1)
         self.assertNotIn('Batterie Dyness 5 kWh', kit)
@@ -237,6 +260,126 @@ class LeKitResidentielEstComplet(_Base):
         self.assertEqual(services.composition_residentielle(
             services.catalogue_de_la_societe(self.company),
             kwc=0, panel_watt=550), [])
+
+
+class LeForfaitSeCoteAuPanneau(_Base):
+    """L-FORFAIT (ordre fondateur 24/08/2026).
+
+    « change the rule of calculating instalation cost to be per pannel plus
+    2000dh HT always there plus 250 dh HT per pannel, so 8 pannels is still
+    4000dh HT and 16 pannels is 6000dh HT. but now what is inbetween changes,
+    also make the same for the tableau AC DC and the accesoirs, also now reduce
+    the price of accesoirs by half and add 30% to tableau DC AC total price »
+
+    Puis, le même jour : « dans le stock ceci devra être bien fait, c'est-à-dire
+    chaque case de installation, tableau AC/DC et accessoires devra avoir une
+    partie fixe et une par panneau que je pourrai changer par la suite ».
+
+    Ces tests verrouillent LES DEUX moitiés : les ancrages chiffrés du
+    fondateur, et le fait que le barème vive dans le STOCK (donc qu'il suive
+    une saisie du fondateur sans qu'on retouche au code).
+    """
+
+    slug = 'pvkit-forfait'
+
+    def _forfaits(self, panneaux, kwc):
+        kit = self._kit(self._devis(panels=panneaux, kwc=kwc))
+        return (kit['Accessoires'][1],
+                kit['Tableau De Protection AC/DC'][1],
+                kit['Installation'][1])
+
+    def test_les_deux_ancrages_du_fondateur_sont_tenus(self):
+        """8 → 4 000 HT et 16 → 6 000 HT, exactement comme avant."""
+        self.assertEqual(self._forfaits(8, 4.4)[2], Decimal('4000.00'))
+        self.assertEqual(self._forfaits(16, 8.8)[2], Decimal('6000.00'))
+
+    def test_l_entre_deux_se_lisse_au_lieu_de_sauter(self):
+        """Le cœur de l'ordre : « what is inbetween changes ».
+
+        L'ancienne règle par blocs de 5 kWc cotait 8, 10 ET 12 panneaux au
+        MÊME prix (tous dans le premier bloc), puis sautait d'une marche
+        entière. La droite au panneau les sépare.
+        """
+        acc10, tab10, inst10 = self._forfaits(10, 5.5)
+        # Installation : 2 000 + 250 × 10 — pile entre les deux ancrages.
+        self.assertEqual(inst10, Decimal('4500.00'))
+        # Accessoires : 52,0833 × 10 ; Tableau : 203,1250 × 10.
+        self.assertEqual(acc10, Decimal('520.83'))
+        self.assertEqual(tab10, Decimal('2031.25'))
+        # …et 9 panneaux ne coûtent PAS la même chose que 10.
+        self.assertEqual(self._forfaits(9, 4.95)[2], Decimal('4250.00'))
+
+    def test_accessoires_moitie_et_tableau_plus_30_pct(self):
+        """Les deux corrections de barème, aux ancrages du fondateur.
+
+        Ancienne règle : Accessoires 833,33 HT à 8 panneaux et 1 666,67 à 16 ;
+        Tableau 1 250,00 et 2 500,00. La MOITIÉ et le + 30 % se lisent donc
+        directement sur ces quatre montants.
+        """
+        acc8, tab8, _ = self._forfaits(8, 4.4)
+        acc16, tab16, _ = self._forfaits(16, 8.8)
+        self.assertEqual(acc8, Decimal('416.67'))    # 833,33 ÷ 2
+        self.assertEqual(acc16, Decimal('833.33'))   # 1 666,67 ÷ 2
+        self.assertEqual(tab8, Decimal('1625.00'))   # 1 250,00 × 1,30
+        self.assertEqual(tab16, Decimal('3250.00'))  # 2 500,00 × 1,30
+
+    def test_chaque_forfait_reste_une_seule_ligne_a_l_unite(self):
+        """Une ligne, quantité 1, prix unitaire = le total. Désignations
+        INCHANGÉES — le moteur PDF classe par elles."""
+        kit = self._kit(self._devis())
+        for designation in ('Accessoires', 'Tableau De Protection AC/DC',
+                            'Installation'):
+            self.assertEqual(kit[designation][0], 1, designation)
+
+    def test_le_barreme_se_change_depuis_le_stock(self):
+        """Le fondateur change ``prix_par_panneau_ht`` : le devis suit.
+
+        C'est TOUTE la raison pour laquelle le barème vit au catalogue et non
+        dans le code — vérifié sans toucher à une ligne de Python.
+        """
+        Produit.objects.filter(
+            company=self.company, nom='Installation').update(
+                prix_fixe_ht=Decimal('3000'),
+                prix_par_panneau_ht=Decimal('300'))
+        # 3 000 + 300 × 8 = 5 400 HT.
+        self.assertEqual(self._forfaits(8, 4.4)[2], Decimal('5400.00'))
+
+    def test_une_part_fixe_seule_suffit(self):
+        """Un seul des deux champs renseigné suffit à basculer la ligne sur le
+        barème : le forfait devient alors un montant PLAT."""
+        Produit.objects.filter(
+            company=self.company, nom='Accessoires').update(
+                prix_fixe_ht=Decimal('750'), prix_par_panneau_ht=None)
+        self.assertEqual(self._forfaits(8, 4.4)[0], Decimal('750.00'))
+        self.assertEqual(self._forfaits(16, 8.8)[0], Decimal('750.00'))
+
+    def test_sans_bareme_le_produit_garde_son_prix_de_vente(self):
+        """Les deux champs vides ⇒ ``prix_vente`` catalogue, comme avant et
+        comme tout le reste du catalogue (aucun produit existant ne change de
+        prix du seul fait de la migration)."""
+        Produit.objects.filter(
+            company=self.company,
+            nom__in=['Accessoires', 'Tableau De Protection AC/DC',
+                     'Installation']).update(
+                prix_fixe_ht=None, prix_par_panneau_ht=None)
+        acc, tab, inst = self._forfaits(8, 4.4)
+        self.assertEqual(acc, Decimal('2000.00'))    # prix_vente du catalogue
+        self.assertEqual(tab, Decimal('2000.00'))
+        self.assertEqual(inst, Decimal('4800.00'))
+
+    def test_le_taux_de_tva_du_devis_ne_change_plus_les_forfaits(self):
+        """Le barème est dicté EN HT : il ne se reconvertit plus depuis un TTC,
+        donc un devis à 10 % porte les mêmes montants forfaitaires qu'à 20 %."""
+        produits = services.catalogue_de_la_societe(self.company)
+        montants = []
+        for taux in (Decimal('20'), Decimal('10')):
+            lignes = services.composition_residentielle(
+                produits, kwc=4.4, panel_watt=550, nb_panneaux=8,
+                taux_tva=taux)
+            montants.append({li.designation: li.prix_unitaire
+                             for li in lignes}['Installation'])
+        self.assertEqual(montants[0], Decimal('4000.00'))
+        self.assertEqual(montants[0], montants[1])
 
 
 class LeCatalogueIncompletDegradeSansCasser(_Base):

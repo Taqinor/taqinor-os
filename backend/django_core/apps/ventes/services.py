@@ -1742,11 +1742,80 @@ def ordonner_par_role(taguees, ordre_lignes):
         key=lambda couple: rangs.get(couple[0], grand))
 
 
-#: Prix TTC des trois lignes FORFAITAIRES, indexés sur la puissance par blocs de
-#: 5 kWc — port littéral de ``auto_fill_from_power`` (le simulateur d'origine).
-_TTC_ACCESSOIRES_PAR_BLOC = 1000
-_TTC_TABLEAU_PAR_BLOC = 1500
-_TTC_INSTALLATION_PAR_BLOC = 2400
+# ── L-FORFAIT (ordre fondateur 24/08/2026) — LES TROIS FORFAITS SE COTENT AU
+# PANNEAU, PLUS PAR BLOCS DE 5 kWc ───────────────────────────────────────────
+# Verbatim : « change the rule of calculating instalation cost to be per pannel
+# plus 2000dh HT always there plus 250 dh HT per pannel, so 8 pannels is still
+# 4000dh HT and 16 pannels is 6000dh HT. but now what is inbetween changes,
+# also make the same for the tableau AC DC and the accesoirs, also now reduce
+# the price of accesoirs by half and add 30% to tableau DC AC total price ».
+#
+# L'ANCIENNE RÈGLE (port littéral de ``auto_fill_from_power``) montait par
+# MARCHES : 1 000 / 1 500 TTC par bloc de 5 kWc, et (blocs + 1) × 2 400 TTC
+# pour l'installation, avec ``blocs = max(1, round(kWc / 5))``. Deux toitures
+# différentes (8 et 12 panneaux) tombaient donc au MÊME prix tant qu'elles
+# restaient dans le même bloc, puis sautaient d'une marche entière. La règle
+# est désormais une DROITE en NOMBRE DE PANNEAUX : les deux ancrages du
+# fondateur (8 → 4 000, 16 → 6 000 pour l'installation) sont conservés au
+# centime près, et seul l'entre-deux change — il se lisse.
+#
+# Ces montants sont nativement HT (le fondateur les a dictés en HT) : ils ne
+# passent PLUS par la conversion TTC→HT et ne dépendent donc plus du taux de
+# TVA du devis. Le câble de terre, lui, reste indexé sur les paliers de 5 kWc
+# (``blocs``) — cette règle-là n'est pas touchée.
+#
+# ⚠ LE BARÈME NE VIT PAS ICI (ordre fondateur, même jour : « dans le stock
+# ceci devra être bien fait, c'est-à-dire chaque case de installation, tableau
+# AC/DC et accessoires devra avoir une partie fixe et une par panneau que je
+# pourrai changer par la suite »). Les deux parts sont des CHAMPS CATALOGUE —
+# ``stock.Produit.prix_fixe_ht`` et ``prix_par_panneau_ht`` (migration
+# ``stock/0128``, qui pose aussi les valeurs du fondateur) — que le fondateur
+# modifie depuis le stock sans toucher au code. Ce module ne porte QUE la
+# formule générique ci-dessous : aucun 2 000 / 250 / 52,08 / 203,125 en dur.
+#
+# Le montant de ces lignes vient donc du BARÈME, jamais du ``prix_vente`` du
+# produit qui les porte — et un produit SANS barème (les deux champs vides,
+# c'est-à-dire tout le reste du catalogue) garde exactement son ``prix_vente``.
+
+
+def _au_centime(montant):
+    """Arrondi MONÉTAIRE des forfaits : 2 décimales, moitié vers le haut.
+
+    Même arrondi que le reste de la composition (l'ancienne conversion
+    TTC→HT quantizait déjà ainsi) : un prix unitaire de devis n'a jamais plus
+    de deux décimales.
+    """
+    return Decimal(montant).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+
+def prix_forfait_ht(produit, nb_panneaux):
+    """L-FORFAIT — le prix HT d'une ligne TARIFÉE AU PANNEAU, sinon ``None``.
+
+    ``prix_fixe_ht + prix_par_panneau_ht × nb_panneaux``, arrondi au centime.
+    Rend ``None`` — et l'appelant retombe alors sur le ``prix_vente``
+    catalogue, comportement historique byte-identique — dès que le produit ne
+    porte AUCUN barème (les deux champs vides), ce qui est le cas de tout le
+    catalogue sauf les forfaits.
+
+    UNE SEULE VÉRITÉ : tout chemin qui (re)compose le kit résidentiel —
+    création depuis un calepinage, ``sync-layout``/PVHEAL, dry-run — passe par
+    ``composition_residentielle``, donc par cette fonction. Changer le nombre
+    de panneaux requote mécaniquement les forfaits ; changer le barème au
+    stock les requote aussi, sans qu'aucun appelant n'ait sa propre copie de
+    la règle.
+    """
+    if produit is None:
+        return None
+    fixe = getattr(produit, 'prix_fixe_ht', None)
+    par_panneau = getattr(produit, 'prix_par_panneau_ht', None)
+    if fixe is None and par_panneau is None:
+        return None
+    n = int(nb_panneaux or 0)
+    total = Decimal(str(fixe or 0))
+    if n > 0:
+        total += Decimal(str(par_panneau or 0)) * Decimal(n)
+    return _au_centime(total)
+
 
 _KW_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*(?:kw|kva)\b", re.IGNORECASE)
 _KWH_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*kwh\b", re.IGNORECASE)
@@ -2017,10 +2086,13 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     appelante (voir ``catalogue_de_la_societe``) ; les produits sans prix de
     vente en sont écartés d'entrée de jeu.
 
-    ``taux_tva`` est le taux du DEVIS (celui qui s'appliquera réellement aux
-    lignes, dont ``taux_tva`` reste vide) : il sert à reconvertir en HT les
-    trois prix forfaitaires que le simulateur exprime en TTC, pour que le
-    montant vu par le client soit le même des deux côtés.
+    ``taux_tva`` — le taux du DEVIS. Il servait à reconvertir en HT les trois
+    prix forfaitaires que le simulateur exprimait en TTC ; depuis L-FORFAIT
+    (fondateur 24/08/2026) ces forfaits sont dictés EN HT et lus au catalogue
+    (``stock.Produit.prix_fixe_ht`` / ``prix_par_panneau_ht``), donc plus rien
+    ici ne convertit quoi que ce soit. Le paramètre est CONSERVÉ — tous les
+    appelants le passent et la TVA reste celle du devis — mais il n'influence
+    plus aucun montant composé.
 
     ``avertissements`` (optionnel) est LE CANAL de cette fonction : une liste
     que l'appelant fournit et que la composition enrichit sur place quand elle
@@ -2324,13 +2396,21 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     cable_dc = choisir_cable('cable_dc')
     cable_terre = choisir_cable('cable_terre')
 
-    # ── Forfaits indexés sur la puissance, par blocs de 5 kWc (TTC) ──
+    # ── Paliers de 5 kWc — ne servent plus QUE au métrage du câble de terre ──
     blocs = max(1, _arrondi_js(kwp / 5))
-    facteur = Decimal('1') + (Decimal(str(taux_tva or 20)) / Decimal('100'))
 
-    def ht_depuis_ttc(ttc):
-        return (Decimal(str(ttc)) / facteur).quantize(
-            Decimal('0.01'), rounding=ROUND_HALF_UP)
+    # ── L-FORFAIT (fondateur 24/08/2026) — les trois forfaits se cotent AU
+    # PANNEAU, depuis le BARÈME PORTÉ PAR LE PRODUIT (cf. ``prix_forfait_ht``) :
+    # plus de marches par bloc de 5 kWc, et plus aucune conversion TTC→HT —
+    # c'est pourquoi ``taux_tva`` ne sert plus ici.
+    #
+    # Le barème est appliqué à ces TROIS rôles NOMMÉMENT, jamais dans
+    # ``ajouter`` : une part « par panneau » posée par erreur sur un produit
+    # vendu à la quantité (panneau, structure, socle…) se multiplierait alors
+    # DEUX fois — une fois dans le prix, une fois dans la quantité.
+    produit_accessoires = premier('accessoires')
+    produit_tableau = premier('tableau')
+    produit_installation = premier('installation')
 
     # ── Smart Meter + clé Wifi : UNIQUEMENT derrière un onduleur Huawei ──
     # (miroir du garde ``info_hw`` de l'ancien simulateur). L'écran teste les
@@ -2391,12 +2471,16 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     # suit les paliers de 5 kWc (25 m de base + 15 m par palier).
     ajouter('cable_dc', cable_dc, metre_cable_dc_par_paires(mppt_paires))
     ajouter('cable_terre', cable_terre, metre_cable_terre(blocs))
-    ajouter('accessoires', premier('accessoires'), 1,
-            ht_depuis_ttc(blocs * _TTC_ACCESSOIRES_PAR_BLOC))
-    ajouter('tableau', premier('tableau'), 1,
-            ht_depuis_ttc(blocs * _TTC_TABLEAU_PAR_BLOC))
-    ajouter('installation', premier('installation'), 1,
-            ht_depuis_ttc((blocs + 1) * _TTC_INSTALLATION_PAR_BLOC))
+    # L-FORFAIT — une SEULE ligne par forfait, quantité 1, dont le prix
+    # unitaire EST le total du barème (désignations inchangées). Barème absent
+    # du produit ⇒ ``prix_forfait_ht`` rend ``None`` et ``ajouter`` retombe sur
+    # le ``prix_vente`` catalogue, comme n'importe quelle autre ligne.
+    ajouter('accessoires', produit_accessoires, 1,
+            prix_forfait_ht(produit_accessoires, nb))
+    ajouter('tableau', produit_tableau, 1,
+            prix_forfait_ht(produit_tableau, nb))
+    ajouter('installation', produit_installation, 1,
+            prix_forfait_ht(produit_installation, nb))
     ajouter('transport', premier('transport'), 1)
 
     # ── PVORD — ordre PAR DÉFAUT des lignes ────────────────────────────────

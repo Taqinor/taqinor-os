@@ -315,6 +315,13 @@ class ProduitSerializer(serializers.ModelSerializer):
             'unite_stock', 'unite', 'unite_stock_display',
             # Prix (prix_achat gardé par permission, cf. get_fields)
             'prix_achat', 'prix_vente', 'tva',
+            # L-FORFAIT (fondateur 24/08/2026) — barème forfaitaire AU PANNEAU
+            # (Installation / Tableau De Protection AC/DC / Accessoires) :
+            # part fixe + part par panneau, en DH HT. Lecture ET écriture
+            # (permissions d'écriture existantes du stock) : c'est par là que
+            # le fondateur change ces prix sans toucher au code. Vides ⇒ le
+            # produit se vend à son `prix_vente`, comme tout le reste.
+            'prix_fixe_ht', 'prix_par_panneau_ht',
             # ZPUR1 — politique de facturation d'achat (sur_reception/
             # sur_commande) — INTERNE, jamais client-facing (achat).
             'politique_facturation_achat',

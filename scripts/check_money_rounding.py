@@ -185,10 +185,17 @@ BASELINE_ALLOWLIST = {
     # lignes de `services.py` (la composition résidentielle a gagné les règles
     # câbles/marques/ordre). Aucun n'est monétaire : ce sont une surface de
     # toit, une puissance en kWc et deux dérivations kWc = panneaux × Wc.
+    # L-FORFAIT (24/08/2026) — MÊMES sites, recalés une fois de plus : le
+    # barème forfaitaire au panneau ajoute ~84 lignes AVANT eux dans
+    # `services.py` (constantes remplacées par `prix_forfait_ht`, commentaires
+    # de provenance fondateur). PREUVE PAR LE CONTENU, pas par le décalage :
+    # les deux lignes portent toujours `round(total_panneaux * watt / 1000.0,
+    # 3)`, c'est-à-dire une PUISSANCE en kWc — jamais un montant. 3056→3140,
+    # 3143→3227 ; 1033/1036 sont AVANT l'insertion, donc inchangés.
     "backend/django_core/apps/ventes/services.py:1033",
     "backend/django_core/apps/ventes/services.py:1036",
-    "backend/django_core/apps/ventes/services.py:3056",
-    "backend/django_core/apps/ventes/services.py:3143",
+    "backend/django_core/apps/ventes/services.py:3140",
+    "backend/django_core/apps/ventes/services.py:3227",
     "backend/django_core/apps/ventes/quote_engine/builder.py:385",
     "backend/django_core/apps/ventes/quote_engine/builder.py:386",
     "backend/django_core/apps/ventes/quote_engine/builder.py:725",

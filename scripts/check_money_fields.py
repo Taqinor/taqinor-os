@@ -52,8 +52,20 @@ RATE_NAME_RE = re.compile(r"(taux_|_pct$|pourcentage)", re.IGNORECASE)
 # One entry today: gestion_projet.Projet.taux_penalite_retard is a PER-MILLE
 # (‰) rate per day (Moroccan public-works penalty convention), correctly at
 # decimal_places=3 — not a drift to fix.
+# L-FORFAIT (fondateur 24/08/2026) — stock.Produit.prix_par_panneau_ht est un
+# TAUX PAR UNITÉ (DH HT par panneau), pas un montant stocké : le montant, lui,
+# est arrondi au centime au moment de composer la ligne
+# (``apps.ventes.services.prix_forfait_ht``). Les 4 décimales sont NÉCESSAIRES
+# et relues : le barème Accessoires vaut 1 000/1,20/8/2 = 52,0833…/panneau (la
+# moitié EXACTE de l'ancien forfait) et le barème Tableau 156,25 × 1,30 =
+# 203,125/panneau (+ 30 % EXACT). À 2 décimales, le total à 8 panneaux
+# tomberait à 416,64 au lieu de 416,67 et à 1 625,04 au lieu de 1 625,00 —
+# c'est-à-dire ni « la moitié », ni « + 30 % ». Le nom du champ ne matche pas
+# RATE_NAME_RE (`taux_`/`_pct`), d'où cette entrée plutôt qu'un élargissement
+# de l'heuristique partagée.
 DECIMAL_PLACES_ALLOWLIST = {
     "backend/django_core/apps/gestion_projet/models.py:103",
+    "backend/django_core/apps/stock/models.py:705",
 }
 
 FLOAT_LIKE = {"FloatField"}
