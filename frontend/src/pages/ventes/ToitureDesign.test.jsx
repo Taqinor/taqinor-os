@@ -169,6 +169,24 @@ describe('ToitureDesign — mode devis (PV20)', () => {
       .toBe(`${CTX.devis.client_adresse}, ${CTX.devis.client_ville}`)
   })
 
+  // Correction fondateur 24/08 — le backend (PV17 + repli GPS) porte déjà le
+  // pin ou son absence dans `geometrie.pin` : sans lui, l'écran le DIT.
+  it('correction 24/08 — sans aucune position (geometrie.pin=null) : message discret affiché', async () => {
+    const ctxSansPin = {
+      data: {
+        ...exempleContrat('ventes', 'devis_design_context'),
+        geometrie: { source: 'none', roof_layout: null, pin: null, outline: [] },
+      },
+    }
+    ventesApi.getDevisDesignContext.mockResolvedValue(ctxSansPin)
+
+    rendreDevis(CTX.devis.id)
+
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    expect(await screen.findByTestId('pv-sans-gps')).toHaveTextContent(
+      'Pas de position GPS sur la fiche')
+  })
+
   it('fondateur 18/08 — bouton Fermer (X) en haut à droite referme la fenêtre (retour SPA)', async () => {
     ventesApi.getDevisDesignContext.mockResolvedValue(
       reponseContrat('ventes', 'devis_design_context'))
@@ -632,5 +650,68 @@ describe('ToitureDesign — mode lead GOLDEN (inchangé par PV20)', () => {
     expect(screen.getByRole('button',
       { name: /Générer le devis & envoyer au client/ })).toBeInTheDocument()
     expect(screen.queryByTestId('pv20-lecture-seule')).toBeNull()
+    // Une épingle publique existe déjà : pas de message GPS.
+    expect(screen.queryByTestId('pv-sans-gps')).toBeNull()
+  })
+})
+
+// ── Correction fondateur 24/08 — repli GPS de la fiche lead ────────────────
+describe('ToitureDesign — mode lead : repli GPS de la fiche (correction 24/08)', () => {
+  it('sans roof_point mais avec gps_lat/gps_lng : hydrate.lead.roof_point vient du GPS de la fiche', async () => {
+    const lead = {
+      id: 89, nom: 'Bennani', prenom: 'Amine', ville: 'Marrakech',
+      telephone: '0611111111', roof_point: null, roof_outline: null,
+      gps_lat: '31.629472', gps_lng: '-8.008889',
+    }
+    api.get.mockImplementation((url) => {
+      if (url.startsWith('/crm/leads/')) return Promise.resolve({ data: lead })
+      if (url === '/ventes/roof-config/') {
+        return Promise.resolve({ data: { available: true, maptilerKey: 'k-lead' } })
+      }
+      return Promise.reject(new Error(`URL inattendue ${url}`))
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/devis-design/89']}>
+        <Routes>
+          <Route path="/devis-design/:id" element={<ToitureDesign />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    const options = initRoofToolPro8.mock.calls[0][0]
+    expect(options.hydrate.lead.roof_point).toEqual({ lat: 31.629472, lng: -8.008889 })
+    // Une position réelle existe (via le GPS) : pas de message « sans GPS ».
+    expect(screen.queryByTestId('pv-sans-gps')).toBeNull()
+  })
+
+  it('sans roof_point ni GPS : la carte reste au niveau Maroc, message discret affiché', async () => {
+    const lead = {
+      id: 90, nom: 'Idrissi', prenom: 'Sara', ville: '',
+      telephone: '', roof_point: null, roof_outline: null,
+      gps_lat: null, gps_lng: null,
+    }
+    api.get.mockImplementation((url) => {
+      if (url.startsWith('/crm/leads/')) return Promise.resolve({ data: lead })
+      if (url === '/ventes/roof-config/') {
+        return Promise.resolve({ data: { available: true, maptilerKey: 'k-lead' } })
+      }
+      return Promise.reject(new Error(`URL inattendue ${url}`))
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/devis-design/90']}>
+        <Routes>
+          <Route path="/devis-design/:id" element={<ToitureDesign />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    const options = initRoofToolPro8.mock.calls[0][0]
+    expect(options.hydrate.lead.roof_point).toBeNull()
+    expect(await screen.findByTestId('pv-sans-gps')).toHaveTextContent(
+      'Pas de position GPS sur la fiche')
   })
 })

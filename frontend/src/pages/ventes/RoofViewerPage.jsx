@@ -64,7 +64,16 @@ export default function RoofViewerPage() {
         title={`Design 3D — ${devis.reference}`}
       />
       <div className="mt-4">
-        <RoofViewer layout={devis.roof_layout} />
+        {/* Correction fondateur 24/08 — l'outil 3D ne recevait que
+            `roof_layout` alors que le GET du devis porte déjà tout le reste
+            (lignes réelles, client/lead) : on les transmet enfin à RoofViewer
+            au lieu de les jeter. Aucun appel réseau supplémentaire. */}
+        <RoofViewer
+          layout={devis.roof_layout}
+          clientNom={devis.client_nom}
+          leadNom={devis.lead_nom}
+          lignes={devis.lignes}
+        />
       </div>
     </div>
   )

@@ -162,6 +162,40 @@ class TestDesignContext(TestCase):
         self.assertEqual(data['cible']['bill_kwh'], 850.0)
         self.assertEqual(data['devis']['lead'], lead.id)
 
+    # ── Correction fondateur 24/08 — repli GPS du lead quand personne n'a
+    #    encore posé d'épingle (ni layout, ni `lead.roof_point`). ──────────
+    def test_geometrie_repli_gps_lead_sans_pin(self):
+        """Sans épingle posée (ni layout, ni roof_point) mais un lead qui
+        porte gps_lat/gps_lng (fiche « Toiture & site » du CRM) : la carte
+        centre sur ces coordonnées RÉELLES au lieu de rester au niveau
+        Maroc — jamais une valeur inventée, juste un autre champ du lead."""
+        lead = self._lead(gps_lat=Decimal('33.573110'), gps_lng=Decimal('-7.589843'))
+        devis = self._devis(lead=lead)
+        data = self._get(devis).data
+        self.assertEqual(data['geometrie']['source'], 'lead')
+        self.assertEqual(
+            data['geometrie']['pin'], {'lat': 33.57311, 'lng': -7.589843})
+
+    def test_geometrie_pin_layout_prime_sur_gps_lead(self):
+        """Un pin déjà posé sur le layout du devis reste prioritaire : le
+        repli GPS ne réécrit jamais une épingle déjà tracée."""
+        lead = self._lead(gps_lat=Decimal('31.0'), gps_lng=Decimal('-8.0'))
+        layout = {'version': 1, 'pin': {'lat': 33.5, 'lng': -7.6}, 'zones': []}
+        devis = self._devis(lead=lead, layout=layout)
+        data = self._get(devis).data
+        self.assertEqual(data['geometrie']['source'], 'devis')
+        self.assertEqual(data['geometrie']['pin'], {'lat': 33.5, 'lng': -7.6})
+
+    def test_geometrie_sans_gps_ni_pin_reste_none(self):
+        """Un lead sans AUCUNE coordonnée (ni roof_point, ni gps_lat/lng)
+        laisse `pin` à None — la vue Maroc reste le comportement actuel,
+        jamais un centre fabriqué."""
+        lead = self._lead()
+        devis = self._devis(lead=lead)
+        data = self._get(devis).data
+        self.assertEqual(data['geometrie']['source'], 'none')
+        self.assertIsNone(data['geometrie']['pin'])
+
     def test_forme_complete_sans_aucune_geometrie(self):
         devis = self._devis()
         data = self._get(devis).data

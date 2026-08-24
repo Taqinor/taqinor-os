@@ -19,6 +19,17 @@
  *   - imageUrl : URL éventuelle d'un aperçu image (snapshot 3D) — optionnel ;
  *                si présent, affiché en priorité au-dessus du plan SVG.
  *   - className : classes conteneur additionnelles.
+ *   - clientNom / leadNom : identité du client/lead associé au devis — texte
+ *     SERVEUR tel quel (`DevisSerializer.client_nom`/`lead_nom`), jamais
+ *     déduit ici ; optionnels, rien ne s'affiche si les deux sont vides.
+ *   - lignes : les VRAIES lignes du devis (`DevisSerializer.lignes`, déjà
+ *     chargées par l'appelant — aucun appel réseau supplémentaire). Chaque
+ *     ligne PRODUIT (désignation + quantité) devient une entrée de la
+ *     composition ; les lignes SECTION/NOTE (sans quantité) sont ignorées.
+ *     ZÉRO CHIFFRE INVENTÉ : la désignation vient telle quelle du devis, et
+ *     comme le catalogue Produit ne porte aujourd'hui aucune dimension
+ *     physique (largeur/longueur), la composition le DIT explicitement plutôt
+ *     que d'inventer une valeur.
  */
 
 // Azimut (degrés) → libellé cardinal français court.
@@ -94,17 +105,67 @@ function extractGeometry(layout) {
   return { zones: drawable, bbox: { minLng, maxLng, minLat, maxLat } }
 }
 
-export default function RoofViewer({ layout, imageUrl = null, className = '' }) {
+// Une ligne PRODUIT quantifiée (désignation + quantité) — les lignes
+// SECTION/NOTE n'ont ni produit ni quantité (cf. LigneDevisSerializer côté
+// serveur, XSAL14) et sont donc naturellement écartées ici.
+function extractComposition(lignes) {
+  if (!Array.isArray(lignes)) return []
+  return lignes
+    .filter((l) => l && l.designation
+      && l.quantite != null && Number(l.quantite) > 0)
+    .map((l, i) => ({
+      key: l.id ?? i,
+      designation: l.designation,
+      quantite: Number(l.quantite),
+    }))
+}
+
+export default function RoofViewer({
+  layout, imageUrl = null, className = '',
+  clientNom = '', leadNom = '', lignes = null,
+}) {
   const geom = extractGeometry(layout)
+  const composition = extractComposition(lignes)
+  const identite = (clientNom || '').trim() || (leadNom || '').trim()
+
+  // Bloc identité + composition — partagé par l'état vide et l'état avec
+  // plan : le client/lead et les lignes réelles du devis restent visibles
+  // même sans géométrie 3D exploitable (un devis peut être composé avant
+  // d'avoir un tracé de toiture).
+  const blocIdentiteComposition = (identite || composition.length > 0) && (
+    <div className="mt-3 space-y-2 text-left" data-testid="roofviewer-composition">
+      {identite && (
+        <p className="text-sm font-medium text-foreground">Client : {identite}</p>
+      )}
+      {composition.length > 0 && (
+        <div>
+          <p className="text-xs font-medium text-muted-foreground">Composition du devis</p>
+          <ul className="mt-1 space-y-0.5 text-xs text-muted-foreground">
+            {composition.map((l) => (
+              <li key={l.key}>{l.quantite} × {l.designation}</li>
+            ))}
+          </ul>
+          {/* Zéro chiffre inventé : le catalogue Produit ne porte aujourd'hui
+              aucune dimension physique — on le DIT plutôt que d'en fabriquer une. */}
+          <p className="mt-1 text-xs italic text-muted-foreground">
+            Dimensions produit non renseignées au catalogue.
+          </p>
+        </div>
+      )}
+    </div>
+  )
 
   // — État vide : pas de géométrie exploitable (et pas d'image non plus). —
   if (!geom && !imageUrl) {
     return (
-      <div
-        className={`rounded-lg border border-dashed border-border bg-muted/30 p-6 text-center text-sm text-muted-foreground ${className}`}
-        data-testid="roofviewer-empty"
-      >
-        Aucun plan de toiture enregistré pour ce devis.
+      <div className={className} data-testid="roofviewer">
+        <div
+          className="rounded-lg border border-dashed border-border bg-muted/30 p-6 text-center text-sm text-muted-foreground"
+          data-testid="roofviewer-empty"
+        >
+          Aucun plan de toiture enregistré pour ce devis.
+        </div>
+        {blocIdentiteComposition}
       </div>
     )
   }
@@ -228,6 +289,8 @@ export default function RoofViewer({ layout, imageUrl = null, className = '' }) 
           </ul>
         </div>
       )}
+
+      {blocIdentiteComposition}
     </div>
   )
 }

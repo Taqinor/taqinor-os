@@ -11,7 +11,15 @@ vi.mock('../../api/ventesApi', async (importOriginal) => {
       ...actual.default,
       getDevisById: vi.fn(() => Promise.resolve({
         data: {
-          id: 55, reference: 'DEV-3D', roof_layout: {
+          id: 55, reference: 'DEV-3D',
+          // Correction fondateur 24/08 — le GET du devis porte déjà le
+          // client/lead + les lignes réelles : RoofViewerPage doit les
+          // transmettre à RoofViewer au lieu de les jeter.
+          client_nom: 'Youssef Alaoui', lead_nom: '',
+          lignes: [
+            { id: 1, designation: 'Panneau Jinko 550W', quantite: '8' },
+          ],
+          roof_layout: {
             version: 1, zones: [{
               id: 'z1', label: 'Toit', roofType: 'flat', pitchDeg: 15,
               facingAzimuthDeg: 180, neededPanels: 8,
@@ -52,6 +60,10 @@ describe('RoofViewerPage — QG12 : route /ventes/devis/:id/3d', () => {
     await waitFor(() => {
       expect(screen.getByTestId('roofviewer-svg')).toBeTruthy()
     })
+    // Correction fondateur 24/08 — le devis réel (client + composition) est
+    // désormais transmis à RoofViewer, pas seulement `roof_layout`.
+    expect(await screen.findByText(/Client : Youssef Alaoui/)).toBeTruthy()
+    expect(screen.getByText('8 × Panneau Jinko 550W')).toBeTruthy()
   })
 
   it('affiche un état d\'erreur si le devis est introuvable', async () => {
