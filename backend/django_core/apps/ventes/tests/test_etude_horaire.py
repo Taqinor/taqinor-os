@@ -870,12 +870,12 @@ class GlitchSortieMoteurTest(SimpleTestCase):
         # en kWh comme en dirhams.
         self.assertGreater(annuel['part_glitch_sans_kwh'], 0.0)
         self.assertGreater(annuel['part_glitch_sans_mad'], 0.0)
-        # Et il frappe le SANS AU MOINS aussi fort que le AVEC : la batterie
-        # ne peut que rattraper, jamais aggraver.
+        # EN kWh, il frappe le SANS au moins aussi fort que le AVEC : la
+        # batterie ne peut que rattraper de l'énergie, jamais en détruire.
+        # (En DIRHAMS, ce n'est PAS garanti — voir
+        # ``test_la_falaise_selective_peut_inverser_le_verdict_en_dirhams``.)
         self.assertGreaterEqual(annuel['part_glitch_sans_kwh'],
                                 annuel['part_glitch_avec_kwh'] - 1e-9)
-        self.assertGreaterEqual(annuel['part_glitch_sans_mad'],
-                                annuel['part_glitch_avec_mad'] - 1e-6)
 
         # Même chose SANS aucune batterie au devis : l'effet reste entier.
         sans_stockage = self._etude(
@@ -903,13 +903,51 @@ class GlitchSortieMoteurTest(SimpleTestCase):
         self.assertAlmostEqual(
             annuel['part_glitch_sans_kwh'] - annuel['part_glitch_avec_kwh'],
             gain_batterie, places=1)
-        # En dirhams aussi, l'argument batterie ne peut que se renforcer.
-        self.assertGreaterEqual(
-            annuel['part_glitch_sans_mad'] - annuel['part_glitch_avec_mad'],
-            -1e-6)
         # Et la batterie reste ce qu'elle a toujours été : jamais moins bonne.
         self.assertGreaterEqual(annuel['economie_avec_mad'],
                                 annuel['economie_sans_mad'] - 1e-6)
+
+    def test_la_falaise_selective_peut_inverser_le_verdict_en_dirhams(self):
+        """CE N'EST PAS UN BUG — c'est la grille SÉLECTIVE marocaine, et il
+        faut que quelqu'un le sache avant de « corriger » ce comportement.
+
+        En ÉNERGIE, la batterie rattrape toujours une part de ce que les
+        impulsions retirent : ``part_glitch_sans_kwh ≥ part_glitch_avec_kwh``,
+        toujours. En ARGENT, non : sur la grille sélective, redescendre sous
+        une marche re-tarife TOUT le mois. Quand le résiduel de la variante
+        AVEC batterie se tient JUSTE au-dessus d'une marche (à 14 kWc + 15 kWh
+        sur le cas piscine+clim, juillet sort à ~616 kWh contre la marche des
+        500), les impulsions le poussent de l'autre côté et lui coûtent PLUS de
+        dirhams qu'au « sans », pourtant plus gourmand en kWh.
+
+        La leçon commerciale est l'inverse d'un défaut : elle DURCIT l'argument
+        de DIM2 — il faut dimensionner le stockage pour atterrir FRANCHEMENT
+        sous la marche, pas la frôler, parce que les pointes d'appareil mangent
+        la marge qui vous y tenait.
+        """
+        conso, _s, _d = EH.profil_depuis_factures(
+            facture_hiver_mad=2500, facture_ete_mad=4000, ete_differente=True)
+        etude = EH.calculer_etude_horaire(
+            kwc=14.0, conso_kwh_mensuelles=conso, ville=self.VILLE,
+            occupation=CJ.OCCUPATION_PRESENCE,
+            equipements=CJ.composer_equipements(EQUIP_PISCINE_CLIM),
+            batterie_kwh_utile=15.0)
+        mois_inverses = [
+            m for m in etude['mois']
+            if m['part_glitch_avec_mad'] > m['part_glitch_sans_mad'] + 0.5]
+        self.assertTrue(
+            mois_inverses,
+            'ce cas est justement celui où la falaise inverse le verdict en '
+            'dirhams : s\'il ne le fait plus, le barème ou la couche a bougé')
+        for mois in mois_inverses:
+            with self.subTest(mois=mois['mois']):
+                # L'inversion est bien MONÉTAIRE seulement : en kWh, le
+                # « avec » perd toujours moins.
+                self.assertLessEqual(mois['part_glitch_avec_kwh'],
+                                     mois['part_glitch_sans_kwh'] + 1e-9)
+        # Et malgré tout, la batterie reste globalement gagnante.
+        self.assertGreater(etude['annuel']['economie_avec_mad'],
+                           etude['annuel']['economie_sans_mad'])
 
     def test_le_total_de_kwh_ne_bouge_pas_d_un_iota(self):
         """Un RAFFINEMENT, pas un nouveau calcul : à équipements identiques,
