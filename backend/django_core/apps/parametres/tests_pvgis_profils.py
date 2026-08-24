@@ -109,6 +109,26 @@ class NormalisationVilleTests(SimpleTestCase):
             self.assertIsNone(pp.cle_ville(inconnue), repr(inconnue))
             self.assertFalse(pp.ville_connue(inconnue))
 
+    def test_repli_tolerant_texte_libre_avec_ville_connue(self):
+        """L-QA1 FIX2 — le tunnel web range du texte libre dans Lead.ville
+        (cas réel : « Hay Riad, Rabat ») : le repli trouve la ville CONNUE en
+        mot entier dans le texte, GPS/égalité stricte restant prioritaires."""
+        self.assertEqual(pp.cle_ville('Hay Riad, Rabat'), 'rabat')
+        self.assertEqual(pp.cle_ville('Quartier Anfa, Casablanca'), 'casablanca')
+        # Alias orthographique DANS le texte libre (pas seulement en exact).
+        self.assertEqual(pp.cle_ville('Centre ville, Fez'), 'fes')
+
+    def test_repli_tolerant_prefere_le_nom_multi_mots(self):
+        # 'jadida' seul n'est pas une clé — seule la séquence 'el jadida'
+        # doit matcher, jamais un mot isolé qui la chevaucherait.
+        self.assertEqual(pp.cle_ville('Route de El Jadida'), 'el jadida')
+
+    def test_repli_tolerant_sans_aucune_ville_connue_reste_none(self):
+        # Q6 tient toujours : un texte libre SANS ville connue reste None,
+        # jamais une ville voisine devinée.
+        self.assertIsNone(pp.cle_ville('Quartier Riad, Ifrane'))
+        self.assertIsNone(pp.cle_ville('Chefchaouen medina'))
+
 
 class DecalageHoraireTests(SimpleTestCase):
     def test_utc_plus_un_deplace_le_pic_de_12_a_13(self):

@@ -810,6 +810,19 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             refresh_marge_snapshot(devis)
         except Exception:  # noqa: BLE001
             pass
+        # L-QA1 (24/08/2026) — MÊME rafraîchissement que ``replace_lines``
+        # ci-dessous : ``atomic`` EST le chemin de création du générateur
+        # (devis + lignes en un seul commit) et, avant ce correctif, ne posait
+        # ni le bloc horaire ni le tableau de dimensionnement — un devis créé
+        # ici gardait ``etude_params`` sans ``etude_horaire``/``dimensionnement``
+        # tant qu'aucune édition ultérieure (``replace-lines``) ne les
+        # déclenchait. HORS de la transaction ci-dessus, best-effort (voir la
+        # docstring des deux fonctions) : un devis correctement créé ne doit
+        # jamais être annulé par une étude.
+        from ..services import (
+            rafraichir_dimensionnement_devis, rafraichir_etude_horaire_devis)
+        rafraichir_etude_horaire_devis(devis, force=True)
+        rafraichir_dimensionnement_devis(devis, force=True)
         return Response(DevisSerializer(
             devis, context={'request': request}).data,
             status=status.HTTP_201_CREATED)

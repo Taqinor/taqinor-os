@@ -23,22 +23,34 @@
 /**
  * Corps de la requête POST /ventes/etude-horaire/preview/, ou `null` quand
  * rien n'ancre un calcul réel (ni facture d'hiver saisie, ni devis existant
- * dont le lead porte un profil) — l'écran n'appelle alors même pas le
- * serveur : on omet, on n'approxime pas (règle d'honnêteté #4). Résidentiel
- * uniquement (CJ2b) : tout autre mode renvoie `null`.
+ * dont le lead porte un profil, ni lead sélectionné) — l'écran n'appelle
+ * alors même pas le serveur : on omet, on n'approxime pas (règle d'honnêteté
+ * #4). Résidentiel uniquement (CJ2b) : tout autre mode renvoie `null`.
+ *
+ * L-QA1 (24/08/2026) — ``leadId``. Avant ce champ, l'écran GÉNÉRATEUR (lead
+ * pas encore enregistré en devis) n'envoyait JAMAIS ``occupation``/
+ * ``equipements`` au serveur : l'aperçu répondait avec un profil VIDE
+ * (``occupation: null, equipements_actifs: []``) alors même que le lead
+ * portait un script d'appel complet (occupation_jour, VE, clim, piscine,
+ * chauffe-eau) — le commercial ne voyait donc jamais l'effet réel de ces
+ * réponses avant l'enregistrement. Priorité inchangée : un ``devis``
+ * existant (édition) prime toujours sur le ``lead`` (même chaîne que le
+ * serveur, ``etude_horaire_view._devis_de_la_societe`` d'abord).
  */
 export function construireCorpsPreview({
-  modeInstallation, editId, fHiver, fEte, eteDifferente, ville, raccordement,
-  kwp, batterieKwh, occupation, equipements,
+  modeInstallation, editId, leadId, fHiver, fEte, eteDifferente, ville,
+  raccordement, kwp, batterieKwh, occupation, equipements,
 } = {}) {
   if (modeInstallation !== 'residentiel') return null
 
   const hiver = Number(fHiver) || 0
   const hasDevis = editId !== null && editId !== undefined && String(editId).trim() !== ''
-  if (hiver <= 0 && !hasDevis) return null
+  const hasLead = !hasDevis && leadId !== null && leadId !== undefined && String(leadId).trim() !== ''
+  if (hiver <= 0 && !hasDevis && !hasLead) return null
 
   const corps = { dimensionner: true }
   if (hasDevis) corps.devis = Number(editId)
+  else if (hasLead) corps.lead = Number(leadId)
   if (hiver > 0) corps.facture_hiver = hiver
   const ete = Number(fEte) || 0
   // eteDifferente non fourni explicitement : on le déduit d'une facture été
