@@ -637,7 +637,18 @@ def simuler_batterie_pas_fins(pas, capacite_kwh_utile, *,
     Cette borne est NON CONTRAIGNANTE sur une heure sans impulsion (un pas
     d'une heure, plafond = déficit de l'heure) : sur un jour sans impulsion,
     cette fonction rend donc EXACTEMENT ce que rend :func:`simuler_batterie_jour`
-    — un test l'épingle.
+    — un test l'épingle. Sur une heure porteuse, elle mord franchement : sur le
+    jour type de juillet du cas piscine+clim, une décharge non bornée
+    restituerait 17,0 kWh là où la règle conservatrice en restitue 10,0.
+
+    NUANCE À NE PAS SE CACHER : la batterie ne récupère pas RIEN pour autant.
+    Elle ne SUIT PAS la pointe, mais l'autoconsommation directe ayant baissé,
+    il reste davantage de surplus à CHARGER dans la journée — et ce surplus-là,
+    elle le rend le soir dans les règles. La reprise est donc réelle mais
+    MINORITAIRE, et elle ne doit rien à une performance supposée : elle ne vient
+    que d'énergie réellement disponible. C'est pourquoi
+    ``part_glitch_batterie_kwh`` n'est pas nul alors qu'aucune puissance de
+    décharge n'est publiée.
     """
     capacite = _num(capacite_kwh_utile)
     if capacite <= 0 or not pas:
@@ -826,9 +837,14 @@ def _glitch_vide():
     les devis du parc, y compris ceux que rien ne concerne.
     """
     return {
-        'part_glitch_kwh': 0.0,
-        'part_glitch_batterie_kwh': 0.0,
-        'part_glitch_reseau_kwh': 0.0,
+        # PAR VARIANTE (précision fondateur, 24/08/2026 : « je ne veux pas que
+        # tu appliques ces glitchs que sur le avec batterie, il faudra aussi le
+        # sans batterie »). Les impulsions vivent dans la COURBE DE
+        # CONSOMMATION du jour type, donc les DEUX options intègrent contre la
+        # même courbe hachée — et les deux y perdent.
+        'part_glitch_sans_kwh': 0.0,   # kWh partis au réseau, SANS batterie
+        'part_glitch_avec_kwh': 0.0,   # kWh partis au réseau, AVEC batterie
+        'part_glitch_batterie_kwh': 0.0,  # ce que la batterie rattrape
         'part_glitch_sans_mad': 0.0,
         'part_glitch_avec_mad': 0.0,
         'heures_impulsion': 0.0,
@@ -1024,12 +1040,15 @@ def calculer_etude_horaire(*, kwc, conso_kwh_mensuelles,
                 conso_mois_kwh,
                 max(0.0, conso_mois_kwh - auto_avec_horaire * jours),
                 **_bareme_kwargs)
-            glitch['part_glitch_kwh'] = perdu_direct
-            glitch['part_glitch_reseau_kwh'] = perdu_avec
-            # Ce que la batterie REPREND de la pointe : la différence entre ce
-            # que l'impulsion a retiré au direct et ce qui finit vraiment au
-            # réseau. Sans puissance de décharge publiée, la règle
-            # conservatrice l'annule — c'est DIT, pas caché.
+            # LES DEUX VARIANTES PERDENT. Les impulsions vivent dans la COURBE
+            # DE CONSOMMATION, pas dans l'option batterie : « sans » perd
+            # l'autoconsommation directe que le lissage lui prêtait, « avec »
+            # perd ce que la batterie ne peut pas rattraper.
+            glitch['part_glitch_sans_kwh'] = perdu_direct
+            glitch['part_glitch_avec_kwh'] = perdu_avec
+            # Ce que la batterie REPREND de la pointe : l'écart entre les deux
+            # pertes. C'est EXACTEMENT de combien l'argument batterie
+            # (avec − sans) grandit une fois les pointes rendues visibles.
             glitch['part_glitch_batterie_kwh'] = max(
                 0.0, perdu_direct - perdu_avec)
             glitch['part_glitch_sans_mad'] = (
@@ -1124,12 +1143,16 @@ def calculer_etude_horaire(*, kwc, conso_kwh_mensuelles,
             'batterie_puissance_charge_kw': (
                 round(_num(batterie_puissance_charge_kw), 2)
                 if _num(batterie_puissance_charge_kw) > 0 else None),
+            'porte_sur': ['sans', 'avec'],
             'note': (
                 "Les appareils déclarés à l'appel (pompe de piscine, "
                 "climatisation) sont restitués en impulsions à leur puissance "
                 "réelle plutôt qu'étalés sur l'heure : mêmes kWh, pointes "
-                "visibles. Sans puissance de décharge publiée sur la fiche "
-                "batterie, la pointe n'est pas servie par le stockage."),
+                "visibles. Les impulsions vivent dans la courbe de "
+                "consommation : les DEUX options (sans et avec batterie) "
+                "intègrent contre la même courbe hachée. Sans puissance de "
+                "décharge publiée sur la fiche batterie, la pointe n'est pas "
+                "suivie par le stockage et part au réseau."),
         }
 
     return resultat
