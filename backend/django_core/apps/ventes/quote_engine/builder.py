@@ -1736,6 +1736,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # dérivations techniques (kWc, kWh batterie, coût onduleur, classification
     # d'options) sont déjà figés au-dessus, sur les lignes RÉELLES. La
     # dégradation ne change donc que l'affichage — jamais un chiffre.
+
     # Dérivation technique lue APRÈS ce point : figée AVANT la dégradation,
     # sur les lignes RÉELLES (une ligne « protection batterie » agrégée ne peut
     # donc pas déplacer d'un kWh la capacité publiée).
