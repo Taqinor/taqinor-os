@@ -154,6 +154,13 @@ const TOTAL_BUDGET_KB = 3355
 const VENDOR_CHUNK_BUDGETS_KB = {
   recharts: 450,
   'pdfjs-dist': 450,
+  // Sécurité 2026-08-24 — pdfjs-dist 6.0.227 -> 6.2.108 (exécution JS via PDF
+  // malveillant, Dependabot high) : le worker vendored `pdf.worker.min-*.js`
+  // passe de 347,7 à 352,6 Ko gzip MESURÉS (croissance amont du correctif,
+  // zéro code applicatif). Il tombait sous le garde générique PER_CHUNK (350)
+  // faute d'entrée dédiée — budget vendor propre, palier serré comme les
+  // autres (marge ~7 Ko).
+  'pdf.worker': 360,
   'radix-ui': 300,
   'react-vendor': 250,
   // Outil toiture pro (canvas/3D lourd, isolé) : budget dédié comme les autres
