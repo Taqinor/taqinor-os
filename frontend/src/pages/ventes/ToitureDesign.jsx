@@ -113,6 +113,22 @@ const PUBLIC_SITE_URL = import.meta.env.VITE_PUBLIC_SITE_URL || 'https://taqinor
 const API_ORIGIN = originFrom(import.meta.env.VITE_API_URL) ||
   (typeof window !== 'undefined' ? window.location.origin : '')
 
+// Correction fondateur 24/08 — quand le client n'a JAMAIS posé d'épingle
+// publique (`roof_point`, alimenté par l'outil site web), la fiche lead porte
+// souvent déjà `gps_lat`/`gps_lng` (saisis côté « Toiture & site » du CRM,
+// bornés ±90/±180 en base) : sans ce repli, la carte 3D démarrait TOUJOURS au
+// niveau Maroc alors qu'une position réelle existait. Repli RÉEL, jamais une
+// valeur inventée — `roof_point` posé prime toujours quand il existe.
+function pinDepuisLead(lead) {
+  if (lead?.roof_point) return lead.roof_point
+  const lat = lead?.gps_lat
+  const lng = lead?.gps_lng
+  if (lat != null && lng != null && Number.isFinite(Number(lat)) && Number.isFinite(Number(lng))) {
+    return { lat: Number(lat), lng: Number(lng) }
+  }
+  return null
+}
+
 // Le builder s'hydrate depuis un payload `LeadPayload` (roof_point/roof_outline/
 // bill_kwh + fullName/phone/city). Le lead ERP utilise des champs français : on
 // le projette dans la forme attendue (les coords roof_* sont déjà au bon format).
@@ -123,7 +139,7 @@ function leadToBuilderPayload(lead) {
   const city = (lead.ville || '').trim()
   const billKwh = lead.bill_kwh != null ? Number(lead.bill_kwh) : null
   return {
-    roof_point: lead.roof_point ?? null,
+    roof_point: pinDepuisLead(lead),
     roof_outline: lead.roof_outline ?? null,
     bill_kwh: Number.isFinite(billKwh) ? billKwh : null,
     fullName: fullName || undefined,
@@ -886,6 +902,15 @@ export default function ToitureDesign({ mode = 'lead' }) {
   const avertissements = Array.isArray(contexte?.avertissements)
     ? contexte.avertissements : []
 
+  // Correction fondateur 24/08 — sans AUCUNE position (ni pin posé, ni GPS de
+  // fiche), la carte reste au niveau Maroc : comportement inchangé, mais on le
+  // DIT discrètement plutôt que de laisser deviner pourquoi la carte est loin
+  // de chez le client. Mode AO non concerné (affaire, pas de repli GPS ici).
+  const sansPositionGps = !loadError && (
+    (!estDevis && !estAo && !!lead && !pinDepuisLead(lead))
+    || (estDevis && !!contexte && !contexte?.geometrie?.pin)
+  )
+
   const inputClass =
     'w-full border border-white/15 bg-white/5 px-3 py-3 text-base text-white outline-none focus:border-brass-400'
   const chipClass = 'rp9-chip'
@@ -1005,6 +1030,15 @@ export default function ToitureDesign({ mode = 'lead' }) {
           )}
         </div>
         <p className="mt-2 text-sm text-lune-faint" aria-live="polite">{status}</p>
+
+        {/* Correction fondateur 24/08 — discret, jamais bloquant : dit
+            pourquoi la carte reste au niveau Maroc quand ni épingle ni GPS
+            de fiche n'existent, plutôt que de laisser deviner. */}
+        {sansPositionGps && (
+          <p className="mt-1 text-xs text-lune-faint/70" data-testid="pv-sans-gps">
+            Pas de position GPS sur la fiche — carte au niveau Maroc.
+          </p>
+        )}
 
         {loadError && (
           <p className="mt-3 text-sm text-alert-300" role="alert">{loadError}</p>
