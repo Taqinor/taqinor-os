@@ -2964,14 +2964,16 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
     # l'appelant a réellement une recommandation « avec » à opposer. Sinon
     # (défaut, calepinage 3D, devis mono-option) c'est le chemin d'hier, mot
     # pour mot.
-    if deux_options and isinstance(dimensionnement_avec, dict):
+    _avec = dimensionnement_avec if isinstance(
+        dimensionnement_avec, dict) else None
+    if deux_options and _avec:
         line_specs = composition_deux_optimiseurs(
             catalogue_de_la_societe(company),
             kwc_sans=kwc_composition,
             nb_panneaux_sans=nb_panneaux,
-            kwc_avec=dimensionnement_avec.get('kwc'),
-            nb_panneaux_avec=dimensionnement_avec.get('nb_panneaux'),
-            batterie_cible_kwh=dimensionnement_avec.get('batterie_kwh'),
+            kwc_avec=_avec.get('kwc'),
+            nb_panneaux_avec=_avec.get('nb_panneaux'),
+            batterie_cible_kwh=_avec.get('batterie_kwh'),
             **_commun_composition)
     else:
         line_specs = composition_residentielle(
@@ -2980,6 +2982,13 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
             nb_panneaux=nb_panneaux,
             avec_batterie=wants_battery,
             deux_options=deux_options,
+            # L-2OPT — devis MONO « avec batterie » : le champ PV vient déjà de
+            # l'optimum AVEC (l'appelant l'a mis dans le layout) ; la CAPACITÉ
+            # retenue par ce même optimum se transmet ici. Absente ⇒ la règle
+            # historique kWc/5 décide seule, à l'octet près.
+            batterie_cible_kwh=(
+                _avec.get('batterie_kwh')
+                if (wants_battery and not deux_options and _avec) else None),
             **_commun_composition)
     if journal is not None:
         journal['marques_manquantes'] = list(
@@ -4283,16 +4292,27 @@ def phase_client_pour_dimensionnement(lead):
 
 
 def _panneaux_dimensionnement_horaire(*, lead, company, phase):
-    """``(nb_panneaux, panel_watt, source)`` recommandés par le moteur horaire.
+    """``(nb_panneaux, panel_watt, source, avec)`` recommandés par le moteur.
 
     Traduit la fiche du lead en entrées du dimensionnement, puis lit la
     recommandation. ``panel_watt`` est le wattage du panneau RÉEL sur lequel le
     balayage a décidé : l'appelant doit composer avec le MÊME, sinon la
     puissance livrée ne serait pas celle qui a été évaluée.
 
+    L-2OPT — ``avec`` est le QUATRIÈME élément, et c'est la nouveauté : la
+    recommandation de l'axe AVEC BATTERIE (``recommandation_avec``, le balayage
+    CONJOINT champ × stockage de DIM2), rendue sous la forme
+    ``{'nb_panneaux', 'kwc', 'panel_watt', 'batterie_kwh'}``. Ce gagnant
+    existait depuis DIM2 mais n'alimentait AUCUN chemin de génération de
+    lignes — il ne servait qu'à l'affichage. ``None`` quand le moteur n'a
+    trouvé aucune configuration avec batterie livrable : l'appelant compose
+    alors l'option « avec » sur le MÊME champ que l'option « sans »
+    (comportement historique — jamais un chiffre inventé pour combler le trou).
+
     Toute impossibilité (pas de facture, localisation non résolue par PVGIS,
-    catalogue incomplet) rend ``(0, None, 'regle_900dh')`` : l'appelant retombe
-    alors sur la règle historique, ÉTIQUETÉE comme telle. Ne lève jamais.
+    catalogue incomplet) rend ``(0, None, 'regle_900dh', None)`` : l'appelant
+    retombe alors sur la règle historique, ÉTIQUETÉE comme telle. Ne lève
+    jamais.
     """
     try:
         from apps.crm.selectors import equipements_pour_devis  # noqa: F401
@@ -4308,7 +4328,7 @@ def _panneaux_dimensionnement_horaire(*, lead, company, phase):
             facture_ete_mad=getattr(lead, 'facture_ete', None),
             ete_differente=getattr(lead, 'ete_differente', False))
         if not conso:
-            return 0, None, 'regle_900dh'
+            return 0, None, 'regle_900dh', None
 
         drapeaux = {'present': OCCUPATION_PRESENCE,
                     'absent': OCCUPATION_ABSENCE,
@@ -4332,12 +4352,44 @@ def _panneaux_dimensionnement_horaire(*, lead, company, phase):
             source_conso=source)
         recommandation = resultat.get('recommandation')
         if not recommandation:
-            return 0, None, 'regle_900dh'
+            return 0, None, 'regle_900dh', None
         return (int(recommandation['panneaux']),
-                recommandation.get('panel_watt'), 'moteur_horaire')
+                recommandation.get('panel_watt'), 'moteur_horaire',
+                _recommandation_avec_rendue(resultat.get('recommandation_avec')))
     except Exception:  # noqa: BLE001 — jamais bloquant : on retombe sur 900 DH
         logger.warning('dimensionnement horaire indisponible', exc_info=True)
-        return 0, None, 'regle_900dh'
+        return 0, None, 'regle_900dh', None
+
+
+def _recommandation_avec_rendue(recommandation_avec):
+    """L-2OPT — la ligne ``recommandation_avec`` du moteur, réduite à ce que la
+    composition sait consommer : ``{nb_panneaux, kwc, panel_watt,
+    batterie_kwh}``.
+
+    ``None`` dès que la recommandation est absente ou ne porte pas de nombre de
+    panneaux exploitable — REPLI EXPLICITE : l'appelant compose alors l'option
+    « avec » sur le champ de l'option « sans », comme aujourd'hui. Aucun
+    chiffre n'est ni inventé ni arrondi ici : tout vient du moteur.
+    """
+    if not isinstance(recommandation_avec, dict):
+        return None
+    try:
+        panneaux = int(recommandation_avec.get('panneaux') or 0)
+    except (TypeError, ValueError):
+        return None
+    if panneaux <= 0:
+        return None
+    batterie = recommandation_avec.get('batterie_kwh')
+    try:
+        batterie = float(batterie) if batterie not in (None, '') else None
+    except (TypeError, ValueError):
+        batterie = None
+    return {
+        'nb_panneaux': panneaux,
+        'kwc': recommandation_avec.get('kwc'),
+        'panel_watt': recommandation_avec.get('panel_watt'),
+        'batterie_kwh': batterie if batterie and batterie > 0 else None,
+    }
 
 
 def rafraichir_etude_horaire(devis, *, kwc=None, batterie_kwh_utile=None):
@@ -4648,7 +4700,8 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
                                panel_watt=_AUTO_PANEL_WATT, scenario=None,
                                structure_type='acier',
                                taux_tva=Decimal('20'), mppt_paires=1,
-                               gamme_nom_devis=None, phase=None):
+                               gamme_nom_devis=None, phase=None,
+                               dimensionnement_avec=None):
     """U3 — LE DRY-RUN : compose sans RIEN créer, et rend le résultat en clair.
 
     C'est la moitié « à blanc » de la source de vérité : le même catalogue, la
@@ -4661,6 +4714,14 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
     ``panel_watt``. Company-scopé (le catalogue d'une autre société ne fuite
     jamais). Rend un dict SÉRIALISABLE — la forme figée dans
     ``contract_samples/composition_residentielle.json``.
+
+    ``dimensionnement_avec`` (L-2OPT, optionnel) — l'optimum de l'axe AVEC
+    BATTERIE (``{'nb_panneaux', 'kwc', 'batterie_kwh'}``), quand le moteur
+    calibré en désigne un DIFFÉRENT de l'optimum sans stockage : le dry-run
+    compose alors la même FUSION que la création (lignes variantées), sans quoi
+    l'aperçu et le devis ne parleraient pas du même kit. ``None`` (LE DÉFAUT)
+    ⇒ dry-run strictement inchangé, et chaque ligne rendue porte
+    ``variante: ''``.
     """
     kwp = float(kwc or 0)
     nb_force = int(nb_panneaux or 0)
@@ -4679,16 +4740,13 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
     deux_options = demande not in ('avec', 'sans')
 
     avertissements = []
-    lignes = composition_residentielle(
-        catalogue_de_la_societe(company),
-        kwc=kwp,
+    _avec = dimensionnement_avec if isinstance(
+        dimensionnement_avec, dict) else None
+    _commun = dict(
         panel_watt=watt,
-        nb_panneaux=nb_force,
-        avec_batterie=avec_batterie,
         structure_type=structure_type,
         taux_tva=taux_tva,
         avertissements=avertissements,
-        deux_options=deux_options,
         marques=carte_marques_composition(company, gamme_nom_devis),
         ordre_lignes=ordre_lignes_societe(company),
         mppt_paires=mppt_paires,
@@ -4697,6 +4755,28 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
         # devis ne composerait pas.
         phase=phase,
     )
+    if deux_options and _avec:
+        lignes = composition_deux_optimiseurs(
+            catalogue_de_la_societe(company),
+            kwc_sans=kwp,
+            nb_panneaux_sans=nb_force,
+            kwc_avec=_avec.get('kwc'),
+            nb_panneaux_avec=_avec.get('nb_panneaux'),
+            batterie_cible_kwh=_avec.get('batterie_kwh'),
+            **_commun)
+    else:
+        lignes = composition_residentielle(
+            catalogue_de_la_societe(company),
+            kwc=kwp,
+            nb_panneaux=nb_force,
+            avec_batterie=avec_batterie,
+            deux_options=deux_options,
+            # L-2OPT — miroir EXACT de ``build_devis_from_layout`` : un devis
+            # mono « avec » retient la capacité du même optimum.
+            batterie_cible_kwh=(
+                _avec.get('batterie_kwh')
+                if (avec_batterie and _avec) else None),
+            **_commun)
 
     roles = list(getattr(lignes, 'roles', ()) or ())
     facteur = Decimal('1') + (Decimal(str(taux_tva or 20)) / Decimal('100'))
@@ -4715,6 +4795,9 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
             'prix_unitaire_ht': str(Decimal(ligne.prix_unitaire)),
             'prix_unitaire_ttc': str(ttc),
             'taux_tva': str(Decimal(str(taux_tva or 20))),
+            # L-2OPT — '' sur toute composition mono-optimum (le cas de tous
+            # les aperçus d'hier) : la clé est ADDITIVE, jamais absente.
+            'variante': getattr(ligne, 'variante', '') or '',
         })
 
     return {
@@ -4726,6 +4809,14 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
         'panel_watt': getattr(lignes, 'panel_watt_reel', watt),
         'kwc_reel': getattr(lignes, 'kwc_reel', 0.0),
         'blocs': getattr(lignes, 'blocs', 1),
+        # L-2OPT — l'option « avec » quand elle a son PROPRE champ PV. Sur une
+        # composition mono-optimum : ``variantes`` False et les deux valeurs
+        # recopient l'option unique — aucun appelant ne peut lire un trou.
+        'variantes': bool(getattr(lignes, 'variantes', False)),
+        'nb_panneaux_avec': (getattr(lignes, 'nb_panneaux_avec', 0)
+                             or getattr(lignes, 'nb_panneaux', 0)),
+        'kwc_reel_avec': (getattr(lignes, 'kwc_reel_avec', 0.0)
+                          or getattr(lignes, 'kwc_reel', 0.0)),
         'avertissements': list(avertissements),
         'marques_manquantes': [
             {**m, 'libelle_role': _libelle_role(m.get('role'))}
@@ -4807,8 +4898,12 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
     # dimensionner sur un panneau de 550 Wc puis composer à 710 Wc livrerait
     # une autre puissance que celle qui a été évaluée.
     watt_dimensionnement = _AUTO_PANEL_WATT
+    # L-2OPT — ce que le moteur recommande POUR L'AXE AVEC BATTERIE. ``None``
+    # partout ailleurs : la règle des 900 DH/mois ne connaît qu'UN champ, et
+    # une cible explicite du commercial est souveraine sur les deux options.
+    optimum_avec = None
     if cible is None and taille_kwc in (None, '') and profil_reel_existe(lead):
-        panneaux, watt_retenu, source_dimensionnement = (
+        panneaux, watt_retenu, source_dimensionnement, optimum_avec = (
             _panneaux_dimensionnement_horaire(
                 lead=lead, company=company,
                 phase=phase_client_pour_dimensionnement(lead)))
@@ -4821,6 +4916,10 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
             taille_kwc=cible if cible is not None else taille_kwc)
         source_dimensionnement = 'regle_900dh'
         watt_dimensionnement = _AUTO_PANEL_WATT
+        # Le champ « sans » ne vient plus du moteur : son optimum « avec » ne
+        # lui est plus opposable (on ne mélange pas deux dimensionnements issus
+        # de deux règles différentes).
+        optimum_avec = None
     if panneaux <= 0:
         if facture_hiver not in (None, '') or taille_kwc not in (None, ''):
             msg = ("La facture d'hiver du lead est trop faible pour dimensionner "
@@ -4857,6 +4956,32 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
         else (getattr(lead, 'batterie_souhaitee', '') or '').strip())
     wants_battery = choix_batterie == 'avec'
     deux_options = choix_batterie not in ('avec', 'sans')
+
+    # ── L-2OPT — L'AXE « AVEC BATTERIE » A SON PROPRE OPTIMUM ───────────────
+    # Le moteur calibré désigne DEUX gagnants (DIM2) : ``recommandation`` au
+    # meilleur payback SANS stockage, et ``recommandation_avec`` au meilleur
+    # payback AVEC — issus d'un balayage CONJOINT champ × stockage. Le second
+    # n'alimentait aucune ligne de devis.
+    #
+    #   · scénario MONO « avec » — le devis ne propose QUE le stockage : il
+    #     doit donc être dimensionné sur l'optimum AVEC, pas sur celui d'un
+    #     champ sans batterie que personne n'achètera. C'est tout l'objet de ce
+    #     chantier ;
+    #   · scénario « les deux » — les deux champs partent au devis, fusionnés
+    #     en lignes variantées (cf. ``composition_deux_optimiseurs``) ;
+    #   · scénario MONO « sans » — RIEN ne change : l'optimum « avec » ne le
+    #     concerne pas.
+    if wants_battery and optimum_avec:
+        panneaux = int(optimum_avec['nb_panneaux'])
+        watt_avec = optimum_avec.get('panel_watt')
+        if watt_avec:
+            watt_dimensionnement = float(watt_avec)
+        kwc = round(panneaux * watt_dimensionnement / 1000, 2)
+        source_dimensionnement = 'moteur_horaire_avec'
+    elif not deux_options:
+        # Mono « sans » : l'optimum « avec » n'a rien à faire dans ce devis.
+        optimum_avec = None
+
     layout = {
         'result': {'panels': panneaux, 'kwc': kwc},
         'panelWatt': watt_dimensionnement,
@@ -4886,7 +5011,11 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
         company=company, nb_panneaux=panneaux,
         panel_watt=watt_dimensionnement,
         scenario=choix_batterie or 'les_deux', taux_tva=taux_tva,
-        phase=phase_client)
+        phase=phase_client,
+        # L-2OPT — le DRY-RUN voit EXACTEMENT la composition qui sera créée,
+        # fusion comprise : sans cela il contrôlerait les marques d'un kit qui
+        # n'est pas celui du devis.
+        dimensionnement_avec=optimum_avec)
     if apercu['marques_manquantes']:
         detail = ', '.join(
             '%s (%s)' % (m.get('marque'), m.get('libelle_role'))
@@ -4900,7 +5029,8 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
     devis = build_devis_from_layout(
         layout=layout, user=user, company=company, lead=lead,
         taux_tva=taux_tva, remise_globale=remise_globale,
-        deux_options=deux_options, journal=journal, phase=phase_client)
+        deux_options=deux_options, journal=journal, phase=phase_client,
+        dimensionnement_avec=optimum_avec)
     for avertissement in journal.get('avertissements') or []:
         logger.warning('Auto-devis %s: %s', devis.reference, avertissement)
 
