@@ -436,12 +436,59 @@ class TestSeedCatalogue(TestCase):
         self.assertEqual(f5.bat_v_nominal, Decimal('51.2'))
         self.assertEqual(f5.bat_max_charge_kw, Decimal('3.84'))
         self.assertIn('Modèle supposé : Dyness DL5.0C', b5.description)
+        # L-DECH — décharge SOURCÉE datasheet DL5.0C (20250228-EN) :
+        # « Charge 75 A / Discharge 100 A » ⇒ 100 A × 51,2 V = 5,12 kW. La
+        # charge et la décharge DIFFÈRENT sur ce pack : c'est la preuve vivante
+        # qu'on ne déduit jamais l'une de l'autre.
+        self.assertEqual(f5.bat_max_decharge_kw, Decimal('5.12'))
+        self.assertNotEqual(f5.bat_max_decharge_kw, f5.bat_max_charge_kw)
 
         b10 = Produit.objects.get(company=self.company, sku='BAT-DEY-10')
         f10 = FicheTechnique.objects.get(produit=b10)
         self.assertEqual(f10.bat_kwh_nominal, Decimal('10.24'))
         self.assertEqual(f10.bat_kwh_usable, Decimal('9.22'))
         self.assertEqual(f10.bat_max_charge_kw, Decimal('5.12'))
+        # Powerbox Pro : un seul champ combiné publié (100 A) ⇒ même valeur
+        # dans les deux sens, et la règle générale du fondateur (100 A × ~52 V)
+        # est confirmée à l'ampère près.
+        self.assertEqual(f10.bat_max_decharge_kw, Decimal('5.12'))
+
+    def test_ldech_port_batterie_des_hybrides_seede_par_datasheet(self):
+        """L-DECH — le PORT BATTERIE des cinq hybrides Deye, sourcé colonne par
+        colonne du bloc « Battery Input Data » et converti à 51,2 V (la MÊME
+        tension que ``bat_v_nominal`` des packs, sans quoi le min(packs, port)
+        du moteur comparerait deux conventions).
+
+        Une valeur par MODÈLE, jamais reportée d'un modèle à l'autre : le 15T
+        et le 20T partagent leur datasheet mais PAS leur colonne (280 vs
+        350 A). Deux de ces chiffres (120 A du 5M, 210 A du 10T) figuraient
+        déjà en commentaire « NON seedés faute de champ » — ils ont un champ.
+        """
+        from apps.stock.models import FicheTechnique
+        seed(self.company)
+        attendus = {
+            'OND-H-DEY-5M': Decimal('6.14'),    # 120 A x 51,2 V
+            'OND-H-DEY-10M': Decimal('11.26'),  # 220 A
+            'OND-H-DEY-10T': Decimal('10.75'),  # 210 A
+            'OND-H-DEY-15T': Decimal('14.34'),  # 280 A
+            'OND-H-DEY-20T': Decimal('17.92'),  # 350 A
+        }
+        for sku, attendu in attendus.items():
+            with self.subTest(sku=sku):
+                produit = Produit.objects.get(company=self.company, sku=sku)
+                fiche = FicheTechnique.objects.get(produit=produit)
+                # Charge et décharge portent la MÊME valeur sur ces cinq
+                # datasheets — deux lignes distinctes qui coïncident.
+                self.assertEqual(fiche.ond_bat_max_charge_kw, attendu)
+                self.assertEqual(fiche.ond_bat_max_decharge_kw, attendu)
+        # Les onduleurs RÉSEAU n'ont aucun port batterie : rien n'est inventé
+        # pour eux, le champ reste NULL et ne bornera donc rien.
+        reseau = Produit.objects.filter(
+            company=self.company, sku='OND-R-HUA-100T').first()
+        if reseau is not None:
+            fiche = FicheTechnique.objects.filter(produit=reseau).first()
+            if fiche is not None:
+                self.assertIsNone(fiche.ond_bat_max_decharge_kw)
 
     def test_pvg4_idempotent_second_run_never_overwrites(self):
         from apps.stock.models import FicheTechnique
@@ -658,6 +705,12 @@ class TestSeedCatalogue(TestCase):
         self.assertEqual(fiche.bat_kwh_nominal, Decimal('16.08'))
         self.assertEqual(fiche.bat_dod_pct, Decimal('90.0'))
         self.assertEqual(fiche.bat_max_charge_kw, Decimal('9.22'))
+        # L-DECH — brochure officielle BOS-B Pro-A3 (2025-09-28) : un SEUL
+        # champ combiné « Nominal Charge/Discharge Current » = 180 A, donc la
+        # même valeur dans les deux sens (180 × 51,2 V = 9,216 kW). ÉCART
+        # ASSUMÉ vs la règle générale du fondateur (100 A) : la datasheet fait
+        # foi, et ce module HV de 16 kWh n'est pas un mural de 5/10 kWh.
+        self.assertEqual(fiche.bat_max_decharge_kw, Decimal('9.22'))
         self.assertIsNone(fiche.bat_v_nominal)
 
     def test_pvg4_new_products_idempotent_second_run(self):

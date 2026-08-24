@@ -1130,3 +1130,356 @@ class BatterieDevantLaPointeTest(SimpleTestCase):
             self.assertLessEqual(mois['autoconsomme_avec_kwh'],
                                  min(mois['production_kwh'],
                                      mois['consommation_kwh']) + 1e-6)
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# L-DECH — LA PUISSANCE DE DÉCHARGE : PAR PACK, × QUANTITÉ, ET BORNÉE PAR LE
+# PORT BATTERIE DE L'ONDULEUR
+# ════════════════════════════════════════════════════════════════════════════
+
+class BorneDechargeDesPacksTest(SimpleTestCase):
+    """La pointe servie est bornée — par les packs, par le port, par les deux.
+
+    Fonctions PURES : aucun ORM, aucune fiche en base. Les valeurs employées
+    sont celles que ``seed_catalogue`` seede depuis les datasheets (Dyness
+    DL5.0C / Powerbox Pro : 100 A × 51,2 V = 5,12 kW ; port Deye SUN-5K :
+    120 A × 51,2 V = 6,14 kW), mais ce qui est épinglé ici est le COMPORTEMENT
+    du moteur face à une borne, pas le catalogue.
+    """
+
+    #: Un jour où la pointe du soir vaut 6 kW — le cas nommé par le fondateur.
+    POINTE_KW = 6.0
+    HEURES_POINTE = 4
+
+    def _pas_pointe(self, pointe_kw=None, prod_kw=6.0):
+        """24 h à pas HORAIRE : production le jour, pointe franche le soir.
+
+        Un pas d'une heure fait coïncider kW et kWh, si bien que les kWh
+        servis se lisent directement en puissance — c'est ce qui permet
+        d'épingler « 5,12 kW servis, 0,88 kW au réseau » sans arithmétique
+        cachée.
+
+        ``prod_kw`` se remonte quand la pointe testée est plus haute : ces
+        tests épinglent une borne de PUISSANCE, il faut donc que l'ÉNERGIE
+        stockée ne soit jamais le facteur limitant — sinon le manque à l'appel
+        mesurerait la taille de la banque et non le débit de la fiche.
+        """
+        pointe = self.POINTE_KW if pointe_kw is None else pointe_kw
+        conso = [0.2] * 24
+        prod = [0.0] * 24
+        for heure in range(9, 16):
+            prod[heure] = prod_kw
+        for heure in range(19, 19 + self.HEURES_POINTE):
+            conso[heure] = pointe
+        return [{'heure': h, 'duree_h': 1.0, 'conso_kwh': conso[h],
+                 'prod_kwh': prod[h],
+                 'plafond_decharge_kw': max(0.0, conso[h] - prod[h])}
+                for h in range(24)]
+
+    @staticmethod
+    def _besoin(pas):
+        return sum(max(0.0, p['conso_kwh'] - p['prod_kwh']) for p in pas)
+
+    def test_pointe_six_kw_servie_a_hauteur_de_la_fiche(self):
+        """LE CAS DU FONDATEUR : pointe 6 kW, décharge fichée 5,12 kW ⇒ 5,12
+        servis par la batterie et 0,88 kW qui partent au réseau, heure après
+        heure. Un kW de plus serait une performance que la datasheet ne
+        publie pas."""
+        pas = self._pas_pointe()
+        resultat = EH.simuler_batterie_pas_fins(
+            pas, 40.0, puissance_decharge_kw=5.12)
+        # Ce qui MANQUE à l'appel est exactement le dépassement de la borne :
+        # 0,88 kW × 4 heures de pointe, et rien d'autre.
+        self.assertAlmostEqual(
+            self._besoin(pas) - resultat['restitue_kwh'],
+            self.HEURES_POINTE * (self.POINTE_KW - 5.12), places=6)
+
+    def test_deux_packs_servent_deux_fois_la_decharge_unitaire(self):
+        """« n'oublie pas de considérer le cas avec deux batteries où c'est
+        100 A par batterie » : deux Dyness 10 kWh servent 10,24 kW, pas 5,12.
+        La pointe de 6 kW est alors intégralement couverte."""
+        pas = self._pas_pointe()
+        un = EH.simuler_batterie_pas_fins(pas, 40.0,
+                                          puissance_decharge_kw=5.12)
+        deux = EH.simuler_batterie_pas_fins(pas, 40.0,
+                                            puissance_decharge_kw=2 * 5.12)
+        self.assertGreater(deux['restitue_kwh'], un['restitue_kwh'])
+        # Avec 10,24 kW disponibles, plus rien de la pointe ne part au réseau.
+        self.assertAlmostEqual(deux['restitue_kwh'], self._besoin(pas),
+                               places=6)
+
+    def test_composition_mixte_additionne_deux_fiches_differentes(self):
+        """Un 10 kWh + un 5 kWh : la borne est la SOMME des deux fiches, pas
+        la plus petite (l'ancienne lecture prenait le min) et pas deux fois la
+        plus grande."""
+        pas = self._pas_pointe(pointe_kw=12.0, prod_kw=12.0)
+        dix = 5.12          # Powerbox Pro 10,24 kWh — 100 A × 51,2 V
+        cinq = 5.12         # DL5.0C 4,8 kWh — 100 A × 51,2 V aussi
+        mixte = EH.simuler_batterie_pas_fins(
+            pas, 80.0, puissance_decharge_kw=dix + cinq)
+        plus_petite = EH.simuler_batterie_pas_fins(
+            pas, 80.0, puissance_decharge_kw=min(dix, cinq))
+        self.assertGreater(mixte['restitue_kwh'], plus_petite['restitue_kwh'])
+        self.assertAlmostEqual(
+            self._besoin(pas) - mixte['restitue_kwh'],
+            self.HEURES_POINTE * (12.0 - (dix + cinq)), places=6)
+
+    def test_quantite_un_est_inchangee(self):
+        """Épingle anti-régression : à quantité 1, la borne est EXACTEMENT la
+        valeur de fiche — la somme sur les lignes ne multiplie rien quand il
+        n'y a qu'un seul pack."""
+        pas = self._pas_pointe()
+        self.assertEqual(
+            EH.simuler_batterie_pas_fins(
+                pas, 40.0, puissance_decharge_kw=5.12)['restitue_kwh'],
+            EH.simuler_batterie_pas_fins(
+                pas, 40.0, puissance_decharge_kw=1 * 5.12)['restitue_kwh'])
+
+    def test_le_port_de_l_onduleur_borne_sous_les_packs(self):
+        """Deux packs à 5,12 kW derrière un port de 3,3 kW ne servent que
+        3,3 kW : le chemin batterie vaut MIN(packs, port)."""
+        pas = self._pas_pointe()
+        resultat = EH.simuler_batterie_pas_fins(
+            pas, 40.0, puissance_decharge_kw=2 * 5.12,
+            puissance_decharge_onduleur_kw=3.3)
+        self.assertAlmostEqual(
+            self._besoin(pas) - resultat['restitue_kwh'],
+            self.HEURES_POINTE * (self.POINTE_KW - 3.3), places=6)
+        # Strictement moins que sans le port : la borne MORD.
+        sans_port = EH.simuler_batterie_pas_fins(
+            pas, 40.0, puissance_decharge_kw=2 * 5.12)
+        self.assertLess(resultat['restitue_kwh'], sans_port['restitue_kwh'])
+
+    def test_port_onduleur_nul_laisse_la_seule_borne_des_packs(self):
+        """PIN : fiche onduleur non renseignée ⇒ SEULE la borne des packs
+        s'applique, au kWh près. Un champ vide ne borne rien."""
+        pas = self._pas_pointe()
+        attendu = EH.simuler_batterie_pas_fins(
+            pas, 40.0, puissance_decharge_kw=5.12)
+        for vide in (None, 0, 0.0):
+            with self.subTest(port=vide):
+                obtenu = EH.simuler_batterie_pas_fins(
+                    pas, 40.0, puissance_decharge_kw=5.12,
+                    puissance_decharge_onduleur_kw=vide)
+                self.assertAlmostEqual(obtenu['restitue_kwh'],
+                                       attendu['restitue_kwh'], places=12)
+
+    def test_le_port_borne_meme_sous_la_regle_conservatrice(self):
+        """Ne pas connaître un goulot n'efface pas l'autre : sans décharge de
+        pack publiée, la règle conservatrice s'applique ET le port continue de
+        border."""
+        pas = self._pas_pointe()
+        conservatrice = EH.simuler_batterie_pas_fins(pas, 40.0)
+        avec_port = EH.simuler_batterie_pas_fins(
+            pas, 40.0, puissance_decharge_onduleur_kw=1.0)
+        self.assertLess(avec_port['restitue_kwh'],
+                        conservatrice['restitue_kwh'])
+
+    def test_aucune_borne_publiee_garde_la_regle_conservatrice(self):
+        """PIN de non-régression : champs NULL partout ⇒ comportement
+        strictement identique à celui d'avant L-DECH."""
+        pas = self._pas_pointe()
+        self.assertEqual(
+            EH.simuler_batterie_pas_fins(pas, 40.0)['restitue_kwh'],
+            EH.simuler_batterie_pas_fins(
+                pas, 40.0, puissance_decharge_kw=None,
+                puissance_decharge_onduleur_kw=None,
+                puissance_charge_kw=None)['restitue_kwh'])
+
+
+class _LigneFactice:
+    """Une ligne de devis/composition réduite à ce que le lecteur regarde."""
+
+    def __init__(self, designation, quantite, specs):
+        self.designation = designation
+        self.quantite = quantite
+        self.produit = object()
+        self.specs = specs
+
+
+class LectureDesPuissancesDeLaCompositionTest(SimpleTestCase):
+    """``puissances_batterie_des_lignes`` — LA source unique, et son
+    arithmétique : Σ (fiche × quantité), puis min(packs, port).
+
+    Les fiches sont simulées : ce qui est épinglé ici est la LECTURE, pas le
+    catalogue (celui-ci est épinglé dans ``apps.stock.tests``).
+    """
+
+    BAT_10 = {'max_decharge_kw': 5.12, 'max_charge_kw': 5.12}
+    BAT_5 = {'max_decharge_kw': 5.12, 'max_charge_kw': 3.84}
+    OND_5M = {'bat_max_decharge_kw': 6.14, 'bat_max_charge_kw': 6.14}
+
+    def _lire(self, *lignes):
+        from unittest import mock
+        table = {ligne.produit: ligne.specs for ligne in lignes}
+        with mock.patch('apps.stock.selectors.specs_for_produit',
+                        side_effect=lambda p: table.get(p, {})):
+            return EH.puissances_batterie_des_lignes(list(lignes))
+
+    def test_un_seul_pack_rend_sa_valeur_de_fiche(self):
+        resultat = self._lire(
+            _LigneFactice('Batterie Dyness 10 kWh', 1, self.BAT_10))
+        self.assertAlmostEqual(resultat['packs_decharge_kw'], 5.12)
+        self.assertAlmostEqual(resultat['decharge_kw'], 5.12)
+        self.assertEqual(resultat['decharge_source'], 'fiche:max_decharge_kw')
+
+    def test_deux_packs_sur_UNE_ligne_additionnent_la_quantite(self):
+        """« avec deux batteries c'est 100 A par batterie » — la quantité de
+        la ligne multiplie, elle ne se contente pas de compter pour un."""
+        resultat = self._lire(
+            _LigneFactice('Batterie Dyness 10 kWh', 2, self.BAT_10))
+        self.assertAlmostEqual(resultat['packs_decharge_kw'], 2 * 5.12)
+
+    def test_composition_mixte_somme_deux_fiches_differentes(self):
+        """Un 10 kWh + un 5 kWh : chaque unité à SA valeur de fiche. L'ancienne
+        lecture prenait le MIN — elle aurait rendu 3,84 kW en charge au lieu
+        de 8,96."""
+        resultat = self._lire(
+            _LigneFactice('Batterie Dyness 10 kWh', 1, self.BAT_10),
+            _LigneFactice('Batterie Dyness 5 kWh', 1, self.BAT_5))
+        self.assertAlmostEqual(resultat['packs_decharge_kw'], 5.12 + 5.12)
+        self.assertAlmostEqual(resultat['packs_charge_kw'], 5.12 + 3.84)
+
+    def test_le_port_de_l_onduleur_est_lu_et_borne_le_minimum(self):
+        """Deux packs (10,24 kW) derrière un port de 6,14 kW ⇒ la borne servie
+        est 6,14, et la sortie DIT que c'est le port qui a mordu."""
+        resultat = self._lire(
+            _LigneFactice('Batterie Dyness 10 kWh', 2, self.BAT_10),
+            _LigneFactice('Onduleur Hybride Deye 5 kW', 1, self.OND_5M))
+        self.assertAlmostEqual(resultat['packs_decharge_kw'], 10.24)
+        self.assertAlmostEqual(resultat['ond_decharge_kw'], 6.14)
+        self.assertAlmostEqual(resultat['decharge_kw'], 6.14)
+        self.assertEqual(resultat['decharge_source'],
+                         'fiche:ond_bat_max_decharge_kw')
+
+    def test_deux_onduleurs_offrent_deux_ports(self):
+        """La quantité compte des DEUX côtés : deux onduleurs, deux ports."""
+        resultat = self._lire(
+            _LigneFactice('Batterie Dyness 10 kWh', 4, self.BAT_10),
+            _LigneFactice('Onduleur Hybride Deye 5 kW', 2, self.OND_5M))
+        self.assertAlmostEqual(resultat['ond_decharge_kw'], 2 * 6.14)
+        self.assertAlmostEqual(resultat['decharge_kw'], 2 * 6.14)
+
+    def test_une_fiche_muette_compte_pour_zero_jamais_pour_une_supposition(self):
+        """Un pack dont la fiche ne publie rien n'apporte AUCUN kW prouvé —
+        on ne lui prête pas la valeur de son voisin."""
+        resultat = self._lire(
+            _LigneFactice('Batterie Dyness 10 kWh', 1, self.BAT_10),
+            _LigneFactice('Batterie exotique sans fiche', 3, {}))
+        self.assertAlmostEqual(resultat['packs_decharge_kw'], 5.12)
+
+    def test_aucune_fiche_du_tout_garde_la_regle_conservatrice(self):
+        resultat = self._lire(
+            _LigneFactice('Batterie exotique sans fiche', 2, {}))
+        self.assertIsNone(resultat['decharge_kw'])
+        self.assertIsNone(resultat['packs_decharge_kw'])
+        self.assertEqual(resultat['decharge_source'],
+                         'aucune_publiee_regle_conservatrice')
+
+    def test_les_lignes_hors_sujet_sont_ignorees(self):
+        """Un panneau ou une structure ne porte aucune puissance de batterie —
+        et un onduleur RÉSEAU, dont la fiche est muette, n'en porte pas non
+        plus."""
+        resultat = self._lire(
+            _LigneFactice('Panneau 710 Wc', 20,
+                          {'pmax_wc': 710, 'max_decharge_kw': 99}),
+            _LigneFactice('Onduleur Réseau Huawei 100 kW', 1, {}),
+            _LigneFactice('Batterie Dyness 10 kWh', 1, self.BAT_10))
+        self.assertAlmostEqual(resultat['packs_decharge_kw'], 5.12)
+        self.assertIsNone(resultat['ond_decharge_kw'])
+
+    def test_les_roles_de_composition_priment_sur_les_libelles(self):
+        """Le balayage DIM2 passe les rôles rendus par
+        ``composition_residentielle`` : ils doivent sélectionner les mêmes
+        lignes que le classifieur de libellés."""
+        lignes = [_LigneFactice('un nom qui ne dit rien', 2, self.BAT_10),
+                  _LigneFactice('un autre nom muet', 1, self.OND_5M)]
+        from unittest import mock
+        table = {ligne.produit: ligne.specs for ligne in lignes}
+        with mock.patch('apps.stock.selectors.specs_for_produit',
+                        side_effect=lambda p: table.get(p, {})):
+            resultat = EH.puissances_batterie_des_lignes(
+                lignes, roles=['batterie', 'onduleur_hybride'])
+        self.assertAlmostEqual(resultat['packs_decharge_kw'], 2 * 5.12)
+        self.assertAlmostEqual(resultat['ond_decharge_kw'], 6.14)
+
+    def test_quantite_nulle_n_apporte_rien(self):
+        resultat = self._lire(
+            _LigneFactice('Batterie Dyness 10 kWh', 0, self.BAT_10))
+        self.assertIsNone(resultat['packs_decharge_kw'])
+
+
+class BorneChargeDuCheminBatterieTest(SimpleTestCase):
+    """« un surplus de 8 kW ne charge pas plus vite que le port ne l'admet »."""
+
+    HEURES_SURPLUS = 6
+
+    def _profil_surplus(self):
+        """24 h à FORT surplus diurne : 8 kW nets pendant six heures."""
+        conso = [0.2] * 24
+        prod = [0.0] * 24
+        for heure in range(9, 9 + self.HEURES_SURPLUS):
+            prod[heure] = 8.2        # 8,0 kW nets une fois la conso servie
+        for heure in range(19, 23):
+            conso[heure] = 3.0
+        return conso, prod
+
+    def _pas_surplus(self):
+        conso, prod = self._profil_surplus()
+        return [{'heure': h, 'duree_h': 1.0, 'conso_kwh': conso[h],
+                 'prod_kwh': prod[h],
+                 'plafond_decharge_kw': max(0.0, conso[h] - prod[h])}
+                for h in range(24)]
+
+    def test_le_surplus_horaire_est_borne_par_la_puissance_de_charge(self):
+        """8 kW de surplus derrière un port de 2 kW ⇒ l'énergie chargée du pas
+        est bornée à 2 kWh, pas 8."""
+        pas = self._pas_surplus()
+        libre = EH.simuler_batterie_pas_fins(pas, 40.0)
+        bride = EH.simuler_batterie_pas_fins(pas, 40.0,
+                                             puissance_charge_kw=2.0)
+        self.assertLess(bride['charge_kwh'], libre['charge_kwh'])
+        self.assertLessEqual(bride['charge_kwh'],
+                             2.0 * self.HEURES_SURPLUS + 1e-9)
+        # Monotone : plus étroit encore ⇒ charge encore moins.
+        plus_etroit = EH.simuler_batterie_pas_fins(pas, 40.0,
+                                                   puissance_charge_kw=1.0)
+        self.assertLess(plus_etroit['charge_kwh'], bride['charge_kwh'])
+
+    def test_l_invariant_rendement_tient_sous_la_borne_de_charge(self):
+        """restitué ≤ 0,90 × chargé — la borne de charge ne le casse pas."""
+        pas = self._pas_surplus()
+        for borne in (None, 8.0, 5.12, 2.0, 1.0, 0.4):
+            with self.subTest(charge_kw=borne):
+                resultat = EH.simuler_batterie_pas_fins(
+                    pas, 40.0, puissance_charge_kw=borne)
+                self.assertLessEqual(
+                    resultat['restitue_kwh'],
+                    pricing.BATTERY_ROUNDTRIP * resultat['charge_kwh'] + 1e-9)
+
+    def test_la_borne_de_charge_vaut_aussi_au_pas_horaire(self):
+        """Le remplissage est un flux soutenu, pas une pointe : il se borne
+        aussi dans le simulateur HORAIRE, celui qui sert les devis sans
+        équipement déclaré."""
+        conso, prod = self._profil_surplus()
+        libre = EH.simuler_batterie_jour(conso, prod, 40.0)
+        bride = EH.simuler_batterie_jour(conso, prod, 40.0,
+                                         puissance_charge_kw=2.0)
+        self.assertLess(bride['charge_kwh'], libre['charge_kwh'])
+        self.assertLessEqual(bride['charge_kwh'],
+                             2.0 * self.HEURES_SURPLUS + 1e-9)
+
+    def test_charge_non_publiee_ne_borne_rien(self):
+        """PIN : sans puissance de charge publiée, le simulateur horaire rend
+        EXACTEMENT ce qu'il rendait avant L-DECH."""
+        conso = [1.0] * 24
+        prod = [0.0] * 8 + [4.0] * 8 + [0.0] * 8
+        attendu = EH.simuler_batterie_jour(conso, prod, 10.0)
+        for vide in (None, 0, 0.0):
+            with self.subTest(charge=vide):
+                obtenu = EH.simuler_batterie_jour(conso, prod, 10.0,
+                                                  puissance_charge_kw=vide)
+                for cle in ('restitue_kwh', 'charge_kwh',
+                            'capacite_utilisee_kwh'):
+                    self.assertAlmostEqual(obtenu[cle], attendu[cle],
+                                           places=12)

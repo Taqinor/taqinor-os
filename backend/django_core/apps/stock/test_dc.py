@@ -403,6 +403,45 @@ class TestPV6SpecsForProduitSelector(DCBase):
             'isc_max_mppt_a': Decimal('39.0'),
         })
 
+    # L-DECH (2026-08-24) — le moteur horaire (apps.ventes.etude_horaire.
+    # puissances_batterie_des_lignes) lit ces trois clés-ci. Elles ne
+    # transitaient pas : le moteur les cherchait dans un sous-dict 'batterie'
+    # qui n'a jamais existé, si bien que la borne restait muette. Ces deux
+    # tests verrouillent LE NOM et LA PLATITUDE du dict rendu.
+    def test_batterie_subset_porte_la_decharge(self):
+        from apps.stock.models import FicheTechnique
+        from apps.stock.selectors import specs_for_produit
+        self._make_fiche(
+            type_fiche=FicheTechnique.TypeFiche.BATTERIE,
+            bat_kwh_nominal=Decimal('10.00'),
+            bat_max_charge_kw=Decimal('5.12'),
+            bat_max_decharge_kw=Decimal('5.12'))
+        specs = specs_for_produit(self.produit)
+        self.assertEqual(specs, {
+            'kwh_nominal': Decimal('10.00'),
+            'max_charge_kw': Decimal('5.12'),
+            'max_decharge_kw': Decimal('5.12'),
+        })
+        # LE DICT EST PLAT — pas un dict de blocs. C'est exactement le faux pas
+        # qui a laissé le moteur muet ; il ne doit plus jamais passer.
+        self.assertNotIn('batterie', specs)
+
+    def test_onduleur_subset_porte_le_port_batterie(self):
+        from apps.stock.models import FicheTechnique
+        from apps.stock.selectors import specs_for_produit
+        self._make_fiche(
+            type_fiche=FicheTechnique.TypeFiche.ONDULEUR,
+            ond_n_mppt=2,
+            ond_bat_max_charge_kw=Decimal('6.14'),
+            ond_bat_max_decharge_kw=Decimal('6.14'))
+        specs = specs_for_produit(self.produit)
+        self.assertEqual(specs, {
+            'n_mppt': 2,
+            'bat_max_charge_kw': Decimal('6.14'),
+            'bat_max_decharge_kw': Decimal('6.14'),
+        })
+        self.assertNotIn('onduleur', specs)
+
     def test_merge_over_default_is_byte_identical_when_empty(self):
         from apps.stock.selectors import specs_for_produit
         default = {'pmax_wc': None, 'voc_v': None}
