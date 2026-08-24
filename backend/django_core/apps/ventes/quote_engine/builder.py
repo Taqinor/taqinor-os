@@ -2190,16 +2190,15 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # porte une conception électrique (PV41). Sans étude, aucune clé nouvelle →
     # charge utile strictement identique à aujourd'hui.
     #
-    # L'option est TRI-ÉTAT : ``None`` (défaut) veut dire « auto — dès que
-    # l'étude existe ». Sans cela l'annexe était structurellement inatteignable
-    # par un client : `/proposal`, le document public et le PDF signé passent
-    # tous par `clean_pdf_options({})`, donc restaient sur un défaut `False`.
-    # Un booléen EXPLICITE reste souverain, opt-out compris.
+    # L-1V (24/08/2026 soir) — le « auto dès que l'étude existe » est retiré :
+    # depuis que la conception est posée À LA CRÉATION de chaque devis
+    # (rafraichir_etudes_du_devis), « l'étude existe » est vrai partout et
+    # l'auto ajoutait une 4e page à TOUS les PDF 'full' (doctrine : 3 pages).
+    # L'annexe est désormais un OPT-IN explicite (dialogue PDF / options) —
+    # le client, lui, voit le schéma sur sa page proposition aux deux niveaux.
     _design = getattr(devis, "electrical_design", None)
     _design = _design if isinstance(_design, dict) and _design else None
-    _veut_annexe = opts['include_annexe_technique']
-    if _veut_annexe is None:
-        _veut_annexe = _design is not None
+    _veut_annexe = bool(opts['include_annexe_technique'])
     if _veut_annexe and _design is not None:
         data["include_annexe_technique"] = True
         data["electrical_design"] = _design

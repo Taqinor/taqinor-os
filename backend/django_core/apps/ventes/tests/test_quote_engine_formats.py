@@ -300,27 +300,34 @@ class TestPdfFormats(TestCase):
         _, doc = self._render()
         self.assertEqual(len(doc.pages), 3)
 
-    def test_l_annexe_est_automatique_des_qu_une_etude_existe(self):
-        """PVSLD — l'annexe était INATTEIGNABLE pour un client.
+    def test_l_annexe_est_un_opt_in_explicite_meme_avec_une_etude(self):
+        """L-1V (24/08/2026 soir) — l'auto « dès que l'étude existe » est retiré.
 
-        `/proposal`, le document public et le PDF signé appellent tous
-        ``clean_pdf_options({})`` : avec un défaut ``False``, la seule page qui
-        porte le schéma unifilaire ne pouvait sortir que si un agent cochait la
-        case. Le défaut est donc AUTO — présente dès que l'étude existe.
+        Depuis que ``rafraichir_etudes_du_devis`` pose la conception à la
+        CRÉATION de chaque devis, « l'étude existe » est vrai partout : l'auto
+        d'hier ajoutait une 4e page à TOUS les PDF 'full' (doctrine : 3 pages).
+        L'annexe est donc un opt-in explicite — et le client, lui, voit le
+        schéma sur sa page proposition aux deux niveaux (une seule vérité).
         """
         from apps.ventes.quote_engine.builder import (
             DEFAULT_PDF_OPTIONS, build_quote_data, clean_pdf_options)
 
-        # Tri-état : ``None`` = auto (ni un « oui » ni un « non » figés).
         self.assertIsNone(DEFAULT_PDF_OPTIONS['include_annexe_technique'])
         self.assertIsNone(clean_pdf_options({})['include_annexe_technique'])
 
         self.devis.electrical_design = self._ELECTRICAL_DESIGN
         self.devis.save(update_fields=['electrical_design'])
+        # Étude présente + AUCUNE option ⇒ pas d'annexe, 3 pages (doctrine).
         data = build_quote_data(self.devis)
+        self.assertNotIn('include_annexe_technique', data)
+        _, doc = self._render()
+        self.assertEqual(len(doc.pages), 3)
+        # Opt-in explicite ⇒ l'annexe sort, 4 pages.
+        data = build_quote_data(self.devis,
+                                {'include_annexe_technique': True})
         self.assertTrue(data['include_annexe_technique'])
         self.assertEqual(data['electrical_design'], self._ELECTRICAL_DESIGN)
-        html, doc = self._render()
+        html, doc = self._render({'include_annexe_technique': True})
         self.assertEqual(len(doc.pages), 4)
         self.assertIn('Annexe technique', html)
 

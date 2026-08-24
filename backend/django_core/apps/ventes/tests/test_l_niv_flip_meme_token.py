@@ -159,10 +159,14 @@ class FlipNiveauMemeTokenTest(TestCase):
         designations = self._designations(payload)
         self.assertIn(KIT_AGREGE, designations)
         self.assertFalse(designations & {d for d, _, _ in KIT_LIGNES})
-        # (2) schéma unifilaire SANS le tableau « Nomenclature des
-        #     équipements » (repères, calibres, sections)
+        # (2) schéma unifilaire : depuis le chantier « une seule vérité »
+        #     (24/08 soir), le niveau standard GARDE le tableau de
+        #     nomenclature (repères, désignations, quantités) mais n'imprime
+        #     AUCUN calibre/section — la dégradation se fait à la source
+        #     (rendre_schema(standard=True)), plus par suppression du tableau.
         self.assertTrue(payload['sld_svg'])
-        self.assertNotIn('Nomenclature des équipements', payload['sld_svg'])
+        self.assertIn('Nomenclature des équipements', payload['sld_svg'])
+        self.assertNotIn('mm²', payload['sld_svg'])
         # (3) détail électrique : protections sans calibre, câbles omis en bloc
         detail = payload['conception_electrique']
         self.assertTrue(detail)
@@ -177,6 +181,9 @@ class FlipNiveauMemeTokenTest(TestCase):
         self.assertTrue({d for d, _, _ in KIT_LIGNES} <= designations)
         self.assertTrue(payload['sld_svg'])
         self.assertIn('Nomenclature des équipements', payload['sld_svg'])
+        # Témoin positif du marqueur utilisé côté standard : en confiance les
+        # câbles figurent au tableau avec leur section (« X mm² »).
+        self.assertIn('mm²', payload['sld_svg'])
         detail = payload['conception_electrique']
         self.assertTrue(detail)
         self.assertTrue(detail.get('cables'))

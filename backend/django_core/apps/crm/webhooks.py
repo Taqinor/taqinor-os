@@ -209,7 +209,10 @@ def _clean_roof_outline(raw):
                 out.append([float(pt[0]), float(pt[1])])
             except (TypeError, ValueError):
                 continue
-    return out or None
+    # Un contour est un POLYGONE : moins de 3 sommets valides n'en est pas un
+    # (même règle que validateLead côté tunnel) — ignoré proprement, jamais
+    # rangé (le test webhook l'épingle : [[lat, lng]] seul → roof_outline None).
+    return out if len(out) >= 3 else None
 
 
 # QK1 — Mode marché du site → Lead.type_installation (tolérant FR/EN).
