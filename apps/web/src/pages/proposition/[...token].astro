@@ -103,12 +103,14 @@ import {
   storageSweepInfo,
   estimationConsoAffichable,
   proposalJoursTypes,
+  occupancyScenarios,
   PROPOSAL_JOUR_TYPE_MONTH_IDS,
   PROPOSAL_JOUR_TYPE_MONTH_LABELS,
   type TarifBracketStory,
   type BatteryRegimeInfo,
   type StorageSweepInfo,
   type EstimationConsoAffichable,
+  type OccupancyScenarios,
 } from '../../lib/proposition';
 import {
   renderYearCurve,
@@ -796,6 +798,98 @@ const OCC_CURVE_STYLE: Record<OccupancyId, { stroke: string; dash: string | null
   presence_jour: { stroke: '#2a78d6', dash: null, fill: 'rgba(42,120,214,0.10)' },
   absence_jour: { stroke: '#eb6834', dash: '6,3' },
   presence_partielle: { stroke: '#1baf7a', dash: '2,3' },
+};
+
+// ── L-PCMP (ordre fondateur, 24/08/2026) — « le client doit pouvoir CHANGER
+//    son profil de consommation et voir DIRECTEMENT les économies de chaque
+//    comportement, plus l'installation optimale pour chaque configuration ».
+//
+//    TOUT est calculé par le MOTEUR, côté serveur (`profils_comparatifs`, voir
+//    `apps/ventes/profils_comparatifs.py` et le contrat partagé
+//    `contract_samples/profils_comparatifs.json`). Cette page ne fait que
+//    RENDRE les trois blocs et en montrer un à la fois : elle ne calcule
+//    AUCUNE économie en JavaScript (règle « zéro chiffre inventé » — un chiffre
+//    qui apparaît ici sort du moteur, ou n'apparaît pas).
+//    `null` (clé absente : devis non résidentiel, section `economies`
+//    décochée, moteur sans ancrage) ⇒ la carte reste PUREMENT descriptive,
+//    exactement comme avant L-PCMP.
+const occScenarios: OccupancyScenarios | null = ok ? occupancyScenarios(data!) : null;
+// La silhouette PRÉSÉLECTIONNÉE est celle que le client a réellement déclarée
+// (drapeau serveur) ; à défaut, le premier bloc servi — jamais un choix
+// arbitraire qui ferait lire au client les chiffres d'un autre comportement.
+const occSelected: OccupancyId | null = occScenarios
+  ? (occScenarios.scenarios.find((s) => s.estProfilReel)?.occupancy
+     ?? occScenarios.profilReel
+     ?? occScenarios.scenarios[0].occupancy)
+  : null;
+/** kWh de batterie rendus sans décimale inutile (10 et non 10,0). */
+const occKwh = (v: number) => (Number.isInteger(v) ? String(v) : formatNumber(v, 1));
+/** Un libellé dans les trois langues de la page (data-i18n fr/en/ar). */
+type OccTri = { fr: string; en: string; ar: string };
+/**
+ * La ligne « économies » d'un comportement. LE NOMBRE VIENT DU SERVEUR — cette
+ * fonction ne fait que choisir QUELLE valeur servie montrer (celle « avec
+ * batterie » quand le devis EN PORTE une, celle « sans » sinon : on compare
+ * toujours la famille d'installation que CE devis propose) et l'habiller.
+ */
+const occEcoTri = (s: { economieSansMad: number; economieAvecMad: number | null }): OccTri => {
+  const avec = occScenarios?.avecBatterie === true && s.economieAvecMad !== null;
+  const montant = formatMAD(avec ? (s.economieAvecMad as number) : s.economieSansMad);
+  return avec
+    ? { fr: `${montant}/an avec votre batterie`, en: `${montant}/year with your battery`, ar: `${montant}/سنة مع بطاريتك` }
+    : { fr: `${montant}/an`, en: `${montant}/year`, ar: `${montant}/سنة` };
+};
+/** Le second chiffre (sans batterie), montré UNIQUEMENT quand le devis porte
+ *  du stockage — sinon il ferait doublon avec la ligne principale. */
+const occEcoSecondTri = (s: { economieSansMad: number; economieAvecMad: number | null }): OccTri | null => {
+  if (occScenarios?.avecBatterie !== true || s.economieAvecMad === null) return null;
+  const montant = formatMAD(s.economieSansMad);
+  return { fr: `${montant}/an sans batterie`, en: `${montant}/year without battery`, ar: `${montant}/سنة بدون بطارية` };
+};
+/** Autoconsommation + couverture, dans la même variante que la ligne d'économies. */
+const occTauxTri = (s: {
+  tauxAutoconsoSansPct: number | null; tauxAutoconsoAvecPct: number | null;
+  couvertureSansPct: number | null; couvertureAvecPct: number | null;
+}): OccTri | null => {
+  const avec = occScenarios?.avecBatterie === true;
+  const auto = avec ? (s.tauxAutoconsoAvecPct ?? s.tauxAutoconsoSansPct) : s.tauxAutoconsoSansPct;
+  const couv = avec ? (s.couvertureAvecPct ?? s.couvertureSansPct) : s.couvertureSansPct;
+  if (auto === null && couv === null) return null;
+  const bouts = (labelAuto: string, labelCouv: string) => [
+    auto === null ? null : `${labelAuto} ${formatNumber(auto, 1)} %`,
+    couv === null ? null : `${labelCouv} ${formatNumber(couv, 1)} %`,
+  ].filter((p): p is string => p !== null).join(' · ');
+  return {
+    fr: bouts('Autoconsommation', 'Couverture'),
+    en: bouts('Self-consumption', 'Coverage'),
+    ar: bouts('الاستهلاك الذاتي', 'التغطية'),
+  };
+};
+/**
+ * « L'installation optimale pour ce comportement » — LA RECOMMANDATION DU
+ * MOTEUR pour cette silhouette, jamais une règle inventée ici. `null` quand le
+ * moteur ne recommande rien (catalogue incomplet) : on se tait plutôt que de
+ * proposer une taille au hasard.
+ */
+const occOptimalTri = (s: {
+  optimal: { kwc: number; batterieKwh: number; avecBatterie: boolean; identiqueAuDevis: boolean | null } | null;
+}): OccTri | null => {
+  const o = s.optimal;
+  if (!o) return null;
+  if (o.identiqueAuDevis === true) {
+    return {
+      fr: 'Votre devis est déjà optimal pour ce profil.',
+      en: 'Your quote is already optimal for this profile.',
+      ar: 'عرضكم مثالي بالفعل لهذا النمط.',
+    };
+  }
+  const kwc = formatNumber(o.kwc, 2);
+  const batt = o.avecBatterie && o.batterieKwh > 0 ? occKwh(o.batterieKwh) : null;
+  return {
+    fr: `Installation optimale pour ce comportement : ${kwc} kWc${batt ? ` + ${batt} kWh de batterie` : ''}.`,
+    en: `Optimal system for this behaviour: ${kwc} kWp${batt ? ` + ${batt} kWh battery` : ''}.`,
+    ar: `النظام الأمثل لهذا السلوك: ${kwc} kWc${batt ? ` + ${batt} kWh بطارية` : ''}.`,
+  };
 };
 
 // ── WJ14 — Impact environnemental humain (CO₂ ≈ arbres), depuis la production ─
@@ -2627,9 +2721,15 @@ const signConfig = ok
                  pointillé [6,3] #eb6834, partiel vert pointillé [2,3] #1baf7a.
                  La silhouette du CLIENT (drapeau serveur) est mise en évidence
                  « CHOISIE pour ce client ». `null` ⇒ section masquée entière. */}
-          {curveMode === 'residentiel' && clientOccupancyChoice && (
+          {curveMode === 'residentiel' && (clientOccupancyChoice || occScenarios) && (
             <div id="occ-silhouettes" class="cine-card mt-4 rounded-xl p-5 sm:p-6">
               <p class="tech-label text-lune-faint" data-i18n data-fr="Profils d’occupation du logement" data-en="Home occupancy profiles" data-ar="أنماط شغل المسكن">Profils d’occupation du logement</p>
+              {occScenarios && (
+                <p class="mt-1 text-sm text-lune-soft" data-i18n
+                  data-fr="Et si votre foyer vivait autrement ? Choisissez un comportement : les chiffres ci-dessous sont recalculés par notre moteur sur VOS factures."
+                  data-en="What if your household lived differently? Pick a behaviour: the figures below are computed by our engine on YOUR bills."
+                  data-ar="ماذا لو عاش منزلك بطريقة أخرى؟ اختر سلوكاً: الأرقام أدناه محسوبة بمحركنا على فواتيرك.">Et si votre foyer vivait autrement ? Choisissez un comportement : les chiffres ci-dessous sont recalculés par notre moteur sur VOS factures.</p>
+              )}
               <svg viewBox="0 0 320 140" width="100%" height="140" role="img"
                 aria-label="Poids de forme (sans unité) des trois profils d’occupation, sur 24 h">
                 {OCCUPANCY_IDS.map((id) => {
@@ -2641,12 +2741,15 @@ const signConfig = ok
                   const pts = shape.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`);
                   const line = `M${pts.join(' L')}`;
                   const area = `${line} L${x(shape.length - 1).toFixed(1)},${(h - pad).toFixed(1)} L${x(0).toFixed(1)},${(h - pad).toFixed(1)} Z`;
-                  const chosen = id === clientOccupancyChoice;
+                  // L-PCMP — la silhouette MISE EN AVANT suit désormais la
+                  // sélection du visiteur (défaut : son profil déclaré) ; sans
+                  // comparatif servi, c'est le drapeau serveur, comme avant.
+                  const chosen = id === (occSelected ?? clientOccupancyChoice);
                   return (
                     <>
-                      {c.fill && <path d={area} fill={c.fill} stroke="none"></path>}
+                      {c.fill && <path d={area} fill={c.fill} stroke="none" data-occ-area={id} opacity={chosen ? 1 : 0}></path>}
                       <path d={line} fill="none" stroke={c.stroke} stroke-width={chosen ? 3 : 2}
-                        stroke-dasharray={c.dash ?? undefined} opacity={chosen ? 1 : 0.55}>
+                        stroke-dasharray={c.dash ?? undefined} opacity={chosen ? 1 : 0.55} data-occ-path={id}>
                         <title>{OCCUPANCY_LABELS[id].fr}</title>
                       </path>
                     </>
@@ -2654,17 +2757,77 @@ const signConfig = ok
                 })}
               </svg>
               <p class="mt-1 text-[11px] text-lune-faint" data-i18n data-fr="poids de forme (sans unité)" data-en="shape weight (unitless)" data-ar="وزن الشكل (بدون وحدة)">poids de forme (sans unité)</p>
-              <div class="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs">
-                {OCCUPANCY_IDS.map((id) => (
-                  <span class="inline-flex items-center gap-1.5" style={id === clientOccupancyChoice ? 'color: var(--color-lune)' : 'color: var(--color-lune-faint)'}>
-                    <span aria-hidden="true" style={`display:inline-block;width:10px;height:2px;background:${OCC_STROKES[id]}`}></span>
-                    {OCCUPANCY_LABELS[id].fr}
-                    {id === clientOccupancyChoice && (
-                      <span class="tech-label text-brass-300" data-i18n data-fr="CHOISIE pour ce client" data-en="CHOSEN for this client" data-ar="مُختار لهذا العميل"> · CHOISIE pour ce client</span>
-                    )}
-                  </span>
-                ))}
-              </div>
+              {/* Sans comparatif servi, la légende reste ce qu'elle était :
+                     purement descriptive, la silhouette du client marquée. */}
+              {!occScenarios && (
+                <div class="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                  {OCCUPANCY_IDS.map((id) => (
+                    <span class="inline-flex items-center gap-1.5" style={id === clientOccupancyChoice ? 'color: var(--color-lune)' : 'color: var(--color-lune-faint)'}>
+                      <span aria-hidden="true" style={`display:inline-block;width:10px;height:2px;background:${OCC_STROKES[id]}`}></span>
+                      {OCCUPANCY_LABELS[id].fr}
+                      {id === clientOccupancyChoice && (
+                        <span class="tech-label text-brass-300" data-i18n data-fr="CHOISIE pour ce client" data-en="CHOSEN for this client" data-ar="مُختار لهذا العميل"> · CHOISIE pour ce client</span>
+                      )}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* ── L-PCMP — LE SÉLECTEUR. Chaque bouton porte la couleur de sa
+                     silhouette (même langage visuel que la courbe au-dessus et
+                     que les boutons d'occupation du graphe journalier). Le
+                     profil RÉELLEMENT déclaré est marqué « votre profil » et
+                     présélectionné. */}
+              {occScenarios && (
+                <div data-occ-compare class="mt-3">
+                  <div class="flex flex-wrap gap-2" role="group" aria-label="Comportement d’occupation à simuler">
+                    {occScenarios.scenarios.map((s) => (
+                      <button type="button" data-occ-btn={s.occupancy}
+                        aria-pressed={s.occupancy === occSelected ? 'true' : 'false'}
+                        class="btn-pill inline-flex items-center gap-1.5 px-3 py-1 text-xs"
+                        style={s.occupancy === occSelected
+                          ? `background: ${OCC_STROKES[s.occupancy]}; color: #fff; border-color: ${OCC_STROKES[s.occupancy]}`
+                          : undefined}>
+                        <span aria-hidden="true" style={`display:inline-block;width:10px;height:2px;background:${s.occupancy === occSelected ? '#fff' : OCC_STROKES[s.occupancy]}`}></span>
+                        <span data-i18n data-fr={OCCUPANCY_LABELS[s.occupancy].fr} data-en={OCCUPANCY_LABELS[s.occupancy].en} data-ar={OCCUPANCY_LABELS[s.occupancy].ar}>{OCCUPANCY_LABELS[s.occupancy].fr}</span>
+                        {s.estProfilReel && (
+                          <span class="tech-label" data-i18n data-fr="· votre profil" data-en="· your profile" data-ar="· نمطك">· votre profil</span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Les TROIS blocs sont rendus par le serveur ; le script ne
+                       fait que montrer celui qui est choisi. AUCUNE économie
+                       n'est calculée en JavaScript. */}
+                  {occScenarios.scenarios.map((s) => {
+                    const eco = occEcoTri(s);
+                    const eco2 = occEcoSecondTri(s);
+                    const taux = occTauxTri(s);
+                    const optimal = occOptimalTri(s);
+                    return (
+                      <div data-occ-panel={s.occupancy} hidden={s.occupancy !== occSelected}
+                        class="mt-3 rounded-lg border border-white/10 bg-white/5 p-4">
+                        <p class="tech-label text-lune-faint" data-i18n data-fr="Économies estimées" data-en="Estimated savings" data-ar="التوفير المقدّر">Économies estimées</p>
+                        <p class="mt-1 text-xl font-semibold text-brass-300" data-occ-eco data-i18n data-fr={eco.fr} data-en={eco.en} data-ar={eco.ar}>{eco.fr}</p>
+                        {eco2 && (
+                          <p class="mt-0.5 text-xs text-lune-faint" data-i18n data-fr={eco2.fr} data-en={eco2.en} data-ar={eco2.ar}>{eco2.fr}</p>
+                        )}
+                        {taux && (
+                          <p class="mt-2 text-xs text-lune-soft" data-i18n data-fr={taux.fr} data-en={taux.en} data-ar={taux.ar}>{taux.fr}</p>
+                        )}
+                        {optimal && (
+                          <p class="mt-2 text-sm text-lune" data-occ-optimal data-i18n data-fr={optimal.fr} data-en={optimal.en} data-ar={optimal.ar}>{optimal.fr}</p>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  {occScenarios.note && (
+                    <p class="mt-2 text-[11px] text-lune-faint">{occScenarios.note}</p>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -4594,6 +4757,60 @@ const signConfig = ok
     // mécanisme data-i18n).
     propI18nBusyLabels.push(() => renderProfileNote());
     apply();
+  })();
+
+  // ——— L-PCMP : le sélecteur « et si je vivais autrement ? » ———————————————
+  // IL NE CALCULE RIEN. Les trois blocs de chiffres sont rendus par le serveur
+  // (`profils_comparatifs`, moteur horaire + balayage de dimensionnement) et ce
+  // script se contente de MONTRER celui que le visiteur choisit, de mettre en
+  // avant la silhouette correspondante et d'accorder l'état `aria-pressed`.
+  // Zéro arithmétique ici : c'est la garantie que le chiffre lu par le client
+  // est celui du moteur (règle « zéro chiffre inventé »).
+  (() => {
+    const zone = document.querySelector<HTMLElement>('[data-occ-compare]');
+    if (!zone) return;
+    const boutons = Array.from(zone.querySelectorAll<HTMLElement>('[data-occ-btn]'));
+    const panneaux = Array.from(zone.querySelectorAll<HTMLElement>('[data-occ-panel]'));
+    const carte = zone.closest('#occ-silhouettes');
+    const traits = Array.from(carte?.querySelectorAll<SVGElement>('[data-occ-path]') ?? []);
+    const aires = Array.from(carte?.querySelectorAll<SVGElement>('[data-occ-area]') ?? []);
+    // La couleur de chaque silhouette est LUE sur son propre trait SVG (source
+    // unique : `OCC_CURVE_STYLE` côté serveur) — jamais recopiée en dur ici.
+    const couleurs = new Map<string, string>();
+    for (const trait of traits) {
+      const id = trait.getAttribute('data-occ-path');
+      if (id) couleurs.set(id, trait.getAttribute('stroke') || '');
+    }
+    const selectionner = (choix: string) => {
+      for (const btn of boutons) {
+        const id = btn.getAttribute('data-occ-btn');
+        const actif = id === choix;
+        btn.setAttribute('aria-pressed', actif ? 'true' : 'false');
+        const teinte = (id && couleurs.get(id)) || '';
+        btn.style.background = actif ? teinte : '';
+        btn.style.color = actif ? '#fff' : '';
+        btn.style.borderColor = actif ? teinte : '';
+        const puce = btn.querySelector<HTMLElement>('span[aria-hidden="true"]');
+        if (puce) puce.style.background = actif ? '#fff' : teinte;
+      }
+      for (const panneau of panneaux) {
+        panneau.hidden = panneau.getAttribute('data-occ-panel') !== choix;
+      }
+      for (const trait of traits) {
+        const actif = trait.getAttribute('data-occ-path') === choix;
+        trait.setAttribute('stroke-width', actif ? '3' : '2');
+        trait.setAttribute('opacity', actif ? '1' : '0.55');
+      }
+      for (const aire of aires) {
+        aire.setAttribute('opacity', aire.getAttribute('data-occ-area') === choix ? '1' : '0');
+      }
+    };
+    for (const btn of boutons) {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-occ-btn');
+        if (id) selectionner(id);
+      });
+    }
   })();
   // Exposé aux AUTRES <script> de cette page (PDF affordance) — chaque bloc
   // <script> d'une île Astro est un module séparé, donc pas de portée
