@@ -2407,7 +2407,7 @@ def share_link_niveau_map(devis_ids):
         ShareLink.objects
         .filter(devis_id__in=ids, expires_at__gt=timezone.now())
         .order_by('devis_id', '-expires_at')
-        .values('devis_id', 'niveau', 'otp_lecture')
+        .values('devis_id', 'niveau', 'otp_lecture', 'sections')
     )
     out = {}
     for row in rows:
@@ -2417,5 +2417,10 @@ def share_link_niveau_map(devis_ids):
         out[devis_id] = {
             'niveau': row['niveau'],
             'otp_lecture': row['otp_lecture'],
+            # L-SECT (24/08/2026) — sections déjà posées sur CE lien, pour que
+            # le dialogue « Envoyer au client » rouvre sur les cases réellement
+            # en vigueur plutôt que sur les défauts. Dict vide = aucune case
+            # décochée (comportement par défaut).
+            'sections': row['sections'] or {},
         }
     return out

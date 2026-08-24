@@ -245,6 +245,20 @@ def _niveau_lien(link):
             or ShareLink.NIVEAU_CONFIANCE)
 
 
+def _section_servie(link, cle):
+    """L-SECT (24/08/2026) — LA décision « cette section part-elle chez ce
+    client ? », prise UNE fois pour tous les flux publics.
+
+    Délègue au modèle (``ShareLink.section_servie``) quand il l'expose, et
+    retombe sur « servie » sinon : un lien construit à la main dans un test,
+    ou un lien créé avant la migration 0101, se comporte EXACTEMENT comme
+    avant L-SECT."""
+    methode = getattr(link, 'section_servie', None)
+    if callable(methode):
+        return bool(methode(cle))
+    return True
+
+
 def _opts_pdf_public(link):
     """Options de rendu du PDF CLIENT servi derrière un jeton ShareLink.
 
@@ -281,6 +295,15 @@ def public_document(request, token):
         .first()
     )
     if link is None or not link.is_valid:
+        return _not_found()
+
+    # L-SECT (24/08/2026) — case « PDF téléchargeable » décochée : ce flux
+    # servait le MÊME document que ``proposal_pdf`` par le MÊME jeton — le
+    # laisser ouvert aurait rendu la case décorative. Même 404 muet, posé AVANT
+    # le stamp de vue. Borné au lien de DEVIS : un lien de facture ou de bon de
+    # commande fournisseur ne porte aucune section (la case n'existe que sur la
+    # page devis).
+    if link.devis_id and not _section_servie(link, 'pdf'):
         return _not_found()
 
     # QJ1 — stamp the view (best-effort; True = first open).
@@ -1572,6 +1595,12 @@ def proposal_data(request, token):
         # COURBES (21/08/2026) — série de consommation calculée UNE fois : elle
         # est republiée telle quelle ET sert de NIVEAU réel au graphe journalier.
         _conso_mensuelle = _monthly_consumption(devis)
+        # L-SECT — la synthèse PUBLIÉE (le bloc « −N % / avant-après /
+        # couverture ») obéit à la case « Synthèse d'économies ». `synthese`
+        # elle-même reste intacte : elle sert AUSSI d'ancrage réel à
+        # `_economies_mensuelles_publiques` plus bas (retirer un bloc
+        # d'affichage ne doit pas changer un calcul).
+        synthese_pub = synthese if _section_servie(link, 'economies') else None
         roof_url = None
         if data.get('roof_image_key'):
             try:
@@ -1598,10 +1627,19 @@ def proposal_data(request, token):
             # QJ26 — layout de toiture ASSAINI (géométrie + par-pan uniquement,
             # jamais de prix/marge/champ interne). None quand absent → le PNG
             # poster (roof_image_url) reste le repli.
-            # L-NIV — niveau « standard » : OMIS en bloc (jamais les coordonnées
-            # cx/cy machine du calepinage) ; le PNG poster (roof_image_url,
-            # ci-dessus) reste le repli visuel, identique aux deux niveaux.
-            'roof_layout': None if est_standard else _safe_roof_layout(devis),
+            # L-SECT (DÉCISION FONDATEUR, 24/08/2026 — « le client ne voit pas
+            # ses panneaux sur son toit ») : le calepinage 3D est désormais
+            # VISIBLE AUX DEUX NIVEAUX par défaut. Il n'est plus omis parce que
+            # le lien est « standard » — seule une décision EXPLICITE du
+            # commercial (case « Calepinage 3D » décochée → sections.roof3d ==
+            # False) le retire. C'est le VISUEL seulement : la nomenclature, le
+            # schéma unifilaire et le kit restent dégradés au niveau standard
+            # exactement comme avant (voir sld_svg / conception_electrique /
+            # l'agrégation kit ci-dessus).
+            'roof_layout': (
+                _safe_roof_layout(devis)
+                if _section_servie(link, 'roof3d') else None
+            ),
             # PVUNI (fondateur, 18/08/2026) — LE CALEPINAGE NE COLLE PLUS AUX
             # LIGNES. La vue 3D montre le compte de panneaux pour lequel elle a
             # été jouée ; les lignes, elles, peuvent avoir bougé depuis (édition
@@ -1620,9 +1658,16 @@ def proposal_data(request, token):
             # le client ne voit un schéma que lorsqu'il en existe un vrai.
             # L-NIV — niveau « standard » : topologie simplifiée, sans le
             # tableau « Nomenclature des équipements » (calibres/sections).
+            # L-SECT — case « Schéma unifilaire » décochée → la clé vaut None
+            # (la page omet le bloc, elle sait déjà le faire sur un devis sans
+            # conception électrique). Le détail `conception_electrique`
+            # ci-dessous part avec elle : c'est LA MÊME section pour le client.
             'sld_svg': (
-                _standard_sld_svg(_safe_sld_svg(devis))
-                if est_standard else _safe_sld_svg(devis)
+                (
+                    _standard_sld_svg(_safe_sld_svg(devis))
+                    if est_standard else _safe_sld_svg(devis)
+                )
+                if _section_servie(link, 'sld') else None
             ),
             # Fondateur 2026-08-18 — le DÉTAIL ÉLECTRIQUE, exposé au client
             # SANS PRIX : chaînes (modules/MPPT), protections nominatives
@@ -1630,7 +1675,10 @@ def proposal_data(request, token):
             # longueur). Whitelist STRICTE (_PUBLIC_CHAINE/_PROTECTION/_CABLE) :
             # ni nomenclature d'achat, ni paramètres internes, ni montant.
             # None tant que la conception électrique (PV41) n'a pas été faite.
-            'conception_electrique': _conception_electrique_publique(devis, niveau),
+            'conception_electrique': (
+                _conception_electrique_publique(devis, niveau)
+                if _section_servie(link, 'sld') else None
+            ),
             'option_totals': {
                 'sans_batterie': data.get('totaux_sans'),
                 'avec_batterie': data.get('totaux_avec'),
@@ -1674,11 +1722,16 @@ def proposal_data(request, token):
             # client ne peuvent plus diverger. None quand le devis n'a pas la
             # forme requise (la page n'affiche alors rien, jamais un chiffre
             # inventé). Jamais de prix d'achat/marge (RULE #4).
-            'pct_cut': (synthese or {}).get('pct_cut'),
-            'annual_before': (synthese or {}).get('annual_before'),
-            'annual_after': (synthese or {}).get('annual_after'),
-            'coverage_pct': (synthese or {}).get('coverage_pct'),
-            'coverage_estimated': (synthese or {}).get('coverage_estimated'),
+            # L-SECT — case « Synthèse d'économies » décochée → ces quatre
+            # clés partent ensemble (elles forment UN bloc à l'écran). Elles
+            # valent déjà None sur un devis sans la forme requise : la page
+            # traite donc ce retrait comme le cas « rien à montrer » qu'elle
+            # sait déjà rendre, jamais comme une donnée manquante.
+            'pct_cut': (synthese_pub or {}).get('pct_cut'),
+            'annual_before': (synthese_pub or {}).get('annual_before'),
+            'annual_after': (synthese_pub or {}).get('annual_after'),
+            'coverage_pct': (synthese_pub or {}).get('coverage_pct'),
+            'coverage_estimated': (synthese_pub or {}).get('coverage_estimated'),
             # QJ29/QJ30 — multi-propriétés (rendu web) : ×N villas identiques
             # (multiplicateur + totaux mis à l'échelle) et/ou sections par-villa
             # (sous-totaux + total général). Absents quand le devis n'est pas
@@ -1696,7 +1749,12 @@ def proposal_data(request, token):
             # GAMMES — choix de gamme AVANT/AVEC la signature. Clé présente
             # uniquement en mode d'envoi « les_deux » ; absente sinon (le lien
             # rend alors le devis exactement comme aujourd'hui).
-            'gammes': _gammes_public(devis, est_standard),
+            # L-SECT — case « Comparatif de gammes » décochée → None, comme un
+            # devis en mode d'envoi « seule » (cas déjà rendu par la page).
+            'gammes': (
+                _gammes_public(devis, est_standard)
+                if _section_servie(link, 'gammes') else None
+            ),
             # PVSYNC — TRANSPARENCE d'une resynchronisation POST-ENVOI. Posée
             # par ``services.resynchroniser_devis_pour_produit`` quand une
             # correction du catalogue a recalé les lignes d'un devis DÉJÀ
@@ -1718,7 +1776,9 @@ def proposal_data(request, token):
         # PV77 — titre de l'étude bancable (P50 + économies 25 ans). La clé
         # n'est AJOUTÉE que lorsque le devis porte une simulation : sans elle,
         # la charge utile publique est exactement celle d'aujourd'hui.
-        if bankable is not None:
+        # L-SECT — case « Étude bancable » décochée → la clé n'est PAS ajoutée,
+        # exactement comme sur un devis sans simulation.
+        if bankable is not None and _section_servie(link, 'bankable'):
             payload['bankable'] = bankable
         # COURBES (21/08/2026) — graphe « une journée type » : formes horaires
         # PVGIS (live au point GPS, sinon courbe de référence de la ville),
@@ -1729,9 +1789,17 @@ def proposal_data(request, token):
         # page garde EXACTEMENT son affichage d'aujourd'hui (Q6 : on omet).
         # La logique vit dans son propre module : le moteur de devis (règle #4)
         # ne rend que des documents, il ne sert pas de graphe.
+        # L-SECT — case « Journée type & courbes » décochée → ni les courbes
+        # journalières ni les mois « jour type » (plus bas) ne sont ajoutés :
+        # c'est UNE section à l'écran, elle part d'un bloc. On évite même le
+        # calcul quand elle n'est pas servie.
+        _jour_type_servi = _section_servie(link, 'jour_type')
         from .courbes_journalieres import construire_courbes_journalieres
-        _courbes = construire_courbes_journalieres(
-            devis, data, monthly_consumption=_conso_mensuelle)
+        _courbes = (
+            construire_courbes_journalieres(
+                devis, data, monthly_consumption=_conso_mensuelle)
+            if _jour_type_servi else None
+        )
         if _courbes is not None:
             payload['courbes_journalieres'] = _courbes
         # CJ2b (fondateur, 21/08/2026) — « we cannot see the real calculated
@@ -1764,7 +1832,7 @@ def proposal_data(request, token):
         _estimation = _estimation_conso_publique(devis)
         if _estimation is not None:
             payload['estimation_conso'] = _estimation
-        _jours = _jours_types_publique(devis)
+        _jours = _jours_types_publique(devis) if _jour_type_servi else None
         if _jours is not None:
             payload['jours_types'] = _jours
     except Exception:  # noqa: BLE001
@@ -1800,6 +1868,14 @@ def proposal_pdf(request, token):
     if not otp_lecture_verified(link):
         return _noindex(Response(
             {'detail': 'otp_required'}, status=status.HTTP_403_FORBIDDEN))
+
+    # L-SECT (24/08/2026) — case « PDF téléchargeable » décochée : le PDF
+    # n'existe pas pour ce client. Gate posé AVANT tout effet de bord (stamp de
+    # vue), comme le gate OTP ci-dessus : une tentative refusée ne compte pas
+    # comme une consultation. Même 404 muet que sur un jeton inconnu — aucune
+    # fuite sur le fait qu'un document existe derrière.
+    if not _section_servie(link, 'pdf'):
+        return _not_found()
 
     # QJ1 — stamp the view (best-effort; True = first open).
     is_first = _stamp_view(link)
