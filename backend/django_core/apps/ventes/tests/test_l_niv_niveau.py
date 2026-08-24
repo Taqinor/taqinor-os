@@ -195,7 +195,7 @@ class TestProposalDataNiveau(TestCase):
         token = str(uuid.uuid4())
         ShareLink.objects.create(
             company=self.company, devis=devis, token=token, niveau=niveau)
-        resp = DjangoClient().get(f'/api/django/public/proposal/{token}/')
+        resp = DjangoClient().get(f'/api/django/public/proposal/{token}/data/')
         self.assertEqual(resp.status_code, 200)
         return resp.json()
 
@@ -254,7 +254,7 @@ class TestKitLineAggregation(TestCase):
         token = str(uuid.uuid4())
         ShareLink.objects.create(
             company=self.company, devis=devis, token=token, niveau=niveau)
-        resp = DjangoClient().get(f'/api/django/public/proposal/{token}/')
+        resp = DjangoClient().get(f'/api/django/public/proposal/{token}/data/')
         self.assertEqual(resp.status_code, 200)
         return resp.json()
 

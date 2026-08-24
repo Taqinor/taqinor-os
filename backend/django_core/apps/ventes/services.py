@@ -4704,6 +4704,113 @@ def validate_esign_otp(link, otp_code):
     return None
 
 
+# ── L-NIV (24/08/2026) — OTP de LECTURE, par lien (``ShareLink.otp_lecture``)
+# ─────────────────────────────────────────────────────────────────────────
+# Distinct de l'OTP de SIGNATURE ci-dessus (QJ11/QX10, gouverné par le toggle
+# ``ESIGN_OTP_ENABLED``) : ``otp_lecture`` est un réglage PAR LIEN, posé par le
+# commercial (action share-link), jamais un toggle société — donc actif dès
+# que ``link.otp_lecture`` vaut True, SANS dépendre d'``ESIGN_OTP_ENABLED``.
+# Réutilise EXACTEMENT la même mécanique (code à 6 chiffres, cache Django TTL
+# 10 min, compteur anti-brute-force) sous un espace de clés SÉPARÉ — jamais
+# de collision avec l'OTP de signature d'un même lien, et la « vérification »
+# de lecture pose en plus un DRAPEAU vérifié (TTL 1 h) que ``proposal_data``
+# relit à chaque GET, puisque la lecture n'est pas un formulaire ponctuel
+# (POST) comme l'acceptation — c'est une page consultée plusieurs fois.
+OTP_LECTURE_VERIFIED_TTL = 3600  # 1 heure
+
+
+def _otp_lecture_cache_key(link_token):
+    return f'otp_lecture:{link_token}'
+
+
+def _otp_lecture_attempts_key(link_token):
+    return f'otp_lecture_attempts:{link_token}'
+
+
+def _otp_lecture_verified_key(link_token):
+    return f'otp_lecture_verified:{link_token}'
+
+
+def request_otp_lecture(link):
+    """L-NIV — génère et envoie un OTP de LECTURE au contact du devis.
+
+    Toujours actif (pas de toggle société) : l'appelant (vue publique)
+    n'appelle cette fonction QUE quand ``link.otp_lecture`` est True. Retourne
+    None (succès) ou un message d'erreur FR lisible — même contrat que
+    ``request_esign_otp``."""
+    from django.core.cache import cache
+    code = _generate_otp()
+    cache.set(_otp_lecture_cache_key(link.token), code, timeout=OTP_CACHE_TTL)
+    cache.delete(_otp_lecture_attempts_key(link.token))
+
+    devis = link.devis
+    client = getattr(devis, 'client', None)
+    phone = (getattr(client, 'telephone', '') or '').strip()
+    email = (getattr(client, 'email', '') or '').strip()
+
+    sent = False
+    if phone:
+        sent = _send_otp_whatsapp(phone=phone, code=code, devis_ref=devis.reference)
+    if not sent:
+        sent = _send_otp_email(email=email, code=code, devis_ref=devis.reference,
+                               company=devis.company)
+    if not sent:
+        logger.warning(
+            'L-NIV: OTP lecture généré pour %s mais aucun canal disponible '
+            '(phone=%s, email=%s)', devis.reference, bool(phone), bool(email))
+    else:
+        logger.info('L-NIV: OTP lecture envoyé pour devis %s', devis.reference)
+    return None
+
+
+def validate_otp_lecture(link, otp_code):
+    """L-NIV — valide l'OTP de lecture soumis contre le cache.
+
+    Succès → pose le drapeau ``otp_lecture_verified`` (TTL 1 h) et retourne
+    None ; échec → message d'erreur FR, même discipline anti-brute-force que
+    ``validate_esign_otp`` (QX10, ``OTP_MAX_ATTEMPTS`` tentatives)."""
+    if not otp_code:
+        return 'Un code de confirmation est requis. Demandez-le via le bouton « Envoyer le code ».'
+
+    from django.core.cache import cache
+    attempts_key = _otp_lecture_attempts_key(link.token)
+    attempts = cache.get(attempts_key, 0)
+    if attempts >= OTP_MAX_ATTEMPTS:
+        return ('Trop de tentatives incorrectes. Redemandez un nouveau code '
+                'de confirmation et réessayez.')
+
+    cache_key = _otp_lecture_cache_key(link.token)
+    stored = cache.get(cache_key)
+    if stored is None:
+        return 'Le code de confirmation a expiré ou n\'a pas été demandé. Redemandez un nouveau code.'
+    if stored != otp_code.strip():
+        cache.set(attempts_key, attempts + 1, timeout=OTP_CACHE_TTL)
+        restantes = max(0, OTP_MAX_ATTEMPTS - (attempts + 1))
+        if restantes == 0:
+            return ('Trop de tentatives incorrectes. Redemandez un nouveau '
+                    'code de confirmation et réessayez.')
+        return 'Code de confirmation incorrect. Vérifiez le code reçu et réessayez.'
+
+    # Code valide : consommé (one-time use), compteur remis à zéro, la
+    # LECTURE reste déverrouillée pendant OTP_LECTURE_VERIFIED_TTL (la page
+    # est consultée plusieurs fois, contrairement à l'acceptation ponctuelle).
+    cache.delete(cache_key)
+    cache.delete(attempts_key)
+    cache.set(_otp_lecture_verified_key(link.token), True,
+              timeout=OTP_LECTURE_VERIFIED_TTL)
+    return None
+
+
+def otp_lecture_verified(link):
+    """True si la lecture de ``link`` a déjà été déverrouillée par un OTP
+    valide dans la dernière heure. Toujours True si ``link.otp_lecture`` est
+    False (rien à déverrouiller — comportement d'aujourd'hui)."""
+    if not getattr(link, 'otp_lecture', False):
+        return True
+    from django.core.cache import cache
+    return bool(cache.get(_otp_lecture_verified_key(link.token)))
+
+
 def _send_otp_whatsapp(phone, code, devis_ref):
     """Envoie le code OTP via WhatsApp. Best-effort → bool.
 

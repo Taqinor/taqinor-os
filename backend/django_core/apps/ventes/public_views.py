@@ -1429,6 +1429,16 @@ def proposal_data(request, token):
     if link is None:
         return _not_found()
 
+    # L-NIV (24/08/2026) — otp_lecture : quand posé sur CE lien, la lecture
+    # exige un OTP vérifié (même mécanique que la signature QJ11/QX10, sous
+    # un espace de clés séparé — apps.ventes.services.otp_lecture_verified).
+    # Gate posé AVANT tout effet de bord (stamp de vue) : une tentative non
+    # vérifiée ne compte pas comme une consultation.
+    from .services import otp_lecture_verified
+    if not otp_lecture_verified(link):
+        return _noindex(Response(
+            {'detail': 'otp_required'}, status=status.HTTP_403_FORBIDDEN))
+
     # QJ1 — stamp the view (best-effort; True = first open).
     is_first = _stamp_view(link)
     if is_first:
@@ -1787,6 +1797,13 @@ def proposal_pdf(request, token):
     if link is None:
         return _not_found()
 
+    # L-NIV (24/08/2026) — même gate otp_lecture que proposal_data (voir son
+    # commentaire) : le flux PDF public est aussi une LECTURE.
+    from .services import otp_lecture_verified
+    if not otp_lecture_verified(link):
+        return _noindex(Response(
+            {'detail': 'otp_required'}, status=status.HTTP_403_FORBIDDEN))
+
     # QJ1 — stamp the view (best-effort; True = first open).
     is_first = _stamp_view(link)
     if is_first:
@@ -1936,6 +1953,56 @@ def proposal_request_otp(request, token):
         return _noindex(Response(
             {'detail': err}, status=status.HTTP_400_BAD_REQUEST))
     return _noindex(Response({'detail': 'Code envoyé.'}))
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+@throttle_classes([PublicLinkRateThrottle])
+def proposal_request_otp_lecture(request, token):
+    """L-NIV (24/08/2026) — Demande l'envoi d'un OTP de LECTURE.
+
+    Distinct de ``proposal_request_otp`` (QJ11, OTP de SIGNATURE, gouverné par
+    le toggle société ``ESIGN_OTP_ENABLED``) : ici le gate est
+    ``link.otp_lecture``, un réglage PAR LIEN posé par le commercial — actif
+    dès que ce booléen est vrai, sans dépendre d'aucun toggle. Un lien dont
+    ``otp_lecture`` est False renvoie 200 immédiatement (rien à demander,
+    comportement inchangé — la lecture n'est de toute façon pas gatée)."""
+    link = _resolve_proposal_link(token)
+    if link is None:
+        return _not_found()
+    if not link.otp_lecture:
+        return _noindex(Response({'detail': 'Aucun code requis pour ce lien.'}))
+    from .services import request_otp_lecture
+    err = request_otp_lecture(link)
+    if err:
+        return _noindex(Response(
+            {'detail': err}, status=status.HTTP_400_BAD_REQUEST))
+    return _noindex(Response({'detail': 'Code envoyé.'}))
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+@throttle_classes([PublicLinkRateThrottle])
+def proposal_verify_otp_lecture(request, token):
+    """L-NIV (24/08/2026) — Vérifie l'OTP de LECTURE soumis.
+
+    Succès → la LECTURE de ce lien reste déverrouillée pendant
+    ``OTP_LECTURE_VERIFIED_TTL`` (1 h) : ``proposal_data``/``proposal_pdf``
+    relisent ce drapeau à chaque appel plutôt que d'exiger un code par GET
+    (contrairement à l'acceptation, la lecture est consultée plusieurs
+    fois)."""
+    link = _resolve_proposal_link(token)
+    if link is None:
+        return _not_found()
+    if not link.otp_lecture:
+        return _noindex(Response({'detail': 'Aucun code requis pour ce lien.'}))
+    from .services import validate_otp_lecture
+    otp_code = (request.data.get('otp_code') or '').strip()
+    err = validate_otp_lecture(link, otp_code)
+    if err:
+        return _noindex(Response(
+            {'detail': err}, status=status.HTTP_400_BAD_REQUEST))
+    return _noindex(Response({'detail': 'Code vérifié.'}))
 
 
 # Sections reconnues du beacon d'engagement (XSAL16). Une section inconnue est
