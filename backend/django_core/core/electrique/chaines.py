@@ -41,8 +41,34 @@ from core.electrique.types import Chaine, fr, fr_a, fr_v
 
 __all__ = [
     "FenetreChaine", "RepartitionPan", "ResultatChaines",
+    "LONGUEUR_MAX_NON_BORNEE",
     "fenetre_admissible", "concevoir_chaines",
 ]
+
+#: Longueur de chaîne retenue quand AUCUNE borne haute n'est vérifiable —
+#: c'est-à-dire quand ni le couple (Voc module, tension maximale onduleur) ni
+#: le couple (Vmp module, haut de plage MPPT) n'est publié. Le moteur ne
+#: FABRIQUE alors pas de plafond : il ne coupe pas le champ sur un chiffre que
+#: personne n'a écrit, il pose UNE chaîne (la pratique de l'installateur) et
+#: NOMME la borne non vérifiable dans ses alertes — donc dans la note de
+#: calcul. La valeur est un plafond de garde, jamais une limite d'ingénierie :
+#: aucun champ PV réel ne l'atteint.
+LONGUEUR_MAX_NON_BORNEE = 10 ** 6
+
+#: Libellés FRANÇAIS des bornes que le moteur n'a pas pu vérifier — repris tels
+#: quels dans l'alerte, pour que le lecteur sache quel chiffre manque.
+_BORNE_VOC = ("borne haute Voc à froid (tension circuit ouvert du module ou "
+              "tension maximale de l'onduleur non renseignée)")
+_BORNE_MPPT_HAUT = ("borne haute plage MPPT (Vmp du module ou haut de plage "
+                    "MPPT de l'onduleur non renseigné)")
+_BORNE_MPPT_BAS = ("borne basse plage MPPT (Vmp du module non renseigné)")
+_BORNE_DEMARRAGE = ("borne basse tension de démarrage (Vmp du module non "
+                    "renseigné)")
+
+
+def _borne_texte(borne):
+    """Une borne, ou l'aveu qu'elle n'est pas vérifiable — jamais un chiffre."""
+    return "non vérifiable" if borne is None else str(borne)
 
 
 def _entier(valeur, defaut=0):
@@ -61,6 +87,11 @@ class FenetreChaine:
     Les quatre bornes intermédiaires sont conservées : la note de calcul doit
     pouvoir dire LAQUELLE ferme la plage (« 20 modules max — c'est le haut de
     plage MPPT qui limite, pas la tension maximale »).
+
+    Une borne vaut ``None`` quand elle est NON VÉRIFIABLE : l'une des deux
+    tensions qu'elle compare manque aux fiches. Le moteur ne la remplace alors
+    par aucun chiffre (règle fondateur « zéro chiffre inventé ») — la borne est
+    simplement absente du calcul et NOMMÉE dans ``bornes_non_verifiables``.
     """
 
     longueur_min: int
@@ -68,22 +99,32 @@ class FenetreChaine:
     voc_froid_unitaire_v: float
     vmp_froid_unitaire_v: float
     vmp_chaud_unitaire_v: float
-    max_par_voc: int
-    max_par_mppt: int
-    min_par_mppt: int
-    min_par_demarrage: int
+    max_par_voc: Optional[int]
+    max_par_mppt: Optional[int]
+    min_par_mppt: Optional[int]
+    min_par_demarrage: Optional[int]
     temp_froid_c: float
     temp_chaud_c: float
     trop_etroite: bool = False
     motif: str = ""
+    #: Bornes que les fiches ne permettent pas de vérifier (libellés français).
+    bornes_non_verifiables: Tuple[str, ...] = ()
 
     def admet(self, longueur):
         """La longueur tient-elle dans la plage admissible ?"""
         return self.longueur_min <= longueur <= self.longueur_max
 
     @property
+    def plafond_non_verifiable(self):
+        """Aucune des deux bornes hautes n'est calculable sur les fiches."""
+        return self.longueur_max >= LONGUEUR_MAX_NON_BORNEE
+
+    @property
     def texte(self):
-        """« 12 à 20 modules par chaîne »."""
+        """« 12 à 20 modules par chaîne » — ou l'aveu quand le haut manque."""
+        if self.plafond_non_verifiable:
+            return ("%d modules par chaîne au moins, borne haute NON "
+                    "VÉRIFIABLE" % self.longueur_min)
         return ("%d à %d modules par chaîne"
                 % (self.longueur_min, self.longueur_max))
 
@@ -160,19 +201,44 @@ def fenetre_admissible(module, onduleur, temp_froid_c, temp_chaud_c):
     vmp_chaud = module.tension_vmp_a(temp_chaud_c)
     v_demarrage = onduleur.tension_demarrage_v
 
-    max_par_voc = (int(math.floor(onduleur.v_max_abs / voc_froid))
-                   if voc_froid > 0 else 1)
-    max_par_mppt = (int(math.floor(onduleur.mppt_v_max / vmp_froid))
-                    if vmp_froid > 0 else 1)
-    min_par_mppt = (int(math.ceil(onduleur.mppt_v_min / vmp_chaud))
-                    if vmp_chaud > 0 else 1)
-    min_par_demarrage = (int(math.ceil(v_demarrage / vmp_chaud))
-                         if vmp_chaud > 0 else 1)
+    # RÈGLE FONDATEUR « zéro chiffre inventé » — une borne ne se calcule que si
+    # les DEUX tensions qu'elle compare sont publiées. Sinon elle vaut ``None``
+    # (non vérifiable) et ne ferme RIEN : le repli historique posait ici « 1 »,
+    # c'est-à-dire une chaîne d'UN module — une limite fabriquée, plus sévère
+    # que tout ce qu'une fiche aurait pu dire.
+    non_verifiables = []
+    max_par_voc = None
+    if voc_froid > 0 and onduleur.v_max_abs > 0:
+        max_par_voc = int(math.floor(onduleur.v_max_abs / voc_froid))
+    else:
+        non_verifiables.append(_BORNE_VOC)
+    max_par_mppt = None
+    if vmp_froid > 0 and onduleur.mppt_v_max > 0:
+        max_par_mppt = int(math.floor(onduleur.mppt_v_max / vmp_froid))
+    else:
+        non_verifiables.append(_BORNE_MPPT_HAUT)
 
-    longueur_min = max(1, min_par_mppt, min_par_demarrage)
-    longueur_max = max(1, min(max_par_voc, max_par_mppt))
+    # Bornes BASSES : une borne non publiée par l'onduleur (0 V) n'exige rien —
+    # ce n'est pas un trou de fiche, c'est l'absence d'exigence. Seul un Vmp
+    # module manquant rend la borne non vérifiable.
+    min_par_mppt = None
+    if vmp_chaud > 0:
+        min_par_mppt = int(math.ceil(onduleur.mppt_v_min / vmp_chaud))
+    elif onduleur.mppt_v_min > 0:
+        non_verifiables.append(_BORNE_MPPT_BAS)
+    min_par_demarrage = None
+    if vmp_chaud > 0:
+        min_par_demarrage = int(math.ceil(v_demarrage / vmp_chaud))
+    elif v_demarrage > 0:
+        non_verifiables.append(_BORNE_DEMARRAGE)
 
-    trop_etroite = longueur_max < longueur_min
+    longueur_min = max([1] + [b for b in (min_par_mppt, min_par_demarrage)
+                              if b])
+    plafonds = [b for b in (max_par_voc, max_par_mppt) if b is not None]
+    longueur_max = (max(1, min(plafonds)) if plafonds
+                    else LONGUEUR_MAX_NON_BORNEE)
+
+    trop_etroite = bool(plafonds) and longueur_max < longueur_min
     motif = ""
     if trop_etroite:
         motif = (
@@ -184,8 +250,10 @@ def fenetre_admissible(module, onduleur, temp_froid_c, temp_chaud_c):
             % (longueur_min, fr(temp_chaud_c, 0), fr_v(vmp_chaud),
                longueur_max, fr(temp_froid_c, 0), fr_v(voc_froid),
                fr_v(vmp_froid)))
-        # Repli « meilleur effort » : on ne garde que la sécurité MATÉRIEL.
-        longueur_max = max(1, max_par_voc)
+        # Repli « meilleur effort » : on ne garde que la sécurité MATÉRIEL
+        # (le Voc à froid), ou à défaut la seule borne haute vérifiable.
+        longueur_max = max(1, max_par_voc if max_par_voc is not None
+                           else min(plafonds))
         longueur_min = 1
 
     return FenetreChaine(
@@ -202,6 +270,7 @@ def fenetre_admissible(module, onduleur, temp_froid_c, temp_chaud_c):
         temp_chaud_c=temp_chaud_c,
         trop_etroite=trop_etroite,
         motif=motif,
+        bornes_non_verifiables=tuple(non_verifiables),
     )
 
 
@@ -320,6 +389,16 @@ def concevoir_chaines(entree):
     alertes = []
     if fenetre.trop_etroite:
         bloquants.append(fenetre.motif)
+    if fenetre.bornes_non_verifiables:
+        # Le moteur DIT ce qu'il n'a pas pu vérifier plutôt que de le
+        # remplacer par un défaut : l'alerte remonte telle quelle dans la
+        # conformité et dans la note de calcul.
+        alertes.append(
+            "borne(s) de tension NON VÉRIFIABLE(S), aucune limite n'est "
+            "supposée à leur place — %s ; la chaîne est posée d'un seul "
+            "tenant (pratique d'installation) tant qu'aucune borne publiée ne "
+            "la ferme : compléter la fiche technique pour un calcul opposable"
+            % " ; ".join(fenetre.bornes_non_verifiables))
 
     # ── Longueur imposée : acceptée seulement DANS la plage admissible ────────
     forcee = entree.longueur_chaine_forcee
@@ -340,12 +419,13 @@ def concevoir_chaines(entree):
             forcee_acceptee = False
             bloquants.append(
                 "longueur de chaîne imposée de %d modules REFUSÉE : hors de la "
-                "plage admissible (%s). Voc à froid unitaire %s → %d modules "
-                "maximum sous %s ; Vmp à chaud unitaire %s → %d modules minimum "
+                "plage admissible (%s). Voc à froid unitaire %s → %s modules "
+                "maximum sous %s ; Vmp à chaud unitaire %s → %s modules minimum "
                 "pour démarrer le MPPT à %s"
                 % (forcee, fenetre.texte, fr_v(fenetre.voc_froid_unitaire_v),
-                   fenetre.max_par_voc, fr_v(onduleur.v_max_abs),
-                   fr_v(fenetre.vmp_chaud_unitaire_v), fenetre.min_par_mppt,
+                   _borne_texte(fenetre.max_par_voc), fr_v(onduleur.v_max_abs),
+                   fr_v(fenetre.vmp_chaud_unitaire_v),
+                   _borne_texte(fenetre.min_par_mppt),
                    fr_v(onduleur.mppt_v_min)))
         else:
             forcee_acceptee = True
@@ -454,14 +534,17 @@ def _verdicts_tension(chaines, onduleur, fenetre, alertes):
     plus_longue = max(chaines, key=lambda c: c.nb_modules)
     plus_courte = min(chaines, key=lambda c: c.nb_modules)
 
-    if plus_longue.voc_froid_v > onduleur.v_max_abs:
+    # Chaque contrôle ne s'évalue QUE si sa borne est publiée : comparer une
+    # tension de chaîne à un « 0 V » de fiche muette rendrait un verdict
+    # fabriqué (toute chaîne dépasse 0 V).
+    if onduleur.v_max_abs > 0 and plus_longue.voc_froid_v > onduleur.v_max_abs:
         bloquants.append(
             "Voc à froid %s > tension maximale onduleur %s (chaîne %s de %d "
             "modules à %s °C) — RISQUE matériel, réduire la longueur de chaîne"
             % (fr_v(plus_longue.voc_froid_v), fr_v(onduleur.v_max_abs),
                plus_longue.repere, plus_longue.nb_modules,
                fr(fenetre.temp_froid_c, 0)))
-    if plus_longue.vmp_froid_v > onduleur.mppt_v_max:
+    if onduleur.mppt_v_max > 0 and plus_longue.vmp_froid_v > onduleur.mppt_v_max:
         alertes.append(
             "Vmp à froid %s > haut de plage MPPT %s — l'onduleur écrête, perte "
             "de production"

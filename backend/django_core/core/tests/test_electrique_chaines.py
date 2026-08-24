@@ -273,6 +273,61 @@ class UneChaineTantQueLaPhysiqueLAdmet(unittest.TestCase):
         self.assertFalse([a for a in res.alertes if "ÉCRÊTAGE" in a])
 
 
+class AucuneBorneFABRIQUEEQuandLaFicheEstMuette(unittest.TestCase):
+    """Une tension absente ne devient JAMAIS une limite de longueur.
+
+    L'ancien repli posait « 1 module par chaîne » dès que le Voc du module ou
+    la tension maximale de l'onduleur manquait : 8 panneaux ressortaient en
+    8 chaînes d'un module, sur un chiffre que personne n'avait écrit. Le moteur
+    ne suppose plus rien — il pose la chaîne d'un seul tenant et NOMME la borne
+    qu'il n'a pas pu vérifier.
+    """
+
+    def _muet(self, **kwargs):
+        return SpecOnduleur(n_mppt=2, mppt_v_min=0.0, mppt_v_max=0.0,
+                            v_max_abs=0.0, i_max_mppt_a=0.0, ac_kw=5.0,
+                            phases=1, **kwargs)
+
+    def test_onduleur_sans_tensions_donne_UNE_chaine_de_tous_les_modules(self):
+        res = concevoir_chaines(_entree(8, onduleur=self._muet()))
+        self.assertEqual(res.nb_chaines, 1)
+        self.assertEqual(res.chaines[0].nb_modules, 8)
+        self.assertEqual(res.reste_total, 0)
+
+    def test_les_bornes_non_verifiables_sont_None_et_NOMMEES(self):
+        fenetre = fenetre_admissible(_module(), self._muet(), -5.0, 70.0)
+        self.assertIsNone(fenetre.max_par_voc)
+        self.assertIsNone(fenetre.max_par_mppt)
+        self.assertTrue(fenetre.plafond_non_verifiable)
+        self.assertFalse(fenetre.trop_etroite)
+        self.assertEqual(len(fenetre.bornes_non_verifiables), 2)
+        self.assertIn("NON VÉRIFIABLE", fenetre.texte)
+
+    def test_l_alerte_dit_ce_qui_manque_et_ne_bloque_pas(self):
+        res = concevoir_chaines(_entree(8, onduleur=self._muet()))
+        self.assertEqual(res.bloquants, ())
+        alerte = [a for a in res.alertes if "NON VÉRIFIABLE" in a]
+        self.assertEqual(len(alerte), 1, res.alertes)
+        self.assertIn("fiche technique", alerte[0])
+
+    def test_module_sans_tension_ne_ferme_rien_non_plus(self):
+        muet = SpecModule(vmp_v=0.0, voc_v=0.0, isc_a=0.0, imp_a=0.0,
+                          pmax_wc=550.0)
+        res = concevoir_chaines(_entree(8, module=muet))
+        self.assertEqual(res.nb_chaines, 1)
+        self.assertEqual(res.chaines[0].nb_modules, 8)
+        self.assertTrue(res.fenetre.bornes_non_verifiables)
+        # Et AUCUN verdict de tension fabriqué contre un « 0 V » de fiche.
+        self.assertEqual(res.bloquants, ())
+
+    def test_la_note_de_calcul_ecrit_la_borne_non_verifiable(self):
+        from core.electrique.note import note_de_calcul
+        entree = _entree(8, onduleur=self._muet())
+        note = "\n".join(note_de_calcul(entree, concevoir_chaines(entree)))
+        self.assertIn("NON VÉRIFIABLE", note)
+        self.assertIn("ALERTE —", note)
+
+
 # ── Un groupe par PAN, jamais mélangé sur une entrée MPPT ─────────────────────
 class GroupementParPan(unittest.TestCase):
     def _deux_pans(self, **kwargs):
