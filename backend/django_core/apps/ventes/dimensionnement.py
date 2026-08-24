@@ -517,16 +517,12 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, ville=None, lat=None,
 
         # ── 2. La SONDE « avec batterie » : verdicts électriques + vivier ──
         # LES DEUX VARIANTES ONT LEURS PROPRES VERDICTS, ET IL FAUT LES GARDER
-        # SÉPARÉS. Le cas d'école était le « trou de catalogue n° 2 » : le
-        # panneau 710 Wc passait avec l'onduleur RÉSEAU 5 kW (réserve
-        # d'écrêtage) mais était HORS SPÉCIFICATION avec l'HYBRIDE 5 kW
-        # (Isc 18,59 A > 17,0 A publiés). Ce trou-là est REFERMÉ depuis le
-        # 24/08/2026 (le fondateur a porté les deux 5 kW à 22 A, cf. migration
-        # stock 0128), mais la SÉPARATION reste indispensable : le mécanisme de
-        # refus, lui, n'a pas bougé, et le prochain couple hors bornes se
-        # présentera de la même façon. Un sac d'avertissements commun ferait
-        # rejeter une taille dont l'option réseau est parfaitement saine — ou
-        # pire, laisserait vendre une option batterie impossible.
+        # SÉPARÉS. Cas réel du catalogue (trou documenté n° 2) : le panneau
+        # 710 Wc passe avec l'onduleur RÉSEAU 5 kW (réserve d'écrêtage) mais
+        # est HORS SPÉCIFICATION avec l'HYBRIDE 5 kW (Isc 18,6 A > 17,0 A). Un
+        # sac d'avertissements commun ferait rejeter une taille dont l'option
+        # réseau est parfaitement saine — ou pire, laisserait vendre une option
+        # batterie impossible.
         avert_avec = []
         sonde_batterie = _composer(panneaux, kwc, True, None, avert_avec)
         if sonde_batterie is None:

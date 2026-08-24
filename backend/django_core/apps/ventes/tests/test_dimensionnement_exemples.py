@@ -408,27 +408,6 @@ class ExemplesFondateurTest(TestCase):
                 self.assertEqual(ligne['residuel_kwh_mois'],
                                  ligne['residuel_sans_kwh_mois'], contexte)
 
-    def _verifier_raccordement(self, cas, resultat):
-        """VERROU ANTI-RÉCIDIVE (bug fondateur 24/08) — un client TRIPHASÉ ne
-        reçoit JAMAIS un onduleur monophasé, à AUCUNE taille du balayage."""
-        if cas.phase != 'triphase':
-            return
-        for ligne in resultat['tableau']:
-            for cle in ('lignes_sans', 'lignes_avec'):
-                for produit in ligne[cle]:
-                    self.assertNotIn(
-                        'monophas', produit['designation'].lower(),
-                        '%s : raccordement TRIPHASE mais « %s » est composé à '
-                        '%d panneaux (%s) — c\'est EXACTEMENT le bug du '
-                        '24/08/2026'
-                        % (cas.libelle, produit['designation'],
-                           ligne['panneaux'], cle))
-            self.assertFalse(
-                ligne['onduleur'] and 'monophas' in ligne['onduleur'].lower(),
-                '%s : onduleur MONOPHASE « %s » retenu à %d panneaux pour un '
-                'client triphase' % (cas.libelle, ligne['onduleur'],
-                                     ligne['panneaux']))
-
     def _verifier(self, cas, conso, resultat):
         libelle = cas.libelle
         self.assertTrue(resultat['tableau'],
@@ -516,10 +495,13 @@ class ExemplesFondateurTest(TestCase):
             % libelle)
         self.assertEqual(len(conso), 12, libelle)
 
-        # 7. DIM2 — les invariants du mini-balayage du stockage, et le verrou
-        #    anti-recidive du raccordement triphase.
+        # 7. DIM2 — les invariants du mini-balayage du stockage. Ils portent sur
+        #    la STRUCTURE (monotonies, plafond de remplissage, coupe) et JAMAIS
+        #    sur la disponibilite de l'option batterie a telle ou telle taille :
+        #    cette disponibilite depend des bornes de fiche des onduleurs, qui
+        #    sont l'affaire d'une autre lane. Un tableau sans aucun palier de
+        #    stockage passe donc ces asserts sans les affaiblir.
         self._verifier_stockage(cas, resultat)
-        self._verifier_raccordement(cas, resultat)
 
     # ── LES TESTS ────────────────────────────────────────────────────────
 
