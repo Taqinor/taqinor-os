@@ -78,8 +78,15 @@ class TestShareLinkNiveauMapSelector(TestCase):
         result = share_link_niveau_map([self.devis.id])
         after = ShareLink.objects.count()
         self.assertEqual(after, before, 'la lecture ne doit jamais minter de lien')
+        # RECALAGE (24/08/2026) — L-SECT a ajouté `sections` au contrat de
+        # `share_link_niveau_map` : le dialogue « Envoyer au client » doit
+        # rouvrir sur les cases RÉELLEMENT en vigueur sur ce lien. Un lien qui
+        # n'a jamais restreint de section renvoie `{}` (aucune case décochée),
+        # jamais l'absence de clé — le front peut lire la clé sans garde.
         self.assertEqual(result, {
-            self.devis.id: {'niveau': 'confiance', 'otp_lecture': True},
+            self.devis.id: {
+                'niveau': 'confiance', 'otp_lecture': True, 'sections': {},
+            },
         })
         self.assertNotIn('token', result[self.devis.id])
 
@@ -131,7 +138,12 @@ class TestLeadDetailExposesShareLinkState(TestCase):
 
         self.assertEqual(resp.status_code, 200)
         row = self._devis_row(resp)
-        self.assertEqual(row['share_link'], {'niveau': 'confiance', 'otp_lecture': True})
+        # RECALAGE (24/08/2026) — `sections` fait partie du contrat depuis
+        # L-SECT (dict vide = aucune section décochée). Voir le commentaire
+        # dans TestShareLinkNiveauMapSelector.
+        self.assertEqual(
+            row['share_link'],
+            {'niveau': 'confiance', 'otp_lecture': True, 'sections': {}})
         # Simple lecture : aucun nouveau ShareLink créé par le chargement de la fiche.
         self.assertEqual(
             ShareLink.objects.filter(devis=self.devis).count(), links_before)
@@ -147,4 +159,9 @@ class TestLeadDetailExposesShareLinkState(TestCase):
 
         resp = self.api.get(f'/api/django/crm/leads/{self.lead.id}/')
         row = self._devis_row(resp)
-        self.assertEqual(row['share_link'], {'niveau': 'confiance', 'otp_lecture': True})
+        # RECALAGE (24/08/2026) — `sections` fait partie du contrat depuis
+        # L-SECT (dict vide = aucune section décochée). Voir le commentaire
+        # dans TestShareLinkNiveauMapSelector.
+        self.assertEqual(
+            row['share_link'],
+            {'niveau': 'confiance', 'otp_lecture': True, 'sections': {}})

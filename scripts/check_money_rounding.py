@@ -266,6 +266,31 @@ BASELINE_ALLOWLIST = {
     "backend/django_core/apps/ventes/quote_engine/builder.py:2182",
     "backend/django_core/apps/ventes/quote_engine/builder.py:2235",
     "backend/django_core/apps/ventes/quote_engine/builder.py:2236",
+    # 2026-08-24 — LANE ANTICOPIE (PDF public « standard ») : RECALAGE DE
+    # LIGNES, AUCUN NOUVEAU SITE. Les commits a798d33d (« règle d'agrégation
+    # kit factorisée + appliquée au PDF public ») et 5e6b75ac ont inséré
+    # 53 lignes dans builder.py, décalant de +4 (haut de fichier), +19
+    # (bloc totaux/ROI) puis +44 (bloc multi-villa/lignes) les douze sites
+    # d'arrondi d'affichage DÉJÀ relus ci-dessus. Chaque numéro a été
+    # retrouvé PAR PREUVE DE CONTENU (ligne de base et nouvelle ligne
+    # identiques à la lettre, diff contre origin/main), jamais par décalage
+    # supposé :
+    #   268→272 total · 385→389 pu_ht · 386→390 pu_ttc · 1008→1027 ht_brut
+    #   1035→1054 tva_amt · 1037→1056 ttc_exact · 1298→1317 roi_s
+    #   1311→1330 prix_kwc · 2176→2220 montant TVA ×N · 2182→2226
+    #   display_total_multi · 2235→2279 total_ht · 2236→2280 total_ttc.
+    "backend/django_core/apps/ventes/quote_engine/builder.py:272",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:389",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:390",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1027",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1054",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1056",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1317",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1330",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:2220",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:2226",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:2279",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:2280",
 }
 
 TARGET_FILES = [
