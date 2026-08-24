@@ -1256,7 +1256,9 @@ def specs_for_produit(produit):
             ('max_charge_kw', fiche.bat_max_charge_kw),
             # L-DECH (2026-08-24) — la puissance de décharge PAR PACK, celle
             # que ``apps/ventes/etude_horaire.py`` attendait par son nom.
-            ('max_decharge_kw', fiche.bat_max_decharge_kw),
+            # getattr : les doubles de test (_FausseFiche) ne portent pas
+            # forcément les champs récents — absent ≡ NULL (non évaluable).
+            ('max_decharge_kw', getattr(fiche, 'bat_max_decharge_kw', None)),
         ):
             _put(out, key, value)
     return out
