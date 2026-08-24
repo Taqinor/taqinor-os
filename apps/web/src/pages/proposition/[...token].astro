@@ -50,6 +50,7 @@ import {
   formatNumber,
   formatPayback,
   hasTwoOptions,
+  showVariantSelector,
   recommendedOption,
   optionTtc,
   hasRealPrice,
@@ -72,6 +73,7 @@ import {
   syntheseEconomies,
   couvertureSolaire,
   economiesMensuelles,
+  economiesInterdisentBatterie,
   environmentalImpact,
   whatsappLink,
   whatsappLinkForIntent,
@@ -741,7 +743,7 @@ const batterySimConfig = showBatterySim
 // aucune figure, jamais un zéro déguisé. Bloc absent (non servi du tout) ⇒
 // aucun avis ici, on retombe sur le seul signal historique (`courbes_
 // journalieres.options` via `showBatterySim`/`batteryInitial`).
-const ecoMensuellesForbidsBattery = !!ecoMensuelles && ecoMensuelles.avec === null;
+const ecoMensuellesForbidsBattery = economiesInterdisentBatterie(ecoMensuelles);
 const productionAvailability: ProductionAvailability = {
   monthly: showChart,
   daily: !!dailyCurve.svg,
@@ -1049,16 +1051,19 @@ const pdfUrl = ok ? proposalPdfEndpoint(API_BASE, token) : '';
 // bouton de téléchargement) pilote le paramètre `?variante=` du même endpoint
 // PDF — jamais un second chemin PDF (règle #4).
 //
-// DÉFAUT = la composition du COMMERCIAL, lue dans la donnée
-// (`quote.scenario`, posé à la création : etude_params['scenario']). Aucune
-// déduction : un document « Les deux (Sans + Avec) » démarre sur « Les deux »
-// (le complet). Il n'existe AUCUN autre champ de recommandation exploitable
-// ici — `recommended_option` n'est écrit que par l'écran générateur de l'ERP
-// et ne désigne qu'une option MISE EN AVANT, pas le périmètre du document.
-const pdfVariantDefault: 'sans' | 'avec' | 'les_deux' =
-  q?.scenario === 'Sans batterie' ? 'sans'
-  : q?.scenario === 'Avec batterie' ? 'avec'
-  : 'les_deux';
+// DÉFAUT = « les_deux », TOUJOURS. Ordre fondateur explicite : « le
+// téléchargement est TOUJOURS complet par défaut ; la case d'option ne sert QUE
+// la signature ». L'ancien défaut suivait la composition du commercial
+// (`quote.scenario`) et livrait donc un document AMPUTÉ à un client qui n'avait
+// rien demandé de tel ; les trois boutons restent là pour restreindre le
+// document à un seul côté quand le client le VEUT.
+const pdfVariantDefault: 'sans' | 'avec' | 'les_deux' = 'les_deux';
+// … et le sélecteur est actif dès que les deux côtés sont PHYSIQUEMENT
+// servables (`variantes_servables` du contrat backend, repli défensif sur le
+// signal historique) — plus sur `twoOptions`, qui ne dit que ce que le document
+// PRÉSENTE. Un devis rétréci côté backend (nb_options retombé à 1) perdait
+// sinon d'un coup le sélecteur ET le `?variante=` (incident DEV-202608-0023).
+const showPdfVariants = ok ? showVariantSelector(data!) : false;
 
 // ── WJ25 — visionneuse 3D en lecture seule (layout backend QJ26) ────────────
 // Le backend expose `roof_layout` depuis QJ26 (_safe_roof_layout,
@@ -4371,13 +4376,15 @@ const signConfig = ok
           </form>
         </div>
 
-        {/* ── L-VAR · QUELLE VERSION TÉLÉCHARGER (devis à deux options) ─────
+        {/* ── L-VAR · QUELLE VERSION TÉLÉCHARGER ────────────────────────────
              Le choix de signature n'engage QUE la signature : le devis
-             COMPLET reste toujours téléchargeable. Ces trois boutons pilotent
-             le paramètre `?variante=` du MÊME endpoint PDF ; le défaut est la
-             composition du commercial (`quote.scenario`). Masqué sur un devis
-             mono-option — il n'y aurait rien à choisir. */}
-        {twoOptions && (
+             COMPLET reste toujours téléchargeable, et son défaut est « Les
+             deux » (ordre fondateur du 24/08/2026). Ces trois boutons pilotent
+             le paramètre `?variante=` du MÊME endpoint PDF. Rendu dès que les
+             deux côtés sont PHYSIQUEMENT servables (`showPdfVariants`) —
+             masqué sur un devis qui n'en sert qu'un, il n'y aurait rien à
+             choisir. */}
+        {showPdfVariants && (
           <div class="mt-6 text-center">
             <p class="text-xs text-lune-faint" data-i18n
               data-fr="Quelle version télécharger ?"
@@ -4410,7 +4417,7 @@ const signConfig = ok
         <div class="mt-6 text-center">
           <a
             id="pdf-download"
-            href={twoOptions ? `${pdfUrl}?variante=${pdfVariantDefault}` : pdfUrl}
+            href={showPdfVariants ? `${pdfUrl}?variante=${pdfVariantDefault}` : pdfUrl}
             target="_blank"
             rel="noopener noreferrer"
             class="btn-pill inline-flex items-center justify-center gap-2"

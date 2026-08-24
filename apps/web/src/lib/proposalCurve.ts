@@ -795,13 +795,23 @@ export function renderYearCurve(
     const consLine = consFmt
       ? `<text x="${(box.padLeft + 2).toFixed(2)}" y="${(box.padTop + 30).toFixed(2)}" font-size="8.5" fill="var(--color-azur-300, #7fb4e8)">${esc(consFmt)}</text>`
       : '';
+    // ORDRE FONDATEUR (24/08/2026) — UNE ANNOTATION PORTE LA COULEUR DE SA
+    // COURBE. Les trois lignes nomment un chiffre : le pic et la production
+    // estimée sont des chiffres de PRODUCTION (courbe laiton), la consommation
+    // est un chiffre de CONSOMMATION (courbe azur). La ligne « production
+    // estimée » était écrite en gris-bleu (`lune-faint`) : le client la lisait
+    // comme la couleur de la courbe de CONSOMMATION. Elle passe en laiton, sur
+    // le chemin servi comme sur le repli annuel (c'est le même `<text>`). Seul
+    // « profil — année type » reste neutre : il ne nomme aucune courbe.
     scaleLabel =
       `<g data-curve-scale data-peak="${esc(`${scale.peak} ${peakFmt}`)}" data-avg="${esc(avgFmt)}"${consFmt ? ` data-cons="${esc(consFmt)}"` : ''} tabindex="0" role="button" aria-label="${esc(scale.peak)} ${esc(peakFmt)}, ${esc(avgFmt)}${consFmt ? `, ${esc(consFmt)}` : ''}">` +
       `<text x="${(box.padLeft + 2).toFixed(2)}" y="${(box.padTop + 8).toFixed(2)}" font-size="9" fill="var(--color-brass-300, #f3cc66)">${esc(scale.peak)} ${esc(peakFmt)}</text>` +
-      `<text x="${(box.padLeft + 2).toFixed(2)}" y="${(box.padTop + 19).toFixed(2)}" font-size="8.5" fill="var(--color-lune-faint, #8d96b4)">${esc(avgFmt)}</text>` +
+      `<text x="${(box.padLeft + 2).toFixed(2)}" y="${(box.padTop + 19).toFixed(2)}" font-size="8.5" fill="var(--color-brass-300, #f3cc66)">${esc(avgFmt)}</text>` +
       consLine +
       `</g>`;
   } else {
+    // Aucune courbe n'est nommée ici (« profil — année type ») : la couleur
+    // neutre est la bonne, elle ne peut désigner ni la production ni la conso.
     scaleLabel =
       `<text x="${(box.padLeft + 2).toFixed(2)}" y="${(box.padTop + 8).toFixed(2)}" font-size="9" fill="var(--color-lune-faint, #8d96b4)">${esc(scale.typicalYear)}</text>`;
   }
