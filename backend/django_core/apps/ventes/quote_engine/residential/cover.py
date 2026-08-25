@@ -182,6 +182,31 @@ def build(ctx):
     pkwc_sans = fmt(total_sans / kwc_sans) if kwc_sans else "—"
     pkwc_avec = fmt(total_avec / kwc_avec) if kwc_avec else "—"
 
+    # ── F1/L-2OPT (26/08/2026) — LA VIGNETTE « PUISSANCE » PORTE LES DEUX
+    # VALEURS QUAND ELLES DIVERGENT ──────────────────────────────────────────
+    # Sur un document à DEUX options de tailles différentes, cette vignette
+    # annonçait un kWc unique (celui de l'option AVEC) pendant que la bande de
+    # la page 2 affiche honnêtement « 15,62 · 18,46 » : deux pages, deux
+    # vérités. Même format, même style sobre que la page 2
+    # (``residential.options``). Sur un document mono-option, le builder a déjà
+    # recalé le scalaire sur la variante rendue : rien à faire ici. Devis non
+    # divergent (tout l'existant) ⇒ HTML byte-identique.
+    def _num_kwc(v):
+        return f'{v:g}'.replace(".", ",")
+
+    _nb_s, _nb_a = d.get("nb_panneaux_sans"), d.get("nb_panneaux_avec")
+    _w_s, _w_a = d.get("watt_par_panneau_sans"), d.get("watt_par_panneau_avec")
+    kpi_kwc_v = kwc_str
+    kpi_kwc_l = f"Puissance · {nb_pan} panneaux × {wp} W"
+    if _divergent and deux_options and kwc_sans and kwc_avec and _nb_s and _nb_a:
+        kpi_kwc_v = f"{_num_kwc(kwc_sans)} · {_num_kwc(kwc_avec)}"
+        # Puissance unitaire écrite seulement si elle est LA MÊME des deux
+        # côtés (règle de la page 2) — jamais un watt qui ne vaudrait que pour
+        # une option.
+        _wtxt = f" × {_w_s:g} W" if (_w_s and _w_s == _w_a) else ""
+        kpi_kwc_l = (f"Puissance (sans · avec) · {_nb_s:g} · {_nb_a:g} "
+                     f"panneaux{_wtxt}")
+
     # check + arrow glyphs (inline SVG renders crisply in WeasyPrint)
     check = (f'<svg class="c1-chk" viewBox="0 0 14 14">'
              f'<circle cx="7" cy="7" r="7" fill="{green_bg}"/>'
@@ -602,8 +627,8 @@ def build(ctx):
     <!-- KPI CHIPS ──────────────────────────────────────────────────────── -->
     <div class="c1-kpis">
       <div class="c1-kpi">
-        <div class="c1-kpi-v">{kwc_str}<span class="c1-u">&nbsp;kWc</span></div>
-        <div class="c1-kpi-l">Puissance · {nb_pan} panneaux × {wp} W</div>
+        <div class="c1-kpi-v">{kpi_kwc_v}<span class="c1-u">&nbsp;kWc</span></div>
+        <div class="c1-kpi-l">{kpi_kwc_l}</div>
       </div>
       <div class="c1-kpi">
         <div class="c1-kpi-v">{fmt(prod_kwh)}<span class="c1-u">&nbsp;kWh/an</span></div>
