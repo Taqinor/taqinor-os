@@ -16,7 +16,7 @@
 // stables (useCallback sur onOpenLead/onAutoQuote/changeStage/… dans LeadsPage).
 import { useState, memo } from 'react'
 // VX45 — icônes lucide (rendu stable multi-OS, contrairement à un emoji brut).
-import { Zap, MapPin, FileText, MoreHorizontal, Lock } from 'lucide-react'
+import { Zap, MapPin, Pentagon, FileText, MoreHorizontal, Lock } from 'lucide-react'
 import {
   CANAL_LABELS,
   PIPELINE_STAGES,
@@ -226,7 +226,11 @@ function LeadCard({
   // QX28 — signaux de « préparation » captés par le site, désormais des
   // micro-icônes 12px tooltipées dans le pied (jamais un chip « manquant » —
   // seule l'absence du signal positif).
-  const roofReady = !!lead.roof_point
+  // L-TRACE (25/08) — trois états : contour tracé par le client (≥3 sommets)
+  // > simple repère GPS > rien. Même règle que le rail (IdentityRail.jsx).
+  const roofOutlineReady = Array.isArray(lead.roof_outline)
+    && lead.roof_outline.length >= 3
+  const roofReady = roofOutlineReady || !!lead.roof_point
   const factureReady = lead.facture_hiver != null && lead.facture_hiver !== ''
   const devisReady = !!lead.devis_auto?.pret
 
@@ -680,8 +684,16 @@ function LeadCard({
           {(roofReady || factureReady || devisReady) && (
             <span className="kb-readi">
               {roofReady && (
-                <span className="kb-readi-icon" title="Un repère GPS de toiture a été capturé (site ou 3D)" aria-label="Toit épinglé (GPS)">
-                  <MapPin size={12} aria-hidden="true" />
+                <span
+                  className="kb-readi-icon"
+                  title={roofOutlineReady
+                    ? 'Le client a tracé le contour de son toit (chargé dans l’écran 3D)'
+                    : 'Un repère GPS de toiture a été capturé (site ou 3D)'}
+                  aria-label={roofOutlineReady ? 'Contour de toit tracé' : 'Toit épinglé (GPS)'}
+                >
+                  {roofOutlineReady
+                    ? <Pentagon size={12} aria-hidden="true" />
+                    : <MapPin size={12} aria-hidden="true" />}
                 </span>
               )}
               {factureReady && (
