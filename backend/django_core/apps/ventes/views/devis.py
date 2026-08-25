@@ -895,12 +895,26 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         XSAL5 — ``optionnelle`` (add-on hors total) est persistée.
         XSAL14 — ``type_ligne`` (produit [défaut] / section / note) + ``ordre`` :
         une ligne section/note ne porte NI produit NI prix (jamais comptée dans
-        les totaux). ``ordre`` par défaut = position dans la liste envoyée."""
+        les totaux). ``ordre`` par défaut = position dans la liste envoyée.
+
+        L-2OPT — ``variante`` ('' commune | 'sans' | 'avec') est persistée.
+        SANS ELLE, LA FONCTIONNALITÉ « DEUX OPTIMISEURS » NE SURVIVAIT PAS À
+        L'ENREGISTREMENT : le générateur fusionne bien les deux kits
+        (``fusionnerVariantes``, solar.js) et envoie le tag sur chaque ligne,
+        mais CE chemin — le SEUL chemin d'écriture de l'écran, pour la création
+        (``atomic``) comme pour l'édition (``replace-lines``) — recréait chaque
+        ligne sans le kwarg, donc au défaut ``''``. Toutes les lignes
+        redevenaient « communes » : plus de badge d'option à l'écran, et tout
+        l'aval (``devis_variante`` dans ``services``, le comparatif du PDF, les
+        cartes par option de la page publique) lisait un devis mono-option.
+        Valeur inconnue ⇒ ``''`` (la ligne reste commune) : jamais une erreur
+        d'enregistrement pour un tag mal formé."""
         from decimal import Decimal, InvalidOperation
         from django.db.models import Q
         from ..models import LigneDevis
         from apps.stock.models import Produit
         _VALID_TYPES = {c.value for c in LigneDevis.TypeLigne}
+        _VALID_VARIANTES = {c.value for c in LigneDevis.Variante}
         devis.lignes.all().delete()
         for idx, li in enumerate(lignes_in):
             if not isinstance(li, dict):
@@ -949,13 +963,19 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             except (InvalidOperation, TypeError, ValueError):
                 raise ValueError('Quantité/prix/remise invalide.')
             taux = li.get('taux_tva')
+            # L-2OPT — tag d'option porté par la ligne. Absent (tous les
+            # appelants d'hier) ou inconnu ⇒ '' : ligne commune, comportement
+            # historique strictement inchangé.
+            variante = str(li.get('variante') or '')
+            if variante not in _VALID_VARIANTES:
+                variante = ''
             LigneDevis.objects.create(
                 devis=devis, produit=produit,
                 designation=(li.get('designation') or produit.nom)[:255],
                 quantite=qte, prix_unitaire=pu, remise=remise,
                 taux_tva=Decimal(str(taux)) if taux is not None else None,
                 optionnelle=bool(li.get('optionnelle', False)),
-                type_ligne='produit', ordre=ordre)
+                type_ligne='produit', ordre=ordre, variante=variante)
 
     @action(detail=False, methods=['post'], url_path='composition',
             permission_classes=[IsResponsableOrAdmin])
