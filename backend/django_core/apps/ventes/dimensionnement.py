@@ -45,7 +45,7 @@ logger = logging.getLogger(__name__)
 
 #: Critère de recommandation par DÉFAUT — nommé pour être discutable.
 #:
-#: DEPUIS LE 25/08/2026 (doctrine fondateur, voir :data:`TOLERANCE_PAYBACK`) sa
+#: DEPUIS LE 25/08/2026 (doctrine, voir :data:`HORIZON_MARGINAL_PV`) sa
 #: définition a CHANGÉ, la clé pas : « meilleur payback » est le POINT DE
 #: DÉPART, plus le point d'arrivée. On part de la taille au meilleur payback,
 #: puis on MONTE tant que chaque panneau (ou chaque batterie) supplémentaire se
@@ -66,21 +66,42 @@ CRITERES = (CRITERE_DEFAUT, 'meilleure_couverture', 'economie_max')
 #: la couverture, conformément au critère par défaut.
 EGALITE_PAYBACK_ANNEES = 0.25
 
-#: ═══ LA DOCTRINE D'OPTIMUM DU FONDATEUR (25/08/2026) ═══════════════════════
+#: ═══ LA DOCTRINE D'OPTIMUM (fondateur/orchestrateur, 25/08/2026) ═══════════
 #:
-#: VERBATIM : « L'optimum = celui qui réduit la facture le PLUS, avec un ROI
-#: raisonnable — pas seulement le meilleur payback. On accepte une taille plus
-#: grande tant que la dégradation du payback reste sous ~20 % du meilleur
-#: payback. L'optimum s'arrête quand des panneaux en plus n'apportent que des
-#: gains négligeables par rapport à l'investissement. »
+#: INTENTION FONDATEUR : « L'optimum = celui qui réduit la facture le PLUS, avec
+#: un ROI raisonnable — pas seulement le meilleur payback. L'optimum s'arrête
+#: quand des panneaux en plus n'apportent que des gains négligeables par rapport
+#: à l'investissement. »
 #:
-#: CETTE CONSTANTE EST **LE BOUTON**. Elle est la SEULE grandeur réglable de la
-#: doctrine, et elle vaut pour les DEUX optimiseurs (sans stockage et
-#: champ × stockage). Le fondateur a dit « ou même un peu plus » : c'est LUI
-#: qui monte le curseur, jamais le code — la porter à 0,25 « de son chef »
-#: reviendrait à décider à sa place quelle dégradation de ROI est acceptable.
-#: La mettre à 0,0 redonne la règle d'avant (aucune dégradation tolérée).
-TOLERANCE_PAYBACK = 0.20
+#: **CHAQUE DIRHAM AJOUTÉ À L'INSTALLATION DOIT SE REMBOURSER DANS LA VIE DE
+#: L'ACTIF QU'IL ACHÈTE.** L'horizon est ABSOLU, jamais un pourcentage du
+#: meilleur payback — correction délibérée d'une première version relative
+#: (H = meilleur payback × 1,20), abandonnée le jour même parce qu'elle
+#: PUNISSAIT LES BONS DOSSIERS : un client au meilleur payback de 3 ans se
+#: voyait refuser un pas qui se rembourse en 5 ans — excellent sur un actif
+#: garanti ~30 ans — pendant qu'un dossier faible à 12 ans se voyait, lui,
+#: accorder des pas à 14,4 ans. Le critère doit juger le SUPPLÉMENT, pas la
+#: qualité du dossier qui le porte.
+#:
+#: LES DEUX SEUILS DÉRIVENT D'UN SEUL PARAMÈTRE DE FOND — un taux d'exigence de
+#: l'ordre de 8,5 %/an — appliqué à la DURÉE DE VIE de chaque composant. Ce ne
+#: sont donc pas deux réglages arbitraires mais UNE exigence de rentabilité,
+#: exprimée en années par composant : c'est l'implémentation lisible du critère
+#: « maximiser la valeur actualisée nette » de la littérature de
+#: dimensionnement (famille HOMER), jamais une tolérance relative.
+#:
+#: PANNEAUX — ~25-30 ans de garantie de production : à ~8,5 %/an le dirham a le
+#: temps de se rembourser en dix ans et de rapporter ensuite. Précédent publié :
+#: optimisation PV + stockage sous CONTRAINTE de payback ≤ 10 ans avec
+#: maximisation de la VAN (MDPI *Energies* 19(7):1803).
+HORIZON_MARGINAL_PV = 10
+
+#: STOCKAGE — ~12 ans de vie utile (Dyness : ≥ 6 000 cycles, soit ~16 ans à un
+#: cycle par jour ; on reste prudent). L'actif vit MOINS LONGTEMPS, donc son
+#: dirham a moins de temps pour se rembourser : au MÊME taux d'exigence, le
+#: seuil descend à sept ans. Une batterie qui met dix ans à se payer aurait
+#: consommé la quasi-totalité de sa vie utile à rembourser son propre achat.
+HORIZON_MARGINAL_BATTERIE = 7
 
 #: Tolérance numérique de comparaison des ratios (années). Un pas marginal à
 #: 8,000000001 an devant un horizon de 8,0 an n'est pas un pas refusable :
@@ -392,21 +413,22 @@ def _payback(cout, economie_annuelle):
 # LA DOCTRINE D'OPTIMUM — UNE SEULE MÉCANIQUE, DEUX OPTIMISEURS
 # ════════════════════════════════════════════════════════════════════════════
 #
-# LA PROPRIÉTÉ MATHÉMATIQUE QUI REND LA RÈGLE HONNÊTE. Notons H l'horizon
-# toléré (:func:`horizon_tolere`), C₀/E₀ le coût et l'économie annuelle du
-# point de départ (la taille au MEILLEUR payback) et ΔCᵢ/ΔEᵢ ceux du i-ème pas
-# marginal franchi. La règle n'admet un pas que si ΔCᵢ ≤ H·ΔEᵢ, et le départ
-# vérifie C₀ ≤ H·E₀ par construction (C₀/E₀ = meilleur payback ≤ H). En
-# sommant :
+# LA PROPRIÉTÉ MATHÉMATIQUE QUI REND LA RÈGLE HONNÊTE. Notons
+# H = :data:`HORIZON_MARGINAL_PV` (le PLUS LARGE des deux seuils), C₀/E₀ le coût
+# et l'économie annuelle du point de départ (la taille au MEILLEUR payback) et
+# ΔCᵢ/ΔEᵢ ceux du i-ème pas marginal franchi. La montée n'a lieu QUE si le
+# départ tient déjà dans H (C₀ ≤ H·E₀ — c'est la GARDE DU DOSSIER FAIBLE, voir
+# :func:`depart_dans_horizon`), et chaque pas admis vérifie ΔCᵢ ≤ Hᵢ·ΔEᵢ avec
+# Hᵢ ≤ H (le seuil batterie est plus STRICT que le seuil PV). En sommant :
 #
 #     Cₙ = C₀ + ΣΔCᵢ ≤ H·E₀ + H·ΣΔEᵢ = H·Eₙ     donc   Cₙ/Eₙ ≤ H
 #
-# — le payback GLOBAL de la taille retenue reste sous l'horizon, quel que soit
-# le nombre de pas franchis (c'est l'inégalité des médiants : une moyenne
-# pondérée de rapports tous ≤ H est ≤ H). Autrement dit les deux moitiés de la
-# phrase du fondateur — « réduire la facture le PLUS » et « avec un ROI
-# raisonnable » — ne sont pas deux contraintes à arbitrer : c'est UNE SEULE
-# règle, et ce module la vérifie plutôt que de l'affirmer (épinglé par
+# — le payback GLOBAL de la taille retenue reste sous DIX ANS, quel que soit le
+# nombre de pas franchis (c'est l'inégalité des médiants : une moyenne pondérée
+# de rapports tous ≤ H est ≤ H). Autrement dit les deux moitiés de la phrase du
+# fondateur — « réduire la facture le PLUS » et « avec un ROI raisonnable » —
+# ne sont pas deux contraintes à arbitrer : c'est UNE SEULE règle, et ce module
+# la vérifie plutôt que de l'affirmer (épinglé par
 # ``test_dimensionnement_exemples`` et ``test_deux_optimiseurs``).
 #
 # ET « L'OPTIMUM S'ARRÊTE QUAND LES GAINS DEVIENNENT NÉGLIGEABLES » EN EST LA
@@ -415,19 +437,22 @@ def _payback(cout, economie_annuelle):
 # SEUL, sans qu'aucun seuil de « négligeable » n'ait à être inventé.
 
 
-def horizon_tolere(meilleur_payback):
-    """H — l'horizon de remboursement toléré, en années.
+def depart_dans_horizon(meilleur_payback):
+    """GARDE DU DOSSIER FAIBLE — la montée est-elle seulement autorisée ?
 
-    ``meilleur_payback × (1 + TOLERANCE_PAYBACK)``. ``None`` quand le meilleur
-    payback n'est pas chiffrable : sans point de départ, il n'y a pas d'horizon
-    et donc aucune montée possible — jamais un horizon de repli inventé.
+    ``False`` quand le MEILLEUR payback du dossier dépasse déjà
+    :data:`HORIZON_MARGINAL_PV` : le point de départ lui-même ne tient pas dans
+    l'horizon, alors lui ajouter des dirhams ne peut qu'aggraver son cas. On
+    retombe alors sur le choix PUR « meilleur payback » — c'est-à-dire, très
+    exactement, ce que ce module rendait avant le 25/08/2026 : la nouvelle
+    doctrine ne peut JAMAIS rendre un dossier faible plus mauvais qu'avant.
+
+    C'est aussi elle qui rend vraie la propriété globale démontrée ci-dessus
+    (payback global ≤ dix ans) : sans ce garde-fou, une montée partant de
+    quinze ans y resterait.
     """
-    if meilleur_payback is None:
-        return None
     valeur = _num(meilleur_payback, -1.0)
-    if valeur <= 0:
-        return None
-    return valeur * (1.0 + TOLERANCE_PAYBACK)
+    return 0 < valeur <= HORIZON_MARGINAL_PV + _EPSILON_ANNEES
 
 
 def ratio_pas_marginal(cout_avant, economie_avant, cout_apres, economie_apres):
@@ -459,7 +484,11 @@ def grimper_par_pas_marginaux(depart, suivants, horizon, cout, economie):
 
     ``suivants`` est la suite ORDONNÉE CROISSANTE des candidats strictement
     plus grands que ``depart`` ; ``cout`` et ``economie`` en extraient les deux
-    grandeurs. On avance d'un cran tant que le pas se rembourse en ≤ ``horizon``
+    grandeurs ; ``horizon`` est le seuil en années du COMPOSANT que ces pas
+    achètent (:data:`HORIZON_MARGINAL_PV` pour des panneaux,
+    :data:`HORIZON_MARGINAL_BATTERIE` pour du stockage), ou ``None`` pour
+    interdire toute montée. On avance d'un cran tant que le pas se rembourse
+    dans cet horizon
     et l'on S'ARRÊTE AU PREMIER PAS REFUSÉ — on ne l'ENJAMBE pas. C'est une
     décision, et elle est celle du fondateur mot pour mot (« des pas ascendants
     dont CHAQUE pas marginal se rembourse en ≤ H ») : c'est la CHAÎNE ININTER-
@@ -999,11 +1028,13 @@ def choisir_recommandation(tableau, critere=CRITERE_DEFAUT):
        d'année), la meilleure couverture de consommation. C'est exactement ce
        que ce critère rendait avant le 25/08 ;
     2. **la montée** — on grimpe ensuite de taille en taille tant que CHAQUE
-       panneau supplémentaire se rembourse dans l'horizon toléré
-       H = meilleur payback × (1 + :data:`TOLERANCE_PAYBACK`), et l'on s'arrête
-       au premier pas qui n'y arrive pas (:func:`grimper_par_pas_marginaux`).
-       Le payback GLOBAL de la taille retenue reste alors sous H — c'est
-       démontré dans l'encadré du module, pas espéré.
+       panneau supplémentaire se rembourse dans :data:`HORIZON_MARGINAL_PV`
+       (dix ans — la vie des panneaux), et l'on s'arrête au premier pas qui n'y
+       arrive pas (:func:`grimper_par_pas_marginaux`). Le payback GLOBAL de la
+       taille retenue reste alors sous dix ans — c'est démontré dans l'encadré
+       du module, pas espéré. Un dossier dont le meilleur payback dépasse déjà
+       cet horizon ne monte pas du tout (:func:`depart_dans_horizon`) : il
+       reçoit le choix pur « meilleur payback », donc jamais pire qu'avant.
 
     CE QUE LE FONDATEUR A CHANGÉ, EN UNE PHRASE : le meilleur payback était le
     point d'ARRIVÉE, il est devenu le point de DÉPART. Une installation plus
@@ -1059,9 +1090,12 @@ def choisir_recommandation(tableau, critere=CRITERE_DEFAUT):
     ]
     depart = max(a_egalite, key=lambda x: (x['couverture_sans'], x['kwc']))
 
-    # ── 2. LA MONTÉE : doctrine fondateur du 25/08/2026 ──────────────────────
-    # Les pas sont les TAILLES DE CHAMP du catalogue, dans l'ordre croissant.
-    horizon = horizon_tolere(meilleur_payback)
+    # ── 2. LA MONTÉE : doctrine du 25/08/2026 ────────────────────────────────
+    # Les pas sont les TAILLES DE CHAMP du catalogue, dans l'ordre croissant :
+    # ce qu'ils achètent, ce sont des PANNEAUX (avec la ferrure et la pose qui
+    # les suivent), donc c'est l'horizon PV qui les juge.
+    horizon = (HORIZON_MARGINAL_PV if depart_dans_horizon(meilleur_payback)
+               else None)
     suivants = [x for x in sorted(eligibles,
                                   key=lambda x: (x['kwc'], x['panneaux']))
                 if x['kwc'] > depart['kwc']]
@@ -1073,34 +1107,42 @@ def choisir_recommandation(tableau, critere=CRITERE_DEFAUT):
     if franchis:
         motivation = (
             'réduction de facture maximale à ROI raisonnable : départ au '
-            'meilleur payback (%.1f ans), horizon toléré %.1f ans '
-            '(+%.0f %%), puis %d panneau(x) de plus dont chaque pas se '
-            'rembourse en %s an(s) — %d panneaux, %.2f kWc, payback global '
-            '%.1f ans, couverture %.0f %% — critère « %s »'
-            % (meilleur_payback, horizon, TOLERANCE_PAYBACK * 100,
+            'meilleur payback (%.1f ans), puis %d panneau(x) de plus dont '
+            'chaque pas se rembourse en %s an(s), sous l\'horizon de %d ans '
+            'des panneaux — %d panneaux, %.2f kWc, payback global %.1f ans, '
+            'couverture %.0f %% — critère « %s »'
+            % (meilleur_payback,
                meilleur['panneaux'] - depart['panneaux'],
-               ', '.join('%.1f' % r for r in franchis),
+               ', '.join('%.1f' % r for r in franchis), HORIZON_MARGINAL_PV,
                meilleur['panneaux'], meilleur['kwc'],
                meilleur['payback_sans_annees'],
+               meilleur['couverture_sans'] * 100, CRITERE_DEFAUT)
+        )
+    elif horizon is None:
+        motivation = (
+            'meilleur payback (%.1f ans) : au-delà de l\'horizon de %d ans, '
+            'aucun dirham de plus ne se rembourserait dans la vie des '
+            'panneaux — on s\'en tient au meilleur retour possible, couverture '
+            '%.0f %% — critère « %s »'
+            % (meilleur['payback_sans_annees'], HORIZON_MARGINAL_PV,
                meilleur['couverture_sans'] * 100, CRITERE_DEFAUT)
         )
     elif len(a_egalite) > 1:
         motivation = (
             'meilleur payback (%.1f ans, %d tailles à égalité à moins de '
             '%.2f an près) puis meilleure couverture (%.0f %%) ; aucun panneau '
-            'de plus ne se rembourse dans l\'horizon toléré de %.1f ans '
-            '(+%.0f %%) — critère « %s »'
+            'de plus ne se rembourse dans l\'horizon de %d ans — critère '
+            '« %s »'
             % (meilleur['payback_sans_annees'], len(a_egalite),
                EGALITE_PAYBACK_ANNEES, meilleur['couverture_sans'] * 100,
-               horizon, TOLERANCE_PAYBACK * 100, CRITERE_DEFAUT)
+               HORIZON_MARGINAL_PV, CRITERE_DEFAUT)
         )
     else:
         motivation = (
             'meilleur payback (%.1f ans), sans égalité ; aucun panneau de plus '
-            'ne se rembourse dans l\'horizon toléré de %.1f ans (+%.0f %%) — '
-            'critère « %s »'
-            % (meilleur['payback_sans_annees'], horizon,
-               TOLERANCE_PAYBACK * 100, CRITERE_DEFAUT)
+            'ne se rembourse dans l\'horizon de %d ans — critère « %s »'
+            % (meilleur['payback_sans_annees'], HORIZON_MARGINAL_PV,
+               CRITERE_DEFAUT)
         )
     return meilleur, motivation
 
@@ -1179,6 +1221,35 @@ def _voisins_grille(combo, par_panneaux, tailles):
     return voisins
 
 
+def horizon_du_pas(courant, voisin):
+    """QUEL SEUIL juge CE pas de la grille — 10 ans ou 7 ans.
+
+    Les deux horizons ne sont pas interchangeables : ils disent la durée de vie
+    de ce que le pas ACHÈTE. La grille rend la question tranchable sans
+    répartir un seul dirham, parce qu'un pas ne bouge en général qu'UNE
+    dimension :
+
+    * **le champ seul monte** (même capacité) → le pas achète des panneaux, de
+      la ferrure et de la pose : :data:`HORIZON_MARGINAL_PV` ;
+    * **la capacité seule monte** (même champ) → le pas achète un module de
+      stockage : :data:`HORIZON_MARGINAL_BATTERIE` ;
+    * **les deux montent** → PAS DÉCOMPOSABLE PROPREMENT ICI : le coût d'un
+      palier est un TTC composé, et les lignes rendues ne portent pas leur taux
+      de TVA — en séparer une « part batterie » exigerait de SUPPOSER un taux,
+      donc d'inventer un chiffre. On juge alors le pas au seuil de son composant
+      DOMINANT, qui est le STOCKAGE : un tel pas n'existe que parce qu'une
+      banque plus grande réclame un champ plus grand pour se charger (c'est le
+      stockage qui commande, les panneaux suivent), et le module de stockage
+      pèse de toute façon plus lourd que les quelques panneaux qu'il entraîne.
+      Retenir le seuil le plus STRICT des deux est en outre le choix prudent :
+      il ne peut jamais faire promettre au client un remboursement que la vie
+      du matériel ne tiendrait pas.
+    """
+    if _num(voisin['capacite_kwh']) > _num(courant['capacite_kwh']):
+        return HORIZON_MARGINAL_BATTERIE
+    return HORIZON_MARGINAL_PV
+
+
 def _ligne_avec_palier(ligne, palier):
     """La LIGNE du tableau dont les colonnes « avec » décrivent CE palier.
 
@@ -1224,8 +1295,11 @@ def choisir_recommandation_avec(tableau):
        résiduel le PLUS BAS, celui qui rapproche de la marche du barème ;
     2. **la montée** — on avance vers le voisin immédiat (une batterie de plus,
        ou du champ en plus à stockage au moins égal) dont le pas marginal se
-       rembourse le mieux, tant qu'il tient dans l'horizon
-       H = meilleur payback × (1 + :data:`TOLERANCE_PAYBACK`).
+       rembourse le mieux, tant qu'il tient dans l'horizon DE SON COMPOSANT :
+       :data:`HORIZON_MARGINAL_PV` pour un pas de panneaux,
+       :data:`HORIZON_MARGINAL_BATTERIE` pour un pas de stockage
+       (:func:`horizon_du_pas`). Un dossier dont le meilleur payback dépasse
+       déjà dix ans ne monte pas du tout (:func:`depart_dans_horizon`).
 
     CONSÉQUENCE PRÉDITE PAR LE FONDATEUR, ET VOULUE : un profil « absent en
     journée » — beaucoup de surplus, peu d'autoconsommation directe — reçoit
@@ -1258,7 +1332,7 @@ def choisir_recommandation_avec(tableau):
                                            c['payback_annees']))
 
     # ── 2. LA MONTÉE DANS LA GRILLE ──────────────────────────────────────────
-    horizon = horizon_tolere(meilleur_payback)
+    montee = depart_dans_horizon(meilleur_payback)
     par_panneaux = {}
     for combo in combos:
         par_panneaux.setdefault(combo['panneaux'], []).append(combo)
@@ -1269,52 +1343,64 @@ def choisir_recommandation_avec(tableau):
     # GARDE-FOU : chaque pas augmente strictement (panneaux, capacité), donc la
     # montée ne peut pas boucler ; la borne est là pour que ce raisonnement
     # n'ait jamais à être re-vérifié à la lecture.
-    for _ in range(len(combos) if horizon is not None else 0):
+    for _ in range(len(combos) if montee else 0):
         admissibles = []
         for voisin in _voisins_grille(courant, par_panneaux, tailles):
+            horizon = horizon_du_pas(courant, voisin)
             ratio = ratio_pas_marginal(
                 courant['cout_ttc'], courant['economie_mad'],
                 voisin['cout_ttc'], voisin['economie_mad'])
             if ratio is None or ratio > horizon + _EPSILON_ANNEES:
                 continue
-            admissibles.append((ratio, voisin))
+            admissibles.append((ratio, horizon, voisin))
         if not admissibles:
             break
         # LE MOINS CHER PAR DIRHAM GAGNÉ D'ABORD : à budget de ROI donné, c'est
         # le pas qui laisse le plus de marge pour continuer à monter — donc
         # celui qui mène le plus loin dans la réduction de facture.
-        ratio, courant = min(
+        ratio, horizon, courant = min(
             admissibles,
-            key=lambda couple: (couple[0], -couple[1]['economie_mad']))
-        franchis.append(round(ratio, 2))
+            key=lambda triplet: (triplet[0], -triplet[2]['economie_mad']))
+        franchis.append((round(ratio, 2), horizon))
 
     meilleur = _ligne_avec_palier(courant['ligne'], courant['palier'])
     if franchis:
         motivation = (
             'réduction de facture maximale à ROI raisonnable AVEC batterie : '
-            'départ au meilleur payback (%.1f ans), horizon toléré %.1f ans '
-            '(+%.0f %%), puis %d pas marginaux à %s an(s) — %s panneaux + '
-            '%s kWh de stockage, payback global %.1f ans, résiduel %s kWh/mois '
-            '(%s)'
-            % (meilleur_payback, horizon, TOLERANCE_PAYBACK * 100,
-               len(franchis), ', '.join('%.1f' % r for r in franchis),
+            'départ au meilleur payback (%.1f ans), puis %d pas marginaux '
+            '(%s) — %s panneaux + %s kWh de stockage, payback global %.1f ans, '
+            'résiduel %s kWh/mois (%s)'
+            % (meilleur_payback, len(franchis),
+               ', '.join('%.1f an pour un horizon de %d ans' % (r, h)
+                         for r, h in franchis),
                meilleur['panneaux'], _kwh_txt(meilleur['batterie_kwh']),
                meilleur['payback_avec_annees'],
                _kwh_txt(meilleur['residuel_kwh_mois']),
                (meilleur.get('tranche_apres') or {}).get('libelle')
                or 'hors barème'))
+    elif not montee:
+        motivation = (
+            'meilleur payback AVEC batterie (%.1f ans) : %s panneaux + %s kWh '
+            'de stockage, résiduel %s kWh/mois (%s) — au-delà de l\'horizon de '
+            '%d ans, aucun dirham de plus ne se rembourserait dans la vie du '
+            'matériel'
+            % (meilleur['payback_avec_annees'], meilleur['panneaux'],
+               _kwh_txt(meilleur['batterie_kwh']),
+               _kwh_txt(meilleur['residuel_kwh_mois']),
+               (meilleur.get('tranche_apres') or {}).get('libelle')
+               or 'hors barème', HORIZON_MARGINAL_PV))
     else:
         motivation = (
             'meilleur payback AVEC batterie (%.1f ans) : %s panneaux + %s kWh '
-            'de stockage, résiduel %s kWh/mois (%s) ; aucun pas de plus '
-            '(batterie ou panneaux) ne se rembourse dans l\'horizon toléré de '
-            '%.1f ans (+%.0f %%)'
+            'de stockage, résiduel %s kWh/mois (%s) ; aucun pas de plus ne se '
+            'rembourse dans son horizon (%d ans pour des panneaux, %d ans pour '
+            'du stockage)'
             % (meilleur['payback_avec_annees'], meilleur['panneaux'],
                _kwh_txt(meilleur['batterie_kwh']),
                _kwh_txt(meilleur['residuel_kwh_mois']),
                (meilleur.get('tranche_apres') or {}).get('libelle')
                or 'hors barème',
-               horizon, TOLERANCE_PAYBACK * 100))
+               HORIZON_MARGINAL_PV, HORIZON_MARGINAL_BATTERIE))
     return meilleur, motivation
 
 
@@ -1406,15 +1492,17 @@ def recommander_taille(*, company, conso_kwh_mensuelles, critere=CRITERE_DEFAUT,
         'criteres_disponibles': list(CRITERES),
         'regle_onduleur_min': RATIO_ONDULEUR_MIN,
         'max_paliers_stockage': MAX_PALIERS_STOCKAGE,
-        'tolerance_payback': TOLERANCE_PAYBACK,
+        'horizon_marginal_pv_annees': HORIZON_MARGINAL_PV,
+        'horizon_marginal_batterie_annees': HORIZON_MARGINAL_BATTERIE,
         'regle_optimum': (
             'l\'optimum est la PLUS GRANDE taille atteignable depuis celle du '
-            'meilleur payback par des pas dont chacun se rembourse en moins de '
-            '%d %% au-dessus de ce meilleur payback : la facture baisse le plus '
-            'possible, le ROI reste raisonnable, et la montée s\'arrête d\'elle-'
-            'même quand un panneau (ou une batterie) de plus n\'apporte plus '
-            'assez (doctrine fondateur du 25/08/2026)'
-            % round(TOLERANCE_PAYBACK * 100)),
+            'meilleur payback par des pas dont chaque dirham ajouté se '
+            'rembourse dans la vie de ce qu\'il achète — %d ans pour des '
+            'panneaux, %d ans pour du stockage : la facture baisse le plus '
+            'possible, le ROI reste raisonnable, et la montée s\'arrête '
+            'd\'elle-même quand un panneau (ou une batterie) de plus n\'apporte '
+            'plus assez (doctrine du 25/08/2026)'
+            % (HORIZON_MARGINAL_PV, HORIZON_MARGINAL_BATTERIE)),
         'regle_stockage': (
             'un palier de stockage n\'est candidat que si la batterie se '
             'remplit TOUS LES JOURS : capacité utile ≤ surplus quotidien du '
