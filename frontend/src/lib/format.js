@@ -172,11 +172,64 @@ export function canonicalPhoneMA(value) {
 }
 
 /**
+ * Normalisation E.164 GÉNÉRALE (25/08/2026 — LANE NUMÉROS INTERNATIONAUX,
+ * ordre fondateur « accepter les numéros non marocains ») : marocain reconnu
+ * → `212XXXXXXXXX` (même forme que `normalizeMaPhone` ci-dessous, qui
+ * délègue désormais à cette fonction) ; sinon, si un indicatif international
+ * a été tapé EXPLICITEMENT ('+' ou '00' en tête) et que le reste ressemble à
+ * un E.164 plausible (`[1-9]\d{6,14}`) → les chiffres tels quels (sans '+',
+ * même convention que le reste — prêt pour `buildWaUrl`) ; sinon `null`.
+ *
+ * Port du contrat backend `apps/ventes/utils/phone.py normalize_phone_e164`,
+ * lui-même porté de `apps/web/src/lib/phone.ts` (WJ64, DIASPORA) : un
+ * marocain reste le chemin PRINCIPAL, un étranger à indicatif explicite est
+ * accepté EN PLUS, un local ambigu (0XXXXXXXXX à 10 chiffres) reste rejeté —
+ * jamais pris pour un numéro étranger sans indicatif tapé.
+ *
+ * NOTE — écart volontaire vs `phone.ts` : là-bas, le chemin étranger relit
+ * `d` (déjà tronqué par le chemin marocain juste au-dessus), donc un
+ * marocain MALFORMÉ sous « + » (ex. `+2126123456`, indicatif 212 correct
+ * mais local à 7 chiffres) ressort comme « étranger » `+6123456` — un
+ * indicatif E.164 6123456 n'existe pas. Ici, `original` (jamais tronqué)
+ * sert de base au chemin étranger, donc un tel numéro est correctement
+ * rejeté (`null`) plutôt que mal-classé — même garde déjà en place côté
+ * backend (`normalize_phone_e164`, apps/ventes/utils/phone.py).
+ */
+export function normalizePhoneE164(value) {
+  if (!value) return null
+  const trimmed = String(value).replace(/[\s.\-()]/g, '')
+  const hadPlus = trimmed.startsWith('+')
+  const original = hadPlus ? trimmed.slice(1) : trimmed
+  if (!/^\d+$/.test(original)) return null
+
+  let d = original
+  if (d.startsWith('00212')) d = d.slice(5)
+  else if (d.startsWith('212')) d = d.slice(3)
+  else if (!hadPlus && d.startsWith('0')) d = d.slice(1)
+
+  // 9 chiffres locaux : fixe (5) ou mobile (6, 7) → chemin marocain.
+  if (/^[5-7]\d{8}$/.test(d)) return '212' + d
+
+  // Pas un numéro marocain : E.164 étranger SEULEMENT si un indicatif
+  // explicite a été tapé ('+' ou '00' international) — jamais un local
+  // ambigu pris pour un étranger.
+  let foreign = null
+  if (hadPlus) foreign = original
+  else if (trimmed.startsWith('00')) foreign = trimmed.slice(2)
+  if (foreign && !foreign.startsWith('212') && /^[1-9]\d{6,14}$/.test(foreign)) {
+    return foreign
+  }
+  return null
+}
+
+/**
  * Normalise un numéro marocain au format wa.me « 212XXXXXXXXX », ou null si
- * vide/inexploitable. Miroir exact de `normalize_ma_phone`
+ * vide/inexploitable/étranger. Miroir exact de `normalize_ma_phone`
  * (apps/ventes/utils/phone.py) : sert à VALIDER côté front avant d'appeler les
- * endpoints WhatsApp (un numéro non normalisable → bouton désactivé, pas
- * d'aller-retour 400).
+ * endpoints WhatsApp marocains, ou à filtrer le chemin marocain de
+ * `normalizePhoneE164` ci-dessus (25/08/2026 — délégation, plus de logique
+ * dupliquée : un résultat commençant par « 212 » ne peut être qu'un
+ * marocain reconnu, l'indicatif 212 étant exclusif au Maroc).
  *
  * LW7 — avant, TOUTE suite de chiffres passait (`normalizeMaPhone('123')`
  * renvoyait « 212123 ») : `leadPhoneOk`/`waPhoneOk` (LeadForm.jsx,
@@ -189,19 +242,8 @@ export function canonicalPhoneMA(value) {
  * valider/préparer un envoi (écho canonisé serveur uniquement).
  */
 export function normalizeMaPhone(value) {
-  if (!value) return null
-  let digits = String(value).replace(/\D/g, '') // ne garde que les chiffres
-  if (!digits) return null
-  if (digits.startsWith('00')) digits = digits.slice(2) // préfixe international 00
-  let local
-  if (digits.startsWith('212')) local = digits.slice(3)
-  else if (digits.startsWith('0')) local = digits.slice(1)
-  else local = digits
-  local = local.replace(/^0+/, '')
-  if (local.length !== 9 || !(local[0] === '6' || local[0] === '7' || local[0] === '5')) {
-    return null
-  }
-  return '212' + local
+  const e164 = normalizePhoneE164(value)
+  return e164 && e164.startsWith('212') ? e164 : null
 }
 
 /**
@@ -218,5 +260,6 @@ export function nbsp(str) {
 
 export default {
   toNumber, formatMAD, formatNumber, formatPercent,
-  formatDate, formatDateTime, formatPhoneMA, canonicalPhoneMA, normalizeMaPhone, nbsp,
+  formatDate, formatDateTime, formatPhoneMA, canonicalPhoneMA,
+  normalizeMaPhone, normalizePhoneE164, nbsp,
 }

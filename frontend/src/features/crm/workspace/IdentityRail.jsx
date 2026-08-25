@@ -8,7 +8,7 @@ import {
   DropdownMenuSeparator,
 } from '../../../ui'
 import { initials } from '../../../ui/Avatar'
-import { normalizeMaPhone, formatDate, formatNumber } from '../../../lib/format'
+import { normalizePhoneE164, formatDate, formatNumber } from '../../../lib/format'
 import { useConfirmDialog, toast } from '../../../ui/confirm'
 import { useDuplicateCheck } from '../../../hooks/useDuplicateCheck'
 import { useIsAdminOrResponsable } from '../../../hooks/useHasPermission'
@@ -160,8 +160,9 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
   const gpsLng = getField(state, 'gps_lng')
   const hasGps = gpsLat != null && gpsLat !== '' && gpsLng != null && gpsLng !== ''
   const callPhone = telephone || whatsapp
-  // LW7 — bouton WhatsApp armé UNIQUEMENT sur un numéro normalisable (sinon null).
-  const waPhone = normalizeMaPhone(whatsapp || telephone)
+  // LW7 — bouton WhatsApp armé UNIQUEMENT sur un numéro normalisable (sinon
+  // null). 25/08/2026 — E.164 générale : un numéro étranger arme aussi.
+  const waPhone = normalizePhoneE164(whatsapp || telephone)
 
   // ── Préparation (chips QX28) ────────────────────────────────────────────────
   const roofReady = !!server.roof_point

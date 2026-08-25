@@ -19,7 +19,7 @@ import { useDelayedLoading } from '../../../hooks/useDelayedLoading'
 import { isTypingTarget } from '../../../providers/shortcuts'
 import { useFocusedRecordShortcuts, LEAD_STAGE_SHORTCUTS } from '../../../providers/focusedRecordShortcuts'
 import { pushRecentEntity } from '../../../providers/commandActions'
-import { normalizeMaPhone } from '../../../lib/format'
+import { normalizePhoneE164 } from '../../../lib/format'
 import { isStageMoveBackward } from '../stages'
 // ORDRE FONDATEUR 2026-08-01 — la MÊME question que sur le board (elle nomme le
 // lead et les deux étapes) : une seule formulation pour tous les gestes qui
@@ -552,7 +552,7 @@ export default function LeadWorkspace({
   const telephoneWs = (getField(state, 'telephone') || '').trim()
   const whatsappWs = (getField(state, 'whatsapp') || '').trim()
   const callPhone = telephoneWs || whatsappWs
-  const waPhone = normalizeMaPhone(whatsappWs || telephoneWs)
+  const waPhone = normalizePhoneE164(whatsappWs || telephoneWs)
 
   // ── Rendu du contenu (partagé dialog / sheet / page) ──────────────────────
   const renderBody = (TitleComp) => (
