@@ -370,6 +370,36 @@ export interface ProposalResponse {
     } | null;
   } | null;
   /**
+   * P2-C (ordre fondateur 25/08/2026, soir — « add more than just 2
+   * batteries in the web page battery option ; extra batteries might add
+   * extra panels with extra cost, that is still fine ») — PALIERS DE
+   * CAPACITÉ BATTERIE du sélecteur public sur la carte « Avec batterie »
+   * (section #options), CONTRAT PROPRE distinct de `balayage_stockage`
+   * ci-dessus (qui alimente le simulateur à curseur plus bas sur la page —
+   * deux fonctionnalités différentes, jamais fusionnées). Chaque palier peut
+   * porter un nombre de PANNEAUX DIFFÉRENT — une capacité plus grosse peut
+   * avoir besoin de plus de solaire pour se remplir chaque jour, voulu par
+   * le fondateur. `retenu=true` marque le palier du devis RÉEL (ses chiffres
+   * restent ceux du document officiel, jamais recalculés côté web) ;
+   * `remplissage_ok=false` marque un palier où la batterie ne se remplirait
+   * pas tous les jours (pilule affichée désactivée). Chaque champ est
+   * sanitisé INDIVIDUELLEMENT (`paliersBatterie` plus bas) — `null`/absent ⇒
+   * omis à l'écran, jamais un défaut fabriqué. Clé absente ou liste vide ⇒
+   * le sélecteur ne rend RIEN, pixel identique à l'existant.
+   */
+  paliers_batterie?: Array<{
+    capacite_kwh?: number | null;
+    nb_batteries_5?: number | null;
+    nb_batteries_10?: number | null;
+    nb_panneaux?: number | null;
+    puissance_kwc?: number | null;
+    prix_ttc?: number | null;
+    economies_annuelles?: number | null;
+    payback_annees?: number | null;
+    remplissage_ok?: boolean | null;
+    retenu?: boolean | null;
+  }> | null;
+  /**
    * L-PROP CJ2b-bis — décomposition mensuelle de l'estimation de
    * consommation, MÊME CONTRAT que le moteur horaire interne
    * (`estimation_conso: { base_mensuelle:[12], ajouts:{...},
@@ -4017,6 +4047,74 @@ export function storageSweepInfo(
   }
   if (paliers.length === 0 && refuse === null) return null;
   return { paliers, refuse };
+}
+
+// ── P2-C (ordre fondateur 25/08/2026, soir) — SÉLECTEUR DE PALIERS BATTERIE ──
+// « add more than just 2 batteries in the web page battery option ; extra
+// batteries might add extra panels with extra cost, that is still fine ».
+// CONTRAT PROPRE `paliers_batterie` (racine du payload), servi par une lane
+// backend parallèle — distinct de `balayage_stockage` ci-dessus qui alimente
+// le simulateur à curseur ailleurs sur la page.
+
+/**
+ * Un palier de capacité batterie du sélecteur public, sanitisé champ par
+ * champ : toute valeur non numérique finie devient `null` — jamais un défaut
+ * fabriqué. `capaciteKwh` est le seul champ requis (c'est ce qui nomme la
+ * pilule) ; un palier sans capacité lisible est ignoré par `paliersBatterie`.
+ */
+export interface PalierBatterie {
+  capaciteKwh: number;
+  nbBatteries5: number | null;
+  nbBatteries10: number | null;
+  nbPanneaux: number | null;
+  puissanceKwc: number | null;
+  prixTtc: number | null;
+  economiesAnnuelles: number | null;
+  paybackAnnees: number | null;
+  /** `false` UNIQUEMENT quand le moteur l'affirme explicitement — absent/`true` ⇒ palier servable. */
+  remplissageOk: boolean;
+  /** `true` UNIQUEMENT quand le moteur l'affirme explicitement — c'est le palier du devis réel. */
+  retenu: boolean;
+}
+
+/**
+ * Les paliers de capacité batterie du sélecteur public (carte « Avec
+ * batterie », section #options). Liste VIDE quand la clé `paliers_batterie`
+ * est absente, n'est pas un tableau, ou qu'aucune entrée n'a de
+ * `capacite_kwh` lisible — le sélecteur ne rend alors RIEN, la carte reste
+ * strictement celle d'aujourd'hui.
+ */
+export function paliersBatterie(
+  p: Pick<ProposalResponse, 'paliers_batterie'>,
+): PalierBatterie[] {
+  const raw = p?.paliers_batterie;
+  if (!Array.isArray(raw)) return [];
+  const out: PalierBatterie[] = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== 'object') continue;
+    const capaciteKwh = finiteOrNull(entry.capacite_kwh);
+    if (capaciteKwh === null) continue;
+    out.push({
+      capaciteKwh,
+      nbBatteries5: finiteOrNull(entry.nb_batteries_5),
+      nbBatteries10: finiteOrNull(entry.nb_batteries_10),
+      nbPanneaux: finiteOrNull(entry.nb_panneaux),
+      puissanceKwc: finiteOrNull(entry.puissance_kwc),
+      prixTtc: finiteOrNull(entry.prix_ttc),
+      economiesAnnuelles: finiteOrNull(entry.economies_annuelles),
+      paybackAnnees: finiteOrNull(entry.payback_annees),
+      remplissageOk: entry.remplissage_ok !== false,
+      retenu: entry.retenu === true,
+    });
+  }
+  return out;
+}
+
+/** Le palier RETENU pour ce devis — ses chiffres restent ceux du document
+ *  officiel, jamais recalculés. `null` quand aucun palier n'est marqué `retenu`
+ *  (repli honnête : le sélecteur n'affiche alors aucune pré-sélection « retenue »). */
+export function palierBatterieRetenu(paliers: PalierBatterie[]): PalierBatterie | null {
+  return paliers.find((palier) => palier.retenu) ?? null;
 }
 
 /** Libellés FR des ajouts d'estimation de consommation — mêmes clés que le
