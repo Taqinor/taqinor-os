@@ -1230,6 +1230,39 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     if not deux_options:
         recommended = 'Avec batterie' if avec_ok else 'Sans batterie'
 
+    # ── F1/L-2OPT (26/08/2026) — UN DOCUMENT RÉTRÉCI PORTE LES SCALAIRES DE LA
+    # VARIANTE QU'IL REND ────────────────────────────────────────────────────
+    # Le repli documenté plus haut (``_scalaires_par_option``) fait porter aux
+    # clés legacy ``nb_panneaux``/``puissance_kwc``/``watt`` l'option AVEC :
+    # c'est le bon choix pour un document qui RÉSUME les deux options. Mais dès
+    # que le scénario stocké (QF6) ou la variante demandée par le client
+    # (L-VAR, ``variante_option='sans'`` du lien public) rétrécit le document à
+    # UNE option, ces mêmes clés décrivent l'option que le lecteur NE VOIT PAS :
+    # le PDF « Sans batterie » d'un devis 22/26 annonçait « 18,46 kWc ·
+    # 26 panneaux » au-dessus d'un tableau qui liste ses 22 panneaux — et
+    # ``deux_options`` étant faux, la bande « sans · avec » de la page 2 ne
+    # rattrapait rien.
+    # Le recalage se fait ICI, à l'étage où le rétrécissement vient d'être
+    # décidé, pour que TOUS les consommateurs en aval suivent d'un coup (bande
+    # page 2, vignettes page 1, prix au kWc, production, économies, prix/kWc de
+    # l'étude, péremption du calepinage) sans qu'aucun gabarit n'ait à
+    # connaître la règle. Le côté rendu est celui que lisent déjà les gabarits
+    # mono-option (``residential.options`` : ``d["avec_items"] if avec_ok``).
+    # Document à deux options ⇒ rien ne bouge ; côté AVEC ⇒ no-op (le repli
+    # portait déjà ces valeurs) ; devis non divergent ⇒ byte-identique.
+    if panneaux_divergents and not deux_options:
+        _nb_rendu = nb_panneaux_avec if avec_ok else nb_panneaux_sans
+        _kwc_rendu = puissance_kwc_avec if avec_ok else puissance_kwc_sans
+        _watt_rendu = _scal["watt_avec"] if avec_ok else _scal["watt_sans"]
+        # Valeur illisible (None) ⇒ on ne remplace RIEN par un repli : la
+        # vignette correspondante s'omet déjà d'elle-même (M2).
+        if _nb_rendu:
+            nb_panneaux = _nb_rendu
+        if _kwc_rendu:
+            puissance_kwc = _kwc_rendu
+        if _watt_rendu:
+            watt = _watt_rendu
+
     # ── Canonical totals: ONE computation from the stored HT lines ───────────
     # Every page must display these exact values — never re-derive.
     discount_pct = float(devis.remise_globale or 0)
