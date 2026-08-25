@@ -117,6 +117,15 @@ export function questionnaireEndpoint(apiBase: string, token: string): string {
 }
 
 /**
+ * Chemin du proxy SAME-ORIGIN pour les POST du NAVIGATEUR (recalage
+ * orchestrateur 25/08) : le patron établi des pages publiques
+ * (/api/proposition-*) — le backend n'est jamais exposé au navigateur et
+ * aucun CORS n'est ouvert. Le GET SSR, lui, appelle `questionnaireEndpoint`
+ * directement côté serveur (pas de CORS en jeu).
+ */
+export const QUESTIONNAIRE_PROXY_PATH = '/api/questionnaire-repondre';
+
+/**
  * Index de la section à afficher à l'ouverture : la PREMIÈRE non répondue —
  * « il reprend où il s'est arrêté ». Toutes répondues ⇒ la dernière (relisible,
  * jamais un index hors bornes). Liste vide ⇒ 0 (garde-fou, ne devrait pas

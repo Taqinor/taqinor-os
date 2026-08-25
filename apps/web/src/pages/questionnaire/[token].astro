@@ -533,7 +533,7 @@ function prefillBoolRadio(key: string): 'oui' | 'non' | '' {
     isPhotoSection,
     parseQuestionnairePostResponse,
     progressLabel,
-    questionnaireEndpoint,
+    QUESTIONNAIRE_PROXY_PATH,
     type QuestionnaireSectionId,
   } from '../../lib/questionnaire';
 
@@ -898,10 +898,13 @@ function prefillBoolRadio(key: string): 'oui' | 'non' | '' {
       if (isEmptyPostBody(body)) return { ok: true };
 
       try {
-        const res = await fetch(questionnaireEndpoint(init.apiBase, init.token), {
+        // Recalage orchestrateur 25/08 — POST navigateur via le proxy
+        // SAME-ORIGIN (patron /api/proposition-*) : jamais de cross-origin,
+        // aucun CORS à ouvrir côté backend. Le token voyage dans le corps.
+        const res = await fetch(QUESTIONNAIRE_PROXY_PATH, {
           method: 'POST',
           headers: { 'content-type': 'application/json', accept: 'application/json' },
-          body: JSON.stringify(body),
+          body: JSON.stringify({ token: init.token, ...body }),
         });
         let json: unknown = null;
         try {
