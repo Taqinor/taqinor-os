@@ -2937,10 +2937,17 @@ export default function DevisGenerator({
                 reste simplement annoncé dans le libellé. */}
             {(selectedLead || clientId) && (
               <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-brass-400/40 bg-brass-400/10 p-3 text-sm">
+                {/* L-DESSIN (fondateur 25/08) — le libellé ne testait QUE
+                    `roof_point` : un lead dont le client a DESSINÉ son toit
+                    (`roof_outline`, la donnée la plus riche, chargée telle
+                    quelle dans l'outil) s'annonçait « pas de repère ». Les
+                    deux états sont désormais nommés, le tracé d'abord. */}
                 <span>
-                  {selectedLead?.roof_point
-                    ? '🛰️ Repère toit disponible sur ce lead (GPS).'
-                    : '🛰️ Concevez la toiture en 3D — le devis est d\'abord enregistré en brouillon.'}
+                  {Array.isArray(selectedLead?.roof_outline) && selectedLead.roof_outline.length >= 3
+                    ? '🛰️ Contour de toit tracé par le client sur ce lead — il est chargé dans l\'outil 3D.'
+                    : selectedLead?.roof_point
+                      ? '🛰️ Repère toit disponible sur ce lead (GPS).'
+                      : '🛰️ Concevez la toiture en 3D — le devis est d\'abord enregistré en brouillon.'}
                 </span>
                 {/* PV23bis — remplace PV23 : édition COMME création passent
                     désormais par `ouvrirConception3D` (enregistrement
