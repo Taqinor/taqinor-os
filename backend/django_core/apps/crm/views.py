@@ -1274,13 +1274,18 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
 
-        lien, change = quest.mint_lien(
+        lien, change, cree = quest.mint_lien(
             lead, questions=questions, user=request.user)
         posees = [cle for cle in quest.SECTIONS if lien.question_posee(cle)]
         if change:
+            # Recalage fold 25/08 — jamais « envoyé » : le serveur n'observe
+            # pas l'envoi WhatsApp. « créé » à la première ouverture du
+            # dialogue, « mis à jour » quand le commercial change les
+            # questions ; un re-POST identique ne laisse aucune trace.
+            verbe = ('créé' if cree else 'mis à jour')
             activity.log_note(
                 lead, request.user,
-                'Questionnaire envoyé (sections : '
+                f'Lien questionnaire {verbe} (sections : '
                 + ', '.join(quest.LIBELLE_SECTION[c] for c in posees) + ')')
         return Response({
             'url': quest.url_publique(lien.token, request=request),

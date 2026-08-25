@@ -204,15 +204,24 @@ class MintTests(TestCase):
         self.assertIn('jardin', res.json()['detail'])
         self.assertEqual(QuestionnaireLien.objects.count(), 0)
 
-    def test_note_chatter_a_l_envoi_puis_silence_si_rien_ne_change(self):
+    def test_note_chatter_a_la_creation_puis_silence_si_rien_ne_change(self):
+        # Recalage fold 25/08 — le libellé ne dit JAMAIS « envoyé » : le mint
+        # se produit aussi à la simple OUVERTURE du dialogue ERP (lecture des
+        # manquantes), et l'envoi WhatsApp réel n'est pas observable côté
+        # serveur. Création → « créé » ; changement de questions → « mis à
+        # jour » ; re-POST identique → aucune trace.
         self._post()
         notes = LeadActivity.objects.filter(
             lead=self.lead, kind=LeadActivity.Kind.NOTE,
-            body__startswith='Questionnaire envoyé')
+            body__startswith='Lien questionnaire créé')
         self.assertEqual(notes.count(), 1)
         self.assertIn('localisation GPS', notes.first().body)
         self._post()  # re-POST identique → aucune nouvelle trace
         self.assertEqual(notes.count(), 1)
+        toutes = LeadActivity.objects.filter(
+            lead=self.lead, kind=LeadActivity.Kind.NOTE,
+            body__startswith='Lien questionnaire')
+        self.assertEqual(toutes.count(), 1)
 
     def test_company_scope_un_intrus_ne_voit_pas_le_lead(self):
         autre = Company.objects.create(nom='Autre', slug='autre-lquest')

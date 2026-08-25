@@ -292,8 +292,10 @@ export function buildSectionReponses(
         const surface = cleanPositiveNumber(raw.surface_toiture_m2, 100_000);
         if (surface != null) out.surface_toiture_m2 = surface;
       }
-      const age = cleanBoundedInt(raw.roof_age_years, 100);
-      if (age != null) out.roof_age_years = age;
+      // Clé backend RÉELLE : `roof_age` (crm.Lead — vérifié au fold 25/08,
+      // le contrat Q-A l'a corrigée ; `roof_age_years` n'existe pas côté Lead).
+      const age = cleanBoundedInt(raw.roof_age, 100);
+      if (age != null) out.roof_age = age;
       const ownership = cleanEnum(raw.ownership, OWNERSHIP_VALUES);
       if (ownership) out.ownership = ownership;
       break;

@@ -374,7 +374,12 @@ def mint_lien(lead, *, questions=None, user=None):
         lien.save()
     else:
         lien.save(update_fields=['questions'])
-    return lien, cree or lien.questions != avant
+    # Recalage fold 25/08 : troisième valeur ``cree`` — le dialogue ERP mint
+    # SILENCIEUSEMENT à l'ouverture (pour lire manquantes/questions), et le
+    # chatter ne doit jamais dire « envoyé » sur une simple ouverture ; le
+    # libellé de la trace distingue donc création et mise à jour (l'envoi
+    # WhatsApp réel n'est pas observable côté serveur — on ne l'affirme pas).
+    return lien, cree or lien.questions != avant, cree
 
 
 def resoudre(token):

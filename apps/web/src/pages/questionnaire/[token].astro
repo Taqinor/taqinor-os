@@ -362,7 +362,7 @@ function prefillBoolRadio(key: string): 'oui' | 'non' | '' {
                             <label for="q-roof-age" class="mb-1 block text-sm font-semibold" data-i18n data-en="Roof age (years, optional)" data-ar="عمر السطح (بالسنوات، اختياري)">
                               Âge de la toiture (années, facultatif)
                             </label>
-                            <input id="q-roof-age" type="number" min="0" max="100" step="1" inputmode="numeric" value={prefillStr('roof_age_years')}
+                            <input id="q-roof-age" type="number" min="0" max="100" step="1" inputmode="numeric" value={prefillStr('roof_age')}
                               class="w-full min-h-[44px] border border-azur-900/20 bg-blanc px-3 py-3 text-base outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/50" />
                           </div>
                           <fieldset class="border-0 p-0">
@@ -867,7 +867,7 @@ function prefillBoolRadio(key: string): 'oui' | 'non' | '' {
             type_toiture: fieldVal('q-type-toiture') || undefined,
             surface_inconnue: !!(surfaceInconnue && surfaceInconnue.checked),
             surface_toiture_m2: numOrUndef('q-surface-toiture'),
-            roof_age_years: numOrUndef('q-roof-age'),
+            roof_age: numOrUndef('q-roof-age'),
             ownership: radioValue('q-ownership'),
           };
         case 'occupation':

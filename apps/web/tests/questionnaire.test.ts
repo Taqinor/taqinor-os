@@ -216,10 +216,10 @@ describe('buildSectionReponses', () => {
         type_toiture: 'villa',
         surface_toiture_m2: '120',
         surface_inconnue: true,
-        roof_age_years: '8',
+        roof_age: '8',
         ownership: 'proprietaire',
       }),
-    ).toEqual({ type_toiture: 'villa', roof_age_years: 8, ownership: 'proprietaire' });
+    ).toEqual({ type_toiture: 'villa', roof_age: 8, ownership: 'proprietaire' });
 
     expect(buildSectionReponses('toiture', { surface_toiture_m2: '120', surface_inconnue: false })).toEqual({
       surface_toiture_m2: 120,
