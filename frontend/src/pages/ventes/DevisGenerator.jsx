@@ -51,7 +51,8 @@ import {
   MONTHS_FR, CHART_MONTHS, DEFAULT_MONTHLY_BILLS, DAY_USAGE_DEFAULTS,
   formatMoney, estimerMois, estimerPanneaux, computeROI, ttcFromHt, htFromTtc,
   tauxTvaOf,
-  batteryKwhFromLines, optionTotalsTTC, autoFillLines, defaultProductLines,
+  batteryKwhFromLines, comptePanneauxOption,
+  optionTotalsTTC, autoFillLines, defaultProductLines,
   computeEtudeIndustrielle,
   autoFillPompage, pompageSelection, HEURES_POMPAGE_DEFAUT,
   isBattery, isHybridInverter, isReseauInverter, isPanel, isPompe,
@@ -66,6 +67,10 @@ import {
   // Règle fondateur du 18/08 — dimensionnement par PALIERS de 5 kWc, retenus
   // au payback le plus court (jamais un panneau/900 MAD nu).
   estimerKwcDepuisFacture, optimalKwcByPayback,
+  // FINDING 25/08 — consommation réelle dérivée des factures par le barème :
+  // sans elle le modèle d'économie ne sature pas et l'ascension marginale
+  // sur-vend jusqu'au plafond du balayage.
+  consoAnnuelleDepuisFactures,
   // PVMRQ — libellé FR d'un rôle ROLES_AUTO_COMPOSITION, pour le bandeau
   // « marque épinglée introuvable ».
   roleLabel,
@@ -737,6 +742,24 @@ export default function DevisGenerator({
 
   const kwp = (parseInt(nbPanneaux) || 0) * (parseFloat(panelW) || 0) / 1000
 
+  // L-2OPT — kWc PROPRE à l'option « Avec batterie ». `kwp` ci-dessus est le
+  // compte de la branche SANS (le rechargement d'un brouillon exclut
+  // explicitement les lignes taguées 'avec'), alors que `totals.totalAvec` et
+  // `batteryKwhFromLines` chiffrent la composition AVEC ENTIÈRE. Sans ce
+  // second kWc, l'écran divisait un coût « avec » par une économie « sans » :
+  // payback affiché plusieurs fois trop long, et l'étude horaire serveur
+  // interrogée sur une chimère (kWc sans + batteries avec).
+  // Dérivé des LIGNES avec la règle du backend (variante '' + 'avec').
+  // NON DIVERGENT (aucune ligne variantée, ou les deux branches au même
+  // nombre de panneaux) ⇒ `kwp` est renvoyé TEL QUEL : aucune re-dérivation
+  // flottante, comportement byte-identique à l'historique.
+  const kwpAvec = (() => {
+    const nSans = comptePanneauxOption(lines, 'sans')
+    const nAvec = comptePanneauxOption(lines, 'avec')
+    if (nSans <= 0 || nAvec === nSans) return kwp
+    return nAvec * (parseFloat(panelW) || 0) / 1000
+  })()
+
   // EZ5 — dimensionner en kWc. Les deux champs sont BIDIRECTIONNELS : taper une
   // puissance cible remplit les panneaux (via `panneauxPourKwc`, la conversion
   // DÉJÀ utilisée par le pré-remplissage depuis le lead — rien de réécrit), et
@@ -803,6 +826,7 @@ export default function DevisGenerator({
   const dLines = useDeferredValue(lines)
   const dTotals = useDeferredValue(totals)
   const dKwp = useDeferredValue(kwp)
+  const dKwpAvec = useDeferredValue(kwpAvec)
   const dDayUsage = useDeferredValue(dayUsage)
 
   // QF4/QF5 — consommation annuelle RÉELLE dérivée de la facture/kWh du
@@ -860,6 +884,36 @@ export default function DevisGenerator({
   }, [dKwp, dMonthly, dDayUsage, dTotals, dLines, quoteLogic,
     consoAnnuelleReelle, distributeur, selectedLead])
 
+  // L-2OPT — miroir local de `roi` recalculé AU kWc DE LA BRANCHE AVEC. `null`
+  // dès que rien ne diverge (`kwpAvec === kwp`) : l'écran retombe alors mot
+  // pour mot sur `roi`, aucun second calcul, comportement d'hier. Quand les
+  // deux optimiseurs ont réellement rendu deux tailles, seuls les champs
+  // « avec » de CE résultat sont lus (l'option sans garde `roi`).
+  const roiAvec = useMemo(() => {
+    if (dKwpAvec === dKwp) return null
+    if (dKwpAvec <= 0 || !dMonthly.some(v => v > 0)) return null
+    return computeROI({
+      kwp: dKwpAvec,
+      factures: dMonthly.map(v => parseFloat(v) || 0),
+      dayUsagePct: parseInt(dDayUsage) || 50,
+      totalSans: dTotals.totalSans,
+      totalAvec: dTotals.totalAvec,
+      batteryKwh: batteryKwhFromLines(dLines),
+      lines: dLines,
+      kwhPrice: quoteLogic.kwhPrice,
+      efficiency: quoteLogic.efficiency,
+      consoAnnuelleKwh: consoAnnuelleReelle,
+      utility: distributeur,
+      productible: productibleForCity(
+        selectedLead?.ville || '', quoteLogic.productible),
+    })
+  }, [dKwpAvec, dKwp, dMonthly, dDayUsage, dTotals, dLines, quoteLogic,
+    consoAnnuelleReelle, distributeur, selectedLead])
+
+  // Source des chiffres « avec batterie » du miroir local : `roiAvec` quand
+  // les deux optimiseurs divergent, sinon `roi` (identique par construction).
+  const roiPourAvec = roiAvec || roi
+
   // CJ2b — ORDRE FONDATEUR : « on ne voit ni l'économie réelle calculée, ni
   // les données PVGIS — cette donnée devrait être comparée à la courbe de
   // consommation ». Résidentiel UNIQUEMENT : appelle le moteur horaire
@@ -882,18 +936,55 @@ export default function DevisGenerator({
         batterieKwh: batteryKwhFromLines(lines),
       })
     : null
+  // L-2OPT — l'étude horaire de la branche AVEC porte SON PROPRE kWc. Le corps
+  // ci-dessus décrit la branche SANS (`kwp`) ; l'interroger avec les batteries
+  // de la composition AVEC produisait une chimère (kWc sans + batteries avec).
+  // `null` tant que rien ne diverge ⇒ AUCUN second appel réseau et l'écran lit
+  // le corps unique comme hier.
+  const etudeHoraireCorpsAvec = (modeInstallation === 'residentiel'
+      && kwpAvec !== kwp)
+    ? construireCorpsPreview({
+        modeInstallation,
+        editId,
+        leadId,
+        fHiver,
+        fEte,
+        eteDifferente: !!fEte && Number(fEte) > 0,
+        ville: selectedLead?.ville || '',
+        raccordement: selectedLead?.raccordement || '',
+        kwp: kwpAvec,
+        batterieKwh: batteryKwhFromLines(lines),
+      })
+    : null
   const {
     donnees: etudeHoraireDonnees,
     chargement: etudeHoraireChargement,
     erreur: etudeHoraireErreur,
   } = useEtudeHorairePreview(etudeHoraireCorps)
+  const { donnees: etudeHoraireDonneesAvec } =
+    useEtudeHorairePreview(etudeHoraireCorpsAvec)
   // Le serveur GAGNE dès qu'il a répondu (etude non nul) : `roi` reste le
   // seul chiffre affiché tant que la réponse n'est pas là (ou a échoué).
   const etudeHoraireAnnuel = etudeHoraireDonnees?.etude?.annuel || null
   const etudeHoraireSourceServeur = !!etudeHoraireAnnuel
+  // Réponse serveur à lire pour l'option AVEC. DIVERGENT : uniquement la
+  // sienne — tant qu'elle n'est pas revenue, l'écran retombe sur le miroir
+  // local `roiAvec` (au bon kWc) plutôt que de ré-afficher l'étude du kWc
+  // SANS, ce qui recréerait exactement le croisement corrigé ici. NON
+  // divergent : le corps unique, comme hier.
+  const etudeHoraireDonneesPourAvec = etudeHoraireCorpsAvec
+    ? etudeHoraireDonneesAvec
+    : etudeHoraireDonnees
+  const etudeHoraireAnnuelAvec =
+    etudeHoraireDonneesPourAvec?.etude?.annuel || null
   const etudeHoraireLignes = useMemo(
     () => lignesAffichables(etudeHoraireDonnees?.dimensionnement),
     [etudeHoraireDonnees])
+  // Lignes de dimensionnement à interroger pour le VERDICT batterie : celles
+  // de l'étude de la branche AVEC (son kWc), jamais celles du kWc SANS.
+  const etudeHoraireLignesAvec = useMemo(
+    () => lignesAffichables(etudeHoraireDonneesPourAvec?.dimensionnement),
+    [etudeHoraireDonneesPourAvec])
   const etudeHoraireSourceLabel = etudeHoraireDonnees?.consommation
     ? etiquetteSource(etudeHoraireDonnees.consommation.source)
     : null
@@ -931,32 +1022,38 @@ export default function DevisGenerator({
   // monophasé : Isc 18,6 A > 17,0 A) : sans cette garde, l'écran promettait au
   // vendeur l'économie d'une installation qu'on ne peut pas livrer.
   // `null` (le moteur ne dit rien sur cette taille) ⇒ comportement d'avant.
-  const verdictBatterieServeur = etudeHoraireSourceServeur
-    ? verdictBatteriePourTaille(etudeHoraireLignes, kwp)
+  // L-2OPT — verdict + économie « avec » lus sur l'étude de la branche AVEC,
+  // à SON kWc (`kwpAvec`). Non divergent : mêmes lignes, même taille, même
+  // résultat qu'hier.
+  const verdictBatterieServeur = etudeHoraireAnnuelAvec
+    ? verdictBatteriePourTaille(etudeHoraireLignesAvec, kwpAvec)
     : null
   const batterieInvendableServeur = verdictBatterieServeur
     ? !verdictBatterieServeur.vendable : false
-  const apercuEcoAvec = etudeHoraireSourceServeur
-    ? (batterieInvendableServeur ? null : etudeHoraireAnnuel.economie_avec_mad)
-    : roi?.eco_annuelle_avec
+  const apercuEcoAvec = etudeHoraireAnnuelAvec
+    ? (batterieInvendableServeur ? null : etudeHoraireAnnuelAvec.economie_avec_mad)
+    : roiPourAvec?.eco_annuelle_avec
   const apercuPaybackSans = etudeHoraireSourceServeur
     ? (totals.totalSans > 0 && apercuEcoSans > 0
         ? Math.round((totals.totalSans / apercuEcoSans) * 100) / 100 : null)
     : roi?.payback_sans
-  const apercuPaybackAvec = etudeHoraireSourceServeur
+  const apercuPaybackAvec = etudeHoraireAnnuelAvec
     ? (totals.totalAvec > 0 && apercuEcoAvec > 0
         ? Math.round((totals.totalAvec / apercuEcoAvec) * 100) / 100 : null)
-    : roi?.payback_avec
+    : roiPourAvec?.payback_avec
 
   const chartData = useMemo(() => {
     if (!roi) return []
+    // L-2OPT — la courbe « avec batterie » suit le kWc de SA branche quand les
+    // deux optimiseurs divergent (`roiAvec`), sinon `roi` (identique).
+    const detailAvec = (roiAvec || roi).monthly_detail
     return roi.monthly_detail.map((d, i) => ({
       month: CHART_MONTHS[i],
       facture: d.facture,
       ecoSans: Math.round(d.eco_sans),
-      ecoAvec: Math.round(d.eco_avec),
+      ecoAvec: Math.round((detailAvec[i] ?? d).eco_avec),
     }))
-  }, [roi])
+  }, [roi, roiAvec])
 
   // ── Type d'installation → autoconsommation par défaut (simulateur) ──
   const onInstTypeChange = (type) => {
@@ -1102,17 +1199,37 @@ export default function DevisGenerator({
     const dayUsagePct = modeInstallation === 'commercial' ? DAY_USAGE_DEFAULTS['Commerciale']
       : modeInstallation === 'industriel' ? DAY_USAGE_DEFAULTS['Industrielle']
         : DAY_USAGE_DEFAULTS['Résidentielle']
+    // Distributeur du devis : c'est SON barème qui convertit les factures en
+    // kWh (et qui valorise l'économie par tranche). Il entre donc dans la clé
+    // de cache au même titre que la marque épinglée.
+    const distributeurBalayage = distributeur
     // PVMRQ — la marque épinglée entre dans la clé de cache : un changement de
     // réglage (ou de gamme du devis) doit rejouer le balayage des paliers.
     const key = [hiver, eteEff, besoinKwc, dayUsagePct, panelW, structureType,
-      discountPct, produits.length, JSON.stringify(marquesActives)].join('|')
+      discountPct, produits.length, JSON.stringify(marquesActives),
+      distributeurBalayage, consoAnnuelleReelle ?? ''].join('|')
     if (sizingCacheRef.current.key === key) return sizingCacheRef.current.result
     const factures = estimerMois(hiver, eteEff)
+    // FINDING 25/08 — la CONSOMMATION RÉELLE du client entre dans le balayage.
+    // Sans elle, `computeROI` ne plafonne rien : l'économie reste linéaire en
+    // kWc, chaque pas marginal se « rembourse » et l'ascension ne s'arrête
+    // qu'au plafond (mesuré : besoin 100 kWc → 100 kWc, 522 341 MAD). Dérivée
+    // des factures du client par le barème du distributeur — jamais un chiffre
+    // posé (`consoAnnuelleDepuisFactures`, la dérivation déjà utilisée par
+    // autoQuote.js pour `etude_params.conso_annuelle`).
+    // Une consommation RÉELLE saisie par le vendeur (champ facture/kWh réel,
+    // QF4) prime sur la dérivation : c'est celle que l'aperçu `roi` utilise
+    // déjà, et le dimensionnement doit dimensionner le MÊME client que
+    // l'aperçu. Sinon, dérivation depuis les factures du balayage.
+    const consoBalayage = (Number(consoAnnuelleReelle) > 0)
+      ? Number(consoAnnuelleReelle)
+      : consoAnnuelleDepuisFactures(factures, distributeurBalayage)
     const opt = optimalKwcByPayback({
       produits, factures, dayUsagePct,
       panelW, structureType, discountPct,
       kwhPrice: quoteLogic.kwhPrice, efficiency: quoteLogic.efficiency,
       besoinKwc, marques: marquesActives,
+      consoAnnuelleKwh: consoBalayage, utility: distributeurBalayage,
     })
     // L-2OPT (fondateur 24/08) — second optimiseur, MÊME balayage, objectif
     // AVEC batterie (`avecBatterie: true` — optimalKwcByPayback l'accepte
@@ -1126,6 +1243,9 @@ export default function DevisGenerator({
       panelW, structureType, discountPct,
       kwhPrice: quoteLogic.kwhPrice, efficiency: quoteLogic.efficiency,
       besoinKwc, marques: marquesActives, avecBatterie: true,
+      // Même consommation réelle que la branche SANS : les deux optimiseurs
+      // dimensionnent le MÊME client, pas deux consommations différentes.
+      consoAnnuelleKwh: consoBalayage, utility: distributeurBalayage,
     })
     let result = null
     if (opt.nbPanneaux > 0) {
@@ -1138,7 +1258,8 @@ export default function DevisGenerator({
     }
     sizingCacheRef.current = { key, result }
     return result
-  }, [modeInstallation, panelW, structureType, discountPct, produits, quoteLogic, marquesActives])
+  }, [modeInstallation, panelW, structureType, discountPct, produits, quoteLogic,
+    marquesActives, distributeur, consoAnnuelleReelle])
 
   // L-2OPT — kWc de la branche AVEC batterie POUR LA COMPOSITION EN COURS :
   // le moteur horaire serveur (recommandation_avec, source de vérité) prime

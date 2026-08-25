@@ -156,7 +156,15 @@ test('U3 — le résidentiel délègue la composition au serveur, sans jamais co
     'aucun prix ni aucune marque ne doit remonter de l\'écran')
 })
 
-test('createAutoQuote : kwhFromBill est importé de ./solar (même inverse de barème que l\'écran manuel)', () => {
+test('createAutoQuote : la conso annuelle vient de ./solar (même inverse de barème que l\'écran manuel)', () => {
+  // FINDING 25/08 — la dérivation « 12 factures → kWh/an par le barème » est
+  // désormais une aide PARTAGÉE (`consoAnnuelleDepuisFactures`, qui appelle
+  // `kwhFromBill`) : le balayage de dimensionnement en a besoin AVANT
+  // l'appel serveur (sans consommation, son modèle d'économie ne sature pas
+  // et l'ascension marginale sur-vend). Une seule formule, donc aucun risque
+  // de divergence entre la taille retenue et l'étude envoyée.
   const src = lire('./autoQuote.js')
-  assert.match(src, /kwhFromBill,?\s*\n?\} from '\.\/solar'/)
+  assert.match(src, /consoAnnuelleDepuisFactures,?\s*\n?\} from '\.\/solar'/)
+  assert.doesNotMatch(src, /kwhFromBill\(/,
+    'plus aucune inversion de barème recopiée sur place — tout passe par l\'aide partagée')
 })

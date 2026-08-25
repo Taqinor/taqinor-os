@@ -67,16 +67,19 @@ test('DevisGenerator : le serveur GAGNE sur le miroir local `roi` dès qu\'il a 
   // CJ2b — « Avec batterie » porte EN PLUS le verdict de livrabilité de la
   // taille chiffrée : le serveur ne gagne que lorsque l'option est réellement
   // vendable, sinon la valeur est ABSENTE (voir le test d'omission suivant).
-  assert.match(DG, /const apercuEcoAvec = etudeHoraireSourceServeur/)
-  assert.match(DG, /batterieInvendableServeur \? null : etudeHoraireAnnuel\.economie_avec_mad/)
-  assert.match(DG, /: roi\?\.eco_annuelle_avec/)
+  // L-2OPT — et il gagne sur l'étude de SA branche (`etudeHoraireAnnuelAvec`),
+  // jamais sur celle du kWc SANS : les deux optimiseurs peuvent diverger.
+  assert.match(DG, /const apercuEcoAvec = etudeHoraireAnnuelAvec/)
+  assert.match(DG, /batterieInvendableServeur \? null : etudeHoraireAnnuelAvec\.economie_avec_mad/)
+  assert.match(DG, /: roiPourAvec\?\.eco_annuelle_avec/)
 })
 
 test('DevisGenerator : batterie non livrable -> AUCUN montant « avec batterie », la raison à la place', () => {
   // ORDRE FONDATEUR — l'omission honnête, jamais un zéro inventé. Sans cette
   // garde, `fmtNum(Math.round(null))` imprimait « 0 » : un chiffre FAUX sur
   // l'option que le catalogue ne peut pas livrer (trou réel exhumé par CJ2a).
-  assert.match(DG, /verdictBatteriePourTaille\(etudeHoraireLignes, kwp\)/)
+  // L-2OPT — le verdict est demandé POUR LA TAILLE DE LA BRANCHE AVEC.
+  assert.match(DG, /verdictBatteriePourTaille\(etudeHoraireLignesAvec, kwpAvec\)/)
   assert.match(DG, /const batterieInvendableServeur = verdictBatterieServeur/)
   const idx = DG.indexOf('{batterieInvendableServeur ? (')
   assert.ok(idx > -1, "la branche d'omission « avec batterie » est introuvable")
@@ -87,6 +90,70 @@ test('DevisGenerator : batterie non livrable -> AUCUN montant « avec batterie �
   const omission = DG.slice(idx, DG.indexOf(') : (', idx))
   assert.ok(!/MetricCard/.test(omission),
     "aucune carte chiffrée ne doit subsister quand la batterie n'est pas livrable")
+})
+
+// ── L-2OPT — chaque option son kWc, jamais un croisement ───────────────────
+// Le bug corrigé : `kwp` restait le compte de la branche SANS (le rechargement
+// d'un brouillon exclut les lignes taguées 'avec') pendant que
+// `totals.totalAvec` et `batteryKwhFromLines` chiffraient la composition AVEC
+// entière — payback « avec » affiché plusieurs fois trop long, et étude
+// horaire serveur interrogée sur une chimère (kWc sans + batteries avec).
+
+test('L-2OPT : `kwpAvec` est dérivé des LIGNES (règle backend variante \'\'+\'avec\')', () => {
+  const idx = DG.indexOf('const kwpAvec = (() => {')
+  assert.ok(idx > -1, 'kwpAvec introuvable')
+  const bloc = DG.slice(idx, idx + 400)
+  assert.match(bloc, /comptePanneauxOption\(lines, 'sans'\)/)
+  assert.match(bloc, /comptePanneauxOption\(lines, 'avec'\)/)
+  // NON DIVERGENT ⇒ `kwp` renvoyé TEL QUEL (aucune re-dérivation flottante) :
+  // c'est ce qui garantit le comportement byte-identique à l'historique.
+  assert.match(bloc, /if \(nSans <= 0 \|\| nAvec === nSans\) return kwp/)
+})
+
+test("L-2OPT : l'étude horaire de la branche AVEC porte SON kWc, et n'est demandée que si ça diverge", () => {
+  const idx = DG.indexOf('const etudeHoraireCorpsAvec = ')
+  assert.ok(idx > -1, 'etudeHoraireCorpsAvec introuvable')
+  const bloc = DG.slice(idx, idx + 700)
+  // Garde : aucun second appel réseau tant que rien ne diverge.
+  assert.match(bloc, /kwpAvec !== kwp/)
+  assert.match(bloc, /kwp: kwpAvec/)
+  assert.match(DG, /useEtudeHorairePreview\(etudeHoraireCorpsAvec\)/)
+  // Divergent : on lit UNIQUEMENT l'étude de la branche avec — retomber sur
+  // celle du kWc SANS pendant le chargement recréerait le croisement.
+  assert.match(DG, /const etudeHoraireDonneesPourAvec = etudeHoraireCorpsAvec\s*\n\s*\? etudeHoraireDonneesAvec\s*\n\s*: etudeHoraireDonnees/)
+})
+
+test('L-2OPT : le miroir local `roiAvec` est calculé au kWc AVEC, null quand rien ne diverge', () => {
+  const idx = DG.indexOf('const roiAvec = useMemo(() => {')
+  assert.ok(idx > -1, 'roiAvec introuvable')
+  const bloc = DG.slice(idx, idx + 400)
+  assert.match(bloc, /if \(dKwpAvec === dKwp\) return null/)
+  assert.match(bloc, /kwp: dKwpAvec/)
+  assert.match(DG, /const roiPourAvec = roiAvec \|\| roi/)
+})
+
+// ── FINDING 25/08 — l'ascension écran ne peut plus rider le plafond ────────
+// `optimalKwcByPayback` ne plafonne l'économie à la consommation réelle que
+// si on la lui donne. Les deux appels de l'écran ne la passaient pas :
+// l'économie restait LINÉAIRE en kWc, chaque pas marginal se « remboursait »,
+// et l'ascension finissait toujours au plafond du balayage (mesuré : besoin
+// 100 kWc → 100 kWc retenus, 522 341 MAD).
+
+test('FINDING 25/08 : les DEUX appels de dimensionnement passent la consommation réelle + le distributeur', () => {
+  const idx = DG.indexOf('const computeAutoSizing = useCallback(')
+  assert.ok(idx > -1, 'computeAutoSizing introuvable')
+  const bloc = DG.slice(idx, DG.indexOf('sizingCacheRef.current = { key, result }', idx))
+  // La consommation est DÉRIVÉE (barème), ou reprise du champ réel saisi —
+  // jamais un chiffre posé.
+  assert.match(bloc, /consoAnnuelleDepuisFactures\(factures, distributeurBalayage\)/)
+  assert.match(bloc, /Number\(consoAnnuelleReelle\) > 0/)
+  // Les DEUX optimiseurs (sans ET avec batterie) la reçoivent.
+  const appels = bloc.match(/consoAnnuelleKwh: consoBalayage, utility: distributeurBalayage/g) || []
+  assert.equal(appels.length, 2,
+    'les deux appels optimalKwcByPayback (sans + avec batterie) doivent recevoir la conso réelle')
+  // Le distributeur pilote le barème : il entre dans la clé de cache, sinon
+  // le balayage resservirait un résultat calculé sur un autre barème.
+  assert.match(bloc, /distributeurBalayage, consoAnnuelleReelle \?\? ''\]\.join\('\|'\)/)
 })
 
 test('DevisGenerator : `roi` (computeROI, miroir local) reste appelé SANS changement — jamais supprimé', () => {

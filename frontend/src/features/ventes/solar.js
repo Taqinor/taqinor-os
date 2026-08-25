@@ -870,6 +870,21 @@ export function kwhFromBill(billMad, utility, tranchesOverride) {
   return { kwhMensuel: Math.round(kwh * 10) / 10, approximatif: approx, estimation: false }
 }
 
+// Consommation annuelle (kWh/an) DÉRIVÉE des 12 factures mensuelles du client,
+// par inversion du barème par tranche du distributeur (`kwhFromBill`, QF1).
+// Rien n'est inventé : la seule entrée est la facture réelle, la seule table
+// est le barème publié. Extraite ici pour qu'il n'existe qu'UNE dérivation —
+// `autoQuote.js` la posait déjà mot pour mot dans `etude_params.conso_annuelle`,
+// et le dimensionnement en a maintenant besoin AVANT le balayage (sans elle,
+// le modèle d'économie ne sature pas et l'ascension marginale sur-vend).
+// 0 quand aucune facture exploitable — l'appelant OMET, il n'invente pas.
+export function consoAnnuelleDepuisFactures(factures, utility) {
+  if (!Array.isArray(factures) || !factures.length) return 0
+  const total = factures.reduce(
+    (somme, bill) => somme + (kwhFromBill(bill, utility).kwhMensuel || 0), 0)
+  return total > 0 ? Math.round(total) : 0
+}
+
 // QF2 — modèle « deux factures » : économie = facture_sans − facture_avec,
 // valorisée par tranche (self-consumption-first, loi 82-21). Miroir
 // two_bills_savings. Retourne null quand une vraie donnée manque (l'appelant
@@ -1169,6 +1184,22 @@ export function batteryKwhFromLines(lines) {
     if (l.variante === 'sans') return sum
     const qty = parseFloat(l.quantite) || 0
     return sum + qty * (parseKwh(l.designation) ?? 5.0)
+  }, 0)
+}
+
+// L-2OPT — nombre de PANNEAUX d'une option, avec la MÊME règle d'exclusion
+// que `optionTotalsTTC`/`batteryKwhFromLines` : l'option SANS ignore les
+// lignes taguées 'avec', l'option AVEC ignore celles taguées 'sans' ; une
+// ligne sans tag (tout l'historique, et le cas non divergent de
+// `fusionnerVariantes`) compte dans les DEUX. Sert à dériver le kWc PROPRE à
+// chaque option depuis les lignes — sans quoi l'écran chiffre l'économie
+// d'une composition avec le kWc de l'autre.
+export function comptePanneauxOption(lines, option) {
+  const exclu = option === 'avec' ? 'sans' : 'avec'
+  return (lines || []).reduce((sum, l) => {
+    if (!/panneau/i.test(l?.designation || '')) return sum
+    if (l.variante === exclu) return sum
+    return sum + (parseFloat(l.quantite) || 0)
   }, 0)
 }
 
@@ -1861,11 +1892,21 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
 // payback global du palier retenu ≤ max(meilleur_payback, HORIZON_MARGINAL_PV).
 //
 // `besoinKwc` (facture d'hiver, 900 MAD → 5 kWc) PLAFONNE le balayage : on ne
-// propose JAMAIS plus gros que le besoin lu sur la facture. C'est volontaire —
-// le modèle d'économie hérité du simulateur ne sature pas à la consommation
-// réelle, donc sans ce plafond l'ascension dériverait mécaniquement vers le
-// haut et sur-vendrait le client. L'optimisation joue donc SOUS le besoin.
-// `maxKwc` (surface de toit réelle) resserre encore la borne.
+// propose JAMAIS plus gros que le besoin lu sur la facture. `maxKwc` (surface
+// de toit réelle) resserre encore la borne.
+//
+// LE PLAFOND N'EST PAS UNE DOCTRINE DE DIMENSIONNEMENT (finding 25/08, mesuré).
+// Il a longtemps SERVI de garde-fou parce que le modèle d'économie hérité du
+// simulateur ne sature pas à la consommation réelle — mais un garde-fou qui
+// consiste à ne jamais s'arrêter avant le plafond N'EST PAS un choix : mesuré
+// sur le catalogue/les factures de solar.dimensionnement.test.mjs SANS
+// consommation, l'ascension finit TOUJOURS au plafond (besoin 40 → 40 kWc,
+// 100 → 100 kWc / 522 341 MAD, 200 → 200 kWc). La vraie réponse est la GARDE
+// DE SATURATION implémentée plus bas : l'ascension marginale n'est autorisée
+// que si l'économie sature réellement (consommation réelle fournie) ; sinon on
+// rend le choix PUR payback. Les deux appelants réels fournissent désormais la
+// consommation, dérivée des factures du client par le barème
+// (`consoAnnuelleDepuisFactures`).
 //
 // Retourne { kwcOptimal, nbPanneaux, paliers[] } — signature et forme du
 // retour INCHANGÉES ; `paliers` gagne (additif) `paybackMarginal`/
@@ -1967,6 +2008,48 @@ export function optimalKwcByPayback({
   // override réservé aux tests).
   const H = Number.isFinite(Number(horizonMarginal)) && Number(horizonMarginal) >= 0
     ? Number(horizonMarginal) : HORIZON_MARGINAL_PV
+
+  // ── LES DEUX GARDES QUI AUTORISENT (OU NON) L'ASCENSION ──────────────────
+  //
+  // (1) GARDE DE SATURATION (finding 25/08 — mesurée). L'ascension marginale
+  //     n'a de sens que si l'économie SATURE quand la production dépasse ce
+  //     que le client peut consommer. Or `computeROI` ne plafonne l'économie
+  //     à la consommation réelle QUE si `consoAnnuelleKwh` lui est fourni :
+  //     sans elle, l'économie est un pourcentage de la seule PRODUCTION, donc
+  //     LINÉAIRE en kWc — ΔCoût/ΔÉconomie reste alors quasi constant palier
+  //     après palier, toujours sous l'horizon, et l'ascension ne peut
+  //     MÉCANIQUEMENT jamais s'arrêter : elle finit toujours au plafond du
+  //     balayage. Mesuré sur le catalogue et les factures de
+  //     solar.dimensionnement.test.mjs : besoin 40 → 40 kWc, 60 → 60, 100 →
+  //     100 kWc (522 341 MAD), 200 → 200 kWc — le « choix » ne dépendait plus
+  //     que du plafond. Avec la consommation réelle (17 870 kWh/an dérivée
+  //     des mêmes factures), l'économie sature à 29 000 MAD/an dès 25 kWc et
+  //     le pas 25→30 n'achète plus RIEN : l'ascension s'arrête d'elle-même.
+  //     Sans saturation on retombe donc sur le choix PUR payback — la règle
+  //     marginale sur-vend mécaniquement, elle ne peut pas être appliquée à
+  //     un modèle qui ne sature pas.
+  //
+  // (2) GARDE DÉPART-HORS-HORIZON (miroir de `depart_dans_horizon`,
+  //     apps/ventes/dimensionnement.py) : quand le palier de DÉPART dépasse
+  //     déjà l'horizon, lui ajouter des dirhams ne peut qu'aggraver son cas.
+  //     C'est le cas (2) de la preuve ci-dessus, rendu EXPLICITE ici comme
+  //     côté backend — la doctrine ne peut jamais rendre un dossier faible
+  //     plus mauvais que le choix pur qu'elle remplace.
+  const modeleSature = Number(consoAnnuelleKwh) > 0
+  const departDansHorizon = meilleur.payback > 0 && meilleur.payback <= H + 1e-9
+  if (!modeleSature || !departDansHorizon) {
+    return {
+      kwcOptimal: meilleur.kwc,
+      nbPanneaux: meilleur.nbPanneaux ?? panneauxPourKwc(meilleur.kwc, panelW),
+      paliers,
+      marquesManquantes,
+      repliMarqueManquante: false,
+      // Additif — dit POURQUOI l'ascension n'a pas eu lieu (aucun lecteur
+      // existant ne le lit ; l'écran peut le justifier sans deviner).
+      ascensionDesactivee: !modeleSature ? 'sans_saturation' : 'depart_hors_horizon',
+    }
+  }
+
   const idxMeilleur = chiffrables.indexOf(meilleur)
   let retenu = meilleur
   for (let i = idxMeilleur + 1; i < chiffrables.length; i++) {
@@ -1988,6 +2071,7 @@ export function optimalKwcByPayback({
     paliers,
     marquesManquantes,
     repliMarqueManquante: false,
+    ascensionDesactivee: null,
   }
 }
 

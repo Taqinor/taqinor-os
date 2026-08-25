@@ -20,10 +20,12 @@ import {
   estimerKwcDepuisFacture, arrondirAuPasKwc, optimalKwcByPayback,
   // PVMRQ — libellé FR d'un rôle, pour dire QUELLE marque épinglée manque.
   roleLabel,
-  // PACT10/QF-REAL — inverse EXACT du barème (facture MAD → kWh/mois), déjà
-  // utilisé par l'écran manuel de DevisGenerator (QF4) ; réutilisé tel quel
-  // pour dériver la consommation annuelle RÉELLE du lead depuis sa facture.
-  kwhFromBill,
+  // PACT10/QF-REAL — consommation annuelle RÉELLE du lead, dérivée de ses
+  // factures par l'inverse EXACT du barème (`kwhFromBill`, QF4). UNE seule
+  // dérivation partagée : elle alimente à la fois le balayage de
+  // dimensionnement (sans elle, l'économie ne sature pas) et
+  // `etude_params.conso_annuelle` envoyée au serveur.
+  consoAnnuelleDepuisFactures,
 } from './solar'
 
 // QX19 — préférence de structure du lead (acier/aluminium) → structureType
@@ -160,11 +162,25 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
         const dayUsagePct = mode === 'commercial' ? DAY_USAGE_DEFAULTS['Commerciale']
           : mode === 'industriel' ? DAY_USAGE_DEFAULTS['Industrielle']
             : DAY_USAGE_DEFAULTS['Résidentielle']
+        // FINDING 25/08 — la CONSOMMATION RÉELLE entre dans le balayage. Sans
+        // elle, `computeROI` ne plafonne pas l'économie à ce que le client
+        // peut consommer : elle reste linéaire en kWc, chaque pas marginal se
+        // « rembourse » et l'ascension ne s'arrête qu'au plafond du balayage
+        // (mesuré : besoin 100 kWc → 100 kWc retenus, 522 341 MAD). C'est la
+        // MÊME dérivation que `etude_params.conso_annuelle` posée plus bas —
+        // désormais partagée (`consoAnnuelleDepuisFactures`), donc impossible
+        // à faire diverger entre le dimensionnement et l'étude envoyée.
+        const facturesBalayage = estimerMois(hiver, eteVal)
+        const distributeurBalayage = ['onee', 'lydec', 'redal'].includes(lead.distributeur)
+          ? lead.distributeur : undefined
         const opt = optimalKwcByPayback({
-          produits, factures: estimerMois(hiver, eteVal), dayUsagePct,
+          produits, factures: facturesBalayage, dayUsagePct,
           panelW: 710, structureType: structFromLead(lead),
           discountPct: discountStr || '0', kwhPrice, efficiency, besoinKwc,
           marques,
+          consoAnnuelleKwh: consoAnnuelleDepuisFactures(
+            facturesBalayage, distributeurBalayage),
+          utility: distributeurBalayage,
         })
         panels = opt.nbPanneaux > 0 ? opt.nbPanneaux : (estimerPanneaux(hiver, perTranche) || 8)
       } else {
@@ -207,8 +223,12 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
         const facturesReelles = estimerMois(hiver, eteReel)
         const distributeurLead = ['onee', 'lydec', 'redal'].includes(lead.distributeur)
           ? lead.distributeur : undefined
-        const consoAnnuelleReelle = Math.round(facturesReelles.reduce(
-          (somme, bill) => somme + (kwhFromBill(bill, distributeurLead).kwhMensuel || 0), 0))
+        // Dérivation PARTAGÉE avec le dimensionnement ci-dessus (le balayage
+        // par palier a besoin de la MÊME consommation pour que son modèle
+        // d'économie sature) — une seule formule, jamais deux chiffres qui
+        // pourraient diverger.
+        const consoAnnuelleReelle = consoAnnuelleDepuisFactures(
+          facturesReelles, distributeurLead)
         etudeExtra.factures_mensuelles_reelles = facturesReelles
         if (consoAnnuelleReelle > 0) etudeExtra.conso_annuelle = consoAnnuelleReelle
         if (distributeurLead) etudeExtra.distributeur = distributeurLead

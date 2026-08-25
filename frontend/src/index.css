@@ -7340,10 +7340,15 @@ textarea.form-control {
   color: var(--muted-foreground);
   cursor: pointer;
 }
-.lw-context-devis-apercu-interne-btn:hover,
-.lw-context-devis-apercu-interne-open:hover {
-  color: var(--foreground);
-  text-decoration: underline;
+/* Survol gardé derrière `@media (hover: hover)` comme tous les :hover du
+   fichier (contrat hover-compat) : sur tactile le lien reste sobre, sans
+   état de survol collant après le tap. */
+@media (hover: hover) {
+  .lw-context-devis-apercu-interne-btn:hover,
+  .lw-context-devis-apercu-interne-open:hover {
+    color: var(--foreground);
+    text-decoration: underline;
+  }
 }
 .lw-context-devis-apercu-interne-btn:disabled,
 .lw-context-devis-apercu-interne-open:disabled {
