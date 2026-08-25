@@ -44,9 +44,14 @@ from decimal import Decimal
 logger = logging.getLogger(__name__)
 
 #: Critère de recommandation par DÉFAUT — nommé pour être discutable.
-#: « meilleur payback, à égalité la meilleure couverture » : on optimise le
-#: retour sur investissement du client, et on départage deux tailles au
-#: payback équivalent par celle qui couvre le plus de sa consommation.
+#:
+#: DEPUIS LE 25/08/2026 (doctrine fondateur, voir :data:`TOLERANCE_PAYBACK`) sa
+#: définition a CHANGÉ, la clé pas : « meilleur payback » est le POINT DE
+#: DÉPART, plus le point d'arrivée. On part de la taille au meilleur payback,
+#: puis on MONTE tant que chaque panneau (ou chaque batterie) supplémentaire se
+#: rembourse dans l'horizon toléré. Le client obtient ainsi la plus forte
+#: réduction de facture atteignable sous un ROI raisonnable, et non le plus
+#: petit kit qui affiche le plus joli ratio.
 CRITERE_DEFAUT = 'meilleur_payback'
 
 #: Critères reconnus. ``meilleure_couverture`` maximise la part de
@@ -60,6 +65,28 @@ CRITERES = (CRITERE_DEFAUT, 'meilleure_couverture', 'economie_max')
 #: départager 7,41 et 7,43 ans serait une fausse précision. Départage alors par
 #: la couverture, conformément au critère par défaut.
 EGALITE_PAYBACK_ANNEES = 0.25
+
+#: ═══ LA DOCTRINE D'OPTIMUM DU FONDATEUR (25/08/2026) ═══════════════════════
+#:
+#: VERBATIM : « L'optimum = celui qui réduit la facture le PLUS, avec un ROI
+#: raisonnable — pas seulement le meilleur payback. On accepte une taille plus
+#: grande tant que la dégradation du payback reste sous ~20 % du meilleur
+#: payback. L'optimum s'arrête quand des panneaux en plus n'apportent que des
+#: gains négligeables par rapport à l'investissement. »
+#:
+#: CETTE CONSTANTE EST **LE BOUTON**. Elle est la SEULE grandeur réglable de la
+#: doctrine, et elle vaut pour les DEUX optimiseurs (sans stockage et
+#: champ × stockage). Le fondateur a dit « ou même un peu plus » : c'est LUI
+#: qui monte le curseur, jamais le code — la porter à 0,25 « de son chef »
+#: reviendrait à décider à sa place quelle dégradation de ROI est acceptable.
+#: La mettre à 0,0 redonne la règle d'avant (aucune dégradation tolérée).
+TOLERANCE_PAYBACK = 0.20
+
+#: Tolérance numérique de comparaison des ratios (années). Un pas marginal à
+#: 8,000000001 an devant un horizon de 8,0 an n'est pas un pas refusable :
+#: refuser sur un flottant produirait un arrêt que personne ne peut expliquer
+#: en lisant le tableau.
+_EPSILON_ANNEES = 1e-9
 
 #: Ratio onduleur/kWc minimal — LE chiffre du fondateur, déjà appliqué par
 #: ``composition_residentielle``. Répété ici UNIQUEMENT pour vérifier et rendre
@@ -359,6 +386,103 @@ def _payback(cout, economie_annuelle):
     if economie_annuelle <= 0 or cout <= 0:
         return None
     return cout / economie_annuelle
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# LA DOCTRINE D'OPTIMUM — UNE SEULE MÉCANIQUE, DEUX OPTIMISEURS
+# ════════════════════════════════════════════════════════════════════════════
+#
+# LA PROPRIÉTÉ MATHÉMATIQUE QUI REND LA RÈGLE HONNÊTE. Notons H l'horizon
+# toléré (:func:`horizon_tolere`), C₀/E₀ le coût et l'économie annuelle du
+# point de départ (la taille au MEILLEUR payback) et ΔCᵢ/ΔEᵢ ceux du i-ème pas
+# marginal franchi. La règle n'admet un pas que si ΔCᵢ ≤ H·ΔEᵢ, et le départ
+# vérifie C₀ ≤ H·E₀ par construction (C₀/E₀ = meilleur payback ≤ H). En
+# sommant :
+#
+#     Cₙ = C₀ + ΣΔCᵢ ≤ H·E₀ + H·ΣΔEᵢ = H·Eₙ     donc   Cₙ/Eₙ ≤ H
+#
+# — le payback GLOBAL de la taille retenue reste sous l'horizon, quel que soit
+# le nombre de pas franchis (c'est l'inégalité des médiants : une moyenne
+# pondérée de rapports tous ≤ H est ≤ H). Autrement dit les deux moitiés de la
+# phrase du fondateur — « réduire la facture le PLUS » et « avec un ROI
+# raisonnable » — ne sont pas deux contraintes à arbitrer : c'est UNE SEULE
+# règle, et ce module la vérifie plutôt que de l'affirmer (épinglé par
+# ``test_dimensionnement_exemples`` et ``test_deux_optimiseurs``).
+#
+# ET « L'OPTIMUM S'ARRÊTE QUAND LES GAINS DEVIENNENT NÉGLIGEABLES » EN EST LA
+# MÊME RÈGLE VUE DE L'AUTRE CÔTÉ : un pas dont l'économie marginale tend vers
+# zéro a un ratio ΔC/ΔE qui tend vers l'infini — il sort de l'horizon TOUT
+# SEUL, sans qu'aucun seuil de « négligeable » n'ait à être inventé.
+
+
+def horizon_tolere(meilleur_payback):
+    """H — l'horizon de remboursement toléré, en années.
+
+    ``meilleur_payback × (1 + TOLERANCE_PAYBACK)``. ``None`` quand le meilleur
+    payback n'est pas chiffrable : sans point de départ, il n'y a pas d'horizon
+    et donc aucune montée possible — jamais un horizon de repli inventé.
+    """
+    if meilleur_payback is None:
+        return None
+    valeur = _num(meilleur_payback, -1.0)
+    if valeur <= 0:
+        return None
+    return valeur * (1.0 + TOLERANCE_PAYBACK)
+
+
+def ratio_pas_marginal(cout_avant, economie_avant, cout_apres, economie_apres):
+    """LE PRIX DU PAS, en années : Δcoût / Δéconomie annuelle.
+
+    C'est le payback du SEUL supplément — les panneaux (ou les batteries) que
+    ce pas ajoute, payés par les dirhams que ce pas ajoute. Trois natures de
+    pas, et une seule est refusée :
+
+    * ``Δcoût > 0`` et ``Δéconomie > 0`` → le ratio, à comparer à l'horizon ;
+    * ``Δcoût ≤ 0`` et ``Δéconomie ≥ 0`` → le pas est GRATUIT (une marche du
+      catalogue peut coûter moins tout en produisant plus) : ``0.0``, toujours
+      admissible ;
+    * ``Δéconomie ≤ 0`` alors que le pas coûte → ``None`` : payer pour ne rien
+      gagner, exactement le « gain négligeable » où le fondateur veut que
+      l'optimum s'arrête.
+    """
+    delta_cout = _num(cout_apres) - _num(cout_avant)
+    delta_economie = _num(economie_apres) - _num(economie_avant)
+    if delta_cout <= 0:
+        return 0.0 if delta_economie >= 0 else None
+    if delta_economie <= 0:
+        return None
+    return delta_cout / delta_economie
+
+
+def grimper_par_pas_marginaux(depart, suivants, horizon, cout, economie):
+    """LE CŒUR DE LA DOCTRINE : jusqu'où monter depuis ``depart``.
+
+    ``suivants`` est la suite ORDONNÉE CROISSANTE des candidats strictement
+    plus grands que ``depart`` ; ``cout`` et ``economie`` en extraient les deux
+    grandeurs. On avance d'un cran tant que le pas se rembourse en ≤ ``horizon``
+    et l'on S'ARRÊTE AU PREMIER PAS REFUSÉ — on ne l'ENJAMBE pas. C'est une
+    décision, et elle est celle du fondateur mot pour mot (« des pas ascendants
+    dont CHAQUE pas marginal se rembourse en ≤ H ») : c'est la CHAÎNE ININTER-
+    ROMPUE de pas admissibles qui démontre le payback global (voir l'encadré
+    ci-dessus). Enjamber un pas hors horizon en le noyant dans le suivant
+    reviendrait à vendre au client une marche qu'il aurait refusée si on la lui
+    avait montrée seule.
+
+    Renvoie ``(candidat_retenu, [ratio de chaque pas franchi])`` — la liste des
+    ratios est la PREUVE lisible de la montée, pas un détail de journalisation.
+    """
+    courant = depart
+    if horizon is None:
+        return courant, []
+    franchis = []
+    for candidat in (suivants or ()):
+        ratio = ratio_pas_marginal(cout(courant), economie(courant),
+                                   cout(candidat), economie(candidat))
+        if ratio is None or ratio > horizon + _EPSILON_ANNEES:
+            break
+        courant = candidat
+        franchis.append(round(ratio, 2))
+    return courant, franchis
 
 
 def paliers_stockage_candidats(capacites_vivier, *,
@@ -867,9 +991,24 @@ def _arrondi(valeur, decimales=2):
 def choisir_recommandation(tableau, critere=CRITERE_DEFAUT):
     """La taille RECOMMANDÉE dans un tableau, avec sa MOTIVATION en clair.
 
-    Règle par défaut (:data:`CRITERE_DEFAUT`) : le meilleur payback ; à
-    égalité (écart < :data:`EGALITE_PAYBACK_ANNEES`, un payback n'étant pas
-    connu au centième d'année), la meilleure couverture de consommation.
+    Règle par défaut (:data:`CRITERE_DEFAUT`), DOCTRINE FONDATEUR DU
+    25/08/2026 — en DEUX temps, et le second est la nouveauté :
+
+    1. **le départ** — la taille au meilleur payback ; à égalité (écart <
+       :data:`EGALITE_PAYBACK_ANNEES`, un payback n'étant pas connu au centième
+       d'année), la meilleure couverture de consommation. C'est exactement ce
+       que ce critère rendait avant le 25/08 ;
+    2. **la montée** — on grimpe ensuite de taille en taille tant que CHAQUE
+       panneau supplémentaire se rembourse dans l'horizon toléré
+       H = meilleur payback × (1 + :data:`TOLERANCE_PAYBACK`), et l'on s'arrête
+       au premier pas qui n'y arrive pas (:func:`grimper_par_pas_marginaux`).
+       Le payback GLOBAL de la taille retenue reste alors sous H — c'est
+       démontré dans l'encadré du module, pas espéré.
+
+    CE QUE LE FONDATEUR A CHANGÉ, EN UNE PHRASE : le meilleur payback était le
+    point d'ARRIVÉE, il est devenu le point de DÉPART. Une installation plus
+    grande qui réduit davantage la facture est désormais préférée, tant que le
+    ROI reste raisonnable.
 
     Une taille NON composable, ou dont le payback est inconnu (économie nulle),
     n'est jamais recommandée — mais elle reste dans le tableau : le fondateur
@@ -912,71 +1051,271 @@ def choisir_recommandation(tableau, critere=CRITERE_DEFAUT):
             % (meilleur['couverture_sans'] * 100)
         )
 
+    # ── 1. LE POINT DE DÉPART : la taille au meilleur payback ────────────────
     meilleur_payback = min(x['payback_sans_annees'] for x in eligibles)
     a_egalite = [
         x for x in eligibles
         if x['payback_sans_annees'] - meilleur_payback < EGALITE_PAYBACK_ANNEES
     ]
-    meilleur = max(a_egalite, key=lambda x: (x['couverture_sans'], x['kwc']))
-    if len(a_egalite) > 1:
+    depart = max(a_egalite, key=lambda x: (x['couverture_sans'], x['kwc']))
+
+    # ── 2. LA MONTÉE : doctrine fondateur du 25/08/2026 ──────────────────────
+    # Les pas sont les TAILLES DE CHAMP du catalogue, dans l'ordre croissant.
+    horizon = horizon_tolere(meilleur_payback)
+    suivants = [x for x in sorted(eligibles,
+                                  key=lambda x: (x['kwc'], x['panneaux']))
+                if x['kwc'] > depart['kwc']]
+    meilleur, franchis = grimper_par_pas_marginaux(
+        depart, suivants, horizon,
+        lambda x: _num(x['cout_sans_ttc']),
+        lambda x: _num(x['economie_sans_mad']))
+
+    if franchis:
+        motivation = (
+            'réduction de facture maximale à ROI raisonnable : départ au '
+            'meilleur payback (%.1f ans), horizon toléré %.1f ans '
+            '(+%.0f %%), puis %d panneau(x) de plus dont chaque pas se '
+            'rembourse en %s an(s) — %d panneaux, %.2f kWc, payback global '
+            '%.1f ans, couverture %.0f %% — critère « %s »'
+            % (meilleur_payback, horizon, TOLERANCE_PAYBACK * 100,
+               meilleur['panneaux'] - depart['panneaux'],
+               ', '.join('%.1f' % r for r in franchis),
+               meilleur['panneaux'], meilleur['kwc'],
+               meilleur['payback_sans_annees'],
+               meilleur['couverture_sans'] * 100, CRITERE_DEFAUT)
+        )
+    elif len(a_egalite) > 1:
         motivation = (
             'meilleur payback (%.1f ans, %d tailles à égalité à moins de '
-            '%.2f an près) puis meilleure couverture (%.0f %%) — critère '
-            '« %s »' % (meilleur['payback_sans_annees'], len(a_egalite),
-                        EGALITE_PAYBACK_ANNEES,
-                        meilleur['couverture_sans'] * 100, CRITERE_DEFAUT)
+            '%.2f an près) puis meilleure couverture (%.0f %%) ; aucun panneau '
+            'de plus ne se rembourse dans l\'horizon toléré de %.1f ans '
+            '(+%.0f %%) — critère « %s »'
+            % (meilleur['payback_sans_annees'], len(a_egalite),
+               EGALITE_PAYBACK_ANNEES, meilleur['couverture_sans'] * 100,
+               horizon, TOLERANCE_PAYBACK * 100, CRITERE_DEFAUT)
         )
     else:
         motivation = (
-            'meilleur payback (%.1f ans), sans égalité — critère « %s »'
-            % (meilleur['payback_sans_annees'], CRITERE_DEFAUT)
+            'meilleur payback (%.1f ans), sans égalité ; aucun panneau de plus '
+            'ne se rembourse dans l\'horizon toléré de %.1f ans (+%.0f %%) — '
+            'critère « %s »'
+            % (meilleur['payback_sans_annees'], horizon,
+               TOLERANCE_PAYBACK * 100, CRITERE_DEFAUT)
         )
     return meilleur, motivation
 
 
-def choisir_recommandation_avec(tableau):
-    """DIM2 — LA TAILLE + LE STOCKAGE au meilleur payback AVEC batterie.
+def combos_champ_stockage(tableau):
+    """LA GRILLE champ × stockage ADMISSIBLE — un point par (taille, palier).
 
-    L'axe « avec batterie » a désormais son propre gagnant, parce qu'il a
-    désormais son propre balayage : le meilleur payback SANS stockage et le
-    meilleur payback AVEC ne tombent pas forcément sur le même champ.
+    Un point n'entre dans la grille que si la taille est composable, sans
+    AUCUN verdict électrique bloquant (ni sur l'option de base, ni sur l'option
+    batterie) et si le palier est chiffrable. La règle fondateur « la batterie
+    se remplit chaque jour » est CONSERVÉE TELLE QUELLE : ``balayage_stockage``
+    ne contient QUE des paliers qui passent le plafond de remplissage (voir
+    ``_balayer_stockage_de_la_taille``), donc un palier qui dort en janvier
+    n'est même pas un point de cette grille.
 
-    Mêmes gardes que :func:`choisir_recommandation` : la taille doit être
-    composable et n'avoir AUCUN verdict électrique bloquant — ni sur l'option
-    de base, ni sur l'option batterie. On ne recommande pas ce qu'on ne peut
-    pas livrer.
-
-    Renvoie ``(ligne | None, motivation: str)``.
+    Ordonnée croissante en (panneaux, capacité) — l'ordre dans lequel la
+    doctrine d'optimum monte.
     """
-    eligibles = [
-        ligne for ligne in (tableau or [])
-        if ligne.get('composable')
-        and ligne.get('batterie_disponible')
-        and ligne.get('payback_avec_annees') is not None
-        and not ligne.get('verdicts_bloquants_sans')
-        and not ligne.get('verdicts_bloquants_avec')
-    ]
-    if not eligibles:
+    combos = []
+    for ligne in (tableau or []):
+        if not ligne.get('composable'):
+            continue
+        if ligne.get('verdicts_bloquants_sans'):
+            continue
+        if ligne.get('verdicts_bloquants_avec'):
+            continue
+        for palier in (ligne.get('balayage_stockage') or []):
+            if palier.get('payback_annees') is None:
+                continue
+            combos.append({
+                'ligne': ligne,
+                'palier': palier,
+                'panneaux': int(ligne['panneaux']),
+                'kwc': _num(ligne['kwc']),
+                'capacite_kwh': _num(palier['capacite_kwh']),
+                'cout_ttc': _num(palier['cout_ttc']),
+                'economie_mad': _num(palier['economie_mad']),
+                'payback_annees': _num(palier['payback_annees']),
+                'residuel_kwh_mois': _num(palier['residuel_kwh_mois']),
+            })
+    combos.sort(key=lambda c: (c['panneaux'], c['capacite_kwh']))
+    return combos
+
+
+def _voisins_grille(combo, par_panneaux, tailles):
+    """LES PAS IMMÉDIATS depuis un point de la grille — au plus deux.
+
+    La grille a DEUX dimensions, donc « le candidat suivant » n'est pas unique.
+    Les deux seuls pas qui ont un sens physique sont :
+
+    * **une batterie de plus, à champ constant** — le palier de stockage juste
+      au-dessus sur la MÊME taille de champ ;
+    * **du champ en plus, à stockage au moins égal** — la première taille de
+      champ supérieure qui sait encore porter au moins la capacité actuelle
+      (« extra batteries might add extra panels with extra cost, that is still
+      fine », fondateur 25/08/2026). Une taille intermédiaire qui ne remplirait
+      plus cette capacité est ENJAMBÉE : elle n'est pas un pas en arrière, elle
+      n'est simplement pas un point de la grille.
+
+    Aucun pas ne diminue une dimension : la montée est monotone, donc elle
+    termine.
+    """
+    voisins = []
+    memes = par_panneaux.get(combo['panneaux']) or []
+    superieurs = [c for c in memes if c['capacite_kwh'] > combo['capacite_kwh']]
+    if superieurs:
+        voisins.append(superieurs[0])
+    for panneaux in tailles:
+        if panneaux <= combo['panneaux']:
+            continue
+        candidats = [c for c in (par_panneaux.get(panneaux) or [])
+                     if c['capacite_kwh'] >= combo['capacite_kwh']]
+        if candidats:
+            voisins.append(candidats[0])
+            break
+    return voisins
+
+
+def _ligne_avec_palier(ligne, palier):
+    """La LIGNE du tableau dont les colonnes « avec » décrivent CE palier.
+
+    C'est une COPIE, jamais une mutation, et la raison est concrète : la même
+    ligne peut aussi être la recommandation SANS batterie et elle reste dans
+    ``tableau``, où le rapport l'imprime. Réécrire ses colonnes en place ferait
+    afficher au tableau un stockage qui n'est pas celui qu'il a évalué pour
+    cette taille.
+
+    La forme rendue est celle des lignes du tableau, à la clé près : tout
+    appelant historique (moteur PDF, payload public, ``services.
+    _recommandation_avec_rendue``) la lit sans rien changer.
+    """
+    rendu = dict(ligne)
+    rendu.update({
+        'batterie_disponible': True,
+        'batterie_kwh': palier['capacite_kwh'],
+        'taux_autoconso_avec': palier['taux_autoconso'],
+        'couverture_avec': palier['couverture'],
+        'economie_avec_mad': palier['economie_mad'],
+        'cout_avec_ttc': palier['cout_ttc'],
+        'payback_avec_annees': palier['payback_annees'],
+        'residuel_avec_kwh_mois': palier['residuel_kwh_mois'],
+        'tranche_apres_avec': palier['tranche_apres'],
+        'residuel_kwh_mois': palier['residuel_kwh_mois'],
+        'tranche_apres': palier['tranche_apres'],
+        'remplissage': palier['remplissage'],
+        'lignes_avec': list(palier.get('lignes') or []),
+    })
+    return rendu
+
+
+def choisir_recommandation_avec(tableau):
+    """DIM2 + DOCTRINE 25/08/2026 — L'OPTIMUM CONJOINT champ × stockage.
+
+    L'axe « avec batterie » a son propre gagnant depuis DIM2, parce qu'il a son
+    propre balayage : le meilleur payback SANS stockage et l'optimum AVEC ne
+    tombent pas sur le même champ. La doctrine du 25/08 y ajoute la MONTÉE, en
+    DEUX DIMENSIONS :
+
+    1. **le départ** — le point de la grille (:func:`combos_champ_stockage`) au
+       meilleur payback ; à égalité (< :data:`EGALITE_PAYBACK_ANNEES`), le
+       résiduel le PLUS BAS, celui qui rapproche de la marche du barème ;
+    2. **la montée** — on avance vers le voisin immédiat (une batterie de plus,
+       ou du champ en plus à stockage au moins égal) dont le pas marginal se
+       rembourse le mieux, tant qu'il tient dans l'horizon
+       H = meilleur payback × (1 + :data:`TOLERANCE_PAYBACK`).
+
+    CONSÉQUENCE PRÉDITE PAR LE FONDATEUR, ET VOULUE : un profil « absent en
+    journée » — beaucoup de surplus, peu d'autoconsommation directe — reçoit
+    désormais PLUS de batteries qu'un profil présent à facture égale. Chaque
+    batterie y stocke du surplus qui serait autrement perdu, donc son Δéconomie
+    est forte, donc son pas marginal passe l'horizon. Chez le profil présent, le
+    même kWh de batterie rapporte moins : le pas sort de l'horizon plus tôt et
+    la montée s'arrête (épinglé par ``test_dimensionnement_exemples``).
+
+    Mêmes gardes qu'ailleurs : on ne recommande jamais ce qu'on ne peut pas
+    livrer, et « la batterie se remplit chaque jour » reste intacte.
+
+    Renvoie ``(ligne | None, motivation: str)`` — la ligne portant les colonnes
+    « avec » du palier RETENU (:func:`_ligne_avec_palier`).
+    """
+    combos = combos_champ_stockage(tableau)
+    if not combos:
         return None, (
             'aucune configuration avec batterie recommandable : à chaque taille '
             'candidate, soit l\'électricité refuse le couple, soit aucune '
             'capacité du catalogue ne se remplit tous les jours'
         )
-    meilleur_payback = min(x['payback_avec_annees'] for x in eligibles)
-    a_egalite = [x for x in eligibles
-                 if x['payback_avec_annees'] - meilleur_payback
+
+    # ── 1. LE POINT DE DÉPART ────────────────────────────────────────────────
+    meilleur_payback = min(c['payback_annees'] for c in combos)
+    a_egalite = [c for c in combos
+                 if c['payback_annees'] - meilleur_payback
                  < EGALITE_PAYBACK_ANNEES]
-    # À payback équivalent, le résiduel le PLUS BAS : c'est lui qui rapproche
-    # de la marche du barème (et donc de la falaise que le fondateur chasse).
-    meilleur = min(a_egalite, key=lambda x: (x['residuel_kwh_mois'],
-                                             x['payback_avec_annees']))
-    return meilleur, (
-        'meilleur payback AVEC batterie (%.1f ans) : %s panneaux + %s kWh de '
-        'stockage, résiduel %s kWh/mois (%s)'
-        % (meilleur['payback_avec_annees'], meilleur['panneaux'],
-           _kwh_txt(meilleur['batterie_kwh']),
-           _kwh_txt(meilleur['residuel_kwh_mois']),
-           (meilleur.get('tranche_apres') or {}).get('libelle') or 'hors barème'))
+    depart = min(a_egalite, key=lambda c: (c['residuel_kwh_mois'],
+                                           c['payback_annees']))
+
+    # ── 2. LA MONTÉE DANS LA GRILLE ──────────────────────────────────────────
+    horizon = horizon_tolere(meilleur_payback)
+    par_panneaux = {}
+    for combo in combos:
+        par_panneaux.setdefault(combo['panneaux'], []).append(combo)
+    tailles = sorted(par_panneaux)
+
+    courant = depart
+    franchis = []
+    # GARDE-FOU : chaque pas augmente strictement (panneaux, capacité), donc la
+    # montée ne peut pas boucler ; la borne est là pour que ce raisonnement
+    # n'ait jamais à être re-vérifié à la lecture.
+    for _ in range(len(combos) if horizon is not None else 0):
+        admissibles = []
+        for voisin in _voisins_grille(courant, par_panneaux, tailles):
+            ratio = ratio_pas_marginal(
+                courant['cout_ttc'], courant['economie_mad'],
+                voisin['cout_ttc'], voisin['economie_mad'])
+            if ratio is None or ratio > horizon + _EPSILON_ANNEES:
+                continue
+            admissibles.append((ratio, voisin))
+        if not admissibles:
+            break
+        # LE MOINS CHER PAR DIRHAM GAGNÉ D'ABORD : à budget de ROI donné, c'est
+        # le pas qui laisse le plus de marge pour continuer à monter — donc
+        # celui qui mène le plus loin dans la réduction de facture.
+        ratio, courant = min(
+            admissibles,
+            key=lambda couple: (couple[0], -couple[1]['economie_mad']))
+        franchis.append(round(ratio, 2))
+
+    meilleur = _ligne_avec_palier(courant['ligne'], courant['palier'])
+    if franchis:
+        motivation = (
+            'réduction de facture maximale à ROI raisonnable AVEC batterie : '
+            'départ au meilleur payback (%.1f ans), horizon toléré %.1f ans '
+            '(+%.0f %%), puis %d pas marginaux à %s an(s) — %s panneaux + '
+            '%s kWh de stockage, payback global %.1f ans, résiduel %s kWh/mois '
+            '(%s)'
+            % (meilleur_payback, horizon, TOLERANCE_PAYBACK * 100,
+               len(franchis), ', '.join('%.1f' % r for r in franchis),
+               meilleur['panneaux'], _kwh_txt(meilleur['batterie_kwh']),
+               meilleur['payback_avec_annees'],
+               _kwh_txt(meilleur['residuel_kwh_mois']),
+               (meilleur.get('tranche_apres') or {}).get('libelle')
+               or 'hors barème'))
+    else:
+        motivation = (
+            'meilleur payback AVEC batterie (%.1f ans) : %s panneaux + %s kWh '
+            'de stockage, résiduel %s kWh/mois (%s) ; aucun pas de plus '
+            '(batterie ou panneaux) ne se rembourse dans l\'horizon toléré de '
+            '%.1f ans (+%.0f %%)'
+            % (meilleur['payback_avec_annees'], meilleur['panneaux'],
+               _kwh_txt(meilleur['batterie_kwh']),
+               _kwh_txt(meilleur['residuel_kwh_mois']),
+               (meilleur.get('tranche_apres') or {}).get('libelle')
+               or 'hors barème',
+               horizon, TOLERANCE_PAYBACK * 100))
+    return meilleur, motivation
 
 
 def chercher_falaise(tableau, cible_kwh_mois):
@@ -1067,6 +1406,15 @@ def recommander_taille(*, company, conso_kwh_mensuelles, critere=CRITERE_DEFAUT,
         'criteres_disponibles': list(CRITERES),
         'regle_onduleur_min': RATIO_ONDULEUR_MIN,
         'max_paliers_stockage': MAX_PALIERS_STOCKAGE,
+        'tolerance_payback': TOLERANCE_PAYBACK,
+        'regle_optimum': (
+            'l\'optimum est la PLUS GRANDE taille atteignable depuis celle du '
+            'meilleur payback par des pas dont chacun se rembourse en moins de '
+            '%d %% au-dessus de ce meilleur payback : la facture baisse le plus '
+            'possible, le ROI reste raisonnable, et la montée s\'arrête d\'elle-'
+            'même quand un panneau (ou une batterie) de plus n\'apporte plus '
+            'assez (doctrine fondateur du 25/08/2026)'
+            % round(TOLERANCE_PAYBACK * 100)),
         'regle_stockage': (
             'un palier de stockage n\'est candidat que si la batterie se '
             'remplit TOUS LES JOURS : capacité utile ≤ surplus quotidien du '
