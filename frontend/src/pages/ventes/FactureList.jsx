@@ -33,7 +33,7 @@ import {
   Popover, PopoverTrigger, PopoverContent,
   toast,
 } from '../../ui'
-import { formatMAD, toNumber, normalizeMaPhone, formatDateTime } from '../../lib/format'
+import { formatMAD, toNumber, normalizePhoneE164, formatDateTime } from '../../lib/format'
 // APX11 — en-tête unique VX28 + accent de module (identité Ventes).
 import { PageHeader } from '../../ui/PageHeader'
 import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
@@ -225,7 +225,7 @@ function FactureRow({ f, ctx }) {
   const pdfLabel = useRotatingLabel(FACTURE_PDF_GENERATION_LABELS, { active: !!isGenerating })
   const isWaBusy = waBusy[f.id]
   // L853 — téléphone client normalisable (miroir backend).
-  const waPhoneOk = !!normalizeMaPhone(f.client_telephone)
+  const waPhoneOk = !!normalizePhoneE164(f.client_telephone)
   const nba = nextBestAction(f)
   const isPayLinkBusy = payLinkBusy[f.id]
   const isDgiBusy = dgiBusy[f.id]

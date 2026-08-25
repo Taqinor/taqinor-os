@@ -9,7 +9,7 @@ jointe (cela exigerait l'API payante WhatsApp Business — hors périmètre).
 import re
 from urllib.parse import quote
 
-from .phone import normalize_ma_phone
+from .phone import normalize_phone_e164
 
 
 def render_message_template(text, ctx):
@@ -41,8 +41,12 @@ def public_document_url(request, token):
 
 
 def build_wa_url(phone_raw, message):
-    """Construit l'URL wa.me, ou None si le numéro est inexploitable."""
-    number = normalize_ma_phone(phone_raw)
+    """Construit l'URL wa.me, ou None si le numéro est inexploitable.
+
+    25/08/2026 — LANE NUMÉROS INTERNATIONAUX : accepte tout numéro E.164
+    plausible (marocain OU étranger à indicatif explicite), pas seulement le
+    Maroc — wa.me fonctionne avec n'importe quel indicatif pays."""
+    number = normalize_phone_e164(phone_raw)
     if not number:
         return None
     return f'https://wa.me/{number}?text={quote(message)}'

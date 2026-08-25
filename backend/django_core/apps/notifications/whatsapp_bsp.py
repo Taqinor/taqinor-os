@@ -32,12 +32,20 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 def _normalize_phone(phone_raw):
-    """Delegue a la normalisation existante (ex. +2126xxxxxxxx -> 2126xxxxxxxx)."""
+    """Delegue a la normalisation E.164 generale (ex. +2126xxxxxxxx ->
+    2126xxxxxxxx, +33612345678 -> 33612345678).
+
+    25/08/2026 - LANE NUMEROS INTERNATIONAUX : bascule depuis
+    normalize_ma_phone (marocain uniquement, sinon None) vers
+    normalize_phone_e164 - meme motif que build_wa_url (apps.ventes.utils.
+    whatsapp), dont ManualWaMeProvider.get_wa_url delegue en priorite ;
+    cette fonction n'est qu'un repli si build_wa_url est inaccessible, ou
+    le "to" du payload BSP (_send_via_api, scaffold non actif)."""
     try:
-        from apps.ventes.utils.phone import normalize_ma_phone
-        return normalize_ma_phone(phone_raw)
+        from apps.ventes.utils.phone import normalize_phone_e164
+        return normalize_phone_e164(phone_raw)
     except Exception as exc:  # pragma: no cover - defensif
-        logger.warning("normalize_ma_phone indisponible : %s", exc)
+        logger.warning("normalize_phone_e164 indisponible : %s", exc)
         return None
 
 

@@ -11,7 +11,7 @@ import DocumentStageTrack from '../../../ui/DocumentStageTrack'
 import crmApi from '../../../api/crmApi'
 import ventesApi from '../../../api/ventesApi'
 import installationsApi from '../../../api/installationsApi'
-import { formatMAD, formatDate, normalizeMaPhone } from '../../../lib/format'
+import { formatMAD, formatDate, normalizePhoneE164 } from '../../../lib/format'
 import { toastError, errorMessageFrom } from '../../../lib/toast'
 // L5 (fondateur 21/08/2026) — lien PAGE CLIENT + message WhatsApp, MÊME
 // FORMAT que l'outil 3D (ToitureDesign.jsx). Fonctions pures, testées à part.
@@ -116,7 +116,7 @@ export function sectionsDepuisServeur(sections) {
 
 // eslint-disable-next-line react-refresh/only-export-components -- logique pure co-localisée (testable)
 export function waArmed(phone, selectedCount) {
-  return !!normalizeMaPhone(phone) && selectedCount > 0
+  return !!normalizePhoneE164(phone) && selectedCount > 0
 }
 
 // EZ5 — intention d'ouverture du panneau devis. Sans puissance cible saisie on
@@ -149,7 +149,7 @@ export default function DevisTab({
   const devisList = state.server?.devis ?? []
   const devisAuto = state.server?.devis_auto ?? { pret: false, manquants: [] }
   const leadPhone = (state.server?.whatsapp || state.server?.telephone || '').trim()
-  const leadPhoneOk = !!normalizeMaPhone(leadPhone)
+  const leadPhoneOk = !!normalizePhoneE164(leadPhone)
 
   const [busyAction, setBusyAction] = useState(null) // `f-<id>` | `c-<id>` | null
   const [actionMsg, setActionMsg] = useState(null)
@@ -303,7 +303,7 @@ export default function DevisTab({
     try {
       const url = await mintProposalUrl(d)
       const nom = `${state.server?.nom ?? ''} ${state.server?.prenom ?? ''}`.trim()
-      const waUrl = buildWaUrl(normalizeMaPhone(leadPhone), proposalWhatsappText(nom, url))
+      const waUrl = buildWaUrl(normalizePhoneE164(leadPhone), proposalWhatsappText(nom, url))
       if (waUrl) window.open(waUrl, '_blank', 'noopener')
     } catch (err) {
       setActionMsg(errorMessageFrom(err, 'Lien WhatsApp indisponible.'))

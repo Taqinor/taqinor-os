@@ -2145,16 +2145,16 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         Ouvrir puis fermer la modale ne doit JAMAIS créer un devis fantôme
         « envoyé » dont l'horloge de validité a démarré. Aucune transition de
         statut, aucune écriture (hormis le ShareLink réutilisé, idempotent)."""
-        from ..utils.phone import normalize_ma_phone
+        from ..utils.phone import normalize_phone_e164
         from ..utils.whatsapp import (
             build_single_devis_whatsapp, build_wa_url, devis_recipient_phone,
         )
 
         devis = self.get_object()
         phone = devis_recipient_phone(devis)
-        if not normalize_ma_phone(phone):
+        if not normalize_phone_e164(phone):
             return Response(
-                {'detail': 'Aucun numéro de téléphone.'},
+                {'detail': 'Numéro de téléphone invalide.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         langue = request.data.get('langue')
@@ -2195,7 +2195,7 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         téléphone). Body optionnel : ``langue`` (défaut : langue du lead, sinon
         « fr »). La société est déjà bornée par ``get_queryset``.
         """
-        from ..utils.phone import normalize_ma_phone
+        from ..utils.phone import normalize_phone_e164
         from ..utils.whatsapp import (
             build_single_devis_whatsapp, build_wa_url, devis_recipient_phone,
         )
@@ -2203,9 +2203,9 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
 
         devis = self.get_object()
         phone = devis_recipient_phone(devis)
-        if not normalize_ma_phone(phone):
+        if not normalize_phone_e164(phone):
             return Response(
-                {'detail': 'Aucun numéro de téléphone.'},
+                {'detail': 'Numéro de téléphone invalide.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         langue = request.data.get('langue')

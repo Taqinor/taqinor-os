@@ -994,13 +994,13 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         un lien public tokenisé (30 j) vers le PDF CLIENT de la facture.
         Body : `modele` ∈ {'facture','relance'}, `langue` ∈ {'fr','darija'}.
         """
-        from ..utils.phone import normalize_ma_phone
+        from ..utils.phone import normalize_phone_e164
         from ..utils.whatsapp import build_facture_whatsapp, build_wa_url
         facture = self.get_object()
         phone = facture.client.telephone if facture.client_id else ''
-        if not normalize_ma_phone(phone):
+        if not normalize_phone_e164(phone):
             return Response(
-                {'detail': 'Aucun numéro de téléphone.'},
+                {'detail': 'Numéro de téléphone invalide.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         modele = request.data.get('modele', 'facture')

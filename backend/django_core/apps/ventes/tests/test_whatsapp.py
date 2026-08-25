@@ -57,6 +57,15 @@ class TestPhoneNormalization(TestCase):
         self.assertIsNone(normalize_ma_phone(None))
         self.assertIsNone(normalize_ma_phone('   '))
 
+    # 25/08/2026 — LANE NUMÉROS INTERNATIONAUX : avant ce correctif, un
+    # numéro étranger tombait quand même dans le moule '212' + reste
+    # (corruption silencieuse). Voir apps.ventes.utils.phone.
+    # normalize_phone_e164 (apps.ventes.tests.test_phone_international) pour
+    # le chemin qui ACCEPTE un étranger à indicatif explicite.
+    def test_foreign_phone_returns_none_never_corrupted(self):
+        self.assertIsNone(normalize_ma_phone('+33612345678'))
+        self.assertNotEqual(normalize_ma_phone('+33612345678'), '21233612345678')
+
 
 class TestMessageTemplate(TestCase):
     def setUp(self):
@@ -248,6 +257,19 @@ class TestLeadWhatsAppEndpoint(TestCase):
             self._url(), {'devis_ids': [self.d1.id]}, format='json')
         self.assertEqual(resp.status_code, 400)
 
+    # 25/08/2026 — LANE NUMÉROS INTERNATIONAUX : un lead à numéro étranger
+    # peut désormais recevoir un devis par WhatsApp (avant : 400 « Aucun
+    # numéro de téléphone » — normalize_ma_phone rejetait tout étranger).
+    def test_foreign_phone_builds_wa_url(self):
+        self.lead.telephone = '+33612345678'
+        self.lead.whatsapp = ''
+        self.lead.save(update_fields=['telephone', 'whatsapp'])
+        resp = self.api.post(
+            self._url(), {'devis_ids': [self.d1.id]}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertTrue(resp.data['wa_url'].startswith(
+            'https://wa.me/33612345678?text='))
+
     def test_empty_selection_is_400(self):
         resp = self.api.post(self._url(), {'devis_ids': []}, format='json')
         self.assertEqual(resp.status_code, 400)
@@ -299,6 +321,15 @@ class TestFactureWhatsAppEndpoint(TestCase):
         self.client_obj.save(update_fields=['telephone'])
         resp = self.api.post(self._url(), {'modele': 'facture'}, format='json')
         self.assertEqual(resp.status_code, 400)
+
+    # 25/08/2026 — LANE NUMÉROS INTERNATIONAUX.
+    def test_foreign_phone_builds_wa_url(self):
+        self.client_obj.telephone = '+33612345678'
+        self.client_obj.save(update_fields=['telephone'])
+        resp = self.api.post(self._url(), {'modele': 'facture'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertTrue(resp.data['wa_url'].startswith(
+            'https://wa.me/33612345678?text='))
 
 
 class TestMessagesSettingsApi(TestCase):
