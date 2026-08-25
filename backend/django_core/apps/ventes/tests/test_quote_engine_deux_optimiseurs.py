@@ -23,11 +23,13 @@ Run:
         apps.ventes.tests.test_quote_engine_deux_optimiseurs -v 2
 """
 
+import re
 from decimal import Decimal
 from unittest.mock import patch
 
-from django.test import TestCase, tag
+from django.test import SimpleTestCase, TestCase, tag
 
+from apps.ventes.tests import _moteur_fixtures as F
 from apps.ventes.tests._quote_engine_common import (
     DEUX_OPTIONS, make_client, make_company, make_user,
 )
@@ -124,6 +126,18 @@ class _DevisVariantesMixin:
         ('Batterie Dyness 10 kWh', '1', '25000', ''),
         ('Installation', '1', '5000', ''),
     ]
+    # TÉMOIN de la lane F1 : le MÊME devis, mais avec les 22 panneaux en ligne
+    # COMMUNE (les deux options portent donc le même champ PV). Son option
+    # « sans » a exactement la composition — et donc le total — de l'option
+    # « sans » du devis DIVERGENT : ce que le moteur en dit (production,
+    # économies, payback) doit être identique des deux côtés.
+    EGAL_22 = [
+        ('Panneau Canadien Solar 710W', '22', '1272.73', ''),
+        ('Onduleur réseau Huawei 10kW Triphasé', '1', '16666.67', ''),
+        ('Onduleur hybride Deye 10kW Triphasé', '1', '23333.33', ''),
+        ('Batterie Dyness 10 kWh', '1', '25000', ''),
+        ('Installation', '1', '5000', ''),
+    ]
 
     def _etude_params(self, **extra):
         return {**DEUX_OPTIONS,
@@ -135,6 +149,9 @@ class _DevisVariantesMixin:
 
     def _devis_legacy(self, reference='DEV-L2OPT-LEG'):
         return self._devis(self.LEGACY, reference, self._etude_params())
+
+    def _devis_egal_22(self, reference='DEV-L2OPT-EG22'):
+        return self._devis(self.EGAL_22, reference, self._etude_params())
 
 
 class TestDeuxOptimiseursBuilder(_DevisVariantesMixin, TestCase):
@@ -222,6 +239,120 @@ class TestDeuxOptimiseursBuilder(_DevisVariantesMixin, TestCase):
             data['totaux_sans']['ht_brut'],
             round(sum(it['quantite'] * it['prix_unit_ht']
                       for it in data['sans_items']), 2))
+
+
+class TestDeuxOptimiseursVarianteRendue(_DevisVariantesMixin, TestCase):
+    """F1 (26/08/2026) — LE DOCUMENT RÉTRÉCI À UNE VARIANTE.
+
+    Le trou qui a laissé passer le bug : AUCUN test ne construisait ce devis
+    divergent avec ``variante_option``. Le PDF « Sans batterie » du lien public
+    (``public_views.proposal_pdf`` → ``clean_pdf_options({'variante_option':
+    'sans'})``) annonçait donc « 18,46 kWc · 26 panneaux » — les figures de
+    l'option AVEC — au-dessus d'un tableau qui liste ses 22 panneaux.
+    """
+
+    def test_la_variante_sans_porte_les_scalaires_de_l_option_sans(self):
+        data = self._build(self._devis_divergent('DEV-L2OPT-VSANS'),
+                           {'variante_option': 'sans'})
+        # Le document est bien rétréci à l'option 1.
+        self.assertEqual(data['scenario'], 'Sans batterie')
+        self.assertFalse(data['deux_options'])
+        self.assertFalse(data['avec_ok'])
+        # …et il porte SES figures, jamais celles de l'option qu'il ne rend pas.
+        self.assertEqual(data['nb_panneaux'], 22)
+        self.assertEqual(data['puissance_kwc'], 15.62)
+        self.assertEqual(data['watt_par_panneau'], 710)
+        # Les figures par option restent servies telles quelles (le contrat
+        # L-2OPT ne bouge pas : c'est le scalaire legacy qui suit la variante).
+        self.assertEqual(data['puissance_kwc_sans'], 15.62)
+        self.assertEqual(data['puissance_kwc_avec'], 18.46)
+
+    def test_la_variante_avec_porte_les_scalaires_de_l_option_avec(self):
+        data = self._build(self._devis_divergent('DEV-L2OPT-VAVEC'),
+                           {'variante_option': 'avec'})
+        self.assertEqual(data['scenario'], 'Avec batterie')
+        self.assertFalse(data['deux_options'])
+        self.assertFalse(data['sans_ok'])
+        self.assertEqual(data['nb_panneaux'], 26)
+        self.assertEqual(data['puissance_kwc'], 18.46)
+
+    def test_la_variante_les_deux_garde_le_document_complet(self):
+        """Le document qui rend LES DEUX options garde le repli documenté
+        (clés legacy = option AVEC) : la bande page 2 y affiche les deux."""
+        data = self._build(self._devis_divergent('DEV-L2OPT-VDEUX'),
+                           {'variante_option': 'les_deux'})
+        self.assertTrue(data['deux_options'])
+        self.assertEqual(data['nb_panneaux'], 26)
+        self.assertEqual(data['puissance_kwc'], 18.46)
+
+    def test_la_production_du_document_sans_est_celle_de_ses_22_panneaux(self):
+        """La production DÉRIVE du kWc : elle suit donc la variante rendue."""
+        sans = self._build(self._devis_divergent('DEV-L2OPT-VPRS'),
+                           {'variante_option': 'sans'})
+        avec = self._build(self._devis_divergent('DEV-L2OPT-VPRA'),
+                           {'variante_option': 'avec'})
+        self.assertLess(sans['prod_kwh'], avec['prod_kwh'])
+        self.assertEqual(sans['prod_kwh'], sans['prod_kwh_sans'])
+        self.assertEqual(avec['prod_kwh'], avec['prod_kwh_avec'])
+
+
+class TestDeuxOptimiseursEconomiesParOption(_DevisVariantesMixin, TestCase):
+    """F1 — LA CHAÎNE ÉCONOMIQUE SE CALCULE PAR OPTION.
+
+    ``calculate_savings_roi`` dérive production, économies et payback d'UN seul
+    kWc : appelée une fois avec le scalaire legacy (= option AVEC), elle
+    chiffrait la colonne « Sans batterie » du comparatif sur 18,46 kWc.
+
+    Le témoin est mécanique, jamais recalculé à la main : le devis EGAL_22 a
+    EXACTEMENT la même option « sans » (22 panneaux, onduleur réseau,
+    installation → même total, même onduleur, même batterie côté avec). Ce que
+    le moteur dit de cette option doit donc être identique dans les deux devis.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.divergent = self._build(self._devis_divergent('DEV-L2OPT-ECO1'))
+        self.temoin = self._build(self._devis_egal_22('DEV-L2OPT-ECO2'))
+
+    def test_le_temoin_a_bien_la_meme_option_sans(self):
+        """Sans cette garantie, les égalités ci-dessous ne prouveraient rien."""
+        self.assertTrue(self.divergent['panneaux_divergents'])
+        self.assertFalse(self.temoin['panneaux_divergents'])
+        self.assertEqual(self.divergent['puissance_kwc_sans'],
+                         self.temoin['puissance_kwc_sans'])
+        self.assertEqual(self.divergent['totaux_sans']['ttc'],
+                         self.temoin['totaux_sans']['ttc'])
+
+    def test_les_economies_sans_batterie_sont_celles_de_son_champ_pv(self):
+        self.assertEqual(self.divergent['eco_s_ann'], self.temoin['eco_s_ann'])
+        self.assertEqual(self.divergent['eco_s_monthly'],
+                         self.temoin['eco_s_monthly'])
+
+    def test_le_payback_sans_batterie_est_celui_de_son_champ_pv(self):
+        self.assertEqual(self.divergent['roi_s'], self.temoin['roi_s'])
+        self.assertEqual(self.divergent['cashflow_sans'],
+                         self.temoin['cashflow_sans'])
+        self.assertEqual(self.divergent['net_gain_sans'],
+                         self.temoin['net_gain_sans'])
+
+    def test_l_option_avec_garde_son_propre_chiffrage(self):
+        """Le témoin n'aplatit rien : l'option 2 du devis divergent porte
+        26 panneaux, donc plus de production et plus d'économies."""
+        self.assertGreater(self.divergent['prod_kwh_avec'],
+                           self.divergent['prod_kwh_sans'])
+        self.assertGreater(self.divergent['eco_a_ann'],
+                           self.temoin['eco_a_ann'])
+        # Le document complet met en avant l'option AVEC : ses figures globales
+        # restent celles-là (repli documenté L-2OPT).
+        self.assertEqual(self.divergent['prod_kwh'],
+                         self.divergent['prod_kwh_avec'])
+
+    def test_un_devis_non_divergent_ne_rejoue_aucun_calcul(self):
+        """Économie de calcul ET garantie de non-régression : sans divergence,
+        les deux options partagent la MÊME production dérivée."""
+        self.assertEqual(self.temoin['prod_kwh_sans'],
+                         self.temoin['prod_kwh_avec'])
+        self.assertEqual(self.temoin['prod_kwh_sans'], self.temoin['prod_kwh'])
 
 
 @tag('pdf')  # rendu page 2 via WeasyPrint — lourd → palier release-verify
@@ -372,6 +503,132 @@ class TestDeuxOptimiseursFormats(_DevisVariantesMixin, TestCase):
         for html in rendus:
             # Le prix d'achat dans TOUTES ses graphies de formatage. Le
             # mot « achat » seul ne serait pas un marqueur exploitable :
-            # « rachat » apparaît dans les mentions tarifaires ANRE.
+            # « rachat » apparaît dans les mentions tarifaires ANRE (F1 : les
+            # classes SANS tag ``pdf`` de la lane suivent en fin de module).
             for marqueur in ('9876', '9 876', '9 876', '9&#8239;876'):
                 self.assertNotIn(marqueur, html.lower())
+
+
+# ── F1 (26/08/2026) — LES SURFACES CLIENT, SUR LE DOCUMENT RÉELLEMENT RENDU ──
+# Aucune BD, aucun WeasyPrint (même doctrine que ``_moteur_fixtures`` : on
+# cherche une chaîne dans le HTML EXACT qui part au rendu). Ces classes n'ont
+# donc PAS le tag ``pdf`` — elles gatent la CI ordinaire, là où les trois
+# classes ci-dessus sont réservées au palier release-verify.
+#
+# Divergence posée sur l'échantillon résidentiel EXACTEMENT comme le builder la
+# pose : les clés legacy portent l'option AVEC (repli documenté L-2OPT), les
+# clés par option disent la vérité de chaque côté.
+DIVERGENCE_RENDU = {
+    "panneaux_divergents": True,
+    "puissance_kwc": 6.39, "nb_panneaux": 9, "watt_par_panneau": 710,
+    "puissance_kwc_sans": 5.68, "puissance_kwc_avec": 6.39,
+    "nb_panneaux_sans": 8, "nb_panneaux_avec": 9,
+    "watt_par_panneau_sans": 710, "watt_par_panneau_avec": 710,
+}
+
+
+class TestPrixAuKwcParOption(SimpleTestCase):
+    """F1 (a) — CHAQUE OPTION DIVISE SON TOTAL PAR SON PROPRE kWc.
+
+    Le scalaire legacy porte l'option AVEC dès que les champs PV divergent : la
+    carte « Option 1 — Sans batterie » divisait donc son total par le kWc de
+    l'AUTRE option — le prix au kWc, seul chiffre qu'un client compare d'un
+    devis à l'autre, sortait ~15 % trop bas.
+    """
+
+    def test_la_couverture_residentielle_divise_par_le_bon_kwc(self):
+        from apps.ventes.quote_engine.residential.theme import fmt
+        d = F.donnees_residentiel(**DIVERGENCE_RENDU)
+        html = F.html_residentiel(**DIVERGENCE_RENDU)
+        self.assertIn(f'soit {fmt(d["total_sans"] / 5.68)} MAD/kWc', html)
+        self.assertNotIn(f'soit {fmt(d["total_sans"] / 6.39)} MAD/kWc', html)
+        # L'option 2, elle, était déjà juste : elle le reste.
+        self.assertIn(f'soit {fmt(d["total_avec"] / 6.39)} MAD/kWc', html)
+
+    def test_la_page_1_legacy_divise_par_le_bon_kwc(self):
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        d = F.donnees_legacy(**DIVERGENCE_RENDU)
+        html = F.html_legacy(**DIVERGENCE_RENDU)
+        self.assertIn(f'soit {G.fmt(d["total_sans"] / 5.68)}/kWc', html)
+        self.assertNotIn(f'soit {G.fmt(d["total_sans"] / 6.39)}/kWc', html)
+        self.assertIn(f'soit {G.fmt(d["total_avec"] / 6.39)}/kWc', html)
+
+    def test_sans_divergence_le_prix_au_kwc_ne_bouge_pas(self):
+        """Non-régression : tout l'existant passe par ce chemin."""
+        from apps.ventes.quote_engine.residential.theme import fmt
+        d = F.donnees_residentiel()
+        html = F.html_residentiel()
+        kwc = d["puissance_kwc"]
+        self.assertIn(f'soit {fmt(d["total_sans"] / kwc)} MAD/kWc', html)
+        self.assertIn(f'soit {fmt(d["total_avec"] / kwc)} MAD/kWc', html)
+
+
+class TestVignettePuissanceDeuxValeurs(SimpleTestCase):
+    """F1 (R1#3) — LA PAGE 1 ET LA PAGE 2 DISENT LA MÊME CHOSE.
+
+    Sur un document qui rend LES DEUX options, la bande de la page 2 affiche
+    honnêtement « sans · avec » pendant que la vignette de la page 1 annonçait
+    un kWc unique (celui de l'option AVEC) : deux pages, deux vérités.
+    """
+
+    def test_la_vignette_de_couverture_porte_les_deux_valeurs(self):
+        html = F.html_residentiel(**DIVERGENCE_RENDU)
+        self.assertIn('<div class="c1-kpi-v">5,68 · 6,39'
+                      '<span class="c1-u">&nbsp;kWc</span></div>', html)
+        self.assertIn('<div class="c1-kpi-l">Puissance (sans · avec) · '
+                      '8 · 9 panneaux × 710 W</div>', html)
+        # Plus aucune vignette mono-valeur portant le kWc de l'option AVEC.
+        self.assertNotIn('<div class="c1-kpi-l">Puissance · 9 panneaux '
+                         '× 710 W</div>', html)
+
+    def test_la_vignette_legacy_porte_les_deux_valeurs(self):
+        html = F.html_legacy(**DIVERGENCE_RENDU)
+        self.assertIn('5,68&#160;&#183;&#160;6,39&nbsp;kWc', html)
+        self.assertIn('8 &#183; 9 panneaux (sans &#183; avec) '
+                      '&#215; 710&nbsp;W', html)
+
+    def test_sans_divergence_la_vignette_est_celle_d_hier(self):
+        html = F.html_residentiel()
+        self.assertIn('<div class="c1-kpi-v">5,68'
+                      '<span class="c1-u">&nbsp;kWc</span></div>', html)
+        self.assertIn('<div class="c1-kpi-l">Puissance · 8 panneaux '
+                      '× 710 W</div>', html)
+        self.assertNotIn('(sans · avec)', html)
+
+
+class TestUnePageProductionDeSaBranche(SimpleTestCase):
+    """F1 (d) — LA UNE-PAGE CHIFFRE LA PRODUCTION DE SA BRANCHE.
+
+    Le bloc L-2OPT recalait puissance/panneaux/watt sur la branche facturée
+    mais laissait « Production annuelle » sur le scalaire global : la vignette
+    annonçait la production de l'AUTRE option juste à côté du kWc de celle-ci.
+    """
+
+    BRANCHES = dict(DIVERGENCE_RENDU, prod_kwh=9070,
+                    prod_kwh_sans=8065, prod_kwh_avec=9070)
+
+    @staticmethod
+    def _prod(html):
+        """Production RENDUE dans le résumé système, sans séparateurs."""
+        i = html.find("Production annuelle")
+        if i < 0:
+            return None
+        m = re.search(r">([\d   ]+) kWh/an<", html[i:i + 400])
+        return re.sub(r"[^\d]", "", m.group(1)) if m else None
+
+    def test_la_branche_sans_affiche_la_production_de_ses_8_panneaux(self):
+        html = F.html_onepage(onepage_branche="sans", **self.BRANCHES)
+        self.assertEqual(self._prod(html), "8065")
+        # …et la puissance de la même branche (garde L-2OPT, déjà en place).
+        self.assertIn("5.68 kWc", html)
+        self.assertNotIn("6.39 kWc", html)
+
+    def test_la_branche_avec_affiche_la_production_de_ses_9_panneaux(self):
+        html = F.html_onepage(onepage_branche="avec", **self.BRANCHES)
+        self.assertEqual(self._prod(html), "9070")
+        self.assertIn("6.39 kWc", html)
+
+    def test_sans_divergence_la_une_page_ne_recale_rien(self):
+        d = F.donnees_legacy()
+        html = F.html_onepage(onepage_branche="sans")
+        self.assertEqual(self._prod(html), str(d["prod_kwh"]))
