@@ -6,12 +6,13 @@
  * Relais direct vers `{API_BASE}/api/django/crm/public/visite/` — même patron
  * que `pages/api/questionnaire-repondre.ts` (le backend n'est jamais exposé
  * au navigateur, aucun CORS n'est ouvert, l'IP cliente reste côté
- * Cloudflare). Aucun secret statique : ce chemin est un endpoint PUBLIC
- * (`/api/django/crm/public/...`), pas le webhook de capture de lead
- * (`LEAD_WEBHOOK_URL`/`LEAD_WEBHOOK_SECRET`, `apps/crm/webhooks.py`) — la
- * garde d'entrée est la MÊME que tous les autres proxies same-origin de ce
- * dossier : `isSameOriginRequest`/`crossSiteRejection` (`lib/lead.ts`) +
- * rate-limit par IP.
+ * Cloudflare). La garde d'ENTRÉE (navigateur → ce proxy) est la MÊME que tous
+ * les autres proxies same-origin de ce dossier : `isSameOriginRequest`/
+ * `crossSiteRejection` (`lib/lead.ts`) + rate-limit par IP. Côté SORTIE (ce
+ * proxy → backend), recalage porte finale 25/08 (décision orchestrateur) : le
+ * récepteur backend EXIGE la même auth webhook que la capture de lead
+ * (`X-Webhook-Secret` = `LEAD_WEBHOOK_SECRET`, `apps/crm/webhooks.py`) —
+ * voir le détail juste plus bas.
  *
  * Best-effort strict, comme `funnel-beacon.ts` : ne bloque jamais l'appelant
  * (réponse en arrière-plan via `waitUntil` quand disponible), aucune erreur

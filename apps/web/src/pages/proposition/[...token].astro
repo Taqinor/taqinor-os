@@ -241,7 +241,8 @@ let isTimeout = false;
 // tokens valides. Bucket DISTINCT et GÉNÉREUX (une famille entière peut relire
 // la même proposition plusieurs fois depuis le même foyer/NAT) : on écrête le
 // balayage automatisé, jamais une relecture humaine légitime.
-const rl = rateLimit(`proposition-view:${clientIpFromRequest(Astro.request)}`, { limit: 60, windowMs: 60_000 });
+const visitorIp = clientIpFromRequest(Astro.request);
+const rl = rateLimit(`proposition-view:${visitorIp}`, { limit: 60, windowMs: 60_000 });
 if (!rl.allowed) {
   httpStatus = 429;
   errorDetail = 'Trop de tentatives depuis cette connexion — réessayez dans un instant.';
@@ -253,7 +254,16 @@ if (!rl.allowed) {
   const timer = setTimeout(() => controller.abort(), SSR_FETCH_TIMEOUT_MS);
   try {
     const res = await fetch(proposalEndpoint(API_BASE, token), {
-      headers: { accept: 'application/json' },
+      headers: {
+        accept: 'application/json',
+        // F3#8-web — transmet l'IP RÉELLE du visiteur au backend : sans ceci,
+        // ce fetch SSR ne portait que `accept` et le backend enregistrait
+        // l'IP de sortie du Worker (identique pour toutes les visites).
+        // Best-effort : en-têtes omis si l'IP n'est pas identifiable.
+        ...(visitorIp && visitorIp !== 'unknown'
+          ? { 'X-Forwarded-For': visitorIp, 'CF-Connecting-IP': visitorIp }
+          : {}),
+      },
       signal: controller.signal,
     });
     httpStatus = res.status;

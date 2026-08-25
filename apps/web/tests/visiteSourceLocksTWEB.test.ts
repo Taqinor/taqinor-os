@@ -37,6 +37,14 @@ describe('proposition/[...token].astro — bandeau + désactivation aperçu inte
     expect(src).toContain('const apercuInterne = ok && data?.apercu_interne === true;');
   });
 
+  it('F3#8-web — le fetch SSR transmet l’IP réelle du visiteur (X-Forwarded-For + CF-Connecting-IP)', () => {
+    expect(src).toContain('const visitorIp = clientIpFromRequest(Astro.request);');
+    const fetchBlock = src.slice(src.indexOf('await fetch(proposalEndpoint'), src.indexOf('await fetch(proposalEndpoint') + 700);
+    expect(fetchBlock).toContain("'X-Forwarded-For': visitorIp");
+    expect(fetchBlock).toContain("'CF-Connecting-IP': visitorIp");
+    expect(fetchBlock).toContain("visitorIp !== 'unknown'");
+  });
+
   it('transmet skipVisitBeacon={apercuInterne} au Layout — aucune balise en aperçu interne', () => {
     expect(src).toContain('skipVisitBeacon={apercuInterne}');
   });
@@ -96,6 +104,14 @@ describe('questionnaire/[token].astro — appareil_id joint au POST', () => {
   it('transmet skipVisitBeacon={interne} au Layout — aucune balise sous aperçu interne questionnaire', () => {
     expect(src).toContain('skipVisitBeacon={interne}');
   });
+
+  it('F3#8-web — le fetch SSR transmet l’IP réelle du visiteur (X-Forwarded-For + CF-Connecting-IP)', () => {
+    expect(src).toContain('const visitorIp = clientIpFromRequest(Astro.request);');
+    const fetchBlock = src.slice(src.indexOf('await fetch(questionnaireEndpoint'), src.indexOf('await fetch(questionnaireEndpoint') + 700);
+    expect(fetchBlock).toContain("'X-Forwarded-For': visitorIp");
+    expect(fetchBlock).toContain("'CF-Connecting-IP': visitorIp");
+    expect(fetchBlock).toContain("visitorIp !== 'unknown'");
+  });
 });
 
 describe('devis/mon-toit.astro (FR) — appareil_id additif au payload lead du tunnel', () => {
@@ -151,13 +167,20 @@ describe('pages/api/visite.ts — proxy same-origin, même discipline que les au
     expect(src).toMatch(/rateLimit\(`visite:\$\{clientIpFromRequest\(request\)\}`/);
   });
 
-  it('relaie vers /api/django/crm/public/visite/ (endpoint public, pas le webhook de lead)', () => {
+  it('relaie vers /api/django/crm/public/visite/ EN SIGNANT avec le secret du webhook de lead (recalage 25/08)', () => {
     expect(src).toContain("/api/django/crm/public/visite/");
-    // Le secret statique du webhook de capture de lead n'est ni lu ni envoyé —
-    // seulement MENTIONNÉ dans le commentaire expliquant pourquoi (cf. juste
-    // au-dessus) : on vérifie l'absence de tout USAGE réel (accès env./en-tête).
-    expect(src).not.toContain('env.LEAD_WEBHOOK_SECRET');
-    expect(src).not.toContain('x-webhook-secret');
+    // F3#15 — le récepteur backend EXIGE la même auth webhook que la capture
+    // de lead (hmac.compare_digest, refus 401 sinon) : le proxy DOIT lire
+    // LEAD_WEBHOOK_SECRET et l'envoyer via X-Webhook-Secret ; sans secret, il
+    // ne doit même pas appeler (la balise reste best-effort). L'assertion
+    // précédente vérifiait l'INVERSE par accident de graphie
+    // ('x-webhook-secret' minuscule alors que le code écrit 'X-Webhook-Secret').
+    expect(src).toContain('LEAD_WEBHOOK_SECRET');
+    expect(src).toContain('X-Webhook-Secret');
+  });
+
+  it("n'appelle pas le backend quand le secret est absent du Worker (best-effort strict)", () => {
+    expect(src).toMatch(/if \(!secret\) return;/);
   });
 
   it('valide le corps via validateVisiteBody avant tout relais', () => {

@@ -7,17 +7,22 @@
  *   POST /api/django/crm/public/visite/
  *     { appareil_id, page, duree_s, fin, langue } → { ok: true }
  *
- * AUTH — même discipline que tous les autres proxies same-origin de ce
- * dossier (`capture-lead.ts`, `funnel-beacon.ts`, `proposition-track.ts`,
- * `questionnaire-repondre.ts`) : `isSameOriginRequest`/`crossSiteRejection`
- * (`lib/lead.ts`) + rate-limit par IP (`lib/rateLimit.ts`), jamais de secret
- * exposé au navigateur. `/api/django/crm/public/visite/` suit la même
- * convention d'URL PUBLIQUE que `/api/django/crm/public/questionnaire/<token>/`
- * (`questionnaireEndpoint`, `lib/questionnaire.ts`) — un appel serveur direct
- * vers l'API_BASE, sans le secret statique `LEAD_WEBHOOK_SECRET` réservé au
- * webhook de CAPTURE DE LEAD (`apps/crm/webhooks.py`, un tout autre récepteur
- * qui, lui, CRÉE/MET À JOUR un lead CRM — cette balise ne fait ni l'un ni
- * l'autre). Voir `pages/api/visite.ts` pour le relais.
+ * AUTH — ENTRÉE (navigateur → proxy) : même discipline que tous les autres
+ * proxies same-origin de ce dossier (`capture-lead.ts`, `funnel-beacon.ts`,
+ * `proposition-track.ts`, `questionnaire-repondre.ts`) :
+ * `isSameOriginRequest`/`crossSiteRejection` (`lib/lead.ts`) + rate-limit par
+ * IP (`lib/rateLimit.ts`), jamais de secret exposé au navigateur.
+ *
+ * AUTH — SORTIE (proxy → backend, recalage porte finale 25/08, décision
+ * orchestrateur) : contrairement à un simple relais public,
+ * `/api/django/crm/public/visite/` EXIGE la même auth webhook que la capture
+ * de lead (`X-Webhook-Secret` = `LEAD_WEBHOOK_SECRET` du Worker =
+ * `WEBSITE_LEAD_WEBHOOK_SECRET` côté Django, `hmac.compare_digest`, refus
+ * 401) — ces visites alimentent des alertes « concurrent » envoyées à la
+ * direction, un endpoint non signé serait empoisonnable par de fausses
+ * visites. Secret absent du Worker → le relais est simplement sauté (la
+ * balise reste best-effort, jamais bloquant). Voir `pages/api/visite.ts` pour
+ * le relais exact.
  *
  * HARD PRIVACY CONTRACT (même discipline que `lib/funnelBeacon.ts`) : aucune
  * PII — `appareil_id` est un UUID v4 généré côté navigateur, stocké en
@@ -99,11 +104,34 @@ export function appareilId(storage: SimpleStorage | undefined = safeLocalStorage
   }
 }
 
-/** Chemin sûr : commence par "/", jamais de query/fragment (miroir `funnelBeacon.ts` `cleanPath`). */
+// Correctif F3#7 — même doctrine que `suffixe_jeton` côté backend
+// (`apps/crm/visites.py`) : un segment de chemin qui RESSEMBLE à un jeton
+// porteur (> 24 caractères — les jetons publics font 43+ caractères, jamais
+// un slug décoratif) est réduit à ses 6 derniers caractères. Sans ce
+// masquage, `location.pathname` des pages `/proposition/<slug>/<token>/` et
+// `/questionnaire/<token>/` embarquait le jeton COMPLET dans `page`, persisté
+// en base (`contexte`, MAX 200) et réémis dans le corps des alertes envoyées
+// aux commerciaux/à la direction.
+const MAX_SEGMENT_CLAIR = 24;
+const SUFFIXE_JETON_LEN = 6;
+
+function masquerSegmentsJetons(path: string): string {
+  return path
+    .split('/')
+    .map((seg) => (seg.length > MAX_SEGMENT_CLAIR ? `…${seg.slice(-SUFFIXE_JETON_LEN)}` : seg))
+    .join('/');
+}
+
+/**
+ * Chemin sûr : commence par "/", jamais de query/fragment (miroir
+ * `funnelBeacon.ts` `cleanPath`), et masque tout segment-jeton — voir
+ * `masquerSegmentsJetons` (F3#7).
+ */
 export function cleanVisitePage(v: unknown): string {
   const raw = typeof v === 'string' ? v.trim().slice(0, 200) : '';
   if (!raw.startsWith('/')) return '/';
-  return raw.split('?')[0].split('#')[0] || '/';
+  const stripped = raw.split('?')[0].split('#')[0] || '/';
+  return masquerSegmentsJetons(stripped);
 }
 
 /** Entier de secondes cumulées, borné [0, MAX_DUREE_S] — jamais négatif, jamais absurde. */
@@ -157,6 +185,46 @@ export function validateVisiteBody(body: unknown): VisiteBeaconBody | null {
   return buildVisiteBeaconBody(appareilIdRaw, b.page, b.duree_s, b.fin === true, b.langue);
 }
 
+/**
+ * Accumulateur PUR de temps VISIBLE (F3#9) — ne compte que les intervalles où
+ * `document.visibilityState === 'visible'`, jamais le temps mural passé
+ * onglet masqué ou page restaurée depuis le bfcache. Horloge injectable —
+ * testable sans DOM.
+ */
+export interface VisibleTimeAccumulator {
+  /** Page devenue visible (ou déjà visible au démarrage) — reprend le cumul. */
+  resume(): void;
+  /** Page masquée/quittée — fige le cumul au temps réellement visible écoulé. */
+  pause(): void;
+  /** Total cumulé en millisecondes, segment visible en cours inclus. */
+  totalMs(): number;
+  /** Repli complet à zéro — jamais le temps mural (réarmement bfcache). */
+  reset(): void;
+}
+
+export function creerAccumulateurTempsVisible(now: () => number = Date.now): VisibleTimeAccumulator {
+  let accumulatedMs = 0;
+  let visibleSince: number | null = null;
+  return {
+    resume() {
+      if (visibleSince === null) visibleSince = now();
+    },
+    pause() {
+      if (visibleSince !== null) {
+        accumulatedMs += now() - visibleSince;
+        visibleSince = null;
+      }
+    },
+    totalMs() {
+      return visibleSince === null ? accumulatedMs : accumulatedMs + (now() - visibleSince);
+    },
+    reset() {
+      accumulatedMs = 0;
+      visibleSince = null;
+    },
+  };
+}
+
 export interface DemarrerBaliseOptions {
   /** Langue de la page (fr/en/ar) — déjà résolue côté page, jamais devinée ici. */
   langue?: VisiteLangue;
@@ -170,10 +238,18 @@ export interface DemarrerBaliseOptions {
 /**
  * Démarre la balise de visite pour la page courante : un premier envoi
  * immédiat (`duree_s=0, fin=false`), un battement toutes les ~20 s (durée
- * cumulée depuis le démarrage), et un dernier envoi `fin:true` via
- * `navigator.sendBeacon` au `pagehide` (repli `fetch keepalive` si
- * indisponible). Best-effort strict : aucune erreur visible, jamais
- * bloquant, jamais réessayé.
+ * VISIBLE cumulée depuis le démarrage — F3#9, jamais le temps mural), et un
+ * dernier envoi `fin:true` via `navigator.sendBeacon` au `pagehide` (repli
+ * `fetch keepalive` si indisponible). Best-effort strict : aucune erreur
+ * visible, jamais bloquant, jamais réessayé.
+ *
+ * F3#9 — le cumul n'avance QUE quand `document.visibilityState === 'visible'`
+ * (`creerAccumulateurTempsVisible`) : un onglet masqué des heures ne gonfle
+ * plus `duree_s`. L'id d'intervalle est conservé et annulé au `pagehide` (via
+ * `envoyerFinal`) ; une restauration bfcache (`pageshow` avec
+ * `event.persisted`) réarme proprement — remet `sentFinal` à `false`,
+ * RÉINITIALISE le cumul à zéro (jamais une reprise depuis l'horodatage
+ * mural d'origine) et relance un battement frais.
  *
  * No-op complet si `apercuInterne`, si `window`/`document` sont absents (SSR,
  * environnement de test sans DOM), si le stockage d'appareil est
@@ -192,12 +268,13 @@ export function demarrerBalise(page: string, opts: DemarrerBaliseOptions = {}): 
   if (!id) return; // Stockage indisponible : rien à corréler, on n'envoie rien.
 
   const langue = opts.langue ?? 'fr';
-  const startedAt = Date.now();
+  const acc = creerAccumulateurTempsVisible();
   let sentFinal = false;
   let started = false;
+  let intervalId: ReturnType<typeof setInterval> | undefined;
 
   function envoyer(fin: boolean): void {
-    const dureeS = (Date.now() - startedAt) / 1000;
+    const dureeS = acc.totalMs() / 1000;
     const body = buildVisiteBeaconBody(id, page, dureeS, fin, langue);
     try {
       if (fin && typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
@@ -217,21 +294,51 @@ export function demarrerBalise(page: string, opts: DemarrerBaliseOptions = {}): 
     }
   }
 
+  function annulerBattement(): void {
+    if (intervalId !== undefined) {
+      clearInterval(intervalId);
+      intervalId = undefined;
+    }
+  }
+
+  function demarrerBattement(): void {
+    envoyer(false);
+    intervalId = setInterval(() => envoyer(false), opts.intervalMs ?? HEARTBEAT_MS);
+  }
+
   function envoyerFinal(): void {
     if (sentFinal) return;
     sentFinal = true;
+    acc.pause();
+    annulerBattement();
     envoyer(true);
   }
 
   function demarrer(): void {
     if (started) return; // idempotent — un second appel (ex. tq:consent-change tardif) ne redémarre pas deux battements.
     started = true;
-    envoyer(false);
-    window.setInterval(() => envoyer(false), opts.intervalMs ?? HEARTBEAT_MS);
+    if (document.visibilityState === 'visible') acc.resume();
+    demarrerBattement();
     window.addEventListener('pagehide', envoyerFinal);
     window.addEventListener('beforeunload', envoyerFinal);
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'hidden') envoyer(false);
+      if (document.visibilityState === 'hidden') {
+        acc.pause();
+        envoyer(false);
+      } else if (document.visibilityState === 'visible') {
+        acc.resume();
+      }
+    });
+    window.addEventListener('pageshow', (e) => {
+      if (!(e as PageTransitionEvent).persisted) return;
+      // Restauration bfcache — le contexte JS survit tel quel (pas de rechargement) :
+      // on réarme proprement plutôt que de laisser courir l'ancien état (l'intervalle
+      // a déjà été annulé au pagehide, sentFinal déjà consommé). Le cumul repart de
+      // ZÉRO, jamais depuis l'horodatage mural d'origine (F3#9).
+      sentFinal = false;
+      acc.reset();
+      if (document.visibilityState === 'visible') acc.resume();
+      demarrerBattement();
     });
   }
 
