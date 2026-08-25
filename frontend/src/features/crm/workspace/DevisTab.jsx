@@ -166,6 +166,10 @@ export default function DevisTab({
   // jamais de collision de clé.
   const [linkBusy, setLinkBusy] = useState(null)
   const [copiedId, setCopiedId] = useState(null)
+  // L-INTPREV (fondateur 25/08/2026) — feedback « Copié » DISTINCT de
+  // `copiedId` : les deux liens (public/interne) peuvent être copiés l'un
+  // après l'autre sans se remplacer visuellement.
+  const [copiedInterneId, setCopiedInterneId] = useState(null)
 
   // L-NIV-UI — niveau de la page client choisi PAR devis avant le premier
   // mint (défaut 'standard', comme le backend), l'exigence d'OTP lecture, et
@@ -222,6 +226,58 @@ export default function DevisTab({
       },
     }))
     return clientProposalUrl(res.data?.path, PUBLIC_SITE_URL)
+  }
+
+  // L-INTPREV (fondateur 25/08/2026) — même mint, mais renvoie l'URL ABSOLUE
+  // du jeton INTERNE (``path_interne``) : MÊME page publique, MÊME
+  // niveau/sections choisis pour ce devis, mais aucune trace d'ouverture
+  // côté backend (voir apps/ventes/public_views.py::_resolve_share_link_by_
+  // token). Appel réseau séparé de `mintProposalUrl` (idempotent côté
+  // serveur — `ShareLink.for_devis` réutilise le même lien) : les deux
+  // boutons restent indépendants, jamais de risque de mélanger les deux
+  // jetons dans un seul état.
+  const mintInternalPreviewUrl = async (d) => {
+    const res = await ventesApi.shareLinkDevis(d.id, {
+      niveau: getNiveau(d), otp_lecture: getOtp(d), sections: getSections(d),
+    })
+    setLinkMeta((cur) => ({
+      ...cur,
+      [d.id]: {
+        niveau: res.data?.niveau, otp_lecture: res.data?.otp_lecture,
+        token: res.data?.token, sections: res.data?.sections,
+      },
+    }))
+    return clientProposalUrl(res.data?.path_interne, PUBLIC_SITE_URL)
+  }
+
+  const copierApercuInterne = async (d) => {
+    setLinkBusy(`i-${d.id}`)
+    setActionMsg(null)
+    try {
+      const url = await mintInternalPreviewUrl(d)
+      try {
+        await navigator.clipboard?.writeText(url)
+        setCopiedInterneId(d.id)
+        window.setTimeout(() => setCopiedInterneId((cur) => (cur === d.id ? null : cur)), 2000)
+      } catch { /* presse-papier indisponible — le lien reste ouvrable */ }
+    } catch (err) {
+      setActionMsg(errorMessageFrom(err, 'Lien d’aperçu interne indisponible.'))
+    } finally {
+      setLinkBusy(null)
+    }
+  }
+
+  const ouvrirApercuInterne = async (d) => {
+    setLinkBusy(`io-${d.id}`)
+    setActionMsg(null)
+    try {
+      const url = await mintInternalPreviewUrl(d)
+      window.open(url, '_blank', 'noopener')
+    } catch (err) {
+      setActionMsg(errorMessageFrom(err, 'Lien d’aperçu interne indisponible.'))
+    } finally {
+      setLinkBusy(null)
+    }
   }
 
   // L-NIV-UI — le sélecteur/case OTP changent le choix immédiatement ; si un
@@ -570,7 +626,7 @@ export default function DevisTab({
                       type="button" size="sm" variant="ghost"
                       disabled={linkBusy === `o-${d.id}`}
                       aria-label={`Ouvrir la page client de ${d.reference} dans un nouvel onglet`}
-                      title="Ouvrir la VRAIE page client (compte comme une lecture côté suivi — pour regarder sans notifier, utilisez l'aperçu interne)"
+                      title="Ouvrir la VRAIE page client (compte comme une lecture côté suivi — pour regarder sans notifier, utilisez l'aperçu interne ci-dessous)"
                       onClick={() => ouvrirPageClient(d)}
                     >
                       <ExternalLink size={14} aria-hidden="true" />
@@ -586,6 +642,50 @@ export default function DevisTab({
                       <MessageCircle size={14} aria-hidden="true" /> WhatsApp
                     </Button>
                   </div>
+                  {/* L-INTPREV (fondateur 25/08/2026) — « le lien de devis
+                      doit aussi avoir un lien interne secondaire que le
+                      commercial peut visiter sans déclencher la
+                      notification ». MÊME page client publique que ci-dessus
+                      (`/proposition/<slug>/<jeton>`), un jeton INTERNE
+                      différent (`ShareLink.token_interne`, backend) qui ne
+                      pose AUCUNE trace (compteur de vues, note chatter,
+                      avance de stage funnel, notification, beacon
+                      d'engagement — apps/ventes/public_views.py). Ligne
+                      discrète, distincte du bouton « Aperçu interne (sans
+                      notification) » de la carte (celui-là ouvre le PDF via
+                      le panneau CRM authentifié /proposal, jamais le
+                      ShareLink) : ceci ouvre la VRAIE page publique, avec ses
+                      niveaux/sections choisis ci-dessus, sans notifier. Ne
+                      jamais brancher ce lien sur WhatsApp/l'envoi — voir
+                      copierPageClient/envoyerWhatsAppUnique qui n'utilisent
+                      QUE le jeton public. */}
+                  <p className="gen-hint lw-context-devis-apercu-interne">
+                    <button
+                      type="button"
+                      className="lw-context-devis-apercu-interne-btn"
+                      disabled={linkBusy === `i-${d.id}`}
+                      title="Copier le lien d'aperçu interne de la page client — le client n'est jamais notifié ni marqué comme ayant consulté sa proposition"
+                      onClick={() => copierApercuInterne(d)}
+                    >
+                      {copiedInterneId === d.id
+                        ? <Check size={12} aria-hidden="true" />
+                        : <Eye size={12} aria-hidden="true" />}
+                      {copiedInterneId === d.id
+                        ? 'Copié'
+                        : 'Aperçu interne de la page client (sans notification)'}
+                    </button>
+                    {' '}
+                    <button
+                      type="button"
+                      className="lw-context-devis-apercu-interne-open"
+                      disabled={linkBusy === `io-${d.id}`}
+                      aria-label={`Ouvrir l'aperçu interne de la page client de ${d.reference}`}
+                      title="Ouvrir la page client SANS notifier le lead ni compter comme une consultation"
+                      onClick={() => ouvrirApercuInterne(d)}
+                    >
+                      <ExternalLink size={12} aria-hidden="true" />
+                    </button>
+                  </p>
                   {actionMsg && <p className="gen-hint" role="status">{actionMsg}</p>}
                 </DialogContent>
               </Dialog>
