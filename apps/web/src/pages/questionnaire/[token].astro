@@ -1,0 +1,973 @@
+---
+/**
+ * LANE Q-B — /questionnaire/<token> — QUESTIONNAIRE CLIENT PUBLIC.
+ *
+ * « Remplissez chez vous, à votre rythme » : lien magique WhatsApp envoyé au
+ * lead, mobile-first, UNE section par écran, enregistrement PAR SECTION (le
+ * client peut fermer et rouvrir le lien — il reprend où il s'est arrêté).
+ * Rendu côté serveur (prerender=false) : le frontmatter lit l'état du
+ * questionnaire depuis l'endpoint backend public/token (même discipline que
+ * /proposition/<token> — W116/W117) ; toute la suite (progression, POST par
+ * section, GPS, photos) vit dans le script client, qui n'appelle QUE des
+ * fonctions PURES de `lib/questionnaire.ts`. noindex=true : page privée et
+ * tokenisée.
+ *
+ * ADDENDUM (ordre fondateur, en cours de lane) — un jeton d'APERÇU INTERNE
+ * (le commercial relit le questionnaire depuis l'ERP) fait porter
+ * `interne: true` par le GET : bandeau discret, tous les champs visibles
+ * mais DÉSACTIVÉS, aucune barre de progression, aucun POST n'est jamais
+ * tenté (le backend le refuserait de toute façon).
+ */
+export const prerender = false;
+
+import Layout from '../../layouts/Layout.astro';
+import {
+  type QuestionnaireGetResponse,
+  parseQuestionnaireGet,
+  questionnaireEndpoint,
+  initialSectionIndex,
+  SECTION_META,
+  TYPE_TOITURE_VALUES,
+} from '../../lib/questionnaire';
+import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
+import { NAP, WHATSAPP_LEADS } from '../../lib/nap';
+import { whatsappLink } from '../../lib/whatsapp';
+
+const API_BASE = (import.meta.env.PUBLIC_API_BASE as string | undefined) ?? 'https://api.taqinor.ma';
+const token = typeof Astro.params.token === 'string' ? Astro.params.token.trim() : '';
+
+// ── Lecture serveur du questionnaire (même discipline W316/WJ81 que /proposition) ──
+const SSR_FETCH_TIMEOUT_MS = 8000;
+let data: QuestionnaireGetResponse | null = null;
+let errorDetail: string | null = null;
+let httpStatus = 200;
+let isTimeout = false;
+
+const rl = rateLimit(`questionnaire-view:${clientIpFromRequest(Astro.request)}`, { limit: 60, windowMs: 60_000 });
+if (!rl.allowed) {
+  httpStatus = 429;
+  errorDetail = 'Trop de tentatives depuis cette connexion — réessayez dans un instant.';
+} else if (!token) {
+  httpStatus = 404;
+  errorDetail = 'Ce lien de questionnaire est introuvable ou a expiré.';
+} else {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), SSR_FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(questionnaireEndpoint(API_BASE, token), {
+      headers: { accept: 'application/json' },
+      signal: controller.signal,
+    });
+    httpStatus = res.status;
+    if (res.ok) {
+      const json = await res.json();
+      data = parseQuestionnaireGet(json);
+      if (!data) {
+        httpStatus = 502;
+        errorDetail = 'Réponse inattendue du serveur. Réessayez dans un instant.';
+      }
+    } else {
+      let detail = '';
+      try {
+        const body = (await res.json()) as { detail?: string };
+        detail = typeof body.detail === 'string' ? body.detail : '';
+      } catch {
+        detail = '';
+      }
+      errorDetail =
+        detail ||
+        (res.status === 404
+          ? 'Ce lien de questionnaire est introuvable ou a expiré.'
+          : 'Ce questionnaire n’est pas accessible pour le moment.');
+    }
+  } catch (err) {
+    httpStatus = 502;
+    isTimeout = err instanceof Error && err.name === 'AbortError';
+    errorDetail = isTimeout
+      ? 'La connexion est lente — réessayez, ou contactez votre conseiller sur WhatsApp.'
+      : 'Questionnaire momentanément indisponible. Veuillez réessayer dans un instant.';
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+if (!data && (httpStatus === 404 || httpStatus === 200)) {
+  Astro.response.status = httpStatus === 200 ? 404 : httpStatus;
+} else if (!data) {
+  Astro.response.status = httpStatus;
+}
+
+const ok = !!data;
+const entreprise = data?.entreprise || 'Taqinor';
+const prenom = data?.prenom || '';
+const sections = data?.sections ?? [];
+const total = sections.length;
+const startIndex = ok ? initialSectionIndex(sections, data!.repondu) : 0;
+const interne = data?.interne ?? false;
+const prefill = data?.prefill ?? {};
+const repondu = data?.repondu ?? {};
+
+const noscriptWaHref = whatsappLink(
+  WHATSAPP_LEADS,
+  `Bonjour, je n'arrive pas à ouvrir mon questionnaire ${entreprise} (mon navigateur n'active pas JavaScript).`,
+);
+
+const pageTitle = ok ? `Questionnaire — ${entreprise}` : 'Questionnaire indisponible';
+const pageDescription = 'Complétez votre profil énergétique à votre rythme, depuis votre téléphone.';
+
+function prefillStr(key: string): string {
+  const v = prefill[key];
+  return typeof v === 'string' ? v : typeof v === 'number' ? String(v) : '';
+}
+function prefillBoolRadio(key: string): 'oui' | 'non' | '' {
+  const v = prefill[key];
+  if (v === true) return 'oui';
+  if (v === false) return 'non';
+  return '';
+}
+---
+
+<Layout title={pageTitle} description={pageDescription} noindex={true} footerMinimal={true}>
+  <section class="scroll-mt-20 bg-blanc-azur px-4 pb-20 pt-10 text-encre sm:pb-24">
+    <div class="mx-auto max-w-2xl">
+
+      {!ok && (
+        <div class="border border-azur-900/15 bg-blanc p-6 text-center shadow-[0_24px_60px_-28px_rgb(15_28_84/0.35)] sm:p-10">
+          <p class="tech-label text-azur-600">Questionnaire</p>
+          <h1 class="display mt-3 text-xl sm:text-2xl">
+            {httpStatus === 429
+              ? 'Trop de tentatives'
+              : isTimeout
+                ? 'Connexion lente'
+                : 'Lien introuvable'}
+          </h1>
+          <p class="mt-3 text-sm leading-relaxed text-encre-soft">{errorDetail}</p>
+          <div class="mt-6 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
+            <a href={Astro.url.pathname} class="border border-azur-900/20 px-5 py-3 text-sm font-semibold text-encre-soft transition-colors hover:border-azur-600 hover:text-azur-700">
+              Réessayer
+            </a>
+            <a href={noscriptWaHref} rel="noopener" class="bg-ok-600 px-5 py-3 text-sm font-bold text-white transition-opacity hover:opacity-90">
+              Contacter sur WhatsApp
+            </a>
+          </div>
+        </div>
+      )}
+
+      {ok && (
+        <div>
+          {/* En-tête + bascule de langue */}
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <p class="tech-label text-azur-600" data-i18n data-en="Solar questionnaire" data-ar="استبيان الطاقة الشمسية">
+                Questionnaire solaire
+              </p>
+              <h1 class="display mt-1 text-xl sm:text-2xl">
+                {prenom ? `Bonjour ${prenom} 👋` : 'Bonjour 👋'}
+              </h1>
+              <p class="mt-1 text-sm text-encre-soft" data-i18n
+                data-en="Answer at your own pace — you can close this and come back later."
+                data-ar="أجيبوا بالوتيرة التي تناسبكم — يمكنكم إغلاق الصفحة والعودة لاحقاً.">
+                Répondez à votre rythme — vous pouvez fermer cette page et revenir plus tard.
+              </p>
+            </div>
+            <div class="flex flex-none gap-1 border border-azur-900/15 bg-blanc p-1" role="group" aria-label="Langue">
+              <button type="button" id="q-lang-fr" class="q-lang-btn px-2.5 py-1 text-xs font-semibold text-encre-soft transition-colors" aria-pressed="true">FR</button>
+              <button type="button" id="q-lang-en" class="q-lang-btn px-2.5 py-1 text-xs font-semibold text-encre-soft transition-colors" aria-pressed="false">EN</button>
+              <button type="button" id="q-lang-ar" class="q-lang-btn px-2.5 py-1 text-xs font-semibold text-encre-soft transition-colors" aria-pressed="false">AR</button>
+            </div>
+          </div>
+
+          {/* Bandeau APERÇU INTERNE (ADDENDUM) */}
+          {interne && (
+            <div id="q-interne-banner" class="mt-4 border border-brass-400/60 bg-brass-50 px-4 py-3 text-sm font-semibold text-azur-950" data-i18n
+              data-en="Internal preview — answers are disabled."
+              data-ar="معاينة داخلية — الإجابات معطّلة.">
+              Aperçu interne — les réponses sont désactivées.
+            </div>
+          )}
+
+          {/* Carte principale */}
+          <div class="mt-5 border border-azur-900/15 bg-blanc shadow-[0_24px_60px_-28px_rgb(15_28_84/0.35)]">
+            <div id="q-progress-wrap" class="border-b border-azur-900/10 px-6 py-5 sm:px-8" hidden={interne}>
+              <div class="flex items-center gap-3" aria-hidden="true">
+                {sections.map((_, i) => (
+                  <span data-seg={i} class:list={['h-1 flex-1 transition-colors', i === 0 ? 'bg-azur-600' : 'bg-azur-100']}></span>
+                ))}
+              </div>
+              <p id="q-progress-label" class="tech-label mt-2 text-encre-faint" aria-live="polite">
+                {`Étape 1 sur ${total}`}
+              </p>
+            </div>
+
+            <div id="q-sections" class="p-6 sm:p-8">
+              {sections.map((id, i) => {
+                const meta = SECTION_META[id];
+                return (
+                  <fieldset data-section={id} data-index={i} data-editing="false" class:list={['flex-col gap-4 border-0 p-0', i === startIndex ? 'flex' : 'hidden']}>
+                    <legend class="display mb-1 flex items-center gap-2 text-lg">
+                      <span aria-hidden="true">{meta.icon}</span>
+                      <span data-i18n data-en={meta.title.en} data-ar={meta.title.ar}>{meta.title.fr}</span>
+                    </legend>
+
+                    {/* Résumé « déjà répondue » — repliée mais rouvrable */}
+                    <div class="q-summary hidden items-center justify-between gap-3 border border-ok-600/30 bg-ok-50 px-4 py-3">
+                      <span class="text-sm font-semibold text-ok-700" data-i18n data-en="Already answered" data-ar="تمت الإجابة عليه بالفعل">
+                        ✓ Déjà répondue
+                      </span>
+                      <button type="button" class="q-modifier text-sm font-semibold text-azur-700 underline underline-offset-2" data-i18n data-en="Edit" data-ar="تعديل">
+                        Modifier
+                      </button>
+                    </div>
+
+                    <div class="q-fields flex flex-col gap-4">
+                      {id === 'contact' && (
+                        <>
+                          <div>
+                            <label for="q-email" class="mb-1 block text-sm font-semibold" data-i18n data-en="Email (optional)" data-ar="البريد الإلكتروني (اختياري)">E-mail (facultatif)</label>
+                            <input id="q-email" type="email" inputmode="email" autocomplete="email" value={prefillStr('email')}
+                              class="w-full min-h-[44px] border border-azur-900/20 bg-blanc px-3 py-3 text-base outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/50" />
+                          </div>
+                          <div>
+                            <label for="q-adresse" class="mb-1 block text-sm font-semibold" data-i18n data-en="Address" data-ar="العنوان">Adresse</label>
+                            <input id="q-adresse" type="text" autocomplete="street-address" value={prefillStr('adresse')}
+                              class="w-full min-h-[44px] border border-azur-900/20 bg-blanc px-3 py-3 text-base outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/50" />
+                          </div>
+                          <div>
+                            <label for="q-ville" class="mb-1 block text-sm font-semibold" data-i18n data-en="City" data-ar="المدينة">Ville</label>
+                            <input id="q-ville" type="text" autocomplete="address-level2" value={prefillStr('ville')}
+                              class="w-full min-h-[44px] border border-azur-900/20 bg-blanc px-3 py-3 text-base outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/50" />
+                          </div>
+                        </>
+                      )}
+
+                      {id === 'gps' && (
+                        <>
+                          <p class="text-sm text-encre-soft" data-i18n
+                            data-en="Share your position so we can locate your roof precisely."
+                            data-ar="شاركوا موقعكم لنتمكن من تحديد سطحكم بدقة.">
+                            Partagez votre position pour qu'on localise précisément votre toit.
+                          </p>
+                          <button type="button" id="q-gps-btn"
+                            class="inline-flex w-full items-center justify-center gap-2 border border-azur-600 px-5 py-3 text-sm font-bold text-azur-700 transition-colors hover:bg-azur-600 hover:text-white sm:w-auto"
+                            data-i18n data-en="Share my position" data-ar="مشاركة موقعي">
+                            📍 Partager ma position
+                          </button>
+                          <p id="q-gps-preview" class="hidden border-l-4 border-ok-600 bg-ok-50 py-2.5 pl-4 pr-3 text-sm font-semibold text-ok-700" aria-live="polite"></p>
+                          <p id="q-gps-error" class="hidden text-sm text-encre-soft" aria-live="polite"></p>
+                          <input type="hidden" id="q-gps-lat" value={prefillStr('gps_lat')} />
+                          <input type="hidden" id="q-gps-lng" value={prefillStr('gps_lng')} />
+                        </>
+                      )}
+
+                      {id === 'energie' && (
+                        <>
+                          <div>
+                            <label for="q-facture-hiver" class="mb-1 block text-sm font-semibold" data-i18n
+                              data-en="Winter monthly bill (MAD)" data-ar="فاتورة الشتاء الشهرية (درهم)">
+                              Facture d'hiver mensuelle (MAD)
+                            </label>
+                            <input id="q-facture-hiver" type="number" min="0" step="any" inputmode="decimal" value={prefillStr('facture_hiver')}
+                              class="w-full min-h-[44px] border border-azur-900/20 bg-blanc px-3 py-3 text-base outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/50" />
+                          </div>
+                          <fieldset class="border-0 p-0">
+                            <legend class="mb-1 text-sm font-semibold" data-i18n data-en="Is your summer bill different?" data-ar="هل فاتورة الصيف مختلفة؟">
+                              Votre facture d'été est-elle différente ?
+                            </legend>
+                            <div class="flex gap-4">
+                              <label class="flex min-h-[44px] cursor-pointer items-center gap-2 text-sm">
+                                <input type="radio" name="q-ete-differente" id="q-ete-oui" value="oui" checked={prefillBoolRadio('ete_differente') === 'oui'} class="h-5 w-5 accent-azur-600" />
+                                <span data-i18n data-en="Yes" data-ar="نعم">Oui</span>
+                              </label>
+                              <label class="flex min-h-[44px] cursor-pointer items-center gap-2 text-sm">
+                                <input type="radio" name="q-ete-differente" id="q-ete-non" value="non" checked={prefillBoolRadio('ete_differente') === 'non'} class="h-5 w-5 accent-azur-600" />
+                                <span data-i18n data-en="No" data-ar="لا">Non</span>
+                              </label>
+                            </div>
+                          </fieldset>
+                          <div id="q-facture-ete-wrap" class:list={['', prefillBoolRadio('ete_differente') === 'oui' ? '' : 'hidden']}>
+                            <label for="q-facture-ete" class="mb-1 block text-sm font-semibold" data-i18n data-en="Summer monthly bill (MAD)" data-ar="فاتورة الصيف الشهرية (درهم)">
+                              Facture d'été mensuelle (MAD)
+                            </label>
+                            <input id="q-facture-ete" type="number" min="0" step="any" inputmode="decimal" value={prefillStr('facture_ete')}
+                              class="w-full min-h-[44px] border border-azur-900/20 bg-blanc px-3 py-3 text-base outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/50" />
+                          </div>
+                          <div>
+                            <label for="q-raccordement" class="mb-1 block text-sm font-semibold" data-i18n
+                              data-en="Connection (if known)" data-ar="نوع الربط (إن كان معروفاً)">
+                              Raccordement (si connu)
+                            </label>
+                            <select id="q-raccordement" class="w-full min-h-[44px] border border-azur-900/20 bg-blanc px-3 py-3 text-base outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/50">
+                              <option value="" selected={prefillStr('raccordement') === ''}>— Je ne sais pas</option>
+                              <option value="mono" selected={prefillStr('raccordement') === 'mono'}>Monophasé</option>
+                              <option value="tri" selected={prefillStr('raccordement') === 'tri'}>Triphasé</option>
+                            </select>
+                          </div>
+                        </>
+                      )}
+
+                      {(id === 'photo_facture' || id === 'photo_compteur' || id === 'photo_tableau') && (
+                        <>
+                          <p class="text-sm text-encre-soft" data-i18n
+                            data-en={
+                              id === 'photo_facture' ? 'Take a clear photo of your latest electricity bill.'
+                              : id === 'photo_compteur' ? 'Take a photo of your electricity meter.'
+                              : 'Take a photo of your electrical panel, open.'
+                            }
+                            data-ar={
+                              id === 'photo_facture' ? 'التقطوا صورة واضحة لآخر فاتورة كهرباء.'
+                              : id === 'photo_compteur' ? 'التقطوا صورة لعداد الكهرباء.'
+                              : 'التقطوا صورة للوحة الكهربائية مفتوحة.'
+                            }>
+                            {id === 'photo_facture' && 'Prenez une photo bien lisible de votre facture d’électricité.'}
+                            {id === 'photo_compteur' && 'Prenez une photo de votre compteur électrique.'}
+                            {id === 'photo_tableau' && 'Prenez une photo de votre tableau électrique, ouvert.'}
+                          </p>
+                          <label class="flex min-h-[44px] cursor-pointer items-center justify-center gap-2 border border-azur-600 px-5 py-3 text-sm font-bold text-azur-700 transition-colors hover:bg-azur-600 hover:text-white">
+                            <span data-i18n data-en="Take / choose a photo" data-ar="التقاط / اختيار صورة">📷 Prendre / choisir une photo</span>
+                            <input type="file" accept="image/*" capture="environment" id={`q-${id}-input`} class="sr-only" />
+                          </label>
+                          <img id={`q-${id}-preview`} alt="" class="hidden max-h-64 w-full border border-azur-900/15 object-contain" />
+                          <p id={`q-${id}-err`} role="alert" class="hidden text-sm text-alert-600"></p>
+                          <button type="button" id={`q-${id}-skip`} class="text-sm text-encre-faint underline underline-offset-2" data-i18n data-en="Skip this step" data-ar="تخطي هذه الخطوة">
+                            Passer cette étape
+                          </button>
+                        </>
+                      )}
+
+                      {id === 'toiture' && (
+                        <>
+                          <div>
+                            <label for="q-type-toiture" class="mb-1 block text-sm font-semibold" data-i18n data-en="Roof type" data-ar="نوع السطح">Type de toiture</label>
+                            <select id="q-type-toiture" class="w-full min-h-[44px] border border-azur-900/20 bg-blanc px-3 py-3 text-base outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/50">
+                              <option value="" selected={prefillStr('type_toiture') === ''}>— Choisir…</option>
+                              {TYPE_TOITURE_VALUES.map((t) => (
+                                <option value={t} selected={prefillStr('type_toiture') === t}>
+                                  {t === 'villa' ? 'Villa' : t === 'hangar' ? 'Hangar industriel' : t === 'toit_plat' ? 'Toit plat' : 'Autre'}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label for="q-surface-toiture" class="mb-1 block text-sm font-semibold" data-i18n data-en="Available roof surface (m²)" data-ar="مساحة السطح المتاحة (م²)">
+                              Surface de toiture disponible (m²)
+                            </label>
+                            <input id="q-surface-toiture" type="number" min="0" step="any" inputmode="decimal" value={prefillStr('surface_toiture_m2')}
+                              class="w-full min-h-[44px] border border-azur-900/20 bg-blanc px-3 py-3 text-base outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/50" />
+                            <label class="mt-2 flex min-h-[44px] cursor-pointer items-center gap-2 text-sm text-encre-soft">
+                              <input type="checkbox" id="q-surface-inconnue" class="h-5 w-5 accent-azur-600" />
+                              <span data-i18n data-en="I don't know" data-ar="لا أعرف">Je ne sais pas</span>
+                            </label>
+                          </div>
+                          <div>
+                            <label for="q-roof-age" class="mb-1 block text-sm font-semibold" data-i18n data-en="Roof age (years, optional)" data-ar="عمر السطح (بالسنوات، اختياري)">
+                              Âge de la toiture (années, facultatif)
+                            </label>
+                            <input id="q-roof-age" type="number" min="0" max="100" step="1" inputmode="numeric" value={prefillStr('roof_age_years')}
+                              class="w-full min-h-[44px] border border-azur-900/20 bg-blanc px-3 py-3 text-base outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/50" />
+                          </div>
+                          <fieldset class="border-0 p-0">
+                            <legend class="mb-1 text-sm font-semibold" data-i18n data-en="You are…" data-ar="أنتم…">Vous êtes</legend>
+                            <div class="flex gap-4">
+                              <label class="flex min-h-[44px] cursor-pointer items-center gap-2 text-sm">
+                                <input type="radio" name="q-ownership" id="q-ownership-proprietaire" value="proprietaire" checked={prefillStr('ownership') === 'proprietaire'} class="h-5 w-5 accent-azur-600" />
+                                <span data-i18n data-en="Owner" data-ar="مالك">Propriétaire</span>
+                              </label>
+                              <label class="flex min-h-[44px] cursor-pointer items-center gap-2 text-sm">
+                                <input type="radio" name="q-ownership" id="q-ownership-locataire" value="locataire" checked={prefillStr('ownership') === 'locataire'} class="h-5 w-5 accent-azur-600" />
+                                <span data-i18n data-en="Tenant" data-ar="مستأجر">Locataire</span>
+                              </label>
+                            </div>
+                          </fieldset>
+                        </>
+                      )}
+
+                      {id === 'occupation' && (
+                        <>
+                          <p class="text-sm text-encre-soft" data-i18n data-en="Are you home during the day?" data-ar="هل تقضون النهار في المنزل؟">
+                            Passez-vous la journée à la maison ?
+                          </p>
+                          <div class="grid grid-cols-3 gap-2">
+                            <button type="button" class="q-occ-btn border border-azur-900/15 p-3 text-center text-sm font-semibold text-encre transition-colors" data-occ-value="present" aria-pressed={prefillStr('occupation_jour') === 'present'}>
+                              <span data-i18n data-en="Present" data-ar="حاضر">Présent</span>
+                            </button>
+                            <button type="button" class="q-occ-btn border border-azur-900/15 p-3 text-center text-sm font-semibold text-encre transition-colors" data-occ-value="absent" aria-pressed={prefillStr('occupation_jour') === 'absent'}>
+                              <span data-i18n data-en="Absent" data-ar="غائب">Absent</span>
+                            </button>
+                            <button type="button" class="q-occ-btn border border-azur-900/15 p-3 text-center text-sm font-semibold text-encre transition-colors" data-occ-value="partiel" aria-pressed={prefillStr('occupation_jour') === 'partiel'}>
+                              <span data-i18n data-en="Partial" data-ar="جزئي">Partiel</span>
+                            </button>
+                          </div>
+                          <input type="hidden" id="q-occupation-jour" value={prefillStr('occupation_jour')} />
+                        </>
+                      )}
+
+                      {id === 'equipements' && (
+                        <>
+                          <p class="text-sm text-encre-soft" data-i18n data-en="Optional — helps refine your study." data-ar="اختياري — يساعد على تدقيق الدراسة.">
+                            Facultatif — affine votre étude.
+                          </p>
+
+                          {([
+                            { key: 'equip_chauffe_eau_electrique', fr: 'Chauffe-eau électrique', en: 'Electric water heater', ar: 'سخان ماء كهربائي' },
+                            { key: 'equip_voiture_electrique', fr: 'Véhicule électrique (actuel ou prévu)', en: 'Electric vehicle (current or planned)', ar: 'سيارة كهربائية (حالية أو مستقبلية)' },
+                            { key: 'equip_clim', fr: 'Climatisation', en: 'Air conditioning', ar: 'تكييف الهواء' },
+                            { key: 'equip_piscine', fr: 'Piscine', en: 'Swimming pool', ar: 'مسبح' },
+                          ] as const).map((eq) => (
+                            <div class="border border-azur-900/10 p-3">
+                              <p class="text-sm font-semibold" data-i18n data-en={eq.en} data-ar={eq.ar}>{eq.fr}</p>
+                              <div class="mt-2 flex gap-4">
+                                <label class="flex min-h-[44px] cursor-pointer items-center gap-2 text-sm">
+                                  <input type="radio" name={`q-${eq.key}`} id={`q-${eq.key}-oui`} value="oui" checked={prefillBoolRadio(eq.key) === 'oui'} class="q-equip-radio h-5 w-5 accent-azur-600" data-equip={eq.key} />
+                                  <span data-i18n data-en="Yes" data-ar="نعم">Oui</span>
+                                </label>
+                                <label class="flex min-h-[44px] cursor-pointer items-center gap-2 text-sm">
+                                  <input type="radio" name={`q-${eq.key}`} id={`q-${eq.key}-non`} value="non" checked={prefillBoolRadio(eq.key) === 'non'} class="q-equip-radio h-5 w-5 accent-azur-600" data-equip={eq.key} />
+                                  <span data-i18n data-en="No" data-ar="لا">Non</span>
+                                </label>
+                              </div>
+
+                              {eq.key === 'equip_piscine' && (
+                                <div id="q-equip-piscine-detail" class:list={['mt-2', prefillBoolRadio('equip_piscine') === 'oui' ? '' : 'hidden']}>
+                                  <label for="q-equip-piscine-kw" class="mb-1 block text-xs text-encre-faint" data-i18n data-en="Filtration pump power (kW, optional)" data-ar="قدرة مضخة الترشيح (كيلوواط، اختياري)">
+                                    Puissance de la pompe de filtration (kW, facultatif)
+                                  </label>
+                                  <input id="q-equip-piscine-kw" type="number" min="0" step="any" inputmode="decimal" value={prefillStr('equip_piscine_pompe_kw')}
+                                    class="w-full border border-azur-900/20 bg-blanc px-3 py-2 text-sm outline-none focus:border-azur-600" />
+                                </div>
+                              )}
+                              {eq.key === 'equip_voiture_electrique' && (
+                                <div id="q-equip-ve-detail" class:list={['mt-2', prefillBoolRadio('equip_voiture_electrique') === 'oui' ? '' : 'hidden']}>
+                                  <label for="q-equip-ve-km" class="mb-1 block text-xs text-encre-faint" data-i18n data-en="Km driven per week (optional)" data-ar="الكيلومترات المقطوعة أسبوعياً (اختياري)">
+                                    Km parcourus par semaine (facultatif)
+                                  </label>
+                                  <input id="q-equip-ve-km" type="number" min="0" step="1" inputmode="numeric" value={prefillStr('equip_ve_km_semaine')}
+                                    class="w-full border border-azur-900/20 bg-blanc px-3 py-2 text-sm outline-none focus:border-azur-600" />
+                                </div>
+                              )}
+                              {eq.key === 'equip_clim' && (
+                                <div id="q-equip-clim-detail" class:list={['mt-2', prefillBoolRadio('equip_clim') === 'oui' ? '' : 'hidden']}>
+                                  <label for="q-equip-clim-pieces" class="mb-1 block text-xs text-encre-faint" data-i18n data-en="Number of air-conditioned rooms (optional)" data-ar="عدد الغرف المكيّفة (اختياري)">
+                                    Nombre de pièces climatisées (facultatif)
+                                  </label>
+                                  <input id="q-equip-clim-pieces" type="number" min="0" step="1" inputmode="numeric" value={prefillStr('equip_clim_pieces')}
+                                    class="w-full border border-azur-900/20 bg-blanc px-3 py-2 text-sm outline-none focus:border-azur-600" />
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </>
+                      )}
+                    </div>
+                  </fieldset>
+                );
+              })}
+
+              <p id="q-section-err" role="alert" class="mt-4 hidden border border-alert-600/30 bg-alert-50 px-3 py-2 text-sm text-alert-600"></p>
+
+              <div class="mt-6 flex items-center justify-between gap-3">
+                <button type="button" id="q-prev"
+                  class="invisible border border-azur-900/20 px-5 py-3 text-sm font-semibold text-encre-soft transition-colors hover:border-azur-600 hover:text-azur-700"
+                  data-i18n data-en="← Back" data-ar="→ رجوع">
+                  ← Retour
+                </button>
+                <button type="button" id="q-next"
+                  class="flex items-center gap-2 bg-brass-400 px-6 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300 disabled:opacity-60">
+                  <span id="q-next-spinner" class="spinner hidden" aria-hidden="true"></span>
+                  <span id="q-next-label" data-i18n data-en="Continue →" data-ar="متابعة ←">Continuer →</span>
+                </button>
+              </div>
+            </div>
+
+            {/* État final — merci */}
+            <div id="q-done" class="hidden p-8 text-center">
+              <p class="tech-label rule-brass text-brass-600" data-i18n data-en="Thank you" data-ar="شكراً">Merci</p>
+              <h2 class="display mt-3 text-xl sm:text-2xl" data-i18n
+                data-en="Thank you — your advisor has received your answers."
+                data-ar="شكراً — لقد توصّل مستشاركم بإجاباتكم.">
+                Merci, votre conseiller a reçu vos réponses.
+              </h2>
+              <p class="mt-3 text-sm text-encre-soft" data-i18n
+                data-en="You can close this page. We'll be in touch shortly." data-ar="يمكنكم إغلاق هذه الصفحة. سنتواصل معكم قريباً.">
+                Vous pouvez fermer cette page. On vous recontacte très vite.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  </section>
+
+  {ok && (
+    <script define:vars={{
+      initSections: sections,
+      initPrefill: prefill,
+      initRepondu: repondu,
+      interne,
+      entreprise,
+      prenom,
+      token,
+      apiBase: API_BASE,
+      startIndex,
+    }}>
+      window.__Q_INIT__ = {
+        sections: initSections,
+        prefill: initPrefill,
+        repondu: initRepondu,
+        interne,
+        entreprise,
+        prenom,
+        token,
+        apiBase,
+        startIndex,
+      };
+    </script>
+  )}
+</Layout>
+
+<script>
+  import {
+    EQUIPEMENT_KEYS,
+    buildQuestionnairePostBody,
+    isEmptyPostBody,
+    isValidPhotoDataUrl,
+    isPhotoSection,
+    parseQuestionnairePostResponse,
+    progressLabel,
+    questionnaireEndpoint,
+    type QuestionnaireSectionId,
+  } from '../../lib/questionnaire';
+
+  interface QInit {
+    sections: QuestionnaireSectionId[];
+    prefill: Record<string, unknown>;
+    repondu: Partial<Record<QuestionnaireSectionId, boolean>>;
+    interne: boolean;
+    entreprise: string;
+    prenom: string;
+    token: string;
+    apiBase: string;
+    startIndex: number;
+  }
+
+  const init = (window as unknown as { __Q_INIT__?: QInit }).__Q_INIT__;
+
+  function boot(init: QInit) {
+    const sections = init.sections;
+    const total = sections.length;
+    const repondu: Partial<Record<QuestionnaireSectionId, boolean>> = { ...init.repondu };
+    const touched = new Set<QuestionnaireSectionId>();
+    const editing = new Set<QuestionnaireSectionId>();
+    const photoDataUrls: Partial<Record<QuestionnaireSectionId, string>> = {};
+    let currentIndex = init.startIndex;
+
+    const $ = (id: string) => document.getElementById(id);
+    const sectionEls = Array.from(document.querySelectorAll<HTMLFieldSetElement>('[data-section]'));
+    const progressWrap = $('q-progress-wrap');
+    const progressLabelEl = $('q-progress-label');
+    const prevBtn = $('q-prev') as HTMLButtonElement | null;
+    const nextBtn = $('q-next') as HTMLButtonElement | null;
+    const nextLabelEl = $('q-next-label');
+    const nextSpinnerEl = $('q-next-spinner');
+    const sectionErrEl = $('q-section-err');
+    const doneEl = $('q-done');
+    const sectionsWrap = $('q-sections');
+
+    function activeSectionId(): QuestionnaireSectionId {
+      return sections[currentIndex];
+    }
+
+    // ── i18n fr/en/ar (même mécanique que /devis/mon-toit, étendue à 3 langues) ──
+    let currentLang: 'fr' | 'en' | 'ar' = 'fr';
+    const i18nTriples: Array<{ fr: HTMLElement; en: HTMLElement; ar: HTMLElement }> = [];
+    function prepareI18n() {
+      document.querySelectorAll<HTMLElement>('[data-i18n]').forEach((el) => {
+        const enText = el.dataset.en;
+        const arText = el.dataset.ar;
+        if (typeof enText !== 'string' && typeof arText !== 'string') return;
+        const frSpan = document.createElement('span');
+        frSpan.innerHTML = el.innerHTML;
+        const enSpan = document.createElement('span');
+        enSpan.textContent = enText || frSpan.textContent || '';
+        enSpan.hidden = true;
+        const arSpan = document.createElement('span');
+        arSpan.textContent = arText || frSpan.textContent || '';
+        arSpan.hidden = true;
+        el.textContent = '';
+        el.append(frSpan, enSpan, arSpan);
+        i18nTriples.push({ fr: frSpan, en: enSpan, ar: arSpan });
+      });
+    }
+    function applyLang(lang: 'fr' | 'en' | 'ar') {
+      currentLang = lang;
+      const isAr = lang === 'ar';
+      i18nTriples.forEach(({ fr, en, ar }) => {
+        fr.hidden = lang !== 'fr';
+        en.hidden = lang !== 'en';
+        ar.hidden = lang !== 'ar';
+      });
+      document.documentElement.lang = lang;
+      document.documentElement.dir = isAr ? 'rtl' : 'ltr';
+      const root = document.querySelector('section');
+      if (root instanceof HTMLElement) root.dir = isAr ? 'rtl' : 'ltr';
+      for (const [id, on] of [
+        ['q-lang-fr', lang === 'fr'],
+        ['q-lang-en', lang === 'en'],
+        ['q-lang-ar', lang === 'ar'],
+      ] as const) {
+        const btn = $(id);
+        btn?.setAttribute('aria-pressed', String(on));
+        if (btn) {
+          btn.className = on
+            ? 'q-lang-btn px-2.5 py-1 text-xs font-semibold text-azur-950 bg-brass-400 transition-colors'
+            : 'q-lang-btn px-2.5 py-1 text-xs font-semibold text-encre-soft transition-colors';
+        }
+      }
+    }
+    prepareI18n();
+    $('q-lang-fr')?.addEventListener('click', () => applyLang('fr'));
+    $('q-lang-en')?.addEventListener('click', () => applyLang('en'));
+    $('q-lang-ar')?.addEventListener('click', () => applyLang('ar'));
+
+    // ── Aperçu interne : champs visibles mais désactivés, jamais de POST ──
+    if (init.interne) {
+      sectionsWrap?.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLButtonElement>('input, select, button').forEach((el) => {
+        if (el.id === 'q-prev' || el.id === 'q-next') return;
+        el.disabled = true;
+      });
+    }
+
+    function renderStep() {
+      sectionErrEl?.classList.add('hidden');
+      sectionEls.forEach((fs) => {
+        const id = fs.dataset.section as QuestionnaireSectionId;
+        const idx = Number(fs.dataset.index);
+        const visible = idx === currentIndex;
+        fs.classList.toggle('hidden', !visible);
+        fs.classList.toggle('flex', visible);
+        if (!visible) return;
+
+        const summary = fs.querySelector<HTMLElement>('.q-summary');
+        const fields = fs.querySelector<HTMLElement>('.q-fields');
+        const showSummary = !init.interne && repondu[id] === true && !editing.has(id);
+        summary?.classList.toggle('hidden', !showSummary);
+        summary?.classList.toggle('flex', showSummary);
+        fields?.classList.toggle('hidden', showSummary);
+      });
+
+      document.querySelectorAll<HTMLElement>('[data-seg]').forEach((seg) => {
+        const on = Number(seg.dataset.seg) <= currentIndex;
+        seg.classList.toggle('bg-azur-600', on);
+        seg.classList.toggle('bg-azur-100', !on);
+      });
+      if (progressLabelEl) progressLabelEl.textContent = progressLabel(currentIndex, total);
+      if (prevBtn) prevBtn.classList.toggle('invisible', currentIndex === 0);
+      if (nextLabelEl) {
+        const isLast = currentIndex === total - 1;
+        const label = isLast ? 'Terminer' : 'Continuer →';
+        const en = isLast ? 'Finish' : 'Continue →';
+        const ar = isLast ? 'إنهاء' : 'متابعة ←';
+        nextLabelEl.textContent = currentLang === 'en' ? en : currentLang === 'ar' ? ar : label;
+        nextLabelEl.dataset.en = en;
+        nextLabelEl.dataset.ar = ar;
+      }
+    }
+
+    // « Modifier » sur une section déjà répondue
+    sectionEls.forEach((fs) => {
+      const id = fs.dataset.section as QuestionnaireSectionId;
+      fs.querySelector('.q-modifier')?.addEventListener('click', () => {
+        editing.add(id);
+        renderStep();
+      });
+      // Toute interaction dans une section marque « touchée » (re-POST au Continuer).
+      fs.addEventListener('input', () => touched.add(id));
+      fs.addEventListener('change', () => touched.add(id));
+    });
+
+    // ── Sous-champs équipements : n'apparaissent que si la case = OUI ──
+    document.querySelectorAll<HTMLInputElement>('.q-equip-radio').forEach((radio) => {
+      radio.addEventListener('change', () => {
+        const key = radio.dataset.equip;
+        const detail =
+          key === 'equip_piscine' ? $('q-equip-piscine-detail')
+          : key === 'equip_voiture_electrique' ? $('q-equip-ve-detail')
+          : key === 'equip_clim' ? $('q-equip-clim-detail')
+          : null;
+        detail?.classList.toggle('hidden', radio.value !== 'oui');
+      });
+    });
+
+    // ── Été différent : sous-champ facture d'été ──
+    document.querySelectorAll<HTMLInputElement>('input[name="q-ete-differente"]').forEach((radio) => {
+      radio.addEventListener('change', () => {
+        $('q-facture-ete-wrap')?.classList.toggle('hidden', radio.value !== 'oui');
+      });
+    });
+
+    // « Je ne sais pas » (surface de toiture)
+    const surfaceInconnue = $('q-surface-inconnue') as HTMLInputElement | null;
+    const surfaceInput = $('q-surface-toiture') as HTMLInputElement | null;
+    surfaceInconnue?.addEventListener('change', () => {
+      if (surfaceInput) surfaceInput.disabled = surfaceInconnue.checked;
+      if (surfaceInconnue.checked && surfaceInput) surfaceInput.value = '';
+    });
+
+    // ── Occupation du jour : 3 boutons ──
+    document.querySelectorAll<HTMLButtonElement>('.q-occ-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        if (init.interne) return;
+        const value = btn.dataset.occValue || '';
+        document.querySelectorAll<HTMLButtonElement>('.q-occ-btn').forEach((b) => {
+          const on = b === btn;
+          b.setAttribute('aria-pressed', String(on));
+          b.classList.toggle('border-brass-400', on);
+          b.classList.toggle('bg-brass-50', on);
+        });
+        const hidden = $('q-occupation-jour') as HTMLInputElement | null;
+        if (hidden) hidden.value = value;
+        touched.add('occupation');
+      });
+    });
+
+    // ── GPS : partage immédiat + aperçu + POST section (pas d'attente du Continuer) ──
+    $('q-gps-btn')?.addEventListener('click', () => {
+      if (init.interne) return;
+      const previewEl = $('q-gps-preview');
+      const errEl = $('q-gps-error');
+      errEl?.classList.add('hidden');
+      if (!('geolocation' in navigator)) {
+        if (errEl) {
+          errEl.textContent = "La géolocalisation n'est pas disponible sur cet appareil — pas de souci, continuez sans.";
+          errEl.classList.remove('hidden');
+        }
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          const latEl = $('q-gps-lat') as HTMLInputElement | null;
+          const lngEl = $('q-gps-lng') as HTMLInputElement | null;
+          if (latEl) latEl.value = String(lat);
+          if (lngEl) lngEl.value = String(lng);
+          if (previewEl) {
+            previewEl.textContent = `Position enregistrée — ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+            previewEl.classList.remove('hidden');
+          }
+          touched.add('gps');
+          const result = await postSection('gps');
+          if (result.ok) repondu.gps = true;
+        },
+        () => {
+          if (errEl) {
+            errEl.textContent = "Position non partagée — pas de souci, vous pouvez continuer sans.";
+            errEl.classList.remove('hidden');
+          }
+        },
+        { enableHighAccuracy: true, timeout: 10_000 },
+      );
+    });
+
+    // ── Photos : capture/choix → redimensionnement client → aperçu ──
+    async function resizeImage(file: File, maxDim = 1600, quality = 0.82): Promise<string> {
+      const dataUrl: string = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(file);
+      });
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+          let { width, height } = img;
+          if (width > maxDim || height > maxDim) {
+            const scale = maxDim / Math.max(width, height);
+            width = Math.round(width * scale);
+            height = Math.round(height * scale);
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            resolve(dataUrl);
+            return;
+          }
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', quality));
+        };
+        img.onerror = () => resolve(dataUrl);
+        img.src = dataUrl;
+      });
+    }
+
+    (['photo_facture', 'photo_compteur', 'photo_tableau'] as const).forEach((section) => {
+      const input = $(`q-${section}-input`) as HTMLInputElement | null;
+      const preview = $(`q-${section}-preview`) as HTMLImageElement | null;
+      const errEl = $(`q-${section}-err`);
+      const skipBtn = $(`q-${section}-skip`);
+      input?.addEventListener('change', async () => {
+        const file = input.files?.[0];
+        errEl?.classList.add('hidden');
+        if (!file) return;
+        const resized = await resizeImage(file);
+        if (!isValidPhotoDataUrl(resized)) {
+          if (errEl) {
+            errEl.textContent = 'Photo trop volumineuse ou illisible — réessayez avec une autre photo.';
+            errEl.classList.remove('hidden');
+          }
+          return;
+        }
+        photoDataUrls[section] = resized;
+        touched.add(section);
+        if (preview) {
+          preview.src = resized;
+          preview.classList.remove('hidden');
+        }
+      });
+      skipBtn?.addEventListener('click', () => {
+        if (init.interne) return;
+        advance();
+      });
+    });
+
+    // ── Construction des valeurs brutes par section (lecture explicite du DOM) ──
+    function radioValue(name: string): string | undefined {
+      const el = document.querySelector<HTMLInputElement>(`input[name="${name}"]:checked`);
+      return el ? el.value : undefined;
+    }
+    function fieldVal(id: string): string {
+      const el = $(id) as HTMLInputElement | HTMLSelectElement | null;
+      return el ? el.value : '';
+    }
+    function numOrUndef(id: string): string | undefined {
+      const v = fieldVal(id);
+      return v === '' ? undefined : v;
+    }
+
+    function collectSectionRaw(section: QuestionnaireSectionId): Record<string, unknown> {
+      switch (section) {
+        case 'contact':
+          return { email: fieldVal('q-email'), adresse: fieldVal('q-adresse'), ville: fieldVal('q-ville') };
+        case 'gps':
+          return { gps_lat: numOrUndef('q-gps-lat'), gps_lng: numOrUndef('q-gps-lng') };
+        case 'energie':
+          return {
+            facture_hiver: numOrUndef('q-facture-hiver'),
+            ete_differente: radioValue('q-ete-differente'),
+            facture_ete: numOrUndef('q-facture-ete'),
+            raccordement: fieldVal('q-raccordement') || undefined,
+          };
+        case 'photo_facture':
+        case 'photo_compteur':
+        case 'photo_tableau':
+          return {};
+        case 'toiture':
+          return {
+            type_toiture: fieldVal('q-type-toiture') || undefined,
+            surface_inconnue: !!(surfaceInconnue && surfaceInconnue.checked),
+            surface_toiture_m2: numOrUndef('q-surface-toiture'),
+            roof_age_years: numOrUndef('q-roof-age'),
+            ownership: radioValue('q-ownership'),
+          };
+        case 'occupation':
+          return { occupation_jour: fieldVal('q-occupation-jour') || undefined };
+        case 'equipements': {
+          const out: Record<string, unknown> = {};
+          for (const key of EQUIPEMENT_KEYS) out[key] = radioValue(`q-${key}`);
+          out.equip_piscine_pompe_kw = numOrUndef('q-equip-piscine-kw');
+          out.equip_ve_km_semaine = numOrUndef('q-equip-ve-km');
+          out.equip_clim_pieces = numOrUndef('q-equip-clim-pieces');
+          return out;
+        }
+        default:
+          return {};
+      }
+    }
+
+    // ── POST par section ──────────────────────────────────────────────────
+    async function postSection(section: QuestionnaireSectionId): Promise<{ ok: boolean; detail?: string }> {
+      if (init.interne) return { ok: true };
+      if (repondu[section] === true && !touched.has(section)) {
+        // Rien de neuf — on ne renvoie pas une réponse inchangée.
+        return { ok: true };
+      }
+      const raw = collectSectionRaw(section);
+      const photo = isPhotoSection(section) ? photoDataUrls[section] ?? null : null;
+      const body = buildQuestionnairePostBody(section, raw, photo);
+      if (isEmptyPostBody(body)) return { ok: true };
+
+      try {
+        const res = await fetch(questionnaireEndpoint(init.apiBase, init.token), {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', accept: 'application/json' },
+          body: JSON.stringify(body),
+        });
+        let json: unknown = null;
+        try {
+          json = await res.json();
+        } catch {
+          json = null;
+        }
+        const result = parseQuestionnairePostResponse(res.status, json);
+        if (!result.ok) {
+          return { ok: false, detail: result.detail || 'Cette réponse n’a pas pu être enregistrée. Réessayez.' };
+        }
+        return { ok: true };
+      } catch {
+        return { ok: false, detail: 'Connexion impossible. Vérifiez votre réseau et réessayez.' };
+      }
+    }
+
+    function advance() {
+      if (currentIndex >= total - 1) {
+        sectionsWrap?.classList.add('hidden');
+        progressWrap?.setAttribute('hidden', '');
+        doneEl?.classList.remove('hidden');
+        return;
+      }
+      currentIndex += 1;
+      renderStep();
+      sectionEls[currentIndex]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    prevBtn?.addEventListener('click', () => {
+      if (currentIndex > 0) {
+        currentIndex -= 1;
+        renderStep();
+      }
+    });
+
+    nextBtn?.addEventListener('click', async () => {
+      sectionErrEl?.classList.add('hidden');
+      const section = activeSectionId();
+      if (init.interne) {
+        advance();
+        return;
+      }
+      nextBtn.disabled = true;
+      nextSpinnerEl?.classList.remove('hidden');
+      try {
+        const result = await postSection(section);
+        if (!result.ok) {
+          if (sectionErrEl) {
+            sectionErrEl.textContent = result.detail || 'Une erreur est survenue. Réessayez.';
+            sectionErrEl.classList.remove('hidden');
+          }
+          return;
+        }
+        repondu[section] = true;
+        editing.delete(section);
+        touched.delete(section);
+        advance();
+      } finally {
+        nextBtn.disabled = false;
+        nextSpinnerEl?.classList.add('hidden');
+      }
+    });
+
+    renderStep();
+  }
+
+  if (init) boot(init);
+</script>
