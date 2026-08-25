@@ -185,6 +185,46 @@ export function validateVisiteBody(body: unknown): VisiteBeaconBody | null {
   return buildVisiteBeaconBody(appareilIdRaw, b.page, b.duree_s, b.fin === true, b.langue);
 }
 
+/**
+ * Accumulateur PUR de temps VISIBLE (F3#9) — ne compte que les intervalles où
+ * `document.visibilityState === 'visible'`, jamais le temps mural passé
+ * onglet masqué ou page restaurée depuis le bfcache. Horloge injectable —
+ * testable sans DOM.
+ */
+export interface VisibleTimeAccumulator {
+  /** Page devenue visible (ou déjà visible au démarrage) — reprend le cumul. */
+  resume(): void;
+  /** Page masquée/quittée — fige le cumul au temps réellement visible écoulé. */
+  pause(): void;
+  /** Total cumulé en millisecondes, segment visible en cours inclus. */
+  totalMs(): number;
+  /** Repli complet à zéro — jamais le temps mural (réarmement bfcache). */
+  reset(): void;
+}
+
+export function creerAccumulateurTempsVisible(now: () => number = Date.now): VisibleTimeAccumulator {
+  let accumulatedMs = 0;
+  let visibleSince: number | null = null;
+  return {
+    resume() {
+      if (visibleSince === null) visibleSince = now();
+    },
+    pause() {
+      if (visibleSince !== null) {
+        accumulatedMs += now() - visibleSince;
+        visibleSince = null;
+      }
+    },
+    totalMs() {
+      return visibleSince === null ? accumulatedMs : accumulatedMs + (now() - visibleSince);
+    },
+    reset() {
+      accumulatedMs = 0;
+      visibleSince = null;
+    },
+  };
+}
+
 export interface DemarrerBaliseOptions {
   /** Langue de la page (fr/en/ar) — déjà résolue côté page, jamais devinée ici. */
   langue?: VisiteLangue;
@@ -198,10 +238,18 @@ export interface DemarrerBaliseOptions {
 /**
  * Démarre la balise de visite pour la page courante : un premier envoi
  * immédiat (`duree_s=0, fin=false`), un battement toutes les ~20 s (durée
- * cumulée depuis le démarrage), et un dernier envoi `fin:true` via
- * `navigator.sendBeacon` au `pagehide` (repli `fetch keepalive` si
- * indisponible). Best-effort strict : aucune erreur visible, jamais
- * bloquant, jamais réessayé.
+ * VISIBLE cumulée depuis le démarrage — F3#9, jamais le temps mural), et un
+ * dernier envoi `fin:true` via `navigator.sendBeacon` au `pagehide` (repli
+ * `fetch keepalive` si indisponible). Best-effort strict : aucune erreur
+ * visible, jamais bloquant, jamais réessayé.
+ *
+ * F3#9 — le cumul n'avance QUE quand `document.visibilityState === 'visible'`
+ * (`creerAccumulateurTempsVisible`) : un onglet masqué des heures ne gonfle
+ * plus `duree_s`. L'id d'intervalle est conservé et annulé au `pagehide` (via
+ * `envoyerFinal`) ; une restauration bfcache (`pageshow` avec
+ * `event.persisted`) réarme proprement — remet `sentFinal` à `false`,
+ * RÉINITIALISE le cumul à zéro (jamais une reprise depuis l'horodatage
+ * mural d'origine) et relance un battement frais.
  *
  * No-op complet si `apercuInterne`, si `window`/`document` sont absents (SSR,
  * environnement de test sans DOM), si le stockage d'appareil est
@@ -220,12 +268,13 @@ export function demarrerBalise(page: string, opts: DemarrerBaliseOptions = {}): 
   if (!id) return; // Stockage indisponible : rien à corréler, on n'envoie rien.
 
   const langue = opts.langue ?? 'fr';
-  const startedAt = Date.now();
+  const acc = creerAccumulateurTempsVisible();
   let sentFinal = false;
   let started = false;
+  let intervalId: ReturnType<typeof setInterval> | undefined;
 
   function envoyer(fin: boolean): void {
-    const dureeS = (Date.now() - startedAt) / 1000;
+    const dureeS = acc.totalMs() / 1000;
     const body = buildVisiteBeaconBody(id, page, dureeS, fin, langue);
     try {
       if (fin && typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
@@ -245,21 +294,51 @@ export function demarrerBalise(page: string, opts: DemarrerBaliseOptions = {}): 
     }
   }
 
+  function annulerBattement(): void {
+    if (intervalId !== undefined) {
+      clearInterval(intervalId);
+      intervalId = undefined;
+    }
+  }
+
+  function demarrerBattement(): void {
+    envoyer(false);
+    intervalId = setInterval(() => envoyer(false), opts.intervalMs ?? HEARTBEAT_MS);
+  }
+
   function envoyerFinal(): void {
     if (sentFinal) return;
     sentFinal = true;
+    acc.pause();
+    annulerBattement();
     envoyer(true);
   }
 
   function demarrer(): void {
     if (started) return; // idempotent — un second appel (ex. tq:consent-change tardif) ne redémarre pas deux battements.
     started = true;
-    envoyer(false);
-    window.setInterval(() => envoyer(false), opts.intervalMs ?? HEARTBEAT_MS);
+    if (document.visibilityState === 'visible') acc.resume();
+    demarrerBattement();
     window.addEventListener('pagehide', envoyerFinal);
     window.addEventListener('beforeunload', envoyerFinal);
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'hidden') envoyer(false);
+      if (document.visibilityState === 'hidden') {
+        acc.pause();
+        envoyer(false);
+      } else if (document.visibilityState === 'visible') {
+        acc.resume();
+      }
+    });
+    window.addEventListener('pageshow', (e) => {
+      if (!(e as PageTransitionEvent).persisted) return;
+      // Restauration bfcache — le contexte JS survit tel quel (pas de rechargement) :
+      // on réarme proprement plutôt que de laisser courir l'ancien état (l'intervalle
+      // a déjà été annulé au pagehide, sentFinal déjà consommé). Le cumul repart de
+      // ZÉRO, jamais depuis l'horodatage mural d'origine (F3#9).
+      sentFinal = false;
+      acc.reset();
+      if (document.visibilityState === 'visible') acc.resume();
+      demarrerBattement();
     });
   }
 

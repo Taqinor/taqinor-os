@@ -11,6 +11,7 @@ import {
   buildVisiteBeaconBody,
   cleanDureeS,
   cleanVisitePage,
+  creerAccumulateurTempsVisible,
   demarrerBalise,
   genererUuidV4,
   isPlausibleUuid,
@@ -163,6 +164,60 @@ describe('cleanDureeS', () => {
   });
 });
 
+// ── creerAccumulateurTempsVisible (F3#9, pur, horloge injectable) ──────────
+
+describe('creerAccumulateurTempsVisible', () => {
+  it('cumule seulement le temps entre resume() et pause() — jamais le temps mural en dehors', () => {
+    let t = 0;
+    const acc = creerAccumulateurTempsVisible(() => t);
+    acc.resume();
+    t = 5000;
+    acc.pause();
+    t = 999_000; // le "mur" avance loin pendant que la page est masquée…
+    expect(acc.totalMs()).toBe(5000); // … mais le cumul n'a pas bougé.
+  });
+
+  it('totalMs() inclut le segment visible EN COURS sans pause()', () => {
+    let t = 0;
+    const acc = creerAccumulateurTempsVisible(() => t);
+    acc.resume();
+    t = 3000;
+    expect(acc.totalMs()).toBe(3000);
+  });
+
+  it('resume()/pause() répétés accumulent plusieurs segments visibles', () => {
+    let t = 0;
+    const acc = creerAccumulateurTempsVisible(() => t);
+    acc.resume();
+    t = 2000;
+    acc.pause();
+    t = 500_000; // masqué longtemps…
+    acc.resume(); // … puis re-visible.
+    t = 502_000;
+    acc.pause();
+    expect(acc.totalMs()).toBe(4000); // 2000 + (502000-500000) = 4000, jamais 502000.
+  });
+
+  it('reset() repart de zéro — jamais une reprise depuis le mur', () => {
+    let t = 0;
+    const acc = creerAccumulateurTempsVisible(() => t);
+    acc.resume();
+    t = 10_000;
+    acc.reset();
+    expect(acc.totalMs()).toBe(0);
+    t = 10_500;
+    acc.resume();
+    t = 11_000;
+    expect(acc.totalMs()).toBe(500);
+  });
+
+  it('pause() sans resume() préalable est un no-op sûr', () => {
+    const acc = creerAccumulateurTempsVisible(() => 1000);
+    acc.pause();
+    expect(acc.totalMs()).toBe(0);
+  });
+});
+
 // ── buildVisiteBeaconBody (corps du beacon) ─────────────────────────────────
 
 describe('buildVisiteBeaconBody', () => {
@@ -229,6 +284,17 @@ describe('demarrerBalise', () => {
     fetchFn = vi.fn().mockResolvedValue(new Response(null));
     // Consentement déjà accordé par défaut (le gate lui-même est testé à part).
     localStorage.setItem('tq_consent', 'granted');
+    // F3#9 — `visibilityState` n'est pas remis par vi.restoreAllMocks() (c'est
+    // un Object.defineProperty direct, pas un spy) : on le réarme à 'visible'
+    // ici pour que chaque test reparte d'un état connu, quel que soit ce
+    // qu'un test précédent a laissé.
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+    // Même nuance pour `navigator.sendBeacon` : un test plus haut le définit
+    // via Object.defineProperty (jamais restauré par vi.restoreAllMocks(),
+    // qui ne suit que les spies) — sans ce réarmement, ce mock fuitait vers
+    // TOUS les tests suivants du fichier (fin:true partait alors par
+    // sendBeacon au lieu de fetchFn, invisible à l'inspection du corps JSON).
+    Object.defineProperty(navigator, 'sendBeacon', { value: undefined, configurable: true });
 
     addedListeners = [];
     const origWindowAdd = window.addEventListener.bind(window);
@@ -307,6 +373,71 @@ describe('demarrerBalise', () => {
     window.dispatchEvent(new Event('pagehide'));
     expect(sendBeacon).toHaveBeenCalledTimes(1);
     expect(sendBeacon.mock.calls[0]?.[0]).toBe(VISITE_PROXY_PATH);
+  });
+
+  // F3#9 — cumul SOUS VISIBILITÉ : le temps mural passé onglet masqué ne doit
+  // JAMAIS inventer une durée. `intervalMs` volontairement énorme dans ces
+  // deux tests pour isoler la variable testée (pas de battement parasite).
+  it("le temps masqué (onglet caché) n'est PAS compté dans duree_s — jamais un temps mural", () => {
+    demarrerBalise('/index', { fetchFn, storage, intervalMs: 999_999_999 });
+    vi.advanceTimersByTime(5000); // 5 s visibles
+
+    Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+    const hiddenBody = JSON.parse(
+      (fetchFn.mock.calls[fetchFn.mock.calls.length - 1]?.[1] as RequestInit).body as string,
+    );
+    expect(hiddenBody.duree_s).toBeGreaterThanOrEqual(4);
+    expect(hiddenBody.duree_s).toBeLessThanOrEqual(6);
+
+    vi.advanceTimersByTime(3 * 3600 * 1000); // le mur avance 3 h pendant que c'est masqué
+
+    window.dispatchEvent(new Event('pagehide'));
+    const finalBody = JSON.parse(
+      (fetchFn.mock.calls[fetchFn.mock.calls.length - 1]?.[1] as RequestInit).body as string,
+    );
+    expect(finalBody.fin).toBe(true);
+    expect(finalBody.duree_s).toBeLessThan(10); // jamais ~10800 (3 h de mur)
+  });
+
+  it('pageshow(persisted) après un pagehide réarme le cumul à zéro + sentFinal — jamais une reprise du mur (bfcache)', () => {
+    demarrerBalise('/index', { fetchFn, storage, intervalMs: 999_999_999 });
+    vi.advanceTimersByTime(2000);
+
+    window.dispatchEvent(new Event('pagehide')); // envoi final, annule le battement
+    const callsAfterFirstPagehide = fetchFn.mock.calls.length;
+
+    vi.advanceTimersByTime(3 * 3600 * 1000); // le mur avance 3 h pendant le bfcache
+
+    const pageshow = new Event('pageshow');
+    Object.defineProperty(pageshow, 'persisted', { value: true });
+    window.dispatchEvent(pageshow);
+
+    // Le réarmement relance un battement immédiat frais (duree_s ≈ 0, pas ~3 h).
+    expect(fetchFn.mock.calls.length).toBe(callsAfterFirstPagehide + 1);
+    const restoredBody = JSON.parse(
+      (fetchFn.mock.calls[fetchFn.mock.calls.length - 1]?.[1] as RequestInit).body as string,
+    );
+    expect(restoredBody.duree_s).toBeLessThan(2);
+    expect(restoredBody.fin).toBe(false);
+
+    // sentFinal a bien été réarmé : un second pagehide peut renvoyer fin:true.
+    vi.advanceTimersByTime(1000);
+    window.dispatchEvent(new Event('pagehide'));
+    const secondFinal = JSON.parse(
+      (fetchFn.mock.calls[fetchFn.mock.calls.length - 1]?.[1] as RequestInit).body as string,
+    );
+    expect(secondFinal.fin).toBe(true);
+    expect(secondFinal.duree_s).toBeLessThan(3);
+  });
+
+  it("un pageshow SANS persisted (navigation normale, pas de bfcache) ne réarme rien", () => {
+    demarrerBalise('/index', { fetchFn, storage, intervalMs: 999_999_999 });
+    vi.advanceTimersByTime(2000);
+    const callsBefore = fetchFn.mock.calls.length;
+
+    window.dispatchEvent(new Event('pageshow')); // persisted est false par défaut
+    expect(fetchFn.mock.calls.length).toBe(callsBefore); // aucun envoi supplémentaire
   });
 
   it("n'envoie rien si l'empreinte d'appareil est indisponible (stockage nul)", () => {
