@@ -16,19 +16,32 @@ import { dirname, join } from 'node:path'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const SRC = readFileSync(join(HERE, 'LeadCard.jsx'), 'utf8')
 
-test('QX28 : les 3 signaux dérivent de champs EXISTANTS (aucun nouveau champ serveur)', () => {
-  assert.match(SRC, /const roofReady = !!lead\.roof_point/)
+test('QX28/L-TRACE : les 3 signaux dérivent de champs EXISTANTS (aucun nouveau champ serveur)', () => {
+  // L-TRACE (25/08) — le signal toit a TROIS états : contour tracé par le
+  // client (roof_outline ≥ 3 sommets) > simple repère GPS (roof_point) > rien.
+  // Toujours zéro nouveau champ serveur : `roof_outline` existait déjà.
+  assert.match(SRC, /const roofOutlineReady = Array\.isArray\(lead\.roof_outline\)/)
+  assert.match(SRC, /&& lead\.roof_outline\.length >= 3/)
+  assert.match(SRC, /const roofReady = roofOutlineReady \|\| !!lead\.roof_point/)
   assert.match(SRC, /const factureReady = lead\.facture_hiver != null && lead\.facture_hiver !== ''/)
   assert.match(SRC, /const devisReady = !!lead\.devis_auto\?\.pret/)
 })
 
 test('QX28 : les 3 micro-icônes readiness sont rendues conditionnellement (tooltip FR)', () => {
   assert.match(SRC, /\{roofReady && \(/)
-  assert.match(SRC, /aria-label="Toit épinglé \(GPS\)"/)
   assert.match(SRC, /\{factureReady && \(/)
   assert.match(SRC, /aria-label="Facture saisie"/)
   assert.match(SRC, /\{devisReady && \(/)
   assert.match(SRC, /aria-label="Prêt à deviser en 1 clic"/)
+})
+
+// L-TRACE — le badge « contour tracé » est un ordre fondateur : l'icône toit
+// distingue les deux états au lieu de les confondre sous un seul libellé GPS.
+test('L-TRACE : le signal toit porte les DEUX libellés (contour tracé vs repère GPS)', () => {
+  assert.match(SRC, /aria-label=\{roofOutlineReady \? 'Contour de toit tracé' : 'Toit épinglé \(GPS\)'\}/)
+  // …et deux glyphes distincts (Pentagon = contour, MapPin = simple repère).
+  assert.match(SRC, /roofOutlineReady\s*\r?\n?\s*\? <Pentagon size=\{12\}/)
+  assert.match(SRC, /: <MapPin size=\{12\}/)
 })
 
 test('QX28 : aucune icône ne s\'affiche pour un signal absent (jamais de signal "manquant")', () => {
