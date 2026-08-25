@@ -232,6 +232,28 @@ def _enregistrer_photo(lead, section, photo):
         lead, {'photo': photo, 'photoFilename': nom})
 
 
+#: Colonnes que ``Lead.save()`` RECALCULE à chaque écriture (dédup QW10) et
+#: que ``date_modification`` (auto_now) suit. Un ``update_fields`` qui les
+#: omet les laisserait rassir : le lead garderait l'e-mail normalisé de
+#: l'ancienne adresse et la dédup cesserait de le retrouver. On les ajoute
+#: donc dès que leur source est écrite.
+_COLONNES_DERIVEES = {
+    'email': ('email_normalise',),
+    'telephone': ('phone_normalise',),
+}
+
+
+def _colonnes_a_ecrire(champs):
+    """``update_fields`` complet : les champs de la section + ce que
+    ``Lead.save()`` en dérive + l'horodatage de modification."""
+    colonnes = list(champs)
+    for source, derivees in _COLONNES_DERIVEES.items():
+        if source in champs:
+            colonnes.extend(derivees)
+    colonnes.append('date_modification')
+    return colonnes
+
+
 def appliquer_section(lien, section, reponses=None, photo=None):
     """Enregistre UNE section répondue par le client. Retourne la liste des
     clés réellement enregistrées (vide si rien d'exploitable).
@@ -269,7 +291,7 @@ def appliquer_section(lien, section, reponses=None, photo=None):
             avant = Lead.objects.get(pk=lead.pk)
             for cle, valeur in champs.items():
                 setattr(lead, cle, valeur)
-            lead.save(update_fields=list(champs))
+            lead.save(update_fields=_colonnes_a_ecrire(champs))
             enregistrees = list(champs)
             activity.log_changes(avant, lead, None)
 
@@ -375,5 +397,12 @@ def resoudre(token):
                 .filter(token_interne=token).first())
         interne = lien is not None
     if lien is None or lien.is_expired:
+        raise LienIndisponible('Introuvable.')
+    # Un lead SUPPRIMÉ (soft-delete) ferme son lien : sans cette garde, la
+    # page s'ouvrirait encore et l'écriture planterait plus loin
+    # (``Lead.objects`` masque la corbeille). Un lead simplement ARCHIVÉ
+    # reste ouvert — l'archivage est un rangement réversible du pipeline,
+    # pas une raison de bloquer le client qui répond.
+    if getattr(lien.lead, 'is_deleted', False):
         raise LienIndisponible('Introuvable.')
     return lien, interne

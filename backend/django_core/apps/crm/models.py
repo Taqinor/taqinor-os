@@ -3140,7 +3140,7 @@ def _default_questionnaire_expiry():
     return _timezone.now() + timedelta(days=QUESTIONNAIRE_LIEN_TTL_DAYS)
 
 
-class QuestionnaireLien(models.Model):
+class QuestionnaireLien(TenantModel):
     """L-QUEST — Lien PUBLIC, tokenisé et expirant (30 j), par lequel le
     CLIENT complète lui-même les informations manquantes de SON lead.
 
@@ -3156,9 +3156,13 @@ class QuestionnaireLien(models.Model):
         'toiture', 'occupation', 'equipements',
     )
 
+    # Socle multi-tenant ARC1 (``TenantModel`` : company + created_at/
+    # updated_at). ``company`` est REdéclarée ici uniquement pour garder un
+    # ``related_name`` parlant — le motif documenté dans la docstring de
+    # ``core.models.TenantModel``, pas un hand-roll.
     company = models.ForeignKey(  # on_delete: lien interne au tenant — purgé avec sa société.
         'authentication.Company', on_delete=models.CASCADE,
-        related_name='questionnaire_liens')
+        related_name='questionnaire_liens', verbose_name='Société')
     lead = models.ForeignKey(  # on_delete: lien sans objet si le lead disparaît.
         'crm.Lead', on_delete=models.CASCADE,
         related_name='questionnaire_liens')
@@ -3174,7 +3178,7 @@ class QuestionnaireLien(models.Model):
     created_by = models.ForeignKey(  # on_delete: on garde le lien si l'auteur quitte l'entreprise.
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='questionnaire_liens_crees')
-    created_at = models.DateTimeField(auto_now_add=True)
+    # ``created_at``/``updated_at`` viennent de TenantModel (ARC1).
     expires_at = models.DateTimeField(default=_default_questionnaire_expiry)
 
     # Sections DEMANDÉES — sémantique à TROIS états, identique à
