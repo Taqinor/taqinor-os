@@ -14,6 +14,7 @@ from .public_chat_views import (
     open_chat_session, post_chat_message, get_chat_session,
 )
 from .public_booking_views import public_booking_status, public_booking_reserve
+from .public_questionnaire_views import public_questionnaire
 from .public_views import public_salle_vente, public_apporteur_mes_deals
 from .public_lead_ref_views import lead_ref_lookup
 # ODX13 — mêmes ViewSets que ``apps.compta.urls`` (basenames explicitement
@@ -120,6 +121,11 @@ urlpatterns = [
          name='public-booking-status'),
     path('public/booking/<str:token>/reserve/', public_booking_reserve,
          name='public-booking-reserve'),
+    # L-QUEST — Questionnaire client public tokenisé (voir
+    # public_questionnaire_views.py). MÊME URL pour lire et répondre : GET
+    # affiche les questions + le pré-remplissage, POST enregistre UNE section.
+    path('public/questionnaire/<str:token>/', public_questionnaire,
+         name='public-questionnaire'),
     # NTCRM17/18 — Salle de vente digitale publique tokenisée (voir
     # public_views.py). Singulier, distinct de ``salles-vente/`` (CRUD interne).
     path('salle-vente/<str:token>/', public_salle_vente,

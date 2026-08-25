@@ -1,6 +1,28 @@
 {
-  "quoi": "L-QUEST (ordre fondateur 25/08/2026) — « questionnaire envoyable au client » : le commercial choisit les questions, le client remplit CHEZ LUI, À SON RYTHME, sans login, section par section (enregistrement progressif — il reprend où il s'est arrêté). Le DÉFAUT des questions posées = les informations MANQUANTES du lead. Le GPS est une des questions.",
-  "pourquoi_un_contrat_d_abord": "PACT10 — cette fonctionnalité a deux moitiés (backend crm + écran commercial + page publique). Sans ce fichier partagé, des lanes file-disjointes inventent mécaniquement deux contrats (incident AO du 03/08/2026, 0 clé sur 6 concordante). Ce fichier est la SOURCE unique : le backend le sert, les autres lanes codent contre lui.",
+  "endpoint": "GET /api/django/crm/public/questionnaire/<str:token>/",
+  "pourquoi": "L-QUEST (ordre fondateur 25/08/2026) — « questionnaire envoyable au client » : le commercial choisit les questions, le client remplit CHEZ LUI, À SON RYTHME, sans login, section par section (enregistrement progressif — il reprend où il s'est arrêté). Le DÉFAUT des questions posées = les informations MANQUANTES du lead ; le GPS est une des questions. Ce fichier est LA source partagée (PACT10) : le backend la sert, l'écran commercial et la page publique codent contre elle — sans elle, deux lanes file-disjointes inventent mécaniquement deux contrats (incident AO du 03/08/2026, 0 clé sur 6 concordante). Le mint privé a son propre échantillon (questionnaire_lien_mint.json) ; le POST public partage cette URL et est décrit ci-dessous dans `public_post`.",
+  "exemple": {
+    "entreprise": "Taqinor",
+    "prenom": "Amina",
+    "sections": [
+      "gps",
+      "energie"
+    ],
+    "prefill": {
+      "gps_lat": null,
+      "gps_lng": null,
+      "facture_hiver": 3500,
+      "facture_ete": null,
+      "ete_differente": false,
+      "conso_mensuelle_kwh": null,
+      "tranche_onee": null,
+      "raccordement": null
+    },
+    "repondu": {
+      "gps": true
+    },
+    "interne": false
+  },
 
   "sections": [
     "contact",
@@ -26,70 +48,11 @@
   },
 
   "mint": {
-    "endpoint": "POST /api/django/crm/leads/<id>/questionnaire-lien/",
-    "auth": "Privé, company-scopé, mêmes permissions que les autres actions d'écriture du lead.",
-    "idempotent": "Un re-POST sur le MÊME lead renvoie le MÊME lien tant qu'il n'est pas expiré, en mettant à jour ses `questions`. Jamais un second jeton.",
-    "body": {
-      "questions": {
-        "gps": true,
-        "energie": false
-      }
-    },
-    "reponse": {
-      "url": "https://taqinor.ma/questionnaire/<token>/",
-      "url_interne": "https://taqinor.ma/questionnaire/<token_interne>/",
-      "token": "…",
-      "expires_at": "2026-09-24T10:00:00Z",
-      "questions": {
-        "contact": true,
-        "gps": true,
-        "energie": true,
-        "photo_facture": true,
-        "photo_compteur": false,
-        "photo_tableau": false,
-        "toiture": true,
-        "occupation": true,
-        "equipements": true
-      },
-      "manquantes": {
-        "contact": true,
-        "gps": true,
-        "energie": true,
-        "photo_facture": true,
-        "photo_compteur": false,
-        "photo_tableau": false,
-        "toiture": true,
-        "occupation": true,
-        "equipements": true
-      }
-    }
+    "voir": "apps/crm/contract_samples/questionnaire_lien_mint.json — POST /api/django/crm/leads/<pk>/questionnaire-lien/ (échantillon vérifié séparément par check_api_shapes : un fichier = un endpoint)."
   },
 
   "public_get": {
-    "endpoint": "GET /api/django/crm/public/questionnaire/<token>/",
     "auth": "AUCUNE — le lien EST l'authentification (patron magic-link, comme public/booking/). Throttlé par IP+jeton. Un jeton inconnu ou expiré renvoie un 404 à corps CONSTANT (jamais bavard).",
-    "reponse": {
-      "entreprise": "Taqinor",
-      "prenom": "Amina",
-      "sections": [
-        "gps",
-        "energie"
-      ],
-      "prefill": {
-        "gps_lat": null,
-        "gps_lng": null,
-        "facture_hiver": 3500,
-        "facture_ete": null,
-        "ete_differente": null,
-        "conso_mensuelle_kwh": null,
-        "tranche_onee": null,
-        "raccordement": null
-      },
-      "repondu": {
-        "gps": true
-      },
-      "interne": false
-    },
     "notes": {
       "sections": "UNIQUEMENT les sections actives, dans l'ordre de la whitelist.",
       "prefill": "UNIQUEMENT les champs des sections actives, valeurs ACTUELLES du lead. Une valeur absente vaut `null` — JAMAIS un défaut forfaitaire, jamais un chiffre inventé (règle fondateur « zéro chiffre inventé »).",
@@ -143,7 +106,7 @@
     "regles": {
       "contact": "email, adresse ou ville vide.",
       "gps": "gps_lat ou gps_lng nul.",
-      "energie": "les champs requis du mode (devis_auto.champs_manquants) manquent, OU ete_differente est None (jamais posée), OU tranche_onee/raccordement vides.",
+      "energie": "les champs requis du mode (devis_auto.champs_manquants) manquent, OU tranche_onee/raccordement vides. NB : `ete_differente` n'est PAS un signal de « jamais posée » — sa colonne est NOT NULL default False (crm.Lead), donc elle vaut toujours true/false ; le trois-états « None = jamais posée » ne s'applique qu'aux colonnes réellement nullables (les equip_*).",
       "toiture": "type_toiture, surface_toiture_m2, roof_age ou ownership vide.",
       "occupation": "occupation_jour vide.",
       "equipements": "AU MOINS UN booléen equip_* à None — None = « jamais posée », ce qui est DIFFÉRENT de False (« le client a dit non »).",

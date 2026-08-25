@@ -1,0 +1,39 @@
+{
+  "endpoint": "POST /api/django/crm/leads/<pk>/questionnaire-lien/",
+  "pourquoi": "L-QUEST — le commercial fabrique (ou retrouve) le lien questionnaire d'un lead pour l'envoyer au client. Endpoint PRIVÉ, company-scopé, mêmes permissions que les autres actions d'écriture du lead. IDEMPOTENT : un re-POST sur le MÊME lead renvoie le MÊME lien tant qu'il n'a pas expiré (30 j), en mettant simplement ses `questions` à jour — jamais un second jeton vivant chez le client. Corps facultatif `{\"questions\": {\"gps\": true, \"energie\": false}}` : sans lui, les questions posées sont les informations MANQUANTES (ordre fondateur). Une clé hors de la whitelist de sections → 400. Le contrat complet des sections vit dans questionnaire_lead.json.",
+  "exemple": {
+    "url": "https://taqinor.ma/questionnaire/pQ7x…/",
+    "url_interne": "https://taqinor.ma/questionnaire/Z3kb…/",
+    "token": "pQ7x…",
+    "expires_at": "2026-09-24T10:00:00+00:00",
+    "questions": {
+      "contact": true,
+      "gps": true,
+      "energie": true,
+      "photo_facture": true,
+      "photo_compteur": false,
+      "photo_tableau": false,
+      "toiture": true,
+      "occupation": true,
+      "equipements": true
+    },
+    "manquantes": {
+      "contact": true,
+      "gps": true,
+      "energie": true,
+      "photo_facture": true,
+      "photo_compteur": false,
+      "photo_tableau": false,
+      "toiture": true,
+      "occupation": true,
+      "equipements": true
+    }
+  },
+  "notes": {
+    "url": "La SEULE à envoyer au client.",
+    "url_interne": "Aperçu COMMERCIAL — même page, jeton `token_interne`, JAMAIS montré au client. Le GET par ce jeton ne journalise rien et le POST y est refusé (403) : un aperçu ne déclenche rien, et le commercial ne répond jamais à la place du client.",
+    "questions": "Carte complète des 9 sections telle qu'elle sera servie (les 3 états du champ stocké sont résolus ici en booléens).",
+    "manquantes": "Informations encore inconnues du lead au moment du mint — c'est le DÉFAUT des questions posées. Toujours renvoyée, même quand le commercial a choisi lui-même, pour que l'écran puisse montrer l'écart.",
+    "chatter": "Une note « Questionnaire envoyé (sections : …) » est ajoutée à l'historique du lead à la création ET quand les questions changent — jamais sur un re-POST identique."
+  }
+}
