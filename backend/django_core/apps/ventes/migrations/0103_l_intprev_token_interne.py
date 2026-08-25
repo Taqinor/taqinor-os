@@ -64,11 +64,15 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        # Étape 1 SANS unique (recalage porte finale 25/08, patron canonique
+        # check_migration_safety) : la contrainte unique n'est posée qu'à
+        # l'étape 3, APRÈS le backfill — l'index unique ne se construit
+        # jamais en course avec le RunPython qui remplit les valeurs.
         migrations.AddField(
             model_name='sharelink',
             name='token_interne',
             field=models.CharField(
-                max_length=64, unique=True, null=True, blank=True,
+                max_length=64, null=True, blank=True,
                 editable=False,
                 verbose_name='Jeton aperçu interne (sans notification)'),
         ),

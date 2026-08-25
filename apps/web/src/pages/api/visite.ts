@@ -65,11 +65,26 @@ export const POST: APIRoute = async ({ request }) => {
   const validated = validateVisiteBody(body);
   if (!validated) return json({ ok: false }, 400);
 
+  // Recalage porte finale 25/08 (décision orchestrateur) — le récepteur
+  // backend EXIGE l'auth du webhook lead (X-Webhook-Secret, valeur
+  // LEAD_WEBHOOK_SECRET du Worker = WEBSITE_LEAD_WEBHOOK_SECRET côté Django,
+  // hmac.compare_digest, refus 401) : ces visites alimentent les alertes
+  // « concurrent » envoyées à la direction — un endpoint non signé serait
+  // empoisonnable par de fausses visites. Secret absent du Worker → on
+  // n'appelle même pas (le backend refuserait) ; la balise reste best-effort.
+  const secret = ((cf.env ?? {}) as { LEAD_WEBHOOK_SECRET?: string })
+    .LEAD_WEBHOOK_SECRET?.trim();
   const background = (async () => {
+    if (!secret) return;
     try {
       await fetch(visiteEndpoint(resolveApiBase()), {
         method: 'POST',
-        headers: { 'content-type': 'application/json', accept: 'application/json' },
+        headers: {
+          'content-type': 'application/json',
+          accept: 'application/json',
+          'X-Webhook-Secret': secret,
+          'X-Webhook-Timestamp': new Date().toISOString(),
+        },
         body: JSON.stringify(validated),
         signal: AbortSignal.timeout(5000),
       });
