@@ -17,8 +17,15 @@ l'index SANS bloquer les écritures, mais :
 
   * exige ``atomic = False`` (impossible dans une transaction) ;
   * peut échouer/rester bloqué indéfiniment si une AUTRE transaction tient un
-    verrou long — d'où le ``RunSQL(\"SET lock_timeout = '3s'\")`` initial qui
-    fait échouer VITE plutôt que de geler la base entière.
+    verrou long — d'où le ``SET lock_timeout = '3s'`` posé autour de la
+    construction, qui fait échouer VITE plutôt que de geler la base entière.
+
+Le ``lock_timeout`` est REMIS dans un ``finally`` (revue critique du
+25/08/2026, finding #11). Une migration ``atomic=False`` s'exécute en
+autocommit : un ``SET`` y vaut pour toute la SESSION, donc pour TOUTE LA SUITE
+du plan de migration. Laissé à 3 s, il faisait avorter sous trafic la première
+opération lourde qui suit (``ventes/0103``, un UNIQUE = ACCESS EXCLUSIVE) —
+c'est-à-dire l'état dangereux « code déployé, migrations non appliquées ».
 
 Utilisation (dans un fichier de migration d'app) ::
 
@@ -39,11 +46,53 @@ from django.contrib.postgres.operations import AddIndexConcurrently
 from django.db import migrations, models
 
 
+#: Délai d'attente d'un verrou pendant la construction d'un index concurrent.
+#: Échouer vite vaut mieux que geler la base — mais uniquement PENDANT cette
+#: opération (voir :class:`_AddIndexConcurrentlyBorne`).
+LOCK_TIMEOUT_INDEX = '3s'
+
+
+class _AddIndexConcurrentlyBorne(AddIndexConcurrently):
+    """``AddIndexConcurrently`` dont le ``lock_timeout`` est RENDU après coup.
+
+    Finding #11 (revue critique 25/08/2026). Le réglage était posé par un
+    ``RunSQL`` séparé et n'était JAMAIS remis : en ``atomic=False`` (donc en
+    autocommit), un ``SET`` vaut pour toute la session, et les migrations
+    SUIVANTES du même ``manage.py migrate`` héritaient d'un ``lock_timeout``
+    de 3 s. Sous trafic, la première opération lourde d'après (un ``UNIQUE``,
+    qui prend un ACCESS EXCLUSIVE) avortait — laissant la prod dans l'état le
+    plus dangereux qui soit : code déployé, migrations non appliquées.
+
+    Le ``RESET`` est dans un ``finally`` : il a lieu que l'index se construise
+    ou qu'il échoue, et son propre échec n'écrase jamais l'erreur d'origine.
+    """
+
+    def database_forwards(self, app_label, schema_editor, from_state,
+                          to_state):
+        # ``AddIndexConcurrently`` est déjà PostgreSQL-seul ; la garde évite
+        # simplement d'émettre du SQL non portable si un backend tiers passait
+        # par là.
+        postgres = getattr(
+            schema_editor.connection, 'vendor', '') == 'postgresql'
+        if postgres:
+            schema_editor.execute(
+                f"SET lock_timeout = '{LOCK_TIMEOUT_INDEX}';")
+        try:
+            super().database_forwards(
+                app_label, schema_editor, from_state, to_state)
+        finally:
+            if postgres:
+                try:
+                    schema_editor.execute('RESET lock_timeout;')
+                except Exception:  # noqa: BLE001 — ne masque jamais l'erreur
+                    pass                                     # d'origine
+
+
 def concurrent_index_migration(app_label, dependencies, model_name, fields,
                                index_name):
     """Construit une classe ``Migration`` prête (``atomic=False`` +
-    ``lock_timeout`` + ``AddIndexConcurrently``) pour poser ``index_name`` sur
-    ``model_name.fields`` sans verrou d'écriture bloquant.
+    ``lock_timeout`` borné + ``AddIndexConcurrently``) pour poser ``index_name``
+    sur ``model_name.fields`` sans verrou d'écriture bloquant.
 
     ``dependencies`` : liste de tuples ``(app_label, migration_name)``, comme
     tout fichier de migration Django standard.
@@ -56,13 +105,10 @@ def concurrent_index_migration(app_label, dependencies, model_name, fields,
         atomic = False
 
         operations = [
-            # Échoue vite (3s) plutôt que de geler la base si un autre verrou
-            # long est déjà tenu sur la table cible.
-            migrations.RunSQL(
-                sql="SET lock_timeout = '3s';",
-                reverse_sql=migrations.RunSQL.noop,
-            ),
-            AddIndexConcurrently(
+            # Le ``lock_timeout`` (échouer vite plutôt que geler la base) est
+            # posé ET REMIS par l'opération elle-même : un ``RunSQL`` séparé
+            # laissait le réglage fuir sur toute la suite du plan (finding #11).
+            _AddIndexConcurrentlyBorne(
                 model_name=model_name,
                 index=models.Index(fields=fields, name=index_name),
             ),

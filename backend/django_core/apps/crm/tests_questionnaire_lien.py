@@ -198,6 +198,35 @@ class MintTests(TestCase):
         self.assertFalse(second['questions']['gps'])
         self.assertTrue(second['questions']['toiture'])
 
+    def test_le_lien_pointe_sur_le_site_public_jamais_sur_l_api(self):
+        """Revue critique 25/08/2026, finding #6 — LE LIEN ÉTAIT MORT.
+
+        La page ``/questionnaire/<token>/`` vit dans ``apps/web`` (Astro,
+        taqinor.ma) ; l'ERP ne la sert nulle part. Construite avec
+        ``build_absolute_uri``, l'URL sortait sur l'hôte de la requête
+        (api.taqinor.ma en prod, ``testserver`` ici) : le client cliquait sur
+        un 404. Les DEUX URL (client et aperçu interne) doivent partir de
+        ``PUBLIC_SITE_URL``."""
+        with self.settings(PUBLIC_SITE_URL='https://exemple-site.ma'):
+            data = self._post().json()
+        for cle in ('url', 'url_interne'):
+            self.assertTrue(
+                data[cle].startswith('https://exemple-site.ma/questionnaire/'),
+                f'{cle} = {data[cle]}')
+            self.assertNotIn('testserver', data[cle])
+
+    def test_un_host_forge_ne_choisit_pas_le_domaine_du_lien(self):
+        """Corollaire : aucun en-tête entrant ne décide plus où pointe un lien
+        envoyé à un client."""
+        with self.settings(PUBLIC_SITE_URL='https://exemple-site.ma',
+                           ALLOWED_HOSTS=['*']):
+            res = self.api.post(
+                f'/api/django/crm/leads/{self.lead.pk}/questionnaire-lien/',
+                data=json.dumps({}), content_type='application/json',
+                HTTP_HOST='pirate.example')
+        self.assertEqual(res.status_code, 200, res.content)
+        self.assertNotIn('pirate.example', res.json()['url'])
+
     def test_section_inconnue_400(self):
         res = self._post({'questions': {'jardin': True}})
         self.assertEqual(res.status_code, 400, res.content)
@@ -436,3 +465,40 @@ class ApercuInterneTests(TestCase):
         self.lien.refresh_from_db()
         self.assertEqual(self.lien.sections_repondues, {})
         self.assertIsNone(self.lien.derniere_reponse_at)
+
+
+# ── Base d'URL publique (revue critique 25/08/2026, finding #6) ───────────
+
+class UrlPubliqueTests(TestCase):
+    """``url_publique`` est la SEULE convention d'URL du questionnaire, et
+    elle part TOUJOURS du site public — jamais de l'hôte de la requête."""
+
+    def test_base_prise_sur_le_site_public(self):
+        with self.settings(PUBLIC_SITE_URL='https://exemple-site.ma'):
+            self.assertEqual(
+                quest.url_publique('AbC'),
+                'https://exemple-site.ma/questionnaire/AbC/')
+
+    def test_barre_finale_du_reglage_jamais_doublee(self):
+        with self.settings(PUBLIC_SITE_URL='https://exemple-site.ma/'):
+            self.assertEqual(
+                quest.url_publique('AbC'),
+                'https://exemple-site.ma/questionnaire/AbC/')
+
+    def test_reglage_vide_replie_sur_site_url_jamais_une_url_relative(self):
+        """Un déploiement qui n'a configuré que ``SITE_URL`` continue de
+        produire un lien ABSOLU — jamais ``/questionnaire/...`` tout court."""
+        with self.settings(PUBLIC_SITE_URL='',
+                           SITE_URL='https://repli-site.ma'):
+            self.assertEqual(
+                quest.url_publique('AbC'),
+                'https://repli-site.ma/questionnaire/AbC/')
+
+    def test_request_est_ignore_meme_quand_il_est_fourni(self):
+        """La signature reste tolérante pour les appelants historiques, mais
+        aucun hôte entrant ne décide plus où pointe le lien."""
+        from django.test import RequestFactory
+        requete = RequestFactory().get('/', HTTP_HOST='pirate.example')
+        with self.settings(PUBLIC_SITE_URL='https://exemple-site.ma'):
+            url = quest.url_publique('AbC', request=requete)
+        self.assertEqual(url, 'https://exemple-site.ma/questionnaire/AbC/')

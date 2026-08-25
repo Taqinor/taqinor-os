@@ -324,15 +324,21 @@ class LienIndisponible(Exception):
 def url_publique(token, *, request=None) -> str:
     """URL complète de la page questionnaire pour un jeton donné.
 
-    Même construction de base que ``services.public_booking_url`` (l'hôte de
-    la requête, sinon ``PUBLIC_SITE_URL``) — une seule convention d'URL
-    publique dans l'app."""
+    TOUJOURS construite sur l'origine du SITE PUBLIC (``PUBLIC_SITE_URL``),
+    JAMAIS sur l'hôte de la requête. Revue critique du 25/08/2026, finding
+    #6 : la page ``/questionnaire/<token>/`` vit dans ``apps/web`` (le site
+    Astro) — l'ERP ne la sert nulle part. Le mint étant appelé depuis l'écran
+    commercial, donc depuis l'hôte de l'API, ``build_absolute_uri`` fabriquait
+    un lien sur l'API : le client recevait une URL MORTE.
+
+    ``request`` est accepté et IGNORÉ : la signature reste celle des appelants
+    existants, mais aucun hôte entrant ne peut plus décider où pointe un lien
+    envoyé à un client (c'est aussi ce qui empêche un ``Host:`` forgé de
+    fabriquer une URL de questionnaire sur un domaine tiers)."""
     from django.conf import settings
 
-    if request is not None:
-        base = request.build_absolute_uri('/')[:-1]
-    else:
-        base = (getattr(settings, 'PUBLIC_SITE_URL', '') or '').rstrip('/')
+    base = (getattr(settings, 'PUBLIC_SITE_URL', '')
+            or getattr(settings, 'SITE_URL', '') or '').rstrip('/')
     return f'{base}/questionnaire/{token}/'
 
 
