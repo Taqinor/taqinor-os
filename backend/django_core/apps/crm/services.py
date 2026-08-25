@@ -26,6 +26,23 @@ from django.utils import timezone
 
 from . import activity, stages
 from .models import Canal, Client, Lead, LeadActivity, PointContact
+# T-TRACE — le traçage des visiteurs externes vit dans son propre module
+# (``apps/crm/visites.py``) pour ne pas gonfler ce fichier déjà très long,
+# mais il est RÉEXPORTÉ ici : `services` reste la porte d'entrée unique des
+# écritures CRM (les accroches n'importent jamais `visites` directement).
+from .visites import (  # noqa: F401 — réexport public délibéré
+    alerter_appareil_partage,
+    appareil_de_requete,
+    avec_direction,
+    detecter_concurrent,
+    enregistrer_visite_externe,
+    historique_appareil,
+    ip_de_requete,
+    resume_historique_fr,
+    tracer_et_correler,
+    user_agent_de_requete,
+    utilisateurs_direction,
+)
 
 logger = logging.getLogger(__name__)
 
