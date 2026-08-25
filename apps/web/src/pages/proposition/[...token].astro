@@ -123,6 +123,11 @@ import {
   productionSeriesForOption,
   type DimensionnementOption,
   type VarianteServable,
+  // P2-C (ordre fondateur 25/08/2026, soir) — sélecteur de paliers de
+  // capacité batterie sur la carte « Avec batterie » (#options).
+  paliersBatterie,
+  palierBatterieRetenu,
+  type PalierBatterie,
 } from '../../lib/proposition';
 import {
   renderYearCurve,
@@ -402,6 +407,41 @@ const dimOther = recoVariante === 'avec' ? dimSans : dimAvec;
 // pas le champ (jamais un défaut fabriqué : simplement l'ancien chiffre réel).
 const heroKwc = divergentSizing ? (dimReco?.puissanceKwc ?? puissance) : puissance;
 const heroNbPanneaux = divergentSizing ? (dimReco?.nbPanneaux ?? nbPanneaux) : nbPanneaux;
+
+// ── P2-C (ordre fondateur 25/08/2026, soir) — SÉLECTEUR DE PALIERS BATTERIE
+// (carte « Avec batterie », section #options) : « add more than just 2
+// batteries in the web page battery option ; extra batteries might add extra
+// panels with extra cost, that is still fine ». Contrat propre
+// `paliers_batterie` (racine du payload) — liste vide/absente ⇒ le
+// sélecteur ne rend RIEN, pixel identique à l'existant.
+const battTiers: PalierBatterie[] = ok ? paliersBatterie(data!) : [];
+const battTierRetenu = palierBatterieRetenu(battTiers);
+// Le palier RETENU affiche les chiffres DU DEVIS RÉEL déjà rendus ailleurs
+// sur cette même carte — JAMAIS une seconde source de vérité : une
+// exploration qui revient au palier retenu retombe EXACTEMENT sur ces
+// chiffres (aucun risque de divergence d'arrondi avec le prix officiel).
+const battTierRealPanneaux = dimAvec?.nbPanneaux ?? nbPanneaux;
+const battTierRealKwc = dimAvec?.puissanceKwc ?? puissance;
+const battTierRealPrix = ok && hasRealPrice(data!, 'avec_batterie') ? optionTtc(data!, 'avec_batterie') : null;
+const battTierRealEco = ecoAvec;
+const battTierRealPaybackLabel = paybackAvec;
+// Sérialisé UNE fois pour le script client : les nombres sont déjà
+// sanitisés ici (finiteOrNull côté proposition.ts) — le navigateur ne relit
+// jamais le contrat backend brut, et ne recalcule rien (formatage seul).
+const battTiersForClient = battTiers.map((t) => ({
+  kwh: t.capaciteKwh,
+  panneaux: t.retenu ? battTierRealPanneaux : t.nbPanneaux,
+  kwc: t.retenu ? battTierRealKwc : t.puissanceKwc,
+  prix: t.retenu ? battTierRealPrix : t.prixTtc,
+  eco: t.retenu ? battTierRealEco : t.economiesAnnuelles,
+  paybackLabel: t.retenu ? battTierRealPaybackLabel : formatPayback(t.paybackAnnees),
+  ok: t.remplissageOk,
+  retenu: t.retenu,
+}));
+const battTiersAnyDisabled = battTiers.some((t) => !t.remplissageOk);
+const battTierInitialIdx = battTierRetenu ? battTiers.indexOf(battTierRetenu) : 0;
+const battTierInitial = battTiers[battTierInitialIdx] ?? null;
+const battTierInitialClient = battTiersForClient[battTierInitialIdx] ?? null;
 
 // WJ126 — CORRECTIF : ce libellé branchait sur `q?.inst_type` en le comparant à
 // des littéraux MINUSCULES ('agricole'…), alors que la vraie valeur runtime est
@@ -3724,6 +3764,99 @@ const signConfig = ok
                   </p>
                 ) : null}
 
+                <!-- ── P2-C (ordre fondateur 25/08/2026, soir) — SÉLECTEUR DE
+                     PALIERS BATTERIE. « add more than just 2 batteries in the
+                     web page battery option ; extra batteries might add extra
+                     panels with extra cost, that is still fine. » Rendu
+                     UNIQUEMENT sur la carte « Avec batterie », et uniquement
+                     quand le contrat `paliers_batterie` sert au moins un
+                     palier lisible — sinon cette carte reste identique au
+                     pixel près à l'existant. Choisir un palier NON retenu est
+                     une pure EXPLORATION (voir panneau ci-dessous) : ni le
+                     prix officiel affiché plus haut, ni la signature, ne
+                     changent jamais. -->
+                {opt === 'avec_batterie' && battTiers.length > 0 && (
+                  <div class="mt-5 border-t border-white/10 pt-4" data-batt-tiers={JSON.stringify(battTiersForClient)}>
+                    <p class="tech-label text-lune-faint" data-i18n
+                      data-fr="Choisir la taille de batterie" data-en="Choose the battery size" data-ar="اختيار حجم البطارية">
+                      Choisir la taille de batterie
+                    </p>
+                    <div class="mt-2 flex flex-wrap gap-2" role="radiogroup" aria-label="Taille de batterie">
+                      {battTiers.map((t) => (
+                        <button
+                          type="button"
+                          data-batt-tier-btn
+                          data-batt-tier-kwh={t.capaciteKwh}
+                          aria-pressed={t.retenu ? 'true' : 'false'}
+                          disabled={!t.remplissageOk}
+                          class="btn-pill px-3 py-1.5 text-sm disabled:cursor-not-allowed disabled:opacity-40"
+                          style={t.retenu ? 'background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)' : undefined}
+                          title={!t.remplissageOk ? 'Ne se remplirait pas tous les jours avec votre toit' : undefined}
+                        >
+                          <span dir="ltr">{formatNumber(t.capaciteKwh, 1)} kWh</span>
+                        </button>
+                      ))}
+                    </div>
+                    {battTiersAnyDisabled && (
+                      <p class="mt-2 text-xs text-lune-faint" data-i18n
+                        data-fr="Les tailles grisées ne se rempliraient pas tous les jours avec votre toit."
+                        data-en="Greyed-out sizes would not fill every day with your roof."
+                        data-ar="الأحجام الرمادية لن تمتلئ كل يوم بسطحكم.">
+                        Les tailles grisées ne se rempliraient pas tous les jours avec votre toit.
+                      </p>
+                    )}
+
+                    <div class="mt-4 rounded-xl border border-white/10 bg-nuit-800/40 p-4 text-sm" data-batt-tier-panel>
+                      <p id="batt-tier-note" class="font-semibold text-brass-300" data-i18n
+                        data-fr="Retenu pour ce devis" data-en="Selected for this quote" data-ar="المعتمد لهذا العرض"
+                        hidden={!battTierInitial?.retenu}>
+                        Retenu pour ce devis
+                      </p>
+                      <p id="batt-tier-panneaux-line" class="mt-1 flex flex-wrap items-baseline gap-x-1 text-lune-soft"
+                        hidden={battTierInitialClient?.panneaux == null && battTierInitialClient?.kwc == null}>
+                        <span data-i18n data-fr="Panneaux · puissance :" data-en="Panels · power:" data-ar="الألواح · القدرة:">Panneaux · puissance :</span>
+                        <span id="batt-tier-panneaux" dir="ltr" class="text-lune">
+                          {battTierInitialClient?.panneaux != null ? `${formatNumber(battTierInitialClient.panneaux)} panneaux` : ''}
+                          {battTierInitialClient?.panneaux != null && battTierInitialClient?.kwc != null ? ' · ' : ''}
+                          {battTierInitialClient?.kwc != null ? `${formatNumber(battTierInitialClient.kwc, 2)} kWc` : ''}
+                        </span>
+                      </p>
+                      <p id="batt-tier-prix-line" class="mt-1 flex flex-wrap items-baseline gap-x-1" hidden={battTierInitialClient?.prix == null}>
+                        <span class="text-lune-soft" data-i18n data-fr="Prix pour cette taille :" data-en="Price for this size:" data-ar="السعر لهذا الحجم:">Prix pour cette taille :</span>
+                        <span id="batt-tier-prix" dir="ltr" class="font-semibold text-brass-300">
+                          {battTierInitialClient?.prix != null ? formatMAD(battTierInitialClient.prix) : ''}
+                        </span>
+                      </p>
+                      <p id="batt-tier-eco-line" class="mt-1 flex flex-wrap items-baseline gap-x-1 text-lune-soft" hidden={battTierInitialClient?.eco == null}>
+                        <span data-i18n data-fr="Économies estimées :" data-en="Estimated savings:" data-ar="التوفير المقدّر:">Économies estimées :</span>
+                        <span id="batt-tier-eco" dir="ltr">
+                          {battTierInitialClient?.eco != null ? `${formatMAD(battTierInitialClient.eco)}/an` : ''}
+                        </span>
+                      </p>
+                      <p id="batt-tier-payback-line" class="mt-1 flex flex-wrap items-baseline gap-x-1 text-lune-soft" hidden={!battTierInitialClient?.paybackLabel}>
+                        <span data-i18n data-fr="Retour sur investissement :" data-en="Payback period:" data-ar="مدة استرداد الاستثمار:">Retour sur investissement :</span>
+                        <span id="batt-tier-payback" dir="ltr">{battTierInitialClient?.paybackLabel ?? ''}</span>
+                      </p>
+                      <p id="batt-tier-disabled-note" class="mt-2 text-xs text-lune-faint" data-i18n
+                        data-fr="Cette capacité ne se remplirait pas tous les jours avec votre toit."
+                        data-en="This capacity would not fill every day with your roof."
+                        data-ar="لن تمتلئ هذه السعة كل يوم بسطحكم."
+                        hidden={battTierInitial ? battTierInitial.remplissageOk : true}>
+                        Cette capacité ne se remplirait pas tous les jours avec votre toit.
+                      </p>
+                      <p id="batt-tier-interest" class="mt-3" hidden={!battTierInitial || battTierInitial.retenu}>
+                        <span class="text-lune-soft" data-i18n
+                          data-fr="Cette configuration vous intéresse ?" data-en="Interested in this configuration?" data-ar="هل تهمكم هذه التشكيلة؟">
+                          Cette configuration vous intéresse ?
+                        </span>{' '}
+                        <button type="button" id="batt-tier-request" class="underline-offset-2 text-brass-300 hover:underline" data-req-kwh={battTierInitial?.capaciteKwh ?? ''}>
+                          <span data-i18n data-fr="Demander cette option" data-en="Request this option" data-ar="طلب هذا الخيار">Demander cette option</span>
+                        </button>
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 <!-- PV80 — la liste d’équipement a quitté la carte de PRIX pour le
                      chapitre « Votre installation » (tableau structuré, groupé par
                      famille) : ici on ne parle plus que d’argent, une seule fois. -->
@@ -6031,9 +6164,11 @@ const signConfig = ok
   // PV80 — l'échéancier « comptant / échelonné » a été retiré de la page (aucune
   // mensualité, aucun crédit) : son import client `installmentSplit` disparaît
   // avec lui. `formatMAD` reste importé ici — le curseur batterie le réutilise.
+  // `formatNumber` sert au sélecteur de paliers batterie (P2-C, 25/08/2026).
   import {
     buildContactBody,
     formatMAD,
+    formatNumber,
     type ContactChannel,
   } from '../../lib/proposition';
   // WJ120 — moteur du simulateur batterie (PUR) importé ES pour un recalcul 100 %
@@ -6220,6 +6355,132 @@ const signConfig = ok
           if (submitBtn) submitBtn.disabled = false;
         }
       })();
+    });
+  })();
+
+  // ── P2-C (ordre fondateur 25/08/2026, soir) — sélecteur de paliers batterie
+  // (carte « Avec batterie », #options) : bascule d'AFFICHAGE entre les
+  // chiffres déjà servis par le contrat `paliers_batterie` (sérialisés dans
+  // data-batt-tiers, sanitisés côté serveur — voir `battTiersForClient` dans
+  // l'astro plus haut) — AUCUNE arithmétique côté client, formatage seul
+  // (`formatMAD`/`formatNumber`, les MÊMES fonctions pures que le rendu
+  // serveur). Sélectionner un palier NON retenu est une pure EXPLORATION : ni
+  // la carte de prix officielle plus haut sur la MÊME carte, ni la
+  // signature, ne changent jamais — seul ce panneau se met à jour. « add
+  // more than just 2 batteries in the web page battery option ; extra
+  // batteries might add extra panels with extra cost, that is still fine »
+  // (fondateur 25/08/2026).
+  (function setupBatteryTierSelector(): void {
+    const wrap = document.querySelector<HTMLElement>('[data-batt-tiers]');
+    if (!wrap) return;
+
+    interface ClientTier {
+      kwh: number;
+      panneaux: number | null;
+      kwc: number | null;
+      prix: number | null;
+      eco: number | null;
+      paybackLabel: string | null;
+      ok: boolean;
+      retenu: boolean;
+    }
+    let tiers: ClientTier[] = [];
+    try {
+      const parsed: unknown = JSON.parse(wrap.dataset.battTiers || '[]');
+      if (Array.isArray(parsed)) tiers = parsed as ClientTier[];
+    } catch {
+      return;
+    }
+    if (tiers.length === 0) return;
+
+    const buttons = Array.from(wrap.querySelectorAll<HTMLButtonElement>('[data-batt-tier-btn]'));
+    const noteEl = document.getElementById('batt-tier-note');
+    const panneauxLine = document.getElementById('batt-tier-panneaux-line');
+    const panneauxEl = document.getElementById('batt-tier-panneaux');
+    const prixLine = document.getElementById('batt-tier-prix-line');
+    const prixEl = document.getElementById('batt-tier-prix');
+    const ecoLine = document.getElementById('batt-tier-eco-line');
+    const ecoEl = document.getElementById('batt-tier-eco');
+    const paybackLine = document.getElementById('batt-tier-payback-line');
+    const paybackEl = document.getElementById('batt-tier-payback');
+    const disabledNote = document.getElementById('batt-tier-disabled-note');
+    const interestEl = document.getElementById('batt-tier-interest');
+    const requestBtn = document.getElementById('batt-tier-request') as HTMLButtonElement | null;
+
+    // Chaque sous-valeur est omise INDIVIDUELLEMENT quand le palier ne la
+    // porte pas (`null`) — jamais un défaut fabriqué côté client non plus.
+    function render(tier: ClientTier): void {
+      if (noteEl) noteEl.hidden = !tier.retenu;
+      if (panneauxLine && panneauxEl) {
+        const bits: string[] = [];
+        if (tier.panneaux !== null) bits.push(`${formatNumber(tier.panneaux)} panneaux`);
+        if (tier.kwc !== null) bits.push(`${formatNumber(tier.kwc, 2)} kWc`);
+        panneauxEl.textContent = bits.join(' · ');
+        panneauxLine.hidden = bits.length === 0;
+      }
+      if (prixLine && prixEl) {
+        prixEl.textContent = tier.prix !== null ? formatMAD(tier.prix) : '';
+        prixLine.hidden = tier.prix === null;
+      }
+      if (ecoLine && ecoEl) {
+        ecoEl.textContent = tier.eco !== null ? `${formatMAD(tier.eco)}/an` : '';
+        ecoLine.hidden = tier.eco === null;
+      }
+      if (paybackLine && paybackEl) {
+        paybackEl.textContent = tier.paybackLabel ?? '';
+        paybackLine.hidden = !tier.paybackLabel;
+      }
+      if (disabledNote) disabledNote.hidden = tier.ok;
+      if (interestEl) interestEl.hidden = tier.retenu;
+      if (requestBtn) requestBtn.dataset.reqKwh = String(tier.kwh);
+    }
+
+    function select(kwh: number): void {
+      const tier = tiers.find((t) => t.kwh === kwh);
+      if (!tier || !tier.ok) return;
+      buttons.forEach((btn) => {
+        const on = Number(btn.dataset.battTierKwh) === kwh;
+        btn.setAttribute('aria-pressed', String(on));
+        btn.setAttribute(
+          'style',
+          on
+            ? 'background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)'
+            : '',
+        );
+      });
+      render(tier);
+    }
+
+    buttons.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        if (btn.disabled) return;
+        const kwh = Number(btn.dataset.battTierKwh);
+        if (Number.isFinite(kwh)) select(kwh);
+      });
+    });
+
+    // « Cette configuration vous intéresse ? » — RÉUTILISE le flux existant
+    // « Demander une modification » (WJ54, section [data-revision-token]
+    // plus bas sur la page) : jamais un second canal inventé. Ouvre le
+    // <details>, sélectionne le type « batterie » (déclenche le clic réel du
+    // bouton déjà câblé par `setupRevisionForm` ci-dessus — zéro logique
+    // dupliquée) et pré-remplit le message.
+    requestBtn?.addEventListener('click', () => {
+      const kwh = Number(requestBtn.dataset.reqKwh);
+      if (!Number.isFinite(kwh)) return;
+      const tier = tiers.find((t) => t.kwh === kwh);
+      const revisionSection = document.querySelector<HTMLElement>('[data-revision-token]');
+      const detailsEl = revisionSection?.querySelector('details');
+      const battKindBtn = revisionSection?.querySelector<HTMLButtonElement>('[data-revision-kind="batterie"]');
+      const detailEl = document.getElementById('revision-detail') as HTMLTextAreaElement | null;
+      if (detailsEl) detailsEl.open = true;
+      battKindBtn?.click();
+      if (detailEl) {
+        const panneauxTxt = tier?.panneaux != null ? ` (${formatNumber(tier.panneaux)} panneaux)` : '';
+        detailEl.value = `Je souhaite l'option avec ${formatNumber(kwh, 1)} kWh de batterie${panneauxTxt}`;
+      }
+      revisionSection?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      detailEl?.focus();
     });
   })();
 
