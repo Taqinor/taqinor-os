@@ -190,21 +190,30 @@ export function canonicalPhoneMA(value) {
  * `d` (déjà tronqué par le chemin marocain juste au-dessus), donc un
  * marocain MALFORMÉ sous « + » (ex. `+2126123456`, indicatif 212 correct
  * mais local à 7 chiffres) ressort comme « étranger » `+6123456` — un
- * indicatif E.164 6123456 n'existe pas. Ici, `original` (jamais tronqué)
- * sert de base au chemin étranger, donc un tel numéro est correctement
- * rejeté (`null`) plutôt que mal-classé — même garde déjà en place côté
- * backend (`normalize_phone_e164`, apps/ventes/utils/phone.py).
+ * indicatif E.164 6123456 n'existe pas. Ici, `digits` (jamais tronqué) sert
+ * de base au chemin étranger, donc un tel numéro est correctement rejeté
+ * (`null`) plutôt que mal-classé — même garde déjà en place côté backend
+ * (`normalize_phone_e164`, apps/ventes/utils/phone.py).
+ *
+ * 25/08/2026 — finding 10(b) : le nettoyage ne retirait que
+ * `[\s.\-()]`, là où le backend (`normalize_ma_phone`) retire TOUT
+ * non-chiffre (`re.sub(r'\D', '', ...)`) — un numéro marocain valide saisi
+ * avec `/`, « Tel: » ou toute autre ponctuation parasite désarmait donc les
+ * boutons WhatsApp de l'ERP alors que le backend l'acceptait déjà. Parité de
+ * nettoyage : ne garde que les chiffres, le seul '+' de tête (détecté AVANT
+ * nettoyage) servant de signal d'indicatif explicite. Même correctif
+ * lstrip('0') post-212 que côté backend (voir la NOTE ci-dessus sur les
+ * graphies « +212 (0)6… »/« +212 06… »/« 00212 0… »).
  */
 export function normalizePhoneE164(value) {
   if (!value) return null
-  const trimmed = String(value).replace(/[\s.\-()]/g, '')
-  const hadPlus = trimmed.startsWith('+')
-  const original = hadPlus ? trimmed.slice(1) : trimmed
-  if (!/^\d+$/.test(original)) return null
+  const hadPlus = String(value).trim().startsWith('+')
+  const digits = String(value).replace(/\D/g, '')
+  if (!digits) return null
 
-  let d = original
-  if (d.startsWith('00212')) d = d.slice(5)
-  else if (d.startsWith('212')) d = d.slice(3)
+  let d = digits
+  if (d.startsWith('00212')) d = d.slice(5).replace(/^0+/, '')
+  else if (d.startsWith('212')) d = d.slice(3).replace(/^0+/, '')
   else if (!hadPlus && d.startsWith('0')) d = d.slice(1)
 
   // 9 chiffres locaux : fixe (5) ou mobile (6, 7) → chemin marocain.
@@ -214,8 +223,8 @@ export function normalizePhoneE164(value) {
   // explicite a été tapé ('+' ou '00' international) — jamais un local
   // ambigu pris pour un étranger.
   let foreign = null
-  if (hadPlus) foreign = original
-  else if (trimmed.startsWith('00')) foreign = trimmed.slice(2)
+  if (hadPlus) foreign = digits
+  else if (digits.startsWith('00')) foreign = digits.slice(2)
   if (foreign && !foreign.startsWith('212') && /^[1-9]\d{6,14}$/.test(foreign)) {
     return foreign
   }
