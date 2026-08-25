@@ -23,9 +23,12 @@ export const prerender = false;
 import Layout from '../../layouts/Layout.astro';
 import {
   type QuestionnaireGetResponse,
+  type QuestionnaireSectionId,
+  champDemande,
+  ecransActifs,
+  initialEcranIndex,
   parseQuestionnaireGet,
   questionnaireEndpoint,
-  initialSectionIndex,
   SECTION_META,
   TYPE_TOITURE_VALUES,
 } from '../../lib/questionnaire';
@@ -111,11 +114,30 @@ const ok = !!data;
 const entreprise = data?.entreprise || 'Taqinor';
 const prenom = data?.prenom || '';
 const sections = data?.sections ?? [];
-const total = sections.length;
-const startIndex = ok ? initialSectionIndex(sections, data!.repondu) : 0;
 const interne = data?.interne ?? false;
 const prefill = data?.prefill ?? {};
 const repondu = data?.repondu ?? {};
+const champs = data?.champs ?? {};
+
+// ── ÉCRANS (ordre fondateur 25/08/2026 « the number of pages ») ───────────
+// Les sections servies sont regroupées en écrans (lib/questionnaire.ts) : la
+// barre de progression compte les ÉCRANS RÉELLEMENT traversés, jamais les
+// sections (Baymard : un indicateur de progression est un miroir 1:1 des
+// étapes). La section reste l'unité d'ENREGISTREMENT — un écran POSTe
+// chacune des siennes séparément, le contrat POST ne bouge pas.
+const ecrans = ok ? ecransActifs(sections) : [];
+const total = ecrans.length;
+const startIndex = ok ? initialEcranIndex(ecrans, repondu) : 0;
+// section -> index de son écran (attribut `data-ecran` porté par le fieldset).
+const ecranDeSection = new Map<QuestionnaireSectionId, number>();
+ecrans.forEach((ecran, i) => ecran.actives.forEach((s) => ecranDeSection.set(s, i)));
+
+/** `true` si la page a le droit de dessiner la question `cle` de `section`.
+ *  Une donnée que le lead porte déjà revient pré-remplie ; une donnée vide
+ *  qu'une autre déjà connue couvre (l'adresse d'un client qui a donné son
+ *  GPS) n'est PAS dessinée — c'est LA règle « on ne redemande jamais ». */
+const demande = (section: QuestionnaireSectionId, cle: string) =>
+  champDemande(champs, section, cle);
 
 const noscriptWaHref = whatsappLink(
   WHATSAPP_LEADS,
@@ -135,6 +157,9 @@ function prefillBoolRadio(key: string): 'oui' | 'non' | '' {
   if (v === false) return 'non';
   return '';
 }
+/** Le lead porte-t-il déjà sa position ? (les DEUX coordonnées, jamais une
+ *  seule) — sert à dire au client qu'on ne la lui redemande pas. */
+const gpsDejaConnu = prefillStr('gps_lat') !== '' && prefillStr('gps_lng') !== '';
 ---
 
 <Layout
@@ -206,20 +231,21 @@ function prefillBoolRadio(key: string): 'oui' | 'non' | '' {
           <div class="mt-5 border border-azur-900/15 bg-blanc shadow-[0_24px_60px_-28px_rgb(15_28_84/0.35)]">
             <div id="q-progress-wrap" class="border-b border-azur-900/10 px-6 py-5 sm:px-8" hidden={interne}>
               <div class="flex items-center gap-3" aria-hidden="true">
-                {sections.map((_, i) => (
-                  <span data-seg={i} class:list={['h-1 flex-1 transition-colors', i === 0 ? 'bg-azur-600' : 'bg-azur-100']}></span>
+                {ecrans.map((_, i) => (
+                  <span data-seg={i} class:list={['h-1 flex-1 transition-colors', i <= startIndex ? 'bg-azur-600' : 'bg-azur-100']}></span>
                 ))}
               </div>
               <p id="q-progress-label" class="tech-label mt-2 text-encre-faint" aria-live="polite">
-                {`Étape 1 sur ${total}`}
+                {`Étape ${startIndex + 1} sur ${total}`}
               </p>
             </div>
 
             <div id="q-sections" class="p-6 sm:p-8">
               {sections.map((id, i) => {
                 const meta = SECTION_META[id];
+                const ecranIndex = ecranDeSection.get(id) ?? 0;
                 return (
-                  <fieldset data-section={id} data-index={i} data-editing="false" class:list={['flex-col gap-4 border-0 p-0', i === startIndex ? 'flex' : 'hidden']}>
+                  <fieldset data-section={id} data-index={i} data-ecran={ecranIndex} data-editing="false" class:list={['flex-col gap-4 border-0 p-0', ecranIndex === startIndex ? 'flex' : 'hidden']}>
                     <legend class="display mb-1 flex items-center gap-2 text-lg">
                       <span aria-hidden="true">{meta.icon}</span>
                       <span data-i18n data-en={meta.title.en} data-ar={meta.title.ar}>{meta.title.fr}</span>
@@ -238,35 +264,62 @@ function prefillBoolRadio(key: string): 'oui' | 'non' | '' {
                     <div class="q-fields flex flex-col gap-4">
                       {id === 'contact' && (
                         <>
-                          <div>
-                            <label for="q-email" class="mb-1 block text-sm font-semibold" data-i18n data-en="Email (optional)" data-ar="البريد الإلكتروني (اختياري)">E-mail (facultatif)</label>
-                            <input id="q-email" type="email" inputmode="email" autocomplete="email" value={prefillStr('email')}
-                              class="w-full min-h-[44px] border border-azur-900/20 bg-blanc px-3 py-3 text-base outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/50" />
-                          </div>
-                          <div>
-                            <label for="q-adresse" class="mb-1 block text-sm font-semibold" data-i18n data-en="Address" data-ar="العنوان">Adresse</label>
-                            <input id="q-adresse" type="text" autocomplete="street-address" value={prefillStr('adresse')}
-                              class="w-full min-h-[44px] border border-azur-900/20 bg-blanc px-3 py-3 text-base outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/50" />
-                          </div>
-                          <div>
-                            <label for="q-ville" class="mb-1 block text-sm font-semibold" data-i18n data-en="City" data-ar="المدينة">Ville</label>
-                            <input id="q-ville" type="text" autocomplete="address-level2" value={prefillStr('ville')}
-                              class="w-full min-h-[44px] border border-azur-900/20 bg-blanc px-3 py-3 text-base outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/50" />
-                          </div>
+                          {demande('contact', 'email') && (
+                            <div>
+                              <label for="q-email" class="mb-1 block text-sm font-semibold" data-i18n data-en="Email (optional)" data-ar="البريد الإلكتروني (اختياري)">E-mail (facultatif)</label>
+                              <input id="q-email" type="email" inputmode="email" autocomplete="email" value={prefillStr('email')}
+                                class="w-full min-h-[44px] border border-azur-900/20 bg-blanc px-3 py-3 text-base outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/50" />
+                            </div>
+                          )}
+                          {demande('contact', 'ville') && (
+                            <div>
+                              <label for="q-ville" class="mb-1 block text-sm font-semibold" data-i18n data-en="City" data-ar="المدينة">Ville</label>
+                              <input id="q-ville" type="text" autocomplete="address-level2" value={prefillStr('ville')}
+                                class="w-full min-h-[44px] border border-azur-900/20 bg-blanc px-3 py-3 text-base outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/50" />
+                            </div>
+                          )}
+                          {/* ADRESSE — absente dès que le lead porte déjà son GPS : le
+                              serveur la retire de `champs` (crm/questionnaire.py
+                              `_COUVERT_PAR`) et cette question DISPARAÎT. Ordre
+                              fondateur : « the client already have given its GPS
+                              position ». Placée APRÈS la ville : c'est la plus
+                              longue à taper des trois. */}
+                          {demande('contact', 'adresse') && (
+                            <div>
+                              <label for="q-adresse" class="mb-1 block text-sm font-semibold" data-i18n data-en="Address" data-ar="العنوان">Adresse</label>
+                              <input id="q-adresse" type="text" autocomplete="street-address" value={prefillStr('adresse')}
+                                class="w-full min-h-[44px] border border-azur-900/20 bg-blanc px-3 py-3 text-base outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/50" />
+                            </div>
+                          )}
                         </>
                       )}
 
                       {id === 'gps' && (
                         <>
-                          <p class="text-sm text-encre-soft" data-i18n
-                            data-en="Share your position so we can locate your roof precisely."
-                            data-ar="شاركوا موقعكم لنتمكن من تحديد سطحكم بدقة.">
-                            Partagez votre position pour qu'on localise précisément votre toit.
-                          </p>
+                          {/* Position DÉJÀ enregistrée : on le DIT, avec les
+                              coordonnées réelles du lead (jamais un chiffre
+                              inventé) — le client voit qu'on ne lui redemande
+                              pas ce qu'il a donné, il ne repartage que s'il
+                              veut corriger. */}
+                          {gpsDejaConnu ? (
+                            <p class="border-l-4 border-ok-600 bg-ok-50 py-2.5 pl-4 pr-3 text-sm text-ok-700" data-i18n
+                              data-en={`Position already recorded (${prefillStr('gps_lat')}, ${prefillStr('gps_lng')}). Share it again only to correct it.`}
+                              data-ar={`تم تسجيل موقعكم بالفعل (${prefillStr('gps_lat')}, ${prefillStr('gps_lng')}). أعيدوا مشاركته فقط لتصحيحه.`}>
+                              Position déjà enregistrée ({prefillStr('gps_lat')}, {prefillStr('gps_lng')}). Repartagez-la seulement pour la corriger.
+                            </p>
+                          ) : (
+                            <p class="text-sm text-encre-soft" data-i18n
+                              data-en="Share your position so we can locate your roof precisely."
+                              data-ar="شاركوا موقعكم لنتمكن من تحديد سطحكم بدقة.">
+                              Partagez votre position pour qu'on localise précisément votre toit.
+                            </p>
+                          )}
                           <button type="button" id="q-gps-btn"
                             class="inline-flex w-full items-center justify-center gap-2 border border-azur-600 px-5 py-3 text-sm font-bold text-azur-700 transition-colors hover:bg-azur-600 hover:text-white sm:w-auto"
-                            data-i18n data-en="Share my position" data-ar="مشاركة موقعي">
-                            📍 Partager ma position
+                            data-i18n
+                            data-en={gpsDejaConnu ? 'Update my position' : 'Share my position'}
+                            data-ar={gpsDejaConnu ? 'تحديث موقعي' : 'مشاركة موقعي'}>
+                            📍 {gpsDejaConnu ? 'Mettre à jour ma position' : 'Partager ma position'}
                           </button>
                           <p id="q-gps-preview" class="hidden border-l-4 border-ok-600 bg-ok-50 py-2.5 pl-4 pr-3 text-sm font-semibold text-ok-700" aria-live="polite"></p>
                           <p id="q-gps-error" class="hidden text-sm text-encre-soft" aria-live="polite"></p>
@@ -277,47 +330,55 @@ function prefillBoolRadio(key: string): 'oui' | 'non' | '' {
 
                       {id === 'energie' && (
                         <>
-                          <div>
-                            <label for="q-facture-hiver" class="mb-1 block text-sm font-semibold" data-i18n
-                              data-en="Winter monthly bill (MAD)" data-ar="فاتورة الشتاء الشهرية (درهم)">
-                              Facture d'hiver mensuelle (MAD)
-                            </label>
-                            <input id="q-facture-hiver" type="number" min="0" step="any" inputmode="decimal" value={prefillStr('facture_hiver')}
-                              class="w-full min-h-[44px] border border-azur-900/20 bg-blanc px-3 py-3 text-base outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/50" />
-                          </div>
-                          <fieldset class="border-0 p-0">
-                            <legend class="mb-1 text-sm font-semibold" data-i18n data-en="Is your summer bill different?" data-ar="هل فاتورة الصيف مختلفة؟">
-                              Votre facture d'été est-elle différente ?
-                            </legend>
-                            <div class="flex gap-4">
-                              <label class="flex min-h-[44px] cursor-pointer items-center gap-2 text-sm">
-                                <input type="radio" name="q-ete-differente" id="q-ete-oui" value="oui" checked={prefillBoolRadio('ete_differente') === 'oui'} class="h-5 w-5 accent-azur-600" />
-                                <span data-i18n data-en="Yes" data-ar="نعم">Oui</span>
+                          {demande('energie', 'facture_hiver') && (
+                            <div>
+                              <label for="q-facture-hiver" class="mb-1 block text-sm font-semibold" data-i18n
+                                data-en="Winter monthly bill (MAD)" data-ar="فاتورة الشتاء الشهرية (درهم)">
+                                Facture d'hiver mensuelle (MAD)
                               </label>
-                              <label class="flex min-h-[44px] cursor-pointer items-center gap-2 text-sm">
-                                <input type="radio" name="q-ete-differente" id="q-ete-non" value="non" checked={prefillBoolRadio('ete_differente') === 'non'} class="h-5 w-5 accent-azur-600" />
-                                <span data-i18n data-en="No" data-ar="لا">Non</span>
-                              </label>
+                              <input id="q-facture-hiver" type="number" min="0" step="any" inputmode="decimal" value={prefillStr('facture_hiver')}
+                                class="w-full min-h-[44px] border border-azur-900/20 bg-blanc px-3 py-3 text-base outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/50" />
                             </div>
-                          </fieldset>
-                          <div id="q-facture-ete-wrap" class:list={['', prefillBoolRadio('ete_differente') === 'oui' ? '' : 'hidden']}>
-                            <label for="q-facture-ete" class="mb-1 block text-sm font-semibold" data-i18n data-en="Summer monthly bill (MAD)" data-ar="فاتورة الصيف الشهرية (درهم)">
-                              Facture d'été mensuelle (MAD)
-                            </label>
-                            <input id="q-facture-ete" type="number" min="0" step="any" inputmode="decimal" value={prefillStr('facture_ete')}
-                              class="w-full min-h-[44px] border border-azur-900/20 bg-blanc px-3 py-3 text-base outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/50" />
-                          </div>
-                          <div>
-                            <label for="q-raccordement" class="mb-1 block text-sm font-semibold" data-i18n
-                              data-en="Connection (if known)" data-ar="نوع الربط (إن كان معروفاً)">
-                              Raccordement (si connu)
-                            </label>
-                            <select id="q-raccordement" class="w-full min-h-[44px] border border-azur-900/20 bg-blanc px-3 py-3 text-base outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/50">
-                              <option value="" selected={prefillStr('raccordement') === ''}>— Je ne sais pas</option>
-                              <option value="mono" selected={prefillStr('raccordement') === 'mono'}>Monophasé</option>
-                              <option value="tri" selected={prefillStr('raccordement') === 'tri'}>Triphasé</option>
-                            </select>
-                          </div>
+                          )}
+                          {demande('energie', 'ete_differente') && (
+                            <>
+                              <fieldset class="border-0 p-0">
+                                <legend class="mb-1 text-sm font-semibold" data-i18n data-en="Is your summer bill different?" data-ar="هل فاتورة الصيف مختلفة؟">
+                                  Votre facture d'été est-elle différente ?
+                                </legend>
+                                <div class="flex gap-4">
+                                  <label class="flex min-h-[44px] cursor-pointer items-center gap-2 text-sm">
+                                    <input type="radio" name="q-ete-differente" id="q-ete-oui" value="oui" checked={prefillBoolRadio('ete_differente') === 'oui'} class="h-5 w-5 accent-azur-600" />
+                                    <span data-i18n data-en="Yes" data-ar="نعم">Oui</span>
+                                  </label>
+                                  <label class="flex min-h-[44px] cursor-pointer items-center gap-2 text-sm">
+                                    <input type="radio" name="q-ete-differente" id="q-ete-non" value="non" checked={prefillBoolRadio('ete_differente') === 'non'} class="h-5 w-5 accent-azur-600" />
+                                    <span data-i18n data-en="No" data-ar="لا">Non</span>
+                                  </label>
+                                </div>
+                              </fieldset>
+                              <div id="q-facture-ete-wrap" class:list={['', prefillBoolRadio('ete_differente') === 'oui' ? '' : 'hidden']}>
+                                <label for="q-facture-ete" class="mb-1 block text-sm font-semibold" data-i18n data-en="Summer monthly bill (MAD)" data-ar="فاتورة الصيف الشهرية (درهم)">
+                                  Facture d'été mensuelle (MAD)
+                                </label>
+                                <input id="q-facture-ete" type="number" min="0" step="any" inputmode="decimal" value={prefillStr('facture_ete')}
+                                  class="w-full min-h-[44px] border border-azur-900/20 bg-blanc px-3 py-3 text-base outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/50" />
+                              </div>
+                            </>
+                          )}
+                          {demande('energie', 'raccordement') && (
+                            <div>
+                              <label for="q-raccordement" class="mb-1 block text-sm font-semibold" data-i18n
+                                data-en="Connection (if known)" data-ar="نوع الربط (إن كان معروفاً)">
+                                Raccordement (si connu)
+                              </label>
+                              <select id="q-raccordement" class="w-full min-h-[44px] border border-azur-900/20 bg-blanc px-3 py-3 text-base outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/50">
+                                <option value="" selected={prefillStr('raccordement') === ''}>— Je ne sais pas</option>
+                                <option value="mono" selected={prefillStr('raccordement') === 'mono'}>Monophasé</option>
+                                <option value="tri" selected={prefillStr('raccordement') === 'tri'}>Triphasé</option>
+                              </select>
+                            </div>
+                          )}
                         </>
                       )}
 
@@ -338,20 +399,28 @@ function prefillBoolRadio(key: string): 'oui' | 'non' | '' {
                             {id === 'photo_compteur' && 'Prenez une photo de votre compteur électrique.'}
                             {id === 'photo_tableau' && 'Prenez une photo de votre tableau électrique, ouvert.'}
                           </p>
+                          <p class="text-xs text-encre-faint" data-i18n
+                            data-en="Optional — continue without it if you don't have it at hand."
+                            data-ar="اختياري — تابعوا بدونها إن لم تكن في متناولكم.">
+                            Facultatif — continuez sans si vous ne l'avez pas sous la main.
+                          </p>
                           <label class="flex min-h-[44px] cursor-pointer items-center justify-center gap-2 border border-azur-600 px-5 py-3 text-sm font-bold text-azur-700 transition-colors hover:bg-azur-600 hover:text-white">
                             <span data-i18n data-en="Take / choose a photo" data-ar="التقاط / اختيار صورة">📷 Prendre / choisir une photo</span>
                             <input type="file" accept="image/*" capture="environment" id={`q-${id}-input`} class="sr-only" />
                           </label>
                           <img id={`q-${id}-preview`} alt="" class="hidden max-h-64 w-full border border-azur-900/15 object-contain" />
                           <p id={`q-${id}-err`} role="alert" class="hidden text-sm text-alert-600"></p>
-                          <button type="button" id={`q-${id}-skip`} class="text-sm text-encre-faint underline underline-offset-2" data-i18n data-en="Skip this step" data-ar="تخطي هذه الخطوة">
-                            Passer cette étape
-                          </button>
+                          {/* Le bouton « Passer cette étape » par photo a disparu avec le
+                              regroupement des trois photos sur UN écran : « Continuer »
+                              n'envoie que ce qui a été fourni (isEmptyPostBody), donc une
+                              photo non prise est déjà passée. Un bouton « passer » par
+                              photo aurait fait sauter les DEUX autres avec elle. */}
                         </>
                       )}
 
                       {id === 'toiture' && (
                         <>
+                          {demande('toiture', 'type_toiture') && (
                           <div>
                             <label for="q-type-toiture" class="mb-1 block text-sm font-semibold" data-i18n data-en="Roof type" data-ar="نوع السطح">Type de toiture</label>
                             <select id="q-type-toiture" class="w-full min-h-[44px] border border-azur-900/20 bg-blanc px-3 py-3 text-base outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/50">
@@ -363,6 +432,8 @@ function prefillBoolRadio(key: string): 'oui' | 'non' | '' {
                               ))}
                             </select>
                           </div>
+                          )}
+                          {demande('toiture', 'surface_toiture_m2') && (
                           <div>
                             <label for="q-surface-toiture" class="mb-1 block text-sm font-semibold" data-i18n data-en="Available roof surface (m²)" data-ar="مساحة السطح المتاحة (م²)">
                               Surface de toiture disponible (m²)
@@ -374,6 +445,8 @@ function prefillBoolRadio(key: string): 'oui' | 'non' | '' {
                               <span data-i18n data-en="I don't know" data-ar="لا أعرف">Je ne sais pas</span>
                             </label>
                           </div>
+                          )}
+                          {demande('toiture', 'roof_age') && (
                           <div>
                             <label for="q-roof-age" class="mb-1 block text-sm font-semibold" data-i18n data-en="Roof age (years, optional)" data-ar="عمر السطح (بالسنوات، اختياري)">
                               Âge de la toiture (années, facultatif)
@@ -381,6 +454,8 @@ function prefillBoolRadio(key: string): 'oui' | 'non' | '' {
                             <input id="q-roof-age" type="number" min="0" max="100" step="1" inputmode="numeric" value={prefillStr('roof_age')}
                               class="w-full min-h-[44px] border border-azur-900/20 bg-blanc px-3 py-3 text-base outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/50" />
                           </div>
+                          )}
+                          {demande('toiture', 'ownership') && (
                           <fieldset class="border-0 p-0">
                             <legend class="mb-1 text-sm font-semibold" data-i18n data-en="You are…" data-ar="أنتم…">Vous êtes</legend>
                             <div class="flex gap-4">
@@ -394,6 +469,7 @@ function prefillBoolRadio(key: string): 'oui' | 'non' | '' {
                               </label>
                             </div>
                           </fieldset>
+                          )}
                         </>
                       )}
 
@@ -428,7 +504,7 @@ function prefillBoolRadio(key: string): 'oui' | 'non' | '' {
                             { key: 'equip_voiture_electrique', fr: 'Véhicule électrique (actuel ou prévu)', en: 'Electric vehicle (current or planned)', ar: 'سيارة كهربائية (حالية أو مستقبلية)' },
                             { key: 'equip_clim', fr: 'Climatisation', en: 'Air conditioning', ar: 'تكييف الهواء' },
                             { key: 'equip_piscine', fr: 'Piscine', en: 'Swimming pool', ar: 'مسبح' },
-                          ] as const).map((eq) => (
+                          ] as const).filter((eq) => demande('equipements', eq.key)).map((eq) => (
                             <div class="border border-azur-900/10 p-3">
                               <p class="text-sm font-semibold" data-i18n data-en={eq.en} data-ar={eq.ar}>{eq.fr}</p>
                               <div class="mt-2 flex gap-4">
@@ -516,6 +592,7 @@ function prefillBoolRadio(key: string): 'oui' | 'non' | '' {
   {ok && (
     <script define:vars={{
       initSections: sections,
+      initEcrans: ecrans.map((e) => ({ id: e.id, actives: e.actives })),
       initPrefill: prefill,
       initRepondu: repondu,
       interne,
@@ -527,6 +604,7 @@ function prefillBoolRadio(key: string): 'oui' | 'non' | '' {
     }}>
       window.__Q_INIT__ = {
         sections: initSections,
+        ecrans: initEcrans,
         prefill: initPrefill,
         repondu: initRepondu,
         interne,
@@ -557,8 +635,16 @@ function prefillBoolRadio(key: string): 'oui' | 'non' | '' {
   // (postSection le refuse déjà avant d'y arriver, cf. init.interne ci-dessous).
   import { appareilId } from '../../lib/visite';
 
+  interface QEcran {
+    id: string;
+    /** Sections servies de cet écran, dans l'ordre d'affichage. */
+    actives: QuestionnaireSectionId[];
+  }
+
   interface QInit {
     sections: QuestionnaireSectionId[];
+    /** Regroupement en pages (lib/questionnaire.ts ECRANS) — l'unité de LECTURE. */
+    ecrans: QEcran[];
     prefill: Record<string, unknown>;
     repondu: Partial<Record<QuestionnaireSectionId, boolean>>;
     interne: boolean;
@@ -573,7 +659,13 @@ function prefillBoolRadio(key: string): 'oui' | 'non' | '' {
 
   function boot(init: QInit) {
     const sections = init.sections;
-    const total = sections.length;
+    // Repli défensif : un `ecrans` absent (page servie par une version plus
+    // ancienne) retombe sur « une section = un écran », le comportement
+    // d'avant le regroupement — jamais un questionnaire vide.
+    const ecrans: QEcran[] = Array.isArray(init.ecrans) && init.ecrans.length > 0
+      ? init.ecrans
+      : sections.map((s) => ({ id: `section-${s}`, actives: [s] }));
+    const total = ecrans.length;
     const repondu: Partial<Record<QuestionnaireSectionId, boolean>> = { ...init.repondu };
     const touched = new Set<QuestionnaireSectionId>();
     const editing = new Set<QuestionnaireSectionId>();
@@ -592,8 +684,10 @@ function prefillBoolRadio(key: string): 'oui' | 'non' | '' {
     const doneEl = $('q-done');
     const sectionsWrap = $('q-sections');
 
-    function activeSectionId(): QuestionnaireSectionId {
-      return sections[currentIndex];
+    /** Sections de l'écran courant — l'écran est l'unité de LECTURE, la
+     *  section reste l'unité d'ENREGISTREMENT (un POST par section). */
+    function activeSectionIds(): QuestionnaireSectionId[] {
+      return ecrans[currentIndex]?.actives ?? [];
     }
 
     // ── i18n fr/en/ar (même mécanique que /devis/mon-toit, étendue à 3 langues) ──
@@ -660,7 +754,7 @@ function prefillBoolRadio(key: string): 'oui' | 'non' | '' {
       sectionErrEl?.classList.add('hidden');
       sectionEls.forEach((fs) => {
         const id = fs.dataset.section as QuestionnaireSectionId;
-        const idx = Number(fs.dataset.index);
+        const idx = Number(fs.dataset.ecran);
         const visible = idx === currentIndex;
         fs.classList.toggle('hidden', !visible);
         fs.classList.toggle('flex', visible);
@@ -776,7 +870,7 @@ function prefillBoolRadio(key: string): 'oui' | 'non' | '' {
           }
           touched.add('gps');
           const result = await postSection('gps');
-          if (result.ok) repondu.gps = true;
+          if (result.envoye) repondu.gps = true;
         },
         () => {
           if (errEl) {
@@ -825,7 +919,6 @@ function prefillBoolRadio(key: string): 'oui' | 'non' | '' {
       const input = $(`q-${section}-input`) as HTMLInputElement | null;
       const preview = $(`q-${section}-preview`) as HTMLImageElement | null;
       const errEl = $(`q-${section}-err`);
-      const skipBtn = $(`q-${section}-skip`);
       input?.addEventListener('change', async () => {
         const file = input.files?.[0];
         errEl?.classList.add('hidden');
@@ -844,10 +937,6 @@ function prefillBoolRadio(key: string): 'oui' | 'non' | '' {
           preview.src = resized;
           preview.classList.remove('hidden');
         }
-      });
-      skipBtn?.addEventListener('click', () => {
-        if (init.interne) return;
-        advance();
       });
     });
 
@@ -906,16 +995,22 @@ function prefillBoolRadio(key: string): 'oui' | 'non' | '' {
     }
 
     // ── POST par section ──────────────────────────────────────────────────
-    async function postSection(section: QuestionnaireSectionId): Promise<{ ok: boolean; detail?: string }> {
-      if (init.interne) return { ok: true };
+    // `envoye` distingue « c'est parti au serveur » de « il n'y avait rien à
+    // envoyer » : sans lui, passer un écran photo sans photo marquait la
+    // section RÉPONDUE, et l'écran ne se rouvrait plus dans la même session
+    // alors que le client voulait justement y revenir avec sa photo.
+    async function postSection(
+      section: QuestionnaireSectionId,
+    ): Promise<{ ok: boolean; envoye: boolean; detail?: string }> {
+      if (init.interne) return { ok: true, envoye: false };
       if (repondu[section] === true && !touched.has(section)) {
         // Rien de neuf — on ne renvoie pas une réponse inchangée.
-        return { ok: true };
+        return { ok: true, envoye: false };
       }
       const raw = collectSectionRaw(section);
       const photo = isPhotoSection(section) ? photoDataUrls[section] ?? null : null;
       const body = buildQuestionnairePostBody(section, raw, photo, appareilId());
-      if (isEmptyPostBody(body)) return { ok: true };
+      if (isEmptyPostBody(body)) return { ok: true, envoye: false };
 
       try {
         // Recalage orchestrateur 25/08 — POST navigateur via le proxy
@@ -934,11 +1029,11 @@ function prefillBoolRadio(key: string): 'oui' | 'non' | '' {
         }
         const result = parseQuestionnairePostResponse(res.status, json);
         if (!result.ok) {
-          return { ok: false, detail: result.detail || 'Cette réponse n’a pas pu être enregistrée. Réessayez.' };
+          return { ok: false, envoye: false, detail: result.detail || 'Cette réponse n’a pas pu être enregistrée. Réessayez.' };
         }
-        return { ok: true };
+        return { ok: true, envoye: true };
       } catch {
-        return { ok: false, detail: 'Connexion impossible. Vérifiez votre réseau et réessayez.' };
+        return { ok: false, envoye: false, detail: 'Connexion impossible. Vérifiez votre réseau et réessayez.' };
       }
     }
 
@@ -951,7 +1046,11 @@ function prefillBoolRadio(key: string): 'oui' | 'non' | '' {
       }
       currentIndex += 1;
       renderStep();
-      sectionEls[currentIndex]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      // On remonte sur la PREMIÈRE section du nouvel écran (un écran peut en
+      // porter plusieurs — les trois photos, ou toiture+GPS).
+      const premiere = activeSectionIds()[0];
+      sectionEls.find((fs) => fs.dataset.section === premiere)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
     prevBtn?.addEventListener('click', () => {
@@ -963,7 +1062,7 @@ function prefillBoolRadio(key: string): 'oui' | 'non' | '' {
 
     nextBtn?.addEventListener('click', async () => {
       sectionErrEl?.classList.add('hidden');
-      const section = activeSectionId();
+      const sectionsDeLEcran = activeSectionIds();
       if (init.interne) {
         advance();
         return;
@@ -971,17 +1070,26 @@ function prefillBoolRadio(key: string): 'oui' | 'non' | '' {
       nextBtn.disabled = true;
       nextSpinnerEl?.classList.remove('hidden');
       try {
-        const result = await postSection(section);
-        if (!result.ok) {
-          if (sectionErrEl) {
-            sectionErrEl.textContent = result.detail || 'Une erreur est survenue. Réessayez.';
-            sectionErrEl.classList.remove('hidden');
+        // Un écran = plusieurs sections possibles (les trois photos,
+        // toiture+GPS) : chacune part dans SON propre POST — le contrat
+        // « une section à la fois » est intact. Le premier échec arrête
+        // l'écran : ce qui est déjà parti reste enregistré (progressif).
+        for (const section of sectionsDeLEcran) {
+          const result = await postSection(section);
+          if (!result.ok) {
+            if (sectionErrEl) {
+              sectionErrEl.textContent = result.detail || 'Une erreur est survenue. Réessayez.';
+              sectionErrEl.classList.remove('hidden');
+            }
+            return;
           }
-          return;
+          // Marquée répondue UNIQUEMENT si quelque chose est réellement parti
+          // (une photo non prise ne « répond » à rien — l'écran doit rester
+          // rouvrable).
+          if (result.envoye) repondu[section] = true;
+          editing.delete(section);
+          touched.delete(section);
         }
-        repondu[section] = true;
-        editing.delete(section);
-        touched.delete(section);
         advance();
       } finally {
         nextBtn.disabled = false;

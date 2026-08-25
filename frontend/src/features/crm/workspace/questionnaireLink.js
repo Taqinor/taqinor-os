@@ -21,16 +21,23 @@
 // Whitelist serveur EXACTE — une clé hors de cette liste est refusée en 400
 // côté serveur (même garde que SECTIONS_ENVOI de DevisTab.jsx) : les deux
 // listes ne peuvent pas diverger en silence.
+//
+// L'ORDRE est celui de `crm.QuestionnaireLien.SECTIONS_CLES` — donc celui que
+// le client verra (engagement croissant, coordonnées en dernier, recherche du
+// 25/08/2026). Le commercial coche dans le même ordre que le prospect répond.
 export const SECTIONS_QUESTIONNAIRE = [
-  { key: 'contact', label: 'Coordonnées (email, adresse, ville)' },
-  { key: 'gps', label: 'Position GPS de la maison' },
+  { key: 'occupation', label: 'Présence en journée' },
+  { key: 'equipements', label: 'Équipements (piscine, VE, clim, chauffe-eau)' },
   { key: 'energie', label: "Factures d'électricité" },
+  { key: 'toiture', label: 'Toiture (type, surface, âge, propriétaire)' },
+  { key: 'gps', label: 'Position GPS de la maison' },
   { key: 'photo_facture', label: 'Photo de la facture' },
   { key: 'photo_compteur', label: 'Photo du compteur' },
   { key: 'photo_tableau', label: 'Photo du tableau électrique' },
-  { key: 'toiture', label: 'Toiture (type, surface, âge, propriétaire)' },
-  { key: 'occupation', label: 'Présence en journée' },
-  { key: 'equipements', label: 'Équipements (piscine, VE, clim, chauffe-eau)' },
+  // Le lien étant envoyé à un lead qui a déjà donné sa position, l'adresse
+  // n'est PAS reposée : le serveur la retire des questions dès que le GPS est
+  // connu (crm/questionnaire.py `_COUVERT_PAR`). D'où le libellé prudent.
+  { key: 'contact', label: 'Coordonnées (email, ville, adresse si pas de GPS)' },
 ]
 
 // État des cases à l'ouverture / après un mint : `data` est la réponse BRUTE

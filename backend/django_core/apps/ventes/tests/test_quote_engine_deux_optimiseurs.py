@@ -636,3 +636,76 @@ class TestUnePageProductionDeSaBranche(SimpleTestCase):
         d = F.donnees_legacy()
         html = F.html_onepage(onepage_branche="sans")
         self.assertEqual(self._prod(html), str(d["prod_kwh"]))
+
+
+class TestVignetteProductionDeuxValeurs(SimpleTestCase):
+    """PDFPROD (27/08/2026) — LA PRODUCTION AUSSI SE LIT PAR OPTION.
+
+    Miroir exact de ``TestVignettePuissanceDeuxValeurs`` : la production DÉRIVE
+    du kWc, elle diverge donc avec lui. Le builder publie les deux valeurs
+    depuis F1 (``prod_kwh_sans`` / ``prod_kwh_avec``) mais deux surfaces
+    lisaient encore le scalaire — la vignette « Production estimée » de la
+    page 1 et la bande de specs de la page 2 — soit la production de la seule
+    option AVEC, imprimée à côté d'une puissance écrite « sans · avec ».
+    """
+
+    # Le même échantillon divergent que les tests kWc, augmenté des deux
+    # productions (dérivées des 8 et 9 panneaux, jamais inventées ici : ce sont
+    # les valeurs déjà utilisées par ``TestUnePageProductionDeSaBranche``).
+    DIVERGENCE_PROD = dict(DIVERGENCE_RENDU, prod_kwh=9070,
+                           prod_kwh_sans=8065, prod_kwh_avec=9070)
+
+    def test_la_vignette_de_couverture_porte_les_deux_productions(self):
+        from apps.ventes.quote_engine.residential.theme import fmt
+        html = F.html_residentiel(**self.DIVERGENCE_PROD)
+        # Corps réduit à 12 pt : une production s'écrit sur 5 à 6 chiffres, la
+        # paire doit tenir SANS élargir la vignette ni passer à la ligne.
+        self.assertIn(
+            f'<div class="c1-kpi-v" style="font-size:12pt;">{fmt(8065)} · '
+            f'{fmt(9070)}<span class="c1-u">&nbsp;kWh/an</span></div>', html)
+        self.assertIn('<div class="c1-kpi-l">Production estimée sans · avec'
+                      '</div>', html)
+        # Plus aucune vignette mono-valeur portant la production de l'AVEC.
+        self.assertNotIn('<div class="c1-kpi-l">Production estimée</div>',
+                         html)
+
+    def test_la_bande_de_la_page_2_porte_les_deux_productions(self):
+        from apps.ventes.quote_engine.residential.theme import fmt
+        html = F.html_residentiel(**self.DIVERGENCE_PROD)
+        self.assertIn(f'<span style="font-size:13pt;">{fmt(8065)} · '
+                      f'{fmt(9070)}</span>', html)
+        self.assertIn('kWh / an produits (sans · avec)', html)
+        self.assertNotIn('<span class="p2-spec-l">kWh / an produits</span>',
+                         html)
+
+    def test_la_vignette_legacy_porte_les_deux_productions(self):
+        """Le moteur legacy rend la MÊME page 1 quand le renderer résidentiel
+        décline le devis : il portait le même scalaire unique."""
+        html = F.html_legacy(**self.DIVERGENCE_PROD)
+        # Le legacy groupe ses milliers avec U+00A0 (espace insécable),
+        # jamais l'espace fine du thème résidentiel : la chaîne est écrite
+        # en échappements pour rester lisible.
+        self.assertIn('8 065&#160;&#183;&#160;9 070&nbsp;kWh', html)
+        self.assertIn('&#233;nergie propre / an (sans &#183; avec)', html)
+        self.assertNotIn('>&#233;nergie propre / an</div>', html)
+
+    def test_une_production_saisie_identique_reste_une_seule_valeur(self):
+        """Garde propre à la production : une production SAISIE dans l'étude
+        vaut pour les deux options (le builder réaligne les deux clés). Les
+        panneaux divergent, la production non — « 9 070 · 9 070 » n'aurait
+        aucun sens : la vignette reste mono-valeur."""
+        html = F.html_residentiel(**dict(self.DIVERGENCE_PROD,
+                                         prod_kwh_sans=9070))
+        self.assertIn('<div class="c1-kpi-l">Production estimée</div>', html)
+        self.assertNotIn('Production estimée sans · avec', html)
+        self.assertIn('<span class="p2-spec-l">kWh / an produits</span>', html)
+
+    def test_sans_divergence_la_production_est_celle_d_hier(self):
+        from apps.ventes.quote_engine.residential.theme import fmt
+        d = F.donnees_residentiel()
+        html = F.html_residentiel()
+        self.assertIn(f'<div class="c1-kpi-v">{fmt(d["prod_kwh"])}'
+                      '<span class="c1-u">&nbsp;kWh/an</span></div>', html)
+        self.assertIn('<div class="c1-kpi-l">Production estimée</div>', html)
+        self.assertIn('<span class="p2-spec-l">kWh / an produits</span>', html)
+        self.assertNotIn('sans · avec', html)

@@ -86,6 +86,16 @@ const ventesApi = {
   // manquent ou que le marché n'est pas résidentiel : le message vient du
   // serveur et oriente vers le générateur complet.
   creerDevisAuto: (data) => api.post('/ventes/devis/auto/', data),
+  // U3COMPOSE (26/08/2026) — DRY-RUN de la composition résidentielle : compose
+  // le kit et rend les lignes SANS RIEN CRÉER (aucun devis, aucun statut,
+  // règle #4). Même catalogue, même fonction pure, mêmes règles de gamme que
+  // creerDevisAuto/ci-dessus — la source de vérité unique que l'écran
+  // générateur utilise pour PRÉREMPLIR ses lignes éditables au lieu de
+  // recomposer le kit en JavaScript de son côté (solar.js::autoFillLines).
+  // Corps : `{kwc | nb_panneaux, panel_watt?, scenario?, structure_type?,
+  // taux_tva?, mppt_paires?, dimensionnement_avec?}`. Forme de la réponse :
+  // `apps/ventes/contract_samples/devis_composition.json`.
+  composerDevis: (data) => api.post('/ventes/devis/composition/', data),
   // QJ14 — Envoyer par email : PDF premium + lien tokenisé → client, consigne EmailLog, marque envoyé.
   envoyerEmailDevis: (id, payload = {}) => api.post(`/ventes/devis/${id}/envoyer-email/`, payload),
   // QG8 — « Envoyer » = flux WhatsApp : lien wa.me + lien tokenisé, marque envoyé.

@@ -215,6 +215,49 @@ def _clean_roof_outline(raw):
     return out if len(out) >= 3 else None
 
 
+def _a_un_contour(valeur):
+    """Vrai quand ``valeur`` est un contour de toit exploitable (≥ 3 sommets).
+
+    MÊME seuil que ``_clean_roof_outline`` et que le tunnel (``validateLead``) :
+    un polygone commence à 3 sommets. Une seule définition, partagée par la
+    note d'historique et la notification — jamais deux règles qui divergent."""
+    return isinstance(valeur, list) and len(valeur) >= 3
+
+
+def _noter_trace_toit(lead):
+    """L-DESSIN (ordre fondateur 25/08/2026) — une NOTE d'historique quand le
+    client a dessiné son toit.
+
+    « When the client draws his roof i still do not receive the drawing » : le
+    contour arrivait bien en base (``Lead.roof_outline``) mais RIEN dans la
+    fiche ne disait qu'il était là — ni l'historique, ni l'écran. Cette note
+    est le reçu : elle date l'arrivée du tracé et dit où le voir. Best-effort
+    comme toutes les écritures annexes de ce webhook : un échec ne remet
+    jamais le lead en cause.
+
+    AUCUN CHIFFRE INVENTÉ : seul le nombre RÉEL de sommets est écrit — la
+    surface, elle, est calculée et affichée côté fiche à partir de ces mêmes
+    sommets (``frontend traceToit.js``), jamais estimée ici."""
+    contour = getattr(lead, 'roof_outline', None)
+    if not _a_un_contour(contour):
+        return
+    try:
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=None,
+            kind=LeadActivity.Kind.NOTE,
+            body=(
+                'Toit dessiné par le client sur la carte du site : '
+                f'{len(contour)} points. Le tracé est visible sur la fiche '
+                '(section « Toiture & site ») et déjà chargé dans '
+                '« Concevoir la toiture (3D) ».'
+            ),
+        )
+    except Exception as _exc:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'website_lead_webhook: note de tracé de toit échouée '
+            '(lead #%s) : %s', getattr(lead, 'pk', None), _exc)
+
+
 # QK1 — Mode marché du site → Lead.type_installation (tolérant FR/EN).
 # Le site émet mode ∈ {residentiel, professionnel, agricole} (lead.ts
 # LEAD_MODES) : 'professionnel' était ABSENT de cette table → chaque lead
@@ -1455,19 +1498,47 @@ def _map_and_link_lead(raw, data, company):
         # contrairement aux autres champs (complétés par tout non-vide), le
         # GPS suit la même discipline « jamais d'écrasement » que
         # `services._MERGE_FILL_FIELDS` (fusion manuelle de leads).
+        # L-DESSIN — état AVANT la fusion : un contour qui arrive sur ce
+        # deuxième envoi (le visiteur a dessiné puis re-soumis dans la minute)
+        # mérite sa note, un contour déjà noté à la création n'en remet pas.
+        avait_contour = _a_un_contour(getattr(existing, 'roof_outline', None))
+        # CLIOVR (25/08/2026) — même discipline que le GPS ci-dessus, mais
+        # généralisée à TOUT champ corrigé À LA MAIN : un second POST < 60 s
+        # (retry réseau, étape suivante du tunnel) ne doit jamais écraser une
+        # valeur qu'un commercial vient de corriger dans le CRM. « Manuel » =
+        # une LeadActivity MODIFICATION portant un `user` réel — la vue CRM
+        # (views.py:746) en écrit une à CHAQUE édition humaine ; ce webhook
+        # et les autres chemins système (services.py, questionnaire.py)
+        # écrivent toujours user=None, donc jamais comptés ici (sinon le
+        # webhook se bloquerait lui-même). Une seule requête, avant la boucle.
+        manually_touched = set(
+            LeadActivity.objects
+            .filter(lead=existing, kind=LeadActivity.Kind.MODIFICATION,
+                    user__isnull=False)
+            .values_list('field', flat=True)
+        )
+        # Snapshot AVANT écriture — sert au trace old→new ci-dessous, même
+        # patron que `perform_update` (views.py:739) et
+        # `update_lead_from_public_api` (services.py:3843).
+        avant = Lead.objects.get(pk=existing.pk)
         for key, value in fields.items():
             if value is None or value == '':
                 continue
             if key in _GPS_FIELDS and getattr(existing, key) is not None:
                 continue
+            if key in manually_touched:
+                continue
             setattr(existing, key, value)
         existing.save()
         lead, created = existing, False
-        LeadActivity.objects.create(
-            company=lead.company, lead=lead, user=None,
-            kind=LeadActivity.Kind.NOTE,
-            body='Mis à jour via le site web (même envoi < 1 min)',
-        )
+        # Trace la fusion comme partout ailleurs (activity.log_changes) : un
+        # champ RÉELLEMENT écrit apparaît avec son ancienne et sa nouvelle
+        # valeur ; aucune entrée si rien n'a changé. Remplace l'ancienne note
+        # plate qui ne disait jamais QUEL champ avait bougé.
+        from . import activity
+        activity.log_changes(avant, lead, None)
+        if not avait_contour:
+            _noter_trace_toit(lead)
         # QX14 — TOUS les autres chemins de création/mise à jour de lead
         # persistent le score via recompute_lead_score (views.py 561/574,
         # services.py 1088/1366/1429/2782) SAUF ce webhook — le score
@@ -1530,6 +1601,8 @@ def _map_and_link_lead(raw, data, company):
             kind=LeadActivity.Kind.CREATION,
             body=creation_body,
         )
+        # L-DESSIN — le tracé du client laisse une TRACE dans l'historique.
+        _noter_trace_toit(lead)
         # QJ2 (a) — speed-to-lead : notifie le owner dès la création (voit
         # déjà l'owner hérité ci-dessus s'il y en a un — jamais un round-robin
         # notifié puis contredit par la note de doublon qui suit). Un lead

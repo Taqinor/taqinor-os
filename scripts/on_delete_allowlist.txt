@@ -1,8 +1,8 @@
-# Rebase 2026-08-25 (L-2OPT) : les entrees `apps/ventes/models.py` au-dela
+﻿# Rebase 2026-08-25 (L-2OPT) : les entrees `apps/ventes/models.py` au-dela
 # de la ligne 501 sont decalees de +30 -- LigneDevis.variante (champ +
 # choices + docstring) insere DANS LigneDevis. Memes FK, aucun NOUVEAU
 # CASCADE (ceux du chantier portent leur commentaire inline).
-# YDATA1 — on_delete=CASCADE sites reviewed as-of 2026-07-12 (initial
+# YDATA1 â€” on_delete=CASCADE sites reviewed as-of 2026-07-12 (initial
 # baseline generated from the then-current repo state, per the task
 # spec, so the guard does not block on ~1300 pre-existing FKs). One
 # 'path:lineno' per line. A NEW CASCADE must instead carry an inline
@@ -19,32 +19,32 @@
 # n'entre ici) : les CASCADE reellement nouveaux de cette vague portent leur
 # propre commentaire inline `# on_delete: <raison>` dans leur modele
 # (patron immunise aux decalages), jamais une entree ici.
-# Rebased 2026-08-13 (lanes NTCRM14-30) : les 33 entrées `apps/crm/models.py`
-# sont décalées de +10 lignes — les modèles NTCRM (SalleVente, Apporteur,
-# DealEnregistre, Defi…) ont été insérés dans le même fichier, ce qui a poussé
-# les FK PRÉ-EXISTANTES vers le bas. Ce sont EXACTEMENT les mêmes champs
-# (vérifié par appariement AST modèle.champ avant/après sur origin/main) :
-# aucun NOUVEAU CASCADE n'entre ici. Les 10 FK CASCADE réellement nouvelles
+# Rebased 2026-08-13 (lanes NTCRM14-30) : les 33 entrÃ©es `apps/crm/models.py`
+# sont dÃ©calÃ©es de +10 lignes â€” les modÃ¨les NTCRM (SalleVente, Apporteur,
+# DealEnregistre, Defiâ€¦) ont Ã©tÃ© insÃ©rÃ©s dans le mÃªme fichier, ce qui a poussÃ©
+# les FK PRÃ‰-EXISTANTES vers le bas. Ce sont EXACTEMENT les mÃªmes champs
+# (vÃ©rifiÃ© par appariement AST modÃ¨le.champ avant/aprÃ¨s sur origin/main) :
+# aucun NOUVEAU CASCADE n'entre ici. Les 10 FK CASCADE rÃ©ellement nouvelles
 # portent leur propre commentaire inline `# on_delete: <raison>` dans le
-# modèle (patron AOF, immunisé aux décalages), pas une entrée ici.
-# Vérifié 2026-08-01 (Groupe AOF, lane intégrations + gouvernance / AOF193) :
-# `check_on_delete.py` VERT sur l'hôte, aucune entrée à réaligner. Cette lane
-# n'ajoute ni modèle ni migration, donc aucune ligne n'a bougé. Le RITUEL de
-# gates hôte à passer avant tout push est écrit dans
-# `docs/ao-fabrique-documentaire.md` §1 — le lire AVANT de rebaser ce fichier.
-# Rebased 2026-08-01 (Groupe AOF, W0/W1) : les 15 entrées
-# `apps/ao/models.py` sont RETIRÉES — chacune de ces FK porte désormais son
-# propre commentaire inline `# on_delete: <raison>` dans le modèle, ce qui rend
-# le fichier immunisé aux décalages de lignes (la lane AO fait grossir
-# `apps/ao/models.py` à chaque tâche). La baisse de 15 entrées est un
-# RÉTRÉCISSEMENT de la baseline, jamais un élargissement. `roles/models.py:419`
-# → `:442` (même FK `Role.company`, décalée par les 3 permissions `ao_*`
-# ajoutées à ALL_PERMISSIONS ; aucun NOUVEAU CASCADE).
-# Rebased 2026-07-31 (protection des prix fournisseur) : 121 entrées
-# stock/models.py remappées (+12 à partir de la ligne 181) après l'ajout du
-# champ `Fournisseur.is_archived`. MÊME jeu de FK, aucun NOUVEAU CASCADE —
-# au contraire, `achats.PrixFournisseur.fournisseur` passe de CASCADE à
-# PROTECT (une entrée de moins à justifier, pas une de plus).
+# modÃ¨le (patron AOF, immunisÃ© aux dÃ©calages), pas une entrÃ©e ici.
+# VÃ©rifiÃ© 2026-08-01 (Groupe AOF, lane intÃ©grations + gouvernance / AOF193) :
+# `check_on_delete.py` VERT sur l'hÃ´te, aucune entrÃ©e Ã  rÃ©aligner. Cette lane
+# n'ajoute ni modÃ¨le ni migration, donc aucune ligne n'a bougÃ©. Le RITUEL de
+# gates hÃ´te Ã  passer avant tout push est Ã©crit dans
+# `docs/ao-fabrique-documentaire.md` Â§1 â€” le lire AVANT de rebaser ce fichier.
+# Rebased 2026-08-01 (Groupe AOF, W0/W1) : les 15 entrÃ©es
+# `apps/ao/models.py` sont RETIRÃ‰ES â€” chacune de ces FK porte dÃ©sormais son
+# propre commentaire inline `# on_delete: <raison>` dans le modÃ¨le, ce qui rend
+# le fichier immunisÃ© aux dÃ©calages de lignes (la lane AO fait grossir
+# `apps/ao/models.py` Ã  chaque tÃ¢che). La baisse de 15 entrÃ©es est un
+# RÃ‰TRÃ‰CISSEMENT de la baseline, jamais un Ã©largissement. `roles/models.py:419`
+# â†’ `:442` (mÃªme FK `Role.company`, dÃ©calÃ©e par les 3 permissions `ao_*`
+# ajoutÃ©es Ã  ALL_PERMISSIONS ; aucun NOUVEAU CASCADE).
+# Rebased 2026-07-31 (protection des prix fournisseur) : 121 entrÃ©es
+# stock/models.py remappÃ©es (+12 Ã  partir de la ligne 181) aprÃ¨s l'ajout du
+# champ `Fournisseur.is_archived`. MÃŠME jeu de FK, aucun NOUVEAU CASCADE â€”
+# au contraire, `achats.PrixFournisseur.fournisseur` passe de CASCADE Ã 
+# PROTECT (une entrÃ©e de moins Ã  justifier, pas une de plus).
 # Rebased 2026-07-19 (batch-2 Groupe PUB final fold): 4 adsengine/models.py
 # entries remapped for pre-existing FKs shifted by X5 model additions
 # (InsightMonthlyRollup + EngineAction.proposed_by + GuardrailConfig.require_four_eyes):
@@ -52,7 +52,7 @@
 # AdMirror.adset 389->401, FactEntry.table 2273->2461. Same FK set, no new CASCADE.
 # (CompetitorAdObservation.competitor_page, a batch-2 PUB70 addition, carries an
 # inline '# on_delete:' comment in models.py instead.)
-# YDATA3 — SET_NULL on a tenant/owner-identity field (owner/responsable
+# YDATA3 â€” SET_NULL on a tenant/owner-identity field (owner/responsable
 # assignee fields, plus one genuine CustomUser.company case flagged for
 # founder review) reviewed as-of 2026-07-12 and reused from this same file.
 # Rebased 2026-07-12 (wave-6 fold): 104 file:line entries remapped for shifted/relocated pre-existing FKs (compta insertion of XPLT20 models pushed lines down; crm gained ODX13-relocated partenaire models; kb +12 / notifications +6). Same FK set, no new CASCADE.
@@ -61,33 +61,33 @@
 # Rebased 2026-07-19 (PUB28/PUB37): 2 crm/models.py entries remapped (+15) after the
 # MotifPerte.est_junk insertion (CommissionPartenaire.partenaire 1964->1979,
 # TerritoireCommercial.company 2023->2038). Same FK set, no new CASCADE.
-# Rebased 2026-07-31 (ODX15 — sortie state-only des notes de frais vers
-# apps/frais) : les FK pré-existantes de compta/models.py situées APRÈS le
-# bloc déplacé glissent de -607 lignes (626 retirées, 19 de shim insérées) ;
-# les 5 entrées DU bloc (les FK company des 5 modèles) deviennent
+# Rebased 2026-07-31 (ODX15 â€” sortie state-only des notes de frais vers
+# apps/frais) : les FK prÃ©-existantes de compta/models.py situÃ©es APRÃˆS le
+# bloc dÃ©placÃ© glissent de -607 lignes (626 retirÃ©es, 19 de shim insÃ©rÃ©es) ;
+# les 5 entrÃ©es DU bloc (les FK company des 5 modÃ¨les) deviennent
 # apps/frais/models.py:74/264/384/460/541 (recale NTP2P11).
-# Même jeu de FK, aucun nouveau CASCADE — pur remappage de lignes.
+# MÃªme jeu de FK, aucun nouveau CASCADE â€” pur remappage de lignes.
 # Rebased 2026-07-17 (NTDMO CI fix): 2 pre-existing SET_NULL_ON_TENANT_FIELD
 # entries remapped (authentication/models.py CustomUser.company +ventes/models.py
-# ParametrageRelanceClient.responsable — same FKs as the 2026-07-12 YDATA3 review,
+# ParametrageRelanceClient.responsable â€” same FKs as the 2026-07-12 YDATA3 review,
 # just shifted by unrelated line insertions elsewhere in each file). No new SET_NULL.
 # Rebased 2026-07-19 (PUB batch 1): pre-existing FK entries remapped after crm/adsengine
 # model-field insertions (MotifPerte.est_junk, token_health, etc.). Same FK set.
-# Rebased 2026-08-13 (crm_ventes vague 2) : 1 entrée SET_NULL_ON_TENANT_FIELD remappée
-# (authentication/models.py CustomUser.company 182->195) — l'ajout de Company.tours_actifs
-# (NTDMO27, 13 lignes) a décalé le fichier. Déclaration VÉRIFIÉE byte-identique à
+# Rebased 2026-08-13 (crm_ventes vague 2) : 1 entrÃ©e SET_NULL_ON_TENANT_FIELD remappÃ©e
+# (authentication/models.py CustomUser.company 182->195) â€” l'ajout de Company.tours_actifs
+# (NTDMO27, 13 lignes) a dÃ©calÃ© le fichier. DÃ©claration VÃ‰RIFIÃ‰E byte-identique Ã 
 # origin/main (`on_delete=SET_NULL, null=True, blank=True, related_name='users'`) :
-# pure dérive de lignes, même FK déjà revue en 2026-07-12/07-17. Aucun nouveau SET_NULL.
-# NTCPQ11-24 puis PV41 (electrical_design) — même FK relue, décalée
+# pure dÃ©rive de lignes, mÃªme FK dÃ©jÃ  revue en 2026-07-12/07-17. Aucun nouveau SET_NULL.
+# NTCPQ11-24 puis PV41 (electrical_design) â€” mÃªme FK relue, dÃ©calÃ©e
 # (DevisNudgeLog.company 1495 -> 1687 -> 1702).
-# NTCPQ11-24 — Devis.company relue, décalée par l'import core.models (17 -> 19).
-# NTCPQ11-24 — PromessePaiement.company relue, décalée (923 -> 1115).
-# NTCPQ11-24 puis PV41 — ParametrageRelanceClient.responsable relue, décalée
+# NTCPQ11-24 â€” Devis.company relue, dÃ©calÃ©e par l'import core.models (17 -> 19).
+# NTCPQ11-24 â€” PromessePaiement.company relue, dÃ©calÃ©e (923 -> 1115).
+# NTCPQ11-24 puis PV41 â€” ParametrageRelanceClient.responsable relue, dÃ©calÃ©e
 # (966 -> 1158 -> 1173).
-# PV5 (FicheTechnique +22 champs datasheet) — les 4 CASCADE ci-dessous sont les
+# PV5 (FicheTechnique +22 champs datasheet) â€” les 4 CASCADE ci-dessous sont les
 # MEMES FK deja revues, re-decalees par l'insertion : company (cascade tenant
 # standard) et le modele de BCF (lignes solidaires de leur modele/produit).
-# PV5 (suite du decalage +22) — codes-barres : memes FK deja revues.
+# PV5 (suite du decalage +22) â€” codes-barres : memes FK deja revues.
 backend/django_core/apps/achats/models.py:115
 backend/django_core/apps/achats/models.py:271
 backend/django_core/apps/achats/models.py:378
@@ -2355,118 +2355,118 @@ backend/django_core/apps/ventes/models.py:1618
 backend/django_core/apps/ventes/models.py:1622
 backend/django_core/apps/ventes/models.py:1612
 backend/django_core/apps/ventes/models.py:1683
-backend/django_core/apps/ventes/models.py:1732
-backend/django_core/apps/ventes/models.py:1755
-backend/django_core/apps/ventes/models.py:1762
-backend/django_core/apps/ventes/models.py:1780
-backend/django_core/apps/ventes/models.py:1797
-backend/django_core/apps/ventes/models.py:1806
+backend/django_core/apps/ventes/models.py:1745
+backend/django_core/apps/ventes/models.py:1768
+backend/django_core/apps/ventes/models.py:1775
+backend/django_core/apps/ventes/models.py:1793
 backend/django_core/apps/ventes/models.py:1810
-backend/django_core/apps/ventes/models.py:1813
-backend/django_core/apps/ventes/models.py:1831
-backend/django_core/apps/ventes/models.py:1824
-backend/django_core/apps/ventes/models.py:1840
-backend/django_core/apps/ventes/models.py:1874
+backend/django_core/apps/ventes/models.py:1819
+backend/django_core/apps/ventes/models.py:1823
+backend/django_core/apps/ventes/models.py:1826
+backend/django_core/apps/ventes/models.py:1844
+backend/django_core/apps/ventes/models.py:1837
+backend/django_core/apps/ventes/models.py:1853
+backend/django_core/apps/ventes/models.py:1887
+backend/django_core/apps/ventes/models.py:1896
 backend/django_core/apps/ventes/models.py:1883
-backend/django_core/apps/ventes/models.py:1870
-backend/django_core/apps/ventes/models.py:1914
-backend/django_core/apps/ventes/models.py:1953
-backend/django_core/apps/ventes/models.py:1925
-backend/django_core/apps/ventes/models.py:1943
-backend/django_core/apps/ventes/models.py:1939
+backend/django_core/apps/ventes/models.py:1927
+backend/django_core/apps/ventes/models.py:1966
+backend/django_core/apps/ventes/models.py:1938
+backend/django_core/apps/ventes/models.py:1956
+backend/django_core/apps/ventes/models.py:1952
 backend/django_core/apps/ventes/models.py:19
-backend/django_core/apps/ventes/models.py:1979
-backend/django_core/apps/ventes/models.py:1996
-backend/django_core/apps/ventes/models.py:1999
-backend/django_core/apps/ventes/models.py:1965
-backend/django_core/apps/ventes/models.py:1969
+backend/django_core/apps/ventes/models.py:1992
+backend/django_core/apps/ventes/models.py:2009
+backend/django_core/apps/ventes/models.py:2012
+backend/django_core/apps/ventes/models.py:1978
 backend/django_core/apps/ventes/models.py:1982
-backend/django_core/apps/ventes/models.py:1985
-backend/django_core/apps/ventes/models.py:2002
-backend/django_core/apps/ventes/models.py:2005
+backend/django_core/apps/ventes/models.py:1995
+backend/django_core/apps/ventes/models.py:1998
+backend/django_core/apps/ventes/models.py:2015
 backend/django_core/apps/ventes/models.py:2018
-backend/django_core/apps/ventes/models.py:2022
-backend/django_core/apps/ventes/models.py:2027
-backend/django_core/apps/ventes/models.py:2049
-backend/django_core/apps/ventes/models.py:2058
-backend/django_core/apps/ventes/models.py:2061
-backend/django_core/apps/ventes/models.py:2050
-backend/django_core/apps/ventes/models.py:2065
+backend/django_core/apps/ventes/models.py:2031
+backend/django_core/apps/ventes/models.py:2035
+backend/django_core/apps/ventes/models.py:2040
+backend/django_core/apps/ventes/models.py:2062
+backend/django_core/apps/ventes/models.py:2071
+backend/django_core/apps/ventes/models.py:2074
+backend/django_core/apps/ventes/models.py:2063
+backend/django_core/apps/ventes/models.py:2078
+backend/django_core/apps/ventes/models.py:2080
 backend/django_core/apps/ventes/models.py:2067
-backend/django_core/apps/ventes/models.py:2054
-backend/django_core/apps/ventes/models.py:2092
-backend/django_core/apps/ventes/models.py:2096
-backend/django_core/apps/ventes/models.py:2081
-backend/django_core/apps/ventes/models.py:2095
-backend/django_core/apps/ventes/models.py:2130
-backend/django_core/apps/ventes/models.py:2136
+backend/django_core/apps/ventes/models.py:2105
 backend/django_core/apps/ventes/models.py:2109
-backend/django_core/apps/ventes/models.py:2116
-backend/django_core/apps/ventes/models.py:2132
-backend/django_core/apps/ventes/models.py:2133
-backend/django_core/apps/ventes/models.py:2134
+backend/django_core/apps/ventes/models.py:2094
+backend/django_core/apps/ventes/models.py:2108
+backend/django_core/apps/ventes/models.py:2143
+backend/django_core/apps/ventes/models.py:2149
 backend/django_core/apps/ventes/models.py:2122
-backend/django_core/apps/ventes/models.py:2162
-backend/django_core/apps/ventes/models.py:2164
-backend/django_core/apps/ventes/models.py:2165
-backend/django_core/apps/ventes/models.py:2166
-backend/django_core/apps/ventes/models.py:2154
-backend/django_core/apps/ventes/models.py:2237
-backend/django_core/apps/ventes/models.py:2226
-backend/django_core/apps/ventes/models.py:2230
-backend/django_core/apps/ventes/models.py:2219
-backend/django_core/apps/ventes/models.py:2248
-backend/django_core/apps/ventes/models.py:2223
-backend/django_core/apps/ventes/models.py:2234
+backend/django_core/apps/ventes/models.py:2129
+backend/django_core/apps/ventes/models.py:2145
+backend/django_core/apps/ventes/models.py:2146
+backend/django_core/apps/ventes/models.py:2147
+backend/django_core/apps/ventes/models.py:2135
+backend/django_core/apps/ventes/models.py:2175
+backend/django_core/apps/ventes/models.py:2177
+backend/django_core/apps/ventes/models.py:2178
+backend/django_core/apps/ventes/models.py:2179
+backend/django_core/apps/ventes/models.py:2167
+backend/django_core/apps/ventes/models.py:2250
+backend/django_core/apps/ventes/models.py:2239
+backend/django_core/apps/ventes/models.py:2243
+backend/django_core/apps/ventes/models.py:2232
+backend/django_core/apps/ventes/models.py:2261
 backend/django_core/apps/ventes/models.py:2236
-backend/django_core/apps/ventes/models.py:2265
-backend/django_core/apps/ventes/models.py:2268
-backend/django_core/apps/ventes/models.py:2288
-backend/django_core/apps/ventes/models.py:2291
+backend/django_core/apps/ventes/models.py:2247
+backend/django_core/apps/ventes/models.py:2249
 backend/django_core/apps/ventes/models.py:2278
 backend/django_core/apps/ventes/models.py:2281
-backend/django_core/apps/ventes/models.py:2307
-backend/django_core/apps/ventes/models.py:2313
-backend/django_core/apps/ventes/models.py:2315
-backend/django_core/apps/ventes/models.py:2331
-backend/django_core/apps/ventes/models.py:2319
-backend/django_core/apps/ventes/models.py:2311
-backend/django_core/apps/ventes/models.py:2317
-backend/django_core/apps/ventes/models.py:2370
-backend/django_core/apps/ventes/models.py:2389
-backend/django_core/apps/ventes/models.py:2428
-backend/django_core/apps/ventes/models.py:2435
-backend/django_core/apps/ventes/models.py:2489
-backend/django_core/apps/ventes/models.py:2521
-backend/django_core/apps/ventes/models.py:2513
+backend/django_core/apps/ventes/models.py:2301
+backend/django_core/apps/ventes/models.py:2304
+backend/django_core/apps/ventes/models.py:2291
+backend/django_core/apps/ventes/models.py:2294
+backend/django_core/apps/ventes/models.py:2320
+backend/django_core/apps/ventes/models.py:2326
+backend/django_core/apps/ventes/models.py:2328
+backend/django_core/apps/ventes/models.py:2344
+backend/django_core/apps/ventes/models.py:2332
+backend/django_core/apps/ventes/models.py:2324
+backend/django_core/apps/ventes/models.py:2330
+backend/django_core/apps/ventes/models.py:2383
+backend/django_core/apps/ventes/models.py:2402
+backend/django_core/apps/ventes/models.py:2441
+backend/django_core/apps/ventes/models.py:2448
+backend/django_core/apps/ventes/models.py:2502
 backend/django_core/apps/ventes/models.py:2534
-backend/django_core/apps/ventes/models.py:2574
-backend/django_core/apps/ventes/models.py:2590
-backend/django_core/apps/ventes/models.py:2584
-backend/django_core/apps/ventes/models.py:2626
-backend/django_core/apps/ventes/models.py:2675
-backend/django_core/apps/ventes/models.py:2734
-backend/django_core/apps/ventes/models.py:2787
-backend/django_core/apps/ventes/models.py:2782
-backend/django_core/apps/ventes/models.py:2789
+backend/django_core/apps/ventes/models.py:2526
+backend/django_core/apps/ventes/models.py:2547
+backend/django_core/apps/ventes/models.py:2587
+backend/django_core/apps/ventes/models.py:2603
+backend/django_core/apps/ventes/models.py:2597
+backend/django_core/apps/ventes/models.py:2639
+backend/django_core/apps/ventes/models.py:2688
+backend/django_core/apps/ventes/models.py:2747
+backend/django_core/apps/ventes/models.py:2800
+backend/django_core/apps/ventes/models.py:2795
 backend/django_core/apps/ventes/models.py:2802
-backend/django_core/apps/ventes/models.py:2808
-backend/django_core/apps/ventes/models.py:2901
-backend/django_core/apps/ventes/models.py:2952
-backend/django_core/apps/ventes/models.py:2980
-backend/django_core/apps/ventes/models.py:3023
-backend/django_core/apps/ventes/models.py:3026
-backend/django_core/apps/ventes/models.py:3054
-backend/django_core/apps/ventes/models.py:3092
-backend/django_core/apps/ventes/models.py:3094
-backend/django_core/apps/ventes/models.py:3124
-backend/django_core/apps/ventes/models.py:3126
-backend/django_core/apps/ventes/models.py:3192
-backend/django_core/apps/ventes/models.py:3195
-backend/django_core/apps/ventes/models.py:3250
-backend/django_core/apps/ventes/models.py:3253
-backend/django_core/apps/ventes/models.py:3275
-backend/django_core/apps/ventes/models.py:3277
+backend/django_core/apps/ventes/models.py:2815
+backend/django_core/apps/ventes/models.py:2821
+backend/django_core/apps/ventes/models.py:2914
+backend/django_core/apps/ventes/models.py:2965
+backend/django_core/apps/ventes/models.py:2993
+backend/django_core/apps/ventes/models.py:3036
+backend/django_core/apps/ventes/models.py:3039
+backend/django_core/apps/ventes/models.py:3067
+backend/django_core/apps/ventes/models.py:3105
+backend/django_core/apps/ventes/models.py:3107
+backend/django_core/apps/ventes/models.py:3137
+backend/django_core/apps/ventes/models.py:3139
+backend/django_core/apps/ventes/models.py:3205
+backend/django_core/apps/ventes/models.py:3208
+backend/django_core/apps/ventes/models.py:3263
+backend/django_core/apps/ventes/models.py:3266
+backend/django_core/apps/ventes/models.py:3288
+backend/django_core/apps/ventes/models.py:3290
 backend/django_core/apps/ventes/models.py:341
 backend/django_core/apps/ventes/models.py:350
 backend/django_core/apps/ventes/models.py:354
@@ -2635,11 +2635,11 @@ backend/django_core/core/models.py:913
 backend/django_core/core/models.py:918
 backend/django_core/core/models.py:984
 backend/django_core/core/models.py:987
-# RE-BASÉ 2026-08-14 — fusion de deux sessions parallèles (primitives NT +
-# PLAN_CRM_VENTES #518) : chacune a inséré dans apps/crm/models.py, donc les
-# entrées de l'autre ont glissé. Ces 6 CASCADE sont les MÊMES sites
-# pré-existants (Partenaire, SoumissionLeadPartenaire, CommissionPartenaire,
-# TerritoireCommercial), à leurs numéros de ligne sur l'arbre fusionné —
+# RE-BASÃ‰ 2026-08-14 â€” fusion de deux sessions parallÃ¨les (primitives NT +
+# PLAN_CRM_VENTES #518) : chacune a insÃ©rÃ© dans apps/crm/models.py, donc les
+# entrÃ©es de l'autre ont glissÃ©. Ces 6 CASCADE sont les MÃŠMES sites
+# prÃ©-existants (Partenaire, SoumissionLeadPartenaire, CommissionPartenaire,
+# TerritoireCommercial), Ã  leurs numÃ©ros de ligne sur l'arbre fusionnÃ© â€”
 # aucun site nouveau. Bug-class #34.
 backend/django_core/apps/crm/models.py:2124
 backend/django_core/apps/crm/models.py:2249
@@ -2648,11 +2648,11 @@ backend/django_core/apps/crm/models.py:2304
 backend/django_core/apps/crm/models.py:2310
 backend/django_core/apps/crm/models.py:2369
 
-# RE-BASÉ 2026-08-14 (2e passe) — fusion de 183 commits de sessions
-# parallèles : le groupe NTWMS a inséré massivement dans stock/models.py,
-# décalant ces CASCADE pré-existantes (Produit, MouvementStock,
-# EmplacementStock, ConditionnementProduit…). MÊMES sites, numéros relus
-# sur l'arbre fusionné — aucun site nouveau. Bug-class #34.
+# RE-BASÃ‰ 2026-08-14 (2e passe) â€” fusion de 183 commits de sessions
+# parallÃ¨les : le groupe NTWMS a insÃ©rÃ© massivement dans stock/models.py,
+# dÃ©calant ces CASCADE prÃ©-existantes (Produit, MouvementStock,
+# EmplacementStock, ConditionnementProduitâ€¦). MÃŠMES sites, numÃ©ros relus
+# sur l'arbre fusionnÃ© â€” aucun site nouveau. Bug-class #34.
 backend/django_core/apps/stock/models.py:511
 backend/django_core/apps/stock/models.py:515
 backend/django_core/apps/stock/models.py:577
@@ -2684,20 +2684,20 @@ backend/django_core/apps/stock/models.py:1856
 backend/django_core/apps/stock/models.py:1887
 backend/django_core/apps/stock/models.py:1916
 backend/django_core/apps/stock/models.py:1949
-# PV5 (FicheTechnique +22 champs datasheet) — les 4 CASCADE ci-dessous sont les
+# PV5 (FicheTechnique +22 champs datasheet) â€” les 4 CASCADE ci-dessous sont les
 # MEMES FK deja revues, re-decalees par l'insertion : company (cascade tenant
 # standard) et le modele de BCF (lignes solidaires de leur modele/produit).
 backend/django_core/apps/stock/models.py:1752
 backend/django_core/apps/stock/models.py:1888
 backend/django_core/apps/stock/models.py:1916
 backend/django_core/apps/stock/models.py:1919
-# PV5 (suite du decalage +22) — codes-barres : memes FK deja revues.
+# PV5 (suite du decalage +22) â€” codes-barres : memes FK deja revues.
 backend/django_core/apps/stock/models.py:1948
 backend/django_core/apps/stock/models.py:1981
 
-# RE-BASÉ 2026-08-14 (3e passe) — fusion finale : la vague supply/WMS a
-# encore inséré dans stock/models.py, décalant ces CASCADE
-# pré-existantes. MÊMES sites, numéros relus sur l'arbre fusionné.
+# RE-BASÃ‰ 2026-08-14 (3e passe) â€” fusion finale : la vague supply/WMS a
+# encore insÃ©rÃ© dans stock/models.py, dÃ©calant ces CASCADE
+# prÃ©-existantes. MÃŠMES sites, numÃ©ros relus sur l'arbre fusionnÃ©.
 backend/django_core/apps/stock/models.py:1201
 backend/django_core/apps/stock/models.py:1206
 backend/django_core/apps/stock/models.py:1251

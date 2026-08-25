@@ -8,6 +8,20 @@
       "gps",
       "energie"
     ],
+    "champs": {
+      "gps": [
+        "gps_lat",
+        "gps_lng"
+      ],
+      "energie": [
+        "facture_hiver",
+        "facture_ete",
+        "ete_differente",
+        "conso_mensuelle_kwh",
+        "tranche_onee",
+        "raccordement"
+      ]
+    },
     "prefill": {
       "gps_lat": null,
       "gps_lng": null,
@@ -25,16 +39,20 @@
   },
 
   "sections": [
-    "contact",
-    "gps",
+    "occupation",
+    "equipements",
     "energie",
+    "toiture",
+    "gps",
     "photo_facture",
     "photo_compteur",
     "photo_tableau",
-    "toiture",
-    "occupation",
-    "equipements"
+    "contact"
   ],
+
+  "ordre": "L'ordre de cette liste EST l'ordre d'affichage (source unique : crm.QuestionnaireLien.SECTIONS_CLES). Recherche du 25/08/2026 — engagement CROISSANT, sensible en dernier : occupation/équipements (une tape) → énergie (un chiffre lu sur la facture) → toiture/GPS (estimer une surface, accorder une permission) → les trois photos (effort physique) → coordonnées (données personnelles, TOUJOURS en dernier — NN/g « Hierarchy of Trust »). L'ancien ordre commençait par `contact` : exactement l'inverse.",
+
+  "ecrans": "REGROUPEMENT (page publique, apps/web/src/lib/questionnaire.ts ECRANS) — 6 écrans au maximum, jamais 9 : les trois photos tiennent sur UN écran, `toiture`+`gps` sur un autre (même sujet : le toit). Un écran n'existe que s'il porte au moins une section servie, et la barre de progression compte les ÉCRANS RÉELS (Baymard : un indicateur de progression doit refléter 1:1 les étapes réellement traversées). Une section reste l'unité d'ENREGISTREMENT : un écran POSTe chacune des siennes séparément, le contrat POST ne bouge pas.",
 
   "semantique_questions": {
     "trois_etats": "Comme ventes.ShareLink.sections : clé ABSENTE → section ACTIVE (défaut) ; clé à false → section RETIRÉE ; clé à true → section servie.",
@@ -54,7 +72,8 @@
   "public_get": {
     "auth": "AUCUNE — le lien EST l'authentification (patron magic-link, comme public/booking/). Throttlé par IP+jeton. Un jeton inconnu ou expiré renvoie un 404 à corps CONSTANT (jamais bavard).",
     "notes": {
-      "sections": "UNIQUEMENT les sections actives, dans l'ordre de la whitelist.",
+      "sections": "UNIQUEMENT les sections actives, dans l'ordre de la whitelist, ET dont il reste quelque chose à afficher (une section dont toutes les colonnes sont vides ET couvertes ailleurs n'ouvre pas un écran mort). Les sections photo sont toujours servies : leur réponse n'est pas une colonne.",
+      "champs": "GRAIN FIN (ordre fondateur 25/08/2026 « on ne redemande JAMAIS une donnée déjà connue ») — pour CHAQUE section servie, les seules colonnes que la page a le droit de dessiner. Une colonne connue du lead y figure (elle revient pré-remplie, donc confirmable) ; une colonne VIDE mais couverte par une autre donnée connue en est ABSENTE et la question disparaît. Aujourd'hui une seule règle de couverture : `adresse` disparaît dès que gps_lat ET gps_lng sont posés (le repère localise le toit au mètre — redemander l'adresse postale serait une redondance ET une perte de précision). Rien n'est déduit ni fabriqué : on ne construit pas l'adresse depuis le GPS, on se contente de ne pas la reposer. Sections photo → liste vide (aucune colonne).",
       "prefill": "UNIQUEMENT les champs des sections actives, valeurs ACTUELLES du lead. Une valeur absente vaut `null` — JAMAIS un défaut forfaitaire, jamais un chiffre inventé (règle fondateur « zéro chiffre inventé »).",
       "repondu": "Sections déjà enregistrées PAR CE LIEN (reprise). Absent = pas encore répondu.",
       "interne": "true uniquement quand la page a été ouverte avec `token_interne` (aperçu commercial, aucune trace écrite). Absent/false côté client."
@@ -104,7 +123,7 @@
   "manquantes": {
     "quoi": "Carte {section: bool} — une section est MANQUANTE quand l'information qu'elle porte n'est pas (complètement) connue du lead. C'est le DÉFAUT des questions posées.",
     "regles": {
-      "contact": "email, adresse ou ville vide.",
+      "contact": "email ou ville vide, OU adresse vide ALORS QUE le GPS n'est pas connu. Dès que gps_lat+gps_lng sont posés, `adresse` ne compte plus comme une information manquante (sinon le défaut rouvrait un écran « Coordonnées » dont la seule question restante était justement celle qu'on s'interdit de poser).",
       "gps": "gps_lat ou gps_lng nul.",
       "energie": "les champs requis du mode (devis_auto.champs_manquants) manquent, OU tranche_onee/raccordement vides. NB : `ete_differente` n'est PAS un signal de « jamais posée » — sa colonne est NOT NULL default False (crm.Lead), donc elle vaut toujours true/false ; le trois-états « None = jamais posée » ne s'applique qu'aux colonnes réellement nullables (les equip_*).",
       "toiture": "type_toiture, surface_toiture_m2, roof_age ou ownership vide.",

@@ -35,8 +35,10 @@ from .questionnaire import (
     LienIndisponible,
     SectionInconnue,
     appliquer_section,
+    champs_a_poser,
     prefill,
     resoudre,
+    sections_a_servir,
 )
 
 #: Corps CONSTANT de tout échec de résolution (jeton inconnu OU expiré) —
@@ -81,6 +83,10 @@ class PublicQuestionnaireRateThrottle(SimpleRateThrottle):
         'prenom': serializers.CharField(required=False),
         'sections': serializers.ListField(
             child=serializers.CharField(), required=False),
+        # `champs` : {section: [colonnes]} — DictField ouvert comme `prefill`
+        # (ses clés varient par section ; la whitelist vit dans
+        # questionnaire.CHAMPS_PAR_SECTION, jamais dupliquée ici).
+        'champs': serializers.DictField(required=False),
         'prefill': serializers.DictField(required=False),
         'repondu': serializers.DictField(required=False),
         'interne': serializers.BooleanField(required=False),
@@ -111,9 +117,17 @@ def _detail(lien, interne):
     champs (valeurs actuelles du lead — une valeur absente vaut ``null``,
     jamais un défaut inventé) et sections déjà répondues (reprise).
 
+    ``champs`` (ordre fondateur 25/08/2026) porte le grain FIN : pour chaque
+    section servie, les SEULES colonnes que la page a le droit de dessiner.
+    Une donnée que le lead porte déjà y revient (pré-remplie, confirmable) ;
+    une donnée vide mais couverte par une autre déjà connue — l'adresse d'un
+    client qui a donné son GPS — n'y est PAS, et la question disparaît. Cette
+    clé n'expose rien de neuf : ce sont les noms des colonnes que ``prefill``
+    accompagne déjà, jamais une donnée interne de plus.
+
     Aucune écriture, aucune trace : un simple affichage ne modifie jamais la
     fiche — ce qui rend l'aperçu interne du commercial parfaitement muet."""
-    sections = lien.sections_actives()
+    sections = sections_a_servir(lien.lead, lien.sections_actives())
     repondues = lien.sections_repondues
     if not isinstance(repondues, dict):
         repondues = {}
@@ -121,6 +135,7 @@ def _detail(lien, interne):
         'entreprise': (getattr(lien.company, 'nom', '') or '').strip(),
         'prenom': (lien.lead.prenom or '').strip(),
         'sections': sections,
+        'champs': champs_a_poser(lien.lead, sections),
         'prefill': prefill(lien.lead, sections),
         'repondu': {cle: True for cle in sections if repondues.get(cle)},
         'interne': interne,

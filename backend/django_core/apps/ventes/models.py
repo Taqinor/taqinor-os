@@ -1697,19 +1697,32 @@ class DevisSignature(models.Model):
         return f'Signature {self.devis_id} — {self.signataire_nom}'
 
     @staticmethod
-    def compute_content_hash(devis):
+    def compute_content_hash(devis, lignes=None):
         """SHA-256 du payload canonique du devis (sans aucune donnée interne).
 
         Le hash couvre : référence, client (nom/email), date_creation,
         lignes (designation/qte/pu_ht/remise), taux_tva, remise_globale.
         JAMAIS prix_achat ni marge. Déterministe et reproductible.
+
+        NPLUS1 (27/08/2026) — ``lignes`` accepte les lignes DÉJÀ CHARGÉES par
+        l'appelant (chemin d'acceptation, qui les a en main). Elles sont
+        retriées par ``id`` : le payload — donc le hash — est le MÊME qu'avec
+        la requête, sans quoi une signature ne se vérifierait plus. Paramètre
+        absent (tout autre appelant) ⇒ la requête d'hier.
         """
         client = getattr(devis, 'client', None)
         client_str = ''
         if client is not None:
             client_str = f'{getattr(client, "nom", "")}|{getattr(client, "email", "")}'
-        lignes = list(devis.lignes.order_by('id').values(
-            'designation', 'quantite', 'prix_unitaire', 'remise'))
+        if lignes is None:
+            lignes = list(devis.lignes.order_by('id').values(
+                'designation', 'quantite', 'prix_unitaire', 'remise'))
+        else:
+            lignes = [
+                {'designation': lg.designation, 'quantite': lg.quantite,
+                 'prix_unitaire': lg.prix_unitaire, 'remise': lg.remise}
+                for lg in sorted(lignes, key=lambda li: li.id)
+            ]
         lignes_str = '|'.join(
             f"{lg['designation']}:{lg['quantite']}:{lg['prix_unitaire']}:{lg['remise']}"
             for lg in lignes

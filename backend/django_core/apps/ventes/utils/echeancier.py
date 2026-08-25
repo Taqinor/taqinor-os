@@ -109,10 +109,14 @@ def _tranche_type(key):
     return TRANCHE_TYPE.get(key, Facture.TypeFacture.INTERMEDIAIRE)
 
 
-def next_tranche(devis):
+def next_tranche(devis, lignes=None):
     """Décrit la prochaine tranche à facturer, ou None si l'échéancier est complet.
 
     Retourne un dict : key, label, type, pourcentage, ht, tva, ttc, is_last.
+
+    NPLUS1 (27/08/2026) — ``lignes`` (optionnel) est propagé tel quel à
+    ``option_totaux`` : un appelant qui a déjà les lignes en main (chemin
+    d'acceptation) évite une requête de plus. Absent ⇒ comportement d'hier.
     """
     schedule = schedule_for_devis(devis)
     existantes = list(factures_actives(devis))
@@ -127,7 +131,7 @@ def next_tranche(devis):
     # de l'option retenue (batterie exclue/incluse selon le choix), au centime.
     # Sans vraie deuxième option, ce sont les totaux complets — inchangé.
     from apps.ventes.utils.options import option_totaux
-    opt = option_totaux(devis)
+    opt = option_totaux(devis, lignes=lignes)
     total_ht = Decimal(str(opt['ht']))
     total_tva = Decimal(str(opt['tva']))
     total_ttc = Decimal(str(opt['ttc']))

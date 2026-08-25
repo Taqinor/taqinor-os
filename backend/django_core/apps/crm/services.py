@@ -2377,6 +2377,17 @@ def notify_new_lead(lead, *, sous_seuil=False) -> None:
             avant_demande=True)
         if historique:
             body_parts.append(historique)
+        # L-DESSIN (fondateur 25/08/2026 : « when the client draws his roof i
+        # still do not receive the drawing ») — la notification d'arrivée DIT
+        # désormais qu'un tracé accompagne la demande. Sans contour, la phrase
+        # est simplement absente : jamais « 0 point », jamais un tracé annoncé
+        # qui n'existe pas.
+        contour = getattr(lead, 'roof_outline', None)
+        if isinstance(contour, list) and len(contour) >= 3:
+            body_parts.append(
+                f'Le client a DESSINÉ le contour de son toit '
+                f'({len(contour)} points) — visible sur la fiche, '
+                'section « Toiture & site ».')
         if wa_url:
             body_parts.append(f'Répondre maintenant : {wa_url}')
         notify_many(

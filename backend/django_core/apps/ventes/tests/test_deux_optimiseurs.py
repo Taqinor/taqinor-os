@@ -442,6 +442,43 @@ class LeCalepinagePlafonneChaqueOption(_Base):
         self.assertEqual(resultat['panneaux'], 8)
         self.assertFalse(resultat['inchange'])
 
+    def test_un_toit_qui_ecrete_sous_le_sans_fait_converger_les_deux_options(
+            self):
+        """VERROU DU TOIT — quand le calepinage ne tient PAS plus que le
+        compte « sans » lui-même, les DEUX options débordent et sont
+        ramenées au MÊME plafond : la divergence entre les deux optimiseurs
+        ne survit pas à un toit trop petit pour porter ne serait-ce que
+        l'option la plus modeste.
+
+        Contraste avec ``test_seule_loption_qui_deborde_est_ramenee_au_
+        plafond`` juste au-dessus (toit à 9 : seule l'option « avec » (10)
+        déborde, elles restent divergentes 8/9). Ici le toit tombe à 6 —
+        SOUS le compte « sans » (8) — donc les deux options débordent et
+        convergent sur le même compte écrêté.
+        """
+        devis = self._devis_variante(sans=8, avec=10)
+        resultat = services.sync_devis_from_layout(
+            devis, self._layout(6), self.user)
+
+        quantites = self._quantites(devis, 'Panneau Jinko 550W')
+        self.assertEqual(
+            quantites, {'sans': 6, 'avec': 6},
+            'un toit à 6 panneaux (sous le compte « sans » de 8) doit '
+            'ramener LES DEUX options au même plafond : obtenu %s'
+            % quantites)
+        self.assertEqual(
+            quantites['sans'], quantites['avec'],
+            'le verrou du toit doit faire CONVERGER les deux optimiseurs '
+            'quand aucun des deux ne tient sur le toit : sans=%s avec=%s'
+            % (quantites.get('sans'), quantites.get('avec')))
+        # La ferrure suit, elle aussi, le même plafond des deux côtés.
+        self.assertEqual(self._quantites(devis, 'Structures acier'),
+                         {'sans': 6, 'avec': 6})
+        self.assertEqual(self._quantites(devis, 'Socles'),
+                         {'sans': 12, 'avec': 12})
+        self.assertEqual(resultat['panneaux'], 6)
+        self.assertFalse(resultat['inchange'])
+
     def test_un_toit_plus_grand_n_augmente_aucune_option(self):
         """20 panneaux posables : ni l'une ni l'autre option ne grossit."""
         devis = self._devis_variante(sans=8, avec=10)
@@ -473,7 +510,18 @@ class LeCalepinagePlafonneChaqueOption(_Base):
             [a for a in cible['avertissements'] if 'modèles' in a], [])
         # La cible dessinée par l'écran 3D est celle de l'option 1.
         self.assertEqual(cible['panneaux'], 8)
-        self.assertEqual(cible['scenario'], 'avec_batterie')
+        # CTX3D (25/08/2026) — CETTE ASSERTION DISAIT LE DÉFAUT. Le scénario se
+        # lisait sur TOUTES les lignes : la cible annonçait « avec_batterie »
+        # au-dessus du compte de panneaux de l'option SANS (dont l'onduleur est
+        # RÉSEAU et qui ne porte aucune batterie) — une installation que rien
+        # ne décrit. Les quatre grandeurs viennent maintenant du MÊME
+        # sous-ensemble ; l'option 2 a sa propre vue (``variante='avec'``, et
+        # la clé ``cible_avec`` du contexte PV17).
+        self.assertEqual(cible['scenario'], 'reseau')
+        self.assertFalse(cible['batterie'])
+        avec = services.cible_depuis_lignes(devis, variante='avec')
+        self.assertEqual((avec['panneaux'], avec['scenario']),
+                         (10, 'avec_batterie'))
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -571,6 +619,36 @@ class LAvalNeMelangeJamaisLesOptions(_Base):
                                 'Onduleur hybride Deye 5kW'])
         # Sans option : rien n'est filtré, comme avant.
         self.assertEqual(len(filter_lines_for_option(lignes, '')), 4)
+
+    def test_f14_une_ligne_declaree_contredisant_les_mots_cles_reste_dans_son_panier(self):
+        """F14 — une ligne DÉCLARÉE ('sans'/'avec') tranche SEULE, même quand
+        les mots-clés la contrediraient. Une batterie taguée 'sans' (résidu de
+        composition, ou correction manuelle du vendeur) doit rester dans le
+        panier « sans » : c'est exactement ce que rend le PDF
+        (``builder._repartir_options``, la déclaration prime) — écran et PDF
+        doivent facturer la MÊME chose, jamais l'écran qui l'oublie."""
+        class _Ligne:
+            def __init__(self, designation, variante):
+                self.designation = designation
+                self.variante = variante
+                self.produit = None
+
+        lignes = [_Ligne('Panneau Jinko 550W', ''),
+                  _Ligne('Batterie Dyness 10 kWh', 'sans'),
+                  _Ligne('Onduleur hybride Deye 5kW', 'avec'),
+                  _Ligne('Onduleur réseau Huawei 5kW', 'avec')]
+        sans = [li.designation
+                for li in filter_lines_for_option(lignes, SANS_BATTERIE)]
+        avec = [li.designation
+                for li in filter_lines_for_option(lignes, AVEC_BATTERIE)]
+        # La batterie déclarée 'sans' PART dans le panier sans (contrat F14),
+        # et jamais dans le panier avec malgré son mot-clé.
+        self.assertIn('Batterie Dyness 10 kWh', sans)
+        self.assertNotIn('Batterie Dyness 10 kWh', avec)
+        # L'onduleur réseau déclaré 'avec' reste dans le panier avec malgré
+        # son mot-clé (symétrique).
+        self.assertIn('Onduleur réseau Huawei 5kW', avec)
+        self.assertNotIn('Onduleur réseau Huawei 5kW', sans)
 
 
 # ═══════════════════════════════════════════════════════════════════════════

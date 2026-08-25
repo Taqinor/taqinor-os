@@ -1222,7 +1222,40 @@ def _pmax_wc_du_produit(produit):
     return pmax if pmax > 0 else None
 
 
-def cible_depuis_lignes(devis):
+def lignes_de_variante(lignes, variante):
+    """Les lignes qui composent l'option ``variante`` d'un devis.
+
+    C'est-à-dire les lignes COMMUNES (``variante=''`` — donc TOUTES celles d'un
+    devis non varianté) plus celles qui sont propres à cette option. Une ligne
+    de l'AUTRE option décrit une AUTRE installation : la faire entrer dans ce
+    panier donnerait un ensemble qu'aucun client n'achète.
+
+    ``variante`` vaut ``'sans'`` (défaut) ou ``'avec'``.
+    """
+    propre = VARIANTE_AVEC if variante == VARIANTE_AVEC else VARIANTE_SANS
+    return [li for li in lignes
+            if (getattr(li, 'variante', '') or '')
+            in (VARIANTE_COMMUNE, propre)]
+
+
+def option_avec_servable(devis):
+    """Ce devis peut-il RÉELLEMENT livrer l'option « Avec batterie » ?
+
+    MÊME critère que partout ailleurs dans le domaine — le moteur PDF
+    (``quote_engine/builder.py`` : ``avec_ok = has_hybride and has_batterie``,
+    d'où descendent ``variantes_servables`` et ``dimensionnement_options``) et
+    le scénario stocké à la création (``_a_batterie and _a_hybride``) : l'option
+    « avec » exige un onduleur HYBRIDE ET une BATTERIE. Lu sur le sous-ensemble
+    de lignes qui compose CETTE option, jamais sur le panier mélangé.
+
+    LECTURE PURE : n'écrit rien, ne lève pas sur un devis sans lignes.
+    """
+    lignes = lignes_de_variante(_lignes_produit(devis), VARIANTE_AVEC)
+    return (any(_classe_ligne(li, _is_hybrid_inverter) for li in lignes)
+            and any(_classe_ligne(li, _is_battery) for li in lignes))
+
+
+def cible_depuis_lignes(devis, variante='sans'):
     """PV16 — cible de calepinage LUE DANS LES LIGNES du devis.
 
     Rend toujours le même dict, quelles que soient les données :
@@ -1252,6 +1285,18 @@ def cible_depuis_lignes(devis):
     Additionner les deux vues (ce que faisait la somme brute des lignes)
     donnerait un nombre qui ne décrit AUCUNE installation.
 
+    CTX3D (25/08/2026) — ``scenario`` ET ``batterie`` DÉCRIVENT LA MÊME OPTION
+    QUE ``panneaux``. Ils se lisaient sur TOUTES les lignes du devis pendant que
+    le compte, lui, était filtré : un devis « Les deux » rendait donc
+    ``panneaux`` = l'option SANS accompagné de ``scenario='avec_batterie'`` —
+    une cible que rien ne décrit, envoyée telle quelle à l'écran 3D (PV17). Les
+    quatre grandeurs viennent désormais du MÊME sous-ensemble de lignes.
+
+    ``variante`` choisit ce sous-ensemble : ``'sans'`` (défaut — l'option 1,
+    celle que l'écran dessine, comportement historique) ou ``'avec'``. Sur un
+    devis NON varianté les deux vues sont identiques : les lignes y sont toutes
+    communes.
+
     LA FORME DU DICT NE BOUGE PAS : ces six clés sont un contrat gelé (le
     contexte de conception PV17 le repique tel quel). Un devis NON varianté —
     tous ceux d'hier — rend donc exactement les mêmes valeurs qu'avant.
@@ -1259,6 +1304,9 @@ def cible_depuis_lignes(devis):
     LECTURE PURE : aucun statut, aucune ligne, aucune étude n'est écrite.
     """
     lignes = _lignes_produit(devis)
+    # Le panier de CETTE option — la seule base légitime de tous les scalaires
+    # ci-dessous (cf. CTX3D dans le docstring).
+    lignes_option = lignes_de_variante(lignes, variante)
 
     def _nom(ligne):
         return ligne.designation or getattr(ligne.produit, 'nom', '') or ''
@@ -1272,17 +1320,22 @@ def cible_depuis_lignes(devis):
         except (ArithmeticError, TypeError, ValueError):
             return 0
 
-    # L-2OPT — LE COMPTE EST CELUI DE L'OPTION SANS : les lignes COMMUNES
+    # L-2OPT — LE COMPTE EST CELUI DE L'OPTION DEMANDÉE : les lignes COMMUNES
     # (``variante=''``, c'est-à-dire toutes celles d'un devis d'hier) plus
-    # celles propres à « sans ». Une ligne « avec » décrit l'AUTRE option — la
-    # compter ici donnerait la somme des deux paniers, un nombre de panneaux
-    # qu'aucune installation ne porte.
-    panneaux = sum(
-        _quantite(li) for li in lignes_panneau
-        if (getattr(li, 'variante', '') or '') in ('', VARIANTE_SANS))
+    # celles qui lui sont propres. Une ligne de l'autre option décrit une AUTRE
+    # installation — la compter ici donnerait la somme des deux paniers, un
+    # nombre de panneaux qu'aucune installation ne porte.
+    lignes_panneau_option = [li for li in lignes_option
+                             if _classe_ligne(li, _is_panel)]
+    panneaux = sum(_quantite(li) for li in lignes_panneau_option)
 
-    batterie = any(_classe_ligne(li, _is_battery) for li in lignes)
-    hybride = any(_classe_ligne(li, _is_hybrid_inverter) for li in lignes)
+    # CTX3D — MÊME sous-ensemble que le compte : sur un devis « Les deux », la
+    # batterie et l'onduleur hybride appartiennent à l'option « avec ». Les
+    # chercher dans tout le devis faisait décrire l'option 1 par le scénario de
+    # l'option 2.
+    batterie = any(_classe_ligne(li, _is_battery) for li in lignes_option)
+    hybride = any(_classe_ligne(li, _is_hybrid_inverter)
+                  for li in lignes_option)
     if batterie:
         scenario = 'avec_batterie'
     elif hybride:
@@ -5617,7 +5670,7 @@ def _send_otp_email(email, code, devis_ref, company=None):
 
 def _create_esign_record(*, devis, nom, ip, user_agent='', consentement=True,
                          signature_image='', signed_at_client=None,
-                         on_behalf_of=''):
+                         on_behalf_of='', lignes=None):
     """QJ10 — Crée le DevisSignature IMMUABLE si aucun n'existe encore.
 
     Idempotent : un enregistrement existant n'est jamais écrasé (la première
@@ -5641,7 +5694,9 @@ def _create_esign_record(*, devis, nom, ip, user_agent='', consentement=True,
         from apps.ventes.models import DevisSignature
         if DevisSignature.objects.filter(devis=devis).exists():
             return
-        content_hash = DevisSignature.compute_content_hash(devis)
+        # NPLUS1 — lignes déjà chargées par l'appelant quand il les a (le hash
+        # est identique : elles sont retriées par ``id`` côté modèle).
+        content_hash = DevisSignature.compute_content_hash(devis, lignes=lignes)
         # ``signature_image`` peut être une data-URL volumineuse — on la borne
         # raisonnablement (les payloads canvas font ~quelques Ko).
         img = (signature_image or '')
@@ -5700,7 +5755,7 @@ def _store_signed_pdf(*, devis):
             getattr(devis, 'reference', '?'), exc)
 
 
-def _acceptance_deposit_block(devis):
+def _acceptance_deposit_block(devis, lignes=None):
     """QX33be — bloc texte « acompte + RIB » pour l'email de confirmation.
 
     Acompte = 1ʳᵉ tranche de l'échéancier (sur le TTC REMISÉ, chaîne QX1). RIB
@@ -5709,7 +5764,9 @@ def _acceptance_deposit_block(devis):
     from decimal import Decimal
     try:
         from .utils.echeancier import next_tranche
-        tr = next_tranche(devis)
+        # NPLUS1 — ``lignes`` déjà chargées par l'acceptation (elles ne bougent
+        # pas pendant l'acceptation) ; absent ⇒ requête d'hier.
+        tr = next_tranche(devis, lignes=lignes)
         if tr is None:
             return ''
         acompte = Decimal(str(tr['ttc']))
@@ -5731,7 +5788,7 @@ def _acceptance_deposit_block(devis):
         return ''
 
 
-def _send_acceptance_emails(*, devis, user):
+def _send_acceptance_emails(*, devis, user, lignes=None):
     """QJ10 — Envoie un email de confirmation de signature au client + au vendeur.
 
     Best-effort : une exception ne remonte jamais (l'acceptation est déjà écrite).
@@ -5753,7 +5810,7 @@ def _send_acceptance_emails(*, devis, user):
         # QX33be — bloc acompte (tranche 1 sur le TTC REMISÉ per QX1) + RIB si
         # configuré. Vide (aucune ligne) quand rien n'est configurable → texte
         # de confirmation inchangé.
-        acompte_bloc = _acceptance_deposit_block(devis)
+        acompte_bloc = _acceptance_deposit_block(devis, lignes=lignes)
         corps = (
             f"{salut}\n\n"
             f"Nous avons bien reçu votre acceptation du devis "
@@ -6127,7 +6184,23 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
     date_acc = date_acceptation or timezone.now().date()
     with transaction.atomic():
         try:
-            devis = Devis.objects.select_for_update().get(pk=devis.pk)
+            # NPLUS1 (27/08/2026) — la relecture verrouillée est LA seule
+            # instance utilisée par tout le reste de l'acceptation : ses trois
+            # relations sont jointes ici plutôt que relues paresseusement une
+            # par une plus bas (``_create_esign_record`` → ``devis.company``,
+            # ``_send_acceptance_emails``/``_notify_seller_accepted`` →
+            # ``devis.client``, ``_persist_attribution`` → ``devis.lead``).
+            # Aucun changement de comportement : les mêmes objets, en une
+            # requête.
+            # ``of=('self',)`` est OBLIGATOIRE ici : ``company`` et ``lead``
+            # sont nullables, donc joints en LEFT OUTER JOIN — et PostgreSQL
+            # refuse « FOR UPDATE » sur le côté nullable d'une jointure
+            # externe. On verrouille donc la SEULE ligne devis, exactement le
+            # verrou d'avant (QX41, anti-course sur le double POST).
+            devis = (Devis.objects
+                     .select_related('client', 'company', 'lead')
+                     .select_for_update(of=('self',))
+                     .get(pk=devis.pk))
         except Devis.DoesNotExist:
             raise AcceptError('Devis introuvable.', conflict=True)
 
@@ -6177,6 +6250,19 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
         activity.log_devis_note(
             devis, user, f'Signature en ligne acceptée — IP {ip}')
 
+    # NPLUS1 (27/08/2026) — LES LIGNES DU DEVIS, CHARGÉES UNE SEULE FOIS. Le
+    # statut vient d'être basculé sous verrou : les lignes ne changent plus
+    # pendant la suite de l'acceptation. Elles alimentent l'empreinte de
+    # signature (``compute_content_hash``) ET l'acompte de l'email
+    # (``_acceptance_deposit_block`` → ``next_tranche`` → ``option_totaux``),
+    # qui refaisaient chacun leur propre requête lignes+produit. Best-effort :
+    # un échec de chargement rend ``None`` et chaque appelé requête comme
+    # avant — jamais une acceptation cassée pour une optimisation.
+    try:
+        lignes_devis = list(devis.lignes.select_related('produit').all())
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        lignes_devis = None
+
     # QJ10 — Enregistrement IMMUABLE de signature (loi 53-05).
     # Idempotent : si un DevisSignature existe déjà (re-submit idempotent)
     # on ne crée pas de second enregistrement — la signature d'origine fait foi.
@@ -6184,7 +6270,7 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
         devis=devis, nom=nom, ip=ip,
         user_agent=user_agent, consentement=consentement,
         signature_image=signature_image, signed_at_client=signed_at_client,
-        on_behalf_of=on_behalf_of,
+        on_behalf_of=on_behalf_of, lignes=lignes_devis,
     )
     # QJ9 — Attribution first-touch : copie UTM/fbclid du lead vers etude_params
     # du devis pour que l'attribution reste lossless même si le lead est fusionné.
@@ -6206,7 +6292,7 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
         pass
     # QJ10 — Email de confirmation PDF verrouillé au client + au vendeur.
     try:
-        _send_acceptance_emails(devis=devis, user=user)
+        _send_acceptance_emails(devis=devis, user=user, lignes=lignes_devis)
     except Exception as exc:  # noqa: BLE001 — best-effort
         logger.warning('QJ10: _send_acceptance_emails échoué pour devis %s : %s',
                        getattr(devis, 'reference', '?'), exc)

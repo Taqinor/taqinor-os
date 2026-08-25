@@ -299,7 +299,14 @@ def capacite_utile_batterie(produit, designation):
     if produit is not None:
         try:
             from apps.stock.selectors import specs_for_produit
-            specs = (specs_for_produit(produit) or {}).get('batterie') or {}
+            # CAPUTIL (25/08/2026) — ``specs_for_produit`` rend le BLOC du
+            # ``type_fiche``, PLAT : ses clés sont ``kwh_usable`` /
+            # ``kwh_nominal`` / ``dod_pct`` directement. Le ``.get('batterie')``
+            # qui était ici rendait donc TOUJOURS ``None`` (son propre docstring
+            # l'avertit, cf. L-DECH) : la fiche n'était jamais lue et TOUT le
+            # moteur retombait en silence sur le NOMINAL lu dans le nom du
+            # produit — l'erreur exacte que ce docstring dit ne jamais commettre.
+            specs = specs_for_produit(produit) or {}
             utile = specs.get('kwh_usable')
             if utile:
                 return float(utile)

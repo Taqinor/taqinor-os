@@ -46,6 +46,9 @@ const REQUIRED_IDS = [
   'rp9-layout-select',
   'rp9-layout-row',
   'rp9-layout-clear-sel',
+  // PV34 — compteur PERMANENT « N panneaux sélectionnés » (l'un des deux manques
+  // signalés par le fondateur le 25/08 : on ne savait jamais ce qu'on tenait).
+  'rp9-layout-selcount',
   'rp9-layout-undo',
   'rp9-layout-redo',
   'rp9-layout-azimuth',

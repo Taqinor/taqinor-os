@@ -591,7 +591,21 @@ const chipClass =
                     class="border border-white/25 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:border-brass-400 hover:text-brass-300 disabled:cursor-not-allowed disabled:opacity-40">
                     ✕ Effacer la sélection
                   </button>
+                  <!-- PV34 — compteur PERMANENT de la sélection (le même id que l'ERP). -->
+                  <span id="rp9-layout-selcount" data-rp9-selcount="0" aria-live="polite"
+                    class="text-sm font-semibold text-brass-300">
+                    Aucun panneau sélectionné
+                  </span>
                 </div>
+                <p class="text-xs leading-relaxed text-lune-soft">
+                  Sur la 3D : <strong class="text-lune-soft">glissez sur le toit, à côté des
+                  panneaux</strong>, pour encadrer un groupe ou une rangée ·
+                  <strong class="text-lune-soft">double-clic</strong> sur un panneau = toute sa
+                  rangée · <strong class="text-lune-soft">Ctrl (⌘) + clic</strong> ajoute ou retire
+                  un panneau · <strong class="text-lune-soft">Maj + glissé</strong> ajoute un cadre
+                  au groupe · <strong class="text-lune-soft">Échap</strong> lâche la sélection.
+                  Glissez ensuite n’importe quel panneau sélectionné : tout le groupe suit.
+                </p>
 
                 <!-- PV26 — annuler / rétablir (Ctrl+Z / Ctrl+Y, ou ⌘). Les flèches du
                      clavier déplacent le panneau (ou le groupe) d'un emplacement. -->

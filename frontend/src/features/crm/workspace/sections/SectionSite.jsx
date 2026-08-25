@@ -1,5 +1,6 @@
 import { FormField, Input } from '../../../../ui'
 import { getField } from '../draftCore'
+import TraceToitClient from './TraceToitClient'
 
 const TYPES_TOITURE = {
   terrasse_beton: 'Terrasse béton', tole_metal: 'Tôle/Métal', tuiles: 'Tuiles',
@@ -19,10 +20,18 @@ const enumOptions = (labels) => [
 ]
 
 // LW11 — Toiture & site : port 1:1 des champs (recon 01 §2).
+// L-DESSIN (fondateur 25/08/2026) — en TÊTE de section, le tracé que le client
+// a dessiné sur la carte du site public. `roof_point`/`roof_outline` sont des
+// champs SERVEUR en lecture seule (jamais éditables ici) : on les lit donc sur
+// `state.server` via getField, comme IdentityRail.
 export default function SectionSite({ state, setField }) {
   const v = (k) => getField(state, k) ?? ''
   return (
     <>
+      <TraceToitClient
+        contour={getField(state, 'roof_outline')}
+        epingle={getField(state, 'roof_point')}
+      />
       <div className="form-row">
         <FormField label="Type de toiture" htmlFor="lf-type-toiture">
           <select id="lf-type-toiture" className="form-select" value={v('type_toiture')} onChange={(e) => setField('type_toiture', e.target.value)}>

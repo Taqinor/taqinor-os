@@ -895,12 +895,26 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         XSAL5 — ``optionnelle`` (add-on hors total) est persistée.
         XSAL14 — ``type_ligne`` (produit [défaut] / section / note) + ``ordre`` :
         une ligne section/note ne porte NI produit NI prix (jamais comptée dans
-        les totaux). ``ordre`` par défaut = position dans la liste envoyée."""
+        les totaux). ``ordre`` par défaut = position dans la liste envoyée.
+
+        L-2OPT — ``variante`` ('' commune | 'sans' | 'avec') est persistée.
+        SANS ELLE, LA FONCTIONNALITÉ « DEUX OPTIMISEURS » NE SURVIVAIT PAS À
+        L'ENREGISTREMENT : le générateur fusionne bien les deux kits
+        (``fusionnerVariantes``, solar.js) et envoie le tag sur chaque ligne,
+        mais CE chemin — le SEUL chemin d'écriture de l'écran, pour la création
+        (``atomic``) comme pour l'édition (``replace-lines``) — recréait chaque
+        ligne sans le kwarg, donc au défaut ``''``. Toutes les lignes
+        redevenaient « communes » : plus de badge d'option à l'écran, et tout
+        l'aval (``devis_variante`` dans ``services``, le comparatif du PDF, les
+        cartes par option de la page publique) lisait un devis mono-option.
+        Valeur inconnue ⇒ ``''`` (la ligne reste commune) : jamais une erreur
+        d'enregistrement pour un tag mal formé."""
         from decimal import Decimal, InvalidOperation
         from django.db.models import Q
         from ..models import LigneDevis
         from apps.stock.models import Produit
         _VALID_TYPES = {c.value for c in LigneDevis.TypeLigne}
+        _VALID_VARIANTES = {c.value for c in LigneDevis.Variante}
         devis.lignes.all().delete()
         for idx, li in enumerate(lignes_in):
             if not isinstance(li, dict):
@@ -949,13 +963,19 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             except (InvalidOperation, TypeError, ValueError):
                 raise ValueError('Quantité/prix/remise invalide.')
             taux = li.get('taux_tva')
+            # L-2OPT — tag d'option porté par la ligne. Absent (tous les
+            # appelants d'hier) ou inconnu ⇒ '' : ligne commune, comportement
+            # historique strictement inchangé.
+            variante = str(li.get('variante') or '')
+            if variante not in _VALID_VARIANTES:
+                variante = ''
             LigneDevis.objects.create(
                 devis=devis, produit=produit,
                 designation=(li.get('designation') or produit.nom)[:255],
                 quantite=qte, prix_unitaire=pu, remise=remise,
                 taux_tva=Decimal(str(taux)) if taux is not None else None,
                 optionnelle=bool(li.get('optionnelle', False)),
-                type_ligne='produit', ordre=ordre)
+                type_ligne='produit', ordre=ordre, variante=variante)
 
     @action(detail=False, methods=['post'], url_path='composition',
             permission_classes=[IsResponsableOrAdmin])
@@ -971,11 +991,24 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         fait qu'il n'existe plus « deux sortes de devis ».
 
         Corps : ``{kwc | nb_panneaux}`` + ``panel_watt?`` / ``scenario?`` /
-        ``structure_type?`` / ``taux_tva?`` / ``mppt_paires?``. La société est
-        TOUJOURS celle du user (le catalogue d'une autre société ne fuite
-        jamais) ; les marques épinglées et l'ordre des lignes sont lus
-        SERVEUR-SIDE dans les réglages Gammes, jamais acceptés du corps.
+        ``structure_type?`` / ``taux_tva?`` / ``mppt_paires?`` /
+        ``dimensionnement_avec?``. La société est TOUJOURS celle du user (le
+        catalogue d'une autre société ne fuite jamais) ; les marques épinglées
+        et l'ordre des lignes sont lus SERVEUR-SIDE dans les réglages Gammes,
+        jamais acceptés du corps.
         Forme de la réponse : ``contract_samples/devis_composition.json``.
+
+        U3COMPOSE (26/08/2026) — ``dimensionnement_avec`` (optionnel) est
+        l'objet ``{nb_panneaux?, kwc?, batterie_kwh?}`` de l'optimum AXE
+        BATTERIE (moteur calibré, ``dimensionnement.choisir_recommandation_avec``
+        côté écran) : sans lui le dry-run composait TOUJOURS les DEUX options
+        sur le MÊME champ (celui optimisé SANS batterie) — ``composer_devis_
+        residentiel`` accepte ce paramètre depuis L-2OPT, la vue ne le lisait
+        simplement pas encore — alors que le devis créé
+        (``POST /ventes/devis/auto/``) fusionne bien deux champs distincts
+        quand ils divergent. Wiré ici pour que l'aperçu écran et la création
+        composent EXACTEMENT le même kit — la source de vérité unique promise
+        par cet endpoint (U3) vaut aussi pour les deux optimiseurs (L-2OPT).
         """
         from decimal import Decimal, InvalidOperation
         from ..services import composer_devis_residentiel, AutoDevisError
@@ -995,12 +1028,32 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             except (InvalidOperation, TypeError, ValueError):
                 raise ValueError(cle)
 
+        def _dimensionnement_avec(brut):
+            """``None`` | ``{'nb_panneaux'?, 'kwc'?, 'batterie_kwh'?}`` en
+            ``float`` — miroir de ce que ``composer_devis_residentiel``
+            attend. Un corps qui n'est pas un objet, ou vide, vaut « moteur
+            muet sur l'axe batterie » (repli historique, jamais une erreur)."""
+            if not isinstance(brut, dict):
+                return None
+            valeurs = {}
+            for cle in ('nb_panneaux', 'kwc', 'batterie_kwh'):
+                item = brut.get(cle)
+                if item in (None, ''):
+                    continue
+                try:
+                    valeurs[cle] = float(item)
+                except (TypeError, ValueError):
+                    raise ValueError('dimensionnement_avec.%s' % cle)
+            return valeurs or None
+
         try:
             kwc = _nombre('kwc')
             nb_panneaux = _nombre('nb_panneaux', Decimal('0'))
             panel_watt = _nombre('panel_watt', Decimal('710'))
             taux_tva = _nombre('taux_tva', Decimal('20'))
             mppt_paires = _nombre('mppt_paires', Decimal('1'))
+            dimensionnement_avec = _dimensionnement_avec(
+                request.data.get('dimensionnement_avec'))
         except ValueError as exc:
             return Response(
                 {'detail': 'Valeur numérique invalide : %s.' % exc},
@@ -1023,6 +1076,7 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 structure_type=str(structure),
                 taux_tva=taux_tva,
                 mppt_paires=int(mppt_paires),
+                dimensionnement_avec=dimensionnement_avec,
             )
         except AutoDevisError as exc:
             return Response(

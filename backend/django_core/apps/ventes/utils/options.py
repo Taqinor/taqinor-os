@@ -49,6 +49,35 @@ def _variante(ligne) -> str:
     return getattr(ligne, 'variante', '') or ''
 
 
+def _garder_dans_sans(li) -> bool:
+    """True si ``li`` appartient au panier « sans batterie ».
+
+    F14 — la variante déclarée est EXCLUSIVE et TRANCHE SEULE : une ligne
+    ``variante='sans'`` reste dans son panier déclaré MÊME quand son
+    ``_blob`` la classerait batterie/hybride par mots-clés (ceinture-bretelles
+    du moteur PDF, ``builder._repartir_options`` — la contradiction est
+    remontée là-bas en avertissement interne, jamais en retrait de ligne).
+    Miroir exact : seule une ligne SANS variante ('') retombe sur les mots-clés.
+    """
+    v = _variante(li)
+    if v == VARIANTE_AVEC:
+        return False
+    if v == VARIANTE_SANS:
+        return True
+    return not _is_battery(_blob(li)) and not _is_hybrid_inverter(_blob(li))
+
+
+def _garder_dans_avec(li) -> bool:
+    """True si ``li`` appartient au panier « avec batterie » — miroir de
+    ``_garder_dans_sans`` (F14)."""
+    v = _variante(li)
+    if v == VARIANTE_SANS:
+        return False
+    if v == VARIANTE_AVEC:
+        return True
+    return not _is_reseau_inverter(_blob(li))
+
+
 def filter_lines_for_option(lignes, option):
     """Filtre PUR d'une liste de lignes selon l'option (testable sans Django).
 
@@ -64,16 +93,19 @@ def filter_lines_for_option(lignes, option):
     puisque les mots-clés les classent « commun ». Une ligne SANS variante
     ('' — toutes celles d'hier) reste soumise aux mots-clés, mot pour mot :
     aucun devis existant ne change de périmètre.
+
+    F14 (26/08/2026) — CORRECTIF : avant ce correctif, une ligne DÉCLARÉE
+    ('sans'/'avec') restait quand même filtrée par les mots-clés en second
+    passage (ex. une batterie taguée 'sans' était retirée du panier « sans »
+    malgré sa déclaration), ce qui contredisait ce docstring ET le moteur PDF
+    canonique (``quote_engine.builder._repartir_options``, ligne 499-541 :
+    la déclaration prime, point final). La ligne était alors facturée par le
+    PDF mais absente de l'échéancier/nomenclature écran — divergence F14.
     """
     if option == SANS_BATTERIE:
-        return [li for li in lignes
-                if _variante(li) != VARIANTE_AVEC
-                and not _is_battery(_blob(li))
-                and not _is_hybrid_inverter(_blob(li))]
+        return [li for li in lignes if _garder_dans_sans(li)]
     if option == AVEC_BATTERIE:
-        return [li for li in lignes
-                if _variante(li) != VARIANTE_SANS
-                and not _is_reseau_inverter(_blob(li))]
+        return [li for li in lignes if _garder_dans_avec(li)]
     return list(lignes)
 
 
@@ -131,7 +163,7 @@ def _totaux_canoniques(devis, lignes) -> dict:
     }
 
 
-def option_totaux(devis, option=None) -> dict:
+def option_totaux(devis, option=None, lignes=None) -> dict:
     """Totaux HT / TVA / TTC (Decimals, centime) pour l'option retenue.
 
     QX1 — SOURCE UNIQUE DE LA MONNAIE : les totaux passent désormais par la
@@ -145,14 +177,22 @@ def option_totaux(devis, option=None) -> dict:
     détail brut/remise est aussi exposé (``ht_brut``, ``remise``) pour les
     documents qui affichent la ligne « Remise globale » (BC). Sans option double
     et sans remise, les valeurs restent identiques au comportement historique.
+
+    NPLUS1 (27/08/2026) — ``lignes`` accepte les lignes DÉJÀ CHARGÉES par
+    l'appelant (patron YOPSB13, cf. ``utils/echeancier.factures_actives``) : le
+    chemin d'acceptation publique appelait cette fonction deux fois de suite,
+    chaque appel refaisant sa propre requête lignes+produit sur des lignes qui
+    ne bougent pas pendant l'acceptation. Paramètre ABSENT (tous les autres
+    appelants) ⇒ la requête d'hier, résultat identique.
     """
     if option is None:
         option = getattr(devis, 'option_acceptee', '') or ''
-    if not option or not has_two_options(devis):
+    if lignes is None:
         lignes = list(devis.lignes.select_related('produit').all())
     else:
-        lignes = filter_lines_for_option(
-            list(devis.lignes.select_related('produit').all()), option)
+        lignes = list(lignes)
+    if option and has_two_options(devis):
+        lignes = filter_lines_for_option(lignes, option)
     return _totaux_canoniques(devis, lignes)
 
 

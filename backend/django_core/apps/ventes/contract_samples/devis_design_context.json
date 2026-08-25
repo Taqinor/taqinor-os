@@ -1,6 +1,7 @@
 {
   "endpoint": "GET /api/django/ventes/devis/<int:pk>/design-context/",
   "pourquoi": "Le contexte agrégé que l'écran de conception 3D (calepinage de toiture) lit EN UN SEUL appel pour démarrer SUR un devis existant : identité + statut du devis, géométrie déjà enregistrée (roof_layout, pin GPS), cible de dimensionnement issue du devis (panneaux/kWc/scénario), et disponibilité de la carte (clé MapTiler/token Mapbox). PACT10 : ce fichier part SEUL, avant les deux lanes front et back — sans lui chacune invente sa propre forme, exactement l'incident du 03/08/2026 (Tableau de bord AO, zéro clé sur six concordante). `modifiable` + `raison_lecture_seule` protègent un devis déjà accepté ou un mode agricole (pompage, sans toiture à calepiner) : l'écran bascule en lecture seule SANS deviner pourquoi — le motif vient TOUJOURS du serveur, jamais rédigé côté écran. Source de vérité prévue : apps/ventes/selectors.py::devis_design_context (à construire).",
+  "pourquoi_cible_avec": "CTX3D (25/08/2026) — `cible` décrit TOUJOURS l'option 1 (« sans batterie »), celle que l'écran dessine : son compte de panneaux ET son scénario viennent du MÊME sous-ensemble de lignes (avant, le scénario était lu sur tout le devis et un devis « Les deux » annonçait `scenario: \"avec_batterie\"` au-dessus du compte de panneaux de l'option SANS — une cible que rien ne décrit). Une clé SŒUR OPTIONNELLE `cible_avec` porte l'option 2 sous la même forme (les six clés PV16 ; pas de `bill_kwh`, la consommation du client est unique et vit dans `cible`). Elle n'est PRÉSENTE que si les lignes peuvent réellement livrer l'option « Avec batterie » — onduleur hybride ET batterie, le même critère `avec_ok` que le moteur PDF, `variantes_servables` et `dimensionnement_options` — et ABSENTE sinon (voir `exemple` ci-dessous, un devis réseau : pas de clé du tout). Purement additive : un écran qui l'ignore est strictement inchangé.",
   "exemple": {
     "devis": {
       "id": 412,
@@ -27,6 +28,51 @@
       "scenario": "reseau",
       "batterie": false,
       "bill_kwh": 7200
+    },
+    "carte": {
+      "available": true,
+      "maptilerKey": "cle-demo",
+      "mapboxToken": ""
+    },
+    "modifiable": true,
+    "raison_lecture_seule": "",
+    "avertissements": []
+  },
+  "exemple_deux_options": {
+    "devis": {
+      "id": 623,
+      "reference": "DEV-2026-623",
+      "statut": "brouillon",
+      "mode_installation": "residentiel",
+      "lead": 91,
+      "client": 60,
+      "client_nom": "Salma Bennani",
+      "client_telephone": "+212662000000",
+      "client_ville": "Marrakech",
+      "client_adresse": "8 lotissement Ennakhil"
+    },
+    "geometrie": {
+      "source": "devis",
+      "roof_layout": { "version": 2, "zones": [] },
+      "pin": { "lat": 31.6295, "lng": -7.9811 },
+      "outline": []
+    },
+    "cible": {
+      "panneaux": 8,
+      "kwc": 4.4,
+      "panel_watt": 550,
+      "scenario": "reseau",
+      "batterie": false,
+      "avertissements": [],
+      "bill_kwh": 5400
+    },
+    "cible_avec": {
+      "panneaux": 10,
+      "kwc": 5.5,
+      "panel_watt": 550,
+      "scenario": "avec_batterie",
+      "batterie": true,
+      "avertissements": []
     },
     "carte": {
       "available": true,

@@ -40,12 +40,32 @@ test('DevisGenerator : le bouton « Enregistrer cet ordre » appelle handleSaveO
   assert.match(DG, /Enregistrer cet ordre comme ordre par défaut/)
 })
 
-test('DevisGenerator : handleAutoFill (auto-remplir manuel) transmet ordreLignes de gammesConfig', () => {
-  const idx = DG.indexOf('const handleAutoFill = ()')
-  assert.ok(idx > -1, 'handleAutoFill introuvable')
-  const bloc = DG.slice(idx, idx + 2200)
+test('DevisGenerator : la composition locale (auto-remplir manuel) transmet ordreLignes de gammesConfig', () => {
+  // U3COMPOSE (26/08/2026) — l'ancien corps de `handleAutoFill` vit désormais
+  // dans `composeLocalement()` : c'est lui qui compose l'agricole,
+  // l'industriel, le commercial ET le repli résidentiel quand le dry-run
+  // serveur est injoignable. La préférence société doit y être transmise
+  // EXACTEMENT comme avant — sur le chemin résidentiel nominal, c'est le
+  // serveur qui lit `ordre_lignes_societe` (jamais accepté du corps de la
+  // requête), verrouillé côté Django.
+  const idx = DG.indexOf('const composeLocalement = () => {')
+  assert.ok(idx > -1, 'composeLocalement introuvable')
+  // Fenêtre bornée à la PREMIÈRE composition (l'appel `composeAvec` suivant
+  // est au-delà) : une option perdue ici casse le test.
+  const bloc = DG.slice(idx, idx + 1200)
   assert.match(bloc, /marques:\s*marquesActives,/)
   assert.match(bloc, /ordreLignes:\s*gammesConfig\?\.ordre_lignes,/)
+})
+
+test('DevisGenerator : le dry-run serveur n\'envoie JAMAIS l\'ordre des lignes dans le corps (lu société-side)', () => {
+  const idx = DG.indexOf('const handleAutoFill = async () => {')
+  assert.ok(idx > -1, 'handleAutoFill introuvable')
+  const debutBody = DG.indexOf('const body = {', idx)
+  const appel = DG.indexOf('ventesApi.composerDevis(body)', idx)
+  assert.ok(debutBody > -1 && appel > debutBody, 'construction du corps du dry-run introuvable')
+  const bloc = DG.slice(debutBody, appel)
+  assert.doesNotMatch(bloc, /ordre_lignes/,
+    'l\'ordre des lignes est un réglage société lu par le serveur — jamais accepté du corps')
 })
 
 test('DevisGenerator : runAutoQuote (devis auto) transmet ordreLignes à createAutoQuote', () => {

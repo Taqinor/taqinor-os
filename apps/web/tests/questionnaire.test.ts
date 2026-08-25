@@ -3,9 +3,13 @@
 // du corps POST par section, sanitisation des champs, photos.
 import { describe, expect, it } from 'vitest';
 import {
+  ECRANS,
   QUESTIONNAIRE_SECTIONS,
   buildQuestionnairePostBody,
   buildSectionReponses,
+  champDemande,
+  ecransActifs,
+  initialEcranIndex,
   initialSectionIndex,
   isEmptyPostBody,
   isInternalPreview,
@@ -22,17 +26,23 @@ import {
 // ── Verrous de source (contrat backend, ne changent jamais sans le savoir) ──
 describe('verrous de source — contrat backend', () => {
   it('QUESTIONNAIRE_SECTIONS = exactement les 9 clés du contrat, dans cet ordre', () => {
+    // Ordre = crm.QuestionnaireLien.SECTIONS_CLES (recherche 25/08/2026) :
+    // engagement croissant, `contact` TOUJOURS en dernier.
     expect(QUESTIONNAIRE_SECTIONS).toEqual([
-      'contact',
-      'gps',
+      'occupation',
+      'equipements',
       'energie',
+      'toiture',
+      'gps',
       'photo_facture',
       'photo_compteur',
       'photo_tableau',
-      'toiture',
-      'occupation',
-      'equipements',
+      'contact',
     ]);
+  });
+
+  it('`contact` est la DERNIÈRE section — données personnelles en dernier', () => {
+    expect(QUESTIONNAIRE_SECTIONS[QUESTIONNAIRE_SECTIONS.length - 1]).toBe('contact');
   });
 
   it("questionnaireEndpoint pointe le chemin exact du contrat", () => {
@@ -128,6 +138,45 @@ describe('parseQuestionnaireGet', () => {
     expect(data!.repondu).toEqual({});
   });
 
+  it('`champs` est repris tel quel, filtré aux sections actives', () => {
+    const data = parseQuestionnaireGet({
+      ...validBody,
+      champs: { contact: ['email', 'ville'], toiture: ['type_toiture'] },
+    });
+    // 'toiture' n'est pas dans `sections` de ce fixture ⇒ écarté.
+    expect(data!.champs).toEqual({ contact: ['email', 'ville'] });
+  });
+
+  it('`champs` absent ⇒ carte vide, donc AUCUNE restriction (repli sûr)', () => {
+    const data = parseQuestionnaireGet(validBody);
+    expect(data!.champs).toEqual({});
+    expect(champDemande(data!.champs, 'contact', 'adresse')).toBe(true);
+  });
+
+  it('`champs` malformé n’éteint jamais un écran entier', () => {
+    const data = parseQuestionnaireGet({ ...validBody, champs: { contact: 'nope' } });
+    expect(data!.champs).toEqual({});
+    expect(champDemande(data!.champs, 'contact', 'adresse')).toBe(true);
+  });
+});
+
+// ── champDemande — « on ne redemande JAMAIS » au grain du CHAMP ──────────
+describe('champDemande', () => {
+  it("l'adresse disparaît quand le serveur ne la liste plus (GPS déjà donné)", () => {
+    const champs = { contact: ['email', 'ville'] };
+    expect(champDemande(champs, 'contact', 'adresse')).toBe(false);
+    expect(champDemande(champs, 'contact', 'email')).toBe(true);
+    expect(champDemande(champs, 'contact', 'ville')).toBe(true);
+  });
+
+  it('une section non listée n’est pas restreinte — mieux une question de trop qu’un champ perdu', () => {
+    expect(champDemande({}, 'toiture', 'roof_age')).toBe(true);
+  });
+
+  it('une liste VIDE explicite cache bien tout (le serveur l’a décidé)', () => {
+    expect(champDemande({ contact: [] }, 'contact', 'email')).toBe(false);
+  });
+
   it('isQuestionnaireSectionId rejette les valeurs hors vocabulaire', () => {
     expect(isQuestionnaireSectionId('contact')).toBe(true);
     expect(isQuestionnaireSectionId('n_importe_quoi')).toBe(false);
@@ -140,7 +189,7 @@ describe('initialSectionIndex', () => {
   const sections = QUESTIONNAIRE_SECTIONS as unknown as (typeof QUESTIONNAIRE_SECTIONS)[number][];
 
   it('reprend à la première section NON répondue', () => {
-    expect(initialSectionIndex(sections, { contact: true, gps: true })).toBe(2); // 'energie'
+    expect(initialSectionIndex(sections, { occupation: true, equipements: true })).toBe(2); // 'energie'
   });
 
   it('aucune section répondue ⇒ index 0', () => {
@@ -155,6 +204,99 @@ describe('initialSectionIndex', () => {
 
   it('liste vide ⇒ 0 (garde-fou)', () => {
     expect(initialSectionIndex([], {})).toBe(0);
+  });
+});
+
+// ── ÉCRANS — « the number of pages those questions should be in » ────────
+describe('ECRANS / ecransActifs', () => {
+  const toutes = QUESTIONNAIRE_SECTIONS as unknown as (typeof QUESTIONNAIRE_SECTIONS)[number][];
+
+  it('les 9 sections tiennent sur 6 écrans au maximum, jamais 9', () => {
+    expect(ECRANS).toHaveLength(6);
+    expect(ecransActifs(toutes)).toHaveLength(6);
+  });
+
+  it('chaque section est couverte par exactement UN écran', () => {
+    const vues = ECRANS.flatMap((e) => e.sections);
+    expect([...vues].sort()).toEqual([...toutes].sort());
+    expect(new Set(vues).size).toBe(vues.length);
+  });
+
+  it('INVARIANT — les sections d’un écran sont CONSÉCUTIVES dans l’ordre servi', () => {
+    for (const ecran of ECRANS) {
+      const positions = ecran.sections.map((s) => toutes.indexOf(s));
+      expect(positions.every((p) => p >= 0)).toBe(true);
+      for (let i = 1; i < positions.length; i += 1) {
+        expect(positions[i]).toBe(positions[i - 1] + 1);
+      }
+    }
+  });
+
+  it('les trois photos tiennent sur UN écran, toiture+GPS sur un autre', () => {
+    const photos = ECRANS.find((e) => e.id === 'photos');
+    expect(photos!.sections).toEqual(['photo_facture', 'photo_compteur', 'photo_tableau']);
+    expect(ECRANS.find((e) => e.id === 'toit')!.sections).toEqual(['toiture', 'gps']);
+  });
+
+  it('les coordonnées sont le DERNIER écran', () => {
+    expect(ECRANS[ECRANS.length - 1].id).toBe('coordonnees');
+  });
+
+  it('un écran n’existe que s’il porte une section servie', () => {
+    const ecrans = ecransActifs(['energie', 'contact']);
+    expect(ecrans.map((e) => e.id)).toEqual(['electricite', 'coordonnees']);
+    expect(ecrans.map((e) => e.actives)).toEqual([['energie'], ['contact']]);
+  });
+
+  it('un écran ne porte QUE les sections réellement servies', () => {
+    const ecrans = ecransActifs(['photo_compteur', 'contact']);
+    expect(ecrans[0].id).toBe('photos');
+    expect(ecrans[0].actives).toEqual(['photo_compteur']);
+  });
+
+  it('le cas du fondateur : GPS et ville déjà connus ⇒ 3 écrans, aucun pour l’adresse', () => {
+    // Le serveur ne sert plus `gps` (renseigné) ; `contact` ne porte plus que
+    // l’e-mail (l’adresse est couverte par le GPS, la ville est connue).
+    const ecrans = ecransActifs(['occupation', 'equipements', 'contact']);
+    expect(ecrans.map((e) => e.id)).toEqual(['presence', 'equipements', 'coordonnees']);
+    expect(champDemande({ contact: ['email'] }, 'contact', 'adresse')).toBe(false);
+  });
+
+  it('une section inconnue des ECRANS obtient son propre écran plutôt que de disparaître', () => {
+    const ecrans = ecransActifs(['contact', 'inconnue' as never]);
+    expect(ecrans).toHaveLength(2);
+    expect(ecrans[1].actives).toEqual(['inconnue']);
+  });
+
+  it('aucune section ⇒ aucun écran (jamais un throw)', () => {
+    expect(ecransActifs([])).toEqual([]);
+  });
+});
+
+describe('initialEcranIndex', () => {
+  const ecrans = ecransActifs(
+    QUESTIONNAIRE_SECTIONS as unknown as (typeof QUESTIONNAIRE_SECTIONS)[number][],
+  );
+
+  it('reprend au premier écran dont une section reste sans réponse', () => {
+    expect(initialEcranIndex(ecrans, { occupation: true, equipements: true })).toBe(2);
+  });
+
+  it('un écran multi-sections reste ouvert tant qu’UNE de ses sections manque', () => {
+    const repondu: Record<string, boolean> = {};
+    for (const s of QUESTIONNAIRE_SECTIONS) repondu[s] = true;
+    repondu.photo_tableau = false;
+    expect(ecrans[initialEcranIndex(ecrans, repondu)].id).toBe('photos');
+  });
+
+  it('tout répondu ⇒ le dernier écran (relisible, jamais hors bornes)', () => {
+    const repondu: Record<string, boolean> = {};
+    for (const s of QUESTIONNAIRE_SECTIONS) repondu[s] = true;
+    expect(initialEcranIndex(ecrans, repondu)).toBe(ecrans.length - 1);
+  });
+
+  it('aucun écran ⇒ 0 (garde-fou)', () => {
+    expect(initialEcranIndex([], {})).toBe(0);
   });
 });
 

@@ -168,6 +168,34 @@ def _stamp_view_si_public(link, via_interne, request=None):
     return resultat
 
 
+#: R4 (27/08/2026) — message UNIQUE de refus d'une action CLIENT demandée avec
+#: le jeton d'aperçu INTERNE. Formulé pour le commercial (c'est lui qui l'a en
+#: main), jamais ambigu : l'aperçu montre la page, il ne l'engage pas.
+APERCU_INTERNE_REFUS = 'Aperçu interne : action client indisponible.'
+
+
+def _refus_apercu_interne():
+    """R4 — 403 posé sur les endpoints d'ACTION du parcours public quand le
+    jeton résolu est le jeton interne.
+
+    Le jeton interne (L-INTPREV) existe pour qu'un commercial voie la page
+    EXACTEMENT comme le client, sans laisser de trace. Il ne doit donc jamais
+    pouvoir ÉMETTRE une action au nom du client : demander à être rappelé,
+    faire partir un code OTP sur le téléphone du client, activer une option
+    payante de son devis, ou déclarer un virement. Ces actions écrivent dans
+    le chatter, notifient le vendeur, envoient un message au client ou
+    changent le périmètre facturé — un aperçu ne fait rien de tout cela.
+
+    403 explicite (et non le 404 générique) : ici le porteur du jeton est
+    NOTRE commercial, pas un inconnu — lui dire pourquoi son clic est refusé
+    vaut mieux que lui laisser croire à un lien mort. ``proposal_accept``
+    garde son 404 d'origine (L-INTPREV) : la signature est le seul cas où le
+    refus ne doit RIEN distinguer d'un jeton invalide."""
+    return _noindex(Response(
+        {'detail': APERCU_INTERNE_REFUS},
+        status=status.HTTP_403_FORBIDDEN))
+
+
 def _tracer_ouverture_publique(link, request):
     """T-TRACE — enregistre l'ouverture PUBLIQUE d'un document client comme une
     ``crm.VisiteExterne`` (point ``proposition``).
@@ -2630,6 +2658,10 @@ def proposal_contact_request(request, token):
     link = _resolve_proposal_link(token)
     if link is None:
         return _not_found()
+    # R4 — l'aperçu interne ne demande pas de rappel au nom du client (chatter
+    # du lead + notification du responsable ET de son supérieur).
+    if link.via_interne:
+        return _refus_apercu_interne()
 
     canal = (str(
         request.data.get('channel') or request.data.get('canal') or ''
@@ -2709,6 +2741,10 @@ def proposal_request_otp(request, token):
     link = _resolve_proposal_link(token)
     if link is None:
         return _not_found()
+    # R4 — un aperçu interne ne fait PAS partir un code de signature sur le
+    # téléphone (ou dans la boîte mail) du client.
+    if link.via_interne:
+        return _refus_apercu_interne()
     from .services import request_esign_otp
     err = request_esign_otp(link)
     if err:
@@ -2744,6 +2780,11 @@ def proposal_request_otp_lecture(request, token):
     link = _resolve_proposal_link(token)
     if link is None:
         return _not_found()
+    # R4 — même règle que l'OTP de signature : aucun code ne part vers le
+    # client depuis un aperçu. Rien n'est perdu — le jeton interne DISPENSE
+    # déjà de l'OTP de lecture (voir ``proposal_data``).
+    if link.via_interne:
+        return _refus_apercu_interne()
     if not link.otp_lecture:
         return _noindex(Response({'detail': 'Aucun code requis pour ce lien.'}))
     from .services import request_otp_lecture
@@ -2769,6 +2810,11 @@ def proposal_verify_otp_lecture(request, token):
     link = _resolve_proposal_link(token)
     if link is None:
         return _not_found()
+    # R4 — vérifier un code depuis l'aperçu DÉVERROUILLERAIT la lecture du
+    # lien PUBLIC pendant une heure (état client), avec un code envoyé au
+    # client. L'aperçu n'en a aucun besoin : il lit sans OTP.
+    if link.via_interne:
+        return _refus_apercu_interne()
     if not link.otp_lecture:
         return _noindex(Response({'detail': 'Aucun code requis pour ce lien.'}))
     from .services import validate_otp_lecture
@@ -2996,6 +3042,10 @@ def proposal_activate_option(request, token):
     link = _resolve_proposal_link(token)
     if link is None:
         return _not_found()
+    # R4 — activer une option CHANGE le périmètre facturé du devis : c'est une
+    # décision du client, jamais un geste d'aperçu.
+    if link.via_interne:
+        return _refus_apercu_interne()
     try:
         ligne_id = int(request.data.get('ligne_id'))
     except (TypeError, ValueError):
@@ -3079,9 +3129,21 @@ def suivi_public(request, token):
     Renvoie la timeline de jalons (accepté → acompte reçu → matériel commandé →
     installation → facturé) dérivée des lignes EXISTANTES (aucun statut/PDF
     touché — règle #4). Même discipline de jeton que ShareLink. 404 si le jeton
-    est invalide/expiré. Jamais de prix d'achat/marge."""
+    est invalide/expiré. Jamais de prix d'achat/marge.
+
+    R4 (27/08/2026) — ALIGNÉ SUR LE JETON INTERNE, comme toute LECTURE du
+    parcours (``proposal_data``, ``proposal_pdf``, ``public_document``) : le
+    commercial doit pouvoir voir le suivi tel que le client le voit. C'est une
+    lecture PURE — ``devis_milestones`` ne mute rien (pas de stamp de vue, pas
+    de chatter, pas de notification), il n'y a donc aucun effet de bord à
+    neutraliser ici. Le sélecteur ne résout que le jeton PUBLIC : on lui passe
+    celui du lien déjà résolu (le MÊME document), sans lui apprendre un second
+    espace de jetons."""
     from .selectors import devis_milestones
-    data = devis_milestones(token)
+    link, _via_interne = _resolve_share_link_by_token(token)
+    if link is None or not link.devis_id:
+        return _not_found()
+    data = devis_milestones(link.token)
     if data is None:
         return _not_found()
     return _noindex(Response(data))
@@ -3100,6 +3162,10 @@ def proposal_virement_declare(request, token):
     link = _resolve_proposal_link(token)
     if link is None:
         return _not_found()
+    # R4 — déclarer un virement au nom du client poserait une note chatter et
+    # enverrait le vendeur vérifier un versement qui n'existe pas.
+    if link.via_interne:
+        return _refus_apercu_interne()
     devis = link.devis
     # Idempotence : une déclaration par lien et par heure.
     try:

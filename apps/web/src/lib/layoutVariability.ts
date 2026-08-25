@@ -311,10 +311,40 @@ export function moveGroup(
   dy: number,
   opts: { maxSnapM?: number } = {},
 ): GroupMoveResult {
+  const plan = planGroupMove(state, indices, dx, dy, opts);
+  if (!plan.ok) return plan;
+  // Commit atomique : on n'a touché à rien tant que tous les membres n'avaient pas de cible.
+  for (const i of plan.members) state.occupied.delete(i);
+  for (const t of plan.targets) state.occupied.add(t);
+  return { ok: plan.ok, targets: plan.targets };
+}
+
+/** Plan d'un déplacement de groupe : le résultat, plus les membres dans l'ordre des cibles. */
+export interface GroupMovePlan extends GroupMoveResult {
+  /** Membres dédoublonnés, dans le MÊME ordre que `targets`. Vide si refusé. */
+  members: number[];
+}
+
+/**
+ * PV34 — CALCUL SEUL du déplacement de groupe : mêmes règles exactes que `moveGroup`
+ * (tout ou rien, cellules du groupe considérées comme libérées, aucune cellule prise
+ * deux fois, refus au-delà de `maxSnapM`) mais SANS toucher à l'état. C'est ce que
+ * l'APERÇU VIVANT d'un glissé appelle à chaque image : il doit montrer où le groupe
+ * atterrirait sans jamais committer quoi que ce soit tant que le doigt n'est pas
+ * relâché. `moveGroup` n'est plus que « ce plan, puis on l'applique » — les deux ne
+ * peuvent donc pas diverger.
+ */
+export function planGroupMove(
+  state: LayoutState,
+  indices: readonly number[],
+  dx: number,
+  dy: number,
+  opts: { maxSnapM?: number } = {},
+): GroupMovePlan {
   const members = [...new Set(indices)];
-  if (members.length === 0) return { ok: false, targets: [], reason: 'empty' };
-  for (const i of members) if (!state.occupied.has(i)) return { ok: false, targets: [], reason: 'not-occupied' };
-  if (!Number.isFinite(dx) || !Number.isFinite(dy)) return { ok: false, targets: [], reason: 'no-target' };
+  if (members.length === 0) return { ok: false, targets: [], members: [], reason: 'empty' };
+  for (const i of members) if (!state.occupied.has(i)) return { ok: false, targets: [], members: [], reason: 'not-occupied' };
+  if (!Number.isFinite(dx) || !Number.isFinite(dy)) return { ok: false, targets: [], members: [], reason: 'no-target' };
   const maxSnap = Number.isFinite(opts.maxSnapM as number) ? (opts.maxSnapM as number) : Infinity;
 
   const group = new Set(members);
@@ -337,14 +367,11 @@ export function moveGroup(
         best = c.index;
       }
     }
-    if (best < 0 || Math.sqrt(bestD) > maxSnap) return { ok: false, targets: [], reason: 'no-target' };
+    if (best < 0 || Math.sqrt(bestD) > maxSnap) return { ok: false, targets: [], members: [], reason: 'no-target' };
     taken.add(best);
     targets.push(best);
   }
-  // Commit atomique : on n'a touché à rien tant que tous les membres n'avaient pas de cible.
-  for (const i of members) state.occupied.delete(i);
-  for (const t of targets) state.occupied.add(t);
-  return { ok: true, targets };
+  return { ok: true, targets, members };
 }
 
 /** Tolérance (m) par défaut pour considérer deux panneaux sur la MÊME rangée. */

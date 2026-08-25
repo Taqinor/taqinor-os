@@ -210,6 +210,32 @@ def build(ctx):
         kpi_kwc_l = (f"Puissance sans · avec · {_nb_s:g} · {_nb_a:g} "
                      f"panneaux")
 
+    # ── PDFPROD (27/08/2026) — LA VIGNETTE « PRODUCTION » SUIT LES DEUX
+    # OPTIONS, EXACTEMENT COMME LA VIGNETTE « PUISSANCE » ─────────────────────
+    # La production DÉRIVE du kWc : sur un devis dont les deux options ne
+    # portent pas le même champ PV, le scalaire ``prod_kwh`` ne décrit qu'UNE
+    # des deux (celle de l'option AVEC — repli documenté du builder). La page 1
+    # annonçait donc une production unique juste sous une puissance affichée
+    # « sans · avec ». Le builder publie déjà les deux valeurs
+    # (``prod_kwh_sans`` / ``prod_kwh_avec``) : on les rend du même geste.
+    # Deux gardes en plus du miroir kWc :
+    #   · les deux valeurs doivent DIFFÉRER — une production SAISIE dans
+    #     l'étude vaut pour les deux options (builder : réalignement), et
+    #     « 8 065 · 8 065 » n'aurait aucun sens ;
+    #   · corps réduit à 12 pt (et non 13) : une production s'écrit sur 5 à 6
+    #     chiffres, la paire est plus longue que celle des kWc et la vignette
+    #     ne doit ni s'élargir ni passer à la ligne (garde des trois pages).
+    # Devis non divergent (tout l'existant) ⇒ HTML byte-identique.
+    _prod_s, _prod_a = d.get("prod_kwh_sans"), d.get("prod_kwh_avec")
+    kpi_prod_v = fmt(prod_kwh)
+    kpi_prod_l = "Production estimée"
+    kpi_prod_style = ""
+    if (_divergent and deux_options and _prod_s and _prod_a
+            and _prod_s != _prod_a):
+        kpi_prod_v = f"{fmt(_prod_s)} · {fmt(_prod_a)}"
+        kpi_prod_style = ' style="font-size:12pt;"'
+        kpi_prod_l = "Production estimée sans · avec"
+
     # check + arrow glyphs (inline SVG renders crisply in WeasyPrint)
     check = (f'<svg class="c1-chk" viewBox="0 0 14 14">'
              f'<circle cx="7" cy="7" r="7" fill="{green_bg}"/>'
@@ -634,8 +660,8 @@ def build(ctx):
         <div class="c1-kpi-l">{kpi_kwc_l}</div>
       </div>
       <div class="c1-kpi">
-        <div class="c1-kpi-v">{fmt(prod_kwh)}<span class="c1-u">&nbsp;kWh/an</span></div>
-        <div class="c1-kpi-l">Production estimée</div>
+        <div class="c1-kpi-v"{kpi_prod_style}>{kpi_prod_v}<span class="c1-u">&nbsp;kWh/an</span></div>
+        <div class="c1-kpi-l">{kpi_prod_l}</div>
       </div>
 {kpi_eco_html}    </div>
 

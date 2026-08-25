@@ -26,16 +26,27 @@
 
 // ── Sections ─────────────────────────────────────────────────────────────
 
+/**
+ * Whitelist ET ordre d'affichage — miroir EXACT de
+ * `crm.QuestionnaireLien.SECTIONS_CLES` (le serveur reste la source de
+ * vérité : la page affiche `data.sections` dans l'ordre reçu).
+ *
+ * ORDRE (recherche 25/08/2026) — engagement croissant, sensible en dernier :
+ * occupation/équipements (une tape) → énergie (un chiffre lu sur la facture)
+ * → toiture/GPS (estimer une surface, accorder une permission) → les trois
+ * photos (effort physique) → coordonnées (données personnelles, TOUJOURS en
+ * dernier). L'ancien ordre commençait par `contact` : exactement l'inverse.
+ */
 export const QUESTIONNAIRE_SECTIONS = [
-  'contact',
-  'gps',
+  'occupation',
+  'equipements',
   'energie',
+  'toiture',
+  'gps',
   'photo_facture',
   'photo_compteur',
   'photo_tableau',
-  'toiture',
-  'occupation',
-  'equipements',
+  'contact',
 ] as const;
 export type QuestionnaireSectionId = (typeof QUESTIONNAIRE_SECTIONS)[number];
 
@@ -71,10 +82,33 @@ export interface QuestionnaireGetResponse {
   prenom: string;
   /** Sous-ensemble ACTIF, dans l'ordre voulu par le backend (source de vérité de l'ordre d'affichage). */
   sections: QuestionnaireSectionId[];
+  /**
+   * GRAIN FIN (ordre fondateur 25/08/2026 « on ne redemande JAMAIS une donnée
+   * déjà connue ») — par section, les SEULES colonnes que la page a le droit
+   * de dessiner. Une colonne connue du lead y figure (elle revient
+   * pré-remplie, donc confirmable) ; une colonne vide qu'une autre donnée
+   * connue couvre déjà en est absente (l'adresse d'un client qui a donné son
+   * GPS) et sa question disparaît.
+   *
+   * Une section ABSENTE de cette carte n'est PAS restreinte : on dessine tout.
+   * C'est le repli volontaire face à un backend plus ancien — mieux vaut une
+   * question de trop qu'un champ caché par erreur.
+   */
+  champs: Partial<Record<QuestionnaireSectionId, string[]>>;
   prefill: Record<string, unknown>;
   repondu: Partial<Record<QuestionnaireSectionId, boolean>>;
   /** ADDENDUM — jeton d'aperçu interne : champs désactivés, aucun POST. */
   interne: boolean;
+}
+
+/** `true` si la page doit dessiner la question `cle` de `section`. */
+export function champDemande(
+  champs: Partial<Record<QuestionnaireSectionId, string[]>>,
+  section: QuestionnaireSectionId,
+  cle: string,
+): boolean {
+  const liste = champs[section];
+  return liste === undefined ? true : liste.includes(cle);
 }
 
 /** Parseur défensif : `null` si la forme est inexploitable (jamais une valeur devinée). */
@@ -105,9 +139,23 @@ export function parseQuestionnaireGet(body: unknown): QuestionnaireGetResponse |
     if (reponduSrc[s] === true) repondu[s] = true;
   }
 
+  const champsRaw = b.champs;
+  const champs: Partial<Record<QuestionnaireSectionId, string[]>> = {};
+  if (champsRaw && typeof champsRaw === 'object' && !Array.isArray(champsRaw)) {
+    for (const s of sections) {
+      const liste = (champsRaw as Record<string, unknown>)[s];
+      // Une entrée malformée est IGNORÉE (section non restreinte) plutôt que
+      // traduite en liste vide : cacher toutes les questions d'un écran sur un
+      // parsing douteux serait pire que d'en poser une de trop.
+      if (Array.isArray(liste)) {
+        champs[s] = liste.filter((v): v is string => typeof v === 'string');
+      }
+    }
+  }
+
   const interne = b.interne === true;
 
-  return { entreprise, prenom, sections, prefill, repondu, interne };
+  return { entreprise, prenom, sections, champs, prefill, repondu, interne };
 }
 
 /** URL backend GET/POST — même chemin pour les deux méthodes (contrat). */
@@ -142,6 +190,111 @@ export function initialSectionIndex(
 
 export function progressLabel(index: number, total: number): string {
   return `Étape ${index + 1} sur ${total}`;
+}
+
+// ── ÉCRANS : le regroupement des sections en pages ───────────────────────
+//
+// « finally the number of pages those questions should be in » (ordre
+// fondateur 25/08/2026). La SECTION reste l'unité d'ENREGISTREMENT — le
+// contrat POST ne bouge pas, un écran POSTe simplement chacune des siennes.
+// L'ÉCRAN, lui, est l'unité de LECTURE : 9 sections faisaient 9 pages, dont
+// trois pages consécutives ne demandaient qu'une photo chacune.
+//
+// Le regroupement suit les sources UX : GOV.UK « one thing per page » veut une
+// chose par page, mais précise qu'une « chose » n'est pas forcément un champ
+// unique (une date = 3 champs) ; NN/g « 4 principles to reduce cognitive load »
+// demande de GROUPER les champs liés. Les trois photos sont une seule chose
+// (« photographiez votre installation ») ; `toiture`+`gps` en sont une autre
+// (« votre toit : lequel, et où »). Résultat : 6 écrans au maximum au lieu de
+// 9, et typiquement 3 ou 4 (les sections déjà connues ne sont pas servies).
+//
+// INVARIANT : les sections d'un écran sont CONSÉCUTIVES dans
+// QUESTIONNAIRE_SECTIONS — la page les dessine dans l'ordre reçu du serveur,
+// un groupe non consécutif produirait un écran troué. Épinglé par un test.
+
+export interface EcranDef {
+  id: string;
+  sections: readonly QuestionnaireSectionId[];
+  title: { fr: string; en: string; ar: string };
+}
+
+export const ECRANS: readonly EcranDef[] = [
+  {
+    id: 'presence',
+    sections: ['occupation'],
+    title: { fr: 'Votre présence en journée', en: 'Your daytime presence', ar: 'وجودكم خلال النهار' },
+  },
+  {
+    id: 'equipements',
+    sections: ['equipements'],
+    title: { fr: 'Vos équipements', en: 'Your appliances', ar: 'تجهيزاتكم' },
+  },
+  {
+    id: 'electricite',
+    sections: ['energie'],
+    title: { fr: 'Votre électricité', en: 'Your electricity', ar: 'كهرباؤكم' },
+  },
+  {
+    id: 'toit',
+    sections: ['toiture', 'gps'],
+    title: { fr: 'Votre toit', en: 'Your roof', ar: 'سطحكم' },
+  },
+  {
+    id: 'photos',
+    sections: ['photo_facture', 'photo_compteur', 'photo_tableau'],
+    title: { fr: 'Vos photos', en: 'Your photos', ar: 'صوركم' },
+  },
+  {
+    id: 'coordonnees',
+    sections: ['contact'],
+    title: { fr: 'Vos coordonnées', en: 'Your contact details', ar: 'معلومات التواصل' },
+  },
+];
+
+export interface EcranActif extends EcranDef {
+  /** Sections RÉELLEMENT servies par le serveur, dans l'ordre reçu. */
+  actives: QuestionnaireSectionId[];
+}
+
+/**
+ * Écrans à traverser : ceux qui portent au moins une section servie.
+ * Une section servie qu'aucun écran ne réclame (clé future, backend en avance
+ * sur le site) obtient son PROPRE écran à la fin plutôt que de disparaître —
+ * une question perdue en silence serait pire qu'un écran de plus.
+ */
+export function ecransActifs(sections: readonly QuestionnaireSectionId[]): EcranActif[] {
+  const restantes = new Set<QuestionnaireSectionId>(sections);
+  const out: EcranActif[] = [];
+  for (const ecran of ECRANS) {
+    const actives = sections.filter((s) => ecran.sections.includes(s));
+    if (actives.length === 0) continue;
+    actives.forEach((s) => restantes.delete(s));
+    out.push({ ...ecran, actives });
+  }
+  for (const orpheline of sections) {
+    if (!restantes.has(orpheline)) continue;
+    const meta = SECTION_META[orpheline];
+    out.push({
+      id: `section-${orpheline}`,
+      sections: [orpheline],
+      actives: [orpheline],
+      title: meta ? meta.title : { fr: orpheline, en: orpheline, ar: orpheline },
+    });
+  }
+  return out;
+}
+
+/**
+ * Écran d'ouverture : le premier dont une section reste sans réponse — « il
+ * reprend où il s'est arrêté ». Tout répondu ⇒ le dernier (relisible).
+ */
+export function initialEcranIndex(
+  ecrans: readonly EcranActif[],
+  repondu: Partial<Record<QuestionnaireSectionId, boolean>>,
+): number {
+  if (ecrans.length === 0) return 0;
+  const idx = ecrans.findIndex((e) => e.actives.some((s) => !repondu[s]));
+  return idx === -1 ? ecrans.length - 1 : idx;
 }
 
 // ── Petites listes fermées (vocabulaire des champs) ─────────────────────
