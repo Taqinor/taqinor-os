@@ -583,6 +583,33 @@ def _destinataires_des_leads(company, lead_ids):
     return avec_direction(destinataires, company)
 
 
+def rattacher_visites_au_lead(lead) -> int:
+    """Rattache RÉTROACTIVEMENT les visites ANONYMES d'un appareil à SON lead.
+
+    Le visiteur passe d'abord anonymement (``lead`` NULL) puis demande un
+    devis : à cet instant seulement on sait à QUI appartenaient ces passages.
+    Ne touche QUE les lignes encore sans lead de la MÊME société et du MÊME
+    appareil — jamais une trace déjà attribuée à un autre lead (ce serait
+    justement effacer la preuve qu'un appareil sert deux dossiers).
+
+    Renvoie le nombre de lignes rattachées (0 = rien à faire). Best-effort."""
+    try:
+        appareil_id = _texte(getattr(lead, 'appareil_id', ''), MAX_APPAREIL)
+        company = getattr(lead, 'company', None)
+        if not appareil_id or company is None or lead.pk is None:
+            return 0
+        from .models import VisiteExterne
+
+        return VisiteExterne.objects.filter(
+            company=company, appareil_id=appareil_id, lead__isnull=True,
+        ).update(lead=lead)
+    except Exception as exc:  # noqa: BLE001 — best-effort
+        logger.warning(
+            'T-TRACE: rattacher_visites_au_lead échoué (lead #%s) : %s',
+            getattr(lead, 'pk', '?'), exc)
+        return 0
+
+
 def tracer_et_correler(company, *, point, appareil_id='', lead=None,
                        contexte='', token='', langue='', duree_s=0,
                        fin=False, request=None, ip='', user_agent=''):

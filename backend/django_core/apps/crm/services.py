@@ -38,6 +38,7 @@ from .visites import (  # noqa: F401 — réexport public délibéré
     enregistrer_visite_externe,
     historique_appareil,
     ip_de_requete,
+    rattacher_visites_au_lead,
     resume_historique_fr,
     tracer_et_correler,
     user_agent_de_requete,
@@ -2346,9 +2347,19 @@ def notify_new_lead(lead, *, sous_seuil=False) -> None:
     portent la mention « (sous le seuil) », pour que le commercial arbitre en
     VOYANT la notification et non après avoir décroché. Le défaut ``False``
     laisse tous les autres appelants (création manuelle, imports) inchangés.
+
+    T-TRACE (25/08/2026) — DEUX ajouts, tous deux additifs :
+      · la DIRECTION est systématiquement ajoutée aux destinataires
+        (« always add the director in the notifications ») ;
+      · quand l'appareil du demandeur a un historique de visites RÉEL, le
+        corps le dit (« A visité le site N fois avant sa demande … ») — c'est
+        exactement ce que le fondateur a demandé de voir. Sans historique,
+        la phrase est simplement absente : jamais « 0 visite ».
     """
     try:
-        recipients = lead_notification_recipients(lead)
+        recipients = avec_direction(
+            lead_notification_recipients(lead),
+            getattr(lead, 'company', None))
         if not recipients:
             return
         from apps.notifications.services import notify_many
@@ -2360,6 +2371,12 @@ def notify_new_lead(lead, *, sous_seuil=False) -> None:
             body_parts.append(
                 'Facture déclarée sous le seuil de 1 000 MAD — à traiter '
                 'en second, après les leads au-dessus du seuil.')
+        historique = resume_historique_fr(
+            historique_appareil(getattr(lead, 'company', None),
+                                getattr(lead, 'appareil_id', '')),
+            avant_demande=True)
+        if historique:
+            body_parts.append(historique)
         if wa_url:
             body_parts.append(f'Répondre maintenant : {wa_url}')
         notify_many(
@@ -2377,7 +2394,8 @@ def notify_new_lead(lead, *, sous_seuil=False) -> None:
             getattr(lead, 'pk', '?'), exc)
 
 
-def notify_devis_opened(devis_reference: str, lead) -> None:
+def notify_devis_opened(devis_reference: str, lead, *, ip='',
+                        appareil_id='') -> None:
     """QJ2 (b) — Notifie le responsable du lead à la PREMIÈRE ouverture du devis.
 
     Complémente noter_devis_ouvert (QJ1) : en plus de la note chatter, envoie
@@ -2385,15 +2403,40 @@ def notify_devis_opened(devis_reference: str, lead) -> None:
     « répondre maintenant » vers le prospect. QJ27 : le supérieur du owner est
     aussi notifié (repli managers société quand owner/supervisor manque).
     Best-effort — jamais d'exception propagée.
+
+    T-TRACE (25/08/2026) — ``ip`` et ``appareil_id`` sont FACULTATIFS (les
+    appelants qui ne les connaissent pas restent inchangés) et lus CÔTÉ
+    SERVEUR par l'appelant, jamais d'un corps de requête. Quand ils sont
+    fournis, le corps dit d'OÙ vient l'ouverture et si l'appareil était DÉJÀ
+    connu — le premier indice qu'un « client » qui ouvre est en fait un
+    visiteur déjà vu ailleurs. La DIRECTION est toujours destinataire.
     """
     try:
-        recipients = lead_notification_recipients(lead)
+        company = getattr(lead, 'company', None)
+        recipients = avec_direction(
+            lead_notification_recipients(lead), company)
         if not recipients:
             return
         from apps.notifications.services import notify_many
         nom = (getattr(lead, 'nom', '') or '').strip() or 'Votre client'
         wa_url = _build_lead_wa_reply_url(lead)
         body_parts = [f'{nom} vient d\'ouvrir le devis {devis_reference}.']
+        if ip:
+            body_parts.append(f'Ouverture depuis l’adresse IP {ip}.')
+        if appareil_id:
+            # « Connu » = cet appareil a DÉJÀ laissé une trace avant cette
+            # ouverture-ci (l'ouverture elle-même est déjà enregistrée quand
+            # on arrive ici : un appareil vu pour la 1re fois n'a donc qu'UNE
+            # seule visite).
+            historique = historique_appareil(company, appareil_id)
+            visites = (historique or {}).get('visites') or 0
+            if visites > 1:
+                body_parts.append('Appareil DÉJÀ connu de nos surfaces.')
+                resume = resume_historique_fr(historique)
+                if resume:
+                    body_parts.append(resume)
+            else:
+                body_parts.append('Appareil jamais vu auparavant.')
         if wa_url:
             body_parts.append(f'Répondre maintenant : {wa_url}')
         notify_many(

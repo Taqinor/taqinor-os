@@ -661,6 +661,16 @@ def _map_payload_to_fields(data: dict) -> dict:
     for key in ('utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'):
         value = utm.get(key) or data.get(key)
         fields[key] = str(value).strip()[:300] if value else None
+    # T-TRACE (25/08/2026) — clé ADDITIVE `appareil_id` : l'uuid que le SITE
+    # pose dans le localStorage du visiteur (contrat
+    # contract_samples/visite_externe.json). C'est ce qui relie la fiche aux
+    # visites ANONYMES qui l'ont précédée. Alias camelCase/EN tolérés comme
+    # partout ailleurs dans ce mapping ; absente = None (jamais '' — la
+    # colonne est nullable et NULL veut dire « inconnu », pas « vide »).
+    appareil = (data.get('appareil_id') or data.get('appareilId')
+                or data.get('deviceId') or data.get('device_id'))
+    appareil = str(appareil).strip()[:64] if appareil else ''
+    fields['appareil_id'] = appareil or None
     # Q2 — pin de toiture (+ contour optionnel) pointé par le client. On
     # n'accepte qu'un point {lat, lng} numérique valide ; tout le reste est
     # ignoré (jamais d'erreur). roofOutline est un polygone rough optionnel.
@@ -1579,6 +1589,39 @@ def _map_and_link_lead(raw, data, company):
             logger.warning(
                 'website_lead_webhook: détection de doublon échouée '
                 '(lead #%s) : %s', lead.pk, _exc)
+
+    # ── T-TRACE (25/08/2026) — traçage anti-fraude de la demande ───────────
+    # Placé APRÈS `notify_new_lead` À DESSEIN : la notification d'arrivée doit
+    # dire « a visité le site N fois AVANT sa demande », donc elle lit
+    # l'historique alors qu'il ne contient encore QUE les passages anonymes —
+    # jamais la demande elle-même. Ici on fait, dans l'ordre :
+    #   1. rattacher au lead les visites ANONYMES déjà connues de cet appareil
+    #      (on ne savait pas à qui elles appartenaient, maintenant si) ;
+    #   2. enregistrer LA demande comme une visite de point `tunnel_lead` ;
+    #   3. lever l'alerte ROUGE si cet appareil sert DÉJÀ un AUTRE lead.
+    # Sur les DEUX chemins (création et complément anti-rejeu < 60 s) : une
+    # demande vaut une trace, même quand elle complète la fiche en cours.
+    # `raw.remote_addr` porte déjà l'IP extraite par la vue (X-Forwarded-For
+    # d'abord) — jamais une IP venue du corps.
+    # Best-effort intégral : le traçage ne remet JAMAIS le lead en cause.
+    try:
+        from .services import (
+            alerter_appareil_partage, rattacher_visites_au_lead,
+            tracer_et_correler,
+        )
+        rattacher_visites_au_lead(lead)
+        tracer_et_correler(
+            lead.company, point='tunnel_lead', lead=lead,
+            appareil_id=(lead.appareil_id or ''),
+            contexte='Demande de devis (site)',
+            langue=(lead.langue_preferee or ''),
+            ip=(getattr(raw, 'remote_addr', '') or ''),
+        )
+        alerter_appareil_partage(lead)
+    except Exception as _exc:  # noqa: BLE001 — best-effort
+        logger.warning(
+            'website_lead_webhook: traçage T-TRACE échoué (lead #%s) : %s',
+            lead.pk, _exc)
 
     # QK6 — photo de facture/compteur/toiture jointe à la capture :
     # attachée au lead (+ OCR si configuré), best-effort — une photo
