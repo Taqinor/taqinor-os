@@ -17,7 +17,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   fusionnerVariantes, optionTotalsTTC, batteryKwhFromLines, computeROI,
-  INVERTER_REPLACE_YEAR, optimalKwcByPayback,
+  INVERTER_REPLACE_YEAR, optimalKwcByPayback, comptePanneauxOption,
 } from './solar.js'
 
 // ── fusionnerVariantes ────────────────────────────────────────────────────
@@ -252,4 +252,54 @@ test('L-2OPT — optimalKwcByPayback(avecBatterie: true) peut retenir un palier 
   const paliersDivergent = sans.paliers.some((p, i) =>
     p.payback !== avec.paliers[i]?.payback)
   assert.ok(paliersDivergent, 'le payback AVEC batterie devrait différer du payback SANS par palier')
+})
+
+// ── comptePanneauxOption ──────────────────────────────────────────────────
+// La brique qui donne à CHAQUE option son kWc. Sans elle, l'écran divisait le
+// coût de la composition AVEC entière (`totals.totalAvec`) par l'économie
+// calculée au kWc de la branche SANS — un payback plusieurs fois trop long.
+
+test('comptePanneauxOption : lignes NON variantées → même compte des deux côtés (byte-identique)', () => {
+  const lignes = [
+    { designation: 'Panneau Canadien Solar 710W', quantite: 14, variante: '' },
+    { designation: 'Onduleur réseau Huawei 10kW', quantite: 1, variante: '' },
+  ]
+  assert.equal(comptePanneauxOption(lignes, 'sans'), 14)
+  assert.equal(comptePanneauxOption(lignes, 'avec'), 14)
+})
+
+test("comptePanneauxOption : chaque option ignore les lignes taguées pour l'AUTRE", () => {
+  const lignes = [
+    { designation: 'Panneau Canadien Solar 710W', quantite: 14, variante: 'sans' },
+    { designation: 'Panneau Canadien Solar 710W', quantite: 20, variante: 'avec' },
+    { designation: 'Batterie 16 kWh', quantite: 1, variante: 'avec' },
+  ]
+  assert.equal(comptePanneauxOption(lignes, 'sans'), 14)
+  assert.equal(comptePanneauxOption(lignes, 'avec'), 20)
+})
+
+test('comptePanneauxOption : une ligne COMMUNE compte dans les deux options', () => {
+  const lignes = [
+    { designation: 'Panneau 710W', quantite: 10, variante: '' },
+    { designation: 'Panneau 710W', quantite: 4, variante: 'avec' },
+  ]
+  assert.equal(comptePanneauxOption(lignes, 'sans'), 10)
+  assert.equal(comptePanneauxOption(lignes, 'avec'), 14)
+})
+
+test('comptePanneauxOption : même règle de variante que optionTotalsTTC', () => {
+  // Le contrat est celui du backend : SANS exclut 'avec', AVEC exclut 'sans'.
+  const lignes = [
+    { designation: 'Panneau 710W', quantite: 14, prix_unit_ttc: 1400, taux_tva: 10, variante: 'sans' },
+    { designation: 'Panneau 710W', quantite: 20, prix_unit_ttc: 1400, taux_tva: 10, variante: 'avec' },
+  ]
+  const t = optionTotalsTTC(lignes, 0)
+  assert.equal(comptePanneauxOption(lignes, 'sans') * 1400, t.totalSans)
+  assert.equal(comptePanneauxOption(lignes, 'avec') * 1400, t.totalAvec)
+})
+
+test('comptePanneauxOption : aucune ligne panneau (pompage, devis vide) → 0, jamais une exception', () => {
+  assert.equal(comptePanneauxOption([], 'avec'), 0)
+  assert.equal(comptePanneauxOption([{ designation: 'Pompe OSP 30-8', quantite: 1 }], 'avec'), 0)
+  assert.equal(comptePanneauxOption(null, 'sans'), 0)
 })

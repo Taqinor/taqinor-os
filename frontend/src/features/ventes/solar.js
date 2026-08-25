@@ -1172,6 +1172,22 @@ export function batteryKwhFromLines(lines) {
   }, 0)
 }
 
+// L-2OPT — nombre de PANNEAUX d'une option, avec la MÊME règle d'exclusion
+// que `optionTotalsTTC`/`batteryKwhFromLines` : l'option SANS ignore les
+// lignes taguées 'avec', l'option AVEC ignore celles taguées 'sans' ; une
+// ligne sans tag (tout l'historique, et le cas non divergent de
+// `fusionnerVariantes`) compte dans les DEUX. Sert à dériver le kWc PROPRE à
+// chaque option depuis les lignes — sans quoi l'écran chiffre l'économie
+// d'une composition avec le kWc de l'autre.
+export function comptePanneauxOption(lines, option) {
+  const exclu = option === 'avec' ? 'sans' : 'avec'
+  return (lines || []).reduce((sum, l) => {
+    if (!/panneau/i.test(l?.designation || '')) return sum
+    if (l.variante === exclu) return sum
+    return sum + (parseFloat(l.quantite) || 0)
+  }, 0)
+}
+
 // ── Totaux par option, TTC (port exact de updateTotals de app.js) ────────────
 // Option 1 SANS batterie : exclut Batterie + Onduleur hybride.
 // Option 2 AVEC batterie : exclut Onduleur réseau.
