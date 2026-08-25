@@ -104,11 +104,34 @@ export function appareilId(storage: SimpleStorage | undefined = safeLocalStorage
   }
 }
 
-/** Chemin sûr : commence par "/", jamais de query/fragment (miroir `funnelBeacon.ts` `cleanPath`). */
+// Correctif F3#7 — même doctrine que `suffixe_jeton` côté backend
+// (`apps/crm/visites.py`) : un segment de chemin qui RESSEMBLE à un jeton
+// porteur (> 24 caractères — les jetons publics font 43+ caractères, jamais
+// un slug décoratif) est réduit à ses 6 derniers caractères. Sans ce
+// masquage, `location.pathname` des pages `/proposition/<slug>/<token>/` et
+// `/questionnaire/<token>/` embarquait le jeton COMPLET dans `page`, persisté
+// en base (`contexte`, MAX 200) et réémis dans le corps des alertes envoyées
+// aux commerciaux/à la direction.
+const MAX_SEGMENT_CLAIR = 24;
+const SUFFIXE_JETON_LEN = 6;
+
+function masquerSegmentsJetons(path: string): string {
+  return path
+    .split('/')
+    .map((seg) => (seg.length > MAX_SEGMENT_CLAIR ? `…${seg.slice(-SUFFIXE_JETON_LEN)}` : seg))
+    .join('/');
+}
+
+/**
+ * Chemin sûr : commence par "/", jamais de query/fragment (miroir
+ * `funnelBeacon.ts` `cleanPath`), et masque tout segment-jeton — voir
+ * `masquerSegmentsJetons` (F3#7).
+ */
 export function cleanVisitePage(v: unknown): string {
   const raw = typeof v === 'string' ? v.trim().slice(0, 200) : '';
   if (!raw.startsWith('/')) return '/';
-  return raw.split('?')[0].split('#')[0] || '/';
+  const stripped = raw.split('?')[0].split('#')[0] || '/';
+  return masquerSegmentsJetons(stripped);
 }
 
 /** Entier de secondes cumulées, borné [0, MAX_DUREE_S] — jamais négatif, jamais absurde. */

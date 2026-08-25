@@ -120,6 +120,33 @@ describe('cleanVisitePage', () => {
     expect(cleanVisitePage('pas-un-chemin')).toBe('/');
     expect(cleanVisitePage('https://evil.example/x')).toBe('/');
   });
+
+  // F3#7 — le jeton porteur (43+ caractères) ne doit JAMAIS fuiter en entier
+  // dans `page` (persisté en base, réémis dans les alertes commerciaux).
+  const TOKEN_43 = 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d';
+
+  it('masque le jeton de /proposition/<token> (sans slug)', () => {
+    expect(cleanVisitePage(`/proposition/${TOKEN_43}`)).toBe(`/proposition/…${TOKEN_43.slice(-6)}`);
+  });
+
+  it('masque le jeton de /proposition/<slug>/<token> tout en gardant le slug décoratif', () => {
+    expect(cleanVisitePage(`/proposition/villa-oceane/${TOKEN_43}`)).toBe(
+      `/proposition/villa-oceane/…${TOKEN_43.slice(-6)}`,
+    );
+  });
+
+  it('masque le jeton de /questionnaire/<token>', () => {
+    expect(cleanVisitePage(`/questionnaire/${TOKEN_43}`)).toBe(`/questionnaire/…${TOKEN_43.slice(-6)}`);
+  });
+
+  it('ne masque PAS un segment court (≤ 24 caractères, ex. un slug ou "tok42" de test)', () => {
+    expect(cleanVisitePage('/proposition/villa-oceane')).toBe('/proposition/villa-oceane');
+    expect(cleanVisitePage('/proposition/tok42')).toBe('/proposition/tok42');
+  });
+
+  it('la query/fragment tronquée AVANT masquage ne laisse pas fuiter un jeton placé après "?"', () => {
+    expect(cleanVisitePage(`/proposition/${TOKEN_43}?ref=${TOKEN_43}`)).toBe(`/proposition/…${TOKEN_43.slice(-6)}`);
+  });
 });
 
 describe('cleanDureeS', () => {
