@@ -39,16 +39,20 @@
   },
 
   "sections": [
-    "contact",
-    "gps",
+    "occupation",
+    "equipements",
     "energie",
+    "toiture",
+    "gps",
     "photo_facture",
     "photo_compteur",
     "photo_tableau",
-    "toiture",
-    "occupation",
-    "equipements"
+    "contact"
   ],
+
+  "ordre": "L'ordre de cette liste EST l'ordre d'affichage (source unique : crm.QuestionnaireLien.SECTIONS_CLES). Recherche du 25/08/2026 — engagement CROISSANT, sensible en dernier : occupation/équipements (une tape) → énergie (un chiffre lu sur la facture) → toiture/GPS (estimer une surface, accorder une permission) → les trois photos (effort physique) → coordonnées (données personnelles, TOUJOURS en dernier — NN/g « Hierarchy of Trust »). L'ancien ordre commençait par `contact` : exactement l'inverse.",
+
+  "ecrans": "REGROUPEMENT (page publique, apps/web/src/lib/questionnaire.ts ECRANS) — 6 écrans au maximum, jamais 9 : les trois photos tiennent sur UN écran, `toiture`+`gps` sur un autre (même sujet : le toit). Un écran n'existe que s'il porte au moins une section servie, et la barre de progression compte les ÉCRANS RÉELS (Baymard : un indicateur de progression doit refléter 1:1 les étapes réellement traversées). Une section reste l'unité d'ENREGISTREMENT : un écran POSTe chacune des siennes séparément, le contrat POST ne bouge pas.",
 
   "semantique_questions": {
     "trois_etats": "Comme ventes.ShareLink.sections : clé ABSENTE → section ACTIVE (défaut) ; clé à false → section RETIRÉE ; clé à true → section servie.",

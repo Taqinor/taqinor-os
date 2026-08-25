@@ -147,6 +147,21 @@ class ManquantesTests(TestCase):
         with self.assertRaises(quest.SectionInconnue):
             quest.valider_questions({'gps': True, 'jardin': True})
 
+    def test_l_ordre_des_sections_met_les_donnees_perso_en_dernier(self):
+        """Recherche 25/08/2026 (« the right order ») — engagement CROISSANT :
+        une tape d'abord, la permission GPS plus loin, l'effort physique des
+        photos ensuite, les données personnelles TOUJOURS en dernier."""
+        self.assertEqual(quest.SECTIONS[-1], 'contact')
+        self.assertEqual(quest.SECTIONS[0], 'occupation')
+        rang = {cle: i for i, cle in enumerate(quest.SECTIONS)}
+        self.assertLess(rang['occupation'], rang['equipements'])
+        self.assertLess(rang['equipements'], rang['energie'])
+        self.assertLess(rang['energie'], rang['toiture'])
+        self.assertLess(rang['toiture'], rang['gps'])
+        self.assertLess(rang['gps'], rang['photo_facture'])
+        for photo in ('photo_facture', 'photo_compteur', 'photo_tableau'):
+            self.assertLess(rang[photo], rang['contact'])
+
 
 class NeJamaisRedemanderTests(TestCase):
     """Ordre fondateur 25/08/2026 — « you are adding the address while the
@@ -372,7 +387,8 @@ class PublicQuestionnaireTests(TestCase):
         res = self._get()
         self.assertEqual(res.status_code, 200, res.content)
         data = res.json()
-        self.assertEqual(data['sections'], ['contact', 'gps', 'energie'])
+        # Ordre = SECTIONS_CLES (engagement croissant, `contact` en dernier).
+        self.assertEqual(data['sections'], ['energie', 'gps', 'contact'])
         self.assertEqual(data['entreprise'], 'Taqinor LQUEST Public')
         self.assertEqual(data['prenom'], 'Amina')
         self.assertFalse(data['interne'])

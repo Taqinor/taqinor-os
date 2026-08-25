@@ -9,10 +9,13 @@ import {
 import { buildWaUrl } from '../../ventes/clientProposalLink.js'
 
 test('whitelist des clés-sections, dans l’ordre du contrat serveur', () => {
+  // Ordre = crm.QuestionnaireLien.SECTIONS_CLES (recherche 25/08/2026) :
+  // engagement croissant côté client, `contact` en dernier. Le commercial
+  // coche donc dans l'ordre exact où le prospect répondra.
   assert.deepEqual(
     SECTIONS_QUESTIONNAIRE.map((s) => s.key),
-    ['contact', 'gps', 'energie', 'photo_facture', 'photo_compteur',
-      'photo_tableau', 'toiture', 'occupation', 'equipements'],
+    ['occupation', 'equipements', 'energie', 'toiture', 'gps',
+      'photo_facture', 'photo_compteur', 'photo_tableau', 'contact'],
   )
   // Chaque clé porte un libellé FR non vide — jamais une case sans texte.
   for (const { label } of SECTIONS_QUESTIONNAIRE) {

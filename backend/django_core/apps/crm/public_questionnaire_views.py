@@ -83,6 +83,10 @@ class PublicQuestionnaireRateThrottle(SimpleRateThrottle):
         'prenom': serializers.CharField(required=False),
         'sections': serializers.ListField(
             child=serializers.CharField(), required=False),
+        # `champs` : {section: [colonnes]} — DictField ouvert comme `prefill`
+        # (ses clés varient par section ; la whitelist vit dans
+        # questionnaire.CHAMPS_PAR_SECTION, jamais dupliquée ici).
+        'champs': serializers.DictField(required=False),
         'prefill': serializers.DictField(required=False),
         'repondu': serializers.DictField(required=False),
         'interne': serializers.BooleanField(required=False),

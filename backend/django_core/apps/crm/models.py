@@ -3165,11 +3165,28 @@ class QuestionnaireLien(TenantModel):
     l'écran commercial et la page publique codent contre ce fichier."""
 
     #: Whitelist UNIQUE des sections (une clé hors de cette liste est refusée
-    #: par un 400, jamais silencieusement ignorée). Ordre d'affichage.
+    #: par un 400, jamais silencieusement ignorée). C'est AUSSI l'ordre
+    #: d'affichage — source unique, jamais recopiée ailleurs.
+    #:
+    #: ORDRE (recherche 25/08/2026, ordre fondateur « the right order ») —
+    #: engagement CROISSANT, données sensibles en dernier :
+    #:   1-2. `occupation` puis `equipements` : une tape, zéro effort, et
+    #:        l'occupation en journée est le premier levier du taux
+    #:        d'autoconsommation → on commence par le plus facile ;
+    #:   3.   `energie` : un chiffre à lire sur la facture ;
+    #:   4-5. `toiture` puis `gps` : estimer une surface demande un vrai
+    #:        effort, et partager sa position demande une PERMISSION — deux
+    #:        marches au-dessus des précédentes ;
+    #:   6-8. les trois photos : effort PHYSIQUE (aller au compteur) ;
+    #:   9.   `contact` : données personnelles — TOUJOURS en dernier
+    #:        (NN/g « Hierarchy of Trust » : ne jamais demander un engagement
+    #:        de haut niveau avant d'avoir servi les paliers inférieurs).
+    #: L'ancien ordre commençait par `contact` — exactement l'inverse.
     SECTIONS_CLES = (
-        'contact', 'gps', 'energie',
+        'occupation', 'equipements', 'energie',
+        'toiture', 'gps',
         'photo_facture', 'photo_compteur', 'photo_tableau',
-        'toiture', 'occupation', 'equipements',
+        'contact',
     )
 
     # Socle multi-tenant ARC1 (``TenantModel`` : company + created_at/
