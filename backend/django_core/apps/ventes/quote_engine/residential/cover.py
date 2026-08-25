@@ -166,8 +166,49 @@ def build(ctx):
             'injecté n\'est pas rémunéré.</div>').format(cov=coverage_pct)
 
     kwc_str = f"{kwc:.2f}".rstrip("0").rstrip(".").replace(".", ",")
-    pkwc_sans = fmt(total_sans / kwc) if kwc else "—"
-    pkwc_avec = fmt(total_avec / kwc) if kwc else "—"
+    # ── F1/L-2OPT (26/08/2026) — LE PRIX AU kWc D'UNE OPTION SE CALCULE SUR LE
+    # kWc DE CETTE OPTION ────────────────────────────────────────────────────
+    # ``kwc`` est le scalaire legacy : quand les deux options ne portent pas le
+    # même nombre de panneaux, il vaut celui de l'option AVEC (repli documenté
+    # du builder). La carte « Option 1 — Sans batterie » divisait donc SON
+    # total par le kWc de l'AUTRE option : un prix au kWc ~15 % trop bas, sur
+    # le seul chiffre qu'un client compare d'un devis à l'autre.
+    # Options égales (tout l'existant) ⇒ les deux valeurs sont ``kwc``, rendu
+    # byte-identique. Option sans kWc lisible ⇒ repli sur le scalaire, jamais
+    # un chiffre fabriqué.
+    _divergent = bool(d.get("panneaux_divergents"))
+    kwc_sans = (d.get("puissance_kwc_sans") or kwc) if _divergent else kwc
+    kwc_avec = (d.get("puissance_kwc_avec") or kwc) if _divergent else kwc
+    pkwc_sans = fmt(total_sans / kwc_sans) if kwc_sans else "—"
+    pkwc_avec = fmt(total_avec / kwc_avec) if kwc_avec else "—"
+
+    # ── F1/L-2OPT (26/08/2026) — LA VIGNETTE « PUISSANCE » PORTE LES DEUX
+    # VALEURS QUAND ELLES DIVERGENT ──────────────────────────────────────────
+    # Sur un document à DEUX options de tailles différentes, cette vignette
+    # annonçait un kWc unique (celui de l'option AVEC) pendant que la bande de
+    # la page 2 affiche honnêtement « 15,62 · 18,46 » : deux pages, deux
+    # vérités. Même format, même style sobre que la page 2
+    # (``residential.options``). Sur un document mono-option, le builder a déjà
+    # recalé le scalaire sur la variante rendue : rien à faire ici. Devis non
+    # divergent (tout l'existant) ⇒ HTML byte-identique.
+    def _num_kwc(v):
+        return f'{v:g}'.replace(".", ",")
+
+    _nb_s, _nb_a = d.get("nb_panneaux_sans"), d.get("nb_panneaux_avec")
+    kpi_kwc_v = kwc_str
+    kpi_kwc_l = f"Puissance · {nb_pan} panneaux × {wp} W"
+    # La vignette ne GRANDIT pas : deux valeurs tiennent en réduisant le corps
+    # du nombre (17 → 13 pt, style en ligne), et la ligne de légende reste sur
+    # UNE ligne — la page 1 est une page pleine, un retour à la ligne de plus y
+    # coûterait une 4ᵉ page (garde des trois pages). La puissance unitaire
+    # (« × 710 W ») n'est pas répétée ici : elle est déjà portée, par option,
+    # par la bande et le tableau comparatif de la page 2.
+    kpi_kwc_style = ""
+    if _divergent and deux_options and kwc_sans and kwc_avec and _nb_s and _nb_a:
+        kpi_kwc_v = f"{_num_kwc(kwc_sans)} · {_num_kwc(kwc_avec)}"
+        kpi_kwc_style = ' style="font-size:13pt;"'
+        kpi_kwc_l = (f"Puissance sans · avec · {_nb_s:g} · {_nb_a:g} "
+                     f"panneaux")
 
     # check + arrow glyphs (inline SVG renders crisply in WeasyPrint)
     check = (f'<svg class="c1-chk" viewBox="0 0 14 14">'
@@ -589,8 +630,8 @@ def build(ctx):
     <!-- KPI CHIPS ──────────────────────────────────────────────────────── -->
     <div class="c1-kpis">
       <div class="c1-kpi">
-        <div class="c1-kpi-v">{kwc_str}<span class="c1-u">&nbsp;kWc</span></div>
-        <div class="c1-kpi-l">Puissance · {nb_pan} panneaux × {wp} W</div>
+        <div class="c1-kpi-v"{kpi_kwc_style}>{kpi_kwc_v}<span class="c1-u">&nbsp;kWc</span></div>
+        <div class="c1-kpi-l">{kpi_kwc_l}</div>
       </div>
       <div class="c1-kpi">
         <div class="c1-kpi-v">{fmt(prod_kwh)}<span class="c1-u">&nbsp;kWh/an</span></div>

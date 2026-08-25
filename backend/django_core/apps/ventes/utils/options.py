@@ -187,9 +187,18 @@ def totaux_affichage_repli(devis) -> dict:
     ``devis.total_ttc`` — pour un devis à deux options, la SOMME des deux
     paniers, un montant qui n'existe dans AUCUN document — sans badge (le
     ``nb_options: 1`` du repli masquait tout). Ici : deux options déclarées →
-    total de l'option 1 par la même chaîne canonique que le PDF, et
-    ``comparaison_repli`` porte les deux totaux pour l'affichage « A / B » de
-    la liste. Mono-option → total stocké, comportement historique inchangé.
+    le total de l'option mise en avant, par la même chaîne canonique que le
+    PDF, et ``comparaison_repli`` porte les deux totaux pour l'affichage
+    « A / B » de la liste. Mono-option → total stocké, historique inchangé.
+
+    F1 (26/08/2026) — LE REPLI SUIT LA CHAÎNE CANONIQUE. Ce repli servait
+    encore le total de l'option 1 (« Sans batterie ») alors que la chaîne
+    canonique a basculé sur l'option AVEC le 25/08 (LANE CHOIX-AVEC :
+    ``builder.display_total`` = ``totaux_avec['ttc']`` dès qu'il y a deux
+    options, pour que la liste, le une-page et le PDF portent la MÊME option).
+    Le jour où le moteur lève, la liste passait donc silencieusement d'un
+    total à l'autre. Repli sur « sans » gardé quand « avec » n'a pas de total
+    lisible — jamais rien d'inventé.
     """
     if not deux_options_declarees(devis):
         return {'total': float(devis.total_ttc), 'nb_options': 1}
@@ -199,7 +208,7 @@ def totaux_affichage_repli(devis) -> dict:
     avec = _totaux_canoniques(
         devis, filter_lines_for_option(lignes, AVEC_BATTERIE))
     return {
-        'total': float(sans['ttc']),
+        'total': float(avec['ttc'] if avec.get('ttc') else sans['ttc']),
         'nb_options': 2,
         'comparaison_repli': {'sans': sans, 'avec': avec},
     }

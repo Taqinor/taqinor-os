@@ -309,6 +309,15 @@ TARIF_MT_MENTION = ""
 # tous, donc AUCUN d'eux n'est imprimé. Défaut INERTE (False) : sans la clé du
 # builder, le rendu est byte-identique.
 PUISSANCE_INCONNUE = False
+# F1/L-2OPT - scalaires PAR OPTION (les deux options d'un devis peuvent porter
+# des champs PV de tailles differentes). Defauts INERTES : sans les cles du
+# builder, ``PANNEAUX_DIVERGENTS`` reste faux et tout le rendu lit le scalaire
+# global comme avant - byte-identique.
+PANNEAUX_DIVERGENTS = False
+KWC_SANS = 0.0
+KWC_AVEC = 0.0
+NB_PAN_SANS = 0
+NB_PAN_AVEC = 0
 
 MONTHS  = ["Jan","F\u00e9v","Mar","Avr","Mai","Jun",
            "Jul","Ao\u00fb","Sep","Oct","Nov","D\u00e9c"]
@@ -1464,8 +1473,14 @@ def page1():
             f'<span style="white-space:nowrap;">{ta}</span></div>'
         )
     # Prix par kWc installé (résumé compétiteur) — sous chaque prix d'option
-    _pkwc_s = f' &#183; soit {fmt(TOTAL_SANS / KWC)}/kWc' if KWC > 0 else ''
-    _pkwc_a = f' &#183; soit {fmt(TOTAL_AVEC / KWC)}/kWc' if KWC > 0 else ''
+    # F1/L-2OPT (26/08/2026) — chaque option divise SON total par SON kWc : le
+    # scalaire global porte l'option AVEC dès que les champs PV divergent, donc
+    # l'option 1 affichait un prix au kWc ~15 % trop bas (total « sans » ÷ kWc
+    # « avec »). Options égales ⇒ les deux kWc valent ``KWC``, byte-identique.
+    _kwc_s = KWC_SANS if (PANNEAUX_DIVERGENTS and KWC_SANS > 0) else KWC
+    _kwc_a = KWC_AVEC if (PANNEAUX_DIVERGENTS and KWC_AVEC > 0) else KWC
+    _pkwc_s = f' &#183; soit {fmt(TOTAL_SANS / _kwc_s)}/kWc' if _kwc_s > 0 else ''
+    _pkwc_a = f' &#183; soit {fmt(TOTAL_AVEC / _kwc_a)}/kWc' if _kwc_a > 0 else ''
     # Puces générées depuis l'équipement RÉEL de chaque option (jamais de
     # texte boilerplate qui contredirait la liste d'équipements).
     _sb_lis = "".join(f"<li>{SVG_CHECK}{b}</li>" for b in SANS_BULLETS) or \
@@ -1514,10 +1529,27 @@ def page1():
                          else f'{NB_PAN} panneaux')
         else:
             _pan_line = ""
+        # F1/L-2OPT (26/08/2026) — sur un document qui rend LES DEUX options
+        # avec des champs PV de tailles différentes, un kWc unique décrit
+        # l'option AVEC pendant que la page 2 affiche « sans · avec ». La
+        # vignette porte donc les deux valeurs, même format sobre. Document
+        # mono-option : le builder a déjà recalé le scalaire sur la variante
+        # rendue. Devis non divergent ⇒ HTML byte-identique.
+        # La carte ne GRANDIT pas : deux valeurs tiennent en réduisant le corps
+        # du nombre (19 → 14 pt), et la ligne de légende reste sur UNE ligne.
+        _kpi_kwc = f'{KWC}&nbsp;kWc'
+        _kpi_kwc_pt = '19pt'
+        if (PANNEAUX_DIVERGENTS and _both and KWC_SANS > 0 and KWC_AVEC > 0
+                and NB_PAN_SANS > 0 and NB_PAN_AVEC > 0):
+            _kpi_kwc = (f'{KWC_SANS:g}&#160;&#183;&#160;{KWC_AVEC:g}'
+                        '&nbsp;kWc').replace(".", ",")
+            _kpi_kwc_pt = '14pt'
+            _pan_line = (f'{NB_PAN_SANS} &#183; {NB_PAN_AVEC} panneaux '
+                         f'(sans &#183; avec)')
         _kpi_cards.append(
             f'<div style="flex:1;min-width:0;margin-right:9px;border:1px solid {CG2};border-left:4px solid {CA};border-radius:6px;padding:14px 12px;background:white;">'
             f'<div style="font-size:4.5pt;letter-spacing:1.5px;color:{CG4};font-weight:400;text-transform:uppercase;margin-bottom:4px;">Puissance Install&#233;e</div>'
-            f'<div class="serif" style="font-size:19pt;color:{CN};line-height:1.05;">{KWC}&nbsp;kWc</div>'
+            f'<div class="serif" style="font-size:{_kpi_kwc_pt};color:{CN};line-height:1.05;">{_kpi_kwc}</div>'
             + (f'<div style="font-size:6.5pt;color:{CG4};margin-top:3px;">{_pan_line}</div>'
                if _pan_line else '')
             + '</div>')
@@ -3098,6 +3130,14 @@ def apply_quote_data(data: dict) -> None:
     TARIF_MT_MENTION = data.get("tarif_mt_mention") or ""
     global PUISSANCE_INCONNUE  # M2 — puissance sans ancrage réel
     PUISSANCE_INCONNUE = bool(data.get("puissance_inconnue"))
+    # F1/L-2OPT — scalaires PAR OPTION. Sans les clés du builder, le drapeau
+    # reste faux et chaque surface lit le scalaire global comme avant.
+    global PANNEAUX_DIVERGENTS, KWC_SANS, KWC_AVEC, NB_PAN_SANS, NB_PAN_AVEC
+    PANNEAUX_DIVERGENTS = bool(data.get("panneaux_divergents"))
+    KWC_SANS = float(data.get("puissance_kwc_sans") or 0)
+    KWC_AVEC = float(data.get("puissance_kwc_avec") or 0)
+    NB_PAN_SANS = int(data.get("nb_panneaux_sans") or 0)
+    NB_PAN_AVEC = int(data.get("nb_panneaux_avec") or 0)
     global HYPOTHESES  # QK4 — bloc « Nos hypothèses »
     HYPOTHESES = data.get("hypotheses")
     global NB_PROPRIETES, DISPLAY_TOTAL_MULTI, MULTI_VILLA  # QJ30 multi-propriétés
@@ -3193,6 +3233,15 @@ def apply_quote_data(data: dict) -> None:
         _kwc_br = data.get(f"puissance_kwc_{ONEPAGE_BRANCHE}")
         _nb_br = data.get(f"nb_panneaux_{ONEPAGE_BRANCHE}")
         _wp_br = data.get(f"watt_par_panneau_{ONEPAGE_BRANCHE}")
+        # F1 (26/08/2026) — MÊME BRANCHE, MÊME VÉRITÉ, JUSQU'AU BOUT. Le bloc
+        # recalait la puissance et les panneaux, mais laissait « Production
+        # annuelle » sur le scalaire global : la vignette annonçait la
+        # production de l'AUTRE option juste à côté du kWc de celle-ci (et
+        # « Production ÷ kWc » ne retombait plus sur aucun productible réel).
+        # L'économie annuelle, elle, était déjà choisie par branche dans
+        # ``page_onepage`` (M4) et devient juste — elle aussi — maintenant que
+        # le builder chiffre les économies par option.
+        _prod_br = data.get(f"prod_kwh_{ONEPAGE_BRANCHE}")
         # Valeur illisible (None) ⇒ on ne remplace RIEN par un repli : la
         # vignette correspondante s'omet déjà d'elle-même sur un 0.
         if _kwc_br:
@@ -3201,6 +3250,8 @@ def apply_quote_data(data: dict) -> None:
             NB_PAN = int(_nb_br)
         if _wp_br:
             WP = int(_wp_br)
+        if _prod_br:
+            PROD_KWH = int(_prod_br)
     global VALID_UNTIL  # M7 — échéance réelle du devis
     VALID_UNTIL = (data.get("valid_until") or "").strip()
     global DELAI_VISITE, DELAI_INSTALLATION  # Q5 — délais indicatifs
