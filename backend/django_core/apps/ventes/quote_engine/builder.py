@@ -1569,8 +1569,48 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # lieu d'imprimer « 0 kWh » / « 0 MAD/an » / « Retour en 0 ans ».
     roi = calculate_savings_roi(puissance_kwc or 0, total_sans, total_avec,
                                 **roi_kwargs)
+    # ── F1/L-2OPT (26/08/2026) — LA CHAÎNE ÉCONOMIQUE SE CALCULE PAR OPTION ──
+    # ``calculate_savings_roi`` dérive TOUT (production, autoconsommation,
+    # économies, payback, cashflow 25 ans) d'UN SEUL kWc. Depuis que les deux
+    # options peuvent porter des champs PV de tailles différentes, l'appel
+    # unique chiffrait les DEUX colonnes du comparatif sur la taille d'UNE
+    # seule : sur un devis 22/26, la colonne « Sans batterie » annonçait les
+    # économies de 18,46 kWc (≈ +18 %) et un retour sur investissement
+    # d'autant trop court — deux chiffres faux, montrés au client.
+    # On rejoue donc la dérivation une fois PAR OPTION, chacune sur SON kWc, et
+    # chaque côté du dict garde ses propres chiffres. Les métadonnées communes
+    # (tarif, modèle d'économies, facture actuelle, hypothèses de cashflow) ne
+    # dépendent pas de la puissance : elles restent celles de l'appel
+    # principal, qui décrit la branche mise en avant par le document.
+    # Options égales — tout l'existant — ⇒ AUCUN second appel, byte-identique.
+    prod_kwh_sans = prod_kwh_avec = roi["prod_kwh"]
+    if panneaux_divergents:
+        def _roi_pour(kwc):
+            # Jamais deux fois le même calcul : la branche déjà chiffrée par
+            # l'appel principal est réutilisée telle quelle.
+            if kwc == puissance_kwc:
+                return roi
+            return calculate_savings_roi(kwc or 0, total_sans, total_avec,
+                                         **roi_kwargs)
+
+        _roi_s = _roi_pour(puissance_kwc_sans)
+        _roi_a = _roi_pour(puissance_kwc_avec)
+        for _cle in ("eco_s_ann", "roi_s", "eco_s_monthly", "cashflow_sans",
+                     "net_gain_sans", "facture_avec_s", "autoconso_sans"):
+            roi[_cle] = _roi_s[_cle]
+        for _cle in ("eco_a_ann", "eco_a_cumul", "roi_a", "eco_a_monthly",
+                     "cashflow_avec", "net_gain_avec", "facture_avec_a",
+                     "autoconso_avec"):
+            roi[_cle] = _roi_a[_cle]
+        prod_kwh_sans = _roi_s["prod_kwh"]
+        prod_kwh_avec = _roi_a["prod_kwh"]
     if etude.get("production_annuelle"):
         roi["prod_kwh"] = int(etude["production_annuelle"])
+        # Une production SAISIE par un humain est UN chiffre, pas deux : elle
+        # vaut pour les deux options (comme les économies d'étude juste en
+        # dessous). Sans ce réalignement, le une-page aurait pu servir une
+        # production dérivée pendant que la page 1 sert celle de l'étude.
+        prod_kwh_sans = prod_kwh_avec = roi["prod_kwh"]
         if etude.get("economies_annuelles"):
             eco = int(etude["economies_annuelles"])
             roi["eco_s_ann"] = eco
@@ -2241,6 +2281,11 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "layout_stale": layout_stale,
         "layout_nb_panneaux": layout_nb_panneaux or None,
         "prod_kwh": roi["prod_kwh"],
+        # F1/L-2OPT — production de CHAQUE option (elle dérive du kWc, qui peut
+        # diverger). Égales sur tout l'existant ; le format une page y lit la
+        # production de SA branche au lieu de celle de l'option mise en avant.
+        "prod_kwh_sans": prod_kwh_sans,
+        "prod_kwh_avec": prod_kwh_avec,
         "total_sans": total_sans,
         "total_avec": total_avec,
         "total_sans_before": total_sans_before,
