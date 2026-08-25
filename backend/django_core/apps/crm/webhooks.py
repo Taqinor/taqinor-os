@@ -953,6 +953,95 @@ def _map_payload_to_fields(data: dict) -> dict:
     return fields
 
 
+# ── L-QUEST (fondateur 25/08/2026) — réponses du CLIENT depuis son lien ──
+#
+# Le client qui remplit son questionnaire chez lui envoie EXACTEMENT le même
+# vocabulaire métier que le site : on réutilise donc le mapping ci-dessus
+# (`_map_payload_to_fields`) au lieu d'écrire une SECONDE validation, et on se
+# contente de ne garder que les clés de la section concernée.
+#
+# Deux ajustements, tous deux documentés ici plutôt que dupliqués ailleurs :
+#   (a) une poignée de clés que le site nomme autrement (le site envoie
+#       `city`, la page questionnaire envoie le nom de colonne `ville`) ;
+#   (b) quatre colonnes `Lead` que le mapping du site n'atteint pas du tout
+#       (le site ne les collecte pas) : elles sont nettoyées ICI avec les
+#       MÊMES primitives (`_clean_decimal`/`_clean_choice`), pas avec un
+#       nouveau style de validation. Le comportement du webhook site est
+#       strictement inchangé (aucune de ces clés n'y est ajoutée).
+
+#: (a) nom de colonne Lead → clé que `_map_payload_to_fields` lit réellement.
+_QUEST_ALIAS_ENTREE = {
+    'ville': 'city',
+}
+
+
+def _quest_conso(raw):
+    return _clean_decimal(raw, lo=0, hi=1_000_000)
+
+
+def _quest_surface(raw):
+    return _clean_decimal(raw, lo=0, hi=1_000_000)
+
+
+def _quest_tranche(raw):
+    if raw in (None, ''):
+        return None
+    return str(raw).strip()[:100] or None
+
+
+def _quest_type_toiture(raw):
+    return _clean_choice(raw, Lead.TypeToiture.values)
+
+
+#: (b) colonnes Lead hors de portée du mapping site → nettoyeur dédié.
+_QUEST_NETTOYEURS_HORS_SITE = {
+    'conso_mensuelle_kwh': _quest_conso,
+    'surface_toiture_m2': _quest_surface,
+    'tranche_onee': _quest_tranche,
+    'type_toiture': _quest_type_toiture,
+}
+
+
+def champs_lead_depuis_reponses(reponses, cles_autorisees):
+    """L-QUEST — Réponses du client (une section) → champs ``Lead`` propres.
+
+    UNE seule validation, celle du site (`_map_payload_to_fields`) ; on ne
+    retient ensuite que ``cles_autorisees`` (la whitelist de la section, donc
+    une section ne peut JAMAIS écrire un champ d'une autre : une réponse
+    « contact » ne touche pas le GPS) et uniquement les valeurs NON vides —
+    le mapping du site pose des valeurs de CRÉATION par défaut (nom, canal,
+    e-mail à ``None``…) qui ne doivent jamais retomber ici, et un champ absent
+    du corps ne peut donc jamais écraser une valeur déjà connue du lead.
+
+    ``False`` et ``0`` sont des réponses LÉGITIMES (« non, pas de piscine »)
+    et sont conservés — seuls ``None`` et la chaîne vide sont écartés.
+    Ne lève jamais : une valeur invalide est simplement ignorée."""
+    if not isinstance(reponses, dict):
+        return {}
+
+    entree = dict(reponses)
+    for colonne, cle_site in _QUEST_ALIAS_ENTREE.items():
+        if colonne in entree and cle_site not in entree:
+            entree[cle_site] = entree[colonne]
+
+    fields = _map_payload_to_fields(entree)
+    for colonne, nettoyeur in _QUEST_NETTOYEURS_HORS_SITE.items():
+        if colonne in reponses:
+            valeur = nettoyeur(reponses[colonne])
+            if valeur is not None:
+                fields[colonne] = valeur
+
+    out = {}
+    for cle in cles_autorisees:
+        if cle not in fields:
+            continue
+        val = fields[cle]
+        if val is None or (isinstance(val, str) and not val.strip()):
+            continue
+        out[cle] = val
+    return out
+
+
 # ── WREF2 (fondateur 21/08/2026) — RÉFÉRENCE CLIENT ATTRIBUÉE PAR LE SERVEUR ──
 #
 # Le code remis au client n'est plus le « TQ-XXXX » tiré au hasard par le

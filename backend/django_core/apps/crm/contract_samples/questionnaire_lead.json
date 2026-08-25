@@ -1,0 +1,116 @@
+{
+  "endpoint": "GET /api/django/crm/public/questionnaire/<str:token>/",
+  "pourquoi": "L-QUEST (ordre fondateur 25/08/2026) — « questionnaire envoyable au client » : le commercial choisit les questions, le client remplit CHEZ LUI, À SON RYTHME, sans login, section par section (enregistrement progressif — il reprend où il s'est arrêté). Le DÉFAUT des questions posées = les informations MANQUANTES du lead ; le GPS est une des questions. Ce fichier est LA source partagée (PACT10) : le backend la sert, l'écran commercial et la page publique codent contre elle — sans elle, deux lanes file-disjointes inventent mécaniquement deux contrats (incident AO du 03/08/2026, 0 clé sur 6 concordante). Le mint privé a son propre échantillon (questionnaire_lien_mint.json) ; le POST public partage cette URL et est décrit ci-dessous dans `public_post`.",
+  "exemple": {
+    "entreprise": "Taqinor",
+    "prenom": "Amina",
+    "sections": [
+      "gps",
+      "energie"
+    ],
+    "prefill": {
+      "gps_lat": null,
+      "gps_lng": null,
+      "facture_hiver": 3500,
+      "facture_ete": null,
+      "ete_differente": false,
+      "conso_mensuelle_kwh": null,
+      "tranche_onee": null,
+      "raccordement": null
+    },
+    "repondu": {
+      "gps": true
+    },
+    "interne": false
+  },
+
+  "sections": [
+    "contact",
+    "gps",
+    "energie",
+    "photo_facture",
+    "photo_compteur",
+    "photo_tableau",
+    "toiture",
+    "occupation",
+    "equipements"
+  ],
+
+  "semantique_questions": {
+    "trois_etats": "Comme ventes.ShareLink.sections : clé ABSENTE → section ACTIVE (défaut) ; clé à false → section RETIRÉE ; clé à true → section servie.",
+    "defaut_au_mint": "Un mint SANS corps `questions` écrit la carte EXPLICITE des informations manquantes ({cle: true si manquante, false sinon}) — ordre fondateur « DÉFAUT = les informations manquantes ». Le trois-états reste la sémantique du champ (une section future inconnue de la carte serait active).",
+    "cle_inconnue": "400 — la whitelist `sections` ci-dessus est la seule vérité."
+  },
+
+  "deux_jetons": {
+    "token": "Jeton CLIENT — c'est LUI qu'on envoie. Lecture + écriture des réponses.",
+    "token_interne": "Jeton COMMERCIAL — même page, JAMAIS montré au client. Il sert à visiter la page en APERÇU sans rien déclencher : le GET via ce jeton ne journalise RIEN (aucune LeadActivity, aucun `derniere_reponse_at`, aucun `sections_repondues`) et le POST y est REFUSÉ (403). Le commercial ne répond jamais à la place du client."
+  },
+
+  "mint": {
+    "voir": "apps/crm/contract_samples/questionnaire_lien_mint.json — POST /api/django/crm/leads/<pk>/questionnaire-lien/ (échantillon vérifié séparément par check_api_shapes : un fichier = un endpoint)."
+  },
+
+  "public_get": {
+    "auth": "AUCUNE — le lien EST l'authentification (patron magic-link, comme public/booking/). Throttlé par IP+jeton. Un jeton inconnu ou expiré renvoie un 404 à corps CONSTANT (jamais bavard).",
+    "notes": {
+      "sections": "UNIQUEMENT les sections actives, dans l'ordre de la whitelist.",
+      "prefill": "UNIQUEMENT les champs des sections actives, valeurs ACTUELLES du lead. Une valeur absente vaut `null` — JAMAIS un défaut forfaitaire, jamais un chiffre inventé (règle fondateur « zéro chiffre inventé »).",
+      "repondu": "Sections déjà enregistrées PAR CE LIEN (reprise). Absent = pas encore répondu.",
+      "interne": "true uniquement quand la page a été ouverte avec `token_interne` (aperçu commercial, aucune trace écrite). Absent/false côté client."
+    }
+  },
+
+  "public_post": {
+    "endpoint": "POST /api/django/crm/public/questionnaire/<token>/ (même URL)",
+    "body": {
+      "section": "energie",
+      "reponses": {
+        "facture_hiver": 3500,
+        "ete_differente": true,
+        "facture_ete": 4200
+      },
+      "photo": "data:image/jpeg;base64,… (sections photo_* uniquement)"
+    },
+    "reponse": {
+      "ok": true,
+      "enregistrees": [
+        "facture_hiver",
+        "ete_differente",
+        "facture_ete"
+      ]
+    },
+    "notes": {
+      "progressif": "Une section à la fois. Le client peut fermer la page et revenir : les sections déjà envoyées reviennent dans `repondu`.",
+      "jamais_ecraser": "Une valeur DÉJÀ renseignée sur le lead n'est jamais écrasée par du vide. Une section n'écrit QUE ses propres champs — une réponse « contact » (adresse/ville) ne touche donc JAMAIS le GPS.",
+      "photo": "Sections photo_* : `photo` en base64 ou data-URL, mêmes gardes que la capture du site (magic-bytes, 10 Mo, MinIO). `enregistrees` vaut alors [\"photo\"].",
+      "section_inconnue_ou_inactive": "400.",
+      "jeton_interne": "403 — un aperçu ne doit rien écrire."
+    }
+  },
+
+  "champs_par_section": {
+    "contact": ["email", "adresse", "ville"],
+    "gps": ["gps_lat", "gps_lng"],
+    "energie": ["facture_hiver", "facture_ete", "ete_differente", "conso_mensuelle_kwh", "tranche_onee", "raccordement"],
+    "toiture": ["type_toiture", "surface_toiture_m2", "roof_age", "ownership"],
+    "occupation": ["occupation_jour"],
+    "equipements": ["equip_piscine", "equip_piscine_pompe_kw", "equip_piscine_heures_jour", "equip_piscine_creneau", "equip_voiture_electrique", "equip_ve_km_semaine", "equip_ve_chargeur_kw", "equip_ve_creneau", "equip_clim", "equip_clim_pieces", "equip_clim_kw", "equip_clim_creneau", "equip_chauffe_eau_electrique", "equip_chauffe_eau_kw", "equip_chauffe_eau_creneau"],
+    "photo_facture": [],
+    "photo_compteur": [],
+    "photo_tableau": []
+  },
+
+  "manquantes": {
+    "quoi": "Carte {section: bool} — une section est MANQUANTE quand l'information qu'elle porte n'est pas (complètement) connue du lead. C'est le DÉFAUT des questions posées.",
+    "regles": {
+      "contact": "email, adresse ou ville vide.",
+      "gps": "gps_lat ou gps_lng nul.",
+      "energie": "les champs requis du mode (devis_auto.champs_manquants) manquent, OU tranche_onee/raccordement vides. NB : `ete_differente` n'est PAS un signal de « jamais posée » — sa colonne est NOT NULL default False (crm.Lead), donc elle vaut toujours true/false ; le trois-états « None = jamais posée » ne s'applique qu'aux colonnes réellement nullables (les equip_*).",
+      "toiture": "type_toiture, surface_toiture_m2, roof_age ou ownership vide.",
+      "occupation": "occupation_jour vide.",
+      "equipements": "AU MOINS UN booléen equip_* à None — None = « jamais posée », ce qui est DIFFÉRENT de False (« le client a dit non »).",
+      "photo_facture / photo_compteur / photo_tableau": "aucune pièce jointe du type sur le lead. APPROXIMATION assumée : on reconnaît le type au LIBELLÉ du fichier (mots-clés facture/bill, compteur/meter, tableau/disjoncteur) — le magasin `records.Attachment` ne porte pas de type métier. En cas de doute → MANQUANTE (on repose la question plutôt que de supposer)."
+    }
+  }
+}

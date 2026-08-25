@@ -3110,3 +3110,119 @@ class Defi(TenantModel):
 
     def __str__(self):
         return self.nom
+
+
+# ── L-QUEST (fondateur 25/08/2026) — « questionnaire envoyable au client » ──
+#
+# « Un client peut remplir chez lui, à son rythme ; le commercial choisit les
+# questions ; DÉFAUT = les informations manquantes ; le GPS est une des
+# questions. »
+#
+# Même patron que ``BookingLink`` (jeton long/imprévisible, lien expirant,
+# résolution publique sans login) avec DEUX différences voulues :
+#   · le lien se ROUVRE (magic-link) — il n'est jamais « consommé » : le
+#     client répond section par section et revient plus tard ;
+#   · il porte un SECOND jeton INTERNE, jamais montré au client, qui sert au
+#     commercial à visiter la page en APERÇU sans rien déclencher (aucune
+#     trace, aucune écriture — voir ``public_questionnaire_views``).
+QUESTIONNAIRE_LIEN_TTL_DAYS = 30
+
+
+def _default_questionnaire_token():
+    import secrets
+    return secrets.token_urlsafe(32)
+
+
+def _default_questionnaire_expiry():
+    from datetime import timedelta
+
+    from django.utils import timezone as _timezone
+    return _timezone.now() + timedelta(days=QUESTIONNAIRE_LIEN_TTL_DAYS)
+
+
+class QuestionnaireLien(TenantModel):
+    """L-QUEST — Lien PUBLIC, tokenisé et expirant (30 j), par lequel le
+    CLIENT complète lui-même les informations manquantes de SON lead.
+
+    Le contrat servi/consommé est figé dans
+    ``apps/crm/contract_samples/questionnaire_lead.json`` (PACT10) —
+    l'écran commercial et la page publique codent contre ce fichier."""
+
+    #: Whitelist UNIQUE des sections (une clé hors de cette liste est refusée
+    #: par un 400, jamais silencieusement ignorée). Ordre d'affichage.
+    SECTIONS_CLES = (
+        'contact', 'gps', 'energie',
+        'photo_facture', 'photo_compteur', 'photo_tableau',
+        'toiture', 'occupation', 'equipements',
+    )
+
+    # Socle multi-tenant ARC1 (``TenantModel`` : company + created_at/
+    # updated_at). ``company`` est REdéclarée ici uniquement pour garder un
+    # ``related_name`` parlant — le motif documenté dans la docstring de
+    # ``core.models.TenantModel``, pas un hand-roll.
+    company = models.ForeignKey(  # on_delete: lien interne au tenant — purgé avec sa société.
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='questionnaire_liens', verbose_name='Société')
+    lead = models.ForeignKey(  # on_delete: lien sans objet si le lead disparaît.
+        'crm.Lead', on_delete=models.CASCADE,
+        related_name='questionnaire_liens')
+    # Jeton CLIENT — c'est celui-là qu'on envoie (WhatsApp/e-mail).
+    token = models.CharField(
+        max_length=64, unique=True, default=_default_questionnaire_token,
+        editable=False)
+    # Jeton INTERNE — même page, JAMAIS montré au client : le commercial
+    # ouvre l'aperçu sans déclencher la moindre écriture ni la moindre trace.
+    token_interne = models.CharField(
+        max_length=64, unique=True, default=_default_questionnaire_token,
+        editable=False)
+    created_by = models.ForeignKey(  # on_delete: on garde le lien si l'auteur quitte l'entreprise.
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='questionnaire_liens_crees')
+    # ``created_at``/``updated_at`` viennent de TenantModel (ARC1).
+    expires_at = models.DateTimeField(default=_default_questionnaire_expiry)
+
+    # Sections DEMANDÉES — sémantique à TROIS états, identique à
+    # ``ventes.ShareLink.sections`` :
+    #   · clé ABSENTE → section ACTIVE (défaut) ;
+    #   · clé à False → section RETIRÉE (le commercial ne la pose pas) ;
+    #   · clé à True  → section posée.
+    # Le mint SANS corps `questions` écrit la carte EXPLICITE des informations
+    # manquantes (ordre fondateur « DÉFAUT = les informations manquantes »).
+    questions = models.JSONField(
+        default=dict, blank=True, verbose_name='Sections demandées')
+
+    # Progression du CLIENT sur CE lien (jamais alimentée par l'aperçu
+    # interne) : {section: True} — sert à lui réafficher où il s'est arrêté.
+    sections_repondues = models.JSONField(
+        default=dict, blank=True, verbose_name='Sections déjà répondues')
+    derniere_reponse_at = models.DateTimeField(
+        null=True, blank=True, verbose_name='Dernière réponse du client')
+
+    class Meta:
+        verbose_name = 'Lien questionnaire client'
+        verbose_name_plural = 'Liens questionnaire client'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'QuestionnaireLien lead#{self.lead_id} ({self.token[:8]}…)'
+
+    @property
+    def is_expired(self):
+        from django.utils import timezone as _timezone
+        return _timezone.now() >= self.expires_at
+
+    def question_posee(self, cle):
+        """La section ``cle`` est-elle demandée sur ce lien ?
+
+        UNE seule décision, partagée par tous les flux (GET public, POST
+        public, écran commercial) : clé absente → True (comportement par
+        défaut), clé à False → False. Défensif (``getattr``/type) au cas où
+        un test construit un lien à la main."""
+        questions = getattr(self, 'questions', None)
+        if not isinstance(questions, dict):
+            return True
+        return questions.get(cle) is not False
+
+    def sections_actives(self):
+        """Sections demandées, dans l'ordre de la whitelist."""
+        return [cle for cle in self.SECTIONS_CLES if self.question_posee(cle)]

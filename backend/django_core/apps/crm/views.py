@@ -776,6 +776,11 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             'noter', 'devis_auto', 'archiver', 'restaurer',
             'whatsapp_devis', 'bulk', 'log_interaction',
             'appliquer_plan',
+            # L-QUEST — get_permissions() PRIME sur le permission_classes de
+            # l'@action : sans cette ligne, `questionnaire-lien` retomberait
+            # sur le `return [IsAdminRole()]` final et la Commerciale — qui
+            # envoie justement le questionnaire — serait refusée.
+            'questionnaire_lien',
         ]:
             # L'archivage réversible est ouvert à la Commerciale.
             return [IsResponsableOrAdmin()]
@@ -1242,6 +1247,51 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                             status=status.HTTP_400_BAD_REQUEST)
         return Response(
             {'ok': True, 'detail': 'Lead prêt pour le devis automatique.'})
+
+    # ── L-QUEST — Questionnaire envoyable au client ──────────────────────────
+    @action(detail=True, methods=['post'], url_path='questionnaire-lien',
+            permission_classes=[IsResponsableOrAdmin])
+    def questionnaire_lien(self, request, pk=None):
+        """Crée (ou réutilise) le lien questionnaire d'un lead et renvoie de
+        quoi l'envoyer au client.
+
+        Le commercial choisit les questions via ``questions`` ({section:
+        true/false}) ; sans corps, ce sont les informations MANQUANTES qui
+        sont posées (ordre fondateur). Idempotent : un re-POST sur le même
+        lead renvoie le MÊME lien tant qu'il n'a pas expiré, avec ses
+        questions mises à jour — jamais un second jeton chez le client.
+
+        La réponse porte DEUX URL : ``url`` (celle du client, la seule à
+        envoyer) et ``url_interne`` (aperçu commercial, muet — il ne
+        déclenche rien et n'écrit rien). Contrat :
+        ``apps/crm/contract_samples/questionnaire_lead.json``."""
+        from . import questionnaire as quest
+
+        lead = self.get_object()
+        try:
+            questions = quest.valider_questions(request.data.get('questions'))
+        except quest.SectionInconnue as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        lien, change = quest.mint_lien(
+            lead, questions=questions, user=request.user)
+        posees = [cle for cle in quest.SECTIONS if lien.question_posee(cle)]
+        if change:
+            activity.log_note(
+                lead, request.user,
+                'Questionnaire envoyé (sections : '
+                + ', '.join(quest.LIBELLE_SECTION[c] for c in posees) + ')')
+        return Response({
+            'url': quest.url_publique(lien.token, request=request),
+            'url_interne': quest.url_publique(
+                lien.token_interne, request=request),
+            'token': lien.token,
+            'expires_at': lien.expires_at.isoformat(),
+            'questions': {cle: lien.question_posee(cle)
+                          for cle in quest.SECTIONS},
+            'manquantes': quest.manquantes(lead),
+        })
 
     # ── FG31 — File de relance du jour ───────────────────────────────────────
     @action(detail=False, methods=['get'], url_path='relances',
