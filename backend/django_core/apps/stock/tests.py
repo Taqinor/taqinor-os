@@ -1021,7 +1021,7 @@ class TestOrthographeDyness(TestCase):
         self.assertEqual(b10.marque, 'dyness')
         # Ni SKU, ni prix, ni quantités ne bougent.
         self.assertEqual(b5.sku, 'BAT-DEY-5')
-        self.assertEqual(b5.prix_vente, Decimal('14166.67'))   # 17 000 TTC @ 20 %
+        self.assertEqual(b5.prix_vente, Decimal('11666.67'))   # 14 000 TTC @ 20 %
         self.assertEqual(b10.prix_vente, Decimal('25000.00'))  # 30 000 TTC @ 20 %
 
     def test_la_migration_est_reversible(self):

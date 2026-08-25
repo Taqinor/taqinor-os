@@ -1,0 +1,49 @@
+{
+  "endpoint": "POST /api/django/crm/public/visite/",
+  "pourquoi": "T-TRACE (ordres fondateur 25/08/2026) — beacon PUBLIC par lequel le site taqinor.ma signale qu'un visiteur ANONYME consulte une page, avant même toute demande de devis. Finalité ANTI-FRAUDE (détection de doublons et de concurrents qui se font passer pour des prospects) : le commercial doit pouvoir dire « cette personne a déjà visité le site N fois, pour tant de temps », et la direction doit voir la même chose. Le beacon est délibérément MUET côté réponse — il ne renvoie jamais d'état interne, jamais le nombre de visites déjà connues, jamais un identifiant de lead : une page publique ne doit rien pouvoir apprendre du CRM.",
+  "auth": "IDENTIQUE au webhook lead du site (apps/crm/webhooks.py) — le module importe littéralement `_secret_ok` et `_freshness_ok` de webhooks.py, il n'y a donc AUCUNE seconde mécanique qui pourrait diverger. Décision d'orchestration du 25/08/2026 : le proxy du site DOIT attacher ce secret (ces visites alimentent les alertes « concurrent » envoyées à la direction — un endpoint non signé permettrait de les empoisonner avec de fausses visites).",
+  "auth_details": {
+    "en_tete_obligatoire": "X-Webhook-Secret",
+    "valeur": "exactement la même que celle déjà envoyée au webhook lead — côté serveur `settings.WEBSITE_LEAD_WEBHOOK_SECRET` (variable d'environnement WEBSITE_LEAD_WEBHOOK_SECRET), déjà présente comme secret du Worker Cloudflare",
+    "verification": "hmac.compare_digest(attendu, fourni) — comparaison en temps constant ; si `settings.WEBSITE_LEAD_WEBHOOK_SECRET` est vide/absent, l'endpoint est FERMÉ (tout appel est refusé), jamais ouvert par défaut",
+    "en_tete_facultatif": "X-Webhook-Timestamp — horodatage ISO 8601 ; contrôlé à ±600 s quand il est PRÉSENT, toléré quand il est ABSENT ou non parsable (anciens workers). Même règle et même constante que le webhook lead.",
+    "refus": "401 avec {\"detail\": \"Secret invalide ou absent.\"} (secret manquant/faux) ou {\"detail\": \"Horodatage hors tolérance.\"} (rejeu). C'est le code du webhook lead, repris tel quel — le beacon échoue en silence côté client dans les deux cas.",
+    "cote_client": "best-effort : la balise ne doit jamais faire apparaître d'erreur ; en cas de refus elle abandonne silencieusement."
+  },
+  "exemple": {
+    "ok": true
+  },
+  "corps": {
+    "appareil_id": "uuid posé par le SITE (localStorage) — identifiant PRIMAIRE du visiteur. La MAC n'est pas collectable par le web ; l'IP est un signal SECONDAIRE (IP partagées au Maroc), lue côté serveur.",
+    "page": "chemin court de la page consultée, ex. « /tarifs » (tronqué à 200 caractères, jamais une URL complète avec paramètres).",
+    "duree_s": "entier — secondes passées sur la page depuis le début de CETTE visite (cumul envoyé par le site, pas un delta).",
+    "fin": "booléen — `true` sur le dernier battement (départ de la page). Facultatif : son absence vaut `false`.",
+    "langue": "« fr » / « ar » / « en » — langue d'affichage, telle que le site la connaît."
+  },
+  "corps_exemple": {
+    "appareil_id": "7f2a1c9e-4b52-4a1f-9f0e-2d8c6b3a5e71",
+    "page": "/tarifs",
+    "duree_s": 42,
+    "fin": true,
+    "langue": "fr"
+  },
+  "jamais_dans_le_corps": [
+    "ip — lue côté serveur (X-Forwarded-For / REMOTE_ADDR), jamais acceptée d'un corps de requête",
+    "user_agent — lu côté serveur dans l'en-tête HTTP",
+    "company — résolue côté serveur (WEBSITE_LEADS_COMPANY_ID), exactement comme le webhook lead"
+  ],
+  "battements": "Les battements successifs du MÊME appareil sur la MÊME page mettent à jour la MÊME ligne `VisiteExterne` (fenêtre de 30 min) au lieu d'en créer une par battement : `duree_s` est écrasé par la valeur reçue (cumul), jamais additionné. Un battement portant `fin: true` clôt la visite — le battement suivant du même appareil sur la même page ouvre une NOUVELLE ligne.",
+  "reponses": {
+    "200": "{\"ok\": true} — enregistré, ou silencieusement ignoré (corps inexploitable). Le beacon ne doit JAMAIS faire échouer une page publique : un corps invalide vaut un succès muet.",
+    "401": "{\"detail\": \"...\"} — secret absent/invalide, ou horodatage hors tolérance."
+  },
+  "cle_additive": {
+    "ou": [
+      "POST /api/django/crm/webhook/lead/ (webhook lead du site) — `appareil_id` est STOCKÉ sur le Lead créé (`Lead.appareil_id`) et rattache rétroactivement les visites anonymes déjà enregistrées pour cet appareil",
+      "POST /api/django/ventes/proposition/<token>/engagement/ — `appareil_id` facultatif, enregistre une visite au point `proposition`",
+      "POST /api/django/crm/public/questionnaire/<token>/ — `appareil_id` facultatif, enregistre une visite au point `questionnaire`",
+      "POST /api/django/crm/public/booking/<token>/reserve/ — `appareil_id` facultatif, enregistre une visite au point `booking`"
+    ],
+    "regle": "ADDITIVE partout : la clé est FACULTATIVE, son absence ne change RIEN au comportement existant de ces endpoints, et une erreur de traçage n'en casse jamais un seul (écriture best-effort, journalisée)."
+  }
+}

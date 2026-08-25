@@ -177,6 +177,98 @@ def _lignes_du_devis(devis):
         return []
 
 
+def _blob_ligne(ligne):
+    """Texte classifiable d'une ligne — désignation ET nom du produit lié.
+
+    Même patron que ``quote_engine.builder._blob_item`` : une désignation
+    éditée à la main ne casse pas silencieusement la classification.
+    """
+    produit = getattr(ligne, "produit", None)
+    designation = ligne.designation or ""
+    nom = getattr(produit, "nom", "") or ""
+    return "%s %s" % (designation, nom)
+
+
+def _quantite_ligne(ligne):
+    try:
+        return float(getattr(ligne, "quantite", 0) or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _lignes_option_choisie(devis):
+    """Les lignes d'UNE SEULE option — celle que la conception électrique lit.
+
+    LANE CHOIX-AVEC (fondateur, 25/08/2026) : « pour toute question où l'on
+    est obligé de choisir une seule config et ne peut pas montrer les deux,
+    choisis l'option AVEC batterie. » Un schéma unifilaire ne représente
+    qu'UN SEUL montage — contrairement au PDF « deux options » ou à la page
+    publique, qui peuvent montrer les deux côte à côte. Avant ce correctif,
+    ``_produit_de_famille``/``_batterie_du_devis`` lisaient TOUTES les lignes
+    du devis sans distinction : sur un devis « deux options servables » (un
+    onduleur RÉSEAU, un onduleur HYBRIDE et une batterie, tous trois en
+    lignes NON optionnelles — le même état de données que l'artefact
+    PV86/L-2OPT de ``quote_engine/builder.py``), ``_produit_de_famille``
+    retournait le PREMIER onduleur rencontré par ordre d'insertion — sans
+    savoir s'il s'agissait du réseau ou de l'hybride — pendant que
+    ``_batterie_du_devis`` additionnait la batterie quelle que soit l'option
+    à laquelle elle appartient. Résultat mesuré sur DEV-202608-0024 : un
+    schéma unifilaire montrant l'onduleur RÉSEAU Huawei 15 kW avec la
+    batterie Dyness 15,4 kWh accrochée dessus — un montage qui n'existe dans
+    AUCUN document commercial.
+
+    Même découpage par mots-clés que ``quote_engine.builder._repartir_options``
+    (``LigneDevis.variante`` n'existe pas encore sur ce modèle — ``getattr``
+    avec défaut ``''`` le lira automatiquement le jour où une autre lane
+    l'ajoute, sans changer une ligne de ce code) : une ligne batterie ou
+    onduleur hybride n'entre jamais dans le panier SANS, une ligne onduleur
+    réseau n'entre jamais dans le panier AVEC ; les lignes neutres (panneaux,
+    structure, câblage…) entrent dans LES DEUX paniers.
+
+    CHOIX, dans cet ordre — jamais de mélange entre paniers :
+      1. AVEC servable (un onduleur hybride ET une batterie, tous deux en
+         lignes du panier AVEC) l'emporte TOUJOURS ;
+      2. sinon SANS servable (un onduleur réseau en ligne du panier SANS) ;
+      3. sinon repli neutre : TOUTES les lignes (devis mono-option classique
+         ou données insuffisantes — PVFCH tranchera plus loin).
+    Un devis mono-option (un seul onduleur, éventuellement une batterie) ne
+    change JAMAIS de comportement : son unique équipement retombe dans un
+    seul panier servable, identique octet pour octet à avant ce correctif.
+    """
+    from apps.ventes import solar_design as sd
+
+    toutes = _lignes_du_devis(devis)
+    sans, avec = [], []
+    for ligne in toutes:
+        variante = str(getattr(ligne, "variante", "") or "").strip().lower()
+        blob = _blob_ligne(ligne)
+        ok_sans = not sd.is_battery(blob) and not sd.is_hybrid_inverter(blob)
+        ok_avec = not sd.is_reseau_inverter(blob)
+        if variante == "sans":
+            sans.append(ligne)
+        elif variante == "avec":
+            avec.append(ligne)
+        else:
+            if ok_sans:
+                sans.append(ligne)
+            if ok_avec:
+                avec.append(ligne)
+
+    def _presente(lignes, predicat):
+        return any(predicat(_blob_ligne(ligne)) and _quantite_ligne(ligne) > 0
+                   for ligne in lignes)
+
+    avec_servable = (_presente(avec, sd.is_hybrid_inverter)
+                     and _presente(avec, sd.is_battery))
+    sans_servable = _presente(sans, sd.is_reseau_inverter)
+
+    if avec_servable:
+        return avec
+    if sans_servable:
+        return sans
+    return toutes
+
+
 def _produit_de_famille(devis, predicat):
     """``(produit, libellé)`` de la première ligne classée par ``predicat``.
 
@@ -188,9 +280,16 @@ def _produit_de_famille(devis, predicat):
     tout ce qu'on sait de l'onduleur (« 10 kW triphasé »), et l'ignorer ferait
     silencieusement retomber le calcul en monophasé. Une ligne AVEC fiche prime
     toutefois sur une ligne libre — la fiche est la meilleure source.
+
+    LANE CHOIX-AVEC (fondateur, 25/08/2026) — les lignes parcourues sont
+    celles de ``_lignes_option_choisie`` (option AVEC quand servable, sinon
+    SANS, sinon toutes), jamais ``devis.lignes.all()`` brut : sur un devis
+    « deux options » qui porte réseau + hybride + batterie en lignes, ceci
+    évite de retourner le premier onduleur trouvé par ordre d'insertion
+    plutôt que celui de l'option retenue (cf. sa docstring, DEV-202608-0024).
     """
     repli = (None, "")
-    for ligne in _lignes_du_devis(devis):
+    for ligne in _lignes_option_choisie(devis):
         produit = getattr(ligne, "produit", None)
         designation = ligne.designation or ""
         nom = getattr(produit, "nom", "") or ""
@@ -407,6 +506,14 @@ def _batterie_du_devis(devis):
     calcul pour l'estimation d'économies). La tension nominale, elle, ne se
     somme pas : des packs en parallèle partagent la même tension de bus, donc
     celle de la PREMIÈRE ligne batterie identifiée fait foi.
+
+    LANE CHOIX-AVEC (fondateur, 25/08/2026) — parcourt ``_lignes_option_choisie``
+    (option AVEC quand servable, sinon SANS, sinon toutes), pas
+    ``devis.lignes.all()`` brut : sur un devis « deux options » qui porte
+    réseau + hybride + batterie en lignes, une batterie de l'option AVEC ne
+    s'accroche plus à l'onduleur RÉSEAU de l'option SANS sur le schéma
+    unifilaire (cf. la docstring de ``_lignes_option_choisie``,
+    DEV-202608-0024).
     """
     from apps.ventes import solar_design as sd
     presente = False
@@ -414,7 +521,7 @@ def _batterie_du_devis(devis):
     designation_ref = ""
     produit_ref = None
     v_nominal = 0.0
-    for ligne in _lignes_du_devis(devis):
+    for ligne in _lignes_option_choisie(devis):
         designation = ligne.designation or ""
         produit = getattr(ligne, "produit", None)
         nom = getattr(produit, "nom", "") or ""

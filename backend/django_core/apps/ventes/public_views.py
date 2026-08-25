@@ -120,6 +120,83 @@ def _strip_confidential_deep(obj):
     return obj
 
 
+def _resolve_share_link_by_token(token, *, select_related=()):
+    """L-INTPREV (fondateur 25/08/2026) — résout un ShareLink par son jeton
+    PUBLIC ou par son jeton INTERNE (aperçu commercial sans notification),
+    même URL de page des deux côtés. Renvoie ``(link, via_interne)`` — ``link``
+    est ``None`` si aucun des deux jetons ne correspond ou si le lien résolu
+    est expiré.
+
+    Le jeton public est essayé EN PREMIER (chemin historique, le plus
+    fréquent) ; le jeton interne n'est essayé que s'il ne matche pas — les
+    deux espaces de jetons sont uniques indépendamment, donc au plus une
+    ligne peut matcher au total."""
+    qs = ShareLink.objects.all()
+    if select_related:
+        qs = qs.select_related(*select_related)
+    link = qs.filter(token=token).first()
+    via_interne = False
+    if link is None:
+        link = qs.filter(token_interne=token).first()
+        via_interne = link is not None
+    if link is None or not link.is_valid:
+        return None, False
+    return link, via_interne
+
+
+def _stamp_view_si_public(link, via_interne, request=None):
+    """L-INTPREV — même contrat que ``_stamp_view`` (renvoie True si première
+    ouverture), mais SANS AUCUN effet de bord quand ``via_interne`` est vrai :
+    ni compteur de vues, ni first_viewed_at/last_viewed_at, ni miroir
+    marketing (``_enregistrer_ouverture_marketing``), et par construction
+    aucune des notifications QJ1/QJ2 posées par ``_notify_first_open`` (jamais
+    appelé — ``is_first`` reste False). Le commercial doit pouvoir ouvrir la
+    page EXACTEMENT comme le client la voit sans qu'aucune trace n'en
+    résulte : pas de note chatter, pas d'avance de stage funnel (YLEAD10),
+    pas de notification au owner.
+
+    T-TRACE (25/08/2026) — le traçage anti-fraude suit EXACTEMENT la même
+    règle : rien n'est enregistré via le jeton interne (``via_interne``
+    court-circuite AVANT toute écriture). ``request`` est FACULTATIF (les
+    appelants qui ne le passent pas gardent le comportement d'avant, sans
+    trace de visite) et sert uniquement à lire l'IP / le navigateur CÔTÉ
+    SERVEUR — jamais un corps de requête."""
+    if via_interne:
+        return False
+    resultat = _stamp_view(link)
+    _tracer_ouverture_publique(link, request)
+    return resultat
+
+
+def _tracer_ouverture_publique(link, request):
+    """T-TRACE — enregistre l'ouverture PUBLIQUE d'un document client comme une
+    ``crm.VisiteExterne`` (point ``proposition``).
+
+    Frontière inter-apps respectée : passe par ``apps.crm.services`` (façade
+    d'écriture du CRM), jamais par les modèles de ``crm``.
+
+    Le jeton n'est JAMAIS transmis en entier — le service n'en garde que les
+    6 derniers caractères. Strictement best-effort : une erreur de traçage ne
+    doit jamais casser la consultation d'un document par un client."""
+    if request is None or not getattr(link, 'company_id', None):
+        return
+    try:
+        from apps.crm.services import appareil_de_requete, tracer_et_correler
+        lead = getattr(link.devis, 'lead', None) if link.devis_id else None
+        cible = 'facture' if link.facture_id else 'devis'
+        document = link.facture if link.facture_id else link.devis
+        reference = getattr(document, 'reference', '') or ''
+        tracer_et_correler(
+            link.company, point='proposition', lead=lead,
+            appareil_id=appareil_de_requete(request),
+            contexte=f'Ouverture {cible} {reference}'.strip(),
+            token=getattr(link, 'token', ''),
+            request=request,
+        )
+    except Exception:  # noqa: BLE001 — best-effort, jamais de fuite
+        pass
+
+
 def _stamp_view(link):
     """QJ1 — Horodate la consultation du lien public et renvoie True si c'est
     la première (first_viewed_at était None avant ce GET).
@@ -173,7 +250,7 @@ def _enregistrer_ouverture_marketing(link):
         pass
 
 
-def _notify_first_open(link):
+def _notify_first_open(link, request=None):
     """QJ1 / QJ2 (b) — Sur la première ouverture, logue une note dans le
     chatter du lead lié (QJ1) ET envoie une notification in-app + Web Push
     au responsable du lead avec un lien wa.me « répondre maintenant » (QJ2).
@@ -182,7 +259,12 @@ def _notify_first_open(link):
     NTCPQ47 — SÉPARÉMENT, si le devis consulté est une VARIANTE CPQ
     (NTCPQ16), notifie AUSSI l'auteur du devis de base (préparation portail :
     savoir quelle variante précise le client regarde) — indépendant de la
-    présence d'un lead."""
+    présence d'un lead.
+
+    T-TRACE (25/08/2026) — ``request`` FACULTATIF : quand il est fourni, la
+    notification dit d'OÙ vient l'ouverture (IP) et si l'appareil était DÉJÀ
+    connu. IP et navigateur sont lus CÔTÉ SERVEUR dans les en-têtes, jamais
+    dans un corps de requête."""
     try:
         if not link.devis_id:
             return
@@ -193,7 +275,14 @@ def _notify_first_open(link):
             from apps.crm.services import noter_devis_ouvert, notify_devis_opened
             noter_devis_ouvert(devis_ref, lead)
             # QJ2 (b) — notification in-app + Web Push au owner.
-            notify_devis_opened(devis_ref, lead)
+            ip, appareil = '', ''
+            if request is not None:
+                from apps.crm.services import (
+                    appareil_de_requete, ip_de_requete,
+                )
+                ip, appareil = (ip_de_requete(request),
+                                appareil_de_requete(request))
+            notify_devis_opened(devis_ref, lead, ip=ip, appareil_id=appareil)
     except Exception:  # noqa: BLE001 — best-effort, jamais de fuite
         pass
     try:
@@ -332,13 +421,12 @@ def _opts_pdf_public(link, variante=None):
 @permission_classes([AllowAny])
 @throttle_classes([PublicLinkRateThrottle])
 def public_document(request, token):
-    link = (
-        ShareLink.objects
-        .select_related('devis', 'facture', 'company')
-        .filter(token=token)
-        .first()
-    )
-    if link is None or not link.is_valid:
+    # L-INTPREV (25/08/2026) — accepte AUSSI le jeton d'aperçu interne (même
+    # document servi, aucune trace d'ouverture derrière — voir
+    # ``_stamp_view_si_public``).
+    link, via_interne = _resolve_share_link_by_token(
+        token, select_related=('devis', 'facture', 'company'))
+    if link is None:
         return _not_found()
 
     # L-SECT (24/08/2026) — case « PDF téléchargeable » décochée : ce flux
@@ -350,8 +438,10 @@ def public_document(request, token):
     if link.devis_id and not _section_servie(link, 'pdf'):
         return _not_found()
 
-    # QJ1 — stamp the view (best-effort; True = first open).
-    is_first = _stamp_view(link)
+    # QJ1 — stamp the view (best-effort; True = first open). L-INTPREV : jamais
+    # de stamp/notification via le jeton interne (via_interne=True → toujours
+    # False, voir _stamp_view_si_public).
+    is_first = _stamp_view_si_public(link, via_interne, request)
 
     try:
         from .utils.filenames import document_filename
@@ -411,7 +501,7 @@ def public_document(request, token):
 
     # QJ1 — chatter notification on first open (best-effort, after PDF success).
     if is_first:
-        _notify_first_open(link)
+        _notify_first_open(link, request)
 
     response = HttpResponse(pdf_bytes, content_type='application/pdf')
     response['Content-Disposition'] = f'inline; filename="{filename}"'
@@ -484,15 +574,19 @@ def _parse_client_ts(value):
 
 
 def _resolve_proposal_link(token):
-    """Return a valid devis-bearing ShareLink for this token, or None."""
-    link = (
-        ShareLink.objects
-        .select_related('devis', 'devis__client', 'devis__company', 'company')
-        .filter(token=token)
-        .first()
-    )
-    if link is None or not link.is_valid or not link.devis_id:
+    """Return a valid devis-bearing ShareLink for this token, or None.
+
+    L-INTPREV (25/08/2026) — accepte AUSSI le jeton d'aperçu interne (même
+    devis, même page). ``link.via_interne`` (attribut dynamique, jamais
+    persisté) dit aux appelants si CE jeton était l'interne — les endpoints
+    qui doivent rester sans trace / refuser d'engager le client (lecture,
+    signature) le lisent explicitement."""
+    link, via_interne = _resolve_share_link_by_token(
+        token,
+        select_related=('devis', 'devis__client', 'devis__company', 'company'))
+    if link is None or not link.devis_id:
         return None
+    link.via_interne = via_interne
     return link
 
 
@@ -1126,10 +1220,12 @@ def _gammes_public(devis, est_standard=False):
     « seule ». L'écart est donné en MAD ABSOLUS et signé côté client.
 
     LES DEUX CÔTÉS DU COMPARATIF SORTENT DE LA MÊME FONCTION (fondateur
-    2026-08-18) : ``display_totals(...)['total']`` pour la gamme courante COMME
-    pour la sœur. ``data['display_total']`` ne convenait pas : il vaut le total
-    SANS batterie dès qu'un devis porte DEUX options et le total AVEC quand il
-    n'en porte qu'une (``builder.build_quote_data``). Comparer un devis
+    2026-08-18 ; note recalée 25/08 — depuis la règle « choix forcé = avec »,
+    ``display_total`` porte l'option AVEC sur un devis bi-option) :
+    ``display_totals(...)['total']`` pour la gamme courante COMME
+    pour la sœur. ``data['display_total']`` seul ne suffit pas partout : il ne
+    couvre pas le repli léger (moteur en échec) que ``build_quote_data`` ne
+    gère pas (``utils/options.totaux_affichage_repli``). Comparer un devis
     bi-option à un devis mono-option revenait donc à soustraire deux
     compositions différentes — l'écart annoncé au client (« + 44 000 MAD »)
     n'était l'écart de rien. Même appel des deux côtés ⇒ sémantique identique
@@ -1673,6 +1769,175 @@ def _jours_types_publique(devis):
         return None
 
 
+def _localisation_pour_moteur_horaire(devis, data):
+    """PACT10 (« deux optimiseurs ») — ``(ville, lat, lon)`` best-effort pour
+    le moteur horaire, MÊME LECTURE que ``courbes_journalieres._production``
+    (``data['client_city']`` en priorité, sinon la ville du chantier via le
+    sélecteur CRM, jamais ses modèles). Ne lève jamais : ``(None, None,
+    None)`` quand la localisation est indisponible — l'appelant omet alors
+    ce que ça dérive (Q6), il n'approxime pas."""
+    try:
+        _kwc, _conso, ville_lead, lat, lon, _occ, _equip = (
+            _profil_horaire_pour_devis(devis))
+    except Exception:  # noqa: BLE001 — un lead absent/illisible n'arrête rien
+        ville_lead, lat, lon = None, None, None
+    ville = data.get('client_city') or ville_lead
+    return ville, lat, lon
+
+
+def _dimensionnement_option_depuis_items(items):
+    """PACT10 (« deux optimiseurs ») — nb panneaux / kWc / batteries D'UNE
+    option, dérivés des lignes RÉELLES de cette option (``sans_items``/
+    ``avec_items`` du builder — déjà splittés par option). MÊME discipline
+    que ``quote_engine.builder.panneaux_et_watt_lu`` : un watt illisible
+    laisse ``puissance_kwc`` à ``None`` (jamais le repli 710 W, réservé au
+    KPI interne — CE REPLI NE SORT JAMAIS SUR UN DOCUMENT CLIENT). Une
+    batterie sans capacité lisible retombe sur ``BATTERY_DEFAULT_KWH`` —
+    même défaut que le moteur (``builder._battery_kwh_from_items``)."""
+    from .quote_engine.builder import (
+        BATTERY_DEFAULT_KWH, _is_battery, _is_panel, _parse_kwh, _parse_watt,
+    )
+    nb_panneaux = 0
+    watt = None
+    nb_batteries = 0.0
+    capacite_batterie_kwh = 0.0
+    for it in items or []:
+        designation = it.get('designation') or ''
+        produit_nom = it.get('_produit_nom') or ''
+        try:
+            qty = float(it.get('quantite') or 0)
+        except (TypeError, ValueError):
+            qty = 0.0
+        if qty <= 0:
+            continue
+        if _is_panel(designation, produit_nom):
+            nb_panneaux += int(round(qty))
+            watt = watt or _parse_watt(designation, produit_nom)
+        elif _is_battery(designation):
+            nb_batteries += qty
+            capacite_batterie_kwh += qty * (
+                _parse_kwh(designation) or BATTERY_DEFAULT_KWH)
+    puissance_kwc = (
+        round(nb_panneaux * watt / 1000, 2)
+        if (nb_panneaux and watt) else None)
+    nb_batteries_int = int(round(nb_batteries))
+    return {
+        'nb_panneaux': nb_panneaux,
+        'puissance_kwc': puissance_kwc,
+        'nb_batteries': nb_batteries_int,
+        'capacite_batterie_kwh': (
+            round(capacite_batterie_kwh, 2) if nb_batteries_int else None),
+    }
+
+
+def _dimensionnement_options_publique(devis, data):
+    """PACT10 (« deux optimiseurs ») — clé ``dimensionnement_options`` :
+    nb panneaux/kWc/batteries PAR OPTION (contrat
+    ``apps/ventes/contract_samples/dimensionnement_options.json``), dérivés
+    des lignes RÉELLES (``sans_items``/``avec_items``, déjà splittés par
+    option par le builder) — jamais un chiffre inventé.
+
+    L-VAR — la branche ``'avec'`` n'est servie QUE si ``avec_ok`` (même
+    discipline que ``_economies_mensuelles_calcul``/CJ2b) : jamais un
+    dimensionnement « avec batterie » sur une option que ce devis ne livre
+    pas. ``divergent`` compare les deux nb_panneaux — ``False`` sans branche
+    ``'avec'`` (rien à comparer). ``production_annuelle_kwh`` vient du
+    moteur horaire (lecture pure) quand la localisation est résolue, sinon
+    ``None``. ``None`` best-effort — un bloc d'affichage additif ne fait
+    jamais tomber la page client."""
+    try:
+        from .etude_horaire import production_annuelle_pour_kwc
+        sans = _dimensionnement_option_depuis_items(data.get('sans_items'))
+        out = {'sans': sans, 'divergent': False}
+        avec = None
+        if bool(data.get('avec_ok')):
+            avec = _dimensionnement_option_depuis_items(data.get('avec_items'))
+            out['avec'] = avec
+            out['divergent'] = sans['nb_panneaux'] != avec['nb_panneaux']
+        ville, lat, lon = _localisation_pour_moteur_horaire(devis, data)
+        sans['production_annuelle_kwh'] = production_annuelle_pour_kwc(
+            sans['puissance_kwc'], ville=ville, lat=lat, lon=lon)
+        if avec is not None:
+            avec['production_annuelle_kwh'] = production_annuelle_pour_kwc(
+                avec['puissance_kwc'], ville=ville, lat=lat, lon=lon)
+        return out
+    except Exception:  # noqa: BLE001
+        logger.warning('dimensionnement_options indisponible', exc_info=True)
+        return None
+
+
+def _production_par_option_publique(devis, data, dimensionnement_options):
+    """PACT10 (« deux optimiseurs ») — clé ``production_par_option`` :
+    séries de production journalière PAR OPTION (même forme que
+    ``courbes_journalieres.production``, contrat
+    ``apps/ventes/contract_samples/dimensionnement_options.json``),
+    calculées à la volée avec le kWc DE CHAQUE OPTION — UNIQUEMENT quand
+    ``dimensionnement_options.divergent`` est vrai : deux options au MÊME
+    kWc partagent déjà la même courbe (``courbes_journalieres``), la
+    recalculer deux fois ferait diverger deux séries censées être
+    identiques. Sinon (ou sur toute erreur) : ``{'sans': None, 'avec':
+    None}`` — la page retombe sur la courbe unique déjà servie. Lecture
+    pure, rien n'est persisté."""
+    resultat = {'sans': None, 'avec': None}
+    if not dimensionnement_options or not dimensionnement_options.get('divergent'):
+        return resultat
+    try:
+        from .etude_horaire import production_journaliere_par_saison
+        ville, lat, lon = _localisation_pour_moteur_horaire(devis, data)
+        sans_kwc = (dimensionnement_options.get('sans') or {}).get('puissance_kwc')
+        if sans_kwc:
+            resultat['sans'] = production_journaliere_par_saison(
+                sans_kwc, ville=ville, lat=lat, lon=lon) or None
+        avec_bloc = dimensionnement_options.get('avec') or {}
+        avec_kwc = avec_bloc.get('puissance_kwc')
+        if avec_kwc:
+            resultat['avec'] = production_journaliere_par_saison(
+                avec_kwc, ville=ville, lat=lat, lon=lon) or None
+        return resultat
+    except Exception:  # noqa: BLE001
+        logger.warning('production_par_option indisponible', exc_info=True)
+        return {'sans': None, 'avec': None}
+
+
+def _echelle_paliers_batterie_publique(devis, data, est_residentiel):
+    """PACT10/PACT11 (« deux optimiseurs », lane P2-B, 25/08/2026) — clé
+    ``paliers_batterie`` : l'échelle des paliers de capacité batterie (15/20
+    kWh…) qu'un devis résidentiel « avec batterie » peut proposer, chacun
+    avec son propre nb panneaux/kWc/prix TTC/économies annuelles/payback
+    (contrat ``apps/ventes/contract_samples/paliers_batterie.json``).
+
+    SOURCE DE VÉRITÉ (lane P2-A, parallèle, FICHIER DISJOINT) :
+    ``apps.ventes.dimensionnement.echelle_paliers_batterie(devis)``, une
+    fonction PURE qui dérive chaque palier du moteur/catalogue — jamais un
+    chiffre inventé côté serveur public. Import paresseux + ``getattr``
+    défensif : tant que cette fonction n'existe pas ENCORE sur cette branche
+    (fold en cours des deux lanes), la clé est ABSENTE du payload — jamais
+    une erreur, jamais un ``[]`` qui mentirait sur un calcul non fait. Une
+    fois la lane P2-A foldée, elle apparaît sans autre changement ici.
+
+    Gardes : ``est_residentiel`` (même discriminant que
+    ``dimensionnement_options`` — un devis agricole/industriel/commercial
+    n'a pas cette notion de palier de batterie domestique) ET ``avec_ok``
+    (même discipline CJ2b/L-VAR que le reste de la page — une échelle de
+    batterie n'a de sens que si ce devis vend RÉELLEMENT l'option batterie).
+    Servie IDENTIQUE aux deux niveaux de partage (standard/confiance) : ce
+    bloc ne porte que des tailles/prix déjà publics ailleurs sur la page —
+    jamais de prix d'achat/marge (RULE #4), best-effort (un bloc additif ne
+    fait jamais tomber la page client)."""
+    if not est_residentiel or not bool(data.get('avec_ok')):
+        return None
+    try:
+        from . import dimensionnement
+        fonction = getattr(dimensionnement, 'echelle_paliers_batterie', None)
+        if fonction is None:
+            return None
+        paliers = fonction(devis)
+        return list(paliers) if paliers else []
+    except Exception:  # noqa: BLE001
+        logger.warning('paliers_batterie indisponible', exc_info=True)
+        return None
+
+
 def _economies_mensuelles_publiques(devis, data, synthese,
                                     niveau=ShareLink.NIVEAU_CONFIANCE):
     """CJ2b (fondateur, 21/08/2026) — bloc ``economies_mensuelles`` : les 12
@@ -1791,15 +2056,20 @@ def proposal_data(request, token):
     # un espace de clés séparé — apps.ventes.services.otp_lecture_verified).
     # Gate posé AVANT tout effet de bord (stamp de vue) : une tentative non
     # vérifiée ne compte pas comme une consultation.
+    # L-INTPREV (25/08/2026) — le jeton interne dispense de l'OTP de lecture
+    # (c'est le commercial, jamais le client) : le gate n'a plus de sens.
     from .services import otp_lecture_verified
-    if not otp_lecture_verified(link):
+    if not link.via_interne and not otp_lecture_verified(link):
         return _noindex(Response(
             {'detail': 'otp_required'}, status=status.HTTP_403_FORBIDDEN))
 
-    # QJ1 — stamp the view (best-effort; True = first open).
-    is_first = _stamp_view(link)
+    # QJ1 — stamp the view (best-effort; True = first open). L-INTPREV :
+    # jamais de stamp/notification via le jeton interne (voir
+    # _stamp_view_si_public) — aucune trace d'ouverture ne doit résulter d'un
+    # aperçu commercial.
+    is_first = _stamp_view_si_public(link, link.via_interne, request)
     if is_first:
-        _notify_first_open(link)
+        _notify_first_open(link, request)
 
     # L-NIV (24/08/2026) — niveau d'affichage RÉVOCABLE, posé sur le lien
     # (jamais sur le jeton). Un lien créé avant la migration 0100 vaut
@@ -1949,6 +2219,12 @@ def proposal_data(request, token):
             # L-NIV — indique à la page CE niveau (elle n'a rien à deviner :
             # les dégradations sont posées ici, pas re-décidées côté client).
             'niveau': niveau,
+            # L-INTPREV (25/08/2026) — clé additive : True uniquement quand CE
+            # GET a résolu le jeton D'APERÇU INTERNE (commercial). Payload par
+            # ailleurs IDENTIQUE au jeton public — la page s'en sert seulement
+            # pour un bandeau discret + désactiver le bloc signature (elle ne
+            # peut pas engager le client depuis un aperçu).
+            'apercu_interne': bool(link.via_interne),
             'reference': data['ref'],
             'date': data['date'],
             'client_name': data['client_name'],
@@ -2214,6 +2490,30 @@ def proposal_data(request, token):
         _jours = _jours_types_publique(devis) if _jour_type_servi else None
         if _jours is not None:
             payload['jours_types'] = _jours
+        # PACT10 (« deux optimiseurs », 25/08/2026) — un devis résidentiel
+        # peut porter des dimensionnements DIFFÉRENTS par option (nb
+        # panneaux/kWc/batteries) : `dimensionnement_options` le dit, dérivé
+        # des lignes RÉELLES (sans_items/avec_items, déjà splittés par
+        # option) — jamais un chiffre inventé. `production_par_option` ne
+        # calcule une SECONDE courbe que lorsque `divergent` est vrai — sinon
+        # la page retombe sur la courbe unique déjà servie
+        # (`courbes_journalieres`). Contrat :
+        # apps/ventes/contract_samples/dimensionnement_options.json.
+        _dimensionnement_options = _dimensionnement_options_publique(devis, data)
+        if _dimensionnement_options is not None:
+            payload['dimensionnement_options'] = _dimensionnement_options
+            payload['production_par_option'] = _production_par_option_publique(
+                devis, data, _dimensionnement_options)
+        # PACT10/PACT11 (lane P2-B, 25/08/2026) — `paliers_batterie` : la même
+        # discipline additive que `dimensionnement_options` juste au-dessus,
+        # mais lue depuis `apps.ventes.dimensionnement.echelle_paliers_batterie`
+        # (lane P2-A parallèle, fichier disjoint) — ABSENTE tant que cette
+        # fonction n'existe pas encore sur cette branche. Contrat :
+        # apps/ventes/contract_samples/paliers_batterie.json.
+        _paliers_batterie = _echelle_paliers_batterie_publique(
+            devis, data, _resid_public)
+        if _paliers_batterie is not None:
+            payload['paliers_batterie'] = _paliers_batterie
         # L-NIV-VU (24/08/2026) — la page peut enfin DIRE au client qu'elle est
         # simplifiée, mais SEULEMENT quand c'est vrai sur SON devis (liste
         # vide ⇒ rien d'affiché). Calculé en dernier : la charge utile est
@@ -2248,8 +2548,9 @@ def proposal_pdf(request, token):
 
     # L-NIV (24/08/2026) — même gate otp_lecture que proposal_data (voir son
     # commentaire) : le flux PDF public est aussi une LECTURE.
+    # L-INTPREV (25/08/2026) — jeton interne → jamais d'OTP exigé.
     from .services import otp_lecture_verified
-    if not otp_lecture_verified(link):
+    if not link.via_interne and not otp_lecture_verified(link):
         return _noindex(Response(
             {'detail': 'otp_required'}, status=status.HTTP_403_FORBIDDEN))
 
@@ -2261,10 +2562,11 @@ def proposal_pdf(request, token):
     if not _section_servie(link, 'pdf'):
         return _not_found()
 
-    # QJ1 — stamp the view (best-effort; True = first open).
-    is_first = _stamp_view(link)
+    # QJ1 — stamp the view (best-effort; True = first open). L-INTPREV :
+    # jamais de stamp/notification via le jeton interne.
+    is_first = _stamp_view_si_public(link, link.via_interne, request)
     if is_first:
-        _notify_first_open(link)
+        _notify_first_open(link, request)
 
     try:
         # ERR74 — GET sûr : rendu + flux sans persister fichier_pdf.
@@ -2503,6 +2805,14 @@ def proposal_engagement(request, token):
     if link is None:
         return _not_found()
 
+    # L-INTPREV (25/08/2026) — jeton interne : aucun beacon n'est enregistré
+    # (ni ``ShareLink.engagement``, ni la note chatter « a commencé à lire en
+    # détail » au seuil profond) — un aperçu commercial n'est pas une lecture
+    # CLIENT à mesurer. 204 silencieux, même contrat que le rejet d'un beacon
+    # invalide ci-dessous.
+    if link.via_interne:
+        return _noindex(Response(status=status.HTTP_204_NO_CONTENT))
+
     section = str(request.data.get('section') or '').strip().lower()
     seconds_raw = request.data.get('seconds')
     try:
@@ -2553,7 +2863,37 @@ def proposal_engagement(request, token):
         except Exception:  # noqa: BLE001 — best-effort, jamais de fuite
             pass
 
+    # T-TRACE (25/08/2026) — le beacon d'engagement porte la clé ADDITIVE
+    # `appareil_id` : chaque battement prolonge LA MÊME visite (le service
+    # fusionne les battements d'un même appareil sur un même contexte), donc
+    # la durée réellement passée sur la proposition remonte au commercial.
+    # Jamais atteint par le jeton interne : la vue a déjà rendu la main
+    # ci-dessus quand ``link.via_interne`` est vrai.
+    _tracer_engagement_public(link, request, section, seconds)
+
     return _noindex(Response(status=status.HTTP_204_NO_CONTENT))
+
+
+def _tracer_engagement_public(link, request, section, seconds):
+    """T-TRACE — miroir anti-fraude d'un battement d'engagement.
+
+    Passe par ``apps.crm.services`` (façade d'écriture du CRM), jamais par ses
+    modèles. Strictement best-effort : un beacon ne doit jamais faire
+    apparaître une erreur chez le client."""
+    if not getattr(link, 'company_id', None):
+        return
+    try:
+        from apps.crm.services import appareil_de_requete, tracer_et_correler
+        lead = getattr(link.devis, 'lead', None) if link.devis_id else None
+        tracer_et_correler(
+            link.company, point='proposition', lead=lead,
+            appareil_id=appareil_de_requete(request),
+            contexte=f'Proposition — section {section}',
+            token=getattr(link, 'token', ''),
+            duree_s=seconds, request=request,
+        )
+    except Exception:  # noqa: BLE001 — best-effort, jamais de fuite
+        pass
 
 
 @api_view(['POST'])
@@ -2569,6 +2909,12 @@ def proposal_accept(request, token):
     double envoi ne re-signe pas. Pas de login : le jeton authentifie."""
     link = _resolve_proposal_link(token)
     if link is None:
+        return _not_found()
+    # L-INTPREV (25/08/2026) — le jeton interne ne peut JAMAIS signer : un
+    # aperçu commercial ne peut pas engager le client. Même 404 générique que
+    # tout autre refus de ce endpoint (jamais un message qui distinguerait le
+    # jeton interne d'un jeton simplement invalide).
+    if link.via_interne:
         return _not_found()
     devis = link.devis
     nom = (request.data.get('nom') or request.data.get('name') or '').strip()

@@ -16,7 +16,11 @@
 // L-PCMP — import de TYPE uniquement (effacé à la compilation) : ce module
 // reste sans aucune dépendance à l'exécution, mais les silhouettes
 // d'occupation gardent UNE seule définition (`lib/dayProfiles.ts`).
-import type { OccupancyId } from './dayProfiles';
+import type { OccupancyId, SeasonId, ServedProduction } from './dayProfiles';
+// L-DEUXOPT (25/08/2026) — lecture de `production_par_option` : réutilise
+// STRICTEMENT le même validateur que `courbes_journalieres.production`
+// (aucune seconde définition de « forme 24 h valide »).
+import { parseServedProductionEntry, parseServedProductionMap } from './dayProfiles';
 
 /** Une ligne d'équipement telle que renvoyée par le backend (champs publics). */
 export interface ProposalItem {
@@ -119,6 +123,18 @@ export interface ProposalResponse {
   client_name: string;
   statut: string;
   quote: ProposalQuote;
+  /**
+   * L-INTPREV / LANE T-WEB (25/08/2026) — `true` UNIQUEMENT quand CE GET a
+   * résolu le jeton d'APERÇU INTERNE (le commercial relit sa proposition
+   * depuis l'ERP), cf. `public_views._resolve_share_link_by_token` +
+   * `_resolve_proposal_link`. Payload par ailleurs IDENTIQUE au jeton
+   * public : la page s'en sert seulement pour un bandeau discret, désactiver
+   * la signature et les demandes de contact, et couper toute
+   * balise/beacon (elle ne doit jamais engager le client ni compter une
+   * visite CLIENT depuis un aperçu commercial). Absent/faux → rendu
+   * strictement inchangé.
+   */
+  apercu_interne?: boolean | null;
   /**
    * WJ126/QX49 — mode d'installation (clé machine MINUSCULE, cf.
    * `Devis.ModeInstallation`) exposé au NIVEAU RACINE du payload par
@@ -366,6 +382,36 @@ export interface ProposalResponse {
     } | null;
   } | null;
   /**
+   * P2-C (ordre fondateur 25/08/2026, soir — « add more than just 2
+   * batteries in the web page battery option ; extra batteries might add
+   * extra panels with extra cost, that is still fine ») — PALIERS DE
+   * CAPACITÉ BATTERIE du sélecteur public sur la carte « Avec batterie »
+   * (section #options), CONTRAT PROPRE distinct de `balayage_stockage`
+   * ci-dessus (qui alimente le simulateur à curseur plus bas sur la page —
+   * deux fonctionnalités différentes, jamais fusionnées). Chaque palier peut
+   * porter un nombre de PANNEAUX DIFFÉRENT — une capacité plus grosse peut
+   * avoir besoin de plus de solaire pour se remplir chaque jour, voulu par
+   * le fondateur. `retenu=true` marque le palier du devis RÉEL (ses chiffres
+   * restent ceux du document officiel, jamais recalculés côté web) ;
+   * `remplissage_ok=false` marque un palier où la batterie ne se remplirait
+   * pas tous les jours (pilule affichée désactivée). Chaque champ est
+   * sanitisé INDIVIDUELLEMENT (`paliersBatterie` plus bas) — `null`/absent ⇒
+   * omis à l'écran, jamais un défaut fabriqué. Clé absente ou liste vide ⇒
+   * le sélecteur ne rend RIEN, pixel identique à l'existant.
+   */
+  paliers_batterie?: Array<{
+    capacite_kwh?: number | null;
+    nb_batteries_5?: number | null;
+    nb_batteries_10?: number | null;
+    nb_panneaux?: number | null;
+    puissance_kwc?: number | null;
+    prix_ttc?: number | null;
+    economies_annuelles?: number | null;
+    payback_annees?: number | null;
+    remplissage_ok?: boolean | null;
+    retenu?: boolean | null;
+  }> | null;
+  /**
    * L-PROP CJ2b-bis — décomposition mensuelle de l'estimation de
    * consommation, MÊME CONTRAT que le moteur horaire interne
    * (`estimation_conso: { base_mensuelle:[12], ajouts:{...},
@@ -435,6 +481,125 @@ export interface ProposalResponse {
       } | null;
     }> | null;
   } | null;
+  /**
+   * L-DEUXOPT (lane « deux optimiseurs », 25/08/2026) — DEUX DIMENSIONNEMENTS
+   * PHYSIQUEMENT DIFFÉRENTS quand ajouter une batterie change le calcul
+   * optimal du nombre de panneaux (ex. 22 panneaux sans batterie / 26 avec).
+   * [HANDOFF public payload] — forme CONVENUE avec la lane backend du même
+   * lot. `divergent` EXPLICITE (jamais déduit d'une différence de nombres qui
+   * pourrait n'être qu'un arrondi) : `true` ⇒ les deux côtés ci-dessous
+   * décrivent CHACUN son propre système ; `false`/absent ⇒ la page ne bouge
+   * pas d'un pixel (cas historique, un seul dimensionnement pour les deux
+   * options). Chaque champ de `sans`/`avec` peut être `null` individuellement
+   * — omis à l'écran, jamais un défaut fabriqué (règle fondateur « zéro
+   * chiffre inventé »).
+   */
+  dimensionnement_options?: {
+    sans?: {
+      nb_panneaux?: number | null;
+      puissance_kwc?: number | null;
+      nb_batteries?: number | null;
+      capacite_batterie_kwh?: number | null;
+      production_annuelle_kwh?: number | null;
+    } | null;
+    avec?: {
+      nb_panneaux?: number | null;
+      puissance_kwc?: number | null;
+      nb_batteries?: number | null;
+      capacite_batterie_kwh?: number | null;
+      production_annuelle_kwh?: number | null;
+    } | null;
+    divergent?: boolean | null;
+  } | null;
+  /**
+   * L-DEUXOPT — série de production PROPRE À CHAQUE option, MÊME FORME que le
+   * bloc `courbes_journalieres.production` (voir `dayProfiles.ts`
+   * `ServedProduction`, par saison) — soit une carte par saison, soit une
+   * entrée UNIQUE (repli, un seul « jour type » pour ce côté). Sert à rejouer
+   * le simulateur batterie sur la production RÉELLE de l'option « avec »
+   * (plus de panneaux ⇒ courbe différente) au lieu du repli générique.
+   * Typé `unknown` À DESSEIN : n'entre dans la page qu'à travers
+   * `productionSeriesForOption`, qui valide et renvoie `null` sur tout ce qui
+   * n'est pas exploitable — jamais un chiffre inventé. `null`/absent par côté
+   * ⇒ le simulateur garde son repli historique pour ce côté.
+   */
+  production_par_option?: {
+    sans?: unknown;
+    avec?: unknown;
+  } | null;
+}
+
+/** L-DEUXOPT — dimensionnement RÉEL d'une option, sanitisé champ par champ. */
+export interface DimensionnementOption {
+  nbPanneaux: number | null;
+  puissanceKwc: number | null;
+  nbBatteries: number | null;
+  capaciteBatterieKwh: number | null;
+  productionAnnuelleKwh: number | null;
+}
+
+// `finiteOrNull` est déjà défini plus bas dans ce module (bloc falaise
+// tarifaire/CJ2b-bis) : function declaration → hoisté, réutilisable ici sans
+// seconde définition (TypeScript refuserait la redéclaration).
+
+/**
+ * L-DEUXOPT — dimensionnement RÉEL d'UNE option (`'sans'`/`'avec'`, l'écriture
+ * du contrat backend — voir `VarianteServable`), sanitisé champ par champ :
+ * toute valeur non numérique finie devient `null` — jamais un défaut fabriqué.
+ * `null` global quand le bloc entier ou cette option est absent.
+ */
+export function dimensionnementOption(
+  p: Pick<ProposalResponse, 'dimensionnement_options'>,
+  opt: VarianteServable,
+): DimensionnementOption | null {
+  const raw = p?.dimensionnement_options?.[opt];
+  if (!raw || typeof raw !== 'object') return null;
+  return {
+    nbPanneaux: finiteOrNull(raw.nb_panneaux),
+    puissanceKwc: finiteOrNull(raw.puissance_kwc),
+    nbBatteries: finiteOrNull(raw.nb_batteries),
+    capaciteBatterieKwh: finiteOrNull(raw.capacite_batterie_kwh),
+    productionAnnuelleKwh: finiteOrNull(raw.production_annuelle_kwh),
+  };
+}
+
+/**
+ * Vrai UNIQUEMENT quand le backend affirme EXPLICITEMENT une divergence de
+ * dimensionnement entre les deux options. Absent/`false` ⇒ la page rend
+ * exactement ce qu'elle rendait avant ce lot (aucun des blocs
+ * `dimensionnementOption`/`productionSeriesForOption` n'est censé être
+ * consulté par la page dans ce cas — c'est cette fonction qui le garde).
+ */
+export function dimensionnementDivergent(
+  p: Pick<ProposalResponse, 'dimensionnement_options'>,
+): boolean {
+  return p?.dimensionnement_options?.divergent === true;
+}
+
+/**
+ * L-DEUXOPT — série de production propre à UNE option (`'sans'`/`'avec'`),
+ * MÊME FORME que `courbes_journalieres.production` (voir dayProfiles.ts,
+ * `ServedProduction`) : soit une entrée UNIQUE servie à la racine (repli le
+ * plus simple, un seul « jour type » pour ce côté), soit une carte par
+ * saison — dans ce cas `season` sélectionne l'entrée à utiliser (même saison
+ * que celle affichée par la courbe journalière). `null` quand rien
+ * d'exploitable n'est servi pour ce côté ou cette saison — le simulateur
+ * batterie garde alors son repli historique.
+ */
+export function productionSeriesForOption(
+  p: Pick<ProposalResponse, 'production_par_option'>,
+  opt: VarianteServable,
+  season: SeasonId | null,
+): ServedProduction | null {
+  const raw = p?.production_par_option?.[opt];
+  if (raw === null || raw === undefined) return null;
+  const flat = parseServedProductionEntry(raw);
+  if (flat) return flat;
+  if (season) {
+    const bySeason = parseServedProductionMap(raw);
+    if (bySeason[season]) return bySeason[season] as ServedProduction;
+  }
+  return null;
 }
 
 /** WJ32 — bloc `financing` backend (QJ12), structure de `compute_financing_block`. */
@@ -3419,6 +3584,10 @@ export interface ProposalTrackPayload {
   reference: string;
   token: string;
   page: string;
+  /** LANE T-WEB (25/08/2026) — empreinte d'appareil anonyme, ADDITIVE (voir
+   *  lib/visite.ts `appareilId`) : présente uniquement quand fournie par
+   *  l'appelant, jamais fabriquée ici, jamais requise. */
+  appareil_id?: string;
 }
 
 /**
@@ -3426,11 +3595,13 @@ export interface ProposalTrackPayload {
  * ou `null` quand ni référence ni token ne sont disponibles (rien de
  * corrélable à journaliser). Ce payload est PUREMENT télémétrique : il ne
  * porte plus de téléphone/contact et ne doit JAMAIS être posté vers le webhook
- * de capture de lead (voir la note ci-dessus).
+ * de capture de lead (voir la note ci-dessus). `appareilId` (LANE T-WEB) est
+ * ADDITIF : omis du payload quand absent/vide.
  */
 export function buildProposalTrackPayload(
   ctx: ProposalTrackContext,
   event: ProposalEngagementEvent,
+  appareilId?: string,
 ): ProposalTrackPayload | null {
   const reference = (ctx.reference ?? '').trim();
   const token = (ctx.token ?? '').trim();
@@ -3440,6 +3611,7 @@ export function buildProposalTrackPayload(
     reference,
     token,
     page: `/proposition/${token}`,
+    ...(appareilId ? { appareil_id: appareilId } : {}),
   };
 }
 
@@ -3894,6 +4066,74 @@ export function storageSweepInfo(
   }
   if (paliers.length === 0 && refuse === null) return null;
   return { paliers, refuse };
+}
+
+// ── P2-C (ordre fondateur 25/08/2026, soir) — SÉLECTEUR DE PALIERS BATTERIE ──
+// « add more than just 2 batteries in the web page battery option ; extra
+// batteries might add extra panels with extra cost, that is still fine ».
+// CONTRAT PROPRE `paliers_batterie` (racine du payload), servi par une lane
+// backend parallèle — distinct de `balayage_stockage` ci-dessus qui alimente
+// le simulateur à curseur ailleurs sur la page.
+
+/**
+ * Un palier de capacité batterie du sélecteur public, sanitisé champ par
+ * champ : toute valeur non numérique finie devient `null` — jamais un défaut
+ * fabriqué. `capaciteKwh` est le seul champ requis (c'est ce qui nomme la
+ * pilule) ; un palier sans capacité lisible est ignoré par `paliersBatterie`.
+ */
+export interface PalierBatterie {
+  capaciteKwh: number;
+  nbBatteries5: number | null;
+  nbBatteries10: number | null;
+  nbPanneaux: number | null;
+  puissanceKwc: number | null;
+  prixTtc: number | null;
+  economiesAnnuelles: number | null;
+  paybackAnnees: number | null;
+  /** `false` UNIQUEMENT quand le moteur l'affirme explicitement — absent/`true` ⇒ palier servable. */
+  remplissageOk: boolean;
+  /** `true` UNIQUEMENT quand le moteur l'affirme explicitement — c'est le palier du devis réel. */
+  retenu: boolean;
+}
+
+/**
+ * Les paliers de capacité batterie du sélecteur public (carte « Avec
+ * batterie », section #options). Liste VIDE quand la clé `paliers_batterie`
+ * est absente, n'est pas un tableau, ou qu'aucune entrée n'a de
+ * `capacite_kwh` lisible — le sélecteur ne rend alors RIEN, la carte reste
+ * strictement celle d'aujourd'hui.
+ */
+export function paliersBatterie(
+  p: Pick<ProposalResponse, 'paliers_batterie'>,
+): PalierBatterie[] {
+  const raw = p?.paliers_batterie;
+  if (!Array.isArray(raw)) return [];
+  const out: PalierBatterie[] = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== 'object') continue;
+    const capaciteKwh = finiteOrNull(entry.capacite_kwh);
+    if (capaciteKwh === null) continue;
+    out.push({
+      capaciteKwh,
+      nbBatteries5: finiteOrNull(entry.nb_batteries_5),
+      nbBatteries10: finiteOrNull(entry.nb_batteries_10),
+      nbPanneaux: finiteOrNull(entry.nb_panneaux),
+      puissanceKwc: finiteOrNull(entry.puissance_kwc),
+      prixTtc: finiteOrNull(entry.prix_ttc),
+      economiesAnnuelles: finiteOrNull(entry.economies_annuelles),
+      paybackAnnees: finiteOrNull(entry.payback_annees),
+      remplissageOk: entry.remplissage_ok !== false,
+      retenu: entry.retenu === true,
+    });
+  }
+  return out;
+}
+
+/** Le palier RETENU pour ce devis — ses chiffres restent ceux du document
+ *  officiel, jamais recalculés. `null` quand aucun palier n'est marqué `retenu`
+ *  (repli honnête : le sélecteur n'affiche alors aucune pré-sélection « retenue »). */
+export function palierBatterieRetenu(paliers: PalierBatterie[]): PalierBatterie | null {
+  return paliers.find((palier) => palier.retenu) ?? null;
 }
 
 /** Libellés FR des ajouts d'estimation de consommation — mêmes clés que le

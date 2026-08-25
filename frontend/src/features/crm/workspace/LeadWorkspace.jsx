@@ -19,7 +19,7 @@ import { useDelayedLoading } from '../../../hooks/useDelayedLoading'
 import { isTypingTarget } from '../../../providers/shortcuts'
 import { useFocusedRecordShortcuts, LEAD_STAGE_SHORTCUTS } from '../../../providers/focusedRecordShortcuts'
 import { pushRecentEntity } from '../../../providers/commandActions'
-import { normalizeMaPhone } from '../../../lib/format'
+import { normalizePhoneE164 } from '../../../lib/format'
 import { isStageMoveBackward } from '../stages'
 // ORDRE FONDATEUR 2026-08-01 — la MÊME question que sur le board (elle nomme le
 // lead et les deux étapes) : une seule formulation pour tous les gestes qui
@@ -31,6 +31,9 @@ import { getField } from './draftCore'
 import IdentityRail from './IdentityRail'
 import SectionsPane from './SectionsPane'
 import ContextRail from './ContextRail'
+// LANE Q-C — dialogue « Envoyer un questionnaire », satellite comme
+// SigneDialog/PlanActiviteDialog/ConvertirClientDialog ci-dessous.
+import QuestionnaireDialog from './QuestionnaireDialog'
 // Satellites INCHANGÉS de place (blueprint) — importés par le shell.
 import LeadDevisPanel from '../../../pages/crm/leads/LeadDevisPanel'
 import SigneDialog from '../../../pages/crm/leads/SigneDialog'
@@ -215,6 +218,8 @@ export default function LeadWorkspace({
   const [signeOpen, setSigneOpen] = useState(false)
   const [planOpen, setPlanOpen] = useState(false)
   const [convertOpen, setConvertOpen] = useState(false)
+  // LANE Q-C — dialogue « Envoyer un questionnaire » (bouton du rail identité).
+  const [questionnaireOpen, setQuestionnaireOpen] = useState(false)
   const [archiveBusy, setArchiveBusy] = useState(false)
   // PV22 — « Concevoir la toiture (3D) » : la liste des brouillons à départager
   // (plusieurs candidats) et le message SERVEUR quand le dimensionnement
@@ -320,6 +325,9 @@ export default function LeadWorkspace({
       case 'convert': return setConvertOpen(true)
       case 'plan': return setPlanOpen(true)
       case 'signe': return setSigneOpen(true)
+      // LANE Q-C — « Envoyer un questionnaire » (IdentityRail, menu « Plus
+      // d'actions »).
+      case 'questionnaire': return setQuestionnaireOpen(true)
       // PV22 — le geste résout le devis à calepiner avant de naviguer.
       case 'toiture-3d':
         return leaveGuard(() => { ouvrirConceptionToiture() })
@@ -552,7 +560,7 @@ export default function LeadWorkspace({
   const telephoneWs = (getField(state, 'telephone') || '').trim()
   const whatsappWs = (getField(state, 'whatsapp') || '').trim()
   const callPhone = telephoneWs || whatsappWs
-  const waPhone = normalizeMaPhone(whatsappWs || telephoneWs)
+  const waPhone = normalizePhoneE164(whatsappWs || telephoneWs)
 
   // ── Rendu du contenu (partagé dialog / sheet / page) ──────────────────────
   const renderBody = (TitleComp) => (
@@ -821,6 +829,15 @@ export default function LeadWorkspace({
           lead={state.server}
           onClose={() => setConvertOpen(false)}
           onConverted={draft.refreshServer}
+        />
+      )}
+      {/* LANE Q-C — « Envoyer un questionnaire » : même state.server que les
+          autres satellites (le lien porte sur les DONNÉES connues du
+          serveur, pas sur un brouillon non enregistré). */}
+      {questionnaireOpen && (
+        <QuestionnaireDialog
+          lead={state.server}
+          onClose={() => setQuestionnaireOpen(false)}
         />
       )}
       {/* PV22 — plusieurs brouillons : le commercial départage. */}

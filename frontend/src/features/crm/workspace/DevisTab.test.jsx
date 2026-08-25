@@ -19,12 +19,15 @@ const { genererFacture, createFromDevis, whatsappDevis, shareLinkDevis } = vi.ho
   whatsappDevis: vi.fn(() => Promise.resolve({
     data: { message: 'Bonjour, voici votre devis', links: [{ devis_id: 1, reference: 'DEV-1', url: 'https://x/1' }], wa_url: 'https://wa.me/212600000000?text=x' },
   })),
-  // L5/L-NIV-UI — mint/réutilisation du ShareLink pour « Page client »/
-  // WhatsApp (unique, format identique à ce que renvoie POST
-  // .../share-link/ : {token, path, niveau, otp_lecture} — contrat L-NIV).
+  // L5/L-NIV-UI/L-INTPREV — mint/réutilisation du ShareLink pour « Page
+  // client »/WhatsApp/aperçu interne (format identique à ce que renvoie POST
+  // .../share-link/ : {token, path, token_interne, path_interne, niveau,
+  // otp_lecture} — contrat L-NIV + L-INTPREV, apps/ventes/views/devis.py).
   shareLinkDevis: vi.fn(() => Promise.resolve({
     data: {
-      token: 'tok-abc', path: '/proposition/karim/tok-abc', niveau: 'standard', otp_lecture: false,
+      token: 'tok-abc', path: '/proposition/karim/tok-abc',
+      token_interne: 'tok-int-xyz', path_interne: '/proposition/karim/tok-int-xyz',
+      niveau: 'standard', otp_lecture: false,
     },
   })),
 }))
@@ -355,6 +358,96 @@ describe('L5 — Page client / WhatsApp / Aperçu interne (par devis, via le dia
     // L'aperçu interne passe par LeadDevisPanel → GET /proposal (authentifié,
     // ne résout aucun token) — il ne mint JAMAIS de ShareLink.
     expect(shareLinkDevis).not.toHaveBeenCalled()
+  })
+})
+
+/* L-INTPREV (fondateur 25/08/2026) — « le lien de devis doit aussi avoir un
+   lien interne secondaire que le commercial peut visiter sans déclencher la
+   notification ». Ligne discrète sous les boutons Page client/WhatsApp, dans
+   le MÊME dialogue d'envoi : mint le MÊME ShareLink, mais copie/ouvre
+   `path_interne` (jeton interne) — jamais `path` (public). Distincte du
+   bouton « Aperçu interne (sans notification) » de la carte (celui-là ouvre
+   le panneau PDF authentifié /proposal, ne mint jamais de ShareLink — test
+   L5 ci-dessus) : l'accessible name ne doit donc PAS collisionner avec lui. */
+describe('L-INTPREV — aperçu interne de la page client (sans notification)', () => {
+  const devis1 = {
+    id: 1, reference: 'DEV-1', statut: 'envoye', total_ttc: '5000',
+    date_creation: '2026-01-01', chantier: null,
+  }
+
+  it('la ligne discrète ne collisionne pas avec le bouton « Aperçu interne » de la carte', async () => {
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [devis1] }) })
+    // Bouton de la CARTE (mécanisme /proposal existant, hors dialogue).
+    expect(screen.getByRole('button', { name: /^Aperçu interne \(sans notification\)$/ })).toBeInTheDocument()
+    await ouvrirEnvoi(user)
+    // Ligne du DIALOGUE (ce test) : nom distinct, les deux coexistent.
+    expect(screen.getByRole('button', { name: /Aperçu interne de la page client \(sans notification\)/ })).toBeInTheDocument()
+  })
+
+  it('copie l’URL ABSOLUE du jeton INTERNE (path_interne), jamais le jeton public', async () => {
+    const user = userEvent.setup()
+    const writeText = vi.fn(() => Promise.resolve())
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText }, configurable: true, writable: true,
+    })
+    renderTab({ state: leadState({ devis: [devis1] }) })
+    await ouvrirEnvoi(user)
+    await user.click(screen.getByRole('button', { name: /Aperçu interne de la page client \(sans notification\)/ }))
+    await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(
+      1, { niveau: 'standard', otp_lecture: false, sections: TOUTES_SECTIONS },
+    ))
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(
+      'https://taqinor.ma/proposition/karim/tok-int-xyz',
+    ))
+    expect(writeText).not.toHaveBeenCalledWith('https://taqinor.ma/proposition/karim/tok-abc')
+    expect(await screen.findByText('Copié')).toBeInTheDocument()
+  })
+
+  it('le bouton « ouvrir » ouvre aussi l’URL du jeton interne dans un nouvel onglet', async () => {
+    const user = userEvent.setup()
+    window.open = vi.fn(() => ({}))
+    renderTab({ state: leadState({ devis: [devis1] }) })
+    await ouvrirEnvoi(user)
+    await user.click(screen.getByRole('button', {
+      name: /Ouvrir l'aperçu interne de la page client de DEV-1/,
+    }))
+    await waitFor(() => expect(window.open).toHaveBeenCalledWith(
+      'https://taqinor.ma/proposition/karim/tok-int-xyz', '_blank', 'noopener',
+    ))
+  })
+
+  it('« Page client » / « Ouvrir » / « WhatsApp » n’utilisent JAMAIS l’URL interne', async () => {
+    const user = userEvent.setup()
+    window.open = vi.fn(() => ({}))
+    const writeText = vi.fn(() => Promise.resolve())
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText }, configurable: true, writable: true,
+    })
+    renderTab({ state: leadState({ telephone: '0612345678', devis: [devis1] }) })
+    await ouvrirEnvoi(user)
+
+    await user.click(screen.getByRole('button', { name: /Page client/ }))
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('https://taqinor.ma/proposition/karim/tok-abc'))
+
+    await user.click(screen.getByRole('button', {
+      name: /Ouvrir la page client de DEV-1 dans un nouvel onglet/,
+    }))
+    await waitFor(() => expect(window.open).toHaveBeenCalledWith(
+      'https://taqinor.ma/proposition/karim/tok-abc', '_blank', 'noopener',
+    ))
+
+    await user.click(screen.getByRole('button', { name: 'WhatsApp' }))
+    await waitFor(() => expect(window.open).toHaveBeenCalledWith(
+      expect.stringContaining(encodeURIComponent('https://taqinor.ma/proposition/karim/tok-abc')),
+      '_blank', 'noopener',
+    ))
+
+    // Ni le presse-papier ni window.open n'ont jamais reçu le jeton interne.
+    expect(writeText).not.toHaveBeenCalledWith(expect.stringContaining('tok-int-xyz'))
+    for (const call of window.open.mock.calls) {
+      expect(String(call[0])).not.toContain('tok-int-xyz')
+    }
   })
 })
 

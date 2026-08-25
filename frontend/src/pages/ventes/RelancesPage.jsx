@@ -22,7 +22,7 @@ import {
   DropdownMenuLabel,
   Select, SelectTrigger, SelectContent, SelectItem, SelectValue,
 } from '../../ui'
-import { formatMAD, formatDateTime, toNumber, normalizeMaPhone } from '../../lib/format'
+import { formatMAD, formatDateTime, toNumber, normalizePhoneE164 } from '../../lib/format'
 // APX17 — confirmations maison (VX19/L152) : plus une seule popup du système.
 import { toast, useConfirmDialog } from '../../ui/confirm'
 // APX17 — la table de recouvrement rejoint le tableau partagé (tri + export CSV).
@@ -606,9 +606,9 @@ export default function RelancesPage() {
           </Button>
           <Button size="sm" variant="outline"
                   loading={!!waBusy[r.id]}
-                  disabled={!!waBusy[r.id] || !normalizeMaPhone(r.client_telephone)}
+                  disabled={!!waBusy[r.id] || !normalizePhoneE164(r.client_telephone)}
                   onClick={() => whatsapp(r)}
-                  title={!normalizeMaPhone(r.client_telephone)
+                  title={!normalizePhoneE164(r.client_telephone)
                     ? 'Numéro invalide'
                     : 'Rappel de paiement par WhatsApp'}>
             <MessageCircle /> {waBusy[r.id] ? 'Préparation…' : 'WhatsApp'}

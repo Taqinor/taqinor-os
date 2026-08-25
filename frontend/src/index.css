@@ -7317,6 +7317,44 @@ textarea.form-control {
   align-items: center;
   gap: 0.4rem;
 }
+/* L-INTPREV (fondateur 25/08/2026) — ligne DISCRÈTE sous les boutons Page
+   client/WhatsApp : un second lien (jeton interne) que le commercial peut
+   copier/ouvrir sans jamais notifier le client ni compter comme une
+   consultation. Volontairement plus petite/plus sobre que les boutons
+   ci-dessus — un texte-lien, pas un bouton de premier plan. */
+.lw-context-devis-apercu-interne {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin: 0;
+}
+.lw-context-devis-apercu-interne-btn,
+.lw-context-devis-apercu-interne-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.78rem;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+/* Survol gardé derrière `@media (hover: hover)` comme tous les :hover du
+   fichier (contrat hover-compat) : sur tactile le lien reste sobre, sans
+   état de survol collant après le tap. */
+@media (hover: hover) {
+  .lw-context-devis-apercu-interne-btn:hover,
+  .lw-context-devis-apercu-interne-open:hover {
+    color: var(--foreground);
+    text-decoration: underline;
+  }
+}
+.lw-context-devis-apercu-interne-btn:disabled,
+.lw-context-devis-apercu-interne-open:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
 /* LW33 — actions secondaires (Facture/Chantier, devis accepté) révélées au
    survol de la carte, patron "group-hover" (blueprint D4#7, sans reflow :
    uniquement opacity, l'espace reste réservé par le flex normal). GARDÉ

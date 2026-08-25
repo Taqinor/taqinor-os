@@ -661,6 +661,16 @@ def _map_payload_to_fields(data: dict) -> dict:
     for key in ('utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'):
         value = utm.get(key) or data.get(key)
         fields[key] = str(value).strip()[:300] if value else None
+    # T-TRACE (25/08/2026) — clé ADDITIVE `appareil_id` : l'uuid que le SITE
+    # pose dans le localStorage du visiteur (contrat
+    # contract_samples/visite_externe.json). C'est ce qui relie la fiche aux
+    # visites ANONYMES qui l'ont précédée. Alias camelCase/EN tolérés comme
+    # partout ailleurs dans ce mapping ; absente = None (jamais '' — la
+    # colonne est nullable et NULL veut dire « inconnu », pas « vide »).
+    appareil = (data.get('appareil_id') or data.get('appareilId')
+                or data.get('deviceId') or data.get('device_id'))
+    appareil = str(appareil).strip()[:64] if appareil else ''
+    fields['appareil_id'] = appareil or None
     # Q2 — pin de toiture (+ contour optionnel) pointé par le client. On
     # n'accepte qu'un point {lat, lng} numérique valide ; tout le reste est
     # ignoré (jamais d'erreur). roofOutline est un polygone rough optionnel.
@@ -951,6 +961,95 @@ def _map_payload_to_fields(data: dict) -> dict:
     if _is_sous_seuil(data):
         fields['tags'] = SOUS_SEUIL_TAG
     return fields
+
+
+# ── L-QUEST (fondateur 25/08/2026) — réponses du CLIENT depuis son lien ──
+#
+# Le client qui remplit son questionnaire chez lui envoie EXACTEMENT le même
+# vocabulaire métier que le site : on réutilise donc le mapping ci-dessus
+# (`_map_payload_to_fields`) au lieu d'écrire une SECONDE validation, et on se
+# contente de ne garder que les clés de la section concernée.
+#
+# Deux ajustements, tous deux documentés ici plutôt que dupliqués ailleurs :
+#   (a) une poignée de clés que le site nomme autrement (le site envoie
+#       `city`, la page questionnaire envoie le nom de colonne `ville`) ;
+#   (b) quatre colonnes `Lead` que le mapping du site n'atteint pas du tout
+#       (le site ne les collecte pas) : elles sont nettoyées ICI avec les
+#       MÊMES primitives (`_clean_decimal`/`_clean_choice`), pas avec un
+#       nouveau style de validation. Le comportement du webhook site est
+#       strictement inchangé (aucune de ces clés n'y est ajoutée).
+
+#: (a) nom de colonne Lead → clé que `_map_payload_to_fields` lit réellement.
+_QUEST_ALIAS_ENTREE = {
+    'ville': 'city',
+}
+
+
+def _quest_conso(raw):
+    return _clean_decimal(raw, lo=0, hi=1_000_000)
+
+
+def _quest_surface(raw):
+    return _clean_decimal(raw, lo=0, hi=1_000_000)
+
+
+def _quest_tranche(raw):
+    if raw in (None, ''):
+        return None
+    return str(raw).strip()[:100] or None
+
+
+def _quest_type_toiture(raw):
+    return _clean_choice(raw, Lead.TypeToiture.values)
+
+
+#: (b) colonnes Lead hors de portée du mapping site → nettoyeur dédié.
+_QUEST_NETTOYEURS_HORS_SITE = {
+    'conso_mensuelle_kwh': _quest_conso,
+    'surface_toiture_m2': _quest_surface,
+    'tranche_onee': _quest_tranche,
+    'type_toiture': _quest_type_toiture,
+}
+
+
+def champs_lead_depuis_reponses(reponses, cles_autorisees):
+    """L-QUEST — Réponses du client (une section) → champs ``Lead`` propres.
+
+    UNE seule validation, celle du site (`_map_payload_to_fields`) ; on ne
+    retient ensuite que ``cles_autorisees`` (la whitelist de la section, donc
+    une section ne peut JAMAIS écrire un champ d'une autre : une réponse
+    « contact » ne touche pas le GPS) et uniquement les valeurs NON vides —
+    le mapping du site pose des valeurs de CRÉATION par défaut (nom, canal,
+    e-mail à ``None``…) qui ne doivent jamais retomber ici, et un champ absent
+    du corps ne peut donc jamais écraser une valeur déjà connue du lead.
+
+    ``False`` et ``0`` sont des réponses LÉGITIMES (« non, pas de piscine »)
+    et sont conservés — seuls ``None`` et la chaîne vide sont écartés.
+    Ne lève jamais : une valeur invalide est simplement ignorée."""
+    if not isinstance(reponses, dict):
+        return {}
+
+    entree = dict(reponses)
+    for colonne, cle_site in _QUEST_ALIAS_ENTREE.items():
+        if colonne in entree and cle_site not in entree:
+            entree[cle_site] = entree[colonne]
+
+    fields = _map_payload_to_fields(entree)
+    for colonne, nettoyeur in _QUEST_NETTOYEURS_HORS_SITE.items():
+        if colonne in reponses:
+            valeur = nettoyeur(reponses[colonne])
+            if valeur is not None:
+                fields[colonne] = valeur
+
+    out = {}
+    for cle in cles_autorisees:
+        if cle not in fields:
+            continue
+        val = fields[cle]
+        if val is None or (isinstance(val, str) and not val.strip()):
+            continue
+        out[cle] = val
+    return out
 
 
 # ── WREF2 (fondateur 21/08/2026) — RÉFÉRENCE CLIENT ATTRIBUÉE PAR LE SERVEUR ──
@@ -1490,6 +1589,39 @@ def _map_and_link_lead(raw, data, company):
             logger.warning(
                 'website_lead_webhook: détection de doublon échouée '
                 '(lead #%s) : %s', lead.pk, _exc)
+
+    # ── T-TRACE (25/08/2026) — traçage anti-fraude de la demande ───────────
+    # Placé APRÈS `notify_new_lead` À DESSEIN : la notification d'arrivée doit
+    # dire « a visité le site N fois AVANT sa demande », donc elle lit
+    # l'historique alors qu'il ne contient encore QUE les passages anonymes —
+    # jamais la demande elle-même. Ici on fait, dans l'ordre :
+    #   1. rattacher au lead les visites ANONYMES déjà connues de cet appareil
+    #      (on ne savait pas à qui elles appartenaient, maintenant si) ;
+    #   2. enregistrer LA demande comme une visite de point `tunnel_lead` ;
+    #   3. lever l'alerte ROUGE si cet appareil sert DÉJÀ un AUTRE lead.
+    # Sur les DEUX chemins (création et complément anti-rejeu < 60 s) : une
+    # demande vaut une trace, même quand elle complète la fiche en cours.
+    # `raw.remote_addr` porte déjà l'IP extraite par la vue (X-Forwarded-For
+    # d'abord) — jamais une IP venue du corps.
+    # Best-effort intégral : le traçage ne remet JAMAIS le lead en cause.
+    try:
+        from .services import (
+            alerter_appareil_partage, rattacher_visites_au_lead,
+            tracer_et_correler,
+        )
+        rattacher_visites_au_lead(lead)
+        tracer_et_correler(
+            lead.company, point='tunnel_lead', lead=lead,
+            appareil_id=(lead.appareil_id or ''),
+            contexte='Demande de devis (site)',
+            langue=(lead.langue_preferee or ''),
+            ip=(getattr(raw, 'remote_addr', '') or ''),
+        )
+        alerter_appareil_partage(lead)
+    except Exception as _exc:  # noqa: BLE001 — best-effort
+        logger.warning(
+            'website_lead_webhook: traçage T-TRACE échoué (lead #%s) : %s',
+            lead.pk, _exc)
 
     # QK6 — photo de facture/compteur/toiture jointe à la capture :
     # attachée au lead (+ OCR si configuré), best-effort — une photo

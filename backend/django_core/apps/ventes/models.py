@@ -501,6 +501,36 @@ class LigneDevis(models.Model):
         help_text='Ligne optionnelle (add-on) : proposée au client hors total '
                   "tant qu'elle n'est pas activée. Défaut False = ligne normale.")
 
+    # ── L-2OPT — VARIANTE : à QUELLE option cette ligne appartient-elle ? ─────
+    # Un devis résidentiel « Les deux (Sans + Avec) » propose DEUX kits. Tant
+    # que les deux optimums économiques tombaient sur le même champ PV, le
+    # découpage par MOTS-CLÉS suffisait (batterie → « avec », onduleur réseau →
+    # « sans », tout le reste → commun). Dès que l'optimum AVEC batterie choisit
+    # un AUTRE nombre de panneaux que l'optimum SANS, ce découpage ment : les
+    # panneaux, la structure et la pose tombent dans les DEUX options avec la
+    # MÊME quantité, alors qu'elles diffèrent.
+    #
+    # ``variante`` porte cette appartenance EXPLICITEMENT :
+    #   · ''      (LE DÉFAUT) — ligne COMMUNE aux deux options. Toute ligne
+    #     existante vaut '' ⇒ comportement historique strictement inchangé, et
+    #     un devis mono-option n'a jamais que des lignes communes ;
+    #   · 'sans'  — la ligne n'appartient qu'à l'option SANS batterie ;
+    #   · 'avec'  — la ligne n'appartient qu'à l'option AVEC batterie.
+    #
+    # Le champ COMPLÈTE le découpage par mots-clés (il ne le remplace pas) :
+    # une ligne variantée est filtrée sur sa variante, une ligne commune reste
+    # soumise aux mots-clés comme avant.
+    class Variante(models.TextChoices):
+        COMMUNE = '', 'Commune aux deux options'
+        SANS = 'sans', 'Option « sans batterie » seulement'
+        AVEC = 'avec', 'Option « avec batterie » seulement'
+
+    variante = models.CharField(
+        max_length=8, choices=Variante.choices, blank=True, default='',
+        help_text="Option à laquelle la ligne appartient : vide = commune aux "
+                  "deux options (défaut), « sans » ou « avec » = propre à "
+                  "cette option-là.")
+
     # ── NTCPQ18 — Rattachement à un LOT (site/bâtiment) — additif, optionnel ──
     # NULL = ligne « hors lot » (comportement historique strictement inchangé :
     # un devis sans lot ne connaît aucun sous-total de lot).
@@ -1387,6 +1417,40 @@ class ShareLink(models.Model):
     sections = models.JSONField(
         default=dict, blank=True,
         verbose_name='Sections servies au client')
+
+    # ── L-INTPREV (fondateur 25/08/2026) — second jeton « aperçu interne » :
+    # le commercial peut ouvrir EXACTEMENT la même page publique de
+    # proposition sans que cela compte comme une ouverture CLIENT — aucun
+    # compteur de vues, aucune note chatter « devis ouvert », aucune avance de
+    # stage funnel (YLEAD10), aucune notification au owner, aucun beacon
+    # d'engagement enregistré (voir apps/ventes/public_views.py::
+    # _resolve_share_link_by_token / _stamp_view_si_public). La SIGNATURE reste
+    # refusée via ce jeton (un aperçu ne peut pas engager le client) et l'OTP
+    # de lecture n'est jamais exigé (c'est le commercial).
+    #
+    # Nullable + unique : additif, même générateur cryptographique que
+    # ``token`` (secrets.token_urlsafe(32)). ``null=True`` car un lien créé
+    # avant la migration 0103 ne porte ce jeton QUE si le backfill (RunPython,
+    # liens non expirés uniquement) l'a posé — voir cette migration pour le
+    # détail du piège « AddField(unique) avec un default callable » qu'elle
+    # évite explicitement (un default calculé UNE SEULE FOIS pour tout
+    # l'ALTER TABLE aurait donné la MÊME valeur à toutes les lignes
+    # préexistantes, faisant exploser la contrainte unique).
+    token_interne = models.CharField(
+        max_length=64, unique=True, null=True, blank=True,
+        default=_default_share_token, editable=False,
+        verbose_name='Jeton aperçu interne (sans notification)')
+
+    def jeton_interne_effectif(self):
+        """L-INTPREV — jeton d'aperçu interne, généré paresseusement si ce
+        lien n'en porte pas encore (garde défensive : normalement déjà posé
+        par le default du champ ou le backfill de la migration 0103 — ce
+        chemin ne sert qu'un très étroit lien préexistant qui aurait échappé
+        au backfill)."""
+        if not self.token_interne:
+            self.token_interne = _default_share_token()
+            self.save(update_fields=['token_interne'])
+        return self.token_interne
 
     def section_servie(self, cle):
         """L-SECT — la section ``cle`` doit-elle être servie sur ce lien ?

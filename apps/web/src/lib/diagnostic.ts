@@ -32,7 +32,10 @@ export function validateStep(step: 1 | 2 | 3, s: DiagnosticState): StepResult {
     if (s.city.trim().length < 2) errors.city = 'Indiquez votre ville ou commune';
   } else {
     if (s.fullName.trim().length < 2) errors.fullName = 'Indiquez votre nom complet';
-    if (!normalizeMoroccanPhone(s.phone).ok) errors.phone = 'Numéro de téléphone marocain invalide';
+    // 25/08/2026 — LANE NUMÉROS INTERNATIONAUX : le mot « marocain » est faux
+    // depuis WJ64 (normalizeMoroccanPhone accepte aussi un étranger à
+    // indicatif explicite, voir phone.ts) — libellé honnête.
+    if (!normalizeMoroccanPhone(s.phone).ok) errors.phone = 'Numéro de téléphone invalide';
     if (s.consent !== true) errors.consent = 'Le consentement est requis pour recevoir votre étude';
   }
   return Object.keys(errors).length ? { ok: false, errors } : { ok: true };

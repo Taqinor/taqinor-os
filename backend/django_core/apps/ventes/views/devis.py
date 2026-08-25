@@ -1200,8 +1200,18 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 champs_modifies.append('sections')
         if champs_modifies:
             link.save(update_fields=champs_modifies)
+        # L-INTPREV (fondateur 25/08/2026) — second lien « aperçu interne » :
+        # même page, même construction de chemin (``chemin_proposition``),
+        # jeton différent. ``jeton_interne_effectif`` génère paresseusement
+        # celui d'un très étroit lien préexistant qui aurait échappé au
+        # backfill de la migration 0103 (garde défensive — le cas normal
+        # porte déjà un jeton interne, posé par le default du champ ou par ce
+        # backfill).
+        token_interne = link.jeton_interne_effectif()
         return Response(
             {'token': link.token, 'path': chemin_proposition(devis, link.token),
+             'token_interne': token_interne,
+             'path_interne': chemin_proposition(devis, token_interne),
              'gamme': _gamme_envoi_payload(devis),
              'niveau': link.niveau, 'otp_lecture': link.otp_lecture,
              'sections': link.sections or {}},
@@ -2145,16 +2155,16 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         Ouvrir puis fermer la modale ne doit JAMAIS créer un devis fantôme
         « envoyé » dont l'horloge de validité a démarré. Aucune transition de
         statut, aucune écriture (hormis le ShareLink réutilisé, idempotent)."""
-        from ..utils.phone import normalize_ma_phone
+        from ..utils.phone import normalize_phone_e164
         from ..utils.whatsapp import (
             build_single_devis_whatsapp, build_wa_url, devis_recipient_phone,
         )
 
         devis = self.get_object()
         phone = devis_recipient_phone(devis)
-        if not normalize_ma_phone(phone):
+        if not normalize_phone_e164(phone):
             return Response(
-                {'detail': 'Aucun numéro de téléphone.'},
+                {'detail': 'Numéro de téléphone invalide.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         langue = request.data.get('langue')
@@ -2195,7 +2205,7 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         téléphone). Body optionnel : ``langue`` (défaut : langue du lead, sinon
         « fr »). La société est déjà bornée par ``get_queryset``.
         """
-        from ..utils.phone import normalize_ma_phone
+        from ..utils.phone import normalize_phone_e164
         from ..utils.whatsapp import (
             build_single_devis_whatsapp, build_wa_url, devis_recipient_phone,
         )
@@ -2203,9 +2213,9 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
 
         devis = self.get_object()
         phone = devis_recipient_phone(devis)
-        if not normalize_ma_phone(phone):
+        if not normalize_phone_e164(phone):
             return Response(
-                {'detail': 'Aucun numéro de téléphone.'},
+                {'detail': 'Numéro de téléphone invalide.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         langue = request.data.get('langue')

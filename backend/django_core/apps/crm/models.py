@@ -989,6 +989,17 @@ class Lead(SoftDeleteModel):
         max_length=254, blank=True, default='', db_index=True,
         verbose_name='Email normalisé (dédup)')
 
+    # T-TRACE (25/08/2026) — identifiant de l'APPAREIL depuis lequel la
+    # demande est arrivée (uuid localStorage posé par le site, transmis par
+    # le webhook lead). C'est la clé qui relie une fiche aux visites ANONYMES
+    # qui l'ont précédée (``crm.VisiteExterne``) et qui déclenche l'alerte
+    # « possible doublon/concurrent » quand DEUX leads de la même société
+    # partagent le même appareil. NULL = inconnu (anciens leads, imports,
+    # saisie manuelle) — jamais un défaut inventé.
+    appareil_id = models.CharField(
+        max_length=64, null=True, blank=True,
+        verbose_name='Identifiant d’appareil (traçage)')
+
     # NTADM2 — rattachement OPTIONNEL à une entité intra-tenant (holding /
     # filiale / agence, cf. apps.entites). NULL = « non affecté » : aucun
     # backfill, aucune liste filtrée d'office — comportement STRICTEMENT
@@ -1032,6 +1043,11 @@ class Lead(SoftDeleteModel):
             # regroupe les leads d'une société par leur ad Meta (meta_ad_id).
             models.Index(fields=['company', 'meta_ad_id'],
                          name='crm_lead_meta_ad_idx'),
+            # T-TRACE — « quels AUTRES leads de cette société partagent cet
+            # appareil ? » est posée à CHAQUE création de lead : indexée, donc
+            # jamais un scan de la table leads sur le chemin du webhook.
+            models.Index(fields=['company', 'appareil_id'],
+                         name='crm_lead_appareil_idx'),
         ]
         constraints = [
             # An imported record is unique per (company, system, external id) so
@@ -3110,3 +3126,230 @@ class Defi(TenantModel):
 
     def __str__(self):
         return self.nom
+
+
+# ── L-QUEST (fondateur 25/08/2026) — « questionnaire envoyable au client » ──
+#
+# « Un client peut remplir chez lui, à son rythme ; le commercial choisit les
+# questions ; DÉFAUT = les informations manquantes ; le GPS est une des
+# questions. »
+#
+# Même patron que ``BookingLink`` (jeton long/imprévisible, lien expirant,
+# résolution publique sans login) avec DEUX différences voulues :
+#   · le lien se ROUVRE (magic-link) — il n'est jamais « consommé » : le
+#     client répond section par section et revient plus tard ;
+#   · il porte un SECOND jeton INTERNE, jamais montré au client, qui sert au
+#     commercial à visiter la page en APERÇU sans rien déclencher (aucune
+#     trace, aucune écriture — voir ``public_questionnaire_views``).
+QUESTIONNAIRE_LIEN_TTL_DAYS = 30
+
+
+def _default_questionnaire_token():
+    import secrets
+    return secrets.token_urlsafe(32)
+
+
+def _default_questionnaire_expiry():
+    from datetime import timedelta
+
+    from django.utils import timezone as _timezone
+    return _timezone.now() + timedelta(days=QUESTIONNAIRE_LIEN_TTL_DAYS)
+
+
+class QuestionnaireLien(TenantModel):
+    """L-QUEST — Lien PUBLIC, tokenisé et expirant (30 j), par lequel le
+    CLIENT complète lui-même les informations manquantes de SON lead.
+
+    Le contrat servi/consommé est figé dans
+    ``apps/crm/contract_samples/questionnaire_lead.json`` (PACT10) —
+    l'écran commercial et la page publique codent contre ce fichier."""
+
+    #: Whitelist UNIQUE des sections (une clé hors de cette liste est refusée
+    #: par un 400, jamais silencieusement ignorée). Ordre d'affichage.
+    SECTIONS_CLES = (
+        'contact', 'gps', 'energie',
+        'photo_facture', 'photo_compteur', 'photo_tableau',
+        'toiture', 'occupation', 'equipements',
+    )
+
+    # Socle multi-tenant ARC1 (``TenantModel`` : company + created_at/
+    # updated_at). ``company`` est REdéclarée ici uniquement pour garder un
+    # ``related_name`` parlant — le motif documenté dans la docstring de
+    # ``core.models.TenantModel``, pas un hand-roll.
+    company = models.ForeignKey(  # on_delete: lien interne au tenant — purgé avec sa société.
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='questionnaire_liens', verbose_name='Société')
+    lead = models.ForeignKey(  # on_delete: lien sans objet si le lead disparaît.
+        'crm.Lead', on_delete=models.CASCADE,
+        related_name='questionnaire_liens')
+    # Jeton CLIENT — c'est celui-là qu'on envoie (WhatsApp/e-mail).
+    token = models.CharField(
+        max_length=64, unique=True, default=_default_questionnaire_token,
+        editable=False)
+    # Jeton INTERNE — même page, JAMAIS montré au client : le commercial
+    # ouvre l'aperçu sans déclencher la moindre écriture ni la moindre trace.
+    token_interne = models.CharField(
+        max_length=64, unique=True, default=_default_questionnaire_token,
+        editable=False)
+    created_by = models.ForeignKey(  # on_delete: on garde le lien si l'auteur quitte l'entreprise.
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='questionnaire_liens_crees')
+    # ``created_at``/``updated_at`` viennent de TenantModel (ARC1).
+    expires_at = models.DateTimeField(default=_default_questionnaire_expiry)
+
+    # Sections DEMANDÉES — sémantique à TROIS états, identique à
+    # ``ventes.ShareLink.sections`` :
+    #   · clé ABSENTE → section ACTIVE (défaut) ;
+    #   · clé à False → section RETIRÉE (le commercial ne la pose pas) ;
+    #   · clé à True  → section posée.
+    # Le mint SANS corps `questions` écrit la carte EXPLICITE des informations
+    # manquantes (ordre fondateur « DÉFAUT = les informations manquantes »).
+    questions = models.JSONField(
+        default=dict, blank=True, verbose_name='Sections demandées')
+
+    # Progression du CLIENT sur CE lien (jamais alimentée par l'aperçu
+    # interne) : {section: True} — sert à lui réafficher où il s'est arrêté.
+    sections_repondues = models.JSONField(
+        default=dict, blank=True, verbose_name='Sections déjà répondues')
+    derniere_reponse_at = models.DateTimeField(
+        null=True, blank=True, verbose_name='Dernière réponse du client')
+
+    class Meta:
+        verbose_name = 'Lien questionnaire client'
+        verbose_name_plural = 'Liens questionnaire client'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'QuestionnaireLien lead#{self.lead_id} ({self.token[:8]}…)'
+
+    @property
+    def is_expired(self):
+        from django.utils import timezone as _timezone
+        return _timezone.now() >= self.expires_at
+
+    def question_posee(self, cle):
+        """La section ``cle`` est-elle demandée sur ce lien ?
+
+        UNE seule décision, partagée par tous les flux (GET public, POST
+        public, écran commercial) : clé absente → True (comportement par
+        défaut), clé à False → False. Défensif (``getattr``/type) au cas où
+        un test construit un lien à la main."""
+        questions = getattr(self, 'questions', None)
+        if not isinstance(questions, dict):
+            return True
+        return questions.get(cle) is not False
+
+    def sections_actives(self):
+        """Sections demandées, dans l'ordre de la whitelist."""
+        return [cle for cle in self.SECTIONS_CLES if self.question_posee(cle)]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# T-TRACE (ordres fondateur 25/08/2026) — traçage des visiteurs EXTERNES.
+#
+# « store IP … keep them stored » / « notify when two clients have any similar
+# data that can show it is a competitor » / « and this at all the points … ».
+#
+# VÉRITÉ TECHNIQUE ACTÉE : l'adresse MAC n'est PAS collectable depuis le web
+# (elle ne franchit jamais le routeur). L'identifiant PRIMAIRE d'un visiteur
+# est donc ``appareil_id`` — un uuid que le SITE pose lui-même dans le
+# localStorage du navigateur. L'IP reste stockée comme signal SECONDAIRE :
+# le fondateur l'a explicitement jugée trompeuse (les IP sont massivement
+# partagées au Maroc), elle ne suffit donc JAMAIS à affirmer une identité,
+# seulement à étayer un soupçon libellé comme tel.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class VisiteExterne(TenantModel):
+    """T-TRACE — UN passage d'un visiteur EXTERNE sur une surface publique.
+
+    FINALITÉ ANTI-FRAUDE (mention CNDP). Ces traces existent pour UNE seule
+    raison : reconnaître une demande frauduleuse — un même appareil qui
+    redemande un devis sous une autre identité, ou qui ouvre les propositions
+    de plusieurs prospects différents (concurrent en reconnaissance). Elles ne
+    servent ni au profilage publicitaire, ni à la revente, ni à la mesure
+    d'audience, et ne portent aucune donnée déduite : uniquement ce que le
+    visiteur a réellement fait, là où il l'a fait.
+
+    Le jeton de la page visitée n'est JAMAIS stocké : seul son suffixe
+    (6 derniers caractères) l'est, assez pour rapprocher deux traces d'un même
+    lien dans une enquête, jamais assez pour rouvrir le lien.
+
+    Rétention : AUCUNE purge automatique (ordre fondateur « keep them
+    stored ») — la valeur anti-fraude d'une trace tient justement à sa
+    longévité.
+
+    Socle multi-tenant ARC1 : ``company`` + ``created_at``/``updated_at``
+    viennent de ``TenantModel`` (jamais reposés à la main).
+    """
+
+    class Point(models.TextChoices):
+        """Les cinq points de contact publics tracés (aucun autre)."""
+        VISITE_SITE = 'visite_site', 'Visite du site'
+        TUNNEL_LEAD = 'tunnel_lead', 'Demande de devis (tunnel)'
+        PROPOSITION = 'proposition', 'Ouverture de proposition'
+        QUESTIONNAIRE = 'questionnaire', 'Réponse au questionnaire'
+        BOOKING = 'booking', 'Réservation de visite'
+
+    #: Fenêtre pendant laquelle un battement supplémentaire du MÊME appareil
+    #: sur la MÊME page met à jour la MÊME visite au lieu d'en ouvrir une
+    #: nouvelle. Un beacon bat toutes les ~20 s : sans cette fenêtre, une
+    #: lecture de 10 min produirait 30 lignes au lieu d'une.
+    FENETRE_BATTEMENT_MINUTES = 30
+
+    lead = models.ForeignKey(
+        'crm.Lead',
+        # on_delete: une trace anti-fraude SURVIT au lead qu'elle éclairait —
+        # c'est précisément quand une fiche disparaît (fusion, suppression)
+        # que l'historique de l'appareil garde sa valeur. Jamais une cascade.
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='visites_externes',
+        verbose_name='Lead rattaché',
+    )
+    point = models.CharField(
+        max_length=20, choices=Point.choices,
+        default=Point.VISITE_SITE, verbose_name='Point de contact')
+    # Page ou contexte COURT (« /tarifs », « section prix ») — jamais une URL
+    # complète avec ses paramètres, jamais un contenu de formulaire.
+    contexte = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Page / contexte')
+    # 6 DERNIERS caractères du jeton de la page publique — jamais le jeton.
+    token_suffixe = models.CharField(
+        max_length=6, blank=True, default='', verbose_name='Suffixe du jeton')
+    # Signal SECONDAIRE (voir l'en-tête de section) : lue côté serveur
+    # (X-Forwarded-For / REMOTE_ADDR), JAMAIS acceptée d'un corps de requête.
+    ip = models.CharField(
+        max_length=64, blank=True, default='', verbose_name='Adresse IP')
+    user_agent = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Navigateur (tronqué)')
+    langue = models.CharField(
+        max_length=10, blank=True, default='', verbose_name='Langue affichée')
+    # Identifiant PRIMAIRE du visiteur (uuid localStorage posé par le site).
+    appareil_id = models.CharField(
+        max_length=64, blank=True, default='', db_index=True,
+        verbose_name='Identifiant d’appareil')
+    duree_s = models.PositiveIntegerField(
+        default=0, verbose_name='Durée sur la page (s)')
+    # Posé par le battement final (`fin: true`) : le battement suivant du même
+    # appareil sur la même page ouvre alors une NOUVELLE visite.
+    terminee = models.BooleanField(
+        default=False, verbose_name='Visite terminée')
+
+    class Meta:
+        verbose_name = 'Visite externe (anti-fraude)'
+        verbose_name_plural = 'Visites externes (anti-fraude)'
+        ordering = ['-created_at']
+        indexes = [
+            # Les deux seules recherches faites sur cette table, toutes deux
+            # company-scopées : « l'historique de CET appareil » et « qui
+            # d'autre est passé par CETTE IP ».
+            models.Index(fields=['company', 'appareil_id'],
+                         name='crm_visite_comp_app_idx'),
+            models.Index(fields=['company', 'ip'],
+                         name='crm_visite_comp_ip_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.get_point_display()} — {self.appareil_id[:8] or "?"}'

@@ -52,7 +52,12 @@ class TotalAfficheRepliTests(TestCase):
         # Jamais la somme mensongère : l'incident affichait total_ttc.
         self.assertLess(dt['total'], float(devis.total_ttc))
         comparaison = dt['comparaison_repli']
-        self.assertEqual(dt['total'], float(comparaison['sans']['ttc']))
+        # F1 (26/08/2026) — le repli sert la MÊME option que la chaîne
+        # canonique : depuis LANE CHOIX-AVEC (25/08), ``display_total`` d'un
+        # devis à deux options vaut ``totaux_avec['ttc']``. Le repli portait
+        # encore l'option 1 : le jour où le moteur lève, la liste changeait
+        # silencieusement d'option.
+        self.assertEqual(dt['total'], float(comparaison['avec']['ttc']))
         # L'option avec batterie coûte plus cher que sans — sinon le split
         # des prédicats est cassé.
         self.assertLess(comparaison['sans']['ttc'], comparaison['avec']['ttc'])
@@ -101,8 +106,9 @@ class TotalAfficheRepliTests(TestCase):
 
     def test_serializer_expose_les_deux_totaux_sous_moteur_en_echec(self):
         """La liste (DevisSerializer) montre « A / B » même moteur cassé :
-        total_affiche = option 1, nb_options = 2, comparaison_options porte
-        les deux TTC — et le ROI, qui exige le moteur, reste None partout."""
+        total_affiche = l'option AVEC (celle de la chaîne canonique depuis
+        LANE CHOIX-AVEC), nb_options = 2, comparaison_options porte les deux
+        TTC — et le ROI, qui exige le moteur, reste None partout."""
         devis = self._devis_deux_options(reference='DEV-REPLI-SER')
         ser = DevisSerializer()
         with patch(_MOTEUR, side_effect=RuntimeError('moteur cassé')):
@@ -112,7 +118,7 @@ class TotalAfficheRepliTests(TestCase):
         self.assertEqual(nb_options, 2)
         self.assertLess(total_affiche, float(devis.total_ttc))
         self.assertEqual(comparaison['nb_options'], 2)
-        self.assertEqual(comparaison['sans']['ttc'], total_affiche)
+        self.assertEqual(comparaison['avec']['ttc'], total_affiche)
         self.assertLess(comparaison['sans']['ttc'], comparaison['avec']['ttc'])
         self.assertIsInstance(comparaison['sans']['ttc'], float)
         self.assertIsInstance(comparaison['avec']['ttc'], float)

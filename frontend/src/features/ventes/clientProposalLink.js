@@ -12,9 +12,10 @@
 // Vite/vitest). L'appelant (DevisTab.jsx) reste responsable de l'appel
 // réseau (mint/réutilisation du ShareLink via `ventesApi.shareLinkDevis`), de
 // résoudre `VITE_PUBLIC_SITE_URL`, et de la normalisation du numéro
-// (`lib/format.js normalizeMaPhone`, déjà utilisée pour armer la barre
-// WhatsApp existante de cet écran) — cette normalisation n'est PAS refaite
-// ici pour éviter une seconde logique de validation téléphonique.
+// (`lib/format.js normalizePhoneE164` depuis le 25/08/2026 — LANE NUMÉROS
+// INTERNATIONAUX, déjà utilisée pour armer la barre WhatsApp existante de
+// cet écran) — cette normalisation n'est PAS refaite ici pour éviter une
+// seconde logique de validation téléphonique.
 
 export const DEFAULT_PUBLIC_SITE_URL = 'https://taqinor.ma'
 
@@ -38,8 +39,9 @@ export function proposalWhatsappText(name, proposalUrl) {
 }
 
 // URL wa.me — `digitsE164` doit déjà être un numéro normalisé (ex.
-// `normalizeMaPhone`, chiffres seuls avec indicatif 212, sans "+"). `null`
-// si aucun numéro exploitable (aucun lien wa.me inventé sur un numéro vide).
+// `normalizePhoneE164`, chiffres seuls avec indicatif pays — 212 marocain
+// OU étranger, sans "+"). `null` si aucun numéro exploitable (aucun lien
+// wa.me inventé sur un numéro vide).
 export function buildWaUrl(digitsE164, text) {
   if (!digitsE164) return null
   return `https://wa.me/${digitsE164}?text=${encodeURIComponent(text)}`

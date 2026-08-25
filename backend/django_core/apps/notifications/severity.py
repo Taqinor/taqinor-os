@@ -50,6 +50,12 @@ EVENT_SEVERITY = {
     # NTRET32 — écart de clôture caisse au-delà du seuil configuré : alerte
     # proactive au gérant/directeur, même rang qu'un incident financier.
     EventType.CAISSE_ECART_ANORMAL: CRITIQUE,
+    # T-TRACE — les deux alertes ROUGES anti-fraude. Le fondateur a demandé
+    # « clearly notified … with red » : la sévérité CRITIQUE EST le rouge du
+    # système (liseré rouge + tête de liste côté cloche) — jamais un simple
+    # préfixe décoratif dans le titre.
+    EventType.VISITEUR_APPAREIL_PARTAGE: CRITIQUE,
+    EventType.VISITEUR_CONCURRENT_SUSPECTE: CRITIQUE,
 
     # Informationnel pur — jamais une action attendue de l'utilisateur.
     EventType.DIGEST: INFO,
@@ -97,6 +103,10 @@ EVENT_CATEGORY = {
     EventType.LEAD_CALLBACK_REQUESTED: 'ventes',
     EventType.LEAD_CALLBACK_SLA_BREACH: 'ventes',
     EventType.DEVIS_EXPIRED: 'ventes',
+    # T-TRACE — alertes anti-fraude : c'est le commercial (et la direction)
+    # qui arbitre, donc la catégorie « ventes ».
+    EventType.VISITEUR_APPAREIL_PARTAGE: 'ventes',
+    EventType.VISITEUR_CONCURRENT_SUSPECTE: 'ventes',
     EventType.FACTURE_OVERDUE: 'finance',
     EventType.FACTURE_PAYEE: 'finance',
     EventType.BON_COMMANDE_CREE: 'finance',
@@ -193,6 +203,11 @@ ACTION_EVENT_TYPES = frozenset({
     EventType.DA_DECIDEE,
     EventType.DA_SOUMISE_STALE,
     EventType.ANNONCE_READ_REMINDER,
+    # T-TRACE — une alerte anti-fraude attend une DÉCISION humaine (fusionner,
+    # écarter, refuser le devis) : elle compte dans le badge ACTIONS, jamais
+    # dans les infos.
+    EventType.VISITEUR_APPAREIL_PARTAGE,
+    EventType.VISITEUR_CONCURRENT_SUSPECTE,
 })
 
 

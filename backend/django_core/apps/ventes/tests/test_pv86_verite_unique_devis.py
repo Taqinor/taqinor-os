@@ -209,8 +209,10 @@ class TestAlternativeDeclaree(_Base):
             data['totaux_avec']['ttc'],
             round(sum(it['quantite'] * it['prix_unit_ttc']
                       for it in data['avec_items'])))
-        # Le total de liste = option 1, jamais la somme mensongère des deux.
-        self.assertEqual(data['display_total'], data['totaux_sans']['ttc'])
+        # Le total de liste = option AVEC batterie (LANE CHOIX-AVEC, fondateur
+        # 25/08/2026 : « choisis l'option avec quand tu dois choisir »),
+        # jamais la somme mensongère des deux.
+        self.assertEqual(data['display_total'], data['totaux_avec']['ttc'])
         self.assertLess(data['display_total'], self.ttc_du_devis(devis))
         # Un document à deux options n'est pas un devis à assainir.
         self.assertNotIn('avertissements_internes', data)
@@ -342,6 +344,9 @@ class TestChargeUtilePublique(_Base):
         self.assertEqual(ot['nb_options'], 2)
         self.assertIsNotNone(ot['sans_batterie'])
         self.assertIsNotNone(ot['avec_batterie'])
-        self.assertEqual(ot['display_total'], ot['sans_batterie']['ttc'])
+        # LANE CHOIX-AVEC (fondateur, 25/08/2026) — le total publié pour un
+        # devis à deux options déclarées est celui de l'option AVEC batterie
+        # (servable ici : réseau + hybride + batterie sont tous en lignes).
+        self.assertEqual(ot['display_total'], ot['avec_batterie']['ttc'])
         self.assertNotEqual(
             ot['sans_batterie']['ttc'], ot['avec_batterie']['ttc'])

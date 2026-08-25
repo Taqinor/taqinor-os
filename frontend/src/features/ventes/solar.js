@@ -225,12 +225,17 @@ export function estimerPanneaux(factureHiver, perTranche = 8) {
   return Math.floor(factureHiver / 900) * (Number.isFinite(n) && n > 0 ? n : 8)
 }
 
-// ── Règle de dimensionnement fondateur (18/08) ───────────────────────────────
+// ── Règle de dimensionnement fondateur (18/08, doctrine d'optimum sous
+//    HORIZON FIXE 25/08) ────────────────────────────────────────────────────
 // 1. Une installation se vend par PALIERS de 5 kWc — jamais une taille
 //    intermédiaire (5, 10, 15, 20 …).
 // 2. Le besoin se lit sur la facture d'hiver : 5 kWc par tranche de 900 MAD.
-// 3. La taille RETENUE est celle qui minimise le retour sur investissement
-//    (`optimalKwcByPayback`), pas la plus grosse qui rentre sur le toit.
+// 3. La taille RETENUE n'est PLUS figée au seul palier de payback minimal :
+//    depuis ce palier, on grimpe vers la PLUS GRANDE taille atteignable dont
+//    CHAQUE pas marginal (Δcoût/Δéconomie_annuelle) se rembourse en ≤
+//    `HORIZON_MARGINAL_PV` ans, un horizon FIXE (plus une tolérance relative
+//    au meilleur payback — voir `optimalKwcByPayback`) — jamais la plus
+//    grosse qui rentre sur le toit non plus.
 export const KWC_STEP = 5
 export const MAD_PAR_PALIER = 900
 
@@ -588,8 +593,17 @@ export function computeROI({
   // Q1 — prix TTC RÉEL des lignes onduleur de CHAQUE option (miroir builder.py
   // sans_items/avec_items : « sans » exclut batterie + onduleur hybride,
   // « avec » exclut l'onduleur réseau — mêmes filtres que optionTotalsTTC).
-  const linesSans = lines.filter(l => !isBattery(l.designation) && !isHybridInverter(l.designation))
-  const linesAvec = lines.filter(l => !isReseauInverter(l.designation))
+  // L-2OPT (fondateur 24/08) — `variante` ('' commun | 'sans' | 'avec', posée
+  // par `fusionnerVariantes`) écarte D'ABORD la ligne taguée pour l'AUTRE
+  // option, puis le filtre mot-clé historique s'applique EXACTEMENT comme
+  // avant (une ligne sans `variante` — tout devis hors « Les deux » — n'est
+  // jamais affectée : `undefined !== 'avec'`/`'sans'` vaut toujours vrai).
+  const linesSans = lines
+    .filter(l => l.variante !== 'avec')
+    .filter(l => !isBattery(l.designation) && !isHybridInverter(l.designation))
+  const linesAvec = lines
+    .filter(l => l.variante !== 'sans')
+    .filter(l => !isReseauInverter(l.designation))
   const inverterCostSans = inverterCostFromLines(linesSans)
   const inverterCostAvec = inverterCostFromLines(linesAvec)
 
@@ -854,6 +868,21 @@ export function kwhFromBill(billMad, utility, tranchesOverride) {
   }
   if (kwh == null) kwh = prevCeiling + (bill - costSoFar) / table[table.length - 1][1]
   return { kwhMensuel: Math.round(kwh * 10) / 10, approximatif: approx, estimation: false }
+}
+
+// Consommation annuelle (kWh/an) DÉRIVÉE des 12 factures mensuelles du client,
+// par inversion du barème par tranche du distributeur (`kwhFromBill`, QF1).
+// Rien n'est inventé : la seule entrée est la facture réelle, la seule table
+// est le barème publié. Extraite ici pour qu'il n'existe qu'UNE dérivation —
+// `autoQuote.js` la posait déjà mot pour mot dans `etude_params.conso_annuelle`,
+// et le dimensionnement en a maintenant besoin AVANT le balayage (sans elle,
+// le modèle d'économie ne sature pas et l'ascension marginale sur-vend).
+// 0 quand aucune facture exploitable — l'appelant OMET, il n'invente pas.
+export function consoAnnuelleDepuisFactures(factures, utility) {
+  if (!Array.isArray(factures) || !factures.length) return 0
+  const total = factures.reduce(
+    (somme, bill) => somme + (kwhFromBill(bill, utility).kwhMensuel || 0), 0)
+  return total > 0 ? Math.round(total) : 0
 }
 
 // QF2 — modèle « deux factures » : économie = facture_sans − facture_avec,
@@ -1148,8 +1177,29 @@ export function htFromTtc(ttc, tauxTva = TVA_STANDARD_DEFAUT) {
 export function batteryKwhFromLines(lines) {
   return lines.reduce((sum, l) => {
     if (!isBattery(l.designation)) return sum
+    // L-2OPT — une ligne taguée 'sans' (voir fusionnerVariantes) porte une
+    // quantité issue de la composition SANS batterie, jamais destinée à
+    // compter dans quelque capacité que ce soit ; sans tag (comportement
+    // historique) ce garde-fou est un no-op (`undefined !== 'sans'`).
+    if (l.variante === 'sans') return sum
     const qty = parseFloat(l.quantite) || 0
     return sum + qty * (parseKwh(l.designation) ?? 5.0)
+  }, 0)
+}
+
+// L-2OPT — nombre de PANNEAUX d'une option, avec la MÊME règle d'exclusion
+// que `optionTotalsTTC`/`batteryKwhFromLines` : l'option SANS ignore les
+// lignes taguées 'avec', l'option AVEC ignore celles taguées 'sans' ; une
+// ligne sans tag (tout l'historique, et le cas non divergent de
+// `fusionnerVariantes`) compte dans les DEUX. Sert à dériver le kWc PROPRE à
+// chaque option depuis les lignes — sans quoi l'écran chiffre l'économie
+// d'une composition avec le kWc de l'autre.
+export function comptePanneauxOption(lines, option) {
+  const exclu = option === 'avec' ? 'sans' : 'avec'
+  return (lines || []).reduce((sum, l) => {
+    if (!/panneau/i.test(l?.designation || '')) return sum
+    if (l.variante === exclu) return sum
+    return sum + (parseFloat(l.quantite) || 0)
   }, 0)
 }
 
@@ -1158,10 +1208,17 @@ export function batteryKwhFromLines(lines) {
 // Option 2 AVEC batterie : exclut Onduleur réseau.
 export function optionTotalsTTC(lines, discountPct) {
   const ttc = (l) => (parseFloat(l.quantite) || 0) * (parseFloat(l.prix_unit_ttc) || 0)
+  // L-2OPT — filtre `variante` D'ABORD (écarte la ligne taguée pour l'AUTRE
+  // option, voir fusionnerVariantes), mots-clés EN REPLI ensuite — même
+  // exclusion qu'hier, appliquée qu'une ligne porte un `variante` ou non
+  // (`undefined !== 'avec'`/`'sans'` vaut toujours vrai : aucune régression
+  // sur les lignes legacy/hors « Les deux »).
   const totalSansBrut = lines
+    .filter(l => l.variante !== 'avec')
     .filter(l => !isBattery(l.designation) && !isHybridInverter(l.designation))
     .reduce((s, l) => s + ttc(l), 0)
   const totalAvecBrut = lines
+    .filter(l => l.variante !== 'sans')
     .filter(l => !isReseauInverter(l.designation))
     .reduce((s, l) => s + ttc(l), 0)
 
@@ -1169,6 +1226,86 @@ export function optionTotalsTTC(lines, discountPct) {
   const totalSans = pct > 0 ? Math.round(totalSansBrut * (1 - pct / 100)) : totalSansBrut
   const totalAvec = pct > 0 ? Math.round(totalAvecBrut * (1 - pct / 100)) : totalAvecBrut
   return { totalSansBrut, totalAvecBrut, totalSans, totalAvec }
+}
+
+// ── L-2OPT — deux optimiseurs indépendants (fondateur 24/08) ─────────────────
+// Un devis résidentiel « Les deux (Sans + Avec) » ne dimensionne plus les
+// deux options sur le MÊME kWc : `autoFillLines` est appelé une fois par
+// optimum (sans-batterie / avec-batterie, chacun son propre kWc payback-
+// optimal — voir `optimalKwcByPayback({ avecBatterie })`) et les deux
+// compositions résultantes sont FUSIONNÉES ici, ligne par ligne (les deux
+// tableaux partagent le même ordre de rôles canonique — `ordreLignes`/
+// `marques` identiques des deux côtés — donc un appariement POSITIONNEL est
+// fiable) :
+//   • ligne identique (produit, désignation, prix unitaire TTC, taux TVA,
+//     quantité) → UNE ligne commune, `variante: ''` ;
+//   • ligne de RÔLE (correctif orchestrateur 25/08, aligné sur le backend
+//     `services.fusionner_kits`) : batterie et onduleur hybride appartiennent
+//     au panier AVEC, l'onduleur réseau au panier SANS — en cas de
+//     divergence, seul le panier PROPRIÉTAIRE fait foi (UNE ligne, sa
+//     variante), jamais deux exemplaires. Sans cela, une batterie taguée
+//     'sans' (résidu de la composition superset) serait rangée — ET FACTURÉE
+//     — côté « Sans batterie » par le PDF/l'aval, dont la règle est « la
+//     déclaration prime sur les mots-clés » ;
+//   • quantité (ou produit) divergente sur une ligne ordinaire → DEUX lignes,
+//     `variante: 'sans'` / `'avec'`, chacune portant SA composition ;
+//   • présente d'un seul côté (défensif) → la variante de son RÔLE d'abord,
+//     celle de son côté sinon.
+// Repli de sécurité : deux compositions IDENTIQUES (même kWc des deux côtés,
+// le cas le plus courant) fusionnent en lignes 100 % `variante: ''` —
+// résultat BYTE-IDENTIQUE à l'ancienne composition unique, aucune ligne
+// variantée. Fonction PURE, testable indépendamment de l'écran.
+function _memeLigne(a, b) {
+  if (!a || !b) return false
+  return String(a.produit ?? '') === String(b.produit ?? '')
+    && String(a.designation ?? '') === String(b.designation ?? '')
+    && (parseFloat(a.prix_unit_ttc) || 0) === (parseFloat(b.prix_unit_ttc) || 0)
+    && (parseFloat(a.taux_tva) || 0) === (parseFloat(b.taux_tva) || 0)
+    && (parseFloat(a.quantite) || 0) === (parseFloat(b.quantite) || 0)
+}
+
+// Rôle d'appartenance d'une ligne : 'avec' (batterie/onduleur hybride —
+// panier avec batterie), 'sans' (onduleur réseau), '' (ligne ordinaire).
+// Mêmes mots-clés que le split historique (`optionTotalsTTC`/builder.py).
+function _roleVariante(l) {
+  if (!l) return null
+  const d = l.designation
+  if (isBattery(d) || isHybridInverter(d)) return 'avec'
+  if (isReseauInverter(d)) return 'sans'
+  return ''
+}
+
+export function fusionnerVariantes(lignesSans, lignesAvec) {
+  const sans = Array.isArray(lignesSans) ? lignesSans : []
+  const avec = Array.isArray(lignesAvec) ? lignesAvec : []
+  const n = Math.max(sans.length, avec.length)
+  const out = []
+  for (let i = 0; i < n; i++) {
+    const s = sans[i]
+    const a = avec[i]
+    const rs = _roleVariante(s)
+    const ra = _roleVariante(a)
+    if (s && a && rs === ra && rs === 'avec') {
+      // Batterie / onduleur hybride : le panier AVEC fait foi. Identiques →
+      // ligne commune (split mots-clés historique) ; divergents → SA version,
+      // taguée — jamais un exemplaire fantôme dimensionné pour « sans ».
+      out.push(_memeLigne(s, a) ? { ...s, variante: '' } : { ...a, variante: 'avec' })
+      continue
+    }
+    if (s && a && rs === ra && rs === 'sans') {
+      // Onduleur réseau : le panier SANS fait foi (symétrique du cas avec).
+      out.push(_memeLigne(s, a) ? { ...s, variante: '' } : { ...s, variante: 'sans' })
+      continue
+    }
+    if (s && !a) { out.push({ ...s, variante: rs || 'sans' }); continue }
+    if (a && !s) { out.push({ ...a, variante: ra || 'avec' }); continue }
+    if (_memeLigne(s, a)) { out.push({ ...s, variante: '' }); continue }
+    // Paire ordinaire divergente (ou dérive défensive de rôles) : chaque côté
+    // garde sa version — taguée par son RÔLE quand il en a un.
+    out.push({ ...s, variante: rs || 'sans' })
+    out.push({ ...a, variante: ra || 'avec' })
+  }
+  return out
 }
 
 // ── QJ31 — Multi-propriétés : aperçu écran (TTC) miroir du backend QJ29 ──────
@@ -1700,29 +1837,82 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
   return lignes
 }
 
-// ── Taille OPTIMALE par retour sur investissement (règle fondateur 18/08) ────
+// ── Taille OPTIMALE par retour sur investissement (règle fondateur 18/08,
+//    doctrine d'HORIZON FIXE 25/08 — miroir du backend, `services.py`) ───────
 // On ne vend plus « la plus grosse installation qui rentre » ni « la taille lue
 // sur la facture » : on BALAIE les paliers de 5 kWc, on chiffre CHAQUE palier
 // avec le catalogue réel (`autoFillLines` — jamais un barème au kWc inventé,
 // il n'en existe aucun), on calcule le payback 25 ans de chacun
-// (`computeCashflowPayback`, le MÊME que l'écran, le PDF et la proposition) et
-// on garde le palier dont le payback est le plus court.
+// (`computeCashflowPayback`, le MÊME que l'écran, le PDF et la proposition).
 //
 // Pourquoi un vrai optimum existe : en descendant, les coûts fixes (onduleur,
 // structure, pose) se diluent moins bien ; en montant, la production dépasse
 // l'autoconsommation et mord sur des tranches ONEE moins chères. Les deux
 // forces se croisent — c'est ce croisement qu'on cherche.
 //
-// `besoinKwc` (facture d'hiver, 900 MAD → 5 kWc) PLAFONNE le balayage : on ne
-// propose JAMAIS plus gros que le besoin lu sur la facture. C'est volontaire —
-// le modèle d'économie hérité du simulateur ne sature pas à la consommation
-// réelle, donc sans ce plafond « payback minimal » dériverait mécaniquement
-// vers le haut et sur-vendrait le client. L'optimisation joue donc SOUS le
-// besoin : elle retient un palier plus petit quand il rembourse plus vite.
-// `maxKwc` (surface de toit réelle) resserre encore la borne.
+// DOCTRINE D'HORIZON FIXE (fondateur 25/08, RECALÉE depuis la tolérance
+// relative du même jour) — « chaque dirham ajouté à l'installation doit se
+// rembourser en ≤ `HORIZON_MARGINAL_PV` ans ». L'horizon RELATIF (tolérance
+// en % au-dessus du meilleur payback) punissait les meilleurs dossiers : un
+// meilleur payback à 3 ans ne tolérait qu'un pas marginal ≤ 3,6 ans (20 %),
+// refusant des pas qui se remboursent pourtant en 5 ans sur du matériel
+// garanti 30 ans. Un horizon FIXE traite chaque pas marginal sur son propre
+// mérite, indépendamment du reste du dossier. Précédent documenté : une
+// contrainte payback ≤ 10 ans couplée à la maximisation de valeur (MDPI
+// Energies 19(7):1803) — soit environ 10 %/an de rendement simple exigé sur
+// le pas marginal lui-même. (Le backend porte en plus, pour son propre
+// balayage conjoint PV+batterie, `HORIZON_MARGINAL_BATTERIE = 7` sur les pas
+// de stockage — hors périmètre de ce fichier, mentionné ici pour l'alignement
+// des deux moteurs.)
 //
-// Retourne { kwcOptimal, nbPanneaux, paliers[] } — `paliers` porte le détail
-// chiffré de chaque candidat pour que l'écran puisse JUSTIFIER le choix.
+// On part du palier au meilleur payback, puis on GRIMPE vers la plus grande
+// taille atteignable par des pas ascendants dont CHAQUE pas MARGINAL (Δcoût
+// du pas / Δéconomie annuelle du pas — PAS le payback cumulé du palier) se
+// rembourse en ≤ `HORIZON_MARGINAL_PV`, un seuil FIXE qui ne dépend PLUS du
+// meilleur payback du dossier. Dès qu'un pas dépasse l'horizon (ou n'apporte
+// aucune économie marginale positive), l'ascension s'arrête — on ne saute
+// jamais un pas refusé pour en essayer un plus loin.
+//
+// Preuve sur le payback GLOBAL du palier retenu — notons C/E le coût/
+// l'économie annuelle CUMULÉS depuis le palier de départ (C0, E0, avec
+// C0/E0 = meilleur_payback, H = HORIZON_MARGINAL_PV). Chaque pas admis vérifie
+// ΔCi ≤ H·ΔEi ; en sommant sur tous les pas admis : Cn − C0 ≤ H·(En − E0),
+// donc Cn ≤ (C0 − H·E0) + H·En, donc Cn/En ≤ H + (C0 − H·E0)/En. Deux cas :
+// (1) meilleur_payback ≤ H — alors C0 − H·E0 ≤ 0, donc Cn/En ≤ H pour TOUT
+//     palier atteint : le payback global ne peut jamais dépasser l'horizon.
+// (2) meilleur_payback > H (dossier dont même le meilleur palier dépasse
+//     l'horizon) — alors C0 − H·E0 > 0, et le terme (C0 − H·E0)/En DÉCROÎT
+//     avec En (En ≥ E0 en montant) depuis sa valeur en E0, qui vaut
+//     exactement meilleur_payback − H ; donc Cn/En ≤ H + (meilleur_payback −
+//     H) = meilleur_payback. Ce cas est la GARDE meilleur-payback-hors-
+//     horizon : la doctrine ne peut jamais faire pire que le choix pur
+//     payback qu'elle remplace.
+// En combinant les deux cas, la preuve télescopique du commit 12927b2b (qui
+// garantissait payback global ≤ H) devient honnêtement, sous horizon fixe :
+// payback global du palier retenu ≤ max(meilleur_payback, HORIZON_MARGINAL_PV).
+//
+// `besoinKwc` (facture d'hiver, 900 MAD → 5 kWc) PLAFONNE le balayage : on ne
+// propose JAMAIS plus gros que le besoin lu sur la facture. `maxKwc` (surface
+// de toit réelle) resserre encore la borne.
+//
+// LE PLAFOND N'EST PAS UNE DOCTRINE DE DIMENSIONNEMENT (finding 25/08, mesuré).
+// Il a longtemps SERVI de garde-fou parce que le modèle d'économie hérité du
+// simulateur ne sature pas à la consommation réelle — mais un garde-fou qui
+// consiste à ne jamais s'arrêter avant le plafond N'EST PAS un choix : mesuré
+// sur le catalogue/les factures de solar.dimensionnement.test.mjs SANS
+// consommation, l'ascension finit TOUJOURS au plafond (besoin 40 → 40 kWc,
+// 100 → 100 kWc / 522 341 MAD, 200 → 200 kWc). La vraie réponse est la GARDE
+// DE SATURATION implémentée plus bas : l'ascension marginale n'est autorisée
+// que si l'économie sature réellement (consommation réelle fournie) ; sinon on
+// rend le choix PUR payback. Les deux appelants réels fournissent désormais la
+// consommation, dérivée des factures du client par le barème
+// (`consoAnnuelleDepuisFactures`).
+//
+// Retourne { kwcOptimal, nbPanneaux, paliers[] } — signature et forme du
+// retour INCHANGÉES ; `paliers` gagne (additif) `paybackMarginal`/
+// `admissibleMarginal` sur les candidats examinés pendant l'ascension, pour
+// que l'écran puisse JUSTIFIER le choix sans casser les lecteurs existants.
+export const HORIZON_MARGINAL_PV = 10 // fondateur 25/08 — ans, seuil FIXE (plus une tolérance relative)
 export function optimalKwcByPayback({
   produits, factures, dayUsagePct, panelW = 710, structureType,
   discountPct, kwhPrice, efficiency, productible, consoAnnuelleKwh, utility,
@@ -1731,6 +1921,14 @@ export function optimalKwcByPayback({
   // QUELLES à chaque palier chiffré : le balayage compare des paliers
   // composés avec la MÊME contrainte de marque que l'auto-remplissage final.
   marques,
+  // Doctrine d'horizon fixe (fondateur 25/08) — override RÉSERVÉ AUX TESTS.
+  // `horizonMarginal = meilleur_payback` (dynamique, calculé par l'appelant)
+  // reproduit exactement l'ancien choix relatif-zéro (aucun pas marginal ne
+  // peut alors dépasser le meilleur payback lui-même). Les DEUX appels réels
+  // (DevisGenerator, sans/avecBatterie) ne le passent jamais et héritent donc
+  // HORIZON_MARGINAL_PV (10 ans) — signature et comportement par défaut
+  // inchangés pour eux.
+  horizonMarginal = HORIZON_MARGINAL_PV,
 }) {
   const pas = (Number.isFinite(Number(step)) && Number(step) > 0) ? Number(step) : KWC_STEP
   const besoin = Number(besoinKwc) > 0 ? Number(besoinKwc) : 0
@@ -1796,17 +1994,84 @@ export function optimalKwcByPayback({
       repliMarqueManquante: marquesManquantes.length > 0,
     }
   }
-  // Payback le plus court ; à égalité stricte on garde le palier le PLUS PETIT
-  // (même retour, moins d'argent immobilisé chez le client).
+  // Point de départ : le payback le plus court ; à égalité stricte on garde
+  // le palier le PLUS PETIT (même retour, moins d'argent immobilisé).
   const meilleur = chiffrables.reduce((best, p) => (
     p.payback < best.payback - 1e-9 ? p : best
   ), chiffrables[0])
+
+  // Ascension sous horizon FIXE (doctrine fondateur 25/08 — voir le
+  // commentaire au-dessus de la fonction pour la preuve). `chiffrables`
+  // conserve l'ordre CROISSANT de `paliers` (filter ne réordonne jamais),
+  // donc grimper par index depuis `meilleur` grimpe bien en kWc. `H` ne
+  // dépend PLUS de `meilleur.payback` — c'est le seuil fixe lui-même (ou son
+  // override réservé aux tests).
+  const H = Number.isFinite(Number(horizonMarginal)) && Number(horizonMarginal) >= 0
+    ? Number(horizonMarginal) : HORIZON_MARGINAL_PV
+
+  // ── LES DEUX GARDES QUI AUTORISENT (OU NON) L'ASCENSION ──────────────────
+  //
+  // (1) GARDE DE SATURATION (finding 25/08 — mesurée). L'ascension marginale
+  //     n'a de sens que si l'économie SATURE quand la production dépasse ce
+  //     que le client peut consommer. Or `computeROI` ne plafonne l'économie
+  //     à la consommation réelle QUE si `consoAnnuelleKwh` lui est fourni :
+  //     sans elle, l'économie est un pourcentage de la seule PRODUCTION, donc
+  //     LINÉAIRE en kWc — ΔCoût/ΔÉconomie reste alors quasi constant palier
+  //     après palier, toujours sous l'horizon, et l'ascension ne peut
+  //     MÉCANIQUEMENT jamais s'arrêter : elle finit toujours au plafond du
+  //     balayage. Mesuré sur le catalogue et les factures de
+  //     solar.dimensionnement.test.mjs : besoin 40 → 40 kWc, 60 → 60, 100 →
+  //     100 kWc (522 341 MAD), 200 → 200 kWc — le « choix » ne dépendait plus
+  //     que du plafond. Avec la consommation réelle (17 870 kWh/an dérivée
+  //     des mêmes factures), l'économie sature à 29 000 MAD/an dès 25 kWc et
+  //     le pas 25→30 n'achète plus RIEN : l'ascension s'arrête d'elle-même.
+  //     Sans saturation on retombe donc sur le choix PUR payback — la règle
+  //     marginale sur-vend mécaniquement, elle ne peut pas être appliquée à
+  //     un modèle qui ne sature pas.
+  //
+  // (2) GARDE DÉPART-HORS-HORIZON (miroir de `depart_dans_horizon`,
+  //     apps/ventes/dimensionnement.py) : quand le palier de DÉPART dépasse
+  //     déjà l'horizon, lui ajouter des dirhams ne peut qu'aggraver son cas.
+  //     C'est le cas (2) de la preuve ci-dessus, rendu EXPLICITE ici comme
+  //     côté backend — la doctrine ne peut jamais rendre un dossier faible
+  //     plus mauvais que le choix pur qu'elle remplace.
+  const modeleSature = Number(consoAnnuelleKwh) > 0
+  const departDansHorizon = meilleur.payback > 0 && meilleur.payback <= H + 1e-9
+  if (!modeleSature || !departDansHorizon) {
+    return {
+      kwcOptimal: meilleur.kwc,
+      nbPanneaux: meilleur.nbPanneaux ?? panneauxPourKwc(meilleur.kwc, panelW),
+      paliers,
+      marquesManquantes,
+      repliMarqueManquante: false,
+      // Additif — dit POURQUOI l'ascension n'a pas eu lieu (aucun lecteur
+      // existant ne le lit ; l'écran peut le justifier sans deviner).
+      ascensionDesactivee: !modeleSature ? 'sans_saturation' : 'depart_hors_horizon',
+    }
+  }
+
+  const idxMeilleur = chiffrables.indexOf(meilleur)
+  let retenu = meilleur
+  for (let i = idxMeilleur + 1; i < chiffrables.length; i++) {
+    const candidat = chiffrables[i]
+    const deltaCout = candidat.totalTtc - retenu.totalTtc
+    const deltaEco = candidat.economieAnnuelle - retenu.economieAnnuelle
+    // Pas d'économie marginale positive ⇒ ce pas ne se rembourse JAMAIS —
+    // payback marginal infini, donc forcément inadmissible.
+    const paybackMarginal = deltaEco > 0 ? deltaCout / deltaEco : Infinity
+    candidat.paybackMarginal = Number.isFinite(paybackMarginal) ? paybackMarginal : null
+    candidat.admissibleMarginal = Number.isFinite(paybackMarginal) && paybackMarginal <= H + 1e-9
+    if (!candidat.admissibleMarginal) break
+    retenu = candidat
+  }
+
   return {
-    kwcOptimal: meilleur.kwc,
-    nbPanneaux: meilleur.nbPanneaux ?? panneauxPourKwc(meilleur.kwc, panelW),
+    kwcOptimal: retenu.kwc,
+    nbPanneaux: retenu.nbPanneaux ?? panneauxPourKwc(retenu.kwc, panelW),
     paliers,
     marquesManquantes,
     repliMarqueManquante: false,
+    ascensionDesactivee: null,
   }
 }
 

@@ -776,6 +776,11 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             'noter', 'devis_auto', 'archiver', 'restaurer',
             'whatsapp_devis', 'bulk', 'log_interaction',
             'appliquer_plan',
+            # L-QUEST — get_permissions() PRIME sur le permission_classes de
+            # l'@action : sans cette ligne, `questionnaire-lien` retomberait
+            # sur le `return [IsAdminRole()]` final et la Commerciale — qui
+            # envoie justement le questionnaire — serait refusée.
+            'questionnaire_lien',
         ]:
             # L'archivage réversible est ouvert à la Commerciale.
             return [IsResponsableOrAdmin()]
@@ -821,7 +826,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         (30 j) vers le PDF CLIENT — jamais de prix d'achat ni de marge.
         """
         from apps.ventes.selectors import devis_for_lead
-        from apps.ventes.utils.phone import normalize_ma_phone
+        from apps.ventes.utils.phone import normalize_phone_e164
         from apps.ventes.utils.whatsapp import (
             build_devis_whatsapp, build_wa_url,
         )
@@ -850,9 +855,9 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         phone = lead.whatsapp or lead.telephone
-        if not normalize_ma_phone(phone):
+        if not normalize_phone_e164(phone):
             return Response(
-                {'detail': 'Aucun numéro de téléphone.'},
+                {'detail': 'Numéro de téléphone invalide.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         # Langue du message : la valeur explicite de la requête l'emporte ;
@@ -1243,6 +1248,59 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         return Response(
             {'ok': True, 'detail': 'Lead prêt pour le devis automatique.'})
 
+    # ── L-QUEST — Questionnaire envoyable au client ──────────────────────────
+    @action(detail=True, methods=['post'], url_path='questionnaire-lien',
+            permission_classes=[IsResponsableOrAdmin])
+    def questionnaire_lien(self, request, pk=None):
+        """Crée (ou réutilise) le lien questionnaire d'un lead et renvoie de
+        quoi l'envoyer au client.
+
+        Le commercial choisit les questions via ``questions`` ({section:
+        true/false}) ; sans corps, ce sont les informations MANQUANTES qui
+        sont posées (ordre fondateur). Idempotent : un re-POST sur le même
+        lead renvoie le MÊME lien tant qu'il n'a pas expiré, avec ses
+        questions mises à jour — jamais un second jeton chez le client.
+
+        La réponse porte DEUX URL : ``url`` (celle du client, la seule à
+        envoyer) et ``url_interne`` (aperçu commercial, muet — il ne
+        déclenche rien et n'écrit rien). Contrat :
+        ``apps/crm/contract_samples/questionnaire_lead.json``."""
+        from . import questionnaire as quest
+
+        lead = self.get_object()
+        try:
+            questions = quest.valider_questions(request.data.get('questions'))
+        except quest.SectionInconnue as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        lien, change, cree = quest.mint_lien(
+            lead, questions=questions, user=request.user)
+        posees = [cle for cle in quest.SECTIONS if lien.question_posee(cle)]
+        if change:
+            # Recalage fold 25/08 — jamais « envoyé » : le serveur n'observe
+            # pas l'envoi WhatsApp. « créé » à la première ouverture du
+            # dialogue, « mis à jour » quand le commercial change les
+            # questions ; un re-POST identique ne laisse aucune trace.
+            verbe = ('créé' if cree else 'mis à jour')
+            activity.log_note(
+                lead, request.user,
+                f'Lien questionnaire {verbe} (sections : '
+                + ', '.join(quest.LIBELLE_SECTION[c] for c in posees) + ')')
+        return Response({
+            # Les DEUX URL pointent sur le SITE PUBLIC (``PUBLIC_SITE_URL``),
+            # jamais sur l'hôte de cette requête : la page questionnaire vit
+            # dans ``apps/web``, pas sur l'API — un lien construit sur l'hôte
+            # de l'API partait mort chez le client (finding #6).
+            'url': quest.url_publique(lien.token),
+            'url_interne': quest.url_publique(lien.token_interne),
+            'token': lien.token,
+            'expires_at': lien.expires_at.isoformat(),
+            'questions': {cle: lien.question_posee(cle)
+                          for cle in quest.SECTIONS},
+            'manquantes': quest.manquantes(lead),
+        })
+
     # ── FG31 — File de relance du jour ───────────────────────────────────────
     @action(detail=False, methods=['get'], url_path='relances',
             permission_classes=[IsAnyRole])
@@ -1341,10 +1399,14 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         lead = self.get_object()
         company = request.user.company
         from .models import Client as ClientModel
-        from apps.ventes.utils.phone import normalize_ma_phone
+        # 25/08/2026 — LANE NUMÉROS INTERNATIONAUX : bascule depuis
+        # `apps.ventes.utils.phone.normalize_ma_phone` (forçait un préfixe
+        # '212', ne rapprochait jamais un lead à numéro étranger) vers la
+        # même clé QW10 que `selectors.find_client_by_phone` juste au-dessus.
+        from .services import normalize_phone
 
         conditions = []
-        phone_norm = normalize_ma_phone(lead.telephone or '') if lead.telephone else None
+        phone_norm = normalize_phone(lead.telephone or '') if lead.telephone else None
         email_norm = (lead.email or '').strip().lower() or None
         if phone_norm:
             conditions.append(
@@ -1357,7 +1419,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         pks_seen = set()
         if phone_norm:
             for c in client_qs:
-                norm = normalize_ma_phone(c.telephone or '') if c.telephone else None
+                norm = normalize_phone(c.telephone or '') if c.telephone else None
                 if norm and norm == phone_norm and c.pk not in pks_seen:
                     found.append(c)
                     pks_seen.add(c.pk)
@@ -2002,7 +2064,7 @@ class AppointmentViewSet(CompanyScopedModelViewSet):
             request, appt)
         if wa_url is None:
             return Response(
-                {'detail': 'Aucun numéro de téléphone.'},
+                {'detail': 'Numéro de téléphone invalide.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         return Response({

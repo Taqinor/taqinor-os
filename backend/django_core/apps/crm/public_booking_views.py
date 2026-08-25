@@ -102,8 +102,31 @@ def public_booking_reserve(request, token):
     except ValueError as exc:
         return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
+    _tracer_reservation(request, link)
     return Response({
         'detail': 'Rendez-vous réservé.',
         'appointment_id': appointment.pk,
         'lead_id': link.lead_id,
     }, status=status.HTTP_201_CREATED)
+
+
+def _tracer_reservation(request, link):
+    """T-TRACE (25/08/2026) — trace anti-fraude d'une réservation PUBLIQUE.
+
+    Posée APRÈS la réservation réussie : une tentative refusée (créneau
+    invalide, lien expiré) n'est pas une visite à consigner. Le jeton n'est
+    pas transmis en entier — le service n'en garde que les 6 derniers
+    caractères. Strictement best-effort : un rendez-vous déjà réservé ne doit
+    jamais paraître en échec à cause d'une trace."""
+    try:
+        from .services import appareil_de_requete, tracer_et_correler
+        tracer_et_correler(
+            getattr(link, 'company', None), point='booking',
+            lead=getattr(link, 'lead', None),
+            appareil_id=appareil_de_requete(request),
+            contexte='Réservation de visite',
+            token=getattr(link, 'token', ''),
+            request=request,
+        )
+    except Exception:  # noqa: BLE001 — best-effort, jamais de fuite
+        pass

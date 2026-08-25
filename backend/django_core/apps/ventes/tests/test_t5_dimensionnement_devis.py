@@ -22,11 +22,18 @@ from apps.ventes.services import rafraichir_dimensionnement_devis
 
 User = get_user_model()
 
+#: PIN DEPLACE LE 25/08/2026 — trois cles ADDITIVES : la doctrine d'optimum
+#: rend ses deux horizons (dix ans pour des panneaux, sept pour du stockage) et
+#: sa regle en clair, exactement comme ``regle_onduleur_min`` /
+#: ``regle_stockage`` rendaient deja les leurs. Aucune cle n'a disparu : le
+#: contrat que le moteur PDF et le payload public consomment est intact.
 DIM_TOP_LEVEL_KEYS = {
     'critere', 'criteres_disponibles', 'regle_onduleur_min',
     'max_paliers_stockage', 'regle_stockage', 'tableau', 'recommandation',
     'motivation', 'recommandation_avec', 'motivation_avec', 'falaise',
     'meilleure_falaise',
+    'horizon_marginal_pv_annees', 'horizon_marginal_batterie_annees',
+    'regle_optimum',
 }
 
 

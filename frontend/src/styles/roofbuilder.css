@@ -286,3 +286,42 @@
   background: var(--muted);
 }
 .ao-carte-degrade p { margin: 0 0 0.5rem; }
+
+/* ── W69 — plan des emplacements du calepinage manuel (grille tactile des
+   panneaux, zéro CLS). Porté de apps/web/toiture-3d-pro-11.astro (sélecteurs
+   identiques : rp9-layout-grid/rp9-layout-cell), scopé sous .rp9-host comme
+   le reste de ce fichier. ─────────────────────────────────────────────────── */
+.rp9-host .rp9-layout-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(34px, 1fr));
+  gap: 5px;
+}
+.rp9-host .rp9-layout-cell {
+  aspect-ratio: 1.83 / 1; /* panneau ~2,38 × 1,30 m */
+  border: 1px solid rgb(255 255 255 / 0.18);
+  background: rgb(255 255 255 / 0.04);
+  cursor: pointer;
+  transition: background-color 120ms, border-color 120ms;
+  padding: 0;
+}
+.rp9-host .rp9-layout-cell[data-occupied='true'] {
+  background: rgb(127 180 232 / 0.55); /* panneau posé (bleu azur) */
+  border-color: rgb(127 180 232 / 0.8);
+}
+.rp9-host .rp9-layout-cell[aria-pressed='true'] {
+  outline: 2px solid var(--rp-brass-400);
+  outline-offset: 1px;
+}
+/* Survol : cible VALIDE = vert, cible INVALIDE = rouge (occupée). */
+.rp9-host .rp9-layout-cell[data-occupied='false']:hover,
+.rp9-host .rp9-layout-cell[data-occupied='false']:focus {
+  background: rgb(74 222 128 / 0.45);
+  border-color: rgb(74 222 128 / 0.9);
+}
+.rp9-host .rp9-layout-cell[data-occupied='true']:hover,
+.rp9-host .rp9-layout-cell[data-occupied='true']:focus {
+  border-color: rgb(248 113 113 / 0.9);
+}
+@media (prefers-reduced-motion: reduce) {
+  .rp9-host .rp9-layout-cell { transition: none; }
+}

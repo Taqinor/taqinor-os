@@ -8,7 +8,7 @@ import {
   DropdownMenuSeparator,
 } from '../../../ui'
 import { initials } from '../../../ui/Avatar'
-import { normalizeMaPhone, formatDate, formatNumber } from '../../../lib/format'
+import { normalizePhoneE164, formatDate, formatNumber } from '../../../lib/format'
 import { useConfirmDialog, toast } from '../../../ui/confirm'
 import { useDuplicateCheck } from '../../../hooks/useDuplicateCheck'
 import { useIsAdminOrResponsable } from '../../../hooks/useHasPermission'
@@ -160,11 +160,19 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
   const gpsLng = getField(state, 'gps_lng')
   const hasGps = gpsLat != null && gpsLat !== '' && gpsLng != null && gpsLng !== ''
   const callPhone = telephone || whatsapp
-  // LW7 — bouton WhatsApp armé UNIQUEMENT sur un numéro normalisable (sinon null).
-  const waPhone = normalizeMaPhone(whatsapp || telephone)
+  // LW7 — bouton WhatsApp armé UNIQUEMENT sur un numéro normalisable (sinon
+  // null). 25/08/2026 — E.164 générale : un numéro étranger arme aussi.
+  const waPhone = normalizePhoneE164(whatsapp || telephone)
 
   // ── Préparation (chips QX28) ────────────────────────────────────────────────
-  const roofReady = !!server.roof_point
+  // L-TRACE (fondateur 25/08 : « when client draws his roof i still only
+  // receive position ») — la donnée arrivait depuis toujours (webhook →
+  // Lead.roof_outline → hydratation 3D), mais le badge écrasait « contour
+  // tracé » et « simple point » sous le même libellé : le commercial ne
+  // savait jamais qu'un tracé complet l'attendait dans l'écran 3D.
+  const roofOutlineReady = Array.isArray(server.roof_outline)
+    && server.roof_outline.length >= 3
+  const roofReady = roofOutlineReady || !!server.roof_point
   const factureReady = server.facture_hiver != null && server.facture_hiver !== ''
   const devisReady = !!(server.devis_auto && server.devis_auto.pret)
   const devisNotReadyMsg = (server.devis_auto && server.devis_auto.message)
@@ -396,9 +404,13 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
       <div className="lw-rail-chips">
         <Badge
           tone={roofReady ? 'success' : 'neutral'}
-          title={roofReady ? 'Un repère GPS de toiture a été capturé (site ou 3D)' : 'Aucun repère GPS de toiture pour le moment'}
+          title={roofOutlineReady
+            ? 'Le client a tracé le contour de son toit — ouvrez « Concevoir la toiture (3D) » : il y est déjà chargé'
+            : roofReady
+              ? 'Un repère GPS de toiture a été capturé (site ou 3D)'
+              : 'Aucun repère GPS de toiture pour le moment'}
         >
-          📍 {roofReady ? 'Toit épinglé' : 'Toit non épinglé'}
+          {roofOutlineReady ? '⬠ Contour tracé' : `📍 ${roofReady ? 'Toit épinglé' : 'Toit non épinglé'}`}
         </Badge>
         <Badge
           tone={factureReady ? 'info' : 'neutral'}
@@ -540,6 +552,15 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
               title="Ouvrir l'outil de conception 3D avec ce lead déjà chargé"
             >
               Concevoir la toiture (3D){hasGps ? ' 📍' : ''}
+            </DropdownMenuItem>
+            {/* LANE Q-C (fondateur 25/08/2026) — le commercial choisit quelles
+                informations demander au lead (défaut = ce qui manque),
+                toutes cochables/décochables avant l'envoi. */}
+            <DropdownMenuItem
+              onSelect={() => onAction('questionnaire')}
+              title="Envoyer un lien de questionnaire au lead (2 min, sections cochables)"
+            >
+              Envoyer un questionnaire
             </DropdownMenuItem>
             {!alreadyClient && (
               <DropdownMenuItem

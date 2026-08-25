@@ -2,14 +2,17 @@
 // dépendance externe) consommés par `hooks/usePasteClean.js`. Séparés dans
 // leur propre module pour rester testables tels quels avec `node --test`
 // dans les worktrees sans `node_modules` (react non disponible).
-import { canonicalPhoneMA } from './format.js'
+import { canonicalPhoneMA, normalizePhoneE164 } from './format.js'
 
 /**
  * Nettoie un numéro de téléphone/WhatsApp collé (espaces, points, tirets,
  * parenthèses...) vers la forme canonique de stockage `+2126XXXXXXXX` /
- * `+2125XXXXXXXX` / `+2127XXXXXXXX`. Retourne `null` si le texte collé ne
- * ressemble à aucun numéro marocain reconnaissable (laisse le collage natif
- * agir — jamais de valeur inventée).
+ * `+2125XXXXXXXX` / `+2127XXXXXXXX` (marocain), ou `+<indicatif><reste>`
+ * (étranger à indicatif EXPLICITE — 25/08/2026, LANE NUMÉROS
+ * INTERNATIONAUX). Retourne `null` si le texte collé ne ressemble à aucun
+ * numéro reconnaissable (laisse le collage natif agir — jamais de valeur
+ * inventée ; un local ambigu sans indicatif reste rejeté, jamais pris pour
+ * un étranger).
  */
 export function parsePastedPhone(text) {
   if (!text) return null
@@ -22,8 +25,10 @@ export function parsePastedPhone(text) {
   // canonicalPhoneMA renvoie les chiffres bruts (sans '+') quand la forme
   // n'est pas reconnaissable — dans ce cas on préfère laisser le collage
   // natif plutôt qu'imposer une valeur non canonique.
-  if (!canonical || !canonical.startsWith('+212')) return null
-  return canonical
+  if (canonical && canonical.startsWith('+212')) return canonical
+  const e164 = normalizePhoneE164(trimmed)
+  if (e164 && !e164.startsWith('212')) return `+${e164}`
+  return null
 }
 
 /**

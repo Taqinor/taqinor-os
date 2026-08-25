@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 9421, operations: 16932, components: 4952}
+counts: {paths: 9427, operations: 16940, components: 4957}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -2588,6 +2588,7 @@ operations:
 - post /api/django/crm/leads/{id}/merge/ -> django_crm_leads_merge_create
 - post /api/django/crm/leads/{id}/noter/ -> django_crm_leads_noter_create
 - get /api/django/crm/leads/{id}/points-contact/ -> django_crm_leads_points_contact_retrieve
+- post /api/django/crm/leads/{id}/questionnaire-lien/ -> django_crm_leads_questionnaire_lien_create
 - post /api/django/crm/leads/{id}/restaurer/ -> django_crm_leads_restaurer_create
 - get /api/django/crm/leads/{id}/salle-vente-analytics/ -> django_crm_leads_salle_vente_analytics_retrieve
 - post /api/django/crm/leads/{id}/whatsapp-devis/ -> django_crm_leads_whatsapp_devis_create
@@ -2675,6 +2676,9 @@ operations:
 - get /api/django/crm/public/chat/sessions/{token}/ -> django_crm_public_chat_sessions_retrieve
 - post /api/django/crm/public/chat/sessions/{token}/messages/ -> django_crm_public_chat_sessions_messages_create
 - get /api/django/crm/public/lead-ref/{idempotency_key}/ -> django_crm_public_lead_ref_retrieve
+- get /api/django/crm/public/questionnaire/{token}/ -> django_crm_public_questionnaire_retrieve
+- post /api/django/crm/public/questionnaire/{token}/ -> django_crm_public_questionnaire_create
+- post /api/django/crm/public/visite/ -> django_crm_public_visite_create
 - get /api/django/crm/rapports/attribution/ -> django_crm_rapports_attribution_retrieve
 - get /api/django/crm/revues-compte/ -> django_crm_revues_compte_list
 - post /api/django/crm/revues-compte/ -> django_crm_revues_compte_create
@@ -11091,6 +11095,7 @@ operations:
 - post /api/v1/crm/leads/{id}/merge/ -> v1_crm_leads_merge_create
 - post /api/v1/crm/leads/{id}/noter/ -> v1_crm_leads_noter_create
 - get /api/v1/crm/leads/{id}/points-contact/ -> v1_crm_leads_points_contact_retrieve
+- post /api/v1/crm/leads/{id}/questionnaire-lien/ -> v1_crm_leads_questionnaire_lien_create
 - post /api/v1/crm/leads/{id}/restaurer/ -> v1_crm_leads_restaurer_create
 - get /api/v1/crm/leads/{id}/salle-vente-analytics/ -> v1_crm_leads_salle_vente_analytics_retrieve
 - post /api/v1/crm/leads/{id}/whatsapp-devis/ -> v1_crm_leads_whatsapp_devis_create
@@ -11178,6 +11183,9 @@ operations:
 - get /api/v1/crm/public/chat/sessions/{token}/ -> v1_crm_public_chat_sessions_retrieve
 - post /api/v1/crm/public/chat/sessions/{token}/messages/ -> v1_crm_public_chat_sessions_messages_create
 - get /api/v1/crm/public/lead-ref/{idempotency_key}/ -> v1_crm_public_lead_ref_retrieve
+- get /api/v1/crm/public/questionnaire/{token}/ -> v1_crm_public_questionnaire_retrieve
+- post /api/v1/crm/public/questionnaire/{token}/ -> v1_crm_public_questionnaire_create
+- post /api/v1/crm/public/visite/ -> v1_crm_public_visite_create
 - get /api/v1/crm/rapports/attribution/ -> v1_crm_rapports_attribution_retrieve
 - get /api/v1/crm/revues-compte/ -> v1_crm_revues_compte_list
 - post /api/v1/crm/revues-compte/ -> v1_crm_revues_compte_create
@@ -21027,10 +21035,14 @@ components:
 - PublicPolitiqueStock
 - PublicPrevisionDemande
 - PublicProduit
+- PublicQuestionnaireReponse
+- PublicQuestionnaireReponseRequestRequest
 - PublicSalleVente
 - PublicSalleVenteItem
 - PublicScmTableauBordReappro
 - PublicScmTableauBordReapproLigne
+- PublicVisiteReponse
+- PublicVisiteRequestRequest
 - PutAway
 - PutAwayRequest
 - PutAwayStatutEnum
@@ -21833,6 +21845,7 @@ components:
 - VarianteCalepinageRequest
 - VarianteCalepinageRoleEnum
 - VarianteCalepinageStatutEnum
+- VarianteEnum
 - VariationScoreMaturite
 - Vehicule
 - VehiculeRequest

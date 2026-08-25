@@ -37,25 +37,58 @@ def _blob(ligne) -> str:
     return f"{desig} {nom}"
 
 
+#: L-2OPT — les deux variantes EXPLICITES de ``LigneDevis.variante`` ('' =
+#: ligne commune, soumise au découpage par mots-clés comme avant).
+VARIANTE_SANS = 'sans'
+VARIANTE_AVEC = 'avec'
+
+
+def _variante(ligne) -> str:
+    """Variante déclarée d'une ligne, '' quand elle n'en porte pas (ligne
+    commune, ligne historique, ou objet de test sans le champ)."""
+    return getattr(ligne, 'variante', '') or ''
+
+
 def filter_lines_for_option(lignes, option):
     """Filtre PUR d'une liste de lignes selon l'option (testable sans Django).
 
     Miroir exact du split de ``build_quote_data`` : « sans » = ni batterie ni
     onduleur hybride ; « avec » = pas d'onduleur réseau. Toute autre valeur
     (vide / inconnue) renvoie toutes les lignes.
+
+    L-2OPT — LA VARIANTE DÉCLARÉE PASSE DEVANT LES MOTS-CLÉS, et elle est
+    EXCLUSIVE : une ligne ``variante='avec'`` ne part JAMAIS dans un document
+    aval « sans batterie », et réciproquement. C'est ce qui rend facturable un
+    devis dont les deux options n'ont pas le même champ PV — sans elle, les
+    panneaux, la structure et la pose des DEUX options seraient commandés,
+    puisque les mots-clés les classent « commun ». Une ligne SANS variante
+    ('' — toutes celles d'hier) reste soumise aux mots-clés, mot pour mot :
+    aucun devis existant ne change de périmètre.
     """
     if option == SANS_BATTERIE:
         return [li for li in lignes
-                if not _is_battery(_blob(li))
+                if _variante(li) != VARIANTE_AVEC
+                and not _is_battery(_blob(li))
                 and not _is_hybrid_inverter(_blob(li))]
     if option == AVEC_BATTERIE:
-        return [li for li in lignes if not _is_reseau_inverter(_blob(li))]
+        return [li for li in lignes
+                if _variante(li) != VARIANTE_SANS
+                and not _is_reseau_inverter(_blob(li))]
     return list(lignes)
 
 
 def has_two_options(devis) -> bool:
     """True si le devis comporte deux VRAIES options (réseau ET hybride+batterie)
     — seul cas où l'option retenue change réellement le périmètre facturé."""
+    # L-2OPT — une ligne VARIANTÉE est à elle seule la preuve d'un devis à deux
+    # options : elle n'existe que parce que la composition a distingué les deux.
+    # Contrôlé AVANT le moteur (une requête, aucun rendu) et sans jamais lever :
+    # un devis à deux champs PV doit être filtré même si le PDF échoue.
+    try:
+        if devis is not None and devis.lignes.exclude(variante='').exists():
+            return True
+    except Exception:  # noqa: BLE001 — l'aval ne doit jamais casser ici
+        pass
     try:
         from apps.ventes.quote_engine.builder import build_quote_data
         data = build_quote_data(devis, {'pdf_mode': 'onepage'})
@@ -154,9 +187,18 @@ def totaux_affichage_repli(devis) -> dict:
     ``devis.total_ttc`` — pour un devis à deux options, la SOMME des deux
     paniers, un montant qui n'existe dans AUCUN document — sans badge (le
     ``nb_options: 1`` du repli masquait tout). Ici : deux options déclarées →
-    total de l'option 1 par la même chaîne canonique que le PDF, et
-    ``comparaison_repli`` porte les deux totaux pour l'affichage « A / B » de
-    la liste. Mono-option → total stocké, comportement historique inchangé.
+    le total de l'option mise en avant, par la même chaîne canonique que le
+    PDF, et ``comparaison_repli`` porte les deux totaux pour l'affichage
+    « A / B » de la liste. Mono-option → total stocké, historique inchangé.
+
+    F1 (26/08/2026) — LE REPLI SUIT LA CHAÎNE CANONIQUE. Ce repli servait
+    encore le total de l'option 1 (« Sans batterie ») alors que la chaîne
+    canonique a basculé sur l'option AVEC le 25/08 (LANE CHOIX-AVEC :
+    ``builder.display_total`` = ``totaux_avec['ttc']`` dès qu'il y a deux
+    options, pour que la liste, le une-page et le PDF portent la MÊME option).
+    Le jour où le moteur lève, la liste passait donc silencieusement d'un
+    total à l'autre. Repli sur « sans » gardé quand « avec » n'a pas de total
+    lisible — jamais rien d'inventé.
     """
     if not deux_options_declarees(devis):
         return {'total': float(devis.total_ttc), 'nb_options': 1}
@@ -166,7 +208,7 @@ def totaux_affichage_repli(devis) -> dict:
     avec = _totaux_canoniques(
         devis, filter_lines_for_option(lignes, AVEC_BATTERIE))
     return {
-        'total': float(sans['ttc']),
+        'total': float(avec['ttc'] if avec.get('ttc') else sans['ttc']),
         'nb_options': 2,
         'comparaison_repli': {'sans': sans, 'avec': avec},
     }

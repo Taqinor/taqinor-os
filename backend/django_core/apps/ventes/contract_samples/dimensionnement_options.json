@@ -1,0 +1,34 @@
+{
+  "endpoint": "GET /api/django/public/proposal/<token>/data/",
+  "pourquoi": "PACT10 (« deux optimiseurs », 25/08/2026) — les options Sans/Avec batterie d'un devis résidentiel peuvent porter des dimensionnements DIFFÉRENTS (nb panneaux/kWc/batteries par option), portés par LigneDevis.variante et par le split sans_items/avec_items du builder (déjà par option). `dimensionnement_options` dit ce que CHAQUE option livre réellement ; `production_par_option` calcule une SECONDE courbe de production UNIQUEMENT quand les deux options divergent — sinon la page retombe sur la courbe unique déjà servie (`courbes_journalieres.production`). Les deux moitiés (apps/ventes/public_views.py `proposal_data`, et la page publique) lisent CE fichier.",
+  "notes": {
+    "derivation": "Chaque valeur est DÉRIVÉE des lignes réelles de l'option (sans_items/avec_items : panneaux via le watt LU sur la désignation/fiche, batteries via les lignes batterie) ou du moteur horaire (production_annuelle_kwh/production_par_option, productible PVGIS × kWc de CETTE option). Une valeur non dérivable (watt illisible, localisation non résolue…) est `null` et le client l'OMET — RÈGLE FONDATEUR « zéro chiffre inventé », jamais un défaut forfaitaire ni un composant fictif.",
+    "avec_conditionnel": "L-VAR — la branche `avec` n'est présente QUE si `avec_ok` (même lecture que `variantes_servables`/`economies_mensuelles.avec`) : jamais un dimensionnement « avec batterie » sur une option que ce devis ne livre pas. Un devis mono-option « Sans batterie » (avec_ok faux) sert donc `dimensionnement_options` SANS clé `avec` du tout.",
+    "divergent": "`nb_panneaux` de `sans` diffère de celui de `avec`. `false` sur tout devis qui n'a pas encore ce dimensionnement à deux vitesses (les deux options partagent alors les mêmes lignes panneau) — c'est le cas de TOUS les devis existants tant que le vendeur n'a pas déclaré deux tailles distinctes. `false` aussi quand la branche `avec` est absente (rien à comparer).",
+    "production_par_option": "Séries de production journalière PAR OPTION, MÊME FORME que `courbes_journalieres.production` (une entrée par saison : forme 24h/kwh_jour/pic_kw/source). Calculées à la volée (lecture pure, rien n'est persisté) UNIQUEMENT quand `dimensionnement_options.divergent` est vrai — deux options au même kWc partagent déjà la courbe unique, la recalculer deux fois ferait diverger deux séries censées être identiques. `null` sur chaque branche sinon : la page garde alors le graphe `courbes_journalieres` déjà servi.",
+    "argent": "Aucun montant, aucun prix d'achat, aucune marge (règle #4). La clé est publiable telle quelle à tous les niveaux de partage (confiance/standard) — seule la nomenclature détaillée se dégrade au niveau standard, jamais les tailles/nombres de ce bloc."
+  },
+  "exemple": {
+    "dimensionnement_options": {
+      "sans":  {"nb_panneaux": 22, "puissance_kwc": 15.62, "nb_batteries": 0, "capacite_batterie_kwh": null, "production_annuelle_kwh": 23989},
+      "avec":  {"nb_panneaux": 26, "puissance_kwc": 18.46, "nb_batteries": 2, "capacite_batterie_kwh": 15.4, "production_annuelle_kwh": 27100},
+      "divergent": true
+    },
+    "production_par_option": {"sans": null, "avec": null}
+  },
+  "exemple_devis_non_divergent": {
+    "dimensionnement_options": {
+      "sans":  {"nb_panneaux": 22, "puissance_kwc": 15.62, "nb_batteries": 0, "capacite_batterie_kwh": null, "production_annuelle_kwh": 23989},
+      "avec":  {"nb_panneaux": 22, "puissance_kwc": 15.62, "nb_batteries": 2, "capacite_batterie_kwh": 10.0, "production_annuelle_kwh": 23989},
+      "divergent": false
+    },
+    "production_par_option": {"sans": null, "avec": null}
+  },
+  "exemple_avec_ok_faux": {
+    "dimensionnement_options": {
+      "sans": {"nb_panneaux": 14, "puissance_kwc": 9.94, "nb_batteries": 0, "capacite_batterie_kwh": null, "production_annuelle_kwh": 15221},
+      "divergent": false
+    },
+    "production_par_option": {"sans": null, "avec": null}
+  }
+}

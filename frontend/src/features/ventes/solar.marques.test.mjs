@@ -16,6 +16,7 @@ import assert from 'node:assert/strict'
 import {
   autoFillLines, optimalKwcByPayback, estimerKwcDepuisFacture, estimerMois,
   arrondirAuPasKwc, DAY_USAGE_DEFAULTS, KWH_PRICE, EFFICIENCY,
+  consoAnnuelleDepuisFactures,
 } from './solar.js'
 
 const ht = (ttc) => (ttc / 1.2).toFixed(2)
@@ -188,12 +189,22 @@ const CATALOGUE_PALIERS = [
   P('Suivi journalier, maintenance chaque 12 mois pendant 2 ans', 5000),
 ]
 
-const balayage = (hiver, marques) => optimalKwcByPayback({
-  produits: CATALOGUE_PALIERS, factures: estimerMois(hiver, hiver),
-  dayUsagePct: DAY_USAGE_DEFAULTS['Résidentielle'], panelW: 710,
-  structureType: 'acier', discountPct: '0', kwhPrice: KWH_PRICE,
-  efficiency: EFFICIENCY, besoinKwc: estimerKwcDepuisFacture(hiver), marques,
-})
+// FINDING 25/08 — le balayage reçoit la consommation RÉELLE du client (dérivée
+// de ses factures par le barème), exactement comme les deux appelants réels :
+// c'est le seul régime où l'économie sature, donc le seul où l'ascension
+// marginale a un sens (sans elle, `optimalKwcByPayback` désactive l'ascension
+// et rend le choix pur payback — voir la garde de saturation).
+const balayage = (hiver, marques) => {
+  const factures = estimerMois(hiver, hiver)
+  return optimalKwcByPayback({
+    produits: CATALOGUE_PALIERS, factures,
+    dayUsagePct: DAY_USAGE_DEFAULTS['Résidentielle'], panelW: 710,
+    structureType: 'acier', discountPct: '0', kwhPrice: KWH_PRICE,
+    efficiency: EFFICIENCY, besoinKwc: estimerKwcDepuisFacture(hiver), marques,
+    consoAnnuelleKwh: consoAnnuelleDepuisFactures(factures, 'onee'),
+    utility: 'onee',
+  })
+}
 
 test('PVMRQ — marque épinglée absente : chaque palier est marqué NON chiffrable', () => {
   const res = balayage(7000, { panneau: 'Jinko' })   // Jinko absent du catalogue
@@ -235,6 +246,9 @@ test('PVMRQ — sans marque épinglée : balayage BYTE-IDENTIQUE à l\'historiqu
   const res = balayage(7000, undefined)
   assert.equal(res.repliMarqueManquante, false)
   assert.deepEqual(res.marquesManquantes, [])
-  assert.equal(res.kwcOptimal, 25)   // le VRAI optimum, paliers réellement chiffrés
+  // Mesuré sous la doctrine d'horizon FIXE (25/08, HORIZON_MARGINAL_PV = 10
+  // ans) — recalé depuis 25 kWc (ancienne tolérance relative) : l'ascension
+  // grimpe plus loin ici, jamais un chiffre posé a priori.
+  assert.equal(res.kwcOptimal, 35)
   assert.ok(res.paliers.every(p => p.chiffrable && p.marquesManquantes.length === 0))
 })

@@ -61,4 +61,20 @@ describe('normalizeMoroccanPhone — WJ64 numéros étrangers (diaspora)', () =>
   ])('rejette encore le garbage %s', (input) => {
     expect(normalizeMoroccanPhone(input).ok).toBe(false);
   });
+
+  // 25/08/2026 — BUG réel trouvé par la lane numéros internationaux : le
+  // chemin étranger relisait `d`, déjà TRONQUÉ par le chemin marocain
+  // (indicatif 212 retiré) ; un marocain MALFORMÉ sous « + » (indicatif 212
+  // correct mais local à 7 chiffres au lieu de 9) ressortait donc reclassé
+  // « étranger » (+6123456) au lieu d'être rejeté. Aligné sur le port de
+  // référence frontend/src/lib/format.js normalizePhoneE164, qui repart des
+  // chiffres BRUTS d'origine pour le chemin étranger.
+  it.each([
+    ['+2126123456'], // 212 + 7 chiffres (au lieu de 9) : marocain malformé, jamais étranger
+    ['+21261234567890'], // 212 + 11 chiffres : idem, trop long pour être marocain
+  ])('ne reclasse jamais un marocain malformé sous « + » en étranger : rejette %s', (input) => {
+    const r = normalizeMoroccanPhone(input);
+    expect(r.ok).toBe(false);
+    expect(r.phoneIsForeign).toBeUndefined();
+  });
 });

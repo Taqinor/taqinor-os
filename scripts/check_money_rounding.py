@@ -34,6 +34,11 @@ DJANGO_CORE = ROOT / "backend" / "django_core"
 # lives here, in the one script file the task does declare. A NEW site not
 # in this set fails CI.
 BASELINE_ALLOWLIST = {
+    # Rebase 2026-08-25 (L-2OPT) : 10 entrees builder.py decalees (+149..+181,
+    # scalaires par option + comparatif + avec-first inseres en amont) et les 2
+    # derivations de PUISSANCE de services.py (composition_deux_optimiseurs,
+    # +~283 lignes). MEMES sites, MEMES expressions, aucun round() nouveau.
+
     # 2026-08-18 — SIX ENTRÉES MORTES RETIRÉES (`ventes/services.py` :381,
     # :384, :397, :400, :1822, :1979 — anciens recalages NTUX13 puis
     # PV14/PV16/PV18). Relecture ligne à ligne de l'arbre courant : AUCUNE de
@@ -58,8 +63,8 @@ BASELINE_ALLOWLIST = {
     # formules kWc `round(total_panneaux * watt / 1000.0, 3)`, main vs arbre).
     "backend/django_core/apps/ventes/services.py:1033",
     "backend/django_core/apps/ventes/services.py:1036",
-    "backend/django_core/apps/ventes/services.py:3239",
-    "backend/django_core/apps/ventes/services.py:3331",
+    "backend/django_core/apps/ventes/services.py:3597",
+    "backend/django_core/apps/ventes/services.py:3730",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1906",  # QJ29 multi-villa ×N (réécrit PVUNI, formule préexistante revue)
     "backend/django_core/apps/ventes/quote_engine/builder.py:1926",  # total_ttc ligne gamme (réécrit PVUNI, formule préexistante revue)
     "backend/django_core/apps/ventes/quote_engine/builder.py:644",
@@ -73,6 +78,8 @@ BASELINE_ALLOWLIST = {
     "backend/django_core/apps/ventes/quote_engine/builder.py:1445",
     "backend/django_core/apps/ventes/quote_engine/builder.py:815",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1284",
+    # compta/services.py re-based 2026-08-25 (numeros internationaux, -2 lignes
+    # au-dela de ~8050 : normaliseurs Meta dedupliques raccourcis). Memes sites.
     # compta/services.py entries re-based (WIR153, 2026-07-31, -3 lines above
     # them from removing two dead OCR-provider try/except blocks + docstring
     # edits in extraire_releve_bancaire/extraire_justificatif_note_frais;
@@ -90,13 +97,13 @@ BASELINE_ALLOWLIST = {
     # bloc chacune de son côté : la fusion cumule leurs insertions, donc
     # les deux recalages étaient faux. Numéros relus sur l’arbre fusionné.
     # MÊMES sites NPS/ROI/pourcentages, aucun monétaire, aucun NOUVEAU.
-    "backend/django_core/apps/compta/services.py:9813",
+    "backend/django_core/apps/compta/services.py:9811",
     "backend/django_core/apps/compta/services.py:7789",
     "backend/django_core/apps/compta/services.py:7792",
-    "backend/django_core/apps/compta/services.py:12281",
-    "backend/django_core/apps/compta/services.py:12683",
-    "backend/django_core/apps/compta/services.py:9098",
-    "backend/django_core/apps/compta/services.py:9102",
+    "backend/django_core/apps/compta/services.py:12279",
+    "backend/django_core/apps/compta/services.py:12681",
+    "backend/django_core/apps/compta/services.py:9096",
+    "backend/django_core/apps/compta/services.py:9100",
     # XSAL14 (2026-07-16) — builder.py edits shifted existing display-round
     # sites; re-based 1:1 (premium engine, sanctioned rounding).
     "backend/django_core/apps/ventes/quote_engine/builder.py:1496",
@@ -139,8 +146,9 @@ BASELINE_ALLOWLIST = {
     "backend/django_core/apps/ventes/quote_engine/builder.py:824",
     "backend/django_core/apps/ventes/quote_engine/builder.py:805",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1055",
-    # 1068→1100 : recalage L-VAR du 24/08/2026, voir le bloc daté plus bas.
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1100",
+    # 1068→1100 : recalage L-VAR du 24/08/2026, voir le bloc daté plus bas ;
+    # puis 1249→1282 (lane F1 du 26/08/2026, même bloc daté).
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1282",
     # PV84 (chemin_proposition — nom du client dans le lien) — l'import
     # chemin_proposition + son commentaire ajoutés au bloc "signer" ont
     # décalé les MÊMES 4 arrondis d'affichage (PU/total ligne) de +2 lignes ;
@@ -298,18 +306,35 @@ BASELINE_ALLOWLIST = {
     #   1095→1127 ttc_exact · 1356→1388 roi_s · 1369→1401 prix_kwc ·
     #   2258→2297 montant TVA ×N · 2264→2303 display_total_multi ·
     #   2317→2356 total_ht · 2318→2357 total_ttc.
+    # 2026-08-26 (lane F1, correctifs bloquants PDF) : RECALAGE DE LIGNES,
+    # AUCUN NOUVEAU SITE. Trois insertions dans `builder.py` — le recalage des
+    # scalaires sur la variante rendue (+33 lignes, avant les totaux
+    # canoniques), la chaîne économies/ROI par option (+40, après l'appel
+    # `calculate_savings_roi`) et les deux clés `prod_kwh_sans/avec` (+5, dans
+    # le dictionnaire de sortie) — ont décalé les MÊMES dix sites d'arrondi
+    # d'AFFICHAGE déjà relus. Aucun `round()` n'a été ajouté par cette lane
+    # (13 sites détectés avant comme après). Chaque numéro est retrouvé PAR
+    # PREUVE DE CONTENU (expression identique à la lettre entre
+    # `git show 9a969ab1:…builder.py` et l'arbre courant), jamais par décalage
+    # supposé :
+    #   272/389/390 inchangés (avant les insertions) ·
+    #   1247→1280 ht_brut · 1249→1282 ht_net (entrée plus haut) ·
+    #   1274→1307 montant TVA · 1276→1309 ttc_exact ·
+    #   1547→1620 roi_s · 1560→1633 prix_kwc ·
+    #   2478→2556 montant TVA ×N · 2484→2562 display_total_multi ·
+    #   2537→2615 total_ht ligne · 2538→2616 total_ttc ligne.
     "backend/django_core/apps/ventes/quote_engine/builder.py:272",
     "backend/django_core/apps/ventes/quote_engine/builder.py:389",
     "backend/django_core/apps/ventes/quote_engine/builder.py:390",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1098",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1125",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1127",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1388",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1401",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:2297",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:2303",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:2356",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:2357",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1280",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1307",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1309",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1620",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1633",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:2556",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:2562",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:2615",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:2616",
 }
 
 TARGET_FILES = [

@@ -1244,6 +1244,18 @@ def cible_depuis_lignes(devis):
       résidentiel, même arbitrage que ``build_devis_from_layout``).
     * ``avertissements`` — messages FRANÇAIS affichables tels quels.
 
+    L-2OPT — LA CIBLE SE LIT PAR VARIANTE. Un devis « Les deux » dont les deux
+    optimums divergent porte DEUX comptes de panneaux : les lignes
+    ``variante=''`` + ``'sans'`` font l'option SANS, les lignes ``''`` +
+    ``'avec'`` font l'option AVEC. ``panneaux`` / ``kwc`` sont ceux de l'option
+    SANS — l'option 1 du document, celle que l'écran de calepinage dessine.
+    Additionner les deux vues (ce que faisait la somme brute des lignes)
+    donnerait un nombre qui ne décrit AUCUNE installation.
+
+    LA FORME DU DICT NE BOUGE PAS : ces six clés sont un contrat gelé (le
+    contexte de conception PV17 le repique tel quel). Un devis NON varianté —
+    tous ceux d'hier — rend donc exactement les mêmes valeurs qu'avant.
+
     LECTURE PURE : aucun statut, aucune ligne, aucune étude n'est écrite.
     """
     lignes = _lignes_produit(devis)
@@ -1252,13 +1264,22 @@ def cible_depuis_lignes(devis):
         return ligne.designation or getattr(ligne.produit, 'nom', '') or ''
 
     lignes_panneau = [li for li in lignes if _classe_ligne(li, _is_panel)]
-    panneaux = 0
-    for ligne in lignes_panneau:
+
+    def _quantite(ligne):
         try:
             # ArithmeticError couvre decimal.InvalidOperation.
-            panneaux += int(Decimal(str(ligne.quantite or 0)))
+            return int(Decimal(str(ligne.quantite or 0)))
         except (ArithmeticError, TypeError, ValueError):
-            continue
+            return 0
+
+    # L-2OPT — LE COMPTE EST CELUI DE L'OPTION SANS : les lignes COMMUNES
+    # (``variante=''``, c'est-à-dire toutes celles d'un devis d'hier) plus
+    # celles propres à « sans ». Une ligne « avec » décrit l'AUTRE option — la
+    # compter ici donnerait la somme des deux paniers, un nombre de panneaux
+    # qu'aucune installation ne porte.
+    panneaux = sum(
+        _quantite(li) for li in lignes_panneau
+        if (getattr(li, 'variante', '') or '') in ('', VARIANTE_SANS))
 
     batterie = any(_classe_ligne(li, _is_battery) for li in lignes)
     hybride = any(_classe_ligne(li, _is_hybrid_inverter) for li in lignes)
@@ -1286,6 +1307,12 @@ def cible_depuis_lignes(devis):
 
     # Deux modèles de panneau différents dans un même devis : le calepinage ne
     # sait pas répartir l'écart — on le DIT au lieu de choisir en silence.
+    #
+    # L-2OPT — L'IDENTITÉ NE COMPTE PAS LA VARIANTE, EXPRÈS : deux lignes
+    # variantées du MÊME modèle (8 panneaux « sans » / 10 panneaux « avec »)
+    # sont UN SEUL modèle, et cet avertissement ne doit surtout pas se
+    # déclencher pour elles — sinon tout devis à deux optimiseurs crierait au
+    # « devis à deux modèles » alors qu'il n'en porte qu'un.
     identites = {
         (li.produit_id, (li.designation or '').strip().lower())
         for li in lignes_panneau
@@ -1697,8 +1724,21 @@ def concevoir_electrique_du_devis(devis, *, origine=''):
 #: Une ligne composée, prête à devenir une ``LigneDevis``. ``prix_unitaire``
 #: est TOUJOURS un montant **HT** (le modèle stocke du HT ; le simulateur
 #: raisonne en TTC, la conversion se fait dans la composition).
+#:
+#: L-2OPT — ``variante`` dit à QUELLE option la ligne appartient ('' = commune
+#: aux deux, 'sans' / 'avec' = propre à cette option-là). Le champ porte un
+#: DÉFAUT VIDE : tout appelant historique construit sa ``LigneKit`` sans le
+#: mentionner et obtient exactement la ligne d'hier.
 LigneKit = namedtuple('LigneKit',
-                      'produit designation quantite prix_unitaire')
+                      'produit designation quantite prix_unitaire variante',
+                      defaults=('',))
+
+#: L-2OPT — les trois valeurs de ``LigneDevis.variante`` / ``LigneKit.variante``.
+#: Répétées ici (chaînes nues) plutôt qu'importées de ``models`` : ce module
+#: n'importe les modèles qu'en local, dans les fonctions.
+VARIANTE_COMMUNE = ''
+VARIANTE_SANS = 'sans'
+VARIANTE_AVEC = 'avec'
 
 
 class CompositionLignes(list):
@@ -1718,6 +1758,14 @@ class CompositionLignes(list):
     kwc_reel = 0.0
     blocs = 1
     marques_manquantes = ()
+    # ── L-2OPT — métadonnées de la composition FUSIONNÉE (deux optimiseurs) ──
+    # ``variantes`` reste False sur toute composition d'hier : une composition
+    # mono-optimum n'a que des lignes communes. Les deux clés ``_avec`` ne
+    # valent quelque chose que quand l'optimum AVEC batterie a choisi un AUTRE
+    # champ PV que l'optimum SANS.
+    variantes = False
+    nb_panneaux_avec = 0
+    kwc_reel_avec = 0.0
 
 
 def ordonner_par_role(taguees, ordre_lignes):
@@ -2573,9 +2621,240 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     return lignes
 
 
+# ── L-2OPT — DEUX OPTIMISEURS : le champ PV de l'option « avec » peut DIFFÉRER
+# de celui de l'option « sans » ────────────────────────────────────────────────
+#
+# LE TROU QUE CECI BOUCHE. Le moteur calibré (``apps.ventes.dimensionnement``)
+# calcule DEPUIS DIM2 deux gagnants distincts : ``recommandation`` (meilleur
+# payback SANS stockage) et ``recommandation_avec`` (balayage CONJOINT
+# champ × stockage, meilleur payback AVEC). Le second n'alimentait AUCUN chemin
+# de génération de lignes : il ne servait qu'à l'affichage. Le devis « Les deux »
+# composait donc UN SEUL champ PV et se contentait de le REGARDER de deux
+# façons — le découpage sans/avec du PDF est un filtrage par MOTS-CLÉS
+# (batterie → « avec », onduleur réseau → « sans »), si bien que les panneaux,
+# la structure, les socles et la pose tombaient dans les DEUX options avec la
+# MÊME quantité. Une option « avec batterie » qui, économiquement, veut deux
+# panneaux de plus ne pouvait tout simplement pas être proposée.
+#
+# LA FUSION. On compose DEUX kits complets (chacun par la source de vérité
+# ``composition_residentielle``, en forme MONO-option — donc aucune règle
+# dupliquée) puis on les fusionne ligne à ligne :
+#   · même produit, même désignation, même quantité, même prix unitaire dans
+#     les deux kits → UNE ligne COMMUNE (``variante=''``) ;
+#   · présente dans les deux mais avec une quantité (ou un prix) différente →
+#     DEUX lignes, ``variante='sans'`` et ``variante='avec'`` ;
+#   · présente dans un seul kit → une ligne portant la variante de ce kit
+#     (batteries → « avec », onduleur réseau → « sans », hybride → « avec »).
+#
+# LE REPLI DE SÉCURITÉ EST ABSOLU : quand les deux dimensionnements sont ÉGAUX
+# (même nombre de panneaux, aucune cible de stockage distincte), la fusion
+# n'entre JAMAIS en jeu — on rend la composition « deux options » HISTORIQUE,
+# telle quelle, toutes lignes communes. Un devis d'aujourd'hui reste donc
+# byte-identique tant que le moteur ne dit pas deux choses différentes.
+
+
+def _memes_lignes_kit(a, b):
+    """Deux ``LigneKit`` sont-elles LA MÊME ligne (donc fusionnables) ?
+
+    Compare ce qui fait le contenu d'une ligne de devis : le produit, la
+    désignation, la quantité et le prix unitaire HT. La remise et la TVA n'en
+    sont pas : une ligne composée automatiquement naît toujours sans remise et
+    au taux du devis — les deux kits partagent donc forcément les mêmes.
+    """
+    if a is None or b is None:
+        return False
+    if _cle_produit(a.produit) != _cle_produit(b.produit):
+        return False
+    if (a.designation or '') != (b.designation or ''):
+        return False
+    try:
+        if Decimal(str(a.quantite or 0)) != Decimal(str(b.quantite or 0)):
+            return False
+        return (Decimal(str(a.prix_unitaire or 0))
+                == Decimal(str(b.prix_unitaire or 0)))
+    except (TypeError, ValueError, ArithmeticError):
+        return False
+
+
+def _cle_produit(produit):
+    """Identité STABLE d'un produit catalogue (pk quand il en a un)."""
+    if produit is None:
+        return None
+    pk = getattr(produit, 'pk', None)
+    if pk is None:
+        pk = getattr(produit, 'id', None)
+    return pk if pk is not None else ('nom', getattr(produit, 'nom', ''))
+
+
+def fusionner_kits(taguees_sans, taguees_avec):
+    """L-2OPT — fusionne deux kits ``(rôle, LigneKit)`` en UNE séquence variantée.
+
+    Les deux kits sortent de la MÊME fonction de composition, donc leurs
+    séquences de rôles sont deux sous-suites d'un même ordre canonique (celui
+    des appels ``ajouter`` de ``composition_residentielle``, éventuellement
+    reclassé par le MÊME ``ordre_lignes``). Un entrelacement stable les remet
+    donc dans un ordre lisible sans qu'aucun ordre canonique n'ait à être
+    recopié ici — une copie divergerait au premier rôle ajouté.
+
+    Rend une liste de couples ``(rôle, LigneKit)`` dont chaque ligne porte sa
+    ``variante``. Fonction PURE.
+    """
+    sans = list(taguees_sans or [])
+    avec = list(taguees_avec or [])
+    roles_avec = [role for role, _ in avec]
+    fusion = []
+    i = j = 0
+    while i < len(sans) or j < len(avec):
+        if i < len(sans) and j < len(avec):
+            role_s, ligne_s = sans[i]
+            role_a, ligne_a = avec[j]
+            if role_s == role_a:
+                if _memes_lignes_kit(ligne_s, ligne_a):
+                    fusion.append(
+                        (role_s, ligne_s._replace(variante=VARIANTE_COMMUNE)))
+                else:
+                    # Les deux options ne veulent pas la même chose de ce rôle
+                    # (typiquement : le nombre de panneaux, donc aussi les
+                    # structures, les socles et le forfait de pose). Les deux
+                    # lignes restent CÔTE À CÔTE : le devis se lit.
+                    fusion.append(
+                        (role_s, ligne_s._replace(variante=VARIANTE_SANS)))
+                    fusion.append(
+                        (role_a, ligne_a._replace(variante=VARIANTE_AVEC)))
+                i += 1
+                j += 1
+                continue
+            if role_s in roles_avec[j:]:
+                # Le rôle courant du kit « sans » réapparaît plus loin dans le
+                # kit « avec » : ce qui est propre à « avec » (batteries,
+                # onduleur hybride) passe d'abord, à sa place canonique.
+                fusion.append(
+                    (role_a, ligne_a._replace(variante=VARIANTE_AVEC)))
+                j += 1
+            else:
+                fusion.append(
+                    (role_s, ligne_s._replace(variante=VARIANTE_SANS)))
+                i += 1
+            continue
+        if i < len(sans):
+            role_s, ligne_s = sans[i]
+            fusion.append((role_s, ligne_s._replace(variante=VARIANTE_SANS)))
+            i += 1
+        else:
+            role_a, ligne_a = avec[j]
+            fusion.append((role_a, ligne_a._replace(variante=VARIANTE_AVEC)))
+            j += 1
+    return fusion
+
+
+def composition_deux_optimiseurs(produits, *, panel_watt,
+                                 kwc_sans, nb_panneaux_sans,
+                                 kwc_avec=None, nb_panneaux_avec=0,
+                                 batterie_cible_kwh=None,
+                                 structure_type='acier',
+                                 taux_tva=Decimal('20'), avertissements=None,
+                                 marques=None, ordre_lignes=None,
+                                 mppt_paires=1, phase=None):
+    """L-2OPT — LE devis « Les deux » quand les deux optimums DIVERGENT.
+
+    Compose DEUX kits complets par ``composition_residentielle`` (la source de
+    vérité — aucune règle de composition n'est réécrite ici) :
+
+      · kit SANS  — ``nb_panneaux_sans`` panneaux, onduleur RÉSEAU, ZÉRO
+        batterie (``avec_batterie=False``) ;
+      · kit AVEC  — ``nb_panneaux_avec`` panneaux, onduleur HYBRIDE dimensionné
+        pour CE champ-là, et les batteries du palier retenu
+        (``batterie_cible_kwh`` ; absent ⇒ la règle historique kWc/5 décide,
+        aucun chiffre inventé).
+
+    puis les FUSIONNE (cf. :func:`fusionner_kits`).
+
+    REPLI DE SÉCURITÉ ABSOLU — deux dimensionnements ÉGAUX (même nombre de
+    panneaux ET aucune cible de stockage distincte) ⇒ la fusion n'est PAS
+    jouée : on rend la composition « deux options » historique, toutes lignes
+    communes, byte-identique à ce que ce dépôt produit aujourd'hui.
+
+    Fonction PURE (elle ne requête ni n'écrit rien) ; ``produits`` est déjà
+    cantonné à la société appelante par l'appelant.
+    """
+    nb_sans = int(nb_panneaux_sans or 0)
+    nb_avec = int(nb_panneaux_avec or 0) or nb_sans
+    cible_stockage = (float(batterie_cible_kwh)
+                      if batterie_cible_kwh not in (None, '')
+                      and float(batterie_cible_kwh) > 0 else None)
+    kwc_s = float(kwc_sans or 0)
+    # Un champ « avec » de 10 panneaux évalué à la puissance du champ « sans »
+    # se verrait dimensionner l'onduleur (et la batterie) de l'autre option :
+    # à défaut de kWc fourni, on le DÉRIVE de son propre compte de panneaux,
+    # jamais on ne recopie celui d'en face.
+    kwc_a = (float(kwc_avec or 0)
+             or (nb_avec * float(panel_watt or 0) / 1000.0)
+             or kwc_s)
+    # Le catalogue est parcouru DEUX fois (un kit chacun) : on le matérialise
+    # une bonne fois, sans quoi un itérable à usage unique livrerait un second
+    # kit VIDE.
+    catalogue = list(produits or ())
+
+    commun = dict(
+        panel_watt=panel_watt, structure_type=structure_type,
+        taux_tva=taux_tva, avertissements=avertissements, marques=marques,
+        ordre_lignes=ordre_lignes, mppt_paires=mppt_paires, phase=phase)
+
+    # ── LE REPLI : les deux optimiseurs disent la même chose ────────────────
+    if nb_avec == nb_sans and cible_stockage is None:
+        return composition_residentielle(
+            catalogue, kwc=kwc_s, nb_panneaux=nb_sans, deux_options=True,
+            **commun)
+
+    kit_sans = composition_residentielle(
+        catalogue, kwc=kwc_s, nb_panneaux=nb_sans, avec_batterie=False,
+        deux_options=False, **commun)
+    kit_avec = composition_residentielle(
+        catalogue, kwc=kwc_a, nb_panneaux=nb_avec, avec_batterie=True,
+        deux_options=False, batterie_cible_kwh=cible_stockage, **commun)
+
+    def _taguees(kit):
+        roles = list(getattr(kit, 'roles', ()) or ())
+        return [(roles[index] if index < len(roles) else None, ligne)
+                for index, ligne in enumerate(kit)]
+
+    fusion = fusionner_kits(_taguees(kit_sans), _taguees(kit_avec))
+
+    lignes = CompositionLignes(ligne for _role, ligne in fusion)
+    lignes.roles = [role for role, _ligne in fusion]
+    lignes.variantes = any(ligne.variante for ligne in lignes)
+    # Les métadonnées « nominales » restent celles de l'option SANS — c'est
+    # l'option 1 du document (celle que la liste et le repli d'affichage
+    # montrent) et c'est ce que les appelants historiques lisent. L'option AVEC
+    # a ses propres clés, à côté, jamais à la place.
+    lignes.nb_panneaux = getattr(kit_sans, 'nb_panneaux', nb_sans)
+    lignes.panel_watt_reel = getattr(kit_sans, 'panel_watt_reel', panel_watt)
+    lignes.kwc_reel = getattr(kit_sans, 'kwc_reel', 0.0)
+    lignes.blocs = getattr(kit_sans, 'blocs', 1)
+    lignes.nb_panneaux_avec = getattr(kit_avec, 'nb_panneaux', nb_avec)
+    lignes.kwc_reel_avec = getattr(kit_avec, 'kwc_reel', 0.0)
+    lignes.capacites_batterie_vivier = list(
+        getattr(kit_avec, 'capacites_batterie_vivier', ()) or ())
+    # Marques épinglées introuvables : l'UNION des deux kits, dédoublonnée —
+    # un rôle manquant ne doit pas être annoncé deux fois parce qu'on a composé
+    # deux fois.
+    vues = set()
+    manquantes = []
+    for kit in (kit_sans, kit_avec):
+        for manque in (getattr(kit, 'marques_manquantes', ()) or ()):
+            cle = (manque.get('role'), manque.get('marque'))
+            if cle in vues:
+                continue
+            vues.add(cle)
+            manquantes.append(manque)
+    lignes.marques_manquantes = manquantes
+    return lignes
+
+
 def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
                             taux_tva=Decimal('20'), remise_globale=Decimal('0'),
-                            deux_options=False, journal=None, phase=None):
+                            deux_options=False, journal=None, phase=None,
+                            dimensionnement_avec=None):
     """Q3 — turn a FINALISED roof layout into a coherent, company-scoped Devis.
 
     ``deux_options`` (U2, fondateur 20/08/2026) — compose la forme DEUX
@@ -2583,6 +2862,15 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
     ``composition_residentielle``) et stocke le scénario correspondant. Défaut
     False : le calepinage 3D a DÉJÀ arrêté son scénario à l'écran, il garde
     donc sa composition mono-option, byte-identique à l'historique.
+
+    ``dimensionnement_avec`` (L-2OPT, optionnel) — ce que le moteur calibré
+    recommande POUR L'OPTION AVEC BATTERIE, quand ce n'est pas le même champ PV
+    que l'option sans : ``{'nb_panneaux': int, 'kwc': float,
+    'batterie_kwh': float | None}``. Combiné à ``deux_options``, il fait
+    composer DEUX kits complets, fusionnés en lignes VARIANTÉES (cf.
+    :func:`composition_deux_optimiseurs`). ``None`` (LE DÉFAUT) ⇒ un seul champ
+    PV, exactement comme aujourd'hui — et un ``nb_panneaux`` identique à celui
+    de l'option sans y retombe aussi, par le repli de sécurité de la fusion.
 
     ``journal`` (U3, optionnel) — dict que l'appelant fournit et que la
     construction remplit sur place avec ce que la composition a REFUSÉ de
@@ -2692,14 +2980,9 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
     # strictement inchangé. Fournir une liste que personne ne lit reviendrait
     # à ÉTEINDRE ce log.
     _avertissements = [] if journal is not None else None
-    line_specs = composition_residentielle(
-        catalogue_de_la_societe(company),
-        kwc=kwc_composition,
+    _commun_composition = dict(
         panel_watt=watt,
-        nb_panneaux=nb_panneaux,
-        avec_batterie=wants_battery,
         taux_tva=taux_tva,
-        deux_options=deux_options,
         # U3 — les règles de gamme vivent CÔTÉ SERVEUR : marques épinglées
         # (PVMRQ) et ordre par défaut (PVORD) sont lus ici et donnés à la
         # fonction pure, plus jamais recalculés par l'écran.
@@ -2709,6 +2992,37 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
         # PVCOMPAT — le raccordement du client, quand l'appelant le connaît.
         phase=phase,
     )
+    # ── L-2OPT — DEUX OPTIMISEURS quand le moteur en désigne deux ───────────
+    # La fusion n'entre en jeu que sur un devis DÉCLARÉ « les deux » ET quand
+    # l'appelant a réellement une recommandation « avec » à opposer. Sinon
+    # (défaut, calepinage 3D, devis mono-option) c'est le chemin d'hier, mot
+    # pour mot.
+    _avec = dimensionnement_avec if isinstance(
+        dimensionnement_avec, dict) else None
+    if deux_options and _avec:
+        line_specs = composition_deux_optimiseurs(
+            catalogue_de_la_societe(company),
+            kwc_sans=kwc_composition,
+            nb_panneaux_sans=nb_panneaux,
+            kwc_avec=_avec.get('kwc'),
+            nb_panneaux_avec=_avec.get('nb_panneaux'),
+            batterie_cible_kwh=_avec.get('batterie_kwh'),
+            **_commun_composition)
+    else:
+        line_specs = composition_residentielle(
+            catalogue_de_la_societe(company),
+            kwc=kwc_composition,
+            nb_panneaux=nb_panneaux,
+            avec_batterie=wants_battery,
+            deux_options=deux_options,
+            # L-2OPT — devis MONO « avec batterie » : le champ PV vient déjà de
+            # l'optimum AVEC (l'appelant l'a mis dans le layout) ; la CAPACITÉ
+            # retenue par ce même optimum se transmet ici. Absente ⇒ la règle
+            # historique kWc/5 décide seule, à l'octet près.
+            batterie_cible_kwh=(
+                _avec.get('batterie_kwh')
+                if (wants_battery and not deux_options and _avec) else None),
+            **_commun_composition)
     if journal is not None:
         journal['marques_manquantes'] = list(
             getattr(line_specs, 'marques_manquantes', ()) or ())
@@ -2780,6 +3094,10 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
                 prix_unitaire=Decimal(spec.prix_unitaire),
                 remise=Decimal('0'),
                 ordre=index,
+                # L-2OPT — '' sur toute composition mono-optimum : la colonne
+                # ne se remplit que quand la fusion a réellement distingué les
+                # deux options.
+                variante=getattr(spec, 'variante', '') or '',
             )
         return devis
 
@@ -3144,14 +3462,32 @@ def sync_devis_from_layout(devis, layout, user=None):
       ``economies_annuelles`` / ``toiture`` / ``scenario`` — les champs d'étude
       du générateur (autoconsommation, payback, pompe…) ne sont jamais touchés.
 
+    L-2OPT / RÈGLE TOIT — UN DEVIS À LIGNES VARIANTÉES (deux optimiseurs) SE
+    RESYNCHRONISE PAR VARIANTE, ET LE CALEPINAGE N'Y EST QU'UN PLAFOND :
+
+    * la ligne DOMINANTE se lit PAR VARIANTE — les lignes ``variante=''`` +
+      ``'sans'`` pour l'option sans, ``''`` + ``'avec'`` pour l'option avec ;
+    * le compte du calepinage est le nombre de panneaux PHYSIQUEMENT POSABLES.
+      Une option dont le compte le DÉPASSE est ramenée à ce plafond (sur sa
+      dominante) ; une option qui reste EN DESSOUS n'est JAMAIS augmentée —
+      l'optimum économique a le droit de choisir moins que le toit, et une
+      resynchro n'a pas à lui vendre des panneaux qu'il a refusés ;
+    * les structures et les socles suivent le compte DE LEUR VARIANTE.
+
+    Un devis SANS aucune ligne variantée (tous ceux d'hier) garde la règle
+    historique mot pour mot : le compte est porté À LA CIBLE, à la hausse comme
+    à la baisse.
+
     Re-soumettre le MÊME layout (même empreinte) ne fait AUCUNE écriture et
     renvoie ``inchange=True``.
 
     Renvoie toujours le même dict :
     ``{inchange, panneaux, kwc, scenario, batterie, lignes_modifiees,
-    lignes_ajoutees, avertissements}`` — ``lignes_modifiees`` compte ce que la
-    logique chirurgicale a touché, ``lignes_ajoutees`` ce que la complétion du
-    kit a ajouté.
+    lignes_ajoutees, avertissements}`` — forme GELÉE, inchangée par L-2OPT ;
+    sur un devis varianté ``panneaux`` est le compte de l'option SANS (l'option
+    1), jamais la somme des deux (un nombre qui ne décrit aucune installation).
+    ``lignes_modifiees`` compte ce que la logique chirurgicale a touché,
+    ``lignes_ajoutees`` ce que la complétion du kit a ajouté.
     """
     from django.db import transaction
 
@@ -3215,7 +3551,29 @@ def sync_devis_from_layout(devis, layout, user=None):
         lignes_batterie = [li for li in lignes
                            if _classe_ligne(li, _is_battery)]
         a_batterie = bool(lignes_batterie)
-        total_panneaux = sum(int(li.quantite or 0) for li in lignes_panneau)
+
+        # ── L-2OPT — LES DEUX VUES DU CHAMP PV ─────────────────────────────
+        # ``devis_variante`` est faux sur TOUS les devis d'hier (aucune ligne
+        # variantée) : la resynchro reprend alors sa règle historique, mot pour
+        # mot. Il n'est vrai que pour un devis composé par les deux
+        # optimiseurs, et c'est là — et là seulement — que le calepinage
+        # devient un PLAFOND plutôt qu'une cible.
+        def _var(ligne):
+            return getattr(ligne, 'variante', '') or ''
+
+        def _lignes_de(variante):
+            return [li for li in lignes_panneau
+                    if _var(li) in ('', variante)]
+
+        def _total_de(variante):
+            return sum(int(li.quantite or 0) for li in _lignes_de(variante))
+
+        devis_variante = any(_var(li) for li in lignes_panneau)
+        total_panneaux = (_total_de(VARIANTE_SANS) if devis_variante
+                          else sum(int(li.quantite or 0)
+                                   for li in lignes_panneau))
+        total_panneaux_avec = (_total_de(VARIANTE_AVEC) if devis_variante
+                               else total_panneaux)
 
         avertissements = []
         # Cohérence avec PV17 : ces deux cas y sont déclarés NON modifiables.
@@ -3282,7 +3640,10 @@ def sync_devis_from_layout(devis, layout, user=None):
                     prix_unitaire=Decimal(panneau.prix_vente),
                     remise=Decimal('0'))
                 lignes_modifiees += 1
+                # La ligne créée est COMMUNE (``variante=''`` par défaut) :
+                # elle sert donc les deux vues à l'identique.
                 total_panneaux = cible_panneaux
+                total_panneaux_avec = cible_panneaux
                 panneaux_ont_change = True
         elif cible_panneaux <= 0:
             # Un layout sans compte de panneaux ne DÉTRUIT pas les lignes en
@@ -3290,6 +3651,43 @@ def sync_devis_from_layout(devis, layout, user=None):
             avertissements.append(
                 'Ce calepinage ne porte aucun panneau : les lignes de '
                 'panneaux du devis n\'ont pas été modifiées.')
+        elif lignes_panneau and devis_variante:
+            # ── L-2OPT / RÈGLE TOIT — le calepinage est un PLAFOND ──────────
+            # Chaque option a son propre compte, choisi par l'économie. Le
+            # calepinage dit combien de panneaux TIENNENT sur le toit : une
+            # option qui dépasse ce plafond est ramenée dessus (elle n'est
+            # PHYSIQUEMENT pas posable), une option en dessous n'est jamais
+            # augmentée — on ne rajoute pas au client des panneaux que
+            # l'optimum a délibérément écartés.
+            for variante in (VARIANTE_SANS, VARIANTE_AVEC):
+                vue = _lignes_de(variante)
+                total_vue = sum(int(li.quantite or 0) for li in vue)
+                if not vue or total_vue <= cible_panneaux:
+                    continue
+                # Rogner d'abord une ligne PROPRE à cette variante : toucher la
+                # ligne commune rétrécirait AUSSI l'autre option, qui, elle,
+                # tient peut-être sur le toit.
+                propres = [li for li in vue if _var(li) == variante]
+                dominante = max(
+                    propres or vue,
+                    key=lambda li: Decimal(str(li.quantite or 0)))
+                nouvelle = int(dominante.quantite or 0) - (
+                    total_vue - cible_panneaux)
+                if nouvelle < 0:
+                    # Même garde qu'en mono-option : jamais sous zéro, jamais
+                    # une suppression silencieuse.
+                    nouvelle = 0
+                    avertissements.append(
+                        'Le plafond du calepinage dépasse la plus grosse ligne '
+                        'de panneaux de l\'option « %s » : elle a été ramenée '
+                        'à 0, les autres lignes n\'ont pas été touchées.'
+                        % variante)
+                dominante.quantite = Decimal(str(nouvelle))
+                dominante.save(update_fields=['quantite'])
+                lignes_modifiees += 1
+                panneaux_ont_change = True
+            total_panneaux = _total_de(VARIANTE_SANS)
+            total_panneaux_avec = _total_de(VARIANTE_AVEC)
         elif lignes_panneau and cible_panneaux != total_panneaux:
             # L'écart va sur la PLUS GROSSE ligne, elle seule : les autres
             # lignes panneau restent telles que le commercial les a posées.
@@ -3310,6 +3708,7 @@ def sync_devis_from_layout(devis, layout, user=None):
             lignes_modifiees += 1
             total_panneaux = sum(
                 int(li.quantite or 0) for li in lignes_panneau)
+            total_panneaux_avec = total_panneaux
             panneaux_ont_change = True
 
         # DEV-202608-0016 — la resynchro DIT ce qu'elle a changé. Le compte de
@@ -3348,15 +3747,21 @@ def sync_devis_from_layout(devis, layout, user=None):
         # resynchro). Ne se déclenche QUE si le compte de panneaux a bougé —
         # un layout qui ne change rien aux panneaux ne touche pas aux câbles
         # non plus.
-        def _resynchroniser_quantite(predicat, cible):
+        def _resynchroniser_quantite(predicat, cible, variante=None):
             """Porte à ``cible`` la quantité de la famille ``predicat``.
 
             Ne touche QUE des lignes déjà présentes ET rattachées à un produit
             catalogue ; renvoie True quand une ligne a réellement bougé.
+
+            L-2OPT — ``variante`` restreint la famille aux lignes de CETTE
+            option-là (jamais les communes : une ligne commune sert les deux
+            options, la porter au compte d'une seule fausserait l'autre).
+            ``None`` (LE DÉFAUT, tous les appels d'hier) ⇒ aucune restriction.
             """
             candidats = [li for li in lignes
                          if getattr(li, 'produit', None) is not None
-                         and _classe_ligne(li, predicat)]
+                         and _classe_ligne(li, predicat)
+                         and (variante is None or _var(li) == variante)]
             if not candidats:
                 return False
             # Plusieurs lignes de la même famille (rare) : seule la PLUS
@@ -3400,13 +3805,38 @@ def sync_devis_from_layout(devis, layout, user=None):
         # note, jamais une ligne INVENTÉE — une ferrure absente reste à la
         # charge de PVHEAL juste en dessous, qui l'ajoute au bon compte), et ne
         # se déclenche QUE si le compte de panneaux a réellement bougé.
+        #
+        # L-2OPT — sur un devis VARIANTÉ, la ferrure suit le compte DE SA
+        # VARIANTE : les structures « sans » sur le champ « sans », les
+        # « avec » sur le champ « avec ». Une ligne de ferrure restée COMMUNE
+        # n'est PAS touchée — elle vaut pour les deux options, la porter au
+        # compte d'une seule fausserait l'autre (et la fusion, elle, variante
+        # toujours la ferrure quand les champs divergent : une commune ne peut
+        # venir que d'une retouche manuelle, que PV18 ne réécrit jamais).
         if panneaux_ont_change and total_panneaux > 0:
-            if _resynchroniser_quantite(
-                    _is_structure, total_panneaux * STRUCTURES_PAR_PANNEAU):
-                lignes_modifiees += 1
-            if _resynchroniser_quantite(
-                    _is_socle, total_panneaux * SOCLES_PAR_PANNEAU):
-                lignes_modifiees += 1
+            if devis_variante:
+                for variante, total_vue in (
+                        (VARIANTE_SANS, total_panneaux),
+                        (VARIANTE_AVEC, total_panneaux_avec)):
+                    if total_vue <= 0:
+                        continue
+                    if _resynchroniser_quantite(
+                            _is_structure,
+                            total_vue * STRUCTURES_PAR_PANNEAU,
+                            variante=variante):
+                        lignes_modifiees += 1
+                    if _resynchroniser_quantite(
+                            _is_socle, total_vue * SOCLES_PAR_PANNEAU,
+                            variante=variante):
+                        lignes_modifiees += 1
+            else:
+                if _resynchroniser_quantite(
+                        _is_structure,
+                        total_panneaux * STRUCTURES_PAR_PANNEAU):
+                    lignes_modifiees += 1
+                if _resynchroniser_quantite(
+                        _is_socle, total_panneaux * SOCLES_PAR_PANNEAU):
+                    lignes_modifiees += 1
 
         # ── Batterie : présente si (et seulement si) le layout en veut une ──
         if veut_batterie and not a_batterie:
@@ -4007,16 +4437,27 @@ def phase_client_pour_dimensionnement(lead):
 
 
 def _panneaux_dimensionnement_horaire(*, lead, company, phase):
-    """``(nb_panneaux, panel_watt, source)`` recommandés par le moteur horaire.
+    """``(nb_panneaux, panel_watt, source, avec)`` recommandés par le moteur.
 
     Traduit la fiche du lead en entrées du dimensionnement, puis lit la
     recommandation. ``panel_watt`` est le wattage du panneau RÉEL sur lequel le
     balayage a décidé : l'appelant doit composer avec le MÊME, sinon la
     puissance livrée ne serait pas celle qui a été évaluée.
 
+    L-2OPT — ``avec`` est le QUATRIÈME élément, et c'est la nouveauté : la
+    recommandation de l'axe AVEC BATTERIE (``recommandation_avec``, le balayage
+    CONJOINT champ × stockage de DIM2), rendue sous la forme
+    ``{'nb_panneaux', 'kwc', 'panel_watt', 'batterie_kwh'}``. Ce gagnant
+    existait depuis DIM2 mais n'alimentait AUCUN chemin de génération de
+    lignes — il ne servait qu'à l'affichage. ``None`` quand le moteur n'a
+    trouvé aucune configuration avec batterie livrable : l'appelant compose
+    alors l'option « avec » sur le MÊME champ que l'option « sans »
+    (comportement historique — jamais un chiffre inventé pour combler le trou).
+
     Toute impossibilité (pas de facture, localisation non résolue par PVGIS,
-    catalogue incomplet) rend ``(0, None, 'regle_900dh')`` : l'appelant retombe
-    alors sur la règle historique, ÉTIQUETÉE comme telle. Ne lève jamais.
+    catalogue incomplet) rend ``(0, None, 'regle_900dh', None)`` : l'appelant
+    retombe alors sur la règle historique, ÉTIQUETÉE comme telle. Ne lève
+    jamais.
     """
     try:
         from apps.crm.selectors import equipements_pour_devis  # noqa: F401
@@ -4032,7 +4473,7 @@ def _panneaux_dimensionnement_horaire(*, lead, company, phase):
             facture_ete_mad=getattr(lead, 'facture_ete', None),
             ete_differente=getattr(lead, 'ete_differente', False))
         if not conso:
-            return 0, None, 'regle_900dh'
+            return 0, None, 'regle_900dh', None
 
         drapeaux = {'present': OCCUPATION_PRESENCE,
                     'absent': OCCUPATION_ABSENCE,
@@ -4056,12 +4497,44 @@ def _panneaux_dimensionnement_horaire(*, lead, company, phase):
             source_conso=source)
         recommandation = resultat.get('recommandation')
         if not recommandation:
-            return 0, None, 'regle_900dh'
+            return 0, None, 'regle_900dh', None
         return (int(recommandation['panneaux']),
-                recommandation.get('panel_watt'), 'moteur_horaire')
+                recommandation.get('panel_watt'), 'moteur_horaire',
+                _recommandation_avec_rendue(resultat.get('recommandation_avec')))
     except Exception:  # noqa: BLE001 — jamais bloquant : on retombe sur 900 DH
         logger.warning('dimensionnement horaire indisponible', exc_info=True)
-        return 0, None, 'regle_900dh'
+        return 0, None, 'regle_900dh', None
+
+
+def _recommandation_avec_rendue(recommandation_avec):
+    """L-2OPT — la ligne ``recommandation_avec`` du moteur, réduite à ce que la
+    composition sait consommer : ``{nb_panneaux, kwc, panel_watt,
+    batterie_kwh}``.
+
+    ``None`` dès que la recommandation est absente ou ne porte pas de nombre de
+    panneaux exploitable — REPLI EXPLICITE : l'appelant compose alors l'option
+    « avec » sur le champ de l'option « sans », comme aujourd'hui. Aucun
+    chiffre n'est ni inventé ni arrondi ici : tout vient du moteur.
+    """
+    if not isinstance(recommandation_avec, dict):
+        return None
+    try:
+        panneaux = int(recommandation_avec.get('panneaux') or 0)
+    except (TypeError, ValueError):
+        return None
+    if panneaux <= 0:
+        return None
+    batterie = recommandation_avec.get('batterie_kwh')
+    try:
+        batterie = float(batterie) if batterie not in (None, '') else None
+    except (TypeError, ValueError):
+        batterie = None
+    return {
+        'nb_panneaux': panneaux,
+        'kwc': recommandation_avec.get('kwc'),
+        'panel_watt': recommandation_avec.get('panel_watt'),
+        'batterie_kwh': batterie if batterie and batterie > 0 else None,
+    }
 
 
 def rafraichir_etude_horaire(devis, *, kwc=None, batterie_kwh_utile=None):
@@ -4215,6 +4688,88 @@ def rafraichir_etude_horaire_devis(devis, *, force=False):
         return None
 
 
+def entrees_dimensionnement_du_devis(devis, *, contexte=True):
+    """P2-A (25/08/2026) — LES ENTRÉES du moteur calibré pour CE devis, lues UNE
+    SEULE FOIS et par UNE SEULE fonction.
+
+    RAISON D'ÊTRE : deux lectures ⇒ deux dimensionnements. Le tableau rangé par
+    :func:`rafraichir_dimensionnement_devis` et l'échelle de paliers batterie
+    (``dimensionnement.echelle_paliers_batterie``) doivent partir des MÊMES
+    factures, de la MÊME localisation, de la MÊME occupation et des MÊMES
+    équipements — sinon l'écran montrerait une échelle qui ne se raccorde pas au
+    palier « retenu » qu'il désigne. Cette fonction est cette lecture unique.
+
+    Renvoie ``None`` quand le devis n'est pas dimensionnable DU TOUT (mode non
+    résidentiel, ou aucune société), sinon un dict dont
+    ``conso_kwh_mensuelles`` peut valoir ``None`` — c'est-à-dire « société et
+    mode d'accord, mais aucun profil de consommation exploitable » : l'appelant
+    distingue ainsi les deux situations, qui n'appellent pas la même réaction
+    (l'une ne calcule rien, l'autre RETIRE une clé devenue périmée).
+
+    L'ORDRE DES LECTURES EST DÉLIBÉRÉ : la localisation, l'occupation et les
+    équipements ne sont lus qu'APRÈS que la consommation s'est avérée
+    exploitable — c'est une requête de moins sur le chemin qui ne calculera
+    rien de toute façon. ``contexte=False`` les saute complètement (ils restent
+    à ``None``) : c'est ce que veut un appelant qui n'a besoin que de la GARDE
+    (mode, société, profil exploitable) avant de décider s'il recalcule —
+    typiquement ``rafraichir_dimensionnement_devis`` sur son chemin de cache,
+    appelé à chaque enregistrement de ligne et qui ne doit y payer AUCUNE
+    requête de plus qu'avant.
+
+    Fonction de LECTURE PURE : elle n'écrit rien, ne touche ni statut, ni
+    ligne, ni total (règle #4).
+    """
+    mode = (getattr(devis, 'mode_installation', None) or '').strip().lower()
+    if mode != 'residentiel':
+        return None
+    company = getattr(devis, 'company', None)
+    if company is None:
+        return None
+
+    from apps.crm.selectors import lead_bills_for_devis, site_location_for_devis
+    from apps.ventes.courbes_journalieres import (
+        equipements_du_devis, occupation_du_devis)
+    from apps.ventes.etude_horaire import profil_depuis_factures
+
+    bills = lead_bills_for_devis(devis) or {}
+    etude_params = getattr(devis, 'etude_params', None) or {}
+    conso, source_conso, _detail = profil_depuis_factures(
+        facture_hiver_mad=bills.get('facture_hiver'),
+        facture_ete_mad=bills.get('facture_ete'),
+        ete_differente=bills.get('ete_differente'),
+        factures_mensuelles_mad=etude_params.get('factures_mensuelles_reelles'),
+        conso_kwh_mensuelles=etude_params.get('conso_kwh_mensuelles'))
+
+    entrees = {
+        'company': company,
+        'mode': mode,
+        'etude_params': etude_params,
+        'conso_kwh_mensuelles': conso,
+        'source_conso': source_conso,
+        'ville': None, 'lat': None, 'lon': None,
+        'occupation': None, 'equipements': None,
+    }
+    if not conso or not contexte:
+        return entrees
+
+    localisation = site_location_for_devis(devis) or {}
+    # Même relai que ``etude_horaire._etude_horaire_pour_devis`` : sans
+    # ``mode_installation`` explicite, ``_occupation`` retombe sur le défaut
+    # NON résidentiel — on lui donne donc le mode du devis (déjà vérifié
+    # 'residentiel' ci-dessus) pour que le défaut fondateur résidentiel
+    # s'applique.
+    occupation, _source_occ = occupation_du_devis(
+        devis, {'mode_installation': mode})
+    entrees.update({
+        'ville': localisation.get('site_ville'),
+        'lat': localisation.get('gps_lat'),
+        'lon': localisation.get('gps_lng'),
+        'occupation': occupation,
+        'equipements': equipements_du_devis(devis),
+    })
+    return entrees
+
+
 def rafraichir_dimensionnement_devis(devis, *, force=False):
     """T5 (24/08/2026) — pose ``etude_params['dimensionnement']`` sur un devis
     RÉSIDENTIEL, même point d'entrée-esprit que
@@ -4238,29 +4793,14 @@ def rafraichir_dimensionnement_devis(devis, *, force=False):
     localisation non résolue) — jamais un tableau inventé.
     """
     try:
-        mode = (getattr(devis, 'mode_installation', None) or '').strip().lower()
-        if mode != 'residentiel':
+        # P2-A — LECTURE UNIQUE des entrées (voir
+        # ``entrees_dimensionnement_du_devis``) : l'échelle de paliers batterie
+        # part exactement des mêmes.
+        garde = entrees_dimensionnement_du_devis(devis, contexte=False)
+        if garde is None:
             return None
-        company = getattr(devis, 'company', None)
-        if company is None:
-            return None
-
-        from apps.crm.selectors import (
-            lead_bills_for_devis, site_location_for_devis)
-        from apps.ventes.courbes_journalieres import (
-            equipements_du_devis, occupation_du_devis)
-        from apps.ventes.etude_horaire import profil_depuis_factures
-
-        bills = lead_bills_for_devis(devis) or {}
-        etude_params = getattr(devis, 'etude_params', None) or {}
-        conso, source_conso, _detail = profil_depuis_factures(
-            facture_hiver_mad=bills.get('facture_hiver'),
-            facture_ete_mad=bills.get('facture_ete'),
-            ete_differente=bills.get('ete_differente'),
-            factures_mensuelles_mad=etude_params.get(
-                'factures_mensuelles_reelles'),
-            conso_kwh_mensuelles=etude_params.get('conso_kwh_mensuelles'))
-        if not conso:
+        etude_params = garde['etude_params']
+        if not garde['conso_kwh_mensuelles']:
             if not force and 'dimensionnement' not in etude_params:
                 return None
             etude = dict(etude_params)
@@ -4272,23 +4812,18 @@ def rafraichir_dimensionnement_devis(devis, *, force=False):
         if not force and 'dimensionnement' in etude_params:
             return etude_params['dimensionnement']
 
-        localisation = site_location_for_devis(devis) or {}
-        ville = localisation.get('site_ville')
-        lat, lon = localisation.get('gps_lat'), localisation.get('gps_lng')
-        # Même relai que ``etude_horaire._etude_horaire_pour_devis`` : sans
-        # ``mode_installation`` explicite, ``_occupation`` retombe sur le
-        # défaut NON résidentiel — on lui donne donc le mode du devis (déjà
-        # vérifié 'residentiel' ci-dessus) pour que le défaut fondateur
-        # résidentiel s'applique.
-        occupation, _source_occ = occupation_du_devis(
-            devis, {'mode_installation': mode})
-        equipements = equipements_du_devis(devis)
+        # On RECALCULE : c'est le seul chemin qui a besoin du contexte
+        # (localisation, occupation, équipements).
+        entrees = entrees_dimensionnement_du_devis(devis)
+        conso = entrees['conso_kwh_mensuelles']
 
         from apps.ventes.dimensionnement import recommander_taille
         resultat = recommander_taille(
-            company=company, conso_kwh_mensuelles=conso, ville=ville,
-            lat=lat, lon=lon, occupation=occupation, equipements=equipements,
-            source_conso=source_conso)
+            company=entrees['company'], conso_kwh_mensuelles=conso,
+            ville=entrees['ville'], lat=entrees['lat'], lon=entrees['lon'],
+            occupation=entrees['occupation'],
+            equipements=entrees['equipements'],
+            source_conso=entrees['source_conso'])
 
         etude = dict(etude_params)
         etude['dimensionnement'] = resultat
@@ -4372,7 +4907,8 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
                                panel_watt=_AUTO_PANEL_WATT, scenario=None,
                                structure_type='acier',
                                taux_tva=Decimal('20'), mppt_paires=1,
-                               gamme_nom_devis=None, phase=None):
+                               gamme_nom_devis=None, phase=None,
+                               dimensionnement_avec=None):
     """U3 — LE DRY-RUN : compose sans RIEN créer, et rend le résultat en clair.
 
     C'est la moitié « à blanc » de la source de vérité : le même catalogue, la
@@ -4385,6 +4921,14 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
     ``panel_watt``. Company-scopé (le catalogue d'une autre société ne fuite
     jamais). Rend un dict SÉRIALISABLE — la forme figée dans
     ``contract_samples/composition_residentielle.json``.
+
+    ``dimensionnement_avec`` (L-2OPT, optionnel) — l'optimum de l'axe AVEC
+    BATTERIE (``{'nb_panneaux', 'kwc', 'batterie_kwh'}``), quand le moteur
+    calibré en désigne un DIFFÉRENT de l'optimum sans stockage : le dry-run
+    compose alors la même FUSION que la création (lignes variantées), sans quoi
+    l'aperçu et le devis ne parleraient pas du même kit. ``None`` (LE DÉFAUT)
+    ⇒ dry-run strictement inchangé, et chaque ligne rendue porte
+    ``variante: ''``.
     """
     kwp = float(kwc or 0)
     nb_force = int(nb_panneaux or 0)
@@ -4403,16 +4947,13 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
     deux_options = demande not in ('avec', 'sans')
 
     avertissements = []
-    lignes = composition_residentielle(
-        catalogue_de_la_societe(company),
-        kwc=kwp,
+    _avec = dimensionnement_avec if isinstance(
+        dimensionnement_avec, dict) else None
+    _commun = dict(
         panel_watt=watt,
-        nb_panneaux=nb_force,
-        avec_batterie=avec_batterie,
         structure_type=structure_type,
         taux_tva=taux_tva,
         avertissements=avertissements,
-        deux_options=deux_options,
         marques=carte_marques_composition(company, gamme_nom_devis),
         ordre_lignes=ordre_lignes_societe(company),
         mppt_paires=mppt_paires,
@@ -4421,6 +4962,28 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
         # devis ne composerait pas.
         phase=phase,
     )
+    if deux_options and _avec:
+        lignes = composition_deux_optimiseurs(
+            catalogue_de_la_societe(company),
+            kwc_sans=kwp,
+            nb_panneaux_sans=nb_force,
+            kwc_avec=_avec.get('kwc'),
+            nb_panneaux_avec=_avec.get('nb_panneaux'),
+            batterie_cible_kwh=_avec.get('batterie_kwh'),
+            **_commun)
+    else:
+        lignes = composition_residentielle(
+            catalogue_de_la_societe(company),
+            kwc=kwp,
+            nb_panneaux=nb_force,
+            avec_batterie=avec_batterie,
+            deux_options=deux_options,
+            # L-2OPT — miroir EXACT de ``build_devis_from_layout`` : un devis
+            # mono « avec » retient la capacité du même optimum.
+            batterie_cible_kwh=(
+                _avec.get('batterie_kwh')
+                if (avec_batterie and _avec) else None),
+            **_commun)
 
     roles = list(getattr(lignes, 'roles', ()) or ())
     facteur = Decimal('1') + (Decimal(str(taux_tva or 20)) / Decimal('100'))
@@ -4439,6 +5002,9 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
             'prix_unitaire_ht': str(Decimal(ligne.prix_unitaire)),
             'prix_unitaire_ttc': str(ttc),
             'taux_tva': str(Decimal(str(taux_tva or 20))),
+            # L-2OPT — '' sur toute composition mono-optimum (le cas de tous
+            # les aperçus d'hier) : la clé est ADDITIVE, jamais absente.
+            'variante': getattr(ligne, 'variante', '') or '',
         })
 
     return {
@@ -4450,6 +5016,14 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
         'panel_watt': getattr(lignes, 'panel_watt_reel', watt),
         'kwc_reel': getattr(lignes, 'kwc_reel', 0.0),
         'blocs': getattr(lignes, 'blocs', 1),
+        # L-2OPT — l'option « avec » quand elle a son PROPRE champ PV. Sur une
+        # composition mono-optimum : ``variantes`` False et les deux valeurs
+        # recopient l'option unique — aucun appelant ne peut lire un trou.
+        'variantes': bool(getattr(lignes, 'variantes', False)),
+        'nb_panneaux_avec': (getattr(lignes, 'nb_panneaux_avec', 0)
+                             or getattr(lignes, 'nb_panneaux', 0)),
+        'kwc_reel_avec': (getattr(lignes, 'kwc_reel_avec', 0.0)
+                          or getattr(lignes, 'kwc_reel', 0.0)),
         'avertissements': list(avertissements),
         'marques_manquantes': [
             {**m, 'libelle_role': _libelle_role(m.get('role'))}
@@ -4531,8 +5105,12 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
     # dimensionner sur un panneau de 550 Wc puis composer à 710 Wc livrerait
     # une autre puissance que celle qui a été évaluée.
     watt_dimensionnement = _AUTO_PANEL_WATT
+    # L-2OPT — ce que le moteur recommande POUR L'AXE AVEC BATTERIE. ``None``
+    # partout ailleurs : la règle des 900 DH/mois ne connaît qu'UN champ, et
+    # une cible explicite du commercial est souveraine sur les deux options.
+    optimum_avec = None
     if cible is None and taille_kwc in (None, '') and profil_reel_existe(lead):
-        panneaux, watt_retenu, source_dimensionnement = (
+        panneaux, watt_retenu, source_dimensionnement, optimum_avec = (
             _panneaux_dimensionnement_horaire(
                 lead=lead, company=company,
                 phase=phase_client_pour_dimensionnement(lead)))
@@ -4545,6 +5123,10 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
             taille_kwc=cible if cible is not None else taille_kwc)
         source_dimensionnement = 'regle_900dh'
         watt_dimensionnement = _AUTO_PANEL_WATT
+        # Le champ « sans » ne vient plus du moteur : son optimum « avec » ne
+        # lui est plus opposable (on ne mélange pas deux dimensionnements issus
+        # de deux règles différentes).
+        optimum_avec = None
     if panneaux <= 0:
         if facture_hiver not in (None, '') or taille_kwc not in (None, ''):
             msg = ("La facture d'hiver du lead est trop faible pour dimensionner "
@@ -4581,6 +5163,32 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
         else (getattr(lead, 'batterie_souhaitee', '') or '').strip())
     wants_battery = choix_batterie == 'avec'
     deux_options = choix_batterie not in ('avec', 'sans')
+
+    # ── L-2OPT — L'AXE « AVEC BATTERIE » A SON PROPRE OPTIMUM ───────────────
+    # Le moteur calibré désigne DEUX gagnants (DIM2) : ``recommandation`` au
+    # meilleur payback SANS stockage, et ``recommandation_avec`` au meilleur
+    # payback AVEC — issus d'un balayage CONJOINT champ × stockage. Le second
+    # n'alimentait aucune ligne de devis.
+    #
+    #   · scénario MONO « avec » — le devis ne propose QUE le stockage : il
+    #     doit donc être dimensionné sur l'optimum AVEC, pas sur celui d'un
+    #     champ sans batterie que personne n'achètera. C'est tout l'objet de ce
+    #     chantier ;
+    #   · scénario « les deux » — les deux champs partent au devis, fusionnés
+    #     en lignes variantées (cf. ``composition_deux_optimiseurs``) ;
+    #   · scénario MONO « sans » — RIEN ne change : l'optimum « avec » ne le
+    #     concerne pas.
+    if wants_battery and optimum_avec:
+        panneaux = int(optimum_avec['nb_panneaux'])
+        watt_avec = optimum_avec.get('panel_watt')
+        if watt_avec:
+            watt_dimensionnement = float(watt_avec)
+        kwc = round(panneaux * watt_dimensionnement / 1000, 2)
+        source_dimensionnement = 'moteur_horaire_avec'
+    elif not deux_options:
+        # Mono « sans » : l'optimum « avec » n'a rien à faire dans ce devis.
+        optimum_avec = None
+
     layout = {
         'result': {'panels': panneaux, 'kwc': kwc},
         'panelWatt': watt_dimensionnement,
@@ -4610,7 +5218,11 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
         company=company, nb_panneaux=panneaux,
         panel_watt=watt_dimensionnement,
         scenario=choix_batterie or 'les_deux', taux_tva=taux_tva,
-        phase=phase_client)
+        phase=phase_client,
+        # L-2OPT — le DRY-RUN voit EXACTEMENT la composition qui sera créée,
+        # fusion comprise : sans cela il contrôlerait les marques d'un kit qui
+        # n'est pas celui du devis.
+        dimensionnement_avec=optimum_avec)
     if apercu['marques_manquantes']:
         detail = ', '.join(
             '%s (%s)' % (m.get('marque'), m.get('libelle_role'))
@@ -4624,7 +5236,8 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
     devis = build_devis_from_layout(
         layout=layout, user=user, company=company, lead=lead,
         taux_tva=taux_tva, remise_globale=remise_globale,
-        deux_options=deux_options, journal=journal, phase=phase_client)
+        deux_options=deux_options, journal=journal, phase=phase_client,
+        dimensionnement_avec=optimum_avec)
     for avertissement in journal.get('avertissements') or []:
         logger.warning('Auto-devis %s: %s', devis.reference, avertissement)
 
