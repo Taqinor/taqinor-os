@@ -1452,10 +1452,25 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # on le DIT (drapeau servi à la page et au PDF), plutôt que de laisser le
     # client compter lui-même. Jamais un recalcul de la géométrie — seulement
     # une comparaison honnête entre deux comptes.
+    # LAYSTALE (27/08/2026) — UN DOCUMENT À DEUX OPTIONS A DEUX COMPTES VALIDES.
+    # ``nb_panneaux`` vaut le compte de l'option AVEC dès que les champs PV
+    # divergent (repli documenté ``_scalaires_par_option``), et le recalage
+    # ci-dessus est SAUTÉ quand le document rend les deux options : un
+    # calepinage joué sur l'option SANS (22 panneaux d'un devis 22/26) était
+    # donc déclaré « périmé » alors qu'il décrit fidèlement une des deux
+    # options rendues — un avertissement faux, montré au client. Le calepinage
+    # n'est périmé que s'il ne correspond à AUCUNE des deux variantes.
+    # Hors de ce cas (document mono-option, devis non divergent — tout
+    # l'existant) la comparaison est celle d'hier, au drapeau près.
     layout_nb_panneaux = _panneaux_du_layout(roof_layout)
+    if panneaux_divergents and deux_options:
+        _comptes_valides = {n for n in (nb_panneaux_sans, nb_panneaux_avec)
+                            if n}
+    else:
+        _comptes_valides = {nb_panneaux}
     layout_stale = bool(
         layout_nb_panneaux and puissance_des_lignes
-        and layout_nb_panneaux != nb_panneaux)
+        and layout_nb_panneaux not in _comptes_valides)
 
     # ── Canonical performance figures: ONE source of truth ───────────────────
     # When the quote carries a stored étude (industrial), its consumption-driven

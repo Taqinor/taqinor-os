@@ -287,6 +287,102 @@ class TestDrapeauCalepinagePerime(BaseDevisLive):
         self.assertEqual(resp.data['layout_nb_panneaux'], NB_PANNEAUX_LIVE)
 
 
+class TestDrapeauCalepinageDeuxOptions(BaseDevisLive):
+    """LAYSTALE (27/08/2026) — UN DOCUMENT À DEUX OPTIONS A DEUX COMPTES VALIDES.
+
+    Depuis L-2OPT, les deux options d'un devis peuvent porter des nombres de
+    panneaux différents (22 sans / 26 avec) et le scalaire ``nb_panneaux``
+    porte alors celui de l'option AVEC. Le drapeau de péremption comparait le
+    calepinage à ce SEUL scalaire : un calepinage joué sur l'option « sans »
+    était déclaré périmé alors qu'il décrit fidèlement une des deux options
+    imprimées — un avertissement faux, montré au client.
+    """
+
+    NB_SANS, NB_AVEC = 22, 26
+
+    def _devis_deux_options(self, panneaux_layout, pdf_options=None):
+        """Devis 22/26 (ligne panneau dédoublée par variante) + calepinage.
+
+        Même mécanique que ``test_quote_engine_deux_optimiseurs`` : le champ
+        modèle ``LigneDevis.variante`` est lu par l'unique point de lecture du
+        moteur, remplacé ici — aucune dépendance à une migration.
+        """
+        self.compteur += 1
+        reference = f'DEV-LAYSTALE-{self.compteur}'
+        reseau = Produit.objects.create(
+            company=self.company, nom='Onduleur réseau Huawei 10kW Triphasé',
+            sku=f'{reference}-ONDR', prix_vente=Decimal('16666.67'),
+            prix_achat=Decimal('11000'), quantite_stock=50)
+        devis = Devis.objects.create(
+            company=self.company, reference=reference, client=self.client_obj,
+            created_by=self.user, statut=Devis.Statut.BROUILLON,
+            roof_layout=layout_live(panneaux=panneaux_layout),
+            etude_params={'scenario': 'Les deux (Sans + Avec)'})
+        variantes = {}
+        for nb, variante in ((self.NB_SANS, 'sans'), (self.NB_AVEC, 'avec')):
+            ligne = devis.lignes.create(
+                produit=self.panneau,
+                designation='Panneau Canadien Solar 710W',
+                quantite=Decimal(str(nb)), prix_unitaire=Decimal('1272.73'),
+                ordre=0)
+            variantes[ligne.pk] = variante
+        devis.lignes.create(
+            produit=reseau,
+            designation='Onduleur réseau Huawei 10kW Triphasé',
+            quantite=Decimal('1'), prix_unitaire=Decimal('16666.67'), ordre=1)
+        devis.lignes.create(
+            produit=self.onduleur,
+            designation='Onduleur hybride Deye 5kW Monophasé',
+            quantite=Decimal('1'), prix_unitaire=Decimal('14166.67'), ordre=2)
+        devis.lignes.create(
+            produit=self.batterie, designation='Batterie Deyness 5 kWh',
+            quantite=Decimal('1'), prix_unitaire=Decimal('14166.67'), ordre=3)
+        with patch('apps.ventes.quote_engine.builder._variante_de_ligne',
+                   side_effect=lambda li: variantes.get(li.pk, '')):
+            return build_quote_data(devis, pdf_options or {'pdf_mode': 'full'})
+
+    def test_la_fixture_rend_bien_deux_options_divergentes(self):
+        """Sans cette garantie, les cas ci-dessous ne prouveraient rien."""
+        data = self._devis_deux_options(self.NB_SANS)
+
+        self.assertTrue(data['deux_options'])
+        self.assertTrue(data['panneaux_divergents'])
+        self.assertEqual(data['nb_panneaux_sans'], self.NB_SANS)
+        self.assertEqual(data['nb_panneaux_avec'], self.NB_AVEC)
+        # Le scalaire legacy porte l'option AVEC : c'est LUI que l'ancienne
+        # comparaison opposait au calepinage des 22.
+        self.assertEqual(data['nb_panneaux'], self.NB_AVEC)
+
+    def test_un_calepinage_cale_sur_l_option_sans_n_est_pas_perime(self):
+        data = self._devis_deux_options(self.NB_SANS)
+
+        self.assertEqual(data['layout_nb_panneaux'], self.NB_SANS)
+        self.assertFalse(data['layout_stale'])
+
+    def test_un_calepinage_cale_sur_l_option_avec_n_est_pas_perime(self):
+        data = self._devis_deux_options(self.NB_AVEC)
+
+        self.assertEqual(data['layout_nb_panneaux'], self.NB_AVEC)
+        self.assertFalse(data['layout_stale'])
+
+    def test_un_calepinage_cale_sur_aucune_des_deux_reste_perime(self):
+        """La tolérance ne couvre QUE les deux comptes réellement imprimés."""
+        data = self._devis_deux_options(24)
+
+        self.assertEqual(data['layout_nb_panneaux'], 24)
+        self.assertTrue(data['layout_stale'])
+
+    def test_un_document_retreci_a_une_option_retrouve_un_seul_compte(self):
+        """Rétréci à l'option « sans » (variante du lien public), le document
+        n'imprime plus que 22 panneaux : le calepinage des 26 y est périmé."""
+        data = self._devis_deux_options(
+            self.NB_AVEC, {'pdf_mode': 'full', 'variante_option': 'sans'})
+
+        self.assertFalse(data['deux_options'])
+        self.assertEqual(data['nb_panneaux'], self.NB_SANS)
+        self.assertTrue(data['layout_stale'])
+
+
 class TestPdfStockeJamaisPerime(BaseDevisLive):
     """PVFRESH — servir le fichier stocké, oui ; servir un fichier périmé, non."""
 
