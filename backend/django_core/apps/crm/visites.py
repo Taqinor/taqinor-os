@@ -317,9 +317,12 @@ def historique_appareil(company, appareil_id):
             'premiere': agrege.get('premiere'),
             'derniere': agrege.get('derniere'),
             'pages': vues,
-            'leads': sorted(
+            # Dédoublonné en PYTHON, jamais par `.distinct()` : le
+            # `Meta.ordering` du modèle se glisse dans le SELECT DISTINCT et
+            # ramène alors des doublons (piège Django classique).
+            'leads': sorted(set(
                 qs.exclude(lead__isnull=True)
-                .values_list('lead_id', flat=True).distinct()),
+                .values_list('lead_id', flat=True))),
         }
     except Exception as exc:  # noqa: BLE001 — best-effort
         logger.warning('T-TRACE: historique_appareil échoué : %s', exc)
