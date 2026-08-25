@@ -44,9 +44,14 @@ from decimal import Decimal
 logger = logging.getLogger(__name__)
 
 #: Critère de recommandation par DÉFAUT — nommé pour être discutable.
-#: « meilleur payback, à égalité la meilleure couverture » : on optimise le
-#: retour sur investissement du client, et on départage deux tailles au
-#: payback équivalent par celle qui couvre le plus de sa consommation.
+#:
+#: DEPUIS LE 25/08/2026 (doctrine, voir :data:`HORIZON_MARGINAL_PV`) sa
+#: définition a CHANGÉ, la clé pas : « meilleur payback » est le POINT DE
+#: DÉPART, plus le point d'arrivée. On part de la taille au meilleur payback,
+#: puis on MONTE tant que chaque panneau (ou chaque batterie) supplémentaire se
+#: rembourse dans l'horizon toléré. Le client obtient ainsi la plus forte
+#: réduction de facture atteignable sous un ROI raisonnable, et non le plus
+#: petit kit qui affiche le plus joli ratio.
 CRITERE_DEFAUT = 'meilleur_payback'
 
 #: Critères reconnus. ``meilleure_couverture`` maximise la part de
@@ -60,6 +65,49 @@ CRITERES = (CRITERE_DEFAUT, 'meilleure_couverture', 'economie_max')
 #: départager 7,41 et 7,43 ans serait une fausse précision. Départage alors par
 #: la couverture, conformément au critère par défaut.
 EGALITE_PAYBACK_ANNEES = 0.25
+
+#: ═══ LA DOCTRINE D'OPTIMUM (fondateur/orchestrateur, 25/08/2026) ═══════════
+#:
+#: INTENTION FONDATEUR : « L'optimum = celui qui réduit la facture le PLUS, avec
+#: un ROI raisonnable — pas seulement le meilleur payback. L'optimum s'arrête
+#: quand des panneaux en plus n'apportent que des gains négligeables par rapport
+#: à l'investissement. »
+#:
+#: **CHAQUE DIRHAM AJOUTÉ À L'INSTALLATION DOIT SE REMBOURSER DANS LA VIE DE
+#: L'ACTIF QU'IL ACHÈTE.** L'horizon est ABSOLU, jamais un pourcentage du
+#: meilleur payback — correction délibérée d'une première version relative
+#: (H = meilleur payback × 1,20), abandonnée le jour même parce qu'elle
+#: PUNISSAIT LES BONS DOSSIERS : un client au meilleur payback de 3 ans se
+#: voyait refuser un pas qui se rembourse en 5 ans — excellent sur un actif
+#: garanti ~30 ans — pendant qu'un dossier faible à 12 ans se voyait, lui,
+#: accorder des pas à 14,4 ans. Le critère doit juger le SUPPLÉMENT, pas la
+#: qualité du dossier qui le porte.
+#:
+#: LES DEUX SEUILS DÉRIVENT D'UN SEUL PARAMÈTRE DE FOND — un taux d'exigence de
+#: l'ordre de 8,5 %/an — appliqué à la DURÉE DE VIE de chaque composant. Ce ne
+#: sont donc pas deux réglages arbitraires mais UNE exigence de rentabilité,
+#: exprimée en années par composant : c'est l'implémentation lisible du critère
+#: « maximiser la valeur actualisée nette » de la littérature de
+#: dimensionnement (famille HOMER), jamais une tolérance relative.
+#:
+#: PANNEAUX — ~25-30 ans de garantie de production : à ~8,5 %/an le dirham a le
+#: temps de se rembourser en dix ans et de rapporter ensuite. Précédent publié :
+#: optimisation PV + stockage sous CONTRAINTE de payback ≤ 10 ans avec
+#: maximisation de la VAN (MDPI *Energies* 19(7):1803).
+HORIZON_MARGINAL_PV = 10
+
+#: STOCKAGE — ~12 ans de vie utile (Dyness : ≥ 6 000 cycles, soit ~16 ans à un
+#: cycle par jour ; on reste prudent). L'actif vit MOINS LONGTEMPS, donc son
+#: dirham a moins de temps pour se rembourser : au MÊME taux d'exigence, le
+#: seuil descend à sept ans. Une batterie qui met dix ans à se payer aurait
+#: consommé la quasi-totalité de sa vie utile à rembourser son propre achat.
+HORIZON_MARGINAL_BATTERIE = 7
+
+#: Tolérance numérique de comparaison des ratios (années). Un pas marginal à
+#: 8,000000001 an devant un horizon de 8,0 an n'est pas un pas refusable :
+#: refuser sur un flottant produirait un arrêt que personne ne peut expliquer
+#: en lisant le tableau.
+_EPSILON_ANNEES = 1e-9
 
 #: Ratio onduleur/kWc minimal — LE chiffre du fondateur, déjà appliqué par
 #: ``composition_residentielle``. Répété ici UNIQUEMENT pour vérifier et rendre
@@ -359,6 +407,116 @@ def _payback(cout, economie_annuelle):
     if economie_annuelle <= 0 or cout <= 0:
         return None
     return cout / economie_annuelle
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# LA DOCTRINE D'OPTIMUM — UNE SEULE MÉCANIQUE, DEUX OPTIMISEURS
+# ════════════════════════════════════════════════════════════════════════════
+#
+# LA PROPRIÉTÉ MATHÉMATIQUE QUI REND LA RÈGLE HONNÊTE. Notons
+# H = :data:`HORIZON_MARGINAL_PV` (le PLUS LARGE des deux seuils), C₀/E₀ le coût
+# et l'économie annuelle du point de départ (la taille au MEILLEUR payback) et
+# ΔCᵢ/ΔEᵢ ceux du i-ème pas marginal franchi. La montée n'a lieu QUE si le
+# départ tient déjà dans H (C₀ ≤ H·E₀ — c'est la GARDE DU DOSSIER FAIBLE, voir
+# :func:`depart_dans_horizon`), et chaque pas admis vérifie ΔCᵢ ≤ Hᵢ·ΔEᵢ avec
+# Hᵢ ≤ H (le seuil batterie est plus STRICT que le seuil PV). En sommant :
+#
+#     Cₙ = C₀ + ΣΔCᵢ ≤ H·E₀ + H·ΣΔEᵢ = H·Eₙ     donc   Cₙ/Eₙ ≤ H
+#
+# — le payback GLOBAL de la taille retenue reste sous DIX ANS, quel que soit le
+# nombre de pas franchis (c'est l'inégalité des médiants : une moyenne pondérée
+# de rapports tous ≤ H est ≤ H). Autrement dit les deux moitiés de la phrase du
+# fondateur — « réduire la facture le PLUS » et « avec un ROI raisonnable » —
+# ne sont pas deux contraintes à arbitrer : c'est UNE SEULE règle, et ce module
+# la vérifie plutôt que de l'affirmer (épinglé par
+# ``test_dimensionnement_exemples`` et ``test_deux_optimiseurs``).
+#
+# ET « L'OPTIMUM S'ARRÊTE QUAND LES GAINS DEVIENNENT NÉGLIGEABLES » EN EST LA
+# MÊME RÈGLE VUE DE L'AUTRE CÔTÉ : un pas dont l'économie marginale tend vers
+# zéro a un ratio ΔC/ΔE qui tend vers l'infini — il sort de l'horizon TOUT
+# SEUL, sans qu'aucun seuil de « négligeable » n'ait à être inventé.
+
+
+def depart_dans_horizon(meilleur_payback):
+    """GARDE DU DOSSIER FAIBLE — la montée est-elle seulement autorisée ?
+
+    ``False`` quand le payback du POINT DE DÉPART dépasse déjà
+    :data:`HORIZON_MARGINAL_PV` : le départ lui-même ne tient pas dans
+    l'horizon, alors lui ajouter des dirhams ne peut qu'aggraver son cas. On
+    retombe alors sur le choix PUR « meilleur payback » — c'est-à-dire, très
+    exactement, ce que ce module rendait avant le 25/08/2026 : la nouvelle
+    doctrine ne peut JAMAIS rendre un dossier faible plus mauvais qu'avant.
+
+    L'argument est bien celui du DÉPART et non du meilleur payback du tableau :
+    les deux coïncident presque toujours, mais le départage « à égalité »
+    (:data:`EGALITE_PAYBACK_ANNEES`) peut retenir un point légèrement au-dessus
+    du meilleur, et c'est ce point-là qui doit tenir dans l'horizon.
+
+    C'est aussi elle qui rend vraie la propriété globale démontrée ci-dessus
+    (payback global ≤ dix ans) : sans ce garde-fou, une montée partant de
+    quinze ans y resterait.
+    """
+    valeur = _num(meilleur_payback, -1.0)
+    return 0 < valeur <= HORIZON_MARGINAL_PV + _EPSILON_ANNEES
+
+
+def ratio_pas_marginal(cout_avant, economie_avant, cout_apres, economie_apres):
+    """LE PRIX DU PAS, en années : Δcoût / Δéconomie annuelle.
+
+    C'est le payback du SEUL supplément — les panneaux (ou les batteries) que
+    ce pas ajoute, payés par les dirhams que ce pas ajoute. Trois natures de
+    pas, et une seule est refusée :
+
+    * ``Δcoût > 0`` et ``Δéconomie > 0`` → le ratio, à comparer à l'horizon ;
+    * ``Δcoût ≤ 0`` et ``Δéconomie ≥ 0`` → le pas est GRATUIT (une marche du
+      catalogue peut coûter moins tout en produisant plus) : ``0.0``, toujours
+      admissible ;
+    * ``Δéconomie ≤ 0`` alors que le pas coûte → ``None`` : payer pour ne rien
+      gagner, exactement le « gain négligeable » où le fondateur veut que
+      l'optimum s'arrête.
+    """
+    delta_cout = _num(cout_apres) - _num(cout_avant)
+    delta_economie = _num(economie_apres) - _num(economie_avant)
+    if delta_cout <= 0:
+        return 0.0 if delta_economie >= 0 else None
+    if delta_economie <= 0:
+        return None
+    return delta_cout / delta_economie
+
+
+def grimper_par_pas_marginaux(depart, suivants, horizon, cout, economie):
+    """LE CŒUR DE LA DOCTRINE : jusqu'où monter depuis ``depart``.
+
+    ``suivants`` est la suite ORDONNÉE CROISSANTE des candidats strictement
+    plus grands que ``depart`` ; ``cout`` et ``economie`` en extraient les deux
+    grandeurs ; ``horizon`` est le seuil en années du COMPOSANT que ces pas
+    achètent (:data:`HORIZON_MARGINAL_PV` pour des panneaux,
+    :data:`HORIZON_MARGINAL_BATTERIE` pour du stockage), ou ``None`` pour
+    interdire toute montée. On avance d'un cran tant que le pas se rembourse
+    dans cet horizon
+    et l'on S'ARRÊTE AU PREMIER PAS REFUSÉ — on ne l'ENJAMBE pas. C'est une
+    décision, et elle est celle du fondateur mot pour mot (« des pas ascendants
+    dont CHAQUE pas marginal se rembourse en ≤ H ») : c'est la CHAÎNE ININTER-
+    ROMPUE de pas admissibles qui démontre le payback global (voir l'encadré
+    ci-dessus). Enjamber un pas hors horizon en le noyant dans le suivant
+    reviendrait à vendre au client une marche qu'il aurait refusée si on la lui
+    avait montrée seule.
+
+    Renvoie ``(candidat_retenu, [ratio de chaque pas franchi])`` — la liste des
+    ratios est la PREUVE lisible de la montée, pas un détail de journalisation.
+    """
+    courant = depart
+    if horizon is None:
+        return courant, []
+    franchis = []
+    for candidat in (suivants or ()):
+        ratio = ratio_pas_marginal(cout(courant), economie(courant),
+                                   cout(candidat), economie(candidat))
+        if ratio is None or ratio > horizon + _EPSILON_ANNEES:
+            break
+        courant = candidat
+        franchis.append(round(ratio, 2))
+    return courant, franchis
 
 
 def paliers_stockage_candidats(capacites_vivier, *,
@@ -867,9 +1025,26 @@ def _arrondi(valeur, decimales=2):
 def choisir_recommandation(tableau, critere=CRITERE_DEFAUT):
     """La taille RECOMMANDÉE dans un tableau, avec sa MOTIVATION en clair.
 
-    Règle par défaut (:data:`CRITERE_DEFAUT`) : le meilleur payback ; à
-    égalité (écart < :data:`EGALITE_PAYBACK_ANNEES`, un payback n'étant pas
-    connu au centième d'année), la meilleure couverture de consommation.
+    Règle par défaut (:data:`CRITERE_DEFAUT`), DOCTRINE FONDATEUR DU
+    25/08/2026 — en DEUX temps, et le second est la nouveauté :
+
+    1. **le départ** — la taille au meilleur payback ; à égalité (écart <
+       :data:`EGALITE_PAYBACK_ANNEES`, un payback n'étant pas connu au centième
+       d'année), la meilleure couverture de consommation. C'est exactement ce
+       que ce critère rendait avant le 25/08 ;
+    2. **la montée** — on grimpe ensuite de taille en taille tant que CHAQUE
+       panneau supplémentaire se rembourse dans :data:`HORIZON_MARGINAL_PV`
+       (dix ans — la vie des panneaux), et l'on s'arrête au premier pas qui n'y
+       arrive pas (:func:`grimper_par_pas_marginaux`). Le payback GLOBAL de la
+       taille retenue reste alors sous dix ans — c'est démontré dans l'encadré
+       du module, pas espéré. Un dossier dont le meilleur payback dépasse déjà
+       cet horizon ne monte pas du tout (:func:`depart_dans_horizon`) : il
+       reçoit le choix pur « meilleur payback », donc jamais pire qu'avant.
+
+    CE QUE LE FONDATEUR A CHANGÉ, EN UNE PHRASE : le meilleur payback était le
+    point d'ARRIVÉE, il est devenu le point de DÉPART. Une installation plus
+    grande qui réduit davantage la facture est désormais préférée, tant que le
+    ROI reste raisonnable.
 
     Une taille NON composable, ou dont le payback est inconnu (économie nulle),
     n'est jamais recommandée — mais elle reste dans le tableau : le fondateur
@@ -912,71 +1087,338 @@ def choisir_recommandation(tableau, critere=CRITERE_DEFAUT):
             % (meilleur['couverture_sans'] * 100)
         )
 
+    # ── 1. LE POINT DE DÉPART : la taille au meilleur payback ────────────────
     meilleur_payback = min(x['payback_sans_annees'] for x in eligibles)
     a_egalite = [
         x for x in eligibles
         if x['payback_sans_annees'] - meilleur_payback < EGALITE_PAYBACK_ANNEES
     ]
-    meilleur = max(a_egalite, key=lambda x: (x['couverture_sans'], x['kwc']))
-    if len(a_egalite) > 1:
+    depart = max(a_egalite, key=lambda x: (x['couverture_sans'], x['kwc']))
+
+    # ── 2. LA MONTÉE : doctrine du 25/08/2026 ────────────────────────────────
+    # Les pas sont les TAILLES DE CHAMP du catalogue, dans l'ordre croissant :
+    # ce qu'ils achètent, ce sont des PANNEAUX (avec la ferrure et la pose qui
+    # les suivent), donc c'est l'horizon PV qui les juge.
+    #
+    # LA GARDE PORTE SUR LE PAYBACK DU DÉPART, PAS SUR LE MEILLEUR DU TABLEAU,
+    # et la nuance n'est pas cosmétique : le départage « à égalité » ci-dessus
+    # peut retenir une taille jusqu'à EGALITE_PAYBACK_ANNEES AU-DESSUS du
+    # meilleur payback. Sur un dossier tout juste sous l'horizon, garder sur le
+    # meilleur autoriserait une montée depuis un point déjà au-delà — et la
+    # propriété « payback global ≤ dix ans » tomberait. C'est bien C₀/E₀ que la
+    # démonstration exige.
+    horizon = (HORIZON_MARGINAL_PV
+               if depart_dans_horizon(depart['payback_sans_annees']) else None)
+    suivants = [x for x in sorted(eligibles,
+                                  key=lambda x: (x['kwc'], x['panneaux']))
+                if x['kwc'] > depart['kwc']]
+    meilleur, franchis = grimper_par_pas_marginaux(
+        depart, suivants, horizon,
+        lambda x: _num(x['cout_sans_ttc']),
+        lambda x: _num(x['economie_sans_mad']))
+
+    if franchis:
+        motivation = (
+            'réduction de facture maximale à ROI raisonnable : départ au '
+            'meilleur payback (%.1f ans), puis %d panneau(x) de plus dont '
+            'chaque pas se rembourse en %s an(s), sous l\'horizon de %d ans '
+            'des panneaux — %d panneaux, %.2f kWc, payback global %.1f ans, '
+            'couverture %.0f %% — critère « %s »'
+            % (meilleur_payback,
+               meilleur['panneaux'] - depart['panneaux'],
+               ', '.join('%.1f' % r for r in franchis), HORIZON_MARGINAL_PV,
+               meilleur['panneaux'], meilleur['kwc'],
+               meilleur['payback_sans_annees'],
+               meilleur['couverture_sans'] * 100, CRITERE_DEFAUT)
+        )
+    elif horizon is None:
+        motivation = (
+            'meilleur payback (%.1f ans) : au-delà de l\'horizon de %d ans, '
+            'aucun dirham de plus ne se rembourserait dans la vie des '
+            'panneaux — on s\'en tient au meilleur retour possible, couverture '
+            '%.0f %% — critère « %s »'
+            % (meilleur['payback_sans_annees'], HORIZON_MARGINAL_PV,
+               meilleur['couverture_sans'] * 100, CRITERE_DEFAUT)
+        )
+    elif len(a_egalite) > 1:
         motivation = (
             'meilleur payback (%.1f ans, %d tailles à égalité à moins de '
-            '%.2f an près) puis meilleure couverture (%.0f %%) — critère '
-            '« %s »' % (meilleur['payback_sans_annees'], len(a_egalite),
-                        EGALITE_PAYBACK_ANNEES,
-                        meilleur['couverture_sans'] * 100, CRITERE_DEFAUT)
+            '%.2f an près) puis meilleure couverture (%.0f %%) ; aucun panneau '
+            'de plus ne se rembourse dans l\'horizon de %d ans — critère '
+            '« %s »'
+            % (meilleur['payback_sans_annees'], len(a_egalite),
+               EGALITE_PAYBACK_ANNEES, meilleur['couverture_sans'] * 100,
+               HORIZON_MARGINAL_PV, CRITERE_DEFAUT)
         )
     else:
         motivation = (
-            'meilleur payback (%.1f ans), sans égalité — critère « %s »'
-            % (meilleur['payback_sans_annees'], CRITERE_DEFAUT)
+            'meilleur payback (%.1f ans), sans égalité ; aucun panneau de plus '
+            'ne se rembourse dans l\'horizon de %d ans — critère « %s »'
+            % (meilleur['payback_sans_annees'], HORIZON_MARGINAL_PV,
+               CRITERE_DEFAUT)
         )
     return meilleur, motivation
 
 
-def choisir_recommandation_avec(tableau):
-    """DIM2 — LA TAILLE + LE STOCKAGE au meilleur payback AVEC batterie.
+def combos_champ_stockage(tableau):
+    """LA GRILLE champ × stockage ADMISSIBLE — un point par (taille, palier).
 
-    L'axe « avec batterie » a désormais son propre gagnant, parce qu'il a
-    désormais son propre balayage : le meilleur payback SANS stockage et le
-    meilleur payback AVEC ne tombent pas forcément sur le même champ.
+    Un point n'entre dans la grille que si la taille est composable, sans
+    AUCUN verdict électrique bloquant (ni sur l'option de base, ni sur l'option
+    batterie) et si le palier est chiffrable. La règle fondateur « la batterie
+    se remplit chaque jour » est CONSERVÉE TELLE QUELLE : ``balayage_stockage``
+    ne contient QUE des paliers qui passent le plafond de remplissage (voir
+    ``_balayer_stockage_de_la_taille``), donc un palier qui dort en janvier
+    n'est même pas un point de cette grille.
 
-    Mêmes gardes que :func:`choisir_recommandation` : la taille doit être
-    composable et n'avoir AUCUN verdict électrique bloquant — ni sur l'option
-    de base, ni sur l'option batterie. On ne recommande pas ce qu'on ne peut
-    pas livrer.
-
-    Renvoie ``(ligne | None, motivation: str)``.
+    Ordonnée croissante en (panneaux, capacité) — l'ordre dans lequel la
+    doctrine d'optimum monte.
     """
-    eligibles = [
-        ligne for ligne in (tableau or [])
-        if ligne.get('composable')
-        and ligne.get('batterie_disponible')
-        and ligne.get('payback_avec_annees') is not None
-        and not ligne.get('verdicts_bloquants_sans')
-        and not ligne.get('verdicts_bloquants_avec')
-    ]
-    if not eligibles:
+    combos = []
+    for ligne in (tableau or []):
+        if not ligne.get('composable'):
+            continue
+        if ligne.get('verdicts_bloquants_sans'):
+            continue
+        if ligne.get('verdicts_bloquants_avec'):
+            continue
+        for palier in (ligne.get('balayage_stockage') or []):
+            if palier.get('payback_annees') is None:
+                continue
+            combos.append({
+                'ligne': ligne,
+                'palier': palier,
+                'panneaux': int(ligne['panneaux']),
+                'kwc': _num(ligne['kwc']),
+                'capacite_kwh': _num(palier['capacite_kwh']),
+                'cout_ttc': _num(palier['cout_ttc']),
+                'economie_mad': _num(palier['economie_mad']),
+                'payback_annees': _num(palier['payback_annees']),
+                'residuel_kwh_mois': _num(palier['residuel_kwh_mois']),
+            })
+    combos.sort(key=lambda c: (c['panneaux'], c['capacite_kwh']))
+    return combos
+
+
+def _voisins_grille(combo, par_panneaux, tailles):
+    """LES PAS IMMÉDIATS depuis un point de la grille — au plus deux.
+
+    La grille a DEUX dimensions, donc « le candidat suivant » n'est pas unique.
+    Les deux seuls pas qui ont un sens physique sont :
+
+    * **une batterie de plus, à champ constant** — le palier de stockage juste
+      au-dessus sur la MÊME taille de champ ;
+    * **du champ en plus, à stockage au moins égal** — la première taille de
+      champ supérieure qui sait encore porter au moins la capacité actuelle
+      (« extra batteries might add extra panels with extra cost, that is still
+      fine », fondateur 25/08/2026). Une taille intermédiaire qui ne remplirait
+      plus cette capacité est ENJAMBÉE : elle n'est pas un pas en arrière, elle
+      n'est simplement pas un point de la grille.
+
+    Aucun pas ne diminue une dimension : la montée est monotone, donc elle
+    termine.
+    """
+    voisins = []
+    memes = par_panneaux.get(combo['panneaux']) or []
+    superieurs = [c for c in memes if c['capacite_kwh'] > combo['capacite_kwh']]
+    if superieurs:
+        voisins.append(superieurs[0])
+    for panneaux in tailles:
+        if panneaux <= combo['panneaux']:
+            continue
+        candidats = [c for c in (par_panneaux.get(panneaux) or [])
+                     if c['capacite_kwh'] >= combo['capacite_kwh']]
+        if candidats:
+            voisins.append(candidats[0])
+            break
+    return voisins
+
+
+def horizon_du_pas(courant, voisin):
+    """QUEL SEUIL juge CE pas de la grille — 10 ans ou 7 ans.
+
+    Les deux horizons ne sont pas interchangeables : ils disent la durée de vie
+    de ce que le pas ACHÈTE. La grille rend la question tranchable sans
+    répartir un seul dirham, parce qu'un pas ne bouge en général qu'UNE
+    dimension :
+
+    * **le champ seul monte** (même capacité) → le pas achète des panneaux, de
+      la ferrure et de la pose : :data:`HORIZON_MARGINAL_PV` ;
+    * **la capacité seule monte** (même champ) → le pas achète un module de
+      stockage : :data:`HORIZON_MARGINAL_BATTERIE` ;
+    * **les deux montent** → PAS DÉCOMPOSABLE PROPREMENT ICI : le coût d'un
+      palier est un TTC composé, et les lignes rendues ne portent pas leur taux
+      de TVA — en séparer une « part batterie » exigerait de SUPPOSER un taux,
+      donc d'inventer un chiffre. On juge alors le pas au seuil de son composant
+      DOMINANT, qui est le STOCKAGE : un tel pas n'existe que parce qu'une
+      banque plus grande réclame un champ plus grand pour se charger (c'est le
+      stockage qui commande, les panneaux suivent), et le module de stockage
+      pèse de toute façon plus lourd que les quelques panneaux qu'il entraîne.
+      Retenir le seuil le plus STRICT des deux est en outre le choix prudent :
+      il ne peut jamais faire promettre au client un remboursement que la vie
+      du matériel ne tiendrait pas.
+    """
+    if _num(voisin['capacite_kwh']) > _num(courant['capacite_kwh']):
+        return HORIZON_MARGINAL_BATTERIE
+    return HORIZON_MARGINAL_PV
+
+
+def _ligne_avec_palier(ligne, palier):
+    """La LIGNE du tableau dont les colonnes « avec » décrivent CE palier.
+
+    C'est une COPIE, jamais une mutation, et la raison est concrète : la même
+    ligne peut aussi être la recommandation SANS batterie et elle reste dans
+    ``tableau``, où le rapport l'imprime. Réécrire ses colonnes en place ferait
+    afficher au tableau un stockage qui n'est pas celui qu'il a évalué pour
+    cette taille.
+
+    La forme rendue est celle des lignes du tableau, à la clé près : tout
+    appelant historique (moteur PDF, payload public, ``services.
+    _recommandation_avec_rendue``) la lit sans rien changer.
+    """
+    rendu = dict(ligne)
+    rendu.update({
+        'batterie_disponible': True,
+        'batterie_kwh': palier['capacite_kwh'],
+        'taux_autoconso_avec': palier['taux_autoconso'],
+        'couverture_avec': palier['couverture'],
+        'economie_avec_mad': palier['economie_mad'],
+        'cout_avec_ttc': palier['cout_ttc'],
+        'payback_avec_annees': palier['payback_annees'],
+        'residuel_avec_kwh_mois': palier['residuel_kwh_mois'],
+        'tranche_apres_avec': palier['tranche_apres'],
+        'residuel_kwh_mois': palier['residuel_kwh_mois'],
+        'tranche_apres': palier['tranche_apres'],
+        'remplissage': palier['remplissage'],
+        'lignes_avec': list(palier.get('lignes') or []),
+    })
+    return rendu
+
+
+def choisir_recommandation_avec(tableau):
+    """DIM2 + DOCTRINE 25/08/2026 — L'OPTIMUM CONJOINT champ × stockage.
+
+    L'axe « avec batterie » a son propre gagnant depuis DIM2, parce qu'il a son
+    propre balayage : le meilleur payback SANS stockage et l'optimum AVEC ne
+    tombent pas sur le même champ. La doctrine du 25/08 y ajoute la MONTÉE, en
+    DEUX DIMENSIONS :
+
+    1. **le départ** — le point de la grille (:func:`combos_champ_stockage`) au
+       meilleur payback ; à égalité (< :data:`EGALITE_PAYBACK_ANNEES`), le
+       résiduel le PLUS BAS, celui qui rapproche de la marche du barème ;
+    2. **la montée** — on avance vers le voisin immédiat (une batterie de plus,
+       ou du champ en plus à stockage au moins égal) dont le pas marginal se
+       rembourse le mieux, tant qu'il tient dans l'horizon DE SON COMPOSANT :
+       :data:`HORIZON_MARGINAL_PV` pour un pas de panneaux,
+       :data:`HORIZON_MARGINAL_BATTERIE` pour un pas de stockage
+       (:func:`horizon_du_pas`). Un dossier dont le meilleur payback dépasse
+       déjà dix ans ne monte pas du tout (:func:`depart_dans_horizon`).
+
+    CONSÉQUENCE PRÉDITE PAR LE FONDATEUR, ET VOULUE : un profil « absent en
+    journée » — beaucoup de surplus, peu d'autoconsommation directe — reçoit
+    désormais PLUS de batteries qu'un profil présent à facture égale. Chaque
+    batterie y stocke du surplus qui serait autrement perdu, donc son Δéconomie
+    est forte, donc son pas marginal passe l'horizon. Chez le profil présent, le
+    même kWh de batterie rapporte moins : le pas sort de l'horizon plus tôt et
+    la montée s'arrête (épinglé par ``test_dimensionnement_exemples``).
+
+    Mêmes gardes qu'ailleurs : on ne recommande jamais ce qu'on ne peut pas
+    livrer, et « la batterie se remplit chaque jour » reste intacte.
+
+    Renvoie ``(ligne | None, motivation: str)`` — la ligne portant les colonnes
+    « avec » du palier RETENU (:func:`_ligne_avec_palier`).
+    """
+    combos = combos_champ_stockage(tableau)
+    if not combos:
         return None, (
             'aucune configuration avec batterie recommandable : à chaque taille '
             'candidate, soit l\'électricité refuse le couple, soit aucune '
             'capacité du catalogue ne se remplit tous les jours'
         )
-    meilleur_payback = min(x['payback_avec_annees'] for x in eligibles)
-    a_egalite = [x for x in eligibles
-                 if x['payback_avec_annees'] - meilleur_payback
+
+    # ── 1. LE POINT DE DÉPART ────────────────────────────────────────────────
+    meilleur_payback = min(c['payback_annees'] for c in combos)
+    a_egalite = [c for c in combos
+                 if c['payback_annees'] - meilleur_payback
                  < EGALITE_PAYBACK_ANNEES]
-    # À payback équivalent, le résiduel le PLUS BAS : c'est lui qui rapproche
-    # de la marche du barème (et donc de la falaise que le fondateur chasse).
-    meilleur = min(a_egalite, key=lambda x: (x['residuel_kwh_mois'],
-                                             x['payback_avec_annees']))
-    return meilleur, (
-        'meilleur payback AVEC batterie (%.1f ans) : %s panneaux + %s kWh de '
-        'stockage, résiduel %s kWh/mois (%s)'
-        % (meilleur['payback_avec_annees'], meilleur['panneaux'],
-           _kwh_txt(meilleur['batterie_kwh']),
-           _kwh_txt(meilleur['residuel_kwh_mois']),
-           (meilleur.get('tranche_apres') or {}).get('libelle') or 'hors barème'))
+    depart = min(a_egalite, key=lambda c: (c['residuel_kwh_mois'],
+                                           c['payback_annees']))
+
+    # ── 2. LA MONTÉE DANS LA GRILLE ──────────────────────────────────────────
+    # La garde porte sur le payback DU DÉPART (voir la même remarque dans
+    # :func:`choisir_recommandation`) : le départage « à égalité » ci-dessus
+    # peut retenir un point jusqu'à EGALITE_PAYBACK_ANNEES au-dessus du
+    # meilleur, et c'est bien C₀/E₀ que la démonstration exige.
+    montee = depart_dans_horizon(depart['payback_annees'])
+    par_panneaux = {}
+    for combo in combos:
+        par_panneaux.setdefault(combo['panneaux'], []).append(combo)
+    tailles = sorted(par_panneaux)
+
+    courant = depart
+    franchis = []
+    # GARDE-FOU : chaque pas augmente strictement (panneaux, capacité), donc la
+    # montée ne peut pas boucler ; la borne est là pour que ce raisonnement
+    # n'ait jamais à être re-vérifié à la lecture.
+    for _ in range(len(combos) if montee else 0):
+        admissibles = []
+        for voisin in _voisins_grille(courant, par_panneaux, tailles):
+            horizon = horizon_du_pas(courant, voisin)
+            ratio = ratio_pas_marginal(
+                courant['cout_ttc'], courant['economie_mad'],
+                voisin['cout_ttc'], voisin['economie_mad'])
+            if ratio is None or ratio > horizon + _EPSILON_ANNEES:
+                continue
+            admissibles.append((ratio, horizon, voisin))
+        if not admissibles:
+            break
+        # LE MOINS CHER PAR DIRHAM GAGNÉ D'ABORD : à budget de ROI donné, c'est
+        # le pas qui laisse le plus de marge pour continuer à monter — donc
+        # celui qui mène le plus loin dans la réduction de facture.
+        ratio, horizon, courant = min(
+            admissibles,
+            key=lambda triplet: (triplet[0], -triplet[2]['economie_mad']))
+        franchis.append((round(ratio, 2), horizon))
+
+    meilleur = _ligne_avec_palier(courant['ligne'], courant['palier'])
+    if franchis:
+        motivation = (
+            'réduction de facture maximale à ROI raisonnable AVEC batterie : '
+            'départ au meilleur payback (%.1f ans), puis %d pas marginaux '
+            '(%s) — %s panneaux + %s kWh de stockage, payback global %.1f ans, '
+            'résiduel %s kWh/mois (%s)'
+            % (meilleur_payback, len(franchis),
+               ', '.join('%.1f an pour un horizon de %d ans' % (r, h)
+                         for r, h in franchis),
+               meilleur['panneaux'], _kwh_txt(meilleur['batterie_kwh']),
+               meilleur['payback_avec_annees'],
+               _kwh_txt(meilleur['residuel_kwh_mois']),
+               (meilleur.get('tranche_apres') or {}).get('libelle')
+               or 'hors barème'))
+    elif not montee:
+        motivation = (
+            'meilleur payback AVEC batterie (%.1f ans) : %s panneaux + %s kWh '
+            'de stockage, résiduel %s kWh/mois (%s) — au-delà de l\'horizon de '
+            '%d ans, aucun dirham de plus ne se rembourserait dans la vie du '
+            'matériel'
+            % (meilleur['payback_avec_annees'], meilleur['panneaux'],
+               _kwh_txt(meilleur['batterie_kwh']),
+               _kwh_txt(meilleur['residuel_kwh_mois']),
+               (meilleur.get('tranche_apres') or {}).get('libelle')
+               or 'hors barème', HORIZON_MARGINAL_PV))
+    else:
+        motivation = (
+            'meilleur payback AVEC batterie (%.1f ans) : %s panneaux + %s kWh '
+            'de stockage, résiduel %s kWh/mois (%s) ; aucun pas de plus ne se '
+            'rembourse dans son horizon (%d ans pour des panneaux, %d ans pour '
+            'du stockage)'
+            % (meilleur['payback_avec_annees'], meilleur['panneaux'],
+               _kwh_txt(meilleur['batterie_kwh']),
+               _kwh_txt(meilleur['residuel_kwh_mois']),
+               (meilleur.get('tranche_apres') or {}).get('libelle')
+               or 'hors barème',
+               HORIZON_MARGINAL_PV, HORIZON_MARGINAL_BATTERIE))
+    return meilleur, motivation
 
 
 def chercher_falaise(tableau, cible_kwh_mois):
@@ -1067,6 +1509,17 @@ def recommander_taille(*, company, conso_kwh_mensuelles, critere=CRITERE_DEFAUT,
         'criteres_disponibles': list(CRITERES),
         'regle_onduleur_min': RATIO_ONDULEUR_MIN,
         'max_paliers_stockage': MAX_PALIERS_STOCKAGE,
+        'horizon_marginal_pv_annees': HORIZON_MARGINAL_PV,
+        'horizon_marginal_batterie_annees': HORIZON_MARGINAL_BATTERIE,
+        'regle_optimum': (
+            'l\'optimum est la PLUS GRANDE taille atteignable depuis celle du '
+            'meilleur payback par des pas dont chaque dirham ajouté se '
+            'rembourse dans la vie de ce qu\'il achète — %d ans pour des '
+            'panneaux, %d ans pour du stockage : la facture baisse le plus '
+            'possible, le ROI reste raisonnable, et la montée s\'arrête '
+            'd\'elle-même quand un panneau (ou une batterie) de plus n\'apporte '
+            'plus assez (doctrine du 25/08/2026)'
+            % (HORIZON_MARGINAL_PV, HORIZON_MARGINAL_BATTERIE)),
         'regle_stockage': (
             'un palier de stockage n\'est candidat que si la batterie se '
             'remplit TOUS LES JOURS : capacité utile ≤ surplus quotidien du '
@@ -1079,3 +1532,432 @@ def recommander_taille(*, company, conso_kwh_mensuelles, critere=CRITERE_DEFAUT,
         'falaise': falaise,
         'meilleure_falaise': chercher_falaise(tableau, cible_falaise),
     }
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# L'ÉCHELLE DE PALIERS BATTERIE (ordre fondateur, 25/08/2026)
+# ════════════════════════════════════════════════════════════════════════════
+#
+# VERBATIM : « more than just 2 batteries in the web page battery option ; extra
+# batteries might add extra panels with extra cost, that is still fine ».
+#
+# CE QUI CHANGE PAR RAPPORT À DIM2. Le mini-balayage de ``balayer_tailles``
+# répond à « à CHAMP DONNÉ, que change une batterie de plus ? » — et la règle
+# « batteries toujours pleines » y REJETTE tout palier qu'un champ trop petit
+# ne saurait charger. La question du fondateur est l'INVERSE : « et si je veux
+# CETTE banque de batteries, que faut-il ? ». La même règle ne rejette donc
+# plus le palier : elle TIRE LES PANNEAUX NÉCESSAIRES. Des batteries en plus
+# amènent des panneaux en plus, qui coûtent plus — « that is still fine ».
+
+#: Nombre de paliers montrés AU-DELÀ du palier retenu. Ce n'est pas une règle
+#: métier : c'est la LONGUEUR RAISONNABLE d'un choix à l'écran. La liste
+#: s'arrête de toute façon d'elle-même au plafond du toit ou dès qu'un palier
+#: ne se remplit plus, souvent bien avant.
+MAX_PALIERS_ECHELLE = 8
+
+#: GARDE-FOU DE CALCUL : nombre maximal de tailles de champ réellement sondées.
+#: Chaque sonde coûte une composition catalogue par palier PLUS douze
+#: simulations journalières ; la recherche du champ minimal est DICHOTOMIQUE
+#: (≈ log₂ du plafond, mutualisée entre paliers puisqu'ils montent ensemble),
+#: si bien que ce plafond n'est jamais atteint sur un profil réel — il est là
+#: pour qu'un catalogue pathologique ne puisse pas faire boucler un aperçu.
+MAX_SONDES_ECHELLE = 24
+
+
+def plafond_toit_du_devis(devis):
+    """Le nombre de panneaux PHYSIQUEMENT POSABLES d'après le calepinage 3D.
+
+    LU par la MÊME fonction que la resynchronisation
+    (``services._cible_panneaux_du_layout`` sur ``Devis.roof_layout``) : deux
+    lectures du toit finiraient par diverger, et l'échelle proposerait alors
+    des paliers que le calepinage refuse.
+
+    ``None`` quand le devis ne porte aucun calepinage — l'échelle n'est alors
+    bornée que par ses garde-fous de calcul, jamais par une surface inventée.
+    """
+    layout = getattr(devis, 'roof_layout', None)
+    if not isinstance(layout, dict):
+        return None
+    from apps.ventes.services import (
+        _cible_panneaux_du_layout, extract_roof_config)
+    try:
+        toiture = extract_roof_config(layout) or {}
+    except Exception:  # noqa: BLE001 — un layout illisible n'est pas un plafond
+        toiture = {}
+    try:
+        cible = int(_cible_panneaux_du_layout(layout, toiture) or 0)
+    except Exception:  # noqa: BLE001
+        return None
+    return cible if cible > 0 else None
+
+
+def _compter_modules_batterie(lignes_vue):
+    """``(nb de modules 5 kWh, nb de modules 10 kWh)`` LUS sur la composition.
+
+    Le kWh est celui du NOM du produit — c'est-à-dire le NOMINAL imprimé sur
+    l'étiquette, la grandeur avec laquelle le fondateur et le client comptent
+    (« deux batteries de 10 »), là où ``capacite_kwh`` porte la capacité UTILE
+    fichée. Les deux coexistent volontairement : l'une se compte, l'autre se
+    calcule.
+
+    Un module d'une AUTRE taille (le jour où le catalogue en référence un) ne
+    tombe dans aucun des deux compteurs — jamais reclassé de force dans le
+    voisin le plus proche : ``capacite_kwh`` continue, lui, à dire la vérité.
+    """
+    from apps.ventes.services import _parse_kwh
+    cinq = dix = 0
+    for ligne in (lignes_vue or []):
+        if ligne.get('role') != 'batterie':
+            continue
+        nominal = _num(_parse_kwh(ligne.get('designation') or ''))
+        quantite = int(_num(ligne.get('quantite')))
+        if quantite <= 0:
+            continue
+        if abs(nominal - 5.0) < 1.0:
+            cinq += quantite
+        elif abs(nominal - 10.0) < 1.0:
+            dix += quantite
+    return cinq, dix
+
+
+def _capacite_optimum_avec(devis, entrees):
+    """La capacité de l'OPTIMUM AVEC pour ce devis — LUE, jamais devinée.
+
+    D'abord le bloc DÉJÀ rangé sur le devis
+    (``etude_params['dimensionnement']['recommandation_avec']``, posé par
+    ``services.rafraichir_dimensionnement_devis``) : c'est LE chiffre que le
+    reste de l'écran affiche, et marquer « retenu » un autre palier que celui-là
+    serait se contredire à l'intérieur d'une même page. À défaut seulement, le
+    moteur est relancé sur les MÊMES entrées.
+
+    ``None`` quand le moteur ne désigne aucune configuration avec batterie
+    livrable : aucun palier n'est alors marqué ``retenu`` — une réponse honnête
+    plutôt qu'un palier désigné au hasard.
+    """
+    bloc = (getattr(devis, 'etude_params', None) or {}).get('dimensionnement')
+    if isinstance(bloc, dict) and 'recommandation_avec' in bloc:
+        avec = bloc.get('recommandation_avec')
+        capacite = (_num(avec.get('batterie_kwh')) if isinstance(avec, dict)
+                    else 0.0)
+        return capacite if capacite > 0 else None
+    try:
+        resultat = recommander_taille(
+            company=entrees['company'],
+            conso_kwh_mensuelles=entrees['conso_kwh_mensuelles'],
+            ville=entrees['ville'], lat=entrees['lat'], lon=entrees['lon'],
+            occupation=entrees['occupation'],
+            equipements=entrees['equipements'],
+            source_conso=entrees['source_conso'])
+    except Exception:  # noqa: BLE001 — sans optimum, aucun palier n'est retenu
+        logger.warning('optimum avec indisponible pour l\'échelle batterie',
+                       exc_info=True)
+        return None
+    capacite = _num((resultat.get('recommandation_avec') or {}).get(
+        'batterie_kwh'))
+    return capacite if capacite > 0 else None
+
+
+def echelle_paliers_batterie(devis):
+    """L'ÉCHELLE des paliers de batterie proposables sur CE devis résidentiel.
+
+    CONTRAT (PACT10 — écrit AVANT les deux moitiés qui le consomment). Renvoie
+    une LISTE de dicts, capacité croissante, chacun portant EXACTEMENT :
+
+    * ``capacite_kwh`` — capacité UTILE réellement livrée par la composition
+      catalogue de ce palier (fiche technique, jamais l'étiquette) ;
+    * ``nb_batteries_5`` / ``nb_batteries_10`` — combien de modules 5 kWh et
+      10 kWh la composition contient, tels qu'on les COMPTE ;
+    * ``nb_panneaux`` — le champ PV que ce palier EXIGE (voir plus bas) ;
+    * ``puissance_kwc`` — ce champ en kWc, au wattage du panneau réel ;
+    * ``prix_ttc`` — prix de VENTE TTC de la composition complète (règle #4 :
+      jamais un prix d'achat, jamais une marge) ;
+    * ``economies_annuelles`` — MAD/an du moteur horaire sur ce couple
+      champ × stockage ;
+    * ``payback_annees`` — ``prix_ttc / economies_annuelles``, ou ``None``
+      quand l'économie n'est pas chiffrable (jamais un zéro fabriqué) ;
+    * ``remplissage_ok`` — la batterie se remplit-elle TOUS LES JOURS ?
+    * ``retenu`` — ce palier est-il celui de l'optimum AVEC ?
+
+    LA RÈGLE FONDATEUR EST RETOURNÉE, PAS ABANDONNÉE. DIM2 demande « à champ
+    donné, quel stockage se remplit ? » et REFUSE les paliers trop gros. Ici la
+    question est « pour CETTE banque, que faut-il ? » : la même règle
+    (« batteries toujours pleines », 24/08/2026) ne rejette plus le palier, elle
+    TIRE LE CHAMP — ``nb_panneaux`` est le PLUS PETIT champ dont le surplus
+    quotidien du mois le plus faible charge la banque entièrement. C'est
+    exactement ce que le fondateur a autorisé le 25/08 : « extra batteries might
+    add extra panels with extra cost, that is still fine ».
+
+    LE CHAMP EST BORNÉ, ET CHAQUE BORNE EST JUSTIFIÉE : le PLAFOND DU TOIT quand
+    le devis porte un calepinage (:func:`plafond_toit_du_devis` — on ne propose
+    pas des panneaux qui ne tiennent pas), sinon :data:`FACTEUR_MAX_FALAISE` ×
+    la taille de parité de CE client, plafonnée par
+    :data:`MAX_PANNEAUX_BALAYAGE`.
+
+    ``remplissage_ok=False`` n'apparaît QUE sur le premier palier que même le
+    champ MAXIMAL ne remplit pas — il est montré (avec son prix et son champ)
+    pour que la limite se LISE, puis l'échelle s'arrête.
+
+    LES ENTRÉES SONT CELLES DU TABLEAU DÉJÀ RANGÉ SUR LE DEVIS
+    (``services.entrees_dimensionnement_du_devis``, et les mêmes réglages par
+    défaut que ``rafraichir_dimensionnement_devis``) : sans cela l'échelle
+    désignerait un palier « retenu » calculé sur d'autres hypothèses que celles
+    qui l'ont retenu.
+
+    LISTE VIDE quand rien n'est dérivable — devis non résidentiel, sans société,
+    sans profil de consommation, localisation non résolue, catalogue sans
+    batterie. Jamais un chiffre inventé pour remplir l'écran. Ne lève JAMAIS et
+    n'écrit RIEN (aucun statut, aucune ligne, aucun total — règle #4).
+    """
+    try:
+        return _echelle_paliers_batterie(devis)
+    except Exception:  # noqa: BLE001 — un aperçu ne casse jamais un écran
+        logger.warning('échelle de paliers batterie indisponible sur %s',
+                       getattr(devis, 'reference', '?'), exc_info=True)
+        return []
+
+
+def _echelle_paliers_batterie(devis):
+    """Le calcul de :func:`echelle_paliers_batterie`, sans son filet."""
+    from apps.parametres.pvgis_profils import productible_mensuel
+    from apps.ventes.etude_horaire import (
+        balayer_stockage_horaire,
+        # L-DECH — SOURCE UNIQUE des bornes de puissance batterie.
+        puissances_batterie_des_lignes,
+    )
+    from apps.ventes.services import (
+        _AUTO_PANEL_WATT,
+        carte_marques_composition,
+        catalogue_de_la_societe,
+        composition_residentielle,
+        entrees_dimensionnement_du_devis,
+        ordre_lignes_societe,
+    )
+
+    entrees = entrees_dimensionnement_du_devis(devis)
+    conso = (entrees or {}).get('conso_kwh_mensuelles')
+    if not conso:
+        return []
+    conso_annuelle = sum(_num(v) for v in conso)
+    if conso_annuelle <= 0:
+        return []
+
+    mensuel = productible_mensuel(ville=entrees['ville'], lat=entrees['lat'],
+                                  lon=entrees['lon'])
+    if not mensuel:
+        return []
+    productibles, _source = mensuel
+    productible_annuel = sum(_num(v) for v in productibles)
+    if productible_annuel <= 0:
+        return []
+
+    company = entrees['company']
+    catalogue = catalogue_de_la_societe(company)
+    marques = carte_marques_composition(company, None)
+    ordre = ordre_lignes_societe(company)
+    # MÊMES réglages par défaut que ``rafraichir_dimensionnement_devis`` : la
+    # TVA du devis n'entre pas ici, chaque produit portant DÉJÀ son taux
+    # (``_lire_composition``) et ce taux-ci n'étant que le repli.
+    taux_tva = Decimal('20')
+
+    def composer(panneaux, kwc, cible, journal):
+        """Une composition catalogue AVEC batterie, ou ``None`` — jamais une
+        exception : un palier impossible ne fait pas tomber l'échelle."""
+        try:
+            return composition_residentielle(
+                catalogue, kwc=kwc, panel_watt=panel_watt,
+                nb_panneaux=panneaux, avec_batterie=True,
+                structure_type='acier', taux_tva=taux_tva,
+                avertissements=journal, deux_options=False, marques=marques,
+                ordre_lignes=ordre, batterie_cible_kwh=cible)
+        except Exception:  # noqa: BLE001
+            logger.warning('composition impossible à %s panneaux / %s kWh',
+                           panneaux, cible, exc_info=True)
+            return None
+
+    # Le wattage du panneau RÉELLEMENT retenu par le catalogue — lu, pas
+    # supposé (même sonde que ``balayer_tailles``).
+    sonde_avert = []
+    sonde = composition_residentielle(
+        catalogue, kwc=_AUTO_PANEL_WATT / 1000.0, panel_watt=_AUTO_PANEL_WATT,
+        nb_panneaux=1, avec_batterie=False, structure_type='acier',
+        taux_tva=taux_tva, avertissements=sonde_avert, deux_options=False,
+        marques=marques, ordre_lignes=ordre)
+    panel_watt = _num(getattr(sonde, 'panel_watt_reel', 0))
+    if panel_watt <= 0:
+        return []
+
+    # ── LES BORNES DU CHAMP ──────────────────────────────────────────────────
+    panneaux_parite = max(1, int(math.ceil(
+        (conso_annuelle / productible_annuel) * 1000.0 / panel_watt)))
+    max_champ = min(MAX_PANNEAUX_BALAYAGE,
+                    int(math.ceil(panneaux_parite * FACTEUR_MAX_FALAISE)))
+    plafond_toit = plafond_toit_du_devis(devis)
+    if plafond_toit:
+        max_champ = min(max_champ, int(plafond_toit))
+    max_champ = max(1, max_champ)
+
+    # ── L'ÉCHELLE DES CAPACITÉS, DÉRIVÉE DU CATALOGUE ────────────────────────
+    kwc_max = max_champ * panel_watt / 1000.0
+    vivier_journal = []
+    sonde_batterie = composer(max_champ, kwc_max, None, vivier_journal)
+    if sonde_batterie is None:
+        return []
+    cibles = paliers_stockage_candidats(
+        list(getattr(sonde_batterie, 'capacites_batterie_vivier', ()) or ()),
+        maximum=MAX_PALIERS_STOCKAGE)
+    if not cibles:
+        return []
+
+    etude_kwargs = {
+        'conso_kwh_mensuelles': conso, 'ville': entrees['ville'],
+        'lat': entrees['lat'], 'lon': entrees['lon'],
+        'occupation': entrees['occupation'],
+        'equipements': entrees['equipements'],
+    }
+
+    sondes = {}
+
+    def sonder(panneaux):
+        """Ce que CE champ sait faire de CHAQUE cible de l'échelle — mémoïsé.
+
+        Un seul parcours des douze jours types sert toutes les capacités
+        (``balayer_stockage_horaire``), et les bornes de puissance sont lues
+        composition par composition : 15 kWh (un 10 + un 5) et 20 kWh (deux 10)
+        n'ont ni le même prix ni la même puissance de décharge.
+        """
+        if panneaux in sondes:
+            return sondes[panneaux]
+        if len(sondes) >= MAX_SONDES_ECHELLE:
+            return None
+        kwc = panneaux * panel_watt / 1000.0
+        vues, bornes, reels = {}, {}, {}
+        for cible in cibles:
+            journal = []
+            lignes = composer(panneaux, kwc, cible, journal)
+            if lignes is None:
+                continue
+            vue = _lire_composition(lignes, taux_tva)
+            capacite = round(_num(vue.get('batterie_kwh')), 3)
+            if capacite <= 0:
+                continue
+            reels[cible] = capacite
+            vues[cible] = vue
+            puissances = puissances_batterie_des_lignes(
+                lignes, roles=getattr(lignes, 'roles', None))
+            bornes[capacite] = {
+                'decharge_kw': puissances['packs_decharge_kw'],
+                'decharge_onduleur_kw': puissances['ond_decharge_kw'],
+                'charge_kw': puissances['charge_kw'],
+            }
+        if not reels:
+            sondes[panneaux] = None
+            return None
+        energie = balayer_stockage_horaire(
+            kwc=kwc, capacites_kwh=sorted(set(reels.values())),
+            puissances_par_capacite=bornes, **etude_kwargs)
+        if energie is None:
+            sondes[panneaux] = None
+            return None
+        par_capacite = {p['capacite_kwh']: p for p in energie['paliers']}
+        par_cible = {}
+        for cible, capacite in reels.items():
+            palier = par_capacite.get(round(capacite, 2))
+            if palier is None:
+                continue
+            par_cible[cible] = {'capacite_kwh': capacite,
+                                'vue': vues[cible], 'palier': palier}
+        sondes[panneaux] = {'panneaux': panneaux, 'par_cible': par_cible}
+        return sondes[panneaux]
+
+    def remplit(panneaux, cible):
+        """Ce champ charge-t-il CETTE banque tous les jours ? ``None`` = pas de
+        réponse (palier non composable à cette taille)."""
+        entree = ((sonder(panneaux) or {}).get('par_cible') or {}).get(cible)
+        if entree is None:
+            return None
+        return bool(entree['palier']['se_remplit_tous_les_jours'])
+
+    def champ_minimal(cible, depart):
+        """Le PLUS PETIT champ qui remplit cette banque, ou ``None``.
+
+        DICHOTOMIE — légitime parce que le surplus quotidien du mois le plus
+        faible (LE plafond de remplissage) CROÎT avec la taille du champ : la
+        production monte, l'autoconsommation directe est bornée par la
+        consommation, donc ce qui reste pour charger ne peut que grandir. On
+        vérifie d'abord le champ MAXIMAL : s'il ne remplit pas, aucun ne
+        remplira, et c'est la réponse.
+        """
+        if remplit(max_champ, cible) is not True:
+            return None
+        bas, haut = max(1, int(depart)), max_champ
+        while bas < haut:
+            milieu = (bas + haut) // 2
+            if remplit(milieu, cible) is True:
+                haut = milieu
+            else:
+                bas = milieu + 1
+        return haut
+
+    capacite_retenue = _capacite_optimum_avec(devis, entrees)
+
+    def rendu(entree, panneaux, remplissage_ok):
+        """Un palier de l'échelle, au format EXACT du contrat."""
+        vue, palier = entree['vue'], entree['palier']
+        capacite = round(_num(entree['capacite_kwh']), 2)
+        cout = round(_num(vue.get('cout_ttc')), 2)
+        economie = round(_num(palier['economie_mad']), 2)
+        cinq, dix = _compter_modules_batterie(vue.get('lignes'))
+        return {
+            'capacite_kwh': capacite,
+            'nb_batteries_5': cinq,
+            'nb_batteries_10': dix,
+            'nb_panneaux': int(panneaux),
+            'puissance_kwc': round(panneaux * panel_watt / 1000.0, 3),
+            'prix_ttc': cout,
+            'economies_annuelles': economie,
+            'payback_annees': _arrondi(_payback(cout, economie)),
+            'remplissage_ok': bool(remplissage_ok),
+            'retenu': bool(capacite_retenue is not None
+                           and abs(capacite - _num(capacite_retenue)) < 0.05),
+        }
+
+    echelle = []
+    capacites_vues = set()
+    depart = 1
+    apres_retenu = 0
+    for cible in cibles:
+        panneaux = champ_minimal(cible, depart)
+        if panneaux is None:
+            # MÊME LE CHAMP MAXIMAL NE REMPLIT PAS. On montre ce palier-là avec
+            # son champ et son prix — la limite se lit —, puis on s'arrête : les
+            # capacités au-dessus ne se rempliront pas davantage.
+            entree = ((sonder(max_champ) or {}).get('par_cible')
+                      or {}).get(cible)
+            if entree is not None:
+                palier = rendu(entree, max_champ, False)
+                if palier['capacite_kwh'] not in capacites_vues:
+                    capacites_vues.add(palier['capacite_kwh'])
+                    echelle.append(palier)
+            break
+        depart = panneaux
+        entree = ((sonder(panneaux) or {}).get('par_cible') or {}).get(cible)
+        if entree is None:
+            break
+        palier = rendu(entree, panneaux, True)
+        if palier['capacite_kwh'] in capacites_vues:
+            # Deux cibles nominales servies par la MÊME banque réelle : un seul
+            # palier à l'écran, jamais deux lignes identiques.
+            continue
+        capacites_vues.add(palier['capacite_kwh'])
+        echelle.append(palier)
+        if palier['retenu']:
+            apres_retenu = 0
+        elif any(p['retenu'] for p in echelle):
+            apres_retenu += 1
+            if apres_retenu >= MAX_PALIERS_ECHELLE:
+                break
+        elif len(echelle) >= MAX_PALIERS_ECHELLE + 1:
+            # Aucun palier retenu (le moteur n'a désigné aucun optimum avec) :
+            # l'écran reste tout de même borné.
+            break
+    return echelle

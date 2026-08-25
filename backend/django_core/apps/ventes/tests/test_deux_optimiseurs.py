@@ -37,11 +37,11 @@ from decimal import Decimal
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 
 from apps.crm.models import Client, Lead
 from apps.stock.models import FicheTechnique, Produit
-from apps.ventes import services
+from apps.ventes import dimensionnement, services
 from apps.ventes.models import Devis, LigneDevis
 from apps.ventes.utils.options import (
     AVEC_BATTERIE, SANS_BATTERIE, filter_lines_for_option, option_lines,
@@ -608,3 +608,424 @@ class LEtudeDeDimensionnementResteInoffensive(_Base):
         self.assertEqual(
             (devis.statut, devis.lignes.count(), devis.total_ttc,
              devis.etude_params), avant)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 6. LA DOCTRINE D'OPTIMUM (25/08/2026)
+# ═══════════════════════════════════════════════════════════════════════════
+def _ligne_tableau(panneaux, cout, economie, couverture, paliers=None):
+    """Une ligne de tableau FABRIQUÉE — la forme que rend ``balayer_tailles``.
+
+    Les tableaux de ces tests sont synthétiques À DESSEIN : ils épinglent la
+    RÈGLE (quel pas est admis, jusqu'où on monte), pas les chiffres du
+    catalogue. Les chiffres RÉELS du moteur sont épinglés, eux, par
+    ``test_dimensionnement_exemples`` sur le catalogue semé.
+    """
+    payback = dimensionnement._payback(cout, economie)
+    return {
+        'panneaux': panneaux, 'kwc': round(panneaux * 0.55, 3),
+        'composable': True,
+        'payback_sans_annees': None if payback is None else round(payback, 2),
+        'cout_sans_ttc': cout, 'economie_sans_mad': economie,
+        'couverture_sans': couverture,
+        'verdicts_bloquants_sans': [], 'verdicts_bloquants_avec': [],
+        'batterie_disponible': bool(paliers),
+        'payback_avec_annees': (paliers[0]['payback_annees']
+                                if paliers else None),
+        'residuel_kwh_mois': 400.0,
+        'batterie_kwh': paliers[0]['capacite_kwh'] if paliers else 0.0,
+        'balayage_stockage': list(paliers or []),
+    }
+
+
+def _palier_tableau(capacite, cout, economie, residuel):
+    """Un palier de ``balayage_stockage`` FABRIQUÉ."""
+    payback = dimensionnement._payback(cout, economie)
+    return {
+        'capacite_kwh': capacite, 'cout_ttc': cout, 'economie_mad': economie,
+        'payback_annees': None if payback is None else round(payback, 2),
+        'residuel_kwh_mois': residuel, 'tranche_apres': {'libelle': 'T'},
+        'couverture': 0.7, 'taux_autoconso': 0.6,
+        'remplissage': {'moyen': 1.0, 'pire_mois': {'ratio': 1.0}},
+        'lignes': [], 'lignes_batterie': [],
+    }
+
+
+class LaDoctrineDOptimum(SimpleTestCase):
+    """« L'optimum = celui qui réduit la facture le PLUS, avec un ROI
+    raisonnable — pas seulement le meilleur payback. »
+
+    LE MEILLEUR PAYBACK EST DEVENU LE POINT DE DÉPART, PLUS LE POINT
+    D'ARRIVÉE : on monte tant que chaque dirham ajouté se rembourse dans la vie
+    de ce qu'il achète — dix ans pour des panneaux, sept pour du stockage.
+
+    Tous les écarts de payback de ces fixtures sont VOLONTAIREMENT supérieurs à
+    ``EGALITE_PAYBACK_ANNEES`` : sinon c'est le départage historique (« à
+    égalité, meilleure couverture ») qui choisirait, et ces tests ne
+    prouveraient rien de la montée.
+    """
+
+    #: 8 panneaux = LE MEILLEUR PAYBACK (5,00 ans) — l'ancien choix.
+    #: 9 panneaux : pas marginal 9 000 / 1 000 =  9,0 ans ≤ 10 → ADMIS.
+    #: 10 panneaux : pas marginal 8 000 /   500 = 16,0 ans > 10 → REFUSÉ.
+    TABLEAU = None
+
+    def setUp(self):
+        self.TABLEAU = [
+            _ligne_tableau(8, 40000, 8000, 0.50),
+            _ligne_tableau(9, 49000, 9000, 0.56),
+            _ligne_tableau(10, 57000, 9500, 0.60),
+        ]
+
+    def test_les_deux_horizons_sont_ceux_de_la_duree_de_vie(self):
+        """Le stockage vit moins longtemps que les panneaux, donc son dirham a
+        moins de temps pour se rembourser : son seuil est le plus STRICT."""
+        self.assertEqual(dimensionnement.HORIZON_MARGINAL_PV, 10)
+        self.assertEqual(dimensionnement.HORIZON_MARGINAL_BATTERIE, 7)
+        self.assertLess(dimensionnement.HORIZON_MARGINAL_BATTERIE,
+                        dimensionnement.HORIZON_MARGINAL_PV)
+
+    def test_un_pas_qui_ne_rapporte_rien_n_a_pas_de_prix(self):
+        """« L'optimum s'arrête quand des panneaux en plus n'apportent que des
+        gains négligeables » : aucun seuil de « négligeable » n'est inventé —
+        un pas qui coûte sans rapporter n'a tout simplement PAS de ratio."""
+        ratio = dimensionnement.ratio_pas_marginal
+        self.assertEqual(ratio(100, 10, 200, 20), 10.0)
+        self.assertIsNone(ratio(100, 10, 200, 10))   # coûte, ne rapporte rien
+        self.assertIsNone(ratio(100, 10, 90, 8))     # moins cher ET moins bon
+        self.assertEqual(ratio(100, 10, 90, 12), 0.0)  # gratuit et meilleur
+
+    def test_la_montee_prend_la_plus_grande_taille_dont_chaque_pas_tient(self):
+        """PIN DÉPLACÉ (25/08/2026) — ANCIEN : 8 panneaux (meilleur payback pur,
+        5,00 ans). NOUVEAU : 9 panneaux (payback global 5,44 ans), parce que le
+        9ᵉ panneau se rembourse en 9,0 ans, sous l'horizon de 10 ans. Le 10ᵉ,
+        lui, mettrait 16,0 ans : la montée s'arrête là."""
+        ancien = min(self.TABLEAU, key=lambda x: x['payback_sans_annees'])
+        self.assertEqual(ancien['panneaux'], 8)
+
+        reco, motivation = dimensionnement.choisir_recommandation(self.TABLEAU)
+        self.assertEqual(reco['panneaux'], 9)
+        self.assertEqual(reco['payback_sans_annees'], 5.44)
+        self.assertIn('9.0', motivation)
+        self.assertIn('10 ans', motivation)
+
+    def test_le_payback_global_reste_sous_l_horizon(self):
+        """LA PROPRIÉTÉ MATHÉMATIQUE, vérifiée plutôt qu'affirmée.
+
+        Départ à 3,00 ans puis SIX pas marginaux à 9,50 ans chacun — tous
+        admis. Si « chaque pas ≤ H » n'impliquait pas « payback global ≤ H »,
+        la doctrine promettrait un ROI qu'elle ne tient pas. L'inégalité des
+        médiants dit le contraire, et ce test le constate sur le vrai code.
+        """
+        tableau = [_ligne_tableau(8, 30000, 10000, 0.40)]
+        cout, economie = 30000, 10000
+        for rang in range(6):
+            cout, economie = cout + 9500, economie + 1000
+            tableau.append(_ligne_tableau(9 + rang, cout, economie,
+                                          0.42 + 0.02 * rang))
+
+        reco, _motivation = dimensionnement.choisir_recommandation(tableau)
+        self.assertEqual(reco['panneaux'], 14, 'les six pas doivent passer')
+        self.assertLessEqual(reco['payback_sans_annees'],
+                             dimensionnement.HORIZON_MARGINAL_PV)
+        # ... et il s'est bien DÉGRADÉ par rapport au départ : la doctrine
+        # ACHÈTE de la réduction de facture avec du payback, elle ne prétend
+        # pas faire mieux sur les deux tableaux à la fois.
+        self.assertGreater(reco['payback_sans_annees'], 3.0)
+        self.assertGreater(reco['economie_sans_mad'],
+                           tableau[0]['economie_sans_mad'])
+
+    def test_dossier_faible_retombe_sur_le_choix_pur_meilleur_payback(self):
+        """GARDE DU DOSSIER FAIBLE : meilleur payback déjà au-delà de dix ans ⇒
+        aucune montée. La nouvelle doctrine ne peut JAMAIS rendre un dossier
+        plus mauvais qu'avant le 25/08."""
+        self.assertFalse(dimensionnement.depart_dans_horizon(10.5))
+        self.assertTrue(dimensionnement.depart_dans_horizon(10.0))
+        self.assertFalse(dimensionnement.depart_dans_horizon(None))
+        self.assertFalse(dimensionnement.depart_dans_horizon(0))
+
+        faible = [_ligne_tableau(8, 100000, 8000, 0.50),
+                  _ligne_tableau(9, 115000, 8400, 0.56)]
+        reco, motivation = dimensionnement.choisir_recommandation(faible)
+        self.assertEqual(reco['panneaux'], 8)
+        self.assertEqual(reco, min(faible,
+                                   key=lambda x: x['payback_sans_annees']))
+        self.assertIn('10 ans', motivation)
+
+    def test_horizon_ramene_au_meilleur_payback_reproduit_l_ancien_choix(self):
+        """LE BOUTON EST BIEN LE BOUTON : ramener l'horizon au meilleur payback
+        du dossier redonne, à la ligne près, le choix pur d'avant le 25/08."""
+        with patch.object(dimensionnement, 'HORIZON_MARGINAL_PV', 5.0), \
+                patch.object(dimensionnement,
+                             'HORIZON_MARGINAL_BATTERIE', 5.0):
+            reco, _motivation = dimensionnement.choisir_recommandation(
+                self.TABLEAU)
+        self.assertEqual(reco['panneaux'], 8)
+        self.assertEqual(reco, min(self.TABLEAU,
+                                   key=lambda x: x['payback_sans_annees']))
+
+    # ── LA GRILLE CONJOINTE champ × stockage ────────────────────────────────
+    def test_un_pas_de_stockage_est_juge_a_sept_ans(self):
+        """5 → 10 kWh coûte 6,0 ans : ADMIS (≤ 7). 10 → 15 kWh en coûte 9,0 :
+        REFUSÉ — et c'est bien le seuil BATTERIE qui l'arrête, puisque 9,0 ans
+        passerait sans problème l'horizon de dix ans des panneaux."""
+        grille = [_ligne_tableau(
+            8, 20000, 8000, 0.50,
+            paliers=[_palier_tableau(5.0, 30000, 10000, 320.0),
+                     _palier_tableau(10.0, 42000, 12000, 260.0),
+                     _palier_tableau(15.0, 51000, 13000, 230.0)])]
+        reco, motivation = dimensionnement.choisir_recommandation_avec(grille)
+        self.assertEqual(reco['batterie_kwh'], 10.0)
+        self.assertEqual(reco['payback_avec_annees'], 3.5)
+        self.assertIn('7 ans', motivation)
+        self.assertLessEqual(reco['payback_avec_annees'],
+                             dimensionnement.HORIZON_MARGINAL_PV)
+
+    def test_un_pas_de_champ_est_juge_a_dix_ans(self):
+        """Le MÊME pas de 9,0 ans, mais qui achète des PANNEAUX, est admis."""
+        grille = [
+            _ligne_tableau(8, 20000, 8000, 0.50,
+                           paliers=[_palier_tableau(5.0, 30000, 10000, 320.0)]),
+            _ligne_tableau(10, 26000, 9000, 0.60,
+                           paliers=[_palier_tableau(5.0, 39000, 11000, 250.0)]),
+        ]
+        reco, motivation = dimensionnement.choisir_recommandation_avec(grille)
+        self.assertEqual((reco['panneaux'], reco['batterie_kwh']), (10, 5.0))
+        self.assertIn('10 ans', motivation)
+
+    def test_un_pas_mixte_est_juge_au_seuil_du_stockage(self):
+        """Un pas qui monte les DEUX dimensions n'est pas décomposable ici : il
+        est jugé au seuil de son composant DOMINANT, le stockage (sept ans)."""
+        courant = {'panneaux': 8, 'capacite_kwh': 5.0}
+        self.assertEqual(
+            dimensionnement.horizon_du_pas(
+                courant, {'panneaux': 8, 'capacite_kwh': 10.0}),
+            dimensionnement.HORIZON_MARGINAL_BATTERIE)
+        self.assertEqual(
+            dimensionnement.horizon_du_pas(
+                courant, {'panneaux': 10, 'capacite_kwh': 5.0}),
+            dimensionnement.HORIZON_MARGINAL_PV)
+        self.assertEqual(
+            dimensionnement.horizon_du_pas(
+                courant, {'panneaux': 10, 'capacite_kwh': 10.0}),
+            dimensionnement.HORIZON_MARGINAL_BATTERIE)
+
+    def test_la_ligne_du_tableau_n_est_jamais_mutee(self):
+        """``recommandation_avec`` rend une COPIE : la même ligne sert aussi la
+        recommandation SANS batterie et reste dans ``tableau``, où le rapport
+        l'imprime. La muter ferait afficher au tableau un stockage qu'il n'a
+        pas évalué pour cette taille."""
+        grille = [_ligne_tableau(
+            8, 20000, 8000, 0.50,
+            paliers=[_palier_tableau(5.0, 30000, 10000, 320.0),
+                     _palier_tableau(10.0, 42000, 12000, 260.0)])]
+        avant = dict(grille[0])
+        reco, _motivation = dimensionnement.choisir_recommandation_avec(grille)
+        self.assertEqual(reco['batterie_kwh'], 10.0)
+        self.assertEqual(grille[0], avant)
+        self.assertEqual(grille[0]['batterie_kwh'], 5.0)
+        # La copie porte bien les colonnes « avec » du palier RETENU.
+        self.assertEqual(reco['cout_avec_ttc'], 42000)
+        self.assertEqual(reco['economie_avec_mad'], 12000)
+        self.assertEqual(reco['residuel_kwh_mois'], 260.0)
+
+    def test_grille_vide_ne_recommande_rien_et_le_dit(self):
+        """Aucun point livrable ⇒ ``None`` + un motif en français, jamais une
+        configuration inventée pour ne pas laisser l'écran vide."""
+        reco, motivation = dimensionnement.choisir_recommandation_avec([])
+        self.assertIsNone(reco)
+        self.assertIn('aucune configuration', motivation)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 7. L'ÉCHELLE DE PALIERS BATTERIE
+# ═══════════════════════════════════════════════════════════════════════════
+#: Le CONTRAT, mot pour mot (PACT10) : la lane qui sert cette échelle à l'écran
+#: code contre CES clés, ni plus ni moins.
+CLES_PALIER_ECHELLE = {
+    'capacite_kwh', 'nb_batteries_5', 'nb_batteries_10', 'nb_panneaux',
+    'puissance_kwc', 'prix_ttc', 'economies_annuelles', 'payback_annees',
+    'remplissage_ok', 'retenu',
+}
+
+
+class LEchelleDePaliersBatterie(_Base):
+    """« more than just 2 batteries in the web page battery option ; extra
+    batteries might add extra panels with extra cost, that is still fine »
+    (fondateur, 25/08/2026).
+
+    LA RÈGLE DU 24/08 EST RETOURNÉE, PAS ABANDONNÉE : « batteries toujours
+    pleines » ne REJETTE plus un palier trop gros pour le champ — elle TIRE les
+    panneaux nécessaires pour le charger.
+    """
+
+    slug = 'l2opt-echelle'
+
+    def _devis_residentiel(self, *, email, occupation_jour=None,
+                           facture_hiver=1200, roof_layout=None):
+        lead = self._lead(email=email, ville='Casablanca',
+                          facture_hiver=Decimal(str(facture_hiver)),
+                          ete_differente=False,
+                          **({'occupation_jour': occupation_jour}
+                             if occupation_jour else {}))
+        return Devis.objects.create(
+            company=self.company, reference='DEV-ECH-%s' % email.split('@')[0],
+            client=self.client_obj, lead=lead,
+            statut=Devis.Statut.BROUILLON, created_by=self.user,
+            mode_installation=Devis.ModeInstallation.RESIDENTIEL,
+            roof_layout=roof_layout, etude_params={})
+
+    def test_le_contrat_la_monotonie_et_le_palier_retenu(self):
+        """UN SEUL balayage pour les trois garanties structurelles (le calcul
+        coûte douze jours types par taille de champ sondée)."""
+        devis = self._devis_residentiel(email='echelle@example.com')
+        # Le bloc de dimensionnement d'abord : c'est LUI qui désigne l'optimum
+        # AVEC, et l'échelle doit s'y raccorder (jamais un second calcul).
+        bloc = services.rafraichir_dimensionnement_devis(devis, force=True)
+        self.assertIsNotNone(bloc, 'profil non exploitable : le test ne '
+                                   'prouverait plus rien')
+
+        echelle = dimensionnement.echelle_paliers_batterie(devis)
+        self.assertIsInstance(echelle, list)
+        self.assertTrue(
+            echelle,
+            'aucun palier de batterie dérivable sur un profil pourtant '
+            'exploitable — l\'écran batterie serait vide')
+
+        for palier in echelle:
+            self.assertEqual(set(palier), CLES_PALIER_ECHELLE, palier)
+            self.assertGreater(palier['capacite_kwh'], 0, palier)
+            self.assertGreater(palier['nb_panneaux'], 0, palier)
+            self.assertGreater(palier['prix_ttc'], 0, palier)
+            self.assertIsInstance(palier['nb_batteries_5'], int)
+            self.assertIsInstance(palier['nb_batteries_10'], int)
+            self.assertIsInstance(palier['remplissage_ok'], bool)
+            self.assertIsInstance(palier['retenu'], bool)
+            # Règle #4 : aucun prix d'achat, aucune marge ne fuit ici.
+            self.assertNotIn('prix_achat', palier)
+            self.assertNotIn('marge', palier)
+
+        capacites = [p['capacite_kwh'] for p in echelle]
+        self.assertEqual(capacites, sorted(set(capacites)),
+                         'les paliers ne montent pas strictement : %s'
+                         % capacites)
+        # Plus de batteries ⇒ jamais MOINS de panneaux (le champ est tiré par
+        # la banque à charger).
+        panneaux = [p['nb_panneaux'] for p in echelle]
+        for avant, apres in zip(panneaux, panneaux[1:]):
+            self.assertGreaterEqual(
+                apres, avant,
+                'le champ DIMINUE quand la banque grandit : %s' % panneaux)
+        # ``remplissage_ok=False`` ne peut être que le DERNIER palier.
+        for palier in echelle[:-1]:
+            self.assertTrue(palier['remplissage_ok'], palier)
+
+        retenus = [p for p in echelle if p['retenu']]
+        attendu = (bloc.get('recommandation_avec') or {}).get('batterie_kwh')
+        if attendu:
+            self.assertEqual(
+                len(retenus), 1,
+                'un et un seul palier doit porter le stockage de l\'optimum '
+                'AVEC (%s kWh) : %s' % (attendu, capacites))
+            self.assertAlmostEqual(retenus[0]['capacite_kwh'], float(attendu),
+                                   places=1)
+        else:
+            # Le moteur ne désigne AUCUNE configuration avec batterie livrable
+            # (trou de catalogue ou verdict électrique) : alors AUCUN palier
+            # n'est marqué — jamais un « retenu » désigné au hasard.
+            self.assertEqual(retenus, [], capacites)
+
+    def test_le_plafond_du_toit_borne_chaque_palier(self):
+        """Le calepinage est un PLAFOND PHYSIQUE : l'échelle ne propose jamais
+        des panneaux qui ne tiennent pas, et un toit plus petit ne peut que
+        RESTREINDRE la liste — jamais l'allonger."""
+        sans_toit = self._devis_residentiel(email='sanstoit@example.com')
+        libre = dimensionnement.echelle_paliers_batterie(sans_toit)
+
+        plafond = 6
+        avec_toit = self._devis_residentiel(
+            email='avectoit@example.com',
+            roof_layout={'scenario': 'reseau', 'panelWatt': 550,
+                         'result': {'panels': plafond,
+                                    'kwc': round(plafond * 550 / 1000.0, 3)}})
+        self.assertEqual(dimensionnement.plafond_toit_du_devis(avec_toit),
+                         plafond)
+        borne = dimensionnement.echelle_paliers_batterie(avec_toit)
+
+        for palier in borne:
+            self.assertLessEqual(
+                palier['nb_panneaux'], plafond,
+                'un palier propose %d panneaux sur un toit qui en porte %d'
+                % (palier['nb_panneaux'], plafond))
+        self.assertLessEqual(
+            len(borne), len(libre),
+            'le plafond du toit a ALLONGÉ l\'échelle : %s vs %s'
+            % ([p['capacite_kwh'] for p in borne],
+               [p['capacite_kwh'] for p in libre]))
+
+    def test_le_profil_absent_reclame_moins_de_panneaux_pour_la_meme_banque(
+            self):
+        """CONSÉQUENCE PRÉDITE PAR LE FONDATEUR — un foyer ABSENT en journée
+        autoconsomme moins directement, donc son surplus quotidien est PLUS
+        GROS à champ égal, donc la même banque se remplit avec MOINS de
+        panneaux. Son échelle est mécaniquement plus généreuse.
+
+        Les deux profils ont la MÊME facture : seule l'occupation change.
+        """
+        present = self._devis_residentiel(email='present-ech@example.com',
+                                          occupation_jour='present')
+        absent = self._devis_residentiel(email='absent-ech@example.com',
+                                         occupation_jour='absent')
+        ech_present = dimensionnement.echelle_paliers_batterie(present)
+        ech_absent = dimensionnement.echelle_paliers_batterie(absent)
+        self.assertTrue(ech_present and ech_absent,
+                        'échelle vide : le test ne prouverait rien')
+
+        print('')
+        print('ECHELLE BATTERIE — present vs absent (meme facture)')
+        for titre, echelle in (('present', ech_present),
+                               ('absent ', ech_absent)):
+            print('  %s : %s' % (titre, ', '.join(
+                '%s kWh -> %d pan.' % (p['capacite_kwh'], p['nb_panneaux'])
+                for p in echelle)))
+
+        par_capacite_present = {p['capacite_kwh']: p['nb_panneaux']
+                                for p in ech_present}
+        communes = [p for p in ech_absent
+                    if p['capacite_kwh'] in par_capacite_present]
+        self.assertTrue(communes, 'aucune capacité commune à comparer')
+        for palier in communes:
+            self.assertLessEqual(
+                palier['nb_panneaux'],
+                par_capacite_present[palier['capacite_kwh']],
+                'à %s kWh, le profil ABSENT réclame plus de panneaux que le '
+                'profil PRÉSENT — le surplus ne serait plus le sien'
+                % palier['capacite_kwh'])
+        self.assertGreaterEqual(
+            len(ech_absent), len(ech_present),
+            'l\'échelle du profil absent doit être au moins aussi généreuse')
+
+    def test_un_devis_non_residentiel_ou_sans_facture_rend_une_liste_vide(self):
+        """Rien de dérivable ⇒ liste VIDE, jamais un chiffre inventé pour
+        remplir l'écran."""
+        agricole = self._devis_residentiel(email='agricole-ech@example.com')
+        agricole.mode_installation = Devis.ModeInstallation.AGRICOLE
+        agricole.save(update_fields=['mode_installation'])
+        self.assertEqual(dimensionnement.echelle_paliers_batterie(agricole), [])
+
+        sans_facture = Devis.objects.create(
+            company=self.company, reference='DEV-ECH-VIDE',
+            client=self.client_obj, statut=Devis.Statut.BROUILLON,
+            created_by=self.user,
+            mode_installation=Devis.ModeInstallation.RESIDENTIEL,
+            etude_params={})
+        self.assertEqual(
+            dimensionnement.echelle_paliers_batterie(sans_facture), [])
+
+    def test_le_moteur_en_panne_rend_une_liste_vide_sans_lever(self):
+        """Un aperçu ne casse jamais un écran (et n'écrit rien)."""
+        devis = self._devis_residentiel(email='panne-ech@example.com')
+        with patch('apps.ventes.dimensionnement._echelle_paliers_batterie',
+                   side_effect=RuntimeError('moteur en panne')):
+            self.assertEqual(
+                dimensionnement.echelle_paliers_batterie(devis), [])
