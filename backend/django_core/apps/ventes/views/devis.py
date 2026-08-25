@@ -1200,8 +1200,18 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 champs_modifies.append('sections')
         if champs_modifies:
             link.save(update_fields=champs_modifies)
+        # L-INTPREV (fondateur 25/08/2026) — second lien « aperçu interne » :
+        # même page, même construction de chemin (``chemin_proposition``),
+        # jeton différent. ``jeton_interne_effectif`` génère paresseusement
+        # celui d'un très étroit lien préexistant qui aurait échappé au
+        # backfill de la migration 0103 (garde défensive — le cas normal
+        # porte déjà un jeton interne, posé par le default du champ ou par ce
+        # backfill).
+        token_interne = link.jeton_interne_effectif()
         return Response(
             {'token': link.token, 'path': chemin_proposition(devis, link.token),
+             'token_interne': token_interne,
+             'path_interne': chemin_proposition(devis, token_interne),
              'gamme': _gamme_envoi_payload(devis),
              'niveau': link.niveau, 'otp_lecture': link.otp_lecture,
              'sections': link.sections or {}},
