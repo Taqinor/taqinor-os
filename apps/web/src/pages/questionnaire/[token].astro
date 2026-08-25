@@ -43,7 +43,8 @@ let errorDetail: string | null = null;
 let httpStatus = 200;
 let isTimeout = false;
 
-const rl = rateLimit(`questionnaire-view:${clientIpFromRequest(Astro.request)}`, { limit: 60, windowMs: 60_000 });
+const visitorIp = clientIpFromRequest(Astro.request);
+const rl = rateLimit(`questionnaire-view:${visitorIp}`, { limit: 60, windowMs: 60_000 });
 if (!rl.allowed) {
   httpStatus = 429;
   errorDetail = 'Trop de tentatives depuis cette connexion — réessayez dans un instant.';
@@ -55,7 +56,16 @@ if (!rl.allowed) {
   const timer = setTimeout(() => controller.abort(), SSR_FETCH_TIMEOUT_MS);
   try {
     const res = await fetch(questionnaireEndpoint(API_BASE, token), {
-      headers: { accept: 'application/json' },
+      headers: {
+        accept: 'application/json',
+        // F3#8-web — transmet l'IP RÉELLE du visiteur au backend (même
+        // discipline que /proposition/[...token].astro) : sans ceci, le
+        // backend enregistrait l'IP de sortie du Worker pour toutes les
+        // visites. Best-effort : en-têtes omis si l'IP n'est pas identifiable.
+        ...(visitorIp && visitorIp !== 'unknown'
+          ? { 'X-Forwarded-For': visitorIp, 'CF-Connecting-IP': visitorIp }
+          : {}),
+      },
       signal: controller.signal,
     });
     httpStatus = res.status;
