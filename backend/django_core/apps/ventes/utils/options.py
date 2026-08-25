@@ -187,9 +187,9 @@ def totaux_affichage_repli(devis) -> dict:
     ``devis.total_ttc`` — pour un devis à deux options, la SOMME des deux
     paniers, un montant qui n'existe dans AUCUN document — sans badge (le
     ``nb_options: 1`` du repli masquait tout). Ici : deux options déclarées →
-    total de l'option 1 par la même chaîne canonique que le PDF, et
-    ``comparaison_repli`` porte les deux totaux pour l'affichage « A / B » de
-    la liste. Mono-option → total stocké, comportement historique inchangé.
+    le total de l'option mise en avant, par la même chaîne canonique que le
+    PDF, et ``comparaison_repli`` porte les deux totaux pour l'affichage
+    « A / B » de la liste. Mono-option → total stocké, historique inchangé.
 
     F1 (26/08/2026) — LE REPLI SUIT LA CHAÎNE CANONIQUE. Ce repli servait
     encore le total de l'option 1 (« Sans batterie ») alors que la chaîne
