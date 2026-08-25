@@ -111,17 +111,44 @@ def suffixe_jeton(token) -> str:
 
 
 def ip_de_requete(request) -> str:
-    """IP du client, lue CÔTÉ SERVEUR — jamais acceptée d'un corps de requête.
+    """IP du VISITEUR, lue CÔTÉ SERVEUR — jamais acceptée d'un corps de requête.
 
-    Même extraction que le webhook lead (``webhooks.website_lead_webhook``) :
-    première adresse de ``X-Forwarded-For`` (le proxy/Worker met le client en
-    tête), repli ``REMOTE_ADDR``."""
+    POURQUOI L'ORDRE COMPTE (revue critique 25/08/2026, finding #8). Une
+    proposition est ouverte par le rendu SSR du Worker : la connexion qui
+    atteint l'ERP part alors du WORKER, pas du client. Sans en-tête transmis,
+    ``REMOTE_ADDR`` vaut la MÊME sortie pour TOUS les visiteurs — et la branche
+    IP de :func:`detecter_concurrent` rapprocherait deux clients sans le
+    moindre rapport dès la deuxième proposition ouverte.
+
+    Ordre de résolution, du plus SPÉCIFIQUE au plus générique :
+
+    1. ``CF-Connecting-IP`` — UNE adresse, celle du visiteur, posée
+       explicitement par Cloudflare/le Worker. C'est déjà l'ordre que suit le
+       site lui-même (``apps/web/src/lib/rateLimit.ts``) ;
+    2. ``X-Forwarded-For`` — chaîne de sauts ; on lit le PREMIER saut NON VIDE
+       (un proxy peut poser une entrée vide en tête, auquel cas la première
+       adresse réelle est la suivante — la lecture naïve retombait alors sur
+       ``REMOTE_ADDR``, donc sur le proxy) ;
+    3. ``REMOTE_ADDR`` — le pair TCP direct, dernier recours.
+
+    Ces en-têtes sont déclaratifs : le point qui les lit est déjà authentifié
+    (secret du webhook) ou porte un jeton public, et l'IP ne sert JAMAIS à
+    affirmer une identité — seulement à étayer un soupçon, avec la garde de
+    :func:`detecter_concurrent` par-dessus.
+    """
     if request is None:
         return ''
     try:
-        transmise = (request.META.get('HTTP_X_FORWARDED_FOR', '') or '')
-        premiere = transmise.split(',')[0].strip()
-        return _texte(premiere or request.META.get('REMOTE_ADDR'), MAX_IP)
+        meta = request.META
+        cloudflare = _texte(meta.get('HTTP_CF_CONNECTING_IP'), MAX_IP)
+        if cloudflare:
+            return cloudflare
+        transmise = (meta.get('HTTP_X_FORWARDED_FOR', '') or '')
+        for saut in transmise.split(','):
+            saut = _texte(saut, MAX_IP)
+            if saut:
+                return saut
+        return _texte(meta.get('REMOTE_ADDR'), MAX_IP)
     except Exception:  # noqa: BLE001 — défensif
         return ''
 
@@ -545,6 +572,27 @@ def detecter_concurrent(company, *, appareil_id='', ip='') -> None:
         entreprise entière derrière une seule sortie) : l'alerte le DIT dans
         son texte plutôt que de laisser croire à une preuve.
 
+    GARDE DE CORRÉLATION (revue critique 25/08/2026, finding #8). La branche IP
+    ne compte que des visites dont l'IP est RÉELLEMENT renseignée, et elle ne
+    tire l'alerte que si au moins UNE des visites rapprochées porte un signal
+    NON DÉGRADÉ, c'est-à-dire un ``appareil_id`` — l'identifiant PRIMAIRE, que
+    seul un vrai navigateur peut poser.
+
+    POURQUOI. Une proposition ouverte par le rendu SSR du Worker arrive sans
+    ``appareil_id`` (pas de ``localStorage`` côté serveur) et, tant que l'IP du
+    visiteur n'est pas transmise, avec l'IP de sortie du Worker — IDENTIQUE
+    pour tout le monde. Sans cette garde, la deuxième proposition ouverte de la
+    journée déclenchait une alerte CRITIQUE à la direction sur du trafic
+    parfaitement normal. :func:`ip_de_requete` corrige la cause (l'IP réelle
+    est désormais lue dans les en-têtes transmis) ; cette garde est la
+    ceinture : un rapprochement qui ne repose QUE sur une adresse partagée,
+    sans qu'aucun navigateur identifié n'ait été vu, ne dérange personne.
+
+    CE QU'ELLE COÛTE, ASSUMÉ : un concurrent qui efface son ``localStorage`` à
+    chaque visite ne déclenche plus la branche IP. C'est le prix de « IP seule
+    = piste faible » — mieux vaut manquer un soupçon ténu que crier au loup sur
+    chaque client.
+
     Seuls les points qui désignent un prospect NOMMÉ comptent
     (``POINTS_DOCUMENT``) : deux visiteurs anonymes du site ne sont pas un
     concurrent. Best-effort — jamais d'exception propagée.
@@ -569,9 +617,14 @@ def detecter_concurrent(company, *, appareil_id='', ip='') -> None:
             if len(leads) >= 2:
                 signal, cle = 'appareil', f'appareil:{appareil_id}'
         if not signal and ip:
-            leads = sorted(set(
-                base.filter(ip=ip).values_list('lead_id', flat=True)))
-            if len(leads) >= 2:
+            # GARDE (finding #8) — jamais une visite sans IP (``ip=''`` ne
+            # rapproche rien), et le rapprochement doit s'appuyer sur au moins
+            # un navigateur IDENTIFIÉ : sans ``appareil_id``, ne restent que
+            # des requêtes serveur-à-serveur partageant une sortie commune.
+            partagees = base.filter(ip=ip).exclude(ip='')
+            leads = sorted(set(partagees.values_list('lead_id', flat=True)))
+            identifie = partagees.exclude(appareil_id='').exists()
+            if len(leads) >= 2 and identifie:
                 signal, cle = 'ip', f'ip:{ip}'
         if not signal:
             return
@@ -602,8 +655,9 @@ def detecter_concurrent(company, *, appareil_id='', ip='') -> None:
                 f'{FENETRE_CORRELATION_JOURS} jours : {fiches}.')
             nuance = ('Signal FAIBLE : au Maroc une IP est très souvent '
                       'partagée (4G, cybercafé, une entreprise entière). '
-                      'À traiter comme une piste à vérifier, jamais comme '
-                      'une preuve.')
+                      'Au moins un navigateur identifié a été vu à cette '
+                      'adresse, mais c\'est à traiter comme une piste à '
+                      'vérifier, jamais comme une preuve.')
 
         destinataires = _destinataires_des_leads(company, leads)
         if not destinataires:

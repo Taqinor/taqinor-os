@@ -319,6 +319,45 @@ class TestBeaconPublic(TestCase):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# (c bis) L'IP LUE est celle du VISITEUR, jamais celle du saut serveur
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestIpDeRequete(TestCase):
+    """Finding #8 — le rendu SSR du Worker atteint l'ERP depuis SA sortie :
+    sans en-tête transmis, ``REMOTE_ADDR`` est la même pour TOUS les clients.
+    L'ordre de lecture privilégie donc les en-têtes qui désignent le visiteur.
+    """
+
+    def _requete(self, **entetes):
+        from django.test import RequestFactory
+        return RequestFactory().get('/', **entetes)
+
+    def test_cf_connecting_ip_prioritaire(self):
+        """L'en-tête que pose Cloudflare/le Worker désigne UNE adresse, celle
+        du visiteur — c'est déjà l'ordre du site (``lib/rateLimit.ts``)."""
+        requete = self._requete(
+            HTTP_CF_CONNECTING_IP='41.77.1.5',
+            HTTP_X_FORWARDED_FOR='198.51.100.7',
+            REMOTE_ADDR='10.0.0.1')
+        self.assertEqual(visites.ip_de_requete(requete), '41.77.1.5')
+
+    def test_premier_saut_non_vide_de_x_forwarded_for(self):
+        """Un proxy peut poser une entrée VIDE en tête : la lecture naïve
+        retombait alors sur ``REMOTE_ADDR``, donc sur le proxy lui-même."""
+        requete = self._requete(
+            HTTP_X_FORWARDED_FOR=' , 41.77.1.5, 10.0.0.1',
+            REMOTE_ADDR='10.0.0.1')
+        self.assertEqual(visites.ip_de_requete(requete), '41.77.1.5')
+
+    def test_repli_remote_addr_quand_aucun_en_tete(self):
+        requete = self._requete(REMOTE_ADDR='10.0.0.1')
+        self.assertEqual(visites.ip_de_requete(requete), '10.0.0.1')
+
+    def test_sans_requete_aucune_ip(self):
+        self.assertEqual(visites.ip_de_requete(None), '')
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # (d) Proposition — le PUBLIC trace, l'aperçu INTERNE ne trace RIEN
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -637,7 +676,11 @@ class TestAlerteConcurrent(TestCase):
             recipient=self.directeur).count(), 1)
 
     def test_signal_ip_est_libelle_prudemment(self):
-        self.consulter(self.lead_a, appareil='', ip='41.77.1.5')
+        # Finding #8 — la branche IP exige désormais qu'au moins un NAVIGATEUR
+        # IDENTIFIÉ ait été vu à cette adresse (sinon un simple partage de
+        # sortie proxy suffisait à alerter la direction). La visite de A porte
+        # donc un appareil_id ; l'appel reste purement « par IP ».
+        self.consulter(self.lead_a, appareil=APPAREIL, ip='41.77.1.5')
         self.consulter(self.lead_b, appareil='', ip='41.77.1.5')
         visites.detecter_concurrent(self.company, ip='41.77.1.5')
         alerte = Notification.objects.filter(
@@ -648,6 +691,29 @@ class TestAlerteConcurrent(TestCase):
         self.assertIn('partagée', alerte.body)
         # L'IP ne doit JAMAIS être présentée comme une preuve.
         self.assertIn('jamais comme une preuve', alerte.body)
+
+    def test_ssr_sans_en_tete_ne_declenche_aucune_alerte(self):
+        """LE SCÉNARIO DU FINDING #8 — deux propositions ouvertes par le rendu
+        SSR du Worker : aucun ``appareil_id`` (pas de ``localStorage`` côté
+        serveur) et la MÊME IP de sortie pour tout le monde. Sans garde, la
+        deuxième proposition de la journée réveillait la direction en
+        CRITIQUE sur du trafic parfaitement normal."""
+        ip_du_worker = '198.51.100.7'
+        self.consulter(self.lead_a, appareil='', ip=ip_du_worker)
+        self.consulter(self.lead_b, appareil='', ip=ip_du_worker)
+        visites.detecter_concurrent(self.company, ip=ip_du_worker)
+        self.assertFalse(Notification.objects.filter(
+            event_type='visiteur_concurrent_suspecte').exists())
+
+    def test_visites_sans_ip_ne_se_rapprochent_jamais(self):
+        """Toutes les visites portent un appareil vide ET une IP vide : rien
+        sur quoi rapprocher honnêtement — aucune alerte."""
+        self.consulter(self.lead_a, appareil='', ip='')
+        self.consulter(self.lead_b, appareil='', ip='')
+        visites.detecter_concurrent(self.company, ip='')
+        visites.detecter_concurrent(self.company, appareil_id='')
+        self.assertFalse(Notification.objects.filter(
+            event_type='visiteur_concurrent_suspecte').exists())
 
     def test_les_visites_anonymes_du_site_ne_comptent_pas(self):
         """Deux visiteurs anonymes du même cybercafé ne sont pas un
