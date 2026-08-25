@@ -60,12 +60,15 @@ class EchelleaPaliersBatteriePubliqueTests(SimpleTestCase):
         self.assertIsNone(bloc)
 
     def test_fonction_absente_cle_absente_jamais_une_erreur(self):
-        """La lane P2-A (``apps.ventes.dimensionnement.echelle_paliers_batterie``)
-        n'existe pas encore sur cette branche au moment où cette lane (P2-B)
-        est écrite : aucun mock ici — le ``getattr`` défensif doit renvoyer
-        ``None`` (clé absente du payload), jamais lever."""
-        bloc = _echelle_paliers_batterie_publique(
-            None, {'avec_ok': True}, True)
+        """Recalage fold 25/08 — la lane P2-A a DEPUIS foldé sa fonction sur
+        cette branche : l'absence se SIMULE désormais (attribut à ``None``,
+        exactement ce que rend le ``getattr`` défensif quand la fonction
+        manque). La garde reste épinglée : absente ⇒ ``None``, jamais lever."""
+        with mock.patch(
+                'apps.ventes.dimensionnement.echelle_paliers_batterie',
+                new=None):
+            bloc = _echelle_paliers_batterie_publique(
+                None, {'avec_ok': True}, True)
         self.assertIsNone(bloc)
 
     def test_fonction_presente_liste_servie_telle_quelle(self):
@@ -174,13 +177,17 @@ class _PayloadBase(TestCase):
 
 
 class FonctionAbsentePayloadTests(_PayloadBase):
-    """Bout en bout, SANS mock : la lane P2-A n'a pas encore foldé sa
-    fonction sur cette branche — le payload reste correct, la clé est
-    simplement absente."""
+    """Bout en bout, fonction SIMULÉE ABSENTE (recalage fold 25/08 — P2-A a
+    depuis foldé la vraie fonction : l'absence se rejoue par patch ``None``,
+    la valeur exacte du ``getattr`` défensif) — le payload reste correct, la
+    clé est simplement absente."""
 
     def test_cle_absente_du_payload_sans_erreur(self):
         devis = self._devis('pb-absent')
-        p = self._payload(devis)
+        with mock.patch(
+                'apps.ventes.dimensionnement.echelle_paliers_batterie',
+                new=None):
+            p = self._payload(devis)
         self.assertNotIn('paliers_batterie', p)
         # Aucune régression des clés voisines déjà servies par PACT10.
         self.assertIn('dimensionnement_options', p)
@@ -234,7 +241,10 @@ class FonctionPresentePayloadTests(_PayloadBase):
         with self._mock():
             p_avec_mock = self._payload(devis)
         p_sans_mock = self._payload(devis)
-        for cle in ('dimensionnement_options', 'economies_mensuelles',
+        # Recalage fold 25/08 — `economies_mensuelles` n'est PAS servie sur
+        # cette fixture (elle exige un ancrage éco réel, doctrine Z2/CJ2b) :
+        # les voisines comparées sont celles que la fixture sert VRAIMENT.
+        for cle in ('dimensionnement_options', 'courbes_journalieres',
                     'variantes_servables'):
             self.assertIn(cle, p_avec_mock)
             self.assertIn(cle, p_sans_mock)
