@@ -120,6 +120,45 @@ def _strip_confidential_deep(obj):
     return obj
 
 
+def _resolve_share_link_by_token(token, *, select_related=()):
+    """L-INTPREV (fondateur 25/08/2026) — résout un ShareLink par son jeton
+    PUBLIC ou par son jeton INTERNE (aperçu commercial sans notification),
+    même URL de page des deux côtés. Renvoie ``(link, via_interne)`` — ``link``
+    est ``None`` si aucun des deux jetons ne correspond ou si le lien résolu
+    est expiré.
+
+    Le jeton public est essayé EN PREMIER (chemin historique, le plus
+    fréquent) ; le jeton interne n'est essayé que s'il ne matche pas — les
+    deux espaces de jetons sont uniques indépendamment, donc au plus une
+    ligne peut matcher au total."""
+    qs = ShareLink.objects.all()
+    if select_related:
+        qs = qs.select_related(*select_related)
+    link = qs.filter(token=token).first()
+    via_interne = False
+    if link is None:
+        link = qs.filter(token_interne=token).first()
+        via_interne = link is not None
+    if link is None or not link.is_valid:
+        return None, False
+    return link, via_interne
+
+
+def _stamp_view_si_public(link, via_interne):
+    """L-INTPREV — même contrat que ``_stamp_view`` (renvoie True si première
+    ouverture), mais SANS AUCUN effet de bord quand ``via_interne`` est vrai :
+    ni compteur de vues, ni first_viewed_at/last_viewed_at, ni miroir
+    marketing (``_enregistrer_ouverture_marketing``), et par construction
+    aucune des notifications QJ1/QJ2 posées par ``_notify_first_open`` (jamais
+    appelé — ``is_first`` reste False). Le commercial doit pouvoir ouvrir la
+    page EXACTEMENT comme le client la voit sans qu'aucune trace n'en
+    résulte : pas de note chatter, pas d'avance de stage funnel (YLEAD10),
+    pas de notification au owner."""
+    if via_interne:
+        return False
+    return _stamp_view(link)
+
+
 def _stamp_view(link):
     """QJ1 — Horodate la consultation du lien public et renvoie True si c'est
     la première (first_viewed_at était None avant ce GET).
@@ -332,13 +371,12 @@ def _opts_pdf_public(link, variante=None):
 @permission_classes([AllowAny])
 @throttle_classes([PublicLinkRateThrottle])
 def public_document(request, token):
-    link = (
-        ShareLink.objects
-        .select_related('devis', 'facture', 'company')
-        .filter(token=token)
-        .first()
-    )
-    if link is None or not link.is_valid:
+    # L-INTPREV (25/08/2026) — accepte AUSSI le jeton d'aperçu interne (même
+    # document servi, aucune trace d'ouverture derrière — voir
+    # ``_stamp_view_si_public``).
+    link, via_interne = _resolve_share_link_by_token(
+        token, select_related=('devis', 'facture', 'company'))
+    if link is None:
         return _not_found()
 
     # L-SECT (24/08/2026) — case « PDF téléchargeable » décochée : ce flux
@@ -350,8 +388,10 @@ def public_document(request, token):
     if link.devis_id and not _section_servie(link, 'pdf'):
         return _not_found()
 
-    # QJ1 — stamp the view (best-effort; True = first open).
-    is_first = _stamp_view(link)
+    # QJ1 — stamp the view (best-effort; True = first open). L-INTPREV : jamais
+    # de stamp/notification via le jeton interne (via_interne=True → toujours
+    # False, voir _stamp_view_si_public).
+    is_first = _stamp_view_si_public(link, via_interne)
 
     try:
         from .utils.filenames import document_filename
@@ -484,15 +524,19 @@ def _parse_client_ts(value):
 
 
 def _resolve_proposal_link(token):
-    """Return a valid devis-bearing ShareLink for this token, or None."""
-    link = (
-        ShareLink.objects
-        .select_related('devis', 'devis__client', 'devis__company', 'company')
-        .filter(token=token)
-        .first()
-    )
-    if link is None or not link.is_valid or not link.devis_id:
+    """Return a valid devis-bearing ShareLink for this token, or None.
+
+    L-INTPREV (25/08/2026) — accepte AUSSI le jeton d'aperçu interne (même
+    devis, même page). ``link.via_interne`` (attribut dynamique, jamais
+    persisté) dit aux appelants si CE jeton était l'interne — les endpoints
+    qui doivent rester sans trace / refuser d'engager le client (lecture,
+    signature) le lisent explicitement."""
+    link, via_interne = _resolve_share_link_by_token(
+        token,
+        select_related=('devis', 'devis__client', 'devis__company', 'company'))
+    if link is None or not link.devis_id:
         return None
+    link.via_interne = via_interne
     return link
 
 
@@ -1962,13 +2006,18 @@ def proposal_data(request, token):
     # un espace de clés séparé — apps.ventes.services.otp_lecture_verified).
     # Gate posé AVANT tout effet de bord (stamp de vue) : une tentative non
     # vérifiée ne compte pas comme une consultation.
+    # L-INTPREV (25/08/2026) — le jeton interne dispense de l'OTP de lecture
+    # (c'est le commercial, jamais le client) : le gate n'a plus de sens.
     from .services import otp_lecture_verified
-    if not otp_lecture_verified(link):
+    if not link.via_interne and not otp_lecture_verified(link):
         return _noindex(Response(
             {'detail': 'otp_required'}, status=status.HTTP_403_FORBIDDEN))
 
-    # QJ1 — stamp the view (best-effort; True = first open).
-    is_first = _stamp_view(link)
+    # QJ1 — stamp the view (best-effort; True = first open). L-INTPREV :
+    # jamais de stamp/notification via le jeton interne (voir
+    # _stamp_view_si_public) — aucune trace d'ouverture ne doit résulter d'un
+    # aperçu commercial.
+    is_first = _stamp_view_si_public(link, link.via_interne)
     if is_first:
         _notify_first_open(link)
 
@@ -2120,6 +2169,12 @@ def proposal_data(request, token):
             # L-NIV — indique à la page CE niveau (elle n'a rien à deviner :
             # les dégradations sont posées ici, pas re-décidées côté client).
             'niveau': niveau,
+            # L-INTPREV (25/08/2026) — clé additive : True uniquement quand CE
+            # GET a résolu le jeton D'APERÇU INTERNE (commercial). Payload par
+            # ailleurs IDENTIQUE au jeton public — la page s'en sert seulement
+            # pour un bandeau discret + désactiver le bloc signature (elle ne
+            # peut pas engager le client depuis un aperçu).
+            'apercu_interne': bool(link.via_interne),
             'reference': data['ref'],
             'date': data['date'],
             'client_name': data['client_name'],
@@ -2443,8 +2498,9 @@ def proposal_pdf(request, token):
 
     # L-NIV (24/08/2026) — même gate otp_lecture que proposal_data (voir son
     # commentaire) : le flux PDF public est aussi une LECTURE.
+    # L-INTPREV (25/08/2026) — jeton interne → jamais d'OTP exigé.
     from .services import otp_lecture_verified
-    if not otp_lecture_verified(link):
+    if not link.via_interne and not otp_lecture_verified(link):
         return _noindex(Response(
             {'detail': 'otp_required'}, status=status.HTTP_403_FORBIDDEN))
 
@@ -2456,8 +2512,9 @@ def proposal_pdf(request, token):
     if not _section_servie(link, 'pdf'):
         return _not_found()
 
-    # QJ1 — stamp the view (best-effort; True = first open).
-    is_first = _stamp_view(link)
+    # QJ1 — stamp the view (best-effort; True = first open). L-INTPREV :
+    # jamais de stamp/notification via le jeton interne.
+    is_first = _stamp_view_si_public(link, link.via_interne)
     if is_first:
         _notify_first_open(link)
 
@@ -2698,6 +2755,14 @@ def proposal_engagement(request, token):
     if link is None:
         return _not_found()
 
+    # L-INTPREV (25/08/2026) — jeton interne : aucun beacon n'est enregistré
+    # (ni ``ShareLink.engagement``, ni la note chatter « a commencé à lire en
+    # détail » au seuil profond) — un aperçu commercial n'est pas une lecture
+    # CLIENT à mesurer. 204 silencieux, même contrat que le rejet d'un beacon
+    # invalide ci-dessous.
+    if link.via_interne:
+        return _noindex(Response(status=status.HTTP_204_NO_CONTENT))
+
     section = str(request.data.get('section') or '').strip().lower()
     seconds_raw = request.data.get('seconds')
     try:
@@ -2764,6 +2829,12 @@ def proposal_accept(request, token):
     double envoi ne re-signe pas. Pas de login : le jeton authentifie."""
     link = _resolve_proposal_link(token)
     if link is None:
+        return _not_found()
+    # L-INTPREV (25/08/2026) — le jeton interne ne peut JAMAIS signer : un
+    # aperçu commercial ne peut pas engager le client. Même 404 générique que
+    # tout autre refus de ce endpoint (jamais un message qui distinguerait le
+    # jeton interne d'un jeton simplement invalide).
+    if link.via_interne:
         return _not_found()
     devis = link.devis
     nom = (request.data.get('nom') or request.data.get('name') or '').strip()
