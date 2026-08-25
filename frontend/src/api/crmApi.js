@@ -246,6 +246,16 @@ const crmApi = {
   // `ordre` auto-incrémenté et `date_contact` par défaut (maintenant) posés
   // côté serveur si absents.
   createPointContact: (data) => api.post('/crm/points-contact/', data),
+
+  // LANE Q-C — dialogue « Envoyer un questionnaire » (fiche lead) : mint (ou
+  // réutilise — idempotent côté serveur) le lien questionnaire du lead.
+  // `payload` optionnel : omis → renvoie l'état déjà stocké (manquantes +
+  // questions) sans rien changer ; `{questions:{<cle>:bool}}` → choisit/
+  // change les sections demandées. Réponse : {url, url_interne, token,
+  // expires_at, questions, manquantes} — `url` seul part au client,
+  // `url_interne` est l'aperçu commercial sans notification.
+  mintQuestionnaireLien: (leadId, payload) =>
+    api.post(`/crm/leads/${leadId}/questionnaire-lien/`, payload ?? {}),
 }
 
 export default crmApi
