@@ -318,6 +318,10 @@ KWC_SANS = 0.0
 KWC_AVEC = 0.0
 NB_PAN_SANS = 0
 NB_PAN_AVEC = 0
+# PDFPROD - la production DERIVE du kWc : elle diverge donc avec lui. Memes
+# defauts inertes (0 = « rien par option », la vignette lit le scalaire).
+PROD_KWH_SANS = 0
+PROD_KWH_AVEC = 0
 
 MONTHS  = ["Jan","F\u00e9v","Mar","Avr","Mai","Jun",
            "Jul","Ao\u00fb","Sep","Oct","Nov","D\u00e9c"]
@@ -1554,11 +1558,30 @@ def page1():
                if _pan_line else '')
             + '</div>')
     if not PUISSANCE_INCONNUE and PROD_KWH > 0:
+        # PDFPROD (27/08/2026) — MIROIR EXACT DE LA VIGNETTE « PUISSANCE » : la
+        # production DÉRIVE du kWc, elle diverge donc avec lui. Sur un document
+        # qui rend LES DEUX options, cette carte annonçait la production de la
+        # seule option AVEC (repli documenté du scalaire) juste à côté d'une
+        # puissance écrite « sans · avec ». Deux gardes : les valeurs doivent
+        # réellement DIFFÉRER (une production saisie dans l'étude vaut pour les
+        # deux options) et le corps descend à 13 pt — une production s'écrit
+        # sur 5 à 6 chiffres, la carte ne doit ni grandir ni passer à la ligne.
+        # Devis non divergent (tout l'existant) ⇒ HTML byte-identique.
+        _kpi_prod = f'{pk}&nbsp;kWh'
+        _kpi_prod_pt = '19pt'
+        _prod_sub = '&#233;nergie propre / an'
+        if (PANNEAUX_DIVERGENTS and _both and PROD_KWH_SANS > 0
+                and PROD_KWH_AVEC > 0 and PROD_KWH_SANS != PROD_KWH_AVEC):
+            _pk_s = f"{PROD_KWH_SANS:,}".replace(",", _s)
+            _pk_a = f"{PROD_KWH_AVEC:,}".replace(",", _s)
+            _kpi_prod = f'{_pk_s}&#160;&#183;&#160;{_pk_a}&nbsp;kWh'
+            _kpi_prod_pt = '13pt'
+            _prod_sub = '&#233;nergie propre / an (sans &#183; avec)'
         _kpi_cards.append(
             f'<div style="flex:1;min-width:0;margin-right:9px;border:1px solid {CG2};border-left:4px solid {CA};border-radius:6px;padding:14px 12px;background:white;">'
             f'<div style="font-size:4.5pt;letter-spacing:1.5px;color:{CG4};font-weight:400;text-transform:uppercase;margin-bottom:4px;">Production Annuelle</div>'
-            f'<div class="serif" style="font-size:19pt;color:{CN};line-height:1.05;">{pk}&nbsp;kWh</div>'
-            f'<div style="font-size:6.5pt;color:{CG4};margin-top:3px;">&#233;nergie propre / an</div>'
+            f'<div class="serif" style="font-size:{_kpi_prod_pt};color:{CN};line-height:1.05;">{_kpi_prod}</div>'
+            f'<div style="font-size:6.5pt;color:{CG4};margin-top:3px;">{_prod_sub}</div>'
             '</div>')
     if not PUISSANCE_INCONNUE:
         _kpi_cards.append(
@@ -3138,6 +3161,9 @@ def apply_quote_data(data: dict) -> None:
     KWC_AVEC = float(data.get("puissance_kwc_avec") or 0)
     NB_PAN_SANS = int(data.get("nb_panneaux_sans") or 0)
     NB_PAN_AVEC = int(data.get("nb_panneaux_avec") or 0)
+    global PROD_KWH_SANS, PROD_KWH_AVEC  # PDFPROD — production par option
+    PROD_KWH_SANS = int(data.get("prod_kwh_sans") or 0)
+    PROD_KWH_AVEC = int(data.get("prod_kwh_avec") or 0)
     global HYPOTHESES  # QK4 — bloc « Nos hypothèses »
     HYPOTHESES = data.get("hypotheses")
     global NB_PROPRIETES, DISPLAY_TOTAL_MULTI, MULTI_VILLA  # QJ30 multi-propriétés

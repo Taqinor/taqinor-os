@@ -213,10 +213,26 @@ def build_pages(ctx) -> list:
     else:
         spec_pan = (f'{d["nb_panneaux"]:g}',
                     f'panneaux · {d["watt_par_panneau"]:g} W')
+    # PDFPROD (27/08/2026) — la production DÉRIVE du kWc : quand les champs PV
+    # divergent, le scalaire ``prod_kwh`` ne décrit qu'UNE des deux options
+    # (celle de l'AVEC, repli documenté du builder) — la bande annonçait donc
+    # une production unique à côté d'un « 15,62 · 18,46 kWc ». Mêmes gardes que
+    # la vignette de la page 1 : les deux valeurs doivent réellement différer
+    # (une production SAISIE dans l'étude vaut pour les deux options), et la
+    # paire est écrite un cran plus petit — une production s'écrit sur 5 à
+    # 6 chiffres, la colonne de la bande fait ~36 mm et ne doit pas passer à la
+    # ligne. Devis non divergent (tout l'existant) ⇒ HTML byte-identique.
+    _pr_s, _pr_a = d.get("prod_kwh_sans"), d.get("prod_kwh_avec")
+    if _divergent and _pr_s and _pr_a and _pr_s != _pr_a:
+        spec_prod = (f'<span style="font-size:13pt;">{fmt(_pr_s)} · '
+                     f'{fmt(_pr_a)}</span>',
+                     "kWh / an produits (sans · avec)")
+    else:
+        spec_prod = (fmt(d["prod_kwh"]), "kWh / an produits")
     specs = [
         spec_kwc,
         spec_pan,
-        (fmt(d["prod_kwh"]), "kWh / an produits"),
+        spec_prod,
     ]
     spec_html = "".join(
         f'<div class="p2-spec"><span class="p2-spec-v">{v}</span>'
