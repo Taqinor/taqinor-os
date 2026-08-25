@@ -38,8 +38,11 @@ from apps.ventes.courbes_journalieres import (
     composer_equipements,
 )
 from apps.ventes.dimensionnement import (
+    HORIZON_MARGINAL_BATTERIE,
+    HORIZON_MARGINAL_PV,
     MAX_PALIERS_STOCKAGE,
     RATIO_ONDULEUR_MIN,
+    depart_dans_horizon,
     recommander_taille,
     verdict_bloquant,
 )
@@ -487,20 +490,57 @@ class ExemplesFondateurTest(TestCase):
         self.assertTrue(recommandation['lignes_sans'],
                         '%s : recommandation sans aucune ligne' % libelle)
 
-        # 6. Elle ne depasse pas la borne de parite. On l'exprime en PANNEAUX
-        # et non en pourcentage : la garantie du balayage est « au plus la
-        # parite production/consommation, plus un panneau » — or pour une
-        # petite installation UN panneau est deja un gros ecart relatif, si
-        # bien qu'un seuil en pourcentage serait faux pour les petits paliers.
-        production_par_panneau = (recommandation['production_annuelle_kwh']
-                                  / max(1, recommandation['panneaux']))
+        # 6. PIN DEPLACE LE 25/08/2026 — CE QUI BORNE LA TAILLE A CHANGE.
+        #
+        #    ANCIEN PIN : « au plus la parite production/consommation, plus un
+        #    panneau ». Ce n'etait PAS une regle du moteur : c'etait une
+        #    CONSEQUENCE du critere pur « meilleur payback » — passe la parite,
+        #    un panneau de plus n'economise presque rien (au Maroc le surplus
+        #    injecte ne vaut rien), donc il degradait toujours le ratio.
+        #
+        #    NOUVEAU PIN : la doctrine du 25/08 accepte une taille PLUS GRANDE
+        #    tant que chaque panneau ajoute se rembourse dans la vie des
+        #    panneaux (HORIZON_MARGINAL_PV). Ce qui borne la taille n'est donc
+        #    plus la parite mais l'HORIZON — et c'est LUI qu'on epingle. La
+        #    physique n'a pas change pour autant : passe la parite, l'economie
+        #    marginale s'effondre et le ratio explose bien au-dela de dix ans,
+        #    si bien que la montee s'arrete d'elle-meme.
+        #
+        #    LA GARANTIE VERIFIEE ICI EST CELLE QUE LA DOCTRINE DEMONTRE : le
+        #    payback GLOBAL de la taille recommandee reste sous l'horizon des
+        #    panneaux — sauf pour un dossier dont le MEILLEUR payback y est
+        #    deja au-dela, ou la garde du dossier faible rend le choix pur
+        #    d'avant (donc « jamais pire qu'avant »).
+        paybacks = [ligne['payback_sans_annees']
+                    for ligne in resultat['tableau']
+                    if ligne.get('composable')
+                    and ligne.get('payback_sans_annees') is not None
+                    and not ligne.get('verdicts_bloquants_sans')]
+        meilleur_payback = min(paybacks)
+        if depart_dans_horizon(meilleur_payback):
+            self.assertLessEqual(
+                recommandation['payback_sans_annees'],
+                HORIZON_MARGINAL_PV + 1e-6,
+                '%s : payback global %.2f ans au-dela de l\'horizon de %d ans '
+                '— la doctrine promettrait un ROI qu\'elle ne tient pas'
+                % (libelle, recommandation['payback_sans_annees'],
+                   HORIZON_MARGINAL_PV))
+        else:
+            self.assertAlmostEqual(
+                recommandation['payback_sans_annees'], meilleur_payback,
+                places=6,
+                msg='%s : dossier au-dela de l\'horizon — la garde doit rendre '
+                    'le choix PUR meilleur payback, jamais une taille plus '
+                    'grande' % libelle)
+
+        # 6bis. La taille recommandee n'est JAMAIS plus PETITE que celle du
+        # meilleur payback pur : la montee ne descend pas.
         self.assertLessEqual(
-            recommandation['production_annuelle_kwh']
-            - recommandation['consommation_annuelle_kwh'],
-            production_par_panneau * 2.0 + 1e-6,
-            '%s : taille au-dela de la parite + 1 panneau — au Maroc le '
-            'surplus ne vaut rien, chaque panneau en trop est du cout pur'
-            % libelle)
+            min(ligne['panneaux'] for ligne in resultat['tableau']
+                if ligne.get('payback_sans_annees') == meilleur_payback),
+            recommandation['panneaux'],
+            '%s : la recommandation est plus PETITE que le meilleur payback '
+            'pur — la doctrine ne descend jamais' % libelle)
         self.assertEqual(len(conso), 12, libelle)
 
         # 7. DIM2 — les invariants du mini-balayage du stockage. Ils portent sur
@@ -799,6 +839,106 @@ class ExemplesFondateurTest(TestCase):
             present['taux_autoconso_sans'], absent['taux_autoconso_sans'],
             'un foyer present en journee doit autoconsommer plus qu\'un foyer '
             'absent, a facture egale')
+
+    def test_le_profil_absent_recoit_au_moins_autant_de_batteries(self):
+        """DOCTRINE DU 25/08/2026 — LA CONSEQUENCE QUE LE FONDATEUR A PREDITE.
+
+        « Un profil absent en journee doit desormais recevoir PLUS de batteries
+        qu'avant. » Le mecanisme, et non l'intuition : un foyer ABSENT
+        autoconsomme peu directement, donc son surplus quotidien est PLUS GROS
+        a champ egal (plus de paliers se remplissent tous les jours) et chaque
+        kWh stocke DEPLACE un kWh importe qui serait autrement paye plein tarif
+        — l'economie marginale de la batterie est donc plus forte, et son pas
+        passe l'horizon de sept ans la ou il ne le passerait pas chez un foyer
+        present.
+
+        AUCUN CHIFFRE N'EST ECRIT EN DUR ICI : le test lit ce que le moteur
+        rend sur le catalogue seme, l'IMPRIME pour le fondateur, et epingle la
+        RELATION entre les deux profils.
+        """
+        from apps.ventes.courbes_journalieres import OCCUPATION_ABSENCE
+
+        rendus = {}
+        for occupation in (OCCUPATION_PRESENCE, OCCUPATION_ABSENCE):
+            cas = Cas('2500 DH/mois — %s' % occupation, hiver=2500,
+                      phase='triphase', occupation=occupation)
+            _conso, _source, _detail, resultat = self._evaluer(cas)
+            rendus[occupation] = resultat
+
+        print('')
+        print('%s ══ DOCTRINE 25/08 — PRESENT vs ABSENT, axe BATTERIE '
+              '(2500 DH/mois)' % TAG)
+        print('%s    horizons : %d ans pour des panneaux, %d ans pour du '
+              'stockage' % (TAG, HORIZON_MARGINAL_PV,
+                            HORIZON_MARGINAL_BATTERIE))
+        capacites = {}
+        for occupation, resultat in rendus.items():
+            avec = resultat.get('recommandation_avec')
+            if avec is None:
+                print('%s    %-14s -> AUCUNE configuration avec batterie : %s'
+                      % (TAG, occupation, resultat['motivation_avec']))
+                continue
+            capacites[occupation] = avec['batterie_kwh']
+            print('%s    %-14s -> %d panneaux + %s kWh, cout %s DH TTC, '
+                  'economie %s DH/an, payback %s'
+                  % (TAG, occupation, avec['panneaux'],
+                     _kwh(avec['batterie_kwh']), _mad(avec['cout_avec_ttc']),
+                     _mad(avec['economie_avec_mad']),
+                     _annees(avec['payback_avec_annees'])))
+            print('%s        %s' % (TAG, resultat['motivation_avec']))
+
+        # LE MECANISME, VERIFIE A CHAMP EGAL : sur une taille de champ presente
+        # dans les DEUX tableaux, le surplus quotidien du mois le plus faible —
+        # donc le plafond de remplissage — est plus GRAND chez l'absent.
+        surplus = {}
+        for occupation, resultat in rendus.items():
+            surplus[occupation] = {
+                ligne['panneaux']: ligne['stockage_surplus_jour_min_kwh']
+                for ligne in resultat['tableau']
+                if ligne.get('stockage_surplus_jour_min_kwh') is not None}
+        communes = sorted(set(surplus[OCCUPATION_PRESENCE])
+                          & set(surplus[OCCUPATION_ABSENCE]))
+        self.assertTrue(
+            communes,
+            'aucune taille de champ commune aux deux profils : le mecanisme '
+            'ne peut pas etre verifie')
+        for panneaux in communes:
+            self.assertGreaterEqual(
+                surplus[OCCUPATION_ABSENCE][panneaux],
+                surplus[OCCUPATION_PRESENCE][panneaux] - 1e-6,
+                'a %d panneaux, le foyer ABSENT aurait MOINS de surplus '
+                'quotidien que le foyer PRESENT — le profil ne servirait a '
+                'rien' % panneaux)
+        print('%s    surplus quotidien du pire mois a %d panneaux : '
+              'present %s kWh, absent %s kWh'
+              % (TAG, communes[0],
+                 _kwh(surplus[OCCUPATION_PRESENCE][communes[0]]),
+                 _kwh(surplus[OCCUPATION_ABSENCE][communes[0]])))
+
+        # ET LA CONSEQUENCE : l'absent ne reçoit jamais MOINS de stockage.
+        if len(capacites) == 2:
+            self.assertGreaterEqual(
+                capacites[OCCUPATION_ABSENCE],
+                capacites[OCCUPATION_PRESENCE],
+                'le foyer ABSENT recoit MOINS de stockage (%s kWh) que le '
+                'foyer PRESENT (%s kWh) : la doctrine du 25/08 ne produit pas '
+                'l\'effet que le fondateur a predit'
+                % (capacites.get(OCCUPATION_ABSENCE),
+                   capacites.get(OCCUPATION_PRESENCE)))
+        else:
+            # Le catalogue seme ne sait pas livrer l'option batterie pour l'un
+            # des deux profils. Ce n'est pas un silence : le moteur doit DIRE
+            # pourquoi (trou de catalogue ou verdict electrique), et c'est CA
+            # qu'on epingle plutot que de passer au vert sans rien prouver.
+            for occupation, resultat in rendus.items():
+                if occupation in capacites:
+                    continue
+                self.assertTrue(
+                    resultat['motivation_avec'].strip(),
+                    '%s : aucune option batterie ET aucune motivation'
+                    % occupation)
+                self.assertIn('aucune configuration avec batterie',
+                              resultat['motivation_avec'])
 
     def test_criteres_alternatifs_sont_offerts_au_fondateur(self):
         """Le critère par défaut est un CHOIX, pas une fatalité : les autres
