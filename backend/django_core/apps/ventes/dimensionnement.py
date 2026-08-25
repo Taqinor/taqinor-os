@@ -1427,3 +1427,432 @@ def recommander_taille(*, company, conso_kwh_mensuelles, critere=CRITERE_DEFAUT,
         'falaise': falaise,
         'meilleure_falaise': chercher_falaise(tableau, cible_falaise),
     }
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# L'ÉCHELLE DE PALIERS BATTERIE (ordre fondateur, 25/08/2026)
+# ════════════════════════════════════════════════════════════════════════════
+#
+# VERBATIM : « more than just 2 batteries in the web page battery option ; extra
+# batteries might add extra panels with extra cost, that is still fine ».
+#
+# CE QUI CHANGE PAR RAPPORT À DIM2. Le mini-balayage de ``balayer_tailles``
+# répond à « à CHAMP DONNÉ, que change une batterie de plus ? » — et la règle
+# « batteries toujours pleines » y REJETTE tout palier qu'un champ trop petit
+# ne saurait charger. La question du fondateur est l'INVERSE : « et si je veux
+# CETTE banque de batteries, que faut-il ? ». La même règle ne rejette donc
+# plus le palier : elle TIRE LES PANNEAUX NÉCESSAIRES. Des batteries en plus
+# amènent des panneaux en plus, qui coûtent plus — « that is still fine ».
+
+#: Nombre de paliers montrés AU-DELÀ du palier retenu. Ce n'est pas une règle
+#: métier : c'est la LONGUEUR RAISONNABLE d'un choix à l'écran. La liste
+#: s'arrête de toute façon d'elle-même au plafond du toit ou dès qu'un palier
+#: ne se remplit plus, souvent bien avant.
+MAX_PALIERS_ECHELLE = 8
+
+#: GARDE-FOU DE CALCUL : nombre maximal de tailles de champ réellement sondées.
+#: Chaque sonde coûte une composition catalogue par palier PLUS douze
+#: simulations journalières ; la recherche du champ minimal est DICHOTOMIQUE
+#: (≈ log₂ du plafond, mutualisée entre paliers puisqu'ils montent ensemble),
+#: si bien que ce plafond n'est jamais atteint sur un profil réel — il est là
+#: pour qu'un catalogue pathologique ne puisse pas faire boucler un aperçu.
+MAX_SONDES_ECHELLE = 24
+
+
+def plafond_toit_du_devis(devis):
+    """Le nombre de panneaux PHYSIQUEMENT POSABLES d'après le calepinage 3D.
+
+    LU par la MÊME fonction que la resynchronisation
+    (``services._cible_panneaux_du_layout`` sur ``Devis.roof_layout``) : deux
+    lectures du toit finiraient par diverger, et l'échelle proposerait alors
+    des paliers que le calepinage refuse.
+
+    ``None`` quand le devis ne porte aucun calepinage — l'échelle n'est alors
+    bornée que par ses garde-fous de calcul, jamais par une surface inventée.
+    """
+    layout = getattr(devis, 'roof_layout', None)
+    if not isinstance(layout, dict):
+        return None
+    from apps.ventes.services import (
+        _cible_panneaux_du_layout, extract_roof_config)
+    try:
+        toiture = extract_roof_config(layout) or {}
+    except Exception:  # noqa: BLE001 — un layout illisible n'est pas un plafond
+        toiture = {}
+    try:
+        cible = int(_cible_panneaux_du_layout(layout, toiture) or 0)
+    except Exception:  # noqa: BLE001
+        return None
+    return cible if cible > 0 else None
+
+
+def _compter_modules_batterie(lignes_vue):
+    """``(nb de modules 5 kWh, nb de modules 10 kWh)`` LUS sur la composition.
+
+    Le kWh est celui du NOM du produit — c'est-à-dire le NOMINAL imprimé sur
+    l'étiquette, la grandeur avec laquelle le fondateur et le client comptent
+    (« deux batteries de 10 »), là où ``capacite_kwh`` porte la capacité UTILE
+    fichée. Les deux coexistent volontairement : l'une se compte, l'autre se
+    calcule.
+
+    Un module d'une AUTRE taille (le jour où le catalogue en référence un) ne
+    tombe dans aucun des deux compteurs — jamais reclassé de force dans le
+    voisin le plus proche : ``capacite_kwh`` continue, lui, à dire la vérité.
+    """
+    from apps.ventes.services import _parse_kwh
+    cinq = dix = 0
+    for ligne in (lignes_vue or []):
+        if ligne.get('role') != 'batterie':
+            continue
+        nominal = _num(_parse_kwh(ligne.get('designation') or ''))
+        quantite = int(_num(ligne.get('quantite')))
+        if quantite <= 0:
+            continue
+        if abs(nominal - 5.0) < 1.0:
+            cinq += quantite
+        elif abs(nominal - 10.0) < 1.0:
+            dix += quantite
+    return cinq, dix
+
+
+def _capacite_optimum_avec(devis, entrees):
+    """La capacité de l'OPTIMUM AVEC pour ce devis — LUE, jamais devinée.
+
+    D'abord le bloc DÉJÀ rangé sur le devis
+    (``etude_params['dimensionnement']['recommandation_avec']``, posé par
+    ``services.rafraichir_dimensionnement_devis``) : c'est LE chiffre que le
+    reste de l'écran affiche, et marquer « retenu » un autre palier que celui-là
+    serait se contredire à l'intérieur d'une même page. À défaut seulement, le
+    moteur est relancé sur les MÊMES entrées.
+
+    ``None`` quand le moteur ne désigne aucune configuration avec batterie
+    livrable : aucun palier n'est alors marqué ``retenu`` — une réponse honnête
+    plutôt qu'un palier désigné au hasard.
+    """
+    bloc = (getattr(devis, 'etude_params', None) or {}).get('dimensionnement')
+    if isinstance(bloc, dict) and 'recommandation_avec' in bloc:
+        avec = bloc.get('recommandation_avec')
+        capacite = (_num(avec.get('batterie_kwh')) if isinstance(avec, dict)
+                    else 0.0)
+        return capacite if capacite > 0 else None
+    try:
+        resultat = recommander_taille(
+            company=entrees['company'],
+            conso_kwh_mensuelles=entrees['conso_kwh_mensuelles'],
+            ville=entrees['ville'], lat=entrees['lat'], lon=entrees['lon'],
+            occupation=entrees['occupation'],
+            equipements=entrees['equipements'],
+            source_conso=entrees['source_conso'])
+    except Exception:  # noqa: BLE001 — sans optimum, aucun palier n'est retenu
+        logger.warning('optimum avec indisponible pour l\'échelle batterie',
+                       exc_info=True)
+        return None
+    capacite = _num((resultat.get('recommandation_avec') or {}).get(
+        'batterie_kwh'))
+    return capacite if capacite > 0 else None
+
+
+def echelle_paliers_batterie(devis):
+    """L'ÉCHELLE des paliers de batterie proposables sur CE devis résidentiel.
+
+    CONTRAT (PACT10 — écrit AVANT les deux moitiés qui le consomment). Renvoie
+    une LISTE de dicts, capacité croissante, chacun portant EXACTEMENT :
+
+    * ``capacite_kwh`` — capacité UTILE réellement livrée par la composition
+      catalogue de ce palier (fiche technique, jamais l'étiquette) ;
+    * ``nb_batteries_5`` / ``nb_batteries_10`` — combien de modules 5 kWh et
+      10 kWh la composition contient, tels qu'on les COMPTE ;
+    * ``nb_panneaux`` — le champ PV que ce palier EXIGE (voir plus bas) ;
+    * ``puissance_kwc`` — ce champ en kWc, au wattage du panneau réel ;
+    * ``prix_ttc`` — prix de VENTE TTC de la composition complète (règle #4 :
+      jamais un prix d'achat, jamais une marge) ;
+    * ``economies_annuelles`` — MAD/an du moteur horaire sur ce couple
+      champ × stockage ;
+    * ``payback_annees`` — ``prix_ttc / economies_annuelles``, ou ``None``
+      quand l'économie n'est pas chiffrable (jamais un zéro fabriqué) ;
+    * ``remplissage_ok`` — la batterie se remplit-elle TOUS LES JOURS ?
+    * ``retenu`` — ce palier est-il celui de l'optimum AVEC ?
+
+    LA RÈGLE FONDATEUR EST RETOURNÉE, PAS ABANDONNÉE. DIM2 demande « à champ
+    donné, quel stockage se remplit ? » et REFUSE les paliers trop gros. Ici la
+    question est « pour CETTE banque, que faut-il ? » : la même règle
+    (« batteries toujours pleines », 24/08/2026) ne rejette plus le palier, elle
+    TIRE LE CHAMP — ``nb_panneaux`` est le PLUS PETIT champ dont le surplus
+    quotidien du mois le plus faible charge la banque entièrement. C'est
+    exactement ce que le fondateur a autorisé le 25/08 : « extra batteries might
+    add extra panels with extra cost, that is still fine ».
+
+    LE CHAMP EST BORNÉ, ET CHAQUE BORNE EST JUSTIFIÉE : le PLAFOND DU TOIT quand
+    le devis porte un calepinage (:func:`plafond_toit_du_devis` — on ne propose
+    pas des panneaux qui ne tiennent pas), sinon :data:`FACTEUR_MAX_FALAISE` ×
+    la taille de parité de CE client, plafonnée par
+    :data:`MAX_PANNEAUX_BALAYAGE`.
+
+    ``remplissage_ok=False`` n'apparaît QUE sur le premier palier que même le
+    champ MAXIMAL ne remplit pas — il est montré (avec son prix et son champ)
+    pour que la limite se LISE, puis l'échelle s'arrête.
+
+    LES ENTRÉES SONT CELLES DU TABLEAU DÉJÀ RANGÉ SUR LE DEVIS
+    (``services.entrees_dimensionnement_du_devis``, et les mêmes réglages par
+    défaut que ``rafraichir_dimensionnement_devis``) : sans cela l'échelle
+    désignerait un palier « retenu » calculé sur d'autres hypothèses que celles
+    qui l'ont retenu.
+
+    LISTE VIDE quand rien n'est dérivable — devis non résidentiel, sans société,
+    sans profil de consommation, localisation non résolue, catalogue sans
+    batterie. Jamais un chiffre inventé pour remplir l'écran. Ne lève JAMAIS et
+    n'écrit RIEN (aucun statut, aucune ligne, aucun total — règle #4).
+    """
+    try:
+        return _echelle_paliers_batterie(devis)
+    except Exception:  # noqa: BLE001 — un aperçu ne casse jamais un écran
+        logger.warning('échelle de paliers batterie indisponible sur %s',
+                       getattr(devis, 'reference', '?'), exc_info=True)
+        return []
+
+
+def _echelle_paliers_batterie(devis):
+    """Le calcul de :func:`echelle_paliers_batterie`, sans son filet."""
+    from apps.parametres.pvgis_profils import productible_mensuel
+    from apps.ventes.etude_horaire import (
+        balayer_stockage_horaire,
+        # L-DECH — SOURCE UNIQUE des bornes de puissance batterie.
+        puissances_batterie_des_lignes,
+    )
+    from apps.ventes.services import (
+        _AUTO_PANEL_WATT,
+        carte_marques_composition,
+        catalogue_de_la_societe,
+        composition_residentielle,
+        entrees_dimensionnement_du_devis,
+        ordre_lignes_societe,
+    )
+
+    entrees = entrees_dimensionnement_du_devis(devis)
+    conso = (entrees or {}).get('conso_kwh_mensuelles')
+    if not conso:
+        return []
+    conso_annuelle = sum(_num(v) for v in conso)
+    if conso_annuelle <= 0:
+        return []
+
+    mensuel = productible_mensuel(ville=entrees['ville'], lat=entrees['lat'],
+                                  lon=entrees['lon'])
+    if not mensuel:
+        return []
+    productibles, _source = mensuel
+    productible_annuel = sum(_num(v) for v in productibles)
+    if productible_annuel <= 0:
+        return []
+
+    company = entrees['company']
+    catalogue = catalogue_de_la_societe(company)
+    marques = carte_marques_composition(company, None)
+    ordre = ordre_lignes_societe(company)
+    # MÊMES réglages par défaut que ``rafraichir_dimensionnement_devis`` : la
+    # TVA du devis n'entre pas ici, chaque produit portant DÉJÀ son taux
+    # (``_lire_composition``) et ce taux-ci n'étant que le repli.
+    taux_tva = Decimal('20')
+
+    def composer(panneaux, kwc, cible, journal):
+        """Une composition catalogue AVEC batterie, ou ``None`` — jamais une
+        exception : un palier impossible ne fait pas tomber l'échelle."""
+        try:
+            return composition_residentielle(
+                catalogue, kwc=kwc, panel_watt=panel_watt,
+                nb_panneaux=panneaux, avec_batterie=True,
+                structure_type='acier', taux_tva=taux_tva,
+                avertissements=journal, deux_options=False, marques=marques,
+                ordre_lignes=ordre, batterie_cible_kwh=cible)
+        except Exception:  # noqa: BLE001
+            logger.warning('composition impossible à %s panneaux / %s kWh',
+                           panneaux, cible, exc_info=True)
+            return None
+
+    # Le wattage du panneau RÉELLEMENT retenu par le catalogue — lu, pas
+    # supposé (même sonde que ``balayer_tailles``).
+    sonde_avert = []
+    sonde = composition_residentielle(
+        catalogue, kwc=_AUTO_PANEL_WATT / 1000.0, panel_watt=_AUTO_PANEL_WATT,
+        nb_panneaux=1, avec_batterie=False, structure_type='acier',
+        taux_tva=taux_tva, avertissements=sonde_avert, deux_options=False,
+        marques=marques, ordre_lignes=ordre)
+    panel_watt = _num(getattr(sonde, 'panel_watt_reel', 0))
+    if panel_watt <= 0:
+        return []
+
+    # ── LES BORNES DU CHAMP ──────────────────────────────────────────────────
+    panneaux_parite = max(1, int(math.ceil(
+        (conso_annuelle / productible_annuel) * 1000.0 / panel_watt)))
+    max_champ = min(MAX_PANNEAUX_BALAYAGE,
+                    int(math.ceil(panneaux_parite * FACTEUR_MAX_FALAISE)))
+    plafond_toit = plafond_toit_du_devis(devis)
+    if plafond_toit:
+        max_champ = min(max_champ, int(plafond_toit))
+    max_champ = max(1, max_champ)
+
+    # ── L'ÉCHELLE DES CAPACITÉS, DÉRIVÉE DU CATALOGUE ────────────────────────
+    kwc_max = max_champ * panel_watt / 1000.0
+    vivier_journal = []
+    sonde_batterie = composer(max_champ, kwc_max, None, vivier_journal)
+    if sonde_batterie is None:
+        return []
+    cibles = paliers_stockage_candidats(
+        list(getattr(sonde_batterie, 'capacites_batterie_vivier', ()) or ()),
+        maximum=MAX_PALIERS_STOCKAGE)
+    if not cibles:
+        return []
+
+    etude_kwargs = {
+        'conso_kwh_mensuelles': conso, 'ville': entrees['ville'],
+        'lat': entrees['lat'], 'lon': entrees['lon'],
+        'occupation': entrees['occupation'],
+        'equipements': entrees['equipements'],
+    }
+
+    sondes = {}
+
+    def sonder(panneaux):
+        """Ce que CE champ sait faire de CHAQUE cible de l'échelle — mémoïsé.
+
+        Un seul parcours des douze jours types sert toutes les capacités
+        (``balayer_stockage_horaire``), et les bornes de puissance sont lues
+        composition par composition : 15 kWh (un 10 + un 5) et 20 kWh (deux 10)
+        n'ont ni le même prix ni la même puissance de décharge.
+        """
+        if panneaux in sondes:
+            return sondes[panneaux]
+        if len(sondes) >= MAX_SONDES_ECHELLE:
+            return None
+        kwc = panneaux * panel_watt / 1000.0
+        vues, bornes, reels = {}, {}, {}
+        for cible in cibles:
+            journal = []
+            lignes = composer(panneaux, kwc, cible, journal)
+            if lignes is None:
+                continue
+            vue = _lire_composition(lignes, taux_tva)
+            capacite = round(_num(vue.get('batterie_kwh')), 3)
+            if capacite <= 0:
+                continue
+            reels[cible] = capacite
+            vues[cible] = vue
+            puissances = puissances_batterie_des_lignes(
+                lignes, roles=getattr(lignes, 'roles', None))
+            bornes[capacite] = {
+                'decharge_kw': puissances['packs_decharge_kw'],
+                'decharge_onduleur_kw': puissances['ond_decharge_kw'],
+                'charge_kw': puissances['charge_kw'],
+            }
+        if not reels:
+            sondes[panneaux] = None
+            return None
+        energie = balayer_stockage_horaire(
+            kwc=kwc, capacites_kwh=sorted(set(reels.values())),
+            puissances_par_capacite=bornes, **etude_kwargs)
+        if energie is None:
+            sondes[panneaux] = None
+            return None
+        par_capacite = {p['capacite_kwh']: p for p in energie['paliers']}
+        par_cible = {}
+        for cible, capacite in reels.items():
+            palier = par_capacite.get(round(capacite, 2))
+            if palier is None:
+                continue
+            par_cible[cible] = {'capacite_kwh': capacite,
+                                'vue': vues[cible], 'palier': palier}
+        sondes[panneaux] = {'panneaux': panneaux, 'par_cible': par_cible}
+        return sondes[panneaux]
+
+    def remplit(panneaux, cible):
+        """Ce champ charge-t-il CETTE banque tous les jours ? ``None`` = pas de
+        réponse (palier non composable à cette taille)."""
+        entree = ((sonder(panneaux) or {}).get('par_cible') or {}).get(cible)
+        if entree is None:
+            return None
+        return bool(entree['palier']['se_remplit_tous_les_jours'])
+
+    def champ_minimal(cible, depart):
+        """Le PLUS PETIT champ qui remplit cette banque, ou ``None``.
+
+        DICHOTOMIE — légitime parce que le surplus quotidien du mois le plus
+        faible (LE plafond de remplissage) CROÎT avec la taille du champ : la
+        production monte, l'autoconsommation directe est bornée par la
+        consommation, donc ce qui reste pour charger ne peut que grandir. On
+        vérifie d'abord le champ MAXIMAL : s'il ne remplit pas, aucun ne
+        remplira, et c'est la réponse.
+        """
+        if remplit(max_champ, cible) is not True:
+            return None
+        bas, haut = max(1, int(depart)), max_champ
+        while bas < haut:
+            milieu = (bas + haut) // 2
+            if remplit(milieu, cible) is True:
+                haut = milieu
+            else:
+                bas = milieu + 1
+        return haut
+
+    capacite_retenue = _capacite_optimum_avec(devis, entrees)
+
+    def rendu(entree, panneaux, remplissage_ok):
+        """Un palier de l'échelle, au format EXACT du contrat."""
+        vue, palier = entree['vue'], entree['palier']
+        capacite = round(_num(entree['capacite_kwh']), 2)
+        cout = round(_num(vue.get('cout_ttc')), 2)
+        economie = round(_num(palier['economie_mad']), 2)
+        cinq, dix = _compter_modules_batterie(vue.get('lignes'))
+        return {
+            'capacite_kwh': capacite,
+            'nb_batteries_5': cinq,
+            'nb_batteries_10': dix,
+            'nb_panneaux': int(panneaux),
+            'puissance_kwc': round(panneaux * panel_watt / 1000.0, 3),
+            'prix_ttc': cout,
+            'economies_annuelles': economie,
+            'payback_annees': _arrondi(_payback(cout, economie)),
+            'remplissage_ok': bool(remplissage_ok),
+            'retenu': bool(capacite_retenue is not None
+                           and abs(capacite - _num(capacite_retenue)) < 0.05),
+        }
+
+    echelle = []
+    capacites_vues = set()
+    depart = 1
+    apres_retenu = 0
+    for cible in cibles:
+        panneaux = champ_minimal(cible, depart)
+        if panneaux is None:
+            # MÊME LE CHAMP MAXIMAL NE REMPLIT PAS. On montre ce palier-là avec
+            # son champ et son prix — la limite se lit —, puis on s'arrête : les
+            # capacités au-dessus ne se rempliront pas davantage.
+            entree = ((sonder(max_champ) or {}).get('par_cible')
+                      or {}).get(cible)
+            if entree is not None:
+                palier = rendu(entree, max_champ, False)
+                if palier['capacite_kwh'] not in capacites_vues:
+                    capacites_vues.add(palier['capacite_kwh'])
+                    echelle.append(palier)
+            break
+        depart = panneaux
+        entree = ((sonder(panneaux) or {}).get('par_cible') or {}).get(cible)
+        if entree is None:
+            break
+        palier = rendu(entree, panneaux, True)
+        if palier['capacite_kwh'] in capacites_vues:
+            # Deux cibles nominales servies par la MÊME banque réelle : un seul
+            # palier à l'écran, jamais deux lignes identiques.
+            continue
+        capacites_vues.add(palier['capacite_kwh'])
+        echelle.append(palier)
+        if palier['retenu']:
+            apres_retenu = 0
+        elif any(p['retenu'] for p in echelle):
+            apres_retenu += 1
+            if apres_retenu >= MAX_PALIERS_ECHELLE:
+                break
+        elif len(echelle) >= MAX_PALIERS_ECHELLE + 1:
+            # Aucun palier retenu (le moteur n'a désigné aucun optimum avec) :
+            # l'écran reste tout de même borné.
+            break
+    return echelle
