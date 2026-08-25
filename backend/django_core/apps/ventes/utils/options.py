@@ -131,7 +131,7 @@ def _totaux_canoniques(devis, lignes) -> dict:
     }
 
 
-def option_totaux(devis, option=None) -> dict:
+def option_totaux(devis, option=None, lignes=None) -> dict:
     """Totaux HT / TVA / TTC (Decimals, centime) pour l'option retenue.
 
     QX1 — SOURCE UNIQUE DE LA MONNAIE : les totaux passent désormais par la
@@ -145,14 +145,22 @@ def option_totaux(devis, option=None) -> dict:
     détail brut/remise est aussi exposé (``ht_brut``, ``remise``) pour les
     documents qui affichent la ligne « Remise globale » (BC). Sans option double
     et sans remise, les valeurs restent identiques au comportement historique.
+
+    NPLUS1 (27/08/2026) — ``lignes`` accepte les lignes DÉJÀ CHARGÉES par
+    l'appelant (patron YOPSB13, cf. ``utils/echeancier.factures_actives``) : le
+    chemin d'acceptation publique appelait cette fonction deux fois de suite,
+    chaque appel refaisant sa propre requête lignes+produit sur des lignes qui
+    ne bougent pas pendant l'acceptation. Paramètre ABSENT (tous les autres
+    appelants) ⇒ la requête d'hier, résultat identique.
     """
     if option is None:
         option = getattr(devis, 'option_acceptee', '') or ''
-    if not option or not has_two_options(devis):
+    if lignes is None:
         lignes = list(devis.lignes.select_related('produit').all())
     else:
-        lignes = filter_lines_for_option(
-            list(devis.lignes.select_related('produit').all()), option)
+        lignes = list(lignes)
+    if option and has_two_options(devis):
+        lignes = filter_lines_for_option(lignes, option)
     return _totaux_canoniques(devis, lignes)
 
 

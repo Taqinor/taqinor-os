@@ -2824,10 +2824,21 @@ def generate_premium_devis_pdf(devis_id, pdf_options=None, persist=True) -> str:
     from apps.ventes.utils.pdf import _upload_pdf
     from .generate_devis_premium import generate_premium_pdf
 
+    # NPLUS1 (27/08/2026) — le ``prefetch_related("lignes__produit")`` qui
+    # vivait ici était MORT : ``build_quote_data`` rechaîne
+    # ``devis.lignes.select_related("produit", "produit__fiche_technique")``
+    # sur le related-manager, ce qui IGNORE le cache de prefetch (Django
+    # reconstruit le queryset) — et il lui faut de toute façon la fiche
+    # technique, que ce prefetch ne chargeait pas. Il coûtait donc deux
+    # requêtes (lignes + produits) que personne ne lisait : aucun autre
+    # consommateur de cette instance ne touche ``devis.lignes`` (les quatre
+    # renderers travaillent sur ``data``). Retiré plutôt que rendu utile — un
+    # paramètre « lignes préchargées » sur ``build_quote_data`` aurait ajouté
+    # une deuxième porte d'entrée aux données du devis pour économiser
+    # exactement la même requête.
     devis = (
         Devis.objects
         .select_related("client", "company")
-        .prefetch_related("lignes__produit")
         .get(pk=devis_id)
     )
 
