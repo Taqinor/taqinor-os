@@ -66,6 +66,21 @@ class TestPhoneNormalization(TestCase):
         self.assertIsNone(normalize_ma_phone('+33612345678'))
         self.assertNotEqual(normalize_ma_phone('+33612345678'), '21233612345678')
 
+    # 25/08/2026 — finding 10 : régression collatérale de la lane numéros
+    # internationaux. La réécriture qui a introduit `_MA_LOCAL_RE` a perdu le
+    # `local.lstrip('0')` que faisait l'ancienne normalisation après retrait
+    # du préfixe 212 — les graphies RÉELLES où l'usager retape le 0 local
+    # après l'indicatif (« +212 (0)6… », « +212 06… », « 00212 0… », usage
+    # marocain courant) tombaient sur `None` sur des fiches qui marchaient
+    # avant, désarmant « Envoyer par WhatsApp » (400) sur des fiches EXISTANTES.
+    def test_212_prefix_with_rewritten_leading_zero_still_recognized(self):
+        self.assertEqual(
+            normalize_ma_phone('+212 (0)6 12 34 56 78'), '212612345678')
+        self.assertEqual(
+            normalize_ma_phone('+212 06 12 34 56 78'), '212612345678')
+        self.assertEqual(
+            normalize_ma_phone('00212 0612345678'), '212612345678')
+
 
 class TestMessageTemplate(TestCase):
     def setUp(self):

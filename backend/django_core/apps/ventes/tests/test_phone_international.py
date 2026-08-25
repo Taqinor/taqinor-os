@@ -69,6 +69,31 @@ class TestNormalizePhoneE164(TestCase):
         self.assertIsNone(normalize_phone_e164('+2126123456'))
         self.assertIsNone(normalize_phone_e164('002126123456'))
 
+    # 25/08/2026 — finding 10, miroir e164 de `test_whatsapp.
+    # TestPhoneNormalization.test_212_prefix_with_rewritten_leading_zero_
+    # still_recognized` : `normalize_phone_e164` délègue au chemin marocain
+    # de `normalize_ma_phone`, donc hérite du même correctif lstrip('0').
+    def test_212_prefix_with_rewritten_leading_zero_still_recognized(self):
+        self.assertEqual(
+            normalize_phone_e164('+212 (0)6 12 34 56 78'), '212612345678')
+        self.assertEqual(
+            normalize_phone_e164('+212 06 12 34 56 78'), '212612345678')
+        self.assertEqual(
+            normalize_phone_e164('00212 0612345678'), '212612345678')
+
+    # 25/08/2026 — finding 10(b) : avant le correctif, `normalize_phone_e164`
+    # ne retirait que `[\s.\-()]` (contrairement à `normalize_ma_phone`, qui
+    # retire TOUT non-chiffre) — un numéro marocain valide saisi avec `/` ou
+    # une mention « Tel: » était donc rejeté ici alors que `normalize_ma_phone`
+    # l'acceptait déjà (désarmait le bouton WhatsApp d'un devis/lead valide).
+    def test_moroccan_with_slash_or_label_separators_recognized(self):
+        self.assertEqual(
+            normalize_phone_e164('06/12/34/56/78'), '212612345678')
+        self.assertEqual(
+            normalize_phone_e164('Tel: 0612345678'), '212612345678')
+        self.assertEqual(
+            normalize_phone_e164('Tel: 06/12/34/56/78'), '212612345678')
+
 
 class TestNormalizeMaPhoneNeverCorruptsForeign(TestCase):
     def test_foreign_returns_none_not_a_fabricated_212_number(self):

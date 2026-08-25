@@ -34,6 +34,30 @@ test('normalizePhoneE164 : local ambigu SANS indicatif reste rejeté (jamais dev
   assert.equal(normalizePhoneE164('002126123456'), null) // même garde côté "00" international
 })
 
+// 25/08/2026 — finding 10 : régression collatérale de la lane numéros
+// internationaux. La réécriture avait perdu le `lstrip('0')` post-212 — les
+// graphies RÉELLES où l'usager retape le 0 local après l'indicatif
+// (« +212 (0)6… », « +212 06… », « 00212 0… », usage marocain courant)
+// désarmaient le bouton WhatsApp de fiches EXISTANTES qui marchaient avant.
+// Miroir exact de apps.ventes.tests.test_phone_international.
+// TestNormalizePhoneE164.test_212_prefix_with_rewritten_leading_zero_still_recognized.
+test('normalizePhoneE164 : 212 + zéro local retapé toujours reconnu (finding 10a)', () => {
+  assert.equal(normalizePhoneE164('+212 (0)6 12 34 56 78'), '212612345678')
+  assert.equal(normalizePhoneE164('+212 06 12 34 56 78'), '212612345678')
+  assert.equal(normalizePhoneE164('00212 0612345678'), '212612345678')
+})
+
+// 25/08/2026 — finding 10(b) : le nettoyage ne retirait que `[\s.\-()]`
+// (contrairement au backend qui retire TOUT non-chiffre) — un numéro
+// marocain valide saisi avec `/` ou une mention « Tel: » était donc rejeté
+// ici alors que le backend l'acceptait déjà. Ajoute les cas '/' et 'Tel:'
+// absents du miroir backend.
+test('normalizePhoneE164 : séparateurs "/" et libellé "Tel:" reconnus (finding 10b)', () => {
+  assert.equal(normalizePhoneE164('06/12/34/56/78'), '212612345678')
+  assert.equal(normalizePhoneE164('Tel: 0612345678'), '212612345678')
+  assert.equal(normalizePhoneE164('Tel: 06/12/34/56/78'), '212612345678')
+})
+
 test('normalizeMaPhone : délègue à normalizePhoneE164, rejette toujours l\'étranger (contrat wa.me marocain inchangé)', () => {
   // Chemins marocains — comportement historique préservé (aucune régression).
   assert.equal(normalizeMaPhone('0612345678'), '212612345678')

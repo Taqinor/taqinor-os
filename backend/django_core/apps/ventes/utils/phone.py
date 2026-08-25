@@ -33,8 +33,15 @@ def normalize_ma_phone(raw):
     `normalize_phone_e164` pour un numéro à indicatif explicite non-212).
 
     Formats marocains reconnus : local 0[5-7]XXXXXXXX (10 chiffres) ; ou
-    212/+212/00212 + 9 chiffres [5-7]XXXXXXXX. Ne force JAMAIS un préfixe
-    '212' sur une suite de chiffres qui ne matche aucun de ces formats.
+    212/+212/00212 + 9 chiffres [5-7]XXXXXXXX — y COMPRIS quand l'usager
+    retape le zéro local après l'indicatif (« +212 (0)6 12 34 56 78 »,
+    « +212 06… », « 00212 0… », graphies réelles très courantes) : les 0 de
+    tête du reste sont retirés après reconnaissance du préfixe 212, AVANT le
+    test à 9 chiffres (25/08/2026 — régression de la lane numéros
+    internationaux : l'ancienne normalisation faisait ce `lstrip('0')`
+    inconditionnellement ; la réécriture qui a introduit `_MA_LOCAL_RE` l'a
+    perdu, rejetant ces fiches réelles). Ne force JAMAIS un préfixe '212'
+    sur une suite de chiffres qui ne matche aucun de ces formats.
     """
     if not raw:
         return None
@@ -44,7 +51,7 @@ def normalize_ma_phone(raw):
     if digits.startswith('00'):  # préfixe international 00
         digits = digits[2:]
     if digits.startswith('212'):
-        local = digits[3:]
+        local = digits[3:].lstrip('0')
     elif digits.startswith('0'):
         local = digits[1:]
     else:
@@ -66,13 +73,18 @@ def normalize_phone_e164(raw):
     marocain reste le chemin PRINCIPAL, un étranger à indicatif explicite est
     accepté EN PLUS, un local ambigu (0XXXXXXXXX à 10 chiffres) reste rejeté
     (jamais pris pour un numéro étranger sans indicatif tapé).
+
+    Nettoyage : ne garde que les chiffres (comme `normalize_ma_phone`), le
+    seul '+' de tête servant de signal d'indicatif explicite — un numéro
+    marocain valide saisi avec `/`, « Tel: » ou toute autre ponctuation
+    parasite est reconnu (délégation à `normalize_ma_phone` ci-dessus, donc
+    le correctif lstrip('0') post-212 s'applique ici aussi).
     """
     if not raw:
         return None
-    trimmed = re.sub(r'[\s.\-()]', '', str(raw))
-    had_plus = trimmed.startswith('+')
-    digits = trimmed[1:] if had_plus else trimmed
-    if not digits.isdigit():
+    had_plus = str(raw).strip().startswith('+')
+    digits = re.sub(r'\D', '', str(raw))  # ne garde que les chiffres
+    if not digits:
         return None
 
     ma = normalize_ma_phone(digits)
@@ -81,8 +93,8 @@ def normalize_phone_e164(raw):
 
     if had_plus:
         candidate = digits
-    elif trimmed.startswith('00'):
-        candidate = trimmed[2:]
+    elif digits.startswith('00'):
+        candidate = digits[2:]
     else:
         return None  # pas d'indicatif explicite → jamais traité comme étranger
 
