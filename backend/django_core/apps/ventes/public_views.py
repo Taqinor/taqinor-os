@@ -144,7 +144,7 @@ def _resolve_share_link_by_token(token, *, select_related=()):
     return link, via_interne
 
 
-def _stamp_view_si_public(link, via_interne):
+def _stamp_view_si_public(link, via_interne, request=None):
     """L-INTPREV — même contrat que ``_stamp_view`` (renvoie True si première
     ouverture), mais SANS AUCUN effet de bord quand ``via_interne`` est vrai :
     ni compteur de vues, ni first_viewed_at/last_viewed_at, ni miroir
@@ -153,10 +153,48 @@ def _stamp_view_si_public(link, via_interne):
     appelé — ``is_first`` reste False). Le commercial doit pouvoir ouvrir la
     page EXACTEMENT comme le client la voit sans qu'aucune trace n'en
     résulte : pas de note chatter, pas d'avance de stage funnel (YLEAD10),
-    pas de notification au owner."""
+    pas de notification au owner.
+
+    T-TRACE (25/08/2026) — le traçage anti-fraude suit EXACTEMENT la même
+    règle : rien n'est enregistré via le jeton interne (``via_interne``
+    court-circuite AVANT toute écriture). ``request`` est FACULTATIF (les
+    appelants qui ne le passent pas gardent le comportement d'avant, sans
+    trace de visite) et sert uniquement à lire l'IP / le navigateur CÔTÉ
+    SERVEUR — jamais un corps de requête."""
     if via_interne:
         return False
-    return _stamp_view(link)
+    resultat = _stamp_view(link)
+    _tracer_ouverture_publique(link, request)
+    return resultat
+
+
+def _tracer_ouverture_publique(link, request):
+    """T-TRACE — enregistre l'ouverture PUBLIQUE d'un document client comme une
+    ``crm.VisiteExterne`` (point ``proposition``).
+
+    Frontière inter-apps respectée : passe par ``apps.crm.services`` (façade
+    d'écriture du CRM), jamais par les modèles de ``crm``.
+
+    Le jeton n'est JAMAIS transmis en entier — le service n'en garde que les
+    6 derniers caractères. Strictement best-effort : une erreur de traçage ne
+    doit jamais casser la consultation d'un document par un client."""
+    if request is None or not getattr(link, 'company_id', None):
+        return
+    try:
+        from apps.crm.services import appareil_de_requete, tracer_et_correler
+        lead = getattr(link.devis, 'lead', None) if link.devis_id else None
+        cible = 'facture' if link.facture_id else 'devis'
+        document = link.facture if link.facture_id else link.devis
+        reference = getattr(document, 'reference', '') or ''
+        tracer_et_correler(
+            link.company, point='proposition', lead=lead,
+            appareil_id=appareil_de_requete(request),
+            contexte=f'Ouverture {cible} {reference}'.strip(),
+            token=getattr(link, 'token', ''),
+            request=request,
+        )
+    except Exception:  # noqa: BLE001 — best-effort, jamais de fuite
+        pass
 
 
 def _stamp_view(link):
@@ -212,7 +250,7 @@ def _enregistrer_ouverture_marketing(link):
         pass
 
 
-def _notify_first_open(link):
+def _notify_first_open(link, request=None):
     """QJ1 / QJ2 (b) — Sur la première ouverture, logue une note dans le
     chatter du lead lié (QJ1) ET envoie une notification in-app + Web Push
     au responsable du lead avec un lien wa.me « répondre maintenant » (QJ2).
@@ -221,7 +259,12 @@ def _notify_first_open(link):
     NTCPQ47 — SÉPARÉMENT, si le devis consulté est une VARIANTE CPQ
     (NTCPQ16), notifie AUSSI l'auteur du devis de base (préparation portail :
     savoir quelle variante précise le client regarde) — indépendant de la
-    présence d'un lead."""
+    présence d'un lead.
+
+    T-TRACE (25/08/2026) — ``request`` FACULTATIF : quand il est fourni, la
+    notification dit d'OÙ vient l'ouverture (IP) et si l'appareil était DÉJÀ
+    connu. IP et navigateur sont lus CÔTÉ SERVEUR dans les en-têtes, jamais
+    dans un corps de requête."""
     try:
         if not link.devis_id:
             return
@@ -232,7 +275,14 @@ def _notify_first_open(link):
             from apps.crm.services import noter_devis_ouvert, notify_devis_opened
             noter_devis_ouvert(devis_ref, lead)
             # QJ2 (b) — notification in-app + Web Push au owner.
-            notify_devis_opened(devis_ref, lead)
+            ip, appareil = '', ''
+            if request is not None:
+                from apps.crm.services import (
+                    appareil_de_requete, ip_de_requete,
+                )
+                ip, appareil = (ip_de_requete(request),
+                                appareil_de_requete(request))
+            notify_devis_opened(devis_ref, lead, ip=ip, appareil_id=appareil)
     except Exception:  # noqa: BLE001 — best-effort, jamais de fuite
         pass
     try:
@@ -391,7 +441,7 @@ def public_document(request, token):
     # QJ1 — stamp the view (best-effort; True = first open). L-INTPREV : jamais
     # de stamp/notification via le jeton interne (via_interne=True → toujours
     # False, voir _stamp_view_si_public).
-    is_first = _stamp_view_si_public(link, via_interne)
+    is_first = _stamp_view_si_public(link, via_interne, request)
 
     try:
         from .utils.filenames import document_filename
@@ -451,7 +501,7 @@ def public_document(request, token):
 
     # QJ1 — chatter notification on first open (best-effort, after PDF success).
     if is_first:
-        _notify_first_open(link)
+        _notify_first_open(link, request)
 
     response = HttpResponse(pdf_bytes, content_type='application/pdf')
     response['Content-Disposition'] = f'inline; filename="{filename}"'
@@ -2017,9 +2067,9 @@ def proposal_data(request, token):
     # jamais de stamp/notification via le jeton interne (voir
     # _stamp_view_si_public) — aucune trace d'ouverture ne doit résulter d'un
     # aperçu commercial.
-    is_first = _stamp_view_si_public(link, link.via_interne)
+    is_first = _stamp_view_si_public(link, link.via_interne, request)
     if is_first:
-        _notify_first_open(link)
+        _notify_first_open(link, request)
 
     # L-NIV (24/08/2026) — niveau d'affichage RÉVOCABLE, posé sur le lien
     # (jamais sur le jeton). Un lien créé avant la migration 0100 vaut
@@ -2514,9 +2564,9 @@ def proposal_pdf(request, token):
 
     # QJ1 — stamp the view (best-effort; True = first open). L-INTPREV :
     # jamais de stamp/notification via le jeton interne.
-    is_first = _stamp_view_si_public(link, link.via_interne)
+    is_first = _stamp_view_si_public(link, link.via_interne, request)
     if is_first:
-        _notify_first_open(link)
+        _notify_first_open(link, request)
 
     try:
         # ERR74 — GET sûr : rendu + flux sans persister fichier_pdf.
@@ -2813,7 +2863,37 @@ def proposal_engagement(request, token):
         except Exception:  # noqa: BLE001 — best-effort, jamais de fuite
             pass
 
+    # T-TRACE (25/08/2026) — le beacon d'engagement porte la clé ADDITIVE
+    # `appareil_id` : chaque battement prolonge LA MÊME visite (le service
+    # fusionne les battements d'un même appareil sur un même contexte), donc
+    # la durée réellement passée sur la proposition remonte au commercial.
+    # Jamais atteint par le jeton interne : la vue a déjà rendu la main
+    # ci-dessus quand ``link.via_interne`` est vrai.
+    _tracer_engagement_public(link, request, section, seconds)
+
     return _noindex(Response(status=status.HTTP_204_NO_CONTENT))
+
+
+def _tracer_engagement_public(link, request, section, seconds):
+    """T-TRACE — miroir anti-fraude d'un battement d'engagement.
+
+    Passe par ``apps.crm.services`` (façade d'écriture du CRM), jamais par ses
+    modèles. Strictement best-effort : un beacon ne doit jamais faire
+    apparaître une erreur chez le client."""
+    if not getattr(link, 'company_id', None):
+        return
+    try:
+        from apps.crm.services import appareil_de_requete, tracer_et_correler
+        lead = getattr(link.devis, 'lead', None) if link.devis_id else None
+        tracer_et_correler(
+            link.company, point='proposition', lead=lead,
+            appareil_id=appareil_de_requete(request),
+            contexte=f'Proposition — section {section}',
+            token=getattr(link, 'token', ''),
+            duree_s=seconds, request=request,
+        )
+    except Exception:  # noqa: BLE001 — best-effort, jamais de fuite
+        pass
 
 
 @api_view(['POST'])

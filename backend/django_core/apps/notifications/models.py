@@ -288,6 +288,24 @@ class EventType(models.TextChoices):
     # ou un rôle dédié via une `NotificationRoutingRule`).
     SCM_ECART_PREVISION_IMPORTANT = (
         'scm_ecart_prevision_important', 'Écart de prévision important (MAPE)')
+    # T-TRACE (ordres fondateur 25/08/2026) — les DEUX alertes ROUGES du
+    # traçage anti-fraude (`apps.crm.visites`). Classées CRITIQUE dans
+    # `severity.py` : elles arrivent en TÊTE de la cloche, devant tout le
+    # reste, et vont TOUJOURS au commercial ET à la direction.
+    #
+    # (a) une NOUVELLE demande de devis arrive depuis un appareil déjà
+    #     rattaché à un AUTRE lead de la société — « if he asked for a NEW
+    #     quote this should be clearly notified to commercial with red and
+    #     director as well ».
+    VISITEUR_APPAREIL_PARTAGE = (
+        'visiteur_appareil_partage',
+        'Nouvelle demande depuis un appareil déjà connu')
+    # (b) un MÊME appareil consulte les documents de PLUSIEURS prospects
+    #     différents — « notify when two clients have any similar data that
+    #     can show it is a competitor ».
+    VISITEUR_CONCURRENT_SUSPECTE = (
+        'visiteur_concurrent_suspecte',
+        'Appareil suivant plusieurs prospects (concurrent suspecté)')
 
 
 class Channel(models.TextChoices):

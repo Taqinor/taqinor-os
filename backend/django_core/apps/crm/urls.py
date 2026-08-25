@@ -15,6 +15,7 @@ from .public_chat_views import (
 )
 from .public_booking_views import public_booking_status, public_booking_reserve
 from .public_questionnaire_views import public_questionnaire
+from .public_visite_views import public_visite
 from .public_views import public_salle_vente, public_apporteur_mes_deals
 from .public_lead_ref_views import lead_ref_lookup
 # ODX13 — mêmes ViewSets que ``apps.compta.urls`` (basenames explicitement
@@ -121,6 +122,11 @@ urlpatterns = [
          name='public-booking-status'),
     path('public/booking/<str:token>/reserve/', public_booking_reserve,
          name='public-booking-reserve'),
+    # T-TRACE — beacon PUBLIC des visites du site (finalité anti-fraude, voir
+    # public_visite_views.py + contract_samples/visite_externe.json).
+    # MÊME authentification que le webhook lead ci-dessus (X-Webhook-Secret).
+    # headless: appele par le site public (apps/web), jamais par un ecran ERP
+    path('public/visite/', public_visite, name='public-visite'),
     # L-QUEST — Questionnaire client public tokenisé (voir
     # public_questionnaire_views.py). MÊME URL pour lire et répondre : GET
     # affiche les questions + le pré-remplissage, POST enregistre UNE section.
