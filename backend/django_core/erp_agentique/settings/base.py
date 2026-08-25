@@ -1252,6 +1252,19 @@ WEBSITE_LEADS_COMPANY_ID = os.environ.get('WEBSITE_LEADS_COMPANY_ID') or None
 # configurable par déploiement (SCA29 — pas de marque en dur dans le code app).
 SITE_URL = os.environ.get('SITE_URL', 'https://taqinor.ma')
 
+# Origine du SITE PUBLIC (apps/web) — la SEULE base valide pour un lien envoyé
+# à un client. Revue critique du 25/08/2026, finding #6 : les liens publics
+# (questionnaire, réservation de visite) se construisaient sur l'hôte de la
+# REQUÊTE, c'est-à-dire l'API/ERP (api.taqinor.ma) où ces pages n'existent
+# pas — le lien partait mort. Les pages vivent sur le site (Astro), jamais sur
+# l'ERP : cette base est donc lue ici, jamais dérivée de la requête entrante.
+# Repli sur SITE_URL pour qu'un déploiement qui n'a configuré que celui-ci
+# continue de produire des liens valides.
+# NB : ``or`` et non un défaut de ``get`` — ``.env.example`` livre la clé VIDE,
+# et une variable présente mais vide doit retomber sur SITE_URL, pas produire
+# une base vide (donc une URL relative envoyée à un client).
+PUBLIC_SITE_URL = os.environ.get('PUBLIC_SITE_URL') or SITE_URL
+
 # XMKT32 — Sync Meta Lead Ads → leads CRM (gated, API officielle, jamais de
 # scraping). Sans META_LEAD_ADS_VERIFY_TOKEN, le webhook de vérification
 # (GET hub.challenge) répond 404 ; sans META_LEAD_ADS_ACCESS_TOKEN, le POST
