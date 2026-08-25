@@ -1620,41 +1620,106 @@ def _compter_modules_batterie(lignes_vue):
     return cinq, dix
 
 
-def _capacite_optimum_avec(devis, entrees):
-    """La capacité de l'OPTIMUM AVEC pour ce devis — LUE, jamais devinée.
+def _lignes_produit_du_devis(devis):
+    """Les LIGNES PRODUIT réellement facturées par ce devis, ou ``[]``.
 
-    D'abord le bloc DÉJÀ rangé sur le devis
-    (``etude_params['dimensionnement']['recommandation_avec']``, posé par
-    ``services.rafraichir_dimensionnement_devis``) : c'est LE chiffre que le
-    reste de l'écran affiche, et marquer « retenu » un autre palier que celui-là
-    serait se contredire à l'intérieur d'une même page. À défaut seulement, le
-    moteur est relancé sur les MÊMES entrées.
-
-    ``None`` quand le moteur ne désigne aucune configuration avec batterie
-    livrable : aucun palier n'est alors marqué ``retenu`` — une réponse honnête
-    plutôt qu'un palier désigné au hasard.
-    """
-    bloc = (getattr(devis, 'etude_params', None) or {}).get('dimensionnement')
-    if isinstance(bloc, dict) and 'recommandation_avec' in bloc:
-        avec = bloc.get('recommandation_avec')
-        capacite = (_num(avec.get('batterie_kwh')) if isinstance(avec, dict)
-                    else 0.0)
-        return capacite if capacite > 0 else None
+    Les intertitres de section et les notes (``XSAL14``) ne portent ni prix ni
+    quantité : ils ne comptent dans aucun total, donc dans aucune lecture de
+    ce module. Ne lève jamais (un devis non sauvegardé n'a pas de lignes)."""
     try:
-        resultat = recommander_taille(
-            company=entrees['company'],
-            conso_kwh_mensuelles=entrees['conso_kwh_mensuelles'],
-            ville=entrees['ville'], lat=entrees['lat'], lon=entrees['lon'],
-            occupation=entrees['occupation'],
-            equipements=entrees['equipements'],
-            source_conso=entrees['source_conso'])
-    except Exception:  # noqa: BLE001 — sans optimum, aucun palier n'est retenu
-        logger.warning('optimum avec indisponible pour l\'échelle batterie',
-                       exc_info=True)
+        lignes = list(devis.lignes.all())
+    except Exception:  # noqa: BLE001 — devis détaché / sans lignes
+        return []
+    return [ligne for ligne in lignes
+            if getattr(ligne, 'est_ligne_produit', True)
+            and ligne.quantite is not None
+            and ligne.prix_unitaire is not None]
+
+
+def facteur_remise_du_devis(devis) -> float:
+    """Le facteur multiplicatif de remise RÉELLEMENT appliqué par ce devis.
+
+    POURQUOI CE FACTEUR EXISTE. Les paliers de l'échelle sont chiffrés sur une
+    composition CATALOGUE (prix publics bruts), alors que la carte de la page
+    publique affiche le TTC du DEVIS — remise comprise. Sans ce facteur, la
+    pilule « retenue » et la carte annonçaient deux prix différents pour le
+    MÊME kit, et l'écart entre deux pilules d'un devis remisé était faux.
+
+    LA MÊME SOURCE QUE LE MOTEUR DE RENDU. ``quote_engine.builder`` chiffre une
+    ligne à ``prix_unitaire × (1 − remise_ligne/100)`` puis applique
+    ``Devis.remise_globale`` au sous-total HT : ce facteur est exactement le
+    rapport ``HT net / HT brut`` de cette chaîne, lu sur les lignes RÉELLES.
+
+    PORTÉE : les lignes que l'option AVEC BATTERIE facture — les lignes
+    communes (``variante = ''``) et les lignes ``'avec'``, jamais les lignes
+    réservées à l'option SANS batterie (L-2OPT). Sur un devis mono-option,
+    toutes les lignes sont communes : la portée est le devis entier.
+
+    APPROXIMATION ASSUMÉE ET UNIQUE : quand les lignes portent des remises
+    UNITAIRES DIFFÉRENTES, un seul facteur ne peut pas les représenter toutes —
+    c'est alors la remise MOYENNE (pondérée par le montant) qui est appliquée à
+    chaque palier. Le cas courant (aucune remise de ligne, une remise globale)
+    est rendu au centime près. Vaut ``1.0`` (aucune remise) dès que rien n'est
+    lisible : jamais un rabais inventé sur un devis qui n'en porte pas.
+    """
+    try:
+        lignes = [ligne for ligne in _lignes_produit_du_devis(devis)
+                  if (getattr(ligne, 'variante', '') or '') != 'sans']
+        brut = sum(_num(ligne.quantite) * _num(ligne.prix_unitaire)
+                   for ligne in lignes)
+        if brut <= 0:
+            return 1.0
+        apres_lignes = sum(
+            _num(ligne.quantite) * _num(ligne.prix_unitaire)
+            * (1.0 - _num(getattr(ligne, 'remise', 0)) / 100.0)
+            for ligne in lignes)
+        globale = _num(getattr(devis, 'remise_globale', 0))
+        facteur = (apres_lignes / brut) * (1.0 - globale / 100.0)
+    except Exception:  # noqa: BLE001 — un aperçu ne casse jamais un écran
+        logger.warning('facteur de remise illisible sur %s',
+                       getattr(devis, 'reference', '?'), exc_info=True)
+        return 1.0
+    # Un facteur nul/négatif ou non fini ne décrit aucune remise réelle : on
+    # rend le prix catalogue plutôt qu'un prix fabriqué.
+    if not (facteur > 0) or facteur != facteur or facteur == float('inf'):
+        return 1.0
+    return facteur
+
+
+def capacite_batterie_des_lignes(devis):
+    """La capacité batterie des LIGNES RÉELLES de ce devis, ou ``None``.
+
+    C'EST LA CAPACITÉ QUE LE CLIENT ACHÈTE, pas celle que le moteur aurait
+    conseillée. Le générateur pose les lignes sur un champ arrondi
+    (``autoFillLines`` cible ``round(kwc/5)×5``), si bien que l'optimum du
+    moteur et les lignes vendues peuvent désigner deux capacités différentes :
+    marquer « Retenu pour ce devis » d'après le moteur affichait alors le prix
+    d'une AUTRE capacité que celle du devis.
+
+    Mesurée avec la MÊME grandeur que les paliers de l'échelle
+    (:func:`capacite_utile_batterie` — fiche technique d'abord, nom ensuite),
+    sans quoi la comparaison opposerait des utiles à des nominaux.
+
+    ``None`` quand le devis ne porte AUCUNE ligne batterie : aucun palier n'est
+    alors marqué ``retenu`` — jamais un marquage au hasard."""
+    try:
+        from apps.ventes.services import _is_battery
+
+        total = 0.0
+        for ligne in _lignes_produit_du_devis(devis):
+            designation = getattr(ligne, 'designation', '') or ''
+            if not _is_battery(designation):
+                continue
+            quantite = _num(ligne.quantite)
+            if quantite <= 0:
+                continue
+            total += _num(capacite_utile_batterie(
+                getattr(ligne, 'produit', None), designation)) * quantite
+    except Exception:  # noqa: BLE001 — un aperçu ne casse jamais un écran
+        logger.warning('capacité batterie des lignes illisible sur %s',
+                       getattr(devis, 'reference', '?'), exc_info=True)
         return None
-    capacite = _num((resultat.get('recommandation_avec') or {}).get(
-        'batterie_kwh'))
-    return capacite if capacite > 0 else None
+    return round(total, 2) if total > 0 else None
 
 
 def echelle_paliers_batterie(devis):
@@ -1669,14 +1734,19 @@ def echelle_paliers_batterie(devis):
       10 kWh la composition contient, tels qu'on les COMPTE ;
     * ``nb_panneaux`` — le champ PV que ce palier EXIGE (voir plus bas) ;
     * ``puissance_kwc`` — ce champ en kWc, au wattage du panneau réel ;
-    * ``prix_ttc`` — prix de VENTE TTC de la composition complète (règle #4 :
-      jamais un prix d'achat, jamais une marge) ;
+    * ``prix_ttc`` — prix de VENTE TTC de la composition complète, **REMISE DU
+      DEVIS APPLIQUÉE** (:func:`facteur_remise_du_devis`, la même chaîne que
+      ``quote_engine.builder``) : les paliers se comparent alors entre eux ET
+      avec le prix affiché sur la carte du devis, jamais un mélange de bases.
+      Règle #4 : jamais un prix d'achat, jamais une marge ;
     * ``economies_annuelles`` — MAD/an du moteur horaire sur ce couple
-      champ × stockage ;
+      champ × stockage (une remise change le prix, jamais l'énergie) ;
     * ``payback_annees`` — ``prix_ttc / economies_annuelles``, ou ``None``
       quand l'économie n'est pas chiffrable (jamais un zéro fabriqué) ;
     * ``remplissage_ok`` — la batterie se remplit-elle TOUS LES JOURS ?
-    * ``retenu`` — ce palier est-il celui de l'optimum AVEC ?
+    * ``retenu`` — ce palier est-il celui des LIGNES BATTERIE RÉELLES de ce
+      devis (:func:`capacite_batterie_des_lignes`) ? Aucune correspondance
+      exacte ⇒ AUCUN palier retenu, jamais un marquage approché.
 
     LA RÈGLE FONDATEUR EST RETOURNÉE, PAS ABANDONNÉE. DIM2 demande « à champ
     donné, quel stockage se remplit ? » et REFUSE les paliers trop gros. Ici la
@@ -1898,13 +1968,20 @@ def _echelle_paliers_batterie(devis):
                 bas = milieu + 1
         return haut
 
-    capacite_retenue = _capacite_optimum_avec(devis, entrees)
+    # La capacité RÉELLEMENT vendue par ce devis (jamais l'optimum du moteur :
+    # les lignes sont posées sur un champ arrondi et les deux divergent) et la
+    # remise que ce devis applique — lues UNE fois, hors de la boucle.
+    capacite_retenue = capacite_batterie_des_lignes(devis)
+    facteur_remise = facteur_remise_du_devis(devis)
 
     def rendu(entree, panneaux, remplissage_ok):
         """Un palier de l'échelle, au format EXACT du contrat."""
         vue, palier = entree['vue'], entree['palier']
         capacite = round(_num(entree['capacite_kwh']), 2)
-        cout = round(_num(vue.get('cout_ttc')), 2)
+        # MÊME base de prix que la carte du devis : la composition catalogue
+        # est brute, le devis est remisé. Sans ce facteur, l'écart entre deux
+        # pilules d'un devis remisé était faux (bases mélangées).
+        cout = round(_num(vue.get('cout_ttc')) * facteur_remise, 2)
         economie = round(_num(palier['economie_mad']), 2)
         cinq, dix = _compter_modules_batterie(vue.get('lignes'))
         return {
