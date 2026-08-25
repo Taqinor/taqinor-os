@@ -108,15 +108,15 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
 
         Marque le BCF « envoyé » (idempotent, ne régresse jamais RECU/ANNULE).
         Le numéro vient de ``fournisseur.telephone``. 400 si aucun numéro."""
-        from apps.ventes.utils.phone import normalize_ma_phone
+        from apps.ventes.utils.phone import normalize_phone_e164
         from apps.ventes.utils.whatsapp import build_wa_url
         from apps.ventes.services import bcf_share_url
 
         bc = self.get_object()
         phone = bc.fournisseur.telephone if bc.fournisseur_id else ''
-        if not normalize_ma_phone(phone):
+        if not normalize_phone_e164(phone):
             return Response(
-                {'detail': 'Aucun numéro de téléphone fournisseur.'},
+                {'detail': 'Numéro de téléphone fournisseur invalide.'},
                 status=status.HTTP_400_BAD_REQUEST)
         url, _token = bcf_share_url(bc, request)
         fournisseur_nom = bc.fournisseur.nom if bc.fournisseur_id else ''

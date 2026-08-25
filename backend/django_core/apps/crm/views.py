@@ -821,7 +821,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         (30 j) vers le PDF CLIENT — jamais de prix d'achat ni de marge.
         """
         from apps.ventes.selectors import devis_for_lead
-        from apps.ventes.utils.phone import normalize_ma_phone
+        from apps.ventes.utils.phone import normalize_phone_e164
         from apps.ventes.utils.whatsapp import (
             build_devis_whatsapp, build_wa_url,
         )
@@ -850,9 +850,9 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         phone = lead.whatsapp or lead.telephone
-        if not normalize_ma_phone(phone):
+        if not normalize_phone_e164(phone):
             return Response(
-                {'detail': 'Aucun numéro de téléphone.'},
+                {'detail': 'Numéro de téléphone invalide.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         # Langue du message : la valeur explicite de la requête l'emporte ;
@@ -2002,7 +2002,7 @@ class AppointmentViewSet(CompanyScopedModelViewSet):
             request, appt)
         if wa_url is None:
             return Response(
-                {'detail': 'Aucun numéro de téléphone.'},
+                {'detail': 'Numéro de téléphone invalide.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         return Response({
