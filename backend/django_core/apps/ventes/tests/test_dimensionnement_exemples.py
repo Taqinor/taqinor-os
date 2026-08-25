@@ -643,6 +643,41 @@ class ExemplesFondateurTest(TestCase):
             '« pas de stockage qu\'on ne charge pas » ne se lit nulle part')
         self.assertIn('plafond de remplissage', refus[0]['motif_refus'])
 
+    def test_les_deux_optimiseurs_divergent_reellement_sur_3500_dh(self):
+        """CHANTIER « deux optimiseurs » (ordre fondateur 25/08/2026) — LA
+        PREUVE que le moteur CALCULE deux comptes de panneaux différents sur
+        un cas réel, pas seulement que le payload sait en TRANSPORTER deux
+        (``test_payload_dimensionnement_options`` ne fait qu'injecter 22 sans
+        / 26 avec à la main en entrée).
+
+        Même cas fondateur que ``test_dim2_le_stockage_est_une_deuxieme_
+        dimension`` juste au-dessus (3 500 DH/mois, triphasé) : le CI de la
+        PR #567 (25/08/2026, shard 2) l'a déjà IMPRIMÉ noir sur blanc —
+        « RECOMMANDE : 14 panneaux, 9.94 kWc » (option sans batterie) puis
+        « MEILLEUR PAYBACK AVEC BATTERIE ... 17 panneaux + 10 kWh de
+        stockage » (option avec) — sans qu'aucune assertion ne s'y accroche.
+        Ce test la pose, sur le VRAI moteur (aucune valeur injectée).
+        """
+        cas = next(c for c in PALIERS if c.hiver == 3500)
+        _conso, _source, _detail, resultat = self._evaluer(cas)
+        recommandation = resultat['recommandation']
+        recommandation_avec = resultat.get('recommandation_avec')
+
+        self.assertIsNotNone(
+            recommandation_avec,
+            '%s : aucune recommandation_avec rendue par le moteur — '
+            'impossible de démontrer la divergence des deux optimiseurs'
+            % cas.libelle)
+        self.assertNotEqual(
+            recommandation['panneaux'], recommandation_avec['panneaux'],
+            '%s : les deux optimiseurs recommandent le MÊME nombre de '
+            'panneaux (sans=%d, avec=%d) sur ce cas — la doctrine des deux '
+            'optimiseurs (25/08/2026) ne produirait alors AUCUNE divergence '
+            'naturelle en pratique, ce qui serait une vraie découverte '
+            'produit à remonter au fondateur'
+            % (cas.libelle, recommandation['panneaux'],
+               recommandation_avec['panneaux']))
+
     def test_regle_du_palier_triphase(self):
         """Le MÊME client à 1 200 DH, mono puis tri : seul le raccordement
         change, et l'onduleur retenu doit le suivre (PVCOMPAT + règle 80 %)."""

@@ -442,6 +442,43 @@ class LeCalepinagePlafonneChaqueOption(_Base):
         self.assertEqual(resultat['panneaux'], 8)
         self.assertFalse(resultat['inchange'])
 
+    def test_un_toit_qui_ecrete_sous_le_sans_fait_converger_les_deux_options(
+            self):
+        """VERROU DU TOIT — quand le calepinage ne tient PAS plus que le
+        compte « sans » lui-même, les DEUX options débordent et sont
+        ramenées au MÊME plafond : la divergence entre les deux optimiseurs
+        ne survit pas à un toit trop petit pour porter ne serait-ce que
+        l'option la plus modeste.
+
+        Contraste avec ``test_seule_loption_qui_deborde_est_ramenee_au_
+        plafond`` juste au-dessus (toit à 9 : seule l'option « avec » (10)
+        déborde, elles restent divergentes 8/9). Ici le toit tombe à 6 —
+        SOUS le compte « sans » (8) — donc les deux options débordent et
+        convergent sur le même compte écrêté.
+        """
+        devis = self._devis_variante(sans=8, avec=10)
+        resultat = services.sync_devis_from_layout(
+            devis, self._layout(6), self.user)
+
+        quantites = self._quantites(devis, 'Panneau Jinko 550W')
+        self.assertEqual(
+            quantites, {'sans': 6, 'avec': 6},
+            'un toit à 6 panneaux (sous le compte « sans » de 8) doit '
+            'ramener LES DEUX options au même plafond : obtenu %s'
+            % quantites)
+        self.assertEqual(
+            quantites['sans'], quantites['avec'],
+            'le verrou du toit doit faire CONVERGER les deux optimiseurs '
+            'quand aucun des deux ne tient sur le toit : sans=%s avec=%s'
+            % (quantites.get('sans'), quantites.get('avec')))
+        # La ferrure suit, elle aussi, le même plafond des deux côtés.
+        self.assertEqual(self._quantites(devis, 'Structures acier'),
+                         {'sans': 6, 'avec': 6})
+        self.assertEqual(self._quantites(devis, 'Socles'),
+                         {'sans': 12, 'avec': 12})
+        self.assertEqual(resultat['panneaux'], 6)
+        self.assertFalse(resultat['inchange'])
+
     def test_un_toit_plus_grand_n_augmente_aucune_option(self):
         """20 panneaux posables : ni l'une ni l'autre option ne grossit."""
         devis = self._devis_variante(sans=8, avec=10)
