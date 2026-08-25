@@ -1418,6 +1418,40 @@ class ShareLink(models.Model):
         default=dict, blank=True,
         verbose_name='Sections servies au client')
 
+    # ── L-INTPREV (fondateur 25/08/2026) — second jeton « aperçu interne » :
+    # le commercial peut ouvrir EXACTEMENT la même page publique de
+    # proposition sans que cela compte comme une ouverture CLIENT — aucun
+    # compteur de vues, aucune note chatter « devis ouvert », aucune avance de
+    # stage funnel (YLEAD10), aucune notification au owner, aucun beacon
+    # d'engagement enregistré (voir apps/ventes/public_views.py::
+    # _resolve_share_link_by_token / _stamp_view_si_public). La SIGNATURE reste
+    # refusée via ce jeton (un aperçu ne peut pas engager le client) et l'OTP
+    # de lecture n'est jamais exigé (c'est le commercial).
+    #
+    # Nullable + unique : additif, même générateur cryptographique que
+    # ``token`` (secrets.token_urlsafe(32)). ``null=True`` car un lien créé
+    # avant la migration 0103 ne porte ce jeton QUE si le backfill (RunPython,
+    # liens non expirés uniquement) l'a posé — voir cette migration pour le
+    # détail du piège « AddField(unique) avec un default callable » qu'elle
+    # évite explicitement (un default calculé UNE SEULE FOIS pour tout
+    # l'ALTER TABLE aurait donné la MÊME valeur à toutes les lignes
+    # préexistantes, faisant exploser la contrainte unique).
+    token_interne = models.CharField(
+        max_length=64, unique=True, null=True, blank=True,
+        default=_default_share_token, editable=False,
+        verbose_name='Jeton aperçu interne (sans notification)')
+
+    def jeton_interne_effectif(self):
+        """L-INTPREV — jeton d'aperçu interne, généré paresseusement si ce
+        lien n'en porte pas encore (garde défensive : normalement déjà posé
+        par le default du champ ou le backfill de la migration 0103 — ce
+        chemin ne sert qu'un très étroit lien préexistant qui aurait échappé
+        au backfill)."""
+        if not self.token_interne:
+            self.token_interne = _default_share_token()
+            self.save(update_fields=['token_interne'])
+        return self.token_interne
+
     def section_servie(self, cle):
         """L-SECT — la section ``cle`` doit-elle être servie sur ce lien ?
 
