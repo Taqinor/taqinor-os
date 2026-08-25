@@ -252,7 +252,18 @@ class LeadSerializer(serializers.ModelSerializer):
         (06 12-34 56 78, +212612…, 00212…). Source unique : le normaliseur des
         ventes (apps.ventes.utils.phone) — pas de logique dupliquée ici. Vide
         ou non normalisable → on conserve la valeur saisie telle quelle (jamais
-        de rejet : le formulaire est volontairement permissif)."""
+        de rejet : le formulaire est volontairement permissif).
+
+        25/08/2026 — LANE NUMÉROS INTERNATIONAUX : cette garde ne réécrit la
+        saisie QUE quand `normalize_ma_phone` reconnaît un numéro marocain ;
+        avant cette date, `normalize_ma_phone` forçait quand même un préfixe
+        '212' sur presque tout le reste (le `or value` ci-dessous ne se
+        déclenchait donc presque jamais), ce qui CORROMPAIT silencieusement un
+        numéro étranger saisi (ex. +33612345678 → '21233612345678') plutôt que
+        de le conserver tel quel. `normalize_ma_phone` renvoie désormais None
+        pour tout ce qui n'est pas reconnaissable comme marocain, donc un +33
+        posté ici relit exactement +33 (voir test_lead_foreign_phone_survives_
+        api_write, apps/crm/tests)."""
         if value in (None, ''):
             return value
         from apps.ventes.utils.phone import normalize_ma_phone
