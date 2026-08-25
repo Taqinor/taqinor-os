@@ -29,10 +29,16 @@ _RECALAGES_PRIX = {
 
 
 def recaler_prix(apps, schema_editor):
+    # Volume minuscule (2 SKU × N sociétés), mais itéré par lots via
+    # .iterator() plutôt qu'un .update() global : jamais de verrou long
+    # (patron check_safe_migrations), et la garde par l'ancienne valeur
+    # reste évaluée ligne à ligne.
     Produit = apps.get_model('stock', 'Produit')
     for sku, (ancien, nouveau) in _RECALAGES_PRIX.items():
-        Produit.objects.filter(sku=sku, prix_vente=ancien).update(
-            prix_vente=nouveau)
+        for produit in Produit.objects.filter(
+                sku=sku, prix_vente=ancien).iterator(chunk_size=200):
+            produit.prix_vente = nouveau
+            produit.save(update_fields=['prix_vente'])
 
 
 class Migration(migrations.Migration):
