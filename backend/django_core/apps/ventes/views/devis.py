@@ -991,11 +991,24 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         fait qu'il n'existe plus « deux sortes de devis ».
 
         Corps : ``{kwc | nb_panneaux}`` + ``panel_watt?`` / ``scenario?`` /
-        ``structure_type?`` / ``taux_tva?`` / ``mppt_paires?``. La société est
-        TOUJOURS celle du user (le catalogue d'une autre société ne fuite
-        jamais) ; les marques épinglées et l'ordre des lignes sont lus
-        SERVEUR-SIDE dans les réglages Gammes, jamais acceptés du corps.
+        ``structure_type?`` / ``taux_tva?`` / ``mppt_paires?`` /
+        ``dimensionnement_avec?``. La société est TOUJOURS celle du user (le
+        catalogue d'une autre société ne fuite jamais) ; les marques épinglées
+        et l'ordre des lignes sont lus SERVEUR-SIDE dans les réglages Gammes,
+        jamais acceptés du corps.
         Forme de la réponse : ``contract_samples/devis_composition.json``.
+
+        U3COMPOSE (26/08/2026) — ``dimensionnement_avec`` (optionnel) est
+        l'objet ``{nb_panneaux?, kwc?, batterie_kwh?}`` de l'optimum AXE
+        BATTERIE (moteur calibré, ``dimensionnement.choisir_recommandation_avec``
+        côté écran) : sans lui le dry-run composait TOUJOURS les DEUX options
+        sur le MÊME champ (celui optimisé SANS batterie) — ``composer_devis_
+        residentiel`` accepte ce paramètre depuis L-2OPT, la vue ne le lisait
+        simplement pas encore — alors que le devis créé
+        (``POST /ventes/devis/auto/``) fusionne bien deux champs distincts
+        quand ils divergent. Wiré ici pour que l'aperçu écran et la création
+        composent EXACTEMENT le même kit — la source de vérité unique promise
+        par cet endpoint (U3) vaut aussi pour les deux optimiseurs (L-2OPT).
         """
         from decimal import Decimal, InvalidOperation
         from ..services import composer_devis_residentiel, AutoDevisError
@@ -1015,12 +1028,32 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             except (InvalidOperation, TypeError, ValueError):
                 raise ValueError(cle)
 
+        def _dimensionnement_avec(brut):
+            """``None`` | ``{'nb_panneaux'?, 'kwc'?, 'batterie_kwh'?}`` en
+            ``float`` — miroir de ce que ``composer_devis_residentiel``
+            attend. Un corps qui n'est pas un objet, ou vide, vaut « moteur
+            muet sur l'axe batterie » (repli historique, jamais une erreur)."""
+            if not isinstance(brut, dict):
+                return None
+            valeurs = {}
+            for cle in ('nb_panneaux', 'kwc', 'batterie_kwh'):
+                item = brut.get(cle)
+                if item in (None, ''):
+                    continue
+                try:
+                    valeurs[cle] = float(item)
+                except (TypeError, ValueError):
+                    raise ValueError('dimensionnement_avec.%s' % cle)
+            return valeurs or None
+
         try:
             kwc = _nombre('kwc')
             nb_panneaux = _nombre('nb_panneaux', Decimal('0'))
             panel_watt = _nombre('panel_watt', Decimal('710'))
             taux_tva = _nombre('taux_tva', Decimal('20'))
             mppt_paires = _nombre('mppt_paires', Decimal('1'))
+            dimensionnement_avec = _dimensionnement_avec(
+                request.data.get('dimensionnement_avec'))
         except ValueError as exc:
             return Response(
                 {'detail': 'Valeur numérique invalide : %s.' % exc},
@@ -1043,6 +1076,7 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 structure_type=str(structure),
                 taux_tva=taux_tva,
                 mppt_paires=int(mppt_paires),
+                dimensionnement_avec=dimensionnement_avec,
             )
         except AutoDevisError as exc:
             return Response(

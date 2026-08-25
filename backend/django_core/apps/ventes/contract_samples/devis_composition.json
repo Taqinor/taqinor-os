@@ -1,6 +1,6 @@
 {
   "endpoint": "POST /api/django/ventes/devis/composition/",
-  "pourquoi": "U3 (fondateur 20/08/2026) — LE DRY-RUN de la composition résidentielle : le serveur compose le kit et rend les lignes SANS RIEN CRÉER (aucun devis, aucun statut, règle #4). C'est la moitié « à blanc » de la source de vérité unique : le même catalogue, la même fonction pure (apps/ventes/services.py::composition_residentielle) et les mêmes règles de gamme que POST /ventes/devis/auto/ qui, lui, compose ET crée. Avant U3 il existait DEUX sortes de devis — l'écran recomposait le kit en JavaScript (solar.js::autoFillLines) pendant que le serveur le recomposait en Python, et les deux ont divergé (câbles, marques épinglées, ordre des lignes, arrondi du nombre de panneaux). Cet endpoint est ce qui permet à l'écran générateur de PRÉREMPLIR ses lignes éditables avec EXACTEMENT ce que le serveur aurait posé. Entrée : {kwc ou nb_panneaux, panel_watt?, scenario? ('sans'|'avec'|'les_deux', défaut 'les_deux'), structure_type? ('acier'|'aluminium'), taux_tva?, mppt_paires?}. Company-scopé : le catalogue d'une autre société ne fuite jamais. Les prix sont rendus en HT (la base fait foi) ET en TTC dérivé (l'écran saisit en TTC) ; `role` porte le rôle ROLES_AUTO_COMPOSITION de chaque ligne, `ordre` l'ordre déjà appliqué (PVORD). `marques_manquantes` liste les rôles dont la marque épinglée n'a AUCUN candidat en stock — l'écran affiche le bandeau, et le chemin de CRÉATION refuse en 422 plutôt que de livrer un devis sans panneaux.",
+  "pourquoi": "U3 (fondateur 20/08/2026) — LE DRY-RUN de la composition résidentielle : le serveur compose le kit et rend les lignes SANS RIEN CRÉER (aucun devis, aucun statut, règle #4). C'est la moitié « à blanc » de la source de vérité unique : le même catalogue, la même fonction pure (apps/ventes/services.py::composition_residentielle) et les mêmes règles de gamme que POST /ventes/devis/auto/ qui, lui, compose ET crée. Avant U3 il existait DEUX sortes de devis — l'écran recomposait le kit en JavaScript (solar.js::autoFillLines) pendant que le serveur le recomposait en Python, et les deux ont divergé (câbles, marques épinglées, ordre des lignes, arrondi du nombre de panneaux). Cet endpoint est ce qui permet à l'écran générateur de PRÉREMPLIR ses lignes éditables avec EXACTEMENT ce que le serveur aurait posé. Entrée : {kwc ou nb_panneaux, panel_watt?, scenario? ('sans'|'avec'|'les_deux', défaut 'les_deux'), structure_type? ('acier'|'aluminium'), taux_tva?, mppt_paires?, dimensionnement_avec?}. Company-scopé : le catalogue d'une autre société ne fuite jamais. Les prix sont rendus en HT (la base fait foi) ET en TTC dérivé (l'écran saisit en TTC) ; `role` porte le rôle ROLES_AUTO_COMPOSITION de chaque ligne, `ordre` l'ordre déjà appliqué (PVORD). `marques_manquantes` liste les rôles dont la marque épinglée n'a AUCUN candidat en stock — l'écran affiche le bandeau, et le chemin de CRÉATION refuse en 422 plutôt que de livrer un devis sans panneaux. U3COMPOSE (26/08/2026) — `dimensionnement_avec` ({nb_panneaux?, kwc?, batterie_kwh?}, optionnel) est l'optimum de l'AXE BATTERIE (moteur calibré) : quand il diverge du champ sans stockage, le dry-run fusionne les DEUX champs comme `POST /ventes/devis/auto/` (L-2OPT) — chaque ligne porte alors `variante` ('' commune | 'sans' | 'avec') et les champs additifs `variantes`/`nb_panneaux_avec`/`kwc_reel_avec` décrivent le second optimum. Sans lui (ou quand les deux optima coïncident), `variantes` vaut `false` et `variante` reste `''` sur toutes les lignes — comportement historique inchangé, byte-identique.",
   "exemple": {
     "lignes": [
       {
@@ -11,7 +11,8 @@
         "quantite": 1,
         "prix_unitaire_ht": "14000.00",
         "prix_unitaire_ttc": "16800.00",
-        "taux_tva": "20"
+        "taux_tva": "20",
+        "variante": ""
       },
       {
         "ordre": 1,
@@ -21,7 +22,8 @@
         "quantite": 1,
         "prix_unitaire_ht": "17000.00",
         "prix_unitaire_ttc": "20400.00",
-        "taux_tva": "20"
+        "taux_tva": "20",
+        "variante": ""
       },
       {
         "ordre": 2,
@@ -31,7 +33,8 @@
         "quantite": 1,
         "prix_unitaire_ht": "1800.00",
         "prix_unitaire_ttc": "2160.00",
-        "taux_tva": "20"
+        "taux_tva": "20",
+        "variante": ""
       },
       {
         "ordre": 3,
@@ -41,7 +44,8 @@
         "quantite": 1,
         "prix_unitaire_ht": "1200.00",
         "prix_unitaire_ttc": "1440.00",
-        "taux_tva": "20"
+        "taux_tva": "20",
+        "variante": ""
       },
       {
         "ordre": 4,
@@ -51,7 +55,8 @@
         "quantite": 8,
         "prix_unitaire_ht": "1450.00",
         "prix_unitaire_ttc": "1740.00",
-        "taux_tva": "20"
+        "taux_tva": "20",
+        "variante": ""
       },
       {
         "ordre": 5,
@@ -61,7 +66,8 @@
         "quantite": 1,
         "prix_unitaire_ht": "16000.00",
         "prix_unitaire_ttc": "19200.00",
-        "taux_tva": "20"
+        "taux_tva": "20",
+        "variante": ""
       },
       {
         "ordre": 6,
@@ -71,7 +77,8 @@
         "quantite": 8,
         "prix_unitaire_ht": "500.00",
         "prix_unitaire_ttc": "600.00",
-        "taux_tva": "20"
+        "taux_tva": "20",
+        "variante": ""
       },
       {
         "ordre": 7,
@@ -81,7 +88,8 @@
         "quantite": 16,
         "prix_unitaire_ht": "80.00",
         "prix_unitaire_ttc": "96.00",
-        "taux_tva": "20"
+        "taux_tva": "20",
+        "variante": ""
       },
       {
         "ordre": 8,
@@ -91,7 +99,8 @@
         "quantite": 60,
         "prix_unitaire_ht": "14.40",
         "prix_unitaire_ttc": "17.28",
-        "taux_tva": "20"
+        "taux_tva": "20",
+        "variante": ""
       },
       {
         "ordre": 9,
@@ -101,7 +110,8 @@
         "quantite": 40,
         "prix_unitaire_ht": "14.40",
         "prix_unitaire_ttc": "17.28",
-        "taux_tva": "20"
+        "taux_tva": "20",
+        "variante": ""
       },
       {
         "ordre": 10,
@@ -111,7 +121,8 @@
         "quantite": 1,
         "prix_unitaire_ht": "416.67",
         "prix_unitaire_ttc": "500.00",
-        "taux_tva": "20"
+        "taux_tva": "20",
+        "variante": ""
       },
       {
         "ordre": 11,
@@ -121,7 +132,8 @@
         "quantite": 1,
         "prix_unitaire_ht": "1625.00",
         "prix_unitaire_ttc": "1950.00",
-        "taux_tva": "20"
+        "taux_tva": "20",
+        "variante": ""
       },
       {
         "ordre": 12,
@@ -131,7 +143,8 @@
         "quantite": 1,
         "prix_unitaire_ht": "4000.00",
         "prix_unitaire_ttc": "4800.00",
-        "taux_tva": "20"
+        "taux_tva": "20",
+        "variante": ""
       },
       {
         "ordre": 13,
@@ -141,7 +154,8 @@
         "quantite": 1,
         "prix_unitaire_ht": "1000.00",
         "prix_unitaire_ttc": "1200.00",
-        "taux_tva": "20"
+        "taux_tva": "20",
+        "variante": ""
       }
     ],
     "scenario": "Les deux (Sans + Avec)",
@@ -149,6 +163,9 @@
     "panel_watt": 710,
     "kwc_reel": 5.68,
     "blocs": 1,
+    "variantes": false,
+    "nb_panneaux_avec": 8,
+    "kwc_reel_avec": 5.68,
     "avertissements": [],
     "marques_manquantes": []
   },
@@ -159,6 +176,9 @@
     "panel_watt": 710,
     "kwc_reel": 5.68,
     "blocs": 1,
+    "variantes": false,
+    "nb_panneaux_avec": 8,
+    "kwc_reel_avec": 5.68,
     "avertissements": [],
     "marques_manquantes": [
       {
@@ -167,5 +187,108 @@
         "libelle_role": "Panneaux"
       }
     ]
+  },
+  "exemple_deux_optimiseurs": {
+    "pourquoi": "U3COMPOSE — `dimensionnement_avec` désigne un optimum AVEC BATTERIE différent du champ sans stockage (8 panneaux sans, 10 avec) : la composition FUSIONNE les deux champs (L-2OPT, même règle que la création). Chaque ligne divergente est DÉDOUBLÉE et porte sa `variante` ('sans'/'avec') ; ce qui coïncide (transport, tableau…) reste une ligne commune `variante: ''`. `nb_panneaux`/`kwc_reel` restent ceux de l'option SANS (compat écran historique) ; `nb_panneaux_avec`/`kwc_reel_avec` portent le second optimum.",
+    "lignes": [
+      {
+        "ordre": 0,
+        "role": "onduleur_reseau",
+        "produit": 41,
+        "designation": "Onduleur réseau Huawei 5kW Monophasé",
+        "quantite": 1,
+        "prix_unitaire_ht": "14000.00",
+        "prix_unitaire_ttc": "16800.00",
+        "taux_tva": "20",
+        "variante": "sans"
+      },
+      {
+        "ordre": 1,
+        "role": "onduleur_hybride",
+        "produit": 42,
+        "designation": "Onduleur hybride Deye 5kW Monophasé",
+        "quantite": 1,
+        "prix_unitaire_ht": "17000.00",
+        "prix_unitaire_ttc": "20400.00",
+        "taux_tva": "20",
+        "variante": "avec"
+      },
+      {
+        "ordre": 2,
+        "role": "panneau",
+        "produit": 12,
+        "designation": "Panneau Canadien Solar 710W",
+        "quantite": 8,
+        "prix_unitaire_ht": "1450.00",
+        "prix_unitaire_ttc": "1740.00",
+        "taux_tva": "20",
+        "variante": "sans"
+      },
+      {
+        "ordre": 3,
+        "role": "panneau",
+        "produit": 12,
+        "designation": "Panneau Canadien Solar 710W",
+        "quantite": 10,
+        "prix_unitaire_ht": "1450.00",
+        "prix_unitaire_ttc": "1740.00",
+        "taux_tva": "20",
+        "variante": "avec"
+      },
+      {
+        "ordre": 4,
+        "role": "batterie",
+        "produit": 62,
+        "designation": "Batterie Dyness 10 kWh",
+        "quantite": 1,
+        "prix_unitaire_ht": "30000.00",
+        "prix_unitaire_ttc": "36000.00",
+        "taux_tva": "20",
+        "variante": "avec"
+      },
+      {
+        "ordre": 5,
+        "role": "structure_acier",
+        "produit": 71,
+        "designation": "Structures acier",
+        "quantite": 8,
+        "prix_unitaire_ht": "500.00",
+        "prix_unitaire_ttc": "600.00",
+        "taux_tva": "20",
+        "variante": "sans"
+      },
+      {
+        "ordre": 6,
+        "role": "structure_acier",
+        "produit": 71,
+        "designation": "Structures acier",
+        "quantite": 10,
+        "prix_unitaire_ht": "500.00",
+        "prix_unitaire_ttc": "600.00",
+        "taux_tva": "20",
+        "variante": "avec"
+      },
+      {
+        "ordre": 7,
+        "role": "transport",
+        "produit": 94,
+        "designation": "Transport",
+        "quantite": 1,
+        "prix_unitaire_ht": "1000.00",
+        "prix_unitaire_ttc": "1200.00",
+        "taux_tva": "20",
+        "variante": ""
+      }
+    ],
+    "scenario": "Les deux (Sans + Avec)",
+    "nb_panneaux": 8,
+    "panel_watt": 710,
+    "kwc_reel": 5.68,
+    "blocs": 1,
+    "variantes": true,
+    "nb_panneaux_avec": 10,
+    "kwc_reel_avec": 7.1,
+    "avertissements": [],
+    "marques_manquantes": []
   }
 }

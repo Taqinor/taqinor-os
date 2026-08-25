@@ -347,6 +347,78 @@ class LesReglesMigreesViventCoteServeur(_Base):
                              ligne['designation'])
 
 
+class LeDryRunComposeLesDeuxOptimiseurs(_Base):
+    """U3COMPOSE (26/08/2026) — `dimensionnement_avec` fusionne les DEUX
+    champs (L-2OPT), exactement comme `POST /ventes/devis/auto/` : le
+    dry-run doit rester la MÊME source de vérité pour l'axe batterie, pas
+    seulement pour le champ sans stockage. Avant ce correctif, la vue lisait
+    tout SAUF `dimensionnement_avec` alors que `composer_devis_residentiel`
+    le supporte depuis L-2OPT — l'aperçu écran ne pouvait donc jamais
+    afficher le second optimum que la création, elle, composait déjà."""
+
+    slug = 'u3-deux-optimiseurs'
+
+    def test_dimensionnement_avec_fusionne_les_deux_champs(self):
+        reponse = self.api.post(COMPO_URL, {
+            'kwc': 5, 'panel_watt': 710, 'scenario': 'les_deux',
+            'dimensionnement_avec': {'nb_panneaux': 10, 'kwc': 6.2,
+                                     'batterie_kwh': 10.0},
+        }, format='json')
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        data = reponse.data
+        self.assertTrue(data['variantes'])
+        # Le champ SANS (compat écran historique) reste celui de `kwc`/8 ;
+        # le second optimum est rendu à côté, jamais à sa place.
+        self.assertEqual(data['nb_panneaux'], 8)
+        self.assertEqual(data['nb_panneaux_avec'], 10)
+
+        panneaux = [li for li in data['lignes'] if li['role'] == 'panneau']
+        self.assertEqual(
+            sorted((li['quantite'], li['variante']) for li in panneaux),
+            [(8, 'sans'), (10, 'avec')])
+        # La batterie n'existe QUE dans l'option avec, et personne d'autre.
+        batteries = [li for li in data['lignes'] if li['role'] == 'batterie']
+        self.assertEqual([li['variante'] for li in batteries], ['avec'])
+        self.assertIn('10 kWh', batteries[0]['designation'])
+        # Ce qui ne dépend pas du champ (transport) reste une ligne UNIQUE,
+        # commune — jamais dédoublée par la fusion.
+        transport = [li for li in data['lignes'] if li['role'] == 'transport']
+        self.assertEqual(len(transport), 1)
+        self.assertEqual(transport[0]['variante'], '')
+
+    def test_sans_dimensionnement_avec_aucune_ligne_n_est_variantee(self):
+        """Repli historique : sans l'axe batterie, comportement inchangé —
+        `variante` vide partout, `variantes` à False (ce que U3 rendait déjà
+        avant U3COMPOSE, byte pour byte)."""
+        reponse = self.api.post(COMPO_URL, {
+            'kwc': 5, 'panel_watt': 710, 'scenario': 'les_deux',
+        }, format='json')
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertFalse(reponse.data['variantes'])
+        self.assertEqual(
+            {li['variante'] for li in reponse.data['lignes']}, {''})
+        self.assertEqual(
+            reponse.data['nb_panneaux_avec'], reponse.data['nb_panneaux'])
+
+    def test_dimensionnement_avec_pas_un_objet_est_ignore_sans_erreur(self):
+        """Une valeur qui n'est pas un objet vaut « moteur muet sur l'axe
+        batterie » — jamais une erreur 400 sur un aperçu, jamais un chiffre
+        inventé pour combler le trou."""
+        reponse = self.api.post(COMPO_URL, {
+            'kwc': 5, 'panel_watt': 710,
+            'dimensionnement_avec': 'pas un objet',
+        }, format='json')
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertFalse(reponse.data['variantes'])
+
+    def test_dimensionnement_avec_valeur_non_numerique_c_est_400(self):
+        reponse = self.api.post(COMPO_URL, {
+            'kwc': 5, 'panel_watt': 710,
+            'dimensionnement_avec': {'nb_panneaux': 'beaucoup'},
+        }, format='json')
+        self.assertEqual(reponse.status_code, 400)
+
+
 class LeDryRunRefuseCeQuIlNeSaitPasComposer(_Base):
     slug = 'u3-gardes-dry-run'
 

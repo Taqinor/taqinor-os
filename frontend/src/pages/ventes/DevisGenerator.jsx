@@ -464,6 +464,12 @@ export default function DevisGenerator({
   // garantie). Chaque entrée porte {id, nom, manquantes[]} et s'affiche avec
   // son motif, comme « prix à renseigner » pour un produit non tarifé.
   const [onduleursIncomplets, setOnduleursIncomplets] = useState([])
+  // U3COMPOSE (26/08/2026) — l'Auto-remplir résidentiel appelle désormais le
+  // dry-run serveur (POST /ventes/devis/composition/, source de vérité
+  // unique U3) au lieu de recomposer le kit en JavaScript : état de
+  // chargement dédié pendant l'aller-retour réseau (le bouton porte
+  // `loading={autoFillLoading}`).
+  const [autoFillLoading, setAutoFillLoading] = useState(false)
   // PVMRQ — réglages « Gammes & marques » de la société (chargés UNE fois,
   // best-effort : une société sans réglage ou un rôle non responsable/admin
   // — l'endpoint est `IsResponsableOrAdmin` — retombe sur `{}` silencieusement,
@@ -2056,28 +2062,14 @@ export default function DevisGenerator({
     : null
   const pompageDims = pompageSel?.dims ?? null
 
-  const handleAutoFill = () => {
-    // PVOND — le bandeau des onduleurs grisés appartient au DERNIER
-    // auto-remplissage : on le vide d'abord, sinon un message du run précédent
-    // survivrait à un changement de mode (le pompage n'a pas d'onduleur).
-    setOnduleursIncomplets([])
-    // Mode agricole : équipement pompage (pompe + variateur + champ PV)
-    if (modeInstallation === 'agricole') {
-      const generated = autoFillPompage(produits, {
-        cv: pompeCv, alim: pompeAlim, typePompe: pompeType,
-        distance: pompeDistance, structureType,
-        hmt: pompeHmt, debit: pompeDebit, heures: pompeHeures,
-      })
-      if (!generated.length) {
-        setErrors(e => ({ ...e, autofill: 'Renseignez la puissance pompe (CV) ou HMT + débit souhaité.' }))
-        return
-      }
-      setErrors(e => ({ ...e, autofill: null, marquesManquantes: null }))
-      setLines(withKeys(generated))
-      if (pompageSel) setNbPanneaux(String(pompageSel.dims.nbPanneaux))
-      setPompageAutoFilled(true)
-      return
-    }
+  // U3COMPOSE (26/08/2026) — composition LOCALE (JavaScript), CONSERVÉE : le
+  // chemin agricole (déjà séparé, ci-dessous) reste local car aucun dry-run
+  // serveur n'existe pour l'agricole/l'industriel/le commercial (à faire dans
+  // un chantier séparé, voir rapport) ; ET le REPLI résidentiel si l'appel
+  // réseau échoue — l'écran ne doit JAMAIS se retrouver sans Auto-remplir.
+  // Extrait tel quel de l'ancien corps de `handleAutoFill` : comportement
+  // byte-identique à avant U3COMPOSE, pour ces trois marchés comme pour le repli.
+  const composeLocalement = () => {
     if (kwp <= 0) {
       setErrors(e => ({ ...e, autofill: 'Entrez le nombre de panneaux' }))
       return
@@ -2195,6 +2187,154 @@ export default function DevisGenerator({
     // plutôt que de les laisser disparaître sans explication.
     setOnduleursIncomplets(metaOnduleursIncomplets)
     setLines(withKeys(generated))
+  }
+
+  // U3COMPOSE — l'optimum AXE BATTERIE envoyé au dry-run serveur : même
+  // précédence que `resolveKwcAvec` ci-dessus (le moteur horaire serveur
+  // prime), sans jamais inventer un nombre de panneaux hors d'une dérivation
+  // réelle (repli sur la conversion kWc→panneaux du wattage saisi).
+  const buildDimensionnementAvec = (kwpAvec) => {
+    const backendAvec = etudeHoraireDonnees?.dimensionnement?.recommandation_avec
+    const panelWNum = parseFloat(panelW) || 710
+    const nbPanneauxAvec = Number(backendAvec?.nb_panneaux) > 0
+      ? Math.round(Number(backendAvec.nb_panneaux))
+      : Math.round((kwpAvec * 1000) / panelWNum)
+    const dims = { nb_panneaux: nbPanneauxAvec, kwc: kwpAvec }
+    const battKwh = Number(backendAvec?.batterie_kwh)
+    if (battKwh > 0) dims.batterie_kwh = battKwh
+    return dims
+  }
+
+  // U3COMPOSE — mappe la réponse du dry-run serveur (contract_samples/
+  // devis_composition.json) vers les lignes éditables de l'écran. Le HT
+  // (`prix_unitaire_ht`) fait foi — c'est le prix RÉEL en base — mais le TTC
+  // affiché est RE-DÉRIVÉ ici avec `tauxTvaOf`/`ttcFromHt` (le taux RÉEL par
+  // produit — 10 % panneaux, 20 % le reste, DC7) plutôt que le
+  // `prix_unitaire_ttc`/`taux_tva` renvoyés par le dry-run, qui appliquent un
+  // taux UNIQUE à toute la composition (simplification de prévisualisation
+  // côté serveur, `taux_tva` de la requête, 20 % par défaut) : sans ce
+  // ré-alignement une ligne panneau afficherait un TTC calculé à 20 % au lieu
+  // de 10 % — un écart de PRIX réel, pas un simple arrondi.
+  const appliquerCompositionServeur = (data) => {
+    const generated = (data.lignes || []).map(li => {
+      const produit = produits.find(p => String(p.id) === String(li.produit))
+      const taux = produit ? tauxTvaOf(produit) : (parseFloat(li.taux_tva) || 20)
+      const prixTtc = produit
+        ? ttcFromHt(li.prix_unitaire_ht, taux)
+        : (li.prix_unitaire_ttc ?? 0)
+      return {
+        produit: li.produit ?? '',
+        designation: li.designation,
+        quantite: li.quantite,
+        prix_unit_ttc: prixTtc,
+        taux_tva: taux,
+        variante: li.variante || '',
+      }
+    })
+    if (!generated.length) {
+      setErrors(e => ({ ...e, autofill: 'Aucun produit solaire reconnu dans le stock.' }))
+      return
+    }
+    // Même message que la composition locale (mêmes clés d'erreur, même bandeau).
+    const manquants = generated
+      .filter(r => !r.produit && parseFloat(r.quantite) > 0)
+      .map(r => r.designation || 'ligne sans produit')
+    const askedW = parseFloat(panelW) || 710
+    const realW = data.panel_watt
+    let mismatch = null
+    if (realW && Math.abs(realW - askedW) > 1) {
+      mismatch = `Attention : le stock ne propose pas de panneau ${askedW} W ; `
+        + `un panneau ${realW} W a été retenu. La puissance réelle du système est `
+        + `${data.kwc_reel} kWc (et non ${kwp} kWc). Ajustez le nombre de panneaux ou le `
+        + 'wattage pour la cible voulue.'
+    }
+    const marquesManquantes = data.marques_manquantes || []
+    const marquesMsg = marquesManquantes.length
+      ? `Marque épinglée introuvable au stock : ${marquesManquantes
+          .map(m => `${m.marque} (${roleLabel(m.role)})`).join(', ')}. `
+        + 'Ajoutez le produit ou changez la marque dans Paramètres → Gammes.'
+      : null
+    const manquantsMsg = manquants.length
+      ? `Aucun produit du stock ne correspond à : ${[...new Set(manquants)].join(', ')}. `
+        + 'Complétez le catalogue ou choisissez ces produits à la main dans les lignes.'
+      : null
+    // `avertissements` (dry-run serveur) : mêmes messages que ceux que PVOND
+    // affichait localement pour un onduleur incomplet, un rôle absent, etc. —
+    // rendus tels quels dans le même bandeau, jamais tus.
+    const avertissementsMsg = (data.avertissements || []).join(' ') || null
+    setErrors(e => ({
+      ...e,
+      autofill: [manquantsMsg, avertissementsMsg].filter(Boolean).join(' ') || null,
+      autofillKwc: mismatch,
+      marquesManquantes: marquesMsg,
+    }))
+    setLines(withKeys(generated))
+  }
+
+  const handleAutoFill = async () => {
+    // PVOND — le bandeau des onduleurs grisés appartient au DERNIER
+    // auto-remplissage : on le vide d'abord, sinon un message du run précédent
+    // survivrait à un changement de mode (le pompage n'a pas d'onduleur).
+    setOnduleursIncomplets([])
+    // Mode agricole : équipement pompage (pompe + variateur + champ PV)
+    if (modeInstallation === 'agricole') {
+      const generated = autoFillPompage(produits, {
+        cv: pompeCv, alim: pompeAlim, typePompe: pompeType,
+        distance: pompeDistance, structureType,
+        hmt: pompeHmt, debit: pompeDebit, heures: pompeHeures,
+      })
+      if (!generated.length) {
+        setErrors(e => ({ ...e, autofill: 'Renseignez la puissance pompe (CV) ou HMT + débit souhaité.' }))
+        return
+      }
+      setErrors(e => ({ ...e, autofill: null, marquesManquantes: null }))
+      setLines(withKeys(generated))
+      if (pompageSel) setNbPanneaux(String(pompageSel.dims.nbPanneaux))
+      setPompageAutoFilled(true)
+      return
+    }
+    // U3COMPOSE (26/08/2026) — RÉSIDENTIEL SEULEMENT : le dry-run serveur
+    // (POST /ventes/devis/composition/, U3) devient la source de vérité de
+    // l'aperçu écran au lieu de la recomposition locale (deux implémentations
+    // divergeaient déjà avant U3, incident du 20/08 — câbles, marques,
+    // ordre, arrondi panneaux). Un échec réseau/serveur retombe SANS
+    // EXCEPTION sur `composeLocalement` (ex-corps de cette fonction) :
+    // l'écran ne doit jamais se retrouver sans Auto-remplir. Agricole
+    // (ci-dessus) / industriel / commercial : AUCUN dry-run serveur n'existe
+    // pour ces marchés — comportement local strictement inchangé.
+    if (modeInstallation === 'residentiel') {
+      if (kwp <= 0) {
+        setErrors(e => ({ ...e, autofill: 'Entrez le nombre de panneaux' }))
+        return
+      }
+      setAutoFillLoading(true)
+      try {
+        const body = {
+          kwc: kwp,
+          panel_watt: parseFloat(panelW) || 710,
+          structure_type: structureType,
+        }
+        // Même déclenchement que la fusion locale ci-dessus (composeLocalement) :
+        // seuls « Les deux » et « Avec batterie » servent réellement l'axe
+        // batterie, et seulement quand il diverge du champ sans stockage.
+        if (scenario === SCENARIO_LES_DEUX || scenario === SCENARIO_AVEC) {
+          const kwpAvec = resolveKwcAvec()
+          if (Math.abs(kwpAvec - kwp) > 1e-9) {
+            body.dimensionnement_avec = buildDimensionnementAvec(kwpAvec)
+          }
+        }
+        const { data } = await ventesApi.composerDevis(body)
+        appliquerCompositionServeur(data)
+      } catch (err) {
+        // REPLI — jamais un écran sans Auto-remplir pour une panne réseau.
+        console.error('composerDevis (dry-run) indisponible, repli local :', err)
+        composeLocalement()
+      } finally {
+        setAutoFillLoading(false)
+      }
+      return
+    }
+    composeLocalement()
   }
 
   // CJ2b — bouton « Appliquer cette taille » d'une ligne du tableau de
@@ -3595,7 +3735,8 @@ export default function DevisGenerator({
               {errors.autofillKwc && <span className="text-xs text-warning">{errors.autofillKwc}</span>}
               {/* PVMRQ — même patron visuel que `errors.autofill` ci-dessus. */}
               {errors.marquesManquantes && <span className="text-xs text-destructive">{errors.marquesManquantes}</span>}
-              <Button type="button" className="bg-brass-400 text-nuit hover:bg-brass-500" onClick={handleAutoFill}>
+              <Button type="button" className="bg-brass-400 text-nuit hover:bg-brass-500"
+                      loading={autoFillLoading} onClick={handleAutoFill}>
                 <Zap /> Auto-remplir depuis le stock
               </Button>
             </div>
