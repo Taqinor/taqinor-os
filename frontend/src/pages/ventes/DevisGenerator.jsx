@@ -1914,6 +1914,19 @@ export default function DevisGenerator({
     setLines(withKeys(rows))
   }
 
+  // Dimensionnement pompage : SOURCE UNIQUE écran / devis / PDF.
+  // Courbe constructeur (HMT + débit souhaité) si une pompe à courbe convient,
+  // sinon sélection historique par CV (débit manuel, pas de m³/jour inventé).
+  // Déclaré AVANT handleAutoFill qui le lit (déplacé ici au recalage L-2OPT
+  // 25/08 — eslint no-use-before-define, le code autour avait bougé).
+  const pompageSel = modeInstallation === 'agricole'
+    ? pompageSelection(produits, {
+        cv: pompeCv, alim: pompeAlim, typePompe: pompeType,
+        hmt: pompeHmt, debit: pompeDebit, heures: pompeHeures,
+      })
+    : null
+  const pompageDims = pompageSel?.dims ?? null
+
   const handleAutoFill = () => {
     // PVOND — le bandeau des onduleurs grisés appartient au DERNIER
     // auto-remplissage : on le vide d'abord, sinon un message du run précédent
@@ -2479,16 +2492,8 @@ export default function DevisGenerator({
   const avecDispo = avecBatterieAvailability(lines, produits, kwp)
   const showAvecWarning = showAvec && lines.length > 0 && !avecDispo.available
 
-  // Dimensionnement pompage : SOURCE UNIQUE écran / devis / PDF.
-  // Courbe constructeur (HMT + débit souhaité) si une pompe à courbe convient,
-  // sinon sélection historique par CV (débit manuel, pas de m³/jour inventé).
-  const pompageSel = modeInstallation === 'agricole'
-    ? pompageSelection(produits, {
-        cv: pompeCv, alim: pompeAlim, typePompe: pompeType,
-        hmt: pompeHmt, debit: pompeDebit, heures: pompeHeures,
-      })
-    : null
-  const pompageDims = pompageSel?.dims ?? null
+  // (Dimensionnement pompage : déclaré plus haut, avant handleAutoFill —
+  // eslint no-use-before-define, recalage L-2OPT 25/08.)
 
   // ── Données d'exploitation guidées → dépense carburant ANNUELLE + besoin eau ──
   // La dépense saisie au mois est ramenée à l'année (clé fuel_spend_current en
