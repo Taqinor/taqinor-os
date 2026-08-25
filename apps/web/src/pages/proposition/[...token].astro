@@ -291,6 +291,18 @@ if (!data && (httpStatus === 404 || httpStatus === 200)) {
 const ok = !!data;
 const q = data?.quote;
 const twoOptions = ok ? hasTwoOptions(data!) : false;
+// LANE CHOIX-AVEC (fondateur, 25/08/2026) — INVARIANT DOCUMENTÉ, PAS RÉÉCRIT :
+// `reco` est LE pivot de toute surface de cette page qui ne peut montrer
+// qu'UNE configuration (héros `ecoHero`/`paybackHero` plus bas,
+// `equipmentOption` du tableau « CE QUI SERA POSÉ CHEZ VOUS », clause
+// falaise « Dimensionnement décrit ici » L-DEUXOPT). Il est DÉJÀ avec-first
+// quand l'avec est servable — `recommendedOption()`
+// (`apps/web/src/lib/proposition.ts:747-751`) lit `quote.recommended`,
+// produit par `apps/ventes/quote_engine/builder.py` (~L1115-1157 + le repli
+// mono-option ~L1224-1231) : « Avec batterie » par défaut sur un devis
+// servable, sauf override EXPLICITE du vendeur
+// (`etude_params.recommended_option`) — même exception que partout ailleurs
+// dans ce moteur (QF6). Rien à changer ici.
 const reco: OptionKey | null = ok ? recommendedOption(data!) : null;
 const accepted = ok ? isAccepted(data!) : false;
 const preselect: OptionKey | null = ok ? defaultSelectedOption(data!) : null;
@@ -1197,6 +1209,11 @@ const nearestMeasuredAr = nearestMeasured
 // chapitre 7, une seule fois). Le tableau montre l'option retenue ; quand le
 // devis en porte deux, `equipmentExtra` dit en UNE ligne ce que la seconde
 // ajoute, au lieu d'un second tableau.
+// LANE CHOIX-AVEC (fondateur, 25/08/2026) — « CE QUI SERA POSÉ CHEZ VOUS » ne
+// peut montrer qu'UNE configuration : elle pivote sur `reco`, déjà avec-first
+// quand servable (voir l'invariant documenté à sa déclaration plus haut).
+// Le `?? 'sans_batterie'` ci-dessous n'est qu'une garde de type — `reco` n'est
+// `null` que si `!ok`, auquel cas cette ligne ne se rend pas.
 const equipmentOption: OptionKey = reco ?? 'sans_batterie';
 const equipmentItems = ok ? optionItems(data!, equipmentOption) : [];
 // L-DEUXOPT — l'option NON détaillée ici (le flip de `equipmentOption`), pour

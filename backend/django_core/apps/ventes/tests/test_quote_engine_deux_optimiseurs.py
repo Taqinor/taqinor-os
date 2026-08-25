@@ -327,14 +327,18 @@ class TestDeuxOptimiseursFormats(_DevisVariantesMixin, TestCase):
     def test_une_page_chiffre_les_panneaux_de_sa_branche(self):
         devis = self._devis_divergent()
         data = self._build(devis, {'pdf_mode': 'onepage'})
-        # Deux options → la une-page facture l'option 1 (« sans »).
-        self.assertEqual(data['onepage_branche'], 'sans')
+        # LANE CHOIX-AVEC (fondateur, 25/08/2026) — un document qui ne peut
+        # montrer qu'UNE option montre TOUJOURS l'option AVEC batterie quand
+        # elle est servable (``deux_options`` implique ``avec_ok``) : la
+        # une-page facture donc l'option 2 (« avec »), plus « sans » comme
+        # avant M4/19-08.
+        self.assertEqual(data['onepage_branche'], 'avec')
         html, doc = self._render_legacy(data)
         self.assertEqual(
             len(doc.pages), 1,
             f'le format une page doit rendre 1 page, {len(doc.pages)} rendues')
-        self.assertIn('15.62 kWc', html)     # kWc de la branche facturée
-        self.assertNotIn('18.46 kWc', html)  # jamais ceux de l'autre option
+        self.assertIn('18.46 kWc', html)     # kWc de la branche facturée
+        self.assertNotIn('15.62 kWc', html)  # jamais ceux de l'autre option
 
     def test_l_etude_ajoute_exactement_une_page(self):
         # Même recette que la garde d'étude existante (mode industriel + ces

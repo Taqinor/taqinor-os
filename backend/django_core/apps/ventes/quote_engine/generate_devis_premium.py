@@ -2880,6 +2880,18 @@ def page_onepage(items):
             f'margin-top:2px;">Activez une option avant signature pour l&#8217;'
             f'inclure &#224; votre devis.</div></div>')
 
+    # LANE CHOIX-AVEC (fondateur, 25/08/2026) — le mot de la note SUIT
+    # ``ONEPAGE_BRANCHE`` au lieu de le supposer « sans » : builder.py rend
+    # maintenant l'option AVEC batterie sur cette page quand elle est
+    # servable (la règle « choisis l'option avec quand tu dois choisir »),
+    # donc le texte qui dit CE QUE CE DOCUMENT CHIFFRE doit dire la même
+    # chose que les lignes réellement imprimées au-dessus. Un texte figé sur
+    # « sans batterie » aurait décrit une page en réalité chiffrée avec.
+    _onepage_note_ceci = ("avec batterie" if ONEPAGE_BRANCHE == "avec"
+                          else "sans batterie")
+    _onepage_note_autre = ("sans batterie" if ONEPAGE_BRANCHE == "avec"
+                           else "avec batterie")
+
     return f"""
 <div class="page" style="position:relative;display:block;">
 
@@ -2948,7 +2960,7 @@ def page_onepage(items):
 
   <!-- CONDITIONS : sous le total -->
   <div style="padding:8px 24px;">
-    {'<div style="font-size:7.5pt;color:' + CG4 + ';font-style:italic;margin-bottom:3px;">Ce document chiffre l&#8217;option sans batterie. Une option avec batterie est disponible &#8212; voir la proposition compl&#232;te.</div>' if ONEPAGE_NOTE_BATTERIE else ''}
+    {'<div style="font-size:7.5pt;color:' + CG4 + ';font-style:italic;margin-bottom:3px;">Ce document chiffre l&#8217;option ' + _onepage_note_ceci + '. Une option ' + _onepage_note_autre + ' est disponible &#8212; voir la proposition compl&#232;te.</div>' if ONEPAGE_NOTE_BATTERIE else ''}
     <div style="font-size:7pt;color:{CG4};">
       <span style="margin-right:20px;">{_doc_text("validite_onepage")}</span>
       <span style="margin-right:20px;">&#183; Acompte&#160;: {PAY_A}&#37;</span>
