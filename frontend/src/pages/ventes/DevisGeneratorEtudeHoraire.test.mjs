@@ -132,6 +132,30 @@ test('L-2OPT : le miroir local `roiAvec` est calculé au kWc AVEC, null quand ri
   assert.match(DG, /const roiPourAvec = roiAvec \|\| roi/)
 })
 
+// ── FINDING 25/08 — l'ascension écran ne peut plus rider le plafond ────────
+// `optimalKwcByPayback` ne plafonne l'économie à la consommation réelle que
+// si on la lui donne. Les deux appels de l'écran ne la passaient pas :
+// l'économie restait LINÉAIRE en kWc, chaque pas marginal se « remboursait »,
+// et l'ascension finissait toujours au plafond du balayage (mesuré : besoin
+// 100 kWc → 100 kWc retenus, 522 341 MAD).
+
+test('FINDING 25/08 : les DEUX appels de dimensionnement passent la consommation réelle + le distributeur', () => {
+  const idx = DG.indexOf('const computeAutoSizing = useCallback(')
+  assert.ok(idx > -1, 'computeAutoSizing introuvable')
+  const bloc = DG.slice(idx, DG.indexOf('sizingCacheRef.current = { key, result }', idx))
+  // La consommation est DÉRIVÉE (barème), ou reprise du champ réel saisi —
+  // jamais un chiffre posé.
+  assert.match(bloc, /consoAnnuelleDepuisFactures\(factures, distributeurBalayage\)/)
+  assert.match(bloc, /Number\(consoAnnuelleReelle\) > 0/)
+  // Les DEUX optimiseurs (sans ET avec batterie) la reçoivent.
+  const appels = bloc.match(/consoAnnuelleKwh: consoBalayage, utility: distributeurBalayage/g) || []
+  assert.equal(appels.length, 2,
+    'les deux appels optimalKwcByPayback (sans + avec batterie) doivent recevoir la conso réelle')
+  // Le distributeur pilote le barème : il entre dans la clé de cache, sinon
+  // le balayage resservirait un résultat calculé sur un autre barème.
+  assert.match(bloc, /distributeurBalayage, consoAnnuelleReelle \?\? ''\]\.join\('\|'\)/)
+})
+
 test('DevisGenerator : `roi` (computeROI, miroir local) reste appelé SANS changement — jamais supprimé', () => {
   assert.match(DG, /const roi = useMemo\(\(\) => \{/)
   assert.match(DG, /return computeROI\(\{/)

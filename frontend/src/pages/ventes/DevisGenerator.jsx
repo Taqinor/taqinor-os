@@ -67,6 +67,10 @@ import {
   // Règle fondateur du 18/08 — dimensionnement par PALIERS de 5 kWc, retenus
   // au payback le plus court (jamais un panneau/900 MAD nu).
   estimerKwcDepuisFacture, optimalKwcByPayback,
+  // FINDING 25/08 — consommation réelle dérivée des factures par le barème :
+  // sans elle le modèle d'économie ne sature pas et l'ascension marginale
+  // sur-vend jusqu'au plafond du balayage.
+  consoAnnuelleDepuisFactures,
   // PVMRQ — libellé FR d'un rôle ROLES_AUTO_COMPOSITION, pour le bandeau
   // « marque épinglée introuvable ».
   roleLabel,
@@ -1195,17 +1199,37 @@ export default function DevisGenerator({
     const dayUsagePct = modeInstallation === 'commercial' ? DAY_USAGE_DEFAULTS['Commerciale']
       : modeInstallation === 'industriel' ? DAY_USAGE_DEFAULTS['Industrielle']
         : DAY_USAGE_DEFAULTS['Résidentielle']
+    // Distributeur du devis : c'est SON barème qui convertit les factures en
+    // kWh (et qui valorise l'économie par tranche). Il entre donc dans la clé
+    // de cache au même titre que la marque épinglée.
+    const distributeurBalayage = distributeur
     // PVMRQ — la marque épinglée entre dans la clé de cache : un changement de
     // réglage (ou de gamme du devis) doit rejouer le balayage des paliers.
     const key = [hiver, eteEff, besoinKwc, dayUsagePct, panelW, structureType,
-      discountPct, produits.length, JSON.stringify(marquesActives)].join('|')
+      discountPct, produits.length, JSON.stringify(marquesActives),
+      distributeurBalayage, consoAnnuelleReelle ?? ''].join('|')
     if (sizingCacheRef.current.key === key) return sizingCacheRef.current.result
     const factures = estimerMois(hiver, eteEff)
+    // FINDING 25/08 — la CONSOMMATION RÉELLE du client entre dans le balayage.
+    // Sans elle, `computeROI` ne plafonne rien : l'économie reste linéaire en
+    // kWc, chaque pas marginal se « rembourse » et l'ascension ne s'arrête
+    // qu'au plafond (mesuré : besoin 100 kWc → 100 kWc, 522 341 MAD). Dérivée
+    // des factures du client par le barème du distributeur — jamais un chiffre
+    // posé (`consoAnnuelleDepuisFactures`, la dérivation déjà utilisée par
+    // autoQuote.js pour `etude_params.conso_annuelle`).
+    // Une consommation RÉELLE saisie par le vendeur (champ facture/kWh réel,
+    // QF4) prime sur la dérivation : c'est celle que l'aperçu `roi` utilise
+    // déjà, et le dimensionnement doit dimensionner le MÊME client que
+    // l'aperçu. Sinon, dérivation depuis les factures du balayage.
+    const consoBalayage = (Number(consoAnnuelleReelle) > 0)
+      ? Number(consoAnnuelleReelle)
+      : consoAnnuelleDepuisFactures(factures, distributeurBalayage)
     const opt = optimalKwcByPayback({
       produits, factures, dayUsagePct,
       panelW, structureType, discountPct,
       kwhPrice: quoteLogic.kwhPrice, efficiency: quoteLogic.efficiency,
       besoinKwc, marques: marquesActives,
+      consoAnnuelleKwh: consoBalayage, utility: distributeurBalayage,
     })
     // L-2OPT (fondateur 24/08) — second optimiseur, MÊME balayage, objectif
     // AVEC batterie (`avecBatterie: true` — optimalKwcByPayback l'accepte
@@ -1219,6 +1243,9 @@ export default function DevisGenerator({
       panelW, structureType, discountPct,
       kwhPrice: quoteLogic.kwhPrice, efficiency: quoteLogic.efficiency,
       besoinKwc, marques: marquesActives, avecBatterie: true,
+      // Même consommation réelle que la branche SANS : les deux optimiseurs
+      // dimensionnent le MÊME client, pas deux consommations différentes.
+      consoAnnuelleKwh: consoBalayage, utility: distributeurBalayage,
     })
     let result = null
     if (opt.nbPanneaux > 0) {
@@ -1231,7 +1258,8 @@ export default function DevisGenerator({
     }
     sizingCacheRef.current = { key, result }
     return result
-  }, [modeInstallation, panelW, structureType, discountPct, produits, quoteLogic, marquesActives])
+  }, [modeInstallation, panelW, structureType, discountPct, produits, quoteLogic,
+    marquesActives, distributeur, consoAnnuelleReelle])
 
   // L-2OPT — kWc de la branche AVEC batterie POUR LA COMPOSITION EN COURS :
   // le moteur horaire serveur (recommandation_avec, source de vérité) prime
