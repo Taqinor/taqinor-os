@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 9427, operations: 16940, components: 4953}
+counts: {paths: 9427, operations: 16940, components: 4957}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -21035,10 +21035,14 @@ components:
 - PublicPolitiqueStock
 - PublicPrevisionDemande
 - PublicProduit
+- PublicQuestionnaireReponse
+- PublicQuestionnaireReponseRequestRequest
 - PublicSalleVente
 - PublicSalleVenteItem
 - PublicScmTableauBordReappro
 - PublicScmTableauBordReapproLigne
+- PublicVisiteReponse
+- PublicVisiteRequestRequest
 - PutAway
 - PutAwayRequest
 - PutAwayStatutEnum

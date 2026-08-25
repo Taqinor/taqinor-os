@@ -22,7 +22,8 @@ d'accueil, le nom de la société émettrice, les sections demandées et les
 valeurs que le client a lui-même fournies. Jamais de prix, jamais de marge,
 jamais un autre lead.
 """
-from rest_framework import status
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers, status
 from rest_framework.decorators import (
     api_view, permission_classes, throttle_classes,
 )
@@ -62,6 +63,32 @@ class PublicQuestionnaireRateThrottle(SimpleRateThrottle):
         }
 
 
+# Forme DÉCLARÉE (cliquet R2 check_openapi_shapes — jamais deviner) : miroir
+# du contrat contract_samples/questionnaire_lead.json (GET = affichage,
+# POST = une section de réponses ; prefill/reponses restent des DictField
+# ouverts — leurs clés varient par section, la whitelist vit dans
+# questionnaire.CHAMPS_PAR_SECTION, jamais dupliquée ici).
+@extend_schema(
+    request=inline_serializer('PublicQuestionnaireReponseRequest', {
+        'section': serializers.CharField(required=False),
+        'reponses': serializers.DictField(required=False),
+        'photo': serializers.CharField(required=False, allow_blank=True),
+        'appareil_id': serializers.CharField(
+            required=False, allow_blank=True),
+    }),
+    responses={200: inline_serializer('PublicQuestionnaireReponse', {
+        'entreprise': serializers.CharField(required=False),
+        'prenom': serializers.CharField(required=False),
+        'sections': serializers.ListField(
+            child=serializers.CharField(), required=False),
+        'prefill': serializers.DictField(required=False),
+        'repondu': serializers.DictField(required=False),
+        'interne': serializers.BooleanField(required=False),
+        'ok': serializers.BooleanField(required=False),
+        'enregistrees': serializers.ListField(
+            child=serializers.CharField(), required=False),
+    })},
+)
 @api_view(['GET', 'POST'])
 @permission_classes([AllowAny])
 @throttle_classes([PublicQuestionnaireRateThrottle])

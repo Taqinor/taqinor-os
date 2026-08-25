@@ -17,6 +17,8 @@ nombre de visites déjà connues, jamais un identifiant de lead, jamais un
 corps inexploitable vaut aussi ``{"ok": true}`` : un beacon ne doit jamais
 faire apparaître une erreur dans la console d'un visiteur.
 """
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers
 from rest_framework.decorators import (
     api_view, permission_classes, throttle_classes,
 )
@@ -65,6 +67,21 @@ class PublicVisiteRateThrottle(SimpleRateThrottle):
         }
 
 
+# Forme DÉCLARÉE (cliquet R2 check_openapi_shapes — jamais deviner) : miroir
+# exact du contrat contract_samples/visite_externe.json. La réponse est
+# toujours {"ok": true} — le beacon est muet, voir l'en-tête du module.
+@extend_schema(
+    request=inline_serializer('PublicVisiteRequest', {
+        'appareil_id': serializers.CharField(required=False, allow_blank=True),
+        'page': serializers.CharField(required=False, allow_blank=True),
+        'duree_s': serializers.IntegerField(required=False),
+        'fin': serializers.BooleanField(required=False),
+        'langue': serializers.CharField(required=False, allow_blank=True),
+    }),
+    responses={200: inline_serializer('PublicVisiteReponse', {
+        'ok': serializers.BooleanField(),
+    })},
+)
 @api_view(['POST'])
 @permission_classes([AllowAny])
 @throttle_classes([PublicVisiteRateThrottle])

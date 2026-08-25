@@ -352,11 +352,9 @@ Error|public_partage|unable to guess serializer. This is graceful fallback handl
 Error|public_promesse_detail|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|public_promesse_pdf|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|public_promesse_signer|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
-Error|public_questionnaire|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|public_signalement|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|public_signataire|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|public_signature|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
-Error|public_visite|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|purge_audit_retention|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|push_subscribe|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|push_unsubscribe|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
