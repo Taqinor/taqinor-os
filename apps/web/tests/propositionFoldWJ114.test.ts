@@ -122,13 +122,18 @@ describe('WJ114 — bloc « décider en 10 secondes » (au-dessus du pli, mobile
     const rendu = heroSection
       .replace(/\{\/\*[\s\S]*?\*\/\}/g, ' ')
       .replace(/<!--[\s\S]*?-->/g, ' ');
-    expect(rendu).not.toContain('formatNumber(puissance, 2)');
+    // L-DEUXOPT (25/08) — même recalage que plus bas : la figure du héro
+    // s'appelle désormais `heroKwc` ; la garde vise le nom RÉEL du source.
+    expect(rendu).not.toContain('formatNumber(heroKwc, 2)');
     expect(rendu).not.toContain('kWc');
     expect(rendu).not.toContain('kWh');
     expect(PROPOSITION).toContain('id="installation"');
     expect(PROPOSITION).toContain('id="production"');
     // Les deux valeurs restent RENDUES ailleurs sur la page.
-    expect(PROPOSITION).toContain('formatNumber(puissance, 2)');
+    // L-DEUXOPT (25/08) — le héro affiche `heroKwc` (= `puissance` hors
+    // divergence des deux options, le kWc de l'option recommandée sinon) :
+    // le verrou suit la nouvelle vérité du source, l'intention est identique.
+    expect(PROPOSITION).toContain('formatNumber(heroKwc, 2)');
     expect(PROPOSITION).toContain('formatNumber(prodKwh)');
   });
 
