@@ -1203,11 +1203,18 @@ export function optionTotalsTTC(lines, discountPct) {
 // fiable) :
 //   • ligne identique (produit, désignation, prix unitaire TTC, taux TVA,
 //     quantité) → UNE ligne commune, `variante: ''` ;
-//   • quantité (ou produit) divergente → DEUX lignes, `variante: 'sans'` /
-//     `'avec'`, chacune portant la quantité/le produit de SA composition ;
-//   • présente d'un seul côté (tableaux de longueurs différentes — ne
-//     devrait pas arriver avec deux appels `autoFillLines` aux mêmes options,
-//     mais l'appariement reste défensif) → sa variante.
+//   • ligne de RÔLE (correctif orchestrateur 25/08, aligné sur le backend
+//     `services.fusionner_kits`) : batterie et onduleur hybride appartiennent
+//     au panier AVEC, l'onduleur réseau au panier SANS — en cas de
+//     divergence, seul le panier PROPRIÉTAIRE fait foi (UNE ligne, sa
+//     variante), jamais deux exemplaires. Sans cela, une batterie taguée
+//     'sans' (résidu de la composition superset) serait rangée — ET FACTURÉE
+//     — côté « Sans batterie » par le PDF/l'aval, dont la règle est « la
+//     déclaration prime sur les mots-clés » ;
+//   • quantité (ou produit) divergente sur une ligne ordinaire → DEUX lignes,
+//     `variante: 'sans'` / `'avec'`, chacune portant SA composition ;
+//   • présente d'un seul côté (défensif) → la variante de son RÔLE d'abord,
+//     celle de son côté sinon.
 // Repli de sécurité : deux compositions IDENTIQUES (même kWc des deux côtés,
 // le cas le plus courant) fusionnent en lignes 100 % `variante: ''` —
 // résultat BYTE-IDENTIQUE à l'ancienne composition unique, aucune ligne
@@ -1221,6 +1228,17 @@ function _memeLigne(a, b) {
     && (parseFloat(a.quantite) || 0) === (parseFloat(b.quantite) || 0)
 }
 
+// Rôle d'appartenance d'une ligne : 'avec' (batterie/onduleur hybride —
+// panier avec batterie), 'sans' (onduleur réseau), '' (ligne ordinaire).
+// Mêmes mots-clés que le split historique (`optionTotalsTTC`/builder.py).
+function _roleVariante(l) {
+  if (!l) return null
+  const d = l.designation
+  if (isBattery(d) || isHybridInverter(d)) return 'avec'
+  if (isReseauInverter(d)) return 'sans'
+  return ''
+}
+
 export function fusionnerVariantes(lignesSans, lignesAvec) {
   const sans = Array.isArray(lignesSans) ? lignesSans : []
   const avec = Array.isArray(lignesAvec) ? lignesAvec : []
@@ -1229,11 +1247,27 @@ export function fusionnerVariantes(lignesSans, lignesAvec) {
   for (let i = 0; i < n; i++) {
     const s = sans[i]
     const a = avec[i]
-    if (s && !a) { out.push({ ...s, variante: 'sans' }); continue }
-    if (a && !s) { out.push({ ...a, variante: 'avec' }); continue }
+    const rs = _roleVariante(s)
+    const ra = _roleVariante(a)
+    if (s && a && rs === ra && rs === 'avec') {
+      // Batterie / onduleur hybride : le panier AVEC fait foi. Identiques →
+      // ligne commune (split mots-clés historique) ; divergents → SA version,
+      // taguée — jamais un exemplaire fantôme dimensionné pour « sans ».
+      out.push(_memeLigne(s, a) ? { ...s, variante: '' } : { ...a, variante: 'avec' })
+      continue
+    }
+    if (s && a && rs === ra && rs === 'sans') {
+      // Onduleur réseau : le panier SANS fait foi (symétrique du cas avec).
+      out.push(_memeLigne(s, a) ? { ...s, variante: '' } : { ...s, variante: 'sans' })
+      continue
+    }
+    if (s && !a) { out.push({ ...s, variante: rs || 'sans' }); continue }
+    if (a && !s) { out.push({ ...a, variante: ra || 'avec' }); continue }
     if (_memeLigne(s, a)) { out.push({ ...s, variante: '' }); continue }
-    out.push({ ...s, variante: 'sans' })
-    out.push({ ...a, variante: 'avec' })
+    // Paire ordinaire divergente (ou dérive défensive de rôles) : chaque côté
+    // garde sa version — taguée par son RÔLE quand il en a un.
+    out.push({ ...s, variante: rs || 'sans' })
+    out.push({ ...a, variante: ra || 'avec' })
   }
   return out
 }

@@ -59,15 +59,44 @@ test('fusionnerVariantes : quantité divergente (kwc_sans ≠ kwc_avec) → deux
   assert.equal(transport.quantite, 1)
 })
 
-test('fusionnerVariantes : produit divergent (même rôle, modèle différent) → deux lignes variantées', () => {
+test('fusionnerVariantes : onduleur réseau divergent → UNE ligne, le panier SANS fait foi', () => {
+  // Correctif orchestrateur 25/08 (aligné backend fusionner_kits) : le réseau
+  // appartient à l'option sans — l'exemplaire dimensionné pour kwc_avec est un
+  // fantôme que personne n'achète, il est ÉCARTÉ (jamais tagué 'avec').
   const sans = [{ produit: '10', designation: 'Onduleur réseau Huawei 10kW', quantite: 1, prix_unit_ttc: 20000, taux_tva: 20 }]
   const avec = [{ produit: '11', designation: 'Onduleur réseau Huawei 12kW', quantite: 1, prix_unit_ttc: 24000, taux_tva: 20 }]
   const fusion = fusionnerVariantes(sans, avec)
-  assert.equal(fusion.length, 2)
+  assert.equal(fusion.length, 1)
   assert.equal(fusion[0].variante, 'sans')
-  assert.equal(fusion[1].variante, 'avec')
   assert.equal(fusion[0].prix_unit_ttc, 20000)
-  assert.equal(fusion[1].prix_unit_ttc, 24000)
+})
+
+test('fusionnerVariantes : batterie divergente → UNE ligne, le panier AVEC fait foi (jamais de batterie taguée sans)', () => {
+  // Le PDF/l'aval rangent une ligne par sa DÉCLARATION : une batterie taguée
+  // 'sans' serait facturée dans l'option « Sans batterie ». Le panier
+  // propriétaire fait foi — l'exemplaire dimensionné pour kwc_sans disparaît.
+  const sans = [{ produit: '2', designation: 'Batterie Dyness 10 kWh', quantite: 1, prix_unit_ttc: 30000, taux_tva: 20 }]
+  const avec = [{ produit: '2', designation: 'Batterie Dyness 10 kWh', quantite: 2, prix_unit_ttc: 30000, taux_tva: 20 }]
+  const fusion = fusionnerVariantes(sans, avec)
+  assert.equal(fusion.length, 1)
+  assert.equal(fusion[0].variante, 'avec')
+  assert.equal(fusion[0].quantite, 2)
+})
+
+test('fusionnerVariantes : onduleur hybride divergent → UNE ligne, le panier AVEC fait foi', () => {
+  const sans = [{ produit: '20', designation: 'Onduleur hybride Deye 10kW Triphasé', quantite: 1, prix_unit_ttc: 28000, taux_tva: 20 }]
+  const avec = [{ produit: '21', designation: 'Onduleur hybride Deye 15kW Triphasé', quantite: 1, prix_unit_ttc: 36000, taux_tva: 20 }]
+  const fusion = fusionnerVariantes(sans, avec)
+  assert.equal(fusion.length, 1)
+  assert.equal(fusion[0].variante, 'avec')
+  assert.equal(fusion[0].prix_unit_ttc, 36000)
+})
+
+test('fusionnerVariantes : batterie identique des deux côtés → ligne commune (split mots-clés historique)', () => {
+  const ligne = { produit: '2', designation: 'Batterie Dyness 10 kWh', quantite: 1, prix_unit_ttc: 30000, taux_tva: 20 }
+  const fusion = fusionnerVariantes([ligne], [{ ...ligne }])
+  assert.equal(fusion.length, 1)
+  assert.equal(fusion[0].variante, '')
 })
 
 test('fusionnerVariantes : ligne présente d\'un seul côté → sa variante', () => {
