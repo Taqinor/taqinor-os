@@ -8019,31 +8019,29 @@ def cndp_footer_texte(company):
 # ── XMKT5 — Listes de diffusion nommées + abonnements ───────────────────────
 
 def _normaliser_destinataire(brut):
-    """Normalise un destinataire (XMKT5) : email en minuscules, téléphone
-    marocain en ``212XXXXXXXXX`` (même convention que le lien wa.me
-    ``ventes.utils.phone.normalize_ma_phone`` — dupliqué ici pour garder
-    ``apps.compta`` autonome, sans import cross-app).
-    """
+    """Normalise un destinataire (XMKT5) : email en minuscules, téléphone en
+    E.164 chiffres (même convention que le lien wa.me
+    ``ventes.utils.phone.normalize_phone_e164``).
+
+    25/08/2026 — LANE NUMÉROS INTERNATIONAUX : bascule depuis une
+    duplication locale qui forçait un préfixe '212' et corrompait un numéro
+    étranger (ex. +33612345678 devenait '21233612345678'). Import paresseux
+    cross-app, même motif que ``_normaliser_telephone_meta`` plus bas dans ce
+    fichier — pas de logique dupliquée pour ce cas. Numéro non normalisable
+    → valeur saisie telle quelle (jamais de perte)."""
     brut = (brut or '').strip()
     if not brut:
         return ''
     if '@' in brut:
         return brut.lower()
-    digits = re.sub(r'\D', '', brut)
-    if not digits:
-        return brut
-    if digits.startswith('00'):
-        digits = digits[2:]
-    if digits.startswith('212'):
-        local = digits[3:]
-    elif digits.startswith('0'):
-        local = digits[1:]
-    else:
-        local = digits
-    local = local.lstrip('0')
-    if not local:
-        return brut
-    return '212' + local
+    try:
+        from apps.ventes.utils.phone import normalize_phone_e164
+        norme = normalize_phone_e164(brut)
+        if norme:
+            return norme
+    except Exception:  # pragma: no cover - défensif
+        pass
+    return brut
 
 
 def creer_liste_diffusion(company, *, nom, description=''):
@@ -8259,16 +8257,16 @@ def _normaliser_email_meta(email):
 
 
 def _normaliser_telephone_meta(telephone):
-    """Norme Meta : chiffres uniquement, AVEC indicatif pays (212…).
+    """Norme Meta : chiffres uniquement, AVEC indicatif pays (212… ou étranger).
 
-    Réutilise la normalisation marocaine existante quand elle matche ;
-    sinon repli chiffres-bruts (0X… → 212X…)."""
+    25/08/2026 — bascule vers ``normalize_phone_e164`` (ne force plus '212'
+    sur un numéro étranger). Sinon repli chiffres-bruts (0X… → 212X…)."""
     brut = (telephone or '').strip()
     if not brut:
         return ''
     try:
-        from apps.ventes.utils.phone import normalize_ma_phone
-        norme = normalize_ma_phone(brut)
+        from apps.ventes.utils.phone import normalize_phone_e164
+        norme = normalize_phone_e164(brut)
         if norme:
             return norme
     except Exception:  # pragma: no cover - défensif

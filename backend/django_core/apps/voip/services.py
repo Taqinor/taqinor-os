@@ -12,7 +12,7 @@ import logging
 from django.contrib.contenttypes.models import ContentType
 from django.utils import timezone
 
-from apps.ventes.utils.phone import normalize_ma_phone
+from apps.ventes.utils.phone import normalize_phone_e164
 
 from . import providers
 from .models import Appel, VoipParametres
@@ -74,7 +74,12 @@ def demarrer_appel_sortant(company, user, numero):
         company=company,
         direction=Appel.Direction.SORTANT,
         numero=numero,
-        numero_normalise=normalize_ma_phone(numero) or '',
+        # 25/08/2026 — E.164 générale (pas normalize_ma_phone) : ce champ est
+        # affiché/exporté comme LE numéro normalisé, il doit donc rester
+        # dialable (indicatif inclus) même pour un appel vers/depuis
+        # l'étranger — une clé de comparaison sans indicatif (services.
+        # normalize_phone) serait fausse ici.
+        numero_normalise=normalize_phone_e164(numero) or '',
         content_type=content_type,
         object_id=object_id,
         utilisateur=user,
@@ -99,7 +104,12 @@ def recevoir_appel_entrant(company, numero, *, external_call_id=''):
         company=company,
         direction=Appel.Direction.ENTRANT,
         numero=numero,
-        numero_normalise=normalize_ma_phone(numero) or '',
+        # 25/08/2026 — E.164 générale (pas normalize_ma_phone) : ce champ est
+        # affiché/exporté comme LE numéro normalisé, il doit donc rester
+        # dialable (indicatif inclus) même pour un appel vers/depuis
+        # l'étranger — une clé de comparaison sans indicatif (services.
+        # normalize_phone) serait fausse ici.
+        numero_normalise=normalize_phone_e164(numero) or '',
         content_type=content_type,
         object_id=object_id,
         statut=Appel.Statut.SONNANT,

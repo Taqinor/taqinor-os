@@ -50,19 +50,24 @@ def clients_pour_controle_ice(company):
 
 def find_client_by_phone(company, telephone):
     """XSAV26 — Client de `company` dont le téléphone correspond au numéro
-    donné, normalisé via `apps.ventes.utils.phone.normalize_ma_phone`.
+    donné, normalisé via `normalize_phone_key` (clé QW10, `services.
+    normalize_phone`) — 25/08/2026, LANE NUMÉROS INTERNATIONAUX : bascule
+    depuis `apps.ventes.utils.phone.normalize_ma_phone`, qui forçait un
+    préfixe '212' et corrompait un numéro étranger avant comparaison (deux
+    numéros étrangers différents pouvaient donc se rapprocher à tort, ou un
+    +33 ne jamais matcher lui-même selon la graphie tapée). `normalize_phone`
+    ne force RIEN — chiffres + indicatif réduit seulement — donc rapproche
+    aussi correctement un numéro étranger saisi sous deux graphies.
 
     Point d'entrée cross-app sanctionné pour `apps.notifications` (webhook
     BSP WhatsApp) : matching par numéro SANS jamais exposer les modèles crm.
     Renvoie le client le plus récemment créé en cas de doublon, ou None."""
-    from apps.ventes.utils.phone import normalize_ma_phone
-
-    key = normalize_ma_phone(telephone)
+    key = normalize_phone_key(telephone)
     if not key:
         return None
     candidates = [
         c for c in client_base_qs(company).order_by('-id')
-        if normalize_ma_phone(c.telephone) == key
+        if normalize_phone_key(c.telephone) == key
     ]
     return candidates[0] if candidates else None
 

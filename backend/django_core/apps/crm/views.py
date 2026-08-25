@@ -1341,10 +1341,14 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         lead = self.get_object()
         company = request.user.company
         from .models import Client as ClientModel
-        from apps.ventes.utils.phone import normalize_ma_phone
+        # 25/08/2026 — LANE NUMÉROS INTERNATIONAUX : bascule depuis
+        # `apps.ventes.utils.phone.normalize_ma_phone` (forçait un préfixe
+        # '212', ne rapprochait jamais un lead à numéro étranger) vers la
+        # même clé QW10 que `selectors.find_client_by_phone` juste au-dessus.
+        from .services import normalize_phone
 
         conditions = []
-        phone_norm = normalize_ma_phone(lead.telephone or '') if lead.telephone else None
+        phone_norm = normalize_phone(lead.telephone or '') if lead.telephone else None
         email_norm = (lead.email or '').strip().lower() or None
         if phone_norm:
             conditions.append(
@@ -1357,7 +1361,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         pks_seen = set()
         if phone_norm:
             for c in client_qs:
-                norm = normalize_ma_phone(c.telephone or '') if c.telephone else None
+                norm = normalize_phone(c.telephone or '') if c.telephone else None
                 if norm and norm == phone_norm and c.pk not in pks_seen:
                     found.append(c)
                     pks_seen.add(c.pk)

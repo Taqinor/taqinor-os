@@ -89,17 +89,21 @@ def _normalize_email(email):
 
 
 def _normalize_phone(phone):
-    """Norme Meta : chiffres uniquement, AVEC indicatif pays (212…).
+    """Norme Meta : chiffres uniquement, AVEC indicatif pays (212… ou étranger).
 
-    Réutilise la normalisation marocaine existante (``ventes.utils.phone``, déjà
-    importée ailleurs dans adsengine) quand elle matche ; sinon repli chiffres
-    bruts (0X… → 212X…). '' si absent."""
+    25/08/2026 — LANE NUMÉROS INTERNATIONAUX : bascule vers
+    ``normalize_phone_e164`` (``ventes.utils.phone``) — ne force plus un
+    préfixe '212' sur un numéro étranger (un +33 restait auparavant
+    corrompu avant hachage, ex. '21233612345678'). Sinon repli chiffres bruts
+    (0X… → 212X…, comportement historique préservé pour un numéro qui n'est
+    ni marocain ni étranger à indicatif explicite reconnaissable). '' si
+    absent."""
     brut = (phone or '').strip()
     if not brut:
         return ''
     try:
-        from apps.ventes.utils.phone import normalize_ma_phone
-        norme = normalize_ma_phone(brut)
+        from apps.ventes.utils.phone import normalize_phone_e164
+        norme = normalize_phone_e164(brut)
         if norme:
             return norme
     except Exception:  # pragma: no cover - défensif
