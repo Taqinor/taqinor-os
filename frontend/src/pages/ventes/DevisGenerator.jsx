@@ -2320,7 +2320,18 @@ export default function DevisGenerator({
         if (scenario === SCENARIO_LES_DEUX || scenario === SCENARIO_AVEC) {
           const kwpAvec = resolveKwcAvec()
           if (Math.abs(kwpAvec - kwp) > 1e-9) {
-            body.dimensionnement_avec = buildDimensionnementAvec(kwpAvec)
+            if (scenario === SCENARIO_AVEC) {
+              // mono avec : compose l'optimum AVEC seul, aucune fusion —
+              // MIROIR EXACT de `composeAvec()` du repli local, qui compose
+              // UNE fois à `kwpAvec`. Envoyer `dimensionnement_avec` ici
+              // ferait composer au serveur DEUX champs fusionnés (variantes
+              // 'sans'/'avec') alors que l'écran n'affiche même pas l'option
+              // sans batterie dans ce scénario : le kWc AVEC devient donc la
+              // puissance UNIQUE de la requête.
+              body.kwc = kwpAvec
+            } else {
+              body.dimensionnement_avec = buildDimensionnementAvec(kwpAvec)
+            }
           }
         }
         const { data } = await ventesApi.composerDevis(body)
