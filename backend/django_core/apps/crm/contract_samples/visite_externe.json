@@ -1,7 +1,15 @@
 {
   "endpoint": "POST /api/django/crm/public/visite/",
   "pourquoi": "T-TRACE (ordres fondateur 25/08/2026) — beacon PUBLIC par lequel le site taqinor.ma signale qu'un visiteur ANONYME consulte une page, avant même toute demande de devis. Finalité ANTI-FRAUDE (détection de doublons et de concurrents qui se font passer pour des prospects) : le commercial doit pouvoir dire « cette personne a déjà visité le site N fois, pour tant de temps », et la direction doit voir la même chose. Le beacon est délibérément MUET côté réponse — il ne renvoie jamais d'état interne, jamais le nombre de visites déjà connues, jamais un identifiant de lead : une page publique ne doit rien pouvoir apprendre du CRM.",
-  "auth": "IDENTIQUE au webhook lead du site (apps/crm/webhooks.py) — en-tête `X-Webhook-Secret` comparé en temps constant à `settings.WEBSITE_LEAD_WEBHOOK_SECRET` (secret absent en configuration = endpoint FERMÉ, jamais ouvert par défaut) + en-tête FACULTATIF `X-Webhook-Timestamp` contrôlé à ±10 min quand il est présent (anciens workers sans l'en-tête restent acceptés). Aucun autre secret, aucune seconde mécanique : la lane web passe par le même chemin worker/proxy que le tunnel.",
+  "auth": "IDENTIQUE au webhook lead du site (apps/crm/webhooks.py) — le module importe littéralement `_secret_ok` et `_freshness_ok` de webhooks.py, il n'y a donc AUCUNE seconde mécanique qui pourrait diverger. Décision d'orchestration du 25/08/2026 : le proxy du site DOIT attacher ce secret (ces visites alimentent les alertes « concurrent » envoyées à la direction — un endpoint non signé permettrait de les empoisonner avec de fausses visites).",
+  "auth_details": {
+    "en_tete_obligatoire": "X-Webhook-Secret",
+    "valeur": "exactement la même que celle déjà envoyée au webhook lead — côté serveur `settings.WEBSITE_LEAD_WEBHOOK_SECRET` (variable d'environnement WEBSITE_LEAD_WEBHOOK_SECRET), déjà présente comme secret du Worker Cloudflare",
+    "verification": "hmac.compare_digest(attendu, fourni) — comparaison en temps constant ; si `settings.WEBSITE_LEAD_WEBHOOK_SECRET` est vide/absent, l'endpoint est FERMÉ (tout appel est refusé), jamais ouvert par défaut",
+    "en_tete_facultatif": "X-Webhook-Timestamp — horodatage ISO 8601 ; contrôlé à ±600 s quand il est PRÉSENT, toléré quand il est ABSENT ou non parsable (anciens workers). Même règle et même constante que le webhook lead.",
+    "refus": "401 avec {\"detail\": \"Secret invalide ou absent.\"} (secret manquant/faux) ou {\"detail\": \"Horodatage hors tolérance.\"} (rejeu). C'est le code du webhook lead, repris tel quel — le beacon échoue en silence côté client dans les deux cas.",
+    "cote_client": "best-effort : la balise ne doit jamais faire apparaître d'erreur ; en cas de refus elle abandonne silencieusement."
+  },
   "exemple": {
     "ok": true
   },
