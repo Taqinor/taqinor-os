@@ -1535,18 +1535,21 @@ def page1():
         # vignette porte donc les deux valeurs, même format sobre. Document
         # mono-option : le builder a déjà recalé le scalaire sur la variante
         # rendue. Devis non divergent ⇒ HTML byte-identique.
+        # La carte ne GRANDIT pas : deux valeurs tiennent en réduisant le corps
+        # du nombre (19 → 14 pt), et la ligne de légende reste sur UNE ligne.
         _kpi_kwc = f'{KWC}&nbsp;kWc'
+        _kpi_kwc_pt = '19pt'
         if (PANNEAUX_DIVERGENTS and _both and KWC_SANS > 0 and KWC_AVEC > 0
                 and NB_PAN_SANS > 0 and NB_PAN_AVEC > 0):
             _kpi_kwc = (f'{KWC_SANS:g}&#160;&#183;&#160;{KWC_AVEC:g}'
                         '&nbsp;kWc').replace(".", ",")
+            _kpi_kwc_pt = '14pt'
             _pan_line = (f'{NB_PAN_SANS} &#183; {NB_PAN_AVEC} panneaux '
-                         f'(sans &#183; avec)'
-                         + (f' &#215; {WP}&nbsp;W' if WP > 0 else ''))
+                         f'(sans &#183; avec)')
         _kpi_cards.append(
             f'<div style="flex:1;min-width:0;margin-right:9px;border:1px solid {CG2};border-left:4px solid {CA};border-radius:6px;padding:14px 12px;background:white;">'
             f'<div style="font-size:4.5pt;letter-spacing:1.5px;color:{CG4};font-weight:400;text-transform:uppercase;margin-bottom:4px;">Puissance Install&#233;e</div>'
-            f'<div class="serif" style="font-size:19pt;color:{CN};line-height:1.05;">{_kpi_kwc}</div>'
+            f'<div class="serif" style="font-size:{_kpi_kwc_pt};color:{CN};line-height:1.05;">{_kpi_kwc}</div>'
             + (f'<div style="font-size:6.5pt;color:{CG4};margin-top:3px;">{_pan_line}</div>'
                if _pan_line else '')
             + '</div>')

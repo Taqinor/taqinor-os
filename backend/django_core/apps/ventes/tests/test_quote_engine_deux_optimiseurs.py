@@ -573,10 +573,13 @@ class TestVignettePuissanceDeuxValeurs(SimpleTestCase):
 
     def test_la_vignette_de_couverture_porte_les_deux_valeurs(self):
         html = F.html_residentiel(**DIVERGENCE_RENDU)
-        self.assertIn('<div class="c1-kpi-v">5,68 · 6,39'
-                      '<span class="c1-u">&nbsp;kWc</span></div>', html)
-        self.assertIn('<div class="c1-kpi-l">Puissance (sans · avec) · '
-                      '8 · 9 panneaux × 710 W</div>', html)
+        # Corps réduit à 13 pt : deux valeurs SANS agrandir la vignette (la
+        # page 1 est pleine — une ligne de plus y coûterait une 4ᵉ page).
+        self.assertIn('<div class="c1-kpi-v" style="font-size:13pt;">'
+                      '5,68 · 6,39<span class="c1-u">&nbsp;kWc</span></div>',
+                      html)
+        self.assertIn('<div class="c1-kpi-l">Puissance sans · avec · '
+                      '8 · 9 panneaux</div>', html)
         # Plus aucune vignette mono-valeur portant le kWc de l'option AVEC.
         self.assertNotIn('<div class="c1-kpi-l">Puissance · 9 panneaux '
                          '× 710 W</div>', html)
@@ -584,8 +587,8 @@ class TestVignettePuissanceDeuxValeurs(SimpleTestCase):
     def test_la_vignette_legacy_porte_les_deux_valeurs(self):
         html = F.html_legacy(**DIVERGENCE_RENDU)
         self.assertIn('5,68&#160;&#183;&#160;6,39&nbsp;kWc', html)
-        self.assertIn('8 &#183; 9 panneaux (sans &#183; avec) '
-                      '&#215; 710&nbsp;W', html)
+        self.assertIn('8 &#183; 9 panneaux (sans &#183; avec)', html)
+        self.assertNotIn('9 panneaux &#215; 710&nbsp;W', html)
 
     def test_sans_divergence_la_vignette_est_celle_d_hier(self):
         html = F.html_residentiel()
@@ -594,6 +597,7 @@ class TestVignettePuissanceDeuxValeurs(SimpleTestCase):
         self.assertIn('<div class="c1-kpi-l">Puissance · 8 panneaux '
                       '× 710 W</div>', html)
         self.assertNotIn('(sans · avec)', html)
+        self.assertNotIn('sans · avec', html)
 
 
 class TestUnePageProductionDeSaBranche(SimpleTestCase):

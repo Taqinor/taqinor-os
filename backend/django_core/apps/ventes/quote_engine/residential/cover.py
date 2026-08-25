@@ -195,17 +195,20 @@ def build(ctx):
         return f'{v:g}'.replace(".", ",")
 
     _nb_s, _nb_a = d.get("nb_panneaux_sans"), d.get("nb_panneaux_avec")
-    _w_s, _w_a = d.get("watt_par_panneau_sans"), d.get("watt_par_panneau_avec")
     kpi_kwc_v = kwc_str
     kpi_kwc_l = f"Puissance · {nb_pan} panneaux × {wp} W"
+    # La vignette ne GRANDIT pas : deux valeurs tiennent en réduisant le corps
+    # du nombre (17 → 13 pt, style en ligne), et la ligne de légende reste sur
+    # UNE ligne — la page 1 est une page pleine, un retour à la ligne de plus y
+    # coûterait une 4ᵉ page (garde des trois pages). La puissance unitaire
+    # (« × 710 W ») n'est pas répétée ici : elle est déjà portée, par option,
+    # par la bande et le tableau comparatif de la page 2.
+    kpi_kwc_style = ""
     if _divergent and deux_options and kwc_sans and kwc_avec and _nb_s and _nb_a:
         kpi_kwc_v = f"{_num_kwc(kwc_sans)} · {_num_kwc(kwc_avec)}"
-        # Puissance unitaire écrite seulement si elle est LA MÊME des deux
-        # côtés (règle de la page 2) — jamais un watt qui ne vaudrait que pour
-        # une option.
-        _wtxt = f" × {_w_s:g} W" if (_w_s and _w_s == _w_a) else ""
-        kpi_kwc_l = (f"Puissance (sans · avec) · {_nb_s:g} · {_nb_a:g} "
-                     f"panneaux{_wtxt}")
+        kpi_kwc_style = ' style="font-size:13pt;"'
+        kpi_kwc_l = (f"Puissance sans · avec · {_nb_s:g} · {_nb_a:g} "
+                     f"panneaux")
 
     # check + arrow glyphs (inline SVG renders crisply in WeasyPrint)
     check = (f'<svg class="c1-chk" viewBox="0 0 14 14">'
@@ -627,7 +630,7 @@ def build(ctx):
     <!-- KPI CHIPS ──────────────────────────────────────────────────────── -->
     <div class="c1-kpis">
       <div class="c1-kpi">
-        <div class="c1-kpi-v">{kpi_kwc_v}<span class="c1-u">&nbsp;kWc</span></div>
+        <div class="c1-kpi-v"{kpi_kwc_style}>{kpi_kwc_v}<span class="c1-u">&nbsp;kWc</span></div>
         <div class="c1-kpi-l">{kpi_kwc_l}</div>
       </div>
       <div class="c1-kpi">
