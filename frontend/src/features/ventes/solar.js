@@ -595,15 +595,14 @@ export function computeROI({
   // « avec » exclut l'onduleur réseau — mêmes filtres que optionTotalsTTC).
   // L-2OPT (fondateur 24/08) — `variante` ('' commun | 'sans' | 'avec', posée
   // par `fusionnerVariantes`) écarte D'ABORD la ligne taguée pour l'AUTRE
-  // option, puis le filtre mot-clé historique s'applique EXACTEMENT comme
-  // avant (une ligne sans `variante` — tout devis hors « Les deux » — n'est
-  // jamais affectée : `undefined !== 'avec'`/`'sans'` vaut toujours vrai).
-  const linesSans = lines
-    .filter(l => l.variante !== 'avec')
-    .filter(l => !isBattery(l.designation) && !isHybridInverter(l.designation))
-  const linesAvec = lines
-    .filter(l => l.variante !== 'sans')
-    .filter(l => !isReseauInverter(l.designation))
+  // option ; F14 (26/08) — une ligne DÉCLARÉE ('sans'/'avec') TRANCHE SEULE
+  // et NE repasse PLUS par le filtre mot-clé (avant F14, une batterie taguée
+  // 'sans' était encore retirée du panier « sans » par le second filtre —
+  // contradiction avec builder.py où la déclaration prime). Seule une ligne
+  // SANS `variante` (tout devis hors « Les deux ») retombe sur les mots-clés,
+  // exactement comme avant.
+  const linesSans = lines.filter(l => appartientAuPanierSans(l))
+  const linesAvec = lines.filter(l => appartientAuPanierAvec(l))
   const inverterCostSans = inverterCostFromLines(linesSans)
   const inverterCostAvec = inverterCostFromLines(linesAvec)
 
@@ -924,6 +923,29 @@ export const isReseauInverter = (d) => {
 export const isAnyInverter = (d) => _norm(d).includes('onduleur')
 export const isPanel = (d) => _norm(d).includes('panneau')
 
+// F14 (26/08/2026) — panier « sans »/« avec » d'UNE ligne, MIROIR EXACT du
+// moteur PDF canonique (quote_engine/builder.py `_repartir_options`,
+// ligne 499-541) et de son jumeau serveur (`apps/ventes/utils/options.py`
+// `_garder_dans_sans`/`_garder_dans_avec`) : une ligne DÉCLARÉE
+// (`variante === 'sans'`/`'avec'`) TRANCHE SEULE et ne repasse JAMAIS par le
+// filtre mot-clé — avant ce correctif, une batterie taguée 'sans' était
+// encore retirée du panier « sans » par un second filtre mot-clé, alors que
+// le PDF la facturait dans ce panier (F14 : écran et PDF divergeaient). Une
+// ligne SANS `variante` ('' — tout devis hors « Les deux ») retombe sur les
+// mots-clés, mot pour mot comme avant.
+export function appartientAuPanierSans(l) {
+  const v = l?.variante
+  if (v === 'avec') return false
+  if (v === 'sans') return true
+  return !isBattery(l?.designation) && !isHybridInverter(l?.designation)
+}
+export function appartientAuPanierAvec(l) {
+  const v = l?.variante
+  if (v === 'sans') return false
+  if (v === 'avec') return true
+  return !isReseauInverter(l?.designation)
+}
+
 // Q1 — prix TTC RÉEL des lignes onduleur d'une option, ou `null` si aucune
 // identifiable. Miroir exact de builder.py `_cout_onduleur` : Σ qty × prix
 // unitaire TTC des lignes onduleur — jamais un pourcentage de repli.
@@ -1208,18 +1230,16 @@ export function comptePanneauxOption(lines, option) {
 // Option 2 AVEC batterie : exclut Onduleur réseau.
 export function optionTotalsTTC(lines, discountPct) {
   const ttc = (l) => (parseFloat(l.quantite) || 0) * (parseFloat(l.prix_unit_ttc) || 0)
-  // L-2OPT — filtre `variante` D'ABORD (écarte la ligne taguée pour l'AUTRE
-  // option, voir fusionnerVariantes), mots-clés EN REPLI ensuite — même
-  // exclusion qu'hier, appliquée qu'une ligne porte un `variante` ou non
-  // (`undefined !== 'avec'`/`'sans'` vaut toujours vrai : aucune régression
-  // sur les lignes legacy/hors « Les deux »).
+  // F14 (26/08) — une ligne DÉCLARÉE ('sans'/'avec') tranche SEULE, plus de
+  // second filtre mot-clé sur elle (voir `appartientAuPanierSans/Avec` :
+  // miroir exact de builder.py `_repartir_options` et de
+  // `apps/ventes/utils/options.py`). Une ligne SANS `variante` retombe sur
+  // les mots-clés, mot pour mot comme avant.
   const totalSansBrut = lines
-    .filter(l => l.variante !== 'avec')
-    .filter(l => !isBattery(l.designation) && !isHybridInverter(l.designation))
+    .filter(appartientAuPanierSans)
     .reduce((s, l) => s + ttc(l), 0)
   const totalAvecBrut = lines
-    .filter(l => l.variante !== 'sans')
-    .filter(l => !isReseauInverter(l.designation))
+    .filter(appartientAuPanierAvec)
     .reduce((s, l) => s + ttc(l), 0)
 
   const pct = parseFloat(discountPct) || 0

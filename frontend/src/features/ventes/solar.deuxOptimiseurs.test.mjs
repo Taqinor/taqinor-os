@@ -148,6 +148,26 @@ test('optionTotalsTTC : une fusion sans/avec calcule les BONS totaux (sans doubl
   assert.equal(totalAvec, 28000 + 17000 + 17 * 1400 + 1000)
 })
 
+// F14 (26/08/2026) — la ligne DÉCLARÉE tranche SEULE, jamais un second
+// filtre mot-clé par-dessus (miroir builder.py `_repartir_options` +
+// `apps/ventes/utils/options.py`). AVANT le correctif, une batterie taguée
+// 'sans' était retirée de `totalSans` par le filtre mot-clé alors que le PDF
+// la facturait dans l'option « sans batterie » — écran et PDF divergeaient.
+test('optionTotalsTTC : F14 — une batterie taguée \'sans\' reste comptée dans le panier sans, écran = PDF', () => {
+  const lignes = [
+    { designation: 'Onduleur réseau Huawei 10kW Triphasé', quantite: 1, prix_unit_ttc: 20000, variante: 'sans' },
+    // Résidu inhabituel mais réel (correction manuelle ou composition
+    // superset) : une batterie DÉCLARÉE 'sans'. Le mot-clé la classerait
+    // « avec », mais la déclaration prime — elle doit rester dans `totalSans`
+    // et JAMAIS apparaître dans `totalAvec`.
+    { designation: 'Batterie Dyness 10 kWh', quantite: 1, prix_unit_ttc: 17000, variante: 'sans' },
+    { designation: 'Panneau Canadien Solar 710W', quantite: 10, prix_unit_ttc: 1400, variante: 'sans' },
+  ]
+  const { totalSans, totalAvec } = optionTotalsTTC(lignes, 0)
+  assert.equal(totalSans, 20000 + 17000 + 10 * 1400)
+  assert.equal(totalAvec, 0)
+})
+
 // ── batteryKwhFromLines — une ligne 'sans' résiduelle ne compte jamais ─────
 
 test('batteryKwhFromLines : une ligne batterie taguée \'sans\' (résidu inévitable de la composition SANS quand les deux optima divergent) ne compte jamais', () => {

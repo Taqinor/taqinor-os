@@ -620,6 +620,36 @@ class LAvalNeMelangeJamaisLesOptions(_Base):
         # Sans option : rien n'est filtré, comme avant.
         self.assertEqual(len(filter_lines_for_option(lignes, '')), 4)
 
+    def test_f14_une_ligne_declaree_contredisant_les_mots_cles_reste_dans_son_panier(self):
+        """F14 — une ligne DÉCLARÉE ('sans'/'avec') tranche SEULE, même quand
+        les mots-clés la contrediraient. Une batterie taguée 'sans' (résidu de
+        composition, ou correction manuelle du vendeur) doit rester dans le
+        panier « sans » : c'est exactement ce que rend le PDF
+        (``builder._repartir_options``, la déclaration prime) — écran et PDF
+        doivent facturer la MÊME chose, jamais l'écran qui l'oublie."""
+        class _Ligne:
+            def __init__(self, designation, variante):
+                self.designation = designation
+                self.variante = variante
+                self.produit = None
+
+        lignes = [_Ligne('Panneau Jinko 550W', ''),
+                  _Ligne('Batterie Dyness 10 kWh', 'sans'),
+                  _Ligne('Onduleur hybride Deye 5kW', 'avec'),
+                  _Ligne('Onduleur réseau Huawei 5kW', 'avec')]
+        sans = [li.designation
+                for li in filter_lines_for_option(lignes, SANS_BATTERIE)]
+        avec = [li.designation
+                for li in filter_lines_for_option(lignes, AVEC_BATTERIE)]
+        # La batterie déclarée 'sans' PART dans le panier sans (contrat F14),
+        # et jamais dans le panier avec malgré son mot-clé.
+        self.assertIn('Batterie Dyness 10 kWh', sans)
+        self.assertNotIn('Batterie Dyness 10 kWh', avec)
+        # L'onduleur réseau déclaré 'avec' reste dans le panier avec malgré
+        # son mot-clé (symétrique).
+        self.assertIn('Onduleur réseau Huawei 5kW', avec)
+        self.assertNotIn('Onduleur réseau Huawei 5kW', sans)
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 5. L'ÉTUDE DE DIMENSIONNEMENT NE PEUT RIEN CASSER
