@@ -26,7 +26,7 @@ Run:
 from decimal import Decimal
 from unittest.mock import patch
 
-from django.test import TestCase
+from django.test import TestCase, tag
 
 from apps.ventes.tests._quote_engine_common import (
     DEUX_OPTIONS, make_client, make_company, make_user,
@@ -224,6 +224,7 @@ class TestDeuxOptimiseursBuilder(_DevisVariantesMixin, TestCase):
                       for it in data['sans_items']), 2))
 
 
+@tag('pdf')  # rendu page 2 via WeasyPrint — lourd → palier release-verify
 class TestDeuxOptimiseursPage2(_DevisVariantesMixin, TestCase):
     """Page 2 du document résidentiel : deltas, bandeau, tableau comparatif."""
 
@@ -298,6 +299,7 @@ class TestDeuxOptimiseursPage2(_DevisVariantesMixin, TestCase):
         self.assertNotIn('(sans · avec)', html_neuf)
 
 
+@tag('pdf')  # rendus complets 3p/4p/onepage via WeasyPrint — lourds → release-verify
 class TestDeuxOptimiseursFormats(_DevisVariantesMixin, TestCase):
     """Nombres de pages et intégrité des formats sur un devis divergent."""
 

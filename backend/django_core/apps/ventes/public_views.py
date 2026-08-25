@@ -1126,10 +1126,12 @@ def _gammes_public(devis, est_standard=False):
     « seule ». L'écart est donné en MAD ABSOLUS et signé côté client.
 
     LES DEUX CÔTÉS DU COMPARATIF SORTENT DE LA MÊME FONCTION (fondateur
-    2026-08-18) : ``display_totals(...)['total']`` pour la gamme courante COMME
-    pour la sœur. ``data['display_total']`` ne convenait pas : il vaut le total
-    SANS batterie dès qu'un devis porte DEUX options et le total AVEC quand il
-    n'en porte qu'une (``builder.build_quote_data``). Comparer un devis
+    2026-08-18 ; note recalée 25/08 — depuis la règle « choix forcé = avec »,
+    ``display_total`` porte l'option AVEC sur un devis bi-option) :
+    ``display_totals(...)['total']`` pour la gamme courante COMME
+    pour la sœur. ``data['display_total']`` seul ne suffit pas partout : il ne
+    couvre pas le repli léger (moteur en échec) que ``build_quote_data`` ne
+    gère pas (``utils/options.totaux_affichage_repli``). Comparer un devis
     bi-option à un devis mono-option revenait donc à soustraire deux
     compositions différentes — l'écart annoncé au client (« + 44 000 MAD »)
     n'était l'écart de rien. Même appel des deux côtés ⇒ sémantique identique
