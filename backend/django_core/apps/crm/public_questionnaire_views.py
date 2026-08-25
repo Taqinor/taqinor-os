@@ -127,4 +127,31 @@ def _repondre(request, lien, interne):
         return Response({'detail': str(exc)},
                         status=status.HTTP_400_BAD_REQUEST)
 
+    _tracer_reponse(request, lien, section.strip())
     return Response({'ok': True, 'enregistrees': enregistrees})
+
+
+def _tracer_reponse(request, lien, section):
+    """T-TRACE (25/08/2026) — trace anti-fraude d'une réponse CLIENT.
+
+    Posé sur le POST uniquement — jamais sur le GET : la docstring de
+    ``_detail`` promet « aucune écriture, aucune trace » à l'affichage, et
+    c'est cette promesse qui rend l'aperçu interne du commercial parfaitement
+    muet. Le jeton INTERNE n'atteint jamais cette fonction (``_repondre``
+    répond 403 avant), donc la garde existante suffit — aucune seconde garde
+    qui pourrait diverger de la première.
+
+    Le jeton n'est pas transmis en entier : le service n'en garde que les 6
+    derniers caractères. Strictement best-effort — une réponse client
+    enregistrée ne doit jamais échouer à cause d'une trace."""
+    try:
+        from .services import appareil_de_requete, tracer_et_correler
+        tracer_et_correler(
+            lien.company, point='questionnaire', lead=lien.lead,
+            appareil_id=appareil_de_requete(request),
+            contexte=f'Questionnaire — section {section}'[:200],
+            token=getattr(lien, 'token', ''),
+            request=request,
+        )
+    except Exception:  # noqa: BLE001 — best-effort, jamais de fuite
+        pass

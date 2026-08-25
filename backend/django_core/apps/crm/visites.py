@@ -137,17 +137,34 @@ def user_agent_de_requete(request) -> str:
 
 
 def appareil_de_requete(request) -> str:
-    """``appareil_id`` porté par le corps d'une requête publique (clé ADDITIVE).
+    """``appareil_id`` porté par une requête publique (clé ADDITIVE).
 
-    Absent = comportement historique inchangé : ce module ne réclame jamais la
-    clé, il l'utilise quand elle est là."""
+    Trois emplacements, dans l'ordre — un POST le met dans son corps, un GET
+    de page ne peut pas :
+      1. le corps (``request.data``) — beacon, questionnaire, engagement ;
+      2. la query string (``?appareil_id=…``) — ouverture d'un document ;
+      3. l'en-tête ``X-Appareil-Id`` — quand le site préfère ne rien mettre
+         dans l'URL.
+
+    Absent des trois = comportement historique inchangé : ce module ne réclame
+    jamais la clé, il l'utilise quand elle est là."""
     if request is None:
         return ''
     try:
         donnees = getattr(request, 'data', None)
-        if not isinstance(donnees, dict):
-            return ''
-        return _texte(donnees.get('appareil_id'), MAX_APPAREIL)
+        if isinstance(donnees, dict):
+            trouve = _texte(donnees.get('appareil_id'), MAX_APPAREIL)
+            if trouve:
+                return trouve
+        params = getattr(request, 'query_params', None)
+        if params is None:
+            params = getattr(request, 'GET', None)
+        if params is not None:
+            trouve = _texte(params.get('appareil_id'), MAX_APPAREIL)
+            if trouve:
+                return trouve
+        return _texte(
+            request.headers.get('X-Appareil-Id'), MAX_APPAREIL)
     except Exception:  # noqa: BLE001 — défensif
         return ''
 
