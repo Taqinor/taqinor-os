@@ -1222,7 +1222,40 @@ def _pmax_wc_du_produit(produit):
     return pmax if pmax > 0 else None
 
 
-def cible_depuis_lignes(devis):
+def lignes_de_variante(lignes, variante):
+    """Les lignes qui composent l'option ``variante`` d'un devis.
+
+    C'est-à-dire les lignes COMMUNES (``variante=''`` — donc TOUTES celles d'un
+    devis non varianté) plus celles qui sont propres à cette option. Une ligne
+    de l'AUTRE option décrit une AUTRE installation : la faire entrer dans ce
+    panier donnerait un ensemble qu'aucun client n'achète.
+
+    ``variante`` vaut ``'sans'`` (défaut) ou ``'avec'``.
+    """
+    propre = VARIANTE_AVEC if variante == VARIANTE_AVEC else VARIANTE_SANS
+    return [li for li in lignes
+            if (getattr(li, 'variante', '') or '')
+            in (VARIANTE_COMMUNE, propre)]
+
+
+def option_avec_servable(devis):
+    """Ce devis peut-il RÉELLEMENT livrer l'option « Avec batterie » ?
+
+    MÊME critère que partout ailleurs dans le domaine — le moteur PDF
+    (``quote_engine/builder.py`` : ``avec_ok = has_hybride and has_batterie``,
+    d'où descendent ``variantes_servables`` et ``dimensionnement_options``) et
+    le scénario stocké à la création (``_a_batterie and _a_hybride``) : l'option
+    « avec » exige un onduleur HYBRIDE ET une BATTERIE. Lu sur le sous-ensemble
+    de lignes qui compose CETTE option, jamais sur le panier mélangé.
+
+    LECTURE PURE : n'écrit rien, ne lève pas sur un devis sans lignes.
+    """
+    lignes = lignes_de_variante(_lignes_produit(devis), VARIANTE_AVEC)
+    return (any(_classe_ligne(li, _is_hybrid_inverter) for li in lignes)
+            and any(_classe_ligne(li, _is_battery) for li in lignes))
+
+
+def cible_depuis_lignes(devis, variante='sans'):
     """PV16 — cible de calepinage LUE DANS LES LIGNES du devis.
 
     Rend toujours le même dict, quelles que soient les données :
@@ -1252,6 +1285,18 @@ def cible_depuis_lignes(devis):
     Additionner les deux vues (ce que faisait la somme brute des lignes)
     donnerait un nombre qui ne décrit AUCUNE installation.
 
+    CTX3D (25/08/2026) — ``scenario`` ET ``batterie`` DÉCRIVENT LA MÊME OPTION
+    QUE ``panneaux``. Ils se lisaient sur TOUTES les lignes du devis pendant que
+    le compte, lui, était filtré : un devis « Les deux » rendait donc
+    ``panneaux`` = l'option SANS accompagné de ``scenario='avec_batterie'`` —
+    une cible que rien ne décrit, envoyée telle quelle à l'écran 3D (PV17). Les
+    quatre grandeurs viennent désormais du MÊME sous-ensemble de lignes.
+
+    ``variante`` choisit ce sous-ensemble : ``'sans'`` (défaut — l'option 1,
+    celle que l'écran dessine, comportement historique) ou ``'avec'``. Sur un
+    devis NON varianté les deux vues sont identiques : les lignes y sont toutes
+    communes.
+
     LA FORME DU DICT NE BOUGE PAS : ces six clés sont un contrat gelé (le
     contexte de conception PV17 le repique tel quel). Un devis NON varianté —
     tous ceux d'hier — rend donc exactement les mêmes valeurs qu'avant.
@@ -1259,6 +1304,9 @@ def cible_depuis_lignes(devis):
     LECTURE PURE : aucun statut, aucune ligne, aucune étude n'est écrite.
     """
     lignes = _lignes_produit(devis)
+    # Le panier de CETTE option — la seule base légitime de tous les scalaires
+    # ci-dessous (cf. CTX3D dans le docstring).
+    lignes_option = lignes_de_variante(lignes, variante)
 
     def _nom(ligne):
         return ligne.designation or getattr(ligne.produit, 'nom', '') or ''
@@ -1272,17 +1320,22 @@ def cible_depuis_lignes(devis):
         except (ArithmeticError, TypeError, ValueError):
             return 0
 
-    # L-2OPT — LE COMPTE EST CELUI DE L'OPTION SANS : les lignes COMMUNES
+    # L-2OPT — LE COMPTE EST CELUI DE L'OPTION DEMANDÉE : les lignes COMMUNES
     # (``variante=''``, c'est-à-dire toutes celles d'un devis d'hier) plus
-    # celles propres à « sans ». Une ligne « avec » décrit l'AUTRE option — la
-    # compter ici donnerait la somme des deux paniers, un nombre de panneaux
-    # qu'aucune installation ne porte.
-    panneaux = sum(
-        _quantite(li) for li in lignes_panneau
-        if (getattr(li, 'variante', '') or '') in ('', VARIANTE_SANS))
+    # celles qui lui sont propres. Une ligne de l'autre option décrit une AUTRE
+    # installation — la compter ici donnerait la somme des deux paniers, un
+    # nombre de panneaux qu'aucune installation ne porte.
+    lignes_panneau_option = [li for li in lignes_option
+                             if _classe_ligne(li, _is_panel)]
+    panneaux = sum(_quantite(li) for li in lignes_panneau_option)
 
-    batterie = any(_classe_ligne(li, _is_battery) for li in lignes)
-    hybride = any(_classe_ligne(li, _is_hybrid_inverter) for li in lignes)
+    # CTX3D — MÊME sous-ensemble que le compte : sur un devis « Les deux », la
+    # batterie et l'onduleur hybride appartiennent à l'option « avec ». Les
+    # chercher dans tout le devis faisait décrire l'option 1 par le scénario de
+    # l'option 2.
+    batterie = any(_classe_ligne(li, _is_battery) for li in lignes_option)
+    hybride = any(_classe_ligne(li, _is_hybrid_inverter)
+                  for li in lignes_option)
     if batterie:
         scenario = 'avec_batterie'
     elif hybride:

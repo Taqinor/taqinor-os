@@ -2209,6 +2209,22 @@ def contexte_conception_devis(devis, company):
          carte: {available, maptilerKey, mapboxToken},
          modifiable, raison_lecture_seule, avertissements}
 
+    CTX3D (25/08/2026) — ``cible`` décrit L'OPTION 1 (« sans batterie »), celle
+    que l'écran dessine par défaut : son compte de panneaux ET son scénario
+    viennent maintenant du MÊME sous-ensemble de lignes (avant, le scénario
+    était lu sur tout le devis et pouvait annoncer « avec_batterie » au-dessus
+    d'un compte de panneaux « sans »).
+
+    UNE CLÉ SŒUR OPTIONNELLE, ``cible_avec`` (même forme que ``cible``, ses six
+    clés PV16 — sans ``bill_kwh``, la consommation du client étant unique et
+    déjà portée par ``cible``), décrit L'OPTION 2 d'un devis qui la sert
+    réellement. Elle n'est présente QUE si les lignes peuvent livrer l'option
+    « Avec batterie » — onduleur hybride ET batterie, le MÊME critère
+    ``avec_ok`` que le moteur PDF, ``variantes_servables`` et
+    ``dimensionnement_options`` (``services.option_avec_servable``) — et ABSENTE
+    sinon : jamais une option que ce devis ne peut pas livrer. Un écran qui ne
+    la lit pas est strictement inchangé (clé purement additive).
+
     ``geometrie.source`` vaut ``'devis'`` (le devis porte déjà un layout 3D),
     ``'lead'`` (repli sur l'épingle/le contour posés au diagnostic) ou
     ``'none'``. ``modifiable`` est faux — avec une raison FRANÇAISE dans
@@ -2218,7 +2234,7 @@ def contexte_conception_devis(devis, company):
     modifiable, jamais ``None``.
     """
     from .models import Devis
-    from .services import cible_depuis_lignes
+    from .services import cible_depuis_lignes, option_avec_servable
 
     if devis is None:
         return None
@@ -2237,6 +2253,14 @@ def contexte_conception_devis(devis, company):
         cible['bill_kwh'] = float(bill_kwh) if bill_kwh is not None else None
     except (TypeError, ValueError):
         cible['bill_kwh'] = None
+
+    # CTX3D — L'OPTION 2, quand ce devis la sert VRAIMENT. Sur un devis « Les
+    # deux » les deux options n'ont ni le même champ ni le même scénario : la
+    # cible seule ne pouvait en décrire qu'une, et l'écran n'avait aucun moyen
+    # de savoir que l'autre existait. Critère = celui du moteur PDF (onduleur
+    # hybride ET batterie dans le panier « avec »), jamais une option inventée.
+    cible_avec = (cible_depuis_lignes(devis, variante='avec')
+                  if option_avec_servable(devis) else None)
 
     # ── Géométrie : le layout du devis PRIME sur le repère du lead ──
     layout = devis.roof_layout if isinstance(devis.roof_layout, dict) else None
@@ -2309,7 +2333,7 @@ def contexte_conception_devis(devis, company):
             or (getattr(lead, 'telephone', '') or '').strip()
         adresse = adresse or (getattr(lead, 'adresse', '') or '').strip()
         ville = (getattr(lead, 'ville', '') or '').strip()
-    return {
+    contexte = {
         'devis': {
             'id': devis.pk,
             'reference': devis.reference,
@@ -2334,6 +2358,13 @@ def contexte_conception_devis(devis, company):
         'raison_lecture_seule': raison,
         'avertissements': avertissements,
     }
+    # CTX3D — clé OPTIONNELLE : présente seulement quand l'option 2 est
+    # réellement servable. Absente (et non ``None``) sinon : un écran qui teste
+    # sa présence sait alors qu'il n'y a rien à proposer, sans avoir à
+    # distinguer « pas d'option » de « option vide ».
+    if cible_avec is not None:
+        contexte['cible_avec'] = cible_avec
+    return contexte
 
 
 # ═══════════════════════════════════════════════════════════════════════════

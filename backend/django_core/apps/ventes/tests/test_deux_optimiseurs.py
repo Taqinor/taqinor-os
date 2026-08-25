@@ -510,7 +510,18 @@ class LeCalepinagePlafonneChaqueOption(_Base):
             [a for a in cible['avertissements'] if 'modèles' in a], [])
         # La cible dessinée par l'écran 3D est celle de l'option 1.
         self.assertEqual(cible['panneaux'], 8)
-        self.assertEqual(cible['scenario'], 'avec_batterie')
+        # CTX3D (25/08/2026) — CETTE ASSERTION DISAIT LE DÉFAUT. Le scénario se
+        # lisait sur TOUTES les lignes : la cible annonçait « avec_batterie »
+        # au-dessus du compte de panneaux de l'option SANS (dont l'onduleur est
+        # RÉSEAU et qui ne porte aucune batterie) — une installation que rien
+        # ne décrit. Les quatre grandeurs viennent maintenant du MÊME
+        # sous-ensemble ; l'option 2 a sa propre vue (``variante='avec'``, et
+        # la clé ``cible_avec`` du contexte PV17).
+        self.assertEqual(cible['scenario'], 'reseau')
+        self.assertFalse(cible['batterie'])
+        avec = services.cible_depuis_lignes(devis, variante='avec')
+        self.assertEqual((avec['panneaux'], avec['scenario']),
+                         (10, 'avec_batterie'))
 
 
 # ═══════════════════════════════════════════════════════════════════════════
