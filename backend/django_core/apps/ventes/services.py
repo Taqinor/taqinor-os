@@ -6188,9 +6188,10 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
             # instance utilisée par tout le reste de l'acceptation : ses trois
             # relations sont jointes ici plutôt que relues paresseusement une
             # par une plus bas (``_create_esign_record`` → ``devis.company``,
-            # ``_send_acceptance_emails`` → ``devis.client``,
-            # ``_notify_seller_accepted``/attribution → ``devis.lead``). Aucun
-            # changement de comportement : les mêmes objets, en une requête.
+            # ``_send_acceptance_emails``/``_notify_seller_accepted`` →
+            # ``devis.client``, ``_persist_attribution`` → ``devis.lead``).
+            # Aucun changement de comportement : les mêmes objets, en une
+            # requête.
             # ``of=('self',)`` est OBLIGATOIRE ici : ``company`` et ``lead``
             # sont nullables, donc joints en LEFT OUTER JOIN — et PostgreSQL
             # refuse « FOR UPDATE » sur le côté nullable d'une jointure
