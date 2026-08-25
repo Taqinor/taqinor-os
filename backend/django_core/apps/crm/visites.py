@@ -87,6 +87,12 @@ def _texte(valeur, longueur) -> str:
         return ''
 
 
+#: Alias PUBLIC du nettoyeur — les vues publiques bornent leurs entrées avec
+#: EXACTEMENT le même code que le service (jamais une seconde troncature qui
+#: pourrait diverger des colonnes du modèle).
+nettoyer_texte = _texte
+
+
 def _duree(valeur) -> int:
     """Secondes bornées [0, MAX_DUREE_S] — une valeur illisible vaut 0."""
     try:
