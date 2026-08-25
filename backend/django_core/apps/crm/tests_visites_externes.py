@@ -388,6 +388,57 @@ class TestAccrocheProposition(TestCase):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# (d bis) Questionnaire — le CLIENT trace, l'aperçu INTERNE ne trace RIEN
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestAccrocheQuestionnaire(TestCase):
+    """La garde L-QUEST (« un aperçu ne déclenche rien ») doit rester vraie
+    après T-TRACE : le jeton INTERNE ne peut pas écrire, donc il ne peut pas
+    non plus laisser de trace de visite."""
+
+    def setUp(self):
+        from .models import QuestionnaireLien
+
+        self.company = make_company('ttrace-questionnaire')
+        self.lead = Lead.objects.create(
+            company=self.company, nom='Prospect Questionnaire')
+        self.lien = QuestionnaireLien.objects.create(
+            company=self.company, lead=self.lead)
+
+    def _url(self, token):
+        return reverse('public-questionnaire', args=[token])
+
+    def test_reponse_client_trace_la_visite(self):
+        reponse = APIClient().post(
+            self._url(self.lien.token),
+            {'section': 'contact', 'reponses': {'ville': 'Casablanca'},
+             'appareil_id': APPAREIL},
+            format='json')
+        self.assertEqual(reponse.status_code, 200)
+        visite = VisiteExterne.objects.get()
+        self.assertEqual(visite.point, VisiteExterne.Point.QUESTIONNAIRE)
+        self.assertEqual(visite.lead_id, self.lead.pk)
+        self.assertEqual(visite.appareil_id, APPAREIL)
+        self.assertEqual(visite.token_suffixe, self.lien.token[-6:])
+
+    def test_le_GET_ne_trace_rien(self):
+        """``_detail`` promet « aucune écriture, aucune trace » — c'est cette
+        promesse qui rend l'aperçu interne muet ; T-TRACE ne l'entame pas."""
+        reponse = APIClient().get(self._url(self.lien.token))
+        self.assertEqual(reponse.status_code, 200)
+        self.assertEqual(VisiteExterne.objects.count(), 0)
+
+    def test_le_jeton_interne_ne_trace_rien(self):
+        reponse = APIClient().post(
+            self._url(self.lien.token_interne),
+            {'section': 'contact', 'reponses': {'ville': 'Casablanca'},
+             'appareil_id': APPAREIL},
+            format='json')
+        self.assertEqual(reponse.status_code, 403)
+        self.assertEqual(VisiteExterne.objects.count(), 0)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # (e)+(f)+(g) Webhook lead : historique, alerte rouge, direction
 # ═══════════════════════════════════════════════════════════════════════════
 
