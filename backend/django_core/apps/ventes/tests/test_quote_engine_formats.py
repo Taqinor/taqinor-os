@@ -350,13 +350,18 @@ class TestPdfFormats(TestCase):
         et l'onduleur du devis de la classe (valeurs de fixture plausibles,
         fenêtres larges — le sujet du test est la PAGE, pas le dimensionnement)."""
         from apps.stock.models import FicheTechnique
-        panneau = onduleur = None
+        panneau, onduleurs = None, []
         for ligne in self.devis.lignes.all():
             nom = (ligne.designation or '').lower()
             if panneau is None and 'panneau' in nom:
                 panneau = ligne.produit
-            elif onduleur is None and 'onduleur' in nom:
-                onduleur = ligne.produit
+            elif 'onduleur' in nom and ligne.produit not in onduleurs:
+                # Recalage 25/08 (règle fondateur « choix forcé = avec ») : le
+                # schéma unifilaire se génère désormais sur l'onduleur de
+                # l'option AVEC quand elle est servable — la fixture équipe
+                # donc CHAQUE onduleur du devis (réseau ET hybride), pas
+                # seulement le premier venu, sinon le SVG saute en silence.
+                onduleurs.append(ligne.produit)
         FicheTechnique.objects.create(
             company=self.company, produit=panneau, type_fiche='module',
             pmax_wc=Decimal('550'), voc_v=Decimal('49.9'),
@@ -364,11 +369,14 @@ class TestPdfFormats(TestCase):
             imp_a=Decimal('13.2'),
             temp_coeff_voc_pct_c=Decimal('-0.25'),
             temp_coeff_pmax_pct_c=Decimal('-0.29'))
-        FicheTechnique.objects.create(
-            company=self.company, produit=onduleur, type_fiche='onduleur',
-            ond_ac_kw=Decimal('10'), ond_phases=3, ond_n_mppt=2,
-            ond_mppt_v_min=Decimal('200.0'), ond_mppt_v_max=Decimal('950.0'),
-            ond_v_max_abs=Decimal('1100.0'), ond_i_max_mppt_a=Decimal('26.0'))
+        for onduleur in onduleurs:
+            FicheTechnique.objects.create(
+                company=self.company, produit=onduleur, type_fiche='onduleur',
+                ond_ac_kw=Decimal('10'), ond_phases=3, ond_n_mppt=2,
+                ond_mppt_v_min=Decimal('200.0'),
+                ond_mppt_v_max=Decimal('950.0'),
+                ond_v_max_abs=Decimal('1100.0'),
+                ond_i_max_mppt_a=Decimal('26.0'))
 
     def test_annexe_technique_adds_a_fourth_page(self):
         self._equiper_fiches_annexe()
