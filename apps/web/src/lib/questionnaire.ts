@@ -333,23 +333,30 @@ export interface QuestionnairePostBody {
   section: QuestionnaireSectionId;
   reponses: Record<string, unknown>;
   photo?: string;
+  /** LANE T-WEB (25/08/2026) — empreinte d'appareil anonyme, additive (voir
+   *  lib/visite.ts `appareilId`) : présente uniquement quand fournie par
+   *  l'appelant, jamais fabriquée ici. */
+  appareil_id?: string;
 }
 
 /**
  * Construit le corps POST complet d'une section. `photoDataUrl` n'est repris
  * que pour une section photo_* ET s'il est un data URL image valide et sous
  * le plafond de taille — sinon il est simplement omis (jamais un envoi
- * malformé, jamais une seconde tentative silencieuse).
+ * malformé, jamais une seconde tentative silencieuse). `appareilId`
+ * (LANE T-WEB) est ADDITIF : omis quand absent/vide, jamais bloquant.
  */
 export function buildQuestionnairePostBody(
   section: QuestionnaireSectionId,
   raw: Record<string, unknown>,
   photoDataUrl?: string | null,
+  appareilId?: string,
 ): QuestionnairePostBody {
   const body: QuestionnairePostBody = { section, reponses: buildSectionReponses(section, raw) };
   if (isPhotoSection(section) && isValidPhotoDataUrl(photoDataUrl)) {
     body.photo = photoDataUrl;
   }
+  if (appareilId) body.appareil_id = appareilId;
   return body;
 }
 

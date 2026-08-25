@@ -127,7 +127,13 @@ function prefillBoolRadio(key: string): 'oui' | 'non' | '' {
 }
 ---
 
-<Layout title={pageTitle} description={pageDescription} noindex={true} footerMinimal={true}>
+<Layout
+  title={pageTitle}
+  description={pageDescription}
+  noindex={true}
+  footerMinimal={true}
+  skipVisitBeacon={interne}
+>
   <section class="scroll-mt-20 bg-blanc-azur px-4 pb-20 pt-10 text-encre sm:pb-24">
     <div class="mx-auto max-w-2xl">
 
@@ -536,6 +542,10 @@ function prefillBoolRadio(key: string): 'oui' | 'non' | '' {
     QUESTIONNAIRE_PROXY_PATH,
     type QuestionnaireSectionId,
   } from '../../lib/questionnaire';
+  // LANE T-WEB (25/08/2026) — empreinte d'appareil anonyme, additive (voir
+  // lib/visite.ts) : jointe aux POST de réponses, jamais à un aperçu interne
+  // (postSection le refuse déjà avant d'y arriver, cf. init.interne ci-dessous).
+  import { appareilId } from '../../lib/visite';
 
   interface QInit {
     sections: QuestionnaireSectionId[];
@@ -894,7 +904,7 @@ function prefillBoolRadio(key: string): 'oui' | 'non' | '' {
       }
       const raw = collectSectionRaw(section);
       const photo = isPhotoSection(section) ? photoDataUrls[section] ?? null : null;
-      const body = buildQuestionnairePostBody(section, raw, photo);
+      const body = buildQuestionnairePostBody(section, raw, photo, appareilId());
       if (isEmptyPostBody(body)) return { ok: true };
 
       try {
