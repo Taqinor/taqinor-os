@@ -542,6 +542,15 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
             >
               Concevoir la toiture (3D){hasGps ? ' 📍' : ''}
             </DropdownMenuItem>
+            {/* LANE Q-C (fondateur 25/08/2026) — le commercial choisit quelles
+                informations demander au lead (défaut = ce qui manque),
+                toutes cochables/décochables avant l'envoi. */}
+            <DropdownMenuItem
+              onSelect={() => onAction('questionnaire')}
+              title="Envoyer un lien de questionnaire au lead (2 min, sections cochables)"
+            >
+              Envoyer un questionnaire
+            </DropdownMenuItem>
             {!alreadyClient && (
               <DropdownMenuItem
                 onSelect={() => onAction('convert')}
