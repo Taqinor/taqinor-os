@@ -1159,7 +1159,11 @@ export default function ToitureDesign({ mode = 'lead' }) {
               {/* PV25 — sélection MULTIPLE (marquee au glissé + Maj, ou mode sélection au
                   doigt), déplacement du groupe / de la rangée entière, et nudge d'azimut.
                   Chaque déplacement reste « tout ou rien » : si un seul panneau du groupe
-                  n'a pas d'emplacement valide, rien ne bouge. */}
+                  n'a pas d'emplacement valide, rien ne bouge.
+                  PV34 — les gestes SANS modificateur sont désormais les principaux : glisser
+                  sur le toit encadre, double-cliquer prend la rangée. Ces boutons restent le
+                  repli tactile (et le mode rangée), et le compteur dit en permanence combien
+                  de panneaux sont tenus. */}
               <div className="flex flex-wrap items-center gap-3">
                 <span className="tech-label text-lune-faint">Sélection &amp; rangée</span>
                 <button type="button" id="rp9-layout-select" aria-pressed="false"
@@ -1174,7 +1178,21 @@ export default function ToitureDesign({ mode = 'lead' }) {
                   className="border border-white/25 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:border-brass-400 hover:text-brass-300 disabled:cursor-not-allowed disabled:opacity-40">
                   ✕ Effacer la sélection
                 </button>
+                <span id="rp9-layout-selcount" data-rp9-selcount="0" aria-live="polite"
+                  className="text-sm font-semibold text-brass-300">
+                  Aucun panneau sélectionné
+                </span>
               </div>
+              <p className="text-xs leading-relaxed text-lune-soft">
+                Sur la 3D : <strong className="text-lune-soft">glissez sur le toit, à côté des
+                panneaux</strong>, pour encadrer un groupe ou une rangée ·{' '}
+                <strong className="text-lune-soft">double-clic</strong> sur un panneau = toute sa
+                rangée · <strong className="text-lune-soft">Ctrl (⌘) + clic</strong> ajoute ou
+                retire un panneau · <strong className="text-lune-soft">Maj + glissé</strong> ajoute
+                un cadre au groupe · <strong className="text-lune-soft">Échap</strong> lâche la
+                sélection. Glissez ensuite n’importe quel panneau sélectionné : tout le groupe
+                suit le curseur.
+              </p>
 
               {/* PV26 — annuler / rétablir (Ctrl+Z / Ctrl+Y, ou ⌘). Les flèches du
                   clavier déplacent le panneau (ou le groupe) d'un emplacement. */}
