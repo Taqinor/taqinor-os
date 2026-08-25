@@ -286,6 +286,32 @@ class TestBeaconPublic(TestCase):
         self.assertIn('Mozilla', visite.user_agent)
         self.assertNotEqual(visite.user_agent, 'MENTEUR')
 
+    def test_sans_appareil_les_battements_se_regroupent_sur_ip_et_navigateur(self):
+        """Repli anti-explosion de lignes : tant que le site n'a pas posé
+        d'``appareil_id``, deux battements du même visiteur sur la même page
+        doivent tout de même prolonger LA MÊME visite — sinon une proposition
+        lue 10 minutes produirait des dizaines de lignes."""
+        for duree in (20, 40):
+            APIClient().post(
+                self.url, {'page': '/tarifs', 'duree_s': duree},
+                format='json', HTTP_X_WEBHOOK_SECRET=SECRET,
+                HTTP_X_FORWARDED_FOR='41.77.1.5',
+                HTTP_USER_AGENT='Mozilla/5.0 (Android)')
+        self.assertEqual(VisiteExterne.objects.count(), 1)
+        visite = VisiteExterne.objects.get()
+        self.assertEqual(visite.duree_s, 40)
+        self.assertEqual(visite.appareil_id, '')
+
+    def test_deux_navigateurs_derriere_la_meme_ip_restent_distincts(self):
+        """Le repli ne doit JAMAIS fusionner deux visiteurs : au Maroc une IP
+        est massivement partagée, donc le navigateur fait partie de la clé."""
+        for agent in ('Mozilla/5.0 (Android)', 'Mozilla/5.0 (iPhone)'):
+            APIClient().post(
+                self.url, {'page': '/tarifs', 'duree_s': 20},
+                format='json', HTTP_X_WEBHOOK_SECRET=SECRET,
+                HTTP_X_FORWARDED_FOR='41.77.1.5', HTTP_USER_AGENT=agent)
+        self.assertEqual(VisiteExterne.objects.count(), 2)
+
     def test_reponse_muette_ne_fuit_aucun_etat_interne(self):
         self.battre(duree_s=10)
         corps = self.battre(duree_s=30).json()

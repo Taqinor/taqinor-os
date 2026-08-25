@@ -211,16 +211,29 @@ def enregistrer_visite_externe(company, *, point, appareil_id='', lead=None,
         duree_s = _duree(duree_s)
         fin = bool(fin)
 
-        visite = None
+        depuis = timezone.now() - timedelta(
+            minutes=VisiteExterne.FENETRE_BATTEMENT_MINUTES)
+        en_cours = VisiteExterne.objects.filter(
+            company=company, point=point, contexte=contexte,
+            terminee=False, created_at__gte=depuis)
         if appareil_id:
-            depuis = timezone.now() - timedelta(
-                minutes=VisiteExterne.FENETRE_BATTEMENT_MINUTES)
-            visite = (VisiteExterne.objects
-                      .filter(company=company, appareil_id=appareil_id,
-                              point=point, contexte=contexte,
-                              terminee=False, created_at__gte=depuis)
-                      .order_by('-created_at')
-                      .first())
+            # Cas NORMAL : l'appareil identifie le visiteur.
+            en_cours = en_cours.filter(appareil_id=appareil_id)
+        elif ip:
+            # Repli quand le site n'a pas (encore) posé d'``appareil_id`` —
+            # sans lui, CHAQUE battement d'un beacon ouvrirait une ligne, et
+            # une proposition lue 10 min en produirait des dizaines. On
+            # regroupe alors sur (IP + navigateur), la meilleure approximation
+            # disponible du « même visiteur, même page, même demi-heure ». Ce
+            # repli sert UNIQUEMENT à ne pas dupliquer des lignes : il n'est
+            # jamais utilisé pour AFFIRMER une identité (les corrélations
+            # « concurrent » qui s'appuient sur l'IP le disent explicitement).
+            en_cours = en_cours.filter(
+                appareil_id='', ip=ip, user_agent=user_agent)
+        else:
+            # Ni appareil ni IP : rien sur quoi regrouper honnêtement.
+            en_cours = en_cours.none()
+        visite = en_cours.order_by('-created_at').first()
 
         if visite is not None:
             champs = []
