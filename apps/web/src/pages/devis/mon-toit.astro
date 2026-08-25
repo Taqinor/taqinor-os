@@ -2181,6 +2181,9 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   import { captureWhatsappText, whatsappLink } from '../../lib/whatsapp';
   import { WHATSAPP_LEADS } from '../../lib/nap';
   import { buildClientRef, buildIdempotencyKey, validateLead, MAX_BILL_BY_MODE } from '../../lib/lead';
+  // LANE T-WEB (25/08/2026) — empreinte d'appareil anonyme (voir lib/visite.ts) :
+  // échoée telle quelle sur le lead pour corréler avec les visites de balise.
+  import { appareilId } from '../../lib/visite';
   // QX/Lane C — TYPE seul (effacé au build : Three.js/viewerOnly ne rejoint
   // JAMAIS le bundle initial — WJ18 ; le module réel reste en import() lazy).
   import type { RoofImageSpec } from '../../scripts/roofPro11/viewerOnly';
@@ -4553,6 +4556,9 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
       // l'horodatage, qui DIFFÈRE à chaque renvoi et ne déduplique donc rien.
       idempotencyKey: getOrCreateDedupTokens().idempotencyKey,
       eventId: getOrCreateDedupTokens().eventId,
+      // LANE T-WEB — clé additive, jamais bloquante : '' (stockage indisponible)
+      // devient `undefined` (JSON.stringify l'omet), jamais une chaîne vide envoyée.
+      appareilId: appareilId() || undefined,
       // W353 — préférence de créneau de visite technique (facultative, STATIQUE).
       visitWindowPart: visitWindowPart || undefined,
       visitWindowWeek: visitWindowWeek || undefined,

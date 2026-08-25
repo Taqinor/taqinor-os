@@ -69,6 +69,11 @@ export const POST: APIRoute = async ({ request }) => {
   const token = typeof body.token === 'string' ? body.token.trim() : '';
   const reference = typeof body.reference === 'string' ? body.reference.trim() : '';
   const clientPhone = typeof body.clientPhone === 'string' ? body.clientPhone : '';
+  // LANE T-WEB (25/08/2026) — empreinte d'appareil anonyme, ADDITIVE (voir
+  // lib/visite.ts). Anti-garbage minimal (format UUID attendu) ; une valeur
+  // malformée est simplement écartée, jamais bloquante.
+  const appareilIdRaw = typeof body.appareilId === 'string' ? body.appareilId.trim() : '';
+  const appareilId = /^[0-9a-f-]{36}$/i.test(appareilIdRaw) ? appareilIdRaw : undefined;
   const eventRaw = body.event;
   const event: ProposalEngagementEvent | null = VALID_EVENTS.includes(eventRaw as ProposalEngagementEvent)
     ? (eventRaw as ProposalEngagementEvent)
@@ -78,7 +83,7 @@ export const POST: APIRoute = async ({ request }) => {
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars -- clientPhone kept for API compat, never forwarded (WJ109)
   void clientPhone;
-  const payload = buildProposalTrackPayload({ reference, token }, event);
+  const payload = buildProposalTrackPayload({ reference, token }, event, appareilId);
   if (!payload) {
     // Rien de corrélable (ni référence ni token) : événement abandonné
     // proprement, jamais rien posté nulle part.

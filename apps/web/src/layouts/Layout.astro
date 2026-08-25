@@ -46,6 +46,15 @@ interface Props {
    * qui l'a envoyée, comment joindre, et les deux liens légaux obligatoires.
    */
   footerMinimal?: boolean;
+  /**
+   * LANE T-WEB (25/08/2026) — n'installe PAS la balise de visite site entier
+   * (`lib/visite.ts` `demarrerBalise`) pour cette page : réservé aux aperçus
+   * commerciaux internes (jeton interne `apercu_interne` de
+   * `proposition/[...token].astro`, `interne` de `questionnaire/[token].astro`)
+   * — un aperçu commercial n'est pas une visite CLIENT à mesurer. Défaut
+   * `false` : toutes les autres pages gardent la balise, rendu inchangé.
+   */
+  skipVisitBeacon?: boolean;
 }
 const {
   title,
@@ -58,6 +67,7 @@ const {
   noindex = false,
   locales,
   footerMinimal = false,
+  skipVisitBeacon = false,
 } = Astro.props;
 // WJ76 — repli sur `title` quand la page ne fournit pas de titre de partage
 // dédié : rendu STRICTEMENT inchangé pour toutes les pages existantes.
@@ -282,6 +292,28 @@ const jsonLd = {
          le signal `tq_consent` (localStorage) lu par la capture fbclid/UTM
          ci-dessus (WB29) et par le funnel beacon (WB30). -->
     <ConsentBanner />
+    <!-- LANE T-WEB (25/08/2026) — Balise de visite site entier : empreinte
+         d'appareil anonyme + durée cumulée par page (lib/visite.ts,
+         demarrerBalise). Le pont define:vars→window est nécessaire pour faire
+         passer `lang`/`skipVisitBeacon` (calculés côté serveur) au module
+         client réel juste en-dessous, qui seul importe demarrerBalise (un
+         script define:vars devient is:inline côté Astro — les imports n'y
+         sont pas traités). Gated en interne par demarrerBalise elle-même :
+         aperçu interne (skipVisitBeacon) ET consentement `tq_consent`
+         (ConsentBanner ci-dessus, WB29/WB30/WB31) — jamais de balise avant
+         l'un des deux. -->
+    <script define:vars={{ tqVisiteLangue: lang, tqVisiteSkip: skipVisitBeacon }}>
+      window.__TQ_VISITE__ = { langue: tqVisiteLangue, skip: tqVisiteSkip };
+    </script>
+    <script>
+      import { demarrerBalise } from '../lib/visite';
+      const init = (window as unknown as { __TQ_VISITE__?: { langue?: 'fr' | 'en' | 'ar'; skip?: boolean } })
+        .__TQ_VISITE__;
+      demarrerBalise(location.pathname, {
+        langue: init?.langue ?? 'fr',
+        apercuInterne: init?.skip === true,
+      });
+    </script>
     <!-- W357 — PWA installable + tolérante au hors-ligne : enregistrement du
          service worker de mise en cache (coquille + dernière estimation du
          visiteur). AUCUN push/notification — voir public/sw.js. Différé à

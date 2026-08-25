@@ -124,6 +124,18 @@ export interface ProposalResponse {
   statut: string;
   quote: ProposalQuote;
   /**
+   * L-INTPREV / LANE T-WEB (25/08/2026) — `true` UNIQUEMENT quand CE GET a
+   * résolu le jeton d'APERÇU INTERNE (le commercial relit sa proposition
+   * depuis l'ERP), cf. `public_views._resolve_share_link_by_token` +
+   * `_resolve_proposal_link`. Payload par ailleurs IDENTIQUE au jeton
+   * public : la page s'en sert seulement pour un bandeau discret, désactiver
+   * la signature et les demandes de contact, et couper toute
+   * balise/beacon (elle ne doit jamais engager le client ni compter une
+   * visite CLIENT depuis un aperçu commercial). Absent/faux → rendu
+   * strictement inchangé.
+   */
+  apercu_interne?: boolean | null;
+  /**
    * WJ126/QX49 — mode d'installation (clé machine MINUSCULE, cf.
    * `Devis.ModeInstallation`) exposé au NIVEAU RACINE du payload par
    * `proposal_data`. C'est la source de vérité de la variante à rendre —
@@ -3572,6 +3584,10 @@ export interface ProposalTrackPayload {
   reference: string;
   token: string;
   page: string;
+  /** LANE T-WEB (25/08/2026) — empreinte d'appareil anonyme, ADDITIVE (voir
+   *  lib/visite.ts `appareilId`) : présente uniquement quand fournie par
+   *  l'appelant, jamais fabriquée ici, jamais requise. */
+  appareil_id?: string;
 }
 
 /**
@@ -3579,11 +3595,13 @@ export interface ProposalTrackPayload {
  * ou `null` quand ni référence ni token ne sont disponibles (rien de
  * corrélable à journaliser). Ce payload est PUREMENT télémétrique : il ne
  * porte plus de téléphone/contact et ne doit JAMAIS être posté vers le webhook
- * de capture de lead (voir la note ci-dessus).
+ * de capture de lead (voir la note ci-dessus). `appareilId` (LANE T-WEB) est
+ * ADDITIF : omis du payload quand absent/vide.
  */
 export function buildProposalTrackPayload(
   ctx: ProposalTrackContext,
   event: ProposalEngagementEvent,
+  appareilId?: string,
 ): ProposalTrackPayload | null {
   const reference = (ctx.reference ?? '').trim();
   const token = (ctx.token ?? '').trim();
@@ -3593,6 +3611,7 @@ export function buildProposalTrackPayload(
     reference,
     token,
     page: `/proposition/${token}`,
+    ...(appareilId ? { appareil_id: appareilId } : {}),
   };
 }
 
