@@ -17,7 +17,8 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
-from apps.crm.models import Lead
+from apps.crm.models import Client, Lead
+from apps.crm.selectors import find_client_by_phone
 
 User = get_user_model()
 
@@ -78,3 +79,34 @@ class TestLeadForeignPhoneSurvivesApiWrite(TestCase):
         })
         self.assertEqual(resp.status_code, 201, resp.data)
         self.assertEqual(resp.data['telephone'], '212612345678')
+
+
+class TestFindClientByPhoneForeign(TestCase):
+    """XSAV26 — `find_client_by_phone` (crm/selectors.py) rapproche désormais
+    un client à numéro étranger, y compris sous deux graphies différentes du
+    même numéro (avant : `normalize_ma_phone` renvoyait presque toujours une
+    valeur — mais FORCÉE '212' — donc deux numéros étrangers DIFFÉRENTS
+    pouvaient se rapprocher à tort, ou un même +33 sous deux graphies ne
+    jamais se retrouver)."""
+
+    def setUp(self):
+        self.company = make_company(slug='phone-intl-rapp', nom='Rapprochement Co')
+
+    def test_matches_same_foreign_number_under_different_spellings(self):
+        client = Client.objects.create(
+            company=self.company, nom='Diaspora', telephone='+33612345678')
+        found = find_client_by_phone(self.company, '0033 6 12 34 56 78')
+        self.assertEqual(found, client)
+
+    def test_does_not_match_different_foreign_numbers(self):
+        Client.objects.create(
+            company=self.company, nom='Diaspora A', telephone='+33612345678')
+        found = find_client_by_phone(self.company, '+34600123456')
+        self.assertIsNone(found)
+
+    def test_still_matches_moroccan_numbers(self):
+        # Comportement historique préservé (aucune régression).
+        client = Client.objects.create(
+            company=self.company, nom='Marocain', telephone='0612345678')
+        found = find_client_by_phone(self.company, '+212 6 12 34 56 78')
+        self.assertEqual(found, client)
