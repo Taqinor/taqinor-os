@@ -225,12 +225,15 @@ export function estimerPanneaux(factureHiver, perTranche = 8) {
   return Math.floor(factureHiver / 900) * (Number.isFinite(n) && n > 0 ? n : 8)
 }
 
-// ── Règle de dimensionnement fondateur (18/08) ───────────────────────────────
+// ── Règle de dimensionnement fondateur (18/08, doctrine d'optimum 25/08) ─────
 // 1. Une installation se vend par PALIERS de 5 kWc — jamais une taille
 //    intermédiaire (5, 10, 15, 20 …).
 // 2. Le besoin se lit sur la facture d'hiver : 5 kWc par tranche de 900 MAD.
-// 3. La taille RETENUE est celle qui minimise le retour sur investissement
-//    (`optimalKwcByPayback`), pas la plus grosse qui rentre sur le toit.
+// 3. La taille RETENUE n'est PLUS figée au seul palier de payback minimal :
+//    depuis ce palier, on grimpe vers la PLUS GRANDE taille atteignable dont
+//    chaque palier supplémentaire reste rentable sous tolérance
+//    (`optimalKwcByPayback`, `TOLERANCE_PAYBACK`) — jamais la plus grosse qui
+//    rentre sur le toit non plus.
 export const KWC_STEP = 5
 export const MAD_PAR_PALIER = 900
 
@@ -1801,29 +1804,48 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
   return lignes
 }
 
-// ── Taille OPTIMALE par retour sur investissement (règle fondateur 18/08) ────
+// ── Taille OPTIMALE par retour sur investissement (règle fondateur 18/08,
+//    doctrine de TOLÉRANCE 25/08 — miroir du backend, `services.py`) ─────────
 // On ne vend plus « la plus grosse installation qui rentre » ni « la taille lue
 // sur la facture » : on BALAIE les paliers de 5 kWc, on chiffre CHAQUE palier
 // avec le catalogue réel (`autoFillLines` — jamais un barème au kWc inventé,
 // il n'en existe aucun), on calcule le payback 25 ans de chacun
-// (`computeCashflowPayback`, le MÊME que l'écran, le PDF et la proposition) et
-// on garde le palier dont le payback est le plus court.
+// (`computeCashflowPayback`, le MÊME que l'écran, le PDF et la proposition).
 //
 // Pourquoi un vrai optimum existe : en descendant, les coûts fixes (onduleur,
 // structure, pose) se diluent moins bien ; en montant, la production dépasse
 // l'autoconsommation et mord sur des tranches ONEE moins chères. Les deux
 // forces se croisent — c'est ce croisement qu'on cherche.
 //
+// DOCTRINE (fondateur 25/08) — l'optimum n'est PLUS le palier au meilleur
+// payback : on part de ce palier, puis on GRIMPE vers la plus grande taille
+// atteignable par des pas ascendants dont CHAQUE pas MARGINAL (Δcoût du pas /
+// Δéconomie annuelle du pas — PAS le payback cumulé du palier) se rembourse
+// en ≤ H = meilleur_payback × (1 + TOLERANCE_PAYBACK). Dès qu'un pas dépasse
+// H (ou n'apporte aucune économie marginale positive), l'ascension s'arrête —
+// on ne saute jamais un pas refusé pour en essayer un plus loin.
+//
+// Preuve que le payback GLOBAL du palier retenu reste ≤ H : notons C/E le
+// coût/l'économie annuelle CUMULÉS depuis le palier de départ (C0, E0, avec
+// C0/E0 = meilleur_payback ≤ H). Chaque pas admis vérifie ΔCi ≤ H·ΔEi ; en
+// sommant sur tous les pas admis : Cn − C0 ≤ H·(En − E0), donc
+// Cn ≤ (C0 − H·E0) + H·En. Comme C0 − H·E0 ≤ 0 (puisque C0/E0 ≤ H), il vient
+// Cn/En ≤ H pour TOUT palier atteint par l'ascension, quel que soit le nombre
+// de pas — le payback global ne peut jamais dépasser la tolérance, seulement
+// s'en approcher.
+//
 // `besoinKwc` (facture d'hiver, 900 MAD → 5 kWc) PLAFONNE le balayage : on ne
 // propose JAMAIS plus gros que le besoin lu sur la facture. C'est volontaire —
 // le modèle d'économie hérité du simulateur ne sature pas à la consommation
-// réelle, donc sans ce plafond « payback minimal » dériverait mécaniquement
-// vers le haut et sur-vendrait le client. L'optimisation joue donc SOUS le
-// besoin : elle retient un palier plus petit quand il rembourse plus vite.
+// réelle, donc sans ce plafond l'ascension dériverait mécaniquement vers le
+// haut et sur-vendrait le client. L'optimisation joue donc SOUS le besoin.
 // `maxKwc` (surface de toit réelle) resserre encore la borne.
 //
-// Retourne { kwcOptimal, nbPanneaux, paliers[] } — `paliers` porte le détail
-// chiffré de chaque candidat pour que l'écran puisse JUSTIFIER le choix.
+// Retourne { kwcOptimal, nbPanneaux, paliers[] } — signature et forme du
+// retour INCHANGÉES ; `paliers` gagne (additif) `paybackMarginal`/
+// `admissibleMarginal` sur les candidats examinés pendant l'ascension, pour
+// que l'écran puisse JUSTIFIER le choix sans casser les lecteurs existants.
+export const TOLERANCE_PAYBACK = 0.20 // fondateur 25/08 — 20 % au-dessus du meilleur payback
 export function optimalKwcByPayback({
   produits, factures, dayUsagePct, panelW = 710, structureType,
   discountPct, kwhPrice, efficiency, productible, consoAnnuelleKwh, utility,
@@ -1832,6 +1854,13 @@ export function optimalKwcByPayback({
   // QUELLES à chaque palier chiffré : le balayage compare des paliers
   // composés avec la MÊME contrainte de marque que l'auto-remplissage final.
   marques,
+  // Doctrine de tolérance (fondateur 25/08) — override RÉSERVÉ AUX TESTS, pour
+  // prouver que TOLERANCE_PAYBACK=0 reproduit exactement l'ancien choix pur
+  // payback (aucun pas marginal ne peut alors dépasser le meilleur payback
+  // lui-même). Les DEUX appels réels (DevisGenerator, sans/avecBatterie) ne
+  // le passent jamais et héritent donc TOLERANCE_PAYBACK (0,20) — signature
+  // et comportement par défaut inchangés pour eux.
+  tolerancePayback = TOLERANCE_PAYBACK,
 }) {
   const pas = (Number.isFinite(Number(step)) && Number(step) > 0) ? Number(step) : KWC_STEP
   const besoin = Number(besoinKwc) > 0 ? Number(besoinKwc) : 0
@@ -1897,14 +1926,37 @@ export function optimalKwcByPayback({
       repliMarqueManquante: marquesManquantes.length > 0,
     }
   }
-  // Payback le plus court ; à égalité stricte on garde le palier le PLUS PETIT
-  // (même retour, moins d'argent immobilisé chez le client).
+  // Point de départ : le payback le plus court ; à égalité stricte on garde
+  // le palier le PLUS PETIT (même retour, moins d'argent immobilisé).
   const meilleur = chiffrables.reduce((best, p) => (
     p.payback < best.payback - 1e-9 ? p : best
   ), chiffrables[0])
+
+  // Ascension sous tolérance (doctrine fondateur 25/08 — voir le commentaire
+  // au-dessus de la fonction pour la preuve). `chiffrables` conserve l'ordre
+  // CROISSANT de `paliers` (filter ne réordonne jamais), donc grimper par
+  // index depuis `meilleur` grimpe bien en kWc.
+  const tol = Number.isFinite(Number(tolerancePayback)) && Number(tolerancePayback) >= 0
+    ? Number(tolerancePayback) : TOLERANCE_PAYBACK
+  const H = meilleur.payback * (1 + tol)
+  const idxMeilleur = chiffrables.indexOf(meilleur)
+  let retenu = meilleur
+  for (let i = idxMeilleur + 1; i < chiffrables.length; i++) {
+    const candidat = chiffrables[i]
+    const deltaCout = candidat.totalTtc - retenu.totalTtc
+    const deltaEco = candidat.economieAnnuelle - retenu.economieAnnuelle
+    // Pas d'économie marginale positive ⇒ ce pas ne se rembourse JAMAIS —
+    // payback marginal infini, donc forcément inadmissible.
+    const paybackMarginal = deltaEco > 0 ? deltaCout / deltaEco : Infinity
+    candidat.paybackMarginal = Number.isFinite(paybackMarginal) ? paybackMarginal : null
+    candidat.admissibleMarginal = Number.isFinite(paybackMarginal) && paybackMarginal <= H + 1e-9
+    if (!candidat.admissibleMarginal) break
+    retenu = candidat
+  }
+
   return {
-    kwcOptimal: meilleur.kwc,
-    nbPanneaux: meilleur.nbPanneaux ?? panneauxPourKwc(meilleur.kwc, panelW),
+    kwcOptimal: retenu.kwc,
+    nbPanneaux: retenu.nbPanneaux ?? panneauxPourKwc(retenu.kwc, panelW),
     paliers,
     marquesManquantes,
     repliMarqueManquante: false,
