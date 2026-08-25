@@ -225,15 +225,17 @@ export function estimerPanneaux(factureHiver, perTranche = 8) {
   return Math.floor(factureHiver / 900) * (Number.isFinite(n) && n > 0 ? n : 8)
 }
 
-// ── Règle de dimensionnement fondateur (18/08, doctrine d'optimum 25/08) ─────
+// ── Règle de dimensionnement fondateur (18/08, doctrine d'optimum sous
+//    HORIZON FIXE 25/08) ────────────────────────────────────────────────────
 // 1. Une installation se vend par PALIERS de 5 kWc — jamais une taille
 //    intermédiaire (5, 10, 15, 20 …).
 // 2. Le besoin se lit sur la facture d'hiver : 5 kWc par tranche de 900 MAD.
 // 3. La taille RETENUE n'est PLUS figée au seul palier de payback minimal :
 //    depuis ce palier, on grimpe vers la PLUS GRANDE taille atteignable dont
-//    chaque palier supplémentaire reste rentable sous tolérance
-//    (`optimalKwcByPayback`, `TOLERANCE_PAYBACK`) — jamais la plus grosse qui
-//    rentre sur le toit non plus.
+//    CHAQUE pas marginal (Δcoût/Δéconomie_annuelle) se rembourse en ≤
+//    `HORIZON_MARGINAL_PV` ans, un horizon FIXE (plus une tolérance relative
+//    au meilleur payback — voir `optimalKwcByPayback`) — jamais la plus
+//    grosse qui rentre sur le toit non plus.
 export const KWC_STEP = 5
 export const MAD_PAR_PALIER = 900
 
@@ -1805,7 +1807,7 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
 }
 
 // ── Taille OPTIMALE par retour sur investissement (règle fondateur 18/08,
-//    doctrine de TOLÉRANCE 25/08 — miroir du backend, `services.py`) ─────────
+//    doctrine d'HORIZON FIXE 25/08 — miroir du backend, `services.py`) ───────
 // On ne vend plus « la plus grosse installation qui rentre » ni « la taille lue
 // sur la facture » : on BALAIE les paliers de 5 kWc, on chiffre CHAQUE palier
 // avec le catalogue réel (`autoFillLines` — jamais un barème au kWc inventé,
@@ -1817,22 +1819,46 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
 // l'autoconsommation et mord sur des tranches ONEE moins chères. Les deux
 // forces se croisent — c'est ce croisement qu'on cherche.
 //
-// DOCTRINE (fondateur 25/08) — l'optimum n'est PLUS le palier au meilleur
-// payback : on part de ce palier, puis on GRIMPE vers la plus grande taille
-// atteignable par des pas ascendants dont CHAQUE pas MARGINAL (Δcoût du pas /
-// Δéconomie annuelle du pas — PAS le payback cumulé du palier) se rembourse
-// en ≤ H = meilleur_payback × (1 + TOLERANCE_PAYBACK). Dès qu'un pas dépasse
-// H (ou n'apporte aucune économie marginale positive), l'ascension s'arrête —
-// on ne saute jamais un pas refusé pour en essayer un plus loin.
+// DOCTRINE D'HORIZON FIXE (fondateur 25/08, RECALÉE depuis la tolérance
+// relative du même jour) — « chaque dirham ajouté à l'installation doit se
+// rembourser en ≤ `HORIZON_MARGINAL_PV` ans ». L'horizon RELATIF (tolérance
+// en % au-dessus du meilleur payback) punissait les meilleurs dossiers : un
+// meilleur payback à 3 ans ne tolérait qu'un pas marginal ≤ 3,6 ans (20 %),
+// refusant des pas qui se remboursent pourtant en 5 ans sur du matériel
+// garanti 30 ans. Un horizon FIXE traite chaque pas marginal sur son propre
+// mérite, indépendamment du reste du dossier. Précédent documenté : une
+// contrainte payback ≤ 10 ans couplée à la maximisation de valeur (MDPI
+// Energies 19(7):1803) — soit environ 10 %/an de rendement simple exigé sur
+// le pas marginal lui-même. (Le backend porte en plus, pour son propre
+// balayage conjoint PV+batterie, `HORIZON_MARGINAL_BATTERIE = 7` sur les pas
+// de stockage — hors périmètre de ce fichier, mentionné ici pour l'alignement
+// des deux moteurs.)
 //
-// Preuve que le payback GLOBAL du palier retenu reste ≤ H : notons C/E le
-// coût/l'économie annuelle CUMULÉS depuis le palier de départ (C0, E0, avec
-// C0/E0 = meilleur_payback ≤ H). Chaque pas admis vérifie ΔCi ≤ H·ΔEi ; en
-// sommant sur tous les pas admis : Cn − C0 ≤ H·(En − E0), donc
-// Cn ≤ (C0 − H·E0) + H·En. Comme C0 − H·E0 ≤ 0 (puisque C0/E0 ≤ H), il vient
-// Cn/En ≤ H pour TOUT palier atteint par l'ascension, quel que soit le nombre
-// de pas — le payback global ne peut jamais dépasser la tolérance, seulement
-// s'en approcher.
+// On part du palier au meilleur payback, puis on GRIMPE vers la plus grande
+// taille atteignable par des pas ascendants dont CHAQUE pas MARGINAL (Δcoût
+// du pas / Δéconomie annuelle du pas — PAS le payback cumulé du palier) se
+// rembourse en ≤ `HORIZON_MARGINAL_PV`, un seuil FIXE qui ne dépend PLUS du
+// meilleur payback du dossier. Dès qu'un pas dépasse l'horizon (ou n'apporte
+// aucune économie marginale positive), l'ascension s'arrête — on ne saute
+// jamais un pas refusé pour en essayer un plus loin.
+//
+// Preuve sur le payback GLOBAL du palier retenu — notons C/E le coût/
+// l'économie annuelle CUMULÉS depuis le palier de départ (C0, E0, avec
+// C0/E0 = meilleur_payback, H = HORIZON_MARGINAL_PV). Chaque pas admis vérifie
+// ΔCi ≤ H·ΔEi ; en sommant sur tous les pas admis : Cn − C0 ≤ H·(En − E0),
+// donc Cn ≤ (C0 − H·E0) + H·En, donc Cn/En ≤ H + (C0 − H·E0)/En. Deux cas :
+// (1) meilleur_payback ≤ H — alors C0 − H·E0 ≤ 0, donc Cn/En ≤ H pour TOUT
+//     palier atteint : le payback global ne peut jamais dépasser l'horizon.
+// (2) meilleur_payback > H (dossier dont même le meilleur palier dépasse
+//     l'horizon) — alors C0 − H·E0 > 0, et le terme (C0 − H·E0)/En DÉCROÎT
+//     avec En (En ≥ E0 en montant) depuis sa valeur en E0, qui vaut
+//     exactement meilleur_payback − H ; donc Cn/En ≤ H + (meilleur_payback −
+//     H) = meilleur_payback. Ce cas est la GARDE meilleur-payback-hors-
+//     horizon : la doctrine ne peut jamais faire pire que le choix pur
+//     payback qu'elle remplace.
+// En combinant les deux cas, la preuve télescopique du commit 12927b2b (qui
+// garantissait payback global ≤ H) devient honnêtement, sous horizon fixe :
+// payback global du palier retenu ≤ max(meilleur_payback, HORIZON_MARGINAL_PV).
 //
 // `besoinKwc` (facture d'hiver, 900 MAD → 5 kWc) PLAFONNE le balayage : on ne
 // propose JAMAIS plus gros que le besoin lu sur la facture. C'est volontaire —
@@ -1845,7 +1871,7 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
 // retour INCHANGÉES ; `paliers` gagne (additif) `paybackMarginal`/
 // `admissibleMarginal` sur les candidats examinés pendant l'ascension, pour
 // que l'écran puisse JUSTIFIER le choix sans casser les lecteurs existants.
-export const TOLERANCE_PAYBACK = 0.20 // fondateur 25/08 — 20 % au-dessus du meilleur payback
+export const HORIZON_MARGINAL_PV = 10 // fondateur 25/08 — ans, seuil FIXE (plus une tolérance relative)
 export function optimalKwcByPayback({
   produits, factures, dayUsagePct, panelW = 710, structureType,
   discountPct, kwhPrice, efficiency, productible, consoAnnuelleKwh, utility,
@@ -1854,13 +1880,14 @@ export function optimalKwcByPayback({
   // QUELLES à chaque palier chiffré : le balayage compare des paliers
   // composés avec la MÊME contrainte de marque que l'auto-remplissage final.
   marques,
-  // Doctrine de tolérance (fondateur 25/08) — override RÉSERVÉ AUX TESTS, pour
-  // prouver que TOLERANCE_PAYBACK=0 reproduit exactement l'ancien choix pur
-  // payback (aucun pas marginal ne peut alors dépasser le meilleur payback
-  // lui-même). Les DEUX appels réels (DevisGenerator, sans/avecBatterie) ne
-  // le passent jamais et héritent donc TOLERANCE_PAYBACK (0,20) — signature
-  // et comportement par défaut inchangés pour eux.
-  tolerancePayback = TOLERANCE_PAYBACK,
+  // Doctrine d'horizon fixe (fondateur 25/08) — override RÉSERVÉ AUX TESTS.
+  // `horizonMarginal = meilleur_payback` (dynamique, calculé par l'appelant)
+  // reproduit exactement l'ancien choix relatif-zéro (aucun pas marginal ne
+  // peut alors dépasser le meilleur payback lui-même). Les DEUX appels réels
+  // (DevisGenerator, sans/avecBatterie) ne le passent jamais et héritent donc
+  // HORIZON_MARGINAL_PV (10 ans) — signature et comportement par défaut
+  // inchangés pour eux.
+  horizonMarginal = HORIZON_MARGINAL_PV,
 }) {
   const pas = (Number.isFinite(Number(step)) && Number(step) > 0) ? Number(step) : KWC_STEP
   const besoin = Number(besoinKwc) > 0 ? Number(besoinKwc) : 0
@@ -1932,13 +1959,14 @@ export function optimalKwcByPayback({
     p.payback < best.payback - 1e-9 ? p : best
   ), chiffrables[0])
 
-  // Ascension sous tolérance (doctrine fondateur 25/08 — voir le commentaire
-  // au-dessus de la fonction pour la preuve). `chiffrables` conserve l'ordre
-  // CROISSANT de `paliers` (filter ne réordonne jamais), donc grimper par
-  // index depuis `meilleur` grimpe bien en kWc.
-  const tol = Number.isFinite(Number(tolerancePayback)) && Number(tolerancePayback) >= 0
-    ? Number(tolerancePayback) : TOLERANCE_PAYBACK
-  const H = meilleur.payback * (1 + tol)
+  // Ascension sous horizon FIXE (doctrine fondateur 25/08 — voir le
+  // commentaire au-dessus de la fonction pour la preuve). `chiffrables`
+  // conserve l'ordre CROISSANT de `paliers` (filter ne réordonne jamais),
+  // donc grimper par index depuis `meilleur` grimpe bien en kWc. `H` ne
+  // dépend PLUS de `meilleur.payback` — c'est le seuil fixe lui-même (ou son
+  // override réservé aux tests).
+  const H = Number.isFinite(Number(horizonMarginal)) && Number(horizonMarginal) >= 0
+    ? Number(horizonMarginal) : HORIZON_MARGINAL_PV
   const idxMeilleur = chiffrables.indexOf(meilleur)
   let retenu = meilleur
   for (let i = idxMeilleur + 1; i < chiffrables.length; i++) {
