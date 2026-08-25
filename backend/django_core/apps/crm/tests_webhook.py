@@ -101,11 +101,15 @@ class WebsiteLeadWebhookTests(TestCase):
         self.assertEqual(lead.ville, 'Rabat')  # mise à jour, pas de jumeau
         # Les DEUX payloads bruts sont conservés (jamais perdre une trace)
         self.assertEqual(WebsiteLeadPayload.objects.count(), 2)
-        # La mise à jour idempotente est tracée dans le chatter.
-        from apps.crm.models import LeadActivity
-        self.assertTrue(LeadActivity.objects.filter(
-            lead=lead, kind=LeadActivity.Kind.NOTE,
-            body__startswith='Mis à jour via le site web').exists())
+        # CLIOVR — la mise à jour idempotente est tracée comme partout
+        # ailleurs (activity.log_changes) : le champ réellement écrit
+        # apparaît avec son ancienne et sa nouvelle valeur, plus de note
+        # plate qui ne disait jamais QUEL champ avait bougé.
+        mod = LeadActivity.objects.get(
+            lead=lead, kind=LeadActivity.Kind.MODIFICATION, field='ville')
+        self.assertEqual(mod.old_value, 'Casablanca')
+        self.assertEqual(mod.new_value, 'Rabat')
+        self.assertIsNone(mod.user)
 
     def test_relance_avec_adresse_seule_ne_touche_pas_au_gps_existant(self):
         """Ordre fondateur 24/08/2026 — le GPS ne doit jamais être écrasé ni
@@ -240,6 +244,136 @@ class WebsiteLeadWebhookTests(TestCase):
         self.assertIsNone(lead.facture_ete)
         self.assertFalse(lead.ete_differente)
         self.assertIsNone(lead.raccordement)
+
+
+@override_settings(WEBSITE_LEAD_WEBHOOK_SECRET=SECRET)
+class CliovrManuallyTouchedFieldsTests(TestCase):
+    """CLIOVR (25/08/2026) — un champ CORRIGÉ À LA MAIN (LeadActivity
+    MODIFICATION portant un `user` réel) ne doit plus être écrasé par un
+    second POST < 60 s (retry réseau, étape suivante du tunnel) : même
+    discipline que la garde GPS pré-existante, généralisée à tout champ
+    suivi par ``activity.TRACKED_FIELDS``. La fusion est en outre tracée
+    comme partout ailleurs (``activity.log_changes``) au lieu d'une note
+    plate qui ne disait jamais quel champ avait bougé."""
+
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+        from apps.roles.models import Role
+        self.company = Company.objects.create(
+            nom='Taqinor CLIOVR', slug='taqinor-cliovr')
+        role = Role.objects.create(
+            company=self.company, nom='Commercial',
+            permissions=['crm_creer', 'crm_voir'])
+        self.commercial = get_user_model().objects.create_user(
+            username='commercial_cliovr', password='x', company=self.company,
+            role=role)
+        self.url = reverse('website-lead-webhook')
+
+    def post(self, data, secret=SECRET):
+        headers = {'HTTP_X_WEBHOOK_SECRET': secret} if secret is not None else {}
+        return self.client.post(
+            self.url, data=json.dumps(data),
+            content_type='application/json', **headers)
+
+    def _corriger_a_la_main(self, lead, field, old_value, new_value):
+        """Simule l'édition CRM réelle (``views.py:746``) : le champ est
+        écrit ET l'activité MODIFICATION porte un `user` réel — exactement
+        ce que la garde interroge pour distinguer « manuel » de « système »."""
+        setattr(lead, field, new_value)
+        lead.save(update_fields=[field])
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=self.commercial,
+            kind=LeadActivity.Kind.MODIFICATION, field=field,
+            field_label=field, old_value=old_value, new_value=new_value,
+        )
+
+    def test_champ_corrige_a_la_main_resiste_au_re_post_60s(self):
+        """(a) — la correction humaine n'est jamais écrasée par le renvoi."""
+        first = self.post(payload_site(phoneE164='+212677100001'))
+        self.assertEqual(first.status_code, 201, first.content)
+        lead = Lead.objects.get(pk=first.json()['lead_id'])
+        self.assertEqual(lead.ville, 'Casablanca')
+
+        self._corriger_a_la_main(lead, 'ville', 'Casablanca', 'Ain Diab')
+
+        retry = self.post(payload_site(
+            phoneE164='+212677100001', city='Rabat'))
+        self.assertEqual(retry.status_code, 200, retry.content)
+        lead.refresh_from_db()
+        self.assertEqual(lead.ville, 'Ain Diab')
+
+    def test_champ_jamais_touche_a_la_main_reste_enrichissable(self):
+        """(b) — un champ vide jamais corrigé à la main continue de se
+        remplir normalement par un renvoi qui l'apporte enfin ; le champ
+        réellement écrit est tracé old→new."""
+        first = self.post(payload_site(phoneE164='+212677100002'))
+        self.assertEqual(first.status_code, 201, first.content)
+        lead = Lead.objects.get(pk=first.json()['lead_id'])
+        self.assertIsNone(lead.adresse)
+
+        retry = self.post(payload_site(
+            phoneE164='+212677100002', adresse='12 rue Nouvelle'))
+        self.assertEqual(retry.status_code, 200, retry.content)
+        lead.refresh_from_db()
+        self.assertEqual(lead.adresse, '12 rue Nouvelle')
+        mod = LeadActivity.objects.get(
+            lead=lead, kind=LeadActivity.Kind.MODIFICATION, field='adresse')
+        self.assertEqual(mod.new_value, '12 rue Nouvelle')
+        self.assertIsNone(mod.user)
+
+    def test_gps_garde_sa_discipline_propre(self):
+        """(c) — la garde GPS pré-existante (jamais écrasé une fois posé)
+        reste intacte, indépendamment de la nouvelle garde « manuel »."""
+        first = self.post(payload_site(
+            phoneE164='+212677100003', gpsLat=33.5, gpsLng=-7.6))
+        self.assertEqual(first.status_code, 201, first.content)
+        lead = Lead.objects.get(pk=first.json()['lead_id'])
+
+        retry = self.post(payload_site(
+            phoneE164='+212677100003', gpsLat=34.0, gpsLng=-6.8))
+        self.assertEqual(retry.status_code, 200, retry.content)
+        lead.refresh_from_db()
+        self.assertEqual(float(lead.gps_lat), 33.5)
+        self.assertEqual(float(lead.gps_lng), -7.6)
+
+    def test_aucune_trace_si_rien_ne_change_reellement(self):
+        """(d) — la trace old→new n'apparaît que si un champ a RÉELLEMENT
+        changé ; un renvoi strictement identique ne laisse aucune entrée
+        MODIFICATION supplémentaire."""
+        first = self.post(payload_site(phoneE164='+212677100004'))
+        self.assertEqual(first.status_code, 201, first.content)
+        lead = Lead.objects.get(pk=first.json()['lead_id'])
+
+        retry = self.post(payload_site(phoneE164='+212677100004'))
+        self.assertEqual(retry.status_code, 200, retry.content)
+        self.assertEqual(
+            LeadActivity.objects.filter(
+                lead=lead, kind=LeadActivity.Kind.MODIFICATION).count(),
+            0)
+
+    def test_le_webhook_ne_se_bloque_pas_lui_meme(self):
+        """(e) — les activités MODIFICATION que le webhook écrit lui-même
+        (user=None) ne comptent JAMAIS comme « manuelles » : un 3e envoi
+        continue de faire progresser un champ que seul le webhook a déjà
+        mis à jour, sans que sa propre trace ne se bloque elle-même."""
+        first = self.post(payload_site(phoneE164='+212677100005'))
+        self.assertEqual(first.status_code, 201, first.content)
+        lead = Lead.objects.get(pk=first.json()['lead_id'])
+
+        second = self.post(payload_site(
+            phoneE164='+212677100005', city='Rabat'))
+        self.assertEqual(second.status_code, 200, second.content)
+        lead.refresh_from_db()
+        self.assertEqual(lead.ville, 'Rabat')
+        self.assertIsNone(LeadActivity.objects.get(
+            lead=lead, kind=LeadActivity.Kind.MODIFICATION,
+            field='ville').user)
+
+        third = self.post(payload_site(
+            phoneE164='+212677100005', city='Fès'))
+        self.assertEqual(third.status_code, 200, third.content)
+        lead.refresh_from_db()
+        self.assertEqual(lead.ville, 'Fès')
 
 
 @override_settings(WEBSITE_LEAD_WEBHOOK_SECRET=SECRET)

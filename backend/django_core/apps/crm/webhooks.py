@@ -1502,19 +1502,41 @@ def _map_and_link_lead(raw, data, company):
         # deuxième envoi (le visiteur a dessiné puis re-soumis dans la minute)
         # mérite sa note, un contour déjà noté à la création n'en remet pas.
         avait_contour = _a_un_contour(getattr(existing, 'roof_outline', None))
+        # CLIOVR (25/08/2026) — même discipline que le GPS ci-dessus, mais
+        # généralisée à TOUT champ corrigé À LA MAIN : un second POST < 60 s
+        # (retry réseau, étape suivante du tunnel) ne doit jamais écraser une
+        # valeur qu'un commercial vient de corriger dans le CRM. « Manuel » =
+        # une LeadActivity MODIFICATION portant un `user` réel — la vue CRM
+        # (views.py:746) en écrit une à CHAQUE édition humaine ; ce webhook
+        # et les autres chemins système (services.py, questionnaire.py)
+        # écrivent toujours user=None, donc jamais comptés ici (sinon le
+        # webhook se bloquerait lui-même). Une seule requête, avant la boucle.
+        manually_touched = set(
+            LeadActivity.objects
+            .filter(lead=existing, kind=LeadActivity.Kind.MODIFICATION,
+                    user__isnull=False)
+            .values_list('field', flat=True)
+        )
+        # Snapshot AVANT écriture — sert au trace old→new ci-dessous, même
+        # patron que `perform_update` (views.py:739) et
+        # `update_lead_from_public_api` (services.py:3843).
+        avant = Lead.objects.get(pk=existing.pk)
         for key, value in fields.items():
             if value is None or value == '':
                 continue
             if key in _GPS_FIELDS and getattr(existing, key) is not None:
                 continue
+            if key in manually_touched:
+                continue
             setattr(existing, key, value)
         existing.save()
         lead, created = existing, False
-        LeadActivity.objects.create(
-            company=lead.company, lead=lead, user=None,
-            kind=LeadActivity.Kind.NOTE,
-            body='Mis à jour via le site web (même envoi < 1 min)',
-        )
+        # Trace la fusion comme partout ailleurs (activity.log_changes) : un
+        # champ RÉELLEMENT écrit apparaît avec son ancienne et sa nouvelle
+        # valeur ; aucune entrée si rien n'a changé. Remplace l'ancienne note
+        # plate qui ne disait jamais QUEL champ avait bougé.
+        from . import activity
+        activity.log_changes(avant, lead, None)
         if not avait_contour:
             _noter_trace_toit(lead)
         # QX14 — TOUS les autres chemins de création/mise à jour de lead
