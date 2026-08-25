@@ -409,6 +409,177 @@ class TestSignatureRefuseeViaInterne(TestCase):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# (d bis) R4 (27/08/2026) — AUCUNE ACTION CLIENT VIA LE JETON D'APERÇU
+#
+# La signature était le SEUL endpoint d'action gardé. Les autres actions du
+# parcours public — demander à être rappelé, faire partir un code OTP chez le
+# client, activer une option payante, déclarer un virement — répondaient
+# normalement au jeton interne : un aperçu commercial écrivait donc dans le
+# chatter, notifiait le vendeur, envoyait un message au client, ou changeait
+# le périmètre facturé du devis. Chaque endpoint est ici pris DEUX FOIS : le
+# jeton interne doit être refusé (403 + message français), le jeton public
+# doit garder EXACTEMENT son comportement.
+#
+# La LECTURE (suivi post-signature) suit la règle inverse et la prouve aussi :
+# elle reste ouverte à l'aperçu, sans effet de bord (il n'y en a aucun).
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestAucuneActionClientViaJetonInterne(TestCase):
+    def setUp(self):
+        self.company = make_company('lintprev-r4')
+        self.client_obj = make_client_obj(self.company)
+        self.owner = User.objects.create_user(
+            username='lintprev-r4-owner', password='x',
+            role_legacy='responsable', company=self.company)
+        self.devis = make_devis(self.company, self.client_obj, 'DEV-IP-R4')
+        self.devis.created_by = self.owner
+        self.devis.save(update_fields=['created_by'])
+        self.link = make_link(self.devis)
+        self.api = DjangoClient()
+
+    def _post(self, chemin, token, corps=None):
+        return self.api.post(
+            f'/api/django/public/proposal/{token}/{chemin}',
+            corps if corps is not None else {},
+            content_type='application/json')
+
+    def _assert_refus_interne(self, resp):
+        self.assertEqual(resp.status_code, 403, resp.content)
+        self.assertIn('Aperçu interne', resp.json()['detail'])
+
+    # ── Demande de rappel (chatter + notification du vendeur) ────────────────
+
+    def test_contact_interne_refuse_et_ne_laisse_aucune_trace(self):
+        from apps.ventes.models import DevisActivity
+        notes_avant = DevisActivity.objects.filter(devis=self.devis).count()
+        notifs_avant = Notification.objects.filter(
+            recipient=self.owner).count()
+
+        resp = self._post('contact/', self.link.token_interne,
+                          {'channel': 'rappel', 'message': 'Rappelez-moi'})
+
+        self._assert_refus_interne(resp)
+        self.assertEqual(
+            DevisActivity.objects.filter(devis=self.devis).count(),
+            notes_avant)
+        self.assertEqual(
+            Notification.objects.filter(recipient=self.owner).count(),
+            notifs_avant)
+
+    def test_contact_public_transmet_toujours(self):
+        resp = self._post('contact/', self.link.token,
+                          {'channel': 'rappel', 'message': 'Rappelez-moi'})
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertFalse(resp.json()['already_sent'])
+
+    # ── OTP de SIGNATURE (part chez le client) ──────────────────────────────
+
+    def test_otp_signature_interne_refuse(self):
+        self._assert_refus_interne(
+            self._post('otp/', self.link.token_interne))
+
+    def test_otp_signature_public_inchange(self):
+        resp = self._post('otp/', self.link.token)
+        self.assertEqual(resp.status_code, 200, resp.content)
+
+    # ── OTP de LECTURE (part chez le client, déverrouille la page) ───────────
+
+    def test_otp_lecture_demander_interne_refuse(self):
+        self._assert_refus_interne(
+            self._post('otp-lecture/demander/', self.link.token_interne))
+
+    def test_otp_lecture_verifier_interne_refuse(self):
+        self._assert_refus_interne(
+            self._post('otp-lecture/verifier/', self.link.token_interne,
+                       {'otp_code': '000000'}))
+
+    def test_otp_lecture_public_inchange(self):
+        """Lien sans ``otp_lecture`` : le public reçoit toujours son « aucun
+        code requis » — le garde ne s'est pas mis en travers."""
+        for chemin in ('otp-lecture/demander/', 'otp-lecture/verifier/'):
+            resp = self._post(chemin, self.link.token, {'otp_code': '0'})
+            self.assertEqual(resp.status_code, 200, resp.content)
+
+    # ── Activation d'une option (change le périmètre facturé) ───────────────
+
+    def test_activer_option_interne_refuse_avant_toute_lecture_du_corps(self):
+        self._assert_refus_interne(
+            self._post('activer-option/', self.link.token_interne,
+                       {'ligne_id': 1}))
+
+    def test_activer_option_public_atteint_toujours_la_validation(self):
+        """Témoin : le jeton public n'est PAS refusé — il va jusqu'au contrôle
+        du corps (400 « Option invalide » sur un ligne_id absent)."""
+        resp = self._post('activer-option/', self.link.token, {})
+        self.assertEqual(resp.status_code, 400, resp.content)
+
+    # ── Déclaration de virement (chatter + notification du vendeur) ──────────
+
+    def test_virement_interne_refuse_et_ne_laisse_aucune_trace(self):
+        from apps.ventes.models import DevisActivity
+        notes_avant = DevisActivity.objects.filter(devis=self.devis).count()
+        notifs_avant = Notification.objects.filter(
+            recipient=self.owner).count()
+
+        resp = self._post('virement/', self.link.token_interne)
+
+        self._assert_refus_interne(resp)
+        self.assertEqual(
+            DevisActivity.objects.filter(devis=self.devis).count(),
+            notes_avant)
+        self.assertEqual(
+            Notification.objects.filter(recipient=self.owner).count(),
+            notifs_avant)
+
+    def test_virement_public_notifie_toujours_le_vendeur(self):
+        notifs_avant = Notification.objects.filter(
+            recipient=self.owner).count()
+        resp = self._post('virement/', self.link.token)
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertGreater(
+            Notification.objects.filter(recipient=self.owner).count(),
+            notifs_avant)
+
+
+class TestSuiviPublicLectureOuverteAuJetonInterne(TestCase):
+    """R4 — le suivi post-signature est une LECTURE PURE (aucun stamp, aucun
+    chatter, aucune notification dans ``selectors.devis_milestones``) : le
+    commercial doit le voir comme le client, exactement comme pour
+    ``proposal_data`` / ``proposal_pdf`` / ``public_document``."""
+
+    def setUp(self):
+        self.company = make_company('lintprev-suivi')
+        self.client_obj = make_client_obj(self.company)
+        self.devis = make_devis(self.company, self.client_obj, 'DEV-IP-SU1')
+        self.link = make_link(self.devis)
+        self.api = DjangoClient()
+
+    def _suivi(self, token):
+        return self.api.get(f'/api/django/public/suivi/{token}/')
+
+    def test_le_jeton_interne_lit_le_meme_suivi_que_le_public(self):
+        pub = self._suivi(self.link.token)
+        interne = self._suivi(self.link.token_interne)
+        self.assertEqual(pub.status_code, 200, pub.content)
+        self.assertEqual(interne.status_code, 200, interne.content)
+        # ``generated_at`` est un horodatage de rendu — le reste doit coller.
+        attendu = pub.json()
+        obtenu = interne.json()
+        attendu.pop('generated_at', None)
+        obtenu.pop('generated_at', None)
+        self.assertEqual(obtenu, attendu)
+
+    def test_le_suivi_interne_ne_stampe_aucune_vue(self):
+        self._suivi(self.link.token_interne)
+        self.link.refresh_from_db()
+        self.assertEqual(self.link.view_count, 0)
+        self.assertIsNone(self.link.first_viewed_at)
+
+    def test_un_jeton_inconnu_reste_un_404(self):
+        self.assertEqual(self._suivi('totalement-inconnu').status_code, 404)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # (e) mint (share-link) expose token_interne/path_interne
 # ═══════════════════════════════════════════════════════════════════════════
 
