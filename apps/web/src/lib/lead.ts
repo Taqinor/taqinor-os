@@ -375,6 +375,15 @@ export interface ValidatedLead {
   //   d'unicité globale — sert de signal de dédoublonnage best-effort côté
   //   CRM, jamais une clé bloquante ici). Facultatif, borné, jamais bloquant.
   idempotencyKey?: string;
+  // — LANE T-WEB (25/08/2026) : empreinte d'appareil ANONYME générée côté
+  //   navigateur (uuid v4, localStorage `tq_appareil` — voir lib/visite.ts
+  //   `appareilId`), échoée telle quelle sur le lead pour corréler ce lead
+  //   avec les visites de balise (`crm/public/visite/`) du MÊME appareil.
+  //   Jamais un cookie tiers, jamais dérivé d'une donnée de contact, jamais
+  //   une clé d'unicité serveur — un simple signal de corrélation best-effort,
+  //   même discipline anti-garbage que idempotencyKey/eventId (format UUID
+  //   attendu, une valeur malformée est simplement écartée).
+  appareilId?: string;
   // — WJ68 : mode PROFESSIONNEL — champs facultatifs, additifs, jamais
   //   bloquants (raison sociale, type de site, nombre de sites).
   raisonSociale?: string;
@@ -687,6 +696,13 @@ function validateOptionalFields(b: Record<string, unknown>): Partial<ValidatedLe
   // (jamais une clé d'unicité serveur, un simple signal de dédoublonnage CRM). ———
   const idempotencyKey = cleanStr(b.idempotencyKey, 64);
   if (idempotencyKey && /^[A-Za-z0-9_-]{8,64}$/.test(idempotencyKey)) opt.idempotencyKey = idempotencyKey;
+
+  // — LANE T-WEB : empreinte d'appareil (uuid v4 attendu — cf. lib/visite.ts
+  //   isPlausibleUuid). Format anti-garbage minimal ; jamais bloquant.
+  const appareilId = cleanStr(b.appareilId, 40);
+  if (appareilId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(appareilId)) {
+    opt.appareilId = appareilId;
+  }
 
   // ——— WJ68 : mode PROFESSIONNEL — facultatif, additif, jamais bloquant ———
   const raisonSociale = cleanStr(b.raisonSociale, 150);
