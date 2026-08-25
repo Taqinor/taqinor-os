@@ -3216,6 +3216,15 @@ def apply_quote_data(data: dict) -> None:
         _kwc_br = data.get(f"puissance_kwc_{ONEPAGE_BRANCHE}")
         _nb_br = data.get(f"nb_panneaux_{ONEPAGE_BRANCHE}")
         _wp_br = data.get(f"watt_par_panneau_{ONEPAGE_BRANCHE}")
+        # F1 (26/08/2026) — MÊME BRANCHE, MÊME VÉRITÉ, JUSQU'AU BOUT. Le bloc
+        # recalait la puissance et les panneaux, mais laissait « Production
+        # annuelle » sur le scalaire global : la vignette annonçait la
+        # production de l'AUTRE option juste à côté du kWc de celle-ci (et
+        # « Production ÷ kWc » ne retombait plus sur aucun productible réel).
+        # L'économie annuelle, elle, était déjà choisie par branche dans
+        # ``page_onepage`` (M4) et devient juste — elle aussi — maintenant que
+        # le builder chiffre les économies par option.
+        _prod_br = data.get(f"prod_kwh_{ONEPAGE_BRANCHE}")
         # Valeur illisible (None) ⇒ on ne remplace RIEN par un repli : la
         # vignette correspondante s'omet déjà d'elle-même sur un 0.
         if _kwc_br:
@@ -3224,6 +3233,8 @@ def apply_quote_data(data: dict) -> None:
             NB_PAN = int(_nb_br)
         if _wp_br:
             WP = int(_wp_br)
+        if _prod_br:
+            PROD_KWH = int(_prod_br)
     global VALID_UNTIL  # M7 — échéance réelle du devis
     VALID_UNTIL = (data.get("valid_until") or "").strip()
     global DELAI_VISITE, DELAI_INSTALLATION  # Q5 — délais indicatifs
