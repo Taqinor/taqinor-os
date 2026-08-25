@@ -309,6 +309,15 @@ TARIF_MT_MENTION = ""
 # tous, donc AUCUN d'eux n'est imprimé. Défaut INERTE (False) : sans la clé du
 # builder, le rendu est byte-identique.
 PUISSANCE_INCONNUE = False
+# F1/L-2OPT - scalaires PAR OPTION (les deux options d'un devis peuvent porter
+# des champs PV de tailles differentes). Defauts INERTES : sans les cles du
+# builder, ``PANNEAUX_DIVERGENTS`` reste faux et tout le rendu lit le scalaire
+# global comme avant - byte-identique.
+PANNEAUX_DIVERGENTS = False
+KWC_SANS = 0.0
+KWC_AVEC = 0.0
+NB_PAN_SANS = 0
+NB_PAN_AVEC = 0
 
 MONTHS  = ["Jan","F\u00e9v","Mar","Avr","Mai","Jun",
            "Jul","Ao\u00fb","Sep","Oct","Nov","D\u00e9c"]
@@ -1464,8 +1473,14 @@ def page1():
             f'<span style="white-space:nowrap;">{ta}</span></div>'
         )
     # Prix par kWc installé (résumé compétiteur) — sous chaque prix d'option
-    _pkwc_s = f' &#183; soit {fmt(TOTAL_SANS / KWC)}/kWc' if KWC > 0 else ''
-    _pkwc_a = f' &#183; soit {fmt(TOTAL_AVEC / KWC)}/kWc' if KWC > 0 else ''
+    # F1/L-2OPT (26/08/2026) — chaque option divise SON total par SON kWc : le
+    # scalaire global porte l'option AVEC dès que les champs PV divergent, donc
+    # l'option 1 affichait un prix au kWc ~15 % trop bas (total « sans » ÷ kWc
+    # « avec »). Options égales ⇒ les deux kWc valent ``KWC``, byte-identique.
+    _kwc_s = KWC_SANS if (PANNEAUX_DIVERGENTS and KWC_SANS > 0) else KWC
+    _kwc_a = KWC_AVEC if (PANNEAUX_DIVERGENTS and KWC_AVEC > 0) else KWC
+    _pkwc_s = f' &#183; soit {fmt(TOTAL_SANS / _kwc_s)}/kWc' if _kwc_s > 0 else ''
+    _pkwc_a = f' &#183; soit {fmt(TOTAL_AVEC / _kwc_a)}/kWc' if _kwc_a > 0 else ''
     # Puces générées depuis l'équipement RÉEL de chaque option (jamais de
     # texte boilerplate qui contredirait la liste d'équipements).
     _sb_lis = "".join(f"<li>{SVG_CHECK}{b}</li>" for b in SANS_BULLETS) or \
@@ -3098,6 +3113,14 @@ def apply_quote_data(data: dict) -> None:
     TARIF_MT_MENTION = data.get("tarif_mt_mention") or ""
     global PUISSANCE_INCONNUE  # M2 — puissance sans ancrage réel
     PUISSANCE_INCONNUE = bool(data.get("puissance_inconnue"))
+    # F1/L-2OPT — scalaires PAR OPTION. Sans les clés du builder, le drapeau
+    # reste faux et chaque surface lit le scalaire global comme avant.
+    global PANNEAUX_DIVERGENTS, KWC_SANS, KWC_AVEC, NB_PAN_SANS, NB_PAN_AVEC
+    PANNEAUX_DIVERGENTS = bool(data.get("panneaux_divergents"))
+    KWC_SANS = float(data.get("puissance_kwc_sans") or 0)
+    KWC_AVEC = float(data.get("puissance_kwc_avec") or 0)
+    NB_PAN_SANS = int(data.get("nb_panneaux_sans") or 0)
+    NB_PAN_AVEC = int(data.get("nb_panneaux_avec") or 0)
     global HYPOTHESES  # QK4 — bloc « Nos hypothèses »
     HYPOTHESES = data.get("hypotheses")
     global NB_PROPRIETES, DISPLAY_TOTAL_MULTI, MULTI_VILLA  # QJ30 multi-propriétés
