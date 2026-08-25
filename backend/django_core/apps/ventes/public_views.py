@@ -1803,6 +1803,45 @@ def _production_par_option_publique(devis, data, dimensionnement_options):
         return {'sans': None, 'avec': None}
 
 
+def _echelle_paliers_batterie_publique(devis, data, est_residentiel):
+    """PACT10/PACT11 (« deux optimiseurs », lane P2-B, 25/08/2026) — clé
+    ``paliers_batterie`` : l'échelle des paliers de capacité batterie (15/20
+    kWh…) qu'un devis résidentiel « avec batterie » peut proposer, chacun
+    avec son propre nb panneaux/kWc/prix TTC/économies annuelles/payback
+    (contrat ``apps/ventes/contract_samples/paliers_batterie.json``).
+
+    SOURCE DE VÉRITÉ (lane P2-A, parallèle, FICHIER DISJOINT) :
+    ``apps.ventes.dimensionnement.echelle_paliers_batterie(devis)``, une
+    fonction PURE qui dérive chaque palier du moteur/catalogue — jamais un
+    chiffre inventé côté serveur public. Import paresseux + ``getattr``
+    défensif : tant que cette fonction n'existe pas ENCORE sur cette branche
+    (fold en cours des deux lanes), la clé est ABSENTE du payload — jamais
+    une erreur, jamais un ``[]`` qui mentirait sur un calcul non fait. Une
+    fois la lane P2-A foldée, elle apparaît sans autre changement ici.
+
+    Gardes : ``est_residentiel`` (même discriminant que
+    ``dimensionnement_options`` — un devis agricole/industriel/commercial
+    n'a pas cette notion de palier de batterie domestique) ET ``avec_ok``
+    (même discipline CJ2b/L-VAR que le reste de la page — une échelle de
+    batterie n'a de sens que si ce devis vend RÉELLEMENT l'option batterie).
+    Servie IDENTIQUE aux deux niveaux de partage (standard/confiance) : ce
+    bloc ne porte que des tailles/prix déjà publics ailleurs sur la page —
+    jamais de prix d'achat/marge (RULE #4), best-effort (un bloc additif ne
+    fait jamais tomber la page client)."""
+    if not est_residentiel or not bool(data.get('avec_ok')):
+        return None
+    try:
+        from . import dimensionnement
+        fonction = getattr(dimensionnement, 'echelle_paliers_batterie', None)
+        if fonction is None:
+            return None
+        paliers = fonction(devis)
+        return list(paliers) if paliers else []
+    except Exception:  # noqa: BLE001
+        logger.warning('paliers_batterie indisponible', exc_info=True)
+        return None
+
+
 def _economies_mensuelles_publiques(devis, data, synthese,
                                     niveau=ShareLink.NIVEAU_CONFIANCE):
     """CJ2b (fondateur, 21/08/2026) — bloc ``economies_mensuelles`` : les 12
@@ -2358,6 +2397,16 @@ def proposal_data(request, token):
             payload['dimensionnement_options'] = _dimensionnement_options
             payload['production_par_option'] = _production_par_option_publique(
                 devis, data, _dimensionnement_options)
+        # PACT10/PACT11 (lane P2-B, 25/08/2026) — `paliers_batterie` : la même
+        # discipline additive que `dimensionnement_options` juste au-dessus,
+        # mais lue depuis `apps.ventes.dimensionnement.echelle_paliers_batterie`
+        # (lane P2-A parallèle, fichier disjoint) — ABSENTE tant que cette
+        # fonction n'existe pas encore sur cette branche. Contrat :
+        # apps/ventes/contract_samples/paliers_batterie.json.
+        _paliers_batterie = _echelle_paliers_batterie_publique(
+            devis, data, _resid_public)
+        if _paliers_batterie is not None:
+            payload['paliers_batterie'] = _paliers_batterie
         # L-NIV-VU (24/08/2026) — la page peut enfin DIRE au client qu'elle est
         # simplifiée, mais SEULEMENT quand c'est vrai sur SON devis (liste
         # vide ⇒ rien d'affiché). Calculé en dernier : la charge utile est
