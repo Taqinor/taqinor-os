@@ -1287,10 +1287,17 @@ def build_quote_data(devis, pdf_options=None) -> dict:
 
     totaux_sans = _canonical_totaux(sans_items)
     totaux_avec = _canonical_totaux(avec_items)
-    # Une page : option 1 seule quand deux vraies options ; l'option choisie
+    # Une page : option AVEC seule quand deux vraies options ; l'option choisie
     # quand le scénario stocké restreint à une seule (QF6) ; sinon tout le devis.
+    # LANE CHOIX-AVEC (fondateur, 25/08/2026) — ``_all_rows`` alimente
+    # ``totaux_all``, LE total imprimé sur le une-page ET recopié comme total
+    # de liste (``display_total`` juste plus bas) : les trois DOIVENT rester
+    # la MÊME option, sans quoi le une-page afficherait les lignes d'une
+    # option et le total d'une autre. Suit donc ``onepage_source``/
+    # ``onepage_branche`` ci-dessous à l'identique — l'option AVEC quand
+    # ``deux_options`` (toujours servable ici, cf. sa définition).
     if deux_options:
-        _all_rows = sans_items
+        _all_rows = avec_items
     elif scenario == 'Avec batterie' and avec_ok:
         _all_rows = avec_items
     elif scenario == 'Sans batterie' and has_reseau:
@@ -1300,11 +1307,14 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     totaux_all = _canonical_totaux(_all_rows)
 
     # ── Total d'AFFICHAGE canonique (liste des devis) ────────────────────────
-    # Deux options → total de l'option 1 (remise incluse), jamais la somme
-    # mensongère des deux. Mono-option → le total de cette option ; devis
-    # libre/pompage → le total complet. Identique au PDF au dirham près.
+    # Deux options → total de l'option AVEC batterie (remise incluse), jamais
+    # la somme mensongère des deux. Mono-option → le total de cette option ;
+    # devis libre/pompage → le total complet. Identique au PDF au dirham près.
+    # LANE CHOIX-AVEC (fondateur, 25/08/2026) — même bascule que ``_all_rows``
+    # ci-dessus, pour la MÊME raison d'intégrité (une seule vérité partagée
+    # par la liste des devis et le une-page).
     if deux_options:
-        display_total = totaux_sans["ttc"]
+        display_total = totaux_avec["ttc"]
         nb_options = 2
     elif avec_ok:
         display_total = totaux_avec["ttc"]
@@ -1914,21 +1924,27 @@ def build_quote_data(devis, pdf_options=None) -> dict:
 
     # Liste d'articles du format UNE PAGE. RÈGLE D'INTÉGRITÉ : une facture ne
     # mélange JAMAIS deux options — un devis à deux vraies options (réseau ET
-    # hybride+batterie) rend l'OPTION 1 (sans batterie) seule, avec une
-    # mention discrète vers la proposition complète. Devis mono-option ou sans
-    # options (pompage, liste libre) : toutes les lignes, comme avant.
+    # hybride+batterie) rend UNE SEULE option, avec une mention discrète vers
+    # la proposition complète. Devis mono-option ou sans options (pompage,
+    # liste libre) : toutes les lignes, comme avant.
     # QF6 — le scénario choisi pilote aussi la liste une-page : « Sans » → les
     # lignes de l'option sans batterie, « Avec » → celles de l'option avec
-    # batterie, « Les deux » → option 1 seule (jamais deux onduleurs), sinon
-    # tout le devis (liste libre/pompage).
-    # ── M4 (audit adversarial du 19/08/2026) — UNE SEULE BRANCHE, PARTOUT ─────
-    # La page imprimait ``max(économie sans, économie avec)`` : sur un document
-    # qui chiffre l'option SANS batterie (et le DIT, mention « voir la
-    # proposition complète »), le client lisait l'économie de l'option AVEC.
-    # L'économie affichée vient désormais de la MÊME branche que les lignes
-    # facturées ; sans branche identifiable, elle est OMISE.
+    # batterie, « Les deux » → l'option retenue ci-dessous (jamais deux
+    # onduleurs), sinon tout le devis (liste libre/pompage).
+    # ── LANE CHOIX-AVEC (fondateur, 25/08/2026) — CHOIX FORCÉ = AVEC BATTERIE ─
+    # « Pour toute question où l'on est obligé de choisir une seule config et
+    # ne peut pas montrer les deux, choisis l'option AVEC batterie. » Une
+    # page qui ne peut imprimer qu'UNE option montrait jusqu'ici toujours
+    # l'OPTION SANS (M4, 19/08/2026) — un choix arbitraire, pas une règle du
+    # fondateur. ``deux_options`` implique ``avec_ok`` (cf. sa définition
+    # plus haut : ``sans_ok and avec_ok and alternative_declaree``), donc
+    # l'option avec est TOUJOURS servable ici — bascule sans repli à ajouter.
+    # La note « voir la proposition complète » et la vignette économie
+    # suivent déjà ``onepage_branche`` dynamiquement (rien d'autre à changer
+    # dans ce fichier) ; le texte figé de la note elle-même est corrigé côté
+    # ``generate_devis_premium.page_onepage``.
     if deux_options:
-        onepage_source, onepage_branche = sans_items, 'sans'
+        onepage_source, onepage_branche = avec_items, 'avec'
     elif scenario == 'Avec batterie' and avec_ok:
         onepage_source, onepage_branche = avec_items, 'avec'
     elif scenario == 'Sans batterie' and has_reseau:

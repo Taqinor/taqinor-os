@@ -929,14 +929,23 @@ class TestPdfFormats(TestCase):
 
     def test_two_option_quote_one_canonical_total_everywhere(self):
         """INTÉGRITÉ : pour un devis à DEUX options (remise incluse), le total
-        de liste = total option 1 du premium = total du une-page, au dirham.
-        Le une-page ne mélange JAMAIS les deux options sur une même facture.
+        de liste = total option AVEC du premium = total du une-page, au
+        dirham. Le une-page ne mélange JAMAIS les deux options sur une même
+        facture.
 
         PV86 — le devis DÉCLARE son alternative (``etude_params['scenario']``,
         ce que le générateur persiste toujours). Sans cette déclaration, deux
         onduleurs en lignes non optionnelles ne sont plus un document à deux
         options mais un artefact de données rendu en UNE présentation au total
         du devis (cf. ``test_pv86_verite_unique_devis``).
+
+        LANE CHOIX-AVEC (fondateur, 25/08/2026) — une page qui ne peut montrer
+        qu'UNE option montre désormais TOUJOURS l'option AVEC batterie quand
+        elle est servable (``deux_options`` implique ``avec_ok``), plus
+        « option 1 » (sans) comme avant le 25/08 : le total de liste, le
+        total du une-page ET ses lignes doivent rester la MÊME option, sinon
+        un client verrait des lignes hybride+batterie totalisées au prix de
+        l'option sans.
         """
         from apps.ventes.quote_engine.builder import build_quote_data, display_totals
         devis = make_devis(self.company, self.user, self.client_obj, [
@@ -952,22 +961,22 @@ class TestPdfFormats(TestCase):
         full = build_quote_data(devis)
         one = build_quote_data(devis, {'pdf_mode': 'onepage'})
         self.assertEqual(dt['nb_options'], 2)
-        self.assertEqual(dt['total'], full['totaux_sans']['ttc'])
+        self.assertEqual(dt['total'], full['totaux_avec']['ttc'])
         self.assertEqual(dt['total'], one['totaux_all']['ttc'])
         # le total de liste n'est JAMAIS la somme mensongère des deux options
         self.assertLess(dt['total'], float(devis.total_ttc))
 
-        # une page : OPTION 1 SEULE — un une-page avec deux onduleurs DOIT
+        # une page : OPTION AVEC SEULE — un une-page avec deux onduleurs DOIT
         # échouer ce test (règle de sécurité demandée)
         designations = [it['designation'].lower() for it in one['all_items']]
-        self.assertTrue(any('réseau' in d for d in designations))
-        self.assertFalse(any('hybride' in d for d in designations),
+        self.assertTrue(any('hybride' in d for d in designations))
+        self.assertTrue(any('batterie' in d for d in designations))
+        self.assertFalse(any('réseau' in d or 'reseau' in d for d in designations),
                          'une facture une-page ne contient JAMAIS deux onduleurs')
-        self.assertFalse(any('batterie' in d for d in designations))
         html, doc = self._render({'pdf_mode': 'onepage'}, devis=devis)
         self.assertEqual(len(doc.pages), 1)
-        self.assertIn('option sans batterie', html)
-        self.assertIn('option avec batterie est disponible', html)
+        self.assertIn('option avec batterie', html)
+        self.assertIn('option sans batterie est disponible', html)
 
     def test_mono_option_quote_display_total_is_full_bill(self):
         """Devis sans options (liste libre/pompage) : total de liste = total
