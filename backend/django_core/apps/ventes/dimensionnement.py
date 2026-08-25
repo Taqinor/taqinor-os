@@ -440,12 +440,17 @@ def _payback(cout, economie_annuelle):
 def depart_dans_horizon(meilleur_payback):
     """GARDE DU DOSSIER FAIBLE — la montée est-elle seulement autorisée ?
 
-    ``False`` quand le MEILLEUR payback du dossier dépasse déjà
-    :data:`HORIZON_MARGINAL_PV` : le point de départ lui-même ne tient pas dans
+    ``False`` quand le payback du POINT DE DÉPART dépasse déjà
+    :data:`HORIZON_MARGINAL_PV` : le départ lui-même ne tient pas dans
     l'horizon, alors lui ajouter des dirhams ne peut qu'aggraver son cas. On
     retombe alors sur le choix PUR « meilleur payback » — c'est-à-dire, très
     exactement, ce que ce module rendait avant le 25/08/2026 : la nouvelle
     doctrine ne peut JAMAIS rendre un dossier faible plus mauvais qu'avant.
+
+    L'argument est bien celui du DÉPART et non du meilleur payback du tableau :
+    les deux coïncident presque toujours, mais le départage « à égalité »
+    (:data:`EGALITE_PAYBACK_ANNEES`) peut retenir un point légèrement au-dessus
+    du meilleur, et c'est ce point-là qui doit tenir dans l'horizon.
 
     C'est aussi elle qui rend vraie la propriété globale démontrée ci-dessus
     (payback global ≤ dix ans) : sans ce garde-fou, une montée partant de
@@ -1094,8 +1099,16 @@ def choisir_recommandation(tableau, critere=CRITERE_DEFAUT):
     # Les pas sont les TAILLES DE CHAMP du catalogue, dans l'ordre croissant :
     # ce qu'ils achètent, ce sont des PANNEAUX (avec la ferrure et la pose qui
     # les suivent), donc c'est l'horizon PV qui les juge.
-    horizon = (HORIZON_MARGINAL_PV if depart_dans_horizon(meilleur_payback)
-               else None)
+    #
+    # LA GARDE PORTE SUR LE PAYBACK DU DÉPART, PAS SUR LE MEILLEUR DU TABLEAU,
+    # et la nuance n'est pas cosmétique : le départage « à égalité » ci-dessus
+    # peut retenir une taille jusqu'à EGALITE_PAYBACK_ANNEES AU-DESSUS du
+    # meilleur payback. Sur un dossier tout juste sous l'horizon, garder sur le
+    # meilleur autoriserait une montée depuis un point déjà au-delà — et la
+    # propriété « payback global ≤ dix ans » tomberait. C'est bien C₀/E₀ que la
+    # démonstration exige.
+    horizon = (HORIZON_MARGINAL_PV
+               if depart_dans_horizon(depart['payback_sans_annees']) else None)
     suivants = [x for x in sorted(eligibles,
                                   key=lambda x: (x['kwc'], x['panneaux']))
                 if x['kwc'] > depart['kwc']]
@@ -1332,7 +1345,11 @@ def choisir_recommandation_avec(tableau):
                                            c['payback_annees']))
 
     # ── 2. LA MONTÉE DANS LA GRILLE ──────────────────────────────────────────
-    montee = depart_dans_horizon(meilleur_payback)
+    # La garde porte sur le payback DU DÉPART (voir la même remarque dans
+    # :func:`choisir_recommandation`) : le départage « à égalité » ci-dessus
+    # peut retenir un point jusqu'à EGALITE_PAYBACK_ANNEES au-dessus du
+    # meilleur, et c'est bien C₀/E₀ que la démonstration exige.
+    montee = depart_dans_horizon(depart['payback_annees'])
     par_panneaux = {}
     for combo in combos:
         par_panneaux.setdefault(combo['panneaux'], []).append(combo)
