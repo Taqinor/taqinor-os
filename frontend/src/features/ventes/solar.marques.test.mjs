@@ -235,6 +235,9 @@ test('PVMRQ — sans marque épinglée : balayage BYTE-IDENTIQUE à l\'historiqu
   const res = balayage(7000, undefined)
   assert.equal(res.repliMarqueManquante, false)
   assert.deepEqual(res.marquesManquantes, [])
-  assert.equal(res.kwcOptimal, 25)   // le VRAI optimum, paliers réellement chiffrés
+  // Mesuré sous la doctrine d'horizon FIXE (25/08, HORIZON_MARGINAL_PV = 10
+  // ans) — recalé depuis 25 kWc (ancienne tolérance relative) : l'ascension
+  // grimpe plus loin ici, jamais un chiffre posé a priori.
+  assert.equal(res.kwcOptimal, 35)
   assert.ok(res.paliers.every(p => p.chiffrable && p.marquesManquantes.length === 0))
 })
