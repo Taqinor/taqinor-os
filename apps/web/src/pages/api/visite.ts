@@ -75,6 +75,11 @@ export const POST: APIRoute = async ({ request }) => {
   // n'appelle même pas (le backend refuserait) ; la balise reste best-effort.
   const secret = ((cf.env ?? {}) as { LEAD_WEBHOOK_SECRET?: string })
     .LEAD_WEBHOOK_SECRET?.trim();
+  // Finding 8 (même famille que les fetch SSR) — sans cet en-tête, l'IP vue
+  // par le backend serait celle de SORTIE du Worker (identique pour tous les
+  // visiteurs) et la corrélation IP rapprocherait des inconnus. Best-effort :
+  // IP non identifiable → en-tête omis, le backend enregistre ip=''.
+  const clientIp = clientIpFromRequest(request);
   const background = (async () => {
     if (!secret) return;
     try {
@@ -85,6 +90,9 @@ export const POST: APIRoute = async ({ request }) => {
           accept: 'application/json',
           'X-Webhook-Secret': secret,
           'X-Webhook-Timestamp': new Date().toISOString(),
+          ...(clientIp
+            ? { 'X-Forwarded-For': clientIp, 'CF-Connecting-IP': clientIp }
+            : {}),
         },
         body: JSON.stringify(validated),
         signal: AbortSignal.timeout(5000),
