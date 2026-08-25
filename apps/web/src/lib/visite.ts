@@ -7,17 +7,22 @@
  *   POST /api/django/crm/public/visite/
  *     { appareil_id, page, duree_s, fin, langue } → { ok: true }
  *
- * AUTH — même discipline que tous les autres proxies same-origin de ce
- * dossier (`capture-lead.ts`, `funnel-beacon.ts`, `proposition-track.ts`,
- * `questionnaire-repondre.ts`) : `isSameOriginRequest`/`crossSiteRejection`
- * (`lib/lead.ts`) + rate-limit par IP (`lib/rateLimit.ts`), jamais de secret
- * exposé au navigateur. `/api/django/crm/public/visite/` suit la même
- * convention d'URL PUBLIQUE que `/api/django/crm/public/questionnaire/<token>/`
- * (`questionnaireEndpoint`, `lib/questionnaire.ts`) — un appel serveur direct
- * vers l'API_BASE, sans le secret statique `LEAD_WEBHOOK_SECRET` réservé au
- * webhook de CAPTURE DE LEAD (`apps/crm/webhooks.py`, un tout autre récepteur
- * qui, lui, CRÉE/MET À JOUR un lead CRM — cette balise ne fait ni l'un ni
- * l'autre). Voir `pages/api/visite.ts` pour le relais.
+ * AUTH — ENTRÉE (navigateur → proxy) : même discipline que tous les autres
+ * proxies same-origin de ce dossier (`capture-lead.ts`, `funnel-beacon.ts`,
+ * `proposition-track.ts`, `questionnaire-repondre.ts`) :
+ * `isSameOriginRequest`/`crossSiteRejection` (`lib/lead.ts`) + rate-limit par
+ * IP (`lib/rateLimit.ts`), jamais de secret exposé au navigateur.
+ *
+ * AUTH — SORTIE (proxy → backend, recalage porte finale 25/08, décision
+ * orchestrateur) : contrairement à un simple relais public,
+ * `/api/django/crm/public/visite/` EXIGE la même auth webhook que la capture
+ * de lead (`X-Webhook-Secret` = `LEAD_WEBHOOK_SECRET` du Worker =
+ * `WEBSITE_LEAD_WEBHOOK_SECRET` côté Django, `hmac.compare_digest`, refus
+ * 401) — ces visites alimentent des alertes « concurrent » envoyées à la
+ * direction, un endpoint non signé serait empoisonnable par de fausses
+ * visites. Secret absent du Worker → le relais est simplement sauté (la
+ * balise reste best-effort, jamais bloquant). Voir `pages/api/visite.ts` pour
+ * le relais exact.
  *
  * HARD PRIVACY CONTRACT (même discipline que `lib/funnelBeacon.ts`) : aucune
  * PII — `appareil_id` est un UUID v4 généré côté navigateur, stocké en

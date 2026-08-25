@@ -151,13 +151,20 @@ describe('pages/api/visite.ts — proxy same-origin, même discipline que les au
     expect(src).toMatch(/rateLimit\(`visite:\$\{clientIpFromRequest\(request\)\}`/);
   });
 
-  it('relaie vers /api/django/crm/public/visite/ (endpoint public, pas le webhook de lead)', () => {
+  it('relaie vers /api/django/crm/public/visite/ EN SIGNANT avec le secret du webhook de lead (recalage 25/08)', () => {
     expect(src).toContain("/api/django/crm/public/visite/");
-    // Le secret statique du webhook de capture de lead n'est ni lu ni envoyé —
-    // seulement MENTIONNÉ dans le commentaire expliquant pourquoi (cf. juste
-    // au-dessus) : on vérifie l'absence de tout USAGE réel (accès env./en-tête).
-    expect(src).not.toContain('env.LEAD_WEBHOOK_SECRET');
-    expect(src).not.toContain('x-webhook-secret');
+    // F3#15 — le récepteur backend EXIGE la même auth webhook que la capture
+    // de lead (hmac.compare_digest, refus 401 sinon) : le proxy DOIT lire
+    // LEAD_WEBHOOK_SECRET et l'envoyer via X-Webhook-Secret ; sans secret, il
+    // ne doit même pas appeler (la balise reste best-effort). L'assertion
+    // précédente vérifiait l'INVERSE par accident de graphie
+    // ('x-webhook-secret' minuscule alors que le code écrit 'X-Webhook-Secret').
+    expect(src).toContain('LEAD_WEBHOOK_SECRET');
+    expect(src).toContain('X-Webhook-Secret');
+  });
+
+  it("n'appelle pas le backend quand le secret est absent du Worker (best-effort strict)", () => {
+    expect(src).toMatch(/if \(!secret\) return;/);
   });
 
   it('valide le corps via validateVisiteBody avant tout relais', () => {
