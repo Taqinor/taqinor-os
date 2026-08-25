@@ -298,16 +298,24 @@ class TestZeroTraceNotificationOwner(TestCase):
         self.link = make_link(self.devis)
 
     def test_jeton_interne_ne_notifie_jamais_le_owner(self):
+        # Recalage CI 25/08 — la FIXTURE elle-même notifie déjà le owner
+        # (signal PRÉ-EXISTANT ``lead_assigned`` sur transition d'owner à la
+        # création du lead, apps.notifications.signals.lead_post_save —
+        # présent sur main avant ce lot, prouvé par repro SQLite). Le
+        # zéro-trace de l'aperçu interne se mesure donc en DELTA autour du
+        # GET : aucune notification NOUVELLE, quelle qu'elle soit.
+        avant = Notification.objects.filter(recipient=self.owner).count()
         DjangoClient().get(
             f'/api/django/public/proposal/{self.link.token_interne}/data/')
         self.assertEqual(
-            Notification.objects.filter(recipient=self.owner).count(), 0)
+            Notification.objects.filter(recipient=self.owner).count(), avant)
 
     def test_jeton_public_notifie_le_owner(self):
+        avant = Notification.objects.filter(recipient=self.owner).count()
         DjangoClient().get(
             f'/api/django/public/proposal/{self.link.token}/data/')
-        self.assertGreaterEqual(
-            Notification.objects.filter(recipient=self.owner).count(), 1)
+        self.assertGreater(
+            Notification.objects.filter(recipient=self.owner).count(), avant)
 
 
 class TestZeroTraceBeaconEngagement(TestCase):
