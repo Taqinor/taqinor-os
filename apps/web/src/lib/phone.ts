@@ -44,9 +44,18 @@ export function normalizeMoroccanPhone(raw: string): PhoneResult {
   if (!raw) return INVALID;
   const trimmed = raw.replace(/[\s.\-()]/g, '');
   const hadPlus = trimmed.startsWith('+');
-  let d = hadPlus ? trimmed.slice(1) : trimmed;
-  if (/\D/.test(d)) return INVALID;
+  // 25/08/2026 — `original` garde les chiffres BRUTS (jamais tronqués par le
+  // chemin marocain ci-dessous) : le chemin étranger doit repartir de là, pas
+  // de `d` mutable. Avant ce correctif, `d` était déjà tronqué par les
+  // préfixes 00212/212/0 quand le chemin étranger le relisait, donc un
+  // marocain MALFORMÉ sous « + » (indicatif 212 correct mais local ≠ 9
+  // chiffres, ex. « +2126123456 ») ressortait reclassé « étranger »
+  // (+6123456) au lieu d'être rejeté. Aligné sur le port de référence
+  // frontend/src/lib/format.js normalizePhoneE164.
+  const original = hadPlus ? trimmed.slice(1) : trimmed;
+  if (/\D/.test(original)) return INVALID;
 
+  let d = original;
   if (d.startsWith('00212')) d = d.slice(5);
   else if (d.startsWith('212')) d = d.slice(3);
   else if (!hadPlus && d.startsWith('0')) d = d.slice(1);
@@ -59,7 +68,7 @@ export function normalizeMoroccanPhone(raw: string): PhoneResult {
   // local à 10 chiffres commençant par 0 reste jugé comme un marocain malformé
   // (comportement de rejet historique inchangé pour ce cas).
   if (hadPlus) {
-    const foreign = normalizeForeignE164(d);
+    const foreign = normalizeForeignE164(original);
     if (foreign.ok) return foreign;
   } else if (trimmed.startsWith('00')) {
     const foreign = normalizeForeignE164(trimmed.slice(2));
