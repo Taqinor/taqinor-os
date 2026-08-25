@@ -148,6 +148,78 @@ class ManquantesTests(TestCase):
             quest.valider_questions({'gps': True, 'jardin': True})
 
 
+class NeJamaisRedemanderTests(TestCase):
+    """Ordre fondateur 25/08/2026 — « you are adding the address while the
+    client already have given its GPS position ».
+
+    Le grain de la décision est le CHAMP : une donnée déjà portée par le lead
+    revient PRÉ-REMPLIE, et une donnée vide que le GPS couvre déjà DISPARAÎT.
+    """
+
+    def setUp(self):
+        self.company = Company.objects.create(
+            nom='Taqinor LQUEST Redemande', slug='taqinor-lquest-redemande')
+
+    def test_gps_connu_l_adresse_n_est_plus_une_question(self):
+        lead = lead_complet(self.company, adresse='')
+        self.assertTrue(quest._gps_connu(lead))
+        carte = quest.champs_a_poser(lead, ['contact'])
+        self.assertNotIn('adresse', carte['contact'])
+        # Les deux autres colonnes de la section restent servies (connues →
+        # pré-remplies, confirmables) : on ne cache que ce qui est REDONDANT.
+        self.assertEqual(carte['contact'], ['email', 'ville'])
+
+    def test_sans_gps_l_adresse_reste_une_vraie_question(self):
+        lead = lead_complet(
+            self.company, adresse='', gps_lat=None, gps_lng=None)
+        carte = quest.champs_a_poser(lead, ['contact'])
+        self.assertIn('adresse', carte['contact'])
+
+    def test_gps_connu_l_adresse_deja_saisie_reste_confirmable(self):
+        """Connue ET couverte : on l'affiche quand même, pré-remplie — elle
+        n'est jamais reposée À VIDE, ce qui est la promesse exacte."""
+        lead = lead_complet(self.company, adresse='12 rue X')
+        self.assertIn('adresse', quest.champs_a_poser(lead, ['contact'])['contact'])
+
+    def test_manquantes_contact_ignore_l_adresse_quand_le_gps_est_la(self):
+        lead = lead_complet(self.company, adresse='')
+        self.assertFalse(quest.manquantes(lead)['contact'])
+        # Sans GPS, la même fiche redevient incomplète.
+        Lead.objects.filter(pk=lead.pk).update(gps_lat=None, gps_lng=None)
+        lead.refresh_from_db()
+        self.assertTrue(quest.manquantes(lead)['contact'])
+
+    def test_manquantes_contact_reste_vrai_si_l_email_manque(self):
+        """Le GPS couvre l'ADRESSE, jamais l'e-mail ni la ville."""
+        lead = lead_complet(self.company, adresse='', email='')
+        self.assertTrue(quest.manquantes(lead)['contact'])
+        lead = lead_complet(self.company, adresse='', ville='',
+                            nom='Autre')
+        self.assertTrue(quest.manquantes(lead)['contact'])
+
+    def test_les_sections_photo_restent_servies_avec_une_liste_vide(self):
+        lead = lead_complet(self.company)
+        sections = ['photo_facture', 'contact']
+        self.assertEqual(
+            quest.champs_a_poser(lead, sections)['photo_facture'], [])
+        self.assertIn('photo_facture',
+                      quest.sections_a_servir(lead, sections))
+
+    def test_une_section_sans_rien_a_montrer_n_ouvre_pas_d_ecran_mort(self):
+        """Cas limite : si la seule colonne restante d'une section est vide ET
+        couverte, l'écran n'a plus rien à dessiner — on ne l'ouvre pas."""
+        lead = lead_complet(self.company, adresse='')
+        original = dict(quest.CHAMPS_PAR_SECTION)
+        quest.CHAMPS_PAR_SECTION['contact'] = ('adresse',)
+        try:
+            self.assertEqual(quest.champs_a_poser(lead, ['contact']),
+                             {'contact': []})
+            self.assertEqual(quest.sections_a_servir(lead, ['contact']), [])
+        finally:
+            quest.CHAMPS_PAR_SECTION.clear()
+            quest.CHAMPS_PAR_SECTION.update(original)
+
+
 # ── Mint (endpoint privé) ────────────────────────────────────────────────
 
 class MintTests(TestCase):
@@ -311,6 +383,38 @@ class PublicQuestionnaireTests(TestCase):
         self.assertIsNone(data['prefill']['facture_ete'])
         # Aucun champ d'une section NON demandée ne fuit.
         self.assertNotIn('type_toiture', data['prefill'])
+
+    def test_le_payload_servi_ne_reposte_pas_l_adresse_quand_le_gps_est_la(self):
+        """LA garantie d'entrée (ordre fondateur) : un lead qui a DÉJÀ donné
+        sa position ne voit AUCUNE question d'adresse dans ce qu'on lui sert.
+        """
+        Lead.objects.filter(pk=self.lead.pk).update(
+            gps_lat=33.5, gps_lng=-7.6, adresse='')
+        res = self._get()
+        self.assertEqual(res.status_code, 200, res.content)
+        data = res.json()
+        # La section GPS elle-même n'est plus servie (elle est renseignée)…
+        self.assertNotIn('gps', data['sections'])
+        # …et surtout, l'adresse ne figure NULLE PART dans les questions.
+        for colonnes in data['champs'].values():
+            self.assertNotIn('adresse', colonnes)
+        # Ce que le client a lui-même fourni reste servi, pré-rempli.
+        self.assertEqual(data['champs']['contact'], ['email', 'ville'])
+        self.assertEqual(data['prefill']['ville'], 'Casablanca')
+
+    def test_sans_gps_l_adresse_est_bien_posee(self):
+        Lead.objects.filter(pk=self.lead.pk).update(adresse='')
+        data = self._get().json()
+        self.assertIn('adresse', data['champs']['contact'])
+
+    def test_champs_couvre_exactement_les_sections_servies(self):
+        """Aucune fuite : `champs` ne parle que des sections servies — jamais
+        d'une colonne d'une section que le commercial n'a pas demandée."""
+        data = self._get().json()
+        self.assertEqual(sorted(data['champs']), sorted(data['sections']))
+        for section, colonnes in data['champs'].items():
+            self.assertLessEqual(
+                set(colonnes), set(quest.CHAMPS_PAR_SECTION[section]))
 
     def test_jeton_inconnu_404_a_corps_constant(self):
         res = self._get('jeton-qui-nexiste-pas')

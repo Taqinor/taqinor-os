@@ -8,12 +8,21 @@ enregistrer une section répondue.
 Le contrat servi/consommé est figé dans
 ``apps/crm/contract_samples/questionnaire_lead.json`` (PACT10).
 
-DEUX PRINCIPES NON NÉGOCIABLES :
+TROIS PRINCIPES NON NÉGOCIABLES :
   · **zéro chiffre inventé** — un pré-remplissage absent vaut ``None``, jamais
     un défaut forfaitaire ;
   · **on n'efface jamais** — une valeur déjà renseignée sur le lead n'est
     jamais remplacée par du vide, et une section n'écrit QUE ses propres
-    champs (une réponse « contact » ne peut donc pas toucher le GPS).
+    champs (une réponse « contact » ne peut donc pas toucher le GPS) ;
+  · **on ne REDEMANDE jamais** (ordre fondateur 25/08/2026) — une donnée que
+    le lead porte DÉJÀ n'est jamais reposée à vide au client : elle revient
+    pré-remplie (donc confirmable), et quand une AUTRE donnée déjà connue la
+    couvre plus précisément, la question disparaît purement et simplement.
+    Le cas qui a déclenché la règle : « you are adding the address while the
+    client already have given its GPS position » — un repère GPS localise le
+    toit au mètre ; redemander l'adresse postale, c'est refaire saisir au
+    client, en MOINS précis, ce qu'il vient de donner. Le grain de cette
+    décision est le CHAMP, pas la section : voir :func:`champs_a_poser`.
 """
 from .models import Lead, LeadActivity, QuestionnaireLien
 
@@ -106,6 +115,39 @@ def _vide(valeur) -> bool:
     return isinstance(valeur, str) and not valeur.strip()
 
 
+def _gps_connu(lead) -> bool:
+    return lead.gps_lat is not None and lead.gps_lng is not None
+
+
+#: Colonnes qu'une AUTRE donnée déjà connue du lead rend inutiles à demander.
+#: Clé = colonne du questionnaire ; valeur = prédicat « l'information est déjà
+#: couverte, et plus précisément, par autre chose que le lead porte ».
+#:
+#: ``adresse`` ← GPS : ordre fondateur du 25/08/2026 (voir l'en-tête du
+#: module). Un couple (lat, lng) désigne le toit ; l'adresse postale, elle, est
+#: approximative au Maroc (quartiers sans numérotation) — la redemander à
+#: quelqu'un qui a déjà posé son repère est une régression de précision ET une
+#: question en double. La ville, elle, N'EST PAS couverte : rien ici ne
+#: géocode à l'envers, donc une ville inconnue reste une vraie question.
+_COUVERT_PAR = {
+    'adresse': _gps_connu,
+}
+
+
+def _couverte_ailleurs(lead, cle) -> bool:
+    predicat = _COUVERT_PAR.get(cle)
+    return bool(predicat and predicat(lead))
+
+
+def _encore_a_obtenir(lead, cle) -> bool:
+    """La réponse à ``cle`` est-elle encore à obtenir DU CLIENT ?
+
+    Non si le lead la porte déjà (elle sera pré-remplie), non plus si une
+    autre donnée connue la couvre (``_COUVERT_PAR``)."""
+    return (_vide(getattr(lead, cle, None))
+            and not _couverte_ailleurs(lead, cle))
+
+
 def _libelles_pieces_jointes(lead):
     """Noms de fichier des pièces jointes du lead (minuscules).
 
@@ -147,9 +189,13 @@ def manquantes(lead) -> dict:
         energie = _vide(lead.tranche_onee) or _vide(lead.raccordement)
 
     return {
-        'contact': (_vide(lead.email) or _vide(lead.adresse)
+        # `adresse` passe par `_encore_a_obtenir` : quand le GPS est déjà là,
+        # elle ne compte PLUS comme une information manquante (sinon le
+        # défaut des questions rouvrait un écran « Coordonnées » dont la
+        # seule question restante était celle qu'on s'interdit de poser).
+        'contact': (_vide(lead.email) or _encore_a_obtenir(lead, 'adresse')
                     or _vide(lead.ville)),
-        'gps': lead.gps_lat is None or lead.gps_lng is None,
+        'gps': not _gps_connu(lead),
         'energie': energie,
         'photo_facture': not _photo_presente('photo_facture', libelles),
         'photo_compteur': not _photo_presente('photo_compteur', libelles),
@@ -163,6 +209,46 @@ def manquantes(lead) -> dict:
         'equipements': any(getattr(lead, cle) is None
                            for cle in _EQUIP_BOOLEENS),
     }
+
+
+def champs_a_poser(lead, sections) -> dict:
+    """``{section: [colonnes à AFFICHER]}`` — le grain FIN du questionnaire.
+
+    La section dit QUEL écran s'ouvre ; cette carte dit quelles questions cet
+    écran a encore le droit de poser. Une colonne est servie quand :
+
+      · le lead la porte déjà → elle revient PRÉ-REMPLIE (le client confirme
+        ou corrige, il ne ressaisit pas) ; ou
+      · elle est réellement inconnue ET qu'aucune autre donnée connue ne la
+        couvre (``_COUVERT_PAR``).
+
+    Une colonne à la fois VIDE et COUVERTE (l'adresse d'un lead qui a déjà
+    donné son GPS) est ABSENTE de la carte : la page ne la dessine pas. Rien
+    n'est jamais inventé ici — on ne fabrique pas l'adresse depuis le GPS, on
+    se contente de ne pas la redemander.
+
+    Les sections photo n'ont aucune colonne : leur liste est vide, ce qui ne
+    veut PAS dire « rien à demander » (la réponse y est une pièce jointe) —
+    d'où :func:`sections_a_servir`, seul endroit qui tranche ce cas."""
+    return {
+        section: [cle for cle in CHAMPS_PAR_SECTION.get(section, ())
+                  if not (_vide(getattr(lead, cle, None))
+                          and _couverte_ailleurs(lead, cle))]
+        for section in sections
+    }
+
+
+def sections_a_servir(lead, sections):
+    """Sections actives DONT il reste quelque chose à afficher.
+
+    Garde-fou d'écran mort : si le commercial coche une section dont toutes
+    les colonnes sont vides ET couvertes ailleurs, la page n'a plus rien à
+    dessiner — mieux vaut ne pas ouvrir l'écran du tout que d'en montrer un
+    vide. Les sections photo, elles, restent TOUJOURS servies : leur réponse
+    n'est pas une colonne."""
+    carte = champs_a_poser(lead, sections)
+    return [section for section in sections
+            if section in _SECTIONS_PHOTO or carte.get(section)]
 
 
 def questions_par_defaut(lead) -> dict:
