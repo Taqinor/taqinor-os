@@ -8,7 +8,11 @@ opérations :
   concernée, identifiée par email OU téléphone normalisé ;
 * **effacement** — ANONYMISE (n'efface pas) : nom générique, contacts vidés,
   drapeau ``is_anonymized`` posé. Les activités/historique et l'intégrité
-  comptable (devis/factures) sont CONSERVÉS.
+  comptable (devis/factures) sont CONSERVÉS. Les identifiants de TRAÇAGE
+  partent aussi (``Lead.appareil_id`` et, sur les ``VisiteExterne`` du lead,
+  IP / navigateur / appareil / suffixe de jeton) : sans eux, un lead
+  « anonymisé » restait ré-identifiable — et une visite ultérieure du même
+  navigateur le rattachait à sa fiche effacée.
 
 ``subject_identifier`` = un email ou un téléphone. Tout est borné par
 ``company`` (multi-tenant).
@@ -96,6 +100,29 @@ def export_crm(company, subject_identifier):
     }
 
 
+def _anonymiser_traces_visiteur(company, lead):
+    """Blanchit les identifiants de traçage rattachés à CE lead (T-TRACE).
+
+    Revue critique du 25/08/2026, finding #13 — L'EFFACEMENT ÉTAIT TROUÉ. Un
+    lead « anonymisé » gardait son ``appareil_id`` (l'identifiant PRIMAIRE du
+    visiteur, un uuid que le site pose dans le navigateur) et TOUTES ses
+    ``VisiteExterne`` avec leur IP, leur navigateur et le même
+    ``appareil_id`` : la personne restait parfaitement ré-identifiable, et une
+    nouvelle visite du même navigateur la rattachait à sa fiche « effacée ».
+
+    DOCTRINE DU MODULE SUIVIE À LA LETTRE : on anonymise, on ne supprime pas.
+    Les lignes de visite SURVIVENT (leur finalité anti-fraude — combien de
+    passages, quand, sur quelle page — ne porte plus aucune PII une fois les
+    trois identifiants vidés), exactement comme les activités et les documents
+    comptables survivent à l'anonymisation d'un lead.
+
+    Le ``token_suffixe`` part avec : c'est un fragment du lien nominatif envoyé
+    à cette personne. Best-effort borné à ``company`` (multi-tenant)."""
+    from .models import VisiteExterne
+    return VisiteExterne.objects.filter(company=company, lead=lead).update(
+        ip='', user_agent='', appareil_id='', token_suffixe='')
+
+
 def erase_crm(company, subject_identifier):
     """Anonymise leads + clients de la personne (activités conservées).
 
@@ -113,13 +140,22 @@ def erase_crm(company, subject_identifier):
         le.telephone = None
         le.whatsapp = None
         le.adresse = None
+        # Finding #13 — l'identifiant d'appareil est une PII de traçage : sans
+        # lui, une visite ultérieure du même navigateur re-rattacherait la
+        # personne à sa fiche « effacée » (``visites.rattacher_visites_au_lead``
+        # et l'alerte ``alerter_appareil_partage`` s'appuient dessus).
+        le.appareil_id = None
         # QW10 — ``Lead.save()`` recalcule ``email_normalise``/``phone_normalise``
         # depuis les PII désormais vidées ; on les inclut dans ``update_fields``
         # pour que les clés de dédup normalisées soient AUSSI purgées (sinon un
         # lead « anonymisé » garderait un email/téléphone normalisé recherchable).
         le.save(update_fields=[
             'nom', 'prenom', 'email', 'telephone', 'whatsapp', 'adresse',
-            'email_normalise', 'phone_normalise'])
+            'appareil_id', 'email_normalise', 'phone_normalise'])
+        # Les traces de traçage du lead perdent leurs identifiants (IP,
+        # navigateur, appareil, suffixe de jeton) — la ligne reste, la personne
+        # n'est plus reconnaissable.
+        _anonymiser_traces_visiteur(company, le)
         count += 1
 
     for cl in clients:
