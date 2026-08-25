@@ -213,9 +213,19 @@ def enregistrer_visite_externe(company, *, point, appareil_id='', lead=None,
 
         depuis = timezone.now() - timedelta(
             minutes=VisiteExterne.FENETRE_BATTEMENT_MINUTES)
+        # Revue adverse 25/08 (finding #4) — le LEAD fait partie de la clé de
+        # regroupement : sans lui, la demande de devis d'un DEUXIÈME lead
+        # depuis le même appareil sous 30 min fusionnait sur la ligne du
+        # premier (le « complète, n'écrase jamais » plus bas refusait ensuite
+        # de re-pointer), et `detecter_concurrent` ne voyait plus qu'UN lead —
+        # exactement le scénario « même appareil, deux prospects » que
+        # l'alerte concurrent existe pour attraper. Une visite anonyme
+        # (lead=None) ne fusionne qu'avec des visites encore anonymes ; le
+        # rattachement ultérieur passe par `rattacher_visites_au_lead`.
         en_cours = VisiteExterne.objects.filter(
             company=company, point=point, contexte=contexte,
-            terminee=False, created_at__gte=depuis)
+            terminee=False, created_at__gte=depuis,
+            lead_id=getattr(lead, 'pk', None))
         if appareil_id:
             # Cas NORMAL : l'appareil identifie le visiteur.
             en_cours = en_cours.filter(appareil_id=appareil_id)
@@ -466,14 +476,16 @@ def alerter_appareil_partage(lead) -> None:
             return
         from .models import Lead
 
-        autres = list(
+        freres = (
             Lead.objects.filter(company=company, appareil_id=appareil_id)
-            .exclude(pk=lead.pk)
-            .order_by('-date_creation')
-            .values_list('pk', 'nom')[:5])
+            .exclude(pk=lead.pk))
+        # Revue adverse 25/08 (finding #5) — le COMPTE affiché est le vrai
+        # total (règle « zéro chiffre inventé ») ; la tranche [:5] ne borne
+        # que la LISTE de noms citée dans le corps.
+        total_autres = freres.count()
+        autres = list(
+            freres.order_by('-date_creation').values_list('pk', 'nom')[:5])
         if not autres:
-            return
-        if not _une_seule_fois(company, f'appareil_partage:{lead.pk}'):
             return
 
         from apps.notifications.services import notify_many
@@ -483,14 +495,22 @@ def alerter_appareil_partage(lead) -> None:
             lead_notification_recipients(lead), company)
         if not destinataires:
             return
+        # Revue adverse 25/08 (finding #6) — le jeton d'idempotence n'est
+        # brûlé qu'APRÈS avoir trouvé au moins un destinataire : sinon une
+        # société momentanément sans owner/direction perdait cette alerte
+        # POUR TOUJOURS (le registre est permanent), même une fois un
+        # Directeur créé.
+        if not _une_seule_fois(company, f'appareil_partage:{lead.pk}'):
+            return
 
         nom = (getattr(lead, 'nom', '') or '').strip() or 'Nouveau prospect'
         fiches = ', '.join(
             f'#{pk} {(autre_nom or "").strip() or "sans nom"}'
             for pk, autre_nom in autres)
+        suite = ' (5 premières citées)' if total_autres > len(autres) else ''
         corps = [
             f'La demande de {nom} (fiche #{lead.pk}) arrive depuis un appareil '
-            f'déjà utilisé pour {len(autres)} autre(s) fiche(s) : {fiches}.',
+            f'déjà utilisé pour {total_autres} autre(s) fiche(s){suite} : {fiches}.',
             'Possible doublon (le même client redemande) ou reconnaissance '
             'concurrente : à arbitrer avant de chiffrer.',
         ]
@@ -557,8 +577,6 @@ def detecter_concurrent(company, *, appareil_id='', ip='') -> None:
             return
 
         empreinte = ','.join(str(pk) for pk in leads)
-        if not _une_seule_fois(company, f'concurrent:{cle}:{empreinte}'):
-            return
 
         from .models import Lead
         noms = list(
@@ -589,6 +607,12 @@ def detecter_concurrent(company, *, appareil_id='', ip='') -> None:
 
         destinataires = _destinataires_des_leads(company, leads)
         if not destinataires:
+            return
+        # Revue adverse 25/08 (finding #6) — jeton d'idempotence brûlé
+        # APRÈS avoir trouvé des destinataires (même raison que
+        # `alerter_appareil_partage` : le registre est permanent, une alerte
+        # sans destinataire ne doit pas être perdue pour toujours).
+        if not _une_seule_fois(company, f'concurrent:{cle}:{empreinte}'):
             return
         from apps.notifications.services import notify_many
         notify_many(

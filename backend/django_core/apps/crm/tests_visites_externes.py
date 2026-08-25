@@ -581,6 +581,52 @@ class TestAlerteConcurrent(TestCase):
         self.assertIn('appareil', alerte.title.lower())
         self.assertIn('FORT', alerte.body)
 
+    def test_meme_contexte_meme_appareil_deux_leads_font_deux_visites(self):
+        """Revue adverse 25/08 (finding #4) — le contexte RÉEL du point
+        proposition est CONSTANT (« Proposition — section data ») : deux leads
+        consultés depuis le même appareil sous 30 min doivent produire DEUX
+        visites (le lead fait partie de la clé de regroupement des
+        battements), sinon la corrélation ne voit qu'UN lead et l'alerte
+        concurrent — sa raison d'être — ne tire jamais. Les tests voisins ne
+        l'attrapaient pas : leur contexte varie par lead."""
+        for lead in (self.lead_a, self.lead_b):
+            visites.enregistrer_visite_externe(
+                self.company, point=VisiteExterne.Point.PROPOSITION,
+                lead=lead, appareil_id=APPAREIL,
+                contexte='Proposition — section data')
+        propositions = VisiteExterne.objects.filter(
+            point=VisiteExterne.Point.PROPOSITION)
+        self.assertEqual(propositions.count(), 2)
+        self.assertEqual(
+            set(propositions.values_list('lead_id', flat=True)),
+            {self.lead_a.pk, self.lead_b.pk})
+        visites.detecter_concurrent(self.company, appareil_id=APPAREIL)
+        self.assertTrue(Notification.objects.filter(
+            event_type='visiteur_concurrent_suspecte',
+            recipient=self.directeur).exists())
+
+    def test_sans_destinataire_lalerte_nest_pas_perdue_pour_toujours(self):
+        """Revue adverse 25/08 (finding #6) — le jeton d'idempotence n'est
+        brûlé qu'APRÈS avoir trouvé un destinataire : une société
+        momentanément sans direction ni owner récupère l'alerte dès qu'un
+        Directeur existe (le registre d'idempotence est permanent)."""
+        company = make_company('ttrace-sans-dest')
+        a = Lead.objects.create(company=company, nom='A')
+        b = Lead.objects.create(company=company, nom='B')
+        for lead in (a, b):
+            visites.enregistrer_visite_externe(
+                company, point=VisiteExterne.Point.PROPOSITION, lead=lead,
+                appareil_id=APPAREIL, contexte='Proposition — section data')
+        visites.detecter_concurrent(company, appareil_id=APPAREIL)
+        self.assertFalse(Notification.objects.filter(
+            event_type='visiteur_concurrent_suspecte',
+            recipient__company=company).exists())
+        directeur = make_directeur(company, 'ttrace-dir-tardif')
+        visites.detecter_concurrent(company, appareil_id=APPAREIL)
+        self.assertTrue(Notification.objects.filter(
+            event_type='visiteur_concurrent_suspecte',
+            recipient=directeur).exists())
+
     def test_lalerte_ne_se_repete_pas_pour_le_meme_couple(self):
         self.consulter(self.lead_a)
         self.consulter(self.lead_b)
