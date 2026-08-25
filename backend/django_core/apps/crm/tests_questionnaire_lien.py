@@ -403,20 +403,33 @@ class PublicQuestionnaireTests(TestCase):
     def test_le_payload_servi_ne_reposte_pas_l_adresse_quand_le_gps_est_la(self):
         """LA garantie d'entrée (ordre fondateur) : un lead qui a DÉJÀ donné
         sa position ne voit AUCUNE question d'adresse dans ce qu'on lui sert.
+
+        La section GPS, elle, RESTE servie — mais en mode « position déjà
+        enregistrée, repartagez-la seulement pour la corriger » : ses deux
+        colonnes reviennent PRÉ-REMPLIES aux coordonnées RÉELLES du lead
+        (`apps/web` questionnaire/[token].astro dérive son annonce
+        `gpsDejaConnu` exactement de ce préremplissage). Ce qui ne doit JAMAIS
+        réapparaître, c'est la question ADRESSE.
         """
         Lead.objects.filter(pk=self.lead.pk).update(
             gps_lat=33.5, gps_lng=-7.6, adresse='')
         res = self._get()
         self.assertEqual(res.status_code, 200, res.content)
         data = res.json()
-        # La section GPS elle-même n'est plus servie (elle est renseignée)…
-        self.assertNotIn('gps', data['sections'])
-        # …et surtout, l'adresse ne figure NULLE PART dans les questions.
+        # L'adresse ne figure NULLE PART dans les questions — la garantie.
         for colonnes in data['champs'].values():
             self.assertNotIn('adresse', colonnes)
         # Ce que le client a lui-même fourni reste servi, pré-rempli.
         self.assertEqual(data['champs']['contact'], ['email', 'ville'])
         self.assertEqual(data['prefill']['ville'], 'Casablanca')
+        # La section GPS est servie EN MODE CORRECTION : elle porte ses deux
+        # colonnes et le préremplissage aux VRAIES coordonnées — sans quoi la
+        # page ne pourrait pas annoncer « Position déjà enregistrée (…) » et
+        # redemanderait la position à blanc.
+        self.assertIn('gps', data['sections'])
+        self.assertEqual(data['champs']['gps'], ['gps_lat', 'gps_lng'])
+        self.assertEqual(float(data['prefill']['gps_lat']), 33.5)
+        self.assertEqual(float(data['prefill']['gps_lng']), -7.6)
 
     def test_sans_gps_l_adresse_est_bien_posee(self):
         Lead.objects.filter(pk=self.lead.pk).update(adresse='')
