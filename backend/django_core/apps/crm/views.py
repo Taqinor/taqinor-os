@@ -1290,8 +1290,8 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         return Response({
             # Les DEUX URL pointent sur le SITE PUBLIC (``PUBLIC_SITE_URL``),
             # jamais sur l'hôte de cette requête : la page questionnaire vit
-            # dans ``apps/web``, pas sur l'API — un lien construit sur
-            # api.taqinor.ma partait mort chez le client (finding #6).
+            # dans ``apps/web``, pas sur l'API — un lien construit sur l'hôte
+            # de l'API partait mort chez le client (finding #6).
             'url': quest.url_publique(lien.token),
             'url_interne': quest.url_publique(lien.token_interne),
             'token': lien.token,

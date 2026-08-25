@@ -879,11 +879,25 @@ class LEchelleDePaliersBatterie(_Base):
         """UN SEUL balayage pour les trois garanties structurelles (le calcul
         coûte douze jours types par taille de champ sondée)."""
         devis = self._devis_residentiel(email='echelle@example.com')
-        # Le bloc de dimensionnement d'abord : c'est LUI qui désigne l'optimum
-        # AVEC, et l'échelle doit s'y raccorder (jamais un second calcul).
+        # Le bloc de dimensionnement d'abord : il fixe les MÊMES entrées que
+        # l'échelle (jamais un second calcul sur d'autres hypothèses). Il ne
+        # décide en revanche PLUS du palier marqué « retenu » — voir plus bas.
         bloc = services.rafraichir_dimensionnement_devis(devis, force=True)
         self.assertIsNotNone(bloc, 'profil non exploitable : le test ne '
                                    'prouverait plus rien')
+
+        # Finding #5b (revue critique 25/08/2026) — « Retenu pour ce devis »
+        # doit suivre les LIGNES RÉELLEMENT VENDUES, pas l'optimum du moteur :
+        # le générateur pose les lignes sur un champ ARRONDI (``autoFillLines``
+        # cible ``round(kwc/5)×5``), si bien que les deux capacités divergent
+        # régulièrement — la pilule affichait alors le prix d'une AUTRE
+        # capacité que celle du devis. On vend donc ici UNE batterie de 10 kWh
+        # (9,22 kWh UTILES d'après sa fiche technique, cf. le catalogue de
+        # cette classe) et c'est CETTE capacité que le marquage doit désigner.
+        LigneDevis.objects.create(
+            devis=devis, produit=self.produits['BAT10'],
+            designation='Batterie Dyness 10 kWh',
+            quantite=Decimal('1'), prix_unitaire=Decimal('30000'))
 
         echelle = dimensionnement.echelle_paliers_batterie(devis)
         self.assertIsInstance(echelle, list)
@@ -920,20 +934,26 @@ class LEchelleDePaliersBatterie(_Base):
         for palier in echelle[:-1]:
             self.assertTrue(palier['remplissage_ok'], palier)
 
+        # ── Finding #5b — le marquage suit les LIGNES, jamais le moteur ──────
+        vendue = dimensionnement.capacite_batterie_des_lignes(devis)
+        self.assertIsNotNone(
+            vendue, 'la ligne batterie vendue doit être lue : sans elle le '
+                    'test ne prouverait plus rien')
+        self.assertGreater(vendue, 0)
+
         retenus = [p for p in echelle if p['retenu']]
-        attendu = (bloc.get('recommandation_avec') or {}).get('batterie_kwh')
-        if attendu:
-            self.assertEqual(
-                len(retenus), 1,
-                'un et un seul palier doit porter le stockage de l\'optimum '
-                'AVEC (%s kWh) : %s' % (attendu, capacites))
-            self.assertAlmostEqual(retenus[0]['capacite_kwh'], float(attendu),
-                                   places=1)
-        else:
-            # Le moteur ne désigne AUCUNE configuration avec batterie livrable
-            # (trou de catalogue ou verdict électrique) : alors AUCUN palier
-            # n'est marqué — jamais un « retenu » désigné au hasard.
-            self.assertEqual(retenus, [], capacites)
+        correspond = [p for p in echelle
+                      if abs(p['capacite_kwh'] - vendue) < 0.05]
+        # L'INVARIANT, sans condition : un palier est marqué SI ET SEULEMENT SI
+        # l'échelle propose EXACTEMENT la capacité vendue — jamais un marquage
+        # approché (le prix affiché serait celui d'un autre kit), jamais deux.
+        self.assertEqual(
+            bool(retenus), bool(correspond),
+            'marquage et capacité vendue (%s kWh) divergent : %s'
+            % (vendue, capacites))
+        self.assertLessEqual(len(retenus), 1, capacites)
+        for palier in retenus:
+            self.assertAlmostEqual(palier['capacite_kwh'], vendue, places=1)
 
     def test_le_plafond_du_toit_borne_chaque_palier(self):
         """Le calepinage est un PLAFOND PHYSIQUE : l'échelle ne propose jamais

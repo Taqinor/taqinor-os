@@ -326,9 +326,9 @@ def url_publique(token, *, request=None) -> str:
 
     TOUJOURS construite sur l'origine du SITE PUBLIC (``PUBLIC_SITE_URL``),
     JAMAIS sur l'hôte de la requête. Revue critique du 25/08/2026, finding
-    #6 : la page ``/questionnaire/<token>/`` vit dans ``apps/web`` (Astro,
-    taqinor.ma) — l'ERP ne la sert nulle part. Le mint étant appelé depuis
-    l'écran commercial (``api.taqinor.ma``), ``build_absolute_uri`` fabriquait
+    #6 : la page ``/questionnaire/<token>/`` vit dans ``apps/web`` (le site
+    Astro) — l'ERP ne la sert nulle part. Le mint étant appelé depuis l'écran
+    commercial, donc depuis l'hôte de l'API, ``build_absolute_uri`` fabriquait
     un lien sur l'API : le client recevait une URL MORTE.
 
     ``request`` est accepté et IGNORÉ : la signature reste celle des appelants
