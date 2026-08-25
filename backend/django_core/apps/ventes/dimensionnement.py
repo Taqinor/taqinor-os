@@ -1679,9 +1679,10 @@ def facteur_remise_du_devis(devis) -> float:
         logger.warning('facteur de remise illisible sur %s',
                        getattr(devis, 'reference', '?'), exc_info=True)
         return 1.0
-    # Un facteur nul/négatif ou non fini ne décrit aucune remise réelle : on
-    # rend le prix catalogue plutôt qu'un prix fabriqué.
-    if not (facteur > 0) or facteur != facteur or facteur == float('inf'):
+    # Un facteur nul, négatif ou non fini (NaN compris — toute comparaison
+    # avec NaN est fausse) ne décrit aucune remise réelle : on rend le prix
+    # catalogue plutôt qu'un prix fabriqué.
+    if not 0 < facteur < math.inf:
         return 1.0
     return facteur
 
