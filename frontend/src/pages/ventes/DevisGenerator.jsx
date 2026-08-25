@@ -51,7 +51,7 @@ import {
   MONTHS_FR, CHART_MONTHS, DEFAULT_MONTHLY_BILLS, DAY_USAGE_DEFAULTS,
   formatMoney, estimerMois, estimerPanneaux, computeROI, ttcFromHt, htFromTtc,
   tauxTvaOf,
-  batteryKwhFromLines, comptePanneauxOption,
+  batteryKwhFromLines, batteryCapaciteInconnue, comptePanneauxOption,
   optionTotalsTTC, autoFillLines, defaultProductLines,
   computeEtudeIndustrielle,
   autoFillPompage, pompageSelection, HEURES_POMPAGE_DEFAUT,
@@ -828,6 +828,14 @@ export default function DevisGenerator({
   const dKwp = useDeferredValue(kwp)
   const dKwpAvec = useDeferredValue(kwpAvec)
   const dDayUsage = useDeferredValue(dayUsage)
+
+  // BAT5DEF (26/08/2026) — au moins une ligne batterie n'a pas de kWh lisible
+  // dans sa désignation : `batteryKwhFromLines` ne lui compte plus un défaut
+  // fabriqué de 5 kWh (RÈGLE FONDATEUR « zéro chiffre inventé »), donc la
+  // capacité utilisée en aval (ROI, étude horaire) peut être SOUS-estimée.
+  // Signalé à l'écran plutôt que tu — jamais un chiffre qu'on tairait.
+  const capaciteBatterieInconnue = useMemo(
+    () => batteryCapaciteInconnue(dLines), [dLines])
 
   // QF4/QF5 — consommation annuelle RÉELLE dérivée de la facture/kWh du
   // client (barème par tranche du distributeur choisi). Alimente à la fois
@@ -4045,6 +4053,21 @@ export default function DevisGenerator({
                           <MetricCard label="Coût"
                                       value={fmtNum(Math.round(totals.totalAvec))}
                                       unit="MAD TTC" />
+                          {/* BAT5DEF — au moins une ligne batterie n'a pas de
+                              kWh lisible : la capacité utilisée par le ROI et
+                              l'étude horaire est SOUS-estimée (0 kWh pour
+                              cette ligne, jamais un défaut inventé). Signalé
+                              à l'écran, jamais caché — même patron que
+                              gen-mt-manquant. */}
+                          {capaciteBatterieInconnue && (
+                            <p className="text-xs text-warning"
+                               data-testid="gen-battery-capacite-inconnue">
+                              Capacité batterie non lisible sur au moins une
+                              ligne (désignation sans kWh) : les économies et
+                              le payback « avec batterie » sont sous-estimés,
+                              renseignez le kWh dans la désignation.
+                            </p>
+                          )}
                         </>
                       )}
                     </div>

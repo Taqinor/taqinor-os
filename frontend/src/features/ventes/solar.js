@@ -1195,7 +1195,12 @@ export function htFromTtc(ttc, tauxTva = TVA_STANDARD_DEFAUT) {
   return ((parseFloat(ttc) || 0) / factor).toFixed(2)
 }
 
-// Capacité batterie totale depuis les lignes (port de app.js — défaut 5 kWh/ligne)
+// Capacité batterie totale depuis les lignes (port de app.js).
+// BAT5DEF (26/08/2026) — RÈGLE FONDATEUR « zéro chiffre inventé » : avant ce
+// correctif, une ligne batterie dont la désignation ne portait pas de kWh
+// lisible contribuait un défaut FABRIQUÉ de 5,0 kWh (jamais dérivé d'aucune
+// donnée réelle). Elle contribue désormais 0 — voir `batteryCapaciteInconnue`
+// ci-dessous pour SIGNALER ce cas à l'écran plutôt que de le taire.
 export function batteryKwhFromLines(lines) {
   return lines.reduce((sum, l) => {
     if (!isBattery(l.designation)) return sum
@@ -1205,8 +1210,21 @@ export function batteryKwhFromLines(lines) {
     // historique) ce garde-fou est un no-op (`undefined !== 'sans'`).
     if (l.variante === 'sans') return sum
     const qty = parseFloat(l.quantite) || 0
-    return sum + qty * (parseKwh(l.designation) ?? 5.0)
+    return sum + qty * (parseKwh(l.designation) ?? 0)
   }, 0)
+}
+
+// BAT5DEF — au moins une ligne batterie COMPTÉE (mêmes exclusions que
+// `batteryKwhFromLines` : ni une ligne taguée 'sans') n'a pas de kWh lisible
+// dans sa désignation → la capacité rendue par `batteryKwhFromLines`
+// SOUS-ESTIME la vraie capacité (elle vaut 0 pour cette ligne, jamais un
+// défaut inventé). Sert à afficher un avertissement honnête plutôt que de
+// laisser croire que le chiffre est complet. `false` = soit aucune ligne
+// batterie, soit toutes lisibles : comportement historique inchangé.
+export function batteryCapaciteInconnue(lines) {
+  return (lines || []).some(l =>
+    isBattery(l.designation) && l.variante !== 'sans'
+    && parseKwh(l.designation) == null)
 }
 
 // L-2OPT — nombre de PANNEAUX d'une option, avec la MÊME règle d'exclusion

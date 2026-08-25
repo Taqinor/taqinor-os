@@ -18,6 +18,7 @@ import assert from 'node:assert/strict'
 import {
   fusionnerVariantes, optionTotalsTTC, batteryKwhFromLines, computeROI,
   INVERTER_REPLACE_YEAR, optimalKwcByPayback, comptePanneauxOption,
+  batteryCapaciteInconnue,
 } from './solar.js'
 
 // ── fusionnerVariantes ────────────────────────────────────────────────────
@@ -182,6 +183,41 @@ test('batteryKwhFromLines : une ligne batterie taguée \'sans\' (résidu inévit
 test('batteryKwhFromLines : lignes SANS champ `variante` — comportement historique inchangé', () => {
   const lignes = [{ designation: 'Batterie Dyness 5 kWh', quantite: 2 }]
   assert.equal(batteryKwhFromLines(lignes), 10)
+})
+
+// ── BAT5DEF (26/08/2026) — zéro défaut fabriqué de 5 kWh ───────────────────
+
+test('batteryKwhFromLines : BAT5DEF — une désignation batterie SANS kWh lisible contribue 0, jamais un défaut fabriqué de 5', () => {
+  const lignes = [
+    { designation: 'Batterie', quantite: 2 },
+    { designation: 'Batterie Dyness 10 kWh', quantite: 1 },
+  ]
+  // AVANT le correctif : (2 × 5.0 fabriqué) + (1 × 10) = 20. Le fabriqué doit
+  // avoir disparu — seule la ligne lisible compte.
+  assert.equal(batteryKwhFromLines(lignes), 10)
+})
+
+test('batteryCapaciteInconnue : signale une ligne batterie COMPTÉE sans kWh lisible', () => {
+  assert.equal(batteryCapaciteInconnue([
+    { designation: 'Batterie', quantite: 1 },
+  ]), true)
+  // Ligne 'sans' résiduelle — exclue du panier « avec » comme
+  // `batteryKwhFromLines` : sa désignation illisible ne doit pas déclencher
+  // l'avertissement, elle ne compte de toute façon jamais.
+  assert.equal(batteryCapaciteInconnue([
+    { designation: 'Batterie', quantite: 1, variante: 'sans' },
+  ]), false)
+})
+
+test('batteryCapaciteInconnue : false quand toutes les lignes batterie sont lisibles, ou aucune batterie', () => {
+  assert.equal(batteryCapaciteInconnue([
+    { designation: 'Batterie Dyness 10 kWh', quantite: 1 },
+  ]), false)
+  assert.equal(batteryCapaciteInconnue([
+    { designation: 'Panneau Canadien Solar 710W', quantite: 14 },
+  ]), false)
+  assert.equal(batteryCapaciteInconnue([]), false)
+  assert.equal(batteryCapaciteInconnue(null), false)
 })
 
 // ── computeROI — la provision onduleur ne double-compte jamais une ligne
