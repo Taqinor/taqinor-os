@@ -812,6 +812,8 @@
     detail:texte, id:inconnu, theme:inconnu
 - frontend/src/api/rhApi.js :: definirCodePointage -> /api/django/rh/employes/<>/definir-code-pointage
     code:texte, detail:texte
+- frontend/src/api/rhApi.js :: emargerDotationEpi -> /api/django/rh/dotations-epi/<>/emarger
+    accuse_remise:inconnu, date_accuse:inconnu, deja_accusee:inconnu, detail:texte, emargement:inconnu
 - frontend/src/api/rhApi.js :: getCockpit -> /api/django/rh/cockpit
     alertes:inconnu, effectif_total:inconnu, masse_salariale_mensuelle:inconnu, par_contrat:inconnu, par_departement:inconnu, par_statut:inconnu, pyramide_anciennete:inconnu, turnover:objet
 - frontend/src/api/rhApi.js :: getIntegration -> /api/django/rh/employes/<>/integration
@@ -850,6 +852,8 @@
     detail:texte, devis_id:inconnu, devis_reference:inconnu
 - frontend/src/api/savApi.js :: creerLeadDepuisTicket -> /api/django/sav/tickets/<>/creer-lead
     created:inconnu, lead_id:inconnu
+- frontend/src/api/savApi.js :: facturerContrat -> /api/django/sav/contrats-maintenance/<>/facturer
+    detail:texte, facture_id:inconnu, facture_reference:inconnu, ok:booleen
 - frontend/src/api/savApi.js :: facturerTicket -> /api/django/sav/tickets/<>/facturer
     couverture:inconnu, facture_id:inconnu, facture_reference:inconnu
 - frontend/src/api/savApi.js :: genererFactureTicket -> /api/django/sav/tickets/<>/generer-facture
@@ -862,6 +866,8 @@
     results:inconnu
 - frontend/src/api/savApi.js :: getPiecesCompatibles -> /api/django/sav/tickets/<>/pieces-compatibles
     results:inconnu
+- frontend/src/api/savApi.js :: getRentabiliteContrats -> /api/django/sav/contrats-maintenance/rentabilite
+    detail:texte, results:inconnu
 - frontend/src/api/savApi.js :: getSavFiabiliteParc -> /api/django/sav/insights/sav-fiabilite
     couts_inclus:inconnu, results:inconnu
 - frontend/src/api/savApi.js :: getSavFileAction -> /api/django/sav/tickets/file-action
@@ -876,6 +882,8 @@
     token:inconnu, url:inconnu
 - frontend/src/api/savApi.js :: neplusSuivreTicket -> /api/django/sav/tickets/<>/suivre
     suivi:booleen
+- frontend/src/api/savApi.js :: planifierTournee -> /api/django/sav/contrats-maintenance/planifier-tournee
+    detail:inconnu, ok:booleen, tickets_planifies:inconnu
 - frontend/src/api/savApi.js :: removeTicketPiece -> /api/django/sav/tickets/<>/pieces/<>
     detail:texte
 - frontend/src/api/savApi.js :: suivreTicket -> /api/django/sav/tickets/<>/suivre
@@ -3089,6 +3097,8 @@
     statut ∈ {annulee, refusee, soumise, validee}
 - frontend/src/api/rhApi.js :: createDeviceEmployeMap -> /api/django/rh/devices-employe-map  [EmployeDeviceMapSerializer]
     champs: date_creation, device_user_id, employe, employe_nom, id
+- frontend/src/api/rhApi.js :: createDotationEpi -> /api/django/rh/dotations-epi  [DotationEpiSerializer]
+    champs: a_controler, accuse_remise, date_accuse, date_creation, date_dotation, date_modification, date_peremption, date_prochain_controle, date_renouvellement, date_restitution, employe, employe_nom, epi, epi_designation, id, note, perime, quantite, restituee, taille, type_epi, type_epi_display
 - frontend/src/api/rhApi.js :: createElementIntegration -> /api/django/rh/elements-integration  [ElementIntegrationSerializer]
     champs: date_creation, id, libelle, modele, ordre
 - frontend/src/api/rhApi.js :: createElementVariablePaie -> /api/django/rh/elements-variables-paie  [ElementsVariablesPaieSerializer]
@@ -3145,6 +3155,9 @@
 - frontend/src/api/rhApi.js :: createRetourFeedback360 -> /api/django/rh/retours-feedback360  [RetourFeedback360Serializer]
     champs: commentaire, date_invitation, date_soumission, evaluation, id, relation, repondant, repondant_nom, reponses, soumis
     relation ∈ {manager_transversal, pair, subordonne}
+- frontend/src/api/rhApi.js :: createRoster -> /api/django/rh/roster  [AffectationRosterSerializer]
+    champs: conflit_conge, creneau, creneau_display, date, date_creation, date_modification, employe, employe_nom, equipe, id, note, semaine_du, vehicule_id
+    creneau ∈ {apres_midi, journee, matin}
 - frontend/src/api/rhApi.js :: createTypeLigneParcours -> /api/django/rh/types-ligne-parcours  [TypeLigneParcoursSerializer]
     champs: id, libelle, ordre
 - frontend/src/api/rhApi.js :: createTypePrime -> /api/django/rh/types-prime  [TypePrimeSerializer]
@@ -3364,6 +3377,9 @@
 - frontend/src/api/rhApi.js :: updatePrimeAttribuee -> /api/django/rh/primes-attribuees/<>  [PrimeAttribueeSerializer]
     champs: annee, date_creation, date_modification, employe, employe_nom, id, mois, montant, motif, statut, statut_display, type_prime, type_prime_libelle
     statut ∈ {payee, proposee, validee}
+- frontend/src/api/rhApi.js :: updateRoster -> /api/django/rh/roster/<>  [AffectationRosterSerializer]
+    champs: conflit_conge, creneau, creneau_display, date, date_creation, date_modification, employe, employe_nom, equipe, id, note, semaine_du, vehicule_id
+    creneau ∈ {apres_midi, journee, matin}
 - frontend/src/api/rhApi.js :: updateTypePrime -> /api/django/rh/types-prime/<>  [TypePrimeSerializer]
     champs: actif, code, date_creation, id, imposable, libelle, montant_defaut, nature, nature_display
     nature ∈ {indemnite, prime}
