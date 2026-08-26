@@ -24,7 +24,9 @@ from rest_framework.throttling import SimpleRateThrottle
 from apps.records.storage import fetch_attachment, store_attachment
 
 from authentication.mixins import TenantMixin
-from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from authentication.permissions import (
+    HasPermissionOrLegacy, IsAnyRole, IsResponsableOrAdmin,
+)
 # SCA4 — base transverse UNIQUE des viewsets scopés société : tout NOUVEAU
 # ModelViewSet inscriptible part d'ici (scoping + forçage de `company` garantis).
 from core.viewsets import CompanyScopedModelViewSet
@@ -71,6 +73,30 @@ from .serializers import (
 )
 
 READ_ACTIONS = ['list', 'retrieve']
+
+# ── WIR174 — permissions FINES de la GED ────────────────────────────────────
+# Avant : caviardage définitif, rétention légale (legal hold) et politiques de
+# rétention n'étaient gardés que par ``IsResponsableOrAdmin``, c'est-à-dire par
+# TOUT porteur d'une écriture, même totalement hors GED (un Technicien avec
+# ``sav_gerer`` pouvait geler ou caviarder un document).
+#
+# Trois codes, deux paliers :
+#   * ``ged_voir``        — lecture (déclaratif : la LECTURE GED reste ouverte à
+#     tout rôle interne via ``IsAnyRole``, contrat GED37 — WIR174 ne referme PAS
+#     les branches de lecture) ;
+#   * ``ged_gerer``       — écriture documentaire courante (mappé sur tous les
+#     rôles qui écrivaient déjà : aucun accès retiré) ;
+#   * ``ged_gouvernance`` — DIRECTION SEULE : poser/lever un legal hold,
+#     caviarder définitivement, écrire une politique de rétention.
+#
+# ``HasPermissionOrLegacy`` conserve le repli des comptes SANS rôle fin.
+GED_GERER = 'ged_gerer'
+GED_GOUVERNANCE = 'ged_gouvernance'
+
+# Actions de GOUVERNANCE portées par ``DocumentViewSet``.
+GOUVERNANCE_ACTIONS = (
+    'placer_legal_hold', 'lever_legal_hold', 'caviarder',
+)
 
 # GED20 — Formats affichables inline (PDF, images, texte). Tout le reste →
 # téléchargement forcé (attachment). Partagé entre l'aperçu authentifié (GED14)
@@ -320,7 +346,13 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         if (self.action == 'operations_lot'
                 and self.request.data.get('operation') == 'telecharger_zip'):
             return [IsAnyRole()]
-        return [IsResponsableOrAdmin()]
+        # WIR174 — GOUVERNANCE documentaire (legal hold, caviardage définitif) :
+        # direction seule. Placé APRÈS toutes les branches `IsAnyRole` (aucune
+        # de ces trois actions n'y figure) pour ne rien élargir NI resserrer de
+        # la lecture — le contrat GED37 reste intact.
+        if self.action in GOUVERNANCE_ACTIONS:
+            return [HasPermissionOrLegacy(GED_GOUVERNANCE)()]
+        return [HasPermissionOrLegacy(GED_GERER)()]
 
     def get_queryset(self):
         # GED8 — base : documents visibles selon l'ACL coffre-fort.
@@ -1421,7 +1453,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         gelé), surclassant toute purge de politique de rétention (GED22).
         `company` et `place_par` sont posés CÔTÉ SERVEUR (jamais lus du corps).
         IDEMPOTENT : un hold actif existant est renvoyé tel quel (pas de
-        doublon). Écriture : responsable/admin."""
+        doublon). Écriture : ``ged_gouvernance`` (direction seule, WIR174)."""
         document = self.get_object()
         try:
             hold = services.placer_legal_hold(
@@ -1443,7 +1475,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         conservé, jamais supprimé). Le document redevient supprimable une fois
         le dernier hold actif levé (sauf autre protection, ex. GED23).
         IDEMPOTENT : sans hold actif, renvoie simplement `leves: 0`. Écriture :
-        responsable/admin."""
+        ``ged_gouvernance`` (direction seule, WIR174)."""
         document = self.get_object()
         try:
             leves = services.lever_legal_hold(document, user=request.user)
@@ -1461,7 +1493,8 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         (%)}], "version": <id?>}`. Le texte sous les zones est SUPPRIMÉ (pas
         un simple rectangle) via PyMuPDF (import gardé — 400 explicite sans
         la lib). La copie devient un nouveau document lié à l'original via
-        `custom_data.caviarde_depuis`. Écriture : responsable/admin."""
+        `custom_data.caviarde_depuis`. Écriture : ``ged_gouvernance``
+        (direction seule, WIR174)."""
         document = self.get_object()
         version_id = request.data.get('version')
         version = (selectors.latest_version(document) if not version_id else
@@ -2103,7 +2136,7 @@ class PolitiqueRetentionViewSet(TenantMixin, viewsets.ModelViewSet):
     `cabinet`/`folder` sont bornés à la société courante par le serializer.
 
     Lecture : tout rôle authentifié. Création/modification/suppression :
-    responsable/admin. L'action `echus` LISTE les documents échus au regard de
+    ``ged_gouvernance`` (direction seule, WIR174). L'action `echus` LISTE les documents échus au regard de
     leur politique applicable — elle ne supprime ni ne modifie jamais rien.
     """
     queryset = PolitiqueRetention.objects.select_related(
@@ -2116,7 +2149,10 @@ class PolitiqueRetentionViewSet(TenantMixin, viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['echus']:
             return [IsAnyRole()]
-        return [IsResponsableOrAdmin()]
+        # WIR174 — écrire une politique de rétention DÉCIDE de la durée de
+        # conservation légale de classes entières de documents : gouvernance,
+        # direction seule (même palier que le legal hold et le caviardage).
+        return [HasPermissionOrLegacy(GED_GOUVERNANCE)()]
 
     def get_queryset(self):
         qs = selectors.politiques_retention_for_company(
@@ -2273,7 +2309,8 @@ class LegalHoldViewSet(TenantMixin,
     corps ; on lit seulement `document` + `motif`). Pose IDEMPOTENTE (pas de
     doublon de hold actif).
 
-    Lecture : tout rôle authentifié. Pose/levée : responsable/admin.
+    Lecture : tout rôle authentifié. Pose/levée : ``ged_gouvernance``
+    (direction seule, WIR174).
     """
     queryset = LegalHold.objects.select_related(
         'document', 'place_par', 'leve_par').all()
@@ -2284,7 +2321,10 @@ class LegalHoldViewSet(TenantMixin,
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
-        return [IsResponsableOrAdmin()]
+        # WIR174 — poser/lever un hold par CETTE route est exactement le même
+        # pouvoir que `documents/<id>/placer-legal-hold/` : même garde, sinon la
+        # garde de `DocumentViewSet` se contournerait par une autre URL.
+        return [HasPermissionOrLegacy(GED_GOUVERNANCE)()]
 
     def get_queryset(self):
         qs = selectors.legal_holds_for_company(self.request.user.company)
@@ -2333,7 +2373,8 @@ class LegalHoldViewSet(TenantMixin,
 
         `POST …/legal-holds/<id>/lever/`. Délègue à `services.lever_legal_hold`
         (qui lève TOUS les holds actifs du document — trace serveur). Renvoie le
-        nombre de holds levés. Idempotent. Écriture : responsable/admin."""
+        nombre de holds levés. Idempotent. Écriture : ``ged_gouvernance``
+        (direction seule, WIR174)."""
         hold = self.get_object()
         try:
             leves = services.lever_legal_hold(hold.document, user=request.user)

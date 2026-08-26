@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Provider } from 'react-redux'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { configureStore } from '@reduxjs/toolkit'
 import MessageBubble from './MessageBubble'
 import messagingReducer from './store/messagingSlice'
@@ -44,10 +45,18 @@ function makeStore(userId = 99) {
   })
 }
 
+// WIR259 — la carte d'enregistrement partagé est désormais le VRAI
+// `./RecordCard` (S19), qui navigue en SPA via `useNavigate` : la bulle doit
+// donc être rendue dans un Router.
 function renderBubble(props) {
   return render(
     <Provider store={makeStore()}>
-      <MessageBubble {...props} />
+      <MemoryRouter initialEntries={['/chat']}>
+        <Routes>
+          <Route path="/chat" element={<MessageBubble {...props} />} />
+          <Route path="/ventes/devis/7" element={<div>Écran devis 7</div>} />
+        </Routes>
+      </MemoryRouter>
     </Provider>,
   )
 }
@@ -178,5 +187,38 @@ describe('MessageBubble (S15/S17/S18)', () => {
     await userEvent.click(screen.getByLabelText('Actions du message'))
     await userEvent.click(await screen.findByText('Ajouter aux favoris'))
     expect(messagesApi.toggleBookmark).toHaveBeenCalledWith(1)
+  })
+
+  // ── WIR259 — vraie carte d'enregistrement (SPA + icône par type) ─────────
+  it('rend un devis partagé en carte cliquable qui navigue en SPA', async () => {
+    renderBubble({
+      message: {
+        id: 8, body: '', created_at: 'x', sender: { id: 2 },
+        shared_label: 'Devis DV-2026-004', shared_url: '/ventes/devis/7',
+      },
+    })
+    const card = screen.getByTestId('record-card')
+    expect(card).toHaveAttribute('href', '/ventes/devis/7')
+    expect(screen.getByText('Devis DV-2026-004')).toBeInTheDocument()
+    // Navigation SPA : le clic ne suit pas le lien, il route en interne.
+    await userEvent.click(card)
+    expect(await screen.findByText('Écran devis 7')).toBeInTheDocument()
+  })
+
+  it('ne monte aucune carte quand le message ne partage rien', () => {
+    renderBubble({
+      message: { id: 9, body: 'texte simple', created_at: 'x', sender: { id: 2 } },
+    })
+    expect(screen.queryByTestId('record-card')).toBeNull()
+  })
+
+  it('rend un mémo vocal via VoiceMessage (pièce jointe kind=voice)', () => {
+    renderBubble({
+      message: {
+        id: 10, body: '', created_at: 'x', sender: { id: 2 },
+        attachments: [{ id: 3, kind: 'voice', mime: 'audio/webm', duration_s: 4 }],
+      },
+    })
+    expect(screen.getByTestId('voice-message')).toBeInTheDocument()
   })
 })

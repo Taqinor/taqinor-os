@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import {
-  Paperclip, FileText, Pin, PinOff, Pencil, Check, MoreHorizontal, Trash2,
+  Paperclip, Pin, PinOff, Pencil, Check, MoreHorizontal, Trash2,
   Clock, Bookmark, BookmarkCheck, Send,
 } from 'lucide-react'
 import {
@@ -14,6 +14,7 @@ import { toastError, toastSuccess } from '../../lib/toast'
 import { sendMessage } from './store/messagingSlice'
 import { bubbleTime, displayName } from './time'
 import VoiceMessage from './VoiceMessage'
+import RecordCard from './RecordCard'
 import Reactions from './Reactions'
 import { renderRichText } from './richText'
 
@@ -253,22 +254,24 @@ function Attachment({ att }) {
   )
 }
 
-function RecordCard({ message }) {
-  // Le serializer expose shared_label / shared_url. On retombe sur un éventuel
-  // objet `record` (rendu local optimiste) pour la rétro-compatibilité.
-  const label = message.shared_label || message.record?.label
-  if (!label) return null
-  const url = message.shared_url || message.record?.link || '#'
-  const subtitle = message.record?.subtitle
-  return (
-    <a href={url} className="chat-record-card">
-      <FileText size={15} aria-hidden="true" />
-      <span className="chat-record-meta">
-        <strong>{label}</strong>
-        {subtitle && <span>{subtitle}</span>}
-      </span>
-    </a>
-  )
+// WIR259 — la bulle rendait une copie LOCALE de la carte (lien `<a href>` nu,
+// icône toujours `FileText`) au lieu du vrai composant `./RecordCard` (S19),
+// qui navigue en SPA sur une URL interne et choisit l'icône selon le type
+// (lead / devis / chantier). On délègue désormais au vrai composant ; cette
+// fonction ne fait plus que NORMALISER les deux formes de données possibles.
+//
+// Deux sources, toutes deux supportées :
+//   * le snapshot SERVEUR (`shared_label` / `shared_url`, MessageSerializer) ;
+//   * un objet `record` local optimiste (`label` / `link` / `record_type`).
+function sharedRecordOf(message) {
+  if (message.record) {
+    const r = message.record
+    return { ...r, url: r.url || r.link || '' }
+  }
+  if (message.shared_label) {
+    return { label: message.shared_label, url: message.shared_url || '' }
+  }
+  return null
 }
 
 // Une pièce jointe vocale est rendue par VoiceMessage ; les autres par Attachment.
@@ -300,6 +303,8 @@ export default function MessageBubble({
   // Rétro-compat : un slot `m.voice` direct (rendu optimiste) reste supporté.
   const legacyVoice = m.voice
   const isPoll = m.kind === 'poll'
+  // WIR259 — enregistrement partagé (snapshot serveur ou objet local), ou null.
+  const sharedRecord = deleted ? null : sharedRecordOf(m)
   // WIR155 — un fil ne se répond qu'au message RACINE (pas de fil-de-fil).
   const canThread = !deleted && !m.reply_to
 
@@ -350,7 +355,11 @@ export default function MessageBubble({
             <em className="chat-bubble-deleted">Message supprimé</em>
           ) : (
             <>
-              <RecordCard message={m} />
+              {/* WIR259 — vrai `RecordCard` (navigation SPA + icône par type).
+                  Monté SEULEMENT quand le message porte réellement un
+                  enregistrement : `RecordCard` appelle `useNavigate()`, on ne
+                  l'instancie donc jamais pour rien. */}
+              {sharedRecord && <RecordCard record={sharedRecord} />}
               {/* XKB29 — rendu sûr du gras/italique/code/listes/liens (aucun
                   dangerouslySetInnerHTML : renderRichText construit un arbre
                   d'éléments React, un payload script reste du texte). */}

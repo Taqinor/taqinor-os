@@ -110,7 +110,17 @@ UNGUARDED_ACTION_BASELINE = {
     # NTFPA — viewsets FP&A gardés au niveau CLASSE (CompanyScopedModelViewSet
     # + rôle Directeur/FP&A), company-scopés ; dette coarse figée (fine-grain
     # ultérieur, YRBAC3).
-    "fpa": 16,
+    # WIR173 — 16 → 12 : les 14 viewsets FP&A passent sur une base gardée
+    # (``_FpaBaseViewSet``/``FpaScopedPermission`` : lecture ⇒ un code
+    # ``fpa_*``, écriture ⇒ ``fpa_saisir``/``fpa_valider``/``fpa_administrer``)
+    # et les QUATRE actions de gouvernance d'un cycle (``ouvrir-saisie``,
+    # ``clore``, ``export``, ``dupliquer``) déclarent en plus
+    # ``permission_classes=[ExigeFpaPermission(FPA_ADMINISTRER)]`` — le scanner
+    # les crédite donc, d'où -4. Les 12 restantes sont gardées au niveau CLASSE
+    # par cette même base (dette COARSE apparente, pas un trou) ; leur coller un
+    # ``permission_classes=`` identique au défaut de classe ferait taire le
+    # scanner sans rien resserrer — règle du dépôt (cf. ``ao``/``marketing``).
+    "fpa": 12,
     # NTUX13 — ``ModeleProjetViewSet.dupliquer`` (70 → 71) : duplication d'un
     # modèle de projet, gardée EXACTEMENT comme sa sœur ``instancier`` du même
     # viewset — ``_GestionProjetBaseViewSet`` (WriteScopedPermissionMixin,
