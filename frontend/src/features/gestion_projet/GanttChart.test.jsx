@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 import GanttChart from './GanttChart.jsx'
@@ -78,6 +79,59 @@ describe('GanttChart', () => {
     fireEvent.pointerMove(bar, { clientX: 1 })
     fireEvent.pointerUp(bar, { clientX: 1 })
     expect(onReprogrammer).not.toHaveBeenCalled()
+  })
+
+  it('WIR244 — « Ajouter » une dépendance appelle onCreerDependance avec les bonnes valeurs', async () => {
+    const onCreerDependance = vi.fn(() => Promise.resolve())
+    const user = userEvent.setup()
+    withProviders(
+      <GanttChart
+        taches={[
+          { id: 1, libelle: 'Étude', date_debut_prevue: '2026-01-01', date_fin_prevue: '2026-01-05' },
+          { id: 2, libelle: 'Pose', date_debut_prevue: '2026-01-06', date_fin_prevue: '2026-01-12' },
+        ]}
+        onCreerDependance={onCreerDependance}
+      />,
+    )
+    await user.selectOptions(screen.getByLabelText('Tâche prédécesseur'), '1')
+    await user.selectOptions(screen.getByLabelText('Tâche successeur'), '2')
+    await user.selectOptions(screen.getByLabelText('Type de dépendance'), 'ss')
+    await user.type(screen.getByLabelText('Décalage (jours)'), '2')
+    await user.click(screen.getByRole('button', { name: /Ajouter/ }))
+    await waitFor(() => expect(onCreerDependance).toHaveBeenCalledWith(
+      { predecesseur: 1, successeur: 2, type_dependance: 'ss', lag: 2 }))
+  })
+
+  it('WIR244 — le bouton Supprimer d’une dépendance appelle onSupprimerDependance', async () => {
+    const onSupprimerDependance = vi.fn(() => Promise.resolve())
+    const user = userEvent.setup()
+    withProviders(
+      <GanttChart
+        taches={[
+          { id: 1, libelle: 'Étude', date_debut_prevue: '2026-01-01', date_fin_prevue: '2026-01-05' },
+          { id: 2, libelle: 'Pose', date_debut_prevue: '2026-01-06', date_fin_prevue: '2026-01-12' },
+        ]}
+        dependances={[{ id: 3, predecesseur: 1, successeur: 2, type_dependance: 'fs', lag: 0 }]}
+        onSupprimerDependance={onSupprimerDependance}
+      />,
+    )
+    await user.click(screen.getByLabelText('Supprimer la dépendance'))
+    expect(onSupprimerDependance).toHaveBeenCalledWith(
+      { id: 3, predecesseur: 1, successeur: 2, type_dependance: 'fs', lag: 0 })
+  })
+
+  it('n’affiche ni délégation ni formulaire d’ajout sans callback (rétro-compat)', () => {
+    withProviders(
+      <GanttChart
+        taches={[
+          { id: 1, libelle: 'Étude', date_debut_prevue: '2026-01-01', date_fin_prevue: '2026-01-05' },
+          { id: 2, libelle: 'Pose', date_debut_prevue: '2026-01-06', date_fin_prevue: '2026-01-12' },
+        ]}
+        dependances={[{ id: 3, predecesseur: 1, successeur: 2, type_dependance: 'fs', lag: 0 }]}
+      />,
+    )
+    expect(screen.queryByLabelText('Tâche prédécesseur')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Supprimer la dépendance')).not.toBeInTheDocument()
   })
 })
 

@@ -96,6 +96,10 @@ const gestionProjetApi = {
   getCalendriers: (params) => api.get(`${P}/calendriers/`, { params }),
   createCalendrier: (data) => api.post(`${P}/calendriers/`, data),
   updateCalendrier: (id, data) => api.patch(`${P}/calendriers/${id}/`, data),
+  // WIR244 — pré-remplissage IDEMPOTENT des fériés marocains (core/calendar.py)
+  // pour une année donnée (jamais de doublon, unique (calendrier, date)).
+  seedFeriesCalendrier: (id, annee) =>
+    api.post(`${P}/calendriers/${id}/seed-feries/`, {}, { params: { annee } }),
   getJoursFeries: (params) => api.get(`${P}/jours-feries/`, { params }),
   createJourFerie: (data) => api.post(`${P}/jours-feries/`, data),
   deleteJourFerie: (id) => api.delete(`${P}/jours-feries/${id}/`),
@@ -185,6 +189,11 @@ const gestionProjetApi = {
   createDocument: (data) => api.post(`${P}/documents/`, data),
   deleteDocument: (id) => api.delete(`${P}/documents/${id}/`),
   getDocumentVersions: (id) => api.get(`${P}/documents/${id}/versions/`),
+  // WIR203 — dépôt d'une nouvelle version (fichier obligatoire, multipart) :
+  // le n° de version et l'auteur sont posés côté serveur (jamais du corps).
+  deposerVersionDocument: (id, formData) =>
+    api.post(`${P}/documents/${id}/deposer/`, formData,
+      { headers: { 'Content-Type': 'multipart/form-data' } }),
   getCommentaires: (params) => api.get(`${P}/commentaires/`, { params }),
   createCommentaire: (data) => api.post(`${P}/commentaires/`, data),
   deleteCommentaire: (id) => api.delete(`${P}/commentaires/${id}/`),
