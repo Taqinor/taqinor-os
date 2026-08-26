@@ -474,6 +474,67 @@ function BudgetTab() {
   )
 }
 
+// WIR236/FLOTTE29 — journal kilométrique AGRÉGÉ ventilé par chantier
+// (`TrajetChantierViewSet.journal`) sans AUCUN consommateur frontend : seule
+// la liste brute des trajets était visible (onglet Carburant), jamais
+// l'agrégat par chantier. Réponse en dict (pas une liste DRF) — même patron
+// manuel que Remplacement/Budget ci-dessus, pas `useFlotteResource`.
+function JournalKilometriqueTab() {
+  const [state, setState] = useState({ loading: true, error: null, data: null })
+
+  const load = useCallback(() => {
+    let cancelled = false
+    setState({ loading: true, error: null, data: null })
+    flotteApi.trajetsChantier.journal()
+      .then((res) => { if (!cancelled) setState({ loading: false, error: null, data: res?.data || null }) })
+      .catch((err) => {
+        if (!cancelled) setState({ loading: false, error: err?.response?.data?.detail || 'Journal indisponible.', data: null })
+      })
+    return () => { cancelled = true }
+  }, [])
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  useEffect(() => { load() }, [load])
+
+  const columns = useMemo(() => [
+    {
+      id: 'chantier', header: 'Chantier', width: 220,
+      accessor: (r) => r.chantier_reference || (r.installation_id ? `Chantier #${r.installation_id}` : 'Non imputé'),
+      cell: (v) => v || '—',
+    },
+    { id: 'nb_trajets', header: 'Trajets', align: 'right', numeric: true, width: 110, searchable: false, accessor: (r) => r.nb_trajets ?? 0, cell: (v) => v ?? 0 },
+    {
+      id: 'distance_km', header: 'Distance', align: 'right', numeric: true, width: 130, searchable: false,
+      accessor: (r) => r.distance_km ?? 0,
+      cell: (v) => `${formatNumber(v, { decimals: 1 })} km`,
+    },
+  ], [])
+
+  if (state.loading) {
+    return <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground"><Spinner className="size-4" /> Chargement…</div>
+  }
+  if (state.error) {
+    return <EmptyState title="Indisponible" description={state.error} />
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-sm text-muted-foreground">
+        {state.data?.nb_trajets ?? 0} trajet(s) — <strong>{formatNumber(state.data?.distance_totale_km ?? 0, { decimals: 1 })} km</strong> au total.
+      </p>
+      <ListShell
+        title="Journal kilométrique par chantier"
+        subtitle="Trajets imputés chantier (FLOTTE29), agrégés par chantier."
+        columns={columns}
+        rows={state.data?.par_chantier || []}
+        exportName="journal-kilometrique"
+        emptyTitle="Aucun trajet imputé"
+        emptyDescription="Aucun trajet chantier enregistré."
+      />
+    </div>
+  )
+}
+
 export default function AnalyseCoutsScreen() {
   return (
     <div className="page flex flex-col gap-4">
@@ -486,10 +547,12 @@ export default function AnalyseCoutsScreen() {
           <TabsTrigger value="pivot">Pivot des coûts</TabsTrigger>
           <TabsTrigger value="remplacement">Remplacement</TabsTrigger>
           <TabsTrigger value="budget">Budget vs réalisé</TabsTrigger>
+          <TabsTrigger value="journal">Journal kilométrique</TabsTrigger>
         </TabsList>
         <TabsContent value="pivot"><PivotTab /></TabsContent>
         <TabsContent value="remplacement"><RemplacementTab /></TabsContent>
         <TabsContent value="budget"><BudgetTab /></TabsContent>
+        <TabsContent value="journal"><JournalKilometriqueTab /></TabsContent>
       </Tabs>
     </div>
   )

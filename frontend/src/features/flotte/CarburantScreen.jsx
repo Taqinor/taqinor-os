@@ -21,6 +21,55 @@ import PleinDialog from './PleinDialog'
    chantier. Coûts = coûts d'exploitation internes (jamais prix client / achat).
    ========================================================================== */
 
+// WIR236/XFLT8 — synthèse TVA carburant (`PleinCarburantViewSet.synthese_tva`)
+// n'avait aucun consommateur frontend : la déclaration TVA carburant
+// récupérable/non déductible restait invisible.
+function SyntheseTvaCard() {
+  const [state, setState] = useState({ loading: true, error: null, data: null })
+
+  const load = useCallback(() => {
+    let cancelled = false
+    setState({ loading: true, error: null, data: null })
+    flotteApi.pleins.syntheseTva()
+      .then((res) => { if (!cancelled) setState({ loading: false, error: null, data: res?.data || null }) })
+      .catch((err) => {
+        if (!cancelled) setState({ loading: false, error: err?.response?.data?.detail || 'Synthèse indisponible.', data: null })
+      })
+    return () => { cancelled = true }
+  }, [])
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  useEffect(() => { load() }, [load])
+
+  if (state.loading) {
+    return <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground"><Spinner className="size-4" /> Synthèse TVA en cours…</div>
+  }
+  if (state.error) {
+    return <EmptyState title="Indisponible" description={state.error} />
+  }
+  const data = state.data || {}
+  const parMois = data.par_mois || []
+  return (
+    <div className="flex flex-col gap-2 rounded-md border border-border p-3">
+      <p className="text-sm font-medium">Synthèse TVA carburant</p>
+      <div className="flex flex-wrap gap-4 text-sm">
+        <span>Récupérable : <strong>{formatNumber(data.total_recuperable ?? 0, { decimals: 2 })} MAD</strong></span>
+        <span>Non déductible : <strong>{formatNumber(data.total_non_deductible ?? 0, { decimals: 2 })} MAD</strong></span>
+      </div>
+      {parMois.length > 0 && (
+        <ul className="flex flex-col gap-1 text-xs text-muted-foreground">
+          {parMois.map((m) => (
+            <li key={m.mois}>
+              {m.mois} — récupérable {formatNumber(m.tva_recuperable ?? 0, { decimals: 2 })} MAD,
+              {' '}non déductible {formatNumber(m.tva_non_deductible ?? 0, { decimals: 2 })} MAD
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 function PleinsTab() {
   const [showForm, setShowForm] = useState(false)
   const { data, loading, error, reload } = useFlotteResource(flotteApi.pleins.list, {})
@@ -37,7 +86,8 @@ function PleinsTab() {
     <Button onClick={() => setShowForm(true)}>Nouveau plein</Button>
   )
   return (
-    <>
+    <div className="flex flex-col gap-4">
+      <SyntheseTvaCard />
       <ListShell title="Pleins de carburant" actions={actions} columns={columns} rows={data} loading={loading} error={error}
         exportName="pleins" searchable searchPlaceholder="Rechercher station…"
         emptyTitle="Aucun plein" emptyDescription="Aucun plein enregistré." />
@@ -48,7 +98,7 @@ function PleinsTab() {
           onSaved={() => { setShowForm(false); reload(); toast.success('Plein enregistré.') }}
         />
       )}
-    </>
+    </div>
   )
 }
 
@@ -229,11 +279,90 @@ function CarteCarburantDialog({ carte, vehicules = [], conducteurs = [], onClose
   )
 }
 
+// WIR236/XFLT6 — import CSV du relevé d'une carte (carburant/Jawaz) : le
+// backend rapproche déjà les lignes (`CarteCarburantViewSet.importer_releve`,
+// multipart), sans AUCUN consommateur frontend jusqu'ici.
+function ImporterReleveDialog({ carte, onClose, onImported }) {
+  const [fichier, setFichier] = useState(null)
+  const [importing, setImporting] = useState(false)
+  const [rapport, setRapport] = useState(null)
+  const [serverError, setServerError] = useState(null)
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!fichier) return
+    setImporting(true)
+    setServerError(null)
+    try {
+      const formData = new FormData()
+      formData.append('fichier', fichier)
+      const res = await flotteApi.cartes.importerReleve(carte.id, formData)
+      setRapport(res?.data || null)
+      onImported?.()
+    } catch (err) {
+      const data = err?.response?.data
+      setServerError(data?.detail || 'Import impossible.')
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose?.() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Importer un relevé — carte {carte.numero}</DialogTitle>
+        </DialogHeader>
+
+        {rapport ? (
+          <div className="flex flex-col gap-3">
+            <p className="text-sm">
+              {rapport.nb_lignes} ligne(s) — <strong>{rapport.crees}</strong> créée(s),
+              {' '}<strong>{rapport.doublons}</strong> doublon(s),
+              {' '}<strong className="text-warning">{rapport.non_rapprochees}</strong> non rapprochée(s).
+            </p>
+            {(rapport.erreurs || []).length > 0 && (
+              <ul className="flex flex-col gap-1 text-xs text-destructive">
+                {rapport.erreurs.map((e, i) => (
+                  <li key={i}>Ligne {e.ligne} : {e.motif}</li>
+                ))}
+              </ul>
+            )}
+            <DialogFooter>
+              <Button type="button" onClick={onClose}>Fermer</Button>
+            </DialogFooter>
+          </div>
+        ) : (
+          <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="releve-fichier">Fichier CSV (date, montant, litres, station/gare)</Label>
+              <input
+                id="releve-fichier" type="file" accept=".csv,text/csv" className="text-sm"
+                onChange={(e) => setFichier(e.target.files?.[0] || null)}
+              />
+            </div>
+            {serverError && (
+              <p className="text-sm text-destructive" role="alert">{serverError}</p>
+            )}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
+              <Button type="submit" disabled={!fichier || importing}>
+                {importing ? 'Import…' : 'Importer'}
+              </Button>
+            </DialogFooter>
+          </form>
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function CartesTab() {
   const { data, loading, error, reload } = useFlotteResource(flotteApi.cartes.list, {})
   const { data: vehicules } = useFlotteResource(flotteApi.vehicules.list, {})
   const { data: conducteurs } = useFlotteResource(flotteApi.conducteurs.list, {})
   const [editing, setEditing] = useState(null) // carte en édition, ou {} pour création
+  const [importing, setImporting] = useState(null) // carte ciblée par l'import CSV
   const columns = useMemo(() => [
     { id: 'numero', header: 'N° carte', width: 160, accessor: (r) => r.numero, cell: (v) => (v ? <span className="font-mono text-xs">{v}</span> : '—') },
     { id: 'vehicule', header: 'Véhicule', width: 160, accessor: (r) => r.vehicule_label, cell: (v) => v || '—' },
@@ -253,6 +382,7 @@ function CartesTab() {
   )
   const rowActions = (row) => [
     { id: 'modifier', label: 'Modifier', onClick: () => setEditing(row) },
+    { id: 'importer', label: 'Importer un relevé (CSV)', onClick: () => setImporting(row) },
   ]
 
   return (
@@ -267,6 +397,13 @@ function CartesTab() {
           conducteurs={conducteurs}
           onClose={() => setEditing(null)}
           onSaved={() => { setEditing(null); reload(); toast.success(editing.id ? 'Carte modifiée.' : 'Carte créée.') }}
+        />
+      )}
+      {importing && (
+        <ImporterReleveDialog
+          carte={importing}
+          onClose={() => setImporting(null)}
+          onImported={() => reload()}
         />
       )}
     </div>

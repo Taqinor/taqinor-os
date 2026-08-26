@@ -23,6 +23,7 @@ const {
   signer, accuserCreate, empty, etatsList, conducteursCreate, getEmployes,
   reservationsCreate, demandesVehiculeCreate, etatsDesLieuxCreate, charteCreate,
   demandesVehiculeList, demandesVehiculeApprouver, demandesVehiculeRefuser,
+  divergencesPermis,
 } = vi.hoisted(() => ({
   signer: vi.fn(() => Promise.resolve({ data: {} })),
   accuserCreate: vi.fn(() => Promise.resolve({ data: {} })),
@@ -53,6 +54,12 @@ const {
   })),
   demandesVehiculeApprouver: vi.fn(() => Promise.resolve({ data: { id: 21, statut: 'approuvee' } })),
   demandesVehiculeRefuser: vi.fn(() => Promise.resolve({ data: { id: 21, statut: 'refusee' } })),
+  // WIR236 — par défaut aucune divergence (tests existants non affectés) ;
+  // un test dédié surcharge avec `mockResolvedValueOnce` pour vérifier
+  // l'affichage d'une VRAIE divergence.
+  divergencesPermis: vi.fn(() => Promise.resolve({
+    data: { nb_conducteurs_lies: 0, nb_divergences: 0, divergences: [] },
+  })),
 }))
 
 vi.mock('../../api/flotteApi', () => ({
@@ -60,6 +67,9 @@ vi.mock('../../api/flotteApi', () => ({
     conducteurs: {
       list: () => Promise.resolve({ data: [{ id: 1, nom: 'Karim' }] }),
       create: (...args) => conducteursCreate(...args),
+      // WIR236 — divergences permis flotte↔RH (DivergencesPermisCard, rendue
+      // au montage de l'onglet Conducteurs, actif par défaut).
+      divergencesPermis: (...args) => divergencesPermis(...args),
     },
     vehicules: { list: () => Promise.resolve({ data: [{ id: 7, immatriculation: '12345-A-6' }] }) },
     affectations: { list: empty },
@@ -223,6 +233,30 @@ describe('ConducteursScreen — Demandes de véhicule (WIR200 décision)', () =>
     await waitFor(() => expect(demandesVehiculeRefuser).toHaveBeenCalledWith(
       21, 'Véhicule indisponible',
     ))
+  })
+})
+
+describe('ConducteursScreen — Divergences permis flotte↔RH (WIR236)', () => {
+  it('affiche une divergence permis flotte↔RH détectée', async () => {
+    divergencesPermis.mockResolvedValueOnce({
+      data: {
+        nb_conducteurs_lies: 1,
+        nb_divergences: 1,
+        divergences: [{
+          conducteur_id: 1, employe_id: 42, conducteur_nom: 'Karim',
+          local_valide: true, rh_valide: false,
+        }],
+      },
+    })
+    withProviders(<ConducteursScreen />)
+
+    await screen.findByText('1 divergence(s) permis flotte↔RH')
+    expect(screen.getByText('Karim')).toBeInTheDocument()
+  })
+
+  it('affiche « aucune divergence » quand la réconciliation est propre', async () => {
+    withProviders(<ConducteursScreen />)
+    await screen.findByText(/Aucune divergence permis flotte↔RH/)
   })
 })
 

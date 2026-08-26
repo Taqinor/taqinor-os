@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
@@ -17,7 +17,7 @@ beforeAll(() => {
   }
 })
 
-const { empty, anomalies, cartesCreate } = vi.hoisted(() => ({
+const { empty, anomalies, cartesCreate, syntheseTva, importerReleve } = vi.hoisted(() => ({
   empty: () => Promise.resolve({ data: [] }),
   anomalies: vi.fn(() => Promise.resolve({
     data: {
@@ -30,16 +30,31 @@ const { empty, anomalies, cartesCreate } = vi.hoisted(() => ({
     },
   })),
   cartesCreate: vi.fn(() => Promise.resolve({ data: { id: 6 } })),
+  // WIR236 — synthèse TVA carburant (SyntheseTvaCard, rendue au montage de
+  // l'onglet Carburant, actif par défaut).
+  syntheseTva: vi.fn(() => Promise.resolve({
+    data: {
+      periode: [null, null], par_mois: [], total_recuperable: 0, total_non_deductible: 0,
+      par_vehicule: [],
+    },
+  })),
+  // WIR236 — import CSV du relevé d'une carte carburant.
+  importerReleve: vi.fn(() => Promise.resolve({
+    data: { nb_lignes: 3, crees: 2, doublons: 0, non_rapprochees: 1, erreurs: [] },
+  })),
 }))
 
 vi.mock('../../api/flotteApi', () => ({
   default: {
-    pleins: { list: empty, ocr: vi.fn() },
+    pleins: { list: empty, ocr: vi.fn(), syntheseTva: (...args) => syntheseTva(...args) },
     cartes: {
-      list: empty,
+      list: () => Promise.resolve({
+        data: [{ id: 9, numero: 'CARTE-009', vehicule_label: '12345-A-6', plafond: 2000, actif: true }],
+      }),
       anomalies: (...args) => anomalies(...args),
       create: (...args) => cartesCreate(...args),
       update: vi.fn(() => Promise.resolve({ data: {} })),
+      importerReleve: (...args) => importerReleve(...args),
     },
     conducteurs: { list: () => Promise.resolve({ data: [{ id: 2, nom: 'Karim' }] }) },
     sinistres: { list: empty },
@@ -114,5 +129,36 @@ describe('CarburantScreen — Carburant (XFLT23 bouton nouveau plein)', () => {
 
     await user.click(screen.getByRole('button', { name: 'Nouveau plein' }))
     expect(screen.getByRole('heading', { name: 'Nouveau plein' })).toBeInTheDocument()
+  })
+})
+
+describe('CarburantScreen — Synthèse TVA (WIR236)', () => {
+  it('charge et affiche la synthèse TVA carburant sur l’onglet Carburant', async () => {
+    withProviders(<CarburantScreen />)
+    await waitFor(() => expect(syntheseTva).toHaveBeenCalled())
+    expect(await screen.findByText('Synthèse TVA carburant')).toBeInTheDocument()
+  })
+})
+
+describe('CarburantScreen — Cartes (WIR236 import CSV)', () => {
+  it('importe un relevé CSV et affiche le rapport de rapprochement', async () => {
+    const user = userEvent.setup()
+    withProviders(<CarburantScreen />)
+
+    await user.click(screen.getByRole('tab', { name: 'Cartes' }))
+    await screen.findByText('CARTE-009')
+
+    // DataTable rend la table desktop ET les cartes mobiles dans le DOM (le
+    // point de rupture est géré en CSS) : deux occurrences attendues, on
+    // prend la première (même patron que les autres tests de ce fichier).
+    await user.click(screen.getAllByRole('button', { name: 'Importer un relevé (CSV)' })[0])
+    const dialog = within(screen.getByRole('dialog'))
+
+    const fichier = new File(['date,montant,litres\n2026-08-01,500,30'], 'releve.csv', { type: 'text/csv' })
+    await user.upload(dialog.getByLabelText(/Fichier CSV/), fichier)
+    await user.click(dialog.getByRole('button', { name: 'Importer' }))
+
+    await waitFor(() => expect(importerReleve).toHaveBeenCalledWith(9, expect.any(FormData)))
+    expect(await dialog.findByText(/non rapprochée/)).toBeInTheDocument()
   })
 })

@@ -1,9 +1,9 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { UserPlus, AlertTriangle, FileCheck } from 'lucide-react'
 import {
   Button, Badge, Segmented, Tabs, TabsList, TabsTrigger, TabsContent,
   toast, Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-  Label, Input, Textarea, confirmLeaveIfDirty,
+  Label, Input, Textarea, confirmLeaveIfDirty, Spinner, EmptyState,
 } from '../../ui'
 import { ListShell } from '../../ui/module'
 import flotteApi from '../../api/flotteApi'
@@ -49,6 +49,60 @@ function PermisBadge({ dateExpiration }) {
   if (d < 0) return <Badge tone="danger">Expiré</Badge>
   const tone = urgencyTone(d < 0 ? 'overdue' : d <= 30 ? 'soon' : 'ok')
   return <Badge tone={tone}>{d <= 30 ? `Expire J-${d}` : 'Valide'}</Badge>
+}
+
+// WIR236/YHIRE11 — rapport de réconciliation « divergences permis flotte↔RH »
+// (`ConducteurViewSet.divergences_permis`) sans AUCUN consommateur frontend :
+// une divergence entre la validité locale et RH restait invisible.
+function DivergencesPermisCard() {
+  const [state, setState] = useState({ loading: true, error: null, data: null })
+
+  const load = useCallback(() => {
+    let cancelled = false
+    setState({ loading: true, error: null, data: null })
+    flotteApi.conducteurs.divergencesPermis()
+      .then((res) => { if (!cancelled) setState({ loading: false, error: null, data: res?.data || null }) })
+      .catch((err) => {
+        if (!cancelled) setState({ loading: false, error: err?.response?.data?.detail || 'Réconciliation indisponible.', data: null })
+      })
+    return () => { cancelled = true }
+  }, [])
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  useEffect(() => { load() }, [load])
+
+  if (state.loading) {
+    return <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground"><Spinner className="size-4" /> Réconciliation permis flotte↔RH en cours…</div>
+  }
+  if (state.error) {
+    return <EmptyState title="Indisponible" description={state.error} />
+  }
+  const divergences = state.data?.divergences || []
+  if (divergences.length === 0) {
+    return (
+      <div className="rounded-md border border-border p-3 text-sm text-muted-foreground">
+        Aucune divergence permis flotte↔RH ({state.data?.nb_conducteurs_lies ?? 0} conducteur(s) lié(s) à un dossier RH).
+      </div>
+    )
+  }
+  return (
+    <div className="flex flex-col gap-2 rounded-md border border-warning/40 p-3">
+      <p className="flex items-center gap-1.5 text-sm font-medium text-warning">
+        <AlertTriangle className="size-4" aria-hidden="true" />
+        {divergences.length} divergence(s) permis flotte↔RH
+      </p>
+      <ul className="flex flex-col gap-2">
+        {divergences.map((d) => (
+          <li key={d.conducteur_id} className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm">
+            <span>{d.conducteur_nom}</span>
+            <span className="text-xs text-muted-foreground">
+              Flotte : {d.local_valide ? 'Valide' : 'Invalide'} · RH : {d.rh_valide ? 'Valide' : 'Invalide'}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
 }
 
 function ConducteursTab() {
@@ -108,7 +162,8 @@ function ConducteursTab() {
   )
 
   return (
-    <>
+    <div className="flex flex-col gap-4">
+      <DivergencesPermisCard />
       <ListShell
         title="Conducteurs"
         subtitle="Chauffeurs et validité de leur permis."
@@ -130,7 +185,7 @@ function ConducteursTab() {
           onSaved={() => { setShowForm(false); reload(); toast.success('Conducteur créé.') }}
         />
       )}
-    </>
+    </div>
   )
 }
 
