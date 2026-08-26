@@ -625,6 +625,28 @@ class TestQuoteSignLinkAndPageNumbers(TestCase):
         self.assertNotIn('taqinor.ma/signer/', html)
 
     @tag('pdf')
+    def test_page_un_porte_le_meme_lien_tokenise_que_la_page_signature(self):
+        """QRP1 — la vignette QR de la PAGE 1 encode EXACTEMENT le lien de
+        ``links['signer']`` (ShareLink tokenisé), sans aucun paramètre ajouté :
+        ni nom, ni adresse, ni GPS en query."""
+        from apps.ventes.quote_engine.residential import renderer, render
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.models import ShareLink
+        devis = self._resid_devis()
+        data = build_quote_data(devis)
+        signer = (data.get('links') or {}).get('signer', '')
+        html = render.build_html(renderer._augment(data))
+        link = ShareLink.for_devis(devis)
+        self.assertIn('class="c1-qr-cell"', html)
+        self.assertIn(f'<a href="{signer}">', html)
+        self.assertIn(link.token, signer)
+        # forme courte affichée sous le QR — la queue tokenisée reste dans
+        # le href, jamais imprimée dans la vignette de 34 mm.
+        self.assertIn('>taqinor.ma/proposition</a>', html)
+        # aucun paramètre de requête n'a été greffé sur le lien du QR
+        self.assertNotIn('?', signer)
+
+    @tag('pdf')
     def test_footer_page_total_matches_real_pages(self):
         from apps.ventes.quote_engine.residential import renderer, render
         from apps.ventes.quote_engine.builder import build_quote_data
@@ -924,3 +946,67 @@ class TestEtudeFooterBranding(TestCase):
             'nom': 'TAQINOR', 'email': 'contact@taqinor.com',
             'telephone': '+212 6 61 85 04 10', 'site_web': 'www.taqinor.ma'})
         self.assertIn('contact@taqinor.com &nbsp;·&nbsp; www.taqinor.ma', etude)
+
+
+class TestPageUnQrProposition(SimpleTestCase):
+    """QRP1 — vignette « proposition interactive » (lien tokenisé + QR) sur la
+    PAGE 1. Rendu HTML pur (aucune BD, aucun WeasyPrint) : la vignette n'existe
+    QUE pour un devis qui porte une VRAIE proposition en ligne, et elle
+    n'agrandit pas la page (elle occupe la place déjà vide à droite du graphe
+    des factures — la garde des trois pages ci-dessus le verrouille)."""
+
+    def _html(self, **surcharges):
+        from apps.ventes.quote_engine.residential import (
+            renderer, render, sample_data)
+        d = sample_data.build()
+        d.update(surcharges)
+        return render.build_html(renderer._augment(d))
+
+    def test_vignette_rendue_pour_un_lien_tokenise(self):
+        try:
+            import qrcode  # noqa: F401
+        except Exception:
+            self.skipTest('qrcode absent de cet environnement')
+        html = self._html()
+        self.assertIn('class="c1-qr-cell"', html)
+        self.assertIn('Consultez votre', html)
+        self.assertIn('proposition interactive', html)
+        self.assertIn('data:image/png', html)
+
+    def test_aucune_vignette_sans_proposition_en_ligne(self):
+        """Repli historique « <site>/signer/<réf> » (jamais servi par le site)
+        ⇒ AUCUN QR : un code qui mène à un 404 ne s'imprime pas."""
+        html = self._html(links={'signer': 'taqinor.ma/signer/DEV-RES-DEMO'})
+        self.assertNotIn('class="c1-qr-cell"', html)
+        self.assertNotIn('proposition interactive', html)
+
+    def test_aucune_vignette_sans_lien_du_tout(self):
+        html = self._html(links={})
+        self.assertNotIn('class="c1-qr-cell"', html)
+
+
+class TestOnepageQrProposition(SimpleTestCase):
+    """QRP1 — même vignette sur le format UNE PAGE (moteur legacy) : elle vit
+    dans l'en-tête navy, dont la hauteur est fixée par le logo (80 px), donc
+    elle ne coûte pas un millimètre à la densité adaptative de la page."""
+
+    def _html(self, **surcharges):
+        from apps.ventes.tests import _moteur_fixtures as F
+        return F.html_onepage(**surcharges)
+
+    def test_entete_porte_le_qr_pour_un_lien_tokenise(self):
+        try:
+            import qrcode  # noqa: F401
+        except Exception:
+            self.skipTest('qrcode absent de cet environnement')
+        html = self._html()
+        self.assertIn('Consultez votre proposition interactive', html)
+        self.assertIn('taqinor.ma/proposition', html)
+        self.assertIn('data:image/png', html)
+
+    def test_entete_historique_sans_proposition_en_ligne(self):
+        html = self._html(links={'signer': 'taqinor.ma/signer/DEV-RES-DEMO'})
+        self.assertNotIn('proposition interactive', html)
+        # balisage flex historique de l'en-tête conservé
+        self.assertIn('align-items:center;justify-content:space-between;">',
+                      html)

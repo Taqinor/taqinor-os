@@ -236,6 +236,46 @@ def build(ctx):
         kpi_prod_style = ' style="font-size:12pt;"'
         kpi_prod_l = "Production estimée sans · avec"
 
+    # ── QRP1 — LIEN TOKENISÉ + QR SUR LA PAGE 1 ─────────────────────────────
+    # Le lien vers la proposition INTERACTIVE (page client tokenisée) ne vivait
+    # que sur la page signature : un client qui repose le document après la
+    # page 1 ne savait pas qu'une version en ligne existe. La vignette se pose
+    # dans la carte « facture mois par mois », À DROITE du graphe : ce dernier
+    # est rendu à 33,5 mm de haut pour ~118 mm de large dans une carte de
+    # 182 mm — la place était DÉJÀ vide. La rangée prend la hauteur du graphe,
+    # donc la page 1 ne grandit PAS d'un millimètre (garde des trois pages).
+    #
+    # SOURCE DU LIEN : ``d['links']['signer']``, posé par ``builder`` (QX6 —
+    # ShareLink tokenisé, ``utils.client_links.chemin_proposition``). On ne
+    # forge RIEN ici et on n'ajoute AUCUN paramètre : le QR encode l'URL telle
+    # quelle — aucun nom, aucune adresse, aucune coordonnée GPS en query.
+    # Le repli historique de ``renderer._augment`` (« <site>/signer/<ref> »,
+    # jamais servi par le site) est explicitement EXCLU : sans vraie
+    # proposition en ligne, la vignette s'omet plutôt que d'imprimer un QR
+    # qui mène à un 404.
+    _signer = ((d.get("links") or {}).get("signer") or "").strip()
+    qr_uri = ""
+    qr_href = ""
+    qr_disp = ""
+    if "/proposition/" in _signer:
+        qr_href = theme.normaliser_lien(_signer)
+        qr_disp = theme.lien_affiche(_signer)
+        # Correction M sans logo central : le MÊME lien tient en beaucoup moins
+        # de modules qu'en H+logo (la vignette de la page 3), donc reste
+        # scannable à 20 mm. Vide si la roue ``qrcode`` manque → tout le bloc
+        # s'omet (le lien de la page 3 reste, lui, entier).
+        qr_uri = theme.qr_data_uri(qr_href, logo=False, correction="M",
+                                   box_size=10, border=2)
+
+    qr_inner = ""
+    if qr_uri:
+        qr_inner = (
+            '<div class="c1-qr-t">Consultez votre<br>proposition '
+            'interactive</div>'
+            f'<img class="c1-qr-i" src="{qr_uri}" '
+            'alt="QR — votre proposition en ligne">'
+            f'<div class="c1-qr-u"><a href="{qr_href}">{qr_disp}</a></div>')
+
     # check + arrow glyphs (inline SVG renders crisply in WeasyPrint)
     check = (f'<svg class="c1-chk" viewBox="0 0 14 14">'
              f'<circle cx="7" cy="7" r="7" fill="{green_bg}"/>'
@@ -413,6 +453,35 @@ def build(ctx):
 /* Cap chart height (PNG is ~3.3:1) so it stays crisp & airy, never dominates the
    page — centred so the shorter image reads as intentional, not floated. */
 .c1-bill img{{height:33.5mm;width:auto;max-width:100%;display:block;margin:0 auto;}}
+/* QRP1 — rangée graphe | vignette QR. TABLE, pas flex (RENDERING_NOTES §1) :
+   les deux cellules s'égalisent et la hauteur de flux reste juste. La rangée
+   prend la hauteur du GRAPHE (33,5 mm) — la vignette, plus courte, n'ajoute
+   aucun millimètre à la page. Émise UNIQUEMENT quand le QR existe : sans lui,
+   l'image reste l'enfant direct de la carte (rendu historique au bit près). */
+.c1-billrow{{display:table;width:100%;table-layout:fixed;}}
+.c1-billrow .c1-bill-cc{{display:table-cell;vertical-align:middle;}}
+.c1-billrow .c1-qr-cell{{display:table-cell;width:34mm;vertical-align:middle;
+  text-align:center;padding-left:5mm;border-left:1px solid {line_soft};}}
+.c1-qr-t{{font-size:6.2pt;line-height:1.25;color:{navy};font-weight:700;
+  letter-spacing:.02em;}}
+.c1-qr-i{{height:19mm !important;width:19mm !important;display:block;
+  margin:1.6mm auto 1.2mm !important;}}
+.c1-qr-u{{font-size:5.6pt;color:{muted};letter-spacing:.01em;
+  word-break:break-all;}}
+.c1-qr-u a{{color:{muted};text-decoration:none;}}
+/* QRP1 — variante autonome : sur un document SANS couche économique (Z2) la
+   carte « facture » n'existe pas ; la vignette devient alors une bande fine
+   posée sous le bandeau environnemental, où la page a de la place de reste. */
+.c1-qrbox{{display:table;width:100%;margin-top:9px;border:1px solid {line};
+  border-radius:12px;background:#fff;padding:8px 14px;}}
+.c1-qrbox-t{{display:table-cell;vertical-align:middle;font-size:8pt;
+  color:{ink};line-height:1.3;}}
+.c1-qrbox-t b{{color:{navy};font-weight:700;}}
+.c1-qrbox-t span{{display:block;font-size:6.8pt;color:{muted};margin-top:2px;
+  word-break:break-all;}}
+.c1-qrbox-q{{display:table-cell;width:20mm;vertical-align:middle;
+  text-align:right;}}
+.c1-qrbox-q img{{height:18mm;width:18mm;display:inline-block;}}
 
 /* ── KPI CHIPS ─────────────────────────────────────────────────────────── */
 .c1-kpis{{display:flex;gap:12px;margin-top:11px;}}
@@ -541,6 +610,16 @@ def build(ctx):
     # la donut de couverture, le graphe mensuel et la vignette « Économie
     # estimée » disparaissent ENSEMBLE. Ce qui reste est intégralement
     # traçable : identité, puissance et production composées, prix du devis.
+    # QRP1 — bande QR autonome (documents sans carte « facture », cf. Z2).
+    qr_solo_html = ""
+    if qr_inner:
+        qr_solo_html = (
+            '<div class="c1-qrbox"><div class="c1-qrbox-t">'
+            '<b>Consultez votre proposition interactive</b>'
+            f'<span>{qr_disp} — scannez le code</span></div>'
+            f'<div class="c1-qrbox-q"><img src="{qr_uri}" '
+            'alt="QR — votre proposition en ligne"></div></div>')
+
     if masquer_eco:
         hero_sub_html = (
             f'<div class="c1-sub">Votre installation solaire'
@@ -583,6 +662,18 @@ def build(ctx):
         </div></div>
       </div>
     </div>"""
+        # QRP1 — corps de la carte : le graphe SEUL (rendu historique) ou une
+        # rangée graphe | vignette QR. La rangée prend la hauteur du graphe :
+        # la carte ne grandit pas, donc la pagination ne bouge pas.
+        if qr_inner:
+            bill_body = (
+                '<div class="c1-billrow"><div class="c1-bill-cc">'
+                f'<img src="{charts["bill"]}" '
+                'alt="Facture mensuelle avant / après"></div>'
+                f'<div class="c1-qr-cell">{qr_inner}</div></div>')
+        else:
+            bill_body = (f'<img src="{charts["bill"]}" '
+                         'alt="Facture mensuelle avant / après">')
         bill_html = f"""
     <!-- BILL CHART ─────────────────────────────────────────────────────── -->
     <div class="c1-bill">
@@ -593,7 +684,7 @@ def build(ctx):
           <span class="c1-sw" style="background:{gold};"></span>avec {brand}
         </div>
       </div>
-      <img src="{charts['bill']}" alt="Facture mensuelle avant / après">
+      {bill_body}
     </div>"""
         # CJ2b (ORDRE FONDATEUR, 21/08/2026) — « we cannot see the real
         # calculated saving ». Le libellé disait « estimée » même quand le
@@ -611,6 +702,11 @@ def build(ctx):
       </div>
 """
         wrap_cls = ""
+
+    # QRP1 — la vignette QR vit DANS la carte « facture » quand celle-ci
+    # existe (rangée à hauteur de graphe, coût zéro) ; la bande autonome ne
+    # sort QUE sur un document sans couche économique, où la place existe.
+    qr_strip_html = qr_solo_html if (masquer_eco and qr_solo_html) else ""
 
     # ── HTML ────────────────────────────────────────────────────────────────
     html = f"""{css}
@@ -666,6 +762,7 @@ def build(ctx):
 {kpi_eco_html}    </div>
 
     {impact_html}
+    {qr_strip_html}
 
     <!-- OPTION CARDS ───────────────────────────────────────────────────── -->
     <div class="c1-opts">{opts_html}</div>

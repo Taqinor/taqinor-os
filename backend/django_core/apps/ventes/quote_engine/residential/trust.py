@@ -46,38 +46,18 @@ def _qr_data_uri(url: str, dark: str) -> str:
     """Premium scannable QR (rounded navy modules + centre TAQINOR logo) as a
     PNG data-URI. Uses `qrcode[pil]` (free, BSD-licensed, no API/cost). Error
     correction H keeps it scannable WITH the centre logo. Returns '' if the lib
-    or URL is unavailable, so the textual 'Signez en ligne' link always remains."""
+    or URL is unavailable, so the textual 'Signez en ligne' link always remains.
+
+    QRP1 — l'implémentation a migré dans ``theme.qr_data_uri`` (source UNIQUE :
+    la page 1 en pose une seconde, plus petite). Les paramètres passés ici sont
+    EXACTEMENT ceux de l'appel historique, donc la page 3 est rendue au bit
+    près. ``dark`` reste ignoré, comme avant."""
     target = _link(url)
     if not target or target == "#":
         return ""
-    try:
-        import base64
-        import io
-        import qrcode
-        from qrcode.image.styledpil import StyledPilImage
-        from qrcode.image.styles.moduledrawers.pil import RoundedModuleDrawer
-        from qrcode.image.styles.colormasks import SolidFillColorMask
-        from . import theme
-        qr = qrcode.QRCode(
-            error_correction=qrcode.constants.ERROR_CORRECT_H,
-            box_size=16, border=2)
-        qr.add_data(target)
-        qr.make(fit=True)
-        kw = dict(
-            image_factory=StyledPilImage,
-            module_drawer=RoundedModuleDrawer(),
-            color_mask=SolidFillColorMask(front_color=(26, 43, 74),
-                                          back_color=(255, 255, 255)))
-        logo = theme._LIVE_ASSETS / "logo.png"
-        if logo.exists():
-            kw["embeded_image_path"] = str(logo)
-        img = qr.make_image(**kw)
-        buf = io.BytesIO()
-        img.save(buf, "PNG")
-        return "data:image/png;base64," + base64.b64encode(
-            buf.getvalue()).decode()
-    except Exception:
-        return ""
+    from . import theme
+    return theme.qr_data_uri(target, logo=True, correction="H",
+                             box_size=16, border=2)
 
 
 def build(ctx) -> str:
