@@ -14,7 +14,7 @@ django-redis==5.4.0
 celery==5.4.0
 
 # PDF generation
-weasyprint==62.3
+weasyprint==69.0
 # PyMuPDF (fitz) — PDF split/merge, signature-field zones, annotation/stamp
 # overlays and scan-batch separation (GED module). Lazy-imported with graceful
 # degradation, but shipped so those features work in prod/CI.
