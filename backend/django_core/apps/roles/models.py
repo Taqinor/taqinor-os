@@ -665,6 +665,15 @@ ADMIN_RH_PERMISSIONS = [
     'kb_voir',
     'projet_voir',
     'qhse_voir',
+    # WIR174 — écriture documentaire COURANTE préservée : l'Admin RH portait
+    # déjà ``users_gerer``/``paie_gerer``, donc ``is_responsable`` — il passait
+    # l'ancien ``IsResponsableOrAdmin`` de la GED et écrivait les documents
+    # (contrats, attestations, pièces du dossier employé). Sans ces deux codes,
+    # WIR174 lui RETIRAIT cet accès, ce que son propre invariant interdit.
+    # PAS ``ged_gouvernance`` (legal hold / caviardage / rétention) : direction
+    # seule, et ce code est ÉLEVÉ — un admin délégué ne peut ni le porter ni
+    # l'octroyer.
+    'ged_voir', 'ged_gerer',
 ]
 
 # Admin Ventes : CRM + Ventes + Stock (sans la création de produits, QG4) et
@@ -680,6 +689,11 @@ ADMIN_VENTES_PERMISSIONS = [
     'users_voir',
     'reporting_voir', 'reporting_export',
     'kb_voir',
+    # WIR174 — même raison que l'Admin RH ci-dessus : ``crm_creer``/
+    # ``ventes_creer``… le rendaient ``is_responsable``, donc il ÉCRIVAIT déjà
+    # dans la GED (devis signés, pièces client). Accès courant préservé, sans
+    # ``ged_gouvernance``.
+    'ged_voir', 'ged_gerer',
 ]
 
 ROLE_ADMIN_RH = 'Admin RH'

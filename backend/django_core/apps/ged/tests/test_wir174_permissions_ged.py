@@ -32,8 +32,11 @@ from authentication.models import Company, CustomUser
 from apps.ged import services
 from apps.ged.models import Cabinet, Coffre, Document, Folder, LegalHold
 from apps.roles.models import (
-    ALL_PERMISSIONS, DIRECTEUR_PERMISSIONS, ELEVATED_PERMISSIONS, Role,
-    TECHNICIEN_PERMISSIONS, VIEWER_PERMISSIONS,
+    ADMIN_RH_PERMISSIONS, ADMIN_VENTES_PERMISSIONS, ALL_PERMISSIONS,
+    COMMERCIAL_PERMISSIONS, COMMERCIAL_RESP_PERMISSIONS,
+    DIRECTEUR_PERMISSIONS, ELEVATED_PERMISSIONS, RESPONSABLE_PERMISSIONS,
+    Role, TECHNICIEN_PERMISSIONS, TECHNICIEN_RESP_PERMISSIONS,
+    VIEWER_PERMISSIONS,
 )
 
 User = get_user_model()
@@ -144,6 +147,23 @@ class GouvernanceRefuseeHorsDirectionTests(_GedGouvernanceBase):
             {'nom': 'Nouveau', 'folder': self.folder.pk}, format='json')
         self.assertNotEqual(resp.status_code, 403, resp.data)
 
+    def test_admins_delegues_ecrivent_toujours_mais_pas_la_gouvernance(self):
+        """NTADM20 — Admin RH / Admin Ventes portaient déjà une écriture, donc
+        l'ancien gate GED : ils gardent l'écriture documentaire courante et
+        n'obtiennent PAS la gouvernance."""
+        for nom, perms in (('admin-rh', ADMIN_RH_PERMISSIONS),
+                           ('admin-ventes', ADMIN_VENTES_PERMISSIONS)):
+            client = _auth(self._user(nom, perms=perms))
+            with self.subTest(role=nom):
+                ecriture = client.post(
+                    f'{BASE}/documents/',
+                    {'nom': f'Doc {nom}', 'folder': self.folder.pk},
+                    format='json')
+                self.assertNotEqual(ecriture.status_code, 403, ecriture.data)
+                self.assertEqual(
+                    client.post(self._routes_gouvernance()[0], {},
+                                format='json').status_code, 403)
+
     def test_ged_gouvernance_passe(self):
         client = _auth(self._user(
             'gouvernance', perms=[GED_VOIR, GED_GERER, GED_GOUVERNANCE]))
@@ -232,15 +252,40 @@ class GedCatalogueTests(TestCase):
             with self.subTest(code=code):
                 self.assertIn(code, ALL_PERMISSIONS)
 
+    # Tous les presets qui portaient DÉJÀ une écriture (donc ``is_responsable``
+    # vrai, donc l'ancien ``IsResponsableOrAdmin`` de la GED satisfait) — y
+    # compris les DEUX administrateurs délégués NTADM20, dont l'omission serait
+    # une régression silencieuse de l'écriture documentaire courante.
+    PRESETS_ECRIVAINS = {
+        'Responsable': RESPONSABLE_PERMISSIONS,
+        'Commercial responsable': COMMERCIAL_RESP_PERMISSIONS,
+        'Commercial': COMMERCIAL_PERMISSIONS,
+        'Technicien responsable': TECHNICIEN_RESP_PERMISSIONS,
+        'Technicien': TECHNICIEN_PERMISSIONS,
+        'Admin RH': ADMIN_RH_PERMISSIONS,
+        'Admin Ventes': ADMIN_VENTES_PERMISSIONS,
+    }
+
     def test_gouvernance_est_direction_seule(self):
         self.assertIn(GED_GOUVERNANCE, DIRECTEUR_PERMISSIONS)
-        self.assertNotIn(GED_GOUVERNANCE, TECHNICIEN_PERMISSIONS)
         self.assertNotIn(GED_GOUVERNANCE, VIEWER_PERMISSIONS)
+        # AUCUN preset non-direction ne la porte (délégués NTADM20 inclus).
+        for nom, perms in self.PRESETS_ECRIVAINS.items():
+            with self.subTest(role=nom):
+                self.assertNotIn(GED_GOUVERNANCE, perms)
         # ÉLEVÉE : un non-administrateur ne peut pas se l'octroyer.
         self.assertIn(GED_GOUVERNANCE, ELEVATED_PERMISSIONS)
 
     def test_ecriture_courante_preservee_pour_les_roles_metier(self):
-        self.assertIn(GED_GERER, TECHNICIEN_PERMISSIONS)
+        """INVARIANT WIR174 : aucun accès d'écriture COURANTE n'est retiré.
+
+        Tout preset qui accordait déjà une écriture passait ``is_responsable``,
+        donc l'ancien gate GED — il DOIT garder ``ged_voir``+``ged_gerer``.
+        """
+        for nom, perms in self.PRESETS_ECRIVAINS.items():
+            with self.subTest(role=nom):
+                self.assertIn(GED_VOIR, perms)
+                self.assertIn(GED_GERER, perms)
         # Le Viewer reste en lecture seule.
         self.assertIn(GED_VOIR, VIEWER_PERMISSIONS)
         self.assertNotIn(GED_GERER, VIEWER_PERMISSIONS)
