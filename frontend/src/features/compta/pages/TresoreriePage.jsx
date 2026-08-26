@@ -14,6 +14,9 @@ import ComptaTable from '../ComptaTable'
 import comptaApi from '../../../api/comptaApi'
 import useComptaList from '../components/useComptaList.js'
 import CrudDialog from '../components/CrudDialog.jsx'
+// WIR254 — l'analyse des frais bancaires réutilise le rendu générique
+// d'EtatsPage au lieu d'en réinventer un pour ce seul écran.
+import { EtatRender } from './EtatsPage.jsx'
 
 /* ============================================================================
    UX6 — Trésorerie & prévisionnel.
@@ -101,6 +104,48 @@ const COLUMNS = {
     { id: 'montant', header: 'Montant', accessor: (r) => Number(r.montant) || 0,
       align: 'right', numeric: true, searchable: false, cell: money },
   ],
+}
+
+// WIR254 — NTFIN? / analyse_frais_bancaires : `etats/frais-bancaires`
+// (commissions/agios par compte de trésorerie sur une période) n'avait aucun
+// client ni écran.
+function FraisBancairesCard() {
+  const [debut, setDebut] = useState('')
+  const [fin, setFin] = useState('')
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(false)
+
+  const charger = () => {
+    setLoading(true)
+    comptaApi.etats.fraisBancaires({ debut: debut || undefined, fin: fin || undefined })
+      .then((res) => setData(res.data))
+      .catch(() => toast.error('Analyse des frais bancaires indisponible.'))
+      .finally(() => setLoading(false))
+  }
+
+  return (
+    <Card className="p-4 sm:p-5">
+      <h3 className="mb-3 font-display text-base font-semibold">Frais bancaires (période)</h3>
+      <div className="mb-3 flex flex-wrap items-end gap-3">
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="fb-debut">Du</Label>
+          <Input id="fb-debut" type="date" value={debut} onChange={(e) => setDebut(e.target.value)} />
+        </div>
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="fb-fin">Au</Label>
+          <Input id="fb-fin" type="date" value={fin} onChange={(e) => setFin(e.target.value)} />
+        </div>
+        <Button variant="outline" size="sm" onClick={charger}>Charger</Button>
+      </div>
+      {loading ? (
+        <p className="py-4 text-center text-sm text-muted-foreground">Chargement…</p>
+      ) : data ? (
+        <EtatRender data={data} />
+      ) : (
+        <EmptyState title="Aucune donnée chargée" description="Choisissez une période puis cliquez sur Charger." />
+      )}
+    </Card>
+  )
 }
 
 // Onglet lecture seule : position consolidée + prévisionnel roulant.
@@ -200,6 +245,8 @@ function PositionPanel() {
           />
         )}
       </Card>
+
+      <FraisBancairesCard />
     </div>
   )
 }

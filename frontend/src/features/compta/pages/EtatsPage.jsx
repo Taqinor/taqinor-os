@@ -51,6 +51,25 @@ const ETATS = [
   // WIR180 — XFAC2 : conformité loi 69-21 (délais de paiement fournisseurs),
   // export CSV via le bouton générique « Export CSV » ci-dessus.
   { value: 'loi-69-21', label: 'Loi 69-21 (délais paiement)', fetch: comptaApi.etats.loi6921 },
+  // WIR254 — ~15 états d'analyse d'EtatsComptablesViewSet jusqu'ici orphelins
+  // (aucun client, aucun écran) : ceux qui tiennent dans le formulaire
+  // générique existant (date_debut/date_fin, aucun paramètre imposé
+  // supplémentaire) rejoignent directement ce tableau ; les autres (qui
+  // exigent une période/un axe/un exercice ciblé) sont sur leur écran hôte
+  // dédié — voir BudgetsPage/CloturePage/ImmobilisationsAvanceesPage/
+  // RevenuIfrs15Page/TresoreriePage.
+  { value: 'balance-referentiel', label: 'Balance (référentiel parallèle)',
+    fetch: comptaApi.etats.balanceReferentiel },
+  { value: 'balance-analytique', label: 'Balance analytique (axes)',
+    fetch: comptaApi.etats.balanceAnalytique },
+  { value: 'anomalies-ecritures', label: 'Anomalies d’écritures',
+    fetch: comptaApi.etats.anomaliesEcritures },
+  { value: 'provisions', label: 'Provisions (dotations/reprises)',
+    fetch: comptaApi.etats.provisions },
+  { value: 'rapprochement-clients', label: 'Rapprochement auxiliaire clients',
+    fetch: comptaApi.etats.rapprochementClients },
+  { value: 'rapprochement-fournisseurs', label: 'Rapprochement auxiliaire fournisseurs',
+    fetch: comptaApi.etats.rapprochementFournisseurs },
 ]
 
 // Détecte les colonnes montant à formater en MAD.
@@ -61,7 +80,11 @@ const MONEY_KEYS = new Set([
   'montant_du', 'amende_estimee', 'total_amende_estimee',
 ])
 
-function cellValue(key, val) {
+// WIR254 — exporté pour être RÉUTILISÉ (jamais réinventé) par les écrans hôtes
+// dédiés d'états d'analyse jusqu'ici orphelins (Budgets/Cloture/Immobilisations
+// avancées/RevenuIfrs15) : un seul rendu générique clé/valeur + tableau pour
+// toute réponse de EtatsComptablesViewSet, ici comme là-bas.
+export function cellValue(key, val) {
   if (val == null) return '—'
   if (typeof val === 'number' && MONEY_KEYS.has(key)) return formatMAD(val)
   if (typeof val === 'object') return JSON.stringify(val)
@@ -142,7 +165,9 @@ function KeyValue({ obj }) {
   )
 }
 
-function EtatRender({ data, extraColumn }) {
+// WIR254 — exporté (voir `cellValue` ci-dessus) pour les écrans hôtes des
+// états d'analyse orphelins.
+export function EtatRender({ data, extraColumn }) {
   if (data == null) return null
   // Grand-livre : tableau de groupes { numero, intitule, lignes[] }.
   if (Array.isArray(data)) {

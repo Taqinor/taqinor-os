@@ -2,11 +2,15 @@ import { useEffect, useMemo, useState } from 'react'
 import { useTabParam } from '../components/useTabParam'
 import { Plus, CheckCircle2, PlayCircle, Sparkles } from 'lucide-react'
 import { ListShell, statusPill } from '../../../ui/module'
-import { Button, Segmented, Card, toast } from '../../../ui'
+import { Button, Segmented, Card, Input, Label, EmptyState, toast } from '../../../ui'
 import { formatMAD, formatDate } from '../../../lib/format'
 import comptaApi from '../../../api/comptaApi'
 import useComptaList from '../components/useComptaList.js'
 import CrudDialog from '../components/CrudDialog.jsx'
+// WIR254 — le cockpit de clôture (cockpit-cloture/prêt-à-clôturer/
+// rapprochements en retard/analyse de variation) réutilise le rendu
+// générique d'EtatsPage au lieu d'en réinventer un pour ce seul écran.
+import { EtatRender } from './EtatsPage.jsx'
 
 /* ============================================================================
    WIR107 / NTFIN26-34 — Cockpit de clôture.
@@ -81,6 +85,123 @@ function SelecteurPeriode({ periodes, value, onChange }) {
         ))}
       </select>
     </label>
+  )
+}
+
+// WIR254 — NTFIN28/34/38 : cockpit-cloture, prêt-à-clôturer et
+// rapprochements-en-retard n'avaient AUCUN client ni écran (uniquement
+// pilotables par curl). Les 3 partagent le même paramètre `?periode=<id>` :
+// un seul panneau, une seule sélection de période.
+function CockpitClotureCard({ periodes }) {
+  const [periode, setPeriode] = useState('')
+  const [cockpit, setCockpit] = useState(null)
+  const [pret, setPret] = useState(null)
+  const [enRetard, setEnRetard] = useState(null)
+  const [loading, setLoading] = useState(false)
+
+  const charger = () => {
+    if (!periode) return
+    setLoading(true)
+    Promise.all([
+      comptaApi.etats.cockpitCloture({ periode }),
+      comptaApi.etats.pretACloturer({ periode }),
+      comptaApi.etats.rapprochementsEnRetard({ periode }),
+    ])
+      .then(([c, p, r]) => { setCockpit(c.data); setPret(p.data); setEnRetard(r.data) })
+      .catch(() => toast.error('Cockpit de clôture indisponible pour cette période.'))
+      .finally(() => setLoading(false))
+  }
+
+  return (
+    <Card className="flex flex-col gap-3 p-4 sm:p-5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <SelecteurPeriode periodes={periodes} value={periode} onChange={setPeriode} />
+        <Button variant="outline" size="sm" onClick={charger} disabled={!periode}>Charger</Button>
+      </div>
+      {!periode ? (
+        <EmptyState title="Choisissez une période" description="Le cockpit se charge pour UNE période comptable." />
+      ) : loading ? (
+        <p className="py-4 text-center text-sm text-muted-foreground">Chargement…</p>
+      ) : cockpit ? (
+        <div className="flex flex-col gap-4">
+          <div>
+            <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Cockpit</h4>
+            <EtatRender data={cockpit} />
+          </div>
+          <div>
+            <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Prêt à clôturer</h4>
+            <EtatRender data={pret} />
+          </div>
+          <div>
+            <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Rapprochements en retard
+            </h4>
+            <EtatRender data={enRetard} />
+          </div>
+        </div>
+      ) : (
+        <EmptyState title="Aucune donnée chargée" description="Cliquez sur Charger." />
+      )}
+    </Card>
+  )
+}
+
+// WIR254 — NTFIN30 : analyse de variation N vs N-1, jusqu'ici sans client ni
+// écran (distincte de `justificationsVariation` ci-dessous, qui liste les
+// justifications DÉJÀ saisies manuellement).
+function AnalyseVariationCard() {
+  const [dateDebut, setDateDebut] = useState('')
+  const [dateFin, setDateFin] = useState('')
+  const [dateDebutN1, setDateDebutN1] = useState('')
+  const [dateFinN1, setDateFinN1] = useState('')
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(false)
+
+  const comparer = () => {
+    if (!dateDebut || !dateFin || !dateDebutN1 || !dateFinN1) {
+      toast.error('Renseignez les 2 périodes (N et N-1) avant de comparer.')
+      return
+    }
+    setLoading(true)
+    comptaApi.etats.analyseVariation({
+      date_debut: dateDebut, date_fin: dateFin,
+      date_debut_n1: dateDebutN1, date_fin_n1: dateFinN1,
+    })
+      .then((res) => setData(res.data))
+      .catch(() => toast.error('Analyse de variation indisponible.'))
+      .finally(() => setLoading(false))
+  }
+
+  return (
+    <Card className="flex flex-col gap-3 p-4 sm:p-5">
+      <h3 className="font-display text-base font-semibold">Analyse de variation N vs N-1</h3>
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="av-debut">Période N — du</Label>
+          <Input id="av-debut" type="date" value={dateDebut} onChange={(e) => setDateDebut(e.target.value)} />
+        </div>
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="av-fin">au</Label>
+          <Input id="av-fin" type="date" value={dateFin} onChange={(e) => setDateFin(e.target.value)} />
+        </div>
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="av-debut-n1">Période N-1 — du</Label>
+          <Input id="av-debut-n1" type="date" value={dateDebutN1} onChange={(e) => setDateDebutN1(e.target.value)} />
+        </div>
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="av-fin-n1">au</Label>
+          <Input id="av-fin-n1" type="date" value={dateFinN1} onChange={(e) => setDateFinN1(e.target.value)} />
+        </div>
+        <Button variant="outline" size="sm" onClick={comparer}>Comparer</Button>
+      </div>
+      {loading ? (
+        <p className="py-4 text-center text-sm text-muted-foreground">Chargement…</p>
+      ) : data ? (
+        <EtatRender data={data} />
+      ) : (
+        <EmptyState title="Aucune comparaison" description="Renseignez les 2 périodes puis cliquez sur Comparer." />
+      )}
+    </Card>
   )
 }
 
@@ -358,6 +479,8 @@ const TABS = [
   { value: 'accruals', label: 'Accruals' },
   { value: 'variations', label: 'Variations' },
   { value: 'modeles', label: 'Modèles' },
+  // WIR254 — cockpit-cloture/prêt-à-clôturer/rapprochements-en-retard.
+  { value: 'cockpit', label: 'Cockpit' },
 ]
 
 export default function CloturePage() {
@@ -376,8 +499,14 @@ export default function CloturePage() {
 
       {tab === 'checklist' && <ChecklistPanel periodes={periodes} />}
       {tab === 'accruals' && <AccrualsPanel periodes={periodes} />}
-      {tab === 'variations' && <VariationsPanel periodes={periodes} />}
+      {tab === 'variations' && (
+        <div className="flex flex-col gap-4">
+          <VariationsPanel periodes={periodes} />
+          <AnalyseVariationCard />
+        </div>
+      )}
       {tab === 'modeles' && <ModelesPanel />}
+      {tab === 'cockpit' && <CockpitClotureCard periodes={periodes} />}
     </div>
   )
 }

@@ -106,6 +106,46 @@ const comptaApi = {
     // `periode` optionnel ('YYYY-MM'), export CSV via `?export=csv` (patron
     // générique EtatsPage.exportCsv, jamais `responseType:'blob'` forcé ici).
     loi6921: (params) => api.get('/compta/etats/loi-69-21/', { params }),
+
+    /* WIR254 — ~15 états d'analyse d'EtatsComptablesViewSet jusqu'ici SANS
+       AUCUN wrapper (inatteignables depuis l'ERP, y compris en API-only) :
+       référentiel parallèle/analytique (NTFIN14/18/19), pilotage budgétaire
+       et clôture (NTFIN25/28/30/33/34/38), immobilisations avancées
+       (NTFIN44/45), IFRS 15 (NTFIN49), frais bancaires et rapprochements
+       auxiliaires (YLEDG13). Rendus sur le tableau générique d'EtatsPage OU
+       sur l'écran hôte dédié (Budgets/Cloture/Immobilisations avancées/
+       RevenuIfrs15/Trésorerie) — voir ces fichiers. */
+    balanceReferentiel: (params) =>
+      api.get('/compta/etats/balance-referentiel/', { params }),
+    balanceAnalytique: (params) =>
+      api.get('/compta/etats/balance-analytique/', { params }),
+    resultatAnalytique: (params) =>
+      api.get('/compta/etats/resultat-analytique/', { params }),
+    executionBudgetaire: (params) =>
+      api.get('/compta/etats/execution-budgetaire/', { params }),
+    analyseVariation: (params) =>
+      api.get('/compta/etats/analyse-variation/', { params }),
+    anomaliesEcritures: (params) =>
+      api.get('/compta/etats/anomalies-ecritures/', { params }),
+    cockpitCloture: (params) =>
+      api.get('/compta/etats/cockpit-cloture/', { params }),
+    pretACloturer: (params) =>
+      api.get('/compta/etats/pret-a-cloturer/', { params }),
+    rapprochementsEnRetard: (params) =>
+      api.get('/compta/etats/rapprochements-en-retard/', { params }),
+    registreImmobilisations: (params) =>
+      api.get('/compta/etats/registre-immobilisations/', { params }),
+    projectionDotations: (params) =>
+      api.get('/compta/etats/projection-dotations/', { params }),
+    positionsContratRevenu: (params) =>
+      api.get('/compta/etats/positions-contrat-revenu/', { params }),
+    fraisBancaires: (params) =>
+      api.get('/compta/etats/frais-bancaires/', { params }),
+    provisions: (params) => api.get('/compta/etats/provisions/', { params }),
+    rapprochementClients: (params) =>
+      api.get('/compta/etats/rapprochement-clients/', { params }),
+    rapprochementFournisseurs: (params) =>
+      api.get('/compta/etats/rapprochement-fournisseurs/', { params }),
   },
 
   // ── UX6 — Trésorerie & prévisionnel ──

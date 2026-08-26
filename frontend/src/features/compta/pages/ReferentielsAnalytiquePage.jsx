@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Plus, Sparkles, Send, Trash2 } from 'lucide-react'
+import { Plus, Sparkles, Send, Trash2, LineChart } from 'lucide-react'
 import { useTabParam } from '../components/useTabParam'
 import { ListShell } from '../../../ui/module'
 import {
@@ -10,6 +10,9 @@ import {
 import comptaApi from '../../../api/comptaApi'
 import useComptaList, { unwrap } from '../components/useComptaList.js'
 import CrudDialog from '../components/CrudDialog.jsx'
+// WIR254 — NTFIN19 : « Résultat par axe » réutilise le rendu générique
+// d'EtatsPage au lieu d'en réinventer un pour ce seul écran.
+import { EtatRender } from './EtatsPage.jsx'
 
 /* ============================================================================
    PACT31 — Référentiels comptables parallèles et analytique multi-axes.
@@ -216,9 +219,65 @@ function AjustementsGaapPanel() {
   )
 }
 
+// WIR254 — NTFIN19 : `etats/resultat-analytique` EXIGE `?axe=<code>` côté
+// serveur (400 sans lui) — jamais un candidat pour le formulaire générique
+// d'EtatsPage (qui n'a aucun sélecteur d'axe). Rattaché ici : un axe
+// analytique connaît déjà son propre code.
+function ResultatAxeDialog({ axe, onClose }) {
+  const [dateDebut, setDateDebut] = useState('')
+  const [dateFin, setDateFin] = useState('')
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(false)
+
+  const charger = () => {
+    setLoading(true)
+    comptaApi.etats.resultatAnalytique({
+      axe: axe.code,
+      date_debut: dateDebut || undefined,
+      date_fin: dateFin || undefined,
+    })
+      .then((res) => setData(res.data))
+      .catch(() => toast.error('Résultat analytique indisponible pour cet axe.'))
+      .finally(() => setLoading(false))
+  }
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  useEffect(() => { charger() }, [])
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Résultat analytique — {axe.code} ({axe.libelle})</DialogTitle>
+        </DialogHeader>
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="ra-debut">Du</Label>
+            <Input id="ra-debut" type="date" value={dateDebut} onChange={(e) => setDateDebut(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="ra-fin">Au</Label>
+            <Input id="ra-fin" type="date" value={dateFin} onChange={(e) => setDateFin(e.target.value)} />
+          </div>
+          <Button variant="outline" size="sm" onClick={charger}>Actualiser</Button>
+        </div>
+        {loading ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">Chargement…</p>
+        ) : (
+          <EtatRender data={data} />
+        )}
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Fermer</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // ── NTFIN16 — Axes analytiques configurables ──
 function AxesPanel() {
   const [dialog, setDialog] = useState(null)
+  const [resultatDe, setResultatDe] = useState(null)
   const list = useComptaList(comptaApi.axesAnalytiques.list, undefined)
 
   const columns = [
@@ -234,6 +293,10 @@ function AxesPanel() {
     { name: 'ordre', label: 'Ordre', type: 'number' },
   ]
 
+  const rowActions = (row) => [
+    { id: 'resultat', label: 'Résultat par axe', icon: LineChart, onClick: () => setResultatDe(row) },
+  ]
+
   return (
     <div className="flex flex-col gap-3">
       <div className="flex justify-end">
@@ -246,6 +309,7 @@ function AxesPanel() {
         rows={list.rows}
         loading={list.loading}
         error={list.error}
+        rowActions={rowActions}
         exportName="axes-analytiques"
         emptyTitle="Aucun axe"
         emptyDescription="Aucun axe analytique configuré (ex. Chantier, Région, Activité)."
@@ -260,6 +324,9 @@ function AxesPanel() {
           onSubmit={(payload) => comptaApi.axesAnalytiques.create(payload)}
           onSaved={list.reload}
         />
+      )}
+      {resultatDe && (
+        <ResultatAxeDialog axe={resultatDe} onClose={() => setResultatDe(null)} />
       )}
     </div>
   )

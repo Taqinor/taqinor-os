@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Plus, PieChart } from 'lucide-react'
 import { ListShell } from '../../../ui/module'
 import {
-  Button, EmptyState,
+  Button, EmptyState, Card, Input, Label,
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '../../../ui'
 import { formatMAD } from '../../../lib/format'
@@ -10,6 +10,9 @@ import ComptaTable from '../ComptaTable'
 import comptaApi from '../../../api/comptaApi'
 import useComptaList from '../components/useComptaList.js'
 import CrudDialog from '../components/CrudDialog.jsx'
+// WIR254 — « Exécution budgétaire » (NTFIN25) réutilise le rendu générique
+// d'EtatsPage au lieu d'en réinventer un pour ce seul écran.
+import { EtatRender } from './EtatsPage.jsx'
 
 /* ============================================================================
    PACT163 / XACC22 — Budgets & répartition d'un montant annuel.
@@ -94,6 +97,48 @@ function BudgetDetailDialog({ budget, onClose, onChanged }) {
   )
 }
 
+// WIR254 — NTFIN25 : `etats/execution-budgetaire` (budget − engagé − réalisé
+// par compte/centre de coût) n'avait aucun client ni écran. Panneau autonome
+// (année seule, aucun budget préalable requis côté écran).
+function ExecutionBudgetairePanel() {
+  const [annee, setAnnee] = useState(String(new Date().getFullYear()))
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+
+  const charger = () => {
+    setLoading(true)
+    setError(null)
+    comptaApi.etats.executionBudgetaire({ annee })
+      .then((res) => setData(res.data))
+      .catch(() => setError('État indisponible pour cette année.'))
+      .finally(() => setLoading(false))
+  }
+
+  return (
+    <Card className="mt-4 p-4 sm:p-5">
+      <h3 className="mb-3 font-display text-base font-semibold">Exécution budgétaire (engagements)</h3>
+      <div className="mb-3 flex flex-wrap items-end gap-3">
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="eb-annee">Année</Label>
+          <Input id="eb-annee" type="number" className="w-28" value={annee}
+            onChange={(e) => setAnnee(e.target.value)} />
+        </div>
+        <Button variant="outline" size="sm" onClick={charger}>Charger</Button>
+      </div>
+      {loading ? (
+        <p className="py-4 text-center text-sm text-muted-foreground">Chargement…</p>
+      ) : error ? (
+        <EmptyState title="Indisponible" description={error} />
+      ) : data ? (
+        <EtatRender data={data} />
+      ) : (
+        <EmptyState title="Aucune donnée chargée" description="Choisissez une année puis cliquez sur Charger." />
+      )}
+    </Card>
+  )
+}
+
 export default function BudgetsPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [detailId, setDetailId] = useState(null)
@@ -135,6 +180,8 @@ export default function BudgetsPage() {
         emptyTitle="Aucun budget"
         emptyDescription="Créez un budget annuel pour démarrer."
       />
+
+      <ExecutionBudgetairePanel />
 
       {dialogOpen && (
         <CrudDialog

@@ -3,7 +3,7 @@ import { Plus, PackageCheck, AlertTriangle, Undo2, ArrowRightLeft, ListPlus } fr
 import { useTabParam } from '../components/useTabParam'
 import { ListShell } from '../../../ui/module'
 import {
-  Button, Segmented, EmptyState,
+  Button, Segmented, EmptyState, Card,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
   Input, Label, toast,
 } from '../../../ui'
@@ -12,6 +12,9 @@ import ComptaTable from '../ComptaTable'
 import comptaApi from '../../../api/comptaApi'
 import useComptaList, { unwrap } from '../components/useComptaList.js'
 import CrudDialog from '../components/CrudDialog.jsx'
+// WIR254 — registre des immos (multi-référentiel) et projection des dotations
+// réutilisent le rendu générique d'EtatsPage au lieu d'en réinventer un.
+import { EtatRender } from './EtatsPage.jsx'
 
 /* ============================================================================
    PACT29 — Immobilisations avancées : composants, dépréciation, mutations,
@@ -398,11 +401,68 @@ function EncoursPanel() {
   )
 }
 
+// WIR254 — NTFIN44/45 : `etats/registre-immobilisations` (registre multi-
+// référentiel) et `etats/projection-dotations` n'avaient aucun client ni
+// écran. Panneau autonome, aucun paramètre requis (referentiel/années optionnels).
+function RegistreProjectionPanel() {
+  const [annees, setAnnees] = useState('5')
+  const [registre, setRegistre] = useState(null)
+  const [projection, setProjection] = useState(null)
+  const [loading, setLoading] = useState(false)
+
+  const charger = () => {
+    setLoading(true)
+    Promise.all([
+      comptaApi.etats.registreImmobilisations(),
+      comptaApi.etats.projectionDotations({ annees }),
+    ])
+      .then(([r, p]) => { setRegistre(r.data); setProjection(p.data) })
+      .catch(() => toast.error('Registre / projection indisponible.'))
+      .finally(() => setLoading(false))
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Card className="flex flex-col gap-3 p-4 sm:p-5">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="pd-annees">Projection — nombre d'années</Label>
+            <Input id="pd-annees" type="number" className="w-28" value={annees}
+              onChange={(e) => setAnnees(e.target.value)} />
+          </div>
+          <Button variant="outline" size="sm" onClick={charger}>Charger</Button>
+        </div>
+        {loading ? (
+          <p className="py-4 text-center text-sm text-muted-foreground">Chargement…</p>
+        ) : registre ? (
+          <div className="flex flex-col gap-4">
+            <div>
+              <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Registre des immobilisations
+              </h4>
+              <EtatRender data={registre} />
+            </div>
+            <div>
+              <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Projection des dotations futures
+              </h4>
+              <EtatRender data={projection} />
+            </div>
+          </div>
+        ) : (
+          <EmptyState title="Aucune donnée chargée" description="Cliquez sur Charger." />
+        )}
+      </Card>
+    </div>
+  )
+}
+
 const TABS = [
   { value: 'composants', label: 'Composants' },
   { value: 'depreciations', label: 'Dépréciations' },
   { value: 'mutations', label: 'Mutations' },
   { value: 'encours', label: 'Encours (CIP)' },
+  { value: 'registre', label: 'Registre & projection' },
 ]
 
 export default function ImmobilisationsAvanceesPage() {
@@ -422,6 +482,7 @@ export default function ImmobilisationsAvanceesPage() {
       {tab === 'depreciations' && <DepreciationsPanel />}
       {tab === 'mutations' && <MutationsPanel />}
       {tab === 'encours' && <EncoursPanel />}
+      {tab === 'registre' && <RegistreProjectionPanel />}
     </div>
   )
 }
