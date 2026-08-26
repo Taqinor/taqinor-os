@@ -9,7 +9,10 @@ Couvre :
 * la relance des retardataires ;
 * le % de conformité par procédure ;
 * une nouvelle version re-déclenche la diffusion sur la même population ;
-* le scoping société.
+* le scoping société ;
+* WIR277 — l'exposition REST : action ``diffuser/`` (population validée
+  côté serveur), ``DiffusionProcedureViewSet`` en LECTURE SEULE + actions
+  ``ajouter-lecteurs/``/``marquer-lu/`` (utilisateur COURANT uniquement).
 """
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -18,7 +21,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 
-from apps.qhse.models import AccuseLecture, ProcedureQualite
+from apps.qhse.models import AccuseLecture, DiffusionProcedure, ProcedureQualite
 from apps.qhse.selectors import conformite_lecture_procedure
 from apps.qhse.services import (
     accuser_lecture, diffuser_procedure, lectures_en_attente,
@@ -29,6 +32,8 @@ User = get_user_model()
 
 MES_LECTURES_URL = (
     '/api/django/qhse/procedures-qualite/mes-lectures-en-attente/')
+PROCEDURES = '/api/django/qhse/procedures-qualite/'
+DIFFUSIONS = '/api/django/qhse/diffusions-procedure/'
 
 
 def auth_client(user):
@@ -236,3 +241,95 @@ class RediffuserNouvelleVersionTests(TestCase):
         diffusion2 = rediffuser_nouvelle_version(v1, v2)
         accuse2 = diffusion2.accuses_lecture.get(user=user)
         self.assertIsNone(accuse2.lu_le)
+
+
+class DiffuserActionApiTests(TestCase):
+    """WIR277 — ``POST procedures-qualite/<id>/diffuser/`` (le service
+    ``diffuser_procedure`` n'avait aucun appelant REST). La population est
+    VALIDÉE côté serveur — jamais un id hors société accepté."""
+
+    def setUp(self):
+        self.company = make_company('co-xqhs15-diffuser-api', 'CoXqhs15DiffuserApi')
+        self.procedure = make_procedure(self.company)
+        # Diffuser est une ÉCRITURE (qhse_gerer / palier responsable) : un
+        # technicien est correctement refusé par la garde de base du viewset.
+        self.auteur = make_user(
+            self.company, 'auteur-xqhs15-diffuser-api', role='responsable')
+        self.api = auth_client(self.auteur)
+
+    def test_diffuse_a_population_validee(self):
+        cible = make_user(self.company, 'cible-xqhs15-diffuser-api')
+        resp = self.api.post(
+            f'{PROCEDURES}{self.procedure.id}/diffuser/',
+            {'user_ids': [cible.id]}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(resp.data['nb_lecteurs'], 1)
+        diffusion = DiffusionProcedure.objects.get(id=resp.data['id'])
+        self.assertEqual(diffusion.accuses_lecture.count(), 1)
+
+    def test_ignore_les_ids_hors_societe(self):
+        autre = make_company('co-xqhs15-diffuser-api-x', 'Autre')
+        etranger = make_user(autre, 'etranger-xqhs15-diffuser-api')
+        resp = self.api.post(
+            f'{PROCEDURES}{self.procedure.id}/diffuser/',
+            {'user_ids': [etranger.id]}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+
+    def test_aucun_destinataire_400(self):
+        resp = self.api.post(
+            f'{PROCEDURES}{self.procedure.id}/diffuser/',
+            {'user_ids': []}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+
+
+class DiffusionProcedureViewSetApiTests(TestCase):
+    """WIR277 — ``DiffusionProcedureViewSet`` en LECTURE SEULE (créée
+    exclusivement via l'action ``diffuser/``) + actions
+    ``ajouter-lecteurs/``/``marquer-lu/``."""
+
+    def setUp(self):
+        self.company = make_company('co-xqhs15-diffusion-vs', 'CoXqhs15DiffusionVs')
+        self.procedure = make_procedure(self.company)
+        self.user = make_user(self.company, 'user-xqhs15-diffusion-vs')
+        self.api = auth_client(self.user)
+        self.diffusion = diffuser_procedure(self.procedure, [self.user])
+
+    def test_lecture_seule_pas_de_creation_directe(self):
+        resp = self.api.post(DIFFUSIONS, {
+            'procedure': self.procedure.id,
+        }, format='json')
+        self.assertEqual(resp.status_code, 405, resp.data)
+
+    def test_list_scopee_societe(self):
+        autre = make_company('co-xqhs15-diffusion-vs-x', 'Autre')
+        autre_procedure = make_procedure(autre, reference='PRO-AUTRE')
+        autre_user = make_user(autre, 'autre-xqhs15-diffusion-vs')
+        diffuser_procedure(autre_procedure, [autre_user])
+        data = self.api.get(DIFFUSIONS).data
+        rows = data['results'] if isinstance(data, dict) else data
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]['id'], self.diffusion.id)
+
+    def test_ajouter_lecteurs_action(self):
+        nouveau = make_user(self.company, 'nouveau-xqhs15-diffusion-vs')
+        resp = self.api.post(
+            f'{DIFFUSIONS}{self.diffusion.id}/ajouter-lecteurs/',
+            {'user_ids': [nouveau.id]}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['nb_lecteurs'], 2)
+        self.assertTrue(
+            AccuseLecture.objects.filter(
+                diffusion=self.diffusion, user=nouveau).exists())
+
+    def test_marquer_lu_utilisateur_courant_uniquement(self):
+        resp = self.api.post(f'{DIFFUSIONS}{self.diffusion.id}/marquer-lu/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        accuse = AccuseLecture.objects.get(
+            diffusion=self.diffusion, user=self.user)
+        self.assertIsNotNone(accuse.lu_le)
+        # un AUTRE utilisateur ciblé par la diffusion n'est PAS affecté.
+        autre_cible = make_user(self.company, 'cible2-xqhs15-diffusion-vs')
+        diffuser_procedure(self.procedure, [autre_cible])
+        self.assertFalse(
+            AccuseLecture.objects.filter(
+                user=autre_cible, lu_le__isnull=False).exists())

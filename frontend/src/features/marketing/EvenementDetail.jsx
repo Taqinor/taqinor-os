@@ -41,6 +41,9 @@ const ONGLETS = [
   { key: 'billets', label: 'Billets' },
   { key: 'questions', label: 'Questions' },
   { key: 'communications', label: 'Communications' },
+  // WIR257/ZMKT20 — reporting participants & billetterie : construit côté
+  // serveur, jamais rendu par aucun écran.
+  { key: 'reporting', label: 'Reporting' },
 ]
 
 const TYPES_QUESTION = [
@@ -77,6 +80,11 @@ export default function EvenementDetail() {
 
   // WIR162 — onglets Billets/Questions/Communications (chargement paresseux).
   const [onglet, setOnglet] = useState('inscrits')
+  // WIR257 — reporting événement + impression EN LOT des badges (ZMKT19/20).
+  const [rapport, setRapport] = useState([])
+  const [rapportLoading, setRapportLoading] = useState(false)
+  const [rapportExport, setRapportExport] = useState(false)
+  const [badgesLot, setBadgesLot] = useState(false)
   const [billets, setBillets] = useState([])
   const [questions, setQuestions] = useState([])
   const [communications, setCommunications] = useState([])
@@ -122,11 +130,22 @@ export default function EvenementDetail() {
       .catch(() => setCommunications([]))
   }, [id])
 
+  // WIR257 — même patron paresseux : le reporting ne part QUE sur son onglet.
+  const loadRapport = useCallback(() => {
+    setRapportLoading(true)
+    return marketingApi.evenements.reporting()
+      .then(r => setRapport(Array.isArray(r.data) ? r.data : []))
+      .catch(() => setRapport([]))
+      .finally(() => setRapportLoading(false))
+  }, [])
+
   useEffect(() => {
     if (onglet === 'billets') loadBillets()
     else if (onglet === 'questions') loadQuestions()
     else if (onglet === 'communications') loadCommunications()
-  }, [onglet, loadBillets, loadQuestions, loadCommunications])
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement paresseux de l'onglet
+    else if (onglet === 'reporting') loadRapport()
+  }, [onglet, loadBillets, loadQuestions, loadCommunications, loadRapport])
 
   const ajouterBillet = async (e) => {
     e.preventDefault()
@@ -252,6 +271,35 @@ export default function EvenementDetail() {
     }
   }
 
+  // WIR257/ZMKT19 — badges de TOUS les inscrits en un seul PDF multi-pages
+  // (le badge unitaire existait déjà ; le lot n'avait aucun appelant).
+  const imprimerTousLesBadges = async () => {
+    setErr('')
+    setBadgesLot(true)
+    try {
+      const r = await marketingApi.evenements.badgesPdf(id)
+      marketingApi.downloadBlob(r.data, `badges-evenement-${id}.pdf`)
+    } catch {
+      setErr('Badges indisponibles.')
+    } finally {
+      setBadgesLot(false)
+    }
+  }
+
+  // WIR257/ZMKT20 — export XLSX du reporting événement.
+  const exporterRapport = async () => {
+    setErr('')
+    setRapportExport(true)
+    try {
+      const r = await marketingApi.evenements.reportingExportXlsx()
+      marketingApi.downloadBlob(r.data, 'reporting_evenements.xlsx')
+    } catch {
+      setErr('Export du reporting impossible.')
+    } finally {
+      setRapportExport(false)
+    }
+  }
+
   const creerSegmentPresents = async () => {
     setSegmentMsg('')
     setErr('')
@@ -311,6 +359,14 @@ export default function EvenementDetail() {
               onChange={importerInscrits} disabled={importEnCours}
               style={{ display: 'none' }} />
           </label>
+          {/* WIR257/ZMKT19 — impression EN LOT (un PDF pour tous les inscrits). */}
+          <button className="btn btn-light" type="button"
+            data-testid="inscriptions-badges-lot"
+            style={{ marginBottom: 8, marginLeft: 8 }}
+            disabled={badgesLot} onClick={imprimerTousLesBadges}>
+            {badgesLot ? 'Préparation…' : 'Imprimer tous les badges (PDF)'}
+          </button>
+
           {importRapport && (
             <p data-testid="inscriptions-import-rapport" style={{ margin: '4px 0' }}>
               {importRapport.crees} ajouté(s), {importRapport.doublons} doublon(s) ignoré(s)
@@ -524,6 +580,50 @@ export default function EvenementDetail() {
             </tbody>
           </table>
         </>
+      )}
+
+      {/* WIR257/ZMKT20 — reporting participants & billetterie. */}
+      {onglet === 'reporting' && (
+        <div data-testid="evenement-reporting">
+          <button className="btn btn-light" type="button"
+            data-testid="evenement-reporting-exporter"
+            style={{ marginBottom: 8 }}
+            disabled={rapportExport} onClick={exporterRapport}>
+            {rapportExport ? 'Export…' : 'Exporter (XLSX)'}
+          </button>
+
+          {rapportLoading ? <p className="page-loading">Chargement…</p> : (
+            <table className="data-table" data-testid="evenement-reporting-table">
+              <thead>
+                <tr>
+                  <th>Événement</th><th>Type</th><th>Inscrits</th><th>Confirmés</th>
+                  <th>Présents</th><th>Absents</th><th>Taux présence %</th>
+                  <th>Recette théorique (MAD)</th><th>Leads</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rapport.map((l, i) => (
+                  <tr key={l.evenement_id ?? `${l.nom}-${i}`} data-testid="evenement-reporting-row">
+                    <td>{l.nom}</td>
+                    <td>{l.type_evenement}</td>
+                    <td>{l.nb_inscrits}</td>
+                    <td>{l.nb_confirmes}</td>
+                    <td>{l.nb_presents}</td>
+                    <td>{l.nb_absents}</td>
+                    <td>{l.taux_presence_pct}</td>
+                    <td>{l.recette_theorique_mad}</td>
+                    <td>{l.nb_leads}</td>
+                  </tr>
+                ))}
+                {rapport.length === 0 && (
+                  <tr><td colSpan={9} style={{ textAlign: 'center', color: '#64748b' }}>
+                    Aucune donnée de reporting
+                  </td></tr>
+                )}
+              </tbody>
+            </table>
+          )}
+        </div>
       )}
     </div>
   )

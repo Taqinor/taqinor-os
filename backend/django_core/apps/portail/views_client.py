@@ -27,7 +27,8 @@ SÉCURITÉ — chaque endpoint exige ``IsPortalClientUser`` : portée EXACTEMENT
 passe ensuite par un sélecteur qui exige le triplet (société, client, id) : un
 document d'autrui est INTROUVABLE (404), jamais « trouvé puis refusé ».
 """
-from rest_framework import status, viewsets
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -199,3 +200,50 @@ class MesFacturesPortailViewSet(viewsets.ViewSet):
                 'rib': identite.get('rib', ''),
             },
         })
+
+
+class MesLivraisonsPortailViewSet(viewsets.ViewSet):
+    """WIR216 — « Mes livraisons » : la section portail que le lien de l'email
+    ``livraison_en_transit``/``livraison_livree`` (FG228,
+    ``apps.installations.livraison_client_notify``) prétendait déjà ouvrir —
+    elle n'existait pas (404 systématique).
+
+    Lecture SEULE via ``apps.installations.selectors.livraisons_client_portail``
+    (jamais un import de ``apps.installations.models`` — frontière cross-app) :
+    ce sélecteur est DÉJÀ le contrat client-safe testé par XSTK22 (jamais
+    ``cout_transport`` ni un prix d'achat). Distinct de l'action
+    ``LivraisonViewSet.portail`` (INTERNE, ``IsAnyRole`` + ``?client=`` du
+    corps de requête — jamais atteignable par un compte portail, cf.
+    ``IsAnyRole`` qui exclut explicitement ``portee != interne``) : ICI, le
+    client est dérivé du compte portail CONNECTÉ, jamais d'un paramètre."""
+
+    permission_classes = [IsPortalClientUser]
+
+    @extend_schema(responses=inline_serializer(
+        name='MesLivraisonsPortail',
+        fields={
+            'results': serializers.ListField(child=inline_serializer(
+                name='MesLivraisonsPortailLigne',
+                fields={
+                    'id': serializers.IntegerField(),
+                    'reference': serializers.CharField(),
+                    'chantier_id': serializers.IntegerField(allow_null=True),
+                    'date_prevue': serializers.DateField(allow_null=True),
+                    'statut': serializers.CharField(),
+                    'statut_display': serializers.CharField(),
+                    'numero_suivi': serializers.CharField(allow_null=True),
+                    'articles': serializers.ListField(child=inline_serializer(
+                        name='MesLivraisonsPortailArticle',
+                        fields={
+                            'designation': serializers.CharField(),
+                            'quantite': serializers.FloatField(),
+                        })),
+                    'pod_disponible': serializers.BooleanField(),
+                    'pod_url': serializers.CharField(allow_null=True),
+                })),
+        }))
+    def list(self, request):
+        from apps.installations.selectors import livraisons_client_portail
+        company, client_id = _scope(request)
+        return Response(
+            {'results': livraisons_client_portail(company, client_id)})

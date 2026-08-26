@@ -114,3 +114,45 @@ class PolicyApiTests(TestCase):
             {'confirmed_keys': all_keys}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertTrue(resp.data['is_policy_passed'])
+
+    def test_policy_check_returns_the_stamp_the_screen_must_read(self):
+        """WIR170 — la réponse porte le ``policy_stamp`` serveur.
+
+        L'écran (créathèque) ne peut afficher « Vérifié » que sur CE tampon :
+        c'est la seule source de vérité (un affichage optimiste mentirait sur
+        un refus consentement, par ex.)."""
+        all_keys = [r['key'] for r in policy.DEFAULT_FORBIDDEN]
+        resp = auth(self.manager).post(
+            f'{BASE}{self.asset.id}/policy-check/',
+            {'confirmed_keys': all_keys}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        stamp = resp.data['policy_stamp']
+        self.assertTrue(stamp['passed'])
+        self.assertEqual(stamp['rules_checked'], sorted(all_keys))
+
+    def test_legacy_payload_without_confirmed_keys_never_passes(self):
+        """WIR170 — l'ancien payload de l'écran (``passed``/``rules_checked``)
+        n'était JAMAIS lu : le serveur ne lit que ``confirmed_keys``. Le tampon
+        reste donc non validé — garde anti-régression du renommage."""
+        all_keys = [r['key'] for r in policy.DEFAULT_FORBIDDEN]
+        resp = auth(self.manager).post(
+            f'{BASE}{self.asset.id}/policy-check/',
+            {'passed': True, 'rules_checked': all_keys}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertFalse(resp.data['is_policy_passed'])
+        self.assertFalse(resp.data['policy_stamp']['passed'])
+        self.assertEqual(resp.data['policy_stamp']['rules_checked'], [])
+
+    def test_checklist_endpoint_exposes_the_keys_the_screen_must_post(self):
+        """WIR170 — les clés confirmables viennent de CE point d'entrée : les
+        poster telles quelles fait passer l'asset (aucune clé inventée à
+        l'écran)."""
+        api = auth(self.manager)
+        checklist = api.get(f'{BASE}checklist/').data
+        keys = [r['key'] for r in checklist['forbidden']]
+        self.assertTrue(keys)
+        resp = api.post(
+            f'{BASE}{self.asset.id}/policy-check/',
+            {'confirmed_keys': keys}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertTrue(resp.data['policy_stamp']['passed'])

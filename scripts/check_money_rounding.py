@@ -123,8 +123,10 @@ BASELINE_ALLOWLIST = {
     "backend/django_core/apps/compta/services.py:9811",
     "backend/django_core/apps/compta/services.py:7789",
     "backend/django_core/apps/compta/services.py:7792",
-    "backend/django_core/apps/compta/services.py:12279",
-    "backend/django_core/apps/compta/services.py:12681",
+    # compta/services.py taux-completion re-based 2026-08-26 (WIR237 : +44 lignes)
+    "backend/django_core/apps/compta/services.py:12323",
+    # compta/services.py roi_pct re-based 2026-08-26 (WIR237 : +44 lignes au-dessus)
+    "backend/django_core/apps/compta/services.py:12725",
     "backend/django_core/apps/compta/services.py:9096",
     "backend/django_core/apps/compta/services.py:9100",
     # XSAL14 (2026-07-16) â€” builder.py edits shifted existing display-round

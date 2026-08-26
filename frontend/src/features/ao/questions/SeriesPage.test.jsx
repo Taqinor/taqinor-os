@@ -30,6 +30,8 @@ const mocks = vi.hoisted(() => ({
   seriesCreate: vi.fn(),
   questionsCreate: vi.fn(),
   questionsUpdate: vi.fn(),
+  // WIR207 — trancher APPLIQUE la decision (action serveur), jamais un PATCH.
+  questionsTrancher: vi.fn(),
   svgVersPng: vi.fn(),
   svgVersPngBlob: vi.fn(),
 }))
@@ -37,7 +39,10 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../../../api/aoApi', () => ({
   default: {
     seriesQR: { list: mocks.seriesList, create: mocks.seriesCreate },
-    questions: { create: mocks.questionsCreate, update: mocks.questionsUpdate },
+    questions: {
+      create: mocks.questionsCreate, update: mocks.questionsUpdate,
+      trancher: mocks.questionsTrancher,
+    },
   },
 }))
 
@@ -83,6 +88,7 @@ beforeEach(() => {
   mocks.seriesList.mockResolvedValue({ data: [serie([QUESTION_A])] })
   mocks.questionsCreate.mockResolvedValue({ data: { id: 12 } })
   mocks.questionsUpdate.mockResolvedValue({ data: { id: 11 } })
+  mocks.questionsTrancher.mockResolvedValue({ data: { id: 11, variantes_perimees: 0 } })
   mocks.svgVersPng.mockResolvedValue({
     dataUrl: 'data:image/png;base64,AAAA', largeur: 1000, hauteur: 750,
   })
@@ -200,5 +206,74 @@ describe('SeriesPage — annotateur, fiche question et export (PACT170)', () => 
     expect(await screen.findByRole('button', { name: 'Préparer l’image annotée' }))
       .toBeDisabled()
     expect(screen.getByText(/Posez au moins un repère/)).toBeInTheDocument()
+  })
+
+  /* ── WIR207 — trancher APPLIQUE la décision ─────────────────────────────
+     Le PATCH de `decision` posait le texte et rien d'autre : l'obstacle
+     restait au compte et les variantes de calepinage restaient « à jour »
+     alors que leur base venait de changer. */
+  describe('trancher une question (WIR207)', () => {
+    it('« Trancher » poste sur l’action serveur avec la décision ET son action', async () => {
+      render(<SeriesPage affaireId={7} />)
+      const ouvrir = await poserUnRepere()
+      await userEvent.click(ouvrir)
+      await screen.findByText('Fiche — Repère A')
+
+      await userEvent.type(
+        screen.getByLabelText('Décision retenue'),
+        'Édicule déposé — confirmé par le MOA.',
+      )
+      await userEvent.selectOptions(
+        screen.getByLabelText('Ce que la décision applique'), 'ecarter_obstacle')
+      await userEvent.click(document.querySelector('[data-ao-trancher-valider="11"]'))
+
+      await waitFor(() => expect(mocks.questionsTrancher).toHaveBeenCalled())
+      const [id, corps] = mocks.questionsTrancher.mock.calls[0]
+      expect(id).toBe(11)
+      expect(corps.decision).toMatch(/Édicule déposé/)
+      expect(corps.action).toBe('ecarter_obstacle')
+      // Aucune clé inutile : `provenance` n'est envoyée qu'avec
+      // `confirmer_obstacle`, `statut_cote` qu'avec `requalifier_cote`.
+      expect(corps).not.toHaveProperty('provenance')
+      expect(corps).not.toHaveProperty('statut_cote')
+      // Et la décision n'est JAMAIS écrite par un PATCH.
+      expect(mocks.questionsUpdate).not.toHaveBeenCalled()
+    })
+
+    it('les variantes PÉRIMÉES par la décision sont ANNONCÉES', async () => {
+      mocks.questionsTrancher.mockResolvedValue({
+        data: { id: 11, variantes_perimees: 2 },
+      })
+      render(<SeriesPage affaireId={7} />)
+      const ouvrir = await poserUnRepere()
+      await userEvent.click(ouvrir)
+      await screen.findByText('Fiche — Repère A')
+
+      await userEvent.type(screen.getByLabelText('Décision retenue'), 'Confirmé.')
+      await userEvent.click(document.querySelector('[data-ao-trancher-valider="11"]'))
+
+      expect(await screen.findByText(/2 variante\(s\) de calepinage passée\(s\) en PÉRIMÉ/))
+        .toBeInTheDocument()
+    })
+
+    it('un refus serveur est ÉCRIT, sans succès affiché', async () => {
+      mocks.questionsTrancher.mockRejectedValue({
+        response: {
+          status: 400,
+          data: { detail: 'Cette action exige une question rattachée à un obstacle.' },
+        },
+      })
+      render(<SeriesPage affaireId={7} />)
+      const ouvrir = await poserUnRepere()
+      await userEvent.click(ouvrir)
+      await screen.findByText('Fiche — Repère A')
+
+      await userEvent.type(screen.getByLabelText('Décision retenue'), 'Écarter.')
+      await userEvent.selectOptions(
+        screen.getByLabelText('Ce que la décision applique'), 'ecarter_obstacle')
+      await userEvent.click(document.querySelector('[data-ao-trancher-valider="11"]'))
+
+      expect(await screen.findByText(/rattachée à un obstacle/)).toBeInTheDocument()
+    })
   })
 })

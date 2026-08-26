@@ -41,6 +41,9 @@ const mocks = vi.hoisted(() => ({
   zonesUpdate: vi.fn(),
   zonesRemove: vi.fn(),
   toituresAnalyserDxf: vi.fn(),
+  // WIR207 — selecteur de jeu de parametres (action serveur appliquer-preset).
+  bibliothequeList: vi.fn(),
+  appliquerPreset: vi.fn(),
 }))
 const toastMocks = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }))
 
@@ -53,7 +56,11 @@ vi.mock('../../../api/aoApi', () => ({
       update: mocks.toituresUpdate,
       // PVG1 — analyse DXF réelle (multipart), route hors routeur DRF.
       analyserDxf: mocks.toituresAnalyserDxf,
+      // WIR207 — AOF27 : appliquer un preset a CETTE toiture, par l'action.
+      appliquerPreset: mocks.appliquerPreset,
     },
+    // WIR207 — la bibliotheque sert les jeux de parametres (`presets-calepinage`).
+    bibliotheque: { list: mocks.bibliothequeList },
     batiments: { list: mocks.batimentsList },
     // PV53 — obstacles/chaînes de cotes, désormais persistés par l'atelier
     // (diff create/update/delete + hydratation à l'ouverture).
@@ -148,6 +155,9 @@ beforeEach(() => {
   mocks.zonesUpdate.mockResolvedValue({ data: {} })
   mocks.zonesRemove.mockResolvedValue({ data: {} })
   mocks.toituresAnalyserDxf.mockResolvedValue({ data: { calques: [], unite: 'inconnu' } })
+  // WIR207 — bibliothèque vide par défaut : le sélecteur de preset se tait.
+  mocks.bibliothequeList.mockResolvedValue({ data: [] })
+  mocks.appliquerPreset.mockResolvedValue({ data: { id: 41 } })
 })
 
 /* Ouvre le wizard, remplit ses deux champs et valide. Le wizard se ferme
@@ -928,5 +938,65 @@ describe('ToituresPage — analyserDxf appelle le VRAI endpoint DXF (PVG1)', () 
 
     expect(await screen.findByText(/n.a pas pu être lu comme un DXF/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Tracer la toiture à la main' })).toBeInTheDocument()
+  })
+})
+
+/* ============================================================================
+   WIR207 — appliquer un JEU DE PARAMÈTRES à la toiture ouverte.
+   ----------------------------------------------------------------------------
+   `toitures.appliquerPreset` (AOF27) n'avait aucun appelant : la Bibliothèque
+   avait retiré son bouton (elle ne désigne aucune toiture) en notant à tort
+   qu'un endpoint restait « à construire ». L'atelier est le seul écran qui
+   désigne une toiture — c'est donc ici, et par l'ACTION serveur.
+   ========================================================================== */
+describe('ToituresPage — jeu de paramètres appliqué à la toiture (WIR207)', () => {
+  const PRESETS = [
+    { id: 3, nom: 'Toiture-terrasse 15°', description: 'Rives 0,35 m' },
+    { id: 4, nom: 'Bac acier plein sud', description: '' },
+  ]
+
+  it('sans preset en bibliothèque, l’écran le DIT au lieu d’un sélecteur vide', async () => {
+    mocks.toituresList.mockResolvedValue({ data: [TOITURE] })
+    render(<ToituresPage affaireId={7} />)
+    await screen.findByText('Toiture atelier')
+    await waitFor(() => expect(
+      document.querySelector('[data-ao-presets-vide]')).toBeTruthy())
+    expect(document.querySelector('[data-ao-appliquer-preset]')).toBeNull()
+  })
+
+  it('« Appliquer » poste sur l’ACTION appliquer-preset, jamais un PATCH de paramètres', async () => {
+    mocks.toituresList.mockResolvedValue({ data: [TOITURE] })
+    mocks.bibliothequeList.mockResolvedValue({ data: PRESETS })
+    render(<ToituresPage affaireId={7} />)
+    await screen.findByText('Toiture atelier')
+
+    const select = await screen.findByLabelText(/Jeu de paramètres à appliquer/)
+    await userEvent.selectOptions(select, '4')
+    await userEvent.click(document.querySelector('[data-ao-appliquer-preset]'))
+
+    await waitFor(() => expect(mocks.appliquerPreset).toHaveBeenCalledWith(41, 4))
+    // La toiture n'est PAS patchée au passage : l'action seule écrit.
+    expect(mocks.toituresUpdate).not.toHaveBeenCalled()
+  })
+
+  it('un refus serveur est écrit, et rien n’est appliqué', async () => {
+    mocks.toituresList.mockResolvedValue({ data: [TOITURE] })
+    mocks.bibliothequeList.mockResolvedValue({ data: PRESETS })
+    mocks.appliquerPreset.mockRejectedValue({
+      response: { status: 400, data: { detail: "Ce preset n'existe pas dans votre société." } },
+    })
+    render(<ToituresPage affaireId={7} />)
+    await screen.findByText('Toiture atelier')
+
+    await userEvent.selectOptions(
+      await screen.findByLabelText(/Jeu de paramètres à appliquer/), '3')
+    await userEvent.click(document.querySelector('[data-ao-appliquer-preset]'))
+
+    const refus = await waitFor(() => {
+      const el = document.querySelector('[data-ao-preset-refus]')
+      expect(el).toBeTruthy()
+      return el
+    })
+    expect(refus.textContent).toMatch(/n.existe pas dans votre société/)
   })
 })

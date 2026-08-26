@@ -23,6 +23,26 @@ const ventesApi = {
   addRegleListePrix: (listeId, data) =>
     api.post(`/ventes/listes-prix/${listeId}/regles/`, data),
 
+  // WIR281/WIR282 (XSAL6) — plans de commission. Le modèle et le résolveur
+  // existaient depuis XSAL6 sans aucune route ; WIR281 les a exposés.
+  // Contrat partagé : `apps/ventes/contract_samples/plan_commission.json` —
+  // les mocks de test en DÉRIVENT, ils ne l'inventent pas (PACT10).
+  // GARDE MARGE : l'endpoint est gaté `prix_achat_voir` côté serveur et ne
+  // sert NI prix d'achat NI montant de marge (seulement une étiquette de base,
+  // un pourcentage de règle et un barème MAD/kWc).
+  getPlansCommission: (params) =>
+    api.get('/ventes/plans-commission/', { params }),
+  createPlanCommission: (data) => api.post('/ventes/plans-commission/', data),
+  updatePlanCommission: (id, data) =>
+    api.patch(`/ventes/plans-commission/${id}/`, data),
+  deletePlanCommission: (id) => api.delete(`/ventes/plans-commission/${id}/`),
+  // `resoudre` renvoie {owner, source, plan} : quel plan s'applique VRAIMENT
+  // à ce commercial (plan dédié → plan par défaut société → mode société).
+  resoudrePlanCommission: (owner) =>
+    api.get('/ventes/plans-commission/resoudre/', {
+      params: owner ? { owner } : {},
+    }),
+
   // Devis
   // VX55 — `config` optionnel (ex. { signal }) pour l'annulation
   // AbortController câblée depuis fetchDevis (createAsyncThunk {signal}).
@@ -42,6 +62,11 @@ const ventesApi = {
   patchDevis: (id, data) => api.patch(`/ventes/devis/${id}/`, data),
   deleteDevis: (id) => api.delete(`/ventes/devis/${id}/`),
   genererPdfDevis: (id, options = {}) => api.post(`/ventes/devis/${id}/generer-pdf/`, options),
+  // WIR217 — état du rendu PDF : `pret` | `en_cours` | `echec` (+ `erreur`).
+  // Le sondage lisait `fichier_pdf` SEUL : un échec définitif de la tâche
+  // Celery (retries épuisés) était invisible et la boucle tournait sans fin.
+  // Contrat : apps/ventes/contract_samples/devis_etat_pdf.json.
+  etatPdfDevis: (id) => api.get(`/ventes/devis/${id}/etat-pdf/`),
   telechargerPdfDevis: (id) => api.get(`/ventes/devis/${id}/telecharger-pdf/`, { responseType: 'blob' }),
   // Proposition client (chemin canonique /proposal) — rendue à la volée selon
   // le format (pdf_mode/onepage/full, include_etude…), récupérée en blob pour
@@ -305,9 +330,58 @@ const ventesApi = {
   dgiConformiteFacture: (id) => api.get(`/ventes/factures/${id}/dgi-conformite/`),
   // FG43/WR2 — actions en masse (émettre/relancer/email/pdf) sur une sélection.
   bulkFactures: (action, ids) => api.post('/ventes/factures/bulk/', { action, ids }),
+
+  // ── WIR183 — six actions Facture COMPLÈTES côté serveur, sans aucune UI ──
+  // Elles existaient toutes dans `apps/ventes/views/facture.py` (ZFAC1,
+  // XFAC13, XPOS7, XFAC6, XFAC11, ZFAC6) et n'étaient appelables par personne.
+  // Toutes réservées au palier responsable/admin (`IsResponsableOrAdmin`
+  // côté serveur) ; les messages d'erreur serveur sont affichés TELS QUELS.
+
+  // ZFAC1 — repasse une facture ÉMISE en brouillon (aucun paiement ni avoir,
+  // période comptable ouverte). La référence est CONSERVÉE.
+  remettreBrouillonFacture: (id) =>
+    api.post(`/ventes/factures/${id}/remettre-brouillon/`),
+  // XFAC13 — abandon manuel du résiduel (write-off). `motif` OBLIGATOIRE :
+  // irrecouvrable | geste_commercial | ecart_reglement | liquidation.
+  abandonnerSoldeFacture: (id, motif) =>
+    api.post(`/ventes/factures/${id}/abandonner-solde/`, { motif }),
+  // XPOS7 — retour client contre la facture d'origine : crée l'avoir, avec
+  // option de re-stockage. `{ motif, restocker, lignes: [{ligne, quantite}] }`.
+  retourClientFacture: (id, data) =>
+    api.post(`/ventes/factures/${id}/retour-client/`, data),
+  // XFAC6 — matérialise la pénalité de retard du niveau de relance courant
+  // en une facture de frais SÉPARÉE (la facture d'origine n'est pas modifiée).
+  facturerPenalitesFacture: (id) =>
+    api.post(`/ventes/factures/${id}/facturer-penalites/`),
+  // XFAC11 — UNE facture consolidée à partir de plusieurs devis acceptés du
+  // MÊME client.
+  consoliderFactures: (devisIds) =>
+    api.post('/ventes/factures/consolider/', { devis_ids: devisIds }),
+  // ZFAC6 — un seul règlement client réparti sur PLUSIEURS factures (FIFO par
+  // échéance, ou `repartition: {facture_id: montant}` pour forcer).
+  encaissementGroupeFactures: (data) =>
+    api.post('/ventes/factures/encaissement-groupe/', data),
   // Encaissements : liste lecture seule de TOUS les paiements de la société
   // (PaiementViewSet), bornée serveur. ?ordering= pour le tri.
   getPaiements: (params) => api.get('/ventes/paiements/', { params }),
+
+  // ── WIR265/FG42 — Import d'un relevé bancaire (dry-run puis commit) ──────
+  // Le couple d'endpoints multipart existait et testé depuis FG42, SANS aucun
+  // consommateur. `file` est le nom de champ RÉELLEMENT lu par le serveur
+  // (`request.FILES.get('file')`), XLSX ou CSV, 5 Mo max.
+  // FormData NU, sans `Content-Type` manuel : c'est le navigateur qui pose
+  // l'en-tête AVEC son boundary multipart — le forcer à la main produit un
+  // corps illisible côté serveur.
+  importReleveDryRun: (file) => {
+    const form = new FormData()
+    form.append('file', file)
+    return api.post('/ventes/paiements/import-releve/dry-run/', form)
+  },
+  importReleveCommit: (file) => {
+    const form = new FormData()
+    form.append('file', file)
+    return api.post('/ventes/paiements/import-releve/commit/', form)
+  },
 
   // Avoirs (notes de crédit)
   creerAvoir: (factureId, data) => api.post(`/ventes/factures/${factureId}/creer-avoir/`, data),

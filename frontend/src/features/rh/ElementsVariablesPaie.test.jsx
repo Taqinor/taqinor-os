@@ -22,6 +22,8 @@ vi.mock('../../api/rhApi', () => ({
     createElementVariablePaie: vi.fn(),
     updateElementVariablePaie: vi.fn(),
     marquerExporteElementVariablePaie: vi.fn(),
+    // WIR239 (PACT162) — export CSV serveur du bordereau (blob).
+    exportBordereauPaieCsv: vi.fn(),
   },
 }))
 
@@ -67,6 +69,20 @@ describe('ElementsVariablesPaie (PACT86)', () => {
 
     await waitFor(() => expect(rhApi.createElementVariablePaie).toHaveBeenCalledWith(
       expect.objectContaining({ employe: '9' }),
+    ))
+  })
+
+  it('WIR239 (PACT162) — télécharge le CSV serveur avant « Marquer exporté »', async () => {
+    URL.createObjectURL = vi.fn(() => 'blob:mock')
+    URL.revokeObjectURL = vi.fn()
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    rhApi.exportBordereauPaieCsv.mockResolvedValueOnce({ data: new Blob(['csv']) })
+    renderScreen()
+    await screen.findAllByText('Éléments variables de paie')
+
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Télécharger le CSV' }))[0])
+    await waitFor(() => expect(rhApi.exportBordereauPaieCsv).toHaveBeenCalledWith(
+      { employe: 9, annee: 2026, mois: 7 },
     ))
   })
 })

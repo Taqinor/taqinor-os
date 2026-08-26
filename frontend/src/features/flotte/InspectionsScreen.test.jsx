@@ -19,6 +19,9 @@ beforeAll(() => {
 })
 
 const inspectionsCreate = vi.fn(() => Promise.resolve({ data: { id: 1 } }))
+// WIR236 — taux de complétion par conducteur (TauxCompletionCard, rendue au
+// montage de l'écran) : par défaut aucune donnée, un test dédié surcharge.
+const tauxCompletion = vi.fn(() => Promise.resolve({ data: [] }))
 
 vi.mock('../../api/flotteApi', () => ({
   default: {
@@ -26,7 +29,11 @@ vi.mock('../../api/flotteApi', () => ({
     modelesInspection: { list: () => Promise.resolve({
       data: [{ id: 3, nom: 'Pré-départ', items: [{ libelle: 'Freins', bloquant: true }, { libelle: 'Pneus', bloquant: false }] }],
     }) },
-    inspections: { list: () => Promise.resolve({ data: [] }), create: (...args) => inspectionsCreate(...args) },
+    inspections: {
+      list: () => Promise.resolve({ data: [] }),
+      create: (...args) => inspectionsCreate(...args),
+      tauxCompletion: (...args) => tauxCompletion(...args),
+    },
   },
 }))
 
@@ -67,5 +74,21 @@ describe('InspectionsScreen (XFLT13)', () => {
         ]),
       }),
     ))
+  })
+})
+
+describe('InspectionsScreen — Taux de complétion (WIR236)', () => {
+  it('affiche le taux de complétion par conducteur', async () => {
+    tauxCompletion.mockResolvedValueOnce({
+      data: [{
+        conducteur_id: 2, conducteur_nom: 'Karim', nb_inspections: 4,
+        nb_items: 8, nb_pass: 6, taux_completion: 75,
+      }],
+    })
+    withProviders(<InspectionsScreen />)
+
+    await waitFor(() => expect(tauxCompletion).toHaveBeenCalled())
+    expect(await screen.findByText(/Karim — 4 inspection\(s\)/)).toBeInTheDocument()
+    expect(screen.getByText('75%')).toBeInTheDocument()
   })
 })

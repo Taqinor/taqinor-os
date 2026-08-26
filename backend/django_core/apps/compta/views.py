@@ -99,6 +99,8 @@ from .models import (
     MutationImmobilisation, ImmobilisationEnCours, LigneImmobilisationEnCours,
     ContratRevenu, ObligationPerformance, EcheancierReconnaissance,
     EtapeAuditConsolidation,
+    # WIR279 — XACC14 / XACC19 : services complets, aucun ViewSet jusqu'ici.
+    Emprunt, EcheanceEmprunt, EtatPersonnalise,
 )
 from .serializers import (
     AcompteISSerializer, ConventionFiscaleSerializer,
@@ -188,6 +190,8 @@ from .serializers import (
     EcheancierReconnaissanceSerializer, EtapeAuditConsolidationSerializer,
     ModeleEcritureSerializer, LigneModeleEcritureSerializer,
     AbonnementEcritureSerializer,
+    # WIR279 — XACC14 / XACC19.
+    EmpruntSerializer, EcheanceEmpruntSerializer, EtatPersonnaliseSerializer,
 )
 
 
@@ -257,6 +261,29 @@ class EcritureComptableViewSet(_ComptaBaseViewSet):
     serializer_class = EcritureComptableSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_ecriture', 'id']
+
+    # WIR175 — les ÉCRITURES sont le cœur du grand livre : leur CRUD et
+    # l'extourne ne vérifiaient que ``IsResponsableOrAdmin``, donc tout rôle
+    # fin portant UNE permission d'écriture quelconque (un Commercial et son
+    # ``crm_creer``, par exemple) pouvait passer, modifier, supprimer ou
+    # contre-passer une écriture comptable. Ces quatre actions exigent
+    # désormais ``compta_saisir`` — même code que la saisie ailleurs dans le
+    # module, même repli LÉGACY (``HasPermissionOrLegacy`` ⇔ le helper
+    # ``_peut`` : un compte SANS rôle fin garde son accès Responsable/Admin).
+    #
+    # La LECTURE (list/retrieve) et ``valider`` sont volontairement HORS de
+    # cette liste : ``valider`` porte sa propre garde ``compta_valider`` +
+    # séparation des tâches DANS l'action (un ``get_permissions`` qui
+    # l'écraserait est le bug de classe #25) — porter ``compta_valider`` seul ne
+    # doit toujours PAS permettre de créer une écriture, et inversement.
+    ACTIONS_SAISIE = frozenset({
+        'create', 'update', 'partial_update', 'destroy', 'extourner',
+    })
+
+    def get_permissions(self):
+        if self.action in self.ACTIONS_SAISIE:
+            return [HasPermissionOrLegacy('compta_saisir')()]
+        return super().get_permissions()
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -7875,9 +7902,11 @@ class AbonnementMonitoringViewSet(_ComptaBaseViewSet):
     posée côté serveur ; la 1re échéance est calculée à la création ;
     ``renouveler`` avance SEULEMENT l'échéance (YSUBS3 : découplé de la
     facturation) ; ``facturer`` émet la facture standard de la période due
-    (YSUBS3) ; ``suspendre`` / ``resilier`` passent par les transitions
-    gardées de service (YSUBS4 — jamais un PATCH direct de ``statut``) ;
-    ``a_echeance`` liste les abonnements arrivant à échéance."""
+    PUIS avance l'échéance (WIR237 — variante beat : un seul comportement
+    pour l'action manuelle et le beat quotidien) ; ``suspendre`` / ``reactiver``
+    / ``resilier`` passent par les transitions gardées de service (YSUBS4/WIR237
+    — jamais un PATCH direct de ``statut``) ; ``a_echeance`` liste les
+    abonnements arrivant à échéance."""
     queryset = AbonnementMonitoring.objects.all()
     serializer_class = AbonnementMonitoringSerializer
     filter_backends = [filters.OrderingFilter]
@@ -7898,7 +7927,9 @@ class AbonnementMonitoringViewSet(_ComptaBaseViewSet):
             return [IsResponsableOrAdmin()]
         if self.action == 'renouveler':
             return [HasPermissionOrLegacy('compta_saisir')()]
-        if self.action in ('facturer', 'suspendre', 'resilier'):
+        # WIR237 — ``reactiver`` est la transition INVERSE de ``suspendre`` :
+        # même garde, même palier.
+        if self.action in ('facturer', 'suspendre', 'resilier', 'reactiver'):
             return [HasPermissionOrLegacy('compta_valider')()]
         return super().get_permissions()
 
@@ -7912,10 +7943,20 @@ class AbonnementMonitoringViewSet(_ComptaBaseViewSet):
     def facturer(self, request, pk=None):
         """YSUBS3 — Émet la facture standard de la période due (garde
         d'idempotence par ``derniere_facturation`` — refuse de re-facturer
-        la même période)."""
+        la même période).
+
+        WIR237 — l'action HTTP passait par ``facturer_abonnement_monitoring``
+        SEUL, qui n'avance pas l'échéance : facturer manuellement GELAIT
+        l'abonnement (``prochaine_echeance`` figée sur la période déjà
+        facturée), donc le beat quotidien
+        (``abonnements_monitoring_dus_facturation``) le re-sélectionnait
+        indéfiniment pour se heurter à la garde d'idempotence. Elle appelle
+        désormais la variante BEAT, qui facture PUIS renouvelle — un seul
+        comportement pour les deux points d'entrée.
+        """
         abonnement = self.get_object()
         try:
-            facture = services.facturer_abonnement_monitoring(
+            facture = services.facturer_abonnement_monitoring_beat(
                 abonnement, user=request.user)
         except DjangoValidationError as exc:
             return Response(
@@ -7923,13 +7964,34 @@ class AbonnementMonitoringViewSet(_ComptaBaseViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
         return Response(
             {'facture_id': facture.id, 'reference': facture.reference,
-             'montant_ttc': str(facture.montant_ttc)},
+             'montant_ttc': str(facture.montant_ttc),
+             # WIR237 — l'échéance avancée est renvoyée pour que l'écran la
+             # montre sans deviner (et pour rendre l'enchaînement testable).
+             'prochaine_echeance': abonnement.prochaine_echeance},
             status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['post'])
     def suspendre(self, request, pk=None):
         abonnement = self.get_object()
         services.suspendre_abonnement_monitoring(abonnement)
+        return Response(self.get_serializer(abonnement).data)
+
+    @action(detail=True, methods=['post'])
+    def reactiver(self, request, pk=None):
+        """WIR237 — Reprend un abonnement SUSPENDU (SUSPENDU → ACTIF).
+
+        La suspension était sans retour : aucun chemin API ne ramenait un
+        abonnement suspendu à l'état actif. Idempotent sur un abonnement déjà
+        actif ; refuse un abonnement RÉSILIÉ (400, la résiliation reste
+        définitive).
+        """
+        abonnement = self.get_object()
+        try:
+            services.reactiver_abonnement_monitoring(abonnement)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(abonnement).data)
 
     @action(detail=True, methods=['post'])
@@ -9698,3 +9760,201 @@ class AbonnementEcritureViewSet(_ComptaBaseViewSet):
         except (DjangoValidationError, ValueError, TypeError) as exc:
             return _err400(exc)
         return Response(resultat)
+
+
+# ── WIR279 / XACC14 — Emprunts & crédits-bails (exposition REST) ────────────
+
+class EmpruntViewSet(_ComptaBaseViewSet):
+    """Emprunts bancaires & crédits-bails CONTRACTÉS par la société (XACC14).
+
+    WIR279 — le modèle, le tableau d'amortissement et le posting au grand
+    livre existaient depuis XACC14 côté services, sans AUCUN ViewSet : rien
+    n'était atteignable hors admin Django. CRUD scopé société (``company``
+    posée par ``TenantMixin.perform_create``, jamais lue du corps) + deux
+    actions branchées sur les services EXISTANTS — aucune règle métier n'est
+    ré-implémentée ici.
+
+    À ne pas confondre avec ``SimulationFinancementViewSet`` (FG217, le
+    financement proposé au CLIENT sur un devis) : ici la société est
+    l'emprunteuse.
+    """
+    queryset = Emprunt.objects.select_related(
+        'compte_capital', 'compte_interets', 'compte_tresorerie').all()
+    serializer_class = EmpruntSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['reference', 'banque']
+    ordering_fields = ['date_debut', 'capital', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        type_financement = self.request.query_params.get('type_financement')
+        if type_financement:
+            qs = qs.filter(type_financement=type_financement)
+        return qs
+
+    def get_permissions(self):
+        # Écrire un emprunt (et surtout générer son tableau) est une SAISIE
+        # comptable : même palier que le reste du module. La lecture reste
+        # ``IsResponsableOrAdmin``.
+        if self.action in ('create', 'update', 'partial_update', 'destroy',
+                           'generer_tableau'):
+            return [HasPermissionOrLegacy('compta_saisir')()]
+        return super().get_permissions()
+
+    @action(detail=True, methods=['post'], url_path='generer-tableau')
+    def generer_tableau(self, request, pk=None):
+        """Génère (et persiste) le tableau d'amortissement complet.
+
+        Branché tel quel sur ``services.generer_tableau_amortissement`` :
+        idempotent tant qu'aucune échéance n'est postée, REFUSÉ (400 FR) dès
+        qu'une l'est — on ne réécrit jamais un historique comptable.
+        """
+        emprunt = self.get_object()
+        try:
+            echeances = services.generer_tableau_amortissement(emprunt)
+        except DjangoValidationError as exc:
+            return _err400(exc)
+        return Response({
+            'emprunt': emprunt.id,
+            'nb_echeances': len(echeances),
+            'echeances': EcheanceEmpruntSerializer(echeances, many=True).data,
+        })
+
+
+class EcheanceEmpruntViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
+    """Échéances du tableau d'amortissement — LECTURE SEULE (WIR279).
+
+    Aucune écriture directe : une échéance naît de
+    ``generer-tableau/`` et ne change qu'en étant POSTÉE. La seule action
+    d'écriture est donc ``poster/``.
+    """
+    permission_classes = [IsResponsableOrAdmin]
+    queryset = EcheanceEmprunt.objects.select_related(
+        'emprunt', 'ecriture').all()
+    serializer_class = EcheanceEmpruntSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_echeance', 'numero', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        emprunt = params.get('emprunt')
+        if emprunt:
+            qs = qs.filter(emprunt_id=emprunt)
+        posted = params.get('posted')
+        if posted in ('true', 'false'):
+            qs = qs.filter(posted=(posted == 'true'))
+        return qs
+
+    def get_permissions(self):
+        if self.action == 'poster':
+            return [HasPermissionOrLegacy('compta_saisir')()]
+        return super().get_permissions()
+
+    @action(detail=True, methods=['post'])
+    def poster(self, request, pk=None):
+        """Poste l'échéance au grand livre (capital + intérêts / banque).
+
+        Le service est IDEMPOTENT (il renvoie l'écriture existante), mais la
+        vue REFUSE explicitement un re-post : une échéance ne s'écrit qu'UNE
+        fois et un second clic doit le DIRE plutôt que de rendre un 200
+        trompeur laissant croire à une nouvelle écriture.
+        """
+        echeance = self.get_object()
+        if echeance.posted:
+            return Response(
+                {'detail': (
+                    f"L'échéance {echeance.numero} est déjà postée au grand "
+                    "livre : elle ne peut pas être postée une seconde fois.")},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            ecriture = services.poster_echeance_emprunt(
+                echeance, user=request.user)
+        except DjangoValidationError as exc:
+            return _err400(exc)
+        echeance.refresh_from_db()
+        return Response({
+            'echeance': echeance.id,
+            'posted': echeance.posted,
+            'ecriture_id': ecriture.id,
+            'reference': ecriture.reference,
+            'date_ecriture': ecriture.date_ecriture,
+            'montant': str(echeance.mensualite),
+        }, status=status.HTTP_201_CREATED)
+
+
+# ── WIR279 / XACC19 — États financiers paramétrables (exposition REST) ─────
+
+class EtatPersonnaliseViewSet(_ComptaBaseViewSet):
+    """États financiers PARAMÉTRABLES (XACC19) — définis en données.
+
+    WIR279 — le modèle, la validation de formule et l'évaluation existaient
+    côté services/selectors sans aucun ViewSet.
+
+    La route est ``etats-personnalises/``, DISTINCTE de ``etats/``
+    (``EtatsComptablesViewSet``, les états FIGÉS grand livre / balance / CPC /
+    bilan) : deux ressources différentes, jamais fusionnées.
+
+    La création est ROUTÉE par ``services.creer_etat_personnalise`` — jamais
+    par ``ModelSerializer.create`` — pour que CHAQUE formule soit validée
+    AVANT toute persistance : une formule illégale rend 400 avec le message
+    français du parseur, et rien n'est écrit.
+    """
+    queryset = EtatPersonnalise.objects.prefetch_related(
+        'lignes', 'colonnes').all()
+    serializer_class = EtatPersonnaliseSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['libelle', 'description']
+    ordering_fields = ['libelle', 'id']
+
+    def get_permissions(self):
+        if self.action in ('create', 'update', 'partial_update', 'destroy'):
+            return [HasPermissionOrLegacy('compta_saisir')()]
+        return super().get_permissions()
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        donnees = serializer.validated_data
+        try:
+            etat = services.creer_etat_personnalise(
+                request.user.company,
+                libelle=donnees['libelle'],
+                description=donnees.get('description', ''),
+                lignes=[dict(x) for x in donnees.get('lignes', [])],
+                colonnes=[dict(x) for x in donnees.get('colonnes', [])],
+                user=request.user,
+            )
+        except DjangoValidationError as exc:
+            return _err400(exc)
+        return Response(
+            self.get_serializer(etat).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'])
+    def evaluer(self, request, pk=None):
+        """Évalue l'état sur ses colonnes (période / N-1 / budget).
+
+        Une formule illégale renvoie 400 avec le message FR du parseur —
+        JAMAIS un 500 : ``FormuleEtatInvalideError`` est une exception métier
+        (pas une ``ValidationError`` Django), donc elle remonterait en 500 si
+        elle n'était pas capturée ici.
+        """
+        etat = self.get_object()
+        try:
+            resultat = selectors.evaluer_etat_personnalise(etat)
+        except selectors.FormuleEtatInvalideError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        except DjangoValidationError as exc:
+            return _err400(exc)
+        return Response({
+            'etat': etat.id,
+            'libelle': etat.libelle,
+            'colonnes': resultat['colonnes'],
+            'lignes': [
+                {**ligne,
+                 'valeurs': {str(cle): str(valeur)
+                             for cle, valeur in ligne['valeurs'].items()}}
+                for ligne in resultat['lignes']
+            ],
+        })

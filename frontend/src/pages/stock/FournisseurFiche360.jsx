@@ -1,21 +1,23 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useSelector } from 'react-redux'
-import { useHasPermission, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
+import { useHasPermission, useIsAdmin, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import {
   BarChart3, FileWarning, PackageCheck, Receipt, Wallet,
   Undo2, ShieldCheck, Tags, CreditCard, FileMinus2, Users, Plus,
-  Pencil, Trash2,
+  Pencil, Trash2, Check, X, Download, Upload,
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import { formatMAD } from '../../lib/format'
 import { telHref } from '../../lib/contactLinks'
+import { downloadBlobInGesture } from '../../utils/downloadBlob'
 import {
   Spinner, Tabs, TabsList, TabsTrigger, TabsContent,
   Card, CardHeader, CardTitle, CardContent, Stat, RelationCounters,
   Button, IconButton, Dialog, DialogContent, DialogHeader, DialogTitle,
   DialogDescription, DialogFooter, Form, FormField, Input, Textarea,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem, Badge,
+  Checkbox, FileUpload,
 } from '../../ui'
 // APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
 // les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
@@ -192,9 +194,16 @@ function OngletFactures({ fournisseurId }) {
 }
 
 // ── Onglet Retours / avoirs ───────────────────────────────────────────────
-function OngletRetours({ fournisseurId }) {
+// WIR222/XPUR9 — « Générer l'avoir » sur un retour validé. `avoirsGeneres`
+// (Set d'ids, LOCAL à cette session) évite un second clic garanti-refusé sans
+// exiger de champ « a un avoir » côté serializer — un rechargement de page
+// retombe honnêtement sur le 400 serveur, affiché tel quel.
+function OngletRetours({ fournisseurId, canWrite }) {
   const [items, setItems] = useState(null)
   const [error, setError] = useState(null)
+  const [avoirsGeneres, setAvoirsGeneres] = useState(() => new Set())
+  const [generatingId, setGeneratingId] = useState(null)
+  const [genError, setGenError] = useState(null)
 
   useEffect(() => {
     let active = true
@@ -204,19 +213,45 @@ function OngletRetours({ fournisseurId }) {
     return () => { active = false }
   }, [fournisseurId])
 
+  const genererAvoir = async (retour) => {
+    setGeneratingId(retour.id); setGenError(null)
+    try {
+      await stockApi.genererAvoirDepuisRetour(retour.id)
+      setAvoirsGeneres((s) => new Set(s).add(retour.id))
+    } catch (e) {
+      setGenError(frErr(e, "La génération de l'avoir a échoué."))
+    } finally { setGeneratingId(null) }
+  }
+
   if (error) return <Indisponible message={error} />
   if (items === null) return <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground"><Spinner /> Chargement…</div>
   if (items.length === 0) return <Indisponible message="Aucun retour." />
 
   return (
-    <ul className="flex flex-col gap-2">
-      {items.map((r) => (
-        <li key={r.id} className="flex items-center justify-between rounded-md border border-border p-2 text-sm">
-          <span>{r.reference ?? `Retour #${r.id}`}</span>
-          <span className="text-muted-foreground">{r.statut ?? '—'}</span>
-        </li>
-      ))}
-    </ul>
+    <div className="flex flex-col gap-2">
+      {genError && (
+        <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-sm text-destructive">
+          {genError}
+        </div>
+      )}
+      <ul className="flex flex-col gap-2">
+        {items.map((r) => (
+          <li key={r.id} className="flex items-center justify-between rounded-md border border-border p-2 text-sm">
+            <span>{r.reference ?? `Retour #${r.id}`}</span>
+            <span className="flex items-center gap-2">
+              <span className="text-muted-foreground">{r.statut ?? '—'}</span>
+              {canWrite && r.statut === 'valide' && !avoirsGeneres.has(r.id) && (
+                <Button size="sm" variant="outline" loading={generatingId === r.id}
+                        onClick={() => genererAvoir(r)}>
+                  <FileMinus2 className="size-3.5" /> Générer l&apos;avoir
+                </Button>
+              )}
+              {avoirsGeneres.has(r.id) && <Badge tone="success">Avoir généré</Badge>}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
   )
 }
 
@@ -774,6 +809,109 @@ function OngletDocuments({ fournisseurId }) {
   )
 }
 
+// ── Onglet Tarif (WIR268/XPUR14) — export/import xlsx du tarif fournisseur ──
+// Garde-fou « écrasement » côté écran : l'import passe TOUJOURS par un aperçu
+// (apercu=true, aucune écriture) avant que « Écraser » (décoché par défaut)
+// n'autorise le remplacement d'un prix déjà saisi.
+function OngletTarif({ fournisseurId, canWrite }) {
+  const [exporting, setExporting] = useState(false)
+  const [file, setFile] = useState(null)
+  const [apercu, setApercu] = useState(null)
+  const [ecraser, setEcraser] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+  const [info, setInfo] = useState(null)
+
+  const exporter = async () => {
+    const pending = downloadBlobInGesture()
+    setExporting(true); setError(null)
+    try {
+      const r = await stockApi.exportPrixFournisseurXlsx(fournisseurId)
+      pending.deliver(new Blob([r.data]), 'tarif-fournisseur.xlsx')
+    } catch {
+      setError('Export indisponible.')
+    } finally { setExporting(false) }
+  }
+
+  const previewImport = async () => {
+    if (!file) { setError('Choisissez un fichier .xlsx.'); return }
+    setBusy(true); setError(null); setInfo(null); setApercu(null)
+    try {
+      const r = await stockApi.importPrixFournisseurXlsx(fournisseurId, file, { apercu: true })
+      setApercu(r.data)
+    } catch (e) {
+      setError(frErr(e, "L'aperçu de l'import a échoué."))
+    } finally { setBusy(false) }
+  }
+
+  const confirmerImport = async () => {
+    setBusy(true); setError(null)
+    try {
+      const r = await stockApi.importPrixFournisseurXlsx(fournisseurId, file, { apercu: false, ecraser })
+      setInfo(`Import effectué : ${r.data?.created ?? 0} création(s), ${r.data?.updated ?? 0} mise(s) à jour.`)
+      setApercu(null); setFile(null); setEcraser(false)
+    } catch (e) {
+      setError(frErr(e, "L'import a échoué."))
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex justify-end">
+        <Button type="button" size="sm" variant="outline" loading={exporting} onClick={exporter}>
+          <Download className="size-4" /> Exporter le tarif
+        </Button>
+      </div>
+
+      {canWrite && (
+        <div className="flex flex-col gap-2 rounded-lg border border-border p-3">
+          <span className="text-sm font-semibold">Importer un tarif (xlsx)</span>
+          <p className="text-xs text-muted-foreground">
+            Même format que l&apos;export. Un aperçu (aucune écriture) précède
+            toujours l&apos;import réel.
+          </p>
+          <FileUpload accept=".xlsx"
+                      onFiles={(files) => { setFile(files?.[0] ?? null); setApercu(null); setInfo(null) }} />
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="button" size="sm" variant="outline" disabled={!file} loading={busy && !apercu}
+                    onClick={previewImport}>
+              <Upload className="size-4" /> Aperçu
+            </Button>
+            {apercu && (
+              <>
+                <label className="flex items-center gap-1.5 text-sm">
+                  <Checkbox checked={ecraser} onCheckedChange={(v) => setEcraser(Boolean(v))} />
+                  Écraser les prix déjà saisis
+                </label>
+                <Button type="button" size="sm" loading={busy} onClick={confirmerImport}>
+                  Importer
+                </Button>
+              </>
+            )}
+          </div>
+          {apercu && (
+            <p className="text-xs text-muted-foreground">
+              Aperçu : {apercu.created ?? 0} création(s), {apercu.updated ?? 0} mise(s) à jour,{' '}
+              {(apercu.refuses ?? []).length} refusé(s) (déjà saisi, sans « écraser »).
+            </p>
+          )}
+        </div>
+      )}
+
+      {error && (
+        <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-sm text-destructive">
+          {error}
+        </div>
+      )}
+      {info && (
+        <div role="status" className="rounded-lg border border-success/30 bg-success/10 p-2 text-sm text-success">
+          {info}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Onglet Accords de prix actifs (FG318) ───────────────────────────────────
 // Pas de listing global côté backend aujourd'hui (`prix_convenu_fournisseur`
 // est une fonction PAR PRODUIT) : tant que l'agrégat 360 n'existe pas, cet
@@ -882,6 +1020,35 @@ export default function FournisseurFiche360({
     return () => { active = false }
   }, [fournisseurId, canView])
 
+  // WIR219/NTPRT25 — candidature d'auto-inscription au portail : visible et
+  // décidable directement sur la fiche 360 (même garde Admin que la liste
+  // FournisseursStock.jsx).
+  const isAdmin = useIsAdmin()
+  const [statutValidation, setStatutValidation] = useState(null)
+  const [decidingCandidature, setDecidingCandidature] = useState(false)
+  const [candidatureError, setCandidatureError] = useState(null)
+  useEffect(() => {
+    if (!fournisseurId || !canView) return undefined
+    let active = true
+    // Fable review (fix WIR219) — `stockApi.getFournisseur` existe réellement
+    // (ajouté à ce même correctif) : plus d'optional-chaining, qui aurait
+    // rendu ce bloc silencieusement mort si le wrapper venait à disparaître.
+    stockApi.getFournisseur(fournisseurId)
+      .then((r) => { if (active) setStatutValidation(r.data?.statut_validation ?? null) })
+      .catch(() => { if (active) setStatutValidation(null) })
+    return () => { active = false }
+  }, [fournisseurId, canView])
+  const deciderCandidatureFiche = async (valider) => {
+    setDecidingCandidature(true); setCandidatureError(null)
+    try {
+      const r = await stockApi.deciderCandidatureFournisseur(fournisseurId, valider)
+      setStatutValidation(r.data?.statut_validation ?? null)
+    } catch (err) {
+      setCandidatureError(err?.response?.data?.detail
+        || (valider ? 'Validation impossible.' : 'Rejet impossible.'))
+    } finally { setDecidingCandidature(false) }
+  }
+
   const tabs = useMemo(() => ([
     { value: 'performance', label: 'Performance', icon: BarChart3, Comp: OngletPerformance },
     { value: 'bcf', label: 'Bons de commande', icon: PackageCheck, Comp: OngletBcf },
@@ -895,6 +1062,8 @@ export default function FournisseurFiche360({
     // par la fiche fournisseur, jamais une route autonome.
     { value: 'onboarding', label: 'Onboarding', icon: ShieldCheck, Comp: OngletOnboarding },
     { value: 'prix', label: 'Accords de prix', icon: Tags, Comp: OngletAccordsPrix },
+    // WIR268/XPUR14 — export/import xlsx du tarif fournisseur.
+    { value: 'tarif', label: 'Tarif', icon: Wallet, Comp: OngletTarif },
   ]), [])
 
   if (!fournisseurId) {
@@ -935,6 +1104,32 @@ export default function FournisseurFiche360({
         )}
         {/* NTP2P8 — badge de score de risque + détail des facteurs. */}
         <ScoreRisqueFournisseurBadge data={scoreRisque} />
+        {/* WIR219/NTPRT25 — candidature d'auto-inscription : visible et
+            décidable ici (garde Admin, comme la liste FournisseursStock). */}
+        {statutValidation === 'en_attente_validation' && (
+          <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-warning/30 bg-warning/10 p-2 text-sm">
+            <Badge tone="warning">En attente de validation</Badge>
+            <span className="text-muted-foreground">Candidature d&apos;auto-inscription au portail.</span>
+            {isAdmin && (
+              <span className="flex items-center gap-1">
+                <Button type="button" size="sm" variant="outline" loading={decidingCandidature}
+                        onClick={() => deciderCandidatureFiche(true)}>
+                  <Check className="size-4" /> Valider
+                </Button>
+                <Button type="button" size="sm" variant="outline" loading={decidingCandidature}
+                        onClick={() => deciderCandidatureFiche(false)}>
+                  <X className="size-4" /> Rejeter
+                </Button>
+              </span>
+            )}
+          </div>
+        )}
+        {statutValidation === 'rejete' && (
+          <Badge tone="danger" className="mt-2">Candidature rejetée</Badge>
+        )}
+        {candidatureError && (
+          <p className="mt-1 text-sm text-destructive">{candidatureError}</p>
+        )}
         {/* VX159/VX250 — RelationCounters : réutilise `resumeData` (même fetch
             que ResumePanel ci-dessous, jamais un doublon). L'agrégat 360 est
             BLOCKED côté backend (voir note en tête de fichier) : ces

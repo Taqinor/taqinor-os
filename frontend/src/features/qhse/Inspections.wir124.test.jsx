@@ -1,13 +1,18 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
+import { reponseContrat } from '../../test/fixtures/contractSamples'
 
 /* WIR124 — les 4 onglets d'Inspections (ITP, Audits, Procédures qualité, Retours
    client) étaient lecture seule alors que le backend est complet. On vérifie que
    chaque onglet expose désormais une action d'écriture, et que le chemin de
-   création d'une procédure fonctionne de bout en bout. Réseau mocké. */
+   création d'une procédure fonctionne de bout en bout. Réseau mocké.
+   WIR278 — diffusion des procédures (action `diffuser/`, jamais appelée côté
+   écran) + accusé de lecture (« Marquer comme lue », utilisateur COURANT
+   uniquement). Le mock de `diffuser` IMPORTE le contrat committé
+   (apps/qhse/contract_samples/procedure_qualite_diffuser.json, PACT10/13). */
 
 beforeAll(() => {
   if (typeof globalThis.ResizeObserver === 'undefined') {
@@ -25,10 +30,22 @@ beforeAll(() => {
   }
 })
 
-const { empty, procedureCreate } = vi.hoisted(() => ({
+const { empty, procedureCreate, procedureDiffuser, marquerLu } = vi.hoisted(() => ({
   empty: () => Promise.resolve({ data: [] }),
   procedureCreate: vi.fn(() => Promise.resolve({ data: { id: 5 } })),
+  procedureDiffuser: vi.fn(),
+  marquerLu: vi.fn(() => Promise.resolve({ data: {} })),
 }))
+
+const PROCEDURE_ROW = {
+  id: 8, reference: 'PQ-ACCUEIL-CHANTIER', titre: 'Accueil chantier',
+  version: 2, statut: 'en_vigueur',
+}
+const LECTURE_ROW = {
+  id: 20, diffusion: 12, procedure_reference: 'PQ-ACCUEIL-CHANTIER',
+  procedure_titre: 'Accueil chantier', procedure_version: 2,
+  date_diffusion: '2026-08-01T09:00:00Z',
+}
 
 vi.mock('../../api/qhseApi', () => ({
   default: {
@@ -39,8 +56,13 @@ vi.mock('../../api/qhseApi', () => ({
     audits: { list: empty, create: vi.fn(), calculerScore: vi.fn(), leverNcr: vi.fn() },
     notationsFinChantier: { list: empty },
     proceduresQualite: {
-      list: empty, create: (...a) => procedureCreate(...a), activer: vi.fn(),
-      mesLecturesEnAttente: empty,
+      list: () => Promise.resolve({ data: [PROCEDURE_ROW] }),
+      create: (...a) => procedureCreate(...a), activer: vi.fn(),
+      mesLecturesEnAttente: () => Promise.resolve({ data: [LECTURE_ROW] }),
+      diffuser: (...a) => procedureDiffuser(...a),
+    },
+    diffusionsProcedure: {
+      marquerLu: (...a) => marquerLu(...a),
     },
     retoursClient: {
       list: empty,
@@ -56,7 +78,10 @@ function withProviders(ui) {
   return render(<MemoryRouter><ThemeProvider>{ui}</ThemeProvider></MemoryRouter>)
 }
 
-beforeEach(() => { vi.clearAllMocks() })
+beforeEach(() => {
+  vi.clearAllMocks()
+  procedureDiffuser.mockResolvedValue(reponseContrat('qhse', 'procedure_qualite_diffuser'))
+})
 
 describe('Inspections — actions d\'écriture (WIR124)', () => {
   it('l\'onglet ITP propose d\'instancier un plan', async () => {
@@ -97,5 +122,36 @@ describe('Inspections — actions d\'écriture (WIR124)', () => {
     withProviders(<Inspections />)
     await user.click(screen.getByRole('tab', { name: 'Fin de chantier' }))
     await waitFor(() => expect(screen.getByRole('button', { name: /Nouveau retour/ })).toBeTruthy())
+  })
+})
+
+describe('Inspections — diffusion des procédures + accusé de lecture (WIR278)', () => {
+  it('diffuse une version à une population d\'utilisateurs (contrat committé importé)', async () => {
+    const user = userEvent.setup()
+    withProviders(<Inspections />)
+    await user.click(screen.getByRole('tab', { name: 'Fin de chantier' }))
+    await waitFor(() => expect(screen.getAllByText('Accueil chantier').length).toBeGreaterThan(0))
+
+    await user.click(screen.getAllByRole('button', { name: 'Diffuser cette version' })[0])
+    const dialog = await screen.findByRole('dialog')
+    await user.type(
+      within(dialog).getByLabelText('Destinataires (ids utilisateur, séparés par des virgules)'),
+      '5, 7, 9')
+    await user.click(within(dialog).getByRole('button', { name: 'Diffuser' }))
+
+    await waitFor(() => expect(procedureDiffuser).toHaveBeenCalledWith(
+      8, { user_ids: [5, 7, 9] }))
+  })
+
+  it('marque une lecture en attente comme lue (utilisateur courant uniquement)', async () => {
+    const user = userEvent.setup()
+    withProviders(<Inspections />)
+    await user.click(screen.getByRole('tab', { name: 'Fin de chantier' }))
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Marquer comme lue' }).length).toBeGreaterThan(0))
+
+    await user.click(screen.getAllByRole('button', { name: 'Marquer comme lue' })[0])
+    // `r.diffusion` (12), jamais l'id de l'AccuseLecture (20) : marquer-lu
+    // agit sur la DIFFUSION, pour l'utilisateur courant côté serveur.
+    await waitFor(() => expect(marquerLu).toHaveBeenCalledWith(12))
   })
 })

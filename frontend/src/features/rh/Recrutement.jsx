@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   UserPlus, Ban, ScanText, Star, BarChart3, FileSignature, CalendarClock, Users,
+  Plus, RotateCcw, PenLine, History, CheckCircle2, XCircle, MessageSquare, ClipboardList,
 } from 'lucide-react'
 import { ListShell } from '../../ui/module'
 import {
@@ -11,6 +12,7 @@ import {
 import { useConfirmDialog } from '../../ui/confirm'
 import { formatDate, formatNumber } from '../../lib/format'
 import rhApi from '../../api/rhApi'
+import ChatterTimeline from '../../components/ChatterTimeline'
 import {
   EtapeCandidature, StatutPoste, StatutSanction, StatutEvaluation,
 } from './constants.jsx'
@@ -48,6 +50,8 @@ export default function Recrutement() {
 
   const [epiCat, setEpiCat] = useState([])
   const [dotations, setDotations] = useState([])
+  // WIR194 — employés du dossier pour le sélecteur « Nouvelle dotation ».
+  const [employes, setEmployes] = useState([])
   const [postes, setPostes] = useState([])
   const [candidatures, setCandidatures] = useState([])
   const [vivier, setVivier] = useState([])
@@ -60,6 +64,15 @@ export default function Recrutement() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
+  // WIR194 — dotations EPI (remise/restitution/émargement, preuve CNSS).
+  const [dotationOpen, setDotationOpen] = useState(false)
+  const [emargerFor, setEmargerFor] = useState(null)
+  const [historiqueDotationFor, setHistoriqueDotationFor] = useState(null)
+
+  // WIR196 — ouverture de poste : créable + workflow YHIRE14 (soumettre/
+  // approuver/refuser).
+  const [posteOpen, setPosteOpen] = useState(false)
+
   // Dialogues ATS.
   const [promesseFor, setPromesseFor] = useState(null)
   const [entretienFor, setEntretienFor] = useState(null)
@@ -71,6 +84,12 @@ export default function Recrutement() {
   const [modeleOpen, setModeleOpen] = useState(false)
   // WIR131 — invitations feedback 360° d'une évaluation.
   const [feedbackFor, setFeedbackFor] = useState(null)
+  // WIR240 — panneau Activité (chatter candidature) + grille de notation
+  // d'entretien.
+  const [activiteFor, setActiviteFor] = useState(null)
+  const [notationFor, setNotationFor] = useState(null)
+  // WIR241 — fusion d'une candidature doublon dans une autre.
+  const [fusionnerFor, setFusionnerFor] = useState(null)
 
   const recharger = () => {
     let vivant = true
@@ -88,8 +107,9 @@ export default function Recrutement() {
       rhApi.getCampagnesEvaluation(),
       rhApi.getEvaluationsEmploye(),
       rhApi.getSanctions(),
+      rhApi.getEmployes(),
     ])
-      .then(([ec, dt, op, ca, vv, st, gb, me, cp, ev, sa]) => {
+      .then(([ec, dt, op, ca, vv, st, gb, me, cp, ev, sa, emp]) => {
         if (!vivant) return
         setEpiCat(unwrap(ec.data))
         setDotations(unwrap(dt.data))
@@ -102,6 +122,7 @@ export default function Recrutement() {
         setCampagnes(unwrap(cp.data))
         setEvaluations(unwrap(ev.data))
         setSanctions(unwrap(sa.data))
+        setEmployes(unwrap(emp.data))
       })
       .catch(() => {
         if (!vivant) return
@@ -192,6 +213,75 @@ export default function Recrutement() {
     }
   }
 
+  // WIR194 — restituer une dotation EPI (réintègre le stock si l'EPI est lié
+  // à un produit ; déjà restituée → 400 affiché tel quel).
+  const restituerDotation = async (d) => {
+    const ok = await confirm({
+      title: 'Restituer cette dotation ?',
+      description: `EPI « ${d.epi_designation || ''} » — ${d.employe_nom || ''}.`,
+      confirmLabel: 'Restituer',
+      destructive: false,
+    })
+    if (!ok) return
+    try {
+      await rhApi.restituerDotationEpi(d.id)
+      toast.success('Dotation restituée.')
+      recharger()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Restitution impossible.')
+    }
+  }
+
+  // WIR196 — cycle d'approbation amont YHIRE14 (brouillon → en_approbation
+  // → ouvert). Le détail 400 serveur (ex. refus d'auto-approbation, SoD
+  // approbateur ≠ demandeur) est affiché TEL QUEL, jamais un filtrage client.
+  const soumettreOuverture = async (o) => {
+    try {
+      await rhApi.soumettreOuverturePoste(o.id)
+      toast.success('Ouverture soumise à approbation.')
+      recharger()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Soumission impossible.')
+    }
+  }
+
+  const approuverOuverture = async (o) => {
+    try {
+      await rhApi.approuverOuverturePoste(o.id)
+      toast.success('Ouverture approuvée — poste ouvert.')
+      recharger()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Approbation impossible.')
+    }
+  }
+
+  const refuserOuverture = async (o) => {
+    const ok = await confirm({
+      title: `Refuser l’ouverture « ${o.intitule} » ?`,
+      confirmLabel: 'Refuser',
+      destructive: true,
+    })
+    if (!ok) return
+    try {
+      await rhApi.refuserOuverturePoste(o.id, { motif_refus: 'Refusée par le responsable.' })
+      toast.success('Ouverture refusée.')
+      recharger()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Refus impossible.')
+    }
+  }
+
+  // WIR196 — clôture d'une campagne d'appréciation annuelle (FG190).
+  const cloturerCampagne = async (c) => {
+    try {
+      await rhApi.cloturerCampagneEvaluation(c.id)
+      toast.success('Campagne clôturée.')
+      recharger()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Clôture impossible.')
+    }
+  }
+
   const supprimerGabarit = async (g) => {
     const ok = await confirmDelete({
       title: 'Supprimer ce gabarit ?',
@@ -222,7 +312,34 @@ export default function Recrutement() {
     { id: 'taille', header: 'Taille', width: 90, accessor: (d) => d.taille || '', cell: (v) => v || '—' },
     { id: 'dotation', header: 'Remis le', width: 120, searchable: false, accessor: (d) => d.date_dotation || '', cell: (v) => formatDate(v) },
     { id: 'etat', header: 'État', width: 120, accessor: (d) => (d.perime ? 'perime' : d.a_controler ? 'controle' : 'ok'), cell: (_v, d) => (d.perime ? <Badge tone="danger">Périmé</Badge> : d.a_controler ? <Badge tone="warning">À contrôler</Badge> : <Badge tone="success">OK</Badge>) },
+    // WIR194 — preuve d'émargement (accusé de réception, exigible CNSS) +
+    // restitution, visibles directement sur la liste.
+    {
+      id: 'suivi',
+      header: 'Suivi',
+      width: 170,
+      searchable: false,
+      accessor: (d) => (d.restituee ? 'restituee' : d.accuse_remise ? 'emargee' : 'attente'),
+      cell: (_v, d) => (
+        <span className="flex gap-1">
+          <Badge tone={d.accuse_remise ? 'success' : 'neutral'}>{d.accuse_remise ? 'Émargée' : 'Non émargée'}</Badge>
+          {d.restituee && <Badge tone="neutral">Restituée</Badge>}
+        </span>
+      ),
+    },
   ], [])
+
+  // WIR194 — Émarger (accusé de réception signé) / Restituer / Historique.
+  const dotationActions = (d) => {
+    const actions = [
+      { id: 'emarger', label: 'Émarger', icon: PenLine, onClick: () => setEmargerFor(d) },
+    ]
+    if (!d.restituee) {
+      actions.push({ id: 'restituer', label: 'Restituer', icon: RotateCcw, onClick: () => restituerDotation(d) })
+    }
+    actions.push({ id: 'historique', label: 'Historique des émargements', icon: History, onClick: () => setHistoriqueDotationFor(d) })
+    return actions
+  }
 
   const posteColumns = useMemo(() => [
     { id: 'intitule', header: 'Intitulé', width: 220, accessor: (p) => p.intitule || '', cell: (v) => <span className="font-medium">{v || '—'}</span> },
@@ -279,24 +396,44 @@ export default function Recrutement() {
       actions.push({ id: 'embaucher', label: 'Embaucher', icon: UserPlus, onClick: () => embaucher(c) })
     }
     actions.push({ id: 'entretien', label: 'Planifier un entretien', icon: CalendarClock, onClick: () => setEntretienFor(c) })
+    // WIR240 — transitions journalisées invisibles + notation d'entretien
+    // jusqu'ici sans consommateur (comparatif/colonne Note à vie vides).
+    actions.push({ id: 'activite', label: 'Activité', icon: MessageSquare, onClick: () => setActiviteFor(c) })
+    actions.push({ id: 'notation', label: 'Entretiens & notation', icon: ClipboardList, onClick: () => setNotationFor(c) })
     actions.push({ id: 'promesse', label: 'Promesse d’embauche', icon: FileSignature, onClick: () => setPromesseFor(c) })
     actions.push({ id: 'comparatif', label: 'Comparer les candidats', icon: BarChart3, onClick: () => setComparatifFor(c) })
     actions.push({ id: 'cv', label: 'Analyser le CV', icon: ScanText, onClick: () => parserCv(c) })
     if (!c.vivier) {
       actions.push({ id: 'vivier', label: 'Mettre au vivier', icon: Star, onClick: () => mettreAuVivier(c) })
     }
+    // WIR241 — dédup candidatures : fusionne CETTE candidature (source) dans
+    // une autre (cible) choisie par le recruteur.
+    actions.push({ id: 'fusionner', label: 'Fusionner dans…', icon: RotateCcw, onClick: () => setFusionnerFor(c) })
     return actions
   }
+  // WIR196 — workflow YHIRE14 (brouillon → en_approbation → ouvert) +
   // XRH15 — candidats INTERNES d'une ouverture : classement des employés par
   // couverture du profil requis du `poste_ref` (mobilité interne avant
-  // sourcing externe). Sans `poste_ref`, l'action n'a pas de cible.
-  const ouvertureActions = (o) => (o.poste_ref
-    ? [{
-      id: 'candidats-internes',
-      label: 'Candidats internes',
-      icon: Users,
-      onClick: () => setInternesFor(o),
-    }]
+  // sourcing externe). Sans `poste_ref`, l'action « Candidats internes » n'a
+  // pas de cible.
+  const ouvertureActions = (o) => {
+    const actions = []
+    if (o.statut === 'brouillon') {
+      actions.push({ id: 'soumettre', label: 'Soumettre à approbation', icon: CheckCircle2, onClick: () => soumettreOuverture(o) })
+    }
+    if (o.statut === 'en_approbation') {
+      actions.push({ id: 'approuver', label: 'Approuver', icon: CheckCircle2, onClick: () => approuverOuverture(o) })
+      actions.push({ id: 'refuser', label: 'Refuser', icon: XCircle, destructive: true, onClick: () => refuserOuverture(o) })
+    }
+    if (o.poste_ref) {
+      actions.push({ id: 'candidats-internes', label: 'Candidats internes', icon: Users, onClick: () => setInternesFor(o) })
+    }
+    return actions
+  }
+  // WIR196 — clôture d'une campagne d'appréciation annuelle (idempotent,
+  // aucun effet si déjà clôturée).
+  const campagneActions = (c) => (c.statut !== 'cloturee'
+    ? [{ id: 'cloturer', label: 'Clôturer', icon: CheckCircle2, onClick: () => cloturerCampagne(c) }]
     : [])
   const evalActions = (e) => [
     ...(e.statut === 'brouillon'
@@ -325,13 +462,16 @@ export default function Recrutement() {
           <ListShell title="Catalogue EPI" columns={epiColumns} rows={epiCat} loading={loading} error={error}
             searchable exportName="epi-catalogue" emptyTitle="Aucun EPI" emptyDescription="Catalogue EPI vide." />
           <ListShell title="Dotations EPI" columns={dotationColumns} rows={dotations} loading={loading} error={error}
-            searchable exportName="dotations-epi" emptyTitle="Aucune dotation" emptyDescription="Aucune dotation enregistrée." />
+            searchable rowActions={dotationActions} exportName="dotations-epi"
+            actions={<Button onClick={() => setDotationOpen(true)}><Plus size={15} strokeWidth={1.75} aria-hidden="true" />Nouvelle dotation</Button>}
+            emptyTitle="Aucune dotation" emptyDescription="Aucune dotation enregistrée." />
         </div>
       )}
       {vue === 'recrutement' && (
         <div className="flex flex-col gap-4">
           <ListShell title="Ouvertures de poste" columns={posteColumns} rows={postes} loading={loading} error={error}
             searchable rowActions={ouvertureActions} exportName="ouvertures-poste"
+            actions={<Button onClick={() => setPosteOpen(true)}><Plus size={15} strokeWidth={1.75} aria-hidden="true" />Nouvelle ouverture</Button>}
             emptyTitle="Aucune ouverture" emptyDescription="Aucun poste ouvert." />
           <ListShell title="Candidatures" columns={candidatureColumns} rows={candidatures} loading={loading} error={error}
             searchable rowActions={candidatureActions} exportName="candidatures"
@@ -366,7 +506,7 @@ export default function Recrutement() {
               { id: 'annee', header: 'Année', width: 90, align: 'right', searchable: false, accessor: (c) => c.annee ?? '', cell: (v) => v || '—' },
               { id: 'statut', header: 'Statut', width: 120, accessor: (c) => c.statut_display || c.statut || '', cell: (v) => v || '—' },
             ]}
-            rows={campagnes} loading={loading} error={error} searchable exportName="campagnes-evaluation"
+            rows={campagnes} loading={loading} error={error} searchable rowActions={campagneActions} exportName="campagnes-evaluation"
             emptyTitle="Aucune campagne" emptyDescription="Aucune campagne d’évaluation." />
           <ListShell title="Évaluations" columns={evalColumns} rows={evaluations} loading={loading} error={error}
             searchable rowActions={evalActions} exportName="evaluations"
@@ -379,6 +519,12 @@ export default function Recrutement() {
           emptyTitle="Aucune sanction" emptyDescription="Aucune sanction enregistrée." />
       )}
 
+      {posteOpen && (
+        <OuvertureDialog
+          onClose={() => setPosteOpen(false)}
+          onSaved={() => { setPosteOpen(false); recharger() }}
+        />
+      )}
       {promesseFor && (
         <PromesseDialog
           candidature={promesseFor}
@@ -422,6 +568,47 @@ export default function Recrutement() {
         <FeedbackDialog
           evaluation={feedbackFor}
           onClose={() => setFeedbackFor(null)}
+        />
+      )}
+      {activiteFor && (
+        <ActiviteCandidatureDialog
+          candidature={activiteFor}
+          onClose={() => setActiviteFor(null)}
+        />
+      )}
+      {notationFor && (
+        <EntretiensNotationDialog
+          candidature={notationFor}
+          onClose={() => setNotationFor(null)}
+        />
+      )}
+      {fusionnerFor && (
+        <FusionnerCandidatureDialog
+          candidature={fusionnerFor}
+          candidatures={candidatures}
+          onClose={() => setFusionnerFor(null)}
+          onSaved={() => { setFusionnerFor(null); recharger() }}
+        />
+      )}
+      {dotationOpen && (
+        <DotationDialog
+          employes={employes}
+          epiCat={epiCat}
+          onClose={() => setDotationOpen(false)}
+          onSaved={() => { setDotationOpen(false); recharger() }}
+        />
+      )}
+      {emargerFor && (
+        <EmargerDotationDialog
+          dotation={emargerFor}
+          onClose={() => setEmargerFor(null)}
+          onSaved={() => { setEmargerFor(null); recharger() }}
+        />
+      )}
+      {historiqueDotationFor && (
+        <HistoriqueDotationDialog
+          dotation={historiqueDotationFor}
+          onClose={() => setHistoriqueDotationFor(null)}
         />
       )}
     </div>
@@ -549,6 +736,292 @@ function StatsRecrutement({ stats, postes = [], loading }) {
         </Card>
       )}
     </div>
+  )
+}
+
+/* ── WIR194 — Nouvelle dotation EPI (remise nominative) ── */
+function DotationDialog({ employes, epiCat, onClose, onSaved }) {
+  const [employe, setEmploye] = useState('')
+  const [epi, setEpi] = useState('')
+  const [taille, setTaille] = useState('')
+  const [dateDotation, setDateDotation] = useState('')
+  const [dateRenouvellement, setDateRenouvellement] = useState('')
+  const [note, setNote] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [serverError, setServerError] = useState(null)
+
+  const dirty = Boolean(employe || epi || taille || dateDotation || note)
+  const closeIfConfirmed = () => { if (confirmLeaveIfDirty(dirty)) onClose?.() }
+  const valide = Boolean(employe && epi)
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!valide) return
+    setSaving(true)
+    setServerError(null)
+    try {
+      await rhApi.createDotationEpi({
+        employe, epi, taille: taille || '',
+        date_dotation: dateDotation || null,
+        date_renouvellement: dateRenouvellement || null,
+        note: note || '',
+      })
+      toast.success('Dotation créée.')
+      onSaved?.()
+    } catch (err) {
+      const data = err?.response?.data
+      setServerError(data?.detail || 'Création de la dotation impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) closeIfConfirmed() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader><DialogTitle>Nouvelle dotation EPI</DialogTitle></DialogHeader>
+        <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="do-employe">Employé</Label>
+              <select id="do-employe" autoFocus value={employe} onChange={(e) => setEmploye(e.target.value)}
+                className="h-9 rounded-md border border-border bg-card px-3 text-sm">
+                <option value="">— Choisir —</option>
+                {employes.map((e) => <option key={e.id} value={e.id}>{e.nom} {e.prenom}</option>)}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="do-epi">EPI</Label>
+              <select id="do-epi" value={epi} onChange={(e) => setEpi(e.target.value)}
+                className="h-9 rounded-md border border-border bg-card px-3 text-sm">
+                <option value="">— Choisir —</option>
+                {epiCat.map((c) => <option key={c.id} value={c.id}>{c.designation}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="do-taille">Taille</Label>
+              <Input id="do-taille" value={taille} onChange={(e) => setTaille(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="do-date">Remise le</Label>
+              <Input id="do-date" type="date" value={dateDotation} onChange={(e) => setDateDotation(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="do-renouv">Renouvellement</Label>
+              <Input id="do-renouv" type="date" value={dateRenouvellement} onChange={(e) => setDateRenouvellement(e.target.value)} />
+            </div>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="do-note">Note (optionnel)</Label>
+            <Textarea id="do-note" value={note} onChange={(e) => setNote(e.target.value)} rows={2} />
+          </div>
+          {serverError && <p className="text-sm text-destructive" role="alert">{serverError}</p>}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={closeIfConfirmed}>Annuler</Button>
+            <Button type="submit" disabled={!valide || saving}>{saving ? 'Création…' : 'Créer la dotation'}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// EmargerEpiSerializer côté serveur (role_signataire/methode) — FG180.
+const ROLE_SIGNATAIRE_OPTIONS = [
+  { value: 'employe', label: 'Employé' },
+  { value: 'remettant', label: 'Remettant' },
+  { value: 'temoin', label: 'Témoin' },
+]
+
+/* ── WIR194 — Émarger une dotation EPI (accusé de réception signé, FG180) ── */
+function EmargerDotationDialog({ dotation, onClose, onSaved }) {
+  const [signataireNom, setSignataireNom] = useState('')
+  const [roleSignataire, setRoleSignataire] = useState('employe')
+  const [mention, setMention] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [serverError, setServerError] = useState(null)
+
+  const dirty = Boolean(signataireNom || mention)
+  const closeIfConfirmed = () => { if (confirmLeaveIfDirty(dirty)) onClose?.() }
+  const valide = Boolean(signataireNom.trim())
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!valide) return
+    setSaving(true)
+    setServerError(null)
+    try {
+      await rhApi.emargerDotationEpi(dotation.id, {
+        signataire_nom: signataireNom.trim(),
+        role_signataire: roleSignataire,
+        methode: 'typed',
+        mention: mention || '',
+      })
+      toast.success('Émargement enregistré — accusé de réception posé.')
+      onSaved?.()
+    } catch (err) {
+      const data = err?.response?.data
+      setServerError(data?.detail || 'Émargement impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) closeIfConfirmed() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Émarger — {dotation.epi_designation} ({dotation.employe_nom})</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="em-nom">Nom du signataire</Label>
+            <Input id="em-nom" autoFocus value={signataireNom} onChange={(e) => setSignataireNom(e.target.value)}
+              placeholder="Obligatoire — nom dactylographié (loi 53-05)" />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="em-role">Rôle du signataire</Label>
+            <select id="em-role" value={roleSignataire} onChange={(e) => setRoleSignataire(e.target.value)}
+              className="h-9 rounded-md border border-border bg-card px-3 text-sm">
+              {ROLE_SIGNATAIRE_OPTIONS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="em-mention">Mention (optionnel)</Label>
+            <Textarea id="em-mention" value={mention} onChange={(e) => setMention(e.target.value)} rows={2} />
+          </div>
+          {serverError && <p className="text-sm text-destructive" role="alert">{serverError}</p>}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={closeIfConfirmed}>Annuler</Button>
+            <Button type="submit" disabled={!valide || saving}>{saving ? 'Enregistrement…' : 'Émarger'}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/* ── WIR194 — Historique des émargements d'une dotation EPI (lecture) ── */
+function HistoriqueDotationDialog({ dotation, onClose }) {
+  const [lignes, setLignes] = useState([])
+  const [chargement, setChargement] = useState(true)
+  const [erreur, setErreur] = useState(null)
+
+  useEffect(() => {
+    let vivant = true
+    rhApi.getEmargementsDotationEpi(dotation.id)
+      .then((res) => { if (vivant) setLignes(unwrap(res.data)) })
+      .catch(() => { if (vivant) setErreur('Historique indisponible.') })
+      .finally(() => { if (vivant) setChargement(false) })
+    return () => { vivant = false }
+  }, [dotation.id])
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose?.() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Historique des émargements — {dotation.epi_designation}</DialogTitle>
+        </DialogHeader>
+        {chargement && <p className="text-sm text-muted-foreground">Chargement…</p>}
+        {erreur && <p className="text-sm text-destructive">{erreur}</p>}
+        {!chargement && !erreur && (
+          lignes.length === 0
+            ? <p className="text-sm text-muted-foreground">Aucun émargement enregistré.</p>
+            : (
+              <ul className="flex flex-col gap-2">
+                {lignes.map((l) => (
+                  <li key={l.id} className="rounded-lg border border-border bg-card px-3 py-2 text-sm">
+                    <p className="font-medium">{l.signataire_nom}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {l.role_signataire_display || l.role_signataire} · {l.methode_display || l.methode}
+                      {l.date_signature ? ` · ${formatDate(l.date_signature)}` : ''}
+                    </p>
+                    {l.mention && <p className="text-xs text-muted-foreground">{l.mention}</p>}
+                  </li>
+                ))}
+              </ul>
+            )
+        )}
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Fermer</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/* ── WIR196 — Nouvelle ouverture de poste (naît BROUILLON côté serveur) ── */
+function OuvertureDialog({ onClose, onSaved }) {
+  const [intitule, setIntitule] = useState('')
+  const [nombrePostes, setNombrePostes] = useState('1')
+  const [dateCible, setDateCible] = useState('')
+  const [description, setDescription] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [serverError, setServerError] = useState(null)
+
+  const dirty = Boolean(intitule || description || dateCible)
+  const closeIfConfirmed = () => { if (confirmLeaveIfDirty(dirty)) onClose?.() }
+  const valide = Boolean(intitule.trim())
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!valide) return
+    setSaving(true)
+    setServerError(null)
+    try {
+      // WIR196 — jamais de `statut` envoyé : le serveur pose BROUILLON par
+      // défaut (YHIRE14), le cycle d'approbation s'ouvre ensuite via
+      // « Soumettre à approbation ».
+      await rhApi.createOuverturePoste({
+        intitule: intitule.trim(),
+        nombre_postes: Number(nombrePostes) || 1,
+        date_cible: dateCible || null,
+        description: description || '',
+      })
+      toast.success('Ouverture créée (brouillon).')
+      onSaved?.()
+    } catch (err) {
+      const data = err?.response?.data
+      setServerError(data?.detail || data?.intitule || 'Création de l’ouverture impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) closeIfConfirmed() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader><DialogTitle>Nouvelle ouverture de poste</DialogTitle></DialogHeader>
+        <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="ou-intitule">Intitulé</Label>
+            <Input id="ou-intitule" autoFocus value={intitule} onChange={(e) => setIntitule(e.target.value)}
+              placeholder="Ex. Technicien photovoltaïque" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="ou-nombre">Nombre de postes</Label>
+              <Input id="ou-nombre" type="number" step="any" min="1" value={nombrePostes} onChange={(e) => setNombrePostes(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="ou-cible">Date cible (optionnel)</Label>
+              <Input id="ou-cible" type="date" value={dateCible} onChange={(e) => setDateCible(e.target.value)} />
+            </div>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="ou-description">Description du profil (optionnel)</Label>
+            <Textarea id="ou-description" value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
+          </div>
+          {serverError && <p className="text-sm text-destructive" role="alert">{serverError}</p>}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={closeIfConfirmed}>Annuler</Button>
+            <Button type="submit" disabled={!valide || saving}>{saving ? 'Création…' : 'Créer l’ouverture'}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -783,6 +1256,24 @@ function CandidatDialog({ ouvertures, onClose, onSaved }) {
   const [cv, setCv] = useState(null)
   const [saving, setSaving] = useState(false)
   const [serverError, setServerError] = useState(null)
+  // WIR241 — dédup à la saisie : avertissement NON bloquant (le doublon
+  // reste créable — c'est un signal pour le recruteur, jamais une garde).
+  const [doublons, setDoublons] = useState([])
+
+  useEffect(() => {
+    let vivant = true
+    const vide = !email.trim() && !telephone.trim()
+    const t = setTimeout(() => {
+      if (!vivant) return
+      if (vide) { setDoublons([]); return }
+      rhApi.checkCandidatureDuplicates({
+        email: email.trim() || undefined, telephone: telephone.trim() || undefined,
+      })
+        .then((res) => { if (vivant) setDoublons(unwrap(res.data)) })
+        .catch(() => { if (vivant) setDoublons([]) })
+    }, vide ? 0 : 400)
+    return () => { vivant = false; clearTimeout(t) }
+  }, [email, telephone])
 
   // VX168 — garde de fermeture : dialogue de création, initial = tout vide.
   const dirty = Boolean(ouverture || nom || email || telephone || source || cv)
@@ -855,6 +1346,12 @@ function CandidatDialog({ ouvertures, onClose, onSaved }) {
               <Input id="cd-telephone" value={telephone} onChange={(e) => setTelephone(e.target.value)} />
             </div>
           </div>
+          {/* WIR241 — avertissement NON bloquant : le doublon reste créable. */}
+          {doublons.length > 0 && (
+            <div className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-foreground">
+              Candidature(s) similaire(s) déjà au dossier : {doublons.map((d) => d.nom).join(', ')}.
+            </div>
+          )}
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="cd-source">Source (LinkedIn, ANAPEC, cooptation…)</Label>
             <Input id="cd-source" value={source} onChange={(e) => setSource(e.target.value)} />
@@ -1082,6 +1579,230 @@ function FeedbackDialog({ evaluation, onClose }) {
         <DialogFooter>
           <Button type="button" variant="outline" onClick={onClose}>Fermer</Button>
         </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/* ── WIR240 — Panneau Activité d'une candidature (chatter XRH18) ──
+   `CandidatureActivity` (type/field/message/auteur_nom/date_creation) est
+   une forme ANTÉRIEURE à la forme générique consommée nativement par
+   `ChatterTimeline` (kind/field_label/body/user_nom/created_at, cf.
+   `crm.LeadActivity`) : simple alias de champs, aucune mutation. */
+function ActiviteCandidatureDialog({ candidature, onClose }) {
+  const [entries, setEntries] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [note, setNote] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const charger = () => {
+    setLoading(true)
+    setError(null)
+    rhApi.getHistoriqueCandidature(candidature.id)
+      .then((res) => setEntries(unwrap(res.data)))
+      .catch(() => setError('Activité indisponible.'))
+      .finally(() => setLoading(false))
+  }
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount
+  useEffect(charger, [candidature.id])
+
+  const envoyerNote = async () => {
+    const message = note.trim()
+    if (!message) return
+    setSaving(true)
+    try {
+      await rhApi.noterCandidature(candidature.id, { message })
+      setNote('')
+      charger()
+    } catch {
+      toast.error('Envoi de la note impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const adapted = entries.map((a) => ({
+    ...a,
+    kind: (a.type === 'note' ? 'note' : 'modification'),
+    body: a.message,
+    field_label: a.field,
+    user_nom: a.auteur_nom,
+    created_at: a.date_creation,
+  }))
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose?.() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader><DialogTitle>Activité — {candidature.nom}</DialogTitle></DialogHeader>
+        <div className="flex flex-col gap-3">
+          <div className="flex gap-2">
+            <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Ajouter une note…" rows={2} className="flex-1" />
+            <Button onClick={envoyerNote} disabled={!note.trim() || saving}>{saving ? 'Envoi…' : 'Noter'}</Button>
+          </div>
+          {loading && <p className="text-sm text-muted-foreground">Chargement…</p>}
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          {!loading && !error && (
+            <ChatterTimeline entries={adapted} emptyLabel="Aucune activité pour le moment." />
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Fermer</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// NoteEntretien.Avis.choices — côté serveur.
+const AVIS_OPTIONS = [
+  { value: 'favorable', label: 'Favorable' },
+  { value: 'reserve', label: 'Réservé' },
+  { value: 'defavorable', label: 'Défavorable' },
+]
+
+/* ── WIR240 — Grille de notation des entretiens d'une candidature (XRH17) ──
+   Sans cette grille, le comparatif (`getComparatifCandidats`) et la note
+   d'entretien restaient à vie vides : personne n'appelait jamais
+   `noterEntretienRecrutement`. */
+function EntretiensNotationDialog({ candidature, onClose }) {
+  const [entretiens, setEntretiens] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+
+  const charger = () => {
+    setLoading(true)
+    setError(null)
+    rhApi.getEntretiensRecrutement({ candidature: candidature.id })
+      .then((res) => setEntretiens(unwrap(res.data)))
+      .catch(() => setError('Entretiens indisponibles.'))
+      .finally(() => setLoading(false))
+  }
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount
+  useEffect(charger, [candidature.id])
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose?.() }}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader><DialogTitle>Entretiens & notation — {candidature.nom}</DialogTitle></DialogHeader>
+        {loading && <p className="text-sm text-muted-foreground">Chargement…</p>}
+        {error && <p className="text-sm text-destructive">{error}</p>}
+        {!loading && !error && (
+          entretiens.length === 0
+            ? <p className="text-sm text-muted-foreground">Aucun entretien planifié pour ce candidat.</p>
+            : (
+              <ul className="flex flex-col gap-3">
+                {entretiens.map((e) => (
+                  <EntretienNoteRow key={e.id} entretien={e} onNoted={charger} />
+                ))}
+              </ul>
+            )
+        )}
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Fermer</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function EntretienNoteRow({ entretien, onNoted }) {
+  const [note, setNote] = useState('3')
+  const [avis, setAvis] = useState('reserve')
+  const [commentaire, setCommentaire] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const notes = entretien.notes || []
+  const moyenne = notes.length
+    ? notes.reduce((sum, n) => sum + (n.moyenne_criteres ?? 0), 0) / notes.length
+    : null
+  const libelle = entretien.type_display || entretien.type || `Entretien #${entretien.id}`
+
+  const enregistrer = async () => {
+    setSaving(true)
+    try {
+      await rhApi.noterEntretienRecrutement(entretien.id, {
+        notes_criteres: { global: Number(note) }, commentaire, avis,
+      })
+      toast.success('Entretien noté.')
+      onNoted?.()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Notation impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <li className="rounded-lg border border-border bg-card p-3 text-sm">
+      <div className="flex items-center justify-between gap-3">
+        <span className="font-medium">{libelle}{entretien.date_heure ? ` — ${formatDate(entretien.date_heure)}` : ''}</span>
+        <Badge tone="info">{moyenne != null ? `Note ${formatNumber(moyenne, { decimals: 1 })}` : 'Sans note'}</Badge>
+      </div>
+      <div className="mt-2 grid grid-cols-3 gap-2">
+        <Input type="number" step="any" min="1" max="5" value={note} onChange={(e) => setNote(e.target.value)} aria-label={`Note — ${libelle}`} />
+        <select value={avis} onChange={(e) => setAvis(e.target.value)}
+          className="h-9 rounded-md border border-border bg-card px-2 text-sm" aria-label={`Avis — ${libelle}`}>
+          {AVIS_OPTIONS.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
+        </select>
+        <Button size="sm" disabled={saving} onClick={enregistrer}>{saving ? 'Enregistrement…' : 'Noter'}</Button>
+      </div>
+      <Input className="mt-2" value={commentaire} onChange={(e) => setCommentaire(e.target.value)} placeholder="Commentaire (optionnel)" />
+    </li>
+  )
+}
+
+/* ── WIR241 — Fusionner une candidature (source) dans une autre (cible) ── */
+function FusionnerCandidatureDialog({ candidature, candidatures, onClose, onSaved }) {
+  const [cibleId, setCibleId] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [serverError, setServerError] = useState(null)
+
+  const autres = candidatures.filter((c) => c.id !== candidature.id)
+  const valide = Boolean(cibleId)
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!valide) return
+    setSaving(true)
+    setServerError(null)
+    try {
+      // WIR241 — la cible PORTE l'appel serveur (fusionner/), la source
+      // fusionnée y est passée dans le corps.
+      await rhApi.fusionnerCandidature(cibleId, { source: candidature.id })
+      toast.success('Candidatures fusionnées.')
+      onSaved?.()
+    } catch (err) {
+      const data = err?.response?.data
+      setServerError(data?.detail || 'Fusion impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose?.() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Fusionner « {candidature.nom} » dans…</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="fu-cible">Candidature cible</Label>
+            <select id="fu-cible" autoFocus value={cibleId} onChange={(e) => setCibleId(e.target.value)}
+              className="h-9 rounded-md border border-border bg-card px-3 text-sm">
+              <option value="">— Choisir —</option>
+              {autres.map((c) => <option key={c.id} value={c.id}>{c.nom} ({c.email || c.telephone || `#${c.id}`})</option>)}
+            </select>
+          </div>
+          {serverError && <p className="text-sm text-destructive" role="alert">{serverError}</p>}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
+            <Button type="submit" disabled={!valide || saving}>{saving ? 'Fusion…' : 'Fusionner'}</Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   )

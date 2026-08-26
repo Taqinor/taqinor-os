@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 import { controlePermis, alertesToEcheanceItems, optionsFrom, VEHICULE_STATUTS } from './flotte'
@@ -22,6 +23,14 @@ beforeAll(() => {
    d'un écran, enveloppé dans <MemoryRouter> + <ThemeProvider>. Les appels API
    sont mockés pour rester hors réseau. */
 
+// WIR236 — bascule « Expirants ≤ 30 j » du nouvel onglet Contrats véhicule :
+// espionne les deux appels distincts (liste brute vs expirants) séparément
+// du `crud` générique partagé par tous les autres endpoints de ce mock.
+const { contratsVehiculeList, contratsVehiculeExpirants } = vi.hoisted(() => ({
+  contratsVehiculeList: vi.fn(() => Promise.resolve({ data: [] })),
+  contratsVehiculeExpirants: vi.fn(() => Promise.resolve({ data: [] })),
+}))
+
 // Mock du client API : chaque endpoint renvoie une liste vide (rendu smoke).
 vi.mock('../../api/flotteApi', () => {
   const empty = () => Promise.resolve({ data: [] })
@@ -40,7 +49,11 @@ vi.mock('../../api/flotteApi', () => {
       echeancesEntretien: crud, garages: crud, garanties: crud,
       ordresReparation: { ...crud, couts: empty, cloturer: empty, approuver: empty },
       pneumatiques: crud, pieces: crud,
-      contratsVehicule: { ...crud, expirants: empty },
+      contratsVehicule: {
+        ...crud,
+        list: (...args) => contratsVehiculeList(...args),
+        expirants: (...args) => contratsVehiculeExpirants(...args),
+      },
       couts: crud,
       echeancesReglementaires: crud, assurances: crud, visitesTechniques: crud,
       cartesGrises: crud, baremesVignette: crud,
@@ -168,5 +181,22 @@ describe('rendu smoke des écrans', () => {
         screen.getByText(/Échéances réglementaires à surveiller/),
       ).toBeInTheDocument(),
     )
+  })
+
+  it('ConformiteScreen — bascule « Expirants ≤ 30 j » sur l’onglet Contrats véhicule (WIR236)', async () => {
+    const user = userEvent.setup()
+    withProviders(<ConformiteScreen />)
+
+    await user.click(screen.getByRole('tab', { name: 'Contrats véhicule' }))
+    // Off par défaut : la liste brute est chargée, jamais `expirants`.
+    await waitFor(() => expect(contratsVehiculeList).toHaveBeenCalled())
+    expect(contratsVehiculeExpirants).not.toHaveBeenCalled()
+
+    contratsVehiculeList.mockClear()
+    await user.click(screen.getByRole('switch'))
+    // On : `expirants({ within: 30 })` prend le relais, plus la liste brute.
+    await waitFor(() => expect(contratsVehiculeExpirants)
+      .toHaveBeenCalledWith({ within: 30 }))
+    expect(contratsVehiculeList).not.toHaveBeenCalled()
   })
 })

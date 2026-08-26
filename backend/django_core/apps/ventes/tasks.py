@@ -8,6 +8,53 @@ from celery import shared_task
 logger = logging.getLogger(__name__)
 
 
+# ── WIR217 — état d'un job « PDF de devis », patron EXPORT_JOB (SCA41) ──────
+# La génération d'un PDF de devis pouvait échouer DÉFINITIVEMENT (au-delà des
+# 3 retries) sans laisser la moindre trace lisible : le front sondait alors
+# `fichier_pdf` indéfiniment, et l'utilisateur n'apprenait jamais qu'il n'y
+# aurait pas de PDF. On consigne donc l'échec TERMINAL en cache, sur le MÊME
+# motif que les jobs d'export (état + société, clé opaque, TTL 24 h) — la vue
+# de lecture vérifie la société AVANT de répondre (jamais d'inter-tenant).
+PDF_JOB_CACHE_PREFIX = 'ventes:pdf_devis_job:'
+PDF_JOB_CACHE_TTL = 24 * 3600  # 24 h
+
+
+def pdf_job_cache_key(devis_id):
+    return f'{PDF_JOB_CACHE_PREFIX}{devis_id}'
+
+
+def _societe_du_devis(devis_id):
+    """Société propriétaire du devis (ou ``None``) — sans charger l'objet."""
+    from .models import Devis
+    return (Devis.objects.filter(pk=devis_id)
+            .values_list('company_id', flat=True).first())
+
+
+def consigner_echec_pdf_devis(devis_id, erreur):
+    """WIR217 — consigne l'échec DÉFINITIF de la génération d'un PDF de devis.
+
+    Appelée UNIQUEMENT quand les retries sont épuisés : un échec transitoire
+    (le worker va réessayer) ne doit pas afficher « échec » à l'écran.
+    """
+    from django.core.cache import cache
+    from django.utils import timezone
+
+    cache.set(pdf_job_cache_key(devis_id), {
+        'company_id': _societe_du_devis(devis_id),
+        'devis_id': devis_id,
+        'status': 'error',
+        'error': str(erreur),
+        'at': timezone.now().isoformat(),
+    }, PDF_JOB_CACHE_TTL)
+
+
+def oublier_echec_pdf_devis(devis_id):
+    """Efface un échec consigné — un rendu RÉUSSI purge l'état précédent, sinon
+    un « Réessayer » qui aboutit laisserait l'écran en échec pour 24 h."""
+    from django.core.cache import cache
+    cache.delete(pdf_job_cache_key(devis_id))
+
+
 @shared_task(
     bind=True,
     name='ventes.generate_devis_pdf',
@@ -40,6 +87,7 @@ def task_generate_devis_pdf(self, devis_id, pdf_options=None):
             if cached is not None:
                 logger.info('task_generate_devis_pdf SKIP (déjà rendu): %s',
                             cached)
+                oublier_echec_pdf_devis(devis_id)
                 return cached
             from .quote_engine import generate_premium_devis_pdf
             key = generate_premium_devis_pdf(devis_id, pdf_options)
@@ -48,9 +96,17 @@ def task_generate_devis_pdf(self, devis_id, pdf_options=None):
             from .utils.pdf import generate_devis_pdf
             key = generate_devis_pdf(devis_id)
         logger.info('task_generate_devis_pdf OK: %s', key)
+        # WIR217 — un rendu réussi PURGE l'échec précédent : un « Réessayer »
+        # qui aboutit ne doit pas laisser l'écran en échec pendant 24 h.
+        oublier_echec_pdf_devis(devis_id)
         return key
     except Exception as exc:
         logger.error('task_generate_devis_pdf failed devis_id=%s: %s', devis_id, exc)
+        # WIR217 — n'annoncer l'échec que lorsqu'il est DÉFINITIF : tant qu'un
+        # retry reste, la génération est encore « en cours » pour l'utilisateur.
+        if self.request.retries >= (self.max_retries or 0):
+            consigner_echec_pdf_devis(devis_id, exc)
+            raise
         raise self.retry(exc=exc, countdown=2 ** self.request.retries * 30)
 
 

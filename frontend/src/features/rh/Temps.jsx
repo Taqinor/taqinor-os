@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  LogOut, Upload, Download, Pencil, MonitorSmartphone, Ban, History,
+  LogOut, Upload, Download, Pencil, MonitorSmartphone, Ban, History, CheckCircle2,
+  Plus, AlertTriangle,
 } from 'lucide-react'
 import { ListShell } from '../../ui/module'
 import {
   Segmented, Button, Badge, toast,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-  Label, Input,
+  Label, Input, confirmLeaveIfDirty,
 } from '../../ui'
 import { useConfirmDialog } from '../../ui/confirm'
 import { formatNumber, formatDate, formatDateTime } from '../../lib/format'
@@ -31,6 +32,9 @@ const VUES = [
   // ZRH6 — absents non justifiés du jour ; ZRH18 — rapport de présence.
   { value: 'absents', label: 'Absents du jour' },
   { value: 'rapport', label: 'Rapport de présence' },
+  // WIR195 — incidents de présence (retard/absence injustifiée, FG171) :
+  // créés depuis « Absents du jour » mais jamais relisibles ni justifiables.
+  { value: 'incidents', label: 'Incidents de présence' },
 ]
 
 /* PACT19 — colonnes du CSV « Export paie ». La forme vient du serveur
@@ -70,6 +74,14 @@ export default function Temps() {
   // ZRH6 — absents non justifiés du jour ; ZRH18 — rapport de présence.
   const [absents, setAbsents] = useState([])
   const [rapport, setRapport] = useState(null)
+  // WIR195 — incidents de présence (retard/absence injustifiée).
+  const [incidents, setIncidents] = useState([])
+  const [justifierFor, setJustifierFor] = useState(null)
+  // WIR238 — roster : conflits de congé (bandeau 30 jours) + employés pour
+  // le sélecteur de la nouvelle affectation.
+  const [conflitsRoster, setConflitsRoster] = useState([])
+  const [employes, setEmployes] = useState([])
+  const [rosterOpen, setRosterOpen] = useState(false)
   const [nouveauToken, setNouveauToken] = useState(null)
   const fileRef = useRef(null)
 
@@ -85,8 +97,12 @@ export default function Temps() {
       rhApi.getDevicesKiosque(),
       rhApi.getAbsentsNonJustifies(),
       rhApi.getRapportPresence({ debut: debutMois(), fin: aujourdHui() }),
+      rhApi.getIncidentsPresence(),
+      // WIR238 — conflits de congé sur les 30 prochains jours (bandeau).
+      rhApi.getConflitsRoster(),
+      rhApi.getEmployes(),
     ])
-      .then(([pRes, rRes, prRes, hRes, dRes, aRes, rapRes]) => {
+      .then(([pRes, rRes, prRes, hRes, dRes, aRes, rapRes, incRes, confRes, empRes]) => {
         if (!vivant) return
         setPointages(unwrap(pRes.data))
         setRoster(unwrap(rRes.data))
@@ -95,6 +111,9 @@ export default function Temps() {
         setDevices(unwrap(dRes.data))
         setAbsents(unwrap(aRes.data))
         setRapport(rapRes.data)
+        setIncidents(unwrap(incRes.data))
+        setConflitsRoster(unwrap(confRes.data))
+        setEmployes(unwrap(empRes.data))
       })
       .catch(() => {
         if (!vivant) return
@@ -252,13 +271,28 @@ export default function Temps() {
   ], [])
 
   // ZRH6 — un absent non justifié devient un incident de présence en un clic.
+  // WIR195 — bascule ensuite vers « Incidents de présence » : l'incident créé
+  // était jusqu'ici invisible (trou noir d'écriture, aucune vue de lecture).
   const genererIncident = async (a) => {
     try {
       await rhApi.genererIncidentAbsence({ employe: a.employe_id })
       toast.success('Incident d’absence créé.')
       recharger()
+      setVue('incidents')
     } catch (err) {
       toast.error(err?.response?.data?.detail ?? 'Création impossible.')
+    }
+  }
+
+  // WIR195 — régularise un incident de présence (motif obligatoire).
+  const justifierIncident = async (incident, motif) => {
+    try {
+      await rhApi.justifierIncidentPresence(incident.id, { motif })
+      toast.success('Incident justifié.')
+      setJustifierFor(null)
+      recharger()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Justification impossible.')
     }
   }
 
@@ -270,6 +304,20 @@ export default function Temps() {
   const absentActions = (a) => [
     { id: 'incident', label: 'Créer un incident d’absence', icon: Ban, onClick: () => genererIncident(a) },
   ]
+
+  // WIR195 — incidents de présence : liste + justification (motif obligatoire).
+  const incidentColumns = useMemo(() => [
+    { id: 'employe', header: 'Employé', width: 180, accessor: (i) => i.employe_nom || String(i.employe || ''), cell: (v) => <span className="font-medium">{v || '—'}</span> },
+    { id: 'type', header: 'Type', width: 160, accessor: (i) => i.type_incident_display || i.type_incident || '', cell: (v) => v || '—' },
+    { id: 'date', header: 'Date', width: 120, searchable: false, accessor: (i) => i.date || '', cell: (v) => formatDate(v) },
+    { id: 'retard', header: 'Retard', width: 100, align: 'right', numeric: true, searchable: false, accessor: (i) => Number(i.minutes_retard ?? 0), cell: (v) => (v ? `${v} min` : '—') },
+    { id: 'justifie', header: 'Statut', width: 130, accessor: (i) => (i.justifie ? 'justifie' : 'ouvert'), cell: (_v, i) => <Badge tone={i.justifie ? 'success' : 'warning'}>{i.justifie ? 'Justifié' : 'Ouvert'}</Badge> },
+    { id: 'motif', header: 'Motif', width: 200, accessor: (i) => i.motif || '', cell: (v) => v || '—' },
+  ], [])
+
+  const incidentActions = (i) => (i.justifie
+    ? []
+    : [{ id: 'justifier', label: 'Justifier', icon: CheckCircle2, onClick: () => setJustifierFor(i) }])
 
   // ZRH18 — colonnes du rapport de présence (clés du sélecteur serveur).
   const rapportColumns = useMemo(() => [
@@ -290,6 +338,15 @@ export default function Temps() {
     { id: 'equipe', header: 'Équipe', width: 140, accessor: (r) => r.equipe || '', cell: (v) => v || '—' },
     { id: 'date', header: 'Date', width: 120, searchable: false, accessor: (r) => r.date || '', cell: (v) => formatDate(v) },
     { id: 'creneau', header: 'Créneau', width: 120, accessor: (r) => r.creneau_display || r.creneau || '', cell: (v) => v || '—' },
+    // WIR238 — conflit_conge est CALCULÉ côté serveur (congé validé couvrant
+    // le jour affecté), jamais recalculé/deviné côté client.
+    {
+      id: 'conflit',
+      header: 'Conflit congé',
+      width: 130,
+      accessor: (r) => (r.conflit_conge ? 'conflit' : ''),
+      cell: (_v, r) => (r.conflit_conge ? <Badge tone="danger">Conflit congé</Badge> : '—'),
+    },
   ], [])
 
   const presenceColumns = useMemo(() => [
@@ -312,6 +369,24 @@ export default function Temps() {
       },
     },
   ], [])
+
+  // WIR239 — la colonne Géofence était morte : rien n'appelait jamais
+  // l'action serveur `emarger` (idempotent — ré-émarger ne fait que rejouer
+  // l'horodatage/auteur). Sans GPS mobile ici, hors_zone reste False côté
+  // serveur (défaut) → « Dans la zone ».
+  const emargerPresence = async (p) => {
+    try {
+      await rhApi.emargerPresenceChantier(p.id)
+      toast.success('Présence émargée.')
+      recharger()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Émargement impossible.')
+    }
+  }
+
+  const presenceActions = (p) => (p.emarge
+    ? []
+    : [{ id: 'emarger', label: 'Émarger', icon: CheckCircle2, onClick: () => emargerPresence(p) }])
 
   const heuresColumns = useMemo(() => [
     { id: 'employe', header: 'Employé', width: 180, accessor: (h) => h.employe_nom || String(h.employe || ''), cell: (v) => <span className="font-medium">{v || '—'}</span> },
@@ -339,11 +414,20 @@ export default function Temps() {
     </Button>
   )
 
+  // WIR238 — « Nouvelle affectation » : semaine_du/conflit_conge ne sont
+  // JAMAIS saisis, toujours calculés côté serveur (services.appliquer_roster).
+  const rosterActions = (
+    <Button onClick={() => setRosterOpen(true)}>
+      <Plus size={15} strokeWidth={1.75} aria-hidden="true" />
+      Nouvelle affectation
+    </Button>
+  )
+
   const config = {
     pointages: { title: 'Pointages', columns: pointageColumns, rows: pointages, rowActions: pointageActions, exportName: 'pointages',
       actions: pointagesActions },
-    roster: { title: 'Roster', columns: rosterColumns, rows: roster, exportName: 'roster' },
-    presences: { title: 'Présences chantier', columns: presenceColumns, rows: presences, exportName: 'presences-chantier' },
+    roster: { title: 'Roster', columns: rosterColumns, rows: roster, exportName: 'roster', actions: rosterActions },
+    presences: { title: 'Présences chantier', columns: presenceColumns, rows: presences, rowActions: presenceActions, exportName: 'presences-chantier' },
     heures_supp: { title: 'Heures supplémentaires', columns: heuresColumns, rows: heuresSupp, exportName: 'heures-supp',
       actions: heuresSuppActions },
     devices: { title: 'Devices kiosque', columns: deviceColumns, rows: devices, rowActions: deviceActions, exportName: 'devices-kiosque',
@@ -352,6 +436,8 @@ export default function Temps() {
     absents: { title: 'Absents non justifiés (aujourd’hui)', columns: absentColumns, rows: absents, rowActions: absentActions, exportName: 'absents-non-justifies' },
     // ZRH18 — rapport de présence & heures supp. du mois en cours.
     rapport: { title: 'Rapport de présence (mois en cours)', columns: rapportColumns, rows: rapport?.par_employe ?? [], exportName: 'rapport-presence' },
+    // WIR195 — incidents de présence (retard/absence injustifiée, FG171).
+    incidents: { title: 'Incidents de présence', columns: incidentColumns, rows: incidents, rowActions: incidentActions, exportName: 'incidents-presence' },
   }[vue]
 
   return (
@@ -361,6 +447,17 @@ export default function Temps() {
       </div>
 
       <Segmented options={VUES} value={vue} onChange={setVue} aria-label="Vue temps & présence" />
+
+      {/* WIR238 — bandeau 30 jours : conflits de congé déjà présents sur le
+          roster, calculés côté serveur (`selectors.conflits_roster`). */}
+      {vue === 'roster' && conflitsRoster.length > 0 && (
+        <div className="flex items-center gap-2 rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-sm">
+          <AlertTriangle className="size-4 shrink-0 text-danger" aria-hidden="true" />
+          <span>
+            {conflitsRoster.length} affectation{conflitsRoster.length > 1 ? 's' : ''} en conflit de congé sur les 30 prochains jours.
+          </span>
+        </div>
+      )}
 
       <ListShell
         title={config.title}
@@ -391,6 +488,20 @@ export default function Temps() {
       )}
       {nouveauToken && (
         <TokenDialog data={nouveauToken} onClose={() => setNouveauToken(null)} />
+      )}
+      {rosterOpen && (
+        <RosterDialog
+          employes={employes}
+          onClose={() => setRosterOpen(false)}
+          onSaved={() => { setRosterOpen(false); recharger() }}
+        />
+      )}
+      {justifierFor && (
+        <JustifierIncidentDialog
+          incident={justifierFor}
+          onClose={() => setJustifierFor(null)}
+          onConfirm={(motif) => justifierIncident(justifierFor, motif)}
+        />
       )}
     </div>
   )
@@ -511,6 +622,146 @@ function CorrectionDialog({ pointage, onClose, onSaved }) {
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
             <Button type="submit" disabled={saving}>{saving ? 'Enregistrement…' : 'Corriger'}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// AffectationRoster.Creneau.choices — côté serveur.
+const CRENEAU_OPTIONS = [
+  { value: 'journee', label: 'Journée' },
+  { value: 'matin', label: 'Matin' },
+  { value: 'apres_midi', label: 'Après-midi' },
+]
+
+/* ── WIR238 — Nouvelle affectation roster (semaine/conflit calculés serveur) ── */
+function RosterDialog({ employes, onClose, onSaved }) {
+  const [employe, setEmploye] = useState('')
+  const [equipe, setEquipe] = useState('')
+  const [date, setDate] = useState('')
+  const [creneau, setCreneau] = useState('journee')
+  const [note, setNote] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [serverError, setServerError] = useState(null)
+
+  const dirty = Boolean(employe || equipe || date || note)
+  const closeIfConfirmed = () => { if (confirmLeaveIfDirty(dirty)) onClose?.() }
+  // WIR238-fix — `AffectationRoster.equipe` est un CharField SANS `blank` côté
+  // serveur (`validate_equipe` refuse '' avec « L'équipe est obligatoire. ») :
+  // le formulaire ne doit jamais laisser croire qu'elle est optionnelle.
+  const valide = Boolean(employe && date && equipe.trim())
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!valide) return
+    setSaving(true)
+    setServerError(null)
+    try {
+      // WIR238 — jamais `semaine_du`/`conflit_conge` : calculés côté serveur
+      // (services.appliquer_roster) à chaque création/mise à jour.
+      await rhApi.createRoster({
+        employe, equipe: equipe.trim(), date, creneau, note: note || '',
+      })
+      toast.success('Affectation créée.')
+      onSaved?.()
+    } catch (err) {
+      const data = err?.response?.data
+      // WIR238-fix — une erreur de champ DRF (ex. `equipe`) prime sur le
+      // message générique : sinon le vrai motif du 400 est avalé en silence.
+      const champErr = data && typeof data === 'object'
+        ? (data.equipe ?? Object.values(data).find(Boolean))
+        : null
+      const message = Array.isArray(champErr) ? champErr[0] : champErr
+      setServerError(message || data?.detail || 'Création de l’affectation impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) closeIfConfirmed() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader><DialogTitle>Nouvelle affectation roster</DialogTitle></DialogHeader>
+        <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="ro-employe">Employé</Label>
+              <select id="ro-employe" autoFocus value={employe} onChange={(e) => setEmploye(e.target.value)}
+                className="h-9 rounded-md border border-border bg-card px-3 text-sm">
+                <option value="">— Choisir —</option>
+                {employes.map((e) => <option key={e.id} value={e.id}>{e.nom} {e.prenom}</option>)}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="ro-equipe">Équipe</Label>
+              <Input id="ro-equipe" value={equipe} onChange={(e) => setEquipe(e.target.value)} placeholder="Obligatoire" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="ro-date">Date</Label>
+              <Input id="ro-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="ro-creneau">Créneau</Label>
+              <select id="ro-creneau" value={creneau} onChange={(e) => setCreneau(e.target.value)}
+                className="h-9 rounded-md border border-border bg-card px-3 text-sm">
+                {CRENEAU_OPTIONS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="ro-note">Note (optionnel)</Label>
+            <Input id="ro-note" value={note} onChange={(e) => setNote(e.target.value)} />
+          </div>
+          {serverError && <p className="text-sm text-destructive" role="alert">{serverError}</p>}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={closeIfConfirmed}>Annuler</Button>
+            <Button type="submit" disabled={!valide || saving}>{saving ? 'Création…' : 'Créer l’affectation'}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/* ── WIR195 — Justifier un incident de présence (motif obligatoire) ── */
+function JustifierIncidentDialog({ incident, onClose, onConfirm }) {
+  const [motif, setMotif] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [serverError, setServerError] = useState(null)
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!motif.trim()) { setServerError('Un motif est obligatoire.'); return }
+    setSaving(true)
+    setServerError(null)
+    try {
+      await onConfirm(motif.trim())
+    } catch (err) {
+      setServerError(err?.response?.data?.detail || 'Justification impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose?.() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Justifier l’incident — {incident.employe_nom || `#${incident.id}`}</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="ju-motif">Motif</Label>
+            <Input id="ju-motif" autoFocus value={motif} onChange={(e) => setMotif(e.target.value)} placeholder="Obligatoire" />
+          </div>
+          {serverError && <p className="text-sm text-destructive" role="alert">{serverError}</p>}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
+            <Button type="submit" disabled={saving}>{saving ? 'Enregistrement…' : 'Justifier'}</Button>
           </DialogFooter>
         </form>
       </DialogContent>

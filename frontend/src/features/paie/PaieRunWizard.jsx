@@ -58,6 +58,9 @@ export default function PaieRunWizard() {
   const [controles, setControles] = useState(null)
   const [controlesOpen, setControlesOpen] = useState(false)
   const [controlesBusy, setControlesBusy] = useState(false)
+  // WIR242 — synchronisation salaire depuis un écart de rémunération listé
+  // au dialogue : id du profil en cours de synchronisation (spinner ciblé).
+  const [syncProfilId, setSyncProfilId] = useState(null)
 
   // Formulaire de création de période.
   const [annee, setAnnee] = useState(String(now.getFullYear()))
@@ -232,6 +235,21 @@ export default function PaieRunWizard() {
     } finally { setControlesBusy(false) }
   }
 
+  // WIR242 — bouton « Synchroniser » par écart de rémunération : aligne le
+  // salaire du profil sur la rémunération RH en vigueur (YHIRE6), puis
+  // rejoue les contrôles pour faire disparaître l'écart résorbé. La vue
+  // gère elle-même le 403 « salaires_voir » (message serveur affiché tel quel).
+  const synchroniserSalaire = async (profilId) => {
+    setSyncProfilId(profilId)
+    try {
+      await paieApi.synchroniserSalaireProfil(profilId)
+      toast.success('Salaire synchronisé sur la rémunération RH en vigueur.')
+      await voirControles()
+    } catch (e) {
+      toast.error(errMsg(e, 'Synchronisation impossible.'))
+    } finally { setSyncProfilId(null) }
+  }
+
   // XPAI4 — run hors-cycle « 13e mois » : génère les bulletins de
   // gratification de tous les profils actifs sur la période sélectionnée.
   const runGratification = async () => {
@@ -343,6 +361,7 @@ export default function PaieRunWizard() {
       {controlesOpen && controles && (
         <ControlesPreRunDialog
           completude={controles.completude} ecarts={controles.ecarts}
+          onSynchroniser={synchroniserSalaire} syncProfilId={syncProfilId}
           onClose={() => setControlesOpen(false)}
         />
       )}
@@ -353,7 +372,9 @@ export default function PaieRunWizard() {
 /* ── WIR39 — Contrôles pré-run détaillés (complétude YHIRE3 + écarts XPAI15).
    Lecture seule, à la demande — distincts du panneau d'avertissements
    (ZPAI2, message plat) : ici chaque catégorie porte matricule/nom/contexte. */
-function ControlesPreRunDialog({ completude, ecarts, onClose }) {
+function ControlesPreRunDialog({
+  completude, ecarts, onClose, onSynchroniser, syncProfilId,
+}) {
   const groupes = [
     { key: 'actifs_sans_profil', titre: 'Actifs sans profil de paie',
       items: completude.actifs_sans_profil || [] },
@@ -366,11 +387,12 @@ function ControlesPreRunDialog({ completude, ecarts, onClose }) {
       items: completude.profils_actifs_dossiers_non_actifs || [] },
     { key: 'contrats_expires', titre: 'CDD expirés avant la fin de période',
       items: completude.contrats_expires || [] },
-    { key: 'ecarts_remuneration',
-      titre: 'Écarts salaire profil ↔ rémunération RH en vigueur',
-      items: completude.ecarts_remuneration || [] },
   ]
+  // WIR242 — écarts de rémunération : rendus à part (bouton « Synchroniser »
+  // par ligne, jamais dans la liste plate des autres trous structurels).
+  const ecartsRemuneration = completude.ecarts_remuneration || []
   const totalCompletude = groupes.reduce((n, g) => n + g.items.length, 0)
+    + ecartsRemuneration.length
   const totalEcarts = (ecarts.salaries_manquants?.length || 0)
     + (ecarts.salaries_nouveaux?.length || 0)
     + (ecarts.variations_net?.length || 0)
@@ -405,6 +427,31 @@ function ControlesPreRunDialog({ completude, ecarts, onClose }) {
                     </ul>
                   </div>
                 ))}
+                {ecartsRemuneration.length > 0 && (
+                  <div>
+                    <p className="mb-1 flex items-center gap-1.5 font-medium">
+                      Écarts salaire profil ↔ rémunération RH en vigueur{' '}
+                      <Badge tone="warning">{ecartsRemuneration.length}</Badge>
+                    </p>
+                    <ul className="flex flex-col gap-1.5 pl-3">
+                      {ecartsRemuneration.map((it) => (
+                        <li key={it.profil_id}
+                          className="flex flex-wrap items-center justify-between gap-2 text-muted-foreground">
+                          <span>
+                            {it.matricule ? `${it.matricule} — ` : ''}{it.nom} :{' '}
+                            {formatMAD(it.salaire_profil)} →{' '}
+                            {formatMAD(it.remuneration_en_vigueur)}
+                          </span>
+                          <Button variant="outline" size="sm"
+                            onClick={() => onSynchroniser(it.profil_id)}
+                            loading={syncProfilId === it.profil_id}>
+                            <RefreshCw size={14} aria-hidden="true" /> Synchroniser
+                          </Button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
             )}
           </section>

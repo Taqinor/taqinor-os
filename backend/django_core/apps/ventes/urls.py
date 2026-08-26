@@ -32,6 +32,7 @@ from .views import (
     ListePrixViewSet,  # XSAL1-2
     prix_applicable_view,  # XSAL3
     ParametresGammesView,  # PVMRQ
+    PlanCommissionViewSet,  # WIR281/XSAL6
 )
 from .recouvrement import (
     FollowupLevelViewSet,
@@ -133,6 +134,10 @@ router.register(r'remises-encaissement', RemiseEncaissementViewSet,
 router.register(r'listes-prix', ListePrixViewSet, basename='liste-prix')  # XSAL1-2
 router.register(r'mandats-paiement', MandatPaiementViewSet,
                 basename='mandat-paiement')
+# WIR281/XSAL6 — plans de commission (CRUD + action `resoudre`). Endpoint
+# ENTIER gate `prix_achat_voir` : GARDE MARGE (cf. views/plan_commission.py).
+router.register(r'plans-commission', PlanCommissionViewSet,
+                basename='plan-commission')
 
 urlpatterns = [
     # Q6/Q7 — Proposition web tokenisée (données JSON + e-signature). Jeton

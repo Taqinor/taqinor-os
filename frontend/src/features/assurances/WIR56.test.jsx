@@ -22,6 +22,11 @@ const api = {
   getActifsCouverts: vi.fn(() => Promise.resolve({ data: [] })),
   getEcheancesPrime: vi.fn(() => Promise.resolve({ data: [] })),
   getPoliceHistorique: vi.fn(() => Promise.resolve({ data: [] })),
+  // WIR262 — chatter (composeur ajouté sur PoliceDetail/SinistresPage) : ces
+  // deux écrans appellent désormais ces endpoints au montage/à l'envoi.
+  noterPolice: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
+  getSinistreHistorique: vi.fn(() => Promise.resolve({ data: [] })),
+  noterSinistre: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
   getAttestations: vi.fn(() => Promise.resolve({ data: [] })),
   createGarantie: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
   getPolices: vi.fn(() => Promise.resolve({ data: [{ id: 7, numero_police: 'P-1', type_police: 'rc_pro' }] })),

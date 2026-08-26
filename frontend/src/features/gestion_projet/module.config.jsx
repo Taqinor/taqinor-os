@@ -13,11 +13,21 @@ import { appGlyph } from '../../lib/apps/appGlyph'
    ----------------------------------------------------------------------------
    Fichier UNIQUE d'enregistrement (auto-collecté par
    `src/router/moduleRoutes.jsx` via import.meta.glob) : nav Sidebar, titres de
-   page, libellés de fil d'Ariane et routes lazy. Aucun autre fichier partagé
-   n'est touché. Tout est gaté « responsable / admin ».
+   page, libellés de fil d'Ariane et routes lazy.
+
+   WIR171 — tout était gaté « responsable / admin » alors que le serveur gate
+   les projets par `projet_voir` / `projet_gerer` (YRBAC3) via
+   `HasPermissionOrLegacy` : un Commercial / Technicien / Viewer porte
+   `projet_voir` tout en relevant du palier 'normal' — le serveur lui répondait
+   200 pendant que la coquille le renvoyait en 403. Chaque entrée déclare donc
+   la permission de LECTURE + `permRepliPalier` (sémantique serveur exacte, cf.
+   `router/moduleGating.js`) ; le palier élargi ne sert plus que de repli
+   documentaire (comptes LÉGACY sans rôle fin).
    ========================================================================== */
 
-const ROLES = ['responsable', 'admin']
+const ROLES = ['normal', 'responsable', 'admin']
+// WIR171 — gate commun à toutes les entrées/routes du module (étalé par `...`).
+const GATE = { roles: ROLES, perm: 'projet_voir', permRepliPalier: true }
 
 const ProjetsPage = lazy(() => import('./pages/ProjetsPage'))
 const ProjetDetailPage = lazy(() => import('./pages/ProjetDetailPage'))
@@ -47,15 +57,15 @@ export default {
     icon: appGlyph(FolderKanban),
     accent: 'warning', // VX8 — pilotage/reporting = accent warning (dérivé)
     items: [
-      { to: '/projets', label: 'Projets', icon: <FolderKanban size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
-      { to: '/projets/planning', label: 'Planning', icon: <CalendarRange size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
-      { to: '/projets/taches', label: 'Tâches', icon: <ListChecks size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
-      { to: '/projets/taches/mes-taches', label: 'Mes tâches', icon: <ListChecks size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
-      { to: '/projets/temps', label: 'Temps', icon: <Clock3 size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
-      { to: '/projets/ressources', label: 'Ressources', icon: <Users size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
-      { to: '/projets/budget', label: 'Budget & P&L', icon: <Wallet size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
-      { to: '/projets/risques', label: 'Risques & CR', icon: <ShieldAlert size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
-      { to: '/projets/parametres', label: 'Paramètres avancés', icon: <Settings2 size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      { to: '/projets', label: 'Projets', icon: <FolderKanban size={17} strokeWidth={1.75} aria-hidden="true" />, ...GATE },
+      { to: '/projets/planning', label: 'Planning', icon: <CalendarRange size={17} strokeWidth={1.75} aria-hidden="true" />, ...GATE },
+      { to: '/projets/taches', label: 'Tâches', icon: <ListChecks size={17} strokeWidth={1.75} aria-hidden="true" />, ...GATE },
+      { to: '/projets/taches/mes-taches', label: 'Mes tâches', icon: <ListChecks size={17} strokeWidth={1.75} aria-hidden="true" />, ...GATE },
+      { to: '/projets/temps', label: 'Temps', icon: <Clock3 size={17} strokeWidth={1.75} aria-hidden="true" />, ...GATE },
+      { to: '/projets/ressources', label: 'Ressources', icon: <Users size={17} strokeWidth={1.75} aria-hidden="true" />, ...GATE },
+      { to: '/projets/budget', label: 'Budget & P&L', icon: <Wallet size={17} strokeWidth={1.75} aria-hidden="true" />, ...GATE },
+      { to: '/projets/risques', label: 'Risques & CR', icon: <ShieldAlert size={17} strokeWidth={1.75} aria-hidden="true" />, ...GATE },
+      { to: '/projets/parametres', label: 'Paramètres avancés', icon: <Settings2 size={17} strokeWidth={1.75} aria-hidden="true" />, ...GATE },
     ],
   },
   // routes.meta : du plus SPÉCIFIQUE au plus général.
@@ -73,15 +83,15 @@ export default {
   sectionLabels: { projets: 'Projets' },
   routes: [
     // Les sous-routes fixes AVANT la route de détail paramétrée.
-    { path: '/projets/planning', component: PlanningPage, roles: ROLES },
-    { path: '/projets/taches/mes-taches', component: MesTachesPage, roles: ROLES },
-    { path: '/projets/taches', component: TachesPage, roles: ROLES },
-    { path: '/projets/temps', component: TempsPage, roles: ROLES },
-    { path: '/projets/ressources', component: RessourcesPage, roles: ROLES },
-    { path: '/projets/budget', component: BudgetPage, roles: ROLES },
-    { path: '/projets/risques', component: RisquesPage, roles: ROLES },
-    { path: '/projets/parametres', component: ParametresAvances, roles: ROLES },
-    { path: '/projets/:id', component: ProjetDetailPage, roles: ROLES },
-    { path: '/projets', component: ProjetsPage, roles: ROLES },
+    { path: '/projets/planning', component: PlanningPage, ...GATE },
+    { path: '/projets/taches/mes-taches', component: MesTachesPage, ...GATE },
+    { path: '/projets/taches', component: TachesPage, ...GATE },
+    { path: '/projets/temps', component: TempsPage, ...GATE },
+    { path: '/projets/ressources', component: RessourcesPage, ...GATE },
+    { path: '/projets/budget', component: BudgetPage, ...GATE },
+    { path: '/projets/risques', component: RisquesPage, ...GATE },
+    { path: '/projets/parametres', component: ParametresAvances, ...GATE },
+    { path: '/projets/:id', component: ProjetDetailPage, ...GATE },
+    { path: '/projets', component: ProjetsPage, ...GATE },
   ],
 }

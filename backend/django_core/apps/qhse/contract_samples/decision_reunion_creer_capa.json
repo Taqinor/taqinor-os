@@ -1,0 +1,22 @@
+{
+  "endpoint": "POST /api/django/qhse/decisions-reunion/<int:pk>/creer-capa/",
+  "pourquoi": "WIR275 (XQHS12) — une décision de réunion QHSE (revue de direction/CSH/HSE) peut faire « spawner » une CAPA liée : le service creer_capa_depuis_decision existait déjà (testé), sans aucun appelant REST. Idempotent — un second appel sur la même décision renvoie la même CAPA (decision.capa_id posé), jamais un doublon.",
+  "exemple": {
+    "id": 501,
+    "non_conformite": 42,
+    "type_action": "corrective",
+    "type_action_display": "Corrective",
+    "description": "Renforcer la checklist de réception avant mise en stock.",
+    "cause_racine": "",
+    "responsable": 7,
+    "echeance": "2026-09-15",
+    "statut": "ouverte",
+    "statut_display": "Ouverte",
+    "efficace": null,
+    "commentaire_verification": "",
+    "date_verification": null,
+    "verifiee_par": null,
+    "cout": null,
+    "date_creation": "2026-08-26T09:00:00Z"
+  }
+}

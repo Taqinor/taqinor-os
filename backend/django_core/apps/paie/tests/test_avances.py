@@ -13,7 +13,10 @@ Couvre :
 from datetime import date
 from decimal import Decimal
 
+from django.contrib.auth import get_user_model
 from django.test import TestCase
+from rest_framework.test import APIClient
+from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 from apps.paie.models import AvanceSalarie, PeriodePaie, ProfilPaie
@@ -27,10 +30,23 @@ from apps.paie.services import (
 )
 from apps.rh.models import DossierEmploye
 
+User = get_user_model()
+
 
 def make_company(slug):
     company, _ = Company.objects.get_or_create(slug=slug, defaults={'nom': slug})
     return company
+
+
+def make_user(company, username, role='responsable'):
+    return User.objects.create_user(
+        username=username, password='x', company=company, role_legacy=role)
+
+
+def auth(user):
+    api = APIClient()
+    api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+    return api
 
 
 class EcheanceAvanceTests(TestCase):
@@ -111,3 +127,68 @@ class BulletinAvanceTests(TestCase):
         self.avance.refresh_from_db()
         self.assertEqual(self.avance.montant_rembourse, Decimal('1000.00'))
         self.assertEqual(self.avance.solde_restant, Decimal('1000.00'))
+
+
+# ── API : une avance créée SANS montant_echeance explicite (fix money) ─────
+
+class AvanceApiEcheanceTests(TestCase):
+    """Une avance créée via l'API (le client — dialogue WIR197 — n'envoie
+    jamais `montant_echeance`) doit quand même se retenir sur le bulletin
+    suivant : le serveur calcule `montant_total / nombre_echeances`
+    (ROUND_HALF_UP au centime), jamais 0 par défaut."""
+    BASE = '/api/django/paie/avances/'
+
+    def setUp(self):
+        self.co = make_company('av-api')
+        ensure_defaults(self.co)
+        self.user = make_user(self.co, 'av-api-user')
+        self.dossier = DossierEmploye.objects.create(
+            company=self.co, matricule='V3', nom='Test', prenom='Api')
+        self.profil = ProfilPaie.objects.create(
+            company=self.co, employe=self.dossier,
+            type_remuneration=ProfilPaie.TYPE_MENSUEL,
+            salaire_base=Decimal('10000'), affilie_cnss=True, affilie_amo=True)
+
+    def test_creation_sans_echeance_la_calcule_et_se_retient(self):
+        resp = auth(self.user).post(self.BASE, {
+            'profil': self.profil.id,
+            'montant_total': '3000',
+            'nombre_echeances': 3,
+            'date_debut': '2026-06-01',
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(resp.data['montant_echeance'], '1000.00')
+
+        avance = AvanceSalarie.objects.get(pk=resp.data['id'])
+        self.assertEqual(avance.montant_echeance, Decimal('1000.00'))
+
+        periode = PeriodePaie.objects.create(
+            company=self.co, annee=2026, mois=6)
+        res = calculer_bulletin(self.profil, periode)
+        self.assertEqual(res['retenues'], Decimal('1000.00'))
+        self.assertTrue(
+            any(ligne['code'] == 'AVANCE' for ligne in res['lignes']))
+
+    def test_division_non_entiere_arrondie_au_centime(self):
+        """1000 / 3 = 333,333... -> 333.33 (ROUND_HALF_UP), jamais 0."""
+        resp = auth(self.user).post(self.BASE, {
+            'profil': self.profil.id,
+            'montant_total': '1000',
+            'nombre_echeances': 3,
+            'date_debut': '2026-06-01',
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(resp.data['montant_echeance'], '333.33')
+
+    def test_echeance_explicite_du_client_jamais_ecrasee(self):
+        """Un client qui fournit bien `montant_echeance` garde SA valeur —
+        le calcul serveur n'intervient qu'en son absence/à zéro."""
+        resp = auth(self.user).post(self.BASE, {
+            'profil': self.profil.id,
+            'montant_total': '3000',
+            'montant_echeance': '1500',
+            'nombre_echeances': 3,
+            'date_debut': '2026-06-01',
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(resp.data['montant_echeance'], '1500.00')

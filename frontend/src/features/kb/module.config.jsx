@@ -13,12 +13,24 @@ import { appGlyph } from '../../lib/apps/appGlyph'
    ouverte à tous les rôles ; l'édition/publication est gatée dans l'écran.
 
    XKB22 — /kb/parcours (KbParcoursPage) : séquences d'onboarding assignées
-   nominativement, gaté responsable/admin (création/assignation) comme le
-   reste de la gestion KB.
+   nominativement ; la CRÉATION/ASSIGNATION reste gatée `kb_gerer` côté serveur
+   et dans l'écran.
+
+   WIR171 — les deux entrées reflètent désormais la garde serveur réelle
+   (`_KbBaseViewSet` : `kb_voir` en lecture, `kb_gerer` en écriture, via
+   `HasPermissionOrLegacy`) : `perm: 'kb_voir'` + `permRepliPalier`. Deux
+   effets : `/kb/parcours`, jusque-là réservé au palier responsable/admin,
+   s'ouvre en LECTURE à tout porteur de `kb_voir` (Commercial, Technicien,
+   Viewer — exactement ce que le serveur autorise), et `/kb` cesse d'être
+   proposé à un compte LÉGACY de palier 'normal' que le serveur refuse déjà.
    ========================================================================== */
 
 const KbPage = lazy(() => import('./KbPage'))
 const KbParcoursPage = lazy(() => import('./KbParcoursPage'))
+
+const ROLES = ['normal', 'responsable', 'admin']
+// WIR171 — gate commun aux entrées/routes du module (étalé par `...`).
+const GATE = { roles: ROLES, perm: 'kb_voir', permRepliPalier: true }
 
 const config = {
   key: 'kb',
@@ -36,13 +48,13 @@ const config = {
         to: '/kb',
         label: 'Base de connaissances',
         icon: <BookOpen size={17} strokeWidth={1.75} aria-hidden="true" />,
-        roles: ['normal', 'responsable', 'admin'],
+        ...GATE,
       },
       {
         to: '/kb/parcours',
         label: 'Parcours',
         icon: <GraduationCap size={17} strokeWidth={1.75} aria-hidden="true" />,
-        roles: ['responsable', 'admin'],
+        ...GATE,
       },
     ],
   },
@@ -52,8 +64,8 @@ const config = {
   ],
   sectionLabels: { kb: 'Base de connaissances' },
   routes: [
-    { path: '/kb', component: KbPage, roles: ['normal', 'responsable', 'admin'] },
-    { path: '/kb/parcours', component: KbParcoursPage, roles: ['responsable', 'admin'] },
+    { path: '/kb', component: KbPage, ...GATE },
+    { path: '/kb/parcours', component: KbParcoursPage, ...GATE },
   ],
 }
 

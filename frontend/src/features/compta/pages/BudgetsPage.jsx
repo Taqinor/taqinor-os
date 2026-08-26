@@ -1,15 +1,20 @@
 import { useState } from 'react'
-import { Plus, PieChart } from 'lucide-react'
+import { Plus, PieChart, Download, BarChart3 } from 'lucide-react'
 import { ListShell } from '../../../ui/module'
 import {
-  Button, EmptyState,
+  Button, EmptyState, Card, Input, Label, toast,
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '../../../ui'
 import { formatMAD } from '../../../lib/format'
+import { stampedFilename } from '../../../utils/downloadBlob'
+import { store } from '../../../store'
 import ComptaTable from '../ComptaTable'
 import comptaApi from '../../../api/comptaApi'
 import useComptaList from '../components/useComptaList.js'
 import CrudDialog from '../components/CrudDialog.jsx'
+// WIR254 — « Exécution budgétaire » (NTFIN25) réutilise le rendu générique
+// d'EtatsPage au lieu d'en réinventer un pour ce seul écran.
+import { EtatRender } from './EtatsPage.jsx'
 
 /* ============================================================================
    PACT163 / XACC22 — Budgets & répartition d'un montant annuel.
@@ -39,6 +44,56 @@ const LIGNE_FIELDS = [
   ] },
   { name: 'libelle', label: 'Libellé (optionnel)' },
 ]
+
+// WIR255 — FG149 : variance budget-vs-réalisé, jusqu'ici sans aucun bouton
+// (endpoint `vs_realise` déjà prêt côté serveur). Affichage sur clic +
+// export CSV.
+function VsRealisePanel({ budget }) {
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(false)
+
+  const charger = () => {
+    setLoading(true)
+    comptaApi.budgets.vsRealise(budget.id)
+      .then((res) => setData(res.data))
+      .catch(() => toast.error('Variance budget vs réalisé indisponible.'))
+      .finally(() => setLoading(false))
+  }
+
+  const exporterCsv = async () => {
+    try {
+      const res = await comptaApi.budgets.vsRealise(budget.id, { export: 'csv' })
+      const blob = res.data instanceof Blob ? res.data : new Blob([res.data])
+      const societe = store.getState().parametres?.profile?.nom
+      comptaApi.downloadBlob(blob, stampedFilename('budget-vs-realise', 'csv', societe))
+    } catch {
+      toast.error('Export CSV indisponible.')
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-2 border-t pt-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h4 className="font-display text-sm font-semibold">Vs réalisé</h4>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={charger}>
+            <BarChart3 className="size-4" /> {data ? 'Actualiser' : 'Charger'}
+          </Button>
+          <Button variant="outline" size="sm" onClick={exporterCsv}>
+            <Download className="size-4" /> Export CSV
+          </Button>
+        </div>
+      </div>
+      {loading ? (
+        <p className="py-4 text-center text-sm text-muted-foreground">Chargement…</p>
+      ) : data ? (
+        <EtatRender data={data} />
+      ) : (
+        <EmptyState title="Aucune donnée chargée" description="Cliquez sur Charger pour voir la variance." />
+      )}
+    </div>
+  )
+}
 
 function BudgetDetailDialog({ budget, onClose, onChanged }) {
   const [ligneDialog, setLigneDialog] = useState(false)
@@ -79,6 +134,8 @@ function BudgetDetailDialog({ budget, onClose, onChanged }) {
           />
         )}
 
+        <VsRealisePanel budget={budget} />
+
         {ligneDialog && (
           <CrudDialog
             open
@@ -91,6 +148,48 @@ function BudgetDetailDialog({ budget, onClose, onChanged }) {
         )}
       </DialogContent>
     </Dialog>
+  )
+}
+
+// WIR254 — NTFIN25 : `etats/execution-budgetaire` (budget − engagé − réalisé
+// par compte/centre de coût) n'avait aucun client ni écran. Panneau autonome
+// (année seule, aucun budget préalable requis côté écran).
+function ExecutionBudgetairePanel() {
+  const [annee, setAnnee] = useState(String(new Date().getFullYear()))
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+
+  const charger = () => {
+    setLoading(true)
+    setError(null)
+    comptaApi.etats.executionBudgetaire({ annee })
+      .then((res) => setData(res.data))
+      .catch(() => setError('État indisponible pour cette année.'))
+      .finally(() => setLoading(false))
+  }
+
+  return (
+    <Card className="mt-4 p-4 sm:p-5">
+      <h3 className="mb-3 font-display text-base font-semibold">Exécution budgétaire (engagements)</h3>
+      <div className="mb-3 flex flex-wrap items-end gap-3">
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="eb-annee">Année</Label>
+          <Input id="eb-annee" type="number" className="w-28" value={annee}
+            onChange={(e) => setAnnee(e.target.value)} />
+        </div>
+        <Button variant="outline" size="sm" onClick={charger}>Charger</Button>
+      </div>
+      {loading ? (
+        <p className="py-4 text-center text-sm text-muted-foreground">Chargement…</p>
+      ) : error ? (
+        <EmptyState title="Indisponible" description={error} />
+      ) : data ? (
+        <EtatRender data={data} />
+      ) : (
+        <EmptyState title="Aucune donnée chargée" description="Choisissez une année puis cliquez sur Charger." />
+      )}
+    </Card>
   )
 }
 
@@ -135,6 +234,8 @@ export default function BudgetsPage() {
         emptyTitle="Aucun budget"
         emptyDescription="Créez un budget annuel pour démarrer."
       />
+
+      <ExecutionBudgetairePanel />
 
       {dialogOpen && (
         <CrudDialog

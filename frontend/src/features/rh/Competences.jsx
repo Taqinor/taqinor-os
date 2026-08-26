@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Power, Trash2, Plus } from 'lucide-react'
+import { Power, Trash2, Plus, CheckCircle2 } from 'lucide-react'
 import { ListShell, EcheanceCenter } from '../../ui/module'
 import {
   Segmented, Badge, toast, Button,
@@ -164,6 +164,20 @@ export default function Competences() {
     }
   }
 
+  // WIR239 — bascule un besoin de formation en « satisfait » (400 « session
+  // liée non réalisée » affiché tel quel — on ne satisfait pas un besoin sur
+  // une session non tenue).
+  const satisfaireBesoin = async (b) => {
+    try {
+      await rhApi.satisfaireBesoinFormation(b.id)
+      toast.success('Besoin de formation satisfait.')
+      recharger()
+    } catch (err) {
+      toast.error(err?.response?.data?.session_liee ?? err?.response?.data?.detail
+        ?? 'Marquage impossible.')
+    }
+  }
+
   const supprimerQuiz = async (q) => {
     const ok = await confirmDelete({
       title: 'Supprimer ce quiz ?',
@@ -267,6 +281,12 @@ export default function Competences() {
     { id: 'suppr', label: 'Supprimer', icon: Trash2, destructive: true, onClick: () => supprimerQuiz(q) },
   ]
 
+  // WIR239 — besoin déjà satisfait → aucune action (idempotent côté serveur
+  // de toute façon, mais inutile de la réafficher).
+  const besoinActions = (b) => (b.statut === 'satisfait'
+    ? []
+    : [{ id: 'satisfaire', label: 'Marquer satisfait', icon: CheckCircle2, onClick: () => satisfaireBesoin(b) }])
+
   return (
     <div className="page flex flex-col gap-4">
       <div className="page-header">
@@ -355,7 +375,7 @@ export default function Competences() {
                   { id: 'priorite', header: 'Priorité', width: 120, accessor: (b) => b.priorite_display || b.priorite || '', cell: (v) => v || '—' },
                   { id: 'statut', header: 'Statut', width: 120, accessor: (b) => b.statut_display || b.statut || '', cell: (v) => v || '—' },
                 ]}
-                rows={besoins} loading={loading} error={error} searchable exportName="besoins-formation"
+                rows={besoins} loading={loading} error={error} searchable rowActions={besoinActions} exportName="besoins-formation"
                 emptyTitle="Aucun besoin" emptyDescription="Aucun besoin de formation." />
             </>
           )}

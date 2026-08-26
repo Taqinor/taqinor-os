@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom'
 import { Plus } from 'lucide-react'
 import assurancesApi from './assurancesApi'
 import {
-  Badge, Button, Label, Input,
+  Badge, Button, Label, Input, Textarea,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '../../ui'
 import { RecordShell } from '../../ui/module'
@@ -17,6 +17,11 @@ import { POLICE_STATUS, toneEcheance } from './status'
    Échéancier de primes (NTASS5, bouton « Proposer écriture » NTASS6),
    Historique (chatter NTASS3), Attestations (NTASS17). Lecture des montants
    client-safe (formatMAD — jamais de prix d'achat/marge).
+
+   WIR262 — le fil de l'historique existait (lecture seule) sans composeur :
+   impossible de noter une police depuis l'écran. Le composeur ci-dessous
+   (Textarea + bouton, inactif à vide) rejoint l'historique existant ;
+   `noterPolice` est repris tel quel (auteur/société posés côté serveur).
    ========================================================================== */
 
 function useLoader(fn, deps) {
@@ -140,6 +145,8 @@ export default function PoliceDetail() {
   const [police, setPolice] = useState(null)
   const [error, setError] = useState(null)
   const [addDialog, setAddDialog] = useState(null)
+  const [noteTexte, setNoteTexte] = useState('')
+  const [envoiNote, setEnvoiNote] = useState(false)
 
   const loadPolice = () => {
     assurancesApi.getPolice(id)
@@ -153,6 +160,21 @@ export default function PoliceDetail() {
   const echeances = useLoader(() => assurancesApi.getEcheancesPrime(id), [id])
   const historique = useLoader(() => assurancesApi.getPoliceHistorique(id), [id])
   const attestations = useLoader(() => assurancesApi.getAttestations(id), [id])
+
+  const envoyerNote = async () => {
+    const texte = noteTexte.trim()
+    if (!texte || envoiNote) return
+    setEnvoiNote(true)
+    try {
+      await assurancesApi.noterPolice(id, texte)
+      setNoteTexte('')
+      historique.reload()
+    } catch {
+      // best-effort — la note reste dans le composeur pour réessayer.
+    } finally {
+      setEnvoiNote(false)
+    }
+  }
 
   const proposerEcriture = useCallback((echeanceId) => {
     assurancesApi.proposerEcriturePrime(echeanceId)
@@ -289,6 +311,19 @@ export default function PoliceDetail() {
             ))}
           </ul>
         )}
+      <div className="flex flex-col gap-2 border-t pt-2">
+        <Textarea
+          aria-label="Nouvelle note"
+          placeholder="Ajouter une note…"
+          value={noteTexte}
+          onChange={(e) => setNoteTexte(e.target.value)}
+        />
+        <div>
+          <Button size="sm" onClick={envoyerNote} disabled={envoiNote || !noteTexte.trim()}>
+            {envoiNote ? 'Envoi…' : 'Publier la note'}
+          </Button>
+        </div>
+      </div>
     </div>
   )
 

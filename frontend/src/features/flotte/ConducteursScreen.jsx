@@ -1,9 +1,9 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { UserPlus, AlertTriangle, FileCheck } from 'lucide-react'
 import {
   Button, Badge, Segmented, Tabs, TabsList, TabsTrigger, TabsContent,
   toast, Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-  Label, Input, Textarea, confirmLeaveIfDirty,
+  Label, Input, Textarea, confirmLeaveIfDirty, Spinner, EmptyState,
 } from '../../ui'
 import { ListShell } from '../../ui/module'
 import flotteApi from '../../api/flotteApi'
@@ -34,6 +34,13 @@ const ACTIF_FILTERS = [
   { value: 'false', label: 'Inactifs' },
 ]
 
+// WIR200 — filtre « À traiter » (statut demandee, DemandeVehicule) : personne
+// ne pouvait retrouver rapidement les demandes en attente d'une décision.
+const DEMANDE_VEHICULE_STATUT_FILTERS = [
+  { value: '', label: 'Toutes' },
+  { value: 'demandee', label: 'À traiter' },
+]
+
 // Badge de validité du permis à partir de la date d'expiration.
 function PermisBadge({ dateExpiration }) {
   if (!dateExpiration) return <Badge tone="neutral">Non renseigné</Badge>
@@ -42,6 +49,60 @@ function PermisBadge({ dateExpiration }) {
   if (d < 0) return <Badge tone="danger">Expiré</Badge>
   const tone = urgencyTone(d < 0 ? 'overdue' : d <= 30 ? 'soon' : 'ok')
   return <Badge tone={tone}>{d <= 30 ? `Expire J-${d}` : 'Valide'}</Badge>
+}
+
+// WIR236/YHIRE11 — rapport de réconciliation « divergences permis flotte↔RH »
+// (`ConducteurViewSet.divergences_permis`) sans AUCUN consommateur frontend :
+// une divergence entre la validité locale et RH restait invisible.
+function DivergencesPermisCard() {
+  const [state, setState] = useState({ loading: true, error: null, data: null })
+
+  const load = useCallback(() => {
+    let cancelled = false
+    setState({ loading: true, error: null, data: null })
+    flotteApi.conducteurs.divergencesPermis()
+      .then((res) => { if (!cancelled) setState({ loading: false, error: null, data: res?.data || null }) })
+      .catch((err) => {
+        if (!cancelled) setState({ loading: false, error: err?.response?.data?.detail || 'Réconciliation indisponible.', data: null })
+      })
+    return () => { cancelled = true }
+  }, [])
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  useEffect(() => { load() }, [load])
+
+  if (state.loading) {
+    return <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground"><Spinner className="size-4" /> Réconciliation permis flotte↔RH en cours…</div>
+  }
+  if (state.error) {
+    return <EmptyState title="Indisponible" description={state.error} />
+  }
+  const divergences = state.data?.divergences || []
+  if (divergences.length === 0) {
+    return (
+      <div className="rounded-md border border-border p-3 text-sm text-muted-foreground">
+        Aucune divergence permis flotte↔RH ({state.data?.nb_conducteurs_lies ?? 0} conducteur(s) lié(s) à un dossier RH).
+      </div>
+    )
+  }
+  return (
+    <div className="flex flex-col gap-2 rounded-md border border-warning/40 p-3">
+      <p className="flex items-center gap-1.5 text-sm font-medium text-warning">
+        <AlertTriangle className="size-4" aria-hidden="true" />
+        {divergences.length} divergence(s) permis flotte↔RH
+      </p>
+      <ul className="flex flex-col gap-2">
+        {divergences.map((d) => (
+          <li key={d.conducteur_id} className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm">
+            <span>{d.conducteur_nom}</span>
+            <span className="text-xs text-muted-foreground">
+              Flotte : {d.local_valide ? 'Valide' : 'Invalide'} · RH : {d.rh_valide ? 'Valide' : 'Invalide'}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
 }
 
 function ConducteursTab() {
@@ -101,7 +162,8 @@ function ConducteursTab() {
   )
 
   return (
-    <>
+    <div className="flex flex-col gap-4">
+      <DivergencesPermisCard />
       <ListShell
         title="Conducteurs"
         subtitle="Chauffeurs et validité de leur permis."
@@ -123,7 +185,7 @@ function ConducteursTab() {
           onSaved={() => { setShowForm(false); reload(); toast.success('Conducteur créé.') }}
         />
       )}
-    </>
+    </div>
   )
 }
 
@@ -246,11 +308,110 @@ function ReservationsTab({ conducteurs, vehicules }) {
   )
 }
 
-// WIR41(b) — Demandes de véhicule du pool (FLOTTE32) : aucun consommateur
-// frontend n'existait pour `DemandeVehiculeViewSet` (full CRUD côté serveur).
-function DemandesVehiculeTab() {
+// WIR200 — décision (approuver/refuser) d'une demande de véhicule du pool :
+// dialog unique, véhicule attribué (approbation, optionnel côté serveur) +
+// motif de la décision.
+function DecisionDemandeVehiculeDialog({ demande, type, vehicules, onClose, onDecided }) {
+  const [vehiculeId, setVehiculeId] = useState('')
+  const [motif, setMotif] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [serverError, setServerError] = useState(null)
+
+  const estApprobation = type === 'approuver'
+  // Le refus doit toujours porter un motif (même si le serveur l'accepte
+  // vide) — l'approbation reste optionnelle des deux côtés (FLOTTE32).
+  const peutEnregistrer = estApprobation || Boolean(motif.trim())
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!peutEnregistrer) return
+    setSaving(true)
+    setServerError(null)
+    try {
+      if (estApprobation) {
+        await flotteApi.demandesVehicule.approuver(demande.id, {
+          vehicule_attribue: vehiculeId || undefined,
+          motif_decision: motif.trim(),
+        })
+      } else {
+        await flotteApi.demandesVehicule.refuser(demande.id, motif.trim())
+      }
+      onDecided?.()
+    } catch (err) {
+      const data = err?.response?.data
+      setServerError(data?.detail || 'Décision impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose?.() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>
+            {estApprobation ? 'Approuver la demande' : 'Refuser la demande'}
+          </DialogTitle>
+        </DialogHeader>
+
+        <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+          <p className="text-sm text-muted-foreground">{demande.besoin}</p>
+
+          {estApprobation && (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="dvh-decision-vehicule">Véhicule attribué</Label>
+              <select
+                id="dvh-decision-vehicule"
+                value={vehiculeId}
+                onChange={(e) => setVehiculeId(e.target.value)}
+                className="h-9 rounded-md border border-border bg-card px-3 text-sm"
+              >
+                <option value="">— Choisir (option.) —</option>
+                {(vehicules || []).map((v) => (
+                  <option key={v.id} value={v.id}>{v.immatriculation}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="dvh-decision-motif">
+              Motif {estApprobation ? '(option.)' : '(obligatoire)'}
+            </Label>
+            <Textarea
+              id="dvh-decision-motif" rows={3} value={motif}
+              onChange={(e) => setMotif(e.target.value)}
+            />
+          </div>
+
+          {serverError && (
+            <p className="text-sm text-destructive" role="alert">{serverError}</p>
+          )}
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
+            <Button type="submit" disabled={!peutEnregistrer || saving}>
+              {saving ? 'Enregistrement…' : (estApprobation ? 'Approuver' : 'Refuser')}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// WIR41(b)/WIR200 — Demandes de véhicule du pool (FLOTTE32) : aucun
+// consommateur frontend n'existait pour `DemandeVehiculeViewSet` (full CRUD
+// côté serveur) ; WIR200 ajoute la décision (approuver/refuser) qui manquait
+// entièrement côté UI.
+function DemandesVehiculeTab({ vehicules }) {
   const [showForm, setShowForm] = useState(false)
-  const { data, loading, error, reload } = useFlotteResource(flotteApi.demandesVehicule.list, {})
+  const [statutFiltre, setStatutFiltre] = useState('')
+  const [decision, setDecision] = useState(null) // { demande, type: 'approuver'|'refuser' } | null
+  const { data, loading, error, reload } = useFlotteResource(
+    flotteApi.demandesVehicule.list,
+    statutFiltre ? { statut: statutFiltre } : {},
+  )
   const columns = useMemo(() => [
     { id: 'besoin', header: 'Besoin', width: 220, accessor: (r) => r.besoin, cell: (v) => v || '—' },
     { id: 'demandeur', header: 'Demandeur', width: 160, accessor: (r) => r.demandeur_nom, cell: (v) => v || '—' },
@@ -259,6 +420,23 @@ function DemandesVehiculeTab() {
     { id: 'vehicule_attribue', header: 'Véhicule attribué', width: 160, accessor: (r) => r.vehicule_label, cell: (v) => v || '—' },
     { id: 'statut', header: 'Statut', width: 120, accessor: (r) => r.statut_display || r.statut, cell: (v) => v || '—' },
   ], [])
+
+  // WIR200 — la décision (approuver/refuser) n'existait sur AUCUN écran :
+  // rowActions sur les demandes encore au statut `demandee`.
+  const rowActions = (row) => {
+    if (row.statut !== 'demandee') return []
+    return [
+      { id: 'approuver', label: 'Approuver', onClick: () => setDecision({ demande: row, type: 'approuver' }) },
+      { id: 'refuser', label: 'Refuser', onClick: () => setDecision({ demande: row, type: 'refuser' }) },
+    ]
+  }
+
+  const filters = (
+    <Segmented
+      options={DEMANDE_VEHICULE_STATUT_FILTERS} value={statutFiltre}
+      onChange={setStatutFiltre} aria-label="Filtrer par statut"
+    />
+  )
 
   const actions = (
     <Button onClick={() => setShowForm(true)}>Demander un véhicule</Button>
@@ -269,9 +447,11 @@ function DemandesVehiculeTab() {
       <ListShell
         title="Demandes de véhicule"
         subtitle="Pool partagé : demande, décision et véhicule attribué."
+        filters={filters}
         actions={actions}
         columns={columns}
         rows={data}
+        rowActions={rowActions}
         loading={loading}
         error={error}
         exportName="demandes-vehicule"
@@ -282,6 +462,19 @@ function DemandesVehiculeTab() {
         <DemandeVehiculeDialog
           onClose={() => setShowForm(false)}
           onSaved={() => { setShowForm(false); reload(); toast.success('Demande enregistrée.') }}
+        />
+      )}
+      {decision && (
+        <DecisionDemandeVehiculeDialog
+          demande={decision.demande}
+          type={decision.type}
+          vehicules={vehicules}
+          onClose={() => setDecision(null)}
+          onDecided={() => {
+            setDecision(null)
+            reload()
+            toast.success(decision.type === 'approuver' ? 'Demande approuvée.' : 'Demande refusée.')
+          }}
         />
       )}
     </>
@@ -554,7 +747,9 @@ export default function ConducteursScreen() {
         <TabsContent value="reservations">
           <ReservationsTab conducteurs={conducteurs} vehicules={vehicules} />
         </TabsContent>
-        <TabsContent value="demandes"><DemandesVehiculeTab /></TabsContent>
+        <TabsContent value="demandes">
+          <DemandesVehiculeTab vehicules={vehicules} />
+        </TabsContent>
         <TabsContent value="etats">
           <EtatsDesLieuxTab conducteurs={conducteurs} vehicules={vehicules} />
         </TabsContent>

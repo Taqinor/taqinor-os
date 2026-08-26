@@ -163,6 +163,16 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
 
     def get_queryset(self):
         qs = _company_qs(super().get_queryset(), self.request.user)
+        # WIR225 — indicateur « ce devis EST la racine d'un groupe de
+        # variantes ». La liste ne savait le dire que du CÔTÉ ENFANT
+        # (`version`, `version_parent_ref`, `superseded_by_ref`) : sur la
+        # racine, les trois sont vides, donc son entrée « Voir les versions »
+        # disparaissait au premier rechargement — la comparaison n'était plus
+        # atteignable que juste après la création. Annotation `Exists` : UNE
+        # sous-requête pour toute la page, jamais un N+1.
+        from django.db.models import Exists, OuterRef
+        qs = qs.annotate(a_variantes_annote=Exists(
+            Devis.objects.filter(version_parent=OuterRef('pk'), is_active=True)))
         # NTPRT10 — un compte PORTAIL externe ne voit QUE les devis de SON
         # client, sur TOUTE action. Appliqué AVANT la portée interne (qui
         # raisonne sur `created_by`, notion sans objet pour un externe) : un
@@ -198,6 +208,11 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             # `permission_classes` de l'@action ne suffit PAS : get_permissions
             # PRIME et son repli est IsAdminRole).
             'suivi_partage', 'prefill_site',
+            # WIR217 — état du rendu PDF : une LECTURE pure, ouverte au même
+            # périmètre que la lecture du devis (la garde doit être ICI, cette
+            # surcharge PRIMANT sur le `permission_classes` de l'@action, qui
+            # déclare donc la MÊME classe pour ne jamais mentir).
+            'etat_pdf',
         ]:
             # variante_config : la LECTURE est ouverte à tous ; l'ÉCRITURE (PUT)
             # est re-vérifiée dans l'action (Directeur / Commercial responsable).
@@ -2004,8 +2019,47 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 {'detail': exc.message},
                 status=(status.HTTP_409_CONFLICT if exc.conflict
                         else status.HTTP_400_BAD_REQUEST))
-        return Response(
-            DevisSerializer(devis, context={'request': request}).data)
+        donnees = DevisSerializer(devis, context={'request': request}).data
+        donnees['credit_warning'] = self._credit_warning(devis)
+        return Response(donnees)
+
+    @staticmethod
+    def _credit_warning(devis):
+        """WIR187 (reprend NTCRD7/8) — état crédit du client APRÈS acceptation.
+
+        Le module crédit calculait déjà tout (limite, encours, mode de hold,
+        tolérance) mais l'écran de vente n'en voyait RIEN : un commercial
+        pouvait faire signer un client au-delà de sa limite sans que rien ne le
+        dise. La réponse d'acceptation porte donc désormais l'avertissement.
+
+        C'est un AVERTISSEMENT, jamais un verdict : le refus reste la garde
+        ``verifier_credit_hold`` plus haut (XFAC28), déjà appliquée avant
+        d'arriver ici. Lecture cross-app par le ``selectors.py`` de
+        ``apps.credit`` (jamais un import de ses models), en import
+        FONCTION-LOCAL — ``credit.selectors`` lit lui-même
+        ``ventes.selectors``, un import de module créerait un cycle.
+
+        Best-effort : le crédit ne doit JAMAIS casser une acceptation déjà
+        enregistrée. À défaut, on rend le contrat dans son état neutre
+        (``mode='aucun'``) plutôt qu'une clé absente que l'écran devrait
+        deviner. Contrat : ``apps/credit/contract_samples/credit_warning.json``.
+        """
+        neutre = {'mode': 'aucun', 'depassement': '0.00', 'disponible': None}
+        if devis.client_id is None:
+            return neutre
+        try:
+            from apps.credit.selectors import avertissement_credit
+            etat = avertissement_credit(devis.client, devis.total_ttc)
+        except Exception:  # noqa: BLE001 — jamais bloquant pour la vente
+            return neutre
+        disponible = etat.get('disponible')
+        return {
+            'mode': etat.get('mode') or 'aucun',
+            # Montants en TEXTE décimal (jamais un flottant) — même régime que
+            # les totaux du devis.
+            'depassement': str(etat.get('depassement') or 0),
+            'disponible': None if disponible is None else str(disponible),
+        }
 
     @staticmethod
     def _resolve_accepted_option(devis, data):
@@ -2666,10 +2720,57 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         from core.events import document_pdf_generated
         document_pdf_generated.send(
             sender=Devis, instance=devis, kind='devis')
+        # WIR217 — une nouvelle demande efface l'échec consigné : sinon un
+        # « Réessayer » repartirait déjà marqué en échec.
+        from ..tasks import oublier_echec_pdf_devis
+        oublier_echec_pdf_devis(devis.id)
         return Response(
             {'task_id': task.id, 'detail': 'Génération PDF lancée.'},
             status=status.HTTP_202_ACCEPTED,
         )
+
+    @action(
+        detail=True,
+        methods=['get'],
+        url_path='etat-pdf',
+        # Même garde que la LECTURE d'un devis (cf. get_permissions) : c'est un
+        # état de rendu, pas une donnée métier de plus.
+        permission_classes=[IsAnyRole],
+    )
+    def etat_pdf(self, request, pk=None):
+        """WIR217 — état de la génération du PDF : prêt / en cours / ÉCHEC.
+
+        Le sondage du frontend ne lisait que ``fichier_pdf`` : un échec
+        DÉFINITIF de ``task_generate_devis_pdf`` (retries épuisés) était donc
+        invisible et le sondage tournait sans fin. Cet endpoint expose l'état
+        consigné par la tâche (patron EXPORT_JOB, cache scopé société).
+
+        ``erreur``/``date`` ne sont renseignés QUE sur l'état ``echec`` ; un
+        rendu déjà prêt l'emporte toujours sur un échec plus ancien.
+        """
+        from django.core.cache import cache
+        from ..tasks import pdf_job_cache_key
+
+        devis = self.get_object()  # scoping société (404 hors société)
+        job = cache.get(pdf_job_cache_key(devis.pk)) or {}
+        # Défense en profondeur : jamais l'état d'une AUTRE société, même si
+        # une clé de cache venait à collisionner.
+        if job.get('company_id') not in (None, devis.company_id):
+            job = {}
+        pret = bool(devis.fichier_pdf)
+        if pret:
+            statut = 'pret'
+        elif job.get('status') == 'error':
+            statut = 'echec'
+        else:
+            statut = 'en_cours'
+        return Response({
+            'devis': devis.pk,
+            'statut': statut,
+            'fichier_pdf': pret,
+            'erreur': job.get('error') if statut == 'echec' else None,
+            'date': job.get('at') if statut == 'echec' else None,
+        })
 
     @action(
         detail=True,

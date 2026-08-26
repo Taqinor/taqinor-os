@@ -162,8 +162,25 @@ const rhApi = {
   getFeuillesTemps: (params) => api.get('/rh/feuilles-temps/', { params }),
   getHeuresSupp: (params) => api.get('/rh/heures-supp/', { params }),
   getRoster: (params) => api.get('/rh/roster/', { params }),
+  // WIR238 — création/édition d'une affectation roster (`semaine_du` et
+  // `conflit_conge` sont toujours CALCULÉS côté serveur, jamais envoyés).
+  createRoster: (data) => api.post('/rh/roster/', data),
+  updateRoster: (id, data) => api.patch(`/rh/roster/${id}/`, data),
+  getConflitsRoster: (params) => api.get('/rh/roster/conflits/', { params }),
   getPresencesChantier: (params) => api.get('/rh/presences-chantier/', { params }),
+  // WIR239 — émargement de présence chantier (colonne Geofence morte faute
+  // d'appelant) : accepte optionnellement gps_lat/gps_lng (drapeau hors_zone
+  // posé côté serveur, jamais bloquant).
+  emargerPresenceChantier: (id, data) =>
+    api.post(`/rh/presences-chantier/${id}/emarger/`, data ?? {}),
   getIncidentsPresence: (params) => api.get('/rh/incidents-presence/', { params }),
+  // WIR195 — un incident (retard/absence injustifiée) était créé depuis
+  // Temps.jsx (`genererIncidentAbsence`) mais jamais relisible ni justifiable
+  // (trou noir d'écriture) : wrappers de régularisation + compteur.
+  justifierIncidentPresence: (id, data) =>
+    api.post(`/rh/incidents-presence/${id}/justifier/`, data ?? {}),
+  getCompteurIncidentsPresence: (params) =>
+    api.get('/rh/incidents-presence/compteur/', { params }),
   // XRH11 — correction d'un pointage (motif obligatoire) + audit immuable.
   updatePointage: (id, data) => api.patch(`/rh/pointages/${id}/`, data),
   getCorrectionsPointage: (id) =>
@@ -214,6 +231,10 @@ const rhApi = {
   marquerSessionRealisee: (id, data) =>
     api.post(`/rh/sessions-formation/${id}/marquer-realisee/`, data ?? {}),
   getBesoinsFormation: (params) => api.get('/rh/besoins-formation/', { params }),
+  // WIR239 — bascule un besoin de formation en « satisfait » (400 si la
+  // session liée n'est pas réalisée — affiché tel quel).
+  satisfaireBesoinFormation: (id) =>
+    api.post(`/rh/besoins-formation/${id}/satisfaire/`, {}),
   // ── XRH34 — Quiz builder (gestion RH — porte les bonnes réponses ; ARC44) ──
   getQuizFormation: (params) => quizFormationResource.list(params),
   createQuizFormation: (data) => quizFormationResource.create(data),
@@ -242,8 +263,30 @@ const rhApi = {
   // ── UX26 — EPI, recrutement & évaluations ──
   getEpiCatalogue: (params) => api.get('/rh/epi-catalogue/', { params }),
   getDotationsEpi: (params) => api.get('/rh/dotations-epi/', { params }),
+  // WIR194 — cycle complet de la dotation EPI (preuve CNSS / accident du
+  // travail) : jusqu'ici 100 % lecture seule, aucun wrapper d'écriture.
+  createDotationEpi: (data) => api.post('/rh/dotations-epi/', data),
+  restituerDotationEpi: (id) =>
+    api.post(`/rh/dotations-epi/${id}/restituer/`, {}),
+  emargerDotationEpi: (id, data) =>
+    api.post(`/rh/dotations-epi/${id}/emarger/`, data),
+  getEmargementsDotationEpi: (id) =>
+    api.get(`/rh/dotations-epi/${id}/emargements/`),
   getOuverturesPoste: (params) => api.get('/rh/ouvertures-poste/', { params }),
   createOuverturePoste: (data) => api.post('/rh/ouvertures-poste/', data),
+  // WIR196 — YHIRE14 : cycle d'approbation amont (brouillon → en_approbation
+  // → ouvert), séparation des tâches (approbateur ≠ demandeur côté serveur,
+  // refusé en 400 sinon). Une ouverture créée restait bloquée à vie en
+  // brouillon faute de ces wrappers.
+  soumettreOuverturePoste: (id) =>
+    api.post(`/rh/ouvertures-poste/${id}/soumettre/`, {}),
+  approuverOuverturePoste: (id) =>
+    api.post(`/rh/ouvertures-poste/${id}/approuver/`, {}),
+  refuserOuverturePoste: (id, data) =>
+    api.post(`/rh/ouvertures-poste/${id}/refuser/`, data ?? {}),
+  // WIR196 — clôture d'une campagne d'appréciation annuelle (FG190).
+  cloturerCampagneEvaluation: (id) =>
+    api.post(`/rh/campagnes-evaluation/${id}/cloturer/`, {}),
   getCandidatures: (params) => api.get('/rh/candidatures/', { params }),
   createCandidature: (data) => api.post('/rh/candidatures/', data),
   updateCandidature: (id, data) => api.patch(`/rh/candidatures/${id}/`, data),
@@ -287,6 +330,12 @@ const rhApi = {
     api.get(`/rh/candidatures/${id}/historique/`),
   noterCandidature: (id, data) =>
     api.post(`/rh/candidatures/${id}/noter/`, data ?? {}),
+  // WIR241 — dédup candidatures : avertissement NON bloquant à la saisie
+  // (`?telephone=&email=&exclude=`) + fusion d'une source dans une cible.
+  checkCandidatureDuplicates: (params) =>
+    api.get('/rh/candidatures/check-duplicates/', { params }),
+  fusionnerCandidature: (id, data) =>
+    api.post(`/rh/candidatures/${id}/fusionner/`, data ?? {}),
   // Statistiques recrutement (XRH22).
   getRecrutementStatistiques: (params) =>
     api.get('/rh/recrutement/statistiques/', { params }),
@@ -319,12 +368,20 @@ const rhApi = {
   getAccidentsTravail: (params) => api.get('/rh/accidents-travail/', { params }),
   // WIR36 — wrapper d'écriture manquant (ViewSet full CRUD, aucun appelant).
   createAccidentTravail: (data) => api.post('/rh/accidents-travail/', data),
+  // WIR239 — export CSV de la déclaration CNSS des accidents du travail
+  // (colonnes matricule/identité/dates/gravité/arrêt/déclaration — blob).
+  exportAccidentsCnss: (params) =>
+    api.get('/rh/accidents-travail/export-cnss/', { params, responseType: 'blob' }),
   getPresquAccidents: (params) => api.get('/rh/presqu-accidents/', { params }),
   // WIR36 — idem : presqu'accident (near-miss).
   createPresquAccident: (data) => api.post('/rh/presqu-accidents/', data),
   getCauseriesSecurite: (params) => api.get('/rh/causeries-securite/', { params }),
   // WIR36 — idem : causerie de sécurité (toolbox talk).
   createCauserieSecurite: (data) => api.post('/rh/causeries-securite/', data),
+  // WIR239 — émargement d'un participant à une causerie (FG183, présence
+  // signée) : corps { participant }, déjà figurer sur la feuille sinon 400.
+  emargerCauserieParticipant: (id, data) =>
+    api.post(`/rh/causeries-securite/${id}/emarger/`, data ?? {}),
   getAnalysesRisques: (params) =>
     api.get('/rh/analyses-risques-chantier/', { params }),
   validerAnalyseRisques: (id, data) =>
@@ -380,6 +437,10 @@ const rhApi = {
   // ── PACT81 — Permis de conduire (FG197) & affectations véhicule (FG198) ──
   getPermisConduire: (params) => api.get('/rh/permis-conduire/', { params }),
   createPermisConduire: (data) => api.post('/rh/permis-conduire/', data),
+  // WIR241 — permis de conduire expirant sous ?within= jours (défaut 30),
+  // exclut les permis sans échéance et déjà expirés.
+  getPermisExpirantBientot: (params) =>
+    api.get('/rh/permis-conduire/expirant-bientot/', { params }),
   getAffectationsVehicule: (params) =>
     api.get('/rh/affectations-vehicule/', { params }),
   createAffectationVehicule: (data) =>
@@ -438,6 +499,11 @@ const rhApi = {
     api.post('/rh/elements-variables-paie/', data),
   updateElementVariablePaie: (id, data) =>
     api.patch(`/rh/elements-variables-paie/${id}/`, data),
+  // WIR239 (PACT162) — export CSV serveur du bordereau (remplace l'export
+  // client trompeur : la colonne Retenues additionne les avances sur
+  // salaire APPROUVÉES à déduire sur la même période — jamais recalculé ici).
+  exportBordereauPaieCsv: (params) =>
+    api.get('/rh/elements-variables-paie/export-paie-csv/', { params, responseType: 'blob' }),
   marquerExporteElementVariablePaie: (id) =>
     api.post(`/rh/elements-variables-paie/${id}/marquer-exporte/`, {}),
 

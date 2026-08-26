@@ -8,6 +8,9 @@ import { formatDate } from '../../lib/format'
 import useMagasinResource from './useMagasinResource'
 import { sortPickListLignesByBin, pickListProgress } from './magasin'
 import { PickListStatutPill } from './statusPills'
+// WIR193 — le panneau scan-first XSTK5 existait, testé, mais n'était monté
+// nulle part : il vit désormais dans l'onglet « Scan » du bon ouvert.
+import PickingScanPanel from './scan/PickingScanPanel'
 
 /* ============================================================================
    XSTK1 — Bons de prélèvement (`/magasin/prelevements`).
@@ -24,9 +27,17 @@ const STATUT_FILTERS = [
   { value: 'termine', label: 'Terminé' },
 ]
 
+// WIR193 — deux vues du MÊME bon : la coche manuelle (historique) et le
+// scan-first XSTK5. `Segmented` sert d'onglet ; aucune donnée n'est dupliquée.
+const VUES = [
+  { value: 'liste', label: 'Liste' },
+  { value: 'scan', label: 'Scan' },
+]
+
 function PickListDetail({ pickList, onClose, onChanged }) {
   const [lignes, setLignes] = useState(sortPickListLignesByBin(pickList.lignes))
   const [busyLigneId, setBusyLigneId] = useState(null)
+  const [vue, setVue] = useState('liste')
   // XSTK1 — `PickListDetail` n'est pas remonté (pas de `key`) quand
   // `selected` change de bon : on resynchronise `lignes` PENDANT le rendu
   // (au lieu d'un effect qui déclenche un second rendu en cascade) en
@@ -84,6 +95,15 @@ function PickListDetail({ pickList, onClose, onChanged }) {
           />
         </div>
         <div className="flex items-center gap-2">
+          {/* WIR193 — bascule Liste ↔ Scan (XSTK5). Le panneau de scan est
+              monté seulement quand l'onglet est actif : il recharge le bon
+              par son id et refuse tout scan hors bon. */}
+          <Segmented
+            options={VUES}
+            value={vue}
+            onChange={setVue}
+            aria-label="Mode de prélèvement"
+          />
           <PickListStatutPill status={pickList.statut} />
           {pickList.statut === 'emis' && (
             <Button size="sm" onClick={demarrer}>Démarrer</Button>
@@ -95,7 +115,9 @@ function PickListDetail({ pickList, onClose, onChanged }) {
         </div>
       </div>
 
-      {lignes.length === 0 ? (
+      {vue === 'scan' ? (
+        <PickingScanPanel pickListId={pickList.id} />
+      ) : lignes.length === 0 ? (
         <EmptyState title="Aucune ligne" description="Ce bon ne contient aucune ligne de prélèvement." />
       ) : (
         <ul className="flex flex-col divide-y divide-border">

@@ -147,6 +147,180 @@ function Info({ label, value, meta, tone }) {
   )
 }
 
+/* Message d'un refus serveur, RENDU TEL QUEL. Un 400 de `changer-statut`
+   arrive en `{statut: ["…"]}` (ValidationError DRF) ou en `{detail: "…"}` : la
+   phrase du serveur NOMME les statuts atteignables, donc on ne la remplace
+   jamais par un « erreur » générique. */
+function messageRefus(e, repli) {
+  const data = e?.response?.data
+  if (typeof data === 'string' && data.trim()) return data
+  if (data && typeof data === 'object') {
+    const phrases = Object.values(data)
+      .flatMap((v) => (Array.isArray(v) ? v : [v]))
+      .filter((v) => typeof v === 'string' && v.trim())
+    if (phrases.length) return phrases.join(' ')
+  }
+  return repli
+}
+
+/* ── WIR206 — Barre de statut : les cibles viennent du SERVEUR, point ───────
+   Les vues « Gagnées »/« Perdues » restaient structurellement vides : aucun
+   écran n'appelait `changer-statut`, donc aucune affaire n'atteignait jamais
+   ces statuts. Trois règles, toutes tenues ici :
+
+     1. les cibles proposées sont EXCLUSIVEMENT celles que
+        `GET …/transitions/` renvoie — l'écran ne connaît pas le graphe et ne
+        le devine pas ;
+     2. l'écriture passe par `POST …/changer-statut/`, jamais par un PATCH du
+        champ `statut` (que le sérialiseur ignorerait en silence) ;
+     3. un refus est affiché TEL QUEL, sans changer le statut à l'écran. */
+function BarreStatut({ affaireId, statut, onChange }) {
+  const { data: transitions, loading, refetch } = useResource(
+    () => aoApi.affaires.transitions(affaireId), [affaireId, statut],
+    { select: (res) => res.data, errorMessage: () => '' },
+  )
+  const [enCours, setEnCours] = useState(null)
+  const [refus, setRefus] = useState(null)
+
+  const cibles = transitions?.transitions ?? []
+
+  const aller = async (cible) => {
+    setRefus(null)
+    setEnCours(cible.valeur)
+    try {
+      await aoApi.affaires.changerStatut(affaireId, cible.valeur)
+      toast.success(`Statut : ${cible.libelle}.`)
+      await onChange?.()
+      refetch()
+    } catch (e) {
+      setRefus(messageRefus(e, 'Le serveur a refusé ce changement de statut.'))
+    } finally {
+      setEnCours(null)
+    }
+  }
+
+  return (
+    <Card className="flex flex-col gap-2 p-4" data-ao-barre-statut={statut}>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs text-muted-foreground">Statut</span>
+        <Badge>{transitions?.statut_display || statut}</Badge>
+        {loading && <span className="text-xs text-muted-foreground">Chargement…</span>}
+        {!loading && cibles.length === 0 && (
+          <span className="text-xs text-muted-foreground" data-ao-statut-terminal>
+            Aucune transition possible depuis ce statut.
+          </span>
+        )}
+        {cibles.map((cible) => (
+          <Button
+            key={cible.valeur}
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={enCours != null}
+            onClick={() => aller(cible)}
+            data-ao-transition={cible.valeur}
+          >
+            {cible.libelle}
+          </Button>
+        ))}
+      </div>
+      {refus && (
+        <p role="alert" className="text-sm text-destructive" data-ao-statut-refus>
+          {refus}
+        </p>
+      )}
+    </Card>
+  )
+}
+
+/* ── WIR206 — Le lead lié : fiche-carte + rattacher / détacher ──────────────
+   `GET …/lead/` sert `{lead_id, fiche}` ; `POST …/rattacher-lead/` écrit (un
+   identifiant vide DÉTACHE, et un lead d'une autre société est refusé côté
+   serveur — l'écran ne re-valide rien, il montre le refus). */
+function FicheLeadLiee({ affaireId }) {
+  const { data: lien, loading, refetch } = useResource(
+    () => aoApi.affaires.lead(affaireId), affaireId,
+    { select: (res) => res.data, errorMessage: () => '' },
+  )
+  const [saisie, setSaisie] = useState('')
+  const [enCours, setEnCours] = useState(false)
+  const [refus, setRefus] = useState(null)
+
+  const ecrire = async (valeur, succes) => {
+    setRefus(null)
+    setEnCours(true)
+    try {
+      await aoApi.affaires.rattacherLead(affaireId, valeur)
+      toast.success(succes)
+      setSaisie('')
+      refetch()
+    } catch (e) {
+      setRefus(messageRefus(e, 'Le serveur a refusé ce rattachement.'))
+    } finally {
+      setEnCours(false)
+    }
+  }
+
+  const fiche = lien?.fiche ?? null
+
+  return (
+    <Card className="flex flex-col gap-3 p-4" data-ao-lead={lien?.lead_id ?? ''}>
+      <h3 className="font-display text-base font-semibold">Lead lié</h3>
+      {loading && <Skeleton className="h-10 w-full" />}
+      {!loading && fiche && (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <Link to={fiche.url} className="font-medium underline-offset-4 hover:underline">
+              {fiche.label}
+            </Link>
+            {fiche.subtitle && (
+              <p className="text-xs text-muted-foreground">{fiche.subtitle}</p>
+            )}
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={enCours}
+            onClick={() => ecrire(null, 'Lead détaché.')}
+            data-ao-detacher-lead
+          >
+            Détacher
+          </Button>
+        </div>
+      )}
+      {!loading && !fiche && (
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="flex flex-col gap-1 text-xs text-muted-foreground" htmlFor="ao-lead-id">
+            Identifiant du lead à rattacher
+            <input
+              id="ao-lead-id"
+              className="form-control h-9 rounded-md border border-input bg-card px-2 text-sm text-foreground"
+              value={saisie}
+              onChange={(e) => setSaisie(e.target.value)}
+              inputMode="numeric"
+            />
+          </label>
+          <Button
+            type="button"
+            size="sm"
+            disabled={enCours || !saisie.trim()}
+            onClick={() => ecrire(saisie.trim(), 'Lead rattaché.')}
+            data-ao-rattacher-lead
+          >
+            Rattacher
+          </Button>
+        </div>
+      )}
+      {refus && (
+        <p role="alert" className="text-sm text-destructive" data-ao-lead-refus>
+          {refus}
+        </p>
+      )}
+    </Card>
+  )
+}
+
 /* Frontière de chargement d'un panneau : repli SQUELETTE (jamais un spinner
    nu, jamais une page blanche) — même contrat que les routes du routeur. */
 function PanneauDiffere({ children }) {
@@ -397,7 +571,7 @@ export default function AffaireDetail() {
   // Sans lui, `affaire` valait la réponse axios entière et TOUS les champs de
   // la fiche étaient lus un cran trop haut : titre « #undefined », objet,
   // statut et bandeau vides. Même convention que `DashboardPage.jsx`.
-  const { data: affaire, loading, error } = useResource(
+  const { data: affaire, loading, error, refetch: refetchAffaire } = useResource(
     () => aoApi.affaires.get(id), id,
     { select: (res) => res.data, errorMessage: 'Affaire introuvable.' },
   )
@@ -484,6 +658,15 @@ export default function AffaireDetail() {
           label: 'Synthèse',
           content: (
             <div className="flex flex-col gap-4">
+              {/* WIR206 — la barre de statut d'abord : c'est le geste qui fait
+                  vivre les vues « Gagnées »/« Perdues », restées vides tant
+                  qu'aucun écran n'appelait `changer-statut`. */}
+              <BarreStatut
+                affaireId={id}
+                statut={affaire.statut}
+                onChange={refetchAffaire}
+              />
+              <FicheLeadLiee affaireId={id} />
               <VerdictBandeau affaire={affaire} />
               <Card className="p-4">
                 <dl className="grid gap-x-8 gap-y-3 sm:grid-cols-2">

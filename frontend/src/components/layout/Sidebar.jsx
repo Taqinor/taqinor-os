@@ -22,7 +22,9 @@ import { useOnboardingSteps } from '../../features/onboarding/onboardingHelpers'
 // d'imports dynamiques que le routeur ; no-op sous Data Saver/2G).
 import { prefetchRoute } from '../../router/prefetchMap'
 // ODX6 — gating par module actif/désactivé (source unique = /auth/me/).
-import { filterNavSections, selectModulesDesactives } from '../../router/moduleGating'
+// WIR171 — `estAutoriseEntree` est la SOURCE UNIQUE du gating palier ×
+// permission (miroir de `HasPermissionOrLegacy` quand l'entrée le déclare).
+import { filterNavSections, selectModulesDesactives, estAutoriseEntree } from '../../router/moduleGating'
 // ODY4 — l'app active dérivée de la route + le kill-switch de bascule (ODY30).
 import {
   useActiveApp, APPS_SHELL_ENABLED, HOME_MENU_PATH, ORPHAN_NAV_ITEMS,
@@ -201,7 +203,7 @@ export default function Sidebar({ collapsed, onToggle, onNavigate }) {
         <nav className="sidebar-nav">
           {legacySections.map((section, si) => {
             const items = section.items.filter(
-              (it) => it.roles.includes(role) && (!it.perm || permissions.includes(it.perm)))
+              (it) => estAutoriseEntree(it, role, permissions))
             if (items.length === 0) return null
             const accentStyle = section.accent
               ? { '--module-accent': `var(--module-accent-${section.accent})` }

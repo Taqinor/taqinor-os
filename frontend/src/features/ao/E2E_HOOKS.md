@@ -267,3 +267,31 @@ les deux sens.
 | `data-ao-raisons-non-publiabilite` | Liste des calepinages (`VariantesListPage`, PV59) | Le dépliant des raisons de non-publiabilité servies par la garde serveur. |
 | `data-ao-synthese-calepinage` | Onglet Calepinages de l'affaire (`AffaireDetail`, PV68/PV59) | Le bloc « Synthèse » multi-toitures (Σ modules/kWc des variantes retenues). |
 | `data-ao-synthese-toitures` | Onglet Calepinages de l'affaire (`AffaireDetail`, PV68/PV59) | La ligne par toiture de la synthèse (calepinée ou non, jamais masquée). |
+| `data-ao-ecarte` | Liste des obstacles (`ObstaclesList`, WIR205) | Un obstacle ÉCARTÉ (état serveur `est_ecarte`), sorti du compte engagé, jamais réactivé à la sauvegarde. |
+| `data-ao-ecartement` | Liste des obstacles (`ObstaclesList`, WIR205) | Le dialogue d'écartement — motif OBLIGATOIRE avant confirmation. |
+| `data-ao-ecarter` | Liste des obstacles (`ObstaclesList`, WIR205) | Le bouton « Écarter » d'un obstacle sauvegardé (désactivé avec raison sinon). |
+| `data-ao-ecarter-confirmer` | Dialogue d'écartement (`ObstaclesList`, WIR205) | La confirmation d'écartement, gâtée par la présence du motif. |
+| `data-ao-fermeture-erreur` | Panneau des fermetures (`FermeturesPanel`, WIR205) | L'erreur serveur de compensation rendue VERBATIM (jamais un calcul client). |
+| `data-ao-obstacles-erreur` | Liste des obstacles (`ObstaclesList`, WIR205) | L'erreur serveur d'écartement/réintégration rendue verbatim. |
+| `data-ao-reintegrer` | Liste des obstacles (`ObstaclesList`, WIR205) | Le bouton « Réintégrer » d'un obstacle écarté (retour dans le compte engagé). |
+| `data-ao-barre-statut` | Fiche affaire (`AffaireDetail`, WIR206) | La barre de statut dont les cibles viennent EXCLUSIVEMENT de `GET transitions/`. |
+| `data-ao-detacher-lead` | Carte « Lead lié » (`AffaireDetail`, WIR206) | Le bouton de détachement du lead rattaché. |
+| `data-ao-dossier-raisons` | Page dossier (`DossierPage`, WIR206) | Le dépliant `raisons_de_non_depot` servi par la garde `pret_a_deposer`. |
+| `data-ao-dossier-statut` | Page dossier (`DossierPage`, WIR206) | La barre de statut du dossier, servie par le champ dérivé `transitions` du serializer. |
+| `data-ao-dossier-statut-refus` | Page dossier (`DossierPage`, WIR206) | Le refus 400 de transition rendu mot pour mot, sans bouger le statut affiché. |
+| `data-ao-dossier-terminal` | Page dossier (`DossierPage`, WIR206) | L'état terminal du dossier (aucune transition servie) affiché comme tel. |
+| `data-ao-dossier-transition` | Page dossier (`DossierPage`, WIR206) | UN bouton de transition du dossier — un par cible servie, jamais un graphe local. |
+| `data-ao-lead` | Carte « Lead lié » (`AffaireDetail`, WIR206) | La carte du lead rattaché (fiche-carte servie par `GET lead/`), portant son id. |
+| `data-ao-lead-refus` | Carte « Lead lié » (`AffaireDetail`, WIR206) | Le refus serveur de rattachement/détachement rendu verbatim. |
+| `data-ao-rattacher-lead` | Carte « Lead lié » (`AffaireDetail`, WIR206) | Le formulaire de rattachement d'un lead à l'affaire. |
+| `data-ao-statut-refus` | Fiche affaire (`AffaireDetail`, WIR206) | Le refus 400 de transition d'affaire rendu mot pour mot, statut affiché intact. |
+| `data-ao-statut-terminal` | Fiche affaire (`AffaireDetail`, WIR206) | L'état terminal de l'affaire (gagnée/perdue/abandonnée) sans aucune cible. |
+| `data-ao-transition` | Fiche affaire (`AffaireDetail`, WIR206) | UN bouton de transition d'affaire — un par cible servie par le serveur. |
+| `data-ao-appliquer-preset` | Atelier toiture (`ToituresPage`, WIR207) | Le bouton d'application d'un preset de toiture (action serveur `appliquer-preset`). |
+| `data-ao-preset-refus` | Atelier toiture (`ToituresPage`, WIR207) | Le refus serveur d'application de preset rendu verbatim. |
+| `data-ao-presets` | Atelier toiture (`ToituresPage`, WIR207) | Le sélecteur de presets servi par le serveur. |
+| `data-ao-presets-vide` | Atelier toiture (`ToituresPage`, WIR207) | L'état « aucun preset » écrit, jamais un sélecteur muet. |
+| `data-ao-regeneration-refus` | Page dossier (`DossierPage`, WIR207) | L'échec de régénération du dossier complet rendu à la FIN du job, verbatim. |
+| `data-ao-regenerer` | Ligne de pièce (`PieceRow`, WIR207) | Le bouton honnête « Régénérer le dossier complet » (jamais « une pièce »). |
+| `data-ao-trancher` | Fiche question (`QuestionFiche`, WIR207) | Le panneau de tranchage d'une question terrain (4 actions serveur). |
+| `data-ao-trancher-valider` | Fiche question (`QuestionFiche`, WIR207) | La validation du tranchage, avec provenance/statut conditionnels. |

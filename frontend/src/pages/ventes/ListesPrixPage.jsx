@@ -119,29 +119,89 @@ export default function ListesPrixPage() {
 
       {detail && (
         <ListeDetailDialog
+          // WIR226 — l'état d'édition est initialisé depuis la liste : sans
+          // cette clé, ouvrir une AUTRE liste réutiliserait l'instance et
+          // garderait les valeurs de la précédente.
+          key={detail.id}
           liste={detail}
           produits={produits}
           onClose={() => setDetail(null)}
           onChanged={() => { refreshDetail(detail.id); reload() }}
+          // WIR226 — après suppression il n'y a plus rien à rafraîchir : on
+          // ferme le détail et on recharge la liste.
+          onDeleted={() => { setDetail(null); reload() }}
         />
       )}
     </div>
   )
 }
 
+/* WIR226 — Les quatre champs qui décident de la RÉSOLUTION de prix
+   (`services.prix_applicable`) : le nom, la devise, le segment client ciblé et
+   la fenêtre de validité. Le formulaire de création n'en proposait que deux, et
+   AUCUN n'était modifiable ensuite — d'où la même définition ici, partagée par
+   la création et l'édition. */
+function ChampsListe({ prefixe, valeurs, setValeur }) {
+  return (
+    <>
+      <div className="grid gap-1.5">
+        <Label htmlFor={`${prefixe}-nom`} required>Nom</Label>
+        <Input id={`${prefixe}-nom`} value={valeurs.nom}
+               onChange={(e) => setValeur('nom', e.target.value)}
+               placeholder="ex : Revendeur" />
+      </div>
+      <div className="grid gap-1.5">
+        <Label htmlFor={`${prefixe}-devise`}>Devise</Label>
+        <Input id={`${prefixe}-devise`} value={valeurs.devise}
+               onChange={(e) => setValeur('devise', e.target.value)} />
+      </div>
+      <div className="grid gap-1.5">
+        <Label htmlFor={`${prefixe}-segment`}>Segment client ciblé</Label>
+        <Input id={`${prefixe}-segment`} value={valeurs.segment_client}
+               onChange={(e) => setValeur('segment_client', e.target.value)}
+               placeholder="vide = tous les clients" />
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="grid gap-1.5">
+          <Label htmlFor={`${prefixe}-debut`}>Valide à partir du</Label>
+          <Input id={`${prefixe}-debut`} type="date" value={valeurs.date_debut}
+                 onChange={(e) => setValeur('date_debut', e.target.value)} />
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor={`${prefixe}-fin`}>Valide jusqu’au</Label>
+          <Input id={`${prefixe}-fin`} type="date" value={valeurs.date_fin}
+                 onChange={(e) => setValeur('date_fin', e.target.value)} />
+        </div>
+      </div>
+    </>
+  )
+}
+
+// Champs vides = « non renseigné » : on ne les envoie PAS à la création (le
+// serveur garde ses défauts) et on les envoie en `null`/`''` à l'édition, seul
+// moyen d'EFFACER une date déjà posée.
+const CHAMPS_VIDES = {
+  nom: '', devise: 'MAD', segment_client: '', date_debut: '', date_fin: '',
+}
+
 function CreateListeDialog({ onClose, onCreated }) {
-  const [nom, setNom] = useState('')
-  const [devise, setDevise] = useState('MAD')
+  const [valeurs, setValeurs] = useState(CHAMPS_VIDES)
+  const setValeur = (k, v) => setValeurs((s) => ({ ...s, [k]: v }))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    if (!nom.trim()) { setError('Le nom est requis.'); return }
+    const nom = valeurs.nom.trim()
+    if (!nom) { setError('Le nom est requis.'); return }
     setBusy(true)
     setError(null)
     try {
-      await ventesApi.createListePrix({ nom: nom.trim(), devise })
+      const payload = { nom, devise: valeurs.devise }
+      if (valeurs.segment_client.trim()) payload.segment_client = valeurs.segment_client.trim()
+      if (valeurs.date_debut) payload.date_debut = valeurs.date_debut
+      if (valeurs.date_fin) payload.date_fin = valeurs.date_fin
+      await ventesApi.createListePrix(payload)
       onCreated()
     } catch (err) {
       setError(err?.response?.data?.detail || 'La création a échoué.')
@@ -160,15 +220,7 @@ function CreateListeDialog({ onClose, onCreated }) {
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} noValidate className="grid gap-4">
-          <div className="grid gap-1.5">
-            <Label htmlFor="lp-nom" required>Nom</Label>
-            <Input id="lp-nom" value={nom} autoFocus
-                   onChange={(e) => setNom(e.target.value)} placeholder="ex : Revendeur" />
-          </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="lp-devise">Devise</Label>
-            <Input id="lp-devise" value={devise} onChange={(e) => setDevise(e.target.value)} />
-          </div>
+          <ChampsListe prefixe="lp" valeurs={valeurs} setValeur={setValeur} />
           {error && (
             <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
               {error}
@@ -184,9 +236,67 @@ function CreateListeDialog({ onClose, onCreated }) {
   )
 }
 
-function ListeDetailDialog({ liste, produits, onClose, onChanged }) {
+function ListeDetailDialog({ liste, produits, onClose, onChanged, onDeleted }) {
   const [addLigneOpen, setAddLigneOpen] = useState(false)
   const [addRegleOpen, setAddRegleOpen] = useState(false)
+
+  /* WIR226 — L'écran était Create + Read : une liste ne pouvait être ni
+     renommée, ni re-datée, ni ciblée sur un segment, ni archivée, ni
+     supprimée — alors que `patchListePrix` et `deleteListePrix` existaient
+     depuis toujours côté client ET serveur. Une liste devenue fausse restait
+     donc dans la résolution de prix POUR TOUJOURS. */
+  const [valeurs, setValeurs] = useState({
+    nom: liste.nom ?? '',
+    devise: liste.devise ?? 'MAD',
+    segment_client: liste.segment_client ?? '',
+    date_debut: liste.date_debut ?? '',
+    date_fin: liste.date_fin ?? '',
+  })
+  const setValeur = (k, v) => setValeurs((s) => ({ ...s, [k]: v }))
+  const [busy, setBusy] = useState(false)
+  const [erreur, setErreur] = useState(null)
+  const [confirmSuppr, setConfirmSuppr] = useState(false)
+
+  const echec = (err, repli) =>
+    setErreur(err?.response?.data?.detail || repli)
+
+  const enregistrer = async () => {
+    if (!valeurs.nom.trim()) { setErreur('Le nom est requis.'); return }
+    setBusy(true); setErreur(null)
+    try {
+      await ventesApi.patchListePrix(liste.id, {
+        nom: valeurs.nom.trim(),
+        devise: valeurs.devise,
+        segment_client: valeurs.segment_client.trim(),
+        // Champ vidé ⇒ `null` : seul moyen d'EFFACER une date déjà posée.
+        date_debut: valeurs.date_debut || null,
+        date_fin: valeurs.date_fin || null,
+      })
+      onChanged()
+    } catch (err) { echec(err, "L'enregistrement a échoué.") } finally { setBusy(false) }
+  }
+
+  const basculerArchive = async () => {
+    setBusy(true); setErreur(null)
+    try {
+      // Une liste archivée est EXCLUE de la résolution de prix (le modèle le
+      // décide) : c'est le retrait NON destructif, à préférer à la suppression.
+      await ventesApi.patchListePrix(liste.id, { archived: !liste.archived })
+      onChanged()
+    } catch (err) { echec(err, "Le changement d'état a échoué.") } finally { setBusy(false) }
+  }
+
+  const supprimer = async () => {
+    setBusy(true); setErreur(null)
+    try {
+      await ventesApi.deleteListePrix(liste.id)
+      setConfirmSuppr(false)
+      onDeleted()
+    } catch (err) {
+      setConfirmSuppr(false)
+      echec(err, 'La suppression a échoué.')
+    } finally { setBusy(false) }
+  }
 
   const produitNom = (id) => produits.find(p => String(p.id) === String(id))?.nom || `Produit #${id}`
 
@@ -196,11 +306,45 @@ function ListeDetailDialog({ liste, produits, onClose, onChanged }) {
         <DialogHeader>
           <DialogTitle>{liste.nom}</DialogTitle>
           <DialogDescription>
-            Prix fixés par produit + règles de paliers (quantité, remise, formule).
+            Définition de la liste, prix fixés par produit et règles de paliers
+            (quantité, remise, formule).
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
+          {/* ── WIR226 — Définition modifiable ────────────────────────────── */}
+          <div>
+            <div className="mb-2 flex items-center justify-between">
+              <h4 className="text-sm font-semibold">Définition</h4>
+              {liste.archived && (
+                <span className="text-xs text-muted-foreground">
+                  Archivée — exclue de la résolution de prix.
+                </span>
+              )}
+            </div>
+            <div className="grid gap-4">
+              <ChampsListe prefixe="ed" valeurs={valeurs} setValeur={setValeur} />
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" size="sm" loading={busy} onClick={enregistrer}>
+                  Enregistrer les modifications
+                </Button>
+                <Button type="button" size="sm" variant="outline" disabled={busy}
+                        onClick={basculerArchive}>
+                  {liste.archived ? 'Réactiver' : 'Archiver'}
+                </Button>
+                <Button type="button" size="sm" variant="destructive" disabled={busy}
+                        onClick={() => setConfirmSuppr(true)}>
+                  Supprimer
+                </Button>
+              </div>
+              {erreur && (
+                <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+                  {erreur}
+                </div>
+              )}
+            </div>
+          </div>
+
           <div>
             <div className="mb-2 flex items-center justify-between">
               <h4 className="text-sm font-semibold">Prix fixés</h4>
@@ -267,6 +411,31 @@ function ListeDetailDialog({ liste, produits, onClose, onChanged }) {
           onClose={() => setAddRegleOpen(false)}
           onSaved={() => { setAddRegleOpen(false); onChanged() }}
         />
+      )}
+      {/* WIR226 — la suppression est DÉFINITIVE : elle est confirmée, et le
+          message oriente vers l'archivage, qui retire la liste de la
+          résolution de prix sans rien détruire. */}
+      {confirmSuppr && (
+        <Dialog open onOpenChange={(o) => { if (!o) setConfirmSuppr(false) }}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Supprimer « {liste.nom} » ?</DialogTitle>
+              <DialogDescription>
+                La liste, ses prix fixés et ses règles sont définitivement
+                supprimés, et elle disparaît du sélecteur de la fiche client.
+                Pour la retirer sans rien détruire, archivez-la.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button type="button" variant="ghost" onClick={() => setConfirmSuppr(false)}>
+                Annuler
+              </Button>
+              <Button type="button" variant="destructive" loading={busy} onClick={supprimer}>
+                Supprimer définitivement
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
     </Dialog>
   )

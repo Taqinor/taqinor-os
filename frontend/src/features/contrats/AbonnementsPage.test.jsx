@@ -27,11 +27,27 @@ vi.mock('../../api/axios', () => ({
   default: { get: (...args) => apiGet(...args), post: (...args) => apiPost(...args) },
 }))
 
+// WIR251 — import CSV compteurs (NTSUB31) + export xlsx catalogue (NTSUB21).
+// `vi.hoisted` : les mocks doivent exister AVANT que `vi.mock` (hoisté en
+// tête de fichier par Vitest) ne les referme — même patron que apiGet/apiPost.
+const { importerCompteursUsageCsv, exportCatalogueAbonnement } = vi.hoisted(() => ({
+  importerCompteursUsageCsv: vi.fn(() => Promise.resolve({ data: {
+    inserees: 0, mises_a_jour: 0, erreurs: [], apercu: true, ecraser: false,
+    conflits: [], ecrasements: 0, refuses: [], job_id: null,
+  } })),
+  exportCatalogueAbonnement: vi.fn(() => Promise.resolve({
+    data: new Blob(['xlsx'], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+    headers: {},
+  })),
+}))
+
 vi.mock('../../api/contratsApi', () => ({
   default: {
     getPlansRecurrents: () => Promise.resolve({
       data: [{ id: 5, nom: 'Mensuel' }],
     }),
+    importerCompteursUsageCsv: (...args) => importerCompteursUsageCsv(...args),
+    exportCatalogueAbonnement: (...args) => exportCatalogueAbonnement(...args),
   },
 }))
 
@@ -180,5 +196,82 @@ describe('AbonnementsPage (PACT138)', () => {
       type_cible: 'contrat', cible_id: 7, code_compteur: 'appels_api',
       periode_debut: '2026-08-01', periode_fin: '2026-08-31', quantite: 0, source: 'manuel',
     }))
+  })
+
+  // WIR251 — import CSV en deux temps (aperçu sans écriture → confirmation
+  // avec case « écraser » explicite, envoyée seulement si cochée).
+  it('WIR251 — aperçu du CSV puis confirme avec « écraser » coché', async () => {
+    importerCompteursUsageCsv
+      .mockResolvedValueOnce({ data: {
+        inserees: 0, mises_a_jour: 0, erreurs: [], apercu: true, ecraser: false,
+        conflits: [{ ligne: 2, cible_id: 7, ecrasements: 1, remplissages: 0 }],
+        ecrasements: 0, refuses: [], job_id: null,
+      } })
+      .mockResolvedValueOnce({ data: {
+        inserees: 0, mises_a_jour: 1, erreurs: [], apercu: false, ecraser: true,
+        conflits: [], ecrasements: 1, refuses: [], job_id: 42,
+      } })
+
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Maintenance standard')).toBeInTheDocument())
+    await userEvent.click(screen.getByRole('tab', { name: /Compteurs/ }))
+
+    await userEvent.click(await screen.findByRole('button', { name: /Importer \(CSV\)/i }))
+    const dialog = await screen.findByRole('dialog')
+    const csv = 'cible_id,code_compteur,periode_debut,periode_fin,quantite\n7,interventions,2026-08-01,2026-08-31,5'
+    const file = new File([csv], 'compteurs.csv', { type: 'text/csv' })
+    await userEvent.upload(within(dialog).getByLabelText('Fichier CSV'), file)
+
+    const apercuBtn = await screen.findByRole('button', { name: 'Aperçu' })
+    await waitFor(() => expect(apercuBtn).not.toBeDisabled())
+    await userEvent.click(apercuBtn)
+
+    await waitFor(() => expect(importerCompteursUsageCsv).toHaveBeenNthCalledWith(1, {
+      contenu: csv, apercu: true,
+    }))
+    expect(await within(dialog).findByText(/1 conflit\(s\)/)).toBeInTheDocument()
+
+    // Case « écraser » n'apparaît (et n'est cochable) qu'APRÈS l'aperçu.
+    await userEvent.click(within(dialog).getByRole('checkbox'))
+    await userEvent.click(within(dialog).getByRole('button', { name: /Confirmer l.import/i }))
+
+    await waitFor(() => expect(importerCompteursUsageCsv).toHaveBeenNthCalledWith(2, {
+      contenu: csv, apercu: false, ecraser: true,
+    }))
+  })
+
+  it('WIR251 — n’envoie PAS « écraser » quand la case reste décochée', async () => {
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Maintenance standard')).toBeInTheDocument())
+    await userEvent.click(screen.getByRole('tab', { name: /Compteurs/ }))
+
+    await userEvent.click(await screen.findByRole('button', { name: /Importer \(CSV\)/i }))
+    const dialog = await screen.findByRole('dialog')
+    const csv = 'cible_id,code_compteur,periode_debut,periode_fin,quantite\n7,interventions,2026-08-01,2026-08-31,5'
+    const file = new File([csv], 'compteurs.csv', { type: 'text/csv' })
+    await userEvent.upload(within(dialog).getByLabelText('Fichier CSV'), file)
+
+    const apercuBtn = await screen.findByRole('button', { name: 'Aperçu' })
+    await waitFor(() => expect(apercuBtn).not.toBeDisabled())
+    await userEvent.click(apercuBtn)
+
+    // Aucune case cochée : « Confirmer l'import » directement, dès qu'il
+    // apparaît (l'aperçu a rendu son rapport → `previewed` est passé à vrai).
+    await userEvent.click(await within(dialog).findByRole('button', { name: /Confirmer l.import/i }))
+
+    await waitFor(() => expect(importerCompteursUsageCsv).toHaveBeenNthCalledWith(2, {
+      contenu: csv, apercu: false,
+    }))
+    // Vérifie explicitement l'absence de la clé (pas seulement une valeur falsy).
+    expect(importerCompteursUsageCsv.mock.calls[1][0]).not.toHaveProperty('ecraser')
+  })
+
+  it('WIR251 — exporte le catalogue en .xlsx', async () => {
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Maintenance standard')).toBeInTheDocument())
+
+    await userEvent.click(screen.getByRole('button', { name: /Exporter \(\.xlsx\)/i }))
+
+    await waitFor(() => expect(exportCatalogueAbonnement).toHaveBeenCalledTimes(1))
   })
 })

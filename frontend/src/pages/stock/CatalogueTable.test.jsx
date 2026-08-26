@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, within, act } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 import { CatalogueTable } from './CatalogueTable.jsx'
@@ -368,5 +369,50 @@ describe('PV8 — badge affiché dans la grille catalogue', () => {
       fichesParProduit: new Map([[1, ficheModulePartielle]]),
     })
     expect(screen.getAllByText('Fiche partielle').length).toBeGreaterThan(0)
+  })
+})
+
+// ── WIR221/XSTK10 — mise au rebut : action de ligne ─────────────────────────
+// Le moteur DataTable rend TOUJOURS un repli « cartes mobiles » en plus de la
+// grille desktop (CSS-only, `data-dt-cards`) : chaque requête texte/ligne DOIT
+// se scoper au conteneur `role="grid"` (patron déjà établi ci-dessus), sinon
+// `getByText`/`closest('tr')` trouve deux correspondances (grille + carte).
+describe('WIR221 — « Mettre au rebut » (menu de ligne)', () => {
+  it('canWrite + onRebut : l\'action apparaît dans le menu et appelle onRebut(produit)', async () => {
+    const onRebut = vi.fn()
+    renderTable({ onRebut })
+    const grid = screen.getByRole('grid')
+    const row = within(grid).getByText('Panneau 550 Wc', { exact: true }).closest('tr')
+    // Le déclencheur Radix s'ouvre sur `pointerdown` : `fireEvent.click` seul
+    // ne l'ouvre pas (patron RapprochementsComptePage.test.jsx).
+    await userEvent.click(within(row).getByRole('button', { name: "Plus d'actions sur la ligne" }))
+
+    const item = await screen.findByRole('menuitem', { name: /Mettre au rebut/ })
+    fireEvent.click(item)
+    expect(onRebut).toHaveBeenCalledWith(expect.objectContaining({ id: 1 }))
+  })
+
+  it('sans onRebut : aucune action « Mettre au rebut » dans le menu', async () => {
+    renderTable({ onRebut: undefined })
+    const grid = screen.getByRole('grid')
+    const row = within(grid).getByText('Panneau 550 Wc', { exact: true }).closest('tr')
+    // Le déclencheur Radix s'ouvre sur `pointerdown` : `fireEvent.click` seul
+    // ne l'ouvre pas (patron RapprochementsComptePage.test.jsx).
+    await userEvent.click(within(row).getByRole('button', { name: "Plus d'actions sur la ligne" }))
+
+    await screen.findByRole('menu')
+    expect(screen.queryByRole('menuitem', { name: /Mettre au rebut/ })).toBeNull()
+  })
+
+  it('sans canWrite : aucune action « Mettre au rebut » même avec onRebut fourni', async () => {
+    renderTable({ canWrite: false, onRebut: vi.fn() })
+    const grid = screen.getByRole('grid')
+    const row = within(grid).getByText('Panneau 550 Wc', { exact: true }).closest('tr')
+    // Le déclencheur Radix s'ouvre sur `pointerdown` : `fireEvent.click` seul
+    // ne l'ouvre pas (patron RapprochementsComptePage.test.jsx).
+    await userEvent.click(within(row).getByRole('button', { name: "Plus d'actions sur la ligne" }))
+
+    await screen.findByRole('menu')
+    expect(screen.queryByRole('menuitem', { name: /Mettre au rebut/ })).toBeNull()
   })
 })

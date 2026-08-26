@@ -17,12 +17,27 @@ vi.mock('../../api/reportingApi', () => ({
   default: {
     listRapportDefinitions: vi.fn(),
     createRapportDefinition: vi.fn(),
+    updateRapportDefinition: vi.fn(),
     deleteRapportDefinition: vi.fn(),
     executerRapportDefinition: vi.fn(),
+    exportRapportDefinition: vi.fn(),
   },
 }))
 vi.mock('../../api/coreApi', () => ({
   default: { datasetsExplorateur: { list: vi.fn() } },
+}))
+// WIR253 — l'export télécharge un blob réel (URL.createObjectURL/anchor
+// click) : on isole le geste DOM comme les autres écrans qui exportent
+// (ex. AdministrationPage.test.jsx) plutôt que de l'exercer sous jsdom.
+const downloadBlob = vi.fn()
+vi.mock('../../api/importApi', () => ({
+  downloadBlob: (...a) => downloadBlob(...a),
+  filenameFromResponse: (_res, fallback) => fallback,
+}))
+const toastError = vi.fn()
+vi.mock('../../ui', async (orig) => ({
+  ...(await orig()),
+  toast: { error: (...a) => toastError(...a), success: vi.fn() },
 }))
 
 import reportingApi from '../../api/reportingApi'
@@ -88,7 +103,11 @@ beforeEach(() => {
   vi.clearAllMocks()
   reportingApi.listRapportDefinitions.mockResolvedValue({ data: DEFINITIONS })
   reportingApi.createRapportDefinition.mockResolvedValue({ data: { id: 5 } })
+  reportingApi.updateRapportDefinition.mockResolvedValue({ data: { id: 4 } })
   reportingApi.deleteRapportDefinition.mockResolvedValue({ data: {} })
+  reportingApi.exportRapportDefinition.mockResolvedValue({
+    data: new Blob(['x']), headers: {},
+  })
   coreApi.datasetsExplorateur.list.mockResolvedValue({ data: DATASETS })
 })
 afterEach(() => { cleanup(); vi.clearAllMocks() })
@@ -167,5 +186,101 @@ describe('RapportBuilderPage (PACT146)', () => {
     const ligne = await screen.findByTestId('rapport-definition-4')
     await user.click(within(ligne).getByRole('button', { name: 'Supprimer' }))
     expect(reportingApi.deleteRapportDefinition).toHaveBeenCalledWith(4)
+  })
+})
+
+/* WIR253 — export CSV/XLSX (NTEXT11) et édition d'une définition jamais
+   câblés jusqu'ici (`exportRapportDefinition`/`updateRapportDefinition`
+   sans appelant). */
+describe('RapportBuilderPage — export CSV/XLSX (WIR253)', () => {
+  it('télécharge le CSV exporté par le serveur', async () => {
+    const user = userEvent.setup()
+    render(<RapportBuilderPage />)
+
+    const ligne = await screen.findByTestId('rapport-definition-4')
+    await user.click(within(ligne).getByRole('button', { name: 'Export CSV' }))
+
+    await vi.waitFor(() => expect(reportingApi.exportRapportDefinition)
+      .toHaveBeenCalledWith(4, 'csv'))
+    expect(downloadBlob).toHaveBeenCalledWith(
+      expect.any(Blob), 'Journaldestickets.csv',
+    )
+  })
+
+  it('télécharge le XLSX exporté par le serveur', async () => {
+    const user = userEvent.setup()
+    render(<RapportBuilderPage />)
+
+    const ligne = await screen.findByTestId('rapport-definition-3')
+    await user.click(within(ligne).getByRole('button', { name: 'Export XLSX' }))
+
+    await vi.waitFor(() => expect(reportingApi.exportRapportDefinition)
+      .toHaveBeenCalledWith(3, 'xlsx'))
+    expect(downloadBlob).toHaveBeenCalledWith(
+      expect.any(Blob), 'Ticketspartechnicien.xlsx',
+    )
+  })
+
+  it('affiche le détail 503 xlsx en toast plutôt que de planter', async () => {
+    const user = userEvent.setup()
+    reportingApi.exportRapportDefinition.mockRejectedValue({
+      response: {
+        status: 503,
+        data: new Blob([JSON.stringify({
+          detail: 'Export xlsx indisponible sur ce serveur : réessayez au format csv.',
+        })], { type: 'application/json' }),
+      },
+    })
+    render(<RapportBuilderPage />)
+
+    const ligne = await screen.findByTestId('rapport-definition-3')
+    await user.click(within(ligne).getByRole('button', { name: 'Export XLSX' }))
+
+    await vi.waitFor(() => expect(toastError).toHaveBeenCalledWith(
+      'Export xlsx indisponible sur ce serveur : réessayez au format csv.',
+    ))
+    expect(downloadBlob).not.toHaveBeenCalled()
+  })
+})
+
+describe('RapportBuilderPage — édition d’une définition (WIR253)', () => {
+  it('pré-remplit le formulaire et soumet un PATCH (jamais un second POST)', async () => {
+    const user = userEvent.setup()
+    render(<RapportBuilderPage />)
+
+    const ligne = await screen.findByTestId('rapport-definition-4')
+    await user.click(within(ligne).getByRole('button', { name: 'Modifier' }))
+
+    expect(await screen.findByRole('heading', { name: 'Modifier la définition' }))
+      .toBeInTheDocument()
+    expect(screen.getByLabelText('Titre')).toHaveValue('Journal des tickets')
+    expect(screen.getByLabelText('Dataset')).toHaveValue('sav_tickets')
+
+    await user.click(screen.getByRole('button', { name: 'Modifier la définition' }))
+
+    expect(reportingApi.updateRapportDefinition).toHaveBeenCalledWith(4, {
+      titre: 'Journal des tickets',
+      dataset: 'sav_tickets',
+      spec: { select: ['statut', 'date_creation'] },
+      pivot_spec: {},
+      partage: 'prive',
+    })
+    expect(reportingApi.createRapportDefinition).not.toHaveBeenCalled()
+  })
+
+  it('Annuler quitte le mode édition sans appeler l’API', async () => {
+    const user = userEvent.setup()
+    render(<RapportBuilderPage />)
+
+    const ligne = await screen.findByTestId('rapport-definition-4')
+    await user.click(within(ligne).getByRole('button', { name: 'Modifier' }))
+    await screen.findByRole('heading', { name: 'Modifier la définition' })
+
+    await user.click(screen.getByRole('button', { name: 'Annuler' }))
+
+    expect(await screen.findByRole('heading', { name: 'Nouvelle définition' }))
+      .toBeInTheDocument()
+    expect(screen.getByLabelText('Titre')).toHaveValue('')
+    expect(reportingApi.updateRapportDefinition).not.toHaveBeenCalled()
   })
 })
