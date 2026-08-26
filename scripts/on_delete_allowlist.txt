@@ -80,6 +80,11 @@
 # pure dÃ©rive de lignes, mÃªme FK dÃ©jÃ  revue en 2026-07-12/07-17. Aucun nouveau SET_NULL.
 # NTCPQ11-24 puis PV41 (electrical_design) â€” mÃªme FK relue, dÃ©calÃ©e
 # (DevisNudgeLog.company 1495 -> 1687 -> 1702).
+# Rebased 2026-08-26 (ANALYT1, audit item 64) : meme FK relue, decalee
+# (DevisNudgeLog.company 1880 -> 1931) - l'ajout de ShareLink.friction_alert_
+# logged_at/friction_alert_section + deux proprietes (51 lignes, avant
+# DevisNudgeLog dans le fichier) a decale tout ce qui suit. Aucun nouveau
+# CASCADE.
 # NTCPQ11-24 â€” Devis.company relue, dÃ©calÃ©e par l'import core.models (17 -> 19).
 # NTCPQ11-24 â€” PromessePaiement.company relue, dÃ©calÃ©e (923 -> 1115).
 # NTCPQ11-24 puis PV41 â€” ParametrageRelanceClient.responsable relue, dÃ©calÃ©e
@@ -2365,7 +2370,7 @@ backend/django_core/apps/ventes/models.py:1850
 backend/django_core/apps/ventes/models.py:1853
 backend/django_core/apps/ventes/models.py:1871
 backend/django_core/apps/ventes/models.py:1864
-backend/django_core/apps/ventes/models.py:1880
+backend/django_core/apps/ventes/models.py:1931
 backend/django_core/apps/ventes/models.py:1914
 backend/django_core/apps/ventes/models.py:1923
 backend/django_core/apps/ventes/models.py:1910

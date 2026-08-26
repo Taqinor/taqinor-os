@@ -1386,6 +1386,17 @@ class ShareLink(models.Model):
     # "etude": {...}, ...}. Alimenté par des beacons POST côté proposition web
     # (WEB_PLAN WJ — moitié web hors périmètre ERP). Vide/absent = comportement
     # QJ1 inchangé (aucun affichage supplémentaire).
+    #
+    # ANALYT1 (audit item 64, 26/08/2026) — chaque section peut AUSSI porter
+    # ``visits`` (nombre de VISITES DISTINCTES où la section a été vue, dérivé
+    # de ``visit_ids`` — une liste bornée d'identifiants de page-load envoyés
+    # par le beacon, jamais un identifiant personnel) : {"tailles":
+    # {"seconds": 40, "hits": 3, "visits": 2, "visit_ids": [...]}, ...}.
+    # ``visits``/``visit_ids`` sont STRICTEMENT internes (jamais exposés par
+    # ``engagement_summary``/le champ ``engagement`` du serializer, qui garde
+    # sa forme d'origine seconds/hits) — seule l'action ERP
+    # ``DevisViewSet.lecture_client`` (IsResponsableOrAdmin) les lit, via
+    # ``ShareLink.visites_par_section``/``friction_alert``.
     engagement = models.JSONField(null=True, blank=True)
     # Horodatage du premier engagement PROFOND (seuil dépassé sur au moins une
     # section) — sert à ne loguer QU'UNE FOIS la note chatter « a commencé à
@@ -1396,6 +1407,18 @@ class ShareLink(models.Model):
     # ex. ["not_opened_24h", "opened_not_signed_48h", "reopened_3x"]. Additif/
     # nullable → aucun lien existant n'en porte (comportement inchangé).
     engagement_triggers_fired = models.JSONField(null=True, blank=True)
+    # ── ANALYT1 (audit item 64) — signal de FRICTION : le client RELIT la
+    # MÊME section sur plusieurs visites distinctes (doctrine Proposify : les
+    # propositions perdantes sont re-consultées ~3.5× contre ~2.5× pour les
+    # gagnantes — une relecture répétée d'une section vaut un appel du
+    # commercial, jamais un chiffre montré au client). Posé UNE SEULE fois par
+    # lien (même idiome que ``deep_engagement_logged_at`` ci-dessus) —
+    # additif/nullable, aucun lien existant n'en porte.
+    friction_alert_logged_at = models.DateTimeField(null=True, blank=True)
+    # Section qui a déclenché l'alerte (whitelist ``_ENGAGEMENT_SECTIONS`` côté
+    # ``public_views.py``) — purement informatif pour la surface commerciale.
+    friction_alert_section = models.CharField(
+        max_length=32, null=True, blank=True)
 
     # ── L-NIV (fondateur 24/08/2026) — NIVEAU d'affichage de la proposition
     # publique. Deux niveaux, RÉVOCABLES sans régénérer le jeton : « standard »
@@ -1523,6 +1546,34 @@ class ShareLink(models.Model):
                 'hits': int(v.get('hits', 0) or 0),
             }
             for section, v in data.items()
+        }
+
+    @property
+    def visites_par_section(self):
+        """ANALYT1 (audit item 64) — même agrégat que ``engagement_summary``,
+        PLUS ``visits`` (nombre de visites DISTINCTES, dérivé de
+        ``visit_ids``) : surface RÉSERVÉE à ``DevisViewSet.lecture_client``
+        (IsResponsableOrAdmin), jamais au serializer devis grand public — les
+        identifiants de visite bruts ne sortent jamais d'ici."""
+        data = self.engagement or {}
+        return {
+            section: {
+                'seconds': int(v.get('seconds', 0) or 0),
+                'hits': int(v.get('hits', 0) or 0),
+                'visits': int(v.get('visits', 0) or 0),
+            }
+            for section, v in data.items()
+        }
+
+    @property
+    def friction_alert(self):
+        """ANALYT1 — résumé de l'alerte de relecture (``None`` tant qu'aucune
+        section n'a franchi le seuil de visites distinctes)."""
+        if not self.friction_alert_logged_at:
+            return None
+        return {
+            'section': self.friction_alert_section,
+            'declenche_le': self.friction_alert_logged_at.isoformat(),
         }
 
     @classmethod

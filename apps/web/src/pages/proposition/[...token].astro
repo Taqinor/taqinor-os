@@ -1885,7 +1885,7 @@ const signConfig = ok
 
       <!-- ── HÉRO (WJ28 — cinéma du chantier : ancré bas, entrée cine-in ; WJ35 —
            rythme rehaussé, cohérent avec l'accueil élevé v3, zéro CLS : min-h). -->
-      <section class="relative min-h-[72dvh] overflow-hidden sm:min-h-[78dvh]">
+      <section class="relative min-h-[72dvh] overflow-hidden sm:min-h-[78dvh]" data-track-section="hero">
         {roofImg ? (
           <>
             <!-- WJ34 — poster blur-up : la photo backend (URL dynamique, pas de
@@ -2137,7 +2137,7 @@ const signConfig = ok
       {show3d && (
         <>
         <div class="seam-soft" aria-hidden="true"></div>
-        <section id="roof3d" class="mx-auto max-w-5xl px-5 pt-14 sm:px-8 sm:pt-20" data-viewer-config={viewerConfig} data-calepinage-options={calepOptionsPourClient}>
+        <section id="roof3d" class="mx-auto max-w-5xl px-5 pt-14 sm:px-8 sm:pt-20" data-viewer-config={viewerConfig} data-calepinage-options={calepOptionsPourClient} data-track-section="calepinage">
           <p class="tech-label rule-brass cine-in text-brass-300" data-i18n data-fr="Le centre de votre proposition" data-en="At the heart of your proposal" data-ar="جوهر عرضكم">Le centre de votre proposition</p>
           <h2 class="display cine-in cine-in-1 mt-3 text-2xl text-lune sm:text-3xl" data-i18n data-fr="Votre toit en 3D" data-en="Your roof in 3D" data-ar="سطحكم بتقنية ثلاثية الأبعاد">Votre toit en 3D</h2>
           <div class="cine-card cine-in cine-in-2 mt-5 overflow-hidden rounded-2xl p-0 shadow-premium">
@@ -2767,7 +2767,7 @@ const signConfig = ok
            décidé par productionLayers() — la MÊME fonction pure ici (premier
            rendu) et dans le script client (au clic). -->
       {showProduction && (
-        <section id="production" class="mx-auto max-w-4xl px-5 pt-14 sm:px-8" data-production-config={productionConfig}>
+        <section id="production" class="mx-auto max-w-4xl px-5 pt-14 sm:px-8" data-production-config={productionConfig} data-track-section="graphs">
           <p class="tech-label rule-brass text-brass-300" data-i18n
             data-fr="Votre production" data-en="Your production" data-ar="إنتاجكم">Votre production</p>
           <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6">
@@ -3516,7 +3516,7 @@ const signConfig = ok
            l'eau livrée + le carburant évité, pas un cumul de facture réseau ; le
            cadrage « économies cumulées 25 ans » est résidentiel/autoconso. -->
       {!isAgricole && headline && (headline.cumulative || headline.annual || paybackHero || prodKwh || synthese || showCouvertureDonut) && (
-        <section id="financing-headline" class="mx-auto max-w-4xl px-5 pt-12 sm:px-8 sm:pt-16">
+        <section id="financing-headline" class="mx-auto max-w-4xl px-5 pt-12 sm:px-8 sm:pt-16" data-track-section="economies">
           <span id="economies" aria-hidden="true"></span>
           <p class="tech-label rule-brass mb-5 text-brass-300" data-i18n
             data-fr="Vos économies" data-en="Your savings" data-ar="توفيراتكم">Vos économies</p>
@@ -3943,7 +3943,7 @@ const signConfig = ok
       {showSld && (
         <>
         <div class="seam-soft" aria-hidden="true"></div>
-        <section id="sld" class="mx-auto max-w-4xl px-5 pt-14 sm:px-8 sm:pt-20">
+        <section id="sld" class="mx-auto max-w-4xl px-5 pt-14 sm:px-8 sm:pt-20" data-track-section="sld">
           <p class="tech-label rule-brass cine-in text-brass-300" data-i18n data-fr="Étude électrique" data-en="Electrical study" data-ar="الدراسة الكهربائية">Étude électrique</p>
           <h2 class="display cine-in cine-in-1 mt-3 text-2xl text-lune sm:text-3xl" data-i18n data-fr="Schéma électrique" data-en="Electrical diagram" data-ar="المخطط الكهربائي">Schéma électrique</h2>
           <p class="v2-body cine-in cine-in-2 mt-2 text-sm text-lune-soft" data-i18n
@@ -4344,6 +4344,7 @@ const signConfig = ok
           data-tailles
           data-taille-cle-defaut={tailleDefaut.cle}
           data-taille-variante-defaut={tailleVarianteDefaut}
+          data-track-section="tailles"
         >
           <p class="tech-label rule-brass text-brass-300" data-i18n
             data-fr="Explorer d’autres tailles" data-en="Explore other sizes" data-ar="استكشاف أحجام أخرى">
@@ -4875,7 +4876,7 @@ const signConfig = ok
            comparatif bancaire. Le chapitre enchaîne prix → contact → signature
            → demande de modification, sans rien intercaler. L'ancre historique
            id="options" est CONSERVÉE (liens internes de la page). -->
-      <section id="options" class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
+      <section id="options" class="mx-auto max-w-4xl px-5 pt-14 sm:px-8" data-track-section="options">
         <p class="tech-label rule-brass text-brass-300" data-i18n
           data-fr={twoOptions ? 'Vos deux options' : 'Votre prix'}
           data-en={twoOptions ? 'Your two options' : 'Your price'}
@@ -5459,7 +5460,7 @@ const signConfig = ok
       )}
 
       <!-- ── SIGNATURE EN LIGNE ───────────────────────────────────────────── -->
-      <section id="signer" class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
+      <section id="signer" class="mx-auto max-w-4xl px-5 pt-16 sm:px-8" data-track-section="signature">
         <div class="cine-card rounded-2xl p-6 sm:p-8">
           <!-- État confirmé (caché par défaut, affiché après signature ou si déjà accepté).
                WJ78 — le moment le plus « haute intention » de toute l'entreprise ne
@@ -6326,6 +6327,9 @@ const signConfig = ok
   // jointe au beacon d'engagement /api/proposition-track ci-dessous, jamais à
   // un aperçu interne (trackProposalEvent le refuse déjà, cf. cfg.apercuInterne).
   import { appareilId } from '../../lib/visite';
+  // ANALYT1 (audit item 64) — beacon léger de visibilité par section (voir
+  // le commentaire d'en-tête de ce module pour la doctrine complète).
+  import { installerBaliseEngagement } from '../../lib/engagementBeacon';
   // PV80 — la MÊME machine à états pure que celle qui a décidé du premier rendu
   // serveur du graphique fusionné : rejouée ici au clic, donc zéro divergence.
   import {
@@ -7000,6 +7004,15 @@ const signConfig = ok
       }
     }
     sendProposalFunnelBeacon('viewed');
+
+    // ── ANALYT1 (audit item 64, 26/08/2026) — beacon léger de VISIBILITÉ par
+    // section (IntersectionObserver sur chaque `[data-track-section]`),
+    // batché + débounced, jamais bloquant. Toute la logique (accumulation du
+    // temps visible, construction du corps, câblage IntersectionObserver/
+    // visibilitychange/pagehide) vit dans `lib/engagementBeacon.ts`
+    // (testable jsdom sans DOM réel) — ce bloc ne fait QUE l'appeler avec la
+    // garde d'aperçu interne, comme `trackProposalEvent` ci-dessus.
+    installerBaliseEngagement(cfg.token, { apercuInterne: cfg.apercuInterne });
 
     const form = document.getElementById('sign-form') as HTMLFormElement | null;
     const success = document.getElementById('sign-success');
