@@ -2203,11 +2203,20 @@ def contexte_conception_devis(devis, company):
 
         {devis: {id, reference, statut, mode_installation, lead, client,
                  client_nom},
-         geometrie: {source, roof_layout, pin, outline},
+         geometrie: {source, roof_layout, pin, outline, contour_client},
          cible: {panneaux, kwc, panel_watt, scenario, batterie,
                  avertissements, bill_kwh},
          carte: {available, maptilerKey, mapboxToken},
          modifiable, raison_lecture_seule, avertissements}
+
+    L-MAP (fondateur 26/08/2026 : « i want it visible on the map in the 3D
+    layouter ») — ``geometrie.contour_client`` porte TOUJOURS le contour
+    ORIGINAL dessiné par le client sur le tunnel public (``Lead.roof_outline``,
+    tel quel, jamais recalculé), À PART de ``outline`` qui peut déjà être le
+    contour COURANT du calepinage une fois le devis édité (``layout.get
+    ('outline')``). Sans ce champ distinct, un devis déjà calepiné perdait
+    toute trace de ce que le client avait réellement tracé. Liste vide (jamais
+    ``None``) sans lead ou sans contour posé.
 
     CTX3D (25/08/2026) — ``cible`` décrit L'OPTION 1 (« sans batterie »), celle
     que l'écran dessine par défaut : son compte de panneaux ET son scénario
@@ -2246,6 +2255,16 @@ def contexte_conception_devis(devis, company):
 
     lead = getattr(devis, 'lead', None)
 
+    # L-MAP (fondateur 26/08/2026) — le contour ORIGINAL du client, capturé
+    # UNE FOIS pour toutes ici, AVANT toute logique de layout : `outline`
+    # ci-dessous peut déjà être le contour COURANT du calepinage (celui du
+    # layout, potentiellement édité par le commercial) ; `contour_client` ne
+    # bouge JAMAIS avec lui. La validation (>= 3 sommets exploitables) est
+    # déjà l'affaire de `traceToit.js` côté écran (MÊME fonction que la fiche
+    # lead, PR #568) — on ne la refait pas ici, on transmet tel quel.
+    contour_lead_brut = getattr(lead, 'roof_outline', None) if lead else None
+    contour_client = contour_lead_brut if isinstance(contour_lead_brut, list) else []
+
     # ── Cible : ce que le devis DIT aujourd'hui (PV16) + la conso du lead ──
     cible = cible_depuis_lignes(devis)
     bill_kwh = getattr(lead, 'bill_kwh', None) if lead is not None else None
@@ -2274,9 +2293,8 @@ def contexte_conception_devis(devis, company):
     else:
         roof_layout = None
         point_lead = getattr(lead, 'roof_point', None) if lead else None
-        contour_lead = getattr(lead, 'roof_outline', None) if lead else None
         pin = point_lead if isinstance(point_lead, dict) else None
-        outline = contour_lead if isinstance(contour_lead, list) else []
+        outline = contour_client
         source = 'lead' if (pin or outline) else 'none'
 
     # Correction fondateur 24/08 — sans épingle posée (ni sur le layout ni sur
@@ -2351,6 +2369,7 @@ def contexte_conception_devis(devis, company):
             'roof_layout': roof_layout,
             'pin': pin,
             'outline': outline,
+            'contour_client': contour_client,
         },
         'cible': cible,
         'carte': _config_carte(),

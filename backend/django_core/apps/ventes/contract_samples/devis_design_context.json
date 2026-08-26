@@ -19,7 +19,8 @@
       "source": "devis",
       "roof_layout": { "version": 2, "zones": [] },
       "pin": { "lat": 33.5731, "lng": -7.5898 },
-      "outline": []
+      "outline": [],
+      "contour_client": []
     },
     "cible": {
       "panneaux": 24,
@@ -55,7 +56,8 @@
       "source": "devis",
       "roof_layout": { "version": 2, "zones": [] },
       "pin": { "lat": 31.6295, "lng": -7.9811 },
-      "outline": []
+      "outline": [],
+      "contour_client": []
     },
     "cible": {
       "panneaux": 8,
@@ -100,7 +102,8 @@
       "source": "none",
       "roof_layout": null,
       "pin": null,
-      "outline": []
+      "outline": [],
+      "contour_client": []
     },
     "cible": {
       "panneaux": 0,
