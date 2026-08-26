@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useSelector } from 'react-redux'
-import { useHasPermission, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
+import { useHasPermission, useIsAdmin, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import {
   BarChart3, FileWarning, PackageCheck, Receipt, Wallet,
   Undo2, ShieldCheck, Tags, CreditCard, FileMinus2, Users, Plus,
-  Pencil, Trash2,
+  Pencil, Trash2, Check, X,
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import { formatMAD } from '../../lib/format'
@@ -882,6 +882,35 @@ export default function FournisseurFiche360({
     return () => { active = false }
   }, [fournisseurId, canView])
 
+  // WIR219/NTPRT25 — candidature d'auto-inscription au portail : visible et
+  // décidable directement sur la fiche 360 (même garde Admin que la liste
+  // FournisseursStock.jsx).
+  const isAdmin = useIsAdmin()
+  const [statutValidation, setStatutValidation] = useState(null)
+  const [decidingCandidature, setDecidingCandidature] = useState(false)
+  const [candidatureError, setCandidatureError] = useState(null)
+  useEffect(() => {
+    if (!fournisseurId || !canView) return undefined
+    let active = true
+    // Appel défensif (`?.`) : certains consommateurs pré-existants de cet
+    // écran (FournisseurFiche360.test.jsx) mockent `stockApi` sans cet
+    // endpoint — même patron que WIR108 (FournisseursStock.jsx).
+    stockApi.getFournisseur?.(fournisseurId)
+      ?.then((r) => { if (active) setStatutValidation(r.data?.statut_validation ?? null) })
+      ?.catch(() => { if (active) setStatutValidation(null) })
+    return () => { active = false }
+  }, [fournisseurId, canView])
+  const deciderCandidatureFiche = async (valider) => {
+    setDecidingCandidature(true); setCandidatureError(null)
+    try {
+      const r = await stockApi.deciderCandidatureFournisseur(fournisseurId, valider)
+      setStatutValidation(r.data?.statut_validation ?? null)
+    } catch (err) {
+      setCandidatureError(err?.response?.data?.detail
+        || (valider ? 'Validation impossible.' : 'Rejet impossible.'))
+    } finally { setDecidingCandidature(false) }
+  }
+
   const tabs = useMemo(() => ([
     { value: 'performance', label: 'Performance', icon: BarChart3, Comp: OngletPerformance },
     { value: 'bcf', label: 'Bons de commande', icon: PackageCheck, Comp: OngletBcf },
@@ -935,6 +964,32 @@ export default function FournisseurFiche360({
         )}
         {/* NTP2P8 — badge de score de risque + détail des facteurs. */}
         <ScoreRisqueFournisseurBadge data={scoreRisque} />
+        {/* WIR219/NTPRT25 — candidature d'auto-inscription : visible et
+            décidable ici (garde Admin, comme la liste FournisseursStock). */}
+        {statutValidation === 'en_attente_validation' && (
+          <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-warning/30 bg-warning/10 p-2 text-sm">
+            <Badge tone="warning">En attente de validation</Badge>
+            <span className="text-muted-foreground">Candidature d&apos;auto-inscription au portail.</span>
+            {isAdmin && (
+              <span className="flex items-center gap-1">
+                <Button type="button" size="sm" variant="outline" loading={decidingCandidature}
+                        onClick={() => deciderCandidatureFiche(true)}>
+                  <Check className="size-4" /> Valider
+                </Button>
+                <Button type="button" size="sm" variant="outline" loading={decidingCandidature}
+                        onClick={() => deciderCandidatureFiche(false)}>
+                  <X className="size-4" /> Rejeter
+                </Button>
+              </span>
+            )}
+          </div>
+        )}
+        {statutValidation === 'rejete' && (
+          <Badge tone="danger" className="mt-2">Candidature rejetée</Badge>
+        )}
+        {candidatureError && (
+          <p className="mt-1 text-sm text-destructive">{candidatureError}</p>
+        )}
         {/* VX159/VX250 — RelationCounters : réutilise `resumeData` (même fetch
             que ResumePanel ci-dessous, jamais un doublon). L'agrégat 360 est
             BLOCKED côté backend (voir note en tête de fichier) : ces

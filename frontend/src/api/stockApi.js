@@ -60,6 +60,10 @@ const stockApi = {
     api.get('/stock/fournisseurs/', { params: { show_archived: 'true' } }),
   unarchiveFournisseur: (id) => api.patch(`/stock/fournisseurs/${id}/unarchive/`),
   forceDeleteFournisseur: (id) => api.delete(`/stock/fournisseurs/${id}/force-delete/`),
+  // WIR219/NTPRT25 — décide (valide/rejette) une candidature d'auto-inscription
+  // au portail fournisseur. Admin-only, corps {valider: true|false} obligatoire.
+  deciderCandidatureFournisseur: (id, valider) =>
+    api.post(`/stock/fournisseurs/${id}/decider-candidature/`, { valider }),
 
   // Mouvements
   getMouvements: (params) => api.get('/stock/mouvements/', { params }),

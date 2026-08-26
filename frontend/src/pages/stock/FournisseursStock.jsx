@@ -3,7 +3,7 @@ import { useSelector } from 'react-redux'
 import { Link } from 'react-router-dom'
 import { useHasPermission, useIsAdmin, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { Plus, Pencil, Trash2, Package, ShoppingCart, BarChart3, Upload, LayoutGrid, Tags, Archive, Truck,
-  RotateCcw,
+  RotateCcw, UserCheck, Check, X,
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import { formatMAD } from '../../lib/format'
@@ -42,6 +42,19 @@ const STATUT_TONE = {
   bloque_commandes: 'warning',
   bloque_paiements: 'warning',
   bloque_total: 'danger',
+}
+
+// WIR219/NTPRT25 — validation d'une candidature d'auto-inscription au portail
+// fournisseur (axe INDÉPENDANT de STATUT_OPTIONS ci-dessus : `statut_validation`
+// n'entre jamais dans le blocage commercial). `valide` (défaut historique)
+// n'affiche aucun badge — seule une candidature en attente/rejetée se signale.
+const STATUT_VALIDATION_LABELS = {
+  en_attente_validation: 'En attente de validation',
+  rejete: 'Candidature rejetée',
+}
+const STATUT_VALIDATION_TONE = {
+  en_attente_validation: 'warning',
+  rejete: 'danger',
 }
 
 // L697/L698/L699 — Écran de gestion des FOURNISSEURS : liste + édition des
@@ -466,6 +479,11 @@ export default function FournisseursStock() {
   const [confirmForceDelete, setConfirmForceDelete] = useState(null)
   const [forceDeleting, setForceDeleting] = useState(false)
 
+  // WIR219/NTPRT25 — candidatures d'auto-inscription au portail fournisseur,
+  // reçues (`statut_validation`) mais jusqu'ici jamais validables/rejetables.
+  const [filterEnAttente, setFilterEnAttente] = useState(false)
+  const [decidingId, setDecidingId] = useState(null)
+
   // setState n'arrive que dans les callbacks asynchrones (jamais synchrone dans
   // l'effet) : l'état initial loading=true couvre le premier chargement.
   const reload = () => {
@@ -546,6 +564,33 @@ export default function FournisseursStock() {
     }
   }
 
+  // WIR219/NTPRT25 — valide/rejette une candidature d'auto-inscription.
+  // Réservé Admin côté serveur (403 FR affiché tel quel si un rôle moindre
+  // parvenait quand même jusqu'ici) ; idempotent (une candidature déjà
+  // tranchée ne rejoue rien côté serveur).
+  const deciderCandidature = async (f, valider) => {
+    if (!window.confirm(valider
+      ? `Valider la candidature de « ${f.nom} » ? Le fournisseur intègre le sourcing.`
+      : `Rejeter la candidature de « ${f.nom} » ?`)) return
+    setDecidingId(f.id)
+    try {
+      await stockApi.deciderCandidatureFournisseur(f.id, valider)
+      reload()
+      toastSuccess(valider ? 'Candidature validée.' : 'Candidature rejetée.')
+    } catch (err) {
+      toastError(frErr(err, valider ? 'Validation impossible.' : 'Rejet impossible.'))
+    } finally {
+      setDecidingId(null)
+    }
+  }
+
+  // Compteur pour le filtre rapide (sur le catalogue COMPLET, pas seulement
+  // la page filtrée) — visible même quand le filtre est désactivé.
+  const enAttenteCount = useMemo(
+    () => items.filter((f) => f.statut_validation === 'en_attente_validation').length,
+    [items],
+  )
+
   const archivedColumns = useMemo(() => [
     { id: 'nom', header: 'Nom', minWidth: 160,
       cell: (v) => <span className="line-through">{v}</span> },
@@ -573,6 +618,17 @@ export default function FournisseursStock() {
         <Badge tone={STATUT_TONE[f.statut] ?? 'success'}>
           {STATUT_LABELS[f.statut] ?? 'Actif'}
         </Badge>
+      ) },
+    // WIR219/NTPRT25 — candidature d'auto-inscription (axe indépendant du
+    // blocage commercial ci-dessus). `valide` (défaut historique) : aucun badge.
+    { id: 'statut_validation', header: 'Candidature', width: 170, searchable: false,
+      accessor: (f) => STATUT_VALIDATION_LABELS[f.statut_validation] ?? '',
+      cell: (_v, f) => (
+        STATUT_VALIDATION_LABELS[f.statut_validation]
+          ? <Badge tone={STATUT_VALIDATION_TONE[f.statut_validation]}>
+              {STATUT_VALIDATION_LABELS[f.statut_validation]}
+            </Badge>
+          : null
       ) },
     // XPUR5/WIR108 — catégorie assignée (référentiel « Catégories »).
     { id: 'categorie_nom', header: 'Catégorie', minWidth: 120,
@@ -608,6 +664,23 @@ export default function FournisseursStock() {
               <BarChart3 className="size-4" aria-hidden="true" />
             </IconButton>
           )}
+          {/* WIR219/NTPRT25 — décision réservée Admin (garde serveur
+              IsAdminRole ; 403 FR affiché tel quel côté handler si un rôle
+              moindre parvenait quand même jusqu'ici). */}
+          {isAdmin && f.statut_validation === 'en_attente_validation' && (
+            <>
+              <IconButton size="md" variant="ghost" label="Valider la candidature"
+                          disabled={decidingId === f.id}
+                          onClick={(e) => { e.stopPropagation(); deciderCandidature(f, true) }}>
+                <Check className="size-4 text-success" aria-hidden="true" />
+              </IconButton>
+              <IconButton size="md" variant="ghost" label="Rejeter la candidature"
+                          disabled={decidingId === f.id}
+                          onClick={(e) => { e.stopPropagation(); deciderCandidature(f, false) }}>
+                <X className="size-4 text-destructive" aria-hidden="true" />
+              </IconButton>
+            </>
+          )}
           <IconButton size="md" variant="ghost" label="Modifier"
                       onClick={(e) => { e.stopPropagation(); setSelected(f) }}>
             <Pencil className="size-4" aria-hidden="true" />
@@ -622,8 +695,15 @@ export default function FournisseursStock() {
         </div>
       ) },
   // canDelete/isAdmin stables au sein d'une session ; reload via closure stable.
+  // `decidingId` (WIR219) DOIT rester en dépendance : sinon le bouton
+  // Valider/Rejeter garderait un `disabled` figé sur sa valeur au premier rendu.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [canDelete])
+  ], [canDelete, decidingId])
+
+  const rows = useMemo(
+    () => (filterEnAttente ? items.filter((f) => f.statut_validation === 'en_attente_validation') : items),
+    [items, filterEnAttente],
+  )
 
   return (
     <div className="ui-root flex flex-col gap-4 px-4 py-5 sm:px-5">
@@ -642,6 +722,14 @@ export default function FournisseursStock() {
               <Button variant={showArchived ? 'secondary' : 'outline'}
                       onClick={() => setShowArchived((v) => !v)}>
                 <Archive /> {showArchived ? 'Masquer archivés' : `Archivés${itemsArchived.length > 0 ? ` (${itemsArchived.length})` : ''}`}
+              </Button>
+            )}
+            {/* WIR219/NTPRT25 — candidatures d'auto-inscription en attente. */}
+            {enAttenteCount > 0 && (
+              <Button variant={filterEnAttente ? 'secondary' : 'outline'}
+                      onClick={() => setFilterEnAttente((v) => !v)}
+                      title="N'afficher que les candidatures en attente de validation">
+                <UserCheck /> Candidatures en attente ({enAttenteCount})
               </Button>
             )}
             {canWrite && (
@@ -674,7 +762,7 @@ export default function FournisseursStock() {
       )}
 
       <DataTable
-        data={items}
+        data={rows}
         columns={columns}
         loading={loading}
         getRowId={(f) => f.id}

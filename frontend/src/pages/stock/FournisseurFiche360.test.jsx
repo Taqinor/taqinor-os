@@ -36,6 +36,9 @@ vi.mock('../../api/stockApi', () => ({
     createContactFournisseur: vi.fn(),
     updateContactFournisseur: vi.fn(),
     deleteContactFournisseur: vi.fn(),
+    // WIR219/NTPRT25 — candidature d'auto-inscription au portail.
+    getFournisseur: vi.fn(),
+    deciderCandidatureFournisseur: vi.fn(),
   },
 }))
 
@@ -75,6 +78,9 @@ beforeEach(() => {
   // NTP2P8 — défaut neutre : le badge de score ne doit jamais faire échouer
   // un test qui ne le concerne pas (chaque test peut le surcharger).
   stockApi.getScoreRisqueFournisseur.mockResolvedValue({ data: null })
+  // WIR219 — défaut neutre : « valide » (comportement historique), aucun
+  // badge de candidature ne doit apparaître dans les tests qui ne le testent pas.
+  stockApi.getFournisseur.mockResolvedValue({ data: { id: 7, statut_validation: 'valide' } })
 })
 
 describe('XPUR25 — panneau résumé (agrégat vue-360, BLOCKED côté serveur)', () => {
@@ -312,5 +318,69 @@ describe('XPUR25 — garde de rôle', () => {
       </Provider>,
     )
     expect(screen.getByText('Fournisseur introuvable.')).toBeInTheDocument()
+  })
+})
+
+describe('WIR219/NTPRT25 — candidature d\'auto-inscription au portail', () => {
+  const setupBaseMocks = () => {
+    stockApi.getFournisseur360.mockImplementation(rejectNotFound)
+    stockApi.performanceFournisseur.mockImplementation(rejectNotFound)
+  }
+
+  it('affiche le badge « En attente de validation » + les actions Valider/Rejeter (admin)', async () => {
+    setupBaseMocks()
+    stockApi.getFournisseur.mockResolvedValue({ data: { id: 7, statut_validation: 'en_attente_validation' } })
+    renderPage()
+
+    expect(await screen.findByText('En attente de validation')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Valider/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Rejeter/ })).toBeInTheDocument()
+  })
+
+  it('un rôle non-admin (responsable) ne voit AUCUNE action de décision', async () => {
+    setupBaseMocks()
+    stockApi.getFournisseur.mockResolvedValue({ data: { id: 7, statut_validation: 'en_attente_validation' } })
+    renderPage({ authState: { role: 'responsable', permissions: [] } })
+
+    expect(await screen.findByText('En attente de validation')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Valider/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Rejeter/ })).toBeNull()
+  })
+
+  it('« Valider » appelle deciderCandidatureFournisseur(id, true) et retire le badge', async () => {
+    setupBaseMocks()
+    stockApi.getFournisseur.mockResolvedValue({ data: { id: 7, statut_validation: 'en_attente_validation' } })
+    stockApi.deciderCandidatureFournisseur.mockResolvedValue({
+      data: { id: 7, statut_validation: 'valide' },
+    })
+    renderPage()
+
+    await screen.findByText('En attente de validation')
+    await userEvent.click(screen.getByRole('button', { name: /Valider/ }))
+    await waitFor(() => expect(stockApi.deciderCandidatureFournisseur).toHaveBeenCalledWith('7', true))
+    await waitFor(() => expect(screen.queryByText('En attente de validation')).toBeNull())
+  })
+
+  it('un 403 serveur (rôle insuffisant malgré tout) est affiché tel quel', async () => {
+    setupBaseMocks()
+    stockApi.getFournisseur.mockResolvedValue({ data: { id: 7, statut_validation: 'en_attente_validation' } })
+    stockApi.deciderCandidatureFournisseur.mockRejectedValue({
+      response: { status: 403, data: { detail: 'Réservé aux administrateurs.' } },
+    })
+    renderPage()
+
+    await screen.findByText('En attente de validation')
+    await userEvent.click(screen.getByRole('button', { name: /Rejeter/ }))
+    expect(await screen.findByText('Réservé aux administrateurs.')).toBeInTheDocument()
+  })
+
+  it('aucun badge quand la candidature est déjà validée (comportement historique)', async () => {
+    setupBaseMocks()
+    stockApi.getFournisseur.mockResolvedValue({ data: { id: 7, statut_validation: 'valide' } })
+    renderPage()
+
+    await screen.findByText('Fiche fournisseur 360')
+    await waitFor(() => expect(stockApi.getFournisseur).toHaveBeenCalled())
+    expect(screen.queryByText('En attente de validation')).toBeNull()
   })
 })

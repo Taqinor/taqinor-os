@@ -29,6 +29,8 @@ vi.mock('../../api/stockApi', () => ({
         },
       ],
     })),
+    // WIR219/NTPRT25 — décision (valider/rejeter) une candidature.
+    deciderCandidatureFournisseur: vi.fn(() => Promise.resolve({ data: {} })),
     createFournisseur: vi.fn(() => Promise.resolve({ data: {} })),
     updateFournisseur: vi.fn(() => Promise.resolve({ data: {} })),
     deleteFournisseur: vi.fn(() => Promise.resolve({ data: { archived: false } })),
@@ -218,5 +220,79 @@ describe('FournisseursStock — catégories fournisseur (WIR108)', () => {
     await waitFor(() => expect(stockApi.updateFournisseur).toHaveBeenCalledWith(
       1, expect.objectContaining({ categorie: 10 }),
     ))
+  })
+})
+
+describe('FournisseursStock — candidatures fournisseur (WIR219)', () => {
+  // `mockResolvedValueOnce` — n'affecte QUE ces tests, jamais la liste par
+  // défaut consommée par les autres describe (WIR27 compte exactement 2 liens).
+  const listeAvecCandidature = () => stockApi.getFournisseurs.mockResolvedValueOnce({
+    data: [
+      { id: 1, nom: 'Actif SARL', statut: 'actif', nb_produits: 2, nb_bons_commande: 1 },
+      {
+        id: 4, nom: 'Candidat SARL', statut: 'actif',
+        statut_validation: 'en_attente_validation', nb_produits: 0, nb_bons_commande: 0,
+      },
+    ],
+  })
+
+  it('affiche le badge « En attente de validation » et le filtre « Candidatures en attente »', async () => {
+    listeAvecCandidature()
+    renderPage()
+    const grid = await screen.findByRole('grid', { name: 'Fournisseurs' })
+
+    expect(within(grid).getByText('En attente de validation')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /Candidatures en attente/ }))
+    const filtered = await screen.findByRole('grid', { name: 'Fournisseurs' })
+    expect(within(filtered).getByText('Candidat SARL')).toBeInTheDocument()
+    expect(within(filtered).queryByText('Actif SARL')).toBeNull()
+  })
+
+  it('Admin : « Valider » appelle deciderCandidatureFournisseur(id, true) — la candidature rejoint le sourcing', async () => {
+    window.confirm = vi.fn(() => true)
+    listeAvecCandidature()
+    renderPage()
+    const grid = await screen.findByRole('grid', { name: 'Fournisseurs' })
+    const row = within(grid).getByText('Candidat SARL').closest('tr')
+
+    await userEvent.click(within(row).getByRole('button', { name: 'Valider la candidature' }))
+    await waitFor(() => expect(stockApi.deciderCandidatureFournisseur).toHaveBeenCalledWith(4, true))
+  })
+
+  it('Admin : « Rejeter » appelle deciderCandidatureFournisseur(id, false)', async () => {
+    window.confirm = vi.fn(() => true)
+    listeAvecCandidature()
+    renderPage()
+    const grid = await screen.findByRole('grid', { name: 'Fournisseurs' })
+    const row = within(grid).getByText('Candidat SARL').closest('tr')
+
+    await userEvent.click(within(row).getByRole('button', { name: 'Rejeter la candidature' }))
+    await waitFor(() => expect(stockApi.deciderCandidatureFournisseur).toHaveBeenCalledWith(4, false))
+  })
+
+  it('non-admin (responsable) : aucune action Valider/Rejeter n\'est visible', async () => {
+    listeAvecCandidature()
+    renderPage(makeStore({ role: 'responsable', permissions: [] }))
+    const grid = await screen.findByRole('grid', { name: 'Fournisseurs' })
+    const row = within(grid).getByText('Candidat SARL').closest('tr')
+
+    expect(within(row).queryByRole('button', { name: 'Valider la candidature' })).toBeNull()
+    expect(within(row).queryByRole('button', { name: 'Rejeter la candidature' })).toBeNull()
+  })
+
+  it('un 403 serveur (rôle insuffisant malgré tout) est affiché en FR', async () => {
+    window.confirm = vi.fn(() => true)
+    listeAvecCandidature()
+    stockApi.deciderCandidatureFournisseur.mockRejectedValueOnce({
+      response: { status: 403, data: { detail: 'Réservé à l\'administrateur.' } },
+    })
+    renderPage()
+    const grid = await screen.findByRole('grid', { name: 'Fournisseurs' })
+    const row = within(grid).getByText('Candidat SARL').closest('tr')
+
+    await userEvent.click(within(row).getByRole('button', { name: 'Valider la candidature' }))
+    // toastError best-effort — le point vérifiable est l'appel serveur lui-même
+    // (le rendu du toast n'est pas garanti sans <Toaster> monté dans ce test).
+    await waitFor(() => expect(stockApi.deciderCandidatureFournisseur).toHaveBeenCalledWith(4, true))
   })
 })
