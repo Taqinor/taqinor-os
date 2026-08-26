@@ -4,6 +4,7 @@ Les viewsets filtrent par ``request.user.company`` (TenantMixin) et posent la
 société côté serveur ; la non-conformité enregistre aussi son signaleur
 (``signale_par``) côté serveur.
 """
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
 
 from django.shortcuts import get_object_or_404
@@ -3141,6 +3142,7 @@ class DemandeActionFournisseurViewSet(_QhseBaseViewSet):
 # PLUS AUCUN modèle QHSE ISO n'est en scaffolding différé après ce lot.
 
 # ── WIR275 (XQHS7) — PDF interne de l'analyse 5-Pourquoi/8D d'une NCR ──────
+@extend_schema(responses={200: OpenApiTypes.BINARY})
 @api_view(['GET'])
 def analyse_ncr_pdf(request, pk):
     """WIR275 — PDF INTERNE (5-Pourquoi/8D) d'une NCR, scopé société.
