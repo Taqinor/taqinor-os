@@ -1,6 +1,7 @@
 """VAO19 — les garde-fous : ce que le fichier de risque PROMET, en CODE.
 
-``tos_risk/marchespublics_gov_ma.md`` engage Taqinor sur neuf mitigations. Une
+Le fichier de risque du portail public national (sous ``tos_risk/``) engage
+Taqinor sur neuf mitigations. Une
 mitigation écrite dans un fichier et absente du code n'est pas une mitigation :
 c'est une intention. Ce module les rend exécutables, et
 ``tests/test_garde_fous.py`` donne à chacune son test.

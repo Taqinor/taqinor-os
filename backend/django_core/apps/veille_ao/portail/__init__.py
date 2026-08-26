@@ -19,8 +19,8 @@ coûte des millisecondes. En gardant le parseur pur, **tout le collecteur se
 teste sans base et sans réseau**, sur les fixtures committées dans
 ``portail/fixtures/`` — c'est ce qui rend ce groupe testable *aujourd'hui*
 alors que la collecte réelle, elle, reste DÉSARMÉE (règle #5 : la ligne
-« Founder approval » de ``tos_risk/marchespublics_gov_ma.md`` est VIDE, et
-l'armement est une décision fondateur datée, VAO4).
+« Founder approval » du fichier de risque du portail public national (sous
+``tos_risk/``) est VIDE, et l'armement est une décision fondateur datée, VAO4).
 
 ``apps/veille_ao/tests/test_purete_portail.py`` transforme ce contrat en
 GARDE : il relit l'arbre syntaxique de chaque module du paquet et rougit si un

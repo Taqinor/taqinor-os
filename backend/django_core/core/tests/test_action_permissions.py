@@ -98,7 +98,9 @@ UNGUARDED_ACTION_BASELINE = {
     # baseline de compta doit donc DÉCROÎTRE d'autant, sinon il laisse 2 crans
     # de mou où une nouvelle @action non gardée passerait sans être vue.
     # Remaining 113 = dette restante, follow-up possible.
-    "compta": 113,
+    # WIR175 (2026-08-26) a gardé create/update/destroy/extourner des écritures
+    # via get_permissions -> le réel est descendu à 111 ; le cliquet suit.
+    "compta": 111,
     "contrats": 56,
     # NTADM1/28/43 — EntiteViewSet : 3 @action coarse (deplacer/tree/desactiver)
     # gardées au niveau CLASSE par ``permission_classes = [IsAdministrateur]``

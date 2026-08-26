@@ -94,10 +94,12 @@ class TestDedoublonnageUrlsCompta(SimpleTestCase):
         """149 router.register mesurés avant PACT26 -> 107 après (42 retirés).
 
         PACT163 (XACC15/XACC22) a ensuite ajouté DEUX ressources RÉELLEMENT
-        nouvelles à compta (`charges-avance`, `budgets`) — d'où 109. Ce qui est
+        nouvelles à compta (`charges-avance`, `budgets`) — d'où 109 ; puis
+        WIR279 (2026-08-26) TROIS autres (`emprunts`, `echeances-emprunt`,
+        `etats-personnalises`) — d'où 112. Ce qui est
         épinglé ici est le RETRAIT des 42 doublons, pas un plafond : le test
         ci-dessus (`aucune ressource d'une autre app`) est la vraie garde.
         """
         from apps.compta.urls import router as router_compta
 
-        self.assertEqual(len(router_compta.registry), 109)
+        self.assertEqual(len(router_compta.registry), 112)

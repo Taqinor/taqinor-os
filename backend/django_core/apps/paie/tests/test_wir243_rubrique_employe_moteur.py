@@ -133,7 +133,20 @@ class MontantRubriqueEmployeTests(TestCase):
             montant_rubrique_employe(re_, Decimal('10000')), Decimal('300.00'))
 
     def test_defaut_catalogue_taux_meme_assiette(self):
+        # Garde d'assiette (revue Fable 2026-08-26) : un taux CATALOGUE dont la
+        # base déclarée (défaut « brut ») n'est pas calculable à ce stade doit
+        # échouer FORT — jamais s'appliquer en silence au salaire de base.
         self.rub.taux = Decimal('2')
+        self.rub.save()
+        re_ = RubriqueEmploye(rubrique=self.rub, montant=None, taux=None)
+        with self.assertRaises(ValueError):
+            montant_rubrique_employe(re_, Decimal('10000'))
+
+    def test_catalogue_taux_assiette_autre_calculable(self):
+        # base='autre' = l'assiette documentée (salaire de base prorata) : seul
+        # cas où le taux catalogue s'applique sans surcharge.
+        self.rub.taux = Decimal('2')
+        self.rub.base = 'autre'
         self.rub.save()
         re_ = RubriqueEmploye(rubrique=self.rub, montant=None, taux=None)
         self.assertEqual(

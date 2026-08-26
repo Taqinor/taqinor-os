@@ -251,7 +251,10 @@ class DiffuserActionApiTests(TestCase):
     def setUp(self):
         self.company = make_company('co-xqhs15-diffuser-api', 'CoXqhs15DiffuserApi')
         self.procedure = make_procedure(self.company)
-        self.auteur = make_user(self.company, 'auteur-xqhs15-diffuser-api')
+        # Diffuser est une ÉCRITURE (qhse_gerer / palier responsable) : un
+        # technicien est correctement refusé par la garde de base du viewset.
+        self.auteur = make_user(
+            self.company, 'auteur-xqhs15-diffuser-api', role='responsable')
         self.api = auth_client(self.auteur)
 
     def test_diffuse_a_population_validee(self):

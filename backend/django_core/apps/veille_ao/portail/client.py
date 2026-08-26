@@ -39,7 +39,7 @@ règle de refus est l'expression la plus probante de la volonté de
 l'exploitant**. Maquiller l'identité du client pour contourner un contrôle qui
 nous a explicitement refusés est hors périmètre : le repli d'un 403 est le
 canal officiel (alertes du portail, VAO44) et la saisie manuelle — jamais le
-déguisement. Voir ``tos_risk/marchespublics_gov_ma.md``.
+déguisement. Voir le fichier de risque du portail sous ``tos_risk/``.
 
 Deuxième règle, de PROPORTION : **la requête est toujours restreinte par
 mots-clés** (1 à 3 pages, moins de 10 requêtes par jour). Un balayage des
