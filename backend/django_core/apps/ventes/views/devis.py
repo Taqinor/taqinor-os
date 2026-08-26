@@ -161,6 +161,16 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
 
     def get_queryset(self):
         qs = _company_qs(super().get_queryset(), self.request.user)
+        # WIR225 — indicateur « ce devis EST la racine d'un groupe de
+        # variantes ». La liste ne savait le dire que du CÔTÉ ENFANT
+        # (`version`, `version_parent_ref`, `superseded_by_ref`) : sur la
+        # racine, les trois sont vides, donc son entrée « Voir les versions »
+        # disparaissait au premier rechargement — la comparaison n'était plus
+        # atteignable que juste après la création. Annotation `Exists` : UNE
+        # sous-requête pour toute la page, jamais un N+1.
+        from django.db.models import Exists, OuterRef
+        qs = qs.annotate(a_variantes_annote=Exists(
+            Devis.objects.filter(version_parent=OuterRef('pk'), is_active=True)))
         # NTPRT10 — un compte PORTAIL externe ne voit QUE les devis de SON
         # client, sur TOUTE action. Appliqué AVANT la portée interne (qui
         # raisonne sur `created_by`, notion sans objet pour un externe) : un

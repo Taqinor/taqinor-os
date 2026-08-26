@@ -211,12 +211,27 @@ class DevisSerializer(serializers.ModelSerializer):
     # Référence du devis parent (version précédente) — pour reconstituer la
     # chaîne de révisions dans l'UI (panneau historique des versions).
     version_parent_ref = serializers.SerializerMethodField()
+    # WIR225 — ce devis EST-IL la RACINE d'un groupe de variantes ? Les trois
+    # champs ci-dessus ne décrivent que le côté ENFANT (`version > 1`,
+    # `version_parent_ref`, `superseded_by_ref`) : sur la racine ils sont tous
+    # vides, si bien que l'écran n'avait AUCUN moyen de savoir qu'un groupe
+    # existe — son entrée « Voir les versions » disparaissait au premier
+    # rechargement. `DevisViewSet.get_queryset` annote `a_variantes_annote`
+    # (un seul `Exists` pour toute la page) ; le repli ci-dessous ne sert
+    # qu'aux appels hors liste (une requête, sur un objet unique).
+    a_variantes = serializers.SerializerMethodField()
 
     def get_superseded_by_ref(self, obj):
         return obj.superseded_by.reference if obj.superseded_by_id else None
 
     def get_version_parent_ref(self, obj):
         return obj.version_parent.reference if obj.version_parent_id else None
+
+    def get_a_variantes(self, obj):
+        annote = getattr(obj, 'a_variantes_annote', None)
+        if annote is not None:
+            return bool(annote)
+        return obj.versions_enfants.filter(is_active=True).exists()
 
     def get_is_expired(self, obj):
         from .utils.expiry import is_expired

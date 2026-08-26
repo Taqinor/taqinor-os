@@ -498,8 +498,11 @@ function DevisRow({ d, ctx }) {
             <Badge tone="neutral" className="ml-1.5">Remplacé</Badge>
           )}
         </div>
+        {/* WIR225 — `a_variantes` entre AUSSI dans la garde de la zone de
+            métadonnées : sans lui, la racine d'un groupe de variantes n'avait
+            même pas de 2e ligne, donc pas d'entrée « Voir les versions ». */}
         {(d.superseded_by_ref
-          || d.version > 1 || d.version_parent_ref
+          || d.version > 1 || d.version_parent_ref || d.a_variantes
           || d.deja_consulte || engagementSummary(d.engagement)) && (
           <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
             {d.superseded_by_ref && (
@@ -518,7 +521,13 @@ function DevisRow({ d, ctx }) {
             {d.superseded_by_ref
               && (d.version > 1 || d.version_parent_ref || d.deja_consulte
                 || engagementSummary(d.engagement)) && <span aria-hidden="true">·</span>}
-            {(d.version > 1 || d.superseded_by_ref || d.version_parent_ref) && (
+            {/* WIR225 — `a_variantes` (serveur) décrit le côté RACINE : les
+                trois autres champs ne parlent que du côté ENFANT, si bien que
+                la racine d'un groupe perdait son entrée « Voir les versions »
+                au premier rechargement — la comparaison n'était atteignable
+                que juste après la création. */}
+            {(d.version > 1 || d.superseded_by_ref || d.version_parent_ref
+              || d.a_variantes) && (
               <button
                 type="button"
                 className="text-primary hover:underline"
