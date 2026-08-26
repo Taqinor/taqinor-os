@@ -8,7 +8,7 @@ import {
   ListChecks, Repeat, BadgeCheck, CalendarClock, PieChart,
   Calculator, Percent, Layers3, UserCheck, GitBranch, Split, Network, TrendingUp,
   UploadCloud, GitCompare, Tag, Wand2, Link2, FileStack, CalendarRange,
-  ClipboardCheck,
+  ClipboardCheck, Banknote, SlidersHorizontal,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -91,6 +91,11 @@ const EcheanciersPaiementPage = lazy(
 // PACT42 — approbation des configurations non standard (FG213).
 const ApprobationsConfigPage = lazy(
   () => import('./pages/ApprobationsConfigPage.jsx'))
+// WIR280 — emprunts & crédits-bails contractés par la société (XACC14) et
+// états financiers paramétrables (XACC19) : deux ressources WIR279 sans écran.
+const EmpruntsPage = lazy(() => import('./pages/EmpruntsPage.jsx'))
+const EtatsPersonnalisesPage = lazy(
+  () => import('./pages/EtatsPersonnalisesPage.jsx'))
 
 const ROLES = ['responsable', 'admin']
 
@@ -142,12 +147,17 @@ const config = {
       { to: '/comptabilite/documents-proposition', label: 'Annexes de proposition', icon: icon(FileStack), roles: ROLES },
       { to: '/comptabilite/echeanciers-paiement', label: 'Échéanciers de paiement', icon: icon(CalendarRange), roles: ROLES },
       { to: '/comptabilite/approbations-config', label: 'Approbations config', icon: icon(ClipboardCheck), roles: ROLES },
+      { to: '/comptabilite/emprunts', label: 'Emprunts et crédits-bails', icon: icon(Banknote), roles: ROLES },
+      { to: '/comptabilite/etats-personnalises', label: 'États paramétrables', icon: icon(SlidersHorizontal), roles: ROLES },
     ],
   },
   // Titres de page : du plus spécifique au plus général (routes.meta).
   titles: [
     // WIR107 — « ecritures-recurrentes » AVANT « ecritures » : la résolution
     // se fait par préfixe, l'entrée la plus spécifique doit passer d'abord.
+    // WIR280 — même règle : « etats-personnalises » AVANT « etats » (préfixe).
+    ['/comptabilite/etats-personnalises', 'États paramétrables — Comptabilité'],
+    ['/comptabilite/emprunts', 'Emprunts et crédits-bails — Comptabilité'],
     ['/comptabilite/ecritures-recurrentes', 'Écritures récurrentes — Comptabilité'],
     ['/comptabilite/approbations-rib', 'Approbations RIB — Comptabilité'],
     ['/comptabilite/charges-avance', 'Charges d’avance — Comptabilité'],
@@ -213,6 +223,8 @@ const config = {
     { path: '/comptabilite/documents-proposition', component: DocumentsPropositionPage, roles: ROLES },
     { path: '/comptabilite/echeanciers-paiement', component: EcheanciersPaiementPage, roles: ROLES },
     { path: '/comptabilite/approbations-config', component: ApprobationsConfigPage, roles: ROLES },
+    { path: '/comptabilite/emprunts', component: EmpruntsPage, roles: ROLES },
+    { path: '/comptabilite/etats-personnalises', component: EtatsPersonnalisesPage, roles: ROLES },
   ],
 }
 

@@ -122,6 +122,8 @@
     detail:inconnu, postees:inconnu
 - frontend/src/api/comptaApi.js :: genererOd -> /api/django/compta/taches-cloture/<>/generer-od
     detail:inconnu, ecriture_id:inconnu, tache:inconnu
+- frontend/src/api/comptaApi.js :: genererTableau -> /api/django/compta/emprunts/<>/generer-tableau
+    detail:inconnu, echeances:inconnu, emprunt:inconnu, nb_echeances:nombre
 - frontend/src/api/comptaApi.js :: importer -> /api/django/compta/balance-ouverture/importer
     deja_importee:inconnu, detail:texte, ecriture_id:inconnu, erreurs:inconnu, ok:booleen, reference:inconnu, total:texte
 - frontend/src/api/comptaApi.js :: mettreEnService -> /api/django/compta/immobilisations-en-cours/<>/mettre-en-service
@@ -1143,8 +1145,6 @@
     champs: chantier, created_at, created_by, date_levee, date_limite, description, gravite, historique, id, leve_par, localisation_plan, lot, motif_contestation, responsable_leve, statut, updated_at
     gravite ∈ {bloquante, majeure, mineure}
     statut ∈ {contestee, en_cours, levee, ouverte}
-- frontend/src/api/comptaApi.js :: list -> /api/django/compta/pistes-audit  [PisteAuditComptableSerializer]
-    champs: date_creation, ecriture, ecriture_reference, empreinte_contenu, hash, hash_precedent, id, sequence
 - frontend/src/api/contratsApi.js :: createAlerte -> /api/django/contrats/alertes  [AlerteContratSerializer]
     champs: contrat, cree_par, date_creation, date_declenchement, date_envoi, id, message, statut, statut_display, type_alerte, type_alerte_display
     statut ∈ {annulee, envoyee, planifiee}

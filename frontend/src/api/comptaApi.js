@@ -670,6 +670,31 @@ const comptaApi = {
     approuver: (id, data) => api.post(`/compta/approbations-config/${id}/approuver/`, data || {}),
     refuser: (id, data) => api.post(`/compta/approbations-config/${id}/refuser/`, data || {}),
   },
+
+  // ── WIR280 / WIR279 (XACC14) — Emprunts & crédits-bails CONTRACTÉS par la
+  // société (à ne pas confondre avec `comparateurFinancement`, le financement
+  // proposé au CLIENT). `genererTableau` (idempotent tant qu'aucune échéance
+  // n'est postée, refusé 400 sinon) matérialise les `EcheanceEmprunt` listées
+  // via `echeancesEmprunt`, lecture seule sauf son action `poster`.
+  emprunts: {
+    ...resource('emprunts'),
+    genererTableau: (id) => api.post(`/compta/emprunts/${id}/generer-tableau/`),
+  },
+  echeancesEmprunt: {
+    list: (params) => api.get('/compta/echeances-emprunt/', { params }),
+    poster: (id) => api.post(`/compta/echeances-emprunt/${id}/poster/`),
+  },
+
+  // ── WIR280 / WIR279 (XACC19) — États financiers PARAMÉTRABLES (lignes à
+  // formule + colonnes période/N-1/budget/écart %), DISTINCTS des états figés
+  // (`etats` ci-dessus). `create`/`update` acceptent `lignes`/`colonnes`
+  // IMBRIQUÉES ; chaque formule est validée côté serveur avant persistance
+  // (400 FR explicite si invalide, rien n'est écrit). `evaluer` calcule les
+  // valeurs sur la balance générale — jamais recalculé côté client.
+  etatsPersonnalises: {
+    ...resource('etats-personnalises'),
+    evaluer: (id) => api.post(`/compta/etats-personnalises/${id}/evaluer/`),
+  },
 }
 
 export default comptaApi
