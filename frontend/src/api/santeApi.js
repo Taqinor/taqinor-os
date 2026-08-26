@@ -97,6 +97,11 @@ const santeApi = {
     list: (params) => api.get('/sante/factures-sante/', { params }),
     get: (id) => api.get(`/sante/factures-sante/${id}/`),
     create: (data) => api.post('/sante/factures-sante/', data),
+    // NTSAN28/WIR273 — actes les plus facturés (volume + CA) et répartition
+    // du CA par convention. `params` : { date_debut?, date_fin? } (AAAA-MM-JJ,
+    // toutes deux optionnelles — sans filtre, porte sur tout l'historique).
+    statistiques: (params) =>
+      api.get('/sante/factures-sante/statistiques/', { params }),
   },
 
   // ── Encaissement (NTSAN15 — WIR142) — `encaisse_par` posé côté serveur. ──

@@ -326,9 +326,14 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
     def get_permissions(self):
         # `recherche`/`semantique`/`historique`/`check_out`/`check_in` lisibles
         # par tout rôle authentifié ; écriture réservée aux responsables/admins.
+        # WIR249/Fable — `docqa` (FG352/XKB20) tombait par défaut sur
+        # GED_GERER (responsable/admin) alors que c'est une LECTURE au même
+        # titre que `recherche`/`semantique` (le sélecteur applique déjà
+        # l'ACL coffre-fort par utilisateur) : /ged est ouvert à tous rôles,
+        # ce trou renvoyait 403 sur une fonctionnalité en forme de lecture.
         if self.action in READ_ACTIONS or self.action in (
                 'recherche', 'semantique', 'historique', 'demandes',
-                'corbeille', 'comparer', 'timeline'):
+                'corbeille', 'comparer', 'timeline', 'docqa'):
             return [IsAnyRole()]
         # check_out/check_in : tout rôle peut extraire/libérer ses propres docs.
         if self.action in ('check_out', 'check_in'):

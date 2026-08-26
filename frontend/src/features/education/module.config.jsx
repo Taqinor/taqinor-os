@@ -29,6 +29,10 @@ const InscriptionsPage = lazy(() => import('../../pages/education/InscriptionsPa
 const EcheancierPage = lazy(() => import('../../pages/education/EcheancierPage'))
 const PresencesPage = lazy(() => import('../../pages/education/PresencesPage'))
 const NotesPage = lazy(() => import('../../pages/education/NotesPage'))
+// WIR212 — bulletins (NTEDU17) : le backend etait complet (PeriodeScolaire,
+// BulletinViewSet.publier, eleves.bulletinPdf) mais SANS AUCUN ecran ;
+// seul l'admin Django pouvait creer une periode ou publier un bulletin.
+const BulletinsPage = lazy(() => import('../../pages/education/BulletinsPage'))
 const EmploiDuTempsPage = lazy(() => import('../../pages/education/EmploiDuTempsPage'))
 const CantinePage = lazy(() => import('../../pages/education/CantinePage'))
 const DisciplinePage = lazy(() => import('../../pages/education/DisciplinePage'))
@@ -57,6 +61,7 @@ const config = {
       { to: '/education/echeancier', label: 'Échéancier scolarité', icon: <Wallet size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/education/presences', label: 'Présences', icon: <CalendarCheck size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/education/notes', label: 'Notes', icon: <GraduationCap size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      { to: '/education/bulletins', label: 'Périodes & bulletins', icon: <GraduationCap size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/education/emploi-du-temps', label: 'Emploi du temps', icon: <CalendarDays size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/education/cantine', label: 'Cantine', icon: <Utensils size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/education/discipline', label: 'Discipline', icon: <ShieldAlert size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
@@ -71,6 +76,7 @@ const config = {
     ['/education/echeancier', 'Échéancier scolarité'],
     ['/education/presences', 'Présences'],
     ['/education/notes', 'Notes'],
+    ['/education/bulletins', 'Périodes & bulletins'],
     ['/education/emploi-du-temps', 'Emploi du temps'],
     ['/education/cantine', 'Cantine'],
     ['/education/discipline', 'Discipline'],
@@ -85,6 +91,7 @@ const config = {
     { path: '/education/echeancier', component: EcheancierPage, roles: ROLES },
     { path: '/education/presences', component: PresencesPage, roles: ROLES },
     { path: '/education/notes', component: NotesPage, roles: ROLES },
+    { path: '/education/bulletins', component: BulletinsPage, roles: ROLES },
     { path: '/education/emploi-du-temps', component: EmploiDuTempsPage, roles: ROLES },
     { path: '/education/cantine', component: CantinePage, roles: ROLES },
     { path: '/education/discipline', component: DisciplinePage, roles: ROLES },

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   CheckCircle2, XCircle, FileSignature, FilePlus2, Send, ClipboardCheck,
   Users, Plus, Trash2, XSquare, Mail, BarChart3, Kanban as KanbanIcon,
+  Download, Clock,
 } from 'lucide-react'
 import { ListShell } from '../../../ui/module'
 import {
@@ -14,6 +15,7 @@ import {
 import { formatDateTime } from '../../../lib/format'
 import gedApi from '../../../api/gedApi'
 import crmApi from '../../../api/crmApi'
+import { downloadBlobInGesture, filenameFromResponse } from '../../../utils/downloadBlob'
 import { StatutApprobation, StatutSignature, errMessage } from './shared.js'
 
 /* ============================================================================
@@ -49,6 +51,7 @@ export default function ApprobationPage() {
   const [showEnvoiMasse, setShowEnvoiMasse] = useState(false) // PACT135
   const [analytique, setAnalytique] = useState(null) // XGED26 — KPIs approbation/signature
   const [kanban, setKanban] = useState(null)         // ZGED3 — tableau de bord par statut
+  const [prolongerFor, setProlongerFor] = useState(null) // WIR204 — prolonger l'échéance
 
   const load = async () => {
     setLoading(true)
@@ -161,8 +164,14 @@ export default function ApprobationPage() {
 
   const signatureActions = (r) => (r.statut === 'en_attente' ? [
     { id: 'signe', label: 'Marquer comme signée', icon: ClipboardCheck, onClick: () => markSigned(r) },
+    // ZGED14 — prolonge l'échéance (versant émetteur des relances).
+    { id: 'prolonger', label: 'Prolonger l’échéance', icon: Clock, onClick: () => setProlongerFor(r) },
     // XGED2 — annulation émetteur d'une demande encore en attente.
     { id: 'annuler', label: 'Annuler la demande', icon: XSquare, destructive: true, onClick: () => cancelSignature(r) },
+  ] : r.statut === 'signe' ? [
+    // XGED3/PACT185 — PDF final signé (champs aplatis), téléchargeable
+    // uniquement une fois la demande passée à `signe`.
+    { id: 'pdf-signe', label: 'Télécharger le PDF signé', icon: Download, onClick: () => downloadPdfSigne(r) },
   ] : [])
 
   const modeleActions = (r) => [
@@ -184,6 +193,20 @@ export default function ApprobationPage() {
       toast.success('Demande annulée.')
       load()
     } catch (err) { toast.error(errMessage(err)) }
+  }
+
+  // XGED3/PACT185 — `downloadBlobInGesture` DOIT être appelé SYNCHRONE, avant
+  // le premier `await` (patron iOS/PWA déjà en place ailleurs dans l'ERP) :
+  // pas de fonction `async` ici, une chaîne `.then/.catch` à la place. 409
+  // (pas encore signée) et 404 (contenu introuvable) remontent le message
+  // serveur tel quel — jamais un nom de fichier ou un contenu inventés.
+  const downloadPdfSigne = (r) => {
+    const pending = downloadBlobInGesture()
+    gedApi.pdfSigneDemande(r.id)
+      .then((res) => pending.deliver(
+        res.data, filenameFromResponse(res, `signature-${r.id}.pdf`)))
+      .catch((err) => toast.error(
+        errMessage(err, "Cette demande n'est pas encore signée.")))
   }
 
   return (
@@ -397,6 +420,13 @@ export default function ApprobationPage() {
           onDone={() => { setShowEnvoiMasse(false); load() }}
         />
       )}
+      {prolongerFor && (
+        <ProlongerSignatureDialog
+          demande={prolongerFor}
+          onClose={() => setProlongerFor(null)}
+          onDone={() => { setProlongerFor(null); load() }}
+        />
+      )}
     </>
   )
 }
@@ -503,6 +533,50 @@ function DecisionDialog({ decision, onClose, onDone }) {
           <Button variant={approuver ? 'default' : 'destructive'} onClick={submit} disabled={saving}>
             {saving ? '…' : (approuver ? 'Approuver' : 'Rejeter')}
           </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ZGED14 — Prolonge l'échéance d'une demande de signature `en_attente`
+// (versant ÉMETTEUR des relances : réarme la notification d'expiration
+// proche sans annuler ni recréer la demande). Refuse une échéance vide.
+function ProlongerSignatureDialog({ demande, onClose, onDone }) {
+  const [expiresAt, setExpiresAt] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const submit = async () => {
+    if (!expiresAt) { toast.error('La nouvelle échéance est requise.'); return }
+    setSaving(true)
+    try {
+      // `datetime-local` renvoie une chaîne sans fuseau ("AAAA-MM-JJTHH:mm") —
+      // `new Date(...).toISOString()` la convertit en ISO UTC attendu par le
+      // serveur (`parse_datetime`), jamais un format inventé côté client.
+      const iso = new Date(expiresAt).toISOString()
+      await gedApi.prolongerDemandeSignature(demande.id, { expires_at: iso })
+      toast.success('Échéance prolongée.')
+      onDone()
+    } catch (err) { toast.error(errMessage(err)) } finally { setSaving(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Prolonger l’échéance</DialogTitle></DialogHeader>
+        <div className="flex flex-col gap-3">
+          <p className="text-sm text-muted-foreground">
+            Document : <strong>{demande.document_nom || `#${demande.document}`}</strong>
+          </p>
+          <div>
+            <Label htmlFor="prolonger-expires-at">Nouvelle échéance</Label>
+            <Input id="prolonger-expires-at" type="datetime-local"
+              value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Annuler</Button>
+          <Button onClick={submit} disabled={saving}>{saving ? '…' : 'Prolonger'}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

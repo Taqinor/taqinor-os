@@ -52,6 +52,13 @@ const educationApi = {
         params: anneeScolaireId ? { annee_scolaire: anneeScolaireId } : {},
         responseType: 'blob',
       }),
+    // NTEDU17/WIR212 — bulletin scolaire PDF de l'élève pour une période
+    // (obligatoire) ; moyennes/rang/mention recalculés au rendu, jamais
+    // dénormalisés côté client.
+    bulletinPdf: (id, periodeId) =>
+      api.get(`/education/eleves/${id}/bulletin/`, {
+        params: { periode: periodeId }, responseType: 'blob',
+      }),
   },
 
   // ── Inscriptions — NTEDU3/4/5 ──
@@ -175,6 +182,25 @@ const educationApi = {
   parametres: {
     get: () => api.get('/education/parametres/'),
     save: (data) => api.post('/education/parametres/', data),
+  },
+
+  // ── Périodes de notation & bulletins — NTEDU17/WIR212 ──
+  // Le backend était complet (BulletinViewSet.publier, eleves.bulletinPdf,
+  // moyennes/rang/mention recalculés au rendu) mais SANS AUCUN écran — seul
+  // l'admin Django pouvait créer une période ou saisir une appréciation.
+  periodes: {
+    list: (params) => api.get('/education/periodes/', { params }),
+    create: (data) => api.post('/education/periodes/', data),
+  },
+  bulletins: {
+    list: (params) => api.get('/education/bulletins/', { params }),
+    create: (data) => api.post('/education/bulletins/', data),
+    // Seule l'appréciation générale est modifiable ; `publie`/`date_publication`
+    // sont read-only sur le serializer et ne basculent QUE via `publier`.
+    update: (id, data) => api.patch(`/education/bulletins/${id}/`, data),
+    // NTEDU33 — bascule EXCLUSIVEMENT ici la visibilité portail parents,
+    // jamais un PATCH direct sur `publie`.
+    publier: (id) => api.post(`/education/bulletins/${id}/publier/`),
   },
 }
 
