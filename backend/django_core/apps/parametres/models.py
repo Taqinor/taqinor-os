@@ -28,6 +28,9 @@ from .models_taxes import TAUX_TVA_MAROCAINS, TauxTVA
 from .models_payment_terms import ConditionPaiement
 from .models_units import UNITES_MESURE_DEFAUT, UniteMesure
 from .models_pos import BoutiquePos, ParametresPos
+from .models_relance import (
+    CADENCE_RELANCE_DEFAUT, CadenceRelanceEtape, CanalRelance,
+)
 
 __all__ = [
     'CompanyProfile',
@@ -46,6 +49,9 @@ __all__ = [
     'UNITES_MESURE_DEFAUT',
     'GabaritDocumentCustom',
     'CIBLE_INTERDITE',
+    'CadenceRelanceEtape',
+    'CADENCE_RELANCE_DEFAUT',
+    'CanalRelance',
 ]
 
 

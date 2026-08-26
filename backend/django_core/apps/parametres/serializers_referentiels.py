@@ -9,6 +9,7 @@ existante ne peut pas migrer.
 from rest_framework import serializers
 
 from .models_payment_terms import ConditionPaiement
+from .models_relance import CadenceRelanceEtape
 from .models_taxes import TauxTVA
 from .models_units import UniteMesure
 
@@ -71,3 +72,20 @@ class UniteMesureSerializer(serializers.ModelSerializer):
                     {'code': "Le code d'une unité existante ne peut pas "
                              'changer.'})
         return attrs
+
+
+class CadenceRelanceEtapeSerializer(serializers.ModelSerializer):
+    """RELANCE FOUNDATION — gabarit de cadence de relance (Paramètres → CRM).
+
+    Purement un ordonnancement de rappels internes (délai + canal + libellé),
+    jamais un chiffre affiché au client."""
+
+    class Meta:
+        model = CadenceRelanceEtape
+        fields = ['id', 'ordre', 'delai_jours', 'canal', 'libelle', 'actif']
+
+    def validate_libelle(self, value):
+        value = (value or '').strip()
+        if not value:
+            raise serializers.ValidationError('Le libellé est requis.')
+        return value
