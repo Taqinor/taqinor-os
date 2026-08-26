@@ -49,6 +49,18 @@ from authentication.models import Company
 
 User = get_user_model()
 
+#: Courant d'entrée MPPT admissible des DEUX onduleurs 5 kW de ce montage.
+#: L-22A (fondateur 24/08/2026, « change both inverter of 5kw to increase their
+#: mppt current to more then 20A ») : la valeur RÉELLE des deux produits que ce
+#: fixture nomme (``OND-R-HUA-5M`` et ``OND-H-DEY-5M``) est 22,0 A — cf.
+#: ``stock.management.commands.seed_catalogue`` et la migration
+#: ``stock.0128_l22a_bornes_mppt_5kw``. Le fixture portait 13,5 A, une valeur
+#: qui n'existe plus au catalogue : le panneau 550 Wc de ce même montage
+#: (Isc 14,02 A) la dépassait à lui seul, et l'ALERTE d'écrêtage qui en
+#: découlait polluait ``avertissements`` dans des tests qui parlent de BANQUES
+#: DE BATTERIES, pas de chaînes. On recale sur le catalogue réel.
+_I_MPPT_5KW = Decimal('22.0')
+
 
 class _Base(TestCase):
     """Un catalogue minimal mais électriquement cohérent : panneau, onduleur
@@ -97,14 +109,14 @@ class _Base(TestCase):
             type_fiche='onduleur',
             ond_ac_kw=Decimal('5.00'), ond_phases=1, ond_n_mppt=2,
             ond_mppt_v_min=Decimal('90.0'), ond_mppt_v_max=Decimal('560.0'),
-            ond_v_max_abs=Decimal('600.0'), ond_i_max_mppt_a=Decimal('13.5'),
+            ond_v_max_abs=Decimal('600.0'), ond_i_max_mppt_a=_I_MPPT_5KW,
             ond_rendement_euro_pct=Decimal('97.0'), ond_bat_aucune=True)
         FicheTechnique.objects.create(
             company=self.company, produit=self.produits['ONDH'],
             type_fiche='onduleur',
             ond_ac_kw=Decimal('5.00'), ond_phases=1, ond_n_mppt=2,
             ond_mppt_v_min=Decimal('90.0'), ond_mppt_v_max=Decimal('560.0'),
-            ond_v_max_abs=Decimal('600.0'), ond_i_max_mppt_a=Decimal('13.5'),
+            ond_v_max_abs=Decimal('600.0'), ond_i_max_mppt_a=_I_MPPT_5KW,
             ond_rendement_euro_pct=Decimal('97.0'), ond_bat_aucune=False,
             ond_bat_v_min=Decimal('40.0'), ond_bat_v_max=Decimal('60.0'))
 
@@ -123,16 +135,20 @@ class _Base(TestCase):
                 bat_max_charge_kw=Decimal('3.84'))
 
     def _compose(self, *, cible_kwh=None, kwc=30.0, nb_panneaux=None,
-                 module_kwh=None):
+                 module_kwh=None, avertissements=None):
         """Une composition « avec batterie », et son décompte homogène
         ``(nb_batteries_5, nb_batteries_10)`` — lu par la MÊME fonction que
-        ``dimensionnement.echelle_paliers_batterie``."""
+        ``dimensionnement.echelle_paliers_batterie``.
+
+        ``avertissements`` : le canal du moteur, passé TEL QUEL (``None`` par
+        défaut = le comportement d'origine de ce helper, où la composition
+        journalise au lieu d'accumuler)."""
         produits = services.catalogue_de_la_societe(self.company)
         lignes = services.composition_residentielle(
             produits, kwc=kwc, panel_watt=550,
             nb_panneaux=nb_panneaux or max(1, int(kwc * 1000 / 550)),
             avec_batterie=True, batterie_cible_kwh=cible_kwh,
-            batterie_module_kwh=module_kwh)
+            batterie_module_kwh=module_kwh, avertissements=avertissements)
         vue = _lire_composition(lignes, Decimal('20'))
         cinq, dix = _compter_modules_batterie(vue['lignes'])
         return cinq, dix, vue
@@ -261,13 +277,25 @@ class CalibreImposeSuitToujoursLeModuleDuDevis(_Base):
         self.assertEqual((cinq, dix), (0, 2))  # 2×10 = 20, le plus proche en 10 seul
         self.assertAlmostEqual(vue['batterie_kwh'], 20.0, places=2)
 
-    def test_calibre_impose_absent_du_catalogue_replie_sur_le_plus_proche(self):
-        """Le catalogue de ce montage porte les DEUX calibres : imposer un
-        calibre absent (ex. 15, qui n'existe pas) ne peut PAS composer une
-        banque vide — repli sur le choix « au plus proche » normal."""
-        cinq, dix, _vue = self._compose(cible_kwh=15, kwc=40.0, module_kwh=15)
-        self.assertTrue(cinq > 0 or dix > 0)
-        self.assertFalse(cinq > 0 and dix > 0)
+    def test_calibre_impose_absent_du_catalogue_ne_compose_RIEN(self):
+        """A1 (revue adversariale Fable, 26/08/2026) — « honest absence beats
+        a wrong pairing ».
+
+        Le catalogue de ce montage porte les DEUX calibres (5 et 10) ; on
+        impose 15, qui n'existe pas. Le pin résout par calibre LE PLUS PROCHE
+        à ±1 kWh près (``abs(cap - calibre_impose) < 1.0``) : 5 et 10 sont
+        tous les deux hors tolérance, donc AUCUNE correspondance. La
+        composition part alors SANS batterie et le DIT — elle ne se replie
+        JAMAIS sur le choix économique 5/10, ce qui repeindrait la banque
+        dans un calibre que ce devis ne vend pas (l'ancien comportement, et
+        exactement la violation que ce chantier ferme)."""
+        avertissements = []
+        cinq, dix, _vue = self._compose(cible_kwh=15, kwc=40.0, module_kwh=15,
+                                        avertissements=avertissements)
+        self.assertEqual((cinq, dix), (0, 0))
+        self.assertEqual(len(avertissements), 1, avertissements)
+        self.assertIn('15', avertissements[0])
+        self.assertIn('SANS batterie', avertissements[0])
 
     def test_par_defaut_sans_calibre_impose_comportement_inchange(self):
         """``module_kwh`` absent (défaut) : le choix ÉCONOMIQUE décide seul
@@ -279,15 +307,40 @@ class CalibreImposeSuitToujoursLeModuleDuDevis(_Base):
 
 class CalibreImposeCatalogueSeulement5(_Base):
     """Un catalogue qui ne référence PAS de module 10 kWh : imposer 5 EST
-    déjà le seul chemin possible, et imposer 10 (absent) ne casse rien."""
+    déjà le seul chemin possible, et imposer 10 (absent) ne compose RIEN —
+    surtout pas six modules de 5 kWh que ce devis ne vend pas (A1)."""
 
     slug = 'bathomo-impose-5seul'
     BATTERIE_SKUS = ('5',)
 
-    def test_calibre_10_impose_mais_absent_replie_sur_le_5_seul_disponible(self):
-        cinq, dix, vue = self._compose(cible_kwh=30, kwc=40.0, module_kwh=10)
+    def test_calibre_10_impose_mais_absent_ne_repeint_PAS_la_banque_en_5(self):
+        """A1 (revue adversariale Fable, 26/08/2026) — le cas le plus
+        tentant : un SEUL calibre reste au catalogue, et il « suffirait » de
+        composer avec lui. C'est précisément le repli interdit — un devis qui
+        vend du 10 kWh ne peut pas se voir re-chiffrer en 5 kWh sans que
+        personne ne le dise. Le pin ne trouve aucune correspondance (|5-10|
+        = 5 ≥ 1,0) : composition SANS batterie, et l'avertissement dédié
+        nomme le calibre introuvable."""
+        avertissements = []
+        cinq, dix, vue = self._compose(cible_kwh=30, kwc=40.0, module_kwh=10,
+                                       avertissements=avertissements)
+        self.assertEqual((cinq, dix), (0, 0))
+        self.assertFalse(vue['batterie_kwh'])
+        self.assertEqual(len(avertissements), 1, avertissements)
+        self.assertIn('10', avertissements[0])
+        self.assertIn('SANS batterie', avertissements[0])
+
+    def test_calibre_5_impose_et_present_compose_normalement(self):
+        """Le pendant POSITIF : le même montage, le calibre RÉELLEMENT au
+        catalogue — le pin résout et la banque grandit en modules de 5, sans
+        le moindre avertissement. Sans ce test, celui du dessus serait
+        satisfait par un moteur qui ne compose plus jamais de batterie."""
+        avertissements = []
+        cinq, dix, vue = self._compose(cible_kwh=30, kwc=40.0, module_kwh=5,
+                                       avertissements=avertissements)
         self.assertEqual((cinq, dix), (6, 0))
         self.assertAlmostEqual(vue['batterie_kwh'], 30.0, places=2)
+        self.assertEqual(avertissements, [])
 
 
 class EconomieDeCalibreChoisitLeMoinsCher(_Base):
@@ -516,5 +569,10 @@ class PinCalibreGeneraliseHors5Et10(_Base):
             batterie_module_kwh=16, avertissements=avertissements)
         self.assertFalse(any(
             'batterie' in (li.designation or '').lower() for li in lignes))
-        self.assertTrue(avertissements)
+        # Le pin sans correspondance est le SEUL motif : ce montage est
+        # électriquement sain par ailleurs (cf. le test « ne bloque jamais la
+        # composition »), donc aucun avertissement de chaîne ne doit venir
+        # s'intercaler devant lui.
+        self.assertEqual(len(avertissements), 1, avertissements)
         self.assertIn('16', avertissements[0])
+        self.assertIn('SANS batterie', avertissements[0])
