@@ -538,6 +538,12 @@ function ChargesGlTab() {
             onClick={() => gen('cout-employeur', paieApi.coutEmployeur, 'cout_employeur')}>
             <Calculator size={16} aria-hidden="true" /> Coût employeur (consolidé)
           </Button>
+          {/* WIR242 — détail des provisions 13e mois/IFC de la période
+              (XPAI20, apps/paie/views.py:924) : brique jamais branchée. */}
+          <Button variant="outline" loading={busy === 'provisions'}
+            onClick={() => gen('provisions', paieApi.provisions, 'provisions')}>
+            <Calculator size={16} aria-hidden="true" /> Provisions (13e mois/IFC)
+          </Button>
         </div>
       </Card>
 
