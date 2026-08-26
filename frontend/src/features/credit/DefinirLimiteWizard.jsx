@@ -22,20 +22,24 @@ import { frenchError } from '../../lib/frenchError'
 
 export default function DefinirLimiteWizard({ clientId, limite = null, onDone }) {
   const [step, setStep] = useState(1)
+  const edition = !!limite?.id
   const [fiche, setFiche] = useState(null)
-  const [montant, setMontant] = useState('')
-  const [modeHold, setModeHold] = useState('avertissement')
+  // En ÉDITION, les champs partent de la valeur RÉELLEMENT enregistrée — via
+  // un initialiseur paresseux, jamais un `setState` dans un effet (qui
+  // déclencherait un rendu en cascade, react-hooks/set-state-in-effect). Le
+  // point de montage passe `key={limite?.id}` : changer de limite remonte le
+  // composant, donc l'initialiseur rejoue.
+  const [montant, setMontant] = useState(
+    () => (edition ? String(limite.montant_limite ?? '') : ''))
+  const [modeHold, setModeHold] = useState(
+    () => (edition ? (limite.mode_hold || 'avertissement') : 'avertissement'))
   const [error, setError] = useState(null)
   const [busy, setBusy] = useState(false)
-  const edition = !!limite?.id
 
   useEffect(() => {
-    // En ÉDITION, la suggestion n'a pas lieu d'être : on part de la valeur
-    // réellement enregistrée, jamais d'un recalcul qui écraserait la décision
-    // déjà prise par le Directeur.
+    // En ÉDITION, la limite SUGGÉRÉE n'a pas lieu d'être demandée : elle
+    // écraserait la décision déjà prise par le Directeur.
     if (edition) {
-      setMontant(String(limite.montant_limite ?? ''))
-      setModeHold(limite.mode_hold || 'avertissement')
       creditApi.getFicheClient(clientId)
         .then((f) => setFiche(f.data))
         .catch(() => setError('Chargement impossible.'))

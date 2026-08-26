@@ -76,7 +76,6 @@ export default function PaiementsPage() {
 
   useEffect(() => {
     chargerPaiements()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   /* ── WIR265/FG42 — Assistant « Import de relevé bancaire » ────────────────

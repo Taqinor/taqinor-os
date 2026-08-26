@@ -173,7 +173,7 @@ export default function DossiersReglementairesPage() {
     chargerCalendrier(cible)
   }
 
-  useEffect(() => { chargerCalendrier(null) }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { chargerCalendrier(null) }, [])
 
   // Colonnes dérivées des données réelles (jamais d'un schéma deviné).
   const colonnes = useMemo(() => {

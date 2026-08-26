@@ -368,7 +368,7 @@ function DevisPdfDialog({
 function DevisRow({ d, ctx }) {
   const {
     selectedIds, toggleSelected,
-    versionsOpenId, setVersionsOpenId, roofOpenId, setRoofOpenId,
+    versionsOpenId, roofOpenId, setRoofOpenId,
     // WIR225 - comparaison des variantes servie par le serveur.
     variantesEtat, basculerVersions,
     histoOpenId, toggleHistorique, histoCache, histoLoadingId,
@@ -1407,7 +1407,12 @@ export default function DevisList() {
   // Deep-link `?variantes=<id>` : charger le groupe au MONTAGE (l'état initial
   // ci-dessus pose déjà l'id ; il ne déclenche aucun chargement à lui seul).
   useEffect(() => {
-    if (versionsOpenId != null) chargerVariantes(versionsOpenId)
+    if (versionsOpenId == null) return undefined
+    // Déféré d'un tick : un `setState` SYNCHRONE dans un effet déclenche des
+    // rendus en cascade (react-hooks/set-state-in-effect). Le timer est
+    // annulé au démontage — aucun chargement orphelin.
+    const tick = setTimeout(() => chargerVariantes(versionsOpenId), 0)
+    return () => clearTimeout(tick)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

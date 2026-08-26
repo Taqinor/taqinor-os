@@ -31,8 +31,12 @@ function HistoriqueLimite({ limiteId }) {
   const [erreur, setErreur] = useState('')
 
   useEffect(() => {
+    // Pas de limite = pas d'historique : on ne pose AUCUN state ici (un
+    // `setState` synchrone dans un effet déclenche des rendus en cascade,
+    // react-hooks/set-state-in-effect). Le composant rend `null` de toute
+    // façon quand `limiteId` est absent.
+    if (!limiteId) return undefined
     let vivant = true
-    if (!limiteId) { setEntries([]); return undefined }
     creditApi.getLimiteHistorique(limiteId)
       .then((r) => { if (vivant) setEntries(r?.data?.entries ?? []) })
       .catch((err) => {
@@ -80,16 +84,20 @@ export default function FicheCreditClientPage() {
   const [limite, setLimite] = useState(null)
   const [limiteChargee, setLimiteChargee] = useState(false)
 
-  const chargerLimite = useCallback(() => {
-    setLimiteChargee(false)
-    return creditApi.getLimites({ client: clientId })
+  // Aucun `setState` SYNCHRONE ici : tout passe par un callback de promesse
+  // (react-hooks/set-state-in-effect). `limiteChargee` ne sert que de porte
+  // d'OUVERTURE de l'assistant — il n'a jamais à repasser à `false` : un
+  // rechargement suit toujours la fermeture de l'assistant (`onDone`).
+  const chargerLimite = useCallback(
+    () => creditApi.getLimites({ client: clientId })
       .then((r) => {
         const lignes = r?.data?.results ?? r?.data ?? []
         setLimite(Array.isArray(lignes) && lignes.length > 0 ? lignes[0] : null)
       })
       .catch(() => setLimite(null))
-      .finally(() => setLimiteChargee(true))
-  }, [clientId])
+      .finally(() => setLimiteChargee(true)),
+    [clientId],
+  )
 
   useEffect(() => { chargerLimite() }, [chargerLimite])
 
@@ -103,6 +111,10 @@ export default function FicheCreditClientPage() {
 
       {wizardOpen && limiteChargee && (
         <DefinirLimiteWizard
+          // WIR186 — l'assistant initialise ses champs depuis la limite : sans
+          // cette clé, passer d'une limite à l'autre garderait les valeurs de
+          // la précédente (l'initialiseur paresseux ne rejoue qu'au montage).
+          key={limite?.id ?? 'nouvelle'}
           clientId={clientId}
           limite={limite}
           onDone={() => {
