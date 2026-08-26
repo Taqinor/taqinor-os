@@ -718,6 +718,12 @@ const batteryUnitCapacityKwh =
 // (l'en-tête du curseur et le repère d'autonomie), sinon ils divergeraient.
 const batteryUnitCapacityLabel = formatNumber(
   batteryUnitCapacityKwh, Number.isInteger(batteryUnitCapacityKwh) ? 0 : 1);
+// « utiles » — mais SEULEMENT quand le chiffre EST la capacité utile servie
+// (règle CAPUTIL). Sans le mot, « 2 × 4,6 kWh » à côté d'une ligne de devis
+// qui dit « Batterie 5 kWh » se lit comme une erreur ; avec le mot sur un
+// chiffre NOMINAL (repli sur la désignation), ce serait un faux. On ne
+// l'affiche donc que là où il est vrai.
+const batteryCapacityIsUsable = batteryCoverage?.capaciteUtilePackKwh != null;
 // ORDRE FONDATEUR (24/08/2026, soir) — « sélection de plusieurs batteries » :
 // le plafond du curseur suit désormais le mini-balayage RÉEL du moteur
 // (storageSweep) quand il est servi, au lieu d'un « 3 » arbitraire. Il monte
@@ -737,10 +743,19 @@ const storageRealMax = Math.max(storageSweep?.refuse?.nbPacks ?? 0, storageMaxRe
 // PRÉCISION FONDATEUR (26/08) — « monter à 30-40 kWh avec des modules de 5 kWh,
 // pas de problème » : le curseur va jusqu'au dernier cran RÉELLEMENT servi par
 // le moteur (`couverture_batterie.nb_packs_max`, qui inclut déjà le repère
-// d'autonomie complète). Un repère qu'on ne peut pas atteindre ne se compare à
-// rien. Clé non servie ⇒ plafond historique inchangé.
-const BATTERY_SIM_MAX_UNITS = Math.max(
-  offeredUnits, storageRealMax || 3, batteryCoverage?.nbPacksMax ?? 0);
+// d'autonomie maximale ET les packs du devis). Un repère qu'on ne peut pas
+// atteindre ne se compare à rien.
+//
+// LE PLAFOND SERVI FAIT LOI, ET C'EST UNE CORRECTION (revue du 26/08/2026).
+// Prendre le MAX avec les plafonds historiques ouvrait des crans SANS données
+// servies : ils repartaient en silence vers le simulateur approché, leur
+// graduation n'était pas grisée et aucun avertissement de sur-stockage ne
+// sortait — les plus grosses banques avaient donc l'air recommandées. Quand le
+// moteur parle, on s'arrête où il s'arrête. Clé non servie ⇒ plafond
+// historique inchangé, à l'identique.
+const BATTERY_SIM_MAX_UNITS = batteryCoverage
+  ? batteryCoverage.nbPacksMax
+  : Math.max(offeredUnits, storageRealMax || 3);
 // Curseur au départ : les unités offertes (bornées au plafond) si le devis
 // porte une batterie, sinon 1 (« et avec 1 batterie ? »).
 const batterySimInitialN = offeredUnits >= 1 ? Math.min(offeredUnits, BATTERY_SIM_MAX_UNITS) : 1;
@@ -805,20 +820,21 @@ const COVERAGE_MONTH_BY_SEASON: Record<SeasonId, string> = {
 const coverageMonthInitial = curveSeasonDefault
   ? COVERAGE_MONTH_BY_SEASON[curveSeasonDefault]
   : '7';
-/** Les trois bandes SERVIES pour un cran + un mois, ou `null` (⇒ repli client). */
+/** Les bandes SERVIES pour un cran + un mois, ou `null` (⇒ repli client). */
 function coverageBandsAt(n: number, mois: string) {
   const step = batteryCoverage?.pas.find((p) => p.nbPacks === n) ?? null;
-  const bands = step?.joursTypes[mois] ?? null;
-  return bands ? { direct: bands.direct, battery: bands.battery, grid: bands.grid } : null;
+  return step?.joursTypes[mois] ?? null;
 }
-const coverageStepInitial =
-  batteryCoverage?.pas.find((p) => p.nbPacks === batterySimInitialN) ?? null;
 const coverageBandsInitial = coverageBandsAt(batterySimInitialN, coverageMonthInitial);
 const sum24 = (v: number[] | undefined): number =>
   (v ?? []).reduce((a, b) => a + b, 0);
-// Le dessin vient du MOTEUR quand il est servi ; sinon, byte pour byte, du
-// simulateur client d'avant. Les trois nombres sous le graphe suivent la MÊME
-// source que le dessin — sinon la page se contredirait elle-même.
+// UNE SEULE SOURCE POUR TOUTE LA LIGNE (correction du 26/08/2026). Le dessin,
+// les trois kWh de la journée type ET le taux de couverture viennent TOUS du
+// moteur, ou TOUS du simulateur client — jamais un mélange : un graphe servi
+// à côté de chiffres simulés, c'est une page qui se contredit. Et le taux
+// affiché ici est celui du JOUR dessiné (`couverturePct` du mois servi), pas
+// celui de l'année : le taux annuel n'apparaît que sur le repère d'autonomie,
+// qui le nomme explicitement.
 const batterySplitSvgInitial = coverageBandsInitial
   ? renderBatterySplitSvg(coverageBandsInitial, undefined, 'fr')
   : (batteryInitial ? renderBatterySplitSvg(batteryInitial.hourly, undefined, 'fr') : '');
@@ -828,10 +844,7 @@ const batteryDayBatteryKwh = coverageBandsInitial
   ? sum24(coverageBandsInitial.battery) : (batteryInitial?.fromBatteryKwh ?? 0);
 const batteryDayGridKwh = coverageBandsInitial
   ? sum24(coverageBandsInitial.grid) : (batteryInitial?.fromGridKwh ?? 0);
-// « De votre consommation couverte » : le pourcentage du MOTEUR (année
-// entière) remplace celui du simulateur client dès qu'il est servi. Il n'y a
-// donc JAMAIS deux taux de couverture différents sur la même page.
-const batteryCoveragePctInitial = coverageStepInitial?.couverturePct ?? null;
+const batteryCoveragePctInitial = coverageBandsInitial?.couverturePct ?? null;
 // ORDRE FONDATEUR — un palier du balayage RÉEL dont nb_packs == N a un prix
 // TTC RÉEL (cout_ttc), qu'il coïncide ou non avec l'option « avec batterie »
 // du devis (deux sources concordantes quand N == offeredUnits : le moteur ET
@@ -850,10 +863,30 @@ const batteryInitialPrice = batterySimInitialN === offeredUnits && avecTtc !== n
 // Sur-stockage au N initial (rare : seulement si le devis porte lui-même une
 // quantité au-delà de ce que le PV remplit chaque jour) — même dérivation que
 // le message JS ci-dessous (aucun chiffre inventé, voir setupBatterySim).
-const batteryInitialOverStorage =
+//
+// COUVBAT (26/08/2026) — LA DÉRIVATION SERVEUR SUIT LA MÊME RÈGLE QUE LE JS.
+// `renderOverStorage` a été élargi à TOUT cran que le moteur déclare non
+// remplissable ; le rendu serveur, lui, ne regardait toujours que le palier
+// REFUSÉ du balayage. Un visiteur sans JS — et le premier pixel de tous les
+// autres — pouvait donc voir une banque non remplissable SANS son
+// avertissement, jusqu'à l'hydratation. Les deux disent désormais la même
+// chose. Le pourcentage entre parenthèses reste réservé au palier refusé du
+// balayage : c'est le seul pour lequel un chiffre RÉEL est servi.
+const batteryInitialCranNonRemplissable = batteryCoverage
+  ? !(batteryCoverage.pas.find((p) => p.nbPacks === batterySimInitialN)
+      ?.seRemplitTousLesJours ?? false)
+  : false;
+const batteryInitialOverStorageRefuse =
   storageSweep?.refuse != null && batterySimInitialN === storageSweep.refuse.nbPacks
     ? storageSweep.refuse
     : null;
+/** Faut-il AVERTIR au N de départ ? (palier refusé du balayage OU cran que le
+ *  moteur déclare non remplissable — exactement la règle du script client.) */
+const batteryInitialOverStorage =
+  batteryInitialOverStorageRefuse !== null || batteryInitialCranNonRemplissable;
+/** Le pourcentage RÉEL, servi — et seulement pour le palier refusé. */
+const batteryInitialOverStoragePct =
+  batteryInitialOverStorageRefuse?.remplissagePireMoisPct ?? null;
 // ORDRE FONDATEUR (24/08/2026) — payback et remplissage moyen DU PALIER au N de
 // départ : deux nombres SERVIS par le moteur (jamais dérivés ici). `null` ⇒ la
 // ligne correspondante ne rend rien.
@@ -904,8 +937,11 @@ const batterySimConfig = showBatterySim
             moisDefaut: coverageMonthInitial,
             pas: batteryCoverage.pas.map((p) => ({
               n: p.nbPacks,
-              pct: p.couverturePct,
               remplit: p.seRemplitTousLesJours,
+              // Chaque mois porte SON taux de journée : c'est lui qu'affiche la
+              // ligne de chiffres. Le taux ANNUEL du cran n'est pas embarqué —
+              // rien ne le lit ici, et il n'habille que le repère d'autonomie,
+              // rendu côté serveur.
               jours: p.joursTypes,
             })),
             autonomie: batteryCoverage.autonomie,
@@ -965,10 +1001,19 @@ const prodLayers = productionLayers(prodState0, productionAvailability);
 // empilée du simulateur (`batteryInitial.hourly.battery`) — aucune série
 // inventée. Calque inactif ⇒ ce bloc ne s'exécute pas et le rendu est
 // byte-identique à celui d'avant.
+// COUVBAT (26/08/2026) — LA MÊME SÉRIE QUE L'AIRE EMPILÉE, DÈS LE PREMIER
+// PIXEL. La couche batterie de la courbe journalière se rendait encore depuis
+// le simulateur client pendant que l'aire empilée, juste en dessous, était
+// déjà dessinée avec les bandes SERVIES : deux dessins du même sujet pouvaient
+// donc se contredire au premier rendu, jusqu'à ce qu'une interaction rejoue le
+// pont inter-îles (optionnel, donc non garanti à l'init). Les deux partent
+// désormais de la même série servie quand elle existe.
 if (ok && prodLayers.battery && batteryInitial) {
   const servedAvecBatterie = {
     ...(servedScaleFor(curveSeasonDefault) ?? {}),
-    batterieHoraireKwh: batteryInitial.hourly.battery,
+    batterieHoraireKwh: coverageBandsInitial
+      ? coverageBandsInitial.battery
+      : batteryInitial.hourly.battery,
   };
   for (const lang of ['fr', 'en', 'ar'] as const) {
     for (const variant of CURVE_VARIANTS) {
@@ -2731,7 +2776,10 @@ const signConfig = ok
               <div class="mt-5">
                 <div class="flex items-center justify-between text-sm">
                   <label for="battery-sim-slider" class="text-lune-soft" data-i18n data-fr="Nombre de batteries" data-en="Number of batteries" data-ar="عدد البطاريات">Nombre de batteries</label>
-                  <span class="font-semibold text-brass-300" dir="ltr"><span id="battery-sim-units">{batterySimInitialN}</span> × <span id="battery-sim-cap">{batteryUnitCapacityLabel}</span> kWh</span>
+                <span class="font-semibold text-brass-300"><span dir="ltr"><span id="battery-sim-units">{batterySimInitialN}</span> × <span id="battery-sim-cap">{batteryUnitCapacityLabel}</span> kWh</span>{batteryCapacityIsUsable && (
+                    <span class="ms-1 font-normal text-lune-faint" data-i18n
+                      data-fr="utiles" data-en="usable" data-ar="قابلة للاستعمال">utiles</span>
+                  )}</span>
                 </div>
                 <input type="range" id="battery-sim-slider" min="0" max={BATTERY_SIM_MAX_UNITS} step="1" value={batterySimInitialN} class="mt-2 w-full accent-brass-400" aria-describedby="battery-sim-assumptions" />
                 {/* COUVBAT — les crans que ce toit ne remplirait PAS tous les
@@ -2741,10 +2789,14 @@ const signConfig = ok
                     complète), ils ne se font simplement pas passer pour la
                     plage recommandée. Sans bloc servi, aucun grisé — l'affichage
                     d'avant, à l'identique. */}
-                <div class="mt-1 flex justify-between text-xs text-lune-faint" aria-hidden="true">
+                <div class:list={['mt-1 flex justify-between text-lune-faint tabular-nums',
+                                  BATTERY_SIM_MAX_UNITS > 8 ? 'text-[10px]' : 'text-xs']} aria-hidden="true">
                   {Array.from({ length: BATTERY_SIM_MAX_UNITS + 1 }, (_, n) => {
+                    // Bloc servi mais AUCUN cran pour ce n ⇒ non remplissable,
+                    // jamais « supposé bon » : un `?? true` faisait passer les
+                    // crans sans données pour recommandés (revue du 26/08).
                     const remplit = batteryCoverage
-                      ? (batteryCoverage.pas.find((p) => p.nbPacks === n)?.seRemplitTousLesJours ?? true)
+                      ? (batteryCoverage.pas.find((p) => p.nbPacks === n)?.seRemplitTousLesJours ?? false)
                       : true;
                     return (
                       <span data-batt-tick={n} class={remplit ? undefined : 'opacity-40'}>{n}</span>
@@ -2753,27 +2805,50 @@ const signConfig = ok
                 </div>
               </div>
 
-              {/* ── COUVBAT · LE REPÈRE « AUTONOMIE COMPLÈTE » ────────────────
-                  Le nombre de batteries qui couvrirait TOUTE la journée et
-                  TOUTE la nuit, calculé par le moteur (déficit du jour type le
-                  plus gourmand ÷ rendement — le MÊME plafond que le balayage de
-                  stockage).
+              {/* ── COUVBAT · LE REPÈRE « AUTONOMIE MAXIMALE » ────────────────
+                  CE QUE CE NOMBRE EST, ET CE QU'IL N'EST PAS (correction du
+                  26/08/2026). Il dit le PLAFOND DE CAPACITÉ : déficit du jour
+                  type le plus gourmand ÷ rendement — le MÊME plafond que le
+                  balayage de stockage (`plafond_deficit_kwh`), c'est-à-dire la
+                  capacité au-delà de laquelle un kWh de plus ne peut RIEN
+                  restituer de plus.
 
-                  CONTRAINTE D'HONNÊTETÉ (fondateur) : ce nombre peut DÉPASSER
-                  la plus grosse banque que ce toit remplit chaque jour. On le
-                  MONTRE quand même — c'est une information que le client a le
-                  droit d'avoir — mais marqué hors de la plage recommandée,
-                  jamais présenté comme une configuration vendable, et jamais
-                  caché non plus. */}
+                  Il ne dit PAS « votre journée et votre nuit sont couvertes » :
+                  le moteur lui-même le contredit (cas mesurés : 91,9 %, 97,5 %,
+                  et jusqu'à 73,4 % sur un toit qui remplit pourtant sa banque
+                  chaque jour). En hiver, le champ ne produit pas de quoi
+                  remplir la banque, quelle que soit sa taille. La formulation
+                  d'origine promettait donc une couverture que le chiffre servi
+                  dément — règle fondateur « zéro chiffre inventé ». On affiche
+                  désormais LE TAUX SERVI à côté du repère, toujours.
+
+                  CONTRAINTE D'HONNÊTETÉ (fondateur) : ce nombre peut aussi
+                  DÉPASSER la plus grosse banque que ce toit remplit chaque
+                  jour. On le MONTRE quand même — c'est une information que le
+                  client a le droit d'avoir — mais marqué hors de la plage
+                  recommandée, jamais présenté comme une configuration
+                  vendable, et jamais caché non plus. */}
               {batteryCoverage?.autonomie && (
                 <p id="battery-sim-autonomy" class="mt-3 rounded-lg border border-white/10 bg-nuit-800/40 px-3 py-2 text-xs text-lune-soft">
                   <span class="font-semibold text-brass-300" data-i18n
-                    data-fr="Autonomie complète :" data-en="Full autonomy:" data-ar="استقلالية كاملة:">Autonomie complète :</span>
+                    data-fr="Autonomie maximale :" data-en="Maximum autonomy:" data-ar="أقصى استقلالية:">Autonomie maximale :</span>
                   <span class="ms-1 font-semibold" dir="ltr"><span id="battery-sim-autonomy-n">{batteryCoverage.autonomie.nbPacks}</span> × <span>{batteryUnitCapacityLabel}</span> kWh</span>
+                  {/* LE TAUX SERVI, TOUJOURS À CÔTÉ DU REPÈRE : c'est lui qui
+                      dit ce que cette banque couvre VRAIMENT. Absent (le moteur
+                      n'a pas su le chiffrer) ⇒ le fragment est masqué, jamais
+                      remplacé par une promesse. */}
+                  <span id="battery-sim-autonomy-couv" hidden={batteryCoverage.autonomie.couverturePct === null}
+                    ><span class="ms-1" data-i18n data-fr="— couvre" data-en="— covers" data-ar="— يغطي">— couvre</span
+                    ><span class="mx-1 font-semibold text-brass-300" dir="ltr" id="battery-sim-autonomy-pct">{batteryCoverage.autonomie.couverturePct !== null ? formatPercent(batteryCoverage.autonomie.couverturePct, 0) : ''}</span
+                    ><span data-i18n
+                      data-fr="de votre consommation annuelle."
+                      data-en="of your yearly consumption."
+                      data-ar="من استهلاككم السنوي.">de votre consommation annuelle.</span
+                  ></span>
                   <span class="ms-1" data-i18n
-                    data-fr="— de quoi couvrir votre journée ET votre nuit."
-                    data-en="— enough to cover your day AND your night."
-                    data-ar="— ما يكفي لتغطية نهاركم وليلكم.">— de quoi couvrir votre journée ET votre nuit.</span>
+                    data-fr="Au-delà, une batterie de plus n’apporte rien."
+                    data-en="Beyond this, one more battery adds nothing."
+                    data-ar="بعد ذلك، لا تضيف بطارية إضافية شيئاً.">Au-delà, une batterie de plus n’apporte rien.</span>
                   <span id="battery-sim-autonomy-limite" class="mt-1 block text-lune-faint" hidden={batteryCoverage.autonomie.seRemplitTousLesJours}>
                     <span data-i18n
                       data-fr="Au-delà de"
@@ -2796,20 +2871,16 @@ const signConfig = ok
                   <p class="text-[11px] text-lune-faint" data-i18n data-fr="du solaire produit, gardé chez vous" data-en="of the solar you produce, kept at home" data-ar="من الطاقة الشمسية المنتَجة، تبقى في منزلك">du solaire produit, gardé chez vous</p>
                 </div>
                 {/* COUVBAT — « ce que la batterie choisie COUVRE de ma
-                    consommation ». Le taux vient du MOTEUR (année entière, sur
-                    les vraies courbes du client) dès qu'il est servi ; sinon le
-                    simulateur client d'avant, mot pour mot. Un seul taux de
-                    couverture existe sur cette page : jamais deux qui se
-                    contrediraient. Le sous-libellé DIT laquelle des deux
-                    sources parle — annuelle (moteur) ou journée type. */}
+                    consommation ». Le taux vient du MOTEUR (bandes servies du
+                    jour type affiché) dès qu'elles pilotent le graphe ; sinon
+                    du simulateur client, mot pour mot comme avant. Dans les
+                    DEUX cas c'est un taux de la JOURNÉE affichée — le même
+                    sujet que le graphe et que les trois kWh en dessous. Le
+                    sous-libellé n'a donc pas à changer de sens. */}
                 <div>
                   <p class="text-2xl font-bold text-brass-300" id="battery-sim-selfsuff" dir="ltr">{formatPercent(batteryCoveragePctInitial ?? batteryInitial.selfSufficiencyPct, 0)}</p>
                   <p class="text-xs text-lune-soft" data-i18n data-fr="Autosuffisance" data-en="Self-sufficiency" data-ar="الاكتفاء الذاتي">Autosuffisance</p>
-                  {batteryCoveragePctInitial !== null ? (
-                    <p class="text-[11px] text-lune-faint" data-i18n data-fr="de votre consommation de l’année couverte, jour et nuit" data-en="of your yearly consumption covered, day and night" data-ar="من استهلاككم السنوي مغطى، ليلاً ونهاراً">de votre consommation de l’année couverte, jour et nuit</p>
-                  ) : (
-                    <p class="text-[11px] text-lune-faint" data-i18n data-fr="de votre consommation couverte par le solaire" data-en="of your consumption covered by solar" data-ar="من استهلاككم مغطى بالطاقة الشمسية">de votre consommation couverte par le solaire</p>
-                  )}
+                  <p class="text-[11px] text-lune-faint" data-i18n data-fr="de votre consommation couverte par le solaire" data-en="of your consumption covered by solar" data-ar="من استهلاككم مغطى بالطاقة الشمسية">de votre consommation couverte par le solaire</p>
                 </div>
                 <div>
                   <p class="text-2xl font-bold text-brass-300" dir="ltr"><span id="battery-sim-backup">{formatNumber(batteryInitial.backupHours, 0)}</span> h</p>
@@ -2893,7 +2964,7 @@ const signConfig = ok
                   data-fr="Au-delà de cette quantité, votre toit ne remplirait plus la batterie tous les jours"
                   data-en="Beyond this quantity, your roof would no longer fill the battery every day"
                   data-ar="بعد هذه الكمية، لن يملأ سطحكم البطارية كل يوم">Au-delà de cette quantité, votre toit ne remplirait plus la batterie tous les jours</span
-                ><span data-overstorage-pct dir="ltr" hidden={batteryInitialOverStorage?.remplissagePireMoisPct == null}> (<span data-overstorage-pct-num>{batteryInitialOverStorage?.remplissagePireMoisPct != null ? formatPercent(batteryInitialOverStorage.remplissagePireMoisPct, 0) : ''}</span><span data-i18n data-fr=" le mois le plus faible" data-en=" in the weakest month" data-ar=" في أضعف شهر"> le mois le plus faible</span>)</span
+                ><span data-overstorage-pct dir="ltr" hidden={batteryInitialOverStoragePct == null}> (<span data-overstorage-pct-num>{batteryInitialOverStoragePct != null ? formatPercent(batteryInitialOverStoragePct, 0) : ''}</span><span data-i18n data-fr=" le mois le plus faible" data-en=" in the weakest month" data-ar=" في أضعف شهر"> le mois le plus faible</span>)</span
                 ><span data-i18n data-fr=" — une capacité plus petite se rentabilise mieux." data-en=" — a smaller capacity pays back faster." data-ar=" — سعة أصغر تكون أكثر ربحية."> — une capacité plus petite se rentabilise mieux.</span>
               </p>
 
@@ -6937,8 +7008,11 @@ const signConfig = ok
         moisParSaison: Record<string, string>;
         moisDefaut: string;
         pas: Array<{
-          n: number; pct: number; remplit: boolean;
-          jours: Record<string, { direct: number[]; battery: number[]; grid: number[] }>;
+          n: number; remplit: boolean;
+          jours: Record<string, {
+            direct: number[]; battery: number[]; grid: number[];
+            couverturePct: number;
+          }>;
         }>;
         autonomie: {
           nbPacks: number; capaciteKwh: number;
@@ -7087,7 +7161,10 @@ const signConfig = ok
       // pourcentage entre parenthèses, lui, reste réservé au palier refusé du
       // balayage : c'est le seul pour lequel un chiffre RÉEL est servi.
       const cran = cfg.couverture?.pas.find((p) => p.n === n) ?? null;
-      const hit = (!!refuse && refuse.n === n) || (cran ? !cran.remplit : false);
+      // Bloc servi mais aucun cran pour ce n : on AVERTIT (le moteur ne l'a pas
+      // retenu), on ne se tait pas — même correction que les graduations.
+      const hit = (!!refuse && refuse.n === n)
+        || (cfg.couverture ? (!cran || !cran.remplit) : false);
       el.hidden = !hit;
       if (!hit) return;
       if (!refuse || refuse.n !== n) {
@@ -7123,10 +7200,24 @@ const signConfig = ok
     // COUVBAT — LES BANDES SERVIES pour ce cran et la saison affichée, ou
     // `null` (⇒ repli exact sur le simulateur client). Rien n'est recalculé
     // ici : la page LIT ce que le moteur horaire a produit.
+    //
+    // LE MOTEUR N'A CHIFFRÉ QU'UN SEUL FOYER : celui du devis (son occupation,
+    // ses équipements, ses vrais mois). Dès que le visiteur explore une AUTRE
+    // hypothèse — une autre puce d'occupation, l'onglet Été ou Ramadan — ces
+    // bandes ne décrivent plus ce qu'il regarde. Les garder figées pendant que
+    // les chiffres voisins bougeaient a été une VRAIE régression (revue du
+    // 26/08/2026) : les puces ne déplaçaient plus le graphe. On rend donc la
+    // main au simulateur client — qui, lui, sait répondre à ces hypothèses —
+    // pour TOUTE la ligne à la fois : graphe, trois kWh et taux. Une seule
+    // source à chaque instant, jamais un mélange.
+    function selectionServieParLeMoteur(): boolean {
+      return currentVariant === 'normal'
+        && currentOccupancy === (cfg.occupancy ?? 'presence_partielle');
+    }
     function servedBandsAt(n: number):
-      { direct: number[]; battery: number[]; grid: number[] } | null {
+      { direct: number[]; battery: number[]; grid: number[]; couverturePct: number } | null {
       const couv = cfg.couverture;
-      if (!couv) return null;
+      if (!couv || !selectionServieParLeMoteur()) return null;
       const mois = couv.moisParSaison[currentSeason] ?? couv.moisDefaut;
       return couv.pas.find((p) => p.n === n)?.jours[mois] ?? null;
     }
@@ -7144,11 +7235,12 @@ const signConfig = ok
         units: n,
       });
       // Le dessin, les trois kWh de la journée type et le taux de couverture
-      // viennent TOUS de la même source — servie quand elle existe, simulateur
-      // client sinon. Les mélanger ferait dire à la légende autre chose qu'au
-      // graphique juste au-dessus d'elle.
+      // viennent TOUS de la même source — servie quand elle existe ET qu'elle
+      // décrit bien ce qui est affiché, simulateur client sinon. Les mélanger
+      // ferait dire à la légende autre chose qu'au graphique juste au-dessus
+      // d'elle. Le taux est celui du JOUR dessiné, comme les trois kWh.
       const bandes = servedBandsAt(n);
-      const pct = cfg.couverture?.pas.find((p) => p.n === n)?.pct ?? null;
+      const pct = bandes ? bandes.couverturePct : null;
       lastHourly = bandes ?? res.hourly;
       setText('battery-sim-units', String(n));
       setText('battery-sim-selfconso', fmtPct(res.selfConsumptionPct));

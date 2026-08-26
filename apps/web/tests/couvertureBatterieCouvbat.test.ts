@@ -75,6 +75,23 @@ describe('COUVBAT — batteryCoverageInfo lit le contrat PARTAGÉ, sans rien inv
       .toEqual(SERVI.pas[1].jours_types['7'].batterie_kwh);
   });
 
+  it('chaque jour type porte SON taux — servi, jamais recalculé ici', () => {
+    const info = batteryCoverageInfo(p(SERVI))!;
+    expect(info.pas[1].joursTypes['7'].couverturePct)
+      .toBe(SERVI.pas[1].jours_types['7'].couverture_pct);
+    // …et il MONTE avec le nombre de batteries, comme le taux annuel.
+    const pcts = info.pas.map((s) => s.joursTypes['7'].couverturePct);
+    expect(pcts).toEqual([...pcts].sort((a, b) => a - b));
+  });
+
+  it('un mois sans taux servi est ÉCARTÉ — la page ne le calcule pas', () => {
+    const abime = JSON.parse(JSON.stringify(SERVI));
+    delete abime.pas[1].jours_types['7'].couverture_pct;
+    const info = batteryCoverageInfo(p(abime))!;
+    expect(info.pas[1].joursTypes['7']).toBeUndefined();
+    expect(info.pas[1].joursTypes['1']).toBeDefined();
+  });
+
   it('la couverture MONTE avec le nombre de batteries (jour ET nuit)', () => {
     const info = batteryCoverageInfo(p(SERVI))!;
     const pcts = info.pas.map((s) => s.couverturePct);
@@ -163,14 +180,74 @@ describe('COUVBAT — la page BRANCHE le bloc servi (et retombe proprement sans 
     // La réserve est MASQUÉE quand la banque se remplit — jamais l'inverse.
     expect(CODE).toContain('hidden={batteryCoverage.autonomie.seRemplitTousLesJours}');
     // FR/EN/AR comme tout le reste de la page.
-    expect(CODE).toContain('data-fr="Autonomie complète :"');
-    expect(CODE).toContain('data-en="Full autonomy:"');
-    expect(CODE).toContain('data-ar="استقلالية كاملة:"');
+    expect(CODE).toContain('data-fr="Autonomie maximale :"');
+    expect(CODE).toContain('data-en="Maximum autonomy:"');
+    expect(CODE).toContain('data-ar="أقصى استقلالية:"');
+  });
+
+  it('le repère NE PROMET PAS une couverture que le moteur dément', () => {
+    // Le N est un PLAFOND DE CAPACITÉ, pas une couverture atteinte : sur le
+    // contrat lui-même il ne couvre que 97,5 % (et jusqu'à 73,4 % sur d'autres
+    // toits). L'ancienne formulation « de quoi couvrir votre journée ET votre
+    // nuit » était donc un chiffre promis que le serveur contredit.
+    expect(SERVI.autonomie_complete.couverture_pct).toBeLessThan(100);
+    expect(CODE).not.toContain('de quoi couvrir votre journée ET votre nuit');
+    expect(CODE).not.toContain('enough to cover your day AND your night');
+    // Ce qu'il dit à la place : le taux SERVI, puis ce que le plafond signifie.
+    expect(CODE).toContain('id="battery-sim-autonomy-pct"');
+    expect(CODE).toContain('batteryCoverage.autonomie.couverturePct');
+    expect(CODE).toContain('data-fr="de votre consommation annuelle."');
+    expect(CODE).toContain('Au-delà, une batterie de plus n’apporte rien.');
+    // Taux non chiffré par le moteur ⇒ fragment masqué, jamais une promesse.
+    expect(CODE).toContain('hidden={batteryCoverage.autonomie.couverturePct === null}');
   });
 
   it('les crans non remplissables sont GRISÉS, pas supprimés', () => {
     expect(CODE).toContain('data-batt-tick={n}');
     expect(CODE).toContain("remplit ? undefined : 'opacity-40'");
+    // Bloc servi SANS cran pour ce n ⇒ non remplissable, jamais « supposé bon ».
+    expect(CODE).toContain('?.seRemplitTousLesJours ?? false)');
+    expect(CODE).not.toContain('?.seRemplitTousLesJours ?? true)');
+  });
+
+  it('le curseur ne dépasse JAMAIS le dernier cran servi', () => {
+    // Sinon les crans au-delà repartent en silence vers le simulateur
+    // approché, sans grisé ni avertissement — ils auraient l'air recommandés.
+    expect(CODE).toContain('const BATTERY_SIM_MAX_UNITS = batteryCoverage');
+    expect(CODE).toContain('? batteryCoverage.nbPacksMax');
+    expect(CODE).toContain(': Math.max(offeredUnits, storageRealMax || 3)');
+    // Et l'avertissement couvre aussi le cas « aucun cran pour ce n ».
+    expect(CODE).toContain('(cfg.couverture ? (!cran || !cran.remplit) : false)');
+  });
+
+  it('les puces d’occupation et les onglets rendent la main au simulateur', () => {
+    // RÉGRESSION corrigée : le moteur n'a chiffré QUE le foyer du devis ; sur
+    // toute autre hypothèse, TOUTE la ligne (graphe + kWh + taux) repasse au
+    // simulateur client — jamais un graphe figé à côté de chiffres qui bougent.
+    expect(CODE).toContain('function selectionServieParLeMoteur()');
+    expect(CODE).toContain("currentVariant === 'normal'");
+    expect(CODE).toContain('currentOccupancy === (cfg.occupancy ?? ');
+    expect(CODE).toContain('if (!couv || !selectionServieParLeMoteur()) return null;');
+  });
+
+  it('le taux affiché près du graphe est celui du JOUR, pas de l’année', () => {
+    // Un taux annuel à côté de trois kWh journaliers ferait voisiner deux
+    // grandeurs différentes sans le dire.
+    expect(CODE).toContain('const pct = bandes ? bandes.couverturePct : null;');
+    expect(CODE).toContain('const batteryCoveragePctInitial = coverageBandsInitial?.couverturePct ?? null;');
+    // Le sous-libellé reste celui d'une journée dans les DEUX cas : plus de
+    // variante « de l'année » à côté de chiffres journaliers.
+    expect(CODE).not.toContain('de votre consommation de l’année couverte');
+  });
+
+  it('le premier pixel dit la même chose que l’hydratation (SSR)', () => {
+    // (a) la couche batterie de la courbe journalière part des MÊMES bandes
+    //     servies que l'aire empilée — le pont inter-îles est optionnel.
+    expect(CODE).toContain('batterieHoraireKwh: coverageBandsInitial');
+    // (b) l'avertissement de sur-stockage suit côté serveur la MÊME règle
+    //     élargie que le script client.
+    expect(CODE).toContain('const batteryInitialCranNonRemplissable = batteryCoverage');
+    expect(CODE).toContain('batteryInitialOverStorageRefuse !== null || batteryInitialCranNonRemplissable');
   });
 
   it('le script client RELIT la couverture servie (aucun second moteur)', () => {

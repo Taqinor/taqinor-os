@@ -4291,6 +4291,13 @@ export interface BatteryCoverageHours {
   battery: number[];
   /** 24 kWh importés du RÉSEAU (le reste). */
   grid: number[];
+  /**
+   * % de la consommation DE CE JOUR-LÀ couverte (direct + batterie), servi par
+   * le moteur. Distinct du taux ANNUEL du cran : la ligne de chiffres qui
+   * entoure le graphe parle du jour AFFICHÉ, jamais de l'année — sinon deux
+   * grandeurs différentes voisineraient sans le dire.
+   */
+  couverturePct: number;
 }
 
 /** Un cran du curseur : son année et ses quatre jours types. */
@@ -4339,7 +4346,15 @@ function coverageHours(raw: unknown): BatteryCoverageHours | null {
   const r = raw as Record<string, unknown>;
   if (!isValidHourly24(r.direct_kwh) || !isValidHourly24(r.batterie_kwh)
       || !isValidHourly24(r.reseau_kwh)) return null;
-  return { direct: r.direct_kwh, battery: r.batterie_kwh, grid: r.reseau_kwh };
+  // Le taux du jour est SERVI : sans lui, la page n'aurait plus de source
+  // unique pour la ligne de chiffres qui entoure le graphe — on écarte le mois
+  // plutôt que de le calculer soi-même.
+  const couverturePct = finiteOrNull(r.couverture_pct);
+  if (couverturePct === null) return null;
+  return {
+    direct: r.direct_kwh, battery: r.batterie_kwh, grid: r.reseau_kwh,
+    couverturePct,
+  };
 }
 
 /**
