@@ -34,6 +34,9 @@ const DOC_PATH = join(HERE, 'E2E_HOOKS.md')
 // exprimer. Ordre : socle, puis un groupe par écran dans l'ordre des tâches,
 // alphabétique à l'intérieur de chaque groupe.
 export const ALL_HOOKS = [
+  // ── WIR206 — carte « Lead lié » de la fiche affaire ──────────────────────
+  'data-ao-lead',
+  'data-ao-lead-refus',
   // ── PACT166/167/170 — atelier toiture + questions terrain ────────────────
   'data-ao-annotation-serie',
   'data-ao-note-question',
