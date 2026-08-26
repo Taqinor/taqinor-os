@@ -84,6 +84,7 @@ const MONEY_KEYS = new Set([
 // dédiés d'états d'analyse jusqu'ici orphelins (Budgets/Cloture/Immobilisations
 // avancées/RevenuIfrs15) : un seul rendu générique clé/valeur + tableau pour
 // toute réponse de EtatsComptablesViewSet, ici comme là-bas.
+// eslint-disable-next-line react-refresh/only-export-components -- helper pur co-localisé, réutilisé par les écrans hôtes WIR254
 export function cellValue(key, val) {
   if (val == null) return '—'
   if (typeof val === 'number' && MONEY_KEYS.has(key)) return formatMAD(val)
