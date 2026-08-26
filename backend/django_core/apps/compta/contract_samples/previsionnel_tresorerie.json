@@ -1,0 +1,22 @@
+{
+  "endpoint": "GET /api/django/compta/etats/previsionnel-tresorerie/",
+  "pourquoi": "WIR182 — la colonne « Solde projeté » de TresoreriePage lisait `s.solde_projete`, une clé qui n'a JAMAIS existé côté serveur (`apps/compta/selectors.py::previsionnel_tresorerie` renvoie `solde_fin` par semaine) : l'écran affichait « — » pour toujours, sans la moindre erreur. PACT10 — cet exemple est le porteur du contrat entre `apps/compta/selectors.py` (que `scripts/check_api_shapes.py` compare statiquement à ce fichier) et `frontend/src/features/compta/compta-xacc2.test.jsx` (qui l'IMPORTE au lieu de retaper `{semaines: []}` à la main, PACT13) : si le serveur renomme ou retire une clé, cet exemple diverge et la garde CI rougit AVANT qu'un écran ne retombe en silence sur des tirets.",
+  "exemple": {
+    "solde_initial": 0,
+    "date_debut": "2026-08-24",
+    "nb_semaines": 13,
+    "date_rupture_estimee": null,
+    "semaines": [
+      {
+        "index": 1,
+        "date_debut": "2026-08-24",
+        "date_fin": "2026-08-30",
+        "entrees": 4000,
+        "sorties": 0,
+        "flux_net": 4000,
+        "solde_fin": 4000,
+        "lignes": []
+      }
+    ]
+  }
+}
