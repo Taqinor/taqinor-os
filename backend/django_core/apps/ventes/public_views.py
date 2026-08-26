@@ -1966,6 +1966,79 @@ def _echelle_paliers_batterie_publique(devis, data, est_residentiel):
         return None
 
 
+def _paliers_curseur_batterie(balayage, nb_packs_devis):
+    """COUVBAT — le PLAFOND du curseur « N batteries », côté serveur.
+
+    MÊME règle que la page publique (``BATTERY_SIM_MAX_UNITS`` dans
+    ``apps/web/src/pages/proposition/[...token].astro``) : le plus haut des
+    paliers RÉELS du balayage de stockage (dernier retenu ou premier refusé,
+    le plus haut des deux), jamais en-dessous des packs RÉELLEMENT au devis,
+    et le plafond historique de 3 quand aucun balayage n'est servi. Servir un
+    autre plafond ici ferait un curseur dont certains crans n'auraient aucune
+    couverture à lire.
+    """
+    plafond_balayage = 0
+    for palier in ((balayage or {}).get('paliers') or []):
+        nb = palier.get('nb_packs')
+        if isinstance(nb, int) and nb > plafond_balayage:
+            plafond_balayage = nb
+    refuse = (balayage or {}).get('refuse') or {}
+    nb_refuse = refuse.get('nb_packs')
+    if isinstance(nb_refuse, int) and nb_refuse > plafond_balayage:
+        plafond_balayage = nb_refuse
+    return max(int(nb_packs_devis or 0), plafond_balayage or 3)
+
+
+def _couverture_batterie_publique(devis, data, est_residentiel, balayage):
+    """COUVBAT (ordre fondateur, 26/08/2026) — clé ``couverture_batterie`` :
+    pour CHAQUE cran du curseur « N batteries », la part de la consommation du
+    client réellement couverte (solaire direct + batterie), heure par heure sur
+    les quatre jours types publics ET sur l'année ; plus le nombre de batteries
+    qui couvrirait TOUTE la journée et TOUTE la nuit (``autonomie_complete``).
+
+    Contrat : ``apps/ventes/contract_samples/couverture_batterie.json``.
+    Source de vérité UNIQUE : ``etude_horaire.couverture_batterie_publique``
+    (mêmes douze jours types et même simulateur de batterie que l'étude
+    complète et le balayage du stockage — jamais un second moteur, jamais une
+    courbe approchée côté navigateur).
+
+    Gardes, mêmes que ``paliers_batterie`` : ``est_residentiel`` (un devis
+    agricole/industriel n'a pas ce curseur) ET ``avec_ok`` (un devis qui ne
+    vend PAS l'option batterie n'a rien à couvrir avec une batterie). Une
+    troisième garde lui est propre : sans LIGNE batterie lisible sur le devis,
+    la capacité utile d'un pack est inconnue — on omet, on n'invente pas un
+    module de 5 kWh « du catalogue » (règle CAPUTIL).
+
+    Servie IDENTIQUE aux deux niveaux de partage : ce bloc ne porte que des
+    kWh et des pourcentages de couverture — aucun prix, donc a fortiori aucun
+    prix d'achat ni marge (RULE #4). ``None`` best-effort : un bloc d'affichage
+    additif ne fait jamais tomber la page client."""
+    if not est_residentiel or not bool(data.get('avec_ok')):
+        return None
+    try:
+        from .etude_horaire import (
+            banque_batterie_du_devis, couverture_batterie_publique,
+        )
+        banque = banque_batterie_du_devis(devis)
+        if not banque:
+            return None
+        kwc, conso, ville, lat, lon, occupation, equipements = (
+            _profil_horaire_pour_devis(devis))
+        if not kwc:
+            return None
+        return couverture_batterie_publique(
+            kwc=kwc, conso_kwh_mensuelles=conso,
+            capacite_utile_pack_kwh=banque['capacite_utile_pack_kwh'],
+            nb_packs_max=_paliers_curseur_batterie(balayage,
+                                                   banque['nb_packs']),
+            ville=ville, lat=lat, lon=lon,
+            occupation=occupation, equipements=equipements,
+            puissances_par_pack=banque)
+    except Exception:  # noqa: BLE001 — voir _economies_mensuelles_publiques
+        logger.warning('couverture_batterie indisponible', exc_info=True)
+        return None
+
+
 def _economies_mensuelles_publiques(devis, data, synthese,
                                     niveau=ShareLink.NIVEAU_CONFIANCE):
     """CJ2b (fondateur, 21/08/2026) — bloc ``economies_mensuelles`` : les 12
@@ -2542,6 +2615,20 @@ def proposal_data(request, token):
             devis, data, _resid_public)
         if _paliers_batterie is not None:
             payload['paliers_batterie'] = _paliers_batterie
+        # COUVBAT (ordre fondateur, 26/08/2026) — `couverture_batterie` : ce
+        # que le curseur « N batteries » du graphe journée doit MONTRER (part
+        # de la consommation couverte, heure par heure et sur l'année, pour
+        # chaque N) + le nombre de batteries d'une AUTONOMIE COMPLÈTE. Même
+        # patron additif ; même section que le jour type (c'est SON graphe qui
+        # porte le curseur : décocher « Journée type & courbes » retire les
+        # deux ensemble, jamais un curseur orphelin). Contrat :
+        # apps/ventes/contract_samples/couverture_batterie.json.
+        _couverture = (
+            _couverture_batterie_publique(devis, data, _resid_public,
+                                          _balayage)
+            if _jour_type_servi else None)
+        if _couverture is not None:
+            payload['couverture_batterie'] = _couverture
         # L-NIV-VU (24/08/2026) — la page peut enfin DIRE au client qu'elle est
         # simplifiée, mais SEULEMENT quand c'est vrai sur SON devis (liste
         # vide ⇒ rien d'affiché). Calculé en dernier : la charge utile est
