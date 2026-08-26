@@ -365,6 +365,11 @@ ONEPAGE_NOTE_BATTERIE = False
 # une page. Défaut None = aucune économie affichée sur le chemin autonome ;
 # le builder la pose TOUJOURS pour un vrai devis.
 ONEPAGE_BRANCHE = None
+# QRP1 — liens client-facing posés par le builder (``data['links']``). Le seul
+# consommé ici est ``signer`` : l'URL TOKENISÉE de la proposition en ligne
+# (ShareLink, ``utils.client_links.chemin_proposition``). Aucune URL n'est
+# forgée dans ce module ; dict vide ⇒ le format une page est byte-identique.
+LINKS = {}
 # M7 — date d'échéance RÉELLE du devis, format « JJ/MM/AAAA », ou "" quand elle
 # est indéterminable (les mentions de validité disparaissent alors).
 VALID_UNTIL = ""
@@ -2692,6 +2697,118 @@ def build_html():
 </body></html>"""
 
 # ── ONE-PAGE MODE ─────────────────────────────────────────────────────────────
+def _proposition_link():
+    """QRP1 — (href, forme courte) du lien TOKENISÉ de la proposition en ligne,
+    ou ('', '') quand le devis n'en porte pas.
+
+    Le lien vient EXCLUSIVEMENT de ``data['links']['signer']`` (builder QX6 :
+    ShareLink + ``utils.client_links.chemin_proposition``) : ce module ne forge
+    aucune URL et n'ajoute AUCUN paramètre de requête. Ce que l'URL contient :
+    le SLUG du nom du client dans le CHEMIN (PV84 — cosmétique, jamais vérifié
+    côté serveur) puis le jeton ; aucune adresse, aucune coordonnée GPS. La
+    forme AFFICHÉE, elle, est tronquée à « <hôte>/proposition » — ni le nom ni
+    le jeton ne s'impriment en clair. Le repli historique « <site>/signer/<réf> »
+    (jamais servi par le site) est exclu : sans vraie proposition en ligne, la
+    vignette s'omet plutôt que de porter un QR qui mène à un 404.
+    """
+    url = (LINKS.get("signer") or "").strip()
+    if "/proposition/" not in url:
+        return "", ""
+    href = url if url.startswith("http") else "https://" + url
+    court = href.split("://", 1)[1]
+    morceaux = court.split("/")
+    return href, ("/".join(morceaux[:2]) if len(morceaux) > 2 else court)
+
+
+#: QRP1/A4 — hauteur de la bande d'en-tête du format UNE PAGE, en millimètres.
+#: C'est la hauteur qu'y occupe le logo (80 px). Elle est désormais IMPOSÉE à
+#: la rangée (et non plus subie), pour deux raisons prouvées en revue :
+#:   · sans ``logo.png``, ``logo_html`` retombe sur un texte de 15 pt et la
+#:     bande se serait réglée sur la vignette QR — donc une hauteur DIFFÉRENTE
+#:     selon la présence d'un asset ;
+#:   · la zone de contenu de cette page est bornée (``overflow:hidden``), donc
+#:     un en-tête plus haut ROGNE SILENCIEUSEMENT le bas du document (le Total
+#:     TTC d'un devis dense) sans qu'aucune garde de pagination ne s'en
+#:     aperçoive — le PDF ferait toujours 1 page.
+#: Toute la vignette QR tient sous cette hauteur, par construction.
+ONEPAGE_HEADER_MM = 21.17
+
+
+def _onepage_qr_uri(href):
+    """QRP1 — QR PNG data-URI de la proposition (correction M, sans logo
+    central : le même lien tient en bien moins de modules qu'en H, donc reste
+    scannable à 18 mm). A6 — ``border=4`` : la zone de silence par défaut (2
+    modules) est trop courte pour un QR posé sur un aplat NAVY ; 4 modules de
+    blanc, plus la platine blanche du gabarit, rendent la lecture fiable.
+    '' si la roue ``qrcode`` manque — la vignette s'omet alors et le document
+    reste identique à aujourd'hui."""
+    if not href:
+        return ""
+    try:
+        from .residential import theme as _rtheme
+        return _rtheme.qr_data_uri(href, logo=False, correction="M",
+                                   box_size=10, border=4)
+    except Exception:
+        return ""
+
+
+def _onepage_header_html():
+    """QRP1 — en-tête navy du format UNE PAGE.
+
+    Sans lien tokenisé (ou sans ``qrcode``), renvoie le balisage historique à
+    la hauteur imposée près — aucun contenu ne bouge. Avec le lien, la vignette
+    QR se pose entre le logo et la référence, dans une TABLE CSS
+    (RENDERING_NOTES §1 : le flex de WeasyPrint sous-estime la hauteur de flux
+    d'une rangée de cartes et ignore ``gap``).
+
+    A4 — la rangée porte une HAUTEUR EXPLICITE (``ONEPAGE_HEADER_MM``) sur la
+    cellule du logo : elle vaut donc exactement la même chose avec ou sans
+    ``logo.png``, et avec ou sans QR. La légende passe À GAUCHE du code (et non
+    dessous) : la pile tient ainsi sous la bande sans rétrécir le QR, qui garde
+    18 mm — la seule dimension qui décide de sa lisibilité.
+    """
+    href, court = _proposition_link()
+    qr = _onepage_qr_uri(href)
+    h = f"{ONEPAGE_HEADER_MM}mm"
+    ref_html = (
+        '<div style="text-align:right;">'
+        f'<div style="color:white;font-size:11pt;font-weight:700;">DEVIS&nbsp;'
+        f'<span style="color:{CA};">N&#176;&#160;{REF}</span></div>'
+        f'<div style="color:rgba(255,255,255,0.6);font-size:8pt;'
+        f'margin-top:2px;">{DATE_STR}</div></div>')
+    if not qr:
+        return (
+            f'<div style="background:{CN};padding:14px 24px;display:table;'
+            'width:100%;table-layout:fixed;">'
+            '<div style="display:table-cell;vertical-align:middle;width:50%;'
+            f'height:{h};">{logo_html("80px")}</div>'
+            '<div style="display:table-cell;vertical-align:middle;width:50%;">'
+            f'{ref_html}</div></div>')
+    # A6 — platine BLANCHE derrière le code (aplat navy) et AUCUN arrondi sur
+    # l'image : un rayon rognait ~2 modules dans les coins, précisément là où
+    # vivent les trois motifs de repérage.
+    qr_cell = (
+        '<div style="display:table;margin:0 auto;">'
+        '<div style="display:table-cell;vertical-align:middle;'
+        'text-align:right;padding-right:3mm;">'
+        '<div style="color:rgba(255,255,255,0.80);font-size:6.2pt;'
+        'line-height:1.25;">Consultez votre<br>proposition interactive'
+        f'<br><span style="color:{CA};">{court}</span></div></div>'
+        '<div style="display:table-cell;vertical-align:middle;">'
+        '<div style="background:#FFFFFF;padding:0.7mm;display:inline-block;">'
+        f'<img src="{qr}" alt="QR — votre proposition en ligne" '
+        'style="height:18mm;width:18mm;display:block;"></div></div></div>')
+    return (
+        f'<div style="background:{CN};padding:14px 24px;display:table;'
+        'width:100%;table-layout:fixed;">'
+        '<div style="display:table-cell;vertical-align:middle;width:26%;'
+        f'height:{h};">{logo_html("80px")}</div>'
+        '<div style="display:table-cell;vertical-align:middle;width:48%;">'
+        f'{qr_cell}</div>'
+        '<div style="display:table-cell;vertical-align:middle;width:26%;">'
+        f'{ref_html}</div></div>')
+
+
 def page_onepage(items):
     """Single A4 page: header + summary strip + client block + HT product table + footer."""
     # Totaux CANONIQUES du builder (chaîne HT → remise → TVA par taux → TTC,
@@ -2947,6 +3064,8 @@ def page_onepage(items):
     _onepage_note_autre = ("sans batterie" if ONEPAGE_BRANCHE == "avec"
                            else "avec batterie")
 
+    header_html = _onepage_header_html()
+
     return f"""
 <div class="page" style="position:relative;display:block;">
 
@@ -2954,14 +3073,9 @@ def page_onepage(items):
        pas de flex:1 ni de gap, qui rendaient le total par-dessus le footer) -->
   <div style="position:absolute;top:0;left:0;right:0;bottom:72px;overflow:hidden;">
 
-  <!-- HEADER: navy -->
-  <div style="background:{CN};padding:14px 24px;display:flex;align-items:center;justify-content:space-between;">
-    {logo_html("80px")}
-    <div style="text-align:right;">
-      <div style="color:white;font-size:11pt;font-weight:700;">DEVIS&nbsp;<span style="color:{CA};">N&#176;&#160;{REF}</span></div>
-      <div style="color:rgba(255,255,255,0.6);font-size:8pt;margin-top:2px;">{DATE_STR}</div>
-    </div>
-  </div>
+  <!-- HEADER: navy (QRP1 — variante avec vignette QR quand le devis porte un
+       lien de proposition tokenisé ; sinon rendu historique au bit près) -->
+  {header_html}
 
   <!-- CLIENT BLOCK -->
   <div style="background:{CG1};padding:12px 24px;border-bottom:1px solid {CG2};">
@@ -3140,6 +3254,7 @@ def apply_quote_data(data: dict) -> None:
     global INCLUDE_ANNEXE, ELECTRICAL_DESIGN, SLD_SVG
     global TVA_NOTE, TOTAUX_SANS, TOTAUX_AVEC, TOTAUX_ALL, SANS_BULLETS, AVEC_BULLETS
     global PAY_A, PAY_M, PAY_S, ONEPAGE_NOTE_BATTERIE
+    global LINKS  # QRP1 — liens client (proposition tokenisée)
     global DOC_TEXTS, ACCEPTE_PAR_NOM, DATE_ACCEPTATION
     global DEVISE  # FG52 — devise du document (ISO 4217)
     global SAVINGS_METHOD  # QF3 — bloc « Comment nous calculons vos économies »
@@ -3241,6 +3356,7 @@ def apply_quote_data(data: dict) -> None:
     PAY_M = int(_terms.get("materiel", 60))
     PAY_S = int(_terms.get("solde", 10))
     ONEPAGE_NOTE_BATTERIE = bool(data.get("onepage_note_batterie", False))
+    LINKS = dict(data.get("links") or {})
     global ONEPAGE_BRANCHE  # M4 — branche des lignes du format une page
     _br = data.get("onepage_branche")
     ONEPAGE_BRANCHE = _br if _br in ("sans", "avec") else None

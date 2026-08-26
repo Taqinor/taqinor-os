@@ -164,3 +164,54 @@ class TestQ4ButaneReglages(SimpleTestCase):
             eco = economics.compute(sample_data.build("agrumes"), company_id=1)
         self.assertEqual(eco["butane_12kg_subventionne"], 50)
         self.assertEqual(eco["butane_12kg_reel"], 128)
+
+
+class QrPropositionAgricoleTests(SimpleTestCase):
+    """QRP1 — vignette « proposition interactive » (lien tokenisé + QR) au bas
+    de la page 1 agricole, dans les ~50 mm restés libres (mesurés sur le rendu
+    réel). Elle n'existe QUE pour un devis qui porte une vraie proposition en
+    ligne : le repli « <site>/signer/<réf> » ne mène nulle part."""
+
+    def _html(self, lien=None):
+        d = sample_data.build()
+        if lien is not None:
+            d["links"] = {"signer": lien}
+        return render.build_html(renderer._augment(d))
+
+    def test_vignette_rendue_pour_un_lien_tokenise(self):
+        try:
+            import qrcode  # noqa: F401
+        except Exception:
+            self.skipTest("qrcode absent de cet environnement")
+        # A3 — la fixture agricole PORTE désormais un lien tokenisé (comme en
+        # produit), donc la garde « exactement 4 pages » exerce vraiment la
+        # vignette : ici on vérifie qu'elle est bien rendue sans surcharge.
+        html = self._html()
+        self.assertIn('class="a1-qr"', html)
+        self.assertIn("Consultez votre proposition interactive", html)
+        self.assertIn("taqinor.ma/proposition", html)
+        self.assertIn("data:image/png", html)
+
+    def test_aucune_vignette_sur_le_repli_signer(self):
+        html = self._html("taqinor.ma/signer/DEV-AGRI-2601")
+        self.assertNotIn('class="a1-qr"', html)
+        self.assertNotIn("Consultez votre proposition interactive", html)
+
+    def test_pas_de_trace_d_arbres_sur_le_document_agricole(self):
+        """CO2SRC/O5 — le bandeau environnemental agricole garde le carburant
+        évité et sa tonne de CO₂, plus l'équivalence en arbres (22 kg/arbre/an,
+        sans source). M8 ne couvrait que le résidentiel."""
+        html = self._html()
+        self.assertNotIn("arbres", html)
+        self.assertIn("t CO<sub>2</sub>", html)
+
+    def test_la_vignette_n_imprime_que_la_forme_courte(self):
+        """La queue tokenisée vit dans le QR ; la vignette n'imprime que
+        « taqinor.ma/proposition ». (Le lien complet reste, comme avant, sur le
+        CTA de la page signature — ce n'est pas ce bloc-ci.)"""
+        lien = "taqinor.ma/proposition/ahmed-el-mansouri/TOK123abc"
+        html = self._html(lien)
+        self.assertNotIn("?", lien)          # aucun paramètre greffé
+        bloc = html.split('class="a1-qr"', 1)[1].split("</div></div>", 1)[0]
+        self.assertIn("taqinor.ma/proposition — scannez le code", bloc)
+        self.assertNotIn("TOK123abc", bloc)

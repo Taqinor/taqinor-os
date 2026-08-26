@@ -14,9 +14,10 @@ M6 — la carte « Performance garantie » (page 2, ``options.py``) et la bande
 durée : les deux lisent ``theme.warranties_for(d)``, dérivée de la
 composition réelle du devis, jamais un littéral recopié.
 
-M8 — le nombre d'arbres imprimé dérive de ``quote_engine.constants``
-(CO2_T_PAR_MWH / KG_CO2_PAR_ARBRE_AN = 22, alignée sur apps/web), plus jamais
-21, et plus de plancher « au moins 1 arbre » : un compte à 0 omet la mention.
+CO2SRC (2026-08-26, remplace M8) — le SEUL chiffre d'impact encore imprimé sur
+un document client est la tonne ANNUELLE (production réelle du devis ×
+``constants.CO2_T_PAR_MWH``). L'équivalence en arbres (22 kg/arbre/an) et le
+cumul 25 ans (× 23,5) quittent tout rendu client : aucune source ne les porte.
 """
 
 import re
@@ -131,23 +132,48 @@ class M6GarantiesResidentiellesTests(SimpleTestCase):
 
 
 class M8ImpactCo2ArbresTests(SimpleTestCase):
-    """M8 — le nombre d'arbres imprimé dérive de constants.KG_CO2_PAR_ARBRE_AN
-    (22, alignée sur apps/web), plus jamais 21 ; zéro arbre ⇒ mention omise."""
+    """CO2SRC (règle « chiffres vérifiés », 2026-08-26) — remplace la garde M8.
 
-    def test_le_nombre_d_arbres_derive_du_facteur_22_pas_21(self):
+    M8 vérifiait que le nombre d'arbres dérivait bien de 22 et non de 21. La
+    vraie question n'était pas l'arrondi : c'était la SOURCE. Deux des trois
+    chiffres d'impact ne reposaient sur rien de vérifiable et QUITTENT tout
+    rendu client — le PDF résidentiel (pages 1 et rentabilité), le bandeau
+    agricole et le site :
+      · l'équivalence en ARBRES (22 kg de CO₂/arbre/an — ordre de grandeur de
+        vulgarisation, variable d'un facteur 5 selon essence/âge/climat) ;
+      · le CUMUL 25 ANS (tonne annuelle × 23,5 — coefficient qu'aucun calcul
+        du moteur ne produit, et qui suppose le mix électrique marocain figé
+        pendant un quart de siècle).
+    Ce qui RESTE, et que ces tests épinglent : la tonne ANNUELLE, dérivée
+    d'une production RÉELLE du devis × constants.CO2_T_PAR_MWH.
+    """
+
+    def test_la_tonne_annuelle_derive_de_la_production_reelle(self):
+        from apps.ventes.quote_engine import constants
         d = renderer._augment(F.donnees_residentiel())
         html = render.build_html(d)
-        prod = d["prod_kwh"]
-        attendu_22 = round(prod * 0.81 / 22)
-        attendu_21 = round(prod * 0.81 / 21)
-        self.assertNotEqual(attendu_22, attendu_21,
-                            "fixture invalide : les deux diviseurs doivent "
-                            "donner un compte différent pour que le test "
-                            "prouve quelque chose")
-        self.assertIn(f"≈&nbsp;{attendu_22} arbres", html)
-        self.assertNotIn(f"≈&nbsp;{attendu_21} arbres", html)
+        attendu = d["prod_kwh"] * constants.CO2_T_PAR_MWH / 1000.0
+        attendu_txt = (f"{attendu:.1f}".replace(".", ",") if attendu < 10
+                       else str(round(attendu)))
+        self.assertIn("tonnes de CO<sub>2</sub></b>", html)
+        self.assertIn(attendu_txt, html)
 
-    def test_production_nulle_aucune_mention_d_arbres_ni_de_co2(self):
+    def test_plus_aucune_equivalence_en_arbres_sur_le_document(self):
+        for variante in ("deux", "plus10"):
+            html = render.build_html(
+                renderer._augment(F.donnees_residentiel(variante)))
+            self.assertNotIn("arbres", html, variante)
+
+    def test_plus_aucun_cumul_co2_sur_25_ans(self):
+        # Le variant « plus10 » déclenche la page rentabilité dédiée
+        # (options.py) qui portait les trois cartes d'impact.
+        html = render.build_html(
+            renderer._augment(F.donnees_residentiel("plus10")))
+        self.assertIn("de CO<sub>2</sub> évitées chaque année", html)
+        self.assertNotIn("évitées sur", html)
+        self.assertNotIn("25 ans</span>", html)
+
+    def test_production_nulle_aucune_mention_de_co2(self):
         # _augment refuse prod_kwh=0 (garde M2) : on l'annule APRÈS
         # augmentation, pour tester la page RÉELLEMENT rendue par cover.py.
         d = renderer._augment(F.donnees_residentiel())
@@ -155,22 +181,3 @@ class M8ImpactCo2ArbresTests(SimpleTestCase):
         html = render.build_html(d)
         self.assertNotIn("arbres", html)
         self.assertNotIn("Et pour la planète&nbsp;:", html)
-
-    def test_page_deux_derive_aussi_du_facteur_22(self):
-        # Le variant « plus10 » déclenche la page rentabilité dédiée
-        # (options.py) qui porte son propre bloc impact environnemental.
-        d = renderer._augment(F.donnees_residentiel("plus10"))
-        html = render.build_html(d)
-        prod = d["prod_kwh"]
-        attendu = round(prod * 0.81 / 22)
-        self.assertIn(f"≈ {attendu}</span><span class=\"p2-imp-l\">arbres",
-                      html)
-
-    def test_page_deux_omet_la_carte_arbres_quand_le_compte_tombe_a_zero(self):
-        d = renderer._augment(F.donnees_residentiel("plus10"))
-        d["prod_kwh"] = 5   # round(5 * 0.81 / 22) == 0, mais production > 0
-        html = render.build_html(d)
-        self.assertNotIn("arbres plantés", html)
-        # Les cartes CO2 (année / 25 ans) restent : seule la carte arbres,
-        # tombée à zéro, s'omet.
-        self.assertIn("de CO<sub>2</sub> évitées chaque année", html)

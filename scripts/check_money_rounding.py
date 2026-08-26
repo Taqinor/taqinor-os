@@ -61,6 +61,20 @@ BASELINE_ALLOWLIST = {
     # (+~26/+31 lignes de prÃ©servation Â« Les deux Â» dans sync_devis_from_layout
     # au-dessus d'elles) : 3213â†’3239, 3300â†’3331. VÃ©rifiÃ© par contenu (mÃªmes
     # formules kWc `round(total_panneaux * watt / 1000.0, 3)`, main vs arbre).
+    # QRP1/CALEPDF (27/08/2026, lane PDF) -- DOUZE ENTREES RECALEES : cette
+    # lane a insere du code EN AMONT dans builder.py (_roof_render_data_uri,
+    # jeton de partage anticopie, drapeau de rendu de l'affiche), decalant les
+    # sites suivants de +42 a +95 lignes. Recalage PAR CONTENU, pas par
+    # arithmetique de decalage : pour chaque entree on a relu la ligne SOURCE
+    # dans l'arbre de base (git show <base>:builder.py), verifie qu'elle porte
+    # bien un round(), puis retrouve ce MEME texte -- une seule fois, sinon
+    # departage par la ligne precedente -- dans l'arbre courant.
+    # 272->314, 389->431, 390->432, 1280->1343, 1282->1345, 1309->1372,
+    # 1635->1698, 1648->1711, 2571->2666, 2577->2672, 2630->2725, 2631->2726.
+    # MEMES formules, AUCUN round() nouveau. Seules les entrees que le
+    # detecteur signalait ont ete touchees : le reste du fichier est
+    # byte-identique, pour ne pas entrer en conflit avec les autres lanes qui
+    # recalent ce meme fichier partage.
     # BATHOMO/A1 (26/08/2026, revue adversariale Fable) -- RECALEES : le pin
     # generalise 5/10->tout calibre a ajoute des lignes en amont dans
     # composition_residentielle (2672->2693, 3870->3931, 4003->4064).
@@ -157,7 +171,7 @@ BASELINE_ALLOWLIST = {
     "backend/django_core/apps/ventes/quote_engine/builder.py:1055",
     # 1068â†’1100 : recalage L-VAR du 24/08/2026, voir le bloc datÃ© plus bas ;
     # puis 1249â†’1282 (lane F1 du 26/08/2026, mÃªme bloc datÃ©).
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1282",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1345",
     # PV84 (chemin_proposition â€” nom du client dans le lien) â€” l'import
     # chemin_proposition + son commentaire ajoutÃ©s au bloc "signer" ont
     # dÃ©calÃ© les MÃŠMES 4 arrondis d'affichage (PU/total ligne) de +2 lignes ;
@@ -332,18 +346,18 @@ BASELINE_ALLOWLIST = {
     #   1547â†’1620 roi_s Â· 1560â†’1633 prix_kwc Â·
     #   2478â†’2556 montant TVA Ã—N Â· 2484â†’2562 display_total_multi Â·
     #   2537â†’2615 total_ht ligne Â· 2538â†’2616 total_ttc ligne.
-    "backend/django_core/apps/ventes/quote_engine/builder.py:272",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:389",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:390",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1280",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:314",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:431",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:432",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1343",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1307",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1309",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1635",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1648",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:2571",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:2577",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:2630",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:2631",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1372",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1698",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1711",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:2666",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:2672",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:2725",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:2726",
 }
 
 TARGET_FILES = [

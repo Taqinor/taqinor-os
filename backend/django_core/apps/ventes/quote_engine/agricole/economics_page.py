@@ -286,12 +286,25 @@ def build(ctx) -> str:
 
 
 def _env_block(show_env, co2_t, trees, fuel_qty, C, fmt, fmt_dec):
-    if not (show_env and co2_t and trees):
+    """CO2SRC (règle « chiffres vérifiés », 2026-08-26) — L'ÉQUIVALENCE EN
+    ARBRES EST RETIRÉE de ce bandeau, comme du PDF résidentiel (cover.py +
+    options.py) : 22 kg de CO₂ absorbés par arbre et par an est un ordre de
+    grandeur de vulgarisation que rien ne source (l'absorption varie d'un
+    facteur 5 selon l'essence, l'âge et le climat). Ce qui RESTE est un calcul
+    bottom-up : le carburant réellement évité et son CO₂ (facteurs
+    gasoil/butane de ``agricole.constants``). ``trees`` reste passé par les
+    appelants (donnée interne d'``economics``) mais n'est PLUS imprimé — la
+    condition d'affichage ne le regarde donc plus non plus.
+
+    PÉRIMÈTRE de ce changement : les trois surfaces PDF. Le site a fait le même
+    retrait de son côté dans le même lot (``apps/web`` n'exporte plus
+    ``CO2_KG_PER_TREE_YEAR``), donc plus aucune surface client ne l'imprime."""
+    if not (show_env and co2_t):
         return ""
     green = C["green"]
     return (f'<div class="a4-env"><svg viewBox="0 0 24 24" fill="none">'
             f'<path d="M12 21c5-1 8-5 8-11V5l-5 1c-5 1-8 4-8 9 0 .7.1 1.4.3 2" stroke="{green}" '
             f'stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>'
             f'<path d="M7 21c0-4 2-7 6-9" stroke="{green}" stroke-width="1.7" stroke-linecap="round"/></svg>'
-            f'<div>≈ <b>{fuel_qty}</b> évitées/an · ≈ <b>{fmt_dec(co2_t)} t CO<sub>2</sub></b> '
-            f'(≈ {fmt(trees)} arbres)</div></div>')
+            f'<div>≈ <b>{fuel_qty}</b> évitées/an · ≈ <b>{fmt_dec(co2_t)} t CO<sub>2</sub></b>'
+            f'</div></div>')

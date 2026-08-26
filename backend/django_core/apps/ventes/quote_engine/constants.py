@@ -37,14 +37,39 @@ KWH_PRICE = 1.75   # MAD/kWh FIXE (utilisé en interne — ne pas afficher dans 
 PRODUCTIBLE_DEFAUT = 1600
 
 # ---------- CONSTANTES IMPACT ENVIRONNEMENTAL (résidentiel) ----------
-# M8 (audit du 19/08/2026) — SOURCE UNIQUE et DATÉE : le PDF résidentiel
-# (cover.py + options.py) recopiait ces deux chiffres localement, et un
-# arrondi divergeait déjà du site web pour le MÊME devis (21 kg/arbre/an côté
-# PDF, 22 côté web). Décision fondateur : le PDF s'aligne sur la valeur du
-# site (22) ; le site n'est pas modifiable depuis cette lane.
-# Facteur réseau marocain — mix électrique national, ≈0,81 t CO₂/MWh (IEA,
-# dernier ratio publié consommé par ce moteur, 2026).
+# M8 (audit du 19/08/2026) — SOURCE UNIQUE : le PDF résidentiel (cover.py +
+# options.py) recopiait ces chiffres localement, et un arrondi divergeait déjà
+# du site web pour le MÊME devis. Ils vivent ici, et ici seulement.
+#
+# CO2SRC (règle « chiffres vérifiés », 2026-08-26) — CE QUI RESTE ET POURQUOI.
+# Le seul chiffre d'impact encore imprimé sur un PDF est la tonne ANNUELLE :
+# elle se dérive d'une production RÉELLE du devis multipliée par le facteur
+# d'émission du réseau marocain. Les deux « équivalences » qui l'accompagnaient
+# (arbres, cumul 25 ans) ont été retirées de TOUS LES PDF parce qu'aucune
+# source ne les porte (voir plus bas) — ne pas les y réintroduire sans source
+# nommée. Le SITE a fait le même retrait de son côté dans le même lot
+# (``apps/web`` n'exporte plus ``CO2_KG_PER_TREE_YEAR``) : les deux supports
+# disent donc la même chose, et il n'existe plus aucune surface client où ces
+# deux équivalences s'impriment.
+#
+# Facteur réseau marocain — mix électrique national, ≈0,81 t CO₂/MWh.
+# SOURCE À PRÉCISER : la valeur est cohérente avec l'ordre de grandeur publié
+# pour le facteur d'émission moyen du réseau (mix marocain fortement carboné)
+# et elle est ALIGNÉE sur apps/web (``CO2_KG_PER_KWH``), mais ni ce dépôt ni le
+# site ne nomment la publication ni son millésime. Le fondateur doit fournir la
+# référence datée (organisme + année) ; d'ici là on garde la valeur — elle est
+# la seule des trois à décrire une grandeur physique mesurée — et on n'invente
+# AUCUNE citation.
 CO2_T_PAR_MWH = 0.81
-# Absorption annuelle d'un arbre (kg de CO₂/an) — ALIGNÉE sur apps/web
-# (référence usuelle grand public ; gardée identique des deux côtés).
+# Absorption annuelle d'un arbre (kg de CO₂/an) — conservée pour les calculs
+# INTERNES existants (agricole). « 22 » est une référence de vulgarisation sans
+# source vérifiable (l'absorption dépend de l'essence, de l'âge et du climat,
+# d'un facteur 5 au moins).
+# CO2SRC — PLUS AUCUN RENDU CLIENT. Cette lane l'a retirée des trois surfaces
+# PDF qui l'imprimaient (résidentiel cover.py + options.py, agricole
+# economics_page.py) ; la lane de la page client a retiré la sienne du site
+# dans le même lot (``apps/web`` n'exporte plus ``CO2_KG_PER_TREE_YEAR``). La
+# constante ne survit ici que pour un calcul INTERNE agricole (``economics``
+# publie encore une clé ``trees`` que plus personne n'imprime). Ne pas la
+# réafficher, nulle part, sans source nommée et datée.
 KG_CO2_PAR_ARBRE_AN = 22

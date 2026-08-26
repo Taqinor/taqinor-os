@@ -470,6 +470,50 @@ def build_pages(ctx) -> list:
     # (~12 lignes communes et plus) passent en 4 pages.
     fits_one = (_table_mm(shared) + _deltas_mm() + _comparatif_mm()) <= 68.0
 
+    # ── PRODMOIS + CALEPDF — UNE rangée de visuels sur la page détail ────────
+    # Deux artefacts la peuplent, dans la MÊME hauteur (19 mm, fixée par le
+    # CSS) : l'affiche de calepinage à gauche (quand la bande porte déjà la
+    # photo du client) et la bande « production mois par mois » à droite. Un
+    # seul des deux ⇒ il occupe la rangée seul ; aucun des deux ⇒ pas de
+    # rangée.
+    #
+    # Hauteur du bloc (image 19 mm + ses marges) IMPUTÉE au même budget de
+    # pagination que le tableau : la rangée n'est rendue que s'il reste
+    # réellement de la place, avec 4 mm de garde en plus du modèle. Elle ne
+    # change JAMAIS ``fits_one`` (calculé ci-dessus SANS elle) — donc aucun
+    # devis ne bascule de 3 à 4 pages à cause d'elle : soit il y a la place,
+    # soit la rangée s'omet. Un devis chargé (page équipement découpée) ne la
+    # reçoit pas non plus : sa page détail est pleine par définition.
+    # Résolus ICI (et pas plus bas, avec la bande) : le budget de pagination a
+    # besoin de savoir si la rangée de visuels existera.
+    roof_photo = (d.get("roof_photo") or "").strip()
+    roof_render = (d.get("roof_render") or "").strip()
+    # Sans photo, le calepinage prend la place du schéma illustratif DANS la
+    # bande : il ne se répète alors pas dans la rangée.
+    plan_dans_la_bande = bool(roof_render and not roof_photo)
+
+    _VISUELS_MM = 21.0
+    _prod_chart = (charts or {}).get("production") or ""
+    _plan_a_part = roof_render if not plan_dans_la_bande else ""
+    visuels_html = ""
+    if (_prod_chart or _plan_a_part) and fits_one:
+        _reste = 68.0 - 4.0 - (_table_mm(shared) + _deltas_mm()
+                               + _comparatif_mm())
+        if _reste >= _VISUELS_MM:
+            _cells = ""
+            if _plan_a_part:
+                _cells += (
+                    '<div class="p2-vis-plan">'
+                    f'<img class="p2-roof-plan" src="{_plan_a_part}" '
+                    'alt="Calepinage — implantation des panneaux sur votre '
+                    'toiture">'
+                    '<div class="p2-roof-cap">Votre calepinage</div></div>')
+            if _prod_chart:
+                _cells += (
+                    f'<div class="p2-vis-prod"><img src="{_prod_chart}" '
+                    'alt="Production solaire estimée, mois par mois"></div>')
+            visuels_html = f'<div class="p2-visuels">{_cells}</div>'
+
     def _chunk_rows(items, budgets):
         """Découpe les lignes par tranches de hauteur (budgets mm par page)."""
         out, cur, h, bi = [], [], 0.0, 0
@@ -504,6 +548,14 @@ def build_pages(ctx) -> list:
   /* QRES39 — photo réelle de toiture : cadrée, arrondie, légendée */
   .p2-roof-photo {{ width:30mm; height:17.5mm; object-fit:cover;
     border-radius:9px; display:block; margin:0 auto; }}
+  /* CALEPDF/A1 — l'affiche de calepinage a une BOÎTE FIXE de 17,5 mm dans la
+     bande (elle n'y entre QUE faute de photo, à la place du schéma illustratif
+     ~22,7 mm : la bande ne peut donc que rétrécir, jamais grandir) et de 16 mm
+     dans la rangée de visuels. ``contain`` et non ``cover`` : un plan
+     d'implantation ne se recadre pas, on verrait moins de panneaux qu'il n'y
+     en a. Deux classes ⇒ l'emporte sur ``.p2-roof img`` (1 classe + 1 balise). */
+  .p2-roof .p2-roof-plan {{ width:30mm; height:17.5mm; object-fit:contain;
+    background:#FFFFFF; border-radius:9px; display:block; margin:0 auto; }}
   .p2-roof-cap {{ font-size:6.3pt; color:{C['muted_2']}; margin-top:0.8mm;
     letter-spacing:.06em; text-transform:uppercase; font-weight:700; }}
   .p2-specs {{ flex:1; display:flex; gap:5mm; }}
@@ -513,6 +565,24 @@ def build_pages(ctx) -> list:
   .p2-spec-v {{ font-family:{fonts['display']}; font-size:18pt;
     color:{C['navy']}; line-height:1; }}
   .p2-spec-l {{ font-size:8pt; color:{C['muted']}; line-height:1.2; }}
+
+  /* PRODMOIS + CALEPDF — rangée de visuels : calepinage | production mois par
+     mois. TABLE CSS, pas flex (RENDERING_NOTES §1). Les deux images ont une
+     HAUTEUR FIXE ≤ 19 mm, donc la rangée mesure toujours ~19 mm quel que soit
+     son contenu — c'est ce que _VISUELS_MM budgète. La cellule du plan est
+     hors du flux de la bande : les vignettes techniques gardent leurs ~44,7 mm
+     de colonne (plancher PDFPROD de 36 mm). */
+  .p2-visuels {{ display:table; width:100%; table-layout:fixed;
+    margin-top:2mm; }}
+  .p2-vis-plan {{ display:table-cell; width:36mm; vertical-align:middle;
+    text-align:center; padding-right:5mm; }}
+  .p2-vis-plan .p2-roof-plan {{ width:31mm; height:16mm; object-fit:contain;
+    background:#FFFFFF; border:1px solid {C['line']}; border-radius:7px;
+    display:block; margin:0 auto; }}
+  .p2-vis-plan .p2-roof-cap {{ margin-top:0.6mm; }}
+  .p2-vis-prod {{ display:table-cell; vertical-align:middle; }}
+  .p2-vis-prod img {{ height:19mm; width:auto; max-width:100%;
+    display:block; margin:0 auto; }}
 
   /* Block label */
   .p2-lbl {{ font-size:8.5pt; letter-spacing:.16em; text-transform:uppercase;
@@ -713,12 +783,38 @@ def build_pages(ctx) -> list:
 
     # QRES39 — la VRAIE toiture du client (photo/plan joint au devis) remplace
     # le schéma illustratif quand elle existe ; repli schéma sinon.
-    roof_photo = (d.get("roof_photo") or "").strip()
+    #
+    # CALEPDF/A1 (revue adversariale) — LA BANDE NE S'ÉLARGIT PAS. Une première
+    # version posait les deux vignettes côte à côte en faisant passer la colonne
+    # visuelle de 32 à 64 mm : les trois vignettes techniques tombaient alors à
+    # ~34 mm de colonne, sous le plancher de 36 mm que PDFPROD documente juste
+    # au-dessus (« la colonne de la bande fait ~36 mm et ne doit pas passer à la
+    # ligne ») — un devis à champs PV divergents aurait fait passer « kWh / an
+    # produits (sans · avec) » à la ligne et grandi la bande, sur la page même
+    # où la bande « production » est budgétée au millimètre. La bande reste donc
+    # EXACTEMENT ce qu'elle était, et le calepinage descend d'une rangée (voir
+    # ``visuels_html`` plus bas), où il partage la hauteur de la bande
+    # production sans rien coûter.
+    #
+    # Deux cas seulement :
+    #   · photo présente → la bande porte la PHOTO (rendu historique) et le
+    #     calepinage, s'il existe, va dans la rangée du dessous ;
+    #   · pas de photo → le calepinage PREND la place du schéma illustratif
+    #     dans la bande (une implantation réelle vaut mieux qu'un glyphe) et ne
+    #     se répète pas plus bas.
+    def _vignette(src, legende, alt, cls="p2-roof-photo"):
+        return (f'<img class="{cls}" src="{src}" alt="{alt}">'
+                f'<div class="p2-roof-cap">{legende}</div>')
+
     if roof_photo:
-        band_visual = (
-            f'<div><img class="p2-roof-photo" src="{roof_photo}" '
-            f'alt="Votre toiture — implantation des panneaux">'
-            '<div class="p2-roof-cap">Votre toiture</div></div>')
+        band_visual = "<div>" + _vignette(
+            roof_photo, "Votre toiture",
+            "Votre toiture — implantation des panneaux") + "</div>"
+    elif plan_dans_la_bande:
+        band_visual = "<div>" + _vignette(
+            roof_render, "Votre calepinage",
+            "Calepinage — implantation des panneaux sur votre toiture",
+            cls="p2-roof-plan") + "</div>"
     else:
         band_visual = (f'<img src="{charts["roof"]}" '
                        'alt="Schéma de l\'installation">')
@@ -866,7 +962,7 @@ def build_pages(ctx) -> list:
         light_cls = (" p2-light"
                      if (not deux_options and len(shared) <= 4) else "")
         return [_wrap_page(
-            head_html + band_html
+            head_html + band_html + visuels_html
             + _table_html(shared, equipement_lbl)
             + '<div class="qj" data-w="35"></div>'
             + closing_html
@@ -910,29 +1006,30 @@ def build_pages(ctx) -> list:
     # et si vous financiez ? » (économies − crédit = dans votre poche) est
     # SUPPRIMÉE de la page rentabilité. Ne pas la réintroduire.
     # QRES53 — l'impact environnemental complète la page rentabilité (le
-    # retour de l'investissement ne se compte pas qu'en dirhams) : mêmes
-    # facteurs de calcul que la page 1 — M8 (19/08/2026) : SOURCE UNIQUE et
-    # datée dans quote_engine.constants (CO2_T_PAR_MWH / KG_CO2_PAR_ARBRE_AN),
-    # alignée sur le site web — plus de « 21 » PDF face à « 22 » web pour le
-    # même devis. Cumul 25 ans PRUDENT (dégradation panneau 0,5 %/an
-    # intégrée, ×23,5).
+    # retour de l'investissement ne se compte pas qu'en dirhams) : même facteur
+    # de calcul que la page 1 — M8 (19/08/2026) : SOURCE UNIQUE dans
+    # quote_engine.constants (CO2_T_PAR_MWH), alignée sur le site web.
+    #
+    # CO2SRC (règle « chiffres vérifiés », 2026-08-26) — DEUX DES TROIS CARTES
+    # SONT RETIRÉES, et ne doivent pas revenir sans source nommée :
+    #   · « ≈ N arbres plantés » reposait sur 22 kg de CO₂/arbre/an, un ordre
+    #     de grandeur de vulgarisation que rien ne source (l'absorption varie
+    #     d'un facteur 5 selon l'essence, l'âge et le climat) ;
+    #   · « ≈ N t évitées sur 25 ans » multipliait la tonne annuelle par 23,5 —
+    #     un coefficient présenté comme « dégradation panneau 0,5 %/an
+    #     intégrée » mais qu'aucun calcul du moteur ne produit (le cashflow
+    #     25 ans, lui, a bien son modèle) et qui suppose en plus un mix
+    #     électrique marocain FIGÉ pendant un quart de siècle.
+    # Reste la tonne ANNUELLE : dérivée d'une production RÉELLE du devis. La
+    # rangée devient une carte unique, pleine largeur.
     _prod = d.get("prod_kwh") or 0
     impact_html = ""
     if _prod:
         _co2_t = _prod * constants.CO2_T_PAR_MWH / 1000.0
-        # M8 — plus de plancher « au moins 1 arbre » : la carte s'omet plus
-        # bas plutôt que d'imprimer « l'équivalent de 0 arbres ».
-        _trees = round(_prod * constants.CO2_T_PAR_MWH
-                       / constants.KG_CO2_PAR_ARBRE_AN)
-        _co2_25 = _co2_t * 23.5
 
         def _fr1(v):
             return (f"{v:.1f}".replace(".", ",") if v < 10
                     else fmt(round(v)))
-        _trees_card = (
-            f'<div class="p2-imp-c"><span class="p2-imp-v">≈ {fmt(_trees)}'
-            '</span><span class="p2-imp-l">arbres plantés — l\'équivalent '
-            'annuel</span></div>') if _trees > 0 else ""
         impact_html = (
             '<div class="p2-lbl" style="margin-top:7mm">Et pour la planète'
             '</div>'
@@ -940,10 +1037,6 @@ def build_pages(ctx) -> list:
             f'<div class="p2-imp-c"><span class="p2-imp-v">≈ {_fr1(_co2_t)} '
             't</span><span class="p2-imp-l">de CO<sub>2</sub> évitées '
             'chaque année</span></div>'
-            f'{_trees_card}'
-            f'<div class="p2-imp-c"><span class="p2-imp-v">≈ {_fr1(_co2_25)} '
-            't</span><span class="p2-imp-l">de CO<sub>2</sub> évitées sur '
-            '25 ans</span></div>'
             '</div>')
 
     # QRES62 — joints élastiques de la page rentabilité : le vide mesuré se
