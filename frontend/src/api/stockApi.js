@@ -208,6 +208,10 @@ const stockApi = {
     api.post(`/stock/retours-fournisseur/${id}/valider/`),
   annulerRetourFournisseur: (id) =>
     api.post(`/stock/retours-fournisseur/${id}/annuler/`),
+  // WIR222/XPUR9 — génère un AvoirFournisseur BROUILLON pré-rempli depuis un
+  // retour VALIDÉ (« attente d'avoir » tant que non reçu).
+  genererAvoirDepuisRetour: (retourId) =>
+    api.post(`/stock/retours-fournisseur/${retourId}/generer-avoir/`),
 
   // G5 — Réceptions fournisseur (goods-in). La confirmation incrémente le
   // stock (ENTREE) + avance le statut du BCF. Usage INTERNE.

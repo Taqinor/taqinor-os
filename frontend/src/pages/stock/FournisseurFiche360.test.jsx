@@ -39,6 +39,8 @@ vi.mock('../../api/stockApi', () => ({
     // WIR219/NTPRT25 — candidature d'auto-inscription au portail.
     getFournisseur: vi.fn(),
     deciderCandidatureFournisseur: vi.fn(),
+    // WIR222/XPUR9 — génère un avoir depuis un retour validé.
+    genererAvoirDepuisRetour: vi.fn(),
   },
 }))
 
@@ -209,6 +211,42 @@ describe('XPUR25 — onglets détaillés (endpoints réels existants)', () => {
     const panel = await screen.findByTestId('f360-tab-retours')
     expect(within(panel).getByText('RET-1')).toBeInTheDocument()
     expect(stockApi.getRetoursFournisseurDe).toHaveBeenCalledWith('7')
+  })
+})
+
+describe('WIR222/XPUR9 — « Générer l\'avoir » depuis l\'onglet Retours', () => {
+  const setupBaseMocks = () => {
+    stockApi.getFournisseur360.mockImplementation(rejectNotFound)
+    stockApi.performanceFournisseur.mockImplementation(rejectNotFound)
+  }
+
+  it('un retour validé propose « Générer l\'avoir », appel + confirmation, second clic impossible', async () => {
+    setupBaseMocks()
+    stockApi.getRetoursFournisseurDe.mockResolvedValue({
+      data: [{ id: 3, reference: 'RET-3', statut: 'valide' }],
+    })
+    stockApi.genererAvoirDepuisRetour.mockResolvedValue({ data: { id: 1, reference: 'AVF-1' } })
+    renderPage({ fournisseurId: '7' })
+
+    await userEvent.click(await screen.findByRole('tab', { name: /Retours/ }))
+    const panel = await screen.findByTestId('f360-tab-retours')
+    await userEvent.click(within(panel).getByRole('button', { name: /Générer l'avoir/ }))
+
+    await waitFor(() => expect(stockApi.genererAvoirDepuisRetour).toHaveBeenCalledWith(3))
+    expect(await within(panel).findByText('Avoir généré')).toBeInTheDocument()
+    expect(within(panel).queryByRole('button', { name: /Générer l'avoir/ })).toBeNull()
+  })
+
+  it('un retour non validé (brouillon) ne propose aucun bouton', async () => {
+    setupBaseMocks()
+    stockApi.getRetoursFournisseurDe.mockResolvedValue({
+      data: [{ id: 4, reference: 'RET-4', statut: 'brouillon' }],
+    })
+    renderPage({ fournisseurId: '7' })
+
+    await userEvent.click(await screen.findByRole('tab', { name: /Retours/ }))
+    const panel = await screen.findByTestId('f360-tab-retours')
+    expect(within(panel).queryByRole('button', { name: /Générer l'avoir/ })).toBeNull()
   })
 })
 
