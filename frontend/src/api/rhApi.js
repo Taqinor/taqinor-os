@@ -162,6 +162,11 @@ const rhApi = {
   getFeuillesTemps: (params) => api.get('/rh/feuilles-temps/', { params }),
   getHeuresSupp: (params) => api.get('/rh/heures-supp/', { params }),
   getRoster: (params) => api.get('/rh/roster/', { params }),
+  // WIR238 — création/édition d'une affectation roster (`semaine_du` et
+  // `conflit_conge` sont toujours CALCULÉS côté serveur, jamais envoyés).
+  createRoster: (data) => api.post('/rh/roster/', data),
+  updateRoster: (id, data) => api.patch(`/rh/roster/${id}/`, data),
+  getConflitsRoster: (params) => api.get('/rh/roster/conflits/', { params }),
   getPresencesChantier: (params) => api.get('/rh/presences-chantier/', { params }),
   getIncidentsPresence: (params) => api.get('/rh/incidents-presence/', { params }),
   // WIR195 — un incident (retard/absence injustifiée) était créé depuis

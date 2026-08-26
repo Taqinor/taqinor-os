@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   LogOut, Upload, Download, Pencil, MonitorSmartphone, Ban, History, CheckCircle2,
+  Plus, AlertTriangle,
 } from 'lucide-react'
 import { ListShell } from '../../ui/module'
 import {
   Segmented, Button, Badge, toast,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-  Label, Input,
+  Label, Input, confirmLeaveIfDirty,
 } from '../../ui'
 import { useConfirmDialog } from '../../ui/confirm'
 import { formatNumber, formatDate, formatDateTime } from '../../lib/format'
@@ -76,6 +77,11 @@ export default function Temps() {
   // WIR195 — incidents de présence (retard/absence injustifiée).
   const [incidents, setIncidents] = useState([])
   const [justifierFor, setJustifierFor] = useState(null)
+  // WIR238 — roster : conflits de congé (bandeau 30 jours) + employés pour
+  // le sélecteur de la nouvelle affectation.
+  const [conflitsRoster, setConflitsRoster] = useState([])
+  const [employes, setEmployes] = useState([])
+  const [rosterOpen, setRosterOpen] = useState(false)
   const [nouveauToken, setNouveauToken] = useState(null)
   const fileRef = useRef(null)
 
@@ -92,8 +98,11 @@ export default function Temps() {
       rhApi.getAbsentsNonJustifies(),
       rhApi.getRapportPresence({ debut: debutMois(), fin: aujourdHui() }),
       rhApi.getIncidentsPresence(),
+      // WIR238 — conflits de congé sur les 30 prochains jours (bandeau).
+      rhApi.getConflitsRoster(),
+      rhApi.getEmployes(),
     ])
-      .then(([pRes, rRes, prRes, hRes, dRes, aRes, rapRes, incRes]) => {
+      .then(([pRes, rRes, prRes, hRes, dRes, aRes, rapRes, incRes, confRes, empRes]) => {
         if (!vivant) return
         setPointages(unwrap(pRes.data))
         setRoster(unwrap(rRes.data))
@@ -103,6 +112,8 @@ export default function Temps() {
         setAbsents(unwrap(aRes.data))
         setRapport(rapRes.data)
         setIncidents(unwrap(incRes.data))
+        setConflitsRoster(unwrap(confRes.data))
+        setEmployes(unwrap(empRes.data))
       })
       .catch(() => {
         if (!vivant) return
@@ -327,6 +338,15 @@ export default function Temps() {
     { id: 'equipe', header: 'Équipe', width: 140, accessor: (r) => r.equipe || '', cell: (v) => v || '—' },
     { id: 'date', header: 'Date', width: 120, searchable: false, accessor: (r) => r.date || '', cell: (v) => formatDate(v) },
     { id: 'creneau', header: 'Créneau', width: 120, accessor: (r) => r.creneau_display || r.creneau || '', cell: (v) => v || '—' },
+    // WIR238 — conflit_conge est CALCULÉ côté serveur (congé validé couvrant
+    // le jour affecté), jamais recalculé/deviné côté client.
+    {
+      id: 'conflit',
+      header: 'Conflit congé',
+      width: 130,
+      accessor: (r) => (r.conflit_conge ? 'conflit' : ''),
+      cell: (_v, r) => (r.conflit_conge ? <Badge tone="danger">Conflit congé</Badge> : '—'),
+    },
   ], [])
 
   const presenceColumns = useMemo(() => [
@@ -376,10 +396,19 @@ export default function Temps() {
     </Button>
   )
 
+  // WIR238 — « Nouvelle affectation » : semaine_du/conflit_conge ne sont
+  // JAMAIS saisis, toujours calculés côté serveur (services.appliquer_roster).
+  const rosterActions = (
+    <Button onClick={() => setRosterOpen(true)}>
+      <Plus size={15} strokeWidth={1.75} aria-hidden="true" />
+      Nouvelle affectation
+    </Button>
+  )
+
   const config = {
     pointages: { title: 'Pointages', columns: pointageColumns, rows: pointages, rowActions: pointageActions, exportName: 'pointages',
       actions: pointagesActions },
-    roster: { title: 'Roster', columns: rosterColumns, rows: roster, exportName: 'roster' },
+    roster: { title: 'Roster', columns: rosterColumns, rows: roster, exportName: 'roster', actions: rosterActions },
     presences: { title: 'Présences chantier', columns: presenceColumns, rows: presences, exportName: 'presences-chantier' },
     heures_supp: { title: 'Heures supplémentaires', columns: heuresColumns, rows: heuresSupp, exportName: 'heures-supp',
       actions: heuresSuppActions },
@@ -400,6 +429,17 @@ export default function Temps() {
       </div>
 
       <Segmented options={VUES} value={vue} onChange={setVue} aria-label="Vue temps & présence" />
+
+      {/* WIR238 — bandeau 30 jours : conflits de congé déjà présents sur le
+          roster, calculés côté serveur (`selectors.conflits_roster`). */}
+      {vue === 'roster' && conflitsRoster.length > 0 && (
+        <div className="flex items-center gap-2 rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-sm">
+          <AlertTriangle className="size-4 shrink-0 text-danger" aria-hidden="true" />
+          <span>
+            {conflitsRoster.length} affectation{conflitsRoster.length > 1 ? 's' : ''} en conflit de congé sur les 30 prochains jours.
+          </span>
+        </div>
+      )}
 
       <ListShell
         title={config.title}
@@ -430,6 +470,13 @@ export default function Temps() {
       )}
       {nouveauToken && (
         <TokenDialog data={nouveauToken} onClose={() => setNouveauToken(null)} />
+      )}
+      {rosterOpen && (
+        <RosterDialog
+          employes={employes}
+          onClose={() => setRosterOpen(false)}
+          onSaved={() => { setRosterOpen(false); recharger() }}
+        />
       )}
       {justifierFor && (
         <JustifierIncidentDialog
@@ -557,6 +604,95 @@ function CorrectionDialog({ pointage, onClose, onSaved }) {
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
             <Button type="submit" disabled={saving}>{saving ? 'Enregistrement…' : 'Corriger'}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// AffectationRoster.Creneau.choices — côté serveur.
+const CRENEAU_OPTIONS = [
+  { value: 'journee', label: 'Journée' },
+  { value: 'matin', label: 'Matin' },
+  { value: 'apres_midi', label: 'Après-midi' },
+]
+
+/* ── WIR238 — Nouvelle affectation roster (semaine/conflit calculés serveur) ── */
+function RosterDialog({ employes, onClose, onSaved }) {
+  const [employe, setEmploye] = useState('')
+  const [equipe, setEquipe] = useState('')
+  const [date, setDate] = useState('')
+  const [creneau, setCreneau] = useState('journee')
+  const [note, setNote] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [serverError, setServerError] = useState(null)
+
+  const dirty = Boolean(employe || equipe || date || note)
+  const closeIfConfirmed = () => { if (confirmLeaveIfDirty(dirty)) onClose?.() }
+  const valide = Boolean(employe && date)
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!valide) return
+    setSaving(true)
+    setServerError(null)
+    try {
+      // WIR238 — jamais `semaine_du`/`conflit_conge` : calculés côté serveur
+      // (services.appliquer_roster) à chaque création/mise à jour.
+      await rhApi.createRoster({
+        employe, equipe: equipe || '', date, creneau, note: note || '',
+      })
+      toast.success('Affectation créée.')
+      onSaved?.()
+    } catch (err) {
+      const data = err?.response?.data
+      setServerError(data?.detail || 'Création de l’affectation impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) closeIfConfirmed() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader><DialogTitle>Nouvelle affectation roster</DialogTitle></DialogHeader>
+        <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="ro-employe">Employé</Label>
+              <select id="ro-employe" autoFocus value={employe} onChange={(e) => setEmploye(e.target.value)}
+                className="h-9 rounded-md border border-border bg-card px-3 text-sm">
+                <option value="">— Choisir —</option>
+                {employes.map((e) => <option key={e.id} value={e.id}>{e.nom} {e.prenom}</option>)}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="ro-equipe">Équipe (optionnel)</Label>
+              <Input id="ro-equipe" value={equipe} onChange={(e) => setEquipe(e.target.value)} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="ro-date">Date</Label>
+              <Input id="ro-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="ro-creneau">Créneau</Label>
+              <select id="ro-creneau" value={creneau} onChange={(e) => setCreneau(e.target.value)}
+                className="h-9 rounded-md border border-border bg-card px-3 text-sm">
+                {CRENEAU_OPTIONS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="ro-note">Note (optionnel)</Label>
+            <Input id="ro-note" value={note} onChange={(e) => setNote(e.target.value)} />
+          </div>
+          {serverError && <p className="text-sm text-destructive" role="alert">{serverError}</p>}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={closeIfConfirmed}>Annuler</Button>
+            <Button type="submit" disabled={!valide || saving}>{saving ? 'Création…' : 'Créer l’affectation'}</Button>
           </DialogFooter>
         </form>
       </DialogContent>

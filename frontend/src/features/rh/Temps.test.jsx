@@ -31,6 +31,13 @@ vi.mock('../../api/rhApi', () => {
       // WIR195 — incidents de présence (liste + justification).
       getIncidentsPresence: vi.fn(empty),
       justifierIncidentPresence: vi.fn(),
+      // WIR238 — roster : création/édition + conflits de congé.
+      createRoster: vi.fn(),
+      updateRoster: vi.fn(),
+      getConflitsRoster: vi.fn(empty),
+      getEmployes: vi.fn(() => Promise.resolve({
+        data: [{ id: 9, nom: 'Bennani', prenom: 'Youssef' }],
+      })),
     },
   }
 })
@@ -210,5 +217,43 @@ describe('Temps — WIR195 : incidents de présence (liste + justification)', ()
     fireEvent.click((await screen.findAllByRole('button', { name: 'Créer un incident d’absence' }))[0])
 
     await waitFor(() => expect(screen.getByRole('radio', { name: 'Incidents de présence' })).toHaveAttribute('aria-checked', 'true'))
+  })
+})
+
+describe('Temps — WIR238 : roster (création + conflits de congé)', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('crée une affectation via rhApi.createRoster (sans semaine_du/conflit_conge)', async () => {
+    rhApi.createRoster.mockResolvedValueOnce({ data: { id: 1 } })
+    renderTemps()
+    await screen.findAllByText('Temps & présence')
+    fireEvent.click(screen.getByRole('radio', { name: 'Roster' }))
+
+    fireEvent.click((await screen.findAllByRole('button', { name: /Nouvelle affectation/ }))[0])
+    const dialog = within(await screen.findByRole('dialog'))
+    fireEvent.change(dialog.getByLabelText('Employé'), { target: { value: '9' } })
+    fireEvent.change(dialog.getByLabelText('Date'), { target: { value: '2026-08-20' } })
+    fireEvent.click(dialog.getByRole('button', { name: 'Créer l’affectation' }))
+
+    await waitFor(() => expect(rhApi.createRoster).toHaveBeenCalledWith(
+      expect.objectContaining({ employe: '9', date: '2026-08-20', creneau: 'journee' }),
+    ))
+    expect(rhApi.createRoster.mock.calls[0][0]).not.toHaveProperty('semaine_du')
+    expect(rhApi.createRoster.mock.calls[0][0]).not.toHaveProperty('conflit_conge')
+  })
+
+  it('affiche le bandeau de conflits (30 j) et la colonne Conflit congé', async () => {
+    rhApi.getConflitsRoster.mockResolvedValueOnce({
+      data: [{ id: 3, employe: 9, employe_nom: 'Bennani Youssef', date: '2026-08-20', conflit_conge: true }],
+    })
+    rhApi.getRoster.mockResolvedValueOnce({
+      data: [{ id: 3, employe: 9, employe_nom: 'Bennani Youssef', date: '2026-08-20', conflit_conge: true }],
+    })
+    renderTemps()
+    await screen.findAllByText('Temps & présence')
+    fireEvent.click(screen.getByRole('radio', { name: 'Roster' }))
+
+    expect(await screen.findByText(/en conflit de congé sur les 30 prochains jours/)).toBeInTheDocument()
+    expect((await screen.findAllByText('Conflit congé')).length).toBeGreaterThan(1)
   })
 })
