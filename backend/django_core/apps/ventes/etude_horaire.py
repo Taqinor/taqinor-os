@@ -1654,8 +1654,13 @@ def balayer_stockage_horaire(*, kwc, conso_kwh_mensuelles, capacites_kwh,
 
     L-DECH — LES BORNES DE PUISSANCE SONT PAR CAPACITÉ, ET C'EST ESSENTIEL.
     Chaque palier est une composition DIFFÉRENTE : 10 kWh, c'est un pack de
-    10 ; 15 kWh, c'est un 10 + un 5 ; 20 kWh, deux 10. La décharge disponible
-    n'est donc PAS la même d'un palier à l'autre — elle s'additionne avec les
+    10 ; 15 kWh, c'est TROIS packs de 5 ; 20 kWh, deux packs de 10. Une BANQUE
+    EST TOUJOURS HOMOGÈNE (fondateur 26/08/2026 — mélanger des calibres dans
+    une même banque est électriquement interdit ; c'est ce mélange, composé
+    côté serveur, qui a fait retirer le Dyness 10 kWh du stock de production :
+    ``composition_residentielle`` ne compose plus jamais qu'UN SEUL calibre
+    par palier, cf. ``apps.ventes.services``). La décharge disponible n'est
+    donc PAS la même d'un palier à l'autre — elle s'additionne avec les
     packs (fondateur : « avec deux batteries c'est 100 A par batterie »).
     ``puissances_par_capacite`` porte, pour chaque capacité,
     ``{decharge_kw, decharge_onduleur_kw, charge_kw}`` tels que

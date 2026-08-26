@@ -2161,7 +2161,8 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
                               taux_tva=Decimal('20'), avertissements=None,
                               deux_options=False, marques=None,
                               ordre_lignes=None, mppt_paires=1, phase=None,
-                              batterie_cible_kwh=None):
+                              batterie_cible_kwh=None,
+                              batterie_module_kwh=None):
     """Le KIT résidentiel COMPLET composé depuis un catalogue.
 
     U3 (fondateur 20/08/2026) — CETTE FONCTION EST LA SOURCE DE VÉRITÉ de la
@@ -2234,6 +2235,22 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     (``apps.ventes.dimensionnement``) l'utilise, pour EXPLORER le stockage comme
     une deuxième dimension et montrer au fondateur ce qu'une banque plus grande
     changerait — explorer n'est pas décider.
+
+    ``batterie_module_kwh`` (BATHOMO, fondateur 26/08/2026 — « if the quote has
+    5 kWh batteries the web page should only show 5 kWh batteries ; and we can
+    go up to 30 or 40 kWh using 5 kWh batteries, no problem ») — IMPOSE le
+    calibre (``5`` ou ``10``) de la banque, plutôt que de laisser le choix « au
+    plus proche de la cible » ci-dessous décider. Un appelant qui connaît déjà
+    le module RÉELLEMENT engagé par un devis (lu sur ses LIGNES vendues, jamais
+    redeviné ici) l'impose ainsi pour toute l'échelle qu'il explore : la banque
+    grandit alors en N modules de CE calibre — jusqu'à 6-8 packs de 5 kWh pour
+    atteindre 30-40 kWh — sans jamais glisser vers l'autre calibre au passage
+    d'un multiple de 10 (où le choix « au plus proche » préfère normalement le
+    plus gros module). ``None`` (LE DÉFAUT) ⇒ comportement inchangé : le
+    calibre le plus proche de ``cible_kwh`` décide, égalité tranchée pour le
+    plus gros. Calibre imposé absent du catalogue ⇒ repli silencieux sur ce
+    même choix « au plus proche » — jamais une banque vide du seul fait d'un
+    calibre non stocké.
 
     ``avertissements`` (optionnel) est LE CANAL de cette fonction : une liste
     que l'appelant fournit et que la composition enrichit sur place quand elle
@@ -2472,7 +2489,8 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
                 panneau, coince[0], coince[1]))
 
     # ── Batteries : cible = kWc arrondi au multiple de 5 (5 kWh au minimum),
-    # servie en modules Dyness 10 kWh + un 5 kWh d'appoint ──
+    # servie en modules HOMOGÈNES (un seul calibre par banque — voir la garde
+    # plus bas, après le choix du vivier) ──
     # TOLÉRANCE DEUX ORTHOGRAPHES : la marque s'écrit « Dyness » (correction
     # fondateur 2026-08-18) ; un produit encore nommé « Deyness » (base non
     # migrée, saisie manuelle, fixture ancienne) doit rester reconnu, sans quoi
@@ -2483,8 +2501,6 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
         cible_kwh = max(5, _arrondi_js(float(batterie_cible_kwh) / 5) * 5)
     else:
         cible_kwh = max(5, _arrondi_js(kwp / 5) * 5)
-    nb10 = int(cible_kwh // 10)
-    nb5 = 1 if (cible_kwh % 10) >= 5 else 0
     # PVOND — GARDE BATTERIE PILOTÉ PAR LA DONNÉE (remplace le mot-clé PVG4) :
     # une batterie n'entre au vivier que si sa TENSION NOMINALE tombe dans la
     # PLAGE BATTERIE de l'onduleur retenu ci-dessus. Le repli par mot-clé
@@ -2524,10 +2540,51 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
                 'appelant ne porte aucun canal d\'avertissement.', _plage_bat)
     bat5 = next((p for cap, p in vivier if cap == 5), None)
     bat10 = next((p for cap, p in vivier if cap == 10), None)
-    if bat10 is None and bat5 is not None and nb10 > 0:
-        # Pas de module 10 kWh au catalogue → toute la cible en modules 5 kWh.
-        nb5 = max(1, _arrondi_js(cible_kwh / 5))
-        nb10 = 0
+    # ── BANQUE HOMOGÈNE (fondateur 26/08/2026) — JAMAIS un mélange de calibres
+    # dans la même banque : c'est électriquement interdit (des modules 5 kWh
+    # et 10 kWh en parallèle/série ne s'équilibrent pas), et c'est ce mélange,
+    # composé côté serveur, qui a fait retirer le Dyness 10 kWh du stock de
+    # production (cf. ``apps.stock.management.commands.seed_catalogue``, SKU
+    # ``BAT-DEY-10`` désormais archivé). Une candidate est générée PAR CALIBRE
+    # disponible au catalogue (N modules identiques visant ``cible_kwh``,
+    # arrondi JS, au moins 1 module dès que ce calibre est possible) ; on
+    # retient la candidate dont la capacité obtenue est la plus proche de la
+    # cible — égalité tranchée pour le plus GROS calibre (10 avant 5), la
+    # préférence historique du simulateur. Aucun mélange n'est jamais formé :
+    # au plus UN des deux compteurs ci-dessous est non nul.
+    #
+    # ``batterie_module_kwh`` COURT-CIRCUITE ce choix « au plus proche » quand
+    # l'appelant impose un calibre précis (module déjà engagé par un devis) :
+    # la banque grandit alors en N modules de CE seul calibre, jamais l'autre
+    # — c'est ce qui permet d'atteindre 30-40 kWh en modules 5 kWh SANS jamais
+    # glisser vers un module 10 kWh au passage d'un multiple de 10.
+    calibre_impose = None
+    if batterie_module_kwh is not None:
+        try:
+            calibre_impose = float(batterie_module_kwh)
+        except (TypeError, ValueError):
+            calibre_impose = None
+    candidates = []
+    if calibre_impose == 5.0 and bat5 is not None:
+        n5 = max(1, _arrondi_js(cible_kwh / 5))
+        candidates = [(0, -5, n5, 0)]
+    elif calibre_impose == 10.0 and bat10 is not None:
+        n10 = max(1, _arrondi_js(cible_kwh / 10))
+        candidates = [(0, -10, 0, n10)]
+    else:
+        # Calibre imposé absent du vivier (ou aucun calibre imposé) : repli
+        # sur le choix « au plus proche » — jamais une banque vide du seul
+        # fait d'un calibre non stocké.
+        if bat5 is not None:
+            n5 = max(1, _arrondi_js(cible_kwh / 5))
+            candidates.append((abs(n5 * 5 - cible_kwh), -5, n5, 0))
+        if bat10 is not None:
+            n10 = max(1, _arrondi_js(cible_kwh / 10))
+            candidates.append((abs(n10 * 10 - cible_kwh), -10, 0, n10))
+    nb5, nb10 = 0, 0
+    if candidates:
+        candidates.sort(key=lambda c: (c[0], c[1]))
+        _, _, nb5, nb10 = candidates[0]
 
     # ── Structure : le type demandé (acier par défaut), une par panneau ──
     # PVMRQ — DEUX rôles distincts (``structure_acier`` / ``structure_alu``,

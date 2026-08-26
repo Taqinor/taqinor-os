@@ -27,7 +27,9 @@ from apps.ventes.public_views import _echelle_paliers_batterie_publique
 User = get_user_model()
 
 _PALIER_EXEMPLE = {
-    'capacite_kwh': 15.0, 'nb_batteries_5': 1, 'nb_batteries_10': 1,
+    # Banque HOMOGÈNE (fondateur 26/08/2026) : jamais un mélange de calibres
+    # sur un même palier — 15 kWh = TROIS modules 5 kWh, pas 1×10 + 1×5.
+    'capacite_kwh': 15.0, 'nb_batteries_5': 3, 'nb_batteries_10': 0,
     'nb_panneaux': 26, 'puissance_kwc': 18.46, 'prix_ttc': 148655.0,
     'economies_annuelles': 28088.0, 'payback_annees': 5.5,
     'remplissage_ok': True, 'retenu': True,

@@ -828,7 +828,8 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, ville=None, lat=None,
         compositions = []
         vues = {}
         # L-DECH — LES BORNES DE PUISSANCE, PALIER PAR PALIER. Chaque cible est
-        # une composition DIFFÉRENTE (15 kWh = un 10 + un 5, 20 kWh = deux 10) :
+        # une composition DIFFÉRENTE (15 kWh = trois modules de 5 — une banque
+        # est toujours HOMOGÈNE, fondateur 26/08/2026 ; 20 kWh = deux 10) :
         # la décharge disponible s'additionne avec les packs, et le port
         # batterie de l'onduleur la re-borne. Lues par la MÊME fonction que
         # l'étude complète (``puissances_batterie_des_lignes``) sur les lignes
@@ -1739,7 +1740,13 @@ def echelle_paliers_batterie(devis):
     * ``capacite_kwh`` — capacité UTILE réellement livrée par la composition
       catalogue de ce palier (fiche technique, jamais l'étiquette) ;
     * ``nb_batteries_5`` / ``nb_batteries_10`` — combien de modules 5 kWh et
-      10 kWh la composition contient, tels qu'on les COMPTE ;
+      10 kWh la composition contient, tels qu'on les COMPTE. UNE BANQUE EST
+      TOUJOURS HOMOGÈNE (fondateur 26/08/2026) : ces deux compteurs ne sont
+      JAMAIS non nuls tous les deux sur le MÊME palier — mélanger des
+      calibres dans une même banque est électriquement interdit, et c'est ce
+      mélange composé côté serveur qui a fait retirer le Dyness 10 kWh du
+      stock de production (cf. ``apps.ventes.services.composition_
+      residentielle``, ``apps.stock.management.commands.seed_catalogue``) ;
     * ``nb_panneaux`` — le champ PV que ce palier EXIGE (voir plus bas) ;
     * ``puissance_kwc`` — ce champ en kWc, au wattage du panneau réel ;
     * ``prix_ttc`` — prix de VENTE TTC de la composition complète, **REMISE DU
@@ -1900,7 +1907,8 @@ def _echelle_paliers_batterie(devis):
 
         Un seul parcours des douze jours types sert toutes les capacités
         (``balayer_stockage_horaire``), et les bornes de puissance sont lues
-        composition par composition : 15 kWh (un 10 + un 5) et 20 kWh (deux 10)
+        composition par composition : 15 kWh (TROIS modules de 5 — une banque
+        est toujours HOMOGÈNE, fondateur 26/08/2026) et 20 kWh (deux 10)
         n'ont ni le même prix ni la même puissance de décharge.
         """
         if panneaux in sondes:
