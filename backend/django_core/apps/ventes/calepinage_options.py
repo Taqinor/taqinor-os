@@ -93,10 +93,13 @@ _MAX_PANNEAUX_DESSINES = 600
 #: la carte porte déjà les kWc de SA taille).
 _GEO_RECOPIEES = ('azimuthDeg', 'tiltDeg', 'family', 'flush', 'origin')
 
-#: Les clés de zone NON recopiées sur un dessin dérivé. ``neededPanels`` est la
-#: cible dimensionnée par l'étude du DEVIS : elle ne décrit pas la taille
-#: explorée. ``geometry`` est reconstruite.
-_ZONE_NON_RECOPIEES = ('neededPanels', 'geometry')
+#: Les SEULES clés de zone recopiées sur un dessin dérivé — une WHITELIST, au
+#: même sens strict que ``public_views._ZONE_KEYS`` : ce qui n'est pas nommé
+#: ici n'existe pas en sortie. ``neededPanels`` en est volontairement absente
+#: (c'est la cible dimensionnée par l'étude du DEVIS, elle ne décrit pas la
+#: taille explorée) et ``geometry`` aussi (elle est reconstruite).
+_ZONE_RECOPIEES = ('id', 'label', 'vertices', 'obstacles', 'roofType',
+                   'pitchDeg', 'facingAzimuthDeg')
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -231,10 +234,21 @@ class _Trame:
     """La pose RÉELLE d'une zone, lue en rangées.
 
     ``rangees`` : liste ``[(v, [(u, panneau), …]), …]`` triée ``v`` croissant,
-    chaque rangée triée ``u`` croissant. ``panneau`` est le dict publiable
-    d'origine (``{cx, cy, face?}``) — recopié tel quel, jamais reconstruit :
-    un panneau CONSERVÉ garde sa position au bit près.
+    chaque rangée triée ``u`` croissant.
+
+    ``panneau`` est RECONSTRUIT champ par champ (``cx``, ``cy``, et ``face``
+    dans son énumération fermée) au lieu d'être recopié par référence. Les
+    coordonnées sont reprises TELLES QUELLES — un panneau conservé garde sa
+    position au bit près — mais rien d'autre ne traverse : c'est la même
+    défense en profondeur que ``_safe_zone_geometry`` (des échantillons de
+    layout portent des ``prix_achat``/``marge`` nichés sur chaque panneau), et
+    elle vaut ici même si un appelant se trompait un jour de source et
+    passait le blob BRUT au lieu de sa version assainie.
     """
+
+    #: Les seules faces existantes — même énumération fermée que la whitelist
+    #: publique (``public_views._FACES_CONNUES``).
+    FACES = ('E', 'W')
 
     def __init__(self, index, zone, geometrie, libre=False):
         self.index = index
@@ -260,8 +274,11 @@ class _Trame:
             cy = _fini(panneau.get('cy'))
             if cx is None or cy is None:
                 continue
+            pose = {'cx': panneau['cx'], 'cy': panneau['cy']}
+            if panneau.get('face') in self.FACES:
+                pose['face'] = panneau['face']
             uu, vv = _vers_uv(cx, cy, self.u, self.s)
-            cellules.append((vv, uu, panneau))
+            cellules.append((vv, uu, pose))
         if not cellules:
             return []
         cellules.sort(key=lambda c: (c[0], c[1]))
@@ -495,8 +512,7 @@ def layout_derive(layout_public, par_zone):
     for index, zone in enumerate((layout_public or {}).get('zones') or []):
         if not isinstance(zone, dict):
             continue
-        nouvelle = {cle: valeur for cle, valeur in zone.items()
-                    if cle not in _ZONE_NON_RECOPIEES}
+        nouvelle = {cle: zone[cle] for cle in _ZONE_RECOPIEES if cle in zone}
         panneaux = par_zone.get(index) or []
         geometrie = zone.get('geometry')
         if panneaux and isinstance(geometrie, dict):
