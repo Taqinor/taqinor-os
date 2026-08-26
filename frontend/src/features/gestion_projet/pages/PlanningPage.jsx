@@ -1,11 +1,23 @@
 import { useCallback, useEffect, useState } from 'react'
-import { CalendarRange, Flag, Camera } from 'lucide-react'
-import { Card, Button, Spinner, EmptyState, Badge, toast } from '../../../ui'
+import { CalendarRange, Flag, Camera, Plus, X } from 'lucide-react'
+import { Card, Button, IconButton, Spinner, EmptyState, Badge, toast } from '../../../ui'
 import { formatDate } from '../../../lib/format'
 import gestionProjetApi from '../../../api/gestionProjetApi'
 import { errMessage, StatutJalon } from '../constants'
 import GanttChart from '../GanttChart'
 import ProjetPicker from '../components/ProjetPicker'
+
+// WIR244 — jours de la semaine du calendrier ouvré (clés miroir de
+// `CalendrierProjet`), utilisés pour les toggles ET la création par défaut
+// (semaine de 5 jours : lundi→vendredi ouvrés, week-end chômé).
+const JOURS_CALENDRIER = [
+  ['lundi', 'Lun'], ['mardi', 'Mar'], ['mercredi', 'Mer'], ['jeudi', 'Jeu'],
+  ['vendredi', 'Ven'], ['samedi', 'Sam'], ['dimanche', 'Dim'],
+]
+const CALENDRIER_5_JOURS = {
+  lundi: true, mardi: true, mercredi: true, jeudi: true, vendredi: true,
+  samedi: false, dimanche: false,
+}
 
 /* UX39 — Planning Gantt : phases / tâches / dépendances / jalons, baseline,
    calendriers & jours fériés. Gantt CSS/SVG léger (aucune lib Gantt). */
@@ -17,6 +29,11 @@ export default function PlanningPage() {
   const [error, setError] = useState(null)
   const [busy, setBusy] = useState(false)
   const [busyTacheId, setBusyTacheId] = useState(null)
+  // WIR244 — calendrier & jours fériés + dépendances : busy dédié pour ne
+  // jamais bloquer le reste de l'écran (baseline, drag Gantt…) pendant une
+  // écriture calendrier isolée.
+  const [calendrierBusy, setCalendrierBusy] = useState(false)
+  const [nouveauFerie, setNouveauFerie] = useState({ date: '', libelle: '' })
 
   const load = useCallback(async (pid) => {
     if (!pid) { setData(null); return }
@@ -95,6 +112,104 @@ export default function PlanningPage() {
     }
   }
 
+  // WIR244 — carte « Calendrier & jours fériés » : jusqu'ici purement lecture
+  // seule. Création du calendrier (semaine de 5 jours par défaut), bascule
+  // ouvré/chômé par jour, ajout/suppression de jours fériés + pré-remplissage
+  // IDEMPOTENT des fériés marocains (seed-feries, jamais de doublon serveur).
+  const creerCalendrier = async () => {
+    setCalendrierBusy(true)
+    try {
+      await gestionProjetApi.createCalendrier({ projet: projetId, ...CALENDRIER_5_JOURS })
+      toast.success('Calendrier créé (semaine de 5 jours).')
+      await load(projetId)
+    } catch (err) {
+      toast.error(errMessage(err, 'Création du calendrier impossible.'))
+    } finally {
+      setCalendrierBusy(false)
+    }
+  }
+
+  const basculerJourCalendrier = async (jourKey) => {
+    if (!data?.calendrier) return
+    setCalendrierBusy(true)
+    try {
+      await gestionProjetApi.updateCalendrier(
+        data.calendrier.id, { [jourKey]: !data.calendrier[jourKey] })
+      await load(projetId)
+    } catch (err) {
+      toast.error(errMessage(err, 'Mise à jour du calendrier impossible.'))
+    } finally {
+      setCalendrierBusy(false)
+    }
+  }
+
+  const ajouterJourFerie = async () => {
+    if (!data?.calendrier || !nouveauFerie.date || !nouveauFerie.libelle.trim()) return
+    setCalendrierBusy(true)
+    try {
+      await gestionProjetApi.createJourFerie({
+        calendrier: data.calendrier.id, date: nouveauFerie.date,
+        libelle: nouveauFerie.libelle.trim(),
+      })
+      setNouveauFerie({ date: '', libelle: '' })
+      await load(projetId)
+    } catch (err) {
+      toast.error(errMessage(err, "Impossible d'ajouter ce jour férié."))
+    } finally {
+      setCalendrierBusy(false)
+    }
+  }
+
+  const supprimerJourFerie = async (ferie) => {
+    setCalendrierBusy(true)
+    try {
+      await gestionProjetApi.deleteJourFerie(ferie.id)
+      toast.success('Jour férié supprimé.')
+      await load(projetId)
+    } catch (err) {
+      toast.error(errMessage(err, 'Suppression impossible.'))
+    } finally {
+      setCalendrierBusy(false)
+    }
+  }
+
+  const preRemplirFeries = async () => {
+    if (!data?.calendrier) return
+    setCalendrierBusy(true)
+    try {
+      const annee = new Date().getFullYear()
+      const res = await gestionProjetApi.seedFeriesCalendrier(data.calendrier.id, annee)
+      toast.success(`${res.data.nb_crees} jour(s) férié(s) ajouté(s) (${res.data.nb_deja_presents} déjà présents).`)
+      await load(projetId)
+    } catch (err) {
+      toast.error(errMessage(err, 'Pré-remplissage impossible.'))
+    } finally {
+      setCalendrierBusy(false)
+    }
+  }
+
+  // WIR244 — dépendances CPM depuis le Gantt (créées/supprimées directement
+  // dans <GanttChart>, callbacks presentational comme `onReprogrammer`).
+  const creerDependance = async (payload) => {
+    try {
+      await gestionProjetApi.createDependance(payload)
+      toast.success('Dépendance ajoutée.')
+      await load(projetId)
+    } catch (err) {
+      toast.error(errMessage(err, "Impossible d'ajouter la dépendance."))
+    }
+  }
+
+  const supprimerDependance = async (dep) => {
+    try {
+      await gestionProjetApi.deleteDependance(dep.id)
+      toast.success('Dépendance supprimée.')
+      await load(projetId)
+    } catch (err) {
+      toast.error(errMessage(err, 'Suppression impossible.'))
+    }
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -127,6 +242,8 @@ export default function PlanningPage() {
               dependances={data?.dependances ?? []}
               baseline={[]}
               onReprogrammer={reprogrammerTache}
+              onCreerDependance={creerDependance}
+              onSupprimerDependance={supprimerDependance}
               busyTacheId={busyTacheId}
             />
           </Card>
@@ -153,19 +270,65 @@ export default function PlanningPage() {
               {data?.calendrier ? (
                 <div className="flex flex-col gap-2 text-sm">
                   <div className="flex flex-wrap gap-1.5">
-                    {[['Lun', data.calendrier.lundi], ['Mar', data.calendrier.mardi], ['Mer', data.calendrier.mercredi], ['Jeu', data.calendrier.jeudi], ['Ven', data.calendrier.vendredi], ['Sam', data.calendrier.samedi], ['Dim', data.calendrier.dimanche]].map(([lbl, on]) => (
-                      <Badge key={lbl} tone={on ? 'success' : 'neutral'}>{lbl}</Badge>
+                    {JOURS_CALENDRIER.map(([key, lbl]) => (
+                      <button
+                        key={key}
+                        type="button"
+                        disabled={calendrierBusy}
+                        onClick={() => basculerJourCalendrier(key)}
+                        aria-pressed={!!data.calendrier[key]}
+                        title={`${lbl} — cliquer pour basculer ouvré/chômé`}
+                      >
+                        <Badge tone={data.calendrier[key] ? 'success' : 'neutral'}>{lbl}</Badge>
+                      </button>
                     ))}
                   </div>
                   {(data.feries ?? []).length ? (
                     <ul className="mt-2 flex flex-col gap-1 text-xs text-muted-foreground">
                       {data.feries.map((f) => (
-                        <li key={f.id}>{formatDate(f.date)} — {f.libelle}</li>
+                        <li key={f.id} className="flex items-center gap-1">
+                          <span>{formatDate(f.date)} — {f.libelle}</span>
+                          <IconButton size="sm" variant="ghost" label="Supprimer ce jour férié"
+                                      onClick={() => supprimerJourFerie(f)}>
+                            <X className="size-3" aria-hidden="true" />
+                          </IconButton>
+                        </li>
                       ))}
                     </ul>
                   ) : <span className="text-xs text-muted-foreground">Aucun jour férié déclaré.</span>}
+
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-border pt-2">
+                    <input
+                      type="date"
+                      className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+                      aria-label="Date du jour férié"
+                      value={nouveauFerie.date}
+                      onChange={(e) => setNouveauFerie((f) => ({ ...f, date: e.target.value }))}
+                    />
+                    <input
+                      type="text"
+                      className="h-8 flex-1 rounded-md border border-input bg-background px-2 text-xs"
+                      aria-label="Libellé du jour férié"
+                      placeholder="Libellé (ex. Fête du Trône)"
+                      value={nouveauFerie.libelle}
+                      onChange={(e) => setNouveauFerie((f) => ({ ...f, libelle: e.target.value }))}
+                    />
+                    <Button type="button" size="sm" variant="outline" disabled={calendrierBusy || !nouveauFerie.date || !nouveauFerie.libelle.trim()} onClick={ajouterJourFerie}>
+                      <Plus className="size-3.5" aria-hidden="true" /> Ajouter
+                    </Button>
+                  </div>
+                  <Button type="button" size="sm" variant="ghost" disabled={calendrierBusy} onClick={preRemplirFeries} className="self-start">
+                    Pré-remplir les fériés ({new Date().getFullYear()})
+                  </Button>
                 </div>
-              ) : <p className="text-sm text-muted-foreground">Aucun calendrier défini pour ce projet.</p>}
+              ) : (
+                <div className="flex flex-col items-start gap-2">
+                  <p className="text-sm text-muted-foreground">Aucun calendrier défini pour ce projet.</p>
+                  <Button type="button" size="sm" disabled={calendrierBusy} onClick={creerCalendrier}>
+                    <Plus className="size-4" aria-hidden="true" /> Créer le calendrier (semaine de 5 jours)
+                  </Button>
+                </div>
+              )}
             </Card>
           </div>
 

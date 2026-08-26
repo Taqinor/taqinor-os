@@ -96,6 +96,10 @@ const gestionProjetApi = {
   getCalendriers: (params) => api.get(`${P}/calendriers/`, { params }),
   createCalendrier: (data) => api.post(`${P}/calendriers/`, data),
   updateCalendrier: (id, data) => api.patch(`${P}/calendriers/${id}/`, data),
+  // WIR244 — pré-remplissage IDEMPOTENT des fériés marocains (core/calendar.py)
+  // pour une année donnée (jamais de doublon, unique (calendrier, date)).
+  seedFeriesCalendrier: (id, annee) =>
+    api.post(`${P}/calendriers/${id}/seed-feries/`, {}, { params: { annee } }),
   getJoursFeries: (params) => api.get(`${P}/jours-feries/`, { params }),
   createJourFerie: (data) => api.post(`${P}/jours-feries/`, data),
   deleteJourFerie: (id) => api.delete(`${P}/jours-feries/${id}/`),
