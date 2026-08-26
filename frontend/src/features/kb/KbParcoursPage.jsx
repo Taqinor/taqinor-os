@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { GraduationCap, Plus, UserPlus } from 'lucide-react'
+import { GraduationCap, Plus, UserPlus, X } from 'lucide-react'
 import { ListShell } from '../../ui/module'
-import { Button, Badge, EmptyState, Spinner, Input, Label, toast } from '../../ui'
+import { Button, IconButton, Badge, EmptyState, Spinner, Input, Label, toast } from '../../ui'
 import kbApi from '../../api/kbApi'
 import messagesApi from '../../api/messagesApi'
 import FilterSelect from './FilterSelect'
@@ -48,8 +48,10 @@ export default function KbParcoursPage() {
   const [membres, setMembres] = useState([])
   const [assignations, setAssignations] = useState([])
   const [users, setUsers] = useState([])
+  const [articles, setArticles] = useState([])
   const [nom, setNom] = useState('')
   const [assignUser, setAssignUser] = useState('')
+  const [addArticle, setAddArticle] = useState('')
 
   const load = () => {
     setLoading(true)
@@ -66,16 +68,50 @@ export default function KbParcoursPage() {
     messagesApi.listCompanyMembers()
       .then((res) => setUsers(Array.isArray(res.data) ? res.data : (res.data?.results ?? [])))
       .catch(() => setUsers([]))
+    // WIR250 — liste des articles pour peupler le sélecteur « Ajouter un
+    // article » du parcours (indépendante du parcours ouvert).
+    kbApi.listArticles()
+      .then((res) => setArticles(Array.isArray(res.data) ? res.data : (res.data?.results ?? [])))
+      .catch(() => setArticles([]))
   }, [])
+
+  const rechargerMembres = (parcoursId) => kbApi.parcoursArticles(parcoursId)
+    .then((res) => setMembres(Array.isArray(res.data) ? res.data : (res.data?.results ?? [])))
+    .catch(() => setMembres([]))
 
   const openParcours = (p) => {
     setSelected(p)
-    kbApi.parcoursArticles(p.id)
-      .then((res) => setMembres(Array.isArray(res.data) ? res.data : (res.data?.results ?? [])))
-      .catch(() => setMembres([]))
+    rechargerMembres(p.id)
     kbApi.listAssignations({ parcours: p.id })
       .then((res) => setAssignations(Array.isArray(res.data) ? res.data : (res.data?.results ?? [])))
       .catch(() => setAssignations([]))
+  }
+
+  // WIR250 — un parcours se composait, à vie, en lecture seule : ni ajout ni
+  // retrait d'article n'étaient câblés malgré `createParcoursArticle`/
+  // `removeParcoursArticle` déjà exposés côté API.
+  const ajouterArticleParcours = async () => {
+    if (!addArticle || !selected) return
+    try {
+      await kbApi.createParcoursArticle({
+        parcours: selected.id, article: Number(addArticle), ordre: membres.length,
+      })
+      toast.success('Article ajouté au parcours.')
+      setAddArticle('')
+      await rechargerMembres(selected.id)
+    } catch {
+      toast.error('Ajout impossible (déjà présent ?).')
+    }
+  }
+
+  const retirerArticleParcours = async (membre) => {
+    try {
+      await kbApi.removeParcoursArticle(membre.id)
+      toast.success('Article retiré du parcours.')
+      await rechargerMembres(selected.id)
+    } catch {
+      toast.error('Suppression impossible.')
+    }
   }
 
   const creerParcours = async () => {
@@ -107,6 +143,18 @@ export default function KbParcoursPage() {
     })),
   ], [users])
 
+  // WIR250 — exclut les articles déjà présents dans le parcours ouvert
+  // (l'unicité (parcours, article) est de toute façon garantie côté serveur).
+  const articleOptions = useMemo(() => {
+    const dejaPresents = new Set(membres.map((m) => m.article))
+    return [
+      { value: '', label: 'Choisir un article…' },
+      ...articles
+        .filter((a) => !dejaPresents.has(a.id))
+        .map((a) => ({ value: String(a.id), label: a.titre })),
+    ]
+  }, [articles, membres])
+
   const columns = useMemo(() => [
     { id: 'nom', header: 'Nom', accessor: (p) => p.nom },
     {
@@ -136,14 +184,24 @@ export default function KbParcoursPage() {
           {membres.length ? (
             <ol className="flex flex-col gap-1.5">
               {membres.map((m) => (
-                <li key={m.id} className="rounded-lg border border-border px-3 py-2 text-sm">
-                  {m.ordre + 1}. {m.article_titre}
+                <li key={m.id} className="flex items-center justify-between gap-2 rounded-lg border border-border px-3 py-2 text-sm">
+                  <span>{m.ordre + 1}. {m.article_titre}</span>
+                  <IconButton size="sm" variant="ghost" label="Retirer cet article du parcours"
+                              onClick={() => retirerArticleParcours(m)}>
+                    <X className="size-4" aria-hidden="true" />
+                  </IconButton>
                 </li>
               ))}
             </ol>
           ) : (
             <EmptyState title="Aucun article" description="Ajoutez des articles à ce parcours." />
           )}
+          <div className="flex flex-wrap items-end gap-2">
+            <FilterSelect value={addArticle} onChange={setAddArticle} options={articleOptions} aria-label="Ajouter un article au parcours" />
+            <Button type="button" variant="outline" disabled={!addArticle} onClick={ajouterArticleParcours}>
+              <Plus /> Ajouter un article
+            </Button>
+          </div>
         </section>
 
         <section className="flex flex-col gap-2">

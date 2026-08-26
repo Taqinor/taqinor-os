@@ -94,6 +94,10 @@ const kbApi = {
   rapportMoinsConsultes: () => api.get('/kb/articles/rapport-moins-consultes/'),
   rapportLacunesConnaissance: () =>
     api.get('/kb/articles/rapport-lacunes-connaissance/'),
+  // WIR250 — conformité de lecture NOMINATIVE (lus/non_lus + échéance) d'un
+  // article précis (XKB7 — croise KbLectureObligatoire × KbLecture).
+  rapportConformiteArticle: (id) =>
+    api.get(`/kb/articles/${id}/rapport-conformite/`),
 
   // ── ZGED10 — emoji + couverture ──
   uploadCouverture: (id, fichier) => {
