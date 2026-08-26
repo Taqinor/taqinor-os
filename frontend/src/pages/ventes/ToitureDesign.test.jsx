@@ -1163,4 +1163,58 @@ describe('ToitureDesign — AP-F2 : note « calepinage automatique » + redo dep
     await userEvent.click(bouton)
     expect(recommencerDepuisTraceClient).toHaveBeenCalledTimes(1)
   })
+
+  /* AP2 — un devis créé AUTOMATIQUEMENT à l'arrivée du lead porte la zone du client
+     DANS son layout (apps/ventes/services.zone_toit_depuis_contour) : `zones` n'est
+     donc plus vide alors que PERSONNE n'a validé ce calepinage. Le serveur
+     l'estampille `_origine_calepinage: 'contour_client'` — c'est ce marqueur, et non
+     l'absence de zones, qui fait foi. Sans lui, la note se serait tue exactement sur
+     le cas qu'elle existe pour signaler. */
+  it('mode devis — un layout AUTO estampillé porte la note MÊME avec des zones', async () => {
+    ventesApi.getDevisDesignContext.mockResolvedValue({
+      data: {
+        ...CTX,
+        geometrie: {
+          ...CTX.geometrie,
+          contour_client: CONTOUR_CLIENT,
+          roof_layout: {
+            version: 2,
+            zones: [{ id: 'area-1', vertices: [] }],
+            _origine_calepinage: 'contour_client',
+          },
+        },
+      },
+    })
+
+    rendreDevis(CTX.devis.id)
+
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    expect(await screen.findByTestId('rp9-calepinage-auto-note')).toBeInTheDocument()
+    expect(screen.getByTestId('rp9-recommencer-trace-client')).toBeInTheDocument()
+  })
+
+  it('mode devis — layout AUTO estampillé mais tracé du lead effacé : la note reste, le bouton disparaît', async () => {
+    ventesApi.getDevisDesignContext.mockResolvedValue({
+      data: {
+        ...CTX,
+        geometrie: {
+          ...CTX.geometrie,
+          contour_client: [],
+          roof_layout: {
+            version: 2,
+            zones: [{ id: 'area-1', vertices: [] }],
+            _origine_calepinage: 'contour_client',
+          },
+        },
+      },
+    })
+
+    rendreDevis(CTX.devis.id)
+
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    expect(await screen.findByTestId('rp9-calepinage-auto-note')).toBeInTheDocument()
+    // Le bouton relit `opts.referenceContour` (le contour CLIENT) : sans lui il
+    // serait inerte, donc il n'est pas proposé.
+    expect(screen.queryByTestId('rp9-recommencer-trace-client')).toBeNull()
+  })
 })

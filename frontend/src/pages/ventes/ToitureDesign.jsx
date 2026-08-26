@@ -895,12 +895,29 @@ export default function ToitureDesign({ mode = 'lead' }) {
   // qu'un contour exploitable existe (`contour_client`, sinon `outline` — même repli
   // que le serveur quand `roof_layout` est absent, apps/ventes/selectors.py). Mode
   // AO : jamais affichée (hors périmètre — une affaire n'a pas de tunnel public).
+  // AP2 — un devis créé AUTOMATIQUEMENT à l'arrivée du lead porte désormais la zone
+  // du client DANS son layout (apps/ventes/services.zone_toit_depuis_contour), donc
+  // `zones` n'est plus vide alors que PERSONNE n'a validé ce calepinage : le serveur
+  // l'estampille `_origine_calepinage: 'contour_client'`. Ce marqueur disparaît dès
+  // que le commercial enregistre sa conception (`sync-layout` REMPLACE le layout par
+  // la sérialisation du builder, qui ne l'émet jamais) — c'est exactement le moment
+  // où la note doit s'éteindre.
+  const layoutPoseAutomatiquement =
+    contexte?.geometrie?.roof_layout?._origine_calepinage === 'contour_client'
   const devisRoofLayoutSansZones = !(contexte?.geometrie?.roof_layout?.zones?.length > 0)
   const contourClientOuOutlinePourNote = contourExploitable(contexte?.geometrie?.contour_client)
     ? contexte?.geometrie?.contour_client
     : contexte?.geometrie?.outline
   const calepinageAutomatiqueVisible = estDevis
-    ? (devisRoofLayoutSansZones && contourExploitable(contourClientOuOutlinePourNote))
+    ? (layoutPoseAutomatiquement
+      || (devisRoofLayoutSansZones && contourExploitable(contourClientOuOutlinePourNote)))
+    : (!estAo && toitClientPresent)
+  // Le bouton « Recommencer » relit `opts.referenceContour`, c'est-à-dire le contour
+  // CLIENT et lui seul : il n'est proposé que si ce contour-là existe encore. Sans ce
+  // garde-fou la branche `layoutPoseAutomatiquement` pourrait afficher un bouton
+  // inerte (layout estampillé, mais tracé du lead effacé depuis).
+  const recommencerDisponible = estDevis
+    ? contourExploitable(contexte?.geometrie?.contour_client)
     : (!estAo && toitClientPresent)
 
   // PV21 — le bloc « Prêt à envoyer » est PARTAGÉ par les deux modes : un devis
@@ -1087,14 +1104,16 @@ export default function ToitureDesign({ mode = 'lead' }) {
             <p className="text-sm text-lune-soft" role="status">
               Calepinage automatique depuis le tracé client — à vérifier
             </p>
-            <button
-              type="button"
-              className={chipClass}
-              onClick={() => builderApi.current?.recommencerDepuisTraceClient?.()}
-              data-testid="rp9-recommencer-trace-client"
-            >
-              Recommencer depuis le tracé client
-            </button>
+            {recommencerDisponible && (
+              <button
+                type="button"
+                className={chipClass}
+                onClick={() => builderApi.current?.recommencerDepuisTraceClient?.()}
+                data-testid="rp9-recommencer-trace-client"
+              >
+                Recommencer depuis le tracé client
+              </button>
+            )}
           </div>
         )}
 
