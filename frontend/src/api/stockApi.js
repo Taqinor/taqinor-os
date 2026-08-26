@@ -412,6 +412,14 @@ const stockApi = {
   // ZMFG9 — disponibilité multi-niveaux du kit (kits assemblables + goulots).
   getKitDisponibilite: (id) =>
     api.get(`/stock/kits/${id}/disponibilite/`),
+  // WIR268/XMFG18 — duplique un kit (facteur d'échelle optionnel sur les
+  // quantités des composants) + historique des révisions de nomenclature.
+  dupliquerKit: (id, facteurEchelle) =>
+    api.post(`/stock/kits/${id}/dupliquer/`,
+      facteurEchelle ? { facteur_echelle: facteurEchelle } : {}),
+  getKitRevisions: (id) => api.get(`/stock/kits/${id}/revisions/`),
+  getKitCompositionAu: (id, date) =>
+    api.get(`/stock/kits/${id}/composition-au/`, { params: { date } }),
 
   // DC35 / FG254 — fiches techniques (datasheets) rattachées aux produits.
   getFichesTechniques: (produitId) =>
@@ -537,6 +545,41 @@ const stockApi = {
   // INTERNE : réservé responsable/admin, jamais un document client.
   comparerTcoFournisseurs: (produitId, params) =>
     api.get(`/stock/produits/${produitId}/comparer-tco/`, { params }),
+
+  // ── WIR268 — stock confort : tarif fournisseur (xlsx) + étiquettes ────────
+  // XPUR14 — tarif fournisseur. apercu=true ne fait que LISTER ce que le
+  // fichier remplacerait (aucune écriture) ; sans ecraser=true, un prix déjà
+  // saisi n'est jamais remplacé.
+  exportPrixFournisseurXlsx: (fournisseurId) =>
+    api.get('/stock/prix-fournisseurs/export-xlsx/', {
+      params: { fournisseur: fournisseurId }, responseType: 'blob',
+    }),
+  importPrixFournisseurXlsx: (fournisseurId, file, { apercu = false, ecraser = false } = {}) => {
+    const fd = new FormData()
+    fd.append('fournisseur', fournisseurId)
+    fd.append('file', file)
+    if (apercu) fd.append('apercu', 'true')
+    if (ecraser) fd.append('ecraser', 'true')
+    return api.post('/stock/prix-fournisseurs/import-xlsx/', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+  // XSTK20 — cartes kanban deux-bacs pour UN emplacement (PDF, jamais de prix
+  // d'achat/marge).
+  etiquettesKanbanEmplacement: (emplacementId, produitIds, { symbology = 'qr', sortie = 'pdf' } = {}) =>
+    api.get(`/stock/emplacements/${emplacementId}/etiquettes-kanban/`, {
+      params: { ids: produitIds, symbology, sortie },
+      paramsSerializer: { indexes: null },
+      responseType: 'blob',
+    }),
+  // XPOS17 — étiquettes showroom : le QR pointe vers la fiche produit PUBLIQUE
+  // de l'e-catalogue tokenisé de la société (jamais de prix d'achat/marge).
+  etiquettesShowroom: (produitIds, catalogueToken, { sortie = 'pdf' } = {}) =>
+    api.get('/stock/produits/etiquettes-showroom/', {
+      params: { ids: produitIds, catalogue_token: catalogueToken, sortie },
+      paramsSerializer: { indexes: null },
+      responseType: 'blob',
+    }),
 }
 
 export default stockApi

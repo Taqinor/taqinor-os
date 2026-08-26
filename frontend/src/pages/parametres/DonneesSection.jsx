@@ -173,6 +173,37 @@ function KitExplosion() {
   const [dispo, setDispo] = useState(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
+  // WIR268/XMFG18 — duplication (facteur d'échelle) + historique des révisions.
+  const [facteurEchelle, setFacteurEchelle] = useState('')
+  const [dupliquant, setDupliquant] = useState(false)
+  const [dupliqueInfo, setDupliqueInfo] = useState(null)
+  const [revisions, setRevisions] = useState(null)
+  const [revisionsBusy, setRevisionsBusy] = useState(false)
+
+  const dupliquer = async () => {
+    if (!kitId) { setError('Choisissez un kit.'); return }
+    setDupliquant(true); setError(null); setDupliqueInfo(null)
+    try {
+      const facteur = facteurEchelle.trim() ? Number(facteurEchelle) : undefined
+      const r = await stockApi.dupliquerKit(kitId, facteur)
+      setDupliqueInfo(`Kit dupliqué : « ${r.data?.nom ?? '—'} » (révision 1).`)
+      const kr = await stockApi.getKits({ page_size: 500 })
+      setKits(kr.data?.results ?? kr.data ?? [])
+    } catch (e) {
+      setError(frErr(e, 'La duplication a échoué.'))
+    } finally { setDupliquant(false) }
+  }
+
+  const voirRevisions = async () => {
+    if (!kitId) { setError('Choisissez un kit.'); return }
+    setRevisionsBusy(true); setError(null); setRevisions(null)
+    try {
+      const r = await stockApi.getKitRevisions(kitId)
+      setRevisions(r.data ?? [])
+    } catch (e) {
+      setError(frErr(e, "L'historique des révisions a échoué."))
+    } finally { setRevisionsBusy(false) }
+  }
 
   useEffect(() => {
     stockApi.getKits({ page_size: 500 })
@@ -231,6 +262,54 @@ function KitExplosion() {
           </div>
           <Button type="button" loading={busy} onClick={exploser}>Exploser</Button>
         </div>
+
+        {/* WIR268/XMFG18 — duplication (facteur d'échelle) + historique des
+            révisions de nomenclature (jamais aucun prix). */}
+        <div className="mt-2 flex flex-wrap items-end gap-2">
+          <div className="w-48">
+            <Label htmlFor="kit-facteur">Facteur d&apos;échelle (dupliquer, optionnel)</Label>
+            <Input id="kit-facteur" type="number" min="0" step="any" inputMode="decimal"
+                   placeholder="ex. 1.67" value={facteurEchelle}
+                   onChange={(e) => setFacteurEchelle(e.target.value)} />
+          </div>
+          <Button type="button" variant="outline" disabled={!kitId} loading={dupliquant} onClick={dupliquer}>
+            Dupliquer
+          </Button>
+          <Button type="button" variant="outline" disabled={!kitId} loading={revisionsBusy} onClick={voirRevisions}>
+            Historique des révisions
+          </Button>
+        </div>
+
+        {dupliqueInfo && (
+          <div role="status" className="mt-2 rounded-lg border border-success/30 bg-success/10 p-2 text-sm text-success">{dupliqueInfo}</div>
+        )}
+
+        {revisions !== null && (
+          revisions.length === 0 ? (
+            <p className="mt-2 text-sm text-muted-foreground">Ce kit n&apos;a aucune révision enregistrée.</p>
+          ) : (
+            <div className="mt-2 overflow-x-auto rounded-lg border border-border">
+              <table className="w-full min-w-[26rem] text-sm">
+                <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-semibold">Révision</th>
+                    <th className="px-3 py-2 text-left font-semibold">Date</th>
+                    <th className="px-3 py-2 text-left font-semibold">Utilisateur</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {revisions.map((rv) => (
+                    <tr key={rv.id ?? rv.numero} className="border-t border-border">
+                      <td className="px-3 py-2 tabular-nums">{rv.numero}</td>
+                      <td className="px-3 py-2">{fmtDateFR(rv.date_creation)}</td>
+                      <td className="px-3 py-2">{rv.user_nom ?? '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+        )}
 
         {error && (
           <div role="alert" className="mt-2 rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-sm text-destructive">{error}</div>

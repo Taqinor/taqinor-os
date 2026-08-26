@@ -22,6 +22,11 @@ import PilotageStock from './PilotageStock'
 import BulkProductBar from './BulkProductBar'
 import ExcelImport from '../../components/ExcelImport'
 import stockApi from '../../api/stockApi'
+// WIR268/XPOS17 — le jeton d'e-catalogue (étiquettes showroom) vit dans
+// apps.compta.EcatalogueBoutique ; lecture seule depuis ici, jamais un import
+// cross-app backend (ceci reste une composition FRONTEND, hors périmètre de
+// la règle d'imports backend inter-apps).
+import comptaApi from '../../api/comptaApi'
 import api from '../../api/axios'
 import { formatNumber, formatMAD } from '../../lib/format'
 import { toggleId, pruneSelection, bulkResultMessage } from '../../features/crm/bulk'
@@ -743,6 +748,10 @@ export default function StockList() {
   const [showPilotage, setShowPilotage] = useState(true)
   // N20 — étiquettes QR/code-barres + champ de scan (résolution serveur).
   const [labelsBusy, setLabelsBusy]   = useState(false)
+  // WIR268/XSTK20 — cartes kanban deux-bacs (réservées à un emplacement précis).
+  const [kanbanBusy, setKanbanBusy]   = useState(false)
+  // WIR268/XPOS17 — étiquettes showroom (jeton e-catalogue de la société).
+  const [showroomBusy, setShowroomBusy] = useState(false)
   // NTMOB20 — raccourci PWA « Scanner un code-barres » : `/stock?scan=1`
   // ouvre directement le panneau de scan (appui long sur l'icône de l'app).
   const [searchParams] = useSearchParams()
@@ -812,6 +821,47 @@ export default function StockList() {
       }
     } catch { toastError('Génération des étiquettes indisponible.') }
     finally { setLabelsBusy(false) }
+  }
+  // WIR268/XSTK20 — cartes kanban deux-bacs POUR l'emplacement filtré (le
+  // jeton KANBAN:<produit>:<emplacement> n'a de sens que rattaché à un
+  // emplacement précis — jamais « tous les emplacements »).
+  const printKanban = async () => {
+    if (!visibleSelected.size || !filterEmplacement) return
+    const pending = openPdfInGesture()
+    setKanbanBusy(true)
+    try {
+      const res = await stockApi.etiquettesKanbanEmplacement(filterEmplacement, [...visibleSelected])
+      const blob = new Blob([res.data], { type: 'application/pdf' })
+      if (!pending.deliver(blob, 'cartes-kanban.pdf')) {
+        toastError('Ouverture bloquée par le navigateur.')
+      }
+    } catch { toastError('Génération des cartes kanban indisponible.') }
+    finally { setKanbanBusy(false) }
+  }
+  // WIR268/XPOS17 — étiquettes showroom : le QR pointe vers la fiche produit
+  // PUBLIQUE de l'e-catalogue tokenisé de la société. Message FR clair (jamais
+  // un onglet vide/une erreur technique) quand la société n'a aucun
+  // e-catalogue actif.
+  const printShowroom = async () => {
+    if (!visibleSelected.size) return
+    const pending = openPdfInGesture()
+    setShowroomBusy(true)
+    try {
+      const r = await comptaApi.ecatalogues.list()
+      const catalogues = r.data?.results ?? r.data ?? []
+      const token = catalogues[0]?.token
+      if (!token) {
+        toastError("Aucun e-catalogue actif pour cette société — créez-en un (Paramètres → E-catalogue) avant d'imprimer des étiquettes showroom.")
+        try { pending.win?.close() } catch { /* fenêtre déjà fermée/inaccessible */ }
+        return
+      }
+      const res = await stockApi.etiquettesShowroom([...visibleSelected], token)
+      const blob = new Blob([res.data], { type: 'application/pdf' })
+      if (!pending.deliver(blob, 'etiquettes-showroom.pdf')) {
+        toastError('Ouverture bloquée par le navigateur.')
+      }
+    } catch { toastError('Génération des étiquettes showroom indisponible.') }
+    finally { setShowroomBusy(false) }
   }
   // N20 — Résout un code scanné/saisi (PRODUIT:<id> / SYSTEME:<id>) et navigue
   // vers la fiche correspondante (lecture seule côté serveur).
@@ -1299,9 +1349,13 @@ export default function StockList() {
           marques={marquesList}
           busy={bulkBusy}
           labelsBusy={labelsBusy}
+          kanbanBusy={kanbanBusy}
+          showroomBusy={showroomBusy}
           onAction={runBulk}
           onExport={exportSelection}
           onPrintLabels={printLabels}
+          onPrintKanban={filterEmplacement ? printKanban : null}
+          onPrintShowroom={printShowroom}
           onClear={clearSelection}
         />
       )}

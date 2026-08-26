@@ -41,6 +41,9 @@ vi.mock('../../api/stockApi', () => ({
     deciderCandidatureFournisseur: vi.fn(),
     // WIR222/XPUR9 — génère un avoir depuis un retour validé.
     genererAvoirDepuisRetour: vi.fn(),
+    // WIR268/XPUR14 — tarif fournisseur (export/import xlsx).
+    exportPrixFournisseurXlsx: vi.fn(),
+    importPrixFournisseurXlsx: vi.fn(),
   },
 }))
 
@@ -77,6 +80,10 @@ const rejectNotFound = () => Promise.reject({ response: { status: 404 } })
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // WIR268 — jsdom n'implémente pas createObjectURL (requis par le
+  // téléchargement blob de l'export tarif).
+  URL.createObjectURL = vi.fn(() => 'blob:mock-url')
+  URL.revokeObjectURL = vi.fn()
   // NTP2P8 — défaut neutre : le badge de score ne doit jamais faire échouer
   // un test qui ne le concerne pas (chaque test peut le surcharger).
   stockApi.getScoreRisqueFournisseur.mockResolvedValue({ data: null })
@@ -420,5 +427,97 @@ describe('WIR219/NTPRT25 — candidature d\'auto-inscription au portail', () => 
     await screen.findByText('Fiche fournisseur 360')
     await waitFor(() => expect(stockApi.getFournisseur).toHaveBeenCalled())
     expect(screen.queryByText('En attente de validation')).toBeNull()
+  })
+})
+
+describe('WIR268/XPUR14 — onglet Tarif (export/import xlsx)', () => {
+  const setupBaseMocks = () => {
+    stockApi.getFournisseur360.mockImplementation(rejectNotFound)
+    stockApi.performanceFournisseur.mockImplementation(rejectNotFound)
+  }
+  const ouvrirTarif = async () => {
+    await userEvent.click(await screen.findByRole('tab', { name: /Tarif/ }))
+    return screen.findByTestId('f360-tab-tarif')
+  }
+
+  it('exporte le tarif (blob) sans écrire', async () => {
+    setupBaseMocks()
+    stockApi.exportPrixFournisseurXlsx.mockResolvedValue({ data: new Blob(['xlsx']) })
+    renderPage({ fournisseurId: '7' })
+    const panel = await ouvrirTarif()
+
+    await userEvent.click(within(panel).getByRole('button', { name: /Exporter le tarif/ }))
+    await waitFor(() => expect(stockApi.exportPrixFournisseurXlsx).toHaveBeenCalledWith('7'))
+    expect(stockApi.importPrixFournisseurXlsx).not.toHaveBeenCalled()
+  })
+
+  it('l\'aperçu (apercu=true) n\'écrit rien et affiche le résumé des conflits', async () => {
+    setupBaseMocks()
+    stockApi.importPrixFournisseurXlsx.mockResolvedValue({
+      data: { created: 2, updated: 1, refuses: [{ sku: 'PAN-1' }], conflits: [] },
+    })
+    renderPage({ fournisseurId: '7' })
+    const panel = await ouvrirTarif()
+
+    const file = new File(['xlsx-contenu'], 'tarif.xlsx', {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    })
+    const input = document.querySelector('input[type="file"]')
+    await userEvent.upload(input, file)
+    await userEvent.click(within(panel).getByRole('button', { name: /Aperçu/ }))
+
+    await waitFor(() => expect(stockApi.importPrixFournisseurXlsx).toHaveBeenCalledWith(
+      '7', file, { apercu: true },
+    ))
+    expect(await within(panel).findByText(/2 création\(s\), 1 mise\(s\) à jour/)).toBeInTheDocument()
+    // « Écraser » proposé mais DÉCOCHÉ par défaut.
+    expect(within(panel).getByRole('checkbox')).not.toBeChecked()
+  })
+
+  it('« Importer » après aperçu envoie apercu=false et ecraser=false par défaut', async () => {
+    setupBaseMocks()
+    stockApi.importPrixFournisseurXlsx
+      .mockResolvedValueOnce({ data: { created: 1, updated: 0, refuses: [] } })
+      .mockResolvedValueOnce({ data: { created: 1, updated: 0 } })
+    renderPage({ fournisseurId: '7' })
+    const panel = await ouvrirTarif()
+
+    const file = new File(['xlsx-contenu'], 'tarif.xlsx', { type: 'application/octet-stream' })
+    await userEvent.upload(document.querySelector('input[type="file"]'), file)
+    await userEvent.click(within(panel).getByRole('button', { name: /Aperçu/ }))
+    await within(panel).findByRole('button', { name: 'Importer' })
+
+    await userEvent.click(within(panel).getByRole('button', { name: 'Importer' }))
+    await waitFor(() => expect(stockApi.importPrixFournisseurXlsx).toHaveBeenLastCalledWith(
+      '7', file, { apercu: false, ecraser: false },
+    ))
+    expect(await within(panel).findByText(/Import effectué/)).toBeInTheDocument()
+  })
+
+  it('cocher « Écraser » avant de confirmer envoie ecraser=true', async () => {
+    setupBaseMocks()
+    stockApi.importPrixFournisseurXlsx
+      .mockResolvedValueOnce({ data: { created: 0, updated: 1, refuses: [] } })
+      .mockResolvedValueOnce({ data: { created: 0, updated: 1 } })
+    renderPage({ fournisseurId: '7' })
+    const panel = await ouvrirTarif()
+
+    const file = new File(['xlsx-contenu'], 'tarif.xlsx', { type: 'application/octet-stream' })
+    await userEvent.upload(document.querySelector('input[type="file"]'), file)
+    await userEvent.click(within(panel).getByRole('button', { name: /Aperçu/ }))
+    await userEvent.click(await within(panel).findByRole('checkbox'))
+    await userEvent.click(within(panel).getByRole('button', { name: 'Importer' }))
+
+    await waitFor(() => expect(stockApi.importPrixFournisseurXlsx).toHaveBeenLastCalledWith(
+      '7', file, { apercu: false, ecraser: true },
+    ))
+  })
+
+  it('sans droit d\'écriture (responsable seul), aucun bloc d\'import n\'apparaît', async () => {
+    setupBaseMocks()
+    renderPage({ fournisseurId: '7', authState: { role: 'normal', permissions: ['stock_voir'] } })
+    const panel = await ouvrirTarif()
+    expect(within(panel).queryByText(/Importer un tarif/)).toBeNull()
+    expect(within(panel).getByRole('button', { name: /Exporter le tarif/ })).toBeInTheDocument()
   })
 })
