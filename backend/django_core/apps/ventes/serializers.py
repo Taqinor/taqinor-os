@@ -1195,3 +1195,109 @@ class ParametresGammesSerializer(serializers.ModelSerializer):
         if erreurs:
             raise serializers.ValidationError(erreurs)
         return value
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# TAILLES (ordre fondateur, 26/08/2026) — l'ÉDITION des trois tailles
+# ════════════════════════════════════════════════════════════════════════════
+
+class OffreTailleConfigSerializer(serializers.Serializer):
+    """La CONFIGURATION d'UNE taille — et rien d'autre.
+
+    LE POINT CENTRAL : ce sérialiseur n'accepte QUE des ENTRÉES (le champ PV,
+    la banque en modules du devis, les produits substitués). Tout nombre
+    DÉRIVÉ — prix TTC, économie, payback, couverture, kWc, production, cumul
+    25 ans — est REFUSÉ en 400, jamais ignoré en silence.
+
+    POURQUOI UN REFUS BRUYANT. Ignorer un champ dérivé le ferait disparaître
+    sans que personne ne l'apprenne : le vendeur croirait avoir fixé un prix,
+    l'écran afficherait autre chose, et la confiance dans les chiffres de la
+    page mourrait là. Le refus rend la règle « zéro chiffre inventé »
+    STRUCTURELLE plutôt que déclarative — il n'existe aucun chemin par lequel
+    un prix tapé à la main puisse entrer dans le stockage, donc aucun par
+    lequel il puisse ressortir sur une page client.
+    """
+
+    nb_panneaux = serializers.IntegerField(min_value=1, max_value=500,
+                                           required=False)
+    batterie_nb_modules = serializers.IntegerField(min_value=0, max_value=100,
+                                                   required=False)
+    equipements = serializers.DictField(child=serializers.IntegerField(),
+                                        required=False)
+
+    def validate(self, attrs):
+        from .offres_tailles import CHAMPS_CONFIG, CHAMPS_DERIVES
+
+        brut = self.initial_data if isinstance(self.initial_data, dict) else {}
+        derives = sorted(set(brut) & set(CHAMPS_DERIVES))
+        if derives:
+            raise serializers.ValidationError({
+                champ: (
+                    'Champ calculé par le moteur : il ne peut pas être saisi. '
+                    'Modifiez la configuration (panneaux, batterie, matériel) '
+                    'et le moteur le recalculera.'
+                ) for champ in derives})
+        inconnus = sorted(set(brut) - set(CHAMPS_CONFIG))
+        if inconnus:
+            raise serializers.ValidationError({
+                champ: "Champ inconnu dans la configuration d'une taille."
+                for champ in inconnus})
+        if not attrs:
+            raise serializers.ValidationError(
+                'Configuration vide : rien à enregistrer.')
+        return attrs
+
+    def validate_equipements(self, value):
+        """Les substitutions produit — rôles connus, produits DE LA SOCIÉTÉ.
+
+        La garde multi-société se tient ICI, une seule fois : un identifiant
+        d'une autre société est refusé en 400 (jamais silencieusement ignoré,
+        ce qui aurait laissé croire à une substitution appliquée). C'est aussi
+        pourquoi la dérivation, en aval, ne re-vérifie pas la société — une
+        garde recopiée finit par diverger de son original.
+        """
+        from apps.stock.models import Produit
+        from .models import ROLES_AUTO_COMPOSITION
+
+        company = self.context.get('company')
+        if company is None:
+            raise serializers.ValidationError(
+                'Société indéterminée : substitution refusée.')
+        erreurs = {}
+        for role, produit_id in (value or {}).items():
+            if role not in ROLES_AUTO_COMPOSITION:
+                erreurs[role] = 'Rôle de composition inconnu.'
+                continue
+            if not Produit.objects.filter(pk=produit_id,
+                                          company=company).exists():
+                erreurs[role] = 'Produit introuvable dans votre catalogue.'
+        if erreurs:
+            raise serializers.ValidationError(erreurs)
+        return value
+
+
+class OffreTailleEcritureSerializer(serializers.Serializer):
+    """Le corps d'un PATCH de configuration : QUELLE taille, et sa config."""
+
+    cle = serializers.CharField()
+    config = OffreTailleConfigSerializer()
+
+    def validate_cle(self, value):
+        from .offres_tailles import CLES
+        if value not in CLES:
+            raise serializers.ValidationError(
+                'Taille inconnue : attendu %s.' % ', '.join(CLES))
+        return value
+
+
+class OffreTailleRegenerationSerializer(serializers.Serializer):
+    """Le corps d'une régénération : QUELLE taille redériver, elle SEULE."""
+
+    cle = serializers.CharField()
+
+    def validate_cle(self, value):
+        from .offres_tailles import CLES
+        if value not in CLES:
+            raise serializers.ValidationError(
+                'Taille inconnue : attendu %s.' % ', '.join(CLES))
+        return value
