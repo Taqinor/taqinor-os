@@ -14,13 +14,17 @@ Ce que ce module PROUVE, par rôle, sur les trois surfaces nommées par la tâch
   écriture ;
 * un rôle portant ``rh_voir`` + ``rh_gerer`` → 200 en lecture et **jamais 403**
   en écriture ;
+* le rôle **Responsable** — mandat RH réel, il porte déjà ``paie_voir``/
+  ``paie_gerer`` (XPAI7) — garde son accès historique complet ;
 * un compte **LÉGACY** sans rôle fin (``role_legacy=responsable``) garde
   exactement son accès historique (lecture ET écriture) ;
 * les **trois exceptions** d'élargissement (``compa-ratio`` gaté
   ``salaires_voir``, ``annuaire`` et ``localisation-du-jour`` gatés
   ``IsAnyRole``) restent atteignables sans aucun code RH ;
-* le catalogue de rôles est cohérent : les deux codes existent, l'Admin RH
-  (NTADM20) et le Directeur les portent, Commercial/Technicien/Viewer non.
+* le catalogue de rôles est cohérent : les deux codes existent, Directeur /
+  Admin RH (NTADM20) / Responsable les portent, Commercial/Technicien/Viewer
+  non — ces trois-là n'obtenaient l'accès que par effet de bord d'une écriture
+  ailleurs, exactement le trou fermé ici.
 """
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -34,6 +38,7 @@ from apps.roles.models import (
     ALL_PERMISSIONS,
     COMMERCIAL_PERMISSIONS,
     DIRECTEUR_PERMISSIONS,
+    RESPONSABLE_PERMISSIONS,
     Role,
     TECHNICIEN_PERMISSIONS,
     VIEWER_PERMISSIONS,
@@ -103,6 +108,20 @@ class RhFineGrainedAccessTests(_RhPermissionsBase):
             for path in SURFACES:
                 with self.subTest(role=nom, path=path):
                     self.assertEqual(client.get(path).status_code, 403)
+
+    def test_responsable_garde_son_acces_historique(self):
+        """Le rôle « Responsable » avait l'accès RH complet et le CONSERVE.
+
+        Même raison que ``paie_voir``/``paie_gerer`` déjà portés par ce preset
+        (XPAI7) : c'est un mandat RH réel, pas l'effet de bord d'une écriture
+        ailleurs — le resserrement WIR172 vise Commercial/Technicien/Viewer.
+        """
+        client = _auth(self._user('responsable', perms=RESPONSABLE_PERMISSIONS))
+        for path in SURFACES:
+            with self.subTest(path=path):
+                self.assertEqual(client.get(path).status_code, 200)
+                self.assertNotEqual(
+                    client.post(path, {}, format='json').status_code, 403)
 
     def test_rh_voir_seul_lit_mais_n_ecrit_pas(self):
         client = _auth(self._user('lecteur', perms=['rh_voir']))
@@ -203,11 +222,20 @@ class RhCatalogueRolesTests(TestCase):
         self.assertIn('rh_voir', ALL_PERMISSIONS)
         self.assertIn('rh_gerer', ALL_PERMISSIONS)
 
-    def test_directeur_et_admin_rh_les_portent(self):
-        for code in ('rh_voir', 'rh_gerer'):
-            with self.subTest(code=code):
-                self.assertIn(code, DIRECTEUR_PERMISSIONS)
-                self.assertIn(code, ADMIN_RH_PERMISSIONS)
+    def test_roles_a_mandat_rh_les_portent(self):
+        """Directeur, Admin RH (NTADM20) et Responsable — accès historique."""
+        for nom, perms in (('directeur', DIRECTEUR_PERMISSIONS),
+                           ('admin-rh', ADMIN_RH_PERMISSIONS),
+                           ('responsable', RESPONSABLE_PERMISSIONS)):
+            for code in ('rh_voir', 'rh_gerer'):
+                with self.subTest(role=nom, code=code):
+                    self.assertIn(code, perms)
+
+    def test_le_responsable_garde_rh_comme_il_garde_la_paie(self):
+        """Cohérence : couper les dossiers RH en laissant la PAIE (donnée plus
+        sensible) au même preset serait incohérent."""
+        self.assertIn('paie_gerer', RESPONSABLE_PERMISSIONS)
+        self.assertIn('rh_gerer', RESPONSABLE_PERMISSIONS)
 
     def test_roles_non_rh_ne_les_portent_pas(self):
         for nom, perms in (('commercial', COMMERCIAL_PERMISSIONS),

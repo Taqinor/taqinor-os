@@ -200,12 +200,16 @@ ALL_PERMISSIONS = [
     # sanctions et des visites médicales. Deux codes DISJOINTS :
     #   * ``rh_voir``  — lecture du module RH (GET/HEAD/OPTIONS) ;
     #   * ``rh_gerer`` — écriture (POST/PUT/PATCH/DELETE + actions custom).
-    # Comme ``ao_voir``/``ao_gerer`` (AOF2), ils ne sont mappés sur AUCUN rôle
-    # Responsable/Commercial/Technicien/Utilisateur/Viewer : l'accès RH se
-    # RESSERRE sur la direction (Directeur/Administrateur par héritage
-    # d'ALL_PERMISSIONS) et sur le rôle d'administration DÉLÉGUÉE « Admin RH »
-    # (NTADM20), dont c'est précisément le domaine. Les comptes HÉRITÉS sans
-    # rôle fin gardent leur accès historique (repli ``_user_has_or_legacy``).
+    # Distribution (même logique que ``paie_voir``/``paie_gerer``, XPAI7) :
+    # les deux codes vont aux rôles qui avaient DÉJÀ un mandat RH — Directeur
+    # et Administrateur (héritage d'ALL_PERMISSIONS), l'administration
+    # DÉLÉGUÉE « Admin RH » (NTADM20) dont c'est le domaine, et le
+    # « Responsable » (accès historique complet, cf. RESPONSABLE_PERMISSIONS).
+    # Ils ne sont mappés sur AUCUN rôle Commercial/Technicien/Viewer : ceux-là
+    # n'obtenaient l'accès RH que par EFFET DE BORD d'une écriture ailleurs
+    # (``crm_creer`` suffisait à satisfaire ``IsResponsableOrAdmin``) — c'est
+    # exactement le trou que WIR172 ferme. Les comptes HÉRITÉS sans rôle fin
+    # gardent leur accès historique (repli ``_user_has_or_legacy``).
     # La rémunération (``salaires_voir``) et les bulletins restent gardés par
     # leurs propres codes — inchangés.
     'rh_voir',
@@ -428,6 +432,15 @@ RESPONSABLE_PERMISSIONS = [
     'contrat_voir', 'contrat_gerer',
     'litige_voir', 'litige_gerer',
     'kb_voir', 'kb_gerer',
+    # WIR172 — comportement historique préservé, MÊME logique que
+    # ``paie_voir``/``paie_gerer`` ci-dessus (XPAI7) : le Responsable avait
+    # l'accès complet au module RH via le grossier ``IsResponsableOrAdmin``.
+    # Couper les dossiers employés tout en lui laissant la PAIE (donnée plus
+    # sensible encore) serait incohérent. Le resserrement visé par WIR172
+    # porte sur Commercial/Technicien/Viewer — des rôles qui n'ont jamais eu
+    # de mandat RH et n'obtenaient l'accès que par effet de bord d'une
+    # écriture ailleurs (``crm_creer`` suffisait).
+    'rh_voir', 'rh_gerer',
     # WIR174 — GED : écriture documentaire courante préservée (accès
     # historique via l'ancien IsResponsableOrAdmin). PAS ged_gouvernance
     # (legal hold / caviardage / rétention) — direction seule.
