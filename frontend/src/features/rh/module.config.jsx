@@ -53,16 +53,19 @@ const FermeturesCollectives = lazy(() => import('./FermeturesCollectives.jsx'))
 const PrimesIndemnites = lazy(() => import('./PrimesIndemnites.jsx'))
 const ReglagesRh = lazy(() => import('./ReglagesRh.jsx'))
 
-// Rôles autorisés pour le back-office RH.
-const RH = ['responsable', 'admin']
-// WIR172 — YRBAC3 : le backend gate désormais apps.rh en lecture sur
-// `rh_voir` (écriture sur `rh_gerer`, gardée côté serveur uniquement — même
-// patron que `PERM_RENTABILITE` dans ao/module.config.jsx). Nav + routes du
-// back-office RH exigent la permission EN PLUS du rôle, jamais à sa place :
-// `roleLoader(roles, perm)` / Sidebar appliquent `roles.includes(role) &&
-// (!perm || permissions.includes(perm))`. Le portail self-service (UX28)
-// reste hors de ce gate — scope différent (dossier de l'appelant).
+// Rôles autorisés pour le back-office RH — 'normal' inclus : un rôle fin de
+// palier normal portant `rh_voir` est servi 200 par le serveur, la nav doit
+// le montrer (WIR171).
+const RH = ['normal', 'responsable', 'admin']
+// WIR172 — YRBAC3 : le backend gate apps.rh en lecture sur `rh_voir`
+// (écriture sur `rh_gerer`, gardée côté serveur uniquement). Le serveur
+// applique la sémantique OrLegacy (un compte legacy responsable/admin sans
+// rôle fin garde l'accès) : `permRepliPalier` reproduit EXACTEMENT ce repli
+// côté nav/routes via `estAutoriseEntree` (WIR171) — même patron que
+// litiges/kb. Le portail self-service (UX28) reste hors de ce gate — scope
+// différent (dossier de l'appelant).
 const PERM_RH_VOIR = 'rh_voir'
+const GATE_RH = { roles: RH, perm: PERM_RH_VOIR, permRepliPalier: true }
 
 export default {
   key: 'rh',
@@ -76,28 +79,28 @@ export default {
     icon: appGlyph(Users),
     accent: 'azur', // VX8 — RH/paie = accent azur (dérivé)
     items: [
-      { to: '/rh', label: 'Cockpit RH', icon: <LayoutDashboard size={17} strokeWidth={1.75} aria-hidden="true" />, roles: RH, perm: PERM_RH_VOIR },
-      { to: '/rh/employes', label: 'Employés', icon: <Users size={17} strokeWidth={1.75} aria-hidden="true" />, roles: RH, perm: PERM_RH_VOIR },
-      { to: '/rh/conges', label: 'Congés & absences', icon: <CalendarDays size={17} strokeWidth={1.75} aria-hidden="true" />, roles: RH, perm: PERM_RH_VOIR },
-      { to: '/rh/temps', label: 'Temps & présence', icon: <Clock size={17} strokeWidth={1.75} aria-hidden="true" />, roles: RH, perm: PERM_RH_VOIR },
-      { to: '/rh/competences', label: 'Compétences', icon: <GraduationCap size={17} strokeWidth={1.75} aria-hidden="true" />, roles: RH, perm: PERM_RH_VOIR },
-      { to: '/rh/recrutement', label: 'EPI & recrutement', icon: <Briefcase size={17} strokeWidth={1.75} aria-hidden="true" />, roles: RH, perm: PERM_RH_VOIR },
-      { to: '/rh/hse', label: 'HSE', icon: <ShieldAlert size={17} strokeWidth={1.75} aria-hidden="true" />, roles: RH, perm: PERM_RH_VOIR },
+      { to: '/rh', label: 'Cockpit RH', icon: <LayoutDashboard size={17} strokeWidth={1.75} aria-hidden="true" />, ...GATE_RH },
+      { to: '/rh/employes', label: 'Employés', icon: <Users size={17} strokeWidth={1.75} aria-hidden="true" />, ...GATE_RH },
+      { to: '/rh/conges', label: 'Congés & absences', icon: <CalendarDays size={17} strokeWidth={1.75} aria-hidden="true" />, ...GATE_RH },
+      { to: '/rh/temps', label: 'Temps & présence', icon: <Clock size={17} strokeWidth={1.75} aria-hidden="true" />, ...GATE_RH },
+      { to: '/rh/competences', label: 'Compétences', icon: <GraduationCap size={17} strokeWidth={1.75} aria-hidden="true" />, ...GATE_RH },
+      { to: '/rh/recrutement', label: 'EPI & recrutement', icon: <Briefcase size={17} strokeWidth={1.75} aria-hidden="true" />, ...GATE_RH },
+      { to: '/rh/hse', label: 'HSE', icon: <ShieldAlert size={17} strokeWidth={1.75} aria-hidden="true" />, ...GATE_RH },
       // PACT81-94 — écrans manquants (backend déjà testé).
-      { to: '/rh/vehicules-permis', label: 'Véhicules & permis', icon: <Car size={17} strokeWidth={1.75} aria-hidden="true" />, roles: RH, perm: PERM_RH_VOIR },
-      { to: '/rh/bulletins-paie', label: 'Bulletins de paie', icon: <FileText size={17} strokeWidth={1.75} aria-hidden="true" />, roles: RH, perm: PERM_RH_VOIR },
-      { to: '/rh/demandes-allocation', label: 'Demandes d’allocation', icon: <CalendarPlus size={17} strokeWidth={1.75} aria-hidden="true" />, roles: RH, perm: PERM_RH_VOIR },
-      { to: '/rh/demandes-rh', label: 'Demandes RH (attestations)', icon: <ClipboardCheck size={17} strokeWidth={1.75} aria-hidden="true" />, roles: RH, perm: PERM_RH_VOIR },
-      { to: '/rh/modeles-integration', label: 'Modèles d’intégration', icon: <ListChecks size={17} strokeWidth={1.75} aria-hidden="true" />, roles: RH, perm: PERM_RH_VOIR },
-      { to: '/rh/elements-variables-paie', label: 'Éléments variables de paie', icon: <Calculator size={17} strokeWidth={1.75} aria-hidden="true" />, roles: RH, perm: PERM_RH_VOIR },
-      { to: '/rh/entretiens-sortie', label: 'Entretiens de sortie', icon: <LogOut size={17} strokeWidth={1.75} aria-hidden="true" />, roles: RH, perm: PERM_RH_VOIR },
-      { to: '/rh/grilles-salariales', label: 'Grilles salariales', icon: <Wallet size={17} strokeWidth={1.75} aria-hidden="true" />, roles: RH, perm: PERM_RH_VOIR },
-      { to: '/rh/horaires-travail', label: 'Horaires de travail', icon: <Clock3 size={17} strokeWidth={1.75} aria-hidden="true" />, roles: RH, perm: PERM_RH_VOIR },
-      { to: '/rh/jours-bloques-conge', label: 'Jours bloqués (congés)', icon: <CalendarOff size={17} strokeWidth={1.75} aria-hidden="true" />, roles: RH, perm: PERM_RH_VOIR },
-      { to: '/rh/parcours-employes', label: 'Parcours des employés', icon: <Milestone size={17} strokeWidth={1.75} aria-hidden="true" />, roles: RH, perm: PERM_RH_VOIR },
-      { to: '/rh/fermetures-collectives', label: 'Fermetures collectives', icon: <DoorClosed size={17} strokeWidth={1.75} aria-hidden="true" />, roles: RH, perm: PERM_RH_VOIR },
-      { to: '/rh/primes-indemnites', label: 'Primes & indemnités', icon: <Gift size={17} strokeWidth={1.75} aria-hidden="true" />, roles: RH, perm: PERM_RH_VOIR },
-      { to: '/rh/reglages', label: 'Réglages RH', icon: <SlidersHorizontal size={17} strokeWidth={1.75} aria-hidden="true" />, roles: RH, perm: PERM_RH_VOIR },
+      { to: '/rh/vehicules-permis', label: 'Véhicules & permis', icon: <Car size={17} strokeWidth={1.75} aria-hidden="true" />, ...GATE_RH },
+      { to: '/rh/bulletins-paie', label: 'Bulletins de paie', icon: <FileText size={17} strokeWidth={1.75} aria-hidden="true" />, ...GATE_RH },
+      { to: '/rh/demandes-allocation', label: 'Demandes d’allocation', icon: <CalendarPlus size={17} strokeWidth={1.75} aria-hidden="true" />, ...GATE_RH },
+      { to: '/rh/demandes-rh', label: 'Demandes RH (attestations)', icon: <ClipboardCheck size={17} strokeWidth={1.75} aria-hidden="true" />, ...GATE_RH },
+      { to: '/rh/modeles-integration', label: 'Modèles d’intégration', icon: <ListChecks size={17} strokeWidth={1.75} aria-hidden="true" />, ...GATE_RH },
+      { to: '/rh/elements-variables-paie', label: 'Éléments variables de paie', icon: <Calculator size={17} strokeWidth={1.75} aria-hidden="true" />, ...GATE_RH },
+      { to: '/rh/entretiens-sortie', label: 'Entretiens de sortie', icon: <LogOut size={17} strokeWidth={1.75} aria-hidden="true" />, ...GATE_RH },
+      { to: '/rh/grilles-salariales', label: 'Grilles salariales', icon: <Wallet size={17} strokeWidth={1.75} aria-hidden="true" />, ...GATE_RH },
+      { to: '/rh/horaires-travail', label: 'Horaires de travail', icon: <Clock3 size={17} strokeWidth={1.75} aria-hidden="true" />, ...GATE_RH },
+      { to: '/rh/jours-bloques-conge', label: 'Jours bloqués (congés)', icon: <CalendarOff size={17} strokeWidth={1.75} aria-hidden="true" />, ...GATE_RH },
+      { to: '/rh/parcours-employes', label: 'Parcours des employés', icon: <Milestone size={17} strokeWidth={1.75} aria-hidden="true" />, ...GATE_RH },
+      { to: '/rh/fermetures-collectives', label: 'Fermetures collectives', icon: <DoorClosed size={17} strokeWidth={1.75} aria-hidden="true" />, ...GATE_RH },
+      { to: '/rh/primes-indemnites', label: 'Primes & indemnités', icon: <Gift size={17} strokeWidth={1.75} aria-hidden="true" />, ...GATE_RH },
+      { to: '/rh/reglages', label: 'Réglages RH', icon: <SlidersHorizontal size={17} strokeWidth={1.75} aria-hidden="true" />, ...GATE_RH },
       // UX28 — portail self-service : tous rôles. La Sidebar filtre via
       // `it.roles.includes(role)` → chaque item DOIT porter `roles` (sinon crash).
       { to: '/rh/portail', label: 'Mon portail', icon: <UserCircle size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['normal', 'responsable', 'admin'] },
@@ -129,29 +132,29 @@ export default {
   ],
   sectionLabels: { rh: 'RH' },
   routes: [
-    { path: '/rh', component: RhCockpit, roles: RH, perm: PERM_RH_VOIR },
-    { path: '/rh/employes', component: EmployeList, roles: RH, perm: PERM_RH_VOIR },
-    { path: '/rh/employes/:id', component: EmployeDetail, roles: RH, perm: PERM_RH_VOIR },
-    { path: '/rh/conges', component: Conges, roles: RH, perm: PERM_RH_VOIR },
-    { path: '/rh/temps', component: Temps, roles: RH, perm: PERM_RH_VOIR },
-    { path: '/rh/competences', component: Competences, roles: RH, perm: PERM_RH_VOIR },
-    { path: '/rh/recrutement', component: Recrutement, roles: RH, perm: PERM_RH_VOIR },
-    { path: '/rh/hse', component: Hse, roles: RH, perm: PERM_RH_VOIR },
+    { path: '/rh', component: RhCockpit, ...GATE_RH },
+    { path: '/rh/employes', component: EmployeList, ...GATE_RH },
+    { path: '/rh/employes/:id', component: EmployeDetail, ...GATE_RH },
+    { path: '/rh/conges', component: Conges, ...GATE_RH },
+    { path: '/rh/temps', component: Temps, ...GATE_RH },
+    { path: '/rh/competences', component: Competences, ...GATE_RH },
+    { path: '/rh/recrutement', component: Recrutement, ...GATE_RH },
+    { path: '/rh/hse', component: Hse, ...GATE_RH },
     // PACT81-94 — écrans manquants (backend déjà testé).
-    { path: '/rh/vehicules-permis', component: VehiculesPermis, roles: RH, perm: PERM_RH_VOIR },
-    { path: '/rh/bulletins-paie', component: DepotsBulletinsPaie, roles: RH, perm: PERM_RH_VOIR },
-    { path: '/rh/demandes-allocation', component: DemandesAllocation, roles: RH, perm: PERM_RH_VOIR },
-    { path: '/rh/demandes-rh', component: DemandesRh, roles: RH, perm: PERM_RH_VOIR },
-    { path: '/rh/modeles-integration', component: ModelesIntegration, roles: RH, perm: PERM_RH_VOIR },
-    { path: '/rh/elements-variables-paie', component: ElementsVariablesPaie, roles: RH, perm: PERM_RH_VOIR },
-    { path: '/rh/entretiens-sortie', component: EntretiensSortie, roles: RH, perm: PERM_RH_VOIR },
-    { path: '/rh/grilles-salariales', component: GrillesSalariales, roles: RH, perm: PERM_RH_VOIR },
-    { path: '/rh/horaires-travail', component: HorairesTravail, roles: RH, perm: PERM_RH_VOIR },
-    { path: '/rh/jours-bloques-conge', component: JoursBloquesConge, roles: RH, perm: PERM_RH_VOIR },
-    { path: '/rh/parcours-employes', component: ParcoursEmploye, roles: RH, perm: PERM_RH_VOIR },
-    { path: '/rh/fermetures-collectives', component: FermeturesCollectives, roles: RH, perm: PERM_RH_VOIR },
-    { path: '/rh/primes-indemnites', component: PrimesIndemnites, roles: RH, perm: PERM_RH_VOIR },
-    { path: '/rh/reglages', component: ReglagesRh, roles: RH, perm: PERM_RH_VOIR },
+    { path: '/rh/vehicules-permis', component: VehiculesPermis, ...GATE_RH },
+    { path: '/rh/bulletins-paie', component: DepotsBulletinsPaie, ...GATE_RH },
+    { path: '/rh/demandes-allocation', component: DemandesAllocation, ...GATE_RH },
+    { path: '/rh/demandes-rh', component: DemandesRh, ...GATE_RH },
+    { path: '/rh/modeles-integration', component: ModelesIntegration, ...GATE_RH },
+    { path: '/rh/elements-variables-paie', component: ElementsVariablesPaie, ...GATE_RH },
+    { path: '/rh/entretiens-sortie', component: EntretiensSortie, ...GATE_RH },
+    { path: '/rh/grilles-salariales', component: GrillesSalariales, ...GATE_RH },
+    { path: '/rh/horaires-travail', component: HorairesTravail, ...GATE_RH },
+    { path: '/rh/jours-bloques-conge', component: JoursBloquesConge, ...GATE_RH },
+    { path: '/rh/parcours-employes', component: ParcoursEmploye, ...GATE_RH },
+    { path: '/rh/fermetures-collectives', component: FermeturesCollectives, ...GATE_RH },
+    { path: '/rh/primes-indemnites', component: PrimesIndemnites, ...GATE_RH },
+    { path: '/rh/reglages', component: ReglagesRh, ...GATE_RH },
     // UX28 — portail self-service : tous rôles (authLoader simple).
     { path: '/rh/portail', component: Portail },
   ],
