@@ -1,13 +1,52 @@
 import { useEffect, useState, useCallback } from 'react'
-import { SlidersHorizontal, AlertTriangle, Play, Power, PowerOff } from 'lucide-react'
+import {
+  SlidersHorizontal, AlertTriangle, Play, Power, PowerOff, ThumbsUp, ThumbsDown,
+  History,
+} from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import {
   normalizeRuleTemplate, normalizeDryRun, normalizeAnomalies, normalizeAlerts,
-  alertTone,
+  alertTone, formatPercent, formatNumber,
 } from './adsengine'
 import { formatDateTime } from '../../lib/format'
 import AlertCenter from './AlertCenter'
 import CommandPalette from './CommandPalette'
+import { useAdsPermissions } from './useAdsPermissions'
+
+/* ============================================================================
+   WIR209 — Boucle d'apprentissage des anomalies (PUB90), jusque-là sans UI.
+   ----------------------------------------------------------------------------
+   `anomalies/<id>/feedback/` et `anomalies/detecteurs/` n'avaient AUCUN
+   appelant : personne ne pouvait dire à la machine qu'une anomalie était utile
+   ou fausse, donc la précision par détecteur restait vide et le throttle
+   brake-only (≥ 5 faux positifs ⇒ cadence réduite) ne se déclenchait jamais.
+   Les chiffres de la tuile viennent TOUS de `detecteurs/` — aucun n'est
+   recalculé ici, et un détecteur sans anomalie n'est simplement pas listé.
+   ========================================================================== */
+const VOTE_LABELS_FR = {
+  useful: 'Utile',
+  false_positive: 'Faux positif',
+}
+
+// Les lignes brutes de `anomalies/` (mêmes replis que `normalizeAnomalies`,
+// qui ne conserve ni `detector` ni `feedback`).
+function anomalyRows(raw) {
+  return (Array.isArray(raw) ? raw : (raw?.results || raw?.anomalies || [])) || []
+}
+
+/* ============================================================================
+   WIR272/PUB91 — « Qu'aurait fait cette règle ? » (backtest historique).
+   ----------------------------------------------------------------------------
+   Le dry-run répond « qu'est-ce que ça ferait MAINTENANT ? » ; le backtest
+   répond « qu'est-ce que ça AURAIT fait sur le dernier trimestre ? » — la seule
+   question qui permet de décider d'armer. Le point d'entrée existait
+   (`RulePolicyViewSet.backtest`) mais n'avait aucun appelant. Il est
+   detail=True : il rejoue une INSTANCE `RulePolicy` réelle, donc le bouton
+   n'apparaît que si la règle a déjà une instance (armée ou non). LECTURE SEULE :
+   aucune `EngineAction` n'est créée.
+   ========================================================================== */
+// Fenêtre par défaut = celle du serveur (`rule_backtest.DEFAULT_BACKTEST_DAYS`).
+const BACKTEST_DAYS = 90
 
 /* ============================================================================
    PUB23 — Armer/désarmer une règle depuis la console.
@@ -45,6 +84,10 @@ function cadenceLabel(cadence) {
    ========================================================================== */
 
 export default function RulesScreen() {
+  // WIR209 — voter sur une anomalie est une ÉCRITURE gated `adsengine_manage`
+  // côté backend (`AnomalyEventViewSet.feedback`). Fail-closed au chargement.
+  const { has } = useAdsPermissions()
+  const canManage = has('adsengine_manage')
   const [templates, setTemplates] = useState([])
   const [anomalies, setAnomalies] = useState([])
   const [history, setHistory] = useState([])
@@ -58,12 +101,31 @@ export default function RulesScreen() {
   const [confirmKey, setConfirmKey] = useState(null) // template en attente de confirmation d'armement
   const [armBusyKey, setArmBusyKey] = useState(null)
   const [armErr, setArmErr] = useState('')
+  // WIR209/PUB90 — vote par anomalie + précision par détecteur.
+  // `anomalyMeta` : id → {detector, feedback} (champs que `normalizeAnomalies`
+  // ne conserve pas), lus tels quels sur `AnomalyEventSerializer`.
+  const [anomalyMeta, setAnomalyMeta] = useState({})
+  const [detectors, setDetectors] = useState([])
+  const [voteBusyId, setVoteBusyId] = useState(null)
+  const [voteErr, setVoteErr] = useState('')
+  // WIR272/PUB91 — backtest historique par gabarit (key → réponse serveur).
+  const [backtests, setBacktests] = useState({})
+  const [backtestBusyKey, setBacktestBusyKey] = useState(null)
 
   const reloadPolicies = useCallback(() => (
     adsengineApi.rules.list()
       .then(r => setPolicies(Array.isArray(r.data) ? r.data : (r.data?.results || [])))
       .catch(() => setPolicies([]))
   ), [])
+
+  const reloadDetectors = useCallback(() => {
+    const req = adsengineApi.anomalies.detectors?.()
+    if (!req || typeof req.then !== 'function') return Promise.resolve()
+    return req
+      .then(r => setDetectors(
+        Array.isArray(r?.data?.detecteurs) ? r.data.detecteurs : []))
+      .catch(() => setDetectors([]))
+  }, [])
 
   const load = useCallback(() => {
     setLoading(true)
@@ -72,8 +134,16 @@ export default function RulesScreen() {
         .map(normalizeRuleTemplate)))
       .catch(() => setTemplates([]))
     adsengineApi.anomalies.list()
-      .then(r => setAnomalies(normalizeAnomalies(r.data)))
-      .catch(() => setAnomalies([]))
+      .then(r => {
+        setAnomalies(normalizeAnomalies(r.data))
+        const meta = {}
+        anomalyRows(r.data).filter(Boolean).forEach(a => {
+          meta[a.id] = { detector: a.detector || '', feedback: a.feedback || '' }
+        })
+        setAnomalyMeta(meta)
+      })
+      .catch(() => { setAnomalies([]); setAnomalyMeta({}) })
+    reloadDetectors()
     adsengineApi.alerts.history()
       .then(r => setHistory(normalizeAlerts(r.data)))
       .catch(() => setHistory([]))
@@ -83,7 +153,33 @@ export default function RulesScreen() {
       .then(r => setJournal(Array.isArray(r.data?.results) ? r.data.results : []))
       .catch(() => setJournal([]))
     reloadPolicies()
-  }, [reloadPolicies])
+  }, [reloadPolicies, reloadDetectors])
+
+  /* WIR209/PUB90 — vote HUMAIN sur une anomalie. Le serveur pose l'acteur et
+     l'horodatage, renvoie l'anomalie sérialisée ; la précision par détecteur
+     est ensuite RELUE (le throttle peut basculer au 5e faux positif). */
+  const voteAnomaly = async (id, vote) => {
+    const req = adsengineApi.anomalies.feedback?.(id, { vote })
+    if (!req || typeof req.then !== 'function') return
+    setVoteBusyId(id); setVoteErr('')
+    try {
+      const r = await req
+      const saved = (r && typeof r.data === 'object' && r.data) || null
+      // On n'affiche que le vote CONFIRMÉ par le serveur.
+      if (saved && saved.feedback) {
+        setAnomalyMeta(m => ({
+          ...m,
+          [id]: { ...(m[id] || {}), detector: saved.detector || (m[id]?.detector || ''),
+            feedback: saved.feedback },
+        }))
+      }
+      await reloadDetectors()
+    } catch {
+      setVoteErr("Vote refusé (permission « adsengine_manage » ?). Rien n'a été enregistré.")
+    } finally {
+      setVoteBusyId(null)
+    }
+  }
 
   const policyFor = (key) => policies.find(p => p.template_key === key) || null
 
@@ -123,6 +219,24 @@ export default function RulesScreen() {
   // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
   useEffect(() => { load() }, [load])
 
+  // WIR272/PUB91 — rejeu historique d'une règle EXISTANTE (lecture seule).
+  const runBacktest = async (t, policy) => {
+    if (!policy) return
+    const req = adsengineApi.rules.backtest?.(policy.id, BACKTEST_DAYS)
+    if (!req || typeof req.then !== 'function') return
+    setBacktestBusyKey(t.key); setErr('')
+    try {
+      const r = await req
+      const d = (r && typeof r.data === 'object' && r.data) || null
+      if (!d) { setErr('Backtest indisponible.'); return }
+      setBacktests(m => ({ ...m, [t.key]: d }))
+    } catch {
+      setErr("Backtest impossible (l'historique n'a pas pu être rejoué).")
+    } finally {
+      setBacktestBusyKey(null)
+    }
+  }
+
   // Dry-run d'un gabarit : simule, ne modifie RIEN.
   const dryRun = async (key) => {
     setBusyKey(key); setErr('')
@@ -152,6 +266,7 @@ export default function RulesScreen() {
 
       {err && <p data-testid="ae-rules-err" style={{ color: '#dc2626' }}>{err}</p>}
       {armErr && <p data-testid="ae-rules-arm-err" style={{ color: '#dc2626' }}>{armErr}</p>}
+      {voteErr && <p data-testid="ae-anomaly-vote-err" style={{ color: '#dc2626' }}>{voteErr}</p>}
 
       {loading ? <p className="page-loading">Chargement…</p> : (
         <div style={{ display: 'grid', gap: '1.25rem' }}>
@@ -165,6 +280,7 @@ export default function RulesScreen() {
                 <div style={{ display: 'grid', gap: '0.75rem' }}>
                   {templates.map(t => {
                     const dr = dryRuns[t.key]
+                    const bt = backtests[t.key]
                     const policy = policyFor(t.key)
                     const armed = !!(policy && policy.enabled)
                     return (
@@ -193,6 +309,18 @@ export default function RulesScreen() {
                                 onClick={() => setConfirmKey(t.key)}
                                 style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
                                 <Power size={14} aria-hidden="true" /> Armer
+                              </button>
+                            )}
+                            {/* WIR272/PUB91 — à côté du dry-run, AVANT l'armement :
+                                le rejeu historique. detail=True ⇒ visible seulement
+                                si une instance RulePolicy existe déjà. */}
+                            {policy && (
+                              <button type="button" className="btn btn-light ae-rule-backtest"
+                                data-testid={`ae-rule-backtest-${t.key}`}
+                                disabled={backtestBusyKey === t.key}
+                                onClick={() => runBacktest(t, policy)}
+                                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                                <History size={14} aria-hidden="true" /> Qu&apos;aurait fait cette règle ?
                               </button>
                             )}
                             <button type="button" className="btn btn-primary"
@@ -236,6 +364,62 @@ export default function RulesScreen() {
                           </div>
                         )}
 
+                        {/* WIR272/PUB91 — Résultat du rejeu historique. Tous les
+                            chiffres viennent de `backtest_rule` ; rien n'est
+                            recalculé ici et aucune action n'a été créée. */}
+                        {bt && (
+                          <div className="ae-rule-backtest-result"
+                            data-testid={`ae-rule-backtest-result-${t.key}`}
+                            style={{ marginTop: '0.75rem', background: '#f5f3ff',
+                              border: '1px solid #ddd6fe', borderRadius: 6, padding: '0.75rem' }}>
+                            {!bt.supported
+                              ? (
+                                <p data-testid={`ae-rule-backtest-unsupported-${t.key}`}
+                                  style={{ margin: 0, color: '#5b21b6' }}>
+                                  {bt.reason || 'Backtest indisponible pour ce type de règle.'}
+                                </p>
+                              )
+                              : (
+                                <>
+                                  <p style={{ margin: '0 0 0.4rem', fontWeight: 600 }}>
+                                    Sur {formatNumber(bt.summary?.days, 0)} jour(s)
+                                    {bt.range?.debut && bt.range?.fin
+                                      ? ` (${bt.range.debut} → ${bt.range.fin})` : ''}, cette règle
+                                    aurait proposé {formatNumber(bt.summary?.would_propose, 0)} action(s)
+                                    sur {formatNumber(bt.summary?.distinct_targets, 0)} objet(s).
+                                  </p>
+                                  <p style={{ margin: '0 0 0.5rem', color: '#64748b', fontSize: '0.85rem' }}>
+                                    Rejeu hypothétique : aucune action n&apos;a été créée.
+                                  </p>
+                                  {(bt.proposals || []).length === 0
+                                    ? <p data-testid={`ae-rule-backtest-empty-${t.key}`}
+                                        style={{ margin: 0, color: '#64748b' }}>
+                                        Elle ne se serait jamais déclenchée sur cette période.</p>
+                                    : (
+                                      <ul style={{ listStyle: 'none', margin: 0, padding: 0,
+                                        display: 'grid', gap: '0.35rem' }}>
+                                        {(bt.proposals || []).map((p, i) => (
+                                          <li key={`${p.date}-${p.target_meta_id || i}`}
+                                            data-testid="ae-rule-backtest-proposal"
+                                            style={{ display: 'flex', gap: '0.5rem',
+                                              alignItems: 'baseline', flexWrap: 'wrap' }}>
+                                            <strong style={{ fontSize: '0.85rem' }}>{p.date}</strong>
+                                            <span style={{ color: '#475569', fontSize: '0.85rem' }}>
+                                              {p.target_type || '—'}
+                                              {p.target_meta_id ? ` ${p.target_meta_id}` : ''}
+                                            </span>
+                                            <span style={{ color: '#334155', fontSize: '0.85rem' }}>
+                                              {p.condition_fr || '—'}
+                                            </span>
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    )}
+                                </>
+                              )}
+                          </div>
+                        )}
+
                         {/* Résultat du dry-run — VISUALISÉ */}
                         {dr && (
                           <div className="ae-rule-dryrun-result" data-testid={`ae-rule-dryrun-result-${t.key}`}
@@ -275,6 +459,7 @@ export default function RulesScreen() {
                 <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '0.5rem' }}>
                   {anomalies.map(a => {
                     const tone = alertTone(a.severite)
+                    const meta = anomalyMeta[a.id] || {}
                     return (
                       <li key={a.id} className="card ae-anomaly" data-testid="ae-anomaly"
                         style={{ padding: '0.75rem', border: '1px solid #e2e8f0' }}>
@@ -288,10 +473,84 @@ export default function RulesScreen() {
                           )}
                         </div>
                         {a.message && <p style={{ margin: '0.3rem 0 0', color: '#334155' }}>{a.message}</p>}
+                        {/* WIR209/PUB90 — vote utile / faux-positif : c'est CE
+                            retour humain qui alimente la précision par détecteur
+                            et le throttle brake-only. Re-voter remplace. */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem',
+                          flexWrap: 'wrap', marginTop: '0.5rem' }}>
+                          <button type="button" className="btn btn-light ae-anomaly-vote-useful"
+                            data-testid={`ae-anomaly-vote-useful-${a.id}`}
+                            disabled={voteBusyId === a.id || !canManage}
+                            title={!canManage
+                              ? 'Nécessite la permission de gestion (adsengine_manage).' : undefined}
+                            onClick={() => voteAnomaly(a.id, 'useful')}
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                            <ThumbsUp size={13} aria-hidden="true" /> Utile
+                          </button>
+                          <button type="button" className="btn btn-light ae-anomaly-vote-fp"
+                            data-testid={`ae-anomaly-vote-fp-${a.id}`}
+                            disabled={voteBusyId === a.id || !canManage}
+                            title={!canManage
+                              ? 'Nécessite la permission de gestion (adsengine_manage).' : undefined}
+                            onClick={() => voteAnomaly(a.id, 'false_positive')}
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                            <ThumbsDown size={13} aria-hidden="true" /> Faux positif
+                          </button>
+                          {meta.feedback && (
+                            <span className="badge" data-testid={`ae-anomaly-vote-state-${a.id}`}
+                              style={{ background: '#eef2ff', color: '#3730a3' }}>
+                              Voté : {VOTE_LABELS_FR[meta.feedback] || meta.feedback}
+                            </span>
+                          )}
+                          {meta.detector && (
+                            <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>
+                              Détecteur : {meta.detector}
+                            </span>
+                          )}
+                        </div>
                       </li>
                     )
                   })}
                 </ul>
+              )}
+          </section>
+
+          {/* ── WIR209/PUB90 — Précision PAR DÉTECTEUR (throttle visible) ── */}
+          <section className="ae-detectors" data-testid="ae-detectors">
+            <h3 style={{ margin: '0 0 0.6rem' }}>Précision par détecteur</h3>
+            {detectors.length === 0
+              ? <p data-testid="ae-detectors-empty" style={{ color: '#64748b' }}>
+                  Aucun détecteur n&apos;a encore produit d&apos;anomalie.</p>
+              : (
+                <div style={{ display: 'grid', gap: '0.6rem',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}>
+                  {detectors.map(d => (
+                    <article key={d.detector} className="card ae-detector-tile"
+                      data-testid="ae-detector-tile"
+                      style={{ padding: '0.75rem', border: '1px solid #e2e8f0' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                        <strong>{d.detector}</strong>
+                        {d.throttled && (
+                          <span className="badge" data-testid={`ae-detector-throttled-${d.detector}`}
+                            style={{ background: '#fef3c7', color: '#92400e' }}>
+                            Cadence réduite (÷{formatNumber(d.throttle_factor, 0)})
+                          </span>
+                        )}
+                      </div>
+                      <p style={{ margin: '0.35rem 0 0', color: '#334155' }}>
+                        Précision :{' '}
+                        <strong data-testid={`ae-detector-precision-${d.detector}`}>
+                          {d.precision == null ? 'aucun vote' : formatPercent(d.precision)}
+                        </strong>
+                      </p>
+                      <p style={{ margin: '0.2rem 0 0', color: '#64748b', fontSize: '0.85rem' }}>
+                        {formatNumber(d.labelled, 0)} vote(s) sur {formatNumber(d.total, 0)} anomalie(s)
+                        {' · '}{formatNumber(d.useful, 0)} utile(s)
+                        {' · '}{formatNumber(d.false_positive, 0)} faux positif(s)
+                      </p>
+                    </article>
+                  ))}
+                </div>
               )}
           </section>
 

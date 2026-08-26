@@ -1,0 +1,51 @@
+{
+  "endpoint": "GET /api/django/immobilier/relances-loyer/",
+  "pourquoi": "WIR263 — l'escalade de relance de loyer (niveau 1 -> 2 -> 3, le niveau 3 ayant une portee juridique) n'avait AUCUN retour visuel : l'ecran Baux postait `echeances-loyer/<id>/relancer/` sans jamais relire l'historique, donc l'operateur ne savait pas a quel niveau il en etait avant de recliquer. Le filtre serveur EXISTE DEJA (`RelanceLoyerViewSet.get_queryset` lit `?echeance_loyer=<id>`) : aucun filterset a ajouter. La collection est en LECTURE SEULE (`http_method_names = ['get', 'head', 'options']`) — une relance nait TOUJOURS de l'action `echeances-loyer/<id>/relancer/`. Ordre serveur `['-date_envoi', '-id']` : la plus recente (donc le niveau le plus haut) sort en premier. `niveau` est plafonne a 3 par `services.relancer_echeance` (une 4e relance reste au niveau 3, on n'invente pas de niveau 4). POURQUOI un echantillon sur une liste CRUD, que le README du dossier reserve d'ordinaire aux agregats : `immobilierApi` expose cette collection via `crud('relances-loyer')`, donc sous les noms generiques `list`/`get` — precisement ceux que `check_api_shapes.NOMS_TROP_GENERIQUES` exclut du contrat de serialiseur (PACT177). Cette ressource n'etait donc couverte par AUCUN contrat partage, et le test de l'ecran aurait retape sa charge utile a la main : c'est le defaut du 03/08/2026. `exemple_page` porte l'enveloppe de pagination DRF telle quelle.",
+  "exemple": {
+    "id": 402,
+    "echeance_loyer": 30,
+    "niveau": 2,
+    "date_envoi": "2026-08-20T09:30:00Z",
+    "canal": "email",
+    "canal_display": "Email",
+    "template_utilise": "",
+    "company": 1
+  },
+  "exemple_niveau_1": {
+    "id": 401,
+    "echeance_loyer": 30,
+    "niveau": 1,
+    "date_envoi": "2026-08-05T09:30:00Z",
+    "canal": "whatsapp",
+    "canal_display": "WhatsApp",
+    "template_utilise": "",
+    "company": 1
+  },
+  "exemple_page": {
+    "count": 2,
+    "next": null,
+    "previous": null,
+    "results": [
+      {
+        "id": 402,
+        "echeance_loyer": 30,
+        "niveau": 2,
+        "date_envoi": "2026-08-20T09:30:00Z",
+        "canal": "email",
+        "canal_display": "Email",
+        "template_utilise": "",
+        "company": 1
+      },
+      {
+        "id": 401,
+        "echeance_loyer": 30,
+        "niveau": 1,
+        "date_envoi": "2026-08-05T09:30:00Z",
+        "canal": "whatsapp",
+        "canal_display": "WhatsApp",
+        "template_utilise": "",
+        "company": 1
+      }
+    ]
+  }
+}

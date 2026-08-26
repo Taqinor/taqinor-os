@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { Upload, Wand2 } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import {
-  policyPassed, assetPolicyRules, formatMAD, formatNumber,
+  policyPassed, formatMAD, formatNumber,
 } from './adsengine'
 
 /* ============================================================================
@@ -14,6 +14,16 @@ import {
      pending → vérifié à l'écran une fois toutes les règles confirmées.
    - Upload d'un nouvel asset (pattern MinIO — l'asset naît pending policy).
    - Déclenchement de variantes ENG18 (assets enfants créés pending).
+
+   WIR170 — la confirmation atteint VRAIMENT le serveur :
+   - les règles à confirmer viennent de `GET /adsengine/creatifs/checklist/`
+     (`policy.build_checklist` → `{forbidden, allowed}`), jamais d'une liste
+     codée en dur à l'écran (ses clés divergeaient de la `CreativePolicy`) ;
+   - la validation poste `{confirmed_keys}` — la seule clé que
+     `CreativeAssetViewSet.policy_check` (views.py:864) lit ;
+   - « Vérifié » n'est affiché que si le `policy_stamp.passed` RENVOYÉ par le
+     serveur est vrai — plus aucun affichage optimiste (un blocage consentement
+     CNDP, par ex., renvoie `passed: false` avec sa raison).
    ========================================================================== */
 
 const TYPES = [
@@ -31,6 +41,9 @@ export default function CreativeLibraryScreen() {
   const [upload, setUpload] = useState(EMPTY_UPLOAD)
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
+  // WIR170 — check-list SERVEUR (clés réelles de la policy de la société).
+  const [rules, setRules] = useState([])
+  const [checklistFailed, setChecklistFailed] = useState(false)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -40,8 +53,18 @@ export default function CreativeLibraryScreen() {
       .finally(() => setLoading(false))
   }, [])
 
+  const loadChecklist = useCallback(() => (
+    adsengineApi.creatives.checklist()
+      .then(r => {
+        const forbidden = Array.isArray(r?.data?.forbidden) ? r.data.forbidden : []
+        setRules(forbidden.filter(x => x && x.key))
+        setChecklistFailed(false)
+      })
+      .catch(() => { setRules([]); setChecklistFailed(true) })
+  ), [])
+
   // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
-  useEffect(() => { load() }, [load])
+  useEffect(() => { load(); loadChecklist() }, [load, loadChecklist])
 
   const openCheck = (id) => { setCheckingId(id); setConfirmed(new Set()); setMsg('') }
   const toggleRule = (key) => setConfirmed(s => {
@@ -51,19 +74,28 @@ export default function CreativeLibraryScreen() {
   })
 
   const validatePolicy = async (asset) => {
-    const rules = assetPolicyRules(asset)
     setBusy(true); setMsg('')
     try {
-      await adsengineApi.creatives.policyCheck(asset.id, {
-        passed: true,
-        rules_checked: rules.map(r => r.key),
+      // Le serveur lit UNIQUEMENT `confirmed_keys` (views.py:864).
+      const r = await adsengineApi.creatives.policyCheck(asset.id, {
+        confirmed_keys: rules.map(x => x.key).filter(k => confirmed.has(k)),
       })
-      // pending → vérifié à l'écran (optimiste).
-      setAssets(list => list.map(a => a.id === asset.id
-        ? { ...a, policy_stamp: { ...(a.policy_stamp || {}), passed: true } }
-        : a))
-      setCheckingId(null)
-      setMsg('Conformité enregistrée.')
+      // Aucune supposition : on relit l'asset RENVOYÉ par le serveur.
+      const saved = r?.data && typeof r.data === 'object' ? r.data : null
+      const stamp = saved?.policy_stamp || null
+      if (saved) {
+        setAssets(list => list.map(a => (a.id === asset.id ? { ...a, ...saved } : a)))
+      }
+      if (stamp && stamp.passed) {
+        setCheckingId(null)
+        setMsg('Conformité enregistrée.')
+      } else {
+        // Refus serveur (règle non confirmée, blocage consentement CNDP…) :
+        // la carte RESTE « À vérifier » et la raison est affichée telle quelle.
+        setMsg(stamp?.consent_block_label
+          || 'Conformité NON validée par le serveur : toutes les règles interdites '
+             + 'doivent être confirmées.')
+      }
     } catch {
       setMsg('Enregistrement de la conformité impossible.')
     } finally {
@@ -151,8 +183,10 @@ export default function CreativeLibraryScreen() {
               gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}>
               {assets.map(a => {
                 const passed = policyPassed(a)
-                const rules = assetPolicyRules(a)
-                const allConfirmed = rules.every(r => confirmed.has(r.key))
+                // WIR170 — rien à confirmer tant que la check-list serveur
+                // n'est pas là : on ne fabrique pas de règles locales.
+                const allConfirmed = rules.length > 0
+                  && rules.every(r => confirmed.has(r.key))
                 return (
                   <article key={a.id} className="card ae-creative-card" data-testid="ae-creative-card"
                     style={{ padding: '0.75rem', border: '1px solid #e2e8f0' }}>
@@ -200,7 +234,9 @@ export default function CreativeLibraryScreen() {
                     {!passed && checkingId === a.id && (
                       <div data-testid={`ae-creative-checklist-${a.id}`} style={{ marginTop: '0.5rem' }}>
                         <p style={{ margin: '0 0 0.35rem', fontSize: '0.85rem', color: '#475569' }}>
-                          Confirmez chaque règle :
+                          {checklistFailed || rules.length === 0
+                            ? 'Check-list policy indisponible (serveur) : validation impossible.'
+                            : 'Confirmez chaque règle :'}
                         </p>
                         <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '0.3rem' }}>
                           {rules.map(r => (

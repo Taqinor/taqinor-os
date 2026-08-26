@@ -294,24 +294,18 @@ export function briefItemHasAction(item) {
 }
 
 // ── ENG27 — Bibliothèque créative (CreativeAsset + policy-check ENG16) ──
-// Policy Taqinor par défaut (repli si l'asset ne porte pas ses propres règles) :
-// checklist DÉTERMINISTE que l'humain confirme règle par règle (le système
-// enregistre, il n'« évalue » pas seul).
-export const DEFAULT_POLICY_RULES = [
-  { key: 'no_fake_worksite', label: 'Aucun faux chantier, client ou témoignage' },
-  { key: 'no_unverified_figure', label: 'Aucun chiffre non vérifié' },
-  { key: 'brand_safe', label: 'Conforme à la marque (explainer / B-roll / rendu produit OK)' },
-]
+// WIR170 — il n'y a PLUS de liste de règles côté écran. La check-list policy
+// est la propriété du serveur (`CreativePolicy` de la société, exposée par
+// `GET /adsengine/creatifs/checklist/` → `{forbidden, allowed}`), et ses clés
+// sont exactement celles que `policy-check` attend dans `confirmed_keys`.
+// L'ancien `DEFAULT_POLICY_RULES` local portait des clés qui n'existaient dans
+// aucune policy serveur (`no_fake_worksite`…) : confirmées à l'écran, elles ne
+// validaient jamais rien. Ne JAMAIS réintroduire de liste codée en dur ici.
 
 // Un asset est « vérifié » si son policy_stamp est passé (sinon : pending).
+// Ce tampon est posé par le SERVEUR : c'est la seule source de vérité.
 export function policyPassed(asset) {
   return !!(asset && asset.policy_stamp && asset.policy_stamp.passed)
-}
-
-// Règles à confirmer pour cet asset (ses propres règles ENG16, sinon défaut).
-export function assetPolicyRules(asset) {
-  const r = asset && Array.isArray(asset.policy_rules) ? asset.policy_rules.filter(Boolean) : null
-  return r && r.length ? r : DEFAULT_POLICY_RULES
 }
 
 // ── ENG28 — Journal d'actions (timeline EngineAction) ──

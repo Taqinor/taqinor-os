@@ -1,10 +1,14 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
-import { FlaskConical, Trophy, ChevronDown, ChevronUp } from 'lucide-react'
+import {
+  FlaskConical, Trophy, ChevronDown, ChevronUp, ThumbsUp, ThumbsDown,
+  RefreshCw,
+} from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import {
   normalizeExperiment, normalizeArms, normalizeDecisionLog, bestArm, readPaginated,
   formatPercent, formatMAD, formatNumber,
 } from './adsengine'
+import { useAdsPermissions } from './useAdsPermissions'
 
 /* ============================================================================
    ENG39 — Écran « Expérimentations » (moteur bandit).
@@ -203,6 +207,11 @@ function ArmDailySeries({ armId }) {
 }
 
 export default function ExperimentsScreen() {
+  // WIR209 — clôture d'expérience + sync étude Meta : deux écritures gated
+  // `adsengine_manage` côté backend (`ExperimentViewSet.conclure` /
+  // `.sync_ad_study`). Fail-closed pendant le chargement des permissions.
+  const { has } = useAdsPermissions()
+  const canManage = has('adsengine_manage')
   const [list, setList] = useState([])
   const [loading, setLoading] = useState(true)
   const [current, setCurrent] = useState(null) // expérimentation normalisée
@@ -287,6 +296,69 @@ export default function ExperimentsScreen() {
       .finally(() => setAllDecisionsLoading(false))
   }, [])
 
+  /* ── WIR209 — Boucle d'apprentissage : clôture HUMAINE + étude native ──
+     `conclure` et `sync-ad-study` n'avaient AUCUN appelant : une expérience ne
+     pouvait jamais être close (le posterior de l'hypothèse ne bougeait donc
+     jamais) et les résultats de l'étude A/B native Meta n'étaient jamais lus.
+     Le verdict est HUMAIN et EXPLICITE (`{validated: bool}`) — la machine
+     enregistre, elle ne conclut pas à notre place. */
+  const [closureBusy, setClosureBusy] = useState(false)
+  const [closureMsg, setClosureMsg] = useState('')
+
+  const conclude = useCallback(async (validated) => {
+    if (!selectedId) return
+    const req = adsengineApi.experiments.conclude?.(selectedId, { validated })
+    if (!req || typeof req.then !== 'function') return
+    setClosureBusy(true); setClosureMsg('')
+    try {
+      const r = await req
+      const d = (r && typeof r.data === 'object' && r.data) || {}
+      // 200 avec `node: null` = verdict enregistré NULLE PART (aucune hypothèse
+      // rattachée) : on relaie le message du serveur, jamais un faux succès.
+      setClosureMsg(d.node == null
+        ? (d.detail || "Aucun nœud d'hypothèse rattaché à cette expérience — "
+          + 'verdict enregistré nulle part.')
+        : (validated
+          ? 'Hypothèse VALIDÉE : verdict enregistré, journal de décision à jour.'
+          : 'Hypothèse INVALIDÉE : verdict enregistré, journal de décision à jour.'))
+      // Le DecisionLog affiché doit montrer la décision qui vient d'être écrite.
+      loadDetail(selectedId)
+    } catch (e) {
+      setClosureMsg(e?.response?.data?.detail || 'Clôture impossible.')
+    } finally {
+      setClosureBusy(false)
+    }
+  }, [selectedId, loadDetail])
+
+  const syncStudy = useCallback(async () => {
+    if (!selectedId) return
+    const req = adsengineApi.experiments.syncAdStudy?.(selectedId)
+    if (!req || typeof req.then !== 'function') return
+    setClosureBusy(true); setClosureMsg('')
+    try {
+      const r = await req
+      const d = (r && typeof r.data === 'object' && r.data) || {}
+      // `DecisionLogSerializer` : la phrase FR réelle est `summary_fr`.
+      setClosureMsg(d.summary_fr
+        ? `Étude Meta lue : ${d.summary_fr}`
+        : 'Étude Meta lue : décision journalisée.')
+      loadDetail(selectedId)
+    } catch (e) {
+      const code = e?.response?.status
+      const detail = e?.response?.data?.detail
+      setClosureMsg(
+        code === 404
+          ? (detail || 'Aucune étude native (meta_study_id) liée à cette expérience.')
+          : code === 400
+            ? (detail || 'Aucune connexion Meta active.')
+            : code === 502
+              ? (detail || "Meta n'a pas répondu : étude non synchronisée.")
+              : "Synchronisation de l'étude impossible.")
+    } finally {
+      setClosureBusy(false)
+    }
+  }, [selectedId, loadDetail])
+
   const expNameById = useMemo(() => {
     const map = new Map()
     list.forEach(e => map.set(e.id, e.nom || e.name || `Expérimentation ${e.id}`))
@@ -350,6 +422,53 @@ export default function ExperimentsScreen() {
                           )
                         })}
                     </ol>
+                  </section>
+
+                  {/* WIR209 — Clôture HUMAINE de l'expérience (verdict explicite)
+                      + lecture de l'étude A/B native Meta. Les deux écrivent un
+                      DecisionLog, rechargé aussitôt ci-dessous. */}
+                  <section className="card ae-exp-closure" data-testid="ae-exp-closure"
+                    style={{ padding: '1rem', marginBottom: '1rem' }}>
+                    <h3 style={{ margin: '0 0 0.4rem' }}>Clôture de l&apos;expérimentation</h3>
+                    <p style={{ margin: '0 0 0.7rem', color: '#64748b', fontSize: '0.9rem' }}>
+                      Le verdict est HUMAIN et explicite : il déplace le posterior du
+                      nœud d&apos;hypothèse rattaché et s&apos;inscrit au journal de décision.
+                      Re-clôturer ne double jamais l&apos;évidence.
+                    </p>
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      <button type="button" className="btn btn-success"
+                        data-testid="ae-exp-conclude-validated"
+                        disabled={closureBusy || !canManage}
+                        title={!canManage
+                          ? 'Nécessite la permission de gestion (adsengine_manage).' : undefined}
+                        onClick={() => conclude(true)}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                        <ThumbsUp size={14} aria-hidden="true" /> Hypothèse validée
+                      </button>
+                      <button type="button" className="btn btn-danger-outline"
+                        data-testid="ae-exp-conclude-invalidated"
+                        disabled={closureBusy || !canManage}
+                        title={!canManage
+                          ? 'Nécessite la permission de gestion (adsengine_manage).' : undefined}
+                        onClick={() => conclude(false)}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                        <ThumbsDown size={14} aria-hidden="true" /> Hypothèse invalidée
+                      </button>
+                      <button type="button" className="btn btn-light"
+                        data-testid="ae-exp-sync-study"
+                        disabled={closureBusy || !canManage}
+                        title={!canManage
+                          ? 'Nécessite la permission de gestion (adsengine_manage).' : undefined}
+                        onClick={syncStudy}
+                        style={{ marginLeft: 'auto', display: 'inline-flex',
+                          alignItems: 'center', gap: '0.3rem' }}>
+                        <RefreshCw size={14} aria-hidden="true" /> Lire l&apos;étude Meta
+                      </button>
+                    </div>
+                    {closureMsg && (
+                      <p data-testid="ae-exp-closure-msg" role="status"
+                        style={{ margin: '0.6rem 0 0', color: '#334155' }}>{closureMsg}</p>
+                    )}
                   </section>
 
                   {/* Bras — PACT110 : liste RÉELLE (ExperimentArm), enrichie des

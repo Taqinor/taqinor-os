@@ -1030,10 +1030,18 @@
     custom_fields:inconnu, detail:texte, message_templates:inconnu, roles_custom:inconnu
 - frontend/src/features/adminops/adminopsApi.js :: previsualiserPackage -> /api/django/adminops/config-packages/previsualiser
     custom_fields:inconnu, detail:texte, message_templates:inconnu, roles_custom:inconnu
+- frontend/src/features/adsengine/adsengineApi.js :: backtest -> /api/django/adsengine/regles/<>/backtest
+    label_fr:inconnu, proposals:inconnu, range:objet, reason:texte, summary:objet, supported:booleen, template_key:inconnu
+- frontend/src/features/adsengine/adsengineApi.js :: checklist -> /api/django/adsengine/creatifs/checklist
+    allowed:inconnu, forbidden:inconnu
+- frontend/src/features/adsengine/adsengineApi.js :: conclude -> /api/django/adsengine/experiences/<>/conclure
+    decision_log:inconnu, detail:texte, node:inconnu, validated:inconnu
 - frontend/src/features/adsengine/adsengineApi.js :: createEngagement -> /api/django/adsengine/audiences/engagement
     audience_id:texte, detail:texte, error:inconnu, preset:inconnu, retention_days:inconnu
 - frontend/src/features/adsengine/adsengineApi.js :: deliveryEstimate -> /api/django/adsengine/audiences/delivery-estimate
     detail:texte, error:inconnu, estimate:inconnu
+- frontend/src/features/adsengine/adsengineApi.js :: detectors -> /api/django/adsengine/anomalies/detecteurs
+    detecteurs:inconnu
 - frontend/src/features/adsengine/adsengineApi.js :: dryRun -> /api/django/adsengine/regles/dry-run
     detail:texte, objets_touches:inconnu, resume_fr:inconnu
 - frontend/src/features/adsengine/adsengineApi.js :: engagementPresets -> /api/django/adsengine/audiences/engagement

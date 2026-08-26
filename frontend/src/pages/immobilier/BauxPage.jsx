@@ -24,6 +24,25 @@ function rowsFrom(data) {
   return data?.results ?? []
 }
 
+/* ============================================================================
+   WIR263 — L'escalade de relance de loyer devient VISIBLE.
+   ----------------------------------------------------------------------------
+   « Relancer » monte le niveau 1 -> 2 -> 3 (plafonné à 3) et le niveau 3 a une
+   PORTÉE JURIDIQUE — or l'écran postait `echeances-loyer/<id>/relancer/` sans
+   jamais relire l'historique : rien ne disait à l'opérateur où il en était
+   avant de recliquer. On lit désormais `relances-loyer/?echeance_loyer=<id>`
+   (filtre serveur qui existait déjà : `RelanceLoyerViewSet.get_queryset`) et on
+   affiche niveau / date / canal. La forme de la réponse est celle du contrat
+   committé `apps/immobilier/contract_samples/relances_loyer_par_echeance.json`.
+   ========================================================================== */
+const NIVEAU_MAX_RELANCE = 3   // `services.relancer_echeance` plafonne à 3.
+
+// Niveau atteint = le plus haut niveau déjà envoyé (0 si aucune relance).
+function niveauAtteint(relances) {
+  if (!Array.isArray(relances) || relances.length === 0) return 0
+  return relances.reduce((max, r) => Math.max(max, Number(r?.niveau) || 0), 0)
+}
+
 const BAIL_VIDE = {
   local: '', locataire: '', type_bail: 'habitation',
   date_debut: '', duree_mois: '12',
@@ -94,10 +113,35 @@ export default function BauxPage() {
 
   const selected = baux.find((b) => b.id === selectedId) || null
 
+  // WIR263 — historique des relances par échéance : { <echeanceId>: [relance] }.
+  const [relances, setRelances] = useState({})
+
+  const chargerRelances = useCallback(async (echeanceId) => {
+    try {
+      const res = await immobilierApi.relancesLoyer.list(
+        { echeance_loyer: echeanceId })
+      setRelances((prev) => ({ ...prev, [echeanceId]: rowsFrom(res.data) }))
+    } catch {
+      // Une lecture en échec ne doit jamais se lire « aucune relance » : on
+      // laisse l'entrée absente plutôt que d'affirmer un historique vide.
+      setRelances((prev) => {
+        const suite = { ...prev }
+        delete suite[echeanceId]
+        return suite
+      })
+    }
+  }, [])
+
   const chargerEcheances = useCallback(async (bailId) => {
     const res = await immobilierApi.echeancesLoyer.list({ bail: bailId })
-    setEcheances(rowsFrom(res.data))
-  }, [])
+    const lignes = rowsFrom(res.data)
+    setEcheances(lignes)
+    // Le niveau atteint doit se voir AVANT tout nouveau clic : seules les
+    // échéances déjà relancées portent un historique, on ne charge que celles-là.
+    await Promise.all(lignes
+      .filter((e) => e && e.statut === 'relancee')
+      .map((e) => chargerRelances(e.id)))
+  }, [chargerRelances])
 
   const selectionner = useCallback((bail) => {
     setSelectedId(bail.id)
@@ -170,9 +214,12 @@ export default function BauxPage() {
 
   const relancer = useCallback(async (echeanceId) => {
     await immobilierApi.echeancesLoyer.relancer(echeanceId, {})
+    // WIR263 — l'historique est relu tout de suite : le niveau atteint (et la
+    // mention « portée juridique » au 3) est visible AVANT un nouveau clic.
+    await chargerRelances(echeanceId)
     if (selected) await chargerEcheances(selected.id)
     await chargerListes()
-  }, [selected, chargerEcheances, chargerListes])
+  }, [selected, chargerEcheances, chargerListes, chargerRelances])
 
   return (
     <div data-testid="baux-page" style={{ padding: 16 }}>
@@ -360,36 +407,74 @@ export default function BauxPage() {
           <button type="button" onClick={genererEcheancier}>Générer l&apos;échéancier</button>
           <table data-testid="table-echeances">
             <thead>
-              <tr><th>Période</th><th>Total</th><th>Statut</th><th></th></tr>
+              <tr><th>Période</th><th>Total</th><th>Statut</th><th>Relances</th><th></th></tr>
             </thead>
             <tbody>
-              {echeances.map((ech) => (
-                <tr key={ech.id}>
-                  <td>{ech.periode_debut}</td>
-                  <td>{formatMAD(Number(ech.montant_total))}</td>
-                  <td>{ech.statut_display}</td>
-                  <td>
-                    {ech.statut === 'a_emettre' && (
-                      <button type="button" onClick={() => emettreQuittance(ech.id)}>
-                        Émettre quittance
-                      </button>
-                    )}
-                    {ech.statut === 'emise' || ech.statut === 'payee' ? (
-                      <a
-                        href={immobilierApi.echeancesLoyer.quittancePdfUrl(ech.id)}
-                        target="_blank" rel="noreferrer"
-                      >
-                        PDF
-                      </a>
-                    ) : null}
-                    {(ech.statut === 'emise' || ech.statut === 'relancee') && (
-                      <button type="button" onClick={() => relancer(ech.id)}>Relancer</button>
-                    )}
-                  </td>
-                </tr>
-              ))}
+              {echeances.map((ech) => {
+                // WIR263 — historique connu (undefined = jamais lu).
+                const hist = relances[ech.id]
+                const atteint = niveauAtteint(hist)
+                return (
+                  <tr key={ech.id}>
+                    <td>{ech.periode_debut}</td>
+                    <td>{formatMAD(Number(ech.montant_total))}</td>
+                    <td>{ech.statut_display}</td>
+                    <td data-testid={`relances-echeance-${ech.id}`}>
+                      {/* Le niveau ATTEINT, signalé avant tout nouveau clic. */}
+                      {atteint > 0 && (
+                        <div data-testid={`niveau-relance-${ech.id}`}>
+                          <strong>Niveau {atteint}/{NIVEAU_MAX_RELANCE}</strong>
+                          {atteint >= NIVEAU_MAX_RELANCE && (
+                            <span data-testid={`niveau-max-relance-${ech.id}`}>
+                              {' '}— dernier niveau atteint (portée juridique)
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      {Array.isArray(hist) && hist.length > 0 && (
+                        <ul data-testid={`historique-relances-${ech.id}`}>
+                          {hist.map((r) => (
+                            <li key={r.id} data-testid="ligne-relance">
+                              Niveau {r.niveau} · {r.date_envoi} · {r.canal_display || r.canal}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      {hist === undefined && (
+                        <button
+                          type="button" data-testid={`voir-relances-${ech.id}`}
+                          onClick={() => chargerRelances(ech.id)}
+                        >
+                          Voir les relances
+                        </button>
+                      )}
+                      {Array.isArray(hist) && hist.length === 0 && (
+                        <span data-testid={`aucune-relance-${ech.id}`}>Aucune relance.</span>
+                      )}
+                    </td>
+                    <td>
+                      {ech.statut === 'a_emettre' && (
+                        <button type="button" onClick={() => emettreQuittance(ech.id)}>
+                          Émettre quittance
+                        </button>
+                      )}
+                      {ech.statut === 'emise' || ech.statut === 'payee' ? (
+                        <a
+                          href={immobilierApi.echeancesLoyer.quittancePdfUrl(ech.id)}
+                          target="_blank" rel="noreferrer"
+                        >
+                          PDF
+                        </a>
+                      ) : null}
+                      {(ech.statut === 'emise' || ech.statut === 'relancee') && (
+                        <button type="button" onClick={() => relancer(ech.id)}>Relancer</button>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
               {echeances.length === 0 && (
-                <tr><td colSpan={4}>Aucune échéance générée.</td></tr>
+                <tr><td colSpan={5}>Aucune échéance générée.</td></tr>
               )}
             </tbody>
           </table>

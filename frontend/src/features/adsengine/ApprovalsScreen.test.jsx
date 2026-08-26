@@ -12,6 +12,8 @@ const mocks = vi.hoisted(() => ({
   approve: vi.fn(),
   reject: vi.fn(),
   create: vi.fn(),
+  // WIR208 — application RÉELLE d'une action approuvée (POST .../apply/).
+  apply: vi.fn(),
   // PUB10 — permissions effectives ; pleines par défaut (préserve le
   // comportement des tests existants), restreintes dans les tests dédiés.
   permissions: ['adsengine_approve', 'adsengine_manage'],
@@ -21,7 +23,7 @@ vi.mock('./adsengineApi', () => ({
   default: {
     actions: {
       pending: mocks.pending, approve: mocks.approve, reject: mocks.reject,
-      create: mocks.create,
+      create: mocks.create, apply: mocks.apply,
     },
     // PUB48 — cloche de la console (AlertCenter), historique vide par défaut :
     // hors périmètre de ce fichier, mais montée sur l'écran (import réel).
@@ -53,10 +55,19 @@ const ACTIONS = [
   { id: 13, type: 'create_campaign', reason_fr: 'Nouvelle ville : Marrakech.' },
 ]
 
+/* WIR208 — `EngineActionViewSet.approve` / `.apply` renvoient l'action
+   SÉRIALISÉE (`EngineActionSerializer` → `status`), valeurs réelles de
+   `EngineAction.Statut` : proposee/approuvee/rejetee/appliquee/echouee. */
+const approved = (id) => ({ data: { id, status: 'approuvee' } })
+const applied = (id) => ({ data: { id, status: 'appliquee' } })
+const httpError = (status) => Object.assign(
+  new Error(`HTTP ${status}`), { response: { status } })
+
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.pending.mockResolvedValue({ data: ACTIONS })
-  mocks.approve.mockResolvedValue({ data: {} })
+  mocks.approve.mockImplementation((id) => Promise.resolve(approved(id)))
+  mocks.apply.mockImplementation((id) => Promise.resolve(applied(id)))
   mocks.reject.mockResolvedValue({ data: {} })
   mocks.create.mockResolvedValue({ data: { id: 100 } })
   mocks.permissions = ['adsengine_approve', 'adsengine_manage']
@@ -77,13 +88,63 @@ describe('ApprovalsScreen (ENG25)', () => {
     expect(screen.getByAltText('Reel toiture v2')).toBeInTheDocument()
   })
 
-  it('approuver appelle l\'API et l\'action QUITTE la boîte', async () => {
+  it('WIR208 — approuver ne fait PAS quitter la boîte : la carte propose « Appliquer »', async () => {
     renderScreen()
     await waitFor(() => expect(mocks.pending).toHaveBeenCalled())
     fireEvent.click(screen.getByTestId('ae-approve-11'))
     await waitFor(() => expect(mocks.approve).toHaveBeenCalledWith(11))
-    await waitFor(() => expect(screen.getAllByTestId('ae-action-card')).toHaveLength(2))
+    // Approuvée ≠ appliquée : les 3 cartes sont toujours là.
+    await waitFor(() => expect(screen.getByTestId('ae-apply-11')).toBeInTheDocument())
+    expect(screen.getAllByTestId('ae-action-card')).toHaveLength(3)
     expect(screen.queryByTestId('ae-approve-11')).toBeNull()
+    expect(screen.queryByTestId('ae-reject-11')).toBeNull()
+    expect(screen.getByTestId('ae-approved-badge-11')).toBeInTheDocument()
+    // Rien n'a été appliqué tant que le bouton n'est pas cliqué.
+    expect(mocks.apply).not.toHaveBeenCalled()
+  })
+
+  it('WIR208 — approuver PUIS appliquer poste apply/ et l\'action quitte la boîte au statut appliquee', async () => {
+    renderScreen()
+    await waitFor(() => expect(mocks.pending).toHaveBeenCalled())
+    fireEvent.click(screen.getByTestId('ae-approve-11'))
+    const apply = await screen.findByTestId('ae-apply-11')
+    fireEvent.click(apply)
+    await waitFor(() => expect(mocks.apply).toHaveBeenCalledWith(11))
+    await waitFor(() => expect(screen.getAllByTestId('ae-action-card')).toHaveLength(2))
+    expect(screen.queryByTestId('ae-apply-11')).toBeNull()
+  })
+
+  it('WIR208 — 502 (Meta refuse) : message FR et l\'action NE disparaît PAS', async () => {
+    mocks.apply.mockRejectedValue(httpError(502))
+    renderScreen()
+    await waitFor(() => expect(mocks.pending).toHaveBeenCalled())
+    fireEvent.click(screen.getByTestId('ae-approve-11'))
+    fireEvent.click(await screen.findByTestId('ae-apply-11'))
+    await waitFor(() => expect(screen.getByTestId('ae-approvals-err'))
+      .toHaveTextContent(/Meta a refusé l'application/))
+    expect(screen.getAllByTestId('ae-action-card')).toHaveLength(3)
+    expect(screen.getByTestId('ae-apply-11')).toBeInTheDocument()
+  })
+
+  it('WIR208 — 409 (plus approuvée) : message FR distinct, l\'action reste dans la boîte', async () => {
+    mocks.apply.mockRejectedValue(httpError(409))
+    renderScreen()
+    await waitFor(() => expect(mocks.pending).toHaveBeenCalled())
+    fireEvent.click(screen.getByTestId('ae-approve-11'))
+    fireEvent.click(await screen.findByTestId('ae-apply-11'))
+    await waitFor(() => expect(screen.getByTestId('ae-approvals-err'))
+      .toHaveTextContent(/n'est plus approuvée/))
+    expect(screen.getAllByTestId('ae-action-card')).toHaveLength(3)
+  })
+
+  it('WIR208 — une action déjà approuvée à l\'arrivée montre « Appliquer », jamais « Approuver »', async () => {
+    mocks.pending.mockResolvedValue({ data: [
+      { id: 21, type: 'adjust_budget', status: 'approuvee', reason_fr: 'Déjà approuvée.' },
+    ] })
+    renderScreen()
+    await waitFor(() => expect(mocks.pending).toHaveBeenCalled())
+    expect(await screen.findByTestId('ae-apply-21')).toBeInTheDocument()
+    expect(screen.queryByTestId('ae-approve-21')).toBeNull()
   })
 
   it('rejeter est STRUCTURÉ (motif via select, jamais de chat) et retire l\'action', async () => {
@@ -113,9 +174,15 @@ describe('ApprovalsScreen (ENG25)', () => {
     expect(mocks.approve).toHaveBeenCalledWith(11)
     expect(mocks.approve).toHaveBeenCalledWith(13)
     expect(mocks.approve).not.toHaveBeenCalledWith(12)
-    // Seule l'action non cochée (12) reste dans la boîte.
-    await waitFor(() => expect(screen.getAllByTestId('ae-action-card')).toHaveLength(1))
-    expect(within(screen.getByTestId('ae-action-card')).getByTestId('ae-approve-12')).toBeInTheDocument()
+    // WIR208 — les cochées passent « approuvée » (« Appliquer ») ; la
+    // non-cochée (12) garde son bouton Approuver. Aucune ne quitte la boîte
+    // avant application.
+    await waitFor(() => expect(screen.getByTestId('ae-apply-11')).toBeInTheDocument())
+    expect(screen.getByTestId('ae-apply-13')).toBeInTheDocument()
+    expect(screen.getAllByTestId('ae-action-card')).toHaveLength(3)
+    const carte12 = screen.getAllByTestId('ae-action-card')[1]
+    expect(within(carte12).getByTestId('ae-approve-12')).toBeInTheDocument()
+    expect(screen.queryByTestId('ae-batch-bar')).toBeNull()
   })
 
   it('boîte vide → message dédié', async () => {
