@@ -172,14 +172,22 @@ UNGUARDED_ACTION_BASELINE = {
     # `_QhseBaseViewSet` (WriteScopedPermissionMixin, `write_permission='qhse_gerer'`
     # gate les actions custom) ; le scanner statique ne crédite pas le mixin
     # d'où +3 en dette apparente (65 → 68), pas un vrai trou de garde.
-    "qhse": 68,
+    # WIR275/277 (2026-08-26) : +16 @action (BSD/recyclage/exercices, rappels,
+    # audits, réunions→CAPA, objectifs, diffuser/ajouter-lecteurs/marquer-lu…)
+    # sur le MÊME patron _QhseBaseViewSet — gardées au niveau CLASSE
+    # (write_permission='qhse_gerer'), revue Fable + tests 403/404 par action ;
+    # même dette APPARENTE de scanner, pas un trou réel (68 → 84).
+    "qhse": 84,
     "rh": 103,
     # YRBAC10 a gardé la dernière @action roles non gardée (permission-catalog
     # est admin-only) → dette tombée à 0 ; on resserre le baseline (le cliquet
     # ne fait que DÉCROÎTRE).
     "roles": 0,
     "stock": 3,
-    "ventes": 1,
+    # WIR281 (2026-08-26) : +1 @action `resoudre` de PlanCommissionViewSet —
+    # gardée au niveau CLASSE (`permission_classes` prix_achat_voir/admin sur
+    # tout le viewset, testée 403) ; dette apparente, pas un trou (1 → 2).
+    "ventes": 2,
 }
 
 
