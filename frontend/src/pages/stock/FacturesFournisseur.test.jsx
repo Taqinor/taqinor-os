@@ -84,7 +84,10 @@ describe('FacturesFournisseur — badge et file « En exception » (WIR192)', ()
     renderPage()
     await screen.findByRole('grid', { name: 'Factures fournisseur' })
 
-    await userEvent.click(screen.getByRole('button', { name: /En exception/ }))
+    // Le repli « cartes mobiles » du DataTable rend chaque ligne cliquable en
+    // `role="button"` : la carte FF-2 porte le badge « En exception » dans son
+    // nom accessible. On vise donc le bouton de filtre par son nom EXACT.
+    await userEvent.click(screen.getByRole('button', { name: 'En exception' }))
     await waitFor(() => expect(stockApi.getFacturesEnException).toHaveBeenCalled())
     const grid = await screen.findByRole('grid', { name: 'Factures fournisseur' })
     expect(within(grid).getByText('FF-2')).toBeInTheDocument()

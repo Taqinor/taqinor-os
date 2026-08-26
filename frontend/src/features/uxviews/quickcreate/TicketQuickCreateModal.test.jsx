@@ -34,7 +34,9 @@ describe('TicketQuickCreateModal (WIR178)', () => {
     const user = userEvent.setup()
     render(<TicketQuickCreateModal open onClose={() => {}} onCreated={() => {}} />)
 
-    await user.type(screen.getByLabelText('Description'), 'Panne onduleur')
+    // `<Label required>` colle un astérisque au libellé : le texte du <label>
+    // est « Description* » — on ancre au début plutôt que d'exiger l'égalité.
+    await user.type(screen.getByLabelText(/^Description/), 'Panne onduleur')
     await user.click(screen.getByRole('button', { name: 'Créer' }))
 
     expect(await screen.findByText('Le client est requis.')).toBeInTheDocument()
@@ -50,7 +52,7 @@ describe('TicketQuickCreateModal (WIR178)', () => {
     await user.type(screen.getByPlaceholderText('Nom ou ICE…'), 'Client SAV')
     await user.click(await screen.findByText('Client SAV Test'))
 
-    await user.type(screen.getByLabelText('Description'), 'Panne onduleur')
+    await user.type(screen.getByLabelText(/^Description/), 'Panne onduleur')
     await user.click(screen.getByRole('button', { name: 'Créer' }))
 
     await waitFor(() => expect(createTicket).toHaveBeenCalledWith(expect.objectContaining({

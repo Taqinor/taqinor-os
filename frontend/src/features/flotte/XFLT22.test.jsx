@@ -27,7 +27,11 @@ const { masse, rollout, empty } = vi.hoisted(() => ({
 
 vi.mock('../../api/flotteApi', () => ({
   default: {
-    conducteurs: { list: () => Promise.resolve({ data: [{ id: 2, nom: 'Karim' }] }) },
+    conducteurs: {
+      list: () => Promise.resolve({ data: [{ id: 2, nom: 'Karim' }] }),
+      // La carte « Réconciliation permis flotte↔RH » monte divergencesPermis().
+      divergencesPermis: () => Promise.resolve({ data: { divergences: [] } }),
+    },
     vehicules: { list: () => Promise.resolve({ data: [{ id: 1, immatriculation: '12345-A-6' }] }) },
     affectations: { list: empty, masse: (...args) => masse(...args) },
     reservations: { list: empty },

@@ -73,15 +73,23 @@ describe('PlanComptePage (NTCRM11)', () => {
     })
 
     it('crée une revue puis elle apparaît dans la liste déjà affichée', async () => {
-      api.get
-        .mockResolvedValueOnce({ data: planSansRevue })
-        .mockResolvedValueOnce({
-          data: {
-            ...planSansRevue,
-            revues: [{ id: 9, date_revue: '2026-02-01', decisions: 'Relancer par WhatsApp' }],
-          },
-        })
-      api.post.mockResolvedValueOnce({ data: { id: 9 } })
+      // WIR218 a ajouté un 2ᵉ GET au montage (`…/historique/`) : les mocks
+      // en cascade `mockResolvedValueOnce` ne peuvent plus décrire la
+      // séquence. On mocke par URL — le rechargement d'après-POST voit alors
+      // vraiment la revue créée côté serveur.
+      let planCourant = planSansRevue
+      api.get.mockImplementation((url) => {
+        if (url === '/crm/plans-compte/5/historique/') return Promise.resolve({ data: [] })
+        if (url === '/crm/plans-compte/5/') return Promise.resolve({ data: planCourant })
+        return Promise.resolve({ data: { results: [] } })
+      })
+      api.post.mockImplementationOnce(() => {
+        planCourant = {
+          ...planSansRevue,
+          revues: [{ id: 9, date_revue: '2026-02-01', decisions: 'Relancer par WhatsApp' }],
+        }
+        return Promise.resolve({ data: { id: 9 } })
+      })
 
       render(<PlanComptePage clientId={11} planId={5} />)
       await screen.findAllByText('Aucune revue enregistrée.')
