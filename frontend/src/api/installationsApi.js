@@ -62,6 +62,18 @@ const installationsApi = {
   // CH3 — fiche de recette IEC 62446-1 (mise en service structurée).
   getRecette: (id) => api.get(`/installations/chantiers/${id}/recette/`),
   ouvrirRecette: (id) => api.post(`/installations/chantiers/${id}/recette/`, {}),
+  // WIR202/CH3 — la fiche s'ouvrait VIDE et rien ne pouvait la remplir : le
+  // ViewSet `recettes-commissioning` (écriture Responsable/Admin) n'avait
+  // aucun appelant côté client. `recetteId` est l'id de la FICHE (pas du
+  // chantier). Aucun prix ni marge n'est manipulé ici — essais uniquement.
+  getRecetteRecord: (recetteId) =>
+    api.get(`/installations/recettes-commissioning/${recetteId}/`),
+  updateRecette: (recetteId, data) =>
+    api.patch(`/installations/recettes-commissioning/${recetteId}/`, data),
+  // CH3/FG275 — relevé I-V par string ; l'écart de Pmax et le drapeau de
+  // défaut sont calculés CÔTÉ SERVEUR (jamais recalculés ici).
+  ajouterReleveIv: (recetteId, data) =>
+    api.post(`/installations/recettes-commissioning/${recetteId}/ajouter-iv/`, data),
 
   // CH4 — pack de remise client (handover). GET aperçoit à blanc si absent.
   getPackRemise: (id) => api.get(`/installations/chantiers/${id}/pack-remise/`),
