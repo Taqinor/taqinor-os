@@ -1652,13 +1652,18 @@ if (tailles) {
 //  est simplement absente et le tableau « avec » n'est pas rendu.)
 const cumul25Sans = ok ? cumulAnnuelServi(data, false) : [];
 const cumul25Avec = ok ? cumulAnnuelServi(data, true) : [];
+/** La série de L'OPTION RETENUE au devis — jamais un mélange, jamais une
+ *  seconde série à côté du prix officiel. Vide ⇒ aucun tableau. */
+const cumul25 = recoVariante === 'avec' ? cumul25Avec : cumul25Sans;
 /** « aucune hausse tarifaire supposée » : le drapeau est SERVI (`escalade_
  *  tarifaire_pct === 0`). Absent ⇒ pas de note — on n'affirme pas une
  *  hypothèse qu'on ne lit pas. */
 const tailleSansEscalade = tailles?.escaladeTarifairePct === 0;
 /** PRÉ-VISITE — un lien public SANS prix réel n'est pas une proposition
- *  chiffrée : la page le DIT, au lieu de laisser croire à un devis muet. */
-const estPreVisite = ok && !hasRealPrice(data!, reco ?? 'sans_batterie');
+ *  chiffrée : la page le DIT, au lieu de laisser croire à un devis muet. On
+ *  réutilise `heroHasRealPrice` (défini plus haut, et qui pilote déjà le CTA) —
+ *  jamais une seconde source de vérité sur « ce devis a-t-il un prix ». */
+const estPreVisite = ok && !heroHasRealPrice;
 
 const steps = nextSteps();
 const assumptions = ok ? proposalAssumptions(data!) : [];
@@ -1905,6 +1910,20 @@ const signConfig = ok
               disparaissent pas : elles vivent dans « Votre installation » et
               « Votre production », à leur place, en pleine taille. Toutes les
               valeurs restent celles du devis backend — jamais recalculées. */}
+          {/* QUICK WIN · PRÉ-VISITE (fondateur, 26/08/2026) — une page SANS prix
+              réel n'est pas une proposition chiffrée, et se taire là-dessus
+              laisse le client chercher un montant qui n'existe pas. On NOMME
+              donc l'étape : c'est une pré-visite. Le CTA, lui, gérait déjà le
+              cas (il pointe vers le conseiller, jamais vers une signature) —
+              seule la FORMULATION manquait. Aucun chiffre n'est ajouté. */}
+          {estPreVisite && (
+            <p class="cine-in cine-in-3 mt-6 rounded-xl border border-white/10 bg-white/5 p-3.5 text-sm text-lune-soft sm:p-4" data-pre-visite data-i18n
+              data-fr="Cette page est une PRÉ-VISITE : elle décrit ce que nous avons compris de votre projet, avant le chiffrage. Le prix est établi après la visite technique — il n’y a donc encore rien à signer ici."
+              data-en="This page is a PRE-VISIT: it describes what we understood of your project, before pricing. The price is set after the technical visit — so there is nothing to sign here yet."
+              data-ar="هذه الصفحة زيارة تمهيدية: تصف ما فهمناه من مشروعكم، قبل التسعير. يُحدَّد الثمن بعد الزيارة التقنية — فلا شيء للتوقيع هنا بعد.">
+              Cette page est une PRÉ-VISITE : elle décrit ce que nous avons compris de votre projet, avant le chiffrage. Le prix est établi après la visite technique — il n’y a donc encore rien à signer ici.
+            </p>
+          )}
           <div id="prop-fold-figures" class="cine-in cine-in-3 mt-6 grid grid-cols-1 gap-3 sm:mt-7 sm:grid-cols-2 sm:gap-4">
             {heroTtc !== null ? (
               <div class="cine-card rounded-xl p-4">
@@ -2055,6 +2074,14 @@ const signConfig = ok
               {data?.accepte_par_nom ? <> par <strong class="text-lune">{data.accepte_par_nom}</strong></> : null}.
               Merci de votre confiance — votre conseiller Taqinor revient vers vous.
             </p>
+            {/* QUICK WIN · APRÈS-SIGNATURE — un devis DÉJÀ accepté (le client
+                revient sur son lien) mène désormais lui aussi au suivi de
+                chantier tokenisé (WJ115). Même token que cette page. */}
+            <p class="mt-3">
+              <a href={`/suivi/${encodeURIComponent(token)}`} class="text-brass-300 underline-offset-2 hover:underline" data-suivi-link>
+                <span data-i18n data-fr="Suivre l’avancement de mon chantier" data-en="Track my project’s progress" data-ar="تتبع تقدم ورشتي">Suivre l’avancement de mon chantier</span>
+              </a>
+            </p>
           </div>
         </section>
       )}
@@ -2147,6 +2174,21 @@ const signConfig = ok
               data-ar={`التخطيط بحاجة إلى إعادة: صُمِّم هذا العرض ثلاثي الأبعاد لـ ${layoutPanneaux} لوحاً. أرقام عرضكم تتبع فاتوركم التقديرية، لا هذا العرض.`}>
               Calepinage à rejouer : cette vue 3D a été étudiée pour {layoutPanneaux} panneaux.
               Les chiffres de votre proposition suivent votre devis, pas cette vue.
+            </p>
+          )}
+          {/* QUICK WIN (fondateur, 26/08/2026) — la note « calepinage à rejouer »
+              CONSTATAIT le décalage et laissait le client sans recours. Elle
+              porte désormais une ACTION, qui passe par le flux EXISTANT
+              « Demander une modification » (WJ54) : jamais un second canal,
+              jamais un second endpoint. Rendue avec la note, donc absente du
+              DOM sur un devis sain. Désactivée en aperçu interne, comme tous les
+              boutons de contact — le commercial ne crée jamais une demande à la
+              place du client. */}
+          {layoutStale && !apercuInterne && (
+            <p class="mt-2 text-sm">
+              <button type="button" id="roof3d-stale-request" class="underline-offset-2 text-brass-300 hover:underline">
+                <span data-i18n data-fr="Demander une mise à jour du calepinage" data-en="Request an updated roof layout" data-ar="طلب تحديث توزيع الألواح">Demander une mise à jour du calepinage</span>
+              </button>
             </p>
           )}
           {/* Cartes « ZONE n · … » retirées (fondateur 2026-08-15) : les chiffres
@@ -3007,7 +3049,17 @@ const signConfig = ok
                 <p id="battery-sim-autonomy" class="mt-3 rounded-lg border border-white/10 bg-nuit-800/40 px-3 py-2 text-xs text-lune-soft">
                   <span class="font-semibold text-brass-300" data-i18n
                     data-fr="Autonomie maximale :" data-en="Maximum autonomy:" data-ar="أقصى استقلالية:">Autonomie maximale :</span>
-                  <span class="ms-1 font-semibold" dir="ltr"><span id="battery-sim-autonomy-n">{batteryCoverage.autonomie.nbPacks}</span> × <span>{batteryUnitCapacityLabel}</span> kWh</span>
+                  {/* FABLE O2 (26/08/2026) — l'en-tête du curseur qualifie déjà
+                      ses kWh d'« utiles » quand la capacité SERVIE est la
+                      capacité utile (règle CAPUTIL) ; ce repère, qui affiche
+                      LE MÊME calibre, ne le faisait pas. Deux formulations pour
+                      un seul chiffre se lisent comme deux chiffres. Même mot,
+                      même condition — et rien du tout quand le calibre servi est
+                      le nominal (le mot serait alors un faux). */}
+                  <span class="ms-1 font-semibold" dir="ltr"><span id="battery-sim-autonomy-n">{batteryCoverage.autonomie.nbPacks}</span> × <span>{batteryUnitCapacityLabel}</span> kWh</span>{batteryCapacityIsUsable && (
+                    <span class="ms-1 font-normal text-lune-faint" data-i18n
+                      data-fr="utiles" data-en="usable" data-ar="قابلة للاستعمال">utiles</span>
+                  )}
                   {/* LE TAUX SERVI, TOUJOURS À CÔTÉ DU REPÈRE : c'est lui qui
                       dit ce que cette banque couvre VRAIMENT. Absent (le moteur
                       n'a pas su le chiffrer) ⇒ le fragment est masqué, jamais
@@ -3332,6 +3384,56 @@ const signConfig = ok
                   <p class="fig fig-md lum mt-2" dir="ltr">{formatMAD(ecoHero)}</p>
                 </div>
               ) : null}
+            </div>
+          )}
+
+          {/* ── QUICK WIN · ANNÉE PAR ANNÉE (fondateur, 26/08/2026) ────────────
+                 La page annonçait un cumul à 25 ans en UN chiffre. Un client qui
+                 veut vérifier ce chiffre n'avait aucun moyen de le faire : il
+                 devait croire sur parole. Le tableau ci-dessous ouvre la boîte —
+                 chaque ligne est un POINT DE LA SÉRIE que le moteur a déjà
+                 calculée et que la page trace déjà ailleurs
+                 (`quote.cashflow_sans` / `cashflow_avec`). AUCUN calcul côté
+                 page : `cumulAnnuelServi` ne fait que LIRE et formater. Série
+                 absente ou trouée ⇒ aucun tableau, jamais une projection
+                 reconstruite.
+
+                 La note d'hypothèse est AU-DESSUS du tableau, jamais en bas de
+                 page : « à tarif constant » doit se lire AVANT les chiffres. */}
+          {cumul25.length > 0 && (
+            <div class="mt-6" data-cumul-annuel>
+              <p class="tech-label text-lune-faint" data-i18n
+                data-fr="Année par année" data-en="Year by year" data-ar="سنة بسنة">Année par année</p>
+              <p class="mt-2 text-xs text-lune-faint" data-i18n
+                data-fr="Trésorerie nette cumulée, année après année, à tarif constant : aucune hausse tarifaire supposée. Tant que le chiffre est négatif, l’installation n’est pas encore remboursée."
+                data-en="Cumulative net cash flow, year after year, at a constant tariff: no tariff increase assumed. While the figure is negative, the installation is not yet paid back."
+                data-ar="الخزينة الصافية التراكمية سنة بعد سنة، بتعريفة ثابتة: دون افتراض أي ارتفاع في التعريفة. وما دام الرقم سالباً، فالتركيب لم يُسترد بعد.">
+                Trésorerie nette cumulée, année après année, à tarif constant : aucune hausse tarifaire supposée. Tant que le chiffre est négatif, l’installation n’est pas encore remboursée.
+              </p>
+              <details class="mt-3">
+                <summary class="cursor-pointer text-sm text-brass-300" data-i18n
+                  data-fr="Voir le détail année par année"
+                  data-en="See the year-by-year detail"
+                  data-ar="عرض التفصيل سنة بسنة">Voir le détail année par année</summary>
+                <div class="mt-3 overflow-x-auto" style="overscroll-behavior-x: contain;">
+                  <table class="w-full min-w-[280px] text-sm">
+                    <thead>
+                      <tr class="text-lune-faint">
+                        <th class="py-2 text-start font-normal" data-i18n data-fr="Année" data-en="Year" data-ar="السنة">Année</th>
+                        <th class="py-2 text-end font-normal" data-i18n data-fr="Cumul net" data-en="Net cumulative" data-ar="التراكم الصافي">Cumul net</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cumul25.map((p) => (
+                        <tr class="border-t border-white/10">
+                          <td class="py-1.5 text-lune-soft" dir="ltr">{p.annee}</td>
+                          <td class={`py-1.5 text-end fig ${p.cumuleMad >= 0 ? 'text-brass-300' : 'text-lune-faint'}`} dir="ltr">{formatMAD(p.cumuleMad)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </details>
             </div>
           )}
         </section>
@@ -3952,15 +4054,37 @@ const signConfig = ok
             sinon une garantie onduleur pour un matériel absent du devis. La
             garantie de POSE, elle, est l'engagement de Taqinor : toujours vraie. */}
         <div class="cine-card mt-5 rounded-xl p-5">
+          {/* ── QUICK WIN (fondateur, 26/08/2026) — DEUX GARANTIES PANNEAU, PAS
+                 UNE. « 30 ans de performance panneaux » se lisait comme LA
+                 garantie du panneau, alors que ce sont deux engagements
+                 différents et que le client a droit aux deux :
+                   · la garantie PRODUIT couvre le panneau lui-même (défaut de
+                     fabrication) ;
+                   · la garantie RENDEMENT couvre la puissance encore délivrée
+                     au bout de N années.
+                 Les deux durées viennent de `lib/warranty.ts`, source unique
+                 partagée avec le PDF — aucune n'est écrite en dur ici.
+
+                 LA POSE EST OMISE : sa durée d'affichage n'est pas arrêtée par
+                 le fondateur. Discipline « omettre plutôt que supposer » — on
+                 préfère ne rien annoncer qu'annoncer une durée qu'on devrait
+                 corriger devant un client. `INSTALL_WARRANTY_YEARS` reste dans
+                 la bibliothèque, prête pour le jour où la durée est tranchée. */}
           <p class="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-lune-soft">
             {equipPresence.panneaux && (
               <>
                 <span class="fig text-lune" dir="ltr" data-i18n
+                  data-fr={`${PANEL_PRODUCT_WARRANTY_YEARS} ans`}
+                  data-en={`${PANEL_PRODUCT_WARRANTY_YEARS} years`}
+                  data-ar={anneesAr(PANEL_PRODUCT_WARRANTY_YEARS)}>{PANEL_PRODUCT_WARRANTY_YEARS} ans</span>
+                <span data-i18n data-fr="de garantie produit panneaux" data-en="of panel product warranty" data-ar="ضمان منتج الألواح">de garantie produit panneaux</span>
+                <span class="text-lune-faint" aria-hidden="true">·</span>
+                <span class="fig text-lune" dir="ltr" data-i18n
                   data-fr={`${PANEL_PERFORMANCE_WARRANTY_YEARS} ans`}
                   data-en={`${PANEL_PERFORMANCE_WARRANTY_YEARS} years`}
                   data-ar={anneesAr(PANEL_PERFORMANCE_WARRANTY_YEARS)}>{PANEL_PERFORMANCE_WARRANTY_YEARS} ans</span>
-                <span data-i18n data-fr="de performance panneaux" data-en="of panel performance" data-ar="أداء الألواح">de performance panneaux</span>
-                <span class="text-lune-faint" aria-hidden="true">·</span>
+                <span data-i18n data-fr="de garantie rendement panneaux" data-en="of panel performance warranty" data-ar="ضمان مردودية الألواح">de garantie rendement panneaux</span>
+                {equipPresence.onduleur && <span class="text-lune-faint" aria-hidden="true">·</span>}
               </>
             )}
             {equipPresence.onduleur && (
@@ -3970,16 +4094,14 @@ const signConfig = ok
                   data-en={`${INVERTER_WARRANTY_YEARS} years`}
                   data-ar={anneesAr(INVERTER_WARRANTY_YEARS)}>{INVERTER_WARRANTY_YEARS} ans</span>
                 <span data-i18n data-fr="onduleur" data-en="inverter" data-ar="العاكس">onduleur</span>
-                <span class="text-lune-faint" aria-hidden="true">·</span>
               </>
             )}
-            {/* La pose porte désormais SA durée, exactement comme le PDF
-                (theme.WARRANTIES : « 2 ans — Installation »). */}
-            <span class="fig text-lune" dir="ltr" data-i18n
-              data-fr={`${INSTALL_WARRANTY_YEARS} ans`}
-              data-en={`${INSTALL_WARRANTY_YEARS} years`}
-              data-ar={anneesAr(INSTALL_WARRANTY_YEARS)}>{INSTALL_WARRANTY_YEARS} ans</span>
-            <span class="text-lune" data-i18n data-fr="de pose Taqinor" data-en="of Taqinor installation work" data-ar="على تركيب تاقينور">de pose Taqinor</span>
+          </p>
+          <p class="mt-2 text-xs text-lune-faint" data-i18n
+            data-fr="Deux garanties distinctes : l’une couvre le panneau lui-même, l’autre la puissance qu’il délivre encore au fil des ans."
+            data-en="Two distinct warranties: one covers the panel itself, the other the power it still delivers over the years."
+            data-ar="ضمانان مختلفان: أحدهما يغطي اللوح نفسه، والآخر القدرة التي يظل ينتجها عبر السنين.">
+            Deux garanties distinctes : l’une couvre le panneau lui-même, l’autre la puissance qu’il délivre encore au fil des ans.
           </p>
           {/* (fondateur 2026-08-17) réassurance : ce que vaut une garantie
               fabricant si l'installateur venait à changer. Fait vérifiable — la
@@ -5195,6 +5317,16 @@ const signConfig = ok
               </a>
               <a href="#etapes-suivantes" class="btn-pill inline-flex items-center justify-center gap-2">
                 <span data-i18n data-fr="Voir « Et après ? »" data-en="See “What happens next?”" data-ar="ماذا بعد؟">Voir « Et après ? »</span>
+              </a>
+              {/* QUICK WIN · APRÈS-SIGNATURE (fondateur, 26/08/2026) — le suivi
+                  de chantier tokenisé (WJ115, /suivi/<token>) existait déjà mais
+                  n'était JAMAIS lié depuis la proposition : le client venait de
+                  signer et n'avait aucun chemin vers l'avancement de son
+                  chantier. Le lien apparaît au moment exact où il devient utile
+                  — après l'acceptation, jamais avant. MÊME TOKEN que la page :
+                  aucun nouvel identifiant, aucun nouveau chemin inventé. */}
+              <a href={`/suivi/${encodeURIComponent(token)}`} class="btn-pill inline-flex items-center justify-center gap-2" data-suivi-link>
+                <span data-i18n data-fr="Suivre mon chantier" data-en="Track my project" data-ar="تتبع ورشتي">Suivre mon chantier</span>
               </a>
             </div>
             <div class="mt-5 border-t border-white/10 pt-5">
@@ -7514,6 +7646,30 @@ const signConfig = ok
     slider.dispatchEvent(new Event('input', { bubbles: true }));
     calque?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
+
+  // ── QUICK WIN — « Demander une mise à jour du calepinage » (26/08/2026) ────
+  // La note « calepinage à rejouer » constatait le décalage sans donner de
+  // recours. Son bouton emprunte le flux EXISTANT « Demander une modification »
+  // (WJ54) : ouvre le <details>, sélectionne le type « autre » en déclenchant le
+  // CLIC RÉEL du bouton déjà câblé (zéro logique dupliquée), et préremplit le
+  // message. Bouton absent du DOM sur un devis sain ⇒ ce bloc est un no-op.
+  (function setupCalepinageStaleRequest(): void {
+    const btn = document.getElementById('roof3d-stale-request');
+    if (!btn) return;
+    btn.addEventListener('click', () => {
+      const revisionSection = document.querySelector<HTMLElement>('[data-revision-token]');
+      const detailsEl = revisionSection?.querySelector('details');
+      const autreBtn = revisionSection?.querySelector<HTMLButtonElement>('[data-revision-kind="autre"]');
+      const detailEl = document.getElementById('revision-detail') as HTMLTextAreaElement | null;
+      if (detailsEl) detailsEl.open = true;
+      autreBtn?.click();
+      if (detailEl) {
+        detailEl.value = 'Je souhaite un calepinage à jour, calculé pour le nombre de panneaux de mon devis.';
+      }
+      revisionSection?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      detailEl?.focus();
+    });
+  })();
 
   // ── TAILLES (ordre fondateur, 26/08/2026) — « EXPLORER D'AUTRES TAILLES » ──
   // Ce script ne CALCULE RIEN et ne FORMATE RIEN : les deux variantes de chaque
