@@ -169,6 +169,14 @@ def build(key="agrumes") -> dict:
         "tva_note": ("TVA : 10% panneaux photovoltaïques · "
                      "20% autres équipements et prestations"),
         "validity_days": 30, "site_url": "taqinor.ma",
+        # QRP1/A3 — lien de proposition TOKENISÉ, comme en produit : sans lui,
+        # ``renderer._augment`` posait le repli « taqinor.ma/signer/<réf> » et
+        # la vignette QR du bas de page 1 s'omettait — la garde « exactement
+        # 4 pages » ne l'aurait donc JAMAIS exercée. Le jeton est factice mais
+        # de la même forme que celui d'un vrai ShareLink.
+        "links": {"signer":
+                  "taqinor.ma/proposition/ahmed-el-mansouri/"
+                  "rKJtbjsY-qTML35ZnjQ9Lt_v4_demo"},
         "show_subsidy": True, "show_fuel_comparison": True,
         "show_environmental": True, "show_schematic": True, "show_water_yield": True,
         "_company_id": None,

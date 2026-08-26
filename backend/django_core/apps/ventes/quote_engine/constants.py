@@ -42,11 +42,14 @@ PRODUCTIBLE_DEFAUT = 1600
 # du site web pour le MÊME devis. Ils vivent ici, et ici seulement.
 #
 # CO2SRC (règle « chiffres vérifiés », 2026-08-26) — CE QUI RESTE ET POURQUOI.
-# Le seul chiffre d'impact encore IMPRIMÉ sur un document client est la tonne
-# ANNUELLE : elle se dérive d'une production RÉELLE du devis multipliée par le
-# facteur d'émission du réseau marocain. Les deux « équivalences » qui
-# l'accompagnaient ont été RETIRÉES de tout rendu client parce qu'aucune source
-# ne les porte (voir plus bas) — ne pas les réintroduire sans source nommée.
+# Le seul chiffre d'impact encore imprimé sur un PDF est la tonne ANNUELLE :
+# elle se dérive d'une production RÉELLE du devis multipliée par le facteur
+# d'émission du réseau marocain. Les deux « équivalences » qui l'accompagnaient
+# (arbres, cumul 25 ans) ont été retirées de TOUS LES PDF parce qu'aucune
+# source ne les porte (voir plus bas) — ne pas les y réintroduire sans source
+# nommée. PÉRIMÈTRE : les PDF seulement ; ``apps/web`` porte encore ses propres
+# copies (``CO2_KG_PER_TREE_YEAR``, cumul de la page) et n'est pas modifiable
+# depuis cette lane — leur retrait appartient à la lane de la page client.
 #
 # Facteur réseau marocain — mix électrique national, ≈0,81 t CO₂/MWh.
 # SOURCE À PRÉCISER : la valeur est cohérente avec l'ordre de grandeur publié
@@ -58,8 +61,13 @@ PRODUCTIBLE_DEFAUT = 1600
 # AUCUNE citation.
 CO2_T_PAR_MWH = 0.81
 # Absorption annuelle d'un arbre (kg de CO₂/an) — conservée pour les calculs
-# INTERNES existants (agricole), PLUS AUCUN RENDU CLIENT depuis CO2SRC : « 22 »
-# est une référence de vulgarisation sans source vérifiable (l'absorption
-# dépend de l'essence, de l'âge et du climat, d'un facteur 5 au moins). Ne pas
-# la réimprimer sur un document client sans source nommée et datée.
+# INTERNES existants (agricole). « 22 » est une référence de vulgarisation sans
+# source vérifiable (l'absorption dépend de l'essence, de l'âge et du climat,
+# d'un facteur 5 au moins).
+# CO2SRC — PLUS AUCUN RENDU DANS LES PDF : cette lane l'a retirée des trois
+# surfaces PDF qui l'imprimaient (résidentiel cover.py + options.py, agricole
+# economics_page.py). Elle reste AFFICHÉE PAR LE SITE (``apps/web``,
+# ``CO2_KG_PER_TREE_YEAR``), hors du périmètre de cette lane : son retrait de
+# la page client appartient à la lane qui la possède. Ne pas la réimprimer sur
+# un document sans source nommée et datée.
 KG_CO2_PAR_ARBRE_AN = 22
