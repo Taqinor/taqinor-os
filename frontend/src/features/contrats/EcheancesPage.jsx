@@ -707,8 +707,12 @@ function PenaliteSlaDialog({ sla, onClose }) {
               </div>
               <div className="rounded-lg border bg-muted/30 p-3">
                 <p className="text-xs text-muted-foreground">Respect du SLA</p>
-                <Badge tone={resultat.respecte ? 'success' : 'danger'}>
-                  {resultat.respecte ? 'Respecté' : 'Non respecté'}
+                {/* WIR252/Fable — `respecte` est TRI-ÉTAT (bool|null) : sans
+                    `taux_realise` (barème théorique), le serveur renvoie
+                    `null` (indéterminé) — jamais assimilé à un faux
+                    « Non respecté » inventé côté client. */}
+                <Badge tone={resultat.respecte == null ? 'neutral' : resultat.respecte ? 'success' : 'danger'}>
+                  {resultat.respecte == null ? '—' : resultat.respecte ? 'Respecté' : 'Non respecté'}
                 </Badge>
               </div>
               <div className="rounded-lg border bg-muted/30 p-3">

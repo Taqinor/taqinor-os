@@ -188,4 +188,29 @@ describe('WIR252 — calcul de la pénalité SLA (déclaratif)', () => {
 
     await waitFor(() => expect(penaliteSla).toHaveBeenCalledWith(9, {}))
   })
+
+  // Fable — `respecte` est TRI-ÉTAT (bool|null) : le barème théorique (sans
+  // `taux_realise`) renvoie `respecte: null` (indéterminé), jamais assimilé
+  // à un faux « Non respecté » inventé côté client.
+  it('affiche « — » (neutre), jamais « Non respecté », quand respecte est null', async () => {
+    getSla.mockResolvedValueOnce({ data: [SLA] })
+    penaliteSla.mockResolvedValueOnce({ data: {
+      penalite: '500.00', respecte: null, taux_cible: '98.00', taux_realise: null,
+    } })
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Échéances & alertes')).toBeInTheDocument())
+    await userEvent.click(screen.getByRole('tab', { name: /^SLA/ }))
+
+    await userEvent.click(await screen.findByRole('button', { name: /Calculer la pénalité/i }))
+    const dialog = await screen.findByRole('dialog')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Calculer' }))
+
+    await waitFor(() => expect(penaliteSla).toHaveBeenCalledWith(9, {}))
+    // « Taux réalisé » affiche AUSSI « — » (déjà null-tolérant) : on scope
+    // précisément à la carte « Respect du SLA » pour ne pas les confondre.
+    const carteRespect = (await within(dialog).findByText('Respect du SLA')).closest('div')
+    expect(within(carteRespect).getByText('—')).toBeInTheDocument()
+    expect(within(carteRespect).queryByText('Non respecté')).not.toBeInTheDocument()
+    expect(within(carteRespect).queryByText('Respecté')).not.toBeInTheDocument()
+  })
 })
