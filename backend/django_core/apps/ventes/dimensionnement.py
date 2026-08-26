@@ -1648,6 +1648,39 @@ def _compter_modules_batterie(lignes_vue):
     return cinq, dix
 
 
+def _compter_modules_batterie_generique(lignes_vue):
+    """``(nb_modules, module_kwh)`` — GÉNÉRALISATION de
+    :func:`_compter_modules_batterie` à N'IMPORTE QUEL calibre (A1, revue
+    adversariale Fable 26/08/2026) : ``nb_batteries_5``/``nb_batteries_10``
+    rendent ``(0, 0)`` pour un devis dont le module vendu n'est NI 5 NI
+    10 kWh (le Deye BOS-B-Pack16, 16 kWh, un produit RÉEL des gammes) — une
+    composition pourtant bien réelle (prix, capacité) semblerait alors « sans
+    batterie ».
+
+    Une composition est TOUJOURS HOMOGÈNE (BATHOMO — jamais un mélange de
+    calibres) : au plus UN nominal apparaît réellement sur les lignes
+    batterie d'UNE composition. Ce compteur additionne leurs quantités et
+    rend ce nominal-là, quel qu'il soit — jamais restreint à 5/10.
+    ``(0, None)`` si aucune ligne batterie lisible n'est présente — jamais
+    un calibre inventé."""
+    from apps.ventes.services import _parse_kwh
+    total = 0
+    module_kwh = None
+    for ligne in (lignes_vue or []):
+        if ligne.get('role') != 'batterie':
+            continue
+        quantite = int(_num(ligne.get('quantite')))
+        if quantite <= 0:
+            continue
+        nominal = _parse_kwh(ligne.get('designation') or '')
+        if nominal is None or nominal <= 0:
+            continue
+        total += quantite
+        if module_kwh is None:
+            module_kwh = nominal
+    return (total, module_kwh) if total > 0 else (0, None)
+
+
 def _lignes_produit_du_devis(devis):
     """Les LIGNES PRODUIT réellement facturées par ce devis, ou ``[]``.
 
@@ -1838,6 +1871,17 @@ def echelle_paliers_batterie(devis):
       mélange composé côté serveur qui a fait retirer le Dyness 10 kWh du
       stock de production (cf. ``apps.ventes.services.composition_
       residentielle``, ``apps.stock.management.commands.seed_catalogue``) ;
+      restent ``0``/``0`` — MUETS, jamais faux — pour un calibre NI 5 NI
+      10 kWh (le Deye BOS-B-Pack16, 16 kWh, un produit RÉEL des gammes) ;
+    * ``nb_modules`` / ``module_kwh`` (A1, revue adversariale Fable
+      26/08/2026, AJOUT ADDITIF) — la GÉNÉRALISATION de ce même compte à
+      N'IMPORTE QUEL calibre : combien de modules IDENTIQUES la composition
+      contient, et leur capacité NOMINALE (kWh, étiquette — même grandeur que
+      ``nb_batteries_5``/``10``). ``(0, None)`` seulement si aucune batterie
+      n'est composée sur ce palier. Pour un calibre 5 ou 10 kWh,
+      ``nb_modules`` égale ``nb_batteries_5 + nb_batteries_10`` (un seul des
+      deux est non nul) et ``module_kwh`` vaut ``5.0``/``10.0`` — ces deux
+      nouvelles clés ne REMPLACENT PAS les anciennes, elles les complètent ;
     * ``nb_panneaux`` — le champ PV que ce palier EXIGE (voir plus bas) ;
     * ``puissance_kwc`` — ce champ en kWc, au wattage du panneau réel ;
     * ``prix_ttc`` — prix de VENTE TTC de la composition complète, **REMISE DU
@@ -2100,10 +2144,19 @@ def _echelle_paliers_batterie(devis):
         cout = round(_num(vue.get('cout_ttc')) * facteur_remise, 2)
         economie = round(_num(palier['economie_mad']), 2)
         cinq, dix = _compter_modules_batterie(vue.get('lignes'))
+        # A1 (revue adversariale Fable, 26/08/2026) — GÉNÉRALISATION additive :
+        # ``nb_modules``/``module_kwh`` couvrent N'IMPORTE QUEL calibre (le
+        # Deye BOS-B-Pack16, 16 kWh) là où ``nb_batteries_5``/
+        # ``nb_batteries_10`` restent CORRECTS mais MUETS hors 5/10 — les
+        # anciennes clés ne bougent pas (rétrocompatibilité contrat PACT10).
+        nb_modules, module_kwh = _compter_modules_batterie_generique(
+            vue.get('lignes'))
         return {
             'capacite_kwh': capacite,
             'nb_batteries_5': cinq,
             'nb_batteries_10': dix,
+            'nb_modules': nb_modules,
+            'module_kwh': module_kwh,
             'nb_panneaux': int(panneaux),
             'puissance_kwc': round(panneaux * panel_watt / 1000.0, 3),
             'prix_ttc': cout,
