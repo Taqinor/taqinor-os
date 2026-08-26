@@ -13,7 +13,9 @@ import savApi from '../../api/savApi'
 import { formatMAD } from '../../lib/format'
 import crmApi from '../../api/crmApi'
 import installationsApi from '../../api/installationsApi'
+import api from '../../api/axios'
 import { openPdfBlob } from '../../utils/pdfBlob'
+import { useHasPermission } from '../../hooks/useHasPermission'
 import {
   TooltipProvider,
   Button,
@@ -108,7 +110,101 @@ export function Component() {
   // L675 — choix de la date du rapport PDF : { row, date }.
   const [pdfDialog, setPdfDialog] = useState(null)
 
+  // WIR231 — Rentabilité gardée EXCLUSIVEMENT par prix_achat_voir : l'option
+  // n'apparaît même pas dans le Segmented sans la permission (unmount total,
+  // jamais un simple masquage CSS — cf. EquipementFiabilitePanel).
+  const canSeeCouts = useHasPermission('prix_achat_voir')
+
+  // WIR230 — Tournée préventive (FG88) : file des visites dues avec GPS,
+  // triée par proximité SERVEUR (jamais recalculée côté écran).
+  const [tournee, setTournee] = useState([])
+  const [tourneeLoading, setTourneeLoading] = useState(false)
+  const [tourneeError, setTourneeError] = useState(null)
+  const [tourneeSelected, setTourneeSelected] = useState(() => new Set())
+  const [tourneeDate, setTourneeDate] = useState('')
+  const [tourneeTechnicien, setTourneeTechnicien] = useState('')
+  const [tourneeBusy, setTourneeBusy] = useState(false)
+  const [users, setUsers] = useState([]) // technicien assignable (best-effort, réservé admin)
+
+  // WIR231 — Rentabilité par contrat (XSAV18) : revenu/coût/marge, triés par
+  // marge croissante par le SERVEUR (les contrats à perte en premier).
+  const [rentabilite, setRentabilite] = useState([])
+  const [rentabiliteLoading, setRentabiliteLoading] = useState(false)
+  const [rentabiliteError, setRentabiliteError] = useState(null)
+
   const dueOnly = vue === 'dus'
+
+  const loadTournee = () => {
+    setTourneeLoading(true)
+    setTourneeError(null)
+    savApi.getTourneePreventive()
+      .then((r) => setTournee(r.data?.results ?? r.data ?? []))
+      .catch((e) => setTourneeError(e?.response?.data?.detail ?? 'Tournée indisponible.'))
+      .finally(() => setTourneeLoading(false))
+  }
+
+  const loadRentabilite = () => {
+    setRentabiliteLoading(true)
+    setRentabiliteError(null)
+    savApi.getRentabiliteContrats()
+      .then((r) => setRentabilite(r.data?.results ?? r.data ?? []))
+      .catch((e) => setRentabiliteError(
+        e?.response?.data?.detail ?? 'Rentabilité indisponible.'))
+      .finally(() => setRentabiliteLoading(false))
+  }
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
+  useEffect(() => { if (vue === 'tournee') loadTournee() }, [vue])
+  // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
+  useEffect(() => { if (vue === 'rentabilite' && canSeeCouts) loadRentabilite() }, [vue, canSeeCouts])
+  useEffect(() => {
+    // Best-effort (réservé admin) — sinon dropdown technicien vide, comme
+    // TicketsPage.jsx pour la même liste.
+    api.get('/users/').then((r) => setUsers(r.data?.results ?? r.data ?? [])).catch(() => {})
+  }, [])
+
+  const toggleTourneeSelected = (id) => setTourneeSelected((s) => {
+    const next = new Set(s)
+    if (next.has(id)) next.delete(id); else next.add(id)
+    return next
+  })
+
+  const planifierLaTournee = async () => {
+    if (!tourneeSelected.size || !tourneeDate) return
+    setTourneeBusy(true)
+    setTourneeError(null)
+    try {
+      await savApi.planifierTournee({
+        ticket_ids: [...tourneeSelected],
+        date_tournee: tourneeDate,
+        technicien_id: tourneeTechnicien || null,
+      })
+      toast.success('Tournée planifiée.')
+      setTourneeSelected(new Set())
+      loadTournee()
+    } catch (e) {
+      setTourneeError(e?.response?.data?.detail ?? 'Planification impossible.')
+    } finally {
+      setTourneeBusy(false)
+    }
+  }
+
+  // WIR233 — « Facturer maintenant » (FG40) : sort de la file d'exceptions
+  // XCTR5 en émettant la facture immédiatement plutôt que d'attendre le
+  // cycle automatique.
+  const [facturerBusy, setFacturerBusy] = useState(null) // id du contrat en cours
+  const facturerMaintenant = async (row) => {
+    setFacturerBusy(row.id)
+    try {
+      const { data } = await savApi.facturerContrat(row.id)
+      toast.success(`Facture ${data.facture_reference} créée.`)
+      load()
+    } catch (e) {
+      toast.error(e?.response?.data?.detail ?? 'Facturation impossible.')
+    } finally {
+      setFacturerBusy(null)
+    }
+  }
 
   const load = () => {
     setLoading(true)
@@ -356,6 +452,15 @@ export function Component() {
         </span>
       ) : (
         <span className="flex items-center gap-1.5">
+          {/* WIR233 — sort la ligne de la file d'exceptions XCTR5 en
+              facturant tout de suite, sans attendre le cycle automatique. */}
+          {row.facturation_active && (
+            <Button variant="outline" size="sm"
+                    loading={facturerBusy === row.id}
+                    onClick={() => facturerMaintenant(row)}>
+              Facturer maintenant
+            </Button>
+          )}
           <Button variant="outline" size="sm" onClick={() => openRapport(row)}>
             <Download /> Rapport PDF
           </Button>
@@ -393,6 +498,10 @@ export function Component() {
                 { value: 'tous', label: 'Tous' },
                 { value: 'dus', label: 'À venir (dus)' },
                 { value: 'renouveler', label: 'À renouveler' },
+                { value: 'tournee', label: 'Tournée' },
+                // WIR231 — l'option n'existe même pas dans le DOM sans la
+                // permission (unmount total, jamais un simple masquage).
+                ...(canSeeCouts ? [{ value: 'rentabilite', label: 'Rentabilité' }] : []),
               ]}
             />
             <Button variant="outline" size="sm" onClick={generer}>
@@ -535,7 +644,108 @@ export function Component() {
           )}
         </Card>
 
-        {loading ? (
+        {vue === 'tournee' ? (
+          // WIR230 — Tournée préventive (FG88) : ordre SERVEUR (proximité
+          // haversine), jamais retrié côté écran.
+          <Card className="flex flex-col gap-3 p-4">
+            {tourneeError && (
+              <div role="alert"
+                   className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-2.5 text-sm text-destructive">
+                <AlertTriangle className="size-4 shrink-0" aria-hidden="true" />
+                {tourneeError}
+              </div>
+            )}
+            {tourneeLoading ? (
+              <div className="space-y-2">
+                {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}
+              </div>
+            ) : tournee.length === 0 ? (
+              <EmptyState icon={CalendarClock} title="Aucune visite due"
+                          description="Aucune visite préventive due n'a de chantier à tourner." />
+            ) : (
+              <ul className="flex flex-col divide-y divide-border rounded-lg border border-border">
+                {tournee.map((t) => (
+                  <li key={t.id} className="flex items-center gap-3 p-2.5 text-sm">
+                    <Checkbox
+                      checked={tourneeSelected.has(t.id)}
+                      aria-label={`Sélectionner ${t.reference}`}
+                      onCheckedChange={() => toggleTourneeSelected(t.id)}
+                    />
+                    <span className="flex-1">
+                      {t.reference} — {t.client_nom ?? '—'}
+                      {t.distance_km != null && (
+                        <span className="text-muted-foreground"> · {Number(t.distance_km).toFixed(1)} km</span>
+                      )}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="flex flex-wrap items-end gap-3">
+              <FormField label="Date de tournée">
+                <Input type="date" value={tourneeDate}
+                       onChange={(e) => setTourneeDate(e.target.value)} />
+              </FormField>
+              <FormField label="Technicien (optionnel)">
+                <Select value={tourneeTechnicien || '__none'}
+                        onValueChange={(v) => setTourneeTechnicien(v === '__none' ? '' : v)}>
+                  <SelectTrigger className="w-48"><SelectValue placeholder="— Technicien —" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none">— Technicien —</SelectItem>
+                    {users.map((u) => (
+                      <SelectItem key={u.id} value={String(u.id)}>{u.username}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </FormField>
+              <Button
+                disabled={!tourneeSelected.size || !tourneeDate}
+                loading={tourneeBusy}
+                onClick={planifierLaTournee}
+              >
+                Planifier la tournée
+              </Button>
+            </div>
+          </Card>
+        ) : vue === 'rentabilite' && canSeeCouts ? (
+          // WIR231 — revenu/coût/marge par contrat, triés par le SERVEUR
+          // (marge croissante — les contrats à perte en premier).
+          <Card className="p-4">
+            {rentabiliteError && (
+              <div role="alert"
+                   className="mb-3 flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-2.5 text-sm text-destructive">
+                <AlertTriangle className="size-4 shrink-0" aria-hidden="true" />
+                {rentabiliteError}
+              </div>
+            )}
+            {rentabiliteLoading ? (
+              <div className="space-y-2">
+                {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}
+              </div>
+            ) : rentabilite.length === 0 ? (
+              <EmptyState icon={ClipboardList} title="Aucune donnée de rentabilité" />
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-muted-foreground">
+                    <th>Client</th><th>Revenu</th><th>Coût</th><th>Marge</th><th>Marge / visite</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rentabilite.map((r) => (
+                    <tr key={r.contrat_id} className="border-t border-border">
+                      <td>{r.client_nom ?? `Contrat #${r.contrat_id}`}</td>
+                      <td>{fmtDH(r.revenu)}</td>
+                      <td>{fmtDH(r.cout)}</td>
+                      <td className={r.marge < 0 ? 'text-destructive' : undefined}>{fmtDH(r.marge)}</td>
+                      <td>{r.marge_par_visite != null ? fmtDH(r.marge_par_visite) : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </Card>
+        ) : loading ? (
           // L329 — état de chargement explicite.
           <Card className="space-y-2 p-4">
             {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}
