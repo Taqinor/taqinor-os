@@ -465,6 +465,10 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
     technicien_responsable: current.technicien_responsable ?? '',
     date_resolution: current.date_resolution ?? '',
     cout: current.cout ?? '',
+    // WIR233/ZMFG5 — distinct de `description` (motif signalé) et du chatter
+    // (notes) : instructions D'INTERVENTION, éditables, avec suggestions KB
+    // en pré-remplissage (jamais une écriture auto — voir insererSuggestionKb).
+    instructions: current.instructions ?? '',
   }), [current])
 
   const [fields, setFields] = useState(initialFields)
@@ -506,8 +510,72 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
   const [motif, setMotif] = useState('')
   const [confirmVide, setConfirmVide] = useState(false) // L300 — confirmation motif vide
 
+  // WIR232/ZMFG8/XMFG10 — vue unifiée Ajout/Retrait/Recyclage des pièces
+  // (getTicketPiecesUnifiees existait déjà, sans aucun appelant) + formulaire
+  // de retrait TRAÇABLE (le « Retirer » de la section « Pièces consommées »
+  // ci-dessus SUPPRIME la consommation sans laisser de trace ; ceci crée un
+  // PieceRetiree distinct avec sa destination).
+  const [piecesUnifiees, setPiecesUnifiees] = useState(null)
+  const [retirerForm, setRetirerForm] = useState({
+    produit: '', quantite: '1', destination: 'rebut', operation: 'retrait',
+    numero_serie: '',
+  })
+  const [retirerBusy, setRetirerBusy] = useState(false)
+  const [retirerError, setRetirerError] = useState(null)
+
+  // WIR233/ZMFG5 — suggestions KB pour pré-remplir « Instructions » : simple
+  // INSERTION dans le champ local (`fields.instructions`), jamais une
+  // écriture serveur tant que le ticket n'est pas explicitement enregistré.
+  const [kbSuggestions, setKbSuggestions] = useState(null) // null = jamais chargées
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false)
+  const chargerSuggestionsKb = () => {
+    setSuggestionsLoading(true)
+    savApi.getInstructionsSuggestions(id)
+      .then((r) => setKbSuggestions(r.data?.results ?? r.data ?? []))
+      .catch(() => setKbSuggestions([]))
+      .finally(() => setSuggestionsLoading(false))
+  }
+  const insererSuggestionKb = (article) => {
+    set('instructions', fields.instructions
+      ? `${fields.instructions}\n\n${article.corps}`
+      : article.corps)
+  }
+
   const loadPieces = () => {
     savApi.getTicketPieces(id).then((r) => setPieces(r.data)).catch(() => {})
+  }
+  const loadPiecesUnifiees = () => {
+    // Optionnel comme `getPiecesCompatibles` ci-dessus : des mocks partiels
+    // préexistants dans d'autres tests rendent TicketDetail sans forcément
+    // mocker cette méthode.
+    savApi.getTicketPiecesUnifiees?.(id)
+      ?.then((r) => setPiecesUnifiees(r.data)).catch?.(() => {})
+  }
+  const retirerPiece = async () => {
+    if (!retirerForm.produit) return
+    setRetirerBusy(true)
+    setRetirerError(null)
+    try {
+      await savApi.retirerTicketPiece(id, {
+        produit: retirerForm.produit,
+        quantite: retirerForm.quantite,
+        destination: retirerForm.destination,
+        operation: retirerForm.operation,
+        numero_serie: retirerForm.numero_serie || undefined,
+      })
+      toast.success('Pièce retirée.')
+      // WIR232 — 400 : le formulaire ne se vide QUE sur succès.
+      setRetirerForm({
+        produit: '', quantite: '1', destination: 'rebut', operation: 'retrait',
+        numero_serie: '',
+      })
+      loadPiecesUnifiees()
+      loadHistorique()
+    } catch (err) {
+      setRetirerError(frError(err, 'Retrait impossible.'))
+    } finally {
+      setRetirerBusy(false)
+    }
   }
 
   const reloadAll = async () => {
@@ -528,6 +596,7 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
     loadHistorique()
     loadInterventions()
     loadPieces()
+    loadPiecesUnifiees()
     api.get('/stock/produits/')
       .then((r) => setProduits(r.data?.results ?? r.data ?? [])).catch(() => {})
     // WIR117/XSAV25 — pièces compatibles avec l'équipement lié (compatibles
@@ -614,6 +683,10 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
         equipement: fields.equipement === '' ? null : fields.equipement,
         technicien_responsable: fields.technicien_responsable === '' ? null : fields.technicien_responsable,
         cout: nullable(fields.cout),
+        // WIR233 — `instructions` (TextField blank=True) : jamais nullifiée,
+        // une chaîne vide est une valeur normale (comme `description` avant
+        // `nullable()`).
+        instructions: fields.instructions ?? '',
       }
       // date_resolution reste PATCHable directement (pas de action dédiée) ;
       // auto-tamponnée si le statut cible est resolu/cloture et qu'elle est
@@ -1303,6 +1376,124 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
               <Plus /> Ajouter la pièce
             </Button>
           </div>
+        </CollapsibleSection>
+
+        {/* ── Pièces du ticket (WIR232/ZMFG8) : vue unifiée Ajout/Retrait/
+            Recyclage + formulaire de retrait traçable ── */}
+        <CollapsibleSection icon={Wrench} title="Pièces du ticket (Ajout / Retrait / Recyclage)">
+          {!piecesUnifiees || piecesUnifiees.lignes.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Aucune pièce enregistrée.</p>
+          ) : (
+            <ul className="flex flex-col divide-y divide-border rounded-lg border border-border"
+                data-testid="pieces-unifiees-liste">
+              {piecesUnifiees.lignes.map((l) => (
+                <li key={`${l.operation}-${l.id}`} className="flex items-center gap-2 p-2.5 text-sm">
+                  <Badge tone={l.operation === 'ajout' ? 'info' : l.operation === 'recyclage' ? 'success' : 'warning'}>
+                    {l.operation === 'ajout' ? 'Ajout' : l.operation === 'recyclage' ? 'Recyclage' : 'Retrait'}
+                  </Badge>
+                  <span className="flex-1">
+                    {l.produit_nom ?? `Produit #${l.produit_id}`} × {l.quantite}
+                    {l.destination && <span className="text-muted-foreground"> — {l.destination}</span>}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <div className="grid items-end gap-3 sm:grid-cols-[2fr_auto_1fr_1fr_1fr]">
+            <FormField label="Produit">
+              {/* aria-label distinct du sélecteur « Produit » de la section
+                  « Pièces consommées » ci-dessus (même libellé visuel, deux
+                  contrôles). */}
+              <Select value={retirerForm.produit ? String(retirerForm.produit) : '__none'}
+                      onValueChange={(v) => setRetirerForm((s) => ({ ...s, produit: v === '__none' ? '' : v }))}>
+                <SelectTrigger aria-label="Produit à retirer"><SelectValue placeholder="— Produit —" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none">— Produit —</SelectItem>
+                  {produits.map((pr) => (
+                    <SelectItem key={pr.id} value={String(pr.id)}>
+                      {pr.nom}{pr.sku ? ` (${pr.sku})` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormField>
+            <FormField label="Qté" className="w-24">
+              <Input type="number" min="0" step="any" value={retirerForm.quantite}
+                     onChange={(e) => setRetirerForm((s) => ({ ...s, quantite: e.target.value }))} />
+            </FormField>
+            <FormField label="Destination">
+              <Select value={retirerForm.destination}
+                      onValueChange={(v) => setRetirerForm((s) => ({ ...s, destination: v }))}>
+                <SelectTrigger aria-label="Destination"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="rebut">Rebut</SelectItem>
+                  <SelectItem value="retour_fournisseur">Retour fournisseur</SelectItem>
+                  <SelectItem value="stock_occasion">Stock occasion</SelectItem>
+                </SelectContent>
+              </Select>
+            </FormField>
+            <FormField label="Opération">
+              <Select value={retirerForm.operation}
+                      onValueChange={(v) => setRetirerForm((s) => ({ ...s, operation: v }))}>
+                <SelectTrigger aria-label="Opération"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="retrait">Retrait</SelectItem>
+                  <SelectItem value="recyclage">Recyclage</SelectItem>
+                </SelectContent>
+              </Select>
+            </FormField>
+            <FormField label="N° de série" hint="optionnel">
+              <Input value={retirerForm.numero_serie}
+                     onChange={(e) => setRetirerForm((s) => ({ ...s, numero_serie: e.target.value }))} />
+            </FormField>
+            <div className="sm:col-span-full">
+              <Button type="button" variant="outline" size="sm"
+                      loading={retirerBusy} disabled={!retirerForm.produit} onClick={retirerPiece}>
+                <Trash2 /> Retirer une pièce
+              </Button>
+            </div>
+          </div>
+          {retirerError && (
+            <div role="alert"
+                 className="mt-2 flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-2.5 text-sm text-destructive">
+              <AlertTriangle className="size-4 shrink-0" aria-hidden="true" />
+              {retirerError}
+            </div>
+          )}
+        </CollapsibleSection>
+
+        {/* ── Instructions (WIR233/ZMFG5) — distinct de la description et du
+            chatter ; enregistrée avec le reste du ticket (bouton Enregistrer
+            de la fiche, même mécanisme que les autres champs `fields`). ── */}
+        <CollapsibleSection icon={FileText} title="Instructions">
+          <FormField label="Instructions d'intervention" htmlFor="ticket-instructions">
+            <Textarea id="ticket-instructions" rows={4} value={fields.instructions}
+                      onChange={(e) => set('instructions', e.target.value)} />
+          </FormField>
+          <div>
+            <Button type="button" variant="outline" size="sm"
+                    loading={suggestionsLoading} onClick={chargerSuggestionsKb}>
+              <Sparkles /> Suggestions KB
+            </Button>
+          </div>
+          {kbSuggestions != null && (
+            kbSuggestions.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Aucune suggestion pour ce ticket.</p>
+            ) : (
+              <ul className="flex flex-col divide-y divide-border rounded-lg border border-border">
+                {kbSuggestions.map((a) => (
+                  <li key={a.id ?? a.titre} className="flex items-center gap-2 p-2.5 text-sm">
+                    <span className="flex-1">{a.titre}</span>
+                    <Button type="button" variant="ghost" size="sm"
+                            onClick={() => insererSuggestionKb(a)}>
+                      Insérer
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )
+          )}
         </CollapsibleSection>
 
         {/* ── Historique (chatter) — L313 repliable ── */}
