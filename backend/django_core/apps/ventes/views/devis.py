@@ -196,6 +196,11 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             # `permission_classes` de l'@action ne suffit PAS : get_permissions
             # PRIME et son repli est IsAdminRole).
             'suivi_partage', 'prefill_site',
+            # WIR217 — état du rendu PDF : une LECTURE pure, ouverte au même
+            # périmètre que la lecture du devis (la garde doit être ICI, cette
+            # surcharge PRIMANT sur le `permission_classes` de l'@action, qui
+            # déclare donc la MÊME classe pour ne jamais mentir).
+            'etat_pdf',
         ]:
             # variante_config : la LECTURE est ouverte à tous ; l'ÉCRITURE (PUT)
             # est re-vérifiée dans l'action (Directeur / Commercial responsable).
@@ -2526,10 +2531,57 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         from core.events import document_pdf_generated
         document_pdf_generated.send(
             sender=Devis, instance=devis, kind='devis')
+        # WIR217 — une nouvelle demande efface l'échec consigné : sinon un
+        # « Réessayer » repartirait déjà marqué en échec.
+        from ..tasks import oublier_echec_pdf_devis
+        oublier_echec_pdf_devis(devis.id)
         return Response(
             {'task_id': task.id, 'detail': 'Génération PDF lancée.'},
             status=status.HTTP_202_ACCEPTED,
         )
+
+    @action(
+        detail=True,
+        methods=['get'],
+        url_path='etat-pdf',
+        # Même garde que la LECTURE d'un devis (cf. get_permissions) : c'est un
+        # état de rendu, pas une donnée métier de plus.
+        permission_classes=[IsAnyRole],
+    )
+    def etat_pdf(self, request, pk=None):
+        """WIR217 — état de la génération du PDF : prêt / en cours / ÉCHEC.
+
+        Le sondage du frontend ne lisait que ``fichier_pdf`` : un échec
+        DÉFINITIF de ``task_generate_devis_pdf`` (retries épuisés) était donc
+        invisible et le sondage tournait sans fin. Cet endpoint expose l'état
+        consigné par la tâche (patron EXPORT_JOB, cache scopé société).
+
+        ``erreur``/``date`` ne sont renseignés QUE sur l'état ``echec`` ; un
+        rendu déjà prêt l'emporte toujours sur un échec plus ancien.
+        """
+        from django.core.cache import cache
+        from ..tasks import pdf_job_cache_key
+
+        devis = self.get_object()  # scoping société (404 hors société)
+        job = cache.get(pdf_job_cache_key(devis.pk)) or {}
+        # Défense en profondeur : jamais l'état d'une AUTRE société, même si
+        # une clé de cache venait à collisionner.
+        if job.get('company_id') not in (None, devis.company_id):
+            job = {}
+        pret = bool(devis.fichier_pdf)
+        if pret:
+            statut = 'pret'
+        elif job.get('status') == 'error':
+            statut = 'echec'
+        else:
+            statut = 'en_cours'
+        return Response({
+            'devis': devis.pk,
+            'statut': statut,
+            'fichier_pdf': pret,
+            'erreur': job.get('error') if statut == 'echec' else None,
+            'date': job.get('at') if statut == 'echec' else None,
+        })
 
     @action(
         detail=True,

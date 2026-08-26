@@ -42,6 +42,11 @@ const ventesApi = {
   patchDevis: (id, data) => api.patch(`/ventes/devis/${id}/`, data),
   deleteDevis: (id) => api.delete(`/ventes/devis/${id}/`),
   genererPdfDevis: (id, options = {}) => api.post(`/ventes/devis/${id}/generer-pdf/`, options),
+  // WIR217 — état du rendu PDF : `pret` | `en_cours` | `echec` (+ `erreur`).
+  // Le sondage lisait `fichier_pdf` SEUL : un échec définitif de la tâche
+  // Celery (retries épuisés) était invisible et la boucle tournait sans fin.
+  // Contrat : apps/ventes/contract_samples/devis_etat_pdf.json.
+  etatPdfDevis: (id) => api.get(`/ventes/devis/${id}/etat-pdf/`),
   telechargerPdfDevis: (id) => api.get(`/ventes/devis/${id}/telecharger-pdf/`, { responseType: 'blob' }),
   // Proposition client (chemin canonique /proposal) — rendue à la volée selon
   // le format (pdf_mode/onepage/full, include_etude…), récupérée en blob pour

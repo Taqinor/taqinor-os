@@ -1266,6 +1266,22 @@ export default function DevisList() {
   // et le polling se poursuit à un rythme plus espacé, sans jamais relancer un
   // second job (un seul dispatch(genererPdfDevis) par appel de genererUnPdf).
   const [pdfSlowPoll, setPdfSlowPoll] = useState({}) // id → true
+  // WIR217 — les minuteries de sondage PDF, et le drapeau d'annulation. Sans
+  // eux, quitter l'écran pendant une génération laissait la boucle vivante :
+  // elle continuait d'appeler l'API et de poser du state sur un composant
+  // démonté, indéfiniment. `clearTimeout` au démontage + garde en tête de
+  // boucle (une requête peut être en vol au moment du démontage).
+  const pollTimers = useRef({}) // id → handle de setTimeout
+  const pollAnnule = useRef(false)
+  useEffect(() => {
+    pollAnnule.current = false
+    const timers = pollTimers.current
+    return () => {
+      pollAnnule.current = true
+      Object.values(timers).forEach(clearTimeout)
+      pollTimers.current = {}
+    }
+  }, [])
   const [pdfDownloading, setPdfDownloading] = useState({}) // id → true
   const [statutActionId, setStatutActionId] = useState(null) // envoi/refus en cours
   // APX14 — le devis dont l'aperçu inline est ouvert (null = panneau fermé).
@@ -2035,22 +2051,44 @@ export default function DevisList() {
     try {
       await dispatch(genererPdfDevis({ id: d.id, options: buildPdfOptions(d) })).unwrap()
       let attempts = 0
+      // WIR217 — le drapeau « lent » était lu dans `pdfSlowPoll[d.id]`, une
+      // CLÔTURE PÉRIMÉE figée à `false` à la création de la boucle : la
+      // condition restait vraie et le toast « toujours en cours » repartait
+      // TOUTES LES 10 s. Un booléen LOCAL à cette boucle le dit UNE fois.
+      let slowAnnonce = false
       // QX21 — 15 tentatives × 2 s = 30 s au rythme rapide ; passé ce cap, le
       // job Celery n'est PAS relancé (un seul dispatch a eu lieu ci-dessus) —
       // on continue simplement à interroger, plus espacé (10 s), et on affiche
       // « toujours en cours » au lieu d'abandonner silencieusement.
       const FAST_ATTEMPTS = 15
       const poll = async () => {
+        // WIR217 — plus AUCUN sondage après démontage de l'écran.
+        if (pollAnnule.current) return
         const slow = attempts >= FAST_ATTEMPTS
         attempts += 1
-        if (slow && !pdfSlowPoll[d.id]) {
+        if (slow && !slowAnnonce) {
+          slowAnnonce = true
           setPdfSlowPoll(prev => ({ ...prev, [d.id]: true }))
           if (autoOpen) {
             toast(`${d.reference} : le PDF est toujours en cours de génération — la page continue de vérifier automatiquement.`)
           }
         }
         try {
-          const res = await ventesApi.getDevisById(d.id)
+          // WIR217 — on lit l'ÉTAT du rendu (contrat
+          // apps/ventes/contract_samples/devis_etat_pdf.json), pas seulement
+          // `fichier_pdf` : un échec DÉFINITIF de la tâche Celery (retries
+          // épuisés) était invisible et cette boucle ne s'arrêtait jamais.
+          const res = await ventesApi.etatPdfDevis(d.id)
+          if (res.data.statut === 'echec') {
+            // État TERMINAL : on arrête le sondage et on rend l'échec
+            // ACTIONNABLE (le message du serveur nomme la cause).
+            setPdfSlowPoll(prev => ({ ...prev, [d.id]: false }))
+            toast.error(
+              `${d.reference} : la génération du PDF a échoué${res.data.erreur ? ` — ${res.data.erreur}` : '.'}`,
+              { action: { label: 'Réessayer', onClick: () => genererUnPdf(d, { autoOpen }) } },
+            )
+            return
+          }
           if (res.data.fichier_pdf) {
             dispatch(fetchDevis())
             setPdfSlowPoll(prev => ({ ...prev, [d.id]: false }))
@@ -2080,11 +2118,11 @@ export default function DevisList() {
               }
             }
           } else {
-            setTimeout(poll, slow ? 10000 : 2000)
+            pollTimers.current[d.id] = setTimeout(poll, slow ? 10000 : 2000)
           }
         } catch { /* ignore poll errors — la boucle continue */ }
       }
-      setTimeout(poll, 2000)
+      pollTimers.current[d.id] = setTimeout(poll, 2000)
       return true
     } catch (err) {
       // T11 — surface claire de l'absence d'onduleur (ValueError moteur premium).
