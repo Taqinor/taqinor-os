@@ -1372,6 +1372,8 @@ class OffreTailleRegenerationSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 'Taille inconnue : attendu %s.' % ', '.join(CLES))
         return value
+
+
 class PlanCommissionSerializer(serializers.ModelSerializer):
     """WIR281/XSAL6 - plan de commission d'un commercial (ou plan PAR DEFAUT
     de la societe quand ``owner`` est nul).
