@@ -648,7 +648,10 @@ function RosterDialog({ employes, onClose, onSaved }) {
 
   const dirty = Boolean(employe || equipe || date || note)
   const closeIfConfirmed = () => { if (confirmLeaveIfDirty(dirty)) onClose?.() }
-  const valide = Boolean(employe && date)
+  // WIR238-fix — `AffectationRoster.equipe` est un CharField SANS `blank` côté
+  // serveur (`validate_equipe` refuse '' avec « L'équipe est obligatoire. ») :
+  // le formulaire ne doit jamais laisser croire qu'elle est optionnelle.
+  const valide = Boolean(employe && date && equipe.trim())
 
   const submit = async (e) => {
     e.preventDefault()
@@ -659,13 +662,19 @@ function RosterDialog({ employes, onClose, onSaved }) {
       // WIR238 — jamais `semaine_du`/`conflit_conge` : calculés côté serveur
       // (services.appliquer_roster) à chaque création/mise à jour.
       await rhApi.createRoster({
-        employe, equipe: equipe || '', date, creneau, note: note || '',
+        employe, equipe: equipe.trim(), date, creneau, note: note || '',
       })
       toast.success('Affectation créée.')
       onSaved?.()
     } catch (err) {
       const data = err?.response?.data
-      setServerError(data?.detail || 'Création de l’affectation impossible.')
+      // WIR238-fix — une erreur de champ DRF (ex. `equipe`) prime sur le
+      // message générique : sinon le vrai motif du 400 est avalé en silence.
+      const champErr = data && typeof data === 'object'
+        ? (data.equipe ?? Object.values(data).find(Boolean))
+        : null
+      const message = Array.isArray(champErr) ? champErr[0] : champErr
+      setServerError(message || data?.detail || 'Création de l’affectation impossible.')
     } finally {
       setSaving(false)
     }
@@ -686,8 +695,8 @@ function RosterDialog({ employes, onClose, onSaved }) {
               </select>
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="ro-equipe">Équipe (optionnel)</Label>
-              <Input id="ro-equipe" value={equipe} onChange={(e) => setEquipe(e.target.value)} />
+              <Label htmlFor="ro-equipe">Équipe</Label>
+              <Input id="ro-equipe" value={equipe} onChange={(e) => setEquipe(e.target.value)} placeholder="Obligatoire" />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">

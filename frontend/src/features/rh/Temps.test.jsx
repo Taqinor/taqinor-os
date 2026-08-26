@@ -234,14 +234,51 @@ describe('Temps — WIR238 : roster (création + conflits de congé)', () => {
     fireEvent.click((await screen.findAllByRole('button', { name: /Nouvelle affectation/ }))[0])
     const dialog = within(await screen.findByRole('dialog'))
     fireEvent.change(dialog.getByLabelText('Employé'), { target: { value: '9' } })
+    // WIR238-fix — l'équipe est OBLIGATOIRE côté serveur (validate_equipe).
+    fireEvent.change(dialog.getByLabelText('Équipe'), { target: { value: 'Équipe A' } })
     fireEvent.change(dialog.getByLabelText('Date'), { target: { value: '2026-08-20' } })
     fireEvent.click(dialog.getByRole('button', { name: 'Créer l’affectation' }))
 
     await waitFor(() => expect(rhApi.createRoster).toHaveBeenCalledWith(
-      expect.objectContaining({ employe: '9', date: '2026-08-20', creneau: 'journee' }),
+      expect.objectContaining({ employe: '9', equipe: 'Équipe A', date: '2026-08-20', creneau: 'journee' }),
     ))
     expect(rhApi.createRoster.mock.calls[0][0]).not.toHaveProperty('semaine_du')
     expect(rhApi.createRoster.mock.calls[0][0]).not.toHaveProperty('conflit_conge')
+  })
+
+  it('WIR238-fix — une équipe vide bloque la soumission (bouton désactivé, aucun appel)', async () => {
+    renderTemps()
+    await screen.findAllByText('Temps & présence')
+    fireEvent.click(screen.getByRole('radio', { name: 'Roster' }))
+
+    fireEvent.click((await screen.findAllByRole('button', { name: /Nouvelle affectation/ }))[0])
+    const dialog = within(await screen.findByRole('dialog'))
+    fireEvent.change(dialog.getByLabelText('Employé'), { target: { value: '9' } })
+    fireEvent.change(dialog.getByLabelText('Date'), { target: { value: '2026-08-20' } })
+    // Équipe volontairement laissée vide.
+    expect(dialog.getByRole('button', { name: 'Créer l’affectation' })).toBeDisabled()
+
+    fireEvent.click(dialog.getByRole('button', { name: 'Créer l’affectation' }))
+    expect(rhApi.createRoster).not.toHaveBeenCalled()
+  })
+
+  it('WIR238-fix — un 400 { equipe: [...] } affiche le message de champ, jamais le générique', async () => {
+    rhApi.createRoster.mockRejectedValueOnce({
+      response: { data: { equipe: ["L'équipe est obligatoire."] } },
+    })
+    renderTemps()
+    await screen.findAllByText('Temps & présence')
+    fireEvent.click(screen.getByRole('radio', { name: 'Roster' }))
+
+    fireEvent.click((await screen.findAllByRole('button', { name: /Nouvelle affectation/ }))[0])
+    const dialog = within(await screen.findByRole('dialog'))
+    fireEvent.change(dialog.getByLabelText('Employé'), { target: { value: '9' } })
+    fireEvent.change(dialog.getByLabelText('Équipe'), { target: { value: 'Équipe A' } })
+    fireEvent.change(dialog.getByLabelText('Date'), { target: { value: '2026-08-20' } })
+    fireEvent.click(dialog.getByRole('button', { name: 'Créer l’affectation' }))
+
+    expect(await dialog.findByText("L'équipe est obligatoire.")).toBeInTheDocument()
+    expect(dialog.queryByText('Création de l’affectation impossible.')).toBeNull()
   })
 
   it('affiche le bandeau de conflits (30 j) et la colonne Conflit congé', async () => {
