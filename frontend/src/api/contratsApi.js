@@ -304,6 +304,19 @@ const contratsApi = {
   // Génération d'un devis de renouvellement — CONTRAT23.
   genererDevisRenouvellement: (id, data) =>
     api.post(`/contrats/contrats/${id}/generer-devis-renouvellement/`, data ?? {}),
+
+  /* ---------------- Abonnements (PACT138) — import/export CSV/xlsx ---------------- */
+  // NTSUB31 — Import CSV en masse de compteurs d'usage. `data` :
+  // { contenu, apercu?, ecraser? }. GARDE-FOU « écrasement » : `apercu:true`
+  // rejoue le rapprochement SANS RIEN ÉCRIRE ; sans `ecraser:true` un relevé
+  // déjà saisi n'est jamais remplacé (repart dans `refuses`, jamais avalé
+  // en silence).
+  importerCompteursUsageCsv: (data) =>
+    api.post('/contrats/compteurs-usage/import-csv/', data),
+  // NTSUB21 — Export .xlsx du catalogue d'abonnement (plans/add-ons/paliers,
+  // un onglet par catalogue). Lecture seule.
+  exportCatalogueAbonnement: () =>
+    api.get('/contrats/plans-abonnement/export/', { responseType: 'blob' }),
 }
 
 /* ============================================================================
