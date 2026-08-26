@@ -266,6 +266,48 @@ class TestSeedCatalogue(TestCase):
         self.assertFalse(Produit.objects.filter(
             company=self.company, sku='OND-DEY-20K-LV').exists())
 
+    def test_bathomo_bat_dey_10_archive_sur_base_neuve(self):
+        """BATHOMO (fondateur 26/08/2026) — le Dyness 10 kWh a été retiré du
+        stock de production : le simulateur composait des banques MÉLANGÉES
+        (un module 5 kWh + un module 10 kWh pour viser 15 kWh), interdit
+        électriquement (cf. ``apps.ventes.services.composition_residentielle``,
+        désormais homogène). Sur une société NEUVE, le seeder crée toujours la
+        ligne (prix/fiche/garantie inchangés — appariement par SKU, comme
+        ``ARTEFACTS_ONDULEUR_SKUS``) mais l'ARCHIVE dans le MÊME run — jamais
+        active au chiffrage automatique."""
+        seed(self.company)
+        bat10 = Produit.objects.get(company=self.company, sku='BAT-DEY-10')
+        self.assertTrue(bat10.is_archived)
+        self.assertEqual(bat10.prix_vente, Decimal('25000.00'))  # 30 000 TTC
+
+    def test_bathomo_bat_dey_10_deja_actif_est_archive_pas_supprime(self):
+        """Une base où BAT-DEY-10 était encore ACTIF (avant ce correctif, ou
+        remis actif par erreur) se voit archivée au prochain redéploiement —
+        jamais supprimée, prix et quantité intacts (règle seeder additive)."""
+        seed(self.company)
+        bat10 = Produit.objects.get(company=self.company, sku='BAT-DEY-10')
+        bat10.is_archived = False
+        bat10.save(update_fields=['is_archived'])
+        prix_avant, qte_avant = bat10.prix_vente, bat10.quantite_stock
+
+        seed(self.company)  # redéploiement (scripts/deploy-prod.ps1)
+
+        bat10.refresh_from_db()
+        self.assertTrue(bat10.is_archived)
+        self.assertEqual(bat10.prix_vente, prix_avant)
+        self.assertEqual(bat10.quantite_stock, qte_avant)
+
+    def test_bathomo_bat_dey_10_absent_du_catalogue_de_composition(self):
+        """Archivé ⇒ exclu de ``catalogue_de_la_societe`` (filtre
+        ``is_archived=False``) : le chiffrage automatique ne peut plus jamais
+        composer une banque avec ce module, tandis que le 5 kWh reste au
+        vivier."""
+        from apps.ventes.services import catalogue_de_la_societe
+        seed(self.company)
+        skus = {p.sku for p in catalogue_de_la_societe(self.company)}
+        self.assertNotIn('BAT-DEY-10', skus)
+        self.assertIn('BAT-DEY-5', skus)
+
     def test_pvond_completer_les_specs_ne_resynchronise_aucun_devis(self):
         """PVSYNC — vérification du chemin de resynchronisation.
 

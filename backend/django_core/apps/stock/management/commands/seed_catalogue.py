@@ -70,6 +70,12 @@ CATALOGUE = [
     # doublon), que la migration de renommage soit passée ou non.
     # Prix fondateur 25/08/2026 : 17 000 → 14 000 TTC (migration stock 0131
     # recale les bases existantes, gardée par l'ancienne valeur).
+    # BATHOMO (fondateur 26/08/2026) — BAT-DEY-10 RETIRÉ du stock de
+    # production (composition mélangée 5+10 kWh interdite électriquement,
+    # cf. ``services.composition_residentielle``) : la ligne RESTE ici pour
+    # que prix/fiche/garantie ne bougent pas sur une base qui la porte déjà
+    # (appariement par SKU), mais elle est ARCHIVÉE en fin de run (voir
+    # ``ARTEFACTS_BATTERIE_SKUS`` plus bas) — jamais active au chiffrage.
     ('Batterie Dyness 5 kWh',  'BAT-DEY-5',  'Batteries', 14000, 13000, 500, 5),
     ('Batterie Dyness 10 kWh', 'BAT-DEY-10', 'Batteries', 30000, 22000, 500, 5),
     ('Batterie Lithium 5 kWh',  'BAT-LIT-5',  'Batteries', 15500, 13200, 500, 5),
@@ -241,6 +247,22 @@ ARTEFACTS_ONDULEUR_SKUS = [
     # « SG01HP3 haute tension » des 15/20 kW : le parc réel n'a QUE du basse
     # tension (OND-H-DEY-15T/20T = SG05LP3). Archivés, jamais supprimés.
     'OND-DEY-15K-LV', 'OND-DEY-20K-LV',
+]
+
+# BATHOMO (fondateur 26/08/2026) — le Dyness 10 kWh RETIRÉ du stock de
+# production : le simulateur composait des banques MÉLANGÉES (un module 5 kWh
+# + un module 10 kWh pour viser 15 kWh), un mélange électriquement interdit
+# (une banque ne peut être qu'un empilage de modules IDENTIQUES). La correction
+# racine vit dans ``apps.ventes.services.composition_residentielle`` (banques
+# désormais toujours homogènes, un seul calibre par palier) ; côté catalogue,
+# MÊME patron que ``ARTEFACTS_ONDULEUR_SKUS`` ci-dessus : le SKU reste dans
+# ``CATALOGUE`` (prix/fiche/garantie inchangés — une base de production qui le
+# porte déjà n'est ni modifiée ni recréée, matché par SKU d'abord) mais sort
+# du catalogue de composition en ARCHIVÉ, jamais supprimé — un futur run du
+# seeder (nouvelle société, redéploiement) ne peut donc plus le faire
+# réapparaître ACTIF au chiffrage automatique.
+ARTEFACTS_BATTERIE_SKUS = [
+    'BAT-DEY-10',
 ]
 
 # ── Pompes OSP série 30 (3", immergées, triphasées 380 V) ────────────────────
@@ -1649,9 +1671,14 @@ class Command(BaseCommand):
         # PVOND (2026-08-18) — MÊME patron pour les deux ARTEFACTS onduleur
         # Huawei mono 10/12 kW (``ARTEFACTS_ONDULEUR_SKUS``) : archivés, donc
         # hors catalogue de composition, jamais supprimés.
+        # BATHOMO (2026-08-26) — MÊME patron pour le Dyness 10 kWh retiré du
+        # stock (``ARTEFACTS_BATTERIE_SKUS``) : archivé, donc hors catalogue de
+        # composition (``catalogue_de_la_societe`` filtre ``is_archived=False``),
+        # jamais supprimé.
         archived_count = Produit.objects.filter(
             company=company,
-            sku__in=PLACEHOLDER_VFD_SKUS + ARTEFACTS_ONDULEUR_SKUS,
+            sku__in=(PLACEHOLDER_VFD_SKUS + ARTEFACTS_ONDULEUR_SKUS
+                     + ARTEFACTS_BATTERIE_SKUS),
             is_archived=False).update(is_archived=True)
 
         # ── Fiches commerciales : mise à jour ADDITIVE des seuls champs
