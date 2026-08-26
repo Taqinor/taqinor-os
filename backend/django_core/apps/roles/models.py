@@ -348,6 +348,43 @@ ALL_PERMISSIONS = [
     'scm_sop_voir',
     'scm_sop_animer',
     'scm_fournisseurs_classement_voir',
+    # ── WIR169 — codes DÉCLARÉS par des viewsets mais ABSENTS du catalogue.
+    # Bug de câblage, pas de politique : ces six codes sont posés en
+    # ``read_permission``/``write_permission`` sur de vrais viewsets, mais
+    # n'ont jamais été enregistrés ici. Conséquence mécanique : les presets
+    # ``DIRECTEUR_PERMISSIONS``/``ADMIN_PERMISSIONS`` (dérivés d'ALL_PERMISSIONS)
+    # ne les contenaient pas, ``has_erp_permission`` renvoyait False pour TOUT
+    # compte portant un rôle fin — Directeur inclus — et les modules
+    # répondaient 403 à tout le monde (seuls les comptes HÉRITÉS sans rôle fin
+    # passaient, par le repli ``core.permissions._user_has_or_legacy``). Les
+    # enregistrer ne RETIRE rien et n'ouvre rien de neuf : cela rend enfin
+    # atteignable ce que les viewsets annoncent déjà. Un test générique
+    # (``apps/roles/tests_wir169_catalogue_declare.py``) interdit la récidive.
+    #   * ``btp_voir``/``btp_gerer`` — vertical BTP/EPC (apps/btp_chantier,
+    #     Groupe NTCON) : réserves, RFI, visas, journal, avenants, DGD,
+    #     diffusion de plans. Distribution calquée sur le tiering DÉJÀ déclaré
+    #     par ``frontend/src/features/btp_chantier/module.config.jsx`` (réserves
+    #     + journal au palier « normal », le reste au palier responsable) :
+    #     lecture au Technicien et au Technicien responsable, écriture au
+    #     Technicien responsable et au Responsable — c'est du travail de
+    #     chantier, jamais un droit commercial.
+    #   * ``assurances_voir``/``assurances_gerer`` — registre des assurances et
+    #     sinistres d'entreprise (apps/assurances, NTASS29). Donnée de
+    #     GOUVERNANCE (polices, primes, sinistres, attestations) : direction
+    #     (héritage d'ALL_PERMISSIONS) + le rôle légacy « Responsable », rien
+    #     de plus — aucun rôle Commercial/Technicien/Viewer ne la porte.
+    #   * ``douane_responsable`` (apps/douane) et ``transport_responsable``
+    #     (apps/transport) — réglages engageants de leur module, dont la
+    #     docstring dit explicitement « réservé à un porteur de rôle
+    #     responsable » : mappés sur le seul rôle « Responsable » (+ direction
+    #     par héritage). Ils ne se terminent pas par ``_voir`` : ce sont bien
+    #     des codes d'ÉCRITURE au sens de ``CustomUser._role_grants_write``.
+    'btp_voir',
+    'btp_gerer',
+    'assurances_voir',
+    'assurances_gerer',
+    'douane_responsable',
+    'transport_responsable',
 ]
 
 # Permissions de portée : un rôle qui en porte une voit un sous-ensemble ; sans
@@ -461,6 +498,13 @@ RESPONSABLE_PERMISSIONS = [
     'scm_previsions_voir', 'scm_previsions_editer',
     'scm_politiques_stock_editer', 'scm_sop_voir',
     'scm_fournisseurs_classement_voir',
+    # WIR169 — le rôle légacy « Responsable » est le porteur historique de tout
+    # module gardé « responsable ou admin » : il reçoit les quatre codes
+    # BTP/assurances et les deux réglages douane/transport, dont les viewsets
+    # annoncent explicitement ce palier.
+    'btp_voir', 'btp_gerer',
+    'assurances_voir', 'assurances_gerer',
+    'douane_responsable', 'transport_responsable',
 ]
 
 UTILISATEUR_PERMISSIONS = [
@@ -598,6 +642,10 @@ TECHNICIEN_RESP_PERMISSIONS = [
     # ADSENG47 — gestion des plans de vol (palier responsable). L'ACTIVATION de
     # l'autonomie (``adsengine_autonomy_toggle``) reste admin-seul, non ici.
     'adsengine_flightplan_manage',
+    # WIR169 — vertical BTP/EPC : le chantier est son métier. Lecture ET
+    # écriture (palier « responsable » du module.config BTP). Les assurances
+    # restent hors de sa portée (gouvernance).
+    'btp_voir', 'btp_gerer',
     SCOPE_SUBTREE,
 ]
 
@@ -621,6 +669,10 @@ TECHNICIEN_PERMISSIONS = [
     'ged_voir', 'ged_gerer',
     # ENG — gestion des campagnes (l'approbation reste au palier admin).
     'adsengine_view', 'adsengine_manage',
+    # WIR169 — vertical BTP/EPC en LECTURE : le module.config BTP expose déjà
+    # les réserves et le journal de chantier au palier « normal ». Jamais
+    # ``btp_gerer`` pour ce rôle (RFI/visas/avenants/DGD restent responsable+).
+    'btp_voir',
     SCOPE_TEAM,
 ]
 
