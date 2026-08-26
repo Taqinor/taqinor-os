@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { Provider } from 'react-redux'
 import { toast } from '../../../ui'
@@ -81,6 +82,14 @@ describe('ConsolidationGroupePage — cycle verrouillé (PACT33)', () => {
     // générique.
     expect(erreur).toHaveBeenCalledWith('Cycle verrouillé : la collecte est refusée.')
     // Un cycle verrouillé propose « Ouvrir » (rouvrir), jamais « Verrouiller ».
-    expect(screen.getAllByRole('button', { name: /Ouvrir \(déverrouiller\)/i })[0]).toBeInTheDocument()
+    // `RowActions` ne révèle que les 2 PREMIÈRES actions en raccourci (ici
+    // Collecter + Exporter la liasse) : les autres vivent dans le menu kebab,
+    // toujours monté. On l'ouvre pour lire la liste réelle des actions.
+    const ligne = (await screen.findAllByText('Consolidation 2026'))
+      .map((el) => el.closest('tr')).find(Boolean)
+    await userEvent.click(within(ligne).getByLabelText("Plus d'actions sur la ligne"))
+    expect(await screen.findByRole('menuitem', { name: /Ouvrir \(déverrouiller\)/i }))
+      .toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: 'Verrouiller' })).toBeNull()
   })
 })

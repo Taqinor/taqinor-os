@@ -118,8 +118,8 @@ describe('WIR268/XMFG18 — duplication de kit (facteur d\'échelle) + révision
     await waitFor(() => { expect(stockApi.getKits).toHaveBeenCalled() })
     // La page « Données » monte plusieurs Select simultanément (kit, produit,
     // type de fiche, remplacement de composant) : on cible celui du kit par
-    // son nom accessible (le placeholder, tant qu'aucun kit n'est choisi).
-    await userEvent.click(screen.getByRole('combobox', { name: '— Choisir un kit —' }))
+    // son nom accessible (`aria-label="Kit"` sur le déclencheur).
+    await userEvent.click(screen.getByRole('combobox', { name: 'Kit' }))
     await userEvent.click(await screen.findByRole('option', { name: /Kit résidentiel/ }))
   }
 

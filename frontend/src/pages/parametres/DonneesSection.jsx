@@ -244,7 +244,11 @@ function KitExplosion() {
         <div className="flex flex-wrap items-end gap-2">
           <div className="min-w-48 flex-1">
             <Select value={kitId || '__none'} onValueChange={(v) => setKitId(v === '__none' ? '' : v)}>
-              <SelectTrigger><SelectValue placeholder="— Choisir un kit —" /></SelectTrigger>
+              {/* Ce Select n'a ni <Label> visible ni aria-label : son nom
+                  accessible était VIDE (Radix ne peuple `SelectValue` qu'après
+                  une première ouverture). Même patron que les Selects
+                  « Produit » / « Type de fiche » plus bas. */}
+              <SelectTrigger aria-label="Kit"><SelectValue placeholder="— Choisir un kit —" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="__none">— Choisir un kit —</SelectItem>
                 {kits.map((k) => (
