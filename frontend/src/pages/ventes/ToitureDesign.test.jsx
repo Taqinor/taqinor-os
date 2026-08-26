@@ -274,6 +274,148 @@ describe('ToitureDesign — mode devis (PV20)', () => {
   })
 })
 
+/* L-MAP (fondateur 26/08/2026 : « i want it visible on the map in the 3D
+   layouter ») — le contour dessiné par le client, visible sur la carte du
+   calepinage, dans les DEUX modes (lead direct, devis via
+   `geometrie.contour_client`). Fixture réelle (carré ≈ 20 m à Casablanca,
+   ordre d'axes de `Lead.roof_outline`) — MÊME contour que
+   `ToitClientOverlay.test.jsx` / `TraceToitClient.test.jsx`. */
+const CONTOUR_CLIENT = [
+  [33.589, -7.603],
+  [33.589, -7.602784],
+  [33.58918, -7.602784],
+  [33.58918, -7.603],
+]
+
+describe('ToitureDesign — L-MAP : le toit dessiné par le client, visible sur la carte', () => {
+  it('mode devis — un contour_client présent affiche le calque + le bouton de bascule', async () => {
+    ventesApi.getDevisDesignContext.mockResolvedValue({
+      data: {
+        ...CTX,
+        geometrie: { ...CTX.geometrie, contour_client: CONTOUR_CLIENT },
+      },
+    })
+
+    rendreDevis(CTX.devis.id)
+
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    expect(await screen.findByTestId('rp9-toit-client')).toHaveTextContent(
+      'Toit dessiné par le client')
+    expect(screen.getByTestId('rp9-toit-client-toggle')).toBeInTheDocument()
+  })
+
+  it('mode devis — le calque montre le contour du CLIENT, pas celui déjà édité du layout', async () => {
+    // `outline` (le layout du devis, déjà retouché) diffère de `contour_client`
+    // (le dessin d'origine du lead) : le calque doit rester fidèle au SECOND,
+    // jamais confondu avec le calepinage courant.
+    ventesApi.getDevisDesignContext.mockResolvedValue({
+      data: {
+        ...CTX,
+        geometrie: {
+          ...CTX.geometrie,
+          outline: [[10, 10], [10, 11], [11, 11]],
+          contour_client: CONTOUR_CLIENT,
+        },
+      },
+    })
+
+    rendreDevis(CTX.devis.id)
+
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    const options = initRoofToolPro8.mock.calls[0][0]
+    // Le builder continue de recevoir le contour COURANT du layout, inchangé.
+    expect(options.hydrate.devis.geometrie.roof_outline).toEqual(
+      [[10, 10], [10, 11], [11, 11]])
+    // Le calque, lui, montre le contour du CLIENT (4 sommets, pas 3).
+    const polygone = (await screen.findByTestId('rp9-toit-client'))
+      .querySelector('.rp9-toit-client-polygone')
+    expect(polygone.getAttribute('points').trim().split(/\s+/)).toHaveLength(4)
+  })
+
+  it('mode devis — sans contour_client (devis muet, comportement actuel) : aucun calque, aucun bouton', async () => {
+    ventesApi.getDevisDesignContext.mockResolvedValue(
+      reponseContrat('ventes', 'devis_design_context'))
+
+    rendreDevis(CTX.devis.id)
+
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    expect(screen.queryByTestId('rp9-toit-client')).toBeNull()
+    expect(screen.queryByTestId('rp9-toit-client-toggle')).toBeNull()
+  })
+
+  it('mode lead — un roof_outline exploitable affiche le calque, la bascule le masque puis le remontre', async () => {
+    const lead = {
+      id: 88, nom: 'Alaoui', prenom: 'Youssef', ville: 'Casablanca',
+      telephone: '0600000000', roof_point: { lat: 33.5, lng: -7.6 },
+      roof_outline: CONTOUR_CLIENT, bill_kwh: 7200,
+    }
+    api.get.mockImplementation((url) => {
+      if (url.startsWith('/crm/leads/')) return Promise.resolve({ data: lead })
+      if (url === '/ventes/roof-config/') {
+        return Promise.resolve({ data: { available: true, maptilerKey: 'k-lead' } })
+      }
+      return Promise.reject(new Error(`URL inattendue ${url}`))
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/devis-design/88']}>
+        <Routes>
+          <Route path="/devis-design/:id" element={<ToitureDesign />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    expect(await screen.findByTestId('rp9-toit-client')).toBeInTheDocument()
+    const bascule = screen.getByTestId('rp9-toit-client-toggle')
+    expect(bascule).toHaveAttribute('aria-pressed', 'true')
+
+    await userEvent.click(bascule)
+    expect(screen.queryByTestId('rp9-toit-client')).toBeNull()
+    expect(bascule).toHaveAttribute('aria-pressed', 'false')
+
+    await userEvent.click(bascule)
+    expect(await screen.findByTestId('rp9-toit-client')).toBeInTheDocument()
+    expect(bascule).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('mode lead — sans contour (lead antérieur au 21/08, comportement actuel) : aucun calque, aucun bouton', async () => {
+    const lead = {
+      id: 90, nom: 'Idrissi', prenom: 'Sara', ville: '',
+      telephone: '', roof_point: null, roof_outline: null,
+    }
+    api.get.mockImplementation((url) => {
+      if (url.startsWith('/crm/leads/')) return Promise.resolve({ data: lead })
+      if (url === '/ventes/roof-config/') {
+        return Promise.resolve({ data: { available: true, maptilerKey: 'k-lead' } })
+      }
+      return Promise.reject(new Error(`URL inattendue ${url}`))
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/devis-design/90']}>
+        <Routes>
+          <Route path="/devis-design/:id" element={<ToitureDesign />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    expect(screen.queryByTestId('rp9-toit-client')).toBeNull()
+    expect(screen.queryByTestId('rp9-toit-client-toggle')).toBeNull()
+  })
+
+  it('mode ao — aucune source de contour client : aucun calque, aucun bouton (comportement inchangé)', async () => {
+    aoApi.affaires.designContext.mockResolvedValue({ data: CTX_AO })
+
+    rendreAo(CTX_AO.affaire.id)
+
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    expect(screen.queryByTestId('rp9-toit-client')).toBeNull()
+    expect(screen.queryByTestId('rp9-toit-client-toggle')).toBeNull()
+  })
+})
+
 /* PV21 — la boucle de finalisation du mode devis : resynchronisation des lignes
    sur le calepinage, « aucun changement », et le geste « Réviser (v2) » quand le
    client a déjà la version sous les yeux. */
