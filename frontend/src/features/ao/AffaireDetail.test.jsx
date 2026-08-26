@@ -832,7 +832,23 @@ describe('AffaireDetail', () => {
       renderScreen()
       await screen.findAllByText('AO-2026-001')
 
-      expect(await screen.findByText('Commune X')).toBeTruthy()
+      // Assertion PORTÉE sur la carte du lead. « Commune X » est AUSSI
+      // l'acheteur de l'affaire (fixture `AFFAIRE`, rendu par le bloc
+      // Synthèse) : une recherche globale matcherait deux nœuds — c'est la
+      // même raison qui impose `findAllByText` pour 'AO-2026-001' ailleurs
+      // dans ce fichier. Le scope prouve en plus ce qui compte vraiment : que
+      // c'est bien la FICHE-CARTE DU LEAD qui porte le libellé, pas le champ
+      // acheteur qui partage la chaîne par coïncidence.
+      const carteLead = await waitFor(() => {
+        const el = document.querySelector('[data-ao-lead="12"]')
+        expect(el).toBeTruthy()
+        return el
+      })
+      expect(carteLead.textContent).toMatch(/Commune X/)
+      expect(carteLead.textContent).toMatch(/Devis envoyé · Casablanca/)
+      // Le lien pointe l'URL servie par `crm.selectors.lead_card`.
+      expect(carteLead.querySelector('a[href="/leads/12"]')).toBeTruthy()
+
       await user.click(document.querySelector('[data-ao-detacher-lead]'))
       // Un identifiant VIDE détache (contrat de `rattacher_ao_au_lead`).
       await waitFor(() => expect(mocks.rattacherLead).toHaveBeenCalledWith('1', null))
