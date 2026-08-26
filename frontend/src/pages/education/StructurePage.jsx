@@ -1,6 +1,8 @@
 import { useState } from 'react'
-import { School, Plus } from 'lucide-react'
-import { Badge, Button, toast } from '../../ui'
+import { School, Plus, Images, User } from 'lucide-react'
+import {
+  Badge, Button, toast, Dialog, DialogContent, DialogHeader, DialogTitle,
+} from '../../ui'
 import educationApi from '../../api/educationApi'
 import useEducationResource from '../../features/education/useEducationResource'
 
@@ -95,6 +97,23 @@ export default function StructurePage() {
     }
   }
 
+  // NTEDU38/WIR212 — trombinoscope : galerie photo des élèves de la classe
+  // (réutilise `Eleve.photo`, backend déjà câblé, jamais appelé par le
+  // front). Un élève sans photo renvoie `photo_url: null` — avatar générique
+  // affiché, jamais une image cassée.
+  const [trombinoscope, setTrombinoscope] = useState(null) // { classe, loading, eleves }
+
+  const ouvrirTrombinoscope = async (classe) => {
+    setTrombinoscope({ classe, loading: true, eleves: [] })
+    try {
+      const res = await educationApi.classes.trombinoscope(classe.id)
+      setTrombinoscope({ classe, loading: false, eleves: res.data?.results || [] })
+    } catch {
+      toast.error('Impossible de charger le trombinoscope.')
+      setTrombinoscope(null)
+    }
+  }
+
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
@@ -177,7 +196,12 @@ export default function StructurePage() {
                 <td>{c.nom}</td>
                 <td>{c.niveau_nom || niveauNom(c.niveau)}</td>
                 <td>{c.effectif} / {c.capacite_max}</td>
-                <td><Button variant="ghost" onClick={() => exporterClasse(c)}>Exporter (xlsx)</Button></td>
+                <td style={{ display: 'flex', gap: 4 }}>
+                  <Button variant="ghost" onClick={() => exporterClasse(c)}>Exporter (xlsx)</Button>
+                  <Button variant="ghost" onClick={() => ouvrirTrombinoscope(c)}>
+                    <Images size={14} strokeWidth={1.75} aria-hidden="true" /> Trombinoscope
+                  </Button>
+                </td>
               </tr>
             ))}
             {classes.length === 0 && (
@@ -185,6 +209,52 @@ export default function StructurePage() {
             )}
           </tbody>
         </table>
+      )}
+
+      {/* NTEDU38/WIR212 — trombinoscope de la classe : galerie photo, avatar
+          générique quand `photo_url` est null (jamais une image cassée). */}
+      {trombinoscope && (
+        <Dialog open onOpenChange={(o) => { if (!o) setTrombinoscope(null) }}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Trombinoscope — {trombinoscope.classe.nom}</DialogTitle>
+            </DialogHeader>
+            {trombinoscope.loading ? <p>Chargement…</p> : trombinoscope.eleves.length === 0 ? (
+              <p style={{ color: '#64748b' }}>Aucun élève dans cette classe.</p>
+            ) : (
+              <div style={{
+                display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))', gap: 12,
+              }}
+              >
+                {trombinoscope.eleves.map((el) => (
+                  <div key={el.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                    {el.photo_url ? (
+                      <img
+                        src={el.photo_url}
+                        alt={`${el.prenom} ${el.nom}`}
+                        style={{
+                          width: 72, height: 72, borderRadius: '50%', objectFit: 'cover',
+                        }}
+                      />
+                    ) : (
+                      <div
+                        role="img"
+                        aria-label={`${el.prenom} ${el.nom} — sans photo`}
+                        style={{
+                          width: 72, height: 72, borderRadius: '50%', display: 'flex',
+                          alignItems: 'center', justifyContent: 'center', background: '#e2e8f0',
+                        }}
+                      >
+                        <User size={32} strokeWidth={1.5} aria-hidden="true" color="#94a3b8" />
+                      </div>
+                    )}
+                    <span style={{ fontSize: 12, textAlign: 'center' }}>{el.prenom} {el.nom}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   )
