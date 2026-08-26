@@ -21,7 +21,7 @@ const NO_OWNER = '__none'
 
 export default function BulkActionBar({
   count, users = [], canDelete, hasArchivedSelected = false,
-  busy, onAction, onExport, onClear,
+  busy, onAction, onExport, onClear, messageTemplates = [],
 }) {
   // panneau ouvert ('reassign' | 'stage' | 'tag' | 'relance' | 'perdu' | null)
   const [panel, setPanel] = useState(null)
@@ -32,6 +32,8 @@ export default function BulkActionBar({
   const [tag, setTag] = useState('')
   const [relance, setRelance] = useState('')
   const [motif, setMotif] = useState('')
+  // WIR229/FG33 — modèle choisi pour la file WhatsApp en masse.
+  const [waTemplateId, setWaTemplateId] = useState('')
   // Planifier une activité en masse (records.Activity) : intitulé + échéance.
   const [actSummary, setActSummary] = useState('Appeler')
   const [actDue, setActDue] = useState('')
@@ -97,6 +99,9 @@ export default function BulkActionBar({
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => toggle('perdu')}>
               Perdu
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => toggle('whatsapp')}>
+              WhatsApp en masse
             </DropdownMenuItem>
             <DropdownMenuItem
               disabled={!hasArchivedSelected}
@@ -260,6 +265,27 @@ export default function BulkActionBar({
                   onClick={() => run('unset_perdu')}>
             Annuler Perdu
           </Button>
+        </div>
+      )}
+
+      {panel === 'whatsapp' && (
+        <div className="bulk-panel">
+          <Select value={waTemplateId} onValueChange={setWaTemplateId}>
+            <SelectTrigger className="bulk-field"><SelectValue placeholder="Modèle" /></SelectTrigger>
+            <SelectContent>
+              {messageTemplates.map((t) => (
+                <SelectItem key={t.id} value={String(t.id)}>{t.nom}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button type="button" size="sm"
+                  disabled={!waTemplateId}
+                  onClick={() => run('prepare_whatsapp', { template_id: waTemplateId })}>
+            Préparer les liens
+          </Button>
+          <span className="bulk-hint">
+            Ouvre une file de liens wa.me pré-remplis — aucun envoi automatique.
+          </span>
         </div>
       )}
 

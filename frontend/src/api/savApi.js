@@ -98,6 +98,13 @@ const savApi = {
     api.delete(`/sav/tickets/${id}/pieces/${pieceId}/`),
   // ZMFG8 — vue unifiée Ajout/Retrait/Recyclage des pièces du ticket.
   getTicketPiecesUnifiees: (id) => api.get(`/sav/tickets/${id}/pieces-unifiees/`),
+  // XMFG10/ZMFG8 — WIR232 : pièces RETIRÉES (rebut/RMA/stock occasion), le
+  // pendant traçable de `removeTicketPiece` (qui supprime la consommation
+  // sans laisser de trace). `destination` ∈ rebut|retour_fournisseur|
+  // stock_occasion ; `operation` optionnel (retrait par défaut, recyclage
+  // pour une remise en circulation) ; `numero_serie` optionnel.
+  getTicketPiecesRetirees: (id) => api.get(`/sav/tickets/${id}/pieces-retirees/`),
+  retirerTicketPiece: (id, body) => api.post(`/sav/tickets/${id}/pieces-retirees/`, body),
 
   // XSAV12 — fusionne un ticket doublon dans ce ticket (principal).
   fusionnerTicket: (id, doublonId) =>
@@ -161,6 +168,20 @@ const savApi = {
   maintenanceRapportPdf: (id, date) =>
     api.get(`/sav/contrats-maintenance/${id}/rapport-pdf/`,
       { responseType: 'blob', params: date ? { date } : {} }),
+  // FG88/WIR230 — tournée préventive : file des visites dues avec GPS,
+  // triée par proximité (haversine serveur, ?lat=&lng= optionnels) ;
+  // affectation en lot (date + technicien optionnel).
+  getTourneePreventive: (params) =>
+    api.get('/sav/contrats-maintenance/tournee/', { params }),
+  planifierTournee: (body) =>
+    api.post('/sav/contrats-maintenance/planifier-tournee/', body),
+  // XSAV18/WIR231 — rentabilité (revenu FG40 vs coût tickets+pièces),
+  // classée par marge croissante ; 403 explicite sans `prix_achat_voir`
+  // (jamais un champ silencieusement absent).
+  getRentabiliteContrats: () => api.get('/sav/contrats-maintenance/rentabilite/'),
+  // FG40/WIR233 — facture immédiatement CE contrat (hors cycle automatique),
+  // sort la ligne de la file d'exceptions XCTR5.
+  facturerContrat: (id) => api.post(`/sav/contrats-maintenance/${id}/facturer/`),
 
   // FG83 — réclamations garantie fournisseur (flux RMA).
   getWarrantyClaims: (params) => api.get('/sav/warranty-claims/', { params }),

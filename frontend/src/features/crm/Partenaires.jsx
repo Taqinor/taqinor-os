@@ -79,6 +79,10 @@ export default function Partenaires() {
   const [acting, setActing] = useState(false)
   const soumissionsAffichees = selectedId ? soumissions : []
   const commissionsAffichees = selectedId ? commissions : []
+  // WIR228 — relevé dû/payé/total (getReleveCommissionsPartenaire existait
+  // déjà côté client mais n'avait aucun appelant).
+  const [releve, setReleve] = useState(null)
+  const [loadingReleve, setLoadingReleve] = useState(false)
 
   useEffect(() => {
     if (!selectedId) return
@@ -88,6 +92,7 @@ export default function Partenaires() {
     crmApi.getCommissionsPartenaire({ partenaire: selectedId })
       .then((res) => setCommissions(res.data?.results ?? res.data ?? []))
       .catch(() => setCommissions([]))
+    setReleve(null)
   }, [selectedId])
 
   const agreer = async () => {
@@ -129,6 +134,49 @@ export default function Partenaires() {
       toast.error(frenchError(err, 'Impossible de régler cette commission.'))
     } finally {
       setActing(false)
+    }
+  }
+
+  // ── WIR228 — création de commission (tableau structurellement vide jusqu'ici,
+  // aucun chemin de création) + relevé dû/payé/total (getReleveCommissionsPartenaire
+  // existait déjà côté client mais n'avait aucun appelant).
+  const [commissionForm, setCommissionForm] = useState({ base_ht: '', taux: '' })
+  const [savingCommission, setSavingCommission] = useState(false)
+
+  const creerCommission = async (event) => {
+    event.preventDefault()
+    if (!selected || !commissionForm.base_ht) return
+    setSavingCommission(true)
+    try {
+      await crmApi.createCommissionPartenaire({
+        partenaire: selected.id,
+        base_ht: commissionForm.base_ht,
+        taux: commissionForm.taux || undefined,
+      })
+      toast.success('Commission créée.')
+      setCommissionForm({ base_ht: '', taux: '' })
+      crmApi.getCommissionsPartenaire({ partenaire: selected.id })
+        .then((res) => setCommissions(res.data?.results ?? res.data ?? []))
+        .catch(() => {})
+    } catch (err) {
+      toast.error(frenchError(err, 'Impossible de créer cette commission.'))
+    } finally {
+      setSavingCommission(false)
+    }
+  }
+
+  const voirReleve = async () => {
+    if (!selected) return
+    setLoadingReleve(true)
+    try {
+      const res = await crmApi.getReleveCommissionsPartenaire()
+      const rows = res.data?.results ?? res.data ?? []
+      const ligne = rows.find((r) => Number(r.partenaire) === Number(selected.id))
+      setReleve(ligne || { partenaire: selected.id, due: 0, payee: 0, total: 0 })
+    } catch (err) {
+      toast.error(frenchError(err, 'Impossible de charger le relevé de commissions.'))
+    } finally {
+      setLoadingReleve(false)
     }
   }
 
@@ -242,7 +290,44 @@ export default function Partenaires() {
             </tbody>
           </table>
 
-          <h3 style={{ fontSize: 13, fontWeight: 600 }}>Commissions</h3>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <h3 style={{ fontSize: 13, fontWeight: 600 }}>Commissions</h3>
+            <Button variant="ghost" size="sm" onClick={voirReleve} disabled={loadingReleve}>
+              {loadingReleve ? 'Chargement…' : 'Relevé'}
+            </Button>
+          </div>
+
+          {releve && (
+            <p style={{ fontSize: 13, color: '#475569', marginTop: 0 }} data-testid="releve-commissions">
+              Dû : {releve.due} · Payé : {releve.payee} · Total : {releve.total}
+            </p>
+          )}
+
+          <form
+            onSubmit={creerCommission}
+            style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}
+          >
+            <input
+              type="number" step="0.01"
+              placeholder="Base HT"
+              value={commissionForm.base_ht}
+              onChange={(e) => setCommissionForm({ ...commissionForm, base_ht: e.target.value })}
+              aria-label="Base HT de la commission"
+              required
+            />
+            <input
+              type="number" step="0.01"
+              placeholder={`Taux (%) — défaut ${selected.taux_commission}%`}
+              value={commissionForm.taux}
+              onChange={(e) => setCommissionForm({ ...commissionForm, taux: e.target.value })}
+              aria-label="Taux de la commission"
+              style={{ width: 90 }}
+            />
+            <Button type="submit" disabled={savingCommission}>
+              {savingCommission ? 'Création…' : 'Créer la commission'}
+            </Button>
+          </form>
+
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead><tr><th>Base HT</th><th>Taux</th><th>Montant</th><th>Statut</th><th /></tr></thead>
             <tbody>

@@ -32,3 +32,15 @@ test('LeadsSection monte MessageTemplatesCrmSection', () => {
   assert.match(LEADS_SRC, /import MessageTemplatesCrmSection from '\.\/MessageTemplatesCrmSection'/)
   assert.match(LEADS_SRC, /<MessageTemplatesCrmSection \/>/)
 })
+
+// WIR229 — bouton « Aperçu » : rendu SERVEUR (render_template), jamais
+// recalculé côté écran.
+test('le bouton Aperçu appelle crmApi.renderMessageTemplate (rendu serveur, WIR229)', () => {
+  assert.match(SRC, /crmApi\.renderMessageTemplate\(tpl\.id,/)
+  const previewBody = SRC.slice(SRC.indexOf('const previewTemplate ='), SRC.indexOf('return (\n    <Card>'))
+  assert.match(previewBody, /res\.data\.texte/)
+})
+
+test('le résultat de l\'aperçu est affiché à l\'écran (jamais un texte recalculé)', () => {
+  assert.match(SRC, /apercu\[t\.id\]\?\.texte/)
+})

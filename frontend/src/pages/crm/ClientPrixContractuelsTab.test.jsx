@@ -6,15 +6,19 @@ import userEvent from '@testing-library/user-event'
    la fiche client liste les prix négociés avec leurs dates de validité et
    permet d'en créer un. */
 
-const { getPrixContractuels, createPrixContractuel } = vi.hoisted(() => ({
+const { getPrixContractuels, createPrixContractuel, updatePrixContractuel, deletePrixContractuel } = vi.hoisted(() => ({
   getPrixContractuels: vi.fn(),
   createPrixContractuel: vi.fn(() => Promise.resolve({ data: { id: 3 } })),
+  updatePrixContractuel: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
+  deletePrixContractuel: vi.fn(() => Promise.resolve({})),
 }))
 
 vi.mock('../../api/cpqApi', () => ({
   default: {
     getPrixContractuels: (...args) => getPrixContractuels(...args),
     createPrixContractuel: (...args) => createPrixContractuel(...args),
+    updatePrixContractuel: (...args) => updatePrixContractuel(...args),
+    deletePrixContractuel: (...args) => deletePrixContractuel(...args),
   },
 }))
 
@@ -68,5 +72,59 @@ describe('ClientPrixContractuelsTab (PACT129)', () => {
     })
     render(<ClientPrixContractuelsTab clientId={11} />)
     expect((await screen.findAllByText("Vous n'avez pas la permission d'effectuer cette action.")).length).toBeGreaterThan(0)
+  })
+
+  it('modifie un prix négocié existant (WIR184)', async () => {
+    const user = userEvent.setup()
+    render(<ClientPrixContractuelsTab clientId={11} />)
+    await screen.findAllByText('Panneau 550W')
+
+    await user.click(screen.getByRole('button', { name: 'Modifier' }))
+    const champPrix = screen.getByLabelText('Prix HT négocié (modification)')
+    await user.clear(champPrix)
+    await user.type(champPrix, '1300')
+    await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
+
+    await waitFor(() => expect(updatePrixContractuel).toHaveBeenCalledWith(1, expect.objectContaining({
+      prix_ht: '1300',
+    })))
+  })
+
+  it('supprime un prix négocié après confirmation (WIR184)', async () => {
+    const user = userEvent.setup()
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    render(<ClientPrixContractuelsTab clientId={11} />)
+    await screen.findAllByText('Panneau 550W')
+
+    await user.click(screen.getByRole('button', { name: 'Supprimer' }))
+
+    await waitFor(() => expect(deletePrixContractuel).toHaveBeenCalledWith(1))
+    window.confirm.mockRestore()
+  })
+
+  it('n\'appelle pas la suppression si la confirmation est refusée (WIR184)', async () => {
+    const user = userEvent.setup()
+    vi.spyOn(window, 'confirm').mockReturnValue(false)
+    render(<ClientPrixContractuelsTab clientId={11} />)
+    await screen.findAllByText('Panneau 550W')
+
+    await user.click(screen.getByRole('button', { name: 'Supprimer' }))
+
+    expect(deletePrixContractuel).not.toHaveBeenCalled()
+    window.confirm.mockRestore()
+  })
+
+  it('affiche le message serveur exact en FR si la modification est refusée (403)', async () => {
+    const user = userEvent.setup()
+    updatePrixContractuel.mockRejectedValueOnce({
+      response: { data: { detail: "Vous n'avez pas la permission d'effectuer cette action." } },
+    })
+    render(<ClientPrixContractuelsTab clientId={11} />)
+    await screen.findAllByText('Panneau 550W')
+
+    await user.click(screen.getByRole('button', { name: 'Modifier' }))
+    await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
+
+    await waitFor(() => expect(updatePrixContractuel).toHaveBeenCalled())
   })
 })

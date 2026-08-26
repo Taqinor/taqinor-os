@@ -21,6 +21,7 @@ beforeAll(() => {
 const {
   getPartenaires, createPartenaire, activerPartenaire,
   getSoumissions, qualifierSoumission, getCommissions, marquerPayee,
+  createCommission, getReleve,
 } = vi.hoisted(() => ({
   getPartenaires: vi.fn(),
   createPartenaire: vi.fn(() => Promise.resolve({ data: { id: 3 } })),
@@ -29,6 +30,8 @@ const {
   qualifierSoumission: vi.fn(),
   getCommissions: vi.fn(),
   marquerPayee: vi.fn(),
+  createCommission: vi.fn(() => Promise.resolve({ data: { id: 21 } })),
+  getReleve: vi.fn(() => Promise.resolve({ data: [] })),
 }))
 
 vi.mock('../../api/crmApi', () => ({
@@ -40,7 +43,8 @@ vi.mock('../../api/crmApi', () => ({
     qualifierSoumissionLeadPartenaire: (...args) => qualifierSoumission(...args),
     getCommissionsPartenaire: (...args) => getCommissions(...args),
     marquerPayeeCommissionPartenaire: (...args) => marquerPayee(...args),
-    getReleveCommissionsPartenaire: vi.fn(() => Promise.resolve({ data: [] })),
+    createCommissionPartenaire: (...args) => createCommission(...args),
+    getReleveCommissionsPartenaire: (...args) => getReleve(...args),
   },
 }))
 
@@ -133,5 +137,45 @@ describe('Partenaires (PACT102)', () => {
     await user.click((await screen.findAllByRole('button', { name: 'Marquer payée' }))[0])
 
     await waitFor(() => expect(marquerPayee).toHaveBeenCalledWith(20))
+  })
+
+  // WIR228 — le tableau des commissions était structurellement vide (aucun
+  // chemin de création) et le relevé (dû/payé/total) n'avait aucun appelant.
+  it('crée une commission pour le partenaire sélectionné', async () => {
+    const user = userEvent.setup()
+    withProviders(<Partenaires />)
+    await waitFor(() => expect(screen.getAllByText('SolarZen SARL').length).toBeGreaterThan(0))
+
+    await user.click(screen.getAllByRole('button', { name: 'Détails' })[0])
+    await screen.findAllByRole('button', { name: 'Marquer payée' })
+
+    await user.type(screen.getByLabelText('Base HT de la commission'), '8000')
+    await user.type(screen.getByLabelText('Taux de la commission'), '3')
+    await user.click(screen.getAllByRole('button', { name: 'Créer la commission' })[0])
+
+    await waitFor(() => expect(createCommission).toHaveBeenCalledWith(expect.objectContaining({
+      partenaire: 1, base_ht: '8000', taux: '3',
+    })))
+  })
+
+  it('affiche le relevé dû/payé/total du partenaire sélectionné', async () => {
+    getReleve.mockResolvedValueOnce({
+      data: [
+        { partenaire: 1, nom: 'SolarZen SARL', due: 500, payee: 1200, total: 1700 },
+        { partenaire: 2, nom: 'Autre partenaire', due: 999, payee: 0, total: 999 },
+      ],
+    })
+    const user = userEvent.setup()
+    withProviders(<Partenaires />)
+    await waitFor(() => expect(screen.getAllByText('SolarZen SARL').length).toBeGreaterThan(0))
+
+    await user.click(screen.getAllByRole('button', { name: 'Détails' })[0])
+    await user.click((await screen.findAllByRole('button', { name: 'Relevé' }))[0])
+
+    await waitFor(() => expect(getReleve).toHaveBeenCalled())
+    const releve = await screen.findByTestId('releve-commissions')
+    expect(releve).toHaveTextContent('Dû : 500')
+    expect(releve).toHaveTextContent('Payé : 1200')
+    expect(releve).toHaveTextContent('Total : 1700')
   })
 })
