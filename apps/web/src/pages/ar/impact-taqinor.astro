@@ -21,7 +21,7 @@ import StickyCta from '../../components/StickyCta.astro';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
 import { REALISATIONS, MEASURED_FLEET_LIFETIME_MWH } from '../../lib/realisations';
-import { CO2_KG_PER_KWH, CO2_KG_PER_TREE_YEAR } from '../../lib/proposition';
+import { CO2_KG_PER_KWH } from '../../lib/proposition';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
@@ -46,8 +46,10 @@ const co2KgTotal = productionTotal * CO2_KG_PER_KWH;
 const co2TonnesTotal = Math.round((co2KgTotal / 1000) * 10) / 10;
 const co2TonnesLabel = co2TonnesTotal.toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
-const treesEquivalent = Math.round(co2KgTotal / CO2_KG_PER_TREE_YEAR);
-const treesLabel = treesEquivalent.toLocaleString('fr-FR');
+// RÈGLE « CHIFFRES VÉRIFIÉS » (fondateur, 26/08/2026) — l'équivalent « arbres »
+// est RETIRÉ de tout rendu client : les 22 kg de CO₂ absorbés par arbre et par
+// an étaient un ordre de grandeur sans source. Seule la tonne mesurée reste, et
+// elle dit désormais que son facteur d'émission attend sa référence.
 
 const battersInstalls = REALISATIONS.filter((r) => r.batterie !== null);
 const batteryKwhTotal = battersInstalls.reduce((sum, r) => {
@@ -103,7 +105,7 @@ const jsonLd = {
           </KeyFigure>
           <KeyFigure value={co2TonnesLabel} unit="طن CO₂" label="CO₂ متجنَّب (تراكمي)">
             محسوب بمعدَّل <span dir="ltr">{CO2_KG_PER_KWH} kg CO₂/kWh</span>، عامل انبعاث الشبكة المغربية المستخدَم
-            بالفعل في دراساتنا المُسعَّرة.
+            في دراساتنا المُسعَّرة — المصدر يبقى للتحديد.
           </KeyFigure>
           <KeyFigure value={String(batteryKwhTotal).replace('.', ',')} unit="kWh" label="التخزين التراكمي">
             سعة بطاريات مركَّبة على {battersInstalls.length} من أصل المشاريع.
@@ -113,9 +115,9 @@ const jsonLd = {
           <p>
             CO₂ المتجنَّب = الإنتاج التراكمي المقيس × <span dir="ltr">{CO2_KG_PER_KWH} kg/kWh</span> (متوسط عامل انبعاث
             شبكة الكهرباء المغربية، مزيج كربوني كثيف — نفس الثابت المعروض في كل دراسة مُسعَّرة لدى
-            Taqinor). المعادل بالأشجار: تمتصّ الشجرة الناضجة نحو <span dir="ltr">{CO2_KG_PER_TREE_YEAR} kg</span> من
-            CO₂ سنوياً، أي ما يعادل هنا نحو <strong><span dir="ltr">{treesLabel}</span> شجرة</strong> على مدى سنة. لا
-            رقم هنا مُقرَّب نحو الأعلى أو مُستقرَأ أو مُقدَّر خارج الإنتاج المقيس فعلاً.
+            Taqinor). <strong>المصدر يبقى للتحديد</strong>: سننشر المرجع المؤرَّخ لهذا العامل بمجرّد أن نحسمه. لا
+            رقم هنا مُقرَّب نحو الأعلى أو مُستقرَأ أو مُقدَّر خارج الإنتاج المقيس فعلاً، ولا نحوِّل هذا CO₂ إلى أي
+            معادل (أشجار، رحلات) يتعذَّر علينا إسناده إلى مصدر.
           </p>
         </Callout>
       </div>

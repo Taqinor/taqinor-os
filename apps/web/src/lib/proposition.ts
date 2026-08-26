@@ -1715,17 +1715,21 @@ export const BILL_INFLATION_RATE = 0;
 export const CO2_KG_PER_KWH = 0.81;
 
 /**
- * WJ14 — Équivalent « arbres » : un arbre mûr absorbe ≈ 22 kg de CO₂ par an.
+ * WJ14 — ÉQUIVALENT « ARBRES » : SUPPRIMÉ.
  *
- * RÈGLE « CHIFFRES VÉRIFIÉS » (fondateur, 26/08/2026) — cet équivalent N'EST
- * PLUS RENDU sur la proposition client (ni sur le PDF) : les 22 kg/arbre/an sont
- * un ordre de grandeur sans source, et une équivalence bâtie sur un chiffre
- * invérifiable n'a rien à faire à côté d'un devis. La constante SUBSISTE pour
- * les pages éditoriales publiques (`/impact-taqinor`), qui assument un discours
- * de vulgarisation ; elle ne doit PAS revenir sur un document commercial sans
- * une source datée fournie par le fondateur.
+ * RÈGLE « CHIFFRES VÉRIFIÉS » (fondateur, 26/08/2026). La constante valait 22 kg
+ * de CO₂ absorbés par un arbre mûr et par an — un ordre de grandeur que personne
+ * ici ne peut sourcer. Elle alimentait un équivalent affiché sur la proposition
+ * client, sur le PDF, et sur les trois variantes de `/impact-taqinor`.
+ *
+ * Elle n'est pas simplement retirée des GABARITS : elle est retirée de la
+ * BIBLIOTHÈQUE, avec le champ `trees` d'`environmentalImpact`. Un chiffre
+ * invérifiable qui reste exporté finit toujours par revenir dans une page ; en
+ * supprimant la source, un retour devient un ajout DÉLIBÉRÉ — qui exigera la
+ * référence datée que le fondateur n'a pas encore fournie.
+ *
+ * Ne pas ré-introduire sans cette source.
  */
-export const CO2_KG_PER_TREE_YEAR = 22;
 
 /**
  * WJ10 — Taux annuel INDICATIF d'un éco-prêt vert au Maroc (TAEG approximatif).
@@ -2120,29 +2124,31 @@ export function economiesInterdisentBatterie(
   return !!eco && eco.avec === null;
 }
 
-// ── WJ14 · Impact environnemental humain (CO₂ ≈ arbres) ──────────────────────
+// ── WJ14 · Impact environnemental — LA TONNE ANNUELLE, ET RIEN D'AUTRE ───────
+// RÈGLE « CHIFFRES VÉRIFIÉS » (fondateur, 26/08/2026) : l'équivalent « arbres »
+// a quitté cette interface EN MÊME TEMPS que sa constante. Un champ `trees`
+// encore servi par la bibliothèque serait un chiffre invérifiable à un `import`
+// de distance de la prochaine page — on supprime la SOURCE, pas seulement
+// l'affichage.
 
 export interface EnvironmentalImpact {
   /** kg de CO₂ évités par an (production × facteur réseau). */
   co2KgPerYear: number;
   /** Tonnes de CO₂ évitées par an (arrondi 1 décimale). */
   co2TonnesPerYear: number;
-  /** Équivalent en arbres « plantés » (absorption annuelle). */
-  trees: number;
-  /** Constantes affichées pour la transparence. */
+  /** Constante affichée pour la transparence — sa SOURCE reste à préciser, et
+   *  toute page qui rend ce chiffre doit le dire (cf. `CO2_KG_PER_KWH`). */
   kgPerKwh: number;
-  kgPerTreeYear: number;
 }
 
 /**
  * WJ14 — Calcule l'impact environnemental À PARTIR de la production annuelle
  * backend (`prod_kwh`). Renvoie `null` si la production est absente/nulle (aucun
- * chiffre inventé). Les constantes sont retournées pour être affichées à côté.
+ * chiffre inventé). La constante est retournée pour être affichée à côté.
  */
 export function environmentalImpact(
   prodKwh: number | null | undefined,
   kgPerKwh: number = CO2_KG_PER_KWH,
-  kgPerTreeYear: number = CO2_KG_PER_TREE_YEAR,
 ): EnvironmentalImpact | null {
   const prod = typeof prodKwh === 'number' && Number.isFinite(prodKwh) && prodKwh > 0 ? prodKwh : null;
   if (prod === null) return null;
@@ -2150,9 +2156,7 @@ export function environmentalImpact(
   return {
     co2KgPerYear: Math.round(co2KgPerYear),
     co2TonnesPerYear: Math.round((co2KgPerYear / 1000) * 10) / 10,
-    trees: Math.round(co2KgPerYear / kgPerTreeYear),
     kgPerKwh,
-    kgPerTreeYear,
   };
 }
 

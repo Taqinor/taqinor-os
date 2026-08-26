@@ -31,7 +31,7 @@ import RelatedLinks from '../components/RelatedLinks.astro';
 import CtaBand from '../components/CtaBand.astro';
 import StickyCta from '../components/StickyCta.astro';
 import { REALISATIONS, MEASURED_FLEET_LIFETIME_MWH } from '../lib/realisations';
-import { CO2_KG_PER_KWH, CO2_KG_PER_TREE_YEAR } from '../lib/proposition';
+import { CO2_KG_PER_KWH } from '../lib/proposition';
 
 // ── Chiffres dérivés — AUCUNE valeur saisie à la main ────────────────────────
 // RULE B (2026-07-04) : le nombre brut d'installations n'est plus mis en
@@ -44,7 +44,7 @@ import { CO2_KG_PER_KWH, CO2_KG_PER_TREE_YEAR } from '../lib/proposition';
 // (fabriquée — même facteur impossible sur plusieurs sites). Le seul chiffre
 // de production réel est le CUMUL mesuré de la flotte suivie en temps réel
 // (MEASURED_FLEET, realisations.ts) — cumul « depuis la mise en service »,
-// JAMAIS annualisé. Le CO₂ évité et l'équivalent arbres en découlent.
+// JAMAIS annualisé. Le CO₂ évité en découle — et RIEN d'autre (voir plus bas).
 const productionTotal = Math.round(MEASURED_FLEET_LIFETIME_MWH * 1000);
 const productionTotalLabel = productionTotal.toLocaleString('fr-FR');
 
@@ -52,8 +52,10 @@ const co2KgTotal = productionTotal * CO2_KG_PER_KWH;
 const co2TonnesTotal = Math.round((co2KgTotal / 1000) * 10) / 10;
 const co2TonnesLabel = co2TonnesTotal.toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
-const treesEquivalent = Math.round(co2KgTotal / CO2_KG_PER_TREE_YEAR);
-const treesLabel = treesEquivalent.toLocaleString('fr-FR');
+// RÈGLE « CHIFFRES VÉRIFIÉS » (fondateur, 26/08/2026) — l'équivalent « arbres »
+// est RETIRÉ de tout rendu client : les 22 kg de CO₂ absorbés par arbre et par
+// an étaient un ordre de grandeur sans source. Seule la tonne mesurée reste, et
+// elle dit désormais que son facteur d'émission attend sa référence.
 
 const battersInstalls = REALISATIONS.filter((r) => r.batterie !== null);
 const batteryKwhTotal = battersInstalls.reduce((sum, r) => {
@@ -109,8 +111,8 @@ const jsonLd = {
             service, à {villesUniques.join(', ')}.
           </KeyFigure>
           <KeyFigure value={co2TonnesLabel} unit="t CO₂" label="CO₂ évité (cumul)">
-            Calculé à {CO2_KG_PER_KWH} kg CO₂/kWh, le facteur d'émission du réseau marocain déjà
-            utilisé dans nos études.
+            Calculé à {CO2_KG_PER_KWH} kg CO₂/kWh, le facteur d'émission du réseau marocain
+            utilisé dans nos études — source à préciser.
           </KeyFigure>
           <KeyFigure value={String(batteryKwhTotal).replace('.', ',')} unit="kWh" label="Stockage cumulé">
             Capacité batterie installée sur {battersInstalls.length} des chantiers.
@@ -120,10 +122,11 @@ const jsonLd = {
           <p>
             Le CO₂ évité = production mesurée cumulée × {CO2_KG_PER_KWH} kg/kWh (facteur d'émission
             moyen du réseau électrique marocain, mix fortement carboné — la même constante que celle
-            affichée dans chaque étude chiffrée Taqinor). Équivalent en arbres : un arbre mûr absorbe
-            environ {CO2_KG_PER_TREE_YEAR} kg de CO₂ par an, soit ici l'équivalent d'environ{' '}
-            <strong>{treesLabel} arbres</strong> sur une année. Aucun chiffre n'est arrondi
-            vers le haut, extrapolé ou estimé au-delà de la production réellement mesurée.
+            affichée dans chaque étude chiffrée Taqinor). <strong>Source à préciser</strong> : nous
+            publierons la référence datée de ce facteur dès que nous l'aurons arrêtée. Aucun chiffre
+            n'est arrondi vers le haut, extrapolé ou estimé au-delà de la production réellement
+            mesurée, et nous ne convertissons ce CO₂ en aucun équivalent (arbres, trajets) que nous
+            ne saurions sourcer.
           </p>
         </Callout>
       </div>

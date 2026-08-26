@@ -5893,15 +5893,21 @@ const signConfig = ok
                 </div>
               ))}
               {/* PV80 — le calcul CO₂ détaillé occupait une demi-carte à l'écran ;
-                  il est ici, avec les autres hypothèses, à sa juste place. */}
+                  il est ici, avec les autres hypothèses, à sa juste place.
+                  RÈGLE « CHIFFRES VÉRIFIÉS » (26/08/2026) — cette ligne de
+                  méthode se terminait par la conversion en arbres (22 kg par
+                  arbre et par an). Elle ne cite plus AUCUNE équivalence, et
+                  elle ne prétend plus que le facteur d'émission est établi :
+                  elle dit qu'il attend sa source. Une méthode qui s'annonce
+                  vérifiable doit l'être. */}
               {enviro && (
                 <div>
                   <dt class="text-lune-faint" data-i18n data-fr="Impact CO₂" data-en="CO₂ impact" data-ar="أثر ثاني أكسيد الكربون">Impact CO₂</dt>
                   <dd class="mt-0.5 text-lune-soft" data-i18n
-                    data-fr={`Production estimée × ${formatNumber(enviro.kgPerKwh, 2)} kg CO₂/kWh (facteur d’émission du réseau marocain), ramené à ${formatNumber(enviro.kgPerTreeYear)} kg CO₂ absorbés par arbre et par an.`}
-                    data-en={`Estimated production × ${formatNumber(enviro.kgPerKwh, 2)} kg CO₂/kWh (Moroccan grid emission factor), converted at ${formatNumber(enviro.kgPerTreeYear)} kg CO₂ absorbed per tree per year.`}
-                    data-ar={`الإنتاج المقدّر × ${formatNumber(enviro.kgPerKwh, 2)} كلغ CO₂/kWh (معامل انبعاث الشبكة المغربية)، مقارنة بمعدل ${formatNumber(enviro.kgPerTreeYear)} كلغ CO₂ تمتصه الشجرة الواحدة سنوياً.`}>
-                    Production estimée × {formatNumber(enviro.kgPerKwh, 2)} kg CO₂/kWh (facteur d’émission du réseau marocain), ramené à {formatNumber(enviro.kgPerTreeYear)} kg CO₂ absorbés par arbre et par an.
+                    data-fr={`Production estimée × ${formatNumber(enviro.kgPerKwh, 2)} kg CO₂/kWh — facteur d’émission du réseau marocain, source à préciser.`}
+                    data-en={`Estimated production × ${formatNumber(enviro.kgPerKwh, 2)} kg CO₂/kWh — Moroccan grid emission factor, source to be specified.`}
+                    data-ar={`الإنتاج المقدّر × ${formatNumber(enviro.kgPerKwh, 2)} كلغ CO₂/kWh — معامل انبعاث الشبكة المغربية، المصدر يبقى للتحديد.`}>
+                    Production estimée × {formatNumber(enviro.kgPerKwh, 2)} kg CO₂/kWh — facteur d’émission du réseau marocain, source à préciser.
                   </dd>
                 </div>
               )}
