@@ -42,6 +42,18 @@ CONTRAT = (Path(__file__).resolve().parent.parent
            / 'contract_samples' / 'offres_tailles.json')
 
 
+def _client_de(company):
+    """Le client OBLIGATOIRE d'un ``Devis`` (``client`` est un FK NOT NULL).
+
+    Ces suites n'éprouvent ni le client ni la résolution de lead : elles
+    ont juste besoin d'un devis qui EXISTE en base. Même patron que les
+    fixtures voisines (``test_payload_paliers_batterie``,
+    ``test_payload_couverture_batterie``) — jamais un devis orphelin.
+    """
+    return Client.objects.get_or_create(
+        company=company, nom='Client %s' % company.slug, defaults={})[0]
+
+
 def _tableau(*paires):
     """Un tableau de dimensionnement SYNTHÉTIQUE (panneaux, payback).
 
@@ -676,7 +688,8 @@ class MaterielDuDevisTests(TestCase):
         company = Company.objects.create(slug='mat', nom='mat')
         devis = Devis.objects.create(
             company=company, reference='DEV-MAT-01', statut='envoye',
-            taux_tva=Decimal('20'), mode_installation='residentiel')
+            client=_client_de(company), taux_tva=Decimal('20'),
+            mode_installation='residentiel')
         lignes = (
             ('Panneau Canadien Solar 710W', '', '14'),
             ('Onduleur réseau Huawei 10kW Monophasé', 'sans', '1'),
@@ -733,7 +746,8 @@ class MaterielDuDevisTests(TestCase):
         company = Company.objects.create(slug='mat2', nom='mat2')
         devis = Devis.objects.create(
             company=company, reference='DEV-MAT-02', statut='envoye',
-            taux_tva=Decimal('20'), mode_installation='residentiel')
+            client=_client_de(company), taux_tva=Decimal('20'),
+            mode_installation='residentiel')
         produit = Produit.objects.create(
             company=company, nom='Boîtier exotique', prix_vente='500',
             quantite_stock=1)
@@ -861,7 +875,8 @@ class ConfigStockeeTests(TestCase):
         company = Company.objects.create(slug='cfg', nom='cfg')
         return Devis.objects.create(
             company=company, reference='DEV-CFG-01', statut='brouillon',
-            taux_tva=Decimal('20'), mode_installation='residentiel')
+            client=_client_de(company), taux_tva=Decimal('20'),
+            mode_installation='residentiel')
 
     def test_une_forme_illisible_est_traitee_comme_vide(self):
         # Un champ édité à la main ne doit pas appliquer une demi-configuration.
