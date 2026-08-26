@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Check, FileText, Plus } from 'lucide-react'
+import { Check, FileText, Plus, Download, PenLine } from 'lucide-react'
 import { ListShell } from '../../ui/module'
 import {
   Segmented, Badge, toast, Button,
@@ -36,6 +36,24 @@ async function telechargerCauseriePdf(causerie, lang = 'fr') {
   }
 }
 
+// WIR239 — export CSV de la déclaration CNSS des accidents du travail
+// (blob serveur, filename tel qu'attendu par le prestataire CNSS).
+async function telechargerAccidentsCnsvCsv() {
+  try {
+    const res = await rhApi.exportAccidentsCnss()
+    const url = window.URL.createObjectURL(new Blob([res.data], { type: 'text/csv' }))
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'declaration-accidents-cnss.csv'
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    window.URL.revokeObjectURL(url)
+  } catch {
+    toast.error('Export CNSS impossible.')
+  }
+}
+
 /* ============================================================================
    UX27 — HSE RH (registres).
    ----------------------------------------------------------------------------
@@ -65,6 +83,8 @@ export default function Hse() {
   const [accidentOpen, setAccidentOpen] = useState(false)
   const [presquOpen, setPresquOpen] = useState(false)
   const [causerieOpen, setCauserieOpen] = useState(false)
+  // WIR239 — émargement des participants d'une causerie.
+  const [emargementFor, setEmargementFor] = useState(null)
 
   const recharger = () => {
     let vivant = true
@@ -154,7 +174,17 @@ export default function Hse() {
       {vue === 'accidents' && (
         <ListShell title="Accidents du travail" columns={accidentColumns} rows={accidents} loading={loading} error={error}
           searchable exportName="accidents-travail"
-          actions={<Button onClick={() => setAccidentOpen(true)}><Plus size={15} strokeWidth={1.75} aria-hidden="true" />Déclarer un accident</Button>}
+          actions={(
+            <>
+              {/* WIR239 — export CSV serveur de la déclaration CNSS (colonnes
+                  matricule/identité/dates/gravité/arrêt), jamais recalculé ici. */}
+              <Button variant="outline" onClick={telechargerAccidentsCnsvCsv}>
+                <Download size={15} strokeWidth={1.75} aria-hidden="true" />
+                Exporter CNSS (CSV)
+              </Button>
+              <Button onClick={() => setAccidentOpen(true)}><Plus size={15} strokeWidth={1.75} aria-hidden="true" />Déclarer un accident</Button>
+            </>
+          )}
           emptyTitle="Aucun accident" emptyDescription="Aucun accident déclaré." />
       )}
       {vue === 'presqu' && (
@@ -169,6 +199,10 @@ export default function Hse() {
           actions={<Button onClick={() => setCauserieOpen(true)}><Plus size={15} strokeWidth={1.75} aria-hidden="true" />Nouvelle causerie</Button>}
           emptyTitle="Aucune causerie" emptyDescription="Aucune causerie enregistrée."
           rowActions={(c) => [
+            // WIR239 — l'émargement (FG183, présence signée) était sans
+            // aucun consommateur : les participants restaient à vie
+            // « emarge: false », preuve de présence introuvable.
+            { id: 'emargement', label: 'Émargement', icon: PenLine, onClick: () => setEmargementFor(c) },
             { id: 'pdf-fr', label: 'PDF (FR)', icon: FileText, onClick: () => telechargerCauseriePdf(c, 'fr') },
             { id: 'pdf-ar', label: 'PDF (AR)', icon: FileText, onClick: () => telechargerCauseriePdf(c, 'ar') },
           ]} />
@@ -196,6 +230,16 @@ export default function Hse() {
           employes={employes}
           onClose={() => setCauserieOpen(false)}
           onSaved={() => { setCauserieOpen(false); recharger() }}
+        />
+      )}
+      {emargementFor && (
+        <EmargementCauserieDialog
+          causerie={emargementFor}
+          onClose={() => setEmargementFor(null)}
+          // WIR239 — reste ouvert (mise à jour optimiste locale du dialogue) :
+          // seule la liste en arrière-plan est rechargée, jamais de fermeture
+          // forcée après un émargement (on peut en émarger plusieurs de suite).
+          onSaved={recharger}
         />
       )}
     </div>
@@ -428,6 +472,68 @@ function CauserieDialog({ employes, onClose, onSaved }) {
             <Button type="submit" disabled={!valide || saving}>{saving ? 'Enregistrement…' : 'Enregistrer'}</Button>
           </DialogFooter>
         </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/* ── WIR239 — Émargement des participants d'une causerie (FG183) ──
+   La causerie déjà chargée (`getCauseriesSecurite`) porte la liste imbriquée
+   `participants` — aucun appel supplémentaire nécessaire, on émarge en place
+   et on recharge le module au succès. */
+function EmargementCauserieDialog({ causerie, onClose, onSaved }) {
+  // Copie locale : mise à jour optimiste immédiate (le badge « Émargé »
+  // apparaît sans fermer le dialogue) ; `onSaved` recharge la liste des
+  // causeries en arrière-plan pour que la donnée serveur reste la source
+  // de vérité au prochain montage.
+  const [participants, setParticipants] = useState(causerie.participants || [])
+  const [emargeant, setEmargeant] = useState(null)
+  const [serverError, setServerError] = useState(null)
+
+  const emarger = async (p) => {
+    setEmargeant(p.id)
+    setServerError(null)
+    try {
+      await rhApi.emargerCauserieParticipant(causerie.id, { participant: p.participant })
+      toast.success(`${p.participant_nom} émargé(e).`)
+      setParticipants((prev) => prev.map((row) =>
+        (row.id === p.id ? { ...row, emarge: true } : row)))
+      onSaved?.()
+    } catch (err) {
+      setServerError(err?.response?.data?.detail || 'Émargement impossible.')
+    } finally {
+      setEmargeant(null)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose?.() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Émargement — {causerie.theme}</DialogTitle>
+        </DialogHeader>
+        {participants.length === 0
+          ? <p className="text-sm text-muted-foreground">Aucun participant sur la feuille de cette causerie.</p>
+          : (
+            <ul className="flex flex-col gap-2">
+              {participants.map((p) => (
+                <li key={p.id} className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2 text-sm">
+                  <span className="font-medium">{p.participant_nom}</span>
+                  {p.emarge
+                    ? <Badge tone="success">Émargé</Badge>
+                    : (
+                      <Button size="sm" variant="outline" disabled={emargeant === p.id} onClick={() => emarger(p)}>
+                        {emargeant === p.id ? 'Émargement…' : 'Émarger'}
+                      </Button>
+                    )}
+                </li>
+              ))}
+            </ul>
+          )}
+        {serverError && <p className="text-sm text-destructive" role="alert">{serverError}</p>}
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Fermer</Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )

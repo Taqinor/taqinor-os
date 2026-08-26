@@ -19,6 +19,8 @@ vi.mock('../../api/rhApi', () => {
       createPermisConduire: vi.fn(),
       createAffectationVehicule: vi.fn(),
       terminerAffectationVehicule: vi.fn(),
+      // WIR241 — bandeau + badge des permis expirant sous 30 jours.
+      getPermisExpirantBientot: vi.fn(empty),
     },
   }
 })
@@ -80,5 +82,23 @@ describe('VehiculesPermis (PACT81)', () => {
     fireEvent.click(screen.getAllByRole('button', { name: 'Enregistrer' })[0])
 
     expect((await screen.findAllByText(/Affectation refusée : ce conducteur n'a pas de permis/)).length).toBeGreaterThan(0)
+  })
+
+  it('WIR241 — bandeau + badge des permis expirant sous 30 jours (rapprochement par id)', async () => {
+    rhApi.getPermisConduire.mockResolvedValueOnce({
+      data: [{
+        id: 4, employe: 9, employe_nom: 'Bennani Youssef', categorie: 'B',
+        categorie_display: 'B — Véhicules légers', numero: 'P123',
+        date_expiration: '2026-09-01', valide: true,
+      }],
+    })
+    rhApi.getPermisExpirantBientot.mockResolvedValueOnce({
+      data: [{ id: 4, employe: 9, employe_nom: 'Bennani Youssef', date_expiration: '2026-09-01', valide: true }],
+    })
+    renderScreen()
+    await screen.findAllByText('Véhicules & permis')
+
+    expect(await screen.findByText(/1 permis expirant sous 30 jours/)).toBeInTheDocument()
+    expect((await screen.findAllByText('Expire bientôt')).length).toBeGreaterThan(0)
   })
 })
