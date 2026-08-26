@@ -2545,14 +2545,31 @@ const signConfig = ok
           {autoHasInjection && auto.injection_kwh_an !== null && (
             <div class="cine-card mt-5 rounded-xl p-5">
               <p class="tech-label text-brass-300" data-i18n data-fr="Injection du surplus (loi 82-21)" data-en="Surplus injection (law 82-21)" data-ar="حقن الفائض (القانون 82-21)">Injection du surplus (loi 82-21)</p>
+              {/* JARGON · DIVULGATION PROGRESSIVE (26/08/2026) — « loi 82-21 »
+                  ne dit rien à qui ne la connaît pas. Une phrase en français
+                  simple est VISIBLE ; le détail réglementaire (tarif ANRE,
+                  convention, plafond) descend dans un <details> natif. Rien
+                  n'est supprimé, rien ne change de sens. */}
+              <p class="mt-2 text-sm text-lune-soft" data-i18n
+                data-fr="En clair : l’électricité que vous produisez sans la consommer peut repartir vers le réseau. C’est la loi 82-21 qui l’autorise."
+                data-en="In plain terms: the electricity you produce without consuming it can flow back to the grid. Law 82-21 is what allows this."
+                data-ar="ببساطة: الكهرباء التي تنتجونها دون استهلاكها يمكن أن تعود إلى الشبكة. القانون 82-21 هو ما يسمح بذلك.">
+                En clair : l’électricité que vous produisez sans la consommer peut repartir vers le réseau. C’est la loi 82-21 qui l’autorise.
+              </p>
               <p class="mt-2 text-sm text-lune-soft" data-i18n
                 data-fr={`≈ ${formatNumber(auto.injection_kwh_an)} kWh/an de surplus injectables${auto.injection_dh_an !== null ? `, soit ≈ ${formatMAD(auto.injection_dh_an)}/an` : ''}.`}
                 data-en={`≈ ${formatNumber(auto.injection_kwh_an)} kWh/year of injectable surplus${auto.injection_dh_an !== null ? `, i.e. ≈ ${formatMAD(auto.injection_dh_an)}/year` : ''}.`}
                 data-ar={`≈ ${formatNumber(auto.injection_kwh_an)} kWh/سنة من الفائض القابل للحقن${auto.injection_dh_an !== null ? `، أي ≈ ${formatMAD(auto.injection_dh_an)}/سنة` : ''}.`}>≈ {formatNumber(auto.injection_kwh_an)} kWh/an de surplus injectables{auto.injection_dh_an !== null ? <>, soit ≈ {formatMAD(auto.injection_dh_an)}/an</> : null}.</p>
-              <p class="mt-1 text-xs text-lune-faint" data-i18n
-                data-fr="Tarif ANRE valable 03/2026–02/2027, plafond en révision. Sous réserve de la convention d'injection ANRE/ONEE en vigueur — l'autoconsommation reste prioritaire (loi 82-21). Aucune revente n'est garantie."
-                data-en="ANRE tariff valid 03/2026–02/2027, cap under revision. Subject to the applicable ANRE/ONEE injection agreement — self-consumption remains the priority (law 82-21). No resale is guaranteed."
-                data-ar="تعريفة ANRE سارية 03/2026–02/2027، السقف قيد المراجعة. رهْن اتفاقية الحقن السارية لدى ANRE/ONEE — يبقى الاستهلاك الذاتي أولوية (القانون 82-21). لا يُضمن أي إعادة بيع.">Tarif ANRE valable 03/2026–02/2027, plafond en révision. Sous réserve de la convention d'injection ANRE/ONEE en vigueur — l'autoconsommation reste prioritaire (loi 82-21). Aucune revente n'est garantie.</p>
+              <details class="mt-2">
+                <summary class="cursor-pointer text-xs text-lune-faint" data-i18n
+                  data-fr="Le cadre réglementaire, en détail"
+                  data-en="The regulatory framework, in detail"
+                  data-ar="الإطار التنظيمي بالتفصيل">Le cadre réglementaire, en détail</summary>
+                <p class="mt-1 text-xs text-lune-faint" data-i18n
+                  data-fr="Tarif ANRE valable 03/2026–02/2027, plafond en révision. Sous réserve de la convention d'injection ANRE/ONEE en vigueur — l'autoconsommation reste prioritaire (loi 82-21). Aucune revente n'est garantie."
+                  data-en="ANRE tariff valid 03/2026–02/2027, cap under revision. Subject to the applicable ANRE/ONEE injection agreement — self-consumption remains the priority (law 82-21). No resale is guaranteed."
+                  data-ar="تعريفة ANRE سارية 03/2026–02/2027، السقف قيد المراجعة. رهْن اتفاقية الحقن السارية لدى ANRE/ONEE — يبقى الاستهلاك الذاتي أولوية (القانون 82-21). لا يُضمن أي إعادة بيع.">Tarif ANRE valable 03/2026–02/2027, plafond en révision. Sous réserve de la convention d'injection ANRE/ONEE en vigueur — l'autoconsommation reste prioritaire (loi 82-21). Aucune revente n'est garantie.</p>
+              </details>
             </div>
           )}
 
@@ -2584,17 +2601,45 @@ const signConfig = ok
             <div class="mt-5 grid gap-4 sm:grid-cols-2">
               <div class="cine-card rounded-xl p-5">
                 <p class="tech-label text-brass-300" data-i18n data-fr="Écrêter vos tranches horaires" data-en="Shave your time-of-use peaks" data-ar="تقليص فترات الذروة">Écrêter vos tranches horaires</p>
+                {/* JARGON · DIVULGATION PROGRESSIVE — « tranches horaires » et
+                    « puissance souscrite » sont du vocabulaire de facturier. La
+                    phrase visible est en français simple ; la formulation
+                    d'origine, inchangée, descend dans le <details>. */}
                 <p class="mt-2 text-sm text-lune-soft" data-i18n
-                  data-fr="Le solaire produit en pleine journée, aux heures où le tarif industriel est le plus cher : vous écrêtez vos pointes et lissez votre puissance souscrite."
-                  data-en="Solar produces in the middle of the day, when industrial tariffs peak: you shave your peaks and smooth your subscribed power."
-                  data-ar="تنتج الطاقة الشمسية في وضح النهار، حين يكون التعريف الصناعي في ذروته: تقلّصون ذرواتكم وتُنعّمون القدرة المكتتبة.">Le solaire produit en pleine journée, aux heures où le tarif industriel est le plus cher : vous écrêtez vos pointes et lissez votre puissance souscrite.</p>
+                  data-fr="En clair : votre électricité ne coûte pas le même prix à toute heure. Le solaire produit précisément aux heures les plus chères."
+                  data-en="In plain terms: your electricity does not cost the same at every hour. Solar produces precisely during the most expensive hours."
+                  data-ar="ببساطة: كهرباؤكم لا تكلّف الثمن نفسه في كل ساعة. والطاقة الشمسية تنتج تحديداً في أغلى الساعات.">
+                  En clair : votre électricité ne coûte pas le même prix à toute heure. Le solaire produit précisément aux heures les plus chères.
+                </p>
+                <details class="mt-2">
+                  <summary class="cursor-pointer text-xs text-lune-faint" data-i18n
+                    data-fr="Le détail" data-en="The detail" data-ar="التفاصيل">Le détail</summary>
+                  <p class="mt-1 text-sm text-lune-soft" data-i18n
+                    data-fr="Le solaire produit en pleine journée, aux heures où le tarif industriel est le plus cher : vous écrêtez vos pointes et lissez votre puissance souscrite."
+                    data-en="Solar produces in the middle of the day, when industrial tariffs peak: you shave your peaks and smooth your subscribed power."
+                    data-ar="تنتج الطاقة الشمسية في وضح النهار، حين يكون التعريف الصناعي في ذروته: تقلّصون ذرواتكم وتُنعّمون القدرة المكتتبة.">Le solaire produit en pleine journée, aux heures où le tarif industriel est le plus cher : vous écrêtez vos pointes et lissez votre puissance souscrite.</p>
+                </details>
               </div>
               <div class="cine-card rounded-xl p-5">
                 <p class="tech-label text-brass-300" data-i18n data-fr="Décarbonation, CBAM et ISO" data-en="Decarbonation, CBAM and ISO" data-ar="إزالة الكربون، CBAM و ISO">Décarbonation, CBAM et ISO</p>
+                {/* JARGON · DIVULGATION PROGRESSIVE — « CBAM » et « ISO
+                    14001/50001 » sont des sigles ; la phrase visible dit la
+                    chose en français simple, le sigle et sa définition restent
+                    intacts dans le <details>. */}
                 <p class="mt-2 text-sm text-lune-soft" data-i18n
-                  data-fr="Chaque kWh solaire autoconsommé retire du CO₂ de votre bilan — un atout pour vos clients européens (mécanisme d'ajustement carbone aux frontières, CBAM) et vos certifications ISO 14001/50001."
-                  data-en="Every self-consumed solar kWh removes CO₂ from your footprint — an asset for your European customers (Carbon Border Adjustment Mechanism, CBAM) and your ISO 14001/50001 certifications."
-                  data-ar="كل كيلوواط ساعة شمسي مستهلك ذاتياً يزيل CO₂ من حصيلتكم — ميزة لعملائكم الأوروبيين (آلية تعديل الكربون على الحدود، CBAM) ولشهادات ISO 14001/50001.">Chaque kWh solaire autoconsommé retire du CO₂ de votre bilan — un atout pour vos clients européens (mécanisme d'ajustement carbone aux frontières, CBAM) et vos certifications ISO 14001/50001.</p>
+                  data-fr="En clair : produire votre électricité au soleil allège l’empreinte carbone de ce que vous fabriquez — ce que vos clients européens demandent de plus en plus."
+                  data-en="In plain terms: producing your own solar electricity lowers the carbon footprint of what you make — something your European customers increasingly ask for."
+                  data-ar="ببساطة: إنتاج كهربائكم من الشمس يخفّف البصمة الكربونية لما تصنعونه — وهو ما يطلبه عملاؤكم الأوروبيون أكثر فأكثر.">
+                  En clair : produire votre électricité au soleil allège l’empreinte carbone de ce que vous fabriquez — ce que vos clients européens demandent de plus en plus.
+                </p>
+                <details class="mt-2">
+                  <summary class="cursor-pointer text-xs text-lune-faint" data-i18n
+                    data-fr="CBAM, ISO : de quoi parle-t-on ?" data-en="CBAM, ISO: what are these?" data-ar="CBAM و ISO: عمّ نتحدث؟">CBAM, ISO : de quoi parle-t-on ?</summary>
+                  <p class="mt-1 text-sm text-lune-soft" data-i18n
+                    data-fr="Chaque kWh solaire autoconsommé retire du CO₂ de votre bilan — un atout pour vos clients européens (mécanisme d'ajustement carbone aux frontières, CBAM) et vos certifications ISO 14001/50001."
+                    data-en="Every self-consumed solar kWh removes CO₂ from your footprint — an asset for your European customers (Carbon Border Adjustment Mechanism, CBAM) and your ISO 14001/50001 certifications."
+                    data-ar="كل كيلوواط ساعة شمسي مستهلك ذاتياً يزيل CO₂ من حصيلتكم — ميزة لعملائكم الأوروبيين (آلية تعديل الكربون على الحدود، CBAM) ولشهادات ISO 14001/50001.">Chaque kWh solaire autoconsommé retire du CO₂ de votre bilan — un atout pour vos clients européens (mécanisme d'ajustement carbone aux frontières, CBAM) et vos certifications ISO 14001/50001.</p>
+                </details>
               </div>
             </div>
           )}
@@ -3433,6 +3478,21 @@ const signConfig = ok
                     data-fr="Un dimensionnement pensé pour votre facture" data-en="A sizing built around your bill" data-ar="تصميم يراعي فاتورتكم">
                     Un dimensionnement pensé pour votre facture
                   </p>
+                  {/* JARGON · DIVULGATION PROGRESSIVE (26/08/2026) — « tranche »
+                      et « falaise tarifaire » sont du vocabulaire d'électricien.
+                      UNE phrase en français simple est VISIBLE ; la phrase
+                      technique d'origine, qui nomme les tranches réelles du
+                      client, descend juste en dessous dans un <details> natif —
+                      intacte, mot pour mot, dans les trois langues. */}
+                  <p class="v2-body mt-2 text-sm text-lune-soft" data-i18n
+                    data-fr="En clair : au Maroc, le prix du kWh monte par paliers. Plus vous consommez, plus les derniers kWh du mois vous coûtent cher — et c’est précisément ceux-là que le solaire vous évite en premier."
+                    data-en="In plain terms: in Morocco the price per kWh rises in steps. The more you consume, the more the last kWh of the month cost you — and those are exactly the ones solar removes first."
+                    data-ar="ببساطة: في المغرب يرتفع ثمن الكيلوواط.ساعة على درجات. كلما استهلكتم أكثر، غلت عليكم آخر كيلوواطات الشهر — وهي بالضبط ما تتفاداه الطاقة الشمسية أولاً.">
+                    En clair : au Maroc, le prix du kWh monte par paliers. Plus vous consommez, plus les derniers kWh du mois vous coûtent cher — et c’est précisément ceux-là que le solaire vous évite en premier.
+                  </p>
+                  <details class="mt-2">
+                  <summary class="cursor-pointer text-xs text-lune-faint" data-i18n
+                    data-fr="Votre tranche, en détail" data-en="Your bracket, in detail" data-ar="شريحتكم بالتفصيل">Votre tranche, en détail</summary>
                   <p class="v2-body mt-2 text-sm text-lune-soft" data-i18n
                     data-fr={
                       tarifStory.trancheActuelleLibelle && tarifStory.trancheViseeLibelle
@@ -3461,6 +3521,7 @@ const signConfig = ok
                       Résiduel importé du réseau : environ {formatNumber(tarifStory.residuelKwhMois, 0)} kWh/mois.
                     </p>
                   )}
+                  </details>
                   {/* L-DEUXOPT (25/08/2026) — quand les deux options divergent,
                       ce dimensionnement (falaise tarifaire) est celui de
                       l'option AFFICHÉE : une clause sobre le précise, sans
