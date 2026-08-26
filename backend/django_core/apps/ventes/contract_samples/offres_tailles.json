@@ -1,0 +1,326 @@
+{
+  "endpoint": "GET /api/django/public/proposal/<token>/data/",
+  "pourquoi": "TAILLES (ordre fondateur, 26/08/2026) — clé racine `offres_tailles` : les TROIS tailles d'installation explorables côté client (Éco → Recommandé → Max), chacune servie dans ses DEUX variantes `sans` / `avec` batterie pour qu'UNE bascule au-dessus des cartes recalcule les trois instantanément, sans le moindre appel réseau. EXPLORATION SEULEMENT : le prix officiel, les lignes et la signature du devis ne bougent JAMAIS — `recommande` EST le devis, les deux autres ne sont que des propositions à demander. Additive et facultative : la clé est ABSENTE dès que rien n'est dérivable (devis non résidentiel, pompage, sans profil de consommation, sans prix), jamais un chiffre inventé pour remplir une carte.",
+  "notes": {
+    "derivation": "Chaque nombre vient du MÊME moteur que le reste de la page. `recommande` ne recalcule RIEN : il REPREND les valeurs déjà servies pour le devis officiel (prix TTC, économie annuelle, payback, couverture, taux d'autoconsommation, production) — c'est la discipline du palier `retenu` de l'échelle batterie, et la parade à l'incident « 21 contre 22 » (deux calculs voisins, deux arrondis, deux chiffres pour la même chose). `eco` est le point de MEILLEUR PAYBACK du balayage moteur ; `max` est le plafond du toit (`dimensionnement.plafond_toit_du_devis`, quand le devis porte un calepinage) sinon le plafond de balayage existant (facteur falaise × taille de parité, borné par `MAX_PANNEAUX_BALAYAGE`).",
+    "batterie": "Les banques suivent la règle BATHOMO (fondateur 26/08/2026) : le module est TOUJOURS celui des lignes du devis (`dimensionnement.module_batterie_du_devis`, passé en `batterie_module_kwh` à `services.composition_residentielle`), la banque est HOMOGÈNE (jamais deux calibres mélangés), et elle est bornée par `bat_max_modules_par_banc`. `capacite_utile_kwh` est la capacité UTILE (règle CAPUTIL : fiche `kwh_usable`, sinon `kwh_nominal × dod_pct`) — `module_kwh` reste, lui, le nominal de l'étiquette, la grandeur avec laquelle le client compte (« deux batteries de 5 »).",
+    "variante_avec": "`avec` n'est servi que si le devis SERT réellement l'option batterie (`variantes_servables` / `avec_ok`). Sinon la clé `avec` est simplement ABSENTE de chaque offre et `avec_servable` vaut `false` : la page n'affiche alors aucune bascule. Une offre dont la banque ne se remplit pas tous les jours porte `batterie.remplissage_ok = false` — elle est montrée grisée avec la formulation existante, jamais masquée en silence.",
+    "omission": "TOUT champ de carte est FACULTATIF, exactement comme les `_card_if` du PDF : sans donnée réelle, le champ est OMIS — jamais un zéro, jamais un forfait. Une carte peut donc être plus pauvre qu'une autre ; c'est la vérité de ce devis-là.",
+    "convergence": "Quand deux tailles convergent (l'optimum est déjà le devis, ou le toit est déjà saturé), la liste `offres` COLLAPSE à deux entrées — voire une seule. JAMAIS une taille intermédiaire fabriquée pour remplir un troisième emplacement.",
+    "anticopie": "`familles` et `familles_diff` ne nomment que des FAMILLES — jamais un calibre, jamais une quantité de nomenclature : la comparaison « ce qui change » reste lisible au niveau STANDARD sans livrer la nomenclature. Le vocabulaire est BORNÉ à `panneau` / `onduleur` / `batterie`, et c'est une CONDITION DE COMPARABILITÉ : la carte `recommande` lit les LIGNES du devis tandis que `eco`/`max` lisent une composition catalogue, si bien qu'une liste complète d'un côté et partielle de l'autre ferait dire à « ce qui change » que l'offre Éco AJOUTE la structure et le transport — un mensonge d'artefact. Ce sont d'ailleurs les seules familles qui distinguent réellement deux tailles : structure, câblage, protections et services sont présents partout par construction. `familles_diff` est OMIS quand rien ne diffère (une table de comparaison vide n'apprend rien) et n'apparaît JAMAIS sur la carte `recommande`, qui EST la référence. `materiel` publie marque + modèle (toujours affichés, décision fondateur) et la garantie UNIQUEMENT quand la fiche produit la porte (règle `_gar_de_la_fiche`) — sinon le champ est omis.",
+    "pas_d_autonomie_en_heures": "L'audit demandait des « heures d'autonomie » par carte. Le moteur n'en calcule AUCUNE : `etude_horaire.couverture_batterie_publique` exprime l'autonomie complète en NOMBRE DE PACKS et en kWh, jamais en heures. Servir une durée exigerait de diviser une capacité par une puissance moyenne inventée — exactement le chiffre non vérifié que la règle « zéro chiffre inventé » interdit. Le champ est donc ABSENT de ce contrat. Ce que la carte dit à sa place est RÉEL : `capacite_utile_kwh` (règle CAPUTIL), `nb_modules × module_kwh`, et `remplissage_ok` (verdict de la règle fondateur « batteries toujours pleines », lu par `etude_horaire.balayer_stockage_horaire` — la MÊME source que l'échelle de paliers). Rouvrir le sujet suppose une définition d'autonomie tranchée par le fondateur (sur quelle charge ? quelle saison ?).",
+    "escalade": "`escalade_tarifaire_pct` vaut 0 : les économies cumulées 25 ans sont calculées SANS hausse tarifaire supposée (`quote_engine.pricing.compute_cashflow_payback`, `TARIFF_ESCALATION` inchangé). Le drapeau existe pour que la page puisse imprimer la note « aucune hausse tarifaire supposée » AU-DESSUS du chiffre, au lieu de laisser croire à une projection optimiste.",
+    "cumul_25_ans": "`economies_cumulees_25_ans_mad` = le DERNIER POINT de la courbe cumulée que la page trace déjà (`quote.cashflow_sans`/`cashflow_avec`, publiés par `pricing`) + le prix TTC — donc les économies ENCAISSÉES sur l'horizon, le prix étant affiché juste au-dessus sur la même carte. La carte `recommande` LIT cette série ; `eco`/`max` rappellent `compute_cashflow_payback` avec les DEUX MÊMES arguments que `pricing.calculate_savings_roi` : `inverter_replace_cost` (Q1 — le prix TTC réel de LEUR ligne onduleur, remisé, jamais un pourcentage) et `battery_share` (Z5 — la part réellement stockée ; sans elle l'abattement 0,90 frapperait aussi l'énergie autoconsommée au fil du soleil, le bug corrigé le 20/08). Une taille sans ligne onduleur ne porte AUCUNE provision.",
+    "fraicheur_des_taux": "`couverture_pct` et `taux_autoconsommation_pct` de la carte `recommande` passent par la garde anti-périmé CJ2a (`pricing._lire_etude_horaire`) : le bloc horaire du devis dit pour quelle puissance il a été calculé, et il est REFUSÉ dès que la carte ne fait plus cette puissance (tolérance 2 %). Les deux champs sont alors simplement OMIS — un devis redimensionné n'affiche jamais l'ancienne couverture à côté du nouveau prix. Conséquence normale sur un devis à deux options de tailles différentes (L-2OPT) : la variante dont le champ diverge du bloc n'a pas de taux.",
+    "cta": "`est_le_devis` dit si l'état affiché ÉGALE exactement le devis officiel. La page n'a le droit d'ouvrir le lien de signature (#signer) QUE depuis une carte `est_le_devis = true` ET dans la variante réellement retenue ; partout ailleurs le seul CTA est la demande de modification, préremplie avec `config`.",
+    "ecriture": "Ce bloc est SERVI depuis ce qui est STOCKÉ sur le devis (`Devis.offres_tailles_config`, posé par l'écran vendeur) et complété par la dérivation moteur pour toute taille que le vendeur n'a pas touchée. Une taille ajustée à la main n'est JAMAIS recalculée en silence : elle porte `ajuste = true` et garde sa configuration jusqu'à un « Régénérer » explicite.",
+    "garde": "Best-effort, exactement comme `_echelle_paliers_batterie_publique` : toute exception est journalisée (`logger.warning`) et la clé disparaît — la page publique ne tombe jamais à cause de ce bloc. Servi aux DEUX niveaux de partage : il ne porte que des natures de nombres DÉJÀ publiques (tailles, prix TTC, économies, payback, couverture).",
+    "section": "Ce bloc EST un bloc d'ÉCONOMIES (prix, économie annuelle, payback, cumul 25 ans) : il suit la case « Économies » du dialogue d'envoi (`ShareLink.sections`), comme `profils_comparatifs`. Décochée ⇒ clé ABSENTE — sinon la case serait contournable par une autre section de la même page.",
+    "deux_tailles_minimum": "Le payload public n'expose la clé qu'à partir de DEUX offres : une section « Explorer d'autres tailles » qui n'en montre qu'une n'explore rien. L'API vendeur, elle, sert tout ce qui est dérivable (l'écran d'édition n'est pas une comparaison)."
+  },
+  "exemple": {
+    "offres_tailles": {
+      "avec_servable": true,
+      "module_batterie_kwh": 5.0,
+      "plafond_toit_panneaux": 34,
+      "escalade_tarifaire_pct": 0,
+      "horizon_annees": 25,
+      "offres": [
+        {
+          "cle": "eco",
+          "titre": "Éco",
+          "recommande": false,
+          "est_le_devis": false,
+          "ajuste": false,
+          "config": {
+            "nb_panneaux": 14,
+            "batterie_nb_modules": 0,
+            "batterie_module_kwh": 5.0
+          },
+          "sans": {
+            "nb_panneaux": 14,
+            "puissance_kwc": 7.7,
+            "prix_ttc": 71400.0,
+            "prix_par_kwc_ttc": 9273.0,
+            "economie_annuelle_mad": 9840.0,
+            "payback_annees": 7.26,
+            "couverture_pct": 48.2,
+            "taux_autoconsommation_pct": 71.4,
+            "production_annuelle_kwh": 12180.0,
+            "economies_cumulees_25_ans_mad": 231400.0,
+            "materiel": [
+              {
+                "role": "panneau",
+                "famille": "panneau",
+                "marque": "Longi",
+                "modele": "Panneau 550 W monocristallin",
+                "garantie_ans": 12
+              },
+              {
+                "role": "onduleur_hybride",
+                "famille": "onduleur",
+                "marque": "Deye",
+                "modele": "SUN-8K-SG05LP3"
+              }
+            ],
+            "familles": ["onduleur", "panneau"],
+            "familles_diff": {
+              "ajoutees": [],
+              "retirees": ["batterie"]
+            },
+            "toit_ok": true
+          },
+          "avec": {
+            "nb_panneaux": 16,
+            "puissance_kwc": 8.8,
+            "prix_ttc": 96200.0,
+            "prix_par_kwc_ttc": 10932.0,
+            "economie_annuelle_mad": 12360.0,
+            "payback_annees": 7.78,
+            "couverture_pct": 63.5,
+            "taux_autoconsommation_pct": 88.1,
+            "production_annuelle_kwh": 13920.0,
+            "economies_cumulees_25_ans_mad": 290600.0,
+            "batterie": {
+              "nb_modules": 2,
+              "module_kwh": 5.0,
+              "capacite_utile_kwh": 9.0,
+              "remplissage_ok": true
+            },
+            "materiel": [
+              {
+                "role": "panneau",
+                "famille": "panneau",
+                "marque": "Longi",
+                "modele": "Panneau 550 W monocristallin",
+                "garantie_ans": 12
+              },
+              {
+                "role": "batterie",
+                "famille": "batterie",
+                "marque": "Deye",
+                "modele": "Batterie 5 kWh LFP"
+              }
+            ],
+            "familles": ["batterie", "onduleur", "panneau"],
+            "toit_ok": true
+          }
+        },
+        {
+          "cle": "recommande",
+          "titre": "Recommandé",
+          "recommande": true,
+          "est_le_devis": true,
+          "ajuste": false,
+          "config": {
+            "nb_panneaux": 22,
+            "batterie_nb_modules": 3,
+            "batterie_module_kwh": 5.0
+          },
+          "sans": {
+            "nb_panneaux": 22,
+            "puissance_kwc": 12.1,
+            "prix_ttc": 108900.0,
+            "prix_par_kwc_ttc": 9000.0,
+            "economie_annuelle_mad": 13260.0,
+            "payback_annees": 8.21,
+            "couverture_pct": 61.0,
+            "taux_autoconsommation_pct": 62.8,
+            "production_annuelle_kwh": 19140.0,
+            "economies_cumulees_25_ans_mad": 311800.0,
+            "materiel": [
+              {
+                "role": "panneau",
+                "famille": "panneau",
+                "marque": "Longi",
+                "modele": "Panneau 550 W monocristallin",
+                "garantie_ans": 12
+              }
+            ],
+            "familles": ["onduleur", "panneau"],
+            "toit_ok": true
+          },
+          "avec": {
+            "nb_panneaux": 22,
+            "puissance_kwc": 12.1,
+            "prix_ttc": 142700.0,
+            "prix_par_kwc_ttc": 11793.0,
+            "economie_annuelle_mad": 17880.0,
+            "payback_annees": 7.98,
+            "couverture_pct": 79.4,
+            "taux_autoconsommation_pct": 92.6,
+            "production_annuelle_kwh": 19140.0,
+            "economies_cumulees_25_ans_mad": 420300.0,
+            "batterie": {
+              "nb_modules": 3,
+              "module_kwh": 5.0,
+              "capacite_utile_kwh": 13.5,
+              "remplissage_ok": true
+            },
+            "materiel": [
+              {
+                "role": "panneau",
+                "famille": "panneau",
+                "marque": "Longi",
+                "modele": "Panneau 550 W monocristallin",
+                "garantie_ans": 12
+              },
+              {
+                "role": "onduleur_hybride",
+                "famille": "onduleur",
+                "marque": "Deye",
+                "modele": "SUN-12K-SG04LP3",
+                "garantie_ans": 5
+              },
+              {
+                "role": "batterie",
+                "famille": "batterie",
+                "marque": "Deye",
+                "modele": "Batterie 5 kWh LFP",
+                "garantie_ans": 10
+              }
+            ],
+            "familles": ["batterie", "onduleur", "panneau"],
+            "toit_ok": true
+          }
+        },
+        {
+          "cle": "max",
+          "titre": "Max",
+          "recommande": false,
+          "est_le_devis": false,
+          "ajuste": true,
+          "config": {
+            "nb_panneaux": 34,
+            "batterie_nb_modules": 6,
+            "batterie_module_kwh": 5.0
+          },
+          "sans": {
+            "nb_panneaux": 34,
+            "puissance_kwc": 18.7,
+            "prix_ttc": 159800.0,
+            "prix_par_kwc_ttc": 8545.0,
+            "economie_annuelle_mad": 15600.0,
+            "payback_annees": 10.24,
+            "couverture_pct": 72.5,
+            "taux_autoconsommation_pct": 47.9,
+            "production_annuelle_kwh": 29580.0,
+            "economies_cumulees_25_ans_mad": 366900.0,
+            "familles": ["onduleur", "panneau"],
+            "toit_ok": true
+          },
+          "avec": {
+            "nb_panneaux": 34,
+            "puissance_kwc": 18.7,
+            "prix_ttc": 227600.0,
+            "prix_par_kwc_ttc": 12171.0,
+            "economie_annuelle_mad": 23040.0,
+            "payback_annees": 9.88,
+            "couverture_pct": 93.1,
+            "taux_autoconsommation_pct": 78.4,
+            "production_annuelle_kwh": 29580.0,
+            "economies_cumulees_25_ans_mad": 541800.0,
+            "batterie": {
+              "nb_modules": 6,
+              "module_kwh": 5.0,
+              "capacite_utile_kwh": 27.0,
+              "remplissage_ok": true
+            },
+            "familles": ["batterie", "onduleur", "panneau"],
+            "toit_ok": true
+          }
+        }
+      ]
+    }
+  },
+  "exemple_sans_option_batterie": {
+    "offres_tailles": {
+      "avec_servable": false,
+      "escalade_tarifaire_pct": 0,
+      "horizon_annees": 25,
+      "offres": [
+        {
+          "cle": "eco",
+          "titre": "Éco",
+          "recommande": false,
+          "est_le_devis": false,
+          "ajuste": false,
+          "config": {"nb_panneaux": 10, "batterie_nb_modules": 0},
+          "sans": {
+            "nb_panneaux": 10,
+            "puissance_kwc": 5.5,
+            "prix_ttc": 52800.0,
+            "economie_annuelle_mad": 7080.0,
+            "payback_annees": 7.46,
+            "familles": ["onduleur", "panneau"]
+          }
+        },
+        {
+          "cle": "recommande",
+          "titre": "Recommandé",
+          "recommande": true,
+          "est_le_devis": true,
+          "ajuste": false,
+          "config": {"nb_panneaux": 14, "batterie_nb_modules": 0},
+          "sans": {
+            "nb_panneaux": 14,
+            "puissance_kwc": 7.7,
+            "prix_ttc": 71400.0,
+            "economie_annuelle_mad": 9840.0,
+            "payback_annees": 7.26,
+            "familles": ["onduleur", "panneau"]
+          }
+        }
+      ]
+    }
+  },
+  "exemple_absent": {
+    "commentaire": "Devis pompage / industriel / sans profil de consommation, ou toute erreur de dérivation : la clé `offres_tailles` n'est PAS présente dans le payload. La page n'affiche alors aucune section « Explorer d'autres tailles » — jamais une section vide, jamais un chiffre de remplissage."
+  },
+  "api_vendeur": {
+    "pourquoi": "L'écran vendeur (fiche devis / édition complète) lit et ÉDITE les trois tailles. La configuration est éditable ; les nombres DÉRIVÉS ne le sont jamais — ils sont réestampillés par le moteur à chaque écriture. C'est la règle « zéro chiffre inventé » appliquée à l'édition : il n'existe aucun champ où taper un prix.",
+    "lecture": {
+      "endpoint": "GET /api/django/ventes/devis/<int:pk>/offres-tailles/",
+      "permission": "lecture devis (société du devis, `get_object` scopé — jamais une société lue dans le corps)",
+      "reponse": {
+        "offres_tailles": "le MÊME objet que la clé publique ci-dessus (mêmes clés, mêmes natures)",
+        "editable": true,
+        "raison_non_editable": "présent SEULEMENT quand `editable` est faux — ex. « devis non résidentiel »"
+      }
+    },
+    "ecriture_config": {
+      "endpoint": "PATCH /api/django/ventes/devis/<int:pk>/offres-tailles/config/",
+      "permission": "écriture devis (action inscrite dans WRITE_ACTIONS **et** portant son décorateur — piège VX199)",
+      "corps": {
+        "cle": "eco | recommande | max",
+        "config": {
+          "nb_panneaux": 16,
+          "batterie_nb_modules": 2,
+          "equipements": {
+            "panneau": 41,
+            "onduleur_hybride": 118,
+            "batterie": 205
+          }
+        }
+      },
+      "regles": [
+        "SEULES ces entrées sont acceptées. Toute tentative d'écrire un nombre DÉRIVÉ (`prix_ttc`, `economie_annuelle_mad`, `payback_annees`, `couverture_pct`, `puissance_kwc`, `production_annuelle_kwh`, `economies_cumulees_25_ans_mad`, `prix_par_kwc_ttc`) est REFUSÉE par le sérialiseur en 400 — jamais ignorée en silence.",
+        "`equipements` remplace un produit par un AUTRE produit du catalogue de la société (id `stock.Produit`), rôle par rôle. Un id hors société est refusé.",
+        "L'écriture ne touche QUE la taille nommée par `cle` : les deux autres sont bit-à-bit inchangées.",
+        "La taille écrite passe `ajuste = true` et porte l'horodatage de la modification.",
+        "Aucune ligne du devis n'est touchée : les tailles sont une couche d'EXPLORATION, le devis officiel reste la source contractuelle."
+      ],
+      "reponse": "le MÊME objet que la lecture, la taille éditée re-dérivée"
+    },
+    "regeneration": {
+      "endpoint": "POST /api/django/ventes/devis/<int:pk>/offres-tailles/regenerer/",
+      "permission": "écriture devis (même piège VX199)",
+      "corps": {"cle": "eco | recommande | max"},
+      "regles": [
+        "Re-dérive CETTE taille depuis le moteur et efface son marqueur `ajuste`.",
+        "Les deux autres tailles sont bit-à-bit inchangées, y compris leur marqueur `ajuste`."
+      ],
+      "reponse": "le MÊME objet que la lecture, la taille régénérée re-dérivée"
+    }
+  }
+}
