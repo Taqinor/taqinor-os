@@ -166,12 +166,13 @@ const PER_CHUNK_BUDGET_KB = 350
 //     `context.js` depuis N93 — pas un nouvel import statique.
 // Palier serré (~17 Ko de marge sur le réel) : croissance produit légitime
 // déjà bien rangée, palier honnête plutôt qu'une marge cumulée.
-// 2026-08-26 — 3375 -> 3465. Drain WIR (121 tâches, ~40 écrans/onglets neufs :
+// 2026-08-26 — 3375 -> 3500. Drain WIR (121 tâches, ~45 écrans/onglets neufs :
 // ISO QHSE, annonces, référentiel hôtellerie, emprunts/états paramétrables,
 // FP&A administration, plans de commission, pages publiques RFQ/intervention/
-// signalement, centre de pièces jointes…). Mesuré 3445,8 Ko en CI — aucune
-// nouvelle dépendance npm, tout en lazy par onglet ; palier serré (~19 Ko).
-const TOTAL_BUDGET_KB = 3465
+// signalement, centre de pièces jointes, recette IEC, panneaux scan montés…).
+// Mesuré 3479,3 Ko en CI une fois la queue crédit foldée — aucune nouvelle
+// dépendance npm, tout en lazy par onglet ; palier serré (~21 Ko).
+const TOTAL_BUDGET_KB = 3500
 const VENDOR_CHUNK_BUDGETS_KB = {
   recharts: 450,
   'pdfjs-dist': 450,

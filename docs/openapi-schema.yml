@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 9543, operations: 17180, components: 5044}
+counts: {paths: 9549, operations: 17194, components: 5049}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -8550,6 +8550,13 @@ operations:
 - put /api/django/ventes/parametrages-relance-client/{id}/ -> django_ventes_parametrages_relance_client_update
 - get /api/django/ventes/parametres-gammes/ -> django_ventes_parametres_gammes_retrieve
 - patch /api/django/ventes/parametres-gammes/ -> django_ventes_parametres_gammes_partial_update
+- get /api/django/ventes/plans-commission/ -> django_ventes_plans_commission_list
+- post /api/django/ventes/plans-commission/ -> django_ventes_plans_commission_create
+- get /api/django/ventes/plans-commission/resoudre/ -> django_ventes_plans_commission_resoudre_retrieve
+- delete /api/django/ventes/plans-commission/{id}/ -> django_ventes_plans_commission_destroy
+- get /api/django/ventes/plans-commission/{id}/ -> django_ventes_plans_commission_retrieve
+- patch /api/django/ventes/plans-commission/{id}/ -> django_ventes_plans_commission_partial_update
+- put /api/django/ventes/plans-commission/{id}/ -> django_ventes_plans_commission_update
 - get /api/django/ventes/presets/ -> django_ventes_presets_list
 - delete /api/django/ventes/presets/{id}/ -> django_ventes_presets_destroy
 - get /api/django/ventes/prix-applicable/ -> django_ventes_prix_applicable_retrieve
@@ -17131,6 +17138,13 @@ operations:
 - put /api/v1/ventes/parametrages-relance-client/{id}/ -> v1_ventes_parametrages_relance_client_update
 - get /api/v1/ventes/parametres-gammes/ -> v1_ventes_parametres_gammes_retrieve
 - patch /api/v1/ventes/parametres-gammes/ -> v1_ventes_parametres_gammes_partial_update
+- get /api/v1/ventes/plans-commission/ -> v1_ventes_plans_commission_list
+- post /api/v1/ventes/plans-commission/ -> v1_ventes_plans_commission_create
+- get /api/v1/ventes/plans-commission/resoudre/ -> v1_ventes_plans_commission_resoudre_retrieve
+- delete /api/v1/ventes/plans-commission/{id}/ -> v1_ventes_plans_commission_destroy
+- get /api/v1/ventes/plans-commission/{id}/ -> v1_ventes_plans_commission_retrieve
+- patch /api/v1/ventes/plans-commission/{id}/ -> v1_ventes_plans_commission_partial_update
+- put /api/v1/ventes/plans-commission/{id}/ -> v1_ventes_plans_commission_update
 - get /api/v1/ventes/presets/ -> v1_ventes_presets_list
 - delete /api/v1/ventes/presets/{id}/ -> v1_ventes_presets_destroy
 - get /api/v1/ventes/prix-applicable/ -> v1_ventes_prix_applicable_retrieve
@@ -19817,6 +19831,7 @@ components:
 - PaginatedPlanAbonnementList
 - PaginatedPlanActiviteList
 - PaginatedPlanChargementList
+- PaginatedPlanCommissionList
 - PaginatedPlanComptableList
 - PaginatedPlanComptageTournantList
 - PaginatedPlanCompteList
@@ -20797,6 +20812,7 @@ components:
 - PatchedPlanAbonnementRequest
 - PatchedPlanActiviteRequest
 - PatchedPlanChargementRequest
+- PatchedPlanCommissionRequest
 - PatchedPlanComptableRequest
 - PatchedPlanComptageTournantRequest
 - PatchedPlanCompteRequest
@@ -21146,6 +21162,9 @@ components:
 - PlanChargement
 - PlanChargementRequest
 - PlanChargementStatutEnum
+- PlanCommission
+- PlanCommissionBaseEnum
+- PlanCommissionRequest
 - PlanComptable
 - PlanComptableRequest
 - PlanComptageTournant
