@@ -7,7 +7,8 @@
     "variante_avec": "`avec` n'est servi que si le devis SERT réellement l'option batterie (`variantes_servables` / `avec_ok`). Sinon la clé `avec` est simplement ABSENTE de chaque offre et `avec_servable` vaut `false` : la page n'affiche alors aucune bascule. Une offre dont la banque ne se remplit pas tous les jours porte `batterie.remplissage_ok = false` — elle est montrée grisée avec la formulation existante, jamais masquée en silence.",
     "omission": "TOUT champ de carte est FACULTATIF, exactement comme les `_card_if` du PDF : sans donnée réelle, le champ est OMIS — jamais un zéro, jamais un forfait. Une carte peut donc être plus pauvre qu'une autre ; c'est la vérité de ce devis-là.",
     "convergence": "Quand deux tailles convergent (l'optimum est déjà le devis, ou le toit est déjà saturé), la liste `offres` COLLAPSE à deux entrées — voire une seule. JAMAIS une taille intermédiaire fabriquée pour remplir un troisième emplacement.",
-    "anticopie": "`familles` et `familles_diff` ne nomment que des FAMILLES de matériel (panneau, onduleur, batterie, structure…) — jamais un calibre, jamais une quantité de nomenclature : la comparaison « ce qui change » reste lisible au niveau STANDARD sans livrer la nomenclature. `materiel` publie marque + modèle (toujours affichés, décision fondateur) et la garantie UNIQUEMENT quand la fiche produit la porte (règle `_gar_de_la_fiche`) — sinon le champ est omis.",
+    "anticopie": "`familles` et `familles_diff` ne nomment que des FAMILLES — jamais un calibre, jamais une quantité de nomenclature : la comparaison « ce qui change » reste lisible au niveau STANDARD sans livrer la nomenclature. Le vocabulaire est BORNÉ à `panneau` / `onduleur` / `batterie`, et c'est une CONDITION DE COMPARABILITÉ : la carte `recommande` lit les LIGNES du devis tandis que `eco`/`max` lisent une composition catalogue, si bien qu'une liste complète d'un côté et partielle de l'autre ferait dire à « ce qui change » que l'offre Éco AJOUTE la structure et le transport — un mensonge d'artefact. Ce sont d'ailleurs les seules familles qui distinguent réellement deux tailles : structure, câblage, protections et services sont présents partout par construction. `familles_diff` est OMIS quand rien ne diffère (une table de comparaison vide n'apprend rien) et n'apparaît JAMAIS sur la carte `recommande`, qui EST la référence. `materiel` publie marque + modèle (toujours affichés, décision fondateur) et la garantie UNIQUEMENT quand la fiche produit la porte (règle `_gar_de_la_fiche`) — sinon le champ est omis.",
+    "pas_d_autonomie_en_heures": "L'audit demandait des « heures d'autonomie » par carte. Le moteur n'en calcule AUCUNE : `etude_horaire.couverture_batterie_publique` exprime l'autonomie complète en NOMBRE DE PACKS et en kWh, jamais en heures. Servir une durée exigerait de diviser une capacité par une puissance moyenne inventée — exactement le chiffre non vérifié que la règle « zéro chiffre inventé » interdit. Le champ est donc ABSENT de ce contrat. Ce que la carte dit à sa place est RÉEL : `capacite_utile_kwh` (règle CAPUTIL), `nb_modules × module_kwh`, et `remplissage_ok` (verdict de la règle fondateur « batteries toujours pleines », lu par `etude_horaire.balayer_stockage_horaire` — la MÊME source que l'échelle de paliers). Rouvrir le sujet suppose une définition d'autonomie tranchée par le fondateur (sur quelle charge ? quelle saison ?).",
     "escalade": "`escalade_tarifaire_pct` vaut 0 : les économies cumulées 25 ans sont calculées SANS hausse tarifaire supposée (`quote_engine.pricing.compute_cashflow_payback`, `TARIFF_ESCALATION` inchangé). Le drapeau existe pour que la page puisse imprimer la note « aucune hausse tarifaire supposée » AU-DESSUS du chiffre, au lieu de laisser croire à une projection optimiste.",
     "cta": "`est_le_devis` dit si l'état affiché ÉGALE exactement le devis officiel. La page n'a le droit d'ouvrir le lien de signature (#signer) QUE depuis une carte `est_le_devis = true` ET dans la variante réellement retenue ; partout ailleurs le seul CTA est la demande de modification, préremplie avec `config`.",
     "ecriture": "Ce bloc est SERVI depuis ce qui est STOCKÉ sur le devis (`Devis.offres_tailles_config`, posé par l'écran vendeur) et complété par la dérivation moteur pour toute taille que le vendeur n'a pas touchée. Une taille ajustée à la main n'est JAMAIS recalculée en silence : elle porte `ajuste = true` et garde sa configuration jusqu'à un « Régénérer » explicite.",
@@ -58,7 +59,7 @@
                 "modele": "SUN-8K-SG05LP3"
               }
             ],
-            "familles": ["panneau", "onduleur", "structure", "cables", "protections"],
+            "familles": ["onduleur", "panneau"],
             "familles_diff": {
               "ajoutees": [],
               "retirees": ["batterie"]
@@ -80,8 +81,7 @@
               "nb_modules": 2,
               "module_kwh": 5.0,
               "capacite_utile_kwh": 9.0,
-              "remplissage_ok": true,
-              "autonomie_heures": 6.5
+              "remplissage_ok": true
             },
             "materiel": [
               {
@@ -98,11 +98,7 @@
                 "modele": "Batterie 5 kWh LFP"
               }
             ],
-            "familles": ["panneau", "onduleur", "batterie", "structure", "cables", "protections"],
-            "familles_diff": {
-              "ajoutees": [],
-              "retirees": []
-            },
+            "familles": ["batterie", "onduleur", "panneau"],
             "toit_ok": true
           }
         },
@@ -137,7 +133,7 @@
                 "garantie_ans": 12
               }
             ],
-            "familles": ["panneau", "onduleur", "structure", "cables", "protections"],
+            "familles": ["onduleur", "panneau"],
             "toit_ok": true
           },
           "avec": {
@@ -155,8 +151,7 @@
               "nb_modules": 3,
               "module_kwh": 5.0,
               "capacite_utile_kwh": 13.5,
-              "remplissage_ok": true,
-              "autonomie_heures": 9.0
+              "remplissage_ok": true
             },
             "materiel": [
               {
@@ -181,7 +176,7 @@
                 "garantie_ans": 10
               }
             ],
-            "familles": ["panneau", "onduleur", "batterie", "structure", "cables", "protections"],
+            "familles": ["batterie", "onduleur", "panneau"],
             "toit_ok": true
           }
         },
@@ -207,7 +202,7 @@
             "taux_autoconsommation_pct": 47.9,
             "production_annuelle_kwh": 29580.0,
             "economies_cumulees_25_ans_mad": 366900.0,
-            "familles": ["panneau", "onduleur", "structure", "cables", "protections"],
+            "familles": ["onduleur", "panneau"],
             "toit_ok": true
           },
           "avec": {
@@ -225,10 +220,9 @@
               "nb_modules": 6,
               "module_kwh": 5.0,
               "capacite_utile_kwh": 27.0,
-              "remplissage_ok": true,
-              "autonomie_heures": 17.5
+              "remplissage_ok": true
             },
-            "familles": ["panneau", "onduleur", "batterie", "structure", "cables", "protections"],
+            "familles": ["batterie", "onduleur", "panneau"],
             "toit_ok": true
           }
         }
@@ -254,7 +248,7 @@
             "prix_ttc": 52800.0,
             "economie_annuelle_mad": 7080.0,
             "payback_annees": 7.46,
-            "familles": ["panneau", "onduleur", "structure", "cables", "protections"]
+            "familles": ["onduleur", "panneau"]
           }
         },
         {
@@ -270,7 +264,7 @@
             "prix_ttc": 71400.0,
             "economie_annuelle_mad": 9840.0,
             "payback_annees": 7.26,
-            "familles": ["panneau", "onduleur", "structure", "cables", "protections"]
+            "familles": ["onduleur", "panneau"]
           }
         }
       ]

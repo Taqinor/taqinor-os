@@ -104,6 +104,24 @@ _FAMILLES_MATERIEL = ('panneau', 'onduleur', 'batterie')
 #: Ordre de tri des rôles pour ``materiel`` (le panneau d'abord, comme le PDF).
 _ORDRE_MATERIEL = {'panneau': 0, 'onduleur': 1, 'batterie': 2}
 
+#: LES SEULES ENTRÉES qu'un vendeur peut écrire sur une taille.
+#: Tout le reste est DÉRIVÉ, donc réestampillé par le moteur à chaque lecture.
+CHAMPS_CONFIG = ('nb_panneaux', 'batterie_nb_modules', 'equipements')
+
+#: LES NOMBRES DÉRIVÉS — refusés en 400 par le sérialiseur, jamais ignorés en
+#: silence. C'est la règle « zéro chiffre inventé » rendue STRUCTURELLE : il
+#: n'existe aucun chemin par lequel un prix, une économie ou un payback tapé à
+#: la main puisse entrer dans le stockage, donc aucun par lequel il puisse
+#: ressortir sur une page client. Un refus BRUYANT vaut mieux qu'un champ
+#: silencieusement ignoré : le vendeur qui essaie apprend la règle.
+CHAMPS_DERIVES = (
+    'prix_ttc', 'prix_par_kwc_ttc', 'economie_annuelle_mad', 'payback_annees',
+    'couverture_pct', 'taux_autoconsommation_pct', 'production_annuelle_kwh',
+    'economies_cumulees_25_ans_mad', 'puissance_kwc', 'capacite_utile_kwh',
+    'batterie', 'materiel', 'familles', 'familles_diff', 'toit_ok',
+    'est_le_devis', 'recommande', 'titre',
+)
+
 
 # ════════════════════════════════════════════════════════════════════════════
 # Petits lecteurs — tolérants, jamais un chiffre fabriqué
@@ -602,8 +620,11 @@ def _carte_moteur(contexte, nb_panneaux, config=None):
         if cumul is not None:
             carte['economies_cumulees_25_ans_mad'] = cumul
         if variante == 'avec':
-            banque = _banque(contexte, vue, capacite,
-                             _compter_modules_batterie(vue.get('lignes')))
+            banque = _banque(
+                contexte, vue, capacite,
+                _compter_modules_batterie(vue.get('lignes')),
+                remplissage_ok=_remplissage_ok(contexte, kwc, capacite,
+                                               bornes))
             if banque:
                 carte['batterie'] = banque
         roles = list(getattr(lignes, 'roles', ()) or ())
@@ -648,7 +669,48 @@ def _ajouter_toit(carte, contexte, nb_panneaux):
     carte['toit_ok'] = bool(int(nb_panneaux) <= int(contexte.plafond_toit))
 
 
-def _banque(contexte, vue, capacite, compteurs):
+def _remplissage_ok(contexte, kwc, capacite, bornes):
+    """CE CHAMP CHARGE-T-IL CETTE BANQUE TOUS LES JOURS ? ``None`` = inconnu.
+
+    LA RÈGLE FONDATEUR (« batteries toujours pleines », 24/08/2026) doit se
+    LIRE sur la carte : une banque que le champ ne remplit pas est montrée
+    grisée avec sa raison, jamais vendue en silence.
+
+    ``balayer_stockage_horaire`` est LA source de ce verdict — la même que
+    l'échelle de paliers, au même endroit, avec le même plafond de
+    remplissage. Un second critère « à peu près équivalent » calculé ici
+    finirait par griser des paliers que l'échelle accepte, et l'inverse.
+
+    UN PASSAGE DE PLUS, ASSUMÉ. ``calculer_etude_horaire`` rend les DEUX
+    variantes en un parcours mais ne publie aucun verdict de remplissage ;
+    celui-ci en demande un second, restreint à LA capacité de cette taille.
+    ``None`` (moteur muet) ⇒ le champ est OMIS de la banque : on ne prétend
+    pas qu'une banque se remplit quand on ne l'a pas vérifié.
+    """
+    if not capacite or not kwc:
+        return None
+    from apps.ventes.etude_horaire import balayer_stockage_horaire
+    try:
+        energie = balayer_stockage_horaire(
+            kwc=kwc, capacites_kwh=[round(capacite, 2)],
+            puissances_par_capacite=(
+                {round(capacite, 2): {
+                    'decharge_kw': bornes.get(
+                        'batterie_puissance_decharge_kw'),
+                    'decharge_onduleur_kw': bornes.get(
+                        'batterie_puissance_decharge_onduleur_kw'),
+                    'charge_kw': bornes.get('batterie_puissance_charge_kw'),
+                }} if bornes else None),
+            **contexte.etude_kwargs)
+    except Exception:  # noqa: BLE001 — un verdict indisponible s'omet
+        logger.warning('verdict de remplissage indisponible', exc_info=True)
+        return None
+    for palier in ((energie or {}).get('paliers') or []):
+        return bool(palier.get('se_remplit_tous_les_jours'))
+    return None
+
+
+def _banque(contexte, vue, capacite, compteurs, remplissage_ok=None):
     """``{nb_modules, module_kwh, capacite_utile_kwh, remplissage_ok}``.
 
     ``capacite_utile_kwh`` est la capacité UTILE réellement livrée (règle
@@ -664,6 +726,8 @@ def _banque(contexte, vue, capacite, compteurs):
     if not capacite:
         return None
     banque = {'capacite_utile_kwh': round(capacite, 2)}
+    if remplissage_ok is not None:
+        banque['remplissage_ok'] = bool(remplissage_ok)
     cinq, dix = compteurs
     if cinq and not dix:
         banque['nb_modules'], banque['module_kwh'] = int(cinq), 5.0
@@ -791,7 +855,7 @@ def _carte_du_devis(contexte, data, variante):
         carte['economies_cumulees_25_ans_mad'] = cumul
 
     if variante == 'avec':
-        banque = _banque_du_devis(contexte)
+        banque = _banque_du_devis(contexte, kwc)
         if banque:
             carte['batterie'] = banque
     materiel = _materiel_du_devis(contexte.devis)
@@ -806,14 +870,21 @@ def _carte_du_devis(contexte, data, variante):
     return carte
 
 
-def _banque_du_devis(contexte):
-    """La banque RÉELLEMENT vendue par ce devis (jamais l'optimum du moteur)."""
+def _banque_du_devis(contexte, kwc):
+    """La banque RÉELLEMENT vendue par ce devis (jamais l'optimum du moteur).
+
+    Le verdict de remplissage se lit avec la MÊME fonction que les deux autres
+    tailles (:func:`_remplissage_ok`) : trois cartes, un seul critère.
+    """
     from apps.ventes.dimensionnement import capacite_batterie_des_lignes
 
     capacite = _positif(capacite_batterie_des_lignes(contexte.devis))
     if capacite is None:
         return None
     banque = {'capacite_utile_kwh': round(capacite, 2)}
+    remplissage = _remplissage_ok(contexte, kwc, capacite, {})
+    if remplissage is not None:
+        banque['remplissage_ok'] = bool(remplissage)
     modules = _compter_modules_du_devis(contexte.devis)
     if modules and contexte.module_batterie_kwh:
         banque['nb_modules'] = modules
