@@ -163,8 +163,10 @@ describe('ContratsMaintenance — Facturer maintenant (WIR233)', () => {
     const user = userEvent.setup()
     renderPage()
 
-    const bouton = await screen.findByRole('button', { name: 'Facturer maintenant' })
-    await user.click(bouton)
+    // DataTable rend DEUX fois chaque ligne (table desktop `data-dt-table` +
+    // cartes mobiles `data-dt-cards`) : on porte sur le rendu desktop.
+    const boutons = await screen.findAllByRole('button', { name: 'Facturer maintenant' })
+    await user.click(boutons[0])
 
     await waitFor(() => expect(facturerContrat).toHaveBeenCalledWith(5))
   })
@@ -178,8 +180,9 @@ describe('ContratsMaintenance — Facturer maintenant (WIR233)', () => {
       }],
     })
     renderPage()
-    await screen.findByText('Client Sans Facturation')
-    expect(screen.queryByRole('button', { name: 'Facturer maintenant' })).not.toBeInTheDocument()
+    await screen.findAllByText('Client Sans Facturation')
+    // Aucun bouton NULLE PART (ni table desktop ni cartes mobiles).
+    expect(screen.queryAllByRole('button', { name: 'Facturer maintenant' })).toHaveLength(0)
   })
 })
 
