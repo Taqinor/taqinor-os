@@ -235,8 +235,7 @@ export default function SigneDialog({ lead, onClose, onConfirmed }) {
     setBusy(true)
     setError(null)
     try {
-      const res = await ventesApi.accepterDevis(
-        selected.id, { nom, date, option })
+      const res = await ventesApi.accepterDevis(selected.id, { nom, date, option })
       // VX40/VX155 — le SEUL moment célébré de toute l'app : devis envoyé→
       // accepté (rare, lié au revenu). La carte de victoire (montant + kWc
       // réels, CO₂ dérivé) remplace le toast plat ; onConfirmed() n'est

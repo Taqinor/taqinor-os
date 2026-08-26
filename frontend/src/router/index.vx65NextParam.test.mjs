@@ -30,7 +30,7 @@ test('authLoader capture le Request et construit une redirection /login?next=...
 test('roleLoader capture aussi le Request pour rediriger via buildLoginRedirect', () => {
   assert.match(
     routerSrc,
-    /const roleLoader = \(roles, perm\) => async \(\{\s*request\s*\}\)\s*=>/,
+    /const roleLoader = \(roles, perm, permRepliPalier\) => async \(\{\s*request\s*\}\)\s*=>/,
   )
   assert.match(routerSrc, /if \(!user\) return buildLoginRedirect\(request\)/)
 })
