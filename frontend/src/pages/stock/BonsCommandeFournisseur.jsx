@@ -291,8 +291,15 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
   const produitIdsKey = useMemo(
     () => lignes.map((l) => l.produit).filter(Boolean).join(','), [lignes])
   useEffect(() => {
-    if (!isNew || !fournisseur) { setSimilaires([]); return undefined }
     let active = true
+    if (!isNew || !fournisseur) {
+      // Fable review (fix WIR220) — react-hooks/set-state-in-effect : ce
+      // early-return posait setSimilaires([]) de façon synchrone dans le
+      // corps de l'effet. Différé en microtask (avec le même garde `active`
+      // que le chemin fetch) pour ne jamais écrire après démontage.
+      Promise.resolve().then(() => { if (active) setSimilaires([]) })
+      return () => { active = false }
+    }
     const produitIds = produitIdsKey ? produitIdsKey.split(',') : []
     stockApi.getBcfSimilaires(fournisseur, produitIds)
       .then((r) => { if (active) setSimilaires(r.data ?? []) })
