@@ -1058,6 +1058,24 @@ class LEchelleDePaliersBatterie(_Base):
                 'ce devis vend du 5 kWh : %s' % palier)
             self.assertGreater(palier['nb_batteries_5'], 0, palier)
 
+    def test_bathomo_10_kwh_a_stock_zero_jamais_laddere(self):
+        """BATHOMO — LE bug réel : ``BAT-DEY-10`` à 0 en stock (aucune ligne
+        vendue sur ce devis, donc aucun pin) ne doit JAMAIS apparaître dans
+        l'échelle — même garde que la composition (``_batterie_en_stock``),
+        héritée automatiquement puisque le balayage compose CHAQUE rang par
+        ``composition_residentielle``."""
+        Produit.objects.filter(pk=self.produits['BAT10'].pk).update(
+            quantite_stock=0)
+        devis = self._devis_residentiel(email='stock0-ech@example.com')
+        echelle = dimensionnement.echelle_paliers_batterie(devis)
+        self.assertTrue(echelle, 'échelle vide : le test ne prouverait rien')
+        for palier in echelle:
+            self.assertEqual(
+                palier['nb_batteries_10'], 0,
+                'un rang propose du 10 kWh alors que son stock est à 0 : %s'
+                % palier)
+            self.assertGreater(palier['nb_batteries_5'], 0, palier)
+
     def test_le_plafond_du_toit_borne_chaque_palier(self):
         """Le calepinage est un PLAFOND PHYSIQUE : l'échelle ne propose jamais
         des panneaux qui ne tiennent pas, et un toit plus petit ne peut que
