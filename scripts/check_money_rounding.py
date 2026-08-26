@@ -80,14 +80,24 @@ BASELINE_ALLOWLIST = {
     # composition_residentielle (2672->2693, 3870->3931, 4003->4064).
     # Verifie par CONTENU (memes trois formules -- round(prix_ttc, 2) ; deux
     # fois round(total_panneaux * watt / 1000.0, 3)), aucun nouveau site.
-    "backend/django_core/apps/ventes/services.py:1088",
-    "backend/django_core/apps/ventes/services.py:1091",
-    "backend/django_core/apps/ventes/services.py:3931",
-    "backend/django_core/apps/ventes/services.py:4064",
+    # AUTO-PIPELINE/AP5 (26/08/2026) -- RECALEES : la correction du repere
+    # d'azimut a insere `_azimut_boussole_vers_aspect` + son commentaire de
+    # lecture AU-DESSUS de ces cinq sites, qui glissent tous de +34 lignes
+    # (1088->1122, 1091->1125, 2693->2727, 3931->3965, 4064->4098).
+    # Verifie par CONTENU, pas par confiance : chacune des cinq lignes a ete
+    # comparee a la MEME ligne de l'arbre d'avant le lot (fc2794de) et elles
+    # sont BYTE-IDENTIQUES -- memes formules ('surface_m2': round(...,2),
+    # 'kwc': round(...,3), return (round(prix_ttc,2), ...), deux fois
+    # round(total_panneaux*watt/1000.0, 3)). AUCUN round() nouveau n'entre
+    # par ce lot.
+    "backend/django_core/apps/ventes/services.py:1122",
+    "backend/django_core/apps/ventes/services.py:1125",
+    "backend/django_core/apps/ventes/services.py:3965",
+    "backend/django_core/apps/ventes/services.py:4098",
     # BATHOMO (26/08/2026, revu en fold) — clé de COMPARAISON des candidates de
     # banc batterie (le moins cher gagne) ; la valeur arrondie n'est jamais
     # servie ni stockée, le prix de ligne réel passe par la chaîne de pricing.
-    "backend/django_core/apps/ventes/services.py:2693",
+    "backend/django_core/apps/ventes/services.py:2727",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1906",  # QJ29 multi-villa Ã—N (rÃ©Ã©crit PVUNI, formule prÃ©existante revue)
     "backend/django_core/apps/ventes/quote_engine/builder.py:1926",  # total_ttc ligne gamme (rÃ©Ã©crit PVUNI, formule prÃ©existante revue)
     "backend/django_core/apps/ventes/quote_engine/builder.py:644",
