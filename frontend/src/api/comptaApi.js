@@ -311,6 +311,11 @@ const comptaApi = {
     // d'une saisie manuelle des 12 mois).
     genererLigneRepartie: (id, data) =>
       api.post(`/compta/budgets/${id}/generer-ligne-repartie/`, data),
+    // WIR255 — FG149 : `vs_realise` SOULIGNÉ (comme `grand_livre`, PACT18) —
+    // aucun `url_path=` déclaré sur cette @action, DRF garde donc le nom de
+    // méthode tel quel, jamais un tiret.
+    vsRealise: (id, params) =>
+      api.get(`/compta/budgets/${id}/vs_realise/`, { params }),
   },
   centresCout: resource('centres-cout'),
   provisionsCreances: resource('provisions-creances'),

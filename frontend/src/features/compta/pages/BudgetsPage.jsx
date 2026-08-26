@@ -1,11 +1,13 @@
 import { useState } from 'react'
-import { Plus, PieChart } from 'lucide-react'
+import { Plus, PieChart, Download, BarChart3 } from 'lucide-react'
 import { ListShell } from '../../../ui/module'
 import {
-  Button, EmptyState, Card, Input, Label,
+  Button, EmptyState, Card, Input, Label, toast,
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '../../../ui'
 import { formatMAD } from '../../../lib/format'
+import { stampedFilename } from '../../../utils/downloadBlob'
+import { store } from '../../../store'
 import ComptaTable from '../ComptaTable'
 import comptaApi from '../../../api/comptaApi'
 import useComptaList from '../components/useComptaList.js'
@@ -42,6 +44,56 @@ const LIGNE_FIELDS = [
   ] },
   { name: 'libelle', label: 'Libellé (optionnel)' },
 ]
+
+// WIR255 — FG149 : variance budget-vs-réalisé, jusqu'ici sans aucun bouton
+// (endpoint `vs_realise` déjà prêt côté serveur). Affichage sur clic +
+// export CSV.
+function VsRealisePanel({ budget }) {
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(false)
+
+  const charger = () => {
+    setLoading(true)
+    comptaApi.budgets.vsRealise(budget.id)
+      .then((res) => setData(res.data))
+      .catch(() => toast.error('Variance budget vs réalisé indisponible.'))
+      .finally(() => setLoading(false))
+  }
+
+  const exporterCsv = async () => {
+    try {
+      const res = await comptaApi.budgets.vsRealise(budget.id, { export: 'csv' })
+      const blob = res.data instanceof Blob ? res.data : new Blob([res.data])
+      const societe = store.getState().parametres?.profile?.nom
+      comptaApi.downloadBlob(blob, stampedFilename('budget-vs-realise', 'csv', societe))
+    } catch {
+      toast.error('Export CSV indisponible.')
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-2 border-t pt-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h4 className="font-display text-sm font-semibold">Vs réalisé</h4>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={charger}>
+            <BarChart3 className="size-4" /> {data ? 'Actualiser' : 'Charger'}
+          </Button>
+          <Button variant="outline" size="sm" onClick={exporterCsv}>
+            <Download className="size-4" /> Export CSV
+          </Button>
+        </div>
+      </div>
+      {loading ? (
+        <p className="py-4 text-center text-sm text-muted-foreground">Chargement…</p>
+      ) : data ? (
+        <EtatRender data={data} />
+      ) : (
+        <EmptyState title="Aucune donnée chargée" description="Cliquez sur Charger pour voir la variance." />
+      )}
+    </div>
+  )
+}
 
 function BudgetDetailDialog({ budget, onClose, onChanged }) {
   const [ligneDialog, setLigneDialog] = useState(false)
@@ -81,6 +133,8 @@ function BudgetDetailDialog({ budget, onClose, onChanged }) {
             ]}
           />
         )}
+
+        <VsRealisePanel budget={budget} />
 
         {ligneDialog && (
           <CrudDialog
