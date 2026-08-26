@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useSelector } from 'react-redux'
 import fpaApi from '../../api/fpaApi'
-import { Button, Card } from '../../ui'
+import { Button, Card, toast } from '../../ui'
 import PageHeader from '../../components/layout/PageHeader'
 import { formatMAD } from '../../lib/format'
+import { peutEcrireFpa } from '../../features/fpa/permissions'
 
 /* ============================================================================
    NTFPA4 — Écran de saisie budgétaire type tableur.
@@ -12,7 +14,21 @@ import { formatMAD } from '../../lib/format'
    (bulk PATCH). Un responsable saisit ses 12 mois × N catégories en une vue,
    sans rechargement. Budget MACRO (société/département/période), jamais le
    budget micro par chantier.
+
+   WIR198 — le workflow de validation (en_saisie → soumis → validé/rejeté,
+   NTFPA5) existait côté API (`fpaApi.{soumettre,valider,rejeter}Budget`) sans
+   AUCUN déclencheur UI. Boutons Soumettre/Valider/Rejeter gardés par les
+   codes serveur `fpa_*` (WIR173, `peutEcrireFpa` — même tuple que
+   `FpaScopedPermission.write_permission`, aucune garde plus fine par action
+   côté serveur) ; une transition illégale (400) s'affiche en toast au lieu de
+   planter — le statut réel se lit sur `/fpa/soumissions`.
    ========================================================================== */
+
+function messageTransition(err, repli) {
+  const data = err?.response?.data
+  if (typeof data?.detail === 'string') return data.detail
+  return repli
+}
 
 const CATEGORIES = [
   ['masse_salariale', 'Masse salariale'],
@@ -34,6 +50,9 @@ export default function SaisiePage() {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
+  const [transition, setTransition] = useState(false)
+  const permissions = useSelector((s) => s.auth.permissions)
+  const canEcrire = peutEcrireFpa(permissions)
 
   useEffect(() => {
     Promise.all([fpaApi.getCycles(), fpaApi.getDepartements({ actif: 1 })])
@@ -120,15 +139,83 @@ export default function SaisiePage() {
     }
   }
 
+  const soumettre = async () => {
+    if (!cycleId || !departementId || transition) return
+    setTransition(true)
+    try {
+      await fpaApi.soumettreBudget({ cycle: cycleId, departement: departementId })
+      toast.success('Budget soumis pour validation.')
+    } catch (err) {
+      toast.error(messageTransition(err, 'La soumission a échoué.'))
+    } finally {
+      setTransition(false)
+    }
+  }
+
+  const valider = async () => {
+    if (!cycleId || !departementId || transition) return
+    setTransition(true)
+    try {
+      await fpaApi.validerBudget({ cycle: cycleId, departement: departementId })
+      toast.success('Budget validé.')
+    } catch (err) {
+      toast.error(messageTransition(err, 'La validation a échoué.'))
+    } finally {
+      setTransition(false)
+    }
+  }
+
+  const rejeter = async () => {
+    if (!cycleId || !departementId || transition) return
+    const motif = window.prompt('Motif du rejet (optionnel) :', '')
+    if (motif === null) return // annulé par l'utilisateur
+    setTransition(true)
+    try {
+      await fpaApi.rejeterBudget({ cycle: cycleId, departement: departementId }, motif)
+      toast.success('Budget rejeté.')
+    } catch (err) {
+      toast.error(messageTransition(err, 'Le rejet a échoué.'))
+    } finally {
+      setTransition(false)
+    }
+  }
+
   return (
     <div>
       <PageHeader
         title="Saisie budgétaire"
         subtitle="Grille département × mois par catégorie (budget annuel)"
         actions={
-          <Button onClick={enregistrer} disabled={saving || !cycleId || !departementId}>
-            {saving ? 'Enregistrement…' : 'Enregistrer'}
-          </Button>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <Button onClick={enregistrer} disabled={saving || !cycleId || !departementId}>
+              {saving ? 'Enregistrement…' : 'Enregistrer'}
+            </Button>
+            {canEcrire && (
+              <>
+                <Button
+                  variant="secondary"
+                  onClick={soumettre}
+                  disabled={transition || !cycleId || !departementId}
+                >
+                  Soumettre
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={valider}
+                  disabled={transition || !cycleId || !departementId}
+                >
+                  Valider
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={rejeter}
+                  disabled={transition || !cycleId || !departementId}
+                >
+                  Rejeter
+                </Button>
+              </>
+            )}
+          </div>
         }
       />
       <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
