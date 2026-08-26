@@ -258,6 +258,29 @@ class EcritureComptableViewSet(_ComptaBaseViewSet):
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_ecriture', 'id']
 
+    # WIR175 — les ÉCRITURES sont le cœur du grand livre : leur CRUD et
+    # l'extourne ne vérifiaient que ``IsResponsableOrAdmin``, donc tout rôle
+    # fin portant UNE permission d'écriture quelconque (un Commercial et son
+    # ``crm_creer``, par exemple) pouvait passer, modifier, supprimer ou
+    # contre-passer une écriture comptable. Ces quatre actions exigent
+    # désormais ``compta_saisir`` — même code que la saisie ailleurs dans le
+    # module, même repli LÉGACY (``HasPermissionOrLegacy`` ⇔ le helper
+    # ``_peut`` : un compte SANS rôle fin garde son accès Responsable/Admin).
+    #
+    # La LECTURE (list/retrieve) et ``valider`` sont volontairement HORS de
+    # cette liste : ``valider`` porte sa propre garde ``compta_valider`` +
+    # séparation des tâches DANS l'action (un ``get_permissions`` qui
+    # l'écraserait est le bug de classe #25) — porter ``compta_valider`` seul ne
+    # doit toujours PAS permettre de créer une écriture, et inversement.
+    ACTIONS_SAISIE = frozenset({
+        'create', 'update', 'partial_update', 'destroy', 'extourner',
+    })
+
+    def get_permissions(self):
+        if self.action in self.ACTIONS_SAISIE:
+            return [HasPermissionOrLegacy('compta_saisir')()]
+        return super().get_permissions()
+
     def get_queryset(self):
         qs = super().get_queryset()
         params = self.request.query_params
