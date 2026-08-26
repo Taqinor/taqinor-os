@@ -36,7 +36,8 @@ import {
 import { NAV_SECTIONS, LEGACY_NAV_KEYS } from './Sidebar'
 import { moduleNavSections } from '../../router/moduleRoutes'
 // ODX6 — même gating par module actif/désactivé que la Sidebar desktop.
-import { filterNavSections, selectModulesDesactives } from '../../router/moduleGating'
+// WIR171 — même source UNIQUE de gating que la Sidebar et le routeur.
+import { filterNavSections, selectModulesDesactives, estAutoriseEntree } from '../../router/moduleGating'
 // ODY4/ODY6 — l'app active (dérivée de la ROUTE, jamais d'un état mémorisé) et
 // la sortie canonique vers le Menu d'accueil.
 import { useActiveApp, APPS_SHELL_ENABLED, HOME_MENU_PATH } from '../../lib/apps/ActiveAppContext'
@@ -249,9 +250,7 @@ function AppGridDrawer({ onClose }) {
     return filterNavSections(all, modulesOff)
       .map((section) => ({
         ...section,
-        items: section.items.filter(
-          (it) => it.roles.includes(role) && (!it.perm || permissions.includes(it.perm)),
-        ),
+        items: section.items.filter((it) => estAutoriseEntree(it, role, permissions)),
       }))
       .filter((section) => section.items.length > 0 && section.label)
   }, [role, permissions, modulesOff])

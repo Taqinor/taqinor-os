@@ -26,6 +26,8 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import { CalendarClock } from 'lucide-react'
 import { moduleConfigs } from '../../router/moduleRoutes'
+// WIR171 — source UNIQUE du gating palier × permission (cf. moduleGating.js).
+import { estAutoriseEntree } from '../../router/moduleGating'
 import useInstalledApps from './useInstalledApps'
 // ODY29/ODY32 — mémoire de reprise par app+utilisateur et dernière app ouverte
 // (sessionStorage, source UNIQUE dans `appPrefs.js` : ce fichier écrit, le Menu
@@ -145,8 +147,11 @@ export const ORPHAN_NAV_ITEMS = {
 
 // Même règle de visibilité qu'ailleurs dans la coquille (palier + permission
 // ERP fine optionnelle) — cf. `useInstalledApps.js`, `Sidebar.jsx`.
+// WIR171 — la règle elle-même vit désormais dans `router/moduleGating.js`
+// (source UNIQUE, partagée avec `roleLoader`) : une entrée déclarant
+// `permRepliPalier` suit la sémantique serveur `HasPermissionOrLegacy`.
 function isItemVisible(item, role, permissions) {
-  return !!item?.roles?.includes(role) && (!item.perm || permissions.includes(item.perm))
+  return estAutoriseEntree(item, role, permissions)
 }
 
 /**
