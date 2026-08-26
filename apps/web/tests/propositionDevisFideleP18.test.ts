@@ -184,9 +184,22 @@ describe('P18 — la page gate la phrase de garantie ET les badges', () => {
     expect(CODE).toContain("...(equipPresence.onduleur ? ['onduleur' as const] : [])");
   });
 
+  // (26/08/2026) CE TEST A ÉTÉ INVERSÉ PAR ERREUR, PUIS RÉTABLI. Une lane avait
+  // retiré la ligne de pose en croyant sa durée « non arrêtée par le
+  // fondateur » : c'était faux. L'en-tête de `lib/warranty.ts` la tranche
+  // explicitement (« ADJUDICATION DES CHIFFRES, 2026-07-04 : POSE /
+  // main-d'œuvre Taqinor : 2 ans ») et `fiches.ts` la publie déjà. Le test
+  // reprend donc son rôle d'origine : épingler la PRÉSENCE de l'engagement.
   it('la garantie de POSE Taqinor reste inconditionnelle (c’est notre engagement)', () => {
     expect(CODE).toContain('INSTALL_WARRANTY_YEARS');
     expect(CODE).toContain('de pose Taqinor');
+  });
+
+  it('la durée de pose vient de la SOURCE UNIQUE, jamais d’un littéral', async () => {
+    const warranty = await import('../src/lib/warranty');
+    expect(warranty.INSTALL_WARRANTY_YEARS).toBe(2);
+    // La page n'écrit nulle part « 2 ans » de pose en dur : elle dérive.
+    expect(CODE).not.toContain('2 ans de pose');
   });
 });
 
