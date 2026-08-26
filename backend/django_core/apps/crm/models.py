@@ -1176,6 +1176,68 @@ class LeadActivity(models.Model):
         return f"{self.lead_id} {self.kind} {self.field or ''}".strip()
 
 
+# ── RELANCE FOUNDATION — cadence de relance structurée par lead ──────────────
+#
+# Distincte du rappel UNIQUE piloté par ``Lead.relance_date``
+# (``services.sync_relance_activity``, garde « un seul système de rappel ») :
+# ``RelanceEtape`` matérialise un PLAN à plusieurs touches (ex. J+2/J+5/J+10/
+# J+20/J+35, gabarit ``parametres.CadenceRelanceEtape``) sur UN lead donné,
+# chaque étape portant son propre canal suggéré et son propre statut. Aucun
+# envoi automatique (WhatsApp/email) n'est jamais déclenché depuis ce modèle —
+# ce sont des RAPPELS VISUELS pour le commercial, jamais un message sortant.
+#
+# Intégration délibérée avec l'existant plutôt qu'un second système
+# concurrent : ``crm.services.marquer_etape_relance`` fait AVANCER
+# ``Lead.relance_date`` vers la prochaine étape ``a_faire`` (et retombe donc
+# sur l'activité ``records.Activity`` déjà gérée par
+# ``sync_relance_activity``) — le Calendrier/« Ma file » continuent de
+# refléter la PROCHAINE échéance de la cadence sans dupliquer de rappel.
+class RelanceEtape(TenantModel):
+    """Une étape (touche) d'un plan de relance structuré, sur UN lead."""
+
+    class Canal(models.TextChoices):
+        APPEL = 'appel', 'Appel'
+        WHATSAPP = 'whatsapp', 'WhatsApp'
+        EMAIL = 'email', 'E-mail'
+        VISITE = 'visite', 'Visite'
+
+    class Statut(models.TextChoices):
+        A_FAIRE = 'a_faire', 'À faire'
+        FAIT = 'fait', 'Fait'
+        SAUTEE = 'sautee', 'Sautée'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
+        related_name='relance_etapes')
+    lead = models.ForeignKey(
+        Lead, on_delete=models.CASCADE,  # on_delete: étape sans objet si le lead est supprimé
+        related_name='relance_etapes')
+    ordre = models.PositiveIntegerField(default=0)
+    due_date = models.DateField()
+    canal = models.CharField(max_length=20, choices=Canal.choices)
+    libelle = models.CharField(max_length=150, blank=True, default='')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.A_FAIRE)
+    note = models.TextField(blank=True, default='')
+    # Traçabilité de la clôture (fait/sautée) — jamais silencieuse.
+    traite_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='relance_etapes_traitees')
+    traite_le = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Étape de relance'
+        verbose_name_plural = 'Étapes de relance'
+        ordering = ['ordre', 'due_date']
+        indexes = [
+            models.Index(fields=['company', 'statut', 'due_date'],
+                         name='crm_relanceetape_due_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.lead_id} — J+{self.ordre} ({self.get_statut_display()})'
+
+
 class LeadTag(models.Model):
     """Étiquette de lead gérée (Paramètres → CRM). Le champ Lead.tags reste un
     texte libre ; cette liste sert de suggestions + couleurs. Additif."""
