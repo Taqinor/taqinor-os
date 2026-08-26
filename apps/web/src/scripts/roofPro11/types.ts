@@ -93,14 +93,26 @@ export interface RoofToolApi {
    *  (`opts.referenceContour`). Sans effet si aucun contour n'a été fourni
    *  au boot (le calque reste vide dans les deux cas). */
   setReferenceContourVisible: (visible: boolean) => void;
+  /** AP-F2 (fondateur 26/08/2026) — reseme la zone active DEPUIS le contour
+   *  ORIGINAL du client (`opts.referenceContour`, MÊME source que le calque
+   *  de référence) et relance l'optimiseur, pour que le commercial puisse
+   *  annuler ses retouches et repartir du tracé client. Renvoie `false` sans
+   *  RIEN changer si aucun contour exploitable n'a été fourni au boot
+   *  (`referenceContourRing` renvoie `null`) — jamais un contour deviné. */
+  recommencerDepuisTraceClient: () => boolean;
 }
 
 /** W113 — payload lead minimal consommé par l'hydratation (forme du GET
  *  /api/django/crm/leads/<id>/). Tous les champs optionnels : un champ absent
- *  ne sème rien. `roof_point` = pin {lat,lng}, `roof_outline` = [[lat,lng],…]. */
+ *  ne sème rien. `roof_point` = pin {lat,lng}, `roof_outline` = les points du
+ *  contour, dans une des DEUX formes RÉELLES de `Lead.roof_outline` :
+ *  `[lat, lng]` (le webhook) ou `{lat, lng}` (import/saisie manuelle) — AP-F1
+ *  (fondateur 26/08/2026) : élargi de `Array<[number, number]>` pour que
+ *  `hydrateFromLead` accepte exactement ce que `referenceContourRing` accepte
+ *  déjà (UN SEUL validateur de contour, voir prefill.ts). */
 export interface LeadPayload {
   roof_point?: { lat: number; lng: number } | null;
-  roof_outline?: Array<[number, number]> | null;
+  roof_outline?: Array<RawContourPoint> | null;
   bill_kwh?: number | null;
   fullName?: string;
   phone?: string;

@@ -56,14 +56,15 @@ vi.mock('react-router-dom', async (importOriginal) => {
 })
 
 // Le builder est stubé : il expose seulement l'API que la page consomme
-// (`serializeLayout` / `snapshot` / L-MAP `setReferenceContourVisible`),
-// posée via `onApiReady` comme en vrai.
+// (`serializeLayout` / `snapshot` / L-MAP `setReferenceContourVisible` / AP-F2
+// `recommencerDepuisTraceClient`), posée via `onApiReady` comme en vrai.
 const LAYOUT = { version: 2, zones: [{ id: 'z1' }] }
 const serializeLayout = vi.fn(() => LAYOUT)
 const snapshot = vi.fn(() => null)
 const setReferenceContourVisible = vi.fn()
+const recommencerDepuisTraceClient = vi.fn(() => true)
 const initRoofToolPro8 = vi.fn((options) => {
-  options?.onApiReady?.({ serializeLayout, snapshot, setReferenceContourVisible })
+  options?.onApiReady?.({ serializeLayout, snapshot, setReferenceContourVisible, recommencerDepuisTraceClient })
 })
 vi.mock('@roofbuilder', () => ({ initRoofToolPro8: (...a) => initRoofToolPro8(...a) }))
 
@@ -108,7 +109,7 @@ beforeEach(() => {
   serializeLayout.mockReturnValue(LAYOUT)
   snapshot.mockReturnValue(null)
   initRoofToolPro8.mockImplementation((options) => {
-    options?.onApiReady?.({ serializeLayout, snapshot, setReferenceContourVisible })
+    options?.onApiReady?.({ serializeLayout, snapshot, setReferenceContourVisible, recommencerDepuisTraceClient })
   })
 })
 afterEach(() => { cleanup(); vi.clearAllMocks() })
@@ -1073,5 +1074,93 @@ describe('ToitureDesign — mode lead : contour OSM (WIR227/QJ25)', () => {
 
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
     expect(api.get).not.toHaveBeenCalledWith('/crm/leads/93/roof-footprint/')
+  })
+})
+
+/* AP-F2 (fondateur 26/08/2026) — le calepinage 3D place déjà les panneaux
+   AUTOMATIQUEMENT depuis le contour client (applyHydration / applyDevisHydration,
+   repli lead-like) — cette note dit explicitement au commercial que ce qu'il voit
+   vient d'un SEMIS automatique, jamais d'un calepinage qu'il a lui-même vérifié, et
+   le bouton « Recommencer » lui permet de repartir du tracé client. */
+describe('ToitureDesign — AP-F2 : note « calepinage automatique » + redo depuis le tracé client', () => {
+  function leadAvecContour(id = 88) {
+    return {
+      id, nom: 'Alaoui', prenom: 'Youssef', ville: 'Casablanca',
+      telephone: '0600000000', roof_point: { lat: 33.5, lng: -7.6 },
+      roof_outline: CONTOUR_CLIENT, bill_kwh: 7200,
+    }
+  }
+
+  function rendreLead(id) {
+    const lead = leadAvecContour(id)
+    api.get.mockImplementation((url) => {
+      if (url.startsWith('/crm/leads/')) return Promise.resolve({ data: lead })
+      if (url === '/ventes/roof-config/') {
+        return Promise.resolve({ data: { available: true, maptilerKey: 'k-lead' } })
+      }
+      return Promise.reject(new Error(`URL inattendue ${url}`))
+    })
+    return render(
+      <MemoryRouter initialEntries={[`/devis-design/${id}`]}>
+        <Routes>
+          <Route path="/devis-design/:id" element={<ToitureDesign />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+  }
+
+  it('mode lead — un contour exploitable affiche la note et le bouton de reprise', async () => {
+    rendreLead(88)
+
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    expect(await screen.findByTestId('rp9-calepinage-auto-note')).toHaveTextContent(
+      'Calepinage automatique depuis le tracé client — à vérifier')
+    expect(screen.getByTestId('rp9-recommencer-trace-client')).toBeInTheDocument()
+  })
+
+  it('mode devis — un roof_layout AVEC zones (calepinage déjà enregistré par un commercial) : aucune note, jamais recouvert', async () => {
+    ventesApi.getDevisDesignContext.mockResolvedValue({
+      data: {
+        ...CTX,
+        geometrie: {
+          ...CTX.geometrie,
+          contour_client: CONTOUR_CLIENT,
+          roof_layout: { version: 2, zones: [{ id: 'z1' }] },
+        },
+      },
+    })
+
+    rendreDevis(CTX.devis.id)
+
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    expect(screen.queryByTestId('rp9-calepinage-auto-note')).toBeNull()
+    expect(screen.queryByTestId('rp9-recommencer-trace-client')).toBeNull()
+  })
+
+  it('mode devis — un roof_layout SANS zone + un contour exploitable : la note apparaît', async () => {
+    ventesApi.getDevisDesignContext.mockResolvedValue({
+      data: {
+        ...CTX,
+        geometrie: {
+          ...CTX.geometrie,
+          contour_client: CONTOUR_CLIENT,
+          roof_layout: { version: 2, zones: [] },
+        },
+      },
+    })
+
+    rendreDevis(CTX.devis.id)
+
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    expect(await screen.findByTestId('rp9-calepinage-auto-note')).toBeInTheDocument()
+  })
+
+  it('cliquer « Recommencer depuis le tracé client » appelle la méthode dédiée de l’API du builder', async () => {
+    rendreLead(88)
+
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    const bouton = await screen.findByTestId('rp9-recommencer-trace-client')
+    await userEvent.click(bouton)
+    expect(recommencerDepuisTraceClient).toHaveBeenCalledTimes(1)
   })
 })
