@@ -33,6 +33,7 @@ import { X } from 'lucide-react'
 import api from '../../api/axios'
 import ventesApi from '../../api/ventesApi'
 import aoApi from '../../api/aoApi'
+import crmApi from '../../api/crmApi'
 import { toastInfo } from '../../lib/toast'
 // L2 — confirmation maison (APX17 : jamais une popup système) avant une écriture qui
 // diverge de la cible vendue du devis (voir enregistrerConception ci-dessous).
@@ -266,6 +267,10 @@ export default function ToitureDesign({ mode = 'lead' }) {
   // serveur, jamais rédigé ici : sans cet affichage, le devis repartait amputé
   // en silence.
   const [avertissementsSync, setAvertissementsSync] = useState([])
+  // WIR227/QJ25 — contour OSM du bâtiment épinglé (mode lead uniquement) :
+  // message serveur (« Aucun bâtiment trouvé… ») quand Overpass ne renvoie
+  // rien, jamais rédigé ici. Le tracé manuel reste toujours disponible.
+  const [contourMessage, setContourMessage] = useState('')
 
   // ── Boot : charge lead + config carte, puis initialise le builder ──────────
   useEffect(() => {
@@ -300,6 +305,27 @@ export default function ToitureDesign({ mode = 'lead' }) {
       }
       if (cancelled) return
       setLead(leadData)
+
+      // WIR227/QJ25 — le contour OSM du bâtiment épinglé (roof-footprint,
+      // Overpass) n'était jamais consommé par l'atelier : la carte démarrait
+      // TOUJOURS sans contour, même quand le lead porte déjà une épingle.
+      // Best-effort, jamais bloquant — un échec réseau laisse le tracé manuel
+      // intact, exactement comme le repli existant. Ne s'applique QUE si le
+      // lead n'a pas déjà de contour (tracé manuel déjà posé = jamais écrasé).
+      if (!leadData.roof_outline && pinDepuisLead(leadData)) {
+        try {
+          const fp = await crmApi.getRoofFootprint(leadId)
+          const polygon = fp?.data?.polygon
+          if (Array.isArray(polygon) && polygon.length >= 3) {
+            leadData = { ...leadData, roof_outline: polygon }
+          } else if (fp?.data?.message) {
+            setContourMessage(fp.data.message)
+          }
+        } catch {
+          /* repli silencieux : tracé manuel toujours disponible */
+        }
+      }
+      if (cancelled) return
 
       // Clé carte (même origine, session cookie) — sans elle, pas de carte.
       let maptilerKey = ''
@@ -878,6 +904,24 @@ export default function ToitureDesign({ mode = 'lead' }) {
           <p className="mt-1 text-xs text-lune-faint/70" data-testid="pv-sans-gps">
             Pas de position GPS sur la fiche — carte au niveau Maroc.
           </p>
+        )}
+
+        {/* WIR227/QJ25 — le contour OSM n'a rien renvoyé pour cette épingle
+            (message SERVEUR, jamais rédigé ici) : le tracé manuel reste
+            disponible, un bouton relance simplement une nouvelle tentative
+            (l'atelier n'a pas d'API pour injecter un contour a posteriori —
+            même patron de rechargement que `window.__taqinorRoofBooted`). */}
+        {!estDevis && !estAo && contourMessage && (
+          <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-lune-faint/70" data-testid="pv-contour-osm-absent">
+            <p>{contourMessage}</p>
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="underline"
+            >
+              Relancer la détection du contour
+            </button>
+          </div>
         )}
 
         {loadError && (

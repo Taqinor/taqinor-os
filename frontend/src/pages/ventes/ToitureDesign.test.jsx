@@ -670,3 +670,100 @@ describe('ToitureDesign — mode lead : repli GPS de la fiche (correction 24/08)
       'Pas de position GPS sur la fiche')
   })
 })
+
+// ── WIR227/QJ25 — contour OSM du bâtiment épinglé, hydraté dans l'atelier ──
+describe('ToitureDesign — mode lead : contour OSM (WIR227/QJ25)', () => {
+  it('roof_outline vide + épingle présente : hydrate.lead.roof_outline reçoit le polygone OSM', async () => {
+    const lead = {
+      id: 91, nom: 'Zahra', prenom: 'Kenza', ville: 'Rabat',
+      telephone: '0622222222', roof_point: { lat: 34.02, lng: -6.83 },
+      roof_outline: null,
+    }
+    const polygon = [{ lat: 34.02, lng: -6.83 }, { lat: 34.021, lng: -6.83 }, { lat: 34.021, lng: -6.831 }]
+    api.get.mockImplementation((url) => {
+      if (url === '/crm/leads/91/roof-footprint/') {
+        return Promise.resolve({ data: { polygon, source: 'osm' } })
+      }
+      if (url.startsWith('/crm/leads/')) return Promise.resolve({ data: lead })
+      if (url === '/ventes/roof-config/') {
+        return Promise.resolve({ data: { available: true, maptilerKey: 'k-lead' } })
+      }
+      return Promise.reject(new Error(`URL inattendue ${url}`))
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/devis-design/91']}>
+        <Routes>
+          <Route path="/devis-design/:id" element={<ToitureDesign />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    expect(api.get).toHaveBeenCalledWith('/crm/leads/91/roof-footprint/')
+    const options = initRoofToolPro8.mock.calls[0][0]
+    expect(options.hydrate.lead.roof_outline).toEqual(polygon)
+    // Le tracé manuel n'est jamais cassé : aucun message d'absence affiché.
+    expect(screen.queryByTestId('pv-contour-osm-absent')).toBeNull()
+  })
+
+  it('aucun bâtiment trouvé : le builder boote quand même, message serveur + relance manuelle affichés', async () => {
+    const lead = {
+      id: 92, nom: 'Fassi', prenom: 'Omar', ville: 'Fès',
+      telephone: '0633333333', roof_point: { lat: 34.04, lng: -5.0 },
+      roof_outline: null,
+    }
+    const message = 'Aucun bâtiment trouvé à cet emplacement — tracez le contour manuellement.'
+    api.get.mockImplementation((url) => {
+      if (url === '/crm/leads/92/roof-footprint/') {
+        return Promise.resolve({ data: { polygon: [], source: 'osm', message } })
+      }
+      if (url.startsWith('/crm/leads/')) return Promise.resolve({ data: lead })
+      if (url === '/ventes/roof-config/') {
+        return Promise.resolve({ data: { available: true, maptilerKey: 'k-lead' } })
+      }
+      return Promise.reject(new Error(`URL inattendue ${url}`))
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/devis-design/92']}>
+        <Routes>
+          <Route path="/devis-design/:id" element={<ToitureDesign />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    // Le builder boote MALGRÉ l'absence de contour : tracé manuel disponible.
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    const options = initRoofToolPro8.mock.calls[0][0]
+    expect(options.hydrate.lead.roof_outline).toBeNull()
+    expect(await screen.findByTestId('pv-contour-osm-absent')).toHaveTextContent(message)
+    expect(screen.getByRole('button', { name: 'Relancer la détection du contour' })).toBeInTheDocument()
+  })
+
+  it('lead avec roof_outline déjà posé : aucun appel roof-footprint (jamais écrasé)', async () => {
+    const lead = {
+      id: 93, nom: 'Amrani', prenom: 'Hind', ville: 'Tanger',
+      telephone: '0644444444', roof_point: { lat: 35.77, lng: -5.8 },
+      roof_outline: [{ lat: 35.77, lng: -5.8 }],
+    }
+    api.get.mockImplementation((url) => {
+      if (url.startsWith('/crm/leads/')) return Promise.resolve({ data: lead })
+      if (url === '/ventes/roof-config/') {
+        return Promise.resolve({ data: { available: true, maptilerKey: 'k-lead' } })
+      }
+      return Promise.reject(new Error(`URL inattendue ${url}`))
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/devis-design/93']}>
+        <Routes>
+          <Route path="/devis-design/:id" element={<ToitureDesign />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    expect(api.get).not.toHaveBeenCalledWith('/crm/leads/93/roof-footprint/')
+  })
+})
