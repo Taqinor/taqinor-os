@@ -37,6 +37,7 @@ from .models import (
     ParametrePaie,
     PeriodePaie,
     Rubrique,
+    RubriqueEmploye,
     TrancheIR,
     TypeEntreePonctuelle,
 )
@@ -1851,6 +1852,69 @@ def appliquer_remboursement_frais(profil, periode):
     return marquees
 
 
+# ── WIR243 — RubriqueEmploye branchée au moteur de calcul ──────────────────
+
+def rubriques_employe_actives(profil, periode):
+    """RubriqueEmploye ACTIVES d'un profil pour une période (PAIE9/WIR243).
+
+    Une rubrique récurrente rattachée (prime de transport, indemnité de
+    panier…) est retenue si ``actif`` est vrai ET que sa fenêtre
+    ``date_debut``/``date_fin`` (facultative de chaque côté) COUVRE au moins
+    un jour du mois de la période — même convention que
+    ``_bornes_periode``/``heures_supp_pour_paie``.
+
+    EXCLUT explicitement le code catalogue ``ANCIENNETE`` : la prime
+    d'ancienneté est déjà recalculée pour CHAQUE profil par
+    ``calculer_prime_anciennete`` (formule sur l'ancienneté réelle, pas une
+    surcharge manuelle) — une ``RubriqueEmploye`` de ce code existe
+    seulement comme repère de catalogue sur une ``StructurePaie``
+    (``appliquer_structure_a_profil``) et ne doit JAMAIS être re-sommée ici,
+    sous peine de compter la prime deux fois.
+    """
+    date_debut_periode, date_fin_periode = _bornes_periode(periode)
+    qs = (
+        RubriqueEmploye.objects
+        .filter(profil=profil, actif=True)
+        .exclude(rubrique__code='ANCIENNETE')
+        .select_related('rubrique'))
+    actives = []
+    for re_ in qs:
+        if re_.date_debut and re_.date_debut > date_fin_periode:
+            continue
+        if re_.date_fin and re_.date_fin < date_debut_periode:
+            continue
+        actives.append(re_)
+    return actives
+
+
+def montant_rubrique_employe(rubrique_employe, salaire_base):
+    """Montant mensuel effectif d'une ``RubriqueEmploye`` (PAIE9/WIR243).
+
+    Ordre de priorité (la première valeur renseignée gagne) :
+
+    1. ``rubrique_employe.montant`` — surcharge montant fixe explicite ;
+    2. ``rubrique_employe.taux`` — surcharge taux %, appliqué au salaire de
+       base PRORATÉ du mois (même assiette que la prime d'ancienneté) ;
+    3. ``rubrique.montant_fixe`` — défaut catalogue ;
+    4. ``rubrique.taux`` — défaut catalogue, même assiette qu'au point 2 ;
+    5. sinon 0 (rubrique catalogue à saisie manuelle, sans aucune surcharge
+       ni défaut — rien à ajouter automatiquement ce mois-ci).
+
+    Renvoie un ``Decimal`` arrondi au centime.
+    """
+    if rubrique_employe.montant is not None:
+        return _q(rubrique_employe.montant)
+    taux = rubrique_employe.taux
+    if taux is None:
+        rubrique = rubrique_employe.rubrique
+        if rubrique.montant_fixe is not None:
+            return _q(rubrique.montant_fixe)
+        taux = rubrique.taux
+    if taux is not None:
+        return _q(Decimal(salaire_base) * Decimal(taux) / Decimal('100'))
+    return Decimal('0.00')
+
+
 def calculer_bulletin(profil, periode, personnes_a_charge=0):
     """Calcule le bulletin de paie d'un employé pour une période (PAIE12).
 
@@ -1987,6 +2051,35 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
             lignes.append({
                 'code': el.rubrique.code if el.rubrique_id else el.type,
                 'libelle': el.libelle or el.get_type_display(),
+                'type': Rubrique.TYPE_GAIN, 'montant': _q(montant),
+            })
+
+    # WIR243 — Rubriques récurrentes rattachées au profil (PAIE9 : prime de
+    # transport, indemnité de panier…), dans leur fenêtre de dates. Un GAIN
+    # rejoint le brut comme tout élément variable (part imposable/exonérée
+    # répartie par ``repartir_avantage``, comme les gains ci-dessus) ; une
+    # RETENUE ne touche JAMAIS le brut/les bases — déduite du net à payer,
+    # comme les avances/saisies (cf. plus bas). Une COTISATION n'a aucune
+    # donnée réelle aujourd'hui (seule CIMR — calculée séparément — utilise
+    # ce type au catalogue) : ignorée tant qu'aucun cas d'usage ne l'exige.
+    for rubrique_employe in rubriques_employe_actives(profil, periode):
+        rubrique = rubrique_employe.rubrique
+        montant = montant_rubrique_employe(rubrique_employe, salaire_base)
+        if montant == 0:
+            continue
+        if rubrique.type == Rubrique.TYPE_RETENUE:
+            retenues_variables += montant
+            lignes.append({
+                'code': rubrique.code, 'libelle': rubrique.libelle,
+                'type': Rubrique.TYPE_RETENUE, 'montant': _q(montant),
+            })
+        elif rubrique.type == Rubrique.TYPE_GAIN:
+            gains_variables += montant
+            _, part_imposable = repartir_avantage(rubrique, montant)
+            if part_imposable > 0:
+                gains_imposables += part_imposable
+            lignes.append({
+                'code': rubrique.code, 'libelle': rubrique.libelle,
                 'type': Rubrique.TYPE_GAIN, 'montant': _q(montant),
             })
 

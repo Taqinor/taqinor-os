@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Sprout, Plus, FileSignature, Download, Pencil } from 'lucide-react'
+import {
+  Sprout, Plus, FileSignature, Download, Pencil, Trash2, ListChecks,
+} from 'lucide-react'
 import {
   Button, Card, Input, Spinner, EmptyState, Badge, toast,
   Tabs, TabsList, TabsTrigger, TabsContent,
@@ -36,6 +38,7 @@ export default function PaieParametres() {
           <TabsTrigger value="parametres">Paramètres sociaux</TabsTrigger>
           <TabsTrigger value="bareme">Barème IR</TabsTrigger>
           <TabsTrigger value="rubriques">Rubriques</TabsTrigger>
+          <TabsTrigger value="structures">Structures</TabsTrigger>
           <TabsTrigger value="profils">Profils</TabsTrigger>
           <TabsTrigger value="mutuelle">Mutuelle</TabsTrigger>
           <TabsTrigger value="simulateur">Simulateur net/brut</TabsTrigger>
@@ -43,6 +46,7 @@ export default function PaieParametres() {
         <TabsContent value="parametres"><ParametresTab /></TabsContent>
         <TabsContent value="bareme"><BaremeTab /></TabsContent>
         <TabsContent value="rubriques"><RubriquesTab /></TabsContent>
+        <TabsContent value="structures"><StructuresTab /></TabsContent>
         <TabsContent value="profils"><ProfilsTab /></TabsContent>
         <TabsContent value="mutuelle"><MutuelleTab /></TabsContent>
         <TabsContent value="simulateur"><SimulateurTab /></TabsContent>
@@ -529,6 +533,206 @@ function RubriqueDialog({ rubrique, onClose, onSaved }) {
   )
 }
 
+/* ── WIR243 — Structures de paie (gabarits de rubriques par catégorie,
+   XPAI24) : sème les 3 structures standard, permet d'en créer/éditer, et
+   de les appliquer à un profil existant (copie ses rubriques par défaut en
+   RubriqueEmploye — voir apps/paie/services.py:appliquer_structure_a_profil,
+   déjà branché au moteur via calculer_bulletin). ── */
+function StructuresTab() {
+  const [rows, setRows] = useState([])
+  const [profils, setProfils] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState('')
+  const [editingStructure, setEditingStructure] = useState(null)
+  const [appliquerFor, setAppliquerFor] = useState(null)
+
+  const load = () =>
+    Promise.all([paieApi.getStructures(), paieApi.getProfils()])
+      .then(([s, p]) => {
+        setRows(listOf(s.data))
+        setProfils(listOf(p.data))
+      })
+      .catch(() => toast.error('Chargement des structures impossible.'))
+      .finally(() => setLoading(false))
+  useEffect(() => { load() }, [])
+
+  // XPAI24 — idempotent : re-jouer ne duplique jamais une structure/rubrique
+  // déjà présente (clé stable (company, code)).
+  const seedStandard = async () => {
+    setBusy('seed')
+    try {
+      const { data } = await paieApi.ensureStructuresStandard()
+      toast.success(`${data?.structures ?? 0} structure(s) provisionnée(s).`)
+      await load()
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Semis impossible.')
+    } finally { setBusy('') }
+  }
+
+  const columns = [
+    { id: 'code', header: 'Code', width: 100, accessor: (r) => r.code },
+    { id: 'libelle', header: 'Libellé', accessor: (r) => r.libelle },
+    { id: 'description', header: 'Description', accessor: (r) => r.description || '' },
+    { id: 'rubriques', header: 'Rubriques par défaut', align: 'right',
+      accessor: (r) => (r.rubriques_defaut || []).length,
+      cell: (_v, r) => (r.rubriques_defaut || []).length },
+    { id: 'actif', header: 'État', accessor: (r) => r.actif,
+      cell: (_v, r) => (r.actif
+        ? <Badge tone="success">Active</Badge>
+        : <Badge tone="neutral">Inactive</Badge>) },
+  ]
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap justify-end gap-2">
+        <Button variant="outline" onClick={seedStandard} loading={busy === 'seed'}>
+          <Sprout size={16} aria-hidden="true" /> Structures standard
+        </Button>
+        <Button onClick={() => setEditingStructure({})}>
+          <Plus size={16} aria-hidden="true" /> Nouvelle structure
+        </Button>
+      </div>
+      <Card className="p-4 sm:p-5">
+        {loading ? <Loading /> : rows.length === 0 ? (
+          <EmptyState icon={Sprout} title="Aucune structure de paie"
+            description="Provisionnez les 3 structures standard (cadre/employé/ouvrier) ou créez la vôtre." />
+        ) : (
+          <DataTable data={rows} columns={columns} searchable
+            exportName="structures-paie"
+            rowActions={(r) => [
+              { id: 'editer', label: 'Éditer', icon: Pencil,
+                onClick: () => setEditingStructure(r) },
+              { id: 'appliquer', label: 'Appliquer à un profil', icon: ListChecks,
+                onClick: () => setAppliquerFor(r) },
+            ]} />
+        )}
+      </Card>
+      {editingStructure && (
+        <StructureDialog structure={editingStructure}
+          onClose={() => setEditingStructure(null)} onSaved={load} />
+      )}
+      {appliquerFor && (
+        <AppliquerStructureDialog structure={appliquerFor} profils={profils}
+          onClose={() => setAppliquerFor(null)} />
+      )}
+    </div>
+  )
+}
+
+/* ── Création/édition d'une StructurePaie (code/libellé/description). Les
+   rubriques par défaut du gabarit ne sont éditables qu'via le semis standard
+   (aucun endpoint de ligne-à-ligne côté serveur — StructurePaieSerializer
+   expose `rubriques_defaut` en LECTURE SEULE). ── */
+function StructureDialog({ structure, onClose, onSaved }) {
+  const isEdit = !!structure.id
+  const [code, setCode] = useState(structure.code || '')
+  const [libelle, setLibelle] = useState(structure.libelle || '')
+  const [description, setDescription] = useState(structure.description || '')
+  const [actif, setActif] = useState(
+    structure.actif != null ? Boolean(structure.actif) : true)
+  const [busy, setBusy] = useState(false)
+
+  const enregistrer = async () => {
+    if (!code.trim() || !libelle.trim()) {
+      toast.error('Code et libellé sont requis.')
+      return
+    }
+    setBusy(true)
+    try {
+      await paieApi.saveStructure(structure.id, {
+        code, libelle, description, actif,
+      })
+      toast.success(isEdit ? 'Structure mise à jour.' : 'Structure créée.')
+      onSaved()
+      onClose()
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Enregistrement impossible.')
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{isEdit ? `Structure — ${structure.code}` : 'Nouvelle structure'}</DialogTitle>
+        </DialogHeader>
+        <div className="flex flex-col gap-3">
+          <div className="flex gap-3">
+            <label className="flex flex-1 flex-col gap-1 text-sm">
+              <span className="text-muted-foreground">Code</span>
+              <Input value={code} onChange={(e) => setCode(e.target.value)} />
+            </label>
+            <label className="flex flex-[2] flex-col gap-1 text-sm">
+              <span className="text-muted-foreground">Libellé</span>
+              <Input value={libelle} onChange={(e) => setLibelle(e.target.value)} />
+            </label>
+          </div>
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-muted-foreground">Description</span>
+            <Input value={description} onChange={(e) => setDescription(e.target.value)} />
+          </label>
+          <label className="flex items-center gap-1.5 text-sm">
+            <input type="checkbox" checked={actif}
+              onChange={(e) => setActif(e.target.checked)} /> Active
+          </label>
+        </div>
+        <DialogFooter>
+          <Button onClick={enregistrer} loading={busy}>Enregistrer</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/* ── Applique une structure existante à un profil (copie ses rubriques
+   par défaut en RubriqueEmploye — services.appliquer_structure_a_profil,
+   idempotent : une rubrique déjà rattachée n'est jamais dupliquée). ── */
+function AppliquerStructureDialog({ structure, profils, onClose }) {
+  const [profilId, setProfilId] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const appliquer = async () => {
+    if (!profilId) { toast.error('Choisissez un profil.'); return }
+    setBusy(true)
+    try {
+      const { data } = await paieApi.appliquerStructure(
+        structure.id, Number(profilId))
+      toast.success(`${data?.rattachees ?? 0} rubrique(s) rattachée(s).`)
+      onClose()
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Application impossible.')
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Appliquer « {structure.libelle} » à un profil</DialogTitle>
+        </DialogHeader>
+        <div className="flex flex-col gap-3">
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-muted-foreground">Profil</span>
+            <Select value={profilId} onValueChange={setProfilId}>
+              <SelectTrigger><SelectValue placeholder="Choisir…" /></SelectTrigger>
+              <SelectContent>
+                {profils.map((p) => (
+                  <SelectItem key={p.id} value={String(p.id)}>
+                    {p.employe_nom || `Employé #${p.employe}`}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </label>
+        </div>
+        <DialogFooter>
+          <Button onClick={appliquer} loading={busy}>Appliquer</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 /* ── Profils de paie par employé ── */
 function ProfilsTab() {
   const [rows, setRows] = useState([])
@@ -538,6 +742,9 @@ function ProfilsTab() {
   // WIR3 — onboarding paie : création (profil=null) ou édition d'un ProfilPaie.
   const [profilDialogOpen, setProfilDialogOpen] = useState(false)
   const [editingProfil, setEditingProfil] = useState(null)
+  // WIR243 — rubriques récurrentes rattachées à un profil (brique branchée
+  // au moteur via calculer_bulletin).
+  const [rubriquesProfil, setRubriquesProfil] = useState(null)
 
   const load = () =>
     paieApi.getProfils()
@@ -585,6 +792,8 @@ function ProfilsTab() {
                 onClick: () => setStcProfil(r) },
               { id: 'regime', label: 'Régime d’exonération IR',
                 onClick: () => setRegimeProfil(r) },
+              { id: 'rubriques-recurrentes', label: 'Rubriques récurrentes',
+                icon: ListChecks, onClick: () => setRubriquesProfil(r) },
             ]} />
         )}
       </Card>
@@ -600,6 +809,10 @@ function ProfilsTab() {
         <RegimeExonerationDialog profil={regimeProfil}
           onClose={() => setRegimeProfil(null)}
           onSaved={load} />
+      )}
+      {rubriquesProfil && (
+        <RubriquesRecurrentesDialog profil={rubriquesProfil}
+          onClose={() => setRubriquesProfil(null)} />
       )}
     </>
   )
@@ -923,6 +1136,198 @@ function StcDialog({ profil, onClose }) {
           <Button onClick={generer} loading={busy}>
             <FileSignature size={16} aria-hidden="true" />
             {bulletin ? 'Recalculer' : 'Générer le STC'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/* ── WIR243 — Rubriques récurrentes rattachées à un profil (PAIE9), enfin
+   branchées au moteur : calculer_bulletin les intègre désormais dans leur
+   fenêtre de dates (voir apps/paie/services.py:rubriques_employe_actives).
+   Le viewset n'expose pas de filtre `?profil=` (OrderingFilter seul) — même
+   convention que PaieRunWizard.loadBulletins : filtrage côté client. ── */
+function RubriquesRecurrentesDialog({ profil, onClose }) {
+  const [rows, setRows] = useState([])
+  const [rubriques, setRubriques] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [editing, setEditing] = useState(null)
+  const [busy, setBusy] = useState('')
+
+  const load = () =>
+    Promise.all([
+      paieApi.getRubriquesEmploye(),
+      paieApi.getRubriques({ ordering: 'ordre' }),
+    ])
+      .then(([re, r]) => {
+        setRows(listOf(re.data).filter((x) => x.profil === profil.id))
+        setRubriques(listOf(r.data))
+      })
+      .catch(() => toast.error('Chargement des rubriques récurrentes impossible.'))
+      .finally(() => setLoading(false))
+  useEffect(() => { load() }, [])
+
+  const detacher = async (r) => {
+    if (!window.confirm(`Détacher « ${r.rubrique_code} » de ce profil ?`)) return
+    setBusy(`suppr-${r.id}`)
+    try {
+      await paieApi.deleteRubriqueEmploye(r.id)
+      toast.success('Rubrique détachée.')
+      await load()
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Suppression impossible.')
+    } finally { setBusy('') }
+  }
+
+  const columns = [
+    { id: 'code', header: 'Rubrique', accessor: (r) => r.rubrique_code },
+    { id: 'montant', header: 'Montant (surcharge)', align: 'right',
+      accessor: (r) => Number(r.montant) || 0,
+      cell: (_v, r) => (r.montant != null ? formatMAD(r.montant) : '—') },
+    { id: 'taux', header: 'Taux (surcharge)', align: 'right',
+      accessor: (r) => Number(r.taux) || 0,
+      cell: (_v, r) => (r.taux != null ? formatPercent(r.taux) : '—') },
+    { id: 'fenetre', header: 'Fenêtre', accessor: (r) => r.date_debut || '',
+      cell: (_v, r) => `${r.date_debut || '…'} → ${r.date_fin || '…'}` },
+    { id: 'actif', header: 'État', accessor: (r) => r.actif,
+      cell: (_v, r) => (r.actif
+        ? <Badge tone="success">Actif</Badge>
+        : <Badge tone="neutral">Inactif</Badge>) },
+  ]
+
+  return (
+    <>
+      <Dialog open onOpenChange={(o) => !o && onClose()}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>
+              Rubriques récurrentes — {profil.employe_nom || `Employé #${profil.employe}`}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-3">
+            <div className="flex justify-end">
+              <Button size="sm" onClick={() => setEditing({})}>
+                <Plus size={15} aria-hidden="true" /> Rattacher une rubrique
+              </Button>
+            </div>
+            {loading ? <Loading /> : rows.length === 0 ? (
+              <EmptyState icon={Plus} title="Aucune rubrique récurrente" />
+            ) : (
+              <DataTable data={rows} columns={columns}
+                exportName="rubriques-employe"
+                rowActions={(r) => [
+                  { id: 'editer', label: 'Modifier', icon: Pencil,
+                    onClick: () => setEditing(r) },
+                  { id: 'detacher', label: 'Détacher', icon: Trash2,
+                    destructive: true, onClick: () => detacher(r) },
+                ]} />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+      {editing && (
+        <RubriqueEmployeDialog profil={profil}
+          rubriqueEmploye={editing.id ? editing : null}
+          rubriques={rubriques}
+          onClose={() => setEditing(null)} onSaved={load} />
+      )}
+    </>
+  )
+}
+
+/* ── Rattachement/édition d'une RubriqueEmploye (WIR243). La rubrique
+   catalogue est immuable une fois rattachée (comme `employe` sur un profil) —
+   seules les surcharges montant/taux et la fenêtre de dates s'éditent. ── */
+function RubriqueEmployeDialog({ profil, rubriqueEmploye, rubriques, onClose, onSaved }) {
+  const isEdit = !!rubriqueEmploye
+  const [rubriqueId, setRubriqueId] = useState(
+    rubriqueEmploye?.rubrique ? String(rubriqueEmploye.rubrique) : '')
+  const [montant, setMontant] = useState(
+    rubriqueEmploye?.montant != null ? String(rubriqueEmploye.montant) : '')
+  const [taux, setTaux] = useState(
+    rubriqueEmploye?.taux != null ? String(rubriqueEmploye.taux) : '')
+  const [dateDebut, setDateDebut] = useState(rubriqueEmploye?.date_debut || '')
+  const [dateFin, setDateFin] = useState(rubriqueEmploye?.date_fin || '')
+  const [actif, setActif] = useState(
+    rubriqueEmploye ? Boolean(rubriqueEmploye.actif) : true)
+  const [busy, setBusy] = useState(false)
+
+  const enregistrer = async () => {
+    if (!rubriqueId) { toast.error('Choisissez une rubrique.'); return }
+    setBusy(true)
+    try {
+      await paieApi.saveRubriqueEmploye(rubriqueEmploye?.id, {
+        profil: profil.id,
+        rubrique: Number(rubriqueId),
+        montant: montant === '' ? null : Number(montant),
+        taux: taux === '' ? null : Number(taux),
+        date_debut: dateDebut || null,
+        date_fin: dateFin || null,
+        actif,
+      })
+      toast.success(isEdit ? 'Rubrique récurrente modifiée.' : 'Rubrique rattachée.')
+      onSaved()
+      onClose()
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Enregistrement impossible.')
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>
+            {isEdit ? 'Modifier la rubrique récurrente' : 'Rattacher une rubrique récurrente'}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="flex flex-col gap-3">
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-muted-foreground">Rubrique</span>
+            <Select value={rubriqueId} onValueChange={setRubriqueId} disabled={isEdit}>
+              <SelectTrigger><SelectValue placeholder="Choisir…" /></SelectTrigger>
+              <SelectContent>
+                {rubriques.map((r) => (
+                  <SelectItem key={r.id} value={String(r.id)}>
+                    {r.code} — {r.libelle}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </label>
+          <div className="flex gap-3">
+            <label className="flex flex-1 flex-col gap-1 text-sm">
+              <span className="text-muted-foreground">Montant (surcharge)</span>
+              <Input type="number" step="any" value={montant}
+                onChange={(e) => setMontant(e.target.value)} placeholder="ex. 500" />
+            </label>
+            <label className="flex flex-1 flex-col gap-1 text-sm">
+              <span className="text-muted-foreground">Taux % (surcharge)</span>
+              <Input type="number" step="any" value={taux}
+                onChange={(e) => setTaux(e.target.value)} placeholder="ex. 2.5" />
+            </label>
+          </div>
+          <div className="flex gap-3">
+            <label className="flex flex-1 flex-col gap-1 text-sm">
+              <span className="text-muted-foreground">Date de début</span>
+              <Input type="date" value={dateDebut}
+                onChange={(e) => setDateDebut(e.target.value)} />
+            </label>
+            <label className="flex flex-1 flex-col gap-1 text-sm">
+              <span className="text-muted-foreground">Date de fin</span>
+              <Input type="date" value={dateFin}
+                onChange={(e) => setDateFin(e.target.value)} />
+            </label>
+          </div>
+          <label className="flex items-center gap-1.5 text-sm">
+            <input type="checkbox" checked={actif}
+              onChange={(e) => setActif(e.target.checked)} /> Actif
+          </label>
+        </div>
+        <DialogFooter>
+          <Button onClick={enregistrer} loading={busy}>
+            {isEdit ? 'Enregistrer' : 'Rattacher'}
           </Button>
         </DialogFooter>
       </DialogContent>
