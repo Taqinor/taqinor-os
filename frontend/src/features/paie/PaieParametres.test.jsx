@@ -22,6 +22,9 @@ vi.mock('../../api/paieApi', () => ({
     saveRubrique: vi.fn(() => Promise.resolve({ data: {} })),
     getProfils: vi.fn(() => Promise.resolve({ data: [] })),
     saveProfil: vi.fn(() => Promise.resolve({ data: {} })),
+    getRubriquesEmploye: vi.fn(() => Promise.resolve({ data: [] })),
+    saveRubriqueEmploye: vi.fn(() => Promise.resolve({ data: {} })),
+    deleteRubriqueEmploye: vi.fn(() => Promise.resolve({ data: null })),
     getRegimesMutuelle: vi.fn(() => Promise.resolve({ data: [] })),
     saveRegimeMutuelle: vi.fn(() => Promise.resolve({ data: {} })),
     getAdhesionsMutuelle: vi.fn(() => Promise.resolve({ data: [] })),
@@ -235,5 +238,39 @@ describe('PaieParametres — MutuelleTab (WIR38, édition fine d’un régime)',
 
       await waitFor(() => expect(paieApi.saveRegimeMutuelle).toHaveBeenCalledWith(
         31, expect.objectContaining({ part_salariale: 75 })))
+    })
+})
+
+describe('PaieParametres — Rubriques récurrentes : taux assiette honesty (WIR243, Fable review)', () => {
+  beforeEach(() => {
+    paieApi.getProfils.mockResolvedValue(ok([PROFIL]))
+    paieApi.getRubriquesEmploye.mockResolvedValue(ok([]))
+    paieApi.getRubriques.mockResolvedValue(ok([]))
+  })
+
+  it('précise que le taux (surcharge) s’applique au salaire de base (prorata)',
+    async () => {
+      wrap(<PaieParametres />)
+      await userEvent.click(screen.getByRole('tab', { name: 'Profils' }))
+
+      const row = (await screen.findAllByText('Amrani Yassine'))
+        .map((el) => el.closest('tr')).find(Boolean)
+      expect(row).toBeTruthy()
+      await userEvent.click(within(row).getByLabelText("Plus d'actions sur la ligne"))
+      await userEvent.click(await screen.findByText('Rubriques récurrentes'))
+
+      const listeDialog = await screen.findByRole('dialog')
+      await userEvent.click(
+        within(listeDialog).getByRole('button', { name: 'Rattacher une rubrique' }))
+
+      // Deux dialogues frères (jamais imbriqués) : Radix marque le premier
+      // `aria-hidden` dès que le second (au-dessus) s'ouvre — un seul reste
+      // accessible, c'est celui du formulaire de rattachement.
+      const formulaire = await screen.findByRole('dialog', {
+        name: 'Rattacher une rubrique récurrente',
+      })
+      expect(within(formulaire).getByText(
+        /taux appliqué au salaire de base \(prorata\)/,
+      )).toBeInTheDocument()
     })
 })

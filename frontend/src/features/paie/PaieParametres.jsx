@@ -1303,7 +1303,9 @@ function RubriqueEmployeDialog({ profil, rubriqueEmploye, rubriques, onClose, on
                 onChange={(e) => setMontant(e.target.value)} placeholder="ex. 500" />
             </label>
             <label className="flex flex-1 flex-col gap-1 text-sm">
-              <span className="text-muted-foreground">Taux % (surcharge)</span>
+              <span className="text-muted-foreground">
+                Taux % (surcharge) — taux appliqué au salaire de base (prorata)
+              </span>
               <Input type="number" step="any" value={taux}
                 onChange={(e) => setTaux(e.target.value)} placeholder="ex. 2.5" />
             </label>

@@ -1887,16 +1887,63 @@ def rubriques_employe_actives(profil, periode):
     return actives
 
 
+# WIR243 (Fable review, taux assiette honesty) — bases d'assiette du
+# catalogue (``Rubrique.base``) qui ne sont PAS encore connues au stade où
+# ``montant_rubrique_employe`` s'exécute dans ``calculer_bulletin`` : brut,
+# brut imposable, net imposable et l'assiette plafonnée CNSS se calculent
+# TOUS *après* l'intégration des RubriqueEmploye (cf. plus bas dans
+# ``calculer_bulletin``). Un taux CATALOGUE (jamais une surcharge posée à la
+# main sur la RubriqueEmploye, qui reste volontairement sur le salaire de
+# base — voir ``assiette_taux_catalogue_non_calculable``) prétendant
+# s'appliquer à l'une de ces assiettes ne peut donc être honoré : mieux vaut
+# refuser bruyamment (au rattachement ET au calcul) que sous-payer en
+# silence sur le salaire de base sans le dire.
+BASES_ASSIETTE_ENGINE_INCALCULABLES = frozenset({
+    Rubrique.BASE_BRUT,
+    Rubrique.BASE_BRUT_IMPOSABLE,
+    Rubrique.BASE_NET_IMPOSABLE,
+    Rubrique.BASE_PLAFONNEE_CNSS,
+})
+
+
+def assiette_taux_catalogue_non_calculable(rubrique):
+    """Vrai si le TAUX CATALOGUE de ``rubrique`` (celui qui serait utilisé
+    par ``montant_rubrique_employe`` faute de toute surcharge montant/taux
+    sur la RubriqueEmploye) porte sur une assiette déclarée
+    (``rubrique.base``) qui n'est pas calculable à ce stade du moteur —
+    brut/brut_imposable/net_imposable/assiette plafonnée CNSS n'existent pas
+    encore quand les RubriqueEmploye sont intégrées. Toujours FAUX si un
+    ``montant_fixe`` catalogue existe (le taux ne sera alors jamais
+    consulté) ou si l'assiette est ``autre`` (saisie manuelle — elle ne
+    prétend représenter aucune quantité du moteur, donc rien à honorer).
+    """
+    if rubrique.montant_fixe is not None:
+        return False
+    if rubrique.taux is None:
+        return False
+    return rubrique.base in BASES_ASSIETTE_ENGINE_INCALCULABLES
+
+
 def montant_rubrique_employe(rubrique_employe, salaire_base):
     """Montant mensuel effectif d'une ``RubriqueEmploye`` (PAIE9/WIR243).
 
     Ordre de priorité (la première valeur renseignée gagne) :
 
     1. ``rubrique_employe.montant`` — surcharge montant fixe explicite ;
-    2. ``rubrique_employe.taux`` — surcharge taux %, appliqué au salaire de
-       base PRORATÉ du mois (même assiette que la prime d'ancienneté) ;
+    2. ``rubrique_employe.taux`` — surcharge taux %, TAUX APPLIQUÉ AU
+       SALAIRE DE BASE (PRORATA) du mois (même assiette que la prime
+       d'ancienneté) — une décision délibérée : la RubriqueEmploye ne
+       connaît QUE le salaire de base à ce stade, jamais l'assiette
+       déclarée par la rubrique catalogue (``rubrique.base``) ;
     3. ``rubrique.montant_fixe`` — défaut catalogue ;
-    4. ``rubrique.taux`` — défaut catalogue, même assiette qu'au point 2 ;
+    4. ``rubrique.taux`` — défaut catalogue, MÊME ASSIETTE qu'au point 2
+       (salaire de base) — SAUF si ``rubrique.base`` déclare une assiette
+       non calculable à ce stade (brut/brut_imposable/net_imposable/
+       plafonnée CNSS) : ``ValueError`` bruyante plutôt qu'un sous-paiement
+       silencieux (``assiette_taux_catalogue_non_calculable`` — garde
+       moteur, mirroir du refus posé au rattachement par
+       ``RubriqueEmployeSerializer.validate``, pour un enregistrement créé
+       hors API, ex. Django admin) ;
     5. sinon 0 (rubrique catalogue à saisie manuelle, sans aucune surcharge
        ni défaut — rien à ajouter automatiquement ce mois-ci).
 
@@ -1909,6 +1956,14 @@ def montant_rubrique_employe(rubrique_employe, salaire_base):
         rubrique = rubrique_employe.rubrique
         if rubrique.montant_fixe is not None:
             return _q(rubrique.montant_fixe)
+        if assiette_taux_catalogue_non_calculable(rubrique):
+            raise ValueError(
+                f'Rubrique « {rubrique.code} » : le taux catalogue '
+                f'({rubrique.taux}%) déclare une assiette '
+                f'« {rubrique.get_base_display()} » qui n\'est pas encore '
+                'calculable à ce stade de la paie (rien ne serait honnête '
+                'à appliquer). Fixez un montant (surcharge) sur cette '
+                'rubrique récurrente, ou un montant_fixe au catalogue.')
         taux = rubrique.taux
     if taux is not None:
         return _q(Decimal(salaire_base) * Decimal(taux) / Decimal('100'))

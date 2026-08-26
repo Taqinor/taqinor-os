@@ -8,7 +8,7 @@ from decimal import Decimal
 
 from rest_framework import serializers
 
-from .services import _q
+from .services import _q, assiette_taux_catalogue_non_calculable
 
 from .models import (
     AdhesionMutuelle,
@@ -298,7 +298,12 @@ class RubriqueEmployeSerializer(serializers.ModelSerializer):
     """Rubrique récurrente rattachée à un profil de paie (PAIE9).
 
     ``company`` posée côté serveur ; ``profil`` et ``rubrique`` sont validés
-    comme appartenant à la société de l'utilisateur.
+    comme appartenant à la société de l'utilisateur. WIR243 (Fable review) —
+    refus BLOQUANT au rattachement/à la sauvegarde (jamais un silence : voir
+    ``validate``) : un taux CATALOGUE (sans aucune surcharge montant/taux sur
+    cette ligne) portant sur une assiette non calculable à ce stade
+    (brut/brut_imposable/net_imposable/plafonnée CNSS) est refusé plutôt que
+    silencieusement appliqué au salaire de base.
     """
     rubrique_code = serializers.CharField(
         source='rubrique.code', read_only=True)
@@ -316,6 +321,31 @@ class RubriqueEmployeSerializer(serializers.ModelSerializer):
 
     def validate_rubrique(self, value):
         return _meme_societe(self, value, 'Rubrique')
+
+    def _valeur_courante(self, attrs, champ):
+        """Valeur d'un champ APRÈS cette écriture : celle du payload si
+        fournie (y compris en PATCH partiel), sinon celle déjà sur
+        l'instance (édition), sinon ``None`` (création)."""
+        if champ in attrs:
+            return attrs[champ]
+        if self.instance is not None:
+            return getattr(self.instance, champ)
+        return None
+
+    def validate(self, attrs):
+        rubrique = self._valeur_courante(attrs, 'rubrique')
+        if rubrique is not None:
+            montant = self._valeur_courante(attrs, 'montant')
+            taux = self._valeur_courante(attrs, 'taux')
+            if not montant and taux is None \
+                    and assiette_taux_catalogue_non_calculable(rubrique):
+                raise serializers.ValidationError({'rubrique': (
+                    f'Le taux catalogue de « {rubrique.code} » '
+                    f'({rubrique.taux}%) porte sur une assiette '
+                    f'« {rubrique.get_base_display()} » qui n\'est pas '
+                    'calculable pour une rubrique récurrente. Indiquez un '
+                    'montant (surcharge) sur cette ligne.')})
+        return attrs
 
 
 class PeriodePaieSerializer(serializers.ModelSerializer):

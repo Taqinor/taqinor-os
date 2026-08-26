@@ -30,6 +30,7 @@ from django.test import TestCase
 from apps.paie.models import Rubrique, RubriqueEmploye, StructurePaie
 from apps.paie.services import (
     appliquer_structure_a_profil,
+    assiette_taux_catalogue_non_calculable,
     calculer_bulletin,
     ensure_defaults,
     ensure_rubriques_standard,
@@ -38,6 +39,7 @@ from apps.paie.services import (
     montant_rubrique_employe,
     rubriques_employe_actives,
 )
+from apps.paie.tests.test_avances import auth, make_user
 from apps.paie.tests.test_avantages import (
     make_company,
     make_dossier,
@@ -255,3 +257,117 @@ class StructureAncienneteEtIdempotenceTests(TestCase):
         appliquer_structure_a_profil(self.profil, self.structure)
         res_apres = calculer_bulletin(self.profil, self.periode)
         self.assertEqual(res_apres['brut'] - res_avant['brut'], Decimal('500.00'))
+
+
+# ── assiette_taux_catalogue_non_calculable — fonction pure (Fable review) ──
+
+class AssietteTauxCatalogueNonCalculableTests(TestCase):
+    def setUp(self):
+        self.co = make_company('wir243-assiette-pure')
+
+    def test_montant_fixe_present_jamais_incalculable(self):
+        rub = Rubrique.objects.create(
+            company=self.co, code='MF1', libelle='MF1', type=Rubrique.TYPE_GAIN,
+            base=Rubrique.BASE_BRUT, taux=Decimal('2'), montant_fixe=Decimal('300'))
+        self.assertFalse(assiette_taux_catalogue_non_calculable(rub))
+
+    def test_sans_taux_catalogue_jamais_incalculable(self):
+        rub = Rubrique.objects.create(
+            company=self.co, code='NT1', libelle='NT1', type=Rubrique.TYPE_GAIN,
+            base=Rubrique.BASE_BRUT)
+        self.assertFalse(assiette_taux_catalogue_non_calculable(rub))
+
+    def test_assiette_autre_jamais_incalculable(self):
+        rub = Rubrique.objects.create(
+            company=self.co, code='AU1', libelle='AU1', type=Rubrique.TYPE_GAIN,
+            base=Rubrique.BASE_AUTRE, taux=Decimal('2'))
+        self.assertFalse(assiette_taux_catalogue_non_calculable(rub))
+
+    def test_brut_brut_imposable_net_imposable_plafonnee_cnss_incalculables(self):
+        bases = (
+            Rubrique.BASE_BRUT, Rubrique.BASE_BRUT_IMPOSABLE,
+            Rubrique.BASE_NET_IMPOSABLE, Rubrique.BASE_PLAFONNEE_CNSS,
+        )
+        for i, base in enumerate(bases):
+            rub = Rubrique.objects.create(
+                company=self.co, code=f'INC{i}', libelle='Incalculable',
+                type=Rubrique.TYPE_GAIN, base=base, taux=Decimal('2'))
+            self.assertTrue(
+                assiette_taux_catalogue_non_calculable(rub), msg=base)
+
+
+# ── Garde moteur (WIR243, Fable review) : échec bruyant, jamais silencieux ─
+
+class AssietteTauxCatalogueGuardMoteurTests(TestCase):
+    """Un enregistrement créé HORS API (Django admin, ou une StructurePaie
+    appliquée avant ce correctif) échoue BRUYAMMENT au calcul plutôt que de
+    sous-payer en silence."""
+
+    def setUp(self):
+        self.co = make_company('wir243-guard-moteur')
+        ensure_defaults(self.co)
+        self.dossier = make_dossier(self.co, 'WG1')
+        self.profil = make_profil(self.co, self.dossier, Decimal('10000'))
+        self.periode = make_periode(self.co, 2026, 6)
+
+    def test_taux_catalogue_sur_brut_leve_value_error_au_calcul(self):
+        rub = Rubrique.objects.create(
+            company=self.co, code='LEGACY_BRUT', libelle='Legacy % du brut',
+            type=Rubrique.TYPE_GAIN, base=Rubrique.BASE_BRUT, taux=Decimal('2'))
+        RubriqueEmploye.objects.create(
+            company=self.co, profil=self.profil, rubrique=rub)
+        with self.assertRaises(ValueError):
+            calculer_bulletin(self.profil, self.periode)
+
+    def test_taux_catalogue_sur_assiette_autre_ne_leve_rien(self):
+        rub = Rubrique.objects.create(
+            company=self.co, code='LEGACY_AUTRE', libelle='Legacy taux autre',
+            type=Rubrique.TYPE_GAIN, base=Rubrique.BASE_AUTRE, taux=Decimal('5'))
+        RubriqueEmploye.objects.create(
+            company=self.co, profil=self.profil, rubrique=rub)
+        res = calculer_bulletin(self.profil, self.periode)
+        # 5 % de 10 000 (salaire de base) = 500 -> brut = 10 500.
+        self.assertEqual(res['brut'], Decimal('10500.00'))
+
+
+# ── API : refus taux catalogue sur assiette non calculable ─────────────────
+
+class RubriqueEmployeAssietteTauxApiTests(TestCase):
+    BASE = '/api/django/paie/rubriques-employe/'
+
+    def setUp(self):
+        self.co = make_company('wir243-assiette-api')
+        ensure_defaults(self.co)
+        self.user = make_user(self.co, 'wir243-assiette-user')
+        self.dossier = make_dossier(self.co, 'WA2')
+        self.profil = make_profil(self.co, self.dossier, Decimal('10000'))
+
+    def test_refuse_taux_catalogue_sur_brut_sans_surcharge(self):
+        rub = Rubrique.objects.create(
+            company=self.co, code='PRIME_BRUT', libelle='Prime % du brut',
+            type=Rubrique.TYPE_GAIN, base=Rubrique.BASE_BRUT, taux=Decimal('2'))
+        resp = auth(self.user).post(self.BASE, {
+            'profil': self.profil.id, 'rubrique': rub.id,
+        }, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertIn('rubrique', resp.data)
+        self.assertFalse(
+            RubriqueEmploye.objects.filter(profil=self.profil).exists())
+
+    def test_montant_override_exempte_le_refus(self):
+        rub = Rubrique.objects.create(
+            company=self.co, code='PRIME_BRUT2', libelle='Prime % du brut',
+            type=Rubrique.TYPE_GAIN, base=Rubrique.BASE_BRUT, taux=Decimal('2'))
+        resp = auth(self.user).post(self.BASE, {
+            'profil': self.profil.id, 'rubrique': rub.id, 'montant': '500',
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+
+    def test_taux_catalogue_sur_assiette_autre_autorise(self):
+        rub = Rubrique.objects.create(
+            company=self.co, code='PRIME_AUTRE', libelle='Prime taux autre',
+            type=Rubrique.TYPE_GAIN, base=Rubrique.BASE_AUTRE, taux=Decimal('2'))
+        resp = auth(self.user).post(self.BASE, {
+            'profil': self.profil.id, 'rubrique': rub.id,
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
