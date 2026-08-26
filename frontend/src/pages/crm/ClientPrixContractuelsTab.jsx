@@ -78,6 +78,55 @@ export default function ClientPrixContractuelsTab({ clientId }) {
     }
   }
 
+  // ── WIR184 — Modifier/Supprimer : priorité 1 de la résolution de prix
+  // (ni corrigeables ni supprimables jusqu'ici). Édition en ligne, pré-remplie
+  // depuis la ligne cliquée ; suppression confirmée (patron DoublonsPanel).
+  const [editingId, setEditingId] = useState(null)
+  const [editForm, setEditForm] = useState({ prix_ht: '', date_debut: '', date_fin: '', motif: '' })
+  const [editSaving, setEditSaving] = useState(false)
+
+  const commencerModification = (p) => {
+    setEditingId(p.id)
+    setEditForm({
+      prix_ht: p.prix_ht ?? '',
+      date_debut: p.date_debut ?? '',
+      date_fin: p.date_fin ?? '',
+      motif: p.motif ?? '',
+    })
+  }
+
+  const annulerModification = () => setEditingId(null)
+
+  const enregistrerModification = async (id) => {
+    setEditSaving(true)
+    try {
+      await cpqApi.updatePrixContractuel(id, {
+        prix_ht: editForm.prix_ht,
+        date_debut: editForm.date_debut || null,
+        date_fin: editForm.date_fin || null,
+        motif: editForm.motif,
+      })
+      toast.success('Prix contractuel modifié.')
+      setEditingId(null)
+      charger()
+    } catch (err) {
+      toast.error(frenchError(err, 'Impossible de modifier ce prix contractuel.'))
+    } finally {
+      setEditSaving(false)
+    }
+  }
+
+  const supprimer = async (p) => {
+    if (!window.confirm(`Supprimer le prix négocié « ${nomProduit(p.produit)} » ? Cette action est définitive.`)) return
+    try {
+      await cpqApi.deletePrixContractuel(p.id)
+      toast.success('Prix contractuel supprimé.')
+      charger()
+    } catch (err) {
+      toast.error(frenchError(err, 'Impossible de supprimer ce prix contractuel.'))
+    }
+  }
+
   if (erreur) return <p style={{ color: '#ef4444' }}>{erreur}</p>
 
   return (
@@ -125,24 +174,72 @@ export default function ClientPrixContractuelsTab({ clientId }) {
       {!loading && (
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
-            <tr><th>Produit</th><th>Prix HT</th><th>Validité</th><th>Motif</th><th /></tr>
+            <tr><th>Produit</th><th>Prix HT</th><th>Validité</th><th>Motif</th><th /><th>Actions</th></tr>
           </thead>
           <tbody>
             {prix.map((p) => (
-              <tr key={p.id}>
-                <td>{nomProduit(p.produit)}</td>
-                <td>{p.prix_ht}</td>
-                <td>
-                  {p.date_debut || '…'} → {p.date_fin || '…'}
-                </td>
-                <td>{p.motif || '—'}</td>
-                <td>
-                  {p.est_actif ? <Badge tone="success">Actif</Badge> : <Badge tone="neutral">Inactif</Badge>}
-                </td>
-              </tr>
+              editingId === p.id ? (
+                <tr key={p.id}>
+                  <td>{nomProduit(p.produit)}</td>
+                  <td>
+                    <input
+                      type="number" step="0.01"
+                      value={editForm.prix_ht}
+                      onChange={(e) => setEditForm({ ...editForm, prix_ht: e.target.value })}
+                      aria-label="Prix HT négocié (modification)"
+                    />
+                  </td>
+                  <td style={{ display: 'flex', gap: 4 }}>
+                    <input
+                      type="date"
+                      value={editForm.date_debut || ''}
+                      onChange={(e) => setEditForm({ ...editForm, date_debut: e.target.value })}
+                      aria-label="Date de début de validité (modification)"
+                    />
+                    <input
+                      type="date"
+                      value={editForm.date_fin || ''}
+                      onChange={(e) => setEditForm({ ...editForm, date_fin: e.target.value })}
+                      aria-label="Date de fin de validité (modification)"
+                    />
+                  </td>
+                  <td>
+                    <input
+                      value={editForm.motif}
+                      onChange={(e) => setEditForm({ ...editForm, motif: e.target.value })}
+                      aria-label="Motif du prix négocié (modification)"
+                    />
+                  </td>
+                  <td>
+                    {p.est_actif ? <Badge tone="success">Actif</Badge> : <Badge tone="neutral">Inactif</Badge>}
+                  </td>
+                  <td>
+                    <Button type="button" disabled={editSaving} onClick={() => enregistrerModification(p.id)}>
+                      {editSaving ? 'Enregistrement…' : 'Enregistrer'}
+                    </Button>
+                    <Button type="button" variant="ghost" onClick={annulerModification}>Annuler</Button>
+                  </td>
+                </tr>
+              ) : (
+                <tr key={p.id}>
+                  <td>{nomProduit(p.produit)}</td>
+                  <td>{p.prix_ht}</td>
+                  <td>
+                    {p.date_debut || '…'} → {p.date_fin || '…'}
+                  </td>
+                  <td>{p.motif || '—'}</td>
+                  <td>
+                    {p.est_actif ? <Badge tone="success">Actif</Badge> : <Badge tone="neutral">Inactif</Badge>}
+                  </td>
+                  <td>
+                    <Button type="button" variant="ghost" onClick={() => commencerModification(p)}>Modifier</Button>
+                    <Button type="button" variant="ghost" onClick={() => supprimer(p)}>Supprimer</Button>
+                  </td>
+                </tr>
+              )
             ))}
             {prix.length === 0 && (
-              <tr><td colSpan={5} style={{ textAlign: 'center', color: '#64748b' }}>Aucun prix négocié</td></tr>
+              <tr><td colSpan={6} style={{ textAlign: 'center', color: '#64748b' }}>Aucun prix négocié</td></tr>
             )}
           </tbody>
         </table>
