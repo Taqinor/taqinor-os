@@ -184,21 +184,22 @@ describe('P18 — la page gate la phrase de garantie ET les badges', () => {
     expect(CODE).toContain("...(equipPresence.onduleur ? ['onduleur' as const] : [])");
   });
 
-  // TAILLES · QUICK WIN (fondateur, 26/08/2026) — LA LIGNE DE POSE EST RETIRÉE
-  // DE LA PAGE. Sa durée d'affichage n'est pas arrêtée par le fondateur, et la
-  // discipline « omettre plutôt que supposer » l'emporte : mieux vaut ne rien
-  // annoncer qu'annoncer une durée à corriger devant un client. Le test
-  // n'affirme donc plus l'inverse — il ÉPINGLE la nouvelle décision, pour qu'un
-  // retour de la ligne soit un choix explicite et non un accident.
-  it('la garantie de POSE n’est PLUS annoncée sur la page (durée non arrêtée)', () => {
-    expect(CODE).not.toContain('de pose Taqinor');
-    expect(CODE).not.toContain('INSTALL_WARRANTY_YEARS');
+  // (26/08/2026) CE TEST A ÉTÉ INVERSÉ PAR ERREUR, PUIS RÉTABLI. Une lane avait
+  // retiré la ligne de pose en croyant sa durée « non arrêtée par le
+  // fondateur » : c'était faux. L'en-tête de `lib/warranty.ts` la tranche
+  // explicitement (« ADJUDICATION DES CHIFFRES, 2026-07-04 : POSE /
+  // main-d'œuvre Taqinor : 2 ans ») et `fiches.ts` la publie déjà. Le test
+  // reprend donc son rôle d'origine : épingler la PRÉSENCE de l'engagement.
+  it('la garantie de POSE Taqinor reste inconditionnelle (c’est notre engagement)', () => {
+    expect(CODE).toContain('INSTALL_WARRANTY_YEARS');
+    expect(CODE).toContain('de pose Taqinor');
   });
 
-  it('la constante de pose SUBSISTE dans la bibliothèque, prête pour le jour où', async () => {
+  it('la durée de pose vient de la SOURCE UNIQUE, jamais d’un littéral', async () => {
     const warranty = await import('../src/lib/warranty');
-    expect(typeof warranty.INSTALL_WARRANTY_YEARS).toBe('number');
-    expect(warranty.INSTALL_WARRANTY_YEARS).toBeGreaterThan(0);
+    expect(warranty.INSTALL_WARRANTY_YEARS).toBe(2);
+    // La page n'écrit nulle part « 2 ans » de pose en dur : elle dérive.
+    expect(CODE).not.toContain('2 ans de pose');
   });
 });
 

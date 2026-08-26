@@ -267,16 +267,18 @@ describe('PV81 — polish : rien de vide, rien qui se contredit', () => {
     expect(bloc).toContain('INVERTER_WARRANTY_YEARS');
     expect(bloc).toContain('data-fr="de garantie produit panneaux"');
     expect(bloc).toContain('data-fr="de garantie rendement panneaux"');
-    // LA POSE EST OMISE tant que le fondateur n'a pas arrêté la durée à
-    // afficher — discipline « omettre plutôt que supposer ». Le test épingle
-    // l'absence, pour qu'un retour de la ligne soit un choix explicite.
-    expect(bloc).not.toContain('INSTALL_WARRANTY_YEARS');
-    expect(bloc).not.toContain('data-fr="de pose Taqinor"');
+    // LA POSE EST AFFICHÉE AVEC SA DURÉE (2 ans), comme sur le PDF — l'ancien
+    // « pose garantie Taqinor » sans durée ne dit pas la même chose. (Assertion
+    // INVERSÉE PAR ERREUR le 26/08 puis RÉTABLIE : la durée EST adjugée en tête
+    // de `lib/warranty.ts`, la retirer était un recul, pas une prudence.)
+    expect(bloc).toContain('INSTALL_WARRANTY_YEARS');
+    expect(bloc).toContain('data-fr="de pose Taqinor"');
     expect(bloc).not.toContain('data-fr="pose garantie Taqinor"');
     // …Y COMPRIS EN ARABE. Une durée écrite en dur (« سنتان ») laissait le
     // client arabophone lire un chiffre figé pendant que FR/EN suivaient la
     // constante. Toutes les durées passent par `anneesAr`, qui applique le DUEL
     // arabe (1 → سنة واحدة, 2 → سنتان, 3-10 → N سنوات, au-delà → N سنة).
+    expect(bloc).toContain('data-ar={anneesAr(INSTALL_WARRANTY_YEARS)}');
     expect(bloc).toContain('data-ar={anneesAr(PANEL_PRODUCT_WARRANTY_YEARS)}');
     expect(bloc).toContain('data-ar={anneesAr(PANEL_PERFORMANCE_WARRANTY_YEARS)}');
     expect(bloc).toContain('data-ar={anneesAr(INVERTER_WARRANTY_YEARS)}');

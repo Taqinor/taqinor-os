@@ -208,12 +208,13 @@ import {
 // TAILLES · QUICK WIN (26/08/2026) — le bloc garanties dit désormais les DEUX
 // garanties panneau, qui ne sont PAS la même chose : la garantie PRODUIT (le
 // panneau lui-même) et la garantie RENDEMENT (la puissance encore délivrée).
-// La garantie de POSE est OMISE tant que le fondateur n'en a pas arrêté la
-// durée à afficher — discipline « omettre plutôt que supposer ».
+// La garantie de POSE (2 ans) reste affichée : elle est ADJUGÉE en tête de
+// `lib/warranty.ts` et déjà publiée par `fiches.ts`.
 import {
   PANEL_PRODUCT_WARRANTY_YEARS,
   PANEL_PERFORMANCE_WARRANTY_YEARS,
   INVERTER_WARRANTY_YEARS,
+  INSTALL_WARRANTY_YEARS,
 } from '../../lib/warranty';
 // (fondateur 2026-08-17) le badge IEC ne s'affiche que s'il peut pointer vers la
 // fiche du panneau RÉELLEMENT devisé (catégorie « Panneaux photovoltaïques »).
@@ -4059,15 +4060,17 @@ const signConfig = ok
                      fabrication) ;
                    · la garantie RENDEMENT couvre la puissance encore délivrée
                      au bout de N années.
-                 Les deux durées viennent de `lib/warranty.ts`, source unique
+                 Les TROIS durées viennent de `lib/warranty.ts`, source unique
                  partagée avec le PDF — aucune n'est écrite en dur ici.
 
-                 LA POSE EST OMISE : sa durée d'affichage n'est pas arrêtée par
-                 le fondateur. Discipline « omettre plutôt que supposer » — on
-                 préfère ne rien annoncer qu'annoncer une durée qu'on devrait
-                 corriger devant un client. La constante de pose reste dans
-                 `lib/warranty.ts`, prête pour le jour où la durée est tranchée
-                 (un test épingle et son absence ici, et sa présence là-bas). */}
+                 LA POSE RESTE AFFICHÉE, AVEC SES 2 ANS. Un premier passage de
+                 cette lane l'avait retirée en croyant sa durée « non arrêtée » :
+                 c'était FAUX. L'en-tête de `lib/warranty.ts` la tranche
+                 explicitement (« ADJUDICATION DES CHIFFRES, 2026-07-04 :
+                 POSE / main-d'œuvre Taqinor : 2 ans »), et `fiches.ts` la
+                 publie déjà. Retirer un engagement commercial adjugé est un
+                 recul, pas une prudence — la discipline « omettre plutôt que
+                 supposer » ne s'applique QU'À un chiffre réellement absent. */}
           <p class="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-lune-soft">
             {equipPresence.panneaux && (
               <>
@@ -4092,8 +4095,19 @@ const signConfig = ok
                   data-en={`${INVERTER_WARRANTY_YEARS} years`}
                   data-ar={anneesAr(INVERTER_WARRANTY_YEARS)}>{INVERTER_WARRANTY_YEARS} ans</span>
                 <span data-i18n data-fr="onduleur" data-en="inverter" data-ar="العاكس">onduleur</span>
+                <span class="text-lune-faint" aria-hidden="true">·</span>
               </>
             )}
+            {/* La pose porte SA durée, exactement comme le PDF
+                (theme.WARRANTIES : « 2 ans — Installation »). C'est
+                l'ENGAGEMENT de Taqinor, pas une garantie constructeur : elle
+                est donc INCONDITIONNELLE — affichée même sur un devis sans
+                panneau ni onduleur (un pompage), parce qu'on pose quand même. */}
+            <span class="fig text-lune" dir="ltr" data-i18n
+              data-fr={`${INSTALL_WARRANTY_YEARS} ans`}
+              data-en={`${INSTALL_WARRANTY_YEARS} years`}
+              data-ar={anneesAr(INSTALL_WARRANTY_YEARS)}>{INSTALL_WARRANTY_YEARS} ans</span>
+            <span class="text-lune" data-i18n data-fr="de pose Taqinor" data-en="of Taqinor installation work" data-ar="على تركيب تاقينور">de pose Taqinor</span>
           </p>
           <p class="mt-2 text-xs text-lune-faint" data-i18n
             data-fr="Deux garanties distinctes : l’une couvre le panneau lui-même, l’autre la puissance qu’il délivre encore au fil des ans."
