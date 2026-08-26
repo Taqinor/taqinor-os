@@ -1298,8 +1298,12 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
                            onChange={e => setFicheField('bat_dod_pct', e.target.value)} />
                   </FormField>
                   <FormField label="Max modules par banc — vide = illimité" htmlFor="pf-ft-maxmod"
-                             hint="Nombre maximum de modules identiques qu'une même banque peut empiler pour ce produit.">
-                    <Input id="pf-ft-maxmod" type="number" min="0" step="1" inputMode="numeric"
+                             hint="Nombre maximum de modules identiques qu'un même banc peut empiler pour ce produit. 0 n'est pas une limite valide : laissez vide pour illimité.">
+                    {/* F3 (revue 26/08/2026) — min="1" : 0 rendrait toute
+                        banque candidate impossible pour ce produit (rejetée
+                        en sélection, y compris un module déjà engagé par un
+                        devis) ; vide reste le seul « illimité » valide. */}
+                    <Input id="pf-ft-maxmod" type="number" min="1" step="1" inputMode="numeric"
                            value={ficheFields.bat_max_modules_par_banc}
                            onChange={e => setFicheField('bat_max_modules_par_banc', e.target.value)} />
                   </FormField>

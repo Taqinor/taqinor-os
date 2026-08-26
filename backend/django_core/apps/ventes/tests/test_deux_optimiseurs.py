@@ -1076,6 +1076,52 @@ class LEchelleDePaliersBatterie(_Base):
                 % palier)
             self.assertGreater(palier['nb_batteries_5'], 0, palier)
 
+    def test_f1_ladder_module_du_devis_survit_a_son_propre_stock_a_zero(self):
+        """F1 (revue adversariale 26/08/2026) — un devis qui vend DÉJÀ du
+        5 kWh voit son 5 kWh tomber à 0 en stock : l'échelle reste
+        DÉNOMMÉE EN 5 kWh (le pin bypasse le stock), jamais repeinte en
+        10 kWh — un module que ce devis ne vend PAS."""
+        devis = self._devis_residentiel(email='f1-pin-stock0@example.com')
+        LigneDevis.objects.create(
+            devis=devis, produit=self.produits['BAT5'],
+            designation='Batterie Dyness 5 kWh',
+            quantite=Decimal('1'), prix_unitaire=Decimal('16000'))
+        Produit.objects.filter(pk=self.produits['BAT5'].pk).update(
+            quantite_stock=0)
+
+        echelle = dimensionnement.echelle_paliers_batterie(devis)
+        self.assertTrue(echelle, 'échelle vide : le pin devait garder la '
+                                 'page vivante malgré le stock à 0')
+        for palier in echelle:
+            self.assertEqual(
+                palier['nb_batteries_10'], 0,
+                'un rang a basculé vers le 10 kWh alors que ce devis vend '
+                'du 5 kWh (même hors stock) : %s' % palier)
+            self.assertGreater(palier['nb_batteries_5'], 0, palier)
+
+    def test_f1_ladder_reste_vivante_les_deux_calibres_a_zero_en_stock(self):
+        """F1 — SCÉNARIO EXACT DE L'INCIDENT : un devis vend du 5 kWh, et les
+        DEUX calibres du catalogue tombent à 0 en stock (un fournisseur en
+        rupture des deux côtés) — l'échelle ne meurt PAS silencieusement sur
+        ce devis pourtant déjà vendu."""
+        devis = self._devis_residentiel(email='f1-pin-both0@example.com')
+        LigneDevis.objects.create(
+            devis=devis, produit=self.produits['BAT5'],
+            designation='Batterie Dyness 5 kWh',
+            quantite=Decimal('1'), prix_unitaire=Decimal('16000'))
+        Produit.objects.filter(
+            pk__in=[self.produits['BAT5'].pk, self.produits['BAT10'].pk],
+        ).update(quantite_stock=0)
+
+        echelle = dimensionnement.echelle_paliers_batterie(devis)
+        self.assertTrue(
+            echelle,
+            "l'échelle est morte alors que le devis vend déjà une batterie "
+            '— exactement le bug que F1 corrige')
+        for palier in echelle:
+            self.assertEqual(palier['nb_batteries_10'], 0, palier)
+            self.assertGreater(palier['nb_batteries_5'], 0, palier)
+
     def test_le_plafond_du_toit_borne_chaque_palier(self):
         """Le calepinage est un PLAFOND PHYSIQUE : l'échelle ne propose jamais
         des panneaux qui ne tiennent pas, et un toit plus petit ne peut que

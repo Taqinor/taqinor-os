@@ -1260,7 +1260,7 @@ def specs_for_produit(produit):
             # forcément les champs récents — absent ≡ NULL (non évaluable).
             ('max_decharge_kw', getattr(fiche, 'bat_max_decharge_kw', None)),
             # BATHOMO (2026-08-26) — le plafond fondateur du nombre de
-            # modules IDENTIQUES admis dans une même banque. getattr : les
+            # modules IDENTIQUES admis dans un même banc. getattr : les
             # doubles de test (_FausseFiche) ne portent pas forcément le
             # champ récent — absent ≡ NULL (illimité, comportement inchangé).
             ('max_modules_par_banc',

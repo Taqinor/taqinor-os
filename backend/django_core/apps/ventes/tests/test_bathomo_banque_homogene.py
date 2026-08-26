@@ -336,8 +336,11 @@ class EconomieDeCalibreChoisitLeMoinsCher(_Base):
 class StockGatingBatterie(_Base):
     """BATHOMO — LE bug réel : le fondateur avait mis ``BAT-DEY-10`` à 0 en
     stock (un mouvement de stock, jamais un archivage) et RIEN ne consultait
-    le stock au chiffrage. Un module à 0 en stock est désormais EXCLU du
-    vivier — même traitement qu'un module hors plage de tension."""
+    le stock au chiffrage. Un module à 0 en stock est EXCLU du choix
+    ÉCONOMIQUE (nouvelle sélection, sans pin) — même traitement qu'un module
+    hors plage de tension. F1 (revue adversariale 26/08/2026) : un PIN
+    (``batterie_module_kwh`` — le module déjà engagé par un devis) BYPASSE
+    cette garde de stock, voir les tests ``test_f1_*`` ci-dessous."""
 
     slug = 'bathomo-stock0'
     BATTERIE_SKUS = ('5', '10')
@@ -351,13 +354,38 @@ class StockGatingBatterie(_Base):
                 self.assertEqual(dix, 0, 'le 10 kWh est à stock 0')
                 self.assertGreater(cinq, 0)
 
-    def test_calibre_a_stock_zero_meme_impose_ne_le_compose_pas(self):
-        """Un pin vers un calibre à stock 0 ne peut PAS le composer quand
-        même — repli sur les calibres restants."""
+    def test_f1_pin_bypasse_le_stock_le_module_du_devis_reste_compose(self):
+        """F1 (revue adversariale 26/08/2026) — RECALÉ : un pin
+        (``batterie_module_kwh``) signifie « ce module est DÉJÀ engagé sur
+        le devis » — il reste composable MÊME hors stock. Repeindre la
+        banque dans l'autre calibre serait exactement la violation « la page
+        suit les articles du devis » que ce correctif devait éliminer."""
         Produit.objects.filter(pk=self.produits['BAT10'].pk).update(
             quantite_stock=0)
-        cinq, dix, _vue = self._compose(cible_kwh=20, kwc=40.0, module_kwh=10)
-        self.assertEqual(dix, 0)
+        cinq, dix, vue = self._compose(cible_kwh=20, kwc=40.0, module_kwh=10)
+        self.assertEqual((cinq, dix), (0, 2))
+        self.assertAlmostEqual(vue['batterie_kwh'], 20.0, places=2)
+
+    def test_f1_pin_bypasse_le_stock_meme_les_deux_calibres_a_zero(self):
+        """F1 — SCÉNARIO EXACT DE L'INCIDENT : les DEUX calibres tombent à 0
+        en stock (un devis déjà signé, un fournisseur en rupture des deux
+        côtés) — le pin garde la page VIVANTE sur le module déjà vendu,
+        jamais une banque qui meurt silencieusement sur un devis signé."""
+        Produit.objects.filter(
+            pk__in=[self.produits['BAT5'].pk, self.produits['BAT10'].pk],
+        ).update(quantite_stock=0)
+        cinq, dix, vue = self._compose(cible_kwh=15, kwc=40.0, module_kwh=5)
+        self.assertEqual((cinq, dix), (3, 0))
+        self.assertAlmostEqual(vue['batterie_kwh'], 15.0, places=2)
+
+    def test_sans_pin_un_calibre_a_stock_zero_ne_ressuscite_pas(self):
+        """SANS pin (nouvelle sélection, pas un devis existant), le repli
+        économique reste STOCK-GATÉ : F1 bypasse le stock POUR LE PIN
+        SEULEMENT, jamais pour la sélection économique normale."""
+        Produit.objects.filter(pk=self.produits['BAT10'].pk).update(
+            quantite_stock=0)
+        cinq, dix, _vue = self._compose(cible_kwh=20, kwc=40.0)
+        self.assertEqual(dix, 0, 'le 10 kWh est à stock 0, sans pin')
         self.assertGreater(cinq, 0)
 
     def test_zero_batterie_en_stock_avec_devient_non_servable(self):

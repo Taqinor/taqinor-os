@@ -207,8 +207,8 @@ const CHAMPS_PAR_TYPE = {
     'longueur_mm', 'largeur_mm',
   ],
   // BATHOMO (fondateur 26/08/2026) — ``bat_max_modules_par_banc`` : le
-  // plafond fondateur-éditable du nombre de modules IDENTIQUES qu'une même
-  // banque peut empiler pour ce produit (vide = illimité).
+  // plafond fondateur-éditable du nombre de modules IDENTIQUES qu'un même
+  // banc peut empiler pour ce produit (vide = illimité, 0 invalide — F3).
   batterie: ['bat_kwh_nominal', 'bat_kwh_usable', 'bat_v_nominal', 'bat_dod_pct',
              'bat_max_modules_par_banc'],
 }
