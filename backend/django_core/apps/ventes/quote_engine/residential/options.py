@@ -972,29 +972,30 @@ def build_pages(ctx) -> list:
     # et si vous financiez ? » (économies − crédit = dans votre poche) est
     # SUPPRIMÉE de la page rentabilité. Ne pas la réintroduire.
     # QRES53 — l'impact environnemental complète la page rentabilité (le
-    # retour de l'investissement ne se compte pas qu'en dirhams) : mêmes
-    # facteurs de calcul que la page 1 — M8 (19/08/2026) : SOURCE UNIQUE et
-    # datée dans quote_engine.constants (CO2_T_PAR_MWH / KG_CO2_PAR_ARBRE_AN),
-    # alignée sur le site web — plus de « 21 » PDF face à « 22 » web pour le
-    # même devis. Cumul 25 ans PRUDENT (dégradation panneau 0,5 %/an
-    # intégrée, ×23,5).
+    # retour de l'investissement ne se compte pas qu'en dirhams) : même facteur
+    # de calcul que la page 1 — M8 (19/08/2026) : SOURCE UNIQUE dans
+    # quote_engine.constants (CO2_T_PAR_MWH), alignée sur le site web.
+    #
+    # CO2SRC (règle « chiffres vérifiés », 2026-08-26) — DEUX DES TROIS CARTES
+    # SONT RETIRÉES, et ne doivent pas revenir sans source nommée :
+    #   · « ≈ N arbres plantés » reposait sur 22 kg de CO₂/arbre/an, un ordre
+    #     de grandeur de vulgarisation que rien ne source (l'absorption varie
+    #     d'un facteur 5 selon l'essence, l'âge et le climat) ;
+    #   · « ≈ N t évitées sur 25 ans » multipliait la tonne annuelle par 23,5 —
+    #     un coefficient présenté comme « dégradation panneau 0,5 %/an
+    #     intégrée » mais qu'aucun calcul du moteur ne produit (le cashflow
+    #     25 ans, lui, a bien son modèle) et qui suppose en plus un mix
+    #     électrique marocain FIGÉ pendant un quart de siècle.
+    # Reste la tonne ANNUELLE : dérivée d'une production RÉELLE du devis. La
+    # rangée devient une carte unique, pleine largeur.
     _prod = d.get("prod_kwh") or 0
     impact_html = ""
     if _prod:
         _co2_t = _prod * constants.CO2_T_PAR_MWH / 1000.0
-        # M8 — plus de plancher « au moins 1 arbre » : la carte s'omet plus
-        # bas plutôt que d'imprimer « l'équivalent de 0 arbres ».
-        _trees = round(_prod * constants.CO2_T_PAR_MWH
-                       / constants.KG_CO2_PAR_ARBRE_AN)
-        _co2_25 = _co2_t * 23.5
 
         def _fr1(v):
             return (f"{v:.1f}".replace(".", ",") if v < 10
                     else fmt(round(v)))
-        _trees_card = (
-            f'<div class="p2-imp-c"><span class="p2-imp-v">≈ {fmt(_trees)}'
-            '</span><span class="p2-imp-l">arbres plantés — l\'équivalent '
-            'annuel</span></div>') if _trees > 0 else ""
         impact_html = (
             '<div class="p2-lbl" style="margin-top:7mm">Et pour la planète'
             '</div>'
@@ -1002,10 +1003,6 @@ def build_pages(ctx) -> list:
             f'<div class="p2-imp-c"><span class="p2-imp-v">≈ {_fr1(_co2_t)} '
             't</span><span class="p2-imp-l">de CO<sub>2</sub> évitées '
             'chaque année</span></div>'
-            f'{_trees_card}'
-            f'<div class="p2-imp-c"><span class="p2-imp-v">≈ {_fr1(_co2_25)} '
-            't</span><span class="p2-imp-l">de CO<sub>2</sub> évitées sur '
-            '25 ans</span></div>'
             '</div>')
 
     # QRES62 — joints élastiques de la page rentabilité : le vide mesuré se

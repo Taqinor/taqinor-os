@@ -61,11 +61,14 @@ class TestResidentialRenderer(TestCase):
         self.assertIn('Casablanca', html)
 
     def test_tangible_monthly_and_impact_framing_present(self):
-        """Cover carries the per-month framing and the derived CO₂ impact line."""
+        """Cover carries the per-month framing and the derived CO₂ impact line.
+
+        CO2SRC (2026-08-26) — la bande porte la tonne ANNUELLE et RIEN d'autre :
+        l'équivalence en arbres (22 kg/arbre/an, non sourcée) en est retirée."""
         html, _ = self._html_and_doc()
         self.assertIn('MAD/mois', html)
-        self.assertIn('CO', html)        # CO₂ impact strip
-        self.assertIn('arbres', html)
+        self.assertIn('tonnes de CO<sub>2</sub></b>', html)
+        self.assertNotIn('arbres', html)
 
     def test_equipment_lines_deep_link_to_fiche_pages(self):
         """Panels/inverters/battery/meter/dongle link to their /produits/<slug>

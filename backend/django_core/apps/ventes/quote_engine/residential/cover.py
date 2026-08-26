@@ -89,18 +89,21 @@ def build(ctx):
     # annual one) — derived straight from the annual before/after, never invented.
     month_before = round(annual_before / 12)
     month_after = round(annual_after / 12)
-    # Environmental impact — a CALCULATION, not an invented statistic: Moroccan
-    # grid factor + kg CO₂/tree/year now live in quote_engine.constants (M8,
-    # 19/08/2026) — the SAME two numbers the tree count on apps/web reads, so
-    # the same devis never prints two different tree counts on two supports.
+    # Environmental impact — a CALCULATION, not an invented statistic: the
+    # Moroccan grid factor lives in quote_engine.constants (M8, 19/08/2026),
+    # source UNIQUE partagée avec apps/web.
+    #
+    # CO2SRC (règle « chiffres vérifiés », 2026-08-26) — L'ÉQUIVALENCE EN
+    # ARBRES EST RETIRÉE. « ≈ N arbres plantés » reposait sur 22 kg de CO₂
+    # absorbés par arbre et par an : un ordre de grandeur de vulgarisation que
+    # rien, ni ici ni sur le site, ne source — alors qu'il variait d'un facteur
+    # 5 selon l'essence, l'âge et le climat. La tonne annuelle, elle, se dérive
+    # d'une production RÉELLE et reste imprimée (son facteur reste à sourcer
+    # précisément, cf. constants.CO2_T_PAR_MWH). La bande s'omet entièrement
+    # sans production — jamais un « 0 tonne ».
     co2_t = prod_kwh * constants.CO2_T_PAR_MWH / 1000.0
     co2_txt = (f"{co2_t:.1f}".replace(".", ",") if co2_t < 10
                else fmt(co2_t))
-    # M8 — plus de plancher « au moins 1 arbre » : un compte à 0 s'affiche 0
-    # (la mention entière s'omet plus bas — « l'équivalent de 0 arbres »
-    # n'aurait aucun sens sur un document client).
-    trees = round(prod_kwh * constants.CO2_T_PAR_MWH
-                  / constants.KG_CO2_PAR_ARBRE_AN)
     impact_html = (f"""
     <!-- IMPACT STRIP ───────────────────────────────────────────────────── -->
     <div class="c1-impact">
@@ -108,8 +111,8 @@ def build(ctx):
         stroke="{green}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
         <path d="M7 21c0-4 2-7 6-9" stroke="{green}" stroke-width="1.7" stroke-linecap="round"/></svg>
       <div class="c1-impact-t">Et pour la planète&nbsp;: ≈&nbsp;<b>{co2_txt} tonnes de CO<sub>2</sub></b>
-        évitées chaque année — l'équivalent de <b>≈&nbsp;{fmt(trees)} arbres</b> plantés.</div>
-    </div>""" if trees > 0 else "")
+        évitées chaque année.</div>
+    </div>""" if co2_t > 0 else "")
     # M7 (audit du 19/08/2026) — la validité vient du DEVIS (date_validite,
     # sinon création + réglage société), servie par le builder ; plus de
     # « 30 jours » par défaut. Indéterminable ⇒ la pastille disparaît.
