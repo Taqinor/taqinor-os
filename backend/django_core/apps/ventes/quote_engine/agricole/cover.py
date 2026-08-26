@@ -158,6 +158,30 @@ def build(ctx) -> str:
             f'gratuite — pour 20 ans et plus.</div></div>'
             f'<img class="a1-graph-img" src="{pb_chart}" alt="Amortissement"></div>')
 
+    # ── QRP1 — lien tokenisé + QR de la proposition en ligne ─────────────────
+    # Même discipline que la page 1 résidentielle : le lien vient EXCLUSIVEMENT
+    # de ``d['links']['signer']`` (builder QX6, ShareLink tokenisé), aucune URL
+    # forgée ici et AUCUN paramètre ajouté — ni nom, ni adresse, ni GPS. Le
+    # repli « <site>/signer/<réf> » (jamais servi par le site) est exclu : sans
+    # vraie proposition en ligne, la vignette s'omet plutôt que d'imprimer un
+    # QR qui mène à un 404. Rendue sous la note légale, dans les ~50 mm restés
+    # libres au bas de cette page (mesurés) : aucune 5ᵉ page possible.
+    _signer = ((d.get("links") or {}).get("signer") or "").strip()
+    qr_html = ""
+    if "/proposition/" in _signer:
+        from ..residential import theme as _rtheme
+        _href = _rtheme.normaliser_lien(_signer)
+        _court = _rtheme.lien_affiche(_signer)
+        _qr = _rtheme.qr_data_uri(_href, logo=False, correction="M",
+                                  box_size=10, border=2)
+        if _qr:
+            qr_html = (
+                '<div class="a1-qr"><div class="a1-qr-t">'
+                '<b>Consultez votre proposition interactive</b>'
+                f'<span>{_court} — scannez le code</span></div>'
+                f'<div class="a1-qr-q"><img src="{_qr}" '
+                'alt="QR — votre proposition en ligne"></div></div>')
+
     if hero_img:
         hero_bg = ("linear-gradient(180deg,rgba(15,30,53,0.66) 0%,"
                    "rgba(15,30,53,0.28) 42%,rgba(15,30,53,0.90) 100%),"
@@ -243,6 +267,20 @@ def build(ctx) -> str:
   object-fit:contain;object-position:right center;}}
 .a1-note{{margin-top:13px;font-size:7.8pt;color:{muted_2};line-height:1.4;}}
 .a1-note b{{color:{muted};font-weight:700;}}
+/* QRP1 — vignette du lien tokenise + QR. TABLE CSS, pas flex
+   (RENDERING_NOTES §1). Posee sous la note legale, dans les ~50 mm restes
+   libres au bas de cette page (mesures sur le rendu reel) : la bande ne peut
+   pas pousser de 5e page. Omise sans lien tokenise. */
+.a1-qr{{display:table;width:100%;margin-top:11px;border:1px solid {line};
+  border-radius:12px;background:#fff;padding:8px 14px;}}
+.a1-qr-t{{display:table-cell;vertical-align:middle;font-size:8.4pt;color:{ink};
+  line-height:1.3;}}
+.a1-qr-t b{{color:{navy};font-weight:700;}}
+.a1-qr-t span{{display:block;font-size:7pt;color:{muted};margin-top:2px;
+  word-break:break-all;}}
+.a1-qr-q{{display:table-cell;width:20mm;vertical-align:middle;
+  text-align:right;}}
+.a1-qr-q img{{height:18mm;width:18mm;display:inline-block;}}
 </style>
 """
 
@@ -283,6 +321,7 @@ def build(ctx) -> str:
     <div class="a1-note">Tous les montants sont en dirhams (DH), TTC. Les volumes d'eau, économies
       et durées d'amortissement sont des <b>estimations</b> basées sur vos données et l'ensoleillement
       de votre région. Étude, équipement, prix et conditions détaillés dans les pages suivantes.</div>
+    {qr_html}
   </div>
 </div>
 """
