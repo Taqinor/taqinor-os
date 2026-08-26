@@ -67,7 +67,16 @@ const flotteApi = {
     masse: (data) => api.post('/flotte/affectations/masse/', data),
   },
   reservations: crud('reservations'),
-  demandesVehicule: crud('demandes-vehicule'),
+  // WIR200 — décision (responsable/admin) sur une demande du pool : approuver
+  // pose `vehicule_attribue` (id, optionnel) + `motif_decision` (optionnel) ;
+  // refuser pose `motif_decision` (motif du refus).
+  demandesVehicule: {
+    ...crud('demandes-vehicule'),
+    approuver: (id, data) =>
+      api.post(`/flotte/demandes-vehicule/${id}/approuver/`, data),
+    refuser: (id, motif) =>
+      api.post(`/flotte/demandes-vehicule/${id}/refuser/`, { motif_decision: motif }),
+  },
   etatsDesLieux: {
     ...crud('etats-des-lieux'),
     // XFLT17 — e-signature (loi 53-05, nom saisi + horodatage serveur).

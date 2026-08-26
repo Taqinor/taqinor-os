@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
@@ -22,6 +22,7 @@ beforeAll(() => {
 const {
   signer, accuserCreate, empty, etatsList, conducteursCreate, getEmployes,
   reservationsCreate, demandesVehiculeCreate, etatsDesLieuxCreate, charteCreate,
+  demandesVehiculeList, demandesVehiculeApprouver, demandesVehiculeRefuser,
 } = vi.hoisted(() => ({
   signer: vi.fn(() => Promise.resolve({ data: {} })),
   accuserCreate: vi.fn(() => Promise.resolve({ data: {} })),
@@ -41,6 +42,17 @@ const {
   demandesVehiculeCreate: vi.fn(() => Promise.resolve({ data: { id: 12 } })),
   etatsDesLieuxCreate: vi.fn(() => Promise.resolve({ data: { id: 13 } })),
   charteCreate: vi.fn(() => Promise.resolve({ data: { id: 14, version: 3 } })),
+  // WIR200 — une demande encore au statut `demandee` : rowActions
+  // Approuver/Refuser doivent s'afficher UNIQUEMENT pour ce statut.
+  demandesVehiculeList: vi.fn(() => Promise.resolve({
+    data: [{
+      id: 21, besoin: 'Mission Casablanca', demandeur_nom: 'Amine',
+      date_debut_souhaitee: '2026-08-01', date_fin_souhaitee: '2026-08-03',
+      vehicule_label: null, statut: 'demandee', statut_display: 'Demandée',
+    }],
+  })),
+  demandesVehiculeApprouver: vi.fn(() => Promise.resolve({ data: { id: 21, statut: 'approuvee' } })),
+  demandesVehiculeRefuser: vi.fn(() => Promise.resolve({ data: { id: 21, statut: 'refusee' } })),
 }))
 
 vi.mock('../../api/flotteApi', () => ({
@@ -52,7 +64,12 @@ vi.mock('../../api/flotteApi', () => ({
     vehicules: { list: () => Promise.resolve({ data: [{ id: 7, immatriculation: '12345-A-6' }] }) },
     affectations: { list: empty },
     reservations: { list: empty, create: (...args) => reservationsCreate(...args) },
-    demandesVehicule: { list: empty, create: (...args) => demandesVehiculeCreate(...args) },
+    demandesVehicule: {
+      list: (...args) => demandesVehiculeList(...args),
+      create: (...args) => demandesVehiculeCreate(...args),
+      approuver: (...args) => demandesVehiculeApprouver(...args),
+      refuser: (...args) => demandesVehiculeRefuser(...args),
+    },
     etatsDesLieux: {
       list: etatsList,
       signer: (...args) => signer(...args),
@@ -163,6 +180,48 @@ describe('ConducteursScreen — Demandes de véhicule (WIR41b)', () => {
 
     await waitFor(() => expect(demandesVehiculeCreate).toHaveBeenCalledWith(
       expect.objectContaining({ besoin: 'Mission chantier' }),
+    ))
+  })
+})
+
+describe('ConducteursScreen — Demandes de véhicule (WIR200 décision)', () => {
+  it('approuve une demande avec un véhicule attribué', async () => {
+    const user = userEvent.setup()
+    withProviders(<ConducteursScreen />)
+
+    await user.click(screen.getByRole('tab', { name: 'Demandes de véhicule' }))
+    await screen.findByText('Mission Casablanca')
+
+    // Ligne encore `demandee` : rowActions affiche Approuver/Refuser en
+    // icônes directes (max 2 quick actions avant le menu kebab, comme la
+    // signature d'état des lieux ci-dessus) — desktop + mobile, on prend la
+    // première occurrence.
+    await user.click(screen.getAllByRole('button', { name: 'Approuver' })[0])
+
+    const dialog = within(screen.getByRole('dialog'))
+    await user.selectOptions(dialog.getByLabelText('Véhicule attribué'), '7')
+    await user.click(dialog.getByRole('button', { name: 'Approuver' }))
+
+    await waitFor(() => expect(demandesVehiculeApprouver).toHaveBeenCalledWith(
+      21, expect.objectContaining({ vehicule_attribue: '7' }),
+    ))
+  })
+
+  it('refuse une demande avec un motif', async () => {
+    const user = userEvent.setup()
+    withProviders(<ConducteursScreen />)
+
+    await user.click(screen.getByRole('tab', { name: 'Demandes de véhicule' }))
+    await screen.findByText('Mission Casablanca')
+
+    await user.click(screen.getAllByRole('button', { name: 'Refuser' })[0])
+
+    const dialog = within(screen.getByRole('dialog'))
+    await user.type(dialog.getByLabelText(/Motif/), 'Véhicule indisponible')
+    await user.click(dialog.getByRole('button', { name: 'Refuser' }))
+
+    await waitFor(() => expect(demandesVehiculeRefuser).toHaveBeenCalledWith(
+      21, 'Véhicule indisponible',
     ))
   })
 })
