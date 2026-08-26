@@ -317,12 +317,16 @@ function DeclarationsTab() {
     } finally { setBusy('') }
   }
 
-  // XPAI13 — XML EDI SIMPL-IR de l'état IR 9421 annuel.
+  // XPAI13/WIR179 — XML EDI SIMPL-IR de l'état IR 9421 annuel : le serveur
+  // renvoie un fichier XML brut (responseType:'blob' côté paieApi), jamais
+  // du JSON — livré tel quel en `.xml` pour rester ouvrable.
   const irAnnuelXml = async () => {
+    const pending = downloadBlobInGesture()
     setBusy('ir-annuel-xml')
     try {
       const { data } = await paieApi.etatIrAnnuelXml(Number(annee))
-      downloadJson(data, `etat_ir_annuel_${annee}_simpl-ir.xml.json`)
+      pending.deliver(new Blob([data], { type: 'application/xml' }),
+        `etat_9421_${annee}.xml`)
       toast.success('XML SIMPL-IR généré.')
     } catch (e) {
       toast.error(e?.response?.data?.detail || 'Génération impossible.')
