@@ -1,5 +1,5 @@
 from drf_spectacular.utils import extend_schema
-from rest_framework import filters, status, viewsets
+from rest_framework import filters, mixins, status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.response import Response
@@ -15,8 +15,8 @@ from .models import (
     ForecastEntry, ForecastSnapshot, Lead, LeadPlaybookProgress, LeadTag,
     MotifPerte, Canal, Parrainage, MessageTemplate, ObjectifCommercial,
     PlanActivite, PlanCompte, Playbook, PlaybookEtape,
-    PlaybookTache, PointContact, RevueCompte, SalleVente, SalleVenteItem,
-    SavedView, SiteProfile, WebsiteLeadPayload,
+    PlaybookTache, PointContact, RelanceEtape, RevueCompte, SalleVente,
+    SalleVenteItem, SavedView, SiteProfile, WebsiteLeadPayload,
 )
 from .serializers import (
     AppointmentSerializer, ClientSerializer, ConcurrentPerteSerializer,
@@ -24,7 +24,8 @@ from .serializers import (
     LeadTagSerializer, MotifPerteSerializer, CanalSerializer,
     ParrainageSerializer, MessageTemplateSerializer, _tag_en_usage, _motif_en_usage,
     ObjectifCommercialSerializer, ObjectifAttainmentSerializer,
-    PlanActiviteSerializer, PointContactSerializer, SiteProfileSerializer,
+    PlanActiviteSerializer, PointContactSerializer, RelanceEtapeSerializer,
+    SiteProfileSerializer,
     EquipeCommercialeSerializer, WebsiteLeadPayloadSerializer,
     ForecastEntrySerializer, ForecastSnapshotSerializer,
     PlanCompteSerializer, RevueCompteSerializer,
@@ -775,7 +776,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         elif self.action in WRITE_ACTIONS + [
             'noter', 'devis_auto', 'archiver', 'restaurer',
             'whatsapp_devis', 'bulk', 'log_interaction',
-            'appliquer_plan',
+            'appliquer_plan', 'initialiser_relance',
             # L-QUEST — get_permissions() PRIME sur le permission_classes de
             # l'@action : sans cette ligne, `questionnaire-lien` retomberait
             # sur le `return [IsAdminRole()]` final et la Commerciale — qui
@@ -1181,6 +1182,21 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         from apps.records.serializers import ActivitySerializer
         return Response(
             ActivitySerializer(activites, many=True).data,
+            status=status.HTTP_200_OK)
+
+    # ── RELANCE FOUNDATION — plan de relance structuré (multi-touches) ──────
+    @action(detail=True, methods=['post'], url_path='relance/initialiser',
+            permission_classes=[IsResponsableOrAdmin])
+    def initialiser_relance(self, request, pk=None):
+        """Initialise (à la demande) le plan de relance du lead à partir de la
+        cadence par défaut de la société (Paramètres → CRM). IDEMPOTENT : un
+        second appel sur un lead déjà initialisé renvoie le plan existant sans
+        rien dupliquer (voir ``services.initialiser_plan_relance``)."""
+        lead = self.get_object()
+        from .services import initialiser_plan_relance
+        etapes = initialiser_plan_relance(lead, request.user)
+        return Response(
+            RelanceEtapeSerializer(etapes, many=True).data,
             status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='convertir-client',
@@ -1890,6 +1906,67 @@ class PlanActiviteViewSet(CompanyScopedModelViewSet):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
+
+
+# ── RELANCE FOUNDATION — file « Relances du jour » + actions Fait/Sauter ────
+class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
+                          viewsets.GenericViewSet):
+    """Étapes de plan de relance structuré (``RelanceEtape``). AUCUNE création/
+    édition brute exposée : les étapes sont matérialisées UNIQUEMENT par
+    ``LeadViewSet.initialiser_relance`` (jamais un POST/PUT client direct) —
+    seules ``list`` (la file due) et les deux actions ``fait``/``sauter`` sont
+    routées. Aucun envoi automatique (WhatsApp/e-mail) n'est jamais déclenché
+    ici : ce sont des rappels VISUELS pour le commercial."""
+    queryset = RelanceEtape.objects.select_related('lead', 'lead__owner').all()
+    serializer_class = RelanceEtapeSerializer
+
+    def get_permissions(self):
+        if self.action == 'list':
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        # TenantMixin.get_queryset() borne déjà à la société ; on ajoute ici
+        # la portée de visibilité (Feature F, même convention que LeadViewSet)
+        # de façon INCONDITIONNELLE (get_object() des actions fait/sauter
+        # passe aussi par ici — jamais filtrée par le scope date de `list()`,
+        # sinon une étape EN RETARD deviendrait introuvable pour l'action).
+        qs = super().get_queryset()
+        if not self.request.user.company_id:
+            return qs
+        from authentication.scoping import scope_queryset
+        leads_visibles = scope_queryset(
+            Lead.objects.filter(company=self.request.user.company),
+            self.request.user, ['owner'])
+        return qs.filter(lead_id__in=leads_visibles.values('id'))
+
+    def list(self, request, *args, **kwargs):
+        """File « Relances du jour ». ``?scope=overdue|today|all`` (défaut
+        today) + ``?owner=<id>``."""
+        from .selectors import relance_etapes_dues
+        scope = request.query_params.get('scope', 'today')
+        owner = request.query_params.get('owner')
+        qs = relance_etapes_dues(
+            request.user.company, request.user, scope=scope, owner=owner)
+        serializer = self.get_serializer(qs, many=True)
+        return Response({'count': qs.count(), 'results': serializer.data})
+
+    def _marquer(self, request, statut):
+        etape = self.get_object()
+        note = (request.data.get('note') or '').strip()
+        from .services import marquer_etape_relance
+        etape = marquer_etape_relance(etape, request.user, statut, note=note)
+        return Response(self.get_serializer(etape).data)
+
+    @action(detail=True, methods=['post'])
+    def fait(self, request, pk=None):
+        """Marque cette étape de relance FAITE (note optionnelle)."""
+        return self._marquer(request, RelanceEtape.Statut.FAIT)
+
+    @action(detail=True, methods=['post'])
+    def sauter(self, request, pk=None):
+        """Marque cette étape de relance SAUTÉE (note optionnelle)."""
+        return self._marquer(request, RelanceEtape.Statut.SAUTEE)
 
 
 class EquipeCommercialeViewSet(CompanyScopedModelViewSet):

@@ -6,8 +6,8 @@ from .models import (
     EtapePlanActivite, ForecastEntry, ForecastSnapshot, Lead, LeadActivity,
     LeadPlaybookProgress, MessageTemplate, ObjectifCommercial, Parrainage,
     PlanActivite, PlanCompte, Playbook, PlaybookEtape,
-    PlaybookTache, PointContact, RevueCompte, SalleVente, SalleVenteItem,
-    SavedView, SiteProfile, WebsiteLeadPayload,
+    PlaybookTache, PointContact, RelanceEtape, RevueCompte, SalleVente,
+    SalleVenteItem, SavedView, SiteProfile, WebsiteLeadPayload,
 )
 from .devis_auto import champs_manquants, message_manquants
 from .scoring import compute_score, score_label, score_reasons
@@ -57,6 +57,36 @@ class LeadActivitySerializer(serializers.ModelSerializer):
 
     def get_attachment_mime(self, obj):
         return getattr(obj.attachment, 'mime', None)
+
+
+class RelanceEtapeSerializer(serializers.ModelSerializer):
+    """RELANCE FOUNDATION — étape du plan de relance structuré d'un lead, pour
+    le panneau « Relances du jour ». Plate (jamais de sérialiseur Lead
+    imbriqué) — même convention que ``LeadActivitySerializer`` ci-dessus."""
+
+    lead_nom = serializers.SerializerMethodField()
+    lead_owner_nom = serializers.SerializerMethodField()
+    overdue = serializers.SerializerMethodField()
+
+    class Meta:
+        model = RelanceEtape
+        fields = [
+            'id', 'lead', 'lead_nom', 'lead_owner_nom', 'ordre', 'due_date',
+            'canal', 'libelle', 'statut', 'note', 'overdue',
+        ]
+        read_only_fields = [
+            'id', 'lead', 'ordre', 'due_date', 'canal', 'libelle',
+        ]
+
+    def get_lead_nom(self, obj) -> str:
+        return f'{obj.lead.nom} {obj.lead.prenom or ""}'.strip()
+
+    def get_lead_owner_nom(self, obj) -> str | None:
+        return getattr(obj.lead.owner, 'username', None)
+
+    def get_overdue(self, obj) -> bool:
+        from django.utils import timezone
+        return obj.due_date < timezone.localdate()
 
 
 class _CurrentCompanyDefault:

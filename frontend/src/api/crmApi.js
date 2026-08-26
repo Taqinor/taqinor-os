@@ -55,6 +55,19 @@ const crmApi = {
   // `config` optionnel (NTMOB19) : permet à un widget d'arrière-plan de
   // passer `suppressErrorToast` sans forker l'appel.
   getRelances: (params, config) => api.get('/crm/leads/relances/', { params, ...config }),
+  // RELANCE FOUNDATION — file « Relances du jour » (plan structuré multi-
+  // touches, distincte de getRelances ci-dessus qui liste des LEADS via leur
+  // relance_date unique) : ici la granularité est l'ÉTAPE de cadence.
+  // ?scope=overdue|today|all (défaut today) + ?owner=<id>. {count, results}.
+  getRelanceEtapesDues: (params, config) =>
+    api.get('/crm/relance-etapes/', { params, ...config }),
+  // Initialise (à la demande) le plan de relance d'un lead à partir de la
+  // cadence par défaut de la société — idempotent (ré-appel = pas de doublon).
+  initialiserRelance: (leadId) => api.post(`/crm/leads/${leadId}/relance/initialiser/`),
+  marquerRelanceEtapeFait: (id, note) =>
+    api.post(`/crm/relance-etapes/${id}/fait/`, note ? { note } : {}),
+  marquerRelanceEtapeSautee: (id, note) =>
+    api.post(`/crm/relance-etapes/${id}/sauter/`, note ? { note } : {}),
   // Employés assignables (id, username, poste, avatar_url) — ouvert à la
   // Commerciale (le sélecteur de responsable doit marcher pour elle aussi).
   getAssignableUsers: () => api.get('/crm/assignable-users/'),

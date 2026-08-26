@@ -8,6 +8,7 @@ from .views_approvals import ApprovalPolicyViewSet
 from .views_translations import TranslationOverrideViewSet
 from .views_gabarits import GabaritDocumentCustomViewSet
 from .views_referentiels import (
+    CadenceRelanceEtapeViewSet,
     ConditionPaiementViewSet,
     TauxTVAViewSet,
     UniteMesureViewSet,
@@ -49,6 +50,10 @@ referentiels_router.register(r'conditions-paiement', ConditionPaiementViewSet,
                              basename='condition-paiement')
 referentiels_router.register(r'unites-mesure', UniteMesureViewSet,
                              basename='unite-mesure')
+# RELANCE FOUNDATION — gabarit de cadence de relance par défaut (founder-
+# editable), consommé par apps.crm.services.initialiser_plan_relance.
+referentiels_router.register(r'cadence-relance', CadenceRelanceEtapeViewSet,
+                             basename='cadence-relance')
 
 # NTEXT19 — gabarits de document custom : lecture + rendu PDF. Routeur isolé.
 gabarits_router = DefaultRouter()
