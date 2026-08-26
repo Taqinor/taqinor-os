@@ -1631,12 +1631,27 @@ MAX_SONDES_ECHELLE = 24
 
 
 def plafond_toit_du_devis(devis):
-    """Le nombre de panneaux PHYSIQUEMENT POSABLES d'après le calepinage 3D.
+    """Le nombre de panneaux que le calepinage 3D DESSINE — la cible du devis.
 
-    LU par la MÊME fonction que la resynchronisation
-    (``services._cible_panneaux_du_layout`` sur ``Devis.roof_layout``) : deux
-    lectures du toit finiraient par diverger, et l'échelle proposerait alors
-    des paliers que le calepinage refuse.
+    CE N'EST PAS LA CONTENANCE DU TOIT, et cette docstring a menti jusqu'au
+    26/08/2026 : elle annonçait « panneaux PHYSIQUEMENT POSABLES » alors
+    qu'elle délègue à ``services._cible_panneaux_du_layout``, qui lit
+    ``layout.result.panels`` — LE NOMBRE DE PANNEAUX QUE LE COMMERCIAL A
+    DESSINÉS. Il dessine ce dont le client a besoin, puis s'arrête : le toit en
+    tient presque toujours davantage. Le mensonge a coûté une vraie régression
+    (devis live test15) : la taille « Max » d'``offres_tailles`` s'ancrait ici,
+    Recommandé est resynchronisé sur ce MÊME dessin, donc Max valait Recommandé
+    sur TOUT devis calepiné et la troisième carte s'effondrait toujours.
+
+    CE NOMBRE-CI RESTE LE BON POUR LA RESYNCHRONISATION ET POUR L'ÉCHELLE DE
+    PALIERS : ce qui a été dessiné EST la cible de resynchronisation, et il est
+    lu par la MÊME fonction qu'elle (``_cible_panneaux_du_layout`` sur
+    ``Devis.roof_layout``) — deux lectures du toit finiraient par diverger.
+
+    LA CONTENANCE, elle, se MESURE sur la géométrie réelle :
+    :func:`apps.ventes.calepinage_options.capacite_toit_du_devis` (panneaux
+    conservés + extension maximale prouvée à l'intérieur du polygone). C'est
+    elle, et elle seule, qui a le droit de dire « ce toit accepte N panneaux ».
 
     ``None`` quand le devis ne porte aucun calepinage — l'échelle n'est alors
     bornée que par ses garde-fous de calcul, jamais par une surface inventée.

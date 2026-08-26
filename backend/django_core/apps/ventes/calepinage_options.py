@@ -638,6 +638,133 @@ def lire_trames(layout_public, libres=None):
     return trames
 
 
+# ════════════════════════════════════════════════════════════════════════════
+# LA CONTENANCE RÉELLE DU TOIT
+# ════════════════════════════════════════════════════════════════════════════
+#
+# CORRECTION (ordre fondateur, 26/08/2026) — « la carte Max ne montre jamais
+# rien de plus que Recommandé ». LA CAUSE, TROUVÉE SUR LE DEVIS LIVE test15 :
+# la taille Max s'ancrait sur ``dimensionnement.plafond_toit_du_devis``, qui
+# annonce « panneaux PHYSIQUEMENT POSABLES » mais délègue à
+# ``services._cible_panneaux_du_layout`` — c'est-à-dire ``layout.result.panels``,
+# LE NOMBRE DE PANNEAUX QUE LE COMMERCIAL A DESSINÉS (15 sur ce devis). Comme
+# Recommandé est resynchronisé sur ce MÊME dessin, Max valait Recommandé sur
+# TOUT devis calepiné : la carte s'effondrait systématiquement et le fondateur
+# ne voyait jamais trois cartes.
+#
+# Ce que le commercial a dessiné n'est PAS ce que le toit accepte : il dessine
+# ce dont le client a besoin, puis s'arrête. La contenance, elle, se MESURE —
+# et la machinerie qui sait la mesurer est déjà ici : c'est exactement celle qui
+# prolonge un dessin (:meth:`_Trame.candidats`). On ne la duplique pas, on
+# l'interroge : mêmes pas mesurés, même empreinte conservatrice, même retrait de
+# rive, mêmes dégagements d'obstacles, mêmes refus (pose libre, pavage mixte,
+# rangée unique, trame illisible).
+
+
+def capacite_du_layout(layout_public, libres=None):
+    """Le nombre MAXIMAL de panneaux que la GÉOMÉTRIE RÉELLE de ce toit tient.
+
+    ``None`` quand ce layout ne porte aucun calepinage exploitable — jamais un
+    zéro, jamais une surface supposée.
+
+    LES RÈGLES, ET ELLES SONT CELLES DE L'EXTENSION, PAS DE NOUVELLES :
+
+    1. **Les panneaux posés sont TOUS conservés.** La contenance part du réel
+       (:func:`nb_panneaux_publies`) et ne fait qu'AJOUTER — elle ne re-pave
+       jamais le toit, et ne rebouche jamais un trou que le commercial a
+       contourné à la main.
+    2. **L'extension est celle de :meth:`_Trame.candidats`**, zone par zone :
+       mêmes emplacements candidats dans le même ordre, même empreinte
+       conservatrice (pas de colonne × pas de rangée) dont les QUATRE COINS
+       doivent tomber dans le polygone réel, au-delà du retrait de rive de
+       0,5 m et hors du dégagement PV61 de tout obstacle. Un emplacement
+       douteux est REFUSÉ.
+    3. **PLANCHER HONNÊTE — une zone qu'on ne sait pas prolonger ne compte que
+       ses panneaux POSÉS.** ``candidats`` rend ``[]`` dès que
+       :meth:`_Trame.extensible` dit non (pose faite à la main ``mode ==
+       'free'``, pavage MIXTE PV62, rangée unique, pas non mesurables) : cette
+       zone contribue alors son compte réel et rien de plus. On plafonne, on ne
+       devine pas.
+    4. **Une zone publiée ILLISIBLE gèle toute extension.** C'est le MÊME
+       verdict que :func:`deriver` (``derivable``) : quand la dérivation refuse
+       de dessiner autre chose que le calepinage officiel, annoncer une
+       contenance supérieure ferait promettre à la carte un dessin qui
+       n'existera jamais. La contenance vaut alors le posé, point.
+    5. **Bornée par le plafond de la visionneuse** (``_MAX_PANNEAUX_DESSINES``,
+       600) — au-delà elle ne dessinerait pas plus.
+
+    GARANTIE DE COHÉRENCE (c'est LE point de n'avoir qu'une machinerie) : le
+    nombre rendu ici est EXACTEMENT ce que :func:`_repartir` sait dessiner. Un
+    dessin demandé à cette taille ne plafonne donc jamais — la carte et son
+    calepinage disent le même nombre, par construction et non par coïncidence.
+    Un test l'arme (``test_la_carte_max_et_son_dessin_disent_LE_MEME_nombre``).
+    """
+    nb_publies = nb_panneaux_publies(layout_public)
+    if nb_publies <= 0:
+        return None
+    trames = lire_trames(layout_public, libres)
+    if not trames:
+        return None
+    # Règle 4 — le MÊME verdict que ``deriver``. Les deux comptes ne coïncident
+    # pas quand une zone publiée est illisible ici : la dérivation refuse alors
+    # tout dessin autre que le calepinage officiel, donc la contenance ne peut
+    # pas promettre davantage.
+    if sum(trame.nb_panneaux for trame in trames) != nb_publies:
+        return min(nb_publies, _MAX_PANNEAUX_DESSINES)
+    total = nb_publies
+    for trame in trames:
+        # ``_MAX_PANNEAUX_DESSINES`` en maximum ne TRONQUE rien : la borne qui
+        # mord réellement est celle des essais (``_MAX_CANDIDATS``), et elle
+        # mord IDENTIQUEMENT ici et dans ``_repartir``. C'est ce qui rend les
+        # deux comptes égaux au panneau près.
+        total += len(trame.candidats(_MAX_PANNEAUX_DESSINES))
+    return min(total, _MAX_PANNEAUX_DESSINES)
+
+
+#: Mémo posé sur l'INSTANCE de devis — ``(layout, capacité)``, comparé par
+#: IDENTITÉ. La contenance est un balayage géométrique BORNÉ mais réel ; le
+#: bloc ``offres_tailles`` l'interroge une fois par carte ET par variante (six
+#: fois), plus une fois pour la clé publique. Sans ce mémo, un endpoint public
+#: NON CACHÉ rejouerait sept fois la même géométrie.
+_MEMO_CAPACITE = '_taqinor_capacite_toit'
+
+
+def capacite_toit_du_devis(devis):
+    """La contenance RÉELLE du toit de ce devis, ou ``None``. Ne lève JAMAIS.
+
+    LIT LE LAYOUT BRUT (``Devis.roof_layout``), comme
+    :func:`~apps.ventes.dimensionnement.plafond_toit_du_devis` — et DÉLIBÉRÉMENT
+    pas le layout assaini : la taille Max ne doit pas changer selon que le
+    commercial a coché ou non la section « Calepinage 3D » du dialogue d'envoi.
+    L'assainisseur (``public_views._safe_roof_layout``) est une recopie par
+    whitelist dont le prédicat numérique est le MÊME que :func:`_fini` et dont
+    le plafond par zone est le MÊME que ``_MAX_PANNEAUX_DESSINES`` : sur la
+    géométrie que cette fonction lit, les deux formes disent la même chose.
+
+    UN SEUL BALAYAGE PAR REQUÊTE, PARTAGÉ : le résultat est mémoïsé sur
+    l'instance de devis (voir :data:`_MEMO_CAPACITE`), et le dessin garde, lui,
+    son propre mémo par compte (``_dessin``). Rien n'est rejoué.
+    """
+    layout = getattr(devis, 'roof_layout', None)
+    memo = getattr(devis, _MEMO_CAPACITE, None)
+    if isinstance(memo, tuple) and len(memo) == 2 and memo[0] is layout:
+        return memo[1]
+    capacite = None
+    if isinstance(layout, dict):
+        try:
+            capacite = capacite_du_layout(layout, _modes_libres(devis))
+        except Exception:  # noqa: BLE001 — une géométrie illisible n'est pas
+            # une contenance : on n'en publie aucune.
+            logger.warning('capacite_toit indisponible', exc_info=True)
+            capacite = None
+    try:
+        setattr(devis, _MEMO_CAPACITE, (layout, capacite))
+    except Exception:  # noqa: BLE001 — un objet non mutable ne coûte que le
+        # mémo, jamais le résultat.
+        pass
+    return capacite
+
+
 def _repartir(trames, cible):
     """``({index de zone: [panneaux]}, nb dessiné)`` pour ``cible`` panneaux.
 

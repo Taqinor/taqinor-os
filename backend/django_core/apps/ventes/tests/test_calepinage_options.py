@@ -505,6 +505,118 @@ class ExtensionTests(SimpleTestCase):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# 3bis. LA CONTENANCE — ce que le toit TIENT, pas ce qu'on y a dessiné
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# CE QUE CETTE CLASSE PROTÈGE (ordre fondateur, 26/08/2026, diagnostiqué sur le
+# devis live test15). La taille « Max » d'``offres_tailles`` s'ancrait sur
+# ``dimensionnement.plafond_toit_du_devis``, qui annonce « panneaux
+# PHYSIQUEMENT POSABLES » mais rend en réalité ``layout.result.panels`` — LE
+# NOMBRE DE PANNEAUX DESSINÉS par le commercial. « Recommandé » étant
+# resynchronisé sur ce MÊME dessin, Max valait Recommandé sur TOUT devis
+# calepiné : la troisième carte s'effondrait toujours.
+#
+# La contenance, elle, se MESURE — avec la machinerie d'extension de ce module,
+# pas une seconde. D'où la garantie que le dernier test arme : LA CARTE ET SON
+# DESSIN DISENT LE MÊME NOMBRE, par construction.
+
+
+class ContenanceTests(SimpleTestCase):
+
+    def test_la_contenance_DEPASSE_les_panneaux_dessines(self):
+        # 18 posés sur un toit de 24 m × 16 m : la géométrie en tient bien
+        # davantage. C'est exactement le cas du devis live — et sous l'ancienne
+        # règle la carte Max se serait arrêtée à 18.
+        layout = toit(rangees=3, colonnes=6)
+        capacite = co.capacite_du_layout(layout)
+        self.assertEqual(co.nb_panneaux_publies(layout), 18)
+        self.assertGreater(capacite, 18)
+
+    def test_la_carte_max_et_son_dessin_disent_LE_MEME_nombre(self):
+        # LA GARANTIE DE COHÉRENCE, ET C'EST TOUT L'INTÉRÊT DE N'AVOIR QU'UNE
+        # MACHINERIE : la contenance est calculée avec les MÊMES candidats que
+        # le dessin, donc une carte ancrée dessus ne peut pas annoncer un nombre
+        # que son propre calepinage ne saurait pas dessiner. Le dessin ne
+        # plafonne pas, et aucun panneau ne sort du polygone réel.
+        layout = toit(rangees=3, colonnes=6)
+        capacite = co.capacite_du_layout(layout)
+        bloc = co.deriver(_DevisFactice(layout),
+                          offres(recommande=18, max=capacite), layout)
+        dessin = bloc['offres']['max']['sans']
+        self.assertEqual(dessin['nb_panneaux'], capacite)
+        self.assertEqual(dessin['nb_panneaux_dessines'], capacite)
+        self.assertNotIn('plafonne', dessin)
+        ExtensionTests._tous_dans_le_polygone(self, layout, dessin)
+
+    def test_un_toit_SATURE_rend_exactement_les_panneaux_poses(self):
+        # LA CONVERGENCE HONNÊTE : le contour serre la pose de si près qu'aucun
+        # emplacement supplémentaire ne passe le test de contenance. La
+        # contenance vaut alors le posé — et c'est CE cas-là, et lui seul, qui
+        # a le droit d'effondrer la carte Max sur Recommandé.
+        layout = toit(rangees=3, colonnes=6, demi_largeur=8.0,
+                      demi_hauteur=2.6)
+        self.assertEqual(co.capacite_du_layout(layout), 18)
+        self.assertEqual(co.nb_panneaux_publies(layout), 18)
+
+    def test_une_pose_A_LA_MAIN_ne_compte_que_ses_panneaux_poses(self):
+        # PLANCHER HONNÊTE (règle 3) : ``mode == 'free'`` interdit de prolonger
+        # — on rend le posé, jamais une contenance devinée sur une lattice que
+        # cette zone n'a jamais eue.
+        layout = toit(mode='free')
+        devis = _DevisFactice(layout)
+        self.assertEqual(
+            co.capacite_du_layout(layout, co._modes_libres(devis)), 18)
+
+    def test_un_pavage_MIXTE_ne_compte_que_ses_panneaux_poses(self):
+        # Même plancher, pour la garde PV62 : un pavage mixte refuse de se
+        # prolonger, donc il ne contribue que ses 10 panneaux réels.
+        layout = toit_mixte()
+        self.assertEqual(co.capacite_du_layout(layout), 10)
+
+    def test_une_zone_a_une_seule_rangee_ne_compte_que_ses_panneaux(self):
+        # Sans pas de RANGÉE, aucun ajout n'est PROUVABLE : plancher honnête.
+        self.assertEqual(
+            co.capacite_du_layout(toit(rangees=1, colonnes=6)), 6)
+
+    def test_une_zone_ILLISIBLE_gele_toute_contenance_supplementaire(self):
+        # Règle 4 — le MÊME verdict que ``deriver`` : quand la dérivation
+        # refuse de dessiner autre chose que le calepinage officiel, la
+        # contenance ne peut pas promettre davantage.
+        layout = toit()
+        layout['zones'].append({
+            'id': 'z2', 'vertices': [[_OLNG, _OLAT]],
+            'geometry': {'azimuthDeg': 0, 'origin': [_OLNG, _OLAT],
+                         'count': 1, 'panels': [{'cx': 0.0, 'cy': 0.0}]}})
+        publies = co.nb_panneaux_publies(layout)
+        self.assertEqual(co.capacite_du_layout(layout), publies)
+
+    def test_sans_calepinage_aucune_contenance(self):
+        # Jamais un zéro, jamais une surface supposée : la clé disparaît.
+        self.assertIsNone(co.capacite_du_layout(None))
+        self.assertIsNone(co.capacite_du_layout({'zones': []}))
+        self.assertIsNone(co.capacite_toit_du_devis(_DevisFactice(None)))
+
+    def test_la_contenance_du_devis_est_MEMOISEE_par_requete(self):
+        # UN SEUL BALAYAGE PAR REQUÊTE : le bloc ``offres_tailles`` interroge la
+        # contenance une fois par carte ET par variante. Sans mémo, un endpoint
+        # public NON CACHÉ rejouerait sept fois la même géométrie.
+        layout = toit()
+        devis = _DevisFactice(layout)
+        attendu = co.capacite_du_layout(layout)
+        self.assertEqual(co.capacite_toit_du_devis(devis), attendu)
+        with mock.patch.object(co, 'capacite_du_layout') as jamais:
+            self.assertEqual(co.capacite_toit_du_devis(devis), attendu)
+        jamais.assert_not_called()
+
+    def test_une_geometrie_illisible_ne_fait_jamais_lever(self):
+        # Le filet best-effort : une contenance impossible vaut ``None``, pas
+        # une 500 sur la page d'un client.
+        with mock.patch.object(co, 'capacite_du_layout',
+                               side_effect=ValueError('boom')):
+            self.assertIsNone(co.capacite_toit_du_devis(_DevisFactice(toit())))
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # 4. LA FORME SERVIE — le contrat, et rien du devis qui déteigne
 # ═══════════════════════════════════════════════════════════════════════════
 
