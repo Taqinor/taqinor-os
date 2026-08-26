@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
@@ -30,6 +31,15 @@ vi.mock('../../api/stockApi', () => ({
     facturerBcf: vi.fn(),
     updateBonCommandeFournisseur: vi.fn(),
     reviserBcf: vi.fn(),
+    confirmerBcf: vi.fn(),
+    getBcfSimilaires: vi.fn(() => Promise.resolve({ data: [] })),
+    getHistoriquePrixBcf: vi.fn(),
+    // WIR220 — liste par défaut (page complète).
+    getBonsCommandeFournisseur: vi.fn(() => Promise.resolve({ data: [] })),
+    getFournisseurs: vi.fn(() => Promise.resolve({ data: [] })),
+    getProduits: vi.fn(() => Promise.resolve({ data: [] })),
+    getBcfEnRetard: vi.fn(() => Promise.resolve({ data: [] })),
+    getAchatsHorsContrat: vi.fn(() => Promise.resolve({ data: [] })),
   },
 }))
 
@@ -38,7 +48,7 @@ vi.mock('../../api/messagesApi', () => ({
 }))
 
 import stockApi from '../../api/stockApi'
-import { BcfDetail, MotifAnnulationModal } from './BonsCommandeFournisseur.jsx'
+import BonsCommandeFournisseur, { BcfDetail, MotifAnnulationModal } from './BonsCommandeFournisseur.jsx'
 import { messageErreurBlob } from '../../utils/pdfBlob'
 
 function makeStore({ role_nom = 'Magasinier', permissions = [] } = {}) {
@@ -404,5 +414,159 @@ describe('WIR191 — réviser un BCF déjà envoyé/reçu', () => {
   it('un BCF en brouillon ne propose pas « Réviser » (seul Enregistrer standard s\'applique)', () => {
     renderDetail({ bcf: { ...bcfEnvoye, statut: 'brouillon' } })
     expect(screen.queryByRole('button', { name: 'Réviser' })).toBeNull()
+  })
+})
+
+// ── WIR220 — accusé de commande fournisseur (XPUR7) + BCF similaires/
+// historique des prix (XPUR11/XPUR13) ──────────────────────────────────────
+describe('WIR220 — accusé de commande fournisseur (confirmer)', () => {
+  const bcfEnvoye = {
+    id: 88, reference: 'BCF-2026-07-0088', statut: 'envoye', fournisseur: 1,
+    date_livraison_prevue: '2026-08-01',
+    lignes: [{ id: 601, produit: 7, produit_nom: 'Module test', quantite: 2, prix_achat_unitaire: 100 }],
+  }
+
+  it('sans accusé : affiche le formulaire (date + n° de confirmation)', () => {
+    renderDetail({ bcf: bcfEnvoye })
+    expect(screen.getByLabelText('Date confirmée')).toBeInTheDocument()
+    expect(screen.getByLabelText('N° de confirmation (optionnel)')).toBeInTheDocument()
+  })
+
+  it('refuse d\'enregistrer sans date confirmée', () => {
+    renderDetail({ bcf: bcfEnvoye })
+    fireEvent.click(screen.getByRole('button', { name: /Enregistrer l'accusé/ }))
+    expect(screen.getByRole('alert').textContent).toMatch(/date confirmée .* est requise/)
+    expect(stockApi.confirmerBcf).not.toHaveBeenCalled()
+  })
+
+  it('enregistre l\'accusé sans jamais envoyer date_livraison_prevue (jamais écrasée)', async () => {
+    stockApi.confirmerBcf.mockResolvedValue({
+      data: { date_confirmee_fournisseur: '2026-08-05', numero_confirmation_fournisseur: 'CONF-42' },
+    })
+    const onSaved = vi.fn()
+    renderDetail({ bcf: bcfEnvoye, onSaved })
+
+    fireEvent.change(screen.getByLabelText('Date confirmée'), { target: { value: '2026-08-05' } })
+    fireEvent.change(screen.getByLabelText('N° de confirmation (optionnel)'), { target: { value: 'CONF-42' } })
+    fireEvent.click(screen.getByRole('button', { name: /Enregistrer l'accusé/ }))
+
+    await waitFor(() => expect(stockApi.confirmerBcf).toHaveBeenCalledWith(88, {
+      date_confirmee_fournisseur: '2026-08-05',
+      numero_confirmation_fournisseur: 'CONF-42',
+    }))
+    expect(await screen.findByText(/Confirmé pour le/)).toBeInTheDocument()
+    expect(screen.getByText(/CONF-42/)).toBeInTheDocument()
+    await waitFor(() => expect(onSaved).toHaveBeenCalled())
+  })
+
+  it('un BCF déjà accusé affiche la date confirmée en lecture seule (jamais un second formulaire)', () => {
+    renderDetail({
+      bcf: { ...bcfEnvoye, date_confirmee_fournisseur: '2026-08-05', numero_confirmation_fournisseur: 'CONF-9' },
+    })
+    expect(screen.getByText(/Confirmé pour le/)).toBeInTheDocument()
+    expect(screen.queryByLabelText('Date confirmée')).toBeNull()
+  })
+
+  it('le bloc « Accusé de commande » n\'apparaît pas sur un BCF reçu ou brouillon', () => {
+    renderDetail({ bcf: { ...bcfEnvoye, statut: 'recu' } })
+    expect(screen.queryByText('Accusé de commande fournisseur')).toBeNull()
+  })
+})
+
+describe('WIR220 — historique des prix (popover ligne)', () => {
+  const bcfAvecLigne = {
+    id: 89, reference: 'BCF-89', statut: 'recu', fournisseur: 1,
+    lignes: [{ id: 701, produit: 7, produit_nom: 'Module test', quantite: 3, prix_achat_unitaire: 150 }],
+  }
+
+  it('ouvre l\'historique des prix de la ligne et affiche les achats passés', async () => {
+    stockApi.getHistoriquePrixBcf.mockResolvedValue({
+      data: [{ bon_commande_id: 1, reference: 'BCF-1', date: '2026-06-01T10:00:00Z', prix_achat_unitaire: 140, quantite: 5 }],
+    })
+    renderDetail({ bcf: bcfAvecLigne })
+    fireEvent.click(screen.getByRole('button', { name: 'Historique des prix' }))
+    await waitFor(() => expect(stockApi.getHistoriquePrixBcf).toHaveBeenCalledWith(7, 1))
+    expect(await screen.findByText(/BCF-1/)).toBeInTheDocument()
+  })
+
+  it('affiche un état vide honnête quand il n\'y a aucun historique', async () => {
+    stockApi.getHistoriquePrixBcf.mockResolvedValue({ data: [] })
+    renderDetail({ bcf: bcfAvecLigne })
+    fireEvent.click(screen.getByRole('button', { name: 'Historique des prix' }))
+    expect(await screen.findByText(/Aucun historique d'achat/)).toBeInTheDocument()
+  })
+})
+
+describe('WIR220 — BCF ouverts similaires (encart création)', () => {
+  it('affiche les BCF similaires à la création une fois un fournisseur choisi', async () => {
+    stockApi.getBcfSimilaires.mockResolvedValue({
+      data: [{ id: 5, reference: 'BCF-5', statut: 'envoye' }],
+    })
+    renderDetail({
+      bcf: { fournisseur: '1', lignes: [{ produit: '', quantite: 1, prix_achat_unitaire: '' }] },
+      fournisseurs: [{ id: 1, nom: 'Fourni Plus' }],
+    })
+    await waitFor(() => expect(stockApi.getBcfSimilaires).toHaveBeenCalledWith('1', []))
+    expect(await screen.findByText(/BCF-5/)).toBeInTheDocument()
+  })
+
+  it('sans fournisseur choisi : aucun appel réseau ni encart', () => {
+    renderDetail({ bcf: { fournisseur: '', lignes: [{ produit: '', quantite: 1, prix_achat_unitaire: '' }] } })
+    expect(stockApi.getBcfSimilaires).not.toHaveBeenCalled()
+    expect(screen.queryByText(/BCF ouverts similaires/)).toBeNull()
+  })
+})
+
+describe('WIR220 — dépassements listés (liste des BCF, filtre « En retard »)', () => {
+  it('un filtre « En retard » apparaît quand le serveur signale des dépassements et filtre la liste', async () => {
+    stockApi.getBonsCommandeFournisseur.mockResolvedValue({
+      data: [
+        { id: 10, reference: 'BCF-10', fournisseur_nom: 'À temps SARL', statut: 'envoye', lignes: [], total_achat: '100' },
+        { id: 11, reference: 'BCF-11', fournisseur_nom: 'En retard SARL', statut: 'envoye', lignes: [], total_achat: '200' },
+      ],
+    })
+    stockApi.getBcfEnRetard.mockResolvedValue({ data: [{ id: 11 }] })
+    render(<BonsCommandeFournisseur />, { wrapper: makeWrapper() })
+
+    const grid = await screen.findByRole('grid', { name: 'Bons de commande fournisseur' })
+    await waitFor(() => expect(within(grid).getByText('BCF-10')).toBeInTheDocument())
+
+    await userEvent.click(screen.getByRole('button', { name: /En retard \(1\)/ }))
+    const filtered = await screen.findByRole('grid', { name: 'Bons de commande fournisseur' })
+    expect(within(filtered).getByText('BCF-11')).toBeInTheDocument()
+    expect(within(filtered).queryByText('BCF-10')).toBeNull()
+  })
+
+  it('sans dépassement, aucun bouton « En retard » ne s\'affiche', async () => {
+    stockApi.getBonsCommandeFournisseur.mockResolvedValue({
+      data: [{ id: 10, reference: 'BCF-10', fournisseur_nom: 'À temps SARL', statut: 'envoye', lignes: [], total_achat: '100' }],
+    })
+    stockApi.getBcfEnRetard.mockResolvedValue({ data: [] })
+    render(<BonsCommandeFournisseur />, { wrapper: makeWrapper() })
+
+    await screen.findByRole('grid', { name: 'Bons de commande fournisseur' })
+    expect(screen.queryByRole('button', { name: /En retard/ })).toBeNull()
+  })
+})
+
+describe('WIR220 — rapport « Achats hors contrat »', () => {
+  it('génère le rapport filtré (fournisseur + période) et liste les écarts', async () => {
+    stockApi.getBonsCommandeFournisseur.mockResolvedValue({ data: [] })
+    stockApi.getFournisseurs.mockResolvedValue({ data: [{ id: 1, nom: 'Fourni Plus' }] })
+    stockApi.getAchatsHorsContrat.mockResolvedValue({
+      data: [{
+        ligne_id: 1, reference: 'BCF-1', fournisseur_nom: 'Fourni Plus', produit_nom: 'Module',
+        prix_convenu: '100.00', prix_saisi: '130.00', ecart: '30.00',
+      }],
+    })
+    render(<BonsCommandeFournisseur />, { wrapper: makeWrapper() })
+
+    await screen.findByRole('grid', { name: 'Bons de commande fournisseur' })
+    await userEvent.click(screen.getByRole('button', { name: /Achats hors contrat/ }))
+    const dialog = await screen.findByRole('dialog')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Générer' }))
+
+    await waitFor(() => expect(stockApi.getAchatsHorsContrat).toHaveBeenCalled())
+    expect(await within(dialog).findByText('Module')).toBeInTheDocument()
   })
 })

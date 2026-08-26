@@ -119,6 +119,28 @@ const stockApi = {
   // (lignes/dates/note) ; incrémente `revision`, renvoie `reapprobation_requise`.
   reviserBcf: (id, data) =>
     api.post(`/stock/bons-commande-fournisseur/${id}/reviser/`, data),
+  // WIR220/XPUR7 — accusé de commande fournisseur (date confirmée + n°) ;
+  // la date DEMANDÉE (`date_livraison_prevue`) n'est jamais écrasée.
+  confirmerBcf: (id, data) =>
+    api.post(`/stock/bons-commande-fournisseur/${id}/confirmer/`, data),
+  getBcfEnRetard: () =>
+    api.get('/stock/bons-commande-fournisseur/en-retard/'),
+  getBcfSimilaires: (fournisseurId, produitIds) =>
+    api.get('/stock/bons-commande-fournisseur/bcf-similaires/', {
+      params: {
+        fournisseur: fournisseurId,
+        ...(produitIds?.length ? { produits: produitIds.join(',') } : {}),
+      },
+    }),
+  getHistoriquePrixBcf: (produitId, fournisseurId) =>
+    api.get('/stock/bons-commande-fournisseur/historique-prix/', {
+      params: {
+        produit: produitId,
+        ...(fournisseurId ? { fournisseur: fournisseurId } : {}),
+      },
+    }),
+  getAchatsHorsContrat: (params) =>
+    api.get('/stock/bons-commande-fournisseur/achats-hors-contrat/', { params }),
   // QS4/QS3 — envois fournisseur : WhatsApp (lien wa.me prêt à envoyer +
   // marque le BCF « envoyé ») et email (PDF joint + EmailLog). Le lien/PDF
   // montrent les prix d'achat au FOURNISSEUR (légitime), jamais côté client.
