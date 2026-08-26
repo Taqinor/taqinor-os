@@ -232,6 +232,7 @@ import {
   messageDemandeTaille,
   cumulAnnuelServi,
   aUneDiffMateriel,
+  FAMILLE_LABELS,
   type OffreTaille,
   type OffreVariante,
 } from '../../lib/offresTailles';
@@ -1286,8 +1287,11 @@ const ecoRetourAns = (variante: 'sans' | 'avec') =>
 // ── WJ14 — Impact environnemental, depuis la production annuelle du moteur.
 // RÈGLE « CHIFFRES VÉRIFIÉS » (26/08/2026) : SEULE la tonne annuelle est rendue
 // au client. L'équivalent « arbres » (22 kg/arbre/an, sans source) a été retiré
-// du rendu, ici comme dans le moteur PDF — le champ `trees` reste calculé par la
-// bibliothèque pour les pages éditoriales publiques, il n'est plus lu ici.
+// de TOUTES les surfaces web — cette page, ses hypothèses, et les trois
+// variantes d'/impact-taqinor — ET de la bibliothèque elle-même :
+// `environmentalImpact` ne calcule plus de champ `trees`, et
+// `CO2_KG_PER_TREE_YEAR` n'est plus exporté. (Le retrait côté moteur PDF est
+// porté par sa propre lane ; cette lane n'a touché que le web.)
 const enviro = ok ? environmentalImpact(prodKwh) : null;
 
 // ── PV80 — AUCUN CRÉDIT, AUCUNE MENSUALITÉ, AUCUNE BANQUE SUR CETTE PAGE ────
@@ -2352,7 +2356,13 @@ const signConfig = ok
                                 jamais un volet vide, jamais une valeur inventée. */}
                             {it.detail ? (
                               <details class="conception-fold mt-1.5">
-                                <summary class="cursor-pointer list-none text-xs text-lune-faint transition-colors marker:content-none hover:text-lune-soft">
+                                {/* (26/08) `list-none` + `marker:content-none`
+                                    ne suffisaient pas : iOS Safari dessine sa
+                                    puce via ::-webkit-details-marker, que ni
+                                    l'un ni l'autre n'atteint. Ce volet porte
+                                    déjà son propre « + » — le triangle du
+                                    système faisait donc doublon. */}
+                                <summary class="cursor-pointer list-none text-xs text-lune-faint transition-colors marker:content-none [&::-webkit-details-marker]:hidden hover:text-lune-soft">
                                   <span class="me-1 text-brass-300" aria-hidden="true">+</span>
                                   <span data-i18n data-fr="Dans votre installation" data-en="In your installation" data-ar="في تركيبكم">Dans votre installation</span>
                                 </summary>
@@ -2997,6 +3007,21 @@ const signConfig = ok
                   )}</span>
                 </div>
                 <input type="range" id="battery-sim-slider" min="0" max={BATTERY_SIM_MAX_UNITS} step="1" value={batterySimInitialN} class="mt-2 w-full accent-brass-400" aria-describedby="battery-sim-assumptions" />
+                {/* CONSOLIDATION (26/08) — quand un raccourci (pilule d'échelle
+                    ou banque d'une carte de taille) demande PLUS de batteries
+                    que ce toit n'en supporte, le curseur se plafonne. On le DIT
+                    ici plutôt que d'atterrir en silence sur une autre taille.
+                    Masqué et vide tant que rien n'est plafonné — donc invisible
+                    au premier rendu, sur tous les chemins. */}
+                <p id="battery-sim-clamp" class="mt-2 text-xs text-lune-faint" role="status" aria-live="polite" hidden>
+                  <span data-i18n
+                    data-fr="Plafonné à" data-en="Capped at" data-ar="محدود عند">Plafonné à</span>
+                  <span class="mx-1 font-semibold text-brass-300" dir="ltr" id="battery-sim-clamp-n"></span>
+                  <span data-i18n
+                    data-fr="batteries : c’est le maximum que votre toit peut remplir."
+                    data-en="batteries: that is the maximum your roof can fill."
+                    data-ar="بطاريات: هذا أقصى ما يمكن لسطحكم ملؤه.">batteries : c’est le maximum que votre toit peut remplir.</span>
+                </p>
                 {/* COUVBAT — les crans que ce toit ne remplirait PAS tous les
                     jours sont GRISÉS, comme les tailles de batterie plus haut
                     dans la page : ils restent lisibles et sélectionnables (le
@@ -4644,8 +4669,18 @@ const signConfig = ok
                                 <span class="text-lune-faint" data-i18n data-fr="la référence" data-en="the reference" data-ar="المرجع">la référence</span>
                               ) : (
                                 <>
-                                  {diff?.ajoutees.map((f) => (<span class="ms-1">+ {f}</span>))}
-                                  {diff?.retirees.map((f) => (<span class="ms-1">− {f}</span>))}
+                                  {diff?.ajoutees.map((f) => (
+                                    <span class="ms-1" data-i18n
+                                      data-fr={'+ ' + FAMILLE_LABELS[f].fr}
+                                      data-en={'+ ' + FAMILLE_LABELS[f].en}
+                                      data-ar={'+ ' + FAMILLE_LABELS[f].ar}>+ {FAMILLE_LABELS[f].fr}</span>
+                                  ))}
+                                  {diff?.retirees.map((f) => (
+                                    <span class="ms-1" data-i18n
+                                      data-fr={'− ' + FAMILLE_LABELS[f].fr}
+                                      data-en={'− ' + FAMILLE_LABELS[f].en}
+                                      data-ar={'− ' + FAMILLE_LABELS[f].ar}>− {FAMILLE_LABELS[f].fr}</span>
+                                  ))}
                                 </>
                               )}
                             </td>
@@ -5010,7 +5045,12 @@ const signConfig = ok
                  le précède : sans elle, il n'y a pas de hiérarchie à établir et
                  le bloc reste ouvert comme aujourd'hui. */}
           <details class="gammes-fold" open={!tailles}>
-            <summary class="cursor-pointer list-none">
+            {/* `list-none` SEUL ne suffit pas : iOS Safari continue de dessiner
+                son triangle via ::-webkit-details-marker, et ce <details>-ci est
+                OUVERT par défaut sur le chemin sans tailles — le chevron parasite
+                serait donc visible sur la page de tous les jours. On applique le
+                triptyque déjà utilisé par Faq.astro. */}
+            <summary class="cursor-pointer list-none marker:hidden [&::-webkit-details-marker]:hidden">
               <span class="tech-label rule-brass text-brass-300" data-i18n data-fr="Vos deux gammes" data-en="Your two ranges" data-ar="نطاقاكم">Vos deux gammes</span>
               <span class="ms-2 text-xs text-lune-faint" data-i18n
                 data-fr="(voir et comparer)" data-en="(view and compare)" data-ar="(عرض ومقارنة)">(voir et comparer)</span>
@@ -5116,7 +5156,27 @@ const signConfig = ok
            cette bande ne doublonne donc jamais le bloc « Vos deux gammes ». -->
       {variants.length > 0 && (
         <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
-          <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Autres tailles proposées" data-en="Other sizes available" data-ar="أحجام أخرى مقترحة">Autres tailles proposées</p>
+          {/* ── CONSOLIDATION · LA QUATRIÈME SURFACE DE PRIX (26/08/2026) ─────
+                 Cette bande s'appelait « Autres tailles proposées » — devenu
+                 quasi-homonyme d'« Explorer d'autres tailles » juste au-dessus,
+                 alors qu'elle dit tout autre chose : ce sont les autres DEVIS
+                 (versions frères/sœurs) émis pour ce client, pas des tailles à
+                 explorer sur le devis courant. Deux titres presque identiques
+                 pour deux notions différentes, c'est le client qui paie la
+                 confusion. Le titre est donc DÉSAMBIGUÏSÉ.
+
+                 Et elle rejoint le traitement « secondaire replié » des gammes,
+                 pour que la hiérarchie se lise enfin d'un coup d'œil :
+                   tailles = LE CHOIX · options = le scénario batterie ·
+                   versions + gammes = le secondaire, replié.
+                 Contenu INTACT à l'intérieur ; le <details> s'ouvre tout seul
+                 quand aucune section de tailles ne le précède. */}
+          <details class="versions-fold" open={!tailles}>
+            <summary class="cursor-pointer list-none marker:hidden [&::-webkit-details-marker]:hidden">
+              <span class="tech-label rule-brass text-brass-300" data-i18n data-fr="Autres versions de ce devis" data-en="Other versions of this quote" data-ar="نسخ أخرى من هذا العرض">Autres versions de ce devis</span>
+              <span class="ms-2 text-xs text-lune-faint" data-i18n
+                data-fr="(voir)" data-en="(view)" data-ar="(عرض)">(voir)</span>
+            </summary>
           <div class="mt-5 flex gap-4 overflow-x-auto pb-2" style="overscroll-behavior-x: contain;">
             {variants.map((v) => (
               <div class="cine-card min-w-[220px] shrink-0 rounded-xl p-5">
@@ -5128,11 +5188,12 @@ const signConfig = ok
             ))}
           </div>
           <p class="mt-3 text-xs text-lune-faint" data-i18n
-            data-fr="Demandez à votre conseiller Taqinor de basculer sur l’une de ces tailles si elle vous convient mieux."
-            data-en="Ask your Taqinor advisor to switch to one of these sizes if it suits you better."
-            data-ar="اطلبوا من مستشاركم في تاقينور التحويل إلى أحد هذه الأحجام إن كان يناسبكم أكثر.">
-            Demandez à votre conseiller Taqinor de basculer sur l’une de ces tailles si elle vous convient mieux.
+            data-fr="Demandez à votre conseiller Taqinor de basculer sur l’une de ces versions si elle vous convient mieux."
+            data-en="Ask your Taqinor advisor to switch to one of these versions if it suits you better."
+            data-ar="اطلبوا من مستشاركم في تاقينور التحويل إلى إحدى هذه النسخ إن كانت تناسبكم أكثر.">
+            Demandez à votre conseiller Taqinor de basculer sur l’une de ces versions si elle vous convient mieux.
           </p>
+          </details>
         </section>
       )}
 
@@ -5852,12 +5913,14 @@ const signConfig = ok
 
 
       <!-- ── IMPACT CO₂ — RÈGLE « CHIFFRES VÉRIFIÉS » (fondateur, 26/08/2026) ──
-           Ce bloc affichait DEUX chiffres invérifiables à côté du seul qui
-           tienne : un équivalent « arbres » bâti sur 22 kg de CO₂ par arbre et
-           par an (ordre de grandeur sans source), et — côté PDF — un cumul
-           25 ans obtenu en multipliant l'annuel par 23,5 (facteur jamais
-           justifié). Les deux sont RETIRÉS de tout rendu client, ici comme dans
-           le moteur PDF.
+           Ce bloc affichait un équivalent « arbres » bâti sur 22 kg de CO₂ par
+           arbre et par an — un ordre de grandeur sans source, posé à côté d'un
+           devis. Il est RETIRÉ, ici et partout ailleurs sur le web (hypothèses
+           de cette page, /impact-taqinor FR/EN/AR), et jusque dans la
+           bibliothèque : `environmentalImpact` ne le calcule plus.
+           (Le PDF porte de son côté un cumul CO₂ à 25 ans obtenu en multipliant
+           l'annuel par un facteur jamais justifié — c'est le même défaut, mais
+           il est traité par la lane du moteur, pas par celle-ci.)
 
            CE QUI RESTE est la TONNE ANNUELLE, et elle porte désormais sa
            provenance en clair : le facteur d'émission du réseau marocain est
@@ -7696,6 +7759,18 @@ const signConfig = ok
     if (calque?.hidden && toggle) toggle.click();
     const max = Number(slider.max);
     const cible = Number.isFinite(max) ? Math.min(units, max) : units;
+    // HONNÊTETÉ DU RACCOURCI (26/08) — quand le plafond du curseur est plus bas
+    // que la banque demandée, on atterrissait EN SILENCE sur une autre taille :
+    // le client cliquait « voir 6 batteries » et lisait les chiffres de 4 sans
+    // que rien ne le dise. On l'annonce, dans la formulation déjà employée par
+    // les crans grisés. Note absente (et vidée) dès que rien n'est plafonné.
+    const noteEl = document.getElementById('battery-sim-clamp');
+    if (noteEl) {
+      const plafonne = cible !== units;
+      noteEl.hidden = !plafonne;
+      const valeurEl = document.getElementById('battery-sim-clamp-n');
+      if (valeurEl) valeurEl.textContent = plafonne ? String(cible) : '';
+    }
     if (String(cible) === slider.value) {
       calque?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
@@ -7753,10 +7828,12 @@ const signConfig = ok
     const blocs = Array.from(section.querySelectorAll<HTMLElement>('[data-taille-bloc]'));
     const corps = Array.from(section.querySelectorAll<HTMLElement>('[data-tailles-comparatif-corps]'));
     const cartes = Array.from(section.querySelectorAll<HTMLElement>('[data-taille-carte]'));
-    // #8 — les vues de détail par option, quand une lane backend en sert
-    // (calepinage/schéma propres à une taille). LECTURE DÉFENSIVE : aucune
-    // n'existe aujourd'hui ⇒ ce tableau est vide et rien ne bouge, jamais un
-    // cadre vide ni un « bientôt disponible ».
+    // #8 — les vues de détail par option. Elles EXISTENT (une par taille et par
+    // variante, rendues au serveur) et portent le cadrage honnête de la
+    // sélection. Ce qui reste DÉFENSIF, c'est leur CONTENU graphique : le
+    // calepinage et le schéma propres à une taille viendront d'une lane backend
+    // parallèle ; tant qu'ils ne sont pas servis, aucun dessin n'est rendu et la
+    // page garde ses artefacts uniques — jamais un cadre vide.
     const details = Array.from(document.querySelectorAll<HTMLElement>('[data-taille-detail]'));
 
     let variante: 'sans' | 'avec' = varianteDefaut;

@@ -37,6 +37,23 @@ function texte(valeur: unknown): string | null {
 export const FAMILLES_COMPARABLES = ['panneau', 'onduleur', 'batterie'] as const;
 export type FamilleComparable = (typeof FAMILLES_COMPARABLES)[number];
 
+/**
+ * Les libellés AFFICHABLES des trois familles, dans les trois langues.
+ *
+ * Ils vivent ICI, collés au vocabulaire borné, et non dans le gabarit : une clé
+ * de contrat (`panneau`) n'est pas un mot d'interface. Rendue brute, elle
+ * donnait « − batterie » à un client anglophone et un mot français en
+ * caractères latins au milieu d'un tableau arabe RTL.
+ *
+ * Le type `Record<FamilleComparable, …>` est la garde : ajouter une famille au
+ * vocabulaire sans lui donner ses trois langues ne compile pas.
+ */
+export const FAMILLE_LABELS: Record<FamilleComparable, { fr: string; en: string; ar: string }> = {
+  panneau: { fr: 'panneau', en: 'panel', ar: 'لوح' },
+  onduleur: { fr: 'onduleur', en: 'inverter', ar: 'عاكس' },
+  batterie: { fr: 'batterie', en: 'battery', ar: 'بطارية' },
+};
+
 function familles(brut: unknown): FamilleComparable[] {
   if (!Array.isArray(brut)) return [];
   const sortie: FamilleComparable[] = [];
@@ -349,6 +366,13 @@ export function peutSigner(
 ): boolean {
   if (!t.estLeDevis || t.ajuste) return false;
   if ((avecBatterie ? 'avec' : 'sans') !== varianteDuDevis) return false;
+  // GARDE DE REPLI (trou défensif, corrigé le 26/08) — `varianteAffichee` se
+  // rabat volontairement sur l'autre variante quand celle demandée manque, ce
+  // qui est le bon comportement pour AFFICHER une carte. Ici ce serait un
+  // mensonge : sur une carte « avec » incomplète, le repli aurait montré le
+  // prix SANS batterie sous un bouton « aller à la signature ». On exige donc
+  // que la variante demandée existe RÉELLEMENT, sans repli.
+  if ((avecBatterie ? t.avec : t.sans) === null) return false;
   const v = varianteAffichee(t, avecBatterie);
   return v !== null && v.prixTtc !== null;
 }

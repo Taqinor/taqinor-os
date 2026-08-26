@@ -26,6 +26,7 @@ import {
   cumulAnnuelServi,
   aUneDiffMateriel,
   FAMILLES_COMPARABLES,
+  FAMILLE_LABELS,
 } from '../src/lib/offresTailles';
 
 const read = (rel: string): string =>
@@ -253,6 +254,52 @@ describe('peutSigner — le lien de signature n’existe que sur l’état OFFIC
   it('NON : sans prix réel, il n’y a rien à signer', () => {
     const sansPrix = { ...reco, avec: { ...reco.avec!, prixTtc: null } };
     expect(peutSigner(sansPrix, true, 'avec')).toBe(false);
+  });
+
+  // TROU DÉFENSIF (corrigé le 26/08) — `varianteAffichee` se rabat volontairement
+  // sur l'autre variante quand celle demandée manque : c'est le bon
+  // comportement pour AFFICHER une carte, mais un mensonge sous un bouton de
+  // signature. Sur une carte « avec » incomplète, le repli aurait montré le prix
+  // SANS batterie au-dessus d'« aller à la signature ».
+  it('NON : la variante demandée n’existe pas — le repli ne doit JAMAIS signer', () => {
+    const avecManquante = { ...reco, avec: null };
+    expect(peutSigner(avecManquante, true, 'avec')).toBe(false);
+    const sansManquante = { ...reco, estLeDevis: true, sans: null };
+    expect(peutSigner(sansManquante, false, 'sans')).toBe(false);
+    // …alors que l'AFFICHAGE, lui, se rabat toujours (comportement voulu).
+    expect(varianteAffichee(avecManquante, true)).not.toBeNull();
+  });
+});
+
+describe('FAMILLE_LABELS — les familles sont TRADUITES, jamais rendues brutes', () => {
+  it('chaque famille du vocabulaire borné a ses trois langues', () => {
+    for (const f of FAMILLES_COMPARABLES) {
+      const l = FAMILLE_LABELS[f];
+      expect(l, f).toBeTruthy();
+      for (const langue of ['fr', 'en', 'ar'] as const) {
+        expect(l[langue].trim().length, `${f}.${langue}`).toBeGreaterThan(0);
+      }
+      // L'anglais et l'arabe ne recopient pas le français : « − batterie » sous
+      // les yeux d'un anglophone était exactement le défaut corrigé.
+      expect(l.en, f).not.toBe(l.fr);
+      expect(l.ar, f).not.toBe(l.fr);
+      // L'arabe ne doit contenir AUCUN caractère latin.
+      expect(/[A-Za-z]/.test(l.ar), `${f}.ar contient du latin`).toBe(false);
+    }
+  });
+
+  it('la table est fermée sur le vocabulaire borné (aucune famille orpheline)', () => {
+    expect(Object.keys(FAMILLE_LABELS).sort()).toEqual([...FAMILLES_COMPARABLES].sort());
+  });
+
+  it('la ligne « Matériel » du tableau rend les libellés, pas les clés de contrat', () => {
+    const bloc = sectionTailles(CODE);
+    expect(bloc).toContain('FAMILLE_LABELS[f].fr');
+    expect(bloc).toContain('FAMILLE_LABELS[f].en');
+    expect(bloc).toContain('FAMILLE_LABELS[f].ar');
+    // La clé brute ne doit plus être interpolée nue dans une cellule.
+    expect(bloc).not.toContain('>+ {f}<');
+    expect(bloc).not.toContain('>− {f}<');
   });
 });
 
@@ -482,19 +529,67 @@ describe('PRÉSERVATION — un client qui ne touche à rien voit la page d’ava
     expect(CODE).toContain('data-taille-variante-defaut={tailleVarianteDefaut}');
   });
 
-  it('le script des tailles ne touche QUE ses propres nœuds (+ deux chemins documentés)', () => {
-    const script = CODE.slice(CODE.indexOf('function setupTaillesOffres'));
-    const corps = script.slice(0, script.indexOf('})();'));
-    // Les seules sorties de la section sont : le formulaire de modification
-    // EXISTANT, et le curseur batterie via son helper dédié.
-    const sorties = corps.match(/document\.(getElementById|querySelector|querySelectorAll)\([^)]*\)/g) || [];
-    for (const sortie of sorties) {
-      const autorise =
-        sortie.includes('data-tailles')
-        || sortie.includes('data-taille-')
-        || sortie.includes('data-revision-token')
-        || sortie.includes('revision-detail');
-      expect(autorise, `sortie non autorisée : ${sortie}`).toBe(true);
+  // GARDE DURCIE (26/08) — la version d'origine ne découpait que
+  // `setupTaillesOffres` et ne connaissait que trois méthodes de requête. Elle
+  // laissait donc passer `pilotherCurseurBatterie` (qui touche bel et bien le
+  // curseur), `setupCalepinageStaleRequest`, et toute la famille
+  // `getElementsByTagName` / `getElementsByClassName` / `.closest()` /
+  // `document.body.querySelector`. On couvre désormais TOUTES les fonctions que
+  // cette lane a ajoutées et TOUT le jeu de méthodes.
+  const FONCTIONS_DE_LA_LANE = [
+    'function setupTaillesOffres',
+    'function pilotherCurseurBatterie',
+    'function setupCalepinageStaleRequest',
+  ];
+
+  /** Le corps d'une fonction de la lane, du `function` à son `})();`/`}` final. */
+  function corpsDe(nom: string): string {
+    const debut = CODE.indexOf(nom);
+    expect(debut, `${nom} doit exister`).toBeGreaterThan(0);
+    const reste = CODE.slice(debut);
+    const fin = reste.indexOf('\n  })();');
+    return fin > 0 ? reste.slice(0, fin) : reste.slice(0, 6000);
+  }
+
+  it('toutes les fonctions de la lane ne touchent QUE leurs nœuds (+ les sorties documentées)', () => {
+    // LES DEUX SEULES SORTIES AUTORISÉES, nommées explicitement :
+    //   · le formulaire de modification EXISTANT (WJ54) ;
+    //   · le curseur batterie et sa bascule de calque, seul maître batterie.
+    const SORTIES_DOCUMENTEES = [
+      'data-revision-token', 'revision-detail',
+      'battery-sim-slider', 'prod-battery-toggle', 'battery-sim',
+      'roof3d-stale-request',
+    ];
+    // TOUT le jeu de méthodes de requête, pas seulement les trois évidentes.
+    const REQUETES = String.raw`(?:getElementById|querySelectorAll|querySelector|getElementsByTagName|getElementsByClassName|getElementsByName|closest)`;
+    const motif = new RegExp(String.raw`(?:document(?:\.body)?|window\.document)\s*\.\s*${REQUETES}\s*\([^)]*\)|\.closest\s*\([^)]*\)`, 'g');
+
+    let verifiees = 0;
+    for (const nom of FONCTIONS_DE_LA_LANE) {
+      for (const sortie of corpsDe(nom).match(motif) || []) {
+        verifiees += 1;
+        const autorise =
+          sortie.includes('data-tailles')
+          || sortie.includes('data-taille-')
+          || sortie.includes('data-batt-tier')
+          // `.closest('a, button')` protège les CTA du clic de sélection : il ne
+          // sort pas de la carte, il reste à l'intérieur de l'élément cliqué.
+          || sortie.includes("closest('a, button')")
+          || SORTIES_DOCUMENTEES.some((s) => sortie.includes(s));
+        expect(autorise, `${nom} — sortie non autorisée : ${sortie}`).toBe(true);
+      }
+    }
+    // La garde doit avoir VU quelque chose : un découpage cassé qui renverrait
+    // zéro requête passerait sinon en silence.
+    expect(verifiees).toBeGreaterThan(8);
+  });
+
+  it('aucune fonction de la lane n’écrit un nombre : zéro formatage, zéro arithmétique', () => {
+    for (const nom of FONCTIONS_DE_LA_LANE) {
+      const corps = corpsDe(nom);
+      for (const interdit of ['formatMAD', 'formatNumber', 'formatPercent', 'toFixed', 'toLocaleString']) {
+        expect(corps, `${nom} : ${interdit}`).not.toContain(interdit);
+      }
     }
   });
 
@@ -518,6 +613,53 @@ describe('PRÉSERVATION — un client qui ne touche à rien voit la page d’ava
       'id="confiance"', 'id="faq"', 'id="etapes-suivantes"', 'id="tarif-falaise"']) {
       expect(CODE, ancre).toContain(ancre);
     }
+  });
+});
+
+// ── 6bis. CONSOLIDATION — QUATRE SURFACES DE PRIX, UNE HIÉRARCHIE ───────────
+
+describe('CONSOLIDATION — la hiérarchie des surfaces de prix se lit', () => {
+  it('les VERSIONS du devis ne s’appellent plus comme les TAILLES', () => {
+    // « Autres tailles proposées » était quasi-homonyme d'« Explorer d'autres
+    // tailles » alors qu'il dit tout autre chose : les autres DEVIS du client.
+    expect(CODE).not.toContain('data-fr="Autres tailles proposées"');
+    expect(CODE).toContain('data-fr="Autres versions de ce devis"');
+    expect(CODE).toContain('data-en="Other versions of this quote"');
+    // Le texte d'accompagnement suit le même vocabulaire.
+    expect(CODE).toContain('l’une de ces versions');
+  });
+
+  it('gammes ET versions sont repliées, et s’ouvrent seules quand aucune taille ne les précède', () => {
+    for (const fold of ['<details class="gammes-fold" open={!tailles}>',
+      '<details class="versions-fold" open={!tailles}>']) {
+      expect(CODE, fold).toContain(fold);
+    }
+  });
+
+  it('SAFARI iOS — les <summary> qui se veulent sans puce le sont VRAIMENT', () => {
+    // `list-none` seul laisse ::-webkit-details-marker dessiner son triangle.
+    // Tout <summary> de cette lane qui masque sa puce doit porter le triptyque
+    // du dépôt (Faq.astro) — d'autant que ces deux <details> sont OUVERTS par
+    // défaut sur le chemin sans tailles, donc visibles sur la page ordinaire.
+    const sansPuce = CODE.match(/<summary class="[^"]*list-none[^"]*"/g) || [];
+    expect(sansPuce.length).toBeGreaterThan(1);
+    for (const m of sansPuce) {
+      // `marker:hidden` ou `marker:content-none` disent tous deux l'intention…
+      expect(m, `summary sans règle marker : ${m}`).toMatch(/marker:(hidden|content-none)/);
+      // …mais AUCUN des deux n'atteint le pseudo-élément de WebKit.
+      expect(m, `summary sans garde webkit : ${m}`).toContain('[&::-webkit-details-marker]:hidden');
+    }
+  });
+
+  it('le raccourci vers le curseur ANNONCE son plafonnement au lieu de l’avaler', () => {
+    // Le clamp `Math.min(units, max)` faisait atterrir en silence sur une autre
+    // taille que celle demandée.
+    expect(CODE).toContain('id="battery-sim-clamp"');
+    expect(CODE).toContain('id="battery-sim-clamp-n"');
+    expect(CODE).toContain("document.getElementById('battery-sim-clamp')");
+    // Masqué et vide au premier rendu — invisible sur tous les chemins.
+    expect(CODE).toMatch(/id="battery-sim-clamp"[^>]*hidden/);
+    expect(CODE).toContain('aria-live="polite"');
   });
 });
 
