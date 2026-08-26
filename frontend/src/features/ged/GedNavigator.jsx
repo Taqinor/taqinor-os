@@ -15,6 +15,8 @@ import {
   Folder, FolderOpen, ChevronRight, ChevronDown, FileText, Loader2, Inbox,
   RefreshCw, Plus, FolderPlus, Pencil, Upload, MoveRight, Eye, Lock, LockOpen,
   Trash2, Info, Link2, EyeOff, X, Download, History, RotateCcw, Tag as TagIcon,
+  FileUp, MoreVertical, ScanText, ShieldAlert, ShieldOff, Workflow, AppWindow,
+  MessageCircleQuestion,
 } from 'lucide-react'
 import gedApi from '../../api/gedApi'
 // APX32 (e) — en-tête UNIQUE de l'app (VX28), fin du 4ᵉ idiome.
@@ -26,6 +28,7 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
   DialogFooter, DialogClose, Input, Textarea, FileUpload, toast,
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
 } from '../../ui'
 import { buildFolderTree, flattenVisible, countFolders } from './tree.js'
 import GedSearch from './GedSearch.jsx'
@@ -46,6 +49,13 @@ const GED_DOC_COLUMNS = [
   { id: 'updated', header: 'Mis à jour', sortable: false, hideable: false, reorderable: false },
   { id: 'actions', header: '', sortable: false, hideable: false, reorderable: false },
 ]
+
+// GED17/WIR249 — libellés FR des statuts de cycle de vie documentaire LOCAUX
+// à la GED (brouillon→revue→approuvé→archivé→obsolète, SÉPARÉS de STAGES.py).
+const LIFECYCLE_LABELS = {
+  brouillon: 'Brouillon', revue: 'En revue', approuve: 'Approuvé',
+  archive: 'Archivé', obsolete: 'Obsolète',
+}
 
 // Le backend pagine certains endpoints (DRF) : on accepte `results` OU le
 // tableau brut, comme partout dans le frontend.
@@ -108,6 +118,10 @@ export default function GedNavigator() {
   const [mergeDlg, setMergeDlg] = useState(false)
   // XGED14 — opérations en lot tagger/detaguer/deplacer (rapport d'erreurs).
   const [bulkOpsDlg, setBulkOpsDlg] = useState(false)
+  // GED32/WIR249 — import en masse (CSV + ZIP optionnel) dans le dossier courant.
+  const [importMasseDlg, setImportMasseDlg] = useState(false)
+  // FG352/XKB20/WIR249 — assistant documentaire (DocQA).
+  const [docQaOpen, setDocQaOpen] = useState(false)
 
   // ── Chargement des cabinets (armoires racines) ──
   const loadCabinets = (preferId) => {
@@ -275,6 +289,56 @@ export default function GedNavigator() {
     } catch (err) { toast.error(errText(err, 'Mise en corbeille impossible.')) }
   }
 
+  // GED33/WIR249 — OCR ce document (pièce CIN/facture/BL) → métadonnées
+  // fusionnées ADDITIVEMENT côté serveur (jamais d'écrasement, jamais de
+  // recalcul côté client).
+  const ocrPieceAction = async (d) => {
+    try {
+      const res = await gedApi.ocrPiece(d.id)
+      const n = Object.keys(res?.data?.metadonnees || {}).length
+      toast.success(n
+        ? `${n} métadonnée${n > 1 ? 's' : ''} extraite${n > 1 ? 's' : ''}.`
+        : 'OCR effectué — aucune métadonnée reconnue.')
+      reloadDocuments()
+    } catch (err) { toast.error(errText(err, 'OCR impossible.')) }
+  }
+
+  // ZGED9/WIR249 — verrou d'AVERTISSEMENT léger, DISTINCT du check-out GED16
+  // ci-dessus : n'empêche jamais la lecture, affiche un bandeau à tous.
+  const toggleVerrouAvertissement = async (d) => {
+    try {
+      if (d.est_verrouille_avertissement) {
+        await gedApi.deverrouillerDocument(d.id)
+        toast.success('Verrou (avertissement) levé.')
+      } else {
+        await gedApi.verrouillerDocument(d.id)
+        toast.success('Verrou (avertissement) posé.')
+      }
+      reloadDocuments()
+    } catch (err) {
+      if (err?.response?.status === 409) {
+        toast.error(errText(err, 'Déjà verrouillé par un autre utilisateur.'))
+      } else { toast.error(errText(err, 'Opération impossible.')) }
+    }
+  }
+
+  // XGED30/WIR249 — éditeur Office embarqué (KEY-GATED, GED_OFFICE_URL) :
+  // ouvre l'URL renvoyée par le serveur dans un nouvel onglet. Le round-trip
+  // de sauvegarde (postMessage d'un vrai éditeur Collabora/OnlyOffice iframe)
+  // sort du périmètre de cette tâche — `officeSauvegarder` reste API-only.
+  const officeOuvrirAction = async (d) => {
+    try {
+      const res = await gedApi.officeOuvrir(d.id)
+      const url = res?.data?.editor_url
+      if (url) window.open(url, '_blank', 'noopener')
+      else toast.error('Aucun éditeur disponible.')
+      reloadDocuments()
+    } catch (err) { toast.error(errText(err, 'Éditeur Office indisponible.')) }
+  }
+
+  // GED17/WIR249 — cycle de vie documentaire (panneau dédié, voir CycleVieDialog).
+  const [cycleVieDoc, setCycleVieDoc] = useState(null)
+
   const hasCabinet = cabinetId != null
 
   return (
@@ -313,8 +377,15 @@ export default function GedNavigator() {
 
       {/* GED13 — Filtres & recherche avancée (plein-texte/sémantique + tags).
           ZGED7/13 — favoris/récents ouvrent l'aperçu inline GED14. */}
-      <div className="mb-4">
-        <GedSearch onOpenDocument={setPreviewDoc} />
+      <div className="mb-4 flex items-start gap-2">
+        <div className="flex-1">
+          <GedSearch onOpenDocument={setPreviewDoc} />
+        </div>
+        {/* FG352/XKB20/WIR249 — DocQA : question en langage naturel → fragments
+            GED+KB les plus proches (RAG, KEY-GATED). */}
+        <Button variant="outline" onClick={() => setDocQaOpen(true)}>
+          <MessageCircleQuestion className="size-4" aria-hidden="true" /> Assistant documentaire
+        </Button>
       </div>
 
       {error ? (
@@ -416,6 +487,10 @@ export default function GedNavigator() {
                       {/* WIR70 — lien de dépôt public tokenisé pour ce dossier. */}
                       <Button size="sm" variant="ghost" onClick={createDepotLink}>
                         <Link2 className="size-4" aria-hidden="true" /> Lien de dépôt
+                      </Button>
+                      {/* GED32/WIR249 — import en masse depuis un CSV de métadonnées. */}
+                      <Button size="sm" variant="ghost" onClick={() => setImportMasseDlg(true)}>
+                        <FileUp className="size-4" aria-hidden="true" /> Importer (CSV)
                       </Button>
                       <Button size="sm" variant="default"
                         onClick={() => setUploadDlg(true)}>
@@ -563,6 +638,32 @@ export default function GedNavigator() {
                                 onClick={() => mettreEnCorbeille(d)}>
                                 <Trash2 className="size-4" aria-hidden="true" />
                               </Button>
+                              {/* GED33/ZGED9/GED17/XGED30/WIR249 — actions secondaires
+                                  regroupées (OCR pièce, verrou d'avertissement, cycle de
+                                  vie, éditeur Office) : la ligne reste lisible. */}
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button size="sm" variant="ghost"
+                                    aria-label={`Plus d'actions pour ${d.nom}`}>
+                                    <MoreVertical className="size-4" aria-hidden="true" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem onSelect={() => ocrPieceAction(d)}>
+                                    <ScanText /> Extraire l'OCR
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onSelect={() => toggleVerrouAvertissement(d)}>
+                                    {d.est_verrouille_avertissement ? <ShieldOff /> : <ShieldAlert />}
+                                    {d.est_verrouille_avertissement ? 'Lever le verrou (avertissement)' : 'Verrouiller (avertissement)'}
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onSelect={() => setCycleVieDoc(d)}>
+                                    <Workflow /> Cycle de vie…
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onSelect={() => officeOuvrirAction(d)}>
+                                    <AppWindow /> Ouvrir dans l'éditeur (Office)
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
                             </div>
                           </td>
                         </tr>
@@ -602,9 +703,28 @@ export default function GedNavigator() {
           onDone={() => { setBulkOpsDlg(false); setSelectedIds(new Set()); reloadDocuments() }}
         />
       )}
+      {/* GED32/WIR249 — import en masse (CSV + ZIP optionnel) dans le dossier courant. */}
+      {importMasseDlg && selected && (
+        <ImportMasseDialog
+          folderId={selected.id}
+          onClose={() => setImportMasseDlg(false)}
+          onDone={() => { setImportMasseDlg(false); reloadDocuments() }}
+        />
+      )}
+      {/* FG352/XKB20/WIR249 — assistant documentaire (DocQA, GED+KB). */}
+      {docQaOpen && <DocQaDialog onClose={() => setDocQaOpen(false)} />}
       {/* WIR70 — panneau Détails (timeline + rapport ACL + favori). */}
       {insightsDoc && (
         <GedDocumentInsights document={insightsDoc} onClose={() => setInsightsDoc(null)} />
+      )}
+      {/* GED17/WIR249 — cycle de vie documentaire (LOCAL à la GED, séparé du
+          funnel STAGES.py). */}
+      {cycleVieDoc && (
+        <CycleVieDialog
+          document={cycleVieDoc}
+          onClose={() => setCycleVieDoc(null)}
+          onDone={() => { setCycleVieDoc(null); reloadDocuments() }}
+        />
       )}
     </div>
   )
@@ -1216,6 +1336,197 @@ function BulkOperationsDialog({ documents, folders, onClose, onDone }) {
           <Button onClick={submit} disabled={busy}>
             {busy && <Loader2 className="size-4 animate-spin" aria-hidden="true" />} Appliquer
           </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ── GED32/WIR249 — Dialogue : import en masse (CSV + ZIP optionnel) ────────
+// Une ligne CSV en erreur n'interrompt pas le lot (`services.importer_en_masse`)
+// — rapport détaillé affiché ici, jamais seulement un compteur en toast.
+function ImportMasseDialog({ folderId, onClose, onDone }) {
+  const [csvFile, setCsvFile] = useState(null)
+  const [zipFile, setZipFile] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [rapport, setRapport] = useState(null) // { crees, erreurs } | null
+
+  const submit = async () => {
+    if (!csvFile) { toast.error('Choisissez un fichier CSV.'); return }
+    setBusy(true)
+    setRapport(null)
+    try {
+      const res = await gedApi.importerEnMasse({
+        folder: folderId, csv: csvFile, zip: zipFile || undefined,
+      })
+      const { crees = 0, erreurs = [] } = res?.data || {}
+      setRapport({ crees, erreurs })
+      if (erreurs.length === 0) {
+        toast.success(`${crees} document(s) importé(s).`)
+        onDone()
+      } else {
+        toast.error(`${crees} importé(s), ${erreurs.length} ligne(s) en erreur — voir le rapport.`)
+      }
+    } catch (err) {
+      toast.error(errText(err, 'Import impossible.'))
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Importer en masse (CSV)</DialogTitle></DialogHeader>
+        <div className="flex flex-col gap-3">
+          <div>
+            <label className="text-sm text-muted-foreground" htmlFor="importmasse-csv">
+              Fichier CSV de métadonnées (colonnes : nom, description, fichier…)
+            </label>
+            <input id="importmasse-csv" type="file" accept=".csv,text/csv"
+              onChange={(e) => setCsvFile(e.target.files?.[0] || null)} />
+          </div>
+          <div>
+            <label className="text-sm text-muted-foreground" htmlFor="importmasse-zip">
+              ZIP des binaires (optionnel, apparié par la colonne « fichier »)
+            </label>
+            <input id="importmasse-zip" type="file" accept=".zip"
+              onChange={(e) => setZipFile(e.target.files?.[0] || null)} />
+          </div>
+          {rapport && (
+            <div className="rounded-md border border-border p-2 text-xs">
+              <p className="mb-1 font-medium">{rapport.crees} document(s) créé(s).</p>
+              {rapport.erreurs.length > 0 && (
+                <ul className="flex flex-col gap-0.5 text-destructive">
+                  {rapport.erreurs.map((e) => (
+                    <li key={e.ligne}>Ligne {e.ligne} — {e.detail}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>Fermer</Button>
+          <Button onClick={submit} disabled={busy}>
+            {busy && <Loader2 className="size-4 animate-spin" aria-hidden="true" />} Importer
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ── GED17/WIR249 — Dialogue : cycle de vie documentaire ─────────────────────
+// La machine à états vit côté serveur (`services.change_lifecycle_status`) :
+// on affiche ici EXACTEMENT `transitions_autorisees` renvoyé par le
+// sérialiseur, jamais une liste recalculée côté client.
+function CycleVieDialog({ document: doc, onClose, onDone }) {
+  const [busy, setBusy] = useState(false)
+  const transitions = doc.transitions_autorisees || []
+
+  const transition = async (statut) => {
+    setBusy(true)
+    try {
+      await gedApi.cycleVieDocument(doc.id, statut)
+      toast.success('Statut mis à jour.')
+      onDone()
+    } catch (err) {
+      toast.error(errText(err, 'Transition impossible.'))
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Cycle de vie — {doc.nom}</DialogTitle></DialogHeader>
+        <div className="flex flex-col gap-3">
+          <p className="text-sm text-muted-foreground">
+            Statut actuel : <strong>{doc.statut_display || LIFECYCLE_LABELS[doc.statut] || doc.statut}</strong>
+          </p>
+          {transitions.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Aucune transition possible depuis ce statut.</p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {transitions.map((s) => (
+                <Button key={s} variant="outline" disabled={busy} onClick={() => transition(s)}>
+                  {busy && <Loader2 className="size-4 animate-spin" aria-hidden="true" />}
+                  {LIFECYCLE_LABELS[s] || s}
+                </Button>
+              ))}
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>Fermer</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ── FG352/XKB20/WIR249 — Dialogue : assistant documentaire (DocQA) ─────────
+// RAG GED+KB combinés, KEY-GATED : sans clé d'embedding, `enabled` est faux
+// et `results` vide — affiché tel quel, JAMAIS un résultat inventé côté
+// client pour compenser.
+function DocQaDialog({ onClose }) {
+  const [q, setQ] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [enabled, setEnabled] = useState(true)
+  const [results, setResults] = useState(null) // null = pas encore cherché
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!q.trim() || loading) return
+    setLoading(true)
+    try {
+      const res = await gedApi.docqa({ q: q.trim(), k: 5 })
+      setEnabled(res?.data?.enabled !== false)
+      setResults(res?.data?.results || [])
+    } catch (err) {
+      toast.error(errText(err, 'Recherche impossible.'))
+    } finally { setLoading(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader><DialogTitle>Assistant documentaire</DialogTitle></DialogHeader>
+        <form onSubmit={submit} className="flex flex-col gap-3">
+          <div className="flex gap-2">
+            <Input aria-label="Votre question" value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Ex. Quelle est la garantie du produit X ?" />
+            <Button type="submit" disabled={!q.trim() || loading}>
+              {loading && <Loader2 className="size-4 animate-spin" aria-hidden="true" />} Chercher
+            </Button>
+          </div>
+          {results !== null && !enabled && (
+            <p className="text-sm text-muted-foreground">
+              Assistant indisponible — clé d'embedding non configurée.
+            </p>
+          )}
+          {results !== null && enabled && results.length === 0 && (
+            <p className="text-sm text-muted-foreground">Aucun fragment pertinent trouvé.</p>
+          )}
+          {results !== null && enabled && results.length > 0 && (
+            <ul className="flex flex-col gap-2">
+              {results.map((r, i) => (
+                <li key={i} className="rounded-md border border-border p-2 text-sm">
+                  <div className="mb-1 flex items-center gap-1.5">
+                    <Badge tone={r.source === 'kb' ? 'info' : 'neutral'}>
+                      {r.source === 'kb' ? 'Base de connaissances' : 'GED'}
+                    </Badge>
+                    <span className="truncate font-medium">
+                      {r.source === 'kb' ? r.article_titre : r.document_nom}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">{r.texte}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </form>
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>Fermer</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
