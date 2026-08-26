@@ -66,7 +66,11 @@ describe('PlanningPage — WIR244 calendrier & jours fériés', () => {
   })
 
   it('cliquer un badge de jour appelle updateCalendrier avec la bascule', async () => {
-    gestionProjetApi.getCalendriers.mockResolvedValue({
+    // WIR244 (fix Fable) — mockResolvedValueOnce : `mockResolvedValue` fuit
+    // au-delà de ce test (vi.clearAllMocks() efface les appels, pas les
+    // implémentations), faisant réapparaître le calendrier — et son bouton
+    // « Ajouter » du jour férié — dans les tests suivants.
+    gestionProjetApi.getCalendriers.mockResolvedValueOnce({
       data: [{
         id: 55, projet: 10, lundi: true, mardi: true, mercredi: true, jeudi: true,
         vendredi: true, samedi: false, dimanche: false, jours_feries: [],
@@ -82,7 +86,11 @@ describe('PlanningPage — WIR244 calendrier & jours fériés', () => {
   })
 
   it('« Ajouter » un jour férié appelle createJourFerie', async () => {
-    gestionProjetApi.getCalendriers.mockResolvedValue({
+    // WIR244 (fix Fable) — mockResolvedValueOnce : `mockResolvedValue` fuit
+    // au-delà de ce test (vi.clearAllMocks() efface les appels, pas les
+    // implémentations), faisant réapparaître le calendrier — et son bouton
+    // « Ajouter » du jour férié — dans les tests suivants.
+    gestionProjetApi.getCalendriers.mockResolvedValueOnce({
       data: [{
         id: 55, projet: 10, lundi: true, mardi: true, mercredi: true, jeudi: true,
         vendredi: true, samedi: false, dimanche: false, jours_feries: [],
@@ -102,13 +110,17 @@ describe('PlanningPage — WIR244 calendrier & jours fériés', () => {
   })
 
   it('supprimer un jour férié appelle deleteJourFerie', async () => {
-    gestionProjetApi.getCalendriers.mockResolvedValue({
+    // WIR244 (fix Fable) — mockResolvedValueOnce : `mockResolvedValue` fuit
+    // au-delà de ce test (vi.clearAllMocks() efface les appels, pas les
+    // implémentations), faisant réapparaître le calendrier — et son bouton
+    // « Ajouter » du jour férié — dans les tests suivants.
+    gestionProjetApi.getCalendriers.mockResolvedValueOnce({
       data: [{
         id: 55, projet: 10, lundi: true, mardi: true, mercredi: true, jeudi: true,
         vendredi: true, samedi: false, dimanche: false, jours_feries: [],
       }],
     })
-    gestionProjetApi.getJoursFeries.mockResolvedValue({
+    gestionProjetApi.getJoursFeries.mockResolvedValueOnce({
       data: [{ id: 3, calendrier: 55, date: '2026-01-01', libelle: 'Jour de l’an' }],
     })
     const user = userEvent.setup()
@@ -121,7 +133,11 @@ describe('PlanningPage — WIR244 calendrier & jours fériés', () => {
   })
 
   it('« Pré-remplir les fériés » appelle seedFeriesCalendrier (idempotent)', async () => {
-    gestionProjetApi.getCalendriers.mockResolvedValue({
+    // WIR244 (fix Fable) — mockResolvedValueOnce : `mockResolvedValue` fuit
+    // au-delà de ce test (vi.clearAllMocks() efface les appels, pas les
+    // implémentations), faisant réapparaître le calendrier — et son bouton
+    // « Ajouter » du jour férié — dans les tests suivants.
+    gestionProjetApi.getCalendriers.mockResolvedValueOnce({
       data: [{
         id: 55, projet: 10, lundi: true, mardi: true, mercredi: true, jeudi: true,
         vendredi: true, samedi: false, dimanche: false, jours_feries: [],
@@ -139,12 +155,16 @@ describe('PlanningPage — WIR244 calendrier & jours fériés', () => {
 
 describe('PlanningPage — WIR244 dépendances CPM (câblées depuis le Gantt)', () => {
   it('ajouter une dépendance A→B depuis le Gantt appelle createDependance et recharge', async () => {
-    gestionProjetApi.getTaches.mockResolvedValue({
+    // WIR244 (fix Fable) — mockResolvedValueOnce CHAÎNÉ deux fois (mount +
+    // rechargement post-création) : `mockResolvedValue` fuirait vers le test
+    // suivant du fichier (vi.clearAllMocks() n'efface pas l'implémentation).
+    const tachesReponse = {
       data: [
         { id: 1, libelle: 'Étude', statut: 'termine', date_debut_prevue: '2026-01-01', date_fin_prevue: '2026-01-05' },
         { id: 2, libelle: 'Pose', statut: 'a_faire', date_debut_prevue: '2026-01-06', date_fin_prevue: '2026-01-12' },
       ],
-    })
+    }
+    gestionProjetApi.getTaches.mockResolvedValueOnce(tachesReponse).mockResolvedValueOnce(tachesReponse)
     const user = userEvent.setup()
     withProviders(<PlanningPage />)
     await selectionnerProjet(user)
@@ -161,15 +181,19 @@ describe('PlanningPage — WIR244 dépendances CPM (câblées depuis le Gantt)',
   })
 
   it('supprimer une dépendance visible au Gantt appelle deleteDependance', async () => {
-    gestionProjetApi.getTaches.mockResolvedValue({
+    // WIR244 (fix Fable) — mockResolvedValueOnce chaîné (mount + rechargement
+    // post-suppression), jamais mockResolvedValue (fuite inter-tests).
+    const tachesReponse = {
       data: [
         { id: 1, libelle: 'Étude', statut: 'termine', date_debut_prevue: '2026-01-01', date_fin_prevue: '2026-01-05' },
         { id: 2, libelle: 'Pose', statut: 'a_faire', date_debut_prevue: '2026-01-06', date_fin_prevue: '2026-01-12' },
       ],
-    })
-    gestionProjetApi.getDependances.mockResolvedValue({
+    }
+    gestionProjetApi.getTaches.mockResolvedValueOnce(tachesReponse).mockResolvedValueOnce(tachesReponse)
+    const dependancesReponse = {
       data: [{ id: 7, predecesseur: 1, successeur: 2, type_dependance: 'fs', lag: 0 }],
-    })
+    }
+    gestionProjetApi.getDependances.mockResolvedValueOnce(dependancesReponse)
     const user = userEvent.setup()
     withProviders(<PlanningPage />)
     await selectionnerProjet(user)

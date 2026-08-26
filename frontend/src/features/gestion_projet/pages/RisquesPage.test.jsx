@@ -145,7 +145,9 @@ describe('RisquesPage — WIR203 registre des risques (CRUD câblé)', () => {
     const user = userEvent.setup()
     withProviders(<RisquesPage />)
     await selectionnerProjet(user)
-    await screen.findByText('Fuite toiture')
+    // WIR203 (fix Fable) — DataTable rend la table desktop ET le repli carte
+    // mobile (CSS seul, les deux existent dans le DOM en jsdom) : findAllByText.
+    await screen.findAllByText('Fuite toiture')
 
     const table = document.querySelector('[data-dt-table]')
     await user.click(within(table).getAllByLabelText("Plus d'actions sur la ligne")[0])
@@ -163,7 +165,9 @@ describe('RisquesPage — WIR203 registre des risques (CRUD câblé)', () => {
     const user = userEvent.setup()
     withProviders(<RisquesPage />)
     await selectionnerProjet(user)
-    await screen.findByText('Fuite toiture')
+    // WIR203 (fix Fable) — DataTable rend la table desktop ET le repli carte
+    // mobile (CSS seul, les deux existent dans le DOM en jsdom) : findAllByText.
+    await screen.findAllByText('Fuite toiture')
 
     const table = document.querySelector('[data-dt-table]')
     await user.click(within(table).getAllByLabelText("Plus d'actions sur la ligne")[0])
@@ -220,7 +224,8 @@ describe('RisquesPage — WIR203 comptes-rendus, documents & commentaires', () =
     withProviders(<RisquesPage />)
     await selectionnerProjet(user)
     await user.click(await screen.findByRole('tab', { name: 'Documents' }))
-    await screen.findByText('Plan de calepinage')
+    // WIR203 (fix Fable) — desktop + repli carte mobile : findAllByText.
+    await screen.findAllByText('Plan de calepinage')
 
     const table = document.querySelector('[data-dt-table]')
     await user.click(within(table).getAllByLabelText("Plus d'actions sur la ligne")[0])

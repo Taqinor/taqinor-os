@@ -95,8 +95,10 @@ describe('TimesheetsTab', () => {
     const user = userEvent.setup()
     withProviders(<TimesheetsTab timesheets={timesheets} onChanged={vi.fn()} ressources={ressources} />)
     await user.click(await screen.findByRole('tab', { name: 'Classement' }))
-    expect(await screen.findByText('12,5')).toBeTruthy()
-    expect(screen.getByText('80 %')).toBeTruthy()
+    // WIR245 (fix Fable) — DataTable rend la table desktop ET le repli carte
+    // mobile (CSS seul, les deux existent dans le DOM en jsdom) : findAllByText.
+    expect((await screen.findAllByText('12,5')).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('80 %').length).toBeGreaterThan(0)
     expect(screen.getAllByText('—').length).toBeGreaterThan(0)
   })
 

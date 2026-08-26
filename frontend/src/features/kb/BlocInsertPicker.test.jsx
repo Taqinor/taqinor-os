@@ -84,9 +84,11 @@ describe('BlocInsertPicker — WIR250', () => {
     await user.click(screen.getByRole('button', { name: 'Insérer' }))
     expect(onApply).toHaveBeenCalledWith('avant|[réponse SAV]après')
 
+    // WIR250 (fix Fable) — `insererBloc()` réinitialise `choix` (setChoix(''))
+    // après insertion, désactivant « Supprimer » : il faut re-sélectionner le
+    // bloc avant de le supprimer, exactement comme le ferait un utilisateur.
+    await user.selectOptions(screen.getByLabelText('Choisir un bloc réutilisable'), '7')
     await user.click(screen.getByRole('button', { name: /Supprimer/ }))
-    // Le select se réinitialise après suppression : rien de sélectionné, mais
-    // la ligne des boutons persiste tant que la liste est chargée en mémoire.
     await waitFor(() => expect(kbApi.removeBloc).toHaveBeenCalledWith(7))
   })
 })
