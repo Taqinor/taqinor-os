@@ -1651,7 +1651,7 @@ class ElementRappelSerializer(serializers.ModelSerializer):
 
 
 # ── WIR275 (XQHS9) — registre des certifications + audits externes ─────────
-class CertificationSerializer(serializers.ModelSerializer):
+class CertificationQhseSerializer(serializers.ModelSerializer):
     """XQHS9 — certificat ISO/NM détenu. ``statut_calcule`` dérive l'état réel
     (expiré/à renouveler) à la date du jour, en lecture seule."""
     referentiel_display = serializers.CharField(
@@ -1670,7 +1670,7 @@ class CertificationSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['date_creation']
 
-    def get_statut_calcule(self, obj):
+    def get_statut_calcule(self, obj) -> str:
         return obj.statut_calcule()
 
     def validate_responsable(self, value):
@@ -1733,7 +1733,7 @@ class AuditPlanifieSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['audit', 'date_creation']
 
-    def get_independance_ok(self, obj):
+    def get_independance_ok(self, obj) -> bool:
         return obj.independance_ok()
 
     def validate_programme(self, value):
@@ -1783,7 +1783,7 @@ class ReunionQhseSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['date_creation']
 
-    def get_checklist_9_3_complete(self, obj):
+    def get_checklist_9_3_complete(self, obj) -> bool:
         return obj.checklist_9_3_complete()
 
 
@@ -1899,5 +1899,5 @@ class DiffusionProcedureSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
-    def get_nb_lus(self, obj):
+    def get_nb_lus(self, obj) -> int:
         return obj.accuses_lecture.filter(lu_le__isnull=False).count()

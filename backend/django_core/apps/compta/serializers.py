@@ -3581,10 +3581,10 @@ class EmpruntSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['date_creation']
 
-    def get_nb_echeances(self, obj):
+    def get_nb_echeances(self, obj) -> int:
         return obj.echeances.count()
 
-    def get_nb_echeances_postees(self, obj):
+    def get_nb_echeances_postees(self, obj) -> int:
         return obj.echeances.filter(posted=True).count()
 
     def validate_compte_capital(self, value):

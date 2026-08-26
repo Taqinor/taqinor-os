@@ -24,6 +24,8 @@
     access:inconnu, detail:texte, session:inconnu
 - frontend/src/api/adminopsApi.js :: listAnnonces -> /api/django/adminops/annonces
     non_lues:nombre, results:inconnu
+- frontend/src/api/adminopsApi.js :: listFacturationLicences -> /api/django/adminops/facturation-licences
+    results:inconnu, total_du_ttc:inconnu
 - frontend/src/api/adminopsApi.js :: sessionImpersonationActive -> /api/django/adminops/impersonation/session-active
     active:booleen, expire_le:inconnu, id:inconnu, message:texte, motif:inconnu, support_nom:inconnu
 - frontend/src/api/agricultureApi.js :: coutIrrigation -> /api/django/agriculture/campagnes/<>/cout-irrigation
@@ -182,6 +184,8 @@
     arpc:inconnu, client_id:inconnu, clv:inconnu, detail:texte, duree_vie_mois:inconnu, plafonnee:inconnu, used_fallback:inconnu
 - frontend/src/api/contratsApi.js :: getCohortesRetention -> /api/django/contrats/contrats/cohortes-retention
     cohortes:inconnu, mois_max:inconnu
+- frontend/src/api/contratsApi.js :: getMetriquesSaas -> /api/django/contrats/contrats/metriques-saas
+    arr_bridge:inconnu, detail:texte, quick_ratio:inconnu, rule_of_40:objet
 - frontend/src/api/contratsApi.js :: getMrrMouvements -> /api/django/contrats/contrats/mrr-mouvements
     churn:inconnu, churn_par_motif:inconnu, contraction:inconnu, debut:texte, detail:texte, expansion:inconnu, fin:texte, net:inconnu, net_par_responsable:inconnu, new:inconnu
 - frontend/src/api/contratsApi.js :: getReporting -> /api/django/contrats/contrats/reporting
@@ -190,6 +194,8 @@
     statut:inconnu, suivants:inconnu
 - frontend/src/api/contratsApi.js :: getTableauBord -> /api/django/contrats/contrats/tableau-de-bord
     a_renouveler:inconnu, actifs:inconnu, en_risque:inconnu, exceptions_facturation:inconnu, mrr:inconnu, mrr_combine:inconnu, mrr_par_responsable:inconnu, par_statut:inconnu, par_type:inconnu, total:inconnu, valeur_active:inconnu, valeur_totale:inconnu
+- frontend/src/api/contratsApi.js :: importerCompteursUsageCsv -> /api/django/contrats/compteurs-usage/import-csv
+    apercu:booleen, conflits:liste, detail:texte, ecrasements:nombre, ecraser:booleen, erreurs:liste, inserees:nombre, job_id:inconnu, mises_a_jour:nombre, refuses:liste
 - frontend/src/api/contratsApi.js :: penaliteSla -> /api/django/contrats/sla/<>/penalite
     penalite:texte, respecte:inconnu, taux_cible:texte, taux_realise:inconnu
 - frontend/src/api/contratsApi.js :: rejouerCycle -> /api/django/contrats/cycles-facturation/<>/rejouer
@@ -298,12 +304,16 @@
     alertes:inconnu, buckets:inconnu, horizon_jours:inconnu, nb_echu:nombre, nb_j15:nombre, nb_j30:nombre, nb_j7:nombre, nb_total:nombre, today:inconnu
 - frontend/src/api/flotteApi.js :: anomalies -> /api/django/flotte/cartes/anomalies
     anomalies:inconnu, nb_anomalies:nombre, nb_pleins:nombre, vehicule:texte, vehicule_id:inconnu
+- frontend/src/api/flotteApi.js :: divergencesPermis -> /api/django/flotte/conducteurs/divergences-permis
+    divergences:inconnu, nb_conducteurs_lies:inconnu, nb_divergences:nombre
 - frontend/src/api/flotteApi.js :: echeances -> /api/django/flotte/plans-entretien/echeances
     nb_due:inconnu, nb_plans:nombre, nb_upcoming:inconnu, plans:inconnu
 - frontend/src/api/flotteApi.js :: evaluer -> /api/django/flotte/zones-geographiques/evaluer
     alertes:inconnu, nb_alertes:nombre
 - frontend/src/api/flotteApi.js :: generer -> /api/django/flotte/echeances-entretien/generer
     echeances:inconnu, nb_creees:inconnu, nb_existantes:inconnu, nb_plans_due:inconnu
+- frontend/src/api/flotteApi.js :: importerReleve -> /api/django/flotte/cartes/<>/importer-releve
+    crees:inconnu, detail:texte, doublons:inconnu, erreurs:inconnu, nb_lignes:inconnu, non_rapprochees:inconnu
 - frontend/src/api/flotteApi.js :: masse -> /api/django/flotte/affectations/masse
     detail:texte, echecs:inconnu, reussies:inconnu
 - frontend/src/api/flotteApi.js :: ocr -> /api/django/flotte/pleins/ocr
@@ -316,6 +326,8 @@
     nb_vin_matches:inconnu, signalements_crees:liste
 - frontend/src/api/flotteApi.js :: rollout -> /api/django/flotte/plans-entretien/<>/rollout
     crees:inconnu, detail:texte, ignores:inconnu
+- frontend/src/api/flotteApi.js :: syntheseTva -> /api/django/flotte/pleins/synthese-tva
+    par_mois:inconnu, par_vehicule:inconnu, periode:liste, total_non_deductible:nombre, total_recuperable:nombre
 - frontend/src/api/flotteApi.js :: tableauBord -> /api/django/flotte/vehicules/tableau-bord
     couts:objet, echeances:objet, engins:objet, entretien:objet, pool:objet, today:inconnu, vehicules:objet
 - frontend/src/api/flotteApi.js :: vehiculeAmortissement -> /api/django/flotte/vehicules/<>/amortissement
@@ -334,6 +346,10 @@
     detail:texte, points:inconnu, variable:inconnu
 - frontend/src/api/gedApi.js :: comparerVersions -> /api/django/ged/documents/<>/comparer
     detail:texte, diff_texte:inconnu, message:texte, metadonnees:inconnu, texte_disponible:booleen
+- frontend/src/api/gedApi.js :: docqa -> /api/django/ged/documents/docqa
+    enabled:inconnu, results:inconnu
+- frontend/src/api/gedApi.js :: dossierPreuveArchivage -> /api/django/ged/archivages-legaux/<>/dossier-preuve
+    archive_le:inconnu, controles:liste, document:inconnu, hash_integrite_au_depot:inconnu, motif:inconnu
 - frontend/src/api/gedApi.js :: genererModele -> /api/django/ged/modeles-document/<>/generer
     created:inconnu, detail:texte, document:inconnu, document_nom:inconnu
 - frontend/src/api/gedApi.js :: getAnalytique -> /api/django/ged/analytique
@@ -348,12 +364,20 @@
     colonnes:inconnu, total:inconnu
 - frontend/src/api/gedApi.js :: leverLegalHold -> /api/django/ged/legal-holds/<>/lever
     detail:texte, leves:inconnu
+- frontend/src/api/gedApi.js :: ocrPiece -> /api/django/ged/documents/<>/ocr-piece
+    detail:inconnu, document:inconnu, metadonnees:inconnu, ocr_enabled:inconnu
+- frontend/src/api/gedApi.js :: officeOuvrir -> /api/django/ged/documents/<>/office-ouvrir
+    detail:texte, document_id:inconnu, editor_url:inconnu
 - frontend/src/api/gedApi.js :: purgerDocument -> /api/django/ged/documents/<>/purger
     detail:texte
+- frontend/src/api/gedApi.js :: scanLot -> /api/django/ged/documents/scan-lot
+    detail:texte, documents:inconnu, erreurs:inconnu, files:texte, folder:texte
 - frontend/src/api/gedApi.js :: semanticSearch -> /api/django/ged/documents/semantique
     mode:texte, results:inconnu
 - frontend/src/api/gedApi.js :: toggleFavoriDocument -> /api/django/ged/documents/<>/favori
     favori:booleen
+- frontend/src/api/gedApi.js :: verifierIntegriteArchives -> /api/django/ged/archivages-legaux/verifier-integrite
+    altere:nombre, indisponible:nombre, ok:nombre, total:nombre
 - frontend/src/api/gestionProjetApi.js :: autoAffecter -> /api/django/gestion-projet/affectations/auto-affecter
     creations:inconnu, deplacements:inconnu, detail:texte, non_resolues:inconnu, simule:booleen
 - frontend/src/api/gestionProjetApi.js :: copierSemaineAffectations -> /api/django/gestion-projet/affectations/copier-semaine
@@ -400,6 +424,8 @@
     debut:texte, detail:texte, fin:texte, lignes:liste
 - frontend/src/api/gestionProjetApi.js :: publierAffectations -> /api/django/gestion-projet/affectations/publier
     detail:texte, nb_deja_publiees:inconnu, nb_notifies:inconnu, nb_publiees:nombre
+- frontend/src/api/gestionProjetApi.js :: seedFeriesCalendrier -> /api/django/gestion-projet/calendriers/<>/seed-feries
+    annee:texte, crees:liste, fetes_mobiles_manquantes:inconnu, nb_crees:nombre, nb_deja_presents:inconnu
 - frontend/src/api/gestionProjetApi.js :: versTicketSav -> /api/django/gestion-projet/taches/<>/vers-ticket-sav
     detail:texte, ticket_reference:inconnu, ticket_sav_id:inconnu
 - frontend/src/api/hospitalityApi.js :: tableauBord -> /api/django/hospitality/tableau-bord
@@ -516,6 +542,8 @@
     nb_descendants:nombre
 - frontend/src/api/kbApi.js :: marquerLu -> /api/django/kb/articles/<>/marquer-lu
     lecteurs:inconnu, nombre:nombre
+- frontend/src/api/kbApi.js :: rapportConformiteArticle -> /api/django/kb/articles/<>/rapport-conformite
+    article:inconnu, lus:inconnu, non_lus:inconnu
 - frontend/src/api/kbApi.js :: resumeLecture -> /api/django/kb/articles/<>/resume-lecture
     lecteurs:inconnu, nombre:nombre
 - frontend/src/api/kbApi.js :: togglerFavori -> /api/django/kb/articles/<>/toggler-favori
@@ -856,6 +884,8 @@
     permissions:inconnu, routes:inconnu
 - frontend/src/api/rolesApi.js :: getPermissionsDisponibles -> /api/django/roles/permissions-disponibles
     permissions:inconnu
+- frontend/src/api/santeApi.js :: statistiques -> /api/django/sante/factures-sante/statistiques
+    par_acte:inconnu, par_convention:inconnu
 - frontend/src/api/savApi.js :: actionsGroupeesTickets -> /api/django/sav/tickets/actions-groupees
     echecs:inconnu, ids:texte, nb_echecs:nombre, nb_traites:nombre, operation:texte, priorite:texte, statut:texte, technicien:texte, traites:inconnu
 - frontend/src/api/savApi.js :: creerDevisTicket -> /api/django/sav/tickets/<>/creer-devis

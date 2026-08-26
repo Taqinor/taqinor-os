@@ -27,7 +27,8 @@ SÉCURITÉ — chaque endpoint exige ``IsPortalClientUser`` : portée EXACTEMENT
 passe ensuite par un sélecteur qui exige le triplet (société, client, id) : un
 document d'autrui est INTROUVABLE (404), jamais « trouvé puis refusé ».
 """
-from rest_framework import status, viewsets
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -218,6 +219,29 @@ class MesLivraisonsPortailViewSet(viewsets.ViewSet):
 
     permission_classes = [IsPortalClientUser]
 
+    @extend_schema(responses=inline_serializer(
+        name='MesLivraisonsPortail',
+        fields={
+            'results': serializers.ListField(child=inline_serializer(
+                name='MesLivraisonsPortailLigne',
+                fields={
+                    'id': serializers.IntegerField(),
+                    'reference': serializers.CharField(),
+                    'chantier_id': serializers.IntegerField(allow_null=True),
+                    'date_prevue': serializers.DateField(allow_null=True),
+                    'statut': serializers.CharField(),
+                    'statut_display': serializers.CharField(),
+                    'numero_suivi': serializers.CharField(allow_null=True),
+                    'articles': serializers.ListField(child=inline_serializer(
+                        name='MesLivraisonsPortailArticle',
+                        fields={
+                            'designation': serializers.CharField(),
+                            'quantite': serializers.FloatField(),
+                        })),
+                    'pod_disponible': serializers.BooleanField(),
+                    'pod_url': serializers.CharField(allow_null=True),
+                })),
+        }))
     def list(self, request):
         from apps.installations.selectors import livraisons_client_portail
         company, client_id = _scope(request)

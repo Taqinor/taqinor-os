@@ -227,7 +227,7 @@ class DevisSerializer(serializers.ModelSerializer):
     def get_version_parent_ref(self, obj):
         return obj.version_parent.reference if obj.version_parent_id else None
 
-    def get_a_variantes(self, obj):
+    def get_a_variantes(self, obj) -> bool:
         annote = getattr(obj, 'a_variantes_annote', None)
         if annote is not None:
             return bool(annote)

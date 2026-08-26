@@ -58,7 +58,7 @@ from .serializers import (
     AuditSerializer, AuditCertificationSerializer, AuditPlanifieSerializer,
     BilanCarboneSerializer, BordereauSuiviDechetSerializer,
     CampagneRappelSerializer, CauseIncidentSerializer,
-    CertificationSerializer, ClauseNormeSerializer, CodeDefautSerializer,
+    CertificationQhseSerializer, ClauseNormeSerializer, CodeDefautSerializer,
     ConformiteEnvironnementaleSerializer,
     ConsignationLotoSerializer, ContactUrgenceSerializer,
     ContexteOrganisationSerializer, ControleReceptionSerializer,
@@ -3276,7 +3276,7 @@ class CertificationViewSet(_QhseBaseViewSet):
     """Certificats ISO/NM détenus par l'entreprise (WIR275/XQHS9). Filtre
     optionnel ``?statut=``."""
     queryset = Certification.objects.all()
-    serializer_class = CertificationSerializer
+    serializer_class = CertificationQhseSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['id', 'date_expiration', 'statut', 'date_creation']
 

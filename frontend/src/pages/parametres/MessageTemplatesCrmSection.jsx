@@ -72,7 +72,7 @@ export default function MessageTemplatesCrmSection() {
     setApercu((a) => ({ ...a, [tpl.id]: { loading: true } }))
     try {
       const res = await crmApi.renderMessageTemplate(tpl.id, {
-        prenom: 'Jean', ville: 'Casablanca', lien: 'https://exemple.taqinor.ma',
+        prenom: 'Jean', ville: 'Casablanca', lien: 'https://exemple.invalid',
       })
       setApercu((a) => ({ ...a, [tpl.id]: { texte: res.data.texte } }))
     } catch {
