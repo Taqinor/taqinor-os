@@ -1961,6 +1961,69 @@ def _offres_tailles_publique(devis, data, est_residentiel):
         return None
 
 
+def _calepinage_options_publique(devis, offres_tailles, layout_public,
+                                 sld_servi, est_residentiel):
+    """CORRECTION #8 (ordre fondateur, 26/08/2026) — clé ``calepinage_options``
+    : le calepinage de CHAQUE option explorable (contrat
+    ``apps/ventes/contract_samples/calepinage_options.json``).
+
+    SOURCE DE VÉRITÉ UNIQUE : ``apps.ventes.calepinage_options``, un module de
+    GÉOMÉTRIE PURE qui dérive chaque dessin du calepinage RÉEL du devis — même
+    polygone, même orientation, même trame de rangées. Aucun toit n'est
+    fabriqué ici, et aucun panneau ne sort du contour : le test de contenance
+    porte sur une empreinte plus grande que le panneau réel, donc il refuse
+    plutôt qu'il n'accorde.
+
+    RIEN N'EST RECALCULÉ. Les comptes de panneaux viennent du bloc
+    ``offres_tailles`` DÉJÀ dérivé au-dessus ; le calepinage assaini vient du
+    ``_safe_roof_layout`` DÉJÀ calculé pour la clé racine ``roof_layout`` ; le
+    schéma unifilaire n'est pas re-rendu, on ne fait que NOMMER l'option qu'il
+    décrit. Aucune composition, aucun balayage, aucune conception électrique
+    sur ce chemin de lecture publique (règle #4 : lecture pure).
+
+    DEUX GARDES, ET ELLES SONT CELLES DES BLOCS VOISINS. ``est_residentiel``,
+    le même discriminant qu'``offres_tailles`` (sans tailles, il n'y a pas
+    d'options à dessiner) ; et la case de section ``roof3d`` — appliquée EN
+    AMONT par ``layout_public``, qui vaut déjà ``None`` quand le commercial a
+    décoché « Calepinage 3D ». Servi aux DEUX niveaux de partage, exactement
+    comme le calepinage officiel depuis la décision L-SECT du 24/08/2026.
+
+    Best-effort : le filet vit dans le module (il ne lève jamais), et l'import
+    paresseux garde la vue insensible à son absence."""
+    if not est_residentiel or not offres_tailles or not layout_public:
+        return None
+    try:
+        from .calepinage_options import calepinage_options_publique
+        return calepinage_options_publique(devis, offres_tailles,
+                                           layout_public,
+                                           sld_servi=bool(sld_servi))
+    except Exception:  # noqa: BLE001
+        logger.warning('calepinage_options indisponible', exc_info=True)
+        return None
+
+
+def _parametres_site_publics(devis, layout_public, hypotheses,
+                             conception_electrique):
+    """AUDIT #23 — clé ``parametres_site`` : ce que l'étude a RÉELLEMENT retenu
+    pour ce toit (mêmes notes de contrat que ci-dessus).
+
+    Pas de garde de mode : ce sont des paramètres de SITE (angles, source
+    d'irradiation, chaînes), vrais quel que soit le mode d'installation. Ce
+    sont les CHAMPS qui gardent : chacun est omis quand sa valeur n'est pas
+    stockée, et la clé entière disparaît quand plus rien n'est réel. Les
+    chaînes suivent la case « Schéma unifilaire » par construction (elles sont
+    lues sur ``conception_electrique``, déjà ``None`` quand elle est décochée),
+    et l'orientation suit la case « Calepinage 3D » (lue sur
+    ``layout_public``)."""
+    try:
+        from .calepinage_options import parametres_site_publics
+        return parametres_site_publics(devis, layout_public, hypotheses,
+                                       conception_electrique)
+    except Exception:  # noqa: BLE001
+        logger.warning('parametres_site indisponible', exc_info=True)
+        return None
+
+
 def _echelle_paliers_batterie_publique(devis, data, est_residentiel):
     """PACT10/PACT11 (« deux optimiseurs », lane P2-B, 25/08/2026) — clé
     ``paliers_batterie`` : l'échelle des paliers de capacité batterie (15/20
@@ -2391,6 +2454,19 @@ def proposal_data(request, token):
                 roof_url = roof_image_signed_url(data['roof_image_key'])
             except Exception:  # noqa: BLE001 — un rendu absent ne casse rien
                 roof_url = None
+        # CORRECTION #8 (26/08/2026) — les trois blocs ci-dessous étaient
+        # calculés EN LIGNE dans le littéral `payload`. Ils en sortent parce
+        # que le calepinage PAR OPTION les RÉUTILISE : il dérive ses dessins du
+        # calepinage assaini (jamais un second assainissement), et il nomme
+        # l'option décrite par le schéma unifilaire déjà rendu (jamais un
+        # second rendu). Le littéral plus bas sert exactement les mêmes
+        # objets — la charge utile est byte-identique.
+        _roof_layout_public = (_safe_roof_layout(devis)
+                               if _section_servie(link, 'roof3d') else None)
+        _sld_public = (_safe_sld_svg(devis, standard=est_standard)
+                       if _section_servie(link, 'sld') else None)
+        _conception_publique = (_conception_electrique_publique(devis, niveau)
+                                if _section_servie(link, 'sld') else None)
         payload = {
             # L-NIV — indique à la page CE niveau (elle n'a rien à deviner :
             # les dégradations sont posées ici, pas re-décidées côté client).
@@ -2425,10 +2501,7 @@ def proposal_data(request, token):
             # schéma unifilaire et le kit restent dégradés au niveau standard
             # exactement comme avant (voir sld_svg / conception_electrique /
             # l'agrégation kit ci-dessus).
-            'roof_layout': (
-                _safe_roof_layout(devis)
-                if _section_servie(link, 'roof3d') else None
-            ),
+            'roof_layout': _roof_layout_public,
             # PVUNI (fondateur, 18/08/2026) — LE CALEPINAGE NE COLLE PLUS AUX
             # LIGNES. La vue 3D montre le compte de panneaux pour lequel elle a
             # été jouée ; les lignes, elles, peuvent avoir bougé depuis (édition
@@ -2453,20 +2526,14 @@ def proposal_data(request, token):
             # (la page omet le bloc, elle sait déjà le faire sur un devis sans
             # conception électrique). Le détail `conception_electrique`
             # ci-dessous part avec elle : c'est LA MÊME section pour le client.
-            'sld_svg': (
-                _safe_sld_svg(devis, standard=est_standard)
-                if _section_servie(link, 'sld') else None
-            ),
+            'sld_svg': _sld_public,
             # Fondateur 2026-08-18 — le DÉTAIL ÉLECTRIQUE, exposé au client
             # SANS PRIX : chaînes (modules/MPPT), protections nominatives
             # (repère, désignation, calibre, quantité) et câbles (section,
             # longueur). Whitelist STRICTE (_PUBLIC_CHAINE/_PROTECTION/_CABLE) :
             # ni nomenclature d'achat, ni paramètres internes, ni montant.
             # None tant que la conception électrique (PV41) n'a pas été faite.
-            'conception_electrique': (
-                _conception_electrique_publique(devis, niveau)
-                if _section_servie(link, 'sld') else None
-            ),
+            'conception_electrique': _conception_publique,
             'option_totals': {
                 'sans_batterie': data.get('totaux_sans'),
                 'avec_batterie': data.get('totaux_avec'),
@@ -2724,6 +2791,29 @@ def proposal_data(request, token):
             if _section_servie(link, 'economies') else None)
         if _offres_tailles is not None:
             payload['offres_tailles'] = _offres_tailles
+        # CORRECTION #8 (ordre fondateur, 26/08/2026 — « add per option drawing
+        # of the pv ») — `calepinage_options` : le dessin de toiture de CHAQUE
+        # option, dérivé du calepinage RÉEL (même polygone, même trame). MÊME
+        # case de section que le calepinage officiel (`roof3d`) : décocher
+        # « Calepinage 3D » retire le calepinage ET tous les dessins par option
+        # ensemble — jamais un dessin d'option orphelin sur une page qui a
+        # masqué le calepinage. Contrat :
+        # apps/ventes/contract_samples/calepinage_options.json.
+        _calepinage_options = _calepinage_options_publique(
+            devis, _offres_tailles, _roof_layout_public,
+            _sld_public is not None, _resid_public)
+        if _calepinage_options is not None:
+            payload['calepinage_options'] = _calepinage_options
+        # AUDIT #23 — `parametres_site` : l'annexe « paramètres du site »
+        # (orientation/inclinaison du pan principal, source d'irradiation
+        # NOMMÉE, résumé des chaînes déjà publiques, ombrage seulement s'il a
+        # été MESURÉ). Des angles et des noms, jamais des coordonnées machine ;
+        # jamais un second arrondi du productible (il vit dans `hypotheses`).
+        _parametres_site = _parametres_site_publics(
+            devis, _roof_layout_public, payload.get('hypotheses'),
+            _conception_publique)
+        if _parametres_site is not None:
+            payload['parametres_site'] = _parametres_site
         # L-NIV-VU (24/08/2026) — la page peut enfin DIRE au client qu'elle est
         # simplifiée, mais SEULEMENT quand c'est vrai sur SON devis (liste
         # vide ⇒ rien d'affiché). Calculé en dernier : la charge utile est

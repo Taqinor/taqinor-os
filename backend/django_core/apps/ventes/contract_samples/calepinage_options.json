@@ -1,0 +1,158 @@
+{
+  "endpoint": "GET /api/django/public/proposal/<token>/data/",
+  "pourquoi": "CORRECTION #8 (ordre fondateur, 26/08/2026 — « add per option drawing of the pv ») — clé racine `calepinage_options` : le DESSIN DE TOITURE de CHAQUE option explorable (les trois tailles `offres_tailles`, chacune en `sans` / `avec`), pour que la vue de détail vivante bascule instantanément de calepinage quand le client change de carte. Le dessin d'une option n'est JAMAIS un toit fabriqué : il DÉRIVE du calepinage RÉEL du devis — même polygone, même orientation, même trame de rangées — en retirant des panneaux par la fin des rangées, ou en prolongeant les rangées À L'INTÉRIEUR du polygone réel. Clé additive et facultative : ABSENTE dès que le devis ne porte aucun calepinage exploitable (la page garde alors son poster/`roof_layout` d'aujourd'hui, comportement inchangé).",
+  "notes": {
+    "un_seul_format_de_dessin": "AUCUN second format de dessin n'est inventé. Le `layout` d'une option a EXACTEMENT la forme que la page sait déjà lire pour la clé racine `roof_layout` (`apps/web/src/lib/proposition.ts` `parseRoofLayout` → `RoofLayout {version, zones[]}`, puis `scripts/roofPro11/viewerFullModel.ts` `buildViewerFullPlan`) : la visionneuse 3D existante est rejouée telle quelle sur l'objet de l'option. Le backend ne rend AUCUN SVG de calepinage — il n'en a jamais rendu : le calepinage client EST la visionneuse WebGL, et `roof_image_url` reste la photo d'étude, pas un dessin.",
+    "origine_devis": "Quand le nombre de panneaux d'une option ÉGALE le nombre RÉELLEMENT POSÉ du calepinage du devis, l'option porte `origine = \"devis\"` et AUCUN `layout` : la page réutilise la clé racine `roof_layout`, déjà servie. Zéro copie, donc zéro dessin voisin qui pourrait diverger de l'artefact contractuel — même discipline que la carte `recommande` d'`offres_tailles`, qui REPREND les valeurs servies au lieu de les recalculer.",
+    "derivation": "Sinon `origine = \"derive\"` et `layout` porte le calepinage dérivé. La dérivation est GÉOMÉTRIQUE et déterministe, jamais un re-pavage : les centres de panneaux stockés (`zone.geometry.panels[].{cx,cy}`, mètres ENU dans le repère `origin`) sont projetés dans le repère (u = le long des rangées, v = dans le sens de la visée) reconstruit depuis `geometry.azimuthDeg` — LA MÊME convention que `lib/roofPro2.ts` (`f = [sin az, cos az]`, `u = [-f1, f0]`). Les rangées sont les paquets de même `v` ; l'ordre canonique est zone (ordre stocké) → rangée (`v` croissant) → panneau (`u` croissant).",
+    "retrait": "MOINS de panneaux ⇒ on RETIRE PAR LA FIN : dernière zone, dernière rangée, `u` le plus grand d'abord. Déterministe et rejouable — deux lectures de la même page donnent le même dessin. Aucun trou n'est rebouché : un emplacement vide du calepinage réel (la cheminée que le commercial a contournée) reste vide dans TOUS les dessins dérivés.",
+    "extension": "PLUS de panneaux ⇒ on PROLONGE la trame réelle À L'INTÉRIEUR du polygone réel : d'abord la fin de chaque rangée existante, puis son début, puis des rangées entières au-delà de la dernière/avant la première — au pas EXACT observé sur le calepinage (`colPitch` = plus petit écart de `u` dans une rangée, `rowPitch` = plus petit écart entre `v` de rangées voisines). Un emplacement candidat n'est retenu QUE si les quatre coins d'une empreinte CONSERVATRICE (colPitch × rowPitch, donc ≥ le panneau réel) tombent dans le contour `zone.vertices` au-delà du retrait de rive, ET hors du DÉGAGEMENT de tout obstacle. Jamais un panneau hors du polygone ; jamais un toit fabriqué.",
+    "plafond": "`plafonne = true` (présent seulement quand c'est vrai) dit que le toit RÉEL n'a pas pu accueillir tous les panneaux demandés : `nb_panneaux_dessines` est alors STRICTEMENT inférieur à `nb_panneaux`, et c'est le toit qui a tranché. Cas normal pour la taille `max` d'un devis dont le calepinage est déjà saturé (`offres_tailles.plafond_toit_panneaux` vaut alors ce même compte). Le test de contenance étant volontairement conservateur, un dessin peut plafonner un ou deux panneaux plus tôt que l'outil 3D — on préfère TOUJOURS dessiner moins que dessiner dehors.",
+    "placement_libre": "Une zone dont la pose a été faite À LA MAIN (`geometry.mode == \"free\"` côté builder) n'est JAMAIS prolongée : ses centres ne sont pas sur une trame, les rejouer sur une lattice détruirait le gain de place enregistré. Le retrait, lui, reste sûr (retirer un panneau ne déplace rien) et reste appliqué.",
+    "anticopie": "Les `layout` dérivés sont construits SUR LA SORTIE DÉJÀ ASSAINIE de `_safe_roof_layout` (whitelist QJ26/WJ24), jamais sur le blob brut : aucune clé nouvelle ne peut donc entrer par ici, et les CHAMPS sont filtrés un à un — zone, obstacle et panneau (la liste d'obstacles était le dernier endroit recopié en bloc : une sonde d'injection y a fait voyager un `prix_achat` niché). Les totaux du calepinage réel (`result`, `pans`) sont VOLONTAIREMENT ABSENTS d'un layout dérivé — ils décrivent l'installation vendue, pas la taille explorée ; les republier collerait les kWc/kWh du devis sur le dessin d'une autre taille. `geometry.count` est réestampillé au nombre réellement dessiné, `geometry.kwc` et `zone.neededPanels` sont retirés (des chiffres du devis, faux pour une autre taille).",
+    "niveau_de_partage": "MÊME dégradation que la clé racine `roof_layout`, à la lettre : ce bloc suit la case « Calepinage 3D » du dialogue d'envoi (`_section_servie(link, 'roof3d')`) et est servi AUX DEUX NIVEAUX quand elle est cochée — c'est la décision fondateur L-SECT du 24/08/2026 (« le client ne voit pas ses panneaux sur son toit »), qui a retiré l'omission au niveau « standard ». Décocher la case retire le calepinage officiel ET tous les dessins par option ensemble : jamais un dessin d'option orphelin sur une page qui a masqué le calepinage.",
+    "sld": "`sld` NOMME l'option que le schéma unifilaire DÉJÀ SERVI (`sld_svg`, racine) décrit — il n'en fabrique aucun autre. Le devis ne stocke qu'UNE conception électrique (`Devis.electrical_design`) ; le schéma d'une AUTRE taille exigerait une nouvelle conception, donc un CALCUL et une ÉCRITURE sur un chemin de lecture publique : interdit. LA VARIANTE EST LUE SUR L'ARTEFACT LUI-MÊME (`materiel.batterie.presente`), jamais déduite de la carte : déduire « avec batterie » du fait que la carte Recommandé sert une variante « avec » revenait à légender un dessin TECHNIQUE avec un signal COMMERCIAL, et les deux divergent dans les deux sens (lignes servant l'option mais conception jouée sans batterie ; artefact antérieur à une resynchronisation qui l'a retirée). Clé ABSENTE quand aucun schéma n'est servi, quand l'artefact ne dit pas ce qu'il dessine, quand la carte ne sert pas cette variante, ou quand la carte du devis n'est plus le devis (`est_le_devis` faux).",
+    "garde": "Best-effort, exactement comme `_echelle_paliers_batterie_publique` / `offres_tailles` : toute exception est journalisée (`logger.warning`) et la clé disparaît — un bloc additif ne fait jamais tomber la page d'un client. Gaté `est_residentiel` (même discriminant que `offres_tailles` : sans les tailles, il n'y a pas d'options à dessiner).",
+    "cout": "Endpoint NON CACHÉ : la dérivation ne rejoue NI composition, NI balayage, NI conception électrique. Elle LIT les comptes de panneaux déjà calculés par `offres_tailles` (passés en argument, jamais re-dérivés) et fait de la géométrie plane sur quelques dizaines de points. Un dessin identique à un autre (deux tailles au même compte) est calculé UNE fois et partagé.",
+    "degagement_obstacles": "PV61 — le calepineur n'exige pas seulement « hors du rectangle » : il refuse tout coin à moins de `clearance` du bord de l'obstacle (`estimatorBrainV2` : `pointInPolygon(c, o) || distToBoundary(c, o) <= cl`), et ce dégagement est PROPRE AU TYPE (`CLEARANCE_BY_TYPE` : 0,50 m pour une cheminée, un chien-assis ou un édicule ; 0,30 m sinon, y compris sans type). La dérivation applique la MÊME table. Et les axes suivent la source (`lib/obstacles.ts obstacleRing`) : `lengthM` est l'étendue NORD-SUD, `widthM` l'étendue EST-OUEST — les intervertir faisait pivoter la zone d'exclusion de 90° et laissait poser un panneau SUR une cheminée étroite.",
+    "pavage_mixte": "PV62 — une zone dont la pose est MIXTE (portrait/paysage choisis rangée par rangée, un réglage atteignable d'un clic) n'est JAMAIS prolongée. `_safe_zone_geometry` ne publie pas la pose par panneau : depuis la donnée assainie, un pavage mixte ressemble à un pavage uniforme, et le pas retenu serait le plus PETIT des deux — l'empreinte de validation deviendrait plus petite que le panneau réellement dessiné sur les rangées paysage, et la preuve de contenance ne couvrirait plus le rendu. La détection est arithmétique : sur une vraie lattice, chaque écart est un MULTIPLE ENTIER du pas (un TROU reste donc extensible ; deux pas différents, non). Le dessin plafonne.",
+    "zone_illisible": "`nb_panneaux_calepines` compte les panneaux de TOUTES les zones PUBLIées — pas seulement celles que la dérivation sait relire. Une zone publiée mais illisible ici (contour de moins de trois sommets valides) rendait le compte inférieur au dessin réel, avec deux mensonges symétriques à la clé : une taille égale au VRAI posé partait en dérivé et perdait silencieusement cette zone (la carte « c'est votre devis » divergeait du `roof_layout` racine), et une taille égale au sous-compte se faisait étiqueter `origine: \"devis\"` alors que le calepinage racine en dessine davantage. Désormais : l'ancre est le compte PUBLIÉ, et dès qu'une zone publiée est illisible AUCUNE autre taille ne reçoit de dessin (absence honnête) — la carte et son dessin ne peuvent plus se contredire."
+  },
+  "exemple": {
+    "calepinage_options": {
+      "nb_panneaux_calepines": 22,
+      "sld": {
+        "cle": "recommande",
+        "variante": "avec"
+      },
+      "offres": {
+        "eco": {
+          "sans": {
+            "nb_panneaux": 14,
+            "nb_panneaux_dessines": 14,
+            "origine": "derive",
+            "layout": {
+              "version": 2,
+              "zones": [
+                {
+                  "id": "z1",
+                  "label": "Pan Sud",
+                  "vertices": [
+                    [
+                      -7.5801,
+                      33.5698
+                    ],
+                    [
+                      -7.5798,
+                      33.5698
+                    ],
+                    [
+                      -7.5798,
+                      33.5701
+                    ],
+                    [
+                      -7.5801,
+                      33.5701
+                    ]
+                  ],
+                  "obstacles": [],
+                  "roofType": "pitched",
+                  "pitchDeg": 30,
+                  "facingAzimuthDeg": 180,
+                  "geometry": {
+                    "azimuthDeg": 180,
+                    "tiltDeg": 30,
+                    "family": "south",
+                    "flush": true,
+                    "count": 14,
+                    "origin": [
+                      -7.58,
+                      33.57
+                    ],
+                    "panels": [
+                      {
+                        "cx": -4.8,
+                        "cy": 2.3
+                      },
+                      {
+                        "cx": -2.4,
+                        "cy": 2.3
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          },
+          "avec": {
+            "nb_panneaux": 16,
+            "nb_panneaux_dessines": 16,
+            "origine": "derive",
+            "layout": {
+              "version": 2,
+              "zones": [
+                "… même forme, 16 panneaux …"
+              ]
+            }
+          }
+        },
+        "recommande": {
+          "sans": {
+            "nb_panneaux": 22,
+            "nb_panneaux_dessines": 22,
+            "origine": "devis"
+          },
+          "avec": {
+            "nb_panneaux": 22,
+            "nb_panneaux_dessines": 22,
+            "origine": "devis"
+          }
+        },
+        "max": {
+          "sans": {
+            "nb_panneaux": 26,
+            "nb_panneaux_dessines": 22,
+            "plafonne": true,
+            "origine": "derive",
+            "layout": {
+              "version": 2,
+              "zones": [
+                "… le toit réel, saturé à 22 …"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "parametres_site": {
+      "orientation_deg": 180,
+      "orientation": "Sud",
+      "inclinaison_deg": 30,
+      "type_toit": "pitched",
+      "irradiation": {
+        "source": "PVGIS",
+        "ville": "Casablanca"
+      },
+      "chaines": {
+        "nb": 2,
+        "modules_par_chaine": [
+          11,
+          11
+        ]
+      },
+      "ombrage": {
+        "mesure": true
+      }
+    }
+  },
+  "notes_parametres_site": {
+    "pourquoi": "AUDIT #23 — annexe « paramètres du site » : ce que l'étude a RÉELLEMENT retenu pour ce toit-là. Additive, entièrement facultative, et servie seulement si au moins un champ est réel.",
+    "omission": "TOUT champ est OMIS quand la valeur n'est pas stockée ou dérivable. Aucun défaut, aucun forfait : pas d'inclinaison « 30° par défaut », pas de « plein sud » supposé, et SURTOUT pas d'ombrage forfaitaire — `ombrage` n'apparaît QUE si une matrice d'ombrage MESURÉE (12 × 24, PV71) est stockée sur le calepinage sous la clé RÉELLE `shading12x24` — le nom que le producteur écrit (`roofPro11/prefill.ts`) et que `apps.ventes.etude` lit déjà, à la racine du layout OU sur une zone, et elle ne publie alors qu'un FAIT (`mesure: true`), jamais un pourcentage de perte agrégé qui serait un chiffre inventé.",
+    "pas_de_second_arrondi": "Le PRODUCTIBLE n'est PAS republié ici : il vit déjà dans `hypotheses.productible_net_kwh_kwc` / `hypotheses.productible_ville` (bloc QK4, servi à la racine). L'annexe ne fait que NOMMER la source (« PVGIS ») et la ville de la table — un second arrondi du même chiffre est exactement ce que l'incident « 21 contre 22 » interdit. `irradiation` est donc omis quand `hypotheses` ne porte pas de ville (devis hors table PVGIS, ou bloc retiré par la règle Z2).",
+    "anticopie": "Des ANGLES et des NOMS, jamais des coordonnées machine : ni `origin`, ni `vertices`, ni lat/lng, ni surface au m² — le contour reste dans `roof_layout`, sous sa propre case de section. `chaines` ne redit que ce que `conception_electrique.chaines` publie DÉJÀ aux deux niveaux (combien de chaînes, combien de modules sur chacune — jamais un calibre, jamais une section) et suit donc la MÊME case « Schéma unifilaire » : décochée ⇒ `chaines` absent.",
+    "orientation": "`orientation_deg`/`inclinaison_deg`/`type_toit` viennent du pan le PLUS PUISSANT du calepinage stocké (`_pans_geometry`, sinon la première zone) — la même lecture que `services.extract_roof_config`. Sans calepinage, les trois sont omis."
+  },
+  "exemple_absent": {
+    "commentaire": "Devis sans calepinage 3D, devis non résidentiel, section « Calepinage 3D » décochée, ou toute erreur de dérivation : `calepinage_options` n'est PAS dans le payload. La page rend alors exactement ce qu'elle rend aujourd'hui — le calepinage officiel s'il est servi, le poster sinon. `parametres_site` suit la même règle champ par champ : aucun champ réel ⇒ clé absente."
+  }
+}
