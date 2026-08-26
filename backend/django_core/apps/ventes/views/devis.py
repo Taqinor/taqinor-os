@@ -1988,8 +1988,47 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 {'detail': exc.message},
                 status=(status.HTTP_409_CONFLICT if exc.conflict
                         else status.HTTP_400_BAD_REQUEST))
-        return Response(
-            DevisSerializer(devis, context={'request': request}).data)
+        donnees = DevisSerializer(devis, context={'request': request}).data
+        donnees['credit_warning'] = self._credit_warning(devis)
+        return Response(donnees)
+
+    @staticmethod
+    def _credit_warning(devis):
+        """WIR187 (reprend NTCRD7/8) — état crédit du client APRÈS acceptation.
+
+        Le module crédit calculait déjà tout (limite, encours, mode de hold,
+        tolérance) mais l'écran de vente n'en voyait RIEN : un commercial
+        pouvait faire signer un client au-delà de sa limite sans que rien ne le
+        dise. La réponse d'acceptation porte donc désormais l'avertissement.
+
+        C'est un AVERTISSEMENT, jamais un verdict : le refus reste la garde
+        ``verifier_credit_hold`` plus haut (XFAC28), déjà appliquée avant
+        d'arriver ici. Lecture cross-app par le ``selectors.py`` de
+        ``apps.credit`` (jamais un import de ses models), en import
+        FONCTION-LOCAL — ``credit.selectors`` lit lui-même
+        ``ventes.selectors``, un import de module créerait un cycle.
+
+        Best-effort : le crédit ne doit JAMAIS casser une acceptation déjà
+        enregistrée. À défaut, on rend le contrat dans son état neutre
+        (``mode='aucun'``) plutôt qu'une clé absente que l'écran devrait
+        deviner. Contrat : ``apps/credit/contract_samples/credit_warning.json``.
+        """
+        neutre = {'mode': 'aucun', 'depassement': '0.00', 'disponible': None}
+        if devis.client_id is None:
+            return neutre
+        try:
+            from apps.credit.selectors import avertissement_credit
+            etat = avertissement_credit(devis.client, devis.total_ttc)
+        except Exception:  # noqa: BLE001 — jamais bloquant pour la vente
+            return neutre
+        disponible = etat.get('disponible')
+        return {
+            'mode': etat.get('mode') or 'aucun',
+            # Montants en TEXTE décimal (jamais un flottant) — même régime que
+            # les totaux du devis.
+            'depassement': str(etat.get('depassement') or 0),
+            'disponible': None if disponible is None else str(disponible),
+        }
 
     @staticmethod
     def _resolve_accepted_option(devis, data):
