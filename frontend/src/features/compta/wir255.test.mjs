@@ -35,8 +35,11 @@ test('EngagementsPage : bloc « Échéances sous N jours » (+CSV) sur les 2 pan
   assert.match(ENGAGEMENTS_SRC, /fetchFn={comptaApi\.retenuesGarantie\.echeances}/)
   assert.match(ENGAGEMENTS_SRC, /fetchFn={comptaApi\.cautionsBancaires\.echeances}/)
   // « Silencieux sans rôle » : une erreur laisse le bloc vide, jamais un toast.
+  // `\r?\n` (pas `\n` nu) — Git checkout ces .jsx en CRLF sur Windows (voir
+  // .gitattributes / autocrlf), un `\n` seul ne matcherait jamais la fin de
+  // la fonction sur ce genre de checkout.
   const bloc = ENGAGEMENTS_SRC.match(
-    /function EcheancesSousNJoursCard[\s\S]*?\n}\n/)[0]
+    /function EcheancesSousNJoursCard[\s\S]*?\r?\n}\r?\n/)[0]
   assert.match(bloc, /\.catch\(\(\) => setData\(null\)\)/)
   assert.match(bloc, /if \(!loading && !data\) return null/)
   assert.doesNotMatch(bloc.replace(/\/\/.*$/gm, ''), /toast\.error/)
