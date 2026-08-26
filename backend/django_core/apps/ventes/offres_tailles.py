@@ -245,51 +245,93 @@ def _materiel_de_composition(lignes, roles, substitutions=None):
     return materiel
 
 
-def _materiel_du_devis(devis):
-    """Le même bloc, lu sur les LIGNES RÉELLES du devis (carte Recommandé).
+def _materiel_du_devis(devis, variante):
+    """``(materiel, tout_classe)`` lu sur les LIGNES RÉELLES (carte Recommandé).
 
-    La carte Recommandé ne recompose rien : elle lit ce que le client achète.
-    Les lignes réservées à l'option SANS batterie (L-2OPT) sont exclues du
-    relevé batterie par construction (elles n'en portent pas).
+    La carte Recommandé ne recompose rien : elle lit ce que le client achète,
+    POUR LA VARIANTE DEMANDÉE (lignes communes + lignes de cette option).
+
+    ``tout_classe`` dit si CHAQUE ligne a pu être rattachée à un rôle
+    catalogue. À ``False``, l'appelant s'interdit de publier « ce qui change » :
+    une famille manquée côté référence ferait accuser les autres tailles d'un
+    ajout ou d'un retrait imaginaire.
     """
     from apps.ventes.dimensionnement import _lignes_produit_du_devis
-    from apps.ventes.services import (
-        _is_battery, _is_hybrid_inverter, _is_panel, _is_reseau_inverter)
 
-    detecteurs = (
-        ('panneau', 'panneau', _is_panel),
-        ('onduleur', 'onduleur_hybride', _is_hybrid_inverter),
-        ('onduleur', 'onduleur_reseau', _is_reseau_inverter),
-        ('batterie', 'batterie', _is_battery),
-    )
-    materiel, deja_vues = [], set()
+    admises = ('', 'sans') if variante == 'sans' else ('', 'avec')
+    materiel, deja_vues, tout_classe = [], set(), True
     for ligne in _lignes_produit_du_devis(devis):
+        # L-2OPT — LA VARIANTE DÉCIDE. Un devis à deux options porte les lignes
+        # des DEUX (onduleur réseau côté « sans », onduleur hybride + batterie
+        # côté « avec ») plus les lignes communes. Les lire toutes faisait
+        # nommer l'onduleur RÉSEAU sur la carte « avec » (première ligne
+        # rencontrée) et lister la BATTERIE sur la carte « sans » — deux
+        # descriptions fausses de la même page. C'est la discipline que
+        # ``_compter_modules_du_devis`` et ``facteur_remise_du_devis``
+        # appliquent déjà ; elle manquait ici.
+        if (getattr(ligne, 'variante', '') or '') not in admises:
+            continue
         designation = (getattr(ligne, 'designation', '') or '').strip()
         if not designation:
             continue
-        for famille, role, detecteur in detecteurs:
-            if famille in deja_vues:
-                continue
-            try:
-                reconnu = bool(detecteur(designation))
-            except Exception:  # noqa: BLE001 — un libellé exotique n'est pas
-                # une panne : il n'est simplement pas reconnu.
-                reconnu = False
-            if not reconnu:
-                continue
-            deja_vues.add(famille)
-            entree = {'role': role, 'famille': famille, 'modele': designation}
-            produit = getattr(ligne, 'produit', None)
-            marque = (getattr(produit, 'marque', '') or '').strip()
-            if marque:
-                entree['marque'] = marque
-            garantie = _garantie_ans(produit)
-            if garantie is not None:
-                entree['garantie_ans'] = garantie
-            materiel.append(entree)
-            break
+        role = _role_de_la_ligne(designation)
+        if role is None:
+            tout_classe = False
+            continue
+        famille = _FAMILLES.get(role)
+        if famille not in _FAMILLES_MATERIEL or famille in deja_vues:
+            continue
+        deja_vues.add(famille)
+        entree = {'role': role, 'famille': famille, 'modele': designation}
+        produit = getattr(ligne, 'produit', None)
+        marque = (getattr(produit, 'marque', '') or '').strip()
+        if marque:
+            entree['marque'] = marque
+        garantie = _garantie_ans(produit)
+        if garantie is not None:
+            entree['garantie_ans'] = garantie
+        materiel.append(entree)
     materiel.sort(key=lambda e: _ORDRE_MATERIEL.get(e['famille'], 9))
-    return materiel
+    return materiel, tout_classe
+
+
+def _role_de_la_ligne(designation):
+    """Le RÔLE catalogue d'une désignation de ligne, ou ``None``.
+
+    MÊME CLASSIFIEUR DES DEUX CÔTÉS. Les cartes Éco et Max lisent les rôles que
+    ``composition_residentielle`` a POSÉS sur sa composition ; la carte
+    Recommandé, elle, part de libellés de lignes. Utiliser ici une seconde
+    heuristique par mots-clés créait une ASYMÉTRIE DE SOURCE : une ligne
+    d'onduleur nommée hors convention n'était pas reconnue côté devis, et « ce
+    qui change » annonçait alors « Éco AJOUTE : onduleur » — une différence qui
+    n'existe pas. On appelle donc ``services.classer_produit``, LE classifieur
+    catalogue (le même que le générateur et la composition).
+
+    Les détecteurs par mots-clés ne servent plus que de REPLI, pour les
+    libellés qu'un classifieur strict laisse tomber (il exige « onduleur
+    hybride » ou « onduleur réseau/injection » explicites). ``None`` = la ligne
+    reste NON CLASSÉE : l'appelant le signale plutôt que de deviner.
+    """
+    from apps.ventes.services import (
+        _is_battery, _is_hybrid_inverter, _is_panel, _is_reseau_inverter,
+        classer_produit)
+
+    try:
+        role = classer_produit(designation)
+    except Exception:  # noqa: BLE001 — un libellé exotique n'est pas une panne
+        role = None
+    if role:
+        return role
+    for role_repli, detecteur in (('onduleur_hybride', _is_hybrid_inverter),
+                                  ('onduleur_reseau', _is_reseau_inverter),
+                                  ('panneau', _is_panel),
+                                  ('batterie', _is_battery)):
+        try:
+            if detecteur(designation):
+                return role_repli
+        except Exception:  # noqa: BLE001
+            continue
+    return None
 
 
 def _familles(materiel_ou_roles, roles=None):
@@ -332,20 +374,46 @@ def _diff_familles(familles, reference):
 # LES 25 ANS — sans hausse tarifaire supposée, et la page le DIT
 # ════════════════════════════════════════════════════════════════════════════
 
-def _cumul_25_ans(prix_ttc, economie_annuelle, *, avec_batterie):
-    """Les économies CUMULÉES sur l'horizon, ou ``None``.
+def _cumul_servi(data, variante, prix_ttc):
+    """Le cumul 25 ans de la carte Recommandé, LU SUR LA COURBE DE LA PAGE.
 
-    Source unique : ``quote_engine.pricing.compute_cashflow_payback`` — la
-    fonction qui porte DÉJÀ la dégradation des panneaux, le rendement
-    aller-retour de la batterie et la provision de remplacement d'onduleur.
-    ``TARIFF_ESCALATION`` y vaut ``0`` et n'est PAS touché ici : la projection
-    est à tarif PLAT, et la page sert le drapeau
-    ``escalade_tarifaire_pct`` pour pouvoir imprimer « aucune hausse tarifaire
-    supposée » AU-DESSUS du chiffre au lieu de laisser croire à une projection
-    optimiste.
+    ``data['cashflow_sans'|'cashflow_avec']`` EST la série cumulée que la page
+    et le PDF tracent déjà (``pricing`` la publie depuis ``cf['cumulative']``).
+    Son dernier point est la position nette à 25 ans ; y ré-ajouter le prix
+    donne les économies ENCAISSÉES sur l'horizon.
 
-    ``None`` dès qu'une entrée manque — jamais une projection sur un prix ou
-    une économie inventés.
+    POURQUOI ON NE LA RECALCULE PAS. ``pricing`` appelle
+    ``compute_cashflow_payback`` avec DEUX arguments de plus que la signature
+    par défaut : ``inverter_replace_cost`` (le prix TTC RÉEL de la ligne
+    onduleur, décision fondateur Q1 du 20/08) et ``battery_share`` (la part de
+    l'économie qui transite VRAIMENT par la batterie — Z5, même date). Sans
+    ``battery_share``, le moteur retombe sur l'abattement forfaitaire de 0,90
+    sur TOUTE l'économie : précisément le bug que le fondateur a fait corriger.
+    Recalculer ici « à peu près pareil » aurait donc affiché, sous la courbe de
+    la page, un total qui ne finit pas où la courbe finit.
+
+    ``None`` dès que la série manque — jamais une projection reconstituée.
+    """
+    serie = (data or {}).get('cashflow_%s' % variante)
+    if not isinstance(serie, (list, tuple)) or not serie or not prix_ttc:
+        return None
+    return round(_num(serie[-1]) + float(prix_ttc), 2)
+
+
+def _cumul_moteur(prix_ttc, economie_annuelle, *, stockage, part_batterie,
+                  cout_onduleur_ttc):
+    """Le cumul 25 ans d'une taille DÉRIVÉE — mêmes arguments que la page.
+
+    ``compute_cashflow_payback`` reçoit ici les DEUX arguments que
+    ``pricing.calculate_savings_roi`` lui passe pour le devis officiel, dérivés
+    de CETTE taille : la provision de remplacement d'onduleur (Q1 — le prix TTC
+    réel de SA ligne onduleur, jamais un pourcentage) et la part réellement
+    stockée (Z5 — sans elle, l'abattement de 0,90 frapperait aussi l'énergie
+    autoconsommée au fil du soleil, qui n'entre jamais dans la batterie).
+
+    ``TARIFF_ESCALATION`` reste à 0 et n'est pas touché : la projection est à
+    tarif PLAT, et le bloc sert ``escalade_tarifaire_pct`` pour que la page
+    imprime « aucune hausse tarifaire supposée » AU-DESSUS du chiffre.
     """
     if not prix_ttc or not economie_annuelle:
         return None
@@ -353,20 +421,57 @@ def _cumul_25_ans(prix_ttc, economie_annuelle, *, avec_batterie):
         from .quote_engine.pricing import compute_cashflow_payback
         resultat = compute_cashflow_payback(
             float(prix_ttc), float(economie_annuelle),
-            battery=bool(avec_batterie))
+            battery=bool(stockage), battery_share=part_batterie,
+            inverter_replace_cost=cout_onduleur_ttc)
     except Exception:  # noqa: BLE001 — un cumul indisponible s'omet
         logger.warning('cumul 25 ans indisponible', exc_info=True)
         return None
-    flux = (resultat or {}).get('cashflow') or []
-    if not flux:
+    cumul = (resultat or {}).get('cumulative') or []
+    if not cumul:
         return None
-    # LE CUMUL DES ÉCONOMIES (ce que le client encaisse sur l'horizon), pas le
-    # gain NET : le prix de l'installation est affiché juste au-dessus sur la
-    # MÊME carte, le soustraire une seconde fois dans le même bloc serait
-    # illisible. On somme donc les flux annuels — jamais ``cumulative[-1]``,
-    # qui part de ``-investissement`` et demanderait de ré-ajouter le prix
-    # (une soustraction puis une addition = deux occasions de se tromper).
-    return round(sum(_num(annee) for annee in flux), 2)
+    return round(_num(cumul[-1]) + float(prix_ttc), 2)
+
+
+def _part_batterie(annuel):
+    """La part de l'économie qui transite RÉELLEMENT par la batterie (Z5).
+
+    Formule REPRISE de ``pricing.calculate_savings_roi`` au caractère près :
+    le socle ``taux_autoconso_sans`` est autoconsommé DIRECTEMENT au fil du
+    soleil (aucune charge/décharge), seul le supplément apporté par la capacité
+    est stocké puis restitué. ``None`` quand les taux manquent — le moteur
+    retombe alors sur son propre défaut documenté.
+    """
+    avec = _num((annuel or {}).get('taux_autoconso_avec'))
+    sans = _num((annuel or {}).get('taux_autoconso_sans'))
+    if avec <= 0:
+        return None
+    return max(0.0, avec - sans) / avec
+
+
+def _cout_onduleur_ttc(lignes, roles, facteur_remise):
+    """Le prix TTC RÉEL des lignes onduleur d'une composition (Q1), ou ``None``.
+
+    C'est la provision de remplacement que le cashflow 25 ans retranche à
+    l'année :data:`~apps.ventes.quote_engine.pricing.INVERTER_REPLACE_YEAR`.
+    Décision fondateur du 20/08 : le prix RÉEL de la ligne, jamais un
+    pourcentage du total ; aucune ligne onduleur ⇒ AUCUNE provision (``None``),
+    jamais un forfait de repli.
+
+    Remisé comme le prix de la carte : les deux doivent partager une base.
+    """
+    total = 0.0
+    for index, ligne in enumerate(lignes or []):
+        role = roles[index] if index < len(roles or ()) else None
+        if role not in ('onduleur_reseau', 'onduleur_hybride'):
+            continue
+        quantite = _num(getattr(ligne, 'quantite', 0))
+        pu_ht = _num(getattr(ligne, 'prix_unitaire', 0))
+        tva = _num(getattr(getattr(ligne, 'produit', None), 'tva', None),
+                   defaut=-1.0)
+        facteur = 1.0 + (tva if tva >= 0 else float(_TVA_REPLI)) / 100.0
+        total += quantite * pu_ht * facteur
+    total *= float(facteur_remise or 1.0)
+    return round(total, 2) if total > 0 else None
 
 
 def _horizon_et_escalade():
@@ -535,13 +640,19 @@ def _champs_des_tailles(contexte, nb_panneaux_devis):
 # UNE CARTE — dérivée du moteur (Éco / Max) ou REPRISE du devis (Recommandé)
 # ════════════════════════════════════════════════════════════════════════════
 
-def _carte_moteur(contexte, nb_panneaux, config=None):
+def _carte_moteur(contexte, nb_panneaux, config=None, *, avec_servable=True):
     """Les deux variantes d'une taille, composées et chiffrées par le moteur.
 
     UN SEUL passage horaire pour les DEUX variantes : ``calculer_etude_horaire``
     rend ``economie_sans_mad`` ET ``economie_avec_mad``, les deux couvertures et
     les deux taux d'autoconsommation sur la MÊME intégration — deux appels
     séparés pourraient diverger d'un arrondi.
+
+    ``avec_servable=False`` court-circuite TOUT le chemin batterie (composition,
+    bornes de puissance, verdict de remplissage) : sans lui, un devis sans
+    option batterie composait puis balayait douze jours types pour JETER le
+    résultat — deux passages horaires gaspillés par taille, sur un endpoint
+    public non caché.
 
     Renvoie ``{'sans': carte|None, 'avec': carte|None}``.
     """
@@ -555,7 +666,9 @@ def _carte_moteur(contexte, nb_panneaux, config=None):
     # banque et le nom affiché doivent décrire LE MÊME produit. Les résoudre
     # trois fois séparément, c'est se donner trois occasions d'en oublier une
     # — et afficher le panneau du moteur au-dessus du prix du remplaçant.
-    substitutions = _resoudre_substitutions((config or {}).get('equipements'))
+    substitutions = _resoudre_substitutions(
+        (config or {}).get('equipements'),
+        company=(contexte.entrees or {}).get('company'))
 
     cible = None
     modules_demandes = (config or {}).get('batterie_nb_modules')
@@ -563,8 +676,9 @@ def _carte_moteur(contexte, nb_panneaux, config=None):
         cible = float(modules_demandes) * float(contexte.module_batterie_kwh)
 
     lignes_sans = contexte.composer(nb_panneaux, avec_batterie=False)
-    lignes_avec = contexte.composer(nb_panneaux, avec_batterie=True,
-                                    cible_kwh=cible)
+    lignes_avec = (contexte.composer(nb_panneaux, avec_batterie=True,
+                                     cible_kwh=cible)
+                   if avec_servable else None)
     if lignes_sans is None and lignes_avec is None:
         return {'sans': None, 'avec': None}
 
@@ -629,8 +743,14 @@ def _carte_moteur(contexte, nb_panneaux, config=None):
         _ajouter_taux(carte, annuel, variante)
         if production is not None:
             carte['production_annuelle_kwh'] = round(production, 2)
-        cumul = _cumul_25_ans(prix, economie,
-                              avec_batterie=(variante == 'avec'))
+        cumul = _cumul_moteur(
+            prix, economie,
+            stockage=bool(variante == 'avec' and capacite),
+            part_batterie=(_part_batterie(annuel) if variante == 'avec'
+                           else None),
+            cout_onduleur_ttc=_cout_onduleur_ttc(
+                lignes, list(getattr(lignes, 'roles', ()) or ()),
+                contexte.facteur_remise))
         if cumul is not None:
             carte['economies_cumulees_25_ans_mad'] = cumul
         if variante == 'avec':
@@ -781,13 +901,17 @@ def _banque(contexte, vue, capacite, compteurs, remplissage_ok=None,
     return banque
 
 
-def _resoudre_substitutions(equipements):
+def _resoudre_substitutions(equipements, company=None):
     """``{role: Produit}`` — les remplacements demandés, résolus UNE fois.
 
-    LA GARDE DE SOCIÉTÉ VIT DANS LE SÉRIALISEUR, pas ici : il a déjà refusé en
-    400 tout identifiant hors de la société du devis, et c'est LÀ que la
-    frontière multi-société doit se tenir (une garde recopiée finit par
-    diverger de son original). Cette fonction ne fait que retrouver le produit.
+    LA GARDE DE SOCIÉTÉ EST POSÉE PAR LE SÉRIALISEUR, qui refuse en 400 tout
+    identifiant hors de la société du devis : c'est LÀ que la frontière
+    multi-société se décide, et une garde recopiée finit par diverger de son
+    original. Le ``company`` accepté ici est une DÉFENSE EN PROFONDEUR, pas la
+    règle : il borne la lecture même si un jour une configuration entrait par
+    un autre chemin (une reprise de données, un import, un futur endpoint qui
+    oublierait le sérialiseur). Une configuration stockée hier reste par
+    ailleurs lisible longtemps après l'écriture qui l'a validée.
 
     Un identifiant devenu introuvable (produit supprimé depuis l'ajustement)
     est IGNORÉ : la taille garde le produit du moteur plutôt que de faire
@@ -800,9 +924,12 @@ def _resoudre_substitutions(equipements):
     par_role = {}
     for role, produit_id in (equipements or {}).items():
         try:
-            produit = Produit.objects.filter(pk=int(produit_id)).first()
+            requete = Produit.objects.filter(pk=int(produit_id))
         except (TypeError, ValueError):
             continue
+        if company is not None:
+            requete = requete.filter(company=company)
+        produit = requete.first()
         if produit is not None:
             par_role[role] = produit
     return par_role
@@ -906,12 +1033,9 @@ def _carte_du_devis(contexte, data, variante):
     if production is not None:
         carte['production_annuelle_kwh'] = round(production, 2)
 
-    etude_params = getattr(contexte.devis, 'etude_params', None) or {}
-    annuel = ((etude_params.get('etude_horaire') or {}).get('annuel')
-              if isinstance(etude_params.get('etude_horaire'), dict) else None)
-    _ajouter_taux(carte, annuel or {}, suffixe)
+    _ajouter_taux(carte, _annuel_frais(contexte.devis, kwc), suffixe)
 
-    cumul = _cumul_25_ans(prix, economie, avec_batterie=(variante == 'avec'))
+    cumul = _cumul_servi(data, suffixe, prix)
     if cumul is not None:
         carte['economies_cumulees_25_ans_mad'] = cumul
 
@@ -919,16 +1043,47 @@ def _carte_du_devis(contexte, data, variante):
         banque = _banque_du_devis(contexte, kwc)
         if banque:
             carte['batterie'] = banque
-    materiel = _materiel_du_devis(contexte.devis)
+    materiel, tout_classe = _materiel_du_devis(contexte.devis, variante)
     if materiel:
         carte['materiel'] = materiel
         familles = _familles(materiel)
-        if variante == 'sans':
-            familles = [f for f in familles if f != 'batterie']
         if familles:
             carte['familles'] = familles
+    # Champ PRIVÉ (préfixe ``_``), retiré avant de servir : il dit seulement si
+    # « ce qui change » a le droit de se prononcer contre cette référence.
+    carte['_familles_fiables'] = bool(tout_classe and materiel)
     _ajouter_toit(carte, contexte, nb_panneaux)
     return carte
+
+
+def _annuel_frais(devis, kwc):
+    """Le bloc horaire annuel de ce devis, SEULEMENT s'il est encore À JOUR.
+
+    LA GARDE ANTI-PÉRIMÉ (CJ2a) EST LA MÊME QUE PARTOUT AILLEURS. Le bloc
+    ``etude_params['etude_horaire']`` dit pour quelle puissance il a été
+    calculé ; ``pricing._lire_etude_horaire`` REFUSE de le rendre dès que le
+    devis ne fait plus cette puissance (tolérance ``_HORAIRE_TOLERANCE_KWC``),
+    parce que ses chiffres décrivent alors une AUTRE installation. Tous les
+    autres consommateurs passent par cette garde ; lire le bloc brut, comme je
+    le faisais, aurait fait afficher « couverture 61 % » à côté du prix d'un
+    devis redimensionné depuis — un chiffre précis et faux, la pire espèce.
+
+    ``{}`` quand la garde refuse : les deux taux sont alors simplement OMIS de
+    la carte (règle d'omission), jamais remplacés par une estimation.
+    """
+    from .quote_engine.pricing import _lire_etude_horaire
+
+    etude_params = getattr(devis, 'etude_params', None) or {}
+    bloc = etude_params.get('etude_horaire')
+    if not isinstance(bloc, dict):
+        return {}
+    try:
+        if _lire_etude_horaire(bloc, kwc) is None:
+            return {}
+    except Exception:  # noqa: BLE001 — un doute vaut une omission
+        logger.warning('fraîcheur du bloc horaire illisible', exc_info=True)
+        return {}
+    return bloc.get('annuel') or {}
 
 
 def _banque_du_devis(contexte, kwc):
@@ -1019,22 +1174,25 @@ def deriver(devis, data):
             continue
         champs_vus[signature] = cle
 
+        # HONNÊTETÉ, ET ELLE SE DÉCIDE AVANT DE CALCULER. La bascule « avec
+        # batterie » n'existe que si ce devis SERT réellement l'option
+        # (``variantes_servables`` — la capacité PHYSIQUE des lignes, pas le
+        # scénario déclaré) ; sinon la variante disparaît PARTOUT, CTA compris.
+        # Le drapeau descend jusqu'au calcul plutôt que de filtrer après coup :
+        # composer une banque puis balayer douze jours types pour JETER le
+        # résultat coûtait deux passages horaires par taille sur un endpoint
+        # public NON CACHÉ.
         if cle == 'recommande' and not ajuste:
-            cartes = {'sans': _carte_du_devis(contexte, data, 'sans'),
-                      'avec': _carte_du_devis(contexte, data, 'avec')}
+            cartes = {
+                'sans': _carte_du_devis(contexte, data, 'sans'),
+                'avec': (_carte_du_devis(contexte, data, 'avec')
+                         if avec_servable else None),
+            }
         else:
-            cartes = _carte_moteur(contexte, nb_panneaux, config)
+            cartes = _carte_moteur(contexte, nb_panneaux, config,
+                                   avec_servable=avec_servable)
         if cartes.get('sans') is None and cartes.get('avec') is None:
             continue
-
-        if not avec_servable:
-            # HONNÊTETÉ : la bascule « avec batterie » n'existe que si ce devis
-            # SERT réellement l'option (``variantes_servables`` — la capacité
-            # PHYSIQUE des lignes, pas le scénario déclaré). Sinon la variante
-            # disparaît PARTOUT, y compris de la configuration préremplie du
-            # CTA : proposer une banque sur un devis qui ne peut pas la servir
-            # serait une promesse que la composition ne tient pas.
-            cartes['avec'] = None
 
         offre = {
             'cle': cle,
@@ -1058,6 +1216,7 @@ def deriver(devis, data):
     # déduplication, qui, elle, priorisait le devis.
     offres.sort(key=lambda o: CLES.index(o['cle']))
     _poser_diff_familles(offres)
+    _retirer_champs_prives(offres)
 
     horizon, escalade = _horizon_et_escalade()
     bloc = {'avec_servable': bool(avec_servable), 'offres': offres}
@@ -1106,7 +1265,14 @@ def _config_publique(cartes, contexte):
 
 
 def _poser_diff_familles(offres):
-    """« Ce qui change » — familles seulement, et JAMAIS sur la référence."""
+    """« Ce qui change » — familles seulement, et JAMAIS sur la référence.
+
+    SE TAIT QUAND LA RÉFÉRENCE N'EST PAS SÛRE. Si une ligne du devis n'a pas pu
+    être rattachée à un rôle catalogue (``_familles_fiables`` faux), la liste
+    de familles de la référence est peut-être incomplète — et un « Éco ajoute :
+    onduleur » calculé contre une référence trouée serait une accusation
+    fausse. Mieux vaut aucune table de comparaison qu'une table qui ment.
+    """
     reference = next((o for o in offres if o['cle'] == 'recommande'), None)
     if reference is None:
         return
@@ -1115,12 +1281,31 @@ def _poser_diff_familles(offres):
             continue
         for variante in ('sans', 'avec'):
             carte = offre.get(variante)
-            base = (reference.get(variante) or {}).get('familles')
+            base_carte = reference.get(variante) or {}
+            base = base_carte.get('familles')
             if carte is None or not base or not carte.get('familles'):
+                continue
+            if base_carte.get('_familles_fiables') is False:
                 continue
             diff = _diff_familles(carte['familles'], base)
             if diff:
                 carte['familles_diff'] = diff
+
+
+def _retirer_champs_prives(offres):
+    """Retire les champs de travail ``_*`` — ils ne sortent JAMAIS du serveur.
+
+    Ils portent des décisions internes (la référence est-elle fiable ?), pas
+    des faits sur l'installation : les servir agrandirait le contrat public
+    d'un champ que personne n'a demandé et que la page devrait ignorer.
+    """
+    for offre in offres:
+        for variante in ('sans', 'avec'):
+            carte = offre.get(variante)
+            if not isinstance(carte, dict):
+                continue
+            for cle in [c for c in carte if str(c).startswith('_')]:
+                carte.pop(cle, None)
 
 
 def offres_tailles_publique(devis, data):
@@ -1191,8 +1376,7 @@ def enregistrer_config(devis, cle, config, *, utilisateur=None):
         'modifie_le': timezone.now().isoformat(),
         'modifie_par': getattr(utilisateur, 'pk', None),
     }
-    devis.offres_tailles_config = stockees
-    devis.save(update_fields=['offres_tailles_config'])
+    _ecrire_colonne(devis, stockees)
     return stockees
 
 
@@ -1210,6 +1394,29 @@ def regenerer_taille(devis, cle):
     if cle not in stockees:
         return stockees
     stockees.pop(cle, None)
-    devis.offres_tailles_config = stockees or None
-    devis.save(update_fields=['offres_tailles_config'])
+    _ecrire_colonne(devis, stockees or None)
     return stockees
+
+
+def _ecrire_colonne(devis, valeur):
+    """Écrit ``offres_tailles_config`` — CETTE COLONNE, ET RIEN D'AUTRE.
+
+    POURQUOI PAS ``devis.save(update_fields=…)``. ``Devis.save`` porte deux
+    effets de bord légitimes pour une vraie modification de devis, mais faux
+    pour une exploration :
+
+    * SCA47 — il DÉRIVE ET GÈLE ``prix_par_kwc`` (write-once) dès qu'un kWc et
+      un total existent. Enregistrer une taille aurait donc pu figer, au
+      passage, une colonne interne que rien dans ce geste ne concerne ;
+    * VX98 — ``updated_at`` (``auto_now``) aurait avancé, et la page aurait
+      affiché « modifié il y a N minutes » sur un devis dont AUCUNE ligne,
+      AUCUN total et AUCUN statut n'a bougé.
+
+    Un ``UPDATE`` d'une seule colonne rend donc VRAIE la promesse de ce module
+    (règle #4 : une taille est une exploration, le devis officiel ne bouge
+    pas) au lieu de se contenter de la déclarer. L'instance en mémoire est
+    resynchronisée pour que l'appelant relise ce qu'il vient d'écrire.
+    """
+    type(devis).objects.filter(pk=devis.pk).update(
+        offres_tailles_config=valeur)
+    devis.offres_tailles_config = valeur
