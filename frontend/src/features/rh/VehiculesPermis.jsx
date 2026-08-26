@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Plus, Square } from 'lucide-react'
+import { Plus, Square, AlertTriangle } from 'lucide-react'
 import { ListShell } from '../../ui/module'
 import {
   Segmented, Badge, toast, Button,
@@ -42,6 +42,9 @@ export default function VehiculesPermis() {
   const { confirm } = useConfirmDialog()
   const [vue, setVue] = useState('permis')
   const [permis, setPermis] = useState([])
+  // WIR241 — permis expirant sous 30 jours (bandeau + badge, rapprochement
+  // par id sur la liste déjà chargée — jamais un second calcul côté client).
+  const [permisExpirants, setPermisExpirants] = useState([])
   const [affectations, setAffectations] = useState([])
   const [employes, setEmployes] = useState([])
   const [vehicules, setVehicules] = useState([])
@@ -64,13 +67,15 @@ export default function VehiculesPermis() {
       rhApi.getAffectationsVehicule(),
       rhApi.getEmployes(),
       flotteApi.vehicules.list(),
+      rhApi.getPermisExpirantBientot(),
     ])
-      .then(([p, a, e, v]) => {
+      .then(([p, a, e, v, pe]) => {
         if (!vivant) return
         setPermis(unwrapList(p))
         setAffectations(unwrapList(a))
         setEmployes(unwrapList(e))
         setVehicules(unwrapList(v))
+        setPermisExpirants(unwrapList(pe))
       })
       .catch(() => {
         if (!vivant) return
@@ -87,6 +92,12 @@ export default function VehiculesPermis() {
     vehicules.forEach((v) => map.set(String(v.id), `${v.immatriculation || '—'} — ${v.marque || ''} ${v.modele || ''}`.trim()))
     return map
   }, [vehicules])
+
+  // WIR241 — rapprochement par id (jamais un recalcul de date côté client).
+  const permisExpirantsIds = useMemo(
+    () => new Set(permisExpirants.map((p) => p.id)),
+    [permisExpirants],
+  )
 
   const terminer = async (a) => {
     const ok = await confirm({
@@ -111,7 +122,16 @@ export default function VehiculesPermis() {
     { id: 'numero', header: 'Numéro', width: 140, accessor: (p) => p.numero || '', cell: (v) => v || '—' },
     { id: 'expiration', header: 'Expiration', width: 130, searchable: false, accessor: (p) => p.date_expiration || '', cell: (v) => (v ? formatDate(v) : '—') },
     { id: 'valide', header: 'État', width: 100, accessor: (p) => (p.valide ? 'valide' : 'expire'), cell: (_v, p) => <Badge tone={p.valide ? 'success' : 'danger'}>{p.valide ? 'Valide' : 'Expiré'}</Badge> },
-  ], [])
+    // WIR241 — sous 30 jours (rapprochement par id sur `getPermisExpirantBientot`,
+    // distinct du statut « Expiré » déjà dépassé ci-dessus).
+    {
+      id: 'alerte',
+      header: 'Alerte',
+      width: 140,
+      accessor: (p) => (permisExpirantsIds.has(p.id) ? 'expire-bientot' : ''),
+      cell: (_v, p) => (permisExpirantsIds.has(p.id) ? <Badge tone="warning">Expire bientôt</Badge> : '—'),
+    },
+  ], [permisExpirantsIds])
 
   const affectationColumns = useMemo(() => [
     { id: 'employe', header: 'Conducteur', width: 180, accessor: (a) => a.employe_nom || String(a.employe || ''), cell: (v) => <span className="font-medium">{v || '—'}</span> },
@@ -132,6 +152,16 @@ export default function VehiculesPermis() {
       </div>
 
       <Segmented options={VUES} value={vue} onChange={setVue} aria-label="Vue véhicules & permis" />
+
+      {/* WIR241 — bandeau 30 jours (fenêtre serveur par défaut). */}
+      {vue === 'permis' && permisExpirants.length > 0 && (
+        <div className="flex items-center gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm">
+          <AlertTriangle className="size-4 shrink-0 text-warning" aria-hidden="true" />
+          <span>
+            {permisExpirants.length} permis expirant sous 30 jours.
+          </span>
+        </div>
+      )}
 
       {vue === 'permis' ? (
         <ListShell

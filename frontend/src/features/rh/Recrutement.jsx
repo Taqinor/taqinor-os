@@ -88,6 +88,8 @@ export default function Recrutement() {
   // d'entretien.
   const [activiteFor, setActiviteFor] = useState(null)
   const [notationFor, setNotationFor] = useState(null)
+  // WIR241 — fusion d'une candidature doublon dans une autre.
+  const [fusionnerFor, setFusionnerFor] = useState(null)
 
   const recharger = () => {
     let vivant = true
@@ -404,6 +406,9 @@ export default function Recrutement() {
     if (!c.vivier) {
       actions.push({ id: 'vivier', label: 'Mettre au vivier', icon: Star, onClick: () => mettreAuVivier(c) })
     }
+    // WIR241 — dédup candidatures : fusionne CETTE candidature (source) dans
+    // une autre (cible) choisie par le recruteur.
+    actions.push({ id: 'fusionner', label: 'Fusionner dans…', icon: RotateCcw, onClick: () => setFusionnerFor(c) })
     return actions
   }
   // WIR196 — workflow YHIRE14 (brouillon → en_approbation → ouvert) +
@@ -575,6 +580,14 @@ export default function Recrutement() {
         <EntretiensNotationDialog
           candidature={notationFor}
           onClose={() => setNotationFor(null)}
+        />
+      )}
+      {fusionnerFor && (
+        <FusionnerCandidatureDialog
+          candidature={fusionnerFor}
+          candidatures={candidatures}
+          onClose={() => setFusionnerFor(null)}
+          onSaved={() => { setFusionnerFor(null); recharger() }}
         />
       )}
       {dotationOpen && (
@@ -1243,6 +1256,22 @@ function CandidatDialog({ ouvertures, onClose, onSaved }) {
   const [cv, setCv] = useState(null)
   const [saving, setSaving] = useState(false)
   const [serverError, setServerError] = useState(null)
+  // WIR241 — dédup à la saisie : avertissement NON bloquant (le doublon
+  // reste créable — c'est un signal pour le recruteur, jamais une garde).
+  const [doublons, setDoublons] = useState([])
+
+  useEffect(() => {
+    if (!email.trim() && !telephone.trim()) { setDoublons([]); return undefined }
+    let vivant = true
+    const t = setTimeout(() => {
+      rhApi.checkCandidatureDuplicates({
+        email: email.trim() || undefined, telephone: telephone.trim() || undefined,
+      })
+        .then((res) => { if (vivant) setDoublons(unwrap(res.data)) })
+        .catch(() => { if (vivant) setDoublons([]) })
+    }, 400)
+    return () => { vivant = false; clearTimeout(t) }
+  }, [email, telephone])
 
   // VX168 — garde de fermeture : dialogue de création, initial = tout vide.
   const dirty = Boolean(ouverture || nom || email || telephone || source || cv)
@@ -1315,6 +1344,12 @@ function CandidatDialog({ ouvertures, onClose, onSaved }) {
               <Input id="cd-telephone" value={telephone} onChange={(e) => setTelephone(e.target.value)} />
             </div>
           </div>
+          {/* WIR241 — avertissement NON bloquant : le doublon reste créable. */}
+          {doublons.length > 0 && (
+            <div className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-foreground">
+              Candidature(s) similaire(s) déjà au dossier : {doublons.map((d) => d.nom).join(', ')}.
+            </div>
+          )}
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="cd-source">Source (LinkedIn, ANAPEC, cooptation…)</Label>
             <Input id="cd-source" value={source} onChange={(e) => setSource(e.target.value)} />
@@ -1714,6 +1749,60 @@ function EntretienNoteRow({ entretien, onNoted }) {
       </div>
       <Input className="mt-2" value={commentaire} onChange={(e) => setCommentaire(e.target.value)} placeholder="Commentaire (optionnel)" />
     </li>
+  )
+}
+
+/* ── WIR241 — Fusionner une candidature (source) dans une autre (cible) ── */
+function FusionnerCandidatureDialog({ candidature, candidatures, onClose, onSaved }) {
+  const [cibleId, setCibleId] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [serverError, setServerError] = useState(null)
+
+  const autres = candidatures.filter((c) => c.id !== candidature.id)
+  const valide = Boolean(cibleId)
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!valide) return
+    setSaving(true)
+    setServerError(null)
+    try {
+      // WIR241 — la cible PORTE l'appel serveur (fusionner/), la source
+      // fusionnée y est passée dans le corps.
+      await rhApi.fusionnerCandidature(cibleId, { source: candidature.id })
+      toast.success('Candidatures fusionnées.')
+      onSaved?.()
+    } catch (err) {
+      const data = err?.response?.data
+      setServerError(data?.detail || 'Fusion impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose?.() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Fusionner « {candidature.nom} » dans…</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="fu-cible">Candidature cible</Label>
+            <select id="fu-cible" autoFocus value={cibleId} onChange={(e) => setCibleId(e.target.value)}
+              className="h-9 rounded-md border border-border bg-card px-3 text-sm">
+              <option value="">— Choisir —</option>
+              {autres.map((c) => <option key={c.id} value={c.id}>{c.nom} ({c.email || c.telephone || `#${c.id}`})</option>)}
+            </select>
+          </div>
+          {serverError && <p className="text-sm text-destructive" role="alert">{serverError}</p>}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
+            <Button type="submit" disabled={!valide || saving}>{saving ? 'Fusion…' : 'Fusionner'}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }
 

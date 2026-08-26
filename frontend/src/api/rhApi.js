@@ -330,6 +330,12 @@ const rhApi = {
     api.get(`/rh/candidatures/${id}/historique/`),
   noterCandidature: (id, data) =>
     api.post(`/rh/candidatures/${id}/noter/`, data ?? {}),
+  // WIR241 — dédup candidatures : avertissement NON bloquant à la saisie
+  // (`?telephone=&email=&exclude=`) + fusion d'une source dans une cible.
+  checkCandidatureDuplicates: (params) =>
+    api.get('/rh/candidatures/check-duplicates/', { params }),
+  fusionnerCandidature: (id, data) =>
+    api.post(`/rh/candidatures/${id}/fusionner/`, data ?? {}),
   // Statistiques recrutement (XRH22).
   getRecrutementStatistiques: (params) =>
     api.get('/rh/recrutement/statistiques/', { params }),
@@ -431,6 +437,10 @@ const rhApi = {
   // ── PACT81 — Permis de conduire (FG197) & affectations véhicule (FG198) ──
   getPermisConduire: (params) => api.get('/rh/permis-conduire/', { params }),
   createPermisConduire: (data) => api.post('/rh/permis-conduire/', data),
+  // WIR241 — permis de conduire expirant sous ?within= jours (défaut 30),
+  // exclut les permis sans échéance et déjà expirés.
+  getPermisExpirantBientot: (params) =>
+    api.get('/rh/permis-conduire/expirant-bientot/', { params }),
   getAffectationsVehicule: (params) =>
     api.get('/rh/affectations-vehicule/', { params }),
   createAffectationVehicule: (data) =>

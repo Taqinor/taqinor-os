@@ -7,7 +7,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
   Button, Label, Input, Textarea, confirmLeaveIfDirty,
 } from '../../ui'
-import { formatMAD, formatDate, formatPhoneMA, formatPercent } from '../../lib/format'
+import { formatMAD, formatDate, formatPhoneMA, formatPercent, formatNumber } from '../../lib/format'
 import { useSelector } from 'react-redux'
 import rhApi from '../../api/rhApi'
 import { openPdfInGesture } from '../../utils/pdfBlob'
@@ -55,6 +55,12 @@ const STATUT_BANDE = {
   sur_bande: 'Au-dessus de la bande',
 }
 
+/* WIR241 — XRH31 : mêmes bandes/tons que le top-5 de RhCockpit.jsx (jamais
+   dupliquées en logique, seulement en libellés — le scorer `core.attrition_risk`
+   reste l'unique source de vérité côté serveur). */
+const BAND_LABELS_ATTRITION = { faible: 'Faible', moyen: 'Moyen', 'élevé': 'Élevé' }
+const BAND_TONES_ATTRITION = { faible: 'success', moyen: 'warning', 'élevé': 'danger' }
+
 function Liste({ rows, loading, empty, renderRow }) {
   if (loading) {
     return (
@@ -99,6 +105,8 @@ export default function EmployeDetail() {
   const [formation, setFormation] = useState(null)
   const [integration, setIntegration] = useState(null)
   const [chatter, setChatter] = useState([])
+  // WIR241 — risque d'attrition (XRH31), échec non bloquant.
+  const [risqueAttrition, setRisqueAttrition] = useState(null)
   // WIR240 — composeur de note du chatter (fil déjà en lecture seule).
   const [noteEmploye, setNoteEmploye] = useState('')
   const [noteSaving, setNoteSaving] = useState(false)
@@ -149,6 +157,10 @@ export default function EmployeDetail() {
       rhApi.getAvantagesSociaux({ employe: id }),
       // ZRH15 — lignes de parcours du dossier.
       rhApi.getLignesParcours({ employe: id }),
+      // WIR241 — risque d'attrition (XRH31, scorer pur) : échec non bloquant
+      // (gate serveur IsResponsableOrAdmin — un rôle plus limité voit juste
+      // la bande absente, jamais un dossier cassé).
+      rhApi.getRisqueAttrition(id),
     ]
     if (canSalaires) {
       calls.push(rhApi.getRemunerations({ employe: id }))
@@ -158,7 +170,7 @@ export default function EmployeDetail() {
       if (!vivant) return
       const [
         docRes, habRes, formRes, intRes, chatRes, badgeRes, ecartRes,
-        ayantsRes, avantagesRes, parcoursRes, remRes, compaRes,
+        ayantsRes, avantagesRes, parcoursRes, risqueRes, remRes, compaRes,
       ] = results
       if (ecartRes.status === 'fulfilled') setEcarts(unwrap(ecartRes.value.data))
       if (ayantsRes.status === 'fulfilled') setAyantsDroit(unwrap(ayantsRes.value.data))
@@ -170,6 +182,8 @@ export default function EmployeDetail() {
       if (intRes.status === 'fulfilled') setIntegration(intRes.value.data)
       if (chatRes.status === 'fulfilled') setChatter(unwrap(chatRes.value.data))
       if (badgeRes.status === 'fulfilled') setBadgesRecus(unwrap(badgeRes.value.data))
+      // WIR241 — échec non bloquant (gate serveur ou features insuffisantes).
+      if (risqueRes.status === 'fulfilled') setRisqueAttrition(risqueRes.value.data)
       if (canSalaires && remRes?.status === 'fulfilled') {
         setRemunerations(unwrap(remRes.value.data))
       }
@@ -274,21 +288,39 @@ export default function EmployeDetail() {
   const estSorti = emp.statut === 'sorti'
 
   const identiteTab = (
-    <DefinitionList
-      items={[
-        { term: 'Matricule', description: emp.matricule || '—' },
-        { term: 'Nom complet', description: nomComplet || '—' },
-        { term: 'CIN', description: emp.cin || '—' },
-        { term: 'CNSS', description: emp.cnss || '—' },
-        { term: 'Situation familiale', description: emp.situation_familiale_display || '—' },
-        { term: 'Enfants', description: emp.nombre_enfants ?? '—' },
-        { term: 'Téléphone', description: emp.telephone ? formatPhoneMA(emp.telephone) : '—' },
-        { term: 'Email', description: emp.email || '—' },
-        { term: 'Contact d’urgence', description: emp.urgence_nom
-          ? `${emp.urgence_nom}${emp.urgence_lien ? ` (${emp.urgence_lien})` : ''}${emp.urgence_telephone ? ` — ${formatPhoneMA(emp.urgence_telephone)}` : ''}`
-          : '—' },
-      ]}
-    />
+    <div className="flex flex-col gap-4">
+      {/* WIR241 — bande de risque d'attrition (XRH31), même code tone que le
+          top-5 du cockpit RH ; absente si le rôle n'y a pas accès ou si le
+          scorer n'a rien à dire (jamais un chiffre inventé). */}
+      {risqueAttrition && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2 text-sm">
+          <span className="font-medium">Risque d’attrition</span>
+          <span className="flex items-center gap-2">
+            <span className="text-muted-foreground">
+              {formatNumber(risqueAttrition.score ?? 0, { decimals: 0 })}/100
+            </span>
+            <Badge tone={BAND_TONES_ATTRITION[risqueAttrition.band] ?? 'neutral'}>
+              {BAND_LABELS_ATTRITION[risqueAttrition.band] ?? risqueAttrition.band}
+            </Badge>
+          </span>
+        </div>
+      )}
+      <DefinitionList
+        items={[
+          { term: 'Matricule', description: emp.matricule || '—' },
+          { term: 'Nom complet', description: nomComplet || '—' },
+          { term: 'CIN', description: emp.cin || '—' },
+          { term: 'CNSS', description: emp.cnss || '—' },
+          { term: 'Situation familiale', description: emp.situation_familiale_display || '—' },
+          { term: 'Enfants', description: emp.nombre_enfants ?? '—' },
+          { term: 'Téléphone', description: emp.telephone ? formatPhoneMA(emp.telephone) : '—' },
+          { term: 'Email', description: emp.email || '—' },
+          { term: 'Contact d’urgence', description: emp.urgence_nom
+            ? `${emp.urgence_nom}${emp.urgence_lien ? ` (${emp.urgence_lien})` : ''}${emp.urgence_telephone ? ` — ${formatPhoneMA(emp.urgence_telephone)}` : ''}`
+            : '—' },
+        ]}
+      />
+    </div>
   )
 
   // XRH1 (essai) + XRH5 (déclaration d'entrée CNSS/AMO) — encarts d'action.

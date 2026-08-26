@@ -34,6 +34,8 @@ vi.mock('../../api/rhApi', () => {
       getHistoriqueEmploye: vi.fn(empty),
       // WIR240 — composeur de note du chatter.
       noterEmploye: vi.fn(() => Promise.resolve({ data: {} })),
+      // WIR241 — risque d'attrition (échec non bloquant si non gaté).
+      getRisqueAttrition: vi.fn(() => Promise.reject(new Error('403'))),
       getRemunerations: vi.fn(empty),
       getCompaRatio: vi.fn(() => Promise.resolve({ data: null })),
       // XRH15 — écarts de compétences (analyse d'écart requis-vs-actuel).
@@ -252,5 +254,30 @@ describe('EmployeDetail — offboarding (YHIRE2/ZRH12)', () => {
     ))
     // Rechargée du serveur : `getHistoriqueEmploye` est réappelé après l'envoi.
     await waitFor(() => expect(rhApi.getHistoriqueEmploye).toHaveBeenCalledTimes(2))
+  })
+
+  it('WIR241 — affiche la bande de risque d’attrition (XRH31) sans casser le dossier', async () => {
+    rhApi.getEmploye.mockResolvedValueOnce({
+      data: { id: 7, nom: 'Bennani', prenom: 'Youssef', matricule: 'M007', statut: 'actif' },
+    })
+    rhApi.getRisqueAttrition.mockResolvedValueOnce({
+      data: { employe_id: 7, score: 72, band: 'élevé', factors: [] },
+    })
+    renderDetail()
+    await screen.findByRole('heading', { name: 'Bennani Youssef' })
+
+    expect(await screen.findByText('Risque d’attrition')).toBeInTheDocument()
+    expect(screen.getByText('72/100')).toBeInTheDocument()
+    expect(screen.getByText('Élevé')).toBeInTheDocument()
+  })
+
+  it('WIR241 — un échec du scorer (403 non-responsable) laisse le dossier sain', async () => {
+    rhApi.getEmploye.mockResolvedValueOnce({
+      data: { id: 7, nom: 'Bennani', prenom: 'Youssef', matricule: 'M007', statut: 'actif' },
+    })
+    renderDetail()
+    await screen.findByRole('heading', { name: 'Bennani Youssef' })
+
+    expect(screen.queryByText('Risque d’attrition')).toBeNull()
   })
 })
