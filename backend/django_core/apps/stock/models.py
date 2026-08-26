@@ -2088,6 +2088,19 @@ class FicheTechnique(models.Model):
     bat_max_decharge_kw = models.DecimalField(
         max_digits=5, decimal_places=2, null=True, blank=True,
         help_text='Puissance de décharge maximale (kW), par pack.')
+    # BATHOMO (fondateur 26/08/2026) — « add it as parameter... for now keep
+    # it very high for 5kwh — maybe 200 ». Le PLAFOND fondateur du nombre de
+    # modules IDENTIQUES qu'une même banque peut empiler pour CE produit (une
+    # limite fabricant d'assemblage série/parallèle, jamais une limite
+    # inventée par le moteur). ``None`` = ILLIMITÉ (repli byte-identique à
+    # l'historique — aucun produit n'était borné avant ce champ). Une banque
+    # candidate qui exigerait plus de modules que cette limite est REJETÉE en
+    # sélection (``apps.ventes.services.composition_residentielle``), jamais
+    # tronquée à la limite (une banque tronquée n'atteindrait plus la cible).
+    bat_max_modules_par_banc = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text='Nombre MAXIMUM de modules identiques dans une même '
+                  "banque. Vide = illimité.")
 
     # ── PDF constructeur d'origine (optionnel) ──
     pdf = models.FileField(

@@ -10,15 +10,28 @@ modules de calibres différents ne s'équilibrent pas en banque). C'est ce
 mélange, composé côté serveur, qui a fait retirer le Dyness 10 kWh
 (``BAT-DEY-10``) du stock de production le 26/08/2026.
 
+FAIT RECALÉ (même session) : le fondateur n'a PAS archivé/supprimé le
+Dyness 10 kWh — il a mis sa QUANTITÉ DE STOCK à 0 via un mouvement de stock,
+et RIEN ne consultait le stock au chiffrage. Le correctif racine reste ici
+(banques toujours homogènes) ; la garde de STOCK et le choix ÉCONOMIQUE du
+calibre (au lieu d'une préférence fixe) sont couverts par
+``StockGatingBatterie`` et ``EconomieDeCalibreChoisitLeMoinsCher`` plus bas.
+
 CE QUE CES TESTS VERROUILLENT :
 1. Catalogue avec LES DEUX calibres (5 ET 10 kWh) : pour toute cible balayée,
    ``composition_residentielle`` ne compose JAMAIS les deux à la fois — au
    plus un des deux compteurs (``nb_batteries_5``/``nb_batteries_10``, lus
    par ``dimensionnement._compter_modules_batterie`` sur la composition
    réelle) est non nul.
-2. Catalogue avec SEULEMENT le calibre 5 kWh (l'état RÉEL du stock du
-   fondateur après le retrait du 10 kWh) : la composition continue de
-   fonctionner, en multiples de 5, sans jamais essayer le 10 kWh absent.
+2. Catalogue avec SEULEMENT le calibre 5 kWh (aucune ligne 10 kWh même
+   créée) : la composition continue de fonctionner, en multiples de 5, sans
+   jamais essayer le 10 kWh absent.
+3. Le calibre 10 kWh EXISTE mais son STOCK est à 0 (le cas RÉEL du
+   fondateur) : jamais composé ni laddéré tant que le stock reste à 0 —
+   redevient utilisable dès que le stock revient, sans redéploiement.
+4. Le choix entre calibres disponibles est ÉCONOMIQUE (prix TTC total le
+   plus bas, égalité tranchée par le moins de modules), plafonné par
+   ``bat_max_modules_par_banc`` — jamais une préférence de calibre fixe.
 
 Run :
     DB_NAME=erp_ventes python manage.py test \
@@ -160,10 +173,13 @@ class BanqueHomogeneCatalogueMixte(_Base):
         self.assertEqual((cinq, dix), (5, 0))
         self.assertAlmostEqual(vue['batterie_kwh'], 25.0, places=2)
 
-    def test_multiples_de_10_preferent_le_plus_gros_calibre(self):
+    def test_multiples_de_10_choisissent_le_calibre_le_moins_cher(self):
         """Sur un multiple EXACT de 10 (aucune perte quel que soit le
-        calibre), la préférence historique du simulateur — le plus gros
-        module d'abord — est CONSERVÉE : 10 kWh ⇒ 1×10, 20 kWh ⇒ 2×10."""
+        calibre), c'est L'ÉCONOMIE qui décide (fondateur 26/08/2026), plus
+        un ancien tie-break de calibre : avec ce fixture (10 kWh moins cher
+        au kWh que 5 kWh — 3 000 vs 3 200 HT/kWh), 10 kWh ⇒ 1×10, 20 kWh ⇒
+        2×10. Voir ``EconomieDeCalibreChoisitLeMoinsCher`` plus bas pour le
+        cas RÉEL du fondateur, où c'est le 5 kWh qui l'emporte."""
         self.assertEqual(self._compose(cible_kwh=10, kwc=40.0)[:2], (0, 1))
         self.assertEqual(self._compose(cible_kwh=20, kwc=40.0)[:2], (0, 2))
 
@@ -178,9 +194,10 @@ class BanqueHomogeneCatalogueMixte(_Base):
 
 
 class BanqueHomogeneCatalogueSeulement5(_Base):
-    """Catalogue portant SEULEMENT le 5 kWh — l'état RÉEL du stock du
-    fondateur depuis le retrait du Dyness 10 kWh (``BAT-DEY-10`` archivé,
-    cf. ``apps.stock.management.commands.seed_catalogue``)."""
+    """Catalogue portant SEULEMENT le 5 kWh — le cas d'un catalogue qui ne
+    référence tout simplement PAS de module 10 kWh (distinct du cas RÉEL du
+    fondateur, où ``BAT-DEY-10`` EXISTE mais son stock est à 0 — couvert par
+    ``StockGatingBatterie`` plus bas)."""
 
     slug = 'bathomo-5seul'
     BATTERIE_SKUS = ('5',)
@@ -253,16 +270,16 @@ class CalibreImposeSuitToujoursLeModuleDuDevis(_Base):
         self.assertFalse(cinq > 0 and dix > 0)
 
     def test_par_defaut_sans_calibre_impose_comportement_inchange(self):
-        """``module_kwh`` absent (défaut) : le tie-break historique
-        (plus gros calibre d'abord) décide toujours seul — aucune régression
-        pour les appelants existants qui ne connaissent pas encore ce
-        paramètre (ex. le devis automatique)."""
+        """``module_kwh`` absent (défaut) : le choix ÉCONOMIQUE décide seul
+        (10 kWh moins cher au kWh sur ce fixture, cf. la classe mixte
+        ci-dessus) — aucune régression pour les appelants existants qui ne
+        connaissent pas encore ce paramètre (ex. le devis automatique)."""
         self.assertEqual(self._compose(cible_kwh=20, kwc=40.0)[:2], (0, 2))
 
 
 class CalibreImposeCatalogueSeulement5(_Base):
-    """Le catalogue RÉEL du fondateur (10 kWh archivé) : imposer 5 EST déjà
-    le seul chemin possible, et imposer 10 (absent) ne casse rien."""
+    """Un catalogue qui ne référence PAS de module 10 kWh : imposer 5 EST
+    déjà le seul chemin possible, et imposer 10 (absent) ne casse rien."""
 
     slug = 'bathomo-impose-5seul'
     BATTERIE_SKUS = ('5',)
@@ -271,3 +288,153 @@ class CalibreImposeCatalogueSeulement5(_Base):
         cinq, dix, vue = self._compose(cible_kwh=30, kwc=40.0, module_kwh=10)
         self.assertEqual((cinq, dix), (6, 0))
         self.assertAlmostEqual(vue['batterie_kwh'], 30.0, places=2)
+
+
+class EconomieDeCalibreChoisitLeMoinsCher(_Base):
+    """Prix RÉELS du fondateur (catalogue de production — 5 kWh = 14 000 TTC,
+    10 kWh = 30 000 TTC, HT dérivé à 20 % comme ``seed_catalogue.ht()``).
+
+    « 2×5=28 000 beats 1×10=30 000 for a 10 kWh target » (fondateur,
+    26/08/2026) : c'est le calibre le MOINS CHER (prix TTC total) qui gagne
+    — jamais une préférence de taille fixe. Avec CE catalogue réel, le 5 kWh
+    est moins cher au kWh (2 333,33/kWh HT contre 2 500/kWh HT pour le
+    10 kWh) : c'est donc lui qui l'emporte à CHAQUE cible, jusqu'à 30-40 kWh
+    (6-8 packs) — exactement le scénario que ce correctif devait permettre."""
+
+    slug = 'bathomo-eco-reel'
+    BATTERIE_SKUS = ('5', '10')
+
+    def setUp(self):
+        super().setUp()
+        # HT dérivé du TTC fondateur à 20 % (même formule que le seeder) —
+        # ``tva`` posé EXPLICITEMENT pour que le calcul TTC de la sélection
+        # ne dépende pas du repli ``taux_tva`` du devis.
+        Produit.objects.filter(pk=self.produits['BAT5'].pk).update(
+            prix_vente=Decimal('11666.67'), tva=Decimal('20.00'))
+        Produit.objects.filter(pk=self.produits['BAT10'].pk).update(
+            prix_vente=Decimal('25000.00'), tva=Decimal('20.00'))
+
+    def test_10_kwh_choisit_deux_modules_5_moins_cher_qu_un_module_10(self):
+        """LE SCÉNARIO EXACT DU FONDATEUR : 2×5 kWh (≈28 000 TTC) bat 1×10 kWh
+        (30 000 TTC) pour une cible de 10 kWh."""
+        cinq, dix, vue = self._compose(cible_kwh=10, kwc=40.0)
+        self.assertEqual((cinq, dix), (2, 0))
+        self.assertAlmostEqual(vue['batterie_kwh'], 10.0, places=2)
+
+    def test_jusqu_a_40_kwh_le_5_kwh_reste_le_moins_cher(self):
+        """« we can go up to 30 or 40 kWh using 5 kWh batteries, no problem » —
+        le 5 kWh reste le calibre économique sur toute l'échelle, jusqu'à
+        8 packs, sans jamais glisser vers le 10 kWh."""
+        for cible in (15, 20, 25, 30, 35, 40):
+            with self.subTest(cible_kwh=cible):
+                cinq, dix, vue = self._compose(cible_kwh=cible, kwc=80.0)
+                self.assertEqual(dix, 0, cible)
+                self.assertEqual(cinq * 5, cible)
+                self.assertAlmostEqual(vue['batterie_kwh'], float(cible), places=2)
+
+
+class StockGatingBatterie(_Base):
+    """BATHOMO — LE bug réel : le fondateur avait mis ``BAT-DEY-10`` à 0 en
+    stock (un mouvement de stock, jamais un archivage) et RIEN ne consultait
+    le stock au chiffrage. Un module à 0 en stock est désormais EXCLU du
+    vivier — même traitement qu'un module hors plage de tension."""
+
+    slug = 'bathomo-stock0'
+    BATTERIE_SKUS = ('5', '10')
+
+    def test_calibre_a_stock_zero_jamais_compose(self):
+        Produit.objects.filter(pk=self.produits['BAT10'].pk).update(
+            quantite_stock=0)
+        for cible in (10, 20, 30):
+            with self.subTest(cible_kwh=cible):
+                cinq, dix, _vue = self._compose(cible_kwh=cible, kwc=40.0)
+                self.assertEqual(dix, 0, 'le 10 kWh est à stock 0')
+                self.assertGreater(cinq, 0)
+
+    def test_calibre_a_stock_zero_meme_impose_ne_le_compose_pas(self):
+        """Un pin vers un calibre à stock 0 ne peut PAS le composer quand
+        même — repli sur les calibres restants."""
+        Produit.objects.filter(pk=self.produits['BAT10'].pk).update(
+            quantite_stock=0)
+        cinq, dix, _vue = self._compose(cible_kwh=20, kwc=40.0, module_kwh=10)
+        self.assertEqual(dix, 0)
+        self.assertGreater(cinq, 0)
+
+    def test_zero_batterie_en_stock_avec_devient_non_servable(self):
+        """AUCUN module en stock : la composition part SANS aucune ligne
+        batterie (jamais fabriquée) et le DIT via le canal d'avertissements
+        — c'est cette absence de ligne qui rend l'option « avec » non
+        servable en aval (``has_batterie``/``avec_ok``,
+        quote_engine/builder.py : ``has_batterie = _has_qty(avec_items,
+        _is_battery)``), sans aucune machinerie neuve à câbler ici."""
+        Produit.objects.filter(
+            pk__in=[self.produits['BAT5'].pk, self.produits['BAT10'].pk],
+        ).update(quantite_stock=0)
+        avertissements = []
+        produits = services.catalogue_de_la_societe(self.company)
+        lignes = services.composition_residentielle(
+            produits, kwc=40.0, panel_watt=550, nb_panneaux=72,
+            avec_batterie=True, batterie_cible_kwh=20,
+            avertissements=avertissements)
+        self.assertFalse(any(
+            'batterie' in (li.designation or '').lower() for li in lignes))
+        self.assertTrue(avertissements)
+
+    def test_stock_restaure_redevient_composable_automatiquement(self):
+        """« when it comes back, use it for bigger installations » : remettre
+        le stock à un nombre positif suffit — aucun redéploiement, aucune
+        intervention catalogue (le seeder ne force plus jamais son statut,
+        cf. le commit precedent de ce meme lot)."""
+        Produit.objects.filter(pk=self.produits['BAT10'].pk).update(
+            quantite_stock=0)
+        _cinq_avant, dix_avant, _vue = self._compose(cible_kwh=10, kwc=40.0)
+        self.assertEqual(dix_avant, 0)
+
+        Produit.objects.filter(pk=self.produits['BAT10'].pk).update(
+            quantite_stock=50)
+        cinq_apres, dix_apres, _vue = self._compose(cible_kwh=10, kwc=40.0)
+        # Stock retrouvé : l'économie retrouve son verdict normal sur ce
+        # fixture (10 kWh moins cher au kWh — cf. EconomieDeCalibreChoisit...
+        # pour le cas RÉEL du fondateur où c'est l'inverse).
+        self.assertEqual((cinq_apres, dix_apres), (0, 1))
+
+
+class MaxModulesParBancRejette(_Base):
+    """``bat_max_modules_par_banc`` (fondateur 26/08/2026, « add it as
+    parameter... for now keep it very high for 5kwh — maybe 200 ») : une
+    candidate qui EXIGERAIT plus de modules que ce plafond est REJETÉE,
+    jamais tronquée à la limite (une banque tronquée n'atteindrait plus la
+    cible)."""
+
+    slug = 'bathomo-maxmod'
+    BATTERIE_SKUS = ('5', '10')
+
+    def setUp(self):
+        super().setUp()
+        FicheTechnique.objects.filter(
+            produit=self.produits['BAT5']).update(
+                bat_max_modules_par_banc=2)
+
+    def test_limite_2_sur_5_kwh_20_kwh_choisit_2x10_jamais_4x5_jamais_mixte(self):
+        """20 kWh exigerait 4×5 (au-dessus du plafond 2) : REJETÉ — seul le
+        10 kWh (2×10, sans plafond) reste, et c'est lui qui est composé."""
+        cinq, dix, vue = self._compose(cible_kwh=20, kwc=40.0)
+        self.assertEqual((cinq, dix), (0, 2))
+        self.assertAlmostEqual(vue['batterie_kwh'], 20.0, places=2)
+
+    def test_sous_le_plafond_le_5_kwh_reste_eligible_seul_candidat(self):
+        """10 kWh (2×5, AU plafond mais pas au-dessus) reste une candidate
+        valide quand c'est la seule disponible — seul le DÉPASSEMENT est
+        rejeté, jamais la limite elle-même."""
+        Produit.objects.filter(pk=self.produits['BAT10'].pk).update(
+            quantite_stock=0)
+        cinq, dix, vue = self._compose(cible_kwh=10, kwc=40.0)
+        self.assertEqual((cinq, dix), (2, 0))
+        self.assertAlmostEqual(vue['batterie_kwh'], 10.0, places=2)
+
+    def test_calibre_impose_au_dela_du_plafond_replie_sur_l_autre_calibre(self):
+        """Un pin vers 5 kWh dont le plafond interdit la seule candidate
+        possible (20 kWh ⇒ 4 modules > 2) retombe sur le choix économique
+        parmi les AUTRES calibres — jamais une banque vide."""
+        cinq, dix, _vue = self._compose(cible_kwh=20, kwc=40.0, module_kwh=5)
+        self.assertEqual((cinq, dix), (0, 2))

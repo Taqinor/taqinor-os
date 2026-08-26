@@ -486,6 +486,10 @@ class TestSeedCatalogue(TestCase):
         self.assertEqual(f5.bat_dod_pct, Decimal('90.0'))
         self.assertEqual(f5.bat_v_nominal, Decimal('51.2'))
         self.assertEqual(f5.bat_max_charge_kw, Decimal('3.84'))
+        # BATHOMO (fondateur 26/08/2026) — « add it as parameter... for now
+        # keep it very high for 5kwh — maybe 200 » : la valeur EXPLICITEMENT
+        # fondateur ship sur le 5 kWh, jamais sur le 10 kWh (non déclaré).
+        self.assertEqual(f5.bat_max_modules_par_banc, 200)
         self.assertIn('Modèle supposé : Dyness DL5.0C', b5.description)
         # L-DECH — décharge SOURCÉE datasheet DL5.0C (20250228-EN) :
         # « Charge 75 A / Discharge 100 A » ⇒ 100 A × 51,2 V = 5,12 kW. La
@@ -503,6 +507,26 @@ class TestSeedCatalogue(TestCase):
         # dans les deux sens, et la règle générale du fondateur (100 A × ~52 V)
         # est confirmée à l'ampère près.
         self.assertEqual(f10.bat_max_decharge_kw, Decimal('5.12'))
+        # Aucune valeur fondateur déclarée pour le 10 kWh — jamais un défaut
+        # inventé, le champ reste vide (illimité).
+        self.assertIsNone(f10.bat_max_modules_par_banc)
+
+    def test_bathomo_max_modules_par_banc_comble_jamais_ecrase(self):
+        """Migration stock 0132 — comble UNIQUEMENT le champ VIDE, depuis le
+        MÊME dictionnaire ``FICHES_TECHNIQUES`` que le seeder (aucune valeur
+        recopiée à la main). Une saisie fondateur DIVERGENTE n'est jamais
+        touchée, même par un run nu du seeder (même garde que PV85/L-DECH)."""
+        from apps.stock.models import FicheTechnique
+        seed(self.company)
+        b5 = Produit.objects.get(company=self.company, sku='BAT-DEY-5')
+        fiche = FicheTechnique.objects.get(produit=b5)
+        self.assertEqual(fiche.bat_max_modules_par_banc, 200)
+
+        fiche.bat_max_modules_par_banc = 5
+        fiche.save(update_fields=['bat_max_modules_par_banc'])
+        seed(self.company)  # redéploiement, sans --reappliquer-fiches
+        fiche.refresh_from_db()
+        self.assertEqual(fiche.bat_max_modules_par_banc, 5)
 
     def test_ldech_port_batterie_des_hybrides_seede_par_datasheet(self):
         """L-DECH — le PORT BATTERIE des cinq hybrides Deye, sourcé colonne par

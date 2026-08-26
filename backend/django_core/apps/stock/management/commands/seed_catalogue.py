@@ -1285,6 +1285,11 @@ FICHES_TECHNIQUES = {
         # un pic de quinze secondes ne borne pas une rafale de trente minutes,
         # c'est le CONTINU qui fait foi ici.
         'bat_max_decharge_kw': Decimal('5.12'),
+        # BATHOMO (fondateur 26/08/2026) — « add it as parameter... for now
+        # keep it very high for 5kwh — maybe 200 » : valeur EXPLICITEMENT
+        # fondateur, pas une limite fabricant sourcée. Migration stock 0132
+        # recale les bases existantes (comble seulement si vide).
+        'bat_max_modules_par_banc': 200,
     },
     'BAT-DEY-10': {
         'type_fiche': 'batterie',

@@ -1548,6 +1548,9 @@ class FicheTechniqueSerializer(serializers.ModelSerializer):
             'ond_bat_max_charge_kw', 'ond_bat_max_decharge_kw',
             'bat_kwh_nominal', 'bat_kwh_usable', 'bat_dod_pct',
             'bat_v_nominal', 'bat_max_charge_kw', 'bat_max_decharge_kw',
+            # BATHOMO (2026-08-26) — plafond fondateur du nombre de modules
+            # identiques par banque (vide = illimité).
+            'bat_max_modules_par_banc',
             'pdf', 'date_creation', 'date_mise_a_jour',
         ]
         # company is force-assigned in perform_create — never from the body.

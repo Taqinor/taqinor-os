@@ -1297,6 +1297,12 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
                            value={ficheFields.bat_dod_pct}
                            onChange={e => setFicheField('bat_dod_pct', e.target.value)} />
                   </FormField>
+                  <FormField label="Max modules par banc — vide = illimité" htmlFor="pf-ft-maxmod"
+                             hint="Nombre maximum de modules identiques qu'une même banque peut empiler pour ce produit.">
+                    <Input id="pf-ft-maxmod" type="number" min="0" step="1" inputMode="numeric"
+                           value={ficheFields.bat_max_modules_par_banc}
+                           onChange={e => setFicheField('bat_max_modules_par_banc', e.target.value)} />
+                  </FormField>
                 </>
               )}
 
