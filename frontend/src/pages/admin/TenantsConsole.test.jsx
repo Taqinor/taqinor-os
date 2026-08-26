@@ -32,9 +32,12 @@ const DEMANDES = [{
 }]
 
 // WIR267 — registre de facturation de licence (2 factures mockées).
+// `societe_nom` volontairement DISTINCT de `TENANTS[0].nom` ('Client Alpha') :
+// même libellé ferait collision (getByText ambigu) avec la table des tenants,
+// rendue simultanément sur la même page (pas d'onglet séparé).
 const FACTURES_LICENCE = [
   {
-    id: 10, reference: 'LIC-2026-0001', societe_nom: 'Client Alpha',
+    id: 10, reference: 'LIC-2026-0001', societe_nom: 'Client Gamma',
     periode: '2026-07-01', plan_code: 'pro', montant_ttc: 1200,
     statut: 'emise', statut_libelle: 'Émise',
   },

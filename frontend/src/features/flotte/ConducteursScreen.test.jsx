@@ -200,7 +200,9 @@ describe('ConducteursScreen — Demandes de véhicule (WIR200 décision)', () =>
     withProviders(<ConducteursScreen />)
 
     await user.click(screen.getByRole('tab', { name: 'Demandes de véhicule' }))
-    await screen.findByText('Mission Casablanca')
+    // DataTable rend la table desktop ET les cartes mobiles dans le DOM (le
+    // point de rupture est géré en CSS) : deux occurrences attendues.
+    await screen.findAllByText('Mission Casablanca')
 
     // Ligne encore `demandee` : rowActions affiche Approuver/Refuser en
     // icônes directes (max 2 quick actions avant le menu kebab, comme la
@@ -222,7 +224,8 @@ describe('ConducteursScreen — Demandes de véhicule (WIR200 décision)', () =>
     withProviders(<ConducteursScreen />)
 
     await user.click(screen.getByRole('tab', { name: 'Demandes de véhicule' }))
-    await screen.findByText('Mission Casablanca')
+    // DataTable rend la table desktop ET les cartes mobiles dans le DOM.
+    await screen.findAllByText('Mission Casablanca')
 
     await user.click(screen.getAllByRole('button', { name: 'Refuser' })[0])
 
@@ -243,7 +246,9 @@ describe('ConducteursScreen — Divergences permis flotte↔RH (WIR236)', () => 
         nb_conducteurs_lies: 1,
         nb_divergences: 1,
         divergences: [{
-          conducteur_id: 1, employe_id: 42, conducteur_nom: 'Karim',
+          // WIR236 fix — 'Karim' collidait avec le conducteur du mock
+          // conducteurs.list ('Karim' aussi), rendant getByText ambigu.
+          conducteur_id: 1, employe_id: 42, conducteur_nom: 'Rachid',
           local_valide: true, rh_valide: false,
         }],
       },
@@ -251,7 +256,7 @@ describe('ConducteursScreen — Divergences permis flotte↔RH (WIR236)', () => 
     withProviders(<ConducteursScreen />)
 
     await screen.findByText('1 divergence(s) permis flotte↔RH')
-    expect(screen.getByText('Karim')).toBeInTheDocument()
+    expect(screen.getByText('Rachid')).toBeInTheDocument()
   })
 
   it('affiche « aucune divergence » quand la réconciliation est propre', async () => {

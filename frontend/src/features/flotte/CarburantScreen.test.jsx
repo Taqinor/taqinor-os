@@ -146,11 +146,12 @@ describe('CarburantScreen — Cartes (WIR236 import CSV)', () => {
     withProviders(<CarburantScreen />)
 
     await user.click(screen.getByRole('tab', { name: 'Cartes' }))
-    await screen.findByText('CARTE-009')
-
     // DataTable rend la table desktop ET les cartes mobiles dans le DOM (le
-    // point de rupture est géré en CSS) : deux occurrences attendues, on
-    // prend la première (même patron que les autres tests de ce fichier).
+    // point de rupture est géré en CSS) : deux occurrences attendues.
+    await screen.findAllByText('CARTE-009')
+
+    // On prend la première occurrence (même patron que les autres tests de
+    // ce fichier).
     await user.click(screen.getAllByRole('button', { name: 'Importer un relevé (CSV)' })[0])
     const dialog = within(screen.getByRole('dialog'))
 

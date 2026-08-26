@@ -132,9 +132,11 @@ describe('AnalyseCoutsScreen', () => {
     await user.click(screen.getByRole('tab', { name: 'Journal kilométrique' }))
 
     await waitFor(() => expect(journal).toHaveBeenCalled())
-    // fr-FR : `formatNumber` rend la décimale avec une virgule.
-    expect(await screen.findByText(/120,5 km/)).toBeInTheDocument()
-    // DataTable rend la table desktop ET les cartes mobiles dans le DOM.
+    // fr-FR : `formatNumber` rend la décimale avec une virgule. « 120,5 km »
+    // apparaît à la fois dans le résumé ET dans la cellule Distance de la
+    // ligne (même valeur) — DataTable rend en plus la table desktop ET les
+    // cartes mobiles dans le DOM : plusieurs occurrences attendues.
+    expect((await screen.findAllByText(/120,5 km/)).length).toBeGreaterThan(0)
     await waitFor(() => expect(screen.getAllByText('CHT-2026-0001').length).toBeGreaterThan(0))
   })
 })
