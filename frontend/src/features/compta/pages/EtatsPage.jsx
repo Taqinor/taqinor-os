@@ -48,12 +48,17 @@ const ETATS = [
   { value: 'continuite-sequences', label: 'Continuité séquences',
     fetch: comptaApi.etats.continuiteSequences },
   { value: 'controle-ice', label: 'Contrôle ICE/IF', fetch: comptaApi.etats.controleIce },
+  // WIR180 — XFAC2 : conformité loi 69-21 (délais de paiement fournisseurs),
+  // export CSV via le bouton générique « Export CSV » ci-dessus.
+  { value: 'loi-69-21', label: 'Loi 69-21 (délais paiement)', fetch: comptaApi.etats.loi6921 },
 ]
 
 // Détecte les colonnes montant à formater en MAD.
 const MONEY_KEYS = new Set([
   'debit', 'credit', 'solde', 'solde_debiteur', 'solde_crediteur',
   'total_debit', 'total_credit', 'montant', 'valeur', 'brut', 'net',
+  // WIR180 — loi 69-21 : montants de la ligne + total de l'état.
+  'montant_du', 'amende_estimee', 'total_amende_estimee',
 ])
 
 function cellValue(key, val) {

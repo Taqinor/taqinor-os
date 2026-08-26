@@ -98,6 +98,14 @@ const comptaApi = {
     aideIs: (params) =>
       api.get('/compta/etats/aide-is/',
         { params: { export: 'csv', ...params }, responseType: 'blob' }),
+    // WIR180 — NTMAR12 : export SIMPL-IS (XML DGI) d'un exercice, requiert
+    // `?exercice=` (résolu côté serveur, scopé société).
+    exportSimplIs: (params) =>
+      api.get('/compta/etats/export-simpl-is/', { params, responseType: 'blob' }),
+    // WIR180 — XFAC2 : conformité loi 69-21 (délais de paiement fournisseurs) ;
+    // `periode` optionnel ('YYYY-MM'), export CSV via `?export=csv` (patron
+    // générique EtatsPage.exportCsv, jamais `responseType:'blob'` forcé ici).
+    loi6921: (params) => api.get('/compta/etats/loi-69-21/', { params }),
   },
 
   // ── UX6 — Trésorerie & prévisionnel ──
@@ -133,6 +141,10 @@ const comptaApi = {
       api.get(`/compta/declarations-tva/${id}/comparatif/`, { params }),
     bordereauPdf: (id) =>
       api.get(`/compta/declarations-tva/${id}/bordereau-pdf/`,
+        { responseType: 'blob' }),
+    // WIR180 — NTMAR10 : export SIMPL-TVA (XML DGI) d'une déclaration.
+    exportSimpl: (id) =>
+      api.get(`/compta/declarations-tva/${id}/export-simpl/`,
         { responseType: 'blob' }),
   },
   retenuesSource: {
