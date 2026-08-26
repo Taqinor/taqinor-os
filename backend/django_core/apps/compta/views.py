@@ -7898,9 +7898,11 @@ class AbonnementMonitoringViewSet(_ComptaBaseViewSet):
     posée côté serveur ; la 1re échéance est calculée à la création ;
     ``renouveler`` avance SEULEMENT l'échéance (YSUBS3 : découplé de la
     facturation) ; ``facturer`` émet la facture standard de la période due
-    (YSUBS3) ; ``suspendre`` / ``resilier`` passent par les transitions
-    gardées de service (YSUBS4 — jamais un PATCH direct de ``statut``) ;
-    ``a_echeance`` liste les abonnements arrivant à échéance."""
+    PUIS avance l'échéance (WIR237 — variante beat : un seul comportement
+    pour l'action manuelle et le beat quotidien) ; ``suspendre`` / ``reactiver``
+    / ``resilier`` passent par les transitions gardées de service (YSUBS4/WIR237
+    — jamais un PATCH direct de ``statut``) ; ``a_echeance`` liste les
+    abonnements arrivant à échéance."""
     queryset = AbonnementMonitoring.objects.all()
     serializer_class = AbonnementMonitoringSerializer
     filter_backends = [filters.OrderingFilter]
@@ -7921,7 +7923,9 @@ class AbonnementMonitoringViewSet(_ComptaBaseViewSet):
             return [IsResponsableOrAdmin()]
         if self.action == 'renouveler':
             return [HasPermissionOrLegacy('compta_saisir')()]
-        if self.action in ('facturer', 'suspendre', 'resilier'):
+        # WIR237 — ``reactiver`` est la transition INVERSE de ``suspendre`` :
+        # même garde, même palier.
+        if self.action in ('facturer', 'suspendre', 'resilier', 'reactiver'):
             return [HasPermissionOrLegacy('compta_valider')()]
         return super().get_permissions()
 
@@ -7935,10 +7939,20 @@ class AbonnementMonitoringViewSet(_ComptaBaseViewSet):
     def facturer(self, request, pk=None):
         """YSUBS3 — Émet la facture standard de la période due (garde
         d'idempotence par ``derniere_facturation`` — refuse de re-facturer
-        la même période)."""
+        la même période).
+
+        WIR237 — l'action HTTP passait par ``facturer_abonnement_monitoring``
+        SEUL, qui n'avance pas l'échéance : facturer manuellement GELAIT
+        l'abonnement (``prochaine_echeance`` figée sur la période déjà
+        facturée), donc le beat quotidien
+        (``abonnements_monitoring_dus_facturation``) le re-sélectionnait
+        indéfiniment pour se heurter à la garde d'idempotence. Elle appelle
+        désormais la variante BEAT, qui facture PUIS renouvelle — un seul
+        comportement pour les deux points d'entrée.
+        """
         abonnement = self.get_object()
         try:
-            facture = services.facturer_abonnement_monitoring(
+            facture = services.facturer_abonnement_monitoring_beat(
                 abonnement, user=request.user)
         except DjangoValidationError as exc:
             return Response(
@@ -7946,13 +7960,34 @@ class AbonnementMonitoringViewSet(_ComptaBaseViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
         return Response(
             {'facture_id': facture.id, 'reference': facture.reference,
-             'montant_ttc': str(facture.montant_ttc)},
+             'montant_ttc': str(facture.montant_ttc),
+             # WIR237 — l'échéance avancée est renvoyée pour que l'écran la
+             # montre sans deviner (et pour rendre l'enchaînement testable).
+             'prochaine_echeance': abonnement.prochaine_echeance},
             status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['post'])
     def suspendre(self, request, pk=None):
         abonnement = self.get_object()
         services.suspendre_abonnement_monitoring(abonnement)
+        return Response(self.get_serializer(abonnement).data)
+
+    @action(detail=True, methods=['post'])
+    def reactiver(self, request, pk=None):
+        """WIR237 — Reprend un abonnement SUSPENDU (SUSPENDU → ACTIF).
+
+        La suspension était sans retour : aucun chemin API ne ramenait un
+        abonnement suspendu à l'état actif. Idempotent sur un abonnement déjà
+        actif ; refuse un abonnement RÉSILIÉ (400, la résiliation reste
+        définitive).
+        """
+        abonnement = self.get_object()
+        try:
+            services.reactiver_abonnement_monitoring(abonnement)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(abonnement).data)
 
     @action(detail=True, methods=['post'])
