@@ -56,12 +56,14 @@ vi.mock('react-router-dom', async (importOriginal) => {
 })
 
 // Le builder est stubé : il expose seulement l'API que la page consomme
-// (`serializeLayout` / `snapshot`), posée via `onApiReady` comme en vrai.
+// (`serializeLayout` / `snapshot` / L-MAP `setReferenceContourVisible`),
+// posée via `onApiReady` comme en vrai.
 const LAYOUT = { version: 2, zones: [{ id: 'z1' }] }
 const serializeLayout = vi.fn(() => LAYOUT)
 const snapshot = vi.fn(() => null)
+const setReferenceContourVisible = vi.fn()
 const initRoofToolPro8 = vi.fn((options) => {
-  options?.onApiReady?.({ serializeLayout, snapshot })
+  options?.onApiReady?.({ serializeLayout, snapshot, setReferenceContourVisible })
 })
 vi.mock('@roofbuilder', () => ({ initRoofToolPro8: (...a) => initRoofToolPro8(...a) }))
 
@@ -106,7 +108,7 @@ beforeEach(() => {
   serializeLayout.mockReturnValue(LAYOUT)
   snapshot.mockReturnValue(null)
   initRoofToolPro8.mockImplementation((options) => {
-    options?.onApiReady?.({ serializeLayout, snapshot })
+    options?.onApiReady?.({ serializeLayout, snapshot, setReferenceContourVisible })
   })
 })
 afterEach(() => { cleanup(); vi.clearAllMocks() })
@@ -302,6 +304,9 @@ describe('ToitureDesign — L-MAP : le toit dessiné par le client, visible sur 
     expect(await screen.findByTestId('rp9-toit-client')).toHaveTextContent(
       'Toit dessiné par le client')
     expect(screen.getByTestId('rp9-toit-client-toggle')).toBeInTheDocument()
+    // L-MAP — le calque GÉO-RÉFÉRENCÉ du builder reçoit le MÊME contour.
+    const options = initRoofToolPro8.mock.calls[0][0]
+    expect(options.referenceContour).toEqual(CONTOUR_CLIENT)
   })
 
   it('mode devis — le calque montre le contour du CLIENT, pas celui déjà édité du layout', async () => {
@@ -323,10 +328,15 @@ describe('ToitureDesign — L-MAP : le toit dessiné par le client, visible sur 
 
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
     const options = initRoofToolPro8.mock.calls[0][0]
-    // Le builder continue de recevoir le contour COURANT du layout, inchangé.
+    // Le builder continue de recevoir le contour COURANT du layout, inchangé
+    // (seed de la zone éditable — hydrate.devis.geometrie.roof_outline).
     expect(options.hydrate.devis.geometrie.roof_outline).toEqual(
       [[10, 10], [10, 11], [11, 11]])
-    // Le calque, lui, montre le contour du CLIENT (4 sommets, pas 3).
+    // Le calque GÉO-RÉFÉRENCÉ (referenceContour) porte le contour du CLIENT,
+    // PAS celui déjà édité du layout — les deux options divergent volontairement.
+    expect(options.referenceContour).toEqual(CONTOUR_CLIENT)
+    expect(options.referenceContour).not.toEqual(options.hydrate.devis.geometrie.roof_outline)
+    // La légende, elle, montre le contour du CLIENT (4 sommets, pas 3).
     const polygone = (await screen.findByTestId('rp9-toit-client'))
       .querySelector('.rp9-toit-client-polygone')
     expect(polygone.getAttribute('points').trim().split(/\s+/)).toHaveLength(4)
@@ -341,6 +351,10 @@ describe('ToitureDesign — L-MAP : le toit dessiné par le client, visible sur 
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
     expect(screen.queryByTestId('rp9-toit-client')).toBeNull()
     expect(screen.queryByTestId('rp9-toit-client-toggle')).toBeNull()
+    // Le contrat (devis_design_context.json) rend `contour_client: []` par
+    // défaut, jamais `null` — le calque reste absent (referenceContourRing
+    // refuse < 3 sommets), mais la clé transmise est le tableau vide, tel quel.
+    expect(initRoofToolPro8.mock.calls[0][0].referenceContour).toEqual([])
   })
 
   it('mode lead — un roof_outline exploitable affiche le calque, la bascule le masque puis le remontre', async () => {
@@ -366,6 +380,9 @@ describe('ToitureDesign — L-MAP : le toit dessiné par le client, visible sur 
     )
 
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    // L-MAP — le calque GÉO-RÉFÉRENCÉ du builder reçoit le MÊME contour brut
+    // que la légende (lead.roof_outline, sans conversion côté écran).
+    expect(initRoofToolPro8.mock.calls[0][0].referenceContour).toEqual(CONTOUR_CLIENT)
     expect(await screen.findByTestId('rp9-toit-client')).toBeInTheDocument()
     const bascule = screen.getByTestId('rp9-toit-client-toggle')
     expect(bascule).toHaveAttribute('aria-pressed', 'true')
@@ -373,10 +390,13 @@ describe('ToitureDesign — L-MAP : le toit dessiné par le client, visible sur 
     await userEvent.click(bascule)
     expect(screen.queryByTestId('rp9-toit-client')).toBeNull()
     expect(bascule).toHaveAttribute('aria-pressed', 'false')
+    // La MÊME bascule pilote le calque carte du builder (pas seulement la légende).
+    expect(setReferenceContourVisible).toHaveBeenLastCalledWith(false)
 
     await userEvent.click(bascule)
     expect(await screen.findByTestId('rp9-toit-client')).toBeInTheDocument()
     expect(bascule).toHaveAttribute('aria-pressed', 'true')
+    expect(setReferenceContourVisible).toHaveBeenLastCalledWith(true)
   })
 
   it('mode lead — sans contour (lead antérieur au 21/08, comportement actuel) : aucun calque, aucun bouton', async () => {
@@ -403,6 +423,7 @@ describe('ToitureDesign — L-MAP : le toit dessiné par le client, visible sur 
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
     expect(screen.queryByTestId('rp9-toit-client')).toBeNull()
     expect(screen.queryByTestId('rp9-toit-client-toggle')).toBeNull()
+    expect(initRoofToolPro8.mock.calls[0][0].referenceContour).toBeNull()
   })
 
   it('mode ao — aucune source de contour client : aucun calque, aucun bouton (comportement inchangé)', async () => {
@@ -413,6 +434,9 @@ describe('ToitureDesign — L-MAP : le toit dessiné par le client, visible sur 
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
     expect(screen.queryByTestId('rp9-toit-client')).toBeNull()
     expect(screen.queryByTestId('rp9-toit-client-toggle')).toBeNull()
+    // Le mode AO ne passe MÊME PAS la clé — comportement octet pour octet
+    // inchangé pour le seul autre consommateur de l'écran.
+    expect(initRoofToolPro8.mock.calls[0][0].referenceContour).toBeUndefined()
   })
 })
 

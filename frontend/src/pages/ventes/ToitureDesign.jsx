@@ -338,6 +338,9 @@ export default function ToitureDesign({ mode = 'lead' }) {
         mapboxToken,
         reducedMotion: !!reducedMotion,
         hydrate: { lead: leadToBuilderPayload(leadData) },
+        // L-MAP — le contour ORIGINAL du client, géo-référencé sur la carte
+        // (calque passif, roofPro11/prefill.ts referenceContourRing).
+        referenceContour: leadData.roof_outline ?? null,
         onApiReady: (a) => { builderApi.current = a },
       })
       // Pré-remplit l'adresse depuis la ville du lead (champ de recherche).
@@ -408,6 +411,9 @@ export default function ToitureDesign({ mode = 'lead' }) {
         mapboxToken: carte.mapboxToken || undefined,
         reducedMotion: !!reducedMotion,
         hydrate: { devis: contexteToDevisPayload(ctx) },
+        // L-MAP — le contour ORIGINAL du client (jamais celui, déjà édité, du
+        // layout courant), géo-référencé sur la carte (calque passif).
+        referenceContour: ctx?.geometrie?.contour_client ?? null,
         bankable,
         onApiReady: (a) => { builderApi.current = a },
       })
@@ -489,6 +495,15 @@ export default function ToitureDesign({ mode = 'lead' }) {
     else boot()
     return () => { cancelled = true }
   }, [cibleId, devisId, leadId, affaireId, estDevis, estAo, reducedMotion])
+
+  // L-MAP — la bascule (rp9-chip) pilote le calque GÉO-RÉFÉRENCÉ du builder,
+  // pas seulement la légende React. `builderApi.current` peut être `null` au
+  // premier rendu (boot asynchrone) : sans effet tant qu'il ne l'est plus —
+  // le builder démarre de toute façon visible par défaut (même valeur initiale
+  // que `toitClientVisible`), donc rien à rattraper au montage.
+  useEffect(() => {
+    builderApi.current?.setReferenceContourVisible?.(toitClientVisible)
+  }, [toitClientVisible])
 
   // ── UN SEUL BOUTON : devis + snapshot + livraison ──────────────────────────
   const generer = async () => {
