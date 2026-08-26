@@ -6,6 +6,8 @@ import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import { toast } from '../../../ui'
 import { ThemeProvider } from '../../../design/ThemeProvider.jsx'
+import { formatMAD } from '../../../lib/format'
+import { exempleContrat, reponseContrat } from '../../../test/fixtures/contractSamples'
 
 /* WIR280/WIR279 (XACC14) — Emprunts & crédits-bails contractés par la
    société : le modèle, le tableau d'amortissement et le posting au grand
@@ -14,7 +16,9 @@ import { ThemeProvider } from '../../../design/ThemeProvider.jsx'
    Les charges utiles de `generer-tableau/` et `poster/` reprennent EXACTEMENT
    les contrats committés (`apps/compta/contract_samples/
    emprunt_tableau_amortissement.json` et `echeance_emprunt_poster.json`,
-   WIR279) — jamais inventées.
+   WIR279) via `exempleContrat`/`reponseContrat` (PACT10/13, patron maison) —
+   JAMAIS un objet recopié à la main : si le serveur change de forme,
+   l'exemple committé change et ce test casse tout seul.
 
    `ListShell`/`DataTable` rend DEUX fois la même ligne (repli desktop table +
    cartes mobile, toutes deux dans le DOM sous jsdom) : les requêtes sur la
@@ -54,20 +58,17 @@ vi.mock('../../../api/comptaApi', () => ({
 
 import EmpruntsPage from './EmpruntsPage.jsx'
 
-// Contrat committé WIR279 (apps/compta/contract_samples/emprunt_tableau_amortissement.json).
-const TABLEAU_GENERE = {
-  emprunt: 12,
-  nb_echeances: 3,
-  echeances: [
-    { id: 101, emprunt: 12, numero: 1, date_echeance: '2026-02-01', principal: '33112.58', interets: '250.00', mensualite: '33362.58', capital_restant_du: '66887.42', posted: false, ecriture: null },
-    { id: 102, emprunt: 12, numero: 2, date_echeance: '2026-03-01', principal: '33195.36', interets: '167.22', mensualite: '33362.58', capital_restant_du: '33692.06', posted: false, ecriture: null },
-    { id: 103, emprunt: 12, numero: 3, date_echeance: '2026-04-01', principal: '33692.06', interets: '84.23', mensualite: '33776.29', capital_restant_du: '0.00', posted: false, ecriture: null },
-  ],
-}
-// Contrat committé WIR279 (apps/compta/contract_samples/echeance_emprunt_poster.json).
-const ECHEANCE_POSTEE = {
-  echeance: 101, posted: true, ecriture_id: 4471,
-  reference: 'EMPR-12-1', date_ecriture: '2026-02-01', montant: '33362.58',
+// Contrats committés WIR279 — lus depuis le fichier réel, jamais recopiés.
+const TABLEAU_GENERE = exempleContrat('compta', 'emprunt_tableau_amortissement')
+const PREMIERE_ECHEANCE = TABLEAU_GENERE.echeances[0]
+
+// `formatMAD` insère un espace fine insécable (Intl fr-FR) entre les groupes
+// de milliers ; le normaliseur de texte par défaut de testing-library ne
+// l'applique qu'au texte du DOM, pas à la chaîne de requête — comparer sans
+// AUCUN espace des deux côtés rend le matcher robuste au type d'espace.
+function matchMontant(valeurDecimale) {
+  const cible = formatMAD(valeurDecimale).replace(/\s/g, '')
+  return (contenu) => (contenu || '').replace(/\s/g, '') === cible
 }
 
 const EMPRUNT = {
@@ -111,7 +112,7 @@ beforeEach(() => {
   mocks.empruntsCreate.mockResolvedValue({ data: { id: 13 } })
   mocks.echeancesList.mockResolvedValue({ data: [] })
   mocks.genererTableau.mockResolvedValue({ data: TABLEAU_GENERE })
-  mocks.poster.mockResolvedValue({ data: ECHEANCE_POSTEE })
+  mocks.poster.mockResolvedValue(reponseContrat('compta', 'echeance_emprunt_poster'))
 })
 
 describe('EmpruntsPage — liste et création (WIR280)', () => {
@@ -153,11 +154,14 @@ describe('EmpruntsPage — tableau d\'amortissement (WIR280/WIR279)', () => {
 
     await user.click(await screen.findByRole('button', { name: /Générer le tableau/ }))
 
-    await waitFor(() => expect(mocks.genererTableau).toHaveBeenCalledWith(12))
+    await waitFor(() => expect(mocks.genererTableau).toHaveBeenCalledWith(TABLEAU_GENERE.emprunt))
     // Montants EXACTEMENT ceux du contrat committé (capital_restant_du de la
-    // 1ère échéance, mensualité répétée sur les 2 premières) — jamais recalculés.
-    expect(await screen.findByText(/887,42/)).toBeInTheDocument()
-    expect((await screen.findAllByText(/33\s?362,58/)).length).toBeGreaterThan(0)
+    // 1ère échéance, mensualité) — jamais recalculés, comparés au rendu RÉEL
+    // de `formatMAD` (pas une approximation en dur).
+    expect(await screen.findByText(matchMontant(PREMIERE_ECHEANCE.capital_restant_du)))
+      .toBeInTheDocument()
+    expect((await screen.findAllByText(matchMontant(PREMIERE_ECHEANCE.mensualite)))
+      .length).toBeGreaterThan(0)
   })
 
   it('comptabilise une échéance avec la permission compta_saisir', async () => {
@@ -170,7 +174,7 @@ describe('EmpruntsPage — tableau d\'amortissement (WIR280/WIR279)', () => {
     const boutons = await screen.findAllByRole('button', { name: /Comptabiliser l'échéance/ })
     await user.click(boutons[0])
 
-    await waitFor(() => expect(mocks.poster).toHaveBeenCalledWith(101))
+    await waitFor(() => expect(mocks.poster).toHaveBeenCalledWith(PREMIERE_ECHEANCE.id))
   })
 
   it('masque « Comptabiliser » sans la permission compta_saisir', async () => {
@@ -180,8 +184,9 @@ describe('EmpruntsPage — tableau d\'amortissement (WIR280/WIR279)', () => {
     const table = await tableDesktop(container)
     await user.click(await table.findByText('EMPR-2026-01'))
 
-    // Principal de la 1ère échéance (33112.58 → "33 112,58 MAD" formaté).
-    expect(await screen.findByText(/33\s?112,58/)).toBeInTheDocument()
+    // Principal de la 1ère échéance, comparé au rendu RÉEL de `formatMAD`.
+    expect(await screen.findByText(matchMontant(PREMIERE_ECHEANCE.principal)))
+      .toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Comptabiliser l'échéance/ })).not.toBeInTheDocument()
   })
 

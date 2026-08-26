@@ -2,14 +2,19 @@ import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
+import { toast } from '../../../ui'
 import { ThemeProvider } from '../../../design/ThemeProvider.jsx'
+import { formatMAD } from '../../../lib/format'
+import { exempleContrat, reponseContrat } from '../../../test/fixtures/contractSamples'
 
 /* WIR280/WIR279 (XACC19) — États financiers PARAMÉTRABLES : le modèle, la
    validation de formule et l'évaluation existaient côté services sans AUCUN
    écran. La charge utile de `evaluer/` reprend EXACTEMENT le contrat committé
-   (`apps/compta/contract_samples/etat_personnalise_evaluer.json`, WIR279) —
-   jamais inventée : une ligne « titre » porte un `valeurs` VIDE (jamais des
-   zéros).
+   (`apps/compta/contract_samples/etat_personnalise_evaluer.json`, WIR279) via
+   `exempleContrat`/`reponseContrat` (PACT10/13, patron maison) — jamais un
+   objet recopié à la main : une ligne « titre » porte un `valeurs` VIDE
+   (jamais des zéros), et si le serveur change de forme, l'exemple committé
+   change et ce test casse tout seul.
 
    `ListShell`/`DataTable` rend deux fois la même ligne (repli desktop +
    cartes mobile) : les requêtes sur la liste sont scopées à
@@ -42,29 +47,37 @@ vi.mock('../../../api/comptaApi', () => ({
 
 import EtatsPersonnalisesPage from './EtatsPersonnalisesPage.jsx'
 
-// Contrat committé WIR279 (apps/compta/contract_samples/etat_personnalise_evaluer.json).
-const EVALUATION = {
-  etat: 5,
-  libelle: 'Compte de résultat simplifié',
-  colonnes: [
-    { id: 21, libelle: '2026', type_colonne: 'periode' },
-    { id: 22, libelle: '2025', type_colonne: 'comparatif_n1' },
-  ],
-  lignes: [
-    { id: 41, libelle: 'PRODUITS', type_ligne: 'titre', valeurs: {} },
-    { id: 42, libelle: "Chiffre d'affaires", type_ligne: 'total', valeurs: { 21: '1250000.00', 22: '980000.00' } },
-    { id: 43, libelle: "Résultat d'exploitation", type_ligne: 'total', valeurs: { 21: '312500.00', 22: '-44000.00' } },
-  ],
+// Contrat committé WIR279 — lu depuis le fichier réel, jamais recopié.
+const EVALUATION = exempleContrat('compta', 'etat_personnalise_evaluer')
+const [COLONNE_A, COLONNE_B] = EVALUATION.colonnes
+const LIGNE_TITRE = EVALUATION.lignes.find((l) => l.type_ligne === 'titre')
+const [LIGNE_CA, LIGNE_RESULTAT] = EVALUATION.lignes.filter((l) => l.type_ligne === 'total')
+
+// `formatMAD` insère un espace fine insécable (Intl fr-FR) entre les groupes
+// de milliers ; le normaliseur de texte par défaut de testing-library ne
+// l'applique qu'au texte du DOM, pas à la chaîne de requête — comparer sans
+// AUCUN espace des deux côtés rend le matcher robuste au type d'espace
+// (même patron que `EmpruntsPage.test.jsx`).
+function matchMontant(valeurDecimale) {
+  const cible = formatMAD(valeurDecimale).replace(/\s/g, '')
+  return (contenu) => (contenu || '').replace(/\s/g, '') === cible
 }
 
+// La liste (hors `evaluer/`) n'a pas de contrat_sample dédié : forme dérivée
+// de `EtatPersonnaliseSerializer` (id/libelle/description/lignes/colonnes),
+// alignée sur l'état évalué ci-dessus pour rester cohérente d'un bout à
+// l'autre du test.
 const ETAT = {
-  id: 5, libelle: 'Compte de résultat simplifié', description: 'CPC simplifié',
+  id: EVALUATION.etat, libelle: EVALUATION.libelle, description: 'CPC simplifié',
   lignes: [
-    { id: 41, ordre: 0, libelle: 'PRODUITS', type_ligne: 'titre', formule: '' },
-    { id: 42, ordre: 1, libelle: "Chiffre d'affaires", type_ligne: 'total', formule: '+70' },
+    { id: LIGNE_TITRE.id, ordre: 0, libelle: LIGNE_TITRE.libelle, type_ligne: 'titre', formule: '' },
+    { id: LIGNE_CA.id, ordre: 1, libelle: LIGNE_CA.libelle, type_ligne: 'total', formule: '+70' },
   ],
   colonnes: [
-    { id: 21, ordre: 0, libelle: '2026', type_colonne: 'periode', date_debut: '2026-01-01', date_fin: '2026-12-31', budget: null },
+    {
+      id: COLONNE_A.id, ordre: 0, libelle: COLONNE_A.libelle, type_colonne: COLONNE_A.type_colonne,
+      date_debut: '2026-01-01', date_fin: '2026-12-31', budget: null,
+    },
   ],
   created_by: 1, date_creation: '2026-01-01T09:00:00Z',
 }
@@ -88,7 +101,7 @@ beforeEach(() => {
   mocks.budgets.mockResolvedValue({ data: [] })
   mocks.create.mockResolvedValue({ data: { id: 6 } })
   mocks.remove.mockResolvedValue({ data: {} })
-  mocks.evaluer.mockResolvedValue({ data: EVALUATION })
+  mocks.evaluer.mockResolvedValue(reponseContrat('compta', 'etat_personnalise_evaluer'))
 })
 
 describe('EtatsPersonnalisesPage — liste (WIR280)', () => {
@@ -135,16 +148,18 @@ describe('EtatsPersonnalisesPage — rendu évalué + export (WIR280/WIR279)', (
 
     await user.click(table.getByRole('button', { name: 'Évaluer' }))
 
-    await waitFor(() => expect(mocks.evaluer).toHaveBeenCalledWith(5))
-    expect(await screen.findByText("Chiffre d'affaires")).toBeInTheDocument()
+    await waitFor(() => expect(mocks.evaluer).toHaveBeenCalledWith(EVALUATION.etat))
+    expect(await screen.findByText(LIGNE_CA.libelle)).toBeInTheDocument()
     // Colonnes dynamiques = celles renvoyées par le serveur.
-    expect(screen.getByRole('columnheader', { name: '2026' })).toBeInTheDocument()
-    expect(screen.getByRole('columnheader', { name: '2025' })).toBeInTheDocument()
-    // Montants EXACTS du contrat (1 250 000,00 / -44 000,00).
-    expect(screen.getByText(/250\s?000,00/)).toBeInTheDocument()
-    expect(screen.getByText(/-44\s?000,00/)).toBeInTheDocument()
-    // La ligne « titre » (PRODUITS) n'affiche AUCUNE valeur — jamais un 0 inventé.
-    const ligneTitre = screen.getByText('PRODUITS').closest('tr')
+    expect(screen.getByRole('columnheader', { name: COLONNE_A.libelle })).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: COLONNE_B.libelle })).toBeInTheDocument()
+    // Montants EXACTS du contrat, comparés au rendu RÉEL de `formatMAD`.
+    expect(screen.getByText(matchMontant(LIGNE_CA.valeurs[COLONNE_A.id])))
+      .toBeInTheDocument()
+    expect(screen.getByText(matchMontant(LIGNE_RESULTAT.valeurs[COLONNE_B.id])))
+      .toBeInTheDocument()
+    // La ligne « titre » n'affiche AUCUNE valeur — jamais un 0 inventé.
+    const ligneTitre = screen.getByText(LIGNE_TITRE.libelle).closest('tr')
     within(ligneTitre).getAllByRole('cell').slice(1).forEach((cell) => {
       expect(cell).toHaveTextContent('')
     })
@@ -157,7 +172,7 @@ describe('EtatsPersonnalisesPage — rendu évalué + export (WIR280/WIR279)', (
     await table.findByText('Compte de résultat simplifié')
 
     await user.click(table.getByRole('button', { name: 'Évaluer' }))
-    await screen.findByText("Chiffre d'affaires")
+    await screen.findByText(LIGNE_CA.libelle)
 
     expect(screen.getByRole('button', { name: 'Exporter CSV' })).toBeInTheDocument()
   })
@@ -172,6 +187,29 @@ describe('EtatsPersonnalisesPage — suppression (WIR280)', () => {
 
     await user.click(table.getByRole('button', { name: 'Supprimer' }))
 
-    await waitFor(() => expect(mocks.remove).toHaveBeenCalledWith(5))
+    await waitFor(() => expect(mocks.remove).toHaveBeenCalledWith(ETAT.id))
+  })
+})
+
+describe('EtatsPersonnalisesPage — formule illégale (WIR280/WIR279)', () => {
+  it('affiche le message FR d’une formule invalide en toast (400, FormuleEtatInvalideError) plutôt que de planter', async () => {
+    const user = userEvent.setup()
+    // Miroir de EtatPersonnaliseViewSet.evaluer : une formule illégale rend
+    // {'detail': str(exc)} en 400 — jamais un 500 (selectors.
+    // FormuleEtatInvalideError est une exception MÉTIER, pas une
+    // ValidationError Django).
+    mocks.evaluer.mockRejectedValueOnce({
+      response: { data: { detail: "Terme invalide : « +XY » n'est pas un préfixe de compte reconnu." } },
+    })
+    const erreur = vi.spyOn(toast, 'error')
+    const { container } = mount()
+    const table = await tableDesktop(container)
+    await table.findByText('Compte de résultat simplifié')
+
+    await user.click(table.getByRole('button', { name: 'Évaluer' }))
+
+    await waitFor(() => expect(erreur).toHaveBeenCalledWith(
+      "Terme invalide : « +XY » n'est pas un préfixe de compte reconnu.",
+    ))
   })
 })
