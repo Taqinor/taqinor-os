@@ -192,6 +192,24 @@ ALL_PERMISSIONS = [
     'litige_gerer',
     'kb_voir',
     'kb_gerer',
+    # ── WIR172 — Ressources humaines (apps/rh), même patron YRBAC3. Le module
+    # RH n'avait AUCUNE permission fine : ``_RhBaseViewSet`` était gardé par le
+    # grossier ``IsResponsableOrAdmin``, qui passe dès qu'un rôle accorde UNE
+    # écriture — même totalement hors RH (``crm_creer`` suffisait). Un
+    # Commercial obtenait donc le CRUD complet des dossiers employés, des
+    # sanctions et des visites médicales. Deux codes DISJOINTS :
+    #   * ``rh_voir``  — lecture du module RH (GET/HEAD/OPTIONS) ;
+    #   * ``rh_gerer`` — écriture (POST/PUT/PATCH/DELETE + actions custom).
+    # Comme ``ao_voir``/``ao_gerer`` (AOF2), ils ne sont mappés sur AUCUN rôle
+    # Responsable/Commercial/Technicien/Utilisateur/Viewer : l'accès RH se
+    # RESSERRE sur la direction (Directeur/Administrateur par héritage
+    # d'ALL_PERMISSIONS) et sur le rôle d'administration DÉLÉGUÉE « Admin RH »
+    # (NTADM20), dont c'est précisément le domaine. Les comptes HÉRITÉS sans
+    # rôle fin gardent leur accès historique (repli ``_user_has_or_legacy``).
+    # La rémunération (``salaires_voir``) et les bulletins restent gardés par
+    # leurs propres codes — inchangés.
+    'rh_voir',
+    'rh_gerer',
     # ── AOF2 — Appels d'offres (apps/ao) : correction d'une régression de
     # confidentialité EXISTANTE. Les 8 ViewSets AO héritaient d'une base gardée
     # par le grossier ``IsResponsableOrAdmin`` : tout le palier Responsable
@@ -574,6 +592,10 @@ ADMIN_RH_PERMISSIONS = [
     'users_voir', 'users_gerer',
     'paie_voir', 'paie_gerer',
     'salaires_voir',
+    # WIR172 — le domaine RH lui-même (dossiers employés, sanctions, visites
+    # médicales…) : sans ces deux codes l'Admin RH perdrait l'accès qu'il a
+    # aujourd'hui via l'ancien gate grossier ``IsResponsableOrAdmin``.
+    'rh_voir', 'rh_gerer',
     'reporting_voir',
     'kb_voir',
     'projet_voir',
