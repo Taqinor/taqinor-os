@@ -532,8 +532,10 @@ describe('DevisList — GAMMES : créer une variante de gamme', () => {
         nom: 'Confort Atlas', nom_source: 'Essentielle', recommandee: false,
       })
     })
+    // WIR225 — le panneau s'appelle desormais « Comparaison des variantes »
+    // (et il est servi par `getVariantes`, plus par une chaine locale).
     await waitFor(() => {
-      expect(screen.getByText('Historique des versions')).toBeTruthy()
+      expect(screen.getByText('Comparaison des variantes')).toBeTruthy()
     })
   })
 
@@ -935,9 +937,14 @@ describe('DevisList — ARC49-FIX : la liste reste visible sur téléphone (< 76
    filtre, recherche) en disparaissait purement et simplement, et
    `getVariantes` — qui renvoie le groupe COMPLET — n'avait aucun appelant. */
 describe('DevisList — WIR225 : comparaison des variantes servie par le serveur', () => {
+  // La RACINE d'un groupe : `version: 1`, aucun parent, aucun remplacant — les
+  // trois champs « cote enfant » sont donc vides. Seul `a_variantes` (serveur,
+  // annotation Exists) dit qu'un groupe existe ; sans lui l'entree « Voir les
+  // versions » disparaissait au premier rechargement (WIR225).
   const SOURCE = {
     id: 20, reference: 'DEV-VAR', client_nom: 'ACME', statut: 'brouillon',
     date_creation: '2026-07-01', total_ttc: 4000, nb_options: 1, version: 1,
+    a_variantes: true,
   }
   // 3 variantes créées + le devis source = 4 lignes aux totaux DISTINCTS.
   const GROUPE = [
@@ -965,8 +972,14 @@ describe('DevisList — WIR225 : comparaison des variantes servie par le serveur
       expect(within(table).getByText(ref)).toBeInTheDocument()
     }
     // Totaux DISTINCTS (aucun chiffre inventé : ceux du serveur, formatés).
+    // Comparaison INSENSIBLE aux espaces : `formatMAD` emet des espaces
+    // insecables que le normaliseur de testing-library ne rend pas
+    // identiques a ceux d'une chaine litterale.
+    const sansEspaces = (v) => String(v).replace(/\s/g, '')
+    const montantsRendus = Array.from(table.querySelectorAll('td'))
+      .map((td) => sansEspaces(td.textContent))
     for (const ttc of [4000, 3200, 4800, 6000]) {
-      expect(within(table).getAllByText(formatMAD(ttc)).length).toBeGreaterThan(0)
+      expect(montantsRendus).toContain(sansEspaces(formatMAD(ttc)))
     }
     // La source est REPÉRÉE.
     expect(within(table).getByText('(source)')).toBeInTheDocument()
@@ -974,6 +987,9 @@ describe('DevisList — WIR225 : comparaison des variantes servie par le serveur
   })
 
   it('groupe vide : état propre, aucune ligne inventée', async () => {
+    // `a_variantes` etait vrai au chargement de la page, mais le groupe a
+    // disparu entre-temps (variantes desactivees) : le serveur rend [] et
+    // l'ecran doit le DIRE, jamais inventer une ligne.
     const user = userEvent.setup()
     ventesApi.getVariantes.mockResolvedValueOnce({ data: [] })
     renderList({ loading: false, devis: [SOURCE] })
@@ -982,6 +998,16 @@ describe('DevisList — WIR225 : comparaison des variantes servie par le serveur
     expect(await screen.findByText(/aucun groupe de variantes/))
       .toBeInTheDocument()
     expect(screen.queryByRole('table', { name: /Comparaison des variantes/ })).toBeNull()
+  })
+
+  it('un devis SANS groupe n’expose aucune entree « Voir les versions »', async () => {
+    renderList({
+      loading: false,
+      devis: [{ ...SOURCE, id: 25, reference: 'DEV-SEUL', a_variantes: false }],
+    })
+    const row = await screen.findByText('DEV-SEUL')
+    expect(within(row.closest('tr')).queryByRole('button', { name: /Voir les versions/ }))
+      .toBeNull()
   })
 
   it('le deep-link ?variantes= charge le groupe au montage', async () => {
@@ -999,6 +1025,15 @@ describe('DevisList — WIR225 : comparaison des variantes servie par le serveur
    d'ecrire une note a la main sur un devis. Le fil est RECHARGE DU SERVEUR
    apres l'envoi — jamais un ajout optimiste local. */
 describe('DevisList — WIR274 : composeur de note manuelle', () => {
+  // Les espions du mock partage VIVENT pour tout le fichier : sans remise a
+  // zero, `noterDevis` garde les appels du test precedent et l'assertion
+  // « aucun appel serveur » du test suivant est fausse (fuite de mock, pas un
+  // vrai rouge — il passe en isolation).
+  beforeEach(() => {
+    ventesApi.noterDevis.mockClear()
+    ventesApi.historiqueDevis.mockClear()
+  })
+
   const DEVIS = [{
     id: 30, reference: 'DEV-NOTE', client_nom: 'ACME', statut: 'brouillon',
     date_creation: '2026-07-01', total_ttc: 1000, nb_options: 1, version: 1,
