@@ -213,6 +213,84 @@ describe('DevisOffresTailles — indépendance des cartes', () => {
   })
 })
 
+describe('DevisOffresTailles — C3 : un second Applique ne perd pas l\'override du premier', () => {
+  it('« 4 modules batterie » posé sur Max, puis « 36 panneaux » plus tard : les DEUX overrides tiennent dans le second PATCH', async () => {
+    const user = userEvent.setup()
+    const offreMax = offre({
+      cle: 'max', titre: 'Max', ajuste: false,
+      config: { nb_panneaux: 30, batterie_nb_modules: 0, batterie_module_kwh: 5.0 },
+    })
+    const blocInitial = {
+      editable: true,
+      offres_tailles: {
+        avec_servable: true, module_batterie_kwh: 5.0,
+        offres: [offre(), OFFRE_RECOMMANDE, offreMax],
+      },
+    }
+    ventesApi.getOffresTaillesDevis.mockResolvedValue({ data: blocInitial })
+    renderSection()
+    await waitFor(() => screen.getByTestId('offres-tailles-cartes'))
+
+    const carteMax = screen.getByTestId('offre-taille-max')
+
+    // 1) Premier Applique — SEULE la batterie est touchée (2 → 4 modules,
+    // départ = offre.avec.batterie.nb_modules puisque config.batterie_nb_modules
+    // vaut le sentinel 0 « aucun override »).
+    const stepperBatterie = within(carteMax).getByTestId('offre-taille-max-stepper-batterie')
+    await user.click(within(stepperBatterie).getByRole('button', { name: 'Modules batterie : plus' }))
+    await user.click(within(stepperBatterie).getByRole('button', { name: 'Modules batterie : plus' }))
+
+    const offreMaxApresBatterie = offre({
+      cle: 'max', titre: 'Max', ajuste: true,
+      config: { nb_panneaux: 30, batterie_nb_modules: 4, batterie_module_kwh: 5.0 },
+    })
+    ventesApi.patchOffreTailleConfig.mockResolvedValueOnce({
+      data: {
+        editable: true,
+        offres_tailles: { avec_servable: true, module_batterie_kwh: 5.0,
+          offres: [offre(), OFFRE_RECOMMANDE, offreMaxApresBatterie] },
+      },
+    })
+    await user.click(within(carteMax).getByTestId('offre-taille-max-appliquer'))
+
+    await waitFor(() => expect(ventesApi.patchOffreTailleConfig).toHaveBeenCalledTimes(1))
+    // Premier Applique : la config du serveur ne connaît pas encore de
+    // panneaux ajustés (30 = déjà la valeur serveur), la batterie est le
+    // SEUL override réel — envoyé fusionné avec le champ panneaux connu.
+    expect(ventesApi.patchOffreTailleConfig).toHaveBeenNthCalledWith(
+      1, 42, 'max', { nb_panneaux: 30, batterie_nb_modules: 4 },
+    )
+
+    // 2) Second Applique, PLUS TARD — seuls les panneaux sont touchés cette
+    // fois (30 → 36). L'override batterie posé au geste précédent ne doit
+    // PAS retomber au défaut moteur : `enregistrer_config` REMPLACE toute la
+    // config stockée, donc le composant doit renvoyer la batterie aussi.
+    const stepperPanneaux = within(carteMax).getByTestId('offre-taille-max-stepper-panneaux')
+    for (let i = 0; i < 6; i += 1) {
+      await user.click(within(stepperPanneaux).getByRole('button', { name: 'Panneaux : plus' }))
+    }
+
+    ventesApi.patchOffreTailleConfig.mockResolvedValueOnce({
+      data: {
+        editable: true,
+        offres_tailles: { avec_servable: true, module_batterie_kwh: 5.0,
+          offres: [offre(), OFFRE_RECOMMANDE, offre({
+            cle: 'max', titre: 'Max', ajuste: true,
+            config: { nb_panneaux: 36, batterie_nb_modules: 4, batterie_module_kwh: 5.0 },
+          })] },
+      },
+    })
+    await user.click(within(carteMax).getByTestId('offre-taille-max-appliquer'))
+
+    await waitFor(() => expect(ventesApi.patchOffreTailleConfig).toHaveBeenCalledTimes(2))
+    // LE POINT DU TEST : le second PATCH porte ENCORE `batterie_nb_modules: 4`
+    // — l'override du premier Applique, jamais retombé au défaut moteur.
+    expect(ventesApi.patchOffreTailleConfig).toHaveBeenNthCalledWith(
+      2, 42, 'max', { nb_panneaux: 36, batterie_nb_modules: 4 },
+    )
+  })
+})
+
 describe('DevisOffresTailles — refus serveur (zéro chiffre inventé)', () => {
   it('un PATCH refusé par le serveur affiche SON message, en français, sur la carte concernée', async () => {
     const user = userEvent.setup()

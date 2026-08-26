@@ -351,9 +351,29 @@ export default function DevisOffresTailles({ devisId, modeInstallation, produits
   const appliquer = async (offre) => {
     const cle = offre.cle
     const edits = pending[cle] || {}
+    // C3 — `enregistrer_config` REMPLACE toute la config stockée de la taille
+    // (apps/ventes/offres_tailles.py) : envoyer SEULEMENT les champs touchés
+    // depuis le dernier Applique effacerait silencieusement un override
+    // enregistré lors d'un Applique précédent (ex. « 4 modules batterie »
+    // posé sur Max, puis « 36 panneaux » appliqué plus tard aurait fait
+    // retomber la batterie au défaut moteur). On envoie donc la config
+    // EFFECTIVE complète = la config connue du serveur (`offre.config`, la
+    // même que la réponse GET) fusionnée avec les éditions en attente — les
+    // éditions gagnent quand les deux existent.
+    const configServeur = offre.config || {}
     const config = {}
-    if (edits.nb_panneaux != null) config.nb_panneaux = edits.nb_panneaux
-    if (edits.batterie_nb_modules != null) config.batterie_nb_modules = edits.batterie_nb_modules
+    const nbPanneaux = edits.nb_panneaux != null
+      ? edits.nb_panneaux
+      : (configServeur.nb_panneaux > 0 ? configServeur.nb_panneaux : undefined)
+    if (nbPanneaux != null) config.nb_panneaux = nbPanneaux
+    // `batterie_nb_modules = 0` est le sentinel serveur « aucun override » —
+    // le reprendre littéralement serait REFUSÉ en 400 par le serializer
+    // (« zéro module n'exprime pas sans batterie ») : on ne le propage que
+    // s'il exprime un vrai override (> 0).
+    const batterieNbModules = edits.batterie_nb_modules != null
+      ? edits.batterie_nb_modules
+      : (configServeur.batterie_nb_modules > 0 ? configServeur.batterie_nb_modules : undefined)
+    if (batterieNbModules != null) config.batterie_nb_modules = batterieNbModules
     if (edits.equipements && Object.keys(edits.equipements).length) config.equipements = edits.equipements
     if (Object.keys(config).length === 0) return
     setTailleEnCours(cle)
