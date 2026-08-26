@@ -1,14 +1,35 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
+import { Provider } from 'react-redux'
+import { configureStore } from '@reduxjs/toolkit'
 
 /* WR12 — exposition des flags backend-only en Paramètres :
    - DevisSection : commission (N99) + export DGI (N105) réservés à l'admin ;
    - LeadsSection : délai SLA de premier contact (FG28), éditable. */
 
+// WIR225 — DevisSection lit le « % de variation par défaut » des variantes au
+// montage (`get/setVarianteConfig`, endpoint DISTINCT du profil société) et
+// consulte le rôle fin pour savoir s'il peut l'écrire : sans ce mock ni ce
+// Provider, les deux tests DevisSection ci-dessous casseraient.
+vi.mock('../../api/ventesApi', () => ({
+  default: {
+    getVarianteConfig: vi.fn(() => Promise.resolve({ data: { variante_pct: '20.00' } })),
+    setVarianteConfig: vi.fn(() => Promise.resolve({ data: { variante_pct: '15.00' } })),
+  },
+}))
+
+import ventesApi from '../../api/ventesApi'
 import DevisSection from './DevisSection'
 import LeadsSection from './LeadsSection'
 
 afterEach(() => cleanup())
+
+function withStore(ui, { role_nom = null } = {}) {
+  const store = configureStore({
+    reducer: { auth: (s = { role: 'admin', role_nom }) => s },
+  })
+  return <Provider store={store}>{ui}</Provider>
+}
 
 const baseForm = {
   payment_terms: {}, doc_prefixes: {}, doc_numbering: {},
@@ -29,7 +50,7 @@ const devisProps = {
 
 describe('WR12 — DevisSection (commission N99 + DGI N105, admin only)', () => {
   it('cache les réglages sensibles pour un non-admin', () => {
-    render(<DevisSection {...devisProps} canManageSensitive={false} />)
+    render(withStore(<DevisSection {...devisProps} canManageSensitive={false} />))
     // Commission verrouillée : message + pas de sélecteur de mode.
     expect(screen.getByText(/Réservé à l'administrateur/)).toBeInTheDocument()
     expect(screen.queryByLabelText('Mode')).not.toBeInTheDocument()
@@ -38,10 +59,51 @@ describe('WR12 — DevisSection (commission N99 + DGI N105, admin only)', () => 
   })
 
   it('expose commission + DGI pour un admin', () => {
-    render(<DevisSection {...devisProps} canManageSensitive />)
+    render(withStore(<DevisSection {...devisProps} canManageSensitive />))
     expect(screen.queryByText(/Réservé à l'administrateur/)).not.toBeInTheDocument()
     expect(screen.getByText('Export DGI (facturation électronique)')).toBeInTheDocument()
     expect(screen.getByText("Activer l'export DGI")).toBeInTheDocument()
+  })
+})
+
+/* WIR225/QG9 — le « % de variation par défaut » des variantes vivait sur
+   `CompanyProfile.variante_pct` et n'était réglable NULLE PART : seul
+   l'override ponctuel de la modale de création existait, et il repart de la
+   valeur société à chaque ouverture. Le serveur réserve l'ÉCRITURE au
+   Directeur et au Commercial responsable ; l'écran reflète la MÊME règle. */
+describe('WIR225 — DevisSection (% de variation des variantes)', () => {
+  const champ = () => screen.getByLabelText(/% de variation par défaut/)
+
+  it('lit la valeur société au montage', async () => {
+    render(withStore(<DevisSection {...devisProps} canManageSensitive />))
+    expect(ventesApi.getVarianteConfig).toHaveBeenCalled()
+    expect(await screen.findByDisplayValue('20')).toBeInTheDocument()
+  })
+
+  it('un Commercial responsable peut l’enregistrer', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event')
+    const user = userEvent.setup()
+    render(withStore(
+      <DevisSection {...devisProps} canManageSensitive={false} />,
+      { role_nom: 'Commercial responsable' },
+    ))
+    await screen.findByDisplayValue('20')
+    await user.clear(champ())
+    await user.type(champ(), '15')
+    await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    expect(ventesApi.setVarianteConfig).toHaveBeenCalledWith('15')
+  })
+
+  it('un rôle non autorisé voit le champ en lecture seule, sans bouton', async () => {
+    render(withStore(
+      <DevisSection {...devisProps} canManageSensitive={false} />,
+      { role_nom: 'Commercial' },
+    ))
+    await screen.findByDisplayValue('20')
+    expect(champ()).toHaveAttribute('readonly')
+    expect(screen.queryByRole('button', { name: 'Enregistrer' })).toBeNull()
+    expect(screen.getByText(/Réservé au Directeur et au Commercial responsable/))
+      .toBeInTheDocument()
   })
 })
 

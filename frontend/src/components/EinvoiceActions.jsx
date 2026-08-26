@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { FileCode, Download, ShieldCheck, Send } from 'lucide-react'
 import einvoiceApi from '../api/einvoiceApi'
 import { Badge, Button } from '../ui'
@@ -23,6 +23,40 @@ export default function EinvoiceActions({ factureId }) {
   const [controle, setControle] = useState(null)
   // PACT54 — transmission déclenchée (statut renvoyé par le serveur).
   const [transmission, setTransmission] = useState(null)
+
+  /* WIR223 — RÉHYDRATATION AU MONTAGE.
+     L'état ne vivait QUE dans `state`, posé par le clic sur « Générer » :
+     après un simple rechargement de la fiche, une e-facture pourtant DÉJÀ
+     générée redevenait invisible — Télécharger / Contrôler / Transmettre
+     disparaissaient et l'unique porte de sortie était de re-cliquer
+     « Générer », ce qui POLLUE l'historique d'une version de plus à chaque
+     fois. On lit donc les versions existantes au montage.
+
+     Un échec (403 pour un rôle sans droit de lecture, réseau) est SILENCIEUX :
+     l'écran reste utilisable et « Générer » reste offert — jamais une erreur
+     rouge pour une simple absence d'historique.
+
+     La rehydratation ne PIÉTINE JAMAIS un état déjà posé : si l'utilisateur a
+     cliqué « Générer » avant que la liste ne réponde, c'est SA version qui
+     reste affichée. */
+  useEffect(() => {
+    if (!factureId) return undefined
+    let vivant = true
+    einvoiceApi.list({ facture_id: factureId })
+      .then((res) => {
+        if (!vivant) return
+        const versions = res?.data?.results ?? res?.data ?? []
+        if (!Array.isArray(versions) || versions.length === 0) return
+        // La version la PLUS RÉCENTE. Le serveur trie déjà par date
+        // décroissante ; on prend malgré tout le plus grand `version` pour ne
+        // dépendre d'AUCUN ordre de tri côté serveur.
+        const derniere = versions.reduce((a, b) => (
+          (Number(b?.version) || 0) > (Number(a?.version) || 0) ? b : a))
+        setState((prev) => prev ?? { fe: derniere })
+      })
+      .catch(() => { /* silencieux : « Générer » reste la porte d'entrée */ })
+    return () => { vivant = false }
+  }, [factureId])
 
   const generer = async () => {
     setBusy(true)
@@ -119,7 +153,11 @@ export default function EinvoiceActions({ factureId }) {
       )}
       {state?.fe && (
         <p className="mt-2 text-sm text-muted-foreground">
-          E-facture générée (dry-run) — version {state.fe.version}. La transmission
+          {/* WIR223 — la version affichée peut venir de l'historique serveur
+              (rechargement de la fiche), pas seulement d'un clic « Générer » :
+              le mode réel décide du libellé plutôt qu'un « dry-run » écrit en
+              dur qui mentirait sur une version transmise. */}
+          E-facture {state.fe.mode === 'reel' ? 'générée' : 'générée (dry-run)'} — version {state.fe.version}. La transmission
           à la DGI reste bloquée tant qu&apos;aucune crédential n&apos;est configurée.
         </p>
       )}

@@ -75,6 +75,10 @@ from .models import (
     ContratRevenu, ObligationPerformance, EcheancierReconnaissance,
     EtapeAuditConsolidation,
     ModeleEcriture, LigneModeleEcriture, AbonnementEcriture,
+    # WIR279 — XACC14 (emprunts / crédits-bails) et XACC19 (états
+    # paramétrables) : services complets, aucun ViewSet jusqu'ici.
+    Emprunt, EcheanceEmprunt,
+    EtatPersonnalise, LigneEtatPersonnalise, ColonneEtatPersonnalise,
 )
 
 
@@ -3530,3 +3534,127 @@ class AbonnementEcritureSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {'date_fin': "La date de fin précède la prochaine échéance."})
         return attrs
+
+
+# ── WIR279 / XACC14 — Emprunts & crédits-bails contractés par la société ────
+
+class EcheanceEmpruntSerializer(serializers.ModelSerializer):
+    """Échéance du tableau d'amortissement — LECTURE SEULE côté API.
+
+    Les échéances ne se saisissent PAS à la main : elles sont générées par
+    ``services.generer_tableau_amortissement`` (annuité constante) et postées
+    par ``services.poster_echeance_emprunt``. Un CRUD dessus produirait un
+    tableau incohérent avec le capital emprunté.
+    """
+    class Meta:
+        model = EcheanceEmprunt
+        fields = [
+            'id', 'emprunt', 'numero', 'date_echeance', 'principal',
+            'interets', 'mensualite', 'capital_restant_du', 'posted',
+            'ecriture',
+        ]
+        read_only_fields = fields
+
+
+class EmpruntSerializer(serializers.ModelSerializer):
+    """Emprunt bancaire / crédit-bail CONTRACTÉ par la société (XACC14).
+
+    À ne pas confondre avec ``SimulationFinancement`` (financement affiché au
+    CLIENT sur un devis). ``company`` est posée côté serveur ; les trois FK de
+    comptes sont validés dans la société de l'appelant.
+    """
+    type_financement_display = serializers.CharField(
+        source='get_type_financement_display', read_only=True)
+    encours_restant_du = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+    nb_echeances = serializers.SerializerMethodField()
+    nb_echeances_postees = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Emprunt
+        fields = [
+            'id', 'reference', 'banque', 'type_financement',
+            'type_financement_display', 'capital', 'taux_annuel',
+            'duree_mois', 'date_debut', 'compte_capital', 'compte_interets',
+            'compte_tresorerie', 'encours_restant_du', 'nb_echeances',
+            'nb_echeances_postees', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def get_nb_echeances(self, obj):
+        return obj.echeances.count()
+
+    def get_nb_echeances_postees(self, obj):
+        return obj.echeances.filter(posted=True).count()
+
+    def validate_compte_capital(self, value):
+        return _meme_societe(self, value, 'Compte')
+
+    def validate_compte_interets(self, value):
+        return _meme_societe(self, value, 'Compte')
+
+    def validate_compte_tresorerie(self, value):
+        return _meme_societe(self, value, 'Compte de trésorerie')
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        # Les invariants métier vivent DÉJÀ sur le modèle (``Emprunt.clean``) :
+        # on les rejoue ici pour qu'ils sortent en 400 DRF plutôt qu'en 500
+        # (``full_clean`` n'est pas appelé par ``ModelSerializer.save``).
+
+        def _lu(champ):
+            return attrs.get(champ, getattr(self.instance, champ, None))
+
+        capital = _lu('capital')
+        if capital is not None and Decimal(capital) <= 0:
+            raise serializers.ValidationError(
+                {'capital': "Le capital emprunté doit être strictement positif."})
+        duree = _lu('duree_mois')
+        if duree is not None and int(duree) <= 0:
+            raise serializers.ValidationError(
+                {'duree_mois': "La durée doit être strictement positive."})
+        taux = _lu('taux_annuel')
+        if taux is not None and Decimal(taux) < 0:
+            raise serializers.ValidationError(
+                {'taux_annuel': "Le taux annuel ne peut pas être négatif."})
+        return attrs
+
+
+# ── WIR279 / XACC19 — États financiers paramétrables ───────────────────────
+
+class LigneEtatPersonnaliseSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = LigneEtatPersonnalise
+        fields = ['id', 'ordre', 'libelle', 'type_ligne', 'formule']
+
+
+class ColonneEtatPersonnaliseSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ColonneEtatPersonnalise
+        fields = [
+            'id', 'ordre', 'libelle', 'type_colonne', 'date_debut',
+            'date_fin', 'budget',
+        ]
+
+    def validate_budget(self, value):
+        return _meme_societe(self, value, 'Budget')
+
+
+class EtatPersonnaliseSerializer(serializers.ModelSerializer):
+    """État financier paramétrable + ses lignes/colonnes (XACC19).
+
+    Les lignes et colonnes sont acceptées IMBRIQUÉES à la création : la vue
+    route la création vers ``services.creer_etat_personnalise``, qui valide
+    CHAQUE formule avant de persister quoi que ce soit (une formule illégale =
+    400 explicite, rien en base). En lecture elles sont renvoyées triées.
+    """
+    lignes = LigneEtatPersonnaliseSerializer(many=True, required=False)
+    colonnes = ColonneEtatPersonnaliseSerializer(many=True, required=False)
+
+    class Meta:
+        model = EtatPersonnalise
+        fields = [
+            'id', 'libelle', 'description', 'lignes', 'colonnes',
+            'created_by', 'date_creation',
+        ]
+        read_only_fields = ['created_by', 'date_creation']

@@ -406,6 +406,62 @@ def score_credit(client):
     }
 
 
+def avertissement_credit(client, montant_transaction=None):
+    """WIR187 (reprend NTCRD7/8) — état crédit d'un client face à une
+    transaction proposée, sous la forme EXACTE attendue par les écrans de
+    vente : ``{'mode', 'depassement', 'disponible'}``.
+
+    LECTURE PURE, rien n'est écrit. C'est l'AVERTISSEMENT seul — pas le verdict
+    de blocage : c'est ``services.verifier_hold_credit`` (NTCRD6) qui décide
+    d'autoriser ou non, et la garde d'acceptation de ``ventes`` reste seule
+    juge du refus.
+
+    POURQUOI CE N'EST PAS UNE DÉLÉGATION à ``services.verifier_hold_credit``,
+    qui renvoie pourtant déjà ces trois clés : ``credit.services`` importe
+    ``apps.audit.models``, et un appelant de ``ventes`` tirerait donc la chaîne
+    ``ventes → credit.services → audit`` — exactement la back-edge que le
+    contrat import-linter « Business-core ventes never imports the audit
+    satellite » interdit (M4). Les trois valeurs sont donc recalculées ici, à
+    l'IDENTIQUE : ``mode``/``depassement``/``disponible`` de
+    ``verifier_hold_credit`` ne dépendent QUE de la limite active et de
+    l'encours — la tolérance (NTCRD30), les dérogations (NTCRD9) et le bypass
+    de rôle (NTCRD31) n'influencent que ``autorise``, qui n'est pas rendu ici.
+    Verrouillé par ``apps/credit/tests`` : les deux chemins doivent s'accorder.
+
+    * ``mode`` — mode de hold de la limite active du client
+      (``aucun``/``avertissement``/``blocage``) ; ``aucun`` quand le client n'a
+      AUCUNE limite : rien à signaler, comportement historique inchangé.
+    * ``depassement`` — dépassement APRÈS la transaction (``Decimal('0')``
+      quand il n'y en a pas ; jamais négatif).
+    * ``disponible`` — reste de limite AVANT la transaction, ou ``None``
+      (crédit illimité) quand aucune limite n'est posée.
+
+    Aucun ``prix_achat`` ni marge n'entre ici — le module crédit n'en expose
+    aucun. Contrat committé : ``contract_samples/credit_warning.json``.
+    """
+    from .models import LimiteCredit
+
+    montant = Decimal(montant_transaction or 0)
+    limite_obj = LimiteCredit.objects.filter(client=client, actif=True).first()
+    if limite_obj is None or limite_obj.montant_limite is None:
+        # Aucune limite = crédit illimité : rien à signaler (comportement
+        # historique inchangé).
+        return {
+            'mode': LimiteCredit.ModeHold.AUCUN,
+            'depassement': Decimal('0'),
+            'disponible': None,
+        }
+
+    encours = encours_client(client)
+    disponible = limite_obj.montant_limite - encours
+    depassement_apres = (encours + montant) - limite_obj.montant_limite
+    return {
+        'mode': limite_obj.mode_hold,
+        'depassement': depassement_apres if depassement_apres > 0 else Decimal('0'),
+        'disponible': disponible,
+    }
+
+
 def derogation_valide_pour(client, montant):
     """NTCRD9 — vrai si le client a une ``DerogationCredit`` APPROUVEE, non
     expirée, dont le ``montant_demande`` couvre ``montant`` (>= montant de la

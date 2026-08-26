@@ -4,10 +4,11 @@ import { describe, it, expect } from 'vitest'
    (`/reporting/cohortes`, gatée responsable/admin) mais aucune entrée de menu
    ANALYSE : on vérifie ici — comme `adsengine.test.jsx`/`compta.test.jsx` le
    font pour leur propre module — que route et nav existent et pointent vers
-   le même rôle. Le reste des routes `reporting` (ex. archive client/chantier,
-   dashboards) reste sans entrée de nav dédiée (ouvertes par clic depuis leur
-   écran d'origine) : ce test ne vérifie donc pas de parité totale route↔nav,
-   seulement l'ajout WIR17(a). */
+   le même rôle. Le reste des routes `reporting` (ex. archive client/chantier)
+   reste sans entrée de nav dédiée (ouvertes par clic depuis leur écran
+   d'origine) : ce test ne vérifie donc pas de parité totale route↔nav,
+   seulement l'ajout WIR17(a). (WIR283 a depuis branché `/reporting/dashboards`,
+   couvert par `module.config.wir283.test.jsx`.) */
 describe('reporting — module.config (WIR17 Cohortes)', () => {
   it('déclare /reporting/cohortes en route ET en entrée du menu ANALYSE, gatées responsable/admin', async () => {
     const { default: config } = await import('./module.config.jsx')

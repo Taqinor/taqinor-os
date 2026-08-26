@@ -38,9 +38,11 @@ a focused test, calling the EXISTING backend endpoint.
   merges land on `main`, rebase the frontend `dev` onto `main` before the single frontend merge.
 
 ## GATED / NOT HERE
-- **XACC14 Emprunt** and **XACC19 EtatPersonnalise** — marked `[x]` but have NO Django viewset/URL at
-  all (model+service only). BACKEND-INCOMPLETE → build the viewset/serializer/url in `docs/PLAN.md`
-  first, then the frontend. Not a frontend-only task.
+- ~~**XACC14 Emprunt** and **XACC19 EtatPersonnalise**~~ — UNGATED by WIR279 (2026-08-26): the
+  backend halves now exist (`EmpruntViewSet` + `generer-tableau/`, read-only `EcheanceEmpruntViewSet`
+  + `poster/`, `EtatPersonnaliseViewSet` + `evaluer/` on `etats-personnalises/`), with their response
+  contracts committed under `apps/compta/contract_samples/`. The frontend halves are ordinary
+  frontend tasks again.
 - **XRH33 careers public page** — deferred to `WEB_PLAN` (apps/web), not ERP frontend. (An in-app
   "publier" toggle IS in scope — see RH lane.)
 
@@ -207,7 +209,7 @@ a focused test, calling the EXISTING backend endpoint.
 
 ## Lane `frontend/ventes` (XSAL/ZSAL round-2 — mostly cheap NOT_WIRED stubs)
 - [BLOCKED: needs backend] FE-XSAL6 — `PlanCommission` has no viewset/URL + not consumed by reporting/insights.py; a "Plans de commission" screen under parametres cannot be wired until the backend exposes it. (@lane: frontend/ventes)
-- [x] (déjà présent) FE-XSAL1-3 — price-list admin CRUD (`ListesPrixPage.jsx`, routed) + `liste_prix` field on `ClientForm.jsx` + `getPrixApplicable` called from `DevisGenerator.jsx` (XSAL3 "Tarif" badge already wired). (@lane: frontend/ventes)
+- [x] FE-XSAL1-3 — price-list admin (`ListesPrixPage.jsx`, routed) + `liste_prix` field on `ClientForm.jsx` + `getPrixApplicable` called from `DevisGenerator.jsx` (XSAL3 "Tarif" badge already wired). CORRECTION (WIR226, 2026-08-26): the "CRUD" claim was false — the screen was Create+Read only (name + currency), with no way to rename, re-date, target a segment, archive or delete a list, so a stale list stayed in price resolution forever. Update / archive-reactivate / delete are now wired to the long-existing `patchListePrix` / `deleteListePrix`, and `segment_client` / `date_debut` / `date_fin` are editable on both create and edit. (@lane: frontend/ventes)
 - [x] (déjà présent) FE-XSAL12 — partial-delivery dialog + reliquat column already in `BonCommandeList.jsx` (`LivraisonPartielleDialog`, `livrer-partiel`); no `VentesKanban.jsx` exists, this is the real implementation location. (@lane: frontend/ventes)
 - [x] FE-ZSAL8/XSAL16 — engagement summary already present (`engagementSummary()` in `DevisList.jsx`); added the missing BC PDF menu item (`handleBonCommandePdf` wired to the orphaned `ventesApi.getBonCommandePdf`) shown when `d.bon_commande_etat.exists`. (@lane: frontend/ventes)
 - [x] (déjà présent) FE-ZSAL5 — keyed email-template editor (`envoi_devis`) already in `EmailSection.jsx` (ZSAL5 tag), backend model/migration + `envoi_devis` key confirmed. (@lane: frontend/ventes)

@@ -16,6 +16,10 @@ const creditApi = {
   getLimites: (params) => api.get('/credit/limites/', { params }),
   createLimite: (data) => api.post('/credit/limites/', data),
   updateLimite: (id, data) => api.patch(`/credit/limites/${id}/`, data),
+  // WIR186/NTCRD22 — timeline des changements d'UNE limite (chatter records :
+  // montant et mode de hold, ancien → nouveau, avec l'acteur). L'action
+  // existait depuis NTCRD22 sans aucun appelant.
+  getLimiteHistorique: (id) => api.get(`/credit/limites/${id}/historique/`),
 
   // NTCRD10 — fiche crédit consolidée d'un client.
   getFicheClient: (clientId) => api.get(`/credit/clients/${clientId}/fiche/`),

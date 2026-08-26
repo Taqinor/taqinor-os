@@ -37,6 +37,24 @@ vi.mock('../../api/ventesApi', async (importOriginal) => {
       ...actual.default,
       refuserDevis: vi.fn(() => Promise.resolve({ data: { statut: 'refuse' } })),
       getDevisById: vi.fn(() => Promise.resolve({ data: { fichier_pdf: '/media/devis/DEV-PDF-AUTO.pdf' } })),
+      // WIR217 — le sondage PDF lit l'ETAT du rendu (pret/en_cours/echec), et
+      // non plus le devis entier : un echec definitif etait invisible.
+      etatPdfDevis: vi.fn(() => Promise.resolve({
+        data: { devis: 99, statut: 'pret', fichier_pdf: true, erreur: null, date: null },
+      })),
+      // WIR225 — le panneau de comparaison est servi par le SERVEUR (le groupe
+      // complet de variantes), plus par une chaine reconstruite localement.
+      getVariantes: vi.fn(() => Promise.resolve({ data: [] })),
+      // WIR274 — fil du devis + composeur de note manuelle (`noterDevis`
+      // n'etait appele que par l'auto-note de relance WhatsApp, VX222).
+      historiqueDevis: vi.fn(() => Promise.resolve({ data: [] })),
+      noterDevis: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
+      // WIR188 — l'acceptation renvoie l'etat credit du client (WIR187) :
+      // par defaut « aucun », donc aucune banniere (comportement historique
+      // des tests ci-dessous).
+      accepterDevis: vi.fn(() => Promise.resolve({
+        data: { credit_warning: { mode: 'aucun', depassement: '0.00', disponible: null } },
+      })),
       telechargerPdfDevis: vi.fn(() => Promise.resolve({
         data: new Blob(['%PDF-1.4'], { type: 'application/pdf' }),
         headers: {},
@@ -460,10 +478,12 @@ describe('DevisList — QG10 : modale « Variante » (% + navigation comparaison
       // Le % (25) est transmis en override de requête.
       expect(ventesApi.dupliquerVariante).toHaveBeenCalledWith(20, { variante_pct: 25 })
     })
-    // La comparaison s'ouvre : le panneau « Historique des versions » apparaît.
+    // La comparaison s'ouvre : le panneau (WIR225 — servi par getVariantes)
+    // apparaît et le groupe est demandé au serveur.
     await waitFor(() => {
-      expect(screen.getByText('Historique des versions')).toBeTruthy()
+      expect(screen.getByText('Comparaison des variantes')).toBeTruthy()
     })
+    await waitFor(() => { expect(ventesApi.getVariantes).toHaveBeenCalledWith(20) })
   })
 
   it('rend le champ % en lecture seule pour un rôle non autorisé', async () => {
@@ -512,8 +532,10 @@ describe('DevisList — GAMMES : créer une variante de gamme', () => {
         nom: 'Confort Atlas', nom_source: 'Essentielle', recommandee: false,
       })
     })
+    // WIR225 — le panneau s'appelle desormais « Comparaison des variantes »
+    // (et il est servi par `getVariantes`, plus par une chaine locale).
     await waitFor(() => {
-      expect(screen.getByText('Historique des versions')).toBeTruthy()
+      expect(screen.getByText('Comparaison des variantes')).toBeTruthy()
     })
   })
 
@@ -905,5 +927,229 @@ describe('DevisList — ARC49-FIX : la liste reste visible sur téléphone (< 76
     expect(conteneurTable.className.split(/\s+/)).not.toContain('hidden')
     expect(within(conteneurTable).getByText('DEV-2026-07-0001')).toBeInTheDocument()
     expect(conteneurTable.querySelector('table').className).toContain('data-table')
+  })
+})
+
+
+/* WIR225 — Le panneau de comparaison promettait de comparer des variantes mais
+   se contentait de `versionChain`, une chaîne reconstruite LOCALEMENT à partir
+   des devis DÉJÀ CHARGÉS dans la page : une variante hors page (pagination,
+   filtre, recherche) en disparaissait purement et simplement, et
+   `getVariantes` — qui renvoie le groupe COMPLET — n'avait aucun appelant. */
+describe('DevisList — WIR225 : comparaison des variantes servie par le serveur', () => {
+  // La RACINE d'un groupe : `version: 1`, aucun parent, aucun remplacant — les
+  // trois champs « cote enfant » sont donc vides. Seul `a_variantes` (serveur,
+  // annotation Exists) dit qu'un groupe existe ; sans lui l'entree « Voir les
+  // versions » disparaissait au premier rechargement (WIR225).
+  const SOURCE = {
+    id: 20, reference: 'DEV-VAR', client_nom: 'ACME', statut: 'brouillon',
+    date_creation: '2026-07-01', total_ttc: 4000, nb_options: 1, version: 1,
+    a_variantes: true,
+  }
+  // 3 variantes créées + le devis source = 4 lignes aux totaux DISTINCTS.
+  const GROUPE = [
+    { id: 20, reference: 'DEV-VAR', version: 1, total_ht: '3333.33', total_ttc: '4000.00' },
+    { id: 21, reference: 'DEV-VAR-A', version: 2, total_ht: '2666.67', total_ttc: '3200.00' },
+    { id: 22, reference: 'DEV-VAR-B', version: 3, total_ht: '4000.00', total_ttc: '4800.00' },
+    // Variante ABSENTE de la page courante : invisible avant WIR225.
+    { id: 23, reference: 'DEV-VAR-C', version: 4, total_ht: '5000.00', total_ttc: '6000.00' },
+  ]
+
+  it('ouvre le panneau, interroge le serveur et rend les 4 colonnes', async () => {
+    const user = userEvent.setup()
+    ventesApi.getVariantes.mockResolvedValueOnce({ data: GROUPE })
+    renderList({ loading: false, devis: [SOURCE] })
+    const row = screen.getByText('DEV-VAR').closest('tr')
+    await user.click(within(row).getByRole('button', { name: /Voir les versions/ }))
+
+    await waitFor(() => expect(ventesApi.getVariantes).toHaveBeenCalledWith(20))
+    const table = await screen.findByRole('table', { name: /Comparaison des variantes/ })
+    for (const entete of ['Référence', 'Libellé', 'Total HT', 'Total TTC']) {
+      expect(within(table).getByText(entete)).toBeInTheDocument()
+    }
+    // Les 4 entrées du groupe, y compris celle absente de la page.
+    for (const ref of ['DEV-VAR', 'DEV-VAR-A', 'DEV-VAR-B', 'DEV-VAR-C']) {
+      expect(within(table).getByText(ref)).toBeInTheDocument()
+    }
+    // Totaux DISTINCTS (aucun chiffre inventé : ceux du serveur, formatés).
+    // Comparaison INSENSIBLE aux espaces : `formatMAD` emet des espaces
+    // insecables que le normaliseur de testing-library ne rend pas
+    // identiques a ceux d'une chaine litterale.
+    const sansEspaces = (v) => String(v).replace(/\s/g, '')
+    const montantsRendus = Array.from(table.querySelectorAll('td'))
+      .map((td) => sansEspaces(td.textContent))
+    for (const ttc of [4000, 3200, 4800, 6000]) {
+      expect(montantsRendus).toContain(sansEspaces(formatMAD(ttc)))
+    }
+    // La source est REPÉRÉE.
+    expect(within(table).getByText('(source)')).toBeInTheDocument()
+    expect(table.querySelectorAll('tr[data-source="true"]')).toHaveLength(1)
+  })
+
+  it('groupe vide : état propre, aucune ligne inventée', async () => {
+    // `a_variantes` etait vrai au chargement de la page, mais le groupe a
+    // disparu entre-temps (variantes desactivees) : le serveur rend [] et
+    // l'ecran doit le DIRE, jamais inventer une ligne.
+    const user = userEvent.setup()
+    ventesApi.getVariantes.mockResolvedValueOnce({ data: [] })
+    renderList({ loading: false, devis: [SOURCE] })
+    const row = screen.getByText('DEV-VAR').closest('tr')
+    await user.click(within(row).getByRole('button', { name: /Voir les versions/ }))
+    expect(await screen.findByText(/aucun groupe de variantes/))
+      .toBeInTheDocument()
+    expect(screen.queryByRole('table', { name: /Comparaison des variantes/ })).toBeNull()
+  })
+
+  it('un devis SANS groupe n’expose aucune entree « Voir les versions »', async () => {
+    renderList({
+      loading: false,
+      devis: [{ ...SOURCE, id: 25, reference: 'DEV-SEUL', a_variantes: false }],
+    })
+    const row = await screen.findByText('DEV-SEUL')
+    expect(within(row.closest('tr')).queryByRole('button', { name: /Voir les versions/ }))
+      .toBeNull()
+  })
+
+  it('le deep-link ?variantes= charge le groupe au montage', async () => {
+    ventesApi.getVariantes.mockResolvedValueOnce({ data: GROUPE })
+    renderList({ loading: false, devis: [SOURCE] }, ['/ventes/devis?variantes=20'])
+    await waitFor(() => expect(ventesApi.getVariantes).toHaveBeenCalledWith(20))
+    expect(await screen.findByRole('table', { name: /Comparaison des variantes/ }))
+      .toBeInTheDocument()
+  })
+})
+
+
+/* WIR274 — `noterDevis` existait des deux cotes mais n'etait appele QUE par
+   l'auto-note de relance WhatsApp (VX222) : aucun composeur ne permettait
+   d'ecrire une note a la main sur un devis. Le fil est RECHARGE DU SERVEUR
+   apres l'envoi — jamais un ajout optimiste local. */
+describe('DevisList — WIR274 : composeur de note manuelle', () => {
+  // Les espions du mock partage VIVENT pour tout le fichier : sans remise a
+  // zero, `noterDevis` garde les appels du test precedent et l'assertion
+  // « aucun appel serveur » du test suivant est fausse (fuite de mock, pas un
+  // vrai rouge — il passe en isolation).
+  beforeEach(() => {
+    ventesApi.noterDevis.mockClear()
+    ventesApi.historiqueDevis.mockClear()
+  })
+
+  const DEVIS = [{
+    id: 30, reference: 'DEV-NOTE', client_nom: 'ACME', statut: 'brouillon',
+    date_creation: '2026-07-01', total_ttc: 1000, nb_options: 1, version: 1,
+  }]
+
+  const ouvrirHistorique = async (user) => {
+    const row = screen.getByText('DEV-NOTE').closest('tr')
+    await user.click(within(row).getByRole('button', { name: /Plus d'actions/ }))
+    await user.click(await screen.findByRole('menuitem', { name: /Historique des modifications/ }))
+  }
+
+  it('publie la note puis RECHARGE le fil depuis le serveur', async () => {
+    const user = userEvent.setup()
+    ventesApi.historiqueDevis
+      .mockResolvedValueOnce({ data: [] })
+      .mockResolvedValueOnce({
+        data: [{
+          id: 9, body: 'Client rappelle lundi.', user_nom: 'Reda',
+          created_at: '2026-08-26T10:00:00Z',
+        }],
+      })
+    renderList({ loading: false, devis: DEVIS })
+    await ouvrirHistorique(user)
+    await waitFor(() => expect(ventesApi.historiqueDevis).toHaveBeenCalledWith(30))
+
+    const zone = await screen.findByLabelText(/Ajouter une note/)
+    await user.type(zone, 'Client rappelle lundi.')
+    await user.click(screen.getByRole('button', { name: 'Ajouter la note' }))
+
+    await waitFor(() => expect(ventesApi.noterDevis)
+      .toHaveBeenCalledWith(30, 'Client rappelle lundi.'))
+    // Second appel = rechargement serveur, et la note apparait telle qu'il la rend.
+    await waitFor(() => expect(ventesApi.historiqueDevis).toHaveBeenCalledTimes(2))
+    expect(await screen.findByText('Client rappelle lundi.')).toBeInTheDocument()
+  })
+
+  it('le bouton reste ferme sur une note vide (aucun appel serveur)', async () => {
+    const user = userEvent.setup()
+    ventesApi.historiqueDevis.mockResolvedValue({ data: [] })
+    renderList({ loading: false, devis: DEVIS })
+    await ouvrirHistorique(user)
+    const bouton = await screen.findByRole('button', { name: 'Ajouter la note' })
+    expect(bouton).toBeDisabled()
+    const zone = screen.getByLabelText(/Ajouter une note/)
+    await user.type(zone, '   ')
+    expect(screen.getByRole('button', { name: 'Ajouter la note' })).toBeDisabled()
+    expect(ventesApi.noterDevis).not.toHaveBeenCalled()
+  })
+
+  it('un palier « normal » ne voit AUCUN composeur', async () => {
+    const user = userEvent.setup()
+    ventesApi.historiqueDevis.mockResolvedValue({ data: [] })
+    renderList({ loading: false, devis: DEVIS, role: 'normal', role_nom: 'Commercial' })
+    await ouvrirHistorique(user)
+    await waitFor(() => expect(ventesApi.historiqueDevis).toHaveBeenCalledWith(30))
+    expect(screen.queryByLabelText(/Ajouter une note/)).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Ajouter la note' })).toBeNull()
+  })
+})
+
+
+/* WIR188/NTCRD11 — La banniere d'alerte credit etait CONSTRUITE mais montee
+   NULLE PART : le `credit_warning` que l'acceptation renvoie (WIR187) n'avait
+   aucun lecteur, et un vendeur pouvait faire signer un client en depassement
+   sans rien voir. Elle est montee ici, sur la modale d'acceptation. */
+describe('DevisList — WIR188 : banniere credit a l’acceptation', () => {
+  const DEVIS = [{
+    id: 40, reference: 'DEV-CRED', client: 3, client_nom: 'ACME',
+    statut: 'envoye', date_creation: '2026-07-01', total_ttc: 20000,
+    nb_options: 1, version: 1,
+  }]
+
+  const accepter = async (user) => {
+    const row = screen.getByText('DEV-CRED').closest('tr')
+    await user.click(within(row).getByRole('button', { name: /Accepter/ }))
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: /Confirmer l'acceptation/ }))
+  }
+
+  it('mode « aucun » : AUCUNE banniere, la modale se ferme comme avant', async () => {
+    const user = userEvent.setup()
+    renderList({ loading: false, devis: DEVIS, permissions: ['ventes_valider'] })
+    await accepter(user)
+    await waitFor(() => expect(ventesApi.accepterDevis).toHaveBeenCalled())
+    await waitFor(() => expect(screen.queryByTestId('credit-warning-banner')).toBeNull())
+  })
+
+  it('mode « avertissement » : banniere orange, la modale reste ouverte', async () => {
+    ventesApi.accepterDevis.mockResolvedValueOnce({
+      data: {
+        credit_warning: {
+          mode: 'avertissement', depassement: '4000.00', disponible: '1000.00',
+        },
+      },
+    })
+    const user = userEvent.setup()
+    renderList({ loading: false, devis: DEVIS, permissions: ['ventes_valider'] })
+    await accepter(user)
+    const banniere = await screen.findByTestId('credit-warning-banner')
+    expect(banniere).toHaveAttribute('data-mode', 'avertissement')
+    expect(screen.getByRole('button', { name: /J'ai compris/ })).toBeInTheDocument()
+  })
+
+  it('mode « blocage » : banniere rouge + demande de derogation', async () => {
+    ventesApi.accepterDevis.mockResolvedValueOnce({
+      data: {
+        credit_warning: {
+          mode: 'blocage', depassement: '12500.00', disponible: '7500.00',
+        },
+      },
+    })
+    const user = userEvent.setup()
+    renderList({ loading: false, devis: DEVIS, permissions: ['ventes_valider'] })
+    await accepter(user)
+    const banniere = await screen.findByTestId('credit-warning-banner')
+    expect(banniere).toHaveAttribute('data-mode', 'blocage')
+    expect(await screen.findByTestId('credit-derogation-wizard')).toBeInTheDocument()
   })
 })

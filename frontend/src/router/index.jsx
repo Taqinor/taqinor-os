@@ -26,7 +26,7 @@ import RouteErrorBoundary from '../components/RouteErrorBoundary'
 import { useEntiteActive } from '../lib/entiteActive'
 import { buildModuleRoutes } from './moduleRoutes'
 // ODX6 — source unique des modules désactivés (état /auth/me/ → store).
-import { isModuleDisabled } from './moduleGating'
+import { isModuleDisabled, estAutoriseEntree } from './moduleGating'
 // ODY3 — résolution de l'atterrissage (préférence VX46 → dernier module VX11 →
 // mono-app → Menu d'accueil `/apps`), partagée avec Login.jsx.
 import { resolveLandingFromAuth } from '../lib/apps/landing'
@@ -210,7 +210,13 @@ const notFoundLoader = async () => {
 // qu'elle est présente dans les permissions de l'utilisateur.
 // VX131(c) — un refus rebondissait en SILENCE vers `/dashboard` (aucun écran
 // dédié, aucune explication) : redirige désormais vers `/403` (ui/Forbidden.jsx).
-const roleLoader = (roles, perm) => async ({ request }) => {
+// WIR171 — `permRepliPalier` (3e argument, transmis par `buildModuleRoutes`
+// depuis la route du module.config) sélectionne la sémantique serveur :
+// `HasPermissionOrLegacy` (permission seule pour un rôle fin, repli palier
+// responsable/admin pour un compte légacy) au lieu du ET strict par défaut.
+// La règle elle-même vit dans `moduleGating.estAutoriseEntree` — source
+// UNIQUE partagée avec la Sidebar, la BottomTabBar et le lanceur d'apps.
+const roleLoader = (roles, perm, permRepliPalier) => async ({ request }) => {
   const user = await ensurePortalScope()
   if (!user) return buildLoginRedirect(request)
   // NTPRT8 — un compte portail externe ne franchit jamais une route interne,
@@ -219,7 +225,7 @@ const roleLoader = (roles, perm) => async ({ request }) => {
   if (versPortail) return versPortail
   const { role, permissions } = store.getState().auth
   const tier = role || 'normal'
-  const allowed = roles.includes(tier) && (!perm || (permissions || []).includes(perm))
+  const allowed = estAutoriseEntree({ roles, perm, permRepliPalier }, tier, permissions)
   return allowed ? null : redirect('/403')
 }
 

@@ -198,3 +198,125 @@ class ClotureGateTests(TestCase):
         resp = auth(legacy).post(
             f'/api/django/compta/periodes/{self.periode.pk}/cloturer/')
         self.assertEqual(resp.status_code, 200)
+
+
+class SaisieEcritureGateTests(TestCase):
+    """WIR175 — le CRUD des écritures et l'extourne exigent ``compta_saisir``.
+
+    Avant : seul ``IsResponsableOrAdmin`` gardait ces routes, donc tout rôle fin
+    portant UNE permission d'écriture quelconque (un Commercial et son
+    ``crm_creer``) pouvait passer, modifier, supprimer ou contre-passer une
+    écriture comptable. ``valider`` / la séparation des tâches restent
+    inchangés : les deux permissions sont DISJOINTES dans les deux sens.
+    """
+
+    def setUp(self):
+        self.co = make_company('wir175-co', 'WIR175 Co')
+        services.seed_plan_comptable(self.co)
+        services.seed_journaux(self.co)
+        self.journal = services._journal(
+            self.co, Journal.Type.OPERATIONS_DIVERSES)
+        self.ecriture = make_ecriture(
+            self.co, date(2026, 4, 1), 'Vente WIR175', '500')
+
+    def _corps(self):
+        return {
+            'journal': self.journal.pk,
+            'date_ecriture': '2026-04-02',
+            'libelle': 'Saisie WIR175',
+            'lignes': [
+                {'compte': services.get_compte(self.co, '5141').pk,
+                 'debit': '300.00', 'credit': '0.00'},
+                {'compte': services.get_compte(self.co, '7121').pk,
+                 'debit': '0.00', 'credit': '300.00'},
+            ],
+        }
+
+    def _avec_role(self, username, nom, permissions):
+        role = Role.objects.create(
+            company=self.co, nom=nom, permissions=permissions)
+        user = make_user(self.co, username)
+        user.role = role
+        user.save()
+        return user
+
+    # ── Commercial : 403 sur les quatre écritures ───────────────────────────
+    def test_commercial_403_sur_create_update_destroy_extourner(self):
+        # Extrait RÉEL du preset Commercial : aucune permission compta_*, mais
+        # des permissions d'ÉCRITURE ailleurs (donc ``is_responsable`` vrai —
+        # c'est exactement ce qui le laissait passer avant WIR175).
+        commercial = self._avec_role(
+            'wir175-commercial', 'Commercial WIR175',
+            ['crm_voir', 'crm_creer', 'crm_modifier', 'ventes_creer'])
+        api = auth(commercial)
+        base = '/api/django/compta/ecritures/'
+
+        self.assertEqual(
+            api.post(base, self._corps(), format='json').status_code, 403)
+        self.assertEqual(
+            api.patch(f'{base}{self.ecriture.pk}/',
+                      {'libelle': 'pirate'}, format='json').status_code, 403)
+        self.assertEqual(
+            api.delete(f'{base}{self.ecriture.pk}/').status_code, 403)
+        self.assertEqual(
+            api.post(f'{base}{self.ecriture.pk}/extourner/').status_code, 403)
+
+        # Rien n'a bougé en base.
+        self.ecriture.refresh_from_db()
+        self.assertEqual(self.ecriture.libelle, 'Vente WIR175')
+        self.assertEqual(
+            EcritureComptable.objects.filter(company=self.co).count(), 1)
+
+    # ── compta_valider SEUL ne crée pas ─────────────────────────────────────
+    def test_compta_valider_seul_ne_cree_pas_ni_n_extourne(self):
+        valideur = self._avec_role(
+            'wir175-valideur', 'Valideur compta', ['compta_valider'])
+        api = auth(valideur)
+        base = '/api/django/compta/ecritures/'
+        self.assertEqual(
+            api.post(base, self._corps(), format='json').status_code, 403)
+        self.assertEqual(
+            api.post(f'{base}{self.ecriture.pk}/extourner/').status_code, 403)
+
+    # ── compta_saisir : accès rendu ─────────────────────────────────────────
+    def test_compta_saisir_cree_et_extourne(self):
+        saisisseur = self._avec_role(
+            'wir175-saisi', 'Saisie compta', ['compta_saisir'])
+        api = auth(saisisseur)
+        base = '/api/django/compta/ecritures/'
+        resp = api.post(base, self._corps(), format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        resp = api.post(f'{base}{self.ecriture.pk}/extourner/')
+        self.assertEqual(resp.status_code, 201, resp.data)
+
+    def test_compta_saisir_seul_ne_valide_pas(self):
+        # La réciproque : la garde ``compta_valider`` de l'action ``valider``
+        # n'est PAS écrasée par le nouveau ``get_permissions``.
+        saisisseur = self._avec_role(
+            'wir175-saisi2', 'Saisie compta 2', ['compta_saisir'])
+        resp = auth(saisisseur).post(
+            f'/api/django/compta/ecritures/{self.ecriture.pk}/valider/')
+        self.assertEqual(resp.status_code, 403)
+
+    # ── Lecture inchangée ───────────────────────────────────────────────────
+    def test_lecture_reste_ouverte(self):
+        lecteur = self._avec_role(
+            'wir175-lecteur', 'Compta lecture', ['compta_saisir'])
+        resp = auth(lecteur).get('/api/django/compta/ecritures/')
+        self.assertEqual(resp.status_code, 200)
+
+    # ── Repli LÉGACY intact ─────────────────────────────────────────────────
+    def test_legacy_responsable_conserve_la_saisie(self):
+        legacy = make_user(self.co, 'wir175-legacy', role='responsable')
+        api = auth(legacy)
+        base = '/api/django/compta/ecritures/'
+        resp = api.post(base, self._corps(), format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(
+            api.post(f'{base}{self.ecriture.pk}/extourner/').status_code, 201)
+
+    def test_legacy_normal_reste_refuse(self):
+        legacy = make_user(self.co, 'wir175-legacy-normal', role='normal')
+        resp = auth(legacy).post(
+            '/api/django/compta/ecritures/', self._corps(), format='json')
+        self.assertEqual(resp.status_code, 403)

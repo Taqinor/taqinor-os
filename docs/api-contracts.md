@@ -234,6 +234,8 @@
     actions_declenchees:inconnu, context:inconnu, detail:texte
 - frontend/src/api/cpqApi.js :: validerCompatibilite -> /api/django/cpq/valider-compatibilite
     avertissements:inconnu, bloquantes:inconnu, detail:texte, valide:booleen, violations:inconnu
+- frontend/src/api/creditApi.js :: getLimiteHistorique -> /api/django/credit/limites/<>/historique
+    count:nombre, entries:inconnu
 - frontend/src/api/crmApi.js :: bulkLeads -> /api/django/crm/leads/bulk
     count:nombre, detail:texte, ok:booleen, op:texte, queue:inconnu, skipped:inconnu, total:nombre, unchanged:inconnu, updated:inconnu
 - frontend/src/api/crmApi.js :: checkDevisAuto -> /api/django/crm/leads/<>/devis-auto
@@ -579,7 +581,7 @@
 - frontend/src/api/monitoringApi.js :: emailOmReport -> /api/django/monitoring/configs/<>/email-om-report
     sent:inconnu
 - frontend/src/api/monitoringApi.js :: facturerAbonnement -> /api/django/monitoring/abonnements-monitoring/<>/facturer
-    detail:inconnu, facture_id:inconnu, montant_ttc:texte, reference:inconnu
+    detail:inconnu, facture_id:inconnu, montant_ttc:texte, prochaine_echeance:inconnu, reference:inconnu
 - frontend/src/api/monitoringApi.js :: getClientPortal -> /api/django/monitoring/configs/client-portal
     client:nombre, co2_kg:inconnu, co2_kg_par_kwh:inconnu, co2_tonnes:inconnu, detail:texte, economies_mad:inconnu, systems_count:inconnu, tarif_mad_par_kwh:inconnu, total_production_kwh:inconnu
 - frontend/src/api/monitoringApi.js :: getCo2 -> /api/django/monitoring/configs/<>/co2
@@ -986,6 +988,8 @@
     detail:inconnu, devis_statut:inconnu, email_statut:inconnu, log_id:inconnu, proposal_path:inconnu, statut:texte
 - frontend/src/api/ventesApi.js :: envoyerEmailFacture -> /api/django/ventes/factures/<>/envoyer-email
     detail:texte, email_log_id:inconnu, to_email:inconnu
+- frontend/src/api/ventesApi.js :: etatPdfDevis -> /api/django/ventes/devis/<>/etat-pdf
+    date:inconnu, devis:inconnu, erreur:inconnu, fichier_pdf:inconnu, statut:inconnu
 - frontend/src/api/ventesApi.js :: exportStatus -> /api/django/ventes/export/status/<>
     detail:texte, download_url:inconnu, filename:inconnu, status:texte
 - frontend/src/api/ventesApi.js :: genererPdfDevis -> /api/django/ventes/devis/<>/generer-pdf

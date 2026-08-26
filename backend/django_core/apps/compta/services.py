@@ -9951,7 +9951,7 @@ class AbonnementMonitoringError(ValidationError):
     résilié/suspendu, motif de résiliation absent)."""
 
 
-def facturer_abonnement_monitoring(abonnement, *, user=None):
+def facturer_abonnement_monitoring(abonnement, *, user=None, today=None):
     """YSUBS3 — Émet la ``ventes.Facture`` standard de la période due d'un
     abonnement monitoring ACTIF, DÉCOUPLÉ de ``renouveler`` (qui n'avance
     plus que l'échéance — la facturation confondait les deux, anti-pattern
@@ -9959,7 +9959,16 @@ def facturer_abonnement_monitoring(abonnement, *, user=None):
 
     Garde d'idempotence : refuse si ``derniere_facturation`` == la période
     en cours de facturation (``prochaine_echeance``, ou aujourd'hui si
-    absente) — ne re-facture jamais la même période. Le client est résolu
+    absente) — ne re-facture jamais la même période.
+
+    WIR237 — SECONDE garde, nécessaire depuis que l'action HTTP ``facturer``
+    enchaîne le renouvellement : une fois l'échéance avancée, un 2e appel ne
+    viserait plus la MÊME période (la garde d'idempotence ne mordrait donc
+    pas) et facturerait d'avance la période suivante. On refuse désormais
+    toute période NON ENCORE DUE. Sans effet sur le beat, qui ne traite que
+    des abonnements déjà dus (``abonnements_monitoring_dus_facturation``).
+
+    Le client est résolu
     via ``apps.crm.selectors.get_company_client`` (jamais un import de
     ``apps.crm.models``) ; la Facture est créée EMISE, TVA 20 %, numérotée
     via ``ventes.utils.references.create_with_reference`` (même patron que
@@ -9981,10 +9990,16 @@ def facturer_abonnement_monitoring(abonnement, *, user=None):
             "Le montant de l'abonnement doit être positif.")
 
     company = abonnement.company
-    periode = abonnement.prochaine_echeance or timezone.localdate()
+    if today is None:
+        today = timezone.localdate()
+    periode = abonnement.prochaine_echeance or today
     if abonnement.derniere_facturation == periode:
         raise AbonnementMonitoringError(
             f'La période {periode} a déjà été facturée pour cet abonnement.')
+    if periode > today:
+        raise AbonnementMonitoringError(
+            f"La période {periode} n'est pas encore due : "
+            'elle ne peut pas être facturée par avance.')
 
     client = get_company_client(company, abonnement.client_id)
     if client is None:
@@ -10015,7 +10030,7 @@ def facturer_abonnement_monitoring(abonnement, *, user=None):
     return facture
 
 
-def facturer_abonnement_monitoring_beat(abonnement, *, user=None):
+def facturer_abonnement_monitoring_beat(abonnement, *, user=None, today=None):
     """SCA44 — Facture UN ``AbonnementMonitoring`` dû, pour le beat
     quotidien de ``apps.contrats.scheduled`` (3e flux de facturation
     récurrente automatique, après les échéanciers contrats et les contrats
@@ -10032,8 +10047,9 @@ def facturer_abonnement_monitoring_beat(abonnement, *, user=None):
     lève ``AbonnementMonitoringError`` si la facturation échoue — l'appelant
     (le beat) capture l'exception PAR abonnement pour ne jamais bloquer les
     suivants."""
-    facture = facturer_abonnement_monitoring(abonnement, user=user)
-    renouveler_abonnement_monitoring(abonnement)
+    facture = facturer_abonnement_monitoring(
+        abonnement, user=user, today=today)
+    renouveler_abonnement_monitoring(abonnement, today=today)
     return facture
 
 
@@ -10048,6 +10064,34 @@ def suspendre_abonnement_monitoring(abonnement):
     if abonnement.statut != AbonnementMonitoring.Statut.ACTIF:
         return abonnement
     abonnement.statut = AbonnementMonitoring.Statut.SUSPENDU
+    abonnement.save(update_fields=['statut'])
+    return abonnement
+
+
+def reactiver_abonnement_monitoring(abonnement):
+    """WIR237 — Reprend un abonnement SUSPENDU (transition inverse de
+    ``suspendre_abonnement_monitoring``).
+
+    La suspension était jusqu'ici SANS RETOUR côté API : un abonnement suspendu
+    ne pouvait plus jamais redevenir actif (ni facturable), sauf intervention
+    en base. Cette transition est volontairement ÉTROITE :
+      * SUSPENDU → ACTIF ;
+      * ACTIF → no-op (idempotent, aucun effet, aucune erreur) ;
+      * RESILIE → refusé (``AbonnementMonitoringError``) : la résiliation reste
+        DÉFINITIVE, et la ressusciter contournerait l'événement
+        ``abonnement_monitoring_resilie`` déjà émis (qui a coupé la supervision
+        liée, cf. ``apps/monitoring/receivers.py``).
+    N'avance JAMAIS l'échéance : reprendre n'est pas facturer. Renvoie
+    l'abonnement.
+    """
+    from .models import AbonnementMonitoring
+
+    if abonnement.statut == AbonnementMonitoring.Statut.RESILIE:
+        raise AbonnementMonitoringError(
+            "Un abonnement résilié ne peut pas être réactivé.")
+    if abonnement.statut == AbonnementMonitoring.Statut.ACTIF:
+        return abonnement
+    abonnement.statut = AbonnementMonitoring.Statut.ACTIF
     abonnement.save(update_fields=['statut'])
     return abonnement
 
