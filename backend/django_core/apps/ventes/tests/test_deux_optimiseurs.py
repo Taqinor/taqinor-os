@@ -1122,6 +1122,38 @@ class LEchelleDePaliersBatterie(_Base):
             self.assertEqual(palier['nb_batteries_10'], 0, palier)
             self.assertGreater(palier['nb_batteries_5'], 0, palier)
 
+    def test_f6_module_du_devis_generalise_a_un_calibre_hors_5_10(self):
+        """F6 (revue adversariale 26/08/2026) — un devis qui vend le VRAI
+        Deye BOS-B-Pack16 (16 kWh, présent dans les gammes) doit garder son
+        pin lui aussi : un whitelist figé sur 5/10 le perdait
+        SILENCIEUSEMENT, retombant sur un re-choix catalogue — la MÊME
+        violation que F1."""
+        bat16 = Produit.objects.create(
+            company=self.company,
+            nom='Batterie Deye BOS-B Pro haute tension — 16 kWh',
+            sku='BAT16-%s' % self.slug, prix_vente=Decimal('40000'),
+            prix_achat=Decimal('1'), quantite_stock=10)
+        devis = self._devis_residentiel(email='f6-16kwh@example.com')
+        LigneDevis.objects.create(
+            devis=devis, produit=bat16,
+            designation='Batterie Deye BOS-B Pro haute tension — 16 kWh',
+            quantite=Decimal('1'), prix_unitaire=Decimal('40000'))
+        self.assertEqual(
+            dimensionnement.module_batterie_du_devis(devis), 16.0)
+
+    def test_f6_filtre_variante_sans_exclut_les_lignes_option_sans(self):
+        """F6 — même filtre que ``facteur_remise_du_devis`` : une ligne
+        marquée ``variante='sans'`` (L-2OPT, l'option qui ne vend jamais de
+        batterie) n'entre pas dans la lecture, même si elle portait — par
+        accident de données — une désignation batterie."""
+        devis = self._devis_residentiel(email='f6-variante-sans@example.com')
+        LigneDevis.objects.create(
+            devis=devis, produit=self.produits['BAT5'],
+            designation='Batterie Dyness 5 kWh',
+            quantite=Decimal('1'), prix_unitaire=Decimal('16000'),
+            variante='sans')
+        self.assertIsNone(dimensionnement.module_batterie_du_devis(devis))
+
     def test_le_plafond_du_toit_borne_chaque_palier(self):
         """Le calepinage est un PLAFOND PHYSIQUE : l'échelle ne propose jamais
         des panneaux qui ne tiennent pas, et un toit plus petit ne peut que

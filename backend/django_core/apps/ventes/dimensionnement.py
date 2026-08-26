@@ -1743,9 +1743,10 @@ def capacite_batterie_des_lignes(devis):
 
 
 def module_batterie_du_devis(devis):
-    """BATHOMO (fondateur 26/08/2026) — le CALIBRE (``5.0`` ou ``10.0`` kWh)
-    DÉJÀ engagé par les LIGNES RÉELLES de ce devis, ou ``None`` si aucune
-    ligne batterie n'existe encore.
+    """BATHOMO (fondateur 26/08/2026) — le CALIBRE (en kWh, un flottant
+    POSITIF quelconque — voir F6 ci-dessous) DÉJÀ engagé par les LIGNES
+    RÉELLES de ce devis, ou ``None`` si aucune ligne batterie n'existe
+    encore.
 
     « the battery-related features in the quote web page should ALWAYS use
     the quote items — if the quote has 5 kWh batteries the web page should
@@ -1757,19 +1758,37 @@ def module_batterie_du_devis(devis):
     catalogue qui basculerait vers l'autre calibre au passage d'un multiple
     de 10.
 
+    F6 (revue adversariale 26/08/2026) — GÉNÉRALISÉ à N'IMPORTE QUEL calibre
+    positif, jamais un whitelist figé sur 5/10. Un devis qui vend le VRAI
+    Deye BOS-B-Pack16 (16 kWh, présent dans les gammes) perdait SILENCIEUSEMENT
+    son pin sous l'ancien whitelist — retombant sur un re-choix catalogue,
+    exactement la violation « la page suit les articles du devis » que F1
+    corrige par ailleurs. Les lignes sont regroupées PAR CALIBRE LE PLUS
+    PROCHE (tolérance ±1 kWh, la même que l'ancien couple 5/10) : deux
+    lectures d'un même module à l'arrondi près (5.0 / 5.12) ne doivent
+    JAMAIS ouvrir deux compartiments distincts.
+
+    F6 — MÊME FILTRE DE VARIANTE que :func:`facteur_remise_du_devis`
+    (``variante != 'sans'``) : une ligne réservée à l'option SANS batterie
+    (L-2OPT) n'a, par construction, jamais de ligne batterie — mais aligner
+    la lecture évite toute divergence future entre les deux fonctions.
+
     LECTURE, JAMAIS UNE RECOMPOSITION — même source que
     :func:`_compter_modules_batterie` (le nom des lignes déjà vendues). Un
     devis historique EXCEPTIONNELLEMENT mélangé (un devis composé avant ce
     correctif) retient le calibre qui porte la plus grande capacité totale —
-    jamais un chiffre inventé, la meilleure lecture d'un fait imparfait
-    plutôt qu'un blocage. ``None`` (devis sans ligne batterie, ou un devis
-    qui n'existe pas encore) ⇒ l'appelant retombe sur le choix ÉCONOMIQUE
-    normal du catalogue (comportement inchangé)."""
+    égalité tranchée par le PLUS PETIT calibre (jamais un chiffre inventé,
+    la meilleure lecture d'un fait imparfait plutôt qu'un blocage).
+    ``None`` (devis sans ligne batterie, ou un devis qui n'existe pas
+    encore) ⇒ l'appelant retombe sur le choix ÉCONOMIQUE normal du
+    catalogue (comportement inchangé)."""
     try:
         from apps.ventes.services import _is_battery, _parse_kwh
 
-        capacite_5 = capacite_10 = 0.0
+        capacites = {}  # calibre (kWh, ouvert par la 1re ligne) -> capacité
         for ligne in _lignes_produit_du_devis(devis):
+            if (getattr(ligne, 'variante', '') or '') == 'sans':
+                continue
             designation = getattr(ligne, 'designation', '') or ''
             if not _is_battery(designation):
                 continue
@@ -1777,17 +1796,21 @@ def module_batterie_du_devis(devis):
             if quantite <= 0:
                 continue
             nominal = _num(_parse_kwh(designation))
-            if abs(nominal - 5.0) < 1.0:
-                capacite_5 += 5.0 * quantite
-            elif abs(nominal - 10.0) < 1.0:
-                capacite_10 += 10.0 * quantite
+            if nominal <= 0:
+                continue
+            calibre = next(
+                (c for c in capacites if abs(c - nominal) < 1.0), nominal)
+            capacites[calibre] = (
+                capacites.get(calibre, 0.0) + nominal * quantite)
     except Exception:  # noqa: BLE001 — un aperçu ne casse jamais un écran
         logger.warning('module batterie du devis illisible sur %s',
                        getattr(devis, 'reference', '?'), exc_info=True)
         return None
-    if capacite_5 <= 0 and capacite_10 <= 0:
+    if not capacites:
         return None
-    return 10.0 if capacite_10 > capacite_5 else 5.0
+    # Capacité totale DÉCROISSANTE, égalité tranchée par le calibre
+    # CROISSANT (déterministe, jamais dépendant de l'ordre des lignes).
+    return min(capacites, key=lambda c: (-capacites[c], c))
 
 
 def echelle_paliers_batterie(devis):
