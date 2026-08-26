@@ -1328,41 +1328,74 @@ class LEchelleDePaliersBatterie(_Base):
         la contenance mesurée (le comportement corrigé), une fois en neutralisant
         la mesure — ce qui fait retomber la borne sur le DESSIN, exactement
         l'ancien comportement. Les deux doivent DIVERGER : un champ tiré au-delà
-        des 18 panneaux dessinés, et une échelle qui ne se fait plus tronquer.
+        des panneaux DESSINÉS, et une échelle qui ne se fait plus tronquer.
         """
+        # POURQUOI 12 PANNEAUX DESSINÉS, ET PAS 18 — LA DÉRIVATION, MESURÉE.
+        # ``max_champ`` est le MINIMUM de trois bornes : ``MAX_PANNEAUX_BALAYAGE``
+        # (120), la FALAISE (``ceil(parité × FACTEUR_MAX_FALAISE)``) et le toit.
+        # Une première version dessinait 18 panneaux et les deux ancrages
+        # rendaient LA MÊME échelle — la garde de régime ci-dessous l'a dit :
+        # « [8, 11, 13, 15, 18, 18] == [8, 11, 13, 15, 18, 18] ». La raison est
+        # arithmétique : sans borne de toit cette échelle plafonne à 18, donc
+        # la falaise vaut 18 pour ce profil (parité = 9 panneaux, × 2,0). Un
+        # dessin à 18 égalait la falaise : la borne de toit n'était JAMAIS
+        # active, et le test ne pouvait rien prouver.
+        # À 12 dessinés, les trois bornes se séparent enfin :
+        #   ancre DESSIN     → max_champ = min(120, 18, 12) = 12  (tronque)
+        #   ancre CONTENANCE → max_champ = min(120, 18, 76) = 18  (ne tronque pas)
+        # Les paliers qui réclament 13, 15 puis 18 panneaux sont donc hors de
+        # portée de l'ancien ancrage et à portée du nouveau — exactement le
+        # régime que ce test doit exercer.
         devis = self._devis_residentiel(
             email='paliercontenance@example.com',
-            roof_layout=self._layout_extensible())
+            roof_layout=self._layout_extensible(dessines=12))
+        dessines, contenance = 12, 76
+        self.assertEqual(dimensionnement.plafond_toit_du_devis(devis),
+                         dessines)
+        self.assertEqual(dimensionnement.contenance_toit_du_devis(devis),
+                         contenance)
         echelle_contenance = dimensionnement.echelle_paliers_batterie(devis)
         with patch('apps.ventes.calepinage_options.capacite_toit_du_devis',
                    return_value=None):
             echelle_dessin = dimensionnement.echelle_paliers_batterie(devis)
 
+        # Les deux échelles doivent EXISTER : une liste vide ferait lever les
+        # ``max()`` plus bas et masquerait le vrai signal derrière une
+        # ValueError.
         self.assertTrue(echelle_contenance,
                         'échelle vide : le test ne prouverait rien')
+        self.assertTrue(echelle_dessin,
+                        'échelle de référence vide : rien à comparer')
         champs_contenance = [p['nb_panneaux'] for p in echelle_contenance]
         champs_dessin = [p['nb_panneaux'] for p in echelle_dessin]
 
-        # LE RÉGIME EST POSÉ, PAS ESPÉRÉ. Si un jour le profil de ce fixture
-        # n'exige plus jamais plus de 18 panneaux, les deux échelles se
-        # confondent et ce test ne prouve PLUS rien — il doit alors ROUGIR pour
-        # le dire, jamais passer en silence.
+        # LE RÉGIME EST POSÉ, PAS ESPÉRÉ — et cette garde a DÉJÀ payé : c'est
+        # elle qui a signalé que le premier fixture (18 dessinés = la falaise)
+        # ne prouvait rien. Si la falaise de ce profil redescendait au niveau
+        # du dessin, les deux échelles se confondraient de nouveau et le test
+        # doit ROUGIR pour le dire, jamais passer en silence.
         self.assertNotEqual(
             champs_contenance, champs_dessin,
             'le fixture n\'exerce plus le régime : les deux ancrages donnent '
-            'la même échelle (%s). Reprendre un profil qui réclame plus de '
-            'panneaux que le dessin.' % champs_contenance)
+            'la même échelle (%s). La borne de toit n\'est active que si le '
+            'DESSIN (%s) est sous la falaise du profil — redescendre le '
+            'nombre de panneaux dessinés, ou prendre un profil qui en '
+            'réclame davantage.' % (champs_contenance, dessines))
 
-        # 1. Le champ est TIRÉ au-delà du dessin — ce que l'ancienne borne
-        #    interdisait — sans jamais dépasser ce que le toit tient.
-        self.assertGreater(max(champs_contenance), 18)
-        self.assertLessEqual(max(champs_contenance), 78)
-        # 2. L'échelle n'est plus tronquée : elle propose au moins autant de
+        # 1. L'ANCIEN ANCRAGE PLAFONNE AU DESSIN — c'est ce qu'il faisait, et
+        #    c'est ce qui grisait des paliers que le toit peut nourrir.
+        self.assertLessEqual(max(champs_dessin), dessines)
+        # 2. LA GARDE CENTRALE : le champ est désormais TIRÉ AU-DELÀ du dessin.
+        #    Cette ligne rougit le jour où la borne retombe sur le dessin.
+        self.assertGreater(max(champs_contenance), dessines)
+        # 3. Sans jamais dépasser ce que le toit tient réellement.
+        self.assertLessEqual(max(champs_contenance), contenance)
+        # 4. L'échelle n'est plus tronquée : elle propose au moins autant de
         #    paliers qu'avec l'ancienne borne.
         self.assertGreaterEqual(len(echelle_contenance), len(echelle_dessin))
-        # 3. Aucun palier ne ment sur le toit.
+        # 5. Aucun palier ne ment sur le toit.
         for palier in echelle_contenance:
-            self.assertLessEqual(palier['nb_panneaux'], 78)
+            self.assertLessEqual(palier['nb_panneaux'], contenance)
 
     def test_un_toit_SATURE_laisse_l_echelle_inchangee(self):
         """CONVERGENCE HONNÊTE : quand le dessin occupe déjà toute la

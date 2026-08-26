@@ -488,6 +488,17 @@ class DerivationTests(SimpleTestCase):
             tableau=_tableau((10, 6.0), (15, 8.0)),
             data={'nb_panneaux_sans': 15,
                   'variantes_servables': ['sans', 'avec']},
+            # LES CARTES SUIVENT LE DEVIS, ET IL FAUT LE DIRE AU HARNAIS.
+            # ``_deriver`` bouchonne ``_carte_du_devis`` par ``dict(cartes[v])``
+            # SANS réécrire ``nb_panneaux`` — c'est fidèle à la production, où
+            # la carte « Recommandé » est REPRISE telle quelle du devis et
+            # n'est jamais recomposée. Les cartes par défaut portent 22 (le
+            # champ de ``DATA``) : sans ce pin, « Recommandé » annonçait 22
+            # alors que ``data`` dit 15, et le test comparait deux fixtures
+            # entre elles. ``_carte_moteur``, lui, réécrit bien le champ —
+            # d'où Éco et Max corrects sans rien préciser.
+            cartes={'sans': _carte(nb_panneaux=15),
+                    'avec': _carte(nb_panneaux=15)},
             plafond=15, capacite=24)
         cles = [o['cle'] for o in bloc['offres']]
         self.assertEqual(cles, ['eco', 'recommande', 'max'])
