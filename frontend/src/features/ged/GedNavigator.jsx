@@ -14,12 +14,13 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   Folder, FolderOpen, ChevronRight, ChevronDown, FileText, Loader2, Inbox,
   RefreshCw, Plus, FolderPlus, Pencil, Upload, MoveRight, Eye, Lock, LockOpen,
-  Trash2, Info, Link2, EyeOff, X,
+  Trash2, Info, Link2, EyeOff, X, Download, History, RotateCcw, Tag as TagIcon,
 } from 'lucide-react'
 import gedApi from '../../api/gedApi'
 // APX32 (e) — en-tête UNIQUE de l'app (VX28), fin du 4ᵉ idiome.
 import { PageHeader } from '../../ui/PageHeader'
 import { formatDate } from '../../lib/format'
+import { downloadBlobInGesture, filenameFromResponse } from '../../utils/downloadBlob'
 import {
   Card, CardContent, Button, EmptyState, Skeleton, Badge,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
@@ -105,6 +106,8 @@ export default function GedNavigator() {
   const [bulkBusy, setBulkBusy] = useState(false)
   // XGED10 — fusion de plusieurs PDF sélectionnés (dialogue de confirmation).
   const [mergeDlg, setMergeDlg] = useState(false)
+  // XGED14 — opérations en lot tagger/detaguer/deplacer (rapport d'erreurs).
+  const [bulkOpsDlg, setBulkOpsDlg] = useState(false)
 
   // ── Chargement des cabinets (armoires racines) ──
   const loadCabinets = (preferId) => {
@@ -220,6 +223,20 @@ export default function GedNavigator() {
     } catch (err) {
       toast.error(errText(err, 'Opération en lot impossible.'))
     } finally { setBulkBusy(false) }
+  }
+
+  // XGED14 — téléchargement ZIP de la sélection : wrapper DÉDIÉ
+  // `telechargerZipLot` (réponse blob), jamais `operationsLot` générique.
+  // `downloadBlobInGesture` est appelé SYNCHRONE (avant tout `await`), donc
+  // pas de fonction `async` ici — une chaîne `.then/.catch`.
+  const bulkZip = () => {
+    if (selectedIds.size === 0) return
+    const pending = downloadBlobInGesture()
+    setBulkBusy(true)
+    gedApi.telechargerZipLot([...selectedIds])
+      .then((res) => pending.deliver(res.data, filenameFromResponse(res, 'documents.zip')))
+      .catch((err) => toast.error(errText(err, 'Téléchargement du ZIP impossible.')))
+      .finally(() => setBulkBusy(false))
   }
 
   const tree = useMemo(() => buildFolderTree(folders), [folders])
@@ -422,6 +439,16 @@ export default function GedNavigator() {
                             <FileText className="size-4" aria-hidden="true" /> Fusionner
                           </Button>
                         )}
+                        {/* XGED14 — ZIP de la sélection (wrapper dédié, jamais operationsLot). */}
+                        <Button size="sm" variant="outline"
+                          onClick={bulkZip} disabled={bulkBusy}>
+                          {bulkBusy ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Download className="size-4" aria-hidden="true" />}
+                          Télécharger (.zip)
+                        </Button>
+                        {/* XGED14 — étiqueter/retirer/déplacer par lot (rapport d'erreurs). */}
+                        <Button size="sm" variant="outline" onClick={() => setBulkOpsDlg(true)}>
+                          <TagIcon className="size-4" aria-hidden="true" /> Étiqueter / Déplacer…
+                        </Button>
                         <Button size="sm" variant="destructive"
                           onClick={bulkCorbeille} disabled={bulkBusy}>
                           {bulkBusy ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Trash2 className="size-4" aria-hidden="true" />}
@@ -566,6 +593,15 @@ export default function GedNavigator() {
           onDone={() => { setMergeDlg(false); setSelectedIds(new Set()); reloadDocuments() }}
         />
       )}
+      {/* XGED14 — étiqueter/retirer/déplacer par lot (rapport d'erreurs détaillé). */}
+      {bulkOpsDlg && (
+        <BulkOperationsDialog
+          documents={documents.filter((d) => selectedIds.has(d.id))}
+          folders={folders.filter((f) => !selected || f.id !== selected.id)}
+          onClose={() => setBulkOpsDlg(false)}
+          onDone={() => { setBulkOpsDlg(false); setSelectedIds(new Set()); reloadDocuments() }}
+        />
+      )}
       {/* WIR70 — panneau Détails (timeline + rapport ACL + favori). */}
       {insightsDoc && (
         <GedDocumentInsights document={insightsDoc} onClose={() => setInsightsDoc(null)} />
@@ -591,6 +627,8 @@ function DocumentPreviewDialog({ document: doc, onClose, onCaviarde }) {
   const [splitOpen, setSplitOpen] = useState(false)
   // XGED17 — comparateur de versions.
   const [compareOpen, setCompareOpen] = useState(false)
+  // GED15 — panneau des versions (restauration non destructive).
+  const [versionsOpen, setVersionsOpen] = useState(false)
 
   useEffect(() => {
     if (!doc?.id) return
@@ -652,6 +690,12 @@ function DocumentPreviewDialog({ document: doc, onClose, onCaviarde }) {
               Comparer versions…
             </Button>
           )}
+          {/* GED15 — restaurer une version antérieure (non destructif). */}
+          {allVersions.length > 1 && (
+            <Button variant="outline" onClick={() => setVersionsOpen(true)}>
+              <History className="size-4" aria-hidden="true" /> Versions…
+            </Button>
+          )}
           {/* XGED24 — caviarder une COPIE (PDF uniquement, l'original n'est
               jamais modifié). */}
           {isPdf && (
@@ -690,6 +734,14 @@ function DocumentPreviewDialog({ document: doc, onClose, onCaviarde }) {
           documentId={doc.id}
           versions={allVersions}
           onClose={() => setCompareOpen(false)}
+        />
+      )}
+      {versionsOpen && (
+        <VersionsDialog
+          documentId={doc.id}
+          versions={allVersions}
+          onClose={() => setVersionsOpen(false)}
+          onDone={() => { setVersionsOpen(false); onClose(); onCaviarde?.() }}
         />
       )}
     </Dialog>
@@ -942,6 +994,60 @@ function CompareVersionsDialog({ documentId, versions, onClose }) {
   )
 }
 
+// ── GED15 — Dialogue : versions du document + restauration non destructive ──
+// Restaurer crée une NOUVELLE version copiée depuis la version choisie —
+// l'historique reste entièrement préservé (jamais de suppression/écrasement).
+// Utilise le champ RÉEL `version` renvoyé par `DocumentVersionSerializer`
+// (jamais `numero`, absent du serializer).
+function VersionsDialog({ documentId, versions, onClose, onDone }) {
+  const sorted = [...versions].sort((a, b) => (b.version || 0) - (a.version || 0))
+  const [busyId, setBusyId] = useState(null)
+
+  const restaurer = async (v) => {
+    setBusyId(v.id)
+    try {
+      await gedApi.restaurerVersionDocument(documentId, v.id)
+      toast.success(`Version ${v.version} restaurée (nouvelle version créée).`)
+      onDone()
+    } catch (err) {
+      toast.error(errText(err, 'Restauration impossible.'))
+    } finally { setBusyId(null) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader><DialogTitle>Versions du document</DialogTitle></DialogHeader>
+        <ul className="flex flex-col gap-1.5">
+          {sorted.map((v, i) => (
+            <li key={v.id}
+              className="flex items-center justify-between gap-2 rounded-md border border-border px-2.5 py-1.5 text-sm">
+              <span className="truncate">
+                v{v.version}{i === 0 ? ' (actuelle)' : ''}
+                {v.restored_from_version
+                  ? ` · restaurée depuis v${v.restored_from_version}` : ''}
+                {v.created_at ? ` · ${formatDate(v.created_at)}` : ''}
+              </span>
+              {i !== 0 && (
+                <Button size="sm" variant="outline"
+                  onClick={() => restaurer(v)} disabled={busyId === v.id}>
+                  {busyId === v.id
+                    ? <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                    : <RotateCcw className="size-4" aria-hidden="true" />}
+                  Restaurer
+                </Button>
+              )}
+            </li>
+          ))}
+        </ul>
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>Fermer</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // ── XGED10 — Dialogue : fusionner les documents sélectionnés en un seul PDF ─
 // L'ordre de fusion suit l'ordre de sélection (Set → insertion order). Un
 // nouveau document est créé dans le dossier du 1er document source ; les
@@ -996,6 +1102,121 @@ function MergeDocumentsDialog({ documents, onClose, onDone }) {
             </Button>
           </DialogFooter>
         </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ── XGED14 — Dialogue : étiqueter / retirer / déplacer par lot ─────────────
+// Chaque document de la sélection est traité INDIVIDUELLEMENT côté serveur
+// (`services.operation_lot`) : un document bloqué (archivé/hold…) est listé
+// dans `erreurs` SANS jamais faire échouer le reste (jamais tout-ou-rien
+// silencieux) — affiché ici en rapport détaillé, pas seulement un toast.
+function BulkOperationsDialog({ documents, folders, onClose, onDone }) {
+  const [operation, setOperation] = useState('tagger')
+  const [tags, setTags] = useState([])
+  const [tagId, setTagId] = useState('')
+  const [folderId, setFolderId] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [rapport, setRapport] = useState(null) // { resultats, erreurs } | null
+
+  useEffect(() => {
+    let alive = true
+    gedApi.getTags().then((r) => { if (alive) setTags(rows(r)) }).catch(() => {})
+    return () => { alive = false }
+  }, [])
+
+  const submit = async () => {
+    const params = operation === 'deplacer'
+      ? { folder: folderId }
+      : { tag: tagId }
+    if (operation === 'deplacer' ? !folderId : !tagId) {
+      toast.error(operation === 'deplacer' ? 'Choisissez un dossier cible.' : 'Choisissez une étiquette.')
+      return
+    }
+    setBusy(true)
+    setRapport(null)
+    try {
+      const res = await gedApi.operationsLot({
+        documents: documents.map((d) => d.id), operation, params,
+      })
+      const { resultats = [], erreurs = [] } = res?.data || {}
+      setRapport({ resultats, erreurs })
+      if (erreurs.length === 0) {
+        toast.success(`${resultats.length} document(s) traité(s).`)
+        onDone()
+      } else {
+        toast.error(`${erreurs.length} document(s) non traité(s) — voir le rapport.`)
+      }
+    } catch (err) {
+      toast.error(errText(err, 'Opération en lot impossible.'))
+    } finally { setBusy(false) }
+  }
+
+  const nomDoc = (id) => documents.find((d) => d.id === id)?.nom || `#${id}`
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Opération en lot ({documents.length} document{documents.length > 1 ? 's' : ''})</DialogTitle>
+        </DialogHeader>
+        <div className="flex flex-col gap-3">
+          <div>
+            <label className="text-sm text-muted-foreground" htmlFor="bulkops-operation">Opération</label>
+            <Select value={operation} onValueChange={(v) => { setOperation(v); setRapport(null) }}>
+              <SelectTrigger id="bulkops-operation" aria-label="Opération"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="tagger">Ajouter une étiquette</SelectItem>
+                <SelectItem value="detaguer">Retirer une étiquette</SelectItem>
+                <SelectItem value="deplacer">Déplacer vers un dossier</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {operation === 'deplacer' ? (
+            <div>
+              <label className="text-sm text-muted-foreground" htmlFor="bulkops-folder">Dossier cible</label>
+              <Select value={folderId} onValueChange={setFolderId}>
+                <SelectTrigger id="bulkops-folder" aria-label="Dossier cible"><SelectValue placeholder="Choisir un dossier…" /></SelectTrigger>
+                <SelectContent>
+                  {folders.map((f) => (
+                    <SelectItem key={f.id} value={String(f.id)}>{f.nom}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : (
+            <div>
+              <label className="text-sm text-muted-foreground" htmlFor="bulkops-tag">Étiquette</label>
+              <Select value={tagId} onValueChange={setTagId}>
+                <SelectTrigger id="bulkops-tag" aria-label="Étiquette"><SelectValue placeholder="Choisir une étiquette…" /></SelectTrigger>
+                <SelectContent>
+                  {tags.map((t) => (
+                    <SelectItem key={t.id} value={String(t.id)}>{t.nom}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          {rapport && rapport.erreurs.length > 0 && (
+            <div className="rounded-md border border-destructive/40 bg-destructive/5 p-2 text-xs">
+              <p className="mb-1 font-medium text-destructive">
+                {rapport.erreurs.length} document(s) non traité(s) :
+              </p>
+              <ul className="flex flex-col gap-0.5">
+                {rapport.erreurs.map((e) => (
+                  <li key={e.document}>{nomDoc(e.document)} — {e.erreur}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>Fermer</Button>
+          <Button onClick={submit} disabled={busy}>
+            {busy && <Loader2 className="size-4 animate-spin" aria-hidden="true" />} Appliquer
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )

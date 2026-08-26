@@ -34,6 +34,11 @@ vi.mock('../../api/gedApi', () => ({
     mettreEnCorbeille: vi.fn(() => Promise.resolve({ data: {} })),
     // XGED14 — opérations en lot.
     operationsLot: vi.fn(() => Promise.resolve({ data: { resultats: [], erreurs: [] } })),
+    // WIR204 — ZIP de lot (wrapper dédié) + restauration de version.
+    telechargerZipLot: vi.fn(() => Promise.resolve({
+      data: new Blob(['PK'], { type: 'application/zip' }), headers: {},
+    })),
+    restaurerVersionDocument: vi.fn(() => Promise.resolve({ data: { id: 24, version: 2 } })),
     // XGED24 — caviardage.
     caviarderDocument: vi.fn(() => Promise.resolve({ data: { id: 99 } })),
     // XGED10/17 — scission, fusion, comparaison de versions.
@@ -343,5 +348,81 @@ describe('GedNavigator — écriture (U14)', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: 'Valider' }))
 
     await waitFor(() => expect(gedApi.renameDossier).toHaveBeenCalledWith(5, 'Archives'))
+  })
+
+  it('WIR204 — télécharge un ZIP de la sélection (wrapper dédié, jamais operationsLot)', async () => {
+    gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Cab' }]))
+    gedApi.getDossiers.mockResolvedValue(ok([
+      { id: 5, nom: 'Docs', cabinet: 1, parent: null, path: '/5/' },
+    ]))
+    gedApi.getDocuments.mockResolvedValue(ok([
+      { id: 8, nom: 'a.pdf', updated_at: '2026-06-01T10:00:00Z' },
+      { id: 9, nom: 'b.pdf', updated_at: '2026-06-02T10:00:00Z' },
+    ]))
+
+    renderGed()
+    await userEvent.click(await screen.findByText('Docs'))
+    await userEvent.click(await screen.findByRole('checkbox', { name: /Sélectionner a\.pdf/i }))
+
+    await userEvent.click(await screen.findByRole('button', { name: /Télécharger \(\.zip\)/i }))
+
+    await waitFor(() => expect(gedApi.telechargerZipLot).toHaveBeenCalledWith([8]))
+    expect(gedApi.operationsLot).not.toHaveBeenCalled()
+  })
+
+  it('GED15 — restaure une version antérieure depuis l’écran de versions', async () => {
+    gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Cab' }]))
+    gedApi.getDossiers.mockResolvedValue(ok([
+      { id: 5, nom: 'Docs', cabinet: 1, parent: null, path: '/5/' },
+    ]))
+    gedApi.getDocuments.mockResolvedValue(ok([
+      { id: 8, nom: 'facture.pdf', version_count: 2, updated_at: '2026-06-01T10:00:00Z' },
+    ]))
+    gedApi.getVersions.mockResolvedValue(ok([
+      { id: 22, version: 1, mime: 'application/pdf', filename: 'facture.pdf', created_at: '2026-05-01T09:00:00Z' },
+      { id: 23, version: 2, mime: 'application/pdf', filename: 'facture.pdf', created_at: '2026-06-01T09:00:00Z' },
+    ]))
+
+    renderGed()
+    await userEvent.click(await screen.findByText('Docs'))
+    await userEvent.click(await screen.findByRole('button', { name: /Aperçu de facture\.pdf/i }))
+    await waitFor(() => expect(gedApi.getVersions).toHaveBeenCalledWith({ document: 8 }))
+
+    await userEvent.click(await screen.findByRole('button', { name: /^Versions…$/i }))
+    await userEvent.click(await screen.findByRole('button', { name: /^Restaurer$/i }))
+
+    await waitFor(() => expect(gedApi.restaurerVersionDocument).toHaveBeenCalledWith(8, 22))
+  })
+
+  it('XGED14 — étiquette la sélection par lot et affiche le rapport d’erreurs', async () => {
+    gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Cab' }]))
+    gedApi.getDossiers.mockResolvedValue(ok([
+      { id: 5, nom: 'Docs', cabinet: 1, parent: null, path: '/5/' },
+    ]))
+    gedApi.getDocuments.mockResolvedValue(ok([
+      { id: 8, nom: 'a.pdf', updated_at: '2026-06-01T10:00:00Z' },
+      { id: 9, nom: 'b.pdf', updated_at: '2026-06-02T10:00:00Z' },
+    ]))
+    gedApi.getTags.mockResolvedValue(ok([{ id: 3, nom: 'Urgent' }]))
+    gedApi.operationsLot.mockResolvedValueOnce({ data: {
+      resultats: [{ document: 8, ok: true }],
+      erreurs: [{ document: 9, erreur: 'Document archivé légalement.' }],
+    } })
+
+    renderGed()
+    await userEvent.click(await screen.findByText('Docs'))
+    await userEvent.click(await screen.findByRole('checkbox', { name: /Sélectionner a\.pdf/i }))
+    await userEvent.click(screen.getByRole('checkbox', { name: /Sélectionner b\.pdf/i }))
+
+    await userEvent.click(await screen.findByRole('button', { name: /Étiqueter \/ Déplacer…/i }))
+    const dialog = await screen.findByRole('dialog')
+    await userEvent.click(within(dialog).getByRole('combobox', { name: 'Étiquette' }))
+    await userEvent.click(within(await screen.findByRole('listbox')).getByText('Urgent'))
+    await userEvent.click(within(dialog).getByRole('button', { name: /^Appliquer$/i }))
+
+    await waitFor(() => expect(gedApi.operationsLot).toHaveBeenCalledWith({
+      documents: [8, 9], operation: 'tagger', params: { tag: '3' },
+    }))
+    expect(await within(dialog).findByText(/Document archivé légalement\./)).toBeInTheDocument()
   })
 })

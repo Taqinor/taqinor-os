@@ -138,6 +138,15 @@ const gedApi = {
   // Enregistre la complétion d'une signature (webhook/manuel). `data` : { provider_ref? }.
   marquerSigne: (id, data) =>
     api.post(`/ged/demandes-signature/${id}/marquer-signe/`, data ?? {}),
+  // XGED3/PACT185 — Télécharge le PDF final signé (champs aplatis), UNIQUEMENT
+  // pour une demande déjà `signe` (sinon 409 — message serveur affiché tel
+  // quel, jamais un défaut inventé côté client).
+  pdfSigneDemande: (id) =>
+    api.get(`/ged/demandes-signature/${id}/pdf-signe/`, { responseType: 'blob' }),
+  // ZGED14 — Prolonge l'échéance d'une demande `en_attente` (versant émetteur
+  // des relances). `data` : { expires_at: '<iso>' }.
+  prolongerDemandeSignature: (id, data) =>
+    api.post(`/ged/demandes-signature/${id}/prolonger/`, data),
 
   // ══════════════════════════════════════════════════════════════════════
   // UX46 — Rétention, archivage légal & partage.
@@ -312,6 +321,10 @@ const gedApi = {
   // deux versions d'un même document.
   comparerVersions: (documentId, v1, v2) =>
     api.get(`/ged/documents/${documentId}/comparer/`, { params: { v1, v2 } }),
+  // GED15 — Restaure le document à une version antérieure (non destructif :
+  // crée une NOUVELLE version copiée depuis `versionId`, historique préservé).
+  restaurerVersionDocument: (documentId, versionId) =>
+    api.post(`/ged/documents/${documentId}/restaurer/`, { version: versionId }),
 
   // ══════════════════════════════════════════════════════════════════════
   // GED26 — Corbeille (soft-delete réversible + purge définitive).
@@ -330,7 +343,16 @@ const gedApi = {
   // XGED14 — Opérations en lot sur une multi-sélection de documents.
   // `data` : { documents:[<id>,...], operation:'tagger'|'detaguer'|'deplacer'|
   // 'corbeille'|'partager'|'demander_signature'|'demander_revue', params?:{} }.
+  // JAMAIS `telecharger_zip` par ce wrapper (réponse JSON) : voir
+  // `telechargerZipLot` dédié ci-dessous (réponse blob binaire).
   operationsLot: (data) => api.post('/ged/documents/operations-lot/', data),
+  // XGED14 — wrapper DÉDIÉ pour `telecharger_zip` : SEULE variante de
+  // operations-lot qui renvoie un ZIP binaire (jamais via `operationsLot`
+  // générique, qui n'attend jamais de blob). `documentIds` : [<id>,...].
+  telechargerZipLot: (documentIds) =>
+    api.post('/ged/documents/operations-lot/',
+      { documents: documentIds, operation: 'telecharger_zip' },
+      { responseType: 'blob' }),
 
   // ══════════════════════════════════════════════════════════════════════
   // WIR70 — surfaces GED déjà exposées mais sans consommateur frontend.
