@@ -7,6 +7,7 @@ from .models import (
     RemiseEncaissement, LigneRemiseEncaissement,
     MandatPaiement, ListePrix, LignePrixListe, RegleListePrix,
     AvenantDevis, ParametresGammes,  # PVMRQ
+    PlanCommission,  # WIR281/XSAL6
 )
 
 
@@ -1210,3 +1211,77 @@ class ParametresGammesSerializer(serializers.ModelSerializer):
         if erreurs:
             raise serializers.ValidationError(erreurs)
         return value
+
+
+class PlanCommissionSerializer(serializers.ModelSerializer):
+    """WIR281/XSAL6 - plan de commission d'un commercial (ou plan PAR DEFAUT
+    de la societe quand ``owner`` est nul).
+
+    GARDE MARGE : aucun montant de marge ni prix d'achat n'est expose ici.
+    ``base`` n'est qu'une ETIQUETTE de mode (``ca_devis_signe`` /
+    ``marge_interne`` / ``par_kwc``), ``taux_pct`` un pourcentage de regle et
+    ``montant_par_kwc`` un bareme - jamais un CA, jamais une marge calculee.
+    L'endpoint entier reste gate ``prix_achat_voir`` (cf. la vue).
+
+    ``company`` n'apparait PAS dans les champs : elle est TOUJOURS posee cote
+    serveur (``perform_create``/``perform_update``), jamais lue du corps.
+    Contrat partage : ``apps/ventes/contract_samples/plan_commission.json``."""
+    owner_nom = serializers.CharField(
+        source='owner.username', read_only=True, default=None)
+    base_display = serializers.CharField(
+        source='get_base_display', read_only=True, default=None)
+
+    class Meta:
+        model = PlanCommission
+        fields = [
+            'id', 'owner', 'owner_nom', 'base', 'base_display',
+            'taux_pct', 'montant_par_kwc', 'paliers', 'actif', 'created_at',
+        ]
+        read_only_fields = ['id', 'owner_nom', 'base_display', 'created_at']
+
+    def validate_paliers(self, value):
+        """Les paliers d'acceleration sont une LISTE d'objets
+        ``{seuil_atteinte_pct, taux}`` - un JSON libre rendrait
+        ``PlanCommission.taux_effectif`` imprevisible au moment du calcul."""
+        if value in (None, ''):
+            return None
+        if not isinstance(value, list):
+            raise serializers.ValidationError(
+                'Les paliers doivent etre une liste.')
+        for palier in value:
+            if not isinstance(palier, dict):
+                raise serializers.ValidationError(
+                    'Chaque palier doit etre un objet '
+                    '{seuil_atteinte_pct, taux}.')
+            if 'seuil_atteinte_pct' not in palier or 'taux' not in palier:
+                raise serializers.ValidationError(
+                    'Chaque palier exige `seuil_atteinte_pct` et `taux`.')
+            for cle in ('seuil_atteinte_pct', 'taux'):
+                try:
+                    float(palier[cle])
+                except (TypeError, ValueError):
+                    raise serializers.ValidationError(
+                        '`%s` doit etre un nombre.' % cle)
+        return value
+
+    def validate(self, attrs):
+        """Le bareme doit correspondre a la base choisie : un plan ``par_kwc``
+        sans ``montant_par_kwc`` (ou un plan au pourcentage sans ``taux_pct``)
+        produirait une commission nulle silencieuse."""
+        def _valeur(cle):
+            if cle in attrs:
+                return attrs[cle]
+            return getattr(self.instance, cle, None)
+
+        base = _valeur('base')
+        if base == PlanCommission.Base.PAR_KWC:
+            if _valeur('montant_par_kwc') is None:
+                raise serializers.ValidationError({
+                    'montant_par_kwc':
+                        'Requis pour un plan « MAD par kWc installe ».'})
+        elif base in (PlanCommission.Base.CA_DEVIS_SIGNE,
+                      PlanCommission.Base.MARGE_INTERNE):
+            if _valeur('taux_pct') is None:
+                raise serializers.ValidationError({
+                    'taux_pct': 'Requis pour un plan au pourcentage.'})
+        return attrs
