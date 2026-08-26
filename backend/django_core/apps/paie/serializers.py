@@ -4,7 +4,11 @@
 le ``TenantMixin`` (``perform_create``). Tous les FK reçus sont validés comme
 appartenant à la société de l'utilisateur.
 """
+from decimal import Decimal
+
 from rest_framework import serializers
+
+from .services import _q, assiette_taux_catalogue_non_calculable
 
 from .models import (
     AdhesionMutuelle,
@@ -294,7 +298,14 @@ class RubriqueEmployeSerializer(serializers.ModelSerializer):
     """Rubrique récurrente rattachée à un profil de paie (PAIE9).
 
     ``company`` posée côté serveur ; ``profil`` et ``rubrique`` sont validés
-    comme appartenant à la société de l'utilisateur.
+    comme appartenant à la société de l'utilisateur. WIR243 (Fable review) —
+    trois refus BLOQUANTS au rattachement/à la sauvegarde (jamais un
+    silence : voir ``validate``) : une rubrique ANCIENNETE ou COTISATION ne
+    peut JAMAIS être rattachée (double comptage / déjà calculée séparément
+    par le moteur) ; un taux CATALOGUE (sans aucune surcharge montant/taux
+    sur cette ligne) portant sur une assiette non calculable à ce stade
+    (brut/brut_imposable/net_imposable/plafonnée CNSS) est refusé plutôt que
+    silencieusement appliqué au salaire de base.
     """
     rubrique_code = serializers.CharField(
         source='rubrique.code', read_only=True)
@@ -312,6 +323,50 @@ class RubriqueEmployeSerializer(serializers.ModelSerializer):
 
     def validate_rubrique(self, value):
         return _meme_societe(self, value, 'Rubrique')
+
+    def _valeur_courante(self, attrs, champ):
+        """Valeur d'un champ APRÈS cette écriture : celle du payload si
+        fournie (y compris en PATCH partiel), sinon celle déjà sur
+        l'instance (édition), sinon ``None`` (création)."""
+        if champ in attrs:
+            return attrs[champ]
+        if self.instance is not None:
+            return getattr(self.instance, champ)
+        return None
+
+    def validate(self, attrs):
+        rubrique = self._valeur_courante(attrs, 'rubrique')
+        if rubrique is not None:
+            # WIR243 (Fable review, attachabilité) — ANCIENNETE et toute
+            # rubrique de type COTISATION (CNSS/AMO/CIMR sont TOUTES au
+            # catalogue avec ce type) ne peuvent jamais être rattachées : le
+            # sélecteur « Rattacher une rubrique » du dialogue les filtre
+            # déjà côté client, mais le serveur refuse indépendamment (le
+            # filtre client est une aide, jamais l'unique garde).
+            if rubrique.code == 'ANCIENNETE':
+                raise serializers.ValidationError({'rubrique': (
+                    "La prime d'ancienneté est déjà recalculée "
+                    "automatiquement pour chaque profil (formule sur "
+                    "l'ancienneté réelle) — elle ne peut pas être rattachée "
+                    "comme rubrique récurrente (la compter deux fois "
+                    "doublerait la prime).")})
+            if rubrique.type == Rubrique.TYPE_COTISATION:
+                raise serializers.ValidationError({'rubrique': (
+                    'Une rubrique de type « Cotisation » (CNSS/AMO/CIMR…) '
+                    'ne peut pas être rattachée comme rubrique récurrente : '
+                    'elle est déjà calculée séparément par le moteur de '
+                    'paie.')})
+            montant = self._valeur_courante(attrs, 'montant')
+            taux = self._valeur_courante(attrs, 'taux')
+            if not montant and taux is None \
+                    and assiette_taux_catalogue_non_calculable(rubrique):
+                raise serializers.ValidationError({'rubrique': (
+                    f'Le taux catalogue de « {rubrique.code} » '
+                    f'({rubrique.taux}%) porte sur une assiette '
+                    f'« {rubrique.get_base_display()} » qui n\'est pas '
+                    'calculable pour une rubrique récurrente. Indiquez un '
+                    'montant (surcharge) sur cette ligne.')})
+        return attrs
 
 
 class PeriodePaieSerializer(serializers.ModelSerializer):
@@ -473,6 +528,22 @@ class AvanceSalarieSerializer(serializers.ModelSerializer):
 
     def validate_profil(self, value):
         return _meme_societe(self, value, 'Profil')
+
+    def create(self, validated_data):
+        # WIR197 (fix money) — sans échéance explicite, une avance créée par
+        # l'API restait à `montant_echeance=0` (défaut modèle) et n'était
+        # JAMAIS retenue sur aucun bulletin (`echeance_avance` renvoie 0 tant
+        # que `montant_echeance<=0`). Calculée SERVEUR, ici, pour qu'aucun
+        # client ne puisse recréer le bug — même formule que documentée sur
+        # le modèle (``montant_total / nombre_echeances``) et même arrondi
+        # (``_q``, ROUND_HALF_UP au centime) que le pont RH
+        # (``materialiser_avance_rh``, cas particulier nombre_echeances=1).
+        if not validated_data.get('montant_echeance'):
+            montant_total = validated_data.get('montant_total') or Decimal('0')
+            nombre_echeances = validated_data.get('nombre_echeances') or 1
+            validated_data['montant_echeance'] = _q(
+                Decimal(montant_total) / Decimal(nombre_echeances))
+        return super().create(validated_data)
 
 
 class LigneVirementSerializer(serializers.ModelSerializer):

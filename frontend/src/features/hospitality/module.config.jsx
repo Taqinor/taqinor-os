@@ -5,7 +5,7 @@
 import { lazy } from 'react'
 import {
   LayoutDashboard, BedDouble, CalendarDays, ClipboardList, Sparkles,
-  DoorOpen, UtensilsCrossed, PartyPopper,
+  DoorOpen, UtensilsCrossed, PartyPopper, Settings2,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -33,6 +33,10 @@ const Menage = lazy(() => import('./Menage'))
 const CheckInOut = lazy(() => import('./CheckInOut'))
 const Recettes = lazy(() => import('./Recettes'))
 const Banquets = lazy(() => import('./Banquets'))
+// WIR211 — référentiel (types de chambre, chambres, plans tarifaires) : sans
+// lui le module était INERTE (aucun type créable → aucune chambre → aucun
+// prix par nuit → folios vides et RevPAR à 0).
+const ReferentielChambres = lazy(() => import('./ReferentielChambres'))
 
 const ROLES = ['normal', 'responsable', 'admin']
 
@@ -52,6 +56,12 @@ const config = {
         to: '/hospitality',
         label: 'Tableau de bord',
         icon: <LayoutDashboard size={17} strokeWidth={1.75} aria-hidden="true" />,
+        roles: ROLES,
+      },
+      {
+        to: '/hospitality/referentiel',
+        label: 'Référentiel (types, chambres, tarifs)',
+        icon: <Settings2 size={17} strokeWidth={1.75} aria-hidden="true" />,
         roles: ROLES,
       },
       {
@@ -100,6 +110,7 @@ const config = {
   },
   titles: [
     ['/hospitality', 'Tableau de bord (Hôtellerie)'],
+    ['/hospitality/referentiel', 'Référentiel (types, chambres, tarifs)'],
     ['/hospitality/chambres', 'Plan des chambres'],
     ['/hospitality/reservations', 'Réservations'],
     ['/hospitality/main-courante', 'Main courante'],
@@ -111,6 +122,7 @@ const config = {
   sectionLabels: { hospitality: 'Hôtellerie' },
   routes: [
     { path: '/hospitality', component: Dashboard, roles: ROLES },
+    { path: '/hospitality/referentiel', component: ReferentielChambres, roles: ROLES },
     { path: '/hospitality/chambres', component: PlanChambres, roles: ROLES },
     { path: '/hospitality/reservations', component: CalendrierReservations, roles: ROLES },
     { path: '/hospitality/main-courante', component: MainCourante, roles: ROLES },

@@ -1,0 +1,46 @@
+{
+  "endpoint": "POST /api/django/compta/emprunts/{id}/generer-tableau/",
+  "pourquoi": "XACC14/WIR279 — génère (et persiste) le tableau d'amortissement complet d'un emprunt ou crédit-bail contracté par la société, puis le renvoie. Source de vérité : apps/compta/services.py::generer_tableau_amortissement (annuité constante, la DERNIÈRE échéance absorbe l'écart d'arrondi pour que Σ principal == capital EXACTEMENT). L'appel est idempotent : re-générer efface et recalcule les échéances NON postées, mais il est REFUSÉ (400, message FR) dès qu'une échéance a été postée au grand livre — on ne réécrit jamais un historique comptable. `capital_restant_du` est le solde APRÈS l'échéance : la dernière ligne vaut donc 0.00. Les montants sont sérialisés en TEXTE (DecimalField DRF), jamais en flottant.",
+  "exemple": {
+    "emprunt": 12,
+    "nb_echeances": 3,
+    "echeances": [
+      {
+        "id": 101,
+        "emprunt": 12,
+        "numero": 1,
+        "date_echeance": "2026-02-01",
+        "principal": "33112.58",
+        "interets": "250.00",
+        "mensualite": "33362.58",
+        "capital_restant_du": "66887.42",
+        "posted": false,
+        "ecriture": null
+      },
+      {
+        "id": 102,
+        "emprunt": 12,
+        "numero": 2,
+        "date_echeance": "2026-03-01",
+        "principal": "33195.36",
+        "interets": "167.22",
+        "mensualite": "33362.58",
+        "capital_restant_du": "33692.06",
+        "posted": false,
+        "ecriture": null
+      },
+      {
+        "id": 103,
+        "emprunt": 12,
+        "numero": 3,
+        "date_echeance": "2026-04-01",
+        "principal": "33692.06",
+        "interets": "84.23",
+        "mensualite": "33776.29",
+        "capital_restant_du": "0.00",
+        "posted": false,
+        "ecriture": null
+      }
+    ]
+  }
+}

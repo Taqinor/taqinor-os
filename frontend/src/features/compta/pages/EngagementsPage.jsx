@@ -1,12 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useTabParam } from '../components/useTabParam'
 import { useIsAdmin } from '../../../hooks/useHasPermission'
 import {
   Plus, Unlock, ShieldCheck, TrendingUp, Undo2, Send, CheckCircle2,
-  Landmark, ShieldAlert,
+  Landmark, ShieldAlert, Download,
 } from 'lucide-react'
 import { ListShell, statusPill } from '../../../ui/module'
-import { Button, Segmented, Card, EmptyState, toast } from '../../../ui'
+import { Button, Segmented, Card, Input, Label, EmptyState, toast } from '../../../ui'
 import { formatMAD, formatDate } from '../../../lib/format'
 import { stampedFilename } from '../../../utils/downloadBlob'
 import { store } from '../../../store'
@@ -60,6 +60,83 @@ const StatutTag = statusPill({
 })
 
 const money = (v) => formatMAD(v)
+
+// WIR255 — FG145 : « échéances sous N jours » (+ export CSV), partagé par les
+// retenues de garantie ET les cautions bancaires — les 2 wrappers
+// (comptaApi.retenuesGarantie.echeances / comptaApi.cautionsBancaires.echeances)
+// étaient déjà prêts côté API, sans le moindre bouton. « Silencieux sans
+// rôle » : une erreur (403 compris) laisse le bloc VIDE, sans toast — un rôle
+// qui n'a pas accès à ce sous-état garde un écran Engagements utilisable.
+function EcheancesSousNJoursCard({ titre, fetchFn, exportBase, dateField, dateLabel }) {
+  const [jours, setJours] = useState('30')
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  const charger = useCallback(() => {
+    setLoading(true)
+    fetchFn({ jours })
+      .then((res) => setData(res.data))
+      .catch(() => setData(null))       // silencieux — jamais de toast ici.
+      .finally(() => setLoading(false))
+  }, [fetchFn, jours])
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  useEffect(() => { charger() }, [charger])
+
+  const exporterCsv = async () => {
+    try {
+      const res = await fetchFn({ jours, export: 'csv' })
+      const blob = res.data instanceof Blob ? res.data : new Blob([res.data])
+      const societe = store.getState().parametres?.profile?.nom
+      comptaApi.downloadBlob(blob, stampedFilename(exportBase, 'csv', societe))
+    } catch {
+      // silencieux — même politique que le chargement (sans rôle : rien).
+    }
+  }
+
+  if (!loading && !data) return null   // silencieux sans rôle.
+
+  const lignes = data?.lignes || []
+
+  return (
+    <Card className="p-4 sm:p-5">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h3 className="font-display text-base font-semibold">{titre}</h3>
+        <div className="flex items-end gap-2">
+          <div className="flex flex-col gap-1">
+            <Label htmlFor={`ech-jours-${exportBase}`}>Jours</Label>
+            <Input id={`ech-jours-${exportBase}`} type="number" className="w-20" value={jours}
+              onChange={(e) => setJours(e.target.value)} />
+          </div>
+          <Button variant="outline" size="sm" onClick={charger}>Actualiser</Button>
+          <Button variant="outline" size="sm" onClick={exporterCsv}>
+            <Download className="size-4" /> Export CSV
+          </Button>
+        </div>
+      </div>
+      {loading ? (
+        <p className="py-4 text-center text-sm text-muted-foreground">Chargement…</p>
+      ) : !lignes.length ? (
+        <EmptyState title="Aucune échéance" description={`Rien sous ${jours} jours.`} />
+      ) : (
+        <ComptaTable
+          aria-label={titre}
+          rows={lignes}
+          getRowKey={(l, i) => l.reference || i}
+          columns={[
+            { key: 'reference', label: 'Référence', cell: (l) => l.reference || '—' },
+            { key: 'tiers', label: 'Tiers', cell: (l) => l.tiers_nom || '—' },
+            { key: 'date', label: dateLabel, sortValue: (l) => l[dateField] || '',
+              cell: (l) => formatDate(l[dateField]) },
+            { key: 'montant', label: 'Montant', align: 'right', numeric: true,
+              sortValue: (l) => Number(l.montant) || 0, cell: (l) => formatMAD(l.montant) },
+            { key: 'en_retard', label: 'En retard', cell: (l) => (l.en_retard ? 'Oui' : 'Non') },
+          ]}
+        />
+      )}
+    </Card>
+  )
+}
 
 // ── FG145 — Retenues de garantie ──
 function RetenuesGarantiePanel() {
@@ -126,6 +203,13 @@ function RetenuesGarantiePanel() {
         exportName="retenues-garantie"
         emptyTitle="Aucune retenue"
         emptyDescription="Aucune retenue de garantie enregistrée."
+      />
+      <EcheancesSousNJoursCard
+        titre="Échéances sous N jours"
+        fetchFn={comptaApi.retenuesGarantie.echeances}
+        exportBase="retenues-garantie-echeances"
+        dateField="date_levee_prevue"
+        dateLabel="Levée prévue"
       />
       {dialog && (
         <CrudDialog
@@ -200,6 +284,13 @@ function CautionsBancairesPanel() {
         exportName="cautions-bancaires"
         emptyTitle="Aucune caution"
         emptyDescription="Aucune caution bancaire enregistrée."
+      />
+      <EcheancesSousNJoursCard
+        titre="Échéances sous N jours"
+        fetchFn={comptaApi.cautionsBancaires.echeances}
+        exportBase="cautions-bancaires-echeances"
+        dateField="date_echeance"
+        dateLabel="Échéance"
       />
       {dialog && (
         <CrudDialog

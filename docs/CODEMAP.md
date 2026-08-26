@@ -1,8 +1,8 @@
 ﻿# CODEMAP â€” TAQINOR OS
 
 Generated from commit `dev` on 2026-06-29, refreshed for the functional-domain expansion wave (5 parallel worktree lanes: apps/compta clÃ´ture de pÃ©riode + OD manuelles + Ã -nouveaux FG115â€“117; apps/ventes solar string-design + inverter match + tilt/azimut FG246/247/249; apps/installations jalons/modÃ¨les-de-projet/rÃ©unions FG293/296/298; **NEW app apps/flotte** Vehicule+EnginRoulant FLOTTE1/2/4; **NEW app apps/ged** Cabinet/Folder/Document/Version GED1/2/3 â€” all additive, company-scoped, tested), on top of the prior `dev-uiwave-20260621` world-class UI wave (34 frontend UI/UX tasks: premium DataTable, calm chrome, foundation hooks/primitives, page redesigns) (PLAN2 priority-queue run â€” Group Q Devisâ†”Toiture-3D pipeline backend (Q1â€“Q7: Devis.roof_layout/roof_image + layout endpoints, Lead roof_point/roof_outline/bill_kwh + per-lead token, build_devis_from_layout() service, MinIO roof-image, layout-aware quote data with byte-identical no-layout path, tokenized /proposal data endpoint + e-sign accept); Group R agentic layer â€” NEW APP `apps/agent` (in-code action registry + `/api/django/agent/` catalogue, AG1), FastAPI registry-driven tools with proposeâ†’confirm (`/sql-agent/confirm`, AG2) surfaced on /query, assistant confirm/result cards (AG3), domain agent actions in ventes/crm/stock/sav/installations `agent_actions.py` (AG4â€“AG9), Groq-Whisper assistant voice `/sql-agent/transcribe` (AG10) + voice/hands-free chat (AG11/AG12); Group S internal team chat â€” NEW APP `apps/chat` (Conversation/Member/Message/Attachment/Reaction/Mention, company+membership scoped, `/api/django/chat/`, S1â€“S9), self-hosted faster-whisper `/chat/transcribe` (NEW dep, `CHAT_TRANSCRIPTION_ENABLED`, S10) + Celery transcription pipeline (S11), full React `features/messaging` UI + `/messages` route (S12â€“S20); design/UI/reporting polish (F120â€“F123 OKLCH tokens, G124â€“G128 primitives, K147/N161/K148/K149/J146/P167 chart kit + dashboard + table unification); P171 DataTableâ†’@tanstack engine swap (API-compatible, full parity). ADDITIVE migrations: ventes/0024, crm/0024, chat/0001, notifications/0007. Founder standing consent recorded in CLAUDE.md lifting the ARCH/AUTH/COST/DECISION/GALLERY/DEP gate. + 2026-06-22 greenfield-foundations run: 7 NEW apps stood up (apps/rh DossierEmploye master FG154/DC29, apps/paie ParametrePaie/BaremeIR PAIE1/2/4, apps/gestion_projet Projet/ProjetChantier PROJ1, apps/contrats Contrat CONTRAT1/2, apps/qhse NCR/CAPA QHSE1/9/10, apps/kb KbArticle KB1, apps/litiges Reclamation LITIGE1) â€” additive, multi-tenant, admin-gated, tested; INSTALLED_APPS+urls wired; 13 tasks ticked. BLOCKED: S21 WebSocket/Channels (needs provisioned ASGI/nginx-WS infra), I134/I138 âŒ˜K palette (reconcile with existing providers).) + 2026-06-22 `claude/serene-ptolemy-dj5cs0` wave-1 run: 8 parallel worktree lanes â€” FG122 (compta consolidated treasury position + AR/AP/payroll/TVA projection, GL-only selector + read endpoint), M4 (last `ventes â†’ audit` back-edge removed â€” PDF audit capture now flows through the `core.events.document_pdf_generated` bus with an `audit` receiver; new import-linter contract pins it), FG157 (apps/rh `Remuneration` gated by the new `salaires_voir` permission), PAIE3 (apps/paie 2026 Moroccan legal payroll defaults seeded editable + `valide_par_fondateur` flag), PROJ5 (apps/gestion_projet `Tache` WBS with self-FK sub-tasks), QHSE5 (apps/qhse auto-conformity min/max on `PointControleModele`/`ReleveControle`), FG350 (frontend global `CopilotPanel` drawer reusing the FastAPI agent), GED5 (frontend `/ged` arborescent navigator over existing ged endpoints) â€” all additive, multi-tenant, tested; ADDITIVE migrations rh/0004, paie/0002, qhse/0004, gestion_projet/0005. + wave-2 (same run): FG123 (compta `RapprochementBancaire`/`LigneReleve`/`PointageReleve` â€” statementâ†”GL pointing, Ã©cart-zero close, no Ã©criture), FG49 (ventes account-coded grand-livre export CGNC 3421/7111/4455, xlsx+csv, configurable codes), FG351 (apps/agent registry guarded write actions `ventes.devis.create`/`crm.client.create`/`crm.lead.create` via proposeâ†’confirm + FastAPI dynamic action_tools), FG158 (rh `DossierEmploye` emergency-contact + extended coordinates fields), PAIE5 (paie family-charge deduction params + `compute_ir` helper), GED6 (ged `DocumentLien` generic-target link via `records.ALLOWED_TARGETS` +ventes.boncommande), PROJ6 (gestion_projet `DependanceTache` FS/SS/FF/SF + lag with cycle guards), QHSE6 (qhse hold-point gating selector/endpoint) â€” all additive, multi-tenant, tested; ADDITIVE migrations compta/0006, rh/0005, paie/0003, ged/0002, gestion_projet/0006 (FG49/FG351/QHSE6 need none); import-linter stays 4/4. + wave-3 (same run, 7 lanes): FG124 (compta `Caisse`/`MouvementCaisse`/`ClotureCaisse` petty-cash with optional GL posting honouring the FG115 period lock), FG50 (ventes acompte transfer/refund on facture cancel â€” re-point Paiement or reversing negative Paiement, chatter, no migration), FG159 (rh `DocumentEmploye` vault reusing `records.Attachment` MinIO storage + optional expiry), PAIE6 (paie `Rubrique` configurable payslip-line catalogue + idempotent seed), GED7 (ged `migrate_attachments_to_ged` command importing records.Attachment into Documents reusing file_key + DocumentLien), PROJ7 (gestion_projet `Jalon` milestones + `facturation_pct`), QHSE7 (qhse `ReleveCourbeIV` PV string I-V curve + fill factor) â€” all additive, multi-tenant, tested; ADDITIVE migrations compta/0007, rh/0006, paie/0004, gestion_projet/0007, qhse/0005 (FG50/GED7 need none); import-linter stays 4/4. FG352 (RAG/pgvector, DEP:langchain-textsplitters) intentionally left [ ] for a focused run. + 2026-06-22 `claude/plan-md-completion-ysbchz` drain: 8 parallel worktree lanes off PLAN.md (compta FG125â€“130, ventes FG51/53/248/250/251, core FG355â€“359 NoOp-AI, rh FG160â€“165, paie PAIE7â€“12, ged GED8â€“13, gestion_projet PROJ8â€“13, qhse QHSE8/11â€“15 â€” 46 tasks; ADDITIVE migrations across those apps + customfields/0003; new NoOp scaffolds add no external dependency; GED12 semantic embedding OFF by default). + 2026-06-23 PLAN2 **Group U** drain (U1â€“U14, 10 parallel worktree lanes, one self-merge): lead-modal stays-open UX (U1), mouse-wheel + mobile-header CSS regressions (U2/U3), WhatsApp-send flips devisâ†’envoyÃ© via a NEW `core.events.devis_sent` event (U4), surface generated factures/BC in the devis list + BC-state warning (U5/U8), hide/badge superseded devis revisions (U7), auto-create chantier on devis acceptance via the `devis_accepted` bus (U6), stock reservation on the direct generer-facture path (U9), relance-escalation reset on full payment (U10), phantom-signÃ© flag on post-acceptance refusal (U11, flag-only), direct nullable lead FK on Facture/BonCommande (U12), avatar same-origin proxy fix (U13), GED Â« Documents Â» write UI + `documents/televerser/` upload (U14) â€” additive, multi-tenant, tested; ADDITIVE migrations ventes/0027_devis_date_envoi + 0028_boncommande_lead_facture_lead. + 2026-06-24 PLAN.md batch-1 drain (8 parallel worktree lanes off the FG/module wave plan, adversarial review + local CI incl. makemigrations-check & full affected test run, one self-merge): 7 shipped â€” FG52 (ventes multi-currency `devise`/`taux_change` + CompanyProfile default), FG166 (rh `Pointage` clock-in/out), CONTRAT6 (contrats `confidentialite` gated on `menu_tier`), FLOTTE5 (flotte `ActifFlotte` unified asset ref), PAIE13 (paie multi-profile base-salary + proration), GED14 (ged inline `apercu` preview), PROJ14 (gestion_projet delay detection). ADDITIVE migrations ventes/0029 + parametres/0025, rh/0008, contrats/0005, flotte/0005, paie/0006. **FG131 (compta 3-way match) DEFERRED/backed-out** â€” the build duplicated stock's BonCommandeFournisseur/FactureFournisseur (reverse-accessor clash); needs a rebuild reusing stock procurement via selectors/services (left `[ ]`). + 2026-06-27 `claude/lucid-banzai-33af1c` PLAN.md wave-1 drain (5 parallel worktree lanes, one self-merge): PAIE14 (paie heures-sup majorÃ©es 25/50/100 %), FG167 (rh `FeuilleTemps` timesheets + labour-hours selector), CONTRAT7 (contrats `ModeleContrat` + `/instancier/`), FLOTTE7 (flotte `Conducteur` + permis), QHSE16 (qhse `Audit`/`ReponseCritere` + score â†’ NCR) â€” all additive, multi-tenant, tested; ADDITIVE migrations paie/0007, rh/0009, contrats/0006, flotte/0006, qhse/0010. No new external/paid dependency, no auth change. Validated on the docker CI harness (511 affected-app tests green, makemigrations --check clean). + 2026-06-27 same run waves 2+3 (9 more file-disjoint lanes): GED15 (ged document version history + restore, `restored_from` audit), PROJ15 (gestion_projet `RessourceProfil`/`Equipe`, internal cout_horaire), FG39 (crm `ObjectifCommercial` + attainment selector, backend), FG5 (notifications `WorkingHoursConfig`/`Holiday` + calendar helpers + `seed_ma_holidays`, opt-in), FG86 (sav `Ticket.share_token` + public read-only tracking endpoint, allowlist no cout/chatter), KB5 (kb `seed_kb_templates` 5 SOP/ONEE/82-21 gabarits), FG96 (reporting `DashboardConfig` per-user/role, backend), FG102 (publicapi webhook deliveries history + replay + test, backend), FG297 (installations `DocumentProjet`/`RevisionDocument` versioned project-doc register) â€” all additive, multi-tenant, tested; ADDITIVE migrations ged/0008, gestion_projet/0010, crm/0028, notifications/0010, sav/0009, reporting/0003, installations/0014 (KB5/FG102 need none); import-linter stays 4/4. No new external/paid dependency, no auth change. + 2026-06-29 `claude/relaxed-edison-c91f99` PLAN.md wave-1 drain (8 parallel file-disjoint worktree lanes, adversarial review + local docker CI, one self-merge): FG135 (compta `NoteFrais` notes de frais + remboursements, justificatif photo, Ã©critures Ã©quilibrÃ©es, verrou de pÃ©riode, rÃ©f NDF race-safe), FG291 (installations `Projet` programme multi-chantiers regroupant chantiers/devis/tickets par FK chaÃ®nes, machine d'Ã©tats propre â€” NEW arch component), FG255 (ventes `ev_charger_sizing` borne VE couplÃ©e au PV, math pure), FG361 (core `forecast.py` prÃ©vision CA/devis mensuels, Holt-Winters statsmodels + repli pur Python), FG172 (rh `Competence`/`CompetenceEmploye` matrice de compÃ©tences), CONTRAT13 (contrats `RegleApprobation` par montant/type + rÃ©solveur), FLOTTE13 (flotte conso L/100 km & kWh/100 km depuis pleins+odomÃ¨tre, endpoint scopÃ©), GED17 (ged `Document.statut` cycle de vie brouillonâ†’â€¦â†’obsolÃ¨te, machine d'Ã©tats gardÃ©e, distinct de STAGES.py) â€” all additive, multi-tenant, tested; ADDITIVE migrations compta/0011, installations/0016, rh/0014, contrats/0010, ged/0011 (FG255/FG361/FLOTTE13 need none). **NEW external dependency `statsmodels==0.14.4`** (FG361, import dÃ©fensif + repli si absente). Adversarial review fixed 2 CI-red issues pre-merge (FG361 garde NaN avant clamp, FLOTTE13 action `consommation` en lecture tout rÃ´le) + an FG135 reference race; core stays a foundation layer (import-linter 4/4). + 2026-06-29 `claude/relaxed-edison-c91f99` PLAN.md wave-2 drain (8 parallel file-disjoint worktree lanes, adversarial review + local docker CI): FG136 (compta `BaremeIndemnite`+`IndemniteChantier` indemnitÃ©s km/per-diem, haversine, Ã©critures Ã©quilibrÃ©es + verrou de pÃ©riode), FG292 (installations `ProjetTache` tÃ¢ches/sous-tÃ¢ches + prÃ©dÃ©cesseur avec gardes anti-cycle â€” Ã©tend l'ARCH Projet FG291), FG256 (ventes `battery_storage_sizing` autoconso-max vs backup-heures, math pure), FG362 (core `win_probability.py` scorer pur fondation + `reporting/pipeline.py` pondÃ©rÃ© par lead, repli statique), FG173 (rh `Habilitation` Ã©lectriques NF C 18-510 + expiry), CONTRAT14 (contrats `EtapeApprobation` workflow depuis `RegleApprobation`, ne touche pas `Contrat.statut`), FLOTTE14 (flotte `CarteCarburant` + dÃ©tecteur d'anomalies pleins), QHSE19 (qhse `RetourClientQualite` satisfaction 1â€“5) â€” all additive, multi-tenant, tested; ADDITIVE migrations compta/0012, installations/0017, rh/0015, contrats/0011, flotte/0012, qhse/0013 (FG256/FG362 need none). No new external/paid dependency, no auth change; import-linter 4/4 (core reste fondation). Fixed an FG136 constraint Q-order migration drift pre-merge (makemigrations --check clean). + 2026-06-29 `claude/relaxed-edison-c91f99` PLAN.md wave-3 drain (8 parallel file-disjoint worktree lanes, adversarial review + local docker CI incl. the 8 wave-3 test modules run green before push): FG137 (compta `DeclarationTVA` prÃ©paration TVA collectÃ©eâˆ’dÃ©ductible par rÃ©gime/mÃ©thode + export), FG294 (installations `BudgetProjet`/`BudgetEngagement` budget vs rÃ©el agrÃ©gÃ© cross-app via get_model/selectors, alerte dÃ©passement â€” ARCH), FG257 (ventes `simulate_bankable_yield` P50/P90 + Performance Ratio, math pure), FG363 (core `churn_risk.py` scorer pur fondation), FG174 (rh `Certification` non-Ã©lectriques + expiry), CONTRAT15 (contrats `ContratActivity` chatter/journal des transitions), FLOTTE15 (flotte `PlanEntretien` entretien prÃ©ventif km/date/heures via ActifFlotte), GED18 (ged `DemandeApprobation` workflow rÃ©utilisant la machine d'Ã©tats GED17) â€” all additive, multi-tenant, tested; ADDITIVE migrations compta/0013, installations/0018, rh/0016, contrats/0012, flotte/0013, ged/0012 (FG257/FG363 need none). No new external/paid dependency, no auth change; import-linter 4/4 (core reste fondation, FG363 stdlib-only). No migration drift. + 2026-06-29 `claude/relaxed-edison-c91f99` PLAN.md wave-4 drain (8 parallel file-disjoint worktree lanes, adversarial review + local docker CI of the 8 wave-4 test modules before push â€” **ZERO migrations this wave**, all aggregation/pure-math/helper tasks): FG138 (compta `releve_deductions_tva` annexe TVA dÃ©ductible depuis le GL, rÃ©concilie FG137), FG295 (installations `projet_pnl` P&L consolidÃ© revenuâˆ’coÃ»ts par Projet, rÃ©utilise les agrÃ©gats cross-app FG294), FG258 (ventes `hourly_self_consumption` profil autoconso 8760 h + parser xlsx openpyxl dÃ©jÃ  prÃ©sent), FG364 (core `stock_reorder.py` prÃ©vision rupture/rÃ©appro, stdlib seul), FG175 (rh `echeances_rh` moteur d'alertes d'expiration unifiÃ© + commande notifiant via `notifications.notify`), PROJ18 (gestion_projet `plan_de_charge` capacitÃ© vs affectÃ©), PAIE20 (paie helper `cimr_salariale` CIMR optionnelle par employÃ©, champs prÃ©existants), QHSE20 (qhse `iso9001_readiness` tableau de bord) â€” all additive, multi-tenant, tested; NO migrations; no new external/paid dependency, no auth change; import-linter 4/4 (core reste fondation). No migration drift. + 2026-06-29 `claude/relaxed-edison-c91f99` PLAN.md wave-5 drain (8 parallel file-disjoint worktree lanes, adversarial review + local docker CI of the 8 wave-5 test modules before push): FG139 (compta `RetenueSource` RAS retenue Ã  la source + bordereau de versement, export `?export=csv`), FG299 (installations `plan_de_charge_equipes` capacitÃ© vs affectÃ© des techniciens/Ã©quipes sur interventions), FG259 (ventes `net_metering_savings` valorisation surplus injectÃ© par tranche loi 13-09), FG365 (core `payment_delay.py` prÃ©diction de retard de paiement, stdlib seul), FG176 (rh `verifier_habilitation_requise` garde d'affectation par habilitation, blocage doux), CONTRAT16 (contrats `SignatureContrat` e-sign in-app loi 53-05, preuve serveur, bascule statut signÃ©), FLOTTE16 (flotte `EcheanceEntretien` gÃ©nÃ©ration idempotente d'Ã©chÃ©ances dues + alertes), GED19 (ged `AclGed` ACL par dossier/document hÃ©ritage+override, rÃ©trocompatible) â€” all additive, multi-tenant, tested; ADDITIVE migrations compta/0014, contrats/0013, flotte/0014, ged/0013 (FG299/FG259/FG365/FG176 need none). No new external/paid dependency, no auth change; import-linter 4/4. Fixed a GED19 CheckConstraint `condition=` migration drift pre-merge (Django 5.1 deconstruction; Meta.constraints aligned with the migration, makemigrations --check clean). + 2026-06-29 `claude/relaxed-edison-c91f99` PLAN.md wave-6 drain (8 parallel file-disjoint worktree lanes, adversarial review + local docker CI of the 8 wave-6 test modules before push): FG140 (compta aide au calcul de l'IS â€” barÃ¨me progressif + cotisation minimale + 4 acomptes + rÃ©gularisation, selectors-only), FG300 (installations `conflits_affectation` double-booking technicien/camionnette mÃªme jour), FG260 (ventes `tariff_escalation_projection` escalade ONEE 20-25 ans + VAN/TRI stdlib), **FG366 (core moteur de workflow BPM gÃ©nÃ©rique `WorkflowDefinition/StepDefinition/Instance/StepInstance` cible gÃ©nÃ©rique contenttypes + SLA/escalades â€” NEW ARCH component dans la fondation, import-linter 4/4)**, FG177 (rh `VisiteMedicale` du travail + aptitude + expiry, alimente FG175), PROJ19 (gestion_projet `conflits_affectation` ressources chevauchantes), PAIE21 (paie frais professionnels â€” dÃ©jÃ  prÃ©sent, tests ajoutÃ©s), QHSE21 (qhse `EvaluationRisque`/`LigneEvaluationRisque` document unique, criticitÃ©=gravitÃ©Ã—probabilitÃ©) â€” all additive, multi-tenant, tested; ADDITIVE migrations core/0002 (BPM), rh/0017, qhse/0014 (FG140/FG300/FG260/PROJ19/PAIE21 need none). No migration drift; no new external/paid dependency, no auth change; import-linter 4/4 (core reste fondation). + 2026-06-29 `claude/relaxed-edison-c91f99` PLAN.md wave-7 drain (8 parallel file-disjoint worktree lanes, adversarial review + local docker CI of 9 wave-7 test modules before push): FG141 (compta `export_fec` export FEC DGI 18 colonnes, `?export=fec`), FG301 (installations `nivellement_charge` rÃ©Ã©quilibrage des interventions surchargÃ©es sans conflit, lecture seule), FG261 (ventes `optimize_subscribed_power` rÃ©duction puissance souscrite post-PV C&I), FG367 (core `rules.py` Ã©valuateur de conditions ET/OU/NON + actions sÃ©quentielles, pur fondation), FG178 (rh `EpiCatalogue`/`DotationEpi` dotation EPI nominative), CONTRAT17 (contrats auto signÃ©â†’actif sur signature), FLOTTE17 (flotte `Garage`/`OrdreReparation` ordres de rÃ©paration + coÃ»ts), GED20 (ged `PartageGed` partage tokenisÃ© public expiry/password/quota) â€” all additive, multi-tenant, tested; ADDITIVE migrations rh/0018, flotte/0015, ged/0014 (FG141/FG301/FG261/FG367/CONTRAT17 need none). No migration drift; no new external/paid dependency, no auth change; import-linter 4/4 (core reste fondation). GED20 introduces a PUBLIC AllowAny tokenized document endpoint (token-only resolution, expiry/quota/password-hash, no cross-tenant leak â€” security model calquÃ© sur ventes.ShareLink). + 2026-06-29 `claude/relaxed-edison-c91f99` PLAN.md wave-8 drain (8 parallel file-disjoint worktree lanes, adversarial review + local docker CI of 8 wave-8 test modules before push): FG142 (compta `liasse_fiscale` trousse liasse fiscale bilan+CPC+balance+annexe-TVA, rÃ©utilise les sÃ©lecteurs), FG302 (installations `IndisponibiliteRessource` calendrier de disponibilitÃ© technicien/camionnette + sÃ©lecteur d'exclusion), FG262 (ventes `module_degradation_curve` dÃ©gradation modules + planchers de garantie), FG368 (core `core/jobs.py` + `ScheduledJobViewSet` liste/exÃ©cution des jobs Celery Beat, admin, cÃ¢blÃ© `/api/django/core/`), FG179 (rh pÃ©remption/contrÃ´le EPI dÃ©rivÃ©s + alertes, alimente FG175), PROJ20 (gestion_projet `nivellement_charge` rÃ©Ã©quilibrage ressources projet), PAIE22 (paie calcul IR â€” dÃ©jÃ  prÃ©sent PAIE5, 30 tests ajoutÃ©s), QHSE22 (qhse `document_unique_valide`/`exiger_document_unique` gate document unique avant pose) â€” all additive, multi-tenant, tested; ADDITIVE migrations installations/0019, rh/0019 (FG142/FG262/FG368/PROJ20/PAIE22/QHSE22 need none). FG368 added a root-URLConf line (`api/django/core/` â†’ `core.urls`, orchestrator wiring step). No migration drift; no new external/paid dependency, no auth change; import-linter 4/4 (core reste fondation, jobs via celery infra). Wave-9 PLAN.md drain (2026-06-29, 8 parallel file-disjoint worktree lanes): rh `EmargementEpi` (FG180), contrats `VersionContrat` (CONTRAT18), flotte `Pneumatique`/`PieceFlotte` (FLOTTE18), ged watermarking flags `Document.watermark_diffusion`/`PartageGed.watermark` (GED21, lazy PyMuPDF/Pillow â€” no hard dep), core workflow-template library + `/api/django/core/` workflow-templates route (FG369), plus selector/endpoint-only FG143 (compta Ã©tat 9421), FG303 (installations van planning), FG263 (ventes PPA model) â€” all additive & company-scoped, 4 additive migrations (rh 0020, contrats 0014, flotte 0016, ged 0015). Wave-10 PLAN.md drain (2026-06-29, 7 parallel file-disjoint worktree lanes in apps disjoint from wave 9): crm `ConcurrentPerte` (lost-deal competitor capture FG242), gestion_projet `BudgetProjet`/`LigneBudgetProjet` (PROJ21), qhse `PermisTravail` (QHSE23), kb `KbArticleAcl`/`KbLecture` (role ACL + read tracking KB7), sav `AlarmeOnduleur` (inverter alarms FG280), plus paie allocations-familiales employer charge (PAIE23, fields on ParametrePaie/BulletinPaie) and selector-only LITIGE6 (disputes dashboard) â€” all additive & company-scoped, 6 additive migrations (crm 0029, gestion_projet 0013, kb 0005, paie 0011, qhse 0015, sav 0011). Wave-11 PLAN.md drain (2026-06-29, 6 parallel file-disjoint worktree lanes resuming wave-9 app lanes off the merged base): compta `TimbreFiscal` (droit de timbre cash FG144), rh `AccidentTravail` (HSE/accidents register FG181), installations `SousTraitant` (subcontractor registry FG304), ged `PolitiqueRetention` (non-destructive retention policies GED22), flotte `EcheanceReglementaire` (regulatory deadlines FLOTTE19), plus pure-math FG264 (ventes pumping-cycle water yield) â€” all additive & company-scoped, 5 additive migrations (compta 0015, rh 0021, installations 0020, ged 0016, flotte 0017). Wave-12 PLAN.md drain (2026-06-29, 3 parallel file-disjoint lanes resuming wave-10 app lanes): qhse `ConsignationLoto` (LOTO on a work permit QHSE24), crm `PointContact` (multi-touch attribution journal FG204), plus paie taxe de formation professionnelle employer charge (PAIE24, BulletinPaie snapshot) â€” all additive & company-scoped, 3 additive migrations (paie 0012, qhse 0016, crm 0030). Wave-13 PLAN.md drain (2026-06-30, 6 parallel file-disjoint worktree lanes resuming wave-9 app lanes): compta `RetenueGarantie`/`CautionBancaire` (FG145), rh `PresquAccident` (near-miss FG182), installations `OrdreSousTraitance` (subcontractor work orders FG305), ged `ArchivageLegal` (legal write-once GED23), flotte `BaremeVignette` + `Vehicule.puissance_fiscale` (TSAV FLOTTE20), plus selector-only PROJ22 (committed-vs-actual project cost) â€” all additive & company-scoped, 5 additive migrations (compta 0016, rh 0022, installations 0021, ged 0017, flotte 0018).
-Structure fingerprint: 75297c50e49477e9e53c0acb27fed0ca50d9d3657b25b823f57f26073f269d5e
-Plan fingerprint: 88224e7584e34d2e63075a00c3e26f71092a8de929fe978004e6039b6b6cc47e
+Structure fingerprint: ea2da61db36046fb72697d7a96fbe1672be9aa32425dcf94ccde1d9196a41f36
+Plan fingerprint: 0202f53ee4a7b4d537f5e6bf470d5f9b4617e7433ca345482387d632b712362d
 
 
 
@@ -643,7 +643,7 @@ App NEUVE et dÃ©libÃ©rÃ©ment SÃ‰PARÃ‰E d'`apps/ao` (dont la chaÃ®n
 - **Models** â€” `SourceVeille` (catalogue des sources EN BASE, jamais une URL en dur dans le code, `actif` = interrupteur), `AvisMarche` (le SAS oÃ¹ atterrissent tous les avis quelle que soit la porte ; dÃ©doublonnage Ã  deux niveaux : contrainte partielle sur l'identitÃ© portail + empreinte SHA-256), `MotCleVeille` (mots-clÃ©s + poids = DONNÃ‰E ; `scoring.py` ne contient aucun littÃ©ral), `RegleExclusion` (Â« Ignorer Â» APPREND ; motif FR obligatoire), `ExecutionCollecte` (+ **alarme de collecte silencieuse**), `AcheteurCible` (carnet des acheteurs Ã  dÃ©marcher â€” la vraie contre-mesure FRDISI, livrÃ© VIDE).
 - **Services** â€” `changer_statut_avis` est l'UNIQUE point de mutation du statut (gardÃ© par introspection AST) ; collecte orchestrÃ©e par un REGISTRE de lecteurs (`lecteurs.py`) pour que le collecteur du portail se branche sans rÃ©Ã©criture ; Â« Retenir Â» â†’ `AppelOffre` via `apps.ao.services.creer_appel_offre_depuis_avis` (unique point de contact cross-app) ; attribution du CA par source et par informateur (calculÃ©e, jamais stockÃ©e).
 - Endpoints (`/api/django/veille_ao/`) : `sources/`, `avis/` (+ `retenir`/`ignorer`), `mots-cles/`, `regles-exclusion/`, `acheteurs-cibles/` (+ `relances-dues`), `executions/` (lecture seule), `collecter/` (mÃªme job que la nuit, via `core.jobs.submit`), `sante/`, `attribution/`. Permissions `veille_ao_voir` / `veille_ao_gerer`.
-- **Le collecteur HTTP (VAO15-20) N'EXISTE PAS** et un test AST Ã©choue si un module de l'app importe `httpx`/`requests`/`urllib`. Il attend une action fondateur (VAO2 : ouvrir le compte gratuit du portail et VÃ‰RIFIER si le flux RSS authentifiÃ© existe â€” s'il existe, le collecteur ne sera jamais Ã©crit). RÃ¨gle #5 : fichier de risque `tos_risk/marchespublics_gov_ma.md`, User-Agent HONNÃŠTE et **arrÃªt sur 403, jamais de maquillage**. La tÃ¢che beat 06:00 ship **DÃ‰SARMÃ‰E** (`VEILLE_AO_COLLECTE_ACTIVE=0`).
+- **Le collecteur HTTP (VAO15-20) est CODE mais DESARME** (2026-08-26) : paquet `apps/veille_ao/portail/` (client PRADO `client.py`, parseur pur bs4 `parser.py`, enrichissement a la demande `detail.py`, garde-fous `garde_fous.py` : cadence 2 s + quota dur 10/jour + interrupteur `VEILLE_AO_COLLECTE_ACTIVE=0` par defaut, verdicts fail-loud `resultats.py`), fixtures HTML committees (reconstructions declarees, jamais capturees), contrat de purete AST + `GardeReseau` (zero socket en test). **Son enregistrement dans `lecteurs.py` est VOLONTAIREMENT ABSENT** : brancher le lecteur = l'acte d'armement VAO4, gate fondateur (regle #5, approbation du fichier de risque `tos_risk/marchespublics_gov_ma.md` encore vide). Dependance : `beautifulsoup4==4.14.2`. User-Agent HONNETE, arret definitif sur 403/401/406/429, jamais de maquillage.
 
 ### btp_chantier â€” vertical BTP/EPC : rÃ©serves, RFI, visas, DGD (Groupe PACT Â§E2)  *( `/api/django/btp-chantier/` )*
 Le backend existait depuis longtemps ; PACT62-68 lui a donnÃ© son PREMIER Ã©cran (jusque-lÃ  7 ressources sans aucune interface).
@@ -1095,487 +1095,487 @@ Things this map could not fully verify from source â€” do not over-trust:
 
 ## 10. Plan status
 
-**Done (298)**
+﻿**Done (371)**
 
-- `N100` â€” Build out multi-tenant operation on the existing tenant_id foundation (strictâ€¦
-- `N101` â€” Tenant administration console (manage tenants/plans/usage/support) + self-serve signupâ€¦
-- `N102` â€” After the modules above are built, update the master project document + PLAN + DONE logâ€¦
-- `PACT5` â€” Ã‰largir la garde de contrat aux appels axios Ã©crits DIRECTEMENT dans un Ã©cran
-- `PACT6` â€” Rendre BLOQUANTE la dÃ©rive de l'instantanÃ© OpenAPI
-- `PACT7` â€” Interdire `responses={200: OpenApiResponse(response=dict)}` sur les endpoints agrÃ©gÃ©s
-- `PACT8` â€” Le meilleur rapport valeur/coÃ»t du groupe : une spec e2e Â« fumÃ©e des Ã©crans Â» quiâ€¦
-- `PACT9` â€” Garde Ã©cran â†’ champ : attraper l'Ã©cran qui lit un champ fantÃ´me mÃªme SANS test
-- `PACT10` â€” Le contrat part EN PREMIER et atterrit SEUL sur `main`, avant que les deux lanesâ€¦
-- `PACT11` â€” `plan_lanes.py` refuse une lane frontend dont la source de donnÃ©es est dans une autreâ€¦
-- `PACT12` â€” Une tÃ¢che dont `Files:` cite Ã  la fois `backend/` et `frontend/` compte pour DEUXâ€¦
-- `PACT13` â€” Interdire les mocks de forme Ã©crits Ã  la main sur les endpoints agrÃ©gÃ©s
-- `PACT14` â€” Ã‰crire les deux rÃ¨gles dans `CLAUDE.md`, Ã  l'endroit oÃ¹ un run les lit
-- `PACT17` â€” Ã‰cran entier mort : Ventes â†’ Â« Action requise Â»
-- `PACT18` â€” Un seul caractÃ¨re tue un onglet : ComptabilitÃ© â†’ Ã‰tats â†’ Â« Grand-livre Â»
-- `PACT19` â€” RH â†’ Temps : deux actions en 404
-- `PACT20` â€” RH â†’ Recrutement : 4 tuiles affichent Â« â€” Â» pour toujours
-- `PACT21` â€” Flotte â†’ fiche vÃ©hicule : le bloc Ã©co-conduite est muet par quasi-homonymie
-- `PACT22` â€” Gestion de projet â†’ Ressources : un chiffre FAUX est affichÃ© comme vrai
-- `PACT23` â€” Les 2 derniÃ¨res dettes de forme : Stock â†’ fiche fournisseur 360
-- `PACT24` â€” Les 2 derniÃ¨res dettes de contrat
-- `PACT25` â€” Le trou central du dossier de soumission AO : `services.producteurs_de_pack`
-- `PACT26` â€” Nettoyer `apps/compta/urls.py` : 139 doubles montages
-- `PACT27` â€” Le rapport mensuel Â« backend sombre Â», non bloquant, avec un marqueur d'intention
-- `PACT28` â€” FiscalitÃ© avancÃ©e : acomptes IS, conventions fiscales, TVA non dÃ©ductible
-- `PACT29` â€” Immobilisations avancÃ©es : composants, dÃ©prÃ©ciation, mutations, encours
-- `PACT30` â€” Rapprochements de comptes de bilan (contrÃ´le Ã  quatre yeux)
-- `PACT31` â€” RÃ©fÃ©rentiels comptables parallÃ¨les et analytique multi-axes
-- `PACT32` â€” ClÃ©s de rÃ©partition et engagements budgÃ©taires
-- `PACT33` â€” Consolidation groupe multi-sociÃ©tÃ©s
-- `PACT34` â€” Reconnaissance du revenu (IFRS 15)
-- `PACT35` â€” Import guidÃ© de la balance d'ouverture
-- `PACT36` â€” Comparateurs commerciaux : versions de devis, cash contre financement
-- `PACT37` â€” Codes promotionnels datÃ©s sur devis
-- `PACT38` â€” Assistant de vente guidÃ©e
-- `PACT39` â€” Catalogue public Ã  jeton
-- `PACT40` â€” BibliothÃ¨que d'annexes de proposition
-- `PACT41` â€” Ã‰chÃ©anciers de paiement en tranches
-- `PACT42` â€” Approbation des configurations non standard
-- `PACT43` â€” Mandats de paiement rÃ©currents (carte tokenisÃ©e)
-- `PACT44` â€” ParamÃ©trage des relances par client
-- `PACT45` â€” Promesses de paiement client
-- `PACT46` â€” Remises d'encaissement terrain
-- `PACT47` â€” Import en masse des limites de crÃ©dit
-- `PACT48` â€” Assurance-crÃ©dit : polices et encours garantis
-- `PACT49` â€” Rapport des dÃ©rogations de crÃ©dit
-- `PACT50` â€” Segments crÃ©dit : rattacher un client Ã  son segment
-- `PACT51` â€” RelevÃ© RAS-TVA fournisseurs et registre consolidÃ© des paiements
-- `PACT52` â€” Registre des bÃ©nÃ©ficiaires effectifs
-- `PACT53` â€” Soumissions budgÃ©taires par dÃ©partement
-- `PACT54` â€” Transmission DGI : contrÃ´le avant envoi et historique
-- `PACT55` â€” Sous-traitance chantier : ordres, factures, rÃ¨glements, attestations, Ã©valuationsâ€¦
-- `PACT56` â€” Import et douane : dossiers, frais, coÃ»t dÃ©barquÃ©
-- `PACT57` â€” Prix nÃ©gociÃ©s fournisseurs : commandes-cadres et contrats de prix
-- `PACT58` â€” ContrÃ´le documentaire de projet : registre et rÃ©visions
-- `PACT59` â€” Suivi projet du chantier : jalons, modÃ¨les, comptes-rendus
-- `PACT60` â€” Consultation fournisseurs et comparatif d'offres
-- `PACT61` â€” ParamÃ©trage des kits d'assemblage : nomenclature, gamme, contrÃ´le qualitÃ©
-- `PACT62` â€” RÃ©serves de chantier : punch-list gÃ©olocalisÃ©e sur plan
-- `PACT63` â€” Demandes d'information technique
-- `PACT64` â€” Visas de documents techniques
-- `PACT65` â€” Journal de chantier quotidien
-- `PACT66` â€” Avenants de chantier : chiffrage et approbation client
-- `PACT67` â€” DÃ©compte gÃ©nÃ©ral et dÃ©finitif, dÃ©boursÃ© sec contre facturÃ©
-- `PACT68` â€” Diffusion contrÃ´lÃ©e de plans
-- `PACT69` â€” Bordereau des prix de l'appel d'offres
-- `PACT70` â€” Suivi administratif de l'AO : cautions, Ã©chÃ©ances, rÃ©sultat
-- `PACT71` â€” Checklist partenaire du dossier de dÃ©pÃ´t
-- `PACT72` â€” PiÃ¨ces fournies du dossier de dÃ©pÃ´t
-- `PACT73` â€” BibliothÃ¨que des piÃ¨ces administratives
-- `PACT74` â€” PiÃ¨ces du dossier de consultation reÃ§u de l'acheteur
-- `PACT75` â€” Ã‰conomie directeur de l'AO : coÃ»t de revient et cibles de marge
-- `PACT76` â€” Plan source de la toiture : le calibrage n'est jamais persistÃ©
-- `PACT77` â€” Ã‰tats des lieux d'entrÃ©e et de sortie
-- `PACT78` â€” ParamÃ¨tres avancÃ©s du module Projet
-- `PACT79` â€” Lots de rÃ©colte
-- `PACT80` â€” Transport scolaire : circuits, arrÃªts, affectations
-- `PACT81` â€” Affectation vÃ©hicule & permis de conduire
-- `PACT82` â€” DÃ©pÃ´t des bulletins de paie
-- `PACT83` â€” Demandes d'allocation de congÃ©s
-- `PACT84` â€” Guichet des demandes RH (attestations)
-- `PACT85` â€” ModÃ¨les d'intÃ©gration (onboarding)
-- `PACT86` â€” Ã‰lÃ©ments variables de paie (bordereau externe)
-- `PACT87` â€” Entretiens de sortie
-- `PACT88` â€” Grilles salariales
-- `PACT89` â€” Horaires de travail
-- `PACT90` â€” Jours bloquÃ©s (congÃ©s)
-- `PACT91` â€” Parcours (timeline) des employÃ©s
-- `PACT92` â€” Fermetures collectives
-- `PACT93` â€” Primes & indemnitÃ©s
-- `PACT94` â€” RÃ©glages RH
-- `PACT95` â€” Types d'entrÃ©es ponctuelles de paie
-- `PACT96` â€” Comptes portail (accÃ¨s client)
-- `PACT97` â€” Acceptations de devis (portail) : la preuve lÃ©gale cÃ´tÃ© ERP
-- `PACT98` â€” Paiements de facture (portail) : le rapprochement impossible aujourd'hui
-- `PACT99` â€” Documents clients (portail)
-- `PACT100` â€” Jalons de chantier (portail)
-- `PACT101` â€” Demandes de ticket (portail)
-- `PACT102` â€” Partenaires : fiche, soumissions, commissions
-- `PACT103` â€” Concurrents sur affaires perdues
-- `PACT104` â€” Points de contact : la saisie manuelle manque, pas la lecture
-- `PACT105` â€” Revues de compte : la crÃ©ation manque, pas l'affichage
-- `PACT106` â€” Avis clients et routage Google
-- `PACT107` â€” EnquÃªtes NPS post-installation
-- `PACT108` â€” Journal des messages WhatsApp entrants
-- `PACT109` â€” DÃ©tail des participations et certificat d'enquÃªte
-- `PACT110` â€” Pilotage du bandit publicitaire : bras, dÃ©cisions, statistiques
-- `PACT111` â€” Fabrique crÃ©ative : gÃ©nÃ©ration ancrÃ©e, lots, items hors-lot
-- `PACT112` â€” Policy crÃ©ative : la vraie, pas la constante codÃ©e en dur
-- `PACT113` â€” Plan de vol : le plan composÃ© n'est jamais sauvegardÃ©
-- `PACT114` â€” StÃ©rilisation des instruments : cycles et traÃ§abilitÃ© sanitaire
-- `PACT115` â€” CrÃ©neaux disponibles Ã  la prise de rendez-vous
-- `PACT116` â€” Inscription d'une nouvelle sociÃ©tÃ© : le backend est entier, la porte n'existe pas
-- `PACT117` â€” ModÃ¨les brandÃ©s (PDF, email, WhatsApp)
-- `PACT118` â€” Ã‰dition en masse : brancher le registre du socle plutÃ´t qu'un dixiÃ¨me endpoint maison
-- `PACT119` â€” Registre de consentement (loi 09-08 / CNDP)
-- `PACT120` â€” Partage interne d'un tableau de bord
-- `PACT121` â€” Paiement en ligne d'une facture
-- `PACT122` â€” Explorateur de donnÃ©es (requÃªtes sauvegardÃ©es)
-- `PACT123` â€” Exports planifiÃ©s
-- `PACT124` â€” Modifier une dÃ©finition de workflow existante
-- `PACT125` â€” Configurateur guidÃ© (assistant produit)
-- `PACT126` â€” CompatibilitÃ© produits : rÃ¨gles et test
-- `PACT127` â€” Offres groupÃ©es
-- `PACT128` â€” Options de configuration d'un produit
-- `PACT129` â€” Prix contractuels nÃ©gociÃ©s par client
-- `PACT130` â€” ParamÃ¨tres CPQ : seuils de marge et paliers d'approbation de remise
-- `PACT131` â€” Coffres-forts documentaires
-- `PACT132` â€” RÃ¨gles de dossier : action automatique au dÃ©pÃ´t
-- `PACT133` â€” RÃ¨gles d'accÃ¨s par mÃ©tadonnÃ©e
-- `PACT134` â€” Demandes de disposition en fin de rÃ©tention
-- `PACT135` â€” Envoi en masse pour signature
-- `PACT136` â€” Routage documentaire automatique
-- `PACT137` â€” Planifications de document
-- `PACT138` â€” Abonnements : plans, options, paliers d'usage, compteurs
-- `PACT139` â€” Relance d'impayÃ© : sÃ©quences et Ã©tapes
-- `PACT140` â€” Objets mÃ©tier personnalisÃ©s
-- `PACT141` â€” Brouillon de relance ou de rÃ©ponse assistÃ©
-- `PACT142` â€” Compte rendu d'intervention depuis un mÃ©mo vocal
-- `PACT143` â€” Description commerciale d'un produit
-- `PACT144` â€” Rapport d'activitÃ© pÃ©riodique
-- `PACT145` â€” Assistant de paramÃ©trage
-- `PACT146` â€” GÃ©nÃ©rateur de rapports croisÃ©s
-- `PACT147` â€” Politiques d'approbation configurables
-- `PACT149` â€” La garde d'atteignabilitÃ© couvre frontend/src/pages/
-- `PACT150` â€” Route â‰  menu : la garde vÃ©rifie aussi l'entrÃ©e de navigation
-- `PACT151` â€” Le joker `<pk>` de la garde de contrat n'avale plus un nom d'action manquÃ©
-- `PACT152` â€” Compta : le contrÃ´le d'intÃ©gritÃ© de la piste d'audit ne peut mÃ©caniquement pas signalerâ€¦
-- `PACT153` â€” Marketing : le blocage lÃ©gal d'envoi de masse ne bloque jamais
-- `PACT154` â€” Paie : deux faux zÃ©ros affichÃ©s avant des Ã©critures rÃ©elles
-- `PACT155` â€” RH Portail : la demande d'attestation part en 201 et enregistre TOUJOURS autre chose
-- `PACT156` â€” RH : la sortie d'employÃ© est impossible sur 3 des 7 motifs du menu
-- `PACT157` â€” Adsengine : le journal d'actions est illisible de bout en bout
-- `PACT158` â€” QHSE : le chatter n'affiche jamais un changement de champ
-- `PACT159` â€” Garde vocabulaire Ã  source dÃ©clarÃ©e â€” opt-in, zÃ©ro faux positif par construction
-- `PACT160` â€” Compta : l'approbation de changement de RIB fournisseur (XACC24, cochÃ©e Ã  tort) n'a niâ€¦
-- `PACT161` â€” Marketing : le moteur de sÃ©quences n'inscrit jamais personne (XMKT1 cochÃ©e Ã  tort)
-- `PACT162` â€” Paie : les avances sur salaire approuvÃ©es ne partent jamais chez le prestataire (FG192â€¦
-- `PACT163` â€” Compta : trois capacitÃ©s XACC cochÃ©es sans aucune vue (XACC15/16/22)
-- `PACT164` â€” Adsengine : cÃ¢bler ou archiver les 6 producteurs d'actions livrÃ©s que rien n'invoqueâ€¦
-- `PACT165` â€” Trier les ~290 fonctions orphelines restantes AVANT d'en cÃ¢bler une seule
-- `PACT166` â€” Assembler la coquille de l'atelier de traÃ§age de toiture (canvas)
-- `PACT167` â€” Brancher les outils spÃ©cialisÃ©s de l'atelier de toiture (calibration, DXF, obstaclesâ€¦
-- `PACT168` â€” Monter le Mode Expert et les Suggestions dans l'atelier de calepinage
-- `PACT169` â€” Brancher les contrÃ´les avant dÃ©pÃ´t, les Ã©chÃ©ances et le bouton ZIP dans l'ongletâ€¦
-- `PACT170` â€” Brancher l'annotateur de photo, la fiche question et l'export dans Questions terrain
-- `PACT171` â€” Ajouter l'onglet Â« Variantes Â» Ã  la fiche affaire
-- `PACT172` â€” Brancher le dÃ©tail d'une variante (diff, dÃ©composition, sensibilitÃ©s, historique) etâ€¦
-- `PACT173` â€” Un `lazy()` jamais placÃ© dans une route est comptÃ© atteignable (trou structurel, 0â€¦
-- `PACT174` â€” Cinq composants livrÃ©s que rien n'importe, hors des deux dossiers inventoriÃ©s
-- `PACT175` â€” Ã‰tendre le lecteur de forme : 3 classes d'endpoints agrÃ©gÃ©s lui Ã©chappent aujourd'huiâ€¦
-- `PACT176` â€” Mesurer les 83 % de la surface d'API que l'Ã©tage 2 ne voit PAS, avant d'affirmer quoiâ€¦
-- `PACT177` â€” Le contrat de forme ne couvre que 14 % des endpoints appelÃ©s, et pas ceux oÃ¹ vit leâ€¦
-- `PACT178` â€” AOF16 : dÃ©river et surveiller la caution dÃ©finitive, jamais appelÃ©
-- `PACT179` â€” AOF20 : l'upload de plan de toiture n'a aucun endpoint
-- `PACT180` â€” PACT25 doit nommer son registre : 70 fonctions de fabrique/ attendentâ€¦
-- `PACT181` â€” XQHS15 : Â« mes lectures en attente Â» â€” l'endpoint que le code lui-mÃªme annonce n'existeâ€¦
-- `PACT182` â€” XQHS7 : l'analyse 5-pourquoi/8D d'une NCR n'a aucune route
-- `PACT183` â€” XQHS14 : la revue pÃ©riodique des risques/opportunitÃ©s et le lien CAPA n'ont aucuneâ€¦
-- `PACT184` â€” XQHS12 : le rappel lÃ©gal de rÃ©union CSH trimestrielle n'a aucune route
-- `PACT185` â€” XGED3 : le PDF signÃ© final aplati n'a aucune route
-- `PACT186` â€” XSAL6 : le rÃ©solveur de plan de commission cross-app n'est jamais consommÃ©
-- `PACT187` â€” Onglet Â« Amortissement Â» d'un vÃ©hicule : 3 lignes sur 4 muettes
-- `PV1` â€” Contrat du contexte de conception 3D d'un devis
-- `PV2` â€” Contrat de la conception Ã©lectrique d'un devis
-- `PV3` â€” Contrats AO : tiroirs + marges + suggestions + plan imposÃ©
-- `PV4` â€” Contrat de l'Ã©tude bancable (simulation)
-- `PV5` â€” FicheTechnique Ã©tendue : la datasheet PVsyst-grade
-- `PV6` â€” SÃ©lecteurs stock : la datasheet lisible cross-app
-- `PV7` â€” Ã‰cran Fiches techniques complet
-- `PV8` â€” Badge Â« complÃ©tude datasheet Â»
-- `PV9` â€” Seed des datasheets RÃ‰ELLES (jamais inventÃ©es)
-- `PV10` â€” solar_design branchÃ© sur la datasheet
-- `PV11` â€” Wattage du PDF : la fiche avant la regex
-- `PV12` â€” Kit villa depuis le produit devisÃ© (cÃ´tÃ© AO)
-- `PV13` â€” Layout sÃ©rialisÃ© v2 : Ã©mettre enfin result/scenario/panelWatt/battery
-- `PV14` â€” `extract_roof_config` lit la gÃ©omÃ©trie par pan
-- `PV15` â€” Garde de statut sur `replace-lines` + produits globaux
-- `PV16` â€” `cible_depuis_lignes(devis)` â€” lire le devis, pas la facture
-- `PV17` â€” `GET /ventes/devis/{id}/design-context/`
-- `PV18` â€” `POST /ventes/devis/{id}/sync-layout/` â€” synchro chirurgicale
-- `PV19` â€” `hydrateFromDevis` + boot `hydrate.devis`
-- `PV20` â€” Route `/ventes/devis/:id/design` + mode devis de ToitureDesign
-- `PV21` â€” Boucle de finalisation mode devis
-- `PV22` â€” GÃ©nÃ©rer-si-absent + chip conception sur le lead
-- `PV23` â€” EntrÃ©es Â« Concevoir en 3D Â» cÃ´tÃ© ventes
-- `PV24` â€” Gardes rÃ¨gle #4 : la v2 n'altÃ¨re ni PDF ni page publique
-- `PV25` â€” Multi-sÃ©lection + rangÃ©es + azimut
-- `PV26` â€” Undo/redo + nudge clavier
-- `PV27` â€” FIX perte des placements manuels (3 chemins prouvÃ©s)
-- `PV28` â€” Avertir avant d'Ã©craser l'Ã©dition manuelle
-- `PV29` â€” Mode `rangees_imposees_utilisateur` dans le moteur
-- `PV30` â€” Passage `rangees_imposees` + `phase_forcee_m` dans l'API AO
-- `PV31` â€” Ã‰dition de rangÃ©es dans le studio (drag/ajout/suppression, serveur juge)
-- `PV32` â€” Violations en rouge + Â« Enregistrer comme variante Â»
-- `PV33` â€” Squelette du noyau Ã©lectrique pur
-- `PV34` â€” chaines.py + onduleurs.py : physique + politique rÃ©conciliÃ©es
-- `PV35` â€” protections.py : le rÃ¨glement encodÃ©
-- `PV36` â€” cables.py : ampacitÃ© + chute de tension
-- `PV37` â€” nomenclature.py : le BOQ nourri par le vrai design
-- `PV38` â€” `concevoir()` + note de calcul FR
-- `PV39` â€” schema.py : le schÃ©ma unifilaire v2
-- `PV40` â€” SLD en PDF
-- `PV41` â€” `Devis.electrical_design` + endpoints conception Ã©lectrique
-- `PV42` â€” Finalisation 3D â†’ design Ã©lectrique par pan + kit-produit villa
-- `PV43` â€” Panneau Ã©lectrique du devis (front)
-- `PV44` â€” Le tiroir Ã‰lectrique AO s'allume
-- `PV45` â€” SchÃ©ma unifilaire â†’ dossier rÃ©glementaire
-- `PV46` â€” PDF premium : annexe technique optionnelle (photo toit + SLD)
-- `PV47` â€” BOQ Ã©lectrique â†’ lignes annexes du devis (opt-in)
-- `PV48` â€” `core/calepinage/tiroirs.py` : les 4 tiroirs calculÃ©s
-- `PV49` â€” Publier tiroirs + marges + garde de coÃ»t
-- `PV50` â€” Publier les suggestions (action discriminÃ©e)
-- `PV51` â€” Le studio consomme tout
-- `PV52` â€” `phase_forcee_m` rÃ©el cÃ´tÃ© moteur
-- `PV53` â€” L'atelier de traÃ§age PERSISTE enfin obstacles + chaÃ®nes
-- `PV54` â€” `ZoneAO` : les zones ont enfin un modÃ¨le
-- `PV55` â€” Les zones atteignent le moteur
-- `PV56` â€” Zones persistÃ©es depuis l'atelier
-- `PV57` â€” Origine gÃ©ographique de la toiture
-- `PV58` â€” La reprise carte s'applique enfin
-- `PV59` â€” Vraie liste des calepinages
-- `PV60` â€” FIX : l'obstacle testÃ© au centre du panneau seulement
-- `PV61` â€” DÃ©gagement par TYPE d'obstacle (roofPro11)
-- `PV62` â€” Mix portrait/paysage par bande de rangÃ©e (roofPro11)
-- `PV63` â€” Retraits de rive configurables (roofPro11)
-- `PV64` â€” 3 cartes de variantes (roofPro11)
-- `PV65` â€” Anti-ombrage Ã  la vraie latitude (moteur calepinage)
-- `PV66` â€” Kit villa Est-Ouest dos-Ã -dos
-- `PV67` â€” Variantes d'orientation auto-gÃ©nÃ©rÃ©es (AO, endpoint)
-- `PV68` â€” Vue agrÃ©gÃ©e multi-toitures d'une affaire (AO)
-- `PV69` â€” `apps/ventes/etude.py` : le cÅ“ur P50/P90
-- `PV70` â€” Multi-zones + pont matrice d'ombrage
-- `PV71` â€” La matrice d'ombrage voyage dans le layout v2
-- `PV72` â€” Autoconso horaire â†’ net-metering â†’ projection 25 ans
-- `PV73` â€” Cache PVGIS systÃ¨me
-- `PV74` â€” `POST /ventes/devis/{id}/simuler/` async
-- `PV75` â€” FenÃªtre de production : P50/P90 + cascade de pertes
-- `PV76` â€” Carte Â« Ã‰tude bancable Â» du devis
-- `PV77` â€” PDF Ã©tude enrichi + P50 public
-- `PV78` â€” Le lead expose sa conception (backend)
-- `PV79` â€” Ã‰vÃ©nement `layout_finalise` + chatter lead
-- `PV80` â€” Le chantier hÃ©rite du schÃ©ma
-- `PV81` â€” SchÃ©ma unifilaire client-safe sur la proposition
-- `PV82` â€” KPI Â« conÃ§u vs vendu Â»
-- `PV83` â€” Shims de rÃ©-export ventes (prÃ©cÃ©dent ARC6)
-- `PVG1` â€” Import DXF rÃ©el (dÃ©pendance `ezdxf` approuvÃ©e fondateur 2026-08-14)
-- `PVG2` â€” Garde de tolÃ©rance sur l'arbitrage A/B calepinage villa (dÃ©cision rendue : sÃ©curitÃ© parâ€¦
-- `PVG3` â€” SKUs cÃ¢bles/protections prix vides (crÃ©ation approuvÃ©e fondateur 2026-08-14)
-- `PVG4` â€” Datasheets onduleurs/batteries : modÃ¨les supposÃ©s sourcÃ©s (accord fondateur 2026-08-14)
-- `VAO3` â€” Fichier de risque `tos_risk/marchespublics_gov_ma.md` (rÃ¨gle #5 volet (a))
-- `VAO6` â€” CrÃ©er l'app `apps/veille_ao` avec le scaffolder du dÃ©pÃ´t + cÃ¢blage complet
-- `VAO7` â€” `SourceVeille` : le catalogue des sources, aucune source en dur dans le code
-- `VAO8` â€” `AvisMarche` : le SAS â€” la table oÃ¹ atterrissent TOUS les avis, quelle que soit laâ€¦
-- `VAO9` â€” `MotCleVeille` + score : les mots-clÃ©s sont de la DONNÃ‰E, jamais une constante
-- `VAO10` â€” `RegleExclusion` : Â« Ignorer Â» doit APPRENDRE, sinon l'Ã©cran se remplit de bruit
-- `VAO11` â€” DÃ©doublonnage Ã  DEUX niveaux â€” le cÅ“ur de fiabilitÃ© du groupe
-- `VAO12` â€” Permissions `veille_ao_voir` / `veille_ao_gerer` + viewsets sur le socle conforme
-- `VAO13` â€” Manifeste plateforme `apps/veille_ao/platform.py` â€” ne dÃ©clarer QUE ce qui est cÃ¢blÃ©
-- `VAO14` â€” Service unique de changement de statut + journal au chatter
-- `VAO21` â€” Service de collecte : l'orchestration, seule Ã  toucher la base
-- `VAO22` â€” TÃ¢che planifiÃ©e 06:00 Casablanca â€” livrÃ©e DÃ‰SARMÃ‰E
-- `VAO23` â€” Le BOUTON Â« RafraÃ®chir maintenant Â» lance EXACTEMENT le mÃªme job que la nuit
-- `VAO24` â€” `ExecutionCollecte` + ALARME de collecte silencieuse â€” la tÃ¢che la plus importante duâ€¦
-- `VAO25` â€” Notification quotidienne en franÃ§ais, utile et non bruyante
-- `VAO26` â€” RÃ©tention et purge des avis non retenus
-- `VAO27` â€” Â« Ajouter un avis Â» : capter en 30 secondes un AO reÃ§u par WhatsApp, SMS ou appel â€”â€¦
-- `VAO28` â€” Import CSV d'avis (coordonnÃ© avec AOF169, jamais en double)
-- `VAO29` â€” `AcheteurCible` : le carnet des acheteurs Ã  DÃ‰MARCHER â€” la vraie contre-mesure FRDISI
-- `VAO30` â€” Â« Retenir Â» â†’ crÃ©er l'`AppelOffre` : l'UNIQUE point de contact cross-app du groupe
-- `VAO31` â€” Attribution : d'oÃ¹ vient rÃ©ellement le chiffre d'affaires
-- `VAO32` â€” Module frontend `veille_ao` + client API sur la factory partagÃ©e
-- `VAO33` â€” La liste des avis (`ListShell`) : la page qu'on ouvre le matin
-- `VAO34` â€” Fiche avis + les deux gestes qui comptent : Â« Retenir Â» et Â« Ignorer Â»
-- `VAO35` â€” Ã‰cran Â« ParamÃ¨tres de veille Â» (Directeur) : mots-clÃ©s, sources, exclusions, cadence â€”â€¦
-- `VAO36` â€” Ã‰cran Â« Acheteurs cibles Â» + relances â€” la prospection qui capte les FRDISI suivants
-- `VAO37` â€” Bandeau de santÃ© de la collecte + la carte d'honnÃªtetÃ© Â« ce que la veille NE voit pas Â»
-- `VAO38` â€” Guide utilisateur FR de la veille (4 pages max)
+- `N100` — Build out multi-tenant operation on the existing tenant_id foundation (strict…
+- `N101` — Tenant administration console (manage tenants/plans/usage/support) + self-serve signup…
+- `N102` — After the modules above are built, update the master project document + PLAN + DONE log…
+- `PACT5` — Élargir la garde de contrat aux appels axios écrits DIRECTEMENT dans un écran
+- `PACT6` — Rendre BLOQUANTE la dérive de l'instantané OpenAPI
+- `PACT7` — Interdire `responses={200: OpenApiResponse(response=dict)}` sur les endpoints agrégés
+- `PACT8` — Le meilleur rapport valeur/coût du groupe : une spec e2e « fumée des écrans » qui…
+- `PACT9` — Garde écran → champ : attraper l'écran qui lit un champ fantôme même SANS test
+- `PACT10` — Le contrat part EN PREMIER et atterrit SEUL sur `main`, avant que les deux lanes…
+- `PACT11` — `plan_lanes.py` refuse une lane frontend dont la source de données est dans une autre…
+- `PACT12` — Une tâche dont `Files:` cite à la fois `backend/` et `frontend/` compte pour DEUX…
+- `PACT13` — Interdire les mocks de forme écrits à la main sur les endpoints agrégés
+- `PACT14` — Écrire les deux règles dans `CLAUDE.md`, à l'endroit où un run les lit
+- `PACT17` — Écran entier mort : Ventes → « Action requise »
+- `PACT18` — Un seul caractère tue un onglet : Comptabilité → États → « Grand-livre »
+- `PACT19` — RH → Temps : deux actions en 404
+- `PACT20` — RH → Recrutement : 4 tuiles affichent « — » pour toujours
+- `PACT21` — Flotte → fiche véhicule : le bloc éco-conduite est muet par quasi-homonymie
+- `PACT22` — Gestion de projet → Ressources : un chiffre FAUX est affiché comme vrai
+- `PACT23` — Les 2 dernières dettes de forme : Stock → fiche fournisseur 360
+- `PACT24` — Les 2 dernières dettes de contrat
+- `PACT25` — Le trou central du dossier de soumission AO : `services.producteurs_de_pack`
+- `PACT26` — Nettoyer `apps/compta/urls.py` : 139 doubles montages
+- `PACT27` — Le rapport mensuel « backend sombre », non bloquant, avec un marqueur d'intention
+- `PACT28` — Fiscalité avancée : acomptes IS, conventions fiscales, TVA non déductible
+- `PACT29` — Immobilisations avancées : composants, dépréciation, mutations, encours
+- `PACT30` — Rapprochements de comptes de bilan (contrôle à quatre yeux)
+- `PACT31` — Référentiels comptables parallèles et analytique multi-axes
+- `PACT32` — Clés de répartition et engagements budgétaires
+- `PACT33` — Consolidation groupe multi-sociétés
+- `PACT34` — Reconnaissance du revenu (IFRS 15)
+- `PACT35` — Import guidé de la balance d'ouverture
+- `PACT36` — Comparateurs commerciaux : versions de devis, cash contre financement
+- `PACT37` — Codes promotionnels datés sur devis
+- `PACT38` — Assistant de vente guidée
+- `PACT39` — Catalogue public à jeton
+- `PACT40` — Bibliothèque d'annexes de proposition
+- `PACT41` — Échéanciers de paiement en tranches
+- `PACT42` — Approbation des configurations non standard
+- `PACT43` — Mandats de paiement récurrents (carte tokenisée)
+- `PACT44` — Paramétrage des relances par client
+- `PACT45` — Promesses de paiement client
+- `PACT46` — Remises d'encaissement terrain
+- `PACT47` — Import en masse des limites de crédit
+- `PACT48` — Assurance-crédit : polices et encours garantis
+- `PACT49` — Rapport des dérogations de crédit
+- `PACT50` — Segments crédit : rattacher un client à son segment
+- `PACT51` — Relevé RAS-TVA fournisseurs et registre consolidé des paiements
+- `PACT52` — Registre des bénéficiaires effectifs
+- `PACT53` — Soumissions budgétaires par département
+- `PACT54` — Transmission DGI : contrôle avant envoi et historique
+- `PACT55` — Sous-traitance chantier : ordres, factures, règlements, attestations, évaluations…
+- `PACT56` — Import et douane : dossiers, frais, coût débarqué
+- `PACT57` — Prix négociés fournisseurs : commandes-cadres et contrats de prix
+- `PACT58` — Contrôle documentaire de projet : registre et révisions
+- `PACT59` — Suivi projet du chantier : jalons, modèles, comptes-rendus
+- `PACT60` — Consultation fournisseurs et comparatif d'offres
+- `PACT61` — Paramétrage des kits d'assemblage : nomenclature, gamme, contrôle qualité
+- `PACT62` — Réserves de chantier : punch-list géolocalisée sur plan
+- `PACT63` — Demandes d'information technique
+- `PACT64` — Visas de documents techniques
+- `PACT65` — Journal de chantier quotidien
+- `PACT66` — Avenants de chantier : chiffrage et approbation client
+- `PACT67` — Décompte général et définitif, déboursé sec contre facturé
+- `PACT68` — Diffusion contrôlée de plans
+- `PACT69` — Bordereau des prix de l'appel d'offres
+- `PACT70` — Suivi administratif de l'AO : cautions, échéances, résultat
+- `PACT71` — Checklist partenaire du dossier de dépôt
+- `PACT72` — Pièces fournies du dossier de dépôt
+- `PACT73` — Bibliothèque des pièces administratives
+- `PACT74` — Pièces du dossier de consultation reçu de l'acheteur
+- `PACT75` — Économie directeur de l'AO : coût de revient et cibles de marge
+- `PACT76` — Plan source de la toiture : le calibrage n'est jamais persisté
+- `PACT77` — États des lieux d'entrée et de sortie
+- `PACT78` — Paramètres avancés du module Projet
+- `PACT79` — Lots de récolte
+- `PACT80` — Transport scolaire : circuits, arrêts, affectations
+- `PACT81` — Affectation véhicule & permis de conduire
+- `PACT82` — Dépôt des bulletins de paie
+- `PACT83` — Demandes d'allocation de congés
+- `PACT84` — Guichet des demandes RH (attestations)
+- `PACT85` — Modèles d'intégration (onboarding)
+- `PACT86` — Éléments variables de paie (bordereau externe)
+- `PACT87` — Entretiens de sortie
+- `PACT88` — Grilles salariales
+- `PACT89` — Horaires de travail
+- `PACT90` — Jours bloqués (congés)
+- `PACT91` — Parcours (timeline) des employés
+- `PACT92` — Fermetures collectives
+- `PACT93` — Primes & indemnités
+- `PACT94` — Réglages RH
+- `PACT95` — Types d'entrées ponctuelles de paie
+- `PACT96` — Comptes portail (accès client)
+- `PACT97` — Acceptations de devis (portail) : la preuve légale côté ERP
+- `PACT98` — Paiements de facture (portail) : le rapprochement impossible aujourd'hui
+- `PACT99` — Documents clients (portail)
+- `PACT100` — Jalons de chantier (portail)
+- `PACT101` — Demandes de ticket (portail)
+- `PACT102` — Partenaires : fiche, soumissions, commissions
+- `PACT103` — Concurrents sur affaires perdues
+- `PACT104` — Points de contact : la saisie manuelle manque, pas la lecture
+- `PACT105` — Revues de compte : la création manque, pas l'affichage
+- `PACT106` — Avis clients et routage Google
+- `PACT107` — Enquêtes NPS post-installation
+- `PACT108` — Journal des messages WhatsApp entrants
+- `PACT109` — Détail des participations et certificat d'enquête
+- `PACT110` — Pilotage du bandit publicitaire : bras, décisions, statistiques
+- `PACT111` — Fabrique créative : génération ancrée, lots, items hors-lot
+- `PACT112` — Policy créative : la vraie, pas la constante codée en dur
+- `PACT113` — Plan de vol : le plan composé n'est jamais sauvegardé
+- `PACT114` — Stérilisation des instruments : cycles et traçabilité sanitaire
+- `PACT115` — Créneaux disponibles à la prise de rendez-vous
+- `PACT116` — Inscription d'une nouvelle société : le backend est entier, la porte n'existe pas
+- `PACT117` — Modèles brandés (PDF, email, WhatsApp)
+- `PACT118` — Édition en masse : brancher le registre du socle plutôt qu'un dixième endpoint maison
+- `PACT119` — Registre de consentement (loi 09-08 / CNDP)
+- `PACT120` — Partage interne d'un tableau de bord
+- `PACT121` — Paiement en ligne d'une facture
+- `PACT122` — Explorateur de données (requêtes sauvegardées)
+- `PACT123` — Exports planifiés
+- `PACT124` — Modifier une définition de workflow existante
+- `PACT125` — Configurateur guidé (assistant produit)
+- `PACT126` — Compatibilité produits : règles et test
+- `PACT127` — Offres groupées
+- `PACT128` — Options de configuration d'un produit
+- `PACT129` — Prix contractuels négociés par client
+- `PACT130` — Paramètres CPQ : seuils de marge et paliers d'approbation de remise
+- `PACT131` — Coffres-forts documentaires
+- `PACT132` — Règles de dossier : action automatique au dépôt
+- `PACT133` — Règles d'accès par métadonnée
+- `PACT134` — Demandes de disposition en fin de rétention
+- `PACT135` — Envoi en masse pour signature
+- `PACT136` — Routage documentaire automatique
+- `PACT137` — Planifications de document
+- `PACT138` — Abonnements : plans, options, paliers d'usage, compteurs
+- `PACT139` — Relance d'impayé : séquences et étapes
+- `PACT140` — Objets métier personnalisés
+- `PACT141` — Brouillon de relance ou de réponse assisté
+- `PACT142` — Compte rendu d'intervention depuis un mémo vocal
+- `PACT143` — Description commerciale d'un produit
+- `PACT144` — Rapport d'activité périodique
+- `PACT145` — Assistant de paramétrage
+- `PACT146` — Générateur de rapports croisés
+- `PACT147` — Politiques d'approbation configurables
+- `PACT149` — La garde d'atteignabilité couvre frontend/src/pages/
+- `PACT150` — Route ≠ menu : la garde vérifie aussi l'entrée de navigation
+- `PACT151` — Le joker `<pk>` de la garde de contrat n'avale plus un nom d'action manqué
+- `PACT152` — Compta : le contrôle d'intégrité de la piste d'audit ne peut mécaniquement pas signaler…
+- `PACT153` — Marketing : le blocage légal d'envoi de masse ne bloque jamais
+- `PACT154` — Paie : deux faux zéros affichés avant des écritures réelles
+- `PACT155` — RH Portail : la demande d'attestation part en 201 et enregistre TOUJOURS autre chose
+- `PACT156` — RH : la sortie d'employé est impossible sur 3 des 7 motifs du menu
+- `PACT157` — Adsengine : le journal d'actions est illisible de bout en bout
+- `PACT158` — QHSE : le chatter n'affiche jamais un changement de champ
+- `PACT159` — Garde vocabulaire à source déclarée — opt-in, zéro faux positif par construction
+- `PACT160` — Compta : l'approbation de changement de RIB fournisseur (XACC24, cochée à tort) n'a ni…
+- `PACT161` — Marketing : le moteur de séquences n'inscrit jamais personne (XMKT1 cochée à tort)
+- `PACT162` — Paie : les avances sur salaire approuvées ne partent jamais chez le prestataire (FG192…
+- `PACT163` — Compta : trois capacités XACC cochées sans aucune vue (XACC15/16/22)
+- `PACT164` — Adsengine : câbler ou archiver les 6 producteurs d'actions livrés que rien n'invoque…
+- `PACT165` — Trier les ~290 fonctions orphelines restantes AVANT d'en câbler une seule
+- `PACT166` — Assembler la coquille de l'atelier de traçage de toiture (canvas)
+- `PACT167` — Brancher les outils spécialisés de l'atelier de toiture (calibration, DXF, obstacles…
+- `PACT168` — Monter le Mode Expert et les Suggestions dans l'atelier de calepinage
+- `PACT169` — Brancher les contrôles avant dépôt, les échéances et le bouton ZIP dans l'onglet…
+- `PACT170` — Brancher l'annotateur de photo, la fiche question et l'export dans Questions terrain
+- `PACT171` — Ajouter l'onglet « Variantes » à la fiche affaire
+- `PACT172` — Brancher le détail d'une variante (diff, décomposition, sensibilités, historique) et…
+- `PACT173` — Un `lazy()` jamais placé dans une route est compté atteignable (trou structurel, 0…
+- `PACT174` — Cinq composants livrés que rien n'importe, hors des deux dossiers inventoriés
+- `PACT175` — Étendre le lecteur de forme : 3 classes d'endpoints agrégés lui échappent aujourd'hui…
+- `PACT176` — Mesurer les 83 % de la surface d'API que l'étage 2 ne voit PAS, avant d'affirmer quoi…
+- `PACT177` — Le contrat de forme ne couvre que 14 % des endpoints appelés, et pas ceux où vit le…
+- `PACT178` — AOF16 : dériver et surveiller la caution définitive, jamais appelé
+- `PACT179` — AOF20 : l'upload de plan de toiture n'a aucun endpoint
+- `PACT180` — PACT25 doit nommer son registre : 70 fonctions de fabrique/ attendent…
+- `PACT181` — XQHS15 : « mes lectures en attente » — l'endpoint que le code lui-même annonce n'existe…
+- `PACT182` — XQHS7 : l'analyse 5-pourquoi/8D d'une NCR n'a aucune route
+- `PACT183` — XQHS14 : la revue périodique des risques/opportunités et le lien CAPA n'ont aucune…
+- `PACT184` — XQHS12 : le rappel légal de réunion CSH trimestrielle n'a aucune route
+- `PACT185` — XGED3 : le PDF signé final aplati n'a aucune route
+- `PACT186` — XSAL6 : le résolveur de plan de commission cross-app n'est jamais consommé
+- `PACT187` — Onglet « Amortissement » d'un véhicule : 3 lignes sur 4 muettes
+- `WIR170` — Créathèque pub : la checklist policy confirmée n'atteint jamais le serveur (clé de…
+- `WIR171` — Gating d'écran : litiges/contrats/qhse/projets/kb invisibles pour…
+- `WIR172` — Module RH sans permission fine : tout rôle portant UNE écriture (même hors RH) obtient…
+- `WIR173` — FP&A ouvert à tout utilisateur authentifié : 14 viewsets sans aucune garde (cycles…
+- `WIR174` — GED : caviardage, legal hold et rétention gardés seulement par IsResponsableOrAdmin
+- `WIR175` — Compta : le CRUD des écritures et l'extourne ne vérifient jamais `compta_saisir`
+- `WIR177` — Annonces internes XKB5/XKB6 : aucun écran destinataire, lien `/annonces/<pk>`…
+- `WIR178` — Création rapide de ticket SAV (⌘K + calendrier) : payload sans client, 400 garanti
+- `WIR180` — Télédéclarations DGI invisibles : SIMPL-TVA, SIMPL-IS et rapport loi 69-21 sans bouton
+- `WIR181` — Retenues à la source : bordereau de versement, attestation par pièce et attestation…
+- `WIR182` — Prévisionnel trésorerie 13 semaines : la colonne « Solde projeté » lit une clé…
+- `WIR183` — 6 actions Facture complètes côté serveur sans aucune UI : remettre-brouillon…
+- `WIR184` — Prix contractuels client : ni corrigeables ni supprimables (priorité 1 de la résolution…
+- `WIR185` — Réglages crédit société (NTCRD3) sans écran : la politique de hold est figée sur les…
+- `WIR186` — Limite de crédit : jamais modifiable (double POST → erreur d'intégrité) et historique…
+- `WIR187` — Hook serveur `credit_warning` à l'acceptation d'un devis (reprend NTCRD7/8, bloqués…
+- `WIR188` — Monter la bannière crédit sur l'acceptation de devis et trancher le doublon dérogation
+- `WIR190` — Fournisseur archivé par repli PROTECT : invisible et irrécupérable depuis l'UI
+- `WIR191` — BCF envoyé/reçu : `reviser` (seul chemin de modification) sans UI + champ Note qui perd…
+- `WIR192` — Rapprochement 3 voies : blocage de paiement sans aucune UI pour voir/lever l'exception
+- `WIR194` — Dotations EPI 100 % lecture seule : ni remise, ni restitution, ni émargement (preuve…
+- `WIR195` — Incidents de présence : trou noir d'écriture (créés depuis Temps.jsx, jamais relisibles…
+- `WIR196` — Ouvertures de poste : créables nulle part et bloquées à vie en brouillon (workflow…
+- `WIR201` — SCAR fournisseur : onglet lecture seule, cycle émise→répondue→vérifiée/close…
+- `WIR208` — Adsengine : une action approuvée n'est JAMAIS appliquée à Meta (aucun appel à…
+- `WIR209` — Adsengine : boucle d'apprentissage inatteignable (conclure/sync-ad-study/feedback…
+- `WIR214` — QR de signalement chantier QHSE : l'URL encodée pointe vers une page qui n'existe pas…
+- `WIR217` — Génération PDF devis : sondage sans fin, toast répété, aucun échec terminal visible
+- `WIR218` — Plan de compte CRM : chaînes vides envoyées au serveur (400 systématique) + historique…
+- `WIR219` — Candidatures fournisseur publiques : reçues mais jamais validables (hors sourcing à…
+- `WIR220` — BCF : accusé fournisseur (`confirmer`) jamais saisissable (score OTD incomplet) + 4…
+- `WIR221` — Mise au rebut produit et rapport pertes sans écran (XSTK10)
+- `WIR222` — Retour fournisseur : `generer-avoir` jamais appelé (traçabilité et garde…
+- `WIR223` — E-facture : état perdu à chaque rechargement (et « Générer » re-cliqué pollue les…
+- `WIR224` — Calendrier réglementaire (FG273) : alertes d'expiration jamais rendues
+- `WIR225` — Variantes de devis : promesse de comparaison non tenue (getVariantes orphelin) + % par…
+- `WIR226` — Listes de prix : Create+Read only malgré FE-XSAL1-3 coché « CRUD » — ni segment, ni…
+- `WIR227` — QJ25 : contour OSM du bâtiment épinglé jamais consommé par l'atelier toiture
+- `WIR228` — Commissions partenaire : tableau structurellement vide (aucun chemin de création) et…
+- `WIR229` — Modèles de messages CRM : aperçu serveur absent et action de masse `prepare_whatsapp`…
+- `WIR230` — Tournée préventive SAV (FG88) : ordonnancement GPS + affectation en lot sans…
+- `WIR231` — Rentabilité des contrats de maintenance (XSAV18) : P&L jamais exposé
+- `WIR232` — Pièces retirées d'un ticket (XMFG10/ZMFG8) : rebut/RMA/stock occasion intraçables (le «…
+- `WIR233` — SAV finitions : facturer un contrat immédiatement (FG40) + instructions/suggestions KB…
+- `WIR234` — Cycles de vie QHSE jamais avançables : BSD (loi 28-00), recyclage modules PV, exercices…
+- `WIR235` — PDF terrain bilingues XQHS27 : permis de travail et induction sécurité imprimables…
+- `WIR237` — Abonnements monitoring : la facturation manuelle GÈLE l'abonnement à jamais (échéance…
+- `WIR238` — Roster RH : ni création/édition ni conflits de congés visibles
+- `WIR239` — 5 actions RH construites sans consommateur : émargement présence chantier (colonne…
+- `WIR240` — Chatter recrutement/employé : transitions journalisées invisibles, notes impossibles
+- `WIR241` — RH petites finitions : risque d'attrition sur la fiche employé, bandeau permis…
+- `WIR254` — ~15 états d'analyse d'EtatsComptablesViewSet orphelins (balance-referentiel/analytique…
+- `WIR255` — Compta : Budget vs réalisé (FG149), échéances retenues de garantie/cautions, export…
+- `WIR256` — Lien « Voir l'écriture comptable » (WIR24) jamais monté sur les documents sources
+- `WIR259` — Composer du chat incomplet : partage d'enregistrement, note vocale et carte dégradée
+- `WIR260` — Liste de conversations : mute/archive jamais actionnables (`c.muted` champ mort) et…
+- `WIR263` — Relances de loyer : escalade niveau 1→3 (portée juridique) sans aucun retour visuel
+- `WIR265` — Import de relevé bancaire pour encaissements clients (ventes) : couple dry-run/commit…
+- `WIR268` — Stock confort : kits (révisions/composition-au/dupliquer), tarifs fournisseur…
+- `WIR272` — PUB91 : backtest historique d'une règle jamais exposé
+- `WIR274` — Devis : aucun composeur de note manuelle (noterDevis réservé à l'auto-note WhatsApp)
+- `WIR275` — Exposer REST les 10 modèles ISO QHSE orphelins (campagnes de rappel produit…
+- `WIR276` — Écrans ISO QHSE : Rappels produit, Certifications (ISO/NM), Programme d'audit, Revues…
+- `WIR277` — Exposer le contexte SMQ ISO 4.1/4.2 (parties intéressées + contexte singleton par…
+- `WIR278` — Écrans SMQ : onglet « Contexte SMQ (ISO 4) » (SWOT + parties intéressées) dans…
+- `WIR279` — Exposer REST les emprunts/crédits-bails (XACC14) et les états comptables paramétrables…
+- `WIR283` — Hygiène d'atteignabilité : purger la baseline (10 lignes devenues fausses), router la…
+- `PV1` — Contrat du contexte de conception 3D d'un devis
+- `PV2` — Contrat de la conception électrique d'un devis
+- `PV3` — Contrats AO : tiroirs + marges + suggestions + plan imposé
+- `PV4` — Contrat de l'étude bancable (simulation)
+- `PV5` — FicheTechnique étendue : la datasheet PVsyst-grade
+- `PV6` — Sélecteurs stock : la datasheet lisible cross-app
+- `PV7` — Écran Fiches techniques complet
+- `PV8` — Badge « complétude datasheet »
+- `PV9` — Seed des datasheets RÉELLES (jamais inventées)
+- `PV10` — solar_design branché sur la datasheet
+- `PV11` — Wattage du PDF : la fiche avant la regex
+- `PV12` — Kit villa depuis le produit devisé (côté AO)
+- `PV13` — Layout sérialisé v2 : émettre enfin result/scenario/panelWatt/battery
+- `PV14` — `extract_roof_config` lit la géométrie par pan
+- `PV15` — Garde de statut sur `replace-lines` + produits globaux
+- `PV16` — `cible_depuis_lignes(devis)` — lire le devis, pas la facture
+- `PV17` — `GET /ventes/devis/{id}/design-context/`
+- `PV18` — `POST /ventes/devis/{id}/sync-layout/` — synchro chirurgicale
+- `PV19` — `hydrateFromDevis` + boot `hydrate.devis`
+- `PV20` — Route `/ventes/devis/:id/design` + mode devis de ToitureDesign
+- `PV21` — Boucle de finalisation mode devis
+- `PV22` — Générer-si-absent + chip conception sur le lead
+- `PV23` — Entrées « Concevoir en 3D » côté ventes
+- `PV24` — Gardes règle #4 : la v2 n'altère ni PDF ni page publique
+- `PV25` — Multi-sélection + rangées + azimut
+- `PV26` — Undo/redo + nudge clavier
+- `PV27` — FIX perte des placements manuels (3 chemins prouvés)
+- `PV28` — Avertir avant d'écraser l'édition manuelle
+- `PV29` — Mode `rangees_imposees_utilisateur` dans le moteur
+- `PV30` — Passage `rangees_imposees` + `phase_forcee_m` dans l'API AO
+- `PV31` — Édition de rangées dans le studio (drag/ajout/suppression, serveur juge)
+- `PV32` — Violations en rouge + « Enregistrer comme variante »
+- `PV33` — Squelette du noyau électrique pur
+- `PV34` — chaines.py + onduleurs.py : physique + politique réconciliées
+- `PV35` — protections.py : le règlement encodé
+- `PV36` — cables.py : ampacité + chute de tension
+- `PV37` — nomenclature.py : le BOQ nourri par le vrai design
+- `PV38` — `concevoir()` + note de calcul FR
+- `PV39` — schema.py : le schéma unifilaire v2
+- `PV40` — SLD en PDF
+- `PV41` — `Devis.electrical_design` + endpoints conception électrique
+- `PV42` — Finalisation 3D → design électrique par pan + kit-produit villa
+- `PV43` — Panneau électrique du devis (front)
+- `PV44` — Le tiroir Électrique AO s'allume
+- `PV45` — Schéma unifilaire → dossier réglementaire
+- `PV46` — PDF premium : annexe technique optionnelle (photo toit + SLD)
+- `PV47` — BOQ électrique → lignes annexes du devis (opt-in)
+- `PV48` — `core/calepinage/tiroirs.py` : les 4 tiroirs calculés
+- `PV49` — Publier tiroirs + marges + garde de coût
+- `PV50` — Publier les suggestions (action discriminée)
+- `PV51` — Le studio consomme tout
+- `PV52` — `phase_forcee_m` réel côté moteur
+- `PV53` — L'atelier de traçage PERSISTE enfin obstacles + chaînes
+- `PV54` — `ZoneAO` : les zones ont enfin un modèle
+- `PV55` — Les zones atteignent le moteur
+- `PV56` — Zones persistées depuis l'atelier
+- `PV57` — Origine géographique de la toiture
+- `PV58` — La reprise carte s'applique enfin
+- `PV59` — Vraie liste des calepinages
+- `PV60` — FIX : l'obstacle testé au centre du panneau seulement
+- `PV61` — Dégagement par TYPE d'obstacle (roofPro11)
+- `PV62` — Mix portrait/paysage par bande de rangée (roofPro11)
+- `PV63` — Retraits de rive configurables (roofPro11)
+- `PV64` — 3 cartes de variantes (roofPro11)
+- `PV65` — Anti-ombrage à la vraie latitude (moteur calepinage)
+- `PV66` — Kit villa Est-Ouest dos-à-dos
+- `PV67` — Variantes d'orientation auto-générées (AO, endpoint)
+- `PV68` — Vue agrégée multi-toitures d'une affaire (AO)
+- `PV69` — `apps/ventes/etude.py` : le cœur P50/P90
+- `PV70` — Multi-zones + pont matrice d'ombrage
+- `PV71` — La matrice d'ombrage voyage dans le layout v2
+- `PV72` — Autoconso horaire → net-metering → projection 25 ans
+- `PV73` — Cache PVGIS système
+- `PV74` — `POST /ventes/devis/{id}/simuler/` async
+- `PV75` — Fenêtre de production : P50/P90 + cascade de pertes
+- `PV76` — Carte « Étude bancable » du devis
+- `PV77` — PDF étude enrichi + P50 public
+- `PV78` — Le lead expose sa conception (backend)
+- `PV79` — Événement `layout_finalise` + chatter lead
+- `PV80` — Le chantier hérite du schéma
+- `PV81` — Schéma unifilaire client-safe sur la proposition
+- `PV82` — KPI « conçu vs vendu »
+- `PV83` — Shims de ré-export ventes (précédent ARC6)
+- `PVG1` — Import DXF réel (dépendance `ezdxf` approuvée fondateur 2026-08-14)
+- `PVG2` — Garde de tolérance sur l'arbitrage A/B calepinage villa (décision rendue : sécurité par…
+- `PVG3` — SKUs câbles/protections prix vides (création approuvée fondateur 2026-08-14)
+- `PVG4` — Datasheets onduleurs/batteries : modèles supposés sourcés (accord fondateur 2026-08-14)
+- `VAO3` — Fichier de risque `tos_risk/marchespublics_gov_ma.md` (règle #5 volet (a))
+- `VAO6` — Créer l'app `apps/veille_ao` avec le scaffolder du dépôt + câblage complet
+- `VAO7` — `SourceVeille` : le catalogue des sources, aucune source en dur dans le code
+- `VAO8` — `AvisMarche` : le SAS — la table où atterrissent TOUS les avis, quelle que soit la…
+- `VAO9` — `MotCleVeille` + score : les mots-clés sont de la DONNÉE, jamais une constante
+- `VAO10` — `RegleExclusion` : « Ignorer » doit APPRENDRE, sinon l'écran se remplit de bruit
+- `VAO11` — Dédoublonnage à DEUX niveaux — le cœur de fiabilité du groupe
+- `VAO12` — Permissions `veille_ao_voir` / `veille_ao_gerer` + viewsets sur le socle conforme
+- `VAO13` — Manifeste plateforme `apps/veille_ao/platform.py` — ne déclarer QUE ce qui est câblé
+- `VAO14` — Service unique de changement de statut + journal au chatter
+- `VAO15` — Squelette `apps/veille_ao/portail/` + contrat de pureté + fixtures HTML committées
+- `VAO16` — Client HTTP PRADO : la recette vérifiée en main, et rien d'autre
+- `VAO17` — (DEP) Parseur de ligne de résultat — et l'ajout de `beautifulsoup4`
+- `VAO18` — Enrichissement du détail À LA DEMANDE — jamais en masse
+- `VAO19` — Garde-fous du client : cadence, quota, interrupteur — les mitigations promises au…
+- `VAO20` — Échouer FORT, jamais « 0 résultat » en silence
+- `VAO21` — Service de collecte : l'orchestration, seule à toucher la base
+- `VAO22` — Tâche planifiée 06:00 Casablanca — livrée DÉSARMÉE
+- `VAO23` — Le BOUTON « Rafraîchir maintenant » lance EXACTEMENT le même job que la nuit
+- `VAO24` — `ExecutionCollecte` + ALARME de collecte silencieuse — la tâche la plus importante du…
+- `VAO25` — Notification quotidienne en français, utile et non bruyante
+- `VAO26` — Rétention et purge des avis non retenus
+- `VAO27` — « Ajouter un avis » : capter en 30 secondes un AO reçu par WhatsApp, SMS ou appel —…
+- `VAO28` — Import CSV d'avis (coordonné avec AOF169, jamais en double)
+- `VAO29` — `AcheteurCible` : le carnet des acheteurs à DÉMARCHER — la vraie contre-mesure FRDISI
+- `VAO30` — « Retenir » → créer l'`AppelOffre` : l'UNIQUE point de contact cross-app du groupe
+- `VAO31` — Attribution : d'où vient réellement le chiffre d'affaires
+- `VAO32` — Module frontend `veille_ao` + client API sur la factory partagée
+- `VAO33` — La liste des avis (`ListShell`) : la page qu'on ouvre le matin
+- `VAO34` — Fiche avis + les deux gestes qui comptent : « Retenir » et « Ignorer »
+- `VAO35` — Écran « Paramètres de veille » (Directeur) : mots-clés, sources, exclusions, cadence —…
+- `VAO36` — Écran « Acheteurs cibles » + relances — la prospection qui capte les FRDISI suivants
+- `VAO37` — Bandeau de santé de la collecte + la carte d'honnêteté « ce que la veille NE voit pas »
+- `VAO38` — Guide utilisateur FR de la veille (4 pages max)
 
-**Open â€” to build (173)**
+**Open — to build (100)**
 
-- `ERR114` â€” [ventes/quote_engine]
-- `ODX14` â€” Rapatrier la config de vente dans ventes
-- `ODX18` â€” App Facturation â€” Ã©tape 2 (vues/urls/recouvrement/frontend)
-- `ODX20` â€” App Achats â€” Ã©tape 2 (vues/urls/flux stock/frontend)
-- `ODX22` â€” Ã‰tendre les contrats import-linter au graphe post-dÃ©coupage
-- `WIR169` â€” Permissions BTP/assurances absentes du catalogue â€” module BTP en 403 pour tout rÃ´leâ€¦
-- `WIR170` â€” CrÃ©athÃ¨que pub : la checklist policy confirmÃ©e n'atteint jamais le serveur (clÃ© deâ€¦
-- `WIR171` â€” Gating d'Ã©cran : litiges/contrats/qhse/projets/kb invisibles pourâ€¦
-- `WIR172` â€” Module RH sans permission fine : tout rÃ´le portant UNE Ã©criture (mÃªme hors RH) obtientâ€¦
-- `WIR173` â€” FP&A ouvert Ã  tout utilisateur authentifiÃ© : 14 viewsets sans aucune garde (cyclesâ€¦
-- `WIR174` â€” GED : caviardage, legal hold et rÃ©tention gardÃ©s seulement par IsResponsableOrAdmin
-- `WIR175` â€” Compta : le CRUD des Ã©critures et l'extourne ne vÃ©rifient jamais `compta_saisir`
-- `WIR176` â€” ~17 liens de notification cassÃ©s (404) : SAVÃ—5, LEAD_ASSIGNED, FACTURE_PAYEE/BCâ€¦
-- `WIR177` â€” Annonces internes XKB5/XKB6 : aucun Ã©cran destinataire, lien `/annonces/<pk>`â€¦
-- `WIR178` â€” CrÃ©ation rapide de ticket SAV (âŒ˜K + calendrier) : payload sans client, 400 garanti
-- `WIR179` â€” XML SIMPL-IR (Ã©tat 9421) tÃ©lÃ©chargÃ© en `.json` corrompu
-- `WIR180` â€” TÃ©lÃ©dÃ©clarations DGI invisibles : SIMPL-TVA, SIMPL-IS et rapport loi 69-21 sans bouton
-- `WIR181` â€” Retenues Ã  la source : bordereau de versement, attestation par piÃ¨ce et attestationâ€¦
-- `WIR182` â€” PrÃ©visionnel trÃ©sorerie 13 semaines : la colonne Â« Solde projetÃ© Â» lit une clÃ©â€¦
-- `WIR183` â€” 6 actions Facture complÃ¨tes cÃ´tÃ© serveur sans aucune UI : remettre-brouillonâ€¦
-- `WIR184` â€” Prix contractuels client : ni corrigeables ni supprimables (prioritÃ© 1 de la rÃ©solutionâ€¦
-- `WIR185` â€” RÃ©glages crÃ©dit sociÃ©tÃ© (NTCRD3) sans Ã©cran : la politique de hold est figÃ©e sur lesâ€¦
-- `WIR186` â€” Limite de crÃ©dit : jamais modifiable (double POST â†’ erreur d'intÃ©gritÃ©) et historiqueâ€¦
-- `WIR187` â€” Hook serveur `credit_warning` Ã  l'acceptation d'un devis (reprend NTCRD7/8, bloquÃ©sâ€¦
-- `WIR188` â€” Monter la banniÃ¨re crÃ©dit sur l'acceptation de devis et trancher le doublon dÃ©rogation
-- `WIR189` â€” Pastille d'Ã©tat crÃ©dit (CreditBadge/NTCRD23) jamais affichÃ©e
-- `WIR190` â€” Fournisseur archivÃ© par repli PROTECT : invisible et irrÃ©cupÃ©rable depuis l'UI
-- `WIR191` â€” BCF envoyÃ©/reÃ§u : `reviser` (seul chemin de modification) sans UI + champ Note qui perdâ€¦
-- `WIR192` â€” Rapprochement 3 voies : blocage de paiement sans aucune UI pour voir/lever l'exception
-- `WIR193` â€” 3 panneaux scan-first entrepÃ´t (rÃ©ception/prÃ©lÃ¨vement/comptage) construits, testÃ©sâ€¦
-- `WIR194` â€” Dotations EPI 100 % lecture seule : ni remise, ni restitution, ni Ã©margement (preuveâ€¦
-- `WIR195` â€” Incidents de prÃ©sence : trou noir d'Ã©criture (crÃ©Ã©s depuis Temps.jsx, jamais relisiblesâ€¦
-- `WIR196` â€” Ouvertures de poste : crÃ©ables nulle part et bloquÃ©es Ã  vie en brouillon (workflowâ€¦
-- `WIR197` â€” Avances/prÃªts paie : tout le cycle inatteignable hors admin Django
-- `WIR198` â€” FP&A : le workflow de validation de budget (soumisâ†’validÃ©/rejetÃ©) n'a aucun dÃ©clencheurâ€¦
-- `WIR199` â€” FP&A inamorÃ§able : ni cycles ni dÃ©partements crÃ©ables, scÃ©narios structurellementâ€¦
-- `WIR200` â€” Demandes de vÃ©hicule du pool : personne ne peut approuver/refuser depuis l'UI
-- `WIR201` â€” SCAR fournisseur : onglet lecture seule, cycle Ã©miseâ†’rÃ©pondueâ†’vÃ©rifiÃ©e/closeâ€¦
-- `WIR202` â€” Fiche de recette IEC 62446-1 (CH3) : la fiche se crÃ©e vide et bloque le gate Â« Mise enâ€¦
-- `WIR203` â€” Onglet Â« Risques, actions & CR Â» projet : lecture seule totale, 16 fonctions CRUDâ€¦
-- `WIR204` â€” GED prioritaire : PDF signÃ© final non rÃ©cupÃ©rable, restauration de version impossibleâ€¦
-- `WIR205` â€” Atelier toiture AO : chaÃ®nes de cotes et obstacles jamais persistÃ©s â€” le calepinageâ€¦
-- `WIR206` â€” Affaire AO figÃ©e : changer-statut/transitions/lead sans appelant â€” vues Â«â€¦
-- `WIR207` â€” Bouton Â« RÃ©gÃ©nÃ©rer Â« piÃ¨ce Â» Â» du dossier AO : mensonge d'interface (rÃ©gÃ©nÃ¨re tout leâ€¦
-- `WIR208` â€” Adsengine : une action approuvÃ©e n'est JAMAIS appliquÃ©e Ã  Meta (aucun appel Ã â€¦
-- `WIR209` â€” Adsengine : boucle d'apprentissage inatteignable (conclure/sync-ad-study/feedbackâ€¦
-- `WIR210` â€” Hors-ligne terrain : consommation matÃ©riel (F11) et nÂ° de sÃ©rie (F9) perdus sans rÃ©seauâ€¦
-- `WIR211` â€” HÃ´tellerie inerte : ni type de chambre, ni chambre, ni plan tarifaire crÃ©ables (foliosâ€¦
-- `WIR212` â€” Ã‰ducation : bulletins impubliables (seul chemin d'Ã©criture = action `publier`, sansâ€¦
-- `WIR213` â€” Campagnes d'innovation structurellement inertes : jamais activables (brouillon Ã  vie)â€¦
-- `WIR214` â€” QR de signalement chantier QHSE : l'URL encodÃ©e pointe vers une page qui n'existe pasâ€¦
-- `WIR215` â€” RFQ fournisseur : le lien WhatsApp/email envoyÃ© pointe vers un endpoint JSON, pas uneâ€¦
-- `WIR216` â€” Notification client de livraison : lien mort expÃ©diÃ© Ã  chaque expÃ©dition (section Â«â€¦
-- `WIR217` â€” GÃ©nÃ©ration PDF devis : sondage sans fin, toast rÃ©pÃ©tÃ©, aucun Ã©chec terminal visible
-- `WIR218` â€” Plan de compte CRM : chaÃ®nes vides envoyÃ©es au serveur (400 systÃ©matique) + historiqueâ€¦
-- `WIR219` â€” Candidatures fournisseur publiques : reÃ§ues mais jamais validables (hors sourcing Ã â€¦
-- `WIR220` â€” BCF : accusÃ© fournisseur (`confirmer`) jamais saisissable (score OTD incomplet) + 4â€¦
-- `WIR221` â€” Mise au rebut produit et rapport pertes sans Ã©cran (XSTK10)
-- `WIR222` â€” Retour fournisseur : `generer-avoir` jamais appelÃ© (traÃ§abilitÃ© et gardeâ€¦
-- `WIR223` â€” E-facture : Ã©tat perdu Ã  chaque rechargement (et Â« GÃ©nÃ©rer Â» re-cliquÃ© pollue lesâ€¦
-- `WIR224` â€” Calendrier rÃ©glementaire (FG273) : alertes d'expiration jamais rendues
-- `WIR225` â€” Variantes de devis : promesse de comparaison non tenue (getVariantes orphelin) + % parâ€¦
-- `WIR226` â€” Listes de prix : Create+Read only malgrÃ© FE-XSAL1-3 cochÃ© Â« CRUD Â» â€” ni segment, niâ€¦
-- `WIR227` â€” QJ25 : contour OSM du bÃ¢timent Ã©pinglÃ© jamais consommÃ© par l'atelier toiture
-- `WIR228` â€” Commissions partenaire : tableau structurellement vide (aucun chemin de crÃ©ation) etâ€¦
-- `WIR229` â€” ModÃ¨les de messages CRM : aperÃ§u serveur absent et action de masse `prepare_whatsapp`â€¦
-- `WIR230` â€” TournÃ©e prÃ©ventive SAV (FG88) : ordonnancement GPS + affectation en lot sansâ€¦
-- `WIR231` â€” RentabilitÃ© des contrats de maintenance (XSAV18) : P&L jamais exposÃ©
-- `WIR232` â€” PiÃ¨ces retirÃ©es d'un ticket (XMFG10/ZMFG8) : rebut/RMA/stock occasion intraÃ§ables (le Â«â€¦
-- `WIR233` â€” SAV finitions : facturer un contrat immÃ©diatement (FG40) + instructions/suggestions KBâ€¦
-- `WIR234` â€” Cycles de vie QHSE jamais avanÃ§ables : BSD (loi 28-00), recyclage modules PV, exercicesâ€¦
-- `WIR235` â€” PDF terrain bilingues XQHS27 : permis de travail et induction sÃ©curitÃ© imprimablesâ€¦
-- `WIR236` â€” Flotte : 6 surfaces rÃ©elles inaccessibles
-- `WIR237` â€” Abonnements monitoring : la facturation manuelle GÃˆLE l'abonnement Ã  jamais (Ã©chÃ©anceâ€¦
-- `WIR238` â€” Roster RH : ni crÃ©ation/Ã©dition ni conflits de congÃ©s visibles
-- `WIR239` â€” 5 actions RH construites sans consommateur : Ã©margement prÃ©sence chantier (colonneâ€¦
-- `WIR240` â€” Chatter recrutement/employÃ© : transitions journalisÃ©es invisibles, notes impossibles
-- `WIR241` â€” RH petites finitions : risque d'attrition sur la fiche employÃ©, bandeau permisâ€¦
-- `WIR242` â€” Paie finitions : synchroniser-salaire actionnable + dÃ©tail provisions
-- `WIR243` â€” Structures de paie + rubriques rÃ©currentes : brique jamais branchÃ©e au moteurâ€¦
-- `WIR244` â€” Projet : calendriers, jours fÃ©riÃ©s, dÃ©pendances de tÃ¢ches (CPM) et gabarits jamaisâ€¦
-- `WIR245` â€” Classement des temps (ZPRJ6) : colonnes toujours Ã  0 (clÃ©s serveur jamais lues)
-- `WIR246` â€” Checklist de tÃ¢che (XPRJ14) : morte en pratique (composant masquÃ© Ã  vide, aucun ajoutâ€¦
-- `WIR247` â€” Atelier : 8 exports assemblage/dÃ©montage orphelins (gamme d'exÃ©cution, lignes deâ€¦
-- `WIR248` â€” Rebut d'atelier (XMFG11) : dÃ©claration et rapport agrÃ©gÃ© jamais cÃ¢blÃ©s
-- `WIR249` â€” GED second rang : scan-lot, import-masse, export PDF annotÃ© (XGED16), docqa/ocr-pieceâ€¦
-- `WIR250` â€” KB : trois demi-cÃ¢blages (parcours vides Ã  vie, blocs rÃ©utilisables invisibles parâ€¦
-- `WIR251` â€” Abonnements (contrats) : import CSV des compteurs d'usage (NTSUB31) + export .xlsx duâ€¦
-- `WIR252` â€” Contrats : mÃ©triques SaaS investisseur (ARR bridge/Quick Ratio/Rule of 40, NTSUB12) +â€¦
-- `WIR253` â€” GÃ©nÃ©rateur de rapports croisÃ©s : export CSV/XLSX (NTEXT11) et Ã©dition d'une dÃ©finitionâ€¦
-- `WIR254` â€” ~15 Ã©tats d'analyse d'EtatsComptablesViewSet orphelins (balance-referentiel/analytiqueâ€¦
-- `WIR255` â€” Compta : Budget vs rÃ©alisÃ© (FG149), Ã©chÃ©ances retenues de garantie/cautions, exportâ€¦
-- `WIR256` â€” Lien Â« Voir l'Ã©criture comptable Â» (WIR24) jamais montÃ© sur les documents sources
-- `WIR257` â€” Marketing : reporting multi-vue des campagnes (ZMKT8) + reporting/badges Ã©vÃ©nementsâ€¦
-- `WIR258` â€” GÃ©nÃ©ration de campagne par IA (XMKT34) : rÃ©gression de remplacement d'Ã©cran (l'uniqueâ€¦
-- `WIR259` â€” Composer du chat incomplet : partage d'enregistrement, note vocale et carte dÃ©gradÃ©e
-- `WIR260` â€” Liste de conversations : mute/archive jamais actionnables (`c.muted` champ mort) etâ€¦
-- `WIR261` â€” Demandes ad-hoc : cycle Â« complÃ©ment d'information Â» (ZCTR8) entiÃ¨rement inatteignable
-- `WIR262` â€” Assurances : chatter sinistre invisible et note de police impossible
-- `WIR263` â€” Relances de loyer : escalade niveau 1â†’3 (portÃ©e juridique) sans aucun retour visuel
-- `WIR264` â€” Liens publics intervention (XFSM7/ZFSM2) : jetons exposÃ©s sans page, sans bouton, sansâ€¦
-- `WIR265` â€” Import de relevÃ© bancaire pour encaissements clients (ventes) : couple dry-run/commitâ€¦
-- `WIR266` â€” Gabarits de fiche d'intervention : le drapeau `obligatoire` (gate de clÃ´ture ZFSM1)â€¦
-- `WIR267` â€” Registre fondateur de facturation licences (SaaS tenants) : ni liste, ni pointage Â«â€¦
-- `WIR268` â€” Stock confort : kits (rÃ©visions/composition-au/dupliquer), tarifs fournisseurâ€¦
-- `WIR269` â€” Veille AO : attribution du CA (VAO31, le constat central de l'Ã©tude) illisible
-- `WIR270` â€” Centre de piÃ¨ces jointes sociÃ©tÃ© (FG10) : endpoint prÃªt, client mort
-- `WIR271` â€” VoIP : aucun appel jamais clÃ´turable (durÃ©e/issue/chatter lead jamais Ã©crits)
-- `WIR272` â€” PUB91 : backtest historique d'une rÃ¨gle jamais exposÃ©
-- `WIR273` â€” SantÃ© : statistiques actes/conventions (NTSAN28) sans Ã©cran
-- `WIR274` â€” Devis : aucun composeur de note manuelle (noterDevis rÃ©servÃ© Ã  l'auto-note WhatsApp)
-- `WIR275` â€” Exposer REST les 10 modÃ¨les ISO QHSE orphelins (campagnes de rappel produitâ€¦
-- `WIR276` â€” Ã‰crans ISO QHSE : Rappels produit, Certifications (ISO/NM), Programme d'audit, Revuesâ€¦
-- `WIR277` â€” Exposer le contexte SMQ ISO 4.1/4.2 (parties intÃ©ressÃ©es + contexte singleton parâ€¦
-- `WIR278` â€” Ã‰crans SMQ : onglet Â« Contexte SMQ (ISO 4) Â» (SWOT + parties intÃ©ressÃ©es) dansâ€¦
-- `WIR279` â€” Exposer REST les emprunts/crÃ©dits-bails (XACC14) et les Ã©tats comptables paramÃ©trablesâ€¦
-- `WIR280` â€” Ã‰crans Â« Emprunts et crÃ©dits-bails Â» (tableau d'amortissement + Comptabiliserâ€¦
-- `WIR281` â€” Exposer REST les plans de commission (XSAL6) â€” modÃ¨le+rÃ©solveur existants, zÃ©ro route
-- `WIR282` â€” Ã‰cran Â« Plans de commission Â» sous /parametres (liste, Ã©diteur de paliers, badge Â« planâ€¦
-- `WIR283` â€” HygiÃ¨ne d'atteignabilitÃ© : purger la baseline (10 lignes devenues fausses), router laâ€¦
-- `XACC12` â€” Position fiscale des tiers (exonÃ©rations avec attestation)
-- `XPOS19` â€” E-commerce transactionnel : checkout direct des petits articles (panier â†’ paiement CMIâ€¦
-- `YCASH5` â€” Annulation d'une facture aprÃ¨s acompte : rÃ©version de l'acompte tracÃ©e mais AUCUNEâ€¦
-- `ODY33` â€” Retrait du legacy : Ã  la fin, UN seul shell dans le code
-- `PUB107` â€” [GATED: dÃ©cision WhatsApp Cloud API (mÃªme porte qu'ADSENG34)] BoÃ®te de rÃ©ceptionâ€¦
-- `PUB108` â€” [GATED: dÃ©cision WhatsApp Cloud API] RÃ©ponse instantanÃ©e + qualification WhatsApp Flows
-- `PUB109` â€” [GATED: dÃ©cision WhatsApp Cloud API] Relances drip marketing WhatsApp
-- `PUB110` â€” [GATED: clÃ© LLM + revue anti-hallucination (mÃªme porte que le commentaire LLM desâ€¦
-- `PUB111` â€” [GATED: budget fondateur â€” dÃ©pendance payante] Tier vidÃ©o AI-UGC (Arcads/Creatify-style)
-- `PUB112` â€” [GATED: dÃ©cision fondateur â€” touche le cÅ“ur dÃ©cisionnel] Bandit Â« toujours actif Â» auâ€¦
-- `PUB113` â€” [GATED: vertical SK Paysages â€” dÃ©cision produit fondateur] GÃ©nÃ©raliser le moteurâ€¦
-- `PUB114` â€” [GATED: numÃ©ro dÃ©diÃ© + coÃ»t tÃ©lÃ©com] Suivi d'appels par annonce + rappel SMS d'appelâ€¦
-- `PUB116` â€” Le moteur propose lui-mÃªme Â« multiplier le gagnant Â»
-- `PUB117` â€” MetaClient : Ã©criture de crÃ©atifs (adcreatives + asset_feed_spec)
-- `PUB118` â€” Recombinaison DCO zÃ©ro-clÃ© depuis les miroirs â€” le premier Â« mes pubs crÃ©ent des pubs Â»
-- `PUB119` â€” Fin du payload ROTATE_CREATIVE creux
-- `PUB120` â€” `run_weekly` matÃ©rialise les dÃ©cisions de rotation
-- `PUB121` â€” FlightRunner remplit les slots crÃ©atifs au lancement
-- `PUB122` â€” Upload d'assets au compte : adimages/advideos
-- `PUB123` â€” Pont CreativeAsset â†’ crÃ©atif Meta
-- `PUB124` â€” Backend LLM rÃ©el pour `generation.py` (Groq/OpenAI-compatible)
-- `PUB125` â€” InsÃ©rer `policy_lint` + `tier_router` dans le chemin RÃ‰EL
-- `PUB126` â€” Ã‰tiquette Â« gÃ©nÃ©rÃ© par IA Â» par asset (obligation Meta 2026 â€” 14 % des rejets)
-- `PUB127` â€” Commande de semis de l'arbre + YAML solaire v1
-- `PUB128` â€” Harnais des tests terrain FT1-7
-- `PUB129` â€” Cockpit d'autonomie : les 8 portes + cÃ©rÃ©monie d'activation
-- `PUB130` â€” Brief hebdo en mode observation (avant tout plan de vol)
-- `PUB131` â€” Harnais d'intÃ©gration Â« premiÃ¨re chaÃ®ne de crÃ©ation Â»
-- `PUB132` â€” [GATED: budget fondateur fal.ai ~50-150 MAD/mois] Adaptateur images fal.ai dans laâ€¦
-- `PUB133` â€” [GATED: budget fondateur json2video/Bannerbear ~200-500 MAD/mois] Pont template-vidÃ©o
-- `PUB134` â€” Devise du compte dans les textes de dÃ©cision
-- `PUB135` â€” Rationale de dÃ©cision Ã  deux fenÃªtres + signal leads rÃ©el
-- `QXG1` â€” [GATED: founder account]
-- `QXG2` â€” [GATED: founder account]
-- `QXG3` â€” [GATED: founder data]
-- `QXG4` â€” [GATED: founder content]
-- `QXG5` â€” [GATED: founder ops check, 10 minutes]
-- `QXG6` â€” [GATED: vÃ©rifs fondateur avant hard-coding]
-- `VAO2` â€” [GATED : action fondateur, ~30 minutes, Ã€ FAIRE AVANT TOUT CODE DE COLLECTE â€” c'est laâ€¦
-- `VAO4` â€” [GATED : accord Ã©crit du fondateur â€” rÃ¨gle #5 volet (b)] Armer la collecte automatique
-- `VAO5` â€” [GATED : dÃ©pense fondateur, hors code] Certificat Ã©lectronique classe 3 + ICE â€” leâ€¦
-- `VAO15` â€” Squelette `apps/veille_ao/portail/` + contrat de puretÃ© + fixtures HTML committÃ©es
-- `VAO16` â€” Client HTTP PRADO : la recette vÃ©rifiÃ©e en main, et rien d'autre
-- `VAO17` â€” (DEP) Parseur de ligne de rÃ©sultat â€” et l'ajout de `beautifulsoup4`
-- `VAO18` â€” Enrichissement du dÃ©tail Ã€ LA DEMANDE â€” jamais en masse
-- `VAO19` â€” Garde-fous du client : cadence, quota, interrupteur â€” les mitigations promises auâ€¦
-- `VAO20` â€” Ã‰chouer FORT, jamais Â« 0 rÃ©sultat Â» en silence
-- `VAO39` â€” [GATED : aprÃ¨s une phase 1 armÃ©e et stable â‰¥ 1 mois] Bons de commande (Â« avis d'achatâ€¦
-- `VAO40` â€” [GATED : dÃ©cision fondateur + un fichier `tos_risk/` PAR portail] Portails sectorielsâ€¦
-- `VAO41` â€” [GATED : dÃ©pense fondateur] Abonnement agrÃ©gateur pour la couche privÃ©e â€” et la limiteâ€¦
-- `VAO42` â€” [GATED : nÃ©cessite un compte fournisseur par organisme] ONEE-Ã‰lectricitÃ© et OCP â€” lesâ€¦
-- `VAO43` â€” [GATED : action fondateur, gratuite, 15 minutes â€” Ã€ FAIRE EN MÃŠME TEMPS QUE VAO2]â€¦
-- `VAO44` â€” [GATED : ne se construit QUE si VAO2 dit Â« pas de flux RSS Â» ET que l'UA honnÃªte estâ€¦
+- `ERR114` — [ventes/quote_engine]
+- `ODX14` — Rapatrier la config de vente dans ventes
+- `ODX18` — App Facturation — étape 2 (vues/urls/recouvrement/frontend)
+- `ODX20` — App Achats — étape 2 (vues/urls/flux stock/frontend)
+- `ODX22` — Étendre les contrats import-linter au graphe post-découpage
+- `WIR169` — Permissions BTP/assurances absentes du catalogue — module BTP en 403 pour tout rôle…
+- `WIR176` — ~17 liens de notification cassés (404) : SAV×5, LEAD_ASSIGNED, FACTURE_PAYEE/BC…
+- `WIR179` — XML SIMPL-IR (état 9421) téléchargé en `.json` corrompu
+- `WIR189` — Pastille d'état crédit (CreditBadge/NTCRD23) jamais affichée
+- `WIR193` — 3 panneaux scan-first entrepôt (réception/prélèvement/comptage) construits, testés…
+- `WIR197` — Avances/prêts paie : tout le cycle inatteignable hors admin Django
+- `WIR198` — FP&A : le workflow de validation de budget (soumis→validé/rejeté) n'a aucun déclencheur…
+- `WIR199` — FP&A inamorçable : ni cycles ni départements créables, scénarios structurellement…
+- `WIR200` — Demandes de véhicule du pool : personne ne peut approuver/refuser depuis l'UI
+- `WIR202` — Fiche de recette IEC 62446-1 (CH3) : la fiche se crée vide et bloque le gate « Mise en…
+- `WIR203` — Onglet « Risques, actions & CR » projet : lecture seule totale, 16 fonctions CRUD…
+- `WIR204` — GED prioritaire : PDF signé final non récupérable, restauration de version impossible…
+- `WIR205` — Atelier toiture AO : chaînes de cotes et obstacles jamais persistés — le calepinage…
+- `WIR206` — Affaire AO figée : changer-statut/transitions/lead sans appelant — vues «…
+- `WIR207` — Bouton « Régénérer « pièce » » du dossier AO : mensonge d'interface (régénère tout le…
+- `WIR210` — Hors-ligne terrain : consommation matériel (F11) et n° de série (F9) perdus sans réseau…
+- `WIR211` — Hôtellerie inerte : ni type de chambre, ni chambre, ni plan tarifaire créables (folios…
+- `WIR212` — Éducation : bulletins impubliables (seul chemin d'écriture = action `publier`, sans…
+- `WIR213` — Campagnes d'innovation structurellement inertes : jamais activables (brouillon à vie)…
+- `WIR215` — RFQ fournisseur : le lien WhatsApp/email envoyé pointe vers un endpoint JSON, pas une…
+- `WIR216` — Notification client de livraison : lien mort expédié à chaque expédition (section «…
+- `WIR236` — Flotte : 6 surfaces réelles inaccessibles
+- `WIR242` — Paie finitions : synchroniser-salaire actionnable + détail provisions
+- `WIR243` — Structures de paie + rubriques récurrentes : brique jamais branchée au moteur…
+- `WIR244` — Projet : calendriers, jours fériés, dépendances de tâches (CPM) et gabarits jamais…
+- `WIR245` — Classement des temps (ZPRJ6) : colonnes toujours à 0 (clés serveur jamais lues)
+- `WIR246` — Checklist de tâche (XPRJ14) : morte en pratique (composant masqué à vide, aucun ajout…
+- `WIR247` — Atelier : 8 exports assemblage/démontage orphelins (gamme d'exécution, lignes de…
+- `WIR248` — Rebut d'atelier (XMFG11) : déclaration et rapport agrégé jamais câblés
+- `WIR249` — GED second rang : scan-lot, import-masse, export PDF annoté (XGED16), docqa/ocr-piece…
+- `WIR250` — KB : trois demi-câblages (parcours vides à vie, blocs réutilisables invisibles par…
+- `WIR251` — Abonnements (contrats) : import CSV des compteurs d'usage (NTSUB31) + export .xlsx du…
+- `WIR252` — Contrats : métriques SaaS investisseur (ARR bridge/Quick Ratio/Rule of 40, NTSUB12) +…
+- `WIR253` — Générateur de rapports croisés : export CSV/XLSX (NTEXT11) et édition d'une définition…
+- `WIR257` — Marketing : reporting multi-vue des campagnes (ZMKT8) + reporting/badges événements…
+- `WIR258` — Génération de campagne par IA (XMKT34) : régression de remplacement d'écran (l'unique…
+- `WIR261` — Demandes ad-hoc : cycle « complément d'information » (ZCTR8) entièrement inatteignable
+- `WIR262` — Assurances : chatter sinistre invisible et note de police impossible
+- `WIR264` — Liens publics intervention (XFSM7/ZFSM2) : jetons exposés sans page, sans bouton, sans…
+- `WIR266` — Gabarits de fiche d'intervention : le drapeau `obligatoire` (gate de clôture ZFSM1)…
+- `WIR267` — Registre fondateur de facturation licences (SaaS tenants) : ni liste, ni pointage «…
+- `WIR269` — Veille AO : attribution du CA (VAO31, le constat central de l'étude) illisible
+- `WIR270` — Centre de pièces jointes société (FG10) : endpoint prêt, client mort
+- `WIR271` — VoIP : aucun appel jamais clôturable (durée/issue/chatter lead jamais écrits)
+- `WIR273` — Santé : statistiques actes/conventions (NTSAN28) sans écran
+- `WIR280` — Écrans « Emprunts et crédits-bails » (tableau d'amortissement + Comptabiliser…
+- `WIR281` — Exposer REST les plans de commission (XSAL6) — modèle+résolveur existants, zéro route
+- `WIR282` — Écran « Plans de commission » sous /parametres (liste, éditeur de paliers, badge « plan…
+- `XACC12` — Position fiscale des tiers (exonérations avec attestation)
+- `XPOS19` — E-commerce transactionnel : checkout direct des petits articles (panier → paiement CMI…
+- `YCASH5` — Annulation d'une facture après acompte : réversion de l'acompte tracée mais AUCUNE…
+- `ODY33` — Retrait du legacy : à la fin, UN seul shell dans le code
+- `PUB107` — [GATED: décision WhatsApp Cloud API (même porte qu'ADSENG34)] Boîte de réception…
+- `PUB108` — [GATED: décision WhatsApp Cloud API] Réponse instantanée + qualification WhatsApp Flows
+- `PUB109` — [GATED: décision WhatsApp Cloud API] Relances drip marketing WhatsApp
+- `PUB110` — [GATED: clé LLM + revue anti-hallucination (même porte que le commentaire LLM des…
+- `PUB111` — [GATED: budget fondateur — dépendance payante] Tier vidéo AI-UGC (Arcads/Creatify-style)
+- `PUB112` — [GATED: décision fondateur — touche le cœur décisionnel] Bandit « toujours actif » au…
+- `PUB113` — [GATED: vertical SK Paysages — décision produit fondateur] Généraliser le moteur…
+- `PUB114` — [GATED: numéro dédié + coût télécom] Suivi d'appels par annonce + rappel SMS d'appel…
+- `PUB116` — Le moteur propose lui-même « multiplier le gagnant »
+- `PUB117` — MetaClient : écriture de créatifs (adcreatives + asset_feed_spec)
+- `PUB118` — Recombinaison DCO zéro-clé depuis les miroirs — le premier « mes pubs créent des pubs »
+- `PUB119` — Fin du payload ROTATE_CREATIVE creux
+- `PUB120` — `run_weekly` matérialise les décisions de rotation
+- `PUB121` — FlightRunner remplit les slots créatifs au lancement
+- `PUB122` — Upload d'assets au compte : adimages/advideos
+- `PUB123` — Pont CreativeAsset → créatif Meta
+- `PUB124` — Backend LLM réel pour `generation.py` (Groq/OpenAI-compatible)
+- `PUB125` — Insérer `policy_lint` + `tier_router` dans le chemin RÉEL
+- `PUB126` — Étiquette « généré par IA » par asset (obligation Meta 2026 — 14 % des rejets)
+- `PUB127` — Commande de semis de l'arbre + YAML solaire v1
+- `PUB128` — Harnais des tests terrain FT1-7
+- `PUB129` — Cockpit d'autonomie : les 8 portes + cérémonie d'activation
+- `PUB130` — Brief hebdo en mode observation (avant tout plan de vol)
+- `PUB131` — Harnais d'intégration « première chaîne de création »
+- `PUB132` — [GATED: budget fondateur fal.ai ~50-150 MAD/mois] Adaptateur images fal.ai dans la…
+- `PUB133` — [GATED: budget fondateur json2video/Bannerbear ~200-500 MAD/mois] Pont template-vidéo
+- `PUB134` — Devise du compte dans les textes de décision
+- `PUB135` — Rationale de décision à deux fenêtres + signal leads réel
+- `QXG1` — [GATED: founder account]
+- `QXG2` — [GATED: founder account]
+- `QXG3` — [GATED: founder data]
+- `QXG4` — [GATED: founder content]
+- `QXG5` — [GATED: founder ops check, 10 minutes]
+- `QXG6` — [GATED: vérifs fondateur avant hard-coding]
+- `VAO2` — [GATED : action fondateur, ~30 minutes, À FAIRE AVANT TOUT CODE DE COLLECTE — c'est la…
+- `VAO4` — [GATED : accord écrit du fondateur — règle #5 volet (b)] Armer la collecte automatique
+- `VAO5` — [GATED : dépense fondateur, hors code] Certificat électronique classe 3 + ICE — le…
+- `VAO39` — [GATED : après une phase 1 armée et stable ≥ 1 mois] Bons de commande (« avis d'achat…
+- `VAO40` — [GATED : décision fondateur + un fichier `tos_risk/` PAR portail] Portails sectoriels…
+- `VAO41` — [GATED : dépense fondateur] Abonnement agrégateur pour la couche privée — et la limite…
+- `VAO42` — [GATED : nécessite un compte fournisseur par organisme] ONEE-Électricité et OCP — les…
+- `VAO43` — [GATED : action fondateur, gratuite, 15 minutes — À FAIRE EN MÊME TEMPS QUE VAO2]…
+- `VAO44` — [GATED : ne se construit QUE si VAO2 dit « pas de flux RSS » ET que l'UA honnête est…
 
-**Blocked â€” awaiting founder decision (5)**
+**Blocked — awaiting founder decision (5)**
 
-- `XKB35` â€” Appels audio/vidÃ©o internes (huddles)
-- `QC2` â€” [GATED: paid â€” Inforisk/Charika API] Registry-backed autocomplete (the true Odoo-styleâ€¦
-- `S21` â€” Real-time WebSocket upgrade (Django Channels)
-- `VX203` â€” Contrat d'erreur UNIQUE : fin du double-toast (35 pages), `getApiError` (@laneâ€¦
-- `VX252` â€” [BACKEND additif lÃ©ger] MaÃ®trise personnelle : milestones non comparatifs, KPI
+- `XKB35` — Appels audio/vidéo internes (huddles)
+- `QC2` — [GATED: paid — Inforisk/Charika API] Registry-backed autocomplete (the true Odoo-style…
+- `S21` — Real-time WebSocket upgrade (Django Channels)
+- `VX203` — Contrat d'erreur UNIQUE : fin du double-toast (35 pages), `getApiError` (@lane…
+- `VX252` — [BACKEND additif léger] Maîtrise personnelle : milestones non comparatifs, KPI

@@ -6,12 +6,18 @@ Couvre :
 * le seed idempotent de clauses (HLS partagée) ;
 * la heatmap des non-conformités d'audit par clause ;
 * le readiness multi-référentiel (% de clauses couvertes) ;
-* le scoping société.
+* le scoping société ;
+* WIR275 — l'exposition REST de ``ClauseNorme`` (CRUD) et des deux selectors
+  ci-dessus (actions ``heatmap-constats``/``readiness-multi-referentiel``),
+  jusqu'ici sans aucun endpoint.
 """
 from io import StringIO
 
+from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.test import TestCase
+from rest_framework.test import APIClient
+from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 
@@ -22,10 +28,25 @@ from apps.qhse.selectors import (
     constats_par_clause, readiness_multi_referentiel,
 )
 
+User = get_user_model()
+
+CLAUSES = '/api/django/qhse/clauses-norme/'
+
+
+def auth_client(user):
+    api = APIClient()
+    api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+    return api
+
 
 def make_company(slug, nom):
     company, _ = Company.objects.get_or_create(slug=slug, defaults={'nom': nom})
     return company
+
+
+def make_user(company, username, role='responsable'):
+    return User.objects.create_user(
+        username=username, password='x', company=company, role_legacy=role)
 
 
 def make_grille(company):
@@ -152,3 +173,60 @@ class ReadinessMultiReferentielTests(TestCase):
             intitule='X')
         result = readiness_multi_referentiel(autre)
         self.assertEqual(result, {})
+
+
+class ClauseNormeApiTests(TestCase):
+    """WIR275 — CRUD REST scopé société, jusqu'ici inexistant."""
+
+    def setUp(self):
+        self.company = make_company('co-xqhs11-clause-api', 'CoXqhs11ClauseApi')
+        self.user = make_user(self.company, 'resp-xqhs11-clause-api')
+        self.api = auth_client(self.user)
+
+    def test_create_pose_company(self):
+        resp = self.api.post(CLAUSES, {
+            'referentiel': '9001', 'numero': '8.5.1',
+            'intitule': 'Maîtrise de la production',
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        clause = ClauseNorme.objects.get(id=resp.data['id'])
+        self.assertEqual(clause.company_id, self.company.id)
+
+    def test_isolation_inter_societes(self):
+        autre = make_company('co-xqhs11-clause-api-x', 'Autre')
+        ClauseNorme.objects.create(
+            company=autre, referentiel='9001', numero='4.1', intitule='X')
+        data = self.api.get(CLAUSES).data
+        rows = data['results'] if isinstance(data, dict) else data
+        self.assertEqual(len(rows), 0)
+
+
+class HeatmapReadinessActionsApiTests(TestCase):
+    """WIR275 — actions ``heatmap-constats``/``readiness-multi-referentiel``
+    de ``ClauseNormeViewSet`` (les deux selectors n'avaient aucun appelant)."""
+
+    def setUp(self):
+        self.company = make_company('co-xqhs11-actions-api', 'CoXqhs11ActionsApi')
+        self.user = make_user(self.company, 'resp-xqhs11-actions-api')
+        self.api = auth_client(self.user)
+        self.grille = make_grille(self.company)
+
+    def test_heatmap_constats_action(self):
+        critere = make_critere(self.company, self.grille, '8.5.1')
+        audit = make_audit(self.company, self.grille)
+        ReponseCritere.objects.create(
+            company=self.company, audit=audit, critere=critere,
+            resultat=ReponseCritere.Resultat.NON_CONFORME)
+        resp = self.api.get(f'{CLAUSES}heatmap-constats/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(len(resp.data), 1)
+        self.assertEqual(resp.data[0]['nb_non_conformes'], 1)
+
+    def test_readiness_multi_referentiel_action(self):
+        ClauseNorme.objects.create(
+            company=self.company, referentiel='9001', numero='8.5.1',
+            intitule='Maîtrise production')
+        resp = self.api.get(f'{CLAUSES}readiness-multi-referentiel/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertIn('9001', resp.data)
+        self.assertEqual(resp.data['9001']['total_clauses'], 1)

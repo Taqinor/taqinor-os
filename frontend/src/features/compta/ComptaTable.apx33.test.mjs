@@ -26,10 +26,12 @@ test('zéro table écrite à la main dans features/compta/pages/', () => {
   assert.deepEqual(offenders, [], `table nue restante : ${offenders.join(', ')}`)
 })
 
-test('les HUIT tables sont migrées (6 APX33 + plan fiscal PACT163 + OCR XACC30)', () => {
+test('les NEUF tables sont migrées (6 APX33 + plan fiscal PACT163 + OCR XACC30 + échéances WIR255)', () => {
   const attendu = {
     'TresoreriePage.jsx': 3, // Position, Prévisionnel, Journal de caisse
-    'EngagementsPage.jsx': 1, // Provisions FNP/FAE
+    // WIR255 — EcheancesSousNJoursCard (retenues de garantie + cautions
+    // bancaires) ajoute un second ComptaTable à côté de Provisions FNP/FAE.
+    'EngagementsPage.jsx': 2, // Provisions FNP/FAE + échéances sous N jours
     // PACT163 (XACC16) a ajouté le PLAN FISCAL dérogatoire à côté du plan
     // comptable : deux tableaux distincts, deux bases légales distinctes.
     'ImmobilisationsPage.jsx': 2, // Plan d'amortissement + plan fiscal
@@ -46,8 +48,8 @@ test('les HUIT tables sont migrées (6 APX33 + plan fiscal PACT163 + OCR XACC30)
     total += count
   }
   // 6 tables APX33 d'origine + le plan fiscal (PACT163) + l'aperçu OCR
-  // (XACC30).
-  assert.equal(total, 8)
+  // (XACC30) + les échéances sous N jours (WIR255).
+  assert.equal(total, 9)
 })
 
 test('ComptaTable s’appuie sur le primitif partagé, sans le réécrire', () => {

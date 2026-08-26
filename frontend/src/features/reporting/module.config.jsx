@@ -109,6 +109,11 @@ const config = {
       { to: '/reporting/field-service', label: 'Analytics terrain', k: 'nav.field_service', icon: navIcon(BarChart3), roles: ['responsable','admin'] },
       // XFSM17 — scorecard coaching par technicien vs moyenne équipe.
       { to: '/reporting/scorecard-technicien', label: 'Scorecard technicien', k: 'nav.scorecard_technicien', icon: navIcon(BarChart3), roles: ['responsable','admin'] },
+      // WIR283 — `/reporting/dashboards` (DashboardConfigPage) existait comme
+      // ROUTE sans aucune entrée de menu : c'est l'écran QUI CRÉE les dashboards
+      // que le kiosque TV et le partage ci-dessous consomment, donc il vient
+      // AVANT eux. Mêmes rôles que les deux entrées voisines.
+      { to: '/reporting/dashboards', label: 'Tableaux de bord', k: 'nav.dashboards', icon: navIcon(BarChart3), roles: ['responsable','admin'] },
       // XPLT10 — kiosque TV plein écran des dashboards partagés.
       { to: '/dashboards-tv',        label: 'Dashboards TV',    k: 'nav.dashboards_tv', icon: navIcon(Tv), roles: ['responsable','admin'] },
       // XPLT10 — gestion des liens de partage (créer/révoquer).

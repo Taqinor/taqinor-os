@@ -13,8 +13,317 @@ import { CheckCircle2, Circle, Lock, ClipboardCheck, PackageCheck } from 'lucide
 import installationsApi from '../../api/installationsApi'
 import {
   Button, Badge, HelpTip, Spinner, Progress, NextActionBanner,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+  DialogFooter, Input, Textarea, Label,
 } from '../../ui'
 import ChantierTimeline from './ChantierTimeline'
+
+/* ── WIR202/CH3 — fiche de recette IEC 62446-1 : formulaire de SAISIE ───────
+   Le bouton « Ouvrir la fiche de recette » créait un enregistrement VIDE
+   (`resultat = en_cours`) que rien ne pouvait ensuite remplir : le gate
+   « Mise en service » restait bloqué à jamais. Il ouvre désormais ce
+   formulaire ; l'enregistrement n'est créé qu'à la PREMIÈRE sauvegarde.
+   Aucun montant, aucun prix d'achat n'apparaît ici — essais uniquement. */
+
+// Les essais sont des booléens NULLABLES (non renseigné ≠ non conforme).
+const TRI_ETAT = [
+  { value: '', label: 'Non renseigné' },
+  { value: 'true', label: 'Conforme' },
+  { value: 'false', label: 'Non conforme' },
+]
+
+const RESULTATS = [
+  { value: 'en_cours', label: 'En cours' },
+  { value: 'conforme', label: 'Conforme' },
+  { value: 'reserves', label: 'Conforme avec réserves' },
+  { value: 'non_conforme', label: 'Non conforme' },
+]
+
+// Les 4 sections du sérialiseur `CommissioningRecordSerializer`.
+const SECTIONS = [
+  {
+    titre: 'Documentation (§4)',
+    essais: [
+      ['doc_dossier_ok', 'Dossier as-built présent'],
+      ['doc_schema_ok', 'Schéma électrique présent'],
+      ['doc_datasheets_ok', 'Fiches techniques présentes'],
+    ],
+    mesures: [],
+  },
+  {
+    titre: 'Inspection visuelle (§5)',
+    essais: [
+      ['visuel_structure_ok', 'Structure'],
+      ['visuel_cablage_ok', 'Câblage'],
+      ['visuel_terre_ok', 'Mise à la terre'],
+    ],
+    mesures: [],
+  },
+  {
+    titre: 'Essais électriques (§6)',
+    essais: [
+      ['continuite_terre_ok', 'Continuité de terre'],
+      ['polarite_ok', 'Polarité'],
+      ['isolement_ok', 'Résistance d’isolement'],
+    ],
+    mesures: [
+      ['continuite_terre_ohm', 'Continuité de terre (Ω)'],
+      ['isolement_mohm', 'Résistance d’isolement (MΩ)'],
+    ],
+  },
+  {
+    titre: 'Performance et sécurité (§7)',
+    essais: [
+      ['performance_ok', 'Performance'],
+      ['securite_coupure_ok', 'Dispositifs de coupure'],
+      ['securite_signalisation_ok', 'Signalisation'],
+    ],
+    mesures: [
+      ['production_test_kw', 'Production d’essai (kW)'],
+      ['production_attendue_kw', 'Production attendue (kW)'],
+    ],
+  },
+]
+
+const IV_CHAMPS = [
+  ['string_label', 'String', 'text'],
+  ['n_modules_serie', 'Modules en série', 'number'],
+  ['voc_mesure_v', 'Voc mesuré (V)', 'number'],
+  ['isc_mesure_a', 'Isc mesuré (A)', 'number'],
+  ['pmax_mesure_w', 'Pmax mesuré (W)', 'number'],
+  ['voc_attendu_v', 'Voc attendu (V)', 'number'],
+  ['isc_attendu_a', 'Isc attendu (A)', 'number'],
+  ['pmax_attendu_w', 'Pmax attendu (W)', 'number'],
+]
+
+const IV_VIDE = Object.fromEntries(IV_CHAMPS.map(([k]) => [k, '']))
+
+// Un booléen nullable ↔ la valeur textuelle du <select>.
+const boolVersTexte = (v) => (v === true ? 'true' : v === false ? 'false' : '')
+const texteVersBool = (v) => (v === 'true' ? true : v === 'false' ? false : null)
+// Un nombre TAPÉ n'est jamais rogné ni arrondi : il part tel quel, ou null.
+const nombreOuNull = (v) => (v === '' || v == null ? null : v)
+
+function etatDepuisRecord(record) {
+  const etat = {
+    date_essai: record?.date_essai ?? '',
+    technicien: record?.technicien ?? '',
+    resultat: record?.resultat ?? 'en_cours',
+    observations: record?.observations ?? '',
+  }
+  for (const section of SECTIONS) {
+    for (const [cle] of section.essais) etat[cle] = boolVersTexte(record?.[cle])
+    for (const [cle] of section.mesures) etat[cle] = record?.[cle] ?? ''
+  }
+  return etat
+}
+
+function payloadDepuisEtat(etat) {
+  const payload = {
+    date_essai: etat.date_essai || null,
+    technicien: etat.technicien || null,
+    resultat: etat.resultat,
+    observations: etat.observations || null,
+  }
+  for (const section of SECTIONS) {
+    for (const [cle] of section.essais) payload[cle] = texteVersBool(etat[cle])
+    for (const [cle] of section.mesures) payload[cle] = nombreOuNull(etat[cle])
+  }
+  return payload
+}
+
+function RecetteDialog({ installationId, record, onClose, onSaved }) {
+  const [etat, setEtat] = useState(() => etatDepuisRecord(record))
+  const [ficheId, setFicheId] = useState(record?.id ?? null)
+  const [releves, setReleves] = useState(record?.iv_readings ?? [])
+  const [iv, setIv] = useState(IV_VIDE)
+  const [busy, setBusy] = useState(false)
+  const [ivBusy, setIvBusy] = useState(false)
+  const [erreur, setErreur] = useState(null)
+
+  const champ = (cle) => (valeur) => setEtat((p) => ({ ...p, [cle]: valeur }))
+
+  const enregistrer = async () => {
+    setBusy(true)
+    setErreur(null)
+    try {
+      let id = ficheId
+      // La fiche n'est créée qu'ICI (première sauvegarde), jamais à
+      // l'ouverture du formulaire.
+      if (!id) {
+        const cree = await installationsApi.ouvrirRecette(installationId)
+        id = cree.data?.id
+        setFicheId(id)
+      }
+      const r = await installationsApi.updateRecette(id, payloadDepuisEtat(etat))
+      onSaved?.(r.data)
+    } catch (err) {
+      setErreur(err?.response?.data?.detail
+        || "L'enregistrement de la fiche a échoué — vérifiez les valeurs saisies.")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const ajouterReleve = async () => {
+    if (!ficheId) return
+    setIvBusy(true)
+    setErreur(null)
+    try {
+      const corps = {}
+      for (const [cle, , type] of IV_CHAMPS) {
+        const v = iv[cle]
+        if (v === '' || v == null) continue
+        corps[cle] = type === 'number' ? v : v
+      }
+      const r = await installationsApi.ajouterReleveIv(ficheId, corps)
+      setReleves((p) => [...p, r.data])
+      setIv(IV_VIDE)
+    } catch (err) {
+      setErreur(err?.response?.data?.detail || "Le relevé I-V n'a pas pu être ajouté.")
+    } finally {
+      setIvBusy(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-h-[92vh] max-w-3xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Fiche de recette (IEC 62446-1)</DialogTitle>
+          <DialogDescription>
+            Essais de mise en service. Une fiche « Conforme » ou « Conforme avec
+            réserves » débloque le gate « Mise en service ». Un essai laissé
+            vide reste « non renseigné » — il n’est jamais présumé conforme.
+          </DialogDescription>
+        </DialogHeader>
+
+        {/* Les nombres tapés ne sont NI rognés NI rejetés : formulaire
+            `noValidate`, chaque champ numérique en `step="any"`. */}
+        <form noValidate className="flex flex-col gap-5" onSubmit={(e) => e.preventDefault()}>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="recette-date">Date d’essai</Label>
+              <Input id="recette-date" type="date" value={etat.date_essai}
+                     onChange={(e) => champ('date_essai')(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="recette-technicien">Technicien</Label>
+              <Input id="recette-technicien" value={etat.technicien}
+                     onChange={(e) => champ('technicien')(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="recette-resultat">Résultat</Label>
+              <select id="recette-resultat" className="form-control"
+                      value={etat.resultat}
+                      onChange={(e) => champ('resultat')(e.target.value)}>
+                {RESULTATS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {SECTIONS.map((section) => (
+            <section key={section.titre} className="flex flex-col gap-2">
+              <h4 className="text-sm font-semibold">{section.titre}</h4>
+              <div className="grid gap-3 sm:grid-cols-3">
+                {section.essais.map(([cle, libelle]) => (
+                  <div key={cle} className="flex flex-col gap-1.5">
+                    <Label htmlFor={`recette-${cle}`}>{libelle}</Label>
+                    <select id={`recette-${cle}`} className="form-control"
+                            value={etat[cle]}
+                            onChange={(e) => champ(cle)(e.target.value)}>
+                      {TRI_ETAT.map((o) => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
+                {section.mesures.map(([cle, libelle]) => (
+                  <div key={cle} className="flex flex-col gap-1.5">
+                    <Label htmlFor={`recette-${cle}`}>{libelle}</Label>
+                    <Input id={`recette-${cle}`} type="number" step="any"
+                           value={etat[cle]}
+                           onChange={(e) => champ(cle)(e.target.value)} />
+                  </div>
+                ))}
+              </div>
+            </section>
+          ))}
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="recette-observations">Observations</Label>
+            <Textarea id="recette-observations" rows={3} value={etat.observations}
+                      onChange={(e) => champ('observations')(e.target.value)} />
+          </div>
+
+          {/* ── Relevés I-V par string (FG275) ── */}
+          <section className="flex flex-col gap-2 rounded-lg border border-border p-3">
+            <h4 className="text-sm font-semibold">Relevés I-V par string</h4>
+            {releves.length > 0 && (
+              <ul className="flex flex-col gap-1" data-testid="recette-releves">
+                {releves.map((r) => (
+                  <li key={r.id} className="flex flex-wrap items-center gap-2 text-sm">
+                    <span className="font-mono">{r.string_label || '—'}</span>
+                    <span className="text-muted-foreground">
+                      Voc {r.voc_mesure_v ?? '—'} V · Isc {r.isc_mesure_a ?? '—'} A ·
+                      Pmax {r.pmax_mesure_w ?? '—'} W
+                    </span>
+                    {r.ecart_pmax_pct != null && (
+                      <Badge tone={r.defaut_detecte ? 'danger' : 'neutral'}>
+                        écart {r.ecart_pmax_pct} %
+                      </Badge>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {ficheId ? (
+              <>
+                <div className="grid gap-3 sm:grid-cols-4">
+                  {IV_CHAMPS.map(([cle, libelle, type]) => (
+                    <div key={cle} className="flex flex-col gap-1.5">
+                      <Label htmlFor={`iv-${cle}`}>{libelle}</Label>
+                      <Input
+                        id={`iv-${cle}`}
+                        type={type}
+                        {...(type === 'number' ? { step: 'any' } : {})}
+                        value={iv[cle]}
+                        onChange={(e) => setIv((p) => ({ ...p, [cle]: e.target.value }))}
+                      />
+                    </div>
+                  ))}
+                </div>
+                <div>
+                  <Button type="button" size="sm" variant="outline"
+                          loading={ivBusy} onClick={ajouterReleve}>
+                    Ajouter le relevé I-V
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Enregistrez d’abord la fiche pour y ajouter des relevés I-V.
+              </p>
+            )}
+          </section>
+
+          {erreur && (
+            <p className="form-error" role="alert">{erreur}</p>
+          )}
+        </form>
+
+        <DialogFooter className="flex-wrap">
+          <Button type="button" variant="ghost" onClick={onClose}>Fermer</Button>
+          <Button type="button" loading={busy} onClick={enregistrer}>
+            Enregistrer la fiche
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
 
 function StageIcon({ satisfait, courante, bloquant }) {
   if (satisfait && !courante) {
@@ -90,7 +399,9 @@ export default function ChantierGateTimeline({ installationId, installation, onA
 
   // CH3 — recette de mise en service (IEC 62446-1).
   const [recette, setRecette] = useState(null)
-  const [recetteBusy, setRecetteBusy] = useState(false)
+  // WIR202 — le formulaire de saisie ; ouvert par le bouton, il ne crée
+  // AUCUN enregistrement tant que rien n'est sauvegardé.
+  const [recetteOuverte, setRecetteOuverte] = useState(false)
 
   // CH4 — pack de remise client.
   const [pack, setPack] = useState(null)
@@ -143,14 +454,15 @@ export default function ChantierGateTimeline({ installationId, installation, onA
     }
   }
 
-  const ouvrirRecette = async () => {
-    setRecetteBusy(true)
-    try {
-      const r = await installationsApi.ouvrirRecette(installationId)
-      setRecette(r.data)
-    } catch { /* 403 si non Responsable/Admin — bouton reste visible, l'action échoue proprement */ }
-    finally { setRecetteBusy(false) }
-  }
+  // WIR202 — `GET recette/` renvoie DEUX formes : `{installation, record:null}`
+  // quand aucune fiche n'existe, et la fiche À PLAT quand elle existe. L'écran
+  // ne lisait que `recette.record` : une fiche réelle restait donc affichée
+  // « Aucune fiche », gate bloqué. On accepte les deux formes.
+  const recetteRecord = recette
+    ? (Object.prototype.hasOwnProperty.call(recette, 'record')
+      ? recette.record
+      : (recette.id ? recette : null))
+    : null
 
   const genererPack = async () => {
     setPackBusy(true)
@@ -278,19 +590,40 @@ export default function ChantierGateTimeline({ installationId, installation, onA
       <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border p-3" data-testid="ch6-recette">
         <ClipboardCheck className="size-4 text-muted-foreground" aria-hidden="true" />
         <span className="text-sm font-semibold">Recette de mise en service (IEC 62446-1)</span>
-        {recette?.record ? (
-          <Badge tone={recette.record.passe ? 'success' : 'outline'}>
-            {recette.record.resultat_display ?? recette.record.resultat}
+        {recetteRecord ? (
+          <Badge tone={recetteRecord.passe ? 'success' : 'outline'}>
+            {recetteRecord.resultat_display ?? recetteRecord.resultat}
           </Badge>
         ) : (
           <Badge tone="neutral">Aucune fiche</Badge>
         )}
-        {!recette?.record && (
-          <Button size="sm" variant="outline" className="ml-auto" loading={recetteBusy} onClick={ouvrirRecette}>
-            Ouvrir la fiche de recette
-          </Button>
-        )}
+        {/* WIR202 — le bouton OUVRE le formulaire ; il ne crée plus une fiche
+            vide que rien ne pouvait remplir. Une fiche existante se rouvre
+            avec les mêmes essais pour correction. */}
+        <Button
+          size="sm"
+          variant="outline"
+          className="ml-auto"
+          onClick={() => setRecetteOuverte(true)}
+        >
+          {recetteRecord ? 'Modifier la fiche de recette' : 'Ouvrir la fiche de recette'}
+        </Button>
       </div>
+
+      {recetteOuverte && (
+        <RecetteDialog
+          installationId={installationId}
+          record={recetteRecord}
+          onClose={() => setRecetteOuverte(false)}
+          onSaved={(record) => {
+            setRecette(record)
+            // Le gate « Mise en service » dépend de cette fiche : on relit les
+            // étapes pour que le déblocage soit visible immédiatement.
+            load()
+            onAdvanced?.()
+          }}
+        />
+      )}
 
       {/* ── CH4 — pack de remise client, gate mis en avant ── */}
       <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border p-3" data-testid="ch6-pack-remise">

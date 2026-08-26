@@ -10,7 +10,7 @@
 // les métadonnées saisies sur le terrain (nom/description).
 import { useEffect, useMemo, useState } from 'react'
 import {
-  Camera, Trash2, RotateCw, Loader2, FileText, Upload, X,
+  Camera, Trash2, RotateCw, Loader2, FileText, Upload, X, FileUp,
 } from 'lucide-react'
 import gedApi from '../../api/gedApi'
 // APX32 (e) — en-tête UNIQUE de l'app (VX28), fin du 4ᵉ idiome.
@@ -53,6 +53,13 @@ export default function NumeriserPage() {
   const [description, setDescription] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
+
+  // GED31/WIR249 — scan-lot : N fichiers déjà numérisés (scanner à plat,
+  // export d'une autre appli…) → un Document + version 1 PAR fichier (jamais
+  // un assemblage, contrairement aux photos caméra ci-dessus). Utilise le
+  // MÊME dossier cible (folderId) que le flux caméra.
+  const [scanFiles, setScanFiles] = useState([])
+  const [scanBusy, setScanBusy] = useState(false)
 
   useEffect(() => {
     let alive = true
@@ -121,6 +128,30 @@ export default function NumeriserPage() {
     }
   }
 
+  // GED31/WIR249 — soumet le lot de fichiers scannés (chacun devient son
+  // propre Document, contrairement à l'assemblage photo ci-dessus). Un
+  // fichier au format refusé est listé dans `erreurs` sans bloquer le reste.
+  const submitScanLot = async () => {
+    if (!folderId || scanFiles.length === 0 || scanBusy) return
+    setScanBusy(true)
+    try {
+      const res = await gedApi.scanLot({ folder: folderId, files: scanFiles })
+      const erreurs = res?.data?.erreurs || []
+      const documents = res?.data?.documents || []
+      if (erreurs.length) {
+        toast.error(`${documents.length} document(s) importé(s), ${erreurs.length} refusé(s).`)
+      } else {
+        toast.success(
+          `${documents.length} document${documents.length > 1 ? 's' : ''} importé${documents.length > 1 ? 's' : ''}.`)
+      }
+      setScanFiles([])
+    } catch (err) {
+      toast.error(errText(err, 'Import impossible.'))
+    } finally {
+      setScanBusy(false)
+    }
+  }
+
   const hasCabinet = cabinetId != null
 
   return (
@@ -137,6 +168,7 @@ export default function NumeriserPage() {
       {error ? (
         <EmptyState title="Erreur" description={error} />
       ) : (
+        <>
         <div className="grid gap-4 md:grid-cols-[minmax(240px,340px)_1fr]">
           <Card>
             <CardContent className="flex flex-col gap-3 p-4">
@@ -256,6 +288,54 @@ export default function NumeriserPage() {
             </CardContent>
           </Card>
         </div>
+
+        {/* GED31/WIR249 — scan-lot : import de fichiers déjà numérisés
+            (scanner à plat, export…), un Document PAR fichier — pas
+            d'assemblage. Utilise le même dossier cible que le flux caméra. */}
+        <Card className="mt-4">
+          <CardContent className="flex flex-col gap-3 p-4">
+            <div className="flex items-center gap-2">
+              <FileUp className="size-4 text-muted-foreground" aria-hidden="true" />
+              <h2 className="text-sm font-medium">Importer des fichiers déjà numérisés</h2>
+            </div>
+            <p className="text-[12.5px] text-muted-foreground">
+              Chaque fichier devient son propre document dans le dossier choisi
+              ci-dessus (pas d'assemblage — pour un PDF multi-pages, utilisez la
+              capture caméra).
+            </p>
+            <input type="file" multiple
+              aria-label="Fichiers à numériser"
+              disabled={!hasCabinet || !folderId}
+              onChange={(e) => setScanFiles(Array.from(e.target.files || []))}
+              className="text-[13px]" />
+            {scanFiles.length > 0 && (
+              <ul className="flex flex-col gap-0.5 text-[12.5px] text-muted-foreground">
+                {scanFiles.map((f, i) => <li key={`${f.name}-${i}`}>{f.name}</li>)}
+              </ul>
+            )}
+            <div className="flex items-center gap-2">
+              <Button variant="default" onClick={submitScanLot}
+                disabled={!folderId || scanFiles.length === 0 || scanBusy}>
+                {scanBusy
+                  ? <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                  : <FileUp className="size-4" aria-hidden="true" />}
+                Importer ({scanFiles.length})
+              </Button>
+              {scanFiles.length > 0 && !scanBusy && (
+                <Button variant="ghost" onClick={() => setScanFiles([])}>
+                  <Trash2 className="size-4" aria-hidden="true" /> Tout effacer
+                </Button>
+              )}
+            </div>
+            {!folderId && scanFiles.length > 0 && (
+              <p className="flex items-center gap-1 text-[12.5px] text-muted-foreground">
+                <FileText className="size-3.5" aria-hidden="true" />
+                Choisissez un dossier de destination avant d'importer.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+        </>
       )}
 
       {/* VX42 — FAB : le pouce vit dans le tiers bas de l'écran sur le

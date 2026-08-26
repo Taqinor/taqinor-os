@@ -49,7 +49,7 @@ test('authLoader renvoie un compte portail vers son shell (jamais vers l’ERP)'
 
 test('roleLoader applique la MÊME bascule avant le contrôle de rôle', () => {
   const bloc = routerSrc.match(
-    /const roleLoader = \(roles, perm\) => async \(\{ request \}\) => \{[\s\S]*?\n\}/,
+    /const roleLoader = \(roles, perm, permRepliPalier\) => async \(\{ request \}\) => \{[\s\S]*?\n\}/,
   )
   assert.ok(bloc, 'roleLoader doit exister')
   assert.match(bloc[0], /await ensurePortalScope\(\)/)

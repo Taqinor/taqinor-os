@@ -73,6 +73,25 @@ const aoApi = {
     // ci-dessus (`update(id, { archive: true })`) — pas d'action dédiée.
     dupliquer: (id) => api.post(`/ao/appels-offres/${id}/dupliquer/`),
 
+    /* ── WIR206 — LE STATUT DE L'AFFAIRE, SERVI PAR LE SERVEUR ─────────────
+       `transitions` (GET) est la SEULE source des cibles atteignables : la
+       table `services.TRANSITIONS_AO` vit côté serveur et l'écran ne la
+       recopie jamais — une seconde table finirait par proposer une cible
+       refusée (ou masquer une cible légitime). `changerStatut` (POST) est le
+       SEUL chemin HTTP de mutation (AOF13) ; un refus arrive en 400 avec sa
+       phrase française, à afficher TELLE QUELLE.
+
+       `lead` (GET) rend `{lead_id, fiche}` — la fiche-carte passe par
+       `apps.crm.selectors.lead_card`, `ao` n'importe jamais `crm.models`.
+       `rattacherLead(id, null)` DÉTACHE (le service traite un identifiant vide
+       comme un détachement). */
+    transitions: (id) => api.get(`/ao/appels-offres/${id}/transitions/`),
+    changerStatut: (id, statut, motif = '') =>
+      api.post(`/ao/appels-offres/${id}/changer-statut/`, { statut, motif }),
+    lead: (id) => api.get(`/ao/appels-offres/${id}/lead/`),
+    rattacherLead: (id, lead) =>
+      api.post(`/ao/appels-offres/${id}/rattacher-lead/`, { lead }),
+
     /* ── L'ATELIER 3D DE L'AFFAIRE — le MÊME écran que la villa ────────────
        `frontend/src/pages/ventes/ToitureDesign.jsx` existe déjà et sert deux
        modes ('lead', 'devis') ; le mode 'ao' le RÉUTILISE, jamais une seconde
@@ -109,6 +128,12 @@ const aoApi = {
       fd.append('fichier', fichier)
       return api.post('/ao/toitures/dxf/analyser/', fd)
     },
+    // WIR207/AOF27 — applique un jeu de paramètres (`PresetCalepinage`) à CETTE
+    // toiture EN UN APPEL : le service pose l'instantané et journalise au
+    // chatter du dossier. Jamais un PATCH nu de `parametres_calepinage`, qui
+    // écrirait les valeurs sans laisser de trace de leur origine.
+    appliquerPreset: (id, preset) =>
+      api.post(`/ao/toitures/${id}/appliquer-preset/`, { preset }),
   },
   // RÉPARATION 03/08/2026 — le routeur enregistre `plans-source` et
   // `chaines-cotes` (AU SINGULIER pour le premier) ; le front appelait
@@ -126,8 +151,29 @@ const aoApi = {
     },
   },
   releves: crud('releves'),
-  obstacles: crud('obstacles'),
-  chaines: crud('chaines-cotes'),
+  /* WIR205 — les DEUX actions métier d'`ObstacleAOViewSet` (AOF22), relues
+     dans `apps/ao/views.py` : un obstacle mesuré n'est JAMAIS supprimé, il
+     est ÉCARTÉ avec sa géométrie conservée (le retour arrière doit rester un
+     one-liner et l'échelle de décomposition doit pouvoir chiffrer ce que la
+     décision rapporte). `ecarter` EXIGE un motif — le serveur renvoie 400
+     nommé sans lui, et l'écran ne le contourne pas. `reintegrer` remet
+     l'obstacle actif sous la provenance choisie (défaut serveur `MESURE`). */
+  obstacles: {
+    ...crud('obstacles'),
+    ecarter: (id, motif) => api.post(`/ao/obstacles/${id}/ecarter/`, { motif }),
+    reintegrer: (id, { provenance, motif } = {}) =>
+      api.post(`/ao/obstacles/${id}/reintegrer/`, { provenance, motif }),
+  },
+  /* WIR205 — la compensation au prorata est une PROPOSITION SERVEUR, jamais un
+     produit en croix d'écran : `ChaineCotesViewSet.compensation` (GET) rend
+     `{residu_m, applique: false, segments: [{index, libelle, valeur_m,
+     valeur_proposee_m, delta_m}]}` — ou `null` quand il n'y a rien à
+     répartir. Elle n'APPLIQUE rien : c'est l'atelier qui écrit ensuite les
+     valeurs proposées, à l'enregistrement. */
+  chaines: {
+    ...crud('chaines-cotes'),
+    compensation: (id) => api.get(`/ao/chaines-cotes/${id}/compensation/`),
+  },
   // PV54/PV56 — `ZoneAO` existe désormais (contour NOMMÉ : enveloppe /
   // interdite / réservée / préférée), routée sous `zones` (`apps/ao/urls.py`,
   // `router.register(r'zones', ZoneAOViewSet, …)`). L'atelier de traçage
@@ -251,7 +297,18 @@ const aoApi = {
      `texte`, et AU MOINS un impact chiffré (`impact_min_modules` et/ou
      `impact_max_modules`) — le sérialiseur refuse le reste, et c'est la règle
      produit : on ne pose une question que si sa réponse change le compte. */
-  questions: crud('questions'),
+  /* WIR207 — TRANCHER n'est pas ÉCRIRE UNE DÉCISION. Un PATCH de `decision`
+     posait le texte et rien d'autre : l'obstacle restait au compte, les cotes
+     gardaient leur statut et les variantes de calepinage restaient « à jour »
+     alors que leur base venait de changer. `trancher` (POST) APPLIQUE la
+     décision — `ecarter_obstacle` / `confirmer_obstacle` / `requalifier_cote`
+     / `aucune` — puis périme les variantes des toitures touchées et renvoie
+     `variantes_perimees`. Le serveur refuse en 400 une décision vide ou une
+     action sans objet lié. */
+  questions: {
+    ...crud('questions'),
+    trancher: (id, corps) => api.post(`/ao/questions/${id}/trancher/`, corps),
+  },
   /* ── `equipements` — CONSTRUIT le 03/08/2026 (AOF118 + AOF141) ───────────
      Le trou est comblé : `EquipementAO` a désormais son sérialiseur, son
      ViewSet `equipements` et l'action atomique `bascule`
@@ -296,6 +353,15 @@ const aoApi = {
   // deux dossiers différents, ce qui est pire qu'un 404 : silencieux.
   dossiers: {
     ...crud('dossiers-ao'),
+    /* WIR206 — `changer-statut` est le SEUL chemin de mutation du statut d'un
+       dossier (`statut` est en lecture seule au sérialiseur : un PATCH est
+       ignoré en silence, ce qui affichait un succès sans rien écrire). La
+       porte `pret_a_deposer` refuse en 400 en CITANT ses raisons
+       (`raisons_de_non_depot` + codes de règle de cohérence). Les cibles
+       atteignables sont servies par le champ dérivé `transitions` du dossier
+       lui-même — jamais une table recopiée côté écran. */
+    changerStatut: (id, statut, motif = '') =>
+      api.post(`/ao/dossiers-ao/${id}/changer-statut/`, { statut, motif }),
     controlesAvantDepot: (id) =>
       api.get(`/ao/dossiers-ao/${id}/controles-avant-depot/`),
     // PACT71 — complétude DÉRIVÉE (`DossierAO.raisons_de_non_depot`, en

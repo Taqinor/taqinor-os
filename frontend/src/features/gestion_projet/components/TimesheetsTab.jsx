@@ -251,8 +251,9 @@ export default function TimesheetsTab({ timesheets, onChanged, ressources = [] }
                   searchable={false}
                   columns={[
                     { id: 'ressource', header: 'Ressource', accessor: (l) => l.ressource_nom ?? l.nom },
-                    { id: 'heures', header: 'Heures saisies', align: 'right', numeric: true, accessor: (l) => Number(l.heures ?? 0), cell: (v) => formatNumber(v) },
-                    { id: 'completude', header: 'Complétude', align: 'right', numeric: true, accessor: (l) => Number(l.completude_pct ?? l.completude ?? 0), cell: (v) => `${v} %` },
+                    { id: 'heures', header: 'Heures saisies', align: 'right', numeric: true, accessor: (l) => l.total_heures, cell: (v) => (v == null ? '—' : formatNumber(v)) },
+                    { id: 'completude', header: 'Complétude', align: 'right', numeric: true, accessor: (l) => l.taux_completude_pct, cell: (v) => (v == null ? '—' : `${v} %`) },
+                    { id: 'retard', header: 'Jours de retard', align: 'right', numeric: true, accessor: (l) => l.jours_de_retard, cell: (v) => (v == null ? '—' : <Badge tone={v > 0 ? 'warning' : 'success'}>{v}</Badge>) },
                   ]}
                   emptyTitle="Aucune donnée"
                 />

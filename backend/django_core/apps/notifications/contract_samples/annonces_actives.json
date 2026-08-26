@@ -1,0 +1,59 @@
+{
+  "endpoint": "GET /api/django/notifications/annonces/",
+  "pourquoi": "Annonces internes (XKB5/XKB6) servies a l'ecran DESTINATAIRE `/annonces` (WIR177, frontend/src/features/notifications/AnnoncesPage.jsx). L'ecran appelle `getAnnonces({ active: 1 })` : `AnnonceViewSet.get_queryset` restreint alors aux annonces PUBLIEES et non expirees. Enveloppe paginee standard `count/next/previous/results` (core.pagination.StandardPagination, PAGE_SIZE=50) ; chaque element est un `AnnonceSerializer` complet. L'ecran lit `id`, `titre`, `corps`, `auteur_username`, `epinglee`, `lecture_obligatoire` et `date_publication_effective` (repli `created_at`) ; `lecture_obligatoire` decide seul de l'affichage du bouton « J'ai lu et compris » (POST .../accuser-lecture/, idempotent). Le serializer n'expose PAS « est-ce que MOI j'ai lu » : la verite vit dans le rapport de conformite XKB6, reserve a l'admin — l'ecran ne doit donc jamais inventer un champ de ce genre.",
+  "exemple": {
+    "count": 2,
+    "next": null,
+    "previous": null,
+    "results": [
+      {
+        "id": 11,
+        "titre": "Fermeture annuelle",
+        "corps": "Les bureaux sont fermés du 1er au 15 août.",
+        "auteur": 3,
+        "auteur_username": "reda",
+        "cible_type": "tous",
+        "cible_type_label": "Toute la société",
+        "cible_role": "",
+        "cible_departement_nom": "",
+        "date_publication": null,
+        "date_expiration": null,
+        "publiee": true,
+        "date_publication_effective": "2026-07-01T09:00:00Z",
+        "epinglee": false,
+        "lecture_obligatoire": false,
+        "is_expiree": false,
+        "lus_count": 0,
+        "created_at": "2026-07-01T08:55:00Z",
+        "updated_at": "2026-07-01T09:00:00Z"
+      },
+      {
+        "id": 12,
+        "titre": "Nouvelle procédure sécurité",
+        "corps": "À appliquer dès lundi sur tous les chantiers.",
+        "auteur": 3,
+        "auteur_username": "reda",
+        "cible_type": "tous",
+        "cible_type_label": "Toute la société",
+        "cible_role": "",
+        "cible_departement_nom": "",
+        "date_publication": null,
+        "date_expiration": null,
+        "publiee": true,
+        "date_publication_effective": "2026-06-20T09:00:00Z",
+        "epinglee": true,
+        "lecture_obligatoire": true,
+        "is_expiree": false,
+        "lus_count": 4,
+        "created_at": "2026-06-20T08:50:00Z",
+        "updated_at": "2026-06-20T09:00:00Z"
+      }
+    ]
+  },
+  "exemple_vide": {
+    "count": 0,
+    "next": null,
+    "previous": null,
+    "results": []
+  }
+}

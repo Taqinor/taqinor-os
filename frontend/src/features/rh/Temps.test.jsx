@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 import rhApi from '../../api/rhApi'
@@ -28,6 +28,18 @@ vi.mock('../../api/rhApi', () => {
       getAbsentsNonJustifies: vi.fn(empty),
       genererIncidentAbsence: vi.fn(() => Promise.resolve({ data: {} })),
       getRapportPresence: vi.fn(() => Promise.resolve({ data: { par_employe: [], totaux_departement: [] } })),
+      // WIR195 — incidents de présence (liste + justification).
+      getIncidentsPresence: vi.fn(empty),
+      justifierIncidentPresence: vi.fn(),
+      // WIR238 — roster : création/édition + conflits de congé.
+      createRoster: vi.fn(),
+      updateRoster: vi.fn(),
+      getConflitsRoster: vi.fn(empty),
+      // WIR239 — émargement de présence chantier (colonne Geofence morte).
+      emargerPresenceChantier: vi.fn(),
+      getEmployes: vi.fn(() => Promise.resolve({
+        data: [{ id: 9, nom: 'Bennani', prenom: 'Youssef' }],
+      })),
     },
   }
 })
@@ -162,5 +174,149 @@ describe('Temps — ZRH6/ZRH18 : absents non justifiés & rapport de présence',
     fireEvent.click(screen.getByRole('radio', { name: 'Rapport de présence' }))
     expect((await screen.findAllByText('Bennani Youssef'))[0]).toBeInTheDocument()
     expect(screen.getAllByText('90,0 %').length).toBeGreaterThan(0)
+  })
+})
+
+describe('Temps — WIR195 : incidents de présence (liste + justification)', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('liste un incident ouvert et le justifie via rhApi.justifierIncidentPresence', async () => {
+    rhApi.getIncidentsPresence.mockResolvedValueOnce({
+      data: [{
+        id: 21, employe: 9, employe_nom: 'Bennani Youssef',
+        type_incident: 'retard', type_incident_display: 'Retard',
+        date: '2026-08-12', minutes_retard: 15, justifie: false, motif: '',
+      }],
+    })
+    rhApi.justifierIncidentPresence.mockResolvedValueOnce({
+      data: { id: 21, justifie: true, motif: 'Panne de voiture' },
+    })
+    renderTemps()
+    await screen.findAllByText('Temps & présence')
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Incidents de présence' }))
+    expect((await screen.findAllByText('Bennani Youssef'))[0]).toBeInTheDocument()
+    expect(screen.getAllByText('Ouvert').length).toBeGreaterThan(0)
+
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Justifier' }))[0])
+    const dialog = within(await screen.findByRole('dialog'))
+    fireEvent.change(dialog.getByLabelText('Motif'), { target: { value: 'Panne de voiture' } })
+    fireEvent.click(dialog.getByRole('button', { name: 'Justifier' }))
+
+    await waitFor(() => expect(rhApi.justifierIncidentPresence).toHaveBeenCalledWith(
+      21, { motif: 'Panne de voiture' },
+    ))
+  })
+
+  it('bascule sur « Incidents de présence » après génération d’un incident (ZRH6/WIR195)', async () => {
+    rhApi.getAbsentsNonJustifies.mockResolvedValueOnce({
+      data: [{ employe_id: 9, matricule: 'M009', nom: 'Bennani Youssef' }],
+    })
+    renderTemps()
+    await screen.findAllByText('Temps & présence')
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Absents du jour' }))
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Créer un incident d’absence' }))[0])
+
+    await waitFor(() => expect(screen.getByRole('radio', { name: 'Incidents de présence' })).toHaveAttribute('aria-checked', 'true'))
+  })
+})
+
+describe('Temps — WIR238 : roster (création + conflits de congé)', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('crée une affectation via rhApi.createRoster (sans semaine_du/conflit_conge)', async () => {
+    rhApi.createRoster.mockResolvedValueOnce({ data: { id: 1 } })
+    renderTemps()
+    await screen.findAllByText('Temps & présence')
+    fireEvent.click(screen.getByRole('radio', { name: 'Roster' }))
+
+    fireEvent.click((await screen.findAllByRole('button', { name: /Nouvelle affectation/ }))[0])
+    const dialog = within(await screen.findByRole('dialog'))
+    fireEvent.change(dialog.getByLabelText('Employé'), { target: { value: '9' } })
+    // WIR238-fix — l'équipe est OBLIGATOIRE côté serveur (validate_equipe).
+    fireEvent.change(dialog.getByLabelText('Équipe'), { target: { value: 'Équipe A' } })
+    fireEvent.change(dialog.getByLabelText('Date'), { target: { value: '2026-08-20' } })
+    fireEvent.click(dialog.getByRole('button', { name: 'Créer l’affectation' }))
+
+    await waitFor(() => expect(rhApi.createRoster).toHaveBeenCalledWith(
+      expect.objectContaining({ employe: '9', equipe: 'Équipe A', date: '2026-08-20', creneau: 'journee' }),
+    ))
+    expect(rhApi.createRoster.mock.calls[0][0]).not.toHaveProperty('semaine_du')
+    expect(rhApi.createRoster.mock.calls[0][0]).not.toHaveProperty('conflit_conge')
+  })
+
+  it('WIR238-fix — une équipe vide bloque la soumission (bouton désactivé, aucun appel)', async () => {
+    renderTemps()
+    await screen.findAllByText('Temps & présence')
+    fireEvent.click(screen.getByRole('radio', { name: 'Roster' }))
+
+    fireEvent.click((await screen.findAllByRole('button', { name: /Nouvelle affectation/ }))[0])
+    const dialog = within(await screen.findByRole('dialog'))
+    fireEvent.change(dialog.getByLabelText('Employé'), { target: { value: '9' } })
+    fireEvent.change(dialog.getByLabelText('Date'), { target: { value: '2026-08-20' } })
+    // Équipe volontairement laissée vide.
+    expect(dialog.getByRole('button', { name: 'Créer l’affectation' })).toBeDisabled()
+
+    fireEvent.click(dialog.getByRole('button', { name: 'Créer l’affectation' }))
+    expect(rhApi.createRoster).not.toHaveBeenCalled()
+  })
+
+  it('WIR238-fix — un 400 { equipe: [...] } affiche le message de champ, jamais le générique', async () => {
+    rhApi.createRoster.mockRejectedValueOnce({
+      response: { data: { equipe: ["L'équipe est obligatoire."] } },
+    })
+    renderTemps()
+    await screen.findAllByText('Temps & présence')
+    fireEvent.click(screen.getByRole('radio', { name: 'Roster' }))
+
+    fireEvent.click((await screen.findAllByRole('button', { name: /Nouvelle affectation/ }))[0])
+    const dialog = within(await screen.findByRole('dialog'))
+    fireEvent.change(dialog.getByLabelText('Employé'), { target: { value: '9' } })
+    fireEvent.change(dialog.getByLabelText('Équipe'), { target: { value: 'Équipe A' } })
+    fireEvent.change(dialog.getByLabelText('Date'), { target: { value: '2026-08-20' } })
+    fireEvent.click(dialog.getByRole('button', { name: 'Créer l’affectation' }))
+
+    expect(await dialog.findByText("L'équipe est obligatoire.")).toBeInTheDocument()
+    expect(dialog.queryByText('Création de l’affectation impossible.')).toBeNull()
+  })
+
+  it('affiche le bandeau de conflits (30 j) et la colonne Conflit congé', async () => {
+    rhApi.getConflitsRoster.mockResolvedValueOnce({
+      data: [{ id: 3, employe: 9, employe_nom: 'Bennani Youssef', date: '2026-08-20', conflit_conge: true }],
+    })
+    rhApi.getRoster.mockResolvedValueOnce({
+      data: [{ id: 3, employe: 9, employe_nom: 'Bennani Youssef', date: '2026-08-20', conflit_conge: true }],
+    })
+    renderTemps()
+    await screen.findAllByText('Temps & présence')
+    fireEvent.click(screen.getByRole('radio', { name: 'Roster' }))
+
+    expect(await screen.findByText(/en conflit de congé sur les 30 prochains jours/)).toBeInTheDocument()
+    expect((await screen.findAllByText('Conflit congé')).length).toBeGreaterThan(1)
+  })
+})
+
+describe('Temps — WIR239 : émargement de présence chantier (colonne Geofence morte)', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('émarge une présence chantier non émargée', async () => {
+    rhApi.getPresencesChantier.mockResolvedValueOnce({
+      data: [{
+        id: 15, employe: 9, employe_nom: 'Bennani Youssef',
+        installation_id: 4, date: '2026-08-12',
+        statut: 'present', statut_display: 'Présent', emarge: false, hors_zone: false,
+      }],
+    })
+    rhApi.emargerPresenceChantier.mockResolvedValueOnce({
+      data: { id: 15, emarge: true, hors_zone: false },
+    })
+    renderTemps()
+    await screen.findAllByText('Temps & présence')
+    fireEvent.click(screen.getByRole('radio', { name: 'Présences chantier' }))
+    await screen.findAllByText('Bennani Youssef')
+
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Émarger' }))[0])
+    await waitFor(() => expect(rhApi.emargerPresenceChantier).toHaveBeenCalledWith(15))
   })
 })

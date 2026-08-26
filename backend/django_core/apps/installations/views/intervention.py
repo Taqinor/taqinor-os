@@ -653,10 +653,21 @@ class InterventionViewSet(CompanyScopedModelViewSet):
     def lien_client(self, request, pk=None):
         """XFSM7 — génère (lazily) et renvoie l'URL publique « technicien en
         route » de cette intervention, à partager par WhatsApp/SMS (pattern
-        FG86/liens WhatsApp)."""
+        FG86/liens WhatsApp).
+
+        WIR264 — le `path` renvoyé était `/public/installations/intervention/
+        <token>/` : ni une page, ni même un chemin d'API valide (le préfixe
+        `/api/django` manquait). Il pointe désormais vers la PAGE publique
+        `/intervention/<token>`, et l'`url` absolue est servie comme pour le
+        suivi de ticket SAV (`sav.views.lien_client`, FG86)."""
         interv = self.get_object()
         token = interv.ensure_lien_client_token()
-        return Response({'token': token, 'path': f'/public/installations/intervention/{token}/'})
+        path = f'/intervention/{token}'
+        return Response({
+            'token': token,
+            'path': path,
+            'url': request.build_absolute_uri(path),
+        })
 
     @action(detail=True, methods=['post'], url_path='checkin',
             permission_classes=[IsResponsableOrAdmin])
@@ -1628,12 +1639,20 @@ class InterventionViewSet(CompanyScopedModelViewSet):
     def lien_rapport(self, request, pk=None):
         """ZFSM2 — génère (lazily) et renvoie l'URL publique du compte-rendu
         signé de cette intervention, à partager par WhatsApp/SMS (pattern
-        FG86/liens WhatsApp/XFSM7). Jeton DISTINCT du lien « en route »."""
+        FG86/liens WhatsApp/XFSM7). Jeton DISTINCT du lien « en route ».
+
+        WIR264 — même correction que `lien_client` : le `path` renvoyé était
+        amputé de son préfixe `/api/django` et ne menait à aucune page. Il
+        pointe désormais vers la PAGE publique
+        `/intervention-rapport/<token>`."""
         interv = self.get_object()
         token = interv.ensure_lien_rapport_token()
+        path = f'/intervention-rapport/{token}'
         return Response({
             'token': token,
-            'path': f'/public/installations/intervention-rapport/{token}/'})
+            'path': path,
+            'url': request.build_absolute_uri(path),
+        })
 
     # ── ZFSM4 — facturation directe d'une intervention hors contrat ─────────
     @action(detail=True, methods=['post'], url_path='generer-facture',

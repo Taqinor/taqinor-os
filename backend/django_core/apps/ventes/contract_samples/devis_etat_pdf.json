@@ -1,0 +1,25 @@
+{
+  "endpoint": "GET /api/django/ventes/devis/{id}/etat-pdf/",
+  "pourquoi": "WIR217 — état de la génération du PDF d'un devis. Le sondage de DevisList ne lisait que `fichier_pdf` : un échec DÉFINITIF de `task_generate_devis_pdf` (retries épuisés) était donc INVISIBLE et le sondage tournait sans fin, en répétant son toast « toujours en cours ». La tâche consigne désormais l'échec terminal en cache (patron EXPORT_JOB de SCA41, scopé société) et cet endpoint l'expose. `statut` vaut `pret` (le fichier existe — il l'emporte toujours sur un échec plus ancien), `echec` (échec définitif consigné) ou `en_cours` (rien de consigné : le rendu est en route ou n'a jamais démarré). `erreur` et `date` ne sont renseignés QUE sur `echec` ; ailleurs ils valent null. Une nouvelle demande de génération, comme un rendu réussi, efface l'échec.",
+  "exemple": {
+    "devis": 412,
+    "statut": "echec",
+    "fichier_pdf": false,
+    "erreur": "Aucune option de ce devis ne porte d'onduleur : format « full » impossible.",
+    "date": "2026-08-26T09:41:12.884210+00:00"
+  },
+  "exemple_pret": {
+    "devis": 412,
+    "statut": "pret",
+    "fichier_pdf": true,
+    "erreur": null,
+    "date": null
+  },
+  "exemple_en_cours": {
+    "devis": 412,
+    "statut": "en_cours",
+    "fichier_pdf": false,
+    "erreur": null,
+    "date": null
+  }
+}

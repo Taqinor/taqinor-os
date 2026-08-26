@@ -5,21 +5,42 @@ Couvre :
 * le calcul automatique d'atteinte (sens hausse/baisse) ;
 * la trajectoire baseline→cible vs réel ;
 * la détection des objectifs dont la revue est due ;
-* le scoping société.
+* le scoping société ;
+* WIR275 — l'exposition REST (CRUD + actions ``revues-dues``/``trajectoire``,
+  ``atteint`` DÉRIVÉ côté serveur, jamais reçu en écriture).
 """
 from datetime import date, timedelta
 
+from django.contrib.auth import get_user_model
 from django.test import TestCase
+from rest_framework.test import APIClient
+from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 
 from apps.qhse.models import ObjectifQhse, RevueObjectif
 from apps.qhse.selectors import objectifs_revue_due, trajectoire_objectif
 
+User = get_user_model()
+
+OBJECTIFS = '/api/django/qhse/objectifs/'
+REVUES = '/api/django/qhse/revues-objectif/'
+
 
 def make_company(slug, nom):
     company, _ = Company.objects.get_or_create(slug=slug, defaults={'nom': nom})
     return company
+
+
+def make_user(company, username, role='responsable'):
+    return User.objects.create_user(
+        username=username, password='x', company=company, role_legacy=role)
+
+
+def auth_client(user):
+    api = APIClient()
+    api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+    return api
 
 
 class CalculerAtteintTests(TestCase):
@@ -115,3 +136,74 @@ class ObjectifsRevueDueTests(TestCase):
         ObjectifQhse.objects.create(company=self.company, intitule='X')
         dus = objectifs_revue_due(autre)
         self.assertEqual(dus, [])
+
+
+class ObjectifQhseApiTests(TestCase):
+    """WIR275 — CRUD + actions ``revues-dues``/``trajectoire`` (selectors
+    testés, jusqu'ici sans aucun endpoint)."""
+
+    def setUp(self):
+        self.company = make_company('co-xqhs13-obj-api', 'CoXqhs13ObjApi')
+        self.user = make_user(self.company, 'resp-xqhs13-obj-api')
+        self.api = auth_client(self.user)
+
+    def test_create_pose_company(self):
+        resp = self.api.post(OBJECTIFS, {
+            'intitule': 'Taux de fréquence accidents',
+            'valeur_cible': 2, 'echeance': '2027-01-01',
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        objectif = ObjectifQhse.objects.get(id=resp.data['id'])
+        self.assertEqual(objectif.company_id, self.company.id)
+
+    def test_revues_dues_action(self):
+        self.api.post(OBJECTIFS, {'intitule': 'Nouveau'}, format='json')
+        resp = self.api.get(f'{OBJECTIFS}revues-dues/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(len(resp.data), 1)
+
+    def test_trajectoire_action(self):
+        objectif = ObjectifQhse.objects.create(
+            company=self.company, intitule='CO2', valeur_baseline=100,
+            valeur_cible=50)
+        resp = self.api.get(f'{OBJECTIFS}{objectif.id}/trajectoire/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['points'], [])
+
+    def test_isolation_inter_societes(self):
+        autre = make_company('co-xqhs13-obj-api-x', 'Autre')
+        ObjectifQhse.objects.create(company=autre, intitule='Hors société')
+        data = self.api.get(OBJECTIFS).data
+        rows = data['results'] if isinstance(data, dict) else data
+        self.assertEqual(len(rows), 0)
+
+
+class RevueObjectifApiTests(TestCase):
+    """WIR275 — CRUD ; ``atteint`` DÉRIVÉ côté serveur au ``save()`` du
+    modèle, jamais reçu en écriture."""
+
+    def setUp(self):
+        self.company = make_company('co-xqhs13-revue-api', 'CoXqhs13RevueApi')
+        self.user = make_user(self.company, 'resp-xqhs13-revue-api')
+        self.api = auth_client(self.user)
+        self.objectif = ObjectifQhse.objects.create(
+            company=self.company, intitule='Satisfaction client',
+            valeur_cible=90,
+            sens_amelioration=ObjectifQhse.SensAmelioration.HAUSSE)
+
+    def test_atteint_derive_ignore_valeur_ecrite(self):
+        resp = self.api.post(REVUES, {
+            'objectif': self.objectif.id, 'valeur_constatee': 95,
+            'atteint': False,  # tentative d'écriture directe — ignorée
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertTrue(resp.data['atteint'])
+
+    def test_objectif_hors_societe_refuse(self):
+        autre = make_company('co-xqhs13-revue-api-x', 'Autre')
+        objectif_autre = ObjectifQhse.objects.create(
+            company=autre, intitule='Hors société')
+        resp = self.api.post(REVUES, {
+            'objectif': objectif_autre.id,
+        }, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)

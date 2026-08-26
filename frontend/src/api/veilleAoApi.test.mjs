@@ -30,10 +30,21 @@ test('veilleAoApi utilise la factory partagée (ARC44), jamais un axios.get dire
 })
 
 test('les ressources CRUD du groupe VAO7-VAO29 sont toutes déclarées', () => {
-  const resources = ['avis', 'sources', 'motsCles', 'reglesExclusion', 'acheteursCibles', 'executions']
+  const resources = ['avis', 'sources', 'motsCles', 'reglesExclusion', 'acheteursCibles']
   for (const key of resources) {
     assert.match(src, new RegExp(`\\b${key}:`), `ressource manquante : ${key}`)
   }
+})
+
+test('WIR269 — `executions` est RETIRÉ : aucun export sans appelant', () => {
+  // La santé de la collecte vient de l'appel agrégé `sante()`. Republier la
+  // liste des exécutions rouvrirait la porte au calcul dérivé côté front que
+  // l'en-tête de ce fichier interdit explicitement.
+  assert.doesNotMatch(sansCommentaires(src), /executions/)
+})
+
+test('WIR269 — `attribution()` est l’appel agrégé du « d’où vient le CA » (VAO31)', () => {
+  assert.match(src, /attribution:\s*\(\)\s*=>\s*api\.get\('\/veille_ao\/attribution\/'\)/)
 })
 
 test('VAO23 — le déclenchement manuel appelle EXACTEMENT POST /veille_ao/collecter/ (chemin littéral du texte de tâche)', () => {

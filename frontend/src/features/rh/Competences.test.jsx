@@ -35,6 +35,8 @@ vi.mock('../../api/rhApi', () => {
       createQuizFormation: vi.fn(),
       updateQuizFormation: vi.fn(),
       deleteQuizFormation: vi.fn(),
+      // WIR239 — besoin de formation « satisfait ».
+      satisfaireBesoinFormation: vi.fn(),
     },
   }
 })
@@ -149,5 +151,49 @@ describe('Competences — saisie manuelle (WIR36)', () => {
       '4', { niveau_min: '2' },
     ))
     expect(await screen.findByText(/Bennani Youssef/)).toBeInTheDocument()
+  })
+})
+
+describe('Competences — WIR239 : besoin de formation « satisfait »', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('marque un besoin satisfait via rhApi.satisfaireBesoinFormation', async () => {
+    rhApi.getBesoinsFormation.mockResolvedValueOnce({
+      data: [{
+        id: 8, employe: 9, employe_nom: 'Bennani Youssef',
+        theme: 'Habilitation B1V', priorite: 'haute', priorite_display: 'Haute',
+        statut: 'identifie', statut_display: 'Identifié',
+      }],
+    })
+    rhApi.satisfaireBesoinFormation.mockResolvedValueOnce({ data: { id: 8, statut: 'satisfait' } })
+    renderCompetences()
+    await screen.findByText('Compétences & habilitations')
+    fireEvent.click(screen.getByRole('radio', { name: 'Formation' }))
+    // DataTable rend la table desktop ET le repli carte mobile (les deux
+    // existent dans le DOM en jsdom) : getAllBy*, jamais getBy* ici.
+    await screen.findAllByText('Habilitation B1V')
+
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Marquer satisfait' }))[0])
+    await waitFor(() => expect(rhApi.satisfaireBesoinFormation).toHaveBeenCalledWith(8))
+  })
+
+  it('affiche le 400 « session liée non réalisée » tel quel', async () => {
+    rhApi.getBesoinsFormation.mockResolvedValueOnce({
+      data: [{
+        id: 9, employe: 9, employe_nom: 'Bennani Youssef',
+        theme: 'Secourisme', priorite: 'moyenne', priorite_display: 'Moyenne',
+        statut: 'planifie', statut_display: 'Planifié',
+      }],
+    })
+    rhApi.satisfaireBesoinFormation.mockRejectedValueOnce({
+      response: { data: { session_liee: 'La session liée doit être réalisée pour satisfaire le besoin.' } },
+    })
+    renderCompetences()
+    await screen.findByText('Compétences & habilitations')
+    fireEvent.click(screen.getByRole('radio', { name: 'Formation' }))
+    await screen.findAllByText('Secourisme')
+
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Marquer satisfait' }))[0])
+    await waitFor(() => expect(rhApi.satisfaireBesoinFormation).toHaveBeenCalledWith(9))
   })
 })

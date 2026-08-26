@@ -13,6 +13,8 @@ vi.mock('../../api/gedApi', () => ({
     getCabinets: vi.fn(),
     getDossiers: vi.fn(),
     assemblerPhotos: vi.fn(),
+    // GED31/WIR249 — scan-lot (fichiers déjà numérisés, un document PAR fichier).
+    scanLot: vi.fn(),
   },
 }))
 
@@ -133,5 +135,38 @@ describe('NumeriserPage (XGED12)', () => {
     // s'effacent au profit du flux de capture.
     expect(screen.queryByRole('button', { name: 'Photo (caméra)' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /prendre la photo \(mock\)/i })).toBeInTheDocument()
+  })
+
+  // GED31/WIR249 — import de fichiers déjà numérisés (un document PAR
+  // fichier, distinct de l'assemblage caméra ci-dessus).
+  it('GED31 — importe un lot de fichiers déjà numérisés vers le dossier choisi', async () => {
+    const user = userEvent.setup()
+    gedApi.scanLot.mockResolvedValue(ok({
+      documents: [{ id: 1, nom: 'a.pdf' }, { id: 2, nom: 'b.pdf' }], erreurs: [],
+    }))
+    render(<NumeriserPage />)
+    await waitFor(() => expect(gedApi.getDossiers).toHaveBeenCalled())
+
+    const folderSelect = screen.getByLabelText(/choisir le dossier/i)
+    await user.click(folderSelect)
+    await user.click(await screen.findByText('Numérisations'))
+
+    const fileA = new File(['%PDF-a'], 'a.pdf', { type: 'application/pdf' })
+    const fileB = new File(['%PDF-b'], 'b.pdf', { type: 'application/pdf' })
+    await user.upload(screen.getByLabelText('Fichiers à numériser'), [fileA, fileB])
+
+    await user.click(screen.getByRole('button', { name: /^Importer \(2\)$/i }))
+
+    await waitFor(() => expect(gedApi.scanLot).toHaveBeenCalledTimes(1))
+    const call = gedApi.scanLot.mock.calls[0][0]
+    expect(call.folder).toBe(10)
+    expect(call.files).toHaveLength(2)
+  })
+
+  it('GED31 — désactive l’import tant qu’aucun fichier ou dossier n’est choisi', async () => {
+    render(<NumeriserPage />)
+    await waitFor(() => expect(gedApi.getDossiers).toHaveBeenCalled())
+    const submit = screen.getByRole('button', { name: /^Importer \(0\)$/i })
+    expect(submit).toBeDisabled()
   })
 })

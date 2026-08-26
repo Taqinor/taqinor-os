@@ -1,23 +1,29 @@
 import { useState } from 'react'
-import { Plus, LogOut, AlertTriangle } from 'lucide-react'
+import {
+  Plus, LogOut, AlertTriangle, Reply, ShieldCheck,
+} from 'lucide-react'
 import qhseApi from '../../api/qhseApi'
 import { ListShell } from '../../ui/module'
 import {
-  Button, Badge, Dialog, DialogContent, DialogTitle, Input, Label, toast,
-  Tabs, TabsList, TabsTrigger, TabsContent,
+  Button, Badge, Dialog, DialogContent, DialogTitle, Input, Label, Textarea,
+  toast, Tabs, TabsList, TabsTrigger, TabsContent,
 } from '../../ui'
+import { FieldSelect } from './QhseForm'
 import { formatDate } from '../../lib/format'
 import { useQhseList } from './useQhseList'
 
 /* ============================================================================
-   WIR115 — Check-in sécurité (technicien seul sur site à risque) + SCAR.
+   WIR115/WIR201 — Check-in sécurité (technicien seul sur site à risque) + SCAR.
    ----------------------------------------------------------------------------
    Donne enfin un écran aux deux backends jusqu'ici sombres :
    • Check-ins : le technicien pointe son arrivée sur un site à risque avec une
      heure de check-out prévue ; la tâche beat d'escalade escalade toute absence
      de check-out passé le délai. Bouton « Check-out » pour clôturer le cycle.
-   • SCAR : demandes d'action corrective fournisseur (lecture — le cycle de
-     réponse/vérification se pilote côté NCR fournisseur).
+   • SCAR : demandes d'action corrective fournisseur — WIR201 sort l'onglet de
+     la lecture seule : création (« Nouvelle SCAR »), puis le cycle
+     émise→répondue→vérifiée/close entièrement pilotable depuis l'écran
+     (rowActions Répondre/Vérifier, visibles seulement sur les statuts
+     autorisés — le serveur reste la seule autorité sur les transitions).
    Rôles : ['responsable','admin'] (gaté par la config du module).
    ========================================================================== */
 
@@ -142,8 +148,176 @@ function CheckinsTab() {
   )
 }
 
+function ScarCreateDialog({ onClose, onDone }) {
+  const [fournisseur, setFournisseur] = useState('')
+  const [ncrSource, setNcrSource] = useState('')
+  const [descriptionDefaut, setDescriptionDefaut] = useState('')
+  const [echeanceReponse, setEcheanceReponse] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    if (!fournisseur || !ncrSource) {
+      toast.error('Fournisseur et NCR source sont requis.')
+      return
+    }
+    setSaving(true)
+    try {
+      await qhseApi.demandesActionFournisseur.create({
+        fournisseur: Number(fournisseur),
+        ncr_source: Number(ncrSource),
+        description_defaut: descriptionDefaut,
+        echeance_reponse: echeanceReponse || undefined,
+      })
+      toast.success('SCAR créée.')
+      onDone()
+      onClose()
+    } catch (e) {
+      toast.error(e?.response?.data?.detail ?? 'Création de la SCAR impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent>
+        <DialogTitle>Nouvelle SCAR</DialogTitle>
+        <div className="flex flex-col gap-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label htmlFor="scar-fournisseur">Fournisseur (id)</Label>
+              <Input id="scar-fournisseur" inputMode="numeric" value={fournisseur}
+                onChange={(e) => setFournisseur(e.target.value)} />
+            </div>
+            <div>
+              <Label htmlFor="scar-ncr">NCR source (id)</Label>
+              <Input id="scar-ncr" inputMode="numeric" value={ncrSource}
+                onChange={(e) => setNcrSource(e.target.value)} />
+            </div>
+          </div>
+          <div>
+            <Label htmlFor="scar-defaut">Description du défaut</Label>
+            <Textarea id="scar-defaut" rows={3} value={descriptionDefaut}
+              onChange={(e) => setDescriptionDefaut(e.target.value)} />
+          </div>
+          <div>
+            <Label htmlFor="scar-echeance">Échéance de réponse</Label>
+            <Input id="scar-echeance" type="date" value={echeanceReponse}
+              onChange={(e) => setEcheanceReponse(e.target.value)} />
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="ghost" onClick={onClose}>Annuler</Button>
+            <Button onClick={save} disabled={saving}>
+              {saving ? 'Enregistrement…' : 'Créer la SCAR'}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function ScarRepondreDialog({ scar, onClose, onDone }) {
+  const [causeRacine, setCauseRacine] = useState('')
+  const [actionFournisseur, setActionFournisseur] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    setSaving(true)
+    try {
+      await qhseApi.demandesActionFournisseur.repondre(scar.id, {
+        cause_racine_fournisseur: causeRacine,
+        action_fournisseur: actionFournisseur,
+      })
+      toast.success('Réponse fournisseur enregistrée.')
+      onDone()
+      onClose()
+    } catch (e) {
+      toast.error(e?.response?.data?.detail ?? 'Réponse impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent>
+        <DialogTitle>Réponse fournisseur — {scar.fournisseur_nom}</DialogTitle>
+        <div className="flex flex-col gap-3">
+          <div>
+            <Label htmlFor="scar-cause">Cause racine</Label>
+            <Textarea id="scar-cause" rows={2} value={causeRacine}
+              onChange={(e) => setCauseRacine(e.target.value)} />
+          </div>
+          <div>
+            <Label htmlFor="scar-action">Action corrective</Label>
+            <Textarea id="scar-action" rows={2} value={actionFournisseur}
+              onChange={(e) => setActionFournisseur(e.target.value)} />
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="ghost" onClick={onClose}>Annuler</Button>
+            <Button onClick={save} disabled={saving}>
+              {saving ? 'Enregistrement…' : 'Enregistrer la réponse'}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+const EFFICACE_OPTS = [
+  { value: 'oui', label: 'Efficace — clore la SCAR' },
+  { value: 'non', label: 'Non efficace — rester vérifiée' },
+]
+
+function ScarVerifierDialog({ scar, onClose, onDone }) {
+  const [efficace, setEfficace] = useState('oui')
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    setSaving(true)
+    try {
+      await qhseApi.demandesActionFournisseur.verifier(scar.id, {
+        efficace: efficace === 'oui',
+      })
+      toast.success('Vérification enregistrée.')
+      onDone()
+      onClose()
+    } catch (e) {
+      toast.error(e?.response?.data?.detail ?? 'Vérification impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent>
+        <DialogTitle>Vérifier l'efficacité — {scar.fournisseur_nom}</DialogTitle>
+        <div className="flex flex-col gap-3">
+          <div>
+            <Label htmlFor="scar-efficace">Verdict</Label>
+            <FieldSelect id="scar-efficace" value={efficace} onValueChange={setEfficace}
+              options={EFFICACE_OPTS} />
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="ghost" onClick={onClose}>Annuler</Button>
+            <Button onClick={save} disabled={saving}>
+              {saving ? 'Enregistrement…' : 'Enregistrer la vérification'}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function ScarTab() {
-  const { rows, loading, error } = useQhseList(
+  const [creating, setCreating] = useState(false)
+  const [responding, setResponding] = useState(null)
+  const [verifying, setVerifying] = useState(null)
+  const { rows, loading, error, reload } = useQhseList(
     () => qhseApi.demandesActionFournisseur.list())
   const columns = [
     { id: 'fournisseur_nom', header: 'Fournisseur', accessor: r => r.fournisseur_nom },
@@ -155,16 +329,62 @@ function ScarTab() {
     { id: 'statut_display', header: 'Statut', accessor: r => r.statut_display },
   ]
   return (
-    <ListShell
-      title="Demandes d'action fournisseur (SCAR)"
-      subtitle="Actions correctives demandées à un fournisseur après une non-conformité."
-      columns={columns}
-      rows={rows}
-      loading={loading}
-      error={error}
-      searchable
-      exportName="scar-fournisseur"
-    />
+    <>
+      <ListShell
+        title="Demandes d'action fournisseur (SCAR)"
+        subtitle="Actions correctives demandées à un fournisseur après une non-conformité — cycle émise→répondue→vérifiée/close."
+        columns={columns}
+        rows={rows}
+        loading={loading}
+        error={error}
+        searchable
+        exportName="scar-fournisseur"
+        actions={
+          <Button onClick={() => setCreating(true)}>
+            <Plus size={16} /> Nouvelle SCAR
+          </Button>
+        }
+        rowActions={r => {
+          const actions = []
+          // WIR201 — boutons SEULEMENT sur les statuts autorisés (le serveur
+          // refuse déjà les transitions hors ordre, l'écran évite juste de
+          // proposer un clic qui échouerait à coup sûr).
+          if (r.statut === 'emise') {
+            actions.push({
+              id: 'repondre', label: 'Répondre', icon: Reply,
+              onClick: () => setResponding(r),
+            })
+          }
+          if (r.statut === 'repondue' || r.statut === 'verifiee') {
+            actions.push({
+              id: 'verifier', label: 'Vérifier', icon: ShieldCheck,
+              onClick: () => setVerifying(r),
+            })
+          }
+          return actions
+        }}
+      />
+      {creating && (
+        <ScarCreateDialog
+          onClose={() => setCreating(false)}
+          onDone={reload}
+        />
+      )}
+      {responding && (
+        <ScarRepondreDialog
+          scar={responding}
+          onClose={() => setResponding(null)}
+          onDone={reload}
+        />
+      )}
+      {verifying && (
+        <ScarVerifierDialog
+          scar={verifying}
+          onClose={() => setVerifying(null)}
+          onDone={reload}
+        />
+      )}
+    </>
   )
 }
 

@@ -9,6 +9,10 @@ const mocks = vi.hoisted(() => ({
   blocsList: vi.fn(),
   // NTMKT24 — heatmap d'engagement (suggestion informative).
   heatmap: vi.fn(),
+  // WIR258/XMKT34 — sonde de gating de l'assistant IA, appelée AU MONTAGE
+  // depuis que le bloc a quitté CampagnesScreen (supprimé) pour ce formulaire.
+  genererIaDisponible: vi.fn(),
+  genererIa: vi.fn(),
 }))
 
 vi.mock('../../api/marketingApi', () => ({
@@ -18,7 +22,11 @@ vi.mock('../../api/marketingApi', () => ({
       return Array.isArray(data) ? data : (data?.results || [])
     },
     listes: { list: mocks.listesList },
-    campagnes: { apercuFusion: mocks.apercuFusion },
+    campagnes: {
+      apercuFusion: mocks.apercuFusion,
+      genererIaDisponible: mocks.genererIaDisponible,
+      genererIa: mocks.genererIa,
+    },
     blocsContenu: { list: mocks.blocsList },
     heatmapEngagement: mocks.heatmap,
   },
@@ -31,6 +39,8 @@ beforeEach(() => {
   mocks.listesList.mockResolvedValue({ data: [{ id: 1, nom: 'Liste A' }] })
   mocks.blocsList.mockResolvedValue({ data: [] })
   mocks.heatmap.mockResolvedValue({ data: { cellules: [], meilleur: null, total_envois: 0 } })
+  // Défaut : AUCUNE clé LLM → le panneau IA n'est jamais rendu.
+  mocks.genererIaDisponible.mockResolvedValue({ data: { configured: false } })
 })
 
 describe('emptyForm / formFromCampagne', () => {

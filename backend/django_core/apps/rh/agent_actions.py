@@ -4,14 +4,18 @@ Déclare, via le registre AG1 (:mod:`apps.agent.registry`), les actions RH que
 l'agent peut PROPOSER. Ce module ne contient AUCUNE logique d'exécution et
 AUCUN nouvel endpoint : il décrit — en métadonnées — des LECTURES qui passent
 par les viewsets RH existants, lesquels re-vérifient rôle ET société à
-l'exécution (``IsResponsableOrAdmin`` sur la base RH). AUCUNE action
+l'exécution (``rh_voir`` sur la base RH depuis WIR172). AUCUNE action
 d'écriture ici (pilote lecture/liste minimale, ARC33).
 
-Permissions : la base RH est gardée par un rôle (``IsResponsableOrAdmin``),
-pas par un code ERP fin — comme il n'existe pas de code « rh_voir », on suit
-le précédent ``ged.docqa.retrieve`` : ``required_permission=None`` (catalogue
-ouvert à tout authentifié), l'endpoint restant l'autorité qui re-vérifie le
-rôle + la société à l'exécution.
+Permissions : ``required_permission=None`` (catalogue ouvert à tout
+authentifié), l'endpoint restant l'AUTORITÉ qui re-vérifie permission +
+société à l'exécution — précédent ``ged.docqa.retrieve``. WIR172 a introduit
+les codes fins ``rh_voir``/``rh_gerer`` (``_RhBaseViewSet`` sur
+``WriteScopedPermissionMixin``) : la note « il n'existe pas de code rh_voir »
+qui justifiait ce ``None`` est donc PÉRIMÉE. Poser ``required_permission=
+'rh_voir'`` ici ne changerait RIEN à l'autorisation réelle (elle ne filtre que
+l'affichage du catalogue) — c'est un resserrement d'ergonomie à part entière,
+hors périmètre de WIR172, pas un trou de garde.
 
 Enregistrement : AUTO-DÉCOUVERT (ARC33) — ``apps/rh/platform.py`` déclare ce
 module dans ``agent_actions_module`` ; ``AgentConfig.ready()`` l'importe et
@@ -24,14 +28,14 @@ from apps.agent.registry import AgentAction, RISK_INTERNAL, register, _REGISTRY
 
 
 # Action 1 — Lister les dossiers employés (effectifs). Endpoint réel :
-# GET /api/django/rh/employes/ (DossierEmployeViewSet, IsResponsableOrAdmin,
+# GET /api/django/rh/employes/ (DossierEmployeViewSet, lecture ``rh_voir``,
 # société scopée côté serveur).
 LISTER_EMPLOYES = AgentAction(
     key='rh.employes.list',
     label='Lister les employés',
     description=(
         "Liste les dossiers employés de la société (effectifs). Lecture "
-        "seule ; l'endpoint RH re-vérifie le rôle (Responsable/Admin) et la "
+        "seule ; l'endpoint RH re-vérifie la permission (``rh_voir``) et la "
         "société à l'exécution."
     ),
     endpoint='/api/django/rh/employes/',
@@ -49,8 +53,8 @@ LISTER_DEMANDES_CONGE = AgentAction(
     label='Lister les demandes de congé',
     description=(
         "Liste les demandes de congé/absence de la société (soumises, "
-        "validées, refusées). Lecture seule ; l'endpoint RH re-vérifie le "
-        "rôle et la société à l'exécution."
+        "validées, refusées). Lecture seule ; l'endpoint RH re-vérifie la "
+        "permission (``rh_voir``) et la société à l'exécution."
     ),
     endpoint='/api/django/rh/demandes-conge/',
     method='GET',

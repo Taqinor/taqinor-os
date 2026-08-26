@@ -126,3 +126,39 @@ describe('Composer (S16)', () => {
       expect.objectContaining({ conversation: 1, body: 'plus tard' })))
   })
 })
+
+// ── WIR259 — ShareRecord + VoiceRecorder montés dans la barre d'actions ─────
+// Les deux composants existaient (S17/S19) mais n'étaient montés NULLE PART :
+// partager un enregistrement et enregistrer un mémo vocal étaient
+// inatteignables depuis le composer.
+describe('Composer — partage d’enregistrement et note vocale (WIR259)', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('monte le bouton « Partager un enregistrement »', () => {
+    renderComposer()
+    expect(screen.getByLabelText('Partager un enregistrement')).toBeInTheDocument()
+  })
+
+  it('monte l’enregistreur vocal quand le navigateur sait enregistrer', () => {
+    class FakeMediaRecorder {}
+    globalThis.MediaRecorder = FakeMediaRecorder
+    navigator.mediaDevices = { getUserMedia: vi.fn() }
+    try {
+      renderComposer()
+      expect(screen.getByLabelText('Enregistrer une note vocale')).toBeInTheDocument()
+    } finally {
+      delete globalThis.MediaRecorder
+      delete navigator.mediaDevices
+    }
+  })
+
+  it('dégrade proprement sans MediaRecorder : composer intact, aucun bouton micro', () => {
+    delete globalThis.MediaRecorder
+    renderComposer()
+    expect(screen.queryByLabelText('Enregistrer une note vocale')).toBeNull()
+    // Le reste de la barre d'actions continue de fonctionner.
+    expect(screen.getByLabelText('Message')).toBeInTheDocument()
+    expect(screen.getByLabelText('Partager un enregistrement')).toBeInTheDocument()
+    expect(screen.getByLabelText('Envoyer')).toBeInTheDocument()
+  })
+})

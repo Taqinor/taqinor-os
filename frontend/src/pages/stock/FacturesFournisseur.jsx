@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ReceiptText, Plus, FileText, Building2,
+import { ReceiptText, Plus, FileText, Building2, AlertTriangle, ShieldCheck,
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import comptaApi from '../../api/comptaApi'
 import { formatMAD } from '../../lib/format'
+import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import {
-  Button, StatusPill, DataTable, toast,
+  Button, StatusPill, DataTable, toast, Badge,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
   Input, Textarea,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
@@ -202,19 +203,40 @@ function NouvelleFacture({ fournisseurs, bons, onClose, onSaved }) {
 }
 
 // ── Modal : détail d'une facture + saisie de paiements ──────────────────────
-// Export nommé : testé directement (WR4 — PDF facture fournisseur).
-export function FactureDetail({ facture: factureProp, onClose, onSaved }) {
+// Export nommé : testé directement (WR4 — PDF facture fournisseur). `canResoudre`
+// est un PROP (jamais un hook Redux ici) : les tests existants (wr4ReceptionFacture)
+// montent ce composant sans Provider — le calcul du rôle reste à la charge du
+// parent (`FacturesFournisseur`), qui a bien le store.
+export function FactureDetail({ facture: factureProp, onClose, onSaved, canResoudre = false }) {
   const [facture, setFacture] = useState(factureProp)
   const [montant, setMontant] = useState('')
   const [datePaiement, setDatePaiement] = useState('')
   const [mode, setMode] = useState('virement')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
+  // WIR192/XPUR10 — file d'exceptions du rapprochement 3 voies : Responsable/
+  // Admin peut résoudre (débloque le paiement), commentaire optionnel.
+  const [resolving, setResolving] = useState(false)
+  const [commentaire, setCommentaire] = useState('')
 
   const paiements = facture?.paiements ?? []
   const solde = Number(facture?.solde_du) || 0
+  const enException = facture?.statut_controle === 'exception'
 
   const reglerSolde = () => setMontant(solde > 0 ? String(solde) : '')
+
+  const resoudreException = async () => {
+    setError(null); setBusy(true)
+    try {
+      const r = await stockApi.resoudreExceptionFacture(facture.id, { commentaire })
+      setFacture(r.data)
+      setResolving(false)
+      setCommentaire('')
+      onSaved?.()
+    } catch (err) {
+      setError(frError(err, "La résolution de l'exception a échoué."))
+    } finally { setBusy(false) }
+  }
 
   const ajouter = async () => {
     setError(null)
@@ -298,6 +320,43 @@ export function FactureDetail({ facture: factureProp, onClose, onSaved }) {
             {facture.date_facture ? ` · Facture du ${fmtDateFR(facture.date_facture)}` : ''}
           </div>
         </div>
+
+        {/* WIR192/XPUR10 — rapprochement 3 voies : la facture est visible ET
+            actionnable ici — un paiement refusé pointe directement vers ce
+            bloc plutôt que de laisser l'utilisateur chercher où résoudre. */}
+        {enException && (
+          <div className="flex flex-col gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone="danger"><AlertTriangle className="size-3" /> En exception</Badge>
+              <span className="text-destructive">
+                {facture.motif_ecart || 'Écart hors tolérance de rapprochement 3 voies.'}
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Le paiement est bloqué tant que cette exception n&apos;est pas résolue.
+            </p>
+            {canResoudre && (
+              resolving ? (
+                <div className="flex flex-col gap-2">
+                  <Textarea rows={2} value={commentaire} onChange={(e) => setCommentaire(e.target.value)}
+                            placeholder="Commentaire de résolution (optionnel)" />
+                  <div className="flex gap-2">
+                    <Button type="button" size="sm" loading={busy} onClick={resoudreException}>
+                      {busy ? '…' : 'Confirmer la résolution'}
+                    </Button>
+                    <Button type="button" size="sm" variant="ghost" onClick={() => setResolving(false)}>
+                      Annuler
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <Button type="button" size="sm" variant="outline" onClick={() => setResolving(true)}>
+                  <ShieldCheck className="size-4" /> Résoudre l&apos;exception
+                </Button>
+              )
+            )}
+          </div>
+        )}
 
         {/* Paiements existants */}
         <div className="flex flex-col gap-2">
@@ -384,6 +443,10 @@ export function FactureDetail({ facture: factureProp, onClose, onSaved }) {
 }
 
 export default function FacturesFournisseur() {
+  // WIR192/XPUR10 — la résolution d'exception est réservée Responsable/Admin
+  // (même garde serveur que `resoudre_exception`). Calculé ICI (store
+  // toujours présent dans l'app réelle) et transmis en PROP à FactureDetail.
+  const canResoudre = useIsAdminOrResponsable()
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -395,10 +458,19 @@ export default function FacturesFournisseur() {
   // Filtre « comptes à payer » : n'affiche que les factures non soldées.
   const [aPayerSeul, setAPayerSeul] = useState(false)
   const [totalDu, setTotalDu] = useState(null)
+  // WIR192/XPUR10 — file « En exception » (rapprochement 3 voies hors
+  // tolérance, non résolue). Exclusif avec « Comptes à payer » (même rail de
+  // filtres, un seul filtre serveur actif à la fois).
+  const [enExceptionSeul, setEnExceptionSeul] = useState(false)
 
   const reload = () => {
     setLoading(true)
-    const fetch = aPayerSeul
+    const fetch = enExceptionSeul
+      ? stockApi.getFacturesEnException().then((r) => {
+          setTotalDu(null)
+          return r.data?.results ?? r.data ?? []
+        })
+      : aPayerSeul
       ? stockApi.getComptesAPayer().then((r) => {
           setTotalDu(r.data?.total_du ?? null)
           return r.data?.results ?? []
@@ -412,7 +484,7 @@ export default function FacturesFournisseur() {
   }
 
   // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
-  useEffect(() => { reload() }, [aPayerSeul])
+  useEffect(() => { reload() }, [aPayerSeul, enExceptionSeul])
 
   useEffect(() => {
     stockApi.getFournisseurs({ page_size: 1000 })
@@ -445,6 +517,17 @@ export default function FacturesFournisseur() {
     { id: 'statut', header: 'Statut', width: 150, searchable: false,
       accessor: (f) => f.statut,
       cell: (v) => <StatusPill status={v} label={statutLabel(v)} /> },
+    // WIR192/XPUR10 — badge du rapprochement 3 voies, infobulle = motif de
+    // l'écart. Normale = rien à signaler (ligne neutre, pas de badge).
+    { id: 'statut_controle', header: 'Rapprochement', width: 130, searchable: false,
+      accessor: (f) => f.statut_controle,
+      cell: (v, f) => (
+        v === 'exception'
+          ? <Badge tone="danger" title={f.motif_ecart || 'Écart hors tolérance.'}><AlertTriangle className="size-3" /> En exception</Badge>
+          : v === 'resolue'
+          ? <Badge tone="neutral">Résolue</Badge>
+          : null
+      ) },
     { id: 'montant_ttc', header: 'Total TTC', align: 'right', width: 130, searchable: false,
       accessor: (f) => f.montant_ttc,
       cell: (v) => fmtMad(v) },
@@ -471,12 +554,18 @@ export default function FacturesFournisseur() {
 
       <div className="flex flex-wrap items-center gap-2">
         <Button variant={aPayerSeul ? 'secondary' : 'outline'} size="sm"
-                onClick={() => setAPayerSeul((v) => !v)}
+                onClick={() => { setEnExceptionSeul(false); setAPayerSeul((v) => !v) }}
                 title="N'afficher que les factures non soldées">
           Comptes à payer{aPayerSeul ? ' (actif)' : ''}
         </Button>
-        {aPayerSeul && (
-          <Button variant="ghost" size="sm" onClick={() => setAPayerSeul(false)}>
+        {/* WIR192/XPUR10 — file « En exception » (rapprochement 3 voies). */}
+        <Button variant={enExceptionSeul ? 'secondary' : 'outline'} size="sm"
+                onClick={() => { setAPayerSeul(false); setEnExceptionSeul((v) => !v) }}
+                title="N'afficher que les factures en exception de rapprochement 3 voies">
+          <AlertTriangle className="size-3.5" /> En exception{enExceptionSeul ? ' (actif)' : ''}
+        </Button>
+        {(aPayerSeul || enExceptionSeul) && (
+          <Button variant="ghost" size="sm" onClick={() => { setAPayerSeul(false); setEnExceptionSeul(false) }}>
             Toutes les factures
           </Button>
         )}
@@ -512,7 +601,7 @@ export default function FacturesFournisseur() {
                          onClose={() => setCreating(false)} onSaved={onSaved} />
       )}
       {selected && (
-        <FactureDetail facture={selected}
+        <FactureDetail facture={selected} canResoudre={canResoudre}
                        onClose={() => setSelected(null)} onSaved={onSaved} />
       )}
     </div>

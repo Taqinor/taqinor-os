@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Provider } from 'react-redux'
@@ -7,9 +7,10 @@ import { configureStore } from '@reduxjs/toolkit'
 // WIR156 — la liste interroge maintenant messagesApi.status (mon statut +
 // statuts des collègues) au montage : on le stub pour éviter tout réseau.
 // WIR155 — ajoute les onglets Fils/Favoris (threads.listFollowed / listBookmarks).
+// WIR260 — ajoute la sourdine, l'archivage et la recherche plein-texte serveur.
 const {
   statusMe, statusColleagues, setStatus, clearStatus, setDnd,
-  listFollowed, listBookmarks,
+  listFollowed, listBookmarks, muteConversation, archiveConversation, search,
 } = vi.hoisted(() => ({
   statusMe: vi.fn(() => Promise.resolve({ data: { status_emoji: '', status_text: '', is_dnd: false } })),
   statusColleagues: vi.fn(() => Promise.resolve({ data: [] })),
@@ -18,6 +19,9 @@ const {
   setDnd: vi.fn(() => Promise.resolve({ data: { is_dnd: true } })),
   listFollowed: vi.fn(() => Promise.resolve({ data: [] })),
   listBookmarks: vi.fn(() => Promise.resolve({ data: [] })),
+  muteConversation: vi.fn(() => Promise.resolve({ data: {} })),
+  archiveConversation: vi.fn(() => Promise.resolve({ data: {} })),
+  search: vi.fn(() => Promise.resolve({ data: [] })),
 }))
 vi.mock('../../api/messagesApi', () => ({
   default: {
@@ -27,6 +31,9 @@ vi.mock('../../api/messagesApi', () => ({
     },
     threads: { listFollowed },
     listBookmarks,
+    muteConversation,
+    archiveConversation,
+    search,
   },
 }))
 
@@ -175,5 +182,72 @@ describe('ConversationList — WIR155 (onglets Fils / Favoris)', () => {
     await userEvent.click(screen.getByRole('tab', { name: /Favoris/ }))
     await userEvent.click(await screen.findByText('À relire'))
     expect(onSelect).toHaveBeenCalledWith(2)
+  })
+})
+
+// ── WIR260 — sourdine / archivage + recherche plein-texte serveur ───────────
+// `c.muted` était un champ MORT (affiché, jamais posable) et
+// `/chat/conversations/search/` était inatteignable depuis l'écran.
+describe('ConversationList — WIR260 (sourdine, archivage, recherche serveur)', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  function renderList(props = {}) {
+    return render(
+      <Provider store={storeWith(convs)}>
+        <ConversationList currentUserId={9} {...props} />
+      </Provider>,
+    )
+  }
+
+  it('« Sourdine » appelle le backend et allume l’icône immédiatement', async () => {
+    renderList()
+    // Au départ : seul le DM (conv 2) est muet.
+    expect(screen.getAllByLabelText('Notifications coupées')).toHaveLength(1)
+    await userEvent.click(screen.getByLabelText('Actions de Général'))
+    await userEvent.click(await screen.findByText('Sourdine'))
+    await waitFor(() => expect(muteConversation).toHaveBeenCalledWith(1, true))
+    await waitFor(() =>
+      expect(screen.getAllByLabelText('Notifications coupées')).toHaveLength(2))
+  })
+
+  it('« Réactiver » est proposé sur une conversation déjà en sourdine', async () => {
+    renderList()
+    await userEvent.click(screen.getByLabelText('Actions de autre'))
+    await userEvent.click(await screen.findByText('Réactiver'))
+    await waitFor(() => expect(muteConversation).toHaveBeenCalledWith(2, false))
+  })
+
+  it('« Archiver » appelle le backend et retire la ligne', async () => {
+    renderList()
+    await userEvent.click(screen.getByLabelText('Actions de Général'))
+    await userEvent.click(await screen.findByText('Archiver'))
+    await waitFor(() => expect(archiveConversation).toHaveBeenCalledWith(1))
+    await waitFor(() => expect(screen.queryByText('Général')).toBeNull())
+  })
+
+  it('la saisie déclenche la recherche serveur et ouvre la conversation cliquée', async () => {
+    search.mockResolvedValueOnce({
+      data: [{
+        message_id: 31, conversation: 2, conversation_name: 'DM autre',
+        snippet: '…devis signé hier', created_at: '2026-06-21T10:00:00Z',
+      }],
+    })
+    const onSelect = vi.fn()
+    renderList({ onSelect })
+    await userEvent.type(screen.getByLabelText('Rechercher une conversation'), 'devis')
+    await waitFor(() => expect(search).toHaveBeenCalledWith('devis'))
+    await userEvent.click(await screen.findByText('…devis signé hier'))
+    expect(onSelect).toHaveBeenCalledWith(2)
+  })
+
+  it('une erreur réseau de recherche laisse le filtre local intact', async () => {
+    search.mockRejectedValueOnce(new Error('réseau'))
+    renderList()
+    await userEvent.type(screen.getByLabelText('Rechercher une conversation'), 'général')
+    await waitFor(() => expect(search).toHaveBeenCalled())
+    // Le filtre LOCAL continue de répondre, et aucune section « Messages ».
+    expect(screen.getByText('Général')).toBeInTheDocument()
+    expect(screen.queryByText('autre')).toBeNull()
+    expect(screen.queryByTestId('chat-search-messages')).toBeNull()
   })
 })

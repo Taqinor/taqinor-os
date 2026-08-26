@@ -8,7 +8,15 @@ import { formatDateTime } from '../../lib/format'
    « Appeler » amorce un appel sortant (le backend refuse en 409 si le softphone
    n'est pas configuré/actif — message clair). Le journal liste les appels de la
    société (lecture seule ; la journalisation est orchestrée côté serveur).
+   WIR271 — un appel OUVERT (initié/sonnant/en cours) porte un bouton
+   « Terminer » : formulaire inline avec la durée pré-remplie (écoulée depuis
+   `started_at`, éditable) + l'issue (texte libre, comme les autres modules
+   « issue » du dépôt) → `voipApi.terminerAppel`. Un 400 serveur (durée non
+   entière) s'affiche tel quel, en français.
    ========================================================================== */
+
+// Statuts encore ouverts (terminables) — cf. apps/voip/models.py Appel.Statut.
+const STATUTS_OUVERTS = ['initie', 'sonnant', 'en_cours']
 
 export default function VoipJournalPage() {
   const [appels, setAppels] = useState([])
@@ -17,6 +25,12 @@ export default function VoipJournalPage() {
   const [message, setMessage] = useState(null)
   const [error, setError] = useState(null)
   const [busy, setBusy] = useState(false)
+  // WIR271 — clôture d'un appel ouvert (un seul formulaire inline à la fois).
+  const [terminantId, setTerminantId] = useState(null)
+  const [dureeSaisie, setDureeSaisie] = useState('')
+  const [issueSaisie, setIssueSaisie] = useState('')
+  const [terminerBusy, setTerminerBusy] = useState(false)
+  const [terminerError, setTerminerError] = useState(null)
 
   const charger = useCallback(() => {
     let alive = true
@@ -61,6 +75,47 @@ export default function VoipJournalPage() {
     }
   }
 
+  // WIR271 — ouvre le formulaire de clôture, durée PRÉ-REMPLIE avec le temps
+  // écoulé depuis `started_at` (éditable ensuite — jamais figée). `maintenant`
+  // (Date.now()) est lu par l'APPELANT, dans le gestionnaire de clic
+  // lui-même (react-hooks/purity : un impur comme Date.now() ne doit jamais
+  // s'exécuter dans une fonction atteignable depuis le rendu — seul le corps
+  // direct d'un event handler JSX l'est).
+  function ouvrirTerminer(appel, maintenant) {
+    const ecoulees = appel.started_at
+      ? Math.max(
+        0, Math.round((maintenant - new Date(appel.started_at).getTime()) / 1000))
+      : 0
+    setTerminantId(appel.id)
+    setDureeSaisie(String(ecoulees))
+    setIssueSaisie('')
+    setTerminerError(null)
+  }
+
+  function annulerTerminer() {
+    setTerminantId(null)
+    setTerminerError(null)
+  }
+
+  async function confirmerTerminer(appel) {
+    setTerminerBusy(true)
+    setTerminerError(null)
+    try {
+      await voipApi.terminerAppel(appel.id, {
+        duree_secondes: dureeSaisie,
+        issue: issueSaisie.trim(),
+      })
+      setTerminantId(null)
+      charger()
+    } catch (err) {
+      // Le 400 serveur (durée non entière) est déjà en français — affiché tel quel.
+      setTerminerError(
+        err?.response?.data?.duree_secondes || "Impossible de clôturer l'appel.")
+    } finally {
+      setTerminerBusy(false)
+    }
+  }
+
   return (
     <div className="voip-journal" data-testid="voip-journal">
       <form className="voip-journal__dialer" onSubmit={appeler} noValidate>
@@ -90,6 +145,7 @@ export default function VoipJournalPage() {
               <th>Statut</th>
               <th>Début</th>
               <th>Durée</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -101,6 +157,44 @@ export default function VoipJournalPage() {
                 <td>{a.statut}{a.issue ? ` (${a.issue})` : ''}</td>
                 <td>{a.started_at ? formatDateTime(a.started_at) : '—'}</td>
                 <td>{a.duree_secondes != null ? `${a.duree_secondes}s` : '—'}</td>
+                <td>
+                  {!STATUTS_OUVERTS.includes(a.statut) ? '—'
+                    : terminantId === a.id ? (
+                      <div className="voip-journal__terminer">
+                        <input
+                          type="number"
+                          aria-label="Durée (secondes)"
+                          value={dureeSaisie}
+                          onChange={(e) => setDureeSaisie(e.target.value)}
+                        />
+                        <input
+                          type="text"
+                          aria-label="Issue"
+                          placeholder="répondu, sans réponse, messagerie…"
+                          value={issueSaisie}
+                          onChange={(e) => setIssueSaisie(e.target.value)}
+                        />
+                        <button type="button" disabled={terminerBusy}
+                          onClick={() => confirmerTerminer(a)}>
+                          Confirmer
+                        </button>
+                        <button type="button" disabled={terminerBusy}
+                          onClick={annulerTerminer}>
+                          Annuler
+                        </button>
+                        {terminerError && (
+                          <p className="voip-journal__error" role="alert">
+                            {terminerError}
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <button type="button"
+                        onClick={() => ouvrirTerminer(a, Date.now())}>
+                        Terminer
+                      </button>
+                    )}
+                </td>
               </tr>
             ))}
           </tbody>

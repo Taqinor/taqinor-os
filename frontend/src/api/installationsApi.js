@@ -62,6 +62,18 @@ const installationsApi = {
   // CH3 — fiche de recette IEC 62446-1 (mise en service structurée).
   getRecette: (id) => api.get(`/installations/chantiers/${id}/recette/`),
   ouvrirRecette: (id) => api.post(`/installations/chantiers/${id}/recette/`, {}),
+  // WIR202/CH3 — la fiche s'ouvrait VIDE et rien ne pouvait la remplir : le
+  // ViewSet `recettes-commissioning` (écriture Responsable/Admin) n'avait
+  // aucun appelant côté client. `recetteId` est l'id de la FICHE (pas du
+  // chantier). Aucun prix ni marge n'est manipulé ici — essais uniquement.
+  getRecetteRecord: (recetteId) =>
+    api.get(`/installations/recettes-commissioning/${recetteId}/`),
+  updateRecette: (recetteId, data) =>
+    api.patch(`/installations/recettes-commissioning/${recetteId}/`, data),
+  // CH3/FG275 — relevé I-V par string ; l'écart de Pmax et le drapeau de
+  // défaut sont calculés CÔTÉ SERVEUR (jamais recalculés ici).
+  ajouterReleveIv: (recetteId, data) =>
+    api.post(`/installations/recettes-commissioning/${recetteId}/ajouter-iv/`, data),
 
   // CH4 — pack de remise client (handover). GET aperçoit à blanc si absent.
   getPackRemise: (id) => api.get(`/installations/chantiers/${id}/pack-remise/`),
@@ -107,6 +119,21 @@ const installationsApi = {
     api.get(`/installations/interventions/${id}/historique/`),
   noterIntervention: (id, body) =>
     api.post(`/installations/interventions/${id}/noter/`, { body }),
+
+  // WIR264/XFSM7 + ZFSM2 — liens PUBLICS tokenisés d'une intervention : suivi
+  // « technicien en route » et compte-rendu signé. Les deux jetons sont
+  // DISTINCTS ; le serveur renvoie `{token, path, url}` où `url` pointe sur la
+  // PAGE (`/intervention/<token>`, `/intervention-rapport/<token>`).
+  getLienClientIntervention: (id) =>
+    api.get(`/installations/interventions/${id}/lien-client/`),
+  getLienRapportIntervention: (id) =>
+    api.get(`/installations/interventions/${id}/lien-rapport/`),
+  // Les DEUX pages publiques lisent leur payload SANS session (aucun loader
+  // d'auth) : le jeton EST l'autorisation.
+  getInterventionPublique: (token) =>
+    api.get(`/public/installations/intervention/${token}/`),
+  getInterventionRapportPublic: (token) =>
+    api.get(`/public/installations/intervention-rapport/${token}/`),
 
   // F5 — Liste de préparation (matériel du chantier + outils du kit).
   getPreparation: (id) => api.get(`/installations/interventions/${id}/preparation/`),
@@ -500,6 +527,15 @@ const installationsApi = {
     api.patch(`/installations/ordre-assemblage-lignes/${id}/`, data),
   deleteLigneAssemblage: (id) =>
     api.delete(`/installations/ordre-assemblage-lignes/${id}/`),
+
+  // WIR248/XMFG11 — rebut de production rattaché à un ordre : une SORTIE
+  // typée REBUT, MOTIVÉE (le motif est obligatoire côté serveur). Le mini-
+  // rapport agrège les rebuts par produit sur une période. Quantités
+  // uniquement — aucun coût d'achat n'est demandé ni affiché.
+  declarerRebutAssemblage: (id, data) =>
+    api.post(`/installations/ordres-assemblage/${id}/declarer-rebut/`, data),
+  getRapportRebuts: (params) =>
+    api.get('/installations/ordres-assemblage/rapport-rebuts/', { params }),
 
   // XMFG12 — ordres de démontage (unbuild) : composite → composants.
   getOrdresDemontage: (params) =>

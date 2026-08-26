@@ -53,6 +53,10 @@ export default function ArticleDetail({
   // WIR71 — lectures obligatoires (XKB7) assignées sur cet article.
   const [lecturesObl, setLecturesObl] = useState([])
   const [oblDraft, setOblDraft] = useState({ role_cible: 'normal', echeance: '' })
+  // WIR250 — rapport de conformité de lecture (nominatif, Lu/Non lu +
+  // échéance) : la sélection charge/affiche `rapport-conformite`, jamais lu
+  // jusqu'ici malgré l'endpoint serveur déjà exposé.
+  const [conformite, setConformite] = useState(null)
 
   const load = () => {
     setLoading(true)
@@ -66,8 +70,11 @@ export default function ArticleDetail({
       kbApi.retroliens(articleId),
       kbApi.listLecturesObligatoires({ article: articleId })
         .catch(() => ({ data: [] })),
+      canEdit
+        ? kbApi.rapportConformiteArticle(articleId).catch(() => ({ data: null }))
+        : Promise.resolve(null),
     ])
-      .then(([a, v, r, acl, part, fav, retro, obl]) => {
+      .then(([a, v, r, acl, part, fav, retro, obl, conf]) => {
         setArticle(a.data)
         setVersions(Array.isArray(v.data) ? v.data : (v.data?.results ?? []))
         setResume(r.data)
@@ -77,6 +84,7 @@ export default function ArticleDetail({
         setFavori(favRows.length > 0)
         setRetroliens(Array.isArray(retro.data) ? retro.data : (retro.data?.results ?? []))
         setLecturesObl(Array.isArray(obl.data) ? obl.data : (obl.data?.results ?? []))
+        if (conf) setConformite(conf.data)
       })
       .catch(() => toast.error('Impossible de charger l’article.'))
       .finally(() => setLoading(false))
@@ -579,6 +587,47 @@ export default function ArticleDetail({
           </ul>
         )}
       </div>
+
+      {/* WIR250 — rapport de conformité de lecture (nominatif, avec échéance),
+          jamais consulté jusqu'ici bien que `rapport-conformite` existe déjà
+          côté serveur. N'a de sens que si au moins une lecture obligatoire
+          est assignée ci-dessus. */}
+      {lecturesObl.length > 0 && conformite && (
+        <div className="mt-2 border-t border-border pt-4">
+          <h4 className="mb-1 text-sm font-semibold">Conformité de lecture</h4>
+          <p className="mb-2 text-sm text-muted-foreground">
+            {conformite.lus.length} lu(s) sur {conformite.lus.length + conformite.non_lus.length} personne(s) concernée(s).
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <h5 className="mb-1 text-xs font-semibold uppercase text-muted-foreground">Lu</h5>
+              {conformite.lus.length ? (
+                <ul className="flex flex-col gap-1">
+                  {conformite.lus.map((p) => (
+                    <li key={p.utilisateur} className="flex items-center justify-between gap-2 rounded-md border border-border px-2 py-1 text-sm">
+                      <span>{p.nom}</span>
+                      {p.echeance && <Badge tone="neutral">avant le {p.echeance}</Badge>}
+                    </li>
+                  ))}
+                </ul>
+              ) : <p className="text-xs text-muted-foreground">Personne pour l’instant.</p>}
+            </div>
+            <div>
+              <h5 className="mb-1 text-xs font-semibold uppercase text-muted-foreground">Non lu</h5>
+              {conformite.non_lus.length ? (
+                <ul className="flex flex-col gap-1">
+                  {conformite.non_lus.map((p) => (
+                    <li key={p.utilisateur} className="flex items-center justify-between gap-2 rounded-md border border-border px-2 py-1 text-sm">
+                      <span>{p.nom}</span>
+                      {p.echeance && <Badge tone="warning">avant le {p.echeance}</Badge>}
+                    </li>
+                  ))}
+                </ul>
+              ) : <p className="text-xs text-muted-foreground">Tout le monde a lu.</p>}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 

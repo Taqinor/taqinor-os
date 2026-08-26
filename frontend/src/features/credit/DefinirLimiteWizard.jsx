@@ -1,24 +1,50 @@
 import { useEffect, useState } from 'react'
 
 import creditApi from '../../api/creditApi'
+import { frenchError } from '../../lib/frenchError'
 
 /* ============================================================================
-   NTCRD27 — Wizard « Définir une limite de crédit » (multi-étapes), pour un
-   client SANS LimiteCredit. Réservé Directeur/Administrateur (le backend
-   re-vérifie sur la création). Étape 1 : lecture seule de la position crédit
-   existante (encours/score, réutilise NTCRD10). Étape 2 : limite SUGGÉRÉE
-   (règle documentée NTCRD27, toujours modifiable). Étape 3 : mode de hold +
-   confirmation. ≤ 4 clics jusqu'à une LimiteCredit cohérente.
+   NTCRD27 — Wizard « Définir une limite de crédit » (multi-étapes). Réservé
+   Directeur/Administrateur (le backend re-vérifie sur l'écriture). Étape 1 :
+   lecture seule de la position crédit existante (encours/score, réutilise
+   NTCRD10). Étape 2 : limite SUGGÉRÉE (règle documentée NTCRD27, toujours
+   modifiable). Étape 3 : mode de hold + confirmation. ≤ 4 clics jusqu'à une
+   LimiteCredit cohérente.
+
+   WIR186 — l'assistant appelait TOUJOURS `createLimite`, y compris sur un
+   client qui avait déjà une limite : le second POST se heurtait à l'unicité
+   `(company, client)` — une erreur d'INTÉGRITÉ, pas un message métier, et la
+   limite restait donc immodifiable. La page parente charge la limite existante
+   et la passe en prop : elle pré-remplit les champs et fait basculer la
+   validation sur `updateLimite`. JAMAIS de seconde création. Un refus serveur
+   (403 de rôle, doublon, montant invalide) est affiché TEL QUEL.
    ========================================================================== */
 
-export default function DefinirLimiteWizard({ clientId, onDone }) {
+export default function DefinirLimiteWizard({ clientId, limite = null, onDone }) {
   const [step, setStep] = useState(1)
+  const edition = !!limite?.id
   const [fiche, setFiche] = useState(null)
-  const [montant, setMontant] = useState('')
-  const [modeHold, setModeHold] = useState('avertissement')
+  // En ÉDITION, les champs partent de la valeur RÉELLEMENT enregistrée — via
+  // un initialiseur paresseux, jamais un `setState` dans un effet (qui
+  // déclencherait un rendu en cascade, react-hooks/set-state-in-effect). Le
+  // point de montage passe `key={limite?.id}` : changer de limite remonte le
+  // composant, donc l'initialiseur rejoue.
+  const [montant, setMontant] = useState(
+    () => (edition ? String(limite.montant_limite ?? '') : ''))
+  const [modeHold, setModeHold] = useState(
+    () => (edition ? (limite.mode_hold || 'avertissement') : 'avertissement'))
   const [error, setError] = useState(null)
+  const [busy, setBusy] = useState(false)
 
   useEffect(() => {
+    // En ÉDITION, la limite SUGGÉRÉE n'a pas lieu d'être demandée : elle
+    // écraserait la décision déjà prise par le Directeur.
+    if (edition) {
+      creditApi.getFicheClient(clientId)
+        .then((f) => setFiche(f.data))
+        .catch(() => setError('Chargement impossible.'))
+      return
+    }
     Promise.all([
       creditApi.getFicheClient(clientId),
       creditApi.getLimiteSuggeree(clientId),
@@ -28,19 +54,31 @@ export default function DefinirLimiteWizard({ clientId, onDone }) {
         setMontant(String(s.data.suggestion ?? ''))
       })
       .catch(() => setError('Chargement impossible.'))
-  }, [clientId])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientId, limite?.id])
 
   async function valider() {
     setError(null)
+    setBusy(true)
     try {
-      await creditApi.createLimite({
-        client: clientId,
-        montant_limite: montant,
-        mode_hold: modeHold,
-      })
+      if (edition) {
+        await creditApi.updateLimite(limite.id, {
+          montant_limite: montant,
+          mode_hold: modeHold,
+        })
+      } else {
+        await creditApi.createLimite({
+          client: clientId,
+          montant_limite: montant,
+          mode_hold: modeHold,
+        })
+      }
       if (onDone) onDone()
-    } catch {
-      setError('Création impossible.')
+    } catch (err) {
+      setError(frenchError(
+        err, edition ? 'Modification impossible.' : 'Création impossible.'))
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -63,7 +101,7 @@ export default function DefinirLimiteWizard({ clientId, onDone }) {
 
       {step === 2 && (
         <div>
-          <h3>2. Limite suggérée (modifiable)</h3>
+          <h3>{edition ? '2. Limite actuelle (modifiable)' : '2. Limite suggérée (modifiable)'}</h3>
           <input
             type="number"
             step="any"
@@ -87,8 +125,8 @@ export default function DefinirLimiteWizard({ clientId, onDone }) {
             <option value="avertissement">Avertissement</option>
             <option value="blocage">Blocage</option>
           </select>
-          <button type="button" onClick={valider}>
-            Valider la limite
+          <button type="button" onClick={valider} disabled={busy}>
+            {edition ? 'Enregistrer la limite' : 'Valider la limite'}
           </button>
         </div>
       )}

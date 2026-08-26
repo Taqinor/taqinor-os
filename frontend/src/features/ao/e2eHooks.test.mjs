@@ -34,6 +34,37 @@ const DOC_PATH = join(HERE, 'E2E_HOOKS.md')
 // exprimer. Ordre : socle, puis un groupe par écran dans l'ordre des tâches,
 // alphabétique à l'intérieur de chaque groupe.
 export const ALL_HOOKS = [
+  // ── WIR205 — obstacles écartés/réintégrés + fermetures de l'atelier ──────
+  'data-ao-ecarte',
+  'data-ao-ecartement',
+  'data-ao-ecarter',
+  'data-ao-ecarter-confirmer',
+  'data-ao-fermeture-erreur',
+  'data-ao-obstacles-erreur',
+  'data-ao-reintegrer',
+  // ── WIR206 — barre de statut affaire/dossier + carte « Lead lié » ────────
+  'data-ao-barre-statut',
+  'data-ao-detacher-lead',
+  'data-ao-dossier-raisons',
+  'data-ao-dossier-statut',
+  'data-ao-dossier-statut-refus',
+  'data-ao-dossier-terminal',
+  'data-ao-dossier-transition',
+  'data-ao-lead',
+  'data-ao-lead-refus',
+  'data-ao-rattacher-lead',
+  'data-ao-statut-refus',
+  'data-ao-statut-terminal',
+  'data-ao-transition',
+  // ── WIR207 — régénération honnête, tranchage des questions, presets ──────
+  'data-ao-appliquer-preset',
+  'data-ao-preset-refus',
+  'data-ao-presets',
+  'data-ao-presets-vide',
+  'data-ao-regeneration-refus',
+  'data-ao-regenerer',
+  'data-ao-trancher',
+  'data-ao-trancher-valider',
   // ── PACT166/167/170 — atelier toiture + questions terrain ────────────────
   'data-ao-annotation-serie',
   'data-ao-note-question',

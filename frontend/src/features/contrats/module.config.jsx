@@ -19,11 +19,20 @@ import { appGlyph } from '../../lib/apps/appGlyph'
    NB : `/contrats` (ce module CLM) est DISTINCT de `/sav/contrats` (page de
    maintenance SAV) — deux modules séparés.
 
-   Accès gaté au palier responsable/admin (les mêmes rôles que le backend
-   `IsResponsableOrAdmin`).
+   WIR171 — l'accès n'était gaté QUE par le palier responsable/admin, sur la
+   foi d'un `IsResponsableOrAdmin` serveur qui n'a plus cours : depuis YRBAC3
+   le backend gate les contrats par `contrat_voir` / `contrat_gerer` via
+   `HasPermissionOrLegacy`. Un Commercial / Technicien / Viewer porte
+   `contrat_voir` tout en relevant du palier 'normal' : le serveur lui
+   répondait 200 pendant que la coquille le renvoyait en 403. Chaque entrée
+   déclare donc la permission de LECTURE + `permRepliPalier` (sémantique
+   serveur exacte, cf. `router/moduleGating.js`) ; le palier élargi ne sert
+   plus que de repli documentaire (comptes LÉGACY sans rôle fin).
    ========================================================================== */
 
-const ROLES = ['responsable', 'admin']
+const ROLES = ['normal', 'responsable', 'admin']
+// WIR171 — gate commun à toutes les entrées/routes du module (étalé par `...`).
+const GATE = { roles: ROLES, perm: 'contrat_voir', permRepliPalier: true }
 
 const ContratsList = lazy(() => import('./ContratsList'))
 const ContratDetail = lazy(() => import('./ContratDetail'))
@@ -60,15 +69,15 @@ export default {
     icon: appGlyph(FileSignature),
     accent: 'lune', // VX8 — documentaire/juridique = accent lune (dérivé)
     items: [
-      { to: '/contrats/tableau-de-bord', label: 'Tableau de bord', icon: LD, roles: ROLES },
-      { to: '/contrats', label: 'Contrats', icon: FS, roles: ROLES },
-      { to: '/contrats/location', label: 'Location matériel', icon: PO, roles: ROLES },
-      { to: '/contrats/modeles', label: 'Modèles & clauses', icon: LB, roles: ROLES },
-      { to: '/contrats/echeances', label: 'Échéances & alertes', icon: BR, roles: ROLES },
-      { to: '/contrats/finances', label: 'Finances', icon: WL, roles: ROLES },
-      { to: '/contrats/abonnements', label: 'Abonnements', icon: CC, roles: ROLES },
-      { to: '/contrats/relances-impayes', label: 'Relances impayés', icon: BR, roles: ROLES },
-      { to: '/contrats/config-location', label: 'Réglages location', icon: PO, roles: ROLES },
+      { to: '/contrats/tableau-de-bord', label: 'Tableau de bord', icon: LD, ...GATE },
+      { to: '/contrats', label: 'Contrats', icon: FS, ...GATE },
+      { to: '/contrats/location', label: 'Location matériel', icon: PO, ...GATE },
+      { to: '/contrats/modeles', label: 'Modèles & clauses', icon: LB, ...GATE },
+      { to: '/contrats/echeances', label: 'Échéances & alertes', icon: BR, ...GATE },
+      { to: '/contrats/finances', label: 'Finances', icon: WL, ...GATE },
+      { to: '/contrats/abonnements', label: 'Abonnements', icon: CC, ...GATE },
+      { to: '/contrats/relances-impayes', label: 'Relances impayés', icon: BR, ...GATE },
+      { to: '/contrats/config-location', label: 'Réglages location', icon: PO, ...GATE },
     ],
   },
   // routes.meta : du plus spécifique au plus général.
@@ -85,15 +94,15 @@ export default {
   ],
   sectionLabels: { contrats: 'Contrats' },
   routes: [
-    { path: '/contrats/tableau-de-bord', component: DashboardPage, roles: ROLES },
-    { path: '/contrats', component: ContratsList, roles: ROLES },
-    { path: '/contrats/location', component: LocationPage, roles: ROLES },
-    { path: '/contrats/config-location', component: ConfigLocationPage, roles: ROLES },
-    { path: '/contrats/modeles', component: ModelesPage, roles: ROLES },
-    { path: '/contrats/echeances', component: EcheancesPage, roles: ROLES },
-    { path: '/contrats/finances', component: FinancesPage, roles: ROLES },
-    { path: '/contrats/abonnements', component: AbonnementsPage, roles: ROLES },
-    { path: '/contrats/relances-impayes', component: DunningPage, roles: ROLES },
-    { path: '/contrats/:id', component: ContratDetail, roles: ROLES },
+    { path: '/contrats/tableau-de-bord', component: DashboardPage, ...GATE },
+    { path: '/contrats', component: ContratsList, ...GATE },
+    { path: '/contrats/location', component: LocationPage, ...GATE },
+    { path: '/contrats/config-location', component: ConfigLocationPage, ...GATE },
+    { path: '/contrats/modeles', component: ModelesPage, ...GATE },
+    { path: '/contrats/echeances', component: EcheancesPage, ...GATE },
+    { path: '/contrats/finances', component: FinancesPage, ...GATE },
+    { path: '/contrats/abonnements', component: AbonnementsPage, ...GATE },
+    { path: '/contrats/relances-impayes', component: DunningPage, ...GATE },
+    { path: '/contrats/:id', component: ContratDetail, ...GATE },
   ],
 }

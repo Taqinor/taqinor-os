@@ -29,6 +29,12 @@ const contratsApi = {
   getCohortesRetention: () =>
     api.get('/contrats/contrats/cohortes-retention/'),
   getClv: (params) => api.get('/contrats/contrats/clv/', { params }),
+  // NTSUB12/WIR252 — métriques SaaS investisseur (ARR bridge, Quick Ratio,
+  // Rule of 40). `params` : { debut?, fin? } (AAAA-MM-JJ, défaut serveur :
+  // mois courant). `quick_ratio`/`rule_of_40` peuvent être `null` (division
+  // par zéro gardée) ; 400 si `debut` postérieur à `fin`.
+  getMetriquesSaas: (params) =>
+    api.get('/contrats/contrats/metriques-saas/', { params }),
   campagneRevision: (data) =>
     api.post('/contrats/contrats/campagne-revision/', data),
   campagneRevisionRollback: (data) =>
@@ -304,6 +310,19 @@ const contratsApi = {
   // Génération d'un devis de renouvellement — CONTRAT23.
   genererDevisRenouvellement: (id, data) =>
     api.post(`/contrats/contrats/${id}/generer-devis-renouvellement/`, data ?? {}),
+
+  /* ---------------- Abonnements (PACT138) — import/export CSV/xlsx ---------------- */
+  // NTSUB31 — Import CSV en masse de compteurs d'usage. `data` :
+  // { contenu, apercu?, ecraser? }. GARDE-FOU « écrasement » : `apercu:true`
+  // rejoue le rapprochement SANS RIEN ÉCRIRE ; sans `ecraser:true` un relevé
+  // déjà saisi n'est jamais remplacé (repart dans `refuses`, jamais avalé
+  // en silence).
+  importerCompteursUsageCsv: (data) =>
+    api.post('/contrats/compteurs-usage/import-csv/', data),
+  // NTSUB21 — Export .xlsx du catalogue d'abonnement (plans/add-ons/paliers,
+  // un onglet par catalogue). Lecture seule.
+  exportCatalogueAbonnement: () =>
+    api.get('/contrats/plans-abonnement/export/', { responseType: 'blob' }),
 }
 
 /* ============================================================================

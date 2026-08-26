@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Megaphone, Plus, Copy, LineChart, Rocket } from 'lucide-react'
+import {
+  Megaphone, Plus, Copy, LineChart, Rocket, Pencil, Square, History,
+} from 'lucide-react'
 import innovationApi from '../../api/innovationApi'
 import {
   Badge, Button, Card, DataTable, EmptyState, IconButton,
@@ -7,6 +9,7 @@ import {
   Spinner, Textarea, toast,
 } from '../../ui'
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
+import ChatterTimeline from '../../components/ChatterTimeline'
 import { formatDate } from '../../lib/format'
 
 /* ============================================================================
@@ -24,9 +27,33 @@ import { formatDate } from '../../lib/format'
 const STATUT_TONE = { brouillon: 'neutral', active: 'success', fermee: 'warning' }
 
 const EMPTY_FORM = {
+  id: null,
   nom: '', description: '', segment: [], date_debut: '', date_fin: '',
   message_incitation: '', tag_auto: '',
 }
+
+/* WIR213 — le formulaire re-rempli depuis la campagne SERVEUR. Les champs
+   absents retombent sur du vide, jamais sur la valeur d'une campagne
+   précédemment ouverte : un dialogue qui garde l'état du tour d'avant écrase
+   la campagne suivante avec des données qui ne sont pas les siennes. */
+const formDepuisCampagne = (c) => ({
+  id: c.id,
+  nom: c.nom ?? '',
+  description: c.description ?? '',
+  segment: c.segment ?? [],
+  date_debut: c.date_debut ?? '',
+  date_fin: c.date_fin ?? '',
+  message_incitation: c.message_incitation ?? '',
+  tag_auto: c.tag_auto ?? '',
+})
+
+// Un pourcentage SERVEUR (`taux_realisation`, `taux_conversion`) est un ratio
+// 0..1 : on le met en forme, on ne le recalcule pas. Absent ⇒ « — », jamais 0 %.
+const pourcentage = (ratio) =>
+  (Number.isFinite(ratio) ? `${Math.round(ratio * 100)} %` : '—')
+
+// Un compteur SERVEUR absent n'est pas un zéro.
+const compteur = (v) => (Number.isFinite(v) ? v : '—')
 
 export default function CampagnesInnovationPage() {
   const [campagnes, setCampagnes] = useState([])
@@ -41,20 +68,40 @@ export default function CampagnesInnovationPage() {
   const [loadingRapport, setLoadingRapport] = useState(false)
   const [busyId, setBusyId] = useState(null)
 
-  const reload = () => innovationApi.campagnes.list()
-    .then((r) => setCampagnes(r.data?.results ?? r.data ?? []))
-    .catch(() => setCampagnes([]))
+  // WIR213 — les tuiles du tableau de bord (NTIDE34) : agrégat SERVEUR, aucun
+  // compte refait sur la liste chargée (deux écrans afficheraient deux
+  // chiffres différents le jour où la liste est paginée).
+  const [tableauBord, setTableauBord] = useState(null)
+
+  // WIR213 — l'onglet « Activité » : chatter générique de la campagne
+  // (NTIDE33). `entries` vient TOUJOURS du serveur — y compris après l'ajout
+  // d'une note, dont la réponse est le fil rechargé.
+  const [activite, setActivite] = useState(null) // { campagne, entries } | null
+  const [noteBody, setNoteBody] = useState('')
+  const [envoiNote, setEnvoiNote] = useState(false)
+
+  const reload = () => Promise.all([
+    innovationApi.campagnes.list(),
+    innovationApi.campagnes.tableauBord(),
+  ])
+    .then(([c, t]) => {
+      setCampagnes(c.data?.results ?? c.data ?? [])
+      setTableauBord(t.data ?? null)
+    })
+    .catch(() => {})
 
   useEffect(() => {
     let active = true
     Promise.all([
       innovationApi.campagnes.list(),
       innovationApi.campagnes.segmentsDisponibles(),
+      innovationApi.campagnes.tableauBord(),
     ])
-      .then(([c, s]) => {
+      .then(([c, s, t]) => {
         if (!active) return
         setCampagnes(c.data?.results ?? c.data ?? [])
         setSegments(s.data?.results ?? [])
+        setTableauBord(t.data ?? null)
       })
       .catch(() => {})
       .finally(() => { if (active) setLoading(false) })
@@ -71,12 +118,23 @@ export default function CampagnesInnovationPage() {
     setDialogOpen(true)
   }
 
+  /* WIR213 — ÉDITION d'un brouillon. Une campagne se créait puis restait
+     figée : ni le segment, ni le message d'incitation, ni les dates ne
+     pouvaient être corrigés avant le lancement, alors que ce sont exactement
+     les champs qu'on ajuste juste avant de partir. L'édition est réservée au
+     BROUILLON : une campagne active a déjà notifié son segment, on ne réécrit
+     pas son message dans le dos des destinataires (cloner sert à ça). */
+  const openEdit = (campagne) => {
+    setForm(formDepuisCampagne(campagne))
+    setDialogOpen(true)
+  }
+
   const setField = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
 
   const submit = (e) => {
     e.preventDefault()
     setSaving(true)
-    innovationApi.campagnes.create({
+    const corps = {
       nom: form.nom,
       description: form.description,
       segment: form.segment,
@@ -85,13 +143,21 @@ export default function CampagnesInnovationPage() {
       date_fin: form.date_fin || undefined,
       message_incitation: form.message_incitation,
       tag_auto: form.tag_auto,
-    })
+    }
+    const enEdition = form.id != null
+    const promesse = enEdition
+      ? innovationApi.campagnes.update(form.id, corps)
+      : innovationApi.campagnes.create(corps)
+    promesse
       .then(() => {
-        toast.success('Campagne créée.')
+        toast.success(enEdition ? 'Campagne mise à jour.' : 'Campagne créée.')
         setDialogOpen(false)
         reload()
       })
-      .catch((err) => toast.error(err?.response?.data?.detail ?? 'Création impossible.'))
+      .catch((err) => toast.error(
+        err?.response?.data?.detail
+        ?? (enEdition ? 'Mise à jour impossible.' : 'Création impossible.'),
+      ))
       .finally(() => setSaving(false))
   }
 
@@ -115,6 +181,55 @@ export default function CampagnesInnovationPage() {
       .then(() => { toast.success('Campagne lancée.'); reload() })
       .catch(() => toast.error('Lancement impossible.'))
       .finally(() => setBusyId(null))
+  }
+
+  /* WIR213 — FERMETURE : active → fermée. Sans elle, une campagne restait
+     active À VIE — son bandeau d'incitation s'affichait encore longtemps après
+     la fin de l'opération, et le tableau de bord comptait des « actives » qui
+     ne l'étaient plus. Même geste que le lancement : un PATCH du statut, le
+     seul chemin que le sérialiseur expose. */
+  const fermer = (campagne) => {
+    setBusyId(campagne.id)
+    innovationApi.campagnes.update(campagne.id, { statut: 'fermee' })
+      .then(() => { toast.success('Campagne fermée.'); reload() })
+      .catch((err) => toast.error(
+        err?.response?.data?.detail ?? 'Fermeture impossible.'))
+      .finally(() => setBusyId(null))
+  }
+
+  /* WIR213 — ACTIVITÉ : le chatter générique de la campagne (NTIDE33). Le
+     journal AUTOMATIQUE des changements de statut y vit déjà côté serveur
+     (`services.log_campagne_changes`) — il n'était simplement affiché nulle
+     part, si bien qu'on ne pouvait pas savoir qui avait lancé ou fermé une
+     campagne, ni quand. */
+  const voirActivite = (campagne) => {
+    setNoteBody('')
+    setActivite({ campagne, entries: null })
+    innovationApi.campagnes.historique(campagne.id)
+      .then((r) => setActivite({ campagne, entries: r.data?.results ?? r.data ?? [] }))
+      .catch(() => {
+        toast.error('Historique indisponible.')
+        setActivite(null)
+      })
+  }
+
+  // La note ajoutée n'est PAS poussée dans l'état local : l'action serveur
+  // renvoie le fil RECHARGÉ, et c'est lui qu'on rend. Un ajout optimiste
+  // afficherait une note que le serveur pourrait avoir refusée.
+  const noter = () => {
+    const body = noteBody.trim()
+    if (!body || !activite?.campagne) return
+    setEnvoiNote(true)
+    innovationApi.campagnes.noter(activite.campagne.id, body)
+      .then((r) => {
+        setActivite((a) => (a ? {
+          ...a, entries: r.data?.results ?? r.data ?? [],
+        } : a))
+        setNoteBody('')
+      })
+      .catch((err) => toast.error(
+        err?.response?.data?.body ?? err?.response?.data?.detail ?? 'Note non enregistrée.'))
+      .finally(() => setEnvoiNote(false))
   }
 
   const cloner = (campagne) => {
@@ -144,15 +259,31 @@ export default function CampagnesInnovationPage() {
         : '—'),
     },
     {
-      id: 'actions', header: '', width: 160, align: 'right',
+      id: 'actions', header: '', width: 240, align: 'right',
       accessor: () => '',
       cell: (v, r) => (
         <span className="flex items-center justify-end gap-1">
+          {/* Le BROUILLON s'édite et se lance ; l'ACTIVE se ferme. Une
+              campagne fermée ne garde que la lecture (rapport, activité) et
+              le clonage — on ne réécrit pas une opération terminée. */}
+          {r.statut === 'brouillon' && (
+            <IconButton variant="ghost" label="Modifier" disabled={busyId === r.id} onClick={() => openEdit(r)}>
+              <Pencil />
+            </IconButton>
+          )}
           {r.statut === 'brouillon' && (
             <IconButton variant="ghost" label="Lancer" disabled={busyId === r.id} onClick={() => lancer(r)}>
               <Rocket />
             </IconButton>
           )}
+          {r.statut === 'active' && (
+            <IconButton variant="ghost" label="Fermer la campagne" disabled={busyId === r.id} onClick={() => fermer(r)}>
+              <Square />
+            </IconButton>
+          )}
+          <IconButton variant="ghost" label="Activité" onClick={() => voirActivite(r)}>
+            <History />
+          </IconButton>
           <IconButton variant="ghost" label="Rapport" onClick={() => voirRapport(r)}>
             <LineChart />
           </IconButton>
@@ -177,6 +308,51 @@ export default function CampagnesInnovationPage() {
         </div>
       </div>
 
+      {/* ── WIR213 — Tuiles du tableau de bord (NTIDE34) ────────────────────
+          Agrégat SERVEUR (`campagnes/tableau-bord/`) : rien n'est recompté sur
+          la liste ci-dessous — elle est paginée, un compte local mentirait dès
+          la deuxième page. */}
+      {tableauBord && (
+        <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4" data-campagnes-tableau-bord="">
+          <Card className="p-3" data-campagnes-tuile="actives">
+            <div className="text-xs text-muted-foreground">Actives</div>
+            <div className="text-lg font-semibold tabular-nums">{compteur(tableauBord.actives)}</div>
+          </Card>
+          <Card className="p-3" data-campagnes-tuile="brouillons">
+            <div className="text-xs text-muted-foreground">Brouillons</div>
+            <div className="text-lg font-semibold tabular-nums">{compteur(tableauBord.brouillons)}</div>
+          </Card>
+          <Card className="p-3" data-campagnes-tuile="fermees">
+            <div className="text-xs text-muted-foreground">Fermées</div>
+            <div className="text-lg font-semibold tabular-nums">{compteur(tableauBord.fermees)}</div>
+          </Card>
+          <Card className="p-3" data-campagnes-tuile="taux_realisation">
+            <div className="text-xs text-muted-foreground">Idées réalisées</div>
+            <div className="text-lg font-semibold tabular-nums">
+              {pourcentage(tableauBord.taux_realisation)}
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {tableauBord?.top_campagnes?.length > 0 && (
+        <Card className="mb-4 flex flex-col gap-1.5 p-3" data-campagnes-top="">
+          <h2 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Campagnes les plus productives
+          </h2>
+          <ul className="flex flex-col gap-1">
+            {tableauBord.top_campagnes.map((c) => (
+              <li key={c.id} className="flex items-center justify-between gap-2 text-sm">
+                <span className="truncate">{c.nom}</span>
+                <span className="tabular-nums text-muted-foreground">
+                  {compteur(c.nb_idees_proposees)} idée(s)
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
       <div className="mb-4 flex justify-end">
         <Button onClick={openCreate}><Plus /> Nouvelle campagne</Button>
       </div>
@@ -200,8 +376,12 @@ export default function CampagnesInnovationPage() {
         />
       )}
 
-      {/* ── Dialogue création ── */}
-      <ResponsiveDialog open={dialogOpen} onOpenChange={setDialogOpen} title="Nouvelle campagne innovation">
+      {/* ── Dialogue création / édition d'un brouillon ── */}
+      <ResponsiveDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        title={form.id != null ? 'Modifier la campagne (brouillon)' : 'Nouvelle campagne innovation'}
+      >
         <form onSubmit={submit} noValidate className="flex flex-col gap-3">
           <div>
             <Label htmlFor="camp-nom">Nom</Label>
@@ -241,9 +421,54 @@ export default function CampagnesInnovationPage() {
           </div>
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Annuler</Button>
-            <Button type="submit" loading={saving} disabled={!form.nom.trim()}>Créer (brouillon)</Button>
+            <Button type="submit" loading={saving} disabled={!form.nom.trim()}>
+              {form.id != null ? 'Enregistrer' : 'Créer (brouillon)'}
+            </Button>
           </div>
         </form>
+      </ResponsiveDialog>
+
+      {/* ── WIR213 — Dialogue « Activité » : chatter de la campagne (NTIDE33) ──
+          Le journal automatique des changements de statut (qui a lancé, qui a
+          fermé, quand) vivait déjà côté serveur et n'était affiché nulle
+          part. */}
+      <ResponsiveDialog
+        open={!!activite}
+        onOpenChange={(o) => { if (!o) setActivite(null) }}
+        title={activite ? `Activité — ${activite.campagne.nom}` : 'Activité'}
+      >
+        <div className="flex flex-col gap-3" data-campagne-activite={activite?.campagne?.id ?? ''}>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="camp-note">Ajouter une note</Label>
+            <Textarea
+              id="camp-note"
+              rows={2}
+              value={noteBody}
+              onChange={(e) => setNoteBody(e.target.value)}
+              placeholder="Ce que vous voulez retrouver dans six mois."
+            />
+            <Button
+              type="button"
+              size="sm"
+              className="self-end"
+              loading={envoiNote}
+              disabled={envoiNote || !noteBody.trim()}
+              onClick={noter}
+            >
+              Noter
+            </Button>
+          </div>
+          {activite?.entries == null ? (
+            <p className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
+              <Spinner /> Chargement…
+            </p>
+          ) : (
+            <ChatterTimeline
+              entries={activite.entries}
+              emptyLabel="Aucune activité sur cette campagne pour le moment."
+            />
+          )}
+        </div>
       </ResponsiveDialog>
 
       {/* ── Dialogue rapport ── */}

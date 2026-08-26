@@ -26,7 +26,7 @@ import RouteErrorBoundary from '../components/RouteErrorBoundary'
 import { useEntiteActive } from '../lib/entiteActive'
 import { buildModuleRoutes } from './moduleRoutes'
 // ODX6 — source unique des modules désactivés (état /auth/me/ → store).
-import { isModuleDisabled } from './moduleGating'
+import { isModuleDisabled, estAutoriseEntree } from './moduleGating'
 // ODY3 — résolution de l'atterrissage (préférence VX46 → dernier module VX11 →
 // mono-app → Menu d'accueil `/apps`), partagée avec Login.jsx.
 import { resolveLandingFromAuth } from '../lib/apps/landing'
@@ -78,6 +78,14 @@ const EquipementSignalerPage = lazy(() => import('../pages/sav/EquipementSignale
 const TicketSuiviPage = lazy(() => import('../pages/sav/TicketSuiviPage'))
 // XKB19 — page publique de consultation d'un article KB partagé (lien tokenisé).
 const PublicArticlePage = lazy(() => import('../pages/kb/PublicArticlePage'))
+// WIR214 — page publique de signalement chantier QHSE via QR (lien tokenisé).
+const SignalementPublicPage = lazy(() => import('../pages/qhse/SignalementPublicPage'))
+// WIR215 — page publique de réponse fournisseur à une RFQ (lien tokenisé).
+const RfqReponsePubliquePage = lazy(() => import('../pages/installations/RfqReponsePubliquePage'))
+// WIR264 — pages publiques d'intervention (suivi « en route » ZFSM/XFSM7 et
+// compte-rendu signé ZFSM2), chacune sur son propre jeton.
+const InterventionSuiviPublicPage = lazy(() => import('../pages/installations/InterventionSuiviPublicPage'))
+const InterventionRapportPublicPage = lazy(() => import('../pages/installations/InterventionRapportPublicPage'))
 const ChatPage = lazy(() => import('../pages/messaging/ChatPage'))
 const DocumentsPage = lazy(() => import('../pages/ged/DocumentsPage'))
 // VX78 — Écran 404 déjà construit (ui/NotFound.jsx), jusqu'ici jamais importé
@@ -88,11 +96,16 @@ const NotFound = lazy(() => import('../ui/NotFound'))
 const Forbidden = lazy(() => import('../ui/Forbidden'))
 // VX247(d) — glossaire métier statique (les HelpTip VX47 y pointent).
 const LexiquePage = lazy(() => import('../pages/aide/LexiquePage'))
+// WIR177 — écran DESTINATAIRE des annonces internes (XKB5/XKB6). Atteint
+// depuis les notifications « annonce publiée » et « relance de lecture », dont
+// le lien porte désormais `/annonces?annonce=<pk>`.
+const AnnoncesPage = lazy(() => import('../features/notifications/AnnoncesPage'))
 // NTPRT8 — shell + écrans du PORTAIL CLIENT authentifié (hors shell ERP).
 const PortalClientLayout = lazy(() => import('../features/portail/client/PortalClientLayout'))
 const PortailClientAccueil = lazy(() => import('../features/portail/client/PortailClientAccueil'))
 const PortailClientDevis = lazy(() => import('../features/portail/client/PortailClientDevis'))
 const PortailClientFactures = lazy(() => import('../features/portail/client/PortailClientFactures'))
+const PortailClientLivraisons = lazy(() => import('../features/portail/client/PortailClientLivraisons'))
 // NTPRT20 — shell + tableau de bord du PORTAIL FOURNISSEUR.
 const PortalFournisseurLayout = lazy(() => import('../features/portail/fournisseur/PortalFournisseurLayout'))
 const PortailFournisseurAccueil = lazy(() => import('../features/portail/fournisseur/PortailFournisseurAccueil'))
@@ -204,7 +217,13 @@ const notFoundLoader = async () => {
 // qu'elle est présente dans les permissions de l'utilisateur.
 // VX131(c) — un refus rebondissait en SILENCE vers `/dashboard` (aucun écran
 // dédié, aucune explication) : redirige désormais vers `/403` (ui/Forbidden.jsx).
-const roleLoader = (roles, perm) => async ({ request }) => {
+// WIR171 — `permRepliPalier` (3e argument, transmis par `buildModuleRoutes`
+// depuis la route du module.config) sélectionne la sémantique serveur :
+// `HasPermissionOrLegacy` (permission seule pour un rôle fin, repli palier
+// responsable/admin pour un compte légacy) au lieu du ET strict par défaut.
+// La règle elle-même vit dans `moduleGating.estAutoriseEntree` — source
+// UNIQUE partagée avec la Sidebar, la BottomTabBar et le lanceur d'apps.
+const roleLoader = (roles, perm, permRepliPalier) => async ({ request }) => {
   const user = await ensurePortalScope()
   if (!user) return buildLoginRedirect(request)
   // NTPRT8 — un compte portail externe ne franchit jamais une route interne,
@@ -213,7 +232,7 @@ const roleLoader = (roles, perm) => async ({ request }) => {
   if (versPortail) return versPortail
   const { role, permissions } = store.getState().auth
   const tier = role || 'normal'
-  const allowed = roles.includes(tier) && (!perm || (permissions || []).includes(perm))
+  const allowed = estAutoriseEntree({ roles, perm, permRepliPalier }, tier, permissions)
   return allowed ? null : redirect('/403')
 }
 
@@ -360,6 +379,16 @@ const router = createBrowserRouter([
   { path: '/dashboards-tv', loader: authLoader, element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><DashboardsTvPage /></Suspense></RouteErrorBoundary> },
   // XKB19 — consultation publique d'un article KB partagé (sans login, sans layout ERP).
   { path: '/kb/public/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><PublicArticlePage /></Suspense></RouteErrorBoundary> },
+  // WIR214 — signalement chantier QHSE via QR (sans login, sans layout ERP).
+  { path: '/qhse/signalement/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><SignalementPublicPage /></Suspense></RouteErrorBoundary> },
+  // WIR215/XPUR21 — réponse fournisseur à une demande de prix (sans login,
+  // sans layout ERP) : la destination HUMAINE du lien email/WhatsApp, qui
+  // pointait jusqu'ici vers l'endpoint JSON.
+  { path: '/rfq/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><RfqReponsePubliquePage /></Suspense></RouteErrorBoundary> },
+  // WIR264/XFSM7 — suivi public « technicien en route » (sans login).
+  { path: '/intervention/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><InterventionSuiviPublicPage /></Suspense></RouteErrorBoundary> },
+  // WIR264/ZFSM2 — compte-rendu d'intervention signé, jeton DISTINCT.
+  { path: '/intervention-rapport/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><InterventionRapportPublicPage /></Suspense></RouteErrorBoundary> },
 
   // NTPRT8 — PORTAIL CLIENT authentifié. Shell dédié (jamais le shell ERP) ;
   // `portalLoader` exige la portée EXACTE `portail_client` et renvoie tout
@@ -380,6 +409,13 @@ const router = createBrowserRouter([
     path: '/portail/client/factures',
     loader: portalLoader(PORTEE_CLIENT),
     element: <WithPortal shell={PortalClientLayout}><PortailClientFactures /></WithPortal>,
+  },
+  // WIR216 — « Mes livraisons » : le lien de l'email de livraison (FG228/
+  // XSTK22) pointait vers une section inexistante (404 systématique).
+  {
+    path: '/portail/client/livraisons',
+    loader: portalLoader(PORTEE_CLIENT),
+    element: <WithPortal shell={PortalClientLayout}><PortailClientLivraisons /></WithPortal>,
   },
   // NTPRT20 — PORTAIL FOURNISSEUR : garde SYMÉTRIQUE (portée exacte
   // `portail_fournisseur`), shell dédié, jamais la coquille ERP.
@@ -410,6 +446,9 @@ const router = createBrowserRouter([
   { path: '/messages', loader: authLoader, element: <WithLayout><ChatPage /></WithLayout> },
   // VX247(d) — glossaire métier (les HelpTip VX47 y pointent au lieu de dupliquer).
   { path: '/aide/lexique', loader: authLoader, element: <WithLayout><LexiquePage /></WithLayout> },
+  // WIR177 — annonces internes reçues (`?annonce=<pk>` déplie celle visée).
+  // contextuelle: atteinte depuis la cloche de notifications (annonce publiée / relance de lecture), pas depuis le menu
+  { path: '/annonces', loader: authLoader, element: <WithLayout><AnnoncesPage /></WithLayout> },
 
   // Stock — migré vers frontend/src/features/stock/module.config.jsx (ARC48).
 

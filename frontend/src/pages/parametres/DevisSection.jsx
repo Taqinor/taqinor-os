@@ -1,17 +1,71 @@
 // Onglet « Devis & Factures » de la page Paramètres (échéancier, validité,
 // pompage, numérotation, commission, TVA/Taxes). Restylé sur le système de
 // design (@/ui) ; champs, libellés et comportement identiques.
+import { useEffect, useState } from 'react'
+import { useSelector } from 'react-redux'
 import {
-  Card, CardContent, Input, Label, Switch,
+  Button, Card, CardContent, Input, Label, Switch,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+  toast,
 } from '../../ui'
+import ventesApi from '../../api/ventesApi'
 import { SectionTitle, Field } from './peComponents'
 import { MODE_LABELS, DOC_TYPES } from './peConstants'
+
+/* WIR225/QG9 — Le « % de variation par défaut » des variantes de devis vivait
+   sur `CompanyProfile.variante_pct` et n'était réglable NULLE PART : le seul
+   moyen de le changer était l'override ponctuel de la modale « Créer des
+   variantes », qui repart de la valeur société à chaque ouverture. Il se règle
+   ici, via `get/setVarianteConfig` — un endpoint DISTINCT du profil société,
+   d'où son état local et son bouton d'enregistrement propres.
+
+   Le serveur réserve l'ÉCRITURE au Directeur et au Commercial responsable
+   (403 sinon) ; l'écran reflète la MÊME règle plutôt que de laisser partir une
+   requête vouée au refus. La LECTURE reste ouverte à tous. */
+const ROLES_VARIANTE_PCT = ['Directeur', 'Commercial responsable']
 
 export default function DevisSection({
   form, set, setForm, setPT, setPrefix, setNumbering, numberingPreview,
   canManageSensitive = false,
 }) {
+  const roleNom = useSelector(s => s.auth?.role_nom) || ''
+  const peutReglerVariante = canManageSensitive
+    || ROLES_VARIANTE_PCT.includes(roleNom)
+
+  const [variantePct, setVariantePct] = useState('')
+  const [variantePctSaving, setVariantePctSaving] = useState(false)
+
+  useEffect(() => {
+    let vivant = true
+    ventesApi.getVarianteConfig()
+      .then((r) => {
+        if (!vivant) return
+        const pct = r?.data?.variante_pct
+        if (pct == null) return
+        // Le serveur renvoie une chaîne décimale (« 20.00 ») — on l'arrondit,
+        // comme la modale de création.
+        const n = Math.round(parseFloat(pct))
+        if (Number.isFinite(n)) setVariantePct(String(n))
+      })
+      .catch(() => { /* silencieux : le champ reste vide, rien n'est cassé */ })
+    return () => { vivant = false }
+  }, [])
+
+  const enregistrerVariantePct = async () => {
+    setVariantePctSaving(true)
+    try {
+      await ventesApi.setVarianteConfig(variantePct)
+      toast.success('Pourcentage de variation enregistré.')
+    } catch (err) {
+      // Le serveur nomme la cause (403 de rôle, bornes 0–100) : on l'affiche
+      // tel quel plutôt qu'un message maison qui la masquerait.
+      toast.error(err?.response?.data?.detail
+        ?? 'Enregistrement du pourcentage impossible.')
+    } finally {
+      setVariantePctSaving(false)
+    }
+  }
+
   return (
     <>
       {/* Devis — échéancier, validité, pompage, numérotation */}
@@ -37,6 +91,32 @@ export default function DevisSection({
               </div>
             </div>
           ))}
+          {/* WIR225/QG9 — % de variation par défaut des variantes de devis. */}
+          <div className="pe-grid-2 mt-2.5">
+            <Field label="% de variation par défaut des variantes"
+                   htmlFor="pe-variante-pct">
+              <div className="flex items-center gap-2">
+                <Input id="pe-variante-pct" type="number" step="any" min="0" max="100"
+                       value={variantePct}
+                       readOnly={!peutReglerVariante}
+                       aria-readonly={!peutReglerVariante}
+                       onChange={e => setVariantePct(e.target.value)} />
+                {peutReglerVariante && (
+                  <Button type="button" size="sm" variant="outline"
+                          loading={variantePctSaving}
+                          onClick={enregistrerVariantePct}>
+                    Enregistrer
+                  </Button>
+                )}
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Les trois variantes générées sont réduite (−p %), standard et
+                augmentée (+p %). La modale de création part de cette valeur.
+                {!peutReglerVariante
+                  && ' Réservé au Directeur et au Commercial responsable.'}
+              </p>
+            </Field>
+          </div>
           <div className="pe-grid-2 mt-2.5">
             <Field label="Validité du devis (jours)" htmlFor="pe-validity">
               <Input id="pe-validity" type="number" step="any" name="quote_validity_days"

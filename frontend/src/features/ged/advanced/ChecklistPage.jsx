@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  Plus, Trash2, Bell, CheckCircle2, Stamp, ClipboardList,
+  Plus, Trash2, Bell, CheckCircle2, Stamp, ClipboardList, Loader2, Download,
 } from 'lucide-react'
 import { ListShell } from '../../../ui/module'
 import {
@@ -11,6 +11,7 @@ import {
 } from '../../../ui'
 import { formatDateTime, formatNumber } from '../../../lib/format'
 import gedApi from '../../../api/gedApi'
+import { downloadBlobInGesture, filenameFromResponse } from '../../../utils/downloadBlob'
 import { errMessage } from './shared.js'
 
 /* ============================================================================
@@ -516,6 +517,10 @@ function ApposerDialog({ documents, stamps, onClose, onDone }) {
   const [documentId, setDocumentId] = useState('')
   const [stamp, setStamp] = useState('')
   const [saving, setSaving] = useState(false)
+  // XGED16/WIR249 — version tamponnée : le bouton d'export PDF annoté
+  // n'apparaît qu'APRÈS une apposition réussie (le dialogue reste ouvert).
+  const [annotatedVersionId, setAnnotatedVersionId] = useState(null)
+  const [exporting, setExporting] = useState(false)
 
   const submit = async () => {
     if (!documentId) { toast.error('Sélectionnez un document.'); return }
@@ -532,8 +537,20 @@ function ApposerDialog({ documents, stamps, onClose, onDone }) {
         page: 0, x: 10, y: 10, contenu: stamp,
       })
       toast.success('Tampon apposé.')
-      onDone()
+      setAnnotatedVersionId(derniere.id)
     } catch (err) { toast.error(errMessage(err)) } finally { setSaving(false) }
+  }
+
+  // XGED16/WIR249 — exporte le PDF annoté APLATI (nouveau fichier séparé).
+  // Sans PyMuPDF côté serveur : 400 explicite, affiché tel quel — jamais un
+  // fichier vide ou un contenu inventé côté client.
+  const exportAnnote = () => {
+    const pending = downloadBlobInGesture()
+    setExporting(true)
+    gedApi.exportPdfAnnote(annotatedVersionId)
+      .then((res) => pending.deliver(res.data, filenameFromResponse(res, 'document-annote.pdf')))
+      .catch((err) => toast.error(errMessage(err, 'Export impossible (PyMuPDF requis côté serveur).')))
+      .finally(() => setExporting(false))
   }
 
   return (
@@ -543,7 +560,7 @@ function ApposerDialog({ documents, stamps, onClose, onDone }) {
         <div className="flex flex-col gap-3">
           <div>
             <Label>Document</Label>
-            <Select value={documentId} onValueChange={setDocumentId}>
+            <Select value={documentId} onValueChange={setDocumentId} disabled={!!annotatedVersionId}>
               <SelectTrigger aria-label="Choisir un document">
                 <SelectValue placeholder="Choisir un document…" />
               </SelectTrigger>
@@ -554,7 +571,7 @@ function ApposerDialog({ documents, stamps, onClose, onDone }) {
           </div>
           <div>
             <Label>Tampon</Label>
-            <Select value={stamp} onValueChange={setStamp}>
+            <Select value={stamp} onValueChange={setStamp} disabled={!!annotatedVersionId}>
               <SelectTrigger aria-label="Choisir un tampon">
                 <SelectValue placeholder="Choisir un tampon…" />
               </SelectTrigger>
@@ -567,10 +584,29 @@ function ApposerDialog({ documents, stamps, onClose, onDone }) {
             Posé sur la dernière version, en haut à gauche de la première page —
             une couche séparée (l’original n’est jamais modifié).
           </p>
+          {annotatedVersionId && (
+            <div className="rounded-md border border-border p-2 text-sm">
+              <p className="mb-2 text-muted-foreground">
+                Tampon apposé — le PDF annoté peut être exporté.
+              </p>
+              <Button variant="outline" onClick={exportAnnote} disabled={exporting}>
+                {exporting
+                  ? <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                  : <Download className="size-4" aria-hidden="true" />}
+                Télécharger le PDF annoté
+              </Button>
+            </div>
+          )}
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Annuler</Button>
-          <Button onClick={submit} disabled={saving}>{saving ? 'Apposition…' : 'Apposer'}</Button>
+          {annotatedVersionId ? (
+            <Button onClick={onDone}>Terminé</Button>
+          ) : (
+            <>
+              <Button variant="outline" onClick={onClose}>Annuler</Button>
+              <Button onClick={submit} disabled={saving}>{saving ? 'Apposition…' : 'Apposer'}</Button>
+            </>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

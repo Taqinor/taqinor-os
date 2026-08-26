@@ -14,6 +14,14 @@ import HeatmapEnvoi from './HeatmapEnvoi'
    JSON : variante B, % d'échantillon, fenêtre de décision, critère). Rien
    n'est envoyé depuis ce composant : la sauvegarde crée/met à jour la
    `Campagne` en `brouillon` (comportement backend inchangé).
+
+   WIR258/XMKT34 — l'assistant IA vivait dans `CampagnesScreen.jsx`, un
+   DOUBLON d'écran plus routé nulle part : la fonctionnalité était donc morte.
+   Il est ici, dans l'UNIQUE formulaire de campagne réellement monté. Gating
+   INCHANGÉ : la sonde `campagnes/generer-ia-disponible/` ne fait AUCUN appel
+   LLM ; sans clé, aucune trace UI. La génération ne remplit objet/corps que
+   comme SUGGESTION ÉDITABLE — rien n'est sauvegardé ni envoyé sans action
+   explicite de l'utilisateur.
    ========================================================================== */
 
 const CANAUX = [
@@ -65,6 +73,12 @@ export default function CampagneForm({ initial, onSave, onCancel, editing }) {
   const [corpsApercu, setCorpsApercu] = useState('')
   const [apercuLoading, setApercuLoading] = useState(false)
   const [apercuErr, setApercuErr] = useState('')
+  // WIR258/XMKT34 — assistant IA : false tant que la sonde n'a pas confirmé
+  // la présence d'une clé LLM (aucun appel LLM dans la sonde).
+  const [iaDisponible, setIaDisponible] = useState(false)
+  const [iaOptions, setIaOptions] = useState(
+    { segment_label: '', offre: '', instruction: '', langue: 'fr' })
+  const [iaLoading, setIaLoading] = useState(false)
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- resync le formulaire quand la prop initial change
   useEffect(() => { setForm(initial || emptyForm()) }, [initial])
@@ -81,6 +95,36 @@ export default function CampagneForm({ initial, onSave, onCancel, editing }) {
       .then(r => setBlocs(marketingApi.unwrapList(r)))
       .catch(() => setBlocs([]))
   }, [])
+
+  // WIR258/XMKT34 — sonde de gating. Sans clé LLM, `iaDisponible` reste false
+  // et le panneau n'est JAMAIS rendu.
+  useEffect(() => {
+    marketingApi.campagnes.genererIaDisponible()
+      .then(r => setIaDisponible(!!r.data?.configured))
+      .catch(() => setIaDisponible(false))
+  }, [])
+
+  const genererIa = async () => {
+    setIaLoading(true)
+    setErr('')
+    try {
+      const r = await marketingApi.campagnes.genererIa(iaOptions)
+      if (r.data?.ok) {
+        // SUGGESTION éditable : remplit les champs, ne sauvegarde rien.
+        setForm(f => ({
+          ...f,
+          objet: r.data.objet || f.objet,
+          corps: r.data.corps || f.corps,
+        }))
+      } else {
+        setErr('Génération indisponible.')
+      }
+    } catch {
+      setErr('Génération impossible.')
+    } finally {
+      setIaLoading(false)
+    }
+  }
 
   const insererBloc = () => {
     const bloc = blocs.find(b => String(b.id) === String(blocChoisi))
@@ -184,6 +228,49 @@ export default function CampagneForm({ initial, onSave, onCancel, editing }) {
       <textarea className="form-input" data-testid="campagne-corps"
         placeholder="Corps du message ({{prenom}}, {{ville}}…)" rows={5}
         value={form.corps} onChange={setField('corps')} />
+
+      {/* WIR258/XMKT34 — assistant IA (repris tel quel de CampagnesScreen,
+          l'écran doublon supprimé). Rendu UNIQUEMENT si la sonde a confirmé
+          une clé LLM ; la sortie est une suggestion éditable. */}
+      {iaDisponible && (
+        <fieldset data-testid="campagne-ia-panel"
+          style={{ border: '1px dashed #cbd5e1', borderRadius: 8,
+            padding: '0.6rem', display: 'grid', gap: '0.5rem' }}>
+          <legend style={{ fontSize: '0.8rem', color: '#475569', padding: '0 6px' }}>
+            Assistant IA (suggestion éditable — jamais envoyée seule)
+          </legend>
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <input className="form-input" data-testid="campagne-ia-segment"
+              placeholder="Segment ciblé (ex. leads froids résidentiel)"
+              value={iaOptions.segment_label}
+              onChange={e => setIaOptions(o => ({ ...o, segment_label: e.target.value }))}
+              style={{ flex: '1 1 220px' }} />
+            <input className="form-input" data-testid="campagne-ia-offre"
+              placeholder="Offre / contexte (ex. -20% panneaux)"
+              value={iaOptions.offre}
+              onChange={e => setIaOptions(o => ({ ...o, offre: e.target.value }))}
+              style={{ flex: '1 1 220px' }} />
+            <select className="form-input" data-testid="campagne-ia-langue"
+              value={iaOptions.langue}
+              onChange={e => setIaOptions(o => ({ ...o, langue: e.target.value }))}
+              style={{ flex: '0 1 120px' }}>
+              <option value="fr">Français</option>
+              <option value="ar">Arabe</option>
+            </select>
+          </div>
+          <input className="form-input" data-testid="campagne-ia-instruction"
+            placeholder="Consigne (ton, longueur, réécriture…)"
+            value={iaOptions.instruction}
+            onChange={e => setIaOptions(o => ({ ...o, instruction: e.target.value }))} />
+          <div>
+            <button type="button" className="btn btn-light"
+              data-testid="campagne-ia-generer"
+              disabled={iaLoading} onClick={genererIa}>
+              {iaLoading ? 'Génération…' : "Générer avec l'IA"}
+            </button>
+          </div>
+        </fieldset>
+      )}
 
       {/* NTMKT23 — insertion d'un bloc réutilisable : COPIE du fragment dans
           le corps (snapshot) — modifier le bloc source ne rétro-modifie

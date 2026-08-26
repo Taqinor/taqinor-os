@@ -65,6 +65,8 @@ import {
   SerialsPanel, ConsommationPanel, MemosPanel, ReservesPanel,
   ToolReturnPanel, SafetyPanel, CompteRenduButton, CodePanel,
 } from '../../features/installations/InterventionCapturePanels'
+// WIR264 — boutons « Partager » des deux liens publics (suivi + compte-rendu).
+import InterventionLiensPublicsPanel from '../../features/installations/InterventionLiensPublicsPanel'
 import { SignatureClientPanel } from '../../features/installations/SignatureClientPanel'
 import OfflineSyncIndicator from '../../features/installations/offline/OfflineSyncIndicator'
 import { formatDate, formatDateTime } from '../../lib/format'
@@ -436,6 +438,7 @@ function DetailSheet({ intervention, users, onClose, onChanged }) {
           <TabsContent value="outils">
             <div className="flex flex-col gap-3 py-2">
               <CompteRenduButton intervention={intervention} />
+              <InterventionLiensPublicsPanel intervention={intervention} />
               <ToolReturnPanel intervention={intervention} onChanged={onChanged} />
               <CodePanel intervention={intervention} />
             </div>

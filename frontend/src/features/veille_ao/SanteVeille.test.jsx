@@ -12,10 +12,16 @@ import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 const mocks = vi.hoisted(() => ({
   sante: vi.fn(),
   create: vi.fn(),
+  // WIR269 — l'appel agrege « d'ou vient le chiffre d'affaires » (VAO31).
+  attribution: vi.fn(),
 }))
 
 vi.mock('../../api/veilleAoApi', () => ({
-  default: { sante: mocks.sante, avis: { create: mocks.create } },
+  default: {
+    sante: mocks.sante,
+    avis: { create: mocks.create },
+    attribution: mocks.attribution,
+  },
 }))
 
 import SanteVeille from './SanteVeille'
@@ -23,8 +29,17 @@ import { ageLabel } from './veilleAoShared'
 
 const renderScreen = (props) => render(<ThemeProvider><SanteVeille {...props} /></ThemeProvider>)
 
+const ATTRIBUTION_VIDE = {
+  depuis: null, par_source: [], par_informateur: [],
+  total: {
+    cle: 'total', libelle: 'Total',
+    avis: 0, retenus: 0, affaires: 0, gagnes: 0, perdus: 0, en_cours: 0,
+  },
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
+  mocks.attribution.mockResolvedValue({ data: ATTRIBUTION_VIDE })
 })
 
 describe('ageLabel (VAO37 Done= « l’âge de la dernière collecte est visible sans clic »)', () => {
@@ -138,5 +153,105 @@ describe('SanteVeille — « Ajouter un avis » (VAO27)', () => {
       expect.objectContaining({ informateur: 'partenaire', source: 'tuyau_partenaire' }),
     ))
     await waitFor(() => expect(onAvisAjoute).toHaveBeenCalled())
+  })
+})
+
+/* ============================================================================
+   WIR269 — « D'où vient le chiffre d'affaires » (VAO31).
+   ----------------------------------------------------------------------------
+   L'endpoint agrégé existait, personne ne l'appelait : le constat CENTRAL de
+   l'étude était illisible. La garde qui compte ici n'est pas « le tableau
+   s'affiche » mais « aucun agrégat n'est recalculé à l'écran » — le total
+   rendu est CELUI DU SERVEUR, même quand il ne correspond pas à la somme des
+   lignes (cas volontairement testé : un écran qui « corrige » le serveur en
+   silence est un écran qui ment).
+   ========================================================================== */
+const ligne = (cle, libelle, over = {}) => ({
+  cle,
+  libelle,
+  avis: 0,
+  retenus: 0,
+  affaires: 0,
+  gagnes: 0,
+  perdus: 0,
+  en_cours: 0,
+  ...over,
+})
+
+const ATTRIBUTION = {
+  depuis: null,
+  par_source: [
+    ligne('portail_officiel', 'Portail officiel', {
+      avis: 120, retenus: 18, affaires: 12, gagnes: 3, perdus: 7, en_cours: 2,
+    }),
+    ligne('tuyau_partenaire', 'Tuyau partenaire', {
+      avis: 9, retenus: 7, affaires: 6, gagnes: 4, perdus: 1, en_cours: 1,
+    }),
+  ],
+  par_informateur: [
+    ligne('partenaire', 'Partenaire', {
+      avis: 6, retenus: 5, affaires: 5, gagnes: 3, perdus: 1, en_cours: 1,
+    }),
+    ligne('aucun', 'Aucun (collecte automatique)', {
+      avis: 123, retenus: 20, affaires: 13, gagnes: 4, perdus: 7, en_cours: 2,
+    }),
+  ],
+  // VOLONTAIREMENT différent de la somme des lignes ci-dessus : c'est le
+  // chiffre du serveur, et c'est LUI qui doit s'afficher.
+  total: ligne('total', 'Total', {
+    avis: 131, retenus: 26, affaires: 19, gagnes: 8, perdus: 9, en_cours: 4,
+  }),
+}
+
+describe('SanteVeille — d’où vient le chiffre d’affaires (WIR269/VAO31)', () => {
+  it('appelle l’endpoint agrégé et rend les DEUX axes à égalité', async () => {
+    mocks.sante.mockResolvedValue({ data: {} })
+    mocks.attribution.mockResolvedValue({ data: ATTRIBUTION })
+    renderScreen()
+
+    await waitFor(() => expect(mocks.attribution).toHaveBeenCalledTimes(1))
+    expect(await screen.findByText('D’où vient le chiffre d’affaires')).toBeInTheDocument()
+
+    const parSource = await waitFor(() => {
+      const el = document.querySelector('[data-veille-attribution="source"]')
+      expect(el).toBeTruthy()
+      return el
+    })
+    const parInformateur = document.querySelector('[data-veille-attribution="informateur"]')
+    expect(parInformateur).toBeTruthy()
+
+    // Les libellés viennent du serveur, jamais d'une table locale.
+    expect(parSource.textContent).toMatch(/Portail officiel/)
+    expect(parInformateur.textContent).toMatch(/Aucun \(collecte automatique\)/)
+  })
+
+  it('rend le TOTAL DU SERVEUR, jamais une somme recalculée à l’écran', async () => {
+    mocks.sante.mockResolvedValue({ data: {} })
+    mocks.attribution.mockResolvedValue({ data: ATTRIBUTION })
+    renderScreen()
+
+    const total = await waitFor(() => {
+      const el = document.querySelector('[data-veille-attribution-total]')
+      expect(el).toBeTruthy()
+      return el
+    })
+    const cellules = [...total.querySelectorAll('td')].map((td) => td.textContent)
+    // Le payload sert 131/26/19/8/9/4 ; la somme des lignes « par source »
+    // vaudrait 129/25/18/7/8/3. C'est le SERVEUR qui fait foi.
+    expect(cellules).toEqual(['131', '26', '19', '8', '9', '4'])
+    // Le total n'est rendu QU'UNE fois : les deux axes décrivent les mêmes
+    // avis, les additionner les compterait deux fois.
+    expect(document.querySelectorAll('[data-veille-attribution-total]')).toHaveLength(1)
+  })
+
+  it('sans canal mesuré, le dit au lieu d’un tableau vide qui a l’air juste', async () => {
+    mocks.sante.mockResolvedValue({ data: {} })
+    renderScreen()
+
+    await waitFor(() => {
+      expect(document.querySelector('[data-veille-attribution-vide="source"]')).toBeTruthy()
+    })
+    expect(document.querySelector('[data-veille-attribution-vide="informateur"]')).toBeTruthy()
+    expect(document.querySelector('[data-veille-attribution-total]')).toBeNull()
   })
 })

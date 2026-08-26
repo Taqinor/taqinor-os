@@ -114,7 +114,10 @@ def _sweep_warranty_expiring(company):
                     f"voit sa garantie expirer dans {delta} jours "
                     f"({eq.date_fin_garantie})."
                 )
-                link = f'/sav/equipements/{eq.pk}'
+                # WIR176 — `/sav/equipements/<pk>` n'existe pas côté front
+                # (route réelle : `/equipements`, sans deep-link par id
+                # aujourd'hui — jamais un paramètre fabriqué).
+                link = '/equipements'
                 owner = _owner_of_equipement(eq)
                 if owner is not None:
                     notify(owner, EventType.WARRANTY_EXPIRING, title,
@@ -163,7 +166,10 @@ def _sweep_maintenance_due(company):
                     f"(périodicité : {contrat.get_periodicite_display()}) "
                     f"a une visite due aujourd'hui."
                 )
-                link = f'/sav/maintenances/{contrat.pk}'
+                # WIR176 — `/sav/maintenances/<pk>` n'existe pas côté front
+                # (route réelle : `/sav/contrats`, sans deep-link par id
+                # aujourd'hui — jamais un paramètre fabriqué).
+                link = '/sav/contrats'
                 owner = getattr(
                     getattr(contrat, 'installation', None),
                     'technicien_responsable', None)
@@ -218,7 +224,9 @@ def _sweep_sav_breaching(company):
                     f"sans résolution "
                     f"(priorité : {ticket.get_priorite_display()})."
                 )
-                link = f'/sav/tickets/{ticket.pk}'
+                # WIR176 — `/sav/tickets/<pk>` n'existe pas côté front ;
+                # TicketsPage (`/sav`) consomme `?id=<pk>`.
+                link = f'/sav?id={ticket.pk}'
                 _notify_user_or_managers(
                     user, company, EventType.SAV_TICKET_BREACHING,
                     title, body, link)
@@ -271,7 +279,9 @@ def _sweep_chantier_due(company):
                     f"({chantier.date_pose_prevue}). "
                     f"Statut : {chantier.get_statut_display()}."
                 )
-                link = f'/installations/{chantier.pk}'
+                # WIR176 — `/installations/<pk>` n'existe pas côté front ;
+                # InstallationsPage (`/chantiers`) consomme `?id=<pk>`.
+                link = f'/chantiers?id={chantier.pk}'
                 for mgr in _managers(company):
                     notify(mgr, EventType.CHANTIER_DUE, title,
                            body=body, link=link, company=company)
@@ -319,7 +329,9 @@ def _sweep_facture_overdue(company):
         count = 0
         for facture in qs:
             try:
-                link = f'/ventes/factures/{facture.pk}'
+                # WIR176 — `/ventes/factures/<pk>` n'existe pas côté front ;
+                # FactureList consomme `?facture=<pk>`.
+                link = f'/ventes/factures?facture={facture.pk}'
                 if _already_notified_today(
                         company, EventType.FACTURE_OVERDUE, link):
                     continue
@@ -371,7 +383,11 @@ def _sweep_da_soumise_stale(company):
         count = 0
         for da in qs:
             try:
-                link = f'/installations/demandes-achat?demande={da.pk}'
+                # WIR176 — `/installations/demandes-achat` n'existe pas côté
+                # front (préfixe réel : `/chantiers/…`) ; DemandesAchatList
+                # ne consomme pas encore `?demande=` (aucun filtrage
+                # fabriqué), mais l'écran cible est le bon.
+                link = f'/chantiers/demandes-achat?demande={da.pk}'
                 if _already_notified_today(
                         company, EventType.DA_SOUMISE_STALE, link):
                     continue
@@ -423,7 +439,9 @@ def _sweep_sav_activite_due(company):
                     f"{taf.get_type_display()} « {taf.titre} » sur le ticket "
                     f"« {ticket_ref} » était due le {taf.echeance}."
                 )
-                link = f'/sav/tickets/{taf.ticket_id}'
+                # WIR176 — `/sav/tickets/<pk>` n'existe pas côté front ;
+                # TicketsPage (`/sav`) consomme `?id=<pk>`.
+                link = f'/sav?id={taf.ticket_id}'
                 _notify_user_or_managers(
                     taf.assigne, company, EventType.SAV_ACTIVITE_DUE,
                     title, body, link)

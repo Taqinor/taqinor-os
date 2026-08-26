@@ -1,6 +1,6 @@
 import { createElement, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { History, PackageSearch, Pencil } from 'lucide-react'
+import { History, PackageSearch, Pencil, Trash2 } from 'lucide-react'
 import {
   CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
@@ -17,6 +17,7 @@ import {
   Spinner, Badge, RelationCounters,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
   Button, Tabs, TabsList, TabsTrigger, TabsContent,
+  Input, Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 // PACT128 — onglet « Options » (groupes d'options NTCPQ1) sur la fiche
 // produit, en AJOUT au système d'onglets existant.
@@ -576,12 +577,122 @@ function OngletCompatibilites({ produit }) {
   )
 }
 
-// Export nommé : testé directement.
-export function ProduitDetail({ produit, onClose, onEdit }) {
+// ── WIR221/XSTK10 — mise au rebut (motif obligatoire) ───────────────────────
+// Casse/obsolescence/péremption/vol/défaut/erreur/autre : crée un mouvement
+// de SORTIE et décrémente le stock, jamais un simple ajustement silencieux.
+// Réutilisé depuis StockList (catalogue) ET la fiche produit (ci-dessous).
+const MOTIFS_REBUT = [
+  { value: 'casse', label: 'Casse' },
+  { value: 'obsolete', label: 'Obsolète' },
+  { value: 'perime', label: 'Périmé' },
+  { value: 'vol', label: 'Vol' },
+  { value: 'defaut', label: 'Défaut' },
+  { value: 'erreur', label: 'Erreur' },
+  { value: 'autre', label: 'Autre' },
+]
+
+export function RebutModal({ produit, emplacements = [], onClose, onDone }) {
+  const [quantite, setQuantite] = useState('1')
+  const [motif, setMotif] = useState('')
+  const [emplacementId, setEmplacementId] = useState('')
+  const [referenceChantier, setReferenceChantier] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+
+  const submit = async () => {
+    const qte = parseInt(quantite, 10)
+    if (!Number.isInteger(qte) || qte <= 0) { setError('Saisissez une quantité positive.'); return }
+    if (!motif) { setError('Le motif est obligatoire.'); return }
+    setBusy(true); setError(null)
+    try {
+      const r = await stockApi.rebuterProduit(produit.id, {
+        quantite: qte,
+        motif,
+        ...(emplacementId ? { emplacement: Number(emplacementId) } : {}),
+        ...(referenceChantier.trim() ? { reference_chantier: referenceChantier.trim() } : {}),
+      })
+      onDone?.(r.data)
+      onClose()
+    } catch (err) {
+      setError(err?.response?.data?.detail ?? 'La mise au rebut a échoué.')
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Mettre au rebut — {produit.nom}</DialogTitle>
+          <DialogDescription>
+            Crée un mouvement de sortie et décrémente le stock. Donnée interne,
+            jamais sur un document client.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-medium" htmlFor="rebut-qte">Quantité</label>
+          <Input id="rebut-qte" type="number" min="1" max={produit.quantite_stock || undefined}
+                 inputMode="numeric" value={quantite}
+                 onChange={(e) => setQuantite(e.target.value)} />
+          <p className="text-xs text-muted-foreground">Stock actuel : {produit.quantite_stock ?? 0}</p>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-medium" htmlFor="rebut-motif">Motif</label>
+          <Select value={motif || '__none'} onValueChange={(v) => setMotif(v === '__none' ? '' : v)}>
+            <SelectTrigger id="rebut-motif"><SelectValue placeholder="— Choisir un motif —" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none">— Choisir un motif —</SelectItem>
+              {MOTIFS_REBUT.map((m) => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        {emplacements.length > 0 && (
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium" htmlFor="rebut-emplacement">Emplacement (optionnel)</label>
+            <Select value={emplacementId || '__none'} onValueChange={(v) => setEmplacementId(v === '__none' ? '' : v)}>
+              <SelectTrigger id="rebut-emplacement"><SelectValue placeholder="— Dépôt principal —" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none">— Dépôt principal —</SelectItem>
+                {emplacements.map((e) => <SelectItem key={e.id} value={String(e.id)}>{e.nom}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-medium" htmlFor="rebut-chantier">Référence chantier (optionnel)</label>
+          <Input id="rebut-chantier" value={referenceChantier}
+                 onChange={(e) => setReferenceChantier(e.target.value)} />
+        </div>
+
+        {error && (
+          <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+            {error}
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
+          <Button type="button" variant="destructive" loading={busy} onClick={submit}>
+            {busy ? '…' : 'Mettre au rebut'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// Export nommé : testé directement. `onRebut` suit le même patron que
+// `onEdit` : le PARENT le passe seulement quand le rôle a le droit
+// d'écriture (`canWrite ? refresh : null`) — sans lui, aucun bouton.
+export function ProduitDetail({ produit, onClose, onEdit, onRebut }) {
   // VX98 — bouton « Historique » → Journal pré-filtré sur CE produit, visible
   // uniquement avec la permission journal_activite_voir (AuditLog couvre tous
   // les modèles ; le backend re-vérifie la permission).
   const canViewJournal = useHasPermission('journal_activite_voir')
+  // WIR221/XSTK10 — mise au rebut : modale gérée LOCALEMENT (la fiche reste
+  // ouverte pendant/après l'action, contrairement à « Modifier » qui ferme
+  // cette fiche pour ouvrir le formulaire).
+  const [showRebut, setShowRebut] = useState(false)
   // APX18 — icône de catégorie en titre (repli visuel construit d'office) ;
   // repli générique `PackageSearch` si le produit n'a pas de catégorie.
   // Cf. CatalogueTable : resoudre l'icone en ligne via `createElement` plutot
@@ -657,9 +768,19 @@ export function ProduitDetail({ produit, onClose, onEdit }) {
               </Link>
             </Button>
           )}
+          {/* WIR221/XSTK10 — mise au rebut (motif obligatoire). */}
+          {onRebut && (
+            <Button type="button" variant="outline" onClick={() => setShowRebut(true)}>
+              <Trash2 className="size-4" aria-hidden="true" /> Mettre au rebut
+            </Button>
+          )}
           <Button type="button" variant="ghost" onClick={onClose}>Fermer</Button>
         </DialogFooter>
       </DialogContent>
+      {showRebut && (
+        <RebutModal produit={produit} onClose={() => setShowRebut(false)}
+                    onDone={() => { onRebut?.(); setShowRebut(false) }} />
+      )}
     </Dialog>
   )
 }

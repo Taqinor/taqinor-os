@@ -4,7 +4,7 @@
 // XSAL17 — {lien_rdv} : résolu UNIQUEMENT côté serveur (render/) quand un
 // lead_id est fourni ; ici on documente juste le placeholder disponible.
 import { useEffect, useState } from 'react'
-import { Plus, Trash2, Archive, ArchiveRestore } from 'lucide-react'
+import { Plus, Trash2, Archive, ArchiveRestore, Eye } from 'lucide-react'
 import {
   Card, CardContent, Input, Textarea, Select, SelectTrigger, SelectValue,
   SelectContent, SelectItem, Button, IconButton, Spinner,
@@ -63,6 +63,23 @@ export default function MessageTemplatesCrmSection() {
     load()
   }
 
+  // WIR229/XSAL17 — Aperçu RENDU SERVEUR (render_template) : les placeholders
+  // ({prenom}/{ville}/{lien}/{lien_rdv}) sont résolus par le MÊME code que le
+  // rendu réel, jamais recalculés côté écran — {lien_rdv} sans lead_id reste
+  // vide (no-op documenté ci-dessus).
+  const [apercu, setApercu] = useState({})
+  const previewTemplate = async (tpl) => {
+    setApercu((a) => ({ ...a, [tpl.id]: { loading: true } }))
+    try {
+      const res = await crmApi.renderMessageTemplate(tpl.id, {
+        prenom: 'Jean', ville: 'Casablanca', lien: 'https://exemple.invalid',
+      })
+      setApercu((a) => ({ ...a, [tpl.id]: { texte: res.data.texte } }))
+    } catch {
+      setApercu((a) => ({ ...a, [tpl.id]: { erreur: "Aperçu indisponible." } }))
+    }
+  }
+
   return (
     <Card>
       <CardContent className="pt-4 sm:pt-5">
@@ -103,6 +120,10 @@ export default function MessageTemplatesCrmSection() {
                   ))}
                 </SelectContent>
               </Select>
+              <IconButton size="md" variant="outline" label="Aperçu"
+                          onClick={() => previewTemplate(t)}>
+                <Eye className="size-4" aria-hidden="true" />
+              </IconButton>
               <IconButton size="md" variant="outline"
                           label={t.archived ? 'Réactiver' : 'Archiver'}
                           onClick={() => archiveTemplate(t)}>
@@ -125,6 +146,17 @@ export default function MessageTemplatesCrmSection() {
                           }
                         }} />
             </Field>
+            {apercu[t.id]?.loading && (
+              <p className="mt-1.5 text-xs text-muted-foreground">Aperçu…</p>
+            )}
+            {apercu[t.id]?.erreur && (
+              <p className="mt-1.5 text-xs text-destructive" role="alert">{apercu[t.id].erreur}</p>
+            )}
+            {apercu[t.id]?.texte != null && (
+              <p className="mt-1.5 rounded-md bg-muted p-2 text-xs" data-testid={`mtc-apercu-${t.id}`}>
+                {apercu[t.id].texte}
+              </p>
+            )}
           </div>
         ))}
 

@@ -2,7 +2,10 @@ import { useEffect, useMemo, useState } from 'react'
 
 import reportingApi from '../../api/reportingApi'
 import coreApi from '../../api/coreApi'
+import { downloadBlob, filenameFromResponse } from '../../api/importApi'
 import { frenchError } from '../../lib/frenchError'
+import { messageErreurBlob } from '../../utils/pdfBlob'
+import { toast } from '../../ui'
 
 /* ============================================================================
    PACT146 — Générateur de rapports croisés (NTEXT10,
@@ -22,6 +25,12 @@ import { frenchError } from '../../lib/frenchError'
    (même moteur, même visibilité privé/société) — avec en plus le croisement et
    l'abonnement d'envoi planifié. Les deux écrans peuvent converger plus tard ;
    ils ne sont pas fusionnés ici.
+
+   WIR253 — l'export (NTEXT11, `GET …/{id}/export/?format=csv|xlsx`) et
+   l'édition d'une définition (`updateRapportDefinition`, déjà exposé côté
+   API) n'avaient AUCUN appelant. Boutons Export CSV/XLSX (blob) + Modifier
+   (pré-remplit le formulaire, le submit devient un PATCH — jamais un second
+   POST de création) / Annuler.
    ========================================================================== */
 
 const AGGREGATS = [
@@ -61,6 +70,7 @@ export default function RapportBuilderPage() {
   const [definitions, setDefinitions] = useState([])
   const [datasets, setDatasets] = useState([])
   const [form, setForm] = useState(FORM_VIDE)
+  const [editionId, setEditionId] = useState(null)
   const [resultat, setResultat] = useState(null)
   const [erreur, setErreur] = useState(null)
   const [rechargement, setRechargement] = useState(0)
@@ -97,7 +107,7 @@ export default function RapportBuilderPage() {
     }))
   }
 
-  async function creer(event) {
+  async function enregistrer(event) {
     event.preventDefault()
     if (occupe) return
     setOccupe(true)
@@ -112,20 +122,70 @@ export default function RapportBuilderPage() {
         agg: form.pivotAgg,
       }
       : {}
+    const payload = {
+      titre: form.titre,
+      dataset: form.dataset,
+      spec: { select: form.select },
+      pivot_spec: pivotSpec,
+      partage: form.partage,
+    }
     try {
-      await reportingApi.createRapportDefinition({
-        titre: form.titre,
-        dataset: form.dataset,
-        spec: { select: form.select },
-        pivot_spec: pivotSpec,
-        partage: form.partage,
-      })
+      // WIR253 — en édition, JAMAIS un second POST de création : la
+      // définition existante est modifiée en place (PATCH).
+      if (editionId) {
+        await reportingApi.updateRapportDefinition(editionId, payload)
+      } else {
+        await reportingApi.createRapportDefinition(payload)
+      }
       setForm(FORM_VIDE)
+      setEditionId(null)
       setRechargement((n) => n + 1)
     } catch (err) {
-      setErreur(frenchError(err, 'Création de la définition impossible.'))
+      setErreur(frenchError(
+        err, editionId
+          ? 'Modification de la définition impossible.'
+          : 'Création de la définition impossible.',
+      ))
     } finally {
       setOccupe(false)
+    }
+  }
+
+  function modifier(definition) {
+    setEditionId(definition.id)
+    setResultat(null)
+    setErreur(null)
+    setForm({
+      titre: definition.titre || '',
+      dataset: definition.dataset || '',
+      select: definition.spec?.select || [],
+      partage: definition.partage || 'prive',
+      pivotRows: definition.pivot_spec?.rows?.[0] || '',
+      pivotColumns: definition.pivot_spec?.columns?.[0] || '',
+      pivotMeasure: definition.pivot_spec?.measure || '',
+      pivotAgg: definition.pivot_spec?.agg || 'sum',
+    })
+  }
+
+  function annulerEdition() {
+    setEditionId(null)
+    setForm(FORM_VIDE)
+    setErreur(null)
+  }
+
+  async function exporter(definition, format) {
+    try {
+      const res = await reportingApi.exportRapportDefinition(definition.id, format)
+      const base = (definition.titre || definition.dataset || 'rapport')
+        .replace(/[^a-zA-Z0-9_-]+/g, '') || 'rapport'
+      downloadBlob(res.data, filenameFromResponse(res, `${base}.${format}`))
+    } catch (err) {
+      const message = await messageErreurBlob(err, {
+        fallback: format === 'xlsx'
+          ? "Export xlsx indisponible sur ce serveur : réessayez au format csv."
+          : "L'export a échoué.",
+      })
+      toast.error(message)
     }
   }
 
@@ -197,6 +257,15 @@ export default function RapportBuilderPage() {
                     <button type="button" onClick={() => executer(d)}>
                       Exécuter
                     </button>
+                    <button type="button" onClick={() => modifier(d)}>
+                      Modifier
+                    </button>
+                    <button type="button" onClick={() => exporter(d, 'csv')}>
+                      Export CSV
+                    </button>
+                    <button type="button" onClick={() => exporter(d, 'xlsx')}>
+                      Export XLSX
+                    </button>
                     <button type="button" onClick={() => supprimer(d.id)}>
                       Supprimer
                     </button>
@@ -209,8 +278,8 @@ export default function RapportBuilderPage() {
       </section>
 
       <section data-testid="rapport-builder-creation">
-        <h4>Nouvelle définition</h4>
-        <form onSubmit={creer}>
+        <h4>{editionId ? 'Modifier la définition' : 'Nouvelle définition'}</h4>
+        <form onSubmit={enregistrer}>
           <label htmlFor="rapport-titre">Titre</label>
           <input
             id="rapport-titre"
@@ -313,8 +382,13 @@ export default function RapportBuilderPage() {
           </select>
 
           <button type="submit" disabled={occupe || !form.dataset}>
-            Enregistrer la définition
+            {editionId ? 'Modifier la définition' : 'Enregistrer la définition'}
           </button>
+          {editionId && (
+            <button type="button" onClick={annulerEdition}>
+              Annuler
+            </button>
+          )}
         </form>
       </section>
 

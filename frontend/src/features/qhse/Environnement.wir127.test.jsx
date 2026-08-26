@@ -25,16 +25,41 @@ beforeAll(() => {
   }
 })
 
-const { empty, dechetCreate } = vi.hoisted(() => ({
-  empty: () => Promise.resolve({ data: [] }),
-  dechetCreate: vi.fn(() => Promise.resolve({ data: { id: 9 } })),
-}))
+const { empty, dechetCreate, bsdEnlever, bsdTraiter, recTransporter, recRecycler } =
+  vi.hoisted(() => ({
+    empty: () => Promise.resolve({ data: [] }),
+    dechetCreate: vi.fn(() => Promise.resolve({ data: { id: 9 } })),
+    bsdEnlever: vi.fn(() => Promise.resolve({ data: {} })),
+    bsdTraiter: vi.fn(() => Promise.resolve({ data: {} })),
+    recTransporter: vi.fn(() => Promise.resolve({ data: {} })),
+    recRecycler: vi.fn(() => Promise.resolve({ data: {} })),
+  }))
+
+const BSD_EMIS = {
+  id: 40, reference: 'BSD-000040', dechet_libelle: 'Batteries usagées',
+  quantite: 12, eliminateur: 'Recyk Maroc', statut: 'emis',
+}
+const REC_COLLECTE = {
+  id: 50, reference: 'REC-000050', marque: 'Jinko', modele: 'JKM450',
+  nombre_modules: 20, motif: 'fin_de_vie', motif_display: 'Fin de vie',
+  statut: 'collecte',
+}
 
 vi.mock('../../api/qhseApi', () => ({
   default: {
     dechets: { list: empty, create: (...a) => dechetCreate(...a) },
-    bordereauxDechets: { list: empty, create: vi.fn() },
-    recyclageModules: { list: empty, create: vi.fn() },
+    bordereauxDechets: {
+      list: () => Promise.resolve({ data: [BSD_EMIS] }),
+      create: vi.fn(),
+      enlever: (...a) => bsdEnlever(...a),
+      traiter: (...a) => bsdTraiter(...a),
+    },
+    recyclageModules: {
+      list: () => Promise.resolve({ data: [REC_COLLECTE] }),
+      create: vi.fn(),
+      transporter: (...a) => recTransporter(...a),
+      recycler: (...a) => recRecycler(...a),
+    },
     conformitesEnvironnementales: { list: empty, create: vi.fn() },
     bilansCarbone: { list: empty, create: vi.fn() },
     indicateursEsg: { list: empty, create: vi.fn() },
@@ -96,5 +121,38 @@ describe('Environnement — création par onglet (WIR127)', () => {
     await user.click(screen.getByRole('tab', { name: 'Aspects environnementaux' }))
     await waitFor(() => expect(screen.getByRole('button', { name: /Nouvel aspect/ })).toBeTruthy())
     expect(screen.getByRole('button', { name: /Nouveau relevé/ })).toBeTruthy()
+  })
+})
+
+describe('Environnement — cycles de vie BSD / recyclage PV (WIR234)', () => {
+  it('un BSD émis propose Enlever puis Traiter, envoyés au serveur', async () => {
+    const user = userEvent.setup()
+    withProviders(<Environnement />)
+    await waitFor(() => expect(screen.getAllByText('Batteries usagées').length).toBeGreaterThan(0))
+
+    const enleverBtns = screen.getAllByRole('button', { name: 'Enlever' })
+    expect(enleverBtns.length).toBeGreaterThan(0)
+    await user.click(enleverBtns[0])
+    await waitFor(() => expect(bsdEnlever).toHaveBeenCalledWith(40, {}))
+
+    const traiterBtns = screen.getAllByRole('button', { name: 'Traiter' })
+    await user.click(traiterBtns[0])
+    await waitFor(() => expect(bsdTraiter).toHaveBeenCalledWith(40, {}))
+  })
+
+  it('un lot PV collecté propose Transporter puis Recycler, envoyés au serveur', async () => {
+    const user = userEvent.setup()
+    withProviders(<Environnement />)
+    await user.click(screen.getByRole('tab', { name: 'Recyclage PV' }))
+    await waitFor(() => expect(screen.getAllByText(/Jinko/).length).toBeGreaterThan(0))
+
+    const transporterBtns = screen.getAllByRole('button', { name: 'Transporter' })
+    expect(transporterBtns.length).toBeGreaterThan(0)
+    await user.click(transporterBtns[0])
+    await waitFor(() => expect(recTransporter).toHaveBeenCalledWith(50))
+
+    const recyclerBtns = screen.getAllByRole('button', { name: 'Recycler' })
+    await user.click(recyclerBtns[0])
+    await waitFor(() => expect(recRecycler).toHaveBeenCalledWith(50, {}))
   })
 })

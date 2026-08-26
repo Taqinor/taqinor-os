@@ -103,7 +103,10 @@ def _notifier_demande(demande):
     Best-effort de bout en bout : un canal en échec n'empêche ni l'autre ni la
     création de la demande (qui, elle, reste inerte tant que personne n'a
     cliqué « Autoriser »)."""
-    lien = f'/admin/impersonation/{demande.pk}'
+    # WIR176 — `/admin/impersonation/<pk>` n'existe pas côté front (route
+    # réelle : `/admin/impersonation`, ImpersonationConsentement — sans
+    # deep-link par id aujourd'hui, jamais un paramètre fabriqué).
+    lien = '/admin/impersonation'
     titre = 'Demande de session support'
     corps = (
         f"Le support de l'éditeur demande à assister "

@@ -32,6 +32,12 @@ const portailApi = {
     detail: (id) => api.get(`/portail/mes-factures/${id}/`),
     payer: (id) => api.post(`/portail/mes-factures/${id}/payer/`, {}),
   },
+  // WIR216 — « Mes livraisons » : lecture seule, scopée serveur au client
+  // connecté (jamais cout_transport ni prix d'achat, voir selectors
+  // installations.livraisons_client_portail).
+  livraisons: {
+    liste: () => api.get('/portail/mes-livraisons/'),
+  },
   // NTPRT20/NTPRT27 — portails FOURNISSEUR et PARTENAIRE. Même principe que
   // ci-dessus : aucun identifiant d'entité n'est envoyé, le serveur borne au
   // rattachement du compte connecté.

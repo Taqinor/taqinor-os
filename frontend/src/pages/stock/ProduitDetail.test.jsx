@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
@@ -17,11 +17,13 @@ vi.mock('../../api/stockApi', () => ({
     produitPrevisionnel: vi.fn(),
     // PV8 — badge de complétude datasheet (onglet « Fiche technique »).
     getFichesTechniques: vi.fn(),
+    // WIR221/XSTK10 — mise au rebut.
+    rebuterProduit: vi.fn(),
   },
 }))
 
 import stockApi from '../../api/stockApi'
-import { ProduitDetail } from './ProduitDetail.jsx'
+import { ProduitDetail, RebutModal } from './ProduitDetail.jsx'
 // APX21 — la lecture de la courbe vit avec les règles de catalogue.
 import { pointsCourbePompe } from '../../features/stock/catalogue'
 
@@ -371,5 +373,89 @@ describe('PVFCH — fiche technique structurée dans le visualiseur', () => {
     await userEvent.click(screen.getByRole('tab', { name: 'Fiche technique' }))
     await screen.findByTestId('pdet-fiche-technique')
     expect(screen.queryByTestId('pdet-fiche-structuree')).not.toBeInTheDocument()
+  })
+})
+
+// ── WIR221/XSTK10 — mise au rebut (motif obligatoire) ───────────────────────
+describe('WIR221 — bouton « Mettre au rebut » sur la fiche produit', () => {
+  it('sans `onRebut` (pas de droit d\'écriture) : aucun bouton', () => {
+    stockApi.produitPrevisionnel.mockResolvedValue({ data: null })
+    render(<ProduitDetail produit={produit} onClose={() => {}} />, { wrapper })
+    expect(screen.queryByRole('button', { name: /Mettre au rebut/ })).toBeNull()
+  })
+
+  it('avec `onRebut` : le bouton ouvre la modale de rebut', async () => {
+    stockApi.produitPrevisionnel.mockResolvedValue({ data: null })
+    render(<ProduitDetail produit={produit} onClose={() => {}} onRebut={() => {}} />, { wrapper })
+    await userEvent.click(screen.getByRole('button', { name: /Mettre au rebut/ }))
+    expect(await screen.findByText(`Mettre au rebut — ${produit.nom}`)).toBeInTheDocument()
+  })
+
+  it('après un rebut réussi, appelle `onRebut` (rafraîchissement du parent) et ferme la modale', async () => {
+    stockApi.produitPrevisionnel.mockResolvedValue({ data: null })
+    stockApi.rebuterProduit.mockResolvedValue({ data: { mouvement_id: 1, valeur_perdue: '150.00' } })
+    const onRebut = vi.fn()
+    render(<ProduitDetail produit={produit} onClose={() => {}} onRebut={onRebut} />, { wrapper })
+    await userEvent.click(screen.getByRole('button', { name: /Mettre au rebut/ }))
+    // Deux dialogues imbriqués (fiche + modale de rebut) partagent le même
+    // libellé de bouton « Mettre au rebut » — on scope à la modale via son titre.
+    const modalTitle = await screen.findByText(`Mettre au rebut — ${produit.nom}`)
+    const modal = modalTitle.closest('[role="dialog"]')
+
+    await userEvent.clear(within(modal).getByLabelText('Quantité'))
+    await userEvent.type(within(modal).getByLabelText('Quantité'), '3')
+
+    await userEvent.click(within(modal).getByRole('combobox'))
+    await userEvent.click(await screen.findByRole('option', { name: 'Casse' }))
+    await userEvent.click(within(modal).getByRole('button', { name: 'Mettre au rebut' }))
+
+    await waitFor(() => expect(stockApi.rebuterProduit).toHaveBeenCalledWith(7, expect.objectContaining({
+      quantite: 3, motif: 'casse',
+    })))
+    await waitFor(() => expect(onRebut).toHaveBeenCalled())
+  })
+})
+
+describe('WIR221 — RebutModal (composant réutilisable)', () => {
+  const p = { id: 42, nom: 'Onduleur X', quantite_stock: 10 }
+
+  it('refuse une quantité invalide ou un motif manquant', async () => {
+    render(<RebutModal produit={p} onClose={() => {}} onDone={() => {}} />, { wrapper })
+    await userEvent.clear(screen.getByLabelText('Quantité'))
+    await userEvent.click(screen.getByRole('button', { name: 'Mettre au rebut' }))
+    expect(screen.getByRole('alert').textContent).toMatch(/quantité positive/)
+    expect(stockApi.rebuterProduit).not.toHaveBeenCalled()
+  })
+
+  it('affiche l\'erreur serveur (ex. stock négatif refusé) sans planter', async () => {
+    stockApi.rebuterProduit.mockRejectedValue({ response: { data: { detail: 'Stock insuffisant.' } } })
+    render(<RebutModal produit={p} onClose={() => {}} onDone={() => {}} />, { wrapper })
+    const combo = screen.getByRole('combobox')
+    await userEvent.click(combo)
+    await userEvent.click(await screen.findByRole('option', { name: 'Obsolète' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Mettre au rebut' }))
+    expect(await screen.findByText('Stock insuffisant.')).toBeInTheDocument()
+  })
+
+  it('envoie emplacement et référence chantier quand renseignés', async () => {
+    stockApi.rebuterProduit.mockResolvedValue({ data: { mouvement_id: 9, valeur_perdue: '50.00' } })
+    const onDone = vi.fn()
+    render(
+      <RebutModal produit={p} emplacements={[{ id: 5, nom: 'Camionnette 1' }]}
+                  onClose={() => {}} onDone={onDone} />,
+      { wrapper },
+    )
+    const combos = screen.getAllByRole('combobox')
+    await userEvent.click(combos[0])
+    await userEvent.click(await screen.findByRole('option', { name: 'Vol' }))
+    await userEvent.click(combos[1])
+    await userEvent.click(await screen.findByRole('option', { name: 'Camionnette 1' }))
+    await userEvent.type(screen.getByLabelText('Référence chantier (optionnel)'), 'CH-2026-01')
+    await userEvent.click(screen.getByRole('button', { name: 'Mettre au rebut' }))
+
+    await waitFor(() => expect(stockApi.rebuterProduit).toHaveBeenCalledWith(42, {
+      quantite: 1, motif: 'vol', emplacement: 5, reference_chantier: 'CH-2026-01',
+    }))
+    await waitFor(() => expect(onDone).toHaveBeenCalledWith({ mouvement_id: 9, valeur_perdue: '50.00' }))
   })
 })

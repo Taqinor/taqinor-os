@@ -27,6 +27,12 @@ const stockApi = {
   // QP2 — clone serveur (nouveau nom, SKU frais, prix d'achat copié côté
   // serveur) ; réservé Directeur + Commercial responsable (QG4).
   dupliquerProduit: (id, nom) => api.post(`/stock/produits/${id}/dupliquer/`, { nom }),
+  // WIR221/XSTK10 — mise au rebut (motif obligatoire) + rapport pertes de la
+  // période (admin, agrégé par motif) ; jamais client-facing.
+  rebuterProduit: (id, data) =>
+    api.post(`/stock/produits/${id}/rebuter/`, data),
+  getRapportPertes: (params) =>
+    api.get('/stock/produits/rapport-pertes/', { params }),
   // APX18 — photo produit. UN seul aller-retour : le serveur téléverse dans
   // MinIO (primitive plateforme `records.Attachment`, ARC26) ET rattache la
   // pièce jointe au produit dans la même transaction — jamais de pièce jointe
@@ -51,9 +57,24 @@ const stockApi = {
 
   // Fournisseurs
   getFournisseurs: (params) => api.get('/stock/fournisseurs/', { params }),
+  // WIR219 — fiche fournisseur unique (retrieve), lecture IsAnyRole. Manquait
+  // jusqu'ici : FournisseurFiche360.jsx l'appelait déjà en optional-chaining
+  // (`stockApi.getFournisseur?.(...)`), donc le badge de candidature/actions
+  // Valider-Rejeter ne rendaient JAMAIS en production (no-op silencieux).
+  getFournisseur: (id) => api.get(`/stock/fournisseurs/${id}/`),
   createFournisseur: (data) => api.post('/stock/fournisseurs/', data),
   updateFournisseur: (id, data) => api.put(`/stock/fournisseurs/${id}/`, data),
   deleteFournisseur: (id) => api.delete(`/stock/fournisseurs/${id}/`),
+  // WIR190 — fournisseur archivé (repli PROTECT), même patron que
+  // ProduitViewSet (unarchive/force-delete/?show_archived=true).
+  getFournisseursArchived: () =>
+    api.get('/stock/fournisseurs/', { params: { show_archived: 'true' } }),
+  unarchiveFournisseur: (id) => api.patch(`/stock/fournisseurs/${id}/unarchive/`),
+  forceDeleteFournisseur: (id) => api.delete(`/stock/fournisseurs/${id}/force-delete/`),
+  // WIR219/NTPRT25 — décide (valide/rejette) une candidature d'auto-inscription
+  // au portail fournisseur. Admin-only, corps {valider: true|false} obligatoire.
+  deciderCandidatureFournisseur: (id, valider) =>
+    api.post(`/stock/fournisseurs/${id}/decider-candidature/`, { valider }),
 
   // Mouvements
   getMouvements: (params) => api.get('/stock/mouvements/', { params }),
@@ -105,6 +126,32 @@ const stockApi = {
     api.delete(`/stock/bons-commande-fournisseur/${id}/`),
   envoyerBcf: (id) =>
     api.post(`/stock/bons-commande-fournisseur/${id}/envoyer/`),
+  // WIR191/XPUR18 — SEUL chemin de modification d'un BCF déjà envoyé/reçu
+  // (lignes/dates/note) ; incrémente `revision`, renvoie `reapprobation_requise`.
+  reviserBcf: (id, data) =>
+    api.post(`/stock/bons-commande-fournisseur/${id}/reviser/`, data),
+  // WIR220/XPUR7 — accusé de commande fournisseur (date confirmée + n°) ;
+  // la date DEMANDÉE (`date_livraison_prevue`) n'est jamais écrasée.
+  confirmerBcf: (id, data) =>
+    api.post(`/stock/bons-commande-fournisseur/${id}/confirmer/`, data),
+  getBcfEnRetard: () =>
+    api.get('/stock/bons-commande-fournisseur/en-retard/'),
+  getBcfSimilaires: (fournisseurId, produitIds) =>
+    api.get('/stock/bons-commande-fournisseur/bcf-similaires/', {
+      params: {
+        fournisseur: fournisseurId,
+        ...(produitIds?.length ? { produits: produitIds.join(',') } : {}),
+      },
+    }),
+  getHistoriquePrixBcf: (produitId, fournisseurId) =>
+    api.get('/stock/bons-commande-fournisseur/historique-prix/', {
+      params: {
+        produit: produitId,
+        ...(fournisseurId ? { fournisseur: fournisseurId } : {}),
+      },
+    }),
+  getAchatsHorsContrat: (params) =>
+    api.get('/stock/bons-commande-fournisseur/achats-hors-contrat/', { params }),
   // QS4/QS3 — envois fournisseur : WhatsApp (lien wa.me prêt à envoyer +
   // marque le BCF « envoyé ») et email (PDF joint + EmailLog). Le lien/PDF
   // montrent les prix d'achat au FOURNISSEUR (légitime), jamais côté client.
@@ -166,6 +213,10 @@ const stockApi = {
     api.post(`/stock/retours-fournisseur/${id}/valider/`),
   annulerRetourFournisseur: (id) =>
     api.post(`/stock/retours-fournisseur/${id}/annuler/`),
+  // WIR222/XPUR9 — génère un AvoirFournisseur BROUILLON pré-rempli depuis un
+  // retour VALIDÉ (« attente d'avoir » tant que non reçu).
+  genererAvoirDepuisRetour: (retourId) =>
+    api.post(`/stock/retours-fournisseur/${retourId}/generer-avoir/`),
 
   // G5 — Réceptions fournisseur (goods-in). La confirmation incrémente le
   // stock (ENTREE) + avance le statut du BCF. Usage INTERNE.
@@ -198,6 +249,12 @@ const stockApi = {
     api.delete(`/stock/factures-fournisseur/${id}/`),
   getComptesAPayer: (params) =>
     api.get('/stock/factures-fournisseur/comptes-a-payer/', { params }),
+  // WIR192/XPUR10 — rapprochement 3 voies : file d'exceptions + résolution
+  // (déblocage du paiement, Responsable/Admin).
+  getFacturesEnException: () =>
+    api.get('/stock/factures-fournisseur/en-exception/'),
+  resoudreExceptionFacture: (id, data) =>
+    api.post(`/stock/factures-fournisseur/${id}/resoudre-exception/`, data ?? {}),
   ajouterPaiementFournisseur: (factureId, data) =>
     api.post(`/stock/factures-fournisseur/${factureId}/paiements/`, data),
   // XACC36 — SINK OCR → brouillon de facture d'achat. `file` optionnel (le
@@ -360,6 +417,14 @@ const stockApi = {
   // ZMFG9 — disponibilité multi-niveaux du kit (kits assemblables + goulots).
   getKitDisponibilite: (id) =>
     api.get(`/stock/kits/${id}/disponibilite/`),
+  // WIR268/XMFG18 — duplique un kit (facteur d'échelle optionnel sur les
+  // quantités des composants) + historique des révisions de nomenclature.
+  dupliquerKit: (id, facteurEchelle) =>
+    api.post(`/stock/kits/${id}/dupliquer/`,
+      facteurEchelle ? { facteur_echelle: facteurEchelle } : {}),
+  getKitRevisions: (id) => api.get(`/stock/kits/${id}/revisions/`),
+  getKitCompositionAu: (id, date) =>
+    api.get(`/stock/kits/${id}/composition-au/`, { params: { date } }),
 
   // DC35 / FG254 — fiches techniques (datasheets) rattachées aux produits.
   getFichesTechniques: (produitId) =>
@@ -485,6 +550,41 @@ const stockApi = {
   // INTERNE : réservé responsable/admin, jamais un document client.
   comparerTcoFournisseurs: (produitId, params) =>
     api.get(`/stock/produits/${produitId}/comparer-tco/`, { params }),
+
+  // ── WIR268 — stock confort : tarif fournisseur (xlsx) + étiquettes ────────
+  // XPUR14 — tarif fournisseur. apercu=true ne fait que LISTER ce que le
+  // fichier remplacerait (aucune écriture) ; sans ecraser=true, un prix déjà
+  // saisi n'est jamais remplacé.
+  exportPrixFournisseurXlsx: (fournisseurId) =>
+    api.get('/stock/prix-fournisseurs/export-xlsx/', {
+      params: { fournisseur: fournisseurId }, responseType: 'blob',
+    }),
+  importPrixFournisseurXlsx: (fournisseurId, file, { apercu = false, ecraser = false } = {}) => {
+    const fd = new FormData()
+    fd.append('fournisseur', fournisseurId)
+    fd.append('file', file)
+    if (apercu) fd.append('apercu', 'true')
+    if (ecraser) fd.append('ecraser', 'true')
+    return api.post('/stock/prix-fournisseurs/import-xlsx/', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+  // XSTK20 — cartes kanban deux-bacs pour UN emplacement (PDF, jamais de prix
+  // d'achat/marge).
+  etiquettesKanbanEmplacement: (emplacementId, produitIds, { symbology = 'qr', sortie = 'pdf' } = {}) =>
+    api.get(`/stock/emplacements/${emplacementId}/etiquettes-kanban/`, {
+      params: { ids: produitIds, symbology, sortie },
+      paramsSerializer: { indexes: null },
+      responseType: 'blob',
+    }),
+  // XPOS17 — étiquettes showroom : le QR pointe vers la fiche produit PUBLIQUE
+  // de l'e-catalogue tokenisé de la société (jamais de prix d'achat/marge).
+  etiquettesShowroom: (produitIds, catalogueToken, { sortie = 'pdf' } = {}) =>
+    api.get('/stock/produits/etiquettes-showroom/', {
+      params: { ids: produitIds, catalogue_token: catalogueToken, sortie },
+      paramsSerializer: { indexes: null },
+      responseType: 'blob',
+    }),
 }
 
 export default stockApi

@@ -16,6 +16,10 @@ const creditApi = {
   getLimites: (params) => api.get('/credit/limites/', { params }),
   createLimite: (data) => api.post('/credit/limites/', data),
   updateLimite: (id, data) => api.patch(`/credit/limites/${id}/`, data),
+  // WIR186/NTCRD22 — timeline des changements d'UNE limite (chatter records :
+  // montant et mode de hold, ancien → nouveau, avec l'acteur). L'action
+  // existait depuis NTCRD22 sans aucun appelant.
+  getLimiteHistorique: (id) => api.get(`/credit/limites/${id}/historique/`),
 
   // NTCRD10 — fiche crédit consolidée d'un client.
   getFicheClient: (clientId) => api.get(`/credit/clients/${clientId}/fiche/`),
@@ -36,8 +40,12 @@ const creditApi = {
   getScoreClient: (clientId) => api.get(`/credit/clients/${clientId}/score/`),
 
   // NTCRD23 — pastilles d'état crédit pour une liste d'ids clients (batch).
+  // WIR189 : dégradation SILENCIEUSE (403/vide/panne) — jamais le toast global.
   getBadges: (clientIds) =>
-    api.get('/credit/badges/', { params: { client_ids: clientIds.join(',') } }),
+    api.get('/credit/badges/', {
+      params: { client_ids: clientIds.join(',') },
+      suppressErrorToast: true,
+    }),
 
   // NTCRD13/15 — conditions de paiement par segment.
   getConditionsSegment: (params) =>

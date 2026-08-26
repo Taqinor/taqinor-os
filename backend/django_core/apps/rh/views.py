@@ -1,9 +1,13 @@
 """Vues des Ressources humaines (toutes scopées société, admin-gated).
 
-Le module RH est INTERNE : aucune donnée n'est exposée côté client. L'accès est
-réservé au palier Administrateur/Responsable (``IsResponsableOrAdmin``). Les
-viewsets filtrent par ``request.user.company`` (TenantMixin) et posent la société
-côté serveur ; le ``cout_horaire`` (paie/marge) ne quitte jamais cette API.
+Le module RH est INTERNE : aucune donnée n'est exposée côté client. L'accès des
+viewsets bâtis sur ``_RhBaseViewSet`` est gardé par les permissions FINES
+``rh_voir`` (lecture) / ``rh_gerer`` (écriture) — WIR172, patron YRBAC3 — avec
+repli légacy pour les comptes sans rôle fin ; quelques viewsets gardent leur
+propre garde (``salaires_voir`` pour la rémunération, ``IsAnyRole`` pour le
+portail self-service). Les viewsets filtrent par ``request.user.company``
+(TenantMixin) et posent la société côté serveur ; le ``cout_horaire``
+(paie/marge) ne quitte jamais cette API.
 """
 from datetime import timedelta
 from decimal import Decimal
@@ -25,6 +29,7 @@ from authentication.permissions import (
     IsAnyRole,
     IsResponsableOrAdmin,
 )
+from core.permissions import WriteScopedPermissionMixin
 
 from . import activity, selectors, services
 from .models import (
@@ -206,9 +211,33 @@ def _client_ip(request):
     return ip[:45]
 
 
-class _RhBaseViewSet(TenantMixin, viewsets.ModelViewSet):
-    """Base : société scopée + accès Administrateur/Responsable uniquement."""
-    permission_classes = [IsResponsableOrAdmin]
+class _RhBaseViewSet(WriteScopedPermissionMixin, TenantMixin,
+                     viewsets.ModelViewSet):
+    """Base : société scopée + permissions RH FINES (WIR172, patron YRBAC3).
+
+    AVANT : ``permission_classes = [IsResponsableOrAdmin]`` — garde grossière
+    qui passe dès qu'un rôle accorde UNE permission d'écriture, même
+    totalement hors RH (``CustomUser.is_responsable`` ⇒
+    ``_role_grants_write``). Un Commercial (``crm_creer``) obtenait donc le
+    CRUD complet des dossiers employés, des sanctions et des visites
+    médicales.
+
+    MAINTENANT : ``ScopedPermission`` route la garde par méthode HTTP —
+    lecture (GET/HEAD/OPTIONS) ⇒ ``rh_voir``, écriture (POST/PUT/PATCH/DELETE
+    et toute ``@action`` non sûre) ⇒ ``rh_gerer``. Le repli LÉGACY des comptes
+    sans rôle fin est conservé par ``core.permissions._user_has_or_legacy`` :
+    aucun compte hérité ne perd d'accès.
+
+    Les trois élargissements existants restent INTACTS — ils sont posés par
+    les ``get_permissions`` des sous-classes, qui court-circuitent la garde de
+    base pour l'action visée puis délèguent à ``super()`` :
+    ``DossierEmployeViewSet.compa_ratio`` (``salaires_voir``), ``…annuaire``
+    et ``…localisation_du_jour`` (``IsAnyRole``), plus les lectures ouvertes de
+    ``TypeLigneParcours``/``LigneParcours``/``Competence``/``CampagnePulse``/
+    ``BadgeReconnaissance``/``AttributionBadge``/``BulletinPaie``.
+    """
+    read_permission = 'rh_voir'
+    write_permission = 'rh_gerer'
 
 
 class DepartementViewSet(_RhBaseViewSet):
@@ -320,7 +349,7 @@ class DossierEmployeViewSet(_RhBaseViewSet):
         """ZRH11 — rapport de rétention/turnover ANNUEL détaillé (« Employee
         retention report » Odoo), DISTINCT du turnover 12 mois glissants du
         cockpit RH FG200. ``?annee=`` (défaut année en cours). Gaté
-        ``IsResponsableOrAdmin`` (gate de classe par défaut)."""
+        ``rh_voir`` (gate de classe par défaut, WIR172)."""
         annee = int(
             request.query_params.get('annee')
             or timezone.localdate().year)
@@ -332,8 +361,8 @@ class DossierEmployeViewSet(_RhBaseViewSet):
 
         DISTINCT de l'attestation de travail (PAIE34) et du reçu STC
         (XPAI1) — ne les duplique pas. 404 si l'employé n'est pas sorti
-        (aucun sens pour un actif). Gaté ``IsResponsableOrAdmin`` (gate de
-        classe par défaut)."""
+        (aucun sens pour un actif). Gaté ``rh_voir`` (gate de
+        classe par défaut, WIR172)."""
         from django.http import HttpResponse
 
         from .pdf_sortie import render_certificat_travail_pdf
@@ -434,7 +463,7 @@ class DossierEmployeViewSet(_RhBaseViewSet):
         """XRH31 — score de risque d'attrition de l'employé (scorer pur
         ``core.attrition_risk``, features assemblées via
         ``selectors.features_risque_attrition``). Gaté
-        ``IsResponsableOrAdmin`` (gate de classe par défaut)."""
+        ``rh_voir`` (gate de classe par défaut, WIR172)."""
         employe = self.get_object()
         return Response(selectors.risque_attrition_employe(employe))
 
@@ -927,8 +956,8 @@ class AvantageSocialViewSet(_RhBaseViewSet):
 class CampagnePulseViewSet(_RhBaseViewSet):
     """XRH32 — campagnes de baromètre interne eNPS anonyme (pulse).
 
-    Gestion (création/liste) réservée Administrateur/Responsable
-    (``IsResponsableOrAdmin`` — gate de classe par défaut) ; le VOTE lui-même
+    Gestion (création/liste) gardée par ``rh_voir``/``rh_gerer``
+    (gate de classe par défaut, WIR172) ; le VOTE lui-même
     est ouvert à tout employé via une action dédiée en accès élargi.
 
     Actions :
@@ -1188,7 +1217,7 @@ class DemandeCongeViewSet(_RhBaseViewSet):
         """ZRH3 — rapport congés par type et par employé (Odoo « Time Off
         Reporting »). ``?annee=`` (défaut année courante), ``?employe=``,
         ``?departement=`` optionnels. Lecture seule, gaté
-        ``IsResponsableOrAdmin`` (déjà la classe de la vue).
+        ``rh_voir`` (gate de classe par défaut, WIR172).
         """
         annee = request.query_params.get('annee') or timezone.localdate().year
         try:
@@ -1208,8 +1237,9 @@ class DemandeAllocationViewSet(_RhBaseViewSet):
 
     Un employé authentifié peut CRÉER une demande pour LUI-MÊME (via le
     portail, voir ``PortailSelfServiceViewSet.demander_allocation``) ; la
-    liste/validation/refus restent réservées ``IsResponsableOrAdmin`` (gate
-    de classe par défaut). À la VALIDATION, ``services.valider_allocation``
+    liste/validation/refus restent gardées par ``rh_voir``/``rh_gerer``
+    (gate de classe par défaut, WIR172). À la VALIDATION,
+    ``services.valider_allocation``
     crédite ``SoldeConge.acquis`` du nombre de jours — jamais écrit
     directement du corps. Filtres : ``?employe=`` / ``?statut=``.
     """
@@ -1702,8 +1732,8 @@ class PointageViewSet(_RhBaseViewSet):
         """ZRH18 — rapport de présence & heures supp. par employé/
         département sur période (« Attendance reporting » Odoo).
         ``?debut=&fin=`` (YYYY-MM-DD, requis) + filtres optionnels
-        ``?employe=&departement=``. Gaté ``IsResponsableOrAdmin`` (gate de
-        classe par défaut)."""
+        ``?employe=&departement=``. Gaté ``rh_voir`` (gate de
+        classe par défaut, WIR172)."""
         from datetime import datetime
 
         debut_str = request.query_params.get('debut')
@@ -2248,7 +2278,7 @@ class CompetenceViewSet(_RhBaseViewSet):
     def evolution(self, request):
         """ZRH10 — rapport d'évolution des compétences (« Skills Evolution »
         Odoo). ``?employe=&competence=&debut=&fin=`` optionnels (YYYY-MM-DD).
-        Gaté ``IsResponsableOrAdmin`` (gate de classe par défaut)."""
+        Gaté ``rh_voir`` (gate de classe par défaut, WIR172)."""
         from datetime import datetime
 
         def _parse(name):

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
@@ -22,6 +22,8 @@ beforeAll(() => {
 const {
   signer, accuserCreate, empty, etatsList, conducteursCreate, getEmployes,
   reservationsCreate, demandesVehiculeCreate, etatsDesLieuxCreate, charteCreate,
+  demandesVehiculeList, demandesVehiculeApprouver, demandesVehiculeRefuser,
+  divergencesPermis,
 } = vi.hoisted(() => ({
   signer: vi.fn(() => Promise.resolve({ data: {} })),
   accuserCreate: vi.fn(() => Promise.resolve({ data: {} })),
@@ -41,6 +43,23 @@ const {
   demandesVehiculeCreate: vi.fn(() => Promise.resolve({ data: { id: 12 } })),
   etatsDesLieuxCreate: vi.fn(() => Promise.resolve({ data: { id: 13 } })),
   charteCreate: vi.fn(() => Promise.resolve({ data: { id: 14, version: 3 } })),
+  // WIR200 — une demande encore au statut `demandee` : rowActions
+  // Approuver/Refuser doivent s'afficher UNIQUEMENT pour ce statut.
+  demandesVehiculeList: vi.fn(() => Promise.resolve({
+    data: [{
+      id: 21, besoin: 'Mission Casablanca', demandeur_nom: 'Amine',
+      date_debut_souhaitee: '2026-08-01', date_fin_souhaitee: '2026-08-03',
+      vehicule_label: null, statut: 'demandee', statut_display: 'Demandée',
+    }],
+  })),
+  demandesVehiculeApprouver: vi.fn(() => Promise.resolve({ data: { id: 21, statut: 'approuvee' } })),
+  demandesVehiculeRefuser: vi.fn(() => Promise.resolve({ data: { id: 21, statut: 'refusee' } })),
+  // WIR236 — par défaut aucune divergence (tests existants non affectés) ;
+  // un test dédié surcharge avec `mockResolvedValueOnce` pour vérifier
+  // l'affichage d'une VRAIE divergence.
+  divergencesPermis: vi.fn(() => Promise.resolve({
+    data: { nb_conducteurs_lies: 0, nb_divergences: 0, divergences: [] },
+  })),
 }))
 
 vi.mock('../../api/flotteApi', () => ({
@@ -48,11 +67,19 @@ vi.mock('../../api/flotteApi', () => ({
     conducteurs: {
       list: () => Promise.resolve({ data: [{ id: 1, nom: 'Karim' }] }),
       create: (...args) => conducteursCreate(...args),
+      // WIR236 — divergences permis flotte↔RH (DivergencesPermisCard, rendue
+      // au montage de l'onglet Conducteurs, actif par défaut).
+      divergencesPermis: (...args) => divergencesPermis(...args),
     },
     vehicules: { list: () => Promise.resolve({ data: [{ id: 7, immatriculation: '12345-A-6' }] }) },
     affectations: { list: empty },
     reservations: { list: empty, create: (...args) => reservationsCreate(...args) },
-    demandesVehicule: { list: empty, create: (...args) => demandesVehiculeCreate(...args) },
+    demandesVehicule: {
+      list: (...args) => demandesVehiculeList(...args),
+      create: (...args) => demandesVehiculeCreate(...args),
+      approuver: (...args) => demandesVehiculeApprouver(...args),
+      refuser: (...args) => demandesVehiculeRefuser(...args),
+    },
     etatsDesLieux: {
       list: etatsList,
       signer: (...args) => signer(...args),
@@ -164,6 +191,77 @@ describe('ConducteursScreen — Demandes de véhicule (WIR41b)', () => {
     await waitFor(() => expect(demandesVehiculeCreate).toHaveBeenCalledWith(
       expect.objectContaining({ besoin: 'Mission chantier' }),
     ))
+  })
+})
+
+describe('ConducteursScreen — Demandes de véhicule (WIR200 décision)', () => {
+  it('approuve une demande avec un véhicule attribué', async () => {
+    const user = userEvent.setup()
+    withProviders(<ConducteursScreen />)
+
+    await user.click(screen.getByRole('tab', { name: 'Demandes de véhicule' }))
+    // DataTable rend la table desktop ET les cartes mobiles dans le DOM (le
+    // point de rupture est géré en CSS) : deux occurrences attendues.
+    await screen.findAllByText('Mission Casablanca')
+
+    // Ligne encore `demandee` : rowActions affiche Approuver/Refuser en
+    // icônes directes (max 2 quick actions avant le menu kebab, comme la
+    // signature d'état des lieux ci-dessus) — desktop + mobile, on prend la
+    // première occurrence.
+    await user.click(screen.getAllByRole('button', { name: 'Approuver' })[0])
+
+    const dialog = within(screen.getByRole('dialog'))
+    await user.selectOptions(dialog.getByLabelText('Véhicule attribué'), '7')
+    await user.click(dialog.getByRole('button', { name: 'Approuver' }))
+
+    await waitFor(() => expect(demandesVehiculeApprouver).toHaveBeenCalledWith(
+      21, expect.objectContaining({ vehicule_attribue: '7' }),
+    ))
+  })
+
+  it('refuse une demande avec un motif', async () => {
+    const user = userEvent.setup()
+    withProviders(<ConducteursScreen />)
+
+    await user.click(screen.getByRole('tab', { name: 'Demandes de véhicule' }))
+    // DataTable rend la table desktop ET les cartes mobiles dans le DOM.
+    await screen.findAllByText('Mission Casablanca')
+
+    await user.click(screen.getAllByRole('button', { name: 'Refuser' })[0])
+
+    const dialog = within(screen.getByRole('dialog'))
+    await user.type(dialog.getByLabelText(/Motif/), 'Véhicule indisponible')
+    await user.click(dialog.getByRole('button', { name: 'Refuser' }))
+
+    await waitFor(() => expect(demandesVehiculeRefuser).toHaveBeenCalledWith(
+      21, 'Véhicule indisponible',
+    ))
+  })
+})
+
+describe('ConducteursScreen — Divergences permis flotte↔RH (WIR236)', () => {
+  it('affiche une divergence permis flotte↔RH détectée', async () => {
+    divergencesPermis.mockResolvedValueOnce({
+      data: {
+        nb_conducteurs_lies: 1,
+        nb_divergences: 1,
+        divergences: [{
+          // WIR236 fix — 'Karim' collidait avec le conducteur du mock
+          // conducteurs.list ('Karim' aussi), rendant getByText ambigu.
+          conducteur_id: 1, employe_id: 42, conducteur_nom: 'Rachid',
+          local_valide: true, rh_valide: false,
+        }],
+      },
+    })
+    withProviders(<ConducteursScreen />)
+
+    await screen.findByText('1 divergence(s) permis flotte↔RH')
+    expect(screen.getByText('Rachid')).toBeInTheDocument()
+  })
+
+  it('affiche « aucune divergence » quand la réconciliation est propre', async () => {
+    withProviders(<ConducteursScreen />)
+    await screen.findByText(/Aucune divergence permis flotte↔RH/)
   })
 })
 

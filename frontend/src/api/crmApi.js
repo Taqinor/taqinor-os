@@ -50,6 +50,11 @@ const crmApi = {
   restaurerCorbeille: (corbeilleId) =>
     api.post(`/core/corbeille/${corbeilleId}/restaurer/`),
   getHistoriqueLead: (id) => api.get(`/crm/leads/${id}/historique/`),
+  // WIR227/QJ25 — contour OSM du bâtiment épinglé (roof_views.lead_roof_footprint) :
+  // { polygon: [{lat,lng}, ...], source: 'osm' } ou polygon vide + `message` FR
+  // (« Aucun bâtiment trouvé… ») quand Overpass ne renvoie rien — jamais une
+  // erreur bloquante, l'atelier toiture retombe sur le tracé manuel.
+  getRoofFootprint: (id) => api.get(`/crm/leads/${id}/roof-footprint/`),
   // NTMOB4 — file de relance du jour (FG31/VX83, crm.selectors.relances_du_jour).
   // ?scope=overdue|today|week (défaut today). {count, results:[Lead]}.
   // `config` optionnel (NTMOB19) : permet à un widget d'arrière-plan de

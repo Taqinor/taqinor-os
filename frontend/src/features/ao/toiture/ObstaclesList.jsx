@@ -25,6 +25,7 @@ import { useCallback, useMemo, useState } from 'react'
 import { Button } from '../../../ui/Button'
 import {
   PROVENANCES,
+  PROVENANCE_ECARTE,
   TRIS,
   compterProvenances,
   evaluerGardePublication,
@@ -36,6 +37,16 @@ import {
 } from './gardePublication'
 import { natureParCle } from './repereLettre'
 
+/* WIR205 — écarter/réintégrer sont des ACTIONS SERVEUR (`ObstacleAOViewSet`) :
+   elles n'existent que pour un obstacle DÉJÀ enregistré. Un obstacle tracé à
+   l'instant n'a qu'un id local (`obs-A-169…`) — le dire est plus honnête qu'un
+   bouton qui produirait un 404. */
+const MSG_NON_ENREGISTRE =
+  'Obstacle pas encore enregistré : « Enregistrer » d’abord, puis écarter.'
+
+const estEnregistre = (o) =>
+  typeof o?.id === 'number' || (typeof o?.id === 'string' && /^\d+$/.test(o.id))
+
 export default function ObstaclesList({
   obstacles = [],
   survolId = null,
@@ -43,12 +54,48 @@ export default function ObstaclesList({
   onSelection,
   onPoserQuestion,
   onPretAPublier,
+  onEcarter,
+  onReintegrer,
 }) {
   const [tri, setTri] = useState('repere')
   const [sens, setSens] = useState('asc')
   const [provenance, setProvenance] = useState('toutes')
   const [inclureEcartes, setInclureEcartes] = useState(true)
   const [recherche, setRecherche] = useState('')
+  // WIR205 — écarter EXIGE un motif (le serveur renvoie 400 sans lui) : la
+  // saisie s'ouvre sur la LIGNE concernée, jamais dans une boîte anonyme.
+  const [ecartementId, setEcartementId] = useState(null)
+  const [motif, setMotif] = useState('')
+  const [erreur, setErreur] = useState(null)
+  const [enCours, setEnCours] = useState(null)
+
+  const confirmerEcartement = useCallback(async (obstacle) => {
+    const texte = motif.trim()
+    if (!texte) return
+    setErreur(null)
+    setEnCours(obstacle.id ?? obstacle.repere)
+    try {
+      await onEcarter?.(obstacle, texte)
+      setEcartementId(null)
+      setMotif('')
+    } catch (e) {
+      setErreur(e?.message || 'Le serveur a refusé l’écartement.')
+    } finally {
+      setEnCours(null)
+    }
+  }, [motif, onEcarter])
+
+  const reintegrer = useCallback(async (obstacle) => {
+    setErreur(null)
+    setEnCours(obstacle.id ?? obstacle.repere)
+    try {
+      await onReintegrer?.(obstacle)
+    } catch (e) {
+      setErreur(e?.message || 'Le serveur a refusé la réintégration.')
+    } finally {
+      setEnCours(null)
+    }
+  }, [onReintegrer])
 
   const compte = useMemo(() => compterProvenances(obstacles), [obstacles])
   const compteur = useMemo(() => libelleCompteur(obstacles), [obstacles])
@@ -178,17 +225,25 @@ export default function ObstaclesList({
               </th>
             ))}
             <th scope="col">Décision</th>
+            <th scope="col">Action</th>
           </tr>
         </thead>
         <tbody>
           {visibles.map((o) => {
             const cle = o.id ?? o.repere
             const info = provenanceInfo(o.provenance)
+            // L'écartement se lit du drapeau posé par l'atelier (WIR205) OU de
+            // la provenance serveur elle-même : une seule table de
+            // correspondance (`provenanceInfo`), jamais un test de chaîne ici.
+            const ecarte = Boolean(o.ecarte) || info.cle === PROVENANCE_ECARTE
+            const enregistre = estEnregistre(o)
+            const occupe = enCours === cle
             return (
               <tr
                 key={cle}
                 data-ao-repere={o.repere}
                 data-ao-provenance={info.jeton}
+                data-ao-ecarte={ecarte ? 'oui' : undefined}
                 data-ao-survole={survolId === cle ? 'oui' : undefined}
                 data-ao-fautif={fautifs.has(cle) ? 'oui' : undefined}
                 className={survolId === cle ? 'est-survole' : undefined}
@@ -207,11 +262,75 @@ export default function ObstaclesList({
                 <td>{info.libelle}</td>
                 <td>{surfaceObstacle(o).toFixed(2)} m²</td>
                 <td>{o.decision || '—'}</td>
+                <td>
+                  {ecarte ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={!enregistre || occupe}
+                      title={enregistre ? undefined : MSG_NON_ENREGISTRE}
+                      onClick={() => reintegrer(o)}
+                      data-ao-reintegrer={o.repere}
+                    >
+                      Réintégrer
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={!enregistre || occupe}
+                      title={enregistre ? undefined : MSG_NON_ENREGISTRE}
+                      onClick={() => {
+                        setErreur(null)
+                        setMotif('')
+                        setEcartementId(cle)
+                      }}
+                      data-ao-ecarter={o.repere}
+                    >
+                      Écarter
+                    </Button>
+                  )}
+
+                  {ecartementId === cle && (
+                    <div className="ao-obstacle-ecartement" data-ao-ecartement={o.repere}>
+                      <label className="ao-champ" htmlFor={`ao-motif-ecart-${cle}`}>
+                        <span>Motif de l&apos;écartement</span>
+                        <textarea
+                          id={`ao-motif-ecart-${cle}`}
+                          className="form-control"
+                          value={motif}
+                          onChange={(e) => setMotif(e.target.value)}
+                        />
+                      </label>
+                      <Button
+                        type="button"
+                        disabled={!motif.trim() || occupe}
+                        onClick={() => confirmerEcartement(o)}
+                        data-ao-ecarter-confirmer={o.repere}
+                      >
+                        Confirmer l&apos;écartement
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setEcartementId(null)}
+                      >
+                        Annuler
+                      </Button>
+                    </div>
+                  )}
+                </td>
               </tr>
             )
           })}
         </tbody>
       </table>
+
+      {erreur && (
+        <p role="alert" data-ao-obstacles-erreur>
+          {erreur}
+        </p>
+      )}
 
       {visibles.length === 0 && (
         <p data-ao-obstacles-vide>Aucun obstacle ne correspond à ce filtre.</p>

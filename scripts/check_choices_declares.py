@@ -625,6 +625,22 @@ REFUS = {
         ("Icône de chat", "MIROIR_JS")],
     "frontend/src/components/layout/Sidebar.odx6.test.jsx": [
         ("coquille redevient NEUTRE", "TEST")],
+    # WIR171 — le gating d'écran DÉCRIT la sémantique de la garde serveur
+    # (HasPermissionOrLegacy) : comportement, pas une liste de choix.
+    "frontend/src/components/layout/Sidebar.jsx": [
+        ("HasPermissionOrLegacy", "COMPORTEMENT")],
+    # WIR244 — les clés lundi..dimanche sont des NOMS DE CHAMPS booléens de
+    # CalendrierProjet, pas une liste de choix déclarable.
+    "frontend/src/features/gestion_projet/pages/PlanningPage.jsx": [
+        ("calendrier ouvré", "FORME")],
+    # WIR280 — le test décrit le COMPORTEMENT de l'action evaluer (400 FR sur
+    # formule illégale), pas une liste de choix ; fichier de test.
+    "frontend/src/features/compta/pages/EtatsPersonnalisesPage.test.jsx": [
+        ("formule illégale rend", "TEST")],
+    "frontend/src/router/moduleGating.wir171.test.mjs": [
+        ("MIROIR de la garde serveur", "TEST"),
+        ("CanViewAoRentabilite", "TEST"),
+        ("user.is_responsable", "TEST")],
     "frontend/src/lib/monitoring.test.mjs": [("Sentry frontend", "TEST")],
     "frontend/src/router/moduleRoutes.jsx": [
         ("AUCUNE copie de cette règle", "COMPORTEMENT")],

@@ -29,8 +29,15 @@ import {
    « Appliquer » n'existe PLUS ici : côté serveur, appliquer un jeu de
    paramètres écrit sur une TOITURE (`services.appliquer_preset`) et cet écran
    global n'en désigne aucune. Le bouton d'origine appelait un endpoint
-   inventé ; plutôt que de deviner une cible, l'écran dit d'où l'application
-   se fait réellement. Endpoint à construire le jour où la cible est tranchée.
+   inventé.
+
+   CORRECTION WIR207 — la fin de ce paragraphe était FAUSSE. Il n'y a AUCUN
+   « endpoint à construire » : `POST /ao/toitures/<id>/appliquer-preset/`
+   (`ToitureAOViewSet.appliquer_preset`, AOF27) existe depuis toujours. Ce qui
+   manquait, c'était son appelant — désormais l'atelier toiture
+   (`toiture/ToituresPage.jsx`, sélecteur « Jeu de paramètres à appliquer »),
+   le seul écran qui désigne une toiture. Ne pas réécrire « à construire » ici :
+   ce commentaire a laissé la fonction inaccessible plusieurs semaines.
    ========================================================================== */
 
 const errMsg = (e, fallback) => e?.response?.data?.detail || fallback

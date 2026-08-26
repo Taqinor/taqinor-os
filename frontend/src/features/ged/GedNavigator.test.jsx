@@ -34,6 +34,11 @@ vi.mock('../../api/gedApi', () => ({
     mettreEnCorbeille: vi.fn(() => Promise.resolve({ data: {} })),
     // XGED14 — opérations en lot.
     operationsLot: vi.fn(() => Promise.resolve({ data: { resultats: [], erreurs: [] } })),
+    // WIR204 — ZIP de lot (wrapper dédié) + restauration de version.
+    telechargerZipLot: vi.fn(() => Promise.resolve({
+      data: new Blob(['PK'], { type: 'application/zip' }), headers: {},
+    })),
+    restaurerVersionDocument: vi.fn(() => Promise.resolve({ data: { id: 24, version: 2 } })),
     // XGED24 — caviardage.
     caviarderDocument: vi.fn(() => Promise.resolve({ data: { id: 99 } })),
     // XGED10/17 — scission, fusion, comparaison de versions.
@@ -43,6 +48,21 @@ vi.mock('../../api/gedApi', () => ({
       metadonnees: { size: { v1: 100, v2: 200 } }, texte_disponible: false,
       message: 'Comparaison binaire indisponible.',
     } })),
+    // WIR249 — import en masse, OCR pièce, verrou d'avertissement (ZGED9),
+    // cycle de vie (GED17), éditeur Office (XGED30), assistant DocQA.
+    importerEnMasse: vi.fn(() => Promise.resolve({
+      data: { crees: 2, documents: [{ id: 1 }, { id: 2 }], erreurs: [] },
+    })),
+    ocrPiece: vi.fn(() => Promise.resolve({
+      data: { document: {}, metadonnees: { cin: 'AB12345' }, ocr_enabled: true },
+    })),
+    verrouillerDocument: vi.fn(() => Promise.resolve({ data: {} })),
+    deverrouillerDocument: vi.fn(() => Promise.resolve({ data: {} })),
+    cycleVieDocument: vi.fn(() => Promise.resolve({ data: {} })),
+    officeOuvrir: vi.fn(() => Promise.resolve({
+      data: { editor_url: 'https://office.example/edit/8', document_id: 8 },
+    })),
+    docqa: vi.fn(() => Promise.resolve({ data: { enabled: true, results: [] } })),
   },
 }))
 
@@ -343,5 +363,209 @@ describe('GedNavigator — écriture (U14)', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: 'Valider' }))
 
     await waitFor(() => expect(gedApi.renameDossier).toHaveBeenCalledWith(5, 'Archives'))
+  })
+
+  it('WIR204 — télécharge un ZIP de la sélection (wrapper dédié, jamais operationsLot)', async () => {
+    gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Cab' }]))
+    gedApi.getDossiers.mockResolvedValue(ok([
+      { id: 5, nom: 'Docs', cabinet: 1, parent: null, path: '/5/' },
+    ]))
+    gedApi.getDocuments.mockResolvedValue(ok([
+      { id: 8, nom: 'a.pdf', updated_at: '2026-06-01T10:00:00Z' },
+      { id: 9, nom: 'b.pdf', updated_at: '2026-06-02T10:00:00Z' },
+    ]))
+
+    renderGed()
+    await userEvent.click(await screen.findByText('Docs'))
+    await userEvent.click(await screen.findByRole('checkbox', { name: /Sélectionner a\.pdf/i }))
+
+    await userEvent.click(await screen.findByRole('button', { name: /Télécharger \(\.zip\)/i }))
+
+    await waitFor(() => expect(gedApi.telechargerZipLot).toHaveBeenCalledWith([8]))
+    expect(gedApi.operationsLot).not.toHaveBeenCalled()
+  })
+
+  it('GED15 — restaure une version antérieure depuis l’écran de versions', async () => {
+    gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Cab' }]))
+    gedApi.getDossiers.mockResolvedValue(ok([
+      { id: 5, nom: 'Docs', cabinet: 1, parent: null, path: '/5/' },
+    ]))
+    gedApi.getDocuments.mockResolvedValue(ok([
+      { id: 8, nom: 'facture.pdf', version_count: 2, updated_at: '2026-06-01T10:00:00Z' },
+    ]))
+    gedApi.getVersions.mockResolvedValue(ok([
+      { id: 22, version: 1, mime: 'application/pdf', filename: 'facture.pdf', created_at: '2026-05-01T09:00:00Z' },
+      { id: 23, version: 2, mime: 'application/pdf', filename: 'facture.pdf', created_at: '2026-06-01T09:00:00Z' },
+    ]))
+
+    renderGed()
+    await userEvent.click(await screen.findByText('Docs'))
+    await userEvent.click(await screen.findByRole('button', { name: /Aperçu de facture\.pdf/i }))
+    await waitFor(() => expect(gedApi.getVersions).toHaveBeenCalledWith({ document: 8 }))
+
+    await userEvent.click(await screen.findByRole('button', { name: /^Versions…$/i }))
+    await userEvent.click(await screen.findByRole('button', { name: /^Restaurer$/i }))
+
+    await waitFor(() => expect(gedApi.restaurerVersionDocument).toHaveBeenCalledWith(8, 22))
+  })
+
+  it('XGED14 — étiquette la sélection par lot et affiche le rapport d’erreurs', async () => {
+    gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Cab' }]))
+    gedApi.getDossiers.mockResolvedValue(ok([
+      { id: 5, nom: 'Docs', cabinet: 1, parent: null, path: '/5/' },
+    ]))
+    gedApi.getDocuments.mockResolvedValue(ok([
+      { id: 8, nom: 'a.pdf', updated_at: '2026-06-01T10:00:00Z' },
+      { id: 9, nom: 'b.pdf', updated_at: '2026-06-02T10:00:00Z' },
+    ]))
+    gedApi.getTags.mockResolvedValue(ok([{ id: 3, nom: 'Urgent' }]))
+    gedApi.operationsLot.mockResolvedValueOnce({ data: {
+      resultats: [{ document: 8, ok: true }],
+      erreurs: [{ document: 9, erreur: 'Document archivé légalement.' }],
+    } })
+
+    renderGed()
+    await userEvent.click(await screen.findByText('Docs'))
+    await userEvent.click(await screen.findByRole('checkbox', { name: /Sélectionner a\.pdf/i }))
+    await userEvent.click(screen.getByRole('checkbox', { name: /Sélectionner b\.pdf/i }))
+
+    await userEvent.click(await screen.findByRole('button', { name: /Étiqueter \/ Déplacer…/i }))
+    const dialog = await screen.findByRole('dialog')
+    await userEvent.click(within(dialog).getByRole('combobox', { name: 'Étiquette' }))
+    await userEvent.click(within(await screen.findByRole('listbox')).getByText('Urgent'))
+    await userEvent.click(within(dialog).getByRole('button', { name: /^Appliquer$/i }))
+
+    await waitFor(() => expect(gedApi.operationsLot).toHaveBeenCalledWith({
+      documents: [8, 9], operation: 'tagger', params: { tag: '3' },
+    }))
+    expect(await within(dialog).findByText(/Document archivé légalement\./)).toBeInTheDocument()
+  })
+
+  it('WIR249 — importe un lot en masse (CSV) dans le dossier courant', async () => {
+    gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Cab' }]))
+    gedApi.getDossiers.mockResolvedValue(ok([
+      { id: 5, nom: 'Docs', cabinet: 1, parent: null, path: '/5/' },
+    ]))
+    gedApi.getDocuments.mockResolvedValue(ok([]))
+
+    renderGed()
+    await userEvent.click(await screen.findByText('Docs'))
+    await userEvent.click(await screen.findByRole('button', { name: /Importer \(CSV\)/i }))
+
+    const dialog = await screen.findByRole('dialog')
+    const csvFile = new File(['nom,fichier\na,a.pdf'], 'meta.csv', { type: 'text/csv' })
+    await userEvent.upload(within(dialog).getByLabelText(/Fichier CSV de métadonnées/i), csvFile)
+    await userEvent.click(within(dialog).getByRole('button', { name: /^Importer$/i }))
+
+    await waitFor(() => expect(gedApi.importerEnMasse).toHaveBeenCalledTimes(1))
+    const call = gedApi.importerEnMasse.mock.calls[0][0]
+    expect(call.folder).toBe(5)
+    expect(call.csv).toBe(csvFile)
+    expect(call.zip).toBeUndefined()
+  })
+
+  it('WIR249 — extrait l’OCR d’un document depuis le menu « Plus d’actions »', async () => {
+    gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Cab' }]))
+    gedApi.getDossiers.mockResolvedValue(ok([
+      { id: 5, nom: 'Docs', cabinet: 1, parent: null, path: '/5/' },
+    ]))
+    gedApi.getDocuments.mockResolvedValue(ok([
+      { id: 8, nom: 'cin.pdf', updated_at: '2026-06-01T10:00:00Z' },
+    ]))
+
+    renderGed()
+    await userEvent.click(await screen.findByText('Docs'))
+    await userEvent.click(await screen.findByRole('button', { name: /Plus d'actions pour cin\.pdf/i }))
+    await userEvent.click(await screen.findByText("Extraire l'OCR"))
+
+    await waitFor(() => expect(gedApi.ocrPiece).toHaveBeenCalledWith(8))
+  })
+
+  it('WIR249 — pose puis lève le verrou d’avertissement (ZGED9, distinct du check-out)', async () => {
+    gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Cab' }]))
+    gedApi.getDossiers.mockResolvedValue(ok([
+      { id: 5, nom: 'Docs', cabinet: 1, parent: null, path: '/5/' },
+    ]))
+    gedApi.getDocuments.mockResolvedValueOnce(ok([
+      { id: 8, nom: 'plan.pdf', est_verrouille_avertissement: false, updated_at: '2026-06-01T10:00:00Z' },
+    ])).mockResolvedValue(ok([
+      { id: 8, nom: 'plan.pdf', est_verrouille_avertissement: true, updated_at: '2026-06-01T10:00:00Z' },
+    ]))
+
+    renderGed()
+    await userEvent.click(await screen.findByText('Docs'))
+    await userEvent.click(await screen.findByRole('button', { name: /Plus d'actions pour plan\.pdf/i }))
+    await userEvent.click(await screen.findByText('Verrouiller (avertissement)'))
+
+    await waitFor(() => expect(gedApi.verrouillerDocument).toHaveBeenCalledWith(8))
+
+    // Après rechargement, le document est verrouillé : le libellé bascule.
+    await userEvent.click(await screen.findByRole('button', { name: /Plus d'actions pour plan\.pdf/i }))
+    await userEvent.click(await screen.findByText('Lever le verrou (avertissement)'))
+
+    await waitFor(() => expect(gedApi.deverrouillerDocument).toHaveBeenCalledWith(8))
+  })
+
+  it('WIR249 — fait avancer le cycle de vie documentaire (GED17, séparé de STAGES.py)', async () => {
+    gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Cab' }]))
+    gedApi.getDossiers.mockResolvedValue(ok([
+      { id: 5, nom: 'Docs', cabinet: 1, parent: null, path: '/5/' },
+    ]))
+    gedApi.getDocuments.mockResolvedValue(ok([
+      {
+        id: 8, nom: 'devis.pdf', statut: 'brouillon', statut_display: 'Brouillon',
+        transitions_autorisees: ['revue'], updated_at: '2026-06-01T10:00:00Z',
+      },
+    ]))
+
+    renderGed()
+    await userEvent.click(await screen.findByText('Docs'))
+    await userEvent.click(await screen.findByRole('button', { name: /Plus d'actions pour devis\.pdf/i }))
+    await userEvent.click(await screen.findByText('Cycle de vie…'))
+
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText('Brouillon')).toBeInTheDocument()
+    await userEvent.click(within(dialog).getByRole('button', { name: 'En revue' }))
+
+    await waitFor(() => expect(gedApi.cycleVieDocument).toHaveBeenCalledWith(8, 'revue'))
+  })
+
+  it('WIR249 — ouvre l’éditeur Office dans un nouvel onglet', async () => {
+    gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Cab' }]))
+    gedApi.getDossiers.mockResolvedValue(ok([
+      { id: 5, nom: 'Docs', cabinet: 1, parent: null, path: '/5/' },
+    ]))
+    gedApi.getDocuments.mockResolvedValue(ok([
+      { id: 8, nom: 'contrat.docx', updated_at: '2026-06-01T10:00:00Z' },
+    ]))
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => {})
+
+    renderGed()
+    await userEvent.click(await screen.findByText('Docs'))
+    await userEvent.click(await screen.findByRole('button', { name: /Plus d'actions pour contrat\.docx/i }))
+    await userEvent.click(await screen.findByText("Ouvrir dans l'éditeur (Office)"))
+
+    await waitFor(() => expect(gedApi.officeOuvrir).toHaveBeenCalledWith(8))
+    expect(openSpy).toHaveBeenCalledWith('https://office.example/edit/8', '_blank', 'noopener')
+    openSpy.mockRestore()
+  })
+
+  it('FG352/XKB20/WIR249 — assistant documentaire (DocQA)', async () => {
+    gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Cab' }]))
+    gedApi.getDossiers.mockResolvedValue(ok([]))
+    gedApi.docqa.mockResolvedValueOnce({ data: {
+      enabled: true,
+      results: [{ source: 'ged', document: 8, document_nom: 'Garantie.pdf',
+        chunk_index: 0, texte: 'Garantie 10 ans sur les panneaux.', distance: 0.1 }],
+    } })
+
+    renderGed()
+    await userEvent.click(await screen.findByRole('button', { name: /Assistant documentaire/i }))
+    const dialog = await screen.findByRole('dialog')
+    await userEvent.type(within(dialog).getByLabelText('Votre question'), 'Quelle garantie ?')
+    await userEvent.click(within(dialog).getByRole('button', { name: /^Chercher$/i }))
+
+    await waitFor(() => expect(gedApi.docqa).toHaveBeenCalledWith({ q: 'Quelle garantie ?', k: 5 }))
+    expect(await within(dialog).findByText('Garantie 10 ans sur les panneaux.')).toBeInTheDocument()
   })
 })

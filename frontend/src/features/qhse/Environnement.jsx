@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Leaf, PlusCircle } from 'lucide-react'
+import {
+  Leaf, PlusCircle, Truck, CheckCircle2, PackageCheck, Recycle,
+} from 'lucide-react'
 import qhseApi from '../../api/qhseApi'
 import {
   Tabs, TabsList, TabsTrigger, TabsContent, Badge, Card,
@@ -422,6 +424,49 @@ export default function Environnement() {
   const [reloadNonce, setReloadNonce] = useState(0)
   const bumpReload = () => setReloadNonce((n) => n + 1)
 
+  // WIR234 (QHSE36, loi 28-00) — cycle emis→enleve→traite du BSD, jusqu'ici
+  // sans aucun bouton (rowActions absentes de l'onglet).
+  async function enleverBsd(bsd) {
+    try {
+      await qhseApi.bordereauxDechets.enlever(bsd.id, {})
+      toast.success('Bordereau enlevé.')
+      bumpReload()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Enlèvement impossible.')
+    }
+  }
+
+  async function traiterBsd(bsd) {
+    try {
+      await qhseApi.bordereauxDechets.traiter(bsd.id, {})
+      toast.success('Bordereau traité.')
+      bumpReload()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Traitement impossible.')
+    }
+  }
+
+  // WIR234 (QHSE37) — cycle collecte→transporte→recycle du lot PV.
+  async function transporterRecyclage(rec) {
+    try {
+      await qhseApi.recyclageModules.transporter(rec.id)
+      toast.success('Lot marqué transporté.')
+      bumpReload()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Transport impossible.')
+    }
+  }
+
+  async function recyclerRecyclage(rec) {
+    try {
+      await qhseApi.recyclageModules.recycler(rec.id, {})
+      toast.success('Lot recyclé.')
+      bumpReload()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Recyclage impossible.')
+    }
+  }
+
   const dechetsCols = useMemo(() => [
     { id: 'libelle', header: 'Déchet', accessor: (r) => r.libelle },
     { id: 'code', header: 'Code', width: 120, accessor: (r) => r.code || '—' },
@@ -613,6 +658,14 @@ export default function Environnement() {
             exportName="qhse-bsd"
             deps={[reloadNonce]}
             actions={<CreerButton onClick={() => setCreateKey('bordereauxDechets')} label="Nouveau BSD" />}
+            rowActions={(r) => [
+              ...(r.statut === 'emis'
+                ? [{ id: 'enlever', label: 'Enlever', icon: Truck, onClick: () => enleverBsd(r) }]
+                : []),
+              ...(r.statut === 'emis' || r.statut === 'enleve'
+                ? [{ id: 'traiter', label: 'Traiter', icon: CheckCircle2, onClick: () => traiterBsd(r) }]
+                : []),
+            ]}
           />
         </TabsContent>
 
@@ -625,6 +678,14 @@ export default function Environnement() {
             exportName="qhse-recyclage-modules"
             deps={[reloadNonce]}
             actions={<CreerButton onClick={() => setCreateKey('recyclageModules')} label="Nouveau recyclage" />}
+            rowActions={(r) => [
+              ...(r.statut === 'collecte'
+                ? [{ id: 'transporter', label: 'Transporter', icon: PackageCheck, onClick: () => transporterRecyclage(r) }]
+                : []),
+              ...(r.statut === 'collecte' || r.statut === 'transporte'
+                ? [{ id: 'recycler', label: 'Recycler', icon: Recycle, onClick: () => recyclerRecyclage(r) }]
+                : []),
+            ]}
           />
         </TabsContent>
 

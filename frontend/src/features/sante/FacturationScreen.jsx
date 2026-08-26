@@ -31,6 +31,35 @@ export default function FacturationScreen() {
   const [actesChoisis, setActesChoisis] = useState([])
   const [paiementForm, setPaiementForm] = useState({ facture_sante: '', montant: '', mode: 'especes' })
 
+  // NTSAN28/WIR273 — statistiques actes/conventions (période optionnelle,
+  // sans filtre = tout l'historique). Backend déjà câblé
+  // (`statistiques_actes_et_conventions`), jamais appelé par un écran.
+  const [statsFilter, setStatsFilter] = useState({ date_debut: '', date_fin: '' })
+  const [stats, setStats] = useState(null)
+  const [loadingStats, setLoadingStats] = useState(true)
+
+  const chargerStatistiques = (filtre) => {
+    setLoadingStats(true)
+    const params = {}
+    if (filtre.date_debut) params.date_debut = filtre.date_debut
+    if (filtre.date_fin) params.date_fin = filtre.date_fin
+    santeApi.facturesSante.statistiques(params)
+      .then((res) => setStats(res.data))
+      .catch(() => toast.error('Impossible de charger les statistiques.'))
+      .finally(() => setLoadingStats(false))
+  }
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount, sans filtre
+    chargerStatistiques({ date_debut: '', date_fin: '' })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- chargement UNIQUEMENT au montage
+  }, [])
+
+  const filtrerStatistiques = (e) => {
+    e.preventDefault()
+    chargerStatistiques(statsFilter)
+  }
+
   const load = () => {
     setLoading(true)
     Promise.all([
@@ -208,6 +237,68 @@ export default function FacturationScreen() {
           <Plus size={16} strokeWidth={1.75} aria-hidden="true" /> Encaisser
         </Button>
       </form>
+
+      <h2 style={{ fontSize: 15, fontWeight: 600, marginTop: 24 }}>Statistiques</h2>
+      <form onSubmit={filtrerStatistiques} style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+        <input
+          type="date"
+          value={statsFilter.date_debut}
+          onChange={(e) => setStatsFilter({ ...statsFilter, date_debut: e.target.value })}
+          aria-label="Date de début (statistiques)"
+        />
+        <input
+          type="date"
+          value={statsFilter.date_fin}
+          onChange={(e) => setStatsFilter({ ...statsFilter, date_fin: e.target.value })}
+          aria-label="Date de fin (statistiques)"
+        />
+        <Button type="submit" disabled={loadingStats}>Filtrer</Button>
+      </form>
+      {loadingStats ? <p>Chargement…</p> : stats && (
+        <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+          <div>
+            <h3 style={{ fontSize: 14, fontWeight: 600 }}>Actes les plus facturés</h3>
+            <table style={{ borderCollapse: 'collapse' }}>
+              <thead>
+                <tr><th>Acte</th><th>Volume</th><th>CA</th></tr>
+              </thead>
+              <tbody>
+                {stats.par_acte.map((a) => (
+                  <tr key={a.acte_id}>
+                    <td>{a.acte__libelle}</td>
+                    <td>{a.volume}</td>
+                    <td>{a.chiffre_affaires}</td>
+                  </tr>
+                ))}
+                {stats.par_acte.length === 0 && (
+                  <tr><td colSpan={3} style={{ textAlign: 'center', color: '#64748b' }}>Aucun acte facturé</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <div>
+            <h3 style={{ fontSize: 14, fontWeight: 600 }}>Répartition du CA par convention</h3>
+            <table style={{ borderCollapse: 'collapse' }}>
+              <thead>
+                <tr><th>Convention</th><th>CA tiers payant</th><th>CA total</th><th>Factures</th></tr>
+              </thead>
+              <tbody>
+                {stats.par_convention.map((c) => (
+                  <tr key={c.convention_id ?? 'sans-convention'}>
+                    <td>{c.convention__nom || 'Sans convention (cash)'}</td>
+                    <td>{c.ca_tiers_payant}</td>
+                    <td>{c.ca_total}</td>
+                    <td>{c.nb_factures}</td>
+                  </tr>
+                ))}
+                {stats.par_convention.length === 0 && (
+                  <tr><td colSpan={4} style={{ textAlign: 'center', color: '#64748b' }}>Aucune facture</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
