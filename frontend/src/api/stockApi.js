@@ -27,6 +27,12 @@ const stockApi = {
   // QP2 — clone serveur (nouveau nom, SKU frais, prix d'achat copié côté
   // serveur) ; réservé Directeur + Commercial responsable (QG4).
   dupliquerProduit: (id, nom) => api.post(`/stock/produits/${id}/dupliquer/`, { nom }),
+  // WIR221/XSTK10 — mise au rebut (motif obligatoire) + rapport pertes de la
+  // période (admin, agrégé par motif) ; jamais client-facing.
+  rebuterProduit: (id, data) =>
+    api.post(`/stock/produits/${id}/rebuter/`, data),
+  getRapportPertes: (params) =>
+    api.get('/stock/produits/rapport-pertes/', { params }),
   // APX18 — photo produit. UN seul aller-retour : le serveur téléverse dans
   // MinIO (primitive plateforme `records.Attachment`, ARC26) ET rattache la
   // pièce jointe au produit dans la même transaction — jamais de pièce jointe
