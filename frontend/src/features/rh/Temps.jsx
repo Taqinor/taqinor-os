@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  LogOut, Upload, Download, Pencil, MonitorSmartphone, Ban, History,
+  LogOut, Upload, Download, Pencil, MonitorSmartphone, Ban, History, CheckCircle2,
 } from 'lucide-react'
 import { ListShell } from '../../ui/module'
 import {
@@ -31,6 +31,9 @@ const VUES = [
   // ZRH6 — absents non justifiés du jour ; ZRH18 — rapport de présence.
   { value: 'absents', label: 'Absents du jour' },
   { value: 'rapport', label: 'Rapport de présence' },
+  // WIR195 — incidents de présence (retard/absence injustifiée, FG171) :
+  // créés depuis « Absents du jour » mais jamais relisibles ni justifiables.
+  { value: 'incidents', label: 'Incidents de présence' },
 ]
 
 /* PACT19 — colonnes du CSV « Export paie ». La forme vient du serveur
@@ -70,6 +73,9 @@ export default function Temps() {
   // ZRH6 — absents non justifiés du jour ; ZRH18 — rapport de présence.
   const [absents, setAbsents] = useState([])
   const [rapport, setRapport] = useState(null)
+  // WIR195 — incidents de présence (retard/absence injustifiée).
+  const [incidents, setIncidents] = useState([])
+  const [justifierFor, setJustifierFor] = useState(null)
   const [nouveauToken, setNouveauToken] = useState(null)
   const fileRef = useRef(null)
 
@@ -85,8 +91,9 @@ export default function Temps() {
       rhApi.getDevicesKiosque(),
       rhApi.getAbsentsNonJustifies(),
       rhApi.getRapportPresence({ debut: debutMois(), fin: aujourdHui() }),
+      rhApi.getIncidentsPresence(),
     ])
-      .then(([pRes, rRes, prRes, hRes, dRes, aRes, rapRes]) => {
+      .then(([pRes, rRes, prRes, hRes, dRes, aRes, rapRes, incRes]) => {
         if (!vivant) return
         setPointages(unwrap(pRes.data))
         setRoster(unwrap(rRes.data))
@@ -95,6 +102,7 @@ export default function Temps() {
         setDevices(unwrap(dRes.data))
         setAbsents(unwrap(aRes.data))
         setRapport(rapRes.data)
+        setIncidents(unwrap(incRes.data))
       })
       .catch(() => {
         if (!vivant) return
@@ -252,13 +260,28 @@ export default function Temps() {
   ], [])
 
   // ZRH6 — un absent non justifié devient un incident de présence en un clic.
+  // WIR195 — bascule ensuite vers « Incidents de présence » : l'incident créé
+  // était jusqu'ici invisible (trou noir d'écriture, aucune vue de lecture).
   const genererIncident = async (a) => {
     try {
       await rhApi.genererIncidentAbsence({ employe: a.employe_id })
       toast.success('Incident d’absence créé.')
       recharger()
+      setVue('incidents')
     } catch (err) {
       toast.error(err?.response?.data?.detail ?? 'Création impossible.')
+    }
+  }
+
+  // WIR195 — régularise un incident de présence (motif obligatoire).
+  const justifierIncident = async (incident, motif) => {
+    try {
+      await rhApi.justifierIncidentPresence(incident.id, { motif })
+      toast.success('Incident justifié.')
+      setJustifierFor(null)
+      recharger()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Justification impossible.')
     }
   }
 
@@ -270,6 +293,20 @@ export default function Temps() {
   const absentActions = (a) => [
     { id: 'incident', label: 'Créer un incident d’absence', icon: Ban, onClick: () => genererIncident(a) },
   ]
+
+  // WIR195 — incidents de présence : liste + justification (motif obligatoire).
+  const incidentColumns = useMemo(() => [
+    { id: 'employe', header: 'Employé', width: 180, accessor: (i) => i.employe_nom || String(i.employe || ''), cell: (v) => <span className="font-medium">{v || '—'}</span> },
+    { id: 'type', header: 'Type', width: 160, accessor: (i) => i.type_incident_display || i.type_incident || '', cell: (v) => v || '—' },
+    { id: 'date', header: 'Date', width: 120, searchable: false, accessor: (i) => i.date || '', cell: (v) => formatDate(v) },
+    { id: 'retard', header: 'Retard', width: 100, align: 'right', numeric: true, searchable: false, accessor: (i) => Number(i.minutes_retard ?? 0), cell: (v) => (v ? `${v} min` : '—') },
+    { id: 'justifie', header: 'Statut', width: 130, accessor: (i) => (i.justifie ? 'justifie' : 'ouvert'), cell: (_v, i) => <Badge tone={i.justifie ? 'success' : 'warning'}>{i.justifie ? 'Justifié' : 'Ouvert'}</Badge> },
+    { id: 'motif', header: 'Motif', width: 200, accessor: (i) => i.motif || '', cell: (v) => v || '—' },
+  ], [])
+
+  const incidentActions = (i) => (i.justifie
+    ? []
+    : [{ id: 'justifier', label: 'Justifier', icon: CheckCircle2, onClick: () => setJustifierFor(i) }])
 
   // ZRH18 — colonnes du rapport de présence (clés du sélecteur serveur).
   const rapportColumns = useMemo(() => [
@@ -352,6 +389,8 @@ export default function Temps() {
     absents: { title: 'Absents non justifiés (aujourd’hui)', columns: absentColumns, rows: absents, rowActions: absentActions, exportName: 'absents-non-justifies' },
     // ZRH18 — rapport de présence & heures supp. du mois en cours.
     rapport: { title: 'Rapport de présence (mois en cours)', columns: rapportColumns, rows: rapport?.par_employe ?? [], exportName: 'rapport-presence' },
+    // WIR195 — incidents de présence (retard/absence injustifiée, FG171).
+    incidents: { title: 'Incidents de présence', columns: incidentColumns, rows: incidents, rowActions: incidentActions, exportName: 'incidents-presence' },
   }[vue]
 
   return (
@@ -391,6 +430,13 @@ export default function Temps() {
       )}
       {nouveauToken && (
         <TokenDialog data={nouveauToken} onClose={() => setNouveauToken(null)} />
+      )}
+      {justifierFor && (
+        <JustifierIncidentDialog
+          incident={justifierFor}
+          onClose={() => setJustifierFor(null)}
+          onConfirm={(motif) => justifierIncident(justifierFor, motif)}
+        />
       )}
     </div>
   )
@@ -511,6 +557,48 @@ function CorrectionDialog({ pointage, onClose, onSaved }) {
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
             <Button type="submit" disabled={saving}>{saving ? 'Enregistrement…' : 'Corriger'}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/* ── WIR195 — Justifier un incident de présence (motif obligatoire) ── */
+function JustifierIncidentDialog({ incident, onClose, onConfirm }) {
+  const [motif, setMotif] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [serverError, setServerError] = useState(null)
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!motif.trim()) { setServerError('Un motif est obligatoire.'); return }
+    setSaving(true)
+    setServerError(null)
+    try {
+      await onConfirm(motif.trim())
+    } catch (err) {
+      setServerError(err?.response?.data?.detail || 'Justification impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose?.() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Justifier l’incident — {incident.employe_nom || `#${incident.id}`}</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="ju-motif">Motif</Label>
+            <Input id="ju-motif" autoFocus value={motif} onChange={(e) => setMotif(e.target.value)} placeholder="Obligatoire" />
+          </div>
+          {serverError && <p className="text-sm text-destructive" role="alert">{serverError}</p>}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
+            <Button type="submit" disabled={saving}>{saving ? 'Enregistrement…' : 'Justifier'}</Button>
           </DialogFooter>
         </form>
       </DialogContent>

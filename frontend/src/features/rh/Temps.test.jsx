@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 import rhApi from '../../api/rhApi'
@@ -28,6 +28,9 @@ vi.mock('../../api/rhApi', () => {
       getAbsentsNonJustifies: vi.fn(empty),
       genererIncidentAbsence: vi.fn(() => Promise.resolve({ data: {} })),
       getRapportPresence: vi.fn(() => Promise.resolve({ data: { par_employe: [], totaux_departement: [] } })),
+      // WIR195 — incidents de présence (liste + justification).
+      getIncidentsPresence: vi.fn(empty),
+      justifierIncidentPresence: vi.fn(),
     },
   }
 })
@@ -162,5 +165,50 @@ describe('Temps — ZRH6/ZRH18 : absents non justifiés & rapport de présence',
     fireEvent.click(screen.getByRole('radio', { name: 'Rapport de présence' }))
     expect((await screen.findAllByText('Bennani Youssef'))[0]).toBeInTheDocument()
     expect(screen.getAllByText('90,0 %').length).toBeGreaterThan(0)
+  })
+})
+
+describe('Temps — WIR195 : incidents de présence (liste + justification)', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('liste un incident ouvert et le justifie via rhApi.justifierIncidentPresence', async () => {
+    rhApi.getIncidentsPresence.mockResolvedValueOnce({
+      data: [{
+        id: 21, employe: 9, employe_nom: 'Bennani Youssef',
+        type_incident: 'retard', type_incident_display: 'Retard',
+        date: '2026-08-12', minutes_retard: 15, justifie: false, motif: '',
+      }],
+    })
+    rhApi.justifierIncidentPresence.mockResolvedValueOnce({
+      data: { id: 21, justifie: true, motif: 'Panne de voiture' },
+    })
+    renderTemps()
+    await screen.findAllByText('Temps & présence')
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Incidents de présence' }))
+    expect((await screen.findAllByText('Bennani Youssef'))[0]).toBeInTheDocument()
+    expect(screen.getAllByText('Ouvert').length).toBeGreaterThan(0)
+
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Justifier' }))[0])
+    const dialog = within(await screen.findByRole('dialog'))
+    fireEvent.change(dialog.getByLabelText('Motif'), { target: { value: 'Panne de voiture' } })
+    fireEvent.click(dialog.getByRole('button', { name: 'Justifier' }))
+
+    await waitFor(() => expect(rhApi.justifierIncidentPresence).toHaveBeenCalledWith(
+      21, { motif: 'Panne de voiture' },
+    ))
+  })
+
+  it('bascule sur « Incidents de présence » après génération d’un incident (ZRH6/WIR195)', async () => {
+    rhApi.getAbsentsNonJustifies.mockResolvedValueOnce({
+      data: [{ employe_id: 9, matricule: 'M009', nom: 'Bennani Youssef' }],
+    })
+    renderTemps()
+    await screen.findAllByText('Temps & présence')
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Absents du jour' }))
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Créer un incident d’absence' }))[0])
+
+    await waitFor(() => expect(screen.getByRole('radio', { name: 'Incidents de présence' })).toHaveAttribute('aria-checked', 'true'))
   })
 })

@@ -164,6 +164,13 @@ const rhApi = {
   getRoster: (params) => api.get('/rh/roster/', { params }),
   getPresencesChantier: (params) => api.get('/rh/presences-chantier/', { params }),
   getIncidentsPresence: (params) => api.get('/rh/incidents-presence/', { params }),
+  // WIR195 — un incident (retard/absence injustifiée) était créé depuis
+  // Temps.jsx (`genererIncidentAbsence`) mais jamais relisible ni justifiable
+  // (trou noir d'écriture) : wrappers de régularisation + compteur.
+  justifierIncidentPresence: (id, data) =>
+    api.post(`/rh/incidents-presence/${id}/justifier/`, data ?? {}),
+  getCompteurIncidentsPresence: (params) =>
+    api.get('/rh/incidents-presence/compteur/', { params }),
   // XRH11 — correction d'un pointage (motif obligatoire) + audit immuable.
   updatePointage: (id, data) => api.patch(`/rh/pointages/${id}/`, data),
   getCorrectionsPointage: (id) =>
