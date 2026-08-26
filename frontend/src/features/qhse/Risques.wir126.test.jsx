@@ -47,6 +47,9 @@ const {
   exerciceCreerCapa: vi.fn(() => Promise.resolve({ data: {} })),
   exerciceDus: vi.fn(() => Promise.resolve({ data: [] })),
   exerciceRelancer: vi.fn(() => Promise.resolve({ data: { relances: 1 } })),
+  // WIR235 (XQHS27) — PDF terrain bilingue FR/AR (permis + induction).
+  permisPdf: vi.fn(() => Promise.resolve({ data: new Blob(['%PDF-1.4']) })),
+  inductionPdf: vi.fn(() => Promise.resolve({ data: new Blob(['%PDF-1.4']) })),
 }))
 
 const PERMIS_ROW = {
@@ -67,6 +70,10 @@ const EXERCICE_PLANIFIE_ROW = {
   date_prevue: '2026-09-01', date_realisee: null, statut: 'planifie',
   statut_display: 'Planifié', observations: '', capa_liee: null,
 }
+const INDUCTION_ROW = {
+  id: 80, personne_nom: 'Karim S.', chantier_id: 9, acquittement: false,
+  date_induction: '2026-08-01',
+}
 const EXERCICE_ECART_ROW = {
   id: 71, plan: 60, plan_titre: 'Plan évacuation Bouskoura',
   type_exercice: 'evacuation', type_exercice_display: 'Évacuation',
@@ -84,13 +91,17 @@ vi.mock('../../api/qhseApi', () => ({
       create: (...a) => permisCreate(...a),
       valider: (...a) => permisValider(...a),
       cloturer: (...a) => permisCloturer(...a),
+      pdf: (...a) => permisPdf(...a),
     },
     consignationsLoto: {
       list: vi.fn(() => Promise.resolve({ data: [LOTO_ROW] })),
       create: (...a) => lotoCreate(...a),
       deconsigner: (...a) => lotoDeconsigner(...a),
     },
-    inductionsSecurite: { list: empty },
+    inductionsSecurite: {
+      list: vi.fn(() => Promise.resolve({ data: [INDUCTION_ROW] })),
+      pdf: (...a) => inductionPdf(...a),
+    },
     plansUrgence: { list: vi.fn(() => Promise.resolve({ data: [PLAN_ROW] })) },
     secouristes: { list: empty },
     exercicesUrgence: {
@@ -280,5 +291,39 @@ describe('Risques — Exercices d\'urgence / drills (WIR234)', () => {
 
     await user.click(screen.getByRole('button', { name: /Relancer/ }))
     await waitFor(() => expect(exerciceRelancer).toHaveBeenCalled())
+  })
+})
+
+describe('Risques — PDF terrain bilingues FR/AR (WIR235)', () => {
+  beforeEach(() => {
+    URL.createObjectURL = vi.fn(() => 'blob:mock')
+    URL.revokeObjectURL = vi.fn()
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+  })
+
+  it('un permis de travail se télécharge en PDF (FR) puis (AR)', async () => {
+    const user = userEvent.setup()
+    withProviders(<Risques />)
+    await user.click(screen.getByRole('tab', { name: 'Permis & LOTO' }))
+    await waitFor(() => expect(screen.getAllByText('Soudure toiture').length).toBeGreaterThan(0))
+
+    await user.click(screen.getAllByRole('button', { name: 'PDF (FR)' })[0])
+    await waitFor(() => expect(permisPdf).toHaveBeenCalledWith(10, { lang: 'fr' }))
+
+    await user.click(screen.getAllByRole('button', { name: 'PDF (AR)' })[0])
+    await waitFor(() => expect(permisPdf).toHaveBeenCalledWith(10, { lang: 'ar' }))
+  })
+
+  it('une induction sécurité se télécharge en PDF (FR) puis (AR)', async () => {
+    const user = userEvent.setup()
+    withProviders(<Risques />)
+    await user.click(screen.getByRole('tab', { name: 'Préparation site' }))
+    await waitFor(() => expect(screen.getAllByText('Karim S.').length).toBeGreaterThan(0))
+
+    await user.click(screen.getAllByRole('button', { name: 'PDF (FR)' })[0])
+    await waitFor(() => expect(inductionPdf).toHaveBeenCalledWith(80, { lang: 'fr' }))
+
+    await user.click(screen.getAllByRole('button', { name: 'PDF (AR)' })[0])
+    await waitFor(() => expect(inductionPdf).toHaveBeenCalledWith(80, { lang: 'ar' }))
   })
 })

@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react'
 import {
   ShieldAlert, ListChecks, CheckCircle2, QrCode, Plus, Wrench, AlertOctagon,
-  Lock, LockOpen, XCircle, PlayCircle,
+  Lock, LockOpen, XCircle, PlayCircle, FileText,
 } from 'lucide-react'
 import qhseApi from '../../api/qhseApi'
-import { downloadBlobInGesture } from '../../utils/downloadBlob'
+import { downloadBlob, downloadBlobInGesture } from '../../utils/downloadBlob'
 import {
   Tabs, TabsList, TabsTrigger, TabsContent, Badge, Dialog, DialogContent,
   DialogTitle, Button, Input, Label, Textarea, toast,
@@ -842,6 +842,19 @@ function EtapesDeclarationDialog({ declaration, onClose }) {
 
 const critTone = (c) => (c >= 15 ? 'danger' : c >= 8 ? 'warning' : 'info')
 
+// WIR235 (XQHS27) — helper blob factorisé (jumeau de `telechargerCauseriePdf`,
+// frontend/src/features/rh/Hse.jsx) : PDF terrain bilingue FR/AR (permis de
+// travail, induction sécurité), JAMAIS `/proposal` — aucun prix, document
+// terrain interne.
+async function telechargerDocumentTerrainPdf(fetchPdf, id, lang, filenamePrefix) {
+  try {
+    const res = await fetchPdf(id, { lang })
+    downloadBlob(new Blob([res.data]), `${filenamePrefix}-${id}-${lang}.pdf`)
+  } catch {
+    toast.error('Génération du PDF impossible.')
+  }
+}
+
 export default function Risques() {
   const [tab, setTab] = useState('document-unique')
   const [cnssChecklist, setCnssChecklist] = useState(null)
@@ -1261,6 +1274,17 @@ export default function Risques() {
               ...(r.statut === 'brouillon' || r.statut === 'valide'
                 ? [{ id: 'cloturer', label: 'Clôturer', icon: XCircle, onClick: () => cloturerPermis(r) }]
                 : []),
+              // WIR235 (XQHS27) — PDF terrain bilingue, jusqu'ici imprimable nulle part.
+              {
+                id: 'pdf-fr', label: 'PDF (FR)', icon: FileText,
+                onClick: () => telechargerDocumentTerrainPdf(
+                  qhseApi.permisTravail.pdf, r.id, 'fr', 'permis-travail'),
+              },
+              {
+                id: 'pdf-ar', label: 'PDF (AR)', icon: FileText,
+                onClick: () => telechargerDocumentTerrainPdf(
+                  qhseApi.permisTravail.pdf, r.id, 'ar', 'permis-travail'),
+              },
             ]}
           />
           <QhseResourceList
@@ -1289,6 +1313,19 @@ export default function Risques() {
             fetcher={() => qhseApi.inductionsSecurite.list()}
             columns={inductionsCols}
             exportName="qhse-inductions"
+            rowActions={(r) => [
+              // WIR235 (XQHS27) — PDF terrain bilingue, jusqu'ici imprimable nulle part.
+              {
+                id: 'pdf-fr', label: 'PDF (FR)', icon: FileText,
+                onClick: () => telechargerDocumentTerrainPdf(
+                  qhseApi.inductionsSecurite.pdf, r.id, 'fr', 'induction-securite'),
+              },
+              {
+                id: 'pdf-ar', label: 'PDF (AR)', icon: FileText,
+                onClick: () => telechargerDocumentTerrainPdf(
+                  qhseApi.inductionsSecurite.pdf, r.id, 'ar', 'induction-securite'),
+              },
+            ]}
           />
           <QhseResourceList
             title="Plans d’urgence"
