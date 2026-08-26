@@ -537,6 +537,86 @@ class ContratTests(SimpleTestCase):
 # 5. LA CONFIGURATION STOCKÉE — indépendance par taille
 # ═══════════════════════════════════════════════════════════════════════════
 
+class SubstitutionTests(TestCase):
+    """Remplacer un produit doit changer le prix, la capacité ET le NOM.
+
+    Le piège : rechiffrer sans renommer ferait afficher le panneau du moteur
+    au-dessus du prix du remplaçant — une installation qui n'existe pas.
+    """
+
+    def setUp(self):
+        from authentication.models import Company
+        self.company = Company.objects.create(slug='sub', nom='sub')
+
+    def _lignes(self):
+        """Une composition minimale en mémoire (aucun moteur sollicité)."""
+        panneau = Produit.objects.create(
+            company=self.company, nom='Panneau 710 W', prix_vente='1000',
+            marque='Canadian', quantite_stock=10)
+        batterie = Produit.objects.create(
+            company=self.company, nom='Batterie 5 kWh', prix_vente='12000',
+            marque='Dyness', quantite_stock=10)
+        lignes = [
+            SimpleNamespace(produit=panneau, designation='Panneau 710 W',
+                            quantite=10, prix_unitaire=1000),
+            SimpleNamespace(produit=batterie, designation='Batterie 5 kWh',
+                            quantite=2, prix_unitaire=12000),
+        ]
+        lignes = type('Compo', (list,), {})(lignes)
+        lignes.roles = ['panneau', 'batterie']
+        return lignes
+
+    def test_le_prix_suit_le_produit_substitue(self):
+        lignes = self._lignes()
+        premium = Produit.objects.create(
+            company=self.company, nom='Panneau 600 W premium',
+            prix_vente='2000', marque='Longi', quantite_stock=10)
+        vue = {'cout_ht': 34000.0, 'cout_ttc': 40800.0, 'lignes': []}
+        rechiffree = ot._substituer(vue, lignes, {'panneau': premium})
+        # 10 × 2000 (au lieu de 1000) + 2 × 12000 = 44 000 HT.
+        self.assertEqual(rechiffree['cout_ht'], 44000.0)
+        self.assertGreater(rechiffree['cout_ttc'], vue['cout_ttc'])
+
+    def test_le_NOM_affiche_suit_le_produit_substitue(self):
+        lignes = self._lignes()
+        premium = Produit.objects.create(
+            company=self.company, nom='Panneau 600 W premium',
+            prix_vente='2000', marque='Longi', garantie_mois=300,
+            quantite_stock=10)
+        materiel = ot._materiel_de_composition(
+            lignes, lignes.roles, {'panneau': premium})
+        panneau = next(e for e in materiel if e['famille'] == 'panneau')
+        self.assertEqual(panneau['modele'], 'Panneau 600 W premium')
+        self.assertEqual(panneau['marque'], 'Longi')
+        self.assertEqual(panneau['garantie_ans'], 25)
+
+    def test_la_CAPACITE_suit_la_batterie_substituee(self):
+        # Sans cela, la carte annonçait la capacité de l'ANCIENNE batterie
+        # au-dessus du prix de la nouvelle — et l'étude horaire tournait sur
+        # cette capacité fantôme.
+        lignes = self._lignes()
+        grosse = Produit.objects.create(
+            company=self.company, nom='Batterie 10 kWh', prix_vente='22000',
+            marque='Deye', quantite_stock=10)
+        vue = {'cout_ht': 0.0, 'cout_ttc': 0.0, 'lignes': [
+            {'role': 'batterie', 'designation': 'Batterie 5 kWh',
+             'quantite': 2}]}
+        rechiffree = ot._substituer(vue, lignes, {'batterie': grosse})
+        self.assertGreater(rechiffree['batterie_kwh'], 10.0)
+
+    def test_sans_substitution_la_vue_est_rendue_TELLE_QUELLE(self):
+        vue = {'cout_ht': 34000.0, 'cout_ttc': 40800.0}
+        self.assertIs(ot._substituer(vue, self._lignes(), {}), vue)
+        self.assertIs(ot._substituer(vue, self._lignes(), None), vue)
+
+    def test_un_produit_disparu_laisse_le_produit_du_moteur(self):
+        # Le sérialiseur a déjà refusé les identifiants hors société ; ici on
+        # ne parle que d'un produit supprimé APRÈS l'ajustement.
+        self.assertEqual(ot._resoudre_substitutions({'panneau': 999999}), {})
+        self.assertEqual(ot._resoudre_substitutions({'panneau': 'abc'}), {})
+        self.assertEqual(ot._resoudre_substitutions(None), {})
+
+
 class ConfigStockeeTests(TestCase):
 
     def _devis(self):

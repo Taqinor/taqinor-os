@@ -204,14 +204,20 @@ def _garantie_ans(produit):
     return int(mois // 12)
 
 
-def _materiel_de_composition(lignes, roles):
+def _materiel_de_composition(lignes, roles, substitutions=None):
     """``[{role, famille, marque, modele, garantie_ans}]`` pour les 3 familles.
 
     Chaque champ est OMIS quand il n'existe pas réellement : un produit sans
     marque renseignée n'invente pas de marque, un produit sans fiche de
     garantie n'affiche pas de garantie. Le ``modele`` est la DÉSIGNATION
     catalogue de la ligne — c'est le nom que le client lit sur son devis.
+
+    ``substitutions`` — LA CARTE DOIT NOMMER CE QU'ELLE FACTURE. Quand le
+    vendeur a remplacé un produit sur cette taille, c'est le REMPLAÇANT qui
+    donne la marque, le modèle et la garantie : afficher le produit du moteur
+    à côté du prix du remplaçant décrirait une installation qui n'existe pas.
     """
+    substitutions = substitutions or {}
     materiel, deja_vues = [], set()
     for index, ligne in enumerate(lignes or []):
         role = roles[index] if index < len(roles or ()) else None
@@ -219,12 +225,16 @@ def _materiel_de_composition(lignes, roles):
         if famille not in _FAMILLES_MATERIEL or famille in deja_vues:
             continue
         deja_vues.add(famille)
-        produit = getattr(ligne, 'produit', None)
+        remplacant = substitutions.get(role)
+        produit = remplacant if remplacant is not None else getattr(
+            ligne, 'produit', None)
         entree = {'role': role, 'famille': famille}
         marque = (getattr(produit, 'marque', '') or '').strip()
         if marque:
             entree['marque'] = marque
-        modele = (getattr(ligne, 'designation', '') or '').strip()
+        modele = (getattr(produit, 'nom', '') or '').strip() \
+            if remplacant is not None \
+            else (getattr(ligne, 'designation', '') or '').strip()
         if modele:
             entree['modele'] = modele
         garantie = _garantie_ans(produit)
@@ -541,7 +551,11 @@ def _carte_moteur(contexte, nb_panneaux, config=None):
         calculer_etude_horaire, puissances_batterie_des_lignes)
 
     kwc = round(nb_panneaux * contexte.panel_watt / 1000.0, 3)
-    equipements = (config or {}).get('equipements') or {}
+    # Les substitutions sont RÉSOLUES UNE FOIS : le prix, la capacité de la
+    # banque et le nom affiché doivent décrire LE MÊME produit. Les résoudre
+    # trois fois séparément, c'est se donner trois occasions d'en oublier une
+    # — et afficher le panneau du moteur au-dessus du prix du remplaçant.
+    substitutions = _resoudre_substitutions((config or {}).get('equipements'))
 
     cible = None
     modules_demandes = (config or {}).get('batterie_nb_modules')
@@ -555,9 +569,9 @@ def _carte_moteur(contexte, nb_panneaux, config=None):
         return {'sans': None, 'avec': None}
 
     vue_sans = _substituer(_lire_composition(lignes_sans, _TVA_REPLI),
-                           lignes_sans, equipements) if lignes_sans else None
+                           lignes_sans, substitutions) if lignes_sans else None
     vue_avec = _substituer(_lire_composition(lignes_avec, _TVA_REPLI),
-                           lignes_avec, equipements) if lignes_avec else None
+                           lignes_avec, substitutions) if lignes_avec else None
 
     capacite = _positif((vue_avec or {}).get('batterie_kwh'))
     bornes = {}
@@ -624,11 +638,12 @@ def _carte_moteur(contexte, nb_panneaux, config=None):
                 contexte, vue, capacite,
                 _compter_modules_batterie(vue.get('lignes')),
                 remplissage_ok=_remplissage_ok(contexte, kwc, capacite,
-                                               bornes))
+                                               bornes),
+                substitutions=substitutions)
             if banque:
                 carte['batterie'] = banque
         roles = list(getattr(lignes, 'roles', ()) or ())
-        materiel = _materiel_de_composition(lignes, roles)
+        materiel = _materiel_de_composition(lignes, roles, substitutions)
         if materiel:
             carte['materiel'] = materiel
         familles = _familles(None, roles=roles)
@@ -710,7 +725,8 @@ def _remplissage_ok(contexte, kwc, capacite, bornes):
     return None
 
 
-def _banque(contexte, vue, capacite, compteurs, remplissage_ok=None):
+def _banque(contexte, vue, capacite, compteurs, remplissage_ok=None,
+            substitutions=None):
     """``{nb_modules, module_kwh, capacite_utile_kwh, remplissage_ok}``.
 
     ``capacite_utile_kwh`` est la capacité UTILE réellement livrée (règle
@@ -728,6 +744,23 @@ def _banque(contexte, vue, capacite, compteurs, remplissage_ok=None):
     banque = {'capacite_utile_kwh': round(capacite, 2)}
     if remplissage_ok is not None:
         banque['remplissage_ok'] = bool(remplissage_ok)
+    if substitutions and 'batterie' in substitutions:
+        # LE VENDEUR A CHANGÉ LE MODULE : le pin du devis et les compteurs
+        # 5/10 de l'échelle décrivent alors l'ANCIEN module. On lit le calibre
+        # sur le REMPLAÇANT (le nominal de son nom, la grandeur avec laquelle
+        # le client compte) — jamais l'ancien, qui ne serait plus dans la
+        # banque, et jamais une division approchée de la capacité utile.
+        from apps.ventes.services import _parse_kwh
+        modules = sum(int(_num(ligne.get('quantite')))
+                      for ligne in (vue.get('lignes') or [])
+                      if ligne.get('role') == 'batterie')
+        nominal = _num(_parse_kwh(
+            getattr(substitutions['batterie'], 'nom', '') or ''))
+        if modules > 0:
+            banque['nb_modules'] = modules
+            if nominal > 0:
+                banque['module_kwh'] = round(nominal, 2)
+        return banque
     cinq, dix = compteurs
     if cinq and not dix:
         banque['nb_modules'], banque['module_kwh'] = int(cinq), 5.0
@@ -748,26 +781,22 @@ def _banque(contexte, vue, capacite, compteurs, remplissage_ok=None):
     return banque
 
 
-def _substituer(vue, lignes, equipements):
-    """Applique les remplacements de produits demandés par le vendeur.
+def _resoudre_substitutions(equipements):
+    """``{role: Produit}`` — les remplacements demandés, résolus UNE fois.
 
-    PORTÉE VOLONTAIREMENT ÉTROITE. Remplacer un produit change son PRIX et son
-    IDENTITÉ (marque/modèle/garantie) dans cette taille — rien d'autre. La
-    composition reste celle du moteur (mêmes quantités, mêmes rôles), et le
-    devis officiel n'est JAMAIS touché : une taille est une exploration.
+    LA GARDE DE SOCIÉTÉ VIT DANS LE SÉRIALISEUR, pas ici : il a déjà refusé en
+    400 tout identifiant hors de la société du devis, et c'est LÀ que la
+    frontière multi-société doit se tenir (une garde recopiée finit par
+    diverger de son original). Cette fonction ne fait que retrouver le produit.
 
-    Un identifiant introuvable est IGNORÉ (la taille garde le produit du
-    moteur) plutôt que de faire disparaître la carte : le sérialiseur, lui,
-    a déjà refusé en 400 tout identifiant hors société.
+    Un identifiant devenu introuvable (produit supprimé depuis l'ajustement)
+    est IGNORÉ : la taille garde le produit du moteur plutôt que de faire
+    disparaître la carte.
     """
-    if not equipements or not vue:
-        return vue
+    if not equipements:
+        return {}
     from apps.stock.models import Produit
 
-    # LA GARDE DE SOCIÉTÉ VIT DANS LE SÉRIALISEUR, pas ici : il a déjà refusé
-    # en 400 tout identifiant hors de la société du devis, et c'est LÀ que la
-    # frontière multi-société doit se tenir (une garde recopiée ici finirait
-    # par diverger). Ce filtre-ci ne fait que retrouver le produit.
     par_role = {}
     for role, produit_id in (equipements or {}).items():
         try:
@@ -776,16 +805,34 @@ def _substituer(vue, lignes, equipements):
             continue
         if produit is not None:
             par_role[role] = produit
-    if not par_role:
+    return par_role
+
+
+def _substituer(vue, lignes, substitutions):
+    """Rechiffre une composition avec les produits que le vendeur a substitués.
+
+    PORTÉE VOLONTAIREMENT ÉTROITE, ET DITE. Un remplacement change le PRIX, la
+    CAPACITÉ (quand c'est une batterie) et l'IDENTITÉ affichée — rien d'autre.
+    La composition reste celle du moteur : mêmes rôles, mêmes quantités, même
+    règle des 80 % sur l'onduleur d'origine. La compatibilité électrique du
+    produit substitué n'est PAS revérifiée : une taille est une EXPLORATION,
+    et le devis officiel — la seule pièce contractuelle — n'est jamais touché.
+
+    LA CAPACITÉ SUIT LA BATTERIE. Sans cela, remplacer la batterie changeait le
+    prix mais laissait la carte annoncer la capacité de l'ancienne : la banque
+    affichée aurait décrit une installation qui n'existe pas, et l'étude
+    horaire aurait été calculée sur cette capacité fantôme.
+    """
+    if not substitutions or not vue:
         return vue
+    from apps.ventes.dimensionnement import capacite_utile_batterie
 
     roles = list(getattr(lignes, 'roles', ()) or ())
-    cout_ttc = 0.0
-    cout_ht = 0.0
+    cout_ht = cout_ttc = batterie_kwh = 0.0
     for index, ligne in enumerate(lignes):
         role = roles[index] if index < len(roles) else None
         quantite = _num(getattr(ligne, 'quantite', 0))
-        remplacant = par_role.get(role)
+        remplacant = substitutions.get(role)
         if remplacant is not None:
             pu_ht = _num(getattr(remplacant, 'prix_vente', 0))
             tva = _num(getattr(remplacant, 'tva', None), defaut=-1.0)
@@ -796,9 +843,23 @@ def _substituer(vue, lignes, equipements):
         facteur = 1.0 + (tva if tva >= 0 else float(_TVA_REPLI)) / 100.0
         cout_ht += quantite * pu_ht
         cout_ttc += quantite * pu_ht * facteur
+        if role == 'batterie':
+            produit = remplacant if remplacant is not None else getattr(
+                ligne, 'produit', None)
+            nom = (getattr(produit, 'nom', '') or ''
+                   if remplacant is not None
+                   else getattr(ligne, 'designation', '') or '')
+            # RÈGLE CAPUTIL, lue par la MÊME fonction que la composition :
+            # fiche ``kwh_usable``, sinon nominal × DoD, jamais le kWh du nom
+            # seul quand une fiche existe.
+            kwh = _num(capacite_utile_batterie(produit, nom))
+            if kwh > 0:
+                batterie_kwh += kwh * quantite
     vue = dict(vue)
     vue['cout_ht'] = round(cout_ht, 2)
     vue['cout_ttc'] = round(cout_ttc, 2)
+    if 'batterie' in substitutions:
+        vue['batterie_kwh'] = round(batterie_kwh, 2) if batterie_kwh else 0.0
     return vue
 
 
@@ -1028,7 +1089,13 @@ def _config_publique(cartes, contexte):
     configuration » : le champ, la banque, le calibre. Rien de plus — ni prix,
     ni marge, ni nomenclature.
     """
-    reference = cartes.get('avec') or cartes.get('sans') or {}
+    # LE CHAMP DE BASE VIENT DE « SANS », PAS DE « AVEC ». Sur un devis L-2OPT
+    # dont les deux options portent des champs différents (22 sans / 26 avec),
+    # prendre « avec » aurait fait dire au CTA « 26 panneaux » alors que la
+    # carte affichée en dit 22 : le vendeur aurait reçu une demande que le
+    # client n'a pas faite. Éco et Max, eux, portent le même champ des deux
+    # côtés — la préférence n'y change rien.
+    reference = cartes.get('sans') or cartes.get('avec') or {}
     config = {'nb_panneaux': int(reference.get('nb_panneaux') or 0)}
     banque = (cartes.get('avec') or {}).get('batterie') or {}
     config['batterie_nb_modules'] = int(banque.get('nb_modules') or 0)
