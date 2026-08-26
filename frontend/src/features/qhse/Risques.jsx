@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import {
   ShieldAlert, ListChecks, CheckCircle2, QrCode, Plus, Wrench, AlertOctagon,
-  Lock, LockOpen, XCircle,
+  Lock, LockOpen, XCircle, PlayCircle,
 } from 'lucide-react'
 import qhseApi from '../../api/qhseApi'
 import { downloadBlobInGesture } from '../../utils/downloadBlob'
@@ -171,6 +171,160 @@ function CreerLotoDialog({ permis, onClose, onCreated }) {
             <Button variant="outline" onClick={onClose}>Annuler</Button>
             <Button onClick={save} disabled={saving || permis.length === 0}>
               {saving ? 'Enregistrement…' : 'Créer'}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// WIR234 — planification d'un exercice d'urgence (drill, QHSE18/ISO 45001
+// 8.2), rattaché à un plan d'urgence existant. Le `statut` initial
+// `planifie` est posé côté serveur.
+const TYPE_EXERCICE_OPTIONS = [
+  { value: 'evacuation', label: 'Évacuation' },
+  { value: 'incendie', label: 'Incendie' },
+  { value: 'deversement', label: 'Déversement' },
+  { value: 'autre', label: 'Autre' },
+]
+
+function CreerExerciceDialog({ plans, onClose, onCreated }) {
+  const [planId, setPlanId] = useState(plans[0]?.id ? String(plans[0].id) : '')
+  const [typeExercice, setTypeExercice] = useState('evacuation')
+  const [datePrevue, setDatePrevue] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    if (!planId) { toast.error('Un plan d’urgence est requis.'); return }
+    setSaving(true)
+    try {
+      await qhseApi.exercicesUrgence.create({
+        plan: Number(planId),
+        type_exercice: typeExercice,
+        date_prevue: datePrevue || null,
+      })
+      toast.success('Exercice planifié.')
+      onCreated()
+      onClose()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Planification impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent>
+        <DialogTitle>Planifier un exercice d’urgence</DialogTitle>
+        <div className="flex flex-col gap-3">
+          <div>
+            <Label>Plan d’urgence</Label>
+            <Select value={planId} onValueChange={setPlanId}>
+              <SelectTrigger aria-label="Plan d’urgence"><SelectValue placeholder="Choisir un plan…" /></SelectTrigger>
+              <SelectContent>
+                {plans.map((p) => (
+                  <SelectItem key={p.id} value={String(p.id)}>{p.titre}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label>Type d’exercice</Label>
+            <Select value={typeExercice} onValueChange={setTypeExercice}>
+              <SelectTrigger aria-label="Type d’exercice"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {TYPE_EXERCICE_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label>Date prévue</Label>
+            <Input aria-label="Date prévue" type="date" value={datePrevue}
+              onChange={(e) => setDatePrevue(e.target.value)} />
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" onClick={onClose}>Annuler</Button>
+            <Button onClick={save} disabled={saving || plans.length === 0}>
+              {saving ? 'Enregistrement…' : 'Planifier'}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// WIR234 — réalisation d'un exercice planifié : chrono d'évacuation +
+// participants + observations/écarts (``services.realiser_exercice_urgence``
+// — jusqu'ici sans appelant côté écran).
+function RealiserExerciceDialog({ exercice, onClose, onDone }) {
+  const [dateRealisee, setDateRealisee] = useState('')
+  const [dureeSecondes, setDureeSecondes] = useState('')
+  const [nbParticipants, setNbParticipants] = useState('')
+  const [participantsLibre, setParticipantsLibre] = useState('')
+  const [observations, setObservations] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    setSaving(true)
+    try {
+      await qhseApi.exercicesUrgence.realiser(exercice.id, {
+        date_realisee: dateRealisee || undefined,
+        duree_evacuation_secondes: dureeSecondes ? Number(dureeSecondes) : undefined,
+        nb_participants: nbParticipants ? Number(nbParticipants) : undefined,
+        participants_libre: participantsLibre,
+        observations,
+      })
+      toast.success('Exercice réalisé.')
+      onDone()
+      onClose()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Enregistrement impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent>
+        <DialogTitle>Réaliser l’exercice — {exercice.plan_titre || exercice.plan}</DialogTitle>
+        <div className="flex flex-col gap-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Date réalisée</Label>
+              <Input aria-label="Date réalisée" type="date" value={dateRealisee}
+                onChange={(e) => setDateRealisee(e.target.value)} />
+            </div>
+            <div>
+              <Label>Durée d’évacuation (secondes)</Label>
+              <Input aria-label="Durée d’évacuation (secondes)" inputMode="numeric"
+                value={dureeSecondes} onChange={(e) => setDureeSecondes(e.target.value)} />
+            </div>
+          </div>
+          <div>
+            <Label>Nombre de participants</Label>
+            <Input aria-label="Nombre de participants" inputMode="numeric"
+              value={nbParticipants} onChange={(e) => setNbParticipants(e.target.value)} />
+          </div>
+          <div>
+            <Label>Participants (liste libre)</Label>
+            <Textarea aria-label="Participants (liste libre)" rows={2}
+              value={participantsLibre} onChange={(e) => setParticipantsLibre(e.target.value)} />
+          </div>
+          <div>
+            <Label>Observations / écarts</Label>
+            <Textarea aria-label="Observations / écarts" rows={3}
+              value={observations} onChange={(e) => setObservations(e.target.value)} />
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" onClick={onClose}>Annuler</Button>
+            <Button onClick={save} disabled={saving}>
+              {saving ? 'Enregistrement…' : 'Enregistrer la réalisation'}
             </Button>
           </div>
         </div>
@@ -703,6 +857,13 @@ export default function Risques() {
   const [creatingIncident, setCreatingIncident] = useState(false)
   const [incidentsReload, setIncidentsReload] = useState(0)
 
+  // WIR234 — exercices d'urgence (drills) : planification, réalisation,
+  // CAPA d'écart, filtre « dus » + relance en masse.
+  const [creatingExercice, setCreatingExercice] = useState(false)
+  const [exercicePlanOptions, setExercicePlanOptions] = useState([])
+  const [realisingExercice, setRealisingExercice] = useState(null)
+  const [exerciceReload, setExerciceReload] = useState(0)
+
   // XQHS17 — capture rapide d'une observation BBS (le registre n'était
   // jusqu'ici qu'en lecture + conversion).
   const [creatingObservation, setCreatingObservation] = useState(false)
@@ -778,6 +939,39 @@ export default function Risques() {
       setLotoReload((n) => n + 1)
     } catch (err) {
       toast.error(err?.response?.data?.detail ?? 'Déconsignation impossible.')
+    }
+  }
+
+  // WIR234 — plans d'urgence disponibles pour rattacher un nouvel exercice
+  // (même patron que `ouvrirCreationLoto` pour les permis).
+  async function ouvrirCreationExercice() {
+    try {
+      const res = await qhseApi.plansUrgence.list()
+      setExercicePlanOptions(rowsFrom(res))
+    } catch {
+      setExercicePlanOptions([])
+    }
+    setCreatingExercice(true)
+  }
+
+  async function creerCapaExercice(exercice) {
+    try {
+      await qhseApi.exercicesUrgence.creerCapa(exercice.id)
+      toast.success('CAPA créée depuis l’écart.')
+      setExerciceReload((n) => n + 1)
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Création de la CAPA impossible.')
+    }
+  }
+
+  async function relancerExercices() {
+    try {
+      const res = await qhseApi.exercicesUrgence.relancerExercices()
+      const nb = res?.data?.relances ?? 0
+      toast.success(`${nb} plan(s) relancé(s).`)
+      setExerciceReload((n) => n + 1)
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Relance impossible.')
     }
   }
 
@@ -1114,6 +1308,39 @@ export default function Risques() {
             fetcher={() => qhseApi.exercicesUrgence.list()}
             columns={exercicesUrgenceCols}
             exportName="qhse-exercices-urgence"
+            deps={[exerciceReload]}
+            actions={
+              <Button onClick={ouvrirCreationExercice}>
+                <Plus size={16} /> Planifier un exercice
+              </Button>
+            }
+            rowActions={(r) => [
+              ...(r.statut === 'planifie'
+                ? [{
+                  id: 'realiser', label: 'Réaliser', icon: PlayCircle,
+                  onClick: () => setRealisingExercice(r),
+                }]
+                : []),
+              ...(r.statut === 'realise' && r.observations && !r.capa_liee
+                ? [{
+                  id: 'capa', label: 'Créer CAPA', icon: Wrench,
+                  onClick: () => creerCapaExercice(r),
+                }]
+                : []),
+            ]}
+          />
+          <QhseResourceList
+            title="Plans en retard d'exercice"
+            subtitle="Plans d'urgence dont le prochain exercice (cadence du plan) est dû"
+            fetcher={() => qhseApi.exercicesUrgence.dus()}
+            columns={plansUrgenceCols}
+            exportName="qhse-exercices-dus"
+            deps={[exerciceReload]}
+            actions={
+              <Button variant="outline" onClick={relancerExercices}>
+                <ListChecks size={16} /> Relancer
+              </Button>
+            }
           />
         </TabsContent>
 
@@ -1287,6 +1514,22 @@ export default function Risques() {
         <CreerIncidentDialog
           onClose={() => setCreatingIncident(false)}
           onCreated={() => setIncidentsReload((n) => n + 1)}
+        />
+      )}
+
+      {creatingExercice && (
+        <CreerExerciceDialog
+          plans={exercicePlanOptions}
+          onClose={() => setCreatingExercice(false)}
+          onCreated={() => setExerciceReload((n) => n + 1)}
+        />
+      )}
+
+      {realisingExercice && (
+        <RealiserExerciceDialog
+          exercice={realisingExercice}
+          onClose={() => setRealisingExercice(null)}
+          onDone={() => setExerciceReload((n) => n + 1)}
         />
       )}
 

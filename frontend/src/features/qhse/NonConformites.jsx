@@ -17,7 +17,7 @@ import {
   NcrStatutPill, CapaStatutPill, GravitePill,
 } from './qhsePills'
 import { GRAVITE } from './qhseStatus'
-import NcrChatter from './NcrChatter'
+import NcrChatter, { CapaChatter } from './NcrChatter'
 
 /* ============================================================================
    UX30 — Non-conformités (NCR) & actions correctives/préventives (CAPA).
@@ -894,9 +894,34 @@ function VerifierDialog({ capa, onClose, onDone }) {
   )
 }
 
+// WIR234 — panneau détail CAPA : la CAPA a désormais son propre chatter
+// (jumeau NcrChatter, `capa/<id>/historique`/`noter` déjà exposés côté
+// serveur par `_ChatterMixin` mais sans consommateur côté écran).
+function CapaDetailDialog({ capa, onClose }) {
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-w-xl">
+        <DialogTitle>CAPA — {capa.type_action_display || capa.type_action}</DialogTitle>
+        <div className="flex flex-col gap-3">
+          <p className="whitespace-pre-wrap text-sm">{capa.description}</p>
+          <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+            <span>Statut : <CapaStatutPill status={capa.statut} /></span>
+            <span>Échéance : {formatDate(capa.echeance)}</span>
+          </div>
+          <CapaChatter capaId={capa.id} />
+          <div className="flex justify-end pt-1">
+            <Button variant="outline" onClick={onClose}>Fermer</Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function CapaRegister() {
   const [onlyLate, setOnlyLate] = useState(false)
   const [verifying, setVerifying] = useState(null)
+  const [detailCapa, setDetailCapa] = useState(null)
   const { rows, loading, error, reload } = useQhseList(
     () => (onlyLate ? qhseApi.capa.enRetard() : qhseApi.capa.list()),
     [onlyLate],
@@ -950,6 +975,7 @@ function CapaRegister() {
         error={error}
         searchable
         exportName="qhse-capa"
+        onRowClick={(r) => setDetailCapa(r)}
         rowActions={(r) => [
           {
             id: 'verifier',
@@ -977,6 +1003,12 @@ function CapaRegister() {
           capa={verifying}
           onClose={() => setVerifying(null)}
           onDone={reload}
+        />
+      )}
+      {detailCapa && (
+        <CapaDetailDialog
+          capa={detailCapa}
+          onClose={() => setDetailCapa(null)}
         />
       )}
     </>

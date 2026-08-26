@@ -5,11 +5,14 @@ import { Card, Button, Textarea, toast } from '../../ui'
 import { formatDateTime } from '../../lib/format'
 
 /* ============================================================================
-   UX30 — Chatter d'une non-conformité (historique Odoo-style + notes).
+   UX30/WIR234 — Chatter Odoo-style (historique + notes) sur une entité QHSE.
    ----------------------------------------------------------------------------
-   Alimente le panneau `activity` de la DetailShell : liste l'historique QHSE
-   (créations, changements de champ auto, notes manuelles) via
-   `non-conformites/<id>/historique`, et permet d'ajouter une note via `noter`.
+   `NcrChatter` alimente le panneau `activity` de la DetailShell d'une
+   non-conformité via `non-conformites/<id>/historique`/`noter`. `CapaChatter`
+   en est le JUMEAU pour une CAPA (`capa/<id>/historique`/`noter`, exposées
+   côté serveur par le même `_ChatterMixin` — jusqu'ici sans consommateur
+   côté écran, WIR234). Les deux partagent `_ChatterCard`, seule la source des
+   appels change.
    Chaque entrée : kind (creation / modification / note), acteur, horodatage.
    ========================================================================== */
 
@@ -33,7 +36,7 @@ function entryText(e) {
   return e.body || 'Enregistrement créé'
 }
 
-export default function NcrChatter({ ncrId }) {
+function _ChatterCard({ resourceId, fetchHistorique, postNote, title = 'Historique' }) {
   const [entries, setEntries] = useState([])
   const [body, setBody] = useState('')
   const [loading, setLoading] = useState(false)
@@ -41,10 +44,10 @@ export default function NcrChatter({ ncrId }) {
   const taRef = useRef(null)
 
   const load = useCallback(async () => {
-    if (!ncrId) return
+    if (!resourceId) return
     setLoading(true)
     try {
-      const res = await qhseApi.nonConformites.historique(ncrId)
+      const res = await fetchHistorique(resourceId)
       const data = res.data
       setEntries(Array.isArray(data) ? data : (data?.results ?? []))
     } catch {
@@ -52,7 +55,7 @@ export default function NcrChatter({ ncrId }) {
     } finally {
       setLoading(false)
     }
-  }, [ncrId])
+  }, [resourceId, fetchHistorique])
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount
   useEffect(() => { load() }, [load])
@@ -63,7 +66,7 @@ export default function NcrChatter({ ncrId }) {
     if (!text || submitting) return
     setSubmitting(true)
     try {
-      await qhseApi.nonConformites.noter(ncrId, text)
+      await postNote(resourceId, text)
       setBody('')
       await load()
       toast.success('Note ajoutée.')
@@ -79,7 +82,7 @@ export default function NcrChatter({ ncrId }) {
       <div className="mb-3 flex items-center gap-2">
         <MessageSquare size={16} aria-hidden="true" />
         <h3 className="font-display text-sm font-semibold">
-          Historique {entries.length > 0 && `(${entries.length})`}
+          {title} {entries.length > 0 && `(${entries.length})`}
         </h3>
       </div>
 
@@ -122,5 +125,30 @@ export default function NcrChatter({ ncrId }) {
         </Button>
       </form>
     </Card>
+  )
+}
+
+export default function NcrChatter({ ncrId }) {
+  return (
+    <_ChatterCard
+      resourceId={ncrId}
+      fetchHistorique={qhseApi.nonConformites.historique}
+      postNote={qhseApi.nonConformites.noter}
+      title="Historique"
+    />
+  )
+}
+
+// WIR234 — jumeau de NcrChatter pour une CAPA (`ActionCorrectivePreventive`),
+// jusqu'ici sans aucun panneau d'activité côté écran alors que le serveur
+// expose déjà `capa/<id>/historique`/`noter` (même `_ChatterMixin`).
+export function CapaChatter({ capaId }) {
+  return (
+    <_ChatterCard
+      resourceId={capaId}
+      fetchHistorique={qhseApi.capa.historique}
+      postNote={qhseApi.capa.noter}
+      title="Historique CAPA"
+    />
   )
 }

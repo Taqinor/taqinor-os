@@ -48,6 +48,10 @@ const qhseApi = {
     // Vérifie l'efficacité d'une CAPA réalisée.
     verifierEfficacite: (id, data) =>
       api.post(`/qhse/capa/${id}/verifier-efficacite/`, data),
+    // WIR234 — chatter (jumeau NCR, `_ChatterMixin` déjà côté serveur) :
+    // historique (auto + notes) et ajout de note, jusqu'ici sans appelant.
+    historique: (id) => api.get(`/qhse/capa/${id}/historique/`),
+    noter: (id, body) => api.post(`/qhse/capa/${id}/noter/`, { body }),
   },
 
   // ── UX31 — Inspections & audits ─────────────────────────────────────────
@@ -166,8 +170,24 @@ const qhseApi = {
 
   // ── UX33 — Environnement & ESG ─────────────────────────────────────────
   dechets: crud('dechets'),
-  bordereauxDechets: crud('bordereaux-dechets'),
-  recyclageModules: crud('recyclage-modules'),
+  bordereauxDechets: {
+    ...crud('bordereaux-dechets'),
+    // WIR234 (QHSE36, loi 28-00) — cycle emis→enleve→traite, jusqu'ici sans
+    // appelant côté écran.
+    enlever: (id, data) =>
+      api.post(`/qhse/bordereaux-dechets/${id}/enlever/`, data),
+    traiter: (id, data) =>
+      api.post(`/qhse/bordereaux-dechets/${id}/traiter/`, data),
+  },
+  recyclageModules: {
+    ...crud('recyclage-modules'),
+    // WIR234 (QHSE37) — cycle collecte→transporte→recycle, jusqu'ici sans
+    // appelant côté écran.
+    transporter: (id) =>
+      api.post(`/qhse/recyclage-modules/${id}/transporter/`),
+    recycler: (id, data) =>
+      api.post(`/qhse/recyclage-modules/${id}/recycler/`, data),
+  },
   conformitesEnvironnementales: {
     ...crud('conformites-environnementales'),
     aRelancer: (params) =>
@@ -220,7 +240,23 @@ const qhseApi = {
   },
 
   // ── XQHS18 — Exercices d'urgence (drills) ──────────────────────────────
-  exercicesUrgence: crud('exercices-urgence'),
+  exercicesUrgence: {
+    ...crud('exercices-urgence'),
+    // WIR234 — réaliser un exercice (durée d'évacuation, participants),
+    // créer une CAPA d'écart, lister/relancer les plans dus — les 4 actions
+    // serveur (realiser_exercice_urgence, creer_capa_depuis_ecart_exercice,
+    // plans_exercices_dus, relancer_exercices_urgence) n'avaient aucun
+    // appelant côté écran.
+    realiser: (id, data) =>
+      api.post(`/qhse/exercices-urgence/${id}/realiser/`, data),
+    creerCapa: (id, data) =>
+      api.post(`/qhse/exercices-urgence/${id}/creer-capa/`, data),
+    dus: () => api.get('/qhse/exercices-urgence/dus/'),
+    // Nommée spécifiquement (jamais `relancer` nu) : `qhseApi.js` porte déjà
+    // `demandesChangement.relancer` — un second `relancer` casserait
+    // l'appariement mock↔route de `check_api_shapes.py` (ambiguïté par nom).
+    relancerExercices: () => api.post('/qhse/exercices-urgence/relancer/'),
+  },
 
   // ── XQHS20 — Registre des aspects & impacts environnementaux ───────────
   aspectsEnvironnementaux: {
