@@ -275,6 +275,12 @@ export default function ToitureDesign({ mode = 'lead' }) {
   // fondateur veut le voir SANS geste supplémentaire ; le bouton ne sert
   // qu'à le masquer temporairement s'il gêne une lecture de la carte.
   const [toitClientVisible, setToitClientVisible] = useState(true)
+  // O3 (revue adversariale 26/08) — `builderApi` est une REF : la poser
+  // n'entraîne aucun re-rendu, donc un effet qui ne dépend que de
+  // `toitClientVisible` peut s'exécuter AVANT que le builder soit prêt (clic
+  // pendant le boot) et ne JAMAIS rattraper l'état voulu. Cet état, lui,
+  // déclenche un re-rendu à l'arrivée de l'API — voir l'effet plus bas.
+  const [builderReady, setBuilderReady] = useState(false)
 
   // ── Boot : charge lead + config carte, puis initialise le builder ──────────
   useEffect(() => {
@@ -339,9 +345,13 @@ export default function ToitureDesign({ mode = 'lead' }) {
         reducedMotion: !!reducedMotion,
         hydrate: { lead: leadToBuilderPayload(leadData) },
         // L-MAP — le contour ORIGINAL du client, géo-référencé sur la carte
-        // (calque passif, roofPro11/prefill.ts referenceContourRing).
-        referenceContour: leadData.roof_outline ?? null,
-        onApiReady: (a) => { builderApi.current = a },
+        // (calque passif, roofPro11/prefill.ts referenceContourRing). Gardé
+        // par le MÊME `contourExploitable` que la légende/bascule (revue
+        // adversariale 26/08) : un contour que l'écran refuse déjà (hors
+        // bornes, forme inconnue) ne part JAMAIS vers le builder — pas de
+        // polygone orphelin sans bascule pour le masquer.
+        referenceContour: contourExploitable(leadData.roof_outline) ? leadData.roof_outline : null,
+        onApiReady: (a) => { builderApi.current = a; setBuilderReady(true) },
       })
       // Pré-remplit l'adresse depuis la ville du lead (champ de recherche).
       const addrEl = document.getElementById('rp9-address')
@@ -412,10 +422,13 @@ export default function ToitureDesign({ mode = 'lead' }) {
         reducedMotion: !!reducedMotion,
         hydrate: { devis: contexteToDevisPayload(ctx) },
         // L-MAP — le contour ORIGINAL du client (jamais celui, déjà édité, du
-        // layout courant), géo-référencé sur la carte (calque passif).
-        referenceContour: ctx?.geometrie?.contour_client ?? null,
+        // layout courant), géo-référencé sur la carte (calque passif). MÊME
+        // garde `contourExploitable` que la légende/bascule (revue
+        // adversariale 26/08) : voir le commentaire jumeau dans `boot()`.
+        referenceContour: contourExploitable(ctx?.geometrie?.contour_client)
+          ? ctx.geometrie.contour_client : null,
         bankable,
-        onApiReady: (a) => { builderApi.current = a },
+        onApiReady: (a) => { builderApi.current = a; setBuilderReady(true) },
       })
       // PV23bis — pré-remplit la barre de recherche d'adresse depuis
       // adresse+ville du devis, comme le mode lead le fait déjà ci-dessus
@@ -480,7 +493,12 @@ export default function ToitureDesign({ mode = 'lead' }) {
         mapboxToken: carte.mapboxToken || undefined,
         reducedMotion: !!reducedMotion,
         hydrate: { devis: contexteAoVersPayload(ctx) },
-        onApiReady: (a) => { builderApi.current = a },
+        // Mode AO — pas de source de contour client (une affaire n'a pas de
+        // dessin du tunnel public) : `referenceContour` reste absent, comme
+        // avant. `onApiReady` pose quand même `builderReady` par cohérence
+        // avec les deux autres modes (aucun toggle n'existe ici de toute
+        // façon, donc aucun effet observable).
+        onApiReady: (a) => { builderApi.current = a; setBuilderReady(true) },
       })
       const reference = ctx?.affaire?.reference ?? ''
       setStatus(
@@ -497,13 +515,16 @@ export default function ToitureDesign({ mode = 'lead' }) {
   }, [cibleId, devisId, leadId, affaireId, estDevis, estAo, reducedMotion])
 
   // L-MAP — la bascule (rp9-chip) pilote le calque GÉO-RÉFÉRENCÉ du builder,
-  // pas seulement la légende React. `builderApi.current` peut être `null` au
-  // premier rendu (boot asynchrone) : sans effet tant qu'il ne l'est plus —
-  // le builder démarre de toute façon visible par défaut (même valeur initiale
-  // que `toitClientVisible`), donc rien à rattraper au montage.
+  // pas seulement la légende React. O3 (revue adversariale 26/08) — sans
+  // `builderReady` dans les dépendances, un clic PENDANT le boot (builder pas
+  // encore prêt) était un no-op DÉFINITIF : `toitClientVisible` ne change
+  // plus tant qu'on ne reclique pas, donc l'état voulu ne se rattrapait
+  // jamais quand `builderApi.current` finissait par exister. `builderReady`
+  // (état, pas ref) déclenche un re-rendu à l'arrivée de l'API et rejoue la
+  // valeur COURANTE de `toitClientVisible` à ce moment-là.
   useEffect(() => {
     builderApi.current?.setReferenceContourVisible?.(toitClientVisible)
-  }, [toitClientVisible])
+  }, [toitClientVisible, builderReady])
 
   // ── UN SEUL BOUTON : devis + snapshot + livraison ──────────────────────────
   const generer = async () => {

@@ -352,9 +352,11 @@ describe('ToitureDesign — L-MAP : le toit dessiné par le client, visible sur 
     expect(screen.queryByTestId('rp9-toit-client')).toBeNull()
     expect(screen.queryByTestId('rp9-toit-client-toggle')).toBeNull()
     // Le contrat (devis_design_context.json) rend `contour_client: []` par
-    // défaut, jamais `null` — le calque reste absent (referenceContourRing
-    // refuse < 3 sommets), mais la clé transmise est le tableau vide, tel quel.
-    expect(initRoofToolPro8.mock.calls[0][0].referenceContour).toEqual([])
+    // défaut, jamais `null` — mais l'écran le passe par le MÊME
+    // `contourExploitable` que la légende/bascule (revue adversariale 26/08,
+    // Finding A) avant de le transmettre au builder : `[]` n'est pas
+    // exploitable, donc `null` part au builder, jamais le tableau vide brut.
+    expect(initRoofToolPro8.mock.calls[0][0].referenceContour).toBeNull()
   })
 
   it('mode lead — un roof_outline exploitable affiche le calque, la bascule le masque puis le remontre', async () => {
@@ -397,6 +399,136 @@ describe('ToitureDesign — L-MAP : le toit dessiné par le client, visible sur 
     expect(await screen.findByTestId('rp9-toit-client')).toBeInTheDocument()
     expect(bascule).toHaveAttribute('aria-pressed', 'true')
     expect(setReferenceContourVisible).toHaveBeenLastCalledWith(true)
+  })
+
+  // FINDING A (revue adversariale 26/08) — deux prédicats qui prétendaient
+  // être « la même règle » ne l'étaient pas : normaliserContour (ERP)
+  // accepte la forme objet ET borne lat/lng ; referenceContourRing
+  // (builder) n'acceptait que la forme tableau et ne bornait rien, ET
+  // `referenceContour` partait vers le builder SANS passer par le même
+  // filtre que la légende/bascule. Ces deux tests verrouillent le correctif
+  // au niveau de l'écran (le pendant apps/web vit dans referenceContourLMap.test.ts).
+  it('FINDING A (i) — roof_outline en forme objet {lat,lng} affiche AUSSI le calque, MÊME règle que normaliserContour', async () => {
+    const contourObjet = [
+      { lat: 33.589, lng: -7.603 },
+      { lat: 33.589, lng: -7.602784 },
+      { lat: 33.58918, lng: -7.602784 },
+      { lat: 33.58918, lng: -7.603 },
+    ]
+    const lead = {
+      id: 91, nom: 'Bennis', prenom: 'Amal', ville: 'Rabat',
+      telephone: '0622222222', roof_point: null, roof_outline: contourObjet,
+    }
+    api.get.mockImplementation((url) => {
+      if (url.startsWith('/crm/leads/')) return Promise.resolve({ data: lead })
+      if (url === '/ventes/roof-config/') {
+        return Promise.resolve({ data: { available: true, maptilerKey: 'k-lead' } })
+      }
+      return Promise.reject(new Error(`URL inattendue ${url}`))
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/devis-design/91']}>
+        <Routes>
+          <Route path="/devis-design/:id" element={<ToitureDesign />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    expect(await screen.findByTestId('rp9-toit-client')).toBeInTheDocument()
+    expect(screen.getByTestId('rp9-toit-client-toggle')).toBeInTheDocument()
+    // Avant le correctif : le calque carte restait vide (referenceContourRing
+    // ne comprenait que la forme tableau). Le contour part maintenant TEL
+    // QUEL — c'est le builder (referenceContourRing) qui sait désormais le lire.
+    expect(initRoofToolPro8.mock.calls[0][0].referenceContour).toEqual(contourObjet)
+  })
+
+  it('FINDING A (ii) — roof_outline majoritairement hors bornes lat/lng : aucune bascule, RIEN transmis au builder', async () => {
+    // 2 sommets hors bornes sur 4 → il n'en reste que 2 d'exploitables pour
+    // normaliserContour (qui exige ≥ 3) : le contour ENTIER est refusé, comme
+    // la fiche lead le refuserait déjà (règle inchangée, PR #568).
+    const contourHorsBornes = [
+      [999, -7.603], // lat hors bornes
+      [33.589, 999], // lng hors bornes
+      [33.58918, -7.602784],
+      [33.58918, -7.603],
+    ]
+    const lead = {
+      id: 92, nom: 'Fahmi', prenom: 'Nadia', ville: 'Fès',
+      telephone: '0633333333', roof_point: null, roof_outline: contourHorsBornes,
+    }
+    api.get.mockImplementation((url) => {
+      if (url.startsWith('/crm/leads/')) return Promise.resolve({ data: lead })
+      if (url === '/ventes/roof-config/') {
+        return Promise.resolve({ data: { available: true, maptilerKey: 'k-lead' } })
+      }
+      return Promise.reject(new Error(`URL inattendue ${url}`))
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/devis-design/92']}>
+        <Routes>
+          <Route path="/devis-design/:id" element={<ToitureDesign />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    expect(screen.queryByTestId('rp9-toit-client')).toBeNull()
+    expect(screen.queryByTestId('rp9-toit-client-toggle')).toBeNull()
+    // Jamais transmis tel quel : un contour que l'écran refuse déjà ne doit
+    // JAMAIS dessiner un polygone orphelin, sans bascule pour le masquer.
+    expect(initRoofToolPro8.mock.calls[0][0].referenceContour).toBeNull()
+  })
+
+  // O3 (revue adversariale 26/08) — un clic PENDANT le boot (builder pas
+  // encore prêt : `onApiReady` non appelé) ne doit pas être perdu : dès que
+  // le builder devient prêt, l'état COURANT de la bascule doit lui être
+  // rejoué.
+  it('O3 — un clic sur la bascule PENDANT le boot est rattrapé dès que le builder devient prêt', async () => {
+    let onApiReadyDiffere = null
+    initRoofToolPro8.mockImplementationOnce((options) => {
+      // NE PAS appeler onApiReady tout de suite : simule un builder encore
+      // en train de booter (chargement de la carte/des tuiles).
+      onApiReadyDiffere = options.onApiReady
+    })
+    const lead = {
+      id: 88, nom: 'Alaoui', prenom: 'Youssef', ville: 'Casablanca',
+      telephone: '0600000000', roof_point: { lat: 33.5, lng: -7.6 },
+      roof_outline: CONTOUR_CLIENT, bill_kwh: 7200,
+    }
+    api.get.mockImplementation((url) => {
+      if (url.startsWith('/crm/leads/')) return Promise.resolve({ data: lead })
+      if (url === '/ventes/roof-config/') {
+        return Promise.resolve({ data: { available: true, maptilerKey: 'k-lead' } })
+      }
+      return Promise.reject(new Error(`URL inattendue ${url}`))
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/devis-design/88']}>
+        <Routes>
+          <Route path="/devis-design/:id" element={<ToitureDesign />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    // Le toggle existe déjà (posé dès que le lead est chargé), le builder,
+    // lui, n'est PAS encore prêt (onApiReady différé ci-dessus).
+    const bascule = await screen.findByTestId('rp9-toit-client-toggle')
+    await userEvent.click(bascule)
+    expect(bascule).toHaveAttribute('aria-pressed', 'false')
+    // Rien à appeler : builderApi.current est encore null.
+    expect(setReferenceContourVisible).not.toHaveBeenCalled()
+
+    // Le builder devient prêt APRÈS le clic.
+    onApiReadyDiffere({ serializeLayout, snapshot, setReferenceContourVisible })
+
+    // L'état voulu (masqué) est rejoué dès que l'API arrive — pas perdu.
+    await waitFor(() =>
+      expect(setReferenceContourVisible).toHaveBeenCalledWith(false))
   })
 
   it('mode lead — sans contour (lead antérieur au 21/08, comportement actuel) : aucun calque, aucun bouton', async () => {
