@@ -18,7 +18,12 @@ vi.mock('../../features/ventes/store/ventesSlice', async (importOriginal) => {
   return { ...actual, fetchFactures: () => ({ type: 'ventes/fetchFactures/noop' }) }
 })
 
-const api = {
+// Les fabriques de `vi.mock` sont HISSÉES au-dessus des `const` du module :
+// référencer `api` depuis la fabrique lèverait un ReferenceError et AUCUN test
+// ne s'exécuterait (le fichier entier tombe). `vi.hoisted` remonte la
+// déclaration avec elles — patron déjà en place dans ce dépôt
+// (ExcelImport.wir48.test.jsx, BackgroundJobsBell.test.jsx).
+const api = vi.hoisted(() => ({
   remettreBrouillonFacture: vi.fn(() => Promise.resolve({ data: {} })),
   abandonnerSoldeFacture: vi.fn(() => Promise.resolve({ data: {} })),
   retourClientFacture: vi.fn(() => Promise.resolve({ data: {} })),
@@ -41,7 +46,7 @@ const api = {
       { id: 32, reference: 'DEV-2', client_nom: 'ACME', total_ttc: 2000 },
     ],
   })),
-}
+}))
 
 vi.mock('../../api/ventesApi', async (importOriginal) => {
   const actual = await importOriginal()
