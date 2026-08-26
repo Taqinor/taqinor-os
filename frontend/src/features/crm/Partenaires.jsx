@@ -92,7 +92,6 @@ export default function Partenaires() {
     crmApi.getCommissionsPartenaire({ partenaire: selectedId })
       .then((res) => setCommissions(res.data?.results ?? res.data ?? []))
       .catch(() => setCommissions([]))
-    setReleve(null)
   }, [selectedId])
 
   const agreer = async () => {
@@ -242,7 +241,7 @@ export default function Partenaires() {
                     {ONBOARDING_LABEL[p.statut_onboarding] || p.statut_onboarding}
                   </Badge>
                 </td>
-                <td><Button variant="ghost" onClick={() => setSelectedId(p.id)}>Détails</Button></td>
+                <td><Button variant="ghost" onClick={() => { setSelectedId(p.id); setReleve(null) }}>Détails</Button></td>
               </tr>
             ))}
             {partenaires.length === 0 && (
