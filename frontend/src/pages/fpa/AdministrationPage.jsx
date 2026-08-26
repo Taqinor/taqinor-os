@@ -85,8 +85,9 @@ function DepartementNode({ node, depth, canEcrire, onRenommer, onBasculerActif }
 
 export default function AdministrationPage() {
   const permissions = useSelector((s) => s.auth.permissions)
-  const canEcrire = peutEcrireFpa(permissions)
-  const canAdministrer = peutAdministrerFpa(permissions)
+  const tier = useSelector((s) => s.auth.role)
+  const canEcrire = peutEcrireFpa(permissions, tier)
+  const canAdministrer = peutAdministrerFpa(permissions, tier)
 
   const [arbre, setArbre] = useState([])
   const [departements, setDepartements] = useState([])

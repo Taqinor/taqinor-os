@@ -12,7 +12,12 @@ import authReducer from '../../features/auth/store/authSlice'
    d'un département et d'un cycle, la gouvernance d'un cycle (ouvrir-saisie/
    clore/dupliquer/export) et le gating par les codes fpa_* (WIR173) : la
    création suit `peutEcrireFpa`, la gouvernance des cycles exige
-   spécifiquement `fpa_administrer` (`ExigeFpaPermission` côté serveur). */
+   spécifiquement `fpa_administrer` (`ExigeFpaPermission` côté serveur).
+
+   Revue Fable (post-merge) — le gating doit suivre le repli OrLegacy de
+   `porte_un_code_fpa` : un compte SANS rôle fin garde son accès historique
+   responsable/admin (permissions vides + palier légacy → écriture visible),
+   SEUL un rôle fin sans code fpa_* est refusé. */
 
 const getDepartementsTree = vi.fn()
 const getDepartements = vi.fn()
@@ -52,12 +57,12 @@ vi.mock('../../ui', async (orig) => ({
 
 import AdministrationPage from './AdministrationPage'
 
-function monter({ permissions = [] } = {}) {
+function monter({ permissions = [], role = 'admin' } = {}) {
   const store = configureStore({
     reducer: { auth: authReducer },
     preloadedState: {
       auth: {
-        user: { id: 1 }, role: 'admin', role_nom: 'Administrateur',
+        user: { id: 1 }, role, role_nom: 'Administrateur',
         permissions, isAuthenticated: true, loading: false,
       },
     },
@@ -122,11 +127,25 @@ describe('AdministrationPage — départements et cycles (WIR199)', () => {
     expect(toastSuccess).toHaveBeenCalledWith('Cycle créé.')
   })
 
-  it('masque la création (départements/cycles) sans aucun code fpa_*', async () => {
-    monter({ permissions: [] })
+  it('masque la création (départements/cycles) pour un compte SANS rôle fin au palier normal', async () => {
+    monter({ permissions: [], role: 'normal' })
     await waitFor(() => expect(getCycles).toHaveBeenCalled())
     expect(screen.queryByLabelText('Nom du département')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Nom du cycle')).not.toBeInTheDocument()
+  })
+
+  it('masque la création pour un rôle fin SANS aucun code fpa_* (même au palier admin)', async () => {
+    monter({ permissions: ['stock_creer'], role: 'admin' })
+    await waitFor(() => expect(getCycles).toHaveBeenCalled())
+    expect(screen.queryByLabelText('Nom du département')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Nom du cycle')).not.toBeInTheDocument()
+  })
+
+  it('affiche la création pour un compte SANS rôle fin au palier responsable/admin (repli légacy — porte_un_code_fpa)', async () => {
+    monter({ permissions: [], role: 'admin' })
+    await waitFor(() => expect(getCycles).toHaveBeenCalled())
+    expect(screen.getByLabelText('Nom du département')).toBeInTheDocument()
+    expect(screen.getByLabelText('Nom du cycle')).toBeInTheDocument()
   })
 
   it('masque la gouvernance des cycles sans fpa_administrer (même avec fpa_saisir)', async () => {
@@ -134,6 +153,13 @@ describe('AdministrationPage — départements et cycles (WIR199)', () => {
     await waitFor(() => expect(getCycles).toHaveBeenCalled())
     expect(screen.queryByRole('button', { name: 'Ouvrir la saisie' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Dupliquer' })).not.toBeInTheDocument()
+  })
+
+  it('affiche la gouvernance des cycles pour un compte SANS rôle fin au palier admin (repli légacy — ExigeFpaPermission)', async () => {
+    monter({ permissions: [], role: 'admin' })
+    await waitFor(() => expect(getCycles).toHaveBeenCalled())
+    expect(screen.getByRole('button', { name: 'Ouvrir la saisie' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Dupliquer' })).toBeInTheDocument()
   })
 
   it('ouvre la saisie, clôture, duplique et exporte un cycle avec fpa_administrer', async () => {

@@ -52,7 +52,8 @@ export default function SaisiePage() {
   const [error, setError] = useState(null)
   const [transition, setTransition] = useState(false)
   const permissions = useSelector((s) => s.auth.permissions)
-  const canEcrire = peutEcrireFpa(permissions)
+  const tier = useSelector((s) => s.auth.role)
+  const canEcrire = peutEcrireFpa(permissions, tier)
 
   useEffect(() => {
     Promise.all([fpaApi.getCycles(), fpaApi.getDepartements({ actif: 1 })])

@@ -11,7 +11,12 @@ import authReducer from '../../features/auth/store/authSlice'
    validé/rejeté, NTFPA5) existait côté API sans aucun déclencheur UI. On
    vérifie ici les 3 appels (soumettre/valider/rejeter) avec les query params
    `cycle`/`departement`, le gating par permission `fpa_*` (WIR173) et
-   qu'une transition refusée (400) s'affiche en toast plutôt que de planter. */
+   qu'une transition refusée (400) s'affiche en toast plutôt que de planter.
+
+   Revue Fable (post-merge) — le gating doit suivre le repli OrLegacy de
+   `porte_un_code_fpa` : un compte SANS rôle fin garde son accès historique
+   responsable/admin (permissions vides + palier légacy → boutons visibles),
+   SEUL un rôle fin sans code fpa_* est refusé (palier hors-jeu). */
 
 const getCycles = vi.fn()
 const getDepartements = vi.fn()
@@ -42,12 +47,12 @@ vi.mock('../../ui', async (orig) => ({
 
 import SaisiePage from './SaisiePage'
 
-function monter({ permissions = [] } = {}) {
+function monter({ permissions = [], role = 'admin' } = {}) {
   const store = configureStore({
     reducer: { auth: authReducer },
     preloadedState: {
       auth: {
-        user: { id: 1 }, role: 'admin', role_nom: 'Administrateur',
+        user: { id: 1 }, role, role_nom: 'Administrateur',
         permissions, isAuthenticated: true, loading: false,
       },
     },
@@ -78,12 +83,28 @@ async function selectionnerCycleEtDepartement(user) {
 }
 
 describe('SaisiePage — workflow soumettre/valider/rejeter (WIR198)', () => {
-  it('masque les 3 boutons sans permission fpa_*', async () => {
-    monter({ permissions: [] })
+  it('masque les 3 boutons pour un compte SANS rôle fin au palier normal (hors responsable/admin)', async () => {
+    monter({ permissions: [], role: 'normal' })
     await waitFor(() => expect(getCycles).toHaveBeenCalled())
     expect(screen.queryByRole('button', { name: 'Soumettre' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Valider' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Rejeter' })).not.toBeInTheDocument()
+  })
+
+  it('masque les 3 boutons pour un rôle fin SANS aucun code fpa_* (même au palier admin — jamais de repli légacy pour un rôle fin)', async () => {
+    monter({ permissions: ['stock_creer'], role: 'admin' })
+    await waitFor(() => expect(getCycles).toHaveBeenCalled())
+    expect(screen.queryByRole('button', { name: 'Soumettre' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Valider' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Rejeter' })).not.toBeInTheDocument()
+  })
+
+  it('affiche les 3 boutons pour un compte SANS rôle fin au palier responsable/admin (repli légacy — porte_un_code_fpa)', async () => {
+    monter({ permissions: [], role: 'admin' })
+    await waitFor(() => expect(getCycles).toHaveBeenCalled())
+    expect(screen.getByRole('button', { name: 'Soumettre' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Valider' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Rejeter' })).toBeInTheDocument()
   })
 
   it('affiche les 3 boutons avec fpa_saisir et soumet avec cycle+departement', async () => {
