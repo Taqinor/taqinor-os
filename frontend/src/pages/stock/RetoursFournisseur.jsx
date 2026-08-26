@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Undo2,
+import { Undo2, FileMinus2,
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import {
@@ -17,6 +17,15 @@ import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
 // du détail (lignes). Usage INTERNE (prix d'achat jamais client-facing) ; cette
 // liste n'affiche aucun prix.
 
+// Message FR d'une erreur serveur (jamais de JSON brut).
+function frErr(err, fallback = 'Une erreur est survenue.') {
+  const data = err?.response?.data
+  if (!data) return fallback
+  if (typeof data === 'string') return data
+  if (data.detail) return data.detail
+  return fallback
+}
+
 const RETOUR_STATUTS = {
   brouillon: 'Brouillon',
   valide: 'Validé',
@@ -30,9 +39,28 @@ const fmtDateFR = (iso) => {
   return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('fr-FR')
 }
 
-// ── Modal de consultation d'un retour (lecture seule) ───────────────────────
-function RetourDetail({ retour, onClose }) {
+// ── Modal de consultation d'un retour ────────────────────────────────────
+// WIR222/XPUR9 — « Générer l'avoir » sur un retour validé : `avoirGenere`
+// track LOCALEMENT le succès de cette session (le serializer du retour
+// n'expose aucun champ « a un avoir » — un second clic après rechargement
+// reste refusé honnêtement par le 400 serveur, affiché tel quel).
+export function RetourDetail({ retour, onClose, onAvoirGenere }) {
   const lignes = retour?.lignes ?? []
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+  const [avoirGenere, setAvoirGenere] = useState(null)
+
+  const genererAvoir = async () => {
+    setBusy(true); setError(null)
+    try {
+      const r = await stockApi.genererAvoirDepuisRetour(retour.id)
+      setAvoirGenere(r.data)
+      onAvoirGenere?.(r.data)
+    } catch (err) {
+      setError(frErr(err, "La génération de l'avoir a échoué."))
+    } finally { setBusy(false) }
+  }
+
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
       <DialogContent className="max-h-[92vh] max-w-2xl overflow-y-auto">
@@ -80,7 +108,24 @@ function RetourDetail({ retour, onClose }) {
           </table>
         </div>
 
+        {/* WIR222/XPUR9 — génère un AvoirFournisseur brouillon pré-rempli. */}
+        {avoirGenere && (
+          <div className="rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success">
+            Avoir {avoirGenere.reference} généré ({avoirGenere.montant_ttc} TTC).
+          </div>
+        )}
+        {error && (
+          <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+            {error}
+          </div>
+        )}
+
         <DialogFooter>
+          {retour.statut === 'valide' && !avoirGenere && (
+            <Button type="button" variant="outline" loading={busy} onClick={genererAvoir}>
+              <FileMinus2 /> Générer l&apos;avoir
+            </Button>
+          )}
           <Button type="button" variant="ghost" onClick={onClose}>Fermer</Button>
         </DialogFooter>
       </DialogContent>

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
   Plus, FileText, Undo2, Package, Trash2, Copy, RotateCcw, Receipt, LayoutTemplate, ClipboardList,
+  Pencil, BadgeCheck, History, AlertTriangle, BarChart3,
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import messagesApi from '../../api/messagesApi'
@@ -224,9 +225,19 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
 
   const [fournisseur, setFournisseur] = useState(bcf?.fournisseur ?? '')
   const [dateCommande, setDateCommande] = useState(bcf?.date_commande ?? '')
+  const [dateLivraisonPrevue, setDateLivraisonPrevue] = useState(bcf?.date_livraison_prevue ?? '')
   const [note, setNote] = useState(bcf?.note ?? '')
   const [lignes, setLignes] = useState(
     (bcf?.lignes ?? []).map((l) => ({ ...l })))
+  // WIR191/XPUR18 — SEUL chemin de modification d'un BCF déjà envoyé/reçu :
+  // le mode « Réviser » déverrouille lignes/dates/note SANS jamais passer par
+  // le save()/update() standard (le backend le refuse à ces statuts).
+  const revisable = !isNew && (statut === 'envoye' || statut === 'recu')
+  const [revising, setRevising] = useState(false)
+  // Édition des lignes : `editableLignes` (isNew/brouillon) reste le SEUL
+  // déclencheur des boutons Enregistrer/Envoyer standard ; `lignesEditable`
+  // ajoute la révision pour la SAISIE (quantité/prix/note/dates) uniquement.
+  const lignesEditable = editableLignes || revising
   // ZPUR8 — « Other Information » : acheteur (défaut = créateur côté serveur),
   // référence fournisseur, note de bas de page, incoterm reporté.
   const [acheteur, setAcheteur] = useState(bcf?.acheteur ?? '')
@@ -241,6 +252,21 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
   const [showRetour, setShowRetour] = useState(false)
   const [showAnnuler, setShowAnnuler] = useState(false)
   const [info, setInfo] = useState(null)
+  // WIR220/XPUR7 — accusé de commande fournisseur (date confirmée + n°) : la
+  // date DEMANDÉE (`date_livraison_prevue`, ci-dessus) n'est JAMAIS écrasée —
+  // état local séparé mis à jour depuis la réponse serveur (le composant ne
+  // reçoit jamais de `bcf` rafraîchi tant que le dialogue reste ouvert).
+  const [accuseDateConfirmee, setAccuseDateConfirmee] = useState(bcf?.date_confirmee_fournisseur ?? null)
+  const [accuseNumero, setAccuseNumero] = useState(bcf?.numero_confirmation_fournisseur ?? '')
+  const [accuseDateForm, setAccuseDateForm] = useState('')
+  const [accuseNumeroForm, setAccuseNumeroForm] = useState('')
+  // WIR220/XPUR11 — encart « BCF ouverts similaires » à la CRÉATION (le
+  // panneau n'a de sens qu'avant l'envoi : une fois le BCF réel créé, il
+  // apparaîtrait lui-même dans la liste des similaires).
+  const [similaires, setSimilaires] = useState([])
+  // WIR220/XPUR13 — popover « historique des prix » : quelle ligne l'a ouvert.
+  const [historiqueIdx, setHistoriqueIdx] = useState(null)
+  const [historiqueData, setHistoriqueData] = useState(null)
   // VX240(g) — focus la ligne fraîchement ajoutée (réplique le patron VX90).
   const linesTableRef = useRef(null)
   const [pendingFocusKey, setPendingFocusKey] = useState(null)
@@ -259,6 +285,27 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
     () => [...(produits ?? []), ...extraProduits], [produits, extraProduits])
 
   const total = useMemo(() => totalAchat(lignes), [lignes])
+  // WIR220/XPUR11 — BCF ouverts similaires (même fournisseur, produits
+  // communs si déjà choisis). Clé stable dérivée des produits pour éviter un
+  // appel réseau à chaque frappe de quantité/prix (lecture seule, jamais bloquant).
+  const produitIdsKey = useMemo(
+    () => lignes.map((l) => l.produit).filter(Boolean).join(','), [lignes])
+  useEffect(() => {
+    let active = true
+    if (!isNew || !fournisseur) {
+      // Fable review (fix WIR220) — react-hooks/set-state-in-effect : ce
+      // early-return posait setSimilaires([]) de façon synchrone dans le
+      // corps de l'effet. Différé en microtask (avec le même garde `active`
+      // que le chemin fetch) pour ne jamais écrire après démontage.
+      Promise.resolve().then(() => { if (active) setSimilaires([]) })
+      return () => { active = false }
+    }
+    const produitIds = produitIdsKey ? produitIdsKey.split(',') : []
+    stockApi.getBcfSimilaires(fournisseur, produitIds)
+      .then((r) => { if (active) setSimilaires(r.data ?? []) })
+      .catch(() => { if (active) setSimilaires([]) })
+    return () => { active = false }
+  }, [isNew, fournisseur, produitIdsKey])
   const reception = useMemo(() => avancementReception(bcf?.lignes ?? lignes), [bcf, lignes])
   // Chantier source (BCF issu d'un besoin matériel) : la note contient
   // « chantier <ref> » — on l'extrait pour la mettre en avant (728).
@@ -352,6 +399,7 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
   const buildPayload = () => ({
     fournisseur: fournisseur || null,
     date_commande: dateCommande || null,
+    date_livraison_prevue: dateLivraisonPrevue || null,
     note: note || null,
     // ZPUR8 — « Other Information » : acheteur, réf. fournisseur, note de
     // bas de page + report incoterm (édité au document, jamais recalculé).
@@ -501,6 +549,77 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
     } finally { setBusy(false) }
   }
 
+  // WIR191/XPUR18 — mode « Réviser » : déverrouille dates/note/lignes (quantité,
+  // prix, désignation d'une ligne libre) SANS jamais passer par le save()
+  // standard (le backend refuse un PUT/PATCH à ces statuts). N'envoie que les
+  // lignes déjà enregistrées (`l.id`) — reviser ne crée/supprime aucune ligne.
+  const doReviser = async () => {
+    setBusy(true); setError(null)
+    try {
+      const r = await stockApi.reviserBcf(bcf.id, {
+        date_commande: dateCommande || null,
+        date_livraison_prevue: dateLivraisonPrevue || null,
+        note: note ?? '',
+        lignes: lignes.filter((l) => l.id).map((l) => ({
+          id: l.id,
+          quantite: Number(l.quantite) || 0,
+          prix_achat_unitaire: l.prix_achat_unitaire === '' || l.prix_achat_unitaire == null
+            ? 0 : Number(l.prix_achat_unitaire),
+          designation: l.designation ?? '',
+        })),
+      })
+      setInfo(r.data?.reapprobation_requise
+        ? 'Révision enregistrée — une nouvelle approbation est requise (montant en hausse).'
+        : 'Révision enregistrée.')
+      setRevising(false)
+      onSaved?.()
+    } catch (err) {
+      setError(frBcfError(err, 'La révision a échoué.'))
+    } finally { setBusy(false) }
+  }
+
+  // WIR220/XPUR13 — popover « historique des prix » : derniers achats de CE
+  // produit (toutes sources), filtrés à ce fournisseur. LECTURE SEULE.
+  const voirHistoriquePrix = async (idx, ligne) => {
+    setHistoriqueIdx(idx)
+    setHistoriqueData(null)
+    try {
+      const r = await stockApi.getHistoriquePrixBcf(ligne.produit, fournisseur)
+      setHistoriqueData(r.data ?? [])
+    } catch { setHistoriqueData([]) }
+  }
+
+  // WIR220/XPUR7 — accusé de commande fournisseur : date confirmée + n° (P1).
+  // La date DEMANDÉE (`date_livraison_prevue`) n'est jamais écrasée côté
+  // serveur ; l'OTD (promis vs reçu) réagit dès l'enregistrement.
+  const confirmerAccuse = async () => {
+    if (!accuseDateForm) { setError('La date confirmée par le fournisseur est requise.'); return }
+    setBusy(true); setError(null)
+    try {
+      const r = await stockApi.confirmerBcf(bcf.id, {
+        date_confirmee_fournisseur: accuseDateForm,
+        numero_confirmation_fournisseur: accuseNumeroForm || '',
+      })
+      setAccuseDateConfirmee(r.data?.date_confirmee_fournisseur ?? accuseDateForm)
+      setAccuseNumero(r.data?.numero_confirmation_fournisseur ?? accuseNumeroForm)
+      setInfo('Accusé de commande enregistré.')
+      onSaved?.()
+    } catch (err) {
+      setError(frBcfError(err, "L'enregistrement de l'accusé a échoué."))
+    } finally { setBusy(false) }
+  }
+
+  // Abandonne la révision en cours : les saisies reviennent à la version
+  // servie par le serveur (jamais un update() standard à ces statuts).
+  const cancelRevising = () => {
+    setRevising(false)
+    setDateCommande(bcf?.date_commande ?? '')
+    setDateLivraisonPrevue(bcf?.date_livraison_prevue ?? '')
+    setNote(bcf?.note ?? '')
+    setLignes((bcf?.lignes ?? []).map((l) => ({ ...l })))
+    setError(null)
+  }
+
   // ZPUR4 — clone ce BCF en un nouveau BROUILLON (quantités reçues à zéro).
   const dupliquer = async () => {
     setBusy(true); setError(null)
@@ -593,10 +712,35 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium" htmlFor="bcf-date">Date de commande</label>
             <Input id="bcf-date" type="date" value={dateCommande ?? ''}
-                   disabled={!editableLignes}
+                   disabled={!lignesEditable}
                    onChange={(e) => setDateCommande(e.target.value)} />
           </div>
+          {/* WIR191/XPUR18 — date de livraison DEMANDÉE, révisable ; distincte
+              de la date CONFIRMÉE par le fournisseur (accusé, jamais écrasée). */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium" htmlFor="bcf-date-livraison">Date de livraison prévue</label>
+            <Input id="bcf-date-livraison" type="date" value={dateLivraisonPrevue ?? ''}
+                   disabled={!lignesEditable}
+                   onChange={(e) => setDateLivraisonPrevue(e.target.value)} />
+          </div>
         </div>
+
+        {/* WIR220/XPUR11 — BCF ouverts similaires chez ce fournisseur, encart
+            créé UNIQUEMENT à la création (jamais bloquant). */}
+        {isNew && similaires.length > 0 && (
+          <div className="flex flex-col gap-1.5 rounded-lg border border-info/30 bg-info/10 p-3 text-sm">
+            <span className="flex items-center gap-1.5 font-semibold text-info">
+              <AlertTriangle className="size-4" aria-hidden="true" /> BCF ouverts similaires chez ce fournisseur
+            </span>
+            <ul className="flex flex-col gap-1">
+              {similaires.map((s) => (
+                <li key={s.id} className="text-muted-foreground">
+                  {s.reference} — {bcfStatutLabel(s.statut)}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {/* ── ZPUR8 — « Other Information » : acheteur, réf. fournisseur,
             note de bas de page, incoterm (imprimés sur le PDF BCF). ── */}
@@ -635,6 +779,39 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
                    onChange={(e) => setNoteBasPage(e.target.value)} />
           </div>
         </div>
+
+        {/* ── WIR220/XPUR7 — Accusé de commande fournisseur (P1) : score OTD
+            (promis vs reçu) incomplet tant que l'accusé n'est jamais saisi. ── */}
+        {!isNew && statut === 'envoye' && (
+          <div className="rounded-lg border border-border p-3">
+            <h4 className="mb-2 flex items-center gap-1.5 text-sm font-semibold">
+              <BadgeCheck className="size-4 text-muted-foreground" aria-hidden="true" />
+              Accusé de commande fournisseur
+            </h4>
+            {accuseDateConfirmee ? (
+              <p className="text-sm text-muted-foreground">
+                Confirmé pour le {fmtDateFR(accuseDateConfirmee)}
+                {accuseNumero ? ` — n° ${accuseNumero}` : ''}
+              </p>
+            ) : (
+              <div className="flex flex-wrap items-end gap-2">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium" htmlFor="bcf-accuse-date">Date confirmée</label>
+                  <Input id="bcf-accuse-date" type="date" className="h-9" value={accuseDateForm}
+                         onChange={(e) => setAccuseDateForm(e.target.value)} />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium" htmlFor="bcf-accuse-numero">N° de confirmation (optionnel)</label>
+                  <Input id="bcf-accuse-numero" className="h-9" value={accuseNumeroForm}
+                         onChange={(e) => setAccuseNumeroForm(e.target.value)} />
+                </div>
+                <Button type="button" size="sm" loading={busy} onClick={confirmerAccuse}>
+                  {busy ? '…' : "Enregistrer l'accusé"}
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* ── Lignes ── */}
         <div className="flex flex-col gap-2">
@@ -718,6 +895,14 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
                               )}
                             </div>
                           )
+                        ) : revising && (l.sans_stock || (!l.produit && l.designation != null)) ? (
+                          // WIR191 — reviser() ne touche jamais au produit d'une
+                          // ligne (seule quantité/prix/désignation sont suivis) :
+                          // la désignation d'une ligne LIBRE reste éditable, le
+                          // picker produit d'une ligne catalogue reste figé.
+                          <Input className="h-9" placeholder="Désignation libre (ex. Transport Casablanca)"
+                                 value={l.designation ?? ''}
+                                 onChange={(e) => setLigne(idx, { designation: e.target.value })} />
                         ) : (
                           <span>
                             {l.produit_nom ?? l.designation ?? '—'}
@@ -729,25 +914,33 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
                         )}
                       </td>
                       <td className="px-3 py-2">
-                        {editableLignes ? (
+                        {lignesEditable ? (
                           <Input type="number" step="any" inputMode="decimal" className="h-9 w-24"
                                  value={l.quantite ?? ''}
                                  onChange={(e) => setLigne(idx, { quantite: e.target.value })} />
                         ) : l.quantite}
                       </td>
                       <td className="px-3 py-2">
-                        {editableLignes ? (
-                          <>
+                        <div className="flex items-center gap-1">
+                          {lignesEditable ? (
                             <Input type="number" step="any" inputMode="decimal" className="h-9 w-32"
                                    value={l.prix_achat_unitaire ?? ''}
                                    onChange={(e) => setLigne(idx, { prix_achat_unitaire: e.target.value })} />
-                            {l.produit && !(Number(l.prix_achat_unitaire) > 0) && (
-                              <p className="mt-1 text-xs text-warning">
-                                Sans prix d&apos;achat — commande possible (BCF interne).
-                              </p>
-                            )}
-                          </>
-                        ) : fmtMad(l.prix_achat_unitaire)}
+                          ) : fmtMad(l.prix_achat_unitaire)}
+                          {/* WIR220/XPUR13 — popover historique des prix (lecture seule). */}
+                          {l.produit && (
+                            <IconButton type="button" label="Historique des prix" size="sm"
+                                        className="size-8 text-muted-foreground"
+                                        onClick={() => voirHistoriquePrix(idx, l)}>
+                              <History />
+                            </IconButton>
+                          )}
+                        </div>
+                        {lignesEditable && l.produit && !(Number(l.prix_achat_unitaire) > 0) && (
+                          <p className="mt-1 text-xs text-warning">
+                            Sans prix d&apos;achat — commande possible (BCF interne).
+                          </p>
+                        )}
                       </td>
                       <td className="px-3 py-2 tabular-nums">{fmtMad(lineTotal)}</td>
                       {!isNew && <td className="px-3 py-2 tabular-nums">{l.quantite_recue ?? 0}</td>}
@@ -782,8 +975,12 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
 
         <div className="flex flex-col gap-1.5">
           <label className="text-sm font-medium" htmlFor="bcf-note">Note</label>
+          {/* WIR191 — la Note n'est plus « éditable sans bouton » à l'état
+              envoyé : elle suit exactement `lignesEditable` (brouillon/neuf,
+              ou mode Réviser explicite) — sinon aucune saisie ne pouvait être
+              enregistrée (le save() standard est refusé par le serveur). */}
           <Textarea id="bcf-note" rows={2} value={note ?? ''}
-                    disabled={!editableLignes && statut !== 'envoye'}
+                    disabled={!lignesEditable}
                     onChange={(e) => setNote(e.target.value)} />
         </div>
 
@@ -821,6 +1018,22 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
             <Button type="button" variant="outline" loading={busy} onClick={dupliquer}>
               <Copy /> Dupliquer
             </Button>
+          )}
+          {/* WIR191/XPUR18 — SEUL chemin de modification d'un BCF déjà envoyé/
+              reçu. Le bouton Enregistrer/Envoyer standard n'apparaît jamais à
+              ces statuts (gardé par `editableLignes`, inchangé). */}
+          {revisable && !revising && (
+            <Button type="button" variant="outline" onClick={() => setRevising(true)}>
+              <Pencil /> Réviser
+            </Button>
+          )}
+          {revising && (
+            <>
+              <Button type="button" variant="ghost" onClick={cancelRevising}>Annuler la révision</Button>
+              <Button type="button" loading={busy} onClick={doReviser}>
+                {busy ? '…' : 'Enregistrer la révision'}
+              </Button>
+            </>
           )}
           {/* ZPUR1 — facture directement les lignes « sur commande », sans
               exiger de réception préalable. */}
@@ -895,6 +1108,143 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
           onCreated={onProduitCreatedForLine}
         />
       )}
+      {/* WIR220/XPUR13 — popover « historique des prix » (lecture seule). */}
+      {historiqueIdx != null && (
+        <Dialog open onOpenChange={(o) => { if (!o) setHistoriqueIdx(null) }}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Historique des prix</DialogTitle>
+              <DialogDescription>
+                Derniers achats de ce produit (toutes sources), filtrés à ce fournisseur.
+              </DialogDescription>
+            </DialogHeader>
+            {historiqueData === null ? (
+              <p className="text-sm text-muted-foreground">Chargement…</p>
+            ) : historiqueData.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Aucun historique d&apos;achat pour ce produit.</p>
+            ) : (
+              <ul className="flex flex-col gap-1.5 text-sm">
+                {historiqueData.map((h) => (
+                  <li key={h.bon_commande_id} className="flex items-center justify-between border-b border-border pb-1 last:border-b-0">
+                    <span>{h.reference} — {fmtDateFR(h.date?.slice?.(0, 10) ?? h.date)}</span>
+                    <span className="tabular-nums">{fmtMad(h.prix_achat_unitaire)} × {h.quantite}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <DialogFooter>
+              <Button type="button" variant="ghost" onClick={() => setHistoriqueIdx(null)}>Fermer</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+    </Dialog>
+  )
+}
+
+// ── WIR220/XPUR13 — rapport « achats hors contrat » (lignes au-dessus du prix
+// convenu du contrat en vigueur), filtrable fournisseur + période. Couvre
+// aussi XPUR13 : le rapport n'existait jusqu'ici derrière AUCUN écran. ──────
+function AchatsHorsContratModal({ fournisseurs, onClose }) {
+  const [fournisseurId, setFournisseurId] = useState('')
+  const [dateDebut, setDateDebut] = useState('')
+  const [dateFin, setDateFin] = useState('')
+  const [rows, setRows] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+
+  const generer = async () => {
+    setBusy(true); setError(null)
+    try {
+      const r = await stockApi.getAchatsHorsContrat({
+        fournisseur: fournisseurId || undefined,
+        date_debut: dateDebut || undefined,
+        date_fin: dateFin || undefined,
+      })
+      setRows(r.data ?? [])
+    } catch (err) {
+      setError(frBcfError(err, 'Le rapport a échoué.'))
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-h-[92vh] max-w-3xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Achats hors contrat</DialogTitle>
+          <DialogDescription>
+            Lignes de BCF dont le prix saisi dépasse le prix convenu du contrat en
+            vigueur. Donnée interne (prix d&apos;achat jamais client-facing).
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="min-w-48 flex-1">
+            <label className="text-xs font-medium" htmlFor="hc-fou">Fournisseur (optionnel)</label>
+            <Select value={fournisseurId || '__all'} onValueChange={(v) => setFournisseurId(v === '__all' ? '' : v)}>
+              <SelectTrigger id="hc-fou"><SelectValue placeholder="Tous les fournisseurs" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all">Tous les fournisseurs</SelectItem>
+                {(fournisseurs ?? []).map((f) => <SelectItem key={f.id} value={String(f.id)}>{f.nom}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="text-xs font-medium" htmlFor="hc-debut">Du</label>
+            <Input id="hc-debut" type="date" className="h-9" value={dateDebut}
+                   onChange={(e) => setDateDebut(e.target.value)} />
+          </div>
+          <div>
+            <label className="text-xs font-medium" htmlFor="hc-fin">Au</label>
+            <Input id="hc-fin" type="date" className="h-9" value={dateFin}
+                   onChange={(e) => setDateFin(e.target.value)} />
+          </div>
+          <Button type="button" loading={busy} onClick={generer}>{busy ? '…' : 'Générer'}</Button>
+        </div>
+
+        {error && (
+          <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+            {error}
+          </div>
+        )}
+
+        {rows !== null && (
+          rows.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Aucun achat hors contrat sur cette période.</p>
+          ) : (
+            <div className="overflow-x-auto rounded-lg border border-border">
+              <table className="w-full min-w-[36rem] text-sm">
+                <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-semibold">BCF</th>
+                    <th className="px-3 py-2 text-left font-semibold">Fournisseur</th>
+                    <th className="px-3 py-2 text-left font-semibold">Produit</th>
+                    <th className="px-3 py-2 text-right font-semibold">Prix convenu</th>
+                    <th className="px-3 py-2 text-right font-semibold">Prix saisi</th>
+                    <th className="px-3 py-2 text-right font-semibold">Écart</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r) => (
+                    <tr key={r.ligne_id} className="border-t border-border">
+                      <td className="px-3 py-2">{r.reference}</td>
+                      <td className="px-3 py-2">{r.fournisseur_nom ?? '—'}</td>
+                      <td className="px-3 py-2">{r.produit_nom ?? '—'}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{fmtMad(r.prix_convenu)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{fmtMad(r.prix_saisi)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-warning">{fmtMad(r.ecart)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+        )}
+
+        <DialogFooter>
+          <Button type="button" variant="ghost" onClick={onClose}>Fermer</Button>
+        </DialogFooter>
+      </DialogContent>
     </Dialog>
   )
 }
@@ -909,6 +1259,14 @@ export default function BonsCommandeFournisseur() {
   const [statutFiltre, setStatutFiltre] = useState('')
   const [fusionInfo, setFusionInfo] = useState(null)
   const [fusionError, setFusionError] = useState(null)
+  // WIR220/XPUR7 — BCF ENVOYE en retard (prévue/confirmée dépassée sans
+  // réception complète). Calculé côté serveur (`bcf_en_retard_list`) ; on ne
+  // garde que les ids pour filtrer la même liste chargée, jamais un doublon
+  // de source de vérité.
+  const [enRetardIds, setEnRetardIds] = useState(() => new Set())
+  const [filtreRetard, setFiltreRetard] = useState(false)
+  // WIR220/XPUR13 — rapport « achats hors contrat » (fournisseur+période).
+  const [showHorsContrat, setShowHorsContrat] = useState(false)
   // Réapprovisionnement (706) : un BCF brouillon pré-rempli demandé via l'état
   // de navigation depuis le catalogue ouvre directement le détail.
   const prefill = location.state?.prefillBcf ?? null
@@ -945,18 +1303,26 @@ export default function BonsCommandeFournisseur() {
       .catch(() => setItems([]))
       .finally(() => setLoading(false))
   }
+  const reloadEnRetard = () => {
+    stockApi.getBcfEnRetard()
+      .then((r) => setEnRetardIds(new Set((r.data?.results ?? r.data ?? []).map((b) => b.id))))
+      .catch(() => setEnRetardIds(new Set()))
+  }
 
   useEffect(() => {
     reload()
+    reloadEnRetard()
     stockApi.getFournisseurs().then((r) => setFournisseurs(r.data?.results ?? r.data ?? [])).catch(() => {})
     stockApi.getProduits({ page_size: 1000 }).then((r) => setProduits(r.data?.results ?? r.data ?? [])).catch(() => {})
   }, [])
 
   // Le filtre statut reste local (Select dédié) ; la recherche texte
   // (référence / fournisseur) est gérée par le DataTable via globalColumns.
-  const rows = useMemo(() => (
-    statutFiltre ? items.filter((b) => b.statut === statutFiltre) : items
-  ), [items, statutFiltre])
+  const rows = useMemo(() => {
+    let list = statutFiltre ? items.filter((b) => b.statut === statutFiltre) : items
+    if (filtreRetard) list = list.filter((b) => enRetardIds.has(b.id))
+    return list
+  }, [items, statutFiltre, filtreRetard, enRetardIds])
   // BCF envoyés en attente de réception (raccourci de filtrage en un clic).
   const attenteReception = useMemo(() => nbEnvoyesNonRecus(items), [items])
 
@@ -1018,6 +1384,10 @@ export default function BonsCommandeFournisseur() {
           <Button variant="outline" onClick={() => navigate('/stock/modeles-bcf')}>
             <LayoutTemplate /> Modèles
           </Button>
+          {/* WIR220/XPUR13 — rapport « achats hors contrat » (prix hors seuil). */}
+          <Button variant="outline" onClick={() => setShowHorsContrat(true)}>
+            <BarChart3 /> Achats hors contrat
+          </Button>
           <Button onClick={() => setSelected({})}>
             <Plus /> Nouveau bon de commande
           </Button>
@@ -1053,8 +1423,16 @@ export default function BonsCommandeFournisseur() {
             En attente de réception ({attenteReception})
           </Button>
         )}
-        {statutFiltre && (
-          <Button variant="ghost" size="sm" onClick={() => setStatutFiltre('')}>
+        {/* WIR220/XPUR7 — BCF ENVOYE en retard (dépassements). */}
+        {enRetardIds.size > 0 && (
+          <Button variant={filtreRetard ? 'secondary' : 'outline'} size="sm"
+                  onClick={() => setFiltreRetard((v) => !v)}
+                  title="Bons de commande envoyés en retard (date prévue/confirmée dépassée)">
+            <AlertTriangle className="size-3.5" /> En retard ({enRetardIds.size})
+          </Button>
+        )}
+        {(statutFiltre || filtreRetard) && (
+          <Button variant="ghost" size="sm" onClick={() => { setStatutFiltre(''); setFiltreRetard(false) }}>
             Réinitialiser
           </Button>
         )}
@@ -1093,7 +1471,11 @@ export default function BonsCommandeFournisseur() {
 
       {selected && (
         <BcfDetail bcf={selected} fournisseurs={fournisseurs} produits={produits}
-                   onClose={() => setSelected(null)} onSaved={reload} />
+                   onClose={() => setSelected(null)}
+                   onSaved={() => { reload(); reloadEnRetard() }} />
+      )}
+      {showHorsContrat && (
+        <AchatsHorsContratModal fournisseurs={fournisseurs} onClose={() => setShowHorsContrat(false)} />
       )}
     </div>
   )
