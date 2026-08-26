@@ -73,6 +73,25 @@ const aoApi = {
     // ci-dessus (`update(id, { archive: true })`) — pas d'action dédiée.
     dupliquer: (id) => api.post(`/ao/appels-offres/${id}/dupliquer/`),
 
+    /* ── WIR206 — LE STATUT DE L'AFFAIRE, SERVI PAR LE SERVEUR ─────────────
+       `transitions` (GET) est la SEULE source des cibles atteignables : la
+       table `services.TRANSITIONS_AO` vit côté serveur et l'écran ne la
+       recopie jamais — une seconde table finirait par proposer une cible
+       refusée (ou masquer une cible légitime). `changerStatut` (POST) est le
+       SEUL chemin HTTP de mutation (AOF13) ; un refus arrive en 400 avec sa
+       phrase française, à afficher TELLE QUELLE.
+
+       `lead` (GET) rend `{lead_id, fiche}` — la fiche-carte passe par
+       `apps.crm.selectors.lead_card`, `ao` n'importe jamais `crm.models`.
+       `rattacherLead(id, null)` DÉTACHE (le service traite un identifiant vide
+       comme un détachement). */
+    transitions: (id) => api.get(`/ao/appels-offres/${id}/transitions/`),
+    changerStatut: (id, statut, motif = '') =>
+      api.post(`/ao/appels-offres/${id}/changer-statut/`, { statut, motif }),
+    lead: (id) => api.get(`/ao/appels-offres/${id}/lead/`),
+    rattacherLead: (id, lead) =>
+      api.post(`/ao/appels-offres/${id}/rattacher-lead/`, { lead }),
+
     /* ── L'ATELIER 3D DE L'AFFAIRE — le MÊME écran que la villa ────────────
        `frontend/src/pages/ventes/ToitureDesign.jsx` existe déjà et sert deux
        modes ('lead', 'devis') ; le mode 'ao' le RÉUTILISE, jamais une seconde
@@ -317,6 +336,15 @@ const aoApi = {
   // deux dossiers différents, ce qui est pire qu'un 404 : silencieux.
   dossiers: {
     ...crud('dossiers-ao'),
+    /* WIR206 — `changer-statut` est le SEUL chemin de mutation du statut d'un
+       dossier (`statut` est en lecture seule au sérialiseur : un PATCH est
+       ignoré en silence, ce qui affichait un succès sans rien écrire). La
+       porte `pret_a_deposer` refuse en 400 en CITANT ses raisons
+       (`raisons_de_non_depot` + codes de règle de cohérence). Les cibles
+       atteignables sont servies par le champ dérivé `transitions` du dossier
+       lui-même — jamais une table recopiée côté écran. */
+    changerStatut: (id, statut, motif = '') =>
+      api.post(`/ao/dossiers-ao/${id}/changer-statut/`, { statut, motif }),
     controlesAvantDepot: (id) =>
       api.get(`/ao/dossiers-ao/${id}/controles-avant-depot/`),
     // PACT71 — complétude DÉRIVÉE (`DossierAO.raisons_de_non_depot`, en

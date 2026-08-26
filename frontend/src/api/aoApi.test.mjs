@@ -186,6 +186,32 @@ test('AOF170 — affaires.dupliquer() existe (action de ligne « dupliquer », A
   assert.match(body, /dupliquer:\s*\(id\)\s*=>\s*api\.post\(`\/ao\/appels-offres\/\$\{id\}\/dupliquer\/`\)/)
 })
 
+test('WIR206 — le statut passe par transitions (GET) + changer-statut (POST), jamais un PATCH', () => {
+  const body = aoApiBody()
+  assert.match(body, /transitions:\s*\(id\)\s*=>\s*api\.get\(`\/ao\/appels-offres\/\$\{id\}\/transitions\/`\)/)
+  assert.match(body, /api\.post\(`\/ao\/appels-offres\/\$\{id\}\/changer-statut\/`/)
+  assert.match(body, /api\.post\(`\/ao\/dossiers-ao\/\$\{id\}\/changer-statut\/`/)
+  // Le statut est en lecture seule au sérialiseur : un PATCH serait ignoré en
+  // silence et l'écran annoncerait un succès sans que rien ne soit écrit.
+  assert.doesNotMatch(
+    sansCommentaires(src), /api\.patch\(`\/ao\/appels-offres\/\$\{id\}\/`,\s*\{\s*statut/)
+  // AOF17 — la fiche du lead lié et son rattachement/détachement.
+  assert.match(body, /lead:\s*\(id\)\s*=>\s*api\.get\(`\/ao\/appels-offres\/\$\{id\}\/lead\/`\)/)
+  assert.match(body, /api\.post\(`\/ao\/appels-offres\/\$\{id\}\/rattacher-lead\/`,\s*\{ lead \}\)/)
+})
+
+test('WIR206 — les @action de statut/lead existent RÉELLEMENT côté serveur', async () => {
+  const { readFileSync } = await import('node:fs')
+  const { fichierAo } = await import('../test/contratServeur.js')
+  const vues = readFileSync(fichierAo('views.py'), 'utf8')
+  assert.match(vues, /@action\(detail=True, methods=\['get'\], url_path='transitions'\)/)
+  assert.match(vues, /@action\(detail=True, methods=\['post'\], url_path='changer-statut'\)/)
+  assert.match(vues, /@action\(detail=True, methods=\['get'\], url_path='lead'\)/)
+  assert.match(vues, /@action\(detail=True, methods=\['post'\], url_path='rattacher-lead'\)/)
+  const viewsets = readFileSync(fichierAo('viewsets.py'), 'utf8')
+  assert.match(viewsets, /@action\(detail=True, methods=\['post'\], url_path='changer-statut'\)/)
+})
+
 test('AOF172 — tableauMarches() appelle GET /ao/tableau-marches/ (endpoint AOF166, un seul appel agrégé)', () => {
   const body = aoApiBody()
   assert.match(body, /tableauMarches:\s*\(\)\s*=>\s*api\.get\('\/ao\/tableau-marches\/'\)/)

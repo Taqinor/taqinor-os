@@ -96,6 +96,91 @@ const POLL_MS = 15000
    jamais un bouton grisé sans explication (règle d'AOF176/AOF177). */
 const MOTIF_ZIP_VERROU = 'une opération est déjà en cours sur ce dossier'
 
+/* Un refus serveur RENDU TEL QUEL. `changer-statut` répond en 400 avec soit
+   `{statut: [...raisons de non-dépôt]}`, soit `{controles: ['R12 — …']}`,
+   soit `{non_field_errors: ['…']}` (transition absente de la table). Chacune
+   de ces phrases NOMME ce qui bloque : les remplacer par un « erreur »
+   générique rendrait la porte `pret_a_deposer` de nouveau invisible. */
+function messageRefusDossier(e, repli) {
+  const data = e?.response?.data
+  if (typeof data === 'string' && data.trim()) return data
+  if (data && typeof data === 'object') {
+    const phrases = Object.values(data)
+      .flatMap((v) => (Array.isArray(v) ? v : [v]))
+      .filter((v) => typeof v === 'string' && v.trim())
+    if (phrases.length) return phrases.join(' ')
+  }
+  return repli
+}
+
+/* ── WIR206 — Barre de statut du dossier ───────────────────────────────────
+   Le même trou que sur l'affaire : `changer-statut` n'avait AUCUN appelant, et
+   `statut` est en lecture seule au sérialiseur — un PATCH aurait été ignoré en
+   silence, avec un succès affiché pour rien. Les cibles proposées sont celles
+   que le SERVEUR publie (`dossier.transitions`, dérivé de la table
+   déclarative `DossierAO.TRANSITIONS`), jamais un graphe recopié ici. La porte
+   `pret_a_deposer` reste côté serveur : on affiche son refus mot pour mot. */
+function BarreStatutDossier({ dossier, verrouille, onChange }) {
+  const [enCours, setEnCours] = useState(null)
+  const [refus, setRefus] = useState(null)
+  const cibles = dossier?.transitions ?? []
+  const raisons = dossier?.raisons_de_non_depot ?? []
+
+  const aller = async (cible) => {
+    setRefus(null)
+    setEnCours(cible.valeur)
+    try {
+      await aoApi.dossiers.changerStatut(dossier.id, cible.valeur)
+      toast.success(`Dossier : ${cible.libelle}.`)
+      await onChange?.()
+    } catch (e) {
+      setRefus(messageRefusDossier(
+        e, 'Le serveur a refusé ce changement de statut.'))
+    } finally {
+      setEnCours(null)
+    }
+  }
+
+  return (
+    <Card className="flex flex-col gap-2 p-3" data-ao-dossier-statut={dossier?.statut}>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs text-muted-foreground">Statut</span>
+        <span className="font-medium">{dossier?.statut_display || dossier?.statut}</span>
+        {cibles.length === 0 && (
+          <span className="text-xs text-muted-foreground" data-ao-dossier-terminal>
+            Aucune transition possible depuis ce statut.
+          </span>
+        )}
+        {cibles.map((cible) => (
+          <button
+            key={cible.valeur}
+            type="button"
+            className="rounded-md border border-input bg-card px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50"
+            disabled={enCours != null || verrouille}
+            title={verrouille ? MOTIF_ZIP_VERROU : undefined}
+            onClick={() => aller(cible)}
+            data-ao-dossier-transition={cible.valeur}
+          >
+            {cible.libelle}
+          </button>
+        ))}
+      </div>
+      {raisons.length > 0 && (
+        <ul className="text-xs text-muted-foreground" data-ao-dossier-raisons={raisons.length}>
+          {raisons.map((raison) => (
+            <li key={raison}>• {raison}</li>
+          ))}
+        </ul>
+      )}
+      {refus && (
+        <p role="alert" className="text-sm text-destructive" data-ao-dossier-statut-refus>
+          {refus}
+        </p>
+      )}
+    </Card>
+  )
+}
+
 function VerrouBandeau({ verrou }) {
   if (!verrou) return null
   const depuis = verrou.depuis ? formatDateTime(verrou.depuis) : null
@@ -196,6 +281,14 @@ export default function DossierPage({
       </div>
 
       <VerrouBandeau verrou={verrou} />
+
+      {/* WIR206 — la barre de statut : sans elle, `pret_a_deposer` restait
+          inatteignable depuis l'interface et le dossier ne « partait » jamais. */}
+      <BarreStatutDossier
+        dossier={dossier}
+        verrouille={Boolean(verrou)}
+        onChange={refetch}
+      />
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)_minmax(0,20rem)]">
         {/* ── Colonne 1 : les pièces du gabarit ─────────────────────────── */}

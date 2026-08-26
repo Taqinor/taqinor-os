@@ -24,6 +24,8 @@ const mocks = vi.hoisted(() => ({
   completude: vi.fn(),
   // PACT72 — `PiecesFournies` est désormais monté PAR DÉFAUT (pleine largeur).
   piecesFourniesList: vi.fn(),
+  // WIR206 — la barre de statut du dossier (seul chemin de mutation reel).
+  changerStatut: vi.fn(),
 }))
 
 vi.mock('react-router-dom', async () => {
@@ -41,6 +43,8 @@ vi.mock('../../../api/aoApi', () => ({
       controlesAvantDepot: mocks.controlesAvantDepot,
       // PACT71 — complétude dérivée, lue par `ChecklistPartenaire`.
       completude: mocks.completude,
+      // WIR206 — `changer-statut` : le SEUL chemin de mutation du statut.
+      changerStatut: mocks.changerStatut,
     },
     // `EcheancesDossier` ne l'appelle que depuis le formulaire de prorogation,
     // que cet écran ne monte pas (`peutProroger={false}` — le serveur ne
@@ -112,6 +116,7 @@ beforeEach(() => {
   mocks.checklistList.mockResolvedValue({ data: [] })
   mocks.completude.mockResolvedValue({ data: { complet: false, raisons_de_non_depot: [] } })
   mocks.piecesFourniesList.mockResolvedValue({ data: [] })
+  mocks.changerStatut.mockResolvedValue({ data: {} })
 })
 
 describe('DossierPage (AOF174)', () => {
@@ -261,5 +266,82 @@ describe('DossierPage — contenu par défaut des emplacements (AOF176/177/178)'
     expect(screen.getAllByText('Actions injectées').length).toBeGreaterThan(0)
     expect(screen.queryByRole('heading', { name: 'Contrôles avant dépôt' })).not.toBeInTheDocument()
     expect(mocks.controlesAvantDepot).not.toHaveBeenCalled()
+  })
+
+  /* ── WIR206 — la barre de statut du dossier ────────────────────────────── */
+  describe('barre de statut (WIR206)', () => {
+    const AVEC_TRANSITIONS = {
+      ...DOSSIER_V1,
+      statut: 'controle',
+      statut_display: 'Contrôle',
+      raisons_de_non_depot: [],
+      transitions: [
+        { valeur: 'en_constitution', libelle: 'En constitution' },
+        { valeur: 'pret_a_deposer', libelle: 'Prêt à déposer' },
+        { valeur: 'clos', libelle: 'Clos' },
+      ],
+    }
+
+    it('ne propose que les cibles publiées par le SERVEUR (champ `transitions`)', async () => {
+      mocks.get.mockResolvedValue({ data: AVEC_TRANSITIONS })
+      renderScreen()
+      await screen.findAllByText('Mémoire technique')
+
+      expect(document.querySelector('[data-ao-dossier-transition="pret_a_deposer"]')).toBeTruthy()
+      expect(document.querySelector('[data-ao-dossier-transition="clos"]')).toBeTruthy()
+      // `depose` n'est pas atteignable depuis « Contrôle » : il n'est pas servi,
+      // donc il n'est pas proposé.
+      expect(document.querySelector('[data-ao-dossier-transition="depose"]')).toBeNull()
+    })
+
+    it('« Prêt à déposer » passe par changer-statut, jamais par un PATCH', async () => {
+      mocks.get.mockResolvedValue({ data: AVEC_TRANSITIONS })
+      renderScreen()
+      await waitFor(() => expect(
+        document.querySelector('[data-ao-dossier-transition="pret_a_deposer"]')).toBeTruthy())
+
+      fireEvent.click(document.querySelector('[data-ao-dossier-transition="pret_a_deposer"]'))
+      await waitFor(() => expect(mocks.changerStatut)
+        .toHaveBeenCalledWith(7, 'pret_a_deposer'))
+    })
+
+    it('la porte `pret_a_deposer` refuse en CITANT ses raisons, statut inchangé', async () => {
+      mocks.get.mockResolvedValue({ data: AVEC_TRANSITIONS })
+      mocks.changerStatut.mockRejectedValue({
+        response: {
+          status: 400,
+          data: { statut: ['Pièce obligatoire manquante : Acte d’engagement.'] },
+        },
+      })
+      renderScreen()
+      await waitFor(() => expect(
+        document.querySelector('[data-ao-dossier-transition="pret_a_deposer"]')).toBeTruthy())
+
+      fireEvent.click(document.querySelector('[data-ao-dossier-transition="pret_a_deposer"]'))
+      const refus = await waitFor(() => {
+        const el = document.querySelector('[data-ao-dossier-statut-refus]')
+        expect(el).toBeTruthy()
+        return el
+      })
+      expect(refus.textContent).toMatch(/Pièce obligatoire manquante/)
+      expect(document.querySelector('[data-ao-dossier-statut]').dataset.aoDossierStatut)
+        .toBe('controle')
+    })
+
+    it('les raisons de non-dépôt servies par le serveur sont affichées telles quelles', async () => {
+      mocks.get.mockResolvedValue({
+        data: {
+          ...AVEC_TRANSITIONS,
+          raisons_de_non_depot: ['Checklist partenaire : 2 points obligatoires ouverts.'],
+        },
+      })
+      renderScreen()
+      const bloc = await waitFor(() => {
+        const el = document.querySelector('[data-ao-dossier-raisons]')
+        expect(el).toBeTruthy()
+        return el
+      })
+      expect(bloc.textContent).toMatch(/Checklist partenaire/)
+    })
   })
 })
