@@ -3,17 +3,21 @@ import { useSelector } from 'react-redux'
 import { Link } from 'react-router-dom'
 import { useHasPermission, useIsAdmin, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { Plus, Pencil, Trash2, Package, ShoppingCart, BarChart3, Upload, LayoutGrid, Tags, Archive, Truck,
+  RotateCcw,
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import { formatMAD } from '../../lib/format'
 import ExcelImport from '../../components/ExcelImport'
+import { toastError, toastSuccess, toastWithUndo } from '../../lib/toast'
 import {
   Button, IconButton, DataTable, Spinner,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
   Form, FormField,
   Input, Textarea,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
-  Badge,
+  Badge, EmptyState,
+  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
 } from '../../ui'
 // APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
 // les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
@@ -390,6 +394,51 @@ function ScorecardModal({ fournisseur, onClose }) {
   )
 }
 
+// ── WIR190 — confirmation de suppression définitive (patron StockList) ──────
+function ForceDeleteFournisseurModal({ fournisseur, onCancel, onConfirm, loading }) {
+  const [typed, setTyped] = useState('')
+  const expected = fournisseur.nom
+  const isValid = typed.trim() === expected.trim()
+
+  return (
+    <AlertDialog open onOpenChange={(o) => { if (!o) onCancel() }}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle className="text-destructive">Suppression définitive</AlertDialogTitle>
+          <AlertDialogDescription>
+            Cette action supprimera le fournisseur et son historique. Elle est{' '}
+            <strong>irréversible</strong>.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+
+        <div className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm leading-relaxed">
+          <div><span className="inline-block min-w-32 text-muted-foreground">Fournisseur</span><strong>{fournisseur.nom}</strong></div>
+          <div><span className="inline-block min-w-32 text-muted-foreground">Produits liés</span>{fournisseur.nb_produits ?? 0}</div>
+          <div><span className="inline-block min-w-32 text-muted-foreground">Bons de commande</span>{fournisseur.nb_bons_commande ?? 0}</div>
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-medium" htmlFor="fdf-confirm">
+            Tapez <code className="rounded bg-destructive/10 px-1.5 py-0.5 text-destructive">{expected}</code> pour confirmer
+          </label>
+          <Input id="fdf-confirm" value={typed} onChange={(e) => setTyped(e.target.value)}
+                 placeholder={`Saisir : ${expected}`} autoFocus />
+        </div>
+
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={loading}>Annuler</AlertDialogCancel>
+          <AlertDialogAction
+            disabled={!isValid || loading}
+            onClick={(e) => { e.preventDefault(); onConfirm(fournisseur) }}
+          >
+            {loading ? 'Suppression…' : 'Supprimer définitivement'}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  )
+}
+
 export default function FournisseursStock() {
   // ARC47 — gating via le hook partagé. `hasFinePermissions` (présence de
   // codes ERP, PAS un droit) choisit la branche ; hooks appelés
@@ -410,6 +459,13 @@ export default function FournisseursStock() {
   const [showCategories, setShowCategories] = useState(false)
   const isAdmin = canDelete
 
+  // WIR190 — fournisseurs archivés (repli PROTECT, même patron que StockList).
+  const [showArchived, setShowArchived] = useState(false)
+  const [itemsArchived, setItemsArchived] = useState([])
+  const [loadingArchived, setLoadingArchived] = useState(false)
+  const [confirmForceDelete, setConfirmForceDelete] = useState(null)
+  const [forceDeleting, setForceDeleting] = useState(false)
+
   // setState n'arrive que dans les callbacks asynchrones (jamais synchrone dans
   // l'effet) : l'état initial loading=true couvre le premier chargement.
   const reload = () => {
@@ -427,19 +483,86 @@ export default function FournisseursStock() {
       ?.then((r) => setCategories(r.data?.results ?? r.data ?? []))
       ?.catch(() => {})
   }
+  const reloadArchived = () => {
+    setLoadingArchived(true)
+    stockApi.getFournisseursArchived()
+      .then((r) => setItemsArchived(r.data?.results ?? r.data ?? []))
+      .catch(() => toastError('Chargement des fournisseurs archivés impossible.'))
+      .finally(() => setLoadingArchived(false))
+  }
 
   useEffect(() => { reload(); reloadCategories() }, [])
+  useEffect(() => { if (showArchived) reloadArchived() }, [showArchived])
 
+  // WIR190 — la suppression peut se replier en ARCHIVAGE (409 protégé côté
+  // serveur : le fournisseur porte des prix d'achat négociés/BCF/factures
+  // réels). Le serveur répond 200 `{archived: true, detail}` dans ce cas —
+  // jamais une erreur — donc on l'explique honnêtement plutôt que de
+  // recharger la liste en silence.
   const delFournisseur = async (f) => {
     if (!window.confirm(`Supprimer le fournisseur « ${f.nom} » ?`)) return
     setError(null)
     try {
-      await stockApi.deleteFournisseur(f.id)
+      const r = await stockApi.deleteFournisseur(f.id)
       reload()
+      if (r?.data?.archived) {
+        toastWithUndo({
+          message: r.data.detail || 'Fournisseur archivé.',
+          onUndo: async () => {
+            try { await stockApi.unarchiveFournisseur(f.id); reload() }
+            catch { toastError('Désarchivage impossible.') }
+          },
+        })
+        if (showArchived) reloadArchived()
+      } else {
+        toastSuccess('Fournisseur supprimé.')
+      }
     } catch (err) {
       setError(frErr(err, 'Suppression impossible (fournisseur utilisé).'))
     }
   }
+
+  const handleUnarchive = async (f) => {
+    if (!window.confirm(`Désarchiver le fournisseur « ${f.nom} » ?`)) return
+    try {
+      await stockApi.unarchiveFournisseur(f.id)
+      reloadArchived(); reload()
+      toastSuccess('Fournisseur désarchivé.')
+    } catch (err) {
+      toastError(frErr(err, 'Désarchivage impossible.'))
+    }
+  }
+
+  const handleForceDelete = async (f) => {
+    setForceDeleting(true)
+    try {
+      await stockApi.forceDeleteFournisseur(f.id)
+      setConfirmForceDelete(null)
+      reloadArchived()
+    } catch (err) {
+      toastError(frErr(err, 'Suppression définitive impossible (données rattachées).'))
+    } finally {
+      setForceDeleting(false)
+    }
+  }
+
+  const archivedColumns = useMemo(() => [
+    { id: 'nom', header: 'Nom', minWidth: 160,
+      cell: (v) => <span className="line-through">{v}</span> },
+    { id: 'categorie_nom', header: 'Catégorie', minWidth: 120,
+      accessor: (f) => f.categorie_nom ?? '',
+      cell: (v) => v || <span className="text-muted-foreground">—</span> },
+    { id: 'nb_produits', header: 'Produits', align: 'right', width: 90, searchable: false,
+      accessor: (f) => f.nb_produits ?? 0 },
+    { id: 'nb_bons_commande', header: 'BCF', align: 'right', width: 80, searchable: false,
+      accessor: (f) => f.nb_bons_commande ?? 0 },
+  ], [])
+
+  const archivedRowActions = (f) => [
+    { id: 'unarchive', label: 'Réactiver', icon: RotateCcw, onClick: () => handleUnarchive(f) },
+    { id: 'delete', label: 'Supprimer définitivement', icon: Trash2, destructive: true,
+      onClick: () => setConfirmForceDelete(f) },
+  ]
 
   const columns = useMemo(() => [
     { id: 'nom', header: 'Nom', minWidth: 160, accessor: (f) => f.nom ?? '' },
@@ -511,20 +634,32 @@ export default function FournisseursStock() {
         icon={Truck}
         title="Fournisseurs"
         subtitle={`${items.length} fournisseur(s)`}
-        actions={canWrite ? (
+        actions={(
           <>
-            {/* XPUR5/WIR108 — CRUD du référentiel catégories fournisseur. */}
-            <Button variant="outline" onClick={() => setShowCategories(true)}>
-              <Tags /> Catégories
-            </Button>
-            <Button variant="outline" onClick={() => setShowImport(true)}>
-              <Upload /> Importer
-            </Button>
-            <Button onClick={() => setSelected({})}>
-              <Plus /> Nouveau fournisseur
-            </Button>
+            {/* WIR190 — même patron que StockList : les archivés restent
+                consultables/réactivables, réservé admin (destruction définitive). */}
+            {isAdmin && (
+              <Button variant={showArchived ? 'secondary' : 'outline'}
+                      onClick={() => setShowArchived((v) => !v)}>
+                <Archive /> {showArchived ? 'Masquer archivés' : `Archivés${itemsArchived.length > 0 ? ` (${itemsArchived.length})` : ''}`}
+              </Button>
+            )}
+            {canWrite && (
+              <>
+                {/* XPUR5/WIR108 — CRUD du référentiel catégories fournisseur. */}
+                <Button variant="outline" onClick={() => setShowCategories(true)}>
+                  <Tags /> Catégories
+                </Button>
+                <Button variant="outline" onClick={() => setShowImport(true)}>
+                  <Upload /> Importer
+                </Button>
+                <Button onClick={() => setSelected({})}>
+                  <Plus /> Nouveau fournisseur
+                </Button>
+              </>
+            )}
           </>
-        ) : null}
+        )}
       />
 
       {showImport && (
@@ -554,6 +689,35 @@ export default function FournisseursStock() {
         aria-label="Fournisseurs"
       />
 
+      {/* WIR190 — fournisseurs archivés : le patron produit de StockList,
+          consultable/réactivable, la suppression définitive reste admin. */}
+      {showArchived && (
+        <div className="mt-2 flex flex-col gap-2">
+          <h3 className="flex items-center gap-2 font-display text-base font-semibold tracking-tight text-muted-foreground">
+            Fournisseurs archivés
+            {itemsArchived.length > 0 && <Badge tone="warning">{itemsArchived.length}</Badge>}
+          </h3>
+          {itemsArchived.length === 0 ? (
+            <EmptyState icon={Archive} title="Aucun fournisseur archivé"
+                        description="Les fournisseurs archivés (données réelles rattachées) apparaissent ici." />
+          ) : (
+            <div className="opacity-80">
+              <DataTable
+                data={itemsArchived}
+                columns={archivedColumns}
+                loading={loadingArchived}
+                getRowId={(f) => f.id}
+                rowActions={archivedRowActions}
+                searchPlaceholder="Rechercher un fournisseur archivé…"
+                globalColumns={['nom']}
+                emptyTitle="Aucun fournisseur archivé"
+                aria-label="Fournisseurs archivés"
+              />
+            </div>
+          )}
+        </div>
+      )}
+
       {selected && (
         <FournisseurForm fournisseur={selected} categories={categories}
                          onClose={() => setSelected(null)} onSaved={reload} />
@@ -565,6 +729,14 @@ export default function FournisseursStock() {
         <CategorieFournisseurManager categories={categories} isAdmin={isAdmin}
                                      onClose={() => setShowCategories(false)}
                                      onChanged={reloadCategories} />
+      )}
+      {confirmForceDelete && (
+        <ForceDeleteFournisseurModal
+          fournisseur={confirmForceDelete}
+          loading={forceDeleting}
+          onCancel={() => setConfirmForceDelete(null)}
+          onConfirm={handleForceDelete}
+        />
       )}
     </div>
   )

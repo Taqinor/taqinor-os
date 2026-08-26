@@ -54,6 +54,12 @@ const stockApi = {
   createFournisseur: (data) => api.post('/stock/fournisseurs/', data),
   updateFournisseur: (id, data) => api.put(`/stock/fournisseurs/${id}/`, data),
   deleteFournisseur: (id) => api.delete(`/stock/fournisseurs/${id}/`),
+  // WIR190 — fournisseur archivé (repli PROTECT), même patron que
+  // ProduitViewSet (unarchive/force-delete/?show_archived=true).
+  getFournisseursArchived: () =>
+    api.get('/stock/fournisseurs/', { params: { show_archived: 'true' } }),
+  unarchiveFournisseur: (id) => api.patch(`/stock/fournisseurs/${id}/unarchive/`),
+  forceDeleteFournisseur: (id) => api.delete(`/stock/fournisseurs/${id}/force-delete/`),
 
   // Mouvements
   getMouvements: (params) => api.get('/stock/mouvements/', { params }),
