@@ -42,6 +42,16 @@ const marketingApi = {
       api.get('/marketing/campagnes/generer-ia-disponible/'),
     genererIa: (payload) =>
       api.post('/marketing/campagnes/generer-ia/', payload),
+    // WIR257/ZMKT8 — reporting multi-vue (délivrés/ouverts/clics/rebonds/
+    // désinscrits + CTR/CTOR/délivrabilité), groupable canal|mois|campagne,
+    // et son export XLSX AU MÊME groupby. Construits côté serveur, jamais
+    // appelés côté client jusqu'ici.
+    reporting: (params) =>
+      api.get('/marketing/campagnes/reporting/', { params }),
+    reportingExportXlsx: (params) =>
+      api.get('/marketing/campagnes/reporting/export/', {
+        params, responseType: 'blob',
+      }),
   },
   envoisCampagne: {
     list: (params) => api.get('/marketing/envois-campagne/', { params }),
@@ -135,6 +145,18 @@ const marketingApi = {
         `/marketing/evenements-marketing/${id}/importer-inscrits/`, form,
         { headers: { 'Content-Type': 'multipart/form-data' } })
     },
+    // WIR257/ZMKT19 — impression EN LOT des badges (PDF multi-pages) de tous
+    // les inscrits d'un événement. `badgePdf` (unitaire) existait déjà.
+    badgesPdf: (id) =>
+      api.get(`/marketing/evenements-marketing/${id}/badges/`,
+        { responseType: 'blob' }),
+    // WIR257/ZMKT20 — reporting participants & billetterie (groupby type|mois)
+    // + export XLSX. Construits côté serveur, sans appelant jusqu'ici.
+    reporting: (params) =>
+      api.get('/marketing/evenements-marketing/reporting/', { params }),
+    reportingExportXlsx: () =>
+      api.get('/marketing/evenements-marketing/reporting/export/',
+        { responseType: 'blob' }),
   },
   billetsEvenement: resource('billets-evenement'),
   // WIR162 — ZMKT14/16/17 : ces 3 ressources étaient routées côté backend

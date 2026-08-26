@@ -80,6 +80,12 @@ const TicketSuiviPage = lazy(() => import('../pages/sav/TicketSuiviPage'))
 const PublicArticlePage = lazy(() => import('../pages/kb/PublicArticlePage'))
 // WIR214 — page publique de signalement chantier QHSE via QR (lien tokenisé).
 const SignalementPublicPage = lazy(() => import('../pages/qhse/SignalementPublicPage'))
+// WIR215 — page publique de réponse fournisseur à une RFQ (lien tokenisé).
+const RfqReponsePubliquePage = lazy(() => import('../pages/installations/RfqReponsePubliquePage'))
+// WIR264 — pages publiques d'intervention (suivi « en route » ZFSM/XFSM7 et
+// compte-rendu signé ZFSM2), chacune sur son propre jeton.
+const InterventionSuiviPublicPage = lazy(() => import('../pages/installations/InterventionSuiviPublicPage'))
+const InterventionRapportPublicPage = lazy(() => import('../pages/installations/InterventionRapportPublicPage'))
 const ChatPage = lazy(() => import('../pages/messaging/ChatPage'))
 const DocumentsPage = lazy(() => import('../pages/ged/DocumentsPage'))
 // VX78 — Écran 404 déjà construit (ui/NotFound.jsx), jusqu'ici jamais importé
@@ -375,6 +381,14 @@ const router = createBrowserRouter([
   { path: '/kb/public/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><PublicArticlePage /></Suspense></RouteErrorBoundary> },
   // WIR214 — signalement chantier QHSE via QR (sans login, sans layout ERP).
   { path: '/qhse/signalement/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><SignalementPublicPage /></Suspense></RouteErrorBoundary> },
+  // WIR215/XPUR21 — réponse fournisseur à une demande de prix (sans login,
+  // sans layout ERP) : la destination HUMAINE du lien email/WhatsApp, qui
+  // pointait jusqu'ici vers l'endpoint JSON.
+  { path: '/rfq/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><RfqReponsePubliquePage /></Suspense></RouteErrorBoundary> },
+  // WIR264/XFSM7 — suivi public « technicien en route » (sans login).
+  { path: '/intervention/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><InterventionSuiviPublicPage /></Suspense></RouteErrorBoundary> },
+  // WIR264/ZFSM2 — compte-rendu d'intervention signé, jeton DISTINCT.
+  { path: '/intervention-rapport/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><InterventionRapportPublicPage /></Suspense></RouteErrorBoundary> },
 
   // NTPRT8 — PORTAIL CLIENT authentifié. Shell dédié (jamais le shell ERP) ;
   // `portalLoader` exige la portée EXACTE `portail_client` et renvoie tout

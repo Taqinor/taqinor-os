@@ -20,7 +20,7 @@ import {
   Button, Badge, Spinner, Checkbox, Input, Textarea, toast, ErrorBoundary,
 } from '../../ui'
 import { formatDateTime } from '../../lib/format'
-import { withOfflineFallback, FIELD_OPS } from './offline/fieldOutbox'
+import { withOfflineFallback, FIELD_OPS, queuePhoto } from './offline/fieldOutbox'
 import { compressPhotoForUpload } from '../../pages/preferences/prefs'
 import { renderTrustedSvg } from '../../lib/trustedSvg'
 
@@ -78,13 +78,36 @@ export function SerialsPanel({ intervention, onChanged, knownSeries = [] }) {
       // respecte la préférence « Qualité photo » (Mes préférences).
       const rawFile = fileRef.current?.files?.[0]
       const file = rawFile ? await compressPhotoForUpload(rawFile) : rawFile
-      await installationsApi.ajouterSerial(id, {
-        designation, numero_serie: numero, file })
+      // WIR210 — le n° de série était PERDU sans réseau : le handler
+      // `intervention.serial` existait côté serveur (N91) sans aucun appelant
+      // hors-ligne. La file JSON ne transporte PAS de binaire — la photo de
+      // plaque part donc dans la file BINAIRE existante (EZ8), sur les photos
+      // de l'intervention ; si même ça échoue, on le DIT en français plutôt
+      // que de laisser croire qu'elle est partie.
+      const r = await withOfflineFallback(
+        () => installationsApi.ajouterSerial(id, {
+          designation, numero_serie: numero, file }),
+        FIELD_OPS.SERIAL, { intervention: id, designation, numero_serie: numero })
+      let photoFilee = true
+      if (r.queued && file) {
+        try {
+          await queuePhoto(file, { intervention: id, slot: 'plaque' })
+        } catch { photoFilee = false }
+      }
       setDesignation(''); setNumero('')
       if (fileRef.current) fileRef.current.value = ''
-      toast.success('N° de série enregistré.')
+      if (r.queued) {
+        toast.success(QUEUED_MSG)
+        if (!photoFilee) {
+          toast.error(
+            'Photo de plaque NON mise en file — reprenez-la au retour du réseau.',
+            { duration: Infinity })
+        }
+      } else {
+        toast.success('N° de série enregistré.')
+      }
       firstFieldRef.current?.focus()
-      await load(); onChanged?.()
+      if (!r.queued) { await load(); onChanged?.() }
     } catch (err) {
       toast.error(err?.response?.data?.detail ?? 'Enregistrement impossible.')
     } finally { setBusy(false) }
@@ -164,10 +187,19 @@ export function ConsommationPanel({ intervention, onChanged }) {
     .finally(() => setLoading(false)), [id])
   useEffect(() => { load() }, [load])
 
+  // WIR210 — la quantité utilisée était PERDUE sans réseau : le handler
+  // `intervention.consommation_ligne` existait côté serveur depuis N91, mais
+  // cet appel partait en direct. Un 4xx APPLICATIF reste visible (il n'est
+  // jamais enfilé) — seule une panne réseau met l'op en file.
   const patchLigne = async (payload) => {
     setBusy(true)
-    try { await installationsApi.modifierLigneConsommation(id, payload); await load() }
-    catch { toast.error('Mise à jour impossible.') } finally { setBusy(false) }
+    try {
+      const r = await withOfflineFallback(
+        () => installationsApi.modifierLigneConsommation(id, payload),
+        FIELD_OPS.CONSOMMATION_LIGNE, { intervention: id, ...payload })
+      if (r.queued) toast.success(QUEUED_MSG)
+      else await load()
+    } catch { toast.error('Mise à jour impossible.') } finally { setBusy(false) }
   }
   const addExtra = async () => {
     if (!extra.designation.trim()) return

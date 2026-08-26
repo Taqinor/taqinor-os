@@ -28,9 +28,15 @@ logger = logging.getLogger(__name__)
 
 
 def _public_rfq_url(request, token):
-    """URL absolue publique de la page de réponse fournisseur (XPUR21)."""
+    """URL absolue publique de la PAGE de réponse fournisseur (XPUR21).
+
+    WIR215 — le lien envoyé pointait vers l'ENDPOINT JSON
+    (``/api/django/public/installations/rfq/<token>/``) : le fournisseur
+    recevait du JSON brut au lieu d'un formulaire. Il pointe désormais vers la
+    page publique ``/rfq/<token>`` (``pages/installations/
+    RfqReponsePubliquePage.jsx``), qui consomme ce même endpoint."""
     base = getattr(settings, 'PUBLIC_BASE_URL', '') or ''
-    path = f'/api/django/public/installations/rfq/{token}/'
+    path = f'/rfq/{token}'
     if base:
         return base.rstrip('/') + path
     if request is not None:

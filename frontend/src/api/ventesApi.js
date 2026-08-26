@@ -23,6 +23,26 @@ const ventesApi = {
   addRegleListePrix: (listeId, data) =>
     api.post(`/ventes/listes-prix/${listeId}/regles/`, data),
 
+  // WIR281/WIR282 (XSAL6) — plans de commission. Le modèle et le résolveur
+  // existaient depuis XSAL6 sans aucune route ; WIR281 les a exposés.
+  // Contrat partagé : `apps/ventes/contract_samples/plan_commission.json` —
+  // les mocks de test en DÉRIVENT, ils ne l'inventent pas (PACT10).
+  // GARDE MARGE : l'endpoint est gaté `prix_achat_voir` côté serveur et ne
+  // sert NI prix d'achat NI montant de marge (seulement une étiquette de base,
+  // un pourcentage de règle et un barème MAD/kWc).
+  getPlansCommission: (params) =>
+    api.get('/ventes/plans-commission/', { params }),
+  createPlanCommission: (data) => api.post('/ventes/plans-commission/', data),
+  updatePlanCommission: (id, data) =>
+    api.patch(`/ventes/plans-commission/${id}/`, data),
+  deletePlanCommission: (id) => api.delete(`/ventes/plans-commission/${id}/`),
+  // `resoudre` renvoie {owner, source, plan} : quel plan s'applique VRAIMENT
+  // à ce commercial (plan dédié → plan par défaut société → mode société).
+  resoudrePlanCommission: (owner) =>
+    api.get('/ventes/plans-commission/resoudre/', {
+      params: owner ? { owner } : {},
+    }),
+
   // Devis
   // VX55 — `config` optionnel (ex. { signal }) pour l'annulation
   // AbortController câblée depuis fetchDevis (createAsyncThunk {signal}).

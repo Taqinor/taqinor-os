@@ -76,6 +76,10 @@ import PdfPreviewSheet from '../../features/ventes/PdfPreviewSheet'
 // `credit_warning` que l'acceptation renvoie (WIR187). Elle ne rend RIEN
 // en mode « aucun » : aucun bruit quand il n'y a rien à dire.
 import CreditWarningBanner from '../../features/credit/CreditWarningBanner'
+// WIR189/NTCRD23 — pastille d'état crédit à côté du nom client (batch,
+// UN appel par page de liste). Le client API vit dans creditApi.
+import CreditBadge from '../../features/credit/CreditBadge'
+import creditApi from '../../api/creditApi'
 // APX15 — le VRAI board Ventes : les devis par statut DOCUMENT (règle #4).
 import DevisKanbanBoard from './DevisKanbanBoard'
 // APX17 — confirmation maison (VX19/L152), jamais une popup du système.
@@ -612,7 +616,13 @@ function DevisRow({ d, ctx }) {
       <td data-label="Client">
         {/* VX7 — calm color : le nom client est une donnée PRIMAIRE (contraste
             plein + poids medium), il ressort du chrome désaturé environnant. */}
-        <span className="font-medium text-foreground">{d.client_nom ?? '—'}</span>
+        <span className="inline-flex items-center gap-1.5">
+          {/* WIR189/NTCRD23 — pastille d'état crédit. La couleur vient du batch
+              chargé UNE fois pour la page (ctx.creditBadges) ; absente (403,
+              module crédit non autorisé, ou réponse vide) → rien du tout. */}
+          <CreditBadge couleur={ctx.creditBadges?.[d.client]} />
+          <span className="font-medium text-foreground">{d.client_nom ?? '—'}</span>
+        </span>
         {d.lead && (
           <div className="mt-1">
             <button
@@ -1787,6 +1797,31 @@ export default function DevisList() {
     return () => thunk?.abort?.()
   }, [dispatch])
 
+  // ── WIR189/NTCRD23 — pastilles d'état crédit ────────────────────────────
+  // UN SEUL appel batch pour toute la page (`getBadges(ids)`), jamais un appel
+  // par ligne : la clé est la liste TRIÉE et DÉDUPLIQUÉE des ids clients, donc
+  // un simple re-rendu (filtre, recherche, tri) ne relance rien.
+  // Dégradation SILENCIEUSE : 403 (le vendeur n'a pas le module crédit) ou
+  // réponse vide → aucune pastille, aucun toast, aucune trace d'erreur.
+  const [creditBadges, setCreditBadges] = useState({})
+  const clientIdsKey = useMemo(() => (
+    [...new Set(devis.map(d => d.client).filter(v => v != null))]
+      .sort((a, b) => Number(a) - Number(b))
+      .join(',')
+  ), [devis])
+  useEffect(() => {
+    if (!clientIdsKey) return undefined
+    let annule = false
+    creditApi.getBadges(clientIdsKey.split(','))
+      .then((res) => {
+        if (annule) return
+        const data = res?.data
+        setCreditBadges(data && typeof data === 'object' && !Array.isArray(data) ? data : {})
+      })
+      .catch(() => { if (!annule) setCreditBadges({}) })
+    return () => { annule = true }
+  }, [clientIdsKey])
+
   // QX12 — une fois les devis chargés, fait défiler jusqu'à la ligne ciblée par
   // ?devis=<pk> et efface le paramètre après un court délai (la surbrillance
   // CSS reste tant que highlightId est posé ; on ne la clignote pas plus).
@@ -2507,6 +2542,8 @@ export default function DevisList() {
     conceptionOpenId, setConceptionOpenId,
     etudeOpenId, setEtudeOpenId,
     effStatutOf,
+    // WIR189 — { client_id: 'vert'|'orange'|'rouge' } chargé en UN batch.
+    creditBadges,
     navigate, dispatch,
     role, canDelete, canValiderVente, canSeePublicite, highlightId,
     deletingId, statutActionId, superieurBusyId, superieurStatus, shareBusyId, previewingId,

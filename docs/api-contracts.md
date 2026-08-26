@@ -496,6 +496,8 @@
     non_rendus:inconnu, tool_returns:inconnu
 - frontend/src/api/installationsApi.js :: creerInterventionsStandard -> /api/django/installations/chantiers/<>/creer-interventions-standard
     created:inconnu, detail:texte, existants:inconnu
+- frontend/src/api/installationsApi.js :: declarerRebutAssemblage -> /api/django/installations/ordres-assemblage/<>/declarer-rebut
+    id:inconnu, motif_rebut:inconnu, produit:inconnu, quantite:inconnu, reference:inconnu
 - frontend/src/api/installationsApi.js :: deletePaiementSousTraitant -> /api/django/installations/paiements-sous-traitant/<>
     detail:texte
 - frontend/src/api/installationsApi.js :: envoyerConsultationsRFQ -> /api/django/installations/rfq/<>/envoyer-consultations
@@ -514,8 +516,16 @@
     etape_courante:inconnu, etapes:inconnu, installation:inconnu, reference:inconnu
 - frontend/src/api/installationsApi.js :: getFacturesSousTraitant -> /api/django/installations/factures-sous-traitant
     count:nombre, next:inconnu, previous:inconnu, results:inconnu
+- frontend/src/api/installationsApi.js :: getInterventionPublique -> /api/django/public/installations/intervention/<>
+    date_prevue:inconnu, detail:texte, distance_km:inconnu, eta_minutes:inconnu, fenetre_debut:inconnu, fenetre_fin:inconnu, site_ville:inconnu, statut:inconnu, statut_display:inconnu, technicien_avatar_url:inconnu, technicien_nom:inconnu
+- frontend/src/api/installationsApi.js :: getInterventionRapportPublic -> /api/django/public/installations/intervention-rapport/<>
+    chantier_reference:inconnu, consommation:inconnu, date_realisee:inconnu, detail:texte, equipe:inconnu, pdf_url:texte, photos:inconnu, reserves:inconnu, serials:inconnu, signataire_nom:inconnu, signe_le:inconnu, site_ville:inconnu, statut:inconnu, statut_display:inconnu, type_intervention_display:inconnu
 - frontend/src/api/installationsApi.js :: getLandedCostDossier -> /api/django/installations/dossiers-import/<>/landed-cost
     dossier_id:inconnu, lignes:inconnu, total_fob:nombre, total_frais:nombre, total_landed:nombre
+- frontend/src/api/installationsApi.js :: getLienClientIntervention -> /api/django/installations/interventions/<>/lien-client
+    path:inconnu, token:inconnu, url:inconnu
+- frontend/src/api/installationsApi.js :: getLienRapportIntervention -> /api/django/installations/interventions/<>/lien-rapport
+    path:inconnu, token:inconnu, url:inconnu
 - frontend/src/api/installationsApi.js :: getMaTournee -> /api/django/installations/interventions/ma-tournee
     date:inconnu, stops:inconnu
 - frontend/src/api/installationsApi.js :: getPaiementsSousTraitant -> /api/django/installations/paiements-sous-traitant
@@ -1052,6 +1062,8 @@
     avertissements:inconnu, consommation:objet, detail:texte, dimensionnement:inconnu, estimation_conso:inconnu, etude:inconnu, profil:objet
 - frontend/src/api/ventesApi.js :: rejeterEtapeDevis -> /api/django/ventes/devis/<>/rejeter-etape
     detail:texte, etape_id:inconnu
+- frontend/src/api/ventesApi.js :: resoudrePlanCommission -> /api/django/ventes/plans-commission/resoudre
+    owner:inconnu, plan:inconnu, source:inconnu
 - frontend/src/api/ventesApi.js :: setVarianteConfig -> /api/django/ventes/devis/variante-config
     detail:texte, variante_pct:texte
 - frontend/src/api/ventesApi.js :: shareLinkDevis -> /api/django/ventes/devis/<>/share-link
@@ -2592,6 +2604,9 @@
     statut ∈ {brouillon, cloturee, envoyee}
 - frontend/src/api/installationsApi.js :: getReceptionsNonFacturees -> /api/django/installations/receptions-non-facturees  [ReceptionNonFactureeSerializer]
     champs: bon_commande, created_by, date_creation, date_lettrage, date_modification, date_reception, facture, id, lettre, libelle, montant_a_provisionner, montant_provision, note, reception
+- frontend/src/api/installationsApi.js :: getRecetteRecord -> /api/django/installations/recettes-commissioning/<>  [CommissioningRecordSerializer]
+    champs: continuite_terre_ohm, continuite_terre_ok, date_essai, doc_datasheets_ok, doc_dossier_ok, doc_schema_ok, id, installation, instrument_etalonnage_expire, instrument_id, instrument_nom, instrument_numero_serie, isolement_mohm, isolement_ok, iv_readings, observations, passe, performance_ok, polarite_ok, production_attendue_kw, production_test_kw, resultat, resultat_display, securite_coupure_ok, securite_signalisation_ok, technicien, ventes_recette_id, visuel_cablage_ok, visuel_structure_ok, visuel_terre_ok
+    resultat ∈ {conforme, en_cours, non_conforme, reserves}
 - frontend/src/api/installationsApi.js :: getRecurrencesIntervention -> /api/django/installations/recurrences-intervention  [RecurrenceInterventionSerializer]
     champs: actif, date_creation, date_fin, id, installation, installation_reference, intervalle, nb_generees, nb_occurrences, prochaine_echeance, regle, regle_display, technicien_defaut, technicien_defaut_nom, type_intervention
     regle ∈ {annuelle, mensuelle, semestrielle, trimestrielle}
@@ -2677,6 +2692,9 @@
     champs: bin, bin_code, designation, id, ordre, pick_list, preleve, produit, produit_nom, quantite_demandee, quantite_prelevee
 - frontend/src/api/installationsApi.js :: updatePreuveLivraison -> /api/django/installations/preuves-livraison/<>  [PreuveLivraisonSerializer]
     champs: created_by, date_creation, date_modification, gps_lat, gps_lng, horodatage, id, livraison, note, photo, signataire_nom, signature_data
+- frontend/src/api/installationsApi.js :: updateRecette -> /api/django/installations/recettes-commissioning/<>  [CommissioningRecordSerializer]
+    champs: continuite_terre_ohm, continuite_terre_ok, date_essai, doc_datasheets_ok, doc_dossier_ok, doc_schema_ok, id, installation, instrument_etalonnage_expire, instrument_id, instrument_nom, instrument_numero_serie, isolement_mohm, isolement_ok, iv_readings, observations, passe, performance_ok, polarite_ok, production_attendue_kw, production_test_kw, resultat, resultat_display, securite_coupure_ok, securite_signalisation_ok, technicien, ventes_recette_id, visuel_cablage_ok, visuel_structure_ok, visuel_terre_ok
+    resultat ∈ {conforme, en_cours, non_conforme, reserves}
 - frontend/src/api/installationsApi.js :: updateSessionComptage -> /api/django/installations/sessions-comptage/<>  [SessionComptageSerializer]
     champs: classe_abc, classe_abc_display, created_by, date_creation, date_modification, date_planifiee, emplacement, id, intitule, lignes, note, reference, statut, statut_display
     classe_abc ∈ {A, B, C, toutes}
@@ -3708,11 +3726,17 @@
     visibilite ∈ {EQUIPE, PERSONNELLE}
 - frontend/src/api/ventesApi.js :: createListePrix -> /api/django/ventes/listes-prix  [ListePrixSerializer]
     champs: archived, company, created_at, date_debut, date_fin, devise, est_active, id, lignes, nom, regles
+- frontend/src/api/ventesApi.js :: createPlanCommission -> /api/django/ventes/plans-commission  [PlanCommissionSerializer]
+    champs: actif, base, base_display, created_at, id, montant_par_kwc, owner, owner_nom, paliers, taux_pct
+    base ∈ {ca_devis_signe, marge_interne, par_kwc}
 - frontend/src/api/ventesApi.js :: deleteListePrix -> /api/django/ventes/listes-prix/<>  [ListePrixSerializer]
     champs: archived, company, created_at, date_debut, date_fin, devise, est_active, id, lignes, nom, regles
 - frontend/src/api/ventesApi.js :: deleteNiveauRelance -> /api/django/ventes/niveaux-relance/<>  [FollowupLevelSerializer]
     champs: canal, delai_jours, frais_fixes, id, message, nom, ordre, taux_interet_annuel
     canal ∈ {appel, courrier, email, whatsapp}
+- frontend/src/api/ventesApi.js :: deletePlanCommission -> /api/django/ventes/plans-commission/<>  [PlanCommissionSerializer]
+    champs: actif, base, base_display, created_at, id, montant_par_kwc, owner, owner_nom, paliers, taux_pct
+    base ∈ {ca_devis_signe, marge_interne, par_kwc}
 - frontend/src/api/ventesApi.js :: getListePrix -> /api/django/ventes/listes-prix/<>  [ListePrixSerializer]
     champs: archived, company, created_at, date_debut, date_fin, devise, est_active, id, lignes, nom, regles
 - frontend/src/api/ventesApi.js :: getListesPrix -> /api/django/ventes/listes-prix  [ListePrixSerializer]
@@ -3720,10 +3744,16 @@
 - frontend/src/api/ventesApi.js :: getNiveauxRelance -> /api/django/ventes/niveaux-relance  [FollowupLevelSerializer]
     champs: canal, delai_jours, frais_fixes, id, message, nom, ordre, taux_interet_annuel
     canal ∈ {appel, courrier, email, whatsapp}
+- frontend/src/api/ventesApi.js :: getPlansCommission -> /api/django/ventes/plans-commission  [PlanCommissionSerializer]
+    champs: actif, base, base_display, created_at, id, montant_par_kwc, owner, owner_nom, paliers, taux_pct
+    base ∈ {ca_devis_signe, marge_interne, par_kwc}
 - frontend/src/api/ventesApi.js :: patchListePrix -> /api/django/ventes/listes-prix/<>  [ListePrixSerializer]
     champs: archived, company, created_at, date_debut, date_fin, devise, est_active, id, lignes, nom, regles
 - frontend/src/api/ventesApi.js :: updateListePrix -> /api/django/ventes/listes-prix/<>  [ListePrixSerializer]
     champs: archived, company, created_at, date_debut, date_fin, devise, est_active, id, lignes, nom, regles
+- frontend/src/api/ventesApi.js :: updatePlanCommission -> /api/django/ventes/plans-commission/<>  [PlanCommissionSerializer]
+    champs: actif, base, base_display, created_at, id, montant_par_kwc, owner, owner_nom, paliers, taux_pct
+    base ∈ {ca_devis_signe, marge_interne, par_kwc}
 - frontend/src/api/voipApi.js :: getAppels -> /api/django/voip/appels  [AppelSerializer]
     champs: cible, direction, duree_secondes, ended_at, external_call_id, fournisseur, id, issue, numero, numero_normalise, started_at, statut, utilisateur
     direction ∈ {entrant, sortant}
