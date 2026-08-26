@@ -1030,12 +1030,12 @@ export default function FournisseurFiche360({
   useEffect(() => {
     if (!fournisseurId || !canView) return undefined
     let active = true
-    // Appel défensif (`?.`) : certains consommateurs pré-existants de cet
-    // écran (FournisseurFiche360.test.jsx) mockent `stockApi` sans cet
-    // endpoint — même patron que WIR108 (FournisseursStock.jsx).
-    stockApi.getFournisseur?.(fournisseurId)
-      ?.then((r) => { if (active) setStatutValidation(r.data?.statut_validation ?? null) })
-      ?.catch(() => { if (active) setStatutValidation(null) })
+    // Fable review (fix WIR219) — `stockApi.getFournisseur` existe réellement
+    // (ajouté à ce même correctif) : plus d'optional-chaining, qui aurait
+    // rendu ce bloc silencieusement mort si le wrapper venait à disparaître.
+    stockApi.getFournisseur(fournisseurId)
+      .then((r) => { if (active) setStatutValidation(r.data?.statut_validation ?? null) })
+      .catch(() => { if (active) setStatutValidation(null) })
     return () => { active = false }
   }, [fournisseurId, canView])
   const deciderCandidatureFiche = async (valider) => {

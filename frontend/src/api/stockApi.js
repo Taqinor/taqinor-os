@@ -57,6 +57,11 @@ const stockApi = {
 
   // Fournisseurs
   getFournisseurs: (params) => api.get('/stock/fournisseurs/', { params }),
+  // WIR219 — fiche fournisseur unique (retrieve), lecture IsAnyRole. Manquait
+  // jusqu'ici : FournisseurFiche360.jsx l'appelait déjà en optional-chaining
+  // (`stockApi.getFournisseur?.(...)`), donc le badge de candidature/actions
+  // Valider-Rejeter ne rendaient JAMAIS en production (no-op silencieux).
+  getFournisseur: (id) => api.get(`/stock/fournisseurs/${id}/`),
   createFournisseur: (data) => api.post('/stock/fournisseurs/', data),
   updateFournisseur: (id, data) => api.put(`/stock/fournisseurs/${id}/`, data),
   deleteFournisseur: (id) => api.delete(`/stock/fournisseurs/${id}/`),
