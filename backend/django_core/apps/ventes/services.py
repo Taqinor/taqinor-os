@@ -1009,6 +1009,20 @@ def _aspect_to_orientation(aspect):
     return min(table, key=lambda t: abs(a - t[0]))[1]
 
 
+def _azimut_boussole_vers_aspect(azimut):
+    """Azimut BOUSSOLE du builder (180 = Sud) → azimut PVGIS (0 = Sud).
+
+    MÊME formule que le builder lui-même (``roofPro11/prodWindow.ts`` :
+    ``aspect: res.facingAzimuthDeg - 180``), normalisée dans [-180, 180] pour
+    que ±180 reste bien le Nord. Valeur illisible → ``None`` (le libellé est
+    alors omis, jamais deviné)."""
+    try:
+        a = float(azimut)
+    except (TypeError, ValueError):
+        return None
+    return (a - 180.0 + 180.0) % 360.0 - 180.0
+
+
 def extract_roof_config(layout):
     """FG248 — extrait la config TOITURE d'un layout 3D (roofPro11) en un dict
     plat, JSON-sérialisable, indépendant de la version de l'outil.
@@ -1058,9 +1072,29 @@ def extract_roof_config(layout):
         kwc = float(res.get('kwc') or geo.get('kwc') or 0.0)
         surface = float(res.get('areaM2') or geo.get('areaM2')
                         or a.get('areaM2') or 0.0)
+        # ── DEUX CONVENTIONS D'ANGLE, ET ELLES SONT OPPOSÉES ────────────────
+        # ``facingAzimuthDeg`` est l'AZIMUT BOUSSOLE du builder (180 = Sud) —
+        # c'est ce que ``newAreaRecord()`` pose par défaut et ce que le solveur
+        # d'orientation écrit ; le builder lui-même le convertit pour PVGIS en
+        # retranchant 180 (``roofPro11/prodWindow.ts`` : « jambe sud : aspect =
+        # azimut − 180 »).
+        # ``aspect``, lui, est DÉJÀ l'azimut PVGIS (0 = Sud), et c'est cette
+        # convention-là qu'attend ``_aspect_to_orientation``.
+        #
+        # Les deux entraient ici SANS conversion : un pan plein Sud
+        # (``facingAzimuthDeg: 180``) ressortait donc « Nord », et l'annexe
+        # « paramètres du site » de la proposition CLIENT publiait
+        # ``orientation_deg: 180`` juste à côté de ``orientation: 'Nord'`` —
+        # deux affirmations contradictoires, dont une fausse, sous les yeux du
+        # client. On convertit désormais à la lecture, à l'endroit exact où la
+        # convention est connue. ``azimut_deg`` reste la valeur BRUTE (aucun
+        # autre consommateur ne change de repère) : seul le LIBELLÉ est corrigé.
         aspect = a.get('facingAzimuthDeg')
-        if aspect is None:
+        if aspect is not None:
+            aspect_pvgis = _azimut_boussole_vers_aspect(aspect)
+        else:
             aspect = a.get('aspect')
+            aspect_pvgis = aspect
         pitch = a.get('pitchDeg')
         if pitch is None:
             pitch = a.get('pitch')
@@ -1072,7 +1106,7 @@ def extract_roof_config(layout):
             'surface_m2': round(surface, 2) if surface else 0.0,
             'azimut_deg': aspect,
             'inclinaison_deg': pitch,
-            'orientation': _aspect_to_orientation(aspect),
+            'orientation': _aspect_to_orientation(aspect_pvgis),
         }
         pans.append(pan)
         total_surface += surface
