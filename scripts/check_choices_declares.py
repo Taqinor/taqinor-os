@@ -629,6 +629,10 @@ REFUS = {
     # (HasPermissionOrLegacy) : comportement, pas une liste de choix.
     "frontend/src/components/layout/Sidebar.jsx": [
         ("HasPermissionOrLegacy", "COMPORTEMENT")],
+    # WIR244 — les clés lundi..dimanche sont des NOMS DE CHAMPS booléens de
+    # CalendrierProjet, pas une liste de choix déclarable.
+    "frontend/src/features/gestion_projet/pages/PlanningPage.jsx": [
+        ("calendrier ouvré", "FORME")],
     "frontend/src/router/moduleGating.wir171.test.mjs": [
         ("MIROIR de la garde serveur", "TEST"),
         ("CanViewAoRentabilite", "TEST"),
