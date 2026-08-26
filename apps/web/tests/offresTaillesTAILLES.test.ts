@@ -27,6 +27,10 @@ import {
   aUneDiffMateriel,
   FAMILLES_COMPARABLES,
   FAMILLE_LABELS,
+  calepinageOptions,
+  dessinDeLOption,
+  sldDecritLOption,
+  parametresSite,
 } from '../src/lib/offresTailles';
 
 const read = (rel: string): string =>
@@ -45,6 +49,15 @@ const CONTRAT = JSON.parse(
 );
 const SERVI = CONTRAT.exemple;
 const SERVI_SANS_BATTERIE = CONTRAT.exemple_sans_option_batterie;
+
+/** CORRECTION #8 — le contrat du DESSIN par option, chargé depuis le fichier
+ *  comme le font les tests backend : un échantillon recopié à la main
+ *  divergerait le jour où le backend bouge, et c'est précisément cette
+ *  divergence qui a fait inventer des clés `calepinage_svg` inexistantes. */
+const CONTRAT_CALEP = JSON.parse(
+  read('../../../backend/django_core/apps/ventes/contract_samples/calepinage_options.json'),
+);
+const CALEP = CONTRAT_CALEP.exemple;
 
 /** Le bloc `#tailles` du gabarit, borné à ses propres frontières. */
 function sectionTailles(source: string): string {
@@ -195,28 +208,15 @@ describe('offresTailles — lit le contrat, ne calcule rien', () => {
     expect(aUneDiffMateriel(offresTailles(SERVI)!, false)).toBe(true);
   });
 
-  it('ARTEFACTS PAR OPTION — absents aujourd’hui, et un faux SVG est refusé', () => {
-    const bloc = offresTailles(SERVI)!;
-    // Le contrat n'en sert aucun : la page garde ses artefacts uniques.
-    expect(bloc.offres.every((t) => t.sans?.calepinageSvg == null)).toBe(true);
-    const injecte = offresTailles({
-      offres_tailles: {
-        avec_servable: false,
-        offres: [
-          {
-            cle: 'eco', titre: 'Éco',
-            sans: {
-              nb_panneaux: 1, prix_ttc: 1,
-              calepinage_svg: '<img src=x onerror=alert(1)>',
-              schema_svg: '<svg viewBox="0 0 1 1"></svg>',
-            },
-          },
-          SERVI.offres_tailles.offres[1],
-        ],
-      },
-    })!;
-    expect(injecte.offres[0].sans!.calepinageSvg).toBeNull();
-    expect(injecte.offres[0].sans!.schemaSvg).toContain('<svg');
+  // (Les DESSINS par option ne vivent pas sur `offres_tailles` : ils ont leur
+  //  propre clé racine `calepinage_options`, testée plus bas contre SON contrat.
+  //  Un premier passage de cette lane avait deviné des champs `calepinage_svg` /
+  //  `schema_svg` sur la variante : ils n'ont jamais existé — le backend ne rend
+  //  AUCUN SVG de calepinage, le calepinage client EST la visionneuse WebGL.)
+  it('une variante ne porte AUCUN champ de dessin — le dessin a sa propre clé', () => {
+    const v = offresTailles(SERVI)!.offres[0].sans!;
+    expect(v).not.toHaveProperty('calepinageSvg');
+    expect(v).not.toHaveProperty('schemaSvg');
   });
 });
 
@@ -347,6 +347,149 @@ describe('cumulAnnuelServi — lit la série que la page trace déjà', () => {
   it('une série TROUÉE s’arrête au trou — jamais une continuité inventée', () => {
     const trouee = { quote: { cashflow_sans: [-50000, null, 10000] } };
     expect(cumulAnnuelServi(trouee, false)).toEqual([{ annee: 1, cumuleMad: -50000 }]);
+  });
+});
+
+// ── 3bis. LE DESSIN DE CHAQUE OPTION, CONTRE SON VRAI CONTRAT ───────────────
+
+describe('calepinageOptions — lit `calepinage_options`, ne dessine rien', () => {
+  it('lit l’exemple servi : l’ancre, le pointeur SLD et les dessins', () => {
+    const bloc = calepinageOptions(CALEP)!;
+    expect(bloc).not.toBeNull();
+    expect(bloc.nbPanneauxCalepines).toBe(22);
+    expect(bloc.sld).toEqual({ cle: 'recommande', variante: 'avec' });
+    expect(Object.keys(bloc.offres).sort()).toEqual(['eco', 'max', 'recommande']);
+  });
+
+  it('`origine: "devis"` ne porte AUCUN layout — la page réutilise la racine', () => {
+    const bloc = calepinageOptions(CALEP)!;
+    for (const v of ['sans', 'avec'] as const) {
+      const d = dessinDeLOption(bloc, 'recommande', v)!;
+      expect(d.origine).toBe('devis');
+      expect(d.layout).toBeNull();
+      expect(d.plafonne).toBe(false);
+    }
+  });
+
+  it('un dessin DÉRIVÉ porte son layout, dans la forme de `roof_layout`', () => {
+    const d = dessinDeLOption(calepinageOptions(CALEP)!, 'eco', 'sans')!;
+    expect(d.origine).toBe('derive');
+    expect(d.nbPanneaux).toBe(14);
+    expect(d.nbPanneauxDessines).toBe(14);
+    // La forme est celle que `parseRoofLayout` sait déjà lire — on ne la
+    // re-décrit pas ici, on vérifie juste qu'on la laisse passer intacte.
+    const layout = d.layout as { version?: number; zones?: unknown[] };
+    expect(layout.version).toBe(2);
+    expect(Array.isArray(layout.zones)).toBe(true);
+  });
+
+  it('PLAFOND — `max` dit que le TOIT a tranché, et dessine moins que demandé', () => {
+    const d = dessinDeLOption(calepinageOptions(CALEP)!, 'max', 'sans')!;
+    expect(d.plafonne).toBe(true);
+    expect(d.nbPanneauxDessines!).toBeLessThan(d.nbPanneaux!);
+    expect(d.nbPanneauxDessines).toBe(22);
+  });
+
+  it('un `derive` SANS layout exploitable est ÉCARTÉ — jamais un dessin vide', () => {
+    const bloc = calepinageOptions({
+      calepinage_options: {
+        offres: {
+          eco: { sans: { nb_panneaux: 10, origine: 'derive' } },
+          max: { sans: { nb_panneaux: 20, origine: 'devis' } },
+        },
+      },
+    })!;
+    expect(dessinDeLOption(bloc, 'eco', 'sans')).toBeNull();
+    expect(dessinDeLOption(bloc, 'max', 'sans')).not.toBeNull();
+  });
+
+  it('clé absente / illisible ⇒ null (la page garde son calepinage d’aujourd’hui)', () => {
+    expect(calepinageOptions({})).toBeNull();
+    expect(calepinageOptions(null)).toBeNull();
+    expect(calepinageOptions({ calepinage_options: { offres: {} } })).toBeNull();
+    // Une origine non reconnue ne dit pas d'où vient le dessin : on l'écarte.
+    expect(calepinageOptions({
+      calepinage_options: { offres: { eco: { sans: { origine: 'inventee' } } } },
+    })).toBeNull();
+  });
+
+  it('le POINTEUR SLD ne désigne qu’UNE option — les autres ne le montrent pas', () => {
+    const bloc = calepinageOptions(CALEP)!;
+    expect(sldDecritLOption(bloc, 'recommande', 'avec')).toBe(true);
+    // …et NULLE PART ailleurs : ni l'autre variante, ni une autre taille.
+    expect(sldDecritLOption(bloc, 'recommande', 'sans')).toBe(false);
+    expect(sldDecritLOption(bloc, 'eco', 'avec')).toBe(false);
+    expect(sldDecritLOption(bloc, 'max', 'sans')).toBe(false);
+    expect(sldDecritLOption(null, 'recommande', 'avec')).toBe(false);
+  });
+
+  it('un pointeur SLD incomplet est ignoré plutôt que deviné', () => {
+    for (const sld of [{ cle: 'recommande' }, { variante: 'avec' }, { cle: 'x', variante: 'peut-etre' }]) {
+      const bloc = calepinageOptions({
+        calepinage_options: { sld, offres: { eco: { sans: { origine: 'devis' } } } },
+      })!;
+      expect(bloc.sld).toBeNull();
+    }
+  });
+
+  it('un dessin ne se rabat JAMAIS sur l’autre variante (une géométrie n’est pas un chiffre)', () => {
+    const bloc = calepinageOptions({
+      calepinage_options: { offres: { eco: { sans: { origine: 'devis' } }, max: { avec: { origine: 'devis' } } } },
+    })!;
+    expect(dessinDeLOption(bloc, 'eco', 'avec')).toBeNull();
+    expect(dessinDeLOption(bloc, 'max', 'sans')).toBeNull();
+  });
+});
+
+describe('parametresSite — annexe du site, champ par champ', () => {
+  it('lit l’exemple servi du contrat', () => {
+    const p = parametresSite(CALEP)!;
+    expect(p.orientationDeg).toBe(180);
+    expect(p.orientation).toBe('Sud');
+    expect(p.inclinaisonDeg).toBe(30);
+    expect(p.typeToit).toBe('pitched');
+    expect(p.irradiation).toEqual({ source: 'PVGIS', ville: 'Casablanca' });
+    expect(p.chaines).toEqual({ nb: 2, modulesParChaine: [11, 11] });
+    expect(p.ombrageMesure).toBe(true);
+  });
+
+  it('AUCUN DÉFAUT — un champ non servi reste null, jamais « 30° » ni « plein sud »', () => {
+    const p = parametresSite({ parametres_site: { orientation: 'Sud' } })!;
+    expect(p.orientation).toBe('Sud');
+    expect(p.orientationDeg).toBeNull();
+    expect(p.inclinaisonDeg).toBeNull();
+    expect(p.typeToit).toBeNull();
+    expect(p.irradiation).toBeNull();
+    expect(p.chaines).toBeNull();
+  });
+
+  it('L’OMBRAGE EST UN FAIT MESURÉ, jamais un forfait', () => {
+    // Absent, faux, ou objet vide ⇒ pas d'ombrage. SEUL `mesure: true` compte.
+    for (const ombrage of [undefined, null, {}, { mesure: false }, { perte_pct: 4 }]) {
+      const p = parametresSite({ parametres_site: { orientation: 'Sud', ombrage } })!;
+      expect(p.ombrageMesure, JSON.stringify(ombrage)).toBe(false);
+    }
+    expect(parametresSite({ parametres_site: { ombrage: { mesure: true } } })!.ombrageMesure).toBe(true);
+  });
+
+  it('aucun champ réel ⇒ null : pas d’encadré « Paramètres du site » vide', () => {
+    expect(parametresSite({})).toBeNull();
+    expect(parametresSite({ parametres_site: {} })).toBeNull();
+    expect(parametresSite({ parametres_site: { orientation: '   ' } })).toBeNull();
+    expect(parametresSite({ parametres_site: { irradiation: {} } })).toBeNull();
+  });
+
+  it('ANTICOPIE — l’annexe ne peut porter AUCUNE coordonnée machine', () => {
+    const p = parametresSite({
+      parametres_site: {
+        orientation: 'Sud',
+        // Même servis par erreur, ces champs n'ont pas de porte d'entrée.
+        origin: [-7.58, 33.57], vertices: [[1, 2]], surface_m2: 120, prix_achat: 42,
+      },
+    })!;
+    for (const interdit of ['origin', 'vertices', 'surface_m2', 'prix_achat']) {
+      expect(p, interdit).not.toHaveProperty(interdit);
+    }
   });
 });
 
@@ -502,14 +645,54 @@ describe('#8 — vue de détail vivante', () => {
     expect(bloc).toContain('décrivent, eux, votre devis officiel');
   });
 
-  it('les artefacts par option sont lus DÉFENSIVEMENT — absents, rien n’est rendu', () => {
+  it('le dessin d’une option vient du VRAI contrat, jamais d’un SVG deviné', () => {
     const bloc = sectionTailles(CODE);
-    expect(bloc).toContain('{va?.calepinageSvg && (');
-    expect(bloc).toContain('{va?.schemaSvg && (');
+    expect(bloc).toContain('const dessin = dessinDeLOption(calepOptions, t.cle, v);');
+    expect(bloc).toContain('{dessin && (');
+    // Les clés inventées au premier passage ne doivent plus exister nulle part.
+    for (const mort of ['calepinageSvg', 'schemaSvg', 'calepinage_svg', 'schema_svg',
+      'data-taille-calepinage', 'data-taille-schema']) {
+      expect(CODE, mort).not.toContain(mort);
+    }
     // Aucun cadre vide, aucun « bientôt disponible ».
     for (const interdit of ['à venir', 'bientôt', 'coming soon', 'placeholder']) {
       expect(bloc.toLowerCase(), interdit).not.toContain(interdit.toLowerCase());
     }
+  });
+
+  it('`origine: "devis"` RENVOIE à la vue d’en haut au lieu d’en fabriquer une copie', () => {
+    const bloc = sectionTailles(CODE);
+    expect(bloc).toContain("{dessin.origine === 'devis' ? (");
+    expect(bloc).toContain('La vue 3D de votre toit, plus haut sur cette page, montre exactement cette configuration.');
+  });
+
+  it('un dessin DÉRIVÉ dit son compte et, s’il y a lieu, que le TOIT a tranché', () => {
+    const bloc = sectionTailles(CODE);
+    expect(bloc).toContain('{formatNumber(dessin.nbPanneauxDessines)}');
+    expect(bloc).toContain('{dessin.plafonne && (');
+    expect(bloc).toContain('Plafonné par votre toit');
+  });
+
+  it('LE SCHÉMA n’est proposé QUE sous l’option qu’il décrit (jamais mal étiqueté)', () => {
+    const bloc = sectionTailles(CODE);
+    expect(bloc).toContain('const sldIci = sldDecritLOption(calepOptions, t.cle, v);');
+    expect(bloc).toContain('{sldIci && (');
+    // Le lien #sld de la vue de détail est DERRIÈRE la garde, et il est le seul.
+    expect((bloc.match(/href="#sld"/g) || []).length).toBe(1);
+    expect(bloc.indexOf('{sldIci && (')).toBeLessThan(bloc.indexOf('href="#sld"'));
+  });
+
+  it('la visionneuse reste UNIQUE : on échange le layout, on ne monte pas un 2e moteur', () => {
+    // La section des tailles ÉMET un événement ; la visionneuse ÉCOUTE. Aucune
+    // des deux n'atteint les nœuds de l'autre.
+    expect(CODE).toContain("document.dispatchEvent(new CustomEvent('taqinor:calepinage-option'");
+    expect(CODE).toContain("document.addEventListener('taqinor:calepinage-option'");
+    // Un seul chemin de boot : on démonte et on remonte le MÊME.
+    expect(CODE).toContain('function montrerCalepinageOption');
+    expect(CODE).toContain('const layoutRacine = layout;');
+    // …et aucun second moteur de rendu n'est importé par la lane.
+    const emetteur = CODE.slice(CODE.indexOf('function setupTaillesOffres'));
+    expect(emetteur.slice(0, emetteur.indexOf('\n  })();'))).not.toContain('import(');
   });
 });
 
@@ -612,6 +795,47 @@ describe('PRÉSERVATION — un client qui ne touche à rien voit la page d’ava
     for (const ancre of ['id="options"', 'id="production"', 'id="sld"', 'id="gammes"',
       'id="confiance"', 'id="faq"', 'id="etapes-suivantes"', 'id="tarif-falaise"']) {
       expect(CODE, ancre).toContain(ancre);
+    }
+  });
+});
+
+// ── 5bis. L'ANNEXE « PARAMÈTRES DU SITE » DANS LA PAGE (audit #23) ──────────
+
+describe('page — l’annexe « paramètres du site »', () => {
+  it('vit dans « Nos hypothèses » : c’est de la méthode, pas de l’argumentaire', () => {
+    expect(CODE).toContain('const paramSite = ok ? parametresSite(data) : null;');
+    expect(CODE).toContain('data-parametres-site');
+    const hypotheses = CODE.indexOf('data-fr="Nos hypothèses"');
+    expect(hypotheses).toBeGreaterThan(0);
+    expect(CODE.indexOf('data-parametres-site')).toBeGreaterThan(hypotheses);
+  });
+
+  it('chaque ligne est gardée individuellement — jamais un champ vide affiché', () => {
+    for (const garde of [
+      '{paramSite.inclinaisonDeg !== null && (',
+      '{paramSite.irradiation !== null && (',
+      '{paramSite.chaines !== null && (',
+      '{paramSite.ombrageMesure && (',
+      '{typeToitLabel && (',
+    ]) {
+      expect(CODE, garde).toContain(garde);
+    }
+  });
+
+  it('le TYPE DE TOITURE est traduit, jamais rendu comme clé machine', () => {
+    // « pitched » sous les yeux d'un client est un mot d'ingénieur anglais ; une
+    // clé inconnue fait DISPARAÎTRE la ligne au lieu de l'afficher brute.
+    expect(CODE).toContain('const TYPE_TOIT_LABELS');
+    expect(CODE).toContain("pitched: { fr: 'Toiture en pente'");
+    expect(CODE).toContain('TYPE_TOIT_LABELS[paramSite.typeToit] ?? null');
+    expect(CODE).not.toContain('>{paramSite.typeToit}<');
+  });
+
+  it('ANTICOPIE — l’annexe n’affiche aucune coordonnée machine', () => {
+    const annexe = CODE.slice(CODE.indexOf('data-parametres-site'));
+    const bloc = annexe.slice(0, annexe.indexOf('</dd>'));
+    for (const interdit of ['origin', 'vertices', 'lat', 'lng', 'surface']) {
+      expect(bloc.toLowerCase(), interdit).not.toContain(interdit);
     }
   });
 });
