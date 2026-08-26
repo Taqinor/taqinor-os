@@ -78,6 +78,8 @@ const EquipementSignalerPage = lazy(() => import('../pages/sav/EquipementSignale
 const TicketSuiviPage = lazy(() => import('../pages/sav/TicketSuiviPage'))
 // XKB19 — page publique de consultation d'un article KB partagé (lien tokenisé).
 const PublicArticlePage = lazy(() => import('../pages/kb/PublicArticlePage'))
+// WIR214 — page publique de signalement chantier QHSE via QR (lien tokenisé).
+const SignalementPublicPage = lazy(() => import('../pages/qhse/SignalementPublicPage'))
 const ChatPage = lazy(() => import('../pages/messaging/ChatPage'))
 const DocumentsPage = lazy(() => import('../pages/ged/DocumentsPage'))
 // VX78 — Écran 404 déjà construit (ui/NotFound.jsx), jusqu'ici jamais importé
@@ -360,6 +362,8 @@ const router = createBrowserRouter([
   { path: '/dashboards-tv', loader: authLoader, element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><DashboardsTvPage /></Suspense></RouteErrorBoundary> },
   // XKB19 — consultation publique d'un article KB partagé (sans login, sans layout ERP).
   { path: '/kb/public/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><PublicArticlePage /></Suspense></RouteErrorBoundary> },
+  // WIR214 — signalement chantier QHSE via QR (sans login, sans layout ERP).
+  { path: '/qhse/signalement/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><SignalementPublicPage /></Suspense></RouteErrorBoundary> },
 
   // NTPRT8 — PORTAIL CLIENT authentifié. Shell dédié (jamais le shell ERP) ;
   // `portalLoader` exige la portée EXACTE `portail_client` et renvoie tout
