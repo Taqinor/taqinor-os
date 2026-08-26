@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
-import { Plus, Lock, Unlock, DownloadCloud, Link2, Combine } from 'lucide-react'
+import { Plus, Lock, Unlock, DownloadCloud, Link2, Combine, Download } from 'lucide-react'
 import { useTabParam } from '../components/useTabParam'
 import { ListShell } from '../../../ui/module'
 import {
   Button, Segmented, Label, Combobox, toast,
 } from '../../../ui'
 import { formatMAD, formatDate } from '../../../lib/format'
+import { stampedFilename } from '../../../utils/downloadBlob'
+import { store } from '../../../store'
 import comptaApi from '../../../api/comptaApi'
 import useComptaList, { unwrap } from '../components/useComptaList.js'
 import CrudDialog from '../components/CrudDialog.jsx'
@@ -44,6 +46,20 @@ function agirGenerique(fn, okMsg, onDone) {
   })
 }
 
+// WIR255 — NTFIN54 : `cyclesConsolidation.exportLiasse` (déjà prêt côté API,
+// ≥ 6 onglets xlsx) n'avait aucun bouton.
+async function exporterLiasse(cycle) {
+  try {
+    const res = await comptaApi.cyclesConsolidation.exportLiasse(cycle.id)
+    const blob = res.data instanceof Blob ? res.data : new Blob([res.data])
+    const societe = store.getState().parametres?.profile?.nom
+    comptaApi.downloadBlob(
+      blob, stampedFilename(`liasse-consolidation-${cycle.libelle || cycle.id}`, 'xlsx', societe))
+  } catch {
+    toast.error('Export de la liasse indisponible.')
+  }
+}
+
 // ── NTFIN1 — Cycles de consolidation ──
 function CyclesPanel() {
   const [dialog, setDialog] = useState(null)
@@ -65,6 +81,8 @@ function CyclesPanel() {
         onClick: () => agirGenerique(
           () => comptaApi.cyclesConsolidation.collecter(row.id, {}),
           'Collecte lancée pour le périmètre du cycle.', list.reload) },
+      { id: 'export-liasse', label: 'Exporter la liasse (XLSX)', icon: Download,
+        onClick: () => exporterLiasse(row) },
     ]
     if (row.verrouille) {
       acts.push({ id: 'ouvrir', label: 'Ouvrir (déverrouiller)', icon: Unlock,

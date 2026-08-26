@@ -98,6 +98,54 @@ const comptaApi = {
     aideIs: (params) =>
       api.get('/compta/etats/aide-is/',
         { params: { export: 'csv', ...params }, responseType: 'blob' }),
+    // WIR180 — NTMAR12 : export SIMPL-IS (XML DGI) d'un exercice, requiert
+    // `?exercice=` (résolu côté serveur, scopé société).
+    exportSimplIs: (params) =>
+      api.get('/compta/etats/export-simpl-is/', { params, responseType: 'blob' }),
+    // WIR180 — XFAC2 : conformité loi 69-21 (délais de paiement fournisseurs) ;
+    // `periode` optionnel ('YYYY-MM'), export CSV via `?export=csv` (patron
+    // générique EtatsPage.exportCsv, jamais `responseType:'blob'` forcé ici).
+    loi6921: (params) => api.get('/compta/etats/loi-69-21/', { params }),
+
+    /* WIR254 — ~15 états d'analyse d'EtatsComptablesViewSet jusqu'ici SANS
+       AUCUN wrapper (inatteignables depuis l'ERP, y compris en API-only) :
+       référentiel parallèle/analytique (NTFIN14/18/19), pilotage budgétaire
+       et clôture (NTFIN25/28/30/33/34/38), immobilisations avancées
+       (NTFIN44/45), IFRS 15 (NTFIN49), frais bancaires et rapprochements
+       auxiliaires (YLEDG13). Rendus sur le tableau générique d'EtatsPage OU
+       sur l'écran hôte dédié (Budgets/Cloture/Immobilisations avancées/
+       RevenuIfrs15/Trésorerie) — voir ces fichiers. */
+    balanceReferentiel: (params) =>
+      api.get('/compta/etats/balance-referentiel/', { params }),
+    balanceAnalytique: (params) =>
+      api.get('/compta/etats/balance-analytique/', { params }),
+    resultatAnalytique: (params) =>
+      api.get('/compta/etats/resultat-analytique/', { params }),
+    executionBudgetaire: (params) =>
+      api.get('/compta/etats/execution-budgetaire/', { params }),
+    analyseVariation: (params) =>
+      api.get('/compta/etats/analyse-variation/', { params }),
+    anomaliesEcritures: (params) =>
+      api.get('/compta/etats/anomalies-ecritures/', { params }),
+    cockpitCloture: (params) =>
+      api.get('/compta/etats/cockpit-cloture/', { params }),
+    pretACloturer: (params) =>
+      api.get('/compta/etats/pret-a-cloturer/', { params }),
+    rapprochementsEnRetard: (params) =>
+      api.get('/compta/etats/rapprochements-en-retard/', { params }),
+    registreImmobilisations: (params) =>
+      api.get('/compta/etats/registre-immobilisations/', { params }),
+    projectionDotations: (params) =>
+      api.get('/compta/etats/projection-dotations/', { params }),
+    positionsContratRevenu: (params) =>
+      api.get('/compta/etats/positions-contrat-revenu/', { params }),
+    fraisBancaires: (params) =>
+      api.get('/compta/etats/frais-bancaires/', { params }),
+    provisions: (params) => api.get('/compta/etats/provisions/', { params }),
+    rapprochementClients: (params) =>
+      api.get('/compta/etats/rapprochement-clients/', { params }),
+    rapprochementFournisseurs: (params) =>
+      api.get('/compta/etats/rapprochement-fournisseurs/', { params }),
   },
 
   // ── UX6 — Trésorerie & prévisionnel ──
@@ -133,6 +181,10 @@ const comptaApi = {
       api.get(`/compta/declarations-tva/${id}/comparatif/`, { params }),
     bordereauPdf: (id) =>
       api.get(`/compta/declarations-tva/${id}/bordereau-pdf/`,
+        { responseType: 'blob' }),
+    // WIR180 — NTMAR10 : export SIMPL-TVA (XML DGI) d'une déclaration.
+    exportSimpl: (id) =>
+      api.get(`/compta/declarations-tva/${id}/export-simpl/`,
         { responseType: 'blob' }),
   },
   retenuesSource: {
@@ -259,6 +311,11 @@ const comptaApi = {
     // d'une saisie manuelle des 12 mois).
     genererLigneRepartie: (id, data) =>
       api.post(`/compta/budgets/${id}/generer-ligne-repartie/`, data),
+    // WIR255 — FG149 : `vs_realise` SOULIGNÉ (comme `grand_livre`, PACT18) —
+    // aucun `url_path=` déclaré sur cette @action, DRF garde donc le nom de
+    // méthode tel quel, jamais un tiret.
+    vsRealise: (id, params) =>
+      api.get(`/compta/budgets/${id}/vs_realise/`, { params }),
   },
   centresCout: resource('centres-cout'),
   provisionsCreances: resource('provisions-creances'),

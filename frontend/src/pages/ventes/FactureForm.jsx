@@ -24,6 +24,9 @@ import ProduitPicker from '../../components/ProduitPicker'
 import ClientQuickCreateModal from './ClientQuickCreateModal'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
 import EinvoiceActions from '../../components/EinvoiceActions'
+// WIR256 — lien « Voir l'écriture comptable » (WIR24), auto-masqué tant
+// qu'aucune écriture n'existe (réglage auto-écritures inactif).
+import EcritureSourceLink from '../../features/compta/components/EcritureSourceLink.jsx'
 import { formatMAD } from '../../lib/format'
 import { useServerFieldErrors } from '../../hooks/useServerFieldErrors'
 import { parsePastedAmount } from '../../hooks/usePasteClean'
@@ -692,6 +695,10 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
 
           {isEdit && facture?.id && (
             <EinvoiceActions factureId={facture.id} />
+          )}
+
+          {isEdit && facture?.id && (
+            <EcritureSourceLink sourceType="facture" sourceId={facture.id} />
           )}
 
           <FormActions sticky={false}>

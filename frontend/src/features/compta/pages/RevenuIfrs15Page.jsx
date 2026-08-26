@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { Plus, Scale, CalendarPlus, CheckCircle2 } from 'lucide-react'
+import { Plus, Scale, CalendarPlus, CheckCircle2, RefreshCw } from 'lucide-react'
 import { ListShell } from '../../../ui/module'
 import {
-  Button, EmptyState,
+  Button, EmptyState, Card,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
   Input, Label, toast,
 } from '../../../ui'
@@ -11,6 +11,9 @@ import ComptaTable from '../ComptaTable'
 import comptaApi from '../../../api/comptaApi'
 import useComptaList from '../components/useComptaList.js'
 import CrudDialog from '../components/CrudDialog.jsx'
+// WIR254 — les positions actif/produit différé (NTFIN49) réutilisent le
+// rendu générique d'EtatsPage au lieu d'en réinventer un pour ce seul écran.
+import { EtatRender } from './EtatsPage.jsx'
 
 /* ============================================================================
    PACT34 — Reconnaissance du revenu (IFRS 15).
@@ -224,6 +227,44 @@ function ContratDialog({ contrat, onClose, onChanged }) {
   )
 }
 
+// WIR254 — NTFIN49 : `etats/positions-contrat-revenu` (actif sur contrat /
+// produit différé, agrégé par contrat) n'avait aucun client ni écran ;
+// company-scopé, sans paramètre. Chargement sur clic (jamais au montage) —
+// cohérent avec les autres panneaux WIR254 (Budgets/Clôture/Immobilisations/
+// Trésorerie), et ça évite d'imposer l'appel à tout mock de test existant.
+function PositionsContratRevenuPanel() {
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(false)
+
+  const charger = () => {
+    setLoading(true)
+    comptaApi.etats.positionsContratRevenu()
+      .then((res) => setData(res.data))
+      .catch(() => toast.error('Positions contrat revenu indisponibles.'))
+      .finally(() => setLoading(false))
+  }
+
+  return (
+    <Card className="mb-4 p-4 sm:p-5">
+      <div className="mb-3 flex items-center justify-between">
+        <h3 className="font-display text-base font-semibold">
+          Positions actif / produit différé (IFRS 15)
+        </h3>
+        <Button variant="outline" size="sm" onClick={charger}>
+          <RefreshCw className="size-4" /> Charger
+        </Button>
+      </div>
+      {loading ? (
+        <p className="py-4 text-center text-sm text-muted-foreground">Chargement…</p>
+      ) : data ? (
+        <EtatRender data={data} />
+      ) : (
+        <EmptyState title="Aucune donnée chargée" description="Cliquez sur Charger." />
+      )}
+    </Card>
+  )
+}
+
 export default function RevenuIfrs15Page() {
   const [dialog, setDialog] = useState(null)
   const [detailDe, setDetailDe] = useState(null)
@@ -256,6 +297,8 @@ export default function RevenuIfrs15Page() {
           <Button onClick={() => setDialog({ row: null })}><Plus /> Nouveau contrat de revenu</Button>
         </div>
       </div>
+
+      <PositionsContratRevenuPanel />
 
       <ListShell
         hideHeader

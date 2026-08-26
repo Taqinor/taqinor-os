@@ -86,12 +86,22 @@
     detail:texte, reserve:inconnu, signature:inconnu
 - frontend/src/api/comptaApi.js :: accepterSuggestions -> /api/django/compta/rapprochements/<>/accepter-suggestions
     ignorees:inconnu, pointees:inconnu
+- frontend/src/api/comptaApi.js :: analyseVariation -> /api/django/compta/etats/analyse-variation
+    detail:inconnu, lignes:inconnu, nb_a_expliquer:nombre, seuil_materialite:inconnu
 - frontend/src/api/comptaApi.js :: annexes -> /api/django/compta/cycles-consolidation/<>/annexes
     cycle:inconnu, dettes_consolidees:inconnu, engagements_hors_bilan:nombre, immobilisations_consolidees:inconnu, perimetre:inconnu
+- frontend/src/api/comptaApi.js :: anomaliesEcritures -> /api/django/compta/etats/anomalies-ecritures
+    anomalies:inconnu, detail:inconnu, nb_bloquantes:nombre
 - frontend/src/api/comptaApi.js :: appliquer -> /api/django/compta/modeles-rapprochement/<>/appliquer
     detail:inconnu, ecriture_id:inconnu, reference:inconnu
 - frontend/src/api/comptaApi.js :: avancement -> /api/django/compta/contrats-avancement/<>/avancement
     constats:liste, contrat_id:inconnu, cout_total_estime:inconnu, dernier_pourcentage:inconnu, libelle:inconnu, marge_estimee:nombre, methode:inconnu, nb_constats:nombre, reference:inconnu, reste_a_reconnaitre:nombre, revenu_reconnu:inconnu, revenu_total:inconnu, statut:inconnu
+- frontend/src/api/comptaApi.js :: balanceAnalytique -> /api/django/compta/etats/balance-analytique
+    axes:inconnu, lignes:inconnu
+- frontend/src/api/comptaApi.js :: balanceReferentiel -> /api/django/compta/etats/balance-referentiel
+    equilibree:booleen, lignes:inconnu, referentiel:inconnu, total_credit:inconnu, total_debit:inconnu
+- frontend/src/api/comptaApi.js :: cockpitCloture -> /api/django/compta/etats/cockpit-cloture
+    accruals_postes:inconnu, close_status:texte, date_cible:inconnu, detail:texte, instance_id:inconnu, jours_depuis_cible:inconnu, pct_faites:inconnu, periode_id:inconnu, taches_faites:inconnu, taches_total:inconnu, variations_non_expliquees:inconnu
 - frontend/src/api/comptaApi.js :: collecter -> /api/django/compta/cycles-consolidation/<>/collecter
     cycle:inconnu, detail:inconnu, liasses:inconnu
 - frontend/src/api/comptaApi.js :: controlesCollecte -> /api/django/compta/cycles-consolidation/<>/controles-collecte
@@ -100,6 +110,10 @@
     bilan:inconnu, cpc:inconnu
 - frontend/src/api/comptaApi.js :: etic -> /api/django/compta/etats/etic
     date_debut:texte, date_fin:texte, detail:texte, engagements_hors_bilan:objet, exercice:texte, immobilisations:inconnu, principes_methodes:texte, provisions:inconnu, resultat:inconnu, sections:liste
+- frontend/src/api/comptaApi.js :: executionBudgetaire -> /api/django/compta/etats/execution-budgetaire
+    annee:inconnu, budget_id:inconnu, detail:texte, lignes:inconnu, total_budget:inconnu, total_disponible:inconnu, total_engage:inconnu, total_realise:inconnu
+- frontend/src/api/comptaApi.js :: fraisBancaires -> /api/django/compta/etats/frais-bancaires
+    par_compte:inconnu, total:inconnu
 - frontend/src/api/comptaApi.js :: genererDues -> /api/django/compta/abonnements-ecriture/generer-dues
     detail:inconnu, generees:inconnu, ignorees:inconnu
 - frontend/src/api/comptaApi.js :: genererFae -> /api/django/compta/provisions-periode/generer-fae
@@ -118,16 +132,28 @@
     concordant:booleen, detail:inconnu, ecart:inconnu, lignes:inconnu, lignes_creees:inconnu, releve:texte, solde_calcule:inconnu, solde_final_declare:inconnu, solde_initial:inconnu
 - frontend/src/api/comptaApi.js :: positionTresorerie -> /api/django/compta/etats/position-tresorerie
     comptes:inconnu, projection:inconnu, total:inconnu
+- frontend/src/api/comptaApi.js :: positionsContratRevenu -> /api/django/compta/etats/positions-contrat-revenu
+    lignes:inconnu, total_actif_sur_contrat:inconnu, total_produit_differe:inconnu
 - frontend/src/api/comptaApi.js :: posterMouvement -> /api/django/compta/caisses/<>/poster-mouvement
     detail:inconnu, ecriture_id:inconnu, mouvement:inconnu
+- frontend/src/api/comptaApi.js :: pretACloturer -> /api/django/compta/etats/pret-a-cloturer
+    detail:texte, instance_id:inconnu, pret:booleen, taches_manquantes:inconnu
 - frontend/src/api/comptaApi.js :: previsionnelTresorerie -> /api/django/compta/etats/previsionnel-tresorerie
     date_debut:inconnu, date_rupture_estimee:inconnu, nb_semaines:inconnu, semaines:inconnu, solde_initial:inconnu
+- frontend/src/api/comptaApi.js :: projectionDotations -> /api/django/compta/etats/projection-dotations
+    annees:inconnu, par_actif:inconnu, referentiel:inconnu, totaux_par_annee:inconnu
+- frontend/src/api/comptaApi.js :: rapprochementsEnRetard -> /api/django/compta/etats/rapprochements-en-retard
+    detail:texte, lignes:inconnu, nb_en_retard:nombre, periode_id:inconnu, total_ecart_non_justifie:inconnu
 - frontend/src/api/comptaApi.js :: refacturer -> /api/django/compta/notes-frais/refacturer
     detail:inconnu, facture_id:inconnu, refacture:booleen
+- frontend/src/api/comptaApi.js :: registreImmobilisations -> /api/django/compta/etats/registre-immobilisations
+    date_reference:inconnu, lignes:inconnu, referentiel:inconnu, total_vnc:inconnu
 - frontend/src/api/comptaApi.js :: releveFournisseur -> /api/django/compta/etats/releve-fournisseur/<>
     fournisseur:objet, lignes:inconnu, totaux:objet
 - frontend/src/api/comptaApi.js :: reschedule -> /api/django/compta/calendrier-marketing/reschedule
     detail:texte, ok:booleen
+- frontend/src/api/comptaApi.js :: resultatAnalytique -> /api/django/compta/etats/resultat-analytique
+    axe:inconnu, detail:texte, total_resultat:inconnu, valeurs:inconnu
 - frontend/src/api/comptaApi.js :: simuler -> /api/django/compta/cycles-consolidation/<>/simuler
     cycle:inconnu, detail:inconnu, part_minoritaires:inconnu, perimetre:inconnu, resultat_consolide:inconnu, resultat_part_groupe:nombre, simulation:booleen
 - frontend/src/api/comptaApi.js :: variationCapitaux -> /api/django/compta/cycles-consolidation/<>/variation-capitaux

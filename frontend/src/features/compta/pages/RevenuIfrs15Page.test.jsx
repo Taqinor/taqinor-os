@@ -35,6 +35,10 @@ vi.mock('../../../api/comptaApi', () => ({
     contratsRevenu: { list: mocks.list, get: mocks.get, allouer: mocks.allouer },
     obligationsPerformance: { create: vi.fn(), genererEcheancier: vi.fn() },
     echeancesReconnaissance: { reconnaitre: vi.fn() },
+    // WIR254 — cette page importe désormais EtatsPage.jsx (EtatRender) ; le
+    // module-level `ETATS` d'EtatsPage déréférence `comptaApi.etats.*` à
+    // l'IMPORT (jamais appelé ici) — sans cette clé, l'import plante le fichier.
+    etats: {},
   },
 }))
 
