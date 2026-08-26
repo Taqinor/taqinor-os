@@ -317,7 +317,19 @@ export default function ToitureDesign({ mode = 'lead' }) {
           const fp = await crmApi.getRoofFootprint(leadId)
           const polygon = fp?.data?.polygon
           if (Array.isArray(polygon) && polygon.length >= 3) {
-            leadData = { ...leadData, roof_outline: polygon }
+            // Fable review — le serveur (roof_detect.py) renvoie des points
+            // `{lat, lng}` ; le contrat de l'atelier (roofPro11/prefill.ts
+            // hydrateFromLead) exige des PAIRES `[lat, lng]` et rejette
+            // silencieusement (Array.isArray(p)) tout sommet qui n'en est
+            // pas — sans cette conversion, TOUS les sommets OSM étaient
+            // éliminés et la carte ne bootait que sur le pin. Conversion
+            // faite ICI, jamais dans apps/web (non touché).
+            const paires = polygon
+              .map((p) => [Number(p?.lat), Number(p?.lng)])
+              .filter(([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng))
+            if (paires.length >= 3) {
+              leadData = { ...leadData, roof_outline: paires }
+            }
           } else if (fp?.data?.message) {
             setContourMessage(fp.data.message)
           }

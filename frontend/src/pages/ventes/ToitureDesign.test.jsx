@@ -702,7 +702,17 @@ describe('ToitureDesign — mode lead : contour OSM (WIR227/QJ25)', () => {
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
     expect(api.get).toHaveBeenCalledWith('/crm/leads/91/roof-footprint/')
     const options = initRoofToolPro8.mock.calls[0][0]
-    expect(options.hydrate.lead.roof_outline).toEqual(polygon)
+    // Fable review — le serveur renvoie des points {lat,lng} (roof_detect.py)
+    // mais le CONTRAT de l'atelier (roofPro11/prefill.ts hydrateFromLead)
+    // exige des PAIRES [lat,lng] : `Array.isArray(p)` y filtre silencieusement
+    // tout sommet qui n'en est pas un. `toEqual(polygon)` (forme {lat,lng})
+    // aurait laissé passer un bug où TOUS les sommets sont éliminés — on
+    // affirme donc la forme PAIRE réellement reçue par le builder.
+    expect(options.hydrate.lead.roof_outline).toEqual([
+      [34.02, -6.83], [34.021, -6.83], [34.021, -6.831],
+    ])
+    expect(options.hydrate.lead.roof_outline.every(
+      (v) => Array.isArray(v) && v.length === 2)).toBe(true)
     // Le tracé manuel n'est jamais cassé : aucun message d'absence affiché.
     expect(screen.queryByTestId('pv-contour-osm-absent')).toBeNull()
   })
