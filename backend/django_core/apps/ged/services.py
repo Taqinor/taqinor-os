@@ -2035,6 +2035,40 @@ def _document_sous_legal_hold(document):
         document_id=document.pk, actif=True).exists()
 
 
+GED_GOUVERNANCE = 'ged_gouvernance'
+
+
+def _assert_gouvernance_documentaire(user, action):
+    """WIR174 — défense en PROFONDEUR de la gouvernance documentaire.
+
+    Les vues gardent déjà ``placer``/``lever`` par ``ged_gouvernance``
+    (``DocumentViewSet``/``LegalHoldViewSet``). Cette garde-ci est la SECONDE
+    ligne : le gel et le dégel d'un document sont des actes à portée juridique,
+    et ces services sont appelables depuis n'importe quel futur appelant
+    (commande de gestion, tâche, autre vue) qui n'aurait pas la garde HTTP. Un
+    trou de garde côté vue ne doit jamais suffire à geler ou dégeler.
+
+    Sémantique IDENTIQUE à ``HasPermissionOrLegacy`` (jamais un second modèle
+    d'autorisation) : superuser toujours autorisé ; compte SANS rôle fin →
+    comportement historique (palier Responsable/Administrateur) ; compte AVEC
+    rôle fin → il doit réellement porter ``ged_gouvernance``.
+
+    Lève ``PermissionError`` (traduit en 403 par les vues appelantes).
+    """
+    if user is None or not getattr(user, 'is_authenticated', False):
+        raise PermissionError(f"Action « {action} » non autorisée.")
+    if getattr(user, 'is_superuser', False):
+        return
+    if getattr(user, 'role', None) is not None:
+        if user.has_erp_permission(GED_GOUVERNANCE):
+            return
+    elif getattr(user, 'is_responsable', False):
+        return
+    raise PermissionError(
+        f"Action « {action} » réservée à la gouvernance documentaire "
+        "(permission ged_gouvernance).")
+
+
 def placer_legal_hold(document, *, user, motif=''):
     """GED24 — Place une RÉTENTION LÉGALE (legal hold) sur un document.
 
@@ -2055,6 +2089,8 @@ def placer_legal_hold(document, *, user, motif=''):
 
     if document.company_id != getattr(user, 'company_id', None):
         raise PermissionError("Document inaccessible.")
+    # WIR174 — défense en profondeur : le gel est un acte de gouvernance.
+    _assert_gouvernance_documentaire(user, 'poser une rétention légale')
     with transaction.atomic():
         # Idempotence : un hold actif existant tient lieu de gel — on ne pose
         # pas de doublon (le document est déjà gelé).
@@ -2093,6 +2129,9 @@ def lever_legal_hold(document, *, user):
 
     if document.company_id != getattr(user, 'company_id', None):
         raise PermissionError("Document inaccessible.")
+    # WIR174 — défense en profondeur : le DÉGEL est l'acte le plus sensible des
+    # deux (il rend le document à nouveau supprimable).
+    _assert_gouvernance_documentaire(user, 'lever une rétention légale')
     with transaction.atomic():
         actifs = list(LegalHold.objects
                       .select_for_update()

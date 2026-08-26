@@ -232,6 +232,27 @@ ALL_PERMISSIONS = [
     'fpa_valider',
     'fpa_consulter_tout',
     'fpa_administrer',
+    # ── WIR174 — GED (apps/ged). Le caviardage définitif, la rétention légale
+    # (legal hold) et les politiques de rétention n'étaient gardés que par
+    # ``IsResponsableOrAdmin`` — c'est-à-dire par tout porteur d'UNE écriture,
+    # même totalement hors GED. Trois codes, deux paliers :
+    #   * ``ged_voir``  — lecture du module (déclaratif : la LECTURE GED reste
+    #     ouverte à tout rôle interne via ``IsAnyRole``, contrat GED37 que
+    #     WIR174 ne referme PAS ; ce code sert le gating d'écran/nav et un
+    #     éventuel resserrement futur, il n'ouvre rien de plus) ;
+    #   * ``ged_gerer`` — écriture documentaire courante (créer/éditer/
+    #     supprimer un document, opérations de lot…). Mappé LARGEMENT, sur tous
+    #     les rôles qui écrivaient déjà : la GED est un outil transverse, aucun
+    #     accès n'est retiré.
+    #   * ``ged_gouvernance`` — les trois pouvoirs de GOUVERNANCE documentaire :
+    #     poser/lever un legal hold, caviarder définitivement, écrire une
+    #     politique de rétention. DIRECTION SEULE : mappé sur AUCUN rôle
+    #     ci-dessous (seuls Directeur/Administrateur le portent, par héritage
+    #     d'ALL_PERMISSIONS) et ÉLEVÉ (cf. ELEVATED_PERMISSIONS) — un
+    #     Responsable ne peut donc pas se l'octroyer.
+    'ged_voir',
+    'ged_gerer',
+    'ged_gouvernance',
     # ── AOF2 — Appels d'offres (apps/ao) : correction d'une régression de
     # confidentialité EXISTANTE. Les 8 ViewSets AO héritaient d'une base gardée
     # par le grossier ``IsResponsableOrAdmin`` : tout le palier Responsable
@@ -354,6 +375,10 @@ ELEVATED_PERMISSIONS = frozenset({
     'ao_rentabilite_voir',
     # NTCPQ36 — marge sous seuil CPQ (NTCPQ6/22) : même palier que marge_voir.
     'cpq_marge_voir',
+    # WIR174 — gouvernance documentaire (legal hold, caviardage définitif,
+    # politiques de rétention) : « direction seule » n'est tenable que si un
+    # non-administrateur ne peut pas s'octroyer le code lui-même.
+    'ged_gouvernance',
 })
 
 RESPONSABLE_PERMISSIONS = [
@@ -403,6 +428,10 @@ RESPONSABLE_PERMISSIONS = [
     'contrat_voir', 'contrat_gerer',
     'litige_voir', 'litige_gerer',
     'kb_voir', 'kb_gerer',
+    # WIR174 — GED : écriture documentaire courante préservée (accès
+    # historique via l'ancien IsResponsableOrAdmin). PAS ged_gouvernance
+    # (legal hold / caviardage / rétention) — direction seule.
+    'ged_voir', 'ged_gerer',
     # ENG — accès complet au moteur de publicités (y compris approbation).
     'adsengine_view', 'adsengine_manage', 'adsengine_approve',
     # VAO12 — veille AO : lecture ET réglage (mots-clés, sources, règles).
@@ -482,6 +511,9 @@ COMMERCIAL_RESP_PERMISSIONS = [
     'contrat_voir', 'contrat_gerer',
     'litige_voir', 'litige_gerer',
     'kb_voir', 'kb_gerer',
+    # WIR174 — GED : écriture documentaire courante préservée (accès
+    # historique). PAS ged_gouvernance — direction seule.
+    'ged_voir', 'ged_gerer',
     # ENG — gestion des campagnes (l'approbation reste au palier admin).
     'adsengine_view', 'adsengine_manage',
     # ADSENG47 — gestion des plans de vol (palier responsable). L'ACTIVATION de
@@ -514,6 +546,9 @@ COMMERCIAL_PERMISSIONS = [
     'contrat_voir', 'contrat_gerer',
     'litige_voir', 'litige_gerer',
     'kb_voir', 'kb_gerer',
+    # WIR174 — GED : écriture documentaire courante préservée (accès
+    # historique). PAS ged_gouvernance — direction seule.
+    'ged_voir', 'ged_gerer',
     # ENG — gestion des campagnes (l'approbation reste au palier admin).
     'adsengine_view', 'adsengine_manage',
     # VAO12 — veille AO en LECTURE : un commercial doit voir passer les avis
@@ -542,6 +577,9 @@ TECHNICIEN_RESP_PERMISSIONS = [
     'contrat_voir', 'contrat_gerer',
     'litige_voir', 'litige_gerer',
     'kb_voir', 'kb_gerer',
+    # WIR174 — GED : écriture documentaire courante préservée (accès
+    # historique). PAS ged_gouvernance — direction seule.
+    'ged_voir', 'ged_gerer',
     # ENG — gestion des campagnes (l'approbation reste au palier admin).
     'adsengine_view', 'adsengine_manage',
     # ADSENG47 — gestion des plans de vol (palier responsable). L'ACTIVATION de
@@ -565,6 +603,9 @@ TECHNICIEN_PERMISSIONS = [
     'contrat_voir', 'contrat_gerer',
     'litige_voir', 'litige_gerer',
     'kb_voir', 'kb_gerer',
+    # WIR174 — GED : écriture documentaire courante préservée (accès
+    # historique). PAS ged_gouvernance — direction seule.
+    'ged_voir', 'ged_gerer',
     # ENG — gestion des campagnes (l'approbation reste au palier admin).
     'adsengine_view', 'adsengine_manage',
     SCOPE_TEAM,
@@ -584,6 +625,8 @@ VIEWER_PERMISSIONS = [
     'contrat_voir',
     'litige_voir',
     'kb_voir',
+    # WIR174 — GED en lecture seule (jamais _gerer pour ce rôle).
+    'ged_voir',
     # ENG — accès en lecture seule (pas de gestion ni approbation).
     'adsengine_view',
     SCOPE_TEAM,
