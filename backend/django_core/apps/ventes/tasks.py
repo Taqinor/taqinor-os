@@ -353,14 +353,33 @@ def zones_etude_du_devis(devis):
     La géométrie vient de ``roof_layout['_pans_geometry']`` (QJ21) — la seule
     source qui connaisse l'orientation RÉELLE de chaque pan ; le point GPS vient
     du LEAD (``gps_lat``/``gps_lng``), à défaut du repère posé dans l'outil 3D
-    (``roof_layout['pin']``). L'azimut est déjà dans la convention PVGIS
-    (0 = Sud) des deux côtés : aucune conversion ici, donc aucune occasion de
-    retourner un toit.
+    (``roof_layout['pin']``).
+
+    ── F3 : LE REPÈRE D'AZIMUT, ET POURQUOI IL Y A UNE CONVERSION ICI ────────
+    Cette fonction affirmait « l'azimut est déjà dans la convention PVGIS
+    (0 = Sud) des deux côtés : aucune conversion ici ». C'ÉTAIT FAUX, et cher :
+    ``_pans_geometry['azimut_deg']`` est produit par
+    ``services.extract_roof_config`` à partir du ``facingAzimuthDeg`` du
+    builder, c'est-à-dire l'azimut BOUSSOLE (180 = Sud). Passé tel quel à
+    PVGIS, qui lit du 0 = Sud, un toit plein SUD était simulé plein NORD — et
+    ce productible-là part au client (page publique et PDF de proposition).
+    Le seul test qui aurait pu le voir écrivait son fixture à la main dans le
+    repère PVGIS en l'appelant « Pan Sud », ce qui masquait exactement le bug.
+
+    On convertit donc À LA LECTURE, avec la règle du builder lui-même
+    (``roofPro11/prodWindow.ts`` : « jambe sud : aspect = azimut − 180 »).
+    Depuis F3, ``azimut_deg`` ne publie plus qu'un seul repère — la boussole —
+    quelle que soit la clé source du layout, donc cette conversion est
+    inconditionnelle et sans ambiguïté. Azimut absent (devis automatique : rien
+    n'a été mesuré) → ``None``, et PVGIS retombe sur le défaut déclaré par la
+    société, jamais sur une orientation inventée.
 
     Rend ``[]`` quand le devis n'a aucun pan exploitable — l'appelant refuse
     alors la simulation plutôt que de lancer une étude vide. Ne lève jamais :
     un pan illisible est ignoré, pas fatal.
     """
+    from .services import _azimut_boussole_vers_aspect
+
     layout = getattr(devis, 'roof_layout', None)
     if not isinstance(layout, dict):
         return []
@@ -394,7 +413,8 @@ def zones_etude_du_devis(devis):
             'lat': _f(lat),
             'lon': _f(lon),
             'tilt': _f(pan.get('inclinaison_deg')),
-            'azimuth': _f(pan.get('azimut_deg')),
+            # BOUSSOLE (stocké) → PVGIS (attendu). Voir F3 dans la docstring.
+            'azimuth': _azimut_boussole_vers_aspect(pan.get('azimut_deg')),
             'kwc': kwc,
         })
     return zones

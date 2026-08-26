@@ -1023,6 +1023,21 @@ def _azimut_boussole_vers_aspect(azimut):
     return (a - 180.0 + 180.0) % 360.0 - 180.0
 
 
+def _aspect_vers_azimut_boussole(aspect):
+    """Azimut PVGIS (0 = Sud) → azimut BOUSSOLE (180 = Sud), dans [0, 360).
+
+    Réciproque de :func:`_azimut_boussole_vers_aspect`. Elle existe pour que
+    ``_pans_geometry['azimut_deg']`` n'ait qu'UN SEUL repère quelle que soit la
+    clé source du layout (F3) — voir :func:`extract_roof_config`. Valeur
+    illisible → ``None``.
+    """
+    try:
+        a = float(aspect)
+    except (TypeError, ValueError):
+        return None
+    return (a + 180.0) % 360.0
+
+
 def extract_roof_config(layout):
     """FG248 — extrait la config TOITURE d'un layout 3D (roofPro11) en un dict
     plat, JSON-sérialisable, indépendant de la version de l'outil.
@@ -1089,12 +1104,23 @@ def extract_roof_config(layout):
         # client. On convertit désormais à la lecture, à l'endroit exact où la
         # convention est connue. ``azimut_deg`` reste la valeur BRUTE (aucun
         # autre consommateur ne change de repère) : seul le LIBELLÉ est corrigé.
-        aspect = a.get('facingAzimuthDeg')
-        if aspect is not None:
-            aspect_pvgis = _azimut_boussole_vers_aspect(aspect)
+        #
+        # F3 — ET ``azimut_deg`` NE PUBLIE QU'UN SEUL REPÈRE. Il recopiait la
+        # valeur BRUTE de la clé source : COMPASS venant de ``facingAzimuthDeg``,
+        # PVGIS venant de ``aspect``. Deux toits plein Sud pouvaient donc sortir
+        # d'ici avec ``azimut_deg`` 180 pour l'un et 0 pour l'autre, tous deux
+        # étiquetés « Sud » — et ses consommateurs (annexe client, étude
+        # bancable) n'avaient aucun moyen de savoir lequel ils lisaient. Le
+        # repère PUBLIÉ est désormais la BOUSSOLE, toujours : la branche
+        # ``facingAzimuthDeg`` garde sa valeur brute (aucun consommateur ne
+        # change de repère), la branche ``aspect`` est convertie.
+        brut = a.get('facingAzimuthDeg')
+        if brut is not None:
+            azimut_boussole = brut
+            aspect_pvgis = _azimut_boussole_vers_aspect(brut)
         else:
-            aspect = a.get('aspect')
-            aspect_pvgis = aspect
+            aspect_pvgis = a.get('aspect')
+            azimut_boussole = _aspect_vers_azimut_boussole(aspect_pvgis)
         pitch = a.get('pitchDeg')
         if pitch is None:
             pitch = a.get('pitch')
@@ -1104,7 +1130,10 @@ def extract_roof_config(layout):
             'nb_panneaux': count,
             'kwc': round(kwc, 3) if kwc else 0.0,
             'surface_m2': round(surface, 2) if surface else 0.0,
-            'azimut_deg': aspect,
+            # BOUSSOLE (180 = Sud), toujours — voir F3 ci-dessus. Tout lecteur
+            # qui a besoin de l'aspect PVGIS convertit lui-même, avec
+            # ``_azimut_boussole_vers_aspect``.
+            'azimut_deg': azimut_boussole,
             'inclinaison_deg': pitch,
             'orientation': _aspect_to_orientation(aspect_pvgis),
         }
