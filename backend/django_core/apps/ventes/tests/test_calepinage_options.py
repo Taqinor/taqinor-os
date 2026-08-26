@@ -109,6 +109,45 @@ def toit(rangees=3, colonnes=6, demi_largeur=12.0, demi_hauteur=8.0,
     }
 
 
+def obstacle(x, y, nord_sud, est_ouest, type_=None):
+    """Un obstacle au format builder, positionné en ENU.
+
+    ``lengthM`` = étendue NORD-SUD, ``widthM`` = étendue EST-OUEST — la
+    convention de ``apps/web/src/lib/obstacles.ts`` (``obstacleRing`` :
+    ``dLat = lengthM/2``, ``dLng = widthM/2 / cosLat``). Les paramètres sont
+    NOMMÉS dans cet ordre pour qu'aucun test ne puisse les intervertir par
+    inadvertance.
+    """
+    centre = _lnglat(x, y)
+    brut = {'id': f'o-{x}-{y}', 'centerLng': centre[0], 'centerLat': centre[1],
+            'lengthM': nord_sud, 'widthM': est_ouest}
+    if type_:
+        brut['type'] = type_
+    return brut
+
+
+def toit_mixte():
+    """PV62 — un pavage MIXTE : pas PORTRAIT en bas, pas PAYSAGE en haut.
+
+    C'est ce que le calepineur produit sur ``ctx.sel.orient === 'mixed'`` (une
+    pose choisie rangée par rangée). ``_safe_zone_geometry`` ne publie PAS la
+    pose par panneau : depuis la donnée assainie, ce toit ressemble à un toit
+    uniforme — c'est tout le piège.
+    """
+    pas_portrait, pas_paysage = 1.323, 2.404
+    panneaux = []
+    for c in range(6):                                   # rangée portrait
+        panneaux.append({'cx': round(-(-6.0 + c * pas_portrait), 3),
+                         'cy': -2.0})
+    for c in range(4):                                   # rangée paysage
+        panneaux.append({'cx': round(-(-6.0 + c * pas_paysage), 3),
+                         'cy': -0.8})
+    layout = toit(rangees=1, colonnes=1)
+    layout['zones'][0]['geometry']['panels'] = panneaux
+    layout['zones'][0]['geometry']['count'] = len(panneaux)
+    return layout
+
+
 class _DevisFactice:
     """Le strict minimum que le module lit sur un devis : son layout BRUT."""
 
@@ -239,14 +278,41 @@ class RetraitTests(SimpleTestCase):
 class ExtensionTests(SimpleTestCase):
 
     def _tous_dans_le_polygone(self, layout, dessin):
+        """L'EMPREINTE ENTIÈRE tient — pas seulement le centre.
+
+        Sonder le centre ne prouve RIEN de ce que l'en-tête de ce fichier
+        promet : un panneau dont le centre est à 10 cm du bord a la moitié de
+        sa surface dans le vide. On sonde donc les QUATRE COINS de l'empreinte
+        conservatrice ET le retrait de rive, exactement comme le calepineur
+        (`estimatorBrainV2` : chaque coin dans le toit ET à ≥ `setbackM` du
+        bord). Les panneaux CONSERVÉS sont exclus du contrôle de retrait : le
+        commercial a pu les poser avec un réglage de rive plus permissif, et
+        les republier tels quels est justement la promesse WJ24.
+        """
         zone = layout['zones'][0]
-        anneau = co.anneau_enu(zone['vertices'],
-                               zone['geometry']['origin'])
+        anneau = co.anneau_enu(zone['vertices'], zone['geometry']['origin'])
         self.assertTrue(anneau)
+        trame = co.lire_trames(layout)[0]
+        reels = {(p['cx'], p['cy'])
+                 for p in zone['geometry']['panels']}
+        du = (trame.pas_colonne or 0) / 2.0
+        dv = (trame.pas_rangee or 0) / 2.0
+        self.assertGreater(du, 0)
+        self.assertGreater(dv, 0)
         for panneau in panneaux_de(dessin):
-            self.assertTrue(
-                co._dans_polygone((panneau['cx'], panneau['cy']), anneau),
-                f'panneau HORS du polygone réel : {panneau}')
+            uu, vv = co._vers_uv(panneau['cx'], panneau['cy'],
+                                 trame.u, trame.s)
+            for su, sv in ((-1, -1), (1, -1), (1, 1), (-1, 1)):
+                coin = co._vers_enu(uu + su * du, vv + sv * dv,
+                                    trame.u, trame.s)
+                self.assertTrue(
+                    co._dans_polygone(coin, anneau),
+                    f'coin HORS du polygone réel : {panneau} → {coin}')
+                if (panneau['cx'], panneau['cy']) in reels:
+                    continue
+                self.assertGreaterEqual(
+                    co._distance_bord(coin, anneau), co._RETRAIT_RIVE_M,
+                    f'coin AJOUTÉ sous le retrait de rive : {panneau}')
 
     def test_chaque_panneau_ajoute_tombe_dans_le_polygone_reel(self):
         layout = toit(rangees=3, colonnes=6)          # 18 posés
@@ -296,17 +362,110 @@ class ExtensionTests(SimpleTestCase):
     def test_un_obstacle_repousse_les_ajouts(self):
         # La boîte couvre x ∈ [-14, -8] : les prolongements de rangée qui
         # tombaient à x = -8,4 et -10,8 doivent DISPARAÎTRE.
-        centre = _lnglat(-11.0, 0.0)
-        obstacle = [{'id': 'o1', 'centerLng': centre[0], 'centerLat': centre[1],
-                     'lengthM': 6.0, 'widthM': 10.0}]
+        obs = [obstacle(-11.0, 0.0, nord_sud=10.0, est_ouest=6.0)]
         sans_obstacle = co.lire_trames(toit())[0].candidats(50)
-        avec_obstacle = co.lire_trames(toit(obstacles=obstacle))[0].candidats(50)
+        avec_obstacle = co.lire_trames(toit(obstacles=obs))[0].candidats(50)
         self.assertLess(min(p['cx'] for p in sans_obstacle), -8.0)
         self.assertGreater(min(p['cx'] for p in avec_obstacle), -8.0)
         for panneau in avec_obstacle:
             self.assertFalse(-14.0 < panneau['cx'] < -8.0
                              and -5.0 < panneau['cy'] < 5.0,
                              f'panneau posé SUR l’obstacle : {panneau}')
+
+    def test_les_axes_d_un_obstacle_NON_CARRE_ne_sont_pas_intervertis(self):
+        """F1 — ``lengthM`` est NORD-SUD, ``widthM`` EST-OUEST.
+
+        Une boîte CARRÉE est aveugle à cette erreur : c'est pour ça qu'elle a
+        survécu au premier jeu de tests. Une cheminée étroite et longue
+        (1 m E-O × 6 m N-S) donne, elle, deux réponses opposées selon la
+        convention — et si on les intervertit, la zone d'exclusion pivote de
+        90° : elle protège une bande de toit VIDE et laisse poser un panneau
+        SUR la souche.
+
+        Ancré sur la SOURCE (``obstacles.ts obstacleRing``), pas sur notre
+        propre sortie : la boîte doit s'étendre de ±3 m en Y (nord-sud) et de
+        seulement ±0,5 m en X (est-ouest), dégagement en sus.
+        """
+        boites = co.obstacles_enu(
+            [obstacle(0.0, 0.0, nord_sud=6.0, est_ouest=1.0, type_='autre')],
+            [_OLNG, _OLAT])
+        (xmin, ymin, xmax, ymax), = boites
+        degagement = 0.3
+        self.assertAlmostEqual(xmax - xmin, 1.0 + 2 * degagement, places=2)
+        self.assertAlmostEqual(ymax - ymin, 6.0 + 2 * degagement, places=2)
+        # …et la conséquence concrète : le panneau qui tombe au nord de la
+        # souche est refusé, celui qui tombe à l'est ne l'est pas.
+        trame = co.lire_trames(
+            toit(obstacles=[obstacle(-8.4, -2.0, nord_sud=6.0,
+                                     est_ouest=1.0)]))[0]
+        for panneau in trame.candidats(50):
+            self.assertFalse(-1.0 < panneau['cx'] + 8.4 < 1.0
+                             and -3.5 < panneau['cy'] + 2.0 < 3.5,
+                             f'panneau posé SUR la souche : {panneau}')
+
+    def test_le_degagement_PV61_depend_du_TYPE_d_obstacle(self):
+        """F2 — le calepineur exige ``distToBoundary > clearance``, par type.
+
+        ``CLEARANCE_BY_TYPE`` (roofPro11/types.ts) : 0,50 m pour une cheminée,
+        un chien-assis ou un édicule ; 0,30 m sinon. Ne tester que le
+        chevauchement nu de la boîte laissait un panneau se poser à 1 cm d'une
+        souche de cheminée — un emplacement que l'outil 3D refuse.
+        """
+        for type_, attendu in (('cheminee', 0.5), ('chien_assis', 0.5),
+                               ('edicule', 0.5), ('ventilation', 0.3),
+                               ('antenne', 0.3), ('autre', 0.3), (None, 0.3)):
+            (xmin, _ymin, xmax, _ymax), = co.obstacles_enu(
+                [obstacle(0.0, 0.0, nord_sud=2.0, est_ouest=2.0,
+                          type_=type_)], [_OLNG, _OLAT])
+            self.assertAlmostEqual(xmax - xmin, 2.0 + 2 * attendu, places=2,
+                                   msg=f'dégagement faux pour {type_}')
+
+    def test_une_cheminee_ecarte_PLUS_qu_une_antenne(self):
+        # La preuve par le comportement, pas seulement par la constante : au
+        # MÊME endroit, la cheminée (0,5 m) doit refuser au moins autant
+        # d'emplacements que l'antenne (0,3 m).
+        # L'obstacle est placé pour que la BANDE de dégagement tranche : son
+        # bord est à 0,40 m de l'empreinte du prochain emplacement — hors de
+        # portée d'une antenne (0,30 m), dans celle d'une cheminée (0,50 m).
+        def ajouts(type_):
+            obs = [obstacle(-11.0, 0.0, nord_sud=6.0, est_ouest=2.0,
+                            type_=type_)]
+            return {(p['cx'], p['cy'])
+                    for p in co.lire_trames(toit(obstacles=obs))[0].candidats(60)}
+        antenne = ajouts('antenne')
+        cheminee = ajouts('cheminee')
+        self.assertTrue(cheminee.issubset(antenne))
+        self.assertLess(len(cheminee), len(antenne))
+        # …et c'est bien l'emplacement de la bande qui fait la différence.
+        self.assertIn((-8.4, -2.0), antenne)
+        self.assertNotIn((-8.4, -2.0), cheminee)
+
+    def test_un_pavage_MIXTE_refuse_de_se_prolonger(self):
+        """F3/PV62 — deux pas dans la même zone ⇒ aucune extension.
+
+        Le pas retenu serait le plus PETIT (portrait) et l'empreinte de
+        validation deviendrait plus petite que le panneau réellement dessiné
+        sur les rangées paysage : la preuve de contenance ne couvrirait plus
+        le rendu. On plafonne — le pire honnête.
+        """
+        mixte = toit_mixte()
+        trame = co.lire_trames(mixte)[0]
+        self.assertFalse(trame.trame_reguliere())
+        self.assertFalse(trame.extensible())
+        self.assertEqual(trame.candidats(10), [])
+        bloc = co.deriver(_DevisFactice(mixte), offres(max=20), mixte)
+        dessin = bloc['offres']['max']['sans']
+        self.assertIs(dessin['plafonne'], True)
+        self.assertEqual(dessin['nb_panneaux_dessines'], 10)
+
+    def test_une_trame_reguliere_A_TROU_reste_prolongeable(self):
+        # La garde PV62 ne doit pas jeter le bébé : un TROU laisse un écart
+        # DOUBLE, qui est bien un multiple entier du pas. Ce toit-là reste
+        # extensible — sans quoi la garde casserait le cas le plus courant.
+        troue = toit(trou=(1, 2))
+        trame = co.lire_trames(troue)[0]
+        self.assertTrue(trame.trame_reguliere())
+        self.assertTrue(trame.extensible())
 
     def test_une_pose_a_la_main_n_est_jamais_prolongee(self):
         # PV30 — ``mode: 'free'`` : les centres ne sont pas sur une trame. Les
@@ -419,62 +578,225 @@ class FormeServieTests(SimpleTestCase):
 
         En production le dessin est bâti sur la sortie DÉJÀ assainie de
         ``_safe_roof_layout`` : ces champs ne peuvent pas s'y trouver. Ce test
-        les injecte QUAND MÊME, aux trois profondeurs où des échantillons
-        réels en portent (racine, zone, panneau), parce que le jour où
-        quelqu'un passera le blob BRUT « c'est plus simple », c'est ce test
+        les injecte QUAND MÊME, aux QUATRE profondeurs où des échantillons
+        réels en portent (racine, zone, obstacle, panneau), parce que le jour
+        où quelqu'un passera le blob BRUT « c'est plus simple », c'est ce test
         qui doit rougir — pas un client qui doit lire un prix d'achat.
+
+        L'obstacle est la profondeur la plus discrète : sa liste est recopiée
+        EN BLOC (c'est déjà le comportement de ``_safe_roof_layout``), donc
+        c'est la seule où une clé parasite pourrait encore voyager. Le test la
+        surveille pour que ce fait reste une décision, pas un oubli.
         """
-        layout = toit()
+        layout = toit(obstacles=[obstacle(-11.0, 0.0, nord_sud=2.0,
+                                          est_ouest=2.0)])
         layout['prix_achat_total'] = 123456
-        layout['zones'][0]['marge'] = 0.3
+        layout['zones'][0]['marge'] = 0.31
+        layout['zones'][0]['obstacles'][0]['prix_achat'] = 4242
         layout['zones'][0]['geometry']['panels'][0]['prix_achat'] = 9999
         bloc = co.deriver(_DevisFactice(layout), offres(eco=12), layout)
         blob = json.dumps(bloc)
         for fuite in ('prix_achat', 'marge', 'prix_vente', '123456', '9999',
-                      '0.3'):
+                      '4242', '0.31'):
             self.assertNotIn(fuite, blob)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 4 bis. UNE ZONE ILLISIBLE — la carte et le dessin ne divergent JAMAIS
+# ═══════════════════════════════════════════════════════════════════════════
+
+class ZoneIllisibleTests(SimpleTestCase):
+    """F4 — le calepinage PUBLIÉ est l'ancre, pas ce qu'on sait relire.
+
+    ``_safe_roof_layout`` publie une zone dès qu'elle est un dict ; la
+    dérivation, elle, en écarte certaines (contour de moins de trois sommets
+    valides). Compter le toit sur les SECONDES ouvrait deux mensonges
+    symétriques — c'est ce que ces deux tests arment.
+    """
+
+    def _toit_a_deux_zones(self):
+        """Zone 1 lisible (18 panneaux) + zone 2 publiée mais illisible (2)."""
+        layout = toit()
+        illisible = json.loads(json.dumps(layout['zones'][0]))
+        illisible['id'] = 'z2'
+        illisible['label'] = 'Pan Est'
+        illisible['vertices'] = [_lnglat(20, 20), _lnglat(22, 20)]  # < 3
+        illisible['geometry']['panels'] = [{'cx': 20.0, 'cy': 20.0},
+                                           {'cx': 22.0, 'cy': 20.0}]
+        illisible['geometry']['count'] = 2
+        layout['zones'].append(illisible)
+        return layout
+
+    def test_le_toit_est_compte_sur_les_zones_PUBLIEES(self):
+        layout = self._toit_a_deux_zones()
+        self.assertEqual(co.nb_panneaux_publies(layout), 20)   # 18 + 2
+        self.assertEqual(len(co.lire_trames(layout)), 1)       # une seule
+        bloc = co.deriver(_DevisFactice(layout), offres(recommande=20),
+                          layout)
+        self.assertEqual(bloc['nb_panneaux_calepines'], 20)
+
+    def test_a_la_taille_du_VRAI_pose_le_dessin_reste_le_calepinage(self):
+        # (a) — avant, 20 ≠ nb_reel(18) partait en DÉRIVÉ et le dessin perdait
+        # silencieusement les 2 panneaux de la zone illisible : « Recommandé »
+        # divergeait du roof_layout racine, exactement ce que origine:"devis"
+        # existe pour empêcher.
+        layout = self._toit_a_deux_zones()
+        bloc = co.deriver(_DevisFactice(layout), offres(recommande=20),
+                          layout)
+        dessin = bloc['offres']['recommande']['sans']
+        self.assertEqual(dessin['origine'], 'devis')
+        self.assertNotIn('layout', dessin)
+        self.assertEqual(dessin['nb_panneaux_dessines'], 20)
+
+    def test_le_sous_compte_ne_se_fait_plus_passer_pour_le_devis(self):
+        # (b) — avant, une taille à 18 (le sous-compte) recevait
+        # origine:"devis" alors que le calepinage racine en dessine 20.
+        layout = self._toit_a_deux_zones()
+        bloc = co.deriver(_DevisFactice(layout), offres(eco=18,
+                                                        recommande=20),
+                          layout)
+        self.assertNotIn('eco', bloc['offres'])       # absence honnête
+        self.assertEqual(bloc['offres']['recommande']['sans']['origine'],
+                         'devis')
+
+    def test_un_toit_entierement_lisible_derive_normalement(self):
+        # La garde ne doit pas éteindre le cas nominal.
+        layout = toit()
+        bloc = co.deriver(_DevisFactice(layout), offres(eco=12,
+                                                        recommande=18),
+                          layout)
+        self.assertEqual(bloc['offres']['eco']['sans']['origine'], 'derive')
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 4 ter. L'ALIGNEMENT DES RANGS — la protection « pose à la main » tient
+# ═══════════════════════════════════════════════════════════════════════════
+
+class RangsDeZoneTests(SimpleTestCase):
+
+    def test_une_entree_parasite_ne_decale_plus_le_drapeau_free(self):
+        """F6 — le rang BRUT n'est pas le rang PUBLIÉ.
+
+        ``_safe_roof_layout`` saute les entrées qui ne sont pas des dicts. Une
+        entrée parasite AVANT la zone libre décalait tous les rangs d'un cran :
+        la zone libre héritait du drapeau de sa voisine et se faisait
+        prolonger sur une lattice qu'elle n'a jamais eue.
+        """
+        libre = toit(mode='free')
+        brut = json.loads(json.dumps(libre))
+        brut['zones'].insert(0, 'entrée parasite')      # sautée par la whitelist
+        identifiants, rangs = co._modes_libres(_DevisFactice(brut))
+        self.assertEqual(identifiants, {'z1'})
+        self.assertEqual(rangs, {0})                    # rang PUBLIÉ, pas brut
+        trame = co.lire_trames(libre, (identifiants, rangs))[0]
+        self.assertTrue(trame.libre)
+        bloc = co.deriver(_DevisFactice(brut), offres(max=24), libre)
+        dessin = bloc['offres']['max']['sans']
+        self.assertIs(dessin['plafonne'], True)
+        self.assertEqual(dessin['nb_panneaux_dessines'], 18)
+
+    def test_le_repli_par_rang_couvre_les_zones_sans_id(self):
+        libre = toit(mode='free')
+        libre['zones'][0].pop('id')
+        brut = json.loads(json.dumps(libre))
+        identifiants, rangs = co._modes_libres(_DevisFactice(brut))
+        self.assertEqual(identifiants, set())
+        self.assertEqual(rangs, {0})
+        self.assertTrue(co.lire_trames(libre, (identifiants, rangs))[0].libre)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 5. LE POINTEUR DE SCHÉMA — nommer, jamais fabriquer
 # ═══════════════════════════════════════════════════════════════════════════
 
-class PointeurSldTests(SimpleTestCase):
+def design(batterie_presente):
+    """L'artefact ``Devis.electrical_design``, reduit a ce qui tranche.
 
-    def _bloc(self, offres_tailles, sld_servi):
+    ``materiel.batterie.presente`` est pose par ``electrical_service`` au
+    moment du calcul (``bool(entree.batterie)``) : c'est LE fait qui dit si le
+    schema stocke dessine une batterie.
+    """
+    return {'materiel': {'batterie': {'presente': batterie_presente,
+                                      'designation': 'Deye BOS-B 16'}}}
+
+
+class PointeurSldTests(SimpleTestCase):
+    """F7 — le pointeur lit l'ARTEFACT, jamais un signal commercial.
+
+    Deduire « avec batterie » du fait que la carte Recommande sert une
+    variante « avec » revenait a legender un dessin TECHNIQUE avec une
+    information COMMERCIALE. Les deux divergent pour de vrai, dans les deux
+    sens, et la page affirmait alors au client un fait que le schema sous ses
+    yeux contredisait.
+    """
+
+    def _bloc(self, offres_tailles, sld_servi, design_stocke=None):
         layout = toit()
-        return co.deriver(_DevisFactice(layout), offres_tailles, layout,
-                          sld_servi=sld_servi)
+        with mock.patch.object(co, '_design_stocke',
+                               return_value=design_stocke):
+            return co.deriver(_DevisFactice(layout), offres_tailles, layout,
+                              sld_servi=sld_servi)
 
     def test_sans_schema_servi_aucun_pointeur(self):
-        bloc = self._bloc(offres(eco=12, recommande=18), sld_servi=False)
+        bloc = self._bloc(offres(eco=12, recommande=18), sld_servi=False,
+                          design_stocke=design(False))
         self.assertNotIn('sld', bloc)
 
     def test_le_pointeur_nomme_la_carte_du_devis(self):
-        bloc = self._bloc(offres(eco=12, recommande=18), sld_servi=True)
+        bloc = self._bloc(offres(eco=12, recommande=18), sld_servi=True,
+                          design_stocke=design(False))
         self.assertEqual(bloc['sld'], {'cle': 'recommande',
                                        'variante': 'sans'})
 
-    def test_le_pointeur_prefere_la_variante_avec_quand_elle_existe(self):
-        # `electrical_service._lignes_option_choisie` retient « avec » dès que
-        # les lignes la servent : le pointeur dit la MÊME chose.
+    def test_la_variante_vient_de_l_artefact_pas_de_la_carte(self):
+        deux = {'offres': [{
+            'cle': 'recommande', 'est_le_devis': True,
+            'sans': {'nb_panneaux': 18}, 'avec': {'nb_panneaux': 18}}]}
+        avec = self._bloc(deux, sld_servi=True, design_stocke=design(True))
+        self.assertEqual(avec['sld']['variante'], 'avec')
+        sans = self._bloc(deux, sld_servi=True, design_stocke=design(False))
+        self.assertEqual(sans['sld']['variante'], 'sans')
+
+    def test_carte_AVEC_mais_schema_SANS_batterie_ne_ment_plus(self):
+        # Chemin vivant : les lignes servent l'option batterie (la carte
+        # « avec » existe) mais la conception a ete jouee sur le panier SANS.
+        # L'ancien code legendait « avec batterie » un schema raccorde reseau.
         bloc = self._bloc({'offres': [{
             'cle': 'recommande', 'est_le_devis': True,
-            'sans': {'nb_panneaux': 18},
-            'avec': {'nb_panneaux': 18}}]}, sld_servi=True)
-        self.assertEqual(bloc['sld']['variante'], 'avec')
+            'sans': {'nb_panneaux': 18}, 'avec': {'nb_panneaux': 18}}]},
+            sld_servi=True, design_stocke=design(False))
+        self.assertEqual(bloc['sld']['variante'], 'sans')
+
+    def test_schema_AVEC_batterie_sur_un_devis_devenu_SANS_est_omis(self):
+        # Chemin vivant inverse : l'artefact est anterieur a une
+        # resynchronisation qui a retire la batterie. La carte ne sert plus
+        # que « sans » ; le schema, lui, dessine encore une batterie. Aucun
+        # pointeur — plutot rien qu'une legende fausse.
+        bloc = self._bloc({'offres': [{
+            'cle': 'recommande', 'est_le_devis': True,
+            'sans': {'nb_panneaux': 18}}]},
+            sld_servi=True, design_stocke=design(True))
+        self.assertNotIn('sld', bloc)
+
+    def test_un_artefact_muet_ne_donne_aucun_pointeur(self):
+        for muet in (None, {}, {'materiel': {}},
+                     {'materiel': {'batterie': {}}}):
+            bloc = self._bloc(offres(eco=12, recommande=18), sld_servi=True,
+                              design_stocke=muet)
+            self.assertNotIn('sld', bloc)
 
     def test_une_taille_AJUSTEE_ne_porte_plus_le_schema(self):
-        # Le vendeur a modifié la taille « Recommandé » : elle n'est plus le
-        # devis, donc le schéma stocké ne la décrit plus. Absence honnête.
+        # Le vendeur a modifie la taille « Recommande » : elle n'est plus le
+        # devis, donc le schema stocke ne la decrit plus. Absence honnete.
         bloc = self._bloc({'offres': [{
             'cle': 'recommande', 'est_le_devis': False,
-            'sans': {'nb_panneaux': 18}}]}, sld_servi=True)
+            'sans': {'nb_panneaux': 18}}]}, sld_servi=True,
+            design_stocke=design(False))
         self.assertNotIn('sld', bloc)
 
     def test_aucune_autre_taille_ne_recoit_de_schema(self):
         bloc = self._bloc(offres(eco=12, recommande=18, max=30),
-                          sld_servi=True)
+                          sld_servi=True, design_stocke=design(False))
         self.assertEqual(bloc['sld']['cle'], 'recommande')
         for cle in ('eco', 'max'):
             for dessin in bloc['offres'][cle].values():
@@ -528,13 +850,39 @@ class ParametresSiteTests(SimpleTestCase):
         annexe = co.parametres_site_publics(_DevisFactice(layout), layout)
         self.assertNotIn('ombrage', annexe)
 
-    def test_l_ombrage_MESURE_dit_un_fait_jamais_un_pourcentage(self):
+    def test_l_ombrage_MESURE_est_lu_sous_LA_VRAIE_CLE(self):
+        """F8 — la clé est ``shading12x24``, comme le producteur l'écrit.
+
+        Le champ était du CODE MORT : il interrogeait ``shading``, un nom que
+        rien n'écrit (``roofPro11/prefill.ts`` sérialise ``shading12x24``, et
+        ``apps.ventes.etude`` lit déjà ce nom-là). Le test d'origine injectait
+        la clé fantôme, donc il se mentait à lui-même : les deux moitiés
+        étaient d'accord sur une clé qui n'existe nulle part en production.
+        """
+        layout = toit()
+        brut = dict(layout)
+        brut['shading12x24'] = [[0.9] * 24 for _ in range(12)]
+        annexe = co.parametres_site_publics(_DevisFactice(brut), layout)
+        self.assertEqual(annexe['ombrage'], {'mesure': True})
+        self.assertNotIn('0.9', json.dumps(annexe))
+
+    def test_l_ombrage_est_lu_AUSSI_par_zone(self):
+        # MÊMES deux emplacements que ``etude`` : « PV71 choisit encore où la
+        # matrice voyage côté web ».
+        layout = toit()
+        brut = json.loads(json.dumps(layout))
+        brut['zones'][0]['shading12x24'] = [[0.8] * 24 for _ in range(12)]
+        annexe = co.parametres_site_publics(_DevisFactice(brut), layout)
+        self.assertEqual(annexe['ombrage'], {'mesure': True})
+
+    def test_la_CLE_FANTOME_ne_declenche_rien(self):
+        # La garde anti-régression du code mort : si quelqu'un réintroduit
+        # ``shading``, ce test rougit au lieu de laisser le champ revenir mort.
         layout = toit()
         brut = dict(layout)
         brut['shading'] = [[0.9] * 24 for _ in range(12)]
         annexe = co.parametres_site_publics(_DevisFactice(brut), layout)
-        self.assertEqual(annexe['ombrage'], {'mesure': True})
-        self.assertNotIn('0.9', json.dumps(annexe))
+        self.assertNotIn('ombrage', annexe or {})
 
     def test_une_matrice_d_ombrage_mal_formee_est_refusee_en_bloc(self):
         layout = toit()
@@ -543,7 +891,7 @@ class ParametresSiteTests(SimpleTestCase):
                         [[2.0] * 24 for _ in range(12)],
                         'pas une matrice'):
             brut = dict(layout)
-            brut['shading'] = matrice
+            brut['shading12x24'] = matrice
             annexe = co.parametres_site_publics(_DevisFactice(brut), layout)
             self.assertNotIn('ombrage', annexe or {})
 
@@ -730,3 +1078,76 @@ class ChargeUtileTests(TestCase):
             mien_payload['calepinage_options']['nb_panneaux_calepines'], 18)
         self.assertEqual(
             sien_payload['calepinage_options']['nb_panneaux_calepines'], 8)
+
+
+class ParametresSiteChargeUtileTests(TestCase):
+    """L'annexe branchée POUR DE VRAI — pas seulement sa fonction pure.
+
+    Les tests purs prouvent la logique d'omission ; ils ne prouvent PAS que la
+    vue passe les bons arguments. Un ``hypotheses`` non câblé, ou des
+    ``chaines`` servies malgré la case « Schéma unifilaire » décochée,
+    seraient invisibles sans ces quatre-là.
+    """
+
+    def setUp(self):
+        self.company = _company('calep-annexe')
+        self.user = User.objects.create_user(
+            username='calep_annexe', password='x', role_legacy='responsable',
+            company=self.company)
+        self.client_obj = Client.objects.create(
+            company=self.company, nom='Annexe', prenom='Client',
+            email='annexe@ex.com', telephone='+212600000011')
+
+    def _payload(self, devis, **kwargs):
+        token = str(uuid.uuid4())
+        ShareLink.objects.create(
+            company=self.company, devis=devis, token=token,
+            niveau=kwargs.pop('niveau', ShareLink.NIVEAU_CONFIANCE), **kwargs)
+        reponse = DjangoClient().get(
+            f'/api/django/public/proposal/{token}/data/')
+        self.assertEqual(reponse.status_code, 200)
+        return reponse.json()
+
+    def test_les_angles_du_calepinage_arrivent_jusqu_a_la_page(self):
+        devis = _devis(self.company, self.user, self.client_obj,
+                       'DEV-CAL-11', layout=toit())
+        annexe = self._payload(devis).get('parametres_site')
+        self.assertIsNotNone(annexe)
+        self.assertEqual(annexe['inclinaison_deg'], 15.0)
+        self.assertEqual(annexe['orientation'], 'Sud')
+        # ANTICOPIE — des angles et des noms, jamais un repère exploitable.
+        blob = json.dumps(annexe)
+        for fuite in ('origin', 'vertices', 'centerLng', str(_OLNG)):
+            self.assertNotIn(fuite, blob)
+
+    def test_l_irradiation_est_CABLEE_sur_le_bloc_hypotheses(self):
+        # Le CÂBLAGE, pas la fonction : la vue doit passer
+        # ``payload['hypotheses']`` (déjà soumis à la règle Z2), et l'annexe
+        # doit dire la MÊME ville — ou se taire.
+        devis = _devis(self.company, self.user, self.client_obj,
+                       'DEV-CAL-12', layout=toit())
+        payload = self._payload(devis)
+        ville = (payload.get('hypotheses') or {}).get('productible_ville')
+        annexe = payload.get('parametres_site') or {}
+        if ville:
+            self.assertEqual(annexe['irradiation'],
+                             {'source': 'PVGIS', 'ville': ville})
+        else:
+            # Pas de ville PVGIS sur ce devis ⇒ champ OMIS, jamais inventé.
+            self.assertNotIn('irradiation', annexe)
+
+    def test_la_case_schema_unifilaire_emporte_les_chaines(self):
+        devis = _devis(self.company, self.user, self.client_obj,
+                       'DEV-CAL-13', layout=toit())
+        payload = self._payload(devis, sections={'sld': False})
+        self.assertIsNone(payload.get('conception_electrique'))
+        self.assertNotIn('chaines', payload.get('parametres_site') or {})
+
+    def test_la_case_calepinage_3d_emporte_les_angles(self):
+        devis = _devis(self.company, self.user, self.client_obj,
+                       'DEV-CAL-14', layout=toit())
+        annexe = self._payload(devis, sections={'roof3d': False}).get(
+            'parametres_site') or {}
+        for cle in ('orientation_deg', 'inclinaison_deg', 'orientation',
+                    'type_toit'):
+            self.assertNotIn(cle, annexe)
