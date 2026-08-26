@@ -338,7 +338,11 @@ def simuler_batterie_jour(conso_24h, prod_24h, capacite_kwh_utile,
     # à 8 pour ne jamais boucler sur un profil dégénéré).
     soc_depart = 0.0
     charge_total = restitue_total = pic_soc = 0.0
-    restitue_h = charge_h = [0.0] * 24
+    # Deux listes DISTINCTES : `a = b = [...]` les ferait pointer sur la MÊME,
+    # et le jour où une seule des deux serait modifiée en place, l'autre
+    # bougerait avec elle sans que rien ne le signale.
+    restitue_h = [0.0] * 24
+    charge_h = [0.0] * 24
     for _ in range(8):
         (charge_total, restitue_total, pic_soc, soc_fin,
          restitue_h, charge_h) = _cycle(soc_depart)
@@ -370,10 +374,19 @@ def _mettre_a_l_echelle(serie, total_brut, total_borne):
     des barres dessinées dépasserait le nombre affiché sous le graphique, et
     la page se contredirait elle-même. Ne fabrique aucune énergie — c'est la
     MÊME énergie, simplement ramenée au total que le moteur publie.
+
+    LE CAS ZÉRO EST LE PLUS DANGEREUX, et il était FAUX (revue du 26/08/2026,
+    prouvé : ``([2, 3], 5, 0)`` rendait ``[2, 3]``). Un total publié NUL veut
+    dire « cette batterie ne restitue rien » : la ventilation doit donc être
+    NULLE elle aussi. La rendre inchangée dessinait des barres d'énergie
+    pendant que le compteur annuel affichait zéro — exactement l'énergie
+    inventée que cette fonction existe pour empêcher.
     """
     brut = _num(total_brut)
     borne = _num(total_borne)
-    if brut <= 0 or borne <= 0 or abs(brut - borne) <= 1e-12:
+    if borne <= 0:
+        return [0.0] * len(serie)
+    if brut <= 0 or abs(brut - borne) <= 1e-12:
         return list(serie)
     facteur = borne / brut
     return [v * facteur for v in serie]
@@ -912,7 +925,11 @@ def simuler_batterie_pas_fins(pas, capacite_kwh_utile, *,
 
     soc_depart = 0.0
     charge_total = restitue_total = pic_soc = 0.0
-    restitue_h = charge_h = [0.0] * 24
+    # Deux listes DISTINCTES : `a = b = [...]` les ferait pointer sur la MÊME,
+    # et le jour où une seule des deux serait modifiée en place, l'autre
+    # bougerait avec elle sans que rien ne le signale.
+    restitue_h = [0.0] * 24
+    charge_h = [0.0] * 24
     for _ in range(8):
         (charge_total, restitue_total, pic_soc, soc_fin,
          restitue_h, charge_h) = _cycle(soc_depart)
@@ -1201,6 +1218,25 @@ def jours_types_publics(*, kwc, conso_kwh_mensuelles, ville=None, lat=None,
 COUVERTURE_PACKS_PLAFOND = 12
 
 
+def _pas_fins_ventilables(pas_fins):
+    """COUVBAT — CHAQUE pas fin porte-t-il l'heure à laquelle il appartient ?
+
+    Toute la ventilation horaire (bande « direct » comme bande « batterie »)
+    range les pas de cinq minutes dans l'heure que dit leur clé ``heure``. Un
+    pas sans cette clé serait compté dans les TOTAUX mais dans AUCUNE barre :
+    la bande batterie sortirait silencieusement trop courte, et comme la page
+    déduit le réseau par différence, l'écart serait attribué au RÉSEAU — on
+    dirait au client qu'il importe une énergie qu'il n'importe pas.
+
+    ``pas_fins_du_jour`` pose toujours cette clé ; ce garde-fou vise le jour où
+    une autre chronologie arriverait par un autre chemin. Discipline Z2 : on
+    OMET le bloc entier plutôt que de dessiner une répartition fausse.
+    """
+    return all(
+        isinstance(etape.get('heure'), int) and 0 <= etape['heure'] < 24
+        for etape in (pas_fins or ()))
+
+
 def _direct_horaire_du_jour(jour_type):
     """COUVBAT — les 24 kWh d'autoconsommation DIRECTE d'un jour type.
 
@@ -1270,6 +1306,7 @@ def _bornes_pour_packs(puissances_par_pack, nb_packs):
 
 def couverture_batterie_publique(*, kwc, conso_kwh_mensuelles,
                                  capacite_utile_pack_kwh, nb_packs_max,
+                                 nb_packs_plancher=0,
                                  ville=None, lat=None, lon=None,
                                  occupation=None, equipements=None,
                                  puissances_par_pack=None):
@@ -1313,7 +1350,17 @@ def couverture_batterie_publique(*, kwc, conso_kwh_mensuelles,
             n_max = int(nb_packs_max)
         except (TypeError, ValueError):
             return None
-        n_max = max(0, min(n_max, COUVERTURE_PACKS_PLAFOND))
+        try:
+            plancher = max(0, int(nb_packs_plancher))
+        except (TypeError, ValueError):
+            plancher = 0
+        # LE PLAFOND DE COÛT NE DOIT JAMAIS RENDRE LE DEVIS INATTEIGNABLE
+        # (revue du 26/08/2026). Un devis qui porterait plus de packs que le
+        # plafond verrait SA PROPRE configuration tomber hors du curseur : la
+        # page servirait alors des crans sans couverture, qui repartiraient en
+        # silence vers le simulateur approché. Le nombre de packs RÉELLEMENT
+        # au devis est donc un PLANCHER, jamais raboté.
+        n_max = max(0, min(n_max, COUVERTURE_PACKS_PLAFOND), plancher)
 
         jours_types, _avertissements, _sources = jours_types_annee(
             kwc=kwc, conso_kwh_mensuelles=conso_kwh_mensuelles,
@@ -1330,6 +1377,11 @@ def couverture_batterie_publique(*, kwc, conso_kwh_mensuelles,
         deficit_max_mois = None
         conso_annuelle = 0.0
         for jour in jours_types:
+            # Une chronologie fine non ventilable rendrait TOUTES les bandes
+            # de ce bloc fausses (voir _pas_fins_ventilables) : on omet le
+            # bloc entier, la page retombe sur son affichage d'avant.
+            if not _pas_fins_ventilables(jour.get('pas_fins')):
+                return None
             direct_h = _direct_horaire_du_jour(jour)
             direct_jour = sum(direct_h)
             surplus_jour = max(0.0, _num(jour['prod_jour_kwh']) - direct_jour)
@@ -1357,7 +1409,8 @@ def couverture_batterie_publique(*, kwc, conso_kwh_mensuelles,
                             if BATTERY_ROUNDTRIP > 0 else deficit_max)
         nb_packs_autonomie = int(math.ceil(
             capacite_requise / capacite_pack)) if capacite_requise > 0 else 0
-        n_max = max(n_max, min(nb_packs_autonomie, COUVERTURE_PACKS_PLAFOND))
+        n_max = max(n_max, min(nb_packs_autonomie, COUVERTURE_PACKS_PLAFOND),
+                    plancher)
 
         def _palier(nb_packs):
             """Un cran du curseur : l'année ET les quatre jours types publics."""
@@ -1405,10 +1458,20 @@ def couverture_batterie_publique(*, kwc, conso_kwh_mensuelles,
                                    if heure < len(conso_24h) else 0.0)
                         reste = conso_h - direct_h[heure] - restitue_h[heure]
                         reseau_h.append(max(0.0, reste))
+                    # LE TAUX DE CE JOUR-LÀ, SERVI (revue du 26/08/2026). La
+                    # page affiche le graphe d'UN jour type et, juste à côté,
+                    # un taux de couverture : si l'un parle du jour et l'autre
+                    # de l'année, la ligne se contredit elle-même. Le taux
+                    # ANNUEL reste servi à part (``couverture_pct`` du cran) —
+                    # il n'habille que le repère d'autonomie, qui le nomme.
+                    conso_jour = _num(jour['conso_jour_kwh'])
                     jours_publics[str(jour['mois'])] = {
                         'direct_kwh': [round(v, 3) for v in direct_h],
                         'batterie_kwh': [round(v, 3) for v in restitue_h],
                         'reseau_kwh': [round(v, 3) for v in reseau_h],
+                        'couverture_pct': (
+                            round(100.0 * (direct_jour + restitue_effectif)
+                                  / conso_jour, 1) if conso_jour > 0 else 0.0),
                     }
             couvert = direct_annuel + batterie_annuel
             return {

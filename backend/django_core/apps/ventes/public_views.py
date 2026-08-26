@@ -2031,6 +2031,10 @@ def _couverture_batterie_publique(devis, data, est_residentiel, balayage):
             capacite_utile_pack_kwh=banque['capacite_utile_pack_kwh'],
             nb_packs_max=_paliers_curseur_batterie(balayage,
                                                    banque['nb_packs']),
+            # Les packs RÉELLEMENT au devis sont un plancher : le plafond de
+            # coût du moteur ne doit jamais rendre la configuration vendue
+            # inatteignable sur le curseur (revue du 26/08/2026).
+            nb_packs_plancher=banque['nb_packs'],
             ville=ville, lat=lat, lon=lon,
             occupation=occupation, equipements=equipements,
             puissances_par_pack=banque)
