@@ -61,10 +61,14 @@ BASELINE_ALLOWLIST = {
     # (+~26/+31 lignes de prÃ©servation Â« Les deux Â» dans sync_devis_from_layout
     # au-dessus d'elles) : 3213â†’3239, 3300â†’3331. VÃ©rifiÃ© par contenu (mÃªmes
     # formules kWc `round(total_panneaux * watt / 1000.0, 3)`, main vs arbre).
-    "backend/django_core/apps/ventes/services.py:1033",
-    "backend/django_core/apps/ventes/services.py:1036",
-    "backend/django_core/apps/ventes/services.py:3650",
-    "backend/django_core/apps/ventes/services.py:3783",
+    "backend/django_core/apps/ventes/services.py:1088",
+    "backend/django_core/apps/ventes/services.py:1091",
+    "backend/django_core/apps/ventes/services.py:3870",
+    "backend/django_core/apps/ventes/services.py:4003",
+    # BATHOMO (26/08/2026, revu en fold) — clé de COMPARAISON des candidates de
+    # banc batterie (le moins cher gagne) ; la valeur arrondie n'est jamais
+    # servie ni stockée, le prix de ligne réel passe par la chaîne de pricing.
+    "backend/django_core/apps/ventes/services.py:2672",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1906",  # QJ29 multi-villa Ã—N (rÃ©Ã©crit PVUNI, formule prÃ©existante revue)
     "backend/django_core/apps/ventes/quote_engine/builder.py:1926",  # total_ttc ligne gamme (rÃ©Ã©crit PVUNI, formule prÃ©existante revue)
     "backend/django_core/apps/ventes/quote_engine/builder.py:644",
