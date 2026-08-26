@@ -63,6 +63,13 @@ from urllib.parse import quote
 import httpx
 
 from . import ErreurPortail
+# Les gardes vivent dans ``garde_fous`` (VAO19) et sont RÉ-EXPORTÉES ici :
+# le client reste le point d'entrée lisible du paquet, sans détenir deux fois
+# la même règle.
+from .garde_fous import (
+    GardeFous, MaquillageRefuse, RechercheNonRestreinte, cle_de_societe,
+    exiger_mot_cle_restrictif, verifier_identite_honnete,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -98,25 +105,8 @@ class ReponseInattendue(ErreurPortail):
     """
 
 
-class RechercheNonRestreinte(ErreurPortail):
-    """Tentative de recherche sans mot-clé restrictif = balayage du portail.
-
-    Refusée par construction : c'est la mitigation n°2 du fichier de risque,
-    et une promesse qui ne tiendrait qu'à la discipline de l'appelant n'en
-    est pas une.
-    """
-
-
 class SourceNonCollectable(ErreurPortail):
     """La source est inactive, sans URL, ou n'est pas une porte automatique."""
-
-
-class MaquillageRefuse(ErreurPortail):
-    """On a tenté de partir sous une identité de navigateur. Jamais.
-
-    Cette exception ne devrait jamais se lever en production : elle existe
-    pour que la règle soit une GARDE et pas une intention.
-    """
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -128,13 +118,6 @@ class MaquillageRefuse(ErreurPortail):
 #: poser une adresse dédiée dans ``VEILLE_AO_CONTACT`` (ex. une adresse de
 #: courriel) : elle est alors reprise telle quelle dans le User-Agent.
 CONTACT_DEFAUT = 'https://taqinor.ma'
-
-#: Les jetons qui trahissent un User-Agent de navigateur. Ils sont listés ICI
-#: pour être INTERDITS (VAO19 en fait une garde qui balaie tout le paquet).
-_JETONS_NAVIGATEUR = (
-    'mozilla', 'applewebkit', 'chrome', 'safari', 'firefox', 'gecko',
-    'edg/', 'opera', 'trident', 'webkit',
-)
 
 
 def user_agent():
@@ -148,18 +131,6 @@ def user_agent():
     contact = (os.environ.get('VEILLE_AO_CONTACT') or CONTACT_DEFAUT).strip()
     ua = f"TaqinorBot/1.0 (veille appels d'offres publics ; +{contact})"
     verifier_identite_honnete(ua)
-    return ua
-
-
-def verifier_identite_honnete(ua):
-    """Lève ``MaquillageRefuse`` si l'identité ressemble à un navigateur."""
-    minuscule = ua.lower()
-    for jeton in _JETONS_NAVIGATEUR:
-        if jeton in minuscule:
-            raise MaquillageRefuse(
-                "Identité de navigateur refusée : le collecteur ne se déguise "
-                "jamais pour contourner un refus du portail. Le repli d'un 403 "
-                'est le canal officiel (alertes du portail), pas le maquillage.')
     return ua
 
 
@@ -180,13 +151,6 @@ TAILLE_PAGE_MAX = 500
 #: Plafond de pages par mot-clé. Le fichier de risque promet « 1 à 3 pages » :
 #: au-delà, on ne pagine pas en silence, on remonte l'anomalie.
 PAGES_MAX = 3
-
-#: Longueur minimale d'un mot-clé restrictif. « solaire », « pompage »,
-#: « photovolta » passent ; « a », « % », « » sont des balayages déguisés.
-LONGUEUR_MOT_CLE_MINIMALE = 3
-
-#: Les caractères qui font d'un « mot-clé » un joker.
-JOKERS = ('*', '%')
 
 DELAI_CONNEXION = 10.0
 DELAI_LECTURE = 60.0
@@ -233,28 +197,6 @@ def lire_pagestate(html):
 # ─────────────────────────────────────────────────────────────────────────
 # Les gardes d'entrée
 # ─────────────────────────────────────────────────────────────────────────
-
-
-def exiger_mot_cle_restrictif(mot_cle):
-    """Refuse tout ce qui n'est pas une recherche métier restreinte.
-
-    (La garde définitive, avec cadence et quota, arrive en VAO19 ; celle-ci
-    est déjà suffisante pour rendre un balayage impossible à écrire.)
-    """
-    propre = (mot_cle or '').strip()
-    if not propre:
-        raise RechercheNonRestreinte(
-            'Recherche sans mot-clé refusée : elle ramènerait les ~3 380 avis '
-            'ouverts du portail (~338 requêtes/jour). La veille interroge des '
-            'mots-clés métier, jamais le portail entier.')
-    if any(joker in propre for joker in JOKERS):
-        raise RechercheNonRestreinte(
-            f'Mot-clé « {propre} » refusé : un joker est un balayage déguisé.')
-    if len(propre) < LONGUEUR_MOT_CLE_MINIMALE:
-        raise RechercheNonRestreinte(
-            f'Mot-clé « {propre} » refusé : trop court pour restreindre '
-            f'(minimum {LONGUEUR_MOT_CLE_MINIMALE} caractères).')
-    return propre
 
 
 def exiger_source_collectable(source):
@@ -317,15 +259,22 @@ class Recherche:
 
 
 class GardeNeutre:
-    """Garde par défaut : ne freine rien, ne compte rien.
+    """Garde INERTE : ne freine rien, ne compte rien, ne verrouille rien.
 
-    Elle existe pour que ``client.py`` soit testable seul. **La vraie garde
-    (cadence ≤ 1 req/2 s, quota quotidien dur, verrou, interrupteur d'arrêt)
-    arrive en VAO19** et devient la valeur par défaut.
+    Elle n'est JAMAIS le défaut (VAO19 a fait des ``GardeFous`` réels le
+    défaut de ``rechercher``) : elle sert aux tests qui vérifient le
+    PROTOCOLE PRADO et n'ont rien à dire sur la cadence ou le quota. La
+    fournir est un geste explicite, visible en revue.
     """
 
     def avant_requete(self, description=''):
         return None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
 
 
 def _erreur_de_statut(reponse, url):
@@ -366,28 +315,36 @@ def _executer(appel, url, garde, description):
 def rechercher(source, mot_cle, *, garde=None, transport=None, client=None):
     """La séquence complète pour UN mot-clé. Rend une ``Recherche``.
 
+    **Par défaut, la garde est RÉELLE** (``GardeFous`` de VAO19) : interrupteur
+    d'arrêt, quota quotidien dur, cadence, verrou de société. Un appel sans
+    ``garde`` sur un dispositif désarmé lève donc ``CollecteDesarmee`` avant
+    la moindre connexion — y compris sur déclenchement manuel.
+
     ``transport``/``client`` n'existent que pour les tests : ils permettent de
     rejouer la séquence contre les fixtures committées, sans réseau.
     """
-    garde = garde or GardeNeutre()
+    garde = garde or GardeFous(cle=cle_de_societe(source))
     mot_cle = exiger_mot_cle_restrictif(mot_cle)
     url_base = exiger_source_collectable(source)
     url = url_de_recherche(url_base, mot_cle)
 
-    if client is not None:
-        return _sequence(client, url, mot_cle, garde)
+    # Le verrou tient TOUTE la séquence : deux collectes simultanées pour la
+    # même société, c'est le double du volume promis au fichier de risque.
+    with garde:
+        if client is not None:
+            return _sequence(client, url, mot_cle, garde)
 
-    entetes = {
-        'User-Agent': user_agent(),
-        'Accept': 'text/html,application/xhtml+xml',
-        'Accept-Language': 'fr',
-    }
-    delai = httpx.Timeout(DELAI_LECTURE, connect=DELAI_CONNEXION)
-    # UNE seule jarre de cookies pour toute la séquence : le POST n'est servi
-    # que si PHPSESSID et SERVERID du GET l'accompagnent (mesuré).
-    with httpx.Client(headers=entetes, timeout=delai, follow_redirects=True,
-                      transport=transport) as ouvert:
-        return _sequence(ouvert, url, mot_cle, garde)
+        entetes = {
+            'User-Agent': user_agent(),
+            'Accept': 'text/html,application/xhtml+xml',
+            'Accept-Language': 'fr',
+        }
+        delai = httpx.Timeout(DELAI_LECTURE, connect=DELAI_CONNEXION)
+        # UNE seule jarre de cookies pour toute la séquence : le POST n'est
+        # servi que si PHPSESSID et SERVERID du GET l'accompagnent (mesuré).
+        with httpx.Client(headers=entetes, timeout=delai,
+                          follow_redirects=True, transport=transport) as ouvert:
+            return _sequence(ouvert, url, mot_cle, garde)
 
 
 def _sequence(client, url, mot_cle, garde):

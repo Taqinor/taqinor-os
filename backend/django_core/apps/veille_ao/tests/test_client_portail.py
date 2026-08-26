@@ -77,6 +77,18 @@ def _page(nom):
     return fixtures.charger(nom)
 
 
+def rechercher(*args, **kwargs):
+    """Le client, garde NEUTRALISÉE.
+
+    Ces tests vérifient le PROTOCOLE PRADO ; la cadence, le quota, le verrou
+    et l'interrupteur d'arrêt ont leur propre module de tests
+    (``test_garde_fous.py``), qui vérifie aussi que la garde par défaut de
+    ``rechercher`` est bien la garde RÉELLE — pas celle-ci.
+    """
+    kwargs.setdefault('garde', portail_client.GardeNeutre())
+    return portail_client.rechercher(*args, **kwargs)
+
+
 def _reponse(corps, statut=200, entetes=None):
     return (statut, corps, entetes)
 
@@ -125,7 +137,7 @@ class RefusDuPortailTests(SimpleTestCase):
             reponses=[_reponse(_page(fixtures.ERREUR_403), statut=403)])
         with GardeReseau():
             with self.assertRaises(portail_client.ClientRefuse) as capture:
-                portail_client.rechercher(
+                rechercher(
                     SourceFictive(), 'solaire',
                     transport=enregistreur.transport())
         self.assertEqual(len(enregistreur.requetes), 1, enregistreur.methodes)
@@ -138,7 +150,7 @@ class RefusDuPortailTests(SimpleTestCase):
             reponses=[_reponse(_page(fixtures.ERREUR_403), statut=403)])
         with GardeReseau():
             with self.assertRaises(portail_client.ClientRefuse):
-                portail_client.rechercher(
+                rechercher(
                     SourceFictive(), 'solaire',
                     transport=enregistreur.transport())
         for requete in enregistreur.requetes:
@@ -151,8 +163,8 @@ class RefusDuPortailTests(SimpleTestCase):
         enregistreur = TransportEnregistreur(
             reponses=[_reponse('trop de requêtes', statut=429)])
         with self.assertRaises(portail_client.ClientRefuse):
-            portail_client.rechercher(SourceFictive(), 'solaire',
-                                      transport=enregistreur.transport())
+            rechercher(SourceFictive(), 'solaire',
+                       transport=enregistreur.transport())
         self.assertEqual(len(enregistreur.requetes), 1)
 
     def test_un_500_est_une_indisponibilite_pas_un_refus(self):
@@ -160,15 +172,15 @@ class RefusDuPortailTests(SimpleTestCase):
         enregistreur = TransportEnregistreur(
             reponses=[_reponse('erreur serveur', statut=503)])
         with self.assertRaises(portail_client.PortailIndisponible):
-            portail_client.rechercher(SourceFictive(), 'solaire',
-                                      transport=enregistreur.transport())
+            rechercher(SourceFictive(), 'solaire',
+                       transport=enregistreur.transport())
 
     def test_un_delai_depasse_est_une_indisponibilite_nommee(self):
         def expirer(requete):
             raise httpx.ReadTimeout('délai dépassé', request=requete)
 
         with self.assertRaises(portail_client.PortailIndisponible):
-            portail_client.rechercher(
+            rechercher(
                 SourceFictive(), 'solaire',
                 transport=httpx.MockTransport(expirer))
 
@@ -179,8 +191,8 @@ class RechercheRestreinteTests(SimpleTestCase):
     def _refuse(self, mot_cle):
         enregistreur = TransportEnregistreur(reponses=[_reponse('', 200)])
         with self.assertRaises(portail_client.RechercheNonRestreinte):
-            portail_client.rechercher(SourceFictive(), mot_cle,
-                                      transport=enregistreur.transport())
+            rechercher(SourceFictive(), mot_cle,
+                       transport=enregistreur.transport())
         # Rien n'est parti : la garde s'applique AVANT toute connexion.
         self.assertEqual(enregistreur.requetes, [])
 
@@ -210,7 +222,7 @@ class SourceInactiveTests(SimpleTestCase):
     def test_une_source_inactive_ne_part_pas(self):
         enregistreur = TransportEnregistreur(reponses=[_reponse('', 200)])
         with self.assertRaises(portail_client.SourceNonCollectable):
-            portail_client.rechercher(
+            rechercher(
                 SourceFictive(actif=False), 'solaire',
                 transport=enregistreur.transport())
         self.assertEqual(enregistreur.requetes, [])
@@ -218,7 +230,7 @@ class SourceInactiveTests(SimpleTestCase):
     def test_une_source_sans_url_ne_part_pas(self):
         enregistreur = TransportEnregistreur(reponses=[_reponse('', 200)])
         with self.assertRaises(portail_client.SourceNonCollectable):
-            portail_client.rechercher(
+            rechercher(
                 SourceFictive(url_base=''), 'solaire',
                 transport=enregistreur.transport())
         self.assertEqual(enregistreur.requetes, [])
@@ -262,7 +274,7 @@ class SequenceMesureeTests(SimpleTestCase):
         enregistreur = TransportEnregistreur(
             reponses=[_reponse(_page(fixtures.RESULTATS_VIDE))])
         with GardeReseau():
-            recherche = portail_client.rechercher(
+            recherche = rechercher(
                 SourceFictive(), 'solaire',
                 transport=enregistreur.transport())
         self.assertEqual(recherche.total_annonce, 0)
@@ -276,7 +288,7 @@ class SequenceMesureeTests(SimpleTestCase):
             _reponse(_page(fixtures.RESULTATS_500)),
         ])
         with GardeReseau():
-            recherche = portail_client.rechercher(
+            recherche = rechercher(
                 SourceFictive(), 'solaire',
                 transport=enregistreur.transport())
 
@@ -300,8 +312,8 @@ class SequenceMesureeTests(SimpleTestCase):
             _reponse(_page(fixtures.RESULTATS_10)),
             _reponse(_page(fixtures.RESULTATS_500)),
         ])
-        portail_client.rechercher(SourceFictive(), 'solaire',
-                                  transport=enregistreur.transport())
+        rechercher(SourceFictive(), 'solaire',
+                   transport=enregistreur.transport())
         envoye = dict(
             httpx.QueryParams(enregistreur.requetes[1].content.decode('utf-8')))
         attendu = portail_client.lire_pagestate(_page(fixtures.RESULTATS_10))
@@ -325,7 +337,7 @@ class SequenceMesureeTests(SimpleTestCase):
             _reponse(page1), _reponse(page500_bis), _reponse(page500),
         ])
         with GardeReseau():
-            recherche = portail_client.rechercher(
+            recherche = rechercher(
                 SourceFictive(), 'solaire',
                 transport=enregistreur.transport())
 
@@ -347,7 +359,7 @@ class SequenceMesureeTests(SimpleTestCase):
         page500 = _page(fixtures.RESULTATS_500).replace('>34<', '>3380<')
         enregistreur = TransportEnregistreur(reponses=[
             _reponse(page1)] + [_reponse(page500)] * 6)
-        recherche = portail_client.rechercher(
+        recherche = rechercher(
             SourceFictive(), 'solaire', transport=enregistreur.transport())
         self.assertTrue(recherche.tronquee)
         self.assertLessEqual(recherche.requetes,
@@ -357,8 +369,8 @@ class SequenceMesureeTests(SimpleTestCase):
         enregistreur = TransportEnregistreur(
             reponses=[_reponse(_page(fixtures.RESULTATS_DERIVE))])
         with self.assertRaises(portail_client.ReponseInattendue):
-            portail_client.rechercher(SourceFictive(), 'solaire',
-                                      transport=enregistreur.transport())
+            rechercher(SourceFictive(), 'solaire',
+                       transport=enregistreur.transport())
 
     def test_un_pagestate_absent_est_une_erreur_nommee(self):
         sans_pagestate = _page(fixtures.RESULTATS_10).replace(
@@ -366,12 +378,17 @@ class SequenceMesureeTests(SimpleTestCase):
         enregistreur = TransportEnregistreur(
             reponses=[_reponse(sans_pagestate)])
         with self.assertRaises(portail_client.ReponseInattendue) as capture:
-            portail_client.rechercher(SourceFictive(), 'solaire',
-                                      transport=enregistreur.transport())
+            rechercher(SourceFictive(), 'solaire',
+                       transport=enregistreur.transport())
         self.assertIn('PAGESTATE', str(capture.exception).upper())
 
     def test_chaque_requete_passe_par_la_garde(self):
-        """La garde réelle (cadence, quota) arrive en VAO19 — la prise existe."""
+        """Chaque aller-retour réseau passe par la garde, sans exception.
+
+        C'est la prise sur laquelle VAO19 branche la cadence, le quota et
+        l'interrupteur : une requête qui la contournerait échapperait à TOUTES
+        les mitigations d'un coup.
+        """
 
         class GardeCompteuse(portail_client.GardeNeutre):
             def __init__(self):
@@ -385,8 +402,8 @@ class SequenceMesureeTests(SimpleTestCase):
             _reponse(_page(fixtures.RESULTATS_10)),
             _reponse(_page(fixtures.RESULTATS_500)),
         ])
-        portail_client.rechercher(SourceFictive(), 'solaire', garde=garde,
-                                  transport=enregistreur.transport())
+        rechercher(SourceFictive(), 'solaire', garde=garde,
+                   transport=enregistreur.transport())
         self.assertEqual(len(garde.appels), 2)
 
 
@@ -456,7 +473,7 @@ class IntegrationReseauTests(SimpleTestCase):
             url_base,
             "VEILLE_AO_URL_BASE doit être posée à la main : aucune adresse de "
             'portail ne vit dans le code.')
-        recherche = portail_client.rechercher(
+        recherche = rechercher(
             SourceFictive(url_base=url_base), 'solaire')
         self.assertIsNotNone(recherche.total_annonce)
         self.assertTrue(recherche.pages)

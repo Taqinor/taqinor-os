@@ -38,8 +38,12 @@ from bs4 import BeautifulSoup
 
 from . import ErreurPortail
 from .client import (
-    CHEMIN, ClientRefuse, GardeNeutre, PortailIndisponible, ReponseInattendue,
-    _executer, exiger_source_collectable, user_agent,
+    CHEMIN, ClientRefuse, PortailIndisponible, ReponseInattendue, _executer,
+    exiger_source_collectable, user_agent,
+)
+from .garde_fous import (
+    CollecteConcurrente, CollecteDesarmee, GardeFous, QuotaDepasse,
+    cle_de_societe,
 )
 from .parser import ANALYSEUR, lire_date_heure, normaliser, sans_accents
 
@@ -262,8 +266,14 @@ def enrichir(source, ref_consultation, org_acronyme, *, garde=None,
     de VAO16 vaut ici aussi.
 
     ``dormir`` est injectable pour que les tests ne dorment pas réellement.
+
+    La garde par défaut est RÉELLE (VAO19) : l'interrupteur d'arrêt coupe même
+    ce chemin-ci, qui est pourtant le déclenchement manuel — c'est exactement
+    ce que la mitigation n°6 promet. Le VERROU de société, lui, n'est pas pris
+    ici : un clic pendant la collecte de nuit ne doit pas être refusé pour
+    « collecte concurrente », il ne coûte qu'une requête.
     """
-    garde = garde or GardeNeutre()
+    garde = garde or GardeFous(cle=cle_de_societe(source))
     try:
         url_base = exiger_source_collectable(source)
     except ErreurPortail as erreur:
@@ -286,6 +296,15 @@ def enrichir(source, ref_consultation, org_acronyme, *, garde=None,
                 detail = analyser_detail(reponse.text)
                 detail.tentatives = numero
                 return detail
+            except (CollecteDesarmee, QuotaDepasse, CollecteConcurrente) as erreur:
+                # Ce ne sont pas des pannes : ce sont nos propres garde-fous.
+                # Le message est déjà une phrase française qui dit quoi faire —
+                # on le remonte tel quel plutôt que de le noyer dans
+                # « indisponible », qui ferait chercher une panne inexistante.
+                logger.info('veille_ao.portail : détail refusé par la garde — %s',
+                            erreur)
+                return Detail(disponible=False, message=str(erreur),
+                              tentatives=numero, cause=type(erreur).__name__)
             except ClientRefuse as erreur:
                 # Refus = arrêt définitif. Réessayer serait du martèlement, et
                 # changer d'identité serait du maquillage : ni l'un ni l'autre.

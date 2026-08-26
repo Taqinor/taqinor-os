@@ -40,6 +40,12 @@ class SourceFictive:
     actif: bool = True
 
 
+def enrichir(*args, **kwargs):
+    """L'enrichissement, garde NEUTRALISÉE (voir ``test_garde_fous.py``)."""
+    kwargs.setdefault('garde', portail_client.GardeNeutre())
+    return portail_detail.enrichir(*args, **kwargs)
+
+
 class Dormeur:
     """Un ``time.sleep`` de test : il NOTE l'attente au lieu de la subir."""
 
@@ -155,7 +161,7 @@ class EnrichissementTests(SimpleTestCase):
 
     def test_le_detail_est_lu_en_une_tentative(self):
         with GardeReseau():
-            detail = portail_detail.enrichir(
+            detail = enrichir(
                 SourceFictive(), '812340', 'k1z',
                 transport=self._transport(httpx.Response(
                     200, text=fixtures.charger(fixtures.DETAIL))))
@@ -176,7 +182,7 @@ class EnrichissementTests(SimpleTestCase):
             raise httpx.ReadTimeout('délai dépassé', request=requete)
 
         dormeur = Dormeur()
-        detail = portail_detail.enrichir(
+        detail = enrichir(
             SourceFictive(), '812340', 'k1z',
             transport=httpx.MockTransport(expirer), dormir=dormeur)
 
@@ -191,7 +197,7 @@ class EnrichissementTests(SimpleTestCase):
             raise httpx.ReadTimeout('délai dépassé', request=requete)
 
         dormeur = Dormeur()
-        detail = portail_detail.enrichir(
+        detail = enrichir(
             SourceFictive(), '812340', 'k1z',
             transport=httpx.MockTransport(expirer), dormir=dormeur)
 
@@ -206,7 +212,7 @@ class EnrichissementTests(SimpleTestCase):
             raise httpx.ReadTimeout('délai dépassé', request=requete)
 
         dormeur = Dormeur()
-        detail = portail_detail.enrichir(
+        detail = enrichir(
             SourceFictive(), '812340', 'k1z',
             transport=self._transport(
                 expirer,
@@ -226,7 +232,7 @@ class EnrichissementTests(SimpleTestCase):
                 403, text=fixtures.charger(fixtures.ERREUR_403))
 
         dormeur = Dormeur()
-        detail = portail_detail.enrichir(
+        detail = enrichir(
             SourceFictive(), '812340', 'k1z',
             transport=httpx.MockTransport(refuser), dormir=dormeur)
 
@@ -242,7 +248,7 @@ class EnrichissementTests(SimpleTestCase):
             appels.append(requete)
             return httpx.Response(200, text='')
 
-        detail = portail_detail.enrichir(
+        detail = enrichir(
             SourceFictive(actif=False), '812340', 'k1z',
             transport=httpx.MockTransport(repondre))
         self.assertFalse(detail.disponible)
@@ -255,8 +261,8 @@ class EnrichissementTests(SimpleTestCase):
             envoyes.append(requete.headers.get('user-agent', ''))
             return httpx.Response(200, text=fixtures.charger(fixtures.DETAIL))
 
-        portail_detail.enrichir(SourceFictive(), '812340', 'k1z',
-                                transport=httpx.MockTransport(repondre))
+        enrichir(SourceFictive(), '812340', 'k1z',
+                 transport=httpx.MockTransport(repondre))
         self.assertIn('Taqinor', envoyes[0])
         for jeton in ('mozilla', 'chrome', 'safari'):
             self.assertNotIn(jeton, envoyes[0].lower())
