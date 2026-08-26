@@ -91,6 +91,9 @@ def toit(rangees=3, colonnes=6, demi_largeur=12.0, demi_hauteur=8.0,
     }
     if mode:
         geometrie['mode'] = mode
+    pans = [{'label': 'Pan Sud', 'orientation': 'Sud', 'azimut_deg': 0,
+             'inclinaison_deg': 15, 'nb_panneaux': len(panneaux),
+             'kwc': 12.78, 'roof_type': 'flat'}]
     return {
         'zones': [{
             'id': 'z1', 'label': 'Pan Sud',
@@ -102,9 +105,21 @@ def toit(rangees=3, colonnes=6, demi_largeur=12.0, demi_hauteur=8.0,
             'pitchDeg': 0, 'facingAzimuthDeg': 0,
             'neededPanels': 20, 'geometry': geometrie,
         }],
-        'pans': [{'label': 'Pan Sud', 'orientation': 'Sud', 'azimut_deg': 0,
-                  'inclinaison_deg': 15, 'nb_panneaux': len(panneaux),
-                  'kwc': 12.78, 'roof_type': 'flat'}],
+        # LES DEUX NOMS DE LA MÊME LISTE — ce n'est PAS une redondance.
+        # Le layout STOCKÉ sur ``Devis.roof_layout`` nomme cette liste
+        # ``_pans_geometry`` (c'est ce que `build_devis_from_layout` écrit,
+        # cf. test_qj21_pans_geometry) ; l'assainisseur public
+        # `public_views._safe_roof_layout` la LIT sous ce nom-là et la
+        # REPUBLIE sous `pans`, qui est ce que `calepinage_options.
+        # _pan_principal` consomme. Ce fixture sert aux DEUX étages : passé
+        # nu aux fonctions pures (shape « public »), et posé comme
+        # `roof_layout` d'un vrai devis dans les tests d'endpoint (shape
+        # « brut »). En ne portant que `pans`, il était invisible à
+        # l'assainisseur : `_pan_principal` retombait sur la première zone et
+        # rendait son `pitchDeg` (0° — le toit est PLAT) au lieu de
+        # l'inclinaison des panneaux (15°, sur structure).
+        'pans': pans,
+        '_pans_geometry': pans,
         'result': {'panels': len(panneaux), 'kwc': 12.78, 'annualKwh': 21000},
     }
 

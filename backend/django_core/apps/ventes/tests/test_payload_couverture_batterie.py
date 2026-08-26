@@ -42,6 +42,7 @@ from apps.ventes.public_views import (
     _couverture_batterie_publique,
     _paliers_curseur_batterie,
 )
+from apps.ventes.services import rafraichir_etude_horaire_devis
 
 User = get_user_model()
 
@@ -588,6 +589,22 @@ class _PayloadBase(TestCase):
                 devis=devis, produit=produit, designation=nom,
                 quantite=Decimal(qte), prix_unitaire=Decimal(pu),
                 remise=Decimal('0'))
+        # LE BLOC HORAIRE EST LA SEULE SOURCE DE ``kwc`` CÔTÉ VUE PUBLIQUE.
+        # ``public_views._profil_horaire_pour_devis`` lit la puissance dans
+        # ``etude_params['etude_horaire']['kwc']`` — JAMAIS ailleurs. Sans ce
+        # bloc, ``kwc`` est None et TOUT ce qui en dépend est omis par
+        # construction : ``couverture_batterie``, mais aussi ``jours_types``
+        # et ``estimation_conso`` (règle Z2 — on n'invente pas une
+        # puissance). Ce fixture n'en posait aucun : les gardes « clé
+        # absente » passaient donc pour la MAUVAISE raison, et les épingles
+        # « le bloc est servi » ne pouvaient pas passer du tout.
+        #
+        # On appelle le POSEUR DE PRODUCTION (jamais un bloc écrit à la main
+        # à côté des lignes qu'il est censé décrire) : mêmes chemins, mêmes
+        # entrées, même table de référence PVGIS pour Casablanca (aucun
+        # réseau) — exactement le patron du fixture voisin déjà vert
+        # ``test_cj2b_economies_publiques.LBackQuatreClesPubliquesTests``.
+        rafraichir_etude_horaire_devis(devis)
         return devis
 
     def _payload(self, devis, **share_link_kwargs):

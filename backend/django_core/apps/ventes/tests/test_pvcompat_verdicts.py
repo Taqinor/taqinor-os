@@ -81,8 +81,19 @@ class _FausseFiche:
 
 
 class _FauxProduit:
+    #: BATHOMO/F1 (26/08/2026) — ``services._batterie_en_stock`` consulte
+    #: désormais ``Produit.quantite_stock`` pour le RÔLE BATTERIE : un module
+    #: à 0 sort du vivier économique et la composition part sans batterie, en
+    #: le disant (« Batterie(s) compatibles en rupture de stock »). Ce faux
+    #: produit ne portait pas l'attribut du tout : ``getattr(..., 0)`` lisait
+    #: donc 0 et TOUTE composition de ce fichier héritait de cet
+    #: avertissement, dans des tests qui parlent de COUPLE ÉLECTRIQUE. Le
+    #: défaut est un stock RÉEL — les tests de stock, eux, vivent dans
+    #: ``test_bathomo_banque_homogene.StockGatingBatterie`` et posent leurs
+    #: propres quantités sur de VRAIS ``Produit``.
     def __init__(self, pk, nom, fiche=None, prix_vente='1000',
-                 garantie='5 ans', marque='', description=''):
+                 garantie='5 ans', marque='', description='',
+                 quantite_stock=500):
         self.id = pk
         self.pk = pk
         self.nom = nom
@@ -91,6 +102,7 @@ class _FauxProduit:
         self.garantie = garantie
         self.marque = marque
         self.description = description
+        self.quantite_stock = quantite_stock
 
 
 def _panneau_710(pk=3, nom='Panneau Canadien Solar 710W'):
